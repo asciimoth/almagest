@@ -9,6 +9,7 @@ require (
 	github.com/asciimoth/configer/hujson v0.3.0
 	github.com/asciimoth/gonnect v0.16.0
 	github.com/asciimoth/pasta/pasta v0.6.0
+	github.com/coder/websocket v1.8.14
 	github.com/joho/godotenv v1.5.1
 	github.com/kataras/golog v0.1.15
 )
