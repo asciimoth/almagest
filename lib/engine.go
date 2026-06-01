@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"maps"
 
 	"github.com/asciimoth/bufpool"
 	"github.com/asciimoth/configer/configer"
@@ -25,6 +26,7 @@ type NotificationKind string
 const (
 	// NotificationWorkspace carries a wrapped workspace notification
 	NotificationWorkspace NotificationKind = "workspace"
+	NotificationColorMap  NotificationKind = "colormap"
 )
 
 // EngineNotification describes one observable engine state change.
@@ -37,6 +39,8 @@ type EngineNotification struct {
 	// Currently there is only "main" one.
 	WorkspaceID string                       `json:"workspace_id,omitempty"`
 	Workspace   *pasta.WorkspaceNotification `json:"workspace_notification,omitempty"`
+
+	ColorMap map[string]string `json:"colormap,omitempty"`
 }
 
 type NotificationCallback func(EngineNotification)
@@ -410,6 +414,14 @@ func (e *engine) SubscribeNotifications(callback NotificationCallback) uint64 {
 
 	id := e.nextSubscriptionID
 	e.nextSubscriptionID += 1
+
+	colormap := make(map[string]string)
+	maps.Copy(colormap, DefaultColorMap)
+	callback(EngineNotification{
+		SubscriptionID: id,
+		Kind:           NotificationColorMap,
+		ColorMap:       colormap,
+	})
 
 	// TODO: Send engine initial state here (when we'll have some)
 
