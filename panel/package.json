@@ -1,0 +1,16 @@
+{
+  "name": "almagest-admin-panel",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "vendor": "node scripts/vendor-deps.mjs",
+    "build": "npm run vendor && tsc -p tsconfig.json && node scripts/publish-static.mjs"
+  },
+  "dependencies": {
+    "@asciimoth/formular-menu": "^0.2.1",
+    "litegraph.js": "^0.7.18"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}

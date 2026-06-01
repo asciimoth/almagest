@@ -5,6 +5,7 @@ type AdminMethod string
 const (
 	MethodAdminHello           AdminMethod = "hello"
 	MethodAdminPing            AdminMethod = "ping"
+	MethodAdminColorMap        AdminMethod = "colormap"
 	MethodAdminAcquireMutation AdminMethod = "acquire_mutation"
 	MethodAdminRenewMutation   AdminMethod = "renew_mutation"
 	MethodAdminReleaseMutation AdminMethod = "release_mutation"
@@ -14,6 +15,7 @@ func AdminMethods() []string {
 	return []string{
 		string(MethodAdminHello),
 		string(MethodAdminPing),
+		string(MethodAdminColorMap),
 		string(MethodAdminAcquireMutation),
 		string(MethodAdminRenewMutation),
 		string(MethodAdminReleaseMutation),

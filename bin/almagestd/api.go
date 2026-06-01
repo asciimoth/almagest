@@ -5,6 +5,7 @@ import (
 	"embed"
 	"errors"
 	"io/fs"
+	"maps"
 	"net"
 	"net/http"
 	"strconv"
@@ -154,6 +155,11 @@ func (s *apiSession) handleAdminMessage(msg api.Message) (api.Message, error) {
 			return newRequestError(msg.ID, api.ErrorInvalidPayload, err.Error())
 		}
 		return api.NewResponse(msg.ID, api.PingResponse(req))
+
+	case api.MethodAdminColorMap:
+		colormap := make(map[string]lib.TypePalette)
+		maps.Copy(colormap, lib.DefaultColorMap)
+		return api.NewResponse(msg.ID, colormap)
 
 	case api.MethodAdminAcquireMutation:
 		req, err := decodePayload[api.AcquireMutationRequest](msg)

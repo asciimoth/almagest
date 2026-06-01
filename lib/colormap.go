@@ -9,6 +9,22 @@ type TypePalette struct {
 
 // Color palette for builtin link/port tyles
 var DefaultColorMap = map[string]TypePalette{
+	"pasta/int": {
+		TypeColor: "#b37a00",
+		TextColor: "#ffffff",
+	},
+	"pasta/float": {
+		TypeColor: "#bd5a20",
+		TextColor: "#ffffff",
+	},
+	"pasta/string": {
+		TypeColor: "#087d73",
+		TextColor: "#ffffff",
+	},
+	"pasta/bool": {
+		TypeColor: "#3b7f3e",
+		TextColor: "#ffffff",
+	},
 	"almagest/network": {
 		TypeColor: "#8a5cf6",
 		TextColor: "#ffffff",

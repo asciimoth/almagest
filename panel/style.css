@@ -1,0 +1,448 @@
+:root {
+  color-scheme: dark;
+  --base: #1e1e2e;
+  --mantle: #181825;
+  --crust: #11111b;
+  --surface0: #313244;
+  --surface1: #45475a;
+  --surface2: #585b70;
+  --text: #cdd6f4;
+  --subtext: #a6adc8;
+  --blue: #89b4fa;
+  --green: #a6e3a1;
+  --yellow: #f9e2af;
+  --red: #f38ba8;
+  --mauve: #cba6f7;
+  --teal: #94e2d5;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+.app-shell {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+body {
+  background: var(--base);
+  color: var(--text);
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+button {
+  border: 1px solid var(--surface1);
+  border-radius: 6px;
+  background: var(--surface0);
+  color: var(--text);
+  cursor: pointer;
+  min-height: 34px;
+}
+
+button:hover,
+button.active {
+  border-color: var(--blue);
+  background: #394260;
+}
+
+.app-shell {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  min-width: 0;
+}
+
+.app-header {
+  display: grid;
+  grid-template-columns: minmax(170px, 1fr) auto auto;
+  gap: 16px;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--surface0);
+  background: var(--mantle);
+}
+
+h1 {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+#backend-status {
+  color: var(--subtext);
+  font-size: 13px;
+}
+
+.tabs,
+.actions,
+.node-panel-tabs {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.tabs button {
+  min-width: 78px;
+}
+
+.actions button {
+  padding: 0 12px;
+}
+
+.panel {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.graph-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  min-width: 0;
+}
+
+#graph-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  outline: none;
+  background: var(--crust);
+}
+
+#sidekick {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  border-left: 1px solid var(--surface0);
+  background: var(--mantle);
+  padding: 12px;
+}
+
+.panel-title {
+  margin-bottom: 10px;
+  color: var(--subtext);
+  font-size: 13px;
+  text-transform: uppercase;
+}
+
+.class-list {
+  display: grid;
+  gap: 8px;
+}
+
+.class-button {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  min-height: 58px;
+  padding: 8px 10px;
+  text-align: left;
+}
+
+.class-button-primary {
+  border-color: color-mix(in srgb, var(--class-primary-color), white 16%);
+  background:
+    linear-gradient(90deg, var(--class-primary-color) 0 5px, transparent 5px),
+    color-mix(in srgb, var(--class-primary-color), var(--surface0) 78%);
+}
+
+.class-button-primary:hover {
+  border-color: color-mix(in srgb, var(--class-primary-color), white 34%);
+  background:
+    linear-gradient(90deg, var(--class-primary-color) 0 5px, transparent 5px),
+    color-mix(in srgb, var(--class-primary-color), var(--surface0) 66%);
+}
+
+.class-button strong {
+  color: var(--teal);
+  font-size: 14px;
+}
+
+.class-button-primary strong {
+  color: var(--class-primary-text-color);
+}
+
+.class-button span,
+.node-panel-section p {
+  color: var(--subtext);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.class-button-primary span {
+  color: color-mix(in srgb, var(--class-primary-text-color), transparent 12%);
+}
+
+.node-panel-tabs {
+  margin-bottom: 12px;
+}
+
+.node-panel-tabs button {
+  flex: 1;
+}
+
+.node-name-form {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.node-name-form label {
+  color: var(--subtext);
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.node-name-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.node-name-row input {
+  min-width: 0;
+  height: 34px;
+  border: 1px solid var(--surface1);
+  border-radius: 6px;
+  background: var(--crust);
+  color: var(--text);
+  padding: 0 10px;
+}
+
+.node-name-row input:focus {
+  border-color: var(--blue);
+  outline: none;
+}
+
+.node-name-row button {
+  padding: 0 10px;
+}
+
+.node-panel-section h2 {
+  margin: 0 0 8px;
+  font-size: 16px;
+}
+
+#node-menu {
+  --formular-bg: var(--mantle);
+  --formular-panel: var(--surface0);
+  --formular-border: var(--surface1);
+  --formular-text: var(--text);
+  --formular-muted: var(--subtext);
+  --formular-accent: var(--blue);
+}
+
+#node-popups {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--surface0);
+}
+
+.popup-panel-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.popup-panel-header h2 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.popup-panel-header button,
+.popup-item button {
+  min-height: 30px;
+  padding: 0 9px;
+  font-size: 12px;
+}
+
+.popup-empty {
+  margin: 0;
+}
+
+.popup-list {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.popup-item {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: start;
+  padding: 8px;
+  border: 1px solid var(--surface1);
+  border-radius: 6px;
+  background: var(--surface0);
+}
+
+.popup-item strong {
+  display: inline-flex;
+  justify-content: center;
+  border: 1px solid var(--surface1);
+  border-radius: 4px;
+  padding: 2px 5px;
+  font-size: 11px;
+  line-height: 1.4;
+  text-transform: uppercase;
+}
+
+.popup-item span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.popup-info strong {
+  border-color: color-mix(in srgb, var(--blue), transparent 45%);
+  background: color-mix(in srgb, var(--blue), var(--surface0) 84%);
+  color: var(--blue);
+}
+
+.popup-ward strong {
+  border-color: color-mix(in srgb, var(--yellow), transparent 42%);
+  background: color-mix(in srgb, var(--yellow), var(--surface0) 84%);
+  color: var(--yellow);
+}
+
+.popup-err strong {
+  border-color: color-mix(in srgb, var(--red), transparent 42%);
+  background: color-mix(in srgb, var(--red), var(--surface0) 84%);
+  color: var(--red);
+}
+
+.logs-panel {
+  overflow: auto;
+  background: var(--crust);
+  padding: 14px;
+}
+
+#logs-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+#logs-list li {
+  display: grid;
+  grid-template-columns: 96px 150px 72px minmax(0, 1fr);
+  gap: 10px;
+  align-items: baseline;
+  padding: 8px 10px;
+  border: 1px solid var(--surface0);
+  border-radius: 6px;
+  background: var(--mantle);
+}
+
+#logs-list time {
+  color: var(--surface2);
+  font-variant-numeric: tabular-nums;
+}
+
+#logs-list b {
+  color: var(--mauve);
+  font-weight: 600;
+}
+
+#logs-list strong {
+  display: inline-flex;
+  justify-content: center;
+  min-width: 56px;
+  border: 1px solid var(--surface1);
+  border-radius: 4px;
+  background: var(--surface0);
+  color: var(--blue);
+  padding: 1px 6px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.4;
+  text-transform: uppercase;
+}
+
+#logs-list span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--subtext);
+}
+
+#logs-list .log-warn strong {
+  border-color: color-mix(in srgb, var(--yellow), transparent 55%);
+  background: color-mix(in srgb, var(--yellow), var(--surface0) 86%);
+  color: var(--yellow);
+}
+
+#logs-list .log-error strong,
+#logs-list .log-fatal strong {
+  border-color: color-mix(in srgb, var(--red), transparent 50%);
+  background: color-mix(in srgb, var(--red), var(--surface0) 84%);
+  color: var(--red);
+}
+
+#logs-list .log-info strong {
+  border-color: color-mix(in srgb, var(--green), transparent 58%);
+  background: color-mix(in srgb, var(--green), var(--surface0) 88%);
+  color: var(--green);
+}
+
+.config-panel {
+  background: var(--crust);
+  padding: 14px;
+}
+
+.placeholder-panel {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 1px solid var(--surface0);
+  border-radius: 6px;
+  background: #11111b;
+  color: var(--subtext);
+  padding: 14px;
+  line-height: 1.5;
+  font-size: 13px;
+}
+
+@media (max-width: 900px) {
+  .app-header {
+    grid-template-columns: 1fr;
+  }
+
+  .tabs,
+  .actions {
+    flex-wrap: wrap;
+  }
+
+  .graph-panel {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr) minmax(180px, 34vh);
+  }
+
+  #sidekick {
+    border-left: 0;
+    border-top: 1px solid var(--surface0);
+  }
+}

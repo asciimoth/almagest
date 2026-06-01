@@ -4,6 +4,8 @@ Almagest is a Go userspace network stack built around a Pasta node graph.
   Almagest link types, and workspace-facing APIs.
 - `bin/` is the runnable module. It owns daemon startup, config files, platform
   integration, admin API plumbing, and the CLI placeholder.
+- `panel/` is the TypeScript admin UI. `just build-web` compiles it into
+  `bin/almagestd/static` for daemon embedding.
 
 Runtime path:
 1. `almagestd` reads HuJSON config.
@@ -13,6 +15,8 @@ Runtime path:
 5. The engine creates the Pasta workspace named `main`.
 6. Nodes exchange typed values; `almagest/network` carries `gonnect.Network`
    resources.
+7. If web admin is enabled, `almagestd` serves embedded static panel files and
+   `/api/ws`.
 
 ## Module Boundaries
 `lib/` may depend on Pasta, Gonnect, Formular, Configer, and Bufpool. It should
@@ -44,6 +48,11 @@ Platform and CLI:
 - `bin/platforms/`: build-tagged defaults and platform operations.
 - `bin/almagest-cli/cli.go`: CLI placeholder.
 
+Admin panel:
+- `panel/src/app.ts`: graph UI and WebSocket admin API client.
+- `panel/src/pasta_model.ts`: snapshot/notification helpers.
+- `panel/scripts/`: dependency vendoring and static publish scripts.
+
 ## Core Concepts
 - Pasta provides the graph workspace, node classes, ports, links,
   notifications, menus, copy/paste, undo/redo, and standard link types.
@@ -61,6 +70,7 @@ Engine API groups:
 - copy/paste, undo/redo
 - inbox and Formular messages
 - subscriptions and full snapshots
+- admin type color map for graph rendering
 - workspace config save under a caller-provided `nodes` config view
 - close of workspace and system integration
 
@@ -103,4 +113,3 @@ System integration is selected from `Main.System.Type`:
 
 Use debug integration for local runnable experiments. Native platform
 integration is currently a placeholder returns/panics with `ErrPlatform`.
-
