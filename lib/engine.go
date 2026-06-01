@@ -40,7 +40,7 @@ type EngineNotification struct {
 	WorkspaceID string                       `json:"workspace_id,omitempty"`
 	Workspace   *pasta.WorkspaceNotification `json:"workspace_notification,omitempty"`
 
-	ColorMap map[string]string `json:"colormap,omitempty"`
+	ColorMap map[string]TypePalette `json:"colormap,omitempty"`
 }
 
 type NotificationCallback func(EngineNotification)
@@ -415,7 +415,7 @@ func (e *engine) SubscribeNotifications(callback NotificationCallback) uint64 {
 	id := e.nextSubscriptionID
 	e.nextSubscriptionID += 1
 
-	colormap := make(map[string]string)
+	colormap := make(map[string]TypePalette)
 	maps.Copy(colormap, DefaultColorMap)
 	callback(EngineNotification{
 		SubscriptionID: id,

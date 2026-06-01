@@ -20,3 +20,6 @@ tidy:
 lint:
   golangci-lint run ./lib/... ./bin/...
 
+fmt:
+  golangci-lint fmt ./lib/... ./bin/...
+
