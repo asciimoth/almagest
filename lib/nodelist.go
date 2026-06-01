@@ -5,10 +5,16 @@ import (
 	"github.com/asciimoth/pasta/pasta/std"
 )
 
-func NodeClasses(engine Engine) []pasta.NodeClass {
+func nodeClasses(engine *engine) []pasta.NodeClass {
 	// WARN: At init time engine.mainWorkspace is nil
 	classes := []pasta.NodeClass{
-		MockNetClass{},
+		mockNetClass{},
+		httpServerClass{
+			engine: engine,
+		},
+		httpClientClass{
+			engine: engine,
+		},
 	}
 	// Add pasta standard lib classes
 	classes = append(classes, std.StdClasses()...)

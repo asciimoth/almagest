@@ -9,19 +9,19 @@ import (
 
 const NodeTypeMockNetwork = "almagest/MockNetwork"
 
-type MockNetClass struct{}
+type mockNetClass struct{}
 
-func (MockNetClass) ClassName() string        { return NodeTypeMockNetwork }
-func (MockNetClass) ShortDescription() string { return "Virtual network mock" }
-func (MockNetClass) LongDescription() string {
+func (mockNetClass) ClassName() string        { return NodeTypeMockNetwork }
+func (mockNetClass) ShortDescription() string { return "Virtual network mock" }
+func (mockNetClass) LongDescription() string {
 	return "Emulates network for test/debug purposes. Connections/Listeners created via MockNetwork are fully virtual and never reach real OS network stack."
 }
-func (MockNetClass) DefaultNodeParams() pasta.NodeClassParams {
+func (mockNetClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: TypeNetwork, InitialPorts: []pasta.Port{
 		NetworkPort("left", "Network"),
 	}}
 }
-func (MockNetClass) NewNode(_ configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
+func (mockNetClass) NewNode(_ configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
 	network := gonnect.NewLoopbackNetwok()
 	network.AllowAnyHost = true
 	return &mockNetNode{base: network}, nil

@@ -67,7 +67,7 @@ func BuildEngine(
 		subscriptionIDMapping: make(map[uint64]subMap),
 	}
 
-	classes := NodeClasses(engine)
+	classes := nodeClasses(engine)
 	classes = append(classes, extra...)
 
 	work, err := pasta.WorkspaceFromConfig(
