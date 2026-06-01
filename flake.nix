@@ -44,17 +44,15 @@
               enable = true;
               description = "Makes sure go.mod matches the source code";
               entry = let script = pkgs.writeShellScript "gotidyhook" ''
-                go -C lib mod tidy -v
-                go -C bin mod tidy -v
+                just tidy
               ''; in builtins.toString script;
               stages = [ "pre-commit" ];
             };
             golangtest = {
               enable = true;
               description = "go test ./... --race";
-              entry = let script = pkgs.writeShellScript "gotidyhook" ''
-                go -C lib test ./... --race
-                go -C bin test ./... --race
+              entry = let script = pkgs.writeShellScript "gotesthook" ''
+                just test-go
               ''; in builtins.toString script;
               stages = [ "pre-commit" ];
             };
@@ -64,6 +62,8 @@
     in {
       devShells.default = pkgs.mkShell {
         inherit (checks.pre-commit-check) shellHook;
+        PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1";
+        CHROME_BIN = "${pkgs.chromium}/bin/chromium";
         buildInputs = with pkgs; [
           go
           golangci-lint
@@ -73,6 +73,13 @@
           commitizen
 
           just
+
+          nodejs_24
+          pnpm
+          typescript
+
+          # for browser/e2e tests
+          chromium
         ];
       };
     });
