@@ -7,6 +7,7 @@ require (
 	github.com/asciimoth/almagest/lib v0.0.0-00010101000000-000000000000
 	github.com/asciimoth/configer/configer v0.3.0
 	github.com/asciimoth/configer/hujson v0.3.0
+	github.com/asciimoth/formular v0.2.2
 	github.com/asciimoth/gonnect v0.16.0
 	github.com/asciimoth/pasta/pasta v0.6.0
 	github.com/coder/websocket v1.8.14
@@ -18,7 +19,6 @@ require (
 	github.com/alexflint/go-scalar v1.2.0 // indirect
 	github.com/asciimoth/badlock v0.1.1 // indirect
 	github.com/asciimoth/bufpool v0.3.0 // indirect
-	github.com/asciimoth/formular v0.2.2 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect

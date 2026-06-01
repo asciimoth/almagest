@@ -59,6 +59,7 @@ type httpClientNode struct {
 	pasta.BasicNode
 
 	engine *engine
+	logger pasta.Logger
 
 	w       *pasta.Workspace
 	id      uint64
@@ -97,9 +98,10 @@ type httpClientResult struct {
 	err    string
 }
 
-func (n *httpClientNode) OnInit(w *pasta.Workspace, _ pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
+func (n *httpClientNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
 	n.w = w
 	n.id = id
+	n.logger = logger
 
 	if n.method == "" {
 		n.method = DefaultHTTPClientMethod
@@ -327,6 +329,7 @@ func (n *httpClientNode) OnSave(cfg configer.Config) error {
 
 func (n *httpClientNode) sendRequest() {
 	if n.pending {
+		n.logger.Debug("request ignored: already pending")
 		return
 	}
 
@@ -343,6 +346,7 @@ func (n *httpClientNode) sendRequest() {
 	n.statusText = httpClientStatusRunning
 	n.resp = ""
 	n.errText = ""
+	n.logger.Debugf("request %d: %s %s", req.id, req.method, req.url)
 
 	_ = n.updateLabel()
 	n.sendRequestBlock()
@@ -355,6 +359,7 @@ func (n *httpClientNode) sendRequest() {
 	select {
 	case n.jobs <- req:
 	default:
+		n.logger.Debug("request failed: worker is busy")
 		n.w.SendInbox(pasta.InboxMessage{
 			ReceiverNode: n.id,
 			Payload:      httpClientResult{id: req.id, err: "worker is busy"},
@@ -368,11 +373,13 @@ func (n *httpClientNode) startWorker() {
 	}
 	n.jobs = make(chan httpClientRequest, 1)
 	n.stop = make(chan struct{})
-	go runHTTPClientWorker(n.engine.ctx, n.w, n.id, n.jobs, n.stop)
+	n.logger.Debug("worker started")
+	go runHTTPClientWorker(n.engine.ctx, n.logger, n.w, n.id, n.jobs, n.stop)
 }
 
 func (n *httpClientNode) stopWorker() {
 	if n.stop != nil {
+		n.logger.Debug("worker stopping")
 		close(n.stop)
 		n.stop = nil
 	}
@@ -384,13 +391,15 @@ func (n *httpClientNode) restartWorker() {
 	n.startWorker()
 }
 
-func runHTTPClientWorker(ctx context.Context, w *pasta.Workspace, node uint64, jobs <-chan httpClientRequest, stop <-chan struct{}) {
+func runHTTPClientWorker(ctx context.Context, logger pasta.Logger, w *pasta.Workspace, node uint64, jobs <-chan httpClientRequest, stop <-chan struct{}) {
 	for {
 		select {
 		case <-stop:
+			logger.Debug("worker stopped")
 			return
 
 		case req := <-jobs:
+			logger.Debugf("request %d: worker processing", req.id)
 			ctx, cancel := context.WithCancel(ctx)
 			done := make(chan struct{})
 
@@ -407,6 +416,11 @@ func runHTTPClientWorker(ctx context.Context, w *pasta.Workspace, node uint64, j
 			cancel()
 			close(done)
 
+			if result.err != "" {
+				logger.Debugf("request %d failed: %s", req.id, result.err)
+			} else {
+				logger.Debugf("request %d complete: %s", req.id, result.status)
+			}
 			w.SendInbox(pasta.InboxMessage{ReceiverNode: node, Payload: result})
 		}
 	}

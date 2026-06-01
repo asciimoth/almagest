@@ -450,7 +450,11 @@ func (s *apiSession) handleEngineMessage(msg api.Message) (api.Message, error) {
 		if err != nil {
 			return newRequestError(msg.ID, api.ErrorInvalidPayload, err.Error())
 		}
-		s.engine.SendNodeFormularMsg(req.Workspace, req.Node, req.Message)
+		message, err := decodeFormularMessage(req.Message)
+		if err != nil {
+			return newRequestError(msg.ID, api.ErrorInvalidPayload, err.Error())
+		}
+		s.engine.SendNodeFormularMsg(req.Workspace, req.Node, message)
 		return api.NewResponse(msg.ID, struct{}{})
 
 	default:

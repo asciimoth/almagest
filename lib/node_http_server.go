@@ -53,6 +53,7 @@ type httpServerNode struct {
 	pasta.BasicNode
 
 	engine *engine
+	logger pasta.Logger
 
 	w     *pasta.Workspace
 	id    uint64
@@ -93,9 +94,10 @@ type httpServerConfig struct {
 	network  NetworkCloser
 }
 
-func (n *httpServerNode) OnInit(w *pasta.Workspace, _ pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
+func (n *httpServerNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
 	n.w = w
 	n.id = id
+	n.logger = logger
 
 	if n.host == "" {
 		n.host = DefaultHTTPServerHost
@@ -120,6 +122,7 @@ func (n *httpServerNode) OnInit(w *pasta.Workspace, _ pasta.Logger, id uint64, _
 	}
 
 	if err := n.w.SetNodePrimary(n.id, TypeNetwork); err != nil {
+		n.logger.Errf("failed to set node primary type: %v", err)
 		return err
 	}
 
@@ -296,6 +299,7 @@ func (n *httpServerNode) OnSave(cfg configer.Config) error {
 func (n *httpServerNode) restartWorker() {
 	n.restartID++
 	id := n.restartID
+	n.logger.Debug("worker restarting")
 	n.appendLog(formular.LogInfo, "worker restarting")
 	n.sendLogsBlock()
 	old := n.worker
@@ -304,6 +308,7 @@ func (n *httpServerNode) restartWorker() {
 		close(old.stop)
 	}
 	if n.network == nil {
+		n.logger.Debug("waiting for network")
 		n.appendLog(formular.LogWarn, "waiting for network")
 		n.sendLogsBlock()
 		return
@@ -323,24 +328,27 @@ func (n *httpServerNode) startWorker(cfg httpServerConfig) {
 	stop := make(chan struct{})
 	worker := &httpServerWorker{stop: stop, done: make(chan struct{})}
 	n.worker = worker
+	n.logger.Debugf("worker starting on %s", net.JoinHostPort(cfg.host, strconv.Itoa(cfg.port)))
 	go func() {
 		defer close(worker.done)
-		runHTTPServerWorker(n.engine.ctx, n.w, n.id, stop, cfg)
+		runHTTPServerWorker(n.engine.ctx, n.logger, n.w, n.id, stop, cfg)
 	}()
 }
 
 func (n *httpServerNode) stopWorker() {
 	if n.worker != nil {
+		n.logger.Debug("worker stopping")
 		close(n.worker.stop)
 		n.worker = nil
 	}
 }
 
-func runHTTPServerWorker(ctx context.Context, w *pasta.Workspace, node uint64, stop <-chan struct{}, cfg httpServerConfig) {
+func runHTTPServerWorker(ctx context.Context, logger pasta.Logger, w *pasta.Workspace, node uint64, stop <-chan struct{}, cfg httpServerConfig) {
 	addr := net.JoinHostPort(cfg.host, strconv.Itoa(cfg.port))
 	for {
 		select {
 		case <-stop:
+			logger.Debug("worker stopped")
 			return
 		default:
 		}
@@ -357,8 +365,10 @@ func runHTTPServerWorker(ctx context.Context, w *pasta.Workspace, node uint64, s
 		cancel()
 		close(done)
 		if err != nil {
-			sendHTTPServerLog(w, node, formular.LogWarn, "listen failed: "+err.Error())
+			logger.Debugf("listen failed on %s: %v", addr, err)
+			sendHTTPServerLog(w, node, formular.LogDebug, "listen failed: "+err.Error())
 			if !sleepOrStopped(stop, time.Second) {
+				logger.Debug("worker stopped")
 				return
 			}
 			continue
@@ -368,25 +378,30 @@ func runHTTPServerWorker(ctx context.Context, w *pasta.Workspace, node uint64, s
 			body = "Debug http server response"
 		}
 		handler := http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+			logger.Debugf("%s %s", r.Method, r.URL.String())
 			sendHTTPServerLog(w, node, formular.LogInfo, fmt.Sprintf("%s %s", r.Method, r.URL.String()))
 			_, _ = rw.Write([]byte(body))
 		})
 		server := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second}
 		serveDone := make(chan error, 1)
 		go func() { serveDone <- server.Serve(ln) }()
+		logger.Debugf("listening on %s", addr)
 		sendHTTPServerLog(w, node, formular.LogInfo, "listening on "+addr)
 		select {
 		case <-stop:
 			_ = ln.Close()
 			_ = server.Shutdown(context.Background())
 			<-serveDone
+			logger.Debug("worker stopped")
 			return
 		case err := <-serveDone:
 			_ = ln.Close()
 			if err != nil && !errors.Is(err, http.ErrServerClosed) {
+				logger.Debugf("server stopped: %v", err)
 				sendHTTPServerLog(w, node, formular.LogWarn, "server stopped: "+err.Error())
 			}
 			if !sleepOrStopped(stop, time.Second) {
+				logger.Debug("worker stopped")
 				return
 			}
 		}
