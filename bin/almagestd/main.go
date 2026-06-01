@@ -8,7 +8,6 @@ import (
 
 	"github.com/alexflint/go-arg"
 	"github.com/asciimoth/almagest/lib"
-	"github.com/asciimoth/configer/configer"
 	_ "github.com/joho/godotenv/autoload"
 	"github.com/kataras/golog"
 )
@@ -80,7 +79,7 @@ func main() {
 
 	engine, err := lib.BuildEngine(
 		ctx,
-		conf.Main.View(configer.Path{"nodes"}),
+		conf.Main,
 		logf,
 		sys,
 		nil,
