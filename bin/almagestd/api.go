@@ -14,7 +14,6 @@ import (
 	"github.com/asciimoth/almagest/bin/api"
 	"github.com/asciimoth/almagest/lib"
 	"github.com/asciimoth/gonnect/sysnet"
-	"github.com/coder/websocket"
 	"github.com/kataras/golog"
 )
 
@@ -24,6 +23,15 @@ var webStatic embed.FS
 type AdminAPI struct {
 	webListener net.Listener
 	webServer   *http.Server
+
+	leaseMu       sync.Mutex
+	mutationLease *mutationLease
+}
+
+type mutationLease struct {
+	id        string
+	holder    string
+	expiresAt time.Time
 }
 
 func (a *AdminAPI) Stop() {
@@ -44,6 +52,8 @@ func (a *AdminAPI) Run(
 	engine lib.Engine,
 	sys sysnet.SysBuilder,
 ) {
+	_ = sys
+
 	if a.webListener != nil {
 		mux := http.NewServeMux()
 		static, err := fs.Sub(webStatic, "static")
@@ -53,9 +63,7 @@ func (a *AdminAPI) Run(
 			return
 		}
 		mux.Handle("/", http.FileServer(http.FS(static)))
-		mux.HandleFunc("/api/ws", func(w http.ResponseWriter, r *http.Request) {
-			a.serveWebsocket(ctx, w, r, engine, sys)
-		})
+		a.registerAPIHandlers(ctx, mux, engine, sys)
 
 		server := &http.Server{
 			Handler:           mux,
@@ -82,71 +90,47 @@ func (a *AdminAPI) Run(
 	}
 }
 
-func (a *AdminAPI) serveWebsocket(
-	ctx context.Context,
-	w http.ResponseWriter,
-	r *http.Request,
-	engine lib.Engine,
-	sys sysnet.SysBuilder,
-) {
-	_ = engine
-	_ = sys
+type apiSession struct {
+	admin  *AdminAPI
+	engine lib.Engine
+	send   func(api.Message) error
+}
 
-	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
-		OriginPatterns: []string{"localhost:*", "127.0.0.1:*", "[::1]:*"},
-	})
-	if err != nil {
-		golog.Debugf("WebSocket accept failed: %v", err)
-		return
-	}
-	defer conn.CloseNow() //nolint
-
-	for {
-		messageType, data, err := conn.Read(ctx)
-		if err != nil {
-			return
-		}
-		if messageType != websocket.MessageText {
-			continue
-		}
-
-		msg, err := api.UnmarshalMessage(data)
-		if err != nil {
-			_ = writeWebsocketError(ctx, conn, "", api.ErrorInvalidPayload, err.Error())
-			continue
-		}
-
-		response, err := handleWebsocketMessage(msg)
-		if err != nil {
-			_ = writeWebsocketError(ctx, conn, msg.ID, api.ErrorInternal, err.Error())
-			continue
-		}
-		if err := conn.Write(ctx, websocket.MessageText, response); err != nil {
-			return
-		}
+func (a *AdminAPI) newAPISession(engine lib.Engine, send func(api.Message) error) *apiSession {
+	return &apiSession{
+		admin:  a,
+		engine: engine,
+		send:   send,
 	}
 }
 
-func handleWebsocketMessage(msg api.Message) ([]byte, error) {
+func (s *apiSession) handleMessage(msg api.Message) (api.Message, error) {
 	if msg.Kind != api.MessageRequest {
-		response, err := api.NewErrorResponse(
+		return newRequestError(
 			msg.ID,
 			api.ErrorBadRequest,
-			"websocket endpoint accepts request messages",
-			nil,
+			"api endpoint accepts request messages",
 		)
-		if err != nil {
-			return nil, err
-		}
-		return api.MarshalMessage(response)
 	}
 
-	switch {
-	case msg.Surface == api.SurfaceAdmin && msg.Method == string(api.MethodAdminHello):
-		if _, err := api.DecodePayload[api.HelloRequest](msg.Payload); err != nil {
-			return marshalRequestError(msg.ID, api.ErrorInvalidPayload, err.Error())
+	switch msg.Surface {
+	case api.SurfaceAdmin:
+		return s.handleAdminMessage(msg)
+	case api.SurfaceEngine:
+		return s.handleEngineMessage(msg)
+	default:
+		return newRequestError(msg.ID, api.ErrorInvalidMethod, "api surface is not implemented")
+	}
+}
+
+func (s *apiSession) handleAdminMessage(msg api.Message) (api.Message, error) {
+	switch api.AdminMethod(msg.Method) {
+	case api.MethodAdminHello:
+		_, err := decodePayload[api.HelloRequest](msg)
+		if err != nil {
+			return newRequestError(msg.ID, api.ErrorInvalidPayload, err.Error())
 		}
-		response, err := api.NewResponse(msg.ID, api.HelloResponse{
+		return api.NewResponse(msg.ID, api.HelloResponse{
 			Version: api.Version,
 			Surfaces: map[string]any{
 				string(api.SurfaceAdmin): map[string]any{
@@ -155,52 +139,387 @@ func handleWebsocketMessage(msg api.Message) ([]byte, error) {
 				string(api.SurfaceEngine): map[string]any{
 					"methods": api.EngineMethods(),
 				},
+				string(api.SurfaceLog): map[string]any{
+					"methods": []string{},
+				},
+				string(api.SurfaceSystem): map[string]any{
+					"methods": []string{},
+				},
 			},
 		})
-		if err != nil {
-			return nil, err
-		}
-		return api.MarshalMessage(response)
 
-	case msg.Surface == api.SurfaceAdmin && msg.Method == string(api.MethodAdminPing):
-		req, err := api.DecodePayload[api.PingRequest](msg.Payload)
+	case api.MethodAdminPing:
+		req, err := decodePayload[api.PingRequest](msg)
 		if err != nil {
-			return marshalRequestError(msg.ID, api.ErrorInvalidPayload, err.Error())
+			return newRequestError(msg.ID, api.ErrorInvalidPayload, err.Error())
 		}
-		response, err := api.NewResponse(msg.ID, api.PingResponse(req))
+		return api.NewResponse(msg.ID, api.PingResponse(req))
+
+	case api.MethodAdminAcquireMutation:
+		req, err := decodePayload[api.AcquireMutationRequest](msg)
 		if err != nil {
-			return nil, err
+			return newRequestError(msg.ID, api.ErrorInvalidPayload, err.Error())
 		}
-		return api.MarshalMessage(response)
+		return api.NewResponse(msg.ID, s.admin.acquireMutation(req))
+
+	case api.MethodAdminRenewMutation:
+		req, err := decodePayload[api.RenewMutationRequest](msg)
+		if err != nil {
+			return newRequestError(msg.ID, api.ErrorInvalidPayload, err.Error())
+		}
+		lease, ok := s.admin.renewMutation(req)
+		if !ok {
+			return newRequestError(msg.ID, api.ErrorConflict, "mutation lease is not active")
+		}
+		return api.NewResponse(msg.ID, lease)
+
+	case api.MethodAdminReleaseMutation:
+		req, err := decodePayload[api.ReleaseMutationRequest](msg)
+		if err != nil {
+			return newRequestError(msg.ID, api.ErrorInvalidPayload, err.Error())
+		}
+		s.admin.releaseMutation(req)
+		return api.NewResponse(msg.ID, struct{}{})
 
 	default:
-		return marshalRequestError(msg.ID, api.ErrorInvalidMethod, "api method is not implemented")
+		return newRequestError(msg.ID, api.ErrorInvalidMethod, "api method is not implemented")
 	}
 }
 
-func writeWebsocketError(
-	ctx context.Context,
-	conn *websocket.Conn,
-	id string,
-	code api.ErrorCode,
-	message string,
-) error {
-	data, err := marshalRequestError(id, code, message)
-	if err != nil {
-		return err
+func (s *apiSession) handleEngineMessage(msg api.Message) (api.Message, error) {
+	switch api.EngineMethod(msg.Method) {
+	case api.MethodEngineSubscribeNotifications:
+		_, err := decodePayload[api.WorkspaceRequest](msg)
+		if err != nil {
+			return newRequestError(msg.ID, api.ErrorInvalidPayload, err.Error())
+		}
+		id := s.engine.SubscribeNotifications(func(notification lib.EngineNotification) {
+			event, err := api.NewEvent(api.SurfaceEngine, string(api.EventEngineNotification), api.EngineNotificationEvent{
+				SubscriptionID: notification.SubscriptionID,
+				Notification:   notification,
+			})
+			if err == nil {
+				_ = s.send(event)
+			}
+		})
+		if id == 0 {
+			return newRequestError(msg.ID, api.ErrorUnavailable, "notification subscription failed")
+		}
+		return api.NewResponse(msg.ID, api.SubscribeNotificationsResponse{SubscriptionID: id})
+
+	case api.MethodEngineUnsubscribeNotifications:
+		req, err := decodePayload[api.SubscriptionRequest](msg)
+		if err != nil {
+			return newRequestError(msg.ID, api.ErrorInvalidPayload, err.Error())
+		}
+		s.engine.UnsubscribeNotifications(req.SubscriptionID)
+		return api.NewResponse(msg.ID, struct{}{})
+
+	case api.MethodEngineRequestFullSnapshot:
+		req, err := decodePayload[api.SubscriptionRequest](msg)
+		if err != nil {
+			return newRequestError(msg.ID, api.ErrorInvalidPayload, err.Error())
+		}
+		s.engine.RequestFullSnapshot(req.SubscriptionID)
+		return api.NewResponse(msg.ID, struct{}{})
+
+	case api.MethodEngineSubscribeNodeMenu:
+		req, err := decodePayload[api.NodeMenuSubscriptionRequest](msg)
+		if err != nil {
+			return newRequestError(msg.ID, api.ErrorInvalidPayload, err.Error())
+		}
+		s.engine.SubscribeNodeMenu(req.Workspace, req.Node, req.SubscriptionID)
+		return api.NewResponse(msg.ID, struct{}{})
+
+	case api.MethodEngineUnsubscribeNodeMenu:
+		req, err := decodePayload[api.NodeMenuSubscriptionRequest](msg)
+		if err != nil {
+			return newRequestError(msg.ID, api.ErrorInvalidPayload, err.Error())
+		}
+		s.engine.UnsubscribeNodeMenu(req.Workspace, req.Node, req.SubscriptionID)
+		return api.NewResponse(msg.ID, struct{}{})
+
+	case api.MethodEngineWorkspaceSnapshot:
+		req, err := decodePayload[api.WorkspaceRequest](msg)
+		if err != nil {
+			return newRequestError(msg.ID, api.ErrorInvalidPayload, err.Error())
+		}
+		snapshot, ok := s.engine.WorkspaceSnapshot(req.Workspace)
+		if !ok {
+			return newRequestError(msg.ID, api.ErrorNotFound, "workspace was not found")
+		}
+		return api.NewResponse(msg.ID, api.WorkspaceSnapshotResponse{Snapshot: snapshot})
+
+	case api.MethodEngineNodeClassSnapshot:
+		req, err := decodePayload[api.ClassRequest](msg)
+		if err != nil {
+			return newRequestError(msg.ID, api.ErrorInvalidPayload, err.Error())
+		}
+		snapshot, ok := s.engine.NodeClassSnapshot(req.Workspace, req.Class)
+		if !ok {
+			return newRequestError(msg.ID, api.ErrorNotFound, "node class was not found")
+		}
+		return api.NewResponse(msg.ID, api.NodeClassSnapshotResponse{Snapshot: snapshot})
+
+	case api.MethodEngineNodeSnapshot:
+		req, err := decodePayload[api.IDRequest](msg)
+		if err != nil {
+			return newRequestError(msg.ID, api.ErrorInvalidPayload, err.Error())
+		}
+		snapshot, ok := s.engine.NodeSnapshot(req.Workspace, req.ID)
+		if !ok {
+			return newRequestError(msg.ID, api.ErrorNotFound, "node was not found")
+		}
+		return api.NewResponse(msg.ID, api.NodeSnapshotResponse{Snapshot: snapshot})
+
+	case api.MethodEnginePortSnapshot:
+		req, err := decodePayload[api.IDRequest](msg)
+		if err != nil {
+			return newRequestError(msg.ID, api.ErrorInvalidPayload, err.Error())
+		}
+		snapshot, ok := s.engine.PortSnapshot(req.Workspace, req.ID)
+		if !ok {
+			return newRequestError(msg.ID, api.ErrorNotFound, "port was not found")
+		}
+		return api.NewResponse(msg.ID, api.PortSnapshotResponse{Snapshot: snapshot})
+
+	case api.MethodEngineLinkSnapshot:
+		req, err := decodePayload[api.IDRequest](msg)
+		if err != nil {
+			return newRequestError(msg.ID, api.ErrorInvalidPayload, err.Error())
+		}
+		snapshot, ok := s.engine.LinkSnapshot(req.Workspace, req.ID)
+		if !ok {
+			return newRequestError(msg.ID, api.ErrorNotFound, "link was not found")
+		}
+		return api.NewResponse(msg.ID, api.LinkSnapshotResponse{Snapshot: snapshot})
+
+	case api.MethodEngineNodeClassLongDescription:
+		req, err := decodePayload[api.ClassRequest](msg)
+		if err != nil {
+			return newRequestError(msg.ID, api.ErrorInvalidPayload, err.Error())
+		}
+		description, ok := s.engine.NodeClassLongDescription(req.Workspace, req.Class)
+		if !ok {
+			return newRequestError(msg.ID, api.ErrorNotFound, "node class was not found")
+		}
+		return api.NewResponse(msg.ID, api.NodeClassLongDescriptionResponse{Description: description})
+
+	case api.MethodEngineAddNode:
+		req, err := decodePayload[api.AddNodeRequest](msg)
+		if err != nil {
+			return newRequestError(msg.ID, api.ErrorInvalidPayload, err.Error())
+		}
+		id, err := s.engine.AddNode(req.Workspace, req.Class, req.Name)
+		if err != nil {
+			return newRequestError(msg.ID, api.ErrorBadRequest, err.Error())
+		}
+		return api.NewResponse(msg.ID, api.AddNodeResponse{ID: id})
+
+	case api.MethodEngineReplaceNodeWithPlaceholder:
+		req, err := decodePayload[api.IDRequest](msg)
+		if err != nil {
+			return newRequestError(msg.ID, api.ErrorInvalidPayload, err.Error())
+		}
+		if err := s.engine.ReplaceNodeWithPlaceholder(req.Workspace, req.ID); err != nil {
+			return newRequestError(msg.ID, api.ErrorBadRequest, err.Error())
+		}
+		return api.NewResponse(msg.ID, struct{}{})
+
+	case api.MethodEngineAddLink:
+		req, err := decodePayload[api.AddLinkRequest](msg)
+		if err != nil {
+			return newRequestError(msg.ID, api.ErrorInvalidPayload, err.Error())
+		}
+		id, typ, err := s.engine.AddLink(req.Workspace, req.PortA, req.PortB)
+		if err != nil {
+			return newRequestError(msg.ID, api.ErrorBadRequest, err.Error())
+		}
+		return api.NewResponse(msg.ID, api.AddLinkResponse{ID: id, Type: typ})
+
+	case api.MethodEngineRemoveNode:
+		req, err := decodePayload[api.IDRequest](msg)
+		if err != nil {
+			return newRequestError(msg.ID, api.ErrorInvalidPayload, err.Error())
+		}
+		s.engine.RemoveNode(req.Workspace, req.ID)
+		return api.NewResponse(msg.ID, struct{}{})
+
+	case api.MethodEngineRemoveNodesByClass:
+		req, err := decodePayload[api.ClassRequest](msg)
+		if err != nil {
+			return newRequestError(msg.ID, api.ErrorInvalidPayload, err.Error())
+		}
+		s.engine.RemoveNodesByClass(req.Workspace, req.Class)
+		return api.NewResponse(msg.ID, struct{}{})
+
+	case api.MethodEngineRemoveLink:
+		req, err := decodePayload[api.IDRequest](msg)
+		if err != nil {
+			return newRequestError(msg.ID, api.ErrorInvalidPayload, err.Error())
+		}
+		s.engine.RemoveLink(req.Workspace, req.ID)
+		return api.NewResponse(msg.ID, struct{}{})
+
+	case api.MethodEngineSetNodePosition:
+		req, err := decodePayload[api.SetNodePositionRequest](msg)
+		if err != nil {
+			return newRequestError(msg.ID, api.ErrorInvalidPayload, err.Error())
+		}
+		s.engine.SetNodePosition(req.Workspace, req.ID, req.Position)
+		return api.NewResponse(msg.ID, struct{}{})
+
+	case api.MethodEngineSetNodeName:
+		req, err := decodePayload[api.SetNodeNameRequest](msg)
+		if err != nil {
+			return newRequestError(msg.ID, api.ErrorInvalidPayload, err.Error())
+		}
+		s.engine.SetNodeName(req.Workspace, req.ID, req.Name)
+		return api.NewResponse(msg.ID, struct{}{})
+
+	case api.MethodEngineRemoveNodePopup:
+		req, err := decodePayload[api.NodePopupRequest](msg)
+		if err != nil {
+			return newRequestError(msg.ID, api.ErrorInvalidPayload, err.Error())
+		}
+		s.engine.RemoveNodePopup(req.Workspace, req.Node, req.Popup)
+		return api.NewResponse(msg.ID, struct{}{})
+
+	case api.MethodEngineRemoveNodePopups:
+		req, err := decodePayload[api.NodePopupRequest](msg)
+		if err != nil {
+			return newRequestError(msg.ID, api.ErrorInvalidPayload, err.Error())
+		}
+		s.engine.RemoveNodePopups(req.Workspace, req.Node)
+		return api.NewResponse(msg.ID, struct{}{})
+
+	case api.MethodEngineRemoveNodePopupsByType:
+		req, err := decodePayload[api.NodePopupRequest](msg)
+		if err != nil {
+			return newRequestError(msg.ID, api.ErrorInvalidPayload, err.Error())
+		}
+		s.engine.RemoveNodePopupsByType(req.Workspace, req.Node, req.Type)
+		return api.NewResponse(msg.ID, struct{}{})
+
+	case api.MethodEngineCopy:
+		req, err := decodePayload[api.CopyRequest](msg)
+		if err != nil {
+			return newRequestError(msg.ID, api.ErrorInvalidPayload, err.Error())
+		}
+		return api.NewResponse(msg.ID, api.CopyResponse{Data: s.engine.Copy(req.Workspace, req.IDs)})
+
+	case api.MethodEnginePaste:
+		req, err := decodePayload[api.PasteRequest](msg)
+		if err != nil {
+			return newRequestError(msg.ID, api.ErrorInvalidPayload, err.Error())
+		}
+		return api.NewResponse(msg.ID, api.PasteResponse{IDs: s.engine.Paste(req.Workspace, req.Data)})
+
+	case api.MethodEngineSendInbox:
+		req, err := decodePayload[api.SendInboxRequest](msg)
+		if err != nil {
+			return newRequestError(msg.ID, api.ErrorInvalidPayload, err.Error())
+		}
+		s.engine.SendInbox(req.Workspace, req.InboxMessage())
+		return api.NewResponse(msg.ID, struct{}{})
+
+	case api.MethodEngineUndo:
+		req, err := decodePayload[api.WorkspaceRequest](msg)
+		if err != nil {
+			return newRequestError(msg.ID, api.ErrorInvalidPayload, err.Error())
+		}
+		s.engine.Undo(req.Workspace)
+		return api.NewResponse(msg.ID, struct{}{})
+
+	case api.MethodEngineRedo:
+		req, err := decodePayload[api.WorkspaceRequest](msg)
+		if err != nil {
+			return newRequestError(msg.ID, api.ErrorInvalidPayload, err.Error())
+		}
+		s.engine.Redo(req.Workspace)
+		return api.NewResponse(msg.ID, struct{}{})
+
+	case api.MethodEngineSendNodeFormularMessage:
+		req, err := decodePayload[api.SendNodeFormularMessageRequest](msg)
+		if err != nil {
+			return newRequestError(msg.ID, api.ErrorInvalidPayload, err.Error())
+		}
+		s.engine.SendNodeFormularMsg(req.Workspace, req.Node, req.Message)
+		return api.NewResponse(msg.ID, struct{}{})
+
+	default:
+		return newRequestError(msg.ID, api.ErrorInvalidMethod, "api method is not implemented")
 	}
-	return conn.Write(ctx, websocket.MessageText, data)
 }
 
-func marshalRequestError(id string, code api.ErrorCode, message string) ([]byte, error) {
+func decodePayload[T any](msg api.Message) (T, error) {
+	return api.DecodePayload[T](msg.Payload)
+}
+
+func newRequestError(id string, code api.ErrorCode, message string) (api.Message, error) {
 	if id == "" {
 		id = "0"
 	}
-	response, err := api.NewErrorResponse(id, code, message, nil)
-	if err != nil {
-		return nil, err
+	return api.NewErrorResponse(id, code, message, nil)
+}
+
+func (a *AdminAPI) acquireMutation(req api.AcquireMutationRequest) api.AcquireMutationResponse {
+	a.leaseMu.Lock()
+	defer a.leaseMu.Unlock()
+
+	now := time.Now()
+	if a.mutationLease != nil && a.mutationLease.expiresAt.After(now) {
+		return api.AcquireMutationResponse{
+			Acquired: false,
+			Active:   a.mutationLease.apiLease(),
+		}
 	}
-	return api.MarshalMessage(response)
+
+	ttl := mutationLeaseTTL(req.TTLMilliseconds)
+	a.mutationLease = &mutationLease{
+		id:        strconv.FormatInt(now.UnixNano(), 36),
+		holder:    req.Holder,
+		expiresAt: now.Add(ttl),
+	}
+	return api.AcquireMutationResponse{
+		Acquired: true,
+		Lease:    a.mutationLease.apiLease(),
+	}
+}
+
+func (a *AdminAPI) renewMutation(req api.RenewMutationRequest) (*api.MutationLease, bool) {
+	a.leaseMu.Lock()
+	defer a.leaseMu.Unlock()
+
+	if a.mutationLease == nil || a.mutationLease.id != req.LeaseID || !a.mutationLease.expiresAt.After(time.Now()) {
+		return nil, false
+	}
+	a.mutationLease.expiresAt = time.Now().Add(mutationLeaseTTL(req.TTLMilliseconds))
+	return a.mutationLease.apiLease(), true
+}
+
+func (a *AdminAPI) releaseMutation(req api.ReleaseMutationRequest) {
+	a.leaseMu.Lock()
+	defer a.leaseMu.Unlock()
+
+	if a.mutationLease != nil && a.mutationLease.id == req.LeaseID {
+		a.mutationLease = nil
+	}
+}
+
+func (l *mutationLease) apiLease() *api.MutationLease {
+	return &api.MutationLease{
+		ID:        l.id,
+		Holder:    l.holder,
+		ExpiresAt: l.expiresAt.UTC().Format(time.RFC3339Nano),
+	}
+}
+
+func mutationLeaseTTL(milliseconds int64) time.Duration {
+	if milliseconds <= 0 {
+		return 30 * time.Second
+	}
+	return time.Duration(milliseconds) * time.Millisecond
 }
 
 func PrepareAdminAPI(cfg *Config) (*AdminAPI, error) {

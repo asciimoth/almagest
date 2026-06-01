@@ -1,0 +1,98 @@
+package main
+
+import (
+	"context"
+	"net/http"
+	"sync"
+
+	"github.com/asciimoth/almagest/bin/api"
+	"github.com/asciimoth/almagest/lib"
+	"github.com/asciimoth/gonnect/sysnet"
+	"github.com/coder/websocket"
+	"github.com/kataras/golog"
+)
+
+func (a *AdminAPI) registerAPIHandlers(
+	ctx context.Context,
+	mux *http.ServeMux,
+	engine lib.Engine,
+	sys sysnet.SysBuilder,
+) {
+	mux.HandleFunc("/api/ws", func(w http.ResponseWriter, r *http.Request) {
+		a.serveWebsocket(ctx, w, r, engine, sys)
+	})
+}
+
+func (a *AdminAPI) serveWebsocket(
+	ctx context.Context,
+	w http.ResponseWriter,
+	r *http.Request,
+	engine lib.Engine,
+	sys sysnet.SysBuilder,
+) {
+	_ = sys
+
+	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
+		OriginPatterns: []string{"localhost:*", "127.0.0.1:*", "[::1]:*"},
+	})
+	if err != nil {
+		golog.Debugf("WebSocket accept failed: %v", err)
+		return
+	}
+	defer conn.CloseNow() //nolint
+
+	var writeMu sync.Mutex
+	writeMessage := func(msg api.Message) error {
+		data, err := api.MarshalMessage(msg)
+		if err != nil {
+			return err
+		}
+		writeMu.Lock()
+		defer writeMu.Unlock()
+		return conn.Write(ctx, websocket.MessageText, data)
+	}
+
+	session := a.newAPISession(engine, writeMessage)
+
+	for {
+		messageType, data, err := conn.Read(ctx)
+		if err != nil {
+			return
+		}
+		if messageType != websocket.MessageText {
+			continue
+		}
+
+		msg, err := api.UnmarshalMessage(data)
+		if err != nil {
+			if err := writeWebsocketError(api.Message{}, api.ErrorInvalidPayload, err.Error(), writeMessage); err != nil {
+				return
+			}
+			continue
+		}
+
+		response, err := session.handleMessage(msg)
+		if err != nil {
+			if err := writeWebsocketError(msg, api.ErrorInternal, err.Error(), writeMessage); err != nil {
+				return
+			}
+			continue
+		}
+		if err := writeMessage(response); err != nil {
+			return
+		}
+	}
+}
+
+func writeWebsocketError(
+	msg api.Message,
+	code api.ErrorCode,
+	message string,
+	writeMessage func(api.Message) error,
+) error {
+	response, err := newRequestError(msg.ID, code, message)
+	if err != nil {
+		return err
+	}
+	return writeMessage(response)
+}
