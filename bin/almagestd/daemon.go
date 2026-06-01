@@ -1,3 +1,0 @@
-package almagestd
-
-// Placeholder

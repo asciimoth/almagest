@@ -68,7 +68,9 @@ func BuildEngine(
 	}
 
 	classes := nodeClasses(engine)
-	classes = append(classes, extra...)
+	if len(extra) > 0 {
+		classes = append(classes, extra...)
+	}
 
 	work, err := pasta.WorkspaceFromConfig(
 		classes,
