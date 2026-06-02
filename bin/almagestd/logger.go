@@ -153,91 +153,117 @@ func (l *Logger) Debug(args ...any) {
 	if !l.level.debug {
 		return
 	}
-	l.emit("debug", fmt.Sprint(args...))
+	message := sanitizeLogMessage(fmt.Sprint(args...))
+	l.emit("debug", message)
 
-	args = append([]any{l.prefix}, args...)
-	golog.Debug(args...)
+	golog.Debug(l.prefix + " " + message)
 }
 
 func (l *Logger) Debugf(format string, args ...any) {
 	if !l.level.debug {
 		return
 	}
-	l.emit("debug", fmt.Sprintf(format, args...))
-	golog.Debugf(l.prefix+" "+format, args...)
+	message := sanitizeLogMessage(fmt.Sprintf(format, args...))
+	l.emit("debug", message)
+	golog.Debug(l.prefix + " " + message)
 }
 
 func (l *Logger) Info(args ...any) {
 	if !l.level.info {
 		return
 	}
-	l.emit("info", fmt.Sprint(args...))
+	message := sanitizeLogMessage(fmt.Sprint(args...))
+	l.emit("info", message)
 
-	args = append([]any{l.prefix}, args...)
-	golog.Info(args...)
+	golog.Info(l.prefix + " " + message)
 }
 
 func (l *Logger) Infof(format string, args ...any) {
 	if !l.level.info {
 		return
 	}
-	l.emit("info", fmt.Sprintf(format, args...))
-	golog.Infof(l.prefix+" "+format, args...)
+	message := sanitizeLogMessage(fmt.Sprintf(format, args...))
+	l.emit("info", message)
+	golog.Info(l.prefix + " " + message)
 }
 
 func (l *Logger) Warn(args ...any) {
 	if !l.level.warn {
 		return
 	}
-	l.emit("warn", fmt.Sprint(args...))
+	message := sanitizeLogMessage(fmt.Sprint(args...))
+	l.emit("warn", message)
 
-	args = append([]any{l.prefix}, args...)
-	golog.Warn(args...)
+	golog.Warn(l.prefix + " " + message)
 }
 
 func (l *Logger) Warnf(format string, args ...any) {
 	if !l.level.warn {
 		return
 	}
-	l.emit("warn", fmt.Sprintf(format, args...))
-	golog.Warnf(l.prefix+" "+format, args...)
+	message := sanitizeLogMessage(fmt.Sprintf(format, args...))
+	l.emit("warn", message)
+	golog.Warn(l.prefix + " " + message)
 }
 
 func (l *Logger) Err(args ...any) {
 	if !l.level.err {
 		return
 	}
-	l.emit("error", fmt.Sprint(args...))
+	message := sanitizeLogMessage(fmt.Sprint(args...))
+	l.emit("error", message)
 
-	args = append([]any{l.prefix}, args...)
-	golog.Error(args...)
+	golog.Error(l.prefix + " " + message)
 }
 
 func (l *Logger) Errf(format string, args ...any) {
 	if !l.level.err {
 		return
 	}
-	l.emit("error", fmt.Sprintf(format, args...))
-	golog.Errorf(l.prefix+" "+format, args...)
+	message := sanitizeLogMessage(fmt.Sprintf(format, args...))
+	l.emit("error", message)
+	golog.Error(l.prefix + " " + message)
 }
 
 func (l *Logger) Fatal(args ...any) {
-	l.emit("fatal", fmt.Sprint(args...))
 	if !l.level.fatal {
 		os.Exit(1)
 	}
 
-	args = append([]any{l.prefix}, args...)
-	golog.Fatal(args...)
+	message := sanitizeLogMessage(fmt.Sprint(args...))
+	l.emit("fatal", message)
+	golog.Fatal(l.prefix + " " + message)
 }
 
 func (l *Logger) Fatalf(format string, args ...any) {
-	l.emit("fatal", fmt.Sprintf(format, args...))
 	if !l.level.fatal {
 		os.Exit(1)
 	}
 
-	golog.Fatalf(l.prefix+" "+format, args...)
+	message := sanitizeLogMessage(fmt.Sprintf(format, args...))
+	l.emit("fatal", message)
+	golog.Fatal(l.prefix + " " + message)
+}
+
+func sanitizeLogMessage(message string) string {
+	for i := 0; i < len(message); i++ {
+		if message[i] < 0x20 || message[i] > 0x7e {
+			return filterLogMessage(message, i)
+		}
+	}
+	return message
+}
+
+func filterLogMessage(message string, firstUnsafe int) string {
+	var out strings.Builder
+	out.Grow(len(message))
+	out.WriteString(message[:firstUnsafe])
+	for i := firstUnsafe; i < len(message); i++ {
+		if message[i] >= 0x20 && message[i] <= 0x7e {
+			out.WriteByte(message[i])
+		}
+	}
+	return out.String()
 }
 
 func (l *Logger) emit(level, message string) {
