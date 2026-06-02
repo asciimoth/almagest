@@ -5,6 +5,7 @@ go 1.25.5
 require (
 	github.com/alexflint/go-arg v1.6.1
 	github.com/asciimoth/almagest/lib v0.0.0-00010101000000-000000000000
+	github.com/asciimoth/bufpool v0.3.0
 	github.com/asciimoth/configer/configer v0.3.0
 	github.com/asciimoth/configer/hujson v0.3.0
 	github.com/asciimoth/formular v0.2.2
@@ -19,7 +20,6 @@ require (
 require (
 	github.com/alexflint/go-scalar v1.2.0 // indirect
 	github.com/asciimoth/badlock v0.1.1 // indirect
-	github.com/asciimoth/bufpool v0.3.0 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect

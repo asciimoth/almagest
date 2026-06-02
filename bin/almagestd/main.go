@@ -79,15 +79,13 @@ func main() {
 	)
 	defer cancel()
 
-	// TODO: Build bufpool
-
 	engine, err := lib.BuildEngine(
 		ctx,
 		conf.Main,
 		logf,
 		sys,
 		lib.WithDebugNodes(args.DebugNodes, nil),
-		nil,
+		globalBufPool,
 	)
 	if err != nil {
 		golog.Fatal("Engine setup", err)
