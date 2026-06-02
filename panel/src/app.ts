@@ -106,7 +106,6 @@ const el = {
   graphCanvas: document.querySelector<HTMLCanvasElement>("#graph-canvas")!,
   sidekick: document.querySelector<HTMLElement>("#sidekick")!,
   logs: document.querySelector<HTMLElement>("#logs-list")!,
-  restartFrontend: document.querySelector<HTMLButtonElement>("#restart-frontend")!,
 };
 
 function log(source: string, level: string, text: string): void {
@@ -1039,18 +1038,9 @@ function shortClass(name: string): string {
 
 function wireUI(): void {
   for (const tab of el.tabs) tab.addEventListener("click", () => setTab(tab.dataset.tab ?? "graph"));
-  el.restartFrontend.addEventListener("click", restartFrontend);
   document.addEventListener("keydown", (event) => {
     graphKeydown(event);
   }, { capture: true });
-}
-
-function restartFrontend(): void {
-  destroyMenu();
-  snapshot = emptySnapshot();
-  graph?.clear();
-  void requestSnapshot();
-  log("frontend", "info", "frontend state restarted; backend preserved");
 }
 
 function installTestHooks(): void {
