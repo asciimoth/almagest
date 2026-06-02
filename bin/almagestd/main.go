@@ -73,7 +73,7 @@ func main() {
 	)
 	defer cancel()
 
-	logf := &LogFactory{}
+	logf := NewLogFactory()
 
 	// TODO: Build bufpool
 
