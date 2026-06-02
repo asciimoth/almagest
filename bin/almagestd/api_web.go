@@ -17,9 +17,10 @@ func (a *AdminAPI) registerAPIHandlers(
 	mux *http.ServeMux,
 	engine lib.Engine,
 	sys sysnet.SysBuilder,
+	logf *LogFactory,
 ) {
 	mux.HandleFunc("/api/ws", func(w http.ResponseWriter, r *http.Request) {
-		a.serveWebsocket(ctx, w, r, engine, sys)
+		a.serveWebsocket(ctx, w, r, engine, sys, logf)
 	})
 }
 
@@ -29,6 +30,7 @@ func (a *AdminAPI) serveWebsocket(
 	r *http.Request,
 	engine lib.Engine,
 	sys sysnet.SysBuilder,
+	logf *LogFactory,
 ) {
 	_ = sys
 
@@ -52,7 +54,8 @@ func (a *AdminAPI) serveWebsocket(
 		return conn.Write(ctx, websocket.MessageText, data)
 	}
 
-	session := a.newAPISession(engine, writeMessage)
+	session := a.newAPISession(engine, logf, writeMessage)
+	defer session.close()
 
 	for {
 		messageType, data, err := conn.Read(ctx)

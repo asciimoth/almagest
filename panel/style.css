@@ -469,63 +469,144 @@ h1 {
 
 #logs-list li {
   display: grid;
-  grid-template-columns: 96px 150px 72px minmax(0, 1fr);
-  gap: 10px;
-  align-items: baseline;
-  padding: 8px 10px;
-  border: 1px solid var(--surface0);
+  grid-template-columns: 48px 8px 116px 8px minmax(72px, 156px) 8px minmax(0, 1fr);
+  gap: 5px;
+  align-items: stretch;
+  padding: 7px 9px;
+  border: 1px solid color-mix(in srgb, var(--surface0), transparent 18%);
   border-radius: 6px;
-  background: var(--mantle);
+  background: color-mix(in srgb, var(--mantle), transparent 4%);
+}
+
+#logs-list .logs-empty {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+#logs-list i {
+  display: block;
+  align-self: stretch;
+  width: 1px;
+  margin: -7px 2px;
+  justify-self: center;
+  background: currentColor;
+  color: color-mix(in srgb, var(--surface1), transparent 68%);
+  user-select: none;
+}
+
+#logs-list strong,
+#logs-list time,
+#logs-list b,
+#logs-list span {
+  align-self: center;
 }
 
 #logs-list time {
   color: var(--surface2);
+  white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
 
 #logs-list b {
-  color: var(--mauve);
-  font-weight: 600;
+  color: var(--subtext);
+  font-size: 13px;
+  font-weight: 400;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 #logs-list strong {
-  display: inline-flex;
-  justify-content: center;
-  min-width: 56px;
-  border: 1px solid var(--surface1);
-  border-radius: 4px;
-  background: var(--surface0);
-  color: var(--blue);
-  padding: 1px 6px;
+  color: var(--text);
   font-size: 11px;
   font-weight: 700;
-  line-height: 1.4;
+  letter-spacing: 0.08em;
+  line-height: 1.2;
   text-transform: uppercase;
 }
 
 #logs-list span {
   min-width: 0;
   overflow-wrap: anywhere;
-  color: var(--subtext);
+  color: var(--text);
 }
 
-#logs-list .log-warn strong {
-  border-color: color-mix(in srgb, var(--yellow), transparent 55%);
-  background: color-mix(in srgb, var(--yellow), var(--surface0) 86%);
-  color: var(--yellow);
+#logs-list .log-debug {
+  border-color: color-mix(in srgb, var(--yellow), var(--surface0) 74%);
+  background: color-mix(in srgb, color-mix(in srgb, var(--yellow), var(--red) 38%), var(--mantle) 90%);
 }
 
-#logs-list .log-error strong,
-#logs-list .log-fatal strong {
-  border-color: color-mix(in srgb, var(--red), transparent 50%);
-  background: color-mix(in srgb, var(--red), var(--surface0) 84%);
-  color: var(--red);
+#logs-list .log-debug strong {
+  color: color-mix(in srgb, var(--yellow), var(--red) 28%);
+}
+
+#logs-list .log-debug time,
+#logs-list .log-debug b,
+#logs-list .log-debug i {
+  color: color-mix(in srgb, var(--yellow), var(--subtext) 76%);
+}
+
+#logs-list .log-info {
+  border-color: color-mix(in srgb, var(--blue), var(--surface0) 74%);
+  background: color-mix(in srgb, color-mix(in srgb, var(--blue), var(--teal) 34%), var(--mantle) 90%);
 }
 
 #logs-list .log-info strong {
-  border-color: color-mix(in srgb, var(--green), transparent 58%);
-  background: color-mix(in srgb, var(--green), var(--surface0) 88%);
-  color: var(--green);
+  color: color-mix(in srgb, var(--blue), var(--teal) 22%);
+}
+
+#logs-list .log-info time,
+#logs-list .log-info b,
+#logs-list .log-info i {
+  color: color-mix(in srgb, var(--blue), var(--subtext) 76%);
+}
+
+#logs-list .log-warn {
+  border-color: color-mix(in srgb, var(--mauve), var(--surface0) 74%);
+  background: color-mix(in srgb, color-mix(in srgb, var(--mauve), var(--red) 20%), var(--mantle) 90%);
+}
+
+#logs-list .log-warn strong {
+  color: color-mix(in srgb, var(--mauve), var(--red) 14%);
+}
+
+#logs-list .log-warn time,
+#logs-list .log-warn b,
+#logs-list .log-warn i {
+  color: color-mix(in srgb, var(--mauve), var(--subtext) 76%);
+}
+
+#logs-list .log-error,
+#logs-list .log-err {
+  border-color: color-mix(in srgb, var(--red), var(--surface0) 74%);
+  background: color-mix(in srgb, var(--red), var(--mantle) 91%);
+}
+
+#logs-list .log-error strong,
+#logs-list .log-err strong {
+  color: color-mix(in srgb, var(--red), var(--text) 18%);
+}
+
+#logs-list .log-error time,
+#logs-list .log-error b,
+#logs-list .log-error i,
+#logs-list .log-err time,
+#logs-list .log-err b,
+#logs-list .log-err i {
+  color: color-mix(in srgb, var(--red), var(--subtext) 76%);
+}
+
+#logs-list .log-fatal {
+  border-color: color-mix(in srgb, var(--red), var(--text) 20%);
+  background: color-mix(in srgb, color-mix(in srgb, var(--red), white 10%), var(--mantle) 88%);
+}
+
+#logs-list .log-fatal strong {
+  color: color-mix(in srgb, var(--red), white 24%);
+}
+
+#logs-list .log-fatal time,
+#logs-list .log-fatal b,
+#logs-list .log-fatal i {
+  color: color-mix(in srgb, var(--red), var(--subtext) 70%);
 }
 
 .config-panel {

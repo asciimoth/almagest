@@ -43,8 +43,20 @@ const { FormularMenu } = (await import("../../vendor/formular-menu/formular-menu
   FormularMenu: FormularMenuConstructor;
 };
 
-type LogEntry = { at: string; source: string; level: string; text: string };
-type Surface = "admin" | "engine";
+type LogEntry = {
+  at: string;
+  source: string;
+  level: string;
+  message: string;
+  node_id?: number;
+  node_class?: string;
+};
+type SubscribeLogsResponse = {
+  subscription_id: number;
+  cache_size: number;
+  entries: LogEntry[];
+};
+type Surface = "admin" | "engine" | "log";
 type APIMessage = {
   version: "v1";
   kind: "request" | "response" | "event";
@@ -96,7 +108,9 @@ let localClipboard = "";
 let socket: WebSocket | null = null;
 let nextRequestID = 1;
 let notificationSubscriptionID = 0;
+let logSubscriptionID = 0;
 const frontendLogs: LogEntry[] = [];
+let logStoreLimit = 0;
 const liteLinkToPasta = new Map<number, number>();
 const CLASS_DRAG_MIME = "application/x-almagest-node-class";
 const debugClipboard = true;
@@ -107,14 +121,17 @@ const el = {
   panels: [...document.querySelectorAll<HTMLElement>("[data-panel]")],
   graphCanvas: document.querySelector<HTMLCanvasElement>("#graph-canvas")!,
   sidekick: document.querySelector<HTMLElement>("#sidekick")!,
+  logsPanel: document.querySelector<HTMLElement>("[data-panel='logs']")!,
   logs: document.querySelector<HTMLElement>("#logs-list")!,
 };
 
 function log(source: string, level: string, text: string): void {
-  const entry = { at: new Date().toLocaleTimeString("en-US", { hour12: false }), source, level, text };
-  frontendLogs.push(entry);
-  if (frontendLogs.length > 200) frontendLogs.shift();
-  renderLogs();
+  appendLog({
+    at: new Date().toISOString(),
+    source,
+    level,
+    message: text,
+  });
 }
 
 function debugLog(message: string, details: Record<string, unknown> = {}): void {
@@ -172,6 +189,10 @@ function handleAPIMessage(msg: APIMessage): void {
   }
   if (msg.kind === "event" && msg.surface === "engine" && msg.method === "notification") {
     handleEngineNotification(msg.payload as EngineNotificationEvent);
+    return;
+  }
+  if (msg.kind === "event" && msg.surface === "log" && msg.method === "entry") {
+    appendLog(msg.payload as LogEntry);
   }
 }
 
@@ -214,6 +235,14 @@ async function backend<T>(method: string, params: Record<string, unknown> = {}):
     case "subscribeNotifications": {
       const result = await request<{ subscription_id: number }>("engine", "subscribe_notifications", { workspace: "main" });
       notificationSubscriptionID = result.subscription_id;
+      return result as T;
+    }
+    case "subscribeLogs": {
+      const result = await request<SubscribeLogsResponse>("log", "subscribe");
+      logSubscriptionID = result.subscription_id;
+      logStoreLimit = Math.max(result.cache_size * 2, result.entries.length);
+      frontendLogs.splice(0, frontendLogs.length, ...result.entries);
+      renderLogs();
       return result as T;
     }
     case "snapshot": {
@@ -958,20 +987,87 @@ async function requestSnapshot(): Promise<void> {
 }
 
 function renderLogs(): void {
-  const rows = [...frontendLogs].slice(-260);
-  el.logs.innerHTML = "";
-  if (!rows.length) {
-    const item = document.createElement("li");
-    item.innerHTML = "<span>Daemon log streaming is not implemented yet.</span>";
-    el.logs.append(item);
+  el.logs.replaceChildren();
+  if (!frontendLogs.length) {
+    el.logs.append(createEmptyLogItem());
     return;
   }
-  for (const row of rows.reverse()) {
-    const item = document.createElement("li");
-    item.className = `log-${row.level}`;
-    item.innerHTML = `<time>${escapeHTML(row.at)}</time><b>${escapeHTML(row.source)}</b><strong>${escapeHTML(row.level)}</strong><span>${escapeHTML(row.text)}</span>`;
-    el.logs.append(item);
+  const rows = [...frontendLogs].reverse();
+  for (const row of rows) {
+    el.logs.append(createLogItem(row));
   }
+}
+
+function appendLog(entry: LogEntry): void {
+  const panel = el.logsPanel;
+  const previousHeight = panel.scrollHeight;
+  const previousTop = panel.scrollTop;
+  const pinToTop = previousTop <= 2;
+  const hadEmptyState = !frontendLogs.length;
+  frontendLogs.push(entry);
+  trimLogStore();
+  if (hadEmptyState) {
+    renderLogs();
+  } else {
+    el.logs.prepend(createLogItem(entry));
+    const overflow = el.logs.children.length - frontendLogs.length;
+    for (let i = 0; i < overflow; i++) {
+      el.logs.lastElementChild?.remove();
+    }
+  }
+  if (!pinToTop) {
+    panel.scrollTop = previousTop + (panel.scrollHeight - previousHeight);
+  }
+}
+
+function trimLogStore(): void {
+  if (logStoreLimit <= 0 || frontendLogs.length <= logStoreLimit) return;
+  frontendLogs.splice(0, frontendLogs.length - logStoreLimit);
+}
+
+function createEmptyLogItem(): HTMLLIElement {
+  const item = document.createElement("li");
+  item.className = "logs-empty";
+  item.innerHTML = "<span>No cached daemon logs available.</span>";
+  return item;
+}
+
+function createLogItem(row: LogEntry): HTMLLIElement {
+  const item = document.createElement("li");
+  item.className = `log-${row.level}`;
+  item.innerHTML = `<strong>${escapeHTML(formatLogLevel(row.level))}</strong><i aria-hidden="true"></i><time>${escapeHTML(formatLogTime(row.at))}</time><i aria-hidden="true"></i><b>${escapeHTML(formatLogSource(row))}</b><i aria-hidden="true"></i><span>${escapeHTML(row.message)}</span>`;
+  return item;
+}
+
+function formatLogTime(at: string): string {
+  const parsed = new Date(at);
+  if (Number.isNaN(parsed.getTime())) return at;
+  const parts = new Intl.DateTimeFormat("en-US", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).formatToParts(parsed);
+  const values = new Map(parts.map((part) => [part.type, part.value]));
+  return `${values.get("month") ?? ""}/${values.get("day") ?? ""} ${values.get("hour") ?? ""}:${values.get("minute") ?? ""}:${values.get("second") ?? ""}`.trim();
+}
+
+function formatLogLevel(level: string): string {
+  switch (level) {
+    case "error":
+      return "ERR";
+    default:
+      return level.slice(0, 5).toUpperCase();
+  }
+}
+
+function formatLogSource(entry: LogEntry): string {
+  if (entry.source !== "node") return entry.source;
+  if (entry.node_class && entry.node_id) return `${shortClass(entry.node_class)} #${entry.node_id}`;
+  if (entry.node_id) return `node #${entry.node_id}`;
+  return "node";
 }
 
 function setTab(name: string): void {
@@ -1215,6 +1311,7 @@ async function boot(): Promise<void> {
   await backend("hello");
   const colormap = await backend<Record<string, TypePalette>>("colormap");
   applyTypePalette(colormap);
+  await backend("subscribeLogs");
   await backend("subscribeNotifications");
   await requestSnapshot();
   el.status.textContent = "Admin API connected";

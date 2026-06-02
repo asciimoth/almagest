@@ -17,6 +17,34 @@ type Config struct {
 	Protected ProtectedConfig
 }
 
+type LogCacheConfig struct {
+	Debug int `json:"Debug"`
+	Info  int `json:"Info"`
+	Warn  int `json:"Warn"`
+	Error int `json:"Error"`
+	Fatal int `json:"Fatal"`
+}
+
+func (c *Config) LogCache() LogCacheConfig {
+	cfg := LogCacheConfig{
+		Debug: 32,
+		Info:  64,
+		Warn:  128,
+		Error: 256,
+		Fatal: 64,
+	}
+	view := c.Main.View(configer.Path{"Logs", "Cache"})
+	if err := configer.Unmarshal(view, &cfg); err != nil {
+		return cfg
+	}
+	cfg.Debug = max(cfg.Debug, 0)
+	cfg.Info = max(cfg.Info, 0)
+	cfg.Warn = max(cfg.Warn, 0)
+	cfg.Error = max(cfg.Error, 0)
+	cfg.Fatal = max(cfg.Fatal, 0)
+	return cfg
+}
+
 func ParseConfig(cfg, prt []byte) (*Config, error) {
 	config, err := hujson.Parse(cfg)
 	if err != nil {

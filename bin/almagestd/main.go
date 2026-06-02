@@ -73,7 +73,7 @@ func main() {
 	)
 	defer cancel()
 
-	logf := NewLogFactory()
+	logf := NewLogFactory(conf.LogCache())
 
 	// TODO: Build bufpool
 
@@ -93,7 +93,7 @@ func main() {
 	var wg sync.WaitGroup
 
 	// Launch admin api fully
-	admin.Run(ctx, cancel, &wg, engine, sys)
+	admin.Run(ctx, cancel, &wg, engine, sys, logf)
 
 	wg.Go(func() {
 		<-ctx.Done()

@@ -52,6 +52,7 @@ func (a *AdminAPI) Run(
 	wg *sync.WaitGroup,
 	engine lib.Engine,
 	sys sysnet.SysBuilder,
+	logf *LogFactory,
 ) {
 	_ = sys
 
@@ -64,7 +65,7 @@ func (a *AdminAPI) Run(
 			return
 		}
 		mux.Handle("/", http.FileServer(http.FS(static)))
-		a.registerAPIHandlers(ctx, mux, engine, sys)
+		a.registerAPIHandlers(ctx, mux, engine, sys, logf)
 
 		server := &http.Server{
 			Handler:           mux,
@@ -94,15 +95,34 @@ func (a *AdminAPI) Run(
 type apiSession struct {
 	admin  *AdminAPI
 	engine lib.Engine
+	logf   *LogFactory
 	send   func(api.Message) error
+
+	engineSubscriptions []uint64
+	logSubscriptions    []uint64
 }
 
-func (a *AdminAPI) newAPISession(engine lib.Engine, send func(api.Message) error) *apiSession {
+func (a *AdminAPI) newAPISession(engine lib.Engine, logf *LogFactory, send func(api.Message) error) *apiSession {
 	return &apiSession{
 		admin:  a,
 		engine: engine,
+		logf:   logf,
 		send:   send,
 	}
+}
+
+func (s *apiSession) close() {
+	for _, id := range s.engineSubscriptions {
+		s.engine.UnsubscribeNotifications(id)
+	}
+	s.engineSubscriptions = nil
+	if s.logf == nil {
+		return
+	}
+	for _, id := range s.logSubscriptions {
+		s.logf.Unsubscribe(id)
+	}
+	s.logSubscriptions = nil
 }
 
 func (s *apiSession) handleMessage(msg api.Message) (api.Message, error) {
@@ -119,6 +139,8 @@ func (s *apiSession) handleMessage(msg api.Message) (api.Message, error) {
 		return s.handleAdminMessage(msg)
 	case api.SurfaceEngine:
 		return s.handleEngineMessage(msg)
+	case api.SurfaceLog:
+		return s.handleLogMessage(msg)
 	default:
 		return newRequestError(msg.ID, api.ErrorInvalidMethod, "api surface is not implemented")
 	}
@@ -141,7 +163,7 @@ func (s *apiSession) handleAdminMessage(msg api.Message) (api.Message, error) {
 					"methods": api.EngineMethods(),
 				},
 				string(api.SurfaceLog): map[string]any{
-					"methods": []string{},
+					"methods": api.LogMethods(),
 				},
 				string(api.SurfaceSystem): map[string]any{
 					"methods": []string{},
@@ -211,6 +233,7 @@ func (s *apiSession) handleEngineMessage(msg api.Message) (api.Message, error) {
 		if id == 0 {
 			return newRequestError(msg.ID, api.ErrorUnavailable, "notification subscription failed")
 		}
+		s.engineSubscriptions = append(s.engineSubscriptions, id)
 		return api.NewResponse(msg.ID, api.SubscribeNotificationsResponse{SubscriptionID: id})
 
 	case api.MethodEngineUnsubscribeNotifications:
@@ -219,6 +242,7 @@ func (s *apiSession) handleEngineMessage(msg api.Message) (api.Message, error) {
 			return newRequestError(msg.ID, api.ErrorInvalidPayload, err.Error())
 		}
 		s.engine.UnsubscribeNotifications(req.SubscriptionID)
+		s.engineSubscriptions = withoutSubscription(s.engineSubscriptions, req.SubscriptionID)
 		return api.NewResponse(msg.ID, struct{}{})
 
 	case api.MethodEngineRequestFullSnapshot:
@@ -460,6 +484,46 @@ func (s *apiSession) handleEngineMessage(msg api.Message) (api.Message, error) {
 	default:
 		return newRequestError(msg.ID, api.ErrorInvalidMethod, "api method is not implemented")
 	}
+}
+
+func (s *apiSession) handleLogMessage(msg api.Message) (api.Message, error) {
+	switch api.LogMethod(msg.Method) {
+	case api.MethodLogSubscribe:
+		id, entries := s.logf.Subscribe(func(entry api.LogEntry) {
+			event, err := api.NewEvent(api.SurfaceLog, string(api.EventLogEntry), entry)
+			if err == nil {
+				_ = s.send(event)
+			}
+		})
+		s.logSubscriptions = append(s.logSubscriptions, id)
+		return api.NewResponse(msg.ID, api.SubscribeLogsResponse{
+			SubscriptionID: id,
+			CacheSize:      s.logf.TotalCacheSize(),
+			Entries:        entries,
+		})
+
+	case api.MethodLogUnsubscribe:
+		req, err := decodePayload[api.SubscriptionRequest](msg)
+		if err != nil {
+			return newRequestError(msg.ID, api.ErrorInvalidPayload, err.Error())
+		}
+		s.logf.Unsubscribe(req.SubscriptionID)
+		s.logSubscriptions = withoutSubscription(s.logSubscriptions, req.SubscriptionID)
+		return api.NewResponse(msg.ID, struct{}{})
+
+	default:
+		return newRequestError(msg.ID, api.ErrorInvalidMethod, "api method is not implemented")
+	}
+}
+
+func withoutSubscription(ids []uint64, target uint64) []uint64 {
+	out := ids[:0]
+	for _, id := range ids {
+		if id != target {
+			out = append(out, id)
+		}
+	}
+	return out
 }
 
 func decodePayload[T any](msg api.Message) (T, error) {
