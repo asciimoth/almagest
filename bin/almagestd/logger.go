@@ -88,6 +88,15 @@ func (l *LogFactory) EngineLogger() lib.Logger {
 	}
 }
 
+func (l *LogFactory) DaemonLogger() lib.Logger {
+	return &Logger{
+		prefix: "[daemon]",
+		level:  l.level,
+		logf:   l,
+		source: logSource{name: "daemon"},
+	}
+}
+
 func (l *LogFactory) WorkspaceLogger() pasta.Logger {
 	return &Logger{
 		prefix: "[workspace]",

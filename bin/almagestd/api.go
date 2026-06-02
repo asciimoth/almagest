@@ -26,6 +26,7 @@ type AdminAPI struct {
 	webServer   *http.Server
 
 	projectVersionStatus api.ProjectVersionStatus
+	configAutosaver      *configAutosaver
 
 	leaseMu       sync.Mutex
 	mutationLease *mutationLease

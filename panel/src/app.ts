@@ -122,6 +122,7 @@ let nextRequestID = 1;
 let notificationSubscriptionID = 0;
 let logSubscriptionID = 0;
 const frontendLogs: LogEntry[] = [];
+let nextToastID = 1;
 let logStoreLimit = 0;
 const liteLinkToPasta = new Map<number, number>();
 const CLASS_DRAG_MIME = "application/x-almagest-node-class";
@@ -136,6 +137,7 @@ const el = {
   sidekick: document.querySelector<HTMLElement>("#sidekick")!,
   logsPanel: document.querySelector<HTMLElement>("[data-panel='logs']")!,
   logs: document.querySelector<HTMLElement>("#logs-list")!,
+  notifications: document.querySelector<HTMLElement>("#notifications"),
 };
 
 function log(source: string, level: string, text: string): void {
@@ -1059,6 +1061,9 @@ function renderLogs(): void {
 }
 
 function appendLog(entry: LogEntry): void {
+  if (isConfigSaveFailure(entry)) {
+    notifyError(entry.message);
+  }
   const panel = el.logsPanel;
   const previousHeight = panel.scrollHeight;
   const previousTop = panel.scrollTop;
@@ -1078,6 +1083,26 @@ function appendLog(entry: LogEntry): void {
   if (!pinToTop) {
     panel.scrollTop = previousTop + (panel.scrollHeight - previousHeight);
   }
+}
+
+function isConfigSaveFailure(entry: LogEntry): boolean {
+  return entry.source === "daemon" && entry.level === "error" && entry.message.startsWith("config save failed:");
+}
+
+function notifyError(message: string): void {
+  const toast = document.createElement("div");
+  const id = nextToastID++;
+  toast.className = "notification notification-error";
+  toast.dataset.toastId = String(id);
+  toast.innerHTML = `<strong>Config save failed</strong><span>${escapeHTML(message)}</span><button type="button" aria-label="Dismiss notification">x</button>`;
+  const close = () => {
+    toast.remove();
+  };
+  toast.querySelector("button")?.addEventListener("click", close);
+  el.notifications?.append(toast);
+  window.setTimeout(() => {
+    if (toast.dataset.toastId === String(id)) close();
+  }, 12000);
 }
 
 function trimLogStore(): void {

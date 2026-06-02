@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/configer/hujson"
@@ -15,6 +16,10 @@ var (
 type Config struct {
 	Main      configer.Config
 	Protected ProtectedConfig
+}
+
+type saveConfig struct {
+	IdleMilliseconds int64 `json:"IdleMilliseconds"`
 }
 
 type LogCacheConfig struct {
@@ -43,6 +48,20 @@ func (c *Config) LogCache() LogCacheConfig {
 	cfg.Error = max(cfg.Error, 0)
 	cfg.Fatal = max(cfg.Fatal, 0)
 	return cfg
+}
+
+func (c *Config) SaveIdle() time.Duration {
+	cfg := saveConfig{
+		IdleMilliseconds: 500,
+	}
+	view := c.Main.View(configer.Path{"Config", "Save"})
+	if err := configer.Unmarshal(view, &cfg); err != nil {
+		return time.Duration(cfg.IdleMilliseconds) * time.Millisecond
+	}
+	if cfg.IdleMilliseconds <= 0 {
+		cfg.IdleMilliseconds = 500
+	}
+	return time.Duration(cfg.IdleMilliseconds) * time.Millisecond
 }
 
 func ParseConfig(cfg, prt []byte) (*Config, error) {

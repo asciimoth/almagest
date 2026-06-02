@@ -93,6 +93,10 @@ func main() {
 	defer engine.Close() //nolint
 
 	var wg sync.WaitGroup
+	admin.configAutosaver = newConfigAutosaver(engine, conf, agent, logf.DaemonLogger(), conf.SaveIdle())
+	wg.Go(func() {
+		admin.configAutosaver.Run(ctx)
+	})
 
 	// Launch admin api fully
 	admin.Run(ctx, cancel, &wg, engine, sys, logf)
