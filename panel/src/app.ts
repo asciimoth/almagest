@@ -78,6 +78,18 @@ type EngineNotificationEvent = {
   subscription_id: number;
   notification: EngineNotification;
 };
+type ProjectVersionHighlight = "none" | "warn" | "critical";
+type ProjectVersionStatus = {
+  version: string;
+  highlight: ProjectVersionHighlight;
+  hover_message?: string;
+};
+type HelloResponse = {
+  version: string;
+  daemon?: string;
+  project_version_status: ProjectVersionStatus;
+  surfaces?: Record<string, unknown>;
+};
 
 declare global {
   interface Window {
@@ -117,6 +129,7 @@ const debugClipboard = true;
 
 const el = {
   status: document.querySelector<HTMLElement>("#backend-status")!,
+  projectVersion: document.querySelector<HTMLElement>("#project-version")!,
   tabs: [...document.querySelectorAll<HTMLButtonElement>("[data-tab]")],
   panels: [...document.querySelectorAll<HTMLElement>("[data-panel]")],
   graphCanvas: document.querySelector<HTMLCanvasElement>("#graph-canvas")!,
@@ -191,8 +204,23 @@ function handleAPIMessage(msg: APIMessage): void {
     handleEngineNotification(msg.payload as EngineNotificationEvent);
     return;
   }
+  if (msg.kind === "event" && msg.surface === "admin" && msg.method === "project_version_status") {
+    applyProjectVersionStatus(msg.payload as ProjectVersionStatus);
+    return;
+  }
   if (msg.kind === "event" && msg.surface === "log" && msg.method === "entry") {
     appendLog(msg.payload as LogEntry);
+  }
+}
+
+function applyProjectVersionStatus(status: ProjectVersionStatus): void {
+  el.projectVersion.hidden = !status.version;
+  el.projectVersion.textContent = status.version;
+  el.projectVersion.dataset.highlight = status.highlight;
+  if (status.hover_message) {
+    el.projectVersion.title = status.hover_message;
+  } else {
+    el.projectVersion.removeAttribute("title");
   }
 }
 
@@ -1340,7 +1368,8 @@ async function boot(): Promise<void> {
   installTestHooks();
   el.status.textContent = "Connecting admin API";
   await connectAPI();
-  await backend("hello");
+  const hello = await backend<HelloResponse>("hello");
+  applyProjectVersionStatus(hello.project_version_status);
   const colormap = await backend<Record<string, TypePalette>>("colormap");
   applyTypePalette(colormap);
   await backend("subscribeLogs");

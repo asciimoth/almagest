@@ -56,6 +56,9 @@ func (a *AdminAPI) serveWebsocket(
 
 	session := a.newAPISession(engine, logf, writeMessage)
 	defer session.close()
+	if err := session.sendProjectVersionStatus(); err != nil {
+		return
+	}
 
 	for {
 		messageType, data, err := conn.Read(ctx)
@@ -85,6 +88,18 @@ func (a *AdminAPI) serveWebsocket(
 			return
 		}
 	}
+}
+
+func (s *apiSession) sendProjectVersionStatus() error {
+	event, err := api.NewEvent(
+		api.SurfaceAdmin,
+		string(api.EventAdminProjectVersionStatus),
+		s.admin.projectVersionStatus,
+	)
+	if err != nil {
+		return err
+	}
+	return s.send(event)
 }
 
 func writeWebsocketError(

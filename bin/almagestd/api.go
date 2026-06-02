@@ -25,6 +25,8 @@ type AdminAPI struct {
 	webListener net.Listener
 	webServer   *http.Server
 
+	projectVersionStatus api.ProjectVersionStatus
+
 	leaseMu       sync.Mutex
 	mutationLease *mutationLease
 }
@@ -154,7 +156,8 @@ func (s *apiSession) handleAdminMessage(msg api.Message) (api.Message, error) {
 			return newRequestError(msg.ID, api.ErrorInvalidPayload, err.Error())
 		}
 		return api.NewResponse(msg.ID, api.HelloResponse{
-			Version: api.Version,
+			Version:              api.Version,
+			ProjectVersionStatus: s.admin.projectVersionStatus,
 			Surfaces: map[string]any{
 				string(api.SurfaceAdmin): map[string]any{
 					"methods": api.AdminMethods(),

@@ -49,6 +49,18 @@ func main() {
 		return
 	}
 
+	// Prepare admin api here (start listener/create unix socket/etc)
+	admin, err := PrepareAdminAPI(conf)
+	if err != nil {
+		golog.Fatal(err)
+		return
+	}
+	admin.projectVersionStatus = projectVersionStatus
+	defer admin.Stop()
+
+	logf := NewLogFactory(conf.LogCache())
+	logProjectVersionStatus(admin.projectVersionStatus)
+
 	// Setup system integration here before privileges drop
 	sys, err := SystemIntegration(conf)
 	if err != nil {
@@ -57,14 +69,6 @@ func main() {
 	}
 	defer sys.Close() //nolint
 
-	// Prepare admin api here (start listener/create unix socket/etc)
-	admin, err := PrepareAdminAPI(conf)
-	if err != nil {
-		golog.Fatal(err)
-		return
-	}
-	defer admin.Stop()
-
 	// TODO: Drop privileges here
 
 	// TODO: Reload config on SIGHUP instead of stopping
@@ -72,8 +76,6 @@ func main() {
 		context.Background(), syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP,
 	)
 	defer cancel()
-
-	logf := NewLogFactory(conf.LogCache())
 
 	// TODO: Build bufpool
 

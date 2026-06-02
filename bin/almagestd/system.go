@@ -20,7 +20,7 @@ func SystemIntegration(cfg *Config) (sysnet.SysBuilder, error) {
 		if typ, ok := typ.(string); ok {
 			switch typ {
 			case "debug":
-				golog.Warn("Use debug system integration")
+				golog.Warn("Using debug system integration")
 				return BuildDebugIntegration(cfg)
 			case "native":
 				// noop

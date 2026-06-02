@@ -59,6 +59,38 @@ func TestCodecRoundTrip(t *testing.T) {
 	}
 }
 
+func TestProjectVersionStatusEventRoundTrip(t *testing.T) {
+	msg, err := NewEvent(SurfaceAdmin, string(EventAdminProjectVersionStatus), ProjectVersionStatus{
+		Version:      "pre-alpha",
+		Highlight:    ProjectVersionHighlightCritical,
+		HoverMessage: "Current project state is extremely unstable.",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	data, err := MarshalMessage(msg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := UnmarshalMessage(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Kind != MessageEvent || got.Surface != SurfaceAdmin || got.Method != string(EventAdminProjectVersionStatus) {
+		t.Fatalf("unexpected message: %#v", got)
+	}
+
+	status, err := DecodePayload[ProjectVersionStatus](got.Payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.Highlight != ProjectVersionHighlightCritical || status.Version != "pre-alpha" {
+		t.Fatalf("unexpected status payload: %#v", status)
+	}
+}
+
 func TestValidateResponseNeedsResultOrError(t *testing.T) {
 	msg := Message{Version: Version, Kind: MessageResponse, ID: "1"}
 	if err := msg.Validate(); err == nil {

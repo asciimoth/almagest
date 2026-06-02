@@ -9,6 +9,8 @@ const (
 	MethodAdminAcquireMutation AdminMethod = "acquire_mutation"
 	MethodAdminRenewMutation   AdminMethod = "renew_mutation"
 	MethodAdminReleaseMutation AdminMethod = "release_mutation"
+
+	EventAdminProjectVersionStatus AdminMethod = "project_version_status"
 )
 
 func AdminMethods() []string {
@@ -29,9 +31,24 @@ type HelloRequest struct {
 }
 
 type HelloResponse struct {
-	Version  string         `json:"version"`
-	Daemon   string         `json:"daemon,omitempty"`
-	Surfaces map[string]any `json:"surfaces,omitempty"`
+	Version              string               `json:"version"`
+	Daemon               string               `json:"daemon,omitempty"`
+	ProjectVersionStatus ProjectVersionStatus `json:"project_version_status"`
+	Surfaces             map[string]any       `json:"surfaces,omitempty"`
+}
+
+type ProjectVersionHighlight string
+
+const (
+	ProjectVersionHighlightNone     ProjectVersionHighlight = "none"
+	ProjectVersionHighlightWarn     ProjectVersionHighlight = "warn"
+	ProjectVersionHighlightCritical ProjectVersionHighlight = "critical"
+)
+
+type ProjectVersionStatus struct {
+	Version      string                  `json:"version"`
+	Highlight    ProjectVersionHighlight `json:"highlight"`
+	HoverMessage string                  `json:"hover_message,omitempty"`
 }
 
 type PingRequest struct {

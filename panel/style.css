@@ -77,6 +77,42 @@ h1 {
   line-height: 1.2;
 }
 
+.app-title-row {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+}
+
+#project-version {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+#project-version[data-highlight="none"] {
+  color: var(--subtext);
+  border-color: var(--surface1);
+  background: color-mix(in srgb, var(--surface0), transparent 20%);
+}
+
+#project-version[data-highlight="warn"] {
+  color: #2b2100;
+  border-color: color-mix(in srgb, var(--yellow), white 18%);
+  background: var(--yellow);
+}
+
+#project-version[data-highlight="critical"] {
+  color: #2f0713;
+  border-color: color-mix(in srgb, var(--red), white 16%);
+  background: var(--red);
+}
+
 #backend-status {
   color: var(--subtext);
   font-size: 13px;

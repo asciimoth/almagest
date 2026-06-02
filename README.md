@@ -83,3 +83,10 @@
       repeatCount="indefinite" />
   </circle>
 </svg>
+
+> [!CAUTION]
+> Almagest in is __pre-alpha__.  
+> Current project state is extremely unstable.
+> Anything can be changed without warning and docs may be outdated.  
+> __Do not use in production.__
+
