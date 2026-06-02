@@ -224,6 +224,7 @@ function applyTypePalette(colormap: Record<string, TypePalette>): void {
     if (color) colors[type] = { color, textColor };
   }
   setTypeColors(colors);
+  installLiteGraphTypeColors();
 }
 
 async function backend<T>(method: string, params: Record<string, unknown> = {}): Promise<T> {
@@ -415,6 +416,22 @@ function installPastaPalette(): void {
     const cls = paletteClasses().find((candidate) => paletteLabel(candidate) === label || candidate.class === label);
     if (cls) addPastaNodeAt(cls.class, canvasPositionFromEvent(event));
   };
+}
+
+function installLiteGraphTypeColors(): void {
+  if (!canvas) return;
+  const byType: Record<string, string> = {};
+  for (const port of Object.values(snapshot.ports)) {
+    const primaryType = liteGraphPortType(port.types);
+    const color = portTypeColor(port.types);
+    if (primaryType && color) byType[primaryType] = color;
+  }
+  if (canvas.default_connection_color_byType) {
+    Object.assign(canvas.default_connection_color_byType, byType);
+  }
+  if (canvas.default_connection_color_byTypeOff) {
+    Object.assign(canvas.default_connection_color_byTypeOff, byType);
+  }
 }
 
 function showPastaAddNodeMenu(event: MouseEvent, parentMenu: unknown): void {
@@ -624,7 +641,14 @@ function popupPalette(type: string): { bg: string; border: string; text: string 
 function addPort(node: any, port: PortSnapshot | undefined, portID: number): void {
   if (!port) return;
   const type = liteGraphPortType(port.types);
-  const extra = { pastaPortId: portID, label: port.name, pastaTypes: port.types };
+  const color = portTypeColor(port.types);
+  const extra = {
+    pastaPortId: portID,
+    label: port.name,
+    pastaTypes: port.types,
+    color_on: color ?? undefined,
+    color_off: color ?? undefined,
+  };
   if (port.direction === "left") {
     const linkIDs = port.links.length > 1 ? port.links : [undefined];
     for (let i = 0; i < linkIDs.length; i += 1) {
@@ -639,6 +663,14 @@ function addPort(node: any, port: PortSnapshot | undefined, portID: number): voi
 function liteGraphPortType(types: string[]): string {
   if (!types.length || types.includes("any/any")) return "";
   return types.join(",");
+}
+
+function portTypeColor(types: string[]): string | null {
+  for (const type of types) {
+    const color = typeColor(type);
+    if (color) return color.color;
+  }
+  return null;
 }
 
 function connectLink(id: number, link: LinkSnapshot): void {
