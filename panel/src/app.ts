@@ -1,5 +1,6 @@
 import {
   applyNotification,
+  DEFAULT_LINK_COLOR,
   DEFAULT_NODE_TEXT_COLOR,
   DEFAULT_NODE_TITLE_COLOR,
   emptySnapshot,
@@ -404,6 +405,65 @@ function paletteLabel(cls: NodeClassSnapshot): string {
   return shortClass(cls.class);
 }
 
+function previewPorts(cls: NodeClassSnapshot, side: "left" | "right"): Array<{ name: string; color: string }> {
+  return cls.initial_ports
+    .filter((port) => previewPortSide(port.direction) === side)
+    .map((port) => ({
+      name: port.name,
+      color: previewPortColor(port.types),
+    }));
+}
+
+function previewPortSide(direction: string): "left" | "right" | null {
+  switch (direction.toLowerCase()) {
+    case "left":
+    case "in":
+    case "input":
+      return "left";
+    case "right":
+    case "out":
+    case "output":
+      return "right";
+    default:
+      return null;
+  }
+}
+
+function previewPortColor(types: string[]): string {
+  for (const type of types) {
+    const color = typeColor(type);
+    if (color) return color.color;
+  }
+  return DEFAULT_LINK_COLOR;
+}
+
+function renderClassPreviewPorts(ports: Array<{ name: string; color: string }>, side: "left" | "right"): string {
+  if (!ports.length) return "";
+  return ports.map((port) => `
+    <div class="class-preview-port class-preview-port-${side}">
+      ${side === "left" ? `<span class="class-preview-port-dot" style="--class-preview-port-color: ${escapeAttr(port.color)}"></span>` : ""}
+      <span class="class-preview-port-name">${escapeHTML(port.name)}</span>
+      ${side === "right" ? `<span class="class-preview-port-dot" style="--class-preview-port-color: ${escapeAttr(port.color)}"></span>` : ""}
+    </div>
+  `).join("");
+}
+
+function renderClassPreview(cls: NodeClassSnapshot): string {
+  const leftPorts = previewPorts(cls, "left");
+  const rightPorts = previewPorts(cls, "right");
+  return `
+    <div class="class-preview" aria-hidden="true">
+      <div class="class-preview-node">
+        <div class="class-preview-title">${escapeHTML(shortClass(cls.class))}</div>
+        <div class="class-preview-body">
+          <div class="class-preview-column class-preview-column-left">${renderClassPreviewPorts(leftPorts, "left")}</div>
+          <div class="class-preview-column class-preview-column-right">${renderClassPreviewPorts(rightPorts, "right")}</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 function resizeGraphCanvas(): void {
   if (!canvas) return;
   const rect = el.graphCanvas.getBoundingClientRect();
@@ -628,7 +688,13 @@ function renderClassPanel(selectedCount: number): void {
       button.style.setProperty("--class-primary-color", primaryColor.color);
       button.style.setProperty("--class-primary-text-color", primaryColor.textColor);
     }
-    button.innerHTML = `<strong>${escapeHTML(shortClass(cls.class))}</strong><span>${escapeHTML(cls.short_description)}</span>`;
+    button.innerHTML = `
+      <div class="class-button-copy">
+        <strong>${escapeHTML(shortClass(cls.class))}</strong>
+        <span>${escapeHTML(cls.short_description)}</span>
+      </div>
+      ${renderClassPreview(cls)}
+    `;
     button.addEventListener("click", () => {
       addPastaNodeAt(cls.class, visibleCanvasSpawnPosition());
     });

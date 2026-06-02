@@ -146,11 +146,16 @@ h1 {
 
 .class-button {
   display: grid;
-  gap: 4px;
+  gap: 10px;
   width: 100%;
   min-height: 58px;
   padding: 8px 10px;
   text-align: left;
+}
+
+.class-button-copy {
+  display: grid;
+  gap: 4px;
 }
 
 .class-button-primary {
@@ -185,6 +190,91 @@ h1 {
 
 .class-button-primary span {
   color: color-mix(in srgb, var(--class-primary-text-color), transparent 12%);
+}
+
+.class-preview {
+  display: inline-block;
+  width: fit-content;
+  max-width: 100%;
+  border: 1px solid color-mix(in srgb, var(--surface2), transparent 35%);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--crust), transparent 12%);
+  overflow: hidden;
+}
+
+.class-preview-node {
+  min-height: 0;
+}
+
+.class-preview-title {
+  padding: 5px 8px;
+  border-bottom: 1px solid color-mix(in srgb, var(--surface2), transparent 45%);
+  background: color-mix(in srgb, var(--surface1), transparent 14%);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.class-button-primary .class-preview-title {
+  background: color-mix(in srgb, var(--class-primary-color), var(--surface1) 44%);
+  color: var(--class-primary-text-color);
+}
+
+.class-preview-body {
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 10px;
+  padding: 7px 8px;
+}
+
+.class-preview-column {
+  display: grid;
+  gap: 4px;
+  align-content: start;
+}
+
+.class-preview-column-right {
+  justify-items: end;
+}
+
+.class-preview-port,
+.class-preview-empty {
+  display: grid;
+  grid-auto-flow: column;
+  gap: 6px;
+  align-items: center;
+  max-width: 100%;
+}
+
+.class-preview-port-left {
+  justify-content: start;
+}
+
+.class-preview-port-right {
+  justify-content: end;
+}
+
+.class-preview-port-name,
+.class-preview-empty {
+  color: var(--text);
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.class-preview-port-name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.class-preview-port-dot {
+  width: 8px;
+  height: 8px;
+  border: 1px solid color-mix(in srgb, var(--class-preview-port-color), black 30%);
+  border-radius: 999px;
+  background: var(--class-preview-port-color);
+  flex: 0 0 auto;
 }
 
 .node-panel-tabs {
