@@ -28,6 +28,8 @@ type Args struct {
 	LogLevel string `arg:"-l,--lvl,env:ALMAGEST_LOG_LVL" help:"logging level debug|info|warn|error|fatal"`
 
 	WebAdmin *uint16 `arg:"-w,--web,env:ALMAGEST_WEB_ADMIN" help:"port to run local web admin panel on"`
+
+	DebugNodes bool `arg:"--debug-nodes" help:"add debug node classes"`
 }
 
 func main() {
@@ -84,7 +86,7 @@ func main() {
 		conf.Main,
 		logf,
 		sys,
-		nil,
+		lib.WithDebugNodes(args.DebugNodes, nil),
 		nil,
 	)
 	if err != nil {

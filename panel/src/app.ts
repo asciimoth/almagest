@@ -972,13 +972,17 @@ function renderNodePanel(id: number): void {
     </div>
     <div class="node-panel-section hidden" data-node-panel="docs">
       <h2>${escapeHTML(shortClass(node.class))}</h2>
-      <p>${escapeHTML(description || "No long description is registered for this node class.")}</p>
+      <div class="node-description" data-node-description>${escapeHTML(description || "No long description is registered for this node class.")}</div>
     </div>
   `;
   void tryBackend<string>("classDescription", { class: node.class }).then((text) => {
-    const descriptionPanel = el.sidekick.querySelector<HTMLElement>("[data-node-panel=\"docs\"] p");
-    if (descriptionPanel && el.sidekick.dataset.nodeId === String(id)) {
-      descriptionPanel.textContent = text || "No long description is registered for this node class.";
+    const descriptionPanel = el.sidekick.querySelector<HTMLElement>("[data-node-description]");
+    if (
+      descriptionPanel &&
+      el.sidekick.dataset.nodeId === String(id) &&
+      el.sidekick.dataset.nodeClass === node.class
+    ) {
+      renderNodeDescription(descriptionPanel, text ?? "");
     }
   });
   for (const tab of el.sidekick.querySelectorAll<HTMLButtonElement>("[data-node-tab]")) {
@@ -1393,6 +1397,77 @@ function escapeHTML(value: string): string {
 
 function escapeAttr(value: string): string {
   return escapeHTML(value).replace(/`/g, "&#96;");
+}
+
+function renderNodeDescription(node: HTMLElement, value: string): void {
+  const text = value.trim();
+  if (!text) {
+    node.textContent = "No long description is registered for this node class.";
+    return;
+  }
+  const blocks = text.split(/\n{2,}/).map((block) => block.trim()).filter(Boolean);
+  node.replaceChildren(...blocks.map(renderMarkdownParagraph));
+}
+
+function renderMarkdownParagraph(input: string): HTMLParagraphElement {
+  const paragraph = document.createElement("p");
+  const lines = input.split(/\n/);
+  lines.forEach((line, index) => {
+    if (index > 0) paragraph.append(document.createElement("br"));
+    paragraph.append(renderMarkdownInline(line));
+  });
+  return paragraph;
+}
+
+function renderMarkdownInline(input: string): DocumentFragment {
+  const root = document.createDocumentFragment();
+  const parts = input.split(/(\[[^\]]+\]\([^)]+\)|\*\*[^*]+\*\*|\*[^*\s][^*]*\*|_[^_\s][^_]*_|`[^`]+`)/g);
+  for (const part of parts) {
+    if (!part) continue;
+    const link = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
+    if (link) {
+      root.append(renderMarkdownLink(link[1], link[2]));
+      continue;
+    }
+    if (part.startsWith("**") && part.endsWith("**")) {
+      const strong = document.createElement("strong");
+      strong.textContent = part.slice(2, -2);
+      root.append(strong);
+      continue;
+    }
+    if (
+      (part.startsWith("*") && part.endsWith("*")) ||
+      (part.startsWith("_") && part.endsWith("_"))
+    ) {
+      const em = document.createElement("em");
+      em.textContent = part.slice(1, -1);
+      root.append(em);
+      continue;
+    }
+    if (part.startsWith("`") && part.endsWith("`")) {
+      const code = document.createElement("code");
+      code.textContent = part.slice(1, -1);
+      root.append(code);
+      continue;
+    }
+    root.append(document.createTextNode(part));
+  }
+  return root;
+}
+
+function renderMarkdownLink(label: string, href: string): HTMLAnchorElement {
+  const anchor = document.createElement("a");
+  anchor.textContent = label;
+  try {
+    const url = new URL(href, window.location.href);
+    if (url.protocol === "http:" || url.protocol === "https:" || url.protocol === "mailto:") {
+      anchor.href = url.href;
+    }
+  } catch {
+    anchor.removeAttribute("href");
+  }
+  anchor.rel = "noopener noreferrer";
+  return anchor;
 }
 
 function shortClass(name: string): string {

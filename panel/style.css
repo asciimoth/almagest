@@ -278,10 +278,38 @@ h1 {
 }
 
 .class-button span,
-.node-panel-section p {
+.node-description p {
   color: var(--subtext);
   font-size: 13px;
   line-height: 1.45;
+}
+
+.node-description {
+  color: var(--subtext);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.node-description p {
+  margin: 0 0 10px;
+}
+
+.node-description p:last-child {
+  margin-bottom: 0;
+}
+
+.node-description a {
+  color: var(--blue);
+}
+
+.node-description code {
+  border: 1px solid var(--surface0);
+  border-radius: 4px;
+  background: var(--crust);
+  color: var(--text);
+  padding: 1px 4px;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
 }
 
 .class-button-primary span {

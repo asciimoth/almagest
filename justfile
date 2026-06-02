@@ -32,5 +32,5 @@ build-web:
   cd panel && npm ci && npm run build
 
 daemon: build-web
-  go run ./bin/almagestd/ -c ./local -l debug -w 8090
+  go run ./bin/almagestd/ -c ./local -l debug -w 8090 --debug-nodes
 

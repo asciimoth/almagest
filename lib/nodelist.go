@@ -20,3 +20,13 @@ func nodeClasses(engine *engine) []pasta.NodeClass {
 	classes = append(classes, std.StdClasses()...)
 	return classes
 }
+
+func WithDebugNodes(debug bool, orig []pasta.NodeClass) []pasta.NodeClass {
+	if !debug {
+		return orig
+	}
+	orig = append(orig, []pasta.NodeClass{
+		debugMdClass{},
+	}...)
+	return orig
+}
