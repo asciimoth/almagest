@@ -98,6 +98,7 @@ let nextRequestID = 1;
 let notificationSubscriptionID = 0;
 const frontendLogs: LogEntry[] = [];
 const liteLinkToPasta = new Map<number, number>();
+const CLASS_DRAG_MIME = "application/x-almagest-node-class";
 const debugClipboard = true;
 
 const el = {
@@ -354,6 +355,8 @@ function initGraph(): void {
   graphResizeObserver.observe(el.graphCanvas);
   graph.start();
   el.graphCanvas.addEventListener("mouseup", flushNodePositions);
+  el.graphCanvas.addEventListener("dragover", handleGraphCanvasDragOver);
+  el.graphCanvas.addEventListener("drop", handleGraphCanvasDrop);
   document.addEventListener("pointerup", flushNodePositions, { capture: true });
   window.addEventListener("blur", flushNodePositions);
   el.graphCanvas.addEventListener("keydown", graphKeydown, { capture: true });
@@ -684,6 +687,8 @@ function renderClassPanel(selectedCount: number): void {
     button.className = "class-button";
     button.classList.toggle("class-button-primary", Boolean(primaryColor));
     button.type = "button";
+    button.draggable = true;
+    button.setAttribute("aria-label", `Create ${shortClass(cls.class)} node`);
     if (primaryColor) {
       button.style.setProperty("--class-primary-color", primaryColor.color);
       button.style.setProperty("--class-primary-text-color", primaryColor.textColor);
@@ -695,6 +700,12 @@ function renderClassPanel(selectedCount: number): void {
       </div>
       ${renderClassPreview(cls)}
     `;
+    button.addEventListener("dragstart", (event) => {
+      if (!event.dataTransfer) return;
+      event.dataTransfer.effectAllowed = "copy";
+      event.dataTransfer.setData(CLASS_DRAG_MIME, cls.class);
+      event.dataTransfer.setData("text/plain", cls.class);
+    });
     button.addEventListener("click", () => {
       addPastaNodeAt(cls.class, visibleCanvasSpawnPosition());
     });
@@ -720,6 +731,32 @@ function canvasPositionFromEvent(event: MouseEvent): [number, number] {
   const x = clamp(event.clientX - rect.left, 0, rect.width);
   const y = clamp(event.clientY - rect.top, 0, rect.height);
   return canvas.convertCanvasToOffset([x, y]) as [number, number];
+}
+
+function canvasPositionFromDragEvent(event: DragEvent): [number, number] {
+  if (!canvas?.convertCanvasToOffset) return visibleCanvasSpawnPosition();
+  const rect = el.graphCanvas.getBoundingClientRect();
+  const x = clamp(event.clientX - rect.left, 0, rect.width);
+  const y = clamp(event.clientY - rect.top, 0, rect.height);
+  return canvas.convertCanvasToOffset([x, y]) as [number, number];
+}
+
+function dragEventClassName(event: DragEvent): string {
+  const className = event.dataTransfer?.getData(CLASS_DRAG_MIME) || event.dataTransfer?.getData("text/plain") || "";
+  return snapshot.classes[className] ? className : "";
+}
+
+function handleGraphCanvasDragOver(event: DragEvent): void {
+  if (!dragEventClassName(event)) return;
+  event.preventDefault();
+  if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+}
+
+function handleGraphCanvasDrop(event: DragEvent): void {
+  const className = dragEventClassName(event);
+  if (!className) return;
+  event.preventDefault();
+  addPastaNodeAt(className, canvasPositionFromDragEvent(event));
 }
 
 function clamp(value: number, min: number, max: number): number {
