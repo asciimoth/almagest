@@ -294,7 +294,17 @@ func (e *engine) buildSys(initial bool) error {
 	defer e.Unlock()
 	opts := cloneSysBuildOpts(e.SysBuildOpts)
 
+	text := "System rebuild"
+	if initial {
+		text = "System build"
+	}
+
 	system, err := e.sys.Build(opts)
+	if err != nil {
+		e.logger.Err(text+": ", err)
+	} else {
+		e.logger.Debug(text)
+	}
 
 	e.sysBuilt = true
 	subscribers := make([]uint64, 0, len(e.sysBuildSubs))

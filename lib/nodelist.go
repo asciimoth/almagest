@@ -9,6 +9,9 @@ func nodeClasses(engine *engine) []pasta.NodeClass {
 	// WARN: At init time engine.mainWorkspace is nil
 	classes := []pasta.NodeClass{
 		mockNetClass{},
+		outNetClass{
+			engine: engine,
+		},
 		httpServerClass{
 			engine: engine,
 		},
