@@ -4,13 +4,15 @@
   "type": "module",
   "scripts": {
     "vendor": "node scripts/vendor-deps.mjs",
-    "build": "npm run vendor && tsc -p tsconfig.json && node scripts/publish-static.mjs"
+    "build": "npm run vendor && tsc -p tsconfig.json && node scripts/publish-static.mjs",
+    "test": "npm run build && node --test tests/*.mjs"
   },
   "dependencies": {
     "@asciimoth/formular-menu": "^0.2.1",
     "litegraph.js": "^0.7.18"
   },
   "devDependencies": {
+    "jsdom": "^29.1.1",
     "typescript": "^5.9.3"
   }
 }

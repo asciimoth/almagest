@@ -23,6 +23,17 @@ import {
   type WorkspaceNotification,
   type WorkspaceSnapshot,
 } from "./pasta_model.js";
+import {
+  createClassButtonContent,
+  createEmptyLogItem,
+  createLogItem,
+  createNodeNameForm,
+  createNotificationToast,
+  renderNodeDescription,
+  shortClass,
+  textElement,
+  type ClassPreviewPort,
+} from "./safe_dom.js";
 
 declare const LiteGraph: any;
 declare const LGraph: any;
@@ -563,7 +574,7 @@ function paletteLabel(cls: NodeClassSnapshot): string {
   return shortClass(cls.class);
 }
 
-function previewPorts(cls: NodeClassSnapshot, side: "left" | "right"): Array<{ name: string; color: string }> {
+function previewPorts(cls: NodeClassSnapshot, side: "left" | "right"): ClassPreviewPort[] {
   return cls.initial_ports
     .filter((port) => previewPortSide(port.direction) === side)
     .map((port) => ({
@@ -593,33 +604,6 @@ function previewPortColor(types: string[]): string {
     if (color) return color.color;
   }
   return DEFAULT_LINK_COLOR;
-}
-
-function renderClassPreviewPorts(ports: Array<{ name: string; color: string }>, side: "left" | "right"): string {
-  if (!ports.length) return "";
-  return ports.map((port) => `
-    <div class="class-preview-port class-preview-port-${side}">
-      ${side === "left" ? `<span class="class-preview-port-dot" style="--class-preview-port-color: ${escapeAttr(port.color)}"></span>` : ""}
-      <span class="class-preview-port-name">${escapeHTML(port.name)}</span>
-      ${side === "right" ? `<span class="class-preview-port-dot" style="--class-preview-port-color: ${escapeAttr(port.color)}"></span>` : ""}
-    </div>
-  `).join("");
-}
-
-function renderClassPreview(cls: NodeClassSnapshot): string {
-  const leftPorts = previewPorts(cls, "left");
-  const rightPorts = previewPorts(cls, "right");
-  return `
-    <div class="class-preview" aria-hidden="true">
-      <div class="class-preview-node">
-        <div class="class-preview-title">${escapeHTML(shortClass(cls.class))}</div>
-        <div class="class-preview-body">
-          <div class="class-preview-column class-preview-column-left">${renderClassPreviewPorts(leftPorts, "left")}</div>
-          <div class="class-preview-column class-preview-column-right">${renderClassPreviewPorts(rightPorts, "right")}</div>
-        </div>
-      </div>
-    </div>
-  `;
 }
 
 function resizeGraphCanvas(): void {
@@ -846,13 +830,16 @@ function renderClassPanel(selectedCount: number): void {
   el.sidekick.dataset.nodeId = "";
   el.sidekick.dataset.nodeClass = "";
   const classes = Object.values(snapshot.classes).sort((a, b) => a.class.localeCompare(b.class));
-  el.sidekick.innerHTML = `
-    <div class="panel-title">${selectedCount > 1 ? `${selectedCount} nodes selected` : "Create node"}</div>
-    <div class="class-list"></div>
-  `;
-  const list = el.sidekick.querySelector<HTMLElement>(".class-list")!;
+  const list = document.createElement("div");
+  list.className = "class-list";
+  el.sidekick.replaceChildren(
+    textElement("div", selectedCount > 1 ? `${selectedCount} nodes selected` : "Create node", "panel-title"),
+    list,
+  );
   for (const cls of classes) {
     const primaryColor = typeColor(cls.primary_type);
+    const leftPorts = previewPorts(cls, "left");
+    const rightPorts = previewPorts(cls, "right");
     const button = document.createElement("button");
     button.className = "class-button";
     button.classList.toggle("class-button-primary", Boolean(primaryColor));
@@ -863,13 +850,7 @@ function renderClassPanel(selectedCount: number): void {
       button.style.setProperty("--class-primary-color", primaryColor.color);
       button.style.setProperty("--class-primary-text-color", primaryColor.textColor);
     }
-    button.innerHTML = `
-      <div class="class-button-copy">
-        <strong>${escapeHTML(shortClass(cls.class))}</strong>
-        <span>${escapeHTML(cls.short_description)}</span>
-      </div>
-      ${renderClassPreview(cls)}
-    `;
+    button.append(...createClassButtonContent(cls, leftPorts, rightPorts));
     button.addEventListener("dragstart", (event) => {
       if (!event.dataTransfer) return;
       event.dataTransfer.effectAllowed = "copy";
@@ -954,27 +935,35 @@ function renderNodePanel(id: number): void {
   destroyMenu();
   el.sidekick.dataset.nodeId = String(id);
   el.sidekick.dataset.nodeClass = node.class;
-  el.sidekick.innerHTML = `
-    <form class="node-name-form" data-node-name-form>
-      <label for="node-name-input">Name</label>
-      <div class="node-name-row">
-        <input id="node-name-input" name="name" autocomplete="off" spellcheck="false" value="${escapeAttr(node.name)}">
-        <button type="submit">Rename</button>
-      </div>
-    </form>
-    <div class="node-panel-tabs">
-      <button class="active" data-node-tab="menu" type="button">Node menu</button>
-      <button data-node-tab="docs" type="button">Description</button>
-    </div>
-    <div class="node-panel-section" data-node-panel="menu">
-      <div id="node-menu"></div>
-      <div id="node-popups"></div>
-    </div>
-    <div class="node-panel-section hidden" data-node-panel="docs">
-      <h2>${escapeHTML(shortClass(node.class))}</h2>
-      <div class="node-description" data-node-description>${escapeHTML(description || "No long description is registered for this node class.")}</div>
-    </div>
-  `;
+  const tabs = document.createElement("div");
+  tabs.className = "node-panel-tabs";
+  const menuTab = textElement("button", "Node menu");
+  menuTab.className = "active";
+  menuTab.dataset.nodeTab = "menu";
+  menuTab.type = "button";
+  const docsTab = textElement("button", "Description");
+  docsTab.dataset.nodeTab = "docs";
+  docsTab.type = "button";
+  tabs.append(menuTab, docsTab);
+
+  const menuPanel = document.createElement("div");
+  menuPanel.className = "node-panel-section";
+  menuPanel.dataset.nodePanel = "menu";
+  const menu = document.createElement("div");
+  menu.id = "node-menu";
+  const popups = document.createElement("div");
+  popups.id = "node-popups";
+  menuPanel.append(menu, popups);
+
+  const docsPanel = document.createElement("div");
+  docsPanel.className = "node-panel-section hidden";
+  docsPanel.dataset.nodePanel = "docs";
+  const descriptionPanel = document.createElement("div");
+  descriptionPanel.className = "node-description";
+  descriptionPanel.dataset.nodeDescription = "";
+  renderNodeDescription(descriptionPanel, description);
+  docsPanel.append(textElement("h2", shortClass(node.class)), descriptionPanel);
+  el.sidekick.replaceChildren(createNodeNameForm(node.name), tabs, menuPanel, docsPanel);
   void tryBackend<string>("classDescription", { class: node.class }).then((text) => {
     const descriptionPanel = el.sidekick.querySelector<HTMLElement>("[data-node-description]");
     if (
@@ -1002,19 +991,13 @@ function renderPlaceholderNodePanel(id: number, node: NodeSnapshot): void {
   destroyMenu();
   el.sidekick.dataset.nodeId = String(id);
   el.sidekick.dataset.nodeClass = node.class;
-  el.sidekick.innerHTML = `
-    <form class="node-name-form" data-node-name-form>
-      <label for="node-name-input">Name</label>
-      <div class="node-name-row">
-        <input id="node-name-input" name="name" autocomplete="off" spellcheck="false" value="${escapeAttr(node.name)}">
-        <button type="submit">Rename</button>
-      </div>
-    </form>
-    <div class="node-panel-section">
-      <h2>${escapeHTML(shortClass(node.class))}</h2>
-      <p>This node is a placeholder. Its implementation is unavailable, so the demo preserves its ports and links without opening a node menu.</p>
-    </div>
-  `;
+  const section = document.createElement("div");
+  section.className = "node-panel-section";
+  section.append(
+    textElement("h2", shortClass(node.class)),
+    textElement("p", "This node is a placeholder. Its implementation is unavailable, so the demo preserves its ports and links without opening a node menu."),
+  );
+  el.sidekick.replaceChildren(createNodeNameForm(node.name), section);
   const form = el.sidekick.querySelector<HTMLFormElement>("[data-node-name-form]");
   form?.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -1048,10 +1031,10 @@ function renderNodePopups(nodeID: number, node: NodeSnapshot): void {
   const root = el.sidekick.querySelector<HTMLElement>("#node-popups");
   if (!root) return;
   const popups = [...(node.popups ?? [])].reverse();
-  root.innerHTML = "";
+  root.replaceChildren();
   const header = document.createElement("div");
   header.className = "popup-panel-header";
-  header.innerHTML = `<h2>Popups</h2>`;
+  header.append(textElement("h2", "Popups"));
   if (popups.length) {
     const clear = document.createElement("button");
     clear.type = "button";
@@ -1173,11 +1156,9 @@ function isConfigSaveFailure(entry: LogEntry): boolean {
 }
 
 function notifyError(message: string): void {
-  const toast = document.createElement("div");
+  const toast = createNotificationToast(message);
   const id = nextToastID++;
-  toast.className = "notification notification-error";
   toast.dataset.toastId = String(id);
-  toast.innerHTML = `<strong>Config save failed</strong><span>${escapeHTML(message)}</span><button type="button" aria-label="Dismiss notification">x</button>`;
   const close = () => {
     toast.remove();
   };
@@ -1191,51 +1172,6 @@ function notifyError(message: string): void {
 function trimLogStore(): void {
   if (logStoreLimit <= 0 || frontendLogs.length <= logStoreLimit) return;
   frontendLogs.splice(0, frontendLogs.length - logStoreLimit);
-}
-
-function createEmptyLogItem(): HTMLLIElement {
-  const item = document.createElement("li");
-  item.className = "logs-empty";
-  item.innerHTML = "<span>No cached daemon logs available.</span>";
-  return item;
-}
-
-function createLogItem(row: LogEntry): HTMLLIElement {
-  const item = document.createElement("li");
-  item.className = `log-${row.level}`;
-  item.innerHTML = `<strong>${escapeHTML(formatLogLevel(row.level))}</strong><i aria-hidden="true"></i><time>${escapeHTML(formatLogTime(row.at))}</time><i aria-hidden="true"></i><b>${escapeHTML(formatLogSource(row))}</b><i aria-hidden="true"></i><span>${escapeHTML(row.message)}</span>`;
-  return item;
-}
-
-function formatLogTime(at: string): string {
-  const parsed = new Date(at);
-  if (Number.isNaN(parsed.getTime())) return at;
-  const parts = new Intl.DateTimeFormat("en-US", {
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  }).formatToParts(parsed);
-  const values = new Map(parts.map((part) => [part.type, part.value]));
-  return `${values.get("month") ?? ""}/${values.get("day") ?? ""} ${values.get("hour") ?? ""}:${values.get("minute") ?? ""}:${values.get("second") ?? ""}`.trim();
-}
-
-function formatLogLevel(level: string): string {
-  switch (level) {
-    case "error":
-      return "ERR";
-    default:
-      return level.slice(0, 5).toUpperCase();
-  }
-}
-
-function formatLogSource(entry: LogEntry): string {
-  if (entry.source !== "node") return entry.source;
-  if (entry.node_class && entry.node_id) return `${shortClass(entry.node_class)} #${entry.node_id}`;
-  if (entry.node_id) return `node #${entry.node_id}`;
-  return "node";
 }
 
 function setTab(name: string): void {
@@ -1389,89 +1325,6 @@ function offsetClipboardPositions(data: string, dx: number, dy: number): string 
   } catch {
     return data;
   }
-}
-
-function escapeHTML(value: string): string {
-  return value.replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch]!);
-}
-
-function escapeAttr(value: string): string {
-  return escapeHTML(value).replace(/`/g, "&#96;");
-}
-
-function renderNodeDescription(node: HTMLElement, value: string): void {
-  const text = value.trim();
-  if (!text) {
-    node.textContent = "No long description is registered for this node class.";
-    return;
-  }
-  const blocks = text.split(/\n{2,}/).map((block) => block.trim()).filter(Boolean);
-  node.replaceChildren(...blocks.map(renderMarkdownParagraph));
-}
-
-function renderMarkdownParagraph(input: string): HTMLParagraphElement {
-  const paragraph = document.createElement("p");
-  const lines = input.split(/\n/);
-  lines.forEach((line, index) => {
-    if (index > 0) paragraph.append(document.createElement("br"));
-    paragraph.append(renderMarkdownInline(line));
-  });
-  return paragraph;
-}
-
-function renderMarkdownInline(input: string): DocumentFragment {
-  const root = document.createDocumentFragment();
-  const parts = input.split(/(\[[^\]]+\]\([^)]+\)|\*\*[^*]+\*\*|\*[^*\s][^*]*\*|_[^_\s][^_]*_|`[^`]+`)/g);
-  for (const part of parts) {
-    if (!part) continue;
-    const link = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
-    if (link) {
-      root.append(renderMarkdownLink(link[1], link[2]));
-      continue;
-    }
-    if (part.startsWith("**") && part.endsWith("**")) {
-      const strong = document.createElement("strong");
-      strong.textContent = part.slice(2, -2);
-      root.append(strong);
-      continue;
-    }
-    if (
-      (part.startsWith("*") && part.endsWith("*")) ||
-      (part.startsWith("_") && part.endsWith("_"))
-    ) {
-      const em = document.createElement("em");
-      em.textContent = part.slice(1, -1);
-      root.append(em);
-      continue;
-    }
-    if (part.startsWith("`") && part.endsWith("`")) {
-      const code = document.createElement("code");
-      code.textContent = part.slice(1, -1);
-      root.append(code);
-      continue;
-    }
-    root.append(document.createTextNode(part));
-  }
-  return root;
-}
-
-function renderMarkdownLink(label: string, href: string): HTMLAnchorElement {
-  const anchor = document.createElement("a");
-  anchor.textContent = label;
-  try {
-    const url = new URL(href, window.location.href);
-    if (url.protocol === "http:" || url.protocol === "https:" || url.protocol === "mailto:") {
-      anchor.href = url.href;
-    }
-  } catch {
-    anchor.removeAttribute("href");
-  }
-  anchor.rel = "noopener noreferrer";
-  return anchor;
-}
-
-function shortClass(name: string): string {
-  return name.split("/").pop() ?? name;
 }
 
 function wireUI(): void {

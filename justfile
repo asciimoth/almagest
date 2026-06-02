@@ -6,7 +6,7 @@ test-go:
 	go -C bin test ./... --race -count=1
 
 test-js:
-  cd panel && npm ci && npm run build
+  cd panel && npm ci && npm test
 
 test: test-go test-js
 

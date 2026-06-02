@@ -1,0 +1,244 @@
+import type { NodeClassSnapshot } from "./pasta_model.js";
+
+export type ClassPreviewPort = {
+  name: string;
+  color: string;
+};
+
+export type PanelLogEntry = {
+  at: string;
+  source: string;
+  level: string;
+  message: string;
+  node_id?: number;
+  node_class?: string;
+};
+
+// Third-party nodes control class names, labels, descriptions, popups, menus,
+// and logs. Keep node-sourced text out of HTML parser APIs; build elements and
+// assign text through textContent/value/title/DOM attributes instead.
+export function textElement<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  text: string,
+  className = "",
+): HTMLElementTagNameMap[K] {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  node.textContent = text;
+  return node;
+}
+
+export function iconSeparator(): HTMLElement {
+  const icon = document.createElement("i");
+  icon.setAttribute("aria-hidden", "true");
+  return icon;
+}
+
+export function createClassButtonContent(
+  cls: NodeClassSnapshot,
+  leftPorts: ClassPreviewPort[],
+  rightPorts: ClassPreviewPort[],
+): HTMLElement[] {
+  const copy = document.createElement("div");
+  copy.className = "class-button-copy";
+  copy.append(textElement("strong", shortClass(cls.class)), textElement("span", cls.short_description));
+  return [copy, createClassPreview(cls, leftPorts, rightPorts)];
+}
+
+function createClassPreview(
+  cls: NodeClassSnapshot,
+  leftPorts: ClassPreviewPort[],
+  rightPorts: ClassPreviewPort[],
+): HTMLElement {
+  const preview = document.createElement("div");
+  preview.className = "class-preview";
+  preview.setAttribute("aria-hidden", "true");
+
+  const node = document.createElement("div");
+  node.className = "class-preview-node";
+  node.append(
+    textElement("div", shortClass(cls.class), "class-preview-title"),
+    createClassPreviewBody(leftPorts, rightPorts),
+  );
+  preview.append(node);
+  return preview;
+}
+
+function createClassPreviewBody(leftPorts: ClassPreviewPort[], rightPorts: ClassPreviewPort[]): HTMLElement {
+  const body = document.createElement("div");
+  body.className = "class-preview-body";
+  const left = document.createElement("div");
+  left.className = "class-preview-column class-preview-column-left";
+  const right = document.createElement("div");
+  right.className = "class-preview-column class-preview-column-right";
+  left.append(...leftPorts.map((port) => createClassPreviewPort(port, "left")));
+  right.append(...rightPorts.map((port) => createClassPreviewPort(port, "right")));
+  body.append(left, right);
+  return body;
+}
+
+function createClassPreviewPort(port: ClassPreviewPort, side: "left" | "right"): HTMLElement {
+  const row = document.createElement("div");
+  row.className = `class-preview-port class-preview-port-${side}`;
+  const dot = document.createElement("span");
+  dot.className = "class-preview-port-dot";
+  dot.style.setProperty("--class-preview-port-color", port.color);
+  const name = textElement("span", port.name, "class-preview-port-name");
+  if (side === "left") row.append(dot, name);
+  else row.append(name, dot);
+  return row;
+}
+
+export function createNodeNameForm(name: string): HTMLFormElement {
+  const form = document.createElement("form");
+  form.className = "node-name-form";
+  form.dataset.nodeNameForm = "";
+
+  const label = textElement("label", "Name");
+  label.htmlFor = "node-name-input";
+  const row = document.createElement("div");
+  row.className = "node-name-row";
+  const input = document.createElement("input");
+  input.id = "node-name-input";
+  input.name = "name";
+  input.autocomplete = "off";
+  input.spellcheck = false;
+  input.value = name;
+  const button = textElement("button", "Rename");
+  button.type = "submit";
+  row.append(input, button);
+  form.append(label, row);
+  return form;
+}
+
+export function createNotificationToast(message: string): HTMLDivElement {
+  const toast = document.createElement("div");
+  toast.className = "notification notification-error";
+  const dismiss = textElement("button", "x");
+  dismiss.type = "button";
+  dismiss.setAttribute("aria-label", "Dismiss notification");
+  toast.append(textElement("strong", "Config save failed"), textElement("span", message), dismiss);
+  return toast;
+}
+
+export function createEmptyLogItem(): HTMLLIElement {
+  const item = document.createElement("li");
+  item.className = "logs-empty";
+  item.append(textElement("span", "No cached daemon logs available."));
+  return item;
+}
+
+export function createLogItem(row: PanelLogEntry): HTMLLIElement {
+  const item = document.createElement("li");
+  item.className = `log-${row.level}`;
+  item.append(
+    textElement("strong", formatLogLevel(row.level)),
+    iconSeparator(),
+    textElement("time", formatLogTime(row.at)),
+    iconSeparator(),
+    textElement("b", formatLogSource(row)),
+    iconSeparator(),
+    textElement("span", row.message),
+  );
+  return item;
+}
+
+export function renderNodeDescription(node: HTMLElement, value: string): void {
+  const text = value.trim();
+  if (!text) {
+    node.textContent = "No long description is registered for this node class.";
+    return;
+  }
+  const blocks = text.split(/\n{2,}/).map((block) => block.trim()).filter(Boolean);
+  node.replaceChildren(...blocks.map(renderMarkdownParagraph));
+}
+
+function renderMarkdownParagraph(input: string): HTMLParagraphElement {
+  const paragraph = document.createElement("p");
+  const lines = input.split(/\n/);
+  lines.forEach((line, index) => {
+    if (index > 0) paragraph.append(document.createElement("br"));
+    paragraph.append(renderMarkdownInline(line));
+  });
+  return paragraph;
+}
+
+function renderMarkdownInline(input: string): DocumentFragment {
+  const root = document.createDocumentFragment();
+  const parts = input.split(/(\[[^\]]+\]\([^)]+\)|\*\*[^*]+\*\*|\*[^*\s][^*]*\*|_[^_\s][^_]*_|`[^`]+`)/g);
+  for (const part of parts) {
+    if (!part) continue;
+    const link = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
+    if (link) {
+      root.append(renderMarkdownLink(link[1], link[2]));
+      continue;
+    }
+    if (part.startsWith("**") && part.endsWith("**")) {
+      root.append(textElement("strong", part.slice(2, -2)));
+      continue;
+    }
+    if (
+      (part.startsWith("*") && part.endsWith("*")) ||
+      (part.startsWith("_") && part.endsWith("_"))
+    ) {
+      root.append(textElement("em", part.slice(1, -1)));
+      continue;
+    }
+    if (part.startsWith("`") && part.endsWith("`")) {
+      root.append(textElement("code", part.slice(1, -1)));
+      continue;
+    }
+    root.append(document.createTextNode(part));
+  }
+  return root;
+}
+
+function renderMarkdownLink(label: string, href: string): HTMLAnchorElement {
+  const anchor = document.createElement("a");
+  anchor.textContent = label;
+  try {
+    const url = new URL(href, window.location.href);
+    if (url.protocol === "http:" || url.protocol === "https:" || url.protocol === "mailto:") {
+      anchor.href = url.href;
+    }
+  } catch {
+    anchor.removeAttribute("href");
+  }
+  anchor.rel = "noopener noreferrer";
+  return anchor;
+}
+
+function formatLogTime(at: string): string {
+  const parsed = new Date(at);
+  if (Number.isNaN(parsed.getTime())) return at;
+  const parts = new Intl.DateTimeFormat("en-US", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).formatToParts(parsed);
+  const values = new Map(parts.map((part) => [part.type, part.value]));
+  return `${values.get("month") ?? ""}/${values.get("day") ?? ""} ${values.get("hour") ?? ""}:${values.get("minute") ?? ""}:${values.get("second") ?? ""}`.trim();
+}
+
+function formatLogLevel(level: string): string {
+  switch (level) {
+    case "error":
+      return "ERR";
+    default:
+      return level.slice(0, 5).toUpperCase();
+  }
+}
+
+function formatLogSource(entry: PanelLogEntry): string {
+  if (entry.source !== "node") return entry.source;
+  if (entry.node_class && entry.node_id) return `${shortClass(entry.node_class)} #${entry.node_id}`;
+  if (entry.node_id) return `node #${entry.node_id}`;
+  return "node";
+}
+
+export function shortClass(name: string): string {
+  return name.split("/").pop() ?? name;
+}
