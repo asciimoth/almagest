@@ -90,6 +90,10 @@ type HelloResponse = {
   project_version_status: ProjectVersionStatus;
   surfaces?: Record<string, unknown>;
 };
+type GraphViewportState = {
+  scale: number;
+  offset: [number, number];
+};
 
 declare global {
   interface Window {
@@ -126,7 +130,9 @@ let nextToastID = 1;
 let logStoreLimit = 0;
 const liteLinkToPasta = new Map<number, number>();
 const CLASS_DRAG_MIME = "application/x-almagest-node-class";
+const GRAPH_VIEWPORT_STORAGE_KEY = "almagest.panel.graph.viewport.v1";
 const debugClipboard = true;
+let graphViewportSaveTimeout = 0;
 
 const el = {
   status: document.querySelector<HTMLElement>("#backend-status")!,
@@ -154,6 +160,61 @@ function debugLog(message: string, details: Record<string, unknown> = {}): void 
   console.log(`[almagest-panel] ${message}`, details);
 }
 
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function readGraphViewportState(): GraphViewportState | null {
+  try {
+    const raw = window.localStorage.getItem(GRAPH_VIEWPORT_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { scale?: unknown; offset?: unknown };
+    if (!isFiniteNumber(parsed.scale) || !Array.isArray(parsed.offset)) return null;
+    const [x, y] = parsed.offset;
+    if (!isFiniteNumber(x) || !isFiniteNumber(y)) return null;
+    return { scale: parsed.scale, offset: [x, y] };
+  } catch (error) {
+    log("frontend", "warn", `graph viewport restore failed: ${(error as Error).message}`);
+    return null;
+  }
+}
+
+function applyGraphViewportState(): void {
+  if (!canvas?.ds) return;
+  const state = readGraphViewportState();
+  if (!state) return;
+  const minScale = isFiniteNumber(canvas.ds.min_scale) ? canvas.ds.min_scale : 0.1;
+  const maxScale = isFiniteNumber(canvas.ds.max_scale) ? canvas.ds.max_scale : 10;
+  canvas.ds.scale = clamp(state.scale, minScale, maxScale);
+  canvas.ds.offset[0] = state.offset[0];
+  canvas.ds.offset[1] = state.offset[1];
+  canvas.setDirty(true, true);
+}
+
+function currentGraphViewportState(): GraphViewportState | null {
+  if (!canvas?.ds || !isFiniteNumber(canvas.ds.scale)) return null;
+  const [x, y] = canvas.ds.offset ?? [];
+  if (!isFiniteNumber(x) || !isFiniteNumber(y)) return null;
+  return { scale: canvas.ds.scale, offset: [x, y] };
+}
+
+function saveGraphViewportState(): void {
+  window.clearTimeout(graphViewportSaveTimeout);
+  graphViewportSaveTimeout = 0;
+  const state = currentGraphViewportState();
+  if (!state) return;
+  try {
+    window.localStorage.setItem(GRAPH_VIEWPORT_STORAGE_KEY, JSON.stringify(state));
+  } catch (error) {
+    log("frontend", "warn", `graph viewport save failed: ${(error as Error).message}`);
+  }
+}
+
+function scheduleGraphViewportSave(): void {
+  window.clearTimeout(graphViewportSaveTimeout);
+  graphViewportSaveTimeout = window.setTimeout(saveGraphViewportState, 100);
+}
+
 const pendingRequests = new Map<string, {
   resolve(value: unknown): void;
   reject(error: Error): void;
@@ -173,6 +234,7 @@ function connectAPI(): Promise<void> {
     ws.addEventListener("message", (event) => handleAPIMessage(JSON.parse(String(event.data)) as APIMessage));
     ws.addEventListener("close", () => {
       el.status.textContent = "Admin API disconnected";
+      el.status.style.color = "#ff0000";
       for (const { reject: rejectRequest } of pendingRequests.values()) {
         rejectRequest(new Error("Admin API disconnected"));
       }
@@ -410,16 +472,33 @@ function initGraph(): void {
   canvas.onNodeMoved = flushNodePositions;
   canvas.onSelectionChange = scheduleSidekickUpdate;
   installPastaPalette();
+  applyGraphViewportState();
   resizeGraphCanvas();
   graphResizeObserver = new ResizeObserver(resizeGraphCanvas);
   graphResizeObserver.observe(el.graphCanvas);
   graph.start();
-  el.graphCanvas.addEventListener("mouseup", flushNodePositions);
+  el.graphCanvas.addEventListener("mouseup", () => {
+    flushNodePositions();
+    scheduleGraphViewportSave();
+  });
+  el.graphCanvas.addEventListener("wheel", scheduleGraphViewportSave);
+  el.graphCanvas.addEventListener("mousewheel", scheduleGraphViewportSave);
   el.graphCanvas.addEventListener("dragover", handleGraphCanvasDragOver);
   el.graphCanvas.addEventListener("drop", handleGraphCanvasDrop);
-  document.addEventListener("pointerup", flushNodePositions, { capture: true });
-  window.addEventListener("blur", flushNodePositions);
-  el.graphCanvas.addEventListener("keydown", graphKeydown, { capture: true });
+  document.addEventListener("pointerup", () => {
+    flushNodePositions();
+    scheduleGraphViewportSave();
+  }, { capture: true });
+  document.addEventListener("mouseup", scheduleGraphViewportSave, { capture: true });
+  window.addEventListener("blur", () => {
+    flushNodePositions();
+    saveGraphViewportState();
+  });
+  window.addEventListener("pagehide", saveGraphViewportState);
+  el.graphCanvas.addEventListener("keydown", (event) => {
+    graphKeydown(event);
+    scheduleGraphViewportSave();
+  }, { capture: true });
   el.graphCanvas.tabIndex = 0;
   requestAnimationFrame(resizeGraphCanvas);
 }
