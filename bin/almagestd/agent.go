@@ -10,6 +10,7 @@ import (
 	"github.com/asciimoth/almagest/bin/platforms"
 	"github.com/asciimoth/configer/configer"
 	"github.com/kataras/golog"
+	tailscalehujson "github.com/tailscale/hujson"
 )
 
 // Agent runs in background before privileges drop and give limited access
@@ -62,10 +63,32 @@ func (a *Agent) ReadConfig() (*Config, error) {
 }
 
 func (a *Agent) WriteConfig(c configer.Config) error {
-	if a.configReadOnly {
-		return ErrConfigRO
+	if c == nil {
+		return nil
 	}
-	return errors.New("config writing not implemented yet") // TODO:
+
+	if a.configReadOnly {
+		return nil
+	}
+
+	packer, ok := c.(interface {
+		Pack() []byte
+	})
+	if !ok {
+		return errors.New("config does not support HuJSON packing")
+	}
+
+	data, err := tailscalehujson.Format(packer.Pack())
+	if err != nil {
+		return err
+	}
+
+	info, err := os.Stat(a.configPath)
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(a.configPath, data, info.Mode().Perm())
 }
 
 func RunAgent(args Args) *Agent {

@@ -13,6 +13,7 @@ require (
 	github.com/coder/websocket v1.8.14
 	github.com/joho/godotenv v1.5.1
 	github.com/kataras/golog v0.1.15
+	github.com/tailscale/hujson v0.0.0-20260302212456-ecc657c15afd
 )
 
 require (
@@ -22,7 +23,6 @@ require (
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
-	github.com/tailscale/hujson v0.0.0-20260302212456-ecc657c15afd // indirect
 	github.com/wk8/go-ordered-map/v2 v2.1.8 // indirect
 	golang.org/x/net v0.54.0 // indirect
 	golang.org/x/sys v0.44.0 // indirect
