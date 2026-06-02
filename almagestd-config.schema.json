@@ -1,0 +1,177 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/asciimoth/almagest/almagestd-config.schema.json",
+  "title": "almagestd config",
+  "description": "Main HuJSON/JSON configuration file for ./bin/almagestd. The daemon owns Config, Logs, and System; the engine owns nodes; pasta workspace owns the capitalized keys inside each node object. Node implementations own non-capitalized keys inside node objects and may add, remove, or reinterpret them dynamically.",
+  "type": "object",
+  "properties": {
+    "Config": {
+      "$ref": "#/$defs/daemonConfig"
+    },
+    "Logs": {
+      "$ref": "#/$defs/logsConfig"
+    },
+    "System": {
+      "$ref": "#/$defs/systemConfig"
+    },
+    "nodes": {
+      "$ref": "#/$defs/engineNodesConfig"
+    }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "daemonConfig": {
+      "type": "object",
+      "description": "Daemon-owned runtime configuration.",
+      "properties": {
+        "Save": {
+          "$ref": "#/$defs/saveConfig"
+        }
+      },
+      "additionalProperties": true
+    },
+    "saveConfig": {
+      "type": "object",
+      "description": "Daemon-owned config persistence settings.",
+      "properties": {
+        "IdleMilliseconds": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 500,
+          "description": "Autosave debounce time in milliseconds. Non-positive values are accepted by the daemon but are treated as the default 500 ms."
+        }
+      },
+      "additionalProperties": true
+    },
+    "logsConfig": {
+      "type": "object",
+      "description": "Daemon-owned logging configuration.",
+      "properties": {
+        "Cache": {
+          "$ref": "#/$defs/logCacheConfig"
+        }
+      },
+      "additionalProperties": true
+    },
+    "logCacheConfig": {
+      "type": "object",
+      "description": "Daemon-owned per-level in-memory log cache sizes. Missing values use daemon defaults; negative values are clamped to 0.",
+      "properties": {
+        "Debug": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 32
+        },
+        "Info": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 64
+        },
+        "Warn": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 128
+        },
+        "Error": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 256
+        },
+        "Fatal": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 64
+        }
+      },
+      "additionalProperties": true
+    },
+    "systemConfig": {
+      "type": "object",
+      "description": "Daemon/platform-owned system integration configuration. Type selects the integration; platform-specific native settings may be owned below this object.",
+      "properties": {
+        "Type": {
+          "type": "string",
+          "enum": [
+            "debug",
+            "native"
+          ],
+          "description": "debug uses the daemon debug integration. native delegates to the current platform integration."
+        }
+      },
+      "additionalProperties": true
+    },
+    "engineNodesConfig": {
+      "type": "object",
+      "description": "Engine-owned main workspace configuration, keyed by pasta node name.",
+      "propertyNames": {
+        "$ref": "#/$defs/nodeName"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/workspaceNodeConfig"
+      }
+    },
+    "workspaceNodeConfig": {
+      "type": "object",
+      "description": "A pasta workspace node record. Capitalized properties are workspace-owned. Properties that do not start with an uppercase ASCII letter are reserved for node implementation-owned state and are intentionally not documented here.",
+      "properties": {
+        "Class": {
+          "$ref": "#/$defs/className",
+          "description": "Workspace-owned pasta node class name. Nodes without a string Class are ignored during restore."
+        },
+        "Primary": {
+          "$ref": "#/$defs/typeName",
+          "description": "Workspace-owned primary type override. Omitted when it equals the class default and has no retained HuJSON comment."
+        },
+        "Pos": {
+          "type": "string",
+          "description": "Workspace-owned opaque node position string used by the UI/workspace."
+        },
+        "Links": {
+          "type": "array",
+          "description": "Workspace-owned outgoing link specifications from this node's right ports to other nodes' left ports.",
+          "items": {
+            "$ref": "#/$defs/linkSpec"
+          },
+          "uniqueItems": false
+        }
+      },
+      "required": [
+        "Class"
+      ],
+      "patternProperties": {
+        "^[^A-Z].*$": {
+          "description": "Node implementation-owned state. Node classes may add, remove, or reinterpret these keys dynamically; by convention node-owned keys must not start with a capital ASCII letter."
+        }
+      },
+      "additionalProperties": false
+    },
+    "nodeName": {
+      "type": "string",
+      "minLength": 1,
+      "not": {
+        "pattern": "[\\[\\]]"
+      },
+      "description": "Pasta node name. Node names must be non-empty and cannot contain '[' or ']'."
+    },
+    "className": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9.]+/[A-Z][A-Za-z0-9]*$",
+      "description": "Pasta class name, such as example.com/ClassName. The suffix starts with an uppercase ASCII letter."
+    },
+    "typeName": {
+      "type": "string",
+      "pattern": "^any/any$|^[A-Za-z0-9.]+/[a-z][A-Za-z0-9]*$",
+      "description": "Pasta type name, such as example.com/typeName, or the wildcard any/any. The suffix starts with a lowercase ASCII letter."
+    },
+    "portName": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9\\t\\n\\r\\f\\v _-]*[A-Za-z0-9])?$",
+      "description": "Pasta port name. It must start and end with an ASCII alphanumeric character and may contain ASCII whitespace, space, '-', and '_' in between."
+    },
+    "linkSpec": {
+      "type": "string",
+      "pattern": "^[^\\[\\]]+ -> \\[[^\\[\\]]+\\] .+$",
+      "description": "Outgoing link in pasta save format: '<right port> -> [<target node>] <left port>'. Target node names cannot contain '[' or ']'. Port names are restored only if valid for the target node class or placeholder."
+    }
+  }
+}

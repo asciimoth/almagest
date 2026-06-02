@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/asciimoth/almagest/almagestd-protected-config.schema.json",
+  "title": "almagestd protected config",
+  "description": "Protected HuJSON/JSON configuration file for ./bin/almagestd. These options are read at startup and should not be editable through the admin API.",
+  "type": "object",
+  "properties": {
+    "Admin": {
+      "$ref": "#/$defs/adminConfig"
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "adminConfig": {
+      "type": "object",
+      "description": "Protected admin API settings.",
+      "properties": {
+        "Web": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65535,
+          "default": 0,
+          "description": "Local web admin port bound on 127.0.0.1. 0 disables the web admin listener. Command-line --web / ALMAGEST_WEB_ADMIN overrides this value."
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}
