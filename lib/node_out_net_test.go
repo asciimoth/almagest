@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/asciimoth/bufpool"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/gonnect"
 	"github.com/asciimoth/gonnect/sysnet"
@@ -80,6 +81,9 @@ func (c captureHTTPServerClass) NewNode(cfg configer.Config, _ ...*pasta.NodeCla
 }
 
 func TestOutNetworkRequestsSysRebuildOnInit(t *testing.T) {
+	pool := bufpool.NewTestDebugPool(t)
+	defer pool.Close()
+
 	sys := newRecordingSysBuilder()
 	engineIface, err := BuildEngine(
 		context.Background(),
@@ -87,7 +91,7 @@ func TestOutNetworkRequestsSysRebuildOnInit(t *testing.T) {
 		testLogFactory{},
 		sys,
 		nil,
-		nil,
+		pool,
 		true,
 	)
 
@@ -192,8 +196,7 @@ func TestOutNetworkSendsCachedNetworkToHTTPServerOnLinkAdd(t *testing.T) {
 	if err := w.AddNodeClass(outNetClass{}); err != nil {
 		t.Fatalf("AddNodeClass OutNetwork: %v", err)
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	var server *httpServerNode
 	if err := w.AddNodeClass(captureHTTPServerClass{
 		engine: &engine{ctx: ctx},
@@ -242,6 +245,9 @@ func TestOutNetworkSendsCachedNetworkToHTTPServerOnLinkAdd(t *testing.T) {
 }
 
 func TestEngineOutNetworkSendsCachedNetworkToHTTPServerOnLinkAdd(t *testing.T) {
+	pool := bufpool.NewTestDebugPool(t)
+	defer pool.Close()
+
 	base := gonnect.NewLoopbackNetwok()
 	sys := newRecordingSysBuilder()
 	sys.OutNet = base
@@ -252,7 +258,7 @@ func TestEngineOutNetworkSendsCachedNetworkToHTTPServerOnLinkAdd(t *testing.T) {
 		testLogFactory{},
 		sys,
 		[]pasta.NodeClass{captureHTTPServerClass{node: &server}},
-		nil,
+		pool,
 		true,
 	)
 	if err != nil {

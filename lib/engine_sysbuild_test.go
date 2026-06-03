@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/asciimoth/bufpool"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/gonnect/sysnet"
 	"github.com/asciimoth/pasta/pasta"
@@ -74,6 +75,9 @@ func (n *testSysBuildNode) OnInbox(message pasta.InboxMessage) error {
 }
 
 func TestBuildEngineRunsInitialSysBuild(t *testing.T) {
+	pool := bufpool.NewTestDebugPool(t)
+	defer pool.Close()
+
 	sys := newRecordingSysBuilder()
 	engine, err := BuildEngine(
 		context.Background(),
@@ -81,7 +85,7 @@ func TestBuildEngineRunsInitialSysBuild(t *testing.T) {
 		testLogFactory{},
 		sys,
 		nil,
-		nil,
+		pool,
 		true,
 	)
 	if err != nil {
@@ -99,6 +103,9 @@ func TestBuildEngineRunsInitialSysBuild(t *testing.T) {
 }
 
 func TestRequestSysRebuildSendsResultToSubscribers(t *testing.T) {
+	pool := bufpool.NewTestDebugPool(t)
+	defer pool.Close()
+
 	sys := newRecordingSysBuilder()
 	inbox := make(chan pasta.InboxMessage, 1)
 	engineIface, err := BuildEngine(
@@ -107,7 +114,7 @@ func TestRequestSysRebuildSendsResultToSubscribers(t *testing.T) {
 		testLogFactory{},
 		sys,
 		[]pasta.NodeClass{testSysBuildClass{inbox: inbox}},
-		nil,
+		pool,
 		true,
 	)
 	if err != nil {
