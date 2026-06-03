@@ -13,27 +13,6 @@ import (
 
 const testSysBuildNodeClassName = "test/SysBuildNode"
 
-type testLogger struct{}
-
-func (testLogger) Debug(...any)          {}
-func (testLogger) Debugf(string, ...any) {}
-func (testLogger) Info(...any)           {}
-func (testLogger) Infof(string, ...any)  {}
-func (testLogger) Warn(...any)           {}
-func (testLogger) Warnf(string, ...any)  {}
-func (testLogger) Err(...any)            {}
-func (testLogger) Errf(string, ...any)   {}
-func (testLogger) Fatal(...any)          {}
-func (testLogger) Fatalf(string, ...any) {}
-
-type testLogFactory struct{}
-
-func (testLogFactory) WorkspaceLogger() pasta.Logger { return testLogger{} }
-func (testLogFactory) NodeLogger(uint64, string) pasta.Logger {
-	return testLogger{}
-}
-func (testLogFactory) EngineLogger() Logger { return testLogger{} }
-
 type recordingSysBuilder struct {
 	*sysnet.DebugSysBuilder
 	builds []sysnet.BuildOpts
@@ -82,7 +61,7 @@ func TestBuildEngineRunsInitialSysBuild(t *testing.T) {
 	engine, err := BuildEngine(
 		context.Background(),
 		configer.NewMemory(nil),
-		testLogFactory{},
+		NewDebugLogFactory(1024),
 		sys,
 		nil,
 		pool,
@@ -111,7 +90,7 @@ func TestRequestSysRebuildSendsResultToSubscribers(t *testing.T) {
 	engineIface, err := BuildEngine(
 		context.Background(),
 		configer.NewMemory(nil),
-		testLogFactory{},
+		NewDebugLogFactory(1024),
 		sys,
 		[]pasta.NodeClass{testSysBuildClass{inbox: inbox}},
 		pool,

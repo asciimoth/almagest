@@ -88,7 +88,7 @@ func TestOutNetworkRequestsSysRebuildOnInit(t *testing.T) {
 	engineIface, err := BuildEngine(
 		context.Background(),
 		configer.NewMemory(nil),
-		testLogFactory{},
+		NewDebugLogFactory(1024),
 		sys,
 		nil,
 		pool,
@@ -114,7 +114,7 @@ func TestOutNetworkRequestsSysRebuildOnInit(t *testing.T) {
 }
 
 func TestOutNetworkWaitsForSuccessfulSysBuildBeforeSending(t *testing.T) {
-	w := pasta.NewWorkspace(testLogFactory{})
+	w := pasta.NewWorkspace(NewDebugLogFactory(1024))
 	defer w.Close()
 	if err := w.AddNodeClass(outNetClass{}); err != nil {
 		t.Fatalf("AddNodeClass OutNetwork: %v", err)
@@ -156,7 +156,7 @@ func TestOutNetworkWaitsForSuccessfulSysBuildBeforeSending(t *testing.T) {
 }
 
 func TestOutNetworkSendsCachedNetworkToNewLinks(t *testing.T) {
-	w := pasta.NewWorkspace(testLogFactory{})
+	w := pasta.NewWorkspace(NewDebugLogFactory(1024))
 	defer w.Close()
 	if err := w.AddNodeClass(outNetClass{}); err != nil {
 		t.Fatalf("AddNodeClass OutNetwork: %v", err)
@@ -191,7 +191,7 @@ func TestOutNetworkSendsCachedNetworkToNewLinks(t *testing.T) {
 }
 
 func TestOutNetworkSendsCachedNetworkToHTTPServerOnLinkAdd(t *testing.T) {
-	w := pasta.NewWorkspace(testLogFactory{})
+	w := pasta.NewWorkspace(NewDebugLogFactory(1024))
 	defer w.Close()
 	if err := w.AddNodeClass(outNetClass{}); err != nil {
 		t.Fatalf("AddNodeClass OutNetwork: %v", err)
@@ -255,7 +255,7 @@ func TestEngineOutNetworkSendsCachedNetworkToHTTPServerOnLinkAdd(t *testing.T) {
 	engineIface, err := BuildEngine(
 		context.Background(),
 		configer.NewMemory(nil),
-		testLogFactory{},
+		NewDebugLogFactory(1024),
 		sys,
 		[]pasta.NodeClass{captureHTTPServerClass{node: &server}},
 		pool,
@@ -306,7 +306,7 @@ func TestEngineOutNetworkSendsCachedNetworkToHTTPServerOnLinkAdd(t *testing.T) {
 }
 
 func TestOutNetworkErrorSendsRejectAndSuppressesNewLinksUntilNextSuccess(t *testing.T) {
-	w := pasta.NewWorkspace(testLogFactory{})
+	w := pasta.NewWorkspace(NewDebugLogFactory(1024))
 	defer w.Close()
 	if err := w.AddNodeClass(outNetClass{}); err != nil {
 		t.Fatalf("AddNodeClass OutNetwork: %v", err)
