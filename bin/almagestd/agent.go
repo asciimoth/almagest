@@ -41,12 +41,12 @@ func (a *Agent) ReadConfig() (*Config, error) {
 			golog.Fatal(err)
 		}
 	} else {
-		configData, err = os.ReadFile(a.configPath)
+		configData, err = platforms.ReadSafeFile(a.configPath)
 		if err != nil {
 			golog.Fatal("Failed to read config", a.configPath, err)
 		}
 
-		protectedData, err = os.ReadFile(a.protectedPath)
+		protectedData, err = platforms.ReadSafeFile(a.protectedPath)
 		if err != nil {
 			golog.Fatal("Failed to read config", a.protectedPath, err)
 		}
@@ -123,7 +123,7 @@ func RunAgent(args Args) *Agent {
 			agent.configPath = path.Join(agent.configPath, "alm.hujson")
 		}
 
-		if err := platforms.MakeSureFileExists(
+		if err := platforms.MakeSureSafeFileExists(
 			agent.configPath, []byte(platforms.DefaultConfigText),
 		); err != nil {
 			golog.Fatal(ConfFail, agent.configPath, err)
@@ -140,7 +140,7 @@ func RunAgent(args Args) *Agent {
 		}
 		agent.protectedPath = protectedPath
 
-		if err := platforms.MakeSureFileExists(
+		if err := platforms.MakeSureSafeFileExists(
 			agent.protectedPath, []byte(platforms.DefaultProtectedConfigText),
 		); err != nil {
 			golog.Fatal(ConfFail, agent.protectedPath, err)
