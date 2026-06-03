@@ -82,6 +82,7 @@ func TestBuildEngineRunsInitialSysBuild(t *testing.T) {
 		sys,
 		nil,
 		nil,
+		true,
 	)
 	if err != nil {
 		t.Fatalf("BuildEngine error = %v, want nil", err)
@@ -107,6 +108,7 @@ func TestRequestSysRebuildSendsResultToSubscribers(t *testing.T) {
 		sys,
 		[]pasta.NodeClass{testSysBuildClass{inbox: inbox}},
 		nil,
+		true,
 	)
 	if err != nil {
 		t.Fatalf("BuildEngine error = %v, want nil", err)

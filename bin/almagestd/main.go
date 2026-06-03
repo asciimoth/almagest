@@ -84,8 +84,9 @@ func main() {
 		conf.Main,
 		logf,
 		sys,
-		lib.WithDebugNodes(args.DebugNodes, nil),
+		nil,
 		globalBufPool,
+		args.DebugNodes,
 	)
 	if err != nil {
 		golog.Fatal("Engine setup", err)

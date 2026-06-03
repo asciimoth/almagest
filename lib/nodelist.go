@@ -5,31 +5,32 @@ import (
 	"github.com/asciimoth/pasta/pasta/std"
 )
 
-func nodeClasses(engine *engine) []pasta.NodeClass {
+type nodeClassConstructor struct {
+	isDebug     bool
+	constructor func(*engine) pasta.NodeClass
+}
+
+// This list is populated by init functions via regClass()
+var nodeClassConstructors = []nodeClassConstructor{}
+
+func regClass(constructor func(*engine) pasta.NodeClass, isDebug bool) {
+	nodeClassConstructors = append(nodeClassConstructors, nodeClassConstructor{
+		constructor: constructor,
+		isDebug:     isDebug,
+	})
+}
+
+func nodeClasses(engine *engine, isDebug bool) []pasta.NodeClass {
 	// WARN: At init time engine.mainWorkspace is nil
-	classes := []pasta.NodeClass{
-		mockNetClass{},
-		outNetClass{
-			engine: engine,
-		},
-		httpServerClass{
-			engine: engine,
-		},
-		httpClientClass{
-			engine: engine,
-		},
+	classes := make([]pasta.NodeClass, 0, len(nodeClassConstructors))
+	for _, class := range nodeClassConstructors {
+		if class.isDebug && !isDebug {
+			continue
+		}
+		classes = append(classes, class.constructor(engine))
 	}
+
 	// Add pasta standard lib classes
 	classes = append(classes, std.StdClasses()...)
 	return classes
-}
-
-func WithDebugNodes(debug bool, orig []pasta.NodeClass) []pasta.NodeClass {
-	if !debug {
-		return orig
-	}
-	orig = append(orig, []pasta.NodeClass{
-		debugMdClass{},
-	}...)
-	return orig
 }

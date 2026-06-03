@@ -53,6 +53,7 @@ func BuildEngine(
 	sys sysnet.SysBuilder, // use sysnet.NewDebugSysBuilder() if you dont have one
 	extra []pasta.NodeClass,
 	pool bufpool.Pool, // may be nil. Use bufpool.NewTestDebugPool() in tests
+	debug bool, // Should builtin debug nodes be added
 ) (Engine, error) {
 	ctx, cancel := context.WithCancel(ctx)
 
@@ -70,7 +71,7 @@ func BuildEngine(
 		subscriptionIDMapping: make(map[uint64]subMap),
 	}
 
-	classes := nodeClasses(engine)
+	classes := nodeClasses(engine, debug)
 	if len(extra) > 0 {
 		classes = append(classes, extra...)
 	}

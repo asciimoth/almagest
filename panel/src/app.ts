@@ -995,7 +995,7 @@ function renderPlaceholderNodePanel(id: number, node: NodeSnapshot): void {
   section.className = "node-panel-section";
   section.append(
     textElement("h2", shortClass(node.class)),
-    textElement("p", "This node is a placeholder. Its implementation is unavailable, so the demo preserves its ports and links without opening a node menu."),
+    textElement("p", "This node is a placeholder. Its implementation is unavailable now, so almagest preserves its ports and links as placeholders in case implementation will become available later."),
   );
   el.sidekick.replaceChildren(createNodeNameForm(node.name), section);
   const form = el.sidekick.querySelector<HTMLFormElement>("[data-node-name-form]");

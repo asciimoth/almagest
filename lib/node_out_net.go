@@ -7,6 +7,12 @@ import (
 	"github.com/asciimoth/pasta/pasta/std"
 )
 
+func init() {
+	regClass(func(e *engine) pasta.NodeClass {
+		return outNetClass{engine: e}
+	}, false)
+}
+
 // NodeTypeOutNetwork is the node class name for the system outbound network
 // provider.
 const NodeTypeOutNetwork = "almagest/OutNetwork"

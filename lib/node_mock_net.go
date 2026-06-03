@@ -7,6 +7,12 @@ import (
 	"github.com/asciimoth/pasta/pasta/std"
 )
 
+func init() {
+	regClass(func(e *engine) pasta.NodeClass {
+		return mockNetClass{}
+	}, false)
+}
+
 const NodeTypeMockNetwork = "almagest/MockNetwork"
 
 type mockNetClass struct{}

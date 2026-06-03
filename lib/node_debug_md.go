@@ -5,6 +5,12 @@ import (
 	"github.com/asciimoth/pasta/pasta"
 )
 
+func init() {
+	regClass(func(e *engine) pasta.NodeClass {
+		return debugMdClass{}
+	}, true)
+}
+
 const NodeTypeDebugMarkdwon = "debug.almagest/Markdown"
 
 type debugMdClass struct{}

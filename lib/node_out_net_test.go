@@ -88,7 +88,9 @@ func TestOutNetworkRequestsSysRebuildOnInit(t *testing.T) {
 		sys,
 		nil,
 		nil,
+		true,
 	)
+
 	if err != nil {
 		t.Fatalf("BuildEngine error = %v, want nil", err)
 	}
@@ -251,6 +253,7 @@ func TestEngineOutNetworkSendsCachedNetworkToHTTPServerOnLinkAdd(t *testing.T) {
 		sys,
 		[]pasta.NodeClass{captureHTTPServerClass{node: &server}},
 		nil,
+		true,
 	)
 	if err != nil {
 		t.Fatalf("BuildEngine error = %v, want nil", err)

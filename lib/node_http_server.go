@@ -15,6 +15,12 @@ import (
 	"github.com/asciimoth/pasta/pasta/std"
 )
 
+func init() {
+	regClass(func(e *engine) pasta.NodeClass {
+		return httpServerClass{engine: e}
+	}, false)
+}
+
 const (
 	NodeTypeHTTPServer = "almagest/HttpServer"
 
