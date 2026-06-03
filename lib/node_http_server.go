@@ -2,6 +2,7 @@ package lib
 
 import (
 	"context"
+	_ "embed"
 	"errors"
 	"fmt"
 	"net"
@@ -28,15 +29,18 @@ const (
 	DefaultHTTPServerPort = 8080
 )
 
+var (
+	//go:embed node_http_server.md
+	httpServerClassLongDescription string
+)
+
 type httpServerClass struct {
 	engine *engine
 }
 
 func (httpServerClass) ClassName() string        { return NodeTypeHTTPServer }
 func (httpServerClass) ShortDescription() string { return "Debug HTTP server" }
-func (httpServerClass) LongDescription() string {
-	return "Runs a HTTP server over network and responds to every request with the configured string. Use for debug/tcp conncectiviy tests/etc"
-}
+func (httpServerClass) LongDescription() string  { return httpServerClassLongDescription }
 func (httpServerClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: TypeNetwork, InitialPorts: []pasta.Port{
 		NetworkPort("right", "Network"),

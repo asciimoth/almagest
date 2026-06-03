@@ -2,6 +2,7 @@ package lib
 
 import (
 	"context"
+	_ "embed"
 	"errors"
 	"fmt"
 	"maps"
@@ -41,15 +42,18 @@ const (
 	socksServerRestartDelay = time.Second
 )
 
+var (
+	//go:embed node_socks_server.md
+	socksServerClassLongDescription string
+)
+
 type socksServerClass struct {
 	engine *engine
 }
 
 func (socksServerClass) ClassName() string        { return NodeTypeSocksServer }
 func (socksServerClass) ShortDescription() string { return "SOCKS server" }
-func (socksServerClass) LongDescription() string {
-	return "Runs a SOCKS4/SOCKS4a/SOCKS5 proxy server using separate almagest/network inputs for client listening and requested proxy operations."
-}
+func (socksServerClass) LongDescription() string  { return socksServerClassLongDescription }
 func (socksServerClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: TypeNetwork, InitialPorts: []pasta.Port{
 		NetworkPort("right", "listen"),
