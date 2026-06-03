@@ -301,7 +301,7 @@ func (n *socksServerNode) OnFormularMsg(message any) error {
 		if msg.MenuID != pasta.NodeMenuID(n.id) || msg.Field.BlockID != "config" {
 			return nil
 		}
-		n.sendConfigBlock()
+		n.sendConfigFieldStatus(msg)
 	}
 	return nil
 }
@@ -371,6 +371,55 @@ func (n *socksServerNode) applyConfigForm(values map[string]any) error {
 	n.sendConfigBlock()
 	n.restartWorker()
 	return nil
+}
+
+func (n *socksServerNode) sendConfigFieldStatus(msg formular.FieldValidateMessage) {
+	next := n.config
+	switch msg.Field.FieldID {
+	case "socksHost":
+		if value, ok := stringFromAny(msg.Value); ok {
+			next.socksHost = strings.TrimSpace(value)
+		}
+	case "socksPort":
+		if value, ok := intFromAny(msg.Value); ok {
+			next.socksPort = value
+		}
+	case "wsHost":
+		if value, ok := stringFromAny(msg.Value); ok {
+			next.wsHost = strings.TrimSpace(value)
+		}
+	case "wsPort":
+		if value, ok := intFromAny(msg.Value); ok {
+			next.wsPort = value
+		}
+	case "wsPath":
+		if value, ok := stringFromAny(msg.Value); ok {
+			next.wsPath = normalizeSocksServerPath(value)
+		}
+	default:
+		return
+	}
+	if next.wsPath == "" {
+		next.wsPath = DefaultSocksServerWSPath
+	}
+
+	status := formular.StatusOK
+	statusText := ""
+	if err := next.validate(); err != nil {
+		status = formular.StatusError
+		statusText = err.Error()
+	}
+	n.w.SendNodeMenuMsg(n.id, formular.FieldStatusMessage{
+		MessageBase: formular.MessageBase{
+			Type:            formular.MessageFieldStatus,
+			MenuID:          pasta.NodeMenuID(n.id),
+			MenuGeneration:  1,
+			BlockGeneration: 1,
+		},
+		Field:      msg.Field,
+		Status:     status,
+		StatusText: statusText,
+	})
 }
 
 func (n *socksServerNode) restartWorker() {

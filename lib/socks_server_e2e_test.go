@@ -92,6 +92,29 @@ func TestSocksServerFormRejectsSamePlainAndWebSocketAddress(t *testing.T) {
 	e.AssertNodeLabel(socks, fmt.Sprintf("127.0.0.1:%d", socksPort))
 }
 
+func TestSocksServerFieldValidationReportsStatus(t *testing.T) {
+	e := newSocksServerE2E(t)
+	socksPort := httpTestPort()
+	socks := e.addSocksServer("socks", socksPort, nil)
+	e.SubscribeMenus(socks)
+
+	e.Engine.SendNodeFormularMsg(E2EWorkspace, socks, formular.FieldValidateMessage{
+		MessageBase: formular.MessageBase{
+			Type:            formular.MessageFieldValidate,
+			MenuID:          pasta.NodeMenuID(socks),
+			MenuGeneration:  1,
+			BlockGeneration: 1,
+		},
+		Field: formular.FieldRef{BlockID: "config", FieldID: "socksPort"},
+		Value: socksPort,
+	})
+
+	Eventually(t, func() bool {
+		item, ok := e.MenuItem(socks, "config", "socksPort")
+		return ok && item.Field != nil && item.Status == formular.StatusOK
+	}, "socks port validation status")
+}
+
 func newSocksServerE2E(t *testing.T) *socksServerE2E {
 	t.Helper()
 	return &socksServerE2E{NodeE2E: NewNodeE2E(t)}
