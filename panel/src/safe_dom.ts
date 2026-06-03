@@ -149,8 +149,61 @@ export function renderNodeDescription(node: HTMLElement, value: string): void {
     node.textContent = "No long description is registered for this node class.";
     return;
   }
-  const blocks = text.split(/\n{2,}/).map((block) => block.trim()).filter(Boolean);
-  node.replaceChildren(...blocks.map(renderMarkdownParagraph));
+  node.replaceChildren(...parseMarkdownBlocks(text).map(renderMarkdownBlock));
+}
+
+type MarkdownBlock =
+  | { type: "paragraph"; text: string }
+  | { type: "code"; text: string; language: string };
+
+function parseMarkdownBlocks(input: string): MarkdownBlock[] {
+  const blocks: MarkdownBlock[] = [];
+  const lines = input.split(/\n/);
+  let paragraph: string[] = [];
+  let code: string[] | null = null;
+  let language = "";
+
+  const flushParagraph = () => {
+    const text = paragraph.join("\n").trim();
+    if (text) blocks.push({ type: "paragraph", text });
+    paragraph = [];
+  };
+
+  for (const line of lines) {
+    const fence = line.match(/^```([A-Za-z0-9_+.-]*)\s*$/);
+    if (fence && code === null) {
+      flushParagraph();
+      code = [];
+      language = fence[1] ?? "";
+      continue;
+    }
+    if (fence && code !== null) {
+      blocks.push({ type: "code", text: code.join("\n"), language });
+      code = null;
+      language = "";
+      continue;
+    }
+    if (code !== null) {
+      code.push(line);
+      continue;
+    }
+    if (line.trim() === "") {
+      flushParagraph();
+      continue;
+    }
+    paragraph.push(line);
+  }
+
+  if (code !== null) {
+    paragraph.push("```" + language, ...code);
+  }
+  flushParagraph();
+  return blocks;
+}
+
+function renderMarkdownBlock(block: MarkdownBlock): HTMLElement {
+  if (block.type === "code") return renderMarkdownCodeBlock(block.text, block.language);
+  return renderMarkdownParagraph(block.text);
 }
 
 function renderMarkdownParagraph(input: string): HTMLParagraphElement {
@@ -161,6 +214,14 @@ function renderMarkdownParagraph(input: string): HTMLParagraphElement {
     paragraph.append(renderMarkdownInline(line));
   });
   return paragraph;
+}
+
+function renderMarkdownCodeBlock(input: string, language: string): HTMLPreElement {
+  const pre = document.createElement("pre");
+  const code = textElement("code", input);
+  if (language) code.className = `language-${language}`;
+  pre.append(code);
+  return pre;
 }
 
 function renderMarkdownInline(input: string): DocumentFragment {

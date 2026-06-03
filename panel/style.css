@@ -298,6 +298,19 @@ h1 {
   margin-bottom: 0;
 }
 
+.node-description pre {
+  margin: 0 0 10px;
+  overflow-x: auto;
+  border: 1px solid var(--surface0);
+  border-radius: 4px;
+  background: var(--crust);
+  padding: 8px;
+}
+
+.node-description pre:last-child {
+  margin-bottom: 0;
+}
+
 .node-description a {
   color: var(--blue);
 }
@@ -310,6 +323,14 @@ h1 {
   padding: 1px 4px;
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   font-size: 12px;
+}
+
+.node-description pre code {
+  display: block;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  white-space: pre;
 }
 
 .class-button-primary span {

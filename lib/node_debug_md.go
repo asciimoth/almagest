@@ -20,7 +20,7 @@ func (debugMdClass) ShortDescription() string {
 	return "DEBUG node demonstrating markdown descriptions"
 }
 func (debugMdClass) LongDescription() string {
-	return "Text.  \n*Text2*  \n**Text3**  \n[link](http://example.com)"
+	return "Text.  \n*Text2*  \n**Text3**  \n[link](http://example.com)  \n`code`  \n```\ncode2\n```"
 }
 func (debugMdClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: "", InitialPorts: []pasta.Port{}}

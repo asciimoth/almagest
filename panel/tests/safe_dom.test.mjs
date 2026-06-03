@@ -76,6 +76,35 @@ test("node descriptions allow safe markdown only", () => {
   assert.match(root.textContent ?? "", /<img src=x/);
 });
 
+test("node descriptions render multiline code blocks as text", () => {
+  installDOM();
+  const root = document.createElement("div");
+  renderNodeDescription(root, [
+    "Before",
+    "",
+    "```ts",
+    "const value = `<script>globalThis.__xss = true</script>`;",
+    "",
+    "console.log(value);",
+    "```",
+    "",
+    "After `inline`",
+  ].join("\n"));
+
+  assertNoParsedPayload(root);
+  const blocks = [...root.children].map((child) => child.tagName.toLowerCase());
+  assert.deepEqual(blocks, ["p", "pre", "p"]);
+
+  const code = root.querySelector("pre > code");
+  assert.equal(code?.className, "language-ts");
+  assert.equal(code?.textContent, [
+    "const value = `<script>globalThis.__xss = true</script>`;",
+    "",
+    "console.log(value);",
+  ].join("\n"));
+  assert.equal(root.querySelectorAll("p code").length, 1);
+});
+
 test("panel source does not use HTML parser APIs for rendering", async () => {
   const files = ["src/app.ts", "src/safe_dom.ts"];
   for (const file of files) {
