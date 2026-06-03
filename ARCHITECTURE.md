@@ -108,7 +108,7 @@ args override it in memory.
 
 System integration is selected from `Main.System.Type`:
 
-- `debug`: `sysnet.NewDebugSysBuilder()`.
+- `debug`: `sysnetdebug.NewDebugSysBuilder(nil)`.
 - `native` or empty: `platforms.SystemIntegration`.
 
 Use debug integration for local runnable experiments. Native platform

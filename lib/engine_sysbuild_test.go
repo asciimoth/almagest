@@ -9,24 +9,28 @@ import (
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/gonnect/sysnet"
 	"github.com/asciimoth/pasta/pasta"
+	sysnetdebug "github.com/asciimoth/sysnet-debug"
 )
 
 const testSysBuildNodeClassName = "test/SysBuildNode"
 
 type recordingSysBuilder struct {
-	*sysnet.DebugSysBuilder
-	builds []sysnet.BuildOpts
+	*sysnetdebug.DebugSysBuilder
+	builds  []sysnet.BuildOpts
+	systems []*sysnet.System
 }
 
 func newRecordingSysBuilder() *recordingSysBuilder {
 	return &recordingSysBuilder{
-		DebugSysBuilder: sysnet.NewDebugSysBuilder(),
+		DebugSysBuilder: sysnetdebug.NewDebugSysBuilder(nil),
 	}
 }
 
 func (r *recordingSysBuilder) Build(opts sysnet.BuildOpts) (*sysnet.System, error) {
 	r.builds = append(r.builds, opts)
-	return r.DebugSysBuilder.Build(opts)
+	system, err := r.DebugSysBuilder.Build(opts)
+	r.systems = append(r.systems, system)
+	return system, err
 }
 
 type testSysBuildClass struct {

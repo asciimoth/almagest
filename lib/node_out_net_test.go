@@ -248,9 +248,7 @@ func TestEngineOutNetworkSendsCachedNetworkToHTTPServerOnLinkAdd(t *testing.T) {
 	pool := bufpool.NewTestDebugPool(t)
 	defer pool.Close()
 
-	base := gonnect.NewLoopbackNetwok()
 	sys := newRecordingSysBuilder()
-	sys.OutNet = base
 	var server *httpServerNode
 	engineIface, err := BuildEngine(
 		context.Background(),
@@ -275,6 +273,7 @@ func TestEngineOutNetworkSendsCachedNetworkToHTTPServerOnLinkAdd(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddNode OutNetwork: %v", err)
 	}
+	base := sys.systems[len(sys.systems)-1].OutNet
 	out, ok := engine.NodeSnapshot("main", outID)
 	if !ok || len(out.LeftPorts) != 1 {
 		t.Fatalf("OutNetwork snapshot = %#v, %v; want one left port", out, ok)

@@ -7,8 +7,9 @@ require (
 	github.com/asciimoth/bufpool v0.3.0
 	github.com/asciimoth/configer/configer v0.3.0
 	github.com/asciimoth/formular v0.2.2
-	github.com/asciimoth/gonnect v0.16.0
+	github.com/asciimoth/gonnect v0.17.0
 	github.com/asciimoth/pasta/pasta v0.6.0
+	github.com/asciimoth/sysnet-debug v0.1.0
 )
 
 require (

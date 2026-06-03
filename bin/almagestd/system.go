@@ -5,8 +5,8 @@ import (
 
 	"github.com/asciimoth/almagest/bin/platforms"
 	"github.com/asciimoth/configer/configer"
-	"github.com/asciimoth/gonnect"
 	"github.com/asciimoth/gonnect/sysnet"
+	sysnetdebug "github.com/asciimoth/sysnet-debug"
 	"github.com/kataras/golog"
 )
 
@@ -36,8 +36,5 @@ func SystemIntegration(cfg *Config) (sysnet.SysBuilder, error) {
 func BuildDebugIntegration(cfg *Config) (sysnet.SysBuilder, error) {
 	// TODO: Custom debug integration
 	// TODO: Separated debug admin API for IP packets on Tun emulation and so on
-	debug := sysnet.NewDebugSysBuilder()
-	debug.OutNet = gonnect.NewLoopbackNetwok()
-	debug.LocalNet = gonnect.NewLoopbackNetwok()
-	return debug, nil
+	return sysnetdebug.NewDebugSysBuilder(nil), nil
 }

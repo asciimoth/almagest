@@ -50,7 +50,7 @@ func BuildEngine(
 	ctx context.Context,
 	cfg configer.Config, // may be nil
 	logf LogFactory,
-	sys sysnet.SysBuilder, // use sysnet.NewDebugSysBuilder() if you dont have one
+	sys sysnet.SysBuilder, // use sysnetdebug.NewDebugSysBuilder(nil) if you dont have one
 	extra []pasta.NodeClass,
 	pool bufpool.Pool, // may be nil. Use bufpool.NewTestDebugPool() in tests
 	debug bool, // Should builtin debug nodes be added
