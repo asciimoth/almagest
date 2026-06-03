@@ -14,8 +14,12 @@ github.com/asciimoth/formular v0.2.2 h1:7ShX5M0sjzzPBV6TjVWpLRCH2lQFh4/1NnOl/YCw
 github.com/asciimoth/formular v0.2.2/go.mod h1:6VBEx4KTWp18mpkQn7d3Buoojzf9II5+ZAVuc4DF8AE=
 github.com/asciimoth/gonnect v0.17.0 h1:PTjJXw2zo+3TT922MM22WPUg8TOWrtERvu1Jq9GmEMw=
 github.com/asciimoth/gonnect v0.17.0/go.mod h1:CohhruGEkUgKLF0ypR/RNFrdrqmJgUkKhvjMilED9Kk=
+github.com/asciimoth/ident v0.2.0 h1:G6qaTnkxTH+idV5YzJ7AvgC2nLQDE/aoV7rPCOtN07I=
+github.com/asciimoth/ident v0.2.0/go.mod h1:JNNFnfM7/hdcXVkFBBOAU/vpJM+0gucYaAYwB694bT0=
 github.com/asciimoth/pasta/pasta v0.6.0 h1:GdjO51yK5gwNyS/DOW82HkL32Qgz3n92fmCp+Pa4KBw=
 github.com/asciimoth/pasta/pasta v0.6.0/go.mod h1:AFDDtNP27VZ/e1S7biROtBtLA1KQ4JpnJlj//dG97jY=
+github.com/asciimoth/socksgo v0.2.16 h1:DgV5BqYaxwe2kbxJA/zOzOxrVxEYQ5xJ/Wxg+TM/DgI=
+github.com/asciimoth/socksgo v0.2.16/go.mod h1:wuLd/jD3U/QUoai8ZAOciUPmVzIwlSagIB6MFGu4Jv4=
 github.com/asciimoth/sysnet-debug v0.1.0 h1:bw0Vb8Ii7xakhfLBDhDEypqVMs3n55PMIz7Z5DJ92Dg=
 github.com/asciimoth/sysnet-debug v0.1.0/go.mod h1:BChiOv8LPg6NmfYFP9XCeT8GzoTUcA7KQu2DLal9d3s=
 github.com/bahlo/generic-list-go v0.2.0 h1:5sz/EEAK+ls5wF+NeqDpk5+iNdMDXrh3z3nPnH1Wvgk=
@@ -44,6 +48,8 @@ github.com/tailscale/hujson v0.0.0-20260302212456-ecc657c15afd h1:Rf9uhF1+VJ7ZHq
 github.com/tailscale/hujson v0.0.0-20260302212456-ecc657c15afd/go.mod h1:EbW0wDK/qEUYI0A5bqq0C2kF8JTQwWONmGDBbzsxxHo=
 github.com/wk8/go-ordered-map/v2 v2.1.8 h1:5h/BUHu93oj4gIdvHHHGsScSTMijfx5PeYkE/fJgbpc=
 github.com/wk8/go-ordered-map/v2 v2.1.8/go.mod h1:5nJHM5DyteebpVlHnWMV0rPz6Zp7+xBAnxjb1X5vnTw=
+github.com/xtaci/smux v1.5.44 h1:7T61zLfFX1jokXj6d+lPaxHnVwgYiJ7EN94DAudKqpg=
+github.com/xtaci/smux v1.5.44/go.mod h1:IGQ9QYrBphmb/4aTnLEcJby0TNr3NV+OslIOMrX825Q=
 golang.org/x/net v0.54.0 h1:2zJIZAxAHV/OHCDTCOHAYehQzLfSXuf/5SoL/Dv6w/w=
 golang.org/x/net v0.54.0/go.mod h1:Sj4oj8jK6XmHpBZU/zWHw3BV3abl4Kvi+Ut7cQcY+cQ=
 golang.org/x/sys v0.44.0 h1:ildZl3J4uzeKP07r2F++Op7E9B29JRUy+a27EibtBTQ=
