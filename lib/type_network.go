@@ -2,6 +2,7 @@ package lib
 
 import (
 	"io"
+	"reflect"
 
 	"github.com/asciimoth/gonnect"
 	"github.com/asciimoth/pasta/pasta"
@@ -63,4 +64,55 @@ func BindNetworkResource(w *pasta.Workspace, node, link uint64, n NetworkCloser)
 	if link != 0 {
 		_ = w.AddLinkResource(link, n)
 	}
+}
+
+func SameNetworkSource(a, b NetworkCloser) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return SameComparableValue(NetworkSource(a), NetworkSource(b))
+}
+
+func SameNetworkInstance(a, b NetworkCloser) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return SameComparableValue(a, b)
+}
+
+func NetworkSource(n any) any {
+	for n != nil {
+		wrapped := gonnect.GetWrapped(n)
+		if wrapped == nil {
+			return n
+		}
+		n = wrapped
+	}
+	return nil
+}
+
+func SameComparableValue(a, b any) bool {
+	av := reflect.ValueOf(a)
+	bv := reflect.ValueOf(b)
+	if !av.IsValid() || !bv.IsValid() {
+		return !av.IsValid() && !bv.IsValid()
+	}
+	if av.Type() != bv.Type() || !av.Type().Comparable() {
+		return false
+	}
+	return av.Interface() == bv.Interface()
+}
+
+func NetworkIsReady(n NetworkCloser) bool {
+	if n == nil {
+		return false
+	}
+	updown, ok := n.(interface {
+		IsUp() (bool, error)
+	})
+	if !ok {
+		return true
+	}
+	up, err := updown.IsUp()
+	return err == nil && up
 }

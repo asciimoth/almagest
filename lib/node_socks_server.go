@@ -254,10 +254,22 @@ func (n *socksServerNode) OnEvent(event pasta.Event, linkType string, _ []string
 
 	switch event.ReceiverPort {
 	case n.listen:
+		if NetworkIsReady(n.listenNetwork) && SameNetworkSource(n.listenNetwork, payload.Network) {
+			if !SameNetworkInstance(n.listenNetwork, payload.Network) {
+				_ = payload.Network.Close()
+			}
+			return nil
+		}
 		BindNetworkResource(n.w, n.id, event.Link, payload.Network)
 		n.listenNetwork = payload.Network
 		n.restartWorker()
 	case n.proxy:
+		if NetworkIsReady(n.proxyNetwork) && SameNetworkSource(n.proxyNetwork, payload.Network) {
+			if !SameNetworkInstance(n.proxyNetwork, payload.Network) {
+				_ = payload.Network.Close()
+			}
+			return nil
+		}
 		BindNetworkResource(n.w, n.id, event.Link, payload.Network)
 		n.proxyNetwork = payload.Network
 		n.restartWorker()

@@ -215,6 +215,12 @@ func (n *httpServerNode) OnEvent(event pasta.Event, linkType string, _ []string,
 		if !ok || payload.Network == nil {
 			return nil
 		}
+		if NetworkIsReady(n.network) && SameNetworkSource(n.network, payload.Network) {
+			if !SameNetworkInstance(n.network, payload.Network) {
+				_ = payload.Network.Close()
+			}
+			return nil
+		}
 		BindNetworkResource(n.w, n.id, event.Link, payload.Network)
 		n.network = payload.Network
 		n.restartWorker()

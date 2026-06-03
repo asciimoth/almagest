@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/asciimoth/formular"
 	"github.com/asciimoth/pasta/pasta/std"
@@ -155,11 +156,26 @@ func (e *httpE2E) waitServerListening(server uint64, address string) {
 
 func (e *httpE2E) waitClientResponse(client uint64, status, response string) {
 	e.T.Helper()
-	Eventually(e.T, func() bool {
-		return e.clientStatus(client) == "Status: "+status &&
-			e.clientResultField(client, "error") == "" &&
-			e.clientResultField(client, "response") == response
-	}, "client response %q %q", status, response)
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		gotStatus := e.clientStatus(client)
+		gotErr := e.clientResultField(client, "error")
+		gotResp := e.clientResultField(client, "response")
+		if gotStatus == "Status: "+status && gotErr == "" && gotResp == response {
+			return
+		}
+		if time.Now().After(deadline) {
+			e.T.Fatalf(
+				"timed out waiting for client response %q %q; got status=%q error=%q response=%q",
+				status,
+				response,
+				gotStatus,
+				gotErr,
+				gotResp,
+			)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }
 
 func (e *httpE2E) waitClientFailure(client uint64, wantErrPart string) {
