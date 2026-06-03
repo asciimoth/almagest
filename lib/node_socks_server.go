@@ -372,7 +372,7 @@ func (n *socksServerNode) applyConfigForm(values map[string]any) error {
 	n.formError = ""
 	n.config = next
 	_ = n.updateLabel()
-	n.sendConfigBlock()
+	n.sendForcedMenuSnapshot()
 	n.restartWorker()
 	return nil
 }
@@ -682,13 +682,20 @@ func socksServerAuth(users []socksServerUser) *protocol.AuthHandlers {
 	if len(users) == 0 {
 		return nil
 	}
-	allowed := make(map[string]string, len(users))
+	allowed := make(map[string]map[string]struct{}, len(users))
 	for _, user := range users {
-		allowed[user.username] = user.password
+		if allowed[user.username] == nil {
+			allowed[user.username] = map[string]struct{}{}
+		}
+		allowed[user.username][user.password] = struct{}{}
 	}
 	return (&protocol.AuthHandlers{}).Add(&protocol.PassAuthHandler{VerifyFn: func(user, pass string) bool {
-		want, ok := allowed[user]
-		return ok && want == pass
+		passwords, ok := allowed[user]
+		if !ok {
+			return false
+		}
+		_, ok = passwords[pass]
+		return ok
 	}})
 }
 
@@ -733,6 +740,17 @@ func (n *socksServerNode) portHasLinks(port uint64) bool {
 func (n *socksServerNode) sendMenuSnapshot() {
 	n.w.SendNodeMenuMsg(n.id, formular.MenuSnapshotMessage{
 		MessageBase: formular.MessageBase{Type: formular.MessageMenuSnapshot, MenuID: pasta.NodeMenuID(n.id), MenuGeneration: 1},
+		Blocks:      []formular.Block{n.configBlock(), n.logsBlock()},
+	})
+}
+
+func (n *socksServerNode) sendForcedMenuSnapshot() {
+	if n.w == nil || n.id == 0 {
+		return
+	}
+	n.w.SendNodeMenuMsg(n.id, formular.MenuSnapshotMessage{
+		MessageBase: formular.MessageBase{Type: formular.MessageMenuSnapshot, MenuID: pasta.NodeMenuID(n.id), MenuGeneration: 1},
+		Force:       true,
 		Blocks:      []formular.Block{n.configBlock(), n.logsBlock()},
 	})
 }

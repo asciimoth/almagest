@@ -52,7 +52,10 @@ func TestSocksServerE2EUserPassAuth(t *testing.T) {
 	socksPort := httpTestPort()
 	httpPort := httpTestPort()
 	server := e.addHTTPServer("target", httpPort)
-	socks := e.addSocksServer("socks", socksPort, []socksServerUser{{id: "user-1", username: "alice", password: "secret"}})
+	socks := e.addSocksServer("socks", socksPort, []socksServerUser{
+		{id: "user-1", username: "alice", password: "secret"},
+		{id: "user-2", username: "alice", password: "alternate"},
+	})
 	e.SubscribeMenus(server, socks)
 
 	e.MustAddTypedLinkByPortName(TypeNetwork, out, "left", "Network", server, "right", "Network")
@@ -62,6 +65,10 @@ func TestSocksServerE2EUserPassAuth(t *testing.T) {
 
 	e.waitSocksHTTPGetFailure(socksPort, httpPort, (&protocol.AuthMethods{}).Add(&protocol.PassAuthMethod{User: "alice", Pass: "wrong"}))
 	body := e.waitSocksHTTPGet(socksPort, httpPort, (&protocol.AuthMethods{}).Add(&protocol.PassAuthMethod{User: "alice", Pass: "secret"}))
+	if body != "Debug http server response" {
+		t.Fatalf("response body = %q, want debug response", body)
+	}
+	body = e.waitSocksHTTPGet(socksPort, httpPort, (&protocol.AuthMethods{}).Add(&protocol.PassAuthMethod{User: "alice", Pass: "alternate"}))
 	if body != "Debug http server response" {
 		t.Fatalf("response body = %q, want debug response", body)
 	}

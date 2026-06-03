@@ -7,7 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/asciimoth/formular"
 	"github.com/asciimoth/gonnect"
+	"github.com/asciimoth/socksgo/protocol"
 )
 
 func TestBuildSocksGoServerRoutesClientAndProxyNetworks(t *testing.T) {
@@ -52,6 +54,57 @@ func TestBuildSocksGoServerRoutesClientAndProxyNetworks(t *testing.T) {
 		"proxy.ListenPacket udp 127.0.0.1:0",
 		"proxy.LookupHost example.test",
 	})
+}
+
+func TestSocksServerAuthAllowsDuplicateUsernamePasswords(t *testing.T) {
+	auth := socksServerAuth([]socksServerUser{
+		{username: "alice", password: "one"},
+		{username: "alice", password: "two"},
+		{username: "bob", password: "one"},
+	})
+	handler, ok := auth.Get(protocol.PassAuthCode).(*protocol.PassAuthHandler)
+	if !ok {
+		t.Fatalf("auth handler = %T, want *protocol.PassAuthHandler", auth.Get(protocol.PassAuthCode))
+	}
+
+	for _, tc := range []struct {
+		user string
+		pass string
+		want bool
+	}{
+		{user: "alice", pass: "one", want: true},
+		{user: "alice", pass: "two", want: true},
+		{user: "alice", pass: "wrong", want: false},
+		{user: "bob", pass: "one", want: true},
+		{user: "bob", pass: "two", want: false},
+		{user: "carol", pass: "one", want: false},
+	} {
+		if got := handler.VerifyFn(tc.user, tc.pass); got != tc.want {
+			t.Fatalf("VerifyFn(%q, %q) = %v, want %v", tc.user, tc.pass, got, tc.want)
+		}
+	}
+}
+
+func TestParseSocksServerUsersKeepsAppliedRemoval(t *testing.T) {
+	users, ok := parseSocksServerUsers([]formular.ArrayElementValue{
+		{
+			ID:       "user-2",
+			Template: "user",
+			Values: map[string]any{
+				"username": "bob",
+				"password": "secret",
+			},
+		},
+	})
+	if !ok {
+		t.Fatal("parseSocksServerUsers ok = false, want true")
+	}
+	if len(users) != 1 {
+		t.Fatalf("users = %#v, want one user", users)
+	}
+	if users[0] != (socksServerUser{id: "user-2", username: "bob", password: "secret"}) {
+		t.Fatalf("users[0] = %#v, want bob", users[0])
+	}
 }
 
 func assertStringSlice(t *testing.T, got, want []string) {
