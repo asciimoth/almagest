@@ -56,6 +56,7 @@ type socksClientNode struct {
 
 	outNetwork NetworkCloser
 	client     *socksgo.Client
+	sent       map[uint64]NetworkCloser
 	proxyURL   string
 	errText    string
 }
@@ -135,7 +136,7 @@ func (n *socksClientNode) OnLinkAdd(link, port uint64, _, _ string) error {
 	return nil
 }
 
-func (n *socksClientNode) OnLinkRemoved(_ uint64, port uint64, _, _ string) error {
+func (n *socksClientNode) OnLinkRemoved(link uint64, port uint64, _, _ string) error {
 	switch port {
 	case n.out:
 		n.outNetwork = nil
@@ -143,6 +144,8 @@ func (n *socksClientNode) OnLinkRemoved(_ uint64, port uint64, _, _ string) erro
 		n.sendAll()
 	case n.url:
 		n.sendConfigBlock()
+	case n.in:
+		n.closeSentNetwork(link)
 	}
 	return nil
 }
@@ -222,6 +225,7 @@ func (n *socksClientNode) setProxyURL(value string) {
 }
 
 func (n *socksClientNode) rebuildClient() {
+	n.closeSentNetworks()
 	client, err := buildSocksGoClient(n.proxyURL, n.outNetwork)
 	if err != nil {
 		n.client = nil
@@ -276,9 +280,34 @@ func (n *socksClientNode) sendNetworkToLink(link uint64) {
 	if n.client == nil || n.outNetwork == nil {
 		return
 	}
+	n.closeSentNetwork(link)
 	wrapper := gonnect.DetachNetwork(n.client)
+	if n.sent == nil {
+		n.sent = make(map[uint64]NetworkCloser)
+	}
+	n.sent[link] = wrapper
 	BindNetworkResource(n.w, n.id, link, wrapper)
 	n.w.EmitEvent(n.id, link, NetworkPayload{Network: wrapper})
+}
+
+func (n *socksClientNode) closeSentNetwork(link uint64) {
+	if n.sent == nil {
+		return
+	}
+	network := n.sent[link]
+	delete(n.sent, link)
+	if network != nil {
+		_ = network.Close()
+	}
+}
+
+func (n *socksClientNode) closeSentNetworks() {
+	for link, network := range n.sent {
+		delete(n.sent, link)
+		if network != nil {
+			_ = network.Close()
+		}
+	}
 }
 
 func (n *socksClientNode) updateLabel() error {

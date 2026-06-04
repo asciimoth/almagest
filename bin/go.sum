@@ -18,8 +18,10 @@ github.com/asciimoth/ident v0.2.0 h1:G6qaTnkxTH+idV5YzJ7AvgC2nLQDE/aoV7rPCOtN07I
 github.com/asciimoth/ident v0.2.0/go.mod h1:JNNFnfM7/hdcXVkFBBOAU/vpJM+0gucYaAYwB694bT0=
 github.com/asciimoth/pasta/pasta v0.6.0 h1:GdjO51yK5gwNyS/DOW82HkL32Qgz3n92fmCp+Pa4KBw=
 github.com/asciimoth/pasta/pasta v0.6.0/go.mod h1:AFDDtNP27VZ/e1S7biROtBtLA1KQ4JpnJlj//dG97jY=
-github.com/asciimoth/socksgo v0.2.16 h1:DgV5BqYaxwe2kbxJA/zOzOxrVxEYQ5xJ/Wxg+TM/DgI=
-github.com/asciimoth/socksgo v0.2.16/go.mod h1:wuLd/jD3U/QUoai8ZAOciUPmVzIwlSagIB6MFGu4Jv4=
+github.com/asciimoth/putback v0.3.0 h1:NKyX1K2yR/pHt9ov7BifA7qd8oMSOhsit4hMf694e30=
+github.com/asciimoth/putback v0.3.0/go.mod h1:K4u9GV2oQVToze+iKSA/e2V26lusyirYqBZuOZnw2YA=
+github.com/asciimoth/socksgo v0.2.22 h1:tpgUajauamCW41TvoEFwO0KvA4Ray8mNwC32ln0MSpo=
+github.com/asciimoth/socksgo v0.2.22/go.mod h1:wuLd/jD3U/QUoai8ZAOciUPmVzIwlSagIB6MFGu4Jv4=
 github.com/asciimoth/sysnet-debug v0.1.0 h1:bw0Vb8Ii7xakhfLBDhDEypqVMs3n55PMIz7Z5DJ92Dg=
 github.com/asciimoth/sysnet-debug v0.1.0/go.mod h1:BChiOv8LPg6NmfYFP9XCeT8GzoTUcA7KQu2DLal9d3s=
 github.com/bahlo/generic-list-go v0.2.0 h1:5sz/EEAK+ls5wF+NeqDpk5+iNdMDXrh3z3nPnH1Wvgk=

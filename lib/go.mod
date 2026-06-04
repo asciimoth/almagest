@@ -9,13 +9,14 @@ require (
 	github.com/asciimoth/formular v0.2.2
 	github.com/asciimoth/gonnect v0.17.0
 	github.com/asciimoth/pasta/pasta v0.6.0
-	github.com/asciimoth/socksgo v0.2.16
+	github.com/asciimoth/socksgo v0.2.22
 	github.com/asciimoth/sysnet-debug v0.1.0
 	github.com/coder/websocket v1.8.14
 )
 
 require (
 	github.com/asciimoth/ident v0.2.0 // indirect
+	github.com/asciimoth/putback v0.3.0 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect

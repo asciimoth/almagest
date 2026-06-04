@@ -525,6 +525,13 @@ func runSocksServerOnce(ctx context.Context, logger pasta.Logger, w *pasta.Works
 		}
 	}()
 
+	listenNetwork := gonnect.DetachNetwork(cfg.listenNetwork)
+	defer listenNetwork.Close() //nolint
+	proxyNetwork := gonnect.DetachNetwork(cfg.proxyNetwork)
+	defer proxyNetwork.Close() //nolint
+	cfg.listenNetwork = listenNetwork
+	cfg.proxyNetwork = proxyNetwork
+
 	server := buildSocksGoServer(logger, cfg)
 	errs := make(chan error, 2)
 	started := 0
