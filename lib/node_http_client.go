@@ -456,11 +456,13 @@ func doHTTPRequest(parent context.Context, req httpClientRequest) httpClientResu
 		return httpClientResult{id: req.id, err: err.Error()}
 	}
 
-	client := &http.Client{Transport: &http.Transport{
+	transport := &http.Transport{
 		DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
 			return req.network.Dial(ctx, network, address)
 		},
-	}}
+	}
+	defer transport.CloseIdleConnections()
+	client := &http.Client{Transport: transport}
 
 	resp, err := client.Do(httpReq)
 	if err != nil {

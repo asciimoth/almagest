@@ -24,7 +24,7 @@ require (
 	github.com/asciimoth/badlock v0.1.1 // indirect
 	github.com/asciimoth/ident v0.2.0 // indirect
 	github.com/asciimoth/putback v0.3.0 // indirect
-	github.com/asciimoth/socksgo v0.2.22 // indirect
+	github.com/asciimoth/socksgo v0.2.23 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect

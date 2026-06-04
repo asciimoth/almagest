@@ -2,7 +2,9 @@ package lib
 
 import (
 	"fmt"
+	"net"
 	"os"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -230,6 +232,52 @@ func TestHTTPServerThroughSocksClientE2E(t *testing.T) {
 	_ = httpServerSocksLink
 }
 
+func TestHTTPServerThroughPlainSocksBindDoesNotStopBeforeFirstAccept(t *testing.T) {
+	e := newHTTPE2E(t)
+	httpServer, _, socksServer := e.setupHTTPServerThroughSocksClient(
+		fmt.Sprintf("socks5://127.0.0.1:%d", httpTestPort()),
+		httpTestPort(),
+	)
+
+	// Regression coverage for the daemon loop seen with ./local/alm.hujson:
+	// HttpServer.Listen goes through SocksClient.Listen, which uses plain
+	// SOCKS BIND without "?gost". Plain BIND is one-shot after an inbound
+	// connection, but it must stay open while idle. The broken behavior was an
+	// immediate "server stopped: EOF" before any HTTP client connected, causing
+	// the daemon to reconnect to the SOCKS server forever.
+	e.assertServerNoNewLogFor(httpServer, "server stopped:", 750*time.Millisecond)
+	e.assertSocksNoNewLogFor(socksServer, "closed: accept", 750*time.Millisecond)
+}
+
+func TestHTTPServerThroughPlainSocksBindStopsOnlyAfterFirstAcceptedConnection(t *testing.T) {
+	e := newHTTPE2E(t)
+	httpServer, httpClient, _ := e.setupHTTPServerThroughSocksClient(
+		fmt.Sprintf("socks5://127.0.0.1:%d", httpTestPort()),
+		httpTestPort(),
+	)
+	e.assertServerNoNewLogFor(httpServer, "server stopped:", 250*time.Millisecond)
+	stoppedBefore := e.serverLogCount(httpServer, "server stopped:")
+	listeningBefore := e.serverLogCount(httpServer, "listening on ")
+
+	// Standard SOCKS BIND is expected to accept only one incoming connection.
+	// After that first request is served, the HTTP server should observe EOF
+	// and restart its listener. This documents the expected failure point so
+	// the idle EOF regression above cannot be hidden by the restart loop.
+	e.assertClientRequestWorks(httpClient)
+	Eventually(t, func() bool {
+		return e.serverLogCount(httpServer, "server stopped:") > stoppedBefore
+	}, "plain BIND listener stops after first accepted request")
+	Eventually(t, func() bool {
+		return e.serverLogCount(httpServer, "listening on ") > listeningBefore
+	}, "plain BIND HTTP server listener restarts after first accepted request")
+
+	stoppedAfterRestart := e.serverLogCount(httpServer, "server stopped:")
+	e.assertServerNoNewLogFor(httpServer, "server stopped:", 750*time.Millisecond)
+	if got := e.serverLogCount(httpServer, "server stopped:"); got != stoppedAfterRestart {
+		t.Fatalf("server stopped log count = %d, want %d after idle restart", got, stoppedAfterRestart)
+	}
+}
+
 func TestHTTPClientServerE2EMockNetwork(t *testing.T) {
 	e := newHTTPE2E(t)
 	port := httpTestPort()
@@ -251,6 +299,50 @@ func TestHTTPClientServerE2EMockNetwork(t *testing.T) {
 func newHTTPE2E(t *testing.T) *httpE2E {
 	t.Helper()
 	return &httpE2E{NodeE2E: NewNodeE2E(t)}
+}
+
+func (e *httpE2E) setupHTTPServerThroughSocksClient(proxyURL string, httpPort int) (uint64, uint64, uint64) {
+	e.T.Helper()
+	mock := e.AddNode(NodeTypeMockNetwork, "mock")
+	serverOut := e.AddNode(NodeTypeOutNetwork, "server-out")
+	listenOut := e.AddNode(NodeTypeOutNetwork, "listen-out")
+	url := e.addStringConstant("socks-url", proxyURL)
+	socksClient := e.AddNode(NodeTypeSocksClient, "socks-client")
+	httpServer := e.addHTTPServer("http-server", httpPort)
+	httpClient := e.addHTTPClient("http-client", httpPort)
+	proxyPort := proxyPortFromURL(e.T, proxyURL)
+	socksServer := e.addSocksServer("socks-server", proxyPort, nil)
+	e.SubscribeMenus(url, socksClient, httpClient, socksServer, httpServer)
+	e.waitClientRequestField(httpClient, "url", fmt.Sprintf("http://127.0.0.1:%d/", httpPort))
+
+	e.MustAddTypedLinkByPortName(std.TypeString, url, "right", "output", socksClient, "left", "Proxy URL")
+	e.connectByPortName(socksClient, "left", "Network", httpServer, "right", "Network")
+	e.connectByPortName(serverOut, "left", "Network", socksClient, "right", "out")
+	e.connectByPortName(listenOut, "left", "Network", socksServer, "right", "listen")
+	e.connectByPortName(mock, "left", "Network", socksServer, "right", "proxy")
+	e.connectByPortName(mock, "left", "Network", httpClient, "right", "Network")
+
+	e.WaitNodeLabel(socksClient, proxyURL)
+	e.waitSocksLog(socksServer, fmt.Sprintf("socks listening on 127.0.0.1:%d", proxyPort))
+	e.waitServerListening(httpServer, fmt.Sprintf("127.0.0.1:%d", httpPort))
+	return httpServer, httpClient, socksServer
+}
+
+func proxyPortFromURL(t *testing.T, proxyURL string) int {
+	t.Helper()
+	hostPort := strings.TrimPrefix(proxyURL, "socks5://")
+	if i := strings.IndexByte(hostPort, '?'); i >= 0 {
+		hostPort = hostPort[:i]
+	}
+	_, portString, err := net.SplitHostPort(hostPort)
+	if err != nil {
+		t.Fatalf("proxy URL %q is not a socks5 host:port URL: %v", proxyURL, err)
+	}
+	port, err := strconv.Atoi(portString)
+	if err != nil {
+		t.Fatalf("proxy URL %q port is not an integer: %v", proxyURL, err)
+	}
+	return port
 }
 
 func (e *httpE2E) addHTTPServer(name string, port int) uint64 {
@@ -479,17 +571,60 @@ func (e *httpE2E) assertServerLog(server uint64, wantPart string) {
 	}
 }
 
+func (e *httpE2E) assertServerNoNewLogFor(server uint64, wantPart string, duration time.Duration) {
+	e.T.Helper()
+	before := e.serverLogCount(server, wantPart)
+	deadline := time.Now().Add(duration)
+	for time.Now().Before(deadline) {
+		if got := e.serverLogCount(server, wantPart); got != before {
+			e.T.Fatalf("server log count for %q changed from %d to %d during %s", wantPart, before, got, duration)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
 func (e *httpE2E) serverLogsContain(server uint64, wantPart string) bool {
+	return e.serverLogCount(server, wantPart) > 0
+}
+
+func (e *httpE2E) serverLogCount(server uint64, wantPart string) int {
 	item, ok := e.MenuItem(server, "logs", "worker")
 	if !ok {
-		return false
+		return 0
 	}
+	count := 0
 	for _, line := range item.Logs {
 		if strings.Contains(line.Text, wantPart) {
-			return true
+			count++
 		}
 	}
-	return false
+	return count
+}
+
+func (e *httpE2E) assertSocksNoNewLogFor(socks uint64, wantPart string, duration time.Duration) {
+	e.T.Helper()
+	before := e.socksLogCount(socks, wantPart)
+	deadline := time.Now().Add(duration)
+	for time.Now().Before(deadline) {
+		if got := e.socksLogCount(socks, wantPart); got != before {
+			e.T.Fatalf("socks log count for %q changed from %d to %d during %s", wantPart, before, got, duration)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func (e *httpE2E) socksLogCount(socks uint64, wantPart string) int {
+	item, ok := e.MenuItem(socks, "logs", "worker")
+	if !ok {
+		return 0
+	}
+	count := 0
+	for _, line := range item.Logs {
+		if strings.Contains(line.Text, wantPart) {
+			count++
+		}
+	}
+	return count
 }
 
 func (e *httpE2E) clientStatus(client uint64) string {
