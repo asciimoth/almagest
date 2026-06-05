@@ -15,7 +15,7 @@ import (
 )
 
 var (
-	_ lib.Logger = &Logger{}
+	_ almagest.Logger = &Logger{}
 )
 
 // TODO: Improve performance
@@ -79,7 +79,7 @@ func NewLogFactory(cfg LogCacheConfig) *LogFactory {
 	}
 }
 
-func (l *LogFactory) EngineLogger() lib.Logger {
+func (l *LogFactory) EngineLogger() almagest.Logger {
 	return &Logger{
 		prefix: "[engine]",
 		level:  l.level,
@@ -88,7 +88,7 @@ func (l *LogFactory) EngineLogger() lib.Logger {
 	}
 }
 
-func (l *LogFactory) DaemonLogger() lib.Logger {
+func (l *LogFactory) DaemonLogger() almagest.Logger {
 	return &Logger{
 		prefix: "[daemon]",
 		level:  l.level,

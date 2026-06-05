@@ -16,10 +16,10 @@ type configWriter interface {
 }
 
 type configAutosaver struct {
-	engine lib.Engine
+	engine almagest.Engine
 	config *Config
 	agent  configWriter
-	logger lib.Logger
+	logger almagest.Logger
 	idle   time.Duration
 
 	mu     sync.Mutex
@@ -29,10 +29,10 @@ type configAutosaver struct {
 }
 
 func newConfigAutosaver(
-	engine lib.Engine,
+	engine almagest.Engine,
 	config *Config,
 	agent configWriter,
-	logger lib.Logger,
+	logger almagest.Logger,
 	idle time.Duration,
 ) *configAutosaver {
 	if idle <= 0 {

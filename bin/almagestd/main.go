@@ -79,7 +79,7 @@ func main() {
 	)
 	defer cancel()
 
-	engine, err := lib.BuildEngine(
+	engine, err := almagest.BuildEngine(
 		ctx,
 		conf.Main,
 		logf,

@@ -1,4 +1,4 @@
-package lib
+package almagest
 
 import (
 	"github.com/asciimoth/pasta/pasta"

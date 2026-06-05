@@ -193,8 +193,8 @@ type NodeMenuSubscriptionRequest struct {
 }
 
 type EngineNotificationEvent struct {
-	SubscriptionID uint64                 `json:"subscription_id"`
-	Notification   lib.EngineNotification `json:"notification"`
+	SubscriptionID uint64                      `json:"subscription_id"`
+	Notification   almagest.EngineNotification `json:"notification"`
 }
 
 type SendInboxRequest struct {

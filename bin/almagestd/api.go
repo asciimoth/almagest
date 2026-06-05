@@ -53,7 +53,7 @@ func (a *AdminAPI) Run(
 	ctx context.Context,
 	cancel context.CancelFunc,
 	wg *sync.WaitGroup,
-	engine lib.Engine,
+	engine almagest.Engine,
 	sys sysnet.SysBuilder,
 	logf *LogFactory,
 ) {
@@ -97,7 +97,7 @@ func (a *AdminAPI) Run(
 
 type apiSession struct {
 	admin  *AdminAPI
-	engine lib.Engine
+	engine almagest.Engine
 	logf   *LogFactory
 	send   func(api.Message) error
 
@@ -105,7 +105,7 @@ type apiSession struct {
 	logSubscriptions    []uint64
 }
 
-func (a *AdminAPI) newAPISession(engine lib.Engine, logf *LogFactory, send func(api.Message) error) *apiSession {
+func (a *AdminAPI) newAPISession(engine almagest.Engine, logf *LogFactory, send func(api.Message) error) *apiSession {
 	return &apiSession{
 		admin:  a,
 		engine: engine,
@@ -183,8 +183,8 @@ func (s *apiSession) handleAdminMessage(msg api.Message) (api.Message, error) {
 		return api.NewResponse(msg.ID, api.PingResponse(req))
 
 	case api.MethodAdminColorMap:
-		colormap := make(map[string]lib.TypePalette)
-		maps.Copy(colormap, lib.DefaultColorMap)
+		colormap := make(map[string]almagest.TypePalette)
+		maps.Copy(colormap, almagest.DefaultColorMap)
 		return api.NewResponse(msg.ID, colormap)
 
 	case api.MethodAdminAcquireMutation:
@@ -225,7 +225,7 @@ func (s *apiSession) handleEngineMessage(msg api.Message) (api.Message, error) {
 		if err != nil {
 			return newRequestError(msg.ID, api.ErrorInvalidPayload, err.Error())
 		}
-		id := s.engine.SubscribeNotifications(func(notification lib.EngineNotification) {
+		id := s.engine.SubscribeNotifications(func(notification almagest.EngineNotification) {
 			event, err := api.NewEvent(api.SurfaceEngine, string(api.EventEngineNotification), api.EngineNotificationEvent{
 				SubscriptionID: notification.SubscriptionID,
 				Notification:   notification,

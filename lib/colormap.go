@@ -1,4 +1,4 @@
-package lib
+package almagest
 
 type TypePalette struct {
 	// TypeColor is a color for rendering links/ports/node primary color in UI

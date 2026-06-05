@@ -15,7 +15,7 @@ import (
 func (a *AdminAPI) registerAPIHandlers(
 	ctx context.Context,
 	mux *http.ServeMux,
-	engine lib.Engine,
+	engine almagest.Engine,
 	sys sysnet.SysBuilder,
 	logf *LogFactory,
 ) {
@@ -28,7 +28,7 @@ func (a *AdminAPI) serveWebsocket(
 	ctx context.Context,
 	w http.ResponseWriter,
 	r *http.Request,
-	engine lib.Engine,
+	engine almagest.Engine,
 	sys sysnet.SysBuilder,
 	logf *LogFactory,
 ) {
