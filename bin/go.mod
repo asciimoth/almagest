@@ -22,6 +22,7 @@ require (
 require (
 	github.com/alexflint/go-scalar v1.2.0 // indirect
 	github.com/asciimoth/badlock v0.1.1 // indirect
+	github.com/asciimoth/gonnect-routing v0.3.0 // indirect
 	github.com/asciimoth/ident v0.2.0 // indirect
 	github.com/asciimoth/putback v0.3.0 // indirect
 	github.com/asciimoth/socksgo v0.2.23 // indirect

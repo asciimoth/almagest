@@ -14,6 +14,8 @@ github.com/asciimoth/formular v0.2.2 h1:7ShX5M0sjzzPBV6TjVWpLRCH2lQFh4/1NnOl/YCw
 github.com/asciimoth/formular v0.2.2/go.mod h1:6VBEx4KTWp18mpkQn7d3Buoojzf9II5+ZAVuc4DF8AE=
 github.com/asciimoth/gonnect v0.17.0 h1:PTjJXw2zo+3TT922MM22WPUg8TOWrtERvu1Jq9GmEMw=
 github.com/asciimoth/gonnect v0.17.0/go.mod h1:CohhruGEkUgKLF0ypR/RNFrdrqmJgUkKhvjMilED9Kk=
+github.com/asciimoth/gonnect-routing v0.3.0 h1:gXMaxGjwxmWN8BiBxjclZIFBFoTtw2aPWyTCEUCK9Q4=
+github.com/asciimoth/gonnect-routing v0.3.0/go.mod h1:OvmdP6l3WBLrC+hvscJI3O9YHvcJEgNhqwgmYjuHwNI=
 github.com/asciimoth/ident v0.2.0 h1:G6qaTnkxTH+idV5YzJ7AvgC2nLQDE/aoV7rPCOtN07I=
 github.com/asciimoth/ident v0.2.0/go.mod h1:JNNFnfM7/hdcXVkFBBOAU/vpJM+0gucYaAYwB694bT0=
 github.com/asciimoth/pasta/pasta v0.6.0 h1:GdjO51yK5gwNyS/DOW82HkL32Qgz3n92fmCp+Pa4KBw=
