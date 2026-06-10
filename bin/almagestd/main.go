@@ -10,6 +10,7 @@ import (
 	"github.com/alexflint/go-arg"
 	"github.com/asciimoth/almagest/bin/platforms"
 	"github.com/asciimoth/almagest/lib"
+	"github.com/asciimoth/gonnect"
 	_ "github.com/joho/godotenv/autoload"
 	"github.com/kataras/golog"
 )
@@ -38,6 +39,8 @@ type Args struct {
 }
 
 func main() {
+	gonnect.UnfuckGoDns()
+
 	var args Args
 	if err := arg.Parse(&args); err != nil {
 		golog.Fatal(err)
