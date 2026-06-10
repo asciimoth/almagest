@@ -149,7 +149,7 @@ func (n *outNetNode) sendNetworkToLink(link uint64, network gonnect.Network) {
 	if network == nil {
 		return
 	}
-	wrapper := gonnect.DetachNetwork(network)
+	wrapper := gonnect.DetachNetwork(network, nil)
 	BindNetworkResource(n.w, n.id, link, wrapper)
 	n.w.EmitEvent(n.id, link, NetworkPayload{Network: wrapper})
 }

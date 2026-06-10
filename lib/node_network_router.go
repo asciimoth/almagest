@@ -389,7 +389,7 @@ func (n *networkRouterNode) sendAll() {
 func (n *networkRouterNode) sendRouterToLink(link uint64) {
 	wrapper := n.sent[link]
 	if wrapper == nil {
-		wrapper = gonnect.DetachNetwork(n.router)
+		wrapper = gonnect.DetachNetwork(n.router, nil)
 		BindNetworkResource(n.w, n.id, link, wrapper)
 		n.closeSentNetwork(link)
 		n.sent[link] = wrapper

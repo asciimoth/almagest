@@ -525,9 +525,9 @@ func runSocksServerOnce(ctx context.Context, logger pasta.Logger, w *pasta.Works
 		}
 	}()
 
-	listenNetwork := gonnect.DetachNetwork(cfg.listenNetwork)
+	listenNetwork := gonnect.DetachNetwork(cfg.listenNetwork, nil)
 	defer listenNetwork.Close() //nolint
-	proxyNetwork := gonnect.DetachNetwork(cfg.proxyNetwork)
+	proxyNetwork := gonnect.DetachNetwork(cfg.proxyNetwork, nil)
 	defer proxyNetwork.Close() //nolint
 	cfg.listenNetwork = listenNetwork
 	cfg.proxyNetwork = proxyNetwork

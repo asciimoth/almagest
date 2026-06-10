@@ -96,7 +96,7 @@ func (n *mockNetNode) sendAll() {
 }
 
 func (n *mockNetNode) sendToLink(link uint64) {
-	wrapper := gonnect.DetachNetwork(n.base)
+	wrapper := gonnect.DetachNetwork(n.base, nil)
 	BindNetworkResource(n.w, n.id, link, wrapper)
 	n.w.EmitEvent(n.id, link, NetworkPayload{Network: wrapper})
 }

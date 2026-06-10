@@ -222,7 +222,7 @@ func (n *localProxyNode) onSysBuild(result SysBuildInboxMessage) {
 		n.restartWorker()
 		return
 	}
-	local := gonnect.DetachNetwork(result.System.LocalNet)
+	local := gonnect.DetachNetwork(result.System.LocalNet, nil)
 	if NetworkIsReady(n.localNetwork) && SameNetworkSource(n.localNetwork, local) {
 		if !SameNetworkInstance(n.localNetwork, local) {
 			_ = local.Close()

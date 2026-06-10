@@ -281,7 +281,7 @@ func (n *socksClientNode) sendNetworkToLink(link uint64) {
 		return
 	}
 	n.closeSentNetwork(link)
-	wrapper := gonnect.DetachNetwork(n.client)
+	wrapper := gonnect.DetachNetwork(n.client, nil)
 	if n.sent == nil {
 		n.sent = make(map[uint64]NetworkCloser)
 	}
