@@ -14,6 +14,7 @@ import (
 
 	"github.com/asciimoth/almagest/bin/api"
 	"github.com/asciimoth/almagest/lib"
+	"github.com/asciimoth/gonnect/protected"
 	"github.com/asciimoth/gonnect/sysnet"
 	"github.com/kataras/golog"
 )
@@ -603,14 +604,23 @@ func mutationLeaseTTL(milliseconds int64) time.Duration {
 func PrepareAdminAPI(cfg *Config) (*AdminAPI, error) {
 	api := AdminAPI{}
 	if cfg.Protected.Admin.Web != 0 {
-		listener, err := net.Listen(
-			"tcp",
-			net.JoinHostPort("127.0.0.1", strconv.Itoa(int(cfg.Protected.Admin.Web))),
-		)
+		addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(int(cfg.Protected.Admin.Web)))
+		listener, err := listenWebAdmin(addr, cfg.Protected.Admin.WebFilters)
 		if err != nil {
 			return nil, err
 		}
 		api.webListener = listener
 	}
 	return &api, nil
+}
+
+func listenWebAdmin(address string, filters WebAdminFiltersConfig) (net.Listener, error) {
+	if !filters.Enabled() {
+		return net.Listen("tcp", address)
+	}
+	return protected.Listen("tcp", address, protected.Rules{
+		UIDs:      filters.UIDs,
+		GIDs:      filters.GIDs,
+		Usernames: filters.Usernames,
+	})
 }

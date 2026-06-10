@@ -21,6 +21,42 @@
           "maximum": 65535,
           "default": 0,
           "description": "Local web admin port bound on 127.0.0.1. 0 disables the web admin listener. Command-line --web / ALMAGEST_WEB_ADMIN overrides this value."
+        },
+        "WebFilters": {
+          "$ref": "#/$defs/webAdminFiltersConfig"
+        }
+      },
+      "additionalProperties": false
+    },
+    "webAdminFiltersConfig": {
+      "type": "object",
+      "description": "Optional protected listener filters for the web admin panel. When at least one rule is configured, the listener accepts only connections whose peer owner matches a UID, GID, or username rule. Empty filters keep the default unfiltered localhost listener.",
+      "properties": {
+        "UIDs": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4294967295
+          },
+          "description": "Allowed peer owner user IDs."
+        },
+        "GIDs": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4294967295
+          },
+          "description": "Allowed peer owner group IDs."
+        },
+        "Usernames": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Allowed peer owner usernames. Usernames are resolved by gonnect/protected when the listener is created and for each accepted connection."
         }
       },
       "additionalProperties": false

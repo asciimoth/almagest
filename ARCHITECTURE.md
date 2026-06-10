@@ -100,11 +100,17 @@ Important flags and env:
 - `-p, --protected`, `ALMAGEST_PROTECTED_CONF`: protected config path.
 - `-l, --lvl`, `ALMAGEST_LOG_LVL`: logging level.
 - `-w, --web`, `ALMAGEST_WEB_ADMIN`: localhost web admin port.
+- `--web-filter-uid`, `ALMAGEST_WEB_ADMIN_FILTER_UIDS`: allowed web admin
+  peer owner UIDs.
+- `--web-filter-gid`, `ALMAGEST_WEB_ADMIN_FILTER_GIDS`: allowed web admin
+  peer owner GIDs.
+- `--web-filter-user`, `ALMAGEST_WEB_ADMIN_FILTER_USERS`: allowed web admin
+  peer owner usernames.
 
 If `--config` points at a directory, use `alm.hujson` inside it. If protected
 config is omitted, use `protected_alm.hujson` next to the main config. Protected
-config currently includes read-only daemon settings such as `Admin.Web`; CLI
-args override it in memory.
+config currently includes read-only daemon settings such as `Admin.Web` and
+`Admin.WebFilters`; CLI args override it in memory.
 
 System integration is selected from `Main.System.Type`:
 

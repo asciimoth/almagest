@@ -96,10 +96,30 @@ func (p *ProtectedConfig) Merge(args *Args) {
 	if args.WebAdmin != nil {
 		p.Admin.Web = *args.WebAdmin
 	}
+	if len(args.WebAdminFilterUIDs) > 0 {
+		p.Admin.WebFilters.UIDs = args.WebAdminFilterUIDs
+	}
+	if len(args.WebAdminFilterGIDs) > 0 {
+		p.Admin.WebFilters.GIDs = args.WebAdminFilterGIDs
+	}
+	if len(args.WebAdminFilterUsernames) > 0 {
+		p.Admin.WebFilters.Usernames = args.WebAdminFilterUsernames
+	}
 }
 
 type AdminAPIConfig struct {
-	Web uint16
+	Web        uint16
+	WebFilters WebAdminFiltersConfig
+}
+
+type WebAdminFiltersConfig struct {
+	UIDs      []uint32
+	GIDs      []uint32
+	Usernames []string
+}
+
+func (c WebAdminFiltersConfig) Enabled() bool {
+	return len(c.UIDs) > 0 || len(c.GIDs) > 0 || len(c.Usernames) > 0
 }
 
 // type SystemIntegrationConfig struct {
