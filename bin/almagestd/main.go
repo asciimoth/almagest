@@ -7,6 +7,7 @@ import (
 	"syscall"
 
 	"github.com/alexflint/go-arg"
+	"github.com/asciimoth/almagest/bin/platforms"
 	"github.com/asciimoth/almagest/lib"
 	_ "github.com/joho/godotenv/autoload"
 	"github.com/kataras/golog"
@@ -74,7 +75,7 @@ func main() {
 	}
 	defer sys.Close() //nolint
 
-	// TODO: Drop privileges here
+	platforms.DropPrivileges() // Currently just a stub
 
 	// TODO: Reload config on SIGHUP instead of stopping
 	ctx, cancel := signal.NotifyContext(

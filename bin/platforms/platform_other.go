@@ -54,3 +54,7 @@ func IsDir(path string) (bool, error) {
 func SystemIntegration(cfg configer.Config) (sysnet.SysBuilder, error) {
 	panic(ErrPlatform.Error())
 }
+
+func DropPrivileges() {
+	panic(ErrPlatform.Error())
+}
