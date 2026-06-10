@@ -5,6 +5,7 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/alexflint/go-arg"
 	"github.com/asciimoth/almagest/bin/platforms"
@@ -83,6 +84,8 @@ func main() {
 	)
 	defer cancel()
 
+	daemonLogger := logf.DaemonLogger()
+	engineBuildStart := time.Now()
 	engine, err := almagest.BuildEngine(
 		ctx,
 		conf.Main,
@@ -92,13 +95,16 @@ func main() {
 		globalBufPool,
 		args.DebugNodes,
 	)
+	engineBuildElapsed := time.Since(engineBuildStart)
 	if err != nil {
+		daemonLogger.Debugf("engine build failed after %s: %v", engineBuildElapsed, err)
 		golog.Fatal("Engine setup", err)
 	}
+	daemonLogger.Debugf("engine built in %s", engineBuildElapsed)
 	defer engine.Close() //nolint
 
 	var wg sync.WaitGroup
-	admin.configAutosaver = newConfigAutosaver(engine, conf, agent, logf.DaemonLogger(), conf.SaveIdle())
+	admin.configAutosaver = newConfigAutosaver(engine, conf, agent, daemonLogger, conf.SaveIdle())
 	wg.Go(func() {
 		admin.configAutosaver.Run(ctx)
 	})
