@@ -138,6 +138,7 @@ let notificationSubscriptionID = 0;
 let logSubscriptionID = 0;
 const frontendLogs: LogEntry[] = [];
 let nextToastID = 1;
+let liteGraphDrawGuardInstalled = false;
 let logStoreLimit = 0;
 const liteLinkToPasta = new Map<number, number>();
 const CLASS_DRAG_MIME = "application/x-almagest-node-class";
@@ -476,6 +477,7 @@ function registerLiteGraphNode(): void {
 }
 
 function initGraph(): void {
+  installLiteGraphDrawGuard();
   registerLiteGraphNode();
   graph = new LGraph();
   canvas = new LGraphCanvas("#graph-canvas", graph);
@@ -512,6 +514,36 @@ function initGraph(): void {
   }, { capture: true });
   el.graphCanvas.tabIndex = 0;
   requestAnimationFrame(resizeGraphCanvas);
+}
+
+function installLiteGraphDrawGuard(): void {
+  if (liteGraphDrawGuardInstalled || !LGraphCanvas?.prototype?.drawFrontCanvas) return;
+  const drawFrontCanvas = LGraphCanvas.prototype.drawFrontCanvas;
+  LGraphCanvas.prototype.drawFrontCanvas = function (): void {
+    sanitizeLiteGraphConnectionState(this);
+    return drawFrontCanvas.call(this);
+  };
+  liteGraphDrawGuardInstalled = true;
+}
+
+function sanitizeLiteGraphConnectionState(targetCanvas: any): void {
+  if (!targetCanvas?.connecting_pos) return;
+  if (targetCanvas.connecting_node && (targetCanvas.connecting_output || targetCanvas.connecting_input)) return;
+  cancelLiteGraphConnectionState(targetCanvas);
+}
+
+function cancelLiteGraphConnectionState(targetCanvas: any): void {
+  if (!targetCanvas) return;
+  targetCanvas.connecting_output = null;
+  targetCanvas.connecting_input = null;
+  targetCanvas.connecting_pos = null;
+  targetCanvas.connecting_node = null;
+  targetCanvas.connecting_slot = -1;
+  targetCanvas._highlight_input = null;
+  targetCanvas._highlight_input_slot = null;
+  targetCanvas._highlight_output = null;
+  targetCanvas.dirty_canvas = true;
+  targetCanvas.dirty_bgcanvas = true;
 }
 
 function installPastaPalette(): void {
@@ -617,6 +649,7 @@ function resizeGraphCanvas(): void {
 function renderGraph(): void {
   if (!graph) return;
   rendering = true;
+  cancelLiteGraphConnectionState(canvas);
   liteLinkToPasta.clear();
   const selected = new Set(selectedNodeIDs(canvas?.selected_nodes));
   graph.clear();
