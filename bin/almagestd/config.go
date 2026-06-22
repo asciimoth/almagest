@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/asciimoth/almagest/bin/almagestd/args"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/configer/hujson"
+	tailscalehujson "github.com/tailscale/hujson"
 )
 
 var (
@@ -28,6 +30,17 @@ type LogCacheConfig struct {
 	Warn  int `json:"Warn"`
 	Error int `json:"Error"`
 	Fatal int `json:"Fatal"`
+}
+
+func (c *Config) MainToBytes() ([]byte, error) {
+	packer, ok := c.Main.(interface {
+		Pack() []byte
+	})
+	if !ok {
+		return nil, errors.New("config does not support HuJSON packing")
+	}
+
+	return tailscalehujson.Format(packer.Pack())
 }
 
 func (c *Config) LogCache() LogCacheConfig {
@@ -92,7 +105,7 @@ type ProtectedConfig struct {
 	Admin AdminAPIConfig
 }
 
-func (p *ProtectedConfig) Merge(args *Args) {
+func (p *ProtectedConfig) Merge(args *args.Args) {
 	if args.WebAdmin != nil {
 		p.Admin.Web = *args.WebAdmin
 	}

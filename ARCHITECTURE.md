@@ -9,7 +9,7 @@ Almagest is a Go userspace network stack built around a Pasta node graph.
 
 Runtime path:
 1. `almagestd` reads HuJSON config.
-2. It selects a `sysnet.SysBuilder`.
+2. It selects a `sysnet.System`.
 3. It prepares the localhost admin listener.
 4. It builds `lib.Engine`.
 5. The engine creates the Pasta workspace named `main`.
@@ -45,7 +45,7 @@ Daemon:
 - `bin/almagestd/api.go`: localhost admin api listener.
 
 Platform and CLI:
-- `bin/platforms/`: build-tagged defaults and platform operations.
+- `bin/almagestd/platform/`: build-tagged defaults and platform operations.
 - `bin/almagest-cli/cli.go`: CLI placeholder.
 
 Admin panel:
@@ -59,7 +59,7 @@ Admin panel:
 - Gonnect provides network abstractions used by Almagest nodes.
 - Formular provides node menu/form messages used by the HTTP nodes.
 - Configer/HuJSON provide config parsing and future persistence.
-- `sysnet.SysBuilder` abstracts host/system network integration.
+- `sysnet.System` abstracts host/system network integration.
 
 ## Engine Notes
 `lib.BuildEngine(ctx, cfg, logf, sys, extra, pool)` builds one workspace named
@@ -114,8 +114,8 @@ config currently includes read-only daemon settings such as `Admin.Web` and
 
 System integration is selected from `Main.System.Type`:
 
-- `debug`: `sysnetdebug.NewDebugSysBuilder(nil)`.
-- `native` or empty: `platforms.SystemIntegration`.
+- `debug`: `sysnetdebug.System{}`.
+- `native` or empty: `platform.SystemIntegration`.
 
 Use debug integration for local runnable experiments. Native platform
-integration is currently a placeholder returns/panics with `ErrPlatform`.
+integration is currently a placeholder.

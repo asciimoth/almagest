@@ -3,7 +3,7 @@ package main
 import (
 	"errors"
 
-	"github.com/asciimoth/almagest/bin/platforms"
+	"github.com/asciimoth/almagest/bin/almagestd/platform"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/gonnect/sysnet"
 	sysnetdebug "github.com/asciimoth/gonnect/sysnet/debug"
@@ -30,7 +30,7 @@ func SystemIntegration(cfg *Config) (sysnet.System, error) {
 			}
 		}
 	}
-	return platforms.SystemIntegration(view)
+	return platform.SystemIntegration(view)
 }
 
 func BuildDebugIntegration(cfg *Config) (sysnet.System, error) {

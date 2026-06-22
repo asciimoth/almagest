@@ -6,13 +6,12 @@ import (
 	"time"
 
 	"github.com/asciimoth/almagest/lib"
-	"github.com/asciimoth/configer/configer"
 )
 
 const defaultConfigAutosaveIdle = 500 * time.Millisecond
 
 type configWriter interface {
-	WriteConfig(c configer.Config) error
+	WriteConfig(d []byte) error
 }
 
 type configAutosaver struct {
@@ -127,7 +126,11 @@ func (s *configAutosaver) save() {
 		s.logger.Errf("config save failed: engine state export failed: %v", err)
 		return
 	}
-	if err := s.agent.WriteConfig(s.config.Main); err != nil {
+	data, err := s.config.MainToBytes()
+	if err != nil {
+		s.logger.Errf("config save failed: %v", err)
+	}
+	if err := s.agent.WriteConfig(data); err != nil {
 		s.logger.Errf("config save failed: disk write failed: %v", err)
 		return
 	}

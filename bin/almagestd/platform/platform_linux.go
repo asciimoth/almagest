@@ -1,6 +1,6 @@
 //go:build linux
 
-package platforms
+package platform
 
 import (
 	_ "embed"
@@ -8,12 +8,16 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
 
+	"github.com/asciimoth/almagest/bin/almagestd/args"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/gonnect/sysnet"
+	sysnetdebug "github.com/asciimoth/gonnect/sysnet/debug"
+	"github.com/kataras/golog"
 	"golang.org/x/sys/unix"
 )
 
@@ -23,8 +27,127 @@ var DefaultConfigText string
 //go:embed default_linux_protected_config.hujson
 var DefaultProtectedConfigText string
 
-func DefaultConfig() string {
-	return "/etc/almagest/alm.hujson"
+const DefaultConfig = "/etc/almagest/alm.hujson"
+
+var (
+	_ Agent = &agent{}
+)
+
+type agent struct {
+	StdInConfig bool
+	ReadOnly    bool
+
+	ConfigPath    string
+	ProtectedPath string
+}
+
+func (a *agent) ConfRO() bool {
+	return a.ReadOnly
+}
+
+func (a *agent) ReadConfig() ([]byte, []byte, error) {
+	var err error
+
+	var (
+		configData, protectedData []byte
+	)
+
+	if a.StdInConfig {
+		golog.Info("Loading config from stdin")
+		configData, err = readStdinIfPiped([]byte(DefaultProtectedConfigText))
+		if err != nil {
+			golog.Fatal(err)
+		}
+	} else {
+		configData, err = ReadSafeFile(a.ConfigPath)
+		if err != nil {
+			return nil, nil, fmt.Errorf("config read: %s: %w", a.ConfigPath, err)
+		}
+
+		protectedData, err = ReadSafeFile(a.ProtectedPath)
+		if err != nil {
+			return nil, nil, fmt.Errorf("config read: %s: %w", a.ConfigPath, err)
+		}
+	}
+
+	return configData, protectedData, nil
+}
+
+func (a *agent) WriteConfig(data []byte) error {
+	info, err := os.Stat(a.ConfigPath)
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(a.ConfigPath, data, info.Mode().Perm())
+}
+
+func RunAgent(args args.Args) Agent {
+	agent := &agent{
+		StdInConfig: args.StdInConfig,
+	}
+
+	if args.StdInConfig {
+		agent.ReadOnly = true
+	} else {
+		const ConfFail = "Failed to check config file"
+
+		agent.ConfigPath = args.Config
+		agent.ProtectedPath = args.ProtectedConfig
+
+		if agent.ConfigPath == "" {
+			agent.ConfigPath = DefaultConfig
+		}
+
+		configPath, err := filepath.Abs(agent.ConfigPath)
+		if err != nil {
+			golog.Fatal(ConfFail, agent.ConfigPath, err)
+		}
+		agent.ConfigPath = configPath
+
+		isdir, err := IsDir(agent.ConfigPath)
+		if err != nil {
+			golog.Fatal(ConfFail, agent.ConfigPath, err)
+		}
+
+		if isdir {
+			agent.ConfigPath = path.Join(agent.ConfigPath, "alm.hujson")
+		}
+
+		if err := MakeSureSafeFileExists(
+			agent.ConfigPath, []byte(DefaultConfigText),
+		); err != nil {
+			golog.Fatal(ConfFail, agent.ConfigPath, err)
+		}
+
+		if agent.ProtectedPath == "" {
+			dir := filepath.Dir(agent.ConfigPath)
+			agent.ProtectedPath = path.Join(dir, "protected_alm.hujson")
+		}
+
+		protectedPath, err := filepath.Abs(agent.ProtectedPath)
+		if err != nil {
+			golog.Fatal(ConfFail, agent.ProtectedPath, err)
+		}
+		agent.ProtectedPath = protectedPath
+
+		if err := MakeSureSafeFileExists(
+			agent.ProtectedPath, []byte(DefaultProtectedConfigText),
+		); err != nil {
+			golog.Fatal(ConfFail, agent.ProtectedPath, err)
+		}
+	}
+
+	if agent.ReadOnly {
+		golog.Debug("Config is read-only")
+	}
+
+	return agent
+}
+
+func SystemIntegration(cfg configer.Config) (sysnet.System, error) {
+	golog.Warn("No system integration sor this platform; Using stub one.")
+	return &sysnetdebug.System{}, nil
 }
 
 // IsDir reports if path is a dir.
@@ -367,10 +490,30 @@ func ReadSafeFile(path string) ([]byte, error) {
 	return io.ReadAll(f)
 }
 
-func SystemIntegration(cfg configer.Config) (sysnet.System, error) {
-	panic(ErrPlatform.Error())
-}
-
-func DropPrivileges() {
-	// TODO:
-}
+// import (
+//
+//	_ "embed"
+//	"errors"
+//	"fmt"
+//	"io"
+//	"os"
+//	"path/filepath"
+//	"slices"
+//	"strings"
+//
+//	"github.com/asciimoth/configer/configer"
+//	"github.com/asciimoth/gonnect/sysnet"
+//	"golang.org/x/sys/unix"
+//
+// )
+//
+// //go:embed default_linux_config.hujson
+// var DefaultConfigText string
+//
+// //go:embed default_linux_protected_config.hujson
+// var DefaultProtectedConfigText string
+//
+//	func DefaultConfig() string {
+//		return "/etc/almagest/alm.hujson"
+//	}
+//

@@ -3,6 +3,8 @@ package main
 import (
 	"testing"
 	"time"
+
+	"github.com/asciimoth/almagest/bin/almagestd/args"
 )
 
 func TestConfigSaveIdleDefault(t *testing.T) {
@@ -82,7 +84,7 @@ func TestProtectedConfigMergeWebFilterArgs(t *testing.T) {
 	}
 
 	web := uint16(9090)
-	cfg.Protected.Merge(&Args{
+	cfg.Protected.Merge(&args.Args{
 		WebAdmin:                &web,
 		WebAdminFilterUIDs:      []uint32{2000, 2001},
 		WebAdminFilterUsernames: []string{"bob", "carol"},
