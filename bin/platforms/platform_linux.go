@@ -367,7 +367,7 @@ func ReadSafeFile(path string) ([]byte, error) {
 	return io.ReadAll(f)
 }
 
-func SystemIntegration(cfg configer.Config) (sysnet.SysBuilder, error) {
+func SystemIntegration(cfg configer.Config) (sysnet.System, error) {
 	panic(ErrPlatform.Error())
 }
 

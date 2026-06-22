@@ -55,7 +55,7 @@ func (a *AdminAPI) Run(
 	cancel context.CancelFunc,
 	wg *sync.WaitGroup,
 	engine almagest.Engine,
-	sys sysnet.SysBuilder,
+	sys sysnet.System,
 	logf *LogFactory,
 ) {
 	_ = sys

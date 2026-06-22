@@ -11,6 +11,7 @@ import (
 	"github.com/asciimoth/bufpool"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
+	sysnetdebug "github.com/asciimoth/gonnect/sysnet/debug"
 	"github.com/asciimoth/pasta/pasta"
 	"github.com/asciimoth/socksgo"
 	"github.com/asciimoth/socksgo/protocol"
@@ -18,7 +19,7 @@ import (
 
 type localProxyE2E struct {
 	*socksServerE2E
-	sys *recordingSysBuilder
+	sys *sysnetdebug.System
 }
 
 func TestLocalProxyE2EConnectThroughLocalNet(t *testing.T) {
@@ -39,33 +40,6 @@ func TestLocalProxyE2EConnectThroughLocalNet(t *testing.T) {
 		t.Fatalf("response body = %q, want debug response", body)
 	}
 	e.AssertDebugLog(NodeTypeLocalProxy, "connect")
-}
-
-func TestLocalProxyE2EContinuesAfterSystemRebuild(t *testing.T) {
-	e := newLocalProxyE2E(t)
-	native := e.AddNode(testNativeNetworkNodeType, "native")
-	socksPort := httpTestPort()
-	httpPort := httpTestPort()
-	server := e.addHTTPServer("target", httpPort)
-	proxy := e.addLocalProxy("local-proxy", socksPort, nil)
-	e.SubscribeMenus(server, proxy)
-
-	e.MustAddTypedLinkByPortName(TypeNetwork, native, "left", "Network", server, "right", "Network")
-	e.MustAddTypedLinkByPortName(TypeNetwork, native, "left", "Network", proxy, "right", "proxy")
-
-	e.waitSocksLog(proxy, fmt.Sprintf("socks listening on 127.0.0.1:%d", socksPort))
-	if body := e.waitLocalProxyHTTPGet(socksPort, httpPort, nil); body != "Debug http server response" {
-		t.Fatalf("initial response body = %q, want debug response", body)
-	}
-	before := len(e.sys.builds)
-
-	if err := e.Engine.RequestSysRebuild(); err != nil {
-		t.Fatalf("RequestSysRebuild error = %v, want nil", err)
-	}
-	Eventually(t, func() bool { return len(e.sys.builds) > before }, "system rebuild after LocalProxy setup")
-
-	e.waitLocalProxyHTTPGet(socksPort, httpPort, nil)
-	e.AssertDebugLog(NodeTypeLocalProxy, "local proxy worker restarting")
 }
 
 func TestLocalProxyE2EUserPassAuth(t *testing.T) {
@@ -95,7 +69,7 @@ func newLocalProxyE2E(t *testing.T) *localProxyE2E {
 	pool := bufpool.NewTestDebugPool(t)
 	t.Cleanup(func() { pool.Close() })
 	logf := NewDebugLogFactory(4096)
-	sys := newRecordingSysBuilder()
+	sys := newE2EDebugSystem()
 	engine, err := BuildEngine(
 		context.Background(),
 		configer.NewMemory(nil),
@@ -171,13 +145,13 @@ func (e *localProxyE2E) waitLocalProxyHTTPGetFailure(socksPort, httpPort int, au
 	}, "local proxy HTTP GET failure via %d to %d", socksPort, httpPort)
 }
 
-func localProxyHTTPGet(sys *recordingSysBuilder, socksPort, httpPort int, auth *protocol.AuthMethods) (string, error) {
+func localProxyHTTPGet(sys *sysnetdebug.System, socksPort, httpPort int, auth *protocol.AuthMethods) (string, error) {
 	client := &socksgo.Client{
 		SocksVersion: "5",
 		ProxyAddr:    fmt.Sprintf("127.0.0.1:%d", socksPort),
 		Auth:         auth,
 		Filter:       func(_, _ string) bool { return false },
-		Dialer:       sys.RawLocalNet().Dial,
+		Dialer:       sys.LocalNet().Dial,
 	}
 	conn, err := client.Dial(context.Background(), "tcp", fmt.Sprintf("127.0.0.1:%d", httpPort))
 	if err != nil {

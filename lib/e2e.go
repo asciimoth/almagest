@@ -10,8 +10,9 @@ import (
 	"github.com/asciimoth/bufpool"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
+	"github.com/asciimoth/gonnect"
+	"github.com/asciimoth/gonnect/sysnet/debug"
 	"github.com/asciimoth/pasta/pasta"
-	sysnetdebug "github.com/asciimoth/sysnet-debug"
 )
 
 // E2EWorkspace is the default workspace used by the engine e2e helper.
@@ -28,6 +29,14 @@ type NodeE2E struct {
 	logs  []DebugLogEntry
 }
 
+func newE2EDebugSystem() *sysnetdebug.System {
+	out := gonnect.NewLoopbackNetwok()
+	out.AllowAnyHost = true
+	local := gonnect.NewLoopbackNetwok()
+	local.AllowAnyHost = true
+	return &sysnetdebug.System{OutNetwork: out, LocalNetwork: local}
+}
+
 // NewNodeE2E builds a debug engine and registers test cleanup hooks.
 func NewNodeE2E(t *testing.T) *NodeE2E {
 	t.Helper()
@@ -39,7 +48,7 @@ func NewNodeE2E(t *testing.T) *NodeE2E {
 		context.Background(),
 		configer.NewMemory(nil),
 		logf,
-		sysnetdebug.NewDebugSysBuilder(nil),
+		newE2EDebugSystem(),
 		nil,
 		pool,
 		true,

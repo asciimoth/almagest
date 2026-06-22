@@ -16,7 +16,6 @@ import (
 	"github.com/asciimoth/pasta/pasta"
 	"github.com/asciimoth/socksgo"
 	"github.com/asciimoth/socksgo/protocol"
-	sysnetdebug "github.com/asciimoth/sysnet-debug"
 )
 
 const testNativeNetworkNodeType = "test/NativeNetwork"
@@ -136,7 +135,7 @@ func newNativeSocksServerE2E(t *testing.T) *socksServerE2E {
 		context.Background(),
 		configer.NewMemory(nil),
 		logf,
-		sysnetdebug.NewDebugSysBuilder(nil),
+		newE2EDebugSystem(),
 		[]pasta.NodeClass{testNativeNetworkClass{}},
 		pool,
 		true,

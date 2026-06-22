@@ -11,7 +11,6 @@ import (
 	"github.com/asciimoth/formular"
 	"github.com/asciimoth/pasta/pasta"
 	"github.com/asciimoth/pasta/pasta/std"
-	sysnetdebug "github.com/asciimoth/sysnet-debug"
 )
 
 const (
@@ -170,7 +169,7 @@ func newNetworkRouterConfigE2E(t *testing.T, cfg configer.Config) *httpE2E {
 		context.Background(),
 		cfg,
 		logf,
-		sysnetdebug.NewDebugSysBuilder(nil),
+		newE2EDebugSystem(),
 		nil,
 		pool,
 		true,

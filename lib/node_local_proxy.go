@@ -91,6 +91,10 @@ func (n *localProxyNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint
 	if restored != nil && len(restored.RightPorts) > 0 {
 		n.proxy = restored.RightPorts[0]
 	}
+	if n.engine != nil && n.engine.sys != nil {
+		n.localNetwork = gonnect.DetachNetwork(n.engine.sys.LocalNet(), nil)
+		BindNetworkResource(n.w, n.id, 0, n.localNetwork)
+	}
 
 	if err := n.w.SetNodePrimary(n.id, TypeNetwork); err != nil {
 		n.logger.Errf("failed to set node primary type: %v", err)
@@ -99,10 +103,6 @@ func (n *localProxyNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint
 
 	_ = n.updateLabel()
 	n.sendMenuSnapshot()
-	if n.engine != nil {
-		n.engine.SubscribeSysBuild("main", n.id)
-		return n.engine.RequestSysRebuild()
-	}
 	return nil
 }
 
@@ -114,9 +114,6 @@ func (n *localProxyNode) OnReady() error {
 
 func (n *localProxyNode) OnStop() {
 	n.stopWorker()
-	if n.engine != nil {
-		n.engine.UnsubscribeSysBuild("main", n.id)
-	}
 }
 
 func (n *localProxyNode) PreLinkAdd(port uint64, linkType, portDirection string) error {
@@ -173,8 +170,6 @@ func (n *localProxyNode) OnInbox(message pasta.InboxMessage) error {
 		if payload.id == n.restartID && n.worker == nil && n.localNetwork != nil {
 			n.startWorker(payload.cfg)
 		}
-	case SysBuildInboxMessage:
-		n.onSysBuild(payload)
 	}
 	return nil
 }
@@ -214,24 +209,6 @@ func (n *localProxyNode) OnSave(cfg configer.Config) error {
 		}
 	}
 	return nil
-}
-
-func (n *localProxyNode) onSysBuild(result SysBuildInboxMessage) {
-	if result.Err != nil || result.System == nil || result.System.LocalNet == nil {
-		n.localNetwork = nil
-		n.restartWorker()
-		return
-	}
-	local := gonnect.DetachNetwork(result.System.LocalNet, nil)
-	if NetworkIsReady(n.localNetwork) && SameNetworkSource(n.localNetwork, local) {
-		if !SameNetworkInstance(n.localNetwork, local) {
-			_ = local.Close()
-		}
-		return
-	}
-	BindNetworkResource(n.w, n.id, 0, local)
-	n.localNetwork = local
-	n.restartWorker()
 }
 
 func (n *localProxyNode) applyConfigForm(values map[string]any) error {

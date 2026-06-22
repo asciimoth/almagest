@@ -1,7 +1,6 @@
 package almagest
 
 import (
-	"fmt"
 	"strconv"
 	"strings"
 
@@ -259,62 +258,11 @@ func (n *networkRouterNode) sendRulesFieldStatus(msg formular.FieldValidateMessa
 }
 
 func (n *networkRouterNode) compileRules(text string) (routing.RouterCfg, error) {
-	sections, err := splitNetworkRouterRules(text)
-	if err != nil {
-		return nil, err
-	}
-	rules, err := routing.NewBytecodeRules(
-		sections["dialtcp"],
-		sections["listentcp"],
-		sections["dialudp"],
-		sections["routeudp"],
-		sections["lookup"],
-	)
+	rules, err := routing.NewBytecodeRulesProgram(text)
 	if err != nil {
 		return nil, err
 	}
 	return routing.NewBytecodeRouterCfg(rules)
-}
-
-func splitNetworkRouterRules(text string) (map[string]string, error) {
-	out := map[string]string{
-		"dialtcp":   "",
-		"listentcp": "",
-		"dialudp":   "",
-		"routeudp":  "",
-		"lookup":    "",
-	}
-	lines := strings.Split(text, "\n")
-	current := ""
-	hasSection := false
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]") {
-			name := strings.ToLower(strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(trimmed, "["), "]")))
-			name = strings.ReplaceAll(name, "_", "")
-			if _, ok := out[name]; !ok {
-				return nil, fmt.Errorf("unknown rules section %q", trimmed)
-			}
-			current = name
-			hasSection = true
-			continue
-		}
-		if hasSection {
-			if current == "" {
-				if trimmed == "" || strings.HasPrefix(trimmed, "#") {
-					continue
-				}
-				return nil, fmt.Errorf("rule line before first section")
-			}
-			out[current] += line + "\n"
-		}
-	}
-	if !hasSection {
-		for name := range out {
-			out[name] = text
-		}
-	}
-	return out, nil
 }
 
 func (n *networkRouterNode) reviewOutputPorts() error {

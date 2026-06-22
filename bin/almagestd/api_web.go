@@ -16,7 +16,7 @@ func (a *AdminAPI) registerAPIHandlers(
 	ctx context.Context,
 	mux *http.ServeMux,
 	engine almagest.Engine,
-	sys sysnet.SysBuilder,
+	sys sysnet.System,
 	logf *LogFactory,
 ) {
 	mux.HandleFunc("/api/ws", func(w http.ResponseWriter, r *http.Request) {
@@ -29,7 +29,7 @@ func (a *AdminAPI) serveWebsocket(
 	w http.ResponseWriter,
 	r *http.Request,
 	engine almagest.Engine,
-	sys sysnet.SysBuilder,
+	sys sysnet.System,
 	logf *LogFactory,
 ) {
 	_ = sys

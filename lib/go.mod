@@ -7,11 +7,10 @@ require (
 	github.com/asciimoth/bufpool v0.3.0
 	github.com/asciimoth/configer/configer v0.3.0
 	github.com/asciimoth/formular v0.2.2
-	github.com/asciimoth/gonnect v0.19.0
-	github.com/asciimoth/gonnect-routing v0.4.0
+	github.com/asciimoth/gonnect v0.26.0
+	github.com/asciimoth/gonnect-routing v0.5.0
 	github.com/asciimoth/pasta/pasta v0.6.1
-	github.com/asciimoth/socksgo v0.2.24
-	github.com/asciimoth/sysnet-debug v0.1.1
+	github.com/asciimoth/socksgo v0.3.0
 	github.com/coder/websocket v1.8.14
 )
 

@@ -9,6 +9,7 @@ import (
 	"github.com/asciimoth/badlock"
 	"github.com/asciimoth/bufpool"
 	"github.com/asciimoth/configer/configer"
+	"github.com/asciimoth/gonnect/subnet"
 	"github.com/asciimoth/gonnect/sysnet"
 	"github.com/asciimoth/pasta/pasta"
 )
@@ -50,7 +51,7 @@ func BuildEngine(
 	ctx context.Context,
 	cfg configer.Config, // may be nil
 	logf LogFactory,
-	sys sysnet.SysBuilder, // use sysnetdebug.NewDebugSysBuilder(nil) if you dont have one
+	sys sysnet.System, // use sysnetdebug.System{} if you dont have one
 	extra []pasta.NodeClass,
 	pool bufpool.Pool, // may be nil. Use bufpool.NewTestDebugPool() in tests
 	debug bool, // Should builtin debug nodes be added
@@ -65,7 +66,6 @@ func BuildEngine(
 		pool:                  pool,
 		sys:                   sys,
 		mu:                    badlock.New(),
-		sysBuildSubs:          make(map[uint64]struct{}),
 		mainWorkspace:         nil,
 		nextSubscriptionID:    100, // to avoid collision between our IDs and workspace ones
 		subscriptionIDMapping: make(map[uint64]subMap),
@@ -93,13 +93,6 @@ func BuildEngine(
 	}
 
 	engine.mainWorkspace = work
-
-	if err := engine.buildSys(true); err != nil {
-		work.Close()
-		cancel()
-		_ = sys.Close()
-		return nil, err
-	}
 
 	return engine, nil
 }
@@ -174,22 +167,11 @@ type Engine interface {
 	Lock()
 	Unlock()
 
-	// SubscribeSysBuild registers a node to receive SysBuildInboxMessage
-	// payloads through pasta.Workspace.SendInbox whenever the engine finishes a
-	// system build.
-	//
-	// Nodes and node classes may update the engine's sysnet.BuildOpts before
-	// requesting a rebuild. They must hold Engine.Lock while reading or mutating
-	// those options.
-	SubscribeSysBuild(workspace string, node uint64)
-	UnsubscribeSysBuild(workspace string, node uint64)
-	// RequestSysRebuild runs sysnet.SysBuilder.Build with the current build
-	// options and sends the result to subscribed nodes. Requests made before the
-	// constructor's first build finishes are ignored.
-	RequestSysRebuild() error
-
 	// Saves internal pasta.Workspace config under `nodes` key
 	SaveConfig(cfg configer.Config) error
+
+	AllocIP() subnet.IPAllocator
+	AllocSubnet() subnet.SubnetAllocator
 
 	// SubscribeNotifications subscribes callback to engine notifications.
 	// The callback receives a full workspace snapshot before SubscribeNotifications
@@ -219,29 +201,15 @@ type engine struct {
 
 	pool bufpool.Pool
 
-	sys sysnet.SysBuilder
+	sys sysnet.System
 
 	mu *badlock.BadLock
-
-	// SysBuildOpts is the desired configuration for sysnet.SysBuilder.Build.
-	// Nodes and node classes that read or mutate it must hold Engine.Lock.
-	SysBuildOpts sysnet.BuildOpts
-	sysBuilt     bool
-	sysBuildSubs map[uint64]struct{}
 
 	mainWorkspace *pasta.Workspace
 
 	nextSubscriptionID uint64
 	// mapping from engine notification subscription IDs to internal
 	subscriptionIDMapping map[uint64]subMap
-}
-
-// SysBuildInboxMessage is delivered to nodes subscribed with SubscribeSysBuild.
-type SysBuildInboxMessage struct {
-	Opts    sysnet.BuildOpts
-	System  *sysnet.System
-	Err     error
-	Initial bool
 }
 
 func (e *engine) Lock() {
@@ -259,81 +227,12 @@ func (e *engine) Close() error {
 	return e.sys.Close()
 }
 
-func (e *engine) SubscribeSysBuild(workspace string, node uint64) {
-	if workspace != "main" {
-		return
-	}
-
-	e.Lock()
-	defer e.Unlock()
-	e.sysBuildSubs[node] = struct{}{}
+func (e *engine) AllocIP() subnet.IPAllocator {
+	return e.sys.AllocIP()
 }
 
-func (e *engine) UnsubscribeSysBuild(workspace string, node uint64) {
-	if workspace != "main" {
-		return
-	}
-
-	e.Lock()
-	defer e.Unlock()
-	delete(e.sysBuildSubs, node)
-}
-
-func (e *engine) RequestSysRebuild() error {
-	e.Lock()
-	defer e.Unlock()
-
-	if !e.sysBuilt {
-		return nil
-	}
-
-	return e.buildSys(false)
-}
-
-func (e *engine) buildSys(initial bool) error {
-	e.Lock()
-	defer e.Unlock()
-	opts := cloneSysBuildOpts(e.SysBuildOpts)
-
-	text := "System rebuild"
-	if initial {
-		text = "System build"
-	}
-
-	system, err := e.sys.Build(opts)
-	if err != nil {
-		e.logger.Err(text+": ", err)
-	} else {
-		e.logger.Debug(text)
-	}
-
-	e.sysBuilt = true
-	subscribers := make([]uint64, 0, len(e.sysBuildSubs))
-	for node := range e.sysBuildSubs {
-		subscribers = append(subscribers, node)
-	}
-
-	result := SysBuildInboxMessage{
-		Opts:    opts,
-		System:  system,
-		Err:     err,
-		Initial: initial,
-	}
-	for _, node := range subscribers {
-		e.mainWorkspace.SendInbox(pasta.InboxMessage{
-			ReceiverNode: node,
-			Payload:      result,
-		})
-	}
-
-	return err
-}
-
-func cloneSysBuildOpts(opts sysnet.BuildOpts) sysnet.BuildOpts {
-	opts.TunAddrs = append([]string(nil), opts.TunAddrs...)
-	opts.TunRoutes = append([]string(nil), opts.TunRoutes...)
-	opts.Exclude = append([]sysnet.Rule(nil), opts.Exclude...)
-	return opts
+func (e *engine) AllocSubnet() subnet.SubnetAllocator {
+	return e.sys.AllocSubnet()
 }
 
 func (e *engine) RemoveNode(workspace string, id uint64) {

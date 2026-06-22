@@ -2,13 +2,12 @@ package almagest
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	"github.com/asciimoth/bufpool"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/gonnect"
-	"github.com/asciimoth/gonnect/sysnet"
+	sysnetdebug "github.com/asciimoth/gonnect/sysnet/debug"
 	"github.com/asciimoth/pasta/pasta"
 	"github.com/asciimoth/pasta/pasta/std"
 )
@@ -80,11 +79,12 @@ func (c captureHTTPServerClass) NewNode(cfg configer.Config, _ ...*pasta.NodeCla
 	return node, nil
 }
 
-func TestOutNetworkRequestsSysRebuildOnInit(t *testing.T) {
+func TestOutNetworkUsesSystemOutNetOnInit(t *testing.T) {
 	pool := bufpool.NewTestDebugPool(t)
 	defer pool.Close()
 
-	sys := newRecordingSysBuilder()
+	base := gonnect.NewLoopbackNetwok()
+	sys := &sysnetdebug.System{OutNetwork: base}
 	engineIface, err := BuildEngine(
 		context.Background(),
 		configer.NewMemory(nil),
@@ -104,19 +104,34 @@ func TestOutNetworkRequestsSysRebuildOnInit(t *testing.T) {
 		}
 	}()
 
-	if _, err := engineIface.AddNode("main", NodeTypeOutNetwork, "out"); err != nil {
+	outID, err := engineIface.AddNode("main", NodeTypeOutNetwork, "out")
+	if err != nil {
 		t.Fatalf("AddNode OutNetwork error = %v, want nil", err)
 	}
 
-	if len(sys.builds) != 2 {
-		t.Fatalf("sys build count = %d, want 2", len(sys.builds))
+	engine := engineIface.(*engine)
+	out, ok := engine.NodeSnapshot("main", outID)
+	if !ok || len(out.LeftPorts) != 1 {
+		t.Fatalf("OutNetwork snapshot = %#v, %v; want one left port", out, ok)
+	}
+	receiver := &outNetReceiver{events: make(chan NetworkPayload, 2)}
+	if _, err := engine.mainWorkspace.AddNode(receiver, "test/OutNetworkReceiver", "receiver"); err != nil {
+		t.Fatalf("AddNode receiver: %v", err)
+	}
+	if _, _, err := engine.AddLink("main", out.LeftPorts[0], receiver.in); err != nil {
+		t.Fatalf("AddLink: %v", err)
+	}
+	payload := receiveOutNetPayload(t, receiver.events)
+	if got := payload.Network.(*gonnect.DetachedNetwork).GetWrapped(); got != base {
+		t.Fatalf("wrapped network = %T %p, want system OutNet %p", got, got, base)
 	}
 }
 
-func TestOutNetworkWaitsForSuccessfulSysBuildBeforeSending(t *testing.T) {
+func TestOutNetworkSendsSystemOutNetOnReadyAndRequest(t *testing.T) {
 	w := pasta.NewWorkspace(NewDebugLogFactory(1024))
 	defer w.Close()
-	if err := w.AddNodeClass(outNetClass{}); err != nil {
+	base := gonnect.NewLoopbackNetwok()
+	if err := w.AddNodeClass(outNetClass{engine: &engine{sys: &sysnetdebug.System{OutNetwork: base}}}); err != nil {
 		t.Fatalf("AddNodeClass OutNetwork: %v", err)
 	}
 	outID, err := w.AddNodeByClass(NodeTypeOutNetwork, "out")
@@ -136,29 +151,23 @@ func TestOutNetworkWaitsForSuccessfulSysBuildBeforeSending(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddLink: %v", err)
 	}
-	assertNoOutNetEvent(t, receiver.events)
-
-	w.EmitEvent(receiver.id, link, std.RequestValue{})
-	assertNoOutNetEvent(t, receiver.events)
-
-	base := gonnect.NewLoopbackNetwok()
-	w.SendInbox(pasta.InboxMessage{
-		ReceiverNode: outID,
-		Payload: SysBuildInboxMessage{
-			System: &sysnet.System{OutNet: base},
-		},
-	})
-
 	payload := receiveOutNetPayload(t, receiver.events)
 	if got := payload.Network.(*gonnect.DetachedNetwork).GetWrapped(); got != base {
 		t.Fatalf("wrapped network = %T %p, want base %p", got, got, base)
 	}
+
+	w.EmitEvent(receiver.id, link, std.RequestValue{})
+	payload = receiveOutNetPayload(t, receiver.events)
+	if got := payload.Network.(*gonnect.DetachedNetwork).GetWrapped(); got != base {
+		t.Fatalf("request wrapped network = %T %p, want base %p", got, got, base)
+	}
 }
 
-func TestOutNetworkSendsCachedNetworkToNewLinks(t *testing.T) {
+func TestOutNetworkSendsSystemOutNetToNewLinks(t *testing.T) {
 	w := pasta.NewWorkspace(NewDebugLogFactory(1024))
 	defer w.Close()
-	if err := w.AddNodeClass(outNetClass{}); err != nil {
+	base := gonnect.NewLoopbackNetwok()
+	if err := w.AddNodeClass(outNetClass{engine: &engine{sys: &sysnetdebug.System{OutNetwork: base}}}); err != nil {
 		t.Fatalf("AddNodeClass OutNetwork: %v", err)
 	}
 	outID, err := w.AddNodeByClass(NodeTypeOutNetwork, "out")
@@ -169,12 +178,6 @@ func TestOutNetworkSendsCachedNetworkToNewLinks(t *testing.T) {
 	if !ok || len(out.LeftPorts) != 1 {
 		t.Fatalf("OutNetwork snapshot = %#v, %v; want one left port", out, ok)
 	}
-
-	base := gonnect.NewLoopbackNetwok()
-	w.SendInbox(pasta.InboxMessage{
-		ReceiverNode: outID,
-		Payload:      SysBuildInboxMessage{System: &sysnet.System{OutNet: base}},
-	})
 
 	receiver := &outNetReceiver{events: make(chan NetworkPayload, 2)}
 	if _, err := w.AddNode(receiver, "test/OutNetworkReceiver", "receiver"); err != nil {
@@ -193,7 +196,8 @@ func TestOutNetworkSendsCachedNetworkToNewLinks(t *testing.T) {
 func TestOutNetworkSendsCachedNetworkToHTTPServerOnLinkAdd(t *testing.T) {
 	w := pasta.NewWorkspace(NewDebugLogFactory(1024))
 	defer w.Close()
-	if err := w.AddNodeClass(outNetClass{}); err != nil {
+	base := gonnect.NewLoopbackNetwok()
+	if err := w.AddNodeClass(outNetClass{engine: &engine{sys: &sysnetdebug.System{OutNetwork: base}}}); err != nil {
 		t.Fatalf("AddNodeClass OutNetwork: %v", err)
 	}
 	ctx := t.Context()
@@ -213,12 +217,6 @@ func TestOutNetworkSendsCachedNetworkToHTTPServerOnLinkAdd(t *testing.T) {
 	if !ok || len(out.LeftPorts) != 1 {
 		t.Fatalf("OutNetwork snapshot = %#v, %v; want one left port", out, ok)
 	}
-
-	base := gonnect.NewLoopbackNetwok()
-	w.SendInbox(pasta.InboxMessage{
-		ReceiverNode: outID,
-		Payload:      SysBuildInboxMessage{System: &sysnet.System{OutNet: base}},
-	})
 
 	serverID, err := w.AddNodeByClass("test/HTTPServer", "server")
 	if err != nil {
@@ -248,7 +246,8 @@ func TestEngineOutNetworkSendsCachedNetworkToHTTPServerOnLinkAdd(t *testing.T) {
 	pool := bufpool.NewTestDebugPool(t)
 	defer pool.Close()
 
-	sys := newRecordingSysBuilder()
+	base := gonnect.NewLoopbackNetwok()
+	sys := &sysnetdebug.System{OutNetwork: base}
 	var server *httpServerNode
 	engineIface, err := BuildEngine(
 		context.Background(),
@@ -273,7 +272,6 @@ func TestEngineOutNetworkSendsCachedNetworkToHTTPServerOnLinkAdd(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddNode OutNetwork: %v", err)
 	}
-	base := sys.systems[len(sys.systems)-1].OutNet
 	out, ok := engine.NodeSnapshot("main", outID)
 	if !ok || len(out.LeftPorts) != 1 {
 		t.Fatalf("OutNetwork snapshot = %#v, %v; want one left port", out, ok)
@@ -304,7 +302,7 @@ func TestEngineOutNetworkSendsCachedNetworkToHTTPServerOnLinkAdd(t *testing.T) {
 	}
 }
 
-func TestOutNetworkErrorSendsRejectAndSuppressesNewLinksUntilNextSuccess(t *testing.T) {
+func TestOutNetworkWithoutSystemOutNetDoesNotSend(t *testing.T) {
 	w := pasta.NewWorkspace(NewDebugLogFactory(1024))
 	defer w.Close()
 	if err := w.AddNodeClass(outNetClass{}); err != nil {
@@ -319,53 +317,17 @@ func TestOutNetworkErrorSendsRejectAndSuppressesNewLinksUntilNextSuccess(t *test
 		t.Fatalf("OutNetwork snapshot = %#v, %v; want one left port", out, ok)
 	}
 
-	first := &outNetReceiver{events: make(chan NetworkPayload, 4)}
-	if _, err := w.AddNode(first, "test/OutNetworkReceiver", "first"); err != nil {
-		t.Fatalf("AddNode first receiver: %v", err)
+	receiver := &outNetReceiver{events: make(chan NetworkPayload, 2)}
+	if _, err := w.AddNode(receiver, "test/OutNetworkReceiver", "receiver"); err != nil {
+		t.Fatalf("AddNode receiver: %v", err)
 	}
-	if _, _, err := w.AddLink(out.LeftPorts[0], first.in); err != nil {
-		t.Fatalf("AddLink first: %v", err)
+	link, _, err := w.AddLink(out.LeftPorts[0], receiver.in)
+	if err != nil {
+		t.Fatalf("AddLink: %v", err)
 	}
-
-	base := gonnect.NewLoopbackNetwok()
-	w.SendInbox(pasta.InboxMessage{
-		ReceiverNode: outID,
-		Payload:      SysBuildInboxMessage{System: &sysnet.System{OutNet: base}},
-	})
-	_ = receiveOutNetPayload(t, first.events)
-
-	w.SendInbox(pasta.InboxMessage{
-		ReceiverNode: outID,
-		Payload:      SysBuildInboxMessage{Err: errors.New("sysbuild failed")},
-	})
-	reject := receiveOutNetPayload(t, first.events)
-	if _, ok := reject.Network.(*gonnect.DetachedNetwork).GetWrapped().(*gonnect.RejectNetwork); !ok {
-		t.Fatalf("wrapped network after error = %T, want *gonnect.RejectNetwork", reject.Network.(*gonnect.DetachedNetwork).GetWrapped())
-	}
-
-	second := &outNetReceiver{events: make(chan NetworkPayload, 4)}
-	if _, err := w.AddNode(second, "test/OutNetworkReceiver", "second"); err != nil {
-		t.Fatalf("AddNode second receiver: %v", err)
-	}
-	if _, _, err := w.AddLink(out.LeftPorts[0], second.in); err != nil {
-		t.Fatalf("AddLink second: %v", err)
-	}
-	assertNoOutNetEvent(t, second.events)
-
-	next := gonnect.NewLoopbackNetwok()
-	w.SendInbox(pasta.InboxMessage{
-		ReceiverNode: outID,
-		Payload:      SysBuildInboxMessage{System: &sysnet.System{OutNet: next}},
-	})
-
-	firstPayload := receiveOutNetPayload(t, first.events)
-	if got := firstPayload.Network.(*gonnect.DetachedNetwork).GetWrapped(); got != next {
-		t.Fatalf("first wrapped network = %T %p, want next %p", got, got, next)
-	}
-	secondPayload := receiveOutNetPayload(t, second.events)
-	if got := secondPayload.Network.(*gonnect.DetachedNetwork).GetWrapped(); got != next {
-		t.Fatalf("second wrapped network = %T %p, want next %p", got, got, next)
-	}
+	assertNoOutNetEvent(t, receiver.events)
+	w.EmitEvent(receiver.id, link, std.RequestValue{})
+	assertNoOutNetEvent(t, receiver.events)
 }
 
 func receiveOutNetPayload(t *testing.T, events <-chan NetworkPayload) NetworkPayload {
