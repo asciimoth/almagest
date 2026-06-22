@@ -20,9 +20,10 @@ const E2EWorkspace = "main"
 
 // NodeE2E owns a debug engine and common helpers for engine e2e tests.
 type NodeE2E struct {
-	T          *testing.T
-	Engine     Engine
-	LogFactory *DebugLogFactory
+	T           *testing.T
+	Engine      Engine
+	LogFactory  *DebugLogFactory
+	DebugSystem *sysnetdebug.System
 
 	mu    sync.Mutex
 	menus *formular.MenuSnapshotState
@@ -44,11 +45,12 @@ func NewNodeE2E(t *testing.T) *NodeE2E {
 	pool := bufpool.NewTestDebugPool(t)
 	t.Cleanup(func() { pool.Close() })
 	logf := NewDebugLogFactory(4096)
+	sys := newE2EDebugSystem()
 	engine, err := BuildEngine(
 		context.Background(),
 		configer.NewMemory(nil),
 		logf,
-		newE2EDebugSystem(),
+		sys,
 		nil,
 		pool,
 		true,
@@ -62,7 +64,7 @@ func NewNodeE2E(t *testing.T) *NodeE2E {
 		}
 	})
 
-	e := &NodeE2E{T: t, Engine: engine, LogFactory: logf, menus: formular.NewMenuSnapshotState()}
+	e := &NodeE2E{T: t, Engine: engine, LogFactory: logf, DebugSystem: sys, menus: formular.NewMenuSnapshotState()}
 	sub := engine.SubscribeNotifications(func(notification EngineNotification) {
 		if notification.Kind != NotificationWorkspace || notification.Workspace == nil {
 			return
