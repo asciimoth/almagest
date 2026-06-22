@@ -96,6 +96,104 @@
             "native"
           ],
           "description": "debug uses the daemon debug integration. native delegates to the current platform integration."
+        },
+        "Debug": {
+          "$ref": "#/$defs/debugSystemConfig"
+        }
+      },
+      "additionalProperties": true
+    },
+    "debugSystemConfig": {
+      "type": "object",
+      "description": "Options for the daemon debug sysnet integration. These options are read only when System.Type is debug.",
+      "properties": {
+        "DisableTun": {
+          "type": "boolean",
+          "default": false,
+          "description": "Report regular TUN creation as unsupported and reject BuildTun."
+        },
+        "DisableDefaultTun": {
+          "type": "boolean",
+          "default": false,
+          "description": "Report default TUN creation as unsupported and reject BuildDefaultTun."
+        },
+        "DisableDynTun": {
+          "type": "boolean",
+          "default": false,
+          "description": "Report dynamic regular TUN updates as unsupported."
+        },
+        "DisableDynDefaultTun": {
+          "type": "boolean",
+          "default": false,
+          "description": "Report dynamic default TUN updates as unsupported."
+        },
+        "DisableTunNames": {
+          "type": "boolean",
+          "default": false,
+          "description": "Report regular TUN naming as unsupported."
+        },
+        "DisableDefaultTunNames": {
+          "type": "boolean",
+          "default": false,
+          "description": "Report default TUN naming as unsupported."
+        },
+        "DisableStrictMode": {
+          "type": "boolean",
+          "default": false,
+          "description": "Report strict default TUN routing as unsupported."
+        },
+        "DefaultTun": {
+          "$ref": "#/$defs/debugDefaultTunConfig"
+        }
+      },
+      "additionalProperties": true
+    },
+    "debugDefaultTunConfig": {
+      "type": "object",
+      "description": "Debug BuildDefaultTun behavior. The default builder returns a gonnect-netstack VTun and exposes it through a localhost SOCKS proxy.",
+      "properties": {
+        "Builder": {
+          "type": "string",
+          "enum": [
+            "vtun-socks",
+            "pipe"
+          ],
+          "default": "vtun-socks",
+          "description": "vtun-socks returns a netstack VTun and starts a local SOCKS proxy backed by it. pipe uses sysnet/debug's in-memory pipe-backed default TUN."
+        },
+        "SocksHost": {
+          "type": "string",
+          "default": "127.0.0.1",
+          "description": "Host address for the debug DefaultTun SOCKS listener when Builder is vtun-socks."
+        },
+        "SocksPort": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65535,
+          "default": 1081,
+          "description": "TCP port for the debug DefaultTun SOCKS listener. Use 0 to let the OS choose an available port."
+        },
+        "Name": {
+          "type": "string",
+          "default": "debug-default-tun",
+          "description": "Name passed to the netstack VTun builder."
+        },
+        "NoLoopbackAddr": {
+          "type": "boolean",
+          "default": true,
+          "description": "Do not add loopback addresses to the debug VTun."
+        },
+        "EndpointCh": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 1024,
+          "description": "Endpoint channel size passed to the netstack VTun builder."
+        },
+        "EventCh": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 10,
+          "description": "Event channel size passed to the netstack VTun builder."
         }
       },
       "additionalProperties": true
