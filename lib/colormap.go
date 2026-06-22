@@ -25,8 +25,12 @@ var DefaultColorMap = map[string]TypePalette{
 		TypeColor: "#3b7f3e",
 		TextColor: "#ffffff",
 	},
-	"almagest/network": {
+	TypeNetwork: {
 		TypeColor: "#8a5cf6",
+		TextColor: "#ffffff",
+	},
+	TypeTun: {
+		TypeColor: "#c47a3c",
 		TextColor: "#ffffff",
 	},
 }

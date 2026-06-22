@@ -21,17 +21,22 @@ require (
 require (
 	github.com/alexflint/go-scalar v1.2.0 // indirect
 	github.com/asciimoth/badlock v0.1.1 // indirect
+	github.com/asciimoth/gonnect-netstack v0.4.24 // indirect
 	github.com/asciimoth/gonnect-routing v0.5.0 // indirect
 	github.com/asciimoth/ident v0.2.0 // indirect
 	github.com/asciimoth/putback v0.3.0 // indirect
 	github.com/asciimoth/socksgo v0.3.0 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
+	github.com/google/btree v1.1.2 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/wk8/go-ordered-map/v2 v2.1.8 // indirect
 	github.com/xtaci/smux v1.5.44 // indirect
+	golang.org/x/exp v0.0.0-20231110203233-9a3e6036ecaa // indirect
 	golang.org/x/net v0.54.0 // indirect
+	golang.org/x/time v0.12.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
+	gvisor.dev/gvisor v0.0.0-20260325202830-7644cf3a343c // indirect
 )
 
 replace github.com/asciimoth/almagest/lib => ../lib
