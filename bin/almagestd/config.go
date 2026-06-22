@@ -16,7 +16,7 @@ var (
 )
 
 type Config struct {
-	Main      configer.Config
+	Main      *hujson.Config
 	Protected ProtectedConfig
 }
 
@@ -33,14 +33,7 @@ type LogCacheConfig struct {
 }
 
 func (c *Config) MainToBytes() ([]byte, error) {
-	packer, ok := c.Main.(interface {
-		Pack() []byte
-	})
-	if !ok {
-		return nil, errors.New("config does not support HuJSON packing")
-	}
-
-	return tailscalehujson.Format(packer.Pack())
+	return tailscalehujson.Format(c.Main.Pack())
 }
 
 func (c *Config) LogCache() LogCacheConfig {
