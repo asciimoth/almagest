@@ -38,3 +38,5 @@ go.work.sum
 /panel/public
 /panel/vendor
 /bin/almagestd/static
+
+almagestd

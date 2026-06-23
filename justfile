@@ -31,6 +31,12 @@ fmt:
 build-web:
   cd panel && npm ci && npm run build
 
-daemon: build-web
-  go run ./bin/almagestd/ -c ./local -l debug -w 8090 --debug-nodes
+build: build-web
+	go build -o ./almagestd ./bin/almagestd/
+
+daemon: build
+  ./almagestd -c ./local -l debug -w 8090 --debug-nodes --unsafe-config
+
+daemon-sudo: build
+  sudo ./almagestd -c ./local -l debug -w 8090 --debug-nodes --unsafe-config
 

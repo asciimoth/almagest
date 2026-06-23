@@ -12,6 +12,8 @@ type Args struct {
 	StdInConfig     bool   `arg:"--stdin" help:"read config from stdin"`
 	Config          string `arg:"-c,--config,env:ALMAGEST_CONF" help:"config path"`
 	ProtectedConfig string `arg:"-p,--protected,env:ALMAGEST_PROTECTED_CONF" help:"protected config path"`
+	UnsafeConfig    bool   `arg:"--unsafe-config" help:"do not check config file permissions"`
+	// TODO: Read Only Config toggle
 
 	LogLevel string `arg:"-l,--lvl,env:ALMAGEST_LOG_LVL" help:"logging level debug|info|warn|error|fatal"`
 
@@ -20,5 +22,5 @@ type Args struct {
 	WebAdminFilterGIDs      []uint32 `arg:"--web-filter-gid,separate,env:ALMAGEST_WEB_ADMIN_FILTER_GIDS" help:"allowed web admin peer owner GID; repeat flag or comma-separate env values"`
 	WebAdminFilterUsernames []string `arg:"--web-filter-user,separate,env:ALMAGEST_WEB_ADMIN_FILTER_USERS" help:"allowed web admin peer owner username; repeat flag or comma-separate env values"`
 
-	DebugNodes bool `arg:"--debug-nodes" help:"add debug node classes"`
+	DebugNodes bool `arg:"--debug-nodes" help:"enable debug node classes"`
 }

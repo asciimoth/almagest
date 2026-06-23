@@ -34,8 +34,9 @@ var (
 )
 
 type agent struct {
-	StdInConfig bool
-	ReadOnly    bool
+	StdInConfig  bool
+	ReadOnly     bool
+	UnsafeConfig bool
 
 	ConfigPath    string
 	ProtectedPath string
@@ -52,6 +53,11 @@ func (a *agent) ReadConfig() ([]byte, []byte, error) {
 		configData, protectedData []byte
 	)
 
+	readfile := ReadSafeFile
+	if a.UnsafeConfig {
+		readfile = os.ReadFile
+	}
+
 	if a.StdInConfig {
 		golog.Info("Loading config from stdin")
 		configData, err = readStdinIfPiped([]byte(DefaultProtectedConfigText))
@@ -59,12 +65,12 @@ func (a *agent) ReadConfig() ([]byte, []byte, error) {
 			golog.Fatal(err)
 		}
 	} else {
-		configData, err = ReadSafeFile(a.ConfigPath)
+		configData, err = readfile(a.ConfigPath)
 		if err != nil {
 			return nil, nil, fmt.Errorf("config read: %s: %w", a.ConfigPath, err)
 		}
 
-		protectedData, err = ReadSafeFile(a.ProtectedPath)
+		protectedData, err = readfile(a.ProtectedPath)
 		if err != nil {
 			return nil, nil, fmt.Errorf("config read: %s: %w", a.ConfigPath, err)
 		}
@@ -84,7 +90,8 @@ func (a *agent) WriteConfig(data []byte) error {
 
 func RunAgent(args args.Args) Agent {
 	agent := &agent{
-		StdInConfig: args.StdInConfig,
+		StdInConfig:  args.StdInConfig,
+		UnsafeConfig: args.UnsafeConfig,
 	}
 
 	if args.StdInConfig {
@@ -114,10 +121,12 @@ func RunAgent(args args.Args) Agent {
 			agent.ConfigPath = path.Join(agent.ConfigPath, "alm.hujson")
 		}
 
-		if err := MakeSureSafeFileExists(
-			agent.ConfigPath, []byte(DefaultConfigText),
-		); err != nil {
-			golog.Fatal(ConfFail, agent.ConfigPath, err)
+		if !args.UnsafeConfig {
+			if err := MakeSureSafeFileExists(
+				agent.ConfigPath, []byte(DefaultConfigText),
+			); err != nil {
+				golog.Fatal(ConfFail, agent.ConfigPath, err)
+			}
 		}
 
 		if agent.ProtectedPath == "" {
@@ -131,10 +140,12 @@ func RunAgent(args args.Args) Agent {
 		}
 		agent.ProtectedPath = protectedPath
 
-		if err := MakeSureSafeFileExists(
-			agent.ProtectedPath, []byte(DefaultProtectedConfigText),
-		); err != nil {
-			golog.Fatal(ConfFail, agent.ProtectedPath, err)
+		if !args.UnsafeConfig {
+			if err := MakeSureSafeFileExists(
+				agent.ProtectedPath, []byte(DefaultProtectedConfigText),
+			); err != nil {
+				golog.Fatal(ConfFail, agent.ProtectedPath, err)
+			}
 		}
 	}
 
