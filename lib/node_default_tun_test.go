@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -175,6 +176,51 @@ func TestDefaultTunDynamicConfigUsesSettersWhenOnlyMTUAndAddrsChange(t *testing.
 	}
 }
 
+func TestDefaultTunOnStopClosesActiveDefaultTun(t *testing.T) {
+	dtun := newRecordingDefaultTun(1500)
+	node := &defaultTunNode{
+		dtun:         dtun,
+		hasEffective: true,
+	}
+
+	node.OnStop()
+
+	if got := dtun.closeCount(); got != 1 {
+		t.Fatalf("DefaultTun close count after OnStop = %d, want 1", got)
+	}
+	if node.dtun != nil {
+		t.Fatal("DefaultTun node kept dtun after OnStop")
+	}
+	if node.hasEffective {
+		t.Fatal("DefaultTun node kept effective config after OnStop")
+	}
+}
+
+func TestDefaultTunLogsConfigureFailure(t *testing.T) {
+	logf := NewDebugLogFactory(1024)
+	w := pasta.NewWorkspace(logf)
+	t.Cleanup(w.Close)
+	sys := newRecordingDefaultTunSystem()
+	sys.buildErr = errors.New("create TUN failed")
+	engine := &engine{ctx: context.Background(), sys: sys}
+	if err := w.AddNodeClass(defaultTunClass{engine: engine}); err != nil {
+		t.Fatalf("AddNodeClass DefaultTun: %v", err)
+	}
+	if _, err := w.AddNodeByClass(NodeTypeDefaultTun, "default tun"); err != nil {
+		t.Fatalf("AddNodeByClass DefaultTun: %v", err)
+	}
+	entries := logf.Drain()
+	for _, entry := range entries {
+		if entry.Level == DebugLogLevelError &&
+			entry.Source.Name == "node" &&
+			entry.Source.NodeClass == NodeTypeDefaultTun &&
+			strings.Contains(entry.Message, "configure default TUN failed: create TUN failed") {
+			return
+		}
+	}
+	t.Fatalf("missing DefaultTun configure failure log in %#v", entries)
+}
+
 func TestDefaultTunConfigPersistsAcrossSaveRestoreAndCopyPaste(t *testing.T) {
 	sys := newRecordingDefaultTunSystem()
 	engine := newDefaultTunTestEngine(t, sys, nil)
@@ -280,6 +326,7 @@ type recordingDefaultTunSystem struct {
 	tuns          []*recordingDefaultTun
 	setMTUCalls   []int
 	setAddrsCalls [][]string
+	buildErr      error
 }
 
 func newRecordingDefaultTunSystem() *recordingDefaultTunSystem {
@@ -289,6 +336,9 @@ func newRecordingDefaultTunSystem() *recordingDefaultTunSystem {
 func (s *recordingDefaultTunSystem) BuildDefaultTun(opts sysnet.DefaultTunOpts) (sysnet.DefaultTun, error) {
 	if err := s.VerifyDefaultTunOpts(opts); err != nil {
 		return nil, err
+	}
+	if s.buildErr != nil {
+		return nil, s.buildErr
 	}
 	dtun := newRecordingDefaultTun(opts.MTU)
 	s.buildOpts = append(s.buildOpts, opts.Copy())

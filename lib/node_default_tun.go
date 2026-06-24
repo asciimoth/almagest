@@ -132,7 +132,11 @@ func (n *defaultTunNode) OnReady() error {
 
 func (n *defaultTunNode) OnStop() {
 	n.closeSentTuns()
+	if n.dtun != nil {
+		_ = n.dtun.Close()
+	}
 	n.dtun = nil
+	n.hasEffective = false
 }
 
 func (n *defaultTunNode) PreLinkAdd(port uint64, linkType, portDirection string) error {
@@ -279,9 +283,17 @@ func (n *defaultTunNode) configureDefaultTun() error {
 		}
 	}
 	if err := n.rebuildDefaultTun(opts); err != nil {
+		n.logConfigureDefaultTunError(err)
 		return err
 	}
 	return nil
+}
+
+func (n *defaultTunNode) logConfigureDefaultTunError(err error) {
+	if err == nil || n.logger == nil {
+		return
+	}
+	n.logger.Errf("configure default TUN failed: %v", err)
 }
 
 func (n *defaultTunNode) rebuildDefaultTun(opts sysnet.DefaultTunOpts) error {
