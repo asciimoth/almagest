@@ -101,6 +101,7 @@ type defaultTunNode struct {
 	dtun          sysnet.DefaultTun
 	sentTuns      map[uint64]tun.Tun
 	formError     string
+	ruleDraftType map[string]string
 }
 
 func (n *defaultTunNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
@@ -189,11 +190,24 @@ func (n *defaultTunNode) OnEvent(event pasta.Event, linkType string, _ []string,
 }
 
 func (n *defaultTunNode) OnFormularMsg(message any) error {
-	msg, ok := message.(formular.FormApplyMessage)
-	if !ok || msg.MenuID != pasta.NodeMenuID(n.id) || msg.BlockID != "config" {
-		return nil
+	switch msg := message.(type) {
+	case formular.FormApplyMessage:
+		if msg.MenuID != pasta.NodeMenuID(n.id) || msg.BlockID != "config" {
+			return nil
+		}
+		return n.applyConfigForm(msg.Values)
+	case formular.FieldValidateMessage:
+		if msg.MenuID != pasta.NodeMenuID(n.id) || msg.Field.BlockID != "config" {
+			return nil
+		}
+		n.sendConfigFieldStatus(msg)
+	case formular.AutocompleteRequestMessage:
+		if msg.MenuID != pasta.NodeMenuID(n.id) || msg.Field.BlockID != "config" {
+			return nil
+		}
+		n.sendConfigAutocompleteHints(msg)
 	}
-	return n.applyConfigForm(msg.Values)
+	return nil
 }
 
 func (n *defaultTunNode) OnSave(cfg configer.Config) error {
@@ -219,10 +233,10 @@ func (n *defaultTunNode) OnSave(cfg configer.Config) error {
 
 func (n *defaultTunNode) applyConfigForm(values map[string]any) error {
 	next := n.config
-	if value, ok := stringFromAny(values["tunAddrs"]); ok {
+	if value, ok := defaultTunStringListFromAny(values["tunAddrs"]); ok {
 		next.tunAddrs = value
 	}
-	if value, ok := stringFromAny(values["tunRoutes"]); ok {
+	if value, ok := defaultTunStringListFromAny(values["tunRoutes"]); ok {
 		next.tunRoutes = value
 	}
 	if value, ok := intFromAny(values["mtu"]); ok {
@@ -249,11 +263,93 @@ func (n *defaultTunNode) applyConfigForm(values map[string]any) error {
 	}
 	n.formError = ""
 	n.config = next
+	n.ruleDraftType = nil
 	n.sendForcedMenuSnapshot()
 	if err := n.configureDefaultTun(); err != nil {
 		return nil
 	}
 	return nil
+}
+
+func (n *defaultTunNode) sendConfigFieldStatus(msg formular.FieldValidateMessage) {
+	status := formular.StatusOK
+	statusText := ""
+	if err := n.validateConfigField(msg); err != nil {
+		status = formular.StatusError
+		statusText = err.Error()
+	}
+	n.w.SendNodeMenuMsg(n.id, formular.FieldStatusMessage{
+		MessageBase: formular.MessageBase{
+			Type:            formular.MessageFieldStatus,
+			MenuID:          pasta.NodeMenuID(n.id),
+			MenuGeneration:  1,
+			BlockGeneration: 1,
+		},
+		Field:      msg.Field,
+		Status:     status,
+		StatusText: statusText,
+	})
+}
+
+func (n *defaultTunNode) validateConfigField(msg formular.FieldValidateMessage) error {
+	if len(msg.Field.ElementPath) > 0 {
+		return n.validateNestedConfigField(msg)
+	}
+	next := n.config
+	switch msg.Field.FieldID {
+	case "mtu":
+		if value, ok := intFromAny(msg.Value); ok {
+			next.mtu = value
+		}
+	case "dnsIP":
+		if value, ok := stringFromAny(msg.Value); ok {
+			next.dnsIP = value
+		}
+	default:
+		return nil
+	}
+	next.normalize()
+	return n.validateConfig(next)
+}
+
+func (n *defaultTunNode) validateNestedConfigField(msg formular.FieldValidateMessage) error {
+	switch msg.Field.FieldID {
+	case "value":
+		return nil
+	case "type":
+		ruleType, _ := stringFromAny(msg.Value)
+		ruleType = strings.TrimSpace(ruleType)
+		if ruleType == "" {
+			return nil
+		}
+		if !n.ruleTypeSupported(ruleType) {
+			return fmt.Errorf("unsupported rule type %q", ruleType)
+		}
+		if arrayID, elementID, ok := defaultTunRuleFieldPath(msg.Field); ok {
+			n.setRuleDraftType(arrayID, elementID, ruleType)
+		}
+		return nil
+	case "rule":
+		ruleValue, _ := stringFromAny(msg.Value)
+		ruleValue = strings.TrimSpace(ruleValue)
+		if ruleValue == "" {
+			return nil
+		}
+		arrayID, elementID, ok := defaultTunRuleFieldPath(msg.Field)
+		if !ok {
+			return nil
+		}
+		ruleType, ok := n.ruleTypeByElementID(arrayID, elementID)
+		if !ok || ruleType == "" || n.engine == nil || n.engine.sys == nil {
+			return nil
+		}
+		if n.engine.sys.RuleVerify(sysnet.Rule{Type: ruleType, Rule: ruleValue}) {
+			return nil
+		}
+		return fmt.Errorf("invalid %s rule", ruleType)
+	default:
+		return nil
+	}
 }
 
 func (n *defaultTunNode) validateConfig(config defaultTunConfig) error {
@@ -451,8 +547,8 @@ func (n *defaultTunNode) sendForcedMenuSnapshot() {
 func (n *defaultTunNode) configBlock() formular.Block {
 	statusErr := n.formError != ""
 	return formular.Block{ID: "config", Order: 10, Generation: 1, Form: true, Items: []formular.Item{
-		configTextField("tunAddrs", "TUN addrs", n.config.tunAddrs, statusErr, n.formError, true),
-		configTextField("tunRoutes", "TUN routes", n.config.tunRoutes, statusErr, n.formError, true),
+		defaultTunStringListField("tunAddrs", "TUN addrs", splitDefaultTunList(n.config.tunAddrs)),
+		defaultTunStringListField("tunRoutes", "TUN routes", splitDefaultTunList(n.config.tunRoutes)),
 		configIntField("mtu", "MTU", n.config.mtu, statusErr, n.formError),
 		configTextField("dnsIP", "DNS IP", n.config.dnsIP, statusErr, n.formError, false),
 		configCheckbox("strict", "Strict routing", n.config.strict),
@@ -470,6 +566,40 @@ func splitDefaultTunList(value string) []string {
 		field = strings.TrimSpace(field)
 		if field != "" {
 			out = append(out, field)
+		}
+	}
+	return out
+}
+
+func defaultTunStringListFromAny(raw any) (string, bool) {
+	if value, ok := stringFromAny(raw); ok {
+		return value, true
+	}
+	switch values := raw.(type) {
+	case []formular.ArrayElementValue:
+		return strings.Join(defaultTunStringListFromArray(values), "\n"), true
+	case []any:
+		array := make([]formular.ArrayElementValue, 0, len(values))
+		for _, rawElement := range values {
+			element, ok := arrayElementValueFromAny(rawElement)
+			if !ok {
+				continue
+			}
+			array = append(array, element)
+		}
+		return strings.Join(defaultTunStringListFromArray(array), "\n"), true
+	default:
+		return "", false
+	}
+}
+
+func defaultTunStringListFromArray(values []formular.ArrayElementValue) []string {
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		item, _ := stringFromAny(value.Values["value"])
+		item = strings.TrimSpace(item)
+		if item != "" {
+			out = append(out, item)
 		}
 	}
 	return out
@@ -526,13 +656,45 @@ func defaultTunRulesField(id, label string, rules []sysnet.Rule) formular.Item {
 	}}
 }
 
+func defaultTunStringListField(id, label string, values []string) formular.Item {
+	return formular.Item{Type: formular.ItemField, ID: id, Label: label, Field: &formular.Field{
+		Kind:      formular.FieldArray,
+		Templates: []formular.ArrayTemplate{defaultTunStringListTemplate()},
+		Elements:  defaultTunStringListElements(values),
+	}}
+}
+
+func defaultTunStringListTemplate() formular.ArrayTemplate {
+	return formular.ArrayTemplate{
+		Name:  "value",
+		Label: "Value",
+		Items: []formular.Item{
+			{Type: formular.ItemField, ID: "value", Label: "Value", Field: &formular.Field{Kind: formular.FieldText, Validation: true}},
+		},
+	}
+}
+
+func defaultTunStringListElements(values []string) []formular.ArrayElement {
+	out := make([]formular.ArrayElement, 0, len(values))
+	for i, value := range values {
+		out = append(out, formular.ArrayElement{
+			ID:       fmt.Sprintf("value-%d", i),
+			Template: "value",
+			Items: []formular.Item{
+				{Type: formular.ItemField, ID: "value", Label: "Value", Field: &formular.Field{Kind: formular.FieldText, Value: value, Validation: true}},
+			},
+		})
+	}
+	return out
+}
+
 func defaultTunRuleTemplate() formular.ArrayTemplate {
 	return formular.ArrayTemplate{
 		Name:  "rule",
 		Label: "Rule",
 		Items: []formular.Item{
-			{Type: formular.ItemField, ID: "type", Label: "Type", Field: &formular.Field{Kind: formular.FieldText}},
-			{Type: formular.ItemField, ID: "rule", Label: "Rule", Field: &formular.Field{Kind: formular.FieldText}},
+			defaultTunRuleTypeField(""),
+			defaultTunRuleValueField(""),
 		},
 	}
 }
@@ -544,12 +706,30 @@ func defaultTunRuleElements(rules []sysnet.Rule) []formular.ArrayElement {
 			ID:       fmt.Sprintf("rule-%d", i),
 			Template: "rule",
 			Items: []formular.Item{
-				{Type: formular.ItemField, ID: "type", Label: "Type", Field: &formular.Field{Kind: formular.FieldText, Value: rule.Type}},
-				{Type: formular.ItemField, ID: "rule", Label: "Rule", Field: &formular.Field{Kind: formular.FieldText, Value: rule.Rule}},
+				defaultTunRuleTypeField(rule.Type),
+				defaultTunRuleValueField(rule.Rule),
 			},
 		})
 	}
 	return out
+}
+
+func defaultTunRuleTypeField(value string) formular.Item {
+	return formular.Item{Type: formular.ItemField, ID: "type", Label: "Type", Field: &formular.Field{
+		Kind:         formular.FieldText,
+		Value:        value,
+		Validation:   true,
+		Autocomplete: &formular.Autocomplete{Enabled: true},
+	}}
+}
+
+func defaultTunRuleValueField(value string) formular.Item {
+	return formular.Item{Type: formular.ItemField, ID: "rule", Label: "Rule", Field: &formular.Field{
+		Kind:         formular.FieldText,
+		Value:        value,
+		Validation:   true,
+		Autocomplete: &formular.Autocomplete{Enabled: true},
+	}}
 }
 
 func defaultTunRulesFromAny(raw any) ([]sysnet.Rule, bool) {
@@ -583,6 +763,125 @@ func defaultTunRulesFromArray(values []formular.ArrayElementValue) []sysnet.Rule
 		out = append(out, rule)
 	}
 	return out
+}
+
+func (n *defaultTunNode) sendConfigAutocompleteHints(msg formular.AutocompleteRequestMessage) {
+	n.w.SendNodeMenuMsg(n.id, formular.AutocompleteHintsMessage{
+		MessageBase: formular.MessageBase{
+			Type:            formular.MessageAutocompleteHints,
+			MenuID:          pasta.NodeMenuID(n.id),
+			MenuGeneration:  1,
+			BlockGeneration: 1,
+		},
+		Field:  msg.Field,
+		Prefix: msg.Prefix,
+		Hints:  n.configAutocompleteHints(msg),
+	})
+}
+
+func (n *defaultTunNode) configAutocompleteHints(msg formular.AutocompleteRequestMessage) []string {
+	if n.engine == nil || n.engine.sys == nil {
+		return nil
+	}
+	prefix := strings.TrimSpace(msg.Prefix)
+	switch msg.Field.FieldID {
+	case "type":
+		info := n.engine.sys.ListRules()
+		return defaultTunRuleTypeHints(info.TunRules, prefix)
+	case "rule":
+		arrayID, elementID, ok := defaultTunRuleFieldPath(msg.Field)
+		if !ok {
+			return nil
+		}
+		ruleType, ok := n.ruleTypeByElementID(arrayID, elementID)
+		if !ok || ruleType == "" {
+			return nil
+		}
+		return defaultTunPrefixHints(n.engine.sys.RuleCompl(sysnet.Rule{Type: ruleType, Rule: prefix}), prefix)
+	default:
+		return nil
+	}
+}
+
+func defaultTunRuleTypeHints(infos []sysnet.RuleTypeInfo, prefix string) []string {
+	hints := make([]string, 0, len(infos))
+	for _, info := range infos {
+		if strings.HasPrefix(info.Type, prefix) {
+			hints = append(hints, info.Type)
+		}
+	}
+	return hints
+}
+
+func defaultTunPrefixHints(values []string, prefix string) []string {
+	hints := make([]string, 0, len(values))
+	for _, value := range values {
+		if strings.HasPrefix(value, prefix) {
+			hints = append(hints, value)
+		}
+	}
+	return hints
+}
+
+func defaultTunRuleFieldPath(ref formular.FieldRef) (arrayID, elementID string, ok bool) {
+	if len(ref.ElementPath) == 0 {
+		return "", "", false
+	}
+	last := ref.ElementPath[len(ref.ElementPath)-1]
+	if last.ArrayFieldID != "exclude" && last.ArrayFieldID != "include" {
+		return "", "", false
+	}
+	return last.ArrayFieldID, last.ElementID, true
+}
+
+func (n *defaultTunNode) ruleTypeByElementID(arrayID, elementID string) (string, bool) {
+	if n.ruleDraftType != nil {
+		if ruleType, ok := n.ruleDraftType[defaultTunRuleDraftKey(arrayID, elementID)]; ok {
+			return ruleType, true
+		}
+	}
+	var rules []sysnet.Rule
+	switch arrayID {
+	case "exclude":
+		rules = n.config.exclude
+	case "include":
+		rules = n.config.include
+	default:
+		return "", false
+	}
+	for i, rule := range rules {
+		if elementID == fmt.Sprintf("rule-%d", i) {
+			return rule.Type, true
+		}
+	}
+	return "", false
+}
+
+func (n *defaultTunNode) setRuleDraftType(arrayID, elementID, ruleType string) {
+	if n.ruleDraftType == nil {
+		n.ruleDraftType = map[string]string{}
+	}
+	n.ruleDraftType[defaultTunRuleDraftKey(arrayID, elementID)] = ruleType
+}
+
+func defaultTunRuleDraftKey(arrayID, elementID string) string {
+	return arrayID + "/" + elementID
+}
+
+func (n *defaultTunNode) ruleTypeSupported(ruleType string) bool {
+	if n.engine == nil || n.engine.sys == nil {
+		return true
+	}
+	info := n.engine.sys.ListRules()
+	if len(info.TunRules) == 0 {
+		return true
+	}
+	for _, rule := range info.TunRules {
+		if rule.Type == ruleType {
+			return true
+		}
+	}
+	return false
 }
 
 func readDefaultTunRulesConfig(cfg configer.Config, key string) []sysnet.Rule {

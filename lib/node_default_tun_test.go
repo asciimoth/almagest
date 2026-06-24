@@ -176,6 +176,203 @@ func TestDefaultTunDynamicConfigUsesSettersWhenOnlyMTUAndAddrsChange(t *testing.
 	}
 }
 
+func TestDefaultTunMenuUsesArrayFieldsAndReportsValidationStatus(t *testing.T) {
+	w, _ := newDefaultTunNodeTestWorkspace(t, false)
+	state := formular.NewMenuSnapshotState()
+	sub := w.SubscribeNotifications(func(notification pasta.WorkspaceNotification) {
+		if notification.Kind == pasta.NotificationNodeMenu {
+			state.Apply(notification.Formular)
+		}
+	})
+	if sub == 0 {
+		t.Fatal("SubscribeNotifications returned 0")
+	}
+	defer w.UnsubscribeNotifications(sub)
+
+	node, err := w.AddNodeByClass(NodeTypeDefaultTun, "default tun")
+	if err != nil {
+		t.Fatalf("AddNodeByClass DefaultTun: %v", err)
+	}
+	w.SubscribeNodeMenu(node, sub)
+
+	snapshot, ok := state.Snapshot(pasta.NodeMenuID(node))
+	if !ok {
+		t.Fatal("menu snapshot missing")
+	}
+	block := mustFindBlock(t, snapshot, "config")
+	for _, id := range []string{"tunAddrs", "tunRoutes"} {
+		item, ok := FindItem(block, id)
+		if !ok {
+			t.Fatalf("%s item missing", id)
+		}
+		if item.Field == nil || item.Field.Kind != formular.FieldArray {
+			t.Fatalf("%s field kind = %#v, want array", id, item.Field)
+		}
+		if len(item.Field.Templates) != 1 || item.Field.Templates[0].Name != "value" {
+			t.Fatalf("%s templates = %#v, want value template", id, item.Field.Templates)
+		}
+	}
+
+	w.SendNodeFormularMsg(node, formular.FieldValidateMessage{
+		MessageBase: formular.MessageBase{Type: formular.MessageFieldValidate, MenuID: pasta.NodeMenuID(node)},
+		Field:       formular.FieldRef{BlockID: "config", FieldID: "mtu"},
+		Value:       -1,
+	})
+	snapshot, ok = state.Snapshot(pasta.NodeMenuID(node))
+	if !ok {
+		t.Fatal("menu snapshot missing after invalid validation")
+	}
+	item, ok := FindItem(mustFindBlock(t, snapshot, "config"), "mtu")
+	if !ok {
+		t.Fatal("mtu item missing after invalid validation")
+	}
+	if item.Status != formular.StatusError {
+		t.Fatalf("mtu status = %q, want %q", item.Status, formular.StatusError)
+	}
+
+	w.SendNodeFormularMsg(node, formular.FieldValidateMessage{
+		MessageBase: formular.MessageBase{Type: formular.MessageFieldValidate, MenuID: pasta.NodeMenuID(node)},
+		Field:       formular.FieldRef{BlockID: "config", FieldID: "mtu"},
+		Value:       1200,
+	})
+	snapshot, ok = state.Snapshot(pasta.NodeMenuID(node))
+	if !ok {
+		t.Fatal("menu snapshot missing after valid validation")
+	}
+	item, ok = FindItem(mustFindBlock(t, snapshot, "config"), "mtu")
+	if !ok {
+		t.Fatal("mtu item missing after valid validation")
+	}
+	if item.Status != formular.StatusOK {
+		t.Fatalf("mtu status = %q, want %q", item.Status, formular.StatusOK)
+	}
+}
+
+func TestDefaultTunAppliesTunAddrsAndRoutesFromArrayFields(t *testing.T) {
+	w, sys := newDefaultTunNodeTestWorkspace(t, false)
+	node, err := w.AddNodeByClass(NodeTypeDefaultTun, "default tun")
+	if err != nil {
+		t.Fatalf("AddNodeByClass DefaultTun: %v", err)
+	}
+
+	w.SendNodeFormularMsg(node, formular.FormApplyMessage{
+		MessageBase: formular.MessageBase{Type: formular.MessageFormApply, MenuID: pasta.NodeMenuID(node)},
+		BlockID:     "config",
+		Values: map[string]any{
+			"tunAddrs": []formular.ArrayElementValue{
+				{Template: "value", Values: map[string]any{"value": "10.50.0.2/32"}},
+				{Template: "value", Values: map[string]any{"value": "fd00::50/128"}},
+			},
+			"tunRoutes": []formular.ArrayElementValue{
+				{Template: "value", Values: map[string]any{"value": "0.0.0.0/0"}},
+				{Template: "value", Values: map[string]any{"value": "::/0"}},
+			},
+			"mtu":     1250,
+			"dnsIP":   "10.50.0.2",
+			"strict":  false,
+			"exclude": []formular.ArrayElementValue{},
+			"include": []formular.ArrayElementValue{},
+		},
+	})
+
+	want := sysnet.DefaultTunOpts{
+		TunAddrs:  []string{"10.50.0.2/32", "fd00::50/128"},
+		TunRoutes: []string{"0.0.0.0/0", "::/0"},
+		MTU:       1250,
+		DnsIP:     "10.50.0.2",
+		Exclude:   []sysnet.Rule{},
+		Include:   []sysnet.Rule{},
+	}
+	if got := sys.lastOpts(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("array form build opts = %#v, want %#v", got, want)
+	}
+}
+
+func TestDefaultTunRuleAutocompleteUsesSystemRules(t *testing.T) {
+	w, sys := newDefaultTunNodeTestWorkspace(t, false)
+	sys.Rules = []sysnet.RuleTypeInfo{
+		{Type: "app", Description: "Application"},
+		{Type: "uid", Description: "User ID"},
+	}
+	sys.RuleCompletion = func(rule sysnet.Rule) []string {
+		if rule.Type == "app" && rule.Rule == "org.mozilla.f" {
+			return []string{"org.mozilla.firefox", "org.mozilla.fennec", "org.chromium.Chromium"}
+		}
+		return nil
+	}
+
+	var autocomplete []formular.AutocompleteHintsMessage
+	sub := w.SubscribeNotifications(func(notification pasta.WorkspaceNotification) {
+		if notification.Kind != pasta.NotificationNodeMenu {
+			return
+		}
+		if msg, ok := notification.Formular.(formular.AutocompleteHintsMessage); ok {
+			autocomplete = append(autocomplete, msg)
+		}
+	})
+	if sub == 0 {
+		t.Fatal("SubscribeNotifications returned 0")
+	}
+	defer w.UnsubscribeNotifications(sub)
+
+	node, err := w.AddNodeByClass(NodeTypeDefaultTun, "default tun")
+	if err != nil {
+		t.Fatalf("AddNodeByClass DefaultTun: %v", err)
+	}
+	w.SubscribeNodeMenu(node, sub)
+
+	w.SendNodeFormularMsg(node, formular.AutocompleteRequestMessage{
+		MessageBase: formular.MessageBase{Type: formular.MessageAutocompleteRequest, MenuID: pasta.NodeMenuID(node)},
+		Field: formular.FieldRef{
+			BlockID: "config",
+			FieldID: "type",
+			ElementPath: []formular.ElementPathSegment{{
+				ArrayFieldID: "include",
+				ElementID:    "rule-0",
+			}},
+		},
+		Prefix: "a",
+	})
+	if len(autocomplete) == 0 {
+		t.Fatal("missing type autocomplete response")
+	}
+	if got, want := autocomplete[len(autocomplete)-1].Hints, []string{"app"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("type hints = %#v, want %#v", got, want)
+	}
+
+	w.SendNodeFormularMsg(node, formular.FieldValidateMessage{
+		MessageBase: formular.MessageBase{Type: formular.MessageFieldValidate, MenuID: pasta.NodeMenuID(node)},
+		Field: formular.FieldRef{
+			BlockID: "config",
+			FieldID: "type",
+			ElementPath: []formular.ElementPathSegment{{
+				ArrayFieldID: "include",
+				ElementID:    "new-rule",
+			}},
+		},
+		Value: "app",
+	})
+	w.SendNodeFormularMsg(node, formular.AutocompleteRequestMessage{
+		MessageBase: formular.MessageBase{Type: formular.MessageAutocompleteRequest, MenuID: pasta.NodeMenuID(node)},
+		Field: formular.FieldRef{
+			BlockID: "config",
+			FieldID: "rule",
+			ElementPath: []formular.ElementPathSegment{{
+				ArrayFieldID: "include",
+				ElementID:    "new-rule",
+			}},
+		},
+		Prefix: "org.mozilla.f",
+	})
+	if len(autocomplete) < 2 {
+		t.Fatal("missing rule autocomplete response")
+	}
+	want := []string{"org.mozilla.firefox", "org.mozilla.fennec"}
+	if got := autocomplete[len(autocomplete)-1].Hints; !reflect.DeepEqual(got, want) {
+		t.Fatalf("rule hints = %#v, want %#v", got, want)
+	}
+}
+
 func TestDefaultTunOnStopClosesActiveDefaultTun(t *testing.T) {
 	dtun := newRecordingDefaultTun(1500)
 	node := &defaultTunNode{
