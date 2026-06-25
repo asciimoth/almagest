@@ -214,6 +214,11 @@ func (n *vtunNode) OnLinkRemoved(link uint64, port uint64, _, _ string) error {
 	case n.tunp:
 		n.closeSentTun(link)
 		n.tunConfig = TunConfig{}
+		if n.vtun != nil && n.usesTunConfig() {
+			if err := n.rebuildVTun(); err != nil {
+				return nil
+			}
+		}
 	}
 	if !n.hasAnyLink() {
 		n.dropVTun()
@@ -234,7 +239,7 @@ func (n *vtunNode) OnEvent(event pasta.Event, linkType string, _ []string, recei
 		}
 		if cfg, ok := event.Payload.(TunConfig); ok {
 			n.tunConfig = cfg.Clone()
-			if strings.TrimSpace(n.config.localAddrs) == "" || n.config.mtu <= 0 {
+			if n.usesTunConfig() {
 				if err := n.rebuildVTun(); err != nil {
 					return nil
 				}
@@ -492,6 +497,10 @@ func (n *vtunNode) effectiveLocalAddrs() ([]netip.Addr, error) {
 		n.generatedAddrs = n.allocLocalAddrs()
 	}
 	return append([]netip.Addr(nil), n.generatedAddrs...), nil
+}
+
+func (n *vtunNode) usesTunConfig() bool {
+	return strings.TrimSpace(n.config.localAddrs) == "" || n.config.mtu <= 0
 }
 
 func (n *vtunNode) allocLocalAddrs() []netip.Addr {

@@ -93,7 +93,7 @@ type defaultTunNode struct {
 	tunp uint64
 
 	config  defaultTunConfig
-	portCfg TunConfig
+	portCfg TunConfigByLink
 
 	dynDefaultTun bool
 	effective     sysnet.DefaultTunOpts
@@ -111,6 +111,9 @@ func (n *defaultTunNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint
 	n.config.normalize()
 	if n.engine != nil && n.engine.sys != nil {
 		n.dynDefaultTun = n.engine.sys.Features().DynDefaultTun
+	}
+	if n.portCfg == nil {
+		n.portCfg = TunConfigByLink{}
 	}
 	if restored != nil && len(restored.RightPorts) > 0 {
 		n.tunp = restored.RightPorts[0]
@@ -138,6 +141,7 @@ func (n *defaultTunNode) OnStop() {
 	}
 	n.dtun = nil
 	n.hasEffective = false
+	n.portCfg = TunConfigByLink{}
 }
 
 func (n *defaultTunNode) PreLinkAdd(port uint64, linkType, portDirection string) error {
@@ -163,7 +167,7 @@ func (n *defaultTunNode) OnLinkRemoved(link uint64, port uint64, _, _ string) er
 		return nil
 	}
 	n.closeSentTun(link)
-	n.portCfg = TunConfig{}
+	n.portCfg.Delete(link)
 	if err := n.configureDefaultTun(); err != nil {
 		return nil
 	}
@@ -182,7 +186,10 @@ func (n *defaultTunNode) OnEvent(event pasta.Event, linkType string, _ []string,
 	if !ok {
 		return nil
 	}
-	n.portCfg = cfg.Clone()
+	if n.portCfg == nil {
+		n.portCfg = TunConfigByLink{}
+	}
+	n.portCfg.Set(event.Link, cfg)
 	if err := n.configureDefaultTun(); err != nil {
 		return nil
 	}
@@ -445,8 +452,9 @@ func (n *defaultTunNode) applyDynamicDefaultTunOpts(opts sysnet.DefaultTunOpts) 
 
 func (n *defaultTunNode) effectiveDefaultTunOpts() sysnet.DefaultTunOpts {
 	opts := n.config.defaultTunOpts()
-	opts.TunAddrs = mergeDefaultTunStringLists(opts.TunAddrs, n.portCfg.Addrs)
-	opts.MTU = mergeDefaultTunMTU(opts.MTU, n.portCfg.MTU)
+	portCfg := n.portCfg.Merge()
+	opts.TunAddrs = mergeDefaultTunStringLists(opts.TunAddrs, portCfg.Addrs)
+	opts.MTU = mergeDefaultTunMTU(opts.MTU, portCfg.MTU)
 	return opts
 }
 

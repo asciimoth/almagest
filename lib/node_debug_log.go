@@ -233,7 +233,7 @@ func (debugLogTunClass) DefaultNodeParams() pasta.NodeClassParams {
 	}}
 }
 func (debugLogTunClass) NewNode(_ configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
-	return &debugLogTunNode{sent: map[uint64]tun.Tun{}}, nil
+	return &debugLogTunNode{sent: map[uint64]tun.Tun{}, outputCfgs: TunConfigByLink{}}, nil
 }
 
 type debugLogTunNode struct {
@@ -247,6 +247,8 @@ type debugLogTunNode struct {
 
 	tun  tun.Tun
 	sent map[uint64]tun.Tun
+
+	outputCfgs TunConfigByLink
 }
 
 func (n *debugLogTunNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
@@ -255,6 +257,9 @@ func (n *debugLogTunNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uin
 	n.id = id
 	if n.sent == nil {
 		n.sent = map[uint64]tun.Tun{}
+	}
+	if n.outputCfgs == nil {
+		n.outputCfgs = TunConfigByLink{}
 	}
 	if restored != nil {
 		if len(restored.LeftPorts) > 0 {
@@ -277,11 +282,13 @@ func (n *debugLogTunNode) OnStop() {
 		_ = n.tun.Close()
 		n.tun = nil
 	}
+	n.outputCfgs = TunConfigByLink{}
 }
 
 func (n *debugLogTunNode) OnReady() error {
 	n.requestInput()
 	n.sendAll()
+	n.sendMergedTunConfig()
 	return nil
 }
 
@@ -298,6 +305,7 @@ func (n *debugLogTunNode) PreLinkAdd(port uint64, linkType, portDirection string
 func (n *debugLogTunNode) OnLinkAdd(link, port uint64, linkType, portDirection string) error {
 	if port == n.in && portDirection == "left" && linkType == TypeTun {
 		std.Request(n.w, n.id, link)
+		n.sendMergedTunConfigToLink(link)
 		return nil
 	}
 	if port == n.out && portDirection == "right" && linkType == TypeTun {
@@ -309,6 +317,8 @@ func (n *debugLogTunNode) OnLinkAdd(link, port uint64, linkType, portDirection s
 func (n *debugLogTunNode) OnLinkRemoved(link uint64, port uint64, linkType, portDirection string) error {
 	if port == n.out && portDirection == "right" && linkType == TypeTun {
 		n.closeSentTun(link)
+		n.outputCfgs.Delete(link)
+		n.sendMergedTunConfig()
 		return nil
 	}
 	if port == n.in && portDirection == "left" && linkType == TypeTun {
@@ -331,8 +341,13 @@ func (n *debugLogTunNode) OnEvent(event pasta.Event, linkType string, _ []string
 			return nil
 		}
 		if cfg, ok := event.Payload.(TunConfig); ok {
-			n.sendTunConfig(cfg)
+			n.outputCfgs.Set(event.Link, cfg)
+			n.sendMergedTunConfig()
 		}
+		return nil
+	}
+	if event.ReceiverPort == n.in && receiverPortDirection == "left" && std.IsRequest(event.Payload) {
+		n.sendMergedTunConfigToLink(event.Link)
 		return nil
 	}
 	if event.ReceiverPort != n.in || receiverPortDirection != "left" {
@@ -388,14 +403,21 @@ func (n *debugLogTunNode) sendTunToLink(link uint64) {
 	n.w.EmitEvent(n.id, link, TunPayload{Tun: wrapper})
 }
 
-func (n *debugLogTunNode) sendTunConfig(cfg TunConfig) {
+func (n *debugLogTunNode) sendMergedTunConfig() {
 	port, ok := n.w.PortSnapshot(n.in)
 	if !ok {
 		return
 	}
 	for _, link := range port.Links {
-		n.w.EmitEvent(n.id, link, cfg.Clone())
+		n.sendMergedTunConfigToLink(link)
 	}
+}
+
+func (n *debugLogTunNode) sendMergedTunConfigToLink(link uint64) {
+	if link == 0 {
+		return
+	}
+	n.w.EmitEvent(n.id, link, n.outputCfgs.Merge())
 }
 
 func (n *debugLogTunNode) closeSentTun(link uint64) {
