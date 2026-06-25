@@ -1,0 +1,42 @@
+{
+	"Logs": {
+		"Cache": {
+			"Debug": 2048,
+			"Info": 256,
+			"Warn": 256,
+			"Error": 128,
+			"Fatal": 32,
+		},
+	},
+	"System": {
+		"Linux": {
+			"DNS": {
+				"Mode": "direct",
+				"FallbackServers": ["1.1.1.1:53"],
+			},
+			"KillswitchPath": "%E2E_RUNTIME%/killswitch.sock",
+			"Pmark": {
+				"PinPath": "/sys/fs/bpf/almagest-e2e-killswitch-default-tun-exclude",
+			},
+			"KillswitchAllowExclude": true,
+		},
+	},
+	"nodes": {
+		"DefaultTun 1401": {
+			"Class":     "almagest/DefaultTun",
+			"Pos":       "{\"x\":120,\"y\":520}",
+			"tunAddrs":  "",
+			"tunRoutes": "",
+			"mtu":       0,
+			"dnsIP":     "",
+			"strict":    false,
+			"exclude": [
+				{
+					"type": "comm",
+					"rule": "curl",
+				},
+			],
+			"include": [],
+		},
+	},
+}
