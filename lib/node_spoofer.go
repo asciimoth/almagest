@@ -261,11 +261,19 @@ func (n *spooferNode) OnEvent(event pasta.Event, linkType string, _ []string, re
 }
 
 func (n *spooferNode) OnFormularMsg(message any) error {
-	msg, ok := message.(formular.FormApplyMessage)
-	if !ok || msg.MenuID != pasta.NodeMenuID(n.id) || msg.BlockID != "config" {
-		return nil
+	switch msg := message.(type) {
+	case formular.FormApplyMessage:
+		if msg.MenuID != pasta.NodeMenuID(n.id) || msg.BlockID != "config" {
+			return nil
+		}
+		return n.applyConfigForm(msg.Values)
+	case formular.FieldValidateMessage:
+		if msg.MenuID != pasta.NodeMenuID(n.id) || msg.Field.BlockID != "config" || len(msg.Field.ElementPath) > 0 {
+			return nil
+		}
+		n.sendConfigFieldStatus(msg)
 	}
-	return n.applyConfigForm(msg.Values)
+	return nil
 }
 
 func (n *spooferNode) OnSave(cfg configer.Config) error {
@@ -384,6 +392,71 @@ func validateSpooferConfig(config spooferConfig) error {
 	}
 	if config.tcpKeepAliveIdle < 0 || config.tcpKeepAliveInterval < 0 || config.tcpKeepAliveCount < 0 {
 		return errors.New("TCP keepalive values must not be negative")
+	}
+	return nil
+}
+
+func (n *spooferNode) sendConfigFieldStatus(msg formular.FieldValidateMessage) {
+	status := formular.StatusOK
+	statusText := ""
+	if err := validateSpooferConfigField(msg); err != nil {
+		status = formular.StatusError
+		statusText = err.Error()
+	}
+	n.w.SendNodeMenuMsg(n.id, formular.FieldStatusMessage{
+		MessageBase: formular.MessageBase{
+			Type:            formular.MessageFieldStatus,
+			MenuID:          pasta.NodeMenuID(n.id),
+			MenuGeneration:  1,
+			BlockGeneration: 1,
+		},
+		Field:      msg.Field,
+		Status:     status,
+		StatusText: statusText,
+	})
+}
+
+func validateSpooferConfigField(msg formular.FieldValidateMessage) error {
+	switch msg.Field.FieldID {
+	case "mtu":
+		value, ok := intFromAny(msg.Value)
+		if !ok || value <= 0 {
+			return errors.New("MTU must be positive")
+		}
+	case "queueLength":
+		value, ok := intFromAny(msg.Value)
+		if !ok || value <= 0 {
+			return errors.New("queue length must be positive")
+		}
+	case "ttl":
+		value, ok := intFromAny(msg.Value)
+		if !ok || value < 0 || value > 255 {
+			return errors.New("TTL must be between 0 and 255")
+		}
+	case "icmpBurst":
+		value, ok := intFromAny(msg.Value)
+		if !ok || value < 0 {
+			return errors.New("ICMP burst must not be negative")
+		}
+	case "icmpLimit":
+		value, ok := floatFromAny(msg.Value)
+		if !ok || value < 0 {
+			return errors.New("ICMP limit must not be negative")
+		}
+	case "tcpKeepAliveIdle", "tcpKeepAliveInterval", "tcpKeepAliveCount":
+		value, ok := intFromAny(msg.Value)
+		if !ok || value < 0 {
+			return errors.New("TCP keepalive values must not be negative")
+		}
+	case "tcpSendBufferSize", "tcpReceiveBufferSize", "tcpForwardWnd", "tcpForwardAttempts":
+		value, ok := intFromAny(msg.Value)
+		if !ok || value < 0 {
+			return errors.New("TCP values must not be negative")
+		}
+	case "congestionControlAlg":
+		return nil
+	default:
+		return nil
 	}
 	return nil
 }

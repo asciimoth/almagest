@@ -116,6 +116,39 @@ func TestVTunGeneratedAddrsAreNotSaved(t *testing.T) {
 	}
 }
 
+func TestVTunNodeValidationReportsStatus(t *testing.T) {
+	w, _ := newNetstackNodeTestWorkspace(t)
+	state, sub := subscribeMenuState(t, w)
+	defer w.UnsubscribeNotifications(sub)
+
+	vtunID, err := w.AddNodeByClass(NodeTypeVTun, "vtun")
+	if err != nil {
+		t.Fatalf("AddNodeByClass VTun: %v", err)
+	}
+	w.SubscribeNodeMenu(vtunID, sub)
+
+	w.SendNodeFormularMsg(vtunID, formular.FieldValidateMessage{
+		MessageBase: formular.MessageBase{Type: formular.MessageFieldValidate, MenuID: pasta.NodeMenuID(vtunID)},
+		Field:       formular.FieldRef{BlockID: "config", FieldID: "localAddrs"},
+		Value:       "not-an-ip",
+	})
+	assertMenuItemStatus(t, state, vtunID, "localAddrs", formular.StatusError)
+
+	w.SendNodeFormularMsg(vtunID, formular.FieldValidateMessage{
+		MessageBase: formular.MessageBase{Type: formular.MessageFieldValidate, MenuID: pasta.NodeMenuID(vtunID)},
+		Field:       formular.FieldRef{BlockID: "config", FieldID: "localAddrs"},
+		Value:       "",
+	})
+	assertMenuItemStatus(t, state, vtunID, "localAddrs", formular.StatusOK)
+
+	w.SendNodeFormularMsg(vtunID, formular.FieldValidateMessage{
+		MessageBase: formular.MessageBase{Type: formular.MessageFieldValidate, MenuID: pasta.NodeMenuID(vtunID)},
+		Field:       formular.FieldRef{BlockID: "config", FieldID: "mtu"},
+		Value:       defaultVTunMTU,
+	})
+	assertMenuItemStatus(t, state, vtunID, "mtu", formular.StatusOK)
+}
+
 func TestSpooferNodeStartsRebuildsAndStopsWithInputs(t *testing.T) {
 	w, captured := newNetstackNodeTestWorkspace(t)
 	vtunID, err := w.AddNodeByClass(NodeTypeVTun, "vtun")
@@ -187,6 +220,39 @@ func TestSpooferNodeStartsRebuildsAndStopsWithInputs(t *testing.T) {
 	}
 }
 
+func TestSpooferNodeValidationReportsStatus(t *testing.T) {
+	w, _ := newNetstackNodeTestWorkspace(t)
+	state, sub := subscribeMenuState(t, w)
+	defer w.UnsubscribeNotifications(sub)
+
+	spooferID, err := w.AddNodeByClass(NodeTypeSpoofer, "spoofer")
+	if err != nil {
+		t.Fatalf("AddNodeByClass Spoofer: %v", err)
+	}
+	w.SubscribeNodeMenu(spooferID, sub)
+
+	w.SendNodeFormularMsg(spooferID, formular.FieldValidateMessage{
+		MessageBase: formular.MessageBase{Type: formular.MessageFieldValidate, MenuID: pasta.NodeMenuID(spooferID)},
+		Field:       formular.FieldRef{BlockID: "config", FieldID: "ttl"},
+		Value:       300,
+	})
+	assertMenuItemStatus(t, state, spooferID, "ttl", formular.StatusError)
+
+	w.SendNodeFormularMsg(spooferID, formular.FieldValidateMessage{
+		MessageBase: formular.MessageBase{Type: formular.MessageFieldValidate, MenuID: pasta.NodeMenuID(spooferID)},
+		Field:       formular.FieldRef{BlockID: "config", FieldID: "ttl"},
+		Value:       64,
+	})
+	assertMenuItemStatus(t, state, spooferID, "ttl", formular.StatusOK)
+
+	w.SendNodeFormularMsg(spooferID, formular.FieldValidateMessage{
+		MessageBase: formular.MessageBase{Type: formular.MessageFieldValidate, MenuID: pasta.NodeMenuID(spooferID)},
+		Field:       formular.FieldRef{BlockID: "config", FieldID: "congestionControlAlg"},
+		Value:       "",
+	})
+	assertMenuItemStatus(t, state, spooferID, "congestionControlAlg", formular.StatusOK)
+}
+
 func newNetstackNodeTestWorkspace(t *testing.T) (*pasta.Workspace, *captureNetstackNodes) {
 	t.Helper()
 	w := pasta.NewWorkspace(NewDebugLogFactory(1024))
@@ -203,6 +269,35 @@ func newNetstackNodeTestWorkspace(t *testing.T) (*pasta.Workspace, *captureNetst
 		t.Fatalf("AddNodeClass MockNetwork: %v", err)
 	}
 	return w, captured
+}
+
+func subscribeMenuState(t *testing.T, w *pasta.Workspace) (*formular.MenuSnapshotState, uint64) {
+	t.Helper()
+	state := formular.NewMenuSnapshotState()
+	sub := w.SubscribeNotifications(func(notification pasta.WorkspaceNotification) {
+		if notification.Kind == pasta.NotificationNodeMenu {
+			state.Apply(notification.Formular)
+		}
+	})
+	if sub == 0 {
+		t.Fatal("SubscribeNotifications returned 0")
+	}
+	return state, sub
+}
+
+func assertMenuItemStatus(t *testing.T, state *formular.MenuSnapshotState, node uint64, fieldID string, status string) {
+	t.Helper()
+	snapshot, ok := state.Snapshot(pasta.NodeMenuID(node))
+	if !ok {
+		t.Fatalf("menu snapshot missing for node %d", node)
+	}
+	item, ok := FindItem(mustFindBlock(t, snapshot, "config"), fieldID)
+	if !ok {
+		t.Fatalf("%s item missing", fieldID)
+	}
+	if item.Status != status {
+		t.Fatalf("%s status = %q, want %q", fieldID, item.Status, status)
+	}
 }
 
 type captureNetstackNodes struct {

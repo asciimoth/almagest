@@ -245,11 +245,19 @@ func (n *vtunNode) OnEvent(event pasta.Event, linkType string, _ []string, recei
 }
 
 func (n *vtunNode) OnFormularMsg(message any) error {
-	msg, ok := message.(formular.FormApplyMessage)
-	if !ok || msg.MenuID != pasta.NodeMenuID(n.id) || msg.BlockID != "config" {
-		return nil
+	switch msg := message.(type) {
+	case formular.FormApplyMessage:
+		if msg.MenuID != pasta.NodeMenuID(n.id) || msg.BlockID != "config" {
+			return nil
+		}
+		return n.applyConfigForm(msg.Values)
+	case formular.FieldValidateMessage:
+		if msg.MenuID != pasta.NodeMenuID(n.id) || msg.Field.BlockID != "config" || len(msg.Field.ElementPath) > 0 {
+			return nil
+		}
+		n.sendConfigFieldStatus(msg)
 	}
-	return n.applyConfigForm(msg.Values)
+	return nil
 }
 
 func (n *vtunNode) OnSave(cfg configer.Config) error {
@@ -339,6 +347,61 @@ func validateVTunConfig(config vtunConfig) error {
 	}
 	if config.eventCh <= 0 {
 		return errors.New("event channel size must be positive")
+	}
+	return nil
+}
+
+func (n *vtunNode) sendConfigFieldStatus(msg formular.FieldValidateMessage) {
+	status := formular.StatusOK
+	statusText := ""
+	if err := validateVTunConfigField(msg); err != nil {
+		status = formular.StatusError
+		statusText = err.Error()
+	}
+	n.w.SendNodeMenuMsg(n.id, formular.FieldStatusMessage{
+		MessageBase: formular.MessageBase{
+			Type:            formular.MessageFieldStatus,
+			MenuID:          pasta.NodeMenuID(n.id),
+			MenuGeneration:  1,
+			BlockGeneration: 1,
+		},
+		Field:      msg.Field,
+		Status:     status,
+		StatusText: statusText,
+	})
+}
+
+func validateVTunConfigField(msg formular.FieldValidateMessage) error {
+	switch msg.Field.FieldID {
+	case "name":
+		return nil
+	case "localAddrs":
+		value, _ := stringFromAny(msg.Value)
+		if _, err := parseAddrList(value, true); err != nil {
+			return fmt.Errorf("local addrs: %w", err)
+		}
+	case "dnsServers":
+		value, _ := stringFromAny(msg.Value)
+		if _, err := parseAddrList(value, false); err != nil {
+			return fmt.Errorf("DNS servers: %w", err)
+		}
+	case "mtu":
+		value, ok := intFromAny(msg.Value)
+		if !ok || value <= 0 {
+			return errors.New("MTU must be positive")
+		}
+	case "endpointCh":
+		value, ok := intFromAny(msg.Value)
+		if !ok || value <= 0 {
+			return errors.New("endpoint channel size must be positive")
+		}
+	case "eventCh":
+		value, ok := intFromAny(msg.Value)
+		if !ok || value <= 0 {
+			return errors.New("event channel size must be positive")
+		}
+	default:
+		return nil
 	}
 	return nil
 }

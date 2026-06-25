@@ -239,7 +239,7 @@ func TestHTTPServerThroughPlainSocksBindDoesNotStopBeforeFirstAccept(t *testing.
 		httpTestPort(),
 	)
 
-	// Regression coverage for the daemon loop seen with ./local/alm.hujson:
+	// Regression coverage for the daemon loop:
 	// HttpServer.Listen goes through SocksClient.Listen, which uses plain
 	// SOCKS BIND without "?gost". Plain BIND is one-shot after an inbound
 	// connection, but it must stay open while idle. The broken behavior was an
