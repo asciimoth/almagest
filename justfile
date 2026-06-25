@@ -8,7 +8,13 @@ test-go:
 test-js:
   cd panel && npm ci && npm test
 
+
+test-e2e:
+  ./e2e/run.sh
+
 test: test-go test-js
+
+test-total: test test-e2e
 
 coverage:
 	go -C lib test ./... --race -coverprofile=../coverage.out -coverpkg=./...
@@ -43,4 +49,3 @@ daemon-sudo: build
 cli *args:
   go build -o ./cli ./bin/almagest-cli
   ./cli {{args}}
-

@@ -1,0 +1,43 @@
+{
+	"Logs": {
+		"Cache": {
+			"Debug": 512,
+			"Info": 128,
+			"Warn": 128,
+			"Error": 128,
+			"Fatal": 32,
+		},
+	},
+	"nodes": {
+		"LocalProxy 1101": {
+			"Class": "almagest/LocalProxy",
+			"Pos": "{\"x\":240,\"y\":640}",
+			"Links": ["proxy -> [LogNetwork 1102] Network"],
+			"socksHost": "127.0.0.1",
+			"socksPort": 1081,
+			"wsHost": "",
+			"wsPort": 0,
+			"wsPath": "/socks",
+			"users": [],
+			"commands": {
+				"cmdBind": true,
+				"cmdConnect": true,
+				"cmdGostMuxBind": true,
+				"cmdGostUDPTun": true,
+				"cmdTorResolve": true,
+				"cmdTorResolvePtr": true,
+				"cmdUDPAssoc": true,
+			},
+		},
+		"LogNetwork 1102": {
+			"Class": "debug.almagest/LogNetwork",
+			"Pos": "{\"x\":420,\"y\":620}",
+			"Links": ["Network -> [OutNetwork 1103] Network"],
+		},
+		"OutNetwork 1103": {
+			"Class": "almagest/OutNetwork",
+			"Pos": "{\"x\":600,\"y\":620}",
+		},
+	},
+}
+

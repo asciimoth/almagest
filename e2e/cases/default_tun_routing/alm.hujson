@@ -1,0 +1,29 @@
+{
+	"Logs": {
+		"Cache": {
+			"Debug": 1024,
+			"Info": 256,
+			"Warn": 256,
+			"Error": 128,
+			"Fatal": 32,
+		},
+	},
+	"Linux": {
+		"DNS": {
+			"Mode": "direct",
+		},
+	},
+	"nodes": {
+		"DefaultTun 1301": {
+			"Class":     "almagest/DefaultTun",
+			"Pos":       "{\"x\":120,\"y\":520}",
+			"tunAddrs":  "",
+			"tunRoutes": "",
+			"mtu":       0,
+			"dnsIP":     "",
+			"strict":    false,
+			"exclude":   [],
+			"include":   [],
+		},
+	},
+}
