@@ -1,5 +1,6 @@
 {
   "Admin": {
     "Web": 8090,
+    "Unix": "/run/almagest/admin.sock",
   }
 }

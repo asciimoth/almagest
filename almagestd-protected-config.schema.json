@@ -23,14 +23,22 @@
           "description": "Local web admin port bound on 127.0.0.1. 0 disables the web admin listener. Command-line --web / ALMAGEST_WEB_ADMIN overrides this value."
         },
         "WebFilters": {
-          "$ref": "#/$defs/webAdminFiltersConfig"
+          "$ref": "#/$defs/adminPeerFiltersConfig"
+        },
+        "Unix": {
+          "type": "string",
+          "default": "/run/almagest/admin.sock",
+          "description": "Unix-domain socket path for the stream admin API on platforms that support Unix sockets. Empty string disables the unix admin listener. Command-line --unix / ALMAGEST_UNIX_ADMIN overrides this value."
+        },
+        "UnixFilters": {
+          "$ref": "#/$defs/adminPeerFiltersConfig"
         }
       },
       "additionalProperties": false
     },
-    "webAdminFiltersConfig": {
+    "adminPeerFiltersConfig": {
       "type": "object",
-      "description": "Optional protected listener filters for the web admin panel. When at least one rule is configured, the listener accepts only connections whose peer owner matches a UID, GID, or username rule. Empty filters keep the default unfiltered localhost listener.",
+      "description": "Optional admin listener filters. When at least one rule is configured, the listener accepts only connections whose peer owner matches a UID, GID, or username rule. Web filters use gonnect/protected best-effort socket-owner lookup. Unix filters use OS peer credentials where implemented.",
       "properties": {
         "UIDs": {
           "type": "array",

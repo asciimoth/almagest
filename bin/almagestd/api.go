@@ -23,8 +23,10 @@ import (
 var webStatic embed.FS
 
 type AdminAPI struct {
-	webListener net.Listener
-	webServer   *http.Server
+	webListener  net.Listener
+	webServer    *http.Server
+	unixListener net.Listener
+	unixPath     string
 
 	projectVersionStatus api.ProjectVersionStatus
 	configAutosaver      *configAutosaver
@@ -47,6 +49,13 @@ func (a *AdminAPI) Stop() {
 	if a.webListener != nil {
 		golog.Debug("Closing web admin listener")
 		_ = a.webListener.Close()
+	}
+	if a.unixListener != nil {
+		golog.Debug("Closing unix admin listener")
+		_ = a.unixListener.Close()
+	}
+	if a.unixPath != "" {
+		_ = cleanupUnixAdminSocket(a.unixPath)
 	}
 }
 
@@ -92,6 +101,17 @@ func (a *AdminAPI) Run(
 				golog.Errorf("Web admin server failed: %v", err)
 				cancel()
 			}
+		})
+	}
+	if a.unixListener != nil {
+		wg.Go(func() {
+			<-ctx.Done()
+			_ = a.unixListener.Close()
+		})
+
+		wg.Go(func() {
+			golog.Infof("Starting unix admin listener on %s", a.unixListener.Addr())
+			a.serveUnix(ctx, cancel, wg, engine, sys, logf)
 		})
 	}
 }
@@ -604,6 +624,7 @@ func mutationLeaseTTL(milliseconds int64) time.Duration {
 func PrepareAdminAPI(cfg *Config) (*AdminAPI, error) {
 	api := AdminAPI{}
 	if cfg.Protected.Admin.Web != 0 {
+		golog.Warn("Web admin API is enabled; unix socket admin API is safer for local administration")
 		addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(int(cfg.Protected.Admin.Web)))
 		listener, err := listenWebAdmin(addr, cfg.Protected.Admin.WebFilters)
 		if err != nil {
@@ -611,10 +632,18 @@ func PrepareAdminAPI(cfg *Config) (*AdminAPI, error) {
 		}
 		api.webListener = listener
 	}
+	if cfg.Protected.Admin.Unix != "" {
+		listener, err := listenUnixAdmin(cfg.Protected.Admin.Unix, cfg.Protected.Admin.UnixFilters)
+		if err != nil {
+			return nil, err
+		}
+		api.unixListener = listener
+		api.unixPath = cfg.Protected.Admin.Unix
+	}
 	return &api, nil
 }
 
-func listenWebAdmin(address string, filters WebAdminFiltersConfig) (net.Listener, error) {
+func listenWebAdmin(address string, filters AdminPeerFiltersConfig) (net.Listener, error) {
 	if !filters.Enabled() {
 		return net.Listen("tcp", address)
 	}

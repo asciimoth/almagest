@@ -1,2 +1,5 @@
 {
+  "Admin": {
+    "Unix": "/run/almagest/admin.sock",
+  },
 }

@@ -76,7 +76,9 @@ func ParseConfig(cfg, prt []byte) (*Config, error) {
 		return nil, fmt.Errorf("config parsing: %w", err)
 	}
 
-	protected := ProtectedConfig{}
+	protected := ProtectedConfig{
+		Admin: defaultAdminAPIConfig(),
+	}
 	protectedCfg, err := hujson.Parse(prt)
 	if err != nil {
 		return nil, fmt.Errorf("protected config parsing: %w", err)
@@ -111,20 +113,34 @@ func (p *ProtectedConfig) Merge(args *args.Args) {
 	if len(args.WebAdminFilterUsernames) > 0 {
 		p.Admin.WebFilters.Usernames = args.WebAdminFilterUsernames
 	}
+	if args.UnixAdmin != nil {
+		p.Admin.Unix = *args.UnixAdmin
+	}
+	if len(args.UnixAdminFilterUIDs) > 0 {
+		p.Admin.UnixFilters.UIDs = args.UnixAdminFilterUIDs
+	}
+	if len(args.UnixAdminFilterGIDs) > 0 {
+		p.Admin.UnixFilters.GIDs = args.UnixAdminFilterGIDs
+	}
+	if len(args.UnixAdminFilterUsernames) > 0 {
+		p.Admin.UnixFilters.Usernames = args.UnixAdminFilterUsernames
+	}
 }
 
 type AdminAPIConfig struct {
-	Web        uint16
-	WebFilters WebAdminFiltersConfig
+	Web         uint16
+	WebFilters  AdminPeerFiltersConfig
+	Unix        string
+	UnixFilters AdminPeerFiltersConfig
 }
 
-type WebAdminFiltersConfig struct {
+type AdminPeerFiltersConfig struct {
 	UIDs      []uint32
 	GIDs      []uint32
 	Usernames []string
 }
 
-func (c WebAdminFiltersConfig) Enabled() bool {
+func (c AdminPeerFiltersConfig) Enabled() bool {
 	return len(c.UIDs) > 0 || len(c.GIDs) > 0 || len(c.Usernames) > 0
 }
 
