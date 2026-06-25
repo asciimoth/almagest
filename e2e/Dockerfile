@@ -22,6 +22,7 @@ RUN apt-get update \
 		nftables \
 		procps \
 		python3 \
+		wget \
 	&& rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /usr/local/bin/almagestd /usr/local/bin/almagestd

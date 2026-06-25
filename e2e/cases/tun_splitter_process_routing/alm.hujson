@@ -1,0 +1,97 @@
+{
+	"Logs": {
+		"Cache": {
+			"Debug": 2048,
+			"Info": 256,
+			"Warn": 256,
+			"Error": 128,
+			"Fatal": 32,
+		},
+	},
+	"System": {
+		"Linux": {
+			"DNS": {
+				"Mode": "direct",
+				"FallbackServers": ["1.1.1.1:53"],
+			},
+			"Pmark": {
+				"PinPath": "/sys/fs/bpf/almagest-e2e-tun-splitter-process-routing",
+			},
+		},
+	},
+	"nodes": {
+		"DefaultTun 1501": {
+			"Class":     "almagest/DefaultTun",
+			"Pos":       "{\"x\":120,\"y\":760}",
+			"Links":     ["Tun -> [TunSplitter 1502] Tun"],
+			"tunAddrs":  "",
+			"tunRoutes": "",
+			"mtu":       0,
+			"dnsIP":     "",
+			"strict":    false,
+			"exclude":   [],
+			"include":   [],
+		},
+		"TunSplitter 1502": {
+			"Class": "almagest/TunSplitter",
+			"Pos":   "{\"x\":360,\"y\":760}",
+			"Links": [
+				"slot 3 -> [Spoofer 1503] Tun",
+				"slot 5 -> [TunCopy 1505] TunA",
+				"slot 6 -> [Spoofer 1508] Tun",
+			],
+			"rules": "RULE cmd curl\nRULE comm curl\nOR\nSLOT 3\n\nRULE cmd wget\nRULE comm wget\nOR\nSLOT 5\n\nTRUE\nSLOT 6",
+		},
+		"Spoofer 1503": {
+			"Class": "almagest/Spoofer",
+			"Pos":   "{\"x\":600,\"y\":560}",
+			"Links": ["Network -> [MockNetwork 1504] Network"],
+		},
+		"MockNetwork 1504": {
+			"Class": "almagest/MockNetwork",
+			"Pos":   "{\"x\":820,\"y\":560}",
+		},
+		"TunCopy 1505": {
+			"Class": "almagest/TunCopy",
+			"Pos":   "{\"x\":600,\"y\":760}",
+		},
+		"VTun 1506": {
+			"Class":          "almagest/VTun",
+			"Pos":            "{\"x\":820,\"y\":760}",
+			"Links":          ["Tun -> [TunCopy 1505] TunB"],
+			"name":           "tun-splitter-server-2",
+			"localAddrs":     "10.210.148.1/24",
+			"dnsServers":     "",
+			"mtu":            1500,
+			"endpointCh":     1024,
+			"eventCh":        10,
+			"noLoopbackAddr": false,
+			"disableSACK":    false,
+		},
+		"Spoofer 1508": {
+			"Class": "almagest/Spoofer",
+			"Pos":   "{\"x\":600,\"y\":960}",
+			"Links": ["Network -> [OutNetwork 1509] Network"],
+		},
+		"OutNetwork 1509": {
+			"Class": "almagest/OutNetwork",
+			"Pos":   "{\"x\":820,\"y\":960}",
+		},
+		"HttpServer 1510": {
+			"Class":    "almagest/HttpServer",
+			"Pos":      "{\"x\":1060,\"y\":560}",
+			"Links":    ["Network -> [MockNetwork 1504] Network"],
+			"host":     "10.210.148.1",
+			"port":     8080,
+			"response": "Server 1",
+		},
+		"HttpServer 1511": {
+			"Class":    "almagest/HttpServer",
+			"Pos":      "{\"x\":1060,\"y\":760}",
+			"Links":    ["Network -> [VTun 1506] Network"],
+			"host":     "10.210.148.1",
+			"port":     8080,
+			"response": "Server 2",
+		},
+	},
+}
