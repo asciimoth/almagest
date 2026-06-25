@@ -40,3 +40,4 @@ go.work.sum
 /bin/almagestd/static
 
 /almagestd
+/cli
