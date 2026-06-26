@@ -4,6 +4,7 @@ import (
 	"errors"
 	"slices"
 
+	"github.com/asciimoth/bufpool"
 	"github.com/asciimoth/gonnect"
 	"github.com/asciimoth/gonnect/tun"
 	"github.com/asciimoth/pasta/pasta"
@@ -190,13 +191,39 @@ func BindTunResource(w *pasta.Workspace, node, link uint64, t tun.Tun) {
 
 // DetachTunForLink wraps t with tun.Detach and binds the wrapper to workspace
 // node and link lifecycles. It returns nil when t is nil.
-func DetachTunForLink(w *pasta.Workspace, node, link uint64, t tun.Tun) tun.Tun {
+func DetachTunForLink(w *pasta.Workspace, node, link uint64, t tun.Tun, pools ...bufpool.Pool) tun.Tun {
 	if t == nil {
 		return nil
 	}
-	wrapper := tun.Detach(t)
+	wrapper := tun.Detach(t, pools...)
 	BindTunResource(w, node, link, wrapper)
 	return wrapper
+}
+
+type tunWaiter interface {
+	Wait()
+}
+
+func closeTunForLaterWait(waiting *[]tun.Tun, t tun.Tun) {
+	if t == nil {
+		return
+	}
+	_ = t.Close()
+	if _, ok := t.(tunWaiter); ok && waiting != nil {
+		*waiting = append(*waiting, t)
+	}
+}
+
+func waitTun(t tun.Tun) {
+	if waiter, ok := t.(tunWaiter); ok {
+		waiter.Wait()
+	}
+}
+
+func waitTuns(tuns []tun.Tun) {
+	for _, t := range tuns {
+		waitTun(t)
+	}
 }
 
 // SameTunSource reports whether a and b ultimately wrap the same comparable

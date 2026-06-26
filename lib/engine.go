@@ -186,6 +186,8 @@ type Engine interface {
 	UnsubscribeNodeMenu(workspace string, node, subscriptionID uint64)
 
 	SendNodeFormularMsg(workspace string, node uint64, message any)
+
+	Pool() bufpool.Pool
 }
 
 type subMap struct {
@@ -218,6 +220,10 @@ func (e *engine) Lock() {
 
 func (e *engine) Unlock() {
 	e.mu.Unlock()
+}
+
+func (e *engine) Pool() bufpool.Pool {
+	return e.pool
 }
 
 func (e *engine) Close() error {

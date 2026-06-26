@@ -133,6 +133,7 @@ type vtunNode struct {
 	vtun           *netstackvtun.VTun
 	sentNetworks   map[uint64]NetworkCloser
 	sentTuns       map[uint64]tun.Tun
+	sentTunWait    []tun.Tun
 	formError      string
 }
 
@@ -541,6 +542,8 @@ func (n *vtunNode) dropVTun() {
 		_ = n.vtun.Close()
 		n.vtun = nil
 	}
+	waitTuns(n.sentTunWait)
+	n.sentTunWait = nil
 }
 
 func (n *vtunNode) sendAll() {
@@ -578,7 +581,7 @@ func (n *vtunNode) sendTunToLink(link uint64) {
 		return
 	}
 	n.closeSentTun(link)
-	wrapper := DetachTunForLink(n.w, n.id, link, n.vtun)
+	wrapper := DetachTunForLink(n.w, n.id, link, n.vtun, enginePool(n.engine))
 	if wrapper == nil {
 		return
 	}
@@ -615,17 +618,13 @@ func (n *vtunNode) closeSentTun(link uint64) {
 	}
 	t := n.sentTuns[link]
 	delete(n.sentTuns, link)
-	if t != nil {
-		_ = t.Close()
-	}
+	closeTunForLaterWait(&n.sentTunWait, t)
 }
 
 func (n *vtunNode) closeSentTuns() {
 	for link, t := range n.sentTuns {
 		delete(n.sentTuns, link)
-		if t != nil {
-			_ = t.Close()
-		}
+		closeTunForLaterWait(&n.sentTunWait, t)
 	}
 }
 

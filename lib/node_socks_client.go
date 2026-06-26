@@ -3,6 +3,7 @@ package almagest
 import (
 	"strings"
 
+	"github.com/asciimoth/bufpool"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
 	"github.com/asciimoth/gonnect"
@@ -12,8 +13,8 @@ import (
 )
 
 func init() {
-	regClass(func(*engine) pasta.NodeClass {
-		return socksClientClass{}
+	regClass(func(e *engine) pasta.NodeClass {
+		return socksClientClass{engine: e}
 	}, false)
 }
 
@@ -25,7 +26,9 @@ const (
 	DefaultSocksClientProxyURL = "socks5://127.0.0.1:1080"
 )
 
-type socksClientClass struct{}
+type socksClientClass struct {
+	engine *engine
+}
 
 func (socksClientClass) ClassName() string        { return NodeTypeSocksClient }
 func (socksClientClass) ShortDescription() string { return "SOCKS client" }
@@ -39,13 +42,14 @@ func (socksClientClass) DefaultNodeParams() pasta.NodeClassParams {
 		{Direction: "left", Name: "Proxy URL", Types: []string{std.TypeString}},
 	}}
 }
-func (socksClientClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
-	return &socksClientNode{proxyURL: readConfigString(cfg, "proxyURL", DefaultSocksClientProxyURL)}, nil
+func (c socksClientClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
+	return &socksClientNode{pool: enginePool(c.engine), proxyURL: readConfigString(cfg, "proxyURL", DefaultSocksClientProxyURL)}, nil
 }
 
 type socksClientNode struct {
 	pasta.BasicNode
 
+	pool   bufpool.Pool
 	logger pasta.Logger
 
 	w   *pasta.Workspace
@@ -226,7 +230,7 @@ func (n *socksClientNode) setProxyURL(value string) {
 
 func (n *socksClientNode) rebuildClient() {
 	n.closeSentNetworks()
-	client, err := buildSocksGoClient(n.proxyURL, n.outNetwork)
+	client, err := buildSocksGoClient(n.proxyURL, n.outNetwork, n.pool)
 	if err != nil {
 		n.client = nil
 		n.errText = err.Error()
@@ -238,12 +242,13 @@ func (n *socksClientNode) rebuildClient() {
 	_ = n.updateLabel()
 }
 
-func buildSocksGoClient(proxyURL string, outNetwork NetworkCloser) (*socksgo.Client, error) {
+func buildSocksGoClient(proxyURL string, outNetwork NetworkCloser, pool bufpool.Pool) (*socksgo.Client, error) {
 	client, err := socksgo.ClientFromURL(proxyURL)
 	if err != nil {
 		return nil, err
 	}
 	client.WithNetwork(outNetwork)
+	client.Pool = pool
 	client.Filter = gonnect.FalseFilter
 	return client, nil
 }

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/asciimoth/bufpool"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
 	routing "github.com/asciimoth/gonnect-routing"
@@ -50,11 +51,13 @@ func (tunSplitterClass) DefaultNodeParams() pasta.NodeClassParams {
 	}}
 }
 func (c tunSplitterClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
+	pool := enginePool(c.engine)
 	return &tunSplitterNode{
 		engine:        c.engine,
+		pool:          pool,
 		rulesText:     readConfigString(cfg, "rules", ""),
 		routingConfig: readTunSplitterRoutingConfig(cfg),
-		splitter:      tun.NewSplitter(c.engine.pool),
+		splitter:      tun.NewSplitter(pool),
 		sent:          map[uint64]tun.Tun{},
 		frontends:     map[uint64]tun.Tun{},
 		outputCfgs:    TunConfigByLink{},
@@ -69,6 +72,7 @@ type tunSplitterNode struct {
 	pasta.BasicNode
 
 	engine *engine
+	pool   bufpool.Pool
 
 	w  *pasta.Workspace
 	id uint64
@@ -95,7 +99,7 @@ func (n *tunSplitterNode) OnInit(w *pasta.Workspace, _ pasta.Logger, id uint64, 
 	n.w = w
 	n.id = id
 	if n.splitter == nil {
-		n.splitter = tun.NewSplitter()
+		n.splitter = tun.NewSplitter(n.pool)
 	}
 	if n.sent == nil {
 		n.sent = map[uint64]tun.Tun{}
@@ -502,7 +506,7 @@ func (n *tunSplitterNode) sendOutputTunToLink(link, port uint64) {
 		return
 	}
 	BindTunResource(n.w, n.id, link, frontend)
-	wrapper := DetachTunForLink(n.w, n.id, link, frontend)
+	wrapper := DetachTunForLink(n.w, n.id, link, frontend, n.pool)
 	if wrapper == nil {
 		_ = frontend.Close()
 		return
@@ -523,6 +527,7 @@ func (n *tunSplitterNode) closeOutputTun(link uint64) {
 	if frontend != nil {
 		_ = frontend.Close()
 	}
+	waitTun(wrapper)
 }
 
 func (n *tunSplitterNode) closeOutputTuns() {

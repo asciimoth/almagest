@@ -338,7 +338,7 @@ func (c captureSpooferClass) DefaultNodeParams() pasta.NodeClassParams {
 func (c captureSpooferClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
 	config := defaultSpooferConfig()
 	config.read(cfg)
-	node := &spooferNode{engine: c.engine, config: config}
+	node := &spooferNode{engine: c.engine, pool: enginePool(c.engine), config: config}
 	c.captured.spoofer = node
 	return node, nil
 }

@@ -5,9 +5,17 @@ import (
 	"strings"
 	"time"
 
+	"github.com/asciimoth/bufpool"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/gonnect"
 )
+
+func enginePool(e *engine) bufpool.Pool {
+	if e == nil {
+		return nil
+	}
+	return e.Pool()
+}
 
 func readConfigString(cfg configer.Config, key, fallback string) string {
 	if cfg == nil {

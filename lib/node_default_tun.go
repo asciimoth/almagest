@@ -100,6 +100,7 @@ type defaultTunNode struct {
 	hasEffective  bool
 	dtun          sysnet.DefaultTun
 	sentTuns      map[uint64]tun.Tun
+	sentTunWait   []tun.Tun
 	formError     string
 	ruleDraftType map[string]string
 }
@@ -139,6 +140,8 @@ func (n *defaultTunNode) OnStop() {
 	if n.dtun != nil {
 		_ = n.dtun.Close()
 	}
+	waitTuns(n.sentTunWait)
+	n.sentTunWait = nil
 	n.dtun = nil
 	n.hasEffective = false
 	n.portCfg = TunConfigByLink{}
@@ -430,6 +433,8 @@ func (n *defaultTunNode) rebuildDefaultTun(opts sysnet.DefaultTunOpts) error {
 	if previous != nil {
 		_ = previous.Close()
 	}
+	waitTuns(n.sentTunWait)
+	n.sentTunWait = nil
 	return nil
 }
 
@@ -493,7 +498,7 @@ func (n *defaultTunNode) sendTunToLink(link uint64) {
 		return
 	}
 	n.closeSentTun(link)
-	wrapper := DetachTunForLink(n.w, n.id, link, n.dtun)
+	wrapper := DetachTunForLink(n.w, n.id, link, n.dtun, enginePool(n.engine))
 	if wrapper == nil {
 		return
 	}
@@ -510,17 +515,13 @@ func (n *defaultTunNode) closeSentTun(link uint64) {
 	}
 	t := n.sentTuns[link]
 	delete(n.sentTuns, link)
-	if t != nil {
-		_ = t.Close()
-	}
+	closeTunForLaterWait(&n.sentTunWait, t)
 }
 
 func (n *defaultTunNode) closeSentTuns() {
 	for link, t := range n.sentTuns {
 		delete(n.sentTuns, link)
-		if t != nil {
-			_ = t.Close()
-		}
+		closeTunForLaterWait(&n.sentTunWait, t)
 	}
 }
 

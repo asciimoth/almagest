@@ -104,6 +104,7 @@ type tunNode struct {
 	hasEffective  bool
 	tun           tun.Tun
 	sentTuns      map[uint64]tun.Tun
+	sentTunWait   []tun.Tun
 	formError     string
 }
 
@@ -475,7 +476,7 @@ func (n *tunNode) sendTunToLink(link uint64) {
 		return
 	}
 	n.closeSentTun(link)
-	wrapper := DetachTunForLink(n.w, n.id, link, n.tun)
+	wrapper := DetachTunForLink(n.w, n.id, link, n.tun, enginePool(n.engine))
 	if wrapper == nil {
 		return
 	}
@@ -492,17 +493,13 @@ func (n *tunNode) closeSentTun(link uint64) {
 	}
 	t := n.sentTuns[link]
 	delete(n.sentTuns, link)
-	if t != nil {
-		_ = t.Close()
-	}
+	closeTunForLaterWait(&n.sentTunWait, t)
 }
 
 func (n *tunNode) closeSentTuns() {
 	for link, t := range n.sentTuns {
 		delete(n.sentTuns, link)
-		if t != nil {
-			_ = t.Close()
-		}
+		closeTunForLaterWait(&n.sentTunWait, t)
 	}
 }
 
@@ -511,6 +508,8 @@ func (n *tunNode) closeTun() {
 	if n.tun != nil {
 		_ = n.tun.Close()
 	}
+	waitTuns(n.sentTunWait)
+	n.sentTunWait = nil
 	n.tun = nil
 }
 

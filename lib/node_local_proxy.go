@@ -334,6 +334,7 @@ func (n *localProxyNode) restartWorker() {
 		config:        n.config,
 		listenNetwork: n.localNetwork,
 		proxyNetwork:  proxy,
+		pool:          enginePool(n.engine),
 	}
 	if old != nil {
 		go func() {

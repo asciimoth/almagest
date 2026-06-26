@@ -3,6 +3,7 @@ package almagest
 import (
 	"fmt"
 
+	"github.com/asciimoth/bufpool"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/gonnect/tun"
 	"github.com/asciimoth/pasta/pasta"
@@ -37,8 +38,10 @@ func (tunJoinerClass) DefaultNodeParams() pasta.NodeClassParams {
 	}}
 }
 func (c tunJoinerClass) NewNode(_ configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
+	pool := enginePool(c.engine)
 	return &tunJoinerNode{
-		joiner:         tun.NewJoiner(c.engine.pool),
+		pool:           pool,
+		joiner:         tun.NewJoiner(pool),
 		secondaryTuns:  map[uint64]tun.Tun{},
 		sentOutputTuns: map[uint64]tun.Tun{},
 		outputCfgs:     TunConfigByLink{},
@@ -54,6 +57,8 @@ func (c tunJoinerClass) NewNode(_ configer.Config, _ ...*pasta.NodeClassState) (
 type tunJoinerNode struct {
 	pasta.BasicNode
 
+	pool bufpool.Pool
+
 	w  *pasta.Workspace
 	id uint64
 
@@ -66,6 +71,7 @@ type tunJoinerNode struct {
 
 	secondaryTuns  map[uint64]tun.Tun
 	sentOutputTuns map[uint64]tun.Tun
+	sentOutputWait map[uint64]tun.Tun
 	outputCfgs     TunConfigByLink
 
 	joiner *tun.Joiner
@@ -75,13 +81,16 @@ func (n *tunJoinerNode) OnInit(w *pasta.Workspace, _ pasta.Logger, id uint64, _ 
 	n.w = w
 	n.id = id
 	if n.joiner == nil {
-		n.joiner = tun.NewJoiner(nil)
+		n.joiner = tun.NewJoiner(n.pool)
 	}
 	if n.secondaryTuns == nil {
 		n.secondaryTuns = map[uint64]tun.Tun{}
 	}
 	if n.sentOutputTuns == nil {
 		n.sentOutputTuns = map[uint64]tun.Tun{}
+	}
+	if n.sentOutputWait == nil {
+		n.sentOutputWait = map[uint64]tun.Tun{}
 	}
 	if n.outputCfgs == nil {
 		n.outputCfgs = TunConfigByLink{}
@@ -116,6 +125,7 @@ func (n *tunJoinerNode) OnStop() {
 	if n.joiner != nil {
 		_ = n.joiner.Close()
 	}
+	n.waitSentOutputTuns()
 	n.defaultTun = nil
 	n.secondaryTuns = map[uint64]tun.Tun{}
 	n.outputCfgs = TunConfigByLink{}
@@ -281,7 +291,7 @@ func (n *tunJoinerNode) sendOutputTunToLink(link uint64) {
 		return
 	}
 	n.closeSentOutputTun(link)
-	wrapper := DetachTunForLink(n.w, n.id, link, n.joiner)
+	wrapper := DetachTunForLink(n.w, n.id, link, n.joiner, n.pool)
 	if wrapper == nil {
 		return
 	}
@@ -314,17 +324,38 @@ func (n *tunJoinerNode) sendMergedTunConfigToLink(link uint64) {
 func (n *tunJoinerNode) closeSentOutputTun(link uint64) {
 	t := n.sentOutputTuns[link]
 	delete(n.sentOutputTuns, link)
-	if t != nil {
-		_ = t.Close()
+	if t == nil {
+		return
+	}
+	_ = t.Close()
+	if _, ok := t.(tunWaiter); ok {
+		if n.sentOutputWait == nil {
+			n.sentOutputWait = map[uint64]tun.Tun{}
+		}
+		n.sentOutputWait[link] = t
 	}
 }
 
 func (n *tunJoinerNode) closeSentOutputTuns() {
 	for link, t := range n.sentOutputTuns {
 		delete(n.sentOutputTuns, link)
-		if t != nil {
-			_ = t.Close()
+		if t == nil {
+			continue
 		}
+		_ = t.Close()
+		if _, ok := t.(tunWaiter); ok {
+			if n.sentOutputWait == nil {
+				n.sentOutputWait = map[uint64]tun.Tun{}
+			}
+			n.sentOutputWait[link] = t
+		}
+	}
+}
+
+func (n *tunJoinerNode) waitSentOutputTuns() {
+	for link, t := range n.sentOutputWait {
+		delete(n.sentOutputWait, link)
+		waitTun(t)
 	}
 }
 

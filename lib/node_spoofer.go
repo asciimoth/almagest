@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/asciimoth/bufpool"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
 	"github.com/asciimoth/gonnect"
@@ -55,7 +56,7 @@ func (spooferClass) DefaultNodeParams() pasta.NodeClassParams {
 func (c spooferClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
 	config := defaultSpooferConfig()
 	config.read(cfg)
-	return &spooferNode{engine: c.engine, config: config}, nil
+	return &spooferNode{engine: c.engine, pool: enginePool(c.engine), config: config}, nil
 }
 
 type spooferConfig struct {
@@ -126,6 +127,7 @@ type spooferNode struct {
 	pasta.BasicNode
 
 	engine *engine
+	pool   bufpool.Pool
 	logger pasta.Logger
 
 	w       *pasta.Workspace
@@ -472,7 +474,7 @@ func (n *spooferNode) rebuildStack() {
 		ctx = n.engine.ctx
 	}
 	ctx, cancel := context.WithCancel(ctx)
-	stackTun := tun.Detach(n.tun)
+	stackTun := tun.Detach(n.tun, n.pool)
 	BindTunResource(n.w, n.id, 0, stackTun)
 	network := n.networkValue
 

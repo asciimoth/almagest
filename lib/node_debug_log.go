@@ -8,6 +8,7 @@ import (
 	"net/netip"
 	"os"
 
+	"github.com/asciimoth/bufpool"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/gonnect"
 	"github.com/asciimoth/gonnect/tun"
@@ -19,8 +20,8 @@ func init() {
 	regClass(func(*engine) pasta.NodeClass {
 		return debugLogNetworkClass{}
 	}, true)
-	regClass(func(*engine) pasta.NodeClass {
-		return debugLogTunClass{}
+	regClass(func(e *engine) pasta.NodeClass {
+		return debugLogTunClass{engine: e}
 	}, true)
 }
 
@@ -219,7 +220,9 @@ func (n *debugLogNetworkNode) portHasLinks(port uint64) bool {
 	return ok && len(snapshot.Links) > 0
 }
 
-type debugLogTunClass struct{}
+type debugLogTunClass struct {
+	engine *engine
+}
 
 func (debugLogTunClass) ClassName() string        { return NodeTypeDebugLogTun }
 func (debugLogTunClass) ShortDescription() string { return "DEBUG TUN logger" }
@@ -232,12 +235,14 @@ func (debugLogTunClass) DefaultNodeParams() pasta.NodeClassParams {
 		TunPort("right", "Tun"),
 	}}
 }
-func (debugLogTunClass) NewNode(_ configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
-	return &debugLogTunNode{sent: map[uint64]tun.Tun{}, outputCfgs: TunConfigByLink{}}, nil
+func (c debugLogTunClass) NewNode(_ configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
+	return &debugLogTunNode{pool: enginePool(c.engine), sent: map[uint64]tun.Tun{}, outputCfgs: TunConfigByLink{}}, nil
 }
 
 type debugLogTunNode struct {
 	pasta.BasicNode
+
+	pool bufpool.Pool
 
 	w      *pasta.Workspace
 	logger pasta.Logger
@@ -247,6 +252,7 @@ type debugLogTunNode struct {
 
 	tun  tun.Tun
 	sent map[uint64]tun.Tun
+	wait []tun.Tun
 
 	outputCfgs TunConfigByLink
 }
@@ -282,6 +288,8 @@ func (n *debugLogTunNode) OnStop() {
 		_ = n.tun.Close()
 		n.tun = nil
 	}
+	waitTuns(n.wait)
+	n.wait = nil
 	n.outputCfgs = TunConfigByLink{}
 }
 
@@ -327,6 +335,8 @@ func (n *debugLogTunNode) OnLinkRemoved(link uint64, port uint64, linkType, port
 		}
 		n.tun = nil
 		n.closeSentTuns()
+		waitTuns(n.wait)
+		n.wait = nil
 	}
 	return nil
 }
@@ -364,6 +374,8 @@ func (n *debugLogTunNode) OnEvent(event pasta.Event, linkType string, _ []string
 		_ = n.tun.Close()
 	}
 	n.closeSentTuns()
+	waitTuns(n.wait)
+	n.wait = nil
 	BindTunResource(n.w, n.id, event.Link, payload.Tun)
 	n.tun = payload.Tun
 	n.sendAll()
@@ -396,7 +408,7 @@ func (n *debugLogTunNode) sendTunToLink(link uint64) {
 	}
 	wrapper := n.sent[link]
 	if wrapper == nil {
-		wrapper = &debugLogTun{Tun: tun.Detach(n.tun), logger: n.logger}
+		wrapper = &debugLogTun{Tun: tun.Detach(n.tun, n.pool), logger: n.logger}
 		BindTunResource(n.w, n.id, link, wrapper)
 		n.sent[link] = wrapper
 	}
@@ -422,7 +434,7 @@ func (n *debugLogTunNode) sendMergedTunConfigToLink(link uint64) {
 
 func (n *debugLogTunNode) closeSentTun(link uint64) {
 	if old := n.sent[link]; old != nil {
-		_ = old.Close()
+		closeTunForLaterWait(&n.wait, old)
 		delete(n.sent, link)
 	}
 }
@@ -430,7 +442,7 @@ func (n *debugLogTunNode) closeSentTun(link uint64) {
 func (n *debugLogTunNode) closeSentTuns() {
 	for link, old := range n.sent {
 		if old != nil {
-			_ = old.Close()
+			closeTunForLaterWait(&n.wait, old)
 		}
 		delete(n.sent, link)
 	}
@@ -844,6 +856,10 @@ func (t *debugLogTun) Close() error {
 		return nil
 	}
 	return t.Tun.Close()
+}
+
+func (t *debugLogTun) Wait() {
+	waitTun(t.Tun)
 }
 
 func (t *debugLogTun) Read(bufs [][]byte, sizes []int, offset int) (int, error) {

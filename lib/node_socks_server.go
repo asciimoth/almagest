@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/asciimoth/bufpool"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
 	"github.com/asciimoth/gonnect"
@@ -129,6 +130,7 @@ type socksServerWorkerConfig struct {
 	config        socksServerConfig
 	listenNetwork NetworkCloser
 	proxyNetwork  gonnect.Network
+	pool          bufpool.Pool
 }
 
 func defaultSocksServerConfig() socksServerConfig {
@@ -454,6 +456,7 @@ func (n *socksServerNode) restartWorker() {
 		config:        n.config,
 		listenNetwork: n.listenNetwork,
 		proxyNetwork:  proxy,
+		pool:          enginePool(n.engine),
 	}
 	if old != nil {
 		go func() {
@@ -606,6 +609,7 @@ func buildSocksGoServer(logger pasta.Logger, cfg socksServerWorkerConfig) *socks
 	listen := cfg.listenNetwork
 	proxy := cfg.proxyNetwork
 	server := &socksgo.Server{
+		Pool:           cfg.pool,
 		Auth:           socksServerAuth(cfg.config.users),
 		Handlers:       socksServerHandlers(cfg.config.commands),
 		Dialer:         proxy.Dial,

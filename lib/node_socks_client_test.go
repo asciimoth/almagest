@@ -14,7 +14,7 @@ func TestBuildSocksGoClientUsesOutNetworkAndProxiesAllAddrs(t *testing.T) {
 	calls := make([]string, 0, 2)
 	out := &socksRouteNetwork{name: "out", calls: &calls}
 
-	client, err := buildSocksGoClient("socks5://proxy.example.test:1080", out)
+	client, err := buildSocksGoClient("socks5://proxy.example.test:1080", out, nil)
 	if err != nil {
 		t.Fatalf("buildSocksGoClient error = %v, want nil", err)
 	}

@@ -1,6 +1,7 @@
 package almagest
 
 import (
+	"github.com/asciimoth/bufpool"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/gonnect/tun"
 	"github.com/asciimoth/pasta/pasta"
@@ -35,7 +36,8 @@ func (tunCopyClass) DefaultNodeParams() pasta.NodeClassParams {
 	}}
 }
 func (c tunCopyClass) NewNode(_ configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
-	return &tunCopyNode{p2p: tun.NewP2P(c.engine.pool)}, nil
+	pool := enginePool(c.engine)
+	return &tunCopyNode{pool: pool, p2p: tun.NewP2P(pool)}, nil
 }
 
 // tunCopyNode owns one Point2Point bridge. Both ports are left-directed
@@ -45,6 +47,8 @@ func (c tunCopyClass) NewNode(_ configer.Config, _ ...*pasta.NodeClassState) (pa
 // removed endpoint.
 type tunCopyNode struct {
 	pasta.BasicNode
+
+	pool bufpool.Pool
 
 	w  *pasta.Workspace
 	id uint64
@@ -65,7 +69,7 @@ func (n *tunCopyNode) OnInit(w *pasta.Workspace, _ pasta.Logger, id uint64, _ st
 	n.w = w
 	n.id = id
 	if n.p2p == nil {
-		n.p2p = tun.NewP2P(nil)
+		n.p2p = tun.NewP2P(n.pool)
 	}
 	if restored != nil {
 		if len(restored.LeftPorts) > 0 {

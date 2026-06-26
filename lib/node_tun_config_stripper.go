@@ -1,6 +1,7 @@
 package almagest
 
 import (
+	"github.com/asciimoth/bufpool"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/gonnect/tun"
 	"github.com/asciimoth/pasta/pasta"
@@ -8,8 +9,8 @@ import (
 )
 
 func init() {
-	regClass(func(*engine) pasta.NodeClass {
-		return tunConfigStripperClass{}
+	regClass(func(e *engine) pasta.NodeClass {
+		return tunConfigStripperClass{engine: e}
 	}, false)
 }
 
@@ -19,7 +20,9 @@ const (
 	NodeTypeTunConfigStripper = "almagest/TunConfigStripper"
 )
 
-type tunConfigStripperClass struct{}
+type tunConfigStripperClass struct {
+	engine *engine
+}
 
 func (tunConfigStripperClass) ClassName() string        { return NodeTypeTunConfigStripper }
 func (tunConfigStripperClass) ShortDescription() string { return "TUN config stripper" }
@@ -32,8 +35,8 @@ func (tunConfigStripperClass) DefaultNodeParams() pasta.NodeClassParams {
 		TunPort("right", "Tun"),
 	}}
 }
-func (tunConfigStripperClass) NewNode(_ configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
-	return &tunConfigStripperNode{sent: map[uint64]tun.Tun{}}, nil
+func (c tunConfigStripperClass) NewNode(_ configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
+	return &tunConfigStripperNode{pool: enginePool(c.engine), sent: map[uint64]tun.Tun{}}, nil
 }
 
 // tunConfigStripperNode is intentionally a narrow TUN middleware. It keeps the
@@ -43,6 +46,8 @@ func (tunConfigStripperClass) NewNode(_ configer.Config, _ ...*pasta.NodeClassSt
 // upstream when the node still has no current TUN.
 type tunConfigStripperNode struct {
 	pasta.BasicNode
+
+	pool bufpool.Pool
 
 	w  *pasta.Workspace
 	id uint64
@@ -55,6 +60,7 @@ type tunConfigStripperNode struct {
 
 	tun  tun.Tun
 	sent map[uint64]tun.Tun
+	wait []tun.Tun
 }
 
 func (n *tunConfigStripperNode) OnInit(w *pasta.Workspace, _ pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
@@ -89,6 +95,8 @@ func (n *tunConfigStripperNode) OnStop() {
 		_ = n.tun.Close()
 		n.tun = nil
 	}
+	waitTuns(n.wait)
+	n.wait = nil
 }
 
 func (n *tunConfigStripperNode) PreLinkAdd(port uint64, linkType, portDirection string) error {
@@ -131,6 +139,8 @@ func (n *tunConfigStripperNode) OnLinkRemoved(link uint64, port uint64, linkType
 			n.tun = nil
 		}
 		n.closeSentTuns()
+		waitTuns(n.wait)
+		n.wait = nil
 	case port == n.out && portDirection == "right" && link == n.outputLink:
 		n.closeSentTun(link)
 		n.outputLink = 0
@@ -178,6 +188,8 @@ func (n *tunConfigStripperNode) OnEvent(event pasta.Event, linkType string, _ []
 		_ = n.tun.Close()
 	}
 	n.closeSentTuns()
+	waitTuns(n.wait)
+	n.wait = nil
 	BindTunResource(n.w, n.id, event.Link, payload.Tun)
 	n.tun = payload.Tun
 	n.sendTunToOutput()
@@ -196,7 +208,7 @@ func (n *tunConfigStripperNode) sendTunToOutput() {
 	}
 	wrapper := n.sent[n.outputLink]
 	if wrapper == nil {
-		wrapper = DetachTunForLink(n.w, n.id, n.outputLink, n.tun)
+		wrapper = DetachTunForLink(n.w, n.id, n.outputLink, n.tun, n.pool)
 		n.sent[n.outputLink] = wrapper
 	}
 	n.w.EmitEvent(n.id, n.outputLink, TunPayload{Tun: wrapper})
@@ -211,9 +223,7 @@ func (n *tunConfigStripperNode) forwardEvent(link uint64, payload any) {
 func (n *tunConfigStripperNode) closeSentTun(link uint64) {
 	t := n.sent[link]
 	delete(n.sent, link)
-	if t != nil {
-		_ = t.Close()
-	}
+	closeTunForLaterWait(&n.wait, t)
 }
 
 func (n *tunConfigStripperNode) closeSentTuns() {
