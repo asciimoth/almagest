@@ -1,0 +1,140 @@
+{
+	"System": {
+		"Type": "native", // debug | native
+		"Debug": {
+			// Toggle sysnet/debug feature support flags.
+			"DisableTun":             false,
+			"DisableDefaultTun":      false,
+			"DisableDynTun":          false,
+			"DisableDynDefaultTun":   false,
+			"DisableTunNames":        false,
+			"DisableDefaultTunNames": false,
+			"DisableStrictMode":      false,
+
+			// "vtun-socks" returns a gonnect-netstack VTun from BuildDefaultTun
+			// and exposes that VTun through a localhost SOCKS proxy.
+			"DefaultTun": {
+				"Builder":        "vtun-socks",
+				"SocksHost":      "127.0.0.1",
+				"SocksPort":      1081,
+				"Name":           "debug-default-tun",
+				"NoLoopbackAddr": true,
+				"EndpointCh":     1024,
+				"EventCh":        10,
+			},
+		},
+		"Linux": {
+			// Native sysnet-linux options. This block is used when Type is "native"
+			// or when Type is omitted on Linux.
+
+			// Omit Features to request sysnet-linux defaults. If this object is
+			// present, every omitted feature flag remains false.
+			// "Features": {
+			// 	"Tun":             true,
+			// 	"DefaultTun":      true,
+			// 	"DynTun":          true,
+			// 	"DynDefaultTun":   true,
+			// 	"TunNames":        true,
+			// 	"DefaultTunNames": true,
+			// 	"StrictMode":      true,
+			// 	"TunRules":        true,
+			// 	"MatcherRules":    true,
+			// 	"DNSControl":      true,
+			// 	"Routing":         true,
+			// 	"Pmark":           true,
+			// 	"Killswitch":      true,
+			// },
+
+			"Pmark": {
+				"PinPath":              "/sys/fs/bpf/almagest",
+				"TombCollectionEvents": 0,
+				"TombTTL":              0,
+				"Priority":             0,
+			},
+			"DNS": {
+				"Mode":                   "",
+				"ResolvconfInterface":    "",
+				"ResolvedInterfaceIndex": 0,
+				"FallbackServers":        ["8.8.8.8", "1.1.1.1"],
+			},
+			"KillswitchPath":         "",
+			"AppBypassMark":          "0xeb9f0001",
+			"AppBypassMask":          "ffffffff",
+			"UserMark":               "0x414c4d01",
+			"UserMarkMask":           "ffffffff",
+			"KillswitchAllowExclude": true,
+		},
+	},
+	"nodes": {
+		"LocalProxy 1684": {
+			"Class":  "almagest/LocalProxy",
+			"Pos":    "{\"x\":185,\"y\":435}",
+			"Links":  ["proxy -> [NetworkRouter 1686] Network"],
+			"wsPort": 0,
+			"wsPath": "/socks",
+			"users":  [],
+			"commands": {
+				"cmdBind":          true,
+				"cmdConnect":       true,
+				"cmdGostMuxBind":   true,
+				"cmdGostUDPTun":    true,
+				"cmdTorResolve":    true,
+				"cmdTorResolvePtr": true,
+				"cmdUDPAssoc":      true,
+			},
+			"socksHost": "127.0.0.1",
+			"socksPort": 1081,
+			"wsHost":    "",
+		},
+		"NetworkRouter 1686": {"Class": "almagest/NetworkRouter", "Pos": "{\"x\":437,\"y\":419}", "Links": [
+			"slot 1 -> [MockNetwork 1692] Network",
+			"slot 2 -> [MockNetwork 1694] Network",
+			"slot 3 -> [MockNetwork 1696] Network",
+		], "rules": "ADDR_S host1\nSLOT 1\n\nADDR_S host2\nSLOT 2\n\nTRUE\nSLOT 3"},
+		"MockNetwork 1692": {"Class": "almagest/MockNetwork", "Pos": "{\"x\":734,\"y\":279}"},
+		"MockNetwork 1694": {"Class": "almagest/MockNetwork", "Pos": "{\"x\":764,\"y\":519}"},
+		"MockNetwork 1696": {"Class": "almagest/MockNetwork", "Pos": "{\"x\":763,\"y\":692}"},
+		"HttpServer 1701": {
+			"Class":    "almagest/HttpServer",
+			"Pos":      "{\"x\":394,\"y\":191}",
+			"Links":    ["Network -> [MockNetwork 1692] Network"],
+			"host":     "127.0.0.1",
+			"port":     80,
+			"response": "Server 1",
+		},
+		"StringConstant 1707": {
+			"Class": "pasta/StringConstant",
+			"Pos":   "{\"x\":158,\"y\":204}",
+			"Links": ["output -> [HttpServer 1701] Response"],
+			"value": "Server 1",
+		},
+		"HttpServer 1710": {
+			"Class":    "almagest/HttpServer",
+			"Pos":      "{\"x\":457,\"y\":556}",
+			"Links":    ["Network -> [MockNetwork 1694] Network"],
+			"host":     "127.0.0.1",
+			"port":     80,
+			"response": "Server 2",
+		},
+		"StringConstant 1715": {
+			"Class": "pasta/StringConstant",
+			"Pos":   "{\"x\":199,\"y\":570}",
+			"Links": ["output -> [HttpServer 1710] Response"],
+			"value": "Server 2",
+		},
+		"HttpServer 1719": {
+			"Class":    "almagest/HttpServer",
+			"Pos":      "{\"x\":468,\"y\":699}",
+			"host":     "127.0.0.1",
+			"port":     80,
+			"response": "Server 3",
+			"Links":    ["Network -> [MockNetwork 1696] Network"],
+		},
+		"StringConstant 1724": {
+			"Class": "pasta/StringConstant",
+			"Pos":   "{\"x\":201,\"y\":711}",
+			"Links": ["output -> [HttpServer 1719] Response"],
+			"value": "Server 3",
+		},
+	},
+}
