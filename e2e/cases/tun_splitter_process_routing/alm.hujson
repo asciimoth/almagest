@@ -40,7 +40,7 @@
 				"slot 5 -> [TunCopy 1505] TunA",
 				"slot 6 -> [Spoofer 1508] Tun",
 			],
-			"rules": "RULE cmd curl\nRULE comm curl\nOR\nSLOT 3\n\nRULE cmd wget\nRULE comm wget\nOR\nSLOT 5\n\nTRUE\nSLOT 6",
+			"rules": "RULE cmd curl\nRULE comm curl\nOR\nSLOT 3\n\nRULE cmd wget\nRULE comm wget\nOR\nSLOT 5\n\nRULE exec e2e-split-exec-client\nSLOT 5\n\nRULE user almrouteuser\nSLOT 3\n\nRULE uid 24011\nSLOT 5\n\nTRUE\nSLOT 6",
 		},
 		"Spoofer 1503": {
 			"Class": "almagest/Spoofer",

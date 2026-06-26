@@ -22,6 +22,7 @@ RUN apt-get update \
 		nftables \
 		procps \
 		python3 \
+		util-linux \
 		wget \
 	&& rm -rf /var/lib/apt/lists/*
 

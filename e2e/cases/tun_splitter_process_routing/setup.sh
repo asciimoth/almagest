@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+source /e2e/lib/common.sh
+
 command -v curl >/dev/null
 command -v ip >/dev/null
 command -v jq >/dev/null
 command -v mount >/dev/null
 command -v python3 >/dev/null
+command -v setpriv >/dev/null
 command -v wget >/dev/null
 test -c /dev/net/tun
 
@@ -26,6 +29,10 @@ cleanup() {
 }
 
 cleanup
+
+ensure_e2e_user almrouteuser 24010 24010
+cp "$(command -v curl)" /tmp/e2e-split-exec-client
+chmod 0755 /tmp/e2e-split-exec-client
 
 mkdir -p /sys/fs/bpf
 if ! awk '$2 == "/sys/fs/bpf" && $3 == "bpf" { found=1 } END { exit !found }' /proc/mounts; then

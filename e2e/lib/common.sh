@@ -279,3 +279,23 @@ stop_static_http_target() {
 		wait "$pid" 2>/dev/null || true
 	fi
 }
+
+ensure_e2e_user() {
+	local name="$1"
+	local uid="$2"
+	local gid="${3:-$uid}"
+
+	if ! awk -F: -v name="$name" '$1 == name { found=1 } END { exit !found }' /etc/group; then
+		printf '%s:x:%s:\n' "$name" "$gid" >>/etc/group
+	fi
+	if ! awk -F: -v name="$name" '$1 == name { found=1 } END { exit !found }' /etc/passwd; then
+		printf '%s:x:%s:%s::/nonexistent:/usr/sbin/nologin\n' "$name" "$uid" "$gid" >>/etc/passwd
+	fi
+}
+
+run_as_uid() {
+	local uid="$1"
+	local gid="${2:-$uid}"
+	shift 2
+	setpriv --reuid "$uid" --regid "$gid" --clear-groups -- "$@"
+}
