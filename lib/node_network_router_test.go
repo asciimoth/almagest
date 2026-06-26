@@ -1,8 +1,12 @@
 package almagest
 
 import (
+	"errors"
+	"fmt"
+	"net"
 	"testing"
 
+	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
 	"github.com/asciimoth/gonnect"
 	"github.com/asciimoth/pasta/pasta"
@@ -141,6 +145,74 @@ func TestNetworkRouterNodeValidationReportsStatus(t *testing.T) {
 	}
 }
 
+func TestNetworkRouterRestoreDefersConsumerOutputUntilReady(t *testing.T) {
+	var receiver *restoreReadyNetworkReceiver
+	cfg := configer.NewMemory(map[string]any{
+		"a-consumer": map[string]any{
+			"Class": "test/RestoreReadyNetworkReceiver",
+			"Links": []any{"Network -> [router] Network"},
+		},
+		"backend": map[string]any{
+			"Class": NodeTypeMockNetwork,
+		},
+		"router": map[string]any{
+			"Class": NodeTypeNetworkRouter,
+			"Links": []any{"slot 1 -> [backend] Network"},
+			"rules": "TRUE\nSLOT 1\n",
+		},
+	})
+
+	w, err := pasta.WorkspaceFromConfig([]pasta.NodeClass{
+		networkRouterClass{},
+		mockNetClass{},
+		restoreReadyNetworkReceiverClass{node: &receiver},
+	}, cfg, NewDebugLogFactory(1024))
+	if err != nil {
+		t.Fatalf("WorkspaceFromConfig: %v", err)
+	}
+	t.Cleanup(func() { w.Close() })
+
+	if receiver == nil {
+		t.Fatal("receiver was not restored")
+	}
+	if receiver.eventBeforeReady {
+		t.Fatal("router emitted network payload to consumer before Workspace.Ready")
+	}
+	if receiver.events == 0 {
+		t.Fatal("receiver got no router payload after restore")
+	}
+	routerID, ok := w.NodeIDByName("router")
+	if !ok {
+		t.Fatal("restored router missing")
+	}
+	if snapshot := mustNodeSnapshot(t, w, routerID); snapshot.Placeholder {
+		t.Fatalf("router restored as placeholder: %#v", snapshot.Popups)
+	}
+}
+
+func TestNetworkRouterTreatsClosedAttachNotificationsAsNonFatal(t *testing.T) {
+	router := gonnect.NewRouter()
+	t.Cleanup(func() { _ = router.Close() })
+	backend := gonnect.NewLoopbackNetwok()
+	if err := router.Attach(1, backend); err != nil {
+		t.Fatalf("Attach backend: %v", err)
+	}
+	node := &networkRouterNode{router: router}
+
+	closedNotifications := errors.Join(net.ErrClosed, fmt.Errorf("notify downstream: %w", net.ErrClosed))
+	if !node.isNonFatalAttachError(closedNotifications) {
+		t.Fatalf("closed notification error classified as fatal: %v", closedNotifications)
+	}
+	mixedErr := errors.Join(net.ErrClosed, errors.New("subscribe failed"))
+	if node.isNonFatalAttachError(mixedErr) {
+		t.Fatalf("mixed attach error classified as non-fatal: %v", mixedErr)
+	}
+	_ = router.Close()
+	if node.isNonFatalAttachError(net.ErrClosed) {
+		t.Fatal("closed router attach error classified as non-fatal")
+	}
+}
+
 func newNetworkRouterTestWorkspace(t *testing.T) *pasta.Workspace {
 	t.Helper()
 	w := pasta.NewWorkspace(NewDebugLogFactory(1024))
@@ -187,4 +259,65 @@ func mustFindBlock(t *testing.T, snapshot formular.MenuSnapshotMessage, id strin
 		t.Fatalf("block %q missing", id)
 	}
 	return block
+}
+
+type restoreReadyNetworkReceiverClass struct {
+	node **restoreReadyNetworkReceiver
+}
+
+func (restoreReadyNetworkReceiverClass) ClassName() string {
+	return "test/RestoreReadyNetworkReceiver"
+}
+func (restoreReadyNetworkReceiverClass) ShortDescription() string { return "restore ready receiver" }
+func (restoreReadyNetworkReceiverClass) LongDescription() string  { return "restore ready receiver" }
+func (restoreReadyNetworkReceiverClass) DefaultNodeParams() pasta.NodeClassParams {
+	return pasta.NodeClassParams{PrimaryType: TypeNetwork, InitialPorts: []pasta.Port{
+		NetworkPort("right", "Network"),
+	}}
+}
+func (c restoreReadyNetworkReceiverClass) NewNode(configer.Config, ...*pasta.NodeClassState) (pasta.Node, error) {
+	node := &restoreReadyNetworkReceiver{}
+	if c.node != nil {
+		*c.node = node
+	}
+	return node, nil
+}
+
+type restoreReadyNetworkReceiver struct {
+	pasta.BasicNode
+
+	w      *pasta.Workspace
+	in     uint64
+	events int
+
+	eventBeforeReady bool
+}
+
+func (n *restoreReadyNetworkReceiver) OnInit(w *pasta.Workspace, _ pasta.Logger, _ uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
+	n.w = w
+	if restored != nil && len(restored.RightPorts) > 0 {
+		n.in = restored.RightPorts[0]
+	}
+	return nil
+}
+
+func (n *restoreReadyNetworkReceiver) PreLinkAdd(port uint64, linkType, portDirection string) error {
+	if port != n.in || portDirection != "right" || linkType != TypeNetwork {
+		return pasta.LinkTypeErr(linkType)
+	}
+	return nil
+}
+
+func (n *restoreReadyNetworkReceiver) OnEvent(event pasta.Event, linkType string, _ []string, receiverPortDirection string) error {
+	if event.ReceiverPort != n.in || receiverPortDirection != "right" || linkType != TypeNetwork {
+		return nil
+	}
+	if _, ok := event.Payload.(NetworkPayload); !ok {
+		return nil
+	}
+	if !n.w.IsReady() {
+		n.eventBeforeReady = true
+	}
+	n.events++
+	return nil
 }

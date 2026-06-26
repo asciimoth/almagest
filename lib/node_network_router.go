@@ -1,6 +1,8 @@
 package almagest
 
 import (
+	"errors"
+	"net"
 	"strconv"
 	"strings"
 
@@ -59,6 +61,7 @@ type networkRouterNode struct {
 	cfg       routing.RouterCfg
 	rulesText string
 	formError string
+	ready     bool
 	backends  map[int]NetworkCloser
 	sent      map[uint64]NetworkCloser
 }
@@ -113,7 +116,11 @@ func (n *networkRouterNode) OnStop() {
 }
 
 func (n *networkRouterNode) OnReady() error {
-	n.sendAll()
+	n.ready = true
+	n.requestSlots()
+	if len(n.backends) > 0 || !n.hasSlotLinks() {
+		n.sendAll()
+	}
 	return nil
 }
 
@@ -138,11 +145,15 @@ func (n *networkRouterNode) PreLinkAdd(port uint64, linkType, portDirection stri
 
 func (n *networkRouterNode) OnLinkAdd(link, port uint64, linkType, portDirection string) error {
 	if port == n.in && portDirection == "left" && linkType == TypeNetwork {
-		n.sendRouterToLink(link)
+		if n.ready {
+			n.sendRouterToLink(link)
+		}
 		return nil
 	}
 	if n.portSlot(port) != 0 && portDirection == "right" && linkType == TypeNetwork {
-		std.Request(n.w, n.id, link)
+		if n.ready {
+			std.Request(n.w, n.id, link)
+		}
 	}
 	return nil
 }
@@ -191,7 +202,13 @@ func (n *networkRouterNode) OnEvent(event pasta.Event, linkType string, _ []stri
 	n.detachSlot(slot)
 	BindNetworkResource(n.w, n.id, event.Link, payload.Network)
 	n.backends[slot] = payload.Network
-	return n.router.Attach(slot, payload.Network)
+	if err := n.router.Attach(slot, payload.Network); err != nil && !n.isNonFatalAttachError(err) {
+		return err
+	}
+	if n.ready {
+		n.sendAll()
+	}
+	return nil
 }
 
 func (n *networkRouterNode) OnFormularMsg(message any) error {
@@ -334,6 +351,22 @@ func (n *networkRouterNode) sendAll() {
 	}
 }
 
+func (n *networkRouterNode) requestSlots() {
+	for slot := 1; slot <= networkRouterMaxSlots; slot++ {
+		portID := n.slots[slot]
+		if portID == 0 {
+			continue
+		}
+		port, ok := n.w.PortSnapshot(portID)
+		if !ok {
+			continue
+		}
+		for _, link := range port.Links {
+			std.Request(n.w, n.id, link)
+		}
+	}
+}
+
 func (n *networkRouterNode) sendRouterToLink(link uint64) {
 	wrapper := n.sent[link]
 	if wrapper == nil {
@@ -353,6 +386,39 @@ func (n *networkRouterNode) closeSentNetwork(link uint64) {
 		_ = old.Close()
 		delete(n.sent, link)
 	}
+}
+
+func (n *networkRouterNode) isNonFatalAttachError(err error) bool {
+	if err == nil || !allErrorsAre(err, net.ErrClosed) {
+		return false
+	}
+	up, upErr := n.router.IsUp()
+	return upErr == nil && up
+}
+
+func allErrorsAre(err, target error) bool {
+	if err == nil {
+		return true
+	}
+	if joined, ok := err.(interface{ Unwrap() []error }); ok {
+		errs := joined.Unwrap()
+		if len(errs) == 0 {
+			return errors.Is(err, target)
+		}
+		for _, child := range errs {
+			if !allErrorsAre(child, target) {
+				return false
+			}
+		}
+		return true
+	}
+	if wrapped, ok := err.(interface{ Unwrap() error }); ok {
+		child := wrapped.Unwrap()
+		if child != nil {
+			return allErrorsAre(child, target)
+		}
+	}
+	return errors.Is(err, target)
 }
 
 func (n *networkRouterNode) detachSlot(slot int) {
@@ -389,6 +455,16 @@ func (n *networkRouterNode) slotFromPort(port uint64, fallback int) int {
 func (n *networkRouterNode) portHasLinks(port uint64) bool {
 	snapshot, ok := n.w.PortSnapshot(port)
 	return ok && len(snapshot.Links) > 0
+}
+
+func (n *networkRouterNode) hasSlotLinks() bool {
+	for slot := 1; slot <= networkRouterMaxSlots; slot++ {
+		portID := n.slots[slot]
+		if portID != 0 && n.portHasLinks(portID) {
+			return true
+		}
+	}
+	return false
 }
 
 func (n *networkRouterNode) sendMenuSnapshot() {

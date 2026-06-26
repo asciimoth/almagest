@@ -9,6 +9,7 @@ import (
 	"github.com/asciimoth/bufpool"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
+	sysnetdebug "github.com/asciimoth/gonnect/sysnet/debug"
 	"github.com/asciimoth/pasta/pasta"
 	"github.com/asciimoth/pasta/pasta/std"
 )
@@ -97,6 +98,69 @@ func TestNetworkRouterE2EConfigSaveRestore(t *testing.T) {
 	restored.assertRouterRequestOnClient(client, f.port[2], networkRouterSlot2Response)
 }
 
+func TestNetworkRouterE2ERestoreLocalProxyConsumerBeforeSlots(t *testing.T) {
+	e, sys := newNetworkRouterLocalProxyE2E(t, configer.NewMemory(nil))
+	router := e.AddNode(NodeTypeNetworkRouter, "router")
+	backend1 := e.AddNode(NodeTypeMockNetwork, "backend-1")
+	backend2 := e.AddNode(NodeTypeMockNetwork, "backend-2")
+	socksPort := httpTestPort()
+	port1 := httpTestPort()
+	port2 := httpTestPort()
+	server1 := e.addHTTPServerWithResponse("server-1", port1, networkRouterSlot1Response)
+	server2 := e.addHTTPServerWithResponse("server-2", port2, networkRouterSlot2Response)
+	proxy := (&localProxyE2E{socksServerE2E: &socksServerE2E{NodeE2E: e.NodeE2E}, sys: sys}).addLocalProxy("aaa-local-proxy", socksPort, nil)
+	e.SubscribeMenus(router, server1, server2, proxy)
+
+	e.Engine.SendNodeFormularMsg(E2EWorkspace, router, formular.FormApplyMessage{
+		MessageBase: FormMessageBase(formular.MessageFormApply, router),
+		BlockID:     "config",
+		Values: map[string]any{
+			"rules": fmt.Sprintf("PORT %d\nSLOT 1\nPORT %d\nSLOT 2", port1, port2),
+		},
+	})
+	e.assertNetworkRouterPorts(router, []string{"slot 1", "slot 2"})
+	e.connectByPortName(backend1, "left", "Network", server1, "right", "Network")
+	e.connectByPortName(backend2, "left", "Network", server2, "right", "Network")
+	e.connectByPortName(router, "left", "Network", proxy, "right", "proxy")
+	e.connectByPortName(backend1, "left", "Network", router, "right", "slot 1")
+	e.connectByPortName(backend2, "left", "Network", router, "right", "slot 2")
+	e.waitServerListening(server1, fmt.Sprintf("127.0.0.1:%d", port1))
+	e.waitServerListening(server2, fmt.Sprintf("127.0.0.1:%d", port2))
+	(&localProxyE2E{socksServerE2E: &socksServerE2E{NodeE2E: e.NodeE2E}, sys: sys}).waitSocksLog(proxy, fmt.Sprintf("socks listening on 127.0.0.1:%d", socksPort))
+
+	cfg := configer.NewMemory(nil)
+	if err := e.Engine.SaveConfig(cfg); err != nil {
+		t.Fatalf("SaveConfig: %v", err)
+	}
+	if err := e.Engine.Close(); err != nil {
+		t.Fatalf("close saved engine: %v", err)
+	}
+
+	restored, restoredSys := newNetworkRouterLocalProxyE2E(t, cfg)
+	restoredRouter := restored.mustNodeByName("router")
+	snapshot, ok := restored.Engine.NodeSnapshot(E2EWorkspace, restoredRouter)
+	if !ok {
+		t.Fatal("restored router snapshot missing")
+	}
+	if snapshot.Placeholder {
+		t.Fatalf("restored router is placeholder: %#v", snapshot.Popups)
+	}
+	restoredProxy := restored.mustNodeByName("aaa-local-proxy")
+	restoredServer1 := restored.mustNodeByName("server-1")
+	restoredServer2 := restored.mustNodeByName("server-2")
+	restored.SubscribeMenus(restoredRouter, restoredProxy, restoredServer1, restoredServer2)
+	restored.waitServerListening(restoredServer1, fmt.Sprintf("127.0.0.1:%d", port1))
+	restored.waitServerListening(restoredServer2, fmt.Sprintf("127.0.0.1:%d", port2))
+	restoredLocalProxy := &localProxyE2E{socksServerE2E: &socksServerE2E{NodeE2E: restored.NodeE2E}, sys: restoredSys}
+	restoredLocalProxy.waitSocksLog(restoredProxy, fmt.Sprintf("socks listening on 127.0.0.1:%d", socksPort))
+	if body := restoredLocalProxy.waitLocalProxyHTTPGet(socksPort, port1, nil); body != networkRouterSlot1Response {
+		t.Fatalf("restored proxy port %d body = %q, want %q", port1, body, networkRouterSlot1Response)
+	}
+	if body := restoredLocalProxy.waitLocalProxyHTTPGet(socksPort, port2, nil); body != networkRouterSlot2Response {
+		t.Fatalf("restored proxy port %d body = %q, want %q", port2, body, networkRouterSlot2Response)
+	}
+}
+
 func TestNetworkRouterE2ECopyPaste(t *testing.T) {
 	f := setupNetworkRouterE2E(t)
 
@@ -131,6 +195,47 @@ func TestNetworkRouterE2ECopyPaste(t *testing.T) {
 	f.waitServerListening(server2, fmt.Sprintf("127.0.0.1:%d", f.port[2]))
 	f.assertRouterRequestOnClient(client, f.port[1], networkRouterSlot1Response)
 	f.assertRouterRequestOnClient(client, f.port[2], networkRouterSlot2Response)
+}
+
+func newNetworkRouterLocalProxyE2E(t *testing.T, cfg configer.Config) (*httpE2E, *sysnetdebug.System) {
+	t.Helper()
+	pool := bufpool.NewTestDebugPool(t)
+	t.Cleanup(func() { pool.Close() })
+	logf := NewDebugLogFactory(4096)
+	sys := newE2EDebugSystem()
+	engine, err := BuildEngine(
+		context.Background(),
+		cfg,
+		logf,
+		sys,
+		nil,
+		pool,
+		true,
+	)
+	if err != nil {
+		t.Fatalf("BuildEngine error = %v, want nil", err)
+	}
+	t.Cleanup(func() {
+		if err := engine.Close(); err != nil {
+			t.Errorf("engine.Close error = %v, want nil", err)
+		}
+	})
+	e := &NodeE2E{T: t, Engine: engine, LogFactory: logf, menus: formular.NewMenuSnapshotState()}
+	sub := engine.SubscribeNotifications(func(notification EngineNotification) {
+		if notification.Kind != NotificationWorkspace || notification.Workspace == nil {
+			return
+		}
+		if notification.Workspace.Kind == pasta.NotificationNodeMenu {
+			e.mu.Lock()
+			defer e.mu.Unlock()
+			e.menus.Apply(notification.Workspace.Formular)
+		}
+	})
+	if sub == 0 {
+		t.Fatal("SubscribeNotifications returned 0")
+	}
+	t.Cleanup(func() { engine.UnsubscribeNotifications(sub) })
+	return &httpE2E{NodeE2E: e}, sys
 }
 
 func setupNetworkRouterE2E(t *testing.T) networkRouterE2EFixture {
