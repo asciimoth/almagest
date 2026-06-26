@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
@@ -26,6 +27,13 @@ const (
 	tunSplitterMaxSlots = 16
 )
 
+type tunSplitterRoutingConfig struct {
+	ruleCacheTTL         time.Duration
+	ruleCacheMaxEntries  int
+	routeCacheTTL        time.Duration
+	routeCacheMaxEntries int
+}
+
 type tunSplitterClass struct {
 	engine *engine
 }
@@ -43,12 +51,13 @@ func (tunSplitterClass) DefaultNodeParams() pasta.NodeClassParams {
 }
 func (c tunSplitterClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
 	return &tunSplitterNode{
-		engine:     c.engine,
-		rulesText:  readConfigString(cfg, "rules", ""),
-		splitter:   tun.NewSplitter(c.engine.pool),
-		sent:       map[uint64]tun.Tun{},
-		frontends:  map[uint64]tun.Tun{},
-		outputCfgs: TunConfigByLink{},
+		engine:        c.engine,
+		rulesText:     readConfigString(cfg, "rules", ""),
+		routingConfig: readTunSplitterRoutingConfig(cfg),
+		splitter:      tun.NewSplitter(c.engine.pool),
+		sent:          map[uint64]tun.Tun{},
+		frontends:     map[uint64]tun.Tun{},
+		outputCfgs:    TunConfigByLink{},
 	}, nil
 }
 
@@ -73,8 +82,9 @@ type tunSplitterNode struct {
 	splitter *tun.Splitter
 	router   routing.SplitRouter
 
-	rulesText string
-	formError string
+	rulesText     string
+	routingConfig tunSplitterRoutingConfig
+	formError     string
 
 	sent       map[uint64]tun.Tun
 	frontends  map[uint64]tun.Tun
@@ -111,7 +121,7 @@ func (n *tunSplitterNode) OnInit(w *pasta.Workspace, _ pasta.Logger, id uint64, 
 		return err
 	}
 
-	router, err := n.compileRules(n.rulesText)
+	router, err := n.compileRules(n.rulesText, n.routingConfig)
 	if err != nil {
 		n.formError = err.Error()
 	} else {
@@ -258,10 +268,15 @@ func (n *tunSplitterNode) OnFormularMsg(message any) error {
 		}
 		return n.applyConfigForm(msg.Values)
 	case formular.FieldValidateMessage:
-		if msg.MenuID != pasta.NodeMenuID(n.id) || msg.Field.BlockID != "config" || msg.Field.FieldID != "rules" || len(msg.Field.ElementPath) > 0 {
+		if msg.MenuID != pasta.NodeMenuID(n.id) || msg.Field.BlockID != "config" || len(msg.Field.ElementPath) > 0 {
 			return nil
 		}
-		n.sendRulesFieldStatus(msg)
+		switch msg.Field.FieldID {
+		case "rules":
+			n.sendRulesFieldStatus(msg)
+		case "ruleCacheTTL", "ruleCacheMaxEntries", "routeCacheTTL", "routeCacheMaxEntries":
+			n.sendIntFieldStatus(msg)
+		}
 	}
 	return nil
 }
@@ -270,18 +285,35 @@ func (n *tunSplitterNode) OnSave(cfg configer.Config) error {
 	if err := pasta.DeleteNodeOwnedConfigKeys(cfg); err != nil {
 		return err
 	}
-	return cfg.Set(configer.Path{"rules"}, n.rulesText)
+	values := map[string]any{
+		"rules":                n.rulesText,
+		"ruleCacheTTL":         durationMilliseconds(n.routingConfig.ruleCacheTTL),
+		"ruleCacheMaxEntries":  n.routingConfig.ruleCacheMaxEntries,
+		"routeCacheTTL":        durationMilliseconds(n.routingConfig.routeCacheTTL),
+		"routeCacheMaxEntries": n.routingConfig.routeCacheMaxEntries,
+	}
+	for key, value := range values {
+		if err := cfg.Set(configer.Path{key}, value); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (n *tunSplitterNode) applyConfigForm(values map[string]any) error {
-	text, _ := stringFromAny(values["rules"])
-	router, err := n.compileRules(text)
+	text := n.rulesText
+	if value, ok := stringFromAny(values["rules"]); ok {
+		text = value
+	}
+	config := n.routingConfig.withValues(values)
+	router, err := n.compileRules(text, config)
 	if err != nil {
 		n.formError = err.Error()
 		n.sendConfigBlock()
 		return nil
 	}
 	n.rulesText = text
+	n.routingConfig = config
 	n.formError = ""
 	n.setRouter(router)
 	if err := n.reviewOutputPorts(); err != nil {
@@ -295,7 +327,7 @@ func (n *tunSplitterNode) sendRulesFieldStatus(msg formular.FieldValidateMessage
 	text, _ := stringFromAny(msg.Value)
 	status := formular.StatusOK
 	statusText := ""
-	router, err := n.compileRules(text)
+	router, err := n.compileRules(text, n.routingConfig)
 	if err != nil {
 		status = formular.StatusError
 		statusText = err.Error()
@@ -315,7 +347,27 @@ func (n *tunSplitterNode) sendRulesFieldStatus(msg formular.FieldValidateMessage
 	})
 }
 
-func (n *tunSplitterNode) compileRules(text string) (routing.SplitRouter, error) {
+func (n *tunSplitterNode) sendIntFieldStatus(msg formular.FieldValidateMessage) {
+	status := formular.StatusOK
+	statusText := ""
+	if _, ok := intFromAny(msg.Value); !ok {
+		status = formular.StatusError
+		statusText = "must be an integer"
+	}
+	n.w.SendNodeMenuMsg(n.id, formular.FieldStatusMessage{
+		MessageBase: formular.MessageBase{
+			Type:            formular.MessageFieldStatus,
+			MenuID:          pasta.NodeMenuID(n.id),
+			MenuGeneration:  1,
+			BlockGeneration: 1,
+		},
+		Field:      msg.Field,
+		Status:     status,
+		StatusText: statusText,
+	})
+}
+
+func (n *tunSplitterNode) compileRules(text string, config tunSplitterRoutingConfig) (routing.SplitRouter, error) {
 	if n.engine == nil || n.engine.sys == nil {
 		return nil, fmt.Errorf("no sysnet system")
 	}
@@ -323,6 +375,10 @@ func (n *tunSplitterNode) compileRules(text string) (routing.SplitRouter, error)
 	if err != nil {
 		return nil, err
 	}
+	rules.RuleCacheTTL = config.ruleCacheTTL
+	rules.RuleCacheMaxEntries = config.ruleCacheMaxEntries
+	rules.RouteCacheTTL = config.routeCacheTTL
+	rules.RouteCacheMaxEntries = config.routeCacheMaxEntries
 	return routing.NewBytecodeSplitRouter(rules)
 }
 
@@ -562,7 +618,66 @@ func (n *tunSplitterNode) configBlock() formular.Block {
 	}
 	return formular.Block{ID: "config", Order: 10, Generation: 1, Form: true, Items: []formular.Item{
 		{Type: formular.ItemField, ID: "rules", Label: "Routing rules", Field: field},
+		tunSplitterIntField(
+			"ruleCacheTTL",
+			"Rule cache TTL (ms)",
+			durationMilliseconds(n.routingConfig.ruleCacheTTL),
+			"How long OP_RULE matcher results are cached by flow. 0 uses the router default; negative disables the rule cache.",
+		),
+		tunSplitterIntField(
+			"ruleCacheMaxEntries",
+			"Rule cache max entries",
+			n.routingConfig.ruleCacheMaxEntries,
+			"Maximum OP_RULE cache entries. 0 uses the router default; negative disables the rule cache.",
+		),
+		tunSplitterIntField(
+			"routeCacheTTL",
+			"Route cache TTL (ms)",
+			durationMilliseconds(n.routingConfig.routeCacheTTL),
+			"How long whole route results are cached by packet flow. 0 inherits the rule cache settings; negative disables the route cache.",
+		),
+		tunSplitterIntField(
+			"routeCacheMaxEntries",
+			"Route cache max entries",
+			n.routingConfig.routeCacheMaxEntries,
+			"Maximum route-result cache entries. 0 inherits the rule cache settings or router default; negative disables the route cache.",
+		),
 	}}
+}
+
+func tunSplitterIntField(id, label string, value int, help string) formular.Item {
+	item := configIntField(id, label, value, false, "")
+	item.Help = help
+	return item
+}
+
+func readTunSplitterRoutingConfig(cfg configer.Config) tunSplitterRoutingConfig {
+	return tunSplitterRoutingConfig{
+		ruleCacheTTL:         time.Duration(readConfigInt(cfg, "ruleCacheTTL", 0)) * time.Millisecond,
+		ruleCacheMaxEntries:  readConfigInt(cfg, "ruleCacheMaxEntries", 0),
+		routeCacheTTL:        time.Duration(readConfigInt(cfg, "routeCacheTTL", 0)) * time.Millisecond,
+		routeCacheMaxEntries: readConfigInt(cfg, "routeCacheMaxEntries", 0),
+	}
+}
+
+func (c tunSplitterRoutingConfig) withValues(values map[string]any) tunSplitterRoutingConfig {
+	if value, ok := intFromAny(values["ruleCacheTTL"]); ok {
+		c.ruleCacheTTL = time.Duration(value) * time.Millisecond
+	}
+	if value, ok := intFromAny(values["ruleCacheMaxEntries"]); ok {
+		c.ruleCacheMaxEntries = value
+	}
+	if value, ok := intFromAny(values["routeCacheTTL"]); ok {
+		c.routeCacheTTL = time.Duration(value) * time.Millisecond
+	}
+	if value, ok := intFromAny(values["routeCacheMaxEntries"]); ok {
+		c.routeCacheMaxEntries = value
+	}
+	return c
+}
+
+func durationMilliseconds(d time.Duration) int {
+	return int(d / time.Millisecond)
 }
 
 func tunSplitterSlotName(slot int) string {

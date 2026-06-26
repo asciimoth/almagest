@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"testing"
 
+	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
 	sysnetdebug "github.com/asciimoth/gonnect/sysnet/debug"
 	"github.com/asciimoth/pasta/pasta"
@@ -161,6 +162,77 @@ func TestTunSplitterNodeValidationReportsStatus(t *testing.T) {
 	assertTunSplitterRulesStatus(t, state, splitter, formular.StatusOK)
 }
 
+func TestTunSplitterNodeMenuAppliesAndSavesRoutingCacheConfig(t *testing.T) {
+	w := newTunSplitterTestWorkspace(t)
+	state := formular.NewMenuSnapshotState()
+	sub := w.SubscribeNotifications(func(notification pasta.WorkspaceNotification) {
+		if notification.Kind == pasta.NotificationNodeMenu {
+			state.Apply(notification.Formular)
+		}
+	})
+	if sub == 0 {
+		t.Fatal("Subscribe returned 0")
+	}
+	defer w.UnsubscribeNotifications(sub)
+
+	splitter, err := w.AddNodeByClass(NodeTypeTunSplitter, "splitter")
+	if err != nil {
+		t.Fatalf("AddNodeByClass TunSplitter: %v", err)
+	}
+	w.SubscribeNodeMenu(splitter, 1)
+	assertTunSplitterConfigFieldValue(t, state, splitter, "ruleCacheTTL", 0)
+	assertTunSplitterConfigFieldValue(t, state, splitter, "ruleCacheMaxEntries", 0)
+	assertTunSplitterConfigFieldValue(t, state, splitter, "routeCacheTTL", 0)
+	assertTunSplitterConfigFieldValue(t, state, splitter, "routeCacheMaxEntries", 0)
+
+	w.SendNodeFormularMsg(splitter, formular.FormApplyMessage{
+		MessageBase: FormMessageBase(formular.MessageFormApply, splitter),
+		BlockID:     "config",
+		Values: map[string]any{
+			"rules":                "TRUE\nSLOT 1\n",
+			"ruleCacheTTL":         1500,
+			"ruleCacheMaxEntries":  32,
+			"routeCacheTTL":        -1,
+			"routeCacheMaxEntries": -1,
+		},
+	})
+	assertTunSplitterConfigFieldValue(t, state, splitter, "ruleCacheTTL", 1500)
+	assertTunSplitterConfigFieldValue(t, state, splitter, "ruleCacheMaxEntries", 32)
+	assertTunSplitterConfigFieldValue(t, state, splitter, "routeCacheTTL", -1)
+	assertTunSplitterConfigFieldValue(t, state, splitter, "routeCacheMaxEntries", -1)
+
+	w.SendNodeFormularMsg(splitter, formular.FormApplyMessage{
+		MessageBase: FormMessageBase(formular.MessageFormApply, splitter),
+		BlockID:     "config",
+		Values:      map[string]any{"rules": "TRUE\nSLOT 2\n"},
+	})
+	assertTunSplitterConfigFieldValue(t, state, splitter, "ruleCacheTTL", 1500)
+	assertTunSplitterConfigFieldValue(t, state, splitter, "ruleCacheMaxEntries", 32)
+	assertTunSplitterConfigFieldValue(t, state, splitter, "routeCacheTTL", -1)
+	assertTunSplitterConfigFieldValue(t, state, splitter, "routeCacheMaxEntries", -1)
+
+	cfg := configer.NewMemory(nil)
+	if err := w.SaveConfig(cfg); err != nil {
+		t.Fatalf("SaveConfig: %v", err)
+	}
+	wantSaved := map[string]any{
+		"rules":                "TRUE\nSLOT 2\n",
+		"ruleCacheTTL":         1500,
+		"ruleCacheMaxEntries":  32,
+		"routeCacheTTL":        -1,
+		"routeCacheMaxEntries": -1,
+	}
+	for key, want := range wantSaved {
+		got, err := cfg.Get(configer.Path{"splitter", key})
+		if err != nil {
+			t.Fatalf("saved splitter %s missing: %v", key, err)
+		}
+		if !sameTunSplitterConfigValue(got, want) {
+			t.Fatalf("saved splitter %s = %#v, want %#v", key, got, want)
+		}
+	}
+}
+
 func newTunSplitterTestWorkspace(t *testing.T) *pasta.Workspace {
 	t.Helper()
 	w := pasta.NewWorkspace(NewDebugLogFactory(1024))
@@ -183,6 +255,30 @@ func assertTunSplitterRightPorts(t *testing.T, w *pasta.Workspace, node uint64, 
 		got = append(got, ps.Name)
 	}
 	assertStringSlice(t, got, want)
+}
+
+func assertTunSplitterConfigFieldValue(t *testing.T, state *formular.MenuSnapshotState, node uint64, field string, want any) {
+	t.Helper()
+	snapshot, ok := state.Snapshot(pasta.NodeMenuID(node))
+	if !ok {
+		t.Fatal("menu snapshot missing")
+	}
+	item, ok := FindItem(mustFindBlock(t, snapshot, "config"), field)
+	if !ok {
+		t.Fatalf("%s item missing", field)
+	}
+	if item.Value != want {
+		t.Fatalf("%s value = %#v, want %#v", field, item.Value, want)
+	}
+}
+
+func sameTunSplitterConfigValue(got, want any) bool {
+	if got == want {
+		return true
+	}
+	wantInt, wantOK := intFromAny(want)
+	gotInt, gotOK := intFromAny(got)
+	return wantOK && gotOK && gotInt == wantInt
 }
 
 func assertTunSplitterRulesStatus(t *testing.T, state *formular.MenuSnapshotState, node uint64, want string) {
