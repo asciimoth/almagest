@@ -1,0 +1,91 @@
+{
+	"Logs": {
+		"Cache": {
+			"Debug": 2048,
+			"Info": 256,
+			"Warn": 256,
+			"Error": 128,
+			"Fatal": 32,
+		},
+	},
+	"System": {
+		"Linux": {
+			"DNS": {
+				"Mode": "direct",
+				"FallbackServers": ["1.1.1.1:53"],
+			},
+			"Pmark": {
+				"PinPath": "/sys/fs/bpf/almagest-e2e-tun-routing",
+			},
+		},
+	},
+	"nodes": {
+		"Tun 1504": {
+			"Class":     "almagest/Tun",
+			"Pos":       "{\"x\":175,\"y\":331}",
+			"Links":     ["Tun -> [Spoofer 1510] Tun"],
+			"mtu":       0,
+			"name":      "tun1",
+			"tunAddrs":  "10.7.160.1/24",
+			"tunRoutes": "",
+		},
+		"Tun 1508": {
+			"Class":     "almagest/Tun",
+			"Pos":       "{\"x\":168,\"y\":515}",
+			"Links":     ["Tun -> [Spoofer 1513] Tun"],
+			"name":      "tun2",
+			"tunAddrs":  "10.210.148.1/24",
+			"tunRoutes": "",
+			"mtu":       0,
+		},
+		"Spoofer 1510": {
+			"Class":  "almagest/Spoofer",
+			"Pos":    "{\"x\":364,\"y\":331}",
+			"Links":  ["Network -> [MockNetwork 1520] Network"],
+			"mtu":    1500,
+			"queueLength": 1024,
+		},
+		"Spoofer 1513": {
+			"Class":  "almagest/Spoofer",
+			"Pos":    "{\"x\":361,\"y\":512}",
+			"Links":  ["Network -> [MockNetwork 1518] Network"],
+			"mtu":    1500,
+			"queueLength": 1024,
+		},
+		"MockNetwork 1518": {
+			"Class": "almagest/MockNetwork",
+			"Pos":   "{\"x\":611,\"y\":518}",
+		},
+		"MockNetwork 1520": {
+			"Class": "almagest/MockNetwork",
+			"Pos":   "{\"x\":608,\"y\":329}",
+		},
+		"HttpServer 1525": {
+			"Class":    "almagest/HttpServer",
+			"Pos":      "{\"x\":347,\"y\":166}",
+			"Links":    ["Network -> [MockNetwork 1520] Network"],
+			"host":     "10.7.160.2",
+			"port":     8080,
+			"response": "Server 1",
+		},
+		"HttpServer 1531": {
+			"Class":    "almagest/HttpServer",
+			"Pos":      "{\"x\":359,\"y\":636}",
+			"Links":    ["Network -> [MockNetwork 1518] Network"],
+			"host":     "10.210.148.2",
+			"port":     8080,
+			"response": "Server 2",
+		},
+		"DefaultTun 1543": {
+			"exclude":   [],
+			"include":   [],
+			"tunAddrs":  "",
+			"tunRoutes": "",
+			"mtu":       0,
+			"dnsIP":     "",
+			"strict":    false,
+			"Class":     "almagest/DefaultTun",
+			"Pos":       "{\"x\":173,\"y\":807}",
+		},
+	},
+}

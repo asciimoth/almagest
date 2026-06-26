@@ -24,12 +24,16 @@ func nodeClasses(engine *engine, isDebug bool) []pasta.NodeClass {
 	// WARN: At init time engine.mainWorkspace is nil
 	classes := make([]pasta.NodeClass, 0, len(nodeClassConstructors))
 	defaultTunSupported := engine != nil && engine.sys != nil && engine.sys.Features().DefaultTun
+	tunSupported := engine != nil && engine.sys != nil && engine.sys.Features().Tun
 	for _, class := range nodeClassConstructors {
 		if class.isDebug && !isDebug {
 			continue
 		}
 		nodeClass := class.constructor(engine)
 		if nodeClass.ClassName() == NodeTypeDefaultTun && !defaultTunSupported {
+			continue
+		}
+		if nodeClass.ClassName() == NodeTypeTun && !tunSupported {
 			continue
 		}
 		classes = append(classes, nodeClass)
