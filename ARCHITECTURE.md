@@ -109,10 +109,11 @@ Important flags and env:
 
 If `--config` points at a directory, use `alm.hujson` inside it. If protected
 config is omitted, use `protected_alm.hujson` next to the main config. Protected
-config currently includes read-only daemon settings such as `Admin.Web` and
-`Admin.WebFilters`; CLI args override it in memory.
+config currently includes read-only daemon settings such as `Admin.Web`,
+`Admin.WebFilters`, and `System`; CLI args override admin listener settings in
+memory.
 
-System integration is selected from `Main.System.Type`:
+System integration is selected from `Protected.System.Type`:
 
 - `debug`: `sysnetdebug.System{}`.
 - `native` or empty: `platform.SystemIntegration`.

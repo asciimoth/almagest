@@ -83,6 +83,7 @@ func ParseConfig(cfg, prt []byte) (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("protected config parsing: %w", err)
 	}
+	protected.System = protectedCfg.View(configer.Path{"System"}).ReadOnly()
 	err = configer.Unmarshal(protectedCfg, &protected)
 	if err != nil {
 		return nil, fmt.Errorf("protected config unmarshaling: %w", err)
@@ -97,7 +98,8 @@ func ParseConfig(cfg, prt []byte) (*Config, error) {
 // ProtectedConfig is intended for "protected" readonly options that should not
 // be editable via admin API.
 type ProtectedConfig struct {
-	Admin AdminAPIConfig
+	Admin  AdminAPIConfig
+	System configer.Config `json:"-"`
 }
 
 func (p *ProtectedConfig) Merge(args *args.Args) {

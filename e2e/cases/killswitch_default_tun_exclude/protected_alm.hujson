@@ -3,4 +3,17 @@
 		"Web": 0,
 		"Unix": "%E2E_ADMIN_SOCK%",
 	},
+	"System": {
+		"Linux": {
+			"DNS": {
+				"Mode": "direct",
+				"FallbackServers": ["1.1.1.1:53"],
+			},
+			"KillswitchPath": "%E2E_RUNTIME%/killswitch.sock",
+			"Pmark": {
+				"PinPath": "/sys/fs/bpf/almagest-e2e-killswitch-default-tun-exclude",
+			},
+			"KillswitchAllowExclude": true,
+		},
+	},
 }

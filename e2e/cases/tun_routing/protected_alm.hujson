@@ -3,4 +3,15 @@
 		"Web": 0,
 		"Unix": "%E2E_ADMIN_SOCK%",
 	},
+	"System": {
+		"Linux": {
+			"DNS": {
+				"Mode": "direct",
+				"FallbackServers": ["1.1.1.1:53"],
+			},
+			"Pmark": {
+				"PinPath": "/sys/fs/bpf/almagest-e2e-tun-routing",
+			},
+		},
+	},
 }

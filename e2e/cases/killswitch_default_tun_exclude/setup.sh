@@ -65,7 +65,7 @@ ip -n "$target_ns" route add default via 203.0.114.1 dev almksr1
 ip netns exec "$router_ns" sysctl -qw net.ipv4.ip_forward=1
 ip route add 203.0.114.0/24 via 10.214.2.1 dev "$root_if"
 
-sed -i "s@%E2E_RUNTIME%@$E2E_RUNTIME@g" alm.hujson
+sed -i "s@%E2E_RUNTIME%@$E2E_RUNTIME@g" protected_alm.hujson
 
 cat >"$E2E_RUNTIME/killswitch.json" <<EOF
 {

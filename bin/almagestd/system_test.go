@@ -8,7 +8,7 @@ import (
 )
 
 func TestBuildDebugIntegrationOptions(t *testing.T) {
-	cfg, err := ParseConfig([]byte(`{
+	cfg, err := ParseConfig([]byte(`{}`), []byte(`{
 		"System": {
 			"Debug": {
 				"DisableTun": true,
@@ -23,7 +23,7 @@ func TestBuildDebugIntegrationOptions(t *testing.T) {
 				}
 			}
 		}
-	}`), []byte(`{}`))
+	}`))
 	if err != nil {
 		t.Fatalf("ParseConfig: %v", err)
 	}
@@ -48,8 +48,32 @@ func TestBuildDebugIntegrationOptions(t *testing.T) {
 	}
 }
 
+func TestSystemIntegrationUsesProtectedSystemType(t *testing.T) {
+	cfg, err := ParseConfig([]byte(`{}`), []byte(`{
+		"System": {
+			"Type": "debug",
+			"Debug": {
+				"DefaultTun": {
+					"Builder": "pipe"
+				}
+			}
+		}
+	}`))
+	if err != nil {
+		t.Fatalf("ParseConfig: %v", err)
+	}
+
+	system, err := SystemIntegration(cfg)
+	if err != nil {
+		t.Fatalf("SystemIntegration: %v", err)
+	}
+	if _, ok := system.(*sysnetdebug.System); !ok {
+		t.Fatalf("system = %T, want *sysnetdebug.System", system)
+	}
+}
+
 func TestBuildDebugIntegrationVTunSocksDefaultTunBuilder(t *testing.T) {
-	cfg, err := ParseConfig([]byte(`{
+	cfg, err := ParseConfig([]byte(`{}`), []byte(`{
 		"System": {
 			"Debug": {
 				"DefaultTun": {
@@ -58,7 +82,7 @@ func TestBuildDebugIntegrationVTunSocksDefaultTunBuilder(t *testing.T) {
 				}
 			}
 		}
-	}`), []byte(`{}`))
+	}`))
 	if err != nil {
 		t.Fatalf("ParseConfig: %v", err)
 	}
@@ -79,5 +103,29 @@ func TestBuildDebugIntegrationVTunSocksDefaultTunBuilder(t *testing.T) {
 	}
 	if err := debugSystem.Close(); err != nil {
 		t.Fatalf("debug system close: %v", err)
+	}
+}
+
+func TestDebugIntegrationIgnoresMainSystemConfig(t *testing.T) {
+	cfg, err := ParseConfig([]byte(`{
+		"System": {
+			"Debug": {
+				"DisableTun": true,
+				"DefaultTun": {
+					"Builder": "pipe"
+				}
+			}
+		}
+	}`), []byte(`{}`))
+	if err != nil {
+		t.Fatalf("ParseConfig: %v", err)
+	}
+
+	got := readDebugSystemConfig(cfg)
+	if got.DisableTun {
+		t.Fatal("readDebugSystemConfig used main System config; want protected-only config")
+	}
+	if got.DefaultTun.Builder != debugDefaultTunBuilderVTunSocks {
+		t.Fatalf("DefaultTun.Builder = %q, want protected default %q", got.DefaultTun.Builder, debugDefaultTunBuilderVTunSocks)
 	}
 }

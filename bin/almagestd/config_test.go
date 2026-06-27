@@ -99,6 +99,36 @@ func TestProtectedConfigUnixFilters(t *testing.T) {
 	}
 }
 
+func TestProtectedConfigSystemView(t *testing.T) {
+	cfg, err := ParseConfig([]byte(`{}`), []byte(`{
+		"System": {
+			"Type": "debug",
+			"BackendOwned": {
+				"Dynamic": "value"
+			}
+		}
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	typ, err := cfg.Protected.System.Get([]string{"Type"})
+	if err != nil {
+		t.Fatalf("Protected.System.Get(Type): %v", err)
+	}
+	if typ != "debug" {
+		t.Fatalf("Protected.System.Type = %v, want debug", typ)
+	}
+
+	dynamic, err := cfg.Protected.System.Get([]string{"BackendOwned", "Dynamic"})
+	if err != nil {
+		t.Fatalf("Protected.System.Get(BackendOwned.Dynamic): %v", err)
+	}
+	if dynamic != "value" {
+		t.Fatalf("Protected.System.BackendOwned.Dynamic = %v, want value", dynamic)
+	}
+}
+
 func TestProtectedConfigMergeWebFilterArgs(t *testing.T) {
 	cfg, err := ParseConfig([]byte(`{}`), []byte(`{
 		"Admin": {

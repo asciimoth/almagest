@@ -8,11 +8,6 @@
 			"Fatal": 32,
 		},
 	},
-	"Linux": {
-		"DNS": {
-			"Mode": "direct",
-		},
-	},
 	"nodes": {
 		"DefaultTun 1301": {
 			"Class":     "almagest/DefaultTun",

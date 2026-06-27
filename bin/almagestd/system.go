@@ -55,22 +55,31 @@ type debugDefaultTunConfig struct {
 }
 
 func SystemIntegration(cfg *Config) (sysnet.System, error) {
-	view := cfg.Main.View(configer.Path{"System"})
-	typ, err := view.Get(configer.Path{"Type"})
-	if err == nil {
-		if typ, ok := typ.(string); ok {
-			switch typ {
-			case "debug":
-				golog.Warn("Using debug system integration")
-				return BuildDebugIntegration(cfg)
-			case "native":
-				// noop
-			default:
-				return nil, ErrSysType
+	view := cfg.systemConfig()
+	if view != nil {
+		typ, err := view.Get(configer.Path{"Type"})
+		if err == nil {
+			if typ, ok := typ.(string); ok {
+				switch typ {
+				case "debug":
+					golog.Warn("Using debug system integration")
+					return BuildDebugIntegration(cfg)
+				case "native":
+					// noop
+				default:
+					return nil, ErrSysType
+				}
 			}
 		}
 	}
 	return platform.SystemIntegration(view)
+}
+
+func (cfg *Config) systemConfig() configer.Config {
+	if cfg == nil || cfg.Protected.System == nil {
+		return nil
+	}
+	return cfg.Protected.System
 }
 
 func BuildDebugIntegration(cfg *Config) (sysnet.System, error) {
@@ -111,10 +120,11 @@ func readDebugSystemConfig(cfg *Config) debugSystemConfig {
 			EventCh:        10,
 		},
 	}
-	if cfg == nil || cfg.Main == nil {
+	view := cfg.systemConfig()
+	if view == nil {
 		return out
 	}
-	view := cfg.Main.View(configer.Path{"System", "Debug"})
+	view = view.View(configer.Path{"Debug"})
 	if err := configer.Unmarshal(view, &out); err != nil {
 		return out
 	}

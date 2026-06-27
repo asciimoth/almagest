@@ -3,4 +3,11 @@
 		"Web": 0,
 		"Unix": "%E2E_ADMIN_SOCK%",
 	},
+	"System": {
+		"Linux": {
+			"DNS": {
+				"Mode": "direct",
+			},
+		},
+	},
 }

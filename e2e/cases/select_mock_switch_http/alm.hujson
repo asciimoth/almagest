@@ -1,45 +1,4 @@
 {
-	"System": {
-		"Type": "native",
-		"Debug": {
-			"DisableTun":             false,
-			"DisableDefaultTun":      false,
-			"DisableDynTun":          false,
-			"DisableDynDefaultTun":   false,
-			"DisableTunNames":        false,
-			"DisableDefaultTunNames": false,
-			"DisableStrictMode":      false,
-			"DefaultTun": {
-				"Builder":        "vtun-socks",
-				"SocksHost":      "127.0.0.1",
-				"SocksPort":      1081,
-				"Name":           "debug-default-tun",
-				"NoLoopbackAddr": true,
-				"EndpointCh":     1024,
-				"EventCh":        10,
-			},
-		},
-		"Linux": {
-			"Pmark": {
-				"PinPath":              "/sys/fs/bpf/almagest",
-				"TombCollectionEvents": 0,
-				"TombTTL":              0,
-				"Priority":             0,
-			},
-			"DNS": {
-				"Mode":                   "",
-				"ResolvconfInterface":    "",
-				"ResolvedInterfaceIndex": 0,
-				"FallbackServers":        ["8.8.8.8", "1.1.1.1"],
-			},
-			"KillswitchPath":         "",
-			"AppBypassMark":          "0xeb9f0001",
-			"AppBypassMask":          "ffffffff",
-			"UserMark":               "0x414c4d01",
-			"UserMarkMask":           "ffffffff",
-			"KillswitchAllowExclude": true,
-		},
-	},
 	"nodes": {
 		"Select 1810": {
 			"Class":   "pasta/Select",

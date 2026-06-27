@@ -8,17 +8,6 @@
 			"Fatal": 32,
 		},
 	},
-	"System": {
-		"Linux": {
-			"DNS": {
-				"Mode": "direct",
-				"FallbackServers": ["1.1.1.1:53"],
-			},
-			"Pmark": {
-				"PinPath": "/sys/fs/bpf/almagest-e2e-tun-splitter-process-routing",
-			},
-		},
-	},
 	"nodes": {
 		"DefaultTun 1501": {
 			"Class":     "almagest/DefaultTun",

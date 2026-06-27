@@ -8,19 +8,6 @@
 			"Fatal": 32,
 		},
 	},
-	"System": {
-		"Linux": {
-			"DNS": {
-				"Mode": "direct",
-				"FallbackServers": ["1.1.1.1:53"],
-			},
-			"KillswitchPath": "%E2E_RUNTIME%/killswitch.sock",
-			"Pmark": {
-				"PinPath": "/sys/fs/bpf/almagest-e2e-killswitch-default-tun-exclude",
-			},
-			"KillswitchAllowExclude": true,
-		},
-	},
 	"nodes": {
 		"DefaultTun 1401": {
 			"Class":     "almagest/DefaultTun",
