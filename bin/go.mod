@@ -12,7 +12,7 @@ require (
 	github.com/asciimoth/gonnect v0.30.0
 	github.com/asciimoth/gonnect-netstack v0.4.29
 	github.com/asciimoth/pasta/pasta v0.6.1
-	github.com/asciimoth/socksgo v0.3.4
+	github.com/asciimoth/socksgo v0.3.7
 	github.com/asciimoth/sysnet-linux v0.2.7
 	github.com/coder/websocket v1.8.14
 	github.com/joho/godotenv v1.5.1
@@ -24,11 +24,13 @@ require (
 require (
 	github.com/alexflint/go-scalar v1.2.0 // indirect
 	github.com/asciimoth/badlock v0.1.1 // indirect
+	github.com/asciimoth/batchudp v0.2.0 // indirect
 	github.com/asciimoth/gonnect-routing v0.6.2 // indirect
 	github.com/asciimoth/ident v0.2.0 // indirect
 	github.com/asciimoth/p-mark v0.2.0 // indirect
 	github.com/asciimoth/putback v0.3.0 // indirect
 	github.com/asciimoth/tuntap v0.3.17 // indirect
+	github.com/asciimoth/wgo v0.2.15 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/cilium/ebpf v0.21.0 // indirect
@@ -43,6 +45,7 @@ require (
 	github.com/vishvananda/netns v0.0.5 // indirect
 	github.com/wk8/go-ordered-map/v2 v2.1.8 // indirect
 	github.com/xtaci/smux v1.5.44 // indirect
+	golang.org/x/crypto v0.51.0 // indirect
 	golang.org/x/exp v0.0.0-20231110203233-9a3e6036ecaa // indirect
 	golang.org/x/net v0.54.0 // indirect
 	golang.org/x/sync v0.17.0 // indirect

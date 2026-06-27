@@ -56,6 +56,22 @@ func TestBuildSocksGoServerRoutesClientAndProxyNetworks(t *testing.T) {
 	})
 }
 
+func TestSocksUDPAssocUsesAssignedRelayPort(t *testing.T) {
+	listenCalls := make([]string, 0, 1)
+	listen := &socksRouteNetwork{name: "listen", calls: &listenCalls}
+	ctrl := &socksRouteConn{local: &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 1080}}
+
+	if _, err := listenSocksUDPAssoc(context.Background(), listen, ctrl); err != nil {
+		t.Fatalf("listenSocksUDPAssoc error = %v, want nil", err)
+	}
+
+	// Standard SOCKS5 UDP ASSOCIATE returns the server-assigned relay port
+	// in the reply; the request has no field for a client-chosen relay port.
+	assertStringSlice(t, listenCalls, []string{
+		"listen.ListenPacket udp 127.0.0.1:0",
+	})
+}
+
 func TestSocksServerAuthAllowsDuplicateUsernamePasswords(t *testing.T) {
 	auth := socksServerAuth([]socksServerUser{
 		{username: "alice", password: "one"},

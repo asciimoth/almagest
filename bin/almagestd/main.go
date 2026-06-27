@@ -42,6 +42,7 @@ func main() {
 		golog.Fatal(err)
 		return
 	}
+	conf.Protected.Merge(&args)
 
 	// Prepare admin api here (start listener/create unix socket/etc)
 	admin, err := PrepareAdminAPI(conf)

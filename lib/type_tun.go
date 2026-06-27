@@ -226,6 +226,22 @@ func waitTuns(tuns []tun.Tun) {
 	}
 }
 
+// TunIsReady reports whether t is usable now. Detached Tun wrappers expose
+// IsUp; plain Tun implementations without lifecycle state are treated as ready.
+func TunIsReady(t tun.Tun) bool {
+	if t == nil {
+		return false
+	}
+	updown, ok := t.(interface {
+		IsUp() (bool, error)
+	})
+	if !ok {
+		return true
+	}
+	up, err := updown.IsUp()
+	return err == nil && up
+}
+
 // SameTunSource reports whether a and b ultimately wrap the same comparable
 // Tun source. Non-comparable sources are never considered the same unless both
 // values are nil.

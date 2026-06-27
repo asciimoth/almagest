@@ -1,0 +1,51 @@
+{
+	"Logs": {
+		"Cache": {
+			"Debug": 512,
+			"Info": 128,
+			"Warn": 128,
+			"Error": 128,
+			"Fatal": 32,
+		},
+	},
+	"nodes": {
+		"WireGuard B": {
+			"Class":      "almagest/WireGuard",
+			"Pos":        "{\"x\":488,\"y\":180}",
+			"Links":      ["Network -> [OutNetwork B] Network"],
+			"privateKey": "30c5cc124595c24feae219285b64b71c25d41afb031c57a5971bfb030fc79455",
+			"listenPort": 51821,
+			"ownedIPs":   "",
+			"peers": [{
+				"allowedIPs":                  "10.198.10.1/32",
+				"endpoint":                    "127.0.0.1:51820",
+				"id":                          "daemon-a",
+				"persistentKeepaliveInterval": 1,
+				"presharedKey":                "",
+				"publicKey":                   "89801e6c83deaecaf30e79eeca7a64c27c4417224330f7e7afe59cc09903f806",
+			}],
+		},
+		"VTun B": {
+			"Class":          "almagest/VTun",
+			"Pos":            "{\"x\":292,\"y\":186}",
+			"Links":          ["Tun -> [WireGuard B] Tun"],
+			"endpointCh":     1024,
+			"eventCh":        10,
+			"noLoopbackAddr": false,
+			"disableSACK":    false,
+			"name":           "wg-two-daemons-b",
+			"localAddrs":     "10.198.20.1/24",
+			"dnsServers":     "",
+			"mtu":            1420,
+		},
+		"HTTP Server B": {
+			"Class":    "almagest/HttpServer",
+			"Pos":      "{\"x\":105,\"y\":185}",
+			"Links":    ["Network -> [VTun B] Network"],
+			"host":     "10.198.20.1",
+			"port":     18080,
+			"response": "",
+		},
+		"OutNetwork B": {"Class": "almagest/OutNetwork", "Pos": "{\"x\":742,\"y\":180}"},
+	},
+}

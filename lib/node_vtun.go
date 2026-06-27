@@ -566,11 +566,15 @@ func (n *vtunNode) sendNetworkToLink(link uint64) {
 	if n.vtun == nil {
 		return
 	}
-	n.closeSentNetwork(link)
-	wrapper := gonnect.DetachNetwork(n.vtun, nil)
 	if n.sentNetworks == nil {
 		n.sentNetworks = make(map[uint64]NetworkCloser)
 	}
+	if wrapper := n.sentNetworks[link]; NetworkIsReady(wrapper) {
+		n.w.EmitEvent(n.id, link, NetworkPayload{Network: wrapper})
+		return
+	}
+	n.closeSentNetwork(link)
+	wrapper := gonnect.DetachNetwork(n.vtun, nil)
 	n.sentNetworks[link] = wrapper
 	BindNetworkResource(n.w, n.id, link, wrapper)
 	n.w.EmitEvent(n.id, link, NetworkPayload{Network: wrapper})
