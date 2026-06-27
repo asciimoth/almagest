@@ -111,7 +111,9 @@ If `--config` points at a directory, use `alm.hujson` inside it. If protected
 config is omitted, use `protected_alm.hujson` next to the main config. Protected
 config currently includes read-only daemon settings such as `Admin.Web`,
 `Admin.WebFilters`, and `System`; CLI args override admin listener settings in
-memory.
+memory. When `--stdin` is used, the stdin config may include those protected
+settings under a top-level `Protected` key instead of using a separate protected
+config file.
 
 System integration is selected from `Protected.System.Type`:
 

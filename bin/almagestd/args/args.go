@@ -1,8 +1,9 @@
 package args
 
 type Args struct {
-	// If StdInConfig==true, config should be loaded form stdin and
-	// defaults should be used for protected config.
+	// If StdInConfig==true, config should be loaded from stdin. Protected
+	// config should be loaded from the stdin config's top-level Protected key
+	// when present, otherwise protected defaults should be used.
 	// Else Config and ProtectedConfig path should be used to load HuJSON configs.
 	// If Config is a directory, it should be treated as "{Config}/alm.hujson".
 	// If Config is not set, platform defaults should be used.

@@ -37,7 +37,11 @@ func (a *agent) ReadConfig() (cfg, prt []byte, err error) {
 		if err != nil {
 			return nil, nil, err
 		}
-		return configData, []byte(DefaultProtectedConfigText), nil
+		mainData, protectedData := splitEmbeddedProtectedConfig(
+			configData,
+			[]byte(DefaultProtectedConfigText),
+		)
+		return mainData, protectedData, nil
 	}
 	return []byte(DefaultConfigText), []byte(DefaultProtectedConfigText), nil
 }

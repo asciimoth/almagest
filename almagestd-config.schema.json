@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/asciimoth/almagest/almagestd-config.schema.json",
   "title": "almagestd config",
-  "description": "Main HuJSON/JSON configuration file for ./bin/almagestd. The daemon owns Config and Logs; the engine owns nodes; pasta workspace owns the capitalized keys inside each node object. Node implementations own non-capitalized keys inside node objects and may add, remove, or reinterpret them dynamically.",
+  "description": "Main HuJSON/JSON configuration file for almagestd. The daemon owns Config and Logs; the engine owns nodes; pasta workspace owns the capitalized keys inside each node object. Node implementations own non-capitalized keys inside node objects and may add, remove, or reinterpret them dynamically.",
   "type": "object",
   "properties": {
     "Config": {
@@ -10,6 +10,10 @@
     },
     "Logs": {
       "$ref": "#/$defs/logsConfig"
+    },
+    "Protected": {
+      "$ref": "almagestd-protected-config.schema.json",
+      "description": "Optional protected configuration object accepted when almagestd reads the config from --stdin. File-based configs should keep these settings in the separate protected config file."
     },
     "nodes": {
       "$ref": "#/$defs/engineNodesConfig"

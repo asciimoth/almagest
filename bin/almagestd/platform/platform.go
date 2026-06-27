@@ -1,10 +1,12 @@
 package platform
 
 import (
+	"encoding/json"
 	"io"
 	"os"
 
 	"github.com/kataras/golog"
+	tailscalehujson "github.com/tailscale/hujson"
 )
 
 type Agent interface {
@@ -32,6 +34,43 @@ func readStdinIfPiped(fallback []byte) ([]byte, error) {
 
 	// Stdin is a pipe or redirected file → read until EOF
 	return io.ReadAll(os.Stdin)
+}
+
+func splitEmbeddedProtectedConfig(
+	configData, defaultProtectedData []byte,
+) (mainData, protectedData []byte) {
+	config, err := tailscalehujson.Parse(configData)
+	if err != nil {
+		return configData, defaultProtectedData
+	}
+
+	root, ok := config.Value.(*tailscalehujson.Object)
+	if !ok {
+		return configData, defaultProtectedData
+	}
+
+	i := objectMemberIndex(root, "Protected")
+	if i < 0 {
+		return configData, defaultProtectedData
+	}
+
+	protected := root.Members[i].Value.Clone()
+	copy(root.Members[i:], root.Members[i+1:])
+	root.Members = root.Members[:len(root.Members)-1]
+
+	return config.Pack(), protected.Pack()
+}
+
+func objectMemberIndex(obj *tailscalehujson.Object, key string) int {
+	for i, member := range obj.Members {
+		var name string
+		value := member.Name.Clone()
+		value.Standardize()
+		if err := json.Unmarshal(value.Pack(), &name); err == nil && name == key {
+			return i
+		}
+	}
+	return -1
 }
 
 func DropPrivileges() {

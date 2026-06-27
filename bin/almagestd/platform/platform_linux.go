@@ -67,10 +67,14 @@ func (a *agent) ReadConfig() ([]byte, []byte, error) {
 
 	if a.StdInConfig {
 		golog.Info("Loading config from stdin")
-		configData, err = readStdinIfPiped([]byte(DefaultProtectedConfigText))
+		configData, err = readStdinIfPiped([]byte(DefaultConfigText))
 		if err != nil {
-			golog.Fatal(err)
+			return nil, nil, err
 		}
+		configData, protectedData = splitEmbeddedProtectedConfig(
+			configData,
+			[]byte(DefaultProtectedConfigText),
+		)
 	} else {
 		configData, err = readfile(a.ConfigPath)
 		if err != nil {

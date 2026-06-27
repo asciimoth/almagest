@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/asciimoth/almagest/almagestd-protected-config.schema.json",
   "title": "almagestd protected config",
-  "description": "Protected HuJSON/JSON configuration file for ./bin/almagestd. These options are read at startup and should not be editable through the admin API.",
+  "description": "Protected HuJSON/JSON configuration file for almagestd. These options are read at startup and should not be editable through the admin API.",
   "type": "object",
   "properties": {
     "Admin": {
