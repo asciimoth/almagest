@@ -6,6 +6,7 @@ import (
 	"net/netip"
 	"testing"
 
+	cmdrunner "github.com/asciimoth/almagest/bin/almagestd/command"
 	"github.com/asciimoth/configer/hujson"
 )
 
@@ -15,7 +16,7 @@ func TestReadLinuxSystemConfigDefaults(t *testing.T) {
 		t.Fatalf("Parse: %v", err)
 	}
 
-	got, err := readLinuxSystemConfig(cfg)
+	got, err := readLinuxSystemConfig(cfg, nil)
 	if err != nil {
 		t.Fatalf("readLinuxSystemConfig: %v", err)
 	}
@@ -69,7 +70,7 @@ func TestReadLinuxSystemConfigOverrides(t *testing.T) {
 		t.Fatalf("Parse: %v", err)
 	}
 
-	got, err := readLinuxSystemConfig(cfg)
+	got, err := readLinuxSystemConfig(cfg, nil)
 	if err != nil {
 		t.Fatalf("readLinuxSystemConfig: %v", err)
 	}
@@ -116,7 +117,7 @@ func TestReadLinuxSystemConfigHexMarkStrings(t *testing.T) {
 		t.Fatalf("Parse: %v", err)
 	}
 
-	got, err := readLinuxSystemConfig(cfg)
+	got, err := readLinuxSystemConfig(cfg, nil)
 	if err != nil {
 		t.Fatalf("readLinuxSystemConfig: %v", err)
 	}
@@ -133,4 +134,102 @@ func TestReadLinuxSystemConfigHexMarkStrings(t *testing.T) {
 	if got.UserMarkMask != 0xffffffff {
 		t.Fatalf("UserMarkMask = %#x, want 0xffffffff", got.UserMarkMask)
 	}
+}
+
+func TestReadLinuxSystemConfigCallbacks(t *testing.T) {
+	cfg, err := hujson.Parse([]byte(`{
+		"Linux": {
+			"Callbacks": {
+				"DNSConfigured": {
+					"Command": ["notify-dns", "{{ .Server }}"],
+					"Env": {"ALMAGEST_CALLBACK": "dns"},
+					"UID": 1001,
+					"GID": 1002,
+					"Sync": true,
+					"Timeout": 250000000
+				}
+			}
+		}
+	}`))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	runner := &recordingDispatcher{}
+
+	got, err := readLinuxSystemConfig(cfg, runner)
+	if err != nil {
+		t.Fatalf("readLinuxSystemConfig: %v", err)
+	}
+	if got.Callbacks.DNSConfigured == nil {
+		t.Fatal("DNSConfigured callback = nil, want command callback")
+	}
+
+	got.Callbacks.DNSConfigured(netip.MustParseAddr("192.0.2.53"))
+
+	if len(runner.requests) != 1 {
+		t.Fatalf("submitted requests = %d, want 1", len(runner.requests))
+	}
+	req := runner.requests[0]
+	if req.cmd.Name != linuxCallbackDNSConfigured {
+		t.Fatalf("command name = %q, want %q", req.cmd.Name, linuxCallbackDNSConfigured)
+	}
+	if len(req.cmd.Command) != 2 || req.cmd.Command[1] != "{{ .Server }}" {
+		t.Fatalf("command argv = %#v, want configured template argv", req.cmd.Command)
+	}
+	if got := req.cmd.Env["ALMAGEST_CALLBACK"]; got != "dns" {
+		t.Fatalf("command env ALMAGEST_CALLBACK = %q, want dns", got)
+	}
+	if req.cmd.UID == nil || *req.cmd.UID != 1001 {
+		t.Fatalf("command UID = %v, want 1001", req.cmd.UID)
+	}
+	if req.cmd.GID == nil || *req.cmd.GID != 1002 {
+		t.Fatalf("command GID = %v, want 1002", req.cmd.GID)
+	}
+	if req.cmd.Timeout != 250000000 {
+		t.Fatalf("command timeout = %s, want 250ms", req.cmd.Timeout)
+	}
+	values, ok := req.values.(map[string]any)
+	if !ok {
+		t.Fatalf("values = %T, want map", req.values)
+	}
+	if got := values["Server"]; got != netip.MustParseAddr("192.0.2.53") {
+		t.Fatalf("template Server value = %v, want 192.0.2.53", got)
+	}
+}
+
+func TestReadLinuxSystemConfigCallbacksRequireRunner(t *testing.T) {
+	cfg, err := hujson.Parse([]byte(`{
+		"Linux": {
+			"Callbacks": {
+				"DefaultTunClosed": {
+					"Command": ["notify-close"]
+				}
+			}
+		}
+	}`))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+
+	_, err = readLinuxSystemConfig(cfg, nil)
+	if err == nil {
+		t.Fatal("readLinuxSystemConfig succeeded without callback runner")
+	}
+}
+
+type recordingDispatcher struct {
+	requests []recordedCommandRequest
+}
+
+type recordedCommandRequest struct {
+	cmd    cmdrunner.Command
+	values any
+}
+
+func (d *recordingDispatcher) Submit(cmd cmdrunner.Command, values any) bool {
+	d.requests = append(d.requests, recordedCommandRequest{
+		cmd:    cmd,
+		values: values,
+	})
+	return true
 }

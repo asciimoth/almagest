@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	cmdrunner "github.com/asciimoth/almagest/bin/almagestd/command"
 	"github.com/asciimoth/almagest/bin/almagestd/platform"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/gonnect"
@@ -54,7 +55,7 @@ type debugDefaultTunConfig struct {
 	EventCh        int
 }
 
-func SystemIntegration(cfg *Config) (sysnet.System, error) {
+func SystemIntegration(cfg *Config, runner cmdrunner.Dispatcher) (sysnet.System, error) {
 	view := cfg.systemConfig()
 	if view != nil {
 		typ, err := view.Get(configer.Path{"Type"})
@@ -72,7 +73,7 @@ func SystemIntegration(cfg *Config) (sysnet.System, error) {
 			}
 		}
 	}
-	return platform.SystemIntegration(view)
+	return platform.SystemIntegration(view, runner)
 }
 
 func (cfg *Config) systemConfig() configer.Config {

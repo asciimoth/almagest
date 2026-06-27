@@ -9,6 +9,7 @@ import (
 
 	"github.com/alexflint/go-arg"
 	"github.com/asciimoth/almagest/bin/almagestd/args"
+	cmdrunner "github.com/asciimoth/almagest/bin/almagestd/command"
 	"github.com/asciimoth/almagest/bin/almagestd/platform"
 	"github.com/asciimoth/almagest/lib"
 	"github.com/asciimoth/gonnect"
@@ -53,9 +54,14 @@ func main() {
 
 	logf := NewLogFactory(conf.LogCache())
 	logProjectVersionStatus(admin.projectVersionStatus)
+	daemonLogger := logf.DaemonLogger()
+
+	commandRunner := cmdrunner.NewRunner(daemonLogger)
+	commandRunner.Start(context.Background())
+	defer commandRunner.Close()
 
 	// Setup system integration here before privileges drop
-	sys, err := SystemIntegration(conf)
+	sys, err := SystemIntegration(conf, commandRunner)
 	if err != nil {
 		golog.Fatal(err)
 		return
@@ -70,7 +76,6 @@ func main() {
 	)
 	defer cancel()
 
-	daemonLogger := logf.DaemonLogger()
 	engineBuildStart := time.Now()
 	engine, err := almagest.BuildEngine(
 		ctx,

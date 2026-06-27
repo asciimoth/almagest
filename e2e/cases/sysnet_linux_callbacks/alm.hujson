@@ -1,0 +1,32 @@
+{
+	"Logs": {
+		"Cache": {
+			"Debug": 2048,
+			"Info": 512,
+			"Warn": 512,
+			"Error": 128,
+			"Fatal": 32,
+		},
+	},
+	"nodes": {
+		"Tun callbacks 1601": {
+			"Class":     "almagest/Tun",
+			"Pos":       "{\"x\":120,\"y\":220}",
+			"name":      "cbtun0",
+			"tunAddrs":  "10.242.0.1/24",
+			"tunRoutes": "",
+			"mtu":       0,
+		},
+		"DefaultTun callbacks 1602": {
+			"Class":     "almagest/DefaultTun",
+			"Pos":       "{\"x\":120,\"y\":420}",
+			"tunAddrs":  "",
+			"tunRoutes": "",
+			"mtu":       0,
+			"dnsIP":     "",
+			"strict":    false,
+			"exclude":   [],
+			"include":   [],
+		},
+	},
+}

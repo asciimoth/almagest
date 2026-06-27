@@ -6,6 +6,7 @@ import (
 	_ "embed"
 
 	"github.com/asciimoth/almagest/bin/almagestd/args"
+	cmdrunner "github.com/asciimoth/almagest/bin/almagestd/command"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/gonnect/sysnet"
 	sysnetdebug "github.com/asciimoth/gonnect/sysnet/debug"
@@ -57,7 +58,8 @@ func RunAgent(args args.Args) Agent {
 	}
 }
 
-func SystemIntegration(cfg configer.Config) (sysnet.System, error) {
+func SystemIntegration(cfg configer.Config, runner cmdrunner.Dispatcher) (sysnet.System, error) {
+	_ = runner
 	golog.Warn("No system integration sor this platform; Using stub one.")
 	return &sysnetdebug.System{}, nil
 }

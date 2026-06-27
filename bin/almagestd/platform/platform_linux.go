@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/asciimoth/almagest/bin/almagestd/args"
+	cmdrunner "github.com/asciimoth/almagest/bin/almagestd/command"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/gonnect/sysnet"
 	sysnetlinux "github.com/asciimoth/sysnet-linux"
@@ -167,8 +168,8 @@ func RunAgent(args args.Args) Agent {
 	return agent
 }
 
-func SystemIntegration(cfg configer.Config) (sysnet.System, error) {
-	config, err := readLinuxSystemConfig(cfg)
+func SystemIntegration(cfg configer.Config, runner cmdrunner.Dispatcher) (sysnet.System, error) {
+	config, err := readLinuxSystemConfig(cfg, runner)
 	if err != nil {
 		return nil, err
 	}
@@ -186,7 +187,7 @@ type linuxSystemConfigFile struct {
 	UserMark      linuxUint32      `json:"UserMark"`
 	UserMarkMask  linuxUint32      `json:"UserMarkMask"`
 	Logf          json.RawMessage  `json:"Logf,omitempty"`
-	Callbacks     json.RawMessage  `json:"Callbacks,omitempty"`
+	Callbacks     linuxCallbacksConfig
 }
 
 type linuxDNSConfig struct {
@@ -209,7 +210,10 @@ type linuxAddrPort struct {
 
 type linuxUint32 uint32
 
-func readLinuxSystemConfig(cfg configer.Config) (sysnetlinux.SystemConfig, error) {
+func readLinuxSystemConfig(
+	cfg configer.Config,
+	runner cmdrunner.Dispatcher,
+) (sysnetlinux.SystemConfig, error) {
 	config := defaultLinuxSystemConfig()
 	fileConfig := linuxSystemConfigFile{
 		SystemConfig:  config,
@@ -234,8 +238,14 @@ func readLinuxSystemConfig(cfg configer.Config) (sysnetlinux.SystemConfig, error
 	config.UserMark = uint32(fileConfig.UserMark)
 	config.UserMarkMask = uint32(fileConfig.UserMarkMask)
 	config.Logf = golog.Debugf
-	// TODO: Wire sysnet-linux callbacks from daemon integration points.
-	config.Callbacks = sysnetlinux.Callbacks{}
+	if fileConfig.Callbacks.configured() {
+		if runner == nil {
+			return config, fmt.Errorf("system linux callbacks: command runner is unavailable")
+		}
+		config.Callbacks = fileConfig.Callbacks.sysnetCallbacks(runner)
+	} else {
+		config.Callbacks = sysnetlinux.Callbacks{}
+	}
 	return config, nil
 }
 

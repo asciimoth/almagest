@@ -63,7 +63,7 @@ func TestSystemIntegrationUsesProtectedSystemType(t *testing.T) {
 		t.Fatalf("ParseConfig: %v", err)
 	}
 
-	system, err := SystemIntegration(cfg)
+	system, err := SystemIntegration(cfg, nil)
 	if err != nil {
 		t.Fatalf("SystemIntegration: %v", err)
 	}

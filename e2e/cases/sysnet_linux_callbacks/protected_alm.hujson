@@ -1,0 +1,130 @@
+{
+	"Admin": {
+		"Web": 0,
+		"Unix": "%E2E_ADMIN_SOCK%",
+	},
+	"System": {
+		"Linux": {
+			"DNS": {
+				"Mode": "direct",
+				"FallbackServers": ["1.1.1.1:53"],
+			},
+			"KillswitchPath": "%E2E_RUNTIME%/killswitch.sock",
+			"KillswitchAllowExclude": true,
+			"Callbacks": {
+				"TunCreated": {
+					"Command": [
+						"%E2E_RUNTIME%/record-callback.sh",
+						"tun-created",
+						"{{ .Callback }}",
+						"{{ .TunName }}",
+						"{{ if eq .Callback \"never\" }}drop-me{{ end }}",
+						"argv-secret-token"
+					],
+					"Env": {
+						"E2E_CALLBACK_DIR": "%E2E_RUNTIME%/callbacks",
+						"E2E_CALLBACK_ENV": "tun-created",
+						"E2E_CALLBACK_STDOUT_SECRET": "stdout-secret-token"
+					},
+					"UID": 24020,
+					"GID": 24020
+				},
+				"TunConfigured": {
+					"Command": [
+						"%E2E_RUNTIME%/record-callback.sh",
+						"tun-configured",
+						"{{ .Callback }}",
+						"{{ .TunName }}",
+						"{{ .TunMTU }}"
+					],
+					"Env": {
+						"E2E_CALLBACK_DIR": "%E2E_RUNTIME%/callbacks",
+						"E2E_CALLBACK_ENV": "tun-configured"
+					},
+					"Sync": true
+				},
+				"DefaultTunCreated": {
+					"Command": [
+						"%E2E_RUNTIME%/record-callback.sh",
+						"default-created",
+						"{{ .Callback }}",
+						"{{ .TunName }}",
+						"default-argv-secret-token"
+					],
+					"Env": {
+						"E2E_CALLBACK_DIR": "%E2E_RUNTIME%/callbacks",
+						"E2E_CALLBACK_ENV": "default-created",
+						"E2E_CALLBACK_STDOUT_SECRET": "default-stdout-secret-token"
+					},
+					"Sync": true
+				},
+				"DefaultTunConfigured": {
+					"Command": [
+						"%E2E_RUNTIME%/record-callback.sh",
+						"default-configured",
+						"{{ .Callback }}",
+						"{{ .TunMTU }}"
+					],
+					"Env": {
+						"E2E_CALLBACK_DIR": "%E2E_RUNTIME%/callbacks",
+						"E2E_CALLBACK_ENV": "default-configured"
+					},
+					"Sync": true
+				},
+				"DefaultTunClosed": {
+					"Command": [
+						"%E2E_RUNTIME%/record-callback.sh",
+						"default-closed",
+						"{{ .Callback }}"
+					],
+					"Env": {
+						"E2E_CALLBACK_DIR": "%E2E_RUNTIME%/callbacks",
+						"E2E_CALLBACK_ENV": "default-closed"
+					},
+					"Sync": true
+				},
+				"RoutingApplied": {
+					"Command": [
+						"%E2E_RUNTIME%/record-callback.sh",
+						"routing-applied",
+						"{{ .Callback }}",
+						"{{ .Config.TUNIndex }}"
+					],
+					"Env": {
+						"E2E_CALLBACK_DIR": "%E2E_RUNTIME%/callbacks",
+						"E2E_CALLBACK_ENV": "routing-applied"
+					},
+					"Sync": true
+				},
+				"DNSConfigured": {
+					"Command": [
+						"%E2E_RUNTIME%/record-callback.sh",
+						"dns-configured",
+						"{{ .Callback }}",
+						"{{ .Server }}"
+					],
+					"Env": {
+						"E2E_CALLBACK_DIR": "%E2E_RUNTIME%/callbacks",
+						"E2E_CALLBACK_ENV": "dns-configured"
+					},
+					"Sync": true
+				},
+				"KillswitchUpdated": {
+					"Command": [
+						"%E2E_RUNTIME%/record-callback.sh",
+						"killswitch-updated",
+						"{{ .Callback }}",
+						"{{ range .Rules.AllowedMarks }}{{ . }}{{ end }}"
+					],
+					"Env": {
+						"E2E_CALLBACK_DIR": "%E2E_RUNTIME%/callbacks",
+						"E2E_CALLBACK_ENV": "killswitch-updated",
+						"E2E_CALLBACK_SLEEP": "0.2"
+					},
+					"Sync": true,
+					"Timeout": 10000000
+				}
+			},
+		},
+	},
+}
