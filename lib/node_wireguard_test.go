@@ -237,6 +237,59 @@ func TestWireGuardValidationReportsStatus(t *testing.T) {
 	}, "owned IPs validation error")
 }
 
+func TestWireGuardKeysUseBase64AndAcceptUnpaddedOrLegacyHex(t *testing.T) {
+	var privateKey wgdevice.NoisePrivateKey
+	for i := range privateKey {
+		privateKey[i] = byte(i + 1)
+	}
+	privateKey[0] &= 248
+	privateKey[31] = (privateKey[31] & 127) | 64
+
+	privateKeyBase64 := encodeWireGuardKey(privateKey[:])
+	if len(privateKeyBase64) != 44 || !strings.HasSuffix(privateKeyBase64, "=") {
+		t.Fatalf("private key base64 = %q, want 44 chars with trailing padding", privateKeyBase64)
+	}
+	privateKeyUnpadded := strings.TrimSuffix(privateKeyBase64, "=")
+	if len(privateKeyUnpadded) != 43 {
+		t.Fatalf("unpadded private key length = %d, want 43", len(privateKeyUnpadded))
+	}
+	for _, value := range []string{privateKeyBase64, privateKeyUnpadded, hex.EncodeToString(privateKey[:])} {
+		got, err := parseWireGuardPrivateKey(value)
+		if err != nil {
+			t.Fatalf("parseWireGuardPrivateKey(%q): %v", value, err)
+		}
+		if !got.Equals(privateKey) {
+			t.Fatalf("parseWireGuardPrivateKey(%q) = %x, want %x", value, got, privateKey)
+		}
+		if normalized := normalizeWireGuardKey(value); normalized != privateKeyBase64 {
+			t.Fatalf("normalizeWireGuardKey(%q) = %q, want %q", value, normalized, privateKeyBase64)
+		}
+	}
+
+	publicKeyBase64 := wireGuardPublicKeyBase64(privateKey)
+	publicKeyUnpadded := strings.TrimSuffix(publicKeyBase64, "=")
+	publicKey, err := parseWireGuardPublicKey(publicKeyBase64)
+	if err != nil {
+		t.Fatalf("parseWireGuardPublicKey(padded): %v", err)
+	}
+	if got, err := parseWireGuardPublicKey(publicKeyUnpadded); err != nil || !got.Equals(publicKey) {
+		t.Fatalf("parseWireGuardPublicKey(unpadded) = %x, %v; want %x", got, err, publicKey)
+	}
+	if normalized := normalizeWireGuardKey(publicKeyUnpadded); normalized != publicKeyBase64 {
+		t.Fatalf("normalizeWireGuardKey(public unpadded) = %q, want %q", normalized, publicKeyBase64)
+	}
+
+	var presharedKey wgdevice.NoisePresharedKey
+	for i := range presharedKey {
+		presharedKey[i] = byte(255 - i)
+	}
+	presharedKeyBase64 := encodeWireGuardKey(presharedKey[:])
+	presharedKeyUnpadded := strings.TrimSuffix(presharedKeyBase64, "=")
+	if got, err := parseWireGuardPresharedKey(presharedKeyUnpadded); err != nil || got != presharedKey {
+		t.Fatalf("parseWireGuardPresharedKey(unpadded) = %x, %v; want %x", got, err, presharedKey)
+	}
+}
+
 func TestWireGuardOwnedIPAddrsNormalizeAndDedupe(t *testing.T) {
 	got := wireGuardOwnedIPAddrs("10.30.0.2 10.30.0.2/32\n10.30.0.0/24\nfd00:30::2")
 	want := []string{"10.30.0.2/32", "10.30.0.0/24", "fd00:30::2/128"}
@@ -567,7 +620,7 @@ func assertWireGuardPublicKeyPresent(t *testing.T, e *NodeE2E, node uint64) {
 	}, "wireguard generated public key")
 }
 
-func wireGuardTestKeyPair(t *testing.T, seed byte) (privateKeyHex, publicKeyHex string) {
+func wireGuardTestKeyPair(t *testing.T, seed byte) (privateKeyBase64, publicKeyBase64 string) {
 	t.Helper()
 	var privateKey wgdevice.NoisePrivateKey
 	for i := range privateKey {
@@ -575,11 +628,11 @@ func wireGuardTestKeyPair(t *testing.T, seed byte) (privateKeyHex, publicKeyHex 
 	}
 	privateKey[0] &= 248
 	privateKey[31] = (privateKey[31] & 127) | 64
-	publicKeyHex = wireGuardPublicKeyHex(privateKey)
-	if publicKeyHex == "" {
-		t.Fatal("wireGuardPublicKeyHex returned empty key")
+	publicKeyBase64 = wireGuardPublicKeyBase64(privateKey)
+	if publicKeyBase64 == "" {
+		t.Fatal("wireGuardPublicKeyBase64 returned empty key")
 	}
-	return hex.EncodeToString(privateKey[:]), publicKeyHex
+	return encodeWireGuardKey(privateKey[:]), publicKeyBase64
 }
 
 type captureWireGuardClass struct {

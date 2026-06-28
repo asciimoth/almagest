@@ -23,6 +23,7 @@ RUN apt-get update \
 		procps \
 		python3 \
 		util-linux \
+		wireguard-tools \
 		wget \
 	&& rm -rf /var/lib/apt/lists/*
 

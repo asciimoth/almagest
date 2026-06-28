@@ -13,7 +13,7 @@
 			"Class":      "almagest/WireGuard",
 			"Pos":        "{\"x\":488,\"y\":180}",
 			"Links":      ["Network -> [OutNetwork B] Network"],
-			"privateKey": "30c5cc124595c24feae219285b64b71c25d41afb031c57a5971bfb030fc79455",
+			"privateKey": "MMXMEkWVwk/q4hkoW2S3HCXUGvsDHFellxv7Aw/HlFU=",
 			"listenPort": 51821,
 			"ownedIPs":   "",
 			"peers": [{
@@ -22,7 +22,7 @@
 				"id":                          "daemon-a",
 				"persistentKeepaliveInterval": 1,
 				"presharedKey":                "",
-				"publicKey":                   "89801e6c83deaecaf30e79eeca7a64c27c4417224330f7e7afe59cc09903f806",
+				"publicKey":                   "iYAebIPersrzDnnuynpkwnxEFyJDMPfnr+WcwJkD+AY=",
 			}],
 		},
 		"VTun B": {

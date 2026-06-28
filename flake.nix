@@ -78,6 +78,9 @@
           pnpm
           typescript
 
+          wireguard-tools
+          xxd
+
           # for browser/e2e tests
           chromium
         ];

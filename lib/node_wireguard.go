@@ -3,6 +3,7 @@ package almagest
 import (
 	"crypto/rand"
 	_ "embed"
+	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -96,7 +97,7 @@ func (c *wireGuardConfig) read(cfg configer.Config) {
 }
 
 func (c *wireGuardConfig) normalize() {
-	c.privateKey = normalizeHexKey(c.privateKey)
+	c.privateKey = normalizeWireGuardKey(c.privateKey)
 	if c.listenPort < 0 || c.listenPort > 65535 {
 		c.listenPort = 0
 	}
@@ -111,7 +112,7 @@ func (c *wireGuardConfig) ensurePrivateKey() error {
 	if c.privateKey != "" {
 		return nil
 	}
-	key, err := generateWireGuardPrivateKeyHex()
+	key, err := generateWireGuardPrivateKeyBase64()
 	if err != nil {
 		return fmt.Errorf("generate private key: %w", err)
 	}
@@ -120,8 +121,8 @@ func (c *wireGuardConfig) ensurePrivateKey() error {
 }
 
 func (p *wireGuardPeerConfig) normalize(index int) {
-	p.publicKey = normalizeHexKey(p.publicKey)
-	p.presharedKey = normalizeHexKey(p.presharedKey)
+	p.publicKey = normalizeWireGuardKey(p.publicKey)
+	p.presharedKey = normalizeWireGuardKey(p.presharedKey)
 	p.endpoint = strings.TrimSpace(p.endpoint)
 	p.allowedIPs = normalizeListText(p.allowedIPs)
 	if p.persistentKeepaliveInterval < 0 || p.persistentKeepaliveInterval > 65535 {
@@ -943,7 +944,7 @@ func (n *wireGuardNode) statusBlock() formular.Block {
 	publicKey := ""
 	if n.config.privateKey != "" {
 		if key, err := parseWireGuardPrivateKey(n.config.privateKey); err == nil && !key.IsZero() {
-			publicKey = wireGuardPublicKeyHex(key)
+			publicKey = wireGuardPublicKeyBase64(key)
 		}
 	}
 	listenPort := n.config.listenPort
@@ -1117,42 +1118,56 @@ func validateWireGuardConfig(config wireGuardConfig) error {
 
 func parseWireGuardPrivateKey(value string) (wgdevice.NoisePrivateKey, error) {
 	var key wgdevice.NoisePrivateKey
-	value = normalizeHexKey(value)
+	value = strings.TrimSpace(value)
 	if value == "" {
 		return key, nil
 	}
-	return key, key.FromHex(value)
+	if bytes, err := decodeWireGuardKey(value); err == nil {
+		copy(key[:], bytes)
+		key[0] &= 248
+		key[31] = (key[31] & 127) | 64
+		return key, nil
+	}
+	return key, key.FromHex(normalizeLegacyHexKey(value))
 }
 
-func generateWireGuardPrivateKeyHex() (string, error) {
+func generateWireGuardPrivateKeyBase64() (string, error) {
 	var key wgdevice.NoisePrivateKey
 	if _, err := rand.Read(key[:]); err != nil {
 		return "", err
 	}
 	key[0] &= 248
 	key[31] = (key[31] & 127) | 64
-	return hex.EncodeToString(key[:]), nil
+	return encodeWireGuardKey(key[:]), nil
 }
 
 func parseWireGuardPublicKey(value string) (wgdevice.NoisePublicKey, error) {
 	var key wgdevice.NoisePublicKey
-	value = normalizeHexKey(value)
+	value = strings.TrimSpace(value)
 	if value == "" {
 		return key, errors.New("empty key")
 	}
-	return key, key.FromHex(value)
+	if bytes, err := decodeWireGuardKey(value); err == nil {
+		copy(key[:], bytes)
+		return key, nil
+	}
+	return key, key.FromHex(normalizeLegacyHexKey(value))
 }
 
 func parseWireGuardPresharedKey(value string) (wgdevice.NoisePresharedKey, error) {
 	var key wgdevice.NoisePresharedKey
-	value = normalizeHexKey(value)
+	value = strings.TrimSpace(value)
 	if value == "" {
 		return key, nil
 	}
-	return key, key.FromHex(value)
+	if bytes, err := decodeWireGuardKey(value); err == nil {
+		copy(key[:], bytes)
+		return key, nil
+	}
+	return key, key.FromHex(normalizeLegacyHexKey(value))
 }
 
-func wireGuardPublicKeyHex(privateKey wgdevice.NoisePrivateKey) string {
+func wireGuardPublicKeyBase64(privateKey wgdevice.NoisePrivateKey) string {
 	if privateKey.IsZero() {
 		return ""
 	}
@@ -1160,7 +1175,7 @@ func wireGuardPublicKeyHex(privateKey wgdevice.NoisePrivateKey) string {
 	if err != nil {
 		return ""
 	}
-	return hex.EncodeToString(publicBytes)
+	return encodeWireGuardKey(publicBytes)
 }
 
 func parseWireGuardAllowedIPs(value string) ([]netip.Prefix, error) {
@@ -1204,12 +1219,45 @@ func wireGuardOwnedIPAddrs(value string) []string {
 	return out
 }
 
-func normalizeHexKey(value string) string {
+func normalizeWireGuardKey(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	if bytes, err := decodeWireGuardKey(value); err == nil {
+		return encodeWireGuardKey(bytes)
+	}
+	if bytes, err := hex.DecodeString(normalizeLegacyHexKey(value)); err == nil && len(bytes) == wgdevice.NoisePrivateKeySize {
+		return encodeWireGuardKey(bytes)
+	}
+	return value
+}
+
+func encodeWireGuardKey(key []byte) string {
+	return base64.StdEncoding.EncodeToString(key)
+}
+
+func decodeWireGuardKey(value string) ([]byte, error) {
+	value = strings.TrimSpace(value)
+	bytes, err := base64.StdEncoding.DecodeString(value)
+	if err != nil {
+		bytes, err = base64.RawStdEncoding.DecodeString(value)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if len(bytes) != wgdevice.NoisePrivateKeySize {
+		return nil, errors.New("key must decode to 32 bytes")
+	}
+	return bytes, nil
+}
+
+func normalizeLegacyHexKey(value string) string {
 	return strings.ToLower(strings.TrimSpace(value))
 }
 
 func shortWireGuardKey(value string) string {
-	value = normalizeHexKey(value)
+	value = normalizeWireGuardKey(value)
 	if len(value) <= 12 {
 		return value
 	}

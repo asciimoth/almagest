@@ -13,7 +13,7 @@
 			"Class":      "almagest/WireGuard",
 			"Pos":        "{\"x\":488,\"y\":180}",
 			"Links":      ["Network -> [SocksClient 56] Network"],
-			"privateKey": "88c0419730fac7ee19545b571a956be21c1d87c8aabc2ccf221cbe904ea88762",
+			"privateKey": "iMBBlzD6x+4ZVFtXGpVr4hwdh8iqvCzPIhy+kE6oh2I=",
 			"listenPort": 51820,
 			"ownedIPs":   "",
 			"peers": [{
@@ -22,7 +22,7 @@
 				"id":                          "server",
 				"persistentKeepaliveInterval": 1,
 				"presharedKey":                "",
-				"publicKey":                   "209ecaa794a6d9689a8f427cfe67f1e40fd7efd5e6a219888478cca4d2556534",
+				"publicKey":                   "IJ7Kp5Sm2Wiaj0J8/mfx5A/X79XmohmIhHjMpNJVZTQ=",
 			}],
 		},
 
@@ -30,7 +30,7 @@
 			"Class":      "almagest/WireGuard",
 			"Pos":        "{\"x\":476,\"y\":377}",
 			"Links":      ["Network -> [SocksClient 86] Network"],
-			"privateKey": "30c5cc124595c24feae219285b64b71c25d41afb031c57a5971bfb030fc79455",
+			"privateKey": "MMXMEkWVwk/q4hkoW2S3HCXUGvsDHFellxv7Aw/HlFU=",
 			"listenPort": 51821,
 			"ownedIPs":   "",
 			"peers": [{
@@ -39,7 +39,7 @@
 				"id":                          "client",
 				"persistentKeepaliveInterval": 1,
 				"presharedKey":                "",
-				"publicKey":                   "89801e6c83deaecaf30e79eeca7a64c27c4417224330f7e7afe59cc09903f806",
+				"publicKey":                   "iYAebIPersrzDnnuynpkwnxEFyJDMPfnr+WcwJkD+AY=",
 			}],
 		},
 
