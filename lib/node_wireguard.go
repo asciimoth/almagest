@@ -1249,47 +1249,65 @@ func validateWireGuardConfig(config wireGuardConfig) error {
 	if _, err := parseWireGuardAllowedIPs(config.ownedIPs); err != nil {
 		return fmt.Errorf("owned IPs: %w", err)
 	}
-	if err := validateWireGuardAmneziaConfig(config.amneziaWG); err != nil {
-		return fmt.Errorf("amneziawg: %w", err)
-	}
-	for _, peer := range config.peers {
-		if peer.publicKey == "" {
-			return errors.New("peer public key is required")
-		}
-		if _, err := parseWireGuardPublicKey(peer.publicKey); err != nil {
-			return fmt.Errorf("peer %s public key: %w", peerLabel(peer), err)
-		}
-		if _, err := parseWireGuardPresharedKey(peer.presharedKey); err != nil {
-			return fmt.Errorf("peer %s preshared key: %w", peerLabel(peer), err)
-		}
-		if peer.endpoint != "" {
-			if _, err := netip.ParseAddrPort(peer.endpoint); err != nil {
-				return fmt.Errorf("peer %s endpoint: %w", peerLabel(peer), err)
-			}
-		}
-		if _, err := parseWireGuardAllowedIPs(peer.allowedIPs); err != nil {
-			return fmt.Errorf("peer %s allowed IPs: %w", peerLabel(peer), err)
-		}
-		if peer.persistentKeepaliveInterval < 0 || peer.persistentKeepaliveInterval > 65535 {
-			return fmt.Errorf("peer %s persistent keepalive must be between 0 and 65535", peerLabel(peer))
-		}
-		if peer.amneziaWGOverride {
-			if err := validateWireGuardAmneziaConfig(peer.amneziaWG); err != nil {
-				return fmt.Errorf("peer %s amneziawg: %w", peerLabel(peer), err)
-			}
-		}
-	}
-	return nil
-}
-
-func validateWireGuardAmneziaConfig(config wireGuardAmneziaConfig) error {
-	cfg, err := config.deviceConfig()
+	deviceConfig, err := wireGuardDeviceConfig(config)
 	if err != nil {
 		return err
 	}
-	dev := wgdevice.NewDevice(nil, nil, wgdevice.NopLogger{})
-	defer dev.Close()
-	return dev.SetAmneziaWGConfig(cfg)
+	return wgdevice.ValidateConfig(deviceConfig)
+}
+
+func wireGuardDeviceConfig(config wireGuardConfig) (wgdevice.DeviceConfig, error) {
+	privateKey, err := parseWireGuardPrivateKey(config.privateKey)
+	if err != nil {
+		return wgdevice.DeviceConfig{}, fmt.Errorf("private key: %w", err)
+	}
+	amneziaWG, err := config.amneziaWG.deviceConfig()
+	if err != nil {
+		return wgdevice.DeviceConfig{}, fmt.Errorf("amneziawg: %w", err)
+	}
+	out := wgdevice.DeviceConfig{
+		PrivateKey: privateKey,
+		ListenPort: uint16(config.listenPort),
+		AmneziaWG:  amneziaWG,
+		Peers:      make([]wgdevice.PeerConfig, 0, len(config.peers)),
+	}
+	for _, peer := range config.peers {
+		if peer.publicKey == "" {
+			return wgdevice.DeviceConfig{}, errors.New("peer public key is required")
+		}
+		publicKey, err := parseWireGuardPublicKey(peer.publicKey)
+		if err != nil {
+			return wgdevice.DeviceConfig{}, fmt.Errorf("peer %s public key: %w", peerLabel(peer), err)
+		}
+		presharedKey, err := parseWireGuardPresharedKey(peer.presharedKey)
+		if err != nil {
+			return wgdevice.DeviceConfig{}, fmt.Errorf("peer %s preshared key: %w", peerLabel(peer), err)
+		}
+		allowedIPs, err := parseWireGuardAllowedIPs(peer.allowedIPs)
+		if err != nil {
+			return wgdevice.DeviceConfig{}, fmt.Errorf("peer %s allowed IPs: %w", peerLabel(peer), err)
+		}
+		if peer.persistentKeepaliveInterval < 0 || peer.persistentKeepaliveInterval > 65535 {
+			return wgdevice.DeviceConfig{}, fmt.Errorf("peer %s persistent keepalive must be between 0 and 65535", peerLabel(peer))
+		}
+		peerConfig := wgdevice.PeerConfig{
+			PublicKey:                   publicKey,
+			PresharedKey:                presharedKey,
+			ProtocolVersion:             1,
+			Endpoint:                    peer.endpoint,
+			PersistentKeepaliveInterval: uint16(peer.persistentKeepaliveInterval),
+			AllowedIPs:                  allowedIPs,
+		}
+		if peer.amneziaWGOverride {
+			amneziaWG, err := peer.amneziaWG.deviceConfig()
+			if err != nil {
+				return wgdevice.DeviceConfig{}, fmt.Errorf("peer %s amneziawg: %w", peerLabel(peer), err)
+			}
+			peerConfig.AmneziaWG = &amneziaWG
+		}
+		out.Peers = append(out.Peers, peerConfig)
+	}
+	return out, nil
 }
 
 func parseWireGuardPrivateKey(value string) (wgdevice.NoisePrivateKey, error) {
