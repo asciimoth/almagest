@@ -70,11 +70,72 @@ func TestWireGuardClassPortsAndMenuBlocks(t *testing.T) {
 			t.Fatalf("peers template missing %q field", fieldID)
 		}
 	}
-	if item, ok = e.MenuItem(node, "status", "activePeers"); ok {
-		t.Fatalf("status activePeers item = %#v, want removed stale runtime field", item)
+	for _, fieldID := range []string{"runtimePeers", "activePeers", "connectedPeers", "rxBytes", "txBytes", "rxPackets", "txPackets", "latestHandshake"} {
+		item, ok = e.MenuItem(node, "status", fieldID)
+		if !ok || item.Field == nil || !item.Readonly {
+			t.Fatalf("status %s item = %#v, want readonly stats field", fieldID, item)
+		}
 	}
-	if item, ok = e.MenuItem(node, "status", "latestHandshake"); ok {
-		t.Fatalf("status latestHandshake item = %#v, want removed stale runtime field", item)
+}
+
+func TestWireGuardRuntimeStatsMessageUpdatesStatusRows(t *testing.T) {
+	dev := wgdevice.NewDevice(nil, nil, wgdevice.NopLogger{})
+	defer dev.Close()
+
+	n := &wireGuardNode{dev: dev}
+	ignoredDev := wgdevice.NewDevice(nil, nil, wgdevice.NopLogger{})
+	defer ignoredDev.Close()
+
+	n.handleRuntimeStats(wireGuardRuntimeStatsMessage{
+		dev: ignoredDev,
+		stats: wgdevice.RuntimeStats{
+			PeerCount:       99,
+			ActivePeerCount: 99,
+			RxBytes:         99,
+			TxBytes:         99,
+		},
+	})
+	if n.runtimeStats.PeerCount != 0 {
+		t.Fatalf("runtime stats accepted stale device update: %+v", n.runtimeStats)
+	}
+
+	handshake := time.Date(2026, 6, 28, 12, 34, 56, 0, time.UTC)
+	n.handleRuntimeStats(wireGuardRuntimeStatsMessage{
+		dev: dev,
+		stats: wgdevice.RuntimeStats{
+			PeerCount:          3,
+			ActivePeerCount:    2,
+			ConnectedPeerCount: 1,
+			RxBytes:            1234,
+			TxBytes:            5678,
+			RxPackets:          12,
+			TxPackets:          34,
+			LastHandshakeTime:  handshake,
+		},
+	})
+
+	block := n.statusBlock()
+	assertWireGuardStatusItemValue(t, block, "runtimePeers", 3)
+	assertWireGuardStatusItemValue(t, block, "activePeers", 2)
+	assertWireGuardStatusItemValue(t, block, "connectedPeers", 1)
+	assertWireGuardStatusItemValue(t, block, "rxBytes", "1234")
+	assertWireGuardStatusItemValue(t, block, "txBytes", "5678")
+	assertWireGuardStatusItemValue(t, block, "rxPackets", "12")
+	assertWireGuardStatusItemValue(t, block, "txPackets", "34")
+	assertWireGuardStatusItemValue(t, block, "latestHandshake", "2026-06-28T12:34:56Z")
+}
+
+func assertWireGuardStatusItemValue(t *testing.T, block formular.Block, id string, want any) {
+	t.Helper()
+	item, ok := FindItem(block, id)
+	if !ok {
+		t.Fatalf("status item %q missing", id)
+	}
+	if item.Field == nil {
+		t.Fatalf("status item %q has no field: %#v", id, item)
+	}
+	if !reflect.DeepEqual(item.Value, want) {
+		t.Fatalf("status item %q value = %#v, want %#v", id, item.Value, want)
 	}
 }
 

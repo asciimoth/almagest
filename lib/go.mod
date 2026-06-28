@@ -13,7 +13,7 @@ require (
 	github.com/asciimoth/gonnect-routing v0.6.2
 	github.com/asciimoth/pasta/pasta v0.6.1
 	github.com/asciimoth/socksgo v0.3.8
-	github.com/asciimoth/wgo v0.3.0
+	github.com/asciimoth/wgo v0.3.1
 	github.com/coder/websocket v1.8.14
 	golang.org/x/crypto v0.51.0
 	gvisor.dev/gvisor v0.0.0-20260325202830-7644cf3a343c

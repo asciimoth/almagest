@@ -17,6 +17,10 @@ Peer entries expose the same AmneziaWG controls behind `AWG override`. When the
 override is off, the peer inherits the device-level AmneziaWG profile. When it
 is on, the peer's J/S/H/I values are applied as a peer-local override.
 
+The status menu subscribes to the embedded device's runtime stats and shows
+live readonly counters: runtime peers, active peers, connected peers, RX/TX
+bytes, RX/TX packets, and the latest handshake time.
+
 When WireGuard peers use fixed endpoint ports through a SOCKS client network,
 standard SOCKS5 UDP ASSOCIATE is not enough: the SOCKS server assigns the UDP
 relay port, and the protocol does not let the client request the relay listen port.

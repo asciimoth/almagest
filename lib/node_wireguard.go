@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/netip"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -262,6 +263,9 @@ type wireGuardNode struct {
 	config wireGuardConfig
 	dev    *wgdevice.Device
 
+	runtimeStats            wgdevice.RuntimeStats
+	unsubscribeRuntimeStats func()
+
 	formError    string
 	runtimeError string
 
@@ -291,6 +295,11 @@ type wireGuardBindReceiveErrorMessage struct {
 	bind       *wireGuardPortBind
 	generation uint64
 	err        error
+}
+
+type wireGuardRuntimeStatsMessage struct {
+	dev   *wgdevice.Device
+	stats wgdevice.RuntimeStats
 }
 
 const (
@@ -332,6 +341,7 @@ func (n *wireGuardNode) OnReady() error {
 
 func (n *wireGuardNode) OnStop() {
 	n.cancelConfigRetry()
+	n.unsubscribeFromRuntimeStats()
 	if n.dev != nil {
 		n.dev.Close()
 		n.dev = nil
@@ -463,6 +473,9 @@ func (n *wireGuardNode) OnFormularMsg(message any) error {
 	case wireGuardBindReceiveErrorMessage:
 		n.handleBindReceiveError(msg)
 		return nil
+	case wireGuardRuntimeStatsMessage:
+		n.handleRuntimeStats(msg)
+		return nil
 	case formular.FormApplyMessage:
 		if msg.MenuID != pasta.NodeMenuID(n.id) {
 			return nil
@@ -515,6 +528,8 @@ func (n *wireGuardNode) ensureDevice() {
 		logger = n.logger
 	}
 	n.dev = wgdevice.NewDevice(nil, nil, logger)
+	n.runtimeStats = n.dev.RuntimeStats()
+	n.subscribeToRuntimeStats(n.dev)
 }
 
 func (n *wireGuardNode) applyConfigForm(values map[string]any) error {
@@ -609,6 +624,7 @@ func (n *wireGuardNode) applyConfigToDevice(rebuildPeers bool) error {
 			return err
 		}
 	}
+	n.refreshRuntimeStats()
 	if !active {
 		return nil
 	}
@@ -624,6 +640,7 @@ func (n *wireGuardNode) applyConfigToDevice(rebuildPeers bool) error {
 	if err := n.activatePeers(); err != nil {
 		return err
 	}
+	n.refreshRuntimeStats()
 	return nil
 }
 
@@ -687,6 +704,7 @@ func (n *wireGuardNode) rebuildPeers() error {
 			}
 		}
 	}
+	n.refreshRuntimeStats()
 	return nil
 }
 
@@ -1026,6 +1044,56 @@ func (n *wireGuardNode) clearRuntimeError() {
 	n.sendStatusBlock()
 }
 
+func (n *wireGuardNode) subscribeToRuntimeStats(dev *wgdevice.Device) {
+	if dev == nil || n.w == nil || n.id == 0 {
+		return
+	}
+	n.unsubscribeFromRuntimeStats()
+	w := n.w
+	nodeID := n.id
+	n.unsubscribeRuntimeStats = dev.SubscribeRuntimeStats(func(stats wgdevice.RuntimeStats) {
+		w.SendNodeFormularMsg(nodeID, wireGuardRuntimeStatsMessage{dev: dev, stats: stats})
+	})
+}
+
+func (n *wireGuardNode) unsubscribeFromRuntimeStats() {
+	if n.unsubscribeRuntimeStats == nil {
+		return
+	}
+	n.unsubscribeRuntimeStats()
+	n.unsubscribeRuntimeStats = nil
+}
+
+func (n *wireGuardNode) handleRuntimeStats(msg wireGuardRuntimeStatsMessage) {
+	if msg.dev == nil || msg.dev != n.dev {
+		return
+	}
+	if !wireGuardRuntimeStatsChanged(n.runtimeStats, msg.stats) {
+		return
+	}
+	n.runtimeStats = msg.stats
+	n.sendStatusBlock()
+}
+
+func (n *wireGuardNode) refreshRuntimeStats() {
+	if n.dev == nil {
+		n.runtimeStats = wgdevice.RuntimeStats{}
+		return
+	}
+	n.runtimeStats = n.dev.RuntimeStats()
+}
+
+func wireGuardRuntimeStatsChanged(a, b wgdevice.RuntimeStats) bool {
+	return a.PeerCount != b.PeerCount ||
+		a.ActivePeerCount != b.ActivePeerCount ||
+		a.ConnectedPeerCount != b.ConnectedPeerCount ||
+		a.RxBytes != b.RxBytes ||
+		a.TxBytes != b.TxBytes ||
+		a.RxPackets != b.RxPackets ||
+		a.TxPackets != b.TxPackets ||
+		!a.LastHandshakeTime.Equal(b.LastHandshakeTime)
+}
+
 func (n *wireGuardNode) sendMenuSnapshot() {
 	n.w.SendNodeMenuMsg(n.id, formular.MenuSnapshotMessage{
 		MessageBase: formular.MessageBase{Type: formular.MessageMenuSnapshot, MenuID: pasta.NodeMenuID(n.id), MenuGeneration: 1},
@@ -1080,6 +1148,14 @@ func (n *wireGuardNode) statusBlock() formular.Block {
 		readonlyTextField("tun", "TUN", attachedText(n.currentTun != nil)),
 		readonlyTextField("network", "Network", attachedText(n.currentNetwork != nil)),
 		readonlyIntField("peers", "Peers", len(n.config.peers)),
+		readonlyIntField("runtimePeers", "Runtime peers", n.runtimeStats.PeerCount),
+		readonlyIntField("activePeers", "Active peers", n.runtimeStats.ActivePeerCount),
+		readonlyIntField("connectedPeers", "Connected peers", n.runtimeStats.ConnectedPeerCount),
+		readonlyTextField("rxBytes", "RX bytes", wireGuardUint64Text(n.runtimeStats.RxBytes)),
+		readonlyTextField("txBytes", "TX bytes", wireGuardUint64Text(n.runtimeStats.TxBytes)),
+		readonlyTextField("rxPackets", "RX packets", wireGuardUint64Text(n.runtimeStats.RxPackets)),
+		readonlyTextField("txPackets", "TX packets", wireGuardUint64Text(n.runtimeStats.TxPackets)),
+		readonlyTextField("latestHandshake", "Latest handshake", wireGuardTimeText(n.runtimeStats.LastHandshakeTime)),
 		readonlyTextField("error", "Error", statusErr),
 	}}
 }
@@ -1473,6 +1549,17 @@ func attachedText(attached bool) string {
 		return "attached"
 	}
 	return "detached"
+}
+
+func wireGuardUint64Text(value uint64) string {
+	return strconv.FormatUint(value, 10)
+}
+
+func wireGuardTimeText(value time.Time) string {
+	if value.IsZero() {
+		return ""
+	}
+	return value.Format(time.RFC3339)
 }
 
 func secretTextField(id, label, value string, statusErr bool, statusText string, multiline bool) formular.Item {

@@ -30,7 +30,7 @@ require (
 	github.com/asciimoth/p-mark v0.2.0 // indirect
 	github.com/asciimoth/putback v0.3.0 // indirect
 	github.com/asciimoth/tuntap v0.3.17 // indirect
-	github.com/asciimoth/wgo v0.3.0 // indirect
+	github.com/asciimoth/wgo v0.3.1 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/cilium/ebpf v0.21.0 // indirect
