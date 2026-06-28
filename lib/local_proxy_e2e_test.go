@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/asciimoth/bufpool"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
 	sysnetdebug "github.com/asciimoth/gonnect/sysnet/debug"
@@ -66,8 +65,7 @@ func TestLocalProxyE2EUserPassAuth(t *testing.T) {
 
 func newLocalProxyE2E(t *testing.T) *localProxyE2E {
 	t.Helper()
-	pool := bufpool.NewTestDebugPool(t)
-	t.Cleanup(func() { pool.Close() })
+	pool := newE2ETestDebugPool(t)
 	logf := NewDebugLogFactory(4096)
 	sys := newE2EDebugSystem()
 	engine, err := BuildEngine(

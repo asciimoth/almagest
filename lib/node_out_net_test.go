@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	"github.com/asciimoth/bufpool"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/gonnect"
 	sysnetdebug "github.com/asciimoth/gonnect/sysnet/debug"
@@ -80,8 +79,7 @@ func (c captureHTTPServerClass) NewNode(cfg configer.Config, _ ...*pasta.NodeCla
 }
 
 func TestOutNetworkUsesSystemOutNetOnInit(t *testing.T) {
-	pool := bufpool.NewTestDebugPool(t)
-	defer pool.Close()
+	pool := newE2ETestDebugPool(t)
 
 	base := gonnect.NewLoopbackNetwok()
 	sys := &sysnetdebug.System{OutNetwork: base}
@@ -243,8 +241,7 @@ func TestOutNetworkSendsCachedNetworkToHTTPServerOnLinkAdd(t *testing.T) {
 }
 
 func TestEngineOutNetworkSendsCachedNetworkToHTTPServerOnLinkAdd(t *testing.T) {
-	pool := bufpool.NewTestDebugPool(t)
-	defer pool.Close()
+	pool := newE2ETestDebugPool(t)
 
 	base := gonnect.NewLoopbackNetwok()
 	sys := &sysnetdebug.System{OutNetwork: base}

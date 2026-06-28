@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/asciimoth/bufpool"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
 	"github.com/asciimoth/pasta/pasta"
@@ -90,8 +89,7 @@ func setupTunConfigStripperVTunHTTPE2E(t *testing.T) tunConfigStripperVTunHTTPE2
 func newTunConfigStripperConfigE2E(t *testing.T) (*NodeE2E, *tunConfigRecorderRegistry) {
 	t.Helper()
 
-	pool := bufpool.NewTestDebugPool(t)
-	t.Cleanup(func() { pool.Close() })
+	pool := newE2ETestDebugPool(t)
 	logf := NewDebugLogFactory(4096)
 	sys := newE2EDebugSystem()
 	recorders := newTunConfigRecorderRegistry()

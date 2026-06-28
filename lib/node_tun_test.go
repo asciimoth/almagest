@@ -8,7 +8,6 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/asciimoth/bufpool"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
 	"github.com/asciimoth/gonnect/sysnet"
@@ -282,8 +281,7 @@ func newTunNodeTestWorkspace(t *testing.T, dynamic bool) (*pasta.Workspace, *rec
 
 func newTunTestEngine(t *testing.T, sys *recordingTunSystem, cfg configer.Config) Engine {
 	t.Helper()
-	pool := bufpool.NewTestDebugPool(t)
-	t.Cleanup(func() { pool.Close() })
+	pool := newE2ETestDebugPool(t)
 	if cfg == nil {
 		cfg = configer.NewMemory(nil)
 	}

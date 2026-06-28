@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/asciimoth/bufpool"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
 	sysnetdebug "github.com/asciimoth/gonnect/sysnet/debug"
@@ -199,8 +198,7 @@ func TestNetworkRouterE2ECopyPaste(t *testing.T) {
 
 func newNetworkRouterLocalProxyE2E(t *testing.T, cfg configer.Config) (*httpE2E, *sysnetdebug.System) {
 	t.Helper()
-	pool := bufpool.NewTestDebugPool(t)
-	t.Cleanup(func() { pool.Close() })
+	pool := newE2ETestDebugPool(t)
 	logf := NewDebugLogFactory(4096)
 	sys := newE2EDebugSystem()
 	engine, err := BuildEngine(
@@ -267,8 +265,7 @@ func setupNetworkRouterE2E(t *testing.T) networkRouterE2EFixture {
 
 func newNetworkRouterConfigE2E(t *testing.T, cfg configer.Config) *httpE2E {
 	t.Helper()
-	pool := bufpool.NewTestDebugPool(t)
-	t.Cleanup(func() { pool.Close() })
+	pool := newE2ETestDebugPool(t)
 	logf := NewDebugLogFactory(4096)
 	engine, err := BuildEngine(
 		context.Background(),

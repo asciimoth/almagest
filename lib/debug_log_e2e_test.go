@@ -5,15 +5,13 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/asciimoth/bufpool"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/gonnect/sysnet/debug"
 	"github.com/asciimoth/pasta/pasta/std"
 )
 
 func TestDebugLogNodesAvailableOnlyInDebugEngines(t *testing.T) {
-	pool := bufpool.NewTestDebugPool(t)
-	t.Cleanup(func() { pool.Close() })
+	pool := newE2ETestDebugPool(t)
 
 	plain, err := BuildEngine(context.Background(), configer.NewMemory(nil), NewDebugLogFactory(16), &sysnetdebug.System{}, nil, pool, false)
 	if err != nil {

@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/asciimoth/bufpool"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
 	"github.com/asciimoth/gonnect/tun"
@@ -118,8 +117,7 @@ func TestTunJoinerE2EClassPortsAndNoMenu(t *testing.T) {
 func newTunJoinerE2E(t *testing.T) (*NodeE2E, *testTunProviderRegistry, *testTunSinkRegistry) {
 	t.Helper()
 
-	pool := bufpool.NewTestDebugPool(t)
-	t.Cleanup(func() { pool.Close() })
+	pool := newE2ETestDebugPool(t)
 	logf := NewDebugLogFactory(4096)
 	sys := newE2EDebugSystem()
 	providers := newTestTunProviderRegistry()

@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -38,12 +39,58 @@ func newE2EDebugSystem() *sysnetdebug.System {
 	return &sysnetdebug.System{OutNetwork: out, LocalNetwork: local}
 }
 
+type e2eDebugPool struct {
+	*bufpool.DebugPool
+	active atomic.Int64
+}
+
+func newE2ETestDebugPool(t *testing.T) *e2eDebugPool {
+	t.Helper()
+	pool := &e2eDebugPool{DebugPool: bufpool.NewTestDebugPool(t)}
+	t.Cleanup(func() { pool.close(t) })
+	return pool
+}
+
+func (p *e2eDebugPool) Get(length int) []byte {
+	buf := p.DebugPool.Get(length)
+	if cap(buf) > 0 {
+		p.active.Add(1)
+	}
+	return buf
+}
+
+func (p *e2eDebugPool) Put(buf []byte) {
+	p.DebugPool.Put(buf)
+	if cap(buf) > 0 {
+		p.active.Add(-1)
+	}
+}
+
+func (p *e2eDebugPool) close(t *testing.T) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	var idleSince time.Time
+	for time.Now().Before(deadline) {
+		if p.active.Load() == 0 {
+			if idleSince.IsZero() {
+				idleSince = time.Now()
+			}
+			if time.Since(idleSince) >= 50*time.Millisecond {
+				break
+			}
+		} else {
+			idleSince = time.Time{}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	p.Close()
+}
+
 // NewNodeE2E builds a debug engine and registers test cleanup hooks.
 func NewNodeE2E(t *testing.T) *NodeE2E {
 	t.Helper()
 
-	pool := bufpool.NewTestDebugPool(t)
-	t.Cleanup(func() { pool.Close() })
+	pool := newE2ETestDebugPool(t)
 	logf := NewDebugLogFactory(4096)
 	sys := newE2EDebugSystem()
 	engine, err := BuildEngine(

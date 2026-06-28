@@ -5,7 +5,6 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/asciimoth/bufpool"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
 	"github.com/asciimoth/pasta/pasta"
@@ -63,8 +62,7 @@ func TestTunE2EMultipleNodesSaveRestore(t *testing.T) {
 func newNodeE2EWithConfig(t *testing.T, cfg configer.Config) *NodeE2E {
 	t.Helper()
 
-	pool := bufpool.NewTestDebugPool(t)
-	t.Cleanup(func() { pool.Close() })
+	pool := newE2ETestDebugPool(t)
 	logf := NewDebugLogFactory(4096)
 	sys := newE2EDebugSystem()
 	engine, err := BuildEngine(

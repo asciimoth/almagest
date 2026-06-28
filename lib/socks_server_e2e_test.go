@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/asciimoth/bufpool"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
 	"github.com/asciimoth/gonnect"
@@ -128,8 +127,7 @@ func newSocksServerE2E(t *testing.T) *socksServerE2E {
 
 func newNativeSocksServerE2E(t *testing.T) *socksServerE2E {
 	t.Helper()
-	pool := bufpool.NewTestDebugPool(t)
-	t.Cleanup(func() { pool.Close() })
+	pool := newE2ETestDebugPool(t)
 	logf := NewDebugLogFactory(4096)
 	engine, err := BuildEngine(
 		context.Background(),

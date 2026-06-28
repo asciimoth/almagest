@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/asciimoth/bufpool"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
 	"github.com/asciimoth/gonnect/tun"
@@ -194,8 +193,7 @@ func (e *httpE2E) applyTunCopyVTunConfig(node uint64, name, localAddrs string) {
 func newTunCopyE2E(t *testing.T) (*NodeE2E, *testTunProviderRegistry) {
 	t.Helper()
 
-	pool := bufpool.NewTestDebugPool(t)
-	t.Cleanup(func() { pool.Close() })
+	pool := newE2ETestDebugPool(t)
 	logf := NewDebugLogFactory(4096)
 	sys := newE2EDebugSystem()
 	providers := newTestTunProviderRegistry()
