@@ -30,6 +30,43 @@ func TestTunCopyE2EVTunHTTPClientServer(t *testing.T) {
 	f.WaitNodeLabel(f.copy, "copying")
 }
 
+func TestTunCopyE2EVTunHTTPClientServerSaveRestoreFirstRequest(t *testing.T) {
+	f := setupTunCopyVTunHTTPE2E(t)
+
+	copyName := f.nodeName(f.copy)
+	vtunAName := f.nodeName(f.vtunA)
+	vtunBName := f.nodeName(f.vtunB)
+	serverName := f.nodeName(f.server)
+	clientName := f.nodeName(f.client)
+
+	cfg := configer.NewMemory(nil)
+	if err := f.Engine.SaveConfig(cfg); err != nil {
+		t.Fatalf("SaveConfig: %v", err)
+	}
+	if err := f.Engine.Close(); err != nil {
+		t.Fatalf("close saved engine: %v", err)
+	}
+
+	restored := newVTunSpooferConfigE2E(t, cfg)
+	copyNode := restored.mustNodeByName(copyName)
+	vtunA := restored.mustNodeByName(vtunAName)
+	vtunB := restored.mustNodeByName(vtunBName)
+	server := restored.mustNodeByName(serverName)
+	client := restored.mustNodeByName(clientName)
+	restored.SubscribeMenus(copyNode, vtunA, vtunB, server, client)
+	restored.mustTypedLink(TypeTun, copyNode, "left", "TunA", vtunA, "right", "Tun")
+	restored.mustTypedLink(TypeTun, copyNode, "left", "TunB", vtunB, "right", "Tun")
+	restored.mustNetworkLink(vtunA, "left", "Network", client, "right", "Network")
+	restored.mustNetworkLink(vtunB, "left", "Network", server, "right", "Network")
+	restored.WaitNodeLabel(copyNode, "copying")
+	restored.waitServerListening(server, fmt.Sprintf("%s:%d", tunCopyE2EServerAddr, f.port))
+
+	restored.sendClientRequest(client)
+	if err := restored.waitClientResponseResult(client, "200 OK", "Debug http server response"); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestTunCopyE2ECopiesPacketsAfterAttachDetachReattach(t *testing.T) {
 	e, providers := newTunCopyE2E(t)
 	copyNode := e.AddNode(NodeTypeTunCopy, "copy")

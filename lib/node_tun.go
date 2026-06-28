@@ -475,6 +475,12 @@ func (n *tunNode) sendTunToLink(link uint64) {
 	if n.tun == nil {
 		return
 	}
+	if n.sentTuns != nil {
+		if wrapper := n.sentTuns[link]; TunIsReady(wrapper) {
+			n.w.EmitEvent(n.id, link, TunPayload{Tun: wrapper})
+			return
+		}
+	}
 	n.closeSentTun(link)
 	wrapper := DetachTunForLink(n.w, n.id, link, n.tun, enginePool(n.engine))
 	if wrapper == nil {

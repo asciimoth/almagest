@@ -584,6 +584,12 @@ func (n *vtunNode) sendTunToLink(link uint64) {
 	if n.vtun == nil {
 		return
 	}
+	if n.sentTuns != nil {
+		if wrapper := n.sentTuns[link]; TunIsReady(wrapper) {
+			n.w.EmitEvent(n.id, link, TunPayload{Tun: wrapper})
+			return
+		}
+	}
 	n.closeSentTun(link)
 	wrapper := DetachTunForLink(n.w, n.id, link, n.vtun, enginePool(n.engine))
 	if wrapper == nil {

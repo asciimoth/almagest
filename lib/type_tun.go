@@ -26,6 +26,16 @@ import (
 // system, bound to the owning node and link. The event payload implements
 // std.ClosablePayload, so middleware nodes such as std.SelectClass can close a
 // previously-routed wrapper when switching paths.
+// Repeated payload sends for the same link must be idempotent while the
+// underlying Tun source is unchanged: providers should re-emit the existing
+// live detached wrapper instead of closing it and creating another one. Closing
+// and replacing a live wrapper during OnReady, OnLinkAdd, std.Request, or
+// config propagation can leave downstream nodes holding a closed Tun and cause
+// startup packet loss. Keep sent wrappers per link, check them with
+// TunIsReady, and only close/replace them when the wrapper is missing, down,
+// closed, the link is removed, or the underlying Tun source is intentionally
+// rebuilt. Nodes that emit secondary frontend Tuns, such as splitters, must
+// keep the frontend lifetime aligned with the emitted wrapper lifetime.
 //
 // TunConfig values flow in the opposite direction, from left-directed ports to
 // right-directed ports. Config values are suggestions for Tun-providing nodes:

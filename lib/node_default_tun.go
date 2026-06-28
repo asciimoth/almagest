@@ -429,6 +429,7 @@ func (n *defaultTunNode) rebuildDefaultTun(opts sysnet.DefaultTunOpts) error {
 	n.hasEffective = true
 	_ = n.w.AddNodeResource(n.id, dtun)
 	_ = n.updateLabel()
+	n.closeSentTuns()
 	n.sendAll()
 	if previous != nil {
 		_ = previous.Close()
@@ -496,6 +497,12 @@ func (n *defaultTunNode) sendAll() {
 func (n *defaultTunNode) sendTunToLink(link uint64) {
 	if n.dtun == nil {
 		return
+	}
+	if n.sentTuns != nil {
+		if wrapper := n.sentTuns[link]; TunIsReady(wrapper) {
+			n.w.EmitEvent(n.id, link, TunPayload{Tun: wrapper})
+			return
+		}
 	}
 	n.closeSentTun(link)
 	wrapper := DetachTunForLink(n.w, n.id, link, n.dtun, enginePool(n.engine))

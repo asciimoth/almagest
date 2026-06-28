@@ -290,6 +290,10 @@ func (n *tunJoinerNode) sendOutputTunToLink(link uint64) {
 	if n.joiner == nil {
 		return
 	}
+	if wrapper := n.sentOutputTuns[link]; TunIsReady(wrapper) {
+		n.w.EmitEvent(n.id, link, TunPayload{Tun: wrapper})
+		return
+	}
 	n.closeSentOutputTun(link)
 	wrapper := DetachTunForLink(n.w, n.id, link, n.joiner, n.pool)
 	if wrapper == nil {

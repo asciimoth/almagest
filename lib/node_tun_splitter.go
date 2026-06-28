@@ -500,6 +500,10 @@ func (n *tunSplitterNode) sendOutputTunToLink(link, port uint64) {
 	if slot == 0 || n.splitter == nil {
 		return
 	}
+	if TunIsReady(n.sent[link]) && TunIsReady(n.frontends[link]) {
+		n.w.EmitEvent(n.id, link, TunPayload{Tun: n.sent[link]})
+		return
+	}
 	n.closeOutputTun(link)
 	frontend := n.splitter.Get(slot)
 	if frontend == nil {
