@@ -53,10 +53,15 @@ func TestTunClassFeatureGateAndNonUnique(t *testing.T) {
 func TestTunBuildsEmitsAndClosesPreviousBeforeRebuild(t *testing.T) {
 	w, sys := newTunNodeTestWorkspace(t, false)
 	sys.requirePreviousClosedBeforeBuild = true
+	state, sub := subscribeMenuState(t, w)
+	defer w.UnsubscribeNotifications(sub)
+
 	node, err := w.AddNodeByClass(NodeTypeTun, "tun")
 	if err != nil {
 		t.Fatalf("AddNodeByClass Tun: %v", err)
 	}
+	w.SubscribeNodeMenu(node, sub)
+	assertLeadingEffectiveBlock(t, state, node)
 	if got := sys.buildCount(); got != 1 {
 		t.Fatalf("build count after OnReady = %d, want 1", got)
 	}
@@ -117,6 +122,10 @@ func TestTunBuildsEmitsAndClosesPreviousBeforeRebuild(t *testing.T) {
 	if got := sys.lastOpts(); !reflect.DeepEqual(got, wantMergedOpts) {
 		t.Fatalf("merged build opts = %#v, want %#v", got, wantMergedOpts)
 	}
+	assertReadonlyMenuFieldValue(t, state, node, "effective", "name", "user-tun")
+	assertReadonlyMenuFieldValue(t, state, node, "effective", "tunAddrs", "10.60.0.2/32\nfd00::60/128\n10.80.0.2/32")
+	assertReadonlyMenuFieldValue(t, state, node, "effective", "tunRoutes", "10.70.0.0/16")
+	assertReadonlyMenuFieldValue(t, state, node, "effective", "mtu", 1280)
 	if sys.buildErr != nil {
 		t.Fatalf("unexpected recording build error: %v", sys.buildErr)
 	}

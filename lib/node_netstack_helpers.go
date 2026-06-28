@@ -131,3 +131,40 @@ func configFloatField(id, label string, value float64, statusErr bool, statusTex
 func configCheckbox(id, label string, value bool) formular.Item {
 	return formular.Item{Type: formular.ItemField, ID: id, Label: label, Field: &formular.Field{Kind: formular.FieldCheckbox, Value: value}}
 }
+
+func readonlyTextField(id, label, value string) formular.Item {
+	return formular.Item{Type: formular.ItemField, ID: id, Label: label, Field: &formular.Field{
+		Kind:     formular.FieldText,
+		Value:    value,
+		Readonly: true,
+	}}
+}
+
+func readonlyMultilineTextField(id, label, value string) formular.Item {
+	return formular.Item{Type: formular.ItemField, ID: id, Label: label, Field: &formular.Field{
+		Kind:      formular.FieldText,
+		Value:     value,
+		Readonly:  true,
+		Multiline: true,
+	}}
+}
+
+func readonlyStringListField(id, label string, values []string) formular.Item {
+	return readonlyMultilineTextField(id, label, strings.Join(values, "\n"))
+}
+
+func readonlyIntField(id, label string, value int) formular.Item {
+	return formular.Item{Type: formular.ItemField, ID: id, Label: label, Field: &formular.Field{
+		Kind:     formular.FieldInt,
+		Value:    value,
+		Readonly: true,
+	}}
+}
+
+func readonlyBoolField(id, label string, value bool) formular.Item {
+	return formular.Item{Type: formular.ItemField, ID: id, Label: label, Field: &formular.Field{
+		Kind:     formular.FieldCheckbox,
+		Value:    value,
+		Readonly: true,
+	}}
+}

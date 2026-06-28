@@ -42,10 +42,15 @@ func TestDefaultTunClassFeatureGate(t *testing.T) {
 
 func TestDefaultTunBuildsEmitsAndRebuildsFromFormAndTunConfig(t *testing.T) {
 	w, sys := newDefaultTunNodeTestWorkspace(t, false)
+	state, sub := subscribeMenuState(t, w)
+	defer w.UnsubscribeNotifications(sub)
+
 	node, err := w.AddNodeByClass(NodeTypeDefaultTun, "default tun")
 	if err != nil {
 		t.Fatalf("AddNodeByClass DefaultTun: %v", err)
 	}
+	w.SubscribeNodeMenu(node, sub)
+	assertLeadingEffectiveBlock(t, state, node)
 	if got := sys.buildCount(); got != 1 {
 		t.Fatalf("build count after OnReady = %d, want 1", got)
 	}
@@ -116,6 +121,12 @@ func TestDefaultTunBuildsEmitsAndRebuildsFromFormAndTunConfig(t *testing.T) {
 	if got := sys.lastOpts(); !reflect.DeepEqual(got, wantMergedOpts) {
 		t.Fatalf("merged build opts = %#v, want %#v", got, wantMergedOpts)
 	}
+	assertReadonlyMenuFieldValue(t, state, node, "effective", "tunAddrs", "10.10.0.2/32\nfd00::2/128\n10.20.0.2/32")
+	assertReadonlyMenuFieldValue(t, state, node, "effective", "tunRoutes", "0.0.0.0/0\n::/0")
+	assertReadonlyMenuFieldValue(t, state, node, "effective", "mtu", 1280)
+	assertReadonlyMenuFieldValue(t, state, node, "effective", "dnsIP", "10.10.0.2")
+	assertReadonlyMenuFieldValue(t, state, node, "effective", "strict", true)
+	assertReadonlyMenuFieldValue(t, state, node, "effective", "exclude", "app org.example.skip")
 	if firstTun.closeCount() != 1 || sys.tuns[1].closeCount() != 1 {
 		t.Fatalf("rebuilt DefaultTun close counts = %d, %d; want 1, 1", firstTun.closeCount(), sys.tuns[1].closeCount())
 	}

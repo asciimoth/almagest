@@ -1457,22 +1457,6 @@ func attachedText(attached bool) string {
 	return "detached"
 }
 
-func readonlyTextField(id, label, value string) formular.Item {
-	return formular.Item{Type: formular.ItemField, ID: id, Label: label, Field: &formular.Field{
-		Kind:     formular.FieldText,
-		Value:    value,
-		Readonly: true,
-	}}
-}
-
-func readonlyIntField(id, label string, value int) formular.Item {
-	return formular.Item{Type: formular.ItemField, ID: id, Label: label, Field: &formular.Field{
-		Kind:     formular.FieldInt,
-		Value:    value,
-		Readonly: true,
-	}}
-}
-
 func secretTextField(id, label, value string, statusErr bool, statusText string, multiline bool) formular.Item {
 	field := &formular.Field{Kind: formular.FieldText, Value: value, Validation: true, Secret: true, Multiline: multiline}
 	if statusErr {

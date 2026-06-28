@@ -385,6 +385,7 @@ func (n *defaultTunNode) configureDefaultTun() error {
 			n.hasEffective = true
 			n.formError = ""
 			_ = n.updateLabel()
+			n.sendEffectiveBlock()
 			return nil
 		}
 	}
@@ -429,6 +430,7 @@ func (n *defaultTunNode) rebuildDefaultTun(opts sysnet.DefaultTunOpts) error {
 	n.hasEffective = true
 	_ = n.w.AddNodeResource(n.id, dtun)
 	_ = n.updateLabel()
+	n.sendEffectiveBlock()
 	n.closeSentTuns()
 	n.sendAll()
 	if previous != nil {
@@ -545,7 +547,7 @@ func (n *defaultTunNode) updateLabel() error {
 func (n *defaultTunNode) sendMenuSnapshot() {
 	n.w.SendNodeMenuMsg(n.id, formular.MenuSnapshotMessage{
 		MessageBase: formular.MessageBase{Type: formular.MessageMenuSnapshot, MenuID: pasta.NodeMenuID(n.id), MenuGeneration: 1},
-		Blocks:      []formular.Block{n.configBlock()},
+		Blocks:      n.menuBlocks(),
 	})
 }
 
@@ -556,8 +558,38 @@ func (n *defaultTunNode) sendForcedMenuSnapshot() {
 	n.w.SendNodeMenuMsg(n.id, formular.MenuSnapshotMessage{
 		MessageBase: formular.MessageBase{Type: formular.MessageMenuSnapshot, MenuID: pasta.NodeMenuID(n.id), MenuGeneration: 1},
 		Force:       true,
-		Blocks:      []formular.Block{n.configBlock()},
+		Blocks:      n.menuBlocks(),
 	})
+}
+
+func (n *defaultTunNode) menuBlocks() []formular.Block {
+	return []formular.Block{n.effectiveBlock(), n.configBlock()}
+}
+
+func (n *defaultTunNode) sendEffectiveBlock() {
+	if n.w == nil || n.id == 0 {
+		return
+	}
+	n.w.SendNodeMenuMsg(n.id, formular.BlockSnapshotMessage{
+		MessageBase: formular.MessageBase{Type: formular.MessageBlockSnapshot, MenuID: pasta.NodeMenuID(n.id), MenuGeneration: 1, BlockGeneration: 1},
+		Block:       n.effectiveBlock(),
+	})
+}
+
+func (n *defaultTunNode) effectiveBlock() formular.Block {
+	opts := n.effectiveDefaultTunOpts()
+	if n.hasEffective {
+		opts = n.effective.Copy()
+	}
+	return formular.Block{ID: "effective", Order: 0, Generation: 1, Items: []formular.Item{
+		readonlyStringListField("tunAddrs", "TUN addrs", opts.TunAddrs),
+		readonlyStringListField("tunRoutes", "TUN routes", opts.TunRoutes),
+		readonlyIntField("mtu", "MTU", opts.MTU),
+		readonlyTextField("dnsIP", "DNS IP", opts.DnsIP),
+		readonlyBoolField("strict", "Strict routing", opts.Strict),
+		readonlyMultilineTextField("exclude", "Exclude", defaultTunRulesText(opts.Exclude)),
+		readonlyMultilineTextField("include", "Include", defaultTunRulesText(opts.Include)),
+	}}
 }
 
 func (n *defaultTunNode) configBlock() formular.Block {
@@ -648,6 +680,25 @@ func mergeDefaultTunMTU(a, b int) int {
 		return a
 	}
 	return min(a, b)
+}
+
+func defaultTunRulesText(rules []sysnet.Rule) string {
+	lines := make([]string, 0, len(rules))
+	for _, rule := range rules {
+		ruleType := strings.TrimSpace(rule.Type)
+		ruleValue := strings.TrimSpace(rule.Rule)
+		switch {
+		case ruleType == "":
+			if ruleValue != "" {
+				lines = append(lines, ruleValue)
+			}
+		case ruleValue == "":
+			lines = append(lines, ruleType)
+		default:
+			lines = append(lines, fmt.Sprintf("%s %s", ruleType, ruleValue))
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 func defaultTunOptsDynamicallyCompatible(a, b sysnet.DefaultTunOpts) bool {

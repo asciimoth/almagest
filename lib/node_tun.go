@@ -325,6 +325,7 @@ func (n *tunNode) configureTun() error {
 			n.hasEffective = true
 			n.formError = ""
 			_ = n.updateLabel()
+			n.sendEffectiveBlock()
 			return nil
 		}
 	}
@@ -384,6 +385,7 @@ func (n *tunNode) rebuildTun(opts sysnet.TunOpts, name string) error {
 	n.hasEffective = true
 	_ = n.w.AddNodeResource(n.id, nextTun)
 	_ = n.updateLabel()
+	n.sendEffectiveBlock()
 	n.sendAll()
 	return nil
 }
@@ -535,7 +537,7 @@ func (n *tunNode) updateLabel() error {
 func (n *tunNode) sendMenuSnapshot() {
 	n.w.SendNodeMenuMsg(n.id, formular.MenuSnapshotMessage{
 		MessageBase: formular.MessageBase{Type: formular.MessageMenuSnapshot, MenuID: pasta.NodeMenuID(n.id), MenuGeneration: 1},
-		Blocks:      []formular.Block{n.configBlock()},
+		Blocks:      n.menuBlocks(),
 	})
 }
 
@@ -546,8 +548,37 @@ func (n *tunNode) sendForcedMenuSnapshot() {
 	n.w.SendNodeMenuMsg(n.id, formular.MenuSnapshotMessage{
 		MessageBase: formular.MessageBase{Type: formular.MessageMenuSnapshot, MenuID: pasta.NodeMenuID(n.id), MenuGeneration: 1},
 		Force:       true,
-		Blocks:      []formular.Block{n.configBlock()},
+		Blocks:      n.menuBlocks(),
 	})
+}
+
+func (n *tunNode) menuBlocks() []formular.Block {
+	return []formular.Block{n.effectiveBlock(), n.configBlock()}
+}
+
+func (n *tunNode) sendEffectiveBlock() {
+	if n.w == nil || n.id == 0 {
+		return
+	}
+	n.w.SendNodeMenuMsg(n.id, formular.BlockSnapshotMessage{
+		MessageBase: formular.MessageBase{Type: formular.MessageBlockSnapshot, MenuID: pasta.NodeMenuID(n.id), MenuGeneration: 1, BlockGeneration: 1},
+		Block:       n.effectiveBlock(),
+	})
+}
+
+func (n *tunNode) effectiveBlock() formular.Block {
+	opts := n.effectiveTunOpts()
+	name := n.config.name
+	if n.hasEffective {
+		opts = copyTunOpts(n.effective)
+		name = n.effectiveName
+	}
+	return formular.Block{ID: "effective", Order: 0, Generation: 1, Items: []formular.Item{
+		readonlyTextField("name", "Name", name),
+		readonlyStringListField("tunAddrs", "TUN addrs", opts.TunAddrs),
+		readonlyStringListField("tunRoutes", "TUN routes", opts.TunRoutes),
+		readonlyIntField("mtu", "MTU", opts.MTU),
+	}}
 }
 
 func (n *tunNode) configBlock() formular.Block {

@@ -244,6 +244,8 @@ func (n *vtunNode) OnEvent(event pasta.Event, linkType string, _ []string, recei
 				if err := n.rebuildVTun(); err != nil {
 					return nil
 				}
+			} else {
+				n.sendEffectiveBlock()
 			}
 		}
 	}
@@ -451,6 +453,7 @@ func (n *vtunNode) rebuildVTunWithActive(active bool) error {
 	n.vtun = vt
 	_ = n.w.AddNodeResource(n.id, vt)
 	_ = n.updateLabel()
+	n.sendEffectiveBlock()
 	n.sendAll()
 	return nil
 }
@@ -655,7 +658,7 @@ func (n *vtunNode) updateLabel() error {
 func (n *vtunNode) sendMenuSnapshot() {
 	n.w.SendNodeMenuMsg(n.id, formular.MenuSnapshotMessage{
 		MessageBase: formular.MessageBase{Type: formular.MessageMenuSnapshot, MenuID: pasta.NodeMenuID(n.id), MenuGeneration: 1},
-		Blocks:      []formular.Block{n.configBlock()},
+		Blocks:      n.menuBlocks(),
 	})
 }
 
@@ -666,8 +669,55 @@ func (n *vtunNode) sendForcedMenuSnapshot() {
 	n.w.SendNodeMenuMsg(n.id, formular.MenuSnapshotMessage{
 		MessageBase: formular.MessageBase{Type: formular.MessageMenuSnapshot, MenuID: pasta.NodeMenuID(n.id), MenuGeneration: 1},
 		Force:       true,
-		Blocks:      []formular.Block{n.configBlock()},
+		Blocks:      n.menuBlocks(),
 	})
+}
+
+func (n *vtunNode) menuBlocks() []formular.Block {
+	return []formular.Block{n.effectiveBlock(), n.configBlock()}
+}
+
+func (n *vtunNode) sendEffectiveBlock() {
+	if n.w == nil || n.id == 0 {
+		return
+	}
+	n.w.SendNodeMenuMsg(n.id, formular.BlockSnapshotMessage{
+		MessageBase: formular.MessageBase{Type: formular.MessageBlockSnapshot, MenuID: pasta.NodeMenuID(n.id), MenuGeneration: 1, BlockGeneration: 1},
+		Block:       n.effectiveBlock(),
+	})
+}
+
+func (n *vtunNode) effectiveBlock() formular.Block {
+	localAddrs := n.effectiveLocalAddrsForMenu()
+	dnsServers, _ := parseAddrList(n.config.dnsServers, false)
+	mtu := n.config.mtu
+	if mtu <= 0 && n.tunConfig.MTU > 0 {
+		mtu = n.tunConfig.MTU
+	}
+	if mtu <= 0 {
+		mtu = defaultVTunMTU
+	}
+	return formular.Block{ID: "effective", Order: 0, Generation: 1, Items: []formular.Item{
+		readonlyTextField("name", "Name", n.config.name),
+		readonlyStringListField("localAddrs", "Local addrs", netipAddrsText(localAddrs)),
+		readonlyStringListField("dnsServers", "DNS servers", netipAddrsText(dnsServers)),
+		readonlyIntField("mtu", "MTU", mtu),
+		readonlyIntField("endpointCh", "Endpoint channel", n.config.endpointCh),
+		readonlyIntField("eventCh", "Event channel", n.config.eventCh),
+		readonlyBoolField("noLoopbackAddr", "No loopback addrs", n.config.noLoopbackAddr),
+		readonlyBoolField("disableSACK", "Disable TCP SACK", n.config.disableSACK),
+	}}
+}
+
+func (n *vtunNode) effectiveLocalAddrsForMenu() []netip.Addr {
+	if strings.TrimSpace(n.config.localAddrs) != "" {
+		addrs, _ := parseAddrList(n.config.localAddrs, true)
+		return addrs
+	}
+	if addrs := tunConfigAddrs(n.tunConfig); len(addrs) > 0 {
+		return addrs
+	}
+	return append([]netip.Addr(nil), n.generatedAddrs...)
 }
 
 func (n *vtunNode) configBlock() formular.Block {
@@ -699,6 +749,16 @@ func tunConfigAddrs(cfg TunConfig) []netip.Addr {
 		}
 		if addr, err := netip.ParseAddr(value); err == nil {
 			out = append(out, addr)
+		}
+	}
+	return out
+}
+
+func netipAddrsText(addrs []netip.Addr) []string {
+	out := make([]string, 0, len(addrs))
+	for _, addr := range addrs {
+		if addr.IsValid() {
+			out = append(out, addr.String())
 		}
 	}
 	return out

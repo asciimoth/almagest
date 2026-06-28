@@ -2,6 +2,7 @@ package almagest
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/asciimoth/configer/configer"
@@ -77,10 +78,15 @@ func TestVTunNodeEmitsNetworkAndTunAndRebuildsOnFormApply(t *testing.T) {
 
 func TestVTunGeneratedAddrsAreNotSaved(t *testing.T) {
 	w, captured := newNetstackNodeTestWorkspace(t)
+	state, sub := subscribeMenuState(t, w)
+	defer w.UnsubscribeNotifications(sub)
+
 	vtunID, err := w.AddNodeByClass(NodeTypeVTun, "vtun")
 	if err != nil {
 		t.Fatalf("AddNodeByClass VTun: %v", err)
 	}
+	w.SubscribeNodeMenu(vtunID, sub)
+	assertLeadingEffectiveBlock(t, state, vtunID)
 	netReceiver := &outNetReceiver{events: make(chan NetworkPayload, 1)}
 	if _, err := w.AddNode(netReceiver, "test/NetworkReceiver", "network receiver"); err != nil {
 		t.Fatalf("AddNode network receiver: %v", err)
@@ -103,6 +109,8 @@ func TestVTunGeneratedAddrsAreNotSaved(t *testing.T) {
 	if len(captured.vtun.generatedAddrs) == 0 {
 		t.Fatal("generatedAddrs is empty, want engine allocation cached")
 	}
+	assertReadonlyMenuFieldValue(t, state, vtunID, "effective", "localAddrs", strings.Join(netipAddrsText(captured.vtun.generatedAddrs), "\n"))
+	assertReadonlyMenuFieldValue(t, state, vtunID, "effective", "mtu", defaultVTunMTU)
 	cfg := configer.NewMemory(nil)
 	if err := captured.vtun.OnSave(cfg); err != nil {
 		t.Fatalf("OnSave: %v", err)
@@ -297,6 +305,38 @@ func assertMenuItemStatus(t *testing.T, state *formular.MenuSnapshotState, node 
 	}
 	if item.Status != status {
 		t.Fatalf("%s status = %q, want %q", fieldID, item.Status, status)
+	}
+}
+
+func assertLeadingEffectiveBlock(t *testing.T, state *formular.MenuSnapshotState, node uint64) {
+	t.Helper()
+	snapshot, ok := state.Snapshot(pasta.NodeMenuID(node))
+	if !ok {
+		t.Fatalf("menu snapshot missing for node %d", node)
+	}
+	if len(snapshot.Blocks) == 0 || snapshot.Blocks[0].ID != "effective" {
+		t.Fatalf("leading block = %#v, want effective", snapshot.Blocks)
+	}
+}
+
+func assertReadonlyMenuFieldValue(t *testing.T, state *formular.MenuSnapshotState, node uint64, blockID, fieldID string, want any) {
+	t.Helper()
+	snapshot, ok := state.Snapshot(pasta.NodeMenuID(node))
+	if !ok {
+		t.Fatalf("menu snapshot missing for node %d", node)
+	}
+	item, ok := FindItem(mustFindBlock(t, snapshot, blockID), fieldID)
+	if !ok {
+		t.Fatalf("%s.%s item missing", blockID, fieldID)
+	}
+	if item.Field == nil {
+		t.Fatalf("%s.%s field missing", blockID, fieldID)
+	}
+	if !item.Readonly {
+		t.Fatalf("%s.%s readonly = false, want true", blockID, fieldID)
+	}
+	if item.Value != want {
+		t.Fatalf("%s.%s value = %#v, want %#v", blockID, fieldID, item.Value, want)
 	}
 }
 
