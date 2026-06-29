@@ -9,6 +9,9 @@ set -euo pipefail
 
 daemon_pid=""
 ALMAGEST_E2E_TIMEOUT="${ALMAGEST_E2E_TIMEOUT:-20}"
+# Bound shared CLI calls so admin/socket stalls fail the case with logs instead
+# of hanging the whole e2e run.
+ALMAGEST_E2E_CLI_TIMEOUT="${ALMAGEST_E2E_CLI_TIMEOUT:-5}"
 
 log() {
 	printf '[%s] %s\n' "$E2E_CASE" "$*" >&2
@@ -39,7 +42,8 @@ retry() {
 }
 
 cli() {
-	almagest-cli --url "unix://$E2E_ADMIN_SOCK" "$@"
+	timeout --kill-after=2 "$ALMAGEST_E2E_CLI_TIMEOUT" \
+		almagest-cli --url "unix://$E2E_ADMIN_SOCK" "$@"
 }
 
 start_daemon() {

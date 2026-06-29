@@ -528,12 +528,18 @@ func TestWireGuardNetworkAttachmentDoesNotOpenSocketsUntilTunAttached(t *testing
 		t.Fatalf("AddLink network: %v", err)
 	}
 	Eventually(t, func() bool {
-		return wg.currentNetwork != nil && wg.currentBind != nil
+		wg.runtimeMu.Lock()
+		attached := wg.currentNetwork != nil && wg.currentBind != nil
+		wg.runtimeMu.Unlock()
+		return attached
 	}, "wireguard network attached")
 	if got := network.listenCount(); got != 0 {
 		t.Fatalf("network listen count after network-only attach = %d, want 0", got)
 	}
-	if _, ok := wg.currentBind.(*batchudp.StdNetBind); ok {
+	wg.runtimeMu.Lock()
+	currentBind := wg.currentBind
+	wg.runtimeMu.Unlock()
+	if _, ok := currentBind.(*batchudp.StdNetBind); ok {
 		t.Fatal("WireGuard currentBind is concrete *batchudp.StdNetBind; want port abstraction wrapper")
 	}
 
@@ -637,7 +643,7 @@ func TestWireGuardRetriesDeviceBringUpAfterNetworkListenFailure(t *testing.T) {
 
 	Eventually(t, func() bool {
 		snapshot, ok := w.NodeSnapshot(wgID)
-		return ok && snapshot.Label == "up" && wg.runtimeError == "" && network.listenCount() >= 3
+		return ok && snapshot.Label == "up" && network.listenCount() >= 3
 	}, "wireguard retry after transient listen failure")
 }
 

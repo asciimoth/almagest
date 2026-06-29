@@ -41,6 +41,9 @@ const (
 	DefaultSocksServerWSPath = "/socks"
 
 	socksServerRestartDelay = time.Second
+	// socksServerProxyStartGrace gives restored proxy links a short window to
+	// deliver their network before the server starts with a rejecting proxy.
+	socksServerProxyStartGrace = 250 * time.Millisecond
 )
 
 var (
@@ -124,6 +127,13 @@ type socksServerLog struct {
 type socksServerStart struct {
 	id  uint64
 	cfg socksServerWorkerConfig
+}
+
+// socksServerDeferredStart resumes startup after the proxy-link grace window.
+// It lets restore settle without blocking the workspace callback that received
+// the listen network.
+type socksServerDeferredStart struct {
+	id uint64
 }
 
 type socksServerWorkerConfig struct {
@@ -292,6 +302,10 @@ func (n *socksServerNode) OnInbox(message pasta.InboxMessage) error {
 		if payload.id == n.restartID && n.worker == nil && n.listenNetwork != nil {
 			n.startWorker(payload.cfg)
 		}
+	case socksServerDeferredStart:
+		if payload.id == n.restartID && n.worker == nil {
+			n.startWorkerIfReady(payload.id, nil)
+		}
 	}
 	return nil
 }
@@ -441,23 +455,29 @@ func (n *socksServerNode) restartWorker() {
 		close(old.stop)
 	}
 
-	if n.listenNetwork == nil {
-		n.logger.Debug("socks worker waiting for listen network")
-		n.appendLog(formular.LogWarn, "waiting for listen network")
-		n.sendLogsBlock()
+	// If a proxy link already exists, do not start with RejectNetwork; the proxy
+	// payload is expected to arrive as restore finishes.
+	if n.workerStartBlocked() {
+		return
+	}
+	if n.proxyNetwork == nil {
+		n.deferWorkerStart(id, old)
 		return
 	}
 
-	proxy := gonnect.Network(&gonnect.RejectNetwork{})
-	if n.proxyNetwork != nil {
-		proxy = n.proxyNetwork
+	n.startWorkerIfReady(id, old)
+}
+
+// startWorkerIfReady is shared by immediate starts, starts after the old worker
+// exits, and deferred starts after the proxy grace window.
+func (n *socksServerNode) startWorkerIfReady(id uint64, old *socksServerWorker) {
+	if id != n.restartID || n.worker != nil {
+		return
 	}
-	cfg := socksServerWorkerConfig{
-		config:        n.config,
-		listenNetwork: n.listenNetwork,
-		proxyNetwork:  proxy,
-		pool:          enginePool(n.engine),
+	if n.workerStartBlocked() {
+		return
 	}
+	cfg := n.workerConfig()
 	if old != nil {
 		go func() {
 			<-old.done
@@ -466,6 +486,57 @@ func (n *socksServerNode) restartWorker() {
 		return
 	}
 	n.startWorker(cfg)
+}
+
+// workerStartBlocked reports missing required runtime inputs and emits the
+// same user-visible log line regardless of which startup path checked it.
+func (n *socksServerNode) workerStartBlocked() bool {
+	if n.listenNetwork == nil {
+		n.logger.Debug("socks worker waiting for listen network")
+		n.appendLog(formular.LogWarn, "waiting for listen network")
+		n.sendLogsBlock()
+		return true
+	}
+	if n.proxyNetwork == nil && n.portHasLinks(n.proxy) {
+		n.logger.Debug("socks worker waiting for proxy network")
+		n.appendLog(formular.LogWarn, "waiting for proxy network")
+		n.sendLogsBlock()
+		return true
+	}
+	return false
+}
+
+// deferWorkerStart waits for any old worker to stop, then gives restore a short
+// chance to attach the optional proxy link before falling back to RejectNetwork.
+func (n *socksServerNode) deferWorkerStart(id uint64, old *socksServerWorker) {
+	n.logger.Debug("socks worker waiting briefly for proxy link")
+	n.appendLog(formular.LogDebug, "waiting briefly for proxy link")
+	n.sendLogsBlock()
+	go func() {
+		if old != nil {
+			<-old.done
+		}
+		timer := time.NewTimer(socksServerProxyStartGrace)
+		defer timer.Stop()
+		<-timer.C
+		n.w.SendInbox(pasta.InboxMessage{ReceiverNode: n.id, Payload: socksServerDeferredStart{id: id}})
+	}()
+}
+
+// workerConfig snapshots the current runtime networks for a worker start. A
+// missing proxy network is intentional only when there is no proxy link waiting
+// to deliver a network payload.
+func (n *socksServerNode) workerConfig() socksServerWorkerConfig {
+	proxy := gonnect.Network(&gonnect.RejectNetwork{})
+	if n.proxyNetwork != nil {
+		proxy = n.proxyNetwork
+	}
+	return socksServerWorkerConfig{
+		config:        n.config,
+		listenNetwork: n.listenNetwork,
+		proxyNetwork:  proxy,
+		pool:          enginePool(n.engine),
+	}
 }
 
 func (n *socksServerNode) startWorker(cfg socksServerWorkerConfig) {

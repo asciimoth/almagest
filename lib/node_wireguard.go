@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	conn "github.com/asciimoth/batchudp"
@@ -129,6 +130,14 @@ func (c *wireGuardConfig) normalize() {
 		c.peers[i].normalize(i)
 	}
 	c.peers = compactWireGuardPeers(c.peers)
+}
+
+// clone makes form/validation edits independent from async runtime readers.
+// The peer slice contains mutable structs, so a plain struct copy would let
+// normalization race with a device apply still reading the previous config.
+func (c wireGuardConfig) clone() wireGuardConfig {
+	c.peers = slices.Clone(c.peers)
+	return c
 }
 
 func (c *wireGuardConfig) ensurePrivateKey() error {
@@ -263,8 +272,23 @@ type wireGuardNode struct {
 	config wireGuardConfig
 	dev    *wgdevice.Device
 
+	// runtimeMu protects wgo device operations and attached runtime resources.
+	// Long-running runtime work must happen outside workspace callbacks, so
+	// runtimeGeneration lets async completions detect that their inputs went
+	// stale before they update status or retry state.
+	runtimeMu         sync.Mutex
+	runtimeGeneration atomic.Uint64
+
 	runtimeStats            wgdevice.RuntimeStats
 	unsubscribeRuntimeStats func()
+
+	// Runtime stats callbacks can be frequent and originate inside wgo runtime
+	// goroutines. Keep only the latest pending value and deliver one inbox
+	// message so stats never block workspace or device locks.
+	statsMu                sync.Mutex
+	pendingRuntimeStatsDev *wgdevice.Device
+	pendingRuntimeStats    wgdevice.RuntimeStats
+	runtimeStatsQueued     bool
 
 	formError    string
 	runtimeError string
@@ -297,6 +321,22 @@ type wireGuardBindReceiveErrorMessage struct {
 	err        error
 }
 
+// wireGuardRuntimeResultMessage is the single completion path for async
+// runtime work. It covers bind attach, config apply, and retry attempts so stale
+// generation checks and retry/error handling stay in one place.
+type wireGuardRuntimeResultMessage struct {
+	generation      uint64
+	retryGeneration uint64
+	checkRetry      bool
+	retryOnError    bool
+	err             error
+}
+
+// wireGuardRuntimeWork runs without the workspace callback on the stack.
+// retryOnError says whether a runtime failure should schedule another retry;
+// ok is false when the work became stale and no completion should be delivered.
+type wireGuardRuntimeWork func() (retryOnError bool, err error, ok bool)
+
 type wireGuardRuntimeStatsMessage struct {
 	dev   *wgdevice.Device
 	stats wgdevice.RuntimeStats
@@ -323,8 +363,11 @@ func (n *wireGuardNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint6
 	if err := n.w.SetNodePrimary(n.id, TypeTun); err != nil {
 		return err
 	}
-	n.ensureDevice()
-	if err := n.applyConfigToDevice(true); err != nil {
+	n.runtimeMu.Lock()
+	n.ensureDeviceLocked()
+	err := n.applyConfigToDeviceLocked(true)
+	n.runtimeMu.Unlock()
+	if err != nil {
 		n.setRuntimeError(err)
 	}
 	_ = n.updateLabel()
@@ -341,7 +384,9 @@ func (n *wireGuardNode) OnReady() error {
 
 func (n *wireGuardNode) OnStop() {
 	n.cancelConfigRetry()
-	n.unsubscribeFromRuntimeStats()
+	n.runtimeMu.Lock()
+	n.nextRuntimeGenerationLocked()
+	n.unsubscribeFromRuntimeStatsLocked()
 	if n.dev != nil {
 		n.dev.Close()
 		n.dev = nil
@@ -349,6 +394,7 @@ func (n *wireGuardNode) OnStop() {
 	n.currentTun = nil
 	n.currentNetwork = nil
 	n.currentBind = nil
+	n.runtimeMu.Unlock()
 }
 
 func (n *wireGuardNode) PreLinkAdd(port uint64, linkType, portDirection string) error {
@@ -391,36 +437,49 @@ func (n *wireGuardNode) OnLinkRemoved(link uint64, port uint64, linkType, portDi
 	case port == n.tunp && portDirection == "left" && linkType == TypeTun && link == n.tunLink:
 		n.cancelConfigRetry()
 		n.tunLink = 0
-		n.currentTun = nil
-		n.detachDevicePart("TUN", func() error { return n.dev.DetachTUN() })
+		err := n.detachDevicePart("TUN", func() error { return n.dev.DetachTUN() }, func() {
+			n.currentTun = nil
+			n.nextRuntimeGenerationLocked()
+		})
+		if err != nil {
+			n.setRuntimeError(err)
+		} else {
+			n.clearRuntimeError()
+		}
 	case port == n.netp && portDirection == "right" && linkType == TypeNetwork && link == n.netLink:
 		n.cancelConfigRetry()
 		n.netLink = 0
-		n.currentNetwork = nil
-		n.currentBind = nil
-		n.detachDevicePart("network bind", func() error { return n.dev.DetachBind() })
+		err := n.detachDevicePart("network bind", func() error { return n.dev.DetachBind() }, func() {
+			n.currentNetwork = nil
+			n.currentBind = nil
+			n.nextRuntimeGenerationLocked()
+		})
+		if err != nil {
+			n.setRuntimeError(err)
+		} else {
+			n.clearRuntimeError()
+		}
 	}
 	_ = n.updateLabel()
 	n.sendStatusBlock()
 	return nil
 }
 
-func (n *wireGuardNode) detachDevicePart(name string, detach func() error) {
+func (n *wireGuardNode) detachDevicePart(name string, detach func() error, update func()) error {
+	n.runtimeMu.Lock()
+	defer n.runtimeMu.Unlock()
+	update()
 	if n.dev == nil {
-		return
+		return nil
 	}
 	var detachErr error
 	if err := n.dev.Down(); err != nil {
 		detachErr = fmt.Errorf("bring device down before detaching %s: %w", name, err)
-		n.setRuntimeError(detachErr)
 	}
 	if err := detach(); err != nil {
 		detachErr = fmt.Errorf("detach %s: %w", name, err)
-		n.setRuntimeError(detachErr)
 	}
-	if detachErr == nil {
-		n.clearRuntimeError()
-	}
+	return detachErr
 }
 
 func (n *wireGuardNode) OnEvent(event pasta.Event, linkType string, _ []string, receiverPortDirection string) error {
@@ -467,15 +526,6 @@ func (n *wireGuardNode) OnEvent(event pasta.Event, linkType string, _ []string, 
 
 func (n *wireGuardNode) OnFormularMsg(message any) error {
 	switch msg := message.(type) {
-	case wireGuardRetryMessage:
-		n.retryConfigToDevice(msg.generation)
-		return nil
-	case wireGuardBindReceiveErrorMessage:
-		n.handleBindReceiveError(msg)
-		return nil
-	case wireGuardRuntimeStatsMessage:
-		n.handleRuntimeStats(msg)
-		return nil
 	case formular.FormApplyMessage:
 		if msg.MenuID != pasta.NodeMenuID(n.id) {
 			return nil
@@ -500,6 +550,23 @@ func (n *wireGuardNode) OnFormularMsg(message any) error {
 	return nil
 }
 
+// OnInbox handles node-owned runtime messages. These are intentionally separate
+// from formular messages so async device work and retry delivery do not use the
+// frontend menu channel.
+func (n *wireGuardNode) OnInbox(message pasta.InboxMessage) error {
+	switch msg := message.Payload.(type) {
+	case wireGuardRetryMessage:
+		n.retryConfigToDevice(msg.generation)
+	case wireGuardBindReceiveErrorMessage:
+		n.handleBindReceiveError(msg)
+	case wireGuardRuntimeResultMessage:
+		n.handleRuntimeResult(msg)
+	case wireGuardRuntimeStatsMessage:
+		n.handleRuntimeStats(msg)
+	}
+	return nil
+}
+
 func (n *wireGuardNode) OnSave(cfg configer.Config) error {
 	if err := pasta.DeleteNodeOwnedConfigKeys(cfg); err != nil {
 		return err
@@ -519,7 +586,7 @@ func (n *wireGuardNode) OnSave(cfg configer.Config) error {
 	return nil
 }
 
-func (n *wireGuardNode) ensureDevice() {
+func (n *wireGuardNode) ensureDeviceLocked() {
 	if n.dev != nil {
 		return
 	}
@@ -529,11 +596,11 @@ func (n *wireGuardNode) ensureDevice() {
 	}
 	n.dev = wgdevice.NewDevice(nil, nil, logger)
 	n.runtimeStats = n.dev.RuntimeStats()
-	n.subscribeToRuntimeStats(n.dev)
+	n.subscribeToRuntimeStatsLocked(n.dev)
 }
 
 func (n *wireGuardNode) applyConfigForm(values map[string]any) error {
-	next := n.config
+	next := n.config.clone()
 	if value, ok := stringFromAny(values["privateKey"]); ok {
 		next.privateKey = value
 	}
@@ -548,7 +615,7 @@ func (n *wireGuardNode) applyConfigForm(values map[string]any) error {
 }
 
 func (n *wireGuardNode) applyPeersForm(values map[string]any) error {
-	next := n.config
+	next := n.config.clone()
 	if peers, ok := parseWireGuardPeers(values["peers"]); ok {
 		next.peers = peers
 	}
@@ -565,15 +632,22 @@ func (n *wireGuardNode) commitConfigForm(next wireGuardConfig, rebuildPeers, emi
 		n.rejectConfigForm(err)
 		return nil
 	}
-	n.config = next
 	n.formError = ""
+	n.runtimeMu.Lock()
+	n.config = next
+	generation := n.nextRuntimeGenerationLocked()
+	n.runtimeMu.Unlock()
 	n.cancelConfigRetry()
-	_ = n.applyConfigToDeviceWithRetry(rebuildPeers)
 	if emitTunConfig {
 		n.sendTunConfig()
 	}
 	n.sendForcedMenuSnapshot()
 	_ = n.updateLabel()
+
+	// Applying config may open sockets, update peer endpoints, and bring the
+	// device up. Schedule it after the form callback has released workspace
+	// state so daemon restore and snapshots are not blocked by runtime I/O.
+	n.scheduleConfigApply(rebuildPeers, generation, 0, false)
 	return nil
 }
 
@@ -583,23 +657,19 @@ func (n *wireGuardNode) rejectConfigForm(err error) {
 	_ = n.updateLabel()
 }
 
-func (n *wireGuardNode) applyConfigToDeviceWithRetry(rebuildPeers bool) error {
-	if err := n.applyConfigToDevice(rebuildPeers); err != nil {
-		n.failRuntime(err, n.hasActiveAttachments())
-		return err
-	}
-	n.cancelConfigRetry()
-	n.clearRuntimeError()
-	return nil
+func (n *wireGuardNode) applyConfigToDevice(rebuildPeers bool) error {
+	n.runtimeMu.Lock()
+	defer n.runtimeMu.Unlock()
+	return n.applyConfigToDeviceLocked(rebuildPeers)
 }
 
-func (n *wireGuardNode) applyConfigToDevice(rebuildPeers bool) error {
-	n.ensureDevice()
+func (n *wireGuardNode) applyConfigToDeviceLocked(rebuildPeers bool) error {
+	n.ensureDeviceLocked()
 	if err := validateWireGuardConfig(n.config); err != nil {
 		n.formError = err.Error()
 		return err
 	}
-	active := n.hasActiveAttachments()
+	active := n.hasActiveAttachmentsLocked()
 	if !active {
 		if err := n.dev.Down(); err != nil {
 			return err
@@ -624,7 +694,7 @@ func (n *wireGuardNode) applyConfigToDevice(rebuildPeers bool) error {
 			return err
 		}
 	}
-	n.refreshRuntimeStats()
+	n.refreshRuntimeStatsLocked()
 	if !active {
 		return nil
 	}
@@ -640,12 +710,22 @@ func (n *wireGuardNode) applyConfigToDevice(rebuildPeers bool) error {
 	if err := n.activatePeers(); err != nil {
 		return err
 	}
-	n.refreshRuntimeStats()
+	n.refreshRuntimeStatsLocked()
 	return nil
 }
 
-func (n *wireGuardNode) hasActiveAttachments() bool {
+func (n *wireGuardNode) hasActiveAttachmentsLocked() bool {
 	return n.currentTun != nil && n.currentBind != nil
+}
+
+func (n *wireGuardNode) nextRuntimeGenerationLocked() uint64 {
+	return n.runtimeGeneration.Add(1)
+}
+
+// currentRuntimeGeneration is atomic so completion handlers can discard stale
+// work without taking runtimeMu while the runtime worker is still active.
+func (n *wireGuardNode) currentRuntimeGeneration() uint64 {
+	return n.runtimeGeneration.Load()
 }
 
 func (n *wireGuardNode) activatePeers() error {
@@ -704,7 +784,7 @@ func (n *wireGuardNode) rebuildPeers() error {
 			}
 		}
 	}
-	n.refreshRuntimeStats()
+	n.refreshRuntimeStatsLocked()
 	return nil
 }
 
@@ -725,11 +805,12 @@ func (n *wireGuardNode) applyPeerEndpoints() error {
 }
 
 func (n *wireGuardNode) attachTun(t tun.Tun) {
-	n.ensureDevice()
+	n.runtimeMu.Lock()
+	n.ensureDeviceLocked()
 	if SameComparableValue(n.currentTun, t) {
+		n.runtimeMu.Unlock()
 		return
 	}
-	n.cancelConfigRetry()
 	var err error
 	if n.currentTun == nil {
 		err = n.dev.AttachTUN(t)
@@ -737,42 +818,152 @@ func (n *wireGuardNode) attachTun(t tun.Tun) {
 		err = n.dev.ReplaceTUN(t)
 	}
 	if err != nil {
+		n.runtimeMu.Unlock()
 		_ = t.Close()
 		n.setRuntimeError(fmt.Errorf("attach TUN: %w", err))
 		return
 	}
 	n.currentTun = t
-	if n.currentBind != nil {
-		if err := n.applyConfigToDeviceWithRetry(false); err != nil {
+	generation := n.nextRuntimeGenerationLocked()
+	hasBind := n.currentBind != nil
+	n.runtimeMu.Unlock()
+	n.cancelConfigRetry()
+	if hasBind {
+		// Reconfiguring after TUN attach can open/listen on the network bind, so
+		// keep it on the async runtime path.
+		n.scheduleConfigApply(false, generation, 0, false)
+	} else {
+		n.clearRuntimeError()
+	}
+	_ = n.updateLabel()
+	n.sendStatusBlock()
+}
+
+func (n *wireGuardNode) scheduleConfigApply(rebuildPeers bool, runtimeGeneration, retryGeneration uint64, checkRetry bool) {
+	n.scheduleRuntimeWork(runtimeGeneration, retryGeneration, checkRetry, func() (bool, error, bool) {
+		n.runtimeMu.Lock()
+		defer n.runtimeMu.Unlock()
+		if runtimeGeneration != n.currentRuntimeGeneration() {
+			return false, nil, false
+		}
+		err := n.applyConfigToDeviceLocked(rebuildPeers)
+		return n.hasActiveAttachmentsLocked(), err, true
+	})
+}
+
+// scheduleRuntimeWork serializes expensive device operations behind runtimeMu
+// while keeping them out of workspace callbacks. Completion is sent back through
+// the node inbox so status and retry changes happen on the normal node path.
+func (n *wireGuardNode) scheduleRuntimeWork(generation, retryGeneration uint64, checkRetry bool, work wireGuardRuntimeWork) {
+	if n.w == nil || n.id == 0 {
+		return
+	}
+	go func() {
+		if checkRetry && !n.isCurrentConfigRetry(retryGeneration) {
 			return
 		}
+		retryOnError, err, ok := work()
+		if !ok {
+			return
+		}
+		n.sendInternal(wireGuardRuntimeResultMessage{
+			generation:      generation,
+			retryGeneration: retryGeneration,
+			checkRetry:      checkRetry,
+			retryOnError:    retryOnError,
+			err:             err,
+		})
+	}()
+}
+
+// handleRuntimeResult applies only the currently relevant async completion.
+// Older completions are expected during restore/relink/retry churn and are
+// dropped before they can clear a newer error or cancel a newer retry.
+func (n *wireGuardNode) handleRuntimeResult(msg wireGuardRuntimeResultMessage) {
+	if !n.acceptRuntimeResult(msg) {
+		return
 	}
+	if msg.err != nil {
+		n.failRuntime(msg.err, msg.retryOnError)
+		return
+	}
+	n.cancelConfigRetry()
 	n.clearRuntimeError()
 	_ = n.updateLabel()
 	n.sendStatusBlock()
 }
 
+// acceptRuntimeResult validates both runtime resource generation and retry
+// generation. Retry generation is checked only for completions that came from a
+// scheduled retry; first-attempt async work has no retry generation to match.
+func (n *wireGuardNode) acceptRuntimeResult(msg wireGuardRuntimeResultMessage) bool {
+	if msg.generation != n.currentRuntimeGeneration() {
+		return false
+	}
+	if msg.checkRetry && !n.isCurrentConfigRetry(msg.retryGeneration) {
+		return false
+	}
+	return true
+}
+
+// sendInternal delivers node-owned messages through the workspace inbox rather
+// than the formular channel. The inbox is used here as the async boundary
+// between runtime goroutines and node state updates.
+func (n *wireGuardNode) sendInternal(payload any) {
+	if n.w == nil || n.id == 0 || payload == nil {
+		return
+	}
+	n.w.SendInbox(pasta.InboxMessage{ReceiverNode: n.id, Payload: payload})
+}
+
+// deferInternal prevents inbox handlers from blocking the workspace lock behind
+// runtimeMu. Handlers that need runtime state requeue briefly if runtime work is
+// still holding the device lock.
+func (n *wireGuardNode) deferInternal(payload any) {
+	if n.w == nil || n.id == 0 || payload == nil {
+		return
+	}
+	go func() {
+		timer := time.NewTimer(10 * time.Millisecond)
+		defer timer.Stop()
+		<-timer.C
+		n.sendInternal(payload)
+	}()
+}
+
 func (n *wireGuardNode) attachNetwork(link uint64, network NetworkCloser) {
-	n.ensureDevice()
 	n.cancelConfigRetry()
+	n.runtimeMu.Lock()
+	n.ensureDeviceLocked()
 	n.currentNetwork = network
+	generation := n.nextRuntimeGenerationLocked()
+	n.runtimeMu.Unlock()
 	BindNetworkResource(n.w, n.id, link, network)
-	_ = n.attachCurrentNetworkBindWithRetry()
 	_ = n.updateLabel()
 	n.sendStatusBlock()
+
+	// Attaching the bind may touch sockets and apply WireGuard config, so it is
+	// scheduled after the network resource has been made visible to the graph.
+	n.scheduleNetworkBindAttach(generation, 0, false)
 }
 
-func (n *wireGuardNode) attachCurrentNetworkBindWithRetry() error {
-	if err := n.attachCurrentNetworkBind(); err != nil {
-		n.failRuntime(err, n.currentNetwork != nil)
-		return err
+func (n *wireGuardNode) scheduleNetworkBindAttach(generation, retryGeneration uint64, checkRetry bool) {
+	n.scheduleRuntimeWork(generation, retryGeneration, checkRetry, func() (bool, error, bool) {
+		return n.attachCurrentNetworkBind(generation)
+	})
+}
+
+// attachCurrentNetworkBind owns the bind swap and optional device activation for
+// one runtime generation. It reports whether failures are retryable so callers
+// do not need to reread mutable runtime state after the work completes.
+func (n *wireGuardNode) attachCurrentNetworkBind(generation uint64) (bool, error, bool) {
+	n.runtimeMu.Lock()
+	defer n.runtimeMu.Unlock()
+	if generation != n.currentRuntimeGeneration() {
+		return false, nil, false
 	}
-	return nil
-}
-
-func (n *wireGuardNode) attachCurrentNetworkBind() error {
 	if n.currentNetwork == nil {
-		return errors.New("network is detached")
+		return false, errors.New("network is detached"), true
 	}
 	networkBind := conn.NewDefaultBind(n.currentNetwork)
 	if !n.currentNetwork.IsNative() {
@@ -792,17 +983,21 @@ func (n *wireGuardNode) attachCurrentNetworkBind() error {
 		_ = n.dev.DetachBind()
 		_ = bind.Close()
 		n.currentBind = nil
-		return fmt.Errorf("attach network: %w", err)
+		return n.currentNetwork != nil, fmt.Errorf("attach network: %w", err), true
 	}
 	n.currentBind = bind
-	return n.applyConfigToDeviceWithRetry(false)
+	active := n.hasActiveAttachmentsLocked()
+	if active {
+		return active, n.applyConfigToDeviceLocked(false), true
+	}
+	return false, nil, true
 }
 
 func (n *wireGuardNode) notifyBindReceiveError(bind *wireGuardPortBind, generation uint64, err error) {
 	if n.w == nil || n.id == 0 {
 		return
 	}
-	go n.w.SendNodeFormularMsg(n.id, wireGuardBindReceiveErrorMessage{
+	go n.sendInternal(wireGuardBindReceiveErrorMessage{
 		bind:       bind,
 		generation: generation,
 		err:        err,
@@ -810,10 +1005,20 @@ func (n *wireGuardNode) notifyBindReceiveError(bind *wireGuardPortBind, generati
 }
 
 func (n *wireGuardNode) handleBindReceiveError(msg wireGuardBindReceiveErrorMessage) {
-	if msg.bind == nil || msg.err == nil || n.currentBind != msg.bind || !msg.bind.isCurrentGeneration(msg.generation) {
+	if msg.bind == nil || msg.err == nil {
 		return
 	}
-	n.failRuntime(fmt.Errorf("receive from bind: %w", msg.err), n.hasActiveAttachments())
+	if !n.runtimeMu.TryLock() {
+		n.deferInternal(msg)
+		return
+	}
+	current := n.currentBind == msg.bind && msg.bind.isCurrentGeneration(msg.generation)
+	retry := n.hasActiveAttachmentsLocked()
+	n.runtimeMu.Unlock()
+	if !current {
+		return
+	}
+	n.failRuntime(fmt.Errorf("receive from bind: %w", msg.err), retry)
 	_ = n.updateLabel()
 	n.sendStatusBlock()
 }
@@ -822,27 +1027,17 @@ func (n *wireGuardNode) retryConfigToDevice(generation uint64) {
 	if !n.isCurrentConfigRetry(generation) {
 		return
 	}
-	if n.currentBind == nil && n.currentNetwork != nil {
-		if err := n.attachCurrentNetworkBind(); err != nil {
-			if n.isCurrentConfigRetry(generation) && n.currentNetwork != nil {
-				n.failRuntime(err, true)
-			} else {
-				n.setRuntimeError(err)
-			}
-			return
-		}
+	n.runtimeMu.Lock()
+	needsBind := n.currentBind == nil && n.currentNetwork != nil
+	runtimeGeneration := n.currentRuntimeGeneration()
+	n.runtimeMu.Unlock()
+	if needsBind {
+		// If an earlier bind attach failed before currentBind was installed, the
+		// retry has to recreate the bind before config can be applied.
+		n.scheduleNetworkBindAttach(runtimeGeneration, generation, true)
 		return
 	}
-	if err := n.applyConfigToDevice(false); err != nil {
-		if n.isCurrentConfigRetry(generation) && n.hasActiveAttachments() {
-			n.failRuntime(err, true)
-		} else {
-			n.setRuntimeError(err)
-		}
-		return
-	}
-	n.cancelConfigRetry()
-	n.clearRuntimeError()
+	n.scheduleConfigApply(false, runtimeGeneration, generation, true)
 }
 
 func (n *wireGuardNode) failRuntime(err error, retry bool) {
@@ -893,7 +1088,7 @@ func (n *wireGuardNode) scheduleConfigRetry() {
 		n.retryCancel = nil
 		n.retryMu.Unlock()
 
-		n.w.SendNodeFormularMsg(n.id, wireGuardRetryMessage{generation: generation})
+		n.sendInternal(wireGuardRetryMessage{generation: generation})
 	}()
 }
 
@@ -1000,6 +1195,10 @@ func (n *wireGuardNode) updateLabel() error {
 }
 
 func (n *wireGuardNode) stateText() string {
+	n.runtimeMu.Lock()
+	hasTun := n.currentTun != nil
+	hasNetwork := n.currentNetwork != nil
+	n.runtimeMu.Unlock()
 	switch {
 	case n.formError != "":
 		return "invalid config"
@@ -1007,11 +1206,11 @@ func (n *wireGuardNode) stateText() string {
 		return "error"
 	case n.config.privateKey == "":
 		return "missing private key"
-	case n.currentTun == nil && n.currentNetwork == nil:
+	case !hasTun && !hasNetwork:
 		return "waiting for TUN and network"
-	case n.currentTun == nil:
+	case !hasTun:
 		return "waiting for TUN"
-	case n.currentNetwork == nil:
+	case !hasNetwork:
 		return "waiting for network"
 	default:
 		return "up"
@@ -1044,19 +1243,17 @@ func (n *wireGuardNode) clearRuntimeError() {
 	n.sendStatusBlock()
 }
 
-func (n *wireGuardNode) subscribeToRuntimeStats(dev *wgdevice.Device) {
+func (n *wireGuardNode) subscribeToRuntimeStatsLocked(dev *wgdevice.Device) {
 	if dev == nil || n.w == nil || n.id == 0 {
 		return
 	}
-	n.unsubscribeFromRuntimeStats()
-	w := n.w
-	nodeID := n.id
+	n.unsubscribeFromRuntimeStatsLocked()
 	n.unsubscribeRuntimeStats = dev.SubscribeRuntimeStats(func(stats wgdevice.RuntimeStats) {
-		w.SendNodeFormularMsg(nodeID, wireGuardRuntimeStatsMessage{dev: dev, stats: stats})
+		n.queueRuntimeStats(dev, stats)
 	})
 }
 
-func (n *wireGuardNode) unsubscribeFromRuntimeStats() {
+func (n *wireGuardNode) unsubscribeFromRuntimeStatsLocked() {
 	if n.unsubscribeRuntimeStats == nil {
 		return
 	}
@@ -1064,18 +1261,64 @@ func (n *wireGuardNode) unsubscribeFromRuntimeStats() {
 	n.unsubscribeRuntimeStats = nil
 }
 
+func (n *wireGuardNode) queueRuntimeStats(dev *wgdevice.Device, stats wgdevice.RuntimeStats) {
+	if n.w == nil || n.id == 0 {
+		return
+	}
+	n.statsMu.Lock()
+	n.pendingRuntimeStatsDev = dev
+	n.pendingRuntimeStats = stats
+	if n.runtimeStatsQueued {
+		n.statsMu.Unlock()
+		return
+	}
+	n.runtimeStatsQueued = true
+	n.statsMu.Unlock()
+	go n.sendInternal(wireGuardRuntimeStatsMessage{dev: dev})
+}
+
+// takeRuntimeStats consumes the latest coalesced stats only after the inbox
+// handler can take runtimeMu. That avoids losing an update while runtime work is
+// still mutating the device state.
+func (n *wireGuardNode) takeRuntimeStats(dev *wgdevice.Device) (wgdevice.RuntimeStats, bool) {
+	n.statsMu.Lock()
+	defer n.statsMu.Unlock()
+	if !n.runtimeStatsQueued || n.pendingRuntimeStatsDev != dev {
+		return wgdevice.RuntimeStats{}, false
+	}
+	stats := n.pendingRuntimeStats
+	n.runtimeStatsQueued = false
+	n.pendingRuntimeStatsDev = nil
+	n.pendingRuntimeStats = wgdevice.RuntimeStats{}
+	return stats, true
+}
+
 func (n *wireGuardNode) handleRuntimeStats(msg wireGuardRuntimeStatsMessage) {
-	if msg.dev == nil || msg.dev != n.dev {
+	if msg.dev == nil {
 		return
 	}
-	if !wireGuardRuntimeStatsChanged(n.runtimeStats, msg.stats) {
+	if !n.runtimeMu.TryLock() {
+		n.deferInternal(msg)
 		return
 	}
-	n.runtimeStats = msg.stats
+	stats, ok := n.takeRuntimeStats(msg.dev)
+	if !ok {
+		stats = msg.stats
+	}
+	if msg.dev != n.dev {
+		n.runtimeMu.Unlock()
+		return
+	}
+	if !wireGuardRuntimeStatsChanged(n.runtimeStats, stats) {
+		n.runtimeMu.Unlock()
+		return
+	}
+	n.runtimeStats = stats
+	n.runtimeMu.Unlock()
 	n.sendStatusBlock()
 }
 
-func (n *wireGuardNode) refreshRuntimeStats() {
+func (n *wireGuardNode) refreshRuntimeStatsLocked() {
 	if n.dev == nil {
 		n.runtimeStats = wgdevice.RuntimeStats{}
 		return
@@ -1134,9 +1377,15 @@ func (n *wireGuardNode) statusBlock() formular.Block {
 		}
 	}
 	listenPort := n.config.listenPort
-	if n.dev != nil && n.hasActiveAttachments() {
+	n.runtimeMu.Lock()
+	active := n.hasActiveAttachmentsLocked()
+	if n.dev != nil && active {
 		listenPort = int(n.dev.ListenPort())
 	}
+	tunAttached := n.currentTun != nil
+	networkAttached := n.currentNetwork != nil
+	stats := n.runtimeStats
+	n.runtimeMu.Unlock()
 	statusErr := n.formError
 	if statusErr == "" {
 		statusErr = n.runtimeError
@@ -1145,17 +1394,17 @@ func (n *wireGuardNode) statusBlock() formular.Block {
 		readonlyTextField("state", "State", n.stateText()),
 		readonlyTextField("publicKey", "Public key", publicKey),
 		readonlyIntField("listenPort", "Listen port", listenPort),
-		readonlyTextField("tun", "TUN", attachedText(n.currentTun != nil)),
-		readonlyTextField("network", "Network", attachedText(n.currentNetwork != nil)),
+		readonlyTextField("tun", "TUN", attachedText(tunAttached)),
+		readonlyTextField("network", "Network", attachedText(networkAttached)),
 		readonlyIntField("peers", "Peers", len(n.config.peers)),
-		readonlyIntField("runtimePeers", "Runtime peers", n.runtimeStats.PeerCount),
-		readonlyIntField("activePeers", "Active peers", n.runtimeStats.ActivePeerCount),
-		readonlyIntField("connectedPeers", "Connected peers", n.runtimeStats.ConnectedPeerCount),
-		readonlyTextField("rxBytes", "RX bytes", wireGuardUint64Text(n.runtimeStats.RxBytes)),
-		readonlyTextField("txBytes", "TX bytes", wireGuardUint64Text(n.runtimeStats.TxBytes)),
-		readonlyTextField("rxPackets", "RX packets", wireGuardUint64Text(n.runtimeStats.RxPackets)),
-		readonlyTextField("txPackets", "TX packets", wireGuardUint64Text(n.runtimeStats.TxPackets)),
-		readonlyTextField("latestHandshake", "Latest handshake", wireGuardTimeText(n.runtimeStats.LastHandshakeTime)),
+		readonlyIntField("runtimePeers", "Runtime peers", stats.PeerCount),
+		readonlyIntField("activePeers", "Active peers", stats.ActivePeerCount),
+		readonlyIntField("connectedPeers", "Connected peers", stats.ConnectedPeerCount),
+		readonlyTextField("rxBytes", "RX bytes", wireGuardUint64Text(stats.RxBytes)),
+		readonlyTextField("txBytes", "TX bytes", wireGuardUint64Text(stats.TxBytes)),
+		readonlyTextField("rxPackets", "RX packets", wireGuardUint64Text(stats.RxPackets)),
+		readonlyTextField("txPackets", "TX packets", wireGuardUint64Text(stats.TxPackets)),
+		readonlyTextField("latestHandshake", "Latest handshake", wireGuardTimeText(stats.LastHandshakeTime)),
 		readonlyTextField("error", "Error", statusErr),
 	}}
 }
@@ -1202,7 +1451,7 @@ func (n *wireGuardNode) peersBlock() formular.Block {
 }
 
 func (n *wireGuardNode) sendConfigFieldStatus(msg formular.FieldValidateMessage) {
-	next := n.config
+	next := n.config.clone()
 	switch msg.Field.FieldID {
 	case "privateKey":
 		if value, ok := stringFromAny(msg.Value); ok {
@@ -1237,8 +1486,8 @@ func (n *wireGuardNode) sendPeersFieldStatus(msg formular.FieldValidateMessage) 
 	if len(msg.Field.ElementPath) == 0 {
 		return
 	}
-	next := n.config
-	peers := slices.Clone(next.peers)
+	next := n.config.clone()
+	peers := next.peers
 	element := msg.Field.ElementPath[len(msg.Field.ElementPath)-1]
 	index := -1
 	for i, peer := range peers {
