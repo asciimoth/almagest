@@ -12,7 +12,6 @@ import (
 	"testing"
 	"time"
 
-	batchudp "github.com/asciimoth/batchudp"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
 	"github.com/asciimoth/gonnect"
@@ -431,7 +430,7 @@ func TestWireGuardKeysUseBase64AndAcceptUnpaddedOrLegacyHex(t *testing.T) {
 	privateKey[0] &= 248
 	privateKey[31] = (privateKey[31] & 127) | 64
 
-	privateKeyBase64 := encodeWireGuardKey(privateKey[:])
+	privateKeyBase64 := privateKey.Base64()
 	if len(privateKeyBase64) != 44 || !strings.HasSuffix(privateKeyBase64, "=") {
 		t.Fatalf("private key base64 = %q, want 44 chars with trailing padding", privateKeyBase64)
 	}
@@ -469,7 +468,7 @@ func TestWireGuardKeysUseBase64AndAcceptUnpaddedOrLegacyHex(t *testing.T) {
 	for i := range presharedKey {
 		presharedKey[i] = byte(255 - i)
 	}
-	presharedKeyBase64 := encodeWireGuardKey(presharedKey[:])
+	presharedKeyBase64 := presharedKey.Base64()
 	presharedKeyUnpadded := strings.TrimSuffix(presharedKeyBase64, "=")
 	if got, err := parseWireGuardPresharedKey(presharedKeyUnpadded); err != nil || got != presharedKey {
 		t.Fatalf("parseWireGuardPresharedKey(unpadded) = %x, %v; want %x", got, err, presharedKey)
@@ -535,12 +534,6 @@ func TestWireGuardNetworkAttachmentDoesNotOpenSocketsUntilTunAttached(t *testing
 	}, "wireguard network attached")
 	if got := network.listenCount(); got != 0 {
 		t.Fatalf("network listen count after network-only attach = %d, want 0", got)
-	}
-	wg.runtimeMu.Lock()
-	currentBind := wg.currentBind
-	wg.runtimeMu.Unlock()
-	if _, ok := currentBind.(*batchudp.StdNetBind); ok {
-		t.Fatal("WireGuard currentBind is concrete *batchudp.StdNetBind; want port abstraction wrapper")
 	}
 
 	privateKey, _ := wireGuardTestKeyPair(t, 4)
@@ -946,7 +939,7 @@ func wireGuardTestKeyPair(t *testing.T, seed byte) (privateKeyBase64, publicKeyB
 	if publicKeyBase64 == "" {
 		t.Fatal("wireGuardPublicKeyBase64 returned empty key")
 	}
-	return encodeWireGuardKey(privateKey[:]), publicKeyBase64
+	return privateKey.Base64(), publicKeyBase64
 }
 
 type captureWireGuardClass struct {

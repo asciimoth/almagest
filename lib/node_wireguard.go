@@ -1,13 +1,9 @@
 package almagest
 
 import (
-	"crypto/rand"
 	_ "embed"
-	"encoding/base64"
-	"encoding/hex"
 	"errors"
 	"fmt"
-	"net"
 	"net/netip"
 	"slices"
 	"strconv"
@@ -23,7 +19,6 @@ import (
 	"github.com/asciimoth/pasta/pasta"
 	"github.com/asciimoth/pasta/pasta/std"
 	wgdevice "github.com/asciimoth/wgo/device"
-	"golang.org/x/crypto/curve25519"
 )
 
 func init() {
@@ -281,6 +276,7 @@ type wireGuardNode struct {
 
 	runtimeStats            wgdevice.RuntimeStats
 	unsubscribeRuntimeStats func()
+	unsubscribeReceiveErrs  func()
 
 	// Runtime stats callbacks can be frequent and originate inside wgo runtime
 	// goroutines. Keep only the latest pending value and deliver one inbox
@@ -299,24 +295,12 @@ type wireGuardNode struct {
 	retryCancel     chan struct{}
 }
 
-// wireGuardPortBind intentionally hides batchudp's concrete StdNetBind type
-// from wgo. The underlying bind still uses the Network received via this node's
-// almagest/network port, while wgo's Linux sticky-socket netlink path only
-// activates for the concrete *batchudp.StdNetBind type.
-type wireGuardPortBind struct {
-	conn.Bind
-
-	mu             sync.Mutex
-	generation     uint64
-	onReceiveError func(bind *wireGuardPortBind, generation uint64, err error)
-}
-
 type wireGuardRetryMessage struct {
 	generation uint64
 }
 
-type wireGuardBindReceiveErrorMessage struct {
-	bind       *wireGuardPortBind
+type wireGuardReceiveErrorMessage struct {
+	dev        *wgdevice.Device
 	generation uint64
 	err        error
 }
@@ -387,6 +371,7 @@ func (n *wireGuardNode) OnStop() {
 	n.runtimeMu.Lock()
 	n.nextRuntimeGenerationLocked()
 	n.unsubscribeFromRuntimeStatsLocked()
+	n.unsubscribeFromReceiveErrorsLocked()
 	if n.dev != nil {
 		n.dev.Close()
 		n.dev = nil
@@ -557,8 +542,8 @@ func (n *wireGuardNode) OnInbox(message pasta.InboxMessage) error {
 	switch msg := message.Payload.(type) {
 	case wireGuardRetryMessage:
 		n.retryConfigToDevice(msg.generation)
-	case wireGuardBindReceiveErrorMessage:
-		n.handleBindReceiveError(msg)
+	case wireGuardReceiveErrorMessage:
+		n.handleReceiveError(msg)
 	case wireGuardRuntimeResultMessage:
 		n.handleRuntimeResult(msg)
 	case wireGuardRuntimeStatsMessage:
@@ -597,6 +582,7 @@ func (n *wireGuardNode) ensureDeviceLocked() {
 	n.dev = wgdevice.NewDevice(nil, nil, logger)
 	n.runtimeStats = n.dev.RuntimeStats()
 	n.subscribeToRuntimeStatsLocked(n.dev)
+	n.subscribeToReceiveErrorsLocked(n.dev)
 }
 
 func (n *wireGuardNode) applyConfigForm(values map[string]any) error {
@@ -675,40 +661,23 @@ func (n *wireGuardNode) applyConfigToDeviceLocked(rebuildPeers bool) error {
 			return err
 		}
 	}
-	privateKey, err := parseWireGuardPrivateKey(n.config.privateKey)
+	deviceConfig, err := wireGuardDeviceConfig(n.config)
 	if err != nil {
-		return fmt.Errorf("private key: %w", err)
+		return err
 	}
-	if err := n.dev.SetPrivateKey(privateKey); err != nil {
-		return fmt.Errorf("set private key: %w", err)
-	}
-	amneziaWG, err := n.config.amneziaWG.deviceConfig()
-	if err != nil {
-		return fmt.Errorf("amneziawg config: %w", err)
-	}
-	if err := n.dev.SetAmneziaWGConfig(amneziaWG); err != nil {
-		return fmt.Errorf("set amneziawg config: %w", err)
-	}
-	if rebuildPeers {
-		if err := n.rebuildPeers(); err != nil {
-			return err
-		}
+	if err := n.dev.ApplyConfig(deviceConfig, wgdevice.ApplyConfigOptions{
+		ReplacePeers:   rebuildPeers,
+		ApplyEndpoints: active,
+		ActivatePeers:  active,
+	}); err != nil {
+		return fmt.Errorf("apply config: %w", err)
 	}
 	n.refreshRuntimeStatsLocked()
 	if !active {
 		return nil
 	}
-	if err := n.dev.SetListenPort(uint16(n.config.listenPort)); err != nil {
-		return fmt.Errorf("set listen port: %w", err)
-	}
-	if err := n.applyPeerEndpoints(); err != nil {
-		return err
-	}
 	if err := n.dev.Up(); err != nil {
 		return fmt.Errorf("bring device up: %w", err)
-	}
-	if err := n.activatePeers(); err != nil {
-		return err
 	}
 	n.refreshRuntimeStatsLocked()
 	return nil
@@ -726,82 +695,6 @@ func (n *wireGuardNode) nextRuntimeGenerationLocked() uint64 {
 // work without taking runtimeMu while the runtime worker is still active.
 func (n *wireGuardNode) currentRuntimeGeneration() uint64 {
 	return n.runtimeGeneration.Load()
-}
-
-func (n *wireGuardNode) activatePeers() error {
-	for _, peer := range n.config.peers {
-		publicKey, err := parseWireGuardPublicKey(peer.publicKey)
-		if err != nil {
-			return fmt.Errorf("peer %s public key: %w", peerLabel(peer), err)
-		}
-		if err := n.dev.ActivatePeer(publicKey); err != nil {
-			return fmt.Errorf("activate peer %s: %w", peerLabel(peer), err)
-		}
-	}
-	return nil
-}
-
-func (n *wireGuardNode) rebuildPeers() error {
-	n.dev.RemoveAllPeers()
-	for _, peer := range n.config.peers {
-		if peer.publicKey == "" {
-			continue
-		}
-		publicKey, err := parseWireGuardPublicKey(peer.publicKey)
-		if err != nil {
-			return fmt.Errorf("peer %s public key: %w", peerLabel(peer), err)
-		}
-		if _, err := n.dev.NewPeer(publicKey); err != nil {
-			return fmt.Errorf("create peer %s: %w", peerLabel(peer), err)
-		}
-		if err := n.dev.SetPeerProtocolVersion(publicKey, 1); err != nil {
-			return fmt.Errorf("set peer %s protocol: %w", peerLabel(peer), err)
-		}
-		presharedKey, err := parseWireGuardPresharedKey(peer.presharedKey)
-		if err != nil {
-			return fmt.Errorf("peer %s preshared key: %w", peerLabel(peer), err)
-		}
-		if err := n.dev.SetPeerPresharedKey(publicKey, presharedKey); err != nil {
-			return fmt.Errorf("set peer %s preshared key: %w", peerLabel(peer), err)
-		}
-		allowedIPs, err := parseWireGuardAllowedIPs(peer.allowedIPs)
-		if err != nil {
-			return fmt.Errorf("peer %s allowed IPs: %w", peerLabel(peer), err)
-		}
-		if err := n.dev.ReplacePeerAllowedIPs(publicKey, allowedIPs); err != nil {
-			return fmt.Errorf("set peer %s allowed IPs: %w", peerLabel(peer), err)
-		}
-		if err := n.dev.SetPeerPersistentKeepaliveInterval(publicKey, uint16(peer.persistentKeepaliveInterval)); err != nil {
-			return fmt.Errorf("set peer %s keepalive: %w", peerLabel(peer), err)
-		}
-		if peer.amneziaWGOverride {
-			amneziaWG, err := peer.amneziaWG.deviceConfig()
-			if err != nil {
-				return fmt.Errorf("peer %s amneziawg config: %w", peerLabel(peer), err)
-			}
-			if err := n.dev.SetPeerAmneziaWGConfig(publicKey, amneziaWG); err != nil {
-				return fmt.Errorf("set peer %s amneziawg config: %w", peerLabel(peer), err)
-			}
-		}
-	}
-	n.refreshRuntimeStatsLocked()
-	return nil
-}
-
-func (n *wireGuardNode) applyPeerEndpoints() error {
-	for _, peer := range n.config.peers {
-		if peer.publicKey == "" || peer.endpoint == "" {
-			continue
-		}
-		publicKey, err := parseWireGuardPublicKey(peer.publicKey)
-		if err != nil {
-			return fmt.Errorf("peer %s public key: %w", peerLabel(peer), err)
-		}
-		if err := n.dev.SetPeerEndpoint(publicKey, peer.endpoint); err != nil {
-			return fmt.Errorf("set peer %s endpoint: %w", peerLabel(peer), err)
-		}
-	}
-	return nil
 }
 
 func (n *wireGuardNode) attachTun(t tun.Tun) {
@@ -971,21 +864,19 @@ func (n *wireGuardNode) attachCurrentNetworkBind(generation uint64) (bool, error
 			AllowSingleFamily: true,
 		})
 	}
-	bind := &wireGuardPortBind{Bind: networkBind}
-	bind.onReceiveError = n.notifyBindReceiveError
 	var err error
 	if n.currentBind == nil {
-		err = n.dev.AttachBind(bind)
+		err = n.dev.AttachBind(networkBind)
 	} else {
-		err = n.dev.ReplaceBind(bind)
+		err = n.dev.ReplaceBind(networkBind)
 	}
 	if err != nil {
 		_ = n.dev.DetachBind()
-		_ = bind.Close()
+		_ = networkBind.Close()
 		n.currentBind = nil
 		return n.currentNetwork != nil, fmt.Errorf("attach network: %w", err), true
 	}
-	n.currentBind = bind
+	n.currentBind = networkBind
 	active := n.hasActiveAttachmentsLocked()
 	if active {
 		return active, n.applyConfigToDeviceLocked(false), true
@@ -993,26 +884,29 @@ func (n *wireGuardNode) attachCurrentNetworkBind(generation uint64) (bool, error
 	return false, nil, true
 }
 
-func (n *wireGuardNode) notifyBindReceiveError(bind *wireGuardPortBind, generation uint64, err error) {
+func (n *wireGuardNode) notifyReceiveError(dev *wgdevice.Device, err error) {
 	if n.w == nil || n.id == 0 {
 		return
 	}
-	go n.sendInternal(wireGuardBindReceiveErrorMessage{
-		bind:       bind,
-		generation: generation,
+	go n.sendInternal(wireGuardReceiveErrorMessage{
+		dev:        dev,
+		generation: n.currentRuntimeGeneration(),
 		err:        err,
 	})
 }
 
-func (n *wireGuardNode) handleBindReceiveError(msg wireGuardBindReceiveErrorMessage) {
-	if msg.bind == nil || msg.err == nil {
+func (n *wireGuardNode) handleReceiveError(msg wireGuardReceiveErrorMessage) {
+	if msg.dev == nil || msg.err == nil {
+		return
+	}
+	if msg.generation != n.currentRuntimeGeneration() {
 		return
 	}
 	if !n.runtimeMu.TryLock() {
 		n.deferInternal(msg)
 		return
 	}
-	current := n.currentBind == msg.bind && msg.bind.isCurrentGeneration(msg.generation)
+	current := msg.dev == n.dev && msg.generation == n.currentRuntimeGeneration()
 	retry := n.hasActiveAttachmentsLocked()
 	n.runtimeMu.Unlock()
 	if !current {
@@ -1107,54 +1001,6 @@ func (n *wireGuardNode) isCurrentConfigRetry(generation uint64) bool {
 	n.retryMu.Lock()
 	defer n.retryMu.Unlock()
 	return n.retryGeneration == generation
-}
-
-func (b *wireGuardPortBind) Open(port uint16) ([]conn.ReceiveFunc, uint16, error) {
-	fns, actualPort, err := b.Bind.Open(port)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	b.mu.Lock()
-	b.generation++
-	generation := b.generation
-	b.mu.Unlock()
-
-	if b.onReceiveError == nil {
-		return fns, actualPort, nil
-	}
-
-	wrapped := make([]conn.ReceiveFunc, len(fns))
-	for i, fn := range fns {
-		wrapped[i] = b.wrapReceiveFunc(generation, fn)
-	}
-	return wrapped, actualPort, nil
-}
-
-func (b *wireGuardPortBind) wrapReceiveFunc(generation uint64, fn conn.ReceiveFunc) conn.ReceiveFunc {
-	return func(packets [][]byte, sizes []int, eps []conn.Endpoint) (int, error) {
-		n, err := fn(packets, sizes, eps)
-		if wireGuardReceiveErrorShouldRetry(err) {
-			b.onReceiveError(b, generation, err)
-		}
-		return n, err
-	}
-}
-
-func (b *wireGuardPortBind) isCurrentGeneration(generation uint64) bool {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return b.generation == generation
-}
-
-func wireGuardReceiveErrorShouldRetry(err error) bool {
-	if err == nil || errors.Is(err, net.ErrClosed) {
-		return false
-	}
-	if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-		return false
-	}
-	return true
 }
 
 func (n *wireGuardNode) requestPort(port uint64) {
@@ -1261,6 +1107,27 @@ func (n *wireGuardNode) unsubscribeFromRuntimeStatsLocked() {
 	n.unsubscribeRuntimeStats = nil
 }
 
+func (n *wireGuardNode) subscribeToReceiveErrorsLocked(dev *wgdevice.Device) {
+	if dev == nil || n.w == nil || n.id == 0 {
+		return
+	}
+	n.unsubscribeFromReceiveErrorsLocked()
+	n.unsubscribeReceiveErrs = dev.SubscribeReceiveErrors(func(receiveErr wgdevice.ReceiveError) {
+		if !wgdevice.ReceiveErrorShouldRecover(receiveErr.Err) {
+			return
+		}
+		n.notifyReceiveError(dev, receiveErr.Err)
+	})
+}
+
+func (n *wireGuardNode) unsubscribeFromReceiveErrorsLocked() {
+	if n.unsubscribeReceiveErrs == nil {
+		return
+	}
+	n.unsubscribeReceiveErrs()
+	n.unsubscribeReceiveErrs = nil
+}
+
 func (n *wireGuardNode) queueRuntimeStats(dev *wgdevice.Device, stats wgdevice.RuntimeStats) {
 	if n.w == nil || n.id == 0 {
 		return
@@ -1309,7 +1176,7 @@ func (n *wireGuardNode) handleRuntimeStats(msg wireGuardRuntimeStatsMessage) {
 		n.runtimeMu.Unlock()
 		return
 	}
-	if !wireGuardRuntimeStatsChanged(n.runtimeStats, stats) {
+	if n.runtimeStats.Equal(stats) {
 		n.runtimeMu.Unlock()
 		return
 	}
@@ -1324,17 +1191,6 @@ func (n *wireGuardNode) refreshRuntimeStatsLocked() {
 		return
 	}
 	n.runtimeStats = n.dev.RuntimeStats()
-}
-
-func wireGuardRuntimeStatsChanged(a, b wgdevice.RuntimeStats) bool {
-	return a.PeerCount != b.PeerCount ||
-		a.ActivePeerCount != b.ActivePeerCount ||
-		a.ConnectedPeerCount != b.ConnectedPeerCount ||
-		a.RxBytes != b.RxBytes ||
-		a.TxBytes != b.TxBytes ||
-		a.RxPackets != b.RxPackets ||
-		a.TxPackets != b.TxPackets ||
-		!a.LastHandshakeTime.Equal(b.LastHandshakeTime)
 }
 
 func (n *wireGuardNode) sendMenuSnapshot() {
@@ -1636,65 +1492,30 @@ func wireGuardDeviceConfig(config wireGuardConfig) (wgdevice.DeviceConfig, error
 }
 
 func parseWireGuardPrivateKey(value string) (wgdevice.NoisePrivateKey, error) {
-	var key wgdevice.NoisePrivateKey
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return key, nil
-	}
-	if bytes, err := decodeWireGuardKey(value); err == nil {
-		copy(key[:], bytes)
-		key[0] &= 248
-		key[31] = (key[31] & 127) | 64
-		return key, nil
-	}
-	return key, key.FromHex(normalizeLegacyHexKey(value))
+	return wgdevice.ParsePrivateKey(strings.TrimSpace(value))
 }
 
 func generateWireGuardPrivateKeyBase64() (string, error) {
-	var key wgdevice.NoisePrivateKey
-	if _, err := rand.Read(key[:]); err != nil {
+	key, err := wgdevice.GeneratePrivateKey()
+	if err != nil {
 		return "", err
 	}
-	key[0] &= 248
-	key[31] = (key[31] & 127) | 64
-	return encodeWireGuardKey(key[:]), nil
+	return key.Base64(), nil
 }
 
 func parseWireGuardPublicKey(value string) (wgdevice.NoisePublicKey, error) {
-	var key wgdevice.NoisePublicKey
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return key, errors.New("empty key")
-	}
-	if bytes, err := decodeWireGuardKey(value); err == nil {
-		copy(key[:], bytes)
-		return key, nil
-	}
-	return key, key.FromHex(normalizeLegacyHexKey(value))
+	return wgdevice.ParsePublicKey(strings.TrimSpace(value))
 }
 
 func parseWireGuardPresharedKey(value string) (wgdevice.NoisePresharedKey, error) {
-	var key wgdevice.NoisePresharedKey
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return key, nil
-	}
-	if bytes, err := decodeWireGuardKey(value); err == nil {
-		copy(key[:], bytes)
-		return key, nil
-	}
-	return key, key.FromHex(normalizeLegacyHexKey(value))
+	return wgdevice.ParsePresharedKey(strings.TrimSpace(value))
 }
 
 func wireGuardPublicKeyBase64(privateKey wgdevice.NoisePrivateKey) string {
 	if privateKey.IsZero() {
 		return ""
 	}
-	publicBytes, err := curve25519.X25519(privateKey[:], curve25519.Basepoint)
-	if err != nil {
-		return ""
-	}
-	return encodeWireGuardKey(publicBytes)
+	return privateKey.PublicKey().Base64()
 }
 
 func parseWireGuardAllowedIPs(value string) ([]netip.Prefix, error) {
@@ -1743,36 +1564,10 @@ func normalizeWireGuardKey(value string) string {
 	if value == "" {
 		return ""
 	}
-	if bytes, err := decodeWireGuardKey(value); err == nil {
-		return encodeWireGuardKey(bytes)
-	}
-	if bytes, err := hex.DecodeString(normalizeLegacyHexKey(value)); err == nil && len(bytes) == wgdevice.NoisePrivateKeySize {
-		return encodeWireGuardKey(bytes)
+	if key, err := wgdevice.ParsePresharedKey(value); err == nil {
+		return key.Base64()
 	}
 	return value
-}
-
-func encodeWireGuardKey(key []byte) string {
-	return base64.StdEncoding.EncodeToString(key)
-}
-
-func decodeWireGuardKey(value string) ([]byte, error) {
-	value = strings.TrimSpace(value)
-	bytes, err := base64.StdEncoding.DecodeString(value)
-	if err != nil {
-		bytes, err = base64.RawStdEncoding.DecodeString(value)
-	}
-	if err != nil {
-		return nil, err
-	}
-	if len(bytes) != wgdevice.NoisePrivateKeySize {
-		return nil, errors.New("key must decode to 32 bytes")
-	}
-	return bytes, nil
-}
-
-func normalizeLegacyHexKey(value string) string {
-	return strings.ToLower(strings.TrimSpace(value))
 }
 
 func shortWireGuardKey(value string) string {
