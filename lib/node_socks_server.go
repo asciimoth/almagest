@@ -168,11 +168,11 @@ func (c *socksServerConfig) read(cfg configer.Config) {
 	if cfg == nil {
 		return
 	}
-	c.socksHost = readConfigString(cfg, "socksHost", c.socksHost)
-	c.socksPort = readConfigInt(cfg, "socksPort", c.socksPort)
-	c.wsHost = readConfigString(cfg, "wsHost", c.wsHost)
-	c.wsPort = readConfigInt(cfg, "wsPort", c.wsPort)
-	c.wsPath = normalizeSocksServerPath(readConfigString(cfg, "wsPath", c.wsPath))
+	c.socksHost = configer.String(cfg, configer.Path{"socksHost"}, c.socksHost)
+	c.socksPort = configer.Int(cfg, configer.Path{"socksPort"}, c.socksPort)
+	c.wsHost = configer.String(cfg, configer.Path{"wsHost"}, c.wsHost)
+	c.wsPort = configer.Int(cfg, configer.Path{"wsPort"}, c.wsPort)
+	c.wsPath = normalizeSocksServerPath(configer.String(cfg, configer.Path{"wsPath"}, c.wsPath))
 	if c.wsPath == "" {
 		c.wsPath = DefaultSocksServerWSPath
 	}
@@ -330,7 +330,7 @@ func (n *socksServerNode) OnSave(cfg configer.Config) error {
 	if err := pasta.DeleteNodeOwnedConfigKeys(cfg); err != nil {
 		return err
 	}
-	values := map[string]any{
+	return configer.SetMap(cfg, map[string]any{
 		"socksHost": n.config.socksHost,
 		"socksPort": n.config.socksPort,
 		"wsHost":    n.config.wsHost,
@@ -338,38 +338,32 @@ func (n *socksServerNode) OnSave(cfg configer.Config) error {
 		"wsPath":    n.config.wsPath,
 		"users":     socksServerUsersConfig(n.config.users),
 		"commands":  socksServerCommandsConfig(n.config.commands),
-	}
-	for key, value := range values {
-		if err := cfg.Set(configer.Path{key}, value); err != nil {
-			return err
-		}
-	}
-	return nil
+	})
 }
 
 func (n *socksServerNode) applyConfigForm(values map[string]any) error {
 	next := n.config
 	next.commands = maps.Clone(n.config.commands)
-	if value, ok := stringFromAny(values["socksHost"]); ok {
+	if value, ok := formular.StringValue(values["socksHost"]); ok {
 		next.socksHost = strings.TrimSpace(value)
 	}
-	if value, ok := intFromAny(values["socksPort"]); ok {
+	if value, ok := formular.IntValue(values["socksPort"]); ok {
 		next.socksPort = validPort(value)
 	}
-	if value, ok := stringFromAny(values["wsHost"]); ok {
+	if value, ok := formular.StringValue(values["wsHost"]); ok {
 		next.wsHost = strings.TrimSpace(value)
 	}
-	if value, ok := intFromAny(values["wsPort"]); ok {
+	if value, ok := formular.IntValue(values["wsPort"]); ok {
 		next.wsPort = validPort(value)
 	}
-	if value, ok := stringFromAny(values["wsPath"]); ok {
+	if value, ok := formular.StringValue(values["wsPath"]); ok {
 		next.wsPath = normalizeSocksServerPath(value)
 	}
 	if users, ok := parseSocksServerUsers(values["users"]); ok {
 		next.users = users
 	}
 	for cmd, field := range socksServerCommandFields() {
-		if value, ok := boolFromAny(values[field]); ok {
+		if value, ok := formular.BoolValue(values[field]); ok {
 			next.commands[cmd] = value
 		}
 	}
@@ -397,23 +391,23 @@ func (n *socksServerNode) sendConfigFieldStatus(msg formular.FieldValidateMessag
 	next := n.config
 	switch msg.Field.FieldID {
 	case "socksHost":
-		if value, ok := stringFromAny(msg.Value); ok {
+		if value, ok := formular.StringValue(msg.Value); ok {
 			next.socksHost = strings.TrimSpace(value)
 		}
 	case "socksPort":
-		if value, ok := intFromAny(msg.Value); ok {
+		if value, ok := formular.IntValue(msg.Value); ok {
 			next.socksPort = value
 		}
 	case "wsHost":
-		if value, ok := stringFromAny(msg.Value); ok {
+		if value, ok := formular.StringValue(msg.Value); ok {
 			next.wsHost = strings.TrimSpace(value)
 		}
 	case "wsPort":
-		if value, ok := intFromAny(msg.Value); ok {
+		if value, ok := formular.IntValue(msg.Value); ok {
 			next.wsPort = value
 		}
 	case "wsPath":
-		if value, ok := stringFromAny(msg.Value); ok {
+		if value, ok := formular.StringValue(msg.Value); ok {
 			next.wsPath = normalizeSocksServerPath(value)
 		}
 	default:
@@ -423,23 +417,7 @@ func (n *socksServerNode) sendConfigFieldStatus(msg formular.FieldValidateMessag
 		next.wsPath = DefaultSocksServerWSPath
 	}
 
-	status := formular.StatusOK
-	statusText := ""
-	if err := next.validate(); err != nil {
-		status = formular.StatusError
-		statusText = err.Error()
-	}
-	n.w.SendNodeMenuMsg(n.id, formular.FieldStatusMessage{
-		MessageBase: formular.MessageBase{
-			Type:            formular.MessageFieldStatus,
-			MenuID:          pasta.NodeMenuID(n.id),
-			MenuGeneration:  1,
-			BlockGeneration: 1,
-		},
-		Field:      msg.Field,
-		Status:     status,
-		StatusText: statusText,
-	})
+	n.w.SendNodeMenuMsg(n.id, formular.FieldStatusFromError(pasta.NodeMenuID(n.id), 1, 1, msg.Field, next.validate()))
 }
 
 func (n *socksServerNode) restartWorker() {
@@ -820,41 +798,28 @@ func (n *socksServerNode) portHasLinks(port uint64) bool {
 }
 
 func (n *socksServerNode) sendMenuSnapshot() {
-	n.w.SendNodeMenuMsg(n.id, formular.MenuSnapshotMessage{
-		MessageBase: formular.MessageBase{Type: formular.MessageMenuSnapshot, MenuID: pasta.NodeMenuID(n.id), MenuGeneration: 1},
-		Blocks:      []formular.Block{n.configBlock(), n.logsBlock()},
-	})
+	n.w.SendNodeMenuMsg(n.id, formular.MenuSnapshot(pasta.NodeMenuID(n.id), 1, n.configBlock(), n.logsBlock()))
 }
 
 func (n *socksServerNode) sendForcedMenuSnapshot() {
 	if n.w == nil || n.id == 0 {
 		return
 	}
-	n.w.SendNodeMenuMsg(n.id, formular.MenuSnapshotMessage{
-		MessageBase: formular.MessageBase{Type: formular.MessageMenuSnapshot, MenuID: pasta.NodeMenuID(n.id), MenuGeneration: 1},
-		Force:       true,
-		Blocks:      []formular.Block{n.configBlock(), n.logsBlock()},
-	})
+	n.w.SendNodeMenuMsg(n.id, formular.ForcedMenuSnapshot(pasta.NodeMenuID(n.id), 1, n.configBlock(), n.logsBlock()))
 }
 
 func (n *socksServerNode) sendConfigBlock() {
 	if n.w == nil || n.id == 0 {
 		return
 	}
-	n.w.SendNodeMenuMsg(n.id, formular.BlockSnapshotMessage{
-		MessageBase: formular.MessageBase{Type: formular.MessageBlockSnapshot, MenuID: pasta.NodeMenuID(n.id), MenuGeneration: 1, BlockGeneration: 1},
-		Block:       n.configBlock(),
-	})
+	n.w.SendNodeMenuMsg(n.id, formular.BlockSnapshot(pasta.NodeMenuID(n.id), 1, 1, n.configBlock()))
 }
 
 func (n *socksServerNode) sendLogsBlock() {
 	if n.w == nil || n.id == 0 {
 		return
 	}
-	n.w.SendNodeMenuMsg(n.id, formular.BlockSnapshotMessage{
-		MessageBase: formular.MessageBase{Type: formular.MessageBlockSnapshot, MenuID: pasta.NodeMenuID(n.id), MenuGeneration: 1, BlockGeneration: 1},
-		Block:       n.logsBlock(),
-	})
+	n.w.SendNodeMenuMsg(n.id, formular.BlockSnapshot(pasta.NodeMenuID(n.id), 1, 1, n.logsBlock()))
 }
 
 func (n *socksServerNode) configBlock() formular.Block {
@@ -890,53 +855,50 @@ func (n *socksServerNode) appendLog(level, text string) {
 }
 
 func socksServerTextField(id, label, value string, statusErr bool, statusText string) formular.Item {
-	field := &formular.Field{Kind: formular.FieldText, Value: value, Validation: true}
+	opts := []formular.FieldOption{formular.Validation}
 	if statusErr {
-		field.Status = formular.StatusError
-		field.StatusText = statusText
+		opts = append(opts, formular.Status(formular.StatusError), formular.StatusText(statusText))
 	}
-	return formular.Item{Type: formular.ItemField, ID: id, Label: label, Field: field}
+	return formular.TextField(id, label, value, opts...)
 }
 
 func socksServerIntField(id, label string, value int, statusErr bool, statusText string) formular.Item {
-	field := &formular.Field{Kind: formular.FieldInt, Value: value, Validation: true}
+	opts := []formular.FieldOption{formular.Validation}
 	if statusErr {
-		field.Status = formular.StatusError
-		field.StatusText = statusText
+		opts = append(opts, formular.Status(formular.StatusError), formular.StatusText(statusText))
 	}
-	return formular.Item{Type: formular.ItemField, ID: id, Label: label, Field: field}
+	return formular.IntField(id, label, value, opts...)
 }
 
 func socksServerCheckbox(id, label string, value bool) formular.Item {
-	return formular.Item{Type: formular.ItemField, ID: id, Label: label, Field: &formular.Field{Kind: formular.FieldCheckbox, Value: value}}
+	return formular.CheckboxField(id, label, value)
 }
 
 func socksServerUsersField(users []socksServerUser) formular.Item {
+	template := socksServerUserTemplate()
 	return formular.Item{Type: formular.ItemField, ID: "users", Label: "Users", Field: &formular.Field{
-		Kind: formular.FieldArray,
-		Templates: []formular.ArrayTemplate{{
-			Name:  "user",
-			Label: "User",
-			Items: []formular.Item{
-				{Type: formular.ItemField, ID: "username", Label: "Username", Field: &formular.Field{Kind: formular.FieldText}},
-				{Type: formular.ItemField, ID: "password", Label: "Password", Field: &formular.Field{Kind: formular.FieldText, Secret: true}},
-			},
-		}},
-		Elements: socksServerUserElements(users),
+		Kind:      formular.FieldArray,
+		Templates: []formular.ArrayTemplate{template},
+		Elements:  socksServerUserElements(users),
 	}}
 }
 
+func socksServerUserTemplate() formular.ArrayTemplate {
+	return formular.ArrayTemplate{
+		Name:  "user",
+		Label: "User",
+		Items: []formular.Item{
+			formular.TextField("username", "Username", ""),
+			formular.SecretTextField("password", "Password", ""),
+		},
+	}
+}
+
 func socksServerUserElements(users []socksServerUser) []formular.ArrayElement {
+	template := socksServerUserTemplate()
 	out := make([]formular.ArrayElement, 0, len(users))
 	for _, user := range users {
-		out = append(out, formular.ArrayElement{
-			ID:       user.id,
-			Template: "user",
-			Items: []formular.Item{
-				{Type: formular.ItemField, ID: "username", Label: "Username", Field: &formular.Field{Kind: formular.FieldText, Value: user.username}},
-				{Type: formular.ItemField, ID: "password", Label: "Password", Field: &formular.Field{Kind: formular.FieldText, Value: user.password, Secret: true}},
-			},
-		})
+		out = append(out, formular.InstantiateArrayTemplate(template, user.id, map[string]any{"username": user.username, "password": user.password}))
 	}
 	return out
 }
@@ -981,7 +943,7 @@ func parseSocksServerUsers(raw any) ([]socksServerUser, bool) {
 	case []any:
 		array := make([]formular.ArrayElementValue, 0, len(values))
 		for _, rawElement := range values {
-			element, ok := arrayElementValueFromAny(rawElement)
+			element, ok := formular.ArrayElementValueFromAny(rawElement)
 			if !ok {
 				continue
 			}
@@ -1000,8 +962,8 @@ func socksServerUsersFromArray(values []formular.ArrayElementValue) []socksServe
 		if value.Template != "" && value.Template != "user" {
 			continue
 		}
-		username, _ := stringFromAny(value.Values["username"])
-		password, _ := stringFromAny(value.Values["password"])
+		username, _ := formular.StringValue(value.Values["username"])
+		password, _ := formular.StringValue(value.Values["password"])
 		username = strings.TrimSpace(username)
 		if username == "" {
 			continue
@@ -1017,23 +979,6 @@ func socksServerUsersFromArray(values []formular.ArrayElementValue) []socksServe
 		out = append(out, socksServerUser{id: id, username: username, password: password})
 	}
 	return out
-}
-
-func arrayElementValueFromAny(raw any) (formular.ArrayElementValue, bool) {
-	switch value := raw.(type) {
-	case formular.ArrayElementValue:
-		return value, true
-	case map[string]any:
-		out := formular.ArrayElementValue{Values: map[string]any{}}
-		out.ID, _ = stringFromAny(value["id"])
-		out.Template, _ = stringFromAny(value["template"])
-		if values, ok := value["values"].(map[string]any); ok {
-			out.Values = values
-		}
-		return out, true
-	default:
-		return formular.ArrayElementValue{}, false
-	}
 }
 
 func socksServerUsersConfig(users []socksServerUser) []map[string]any {
@@ -1070,9 +1015,9 @@ func readSocksServerUsers(cfg configer.Config) ([]socksServerUser, bool) {
 }
 
 func socksServerUserFromConfigMap(index int, value map[string]any) socksServerUser {
-	id, _ := stringFromAny(value["id"])
-	username, _ := stringFromAny(value["username"])
-	password, _ := stringFromAny(value["password"])
+	id, _ := formular.StringValue(value["id"])
+	username, _ := formular.StringValue(value["username"])
+	password, _ := formular.StringValue(value["password"])
 	if id == "" {
 		id = fmt.Sprintf("user-%d", index+1)
 	}
@@ -1106,7 +1051,7 @@ func readSocksServerCommands(cfg configer.Config) (map[protocol.Cmd]bool, bool) 
 	if ok {
 		out := defaultSocksServerCommands()
 		for cmd, field := range socksServerCommandFields() {
-			if value, ok := boolFromAny(values[field]); ok {
+			if value, ok := formular.BoolValue(values[field]); ok {
 				out[cmd] = value
 			}
 		}
@@ -1149,37 +1094,6 @@ func validPort(value int) int {
 		return 0
 	}
 	return value
-}
-
-func stringFromAny(value any) (string, bool) {
-	switch v := value.(type) {
-	case string:
-		return v, true
-	default:
-		return "", false
-	}
-}
-
-func intFromAny(value any) (int, bool) {
-	switch v := value.(type) {
-	case int:
-		return v, true
-	case int64:
-		return int(v), true
-	case float64:
-		return int(v), true
-	default:
-		return 0, false
-	}
-}
-
-func boolFromAny(value any) (bool, bool) {
-	switch v := value.(type) {
-	case bool:
-		return v, true
-	default:
-		return false, false
-	}
 }
 
 func socksAuthSummary(info protocol.AuthInfo) string {

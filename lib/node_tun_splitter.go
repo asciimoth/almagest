@@ -1,6 +1,7 @@
 package almagest
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -55,7 +56,7 @@ func (c tunSplitterClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassStat
 	return &tunSplitterNode{
 		engine:        c.engine,
 		pool:          pool,
-		rulesText:     readConfigString(cfg, "rules", ""),
+		rulesText:     configer.String(cfg, configer.Path{"rules"}, ""),
 		routingConfig: readTunSplitterRoutingConfig(cfg),
 		splitter:      tun.NewSplitter(pool),
 		sent:          map[uint64]tun.Tun{},
@@ -289,24 +290,18 @@ func (n *tunSplitterNode) OnSave(cfg configer.Config) error {
 	if err := pasta.DeleteNodeOwnedConfigKeys(cfg); err != nil {
 		return err
 	}
-	values := map[string]any{
+	return configer.SetMap(cfg, map[string]any{
 		"rules":                n.rulesText,
 		"ruleCacheTTL":         durationMilliseconds(n.routingConfig.ruleCacheTTL),
 		"ruleCacheMaxEntries":  n.routingConfig.ruleCacheMaxEntries,
 		"routeCacheTTL":        durationMilliseconds(n.routingConfig.routeCacheTTL),
 		"routeCacheMaxEntries": n.routingConfig.routeCacheMaxEntries,
-	}
-	for key, value := range values {
-		if err := cfg.Set(configer.Path{key}, value); err != nil {
-			return err
-		}
-	}
-	return nil
+	})
 }
 
 func (n *tunSplitterNode) applyConfigForm(values map[string]any) error {
 	text := n.rulesText
-	if value, ok := stringFromAny(values["rules"]); ok {
+	if value, ok := formular.StringValue(values["rules"]); ok {
 		text = value
 	}
 	config := n.routingConfig.withValues(values)
@@ -328,47 +323,20 @@ func (n *tunSplitterNode) applyConfigForm(values map[string]any) error {
 }
 
 func (n *tunSplitterNode) sendRulesFieldStatus(msg formular.FieldValidateMessage) {
-	text, _ := stringFromAny(msg.Value)
-	status := formular.StatusOK
-	statusText := ""
+	text, _ := formular.StringValue(msg.Value)
 	router, err := n.compileRules(text, n.routingConfig)
-	if err != nil {
-		status = formular.StatusError
-		statusText = err.Error()
-	} else if router != nil {
+	if err == nil && router != nil {
 		_ = router.Close()
 	}
-	n.w.SendNodeMenuMsg(n.id, formular.FieldStatusMessage{
-		MessageBase: formular.MessageBase{
-			Type:            formular.MessageFieldStatus,
-			MenuID:          pasta.NodeMenuID(n.id),
-			MenuGeneration:  1,
-			BlockGeneration: 1,
-		},
-		Field:      msg.Field,
-		Status:     status,
-		StatusText: statusText,
-	})
+	n.w.SendNodeMenuMsg(n.id, formular.FieldStatusFromError(pasta.NodeMenuID(n.id), 1, 1, msg.Field, err))
 }
 
 func (n *tunSplitterNode) sendIntFieldStatus(msg formular.FieldValidateMessage) {
-	status := formular.StatusOK
-	statusText := ""
-	if _, ok := intFromAny(msg.Value); !ok {
-		status = formular.StatusError
-		statusText = "must be an integer"
+	var err error
+	if _, ok := formular.IntValue(msg.Value); !ok {
+		err = errors.New("must be an integer")
 	}
-	n.w.SendNodeMenuMsg(n.id, formular.FieldStatusMessage{
-		MessageBase: formular.MessageBase{
-			Type:            formular.MessageFieldStatus,
-			MenuID:          pasta.NodeMenuID(n.id),
-			MenuGeneration:  1,
-			BlockGeneration: 1,
-		},
-		Field:      msg.Field,
-		Status:     status,
-		StatusText: statusText,
-	})
+	n.w.SendNodeMenuMsg(n.id, formular.FieldStatusFromError(pasta.NodeMenuID(n.id), 1, 1, msg.Field, err))
 }
 
 func (n *tunSplitterNode) compileRules(text string, config tunSplitterRoutingConfig) (routing.SplitRouter, error) {
@@ -586,31 +554,21 @@ func (n *tunSplitterNode) sendMenuSnapshot() {
 	if n.w == nil || n.id == 0 {
 		return
 	}
-	n.w.SendNodeMenuMsg(n.id, formular.MenuSnapshotMessage{
-		MessageBase: formular.MessageBase{Type: formular.MessageMenuSnapshot, MenuID: pasta.NodeMenuID(n.id), MenuGeneration: 1},
-		Blocks:      []formular.Block{n.configBlock()},
-	})
+	n.w.SendNodeMenuMsg(n.id, formular.MenuSnapshot(pasta.NodeMenuID(n.id), 1, n.configBlock()))
 }
 
 func (n *tunSplitterNode) sendForcedMenuSnapshot() {
 	if n.w == nil || n.id == 0 {
 		return
 	}
-	n.w.SendNodeMenuMsg(n.id, formular.MenuSnapshotMessage{
-		MessageBase: formular.MessageBase{Type: formular.MessageMenuSnapshot, MenuID: pasta.NodeMenuID(n.id), MenuGeneration: 1},
-		Force:       true,
-		Blocks:      []formular.Block{n.configBlock()},
-	})
+	n.w.SendNodeMenuMsg(n.id, formular.ForcedMenuSnapshot(pasta.NodeMenuID(n.id), 1, n.configBlock()))
 }
 
 func (n *tunSplitterNode) sendConfigBlock() {
 	if n.w == nil || n.id == 0 {
 		return
 	}
-	n.w.SendNodeMenuMsg(n.id, formular.BlockSnapshotMessage{
-		MessageBase: formular.MessageBase{Type: formular.MessageBlockSnapshot, MenuID: pasta.NodeMenuID(n.id), MenuGeneration: 1, BlockGeneration: 1},
-		Block:       n.configBlock(),
-	})
+	n.w.SendNodeMenuMsg(n.id, formular.BlockSnapshot(pasta.NodeMenuID(n.id), 1, 1, n.configBlock()))
 }
 
 func (n *tunSplitterNode) configBlock() formular.Block {
@@ -662,24 +620,24 @@ func tunSplitterIntField(id, label string, value int, help string) formular.Item
 
 func readTunSplitterRoutingConfig(cfg configer.Config) tunSplitterRoutingConfig {
 	return tunSplitterRoutingConfig{
-		ruleCacheTTL:         time.Duration(readConfigInt(cfg, "ruleCacheTTL", 0)) * time.Millisecond,
-		ruleCacheMaxEntries:  readConfigInt(cfg, "ruleCacheMaxEntries", 0),
-		routeCacheTTL:        time.Duration(readConfigInt(cfg, "routeCacheTTL", 0)) * time.Millisecond,
-		routeCacheMaxEntries: readConfigInt(cfg, "routeCacheMaxEntries", 0),
+		ruleCacheTTL:         time.Duration(configer.Int(cfg, configer.Path{"ruleCacheTTL"}, 0)) * time.Millisecond,
+		ruleCacheMaxEntries:  configer.Int(cfg, configer.Path{"ruleCacheMaxEntries"}, 0),
+		routeCacheTTL:        time.Duration(configer.Int(cfg, configer.Path{"routeCacheTTL"}, 0)) * time.Millisecond,
+		routeCacheMaxEntries: configer.Int(cfg, configer.Path{"routeCacheMaxEntries"}, 0),
 	}
 }
 
 func (c tunSplitterRoutingConfig) withValues(values map[string]any) tunSplitterRoutingConfig {
-	if value, ok := intFromAny(values["ruleCacheTTL"]); ok {
+	if value, ok := formular.IntValue(values["ruleCacheTTL"]); ok {
 		c.ruleCacheTTL = time.Duration(value) * time.Millisecond
 	}
-	if value, ok := intFromAny(values["ruleCacheMaxEntries"]); ok {
+	if value, ok := formular.IntValue(values["ruleCacheMaxEntries"]); ok {
 		c.ruleCacheMaxEntries = value
 	}
-	if value, ok := intFromAny(values["routeCacheTTL"]); ok {
+	if value, ok := formular.IntValue(values["routeCacheTTL"]); ok {
 		c.routeCacheTTL = time.Duration(value) * time.Millisecond
 	}
-	if value, ok := intFromAny(values["routeCacheMaxEntries"]); ok {
+	if value, ok := formular.IntValue(values["routeCacheMaxEntries"]); ok {
 		c.routeCacheMaxEntries = value
 	}
 	return c

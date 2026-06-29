@@ -60,10 +60,10 @@ func (c *tunNodeConfig) read(cfg configer.Config) {
 	if cfg == nil {
 		return
 	}
-	c.name = readConfigString(cfg, "name", c.name)
-	c.tunAddrs = readConfigString(cfg, "tunAddrs", c.tunAddrs)
-	c.tunRoutes = readConfigString(cfg, "tunRoutes", c.tunRoutes)
-	c.mtu = readConfigInt(cfg, "mtu", c.mtu)
+	c.name = configer.String(cfg, configer.Path{"name"}, c.name)
+	c.tunAddrs = configer.String(cfg, configer.Path{"tunAddrs"}, c.tunAddrs)
+	c.tunRoutes = configer.String(cfg, configer.Path{"tunRoutes"}, c.tunRoutes)
+	c.mtu = configer.Int(cfg, configer.Path{"mtu"}, c.mtu)
 	c.normalize()
 }
 
@@ -219,23 +219,17 @@ func (n *tunNode) OnSave(cfg configer.Config) error {
 	if err := pasta.DeleteNodeOwnedConfigKeys(cfg); err != nil {
 		return err
 	}
-	values := map[string]any{
+	return configer.SetMap(cfg, map[string]any{
 		"name":      n.config.name,
 		"tunAddrs":  n.config.tunAddrs,
 		"tunRoutes": n.config.tunRoutes,
 		"mtu":       n.config.mtu,
-	}
-	for key, value := range values {
-		if err := cfg.Set(configer.Path{key}, value); err != nil {
-			return err
-		}
-	}
-	return nil
+	})
 }
 
 func (n *tunNode) applyConfigForm(values map[string]any) error {
 	next := n.config
-	if value, ok := stringFromAny(values["name"]); ok {
+	if value, ok := formular.StringValue(values["name"]); ok {
 		next.name = value
 	}
 	if value, ok := defaultTunStringListFromAny(values["tunAddrs"]); ok {
@@ -244,7 +238,7 @@ func (n *tunNode) applyConfigForm(values map[string]any) error {
 	if value, ok := defaultTunStringListFromAny(values["tunRoutes"]); ok {
 		next.tunRoutes = value
 	}
-	if value, ok := intFromAny(values["mtu"]); ok {
+	if value, ok := formular.IntValue(values["mtu"]); ok {
 		next.mtu = value
 	}
 	next.normalize()
@@ -264,34 +258,18 @@ func (n *tunNode) applyConfigForm(values map[string]any) error {
 }
 
 func (n *tunNode) sendConfigFieldStatus(msg formular.FieldValidateMessage) {
-	status := formular.StatusOK
-	statusText := ""
-	if err := n.validateConfigField(msg); err != nil {
-		status = formular.StatusError
-		statusText = err.Error()
-	}
-	n.w.SendNodeMenuMsg(n.id, formular.FieldStatusMessage{
-		MessageBase: formular.MessageBase{
-			Type:            formular.MessageFieldStatus,
-			MenuID:          pasta.NodeMenuID(n.id),
-			MenuGeneration:  1,
-			BlockGeneration: 1,
-		},
-		Field:      msg.Field,
-		Status:     status,
-		StatusText: statusText,
-	})
+	n.w.SendNodeMenuMsg(n.id, formular.FieldStatusFromError(pasta.NodeMenuID(n.id), 1, 1, msg.Field, n.validateConfigField(msg)))
 }
 
 func (n *tunNode) validateConfigField(msg formular.FieldValidateMessage) error {
 	next := n.config
 	switch msg.Field.FieldID {
 	case "name":
-		if value, ok := stringFromAny(msg.Value); ok {
+		if value, ok := formular.StringValue(msg.Value); ok {
 			next.name = value
 		}
 	case "mtu":
-		if value, ok := intFromAny(msg.Value); ok {
+		if value, ok := formular.IntValue(msg.Value); ok {
 			next.mtu = value
 		}
 	default:
@@ -535,21 +513,14 @@ func (n *tunNode) updateLabel() error {
 }
 
 func (n *tunNode) sendMenuSnapshot() {
-	n.w.SendNodeMenuMsg(n.id, formular.MenuSnapshotMessage{
-		MessageBase: formular.MessageBase{Type: formular.MessageMenuSnapshot, MenuID: pasta.NodeMenuID(n.id), MenuGeneration: 1},
-		Blocks:      n.menuBlocks(),
-	})
+	n.w.SendNodeMenuMsg(n.id, formular.MenuSnapshot(pasta.NodeMenuID(n.id), 1, n.menuBlocks()...))
 }
 
 func (n *tunNode) sendForcedMenuSnapshot() {
 	if n.w == nil || n.id == 0 {
 		return
 	}
-	n.w.SendNodeMenuMsg(n.id, formular.MenuSnapshotMessage{
-		MessageBase: formular.MessageBase{Type: formular.MessageMenuSnapshot, MenuID: pasta.NodeMenuID(n.id), MenuGeneration: 1},
-		Force:       true,
-		Blocks:      n.menuBlocks(),
-	})
+	n.w.SendNodeMenuMsg(n.id, formular.ForcedMenuSnapshot(pasta.NodeMenuID(n.id), 1, n.menuBlocks()...))
 }
 
 func (n *tunNode) menuBlocks() []formular.Block {
@@ -560,10 +531,7 @@ func (n *tunNode) sendEffectiveBlock() {
 	if n.w == nil || n.id == 0 {
 		return
 	}
-	n.w.SendNodeMenuMsg(n.id, formular.BlockSnapshotMessage{
-		MessageBase: formular.MessageBase{Type: formular.MessageBlockSnapshot, MenuID: pasta.NodeMenuID(n.id), MenuGeneration: 1, BlockGeneration: 1},
-		Block:       n.effectiveBlock(),
-	})
+	n.w.SendNodeMenuMsg(n.id, formular.BlockSnapshot(pasta.NodeMenuID(n.id), 1, 1, n.effectiveBlock()))
 }
 
 func (n *tunNode) effectiveBlock() formular.Block {

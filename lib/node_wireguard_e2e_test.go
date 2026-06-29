@@ -513,7 +513,7 @@ func (e *httpE2E) wireGuardStatusValue(node uint64, field string) string {
 	if !ok {
 		return ""
 	}
-	if value, ok := stringFromAny(item.Value); ok {
+	if value, ok := formular.StringValue(item.Value); ok {
 		return value
 	}
 	return fmt.Sprint(item.Value)

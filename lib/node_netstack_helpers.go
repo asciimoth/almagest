@@ -5,61 +5,9 @@ import (
 	"net/netip"
 	"strings"
 
-	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
 	"github.com/asciimoth/pasta/pasta"
 )
-
-func readConfigBool(cfg configer.Config, key string, fallback bool) bool {
-	if cfg == nil {
-		return fallback
-	}
-	raw, err := cfg.Get(configer.Path{key})
-	if err != nil {
-		return fallback
-	}
-	if value, ok := raw.(bool); ok {
-		return value
-	}
-	return fallback
-}
-
-func readConfigFloat(cfg configer.Config, key string, fallback float64) float64 {
-	if cfg == nil {
-		return fallback
-	}
-	raw, err := cfg.Get(configer.Path{key})
-	if err != nil {
-		return fallback
-	}
-	switch value := raw.(type) {
-	case float64:
-		return value
-	case float32:
-		return float64(value)
-	case int:
-		return float64(value)
-	case int64:
-		return float64(value)
-	default:
-		return fallback
-	}
-}
-
-func floatFromAny(value any) (float64, bool) {
-	switch v := value.(type) {
-	case float64:
-		return v, true
-	case float32:
-		return float64(v), true
-	case int:
-		return float64(v), true
-	case int64:
-		return float64(v), true
-	default:
-		return 0, false
-	}
-}
 
 func normalizeListText(value string) string {
 	fields := strings.FieldsFunc(value, func(r rune) bool {
@@ -102,51 +50,42 @@ func portHasLinks(w *pasta.Workspace, port uint64) bool {
 }
 
 func configTextField(id, label, value string, statusErr bool, statusText string, multiline bool) formular.Item {
-	field := &formular.Field{Kind: formular.FieldText, Value: value, Validation: true, Multiline: multiline}
-	if statusErr {
-		field.Status = formular.StatusError
-		field.StatusText = statusText
+	opts := []formular.FieldOption{formular.Validation}
+	if multiline {
+		opts = append(opts, formular.Multiline)
 	}
-	return formular.Item{Type: formular.ItemField, ID: id, Label: label, Field: field}
+	if statusErr {
+		opts = append(opts, formular.Status(formular.StatusError), formular.StatusText(statusText))
+	}
+	return formular.TextField(id, label, value, opts...)
 }
 
 func configIntField(id, label string, value int, statusErr bool, statusText string) formular.Item {
-	field := &formular.Field{Kind: formular.FieldInt, Value: value, Validation: true}
+	opts := []formular.FieldOption{formular.Validation}
 	if statusErr {
-		field.Status = formular.StatusError
-		field.StatusText = statusText
+		opts = append(opts, formular.Status(formular.StatusError), formular.StatusText(statusText))
 	}
-	return formular.Item{Type: formular.ItemField, ID: id, Label: label, Field: field}
+	return formular.IntField(id, label, value, opts...)
 }
 
 func configFloatField(id, label string, value float64, statusErr bool, statusText string) formular.Item {
-	field := &formular.Field{Kind: formular.FieldFloat, Value: value, Validation: true}
+	opts := []formular.FieldOption{formular.Validation}
 	if statusErr {
-		field.Status = formular.StatusError
-		field.StatusText = statusText
+		opts = append(opts, formular.Status(formular.StatusError), formular.StatusText(statusText))
 	}
-	return formular.Item{Type: formular.ItemField, ID: id, Label: label, Field: field}
+	return formular.FloatField(id, label, value, opts...)
 }
 
 func configCheckbox(id, label string, value bool) formular.Item {
-	return formular.Item{Type: formular.ItemField, ID: id, Label: label, Field: &formular.Field{Kind: formular.FieldCheckbox, Value: value}}
+	return formular.CheckboxField(id, label, value)
 }
 
 func readonlyTextField(id, label, value string) formular.Item {
-	return formular.Item{Type: formular.ItemField, ID: id, Label: label, Field: &formular.Field{
-		Kind:     formular.FieldText,
-		Value:    value,
-		Readonly: true,
-	}}
+	return formular.ReadonlyTextField(id, label, value)
 }
 
 func readonlyMultilineTextField(id, label, value string) formular.Item {
-	return formular.Item{Type: formular.ItemField, ID: id, Label: label, Field: &formular.Field{
-		Kind:      formular.FieldText,
-		Value:     value,
-		Readonly:  true,
-		Multiline: true,
-	}}
+	return formular.MultilineTextField(id, label, value, formular.Readonly)
 }
 
 func readonlyStringListField(id, label string, values []string) formular.Item {
@@ -154,17 +93,9 @@ func readonlyStringListField(id, label string, values []string) formular.Item {
 }
 
 func readonlyIntField(id, label string, value int) formular.Item {
-	return formular.Item{Type: formular.ItemField, ID: id, Label: label, Field: &formular.Field{
-		Kind:     formular.FieldInt,
-		Value:    value,
-		Readonly: true,
-	}}
+	return formular.IntField(id, label, value, formular.Readonly)
 }
 
 func readonlyBoolField(id, label string, value bool) formular.Item {
-	return formular.Item{Type: formular.ItemField, ID: id, Label: label, Field: &formular.Field{
-		Kind:     formular.FieldCheckbox,
-		Value:    value,
-		Readonly: true,
-	}}
+	return formular.CheckboxField(id, label, value, formular.Readonly)
 }

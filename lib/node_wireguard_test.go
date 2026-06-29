@@ -236,7 +236,7 @@ func TestWireGuardConfigPersistsAcrossSaveRestoreAndCopyPaste(t *testing.T) {
 	if err != nil {
 		t.Fatalf("saved listenPort missing: %v", err)
 	}
-	if got, ok := intFromAny(gotPort); !ok || got != 51820 {
+	if got, ok := formular.IntValue(gotPort); !ok || got != 51820 {
 		t.Fatalf("saved listenPort = %#v, want 51820", gotPort)
 	}
 	if got, err := cfg.Get(configer.Path{"nodes", "wg", "ownedIPs"}); err != nil || got != ownedIPs {
@@ -817,7 +817,7 @@ func assertSavedWireGuardAmneziaConfig(t *testing.T, cfg configer.Config, nodeNa
 	if err != nil {
 		t.Fatalf("saved amneziaWG missing: %v", err)
 	}
-	got, ok := mapStringAnyFromAny(raw)
+	got, ok := configer.MapStringAny(raw)
 	if !ok {
 		t.Fatalf("saved amneziaWG = %#v, want map", raw)
 	}
@@ -830,7 +830,7 @@ func assertSavedWireGuardAmneziaConfig(t *testing.T, cfg configer.Config, nodeNa
 		"cookiePadding":    want.cookiePadding,
 		"transportPadding": want.transportPadding,
 	} {
-		gotValue, ok := intFromAny(got[key])
+		gotValue, ok := formular.IntValue(got[key])
 		if !ok || gotValue != wantValue {
 			t.Fatalf("saved amneziaWG.%s = %#v, want %#v", key, got[key], wantValue)
 		}
@@ -897,7 +897,7 @@ func waitWireGuardPrivateKey(t *testing.T, e *NodeE2E, node uint64) string {
 		if !ok || item.Field == nil {
 			return false
 		}
-		value, ok := stringFromAny(item.Value)
+		value, ok := formular.StringValue(item.Value)
 		if !ok || value == "" {
 			return false
 		}
@@ -918,7 +918,7 @@ func assertWireGuardPublicKeyPresent(t *testing.T, e *NodeE2E, node uint64) {
 		if !ok || item.Field == nil {
 			return false
 		}
-		value, ok := stringFromAny(item.Value)
+		value, ok := formular.StringValue(item.Value)
 		if !ok || value == "" {
 			return false
 		}

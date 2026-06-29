@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/asciimoth/bufpool"
-	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/gonnect"
 )
 
@@ -15,40 +14,6 @@ func enginePool(e *engine) bufpool.Pool {
 		return nil
 	}
 	return e.Pool()
-}
-
-func readConfigString(cfg configer.Config, key, fallback string) string {
-	if cfg == nil {
-		return fallback
-	}
-	raw, err := cfg.Get(configer.Path{key})
-	if err != nil {
-		return fallback
-	}
-	if value, ok := raw.(string); ok {
-		return value
-	}
-	return fallback
-}
-
-func readConfigInt(cfg configer.Config, key string, fallback int) int {
-	if cfg == nil {
-		return fallback
-	}
-	raw, err := cfg.Get(configer.Path{key})
-	if err != nil {
-		return fallback
-	}
-	switch value := raw.(type) {
-	case int:
-		return value
-	case int64:
-		return int(value)
-	case float64:
-		return int(value)
-	default:
-		return fallback
-	}
 }
 
 func parsePort(value string, fallback int) int {

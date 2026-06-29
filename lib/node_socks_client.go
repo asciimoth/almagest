@@ -43,7 +43,7 @@ func (socksClientClass) DefaultNodeParams() pasta.NodeClassParams {
 	}}
 }
 func (c socksClientClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
-	return &socksClientNode{pool: enginePool(c.engine), proxyURL: readConfigString(cfg, "proxyURL", DefaultSocksClientProxyURL)}, nil
+	return &socksClientNode{pool: enginePool(c.engine), proxyURL: configer.String(cfg, configer.Path{"proxyURL"}, DefaultSocksClientProxyURL)}, nil
 }
 
 type socksClientNode struct {
@@ -326,20 +326,14 @@ func (n *socksClientNode) updateLabel() error {
 }
 
 func (n *socksClientNode) sendMenuSnapshot() {
-	n.w.SendNodeMenuMsg(n.id, formular.MenuSnapshotMessage{
-		MessageBase: formular.MessageBase{Type: formular.MessageMenuSnapshot, MenuID: pasta.NodeMenuID(n.id), MenuGeneration: 1},
-		Blocks:      []formular.Block{n.configBlock()},
-	})
+	n.w.SendNodeMenuMsg(n.id, formular.MenuSnapshot(pasta.NodeMenuID(n.id), 1, n.configBlock()))
 }
 
 func (n *socksClientNode) sendConfigBlock() {
 	if n.w == nil || n.id == 0 {
 		return
 	}
-	n.w.SendNodeMenuMsg(n.id, formular.BlockSnapshotMessage{
-		MessageBase: formular.MessageBase{Type: formular.MessageBlockSnapshot, MenuID: pasta.NodeMenuID(n.id), MenuGeneration: 1, BlockGeneration: 1},
-		Block:       n.configBlock(),
-	})
+	n.w.SendNodeMenuMsg(n.id, formular.BlockSnapshot(pasta.NodeMenuID(n.id), 1, 1, n.configBlock()))
 }
 
 func (n *socksClientNode) configBlock() formular.Block {

@@ -51,9 +51,9 @@ func (httpServerClass) DefaultNodeParams() pasta.NodeClassParams {
 }
 func (c httpServerClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
 	return &httpServerNode{
-		host:     readConfigString(cfg, "host", DefaultHTTPServerHost),
-		port:     readConfigInt(cfg, "port", DefaultHTTPServerPort),
-		response: readConfigString(cfg, "response", ""),
+		host:     configer.String(cfg, configer.Path{"host"}, DefaultHTTPServerHost),
+		port:     configer.Int(cfg, configer.Path{"port"}, DefaultHTTPServerPort),
+		response: configer.String(cfg, configer.Path{"response"}, ""),
 
 		engine: c.engine,
 	}, nil
@@ -303,13 +303,11 @@ func (n *httpServerNode) OnSave(cfg configer.Config) error {
 	if err := pasta.DeleteNodeOwnedConfigKeys(cfg); err != nil {
 		return err
 	}
-	if err := cfg.Set(configer.Path{"host"}, n.host); err != nil {
-		return err
-	}
-	if err := cfg.Set(configer.Path{"port"}, n.port); err != nil {
-		return err
-	}
-	return cfg.Set(configer.Path{"response"}, n.response)
+	return configer.SetMap(cfg, map[string]any{
+		"host":     n.host,
+		"port":     n.port,
+		"response": n.response,
+	})
 }
 
 func (n *httpServerNode) restartWorker() {
@@ -451,27 +449,18 @@ func (n *httpServerNode) updateLabel() error {
 }
 
 func (n *httpServerNode) sendMenuSnapshot() {
-	n.w.SendNodeMenuMsg(n.id, formular.MenuSnapshotMessage{
-		MessageBase: formular.MessageBase{Type: formular.MessageMenuSnapshot, MenuID: pasta.NodeMenuID(n.id), MenuGeneration: 1},
-		Blocks:      []formular.Block{n.listenBlock(), n.logsBlock()},
-	})
+	n.w.SendNodeMenuMsg(n.id, formular.MenuSnapshot(pasta.NodeMenuID(n.id), 1, n.listenBlock(), n.logsBlock()))
 }
 
 func (n *httpServerNode) sendListenBlock() {
-	n.w.SendNodeMenuMsg(n.id, formular.BlockSnapshotMessage{
-		MessageBase: formular.MessageBase{Type: formular.MessageBlockSnapshot, MenuID: pasta.NodeMenuID(n.id), MenuGeneration: 1, BlockGeneration: 1},
-		Block:       n.listenBlock(),
-	})
+	n.w.SendNodeMenuMsg(n.id, formular.BlockSnapshot(pasta.NodeMenuID(n.id), 1, 1, n.listenBlock()))
 }
 
 func (n *httpServerNode) sendLogsBlock() {
 	if n.w == nil || n.id == 0 {
 		return
 	}
-	n.w.SendNodeMenuMsg(n.id, formular.BlockSnapshotMessage{
-		MessageBase: formular.MessageBase{Type: formular.MessageBlockSnapshot, MenuID: pasta.NodeMenuID(n.id), MenuGeneration: 1, BlockGeneration: 1},
-		Block:       n.logsBlock(),
-	})
+	n.w.SendNodeMenuMsg(n.id, formular.BlockSnapshot(pasta.NodeMenuID(n.id), 1, 1, n.logsBlock()))
 }
 
 func (n *httpServerNode) listenBlock() formular.Block {

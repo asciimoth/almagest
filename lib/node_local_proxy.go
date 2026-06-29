@@ -194,7 +194,7 @@ func (n *localProxyNode) OnSave(cfg configer.Config) error {
 	if err := pasta.DeleteNodeOwnedConfigKeys(cfg); err != nil {
 		return err
 	}
-	values := map[string]any{
+	return configer.SetMap(cfg, map[string]any{
 		"socksHost": n.config.socksHost,
 		"socksPort": n.config.socksPort,
 		"wsHost":    n.config.wsHost,
@@ -202,38 +202,32 @@ func (n *localProxyNode) OnSave(cfg configer.Config) error {
 		"wsPath":    n.config.wsPath,
 		"users":     socksServerUsersConfig(n.config.users),
 		"commands":  socksServerCommandsConfig(n.config.commands),
-	}
-	for key, value := range values {
-		if err := cfg.Set(configer.Path{key}, value); err != nil {
-			return err
-		}
-	}
-	return nil
+	})
 }
 
 func (n *localProxyNode) applyConfigForm(values map[string]any) error {
 	next := n.config
 	next.commands = maps.Clone(n.config.commands)
-	if value, ok := stringFromAny(values["socksHost"]); ok {
+	if value, ok := formular.StringValue(values["socksHost"]); ok {
 		next.socksHost = strings.TrimSpace(value)
 	}
-	if value, ok := intFromAny(values["socksPort"]); ok {
+	if value, ok := formular.IntValue(values["socksPort"]); ok {
 		next.socksPort = validPort(value)
 	}
-	if value, ok := stringFromAny(values["wsHost"]); ok {
+	if value, ok := formular.StringValue(values["wsHost"]); ok {
 		next.wsHost = strings.TrimSpace(value)
 	}
-	if value, ok := intFromAny(values["wsPort"]); ok {
+	if value, ok := formular.IntValue(values["wsPort"]); ok {
 		next.wsPort = validPort(value)
 	}
-	if value, ok := stringFromAny(values["wsPath"]); ok {
+	if value, ok := formular.StringValue(values["wsPath"]); ok {
 		next.wsPath = normalizeSocksServerPath(value)
 	}
 	if users, ok := parseSocksServerUsers(values["users"]); ok {
 		next.users = users
 	}
 	for cmd, field := range socksServerCommandFields() {
-		if value, ok := boolFromAny(values[field]); ok {
+		if value, ok := formular.BoolValue(values[field]); ok {
 			next.commands[cmd] = value
 		}
 	}
@@ -261,23 +255,23 @@ func (n *localProxyNode) sendConfigFieldStatus(msg formular.FieldValidateMessage
 	next := n.config
 	switch msg.Field.FieldID {
 	case "socksHost":
-		if value, ok := stringFromAny(msg.Value); ok {
+		if value, ok := formular.StringValue(msg.Value); ok {
 			next.socksHost = strings.TrimSpace(value)
 		}
 	case "socksPort":
-		if value, ok := intFromAny(msg.Value); ok {
+		if value, ok := formular.IntValue(msg.Value); ok {
 			next.socksPort = value
 		}
 	case "wsHost":
-		if value, ok := stringFromAny(msg.Value); ok {
+		if value, ok := formular.StringValue(msg.Value); ok {
 			next.wsHost = strings.TrimSpace(value)
 		}
 	case "wsPort":
-		if value, ok := intFromAny(msg.Value); ok {
+		if value, ok := formular.IntValue(msg.Value); ok {
 			next.wsPort = value
 		}
 	case "wsPath":
-		if value, ok := stringFromAny(msg.Value); ok {
+		if value, ok := formular.StringValue(msg.Value); ok {
 			next.wsPath = normalizeSocksServerPath(value)
 		}
 	default:
@@ -287,23 +281,7 @@ func (n *localProxyNode) sendConfigFieldStatus(msg formular.FieldValidateMessage
 		next.wsPath = DefaultSocksServerWSPath
 	}
 
-	status := formular.StatusOK
-	statusText := ""
-	if err := next.validate(); err != nil {
-		status = formular.StatusError
-		statusText = err.Error()
-	}
-	n.w.SendNodeMenuMsg(n.id, formular.FieldStatusMessage{
-		MessageBase: formular.MessageBase{
-			Type:            formular.MessageFieldStatus,
-			MenuID:          pasta.NodeMenuID(n.id),
-			MenuGeneration:  1,
-			BlockGeneration: 1,
-		},
-		Field:      msg.Field,
-		Status:     status,
-		StatusText: statusText,
-	})
+	n.w.SendNodeMenuMsg(n.id, formular.FieldStatusFromError(pasta.NodeMenuID(n.id), 1, 1, msg.Field, next.validate()))
 }
 
 func (n *localProxyNode) restartWorker() {
@@ -394,41 +372,28 @@ func (n *localProxyNode) portHasLinks(port uint64) bool {
 }
 
 func (n *localProxyNode) sendMenuSnapshot() {
-	n.w.SendNodeMenuMsg(n.id, formular.MenuSnapshotMessage{
-		MessageBase: formular.MessageBase{Type: formular.MessageMenuSnapshot, MenuID: pasta.NodeMenuID(n.id), MenuGeneration: 1},
-		Blocks:      []formular.Block{n.configBlock(), n.logsBlock()},
-	})
+	n.w.SendNodeMenuMsg(n.id, formular.MenuSnapshot(pasta.NodeMenuID(n.id), 1, n.configBlock(), n.logsBlock()))
 }
 
 func (n *localProxyNode) sendForcedMenuSnapshot() {
 	if n.w == nil || n.id == 0 {
 		return
 	}
-	n.w.SendNodeMenuMsg(n.id, formular.MenuSnapshotMessage{
-		MessageBase: formular.MessageBase{Type: formular.MessageMenuSnapshot, MenuID: pasta.NodeMenuID(n.id), MenuGeneration: 1},
-		Force:       true,
-		Blocks:      []formular.Block{n.configBlock(), n.logsBlock()},
-	})
+	n.w.SendNodeMenuMsg(n.id, formular.ForcedMenuSnapshot(pasta.NodeMenuID(n.id), 1, n.configBlock(), n.logsBlock()))
 }
 
 func (n *localProxyNode) sendConfigBlock() {
 	if n.w == nil || n.id == 0 {
 		return
 	}
-	n.w.SendNodeMenuMsg(n.id, formular.BlockSnapshotMessage{
-		MessageBase: formular.MessageBase{Type: formular.MessageBlockSnapshot, MenuID: pasta.NodeMenuID(n.id), MenuGeneration: 1, BlockGeneration: 1},
-		Block:       n.configBlock(),
-	})
+	n.w.SendNodeMenuMsg(n.id, formular.BlockSnapshot(pasta.NodeMenuID(n.id), 1, 1, n.configBlock()))
 }
 
 func (n *localProxyNode) sendLogsBlock() {
 	if n.w == nil || n.id == 0 {
 		return
 	}
-	n.w.SendNodeMenuMsg(n.id, formular.BlockSnapshotMessage{
-		MessageBase: formular.MessageBase{Type: formular.MessageBlockSnapshot, MenuID: pasta.NodeMenuID(n.id), MenuGeneration: 1, BlockGeneration: 1},
-		Block:       n.logsBlock(),
-	})
+	n.w.SendNodeMenuMsg(n.id, formular.BlockSnapshot(pasta.NodeMenuID(n.id), 1, 1, n.logsBlock()))
 }
 
 func (n *localProxyNode) configBlock() formular.Block {

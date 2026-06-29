@@ -276,8 +276,8 @@ func sameTunSplitterConfigValue(got, want any) bool {
 	if got == want {
 		return true
 	}
-	wantInt, wantOK := intFromAny(want)
-	gotInt, gotOK := intFromAny(got)
+	wantInt, wantOK := formular.IntValue(want)
+	gotInt, gotOK := formular.IntValue(got)
 	return wantOK && gotOK && gotInt == wantInt
 }
 

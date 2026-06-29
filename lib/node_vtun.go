@@ -80,16 +80,16 @@ func (c *vtunConfig) read(cfg configer.Config) {
 	if cfg == nil {
 		return
 	}
-	c.name = readConfigString(cfg, "name", c.name)
-	c.localAddrs = readConfigString(cfg, "localAddrs", c.localAddrs)
-	c.dnsServers = readConfigString(cfg, "dnsServers", c.dnsServers)
-	c.mtu = readConfigInt(cfg, "mtu", c.mtu)
-	c.endpointCh = readConfigInt(cfg, "endpointCh", c.endpointCh)
-	c.eventCh = readConfigInt(cfg, "eventCh", c.eventCh)
-	// c.mwo = readConfigInt(cfg, "mwo", c.mwo)
-	// c.mro = readConfigInt(cfg, "mro", c.mro)
-	c.noLoopbackAddr = readConfigBool(cfg, "noLoopbackAddr", c.noLoopbackAddr)
-	c.disableSACK = readConfigBool(cfg, "disableSACK", c.disableSACK)
+	c.name = configer.String(cfg, configer.Path{"name"}, c.name)
+	c.localAddrs = configer.String(cfg, configer.Path{"localAddrs"}, c.localAddrs)
+	c.dnsServers = configer.String(cfg, configer.Path{"dnsServers"}, c.dnsServers)
+	c.mtu = configer.Int(cfg, configer.Path{"mtu"}, c.mtu)
+	c.endpointCh = configer.Int(cfg, configer.Path{"endpointCh"}, c.endpointCh)
+	c.eventCh = configer.Int(cfg, configer.Path{"eventCh"}, c.eventCh)
+	// c.mwo = configer.Int(cfg, configer.Path{"mwo"}, c.mwo)
+	// c.mro = configer.Int(cfg, configer.Path{"mro"}, c.mro)
+	c.noLoopbackAddr = configer.Bool(cfg, configer.Path{"noLoopbackAddr"}, c.noLoopbackAddr)
+	c.disableSACK = configer.Bool(cfg, configer.Path{"disableSACK"}, c.disableSACK)
 	c.normalize()
 }
 
@@ -272,7 +272,7 @@ func (n *vtunNode) OnSave(cfg configer.Config) error {
 	if err := pasta.DeleteNodeOwnedConfigKeys(cfg); err != nil {
 		return err
 	}
-	values := map[string]any{
+	return configer.SetMap(cfg, map[string]any{
 		"name":       n.config.name,
 		"localAddrs": n.config.localAddrs,
 		"dnsServers": n.config.dnsServers,
@@ -283,45 +283,39 @@ func (n *vtunNode) OnSave(cfg configer.Config) error {
 		// "mro":            n.config.mro,
 		"noLoopbackAddr": n.config.noLoopbackAddr,
 		"disableSACK":    n.config.disableSACK,
-	}
-	for key, value := range values {
-		if err := cfg.Set(configer.Path{key}, value); err != nil {
-			return err
-		}
-	}
-	return nil
+	})
 }
 
 func (n *vtunNode) applyConfigForm(values map[string]any) error {
 	next := n.config
-	if value, ok := stringFromAny(values["name"]); ok {
+	if value, ok := formular.StringValue(values["name"]); ok {
 		next.name = value
 	}
-	if value, ok := stringFromAny(values["localAddrs"]); ok {
+	if value, ok := formular.StringValue(values["localAddrs"]); ok {
 		next.localAddrs = value
 	}
-	if value, ok := stringFromAny(values["dnsServers"]); ok {
+	if value, ok := formular.StringValue(values["dnsServers"]); ok {
 		next.dnsServers = value
 	}
-	if value, ok := intFromAny(values["mtu"]); ok {
+	if value, ok := formular.IntValue(values["mtu"]); ok {
 		next.mtu = value
 	}
-	if value, ok := intFromAny(values["endpointCh"]); ok {
+	if value, ok := formular.IntValue(values["endpointCh"]); ok {
 		next.endpointCh = value
 	}
-	if value, ok := intFromAny(values["eventCh"]); ok {
+	if value, ok := formular.IntValue(values["eventCh"]); ok {
 		next.eventCh = value
 	}
-	// if value, ok := intFromAny(values["mwo"]); ok {
+	// if value, ok := formular.IntValue(values["mwo"]); ok {
 	// 	next.mwo = value
 	// }
-	// if value, ok := intFromAny(values["mro"]); ok {
+	// if value, ok := formular.IntValue(values["mro"]); ok {
 	// 	next.mro = value
 	// }
-	if value, ok := boolFromAny(values["noLoopbackAddr"]); ok {
+	if value, ok := formular.BoolValue(values["noLoopbackAddr"]); ok {
 		next.noLoopbackAddr = value
 	}
-	if value, ok := boolFromAny(values["disableSACK"]); ok {
+	if value, ok := formular.BoolValue(values["disableSACK"]); ok {
 		next.disableSACK = value
 	}
 	next.normalize()
@@ -360,23 +354,7 @@ func validateVTunConfig(config vtunConfig) error {
 }
 
 func (n *vtunNode) sendConfigFieldStatus(msg formular.FieldValidateMessage) {
-	status := formular.StatusOK
-	statusText := ""
-	if err := validateVTunConfigField(msg); err != nil {
-		status = formular.StatusError
-		statusText = err.Error()
-	}
-	n.w.SendNodeMenuMsg(n.id, formular.FieldStatusMessage{
-		MessageBase: formular.MessageBase{
-			Type:            formular.MessageFieldStatus,
-			MenuID:          pasta.NodeMenuID(n.id),
-			MenuGeneration:  1,
-			BlockGeneration: 1,
-		},
-		Field:      msg.Field,
-		Status:     status,
-		StatusText: statusText,
-	})
+	n.w.SendNodeMenuMsg(n.id, formular.FieldStatusFromError(pasta.NodeMenuID(n.id), 1, 1, msg.Field, validateVTunConfigField(msg)))
 }
 
 func validateVTunConfigField(msg formular.FieldValidateMessage) error {
@@ -384,27 +362,27 @@ func validateVTunConfigField(msg formular.FieldValidateMessage) error {
 	case "name":
 		return nil
 	case "localAddrs":
-		value, _ := stringFromAny(msg.Value)
+		value, _ := formular.StringValue(msg.Value)
 		if _, err := parseAddrList(value, true); err != nil {
 			return fmt.Errorf("local addrs: %w", err)
 		}
 	case "dnsServers":
-		value, _ := stringFromAny(msg.Value)
+		value, _ := formular.StringValue(msg.Value)
 		if _, err := parseAddrList(value, false); err != nil {
 			return fmt.Errorf("DNS servers: %w", err)
 		}
 	case "mtu":
-		value, ok := intFromAny(msg.Value)
+		value, ok := formular.IntValue(msg.Value)
 		if !ok || value <= 0 {
 			return errors.New("MTU must be positive")
 		}
 	case "endpointCh":
-		value, ok := intFromAny(msg.Value)
+		value, ok := formular.IntValue(msg.Value)
 		if !ok || value <= 0 {
 			return errors.New("endpoint channel size must be positive")
 		}
 	case "eventCh":
-		value, ok := intFromAny(msg.Value)
+		value, ok := formular.IntValue(msg.Value)
 		if !ok || value <= 0 {
 			return errors.New("event channel size must be positive")
 		}
@@ -656,21 +634,14 @@ func (n *vtunNode) updateLabel() error {
 }
 
 func (n *vtunNode) sendMenuSnapshot() {
-	n.w.SendNodeMenuMsg(n.id, formular.MenuSnapshotMessage{
-		MessageBase: formular.MessageBase{Type: formular.MessageMenuSnapshot, MenuID: pasta.NodeMenuID(n.id), MenuGeneration: 1},
-		Blocks:      n.menuBlocks(),
-	})
+	n.w.SendNodeMenuMsg(n.id, formular.MenuSnapshot(pasta.NodeMenuID(n.id), 1, n.menuBlocks()...))
 }
 
 func (n *vtunNode) sendForcedMenuSnapshot() {
 	if n.w == nil || n.id == 0 {
 		return
 	}
-	n.w.SendNodeMenuMsg(n.id, formular.MenuSnapshotMessage{
-		MessageBase: formular.MessageBase{Type: formular.MessageMenuSnapshot, MenuID: pasta.NodeMenuID(n.id), MenuGeneration: 1},
-		Force:       true,
-		Blocks:      n.menuBlocks(),
-	})
+	n.w.SendNodeMenuMsg(n.id, formular.ForcedMenuSnapshot(pasta.NodeMenuID(n.id), 1, n.menuBlocks()...))
 }
 
 func (n *vtunNode) menuBlocks() []formular.Block {
@@ -681,10 +652,7 @@ func (n *vtunNode) sendEffectiveBlock() {
 	if n.w == nil || n.id == 0 {
 		return
 	}
-	n.w.SendNodeMenuMsg(n.id, formular.BlockSnapshotMessage{
-		MessageBase: formular.MessageBase{Type: formular.MessageBlockSnapshot, MenuID: pasta.NodeMenuID(n.id), MenuGeneration: 1, BlockGeneration: 1},
-		Block:       n.effectiveBlock(),
-	})
+	n.w.SendNodeMenuMsg(n.id, formular.BlockSnapshot(pasta.NodeMenuID(n.id), 1, 1, n.effectiveBlock()))
 }
 
 func (n *vtunNode) effectiveBlock() formular.Block {

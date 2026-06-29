@@ -127,14 +127,14 @@ func readUDPPingConfig(cfg configer.Config, server bool) udpPingConfig {
 		remotePort = defaultUDPPingClientPort
 	}
 	out := udpPingConfig{
-		network:    normalizeUDPPingNetwork(readConfigString(cfg, "network", defaultUDPPingNetwork)),
-		socketMode: normalizeUDPPingSocketMode(readConfigString(cfg, "socket_mode", udpSocketListen)),
-		localHost:  readConfigString(cfg, "local_host", defaultUDPPingHost),
-		localPort:  readConfigInt(cfg, "local_port", localPort),
-		remoteHost: readConfigString(cfg, "remote_host", defaultUDPPingHost),
-		remotePort: readConfigInt(cfg, "remote_port", remotePort),
-		payload:    readConfigString(cfg, "payload", defaultUDPPingPayload),
-		timeout:    time.Duration(readConfigInt(cfg, "timeout_ms", defaultUDPPingTimeoutMS)) * time.Millisecond,
+		network:    normalizeUDPPingNetwork(configer.String(cfg, configer.Path{"network"}, defaultUDPPingNetwork)),
+		socketMode: normalizeUDPPingSocketMode(configer.String(cfg, configer.Path{"socket_mode"}, udpSocketListen)),
+		localHost:  configer.String(cfg, configer.Path{"local_host"}, defaultUDPPingHost),
+		localPort:  configer.Int(cfg, configer.Path{"local_port"}, localPort),
+		remoteHost: configer.String(cfg, configer.Path{"remote_host"}, defaultUDPPingHost),
+		remotePort: configer.Int(cfg, configer.Path{"remote_port"}, remotePort),
+		payload:    configer.String(cfg, configer.Path{"payload"}, defaultUDPPingPayload),
+		timeout:    time.Duration(configer.Int(cfg, configer.Path{"timeout_ms"}, defaultUDPPingTimeoutMS)) * time.Millisecond,
 	}
 	out.normalize(server)
 	return out
@@ -1009,28 +1009,16 @@ func saveUDPPingConfig(cfg configer.Config, value udpPingConfig) error {
 	if err := pasta.DeleteNodeOwnedConfigKeys(cfg); err != nil {
 		return err
 	}
-	if err := cfg.Set(configer.Path{"network"}, value.network); err != nil {
-		return err
-	}
-	if err := cfg.Set(configer.Path{"socket_mode"}, value.socketMode); err != nil {
-		return err
-	}
-	if err := cfg.Set(configer.Path{"local_host"}, value.localHost); err != nil {
-		return err
-	}
-	if err := cfg.Set(configer.Path{"local_port"}, value.localPort); err != nil {
-		return err
-	}
-	if err := cfg.Set(configer.Path{"remote_host"}, value.remoteHost); err != nil {
-		return err
-	}
-	if err := cfg.Set(configer.Path{"remote_port"}, value.remotePort); err != nil {
-		return err
-	}
-	if err := cfg.Set(configer.Path{"payload"}, value.payload); err != nil {
-		return err
-	}
-	return cfg.Set(configer.Path{"timeout_ms"}, int(value.timeout/time.Millisecond))
+	return configer.SetMap(cfg, map[string]any{
+		"network":     value.network,
+		"socket_mode": value.socketMode,
+		"local_host":  value.localHost,
+		"local_port":  value.localPort,
+		"remote_host": value.remoteHost,
+		"remote_port": value.remotePort,
+		"payload":     value.payload,
+		"timeout_ms":  int(value.timeout / time.Millisecond),
+	})
 }
 
 func (n *udpPingServerNode) updateLabel() error {
@@ -1042,17 +1030,11 @@ func (n *udpPingClientNode) updateLabel() error {
 }
 
 func (n *udpPingServerNode) sendMenuSnapshot() {
-	n.w.SendNodeMenuMsg(n.id, formular.MenuSnapshotMessage{
-		MessageBase: formular.MessageBase{Type: formular.MessageMenuSnapshot, MenuID: pasta.NodeMenuID(n.id), MenuGeneration: 1},
-		Blocks:      []formular.Block{n.configBlock(), n.logsBlock()},
-	})
+	n.w.SendNodeMenuMsg(n.id, formular.MenuSnapshot(pasta.NodeMenuID(n.id), 1, n.configBlock(), n.logsBlock()))
 }
 
 func (n *udpPingClientNode) sendMenuSnapshot() {
-	n.w.SendNodeMenuMsg(n.id, formular.MenuSnapshotMessage{
-		MessageBase: formular.MessageBase{Type: formular.MessageMenuSnapshot, MenuID: pasta.NodeMenuID(n.id), MenuGeneration: 1},
-		Blocks:      []formular.Block{n.configBlock(), n.resultBlock(), n.logsBlock()},
-	})
+	n.w.SendNodeMenuMsg(n.id, formular.MenuSnapshot(pasta.NodeMenuID(n.id), 1, n.configBlock(), n.resultBlock(), n.logsBlock()))
 }
 
 func (n *udpPingServerNode) sendConfigBlock() {
@@ -1079,10 +1061,7 @@ func sendUDPPingBlock(w *pasta.Workspace, node uint64, block formular.Block) {
 	if w == nil || node == 0 {
 		return
 	}
-	w.SendNodeMenuMsg(node, formular.BlockSnapshotMessage{
-		MessageBase: formular.MessageBase{Type: formular.MessageBlockSnapshot, MenuID: pasta.NodeMenuID(node), MenuGeneration: 1, BlockGeneration: block.Generation},
-		Block:       block,
-	})
+	w.SendNodeMenuMsg(node, formular.BlockSnapshot(pasta.NodeMenuID(node), 1, block.Generation, block))
 }
 
 func (n *udpPingServerNode) configBlock() formular.Block {

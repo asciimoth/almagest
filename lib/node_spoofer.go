@@ -90,23 +90,23 @@ func (c *spooferConfig) read(cfg configer.Config) {
 	if cfg == nil {
 		return
 	}
-	c.mtu = readConfigInt(cfg, "mtu", c.mtu)
-	c.queueLength = readConfigInt(cfg, "queueLength", c.queueLength)
-	c.disableSACK = readConfigBool(cfg, "disableSACK", c.disableSACK)
-	c.ttl = readConfigInt(cfg, "ttl", c.ttl)
-	c.icmpBurst = readConfigInt(cfg, "icmpBurst", c.icmpBurst)
-	c.icmpLimit = readConfigFloat(cfg, "icmpLimit", c.icmpLimit)
-	c.tcpSendBufferSize = readConfigInt(cfg, "tcpSendBufferSize", c.tcpSendBufferSize)
-	c.tcpReceiveBufferSize = readConfigInt(cfg, "tcpReceiveBufferSize", c.tcpReceiveBufferSize)
-	c.congestionControlAlg = readConfigString(cfg, "congestionControlAlg", c.congestionControlAlg)
-	c.disableNagle = readConfigBool(cfg, "disableNagle", c.disableNagle)
-	c.disableTCPModRecBuff = readConfigBool(cfg, "disableTCPModRecBuff", c.disableTCPModRecBuff)
-	c.tcpKeepAlive = readConfigBool(cfg, "tcpKeepAlive", c.tcpKeepAlive)
-	c.tcpKeepAliveIdle = readConfigInt(cfg, "tcpKeepAliveIdle", c.tcpKeepAliveIdle)
-	c.tcpKeepAliveInterval = readConfigInt(cfg, "tcpKeepAliveInterval", c.tcpKeepAliveInterval)
-	c.tcpKeepAliveCount = readConfigInt(cfg, "tcpKeepAliveCount", c.tcpKeepAliveCount)
-	c.tcpForwardWnd = readConfigInt(cfg, "tcpForwardWnd", c.tcpForwardWnd)
-	c.tcpForwardAttempts = readConfigInt(cfg, "tcpForwardAttempts", c.tcpForwardAttempts)
+	c.mtu = configer.Int(cfg, configer.Path{"mtu"}, c.mtu)
+	c.queueLength = configer.Int(cfg, configer.Path{"queueLength"}, c.queueLength)
+	c.disableSACK = configer.Bool(cfg, configer.Path{"disableSACK"}, c.disableSACK)
+	c.ttl = configer.Int(cfg, configer.Path{"ttl"}, c.ttl)
+	c.icmpBurst = configer.Int(cfg, configer.Path{"icmpBurst"}, c.icmpBurst)
+	c.icmpLimit = configer.Float(cfg, configer.Path{"icmpLimit"}, c.icmpLimit)
+	c.tcpSendBufferSize = configer.Int(cfg, configer.Path{"tcpSendBufferSize"}, c.tcpSendBufferSize)
+	c.tcpReceiveBufferSize = configer.Int(cfg, configer.Path{"tcpReceiveBufferSize"}, c.tcpReceiveBufferSize)
+	c.congestionControlAlg = configer.String(cfg, configer.Path{"congestionControlAlg"}, c.congestionControlAlg)
+	c.disableNagle = configer.Bool(cfg, configer.Path{"disableNagle"}, c.disableNagle)
+	c.disableTCPModRecBuff = configer.Bool(cfg, configer.Path{"disableTCPModRecBuff"}, c.disableTCPModRecBuff)
+	c.tcpKeepAlive = configer.Bool(cfg, configer.Path{"tcpKeepAlive"}, c.tcpKeepAlive)
+	c.tcpKeepAliveIdle = configer.Int(cfg, configer.Path{"tcpKeepAliveIdle"}, c.tcpKeepAliveIdle)
+	c.tcpKeepAliveInterval = configer.Int(cfg, configer.Path{"tcpKeepAliveInterval"}, c.tcpKeepAliveInterval)
+	c.tcpKeepAliveCount = configer.Int(cfg, configer.Path{"tcpKeepAliveCount"}, c.tcpKeepAliveCount)
+	c.tcpForwardWnd = configer.Int(cfg, configer.Path{"tcpForwardWnd"}, c.tcpForwardWnd)
+	c.tcpForwardAttempts = configer.Int(cfg, configer.Path{"tcpForwardAttempts"}, c.tcpForwardAttempts)
 	c.normalize()
 }
 
@@ -282,7 +282,7 @@ func (n *spooferNode) OnSave(cfg configer.Config) error {
 	if err := pasta.DeleteNodeOwnedConfigKeys(cfg); err != nil {
 		return err
 	}
-	values := map[string]any{
+	return configer.SetMap(cfg, map[string]any{
 		"mtu":                  n.config.mtu,
 		"queueLength":          n.config.queueLength,
 		"disableSACK":          n.config.disableSACK,
@@ -300,66 +300,60 @@ func (n *spooferNode) OnSave(cfg configer.Config) error {
 		"tcpKeepAliveCount":    n.config.tcpKeepAliveCount,
 		"tcpForwardWnd":        n.config.tcpForwardWnd,
 		"tcpForwardAttempts":   n.config.tcpForwardAttempts,
-	}
-	for key, value := range values {
-		if err := cfg.Set(configer.Path{key}, value); err != nil {
-			return err
-		}
-	}
-	return nil
+	})
 }
 
 func (n *spooferNode) applyConfigForm(values map[string]any) error {
 	next := n.config
-	if value, ok := intFromAny(values["mtu"]); ok {
+	if value, ok := formular.IntValue(values["mtu"]); ok {
 		next.mtu = value
 	}
-	if value, ok := intFromAny(values["queueLength"]); ok {
+	if value, ok := formular.IntValue(values["queueLength"]); ok {
 		next.queueLength = value
 	}
-	if value, ok := boolFromAny(values["disableSACK"]); ok {
+	if value, ok := formular.BoolValue(values["disableSACK"]); ok {
 		next.disableSACK = value
 	}
-	if value, ok := intFromAny(values["ttl"]); ok {
+	if value, ok := formular.IntValue(values["ttl"]); ok {
 		next.ttl = value
 	}
-	if value, ok := intFromAny(values["icmpBurst"]); ok {
+	if value, ok := formular.IntValue(values["icmpBurst"]); ok {
 		next.icmpBurst = value
 	}
-	if value, ok := floatFromAny(values["icmpLimit"]); ok {
+	if value, ok := formular.FloatValue(values["icmpLimit"]); ok {
 		next.icmpLimit = value
 	}
-	if value, ok := intFromAny(values["tcpSendBufferSize"]); ok {
+	if value, ok := formular.IntValue(values["tcpSendBufferSize"]); ok {
 		next.tcpSendBufferSize = value
 	}
-	if value, ok := intFromAny(values["tcpReceiveBufferSize"]); ok {
+	if value, ok := formular.IntValue(values["tcpReceiveBufferSize"]); ok {
 		next.tcpReceiveBufferSize = value
 	}
-	if value, ok := stringFromAny(values["congestionControlAlg"]); ok {
+	if value, ok := formular.StringValue(values["congestionControlAlg"]); ok {
 		next.congestionControlAlg = value
 	}
-	if value, ok := boolFromAny(values["disableNagle"]); ok {
+	if value, ok := formular.BoolValue(values["disableNagle"]); ok {
 		next.disableNagle = value
 	}
-	if value, ok := boolFromAny(values["disableTCPModRecBuff"]); ok {
+	if value, ok := formular.BoolValue(values["disableTCPModRecBuff"]); ok {
 		next.disableTCPModRecBuff = value
 	}
-	if value, ok := boolFromAny(values["tcpKeepAlive"]); ok {
+	if value, ok := formular.BoolValue(values["tcpKeepAlive"]); ok {
 		next.tcpKeepAlive = value
 	}
-	if value, ok := intFromAny(values["tcpKeepAliveIdle"]); ok {
+	if value, ok := formular.IntValue(values["tcpKeepAliveIdle"]); ok {
 		next.tcpKeepAliveIdle = value
 	}
-	if value, ok := intFromAny(values["tcpKeepAliveInterval"]); ok {
+	if value, ok := formular.IntValue(values["tcpKeepAliveInterval"]); ok {
 		next.tcpKeepAliveInterval = value
 	}
-	if value, ok := intFromAny(values["tcpKeepAliveCount"]); ok {
+	if value, ok := formular.IntValue(values["tcpKeepAliveCount"]); ok {
 		next.tcpKeepAliveCount = value
 	}
-	if value, ok := intFromAny(values["tcpForwardWnd"]); ok {
+	if value, ok := formular.IntValue(values["tcpForwardWnd"]); ok {
 		next.tcpForwardWnd = value
 	}
-	if value, ok := intFromAny(values["tcpForwardAttempts"]); ok {
+	if value, ok := formular.IntValue(values["tcpForwardAttempts"]); ok {
 		next.tcpForwardAttempts = value
 	}
 	next.normalize()
@@ -399,59 +393,43 @@ func validateSpooferConfig(config spooferConfig) error {
 }
 
 func (n *spooferNode) sendConfigFieldStatus(msg formular.FieldValidateMessage) {
-	status := formular.StatusOK
-	statusText := ""
-	if err := validateSpooferConfigField(msg); err != nil {
-		status = formular.StatusError
-		statusText = err.Error()
-	}
-	n.w.SendNodeMenuMsg(n.id, formular.FieldStatusMessage{
-		MessageBase: formular.MessageBase{
-			Type:            formular.MessageFieldStatus,
-			MenuID:          pasta.NodeMenuID(n.id),
-			MenuGeneration:  1,
-			BlockGeneration: 1,
-		},
-		Field:      msg.Field,
-		Status:     status,
-		StatusText: statusText,
-	})
+	n.w.SendNodeMenuMsg(n.id, formular.FieldStatusFromError(pasta.NodeMenuID(n.id), 1, 1, msg.Field, validateSpooferConfigField(msg)))
 }
 
 func validateSpooferConfigField(msg formular.FieldValidateMessage) error {
 	switch msg.Field.FieldID {
 	case "mtu":
-		value, ok := intFromAny(msg.Value)
+		value, ok := formular.IntValue(msg.Value)
 		if !ok || value <= 0 {
 			return errors.New("MTU must be positive")
 		}
 	case "queueLength":
-		value, ok := intFromAny(msg.Value)
+		value, ok := formular.IntValue(msg.Value)
 		if !ok || value <= 0 {
 			return errors.New("queue length must be positive")
 		}
 	case "ttl":
-		value, ok := intFromAny(msg.Value)
+		value, ok := formular.IntValue(msg.Value)
 		if !ok || value < 0 || value > 255 {
 			return errors.New("TTL must be between 0 and 255")
 		}
 	case "icmpBurst":
-		value, ok := intFromAny(msg.Value)
+		value, ok := formular.IntValue(msg.Value)
 		if !ok || value < 0 {
 			return errors.New("ICMP burst must not be negative")
 		}
 	case "icmpLimit":
-		value, ok := floatFromAny(msg.Value)
+		value, ok := formular.FloatValue(msg.Value)
 		if !ok || value < 0 {
 			return errors.New("ICMP limit must not be negative")
 		}
 	case "tcpKeepAliveIdle", "tcpKeepAliveInterval", "tcpKeepAliveCount":
-		value, ok := intFromAny(msg.Value)
+		value, ok := formular.IntValue(msg.Value)
 		if !ok || value < 0 {
 			return errors.New("TCP keepalive values must not be negative")
 		}
 	case "tcpSendBufferSize", "tcpReceiveBufferSize", "tcpForwardWnd", "tcpForwardAttempts":
-		value, ok := intFromAny(msg.Value)
+		value, ok := formular.IntValue(msg.Value)
 		if !ok || value < 0 {
 			return errors.New("TCP values must not be negative")
 		}
@@ -676,21 +654,14 @@ func (n *spooferNode) updateLabel() error {
 }
 
 func (n *spooferNode) sendMenuSnapshot() {
-	n.w.SendNodeMenuMsg(n.id, formular.MenuSnapshotMessage{
-		MessageBase: formular.MessageBase{Type: formular.MessageMenuSnapshot, MenuID: pasta.NodeMenuID(n.id), MenuGeneration: 1},
-		Blocks:      []formular.Block{n.configBlock()},
-	})
+	n.w.SendNodeMenuMsg(n.id, formular.MenuSnapshot(pasta.NodeMenuID(n.id), 1, n.configBlock()))
 }
 
 func (n *spooferNode) sendForcedMenuSnapshot() {
 	if n.w == nil || n.id == 0 {
 		return
 	}
-	n.w.SendNodeMenuMsg(n.id, formular.MenuSnapshotMessage{
-		MessageBase: formular.MessageBase{Type: formular.MessageMenuSnapshot, MenuID: pasta.NodeMenuID(n.id), MenuGeneration: 1},
-		Force:       true,
-		Blocks:      []formular.Block{n.configBlock()},
-	})
+	n.w.SendNodeMenuMsg(n.id, formular.ForcedMenuSnapshot(pasta.NodeMenuID(n.id), 1, n.configBlock()))
 }
 
 func (n *spooferNode) configBlock() formular.Block {

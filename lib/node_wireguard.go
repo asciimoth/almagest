@@ -4,6 +4,7 @@ import (
 	_ "embed"
 	"errors"
 	"fmt"
+	"maps"
 	"net/netip"
 	"slices"
 	"strconv"
@@ -104,9 +105,9 @@ func (c *wireGuardConfig) read(cfg configer.Config) {
 	if cfg == nil {
 		return
 	}
-	c.privateKey = readConfigString(cfg, "privateKey", c.privateKey)
-	c.listenPort = readConfigInt(cfg, "listenPort", c.listenPort)
-	c.ownedIPs = readConfigString(cfg, "ownedIPs", c.ownedIPs)
+	c.privateKey = configer.String(cfg, configer.Path{"privateKey"}, c.privateKey)
+	c.listenPort = configer.Int(cfg, configer.Path{"listenPort"}, c.listenPort)
+	c.ownedIPs = configer.String(cfg, configer.Path{"ownedIPs"}, c.ownedIPs)
 	c.amneziaWG = readWireGuardAmneziaConfig(cfg, c.amneziaWG)
 	if peers, ok := readWireGuardPeers(cfg); ok {
 		c.peers = peers
@@ -556,19 +557,13 @@ func (n *wireGuardNode) OnSave(cfg configer.Config) error {
 	if err := pasta.DeleteNodeOwnedConfigKeys(cfg); err != nil {
 		return err
 	}
-	values := map[string]any{
+	return configer.SetMap(cfg, map[string]any{
 		"privateKey": n.config.privateKey,
 		"listenPort": n.config.listenPort,
 		"ownedIPs":   n.config.ownedIPs,
 		"amneziaWG":  wireGuardAmneziaConfigMap(n.config.amneziaWG),
 		"peers":      wireGuardPeersConfig(n.config.peers),
-	}
-	for key, value := range values {
-		if err := cfg.Set(configer.Path{key}, value); err != nil {
-			return err
-		}
-	}
-	return nil
+	})
 }
 
 func (n *wireGuardNode) ensureDeviceLocked() {
@@ -587,13 +582,13 @@ func (n *wireGuardNode) ensureDeviceLocked() {
 
 func (n *wireGuardNode) applyConfigForm(values map[string]any) error {
 	next := n.config.clone()
-	if value, ok := stringFromAny(values["privateKey"]); ok {
+	if value, ok := formular.StringValue(values["privateKey"]); ok {
 		next.privateKey = value
 	}
-	if value, ok := intFromAny(values["listenPort"]); ok {
+	if value, ok := formular.IntValue(values["listenPort"]); ok {
 		next.listenPort = value
 	}
-	if value, ok := stringFromAny(values["ownedIPs"]); ok {
+	if value, ok := formular.StringValue(values["ownedIPs"]); ok {
 		next.ownedIPs = value
 	}
 	applyWireGuardAmneziaValues(&next.amneziaWG, values)
@@ -1194,21 +1189,14 @@ func (n *wireGuardNode) refreshRuntimeStatsLocked() {
 }
 
 func (n *wireGuardNode) sendMenuSnapshot() {
-	n.w.SendNodeMenuMsg(n.id, formular.MenuSnapshotMessage{
-		MessageBase: formular.MessageBase{Type: formular.MessageMenuSnapshot, MenuID: pasta.NodeMenuID(n.id), MenuGeneration: 1},
-		Blocks:      n.menuBlocks(),
-	})
+	n.w.SendNodeMenuMsg(n.id, formular.MenuSnapshot(pasta.NodeMenuID(n.id), 1, n.menuBlocks()...))
 }
 
 func (n *wireGuardNode) sendForcedMenuSnapshot() {
 	if n.w == nil || n.id == 0 {
 		return
 	}
-	n.w.SendNodeMenuMsg(n.id, formular.MenuSnapshotMessage{
-		MessageBase: formular.MessageBase{Type: formular.MessageMenuSnapshot, MenuID: pasta.NodeMenuID(n.id), MenuGeneration: 1},
-		Force:       true,
-		Blocks:      n.menuBlocks(),
-	})
+	n.w.SendNodeMenuMsg(n.id, formular.ForcedMenuSnapshot(pasta.NodeMenuID(n.id), 1, n.menuBlocks()...))
 }
 
 func (n *wireGuardNode) menuBlocks() []formular.Block {
@@ -1219,10 +1207,7 @@ func (n *wireGuardNode) sendStatusBlock() {
 	if n.w == nil || n.id == 0 {
 		return
 	}
-	n.w.SendNodeMenuMsg(n.id, formular.BlockSnapshotMessage{
-		MessageBase: formular.MessageBase{Type: formular.MessageBlockSnapshot, MenuID: pasta.NodeMenuID(n.id), MenuGeneration: 1, BlockGeneration: 1},
-		Block:       n.statusBlock(),
-	})
+	n.w.SendNodeMenuMsg(n.id, formular.BlockSnapshot(pasta.NodeMenuID(n.id), 1, 1, n.statusBlock()))
 }
 
 func (n *wireGuardNode) statusBlock() formular.Block {
@@ -1310,25 +1295,25 @@ func (n *wireGuardNode) sendConfigFieldStatus(msg formular.FieldValidateMessage)
 	next := n.config.clone()
 	switch msg.Field.FieldID {
 	case "privateKey":
-		if value, ok := stringFromAny(msg.Value); ok {
+		if value, ok := formular.StringValue(msg.Value); ok {
 			next.privateKey = value
 		}
 	case "listenPort":
-		if value, ok := intFromAny(msg.Value); ok {
+		if value, ok := formular.IntValue(msg.Value); ok {
 			next.listenPort = value
 		}
 	case "ownedIPs":
-		if value, ok := stringFromAny(msg.Value); ok {
+		if value, ok := formular.StringValue(msg.Value); ok {
 			next.ownedIPs = value
 		}
 	case "amneziaJunkCount", "amneziaJunkMin", "amneziaJunkMax",
 		"amneziaInitPadding", "amneziaResponsePadding", "amneziaCookiePadding", "amneziaTransportPadding":
-		if value, ok := intFromAny(msg.Value); ok {
+		if value, ok := formular.IntValue(msg.Value); ok {
 			applyWireGuardAmneziaValue(&next.amneziaWG, msg.Field.FieldID, value)
 		}
 	case "amneziaInitHeader", "amneziaResponseHeader", "amneziaCookieHeader", "amneziaTransportHeader",
 		"amneziaInitiationPacket1", "amneziaInitiationPacket2", "amneziaInitiationPacket3", "amneziaInitiationPacket4", "amneziaInitiationPacket5":
-		if value, ok := stringFromAny(msg.Value); ok {
+		if value, ok := formular.StringValue(msg.Value); ok {
 			applyWireGuardAmneziaValue(&next.amneziaWG, msg.Field.FieldID, value)
 		}
 	default:
@@ -1357,37 +1342,37 @@ func (n *wireGuardNode) sendPeersFieldStatus(msg formular.FieldValidateMessage) 
 	}
 	switch msg.Field.FieldID {
 	case "publicKey":
-		if value, ok := stringFromAny(msg.Value); ok {
+		if value, ok := formular.StringValue(msg.Value); ok {
 			peers[index].publicKey = value
 		}
 	case "presharedKey":
-		if value, ok := stringFromAny(msg.Value); ok {
+		if value, ok := formular.StringValue(msg.Value); ok {
 			peers[index].presharedKey = value
 		}
 	case "endpoint":
-		if value, ok := stringFromAny(msg.Value); ok {
+		if value, ok := formular.StringValue(msg.Value); ok {
 			peers[index].endpoint = value
 		}
 	case "allowedIPs":
-		if value, ok := stringFromAny(msg.Value); ok {
+		if value, ok := formular.StringValue(msg.Value); ok {
 			peers[index].allowedIPs = value
 		}
 	case "persistentKeepaliveInterval":
-		if value, ok := intFromAny(msg.Value); ok {
+		if value, ok := formular.IntValue(msg.Value); ok {
 			peers[index].persistentKeepaliveInterval = value
 		}
 	case "amneziaOverride":
-		if value, ok := boolFromAny(msg.Value); ok {
+		if value, ok := formular.BoolValue(msg.Value); ok {
 			peers[index].amneziaWGOverride = value
 		}
 	case "amneziaJunkCount", "amneziaJunkMin", "amneziaJunkMax",
 		"amneziaInitPadding", "amneziaResponsePadding", "amneziaCookiePadding", "amneziaTransportPadding":
-		if value, ok := intFromAny(msg.Value); ok {
+		if value, ok := formular.IntValue(msg.Value); ok {
 			applyWireGuardAmneziaValue(&peers[index].amneziaWG, msg.Field.FieldID, value)
 		}
 	case "amneziaInitHeader", "amneziaResponseHeader", "amneziaCookieHeader", "amneziaTransportHeader",
 		"amneziaInitiationPacket1", "amneziaInitiationPacket2", "amneziaInitiationPacket3", "amneziaInitiationPacket4", "amneziaInitiationPacket5":
-		if value, ok := stringFromAny(msg.Value); ok {
+		if value, ok := formular.StringValue(msg.Value); ok {
 			applyWireGuardAmneziaValue(&peers[index].amneziaWG, msg.Field.FieldID, value)
 		}
 	default:
@@ -1399,23 +1384,7 @@ func (n *wireGuardNode) sendPeersFieldStatus(msg formular.FieldValidateMessage) 
 }
 
 func (n *wireGuardNode) sendFieldStatus(msg formular.FieldValidateMessage, err error) {
-	status := formular.StatusOK
-	statusText := ""
-	if err != nil {
-		status = formular.StatusError
-		statusText = err.Error()
-	}
-	n.w.SendNodeMenuMsg(n.id, formular.FieldStatusMessage{
-		MessageBase: formular.MessageBase{
-			Type:            formular.MessageFieldStatus,
-			MenuID:          pasta.NodeMenuID(n.id),
-			MenuGeneration:  1,
-			BlockGeneration: 1,
-		},
-		Field:      msg.Field,
-		Status:     status,
-		StatusText: statusText,
-	})
+	n.w.SendNodeMenuMsg(n.id, formular.FieldStatusFromError(pasta.NodeMenuID(n.id), 1, 1, msg.Field, err))
 }
 
 func validateWireGuardConfig(config wireGuardConfig) error {
@@ -1607,12 +1576,14 @@ func wireGuardTimeText(value time.Time) string {
 }
 
 func secretTextField(id, label, value string, statusErr bool, statusText string, multiline bool) formular.Item {
-	field := &formular.Field{Kind: formular.FieldText, Value: value, Validation: true, Secret: true, Multiline: multiline}
-	if statusErr {
-		field.Status = formular.StatusError
-		field.StatusText = statusText
+	opts := []formular.FieldOption{formular.Validation, formular.Secret}
+	if multiline {
+		opts = append(opts, formular.Multiline)
 	}
-	return formular.Item{Type: formular.ItemField, ID: id, Label: label, Field: field}
+	if statusErr {
+		opts = append(opts, formular.Status(formular.StatusError), formular.StatusText(statusText))
+	}
+	return formular.TextField(id, label, value, opts...)
 }
 
 func wireGuardPeerTemplate() formular.ArrayTemplate {
@@ -1620,75 +1591,78 @@ func wireGuardPeerTemplate() formular.ArrayTemplate {
 		Name:  "peer",
 		Label: "Peer",
 		Items: append([]formular.Item{
-			{Type: formular.ItemField, ID: "publicKey", Label: "Public key", Field: &formular.Field{Kind: formular.FieldText, Validation: true, Required: true}},
-			{Type: formular.ItemField, ID: "presharedKey", Label: "Preshared key", Field: &formular.Field{Kind: formular.FieldText, Validation: true, Secret: true}},
-			{Type: formular.ItemField, ID: "endpoint", Label: "Endpoint", Field: &formular.Field{Kind: formular.FieldText, Validation: true}},
-			{Type: formular.ItemField, ID: "allowedIPs", Label: "Allowed IPs", Field: &formular.Field{Kind: formular.FieldText, Validation: true, Multiline: true}},
-			{Type: formular.ItemField, ID: "persistentKeepaliveInterval", Label: "Keepalive", Field: &formular.Field{Kind: formular.FieldInt, Validation: true}},
-			{Type: formular.ItemField, ID: "amneziaOverride", Label: "AWG override", Field: &formular.Field{Kind: formular.FieldCheckbox}},
+			formular.TextField("publicKey", "Public key", "", formular.Validation, formular.Required),
+			formular.SecretTextField("presharedKey", "Preshared key", "", formular.Validation),
+			formular.TextField("endpoint", "Endpoint", "", formular.Validation),
+			formular.MultilineTextField("allowedIPs", "Allowed IPs", "", formular.Validation),
+			formular.IntField("persistentKeepaliveInterval", "Keepalive", 0, formular.Validation),
+			formular.CheckboxField("amneziaOverride", "AWG override", false),
 		}, wireGuardPeerAmneziaTemplateItems()...),
 	}
 }
 
 func wireGuardPeerElements(peers []wireGuardPeerConfig) []formular.ArrayElement {
+	template := wireGuardPeerTemplate()
 	out := make([]formular.ArrayElement, 0, len(peers))
 	for i, peer := range peers {
 		peer.normalize(i)
-		out = append(out, formular.ArrayElement{
-			ID:       peer.id,
-			Template: "peer",
-			Items: append([]formular.Item{
-				{Type: formular.ItemField, ID: "publicKey", Label: "Public key", Field: &formular.Field{Kind: formular.FieldText, Value: peer.publicKey, Validation: true, Required: true}},
-				{Type: formular.ItemField, ID: "presharedKey", Label: "Preshared key", Field: &formular.Field{Kind: formular.FieldText, Value: peer.presharedKey, Validation: true, Secret: true}},
-				{Type: formular.ItemField, ID: "endpoint", Label: "Endpoint", Field: &formular.Field{Kind: formular.FieldText, Value: peer.endpoint, Validation: true}},
-				{Type: formular.ItemField, ID: "allowedIPs", Label: "Allowed IPs", Field: &formular.Field{Kind: formular.FieldText, Value: peer.allowedIPs, Validation: true, Multiline: true}},
-				{Type: formular.ItemField, ID: "persistentKeepaliveInterval", Label: "Keepalive", Field: &formular.Field{Kind: formular.FieldInt, Value: peer.persistentKeepaliveInterval, Validation: true}},
-				{Type: formular.ItemField, ID: "amneziaOverride", Label: "AWG override", Field: &formular.Field{Kind: formular.FieldCheckbox, Value: peer.amneziaWGOverride}},
-			}, wireGuardPeerAmneziaElementItems(peer.amneziaWG)...),
-		})
+		out = append(out, formular.InstantiateArrayTemplate(template, peer.id, wireGuardPeerFormValues(peer)))
 	}
 	return out
 }
 
-func wireGuardPeerAmneziaTemplateItems() []formular.Item {
-	return []formular.Item{
-		{Type: formular.ItemField, ID: "amneziaJunkCount", Label: "AWG Jc", Field: &formular.Field{Kind: formular.FieldInt, Validation: true}},
-		{Type: formular.ItemField, ID: "amneziaJunkMin", Label: "AWG Jmin", Field: &formular.Field{Kind: formular.FieldInt, Validation: true}},
-		{Type: formular.ItemField, ID: "amneziaJunkMax", Label: "AWG Jmax", Field: &formular.Field{Kind: formular.FieldInt, Validation: true}},
-		{Type: formular.ItemField, ID: "amneziaInitPadding", Label: "AWG S1", Field: &formular.Field{Kind: formular.FieldInt, Validation: true}},
-		{Type: formular.ItemField, ID: "amneziaResponsePadding", Label: "AWG S2", Field: &formular.Field{Kind: formular.FieldInt, Validation: true}},
-		{Type: formular.ItemField, ID: "amneziaCookiePadding", Label: "AWG S3", Field: &formular.Field{Kind: formular.FieldInt, Validation: true}},
-		{Type: formular.ItemField, ID: "amneziaTransportPadding", Label: "AWG S4", Field: &formular.Field{Kind: formular.FieldInt, Validation: true}},
-		{Type: formular.ItemField, ID: "amneziaInitHeader", Label: "AWG H1", Field: &formular.Field{Kind: formular.FieldText, Validation: true}},
-		{Type: formular.ItemField, ID: "amneziaResponseHeader", Label: "AWG H2", Field: &formular.Field{Kind: formular.FieldText, Validation: true}},
-		{Type: formular.ItemField, ID: "amneziaCookieHeader", Label: "AWG H3", Field: &formular.Field{Kind: formular.FieldText, Validation: true}},
-		{Type: formular.ItemField, ID: "amneziaTransportHeader", Label: "AWG H4", Field: &formular.Field{Kind: formular.FieldText, Validation: true}},
-		{Type: formular.ItemField, ID: "amneziaInitiationPacket1", Label: "AWG I1", Field: &formular.Field{Kind: formular.FieldText, Validation: true}},
-		{Type: formular.ItemField, ID: "amneziaInitiationPacket2", Label: "AWG I2", Field: &formular.Field{Kind: formular.FieldText, Validation: true}},
-		{Type: formular.ItemField, ID: "amneziaInitiationPacket3", Label: "AWG I3", Field: &formular.Field{Kind: formular.FieldText, Validation: true}},
-		{Type: formular.ItemField, ID: "amneziaInitiationPacket4", Label: "AWG I4", Field: &formular.Field{Kind: formular.FieldText, Validation: true}},
-		{Type: formular.ItemField, ID: "amneziaInitiationPacket5", Label: "AWG I5", Field: &formular.Field{Kind: formular.FieldText, Validation: true}},
+func wireGuardPeerFormValues(peer wireGuardPeerConfig) map[string]any {
+	values := map[string]any{
+		"publicKey":                   peer.publicKey,
+		"presharedKey":                peer.presharedKey,
+		"endpoint":                    peer.endpoint,
+		"allowedIPs":                  peer.allowedIPs,
+		"persistentKeepaliveInterval": peer.persistentKeepaliveInterval,
+		"amneziaOverride":             peer.amneziaWGOverride,
+	}
+	maps.Copy(values, wireGuardAmneziaElementValues(peer.amneziaWG))
+	return values
+}
+
+func wireGuardAmneziaElementValues(config wireGuardAmneziaConfig) map[string]any {
+	return map[string]any{
+		"amneziaJunkCount":         config.junkCount,
+		"amneziaJunkMin":           config.junkMin,
+		"amneziaJunkMax":           config.junkMax,
+		"amneziaInitPadding":       config.initPadding,
+		"amneziaResponsePadding":   config.responsePadding,
+		"amneziaCookiePadding":     config.cookiePadding,
+		"amneziaTransportPadding":  config.transportPadding,
+		"amneziaInitHeader":        config.initHeader,
+		"amneziaResponseHeader":    config.responseHeader,
+		"amneziaCookieHeader":      config.cookieHeader,
+		"amneziaTransportHeader":   config.transportHeader,
+		"amneziaInitiationPacket1": config.initiationPackets[0],
+		"amneziaInitiationPacket2": config.initiationPackets[1],
+		"amneziaInitiationPacket3": config.initiationPackets[2],
+		"amneziaInitiationPacket4": config.initiationPackets[3],
+		"amneziaInitiationPacket5": config.initiationPackets[4],
 	}
 }
 
-func wireGuardPeerAmneziaElementItems(config wireGuardAmneziaConfig) []formular.Item {
+func wireGuardPeerAmneziaTemplateItems() []formular.Item {
 	return []formular.Item{
-		{Type: formular.ItemField, ID: "amneziaJunkCount", Label: "AWG Jc", Field: &formular.Field{Kind: formular.FieldInt, Value: config.junkCount, Validation: true}},
-		{Type: formular.ItemField, ID: "amneziaJunkMin", Label: "AWG Jmin", Field: &formular.Field{Kind: formular.FieldInt, Value: config.junkMin, Validation: true}},
-		{Type: formular.ItemField, ID: "amneziaJunkMax", Label: "AWG Jmax", Field: &formular.Field{Kind: formular.FieldInt, Value: config.junkMax, Validation: true}},
-		{Type: formular.ItemField, ID: "amneziaInitPadding", Label: "AWG S1", Field: &formular.Field{Kind: formular.FieldInt, Value: config.initPadding, Validation: true}},
-		{Type: formular.ItemField, ID: "amneziaResponsePadding", Label: "AWG S2", Field: &formular.Field{Kind: formular.FieldInt, Value: config.responsePadding, Validation: true}},
-		{Type: formular.ItemField, ID: "amneziaCookiePadding", Label: "AWG S3", Field: &formular.Field{Kind: formular.FieldInt, Value: config.cookiePadding, Validation: true}},
-		{Type: formular.ItemField, ID: "amneziaTransportPadding", Label: "AWG S4", Field: &formular.Field{Kind: formular.FieldInt, Value: config.transportPadding, Validation: true}},
-		{Type: formular.ItemField, ID: "amneziaInitHeader", Label: "AWG H1", Field: &formular.Field{Kind: formular.FieldText, Value: config.initHeader, Validation: true}},
-		{Type: formular.ItemField, ID: "amneziaResponseHeader", Label: "AWG H2", Field: &formular.Field{Kind: formular.FieldText, Value: config.responseHeader, Validation: true}},
-		{Type: formular.ItemField, ID: "amneziaCookieHeader", Label: "AWG H3", Field: &formular.Field{Kind: formular.FieldText, Value: config.cookieHeader, Validation: true}},
-		{Type: formular.ItemField, ID: "amneziaTransportHeader", Label: "AWG H4", Field: &formular.Field{Kind: formular.FieldText, Value: config.transportHeader, Validation: true}},
-		{Type: formular.ItemField, ID: "amneziaInitiationPacket1", Label: "AWG I1", Field: &formular.Field{Kind: formular.FieldText, Value: config.initiationPackets[0], Validation: true}},
-		{Type: formular.ItemField, ID: "amneziaInitiationPacket2", Label: "AWG I2", Field: &formular.Field{Kind: formular.FieldText, Value: config.initiationPackets[1], Validation: true}},
-		{Type: formular.ItemField, ID: "amneziaInitiationPacket3", Label: "AWG I3", Field: &formular.Field{Kind: formular.FieldText, Value: config.initiationPackets[2], Validation: true}},
-		{Type: formular.ItemField, ID: "amneziaInitiationPacket4", Label: "AWG I4", Field: &formular.Field{Kind: formular.FieldText, Value: config.initiationPackets[3], Validation: true}},
-		{Type: formular.ItemField, ID: "amneziaInitiationPacket5", Label: "AWG I5", Field: &formular.Field{Kind: formular.FieldText, Value: config.initiationPackets[4], Validation: true}},
+		formular.IntField("amneziaJunkCount", "AWG Jc", 0, formular.Validation),
+		formular.IntField("amneziaJunkMin", "AWG Jmin", 0, formular.Validation),
+		formular.IntField("amneziaJunkMax", "AWG Jmax", 0, formular.Validation),
+		formular.IntField("amneziaInitPadding", "AWG S1", 0, formular.Validation),
+		formular.IntField("amneziaResponsePadding", "AWG S2", 0, formular.Validation),
+		formular.IntField("amneziaCookiePadding", "AWG S3", 0, formular.Validation),
+		formular.IntField("amneziaTransportPadding", "AWG S4", 0, formular.Validation),
+		formular.TextField("amneziaInitHeader", "AWG H1", "", formular.Validation),
+		formular.TextField("amneziaResponseHeader", "AWG H2", "", formular.Validation),
+		formular.TextField("amneziaCookieHeader", "AWG H3", "", formular.Validation),
+		formular.TextField("amneziaTransportHeader", "AWG H4", "", formular.Validation),
+		formular.TextField("amneziaInitiationPacket1", "AWG I1", "", formular.Validation),
+		formular.TextField("amneziaInitiationPacket2", "AWG I2", "", formular.Validation),
+		formular.TextField("amneziaInitiationPacket3", "AWG I3", "", formular.Validation),
+		formular.TextField("amneziaInitiationPacket4", "AWG I4", "", formular.Validation),
+		formular.TextField("amneziaInitiationPacket5", "AWG I5", "", formular.Validation),
 	}
 }
 
@@ -1699,7 +1673,7 @@ func parseWireGuardPeers(raw any) ([]wireGuardPeerConfig, bool) {
 	case []any:
 		array := make([]formular.ArrayElementValue, 0, len(values))
 		for _, rawElement := range values {
-			element, ok := arrayElementValueFromAny(rawElement)
+			element, ok := formular.ArrayElementValueFromAny(rawElement)
 			if !ok {
 				continue
 			}
@@ -1718,14 +1692,14 @@ func wireGuardPeersFromArray(values []formular.ArrayElementValue) []wireGuardPee
 			continue
 		}
 		peer := wireGuardPeerConfig{id: value.ID}
-		peer.publicKey, _ = stringFromAny(value.Values["publicKey"])
-		peer.presharedKey, _ = stringFromAny(value.Values["presharedKey"])
-		peer.endpoint, _ = stringFromAny(value.Values["endpoint"])
-		peer.allowedIPs, _ = stringFromAny(value.Values["allowedIPs"])
-		if keepalive, ok := intFromAny(value.Values["persistentKeepaliveInterval"]); ok {
+		peer.publicKey, _ = formular.StringValue(value.Values["publicKey"])
+		peer.presharedKey, _ = formular.StringValue(value.Values["presharedKey"])
+		peer.endpoint, _ = formular.StringValue(value.Values["endpoint"])
+		peer.allowedIPs, _ = formular.StringValue(value.Values["allowedIPs"])
+		if keepalive, ok := formular.IntValue(value.Values["persistentKeepaliveInterval"]); ok {
 			peer.persistentKeepaliveInterval = keepalive
 		}
-		if override, ok := boolFromAny(value.Values["amneziaOverride"]); ok {
+		if override, ok := formular.BoolValue(value.Values["amneziaOverride"]); ok {
 			peer.amneziaWGOverride = override
 		}
 		applyWireGuardAmneziaValues(&peer.amneziaWG, value.Values)
@@ -1737,12 +1711,12 @@ func wireGuardPeersFromArray(values []formular.ArrayElementValue) []wireGuardPee
 
 func applyWireGuardAmneziaValues(config *wireGuardAmneziaConfig, values map[string]any) {
 	for _, fieldID := range wireGuardAmneziaIntFieldIDs() {
-		if value, ok := intFromAny(values[fieldID]); ok {
+		if value, ok := formular.IntValue(values[fieldID]); ok {
 			applyWireGuardAmneziaValue(config, fieldID, value)
 		}
 	}
 	for _, fieldID := range wireGuardAmneziaStringFieldIDs() {
-		if value, ok := stringFromAny(values[fieldID]); ok {
+		if value, ok := formular.StringValue(values[fieldID]); ok {
 			applyWireGuardAmneziaValue(config, fieldID, value)
 		}
 	}
@@ -1751,37 +1725,37 @@ func applyWireGuardAmneziaValues(config *wireGuardAmneziaConfig, values map[stri
 func applyWireGuardAmneziaValue(config *wireGuardAmneziaConfig, fieldID string, value any) {
 	switch fieldID {
 	case "amneziaJunkCount":
-		config.junkCount, _ = intFromAny(value)
+		config.junkCount, _ = formular.IntValue(value)
 	case "amneziaJunkMin":
-		config.junkMin, _ = intFromAny(value)
+		config.junkMin, _ = formular.IntValue(value)
 	case "amneziaJunkMax":
-		config.junkMax, _ = intFromAny(value)
+		config.junkMax, _ = formular.IntValue(value)
 	case "amneziaInitPadding":
-		config.initPadding, _ = intFromAny(value)
+		config.initPadding, _ = formular.IntValue(value)
 	case "amneziaResponsePadding":
-		config.responsePadding, _ = intFromAny(value)
+		config.responsePadding, _ = formular.IntValue(value)
 	case "amneziaCookiePadding":
-		config.cookiePadding, _ = intFromAny(value)
+		config.cookiePadding, _ = formular.IntValue(value)
 	case "amneziaTransportPadding":
-		config.transportPadding, _ = intFromAny(value)
+		config.transportPadding, _ = formular.IntValue(value)
 	case "amneziaInitHeader":
-		config.initHeader, _ = stringFromAny(value)
+		config.initHeader, _ = formular.StringValue(value)
 	case "amneziaResponseHeader":
-		config.responseHeader, _ = stringFromAny(value)
+		config.responseHeader, _ = formular.StringValue(value)
 	case "amneziaCookieHeader":
-		config.cookieHeader, _ = stringFromAny(value)
+		config.cookieHeader, _ = formular.StringValue(value)
 	case "amneziaTransportHeader":
-		config.transportHeader, _ = stringFromAny(value)
+		config.transportHeader, _ = formular.StringValue(value)
 	case "amneziaInitiationPacket1":
-		config.initiationPackets[0], _ = stringFromAny(value)
+		config.initiationPackets[0], _ = formular.StringValue(value)
 	case "amneziaInitiationPacket2":
-		config.initiationPackets[1], _ = stringFromAny(value)
+		config.initiationPackets[1], _ = formular.StringValue(value)
 	case "amneziaInitiationPacket3":
-		config.initiationPackets[2], _ = stringFromAny(value)
+		config.initiationPackets[2], _ = formular.StringValue(value)
 	case "amneziaInitiationPacket4":
-		config.initiationPackets[3], _ = stringFromAny(value)
+		config.initiationPackets[3], _ = formular.StringValue(value)
 	case "amneziaInitiationPacket5":
-		config.initiationPackets[4], _ = stringFromAny(value)
+		config.initiationPackets[4], _ = formular.StringValue(value)
 	}
 }
 
@@ -1878,42 +1852,42 @@ func readWireGuardAmneziaConfig(cfg configer.Config, fallback wireGuardAmneziaCo
 }
 
 func readWireGuardAmneziaConfigMap(raw any, fallback wireGuardAmneziaConfig) wireGuardAmneziaConfig {
-	values, ok := mapStringAnyFromAny(raw)
+	values, ok := configer.MapStringAny(raw)
 	if !ok {
 		return fallback
 	}
 	out := fallback
-	if value, ok := intFromAny(values["junkCount"]); ok {
+	if value, ok := formular.IntValue(values["junkCount"]); ok {
 		out.junkCount = value
 	}
-	if value, ok := intFromAny(values["junkMin"]); ok {
+	if value, ok := formular.IntValue(values["junkMin"]); ok {
 		out.junkMin = value
 	}
-	if value, ok := intFromAny(values["junkMax"]); ok {
+	if value, ok := formular.IntValue(values["junkMax"]); ok {
 		out.junkMax = value
 	}
-	if value, ok := intFromAny(values["initPadding"]); ok {
+	if value, ok := formular.IntValue(values["initPadding"]); ok {
 		out.initPadding = value
 	}
-	if value, ok := intFromAny(values["responsePadding"]); ok {
+	if value, ok := formular.IntValue(values["responsePadding"]); ok {
 		out.responsePadding = value
 	}
-	if value, ok := intFromAny(values["cookiePadding"]); ok {
+	if value, ok := formular.IntValue(values["cookiePadding"]); ok {
 		out.cookiePadding = value
 	}
-	if value, ok := intFromAny(values["transportPadding"]); ok {
+	if value, ok := formular.IntValue(values["transportPadding"]); ok {
 		out.transportPadding = value
 	}
-	if value, ok := stringFromAny(values["initHeader"]); ok {
+	if value, ok := formular.StringValue(values["initHeader"]); ok {
 		out.initHeader = value
 	}
-	if value, ok := stringFromAny(values["responseHeader"]); ok {
+	if value, ok := formular.StringValue(values["responseHeader"]); ok {
 		out.responseHeader = value
 	}
-	if value, ok := stringFromAny(values["cookieHeader"]); ok {
+	if value, ok := formular.StringValue(values["cookieHeader"]); ok {
 		out.cookieHeader = value
 	}
-	if value, ok := stringFromAny(values["transportHeader"]); ok {
+	if value, ok := formular.StringValue(values["transportHeader"]); ok {
 		out.transportHeader = value
 	}
 	if packets, ok := wireGuardAmneziaInitiationPacketsFromAny(values["initiationPackets"]); ok {
@@ -1921,15 +1895,6 @@ func readWireGuardAmneziaConfigMap(raw any, fallback wireGuardAmneziaConfig) wir
 	}
 	out.normalize()
 	return out
-}
-
-func mapStringAnyFromAny(raw any) (map[string]any, bool) {
-	switch values := raw.(type) {
-	case map[string]any:
-		return values, true
-	default:
-		return nil, false
-	}
 }
 
 func wireGuardAmneziaInitiationPacketsFromAny(raw any) ([wireGuardAmneziaInitiationPacketCount]string, bool) {
@@ -1948,7 +1913,7 @@ func wireGuardAmneziaInitiationPacketsFromAny(raw any) ([wireGuardAmneziaInitiat
 			if i >= len(out) {
 				break
 			}
-			out[i], _ = stringFromAny(rawValue)
+			out[i], _ = formular.StringValue(rawValue)
 		}
 		return out, true
 	default:
@@ -1983,15 +1948,15 @@ func readWireGuardPeers(cfg configer.Config) ([]wireGuardPeerConfig, bool) {
 
 func wireGuardPeerFromConfigMap(index int, value map[string]any) wireGuardPeerConfig {
 	peer := wireGuardPeerConfig{}
-	peer.id, _ = stringFromAny(value["id"])
-	peer.publicKey, _ = stringFromAny(value["publicKey"])
-	peer.presharedKey, _ = stringFromAny(value["presharedKey"])
-	peer.endpoint, _ = stringFromAny(value["endpoint"])
-	peer.allowedIPs, _ = stringFromAny(value["allowedIPs"])
-	if keepalive, ok := intFromAny(value["persistentKeepaliveInterval"]); ok {
+	peer.id, _ = formular.StringValue(value["id"])
+	peer.publicKey, _ = formular.StringValue(value["publicKey"])
+	peer.presharedKey, _ = formular.StringValue(value["presharedKey"])
+	peer.endpoint, _ = formular.StringValue(value["endpoint"])
+	peer.allowedIPs, _ = formular.StringValue(value["allowedIPs"])
+	if keepalive, ok := formular.IntValue(value["persistentKeepaliveInterval"]); ok {
 		peer.persistentKeepaliveInterval = keepalive
 	}
-	if override, ok := boolFromAny(value["amneziaWGOverride"]); ok {
+	if override, ok := formular.BoolValue(value["amneziaWGOverride"]); ok {
 		peer.amneziaWGOverride = override
 	}
 	peer.amneziaWG = readWireGuardAmneziaConfigMap(value["amneziaWG"], peer.amneziaWG)

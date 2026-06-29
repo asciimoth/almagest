@@ -41,7 +41,7 @@ func (networkRouterClass) DefaultNodeParams() pasta.NodeClassParams {
 }
 func (networkRouterClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
 	return &networkRouterNode{
-		rulesText: readConfigString(cfg, "rules", ""),
+		rulesText: configer.String(cfg, configer.Path{"rules"}, ""),
 		router:    gonnect.NewRouter(),
 		backends:  map[int]NetworkCloser{},
 		sent:      map[uint64]NetworkCloser{},
@@ -235,7 +235,7 @@ func (n *networkRouterNode) OnSave(cfg configer.Config) error {
 }
 
 func (n *networkRouterNode) applyConfigForm(values map[string]any) error {
-	text, _ := stringFromAny(values["rules"])
+	text, _ := formular.StringValue(values["rules"])
 	cfg, err := n.compileRules(text)
 	if err != nil {
 		n.formError = err.Error()
@@ -254,24 +254,12 @@ func (n *networkRouterNode) applyConfigForm(values map[string]any) error {
 }
 
 func (n *networkRouterNode) sendRulesFieldStatus(msg formular.FieldValidateMessage) {
-	text, _ := stringFromAny(msg.Value)
-	status := formular.StatusOK
-	statusText := ""
+	text, _ := formular.StringValue(msg.Value)
 	if _, err := n.compileRules(text); err != nil {
-		status = formular.StatusError
-		statusText = err.Error()
+		n.w.SendNodeMenuMsg(n.id, formular.FieldStatusFromError(pasta.NodeMenuID(n.id), 1, 1, msg.Field, err))
+		return
 	}
-	n.w.SendNodeMenuMsg(n.id, formular.FieldStatusMessage{
-		MessageBase: formular.MessageBase{
-			Type:            formular.MessageFieldStatus,
-			MenuID:          pasta.NodeMenuID(n.id),
-			MenuGeneration:  1,
-			BlockGeneration: 1,
-		},
-		Field:      msg.Field,
-		Status:     status,
-		StatusText: statusText,
-	})
+	n.w.SendNodeMenuMsg(n.id, formular.FieldStatusFromError(pasta.NodeMenuID(n.id), 1, 1, msg.Field, nil))
 }
 
 func (n *networkRouterNode) compileRules(text string) (routing.RouterCfg, error) {
@@ -471,31 +459,21 @@ func (n *networkRouterNode) sendMenuSnapshot() {
 	if n.w == nil || n.id == 0 {
 		return
 	}
-	n.w.SendNodeMenuMsg(n.id, formular.MenuSnapshotMessage{
-		MessageBase: formular.MessageBase{Type: formular.MessageMenuSnapshot, MenuID: pasta.NodeMenuID(n.id), MenuGeneration: 1},
-		Blocks:      []formular.Block{n.configBlock()},
-	})
+	n.w.SendNodeMenuMsg(n.id, formular.MenuSnapshot(pasta.NodeMenuID(n.id), 1, n.configBlock()))
 }
 
 func (n *networkRouterNode) sendForcedMenuSnapshot() {
 	if n.w == nil || n.id == 0 {
 		return
 	}
-	n.w.SendNodeMenuMsg(n.id, formular.MenuSnapshotMessage{
-		MessageBase: formular.MessageBase{Type: formular.MessageMenuSnapshot, MenuID: pasta.NodeMenuID(n.id), MenuGeneration: 1},
-		Force:       true,
-		Blocks:      []formular.Block{n.configBlock()},
-	})
+	n.w.SendNodeMenuMsg(n.id, formular.ForcedMenuSnapshot(pasta.NodeMenuID(n.id), 1, n.configBlock()))
 }
 
 func (n *networkRouterNode) sendConfigBlock() {
 	if n.w == nil || n.id == 0 {
 		return
 	}
-	n.w.SendNodeMenuMsg(n.id, formular.BlockSnapshotMessage{
-		MessageBase: formular.MessageBase{Type: formular.MessageBlockSnapshot, MenuID: pasta.NodeMenuID(n.id), MenuGeneration: 1, BlockGeneration: 1},
-		Block:       n.configBlock(),
-	})
+	n.w.SendNodeMenuMsg(n.id, formular.BlockSnapshot(pasta.NodeMenuID(n.id), 1, 1, n.configBlock()))
 }
 
 func (n *networkRouterNode) configBlock() formular.Block {

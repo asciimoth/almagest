@@ -63,11 +63,11 @@ func (c *defaultTunConfig) read(cfg configer.Config) {
 	if cfg == nil {
 		return
 	}
-	c.tunAddrs = readConfigString(cfg, "tunAddrs", c.tunAddrs)
-	c.tunRoutes = readConfigString(cfg, "tunRoutes", c.tunRoutes)
-	c.mtu = readConfigInt(cfg, "mtu", c.mtu)
-	c.dnsIP = readConfigString(cfg, "dnsIP", c.dnsIP)
-	c.strict = readConfigBool(cfg, "strict", c.strict)
+	c.tunAddrs = configer.String(cfg, configer.Path{"tunAddrs"}, c.tunAddrs)
+	c.tunRoutes = configer.String(cfg, configer.Path{"tunRoutes"}, c.tunRoutes)
+	c.mtu = configer.Int(cfg, configer.Path{"mtu"}, c.mtu)
+	c.dnsIP = configer.String(cfg, configer.Path{"dnsIP"}, c.dnsIP)
+	c.strict = configer.Bool(cfg, configer.Path{"strict"}, c.strict)
 	c.exclude = readDefaultTunRulesConfig(cfg, "exclude")
 	c.include = readDefaultTunRulesConfig(cfg, "include")
 	c.normalize()
@@ -224,7 +224,7 @@ func (n *defaultTunNode) OnSave(cfg configer.Config) error {
 	if err := pasta.DeleteNodeOwnedConfigKeys(cfg); err != nil {
 		return err
 	}
-	values := map[string]any{
+	return configer.SetMap(cfg, map[string]any{
 		"tunAddrs":  n.config.tunAddrs,
 		"tunRoutes": n.config.tunRoutes,
 		"mtu":       n.config.mtu,
@@ -232,13 +232,7 @@ func (n *defaultTunNode) OnSave(cfg configer.Config) error {
 		"strict":    n.config.strict,
 		"exclude":   defaultTunRulesConfig(n.config.exclude),
 		"include":   defaultTunRulesConfig(n.config.include),
-	}
-	for key, value := range values {
-		if err := cfg.Set(configer.Path{key}, value); err != nil {
-			return err
-		}
-	}
-	return nil
+	})
 }
 
 func (n *defaultTunNode) applyConfigForm(values map[string]any) error {
@@ -249,13 +243,13 @@ func (n *defaultTunNode) applyConfigForm(values map[string]any) error {
 	if value, ok := defaultTunStringListFromAny(values["tunRoutes"]); ok {
 		next.tunRoutes = value
 	}
-	if value, ok := intFromAny(values["mtu"]); ok {
+	if value, ok := formular.IntValue(values["mtu"]); ok {
 		next.mtu = value
 	}
-	if value, ok := stringFromAny(values["dnsIP"]); ok {
+	if value, ok := formular.StringValue(values["dnsIP"]); ok {
 		next.dnsIP = value
 	}
-	if value, ok := boolFromAny(values["strict"]); ok {
+	if value, ok := formular.BoolValue(values["strict"]); ok {
 		next.strict = value
 	}
 	if rules, ok := defaultTunRulesFromAny(values["exclude"]); ok {
@@ -282,23 +276,7 @@ func (n *defaultTunNode) applyConfigForm(values map[string]any) error {
 }
 
 func (n *defaultTunNode) sendConfigFieldStatus(msg formular.FieldValidateMessage) {
-	status := formular.StatusOK
-	statusText := ""
-	if err := n.validateConfigField(msg); err != nil {
-		status = formular.StatusError
-		statusText = err.Error()
-	}
-	n.w.SendNodeMenuMsg(n.id, formular.FieldStatusMessage{
-		MessageBase: formular.MessageBase{
-			Type:            formular.MessageFieldStatus,
-			MenuID:          pasta.NodeMenuID(n.id),
-			MenuGeneration:  1,
-			BlockGeneration: 1,
-		},
-		Field:      msg.Field,
-		Status:     status,
-		StatusText: statusText,
-	})
+	n.w.SendNodeMenuMsg(n.id, formular.FieldStatusFromError(pasta.NodeMenuID(n.id), 1, 1, msg.Field, n.validateConfigField(msg)))
 }
 
 func (n *defaultTunNode) validateConfigField(msg formular.FieldValidateMessage) error {
@@ -308,11 +286,11 @@ func (n *defaultTunNode) validateConfigField(msg formular.FieldValidateMessage) 
 	next := n.config
 	switch msg.Field.FieldID {
 	case "mtu":
-		if value, ok := intFromAny(msg.Value); ok {
+		if value, ok := formular.IntValue(msg.Value); ok {
 			next.mtu = value
 		}
 	case "dnsIP":
-		if value, ok := stringFromAny(msg.Value); ok {
+		if value, ok := formular.StringValue(msg.Value); ok {
 			next.dnsIP = value
 		}
 	default:
@@ -327,7 +305,7 @@ func (n *defaultTunNode) validateNestedConfigField(msg formular.FieldValidateMes
 	case "value":
 		return nil
 	case "type":
-		ruleType, _ := stringFromAny(msg.Value)
+		ruleType, _ := formular.StringValue(msg.Value)
 		ruleType = strings.TrimSpace(ruleType)
 		if ruleType == "" {
 			return nil
@@ -340,7 +318,7 @@ func (n *defaultTunNode) validateNestedConfigField(msg formular.FieldValidateMes
 		}
 		return nil
 	case "rule":
-		ruleValue, _ := stringFromAny(msg.Value)
+		ruleValue, _ := formular.StringValue(msg.Value)
 		ruleValue = strings.TrimSpace(ruleValue)
 		if ruleValue == "" {
 			return nil
@@ -545,21 +523,14 @@ func (n *defaultTunNode) updateLabel() error {
 }
 
 func (n *defaultTunNode) sendMenuSnapshot() {
-	n.w.SendNodeMenuMsg(n.id, formular.MenuSnapshotMessage{
-		MessageBase: formular.MessageBase{Type: formular.MessageMenuSnapshot, MenuID: pasta.NodeMenuID(n.id), MenuGeneration: 1},
-		Blocks:      n.menuBlocks(),
-	})
+	n.w.SendNodeMenuMsg(n.id, formular.MenuSnapshot(pasta.NodeMenuID(n.id), 1, n.menuBlocks()...))
 }
 
 func (n *defaultTunNode) sendForcedMenuSnapshot() {
 	if n.w == nil || n.id == 0 {
 		return
 	}
-	n.w.SendNodeMenuMsg(n.id, formular.MenuSnapshotMessage{
-		MessageBase: formular.MessageBase{Type: formular.MessageMenuSnapshot, MenuID: pasta.NodeMenuID(n.id), MenuGeneration: 1},
-		Force:       true,
-		Blocks:      n.menuBlocks(),
-	})
+	n.w.SendNodeMenuMsg(n.id, formular.ForcedMenuSnapshot(pasta.NodeMenuID(n.id), 1, n.menuBlocks()...))
 }
 
 func (n *defaultTunNode) menuBlocks() []formular.Block {
@@ -570,10 +541,7 @@ func (n *defaultTunNode) sendEffectiveBlock() {
 	if n.w == nil || n.id == 0 {
 		return
 	}
-	n.w.SendNodeMenuMsg(n.id, formular.BlockSnapshotMessage{
-		MessageBase: formular.MessageBase{Type: formular.MessageBlockSnapshot, MenuID: pasta.NodeMenuID(n.id), MenuGeneration: 1, BlockGeneration: 1},
-		Block:       n.effectiveBlock(),
-	})
+	n.w.SendNodeMenuMsg(n.id, formular.BlockSnapshot(pasta.NodeMenuID(n.id), 1, 1, n.effectiveBlock()))
 }
 
 func (n *defaultTunNode) effectiveBlock() formular.Block {
@@ -620,7 +588,7 @@ func splitDefaultTunList(value string) []string {
 }
 
 func defaultTunStringListFromAny(raw any) (string, bool) {
-	if value, ok := stringFromAny(raw); ok {
+	if value, ok := formular.StringValue(raw); ok {
 		return value, true
 	}
 	switch values := raw.(type) {
@@ -629,7 +597,7 @@ func defaultTunStringListFromAny(raw any) (string, bool) {
 	case []any:
 		array := make([]formular.ArrayElementValue, 0, len(values))
 		for _, rawElement := range values {
-			element, ok := arrayElementValueFromAny(rawElement)
+			element, ok := formular.ArrayElementValueFromAny(rawElement)
 			if !ok {
 				continue
 			}
@@ -644,7 +612,7 @@ func defaultTunStringListFromAny(raw any) (string, bool) {
 func defaultTunStringListFromArray(values []formular.ArrayElementValue) []string {
 	out := make([]string, 0, len(values))
 	for _, value := range values {
-		item, _ := stringFromAny(value.Values["value"])
+		item, _ := formular.StringValue(value.Values["value"])
 		item = strings.TrimSpace(item)
 		if item != "" {
 			out = append(out, item)
@@ -736,21 +704,16 @@ func defaultTunStringListTemplate() formular.ArrayTemplate {
 		Name:  "value",
 		Label: "Value",
 		Items: []formular.Item{
-			{Type: formular.ItemField, ID: "value", Label: "Value", Field: &formular.Field{Kind: formular.FieldText, Validation: true}},
+			formular.TextField("value", "Value", "", formular.Validation),
 		},
 	}
 }
 
 func defaultTunStringListElements(values []string) []formular.ArrayElement {
+	template := defaultTunStringListTemplate()
 	out := make([]formular.ArrayElement, 0, len(values))
 	for i, value := range values {
-		out = append(out, formular.ArrayElement{
-			ID:       fmt.Sprintf("value-%d", i),
-			Template: "value",
-			Items: []formular.Item{
-				{Type: formular.ItemField, ID: "value", Label: "Value", Field: &formular.Field{Kind: formular.FieldText, Value: value, Validation: true}},
-			},
-		})
+		out = append(out, formular.InstantiateArrayTemplate(template, fmt.Sprintf("value-%d", i), map[string]any{"value": value}))
 	}
 	return out
 }
@@ -767,36 +730,20 @@ func defaultTunRuleTemplate() formular.ArrayTemplate {
 }
 
 func defaultTunRuleElements(rules []sysnet.Rule) []formular.ArrayElement {
+	template := defaultTunRuleTemplate()
 	out := make([]formular.ArrayElement, 0, len(rules))
 	for i, rule := range rules {
-		out = append(out, formular.ArrayElement{
-			ID:       fmt.Sprintf("rule-%d", i),
-			Template: "rule",
-			Items: []formular.Item{
-				defaultTunRuleTypeField(rule.Type),
-				defaultTunRuleValueField(rule.Rule),
-			},
-		})
+		out = append(out, formular.InstantiateArrayTemplate(template, fmt.Sprintf("rule-%d", i), map[string]any{"type": rule.Type, "rule": rule.Rule}))
 	}
 	return out
 }
 
 func defaultTunRuleTypeField(value string) formular.Item {
-	return formular.Item{Type: formular.ItemField, ID: "type", Label: "Type", Field: &formular.Field{
-		Kind:         formular.FieldText,
-		Value:        value,
-		Validation:   true,
-		Autocomplete: &formular.Autocomplete{Enabled: true},
-	}}
+	return formular.TextField("type", "Type", value, formular.Validation, formular.AutocompleteConfig(formular.Autocomplete{Enabled: true}))
 }
 
 func defaultTunRuleValueField(value string) formular.Item {
-	return formular.Item{Type: formular.ItemField, ID: "rule", Label: "Rule", Field: &formular.Field{
-		Kind:         formular.FieldText,
-		Value:        value,
-		Validation:   true,
-		Autocomplete: &formular.Autocomplete{Enabled: true},
-	}}
+	return formular.TextField("rule", "Rule", value, formular.Validation, formular.AutocompleteConfig(formular.Autocomplete{Enabled: true}))
 }
 
 func defaultTunRulesFromAny(raw any) ([]sysnet.Rule, bool) {
@@ -806,7 +753,7 @@ func defaultTunRulesFromAny(raw any) ([]sysnet.Rule, bool) {
 	case []any:
 		array := make([]formular.ArrayElementValue, 0, len(values))
 		for _, rawElement := range values {
-			element, ok := arrayElementValueFromAny(rawElement)
+			element, ok := formular.ArrayElementValueFromAny(rawElement)
 			if !ok {
 				continue
 			}
@@ -821,8 +768,8 @@ func defaultTunRulesFromAny(raw any) ([]sysnet.Rule, bool) {
 func defaultTunRulesFromArray(values []formular.ArrayElementValue) []sysnet.Rule {
 	out := make([]sysnet.Rule, 0, len(values))
 	for _, value := range values {
-		ruleType, _ := stringFromAny(value.Values["type"])
-		ruleValue, _ := stringFromAny(value.Values["rule"])
+		ruleType, _ := formular.StringValue(value.Values["type"])
+		ruleValue, _ := formular.StringValue(value.Values["rule"])
 		rule := sysnet.Rule{Type: strings.TrimSpace(ruleType), Rule: strings.TrimSpace(ruleValue)}
 		if rule.Type == "" && rule.Rule == "" {
 			continue
@@ -833,17 +780,7 @@ func defaultTunRulesFromArray(values []formular.ArrayElementValue) []sysnet.Rule
 }
 
 func (n *defaultTunNode) sendConfigAutocompleteHints(msg formular.AutocompleteRequestMessage) {
-	n.w.SendNodeMenuMsg(n.id, formular.AutocompleteHintsMessage{
-		MessageBase: formular.MessageBase{
-			Type:            formular.MessageAutocompleteHints,
-			MenuID:          pasta.NodeMenuID(n.id),
-			MenuGeneration:  1,
-			BlockGeneration: 1,
-		},
-		Field:  msg.Field,
-		Prefix: msg.Prefix,
-		Hints:  n.configAutocompleteHints(msg),
-	})
+	n.w.SendNodeMenuMsg(n.id, formular.AutocompleteHints(pasta.NodeMenuID(n.id), 1, msg.Field, msg.Prefix, n.configAutocompleteHints(msg)))
 }
 
 func (n *defaultTunNode) configAutocompleteHints(msg formular.AutocompleteRequestMessage) []string {
@@ -975,8 +912,8 @@ func defaultTunRulesFromConfigValue(raw any) []sysnet.Rule {
 	case []map[string]any:
 		out := make([]sysnet.Rule, 0, len(values))
 		for _, value := range values {
-			ruleType, _ := stringFromAny(value["type"])
-			ruleValue, _ := stringFromAny(value["rule"])
+			ruleType, _ := formular.StringValue(value["type"])
+			ruleValue, _ := formular.StringValue(value["rule"])
 			out = append(out, sysnet.Rule{Type: ruleType, Rule: ruleValue})
 		}
 		return normalizeDefaultTunRules(out)
@@ -989,8 +926,8 @@ func defaultTunRulesFromConfigValue(raw any) []sysnet.Rule {
 			case map[string]string:
 				out = append(out, sysnet.Rule{Type: value["type"], Rule: value["rule"]})
 			case map[string]any:
-				ruleType, _ := stringFromAny(value["type"])
-				ruleValue, _ := stringFromAny(value["rule"])
+				ruleType, _ := formular.StringValue(value["type"])
+				ruleValue, _ := formular.StringValue(value["rule"])
 				out = append(out, sysnet.Rule{Type: ruleType, Rule: ruleValue})
 			}
 		}
