@@ -689,14 +689,9 @@ func TestWireGuardRetriesBindAfterReceiveEOF(t *testing.T) {
 		return network.listenCount() >= 1
 	}, "wireguard initial listen")
 
-	deadline := time.Now().Add(500 * time.Millisecond)
-	for time.Now().Before(deadline) {
-		if network.listenCount() >= 2 {
-			return
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	t.Fatalf("WireGuard did not retry bind after receive EOF; listen count = %d, want at least 2", network.listenCount())
+	Eventually(t, func() bool {
+		return network.listenCount() >= 2
+	}, "wireguard retry after receive EOF")
 }
 
 func applyWireGuardConfig(t *testing.T, engine Engine, node uint64, privateKey string, listenPort int, peers []wireGuardPeerConfig) {

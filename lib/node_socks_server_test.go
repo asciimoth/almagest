@@ -123,6 +123,40 @@ func TestParseSocksServerUsersKeepsAppliedRemoval(t *testing.T) {
 	}
 }
 
+func TestSocksServerEnsureWorkerStartedKeepsRunningWorker(t *testing.T) {
+	started := make(chan struct{})
+	stopped := make(chan struct{})
+	worker := newRestartableWorker(func(stop <-chan struct{}) {
+		close(started)
+		<-stop
+		close(stopped)
+	})
+	<-started
+	t.Cleanup(func() {
+		select {
+		case <-stopped:
+		default:
+			worker.Stop()
+			<-stopped
+		}
+	})
+
+	node := &socksServerNode{worker: worker, restartID: 7}
+	node.ensureWorkerStarted("ready")
+
+	if node.worker != worker {
+		t.Fatal("ensureWorkerStarted replaced a running worker")
+	}
+	if node.restartID != 7 {
+		t.Fatalf("restartID = %d, want 7", node.restartID)
+	}
+	select {
+	case <-stopped:
+		t.Fatal("ensureWorkerStarted stopped a running worker")
+	default:
+	}
+}
+
 func assertStringSlice(t *testing.T, got, want []string) {
 	t.Helper()
 	if len(got) != len(want) {

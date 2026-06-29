@@ -105,7 +105,7 @@ func (n *socksServerNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uin
 func (n *socksServerNode) OnReady() error {
 	n.RequestPort(n.listen)
 	n.RequestPort(n.proxy)
-	n.restartWorker("ready")
+	n.ensureWorkerStarted("ready")
 	return nil
 }
 
@@ -224,6 +224,13 @@ func (n *socksServerNode) OnFormularMsg(message any) error {
 
 func (n *socksServerNode) OnSave(cfg configer.Config) error {
 	return saveSocksServerConfig(cfg, n.config)
+}
+
+func (n *socksServerNode) ensureWorkerStarted(reason string) {
+	if n.worker != nil {
+		return
+	}
+	n.restartWorker(reason)
 }
 
 func (n *socksServerNode) applyConfigForm(values map[string]any) error {
