@@ -1,0 +1,261 @@
+package almagest
+
+import (
+	"maps"
+	"strconv"
+	"time"
+
+	"github.com/asciimoth/formular"
+)
+
+func (n *wireGuardNode) sendMenuSnapshot() {
+	sendNodeMenuSnapshot(n.w, n.id, false, n.menuBlocks()...)
+}
+func (n *wireGuardNode) sendForcedMenuSnapshot() {
+	sendNodeMenuSnapshot(n.w, n.id, true, n.menuBlocks()...)
+}
+func (n *wireGuardNode) menuBlocks() []formular.Block {
+	return []formular.Block{n.statusBlock(), n.configBlock(), n.peersBlock()}
+}
+func (n *wireGuardNode) sendStatusBlock() {
+	sendNodeBlockSnapshot(n.w, n.id, n.statusBlock())
+}
+func (n *wireGuardNode) statusBlock() formular.Block {
+	publicKey := ""
+	if n.config.privateKey != "" {
+		if key, err := parseWireGuardPrivateKey(n.config.privateKey); err == nil && !key.IsZero() {
+			publicKey = wireGuardPublicKeyBase64(key)
+		}
+	}
+	listenPort := n.config.listenPort
+	n.runtimeMu.Lock()
+	active := n.hasActiveAttachmentsLocked()
+	if n.dev != nil && active {
+		listenPort = int(n.dev.ListenPort())
+	}
+	tunAttached := n.currentTun != nil
+	networkAttached := n.currentNetwork != nil
+	stats := n.runtimeStats
+	n.runtimeMu.Unlock()
+	statusErr := n.formError
+	if statusErr == "" {
+		statusErr = n.runtimeError
+	}
+	return formular.Block{ID: "status", Order: 10, Generation: 1, Items: []formular.Item{
+		readonlyTextField("state", "State", n.stateText()),
+		readonlyTextField("publicKey", "Public key", publicKey),
+		readonlyIntField("listenPort", "Listen port", listenPort),
+		readonlyTextField("tun", "TUN", attachedText(tunAttached)),
+		readonlyTextField("network", "Network", attachedText(networkAttached)),
+		readonlyIntField("peers", "Peers", len(n.config.peers)),
+		readonlyIntField("runtimePeers", "Runtime peers", stats.PeerCount),
+		readonlyIntField("activePeers", "Active peers", stats.ActivePeerCount),
+		readonlyIntField("connectedPeers", "Connected peers", stats.ConnectedPeerCount),
+		readonlyTextField("rxBytes", "RX bytes", wireGuardUint64Text(stats.RxBytes)),
+		readonlyTextField("txBytes", "TX bytes", wireGuardUint64Text(stats.TxBytes)),
+		readonlyTextField("rxPackets", "RX packets", wireGuardUint64Text(stats.RxPackets)),
+		readonlyTextField("txPackets", "TX packets", wireGuardUint64Text(stats.TxPackets)),
+		readonlyTextField("latestHandshake", "Latest handshake", wireGuardTimeText(stats.LastHandshakeTime)),
+		readonlyTextField("error", "Error", statusErr),
+	}}
+}
+func (n *wireGuardNode) configBlock() formular.Block {
+	statusErr := n.formError != ""
+	items := []formular.Item{
+		secretTextField("privateKey", "Private key", n.config.privateKey, statusErr, n.formError, false),
+		configIntField("listenPort", "Listen port", n.config.listenPort, statusErr, n.formError),
+		configTextField("ownedIPs", "Owned IPs", n.config.ownedIPs, statusErr, n.formError, true),
+	}
+	items = append(items, wireGuardAmneziaConfigItems(n.config.amneziaWG, statusErr, n.formError)...)
+	return formular.Block{ID: "config", Order: 20, Generation: 1, Form: true, Items: items}
+}
+func (n *wireGuardNode) peersBlock() formular.Block {
+	statusErr := n.formError != ""
+	field := &formular.Field{
+		Kind:      formular.FieldArray,
+		Templates: []formular.ArrayTemplate{wireGuardPeerTemplate()},
+		Elements:  wireGuardPeerElements(n.config.peers),
+	}
+	if statusErr {
+		field.Status = formular.StatusError
+		field.StatusText = n.formError
+	}
+	return formular.Block{ID: "peers", Order: 30, Generation: 1, Form: true, Items: []formular.Item{
+		{Type: formular.ItemField, ID: "peers", Label: "Peers", Field: field},
+	}}
+}
+func (n *wireGuardNode) sendConfigFieldStatus(msg formular.FieldValidateMessage) {
+	next := n.config.clone()
+	switch msg.Field.FieldID {
+	case "privateKey":
+		if value, ok := formular.StringValue(msg.Value); ok {
+			next.privateKey = value
+		}
+	case "listenPort":
+		if value, ok := formular.IntValue(msg.Value); ok {
+			next.listenPort = value
+		}
+	case "ownedIPs":
+		if value, ok := formular.StringValue(msg.Value); ok {
+			next.ownedIPs = value
+		}
+	default:
+		if !applyWireGuardAmneziaValue(&next.amneziaWG, msg.Field.FieldID, msg.Value) {
+			return
+		}
+	}
+	next.normalize()
+	n.sendFieldStatus(msg, validateWireGuardConfig(next))
+}
+func (n *wireGuardNode) sendFormFieldStatus(msg formular.FieldValidateMessage) {
+	switch msg.Field.BlockID {
+	case "config":
+		n.sendConfigFieldStatus(msg)
+	case "peers":
+		n.sendPeersFieldStatus(msg)
+	}
+}
+func (n *wireGuardNode) sendPeersFieldStatus(msg formular.FieldValidateMessage) {
+	if len(msg.Field.ElementPath) == 0 {
+		return
+	}
+	next := n.config.clone()
+	peers := next.peers
+	element := msg.Field.ElementPath[len(msg.Field.ElementPath)-1]
+	index := -1
+	for i, peer := range peers {
+		if peer.id == element.ElementID {
+			index = i
+			break
+		}
+	}
+	if index < 0 {
+		return
+	}
+	switch msg.Field.FieldID {
+	case "publicKey":
+		if value, ok := formular.StringValue(msg.Value); ok {
+			peers[index].publicKey = value
+		}
+	case "presharedKey":
+		if value, ok := formular.StringValue(msg.Value); ok {
+			peers[index].presharedKey = value
+		}
+	case "endpoint":
+		if value, ok := formular.StringValue(msg.Value); ok {
+			peers[index].endpoint = value
+		}
+	case "allowedIPs":
+		if value, ok := formular.StringValue(msg.Value); ok {
+			peers[index].allowedIPs = value
+		}
+	case "persistentKeepaliveInterval":
+		if value, ok := formular.IntValue(msg.Value); ok {
+			peers[index].persistentKeepaliveInterval = value
+		}
+	case "amneziaOverride":
+		if value, ok := formular.BoolValue(msg.Value); ok {
+			peers[index].amneziaWGOverride = value
+		}
+	default:
+		if !applyWireGuardAmneziaValue(&peers[index].amneziaWG, msg.Field.FieldID, msg.Value) {
+			return
+		}
+	}
+	next.peers = peers
+	next.normalize()
+	n.sendFieldStatus(msg, validateWireGuardConfig(next))
+}
+func (n *wireGuardNode) sendFieldStatus(msg formular.FieldValidateMessage, err error) {
+	sendNodeFieldStatus(n.w, n.id, msg.Field, err)
+}
+func attachedText(attached bool) string {
+	if attached {
+		return "attached"
+	}
+	return "detached"
+}
+func wireGuardUint64Text(value uint64) string {
+	return strconv.FormatUint(value, 10)
+}
+func wireGuardTimeText(value time.Time) string {
+	if value.IsZero() {
+		return ""
+	}
+	return value.Format(time.RFC3339)
+}
+func secretTextField(id, label, value string, statusErr bool, statusText string, multiline bool) formular.Item {
+	opts := []formular.FieldOption{formular.Validation, formular.Secret}
+	if multiline {
+		opts = append(opts, formular.Multiline)
+	}
+	if statusErr {
+		opts = append(opts, formular.Status(formular.StatusError), formular.StatusText(statusText))
+	}
+	return formular.TextField(id, label, value, opts...)
+}
+func wireGuardPeerTemplate() formular.ArrayTemplate {
+	return formular.ArrayTemplate{
+		Name:  "peer",
+		Label: "Peer",
+		Items: append([]formular.Item{
+			formular.TextField("publicKey", "Public key", "", formular.Validation, formular.Required),
+			formular.SecretTextField("presharedKey", "Preshared key", "", formular.Validation),
+			formular.TextField("endpoint", "Endpoint", "", formular.Validation),
+			formular.MultilineTextField("allowedIPs", "Allowed IPs", "", formular.Validation),
+			formular.IntField("persistentKeepaliveInterval", "Keepalive", 0, formular.Validation),
+			formular.CheckboxField("amneziaOverride", "AWG override", false),
+		}, wireGuardPeerAmneziaTemplateItems()...),
+	}
+}
+func wireGuardAmneziaConfigItems(config wireGuardAmneziaConfig, statusErr bool, statusText string) []formular.Item {
+	out := make([]formular.Item, 0, len(wireGuardAmneziaIntFieldSpecs)+len(wireGuardAmneziaStringFieldSpecs))
+	for _, spec := range wireGuardAmneziaIntFieldSpecs {
+		out = append(out, configIntField(spec.formID, spec.label, spec.value(config), statusErr, statusText))
+	}
+	for _, spec := range wireGuardAmneziaStringFieldSpecs {
+		out = append(out, configTextField(spec.formID, spec.label, spec.value(config), statusErr, statusText, false))
+	}
+	return out
+}
+func wireGuardPeerElements(peers []wireGuardPeerConfig) []formular.ArrayElement {
+	template := wireGuardPeerTemplate()
+	out := make([]formular.ArrayElement, 0, len(peers))
+	for i, peer := range peers {
+		peer.normalize(i)
+		out = append(out, formular.InstantiateArrayTemplate(template, peer.id, wireGuardPeerFormValues(peer)))
+	}
+	return out
+}
+func wireGuardPeerFormValues(peer wireGuardPeerConfig) map[string]any {
+	values := map[string]any{
+		"publicKey":                   peer.publicKey,
+		"presharedKey":                peer.presharedKey,
+		"endpoint":                    peer.endpoint,
+		"allowedIPs":                  peer.allowedIPs,
+		"persistentKeepaliveInterval": peer.persistentKeepaliveInterval,
+		"amneziaOverride":             peer.amneziaWGOverride,
+	}
+	maps.Copy(values, wireGuardAmneziaElementValues(peer.amneziaWG))
+	return values
+}
+func wireGuardAmneziaElementValues(config wireGuardAmneziaConfig) map[string]any {
+	values := make(map[string]any, len(wireGuardAmneziaIntFieldSpecs)+len(wireGuardAmneziaStringFieldSpecs))
+	for _, spec := range wireGuardAmneziaIntFieldSpecs {
+		values[spec.formID] = spec.value(config)
+	}
+	for _, spec := range wireGuardAmneziaStringFieldSpecs {
+		values[spec.formID] = spec.value(config)
+	}
+	return values
+}
+func wireGuardPeerAmneziaTemplateItems() []formular.Item {
+	out := make([]formular.Item, 0, len(wireGuardAmneziaIntFieldSpecs)+len(wireGuardAmneziaStringFieldSpecs))
+	for _, spec := range wireGuardAmneziaIntFieldSpecs {
+		out = append(out, formular.IntField(spec.formID, spec.label, 0, formular.Validation))
+	}
+	for _, spec := range wireGuardAmneziaStringFieldSpecs {
+		out = append(out, formular.TextField(spec.formID, spec.label, "", formular.Validation))
+	}
+	return out
+}
