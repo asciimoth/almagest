@@ -434,7 +434,7 @@ func (e *httpE2E) mustNetworkLink(leftNode uint64, leftDir, leftName string, rig
 
 func (e *httpE2E) routerBackendBySlot(router uint64, slot int) uint64 {
 	e.T.Helper()
-	port := e.RightPort(router, networkRouterSlotName(slot))
+	port := e.RightPort(router, slotPortName(slot))
 	snapshot, ok := e.Engine.PortSnapshot(E2EWorkspace, port)
 	if !ok {
 		e.T.Fatalf("router slot %d port snapshot missing", slot)

@@ -137,6 +137,171 @@ func TestDetachTunForLinkBindsWrapperResource(t *testing.T) {
 	}
 }
 
+func TestAcceptTunPayloadClosesReadyDuplicateSource(t *testing.T) {
+	w, node, _, _, rightPort := newTunTypeLinkedWorkspace(t)
+	link := onlyPortLink(t, w, rightPort)
+
+	base, peer := tun.Pipe(1, 1500, 0, 0)
+	defer closeTestTun(base)
+	defer closeTestTun(peer)
+
+	current := testTunWrapper{Tun: tun.Detach(base), wrapped: base}
+	defer closeTestTun(current)
+	duplicate := testTunWrapper{Tun: tun.Detach(base), wrapped: base}
+
+	next, changed := AcceptTunPayload(w, node, pasta.Event{
+		Link:    link,
+		Payload: TunPayload{Tun: duplicate},
+	}, link, current)
+	if changed {
+		t.Fatal("AcceptTunPayload() changed duplicate same-source wrapper, want unchanged")
+	}
+	if !SameTunInstance(next, current) {
+		t.Fatal("AcceptTunPayload() returned a replacement for duplicate same-source wrapper")
+	}
+	if _, err := duplicate.MTU(); !errors.Is(err, os.ErrClosed) {
+		t.Fatalf("duplicate MTU() error = %v, want os.ErrClosed", err)
+	}
+}
+
+func TestAcceptTunPayloadReplacesStaleCurrentSameSource(t *testing.T) {
+	w, node, _, _, rightPort := newTunTypeLinkedWorkspace(t)
+	link := onlyPortLink(t, w, rightPort)
+
+	base, peer := tun.Pipe(1, 1500, 0, 0)
+	defer closeTestTun(base)
+	defer closeTestTun(peer)
+
+	current := testTunWrapper{Tun: tun.Detach(base), wrapped: base}
+	closeTestTun(current)
+	replacement := testTunWrapper{Tun: tun.Detach(base), wrapped: base}
+	defer closeTestTun(replacement)
+
+	next, changed := AcceptTunPayload(w, node, pasta.Event{
+		Link:    link,
+		Payload: TunPayload{Tun: replacement},
+	}, link, current)
+	if !changed {
+		t.Fatal("AcceptTunPayload() changed = false, want true for stale current")
+	}
+	if !SameTunInstance(next, replacement) {
+		t.Fatal("AcceptTunPayload() did not return replacement")
+	}
+	if mtu, err := replacement.MTU(); err != nil || mtu != 1500 {
+		t.Fatalf("replacement MTU() = %d, %v; want 1500, nil", mtu, err)
+	}
+}
+
+func TestTunOutputCacheReusesReadyWrapperAndReplacesClosedWrapper(t *testing.T) {
+	w, node, _, _, rightPort := newTunTypeLinkedWorkspace(t)
+	link := onlyPortLink(t, w, rightPort)
+
+	base, peer := tun.Pipe(1, 1500, 0, 0)
+	defer closeTestTun(base)
+	defer closeTestTun(peer)
+
+	var cache TunOutputCache
+	if !cache.Send(w, node, link, base, nil) {
+		t.Fatal("Send() = false, want true")
+	}
+	first := cache.entries[link].output
+	if first == nil {
+		t.Fatal("cached output = nil, want wrapper")
+	}
+
+	if !cache.Send(w, node, link, base, nil) {
+		t.Fatal("second Send() = false, want true")
+	}
+	second := cache.entries[link].output
+	if !SameTunInstance(first, second) {
+		t.Fatal("second Send() replaced a ready same-source wrapper")
+	}
+
+	_ = first.Close()
+	if !cache.Send(w, node, link, base, nil) {
+		t.Fatal("third Send() = false, want true")
+	}
+	third := cache.entries[link].output
+	if SameTunInstance(first, third) {
+		t.Fatal("third Send() reused a closed wrapper, want replacement")
+	}
+
+	cache.CloseAll()
+	closeTestTun(base)
+	closeTestTun(peer)
+	cache.Wait()
+}
+
+func TestTunOutputCacheReplacesChangedSource(t *testing.T) {
+	w, node, _, _, rightPort := newTunTypeLinkedWorkspace(t)
+	link := onlyPortLink(t, w, rightPort)
+
+	firstSource, firstPeer := tun.Pipe(1, 1500, 0, 0)
+	defer closeTestTun(firstSource)
+	defer closeTestTun(firstPeer)
+	secondSource, secondPeer := tun.Pipe(1, 1500, 0, 0)
+	defer closeTestTun(secondSource)
+	defer closeTestTun(secondPeer)
+
+	var cache TunOutputCache
+	if !cache.Send(w, node, link, firstSource, nil) {
+		t.Fatal("Send(firstSource) = false, want true")
+	}
+	first := cache.entries[link].output
+	if !cache.Send(w, node, link, secondSource, nil) {
+		t.Fatal("Send(secondSource) = false, want true")
+	}
+	second := cache.entries[link].output
+	if SameTunInstance(first, second) {
+		t.Fatal("Send(secondSource) reused first source wrapper")
+	}
+	if !SameTunInstance(cache.entries[link].source, secondSource) {
+		t.Fatal("cached entry source is not second source")
+	}
+	eventually(t, func() bool {
+		_, err := first.MTU()
+		return errors.Is(err, os.ErrClosed)
+	})
+
+	cache.CloseAll()
+	closeTestTun(firstSource)
+	closeTestTun(firstPeer)
+	closeTestTun(secondSource)
+	closeTestTun(secondPeer)
+	cache.Wait()
+}
+
+func TestTunOutputCacheSendWrappedDecoratesDetachedTun(t *testing.T) {
+	w, node, _, _, rightPort := newTunTypeLinkedWorkspace(t)
+	link := onlyPortLink(t, w, rightPort)
+
+	base, peer := tun.Pipe(1, 1500, 0, 0)
+	defer closeTestTun(base)
+	defer closeTestTun(peer)
+
+	var cache TunOutputCache
+	if !cache.SendWrapped(w, node, link, base, func(t tun.Tun) tun.Tun {
+		return testTunWrapper{Tun: t, wrapped: t}
+	}, nil) {
+		t.Fatal("SendWrapped() = false, want true")
+	}
+	output := cache.entries[link].output
+	if _, ok := output.(testTunWrapper); !ok {
+		t.Fatalf("cached output type = %T, want testTunWrapper", output)
+	}
+	if SameTunInstance(base, output) {
+		t.Fatal("SendWrapped() emitted the source directly, want detached wrapper")
+	}
+	if !SameTunInstance(cache.entries[link].source, base) {
+		t.Fatal("cached entry source is not original source")
+	}
+
+	cache.CloseAll()
+	closeTestTun(base)
+	closeTestTun(peer)
+	cache.Wait()
+}
+
 func TestTunSourceAndComparisonHelpers(t *testing.T) {
 	base, peer := tun.Pipe(1, 1500, 0, 0)
 	defer closeTestTun(base)
@@ -173,6 +338,16 @@ type testTunWrapper struct {
 }
 
 func (w testTunWrapper) GetWrapped() any { return w.wrapped }
+
+func (w testTunWrapper) IsUp() (bool, error) {
+	updown, ok := w.Tun.(interface {
+		IsUp() (bool, error)
+	})
+	if !ok {
+		return true, nil
+	}
+	return updown.IsUp()
+}
 
 func closeTestTun(t tun.Tun) {
 	_ = t.Close()

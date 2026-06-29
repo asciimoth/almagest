@@ -58,7 +58,7 @@ func (c wireGuardClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState)
 	if err := config.ensurePrivateKey(); err != nil {
 		return nil, err
 	}
-	return &wireGuardNode{engine: c.engine, config: config}, nil
+	return &wireGuardNode{NodeBase: NodeBase{engine: c.engine}, config: config}, nil
 }
 
 type wireGuardConfig struct {
@@ -96,6 +96,123 @@ type wireGuardAmneziaConfig struct {
 }
 
 const wireGuardAmneziaInitiationPacketCount = 5
+
+type wireGuardAmneziaIntField struct {
+	formID   string
+	configID string
+	label    string
+	value    func(wireGuardAmneziaConfig) int
+	set      func(*wireGuardAmneziaConfig, int)
+}
+
+type wireGuardAmneziaStringField struct {
+	formID   string
+	configID string
+	label    string
+	value    func(wireGuardAmneziaConfig) string
+	set      func(*wireGuardAmneziaConfig, string)
+}
+
+var wireGuardAmneziaIntFieldSpecs = []wireGuardAmneziaIntField{
+	{
+		formID:   "amneziaJunkCount",
+		configID: "junkCount",
+		label:    "AWG Jc",
+		value:    func(c wireGuardAmneziaConfig) int { return c.junkCount },
+		set:      func(c *wireGuardAmneziaConfig, value int) { c.junkCount = value },
+	},
+	{
+		formID:   "amneziaJunkMin",
+		configID: "junkMin",
+		label:    "AWG Jmin",
+		value:    func(c wireGuardAmneziaConfig) int { return c.junkMin },
+		set:      func(c *wireGuardAmneziaConfig, value int) { c.junkMin = value },
+	},
+	{
+		formID:   "amneziaJunkMax",
+		configID: "junkMax",
+		label:    "AWG Jmax",
+		value:    func(c wireGuardAmneziaConfig) int { return c.junkMax },
+		set:      func(c *wireGuardAmneziaConfig, value int) { c.junkMax = value },
+	},
+	{
+		formID:   "amneziaInitPadding",
+		configID: "initPadding",
+		label:    "AWG S1",
+		value:    func(c wireGuardAmneziaConfig) int { return c.initPadding },
+		set:      func(c *wireGuardAmneziaConfig, value int) { c.initPadding = value },
+	},
+	{
+		formID:   "amneziaResponsePadding",
+		configID: "responsePadding",
+		label:    "AWG S2",
+		value:    func(c wireGuardAmneziaConfig) int { return c.responsePadding },
+		set:      func(c *wireGuardAmneziaConfig, value int) { c.responsePadding = value },
+	},
+	{
+		formID:   "amneziaCookiePadding",
+		configID: "cookiePadding",
+		label:    "AWG S3",
+		value:    func(c wireGuardAmneziaConfig) int { return c.cookiePadding },
+		set:      func(c *wireGuardAmneziaConfig, value int) { c.cookiePadding = value },
+	},
+	{
+		formID:   "amneziaTransportPadding",
+		configID: "transportPadding",
+		label:    "AWG S4",
+		value:    func(c wireGuardAmneziaConfig) int { return c.transportPadding },
+		set:      func(c *wireGuardAmneziaConfig, value int) { c.transportPadding = value },
+	},
+}
+
+var wireGuardAmneziaStringFieldSpecs = []wireGuardAmneziaStringField{
+	{
+		formID:   "amneziaInitHeader",
+		configID: "initHeader",
+		label:    "AWG H1",
+		value:    func(c wireGuardAmneziaConfig) string { return c.initHeader },
+		set:      func(c *wireGuardAmneziaConfig, value string) { c.initHeader = value },
+	},
+	{
+		formID:   "amneziaResponseHeader",
+		configID: "responseHeader",
+		label:    "AWG H2",
+		value:    func(c wireGuardAmneziaConfig) string { return c.responseHeader },
+		set:      func(c *wireGuardAmneziaConfig, value string) { c.responseHeader = value },
+	},
+	{
+		formID:   "amneziaCookieHeader",
+		configID: "cookieHeader",
+		label:    "AWG H3",
+		value:    func(c wireGuardAmneziaConfig) string { return c.cookieHeader },
+		set:      func(c *wireGuardAmneziaConfig, value string) { c.cookieHeader = value },
+	},
+	{
+		formID:   "amneziaTransportHeader",
+		configID: "transportHeader",
+		label:    "AWG H4",
+		value:    func(c wireGuardAmneziaConfig) string { return c.transportHeader },
+		set:      func(c *wireGuardAmneziaConfig, value string) { c.transportHeader = value },
+	},
+	wireGuardAmneziaPacketField(0, "amneziaInitiationPacket1", "AWG I1"),
+	wireGuardAmneziaPacketField(1, "amneziaInitiationPacket2", "AWG I2"),
+	wireGuardAmneziaPacketField(2, "amneziaInitiationPacket3", "AWG I3"),
+	wireGuardAmneziaPacketField(3, "amneziaInitiationPacket4", "AWG I4"),
+	wireGuardAmneziaPacketField(4, "amneziaInitiationPacket5", "AWG I5"),
+}
+
+func wireGuardAmneziaPacketField(index int, formID, label string) wireGuardAmneziaStringField {
+	return wireGuardAmneziaStringField{
+		formID: formID,
+		label:  label,
+		value: func(c wireGuardAmneziaConfig) string {
+			return c.initiationPackets[index]
+		},
+		set: func(c *wireGuardAmneziaConfig, value string) {
+			c.initiationPackets[index] = value
+		},
+	}
+}
 
 func defaultWireGuardConfig() wireGuardConfig {
 	return wireGuardConfig{amneziaWG: defaultWireGuardAmneziaConfig()}
@@ -248,13 +365,8 @@ func (p *wireGuardPeerConfig) normalize(index int) {
 // replace only the live TUN or UDP bind attachments, preserving configured
 // peers and device identity across graph rewiring.
 type wireGuardNode struct {
-	pasta.BasicNode
+	NodeBase
 
-	engine *engine
-	logger pasta.Logger
-
-	w    *pasta.Workspace
-	id   uint64
 	tunp uint64
 	netp uint64
 
@@ -327,25 +439,22 @@ type wireGuardRuntimeStatsMessage struct {
 	stats wgdevice.RuntimeStats
 }
 
+type wireGuardConfigCommitOptions struct {
+	rebuildPeers  bool
+	emitTunConfig bool
+}
+
 const (
 	wireGuardConfigRetryInitialDelay = 100 * time.Millisecond
 	wireGuardConfigRetryMaxDelay     = 10 * time.Second
 )
 
 func (n *wireGuardNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
-	n.w = w
-	n.id = id
-	n.logger = logger
+	n.InitBaseNode(w, logger, id)
 	n.config.normalize()
-	if restored != nil {
-		if len(restored.LeftPorts) > 0 {
-			n.tunp = restored.LeftPorts[0]
-		}
-		if len(restored.RightPorts) > 0 {
-			n.netp = restored.RightPorts[0]
-		}
-	}
-	if err := n.w.SetNodePrimary(n.id, TypeTun); err != nil {
+	n.tunp = restoredLeft(restored, 0)
+	n.netp = restoredRight(restored, 0)
+	if err := n.SetPrimary(TypeTun); err != nil {
 		return err
 	}
 	n.runtimeMu.Lock()
@@ -362,8 +471,8 @@ func (n *wireGuardNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint6
 
 func (n *wireGuardNode) OnReady() error {
 	n.sendTunConfig()
-	n.requestPort(n.tunp)
-	n.requestPort(n.netp)
+	n.RequestPort(n.tunp)
+	n.RequestPort(n.netp)
 	return nil
 }
 
@@ -394,7 +503,7 @@ func (n *wireGuardNode) PreLinkAdd(port uint64, linkType, portDirection string) 
 		if portDirection != "right" || linkType != TypeNetwork {
 			return pasta.LinkTypeErr(linkType)
 		}
-		if portHasLinks(n.w, port) {
+		if n.PortHasLinks(port) {
 			return pasta.ErrLinkDup
 		}
 		return nil
@@ -474,16 +583,11 @@ func (n *wireGuardNode) OnEvent(event pasta.Event, linkType string, _ []string, 
 			n.sendTunConfigToLink(event.Link)
 			return nil
 		}
-		payload, ok := event.Payload.(TunPayload)
-		if !ok || payload.Tun == nil || event.Link != n.tunLink {
+		next, changed := AcceptTunPayload(n.w, n.id, event, n.tunLink, n.currentTun)
+		if !changed {
 			return nil
 		}
-		if !TunIsReady(payload.Tun) {
-			_ = payload.Tun.Close()
-			return nil
-		}
-		BindTunResource(n.w, n.id, event.Link, payload.Tun)
-		n.attachTun(payload.Tun)
+		n.attachTun(next)
 		return nil
 	}
 	if event.ReceiverPort == n.netp && receiverPortDirection == "right" && linkType == TypeNetwork {
@@ -516,22 +620,12 @@ func (n *wireGuardNode) OnFormularMsg(message any) error {
 		if msg.MenuID != pasta.NodeMenuID(n.id) {
 			return nil
 		}
-		switch msg.BlockID {
-		case "config":
-			return n.applyConfigForm(msg.Values)
-		case "peers":
-			return n.applyPeersForm(msg.Values)
-		}
+		return n.applyFormBlock(msg.BlockID, msg.Values)
 	case formular.FieldValidateMessage:
 		if msg.MenuID != pasta.NodeMenuID(n.id) {
 			return nil
 		}
-		switch msg.Field.BlockID {
-		case "config":
-			n.sendConfigFieldStatus(msg)
-		case "peers":
-			n.sendPeersFieldStatus(msg)
-		}
+		n.sendFormFieldStatus(msg)
 	}
 	return nil
 }
@@ -582,17 +676,8 @@ func (n *wireGuardNode) ensureDeviceLocked() {
 
 func (n *wireGuardNode) applyConfigForm(values map[string]any) error {
 	next := n.config.clone()
-	if value, ok := formular.StringValue(values["privateKey"]); ok {
-		next.privateKey = value
-	}
-	if value, ok := formular.IntValue(values["listenPort"]); ok {
-		next.listenPort = value
-	}
-	if value, ok := formular.StringValue(values["ownedIPs"]); ok {
-		next.ownedIPs = value
-	}
-	applyWireGuardAmneziaValues(&next.amneziaWG, values)
-	return n.commitConfigForm(next, true, true)
+	applyWireGuardConfigValues(&next, values)
+	return n.commitConfigForm(next, wireGuardConfigCommitOptions{rebuildPeers: true, emitTunConfig: true})
 }
 
 func (n *wireGuardNode) applyPeersForm(values map[string]any) error {
@@ -600,10 +685,21 @@ func (n *wireGuardNode) applyPeersForm(values map[string]any) error {
 	if peers, ok := parseWireGuardPeers(values["peers"]); ok {
 		next.peers = peers
 	}
-	return n.commitConfigForm(next, true, false)
+	return n.commitConfigForm(next, wireGuardConfigCommitOptions{rebuildPeers: true})
 }
 
-func (n *wireGuardNode) commitConfigForm(next wireGuardConfig, rebuildPeers, emitTunConfig bool) error {
+func (n *wireGuardNode) applyFormBlock(blockID string, values map[string]any) error {
+	switch blockID {
+	case "config":
+		return n.applyConfigForm(values)
+	case "peers":
+		return n.applyPeersForm(values)
+	default:
+		return nil
+	}
+}
+
+func (n *wireGuardNode) commitConfigForm(next wireGuardConfig, opts wireGuardConfigCommitOptions) error {
 	next.normalize()
 	if err := next.ensurePrivateKey(); err != nil {
 		n.rejectConfigForm(err)
@@ -619,7 +715,7 @@ func (n *wireGuardNode) commitConfigForm(next wireGuardConfig, rebuildPeers, emi
 	generation := n.nextRuntimeGenerationLocked()
 	n.runtimeMu.Unlock()
 	n.cancelConfigRetry()
-	if emitTunConfig {
+	if opts.emitTunConfig {
 		n.sendTunConfig()
 	}
 	n.sendForcedMenuSnapshot()
@@ -628,7 +724,7 @@ func (n *wireGuardNode) commitConfigForm(next wireGuardConfig, rebuildPeers, emi
 	// Applying config may open sockets, update peer endpoints, and bring the
 	// device up. Schedule it after the form callback has released workspace
 	// state so daemon restore and snapshots are not blocked by runtime I/O.
-	n.scheduleConfigApply(rebuildPeers, generation, 0, false)
+	n.scheduleConfigApply(opts.rebuildPeers, generation, 0, false)
 	return nil
 }
 
@@ -998,16 +1094,6 @@ func (n *wireGuardNode) isCurrentConfigRetry(generation uint64) bool {
 	return n.retryGeneration == generation
 }
 
-func (n *wireGuardNode) requestPort(port uint64) {
-	snapshot, ok := n.w.PortSnapshot(port)
-	if !ok {
-		return
-	}
-	for _, link := range snapshot.Links {
-		std.Request(n.w, n.id, link)
-	}
-}
-
 // sendTunConfig publishes this WireGuard interface's owned IP prefixes to the
 // attached TUN provider. TypeTun defines TunConfig as flowing opposite the TUN
 // payload, so this left-directed consumer sends suggestions upstream to the
@@ -1024,7 +1110,7 @@ func (n *wireGuardNode) sendTunConfigToLink(link uint64) {
 	if n.w == nil || n.id == 0 || link == 0 || link != n.tunLink {
 		return
 	}
-	n.w.EmitEvent(n.id, link, n.tunConfig())
+	EmitTunConfig(n.w, n.id, link, n.tunConfig())
 }
 
 func (n *wireGuardNode) tunConfig() TunConfig {
@@ -1032,7 +1118,7 @@ func (n *wireGuardNode) tunConfig() TunConfig {
 }
 
 func (n *wireGuardNode) updateLabel() error {
-	return n.w.SetNodeLabel(n.id, n.stateText())
+	return n.SetLabel(n.stateText())
 }
 
 func (n *wireGuardNode) stateText() string {
@@ -1189,14 +1275,11 @@ func (n *wireGuardNode) refreshRuntimeStatsLocked() {
 }
 
 func (n *wireGuardNode) sendMenuSnapshot() {
-	n.w.SendNodeMenuMsg(n.id, formular.MenuSnapshot(pasta.NodeMenuID(n.id), 1, n.menuBlocks()...))
+	sendNodeMenuSnapshot(n.w, n.id, false, n.menuBlocks()...)
 }
 
 func (n *wireGuardNode) sendForcedMenuSnapshot() {
-	if n.w == nil || n.id == 0 {
-		return
-	}
-	n.w.SendNodeMenuMsg(n.id, formular.ForcedMenuSnapshot(pasta.NodeMenuID(n.id), 1, n.menuBlocks()...))
+	sendNodeMenuSnapshot(n.w, n.id, true, n.menuBlocks()...)
 }
 
 func (n *wireGuardNode) menuBlocks() []formular.Block {
@@ -1204,10 +1287,7 @@ func (n *wireGuardNode) menuBlocks() []formular.Block {
 }
 
 func (n *wireGuardNode) sendStatusBlock() {
-	if n.w == nil || n.id == 0 {
-		return
-	}
-	n.w.SendNodeMenuMsg(n.id, formular.BlockSnapshot(pasta.NodeMenuID(n.id), 1, 1, n.statusBlock()))
+	sendNodeBlockSnapshot(n.w, n.id, n.statusBlock())
 }
 
 func (n *wireGuardNode) statusBlock() formular.Block {
@@ -1252,27 +1332,13 @@ func (n *wireGuardNode) statusBlock() formular.Block {
 
 func (n *wireGuardNode) configBlock() formular.Block {
 	statusErr := n.formError != ""
-	return formular.Block{ID: "config", Order: 20, Generation: 1, Form: true, Items: []formular.Item{
+	items := []formular.Item{
 		secretTextField("privateKey", "Private key", n.config.privateKey, statusErr, n.formError, false),
 		configIntField("listenPort", "Listen port", n.config.listenPort, statusErr, n.formError),
 		configTextField("ownedIPs", "Owned IPs", n.config.ownedIPs, statusErr, n.formError, true),
-		configIntField("amneziaJunkCount", "AWG Jc", n.config.amneziaWG.junkCount, statusErr, n.formError),
-		configIntField("amneziaJunkMin", "AWG Jmin", n.config.amneziaWG.junkMin, statusErr, n.formError),
-		configIntField("amneziaJunkMax", "AWG Jmax", n.config.amneziaWG.junkMax, statusErr, n.formError),
-		configIntField("amneziaInitPadding", "AWG S1", n.config.amneziaWG.initPadding, statusErr, n.formError),
-		configIntField("amneziaResponsePadding", "AWG S2", n.config.amneziaWG.responsePadding, statusErr, n.formError),
-		configIntField("amneziaCookiePadding", "AWG S3", n.config.amneziaWG.cookiePadding, statusErr, n.formError),
-		configIntField("amneziaTransportPadding", "AWG S4", n.config.amneziaWG.transportPadding, statusErr, n.formError),
-		configTextField("amneziaInitHeader", "AWG H1", n.config.amneziaWG.initHeader, statusErr, n.formError, false),
-		configTextField("amneziaResponseHeader", "AWG H2", n.config.amneziaWG.responseHeader, statusErr, n.formError, false),
-		configTextField("amneziaCookieHeader", "AWG H3", n.config.amneziaWG.cookieHeader, statusErr, n.formError, false),
-		configTextField("amneziaTransportHeader", "AWG H4", n.config.amneziaWG.transportHeader, statusErr, n.formError, false),
-		configTextField("amneziaInitiationPacket1", "AWG I1", n.config.amneziaWG.initiationPackets[0], statusErr, n.formError, false),
-		configTextField("amneziaInitiationPacket2", "AWG I2", n.config.amneziaWG.initiationPackets[1], statusErr, n.formError, false),
-		configTextField("amneziaInitiationPacket3", "AWG I3", n.config.amneziaWG.initiationPackets[2], statusErr, n.formError, false),
-		configTextField("amneziaInitiationPacket4", "AWG I4", n.config.amneziaWG.initiationPackets[3], statusErr, n.formError, false),
-		configTextField("amneziaInitiationPacket5", "AWG I5", n.config.amneziaWG.initiationPackets[4], statusErr, n.formError, false),
-	}}
+	}
+	items = append(items, wireGuardAmneziaConfigItems(n.config.amneziaWG, statusErr, n.formError)...)
+	return formular.Block{ID: "config", Order: 20, Generation: 1, Form: true, Items: items}
 }
 
 func (n *wireGuardNode) peersBlock() formular.Block {
@@ -1306,21 +1372,22 @@ func (n *wireGuardNode) sendConfigFieldStatus(msg formular.FieldValidateMessage)
 		if value, ok := formular.StringValue(msg.Value); ok {
 			next.ownedIPs = value
 		}
-	case "amneziaJunkCount", "amneziaJunkMin", "amneziaJunkMax",
-		"amneziaInitPadding", "amneziaResponsePadding", "amneziaCookiePadding", "amneziaTransportPadding":
-		if value, ok := formular.IntValue(msg.Value); ok {
-			applyWireGuardAmneziaValue(&next.amneziaWG, msg.Field.FieldID, value)
-		}
-	case "amneziaInitHeader", "amneziaResponseHeader", "amneziaCookieHeader", "amneziaTransportHeader",
-		"amneziaInitiationPacket1", "amneziaInitiationPacket2", "amneziaInitiationPacket3", "amneziaInitiationPacket4", "amneziaInitiationPacket5":
-		if value, ok := formular.StringValue(msg.Value); ok {
-			applyWireGuardAmneziaValue(&next.amneziaWG, msg.Field.FieldID, value)
-		}
 	default:
-		return
+		if !applyWireGuardAmneziaValue(&next.amneziaWG, msg.Field.FieldID, msg.Value) {
+			return
+		}
 	}
 	next.normalize()
 	n.sendFieldStatus(msg, validateWireGuardConfig(next))
+}
+
+func (n *wireGuardNode) sendFormFieldStatus(msg formular.FieldValidateMessage) {
+	switch msg.Field.BlockID {
+	case "config":
+		n.sendConfigFieldStatus(msg)
+	case "peers":
+		n.sendPeersFieldStatus(msg)
+	}
 }
 
 func (n *wireGuardNode) sendPeersFieldStatus(msg formular.FieldValidateMessage) {
@@ -1365,18 +1432,10 @@ func (n *wireGuardNode) sendPeersFieldStatus(msg formular.FieldValidateMessage) 
 		if value, ok := formular.BoolValue(msg.Value); ok {
 			peers[index].amneziaWGOverride = value
 		}
-	case "amneziaJunkCount", "amneziaJunkMin", "amneziaJunkMax",
-		"amneziaInitPadding", "amneziaResponsePadding", "amneziaCookiePadding", "amneziaTransportPadding":
-		if value, ok := formular.IntValue(msg.Value); ok {
-			applyWireGuardAmneziaValue(&peers[index].amneziaWG, msg.Field.FieldID, value)
-		}
-	case "amneziaInitHeader", "amneziaResponseHeader", "amneziaCookieHeader", "amneziaTransportHeader",
-		"amneziaInitiationPacket1", "amneziaInitiationPacket2", "amneziaInitiationPacket3", "amneziaInitiationPacket4", "amneziaInitiationPacket5":
-		if value, ok := formular.StringValue(msg.Value); ok {
-			applyWireGuardAmneziaValue(&peers[index].amneziaWG, msg.Field.FieldID, value)
-		}
 	default:
-		return
+		if !applyWireGuardAmneziaValue(&peers[index].amneziaWG, msg.Field.FieldID, msg.Value) {
+			return
+		}
 	}
 	next.peers = peers
 	next.normalize()
@@ -1384,7 +1443,20 @@ func (n *wireGuardNode) sendPeersFieldStatus(msg formular.FieldValidateMessage) 
 }
 
 func (n *wireGuardNode) sendFieldStatus(msg formular.FieldValidateMessage, err error) {
-	n.w.SendNodeMenuMsg(n.id, formular.FieldStatusFromError(pasta.NodeMenuID(n.id), 1, 1, msg.Field, err))
+	sendNodeFieldStatus(n.w, n.id, msg.Field, err)
+}
+
+func applyWireGuardConfigValues(config *wireGuardConfig, values map[string]any) {
+	if value, ok := formular.StringValue(values["privateKey"]); ok {
+		config.privateKey = value
+	}
+	if value, ok := formular.IntValue(values["listenPort"]); ok {
+		config.listenPort = value
+	}
+	if value, ok := formular.StringValue(values["ownedIPs"]); ok {
+		config.ownedIPs = value
+	}
+	applyWireGuardAmneziaValues(&config.amneziaWG, values)
 }
 
 func validateWireGuardConfig(config wireGuardConfig) error {
@@ -1601,6 +1673,17 @@ func wireGuardPeerTemplate() formular.ArrayTemplate {
 	}
 }
 
+func wireGuardAmneziaConfigItems(config wireGuardAmneziaConfig, statusErr bool, statusText string) []formular.Item {
+	out := make([]formular.Item, 0, len(wireGuardAmneziaIntFieldSpecs)+len(wireGuardAmneziaStringFieldSpecs))
+	for _, spec := range wireGuardAmneziaIntFieldSpecs {
+		out = append(out, configIntField(spec.formID, spec.label, spec.value(config), statusErr, statusText))
+	}
+	for _, spec := range wireGuardAmneziaStringFieldSpecs {
+		out = append(out, configTextField(spec.formID, spec.label, spec.value(config), statusErr, statusText, false))
+	}
+	return out
+}
+
 func wireGuardPeerElements(peers []wireGuardPeerConfig) []formular.ArrayElement {
 	template := wireGuardPeerTemplate()
 	out := make([]formular.ArrayElement, 0, len(peers))
@@ -1625,45 +1708,25 @@ func wireGuardPeerFormValues(peer wireGuardPeerConfig) map[string]any {
 }
 
 func wireGuardAmneziaElementValues(config wireGuardAmneziaConfig) map[string]any {
-	return map[string]any{
-		"amneziaJunkCount":         config.junkCount,
-		"amneziaJunkMin":           config.junkMin,
-		"amneziaJunkMax":           config.junkMax,
-		"amneziaInitPadding":       config.initPadding,
-		"amneziaResponsePadding":   config.responsePadding,
-		"amneziaCookiePadding":     config.cookiePadding,
-		"amneziaTransportPadding":  config.transportPadding,
-		"amneziaInitHeader":        config.initHeader,
-		"amneziaResponseHeader":    config.responseHeader,
-		"amneziaCookieHeader":      config.cookieHeader,
-		"amneziaTransportHeader":   config.transportHeader,
-		"amneziaInitiationPacket1": config.initiationPackets[0],
-		"amneziaInitiationPacket2": config.initiationPackets[1],
-		"amneziaInitiationPacket3": config.initiationPackets[2],
-		"amneziaInitiationPacket4": config.initiationPackets[3],
-		"amneziaInitiationPacket5": config.initiationPackets[4],
+	values := make(map[string]any, len(wireGuardAmneziaIntFieldSpecs)+len(wireGuardAmneziaStringFieldSpecs))
+	for _, spec := range wireGuardAmneziaIntFieldSpecs {
+		values[spec.formID] = spec.value(config)
 	}
+	for _, spec := range wireGuardAmneziaStringFieldSpecs {
+		values[spec.formID] = spec.value(config)
+	}
+	return values
 }
 
 func wireGuardPeerAmneziaTemplateItems() []formular.Item {
-	return []formular.Item{
-		formular.IntField("amneziaJunkCount", "AWG Jc", 0, formular.Validation),
-		formular.IntField("amneziaJunkMin", "AWG Jmin", 0, formular.Validation),
-		formular.IntField("amneziaJunkMax", "AWG Jmax", 0, formular.Validation),
-		formular.IntField("amneziaInitPadding", "AWG S1", 0, formular.Validation),
-		formular.IntField("amneziaResponsePadding", "AWG S2", 0, formular.Validation),
-		formular.IntField("amneziaCookiePadding", "AWG S3", 0, formular.Validation),
-		formular.IntField("amneziaTransportPadding", "AWG S4", 0, formular.Validation),
-		formular.TextField("amneziaInitHeader", "AWG H1", "", formular.Validation),
-		formular.TextField("amneziaResponseHeader", "AWG H2", "", formular.Validation),
-		formular.TextField("amneziaCookieHeader", "AWG H3", "", formular.Validation),
-		formular.TextField("amneziaTransportHeader", "AWG H4", "", formular.Validation),
-		formular.TextField("amneziaInitiationPacket1", "AWG I1", "", formular.Validation),
-		formular.TextField("amneziaInitiationPacket2", "AWG I2", "", formular.Validation),
-		formular.TextField("amneziaInitiationPacket3", "AWG I3", "", formular.Validation),
-		formular.TextField("amneziaInitiationPacket4", "AWG I4", "", formular.Validation),
-		formular.TextField("amneziaInitiationPacket5", "AWG I5", "", formular.Validation),
+	out := make([]formular.Item, 0, len(wireGuardAmneziaIntFieldSpecs)+len(wireGuardAmneziaStringFieldSpecs))
+	for _, spec := range wireGuardAmneziaIntFieldSpecs {
+		out = append(out, formular.IntField(spec.formID, spec.label, 0, formular.Validation))
 	}
+	for _, spec := range wireGuardAmneziaStringFieldSpecs {
+		out = append(out, formular.TextField(spec.formID, spec.label, "", formular.Validation))
+	}
+	return out
 }
 
 func parseWireGuardPeers(raw any) ([]wireGuardPeerConfig, bool) {
@@ -1710,79 +1773,38 @@ func wireGuardPeersFromArray(values []formular.ArrayElementValue) []wireGuardPee
 }
 
 func applyWireGuardAmneziaValues(config *wireGuardAmneziaConfig, values map[string]any) {
-	for _, fieldID := range wireGuardAmneziaIntFieldIDs() {
-		if value, ok := formular.IntValue(values[fieldID]); ok {
-			applyWireGuardAmneziaValue(config, fieldID, value)
+	for _, spec := range wireGuardAmneziaIntFieldSpecs {
+		if value, ok := formular.IntValue(values[spec.formID]); ok {
+			spec.set(config, value)
 		}
 	}
-	for _, fieldID := range wireGuardAmneziaStringFieldIDs() {
-		if value, ok := formular.StringValue(values[fieldID]); ok {
-			applyWireGuardAmneziaValue(config, fieldID, value)
+	for _, spec := range wireGuardAmneziaStringFieldSpecs {
+		if value, ok := formular.StringValue(values[spec.formID]); ok {
+			spec.set(config, value)
 		}
 	}
 }
 
-func applyWireGuardAmneziaValue(config *wireGuardAmneziaConfig, fieldID string, value any) {
-	switch fieldID {
-	case "amneziaJunkCount":
-		config.junkCount, _ = formular.IntValue(value)
-	case "amneziaJunkMin":
-		config.junkMin, _ = formular.IntValue(value)
-	case "amneziaJunkMax":
-		config.junkMax, _ = formular.IntValue(value)
-	case "amneziaInitPadding":
-		config.initPadding, _ = formular.IntValue(value)
-	case "amneziaResponsePadding":
-		config.responsePadding, _ = formular.IntValue(value)
-	case "amneziaCookiePadding":
-		config.cookiePadding, _ = formular.IntValue(value)
-	case "amneziaTransportPadding":
-		config.transportPadding, _ = formular.IntValue(value)
-	case "amneziaInitHeader":
-		config.initHeader, _ = formular.StringValue(value)
-	case "amneziaResponseHeader":
-		config.responseHeader, _ = formular.StringValue(value)
-	case "amneziaCookieHeader":
-		config.cookieHeader, _ = formular.StringValue(value)
-	case "amneziaTransportHeader":
-		config.transportHeader, _ = formular.StringValue(value)
-	case "amneziaInitiationPacket1":
-		config.initiationPackets[0], _ = formular.StringValue(value)
-	case "amneziaInitiationPacket2":
-		config.initiationPackets[1], _ = formular.StringValue(value)
-	case "amneziaInitiationPacket3":
-		config.initiationPackets[2], _ = formular.StringValue(value)
-	case "amneziaInitiationPacket4":
-		config.initiationPackets[3], _ = formular.StringValue(value)
-	case "amneziaInitiationPacket5":
-		config.initiationPackets[4], _ = formular.StringValue(value)
+func applyWireGuardAmneziaValue(config *wireGuardAmneziaConfig, fieldID string, raw any) bool {
+	for _, spec := range wireGuardAmneziaIntFieldSpecs {
+		if fieldID != spec.formID {
+			continue
+		}
+		if value, ok := formular.IntValue(raw); ok {
+			spec.set(config, value)
+		}
+		return true
 	}
-}
-
-func wireGuardAmneziaIntFieldIDs() []string {
-	return []string{
-		"amneziaJunkCount",
-		"amneziaJunkMin",
-		"amneziaJunkMax",
-		"amneziaInitPadding",
-		"amneziaResponsePadding",
-		"amneziaCookiePadding",
-		"amneziaTransportPadding",
+	for _, spec := range wireGuardAmneziaStringFieldSpecs {
+		if fieldID != spec.formID {
+			continue
+		}
+		if value, ok := formular.StringValue(raw); ok {
+			spec.set(config, value)
+		}
+		return true
 	}
-}
-
-func wireGuardAmneziaStringFieldIDs() []string {
-	return []string{
-		"amneziaInitHeader",
-		"amneziaResponseHeader",
-		"amneziaCookieHeader",
-		"amneziaTransportHeader",
-		"amneziaInitiationPacket1",
-		"amneziaInitiationPacket2",
-		"amneziaInitiationPacket3",
-		"amneziaInitiationPacket4",
-		"amneziaInitiationPacket5",
-	}
+	return false
 }
 
 func compactWireGuardPeers(peers []wireGuardPeerConfig) []wireGuardPeerConfig {
@@ -1804,20 +1826,17 @@ func compactWireGuardPeers(peers []wireGuardPeerConfig) []wireGuardPeerConfig {
 }
 
 func wireGuardAmneziaConfigMap(config wireGuardAmneziaConfig) map[string]any {
-	return map[string]any{
-		"junkCount":         config.junkCount,
-		"junkMin":           config.junkMin,
-		"junkMax":           config.junkMax,
-		"initPadding":       config.initPadding,
-		"responsePadding":   config.responsePadding,
-		"cookiePadding":     config.cookiePadding,
-		"transportPadding":  config.transportPadding,
-		"initHeader":        config.initHeader,
-		"responseHeader":    config.responseHeader,
-		"cookieHeader":      config.cookieHeader,
-		"transportHeader":   config.transportHeader,
-		"initiationPackets": wireGuardAmneziaInitiationPacketsConfig(config.initiationPackets),
+	values := make(map[string]any, len(wireGuardAmneziaIntFieldSpecs)+len(wireGuardAmneziaStringFieldSpecs))
+	for _, spec := range wireGuardAmneziaIntFieldSpecs {
+		values[spec.configID] = spec.value(config)
 	}
+	for _, spec := range wireGuardAmneziaStringFieldSpecs {
+		if spec.configID != "" {
+			values[spec.configID] = spec.value(config)
+		}
+	}
+	values["initiationPackets"] = wireGuardAmneziaInitiationPacketsConfig(config.initiationPackets)
+	return values
 }
 
 func wireGuardAmneziaInitiationPacketsConfig(packets [wireGuardAmneziaInitiationPacketCount]string) []string {
@@ -1857,38 +1876,18 @@ func readWireGuardAmneziaConfigMap(raw any, fallback wireGuardAmneziaConfig) wir
 		return fallback
 	}
 	out := fallback
-	if value, ok := formular.IntValue(values["junkCount"]); ok {
-		out.junkCount = value
+	for _, spec := range wireGuardAmneziaIntFieldSpecs {
+		if value, ok := formular.IntValue(values[spec.configID]); ok {
+			spec.set(&out, value)
+		}
 	}
-	if value, ok := formular.IntValue(values["junkMin"]); ok {
-		out.junkMin = value
-	}
-	if value, ok := formular.IntValue(values["junkMax"]); ok {
-		out.junkMax = value
-	}
-	if value, ok := formular.IntValue(values["initPadding"]); ok {
-		out.initPadding = value
-	}
-	if value, ok := formular.IntValue(values["responsePadding"]); ok {
-		out.responsePadding = value
-	}
-	if value, ok := formular.IntValue(values["cookiePadding"]); ok {
-		out.cookiePadding = value
-	}
-	if value, ok := formular.IntValue(values["transportPadding"]); ok {
-		out.transportPadding = value
-	}
-	if value, ok := formular.StringValue(values["initHeader"]); ok {
-		out.initHeader = value
-	}
-	if value, ok := formular.StringValue(values["responseHeader"]); ok {
-		out.responseHeader = value
-	}
-	if value, ok := formular.StringValue(values["cookieHeader"]); ok {
-		out.cookieHeader = value
-	}
-	if value, ok := formular.StringValue(values["transportHeader"]); ok {
-		out.transportHeader = value
+	for _, spec := range wireGuardAmneziaStringFieldSpecs {
+		if spec.configID == "" {
+			continue
+		}
+		if value, ok := formular.StringValue(values[spec.configID]); ok {
+			spec.set(&out, value)
+		}
 	}
 	if packets, ok := wireGuardAmneziaInitiationPacketsFromAny(values["initiationPackets"]); ok {
 		out.initiationPackets = packets

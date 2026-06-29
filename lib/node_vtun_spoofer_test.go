@@ -359,7 +359,7 @@ func (c captureVTunClass) DefaultNodeParams() pasta.NodeClassParams {
 func (c captureVTunClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
 	config := defaultVTunConfig()
 	config.read(cfg)
-	node := &vtunNode{engine: c.engine, config: config}
+	node := &vtunNode{NodeBase: NodeBase{engine: c.engine}, config: config}
 	c.captured.vtun = node
 	return node, nil
 }
@@ -378,7 +378,7 @@ func (c captureSpooferClass) DefaultNodeParams() pasta.NodeClassParams {
 func (c captureSpooferClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
 	config := defaultSpooferConfig()
 	config.read(cfg)
-	node := &spooferNode{engine: c.engine, pool: enginePool(c.engine), config: config}
+	node := &spooferNode{NodeBase: NodeBase{engine: c.engine}, pool: enginePool(c.engine), config: config}
 	c.captured.spoofer = node
 	return node, nil
 }

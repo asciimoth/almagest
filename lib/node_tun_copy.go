@@ -46,12 +46,9 @@ func (c tunCopyClass) NewNode(_ configer.Config, _ ...*pasta.NodeClassState) (pa
 // calls the matching setter with nil so the bridge immediately stops using the
 // removed endpoint.
 type tunCopyNode struct {
-	pasta.BasicNode
+	NodeBase
 
 	pool bufpool.Pool
-
-	w  *pasta.Workspace
-	id uint64
 
 	tunA uint64
 	tunB uint64
@@ -66,28 +63,21 @@ type tunCopyNode struct {
 }
 
 func (n *tunCopyNode) OnInit(w *pasta.Workspace, _ pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
-	n.w = w
-	n.id = id
+	n.InitBaseNode(w, nil, id)
 	if n.p2p == nil {
 		n.p2p = tun.NewP2P(n.pool)
 	}
-	if restored != nil {
-		if len(restored.LeftPorts) > 0 {
-			n.tunA = restored.LeftPorts[0]
-		}
-		if len(restored.LeftPorts) > 1 {
-			n.tunB = restored.LeftPorts[1]
-		}
-	}
-	if err := n.w.SetNodePrimary(n.id, TypeTun); err != nil {
+	n.tunA = restoredLeft(restored, 0)
+	n.tunB = restoredLeft(restored, 1)
+	if err := n.SetPrimary(TypeTun); err != nil {
 		return err
 	}
 	return n.updateLabel()
 }
 
 func (n *tunCopyNode) OnReady() error {
-	n.requestPort(n.tunA)
-	n.requestPort(n.tunB)
+	n.RequestPort(n.tunA)
+	n.RequestPort(n.tunB)
 	return nil
 }
 
@@ -148,51 +138,37 @@ func (n *tunCopyNode) OnLinkRemoved(link uint64, port uint64, linkType, portDire
 }
 
 func (n *tunCopyNode) OnEvent(event pasta.Event, linkType string, _ []string, receiverPortDirection string) error {
-	if linkType != TypeTun || receiverPortDirection != "left" || std.IsRequest(event.Payload) {
-		return nil
-	}
-	payload, ok := event.Payload.(TunPayload)
-	if !ok || payload.Tun == nil {
+	if linkType != TypeTun || receiverPortDirection != "left" {
 		return nil
 	}
 	switch event.ReceiverPort {
 	case n.tunA:
-		if event.Link != n.linkA || SameTunInstance(n.currentA, payload.Tun) {
+		next, changed := AcceptTunPayload(n.w, n.id, event, n.linkA, n.currentA)
+		if !changed {
 			return nil
 		}
-		BindTunResource(n.w, n.id, event.Link, payload.Tun)
-		n.currentA = payload.Tun
-		n.p2p.SetA(payload.Tun)
+		n.currentA = next
+		n.p2p.SetA(next)
 	case n.tunB:
-		if event.Link != n.linkB || SameTunInstance(n.currentB, payload.Tun) {
+		next, changed := AcceptTunPayload(n.w, n.id, event, n.linkB, n.currentB)
+		if !changed {
 			return nil
 		}
-		BindTunResource(n.w, n.id, event.Link, payload.Tun)
-		n.currentB = payload.Tun
-		n.p2p.SetB(payload.Tun)
+		n.currentB = next
+		n.p2p.SetB(next)
 	default:
 		return nil
 	}
 	return n.updateLabel()
 }
 
-func (n *tunCopyNode) requestPort(port uint64) {
-	snapshot, ok := n.w.PortSnapshot(port)
-	if !ok {
-		return
-	}
-	for _, link := range snapshot.Links {
-		std.Request(n.w, n.id, link)
-	}
-}
-
 func (n *tunCopyNode) updateLabel() error {
 	switch {
 	case n.currentA == nil:
-		return n.w.SetNodeLabel(n.id, "waiting for TunA")
+		return n.SetLabel("waiting for TunA")
 	case n.currentB == nil:
-		return n.w.SetNodeLabel(n.id, "waiting for TunB")
+		return n.SetLabel("waiting for TunB")
 	default:
-		return n.w.SetNodeLabel(n.id, "copying")
+		return n.SetLabel("copying")
 	}
 }

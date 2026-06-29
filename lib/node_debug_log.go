@@ -44,46 +44,32 @@ func (debugLogNetworkClass) DefaultNodeParams() pasta.NodeClassParams {
 	}}
 }
 func (debugLogNetworkClass) NewNode(_ configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
-	return &debugLogNetworkNode{sent: map[uint64]NetworkCloser{}}, nil
+	return &debugLogNetworkNode{}, nil
 }
 
 type debugLogNetworkNode struct {
-	pasta.BasicNode
+	NodeBase
 
-	w      *pasta.Workspace
-	logger pasta.Logger
-	id     uint64
-	out    uint64
-	in     uint64
+	out uint64
+	in  uint64
 
 	network NetworkCloser
-	sent    map[uint64]NetworkCloser
+	outputs NetworkOutputCache
 }
 
 func (n *debugLogNetworkNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
-	n.w = w
-	n.logger = logger
-	n.id = id
-	if n.sent == nil {
-		n.sent = map[uint64]NetworkCloser{}
-	}
-	if restored != nil {
-		if len(restored.LeftPorts) > 0 {
-			n.out = restored.LeftPorts[0]
-		}
-		if len(restored.RightPorts) > 0 {
-			n.in = restored.RightPorts[0]
-		}
-	}
-	if err := n.w.SetNodePrimary(n.id, TypeNetwork); err != nil {
+	n.InitBaseNode(w, logger, id)
+	n.out = restoredLeft(restored, 0)
+	n.in = restoredRight(restored, 0)
+	if err := n.SetPrimary(TypeNetwork); err != nil {
 		return err
 	}
-	_ = n.w.SetNodeLabel(n.id, "network log")
+	_ = n.SetLabel("network log")
 	return nil
 }
 
 func (n *debugLogNetworkNode) OnStop() {
-	n.closeSentNetworks()
+	n.outputs.CloseAll()
 	if n.network != nil {
 		_ = n.network.Close()
 		n.network = nil
@@ -106,7 +92,7 @@ func (n *debugLogNetworkNode) PreLinkAdd(port uint64, linkType, portDirection st
 		if portDirection != "right" || linkType != TypeNetwork {
 			return pasta.LinkTypeErr(linkType)
 		}
-		if n.portHasLinks(port) {
+		if n.PortHasLinks(port) {
 			return pasta.ErrLinkDup
 		}
 	default:
@@ -128,7 +114,7 @@ func (n *debugLogNetworkNode) OnLinkAdd(link, port uint64, linkType, portDirecti
 
 func (n *debugLogNetworkNode) OnLinkRemoved(link, port uint64, linkType, portDirection string) error {
 	if port == n.out && portDirection == "left" && linkType == TypeNetwork {
-		n.closeSentNetwork(link)
+		n.outputs.Close(link)
 		return nil
 	}
 	if port == n.in && portDirection == "right" && linkType == TypeNetwork {
@@ -136,7 +122,7 @@ func (n *debugLogNetworkNode) OnLinkRemoved(link, port uint64, linkType, portDir
 			_ = n.network.Close()
 		}
 		n.network = nil
-		n.closeSentNetworks()
+		n.outputs.CloseAll()
 	}
 	return nil
 }
@@ -149,75 +135,38 @@ func (n *debugLogNetworkNode) OnEvent(event pasta.Event, linkType string, _ []st
 	if event.ReceiverPort != n.in || receiverPortDirection != "right" || linkType != TypeNetwork {
 		return nil
 	}
-	payload, ok := event.Payload.(NetworkPayload)
-	if !ok || payload.Network == nil {
-		return nil
-	}
-	if SameNetworkInstance(n.network, payload.Network) {
+	next, changed := AcceptNetworkPayload(n.w, n.id, event, n.network)
+	if !changed {
 		return nil
 	}
 	if n.network != nil {
 		_ = n.network.Close()
 	}
-	n.closeSentNetworks()
-	BindNetworkResource(n.w, n.id, event.Link, payload.Network)
-	n.network = payload.Network
+	n.outputs.CloseAll()
+	n.network = next
 	n.sendAll()
 	return nil
 }
 
 func (n *debugLogNetworkNode) requestInput() {
-	port, ok := n.w.PortSnapshot(n.in)
-	if !ok {
-		return
-	}
-	for _, link := range port.Links {
+	n.ForEachPortLink(n.in, func(link uint64) {
 		std.Request(n.w, n.id, link)
-	}
+	})
 }
 
 func (n *debugLogNetworkNode) sendAll() {
-	port, ok := n.w.PortSnapshot(n.out)
-	if !ok {
-		return
-	}
-	for _, link := range port.Links {
+	n.ForEachPortLink(n.out, func(link uint64) {
 		n.sendNetworkToLink(link)
-	}
+	})
 }
 
 func (n *debugLogNetworkNode) sendNetworkToLink(link uint64) {
 	if n.network == nil {
 		return
 	}
-	wrapper := n.sent[link]
-	if wrapper == nil {
-		wrapper = &debugLogNetwork{NetworkCloser: gonnect.DetachNetwork(n.network, nil), logger: n.logger}
-		BindNetworkResource(n.w, n.id, link, wrapper)
-		n.sent[link] = wrapper
-	}
-	n.w.EmitEvent(n.id, link, NetworkPayload{Network: wrapper})
-}
-
-func (n *debugLogNetworkNode) closeSentNetwork(link uint64) {
-	if old := n.sent[link]; old != nil {
-		_ = old.Close()
-		delete(n.sent, link)
-	}
-}
-
-func (n *debugLogNetworkNode) closeSentNetworks() {
-	for link, old := range n.sent {
-		if old != nil {
-			_ = old.Close()
-		}
-		delete(n.sent, link)
-	}
-}
-
-func (n *debugLogNetworkNode) portHasLinks(port uint64) bool {
-	snapshot, ok := n.w.PortSnapshot(port)
-	return ok && len(snapshot.Links) > 0
+	n.outputs.SendWrapped(n.w, n.id, link, n.network, func(output NetworkCloser) NetworkCloser {
+		return &debugLogNetwork{NetworkCloser: output, logger: n.logger}
+	})
 }
 
 type debugLogTunClass struct {
@@ -236,60 +185,44 @@ func (debugLogTunClass) DefaultNodeParams() pasta.NodeClassParams {
 	}}
 }
 func (c debugLogTunClass) NewNode(_ configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
-	return &debugLogTunNode{pool: enginePool(c.engine), sent: map[uint64]tun.Tun{}, outputCfgs: TunConfigByLink{}}, nil
+	return &debugLogTunNode{pool: enginePool(c.engine), outputCfgs: TunConfigByLink{}}, nil
 }
 
 type debugLogTunNode struct {
-	pasta.BasicNode
+	NodeBase
 
 	pool bufpool.Pool
 
-	w      *pasta.Workspace
-	logger pasta.Logger
-	id     uint64
-	in     uint64
-	out    uint64
+	in  uint64
+	out uint64
 
-	tun  tun.Tun
-	sent map[uint64]tun.Tun
-	wait []tun.Tun
+	tun        tun.Tun
+	outputTuns TunOutputCache
 
 	outputCfgs TunConfigByLink
 }
 
 func (n *debugLogTunNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
-	n.w = w
-	n.logger = logger
-	n.id = id
-	if n.sent == nil {
-		n.sent = map[uint64]tun.Tun{}
-	}
+	n.InitBaseNode(w, logger, id)
 	if n.outputCfgs == nil {
 		n.outputCfgs = TunConfigByLink{}
 	}
-	if restored != nil {
-		if len(restored.LeftPorts) > 0 {
-			n.in = restored.LeftPorts[0]
-		}
-		if len(restored.RightPorts) > 0 {
-			n.out = restored.RightPorts[0]
-		}
-	}
-	if err := n.w.SetNodePrimary(n.id, TypeTun); err != nil {
+	n.in = restoredLeft(restored, 0)
+	n.out = restoredRight(restored, 0)
+	if err := n.SetPrimary(TypeTun); err != nil {
 		return err
 	}
-	_ = n.w.SetNodeLabel(n.id, "tun log")
+	_ = n.SetLabel("tun log")
 	return nil
 }
 
 func (n *debugLogTunNode) OnStop() {
-	n.closeSentTuns()
+	n.outputTuns.CloseAll()
 	if n.tun != nil {
 		_ = n.tun.Close()
 		n.tun = nil
 	}
-	waitTuns(n.wait)
-	n.wait = nil
+	n.outputTuns.Wait()
 	n.outputCfgs = TunConfigByLink{}
 }
 
@@ -324,7 +257,7 @@ func (n *debugLogTunNode) OnLinkAdd(link, port uint64, linkType, portDirection s
 
 func (n *debugLogTunNode) OnLinkRemoved(link uint64, port uint64, linkType, portDirection string) error {
 	if port == n.out && portDirection == "right" && linkType == TypeTun {
-		n.closeSentTun(link)
+		n.outputTuns.Close(link)
 		n.outputCfgs.Delete(link)
 		n.sendMergedTunConfig()
 		return nil
@@ -334,9 +267,8 @@ func (n *debugLogTunNode) OnLinkRemoved(link uint64, port uint64, linkType, port
 			_ = n.tun.Close()
 		}
 		n.tun = nil
-		n.closeSentTuns()
-		waitTuns(n.wait)
-		n.wait = nil
+		n.outputTuns.CloseAll()
+		n.outputTuns.Wait()
 	}
 	return nil
 }
@@ -363,89 +295,47 @@ func (n *debugLogTunNode) OnEvent(event pasta.Event, linkType string, _ []string
 	if event.ReceiverPort != n.in || receiverPortDirection != "left" {
 		return nil
 	}
-	payload, ok := event.Payload.(TunPayload)
-	if !ok || payload.Tun == nil {
-		return nil
-	}
-	if SameTunInstance(n.tun, payload.Tun) {
+	next, changed := AcceptTunPayload(n.w, n.id, event, 0, n.tun)
+	if !changed {
 		return nil
 	}
 	if n.tun != nil {
 		_ = n.tun.Close()
 	}
-	n.closeSentTuns()
-	waitTuns(n.wait)
-	n.wait = nil
-	BindTunResource(n.w, n.id, event.Link, payload.Tun)
-	n.tun = payload.Tun
+	n.outputTuns.CloseAll()
+	n.outputTuns.Wait()
+	n.tun = next
 	n.sendAll()
 	return nil
 }
 
 func (n *debugLogTunNode) requestInput() {
-	port, ok := n.w.PortSnapshot(n.in)
-	if !ok {
-		return
-	}
-	for _, link := range port.Links {
+	n.ForEachPortLink(n.in, func(link uint64) {
 		std.Request(n.w, n.id, link)
-	}
+	})
 }
 
 func (n *debugLogTunNode) sendAll() {
-	port, ok := n.w.PortSnapshot(n.out)
-	if !ok {
-		return
-	}
-	for _, link := range port.Links {
+	n.ForEachPortLink(n.out, func(link uint64) {
 		n.sendTunToLink(link)
-	}
+	})
 }
 
 func (n *debugLogTunNode) sendTunToLink(link uint64) {
 	if n.tun == nil {
 		return
 	}
-	wrapper := n.sent[link]
-	if wrapper == nil {
-		wrapper = &debugLogTun{Tun: tun.Detach(n.tun, n.pool), logger: n.logger}
-		BindTunResource(n.w, n.id, link, wrapper)
-		n.sent[link] = wrapper
-	}
-	n.w.EmitEvent(n.id, link, TunPayload{Tun: wrapper})
+	n.outputTuns.SendWrapped(n.w, n.id, link, n.tun, func(t tun.Tun) tun.Tun {
+		return &debugLogTun{Tun: t, logger: n.logger}
+	}, n.pool)
 }
 
 func (n *debugLogTunNode) sendMergedTunConfig() {
-	port, ok := n.w.PortSnapshot(n.in)
-	if !ok {
-		return
-	}
-	for _, link := range port.Links {
-		n.sendMergedTunConfigToLink(link)
-	}
+	BroadcastMergedTunConfig(n.w, n.id, n.in, n.outputCfgs)
 }
 
 func (n *debugLogTunNode) sendMergedTunConfigToLink(link uint64) {
-	if link == 0 {
-		return
-	}
-	n.w.EmitEvent(n.id, link, n.outputCfgs.Merge())
-}
-
-func (n *debugLogTunNode) closeSentTun(link uint64) {
-	if old := n.sent[link]; old != nil {
-		closeTunForLaterWait(&n.wait, old)
-		delete(n.sent, link)
-	}
-}
-
-func (n *debugLogTunNode) closeSentTuns() {
-	for link, old := range n.sent {
-		if old != nil {
-			closeTunForLaterWait(&n.wait, old)
-		}
-		delete(n.sent, link)
-	}
+	EmitMergedTunConfig(n.w, n.id, link, n.outputCfgs)
 }
 
 type debugLogNetwork struct {

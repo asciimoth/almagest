@@ -67,7 +67,7 @@ func (socksServerClass) DefaultNodeParams() pasta.NodeClassParams {
 func (c socksServerClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
 	config := defaultSocksServerConfig()
 	config.read(cfg)
-	return &socksServerNode{engine: c.engine, config: config}, nil
+	return &socksServerNode{NodeBase: NodeBase{engine: c.engine}, config: config}, nil
 }
 
 // socksServerNode accepts SOCKS client connections on the listen network and
@@ -78,13 +78,8 @@ func (c socksServerClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassStat
 // socksgo receives a rejecting network so clients get protocol-level failures
 // instead of failing to connect to the SOCKS server itself.
 type socksServerNode struct {
-	pasta.BasicNode
+	NodeBase
 
-	engine *engine
-	logger pasta.Logger
-
-	w      *pasta.Workspace
-	id     uint64
 	listen uint64
 	proxy  uint64
 
@@ -114,10 +109,7 @@ type socksServerUser struct {
 	password string
 }
 
-type socksServerWorker struct {
-	stop chan struct{}
-	done chan struct{}
-}
+type socksServerWorker = restartableWorker
 
 type socksServerLog struct {
 	level string
@@ -185,9 +177,7 @@ func (c *socksServerConfig) read(cfg configer.Config) {
 }
 
 func (n *socksServerNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
-	n.w = w
-	n.id = id
-	n.logger = logger
+	n.InitBaseNode(w, logger, id)
 	if n.config.commands == nil {
 		n.config.commands = defaultSocksServerCommands()
 	}
@@ -204,7 +194,7 @@ func (n *socksServerNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uin
 		}
 	}
 
-	if err := n.w.SetNodePrimary(n.id, TypeNetwork); err != nil {
+	if err := n.SetPrimary(TypeNetwork); err != nil {
 		n.logger.Errf("failed to set node primary type: %v", err)
 		return err
 	}
@@ -215,8 +205,8 @@ func (n *socksServerNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uin
 }
 
 func (n *socksServerNode) OnReady() error {
-	n.requestNetwork(n.listen)
-	n.requestNetwork(n.proxy)
+	n.RequestPort(n.listen)
+	n.RequestPort(n.proxy)
 	n.restartWorker()
 	return nil
 }
@@ -231,7 +221,7 @@ func (n *socksServerNode) PreLinkAdd(port uint64, linkType, portDirection string
 		if portDirection != "right" || linkType != TypeNetwork {
 			return pasta.LinkTypeErr(linkType)
 		}
-		if n.portHasLinks(port) {
+		if n.PortHasLinks(port) {
 			return pasta.ErrLinkDup
 		}
 	default:
@@ -263,31 +253,21 @@ func (n *socksServerNode) OnEvent(event pasta.Event, linkType string, _ []string
 	if receiverPortDirection != "right" || linkType != TypeNetwork {
 		return nil
 	}
-	payload, ok := event.Payload.(NetworkPayload)
-	if !ok || payload.Network == nil {
-		return nil
-	}
 
 	switch event.ReceiverPort {
 	case n.listen:
-		if NetworkIsReady(n.listenNetwork) && SameNetworkSource(n.listenNetwork, payload.Network) {
-			if !SameNetworkInstance(n.listenNetwork, payload.Network) {
-				_ = payload.Network.Close()
-			}
+		next, changed := AcceptNetworkPayload(n.w, n.id, event, n.listenNetwork)
+		if !changed {
 			return nil
 		}
-		BindNetworkResource(n.w, n.id, event.Link, payload.Network)
-		n.listenNetwork = payload.Network
+		n.listenNetwork = next
 		n.restartWorker()
 	case n.proxy:
-		if NetworkIsReady(n.proxyNetwork) && SameNetworkSource(n.proxyNetwork, payload.Network) {
-			if !SameNetworkInstance(n.proxyNetwork, payload.Network) {
-				_ = payload.Network.Close()
-			}
+		next, changed := AcceptNetworkPayload(n.w, n.id, event, n.proxyNetwork)
+		if !changed {
 			return nil
 		}
-		BindNetworkResource(n.w, n.id, event.Link, payload.Network)
-		n.proxyNetwork = payload.Network
+		n.proxyNetwork = next
 		n.restartWorker()
 	}
 	return nil
@@ -327,50 +307,11 @@ func (n *socksServerNode) OnFormularMsg(message any) error {
 }
 
 func (n *socksServerNode) OnSave(cfg configer.Config) error {
-	if err := pasta.DeleteNodeOwnedConfigKeys(cfg); err != nil {
-		return err
-	}
-	return configer.SetMap(cfg, map[string]any{
-		"socksHost": n.config.socksHost,
-		"socksPort": n.config.socksPort,
-		"wsHost":    n.config.wsHost,
-		"wsPort":    n.config.wsPort,
-		"wsPath":    n.config.wsPath,
-		"users":     socksServerUsersConfig(n.config.users),
-		"commands":  socksServerCommandsConfig(n.config.commands),
-	})
+	return saveSocksServerConfig(cfg, n.config)
 }
 
 func (n *socksServerNode) applyConfigForm(values map[string]any) error {
-	next := n.config
-	next.commands = maps.Clone(n.config.commands)
-	if value, ok := formular.StringValue(values["socksHost"]); ok {
-		next.socksHost = strings.TrimSpace(value)
-	}
-	if value, ok := formular.IntValue(values["socksPort"]); ok {
-		next.socksPort = validPort(value)
-	}
-	if value, ok := formular.StringValue(values["wsHost"]); ok {
-		next.wsHost = strings.TrimSpace(value)
-	}
-	if value, ok := formular.IntValue(values["wsPort"]); ok {
-		next.wsPort = validPort(value)
-	}
-	if value, ok := formular.StringValue(values["wsPath"]); ok {
-		next.wsPath = normalizeSocksServerPath(value)
-	}
-	if users, ok := parseSocksServerUsers(values["users"]); ok {
-		next.users = users
-	}
-	for cmd, field := range socksServerCommandFields() {
-		if value, ok := formular.BoolValue(values[field]); ok {
-			next.commands[cmd] = value
-		}
-	}
-	if next.wsPath == "" {
-		next.wsPath = DefaultSocksServerWSPath
-	}
-
+	next := socksServerConfigWithValues(n.config, values)
 	if err := next.validate(); err != nil {
 		n.formError = err.Error()
 		n.appendLog(formular.LogWarn, err.Error())
@@ -388,36 +329,11 @@ func (n *socksServerNode) applyConfigForm(values map[string]any) error {
 }
 
 func (n *socksServerNode) sendConfigFieldStatus(msg formular.FieldValidateMessage) {
-	next := n.config
-	switch msg.Field.FieldID {
-	case "socksHost":
-		if value, ok := formular.StringValue(msg.Value); ok {
-			next.socksHost = strings.TrimSpace(value)
-		}
-	case "socksPort":
-		if value, ok := formular.IntValue(msg.Value); ok {
-			next.socksPort = value
-		}
-	case "wsHost":
-		if value, ok := formular.StringValue(msg.Value); ok {
-			next.wsHost = strings.TrimSpace(value)
-		}
-	case "wsPort":
-		if value, ok := formular.IntValue(msg.Value); ok {
-			next.wsPort = value
-		}
-	case "wsPath":
-		if value, ok := formular.StringValue(msg.Value); ok {
-			next.wsPath = normalizeSocksServerPath(value)
-		}
-	default:
+	next, ok := socksServerConfigWithFieldValue(n.config, msg)
+	if !ok {
 		return
 	}
-	if next.wsPath == "" {
-		next.wsPath = DefaultSocksServerWSPath
-	}
-
-	n.w.SendNodeMenuMsg(n.id, formular.FieldStatusFromError(pasta.NodeMenuID(n.id), 1, 1, msg.Field, next.validate()))
+	sendNodeFieldStatus(n.w, n.id, msg.Field, next.validate())
 }
 
 func (n *socksServerNode) restartWorker() {
@@ -430,7 +346,7 @@ func (n *socksServerNode) restartWorker() {
 	old := n.worker
 	if old != nil {
 		n.worker = nil
-		close(old.stop)
+		old.Stop()
 	}
 
 	// If a proxy link already exists, do not start with RejectNetwork; the proxy
@@ -475,7 +391,7 @@ func (n *socksServerNode) workerStartBlocked() bool {
 		n.sendLogsBlock()
 		return true
 	}
-	if n.proxyNetwork == nil && n.portHasLinks(n.proxy) {
+	if n.proxyNetwork == nil && n.PortHasLinks(n.proxy) {
 		n.logger.Debug("socks worker waiting for proxy network")
 		n.appendLog(formular.LogWarn, "waiting for proxy network")
 		n.sendLogsBlock()
@@ -518,20 +434,16 @@ func (n *socksServerNode) workerConfig() socksServerWorkerConfig {
 }
 
 func (n *socksServerNode) startWorker(cfg socksServerWorkerConfig) {
-	stop := make(chan struct{})
-	worker := &socksServerWorker{stop: stop, done: make(chan struct{})}
-	n.worker = worker
 	n.logger.Debug("socks worker starting")
-	go func() {
-		defer close(worker.done)
+	n.worker = newRestartableWorker(func(stop <-chan struct{}) {
 		runSocksServerWorker(n.engine.ctx, n.logger, n.w, n.id, stop, cfg)
-	}()
+	})
 }
 
 func (n *socksServerNode) stopWorker() {
 	if n.worker != nil {
 		n.logger.Debug("socks worker stopping")
-		close(n.worker.stop)
+		n.worker.Stop()
 		n.worker = nil
 	}
 }
@@ -769,89 +681,36 @@ func socksServerHandlers(enabled map[protocol.Cmd]bool) map[protocol.Cmd]socksgo
 	return handlers
 }
 
-func (n *socksServerNode) requestNetwork(port uint64) {
-	snapshot, ok := n.w.PortSnapshot(port)
-	if !ok {
-		return
-	}
-	for _, link := range snapshot.Links {
-		std.Request(n.w, n.id, link)
-	}
-}
-
 func (n *socksServerNode) updateLabel() error {
-	if n.config.socksPort > 0 {
-		return n.w.SetNodeLabel(n.id, net.JoinHostPort(hostOrDefault(n.config.socksHost), strconv.Itoa(n.config.socksPort)))
-	}
-	if n.config.wsPort > 0 {
-		return n.w.SetNodeLabel(n.id, "ws "+net.JoinHostPort(hostOrDefault(n.config.wsHost), strconv.Itoa(n.config.wsPort)))
-	}
-	return n.w.SetNodeLabel(n.id, "disabled")
-}
-
-func (n *socksServerNode) portHasLinks(port uint64) bool {
-	if n.w == nil || port == 0 {
-		return false
-	}
-	snapshot, ok := n.w.PortSnapshot(port)
-	return ok && len(snapshot.Links) > 0
+	return n.SetLabel(socksServerConfigLabel(n.config))
 }
 
 func (n *socksServerNode) sendMenuSnapshot() {
-	n.w.SendNodeMenuMsg(n.id, formular.MenuSnapshot(pasta.NodeMenuID(n.id), 1, n.configBlock(), n.logsBlock()))
+	sendNodeMenuSnapshot(n.w, n.id, false, n.configBlock(), n.logsBlock())
 }
 
 func (n *socksServerNode) sendForcedMenuSnapshot() {
-	if n.w == nil || n.id == 0 {
-		return
-	}
-	n.w.SendNodeMenuMsg(n.id, formular.ForcedMenuSnapshot(pasta.NodeMenuID(n.id), 1, n.configBlock(), n.logsBlock()))
+	sendNodeMenuSnapshot(n.w, n.id, true, n.configBlock(), n.logsBlock())
 }
 
 func (n *socksServerNode) sendConfigBlock() {
-	if n.w == nil || n.id == 0 {
-		return
-	}
-	n.w.SendNodeMenuMsg(n.id, formular.BlockSnapshot(pasta.NodeMenuID(n.id), 1, 1, n.configBlock()))
+	sendNodeBlockSnapshot(n.w, n.id, n.configBlock())
 }
 
 func (n *socksServerNode) sendLogsBlock() {
-	if n.w == nil || n.id == 0 {
-		return
-	}
-	n.w.SendNodeMenuMsg(n.id, formular.BlockSnapshot(pasta.NodeMenuID(n.id), 1, 1, n.logsBlock()))
+	sendNodeBlockSnapshot(n.w, n.id, n.logsBlock())
 }
 
 func (n *socksServerNode) configBlock() formular.Block {
-	statusErr := n.formError != ""
-	return formular.Block{ID: "config", Order: 10, Generation: 1, Form: true, Items: []formular.Item{
-		socksServerTextField("socksHost", "SOCKS host", n.config.socksHost, statusErr, n.formError),
-		socksServerIntField("socksPort", "SOCKS port", n.config.socksPort, statusErr, n.formError),
-		socksServerTextField("wsHost", "SOCKS+WS host", n.config.wsHost, statusErr, n.formError),
-		socksServerIntField("wsPort", "SOCKS+WS port", n.config.wsPort, statusErr, n.formError),
-		socksServerTextField("wsPath", "SOCKS+WS path", n.config.wsPath, false, ""),
-		socksServerUsersField(n.config.users),
-		socksServerCheckbox("cmdConnect", "CONNECT", n.config.commands[protocol.CmdConnect]),
-		socksServerCheckbox("cmdBind", "BIND", n.config.commands[protocol.CmdBind]),
-		socksServerCheckbox("cmdUDPAssoc", "UDP ASSOC", n.config.commands[protocol.CmdUDPAssoc]),
-		socksServerCheckbox("cmdTorResolve", "Tor RESOLVE", n.config.commands[protocol.CmdTorResolve]),
-		socksServerCheckbox("cmdTorResolvePtr", "Tor RESOLVE_PTR", n.config.commands[protocol.CmdTorResolvePtr]),
-		socksServerCheckbox("cmdGostMuxBind", "Gost MBIND", n.config.commands[protocol.CmdGostMuxBind]),
-		socksServerCheckbox("cmdGostUDPTun", "Gost UDPTUN", n.config.commands[protocol.CmdGostUDPTun]),
-	}}
+	return socksServerConfigBlock(n.config, n.formError)
 }
 
 func (n *socksServerNode) logsBlock() formular.Block {
-	return formular.Block{ID: "logs", Order: 20, Generation: 1, Items: []formular.Item{
-		{Type: formular.ItemLogs, ID: "worker", Label: "Worker", Logs: append([]formular.LogLine(nil), n.logs...)},
-	}}
+	return logsBlock("logs", "Worker", 20, n.logs)
 }
 
 func (n *socksServerNode) appendLog(level, text string) {
-	n.logs = append(n.logs, formular.LogLine{Level: level, Text: text})
-	if len(n.logs) > 60 {
-		n.logs = append([]formular.LogLine(nil), n.logs[len(n.logs)-60:]...)
-	}
+	appendCappedLog(&n.logs, 60, level, text)
 }
 
 func socksServerTextField(id, label, value string, statusErr bool, statusText string) formular.Item {
@@ -922,6 +781,114 @@ func (c socksServerConfig) sameListenAddress() bool {
 
 func (c socksServerConfig) hasListener() bool {
 	return c.socksPort > 0 || c.wsPort > 0
+}
+
+func saveSocksServerConfig(cfg configer.Config, config socksServerConfig) error {
+	if err := pasta.DeleteNodeOwnedConfigKeys(cfg); err != nil {
+		return err
+	}
+	return configer.SetMap(cfg, map[string]any{
+		"socksHost": config.socksHost,
+		"socksPort": config.socksPort,
+		"wsHost":    config.wsHost,
+		"wsPort":    config.wsPort,
+		"wsPath":    config.wsPath,
+		"users":     socksServerUsersConfig(config.users),
+		"commands":  socksServerCommandsConfig(config.commands),
+	})
+}
+
+func socksServerConfigWithValues(current socksServerConfig, values map[string]any) socksServerConfig {
+	next := current
+	next.commands = maps.Clone(current.commands)
+	if value, ok := formular.StringValue(values["socksHost"]); ok {
+		next.socksHost = strings.TrimSpace(value)
+	}
+	if value, ok := formular.IntValue(values["socksPort"]); ok {
+		next.socksPort = validPort(value)
+	}
+	if value, ok := formular.StringValue(values["wsHost"]); ok {
+		next.wsHost = strings.TrimSpace(value)
+	}
+	if value, ok := formular.IntValue(values["wsPort"]); ok {
+		next.wsPort = validPort(value)
+	}
+	if value, ok := formular.StringValue(values["wsPath"]); ok {
+		next.wsPath = normalizeSocksServerPath(value)
+	}
+	if users, ok := parseSocksServerUsers(values["users"]); ok {
+		next.users = users
+	}
+	for cmd, field := range socksServerCommandFields() {
+		if value, ok := formular.BoolValue(values[field]); ok {
+			next.commands[cmd] = value
+		}
+	}
+	if next.wsPath == "" {
+		next.wsPath = DefaultSocksServerWSPath
+	}
+	return next
+}
+
+func socksServerConfigWithFieldValue(current socksServerConfig, msg formular.FieldValidateMessage) (socksServerConfig, bool) {
+	next := current
+	switch msg.Field.FieldID {
+	case "socksHost":
+		if value, ok := formular.StringValue(msg.Value); ok {
+			next.socksHost = strings.TrimSpace(value)
+		}
+	case "socksPort":
+		if value, ok := formular.IntValue(msg.Value); ok {
+			next.socksPort = value
+		}
+	case "wsHost":
+		if value, ok := formular.StringValue(msg.Value); ok {
+			next.wsHost = strings.TrimSpace(value)
+		}
+	case "wsPort":
+		if value, ok := formular.IntValue(msg.Value); ok {
+			next.wsPort = value
+		}
+	case "wsPath":
+		if value, ok := formular.StringValue(msg.Value); ok {
+			next.wsPath = normalizeSocksServerPath(value)
+		}
+	default:
+		return current, false
+	}
+	if next.wsPath == "" {
+		next.wsPath = DefaultSocksServerWSPath
+	}
+	return next, true
+}
+
+func socksServerConfigLabel(config socksServerConfig) string {
+	if config.socksPort > 0 {
+		return net.JoinHostPort(hostOrDefault(config.socksHost), strconv.Itoa(config.socksPort))
+	}
+	if config.wsPort > 0 {
+		return "ws " + net.JoinHostPort(hostOrDefault(config.wsHost), strconv.Itoa(config.wsPort))
+	}
+	return "disabled"
+}
+
+func socksServerConfigBlock(config socksServerConfig, formError string) formular.Block {
+	statusErr := formError != ""
+	return formular.Block{ID: "config", Order: 10, Generation: 1, Form: true, Items: []formular.Item{
+		socksServerTextField("socksHost", "SOCKS host", config.socksHost, statusErr, formError),
+		socksServerIntField("socksPort", "SOCKS port", config.socksPort, statusErr, formError),
+		socksServerTextField("wsHost", "SOCKS+WS host", config.wsHost, statusErr, formError),
+		socksServerIntField("wsPort", "SOCKS+WS port", config.wsPort, statusErr, formError),
+		socksServerTextField("wsPath", "SOCKS+WS path", config.wsPath, false, ""),
+		socksServerUsersField(config.users),
+		socksServerCheckbox("cmdConnect", "CONNECT", config.commands[protocol.CmdConnect]),
+		socksServerCheckbox("cmdBind", "BIND", config.commands[protocol.CmdBind]),
+		socksServerCheckbox("cmdUDPAssoc", "UDP ASSOC", config.commands[protocol.CmdUDPAssoc]),
+		socksServerCheckbox("cmdTorResolve", "Tor RESOLVE", config.commands[protocol.CmdTorResolve]),
+		socksServerCheckbox("cmdTorResolvePtr", "Tor RESOLVE_PTR", config.commands[protocol.CmdTorResolvePtr]),
+		socksServerCheckbox("cmdGostMuxBind", "Gost MBIND", config.commands[protocol.CmdGostMuxBind]),
+		socksServerCheckbox("cmdGostUDPTun", "Gost UDPTUN", config.commands[protocol.CmdGostUDPTun]),
+	}}
 }
 
 func socksServerCommandFields() map[protocol.Cmd]string {

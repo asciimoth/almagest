@@ -151,6 +151,25 @@ func (s TunConfigByLink) Merge() TunConfig {
 	return merged
 }
 
+// EmitTunConfig sends cfg to link when the link is still attached.
+func EmitTunConfig(w *pasta.Workspace, node, link uint64, cfg TunConfig) bool {
+	return emitIfLinked(w, node, link, cfg)
+}
+
+// EmitMergedTunConfig sends the current merged config store to link when the
+// link is still attached.
+func EmitMergedTunConfig(w *pasta.Workspace, node, link uint64, cfgs TunConfigByLink) bool {
+	return EmitTunConfig(w, node, link, cfgs.Merge())
+}
+
+// BroadcastMergedTunConfig sends the current merged config store to every link
+// attached to port.
+func BroadcastMergedTunConfig(w *pasta.Workspace, node, port uint64, cfgs TunConfigByLink) {
+	forEachPortLink(w, port, func(link uint64) {
+		EmitMergedTunConfig(w, node, link, cfgs)
+	})
+}
+
 // TunPort returns a Pasta port declaration for TypeTun.
 func TunPort(direction, name string) pasta.Port {
 	return pasta.Port{Direction: direction, Name: name, Types: []string{TypeTun}}
@@ -208,6 +227,122 @@ func DetachTunForLink(w *pasta.Workspace, node, link uint64, t tun.Tun, pools ..
 	wrapper := tun.Detach(t, pools...)
 	BindTunResource(w, node, link, wrapper)
 	return wrapper
+}
+
+func acceptTunPayload(event pasta.Event, expectedLink uint64, current tun.Tun) (tun.Tun, bool) {
+	if std.IsRequest(event.Payload) {
+		return current, false
+	}
+	payload, ok := event.Payload.(TunPayload)
+	if !ok || payload.Tun == nil {
+		return current, false
+	}
+	if expectedLink != 0 && event.Link != expectedLink {
+		return current, false
+	}
+	if !TunIsReady(payload.Tun) {
+		_ = payload.Tun.Close()
+		return current, false
+	}
+	if TunIsReady(current) && SameTunSource(current, payload.Tun) {
+		if !SameTunInstance(current, payload.Tun) {
+			_ = payload.Tun.Close()
+		}
+		return current, false
+	}
+	return payload.Tun, true
+}
+
+// AcceptTunPayload validates and binds a received TunPayload from expectedLink.
+func AcceptTunPayload(w *pasta.Workspace, node uint64, event pasta.Event, expectedLink uint64, current tun.Tun) (tun.Tun, bool) {
+	next, changed := acceptTunPayload(event, expectedLink, current)
+	if !changed {
+		return next, false
+	}
+	BindTunResource(w, node, event.Link, next)
+	return next, true
+}
+
+type tunOutputEntry struct {
+	source tun.Tun
+	output tun.Tun
+}
+
+// TunOutputCache owns detached TUN wrappers emitted by a node, keyed by link.
+//
+// It keeps repeated sends idempotent while a wrapper is still ready and the
+// source has not changed, and centralizes the close/wait lifecycle required by
+// detached TUN wrappers.
+type TunOutputCache struct {
+	entries map[uint64]tunOutputEntry
+	waiting []tun.Tun
+}
+
+// Send emits source as a detached TunPayload on link. It re-emits a cached
+// ready wrapper for the same source and replaces stale wrappers.
+func (c *TunOutputCache) Send(w *pasta.Workspace, node, link uint64, source tun.Tun, pool bufpool.Pool) bool {
+	return c.SendWrapped(w, node, link, source, nil, pool)
+}
+
+// SendWrapped emits source as a detached TunPayload on link after wrapping the
+// detached Tun with wrap. The wrap hook is used by middleware that decorates the
+// detached TUN before publishing it.
+func (c *TunOutputCache) SendWrapped(w *pasta.Workspace, node, link uint64, source tun.Tun, wrap func(tun.Tun) tun.Tun, pool bufpool.Pool) bool {
+	if w == nil || link == 0 || source == nil {
+		return false
+	}
+	if entry, ok := c.entries[link]; ok && TunIsReady(entry.output) && SameTunSource(entry.source, source) {
+		w.EmitEvent(node, link, TunPayload{Tun: entry.output})
+		return true
+	}
+	c.Close(link)
+
+	var output tun.Tun = tun.Detach(source, pool)
+	if wrap != nil {
+		wrapped := wrap(output)
+		if wrapped == nil {
+			_ = output.Close()
+			return false
+		}
+		output = wrapped
+	}
+	BindTunResource(w, node, link, output)
+	if c.entries == nil {
+		c.entries = make(map[uint64]tunOutputEntry)
+	}
+	c.entries[link] = tunOutputEntry{source: source, output: output}
+	w.EmitEvent(node, link, TunPayload{Tun: output})
+	return true
+}
+
+// Close closes and forgets the wrapper emitted on link.
+func (c *TunOutputCache) Close(link uint64) {
+	if c == nil || c.entries == nil {
+		return
+	}
+	entry := c.entries[link]
+	delete(c.entries, link)
+	closeTunForLaterWait(&c.waiting, entry.output)
+}
+
+// CloseAll closes and forgets all emitted wrappers.
+func (c *TunOutputCache) CloseAll() {
+	if c == nil {
+		return
+	}
+	for link, entry := range c.entries {
+		delete(c.entries, link)
+		closeTunForLaterWait(&c.waiting, entry.output)
+	}
+}
+
+// Wait waits for detached wrappers closed by Close or CloseAll.
+func (c *TunOutputCache) Wait() {
+	if c == nil {
+		return
+	}
+	waitTuns(c.waiting)
+	c.waiting = nil
 }
 
 type tunWaiter interface {

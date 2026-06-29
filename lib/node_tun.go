@@ -42,7 +42,7 @@ func (tunClass) DefaultNodeParams() pasta.NodeClassParams {
 func (c tunClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
 	config := defaultTunNodeConfig()
 	config.read(cfg)
-	return &tunNode{engine: c.engine, config: config}, nil
+	return &tunNode{NodeBase: NodeBase{engine: c.engine}, config: config}, nil
 }
 
 type tunNodeConfig struct {
@@ -85,13 +85,8 @@ func (c tunNodeConfig) opts() sysnet.TunOpts {
 // connected TypeTun link. Downstream TunConfig suggestions can alter only the
 // generic regular-TUN settings: interface addresses and MTU.
 type tunNode struct {
-	pasta.BasicNode
+	NodeBase
 
-	engine *engine
-	logger pasta.Logger
-
-	w    *pasta.Workspace
-	id   uint64
 	tunp uint64
 
 	config  tunNodeConfig
@@ -103,15 +98,12 @@ type tunNode struct {
 	effectiveName string
 	hasEffective  bool
 	tun           tun.Tun
-	sentTuns      map[uint64]tun.Tun
-	sentTunWait   []tun.Tun
+	outputTuns    TunOutputCache
 	formError     string
 }
 
 func (n *tunNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
-	n.w = w
-	n.id = id
-	n.logger = logger
+	n.InitBaseNode(w, logger, id)
 	n.config.normalize()
 	if n.engine != nil && n.engine.sys != nil {
 		features := n.engine.sys.Features()
@@ -121,10 +113,8 @@ func (n *tunNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64, _ s
 	if n.portCfg == nil {
 		n.portCfg = TunConfigByLink{}
 	}
-	if restored != nil && len(restored.RightPorts) > 0 {
-		n.tunp = restored.RightPorts[0]
-	}
-	if err := n.w.SetNodePrimary(n.id, TypeTun); err != nil {
+	n.tunp = restoredRight(restored, 0)
+	if err := n.SetPrimary(TypeTun); err != nil {
 		return err
 	}
 	_ = n.updateLabel()
@@ -169,7 +159,7 @@ func (n *tunNode) OnLinkRemoved(link uint64, port uint64, _, _ string) error {
 	if port != n.tunp {
 		return nil
 	}
-	n.closeSentTun(link)
+	n.outputTuns.Close(link)
 	n.portCfg.Delete(link)
 	if err := n.configureTun(); err != nil {
 		return nil
@@ -258,7 +248,7 @@ func (n *tunNode) applyConfigForm(values map[string]any) error {
 }
 
 func (n *tunNode) sendConfigFieldStatus(msg formular.FieldValidateMessage) {
-	n.w.SendNodeMenuMsg(n.id, formular.FieldStatusFromError(pasta.NodeMenuID(n.id), 1, 1, msg.Field, n.validateConfigField(msg)))
+	sendNodeFieldStatus(n.w, n.id, msg.Field, n.validateConfigField(msg))
 }
 
 func (n *tunNode) validateConfigField(msg formular.FieldValidateMessage) error {
@@ -444,83 +434,44 @@ func (n *tunNode) sendAll() {
 	if n.tun == nil {
 		return
 	}
-	if port, ok := n.w.PortSnapshot(n.tunp); ok {
-		for _, link := range port.Links {
-			n.sendTunToLink(link)
-		}
-	}
+	n.ForEachPortLink(n.tunp, n.sendTunToLink)
 }
 
 func (n *tunNode) sendTunToLink(link uint64) {
 	if n.tun == nil {
 		return
 	}
-	if n.sentTuns != nil {
-		if wrapper := n.sentTuns[link]; TunIsReady(wrapper) {
-			n.w.EmitEvent(n.id, link, TunPayload{Tun: wrapper})
-			return
-		}
-	}
-	n.closeSentTun(link)
-	wrapper := DetachTunForLink(n.w, n.id, link, n.tun, enginePool(n.engine))
-	if wrapper == nil {
-		return
-	}
-	if n.sentTuns == nil {
-		n.sentTuns = make(map[uint64]tun.Tun)
-	}
-	n.sentTuns[link] = wrapper
-	n.w.EmitEvent(n.id, link, TunPayload{Tun: wrapper})
-}
-
-func (n *tunNode) closeSentTun(link uint64) {
-	if n.sentTuns == nil {
-		return
-	}
-	t := n.sentTuns[link]
-	delete(n.sentTuns, link)
-	closeTunForLaterWait(&n.sentTunWait, t)
-}
-
-func (n *tunNode) closeSentTuns() {
-	for link, t := range n.sentTuns {
-		delete(n.sentTuns, link)
-		closeTunForLaterWait(&n.sentTunWait, t)
-	}
+	n.outputTuns.Send(n.w, n.id, link, n.tun, enginePool(n.engine))
 }
 
 func (n *tunNode) closeTun() {
-	n.closeSentTuns()
+	n.outputTuns.CloseAll()
 	if n.tun != nil {
 		_ = n.tun.Close()
 	}
-	waitTuns(n.sentTunWait)
-	n.sentTunWait = nil
+	n.outputTuns.Wait()
 	n.tun = nil
 }
 
 func (n *tunNode) updateLabel() error {
 	if n.formError != "" {
-		return n.w.SetNodeLabel(n.id, "invalid config")
+		return n.SetLabel("invalid config")
 	}
 	if n.tun == nil {
-		return n.w.SetNodeLabel(n.id, "idle")
+		return n.SetLabel("idle")
 	}
 	if n.effectiveName != "" {
-		return n.w.SetNodeLabel(n.id, n.effectiveName)
+		return n.SetLabel(n.effectiveName)
 	}
-	return n.w.SetNodeLabel(n.id, "ready")
+	return n.SetLabel("ready")
 }
 
 func (n *tunNode) sendMenuSnapshot() {
-	n.w.SendNodeMenuMsg(n.id, formular.MenuSnapshot(pasta.NodeMenuID(n.id), 1, n.menuBlocks()...))
+	sendNodeMenuSnapshot(n.w, n.id, false, n.menuBlocks()...)
 }
 
 func (n *tunNode) sendForcedMenuSnapshot() {
-	if n.w == nil || n.id == 0 {
-		return
-	}
-	n.w.SendNodeMenuMsg(n.id, formular.ForcedMenuSnapshot(pasta.NodeMenuID(n.id), 1, n.menuBlocks()...))
+	sendNodeMenuSnapshot(n.w, n.id, true, n.menuBlocks()...)
 }
 
 func (n *tunNode) menuBlocks() []formular.Block {
@@ -528,10 +479,7 @@ func (n *tunNode) menuBlocks() []formular.Block {
 }
 
 func (n *tunNode) sendEffectiveBlock() {
-	if n.w == nil || n.id == 0 {
-		return
-	}
-	n.w.SendNodeMenuMsg(n.id, formular.BlockSnapshot(pasta.NodeMenuID(n.id), 1, 1, n.effectiveBlock()))
+	sendNodeBlockSnapshot(n.w, n.id, n.effectiveBlock())
 }
 
 func (n *tunNode) effectiveBlock() formular.Block {

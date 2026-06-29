@@ -47,45 +47,32 @@ func (c socksClientClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassStat
 }
 
 type socksClientNode struct {
-	pasta.BasicNode
+	NodeBase
 
-	pool   bufpool.Pool
-	logger pasta.Logger
+	pool bufpool.Pool
 
-	w   *pasta.Workspace
-	id  uint64
 	in  uint64
 	out uint64
 	url uint64
 
 	outNetwork NetworkCloser
 	client     *socksgo.Client
-	sent       map[uint64]NetworkCloser
+	outputs    NetworkOutputCache
 	proxyURL   string
 	errText    string
 }
 
 func (n *socksClientNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
-	n.w = w
-	n.id = id
-	n.logger = logger
+	n.InitBaseNode(w, logger, id)
 	if n.proxyURL == "" {
 		n.proxyURL = DefaultSocksClientProxyURL
 	}
 
-	if restored != nil {
-		if len(restored.LeftPorts) > 0 {
-			n.in = restored.LeftPorts[0]
-		}
-		if len(restored.RightPorts) > 0 {
-			n.out = restored.RightPorts[0]
-		}
-		if len(restored.LeftPorts) > 1 {
-			n.url = restored.LeftPorts[1]
-		}
-	}
+	n.in = restoredLeft(restored, 0)
+	n.out = restoredRight(restored, 0)
+	n.url = restoredLeft(restored, 1)
 
-	if err := n.w.SetNodePrimary(n.id, TypeNetwork); err != nil {
+	if err := n.SetPrimary(TypeNetwork); err != nil {
 		return err
 	}
 
@@ -111,14 +98,14 @@ func (n *socksClientNode) PreLinkAdd(port uint64, linkType, portDirection string
 		if portDirection != "right" || linkType != TypeNetwork {
 			return pasta.LinkTypeErr(linkType)
 		}
-		if n.portHasLinks(port) {
+		if n.PortHasLinks(port) {
 			return pasta.ErrLinkDup
 		}
 	case n.url:
 		if portDirection != "left" || linkType != std.TypeString {
 			return pasta.LinkTypeErr(linkType)
 		}
-		if n.portHasLinks(port) {
+		if n.PortHasLinks(port) {
 			return pasta.ErrLinkDup
 		}
 	default:
@@ -149,7 +136,7 @@ func (n *socksClientNode) OnLinkRemoved(link uint64, port uint64, _, _ string) e
 	case n.url:
 		n.sendConfigBlock()
 	case n.in:
-		n.closeSentNetwork(link)
+		n.outputs.Close(link)
 	}
 	return nil
 }
@@ -161,18 +148,11 @@ func (n *socksClientNode) OnEvent(event pasta.Event, linkType string, _ []string
 	}
 
 	if event.ReceiverPort == n.out && receiverPortDirection == "right" && linkType == TypeNetwork {
-		payload, ok := event.Payload.(NetworkPayload)
-		if !ok || payload.Network == nil {
+		next, changed := AcceptNetworkPayload(n.w, n.id, event, n.outNetwork)
+		if !changed {
 			return nil
 		}
-		if NetworkIsReady(n.outNetwork) && SameNetworkSource(n.outNetwork, payload.Network) {
-			if !SameNetworkInstance(n.outNetwork, payload.Network) {
-				_ = payload.Network.Close()
-			}
-			return nil
-		}
-		BindNetworkResource(n.w, n.id, event.Link, payload.Network)
-		n.outNetwork = payload.Network
+		n.outNetwork = next
 		n.rebuildClient()
 		n.sendAll()
 		return nil
@@ -193,7 +173,7 @@ func (n *socksClientNode) OnFormularMsg(message any) error {
 	if !ok || msg.MenuID != pasta.NodeMenuID(n.id) || msg.Field.BlockID != "config" || msg.Field.FieldID != "proxyURL" || len(msg.Field.ElementPath) > 0 {
 		return nil
 	}
-	if n.portHasLinks(n.url) {
+	if n.PortHasLinks(n.url) {
 		n.sendConfigBlock()
 		return nil
 	}
@@ -229,7 +209,7 @@ func (n *socksClientNode) setProxyURL(value string) {
 }
 
 func (n *socksClientNode) rebuildClient() {
-	n.closeSentNetworks()
+	n.outputs.CloseAll()
 	client, err := buildSocksGoClient(n.proxyURL, n.outNetwork, n.pool)
 	if err != nil {
 		n.client = nil
@@ -254,86 +234,42 @@ func buildSocksGoClient(proxyURL string, outNetwork NetworkCloser, pool bufpool.
 }
 
 func (n *socksClientNode) requestOutNetwork() {
-	n.requestPort(n.out)
+	n.RequestPort(n.out)
 }
 
 func (n *socksClientNode) requestProxyURL() {
-	n.requestPort(n.url)
-}
-
-func (n *socksClientNode) requestPort(port uint64) {
-	snapshot, ok := n.w.PortSnapshot(port)
-	if !ok {
-		return
-	}
-	for _, link := range snapshot.Links {
-		std.Request(n.w, n.id, link)
-	}
+	n.RequestPort(n.url)
 }
 
 func (n *socksClientNode) sendAll() {
-	port, ok := n.w.PortSnapshot(n.in)
-	if !ok {
-		return
-	}
-	for _, link := range port.Links {
+	n.ForEachPortLink(n.in, func(link uint64) {
 		n.sendNetworkToLink(link)
-	}
+	})
 }
 
 func (n *socksClientNode) sendNetworkToLink(link uint64) {
 	if n.client == nil || n.outNetwork == nil {
 		return
 	}
-	n.closeSentNetwork(link)
-	wrapper := gonnect.DetachNetwork(n.client, nil)
-	if n.sent == nil {
-		n.sent = make(map[uint64]NetworkCloser)
-	}
-	n.sent[link] = wrapper
-	BindNetworkResource(n.w, n.id, link, wrapper)
-	n.w.EmitEvent(n.id, link, NetworkPayload{Network: wrapper})
-}
-
-func (n *socksClientNode) closeSentNetwork(link uint64) {
-	if n.sent == nil {
-		return
-	}
-	network := n.sent[link]
-	delete(n.sent, link)
-	if network != nil {
-		_ = network.Close()
-	}
-}
-
-func (n *socksClientNode) closeSentNetworks() {
-	for link, network := range n.sent {
-		delete(n.sent, link)
-		if network != nil {
-			_ = network.Close()
-		}
-	}
+	n.outputs.Send(n.w, n.id, link, n.client)
 }
 
 func (n *socksClientNode) updateLabel() error {
 	if n.errText != "" {
-		return n.w.SetNodeLabel(n.id, "invalid proxy URL")
+		return n.SetLabel("invalid proxy URL")
 	}
 	if n.outNetwork == nil {
-		return n.w.SetNodeLabel(n.id, "waiting for out")
+		return n.SetLabel("waiting for out")
 	}
-	return n.w.SetNodeLabel(n.id, n.proxyURL)
+	return n.SetLabel(n.proxyURL)
 }
 
 func (n *socksClientNode) sendMenuSnapshot() {
-	n.w.SendNodeMenuMsg(n.id, formular.MenuSnapshot(pasta.NodeMenuID(n.id), 1, n.configBlock()))
+	sendNodeMenuSnapshot(n.w, n.id, false, n.configBlock())
 }
 
 func (n *socksClientNode) sendConfigBlock() {
-	if n.w == nil || n.id == 0 {
-		return
-	}
-	n.w.SendNodeMenuMsg(n.id, formular.BlockSnapshot(pasta.NodeMenuID(n.id), 1, 1, n.configBlock()))
+	sendNodeBlockSnapshot(n.w, n.id, n.configBlock())
 }
 
 func (n *socksClientNode) configBlock() formular.Block {
@@ -345,7 +281,7 @@ func (n *socksClientNode) configBlock() formular.Block {
 			Field: &formular.Field{
 				Kind:     formular.FieldText,
 				Value:    n.proxyURL,
-				Readonly: n.portHasLinks(n.url),
+				Readonly: n.PortHasLinks(n.url),
 			},
 		},
 	}
@@ -358,12 +294,4 @@ func (n *socksClientNode) configBlock() formular.Block {
 		})
 	}
 	return formular.Block{ID: "config", Order: 10, Generation: 1, Items: items}
-}
-
-func (n *socksClientNode) portHasLinks(port uint64) bool {
-	if n.w == nil || port == 0 {
-		return false
-	}
-	snapshot, ok := n.w.PortSnapshot(port)
-	return ok && len(snapshot.Links) > 0
 }

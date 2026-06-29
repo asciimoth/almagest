@@ -570,8 +570,8 @@ func TestWireGuardNetworkAttachmentDoesNotOpenSocketsUntilTunAttached(t *testing
 		return network.listenCount() > 0
 	}, "wireguard opens network after TUN attaches")
 
-	listensWithBothLinks := network.listenCount()
 	w.RemoveLink(tunLink)
+	listensAfterTunDetach := network.listenCount()
 	w.SendNodeFormularMsg(wgID, formular.FormApplyMessage{
 		MessageBase: FormMessageBase(formular.MessageFormApply, wgID),
 		BlockID:     "config",
@@ -580,8 +580,8 @@ func TestWireGuardNetworkAttachmentDoesNotOpenSocketsUntilTunAttached(t *testing
 			"listenPort": 51822,
 		},
 	})
-	if got := network.listenCount(); got != listensWithBothLinks {
-		t.Fatalf("network listen count after TUN detach config = %d, want %d", got, listensWithBothLinks)
+	if got := network.listenCount(); got != listensAfterTunDetach {
+		t.Fatalf("network listen count after TUN detach config = %d, want %d", got, listensAfterTunDetach)
 	}
 }
 

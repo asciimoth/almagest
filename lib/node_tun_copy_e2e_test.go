@@ -279,40 +279,36 @@ func (testTunProviderClass) DefaultNodeParams() pasta.NodeClassParams {
 	}}
 }
 func (c testTunProviderClass) NewNode(configer.Config, ...*pasta.NodeClassState) (pasta.Node, error) {
-	return &testTunProviderNode{registry: c.registry, sent: map[uint64]tun.Tun{}}, nil
+	return &testTunProviderNode{registry: c.registry}, nil
 }
 
 type testTunProviderNode struct {
-	pasta.BasicNode
+	NodeBase
 
 	registry *testTunProviderRegistry
-	w        *pasta.Workspace
-	id       uint64
 	out      uint64
 
-	source tun.Tun
-	peer   tun.Tun
-	sent   map[uint64]tun.Tun
+	source  tun.Tun
+	peer    tun.Tun
+	outputs TunOutputCache
 }
 
 func (n *testTunProviderNode) OnInit(w *pasta.Workspace, _ pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
-	n.w = w
-	n.id = id
-	if restored != nil && len(restored.RightPorts) > 0 {
-		n.out = restored.RightPorts[0]
-	}
+	n.InitBaseNode(w, nil, id)
+	n.out = restoredRight(restored, 0)
 	if n.registry != nil {
 		n.registry.register(id, n)
 	}
-	if err := n.w.SetNodePrimary(n.id, TypeTun); err != nil {
+	if err := n.SetPrimary(TypeTun); err != nil {
 		return err
 	}
-	return n.w.SetNodeLabel(n.id, "ready")
+	return n.SetLabel("ready")
 }
 
 func (n *testTunProviderNode) OnStop() {
-	n.closeSentTuns()
+	n.outputs.CloseAll()
 	n.closePipe()
+	n.outputs.Wait()
 }
 
 func (n *testTunProviderNode) OnReady() error {
@@ -336,7 +332,7 @@ func (n *testTunProviderNode) OnLinkAdd(link, port uint64, linkType, portDirecti
 
 func (n *testTunProviderNode) OnLinkRemoved(link uint64, port uint64, linkType, portDirection string) error {
 	if port == n.out && portDirection == "right" && linkType == TypeTun {
-		n.closeSentTun(link)
+		n.outputs.Close(link)
 		n.closePipe()
 	}
 	return nil
@@ -351,31 +347,14 @@ func (n *testTunProviderNode) OnEvent(event pasta.Event, linkType string, _ []st
 }
 
 func (n *testTunProviderNode) sendAll() {
-	port, ok := n.w.PortSnapshot(n.out)
-	if !ok {
-		return
-	}
-	for _, link := range port.Links {
+	n.ForEachPortLink(n.out, func(link uint64) {
 		n.sendTunToLink(link)
-	}
+	})
 }
 
 func (n *testTunProviderNode) sendTunToLink(link uint64) {
 	n.ensurePipe()
-	wrapper := n.sent[link]
-	if wrapper == nil {
-		wrapper = DetachTunForLink(n.w, n.id, link, n.source)
-		n.sent[link] = wrapper
-	}
-	n.w.EmitEvent(n.id, link, TunPayload{Tun: wrapper})
-}
-
-func (n *testTunProviderNode) closeSentTun(link uint64) {
-	t := n.sent[link]
-	delete(n.sent, link)
-	if t != nil {
-		_ = t.Close()
-	}
+	n.outputs.Send(n.w, n.id, link, n.source, nil)
 }
 
 func (n *testTunProviderNode) ensurePipe() {
@@ -393,15 +372,6 @@ func (n *testTunProviderNode) closePipe() {
 	if n.peer != nil {
 		_ = n.peer.Close()
 		n.peer = nil
-	}
-}
-
-func (n *testTunProviderNode) closeSentTuns() {
-	for link, t := range n.sent {
-		delete(n.sent, link)
-		if t != nil {
-			_ = t.Close()
-		}
 	}
 }
 

@@ -4,7 +4,6 @@ import (
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/gonnect"
 	"github.com/asciimoth/pasta/pasta"
-	"github.com/asciimoth/pasta/pasta/std"
 )
 
 func init() {
@@ -32,83 +31,20 @@ func (outNetClass) DefaultNodeParams() pasta.NodeClassParams {
 	}}
 }
 func (c outNetClass) NewNode(_ configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
-	return &outNetNode{engine: c.engine}, nil
+	return &outNetNode{simpleNetworkProvider: simpleNetworkProvider{NodeBase: NodeBase{engine: c.engine}}}, nil
 }
 
 // outNetNode exposes sysnet.System.OutNet through almagest/network links.
 // OutNet is stable for the whole System lifetime, so the node grabs it once
 // during initialization and sends detached wrappers to connected links.
 type outNetNode struct {
-	pasta.BasicNode
-
-	engine *engine
-	w      *pasta.Workspace
-	id     uint64
-	out    uint64
-
-	network gonnect.Network
+	simpleNetworkProvider
 }
 
 func (n *outNetNode) OnInit(w *pasta.Workspace, _ pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
-	n.w = w
-	n.id = id
-	if restored != nil && len(restored.LeftPorts) > 0 {
-		n.out = restored.LeftPorts[0]
-	}
-	if err := n.w.SetNodePrimary(n.id, TypeNetwork); err != nil {
-		return err
-	}
-	_ = n.w.SetNodeLabel(n.id, "out")
+	var network gonnect.Network
 	if n.engine != nil && n.engine.sys != nil {
-		n.network = n.engine.sys.OutNet()
+		network = n.engine.sys.OutNet()
 	}
-	return nil
-}
-
-func (n *outNetNode) OnReady() error {
-	n.sendAll()
-	return nil
-}
-
-func (n *outNetNode) PreLinkAdd(port uint64, linkType, portDirection string) error {
-	if port != n.out || portDirection != "left" || linkType != TypeNetwork {
-		return pasta.LinkTypeErr(linkType)
-	}
-	return nil
-}
-
-func (n *outNetNode) OnLinkAdd(link, port uint64, linkType, portDirection string) error {
-	if port == n.out && portDirection == "left" && linkType == TypeNetwork && n.network != nil {
-		n.sendNetworkToLink(link, n.network)
-	}
-	return nil
-}
-
-func (n *outNetNode) OnEvent(event pasta.Event, linkType string, _ []string, receiverPortDirection string) error {
-	if event.ReceiverPort != n.out || receiverPortDirection != "left" || linkType != TypeNetwork || !std.IsRequest(event.Payload) {
-		return nil
-	}
-	if n.network != nil {
-		n.sendNetworkToLink(event.Link, n.network)
-	}
-	return nil
-}
-
-func (n *outNetNode) sendAll() {
-	port, ok := n.w.PortSnapshot(n.out)
-	if !ok {
-		return
-	}
-	for _, link := range port.Links {
-		n.sendNetworkToLink(link, n.network)
-	}
-}
-
-func (n *outNetNode) sendNetworkToLink(link uint64, network gonnect.Network) {
-	if network == nil {
-		return
-	}
-	wrapper := gonnect.DetachNetwork(network, nil)
-	BindNetworkResource(n.w, n.id, link, wrapper)
-	n.w.EmitEvent(n.id, link, NetworkPayload{Network: wrapper})
+	return n.InitSimpleNetworkProvider(w, nil, id, restored, network, "out")
 }

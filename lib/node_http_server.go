@@ -51,22 +51,16 @@ func (httpServerClass) DefaultNodeParams() pasta.NodeClassParams {
 }
 func (c httpServerClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
 	return &httpServerNode{
+		NodeBase: NodeBase{engine: c.engine},
 		host:     configer.String(cfg, configer.Path{"host"}, DefaultHTTPServerHost),
 		port:     configer.Int(cfg, configer.Path{"port"}, DefaultHTTPServerPort),
 		response: configer.String(cfg, configer.Path{"response"}, ""),
-
-		engine: c.engine,
 	}, nil
 }
 
 type httpServerNode struct {
-	pasta.BasicNode
+	NodeBase
 
-	engine *engine
-	logger pasta.Logger
-
-	w     *pasta.Workspace
-	id    uint64
 	netp  uint64
 	in    uint64
 	hostp uint64
@@ -92,10 +86,7 @@ type httpServerStart struct {
 	cfg httpServerConfig
 }
 
-type httpServerWorker struct {
-	stop chan struct{}
-	done chan struct{}
-}
+type httpServerWorker = restartableWorker
 
 type httpServerConfig struct {
 	host     string
@@ -105,9 +96,7 @@ type httpServerConfig struct {
 }
 
 func (n *httpServerNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
-	n.w = w
-	n.id = id
-	n.logger = logger
+	n.InitBaseNode(w, logger, id)
 
 	if n.host == "" {
 		n.host = DefaultHTTPServerHost
@@ -116,22 +105,12 @@ func (n *httpServerNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint
 		n.port = DefaultHTTPServerPort
 	}
 
-	if restored != nil {
-		if len(restored.RightPorts) > 0 {
-			n.netp = restored.RightPorts[0]
-		}
-		if len(restored.LeftPorts) > 0 {
-			n.in = restored.LeftPorts[0]
-		}
-		if len(restored.LeftPorts) > 1 {
-			n.hostp = restored.LeftPorts[1]
-		}
-		if len(restored.LeftPorts) > 2 {
-			n.portp = restored.LeftPorts[2]
-		}
-	}
+	n.netp = restoredRight(restored, 0)
+	n.in = restoredLeft(restored, 0)
+	n.hostp = restoredLeft(restored, 1)
+	n.portp = restoredLeft(restored, 2)
 
-	if err := n.w.SetNodePrimary(n.id, TypeNetwork); err != nil {
+	if err := n.SetPrimary(TypeNetwork); err != nil {
 		n.logger.Errf("failed to set node primary type: %v", err)
 		return err
 	}
@@ -160,7 +139,7 @@ func (n *httpServerNode) PreLinkAdd(port uint64, linkType, portDirection string)
 		if portDirection != "right" || linkType != TypeNetwork {
 			return pasta.LinkTypeErr(linkType)
 		}
-		if n.portHasLinks(port) {
+		if n.PortHasLinks(port) {
 			return pasta.ErrLinkDup
 		}
 
@@ -168,7 +147,7 @@ func (n *httpServerNode) PreLinkAdd(port uint64, linkType, portDirection string)
 		if portDirection != "left" || linkType != std.TypeString {
 			return pasta.LinkTypeErr(linkType)
 		}
-		if n.portHasLinks(port) {
+		if n.PortHasLinks(port) {
 			return pasta.ErrLinkDup
 		}
 
@@ -176,7 +155,7 @@ func (n *httpServerNode) PreLinkAdd(port uint64, linkType, portDirection string)
 		if portDirection != "left" || linkType != std.TypeString {
 			return pasta.LinkTypeErr(linkType)
 		}
-		if n.portHasLinks(port) {
+		if n.PortHasLinks(port) {
 			return pasta.ErrLinkDup
 		}
 
@@ -215,18 +194,11 @@ func (n *httpServerNode) OnLinkRemoved(_ uint64, port uint64, _, _ string) error
 
 func (n *httpServerNode) OnEvent(event pasta.Event, linkType string, _ []string, receiverPortDirection string) error {
 	if event.ReceiverPort == n.netp && receiverPortDirection == "right" && linkType == TypeNetwork {
-		payload, ok := event.Payload.(NetworkPayload)
-		if !ok || payload.Network == nil {
+		next, changed := AcceptNetworkPayload(n.w, n.id, event, n.network)
+		if !changed {
 			return nil
 		}
-		if NetworkIsReady(n.network) && SameNetworkSource(n.network, payload.Network) {
-			if !SameNetworkInstance(n.network, payload.Network) {
-				_ = payload.Network.Close()
-			}
-			return nil
-		}
-		BindNetworkResource(n.w, n.id, event.Link, payload.Network)
-		n.network = payload.Network
+		n.network = next
 		n.restartWorker()
 		return nil
 	}
@@ -319,7 +291,7 @@ func (n *httpServerNode) restartWorker() {
 	old := n.worker
 	if old != nil {
 		n.worker = nil
-		close(old.stop)
+		old.Stop()
 	}
 	if n.network == nil {
 		n.logger.Debug("waiting for network")
@@ -339,20 +311,16 @@ func (n *httpServerNode) restartWorker() {
 }
 
 func (n *httpServerNode) startWorker(cfg httpServerConfig) {
-	stop := make(chan struct{})
-	worker := &httpServerWorker{stop: stop, done: make(chan struct{})}
-	n.worker = worker
 	n.logger.Debugf("worker starting on %s", net.JoinHostPort(cfg.host, strconv.Itoa(cfg.port)))
-	go func() {
-		defer close(worker.done)
+	n.worker = newRestartableWorker(func(stop <-chan struct{}) {
 		runHTTPServerWorker(n.engine.ctx, n.logger, n.w, n.id, stop, cfg)
-	}()
+	})
 }
 
 func (n *httpServerNode) stopWorker() {
 	if n.worker != nil {
 		n.logger.Debug("worker stopping")
-		close(n.worker.stop)
+		n.worker.Stop()
 		n.worker = nil
 	}
 }
@@ -427,40 +395,27 @@ func sendHTTPServerLog(w *pasta.Workspace, node uint64, level, text string) {
 }
 
 func (n *httpServerNode) requestNetwork() {
-	n.requestPort(n.netp)
+	n.RequestPort(n.netp)
 }
 
 func (n *httpServerNode) requestResponse() {
-	n.requestPort(n.in)
-}
-
-func (n *httpServerNode) requestPort(port uint64) {
-	snapshot, ok := n.w.PortSnapshot(port)
-	if !ok {
-		return
-	}
-	for _, link := range snapshot.Links {
-		std.Request(n.w, n.id, link)
-	}
+	n.RequestPort(n.in)
 }
 
 func (n *httpServerNode) updateLabel() error {
-	return n.w.SetNodeLabel(n.id, net.JoinHostPort(n.host, strconv.Itoa(n.port)))
+	return n.SetLabel(net.JoinHostPort(n.host, strconv.Itoa(n.port)))
 }
 
 func (n *httpServerNode) sendMenuSnapshot() {
-	n.w.SendNodeMenuMsg(n.id, formular.MenuSnapshot(pasta.NodeMenuID(n.id), 1, n.listenBlock(), n.logsBlock()))
+	sendNodeMenuSnapshot(n.w, n.id, false, n.listenBlock(), n.logsBlock())
 }
 
 func (n *httpServerNode) sendListenBlock() {
-	n.w.SendNodeMenuMsg(n.id, formular.BlockSnapshot(pasta.NodeMenuID(n.id), 1, 1, n.listenBlock()))
+	sendNodeBlockSnapshot(n.w, n.id, n.listenBlock())
 }
 
 func (n *httpServerNode) sendLogsBlock() {
-	if n.w == nil || n.id == 0 {
-		return
-	}
-	n.w.SendNodeMenuMsg(n.id, formular.BlockSnapshot(pasta.NodeMenuID(n.id), 1, 1, n.logsBlock()))
+	sendNodeBlockSnapshot(n.w, n.id, n.logsBlock())
 }
 
 func (n *httpServerNode) listenBlock() formular.Block {
@@ -491,16 +446,11 @@ func (n *httpServerNode) listenBlock() formular.Block {
 }
 
 func (n *httpServerNode) logsBlock() formular.Block {
-	return formular.Block{ID: "logs", Order: 20, Generation: 1, Items: []formular.Item{
-		{Type: formular.ItemLogs, ID: "worker", Label: "Worker", Logs: append([]formular.LogLine(nil), n.logs...)},
-	}}
+	return logsBlock("logs", "Worker", 20, n.logs)
 }
 
 func (n *httpServerNode) appendLog(level, text string) {
-	n.logs = append(n.logs, formular.LogLine{Level: level, Text: text})
-	if len(n.logs) > 40 {
-		n.logs = append([]formular.LogLine(nil), n.logs[len(n.logs)-40:]...)
-	}
+	appendCappedLog(&n.logs, 40, level, text)
 }
 
 func (n *httpServerNode) setHost(value string) {
@@ -548,23 +498,14 @@ func (n *httpServerNode) setPortNoRefresh(port int) bool {
 }
 
 func (n *httpServerNode) requestHost() {
-	n.requestPort(n.hostp)
+	n.RequestPort(n.hostp)
 }
 
 func (n *httpServerNode) requestListenPort() {
-	n.requestPort(n.portp)
+	n.RequestPort(n.portp)
 }
 
 // Reports if node menu should be in readonly state
 func (n *httpServerNode) listenReadonly() bool {
-	return n.portHasLinks(n.hostp) || n.portHasLinks(n.portp)
-}
-
-func (n *httpServerNode) portHasLinks(port uint64) bool {
-	if n.w == nil || port == 0 {
-		return false
-	}
-
-	snapshot, ok := n.w.PortSnapshot(port)
-	return ok && len(snapshot.Links) > 0
+	return n.PortHasLinks(n.hostp) || n.PortHasLinks(n.portp)
 }

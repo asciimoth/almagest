@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/asciimoth/formular"
-	"github.com/asciimoth/pasta/pasta"
 )
 
 func normalizeListText(value string) string {
@@ -39,14 +38,6 @@ func parseAddrList(value string, allowCIDR bool) ([]netip.Addr, error) {
 		out = append(out, addr)
 	}
 	return out, nil
-}
-
-func portHasLinks(w *pasta.Workspace, port uint64) bool {
-	if w == nil || port == 0 {
-		return false
-	}
-	snapshot, ok := w.PortSnapshot(port)
-	return ok && len(snapshot.Links) > 0
 }
 
 func configTextField(id, label, value string, statusErr bool, statusText string, multiline bool) formular.Item {

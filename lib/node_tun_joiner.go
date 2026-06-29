@@ -40,11 +40,11 @@ func (tunJoinerClass) DefaultNodeParams() pasta.NodeClassParams {
 func (c tunJoinerClass) NewNode(_ configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
 	pool := enginePool(c.engine)
 	return &tunJoinerNode{
-		pool:           pool,
-		joiner:         tun.NewJoiner(pool),
-		secondaryTuns:  map[uint64]tun.Tun{},
-		sentOutputTuns: map[uint64]tun.Tun{},
-		outputCfgs:     TunConfigByLink{},
+		NodeBase:      NodeBase{engine: c.engine},
+		pool:          pool,
+		joiner:        tun.NewJoiner(pool),
+		secondaryTuns: map[uint64]tun.Tun{},
+		outputCfgs:    TunConfigByLink{},
 	}, nil
 }
 
@@ -55,12 +55,9 @@ func (c tunJoinerClass) NewNode(_ configer.Config, _ ...*pasta.NodeClassState) (
 // arbitrary number of secondary TUNs; each secondary link is tracked
 // independently so link removal can call Joiner.Detach for the matching TUN.
 type tunJoinerNode struct {
-	pasta.BasicNode
+	NodeBase
 
 	pool bufpool.Pool
-
-	w  *pasta.Workspace
-	id uint64
 
 	defaultIn   uint64
 	secondaryIn uint64
@@ -69,63 +66,47 @@ type tunJoinerNode struct {
 	defaultLink uint64
 	defaultTun  tun.Tun
 
-	secondaryTuns  map[uint64]tun.Tun
-	sentOutputTuns map[uint64]tun.Tun
-	sentOutputWait map[uint64]tun.Tun
-	outputCfgs     TunConfigByLink
+	secondaryTuns map[uint64]tun.Tun
+	outputTuns    TunOutputCache
+	outputCfgs    TunConfigByLink
 
 	joiner *tun.Joiner
 }
 
 func (n *tunJoinerNode) OnInit(w *pasta.Workspace, _ pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
-	n.w = w
-	n.id = id
+	n.InitBaseNode(w, nil, id)
 	if n.joiner == nil {
 		n.joiner = tun.NewJoiner(n.pool)
 	}
 	if n.secondaryTuns == nil {
 		n.secondaryTuns = map[uint64]tun.Tun{}
 	}
-	if n.sentOutputTuns == nil {
-		n.sentOutputTuns = map[uint64]tun.Tun{}
-	}
-	if n.sentOutputWait == nil {
-		n.sentOutputWait = map[uint64]tun.Tun{}
-	}
 	if n.outputCfgs == nil {
 		n.outputCfgs = TunConfigByLink{}
 	}
-	if restored != nil {
-		if len(restored.LeftPorts) > 0 {
-			n.defaultIn = restored.LeftPorts[0]
-		}
-		if len(restored.LeftPorts) > 1 {
-			n.secondaryIn = restored.LeftPorts[1]
-		}
-		if len(restored.RightPorts) > 0 {
-			n.out = restored.RightPorts[0]
-		}
-	}
-	if err := n.w.SetNodePrimary(n.id, TypeTun); err != nil {
+	n.defaultIn = restoredLeft(restored, 0)
+	n.secondaryIn = restoredLeft(restored, 1)
+	n.out = restoredRight(restored, 0)
+	if err := n.SetPrimary(TypeTun); err != nil {
 		return err
 	}
 	return n.updateLabel()
 }
 
 func (n *tunJoinerNode) OnReady() error {
-	n.requestPort(n.defaultIn)
-	n.requestPort(n.secondaryIn)
+	n.RequestPort(n.defaultIn)
+	n.RequestPort(n.secondaryIn)
 	n.sendAllOutputTuns()
 	n.sendMergedTunConfig()
 	return nil
 }
 
 func (n *tunJoinerNode) OnStop() {
-	n.closeSentOutputTuns()
+	n.outputTuns.CloseAll()
 	if n.joiner != nil {
 		_ = n.joiner.Close()
 	}
-	n.waitSentOutputTuns()
+	n.outputTuns.Wait()
 	n.defaultTun = nil
 	n.secondaryTuns = map[uint64]tun.Tun{}
 	n.outputCfgs = TunConfigByLink{}
@@ -182,7 +163,7 @@ func (n *tunJoinerNode) OnLinkRemoved(link uint64, port uint64, linkType, portDi
 	case portDirection == "left" && port == n.secondaryIn:
 		n.detachSecondaryTun(link)
 	case portDirection == "right" && port == n.out:
-		n.closeSentOutputTun(link)
+		n.outputTuns.Close(link)
 		n.outputCfgs.Delete(link)
 		n.sendMergedTunConfig()
 	}
@@ -211,15 +192,19 @@ func (n *tunJoinerNode) OnEvent(event pasta.Event, linkType string, _ []string, 
 		n.sendMergedTunConfigToLink(event.Link)
 		return nil
 	}
-	payload, ok := event.Payload.(TunPayload)
-	if !ok || payload.Tun == nil {
-		return nil
-	}
 	switch event.ReceiverPort {
 	case n.defaultIn:
-		return n.attachDefaultTun(event.Link, payload.Tun)
+		next, changed := acceptTunPayload(event, n.defaultLink, n.defaultTun)
+		if !changed {
+			return nil
+		}
+		return n.attachDefaultTun(event.Link, next)
 	case n.secondaryIn:
-		return n.attachSecondaryTun(event.Link, payload.Tun)
+		next, changed := acceptTunPayload(event, 0, n.secondaryTuns[event.Link])
+		if !changed {
+			return nil
+		}
+		return n.attachSecondaryTun(event.Link, next)
 	default:
 		return nil
 	}
@@ -266,41 +251,17 @@ func (n *tunJoinerNode) detachSecondaryTun(link uint64) {
 	}
 }
 
-func (n *tunJoinerNode) requestPort(port uint64) {
-	snapshot, ok := n.w.PortSnapshot(port)
-	if !ok {
-		return
-	}
-	for _, link := range snapshot.Links {
-		std.Request(n.w, n.id, link)
-	}
-}
-
 func (n *tunJoinerNode) sendAllOutputTuns() {
-	snapshot, ok := n.w.PortSnapshot(n.out)
-	if !ok {
-		return
-	}
-	for _, link := range snapshot.Links {
+	n.ForEachPortLink(n.out, func(link uint64) {
 		n.sendOutputTunToLink(link)
-	}
+	})
 }
 
 func (n *tunJoinerNode) sendOutputTunToLink(link uint64) {
 	if n.joiner == nil {
 		return
 	}
-	if wrapper := n.sentOutputTuns[link]; TunIsReady(wrapper) {
-		n.w.EmitEvent(n.id, link, TunPayload{Tun: wrapper})
-		return
-	}
-	n.closeSentOutputTun(link)
-	wrapper := DetachTunForLink(n.w, n.id, link, n.joiner, n.pool)
-	if wrapper == nil {
-		return
-	}
-	n.sentOutputTuns[link] = wrapper
-	n.w.EmitEvent(n.id, link, TunPayload{Tun: wrapper})
+	n.outputTuns.Send(n.w, n.id, link, n.joiner, n.pool)
 }
 
 func (n *tunJoinerNode) sendMergedTunConfig() {
@@ -309,67 +270,20 @@ func (n *tunJoinerNode) sendMergedTunConfig() {
 }
 
 func (n *tunJoinerNode) sendMergedTunConfigToPort(port uint64) {
-	snapshot, ok := n.w.PortSnapshot(port)
-	if !ok {
-		return
-	}
-	for _, link := range snapshot.Links {
-		n.sendMergedTunConfigToLink(link)
-	}
+	BroadcastMergedTunConfig(n.w, n.id, port, n.outputCfgs)
 }
 
 func (n *tunJoinerNode) sendMergedTunConfigToLink(link uint64) {
-	if link == 0 {
-		return
-	}
-	n.w.EmitEvent(n.id, link, n.outputCfgs.Merge())
-}
-
-func (n *tunJoinerNode) closeSentOutputTun(link uint64) {
-	t := n.sentOutputTuns[link]
-	delete(n.sentOutputTuns, link)
-	if t == nil {
-		return
-	}
-	_ = t.Close()
-	if _, ok := t.(tunWaiter); ok {
-		if n.sentOutputWait == nil {
-			n.sentOutputWait = map[uint64]tun.Tun{}
-		}
-		n.sentOutputWait[link] = t
-	}
-}
-
-func (n *tunJoinerNode) closeSentOutputTuns() {
-	for link, t := range n.sentOutputTuns {
-		delete(n.sentOutputTuns, link)
-		if t == nil {
-			continue
-		}
-		_ = t.Close()
-		if _, ok := t.(tunWaiter); ok {
-			if n.sentOutputWait == nil {
-				n.sentOutputWait = map[uint64]tun.Tun{}
-			}
-			n.sentOutputWait[link] = t
-		}
-	}
-}
-
-func (n *tunJoinerNode) waitSentOutputTuns() {
-	for link, t := range n.sentOutputWait {
-		delete(n.sentOutputWait, link)
-		waitTun(t)
-	}
+	EmitMergedTunConfig(n.w, n.id, link, n.outputCfgs)
 }
 
 func (n *tunJoinerNode) updateLabel() error {
 	if n.defaultTun == nil {
-		return n.w.SetNodeLabel(n.id, "waiting for default")
+		return n.SetLabel("waiting for default")
 	}
 	secondaryCount := len(n.secondaryTuns)
 	if secondaryCount == 0 {
-		return n.w.SetNodeLabel(n.id, "joined default")
+		return n.SetLabel("joined default")
 	}
-	return n.w.SetNodeLabel(n.id, fmt.Sprintf("joined default + %d secondary", secondaryCount))
+	return n.SetLabel(fmt.Sprintf("joined default + %d secondary", secondaryCount))
 }

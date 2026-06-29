@@ -70,8 +70,8 @@ func (udpPingServerClass) DefaultNodeParams() pasta.NodeClassParams {
 }
 func (c udpPingServerClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
 	return &udpPingServerNode{
-		engine: c.engine,
-		cfg:    readUDPPingConfig(cfg, true),
+		NodeBase: NodeBase{engine: c.engine},
+		cfg:      readUDPPingConfig(cfg, true),
 	}, nil
 }
 
@@ -97,7 +97,7 @@ func (udpPingClientClass) DefaultNodeParams() pasta.NodeClassParams {
 }
 func (c udpPingClientClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
 	return &udpPingClientNode{
-		engine:     c.engine,
+		NodeBase:   NodeBase{engine: c.engine},
 		cfg:        readUDPPingConfig(cfg, false),
 		statusText: udpPingStatusReady,
 	}, nil
@@ -205,13 +205,8 @@ func (c udpPingConfig) label() string {
 }
 
 type udpPingServerNode struct {
-	pasta.BasicNode
+	NodeBase
 
-	engine *engine
-	logger pasta.Logger
-
-	w    *pasta.Workspace
-	id   uint64
 	netp uint64
 	cfgp udpPingConfigPorts
 	cfg  udpPingConfig
@@ -233,10 +228,7 @@ type udpPingConfigPorts struct {
 	timeout    uint64
 }
 
-type udpPingServerWorker struct {
-	stop chan struct{}
-	done chan struct{}
-}
+type udpPingServerWorker = restartableWorker
 
 type udpPingServerStart struct {
 	id  uint64
@@ -245,14 +237,10 @@ type udpPingServerStart struct {
 }
 
 func (n *udpPingServerNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
-	n.w = w
-	n.id = id
-	n.logger = logger
+	n.InitBaseNode(w, logger, id)
 	n.cfg.normalize(true)
-	if restored != nil {
-		n.restorePorts(restored)
-	}
-	if err := n.w.SetNodePrimary(n.id, TypeNetwork); err != nil {
+	n.restorePorts(restored)
+	if err := n.SetPrimary(TypeNetwork); err != nil {
 		return err
 	}
 	_ = n.updateLabel()
@@ -261,27 +249,13 @@ func (n *udpPingServerNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id u
 }
 
 func (n *udpPingServerNode) restorePorts(restored *pasta.NodeInitData) {
-	if len(restored.RightPorts) > 0 {
-		n.netp = restored.RightPorts[0]
-	}
-	if len(restored.LeftPorts) > 0 {
-		n.cfgp.network = restored.LeftPorts[0]
-	}
-	if len(restored.LeftPorts) > 1 {
-		n.cfgp.socketMode = restored.LeftPorts[1]
-	}
-	if len(restored.LeftPorts) > 2 {
-		n.cfgp.localHost = restored.LeftPorts[2]
-	}
-	if len(restored.LeftPorts) > 3 {
-		n.cfgp.localPort = restored.LeftPorts[3]
-	}
-	if len(restored.LeftPorts) > 4 {
-		n.cfgp.remoteHost = restored.LeftPorts[4]
-	}
-	if len(restored.LeftPorts) > 5 {
-		n.cfgp.remotePort = restored.LeftPorts[5]
-	}
+	n.netp = restoredRight(restored, 0)
+	n.cfgp.network = restoredLeft(restored, 0)
+	n.cfgp.socketMode = restoredLeft(restored, 1)
+	n.cfgp.localHost = restoredLeft(restored, 2)
+	n.cfgp.localPort = restoredLeft(restored, 3)
+	n.cfgp.remoteHost = restoredLeft(restored, 4)
+	n.cfgp.remotePort = restoredLeft(restored, 5)
 }
 
 func (n *udpPingServerNode) OnReady() error {
@@ -299,7 +273,7 @@ func (n *udpPingServerNode) PreLinkAdd(port uint64, linkType, portDirection stri
 		if portDirection != "right" || linkType != TypeNetwork {
 			return pasta.LinkTypeErr(linkType)
 		}
-		if n.portHasLinks(port) {
+		if n.PortHasLinks(port) {
 			return pasta.ErrLinkDup
 		}
 		return nil
@@ -308,7 +282,7 @@ func (n *udpPingServerNode) PreLinkAdd(port uint64, linkType, portDirection stri
 		if portDirection != "left" || linkType != std.TypeString {
 			return pasta.LinkTypeErr(linkType)
 		}
-		if n.portHasLinks(port) {
+		if n.PortHasLinks(port) {
 			return pasta.ErrLinkDup
 		}
 		return nil
@@ -340,18 +314,11 @@ func (n *udpPingServerNode) OnLinkRemoved(_ uint64, port uint64, _, _ string) er
 
 func (n *udpPingServerNode) OnEvent(event pasta.Event, linkType string, _ []string, receiverPortDirection string) error {
 	if event.ReceiverPort == n.netp && receiverPortDirection == "right" && linkType == TypeNetwork {
-		payload, ok := event.Payload.(NetworkPayload)
-		if !ok || payload.Network == nil {
+		next, changed := AcceptNetworkPayload(n.w, n.id, event, n.net)
+		if !changed {
 			return nil
 		}
-		if NetworkIsReady(n.net) && SameNetworkSource(n.net, payload.Network) {
-			if !SameNetworkInstance(n.net, payload.Network) {
-				_ = payload.Network.Close()
-			}
-			return nil
-		}
-		BindNetworkResource(n.w, n.id, event.Link, payload.Network)
-		n.net = payload.Network
+		n.net = next
 		n.restartWorker()
 		return nil
 	}
@@ -411,7 +378,7 @@ func (n *udpPingServerNode) restartWorker() {
 	old := n.worker
 	if old != nil {
 		n.worker = nil
-		close(old.stop)
+		old.Stop()
 	}
 	if n.net == nil {
 		n.log(formular.LogWarn, "waiting for network")
@@ -430,17 +397,14 @@ func (n *udpPingServerNode) restartWorker() {
 }
 
 func (n *udpPingServerNode) startWorker(cfg udpPingConfig, netw NetworkCloser) {
-	worker := &udpPingServerWorker{stop: make(chan struct{}), done: make(chan struct{})}
-	n.worker = worker
-	go func() {
-		defer close(worker.done)
-		runUDPPingServerWorker(n.engine.ctx, n.logger, n.w, n.id, worker.stop, cfg, netw)
-	}()
+	n.worker = newRestartableWorker(func(stop <-chan struct{}) {
+		runUDPPingServerWorker(n.engine.ctx, n.logger, n.w, n.id, stop, cfg, netw)
+	})
 }
 
 func (n *udpPingServerNode) stopWorker() {
 	if n.worker != nil {
-		close(n.worker.stop)
+		n.worker.Stop()
 		n.worker = nil
 	}
 }
@@ -499,13 +463,8 @@ func runUDPPingServerWorker(ctx context.Context, logger pasta.Logger, w *pasta.W
 }
 
 type udpPingClientNode struct {
-	pasta.BasicNode
+	NodeBase
 
-	engine *engine
-	logger pasta.Logger
-
-	w    *pasta.Workspace
-	id   uint64
 	netp uint64
 	cfgp udpPingConfigPorts
 
@@ -536,17 +495,13 @@ type udpPingClientResult struct {
 }
 
 func (n *udpPingClientNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
-	n.w = w
-	n.id = id
-	n.logger = logger
+	n.InitBaseNode(w, logger, id)
 	n.cfg.normalize(false)
 	if n.statusText == "" {
 		n.statusText = udpPingStatusReady
 	}
-	if restored != nil {
-		n.restorePorts(restored)
-	}
-	if err := n.w.SetNodePrimary(n.id, TypeNetwork); err != nil {
+	n.restorePorts(restored)
+	if err := n.SetPrimary(TypeNetwork); err != nil {
 		return err
 	}
 	_ = n.updateLabel()
@@ -556,33 +511,15 @@ func (n *udpPingClientNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id u
 }
 
 func (n *udpPingClientNode) restorePorts(restored *pasta.NodeInitData) {
-	if len(restored.RightPorts) > 0 {
-		n.netp = restored.RightPorts[0]
-	}
-	if len(restored.LeftPorts) > 0 {
-		n.cfgp.network = restored.LeftPorts[0]
-	}
-	if len(restored.LeftPorts) > 1 {
-		n.cfgp.socketMode = restored.LeftPorts[1]
-	}
-	if len(restored.LeftPorts) > 2 {
-		n.cfgp.localHost = restored.LeftPorts[2]
-	}
-	if len(restored.LeftPorts) > 3 {
-		n.cfgp.localPort = restored.LeftPorts[3]
-	}
-	if len(restored.LeftPorts) > 4 {
-		n.cfgp.remoteHost = restored.LeftPorts[4]
-	}
-	if len(restored.LeftPorts) > 5 {
-		n.cfgp.remotePort = restored.LeftPorts[5]
-	}
-	if len(restored.LeftPorts) > 6 {
-		n.cfgp.payload = restored.LeftPorts[6]
-	}
-	if len(restored.LeftPorts) > 7 {
-		n.cfgp.timeout = restored.LeftPorts[7]
-	}
+	n.netp = restoredRight(restored, 0)
+	n.cfgp.network = restoredLeft(restored, 0)
+	n.cfgp.socketMode = restoredLeft(restored, 1)
+	n.cfgp.localHost = restoredLeft(restored, 2)
+	n.cfgp.localPort = restoredLeft(restored, 3)
+	n.cfgp.remoteHost = restoredLeft(restored, 4)
+	n.cfgp.remotePort = restoredLeft(restored, 5)
+	n.cfgp.payload = restoredLeft(restored, 6)
+	n.cfgp.timeout = restoredLeft(restored, 7)
 }
 
 func (n *udpPingClientNode) OnReady() error {
@@ -599,7 +536,7 @@ func (n *udpPingClientNode) PreLinkAdd(port uint64, linkType, portDirection stri
 		if portDirection != "right" || linkType != TypeNetwork {
 			return pasta.LinkTypeErr(linkType)
 		}
-		if n.portHasLinks(port) {
+		if n.PortHasLinks(port) {
 			return pasta.ErrLinkDup
 		}
 		return nil
@@ -608,7 +545,7 @@ func (n *udpPingClientNode) PreLinkAdd(port uint64, linkType, portDirection stri
 		if portDirection != "left" || linkType != std.TypeString {
 			return pasta.LinkTypeErr(linkType)
 		}
-		if n.portHasLinks(port) {
+		if n.PortHasLinks(port) {
 			return pasta.ErrLinkDup
 		}
 		return nil
@@ -640,18 +577,11 @@ func (n *udpPingClientNode) OnLinkRemoved(_ uint64, port uint64, _, _ string) er
 
 func (n *udpPingClientNode) OnEvent(event pasta.Event, linkType string, _ []string, receiverPortDirection string) error {
 	if event.ReceiverPort == n.netp && receiverPortDirection == "right" && linkType == TypeNetwork {
-		payload, ok := event.Payload.(NetworkPayload)
-		if !ok || payload.Network == nil {
+		next, changed := AcceptNetworkPayload(n.w, n.id, event, n.net)
+		if !changed {
 			return nil
 		}
-		if NetworkIsReady(n.net) && SameNetworkSource(n.net, payload.Network) {
-			if !SameNetworkInstance(n.net, payload.Network) {
-				_ = payload.Network.Close()
-			}
-			return nil
-		}
-		BindNetworkResource(n.w, n.id, event.Link, payload.Network)
-		n.net = payload.Network
+		n.net = next
 		n.resetStatusReady()
 		return nil
 	}
@@ -883,34 +813,16 @@ func stopped(stop <-chan struct{}) bool {
 }
 
 func (n *udpPingServerNode) requestConfig() {
-	n.requestPort(n.netp)
+	n.RequestPort(n.netp)
 	for _, port := range n.configPorts() {
-		n.requestPort(port)
+		n.RequestPort(port)
 	}
 }
 
 func (n *udpPingClientNode) requestConfig() {
-	n.requestPort(n.netp)
+	n.RequestPort(n.netp)
 	for _, port := range n.configPorts() {
-		n.requestPort(port)
-	}
-}
-
-func (n *udpPingServerNode) requestPort(port uint64) {
-	requestPortValue(n.w, n.id, port)
-}
-
-func (n *udpPingClientNode) requestPort(port uint64) {
-	requestPortValue(n.w, n.id, port)
-}
-
-func requestPortValue(w *pasta.Workspace, node, port uint64) {
-	snapshot, ok := w.PortSnapshot(port)
-	if !ok {
-		return
-	}
-	for _, link := range snapshot.Links {
-		std.Request(w, node, link)
+		n.RequestPort(port)
 	}
 }
 
@@ -1022,19 +934,19 @@ func saveUDPPingConfig(cfg configer.Config, value udpPingConfig) error {
 }
 
 func (n *udpPingServerNode) updateLabel() error {
-	return n.w.SetNodeLabel(n.id, n.cfg.label())
+	return n.SetLabel(n.cfg.label())
 }
 
 func (n *udpPingClientNode) updateLabel() error {
-	return n.w.SetNodeLabel(n.id, n.statusText)
+	return n.SetLabel(n.statusText)
 }
 
 func (n *udpPingServerNode) sendMenuSnapshot() {
-	n.w.SendNodeMenuMsg(n.id, formular.MenuSnapshot(pasta.NodeMenuID(n.id), 1, n.configBlock(), n.logsBlock()))
+	sendNodeMenuSnapshot(n.w, n.id, false, n.configBlock(), n.logsBlock())
 }
 
 func (n *udpPingClientNode) sendMenuSnapshot() {
-	n.w.SendNodeMenuMsg(n.id, formular.MenuSnapshot(pasta.NodeMenuID(n.id), 1, n.configBlock(), n.resultBlock(), n.logsBlock()))
+	sendNodeMenuSnapshot(n.w, n.id, false, n.configBlock(), n.resultBlock(), n.logsBlock())
 }
 
 func (n *udpPingServerNode) sendConfigBlock() {
@@ -1058,10 +970,7 @@ func (n *udpPingClientNode) sendLogsBlock() {
 }
 
 func sendUDPPingBlock(w *pasta.Workspace, node uint64, block formular.Block) {
-	if w == nil || node == 0 {
-		return
-	}
-	w.SendNodeMenuMsg(node, formular.BlockSnapshot(pasta.NodeMenuID(node), 1, block.Generation, block))
+	sendNodeBlockSnapshot(w, node, block)
 }
 
 func (n *udpPingServerNode) configBlock() formular.Block {
@@ -1133,9 +1042,7 @@ func (n *udpPingClientNode) logsBlock() formular.Block {
 }
 
 func udpPingLogsBlock(logs []formular.LogLine) formular.Block {
-	return formular.Block{ID: "logs", Order: 30, Generation: 1, Items: []formular.Item{
-		{Type: formular.ItemLogs, ID: "worker", Label: "Worker", Logs: append([]formular.LogLine(nil), logs...)},
-	}}
+	return logsBlock("logs", "Worker", 30, logs)
 }
 
 func (n *udpPingServerNode) log(level, text string) {
@@ -1144,24 +1051,16 @@ func (n *udpPingServerNode) log(level, text string) {
 }
 
 func (n *udpPingServerNode) appendLog(level, text string) {
-	n.logs = appendUDPPingLog(n.logs, level, text)
+	appendCappedLog(&n.logs, 40, level, text)
 }
 
 func (n *udpPingClientNode) appendLog(level, text string) {
-	n.logs = appendUDPPingLog(n.logs, level, text)
-}
-
-func appendUDPPingLog(logs []formular.LogLine, level, text string) []formular.LogLine {
-	logs = append(logs, formular.LogLine{Level: level, Text: text})
-	if len(logs) > 40 {
-		logs = append([]formular.LogLine(nil), logs[len(logs)-40:]...)
-	}
-	return logs
+	appendCappedLog(&n.logs, 40, level, text)
 }
 
 func (n *udpPingServerNode) configReadonly() bool {
 	for _, port := range n.configPorts() {
-		if n.portHasLinks(port) {
+		if n.PortHasLinks(port) {
 			return true
 		}
 	}
@@ -1170,25 +1069,9 @@ func (n *udpPingServerNode) configReadonly() bool {
 
 func (n *udpPingClientNode) configReadonly() bool {
 	for _, port := range n.configPorts() {
-		if n.portHasLinks(port) {
+		if n.PortHasLinks(port) {
 			return true
 		}
 	}
 	return false
-}
-
-func (n *udpPingServerNode) portHasLinks(port uint64) bool {
-	return udpPingPortHasLinks(n.w, port)
-}
-
-func (n *udpPingClientNode) portHasLinks(port uint64) bool {
-	return udpPingPortHasLinks(n.w, port)
-}
-
-func udpPingPortHasLinks(w *pasta.Workspace, port uint64) bool {
-	if w == nil || port == 0 {
-		return false
-	}
-	snapshot, ok := w.PortSnapshot(port)
-	return ok && len(snapshot.Links) > 0
 }

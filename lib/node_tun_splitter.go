@@ -3,8 +3,6 @@ package almagest
 import (
 	"errors"
 	"fmt"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/asciimoth/bufpool"
@@ -48,20 +46,26 @@ func (tunSplitterClass) LongDescription() string {
 func (tunSplitterClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: TypeTun, InitialPorts: []pasta.Port{
 		TunPort("left", "Tun"),
-		TunPort("right", tunSplitterSlotName(1)),
+		TunPort("right", slotPortName(1)),
 	}}
 }
 func (c tunSplitterClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
 	pool := enginePool(c.engine)
 	return &tunSplitterNode{
-		engine:        c.engine,
+		NodeBase:      NodeBase{engine: c.engine},
 		pool:          pool,
 		rulesText:     configer.String(cfg, configer.Path{"rules"}, ""),
 		routingConfig: readTunSplitterRoutingConfig(cfg),
 		splitter:      tun.NewSplitter(pool),
-		sent:          map[uint64]tun.Tun{},
-		frontends:     map[uint64]tun.Tun{},
-		outputCfgs:    TunConfigByLink{},
+		slots: newSlotPorts(
+			tunSplitterMaxSlots,
+			"right",
+			func(slot int) pasta.Port { return TunPort("right", slotPortName(slot)) },
+			slotPortName,
+			func(name string) (int, bool) { return slotPortFromName(name, tunSplitterMaxSlots) },
+		),
+		frontends:  map[uint64]tun.Tun{},
+		outputCfgs: TunConfigByLink{},
 	}, nil
 }
 
@@ -70,16 +74,12 @@ func (c tunSplitterClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassStat
 // SplitFrontend. TunConfig suggestions received from slot consumers are merged
 // and forwarded to the backend provider through the input link.
 type tunSplitterNode struct {
-	pasta.BasicNode
+	NodeBase
 
-	engine *engine
-	pool   bufpool.Pool
-
-	w  *pasta.Workspace
-	id uint64
+	pool bufpool.Pool
 
 	in    uint64
-	slots [tunSplitterMaxSlots + 1]uint64
+	slots slotPorts
 
 	inputLink uint64
 	inputTun  tun.Tun
@@ -91,19 +91,15 @@ type tunSplitterNode struct {
 	routingConfig tunSplitterRoutingConfig
 	formError     string
 
-	sent       map[uint64]tun.Tun
+	outputTuns TunOutputCache
 	frontends  map[uint64]tun.Tun
 	outputCfgs TunConfigByLink
 }
 
 func (n *tunSplitterNode) OnInit(w *pasta.Workspace, _ pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
-	n.w = w
-	n.id = id
+	n.InitBaseNode(w, nil, id)
 	if n.splitter == nil {
 		n.splitter = tun.NewSplitter(n.pool)
-	}
-	if n.sent == nil {
-		n.sent = map[uint64]tun.Tun{}
 	}
 	if n.frontends == nil {
 		n.frontends = map[uint64]tun.Tun{}
@@ -111,18 +107,18 @@ func (n *tunSplitterNode) OnInit(w *pasta.Workspace, _ pasta.Logger, id uint64, 
 	if n.outputCfgs == nil {
 		n.outputCfgs = TunConfigByLink{}
 	}
-	if restored != nil {
-		if len(restored.LeftPorts) > 0 {
-			n.in = restored.LeftPorts[0]
-		}
-		for i, port := range restored.RightPorts {
-			slot := n.slotFromPort(port, i+1)
-			if slot >= 1 && slot <= tunSplitterMaxSlots && n.slots[slot] == 0 {
-				n.slots[slot] = port
-			}
-		}
+	if n.slots.max == 0 {
+		n.slots = newSlotPorts(
+			tunSplitterMaxSlots,
+			"right",
+			func(slot int) pasta.Port { return TunPort("right", slotPortName(slot)) },
+			slotPortName,
+			func(name string) (int, bool) { return slotPortFromName(name, tunSplitterMaxSlots) },
+		)
 	}
-	if err := n.w.SetNodePrimary(n.id, TypeTun); err != nil {
+	n.in = restoredLeft(restored, 0)
+	n.slots.Init(w, id, restoredRightPorts(restored))
+	if err := n.SetPrimary(TypeTun); err != nil {
 		return err
 	}
 
@@ -170,7 +166,7 @@ func (n *tunSplitterNode) PreLinkAdd(port uint64, linkType, portDirection string
 		}
 		return TunPreLinkAdd(n.w, port, linkType)
 	}
-	if n.portSlot(port) != 0 {
+	if n.slots.Slot(port) != 0 {
 		if portDirection != "right" {
 			return pasta.LinkTypeErr(linkType)
 		}
@@ -188,7 +184,7 @@ func (n *tunSplitterNode) OnLinkAdd(link, port uint64, linkType, portDirection s
 		n.inputLink = link
 		std.Request(n.w, n.id, link)
 		n.sendMergedTunConfig()
-	case n.portSlot(port) != 0 && portDirection == "right":
+	case n.slots.Slot(port) != 0 && portDirection == "right":
 		n.sendOutputTunToLink(link, port)
 		if err := n.reviewOutputPorts(); err != nil {
 			return err
@@ -210,7 +206,7 @@ func (n *tunSplitterNode) OnLinkRemoved(link uint64, port uint64, linkType, port
 				_ = n.splitter.Detach()
 			}
 		}
-	case n.portSlot(port) != 0 && portDirection == "right":
+	case n.slots.Slot(port) != 0 && portDirection == "right":
 		n.closeOutputTun(link)
 		n.outputCfgs.Delete(link)
 		if err := n.reviewOutputPorts(); err != nil {
@@ -225,12 +221,7 @@ func (n *tunSplitterNode) OnPortRemoved(port uint64, direction string) error {
 	if direction != "right" {
 		return nil
 	}
-	for slot, id := range n.slots {
-		if id == port {
-			n.slots[slot] = 0
-			return nil
-		}
-	}
+	n.slots.Remove(port)
 	return nil
 }
 
@@ -243,13 +234,13 @@ func (n *tunSplitterNode) OnEvent(event pasta.Event, linkType string, _ []string
 			n.sendMergedTunConfig()
 			return nil
 		}
-		payload, ok := event.Payload.(TunPayload)
-		if !ok || payload.Tun == nil || event.Link != n.inputLink {
+		next, changed := AcceptTunPayload(n.w, n.id, event, n.inputLink, n.inputTun)
+		if !changed {
 			return nil
 		}
-		return n.attachInputTun(event.Link, payload.Tun)
+		return n.attachInputTun(event.Link, next)
 	}
-	if n.portSlot(event.ReceiverPort) == 0 || receiverPortDirection != "right" {
+	if n.slots.Slot(event.ReceiverPort) == 0 || receiverPortDirection != "right" {
 		return nil
 	}
 	if std.IsRequest(event.Payload) {
@@ -328,7 +319,7 @@ func (n *tunSplitterNode) sendRulesFieldStatus(msg formular.FieldValidateMessage
 	if err == nil && router != nil {
 		_ = router.Close()
 	}
-	n.w.SendNodeMenuMsg(n.id, formular.FieldStatusFromError(pasta.NodeMenuID(n.id), 1, 1, msg.Field, err))
+	sendNodeFieldStatus(n.w, n.id, msg.Field, err)
 }
 
 func (n *tunSplitterNode) sendIntFieldStatus(msg formular.FieldValidateMessage) {
@@ -336,7 +327,7 @@ func (n *tunSplitterNode) sendIntFieldStatus(msg formular.FieldValidateMessage) 
 	if _, ok := formular.IntValue(msg.Value); !ok {
 		err = errors.New("must be an integer")
 	}
-	n.w.SendNodeMenuMsg(n.id, formular.FieldStatusFromError(pasta.NodeMenuID(n.id), 1, 1, msg.Field, err))
+	sendNodeFieldStatus(n.w, n.id, msg.Field, err)
 }
 
 func (n *tunSplitterNode) compileRules(text string, config tunSplitterRoutingConfig) (routing.SplitRouter, error) {
@@ -388,88 +379,27 @@ func (n *tunSplitterNode) reviewOutputPorts() error {
 			}
 		}
 	}
-	for slot, port := range n.slots {
-		if slot == 0 || port == 0 {
-			continue
-		}
-		if n.portHasLinks(port) {
-			desired[slot] = struct{}{}
-		}
-	}
-	for slot := 1; slot <= tunSplitterMaxSlots; slot++ {
-		if _, used := desired[slot]; !used {
-			desired[slot] = struct{}{}
-			break
-		}
-	}
-
-	for slot := 1; slot <= tunSplitterMaxSlots; slot++ {
-		port := n.slots[slot]
-		_, keep := desired[slot]
-		if !keep && port != 0 && !n.portHasLinks(port) {
-			n.w.RemovePort(port)
-			n.slots[slot] = 0
-			continue
-		}
-		if keep && port == 0 {
-			port := TunPort("right", tunSplitterSlotName(slot))
-			port.Node = n.id
-			id, err := n.w.AddPort(port)
-			if err != nil {
-				return err
-			}
-			n.slots[slot] = id
-			continue
-		}
-		if keep && port != 0 {
-			_ = n.w.SetPortName(port, tunSplitterSlotName(slot))
-		}
-	}
-
-	order := make([]uint64, 0, len(desired))
-	for slot := 1; slot <= tunSplitterMaxSlots; slot++ {
-		if n.slots[slot] != 0 {
-			order = append(order, n.slots[slot])
-		}
-	}
-	if len(order) > 0 {
-		return n.w.SetNodePortOrder(n.id, "right", order)
-	}
-	return nil
+	return n.slots.Review(desired, slotPortReview{EnsureFree: true})
 }
 
 func (n *tunSplitterNode) requestInput() {
-	port, ok := n.w.PortSnapshot(n.in)
-	if !ok {
-		return
-	}
-	for _, link := range port.Links {
-		std.Request(n.w, n.id, link)
-	}
+	n.RequestPort(n.in)
 }
 
 func (n *tunSplitterNode) sendAllOutputTuns() {
-	for _, port := range n.slots {
-		if port == 0 {
-			continue
-		}
-		snapshot, ok := n.w.PortSnapshot(port)
-		if !ok {
-			continue
-		}
-		for _, link := range snapshot.Links {
+	n.slots.ForEach(func(_ int, port uint64) {
+		n.ForEachPortLink(port, func(link uint64) {
 			n.sendOutputTunToLink(link, port)
-		}
-	}
+		})
+	})
 }
 
 func (n *tunSplitterNode) sendOutputTunToLink(link, port uint64) {
-	slot := n.portSlot(port)
+	slot := n.slots.Slot(port)
 	if slot == 0 || n.splitter == nil {
 		return
 	}
-	if TunIsReady(n.sent[link]) && TunIsReady(n.frontends[link]) {
-		n.w.EmitEvent(n.id, link, TunPayload{Tun: n.sent[link]})
+	if frontend := n.frontends[link]; TunIsReady(frontend) && n.outputTuns.Send(n.w, n.id, link, frontend, n.pool) {
 		return
 	}
 	n.closeOutputTun(link)
@@ -478,97 +408,57 @@ func (n *tunSplitterNode) sendOutputTunToLink(link, port uint64) {
 		return
 	}
 	BindTunResource(n.w, n.id, link, frontend)
-	wrapper := DetachTunForLink(n.w, n.id, link, frontend, n.pool)
-	if wrapper == nil {
+	n.frontends[link] = frontend
+	if !n.outputTuns.Send(n.w, n.id, link, frontend, n.pool) {
+		delete(n.frontends, link)
 		_ = frontend.Close()
 		return
 	}
-	n.frontends[link] = frontend
-	n.sent[link] = wrapper
-	n.w.EmitEvent(n.id, link, TunPayload{Tun: wrapper})
 }
 
 func (n *tunSplitterNode) closeOutputTun(link uint64) {
-	wrapper := n.sent[link]
-	delete(n.sent, link)
-	if wrapper != nil {
-		_ = wrapper.Close()
-	}
+	n.outputTuns.Close(link)
 	frontend := n.frontends[link]
 	delete(n.frontends, link)
 	if frontend != nil {
 		_ = frontend.Close()
 	}
-	waitTun(wrapper)
+	n.outputTuns.Wait()
 }
 
 func (n *tunSplitterNode) closeOutputTuns() {
-	for link := range n.sent {
-		n.closeOutputTun(link)
-	}
+	n.outputTuns.CloseAll()
 	for link := range n.frontends {
-		n.closeOutputTun(link)
+		frontend := n.frontends[link]
+		delete(n.frontends, link)
+		if frontend != nil {
+			_ = frontend.Close()
+		}
 	}
+	n.outputTuns.Wait()
 }
 
 func (n *tunSplitterNode) sendMergedTunConfig() {
-	if n.inputLink == 0 {
-		return
-	}
-	n.w.EmitEvent(n.id, n.inputLink, n.outputCfgs.Merge())
-}
-
-func (n *tunSplitterNode) portSlot(port uint64) int {
-	for slot, id := range n.slots {
-		if id == port {
-			return slot
-		}
-	}
-	return 0
-}
-
-func (n *tunSplitterNode) slotFromPort(port uint64, fallback int) int {
-	snapshot, ok := n.w.PortSnapshot(port)
-	if !ok {
-		return fallback
-	}
-	if slot, ok := tunSplitterSlotFromName(snapshot.Name); ok {
-		return slot
-	}
-	return fallback
-}
-
-func (n *tunSplitterNode) portHasLinks(port uint64) bool {
-	snapshot, ok := n.w.PortSnapshot(port)
-	return ok && len(snapshot.Links) > 0
+	EmitMergedTunConfig(n.w, n.id, n.inputLink, n.outputCfgs)
 }
 
 func (n *tunSplitterNode) updateLabel() error {
 	if n.inputTun == nil {
-		return n.w.SetNodeLabel(n.id, "waiting for tun")
+		return n.SetLabel("waiting for tun")
 	}
-	return n.w.SetNodeLabel(n.id, "splitting")
+	return n.SetLabel("splitting")
 }
 
 func (n *tunSplitterNode) sendMenuSnapshot() {
-	if n.w == nil || n.id == 0 {
-		return
-	}
-	n.w.SendNodeMenuMsg(n.id, formular.MenuSnapshot(pasta.NodeMenuID(n.id), 1, n.configBlock()))
+	sendNodeMenuSnapshot(n.w, n.id, false, n.configBlock())
 }
 
 func (n *tunSplitterNode) sendForcedMenuSnapshot() {
-	if n.w == nil || n.id == 0 {
-		return
-	}
-	n.w.SendNodeMenuMsg(n.id, formular.ForcedMenuSnapshot(pasta.NodeMenuID(n.id), 1, n.configBlock()))
+	sendNodeMenuSnapshot(n.w, n.id, true, n.configBlock())
 }
 
 func (n *tunSplitterNode) sendConfigBlock() {
-	if n.w == nil || n.id == 0 {
-		return
-	}
-	n.w.SendNodeMenuMsg(n.id, formular.BlockSnapshot(pasta.NodeMenuID(n.id), 1, 1, n.configBlock()))
+	sendNodeBlockSnapshot(n.w, n.id, n.configBlock())
 }
 
 func (n *tunSplitterNode) configBlock() formular.Block {
@@ -645,20 +535,4 @@ func (c tunSplitterRoutingConfig) withValues(values map[string]any) tunSplitterR
 
 func durationMilliseconds(d time.Duration) int {
 	return int(d / time.Millisecond)
-}
-
-func tunSplitterSlotName(slot int) string {
-	return "slot " + strconv.Itoa(slot)
-}
-
-func tunSplitterSlotFromName(name string) (int, bool) {
-	parts := strings.Fields(strings.ToLower(name))
-	if len(parts) != 2 || parts[0] != "slot" {
-		return 0, false
-	}
-	slot, err := strconv.Atoi(parts[1])
-	if err != nil || slot < 1 || slot > tunSplitterMaxSlots {
-		return 0, false
-	}
-	return slot, true
 }

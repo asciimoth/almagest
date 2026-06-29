@@ -3,8 +3,6 @@ package almagest
 import (
 	"errors"
 	"net"
-	"strconv"
-	"strings"
 
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
@@ -36,26 +34,29 @@ func (networkRouterClass) LongDescription() string {
 func (networkRouterClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: TypeNetwork, InitialPorts: []pasta.Port{
 		NetworkPort("left", "Network"),
-		NetworkPort("right", networkRouterSlotName(1)),
+		NetworkPort("right", slotPortName(1)),
 	}}
 }
 func (networkRouterClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
 	return &networkRouterNode{
 		rulesText: configer.String(cfg, configer.Path{"rules"}, ""),
 		router:    gonnect.NewRouter(),
-		backends:  map[int]NetworkCloser{},
-		sent:      map[uint64]NetworkCloser{},
+		slots: newSlotPorts(
+			networkRouterMaxSlots,
+			"right",
+			func(slot int) pasta.Port { return NetworkPort("right", slotPortName(slot)) },
+			slotPortName,
+			func(name string) (int, bool) { return slotPortFromName(name, networkRouterMaxSlots) },
+		),
+		backends: map[int]NetworkCloser{},
 	}, nil
 }
 
 type networkRouterNode struct {
-	pasta.BasicNode
-
-	w  *pasta.Workspace
-	id uint64
+	NodeBase
 
 	in    uint64
-	slots [networkRouterMaxSlots + 1]uint64
+	slots slotPorts
 
 	router    *gonnect.Router
 	cfg       routing.RouterCfg
@@ -63,36 +64,32 @@ type networkRouterNode struct {
 	formError string
 	ready     bool
 	backends  map[int]NetworkCloser
-	sent      map[uint64]NetworkCloser
+	outputs   NetworkOutputCache
 }
 
 func (n *networkRouterNode) OnInit(w *pasta.Workspace, _ pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
-	n.w = w
-	n.id = id
+	n.InitBaseNode(w, nil, id)
 	if n.router == nil {
 		n.router = gonnect.NewRouter()
 	}
 	if n.backends == nil {
 		n.backends = map[int]NetworkCloser{}
 	}
-	if n.sent == nil {
-		n.sent = map[uint64]NetworkCloser{}
+	if n.slots.max == 0 {
+		n.slots = newSlotPorts(
+			networkRouterMaxSlots,
+			"right",
+			func(slot int) pasta.Port { return NetworkPort("right", slotPortName(slot)) },
+			slotPortName,
+			func(name string) (int, bool) { return slotPortFromName(name, networkRouterMaxSlots) },
+		)
 	}
-	if restored != nil {
-		if len(restored.LeftPorts) > 0 {
-			n.in = restored.LeftPorts[0]
-		}
-		for i, port := range restored.RightPorts {
-			slot := n.slotFromPort(port, i+1)
-			if slot >= 1 && slot <= networkRouterMaxSlots && n.slots[slot] == 0 {
-				n.slots[slot] = port
-			}
-		}
-	}
-	if err := n.w.SetNodePrimary(n.id, TypeNetwork); err != nil {
+	n.in = restoredLeft(restored, 0)
+	n.slots.Init(w, id, restoredRightPorts(restored))
+	if err := n.SetPrimary(TypeNetwork); err != nil {
 		return err
 	}
-	_ = n.w.SetNodeLabel(n.id, "router")
+	_ = n.SetLabel("router")
 	BindNetworkResource(n.w, n.id, 0, n.router)
 
 	cfg, err := n.compileRules(n.rulesText)
@@ -110,6 +107,7 @@ func (n *networkRouterNode) OnInit(w *pasta.Workspace, _ pasta.Logger, id uint64
 }
 
 func (n *networkRouterNode) OnStop() {
+	n.outputs.CloseAll()
 	if n.router != nil {
 		_ = n.router.Close()
 	}
@@ -131,11 +129,11 @@ func (n *networkRouterNode) PreLinkAdd(port uint64, linkType, portDirection stri
 		}
 		return nil
 	}
-	if slot := n.portSlot(port); slot != 0 {
+	if slot := n.slots.Slot(port); slot != 0 {
 		if portDirection != "right" || linkType != TypeNetwork {
 			return pasta.LinkTypeErr(linkType)
 		}
-		if n.portHasLinks(port) {
+		if n.PortHasLinks(port) {
 			return pasta.ErrLinkDup
 		}
 		return nil
@@ -150,7 +148,7 @@ func (n *networkRouterNode) OnLinkAdd(link, port uint64, linkType, portDirection
 		}
 		return nil
 	}
-	if n.portSlot(port) != 0 && portDirection == "right" && linkType == TypeNetwork {
+	if n.slots.Slot(port) != 0 && portDirection == "right" && linkType == TypeNetwork {
 		if n.ready {
 			std.Request(n.w, n.id, link)
 		}
@@ -160,10 +158,10 @@ func (n *networkRouterNode) OnLinkAdd(link, port uint64, linkType, portDirection
 
 func (n *networkRouterNode) OnLinkRemoved(link, port uint64, linkType, portDirection string) error {
 	if port == n.in && portDirection == "left" && linkType == TypeNetwork {
-		n.closeSentNetwork(link)
+		n.outputs.Close(link)
 		return nil
 	}
-	if slot := n.portSlot(port); slot != 0 && portDirection == "right" && linkType == TypeNetwork {
+	if slot := n.slots.Slot(port); slot != 0 && portDirection == "right" && linkType == TypeNetwork {
 		n.detachSlot(slot)
 	}
 	return nil
@@ -173,12 +171,8 @@ func (n *networkRouterNode) OnPortRemoved(port uint64, direction string) error {
 	if direction != "right" {
 		return nil
 	}
-	for slot, id := range n.slots {
-		if id == port {
-			n.slots[slot] = 0
-			n.detachSlot(slot)
-			return nil
-		}
+	if slot := n.slots.Remove(port); slot != 0 {
+		n.detachSlot(slot)
 	}
 	return nil
 }
@@ -188,21 +182,22 @@ func (n *networkRouterNode) OnEvent(event pasta.Event, linkType string, _ []stri
 		n.sendRouterToLink(event.Link)
 		return nil
 	}
-	slot := n.portSlot(event.ReceiverPort)
+	slot := n.slots.Slot(event.ReceiverPort)
 	if slot == 0 || receiverPortDirection != "right" || linkType != TypeNetwork {
 		return nil
 	}
-	payload, ok := event.Payload.(NetworkPayload)
-	if !ok || payload.Network == nil {
+	next, changed := acceptNetworkPayload(event, n.backends[slot])
+	if !changed {
 		return nil
 	}
-	if current := n.backends[slot]; SameNetworkInstance(current, payload.Network) {
+	if SameNetworkInstance(n.backends[slot], next) {
 		return nil
 	}
 	n.detachSlot(slot)
-	BindNetworkResource(n.w, n.id, event.Link, payload.Network)
-	n.backends[slot] = payload.Network
-	if err := n.router.Attach(slot, payload.Network); err != nil && !n.isNonFatalAttachError(err) {
+	err := n.router.Attach(slot, next)
+	BindNetworkResource(n.w, n.id, event.Link, next)
+	n.backends[slot] = next
+	if err != nil && !n.isNonFatalAttachError(err) {
 		return err
 	}
 	if n.ready {
@@ -256,10 +251,10 @@ func (n *networkRouterNode) applyConfigForm(values map[string]any) error {
 func (n *networkRouterNode) sendRulesFieldStatus(msg formular.FieldValidateMessage) {
 	text, _ := formular.StringValue(msg.Value)
 	if _, err := n.compileRules(text); err != nil {
-		n.w.SendNodeMenuMsg(n.id, formular.FieldStatusFromError(pasta.NodeMenuID(n.id), 1, 1, msg.Field, err))
+		sendNodeFieldStatus(n.w, n.id, msg.Field, err)
 		return
 	}
-	n.w.SendNodeMenuMsg(n.id, formular.FieldStatusFromError(pasta.NodeMenuID(n.id), 1, 1, msg.Field, nil))
+	sendNodeFieldStatus(n.w, n.id, msg.Field, nil)
 }
 
 func (n *networkRouterNode) compileRules(text string) (routing.RouterCfg, error) {
@@ -279,101 +274,26 @@ func (n *networkRouterNode) reviewOutputPorts() error {
 			}
 		}
 	}
-	for slot, port := range n.slots {
-		if slot == 0 || port == 0 {
-			continue
-		}
-		if n.portHasLinks(port) {
-			desired[slot] = struct{}{}
-		}
-	}
-	if len(desired) == 0 {
-		desired[1] = struct{}{}
-	}
-
-	for slot := 1; slot <= networkRouterMaxSlots; slot++ {
-		port := n.slots[slot]
-		_, keep := desired[slot]
-		if !keep && port != 0 && !n.portHasLinks(port) {
-			n.w.RemovePort(port)
-			n.slots[slot] = 0
-			continue
-		}
-		if keep && port == 0 {
-			id, err := n.w.AddPort(pasta.Port{
-				Node:      n.id,
-				Direction: "right",
-				Name:      networkRouterSlotName(slot),
-				Types:     []string{TypeNetwork},
-			})
-			if err != nil {
-				return err
-			}
-			n.slots[slot] = id
-			continue
-		}
-		if keep && port != 0 {
-			_ = n.w.SetPortName(port, networkRouterSlotName(slot))
-		}
-	}
-
-	order := make([]uint64, 0, len(desired))
-	for slot := 1; slot <= networkRouterMaxSlots; slot++ {
-		if n.slots[slot] != 0 {
-			order = append(order, n.slots[slot])
-		}
-	}
-	if len(order) > 0 {
-		return n.w.SetNodePortOrder(n.id, "right", order)
-	}
-	return nil
+	return n.slots.Review(desired, slotPortReview{DefaultSlot: 1})
 }
 
 func (n *networkRouterNode) sendAll() {
-	port, ok := n.w.PortSnapshot(n.in)
-	if !ok {
-		return
-	}
-	for _, link := range port.Links {
+	n.ForEachPortLink(n.in, func(link uint64) {
 		n.sendRouterToLink(link)
-	}
+	})
 }
 
 func (n *networkRouterNode) requestSlots() {
-	for slot := 1; slot <= networkRouterMaxSlots; slot++ {
-		portID := n.slots[slot]
-		if portID == 0 {
-			continue
-		}
-		port, ok := n.w.PortSnapshot(portID)
-		if !ok {
-			continue
-		}
-		for _, link := range port.Links {
-			std.Request(n.w, n.id, link)
-		}
-	}
+	n.slots.ForEach(func(_ int, portID uint64) {
+		n.RequestPort(portID)
+	})
 }
 
 func (n *networkRouterNode) sendRouterToLink(link uint64) {
-	wrapper := n.sent[link]
-	if wrapper == nil {
-		wrapper = gonnect.DetachNetwork(n.router, nil)
-		BindNetworkResource(n.w, n.id, link, wrapper)
-		n.closeSentNetwork(link)
-		n.sent[link] = wrapper
-	}
-	n.w.EmitEvent(n.id, link, NetworkPayload{Network: wrapper})
-}
-
-func (n *networkRouterNode) closeSentNetwork(link uint64) {
-	if n.sent == nil {
+	if n.router == nil {
 		return
 	}
-	if old := n.sent[link]; old != nil {
-		_ = old.Close()
-		delete(n.sent, link)
-	}
+	n.outputs.Send(n.w, n.id, link, n.router)
 }
 
 func (n *networkRouterNode) isNonFatalAttachError(err error) bool {
@@ -420,60 +340,20 @@ func (n *networkRouterNode) detachSlot(slot int) {
 	}
 }
 
-func (n *networkRouterNode) portSlot(port uint64) int {
-	for slot, id := range n.slots {
-		if id == port {
-			return slot
-		}
-	}
-	return 0
-}
-
-func (n *networkRouterNode) slotFromPort(port uint64, fallback int) int {
-	snapshot, ok := n.w.PortSnapshot(port)
-	if !ok {
-		return fallback
-	}
-	if slot, ok := networkRouterSlotFromName(snapshot.Name); ok {
-		return slot
-	}
-	return fallback
-}
-
-func (n *networkRouterNode) portHasLinks(port uint64) bool {
-	snapshot, ok := n.w.PortSnapshot(port)
-	return ok && len(snapshot.Links) > 0
-}
-
 func (n *networkRouterNode) hasSlotLinks() bool {
-	for slot := 1; slot <= networkRouterMaxSlots; slot++ {
-		portID := n.slots[slot]
-		if portID != 0 && n.portHasLinks(portID) {
-			return true
-		}
-	}
-	return false
+	return n.slots.HasLinks()
 }
 
 func (n *networkRouterNode) sendMenuSnapshot() {
-	if n.w == nil || n.id == 0 {
-		return
-	}
-	n.w.SendNodeMenuMsg(n.id, formular.MenuSnapshot(pasta.NodeMenuID(n.id), 1, n.configBlock()))
+	sendNodeMenuSnapshot(n.w, n.id, false, n.configBlock())
 }
 
 func (n *networkRouterNode) sendForcedMenuSnapshot() {
-	if n.w == nil || n.id == 0 {
-		return
-	}
-	n.w.SendNodeMenuMsg(n.id, formular.ForcedMenuSnapshot(pasta.NodeMenuID(n.id), 1, n.configBlock()))
+	sendNodeMenuSnapshot(n.w, n.id, true, n.configBlock())
 }
 
 func (n *networkRouterNode) sendConfigBlock() {
-	if n.w == nil || n.id == 0 {
-		return
-	}
-	n.w.SendNodeMenuMsg(n.id, formular.BlockSnapshot(pasta.NodeMenuID(n.id), 1, 1, n.configBlock()))
+	sendNodeBlockSnapshot(n.w, n.id, n.configBlock())
 }
 
 func (n *networkRouterNode) configBlock() formular.Block {
@@ -491,20 +371,4 @@ func (n *networkRouterNode) configBlock() formular.Block {
 	return formular.Block{ID: "config", Order: 10, Generation: 1, Form: true, Items: []formular.Item{
 		{Type: formular.ItemField, ID: "rules", Label: "Routing rules", Field: field},
 	}}
-}
-
-func networkRouterSlotName(slot int) string {
-	return "slot " + strconv.Itoa(slot)
-}
-
-func networkRouterSlotFromName(name string) (int, bool) {
-	parts := strings.Fields(strings.ToLower(name))
-	if len(parts) != 2 || parts[0] != "slot" {
-		return 0, false
-	}
-	slot, err := strconv.Atoi(parts[1])
-	if err != nil || slot < 1 || slot > networkRouterMaxSlots {
-		return 0, false
-	}
-	return slot, true
 }

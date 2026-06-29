@@ -56,7 +56,7 @@ func (spooferClass) DefaultNodeParams() pasta.NodeClassParams {
 func (c spooferClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
 	config := defaultSpooferConfig()
 	config.read(cfg)
-	return &spooferNode{engine: c.engine, pool: enginePool(c.engine), config: config}, nil
+	return &spooferNode{NodeBase: NodeBase{engine: c.engine}, pool: enginePool(c.engine), config: config}, nil
 }
 
 type spooferConfig struct {
@@ -124,14 +124,9 @@ func (c *spooferConfig) normalize() {
 // present. Any change to options, the source TUN, or the target network
 // replaces the Stack so callbacks always close over a coherent pair.
 type spooferNode struct {
-	pasta.BasicNode
+	NodeBase
 
-	engine *engine
-	pool   bufpool.Pool
-	logger pasta.Logger
-
-	w       *pasta.Workspace
-	id      uint64
+	pool    bufpool.Pool
 	tunp    uint64
 	network uint64
 
@@ -152,19 +147,11 @@ type spooferRuntime struct {
 }
 
 func (n *spooferNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
-	n.w = w
-	n.id = id
-	n.logger = logger
+	n.InitBaseNode(w, logger, id)
 	n.config.normalize()
-	if restored != nil {
-		if len(restored.LeftPorts) > 0 {
-			n.tunp = restored.LeftPorts[0]
-		}
-		if len(restored.RightPorts) > 0 {
-			n.network = restored.RightPorts[0]
-		}
-	}
-	if err := n.w.SetNodePrimary(n.id, TypeTun); err != nil {
+	n.tunp = restoredLeft(restored, 0)
+	n.network = restoredRight(restored, 0)
+	if err := n.SetPrimary(TypeTun); err != nil {
 		return err
 	}
 	_ = n.updateLabel()
@@ -173,8 +160,8 @@ func (n *spooferNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64,
 }
 
 func (n *spooferNode) OnReady() error {
-	n.requestPort(n.tunp)
-	n.requestPort(n.network)
+	n.RequestPort(n.tunp)
+	n.RequestPort(n.network)
 	n.rebuildStack()
 	return nil
 }
@@ -194,7 +181,7 @@ func (n *spooferNode) PreLinkAdd(port uint64, linkType, portDirection string) er
 		if portDirection != "right" || linkType != TypeNetwork {
 			return pasta.LinkTypeErr(linkType)
 		}
-		if portHasLinks(n.w, port) {
+		if n.PortHasLinks(port) {
 			return pasta.ErrLinkDup
 		}
 	default:
@@ -225,38 +212,21 @@ func (n *spooferNode) OnLinkRemoved(_ uint64, port uint64, _, _ string) error {
 
 func (n *spooferNode) OnEvent(event pasta.Event, linkType string, _ []string, receiverPortDirection string) error {
 	if event.ReceiverPort == n.tunp && receiverPortDirection == "left" && linkType == TypeTun {
-		if std.IsRequest(event.Payload) {
+		next, changed := AcceptTunPayload(n.w, n.id, event, 0, n.tun)
+		if !changed {
 			return nil
 		}
-		payload, ok := event.Payload.(TunPayload)
-		if !ok || payload.Tun == nil {
-			return nil
-		}
-		if SameTunSource(n.tun, payload.Tun) {
-			if !SameTunInstance(n.tun, payload.Tun) {
-				_ = payload.Tun.Close()
-			}
-			return nil
-		}
-		BindTunResource(n.w, n.id, event.Link, payload.Tun)
-		n.tun = payload.Tun
+		n.tun = next
 		n.rebuildStack()
 		return nil
 	}
 
 	if event.ReceiverPort == n.network && receiverPortDirection == "right" && linkType == TypeNetwork {
-		payload, ok := event.Payload.(NetworkPayload)
-		if !ok || payload.Network == nil {
+		next, changed := AcceptNetworkPayload(n.w, n.id, event, n.networkValue)
+		if !changed {
 			return nil
 		}
-		if NetworkIsReady(n.networkValue) && SameNetworkSource(n.networkValue, payload.Network) {
-			if !SameNetworkInstance(n.networkValue, payload.Network) {
-				_ = payload.Network.Close()
-			}
-			return nil
-		}
-		BindNetworkResource(n.w, n.id, event.Link, payload.Network)
-		n.networkValue = payload.Network
+		n.networkValue = next
 		n.rebuildStack()
 	}
 	return nil
@@ -393,7 +363,7 @@ func validateSpooferConfig(config spooferConfig) error {
 }
 
 func (n *spooferNode) sendConfigFieldStatus(msg formular.FieldValidateMessage) {
-	n.w.SendNodeMenuMsg(n.id, formular.FieldStatusFromError(pasta.NodeMenuID(n.id), 1, 1, msg.Field, validateSpooferConfigField(msg)))
+	sendNodeFieldStatus(n.w, n.id, msg.Field, validateSpooferConfigField(msg))
 }
 
 func validateSpooferConfigField(msg formular.FieldValidateMessage) error {
@@ -630,38 +600,25 @@ func spooferEndpointAddr(ep stack.TransportEndpointID) (netip.Addr, bool) {
 	return addr, true
 }
 
-func (n *spooferNode) requestPort(port uint64) {
-	snapshot, ok := n.w.PortSnapshot(port)
-	if !ok {
-		return
-	}
-	for _, link := range snapshot.Links {
-		std.Request(n.w, n.id, link)
-	}
-}
-
 func (n *spooferNode) updateLabel() error {
 	if n.formError != "" {
-		return n.w.SetNodeLabel(n.id, "invalid config")
+		return n.SetLabel("invalid config")
 	}
 	if n.tun == nil {
-		return n.w.SetNodeLabel(n.id, "waiting for tun")
+		return n.SetLabel("waiting for tun")
 	}
 	if n.networkValue == nil {
-		return n.w.SetNodeLabel(n.id, "waiting for network")
+		return n.SetLabel("waiting for network")
 	}
-	return n.w.SetNodeLabel(n.id, "forwarding")
+	return n.SetLabel("forwarding")
 }
 
 func (n *spooferNode) sendMenuSnapshot() {
-	n.w.SendNodeMenuMsg(n.id, formular.MenuSnapshot(pasta.NodeMenuID(n.id), 1, n.configBlock()))
+	sendNodeMenuSnapshot(n.w, n.id, false, n.configBlock())
 }
 
 func (n *spooferNode) sendForcedMenuSnapshot() {
-	if n.w == nil || n.id == 0 {
-		return
-	}
-	n.w.SendNodeMenuMsg(n.id, formular.ForcedMenuSnapshot(pasta.NodeMenuID(n.id), 1, n.configBlock()))
+	sendNodeMenuSnapshot(n.w, n.id, true, n.configBlock())
 }
 
 func (n *spooferNode) configBlock() formular.Block {

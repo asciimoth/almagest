@@ -52,23 +52,17 @@ func (httpClientClass) DefaultNodeParams() pasta.NodeClassParams {
 
 func (c httpClientClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
 	return &httpClientNode{
+		NodeBase:   NodeBase{engine: c.engine},
 		url:        configer.String(cfg, configer.Path{"url"}, DefaultHTTPClientURL),
 		method:     configer.String(cfg, configer.Path{"method"}, DefaultHTTPClientMethod),
 		body:       configer.String(cfg, configer.Path{"body"}, ""),
 		statusText: httpClientStatusReady,
-
-		engine: c.engine,
 	}, nil
 }
 
 type httpClientNode struct {
-	pasta.BasicNode
+	NodeBase
 
-	engine *engine
-	logger pasta.Logger
-
-	w       *pasta.Workspace
-	id      uint64
 	netp    uint64
 	urlp    uint64
 	methodp uint64
@@ -105,9 +99,7 @@ type httpClientResult struct {
 }
 
 func (n *httpClientNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
-	n.w = w
-	n.id = id
-	n.logger = logger
+	n.InitBaseNode(w, logger, id)
 
 	if n.method == "" {
 		n.method = DefaultHTTPClientMethod
@@ -119,22 +111,12 @@ func (n *httpClientNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint
 		n.statusText = httpClientStatusReady
 	}
 
-	if restored != nil {
-		if len(restored.RightPorts) > 0 {
-			n.netp = restored.RightPorts[0]
-		}
-		if len(restored.LeftPorts) > 0 {
-			n.urlp = restored.LeftPorts[0]
-		}
-		if len(restored.LeftPorts) > 1 {
-			n.methodp = restored.LeftPorts[1]
-		}
-		if len(restored.LeftPorts) > 2 {
-			n.bodyp = restored.LeftPorts[2]
-		}
-	}
+	n.netp = restoredRight(restored, 0)
+	n.urlp = restoredLeft(restored, 0)
+	n.methodp = restoredLeft(restored, 1)
+	n.bodyp = restoredLeft(restored, 2)
 
-	if err := n.w.SetNodePrimary(n.id, TypeNetwork); err != nil {
+	if err := n.SetPrimary(TypeNetwork); err != nil {
 		return err
 	}
 
@@ -162,7 +144,7 @@ func (n *httpClientNode) PreLinkAdd(port uint64, linkType, portDirection string)
 		if portDirection != "right" || linkType != TypeNetwork {
 			return pasta.LinkTypeErr(linkType)
 		}
-		if n.portHasLinks(port) {
+		if n.PortHasLinks(port) {
 			return pasta.ErrLinkDup
 		}
 
@@ -170,7 +152,7 @@ func (n *httpClientNode) PreLinkAdd(port uint64, linkType, portDirection string)
 		if portDirection != "left" || linkType != std.TypeString {
 			return pasta.LinkTypeErr(linkType)
 		}
-		if n.portHasLinks(port) {
+		if n.PortHasLinks(port) {
 			return pasta.ErrLinkDup
 		}
 
@@ -209,18 +191,11 @@ func (n *httpClientNode) OnLinkRemoved(_ uint64, port uint64, _, _ string) error
 
 func (n *httpClientNode) OnEvent(event pasta.Event, linkType string, _ []string, receiverPortDirection string) error {
 	if event.ReceiverPort == n.netp && receiverPortDirection == "right" && linkType == TypeNetwork {
-		payload, ok := event.Payload.(NetworkPayload)
-		if !ok || payload.Network == nil {
+		next, changed := AcceptNetworkPayload(n.w, n.id, event, n.network)
+		if !changed {
 			return nil
 		}
-		if NetworkIsReady(n.network) && SameNetworkSource(n.network, payload.Network) {
-			if !SameNetworkInstance(n.network, payload.Network) {
-				_ = payload.Network.Close()
-			}
-			return nil
-		}
-		BindNetworkResource(n.w, n.id, event.Link, payload.Network)
-		n.network = payload.Network
+		n.network = next
 		n.resetStatusReady()
 		return nil
 	}
@@ -294,21 +269,21 @@ func (n *httpClientNode) onFieldUpdate(msg formular.FieldUpdateMessage) error {
 
 	switch msg.Field.FieldID {
 	case "url":
-		if n.portHasLinks(n.urlp) {
+		if n.PortHasLinks(n.urlp) {
 			n.sendRequestBlock()
 			return nil
 		}
 		n.setURL(value)
 
 	case "method":
-		if n.portHasLinks(n.methodp) {
+		if n.PortHasLinks(n.methodp) {
 			n.sendRequestBlock()
 			return nil
 		}
 		n.setMethod(value)
 
 	case "body":
-		if n.portHasLinks(n.bodyp) {
+		if n.PortHasLinks(n.bodyp) {
 			n.sendRequestBlock()
 			return nil
 		}
@@ -490,51 +465,35 @@ func (n *httpClientNode) resetStatusReady() {
 }
 
 func (n *httpClientNode) requestNetwork() {
-	n.requestPort(n.netp)
+	n.RequestPort(n.netp)
 }
 
 func (n *httpClientNode) requestURL() {
-	n.requestPort(n.urlp)
+	n.RequestPort(n.urlp)
 }
 
 func (n *httpClientNode) requestMethod() {
-	n.requestPort(n.methodp)
+	n.RequestPort(n.methodp)
 }
 
 func (n *httpClientNode) requestBody() {
-	n.requestPort(n.bodyp)
-}
-
-func (n *httpClientNode) requestPort(port uint64) {
-	snapshot, ok := n.w.PortSnapshot(port)
-	if !ok {
-		return
-	}
-	for _, link := range snapshot.Links {
-		std.Request(n.w, n.id, link)
-	}
+	n.RequestPort(n.bodyp)
 }
 
 func (n *httpClientNode) updateLabel() error {
-	return n.w.SetNodeLabel(n.id, n.currentStatusText())
+	return n.SetLabel(n.currentStatusText())
 }
 
 func (n *httpClientNode) sendMenuSnapshot() {
-	n.w.SendNodeMenuMsg(n.id, formular.MenuSnapshot(pasta.NodeMenuID(n.id), 1, n.requestBlock(), n.resultBlock()))
+	sendNodeMenuSnapshot(n.w, n.id, false, n.requestBlock(), n.resultBlock())
 }
 
 func (n *httpClientNode) sendRequestBlock() {
-	if n.w == nil || n.id == 0 {
-		return
-	}
-	n.w.SendNodeMenuMsg(n.id, formular.BlockSnapshot(pasta.NodeMenuID(n.id), 1, 1, n.requestBlock()))
+	sendNodeBlockSnapshot(n.w, n.id, n.requestBlock())
 }
 
 func (n *httpClientNode) sendResultBlock() {
-	if n.w == nil || n.id == 0 {
-		return
-	}
-	n.w.SendNodeMenuMsg(n.id, formular.BlockSnapshot(pasta.NodeMenuID(n.id), 1, 1, n.resultBlock()))
+	sendNodeBlockSnapshot(n.w, n.id, n.resultBlock())
 }
 
 func (n *httpClientNode) requestBlock() formular.Block {
@@ -546,7 +505,7 @@ func (n *httpClientNode) requestBlock() formular.Block {
 			Field: &formular.Field{
 				Kind:     formular.FieldText,
 				Value:    n.url,
-				Readonly: n.portHasLinks(n.urlp),
+				Readonly: n.PortHasLinks(n.urlp),
 			},
 		},
 		{
@@ -556,7 +515,7 @@ func (n *httpClientNode) requestBlock() formular.Block {
 			Field: &formular.Field{
 				Kind:     formular.FieldText,
 				Value:    n.method,
-				Readonly: n.portHasLinks(n.methodp),
+				Readonly: n.PortHasLinks(n.methodp),
 			},
 		},
 		{
@@ -566,7 +525,7 @@ func (n *httpClientNode) requestBlock() formular.Block {
 			Field: &formular.Field{
 				Kind:      formular.FieldText,
 				Value:     n.body,
-				Readonly:  n.portHasLinks(n.bodyp),
+				Readonly:  n.PortHasLinks(n.bodyp),
 				Multiline: true,
 			},
 		},
@@ -672,13 +631,4 @@ func (n *httpClientNode) setBodyNoRefresh(value string) bool {
 	}
 	n.body = value
 	return true
-}
-
-func (n *httpClientNode) portHasLinks(port uint64) bool {
-	if n.w == nil || port == 0 {
-		return false
-	}
-
-	snapshot, ok := n.w.PortSnapshot(port)
-	return ok && len(snapshot.Links) > 0
 }

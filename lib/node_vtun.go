@@ -9,10 +9,8 @@ import (
 
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
-	"github.com/asciimoth/gonnect"
 	netstackhelpers "github.com/asciimoth/gonnect-netstack/helpers"
 	netstackvtun "github.com/asciimoth/gonnect-netstack/vtun"
-	"github.com/asciimoth/gonnect/tun"
 	"github.com/asciimoth/pasta/pasta"
 	"github.com/asciimoth/pasta/pasta/std"
 )
@@ -51,7 +49,7 @@ func (vtunClass) DefaultNodeParams() pasta.NodeClassParams {
 func (c vtunClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
 	config := defaultVTunConfig()
 	config.read(cfg)
-	return &vtunNode{engine: c.engine, config: config}, nil
+	return &vtunNode{NodeBase: NodeBase{engine: c.engine}, config: config}, nil
 }
 
 type vtunConfig struct {
@@ -115,13 +113,8 @@ func (c *vtunConfig) normalize() {
 // connected network or TUN link. The underlying VTun is lazy: links create it,
 // options replace it, and the last detached link closes it.
 type vtunNode struct {
-	pasta.BasicNode
+	NodeBase
 
-	engine *engine
-	logger pasta.Logger
-
-	w       *pasta.Workspace
-	id      uint64
 	network uint64
 	tunp    uint64
 
@@ -131,26 +124,17 @@ type vtunNode struct {
 
 	generatedAddrs []netip.Addr
 	vtun           *netstackvtun.VTun
-	sentNetworks   map[uint64]NetworkCloser
-	sentTuns       map[uint64]tun.Tun
-	sentTunWait    []tun.Tun
+	outputNetworks NetworkOutputCache
+	outputTuns     TunOutputCache
 	formError      string
 }
 
 func (n *vtunNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
-	n.w = w
-	n.id = id
-	n.logger = logger
+	n.InitBaseNode(w, logger, id)
 	n.config.normalize()
-	if restored != nil {
-		if len(restored.LeftPorts) > 0 {
-			n.network = restored.LeftPorts[0]
-		}
-		if len(restored.RightPorts) > 0 {
-			n.tunp = restored.RightPorts[0]
-		}
-	}
-	if err := n.w.SetNodePrimary(n.id, TypeTun); err != nil {
+	n.network = restoredLeft(restored, 0)
+	n.tunp = restoredRight(restored, 0)
+	if err := n.SetPrimary(TypeTun); err != nil {
 		return err
 	}
 	_ = n.updateLabel()
@@ -211,9 +195,9 @@ func (n *vtunNode) OnLinkAdd(link, port uint64, _, _ string) error {
 func (n *vtunNode) OnLinkRemoved(link uint64, port uint64, _, _ string) error {
 	switch port {
 	case n.network:
-		n.closeSentNetwork(link)
+		n.outputNetworks.Close(link)
 	case n.tunp:
-		n.closeSentTun(link)
+		n.outputTuns.Close(link)
 		n.tunConfig = TunConfig{}
 		if n.vtun != nil && n.usesTunConfig() {
 			if err := n.rebuildVTun(); err != nil {
@@ -354,7 +338,7 @@ func validateVTunConfig(config vtunConfig) error {
 }
 
 func (n *vtunNode) sendConfigFieldStatus(msg formular.FieldValidateMessage) {
-	n.w.SendNodeMenuMsg(n.id, formular.FieldStatusFromError(pasta.NodeMenuID(n.id), 1, 1, msg.Field, validateVTunConfigField(msg)))
+	sendNodeFieldStatus(n.w, n.id, msg.Field, validateVTunConfigField(msg))
 }
 
 func validateVTunConfigField(msg formular.FieldValidateMessage) error {
@@ -517,131 +501,57 @@ func (n *vtunNode) freeGeneratedAddrs() {
 }
 
 func (n *vtunNode) dropVTun() {
-	n.closeSentNetworks()
-	n.closeSentTuns()
+	n.outputNetworks.CloseAll()
+	n.outputTuns.CloseAll()
 	if n.vtun != nil {
 		_ = n.vtun.Close()
 		n.vtun = nil
 	}
-	waitTuns(n.sentTunWait)
-	n.sentTunWait = nil
+	n.outputTuns.Wait()
 }
 
 func (n *vtunNode) sendAll() {
 	if n.vtun == nil {
 		return
 	}
-	if port, ok := n.w.PortSnapshot(n.network); ok {
-		for _, link := range port.Links {
-			n.sendNetworkToLink(link)
-		}
-	}
-	if port, ok := n.w.PortSnapshot(n.tunp); ok {
-		for _, link := range port.Links {
-			n.sendTunToLink(link)
-		}
-	}
+	n.ForEachPortLink(n.network, n.sendNetworkToLink)
+	n.ForEachPortLink(n.tunp, n.sendTunToLink)
 }
 
 func (n *vtunNode) sendNetworkToLink(link uint64) {
 	if n.vtun == nil {
 		return
 	}
-	if n.sentNetworks == nil {
-		n.sentNetworks = make(map[uint64]NetworkCloser)
-	}
-	if wrapper := n.sentNetworks[link]; NetworkIsReady(wrapper) {
-		n.w.EmitEvent(n.id, link, NetworkPayload{Network: wrapper})
-		return
-	}
-	n.closeSentNetwork(link)
-	wrapper := gonnect.DetachNetwork(n.vtun, nil)
-	n.sentNetworks[link] = wrapper
-	BindNetworkResource(n.w, n.id, link, wrapper)
-	n.w.EmitEvent(n.id, link, NetworkPayload{Network: wrapper})
+	n.outputNetworks.Send(n.w, n.id, link, n.vtun)
 }
 
 func (n *vtunNode) sendTunToLink(link uint64) {
 	if n.vtun == nil {
 		return
 	}
-	if n.sentTuns != nil {
-		if wrapper := n.sentTuns[link]; TunIsReady(wrapper) {
-			n.w.EmitEvent(n.id, link, TunPayload{Tun: wrapper})
-			return
-		}
-	}
-	n.closeSentTun(link)
-	wrapper := DetachTunForLink(n.w, n.id, link, n.vtun, enginePool(n.engine))
-	if wrapper == nil {
-		return
-	}
-	if n.sentTuns == nil {
-		n.sentTuns = make(map[uint64]tun.Tun)
-	}
-	n.sentTuns[link] = wrapper
-	n.w.EmitEvent(n.id, link, TunPayload{Tun: wrapper})
-}
-
-func (n *vtunNode) closeSentNetwork(link uint64) {
-	if n.sentNetworks == nil {
-		return
-	}
-	network := n.sentNetworks[link]
-	delete(n.sentNetworks, link)
-	if network != nil {
-		_ = network.Close()
-	}
-}
-
-func (n *vtunNode) closeSentNetworks() {
-	for link, network := range n.sentNetworks {
-		delete(n.sentNetworks, link)
-		if network != nil {
-			_ = network.Close()
-		}
-	}
-}
-
-func (n *vtunNode) closeSentTun(link uint64) {
-	if n.sentTuns == nil {
-		return
-	}
-	t := n.sentTuns[link]
-	delete(n.sentTuns, link)
-	closeTunForLaterWait(&n.sentTunWait, t)
-}
-
-func (n *vtunNode) closeSentTuns() {
-	for link, t := range n.sentTuns {
-		delete(n.sentTuns, link)
-		closeTunForLaterWait(&n.sentTunWait, t)
-	}
+	n.outputTuns.Send(n.w, n.id, link, n.vtun, enginePool(n.engine))
 }
 
 func (n *vtunNode) hasAnyLink() bool {
-	return portHasLinks(n.w, n.network) || portHasLinks(n.w, n.tunp)
+	return n.PortHasLinks(n.network) || n.PortHasLinks(n.tunp)
 }
 
 func (n *vtunNode) updateLabel() error {
 	if n.formError != "" {
-		return n.w.SetNodeLabel(n.id, "invalid config")
+		return n.SetLabel("invalid config")
 	}
 	if n.vtun == nil {
-		return n.w.SetNodeLabel(n.id, "idle")
+		return n.SetLabel("idle")
 	}
-	return n.w.SetNodeLabel(n.id, n.config.name)
+	return n.SetLabel(n.config.name)
 }
 
 func (n *vtunNode) sendMenuSnapshot() {
-	n.w.SendNodeMenuMsg(n.id, formular.MenuSnapshot(pasta.NodeMenuID(n.id), 1, n.menuBlocks()...))
+	sendNodeMenuSnapshot(n.w, n.id, false, n.menuBlocks()...)
 }
 
 func (n *vtunNode) sendForcedMenuSnapshot() {
-	if n.w == nil || n.id == 0 {
-		return
-	}
-	n.w.SendNodeMenuMsg(n.id, formular.ForcedMenuSnapshot(pasta.NodeMenuID(n.id), 1, n.menuBlocks()...))
+	sendNodeMenuSnapshot(n.w, n.id, true, n.menuBlocks()...)
 }
 
 func (n *vtunNode) menuBlocks() []formular.Block {
@@ -649,10 +559,7 @@ func (n *vtunNode) menuBlocks() []formular.Block {
 }
 
 func (n *vtunNode) sendEffectiveBlock() {
-	if n.w == nil || n.id == 0 {
-		return
-	}
-	n.w.SendNodeMenuMsg(n.id, formular.BlockSnapshot(pasta.NodeMenuID(n.id), 1, 1, n.effectiveBlock()))
+	sendNodeBlockSnapshot(n.w, n.id, n.effectiveBlock())
 }
 
 func (n *vtunNode) effectiveBlock() formular.Block {

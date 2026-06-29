@@ -9,7 +9,6 @@ import (
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
 	"github.com/asciimoth/gonnect/sysnet"
-	"github.com/asciimoth/gonnect/tun"
 	"github.com/asciimoth/pasta/pasta"
 	"github.com/asciimoth/pasta/pasta/std"
 )
@@ -42,7 +41,7 @@ func (defaultTunClass) DefaultNodeParams() pasta.NodeClassParams {
 func (c defaultTunClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
 	config := defaultDefaultTunConfig()
 	config.read(cfg)
-	return &defaultTunNode{engine: c.engine, config: config}, nil
+	return &defaultTunNode{NodeBase: NodeBase{engine: c.engine}, config: config}, nil
 }
 
 type defaultTunConfig struct {
@@ -83,13 +82,8 @@ func (c *defaultTunConfig) normalize() {
 
 // defaultTunNode owns the current sysnet.DefaultTun selected by the node.
 type defaultTunNode struct {
-	pasta.BasicNode
+	NodeBase
 
-	engine *engine
-	logger pasta.Logger
-
-	w    *pasta.Workspace
-	id   uint64
 	tunp uint64
 
 	config  defaultTunConfig
@@ -99,16 +93,13 @@ type defaultTunNode struct {
 	effective     sysnet.DefaultTunOpts
 	hasEffective  bool
 	dtun          sysnet.DefaultTun
-	sentTuns      map[uint64]tun.Tun
-	sentTunWait   []tun.Tun
+	outputTuns    TunOutputCache
 	formError     string
 	ruleDraftType map[string]string
 }
 
 func (n *defaultTunNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
-	n.w = w
-	n.id = id
-	n.logger = logger
+	n.InitBaseNode(w, logger, id)
 	n.config.normalize()
 	if n.engine != nil && n.engine.sys != nil {
 		n.dynDefaultTun = n.engine.sys.Features().DynDefaultTun
@@ -116,10 +107,8 @@ func (n *defaultTunNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint
 	if n.portCfg == nil {
 		n.portCfg = TunConfigByLink{}
 	}
-	if restored != nil && len(restored.RightPorts) > 0 {
-		n.tunp = restored.RightPorts[0]
-	}
-	if err := n.w.SetNodePrimary(n.id, TypeTun); err != nil {
+	n.tunp = restoredRight(restored, 0)
+	if err := n.SetPrimary(TypeTun); err != nil {
 		return err
 	}
 	_ = n.updateLabel()
@@ -136,12 +125,11 @@ func (n *defaultTunNode) OnReady() error {
 }
 
 func (n *defaultTunNode) OnStop() {
-	n.closeSentTuns()
+	n.outputTuns.CloseAll()
 	if n.dtun != nil {
 		_ = n.dtun.Close()
 	}
-	waitTuns(n.sentTunWait)
-	n.sentTunWait = nil
+	n.outputTuns.Wait()
 	n.dtun = nil
 	n.hasEffective = false
 	n.portCfg = TunConfigByLink{}
@@ -169,7 +157,7 @@ func (n *defaultTunNode) OnLinkRemoved(link uint64, port uint64, _, _ string) er
 	if port != n.tunp {
 		return nil
 	}
-	n.closeSentTun(link)
+	n.outputTuns.Close(link)
 	n.portCfg.Delete(link)
 	if err := n.configureDefaultTun(); err != nil {
 		return nil
@@ -276,7 +264,7 @@ func (n *defaultTunNode) applyConfigForm(values map[string]any) error {
 }
 
 func (n *defaultTunNode) sendConfigFieldStatus(msg formular.FieldValidateMessage) {
-	n.w.SendNodeMenuMsg(n.id, formular.FieldStatusFromError(pasta.NodeMenuID(n.id), 1, 1, msg.Field, n.validateConfigField(msg)))
+	sendNodeFieldStatus(n.w, n.id, msg.Field, n.validateConfigField(msg))
 }
 
 func (n *defaultTunNode) validateConfigField(msg formular.FieldValidateMessage) error {
@@ -409,13 +397,12 @@ func (n *defaultTunNode) rebuildDefaultTun(opts sysnet.DefaultTunOpts) error {
 	_ = n.w.AddNodeResource(n.id, dtun)
 	_ = n.updateLabel()
 	n.sendEffectiveBlock()
-	n.closeSentTuns()
+	n.outputTuns.CloseAll()
 	n.sendAll()
 	if previous != nil {
 		_ = previous.Close()
 	}
-	waitTuns(n.sentTunWait)
-	n.sentTunWait = nil
+	n.outputTuns.Wait()
 	return nil
 }
 
@@ -467,70 +454,32 @@ func (n *defaultTunNode) sendAll() {
 	if n.dtun == nil {
 		return
 	}
-	if port, ok := n.w.PortSnapshot(n.tunp); ok {
-		for _, link := range port.Links {
-			n.sendTunToLink(link)
-		}
-	}
+	n.ForEachPortLink(n.tunp, n.sendTunToLink)
 }
 
 func (n *defaultTunNode) sendTunToLink(link uint64) {
 	if n.dtun == nil {
 		return
 	}
-	if n.sentTuns != nil {
-		if wrapper := n.sentTuns[link]; TunIsReady(wrapper) {
-			n.w.EmitEvent(n.id, link, TunPayload{Tun: wrapper})
-			return
-		}
-	}
-	n.closeSentTun(link)
-	wrapper := DetachTunForLink(n.w, n.id, link, n.dtun, enginePool(n.engine))
-	if wrapper == nil {
-		return
-	}
-	if n.sentTuns == nil {
-		n.sentTuns = make(map[uint64]tun.Tun)
-	}
-	n.sentTuns[link] = wrapper
-	n.w.EmitEvent(n.id, link, TunPayload{Tun: wrapper})
-}
-
-func (n *defaultTunNode) closeSentTun(link uint64) {
-	if n.sentTuns == nil {
-		return
-	}
-	t := n.sentTuns[link]
-	delete(n.sentTuns, link)
-	closeTunForLaterWait(&n.sentTunWait, t)
-}
-
-func (n *defaultTunNode) closeSentTuns() {
-	for link, t := range n.sentTuns {
-		delete(n.sentTuns, link)
-		closeTunForLaterWait(&n.sentTunWait, t)
-	}
+	n.outputTuns.Send(n.w, n.id, link, n.dtun, enginePool(n.engine))
 }
 
 func (n *defaultTunNode) updateLabel() error {
 	if n.formError != "" {
-		return n.w.SetNodeLabel(n.id, "invalid config")
+		return n.SetLabel("invalid config")
 	}
 	if n.dtun == nil {
-		return n.w.SetNodeLabel(n.id, "idle")
+		return n.SetLabel("idle")
 	}
-	return n.w.SetNodeLabel(n.id, "ready")
+	return n.SetLabel("ready")
 }
 
 func (n *defaultTunNode) sendMenuSnapshot() {
-	n.w.SendNodeMenuMsg(n.id, formular.MenuSnapshot(pasta.NodeMenuID(n.id), 1, n.menuBlocks()...))
+	sendNodeMenuSnapshot(n.w, n.id, false, n.menuBlocks()...)
 }
 
 func (n *defaultTunNode) sendForcedMenuSnapshot() {
-	if n.w == nil || n.id == 0 {
-		return
-	}
-	n.w.SendNodeMenuMsg(n.id, formular.ForcedMenuSnapshot(pasta.NodeMenuID(n.id), 1, n.menuBlocks()...))
+	sendNodeMenuSnapshot(n.w, n.id, true, n.menuBlocks()...)
 }
 
 func (n *defaultTunNode) menuBlocks() []formular.Block {
@@ -538,10 +487,7 @@ func (n *defaultTunNode) menuBlocks() []formular.Block {
 }
 
 func (n *defaultTunNode) sendEffectiveBlock() {
-	if n.w == nil || n.id == 0 {
-		return
-	}
-	n.w.SendNodeMenuMsg(n.id, formular.BlockSnapshot(pasta.NodeMenuID(n.id), 1, 1, n.effectiveBlock()))
+	sendNodeBlockSnapshot(n.w, n.id, n.effectiveBlock())
 }
 
 func (n *defaultTunNode) effectiveBlock() formular.Block {
@@ -780,6 +726,9 @@ func defaultTunRulesFromArray(values []formular.ArrayElementValue) []sysnet.Rule
 }
 
 func (n *defaultTunNode) sendConfigAutocompleteHints(msg formular.AutocompleteRequestMessage) {
+	if n.w == nil || n.id == 0 {
+		return
+	}
 	n.w.SendNodeMenuMsg(n.id, formular.AutocompleteHints(pasta.NodeMenuID(n.id), 1, msg.Field, msg.Prefix, n.configAutocompleteHints(msg)))
 }
 

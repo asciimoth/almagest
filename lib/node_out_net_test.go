@@ -67,10 +67,10 @@ func (captureHTTPServerClass) DefaultNodeParams() pasta.NodeClassParams {
 }
 func (c captureHTTPServerClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
 	node := &httpServerNode{
+		NodeBase: NodeBase{engine: c.engine},
 		host:     configer.String(cfg, configer.Path{"host"}, DefaultHTTPServerHost),
 		port:     configer.Int(cfg, configer.Path{"port"}, DefaultHTTPServerPort),
 		response: configer.String(cfg, configer.Path{"response"}, ""),
-		engine:   c.engine,
 	}
 	if c.node != nil {
 		*c.node = node
