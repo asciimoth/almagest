@@ -247,6 +247,7 @@ type simpleNetworkProvider struct {
 
 	out     uint64
 	network gonnect.Network
+	outputs NetworkOutputCache
 }
 
 func (n *simpleNetworkProvider) InitSimpleNetworkProvider(w *pasta.Workspace, logger pasta.Logger, id uint64, restored *pasta.NodeInitData, network gonnect.Network, label string) error {
@@ -265,6 +266,10 @@ func (n *simpleNetworkProvider) OnReady() error {
 	return nil
 }
 
+func (n *simpleNetworkProvider) OnStop() {
+	n.outputs.CloseAll()
+}
+
 func (n *simpleNetworkProvider) PreLinkAdd(port uint64, linkType, portDirection string) error {
 	if port != n.out || portDirection != "left" || linkType != TypeNetwork {
 		return pasta.LinkTypeErr(linkType)
@@ -275,6 +280,13 @@ func (n *simpleNetworkProvider) PreLinkAdd(port uint64, linkType, portDirection 
 func (n *simpleNetworkProvider) OnLinkAdd(link, port uint64, linkType, portDirection string) error {
 	if port == n.out && portDirection == "left" && linkType == TypeNetwork {
 		n.sendToLink(link)
+	}
+	return nil
+}
+
+func (n *simpleNetworkProvider) OnLinkRemoved(link uint64, port uint64, linkType, portDirection string) error {
+	if port == n.out && portDirection == "left" && linkType == TypeNetwork {
+		n.outputs.Close(link)
 	}
 	return nil
 }
@@ -294,5 +306,5 @@ func (n *simpleNetworkProvider) sendAll() {
 }
 
 func (n *simpleNetworkProvider) sendToLink(link uint64) {
-	EmitDetachedNetwork(n.w, n.id, link, n.network)
+	n.outputs.Send(n.w, n.id, link, n.network)
 }

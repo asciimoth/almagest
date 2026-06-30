@@ -66,9 +66,12 @@ type wireGuardNode struct {
 	tunLink uint64
 	netLink uint64
 
-	currentTun     tun.Tun
-	currentNetwork NetworkCloser
-	currentBind    conn.Bind
+	currentTun        tun.Tun
+	currentNetwork    NetworkCloser
+	currentBind       conn.Bind
+	currentBindGen    uint64
+	currentBindOpen   *atomic.Uint64
+	currentBindFailed bool
 
 	config wireGuardConfig
 	dev    *wgdevice.Device
@@ -143,6 +146,9 @@ func (n *wireGuardNode) OnStop() {
 	n.currentTun = nil
 	n.currentNetwork = nil
 	n.currentBind = nil
+	n.currentBindGen = 0
+	n.currentBindOpen = nil
+	n.currentBindFailed = false
 	n.runtimeMu.Unlock()
 }
 func (n *wireGuardNode) PreLinkAdd(port uint64, linkType, portDirection string) error {
@@ -198,6 +204,9 @@ func (n *wireGuardNode) OnLinkRemoved(link uint64, port uint64, linkType, portDi
 		err := n.detachDevicePart("network bind", func() error { return n.dev.DetachBind() }, func() {
 			n.currentNetwork = nil
 			n.currentBind = nil
+			n.currentBindGen = 0
+			n.currentBindOpen = nil
+			n.currentBindFailed = false
 			n.nextRuntimeGenerationLocked()
 		})
 		if err != nil {

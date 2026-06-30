@@ -77,7 +77,7 @@ func (n *wireGuardNode) applyConfigToDeviceLocked(rebuildPeers bool) error {
 	return nil
 }
 func (n *wireGuardNode) hasActiveAttachmentsLocked() bool {
-	return n.currentTun != nil && n.currentBind != nil
+	return n.currentTun != nil && n.currentBind != nil && !n.currentBindFailed
 }
 
 func (n *wireGuardNode) attachTun(t tun.Tun) {
@@ -119,6 +119,7 @@ func (n *wireGuardNode) attachNetwork(link uint64, network NetworkCloser) {
 	n.runtimeMu.Lock()
 	n.ensureDeviceLocked()
 	n.currentNetwork = network
+	n.currentBindFailed = false
 	generation := n.nextRuntimeGenerationLocked()
 	n.runtimeMu.Unlock()
 	BindNetworkResource(n.w, n.id, link, network)
@@ -148,19 +149,37 @@ func (n *wireGuardNode) attachCurrentNetworkBind(generation uint64) (bool, error
 			AllowSingleFamily: true,
 		})
 	}
+	activeTun := n.currentTun != nil
+	if activeTun {
+		if n.currentBind != nil {
+			n.nextBindGenerationLocked()
+		}
+		if err := n.dev.Down(); err != nil {
+			_ = networkBind.Close()
+			return n.currentNetwork != nil, fmt.Errorf("bring device down before attaching network: %w", err), true
+		}
+	}
 	var err error
+	bindGeneration := n.nextBindGenerationLocked()
+	bindState := &wireGuardTrackedBindState{}
+	trackedBind := wireGuardTrackedBind{Bind: networkBind, generation: bindGeneration, state: bindState}
 	if n.currentBind == nil {
-		err = n.dev.AttachBind(networkBind)
+		err = n.dev.AttachBind(trackedBind)
 	} else {
-		err = n.dev.ReplaceBind(networkBind)
+		err = n.dev.ReplaceBind(trackedBind)
 	}
 	if err != nil {
 		_ = n.dev.DetachBind()
 		_ = networkBind.Close()
 		n.currentBind = nil
+		n.currentBindGen = 0
+		n.currentBindOpen = nil
+		n.currentBindFailed = false
 		return n.currentNetwork != nil, fmt.Errorf("attach network: %w", err), true
 	}
-	n.currentBind = networkBind
+	n.currentBind = trackedBind
+	n.currentBindOpen = &bindState.open
+	n.currentBindFailed = false
 	active := n.hasActiveAttachmentsLocked()
 	if active {
 		return active, n.applyConfigToDeviceLocked(false), true

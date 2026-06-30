@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"io"
+	"net"
 	"net/netip"
 	"reflect"
 	"strings"
@@ -709,6 +710,101 @@ func TestWireGuardRetriesBindAfterReceiveEOF(t *testing.T) {
 	}, "wireguard retry after receive EOF")
 }
 
+func TestWireGuardReceiveEOFRebuildsBindBeforePublishingUp(t *testing.T) {
+	w := pasta.NewWorkspace(NewDebugLogFactory(4096))
+	t.Cleanup(func() { w.Close() })
+
+	var wg *wireGuardNode
+	if err := w.AddNodeClass(captureWireGuardClass{node: &wg}); err != nil {
+		t.Fatalf("AddNodeClass WireGuard: %v", err)
+	}
+	network := &recordingWireGuardTestNetwork{
+		Network: &firstReadEOFWireGuardTestNetwork{Network: gonnect.NewLoopbackNetwok()},
+	}
+	if err := w.AddNodeClass(wireGuardTestNetworkSourceClass{network: network}); err != nil {
+		t.Fatalf("AddNodeClass NetworkSource: %v", err)
+	}
+	if err := w.AddNodeClass(testTunProviderClass{registry: newTestTunProviderRegistry()}); err != nil {
+		t.Fatalf("AddNodeClass TunProvider: %v", err)
+	}
+
+	wgID, err := w.AddNodeByClass("test/WireGuard", "wg")
+	if err != nil {
+		t.Fatalf("AddNodeByClass WireGuard: %v", err)
+	}
+	networkID, err := w.AddNodeByClass("test/WireGuardNetworkSource", "network")
+	if err != nil {
+		t.Fatalf("AddNodeByClass NetworkSource: %v", err)
+	}
+	tunID, err := w.AddNodeByClass(testTunProviderNodeType, "tun")
+	if err != nil {
+		t.Fatalf("AddNodeByClass TunProvider: %v", err)
+	}
+	if wg == nil {
+		t.Fatal("captured WireGuard node = nil")
+	}
+
+	labels := make(chan string, 32)
+	sub := w.SubscribeNotifications(func(notification pasta.WorkspaceNotification) {
+		if notification.Kind != pasta.NotificationNodeUpdated || notification.ID != wgID || notification.Node == nil {
+			return
+		}
+		select {
+		case labels <- notification.Node.Label:
+		default:
+		}
+	})
+	if sub == 0 {
+		t.Fatal("SubscribeNotifications returned 0")
+	}
+	t.Cleanup(func() { w.UnsubscribeNotifications(sub) })
+
+	wgSnapshot := mustNodeSnapshot(t, w, wgID)
+	networkSnapshot := mustNodeSnapshot(t, w, networkID)
+	tunSnapshot := mustNodeSnapshot(t, w, tunID)
+
+	if _, _, err := w.AddLink(networkSnapshot.LeftPorts[0], wgSnapshot.RightPorts[0]); err != nil {
+		t.Fatalf("AddLink network: %v", err)
+	}
+	if _, _, err := w.AddLink(wgSnapshot.LeftPorts[0], tunSnapshot.RightPorts[0]); err != nil {
+		t.Fatalf("AddLink tun: %v", err)
+	}
+
+	waitWireGuardTestLabel(t, labels, "error")
+	listensAfterError := network.listenCount()
+	deadline := time.NewTimer(10 * time.Second)
+	defer deadline.Stop()
+	for {
+		select {
+		case label := <-labels:
+			if label == "up" {
+				if got := network.listenCount(); got <= listensAfterError {
+					t.Fatalf("WireGuard label returned to up before rebuilding bind; listen count after first error=%d now=%d", listensAfterError, got)
+				}
+				return
+			}
+		case <-deadline.C:
+			t.Fatalf("timed out waiting for WireGuard to recover after receive EOF; listen count after first error=%d now=%d", listensAfterError, network.listenCount())
+		}
+	}
+}
+
+func waitWireGuardTestLabel(t *testing.T, labels <-chan string, want string) {
+	t.Helper()
+	deadline := time.NewTimer(10 * time.Second)
+	defer deadline.Stop()
+	for {
+		select {
+		case got := <-labels:
+			if got == want {
+				return
+			}
+		case <-deadline.C:
+			t.Fatalf("timed out waiting for WireGuard label %q", want)
+		}
+	}
+}
+
 func applyWireGuardConfig(t *testing.T, engine Engine, node uint64, privateKey string, listenPort int, peers []wireGuardPeerConfig) {
 	t.Helper()
 	applyWireGuardConfigWithOwnedIPs(t, engine, node, privateKey, listenPort, "", peers)
@@ -987,6 +1083,12 @@ type readEOFWireGuardTestNetwork struct {
 	gonnect.Network
 }
 
+type firstReadEOFWireGuardTestNetwork struct {
+	gonnect.Network
+	mu       sync.Mutex
+	consumed bool
+}
+
 func (n *readEOFWireGuardTestNetwork) ListenUDP(ctx context.Context, network, laddr string) (gonnect.UDPConn, error) {
 	conn, err := n.Network.ListenUDP(ctx, network, laddr)
 	if err != nil {
@@ -1003,12 +1105,105 @@ func (n *readEOFWireGuardTestNetwork) ListenUDPConfig(ctx context.Context, lc *g
 	return readEOFWireGuardTestUDPConn{UDPConn: conn}, nil
 }
 
+func (n *firstReadEOFWireGuardTestNetwork) ListenUDP(ctx context.Context, network, laddr string) (gonnect.UDPConn, error) {
+	conn, err := n.Network.ListenUDP(ctx, network, laddr)
+	if err != nil {
+		return nil, err
+	}
+	return firstReadEOFWireGuardTestUDPConn{UDPConn: conn, network: n}, nil
+}
+
+func (n *firstReadEOFWireGuardTestNetwork) ListenUDPConfig(ctx context.Context, lc *gonnect.ListenConfig, network, laddr string) (gonnect.UDPConn, error) {
+	conn, err := n.Network.ListenUDPConfig(ctx, lc, network, laddr)
+	if err != nil {
+		return nil, err
+	}
+	return firstReadEOFWireGuardTestUDPConn{UDPConn: conn, network: n}, nil
+}
+
+func (n *firstReadEOFWireGuardTestNetwork) consumeEOF() bool {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.consumed {
+		return false
+	}
+	n.consumed = true
+	return true
+}
+
 type readEOFWireGuardTestUDPConn struct {
 	gonnect.UDPConn
 }
 
+func (c readEOFWireGuardTestUDPConn) Read([]byte) (int, error) {
+	return 0, io.EOF
+}
+
+func (c readEOFWireGuardTestUDPConn) ReadFrom([]byte) (int, net.Addr, error) {
+	return 0, nil, io.EOF
+}
+
+func (c readEOFWireGuardTestUDPConn) ReadFromUDP([]byte) (int, *net.UDPAddr, error) {
+	return 0, nil, io.EOF
+}
+
 func (c readEOFWireGuardTestUDPConn) ReadFromUDPAddrPort([]byte) (int, netip.AddrPort, error) {
 	return 0, netip.AddrPort{}, io.EOF
+}
+
+func (c readEOFWireGuardTestUDPConn) ReadMsgUDP(_, _ []byte) (int, int, int, *net.UDPAddr, error) {
+	return 0, 0, 0, nil, io.EOF
+}
+
+func (c readEOFWireGuardTestUDPConn) ReadMsgUDPAddrPort(_, _ []byte) (int, int, int, netip.AddrPort, error) {
+	return 0, 0, 0, netip.AddrPort{}, io.EOF
+}
+
+type firstReadEOFWireGuardTestUDPConn struct {
+	gonnect.UDPConn
+	network *firstReadEOFWireGuardTestNetwork
+}
+
+func (c firstReadEOFWireGuardTestUDPConn) Read(b []byte) (int, error) {
+	if c.network.consumeEOF() {
+		return 0, io.EOF
+	}
+	return c.UDPConn.Read(b)
+}
+
+func (c firstReadEOFWireGuardTestUDPConn) ReadFrom(b []byte) (int, net.Addr, error) {
+	if c.network.consumeEOF() {
+		return 0, nil, io.EOF
+	}
+	return c.UDPConn.ReadFrom(b)
+}
+
+func (c firstReadEOFWireGuardTestUDPConn) ReadFromUDP(b []byte) (int, *net.UDPAddr, error) {
+	if c.network.consumeEOF() {
+		return 0, nil, io.EOF
+	}
+	return c.UDPConn.ReadFromUDP(b)
+}
+
+func (c firstReadEOFWireGuardTestUDPConn) ReadFromUDPAddrPort(b []byte) (int, netip.AddrPort, error) {
+	if c.network.consumeEOF() {
+		return 0, netip.AddrPort{}, io.EOF
+	}
+	return c.UDPConn.ReadFromUDPAddrPort(b)
+}
+
+func (c firstReadEOFWireGuardTestUDPConn) ReadMsgUDP(b, oob []byte) (int, int, int, *net.UDPAddr, error) {
+	if c.network.consumeEOF() {
+		return 0, 0, 0, nil, io.EOF
+	}
+	return c.UDPConn.ReadMsgUDP(b, oob)
+}
+
+func (c firstReadEOFWireGuardTestUDPConn) ReadMsgUDPAddrPort(b, oob []byte) (int, int, int, netip.AddrPort, error) {
+	if c.network.consumeEOF() {
+		return 0, 0, 0, netip.AddrPort{}, io.EOF
+	}
+	return c.UDPConn.ReadMsgUDPAddrPort(b, oob)
 }
 
 func (n *recordingWireGuardTestNetwork) ListenUDP(ctx context.Context, network, laddr string) (gonnect.UDPConn, error) {

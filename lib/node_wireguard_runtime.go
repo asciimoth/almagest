@@ -1,6 +1,7 @@
 package almagest
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -12,9 +13,12 @@ type wireGuardRetryMessage struct {
 	generation uint64
 }
 type wireGuardReceiveErrorMessage struct {
-	dev        *wgdevice.Device
-	generation uint64
-	err        error
+	dev                *wgdevice.Device
+	generation         uint64
+	bindGeneration     uint64
+	bindOpenGeneration uint64
+	intentionalClose   bool
+	err                error
 }
 
 // wireGuardRuntimeResultMessage is the single completion path for async
@@ -151,10 +155,23 @@ func (n *wireGuardNode) notifyReceiveError(dev *wgdevice.Device, err error) {
 	if n.w == nil || n.id == 0 {
 		return
 	}
+	var trackedErr wireGuardTrackedBindReceiveError
+	var bindGeneration uint64
+	var bindOpenGeneration uint64
+	var intentionalClose bool
+	if errors.As(err, &trackedErr) {
+		bindGeneration = trackedErr.generation
+		bindOpenGeneration = trackedErr.openGeneration
+		intentionalClose = trackedErr.intentionalClose
+		err = trackedErr.err
+	}
 	go n.sendInternal(wireGuardReceiveErrorMessage{
-		dev:        dev,
-		generation: n.currentRuntimeGeneration(),
-		err:        err,
+		dev:                dev,
+		generation:         n.currentRuntimeGeneration(),
+		bindGeneration:     bindGeneration,
+		bindOpenGeneration: bindOpenGeneration,
+		intentionalClose:   intentionalClose,
+		err:                err,
 	})
 }
 func (n *wireGuardNode) handleReceiveError(msg wireGuardReceiveErrorMessage) {
@@ -169,7 +186,17 @@ func (n *wireGuardNode) handleReceiveError(msg wireGuardReceiveErrorMessage) {
 		return
 	}
 	current := msg.dev == n.dev && msg.generation == n.currentRuntimeGeneration()
-	retry := n.hasActiveAttachmentsLocked()
+	if current && msg.bindGeneration != 0 && msg.bindGeneration != n.currentBindGen {
+		current = false
+	}
+	if current && msg.intentionalClose && msg.bindOpenGeneration != 0 && n.currentBindOpen != nil && msg.bindOpenGeneration != n.currentBindOpen.Load() {
+		current = false
+	}
+	retry := n.currentTun != nil && n.currentNetwork != nil && n.currentBind != nil
+	if current && retry {
+		n.currentBindFailed = true
+		n.nextRuntimeGenerationLocked()
+	}
 	n.runtimeMu.Unlock()
 	if !current {
 		return
@@ -183,12 +210,13 @@ func (n *wireGuardNode) retryConfigToDevice(generation uint64) {
 		return
 	}
 	n.runtimeMu.Lock()
-	needsBind := n.currentBind == nil && n.currentNetwork != nil
+	needsBind := (n.currentBind == nil || n.currentBindFailed) && n.currentNetwork != nil
 	runtimeGeneration := n.currentRuntimeGeneration()
 	n.runtimeMu.Unlock()
 	if needsBind {
-		// If an earlier bind attach failed before currentBind was installed, the
-		// retry has to recreate the bind before config can be applied.
+		// If an earlier bind attach failed before currentBind was installed, or
+		// the active receive routine failed, recreate the bind before config can
+		// be applied.
 		n.scheduleNetworkBindAttach(runtimeGeneration, generation, true)
 		return
 	}
@@ -290,11 +318,12 @@ func (n *wireGuardNode) stateText() string {
 	n.runtimeMu.Lock()
 	hasTun := n.currentTun != nil
 	hasNetwork := n.currentNetwork != nil
+	bindFailed := n.currentBindFailed
 	n.runtimeMu.Unlock()
 	switch {
 	case n.formError != "":
 		return "invalid config"
-	case n.runtimeError != "":
+	case n.runtimeError != "" || bindFailed:
 		return "error"
 	case n.config.privateKey == "":
 		return "missing private key"
