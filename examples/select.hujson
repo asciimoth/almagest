@@ -1,0 +1,80 @@
+{
+	"nodes": {
+		"Select 1732": {
+			"Class":   "pasta/Select",
+			"Pos":     "{\"x\":471,\"y\":-138}",
+			"Primary": "almagest/network",
+			"Links":   ["Out -> [MockNetwork 1762] Network"]
+		},
+		"Select 1737": {
+			"Class":   "pasta/Select",
+			"Pos":     "{\"x\":472,\"y\":0}",
+			"Primary": "almagest/network",
+			"Links":   ["Out -> [MockNetwork 1764] Network"]
+		},
+		"SelectOut 1742": {
+			"Class":   "pasta/SelectOut",
+			"Pos":     "{\"x\":160,\"y\":-154}",
+			"Links":   ["Out 0 -> [Select 1732] In 0", "Out 1 -> [Select 1737] In 1"],
+			"Primary": "almagest/network"
+		},
+		"SelectOut 1747": {
+			"Class":   "pasta/SelectOut",
+			"Pos":     "{\"x\":164,\"y\":13}",
+			"Links":   ["Out 0 -> [Select 1737] In 0", "Out 1 -> [Select 1732] In 1"],
+			"Primary": "almagest/network"
+		},
+		"BoolConstant 1753": {"Class": "pasta/BoolConstant", "Pos": "{\"x\":-127,\"y\":-277}", "Links": [
+			"output -> [Select 1732] Selector",
+			"output -> [Select 1737] Selector",
+			"output -> [SelectOut 1742] Selector",
+			"output -> [SelectOut 1747] Selector"
+		], "value": true},
+		"MockNetwork 1762": {"Class": "almagest/MockNetwork", "Pos": "{\"x\":686,\"y\":-163}"},
+		"MockNetwork 1764": {"Class": "almagest/MockNetwork", "Pos": "{\"x\":684,\"y\":68}"},
+		"HttpServer 1953": {
+			"Class":    "almagest/HttpServer",
+			"Pos":      "{\"x\":466,\"y\":-296}",
+			"Links":    ["Network -> [MockNetwork 1762] Network"],
+			"response": "Network 1",
+			"host":     "127.0.0.1",
+			"port":     8080
+		},
+		"HttpServer 1958": {
+			"Class":    "almagest/HttpServer",
+			"Pos":      "{\"x\":473,\"y\":162}",
+			"Links":    ["Network -> [MockNetwork 1764] Network"],
+			"host":     "127.0.0.1",
+			"port":     8080,
+			"response": "Network 2"
+		},
+		"StringConstant 1965": {
+			"Class": "pasta/StringConstant",
+			"Pos":   "{\"x\":247,\"y\":-300}",
+			"Links": ["output -> [HttpServer 1953] Response"],
+			"value": "Network 1"
+		},
+		"StringConstant 1968": {
+			"Class": "pasta/StringConstant",
+			"Pos":   "{\"x\":251,\"y\":193}",
+			"Links": ["output -> [HttpServer 1958] Response"],
+			"value": "Network 2"
+		},
+		"HttpClient 1983": {
+			"Class":  "almagest/HttpClient",
+			"Pos":    "{\"x\":-84,\"y\":-158}",
+			"Links":  ["Network -> [SelectOut 1742] In"],
+			"url":    "http://127.0.0.1:8080/",
+			"method": "GET",
+			"body":   ""
+		},
+		"HttpClient 1988": {
+			"Class":  "almagest/HttpClient",
+			"Pos":    "{\"x\":-84,\"y\":9}",
+			"Links":  ["Network -> [SelectOut 1747] In"],
+			"body":   "",
+			"url":    "http://127.0.0.1:8080/",
+			"method": "GET"
+		}
+	}
+}

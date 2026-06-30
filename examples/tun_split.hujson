@@ -1,0 +1,127 @@
+{
+	"nodes": {
+		"DefaultTun 2116": {
+			"Class":     "almagest/DefaultTun",
+			"Pos":       "{\"x\":109,\"y\":401}",
+			"Links":     ["Tun -> [TunSplitter 2140] Tun"],
+			"dnsIP":     "",
+			"strict":    false,
+			"exclude":   [],
+			"include":   [],
+			"tunAddrs":  "",
+			"tunRoutes": "",
+			"mtu":       0
+		},
+		"Spoofer 2118": {
+			"Class":                "almagest/Spoofer",
+			"Pos":                  "{\"x\":525,\"y\":319}",
+			"Links":                ["Network -> [MockNetwork 2199] Network"],
+			"disableTCPModRecBuff": false,
+			"tcpKeepAliveInterval": 0,
+			"tcpKeepAliveCount":    0,
+			"tcpForwardAttempts":   0,
+			"tcpKeepAlive":         false,
+			"tcpForwardWnd":        0,
+			"queueLength":          1024,
+			"ttl":                  0,
+			"icmpLimit":            0,
+			"tcpSendBufferSize":    0,
+			"tcpReceiveBufferSize": 0,
+			"congestionControlAlg": "",
+			"disableNagle":         false,
+			"tcpKeepAliveIdle":     0,
+			"mtu":                  1500,
+			"disableSACK":          false,
+			"icmpBurst":            0
+		},
+		"OutNetwork 2121": {"Class": "almagest/OutNetwork", "Pos": "{\"x\":736,\"y\":511}"},
+		"TunSplitter 2140": {
+			"Class": "almagest/TunSplitter",
+			"Pos":   "{\"x\":313,\"y\":397}",
+			"Links": [
+				"slot 1 -> [Spoofer 2118] Tun",
+				"slot 2 -> [Spoofer 2147] Tun",
+				"slot 3 -> [Spoofer 2151] Tun"
+			],
+			"rules":                "RULE cmd curl\nSLOT 1\n\nRULE cmd wget\nSLOT 2\n\nTRUE\nSLOT 3",
+			"ruleCacheTTL":         0,
+			"ruleCacheMaxEntries":  0,
+			"routeCacheTTL":        0,
+			"routeCacheMaxEntries": 0
+		},
+		"Spoofer 2147": {
+			"Class":                "almagest/Spoofer",
+			"Pos":                  "{\"x\":523,\"y\":415}",
+			"Links":                ["Network -> [MockNetwork 2197] Network"],
+			"tcpForwardWnd":        0,
+			"mtu":                  1500,
+			"tcpSendBufferSize":    0,
+			"tcpKeepAliveCount":    0,
+			"queueLength":          1024,
+			"disableSACK":          false,
+			"icmpBurst":            0,
+			"disableNagle":         false,
+			"tcpKeepAliveIdle":     0,
+			"ttl":                  0,
+			"congestionControlAlg": "",
+			"disableTCPModRecBuff": false,
+			"tcpKeepAlive":         false,
+			"tcpForwardAttempts":   0,
+			"icmpLimit":            0,
+			"tcpReceiveBufferSize": 0,
+			"tcpKeepAliveInterval": 0
+		},
+		"Spoofer 2151": {
+			"Class":                "almagest/Spoofer",
+			"Pos":                  "{\"x\":519,\"y\":509}",
+			"Links":                ["Network -> [OutNetwork 2121] Network"],
+			"tcpReceiveBufferSize": 0,
+			"tcpKeepAliveIdle":     0,
+			"tcpForwardWnd":        0,
+			"congestionControlAlg": "",
+			"tcpKeepAliveCount":    0,
+			"disableSACK":          false,
+			"disableTCPModRecBuff": false,
+			"tcpForwardAttempts":   0,
+			"icmpLimit":            0,
+			"disableNagle":         false,
+			"tcpKeepAlive":         false,
+			"tcpKeepAliveInterval": 0,
+			"mtu":                  1500,
+			"queueLength":          1024,
+			"ttl":                  0,
+			"icmpBurst":            0,
+			"tcpSendBufferSize":    0
+		},
+		"MockNetwork 2197": {"Class": "almagest/MockNetwork", "Pos": "{\"x\":812,\"y\":239}"},
+		"MockNetwork 2199": {"Class": "almagest/MockNetwork", "Pos": "{\"x\":810,\"y\":147}"},
+		"HttpServer 2203": {
+			"Class":    "almagest/HttpServer",
+			"Pos":      "{\"x\":523,\"y\":55}",
+			"Links":    ["Network -> [MockNetwork 2199] Network"],
+			"host":     "127.0.0.1",
+			"port":     80,
+			"response": "Server for curl"
+		},
+		"HttpServer 2208": {
+			"Class":    "almagest/HttpServer",
+			"Pos":      "{\"x\":524,\"y\":186}",
+			"Links":    ["Network -> [MockNetwork 2197] Network"],
+			"host":     "127.0.0.1",
+			"port":     80,
+			"response": "Server for wget"
+		},
+		"StringConstant 2215": {
+			"Class": "pasta/StringConstant",
+			"Pos":   "{\"x\":295,\"y\":56}",
+			"Links": ["output -> [HttpServer 2203] Response"],
+			"value": "Server for curl"
+		},
+		"StringConstant 2217": {
+			"Class": "pasta/StringConstant",
+			"Pos":   "{\"x\":299,\"y\":186}",
+			"Links": ["output -> [HttpServer 2208] Response"],
+			"value": "Server for wget"
+		}
+	}
+}

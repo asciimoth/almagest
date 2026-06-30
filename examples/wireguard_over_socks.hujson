@@ -1,0 +1,199 @@
+{
+	"nodes": {
+		"MockNetwork 1500": {
+			"Class": "almagest/MockNetwork",
+			"Pos":   "{\"x\":1199,\"y\":484}"
+		},
+		"WireGuard Client 1501": {
+			"Class":      "almagest/WireGuard",
+			"Pos":        "{\"x\":594,\"y\":334}",
+			"Links":      ["Network -> [SocksClient 1680] Network"],
+			"privateKey": "KCssLS4vMDEyMzQ1Njc4OTo7PD0+P0BBQkNERUZHSEk=",
+			"listenPort": 25120,
+			"ownedIPs":   "10.198.10.1/24",
+			"amneziaWG": {
+				"cookieHeader":      "3",
+				"cookiePadding":     0,
+				"initHeader":        "1",
+				"initPadding":       0,
+				"initiationPackets": ["", "", "", "", ""],
+				"junkCount":         0,
+				"junkMax":           0,
+				"junkMin":           0,
+				"responseHeader":    "2",
+				"responsePadding":   0,
+				"transportHeader":   "4",
+				"transportPadding":  0
+			},
+			"peers": [{
+				"allowedIPs": "10.198.20.1/32",
+				"amneziaWG": {
+					"cookieHeader":      "3",
+					"cookiePadding":     0,
+					"initHeader":        "1",
+					"initPadding":       0,
+					"initiationPackets": ["", "", "", "", ""],
+					"junkCount":         0,
+					"junkMax":           0,
+					"junkMin":           0,
+					"responseHeader":    "2",
+					"responsePadding":   0,
+					"transportHeader":   "4",
+					"transportPadding":  0
+				},
+				"amneziaWGOverride":           false,
+				"endpoint":                    "127.0.0.1:25121",
+				"id":                          "server",
+				"persistentKeepaliveInterval": 1,
+				"presharedKey":                "",
+				"publicKey":                   "laFBiTT/wW7x80sMEG6yQhZxM7h0+3hv5kI6dxP081g="
+			}]
+		},
+		"WireGuard Server 1502": {
+			"Class":      "almagest/WireGuard",
+			"Pos":        "{\"x\":571,\"y\":591}",
+			"Links":      ["Network -> [SocksClient 1684] Network"],
+			"privateKey": "SEtMTU5PUFFSU1RVVldYWVpbXF1eX2BhYmNkZWZnaGk=",
+			"listenPort": 25121,
+			"ownedIPs":   "10.198.20.1/24",
+			"amneziaWG": {
+				"cookieHeader":      "3",
+				"cookiePadding":     0,
+				"initHeader":        "1",
+				"initPadding":       0,
+				"initiationPackets": ["", "", "", "", ""],
+				"junkCount":         0,
+				"junkMax":           0,
+				"junkMin":           0,
+				"responseHeader":    "2",
+				"responsePadding":   0,
+				"transportHeader":   "4",
+				"transportPadding":  0
+			},
+			"peers": [{
+				"allowedIPs": "10.198.10.1/32",
+				"amneziaWG": {
+					"cookieHeader":      "3",
+					"cookiePadding":     0,
+					"initHeader":        "1",
+					"initPadding":       0,
+					"initiationPackets": ["", "", "", "", ""],
+					"junkCount":         0,
+					"junkMax":           0,
+					"junkMin":           0,
+					"responseHeader":    "2",
+					"responsePadding":   0,
+					"transportHeader":   "4",
+					"transportPadding":  0
+				},
+				"amneziaWGOverride":           false,
+				"endpoint":                    "127.0.0.1:25120",
+				"id":                          "client",
+				"persistentKeepaliveInterval": 1,
+				"presharedKey":                "",
+				"publicKey":                   "f4iMlTOU1YOfovXWCeMMjeBsc6vVqqDE/7XQeHg2oVQ="
+			}]
+		},
+		"VTun Client 1503": {
+			"Class":          "almagest/VTun",
+			"Pos":            "{\"x\":388,\"y\":331}",
+			"Links":          ["Tun -> [WireGuard Client 1501] Tun"],
+			"dnsServers":     "",
+			"mtu":            1500,
+			"endpointCh":     1024,
+			"eventCh":        10,
+			"noLoopbackAddr": false,
+			"disableSACK":    false,
+			"name":           "wireguard-client-vtun",
+			"localAddrs":     ""
+		},
+		"VTun Server 1504": {
+			"Class":          "almagest/VTun",
+			"Pos":            "{\"x\":362,\"y\":590}",
+			"Links":          ["Tun -> [WireGuard Server 1502] Tun"],
+			"name":           "wireguard-server-vtun",
+			"localAddrs":     "",
+			"dnsServers":     "",
+			"mtu":            1500,
+			"endpointCh":     1024,
+			"eventCh":        10,
+			"noLoopbackAddr": false,
+			"disableSACK":    false
+		},
+		"UDPPingServer 1505": {
+			"Class":       "debug.almagest/UDPPingServer",
+			"Pos":         "{\"x\":45,\"y\":659}",
+			"Links":       ["Network -> [VTun Server 1504] Network"],
+			"remote_host": "10.199.10.1",
+			"remote_port": 0,
+			"payload":     "ping",
+			"timeout_ms":  1000,
+			"network":     "udp4",
+			"socket_mode": "listen",
+			"local_host":  "10.198.20.1",
+			"local_port":  26120
+		},
+		"UDPPingClient 1506": {
+			"Class":       "debug.almagest/UDPPingClient",
+			"Pos":         "{\"x\":114,\"y\":135}",
+			"Links":       ["Network -> [VTun Client 1503] Network"],
+			"remote_host": "10.198.20.1",
+			"remote_port": 26120,
+			"payload":     "nested-wireguard-udp-ping",
+			"timeout_ms":  1000,
+			"network":     "udp4",
+			"socket_mode": "dial",
+			"local_host":  "10.198.10.1",
+			"local_port":  0
+		},
+		"HttpServer 1607": {
+			"Class":    "almagest/HttpServer",
+			"Pos":      "{\"x\":132,\"y\":517}",
+			"Links":    ["Network -> [VTun Server 1504] Network"],
+			"host":     "10.198.20.1",
+			"port":     8080,
+			"response": ""
+		},
+		"HttpClient 1612": {
+			"Class":  "almagest/HttpClient",
+			"Pos":    "{\"x\":135,\"y\":378}",
+			"Links":  ["Network -> [VTun Client 1503] Network"],
+			"url":    "http://10.198.20.1:8080/",
+			"method": "GET",
+			"body":   ""
+		},
+		"SocksClient 1680": {
+			"Class":    "almagest/SocksClient",
+			"Pos":      "{\"x\":807,\"y\":334}",
+			"Links":    ["out -> [MockNetwork 1500] Network"],
+			"proxyURL": "socks5://127.0.0.1:1080?gost"
+		},
+		"SocksClient 1684": {
+			"Class":    "almagest/SocksClient",
+			"Pos":      "{\"x\":779,\"y\":591}",
+			"Links":    ["out -> [MockNetwork 1500] Network"],
+			"proxyURL": "socks5://127.0.0.1:1080?gost"
+		},
+		"SocksServer 1688": {
+			"Class": "almagest/SocksServer",
+			"Pos":   "{\"x\":996,\"y\":763}",
+			"Links": ["listen -> [MockNetwork 1500] Network", "proxy -> [OutNetwork 1691] Network"],
+			"users": [],
+			"commands": {
+				"cmdBind":          true,
+				"cmdConnect":       true,
+				"cmdGostMuxBind":   true,
+				"cmdGostUDPTun":    true,
+				"cmdTorResolve":    true,
+				"cmdTorResolvePtr": true,
+				"cmdUDPAssoc":      true
+			},
+			"socksHost": "127.0.0.1",
+			"socksPort": 1080,
+			"wsHost":    "",
+			"wsPort":    0,
+			"wsPath":    "/socks"
+		},
+		"OutNetwork 1691": {"Class": "almagest/OutNetwork", "Pos": "{\"x\":1210,\"y\":783}"}
+	}
+}

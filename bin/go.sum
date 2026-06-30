@@ -18,8 +18,8 @@ github.com/asciimoth/gonnect v0.30.0 h1:YpmuRLAsXYhYE7a7zIMTntFETF2k62z3jZ6wrsdH
 github.com/asciimoth/gonnect v0.30.0/go.mod h1:CohhruGEkUgKLF0ypR/RNFrdrqmJgUkKhvjMilED9Kk=
 github.com/asciimoth/gonnect-netstack v0.4.29 h1:AzcyVXFOdgvSM/MVTdbJah4rfrch6UEi/RLmfhotTZY=
 github.com/asciimoth/gonnect-netstack v0.4.29/go.mod h1:k5OWcI6LfhK8NbhiQ4MgY/RRFlsAbIctX6aFf+i592E=
-github.com/asciimoth/gonnect-routing v0.6.2 h1:5D8EISre4lO++khKAk5WgeXssZvYSgWmB7hNw/X24NI=
-github.com/asciimoth/gonnect-routing v0.6.2/go.mod h1:vlDFg1NiUyRyPDBKHVNUteSiQ2XkE4m27xT1oOjfnNw=
+github.com/asciimoth/gonnect-routing v0.7.0 h1:7ErTR1dw3AQVCHDxxwD65KkuZjM0JjfYsJKCDDbbdXE=
+github.com/asciimoth/gonnect-routing v0.7.0/go.mod h1:vlDFg1NiUyRyPDBKHVNUteSiQ2XkE4m27xT1oOjfnNw=
 github.com/asciimoth/ident v0.2.0 h1:G6qaTnkxTH+idV5YzJ7AvgC2nLQDE/aoV7rPCOtN07I=
 github.com/asciimoth/ident v0.2.0/go.mod h1:JNNFnfM7/hdcXVkFBBOAU/vpJM+0gucYaAYwB694bT0=
 github.com/asciimoth/p-mark v0.2.0 h1:ZmJQy+Te+fZBWwy5zFzbCzQiladixKCNMKtXS3rZzeU=

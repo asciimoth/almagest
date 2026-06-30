@@ -1,0 +1,39 @@
+{
+	"nodes": {
+		"DefaultTun 2116": {
+			"Class":     "almagest/DefaultTun",
+			"Pos":       "{\"x\":268,\"y\":384}",
+			"dnsIP":     "",
+			"strict":    false,
+			"exclude":   [],
+			"include":   [],
+			"tunAddrs":  "",
+			"tunRoutes": "",
+			"mtu":       0,
+			"Links":     ["Tun -> [Spoofer 2118] Tun"]
+		},
+		"Spoofer 2118": {
+			"Class":                "almagest/Spoofer",
+			"Pos":                  "{\"x\":457,\"y\":383}",
+			"Links":                ["Network -> [OutNetwork 2121] Network"],
+			"tcpForwardWnd":        0,
+			"tcpForwardAttempts":   0,
+			"mtu":                  1500,
+			"congestionControlAlg": "",
+			"tcpKeepAlive":         false,
+			"queueLength":          1024,
+			"icmpBurst":            0,
+			"tcpKeepAliveIdle":     0,
+			"tcpKeepAliveInterval": 0,
+			"tcpKeepAliveCount":    0,
+			"tcpSendBufferSize":    0,
+			"disableTCPModRecBuff": false,
+			"disableSACK":          false,
+			"ttl":                  0,
+			"icmpLimit":            0,
+			"tcpReceiveBufferSize": 0,
+			"disableNagle":         false
+		},
+		"OutNetwork 2121": {"Class": "almagest/OutNetwork", "Pos": "{\"x\":641,\"y\":382}"}
+	}
+}
