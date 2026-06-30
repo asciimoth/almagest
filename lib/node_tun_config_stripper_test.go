@@ -72,7 +72,11 @@ func TestTunConfigStripperDropsTunConfigFromOutput(t *testing.T) {
 	}
 	discardTunRequest(t, provider.requests)
 
-	w.EmitEvent(consumerID, outputLink, TunConfig{Addrs: []string{"10.0.0.2/32"}, MTU: 1400})
+	w.EmitEvent(consumerID, outputLink, TunConfig{
+		Addrs:  []string{"10.0.0.2/32"},
+		Routes: []string{"10.10.0.0/24"},
+		MTU:    1400,
+	})
 	std.Request(w, consumerID, outputLink)
 	assertTunRequestReceived(t, provider.requests)
 	assertNoTunConfigReceived(t, provider.configs)
@@ -103,7 +107,11 @@ func TestTunConfigStripperDropsTunConfigFromInput(t *testing.T) {
 		t.Fatalf("AddLink output: %v", err)
 	}
 
-	w.EmitEvent(providerID, inputLink, TunConfig{Addrs: []string{"fd00::2/128"}, MTU: 1280})
+	w.EmitEvent(providerID, inputLink, TunConfig{
+		Addrs:  []string{"fd00::2/128"},
+		Routes: []string{"fd00:10::/64"},
+		MTU:    1280,
+	})
 	w.EmitEvent(providerID, inputLink, std.RequestValue{})
 	assertTunRequestReceived(t, consumer.requests)
 	assertNoTunConfigReceived(t, consumer.configs)

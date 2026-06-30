@@ -110,19 +110,24 @@ func TestDefaultTunBuildsEmitsAndRebuildsFromFormAndTunConfig(t *testing.T) {
 		t.Fatalf("form build opts = %#v, want %#v", got, wantFormOpts)
 	}
 
-	w.EmitEvent(receiverID, link, TunConfig{Addrs: []string{"10.10.0.2/32", "10.20.0.2/32"}, MTU: 1280})
+	w.EmitEvent(receiverID, link, TunConfig{
+		Addrs:  []string{"10.10.0.2/32", "10.20.0.2/32"},
+		Routes: []string{"0.0.0.0/0", "10.20.0.0/16"},
+		MTU:    1280,
+	})
 	if got := sys.buildCount(); got != 3 {
 		t.Fatalf("build count after TunConfig = %d, want 3", got)
 	}
 	_ = receiveTunPayload(t, receiver.events)
 	wantMergedOpts := wantFormOpts
 	wantMergedOpts.TunAddrs = []string{"10.10.0.2/32", "fd00::2/128", "10.20.0.2/32"}
+	wantMergedOpts.TunRoutes = []string{"0.0.0.0/0", "::/0", "10.20.0.0/16"}
 	wantMergedOpts.MTU = 1280
 	if got := sys.lastOpts(); !reflect.DeepEqual(got, wantMergedOpts) {
 		t.Fatalf("merged build opts = %#v, want %#v", got, wantMergedOpts)
 	}
 	assertReadonlyMenuFieldValue(t, state, node, "effective", "tunAddrs", "10.10.0.2/32\nfd00::2/128\n10.20.0.2/32")
-	assertReadonlyMenuFieldValue(t, state, node, "effective", "tunRoutes", "0.0.0.0/0\n::/0")
+	assertReadonlyMenuFieldValue(t, state, node, "effective", "tunRoutes", "0.0.0.0/0\n::/0\n10.20.0.0/16")
 	assertReadonlyMenuFieldValue(t, state, node, "effective", "mtu", 1280)
 	assertReadonlyMenuFieldValue(t, state, node, "effective", "dnsIP", "10.10.0.2")
 	assertReadonlyMenuFieldValue(t, state, node, "effective", "strict", true)
@@ -169,6 +174,14 @@ func TestDefaultTunDynamicConfigUsesSettersWhenOnlyMTUAndAddrsChange(t *testing.
 		t.Fatalf("SetTunMTU calls = %#v, want %#v", got, want)
 	}
 
+	w.EmitEvent(receiverID, link, TunConfig{Addrs: []string{"10.30.0.2/32"}, Routes: []string{"10.31.0.0/16"}, MTU: 1300})
+	if got := sys.buildCount(); got != 2 {
+		t.Fatalf("build count after suggested route change = %d, want 2", got)
+	}
+	if got, want := sys.lastOpts().TunRoutes, []string{"10.31.0.0/16"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("TunRoutes after suggested route change = %#v, want %#v", got, want)
+	}
+
 	w.SendNodeFormularMsg(node, formular.FormApplyMessage{
 		MessageBase: formular.MessageBase{Type: formular.MessageFormApply, MenuID: pasta.NodeMenuID(node)},
 		BlockID:     "config",
@@ -182,8 +195,8 @@ func TestDefaultTunDynamicConfigUsesSettersWhenOnlyMTUAndAddrsChange(t *testing.
 			"include":   []formular.ArrayElementValue{},
 		},
 	})
-	if got := sys.buildCount(); got != 2 {
-		t.Fatalf("build count after route change = %d, want 2", got)
+	if got := sys.buildCount(); got != 3 {
+		t.Fatalf("build count after route change = %d, want 3", got)
 	}
 }
 

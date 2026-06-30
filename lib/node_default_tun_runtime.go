@@ -95,6 +95,7 @@ func (n *defaultTunNode) effectiveDefaultTunOpts() sysnet.DefaultTunOpts {
 	opts := n.config.defaultTunOpts()
 	portCfg := n.portCfg.Merge()
 	opts.TunAddrs = mergeDefaultTunStringLists(opts.TunAddrs, portCfg.Addrs)
+	opts.TunRoutes = mergeDefaultTunStringLists(opts.TunRoutes, portCfg.Routes)
 	opts.MTU = mergeDefaultTunMTU(opts.MTU, portCfg.MTU)
 	return opts
 }

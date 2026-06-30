@@ -6,7 +6,8 @@ device while links are rewired, replacing only the active TUN or UDP bind.
 
 `ownedIPs` are emitted upstream as `TunConfig` address suggestions for the
 attached TUN provider. Peer `allowedIPs` are installed into the WireGuard
-device and determine which tunneled packets are sent to each peer.
+device as crypto-routing rules and are also emitted upstream as `TunConfig`
+route suggestions for providers that install host routes.
 
 The config menu also exposes device-level AmneziaWG obfuscation controls:
 Jc/Jmin/Jmax, S1-S4 padding values, H1-H4 header ranges, and I1-I5

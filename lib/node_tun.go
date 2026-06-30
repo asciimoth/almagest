@@ -83,7 +83,7 @@ func (c tunNodeConfig) opts() sysnet.TunOpts {
 
 // tunNode owns one regular sysnet Tun and publishes detached wrappers for each
 // connected TypeTun link. Downstream TunConfig suggestions can alter only the
-// generic regular-TUN settings: interface addresses and MTU.
+// generic regular-TUN settings: interface addresses, routes, and MTU.
 type tunNode struct {
 	NodeBase
 
@@ -398,6 +398,7 @@ func (n *tunNode) effectiveTunOpts() sysnet.TunOpts {
 	opts := n.config.opts()
 	portCfg := n.portCfg.Merge()
 	opts.TunAddrs = mergeDefaultTunStringLists(opts.TunAddrs, portCfg.Addrs)
+	opts.TunRoutes = mergeDefaultTunStringLists(opts.TunRoutes, portCfg.Routes)
 	opts.MTU = mergeDefaultTunMTU(opts.MTU, portCfg.MTU)
 	return opts
 }

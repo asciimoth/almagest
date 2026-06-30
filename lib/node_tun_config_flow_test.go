@@ -44,7 +44,7 @@ func TestTunJoinerForwardsTunConfigToInputsAndClearsOnOutputDisconnect(t *testin
 	if err != nil {
 		t.Fatalf("AddLink output: %v", err)
 	}
-	cfg := TunConfig{Addrs: []string{"10.0.0.2/32"}, MTU: 1400}
+	cfg := TunConfig{Addrs: []string{"10.0.0.2/32"}, Routes: []string{"10.10.0.0/24"}, MTU: 1400}
 	w.EmitEvent(consumerID, outputLink, cfg)
 	assertTunConfigReceived(t, defaultProvider.configs, cfg)
 	assertTunConfigReceived(t, secondaryProvider.configs, cfg)
@@ -84,7 +84,7 @@ func TestDebugLogTunForwardsTunConfigAndClearsOnOutputDisconnect(t *testing.T) {
 		t.Fatalf("AddLink output: %v", err)
 	}
 
-	cfg := TunConfig{Addrs: []string{"fd00::2/128"}, MTU: 1280}
+	cfg := TunConfig{Addrs: []string{"fd00::2/128"}, Routes: []string{"fd00:10::/64"}, MTU: 1280}
 	w.EmitEvent(consumerID, outputLink, cfg)
 	assertTunConfigReceived(t, provider.configs, cfg)
 
@@ -123,7 +123,7 @@ func TestTunSplitterClearsConfigOnOutputDisconnectAndReplaysOnInputReconnect(t *
 		t.Fatalf("AddLink output: %v", err)
 	}
 
-	cfg := TunConfig{Addrs: []string{"10.0.0.3/32"}, MTU: 1300}
+	cfg := TunConfig{Addrs: []string{"10.0.0.3/32"}, Routes: []string{"10.30.0.0/24"}, MTU: 1300}
 	w.EmitEvent(consumerID, outputLink, cfg)
 	assertTunConfigReceived(t, provider.configs, cfg)
 
@@ -157,12 +157,12 @@ func TestDefaultTunForgetsTunConfigOnDisconnectAndReconnect(t *testing.T) {
 	}
 	_ = receiveTunPayload(t, receiver.events)
 
-	cfg := TunConfig{Addrs: []string{"10.70.0.2/32"}, MTU: 1300}
+	cfg := TunConfig{Addrs: []string{"10.70.0.2/32"}, Routes: []string{"10.71.0.0/16"}, MTU: 1300}
 	w.EmitEvent(receiverID, link, cfg)
 	_ = receiveTunPayload(t, receiver.events)
 	wantSuggested := sysnet.DefaultTunOpts{
 		TunAddrs:  []string{"10.70.0.2/32"},
-		TunRoutes: []string{},
+		TunRoutes: []string{"10.71.0.0/16"},
 		MTU:       1300,
 		Exclude:   []sysnet.Rule{},
 		Include:   []sysnet.Rule{},

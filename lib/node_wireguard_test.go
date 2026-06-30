@@ -487,6 +487,21 @@ func TestWireGuardOwnedIPAddrsNormalizeAndDedupe(t *testing.T) {
 	}
 }
 
+func TestWireGuardPeerRoutesNormalizeAndDedupe(t *testing.T) {
+	got := wireGuardPeerRoutes([]wireGuardPeerConfig{
+		{allowedIPs: "10.40.0.0/24 10.40.0.2"},
+		{allowedIPs: "10.40.0.0/24\nfd00:40::/64\n10.40.0.2/32"},
+	})
+	want := []string{"10.40.0.0/24", "10.40.0.2/32", "fd00:40::/64"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("wireGuardPeerRoutes() = %#v, want %#v", got, want)
+	}
+
+	if got := wireGuardPeerRoutes([]wireGuardPeerConfig{{allowedIPs: "bad"}}); got != nil {
+		t.Fatalf("wireGuardPeerRoutes(invalid) = %#v, want nil", got)
+	}
+}
+
 func TestWireGuardNetworkAttachmentDoesNotOpenSocketsUntilTunAttached(t *testing.T) {
 	w := pasta.NewWorkspace(NewDebugLogFactory(1024))
 	t.Cleanup(func() { w.Close() })

@@ -211,13 +211,26 @@ func TestWireGuardE2ESendsTunConfigToAttachedTun(t *testing.T) {
 	wg := e.AddNode(NodeTypeWireGuard, "wg")
 	recorder := e.AddNode(testTunConfigRecorderNodeType, "recorder")
 	privateKey, _ := wireGuardTestKeyPair(t, 91)
-	applyWireGuardConfigWithOwnedIPs(t, e.Engine, wg, privateKey, 0, "10.251.0.2/32\nfd00:251::2/128", nil)
+	_, peerPublicKey := wireGuardTestKeyPair(t, 92)
+	applyWireGuardConfigWithOwnedIPs(t, e.Engine, wg, privateKey, 0, "10.251.0.2/32\nfd00:251::2/128", []wireGuardPeerConfig{{
+		publicKey:  peerPublicKey,
+		allowedIPs: "10.252.0.0/24",
+	}})
 
 	e.MustAddTypedLinkByPortName(TypeTun, wg, "left", "Tun", recorder, "right", "Tun")
-	recorders.assertLastConfig(t, recorder, TunConfig{Addrs: []string{"10.251.0.2/32", "fd00:251::2/128"}})
+	recorders.assertLastConfig(t, recorder, TunConfig{
+		Addrs:  []string{"10.251.0.2/32", "fd00:251::2/128"},
+		Routes: []string{"10.252.0.0/24"},
+	})
 
-	applyWireGuardConfigWithOwnedIPs(t, e.Engine, wg, privateKey, 0, "10.251.0.3", nil)
-	recorders.assertLastConfig(t, recorder, TunConfig{Addrs: []string{"10.251.0.3/32"}})
+	applyWireGuardConfigWithOwnedIPs(t, e.Engine, wg, privateKey, 0, "10.251.0.3", []wireGuardPeerConfig{{
+		publicKey:  peerPublicKey,
+		allowedIPs: "10.253.0.1",
+	}})
+	recorders.assertLastConfig(t, recorder, TunConfig{
+		Addrs:  []string{"10.251.0.3/32"},
+		Routes: []string{"10.253.0.1/32"},
+	})
 
 	applyWireGuardConfigWithOwnedIPs(t, e.Engine, wg, privateKey, 0, "", nil)
 	recorders.assertLastConfig(t, recorder, TunConfig{})

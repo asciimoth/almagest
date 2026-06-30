@@ -39,9 +39,10 @@ import (
 //
 // TunConfig values flow in the opposite direction, from left-directed ports to
 // right-directed ports. Config values are suggestions for Tun-providing nodes:
-// the provider may configure its device with the suggested interface addresses
-// and MTU. Only the latest config received through a specific link is current
-// for that link, and config must be forgotten when that link detaches.
+// the provider may configure its device with the suggested interface addresses,
+// route prefixes, and MTU. Only the latest config received through a specific
+// link is current for that link, and config must be forgotten when that link
+// detaches.
 //
 // Both left-directed and right-directed almagest/tun ports allow at most one
 // almagest/tun link at a time.
@@ -77,6 +78,10 @@ type TunConfig struct {
 	// Addrs is a list of interface CIDR addresses, for example "10.0.0.2/32".
 	Addrs []string
 
+	// Routes is a list of route prefixes to route through the TUN device, for
+	// example "10.0.0.0/24".
+	Routes []string
+
 	// MTU is the suggested interface MTU. Zero means no MTU suggestion.
 	MTU int
 }
@@ -84,14 +89,15 @@ type TunConfig struct {
 // Clone returns a deep copy of cfg.
 func (cfg TunConfig) Clone() TunConfig {
 	return TunConfig{
-		Addrs: slices.Clone(cfg.Addrs),
-		MTU:   cfg.MTU,
+		Addrs:  slices.Clone(cfg.Addrs),
+		Routes: slices.Clone(cfg.Routes),
+		MTU:    cfg.MTU,
 	}
 }
 
-// IsZero reports whether cfg carries no address or MTU suggestion.
+// IsZero reports whether cfg carries no address, route, or MTU suggestion.
 func (cfg TunConfig) IsZero() bool {
-	return len(cfg.Addrs) == 0 && cfg.MTU == 0
+	return len(cfg.Addrs) == 0 && len(cfg.Routes) == 0 && cfg.MTU == 0
 }
 
 // TunConfigByLink stores the latest TunConfig received per link.
@@ -118,11 +124,11 @@ func (s TunConfigByLink) Delete(link uint64) {
 
 // Merge returns one config suggestion from all configs currently in the store.
 //
-// Address suggestions are de-duplicated by exact string value while preserving
-// first-seen order by ascending link ID and then by each config's address
-// order. MTU suggestions are merged by taking the smallest positive MTU, which
-// is the conservative value when one Tun must satisfy multiple consumers. A
-// non-positive MTU is ignored.
+// Address and route suggestions are de-duplicated by exact string value while
+// preserving first-seen order by ascending link ID and then by each config's
+// slice order. MTU suggestions are merged by taking the smallest positive MTU,
+// which is the conservative value when one Tun must satisfy multiple consumers.
+// A non-positive MTU is ignored.
 func (s TunConfigByLink) Merge() TunConfig {
 	if len(s) == 0 {
 		return TunConfig{}
@@ -134,6 +140,7 @@ func (s TunConfigByLink) Merge() TunConfig {
 	slices.Sort(links)
 
 	seenAddrs := make(map[string]struct{})
+	seenRoutes := make(map[string]struct{})
 	var merged TunConfig
 	for _, link := range links {
 		cfg := s[link]
@@ -143,6 +150,13 @@ func (s TunConfigByLink) Merge() TunConfig {
 			}
 			seenAddrs[addr] = struct{}{}
 			merged.Addrs = append(merged.Addrs, addr)
+		}
+		for _, route := range cfg.Routes {
+			if _, ok := seenRoutes[route]; ok {
+				continue
+			}
+			seenRoutes[route] = struct{}{}
+			merged.Routes = append(merged.Routes, route)
 		}
 		if cfg.MTU > 0 && (merged.MTU == 0 || cfg.MTU < merged.MTU) {
 			merged.MTU = cfg.MTU

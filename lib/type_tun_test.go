@@ -35,21 +35,25 @@ func TestTunPayloadClose(t *testing.T) {
 func TestTunConfigByLinkSetMergeDelete(t *testing.T) {
 	store := TunConfigByLink{}
 	cfg := TunConfig{
-		Addrs: []string{"10.0.0.2/32", "fd00::2/128"},
-		MTU:   1420,
+		Addrs:  []string{"10.0.0.2/32", "fd00::2/128"},
+		Routes: []string{"10.20.0.0/24", "fd00:20::/64"},
+		MTU:    1420,
 	}
 	store.Set(2, cfg)
 	cfg.Addrs[0] = "mutated"
+	cfg.Routes[0] = "mutated"
 	store.Set(1, TunConfig{
-		Addrs: []string{"10.0.0.3/32", "10.0.0.2/32"},
-		MTU:   1280,
+		Addrs:  []string{"10.0.0.3/32", "10.0.0.2/32"},
+		Routes: []string{"10.10.0.0/24", "10.20.0.0/24"},
+		MTU:    1280,
 	})
-	store.Set(0, TunConfig{Addrs: []string{"ignored"}, MTU: 1})
+	store.Set(0, TunConfig{Addrs: []string{"ignored"}, Routes: []string{"ignored"}, MTU: 1})
 
 	merged := store.Merge()
 	want := TunConfig{
-		Addrs: []string{"10.0.0.3/32", "10.0.0.2/32", "fd00::2/128"},
-		MTU:   1280,
+		Addrs:  []string{"10.0.0.3/32", "10.0.0.2/32", "fd00::2/128"},
+		Routes: []string{"10.10.0.0/24", "10.20.0.0/24", "fd00:20::/64"},
+		MTU:    1280,
 	}
 	if !reflect.DeepEqual(merged, want) {
 		t.Fatalf("Merge() = %#v, want %#v", merged, want)
@@ -58,8 +62,9 @@ func TestTunConfigByLinkSetMergeDelete(t *testing.T) {
 	store.Delete(1)
 	merged = store.Merge()
 	want = TunConfig{
-		Addrs: []string{"10.0.0.2/32", "fd00::2/128"},
-		MTU:   1420,
+		Addrs:  []string{"10.0.0.2/32", "fd00::2/128"},
+		Routes: []string{"10.20.0.0/24", "fd00:20::/64"},
+		MTU:    1420,
 	}
 	if !reflect.DeepEqual(merged, want) {
 		t.Fatalf("Merge() after Delete = %#v, want %#v", merged, want)
@@ -67,14 +72,21 @@ func TestTunConfigByLinkSetMergeDelete(t *testing.T) {
 }
 
 func TestTunConfigCloneAndIsZero(t *testing.T) {
-	cfg := TunConfig{Addrs: []string{"10.0.0.2/32"}, MTU: 1500}
+	cfg := TunConfig{Addrs: []string{"10.0.0.2/32"}, Routes: []string{"10.0.0.0/24"}, MTU: 1500}
 	clone := cfg.Clone()
 	cfg.Addrs[0] = "10.0.0.3/32"
+	cfg.Routes[0] = "10.0.1.0/24"
 	if got, want := clone.Addrs, []string{"10.0.0.2/32"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("Clone().Addrs = %#v, want %#v", got, want)
 	}
+	if got, want := clone.Routes, []string{"10.0.0.0/24"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("Clone().Routes = %#v, want %#v", got, want)
+	}
 	if clone.IsZero() {
 		t.Fatal("non-empty config IsZero() = true, want false")
+	}
+	if (TunConfig{Routes: []string{"10.0.0.0/24"}}).IsZero() {
+		t.Fatal("routes-only config IsZero() = true, want false")
 	}
 	if !((TunConfig{}).IsZero()) {
 		t.Fatal("empty config IsZero() = false, want true")

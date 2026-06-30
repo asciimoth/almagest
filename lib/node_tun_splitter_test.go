@@ -346,6 +346,7 @@ func assertTunConfigReceived(t *testing.T, configs <-chan TunConfig, want TunCon
 	select {
 	case got := <-configs:
 		assertStringSlice(t, got.Addrs, want.Addrs)
+		assertStringSlice(t, got.Routes, want.Routes)
 		if got.MTU != want.MTU {
 			t.Fatalf("TunConfig MTU = %d, want %d", got.MTU, want.MTU)
 		}

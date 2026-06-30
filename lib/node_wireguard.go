@@ -300,7 +300,7 @@ func (n *wireGuardNode) applyPeersForm(values map[string]any) error {
 	if peers, ok := parseWireGuardPeers(values["peers"]); ok {
 		next.peers = peers
 	}
-	return n.commitConfigForm(next, wireGuardConfigCommitOptions{rebuildPeers: true})
+	return n.commitConfigForm(next, wireGuardConfigCommitOptions{rebuildPeers: true, emitTunConfig: true})
 }
 func (n *wireGuardNode) applyFormBlock(blockID string, values map[string]any) error {
 	switch blockID {

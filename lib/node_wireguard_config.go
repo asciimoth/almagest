@@ -187,6 +187,29 @@ func wireGuardOwnedIPAddrs(value string) []string {
 	}
 	return out
 }
+
+// wireGuardPeerRoutes returns normalized peer allowed-IP prefixes suitable for
+// TunConfig route suggestions. Duplicates are removed while preserving peer
+// order and each peer's allowed-IP order.
+func wireGuardPeerRoutes(peers []wireGuardPeerConfig) []string {
+	seen := map[string]struct{}{}
+	var out []string
+	for _, peer := range peers {
+		prefixes, err := parseWireGuardAllowedIPs(peer.allowedIPs)
+		if err != nil {
+			return nil
+		}
+		for _, prefix := range prefixes {
+			route := prefix.String()
+			if _, ok := seen[route]; ok {
+				continue
+			}
+			seen[route] = struct{}{}
+			out = append(out, route)
+		}
+	}
+	return out
+}
 func normalizeWireGuardKey(value string) string {
 	value = strings.TrimSpace(value)
 	if value == "" {
