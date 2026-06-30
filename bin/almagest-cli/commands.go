@@ -59,6 +59,8 @@ func run(
 	switch rest[0] {
 	case "graph":
 		runErr = runGraph(ctx, c, rest[1:], stdin, stdout, stderr)
+	case "workers":
+		runErr = runWorkers(ctx, c, rest[1:], stdout, stderr)
 	case "admin":
 		runErr = runAdmin(ctx, c, rest[1:], stdout, stderr)
 	case "engine":
@@ -233,6 +235,12 @@ func runEngine(ctx context.Context, c *client, args []string, stdin io.Reader, s
 			return err
 		}
 		return requestPretty(ctx, c, api.SurfaceEngine, string(api.MethodEngineWorkspaceSnapshot), api.WorkspaceRequest{Workspace: workspace}, stdout)
+	case "workers-snapshot":
+		workspace, err := parseWorkspace(args[0], args[1:], stderr)
+		if err != nil {
+			return err
+		}
+		return requestPretty(ctx, c, api.SurfaceEngine, string(api.MethodEngineWorkersSnapshot), api.WorkspaceRequest{Workspace: workspace}, stdout)
 	case "node-class-snapshot", "node-class-long-description", "remove-nodes-by-class":
 		workspace, class, err := parseClass(args[0], args[1:], stderr)
 		if err != nil {
@@ -583,6 +591,7 @@ Surfaces:
   engine   workspace snapshots, graph mutations, notification subscriptions
   log      log subscription and watch commands
   graph    high-level node, link, class, and node menu commands
+  workers  worker-system snapshots and tree rendering
   raw      direct request for newly added or experimental methods
 
 Global flags:
@@ -622,6 +631,7 @@ Subscription commands:
 
 Snapshot commands:
   workspace-snapshot
+  workers-snapshot
   node-class-snapshot
   node-snapshot
   port-snapshot

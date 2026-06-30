@@ -1,4 +1,4 @@
-import type { NodeClassSnapshot } from "./pasta_model.js";
+import type { ID, NodeClassSnapshot, NodeSnapshot, WorkerSnapshot } from "./pasta_model.js";
 
 export type ClassPreviewPort = {
   name: string;
@@ -12,6 +12,16 @@ export type PanelLogEntry = {
   message: string;
   node_id?: number;
   node_class?: string;
+};
+
+export type WorkerNodeBlock = {
+  nodeID: ID;
+  node?: NodeSnapshot;
+  fallbackClass: string;
+  fallbackName: string;
+  workers: WorkerSnapshot[];
+  color?: string;
+  textColor?: string;
 };
 
 // Third-party nodes control class names, labels, descriptions, popups, menus,
@@ -140,6 +150,58 @@ export function createLogItem(row: PanelLogEntry): HTMLLIElement {
     iconSeparator(),
     textElement("span", row.message),
   );
+  return item;
+}
+
+export function createWorkerNodeBlock(block: WorkerNodeBlock, now: Date): HTMLElement {
+  const item = document.createElement("li");
+  item.className = "ps-node-block";
+  item.dataset.nodeId = String(block.nodeID);
+  item.classList.toggle("ps-node-block-primary", Boolean(block.color));
+  if (block.color) {
+    item.style.setProperty("--ps-primary-color", block.color);
+    item.style.setProperty("--ps-primary-text-color", block.textColor ?? "#ffffff");
+  }
+
+  const node = block.node;
+  const nodeClass = node?.class || block.fallbackClass;
+  const nodeName = node?.name || block.fallbackName || "unnamed";
+  const meta = [
+    node?.placeholder ? "placeholder" : "",
+    !node ? "gone" : "",
+    `${block.workers.length} worker${block.workers.length === 1 ? "" : "s"}`,
+  ].filter(Boolean).join(" · ");
+
+  const header = document.createElement("header");
+  header.className = "ps-node-header";
+  header.append(
+    textElement("strong", `node ${block.nodeID} ${nodeName}`),
+    textElement("span", shortClass(nodeClass)),
+    textElement("em", meta),
+  );
+
+  const workers = document.createElement("ol");
+  workers.className = "ps-worker-list";
+  for (const worker of block.workers) {
+    workers.append(createWorkerItem(worker, now));
+  }
+
+  item.append(header, workers);
+  return item;
+}
+
+export function updateWorkerAgeElements(root: ParentNode, now: Date): void {
+  for (const timer of root.querySelectorAll<HTMLTimeElement>(".ps-worker-age")) {
+    const startedAt = timer.dataset.startedAt;
+    if (!startedAt) continue;
+    timer.textContent = `age ${formatWorkerAge(startedAt, now)}`;
+  }
+}
+
+export function createEmptyWorkerItem(): HTMLLIElement {
+  const item = document.createElement("li");
+  item.className = "ps-empty";
+  item.append(textElement("span", "No workers"));
   return item;
 }
 
@@ -298,6 +360,39 @@ function formatLogSource(entry: PanelLogEntry): string {
   if (entry.node_class && entry.node_id) return `${shortClass(entry.node_class)} #${entry.node_id}`;
   if (entry.node_id) return `node #${entry.node_id}`;
   return "node";
+}
+
+function createWorkerItem(worker: WorkerSnapshot, now: Date): HTMLLIElement {
+  const item = document.createElement("li");
+  item.className = "ps-worker";
+  if (worker.error) item.classList.add("ps-worker-failed");
+  const age = textElement("time", `age ${formatWorkerAge(worker.started_at, now)}`, "ps-worker-age");
+  age.dateTime = worker.started_at;
+  age.dataset.startedAt = worker.started_at;
+  item.append(
+    textElement("strong", `worker ${worker.id}`),
+    iconSeparator(),
+    textElement("span", worker.worker_name || "unnamed"),
+    iconSeparator(),
+    age,
+  );
+  if (worker.error) {
+    item.append(iconSeparator(), textElement("b", worker.error));
+  }
+  return item;
+}
+
+function formatWorkerAge(startedAt: string, now: Date): string {
+  const started = new Date(startedAt);
+  if (Number.isNaN(started.getTime())) return "unknown";
+  let seconds = Math.max(0, Math.floor((now.getTime() - started.getTime()) / 1000));
+  const hours = Math.floor(seconds / 3600);
+  seconds -= hours * 3600;
+  const minutes = Math.floor(seconds / 60);
+  seconds -= minutes * 60;
+  if (hours > 0) return `${hours}h${minutes}m${seconds}s`;
+  if (minutes > 0) return `${minutes}m${seconds}s`;
+  return `${seconds}s`;
 }
 
 export function shortClass(name: string): string {

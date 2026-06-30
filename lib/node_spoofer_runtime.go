@@ -37,10 +37,10 @@ func (n *spooferNode) rebuildStack() {
 
 	opts := &netstackspoofer.Opts{
 		OnTCPConn: func(c net.Conn, ep stack.TransportEndpointID) {
-			forwardSpooferTCP(ctx, network, c, ep)
+			forwardSpooferTCP(ctx, n.workerSpawner, network, c, ep)
 		},
 		OnUDPConn: func(c gonnect.PacketConn, ep stack.TransportEndpointID) {
-			forwardSpooferUDP(ctx, network, c, ep)
+			forwardSpooferUDP(ctx, n.workerSpawner, network, c, ep)
 		},
 		TCPSendBufferSize:    n.config.tcpSendBufferSize,
 		TCPReceiveBufferSize: n.config.tcpReceiveBufferSize,

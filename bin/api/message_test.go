@@ -125,7 +125,19 @@ func TestRequiresMutationLease(t *testing.T) {
 	if RequiresMutationLease(SurfaceEngine, string(MethodEngineWorkspaceSnapshot)) {
 		t.Fatal("workspace_snapshot should not require mutation lease")
 	}
+	if RequiresMutationLease(SurfaceEngine, string(MethodEngineWorkersSnapshot)) {
+		t.Fatal("workers_snapshot should not require mutation lease")
+	}
 	if RequiresMutationLease(SurfaceAdmin, string(MethodAdminPing)) {
 		t.Fatal("admin ping should not require mutation lease")
 	}
+}
+
+func TestEngineMethodsIncludesWorkersSnapshot(t *testing.T) {
+	for _, method := range EngineMethods() {
+		if method == string(MethodEngineWorkersSnapshot) {
+			return
+		}
+	}
+	t.Fatal("EngineMethods does not include workers_snapshot")
 }

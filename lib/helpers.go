@@ -8,6 +8,7 @@ import (
 	"github.com/asciimoth/bufpool"
 	"github.com/asciimoth/formular"
 	"github.com/asciimoth/gonnect"
+	"github.com/asciimoth/pasta/pasta"
 )
 
 func enginePool(e *engine) bufpool.Pool {
@@ -54,13 +55,16 @@ type restartableWorker struct {
 	done chan struct{}
 }
 
-func newRestartableWorker(run func(stop <-chan struct{})) *restartableWorker {
+func newRestartableWorker(spawner pasta.NodeWorkerSpawner, run func(stop <-chan struct{}), name string) (*restartableWorker, error) {
 	worker := &restartableWorker{stop: make(chan struct{}), done: make(chan struct{})}
-	go func() {
+	if _, err := spawner.Spawn(func() {
 		defer close(worker.done)
 		run(worker.stop)
-	}()
-	return worker
+	}, name); err != nil {
+		close(worker.done)
+		return nil, err
+	}
+	return worker, nil
 }
 
 func (w *restartableWorker) Stop() {

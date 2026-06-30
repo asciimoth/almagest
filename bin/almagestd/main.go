@@ -53,7 +53,7 @@ func main() {
 	admin.projectVersionStatus = projectVersionStatus
 	defer admin.Stop()
 
-	logf := NewLogFactory(conf.LogCache())
+	logf := NewLogFactory(conf.LogCache().MergeArgs(&args))
 	logProjectVersionStatus(admin.projectVersionStatus)
 	daemonLogger := logf.DaemonLogger()
 

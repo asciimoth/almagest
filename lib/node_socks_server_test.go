@@ -126,11 +126,13 @@ func TestParseSocksServerUsersKeepsAppliedRemoval(t *testing.T) {
 func TestSocksServerEnsureWorkerStartedKeepsRunningWorker(t *testing.T) {
 	started := make(chan struct{})
 	stopped := make(chan struct{})
-	worker := newRestartableWorker(func(stop <-chan struct{}) {
+	worker := &restartableWorker{stop: make(chan struct{}), done: make(chan struct{})}
+	go func() {
+		defer close(worker.done)
 		close(started)
-		<-stop
+		<-worker.stop
 		close(stopped)
-	})
+	}()
 	<-started
 	t.Cleanup(func() {
 		select {

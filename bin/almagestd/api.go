@@ -16,6 +16,7 @@ import (
 	"github.com/asciimoth/almagest/lib"
 	"github.com/asciimoth/gonnect/protected"
 	"github.com/asciimoth/gonnect/sysnet"
+	"github.com/asciimoth/pasta/pasta"
 	"github.com/kataras/golog"
 )
 
@@ -305,6 +306,17 @@ func (s *apiSession) handleEngineMessage(msg api.Message) (api.Message, error) {
 		}
 		return api.NewResponse(msg.ID, api.WorkspaceSnapshotResponse{Snapshot: snapshot})
 
+	case api.MethodEngineWorkersSnapshot:
+		req, err := decodePayload[api.WorkspaceRequest](msg)
+		if err != nil {
+			return newRequestError(msg.ID, api.ErrorInvalidPayload, err.Error())
+		}
+		snapshot, ok := s.engine.WorkspaceSnapshot(req.Workspace)
+		if !ok {
+			return newRequestError(msg.ID, api.ErrorNotFound, "workspace was not found")
+		}
+		return api.NewResponse(msg.ID, workersSnapshotResponse(snapshot))
+
 	case api.MethodEngineNodeClassSnapshot:
 		req, err := decodePayload[api.ClassRequest](msg)
 		if err != nil {
@@ -508,6 +520,27 @@ func (s *apiSession) handleEngineMessage(msg api.Message) (api.Message, error) {
 
 	default:
 		return newRequestError(msg.ID, api.ErrorInvalidMethod, "api method is not implemented")
+	}
+}
+
+// workersSnapshotResponse trims a full workspace snapshot down to worker-system
+// diagnostics. The node map intentionally keeps only live worker parents, which
+// lets clients distinguish placeholders from workers whose parent node is gone.
+func workersSnapshotResponse(snapshot pasta.WorkspaceSnapshot) api.WorkersSnapshotResponse {
+	nodes := make(map[uint64]pasta.NodeSnapshot)
+	for _, worker := range snapshot.Workers {
+		node, ok := snapshot.Nodes[worker.Node]
+		if !ok {
+			continue
+		}
+		nodes[worker.Node] = node
+	}
+	if snapshot.Workers == nil {
+		snapshot.Workers = map[uint64]pasta.WorkerSnapshot{}
+	}
+	return api.WorkersSnapshotResponse{
+		Nodes:   nodes,
+		Workers: snapshot.Workers,
 	}
 }
 

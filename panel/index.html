@@ -20,6 +20,7 @@
         </div>
         <nav class="tabs" aria-label="Admin tabs">
           <button class="active" data-tab="graph" type="button">Graph</button>
+          <button data-tab="ps" type="button">Ps</button>
           <button data-tab="logs" type="button">Logs</button>
           <button data-tab="config" type="button">Config</button>
         </nav>
@@ -32,6 +33,10 @@
 
       <section class="panel hidden logs-panel" data-panel="logs">
         <ol id="logs-list" aria-label="Merged logs"></ol>
+      </section>
+
+      <section class="panel hidden ps-panel" data-panel="ps">
+        <ol id="ps-list" aria-label="Workers by node"></ol>
       </section>
 
       <section class="panel hidden config-panel" data-panel="config">

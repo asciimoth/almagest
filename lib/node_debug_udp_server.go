@@ -206,9 +206,13 @@ func (n *udpPingServerNode) restartWorker() {
 }
 
 func (n *udpPingServerNode) startWorker(cfg udpPingConfig, netw NetworkCloser) {
-	n.worker = newRestartableWorker(func(stop <-chan struct{}) {
+	worker, err := n.NewRestartableWorker("udp ping server", func(stop <-chan struct{}) {
 		runUDPPingServerWorker(n.engine.ctx, n.logger, n.w, n.id, stop, cfg, netw)
 	})
+	if err != nil {
+		return
+	}
+	n.worker = worker
 }
 
 func (n *udpPingServerNode) stopWorker() {

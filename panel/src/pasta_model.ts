@@ -45,11 +45,23 @@ export type LinkSnapshot = {
   right_port_node: ID;
 };
 
+export type WorkerSnapshot = {
+  id: ID;
+  node: ID;
+  class: string;
+  name: string;
+  worker_name?: string;
+  started_at: string;
+  orphan: boolean;
+  error?: string;
+};
+
 export type WorkspaceSnapshot = {
   classes: Record<string, NodeClassSnapshot>;
   nodes: Record<string, NodeSnapshot>;
   ports: Record<string, PortSnapshot>;
   links: Record<string, LinkSnapshot>;
+  workers: Record<string, WorkerSnapshot>;
 };
 
 export type WorkspaceNotification = {
@@ -61,6 +73,7 @@ export type WorkspaceNotification = {
   node?: NodeSnapshot;
   port?: PortSnapshot;
   link?: LinkSnapshot;
+  worker?: WorkerSnapshot;
   formular?: unknown;
 };
 
@@ -76,11 +89,13 @@ export type TypeColor = {
 const loadedTypeColors: Record<string, TypeColor> = {};
 
 export function emptySnapshot(): WorkspaceSnapshot {
-  return { classes: {}, nodes: {}, ports: {}, links: {} };
+  return { classes: {}, nodes: {}, ports: {}, links: {}, workers: {} };
 }
 
 export function cloneSnapshot(snapshot: WorkspaceSnapshot): WorkspaceSnapshot {
-  return JSON.parse(JSON.stringify(snapshot)) as WorkspaceSnapshot;
+  const cloned = JSON.parse(JSON.stringify(snapshot)) as WorkspaceSnapshot;
+  cloned.workers ??= {};
+  return cloned;
 }
 
 export function applyNotification(
@@ -121,6 +136,13 @@ export function applyNotification(
       break;
     case "link_removed":
       if (id) delete next.links[id];
+      break;
+    case "worker_spawned":
+      if (id && notification.worker) next.workers[id] = notification.worker;
+      break;
+    case "worker_stopped":
+    case "worker_failed":
+      if (id) delete next.workers[id];
       break;
   }
   return next;

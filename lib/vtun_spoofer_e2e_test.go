@@ -213,7 +213,7 @@ func setupVTunSpooferE2E(t *testing.T) vtunSpooferE2EFixture {
 func newVTunSpooferConfigE2E(t *testing.T, cfg configer.Config) *httpE2E {
 	t.Helper()
 	pool := newE2ETestDebugPool(t)
-	logf := NewDebugLogFactory(4096)
+	logf := NewDebugLogFactory(16384)
 	engine, err := BuildEngine(
 		context.Background(),
 		cfg,

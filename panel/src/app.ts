@@ -20,18 +20,23 @@ import {
   type NodePopup,
   type NodeSnapshot,
   type PortSnapshot,
+  type WorkerSnapshot,
   type WorkspaceNotification,
   type WorkspaceSnapshot,
 } from "./pasta_model.js";
 import {
   createClassButtonContent,
   createEmptyLogItem,
+  createEmptyWorkerItem,
   createLogItem,
   createNodeNameForm,
   createNotificationToast,
+  createWorkerNodeBlock,
   renderNodeDescription,
   shortClass,
   textElement,
+  updateWorkerAgeElements,
+  type WorkerNodeBlock,
   type ClassPreviewPort,
 } from "./safe_dom.js";
 
@@ -113,6 +118,7 @@ declare global {
       snapshot(): WorkspaceSnapshot;
       selectNode(id: number): void;
       selectNodes(ids: number[]): void;
+      workers(): Record<string, WorkerSnapshot>;
       renameNode(id: number, name: string): void;
       moveNode(id: number, x: number, y: number): void;
       canConnect(from: number, to: number): boolean;
@@ -130,6 +136,7 @@ let rendering = false;
 let selectedMenu: { node: ID; menu: FormularMenuInstance } | null = null;
 let activeTab = "graph";
 let sidekickUpdate = 0;
+let workerAgeTimer = 0;
 let graphResizeObserver: ResizeObserver | null = null;
 let localClipboard = "";
 let socket: WebSocket | null = null;
@@ -153,6 +160,8 @@ const el = {
   panels: [...document.querySelectorAll<HTMLElement>("[data-panel]")],
   graphCanvas: document.querySelector<HTMLCanvasElement>("#graph-canvas")!,
   sidekick: document.querySelector<HTMLElement>("#sidekick")!,
+  psPanel: document.querySelector<HTMLElement>("[data-panel='ps']")!,
+  ps: document.querySelector<HTMLElement>("#ps-list")!,
   logsPanel: document.querySelector<HTMLElement>("[data-panel='logs']")!,
   logs: document.querySelector<HTMLElement>("#logs-list")!,
   notifications: document.querySelector<HTMLElement>("#notifications"),
@@ -305,6 +314,8 @@ function handleEngineNotification(event: EngineNotificationEvent): void {
   if (notification.kind === "colormap" && notification.colormap) {
     applyTypePalette(notification.colormap);
     renderGraph();
+    renderWorkers();
+    updateWorkerAgeTimer();
     updateSidekick();
     return;
   }
@@ -316,8 +327,18 @@ function handleEngineNotification(event: EngineNotificationEvent): void {
     feedMenu(workspaceNotification);
   } else {
     snapshot = applyNotification(snapshot, workspaceNotification);
-    renderGraph();
+    if (!isWorkerNotification(workspaceNotification)) {
+      renderGraph();
+    }
+    renderWorkers();
+    updateWorkerAgeTimer();
   }
+}
+
+function isWorkerNotification(notification: WorkspaceNotification): boolean {
+  return notification.kind === "worker_spawned" ||
+    notification.kind === "worker_stopped" ||
+    notification.kind === "worker_failed";
 }
 
 function applyTypePalette(colormap: Record<string, TypePalette>): void {
@@ -1144,6 +1165,8 @@ async function requestSnapshot(): Promise<void> {
   if (next) {
     snapshot = next;
     renderGraph();
+    renderWorkers();
+    updateWorkerAgeTimer();
   }
 }
 
@@ -1156,6 +1179,113 @@ function renderLogs(): void {
   const rows = [...frontendLogs].reverse();
   for (const row of rows) {
     el.logs.append(createLogItem(row));
+  }
+}
+
+type PsScrollAnchor = {
+  nodeID: string;
+  offsetTop: number;
+  previousHeight: number;
+  previousTop: number;
+  pinToTop: boolean;
+};
+
+function renderWorkers(): void {
+  const anchor = capturePsScrollAnchor();
+  el.ps.replaceChildren();
+  const blocks = workerNodeBlocks();
+  if (!blocks.length) {
+    el.ps.append(createEmptyWorkerItem());
+  } else {
+    const now = new Date();
+    for (const block of blocks) {
+      el.ps.append(createWorkerNodeBlock(block, now));
+    }
+  }
+  restorePsScrollAnchor(anchor);
+}
+
+function updateWorkerAges(): void {
+  updateWorkerAgeElements(el.ps, new Date());
+}
+
+function workerNodeBlocks(): WorkerNodeBlock[] {
+  const byNode = new Map<number, WorkerSnapshot[]>();
+  for (const worker of Object.values(snapshot.workers ?? {})) {
+    const workers = byNode.get(worker.node) ?? [];
+    workers.push(worker);
+    byNode.set(worker.node, workers);
+  }
+
+  return [...byNode.entries()]
+    .sort(([left], [right]) => left - right)
+    .map(([nodeID, workers]) => {
+      workers.sort((left, right) => left.id - right.id);
+      const node = snapshot.nodes[String(nodeID)];
+      const fallback = workers[0];
+      const primaryType = node?.primary_type || snapshot.classes[fallback.class]?.primary_type || "";
+      const color = primaryType ? typeColor(primaryType) : null;
+      return {
+        nodeID,
+        node,
+        fallbackClass: fallback.class,
+        fallbackName: fallback.name,
+        workers,
+        color: color?.color,
+        textColor: color?.textColor,
+      };
+    });
+}
+
+// Preserve the first visible node block across replacement renders. This keeps
+// the Ps list from jumping when worker notifications insert or remove blocks
+// above the current viewport.
+function capturePsScrollAnchor(): PsScrollAnchor {
+  const panel = el.psPanel;
+  const panelTop = panel.getBoundingClientRect().top;
+  for (const block of el.ps.querySelectorAll<HTMLElement>(".ps-node-block")) {
+    const rect = block.getBoundingClientRect();
+    if (rect.bottom >= panelTop) {
+      return {
+        nodeID: block.dataset.nodeId ?? "",
+        offsetTop: rect.top - panelTop,
+        previousHeight: panel.scrollHeight,
+        previousTop: panel.scrollTop,
+        pinToTop: panel.scrollTop <= 2,
+      };
+    }
+  }
+  return {
+    nodeID: "",
+    offsetTop: 0,
+    previousHeight: panel.scrollHeight,
+    previousTop: panel.scrollTop,
+    pinToTop: panel.scrollTop <= 2,
+  };
+}
+
+function restorePsScrollAnchor(anchor: PsScrollAnchor): void {
+  const panel = el.psPanel;
+  if (anchor.pinToTop) {
+    panel.scrollTop = 0;
+    return;
+  }
+  const block = anchor.nodeID ? el.ps.querySelector<HTMLElement>(`.ps-node-block[data-node-id="${anchor.nodeID}"]`) : null;
+  if (block) {
+    const nextOffset = block.getBoundingClientRect().top - panel.getBoundingClientRect().top;
+    panel.scrollTop += nextOffset - anchor.offsetTop;
+    return;
+  }
+  panel.scrollTop = anchor.previousTop + (panel.scrollHeight - anchor.previousHeight);
+}
+
+function updateWorkerAgeTimer(): void {
+  const shouldRun = activeTab === "ps" && Object.keys(snapshot.workers ?? {}).length > 0;
+  if (shouldRun && !workerAgeTimer) {
+    workerAgeTimer = window.setInterval(updateWorkerAges, 1000);
+  } else if (!shouldRun && workerAgeTimer) {
+    window.clearInterval(workerAgeTimer);
+    workerAgeTimer = 0;
   }
 }
 
@@ -1212,7 +1342,9 @@ function setTab(name: string): void {
   for (const tab of el.tabs) tab.classList.toggle("active", tab.dataset.tab === name);
   for (const panel of el.panels) panel.classList.toggle("hidden", panel.dataset.panel !== name);
   if (name === "logs") renderLogs();
+  if (name === "ps") renderWorkers();
   if (name === "graph") setTimeout(resizeGraphCanvas, 0);
+  updateWorkerAgeTimer();
 }
 
 function graphKeydown(event: KeyboardEvent): void {
@@ -1382,6 +1514,7 @@ function installTestHooks(): void {
       selectGraphNodes(ids);
       updateSidekick();
     },
+    workers: () => snapshot.workers,
     renameNode: (id: number, name: string) => {
       void tryBackend("setNodeName", { id, name });
     },

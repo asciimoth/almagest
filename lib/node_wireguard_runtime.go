@@ -179,14 +179,16 @@ func (n *wireGuardNode) notifyReceiveError(dev *wgdevice.Device, err error) {
 		intentionalClose = trackedErr.intentionalClose
 		err = trackedErr.err
 	}
-	go n.sendInternal(wireGuardReceiveErrorMessage{
-		dev:                dev,
-		generation:         n.currentRuntimeGeneration(),
-		bindGeneration:     bindGeneration,
-		bindOpenGeneration: bindOpenGeneration,
-		intentionalClose:   intentionalClose,
-		err:                err,
-	})
+	go func() {
+		n.sendInternal(wireGuardReceiveErrorMessage{
+			dev:                dev,
+			generation:         n.currentRuntimeGeneration(),
+			bindGeneration:     bindGeneration,
+			bindOpenGeneration: bindOpenGeneration,
+			intentionalClose:   intentionalClose,
+			err:                err,
+		})
+	}()
 }
 func (n *wireGuardNode) handleReceiveError(msg wireGuardReceiveErrorMessage) {
 	if msg.dev == nil || msg.err == nil {
@@ -426,7 +428,9 @@ func (n *wireGuardNode) queueRuntimeStats(dev *wgdevice.Device, stats wgdevice.R
 	}
 	n.runtimeStatsQueued = true
 	n.statsMu.Unlock()
-	go n.sendInternal(wireGuardRuntimeStatsMessage{dev: dev})
+	go func() {
+		n.sendInternal(wireGuardRuntimeStatsMessage{dev: dev})
+	}()
 }
 
 // takeRuntimeStats consumes the latest coalesced stats only after the inbox

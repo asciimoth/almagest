@@ -37,6 +37,68 @@ func TestConfigSaveIdleNonPositiveUsesDefault(t *testing.T) {
 	}
 }
 
+func TestLogCacheConfigured(t *testing.T) {
+	cfg, err := ParseConfig([]byte(`{
+		"Logs": {
+			"Cache": {
+				"Debug": 1001,
+				"Info": 1002,
+				"Warn": 1003,
+				"Error": 1004,
+				"Fatal": 1005
+			}
+		}
+	}`), []byte(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := LogCacheConfig{
+		Debug: 1001,
+		Info:  1002,
+		Warn:  1003,
+		Error: 1004,
+		Fatal: 1005,
+	}
+	if got := cfg.LogCache(); got != want {
+		t.Fatalf("LogCache() = %#v, want %#v", got, want)
+	}
+}
+
+func TestLogCacheMergeArgsOverridesConfig(t *testing.T) {
+	cfg, err := ParseConfig([]byte(`{
+		"Logs": {
+			"Cache": {
+				"Debug": 1001,
+				"Info": 1002,
+				"Warn": 1003,
+				"Error": 1004,
+				"Fatal": 1005
+			}
+		}
+	}`), []byte(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	debug := 2001
+	warn := -1
+	fatal := 2005
+	got := cfg.LogCache().MergeArgs(&args.Args{
+		LogCacheDebug: &debug,
+		LogCacheWarn:  &warn,
+		LogCacheFatal: &fatal,
+	})
+	want := LogCacheConfig{
+		Debug: 2001,
+		Info:  1002,
+		Warn:  0,
+		Error: 1004,
+		Fatal: 2005,
+	}
+	if got != want {
+		t.Fatalf("LogCache().MergeArgs() = %#v, want %#v", got, want)
+	}
+}
+
 func TestProtectedConfigWebFilters(t *testing.T) {
 	cfg, err := ParseConfig([]byte(`{}`), []byte(`{
 		"Admin": {

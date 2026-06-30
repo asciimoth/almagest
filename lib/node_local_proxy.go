@@ -243,9 +243,13 @@ func (n *localProxyNode) restartWorker() {
 
 func (n *localProxyNode) startWorker(cfg socksServerWorkerConfig) {
 	n.logger.Debug("local proxy worker starting")
-	n.worker = newRestartableWorker(func(stop <-chan struct{}) {
-		runSocksServerWorker(n.engine.ctx, n.logger, n.w, n.id, stop, cfg)
+	worker, err := n.NewRestartableWorker("local proxy", func(stop <-chan struct{}) {
+		runSocksServerWorker(n.engine.ctx, n.logger, n.w, n.id, stop, cfg, n.workerSpawner)
 	})
+	if err != nil {
+		return
+	}
+	n.worker = worker
 }
 
 func (n *localProxyNode) stopWorker() {

@@ -66,7 +66,7 @@ func TestLocalProxyE2EUserPassAuth(t *testing.T) {
 func newLocalProxyE2E(t *testing.T) *localProxyE2E {
 	t.Helper()
 	pool := newE2ETestDebugPool(t)
-	logf := NewDebugLogFactory(4096)
+	logf := NewDebugLogFactory(16384)
 	sys := newE2EDebugSystem()
 	engine, err := BuildEngine(
 		context.Background(),

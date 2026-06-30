@@ -30,10 +30,14 @@ func (n *httpClientNode) startWorker() {
 	if n.jobs != nil || n.stop != nil {
 		return
 	}
-	n.jobs = make(chan httpClientRequest, 1)
-	n.stop = make(chan struct{})
+	jobs := make(chan httpClientRequest, 1)
+	stop := make(chan struct{})
+	n.jobs = jobs
+	n.stop = stop
 	n.logger.Debug("worker started")
-	go runHTTPClientWorker(n.engine.ctx, n.logger, n.w, n.id, n.jobs, n.stop)
+	_ = n.SpawnWorker("http client", func() {
+		runHTTPClientWorker(n.engine.ctx, n.logger, n.w, n.id, jobs, stop)
+	})
 }
 
 func (n *httpClientNode) stopWorker() {

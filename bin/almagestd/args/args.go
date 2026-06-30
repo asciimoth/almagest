@@ -18,6 +18,12 @@ type Args struct {
 
 	LogLevel string `arg:"-l,--lvl,env:ALMAGEST_LOG_LVL" help:"logging level debug|info|warn|error|fatal"`
 
+	LogCacheDebug *int `arg:"--log-cache-debug,env:ALMAGEST_LOG_CACHE_DEBUG" help:"daemon debug log cache size"`
+	LogCacheInfo  *int `arg:"--log-cache-info,env:ALMAGEST_LOG_CACHE_INFO" help:"daemon info log cache size"`
+	LogCacheWarn  *int `arg:"--log-cache-warn,env:ALMAGEST_LOG_CACHE_WARN" help:"daemon warn log cache size"`
+	LogCacheError *int `arg:"--log-cache-error,env:ALMAGEST_LOG_CACHE_ERROR" help:"daemon error log cache size"`
+	LogCacheFatal *int `arg:"--log-cache-fatal,env:ALMAGEST_LOG_CACHE_FATAL" help:"daemon fatal log cache size"`
+
 	WebAdmin                *uint16  `arg:"-w,--web,env:ALMAGEST_WEB_ADMIN" help:"port to run local web admin panel on"`
 	WebAdminFilterUIDs      []uint32 `arg:"--web-filter-uid,separate,env:ALMAGEST_WEB_ADMIN_FILTER_UIDS" help:"allowed web admin peer owner UID; repeat flag or comma-separate env values"`
 	WebAdminFilterGIDs      []uint32 `arg:"--web-filter-gid,separate,env:ALMAGEST_WEB_ADMIN_FILTER_GIDS" help:"allowed web admin peer owner GID; repeat flag or comma-separate env values"`

@@ -9,10 +9,11 @@ import (
 	"sync"
 
 	"github.com/asciimoth/gonnect"
+	"github.com/asciimoth/pasta/pasta"
 	"gvisor.dev/gvisor/pkg/tcpip/stack"
 )
 
-func forwardSpooferTCP(ctx context.Context, network NetworkCloser, c net.Conn, ep stack.TransportEndpointID) {
+func forwardSpooferTCP(ctx context.Context, spawner pasta.NodeWorkerSpawner, network NetworkCloser, c net.Conn, ep stack.TransportEndpointID) {
 	target, ok := spooferEndpointAddress(ep)
 	if !ok || network == nil {
 		_ = c.Close()
@@ -27,17 +28,23 @@ func forwardSpooferTCP(ctx context.Context, network NetworkCloser, c net.Conn, e
 		_ = c.Close()
 		_ = upstream.Close()
 	})
-	go func() {
+	if _, err := spawner.Spawn(func() {
 		_, _ = io.Copy(upstream, c)
 		closeBoth()
-	}()
-	go func() {
+	}, "spoofer tcp upstream"); err != nil {
+		closeBoth()
+		return
+	}
+	if _, err := spawner.Spawn(func() {
 		_, _ = io.Copy(c, upstream)
 		closeBoth()
-	}()
+	}, "spoofer tcp downstream"); err != nil {
+		closeBoth()
+		return
+	}
 }
 
-func forwardSpooferUDP(ctx context.Context, network NetworkCloser, c gonnect.PacketConn, ep stack.TransportEndpointID) {
+func forwardSpooferUDP(ctx context.Context, spawner pasta.NodeWorkerSpawner, network NetworkCloser, c gonnect.PacketConn, ep stack.TransportEndpointID) {
 	target, ok := spooferEndpointUDPAddr(ep)
 	if !ok || network == nil {
 		_ = c.Close()
@@ -52,7 +59,7 @@ func forwardSpooferUDP(ctx context.Context, network NetworkCloser, c gonnect.Pac
 		_ = c.Close()
 		_ = upstream.Close()
 	})
-	go func() {
+	if _, err := spawner.Spawn(func() {
 		defer closeBoth()
 		buf := make([]byte, 64*1024)
 		for {
@@ -64,8 +71,11 @@ func forwardSpooferUDP(ctx context.Context, network NetworkCloser, c gonnect.Pac
 				return
 			}
 		}
-	}()
-	go func() {
+	}, "spoofer udp upstream"); err != nil {
+		closeBoth()
+		return
+	}
+	if _, err := spawner.Spawn(func() {
 		defer closeBoth()
 		buf := make([]byte, 64*1024)
 		for {
@@ -77,7 +87,10 @@ func forwardSpooferUDP(ctx context.Context, network NetworkCloser, c gonnect.Pac
 				return
 			}
 		}
-	}()
+	}, "spoofer udp downstream"); err != nil {
+		closeBoth()
+		return
+	}
 }
 
 func spooferEndpointAddress(ep stack.TransportEndpointID) (string, bool) {

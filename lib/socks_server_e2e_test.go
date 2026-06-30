@@ -128,7 +128,7 @@ func newSocksServerE2E(t *testing.T) *socksServerE2E {
 func newNativeSocksServerE2E(t *testing.T) *socksServerE2E {
 	t.Helper()
 	pool := newE2ETestDebugPool(t)
-	logf := NewDebugLogFactory(4096)
+	logf := NewDebugLogFactory(16384)
 	engine, err := BuildEngine(
 		context.Background(),
 		configer.NewMemory(nil),

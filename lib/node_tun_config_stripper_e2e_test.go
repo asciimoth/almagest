@@ -90,7 +90,7 @@ func newTunConfigStripperConfigE2E(t *testing.T) (*NodeE2E, *tunConfigRecorderRe
 	t.Helper()
 
 	pool := newE2ETestDebugPool(t)
-	logf := NewDebugLogFactory(4096)
+	logf := NewDebugLogFactory(16384)
 	sys := newE2EDebugSystem()
 	recorders := newTunConfigRecorderRegistry()
 	engine, err := BuildEngine(

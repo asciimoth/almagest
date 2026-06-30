@@ -245,7 +245,7 @@ func newUDPPingSocksFixture(t *testing.T, query string) *udpPingSocksFixture {
 
 func newUDPPingSocksE2E(t *testing.T) *NodeE2E {
 	t.Helper()
-	logf := NewDebugLogFactory(4096)
+	logf := NewDebugLogFactory(16384)
 	sys := newE2EDebugSystem()
 	engine, err := BuildEngine(
 		context.Background(),

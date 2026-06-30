@@ -199,7 +199,7 @@ func TestNetworkRouterE2ECopyPaste(t *testing.T) {
 func newNetworkRouterLocalProxyE2E(t *testing.T, cfg configer.Config) (*httpE2E, *sysnetdebug.System) {
 	t.Helper()
 	pool := newE2ETestDebugPool(t)
-	logf := NewDebugLogFactory(4096)
+	logf := NewDebugLogFactory(16384)
 	sys := newE2EDebugSystem()
 	engine, err := BuildEngine(
 		context.Background(),
@@ -266,7 +266,7 @@ func setupNetworkRouterE2E(t *testing.T) networkRouterE2EFixture {
 func newNetworkRouterConfigE2E(t *testing.T, cfg configer.Config) *httpE2E {
 	t.Helper()
 	pool := newE2ETestDebugPool(t)
-	logf := NewDebugLogFactory(4096)
+	logf := NewDebugLogFactory(16384)
 	engine, err := BuildEngine(
 		context.Background(),
 		cfg,

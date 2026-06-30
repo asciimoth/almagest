@@ -12,6 +12,11 @@ ALMAGEST_E2E_TIMEOUT="${ALMAGEST_E2E_TIMEOUT:-20}"
 # Bound shared CLI calls so admin/socket stalls fail the case with logs instead
 # of hanging the whole e2e run.
 ALMAGEST_E2E_CLI_TIMEOUT="${ALMAGEST_E2E_CLI_TIMEOUT:-5}"
+ALMAGEST_E2E_LOG_CACHE_DEBUG="${ALMAGEST_E2E_LOG_CACHE_DEBUG:-16384}"
+ALMAGEST_E2E_LOG_CACHE_INFO="${ALMAGEST_E2E_LOG_CACHE_INFO:-4096}"
+ALMAGEST_E2E_LOG_CACHE_WARN="${ALMAGEST_E2E_LOG_CACHE_WARN:-4096}"
+ALMAGEST_E2E_LOG_CACHE_ERROR="${ALMAGEST_E2E_LOG_CACHE_ERROR:-2048}"
+ALMAGEST_E2E_LOG_CACHE_FATAL="${ALMAGEST_E2E_LOG_CACHE_FATAL:-512}"
 
 log() {
 	printf '[%s] %s\n' "$E2E_CASE" "$*" >&2
@@ -58,6 +63,11 @@ start_daemon() {
 		-l debug \
 		--debug-nodes \
 		--unsafe-config \
+		--log-cache-debug "$ALMAGEST_E2E_LOG_CACHE_DEBUG" \
+		--log-cache-info "$ALMAGEST_E2E_LOG_CACHE_INFO" \
+		--log-cache-warn "$ALMAGEST_E2E_LOG_CACHE_WARN" \
+		--log-cache-error "$ALMAGEST_E2E_LOG_CACHE_ERROR" \
+		--log-cache-fatal "$ALMAGEST_E2E_LOG_CACHE_FATAL" \
 		--unix "$E2E_ADMIN_SOCK" \
 		--web 0 \
 		>"$E2E_DAEMON_LOG" 2>&1 &

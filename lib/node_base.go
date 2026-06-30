@@ -15,6 +15,8 @@ type NodeBase struct {
 	logger pasta.Logger
 	w      *pasta.Workspace
 	id     uint64
+
+	workerSpawner pasta.NodeWorkerSpawner
 }
 
 // InitBaseNode stores runtime handles provided by a node's OnInit callback.
@@ -22,6 +24,33 @@ func (b *NodeBase) InitBaseNode(w *pasta.Workspace, logger pasta.Logger, id uint
 	b.w = w
 	b.logger = logger
 	b.id = id
+	if w != nil && id != 0 {
+		b.workerSpawner = w.Spawner(id)
+	}
+}
+
+// SpawnWorker runs worker as a pasta-tracked background worker owned by this
+// node. Use tracked workers by default for runtime work that may live for a
+// while, owns resources, serves traffic, forwards data, or needs shutdown/debug
+// visibility. Plain goroutines are still appropriate for short helper tasks
+// whose lifetime is bounded by generation checks, context, or explicit
+// cancellation.
+func (b *NodeBase) SpawnWorker(name string, worker func()) error {
+	_, err := b.workerSpawner.Spawn(worker, name)
+	if err != nil && b.logger != nil {
+		b.logger.Errf("failed to spawn node worker %q: %v", name, err)
+	}
+	return err
+}
+
+// NewRestartableWorker runs run as a pasta-tracked restartable worker owned by
+// this node.
+func (b *NodeBase) NewRestartableWorker(name string, run func(stop <-chan struct{})) (*restartableWorker, error) {
+	worker, err := newRestartableWorker(b.workerSpawner, run, name)
+	if err != nil && b.logger != nil {
+		b.logger.Errf("failed to spawn node worker %q: %v", name, err)
+	}
+	return worker, err
 }
 
 // RequestPort sends std.Request on every link attached to port.

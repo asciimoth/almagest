@@ -147,9 +147,13 @@ func (n *socksServerNode) workerConfig() socksServerWorkerConfig {
 
 func (n *socksServerNode) startWorker(cfg socksServerWorkerConfig) {
 	n.logger.Debug("socks worker starting")
-	n.worker = newRestartableWorker(func(stop <-chan struct{}) {
-		runSocksServerWorker(n.engine.ctx, n.logger, n.w, n.id, stop, cfg)
+	worker, err := n.NewRestartableWorker("socks server", func(stop <-chan struct{}) {
+		runSocksServerWorker(n.engine.ctx, n.logger, n.w, n.id, stop, cfg, n.workerSpawner)
 	})
+	if err != nil {
+		return
+	}
+	n.worker = worker
 }
 
 func (n *socksServerNode) stopWorker() {
@@ -160,7 +164,7 @@ func (n *socksServerNode) stopWorker() {
 	}
 }
 
-func runSocksServerWorker(ctx context.Context, logger pasta.Logger, w *pasta.Workspace, node uint64, stop <-chan struct{}, cfg socksServerWorkerConfig) {
+func runSocksServerWorker(ctx context.Context, logger pasta.Logger, w *pasta.Workspace, node uint64, stop <-chan struct{}, cfg socksServerWorkerConfig, spawner pasta.NodeWorkerSpawner) {
 	for {
 		select {
 		case <-stop:
@@ -178,7 +182,7 @@ func runSocksServerWorker(ctx context.Context, logger pasta.Logger, w *pasta.Wor
 			continue
 		}
 
-		err := runSocksServerOnce(ctx, logger, w, node, stop, cfg)
+		err := runSocksServerOnce(ctx, logger, w, node, stop, cfg, spawner)
 		if err != nil {
 			logger.Debugf("socks server stopped: %v", err)
 			sendSocksServerLog(w, node, formular.LogDebug, "server stopped: "+err.Error())
@@ -190,7 +194,7 @@ func runSocksServerWorker(ctx context.Context, logger pasta.Logger, w *pasta.Wor
 	}
 }
 
-func runSocksServerOnce(ctx context.Context, logger pasta.Logger, w *pasta.Workspace, node uint64, stop <-chan struct{}, cfg socksServerWorkerConfig) error {
+func runSocksServerOnce(ctx context.Context, logger pasta.Logger, w *pasta.Workspace, node uint64, stop <-chan struct{}, cfg socksServerWorkerConfig, spawner pasta.NodeWorkerSpawner) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	go func() {
@@ -223,7 +227,14 @@ func runSocksServerOnce(ctx context.Context, logger pasta.Logger, w *pasta.Works
 		started++
 		logger.Debugf("socks listening on %s", addr)
 		sendSocksServerLog(w, node, formular.LogInfo, "socks listening on "+addr)
-		go serveSocksListener(ctx, logger, server, ln, errs)
+		if _, err := spawner.Spawn(func() {
+			serveSocksListener(ctx, logger, server, ln, errs, spawner)
+		}, "socks listener"); err != nil {
+			for _, closeFn := range closers {
+				closeFn()
+			}
+			return err
+		}
 	}
 
 	if cfg.config.wsPort > 0 {
@@ -246,12 +257,17 @@ func runSocksServerOnce(ctx context.Context, logger pasta.Logger, w *pasta.Works
 		started++
 		logger.Debugf("socks+ws listening on %s%s", addr, cfg.config.wsPath)
 		sendSocksServerLog(w, node, formular.LogInfo, "socks+ws listening on "+addr+cfg.config.wsPath)
-		go func() {
+		if _, err := spawner.Spawn(func() {
 			err := httpServer.Serve(ln)
 			if err != nil && !errors.Is(err, http.ErrServerClosed) {
 				errs <- err
 			}
-		}()
+		}, "socks websocket server"); err != nil {
+			for _, closeFn := range closers {
+				closeFn()
+			}
+			return err
+		}
 	}
 
 	if started == 0 {

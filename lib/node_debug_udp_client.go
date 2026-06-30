@@ -239,9 +239,13 @@ func (n *udpPingClientNode) startWorker() {
 	if n.jobs != nil || n.stop != nil {
 		return
 	}
-	n.jobs = make(chan udpPingClientRequest, 1)
-	n.stop = make(chan struct{})
-	go runUDPPingClientWorker(n.engine.ctx, n.logger, n.w, n.id, n.jobs, n.stop)
+	jobs := make(chan udpPingClientRequest, 1)
+	stop := make(chan struct{})
+	n.jobs = jobs
+	n.stop = stop
+	_ = n.SpawnWorker("udp ping client", func() {
+		runUDPPingClientWorker(n.engine.ctx, n.logger, n.w, n.id, jobs, stop)
+	})
 }
 
 func (n *udpPingClientNode) stopWorker() {

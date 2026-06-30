@@ -62,9 +62,13 @@ func (n *httpServerNode) restartWorker() {
 
 func (n *httpServerNode) startWorker(cfg httpServerConfig) {
 	n.logger.Debugf("worker starting on %s", net.JoinHostPort(cfg.host, strconv.Itoa(cfg.port)))
-	n.worker = newRestartableWorker(func(stop <-chan struct{}) {
-		runHTTPServerWorker(n.engine.ctx, n.logger, n.w, n.id, stop, cfg)
+	worker, err := n.NewRestartableWorker("http server", func(stop <-chan struct{}) {
+		runHTTPServerWorker(n.engine.ctx, n.logger, n.w, n.id, stop, cfg, n.workerSpawner)
 	})
+	if err != nil {
+		return
+	}
+	n.worker = worker
 }
 
 func (n *httpServerNode) stopWorker() {
@@ -75,7 +79,7 @@ func (n *httpServerNode) stopWorker() {
 	}
 }
 
-func runHTTPServerWorker(ctx context.Context, logger pasta.Logger, w *pasta.Workspace, node uint64, stop <-chan struct{}, cfg httpServerConfig) {
+func runHTTPServerWorker(ctx context.Context, logger pasta.Logger, w *pasta.Workspace, node uint64, stop <-chan struct{}, cfg httpServerConfig, spawner pasta.NodeWorkerSpawner) {
 	addr := net.JoinHostPort(cfg.host, strconv.Itoa(cfg.port))
 	for {
 		select {
@@ -116,7 +120,16 @@ func runHTTPServerWorker(ctx context.Context, logger pasta.Logger, w *pasta.Work
 		})
 		server := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second}
 		serveDone := make(chan error, 1)
-		go func() { serveDone <- server.Serve(ln) }()
+		if _, err := spawner.Spawn(func() { serveDone <- server.Serve(ln) }, "http server serve"); err != nil {
+			_ = ln.Close()
+			logger.Debugf("failed to spawn server worker: %v", err)
+			sendHTTPServerLog(w, node, formular.LogWarn, "server failed: "+err.Error())
+			if !sleepOrStopped(stop, time.Second) {
+				logger.Debug("worker stopped")
+				return
+			}
+			continue
+		}
 		logger.Debugf("listening on %s", addr)
 		sendHTTPServerLog(w, node, formular.LogInfo, "listening on "+addr)
 		select {

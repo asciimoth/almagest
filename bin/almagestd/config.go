@@ -56,6 +56,28 @@ func (c *Config) LogCache() LogCacheConfig {
 	return cfg
 }
 
+func (cfg LogCacheConfig) MergeArgs(a *args.Args) LogCacheConfig {
+	if a == nil {
+		return cfg
+	}
+	if a.LogCacheDebug != nil {
+		cfg.Debug = max(*a.LogCacheDebug, 0)
+	}
+	if a.LogCacheInfo != nil {
+		cfg.Info = max(*a.LogCacheInfo, 0)
+	}
+	if a.LogCacheWarn != nil {
+		cfg.Warn = max(*a.LogCacheWarn, 0)
+	}
+	if a.LogCacheError != nil {
+		cfg.Error = max(*a.LogCacheError, 0)
+	}
+	if a.LogCacheFatal != nil {
+		cfg.Fatal = max(*a.LogCacheFatal, 0)
+	}
+	return cfg
+}
+
 func (c *Config) SaveIdle() time.Duration {
 	cfg := saveConfig{
 		IdleMilliseconds: 500,

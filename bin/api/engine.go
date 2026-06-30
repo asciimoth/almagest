@@ -17,6 +17,7 @@ const (
 	MethodEngineUnsubscribeNodeMenu      EngineMethod = "unsubscribe_node_menu"
 
 	MethodEngineWorkspaceSnapshot        EngineMethod = "workspace_snapshot"
+	MethodEngineWorkersSnapshot          EngineMethod = "workers_snapshot"
 	MethodEngineNodeClassSnapshot        EngineMethod = "node_class_snapshot"
 	MethodEngineNodeSnapshot             EngineMethod = "node_snapshot"
 	MethodEnginePortSnapshot             EngineMethod = "port_snapshot"
@@ -52,6 +53,7 @@ func EngineMethods() []string {
 		string(MethodEngineSubscribeNodeMenu),
 		string(MethodEngineUnsubscribeNodeMenu),
 		string(MethodEngineWorkspaceSnapshot),
+		string(MethodEngineWorkersSnapshot),
 		string(MethodEngineNodeClassSnapshot),
 		string(MethodEngineNodeSnapshot),
 		string(MethodEnginePortSnapshot),
@@ -218,6 +220,15 @@ type SendNodeFormularMessageRequest struct {
 
 type WorkspaceSnapshotResponse struct {
 	Snapshot pasta.WorkspaceSnapshot `json:"snapshot"`
+}
+
+// WorkersSnapshotResponse is the focused worker-system view returned by
+// workers_snapshot. Nodes contains only live parent nodes referenced by Workers;
+// missing worker parents are intentionally omitted so clients can render those
+// workers as attached to gone nodes using WorkerSnapshot.Orphan.
+type WorkersSnapshotResponse struct {
+	Nodes   map[uint64]pasta.NodeSnapshot   `json:"nodes"`
+	Workers map[uint64]pasta.WorkerSnapshot `json:"workers"`
 }
 
 type NodeClassSnapshotResponse struct {

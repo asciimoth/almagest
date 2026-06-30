@@ -63,7 +63,7 @@ func newNodeE2EWithConfig(t *testing.T, cfg configer.Config) *NodeE2E {
 	t.Helper()
 
 	pool := newE2ETestDebugPool(t)
-	logf := NewDebugLogFactory(4096)
+	logf := NewDebugLogFactory(16384)
 	sys := newE2EDebugSystem()
 	engine, err := BuildEngine(
 		context.Background(),
