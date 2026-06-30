@@ -29,6 +29,7 @@ type wireGuardRuntimeResultMessage struct {
 	retryGeneration uint64
 	checkRetry      bool
 	retryOnError    bool
+	ready           bool
 	err             error
 }
 
@@ -87,6 +88,7 @@ func (n *wireGuardNode) scheduleRuntimeWork(generation, retryGeneration uint64, 
 			retryGeneration: retryGeneration,
 			checkRetry:      checkRetry,
 			retryOnError:    retryOnError,
+			ready:           err == nil && retryOnError,
 			err:             err,
 		})
 	}()
@@ -103,6 +105,7 @@ func (n *wireGuardNode) handleRuntimeResult(msg wireGuardRuntimeResultMessage) {
 		n.failRuntime(msg.err, msg.retryOnError)
 		return
 	}
+	n.markRuntimeReady(msg.generation, msg.ready)
 	n.cancelConfigRetry()
 	n.clearRuntimeError()
 	_ = n.updateLabel()
@@ -120,6 +123,17 @@ func (n *wireGuardNode) acceptRuntimeResult(msg wireGuardRuntimeResultMessage) b
 		return false
 	}
 	return true
+}
+
+func (n *wireGuardNode) markRuntimeReady(generation uint64, active bool) {
+	if !active {
+		return
+	}
+	n.runtimeMu.Lock()
+	if generation == n.currentRuntimeGeneration() && n.hasActiveAttachmentsLocked() {
+		n.runtimeReadyGeneration = generation
+	}
+	n.runtimeMu.Unlock()
 }
 
 // sendInternal delivers node-owned messages through the workspace inbox rather
@@ -319,6 +333,7 @@ func (n *wireGuardNode) stateText() string {
 	hasTun := n.currentTun != nil
 	hasNetwork := n.currentNetwork != nil
 	bindFailed := n.currentBindFailed
+	ready := n.runtimeReadyGeneration == n.currentRuntimeGeneration() && n.hasActiveAttachmentsLocked()
 	n.runtimeMu.Unlock()
 	switch {
 	case n.formError != "":
@@ -333,6 +348,8 @@ func (n *wireGuardNode) stateText() string {
 		return "waiting for TUN"
 	case !hasNetwork:
 		return "waiting for network"
+	case !ready:
+		return "starting"
 	default:
 		return "up"
 	}

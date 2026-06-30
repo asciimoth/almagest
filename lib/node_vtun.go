@@ -62,6 +62,7 @@ type vtunNode struct {
 
 	generatedAddrs []netip.Addr
 	vtun           *netstackvtun.VTun
+	vtunRuntime    vtunRuntimeConfig
 	outputNetworks NetworkOutputCache
 	outputTuns     TunOutputCache
 	formError      string

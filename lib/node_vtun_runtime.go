@@ -3,11 +3,34 @@ package almagest
 import (
 	"net"
 	"net/netip"
+	"slices"
 	"strings"
 
 	netstackhelpers "github.com/asciimoth/gonnect-netstack/helpers"
 	netstackvtun "github.com/asciimoth/gonnect-netstack/vtun"
 )
+
+type vtunRuntimeConfig struct {
+	localAddrs     []netip.Addr
+	dnsServers     []netip.Addr
+	name           string
+	mtu            int
+	endpointCh     int
+	eventCh        int
+	noLoopbackAddr bool
+	disableSACK    bool
+}
+
+func (c vtunRuntimeConfig) equal(other vtunRuntimeConfig) bool {
+	return c.name == other.name &&
+		c.mtu == other.mtu &&
+		c.endpointCh == other.endpointCh &&
+		c.eventCh == other.eventCh &&
+		c.noLoopbackAddr == other.noLoopbackAddr &&
+		c.disableSACK == other.disableSACK &&
+		slices.Equal(c.localAddrs, other.localAddrs) &&
+		slices.Equal(c.dnsServers, other.dnsServers)
+}
 
 func (n *vtunNode) ensureVTun() error {
 	if n.vtun != nil || !n.hasAnyLink() {
@@ -25,18 +48,25 @@ func (n *vtunNode) rebuildVTunActive() error {
 }
 
 func (n *vtunNode) rebuildVTunWithActive(active bool) error {
-	n.dropVTun()
 	if !active {
+		n.dropVTun()
 		_ = n.updateLabel()
 		return nil
 	}
-	opts, err := n.buildOpts()
+	runtimeConfig, opts, err := n.buildRuntimeConfig()
 	if err != nil {
 		n.formError = err.Error()
 		n.sendForcedMenuSnapshot()
 		_ = n.updateLabel()
 		return err
 	}
+	if n.vtun != nil && n.vtunRuntime.equal(runtimeConfig) {
+		n.formError = ""
+		_ = n.updateLabel()
+		n.sendEffectiveBlock()
+		return nil
+	}
+	n.dropVTun()
 	vt, err := opts.Build()
 	if err != nil {
 		n.formError = err.Error()
@@ -46,6 +76,7 @@ func (n *vtunNode) rebuildVTunWithActive(active bool) error {
 	}
 	n.formError = ""
 	n.vtun = vt
+	n.vtunRuntime = runtimeConfig
 	_ = n.w.AddNodeResource(n.id, vt)
 	_ = n.updateLabel()
 	n.sendEffectiveBlock()
@@ -53,14 +84,14 @@ func (n *vtunNode) rebuildVTunWithActive(active bool) error {
 	return nil
 }
 
-func (n *vtunNode) buildOpts() (*netstackvtun.Opts, error) {
+func (n *vtunNode) buildRuntimeConfig() (vtunRuntimeConfig, *netstackvtun.Opts, error) {
 	localAddrs, err := n.effectiveLocalAddrs()
 	if err != nil {
-		return nil, err
+		return vtunRuntimeConfig{}, nil, err
 	}
 	dnsServers, err := parseAddrList(n.config.dnsServers, false)
 	if err != nil {
-		return nil, err
+		return vtunRuntimeConfig{}, nil, err
 	}
 	mtu := n.config.mtu
 	if mtu <= 0 && n.tunConfig.MTU > 0 {
@@ -69,7 +100,17 @@ func (n *vtunNode) buildOpts() (*netstackvtun.Opts, error) {
 	if mtu <= 0 {
 		mtu = defaultVTunMTU
 	}
-	return &netstackvtun.Opts{
+	runtimeConfig := vtunRuntimeConfig{
+		localAddrs:     slices.Clone(localAddrs),
+		dnsServers:     slices.Clone(dnsServers),
+		name:           n.config.name,
+		mtu:            mtu,
+		endpointCh:     n.config.endpointCh,
+		eventCh:        n.config.eventCh,
+		noLoopbackAddr: n.config.noLoopbackAddr,
+		disableSACK:    n.config.disableSACK,
+	}
+	return runtimeConfig, &netstackvtun.Opts{
 		EndpointCh:     n.config.endpointCh,
 		EventCh:        n.config.eventCh,
 		LocalAddrs:     localAddrs,
@@ -140,6 +181,7 @@ func (n *vtunNode) dropVTun() {
 		_ = n.vtun.Close()
 		n.vtun = nil
 	}
+	n.vtunRuntime = vtunRuntimeConfig{}
 	n.outputTuns.Wait()
 }
 

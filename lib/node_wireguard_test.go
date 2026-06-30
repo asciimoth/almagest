@@ -16,6 +16,7 @@ import (
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
 	"github.com/asciimoth/gonnect"
+	"github.com/asciimoth/gonnect/tun"
 	"github.com/asciimoth/pasta/pasta"
 	wgdevice "github.com/asciimoth/wgo/device"
 )
@@ -598,6 +599,27 @@ func TestWireGuardNetworkAttachmentDoesNotOpenSocketsUntilTunAttached(t *testing
 	})
 	if got := network.listenCount(); got != listensAfterTunDetach {
 		t.Fatalf("network listen count after TUN detach config = %d, want %d", got, listensAfterTunDetach)
+	}
+}
+
+func TestWireGuardStateDoesNotReportUpBeforeNetworkBindAttachCompletes(t *testing.T) {
+	privateKey, _ := wireGuardTestKeyPair(t, 6)
+	sourceTun, peerTun := tun.Pipe(4, 1500, 0, 0)
+	t.Cleanup(func() { _ = sourceTun.Close() })
+	t.Cleanup(func() { _ = peerTun.Close() })
+
+	n := &wireGuardNode{
+		config:     defaultWireGuardConfig(),
+		currentTun: sourceTun,
+		currentNetwork: &recordingWireGuardTestNetwork{
+			Network: gonnect.NewLoopbackNetwok(),
+		},
+	}
+	n.config.privateKey = privateKey
+	n.config.listenPort = 51820
+
+	if got := n.stateText(); got == "up" {
+		t.Fatalf("stateText() = %q with TUN and network present but no attached bind", got)
 	}
 }
 

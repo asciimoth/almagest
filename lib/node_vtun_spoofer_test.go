@@ -76,6 +76,57 @@ func TestVTunNodeEmitsNetworkAndTunAndRebuildsOnFormApply(t *testing.T) {
 	}
 }
 
+func TestVTunEquivalentTunConfigDoesNotRebuildActiveVTun(t *testing.T) {
+	w, captured := newNetstackNodeTestWorkspace(t)
+	vtunID, err := w.AddNodeByClass(NodeTypeVTun, "vtun")
+	if err != nil {
+		t.Fatalf("AddNodeByClass VTun: %v", err)
+	}
+	netReceiver := &outNetReceiver{events: make(chan NetworkPayload, 3)}
+	if _, err := w.AddNode(netReceiver, "test/NetworkReceiver", "network receiver"); err != nil {
+		t.Fatalf("AddNode network receiver: %v", err)
+	}
+	tunReceiver := &tunPayloadReceiver{events: make(chan TunPayload, 3)}
+	tunReceiverID, err := w.AddNode(tunReceiver, "test/TunReceiver", "tun receiver")
+	if err != nil {
+		t.Fatalf("AddNode tun receiver: %v", err)
+	}
+
+	vtunSnapshot := mustNodeSnapshot(t, w, vtunID)
+	if _, _, err := w.AddLink(vtunSnapshot.LeftPorts[0], netReceiver.in); err != nil {
+		t.Fatalf("AddLink network: %v", err)
+	}
+	tunLink, _, err := w.AddLink(tunReceiver.in, vtunSnapshot.RightPorts[0])
+	if err != nil {
+		t.Fatalf("AddLink tun: %v", err)
+	}
+	_ = receiveOutNetPayload(t, netReceiver.events)
+	_ = receiveTunPayload(t, tunReceiver.events)
+	assertNoOutNetEvent(t, netReceiver.events)
+
+	if captured.vtun == nil {
+		t.Fatal("captured VTun node = nil")
+	}
+	first := captured.vtun.vtun
+	if first == nil {
+		t.Fatal("VTun instance = nil after links")
+	}
+	addrs := make([]string, 0, len(captured.vtun.generatedAddrs))
+	for _, addr := range captured.vtun.generatedAddrs {
+		addrs = append(addrs, addr.String())
+	}
+	if len(addrs) == 0 {
+		t.Fatal("generatedAddrs is empty, want dynamic VTun address")
+	}
+
+	w.EmitEvent(tunReceiverID, tunLink, TunConfig{Addrs: addrs, MTU: defaultVTunMTU})
+
+	if got := captured.vtun.vtun; got != first {
+		t.Fatal("equivalent TunConfig rebuilt active VTun, want existing instance reused")
+	}
+	assertNoOutNetEvent(t, netReceiver.events)
+}
+
 func TestVTunGeneratedAddrsAreNotSaved(t *testing.T) {
 	w, captured := newNetstackNodeTestWorkspace(t)
 	state, sub := subscribeMenuState(t, w)

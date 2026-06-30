@@ -80,8 +80,9 @@ type wireGuardNode struct {
 	// Long-running runtime work must happen outside workspace callbacks, so
 	// runtimeGeneration lets async completions detect that their inputs went
 	// stale before they update status or retry state.
-	runtimeMu         sync.Mutex
-	runtimeGeneration atomic.Uint64
+	runtimeMu              sync.Mutex
+	runtimeGeneration      atomic.Uint64
+	runtimeReadyGeneration uint64
 
 	runtimeStats            wgdevice.RuntimeStats
 	unsubscribeRuntimeStats func()
