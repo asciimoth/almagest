@@ -315,7 +315,11 @@ func (s *apiSession) handleEngineMessage(msg api.Message) (api.Message, error) {
 		if !ok {
 			return newRequestError(msg.ID, api.ErrorNotFound, "workspace was not found")
 		}
-		return api.NewResponse(msg.ID, workersSnapshotResponse(snapshot))
+		workers, ok := s.engine.WorkersSnapshot(req.Workspace)
+		if !ok {
+			return newRequestError(msg.ID, api.ErrorNotFound, "workspace was not found")
+		}
+		return api.NewResponse(msg.ID, workersSnapshotResponse(snapshot.Nodes, workers))
 
 	case api.MethodEngineNodeClassSnapshot:
 		req, err := decodePayload[api.ClassRequest](msg)
@@ -523,24 +527,24 @@ func (s *apiSession) handleEngineMessage(msg api.Message) (api.Message, error) {
 	}
 }
 
-// workersSnapshotResponse trims a full workspace snapshot down to worker-system
+// workersSnapshotResponse trims workspace and worker snapshots down to worker-system
 // diagnostics. The node map intentionally keeps only live worker parents, which
 // lets clients distinguish placeholders from workers whose parent node is gone.
-func workersSnapshotResponse(snapshot pasta.WorkspaceSnapshot) api.WorkersSnapshotResponse {
+func workersSnapshotResponse(snapshotNodes map[uint64]pasta.NodeSnapshot, workers map[uint64]almagest.WorkerSnapshot) api.WorkersSnapshotResponse {
 	nodes := make(map[uint64]pasta.NodeSnapshot)
-	for _, worker := range snapshot.Workers {
-		node, ok := snapshot.Nodes[worker.Node]
+	for _, worker := range workers {
+		node, ok := snapshotNodes[worker.Node]
 		if !ok {
 			continue
 		}
 		nodes[worker.Node] = node
 	}
-	if snapshot.Workers == nil {
-		snapshot.Workers = map[uint64]pasta.WorkerSnapshot{}
+	if workers == nil {
+		workers = map[uint64]almagest.WorkerSnapshot{}
 	}
 	return api.WorkersSnapshotResponse{
 		Nodes:   nodes,
-		Workers: snapshot.Workers,
+		Workers: workers,
 	}
 }
 

@@ -238,7 +238,12 @@ func DetachTunForLink(w *pasta.Workspace, node, link uint64, t tun.Tun, pools ..
 	if t == nil {
 		return nil
 	}
-	wrapper := tun.Detach(t, pools...)
+	var pool bufpool.Pool
+	if len(pools) > 0 {
+		pool = pools[0]
+	}
+	// Nil spawner is intentional here; see the Gonnect spawner note in helpers.go.
+	wrapper := tun.Detach(t, nil, pool)
 	BindTunResource(w, node, link, wrapper)
 	return wrapper
 }
@@ -311,7 +316,8 @@ func (c *TunOutputCache) SendWrapped(w *pasta.Workspace, node, link uint64, sour
 	}
 	c.Close(link)
 
-	var output tun.Tun = tun.Detach(source, pool)
+	// Nil spawner is intentional here; see the Gonnect spawner note in helpers.go.
+	var output tun.Tun = tun.Detach(source, nil, pool)
 	if wrap != nil {
 		wrapped := wrap(output)
 		if wrapped == nil {

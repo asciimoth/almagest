@@ -2,6 +2,7 @@ package almagest
 
 import (
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/asciimoth/pasta/pasta"
@@ -38,12 +39,18 @@ type DebugLogEntry struct {
 	Message string
 }
 
-// DebugLogFactory creates channel-backed loggers for tests and debugging.
+// DebugLogFactory creates in-memory loggers for tests and debugging.
 //
-// Logging sends to Entries. Use a buffer large enough for the test, or drain the
-// channel while the engine is running.
+// Factory-created loggers must not block runtime workers when a test is not
+// actively draining logs. Entries receives best-effort channel copies for
+// callers that want to select on log activity; Drain returns recent entries
+// stored by the factory since the previous drain. When the configured buffer is
+// full, the oldest entries are dropped.
 type DebugLogFactory struct {
-	entries chan DebugLogEntry
+	mu      sync.Mutex
+	entries []DebugLogEntry
+	entryCh chan DebugLogEntry
+	limit   int
 }
 
 // NewDebugLogFactory returns a LogFactory that records entries in a channel.
@@ -51,8 +58,13 @@ func NewDebugLogFactory(buffer int) *DebugLogFactory {
 	if buffer < 0 {
 		buffer = 0
 	}
+	limit := buffer
+	if limit == 0 {
+		limit = 1
+	}
 	return &DebugLogFactory{
-		entries: make(chan DebugLogEntry, buffer),
+		entryCh: make(chan DebugLogEntry, buffer),
+		limit:   limit,
 	}
 }
 
@@ -61,22 +73,44 @@ func (f *DebugLogFactory) Entries() <-chan DebugLogEntry {
 	if f == nil {
 		return nil
 	}
-	return f.entries
+	return f.entryCh
 }
 
-// Drain removes and returns all entries currently buffered in Entries.
+// Drain removes and returns all entries recorded by factory-created loggers
+// since the previous drain.
 func (f *DebugLogFactory) Drain() []DebugLogEntry {
 	if f == nil {
 		return nil
 	}
-	var entries []DebugLogEntry
+	f.mu.Lock()
+	entries := f.entries
+	f.entries = nil
+	f.mu.Unlock()
+
 	for {
 		select {
-		case entry := <-f.entries:
-			entries = append(entries, entry)
+		case <-f.entryCh:
 		default:
 			return entries
 		}
+	}
+}
+
+func (f *DebugLogFactory) record(entry DebugLogEntry) {
+	if f == nil {
+		return
+	}
+	f.mu.Lock()
+	if len(f.entries) >= f.limit {
+		copy(f.entries, f.entries[1:])
+		f.entries[len(f.entries)-1] = entry
+	} else {
+		f.entries = append(f.entries, entry)
+	}
+	f.mu.Unlock()
+	select {
+	case f.entryCh <- entry:
+	default:
 	}
 }
 
@@ -99,11 +133,12 @@ func (f *DebugLogFactory) logger(source DebugLogSource) *DebugLogger {
 	if f == nil {
 		return &DebugLogger{source: source}
 	}
-	return &DebugLogger{entries: f.entries, source: source}
+	return &DebugLogger{factory: f, source: source}
 }
 
-// DebugLogger sends log entries to a channel.
+// DebugLogger records log entries to a factory or caller-owned channel.
 type DebugLogger struct {
+	factory *DebugLogFactory
 	entries chan<- DebugLogEntry
 	source  DebugLogSource
 }
@@ -154,13 +189,20 @@ func (l *DebugLogger) Fatalf(format string, args ...any) {
 }
 
 func (l *DebugLogger) emit(level DebugLogLevel, message string) {
-	if l == nil || l.entries == nil {
+	if l == nil {
 		return
 	}
-	l.entries <- DebugLogEntry{
+	entry := DebugLogEntry{
 		At:      time.Now().UTC(),
 		Level:   level,
 		Source:  l.source,
 		Message: message,
+	}
+	if l.factory != nil {
+		l.factory.record(entry)
+		return
+	}
+	if l.entries != nil {
+		l.entries <- entry
 	}
 }

@@ -16,7 +16,7 @@ func TestTunPayloadClose(t *testing.T) {
 	defer closeTestTun(base)
 	defer closeTestTun(peer)
 
-	wrapper := tun.Detach(base)
+	wrapper := tun.Detach(base, nil, nil)
 	if err := (TunPayload{Tun: wrapper}).Close(); err != nil {
 		t.Fatalf("Close() error = %v, want nil", err)
 	}
@@ -157,9 +157,9 @@ func TestAcceptTunPayloadClosesReadyDuplicateSource(t *testing.T) {
 	defer closeTestTun(base)
 	defer closeTestTun(peer)
 
-	current := testTunWrapper{Tun: tun.Detach(base), wrapped: base}
+	current := testTunWrapper{Tun: tun.Detach(base, nil, nil), wrapped: base}
 	defer closeTestTun(current)
-	duplicate := testTunWrapper{Tun: tun.Detach(base), wrapped: base}
+	duplicate := testTunWrapper{Tun: tun.Detach(base, nil, nil), wrapped: base}
 
 	next, changed := AcceptTunPayload(w, node, pasta.Event{
 		Link:    link,
@@ -184,9 +184,9 @@ func TestAcceptTunPayloadReplacesStaleCurrentSameSource(t *testing.T) {
 	defer closeTestTun(base)
 	defer closeTestTun(peer)
 
-	current := testTunWrapper{Tun: tun.Detach(base), wrapped: base}
+	current := testTunWrapper{Tun: tun.Detach(base, nil, nil), wrapped: base}
 	closeTestTun(current)
-	replacement := testTunWrapper{Tun: tun.Detach(base), wrapped: base}
+	replacement := testTunWrapper{Tun: tun.Detach(base, nil, nil), wrapped: base}
 	defer closeTestTun(replacement)
 
 	next, changed := AcceptTunPayload(w, node, pasta.Event{
@@ -319,9 +319,9 @@ func TestTunSourceAndComparisonHelpers(t *testing.T) {
 	defer closeTestTun(base)
 	defer closeTestTun(peer)
 
-	first := tun.Detach(base)
+	first := tun.Detach(base, nil, nil)
 	defer closeTestTun(first)
-	second := tun.Detach(first)
+	second := tun.Detach(first, nil, nil)
 	defer closeTestTun(second)
 
 	if !SameTunInstance(first, first) {

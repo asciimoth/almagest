@@ -191,7 +191,7 @@ func TestNetworkRouterRestoreDefersConsumerOutputUntilReady(t *testing.T) {
 }
 
 func TestNetworkRouterTreatsClosedAttachNotificationsAsNonFatal(t *testing.T) {
-	router := gonnect.NewRouter()
+	router := gonnect.NewRouter(nil)
 	t.Cleanup(func() { _ = router.Close() })
 	backend := gonnect.NewLoopbackNetwok()
 	if err := router.Attach(1, backend); err != nil {

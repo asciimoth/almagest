@@ -93,7 +93,7 @@ func (f *defaultTunSpooferE2EFixture) attachDebugDefaultTunPeer() {
 	case <-time.After(2 * time.Second):
 		f.T.Fatal("timed out waiting for VTun client to come up")
 	}
-	p2p := tun.NewP2P(nil)
+	p2p := tun.NewP2P(nil, nil)
 	p2p.SetA(client)
 	p2p.SetB(entry.Peer)
 	f.T.Cleanup(p2p.Stop)

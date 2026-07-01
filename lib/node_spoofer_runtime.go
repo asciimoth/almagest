@@ -31,7 +31,8 @@ func (n *spooferNode) rebuildStack() {
 		ctx = n.engine.ctx
 	}
 	ctx, cancel := context.WithCancel(ctx)
-	stackTun := tun.Detach(n.tun, n.pool)
+	// Nil spawner is intentional here; see the Gonnect spawner note in helpers.go.
+	stackTun := tun.Detach(n.tun, nil, n.pool)
 	BindTunResource(n.w, n.id, 0, stackTun)
 	network := n.networkValue
 

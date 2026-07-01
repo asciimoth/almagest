@@ -227,8 +227,8 @@ type WorkspaceSnapshotResponse struct {
 // missing worker parents are intentionally omitted so clients can render those
 // workers as attached to gone nodes using WorkerSnapshot.Orphan.
 type WorkersSnapshotResponse struct {
-	Nodes   map[uint64]pasta.NodeSnapshot   `json:"nodes"`
-	Workers map[uint64]pasta.WorkerSnapshot `json:"workers"`
+	Nodes   map[uint64]pasta.NodeSnapshot      `json:"nodes"`
+	Workers map[uint64]almagest.WorkerSnapshot `json:"workers"`
 }
 
 type NodeClassSnapshotResponse struct {

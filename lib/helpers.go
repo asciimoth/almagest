@@ -8,7 +8,6 @@ import (
 	"github.com/asciimoth/bufpool"
 	"github.com/asciimoth/formular"
 	"github.com/asciimoth/gonnect"
-	"github.com/asciimoth/pasta/pasta"
 )
 
 func enginePool(e *engine) bufpool.Pool {
@@ -17,6 +16,12 @@ func enginePool(e *engine) bufpool.Pool {
 	}
 	return e.Pool()
 }
+
+// Gonnect spawner note: pass nil for gonnect-internal pumps that are stopped
+// and waited from Pasta node lifecycle callbacks. Engine-tracked workers are
+// fine for Almagest-owned routines because completion bookkeeping does not take
+// the workspace lock. Some detached Gonnect wrappers still use nil to preserve
+// their own direct-spawn behavior.
 
 func parsePort(value string, fallback int) int {
 	value = strings.TrimSpace(value)
@@ -55,7 +60,7 @@ type restartableWorker struct {
 	done chan struct{}
 }
 
-func newRestartableWorker(spawner pasta.NodeWorkerSpawner, run func(stop <-chan struct{}), name string) (*restartableWorker, error) {
+func newRestartableWorker(spawner EngineWorkerSpawner, run func(stop <-chan struct{}), name string) (*restartableWorker, error) {
 	worker := &restartableWorker{stop: make(chan struct{}), done: make(chan struct{})}
 	if _, err := spawner.Spawn(func() {
 		defer close(worker.done)

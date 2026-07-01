@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"io"
+	"net"
 	"reflect"
 	"strings"
 	"sync"
@@ -78,11 +79,11 @@ func TestWireGuardClassPortsAndMenuBlocks(t *testing.T) {
 }
 
 func TestWireGuardRuntimeStatsMessageUpdatesStatusRows(t *testing.T) {
-	dev := wgdevice.NewDevice(nil, nil, wgdevice.NopLogger{})
+	dev := wgdevice.NewDevice(nil, nil, wgdevice.NopLogger{}, nil)
 	defer dev.Close()
 
 	n := &wireGuardNode{dev: dev}
-	ignoredDev := wgdevice.NewDevice(nil, nil, wgdevice.NopLogger{})
+	ignoredDev := wgdevice.NewDevice(nil, nil, wgdevice.NopLogger{}, nil)
 	defer ignoredDev.Close()
 
 	n.handleRuntimeStats(wireGuardRuntimeStatsMessage{
@@ -674,6 +675,47 @@ func TestWireGuardRetriesDeviceBringUpAfterNetworkListenFailure(t *testing.T) {
 		snapshot, ok := w.NodeSnapshot(wgID)
 		return ok && snapshot.Label == "up" && network.listenCount() >= 3
 	}, "wireguard retry after transient listen failure")
+}
+
+func TestWireGuardTrackedBindClosedReceiveErrorIsRecoverable(t *testing.T) {
+	var err error = wireGuardTrackedBindReceiveError{
+		generation:     1,
+		openGeneration: 1,
+		err:            net.ErrClosed,
+	}
+	if errors.Is(err, net.ErrClosed) {
+		t.Fatal("tracked unexpected close matched net.ErrClosed and would be hidden by wgo")
+	}
+	if !wgdevice.ReceiveErrorShouldRecover(err) {
+		t.Fatal("tracked unexpected close is not recoverable")
+	}
+	var tracked wireGuardTrackedBindReceiveError
+	if !errors.As(err, &tracked) {
+		t.Fatal("tracked unexpected close cannot be recovered with errors.As")
+	}
+	if !errors.Is(tracked.err, net.ErrClosed) {
+		t.Fatalf("tracked underlying err = %v, want net.ErrClosed", tracked.err)
+	}
+}
+
+func TestWireGuardIntentionalClosedReceiveErrorIsIgnored(t *testing.T) {
+	wg := &wireGuardNode{}
+	dev := wgdevice.NewDevice(nil, nil, wgdevice.NopLogger{}, nil)
+	t.Cleanup(dev.Close)
+	wg.dev = dev
+
+	wg.handleReceiveError(wireGuardReceiveErrorMessage{
+		dev:              dev,
+		intentionalClose: true,
+		err:              net.ErrClosed,
+	})
+
+	if wg.runtimeError != "" {
+		t.Fatalf("runtimeError = %q, want empty", wg.runtimeError)
+	}
+	if wg.currentBindFailed {
+		t.Fatal("currentBindFailed = true, want false")
+	}
 }
 
 func TestWireGuardRetriesBindAfterReceiveEOF(t *testing.T) {

@@ -54,9 +54,29 @@ func (c wireGuardClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState)
 	return &wireGuardNode{NodeBase: NodeBase{engine: c.engine}, config: config}, nil
 }
 
-// wireGuardNode owns exactly one wgo Device. Link attach/detach operations
-// replace only the live TUN or UDP bind attachments, preserving configured
-// peers and device identity across graph rewiring.
+// wireGuardNode owns exactly one wgo Device.
+//
+// Locking/lifecycle strategy:
+//   - Pasta invokes node callbacks while holding the workspace lock. Callbacks
+//     must therefore never block on runtimeMu and must never run wgo operations
+//     that may spawn workers, close workers, open sockets, or wait for device
+//     goroutines.
+//   - Callbacks update workspace-owned desired state, bump generations, bind
+//     payload resources to the graph, and schedule runtime work. Physical
+//     device operations run later on goroutines serialized by runtimeMu.
+//   - runtimeMu protects the wgo device and runtime-owned attachment state. It
+//     may be held across wgo calls only from runtime goroutines, not workspace
+//     callbacks.
+//   - tunGeneration/networkGeneration describe the current desired attachment
+//     identity. current*Generation records which desired generation is actually
+//     installed in the device. A stale installed attachment is treated as
+//     inactive immediately, even before its async detach work has completed.
+//   - runtimeGeneration invalidates config-apply/readiness completions. It is
+//     separate from the attachment generations so a config edit does not drop a
+//     still-current TUN/network payload that was already queued.
+//
+// This avoids lock inversions such as:
+// workspace callback -> runtimeMu -> wgo -> pasta worker spawn -> workspace.
 type wireGuardNode struct {
 	NodeBase
 
@@ -66,25 +86,27 @@ type wireGuardNode struct {
 	tunLink uint64
 	netLink uint64
 
-	currentTun        tun.Tun
-	currentNetwork    NetworkCloser
-	currentBind       conn.Bind
-	currentBindGen    uint64
-	currentBindOpen   *atomic.Uint64
-	currentBindFailed bool
+	tunGeneration     atomic.Uint64
+	networkGeneration atomic.Uint64
+
+	currentTun               tun.Tun
+	currentTunGeneration     uint64
+	currentNetwork           NetworkCloser
+	currentNetworkGeneration uint64
+	currentBind              conn.Bind
+	currentBindGen           uint64
+	currentBindOpen          *atomic.Uint64
+	currentBindFailed        bool
 
 	config wireGuardConfig
 	dev    *wgdevice.Device
 
-	// runtimeMu protects wgo device operations and attached runtime resources.
-	// Long-running runtime work must happen outside workspace callbacks, so
-	// runtimeGeneration lets async completions detect that their inputs went
-	// stale before they update status or retry state.
 	runtimeMu              sync.Mutex
 	runtimeGeneration      atomic.Uint64
 	runtimeReadyGeneration uint64
 
 	runtimeStats            wgdevice.RuntimeStats
+	runtimeListenPort       int
 	unsubscribeRuntimeStats func()
 	unsubscribeReceiveErrs  func()
 
@@ -117,13 +139,8 @@ func (n *wireGuardNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint6
 	if err := n.SetPrimary(TypeTun); err != nil {
 		return err
 	}
-	n.runtimeMu.Lock()
-	n.ensureDeviceLocked()
-	err := n.applyConfigToDeviceLocked(true)
-	n.runtimeMu.Unlock()
-	if err != nil {
-		n.setRuntimeError(err)
-	}
+	generation := n.nextRuntimeGeneration()
+	n.scheduleConfigApply(n.config.clone(), true, generation, 0, false)
 	_ = n.updateLabel()
 	n.sendMenuSnapshot()
 	return nil
@@ -136,21 +153,10 @@ func (n *wireGuardNode) OnReady() error {
 }
 func (n *wireGuardNode) OnStop() {
 	n.cancelConfigRetry()
-	n.runtimeMu.Lock()
-	n.nextRuntimeGenerationLocked()
-	n.unsubscribeFromRuntimeStatsLocked()
-	n.unsubscribeFromReceiveErrorsLocked()
-	if n.dev != nil {
-		n.dev.Close()
-		n.dev = nil
-	}
-	n.currentTun = nil
-	n.currentNetwork = nil
-	n.currentBind = nil
-	n.currentBindGen = 0
-	n.currentBindOpen = nil
-	n.currentBindFailed = false
-	n.runtimeMu.Unlock()
+	n.nextRuntimeGeneration()
+	n.nextTunGeneration()
+	n.nextNetworkGeneration()
+	n.scheduleRuntimeStop()
 }
 func (n *wireGuardNode) PreLinkAdd(port uint64, linkType, portDirection string) error {
 	switch port {
@@ -175,10 +181,14 @@ func (n *wireGuardNode) OnLinkAdd(link, port uint64, linkType, portDirection str
 	switch {
 	case port == n.tunp && portDirection == "left" && linkType == TypeTun:
 		n.tunLink = link
+		n.nextTunGeneration()
+		n.nextRuntimeGeneration()
 		n.sendTunConfigToLink(link)
 		std.Request(n.w, n.id, link)
 	case port == n.netp && portDirection == "right" && linkType == TypeNetwork:
 		n.netLink = link
+		n.nextNetworkGeneration()
+		n.nextRuntimeGeneration()
 		std.Request(n.w, n.id, link)
 	}
 	_ = n.updateLabel()
@@ -190,31 +200,15 @@ func (n *wireGuardNode) OnLinkRemoved(link uint64, port uint64, linkType, portDi
 	case port == n.tunp && portDirection == "left" && linkType == TypeTun && link == n.tunLink:
 		n.cancelConfigRetry()
 		n.tunLink = 0
-		err := n.detachDevicePart("TUN", func() error { return n.dev.DetachTUN() }, func() {
-			n.currentTun = nil
-			n.nextRuntimeGenerationLocked()
-		})
-		if err != nil {
-			n.setRuntimeError(err)
-		} else {
-			n.clearRuntimeError()
-		}
+		tunGeneration := n.nextTunGeneration()
+		n.nextRuntimeGeneration()
+		n.scheduleTunDetach(tunGeneration)
 	case port == n.netp && portDirection == "right" && linkType == TypeNetwork && link == n.netLink:
 		n.cancelConfigRetry()
 		n.netLink = 0
-		err := n.detachDevicePart("network bind", func() error { return n.dev.DetachBind() }, func() {
-			n.currentNetwork = nil
-			n.currentBind = nil
-			n.currentBindGen = 0
-			n.currentBindOpen = nil
-			n.currentBindFailed = false
-			n.nextRuntimeGenerationLocked()
-		})
-		if err != nil {
-			n.setRuntimeError(err)
-		} else {
-			n.clearRuntimeError()
-		}
+		networkGeneration := n.nextNetworkGeneration()
+		n.nextRuntimeGeneration()
+		n.scheduleNetworkDetach(networkGeneration)
 	}
 	_ = n.updateLabel()
 	n.sendStatusBlock()
@@ -226,11 +220,24 @@ func (n *wireGuardNode) OnEvent(event pasta.Event, linkType string, _ []string, 
 			n.sendTunConfigToLink(event.Link)
 			return nil
 		}
-		next, changed := AcceptTunPayload(n.w, n.id, event, n.tunLink, n.currentTun)
-		if !changed {
+		if event.Link != n.tunLink {
 			return nil
 		}
-		n.attachTun(next)
+		payload, ok := event.Payload.(TunPayload)
+		if !ok || payload.Tun == nil {
+			return nil
+		}
+		if !TunIsReady(payload.Tun) {
+			go func(t tun.Tun) {
+				_ = t.Close()
+			}(payload.Tun)
+			return nil
+		}
+		BindTunResource(n.w, n.id, event.Link, payload.Tun)
+		n.cancelConfigRetry()
+		tunGeneration := n.nextTunGeneration()
+		n.nextRuntimeGeneration()
+		n.scheduleTunAttach(tunGeneration, payload.Tun)
 		return nil
 	}
 	if event.ReceiverPort == n.netp && receiverPortDirection == "right" && linkType == TypeNetwork {
@@ -242,16 +249,16 @@ func (n *wireGuardNode) OnEvent(event pasta.Event, linkType string, _ []string, 
 			return nil
 		}
 		if !NetworkIsReady(payload.Network) {
-			_ = payload.Network.Close()
+			go func(network NetworkCloser) {
+				_ = network.Close()
+			}(payload.Network)
 			return nil
 		}
-		if NetworkIsReady(n.currentNetwork) && SameNetworkSource(n.currentNetwork, payload.Network) {
-			if !SameNetworkInstance(n.currentNetwork, payload.Network) {
-				_ = payload.Network.Close()
-			}
-			return nil
-		}
-		n.attachNetwork(event.Link, payload.Network)
+		BindNetworkResource(n.w, n.id, event.Link, payload.Network)
+		n.cancelConfigRetry()
+		networkGeneration := n.nextNetworkGeneration()
+		n.nextRuntimeGeneration()
+		n.scheduleNetworkAttach(networkGeneration, payload.Network)
 		return nil
 	}
 	return nil
@@ -283,6 +290,8 @@ func (n *wireGuardNode) OnInbox(message pasta.InboxMessage) error {
 		n.handleReceiveError(msg)
 	case wireGuardRuntimeResultMessage:
 		n.handleRuntimeResult(msg)
+	case wireGuardRuntimeAttachmentResultMessage:
+		n.handleRuntimeAttachmentResult(msg)
 	case wireGuardRuntimeStatsMessage:
 		n.handleRuntimeStats(msg)
 	}
@@ -333,10 +342,8 @@ func (n *wireGuardNode) commitConfigForm(next wireGuardConfig, opts wireGuardCon
 		return nil
 	}
 	n.formError = ""
-	n.runtimeMu.Lock()
 	n.config = next
-	generation := n.nextRuntimeGenerationLocked()
-	n.runtimeMu.Unlock()
+	generation := n.nextRuntimeGeneration()
 	n.cancelConfigRetry()
 	if opts.emitTunConfig {
 		n.sendTunConfig()
@@ -347,7 +354,7 @@ func (n *wireGuardNode) commitConfigForm(next wireGuardConfig, opts wireGuardCon
 	// Applying config may open sockets, update peer endpoints, and bring the
 	// device up. Schedule it after the form callback has released workspace
 	// state so daemon restore and snapshots are not blocked by runtime I/O.
-	n.scheduleConfigApply(opts.rebuildPeers, generation, 0, false)
+	n.scheduleConfigApply(next.clone(), opts.rebuildPeers, generation, 0, false)
 	return nil
 }
 func (n *wireGuardNode) rejectConfigForm(err error) {

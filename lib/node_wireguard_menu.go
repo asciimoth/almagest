@@ -27,35 +27,26 @@ func (n *wireGuardNode) statusBlock() formular.Block {
 			publicKey = wireGuardPublicKeyBase64(key)
 		}
 	}
-	listenPort := n.config.listenPort
-	n.runtimeMu.Lock()
-	active := n.hasActiveAttachmentsLocked()
-	if n.dev != nil && active {
-		listenPort = int(n.dev.ListenPort())
-	}
-	tunAttached := n.currentTun != nil
-	networkAttached := n.currentNetwork != nil
-	stats := n.runtimeStats
-	n.runtimeMu.Unlock()
+	status := n.runtimeStatusSnapshot()
 	statusErr := n.formError
 	if statusErr == "" {
 		statusErr = n.runtimeError
 	}
 	return formular.Block{ID: "status", Order: 10, Generation: 1, Items: []formular.Item{
-		readonlyTextField("state", "State", n.stateText()),
+		readonlyTextField("state", "State", n.stateTextFromSnapshot(status)),
 		readonlyTextField("publicKey", "Public key", publicKey),
-		readonlyIntField("listenPort", "Listen port", listenPort),
-		readonlyTextField("tun", "TUN", attachedText(tunAttached)),
-		readonlyTextField("network", "Network", attachedText(networkAttached)),
+		readonlyIntField("listenPort", "Listen port", status.listenPort),
+		readonlyTextField("tun", "TUN", attachedText(status.hasTun)),
+		readonlyTextField("network", "Network", attachedText(status.hasNetwork)),
 		readonlyIntField("peers", "Peers", len(n.config.peers)),
-		readonlyIntField("runtimePeers", "Runtime peers", stats.PeerCount),
-		readonlyIntField("activePeers", "Active peers", stats.ActivePeerCount),
-		readonlyIntField("connectedPeers", "Connected peers", stats.ConnectedPeerCount),
-		readonlyTextField("rxBytes", "RX bytes", wireGuardUint64Text(stats.RxBytes)),
-		readonlyTextField("txBytes", "TX bytes", wireGuardUint64Text(stats.TxBytes)),
-		readonlyTextField("rxPackets", "RX packets", wireGuardUint64Text(stats.RxPackets)),
-		readonlyTextField("txPackets", "TX packets", wireGuardUint64Text(stats.TxPackets)),
-		readonlyTextField("latestHandshake", "Latest handshake", wireGuardTimeText(stats.LastHandshakeTime)),
+		readonlyIntField("runtimePeers", "Runtime peers", status.stats.PeerCount),
+		readonlyIntField("activePeers", "Active peers", status.stats.ActivePeerCount),
+		readonlyIntField("connectedPeers", "Connected peers", status.stats.ConnectedPeerCount),
+		readonlyTextField("rxBytes", "RX bytes", wireGuardUint64Text(status.stats.RxBytes)),
+		readonlyTextField("txBytes", "TX bytes", wireGuardUint64Text(status.stats.TxBytes)),
+		readonlyTextField("rxPackets", "RX packets", wireGuardUint64Text(status.stats.RxPackets)),
+		readonlyTextField("txPackets", "TX packets", wireGuardUint64Text(status.stats.TxPackets)),
+		readonlyTextField("latestHandshake", "Latest handshake", wireGuardTimeText(status.stats.LastHandshakeTime)),
 		readonlyTextField("error", "Error", statusErr),
 	}}
 }

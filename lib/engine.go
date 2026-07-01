@@ -70,6 +70,10 @@ func BuildEngine(
 		nextSubscriptionID:    100, // to avoid collision between our IDs and workspace ones
 		subscriptionIDMapping: make(map[uint64]subMap),
 	}
+	engine.workers = newWorkerTracker(func() *pasta.Workspace {
+		return engine.mainWorkspace
+	}, engine.logger)
+	engine.workers.onFailure = engine.handleWorkerFailure
 
 	classes := nodeClasses(engine, debug)
 	if len(extra) > 0 {
@@ -93,6 +97,9 @@ func BuildEngine(
 	}
 
 	engine.mainWorkspace = work
+	_ = work.SubscribeNotifications(func(notification pasta.WorkspaceNotification) {
+		engine.workers.observeWorkspaceNotification(notification)
+	})
 
 	return engine, nil
 }
@@ -187,11 +194,17 @@ type Engine interface {
 
 	SendNodeFormularMsg(workspace string, node uint64, message any)
 
+	WorkersSnapshot(workspace string) (map[uint64]WorkerSnapshot, bool)
+	SubscribeWorkerNotifications(callback WorkerNotificationCallback) uint64
+	UnsubscribeWorkerNotifications(id uint64)
+	RequestWorkerSnapshot(subscriptionID uint64)
+
 	Pool() bufpool.Pool
 }
 
 type subMap struct {
 	MainWorkspace uint64
+	Workers       uint64
 }
 
 type engine struct {
@@ -208,6 +221,7 @@ type engine struct {
 	mu *badlock.BadLock
 
 	mainWorkspace *pasta.Workspace
+	workers       *workerTracker
 
 	nextSubscriptionID uint64
 	// mapping from engine notification subscription IDs to internal
@@ -228,7 +242,12 @@ func (e *engine) Pool() bufpool.Pool {
 
 func (e *engine) Close() error {
 	e.ctxCancel()
-	e.mainWorkspace.Close()
+	if e.mainWorkspace != nil {
+		e.mainWorkspace.Close()
+	}
+	if e.workers != nil {
+		e.workers.close()
+	}
 	// TODO: Close other workspaces
 	return e.sys.Close()
 }
@@ -266,7 +285,11 @@ func (e *engine) WorkspaceSnapshot(workspace string) (pasta.WorkspaceSnapshot, b
 	if workspace != "main" {
 		return pasta.WorkspaceSnapshot{}, false
 	}
-	return e.mainWorkspace.Snapshot(), true
+	snapshot := e.mainWorkspace.Snapshot()
+	if e.workers != nil {
+		snapshot.Workers = e.workers.snapshot()
+	}
+	return snapshot, true
 }
 
 func (e *engine) NodeClassSnapshot(workspace string, name string) (pasta.NodeClassSnapshot, bool) {
@@ -456,8 +479,31 @@ func (e *engine) SubscribeNotifications(callback NotificationCallback) uint64 {
 
 	// TODO: Send engine initial state here (when we'll have some)
 
+	workerCallback := func(worker WorkerNotification) {
+		notification, ok := workerWorkspaceNotification(worker)
+		if !ok {
+			return
+		}
+		notification.SubscriptionID = id
+		callback(EngineNotification{
+			SubscriptionID: id,
+			Kind:           NotificationWorkspace,
+			WorkspaceID:    "main",
+			Workspace:      &notification,
+		})
+	}
+	workerID := e.workers.subscribe(workerCallback)
+	if workerID == 0 {
+		return 0
+	}
+
 	WorkspaceCallback := func(pn pasta.WorkspaceNotification) {
 		pn.SubscriptionID = id
+		if pn.Kind == pasta.NotificationWorkspaceSnapshot && pn.Snapshot != nil {
+			snapshot := *pn.Snapshot
+			snapshot.Workers = e.workers.snapshot()
+			pn.Snapshot = &snapshot
+		}
 
 		en := EngineNotification{
 			SubscriptionID: id,
@@ -470,11 +516,13 @@ func (e *engine) SubscribeNotifications(callback NotificationCallback) uint64 {
 
 	wid := e.mainWorkspace.SubscribeNotifications(WorkspaceCallback)
 	if wid == 0 {
+		e.workers.unsubscribe(workerID)
 		return 0
 	}
 
 	e.subscriptionIDMapping[id] = subMap{
 		MainWorkspace: wid,
+		Workers:       workerID,
 	}
 
 	return id
@@ -488,6 +536,7 @@ func (e *engine) UnsubscribeNotifications(id uint64) {
 
 	// TODO: Unsubscribe all workspaces here (when we'll have more than one)
 	_ = e.mainWorkspace.UnsubscribeNotifications(subMap.MainWorkspace)
+	e.workers.unsubscribe(subMap.Workers)
 }
 
 func (e *engine) RequestFullSnapshot(id uint64) {
@@ -497,6 +546,7 @@ func (e *engine) RequestFullSnapshot(id uint64) {
 	}
 
 	// TODO: Send engine state here (when we'll have some)
+	e.workers.requestFullSnapshot(subMap.Workers)
 
 	// TODO: Unsubscribe all workspaces here (when we'll have more than one)
 	_ = e.mainWorkspace.RequestFullSnapshot(subMap.MainWorkspace)
@@ -534,4 +584,69 @@ func (e *engine) SendNodeFormularMsg(workspace string, node uint64, message any)
 	}
 
 	e.mainWorkspace.SendNodeFormularMsg(node, message)
+}
+
+func (e *engine) WorkersSnapshot(workspace string) (map[uint64]WorkerSnapshot, bool) {
+	if workspace != "main" {
+		return nil, false
+	}
+	if e.workers == nil {
+		return map[uint64]WorkerSnapshot{}, true
+	}
+	return e.workers.snapshot(), true
+}
+
+func (e *engine) SubscribeWorkerNotifications(callback WorkerNotificationCallback) uint64 {
+	if e.workers == nil {
+		return 0
+	}
+	return e.workers.subscribe(callback)
+}
+
+func (e *engine) UnsubscribeWorkerNotifications(id uint64) {
+	if e.workers == nil {
+		return
+	}
+	e.workers.unsubscribe(id)
+}
+
+func (e *engine) RequestWorkerSnapshot(id uint64) {
+	if e.workers == nil {
+		return
+	}
+	e.workers.requestFullSnapshot(id)
+}
+
+func (e *engine) handleWorkerFailure(worker WorkerSnapshot) {
+	if e == nil || e.mainWorkspace == nil || worker.Node == 0 || worker.Orphan {
+		return
+	}
+	if err := e.mainWorkspace.ReplaceNodeWithPlaceholder(worker.Node, []pasta.Port{}); err != nil {
+		if e.logger != nil {
+			e.logger.Errf("failed to replace worker node with placeholder worker=%d node=%d: %v", worker.ID, worker.Node, err)
+		}
+		return
+	}
+	if _, err := e.mainWorkspace.AddNodePopup(worker.Node, pasta.NodePopupErr, workerFailureText(worker), false); err != nil && e.logger != nil {
+		e.logger.Errf("failed to add worker failure popup worker=%d node=%d: %v", worker.ID, worker.Node, err)
+	}
+}
+
+func workerWorkspaceNotification(worker WorkerNotification) (pasta.WorkspaceNotification, bool) {
+	var kind pasta.NotificationKind
+	switch worker.Kind {
+	case WorkerNotificationSpawned:
+		kind = pasta.NotificationWorkerSpawned
+	case WorkerNotificationStopped:
+		kind = pasta.NotificationWorkerStopped
+	case WorkerNotificationFailed:
+		kind = pasta.NotificationWorkerFailed
+	default:
+		return pasta.WorkspaceNotification{}, false
+	}
+	return pasta.WorkspaceNotification{
+		Kind:   kind,
+		ID:     worker.ID,
+		Worker: worker.Worker,
+	}, true
 }

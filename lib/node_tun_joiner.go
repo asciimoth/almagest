@@ -42,7 +42,6 @@ func (c tunJoinerClass) NewNode(_ configer.Config, _ ...*pasta.NodeClassState) (
 	return &tunJoinerNode{
 		NodeBase:      NodeBase{engine: c.engine},
 		pool:          pool,
-		joiner:        tun.NewJoiner(pool),
 		secondaryTuns: map[uint64]tun.Tun{},
 		outputCfgs:    TunConfigByLink{},
 	}, nil
@@ -76,7 +75,8 @@ type tunJoinerNode struct {
 func (n *tunJoinerNode) OnInit(w *pasta.Workspace, _ pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
 	n.InitBaseNode(w, nil, id)
 	if n.joiner == nil {
-		n.joiner = tun.NewJoiner(n.pool)
+		// Nil spawner is intentional here; see the Gonnect spawner note in helpers.go.
+		n.joiner = tun.NewJoiner(nil, n.pool)
 	}
 	if n.secondaryTuns == nil {
 		n.secondaryTuns = map[uint64]tun.Tun{}

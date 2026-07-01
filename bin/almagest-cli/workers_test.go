@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/asciimoth/almagest/bin/api"
+	almagest "github.com/asciimoth/almagest/lib"
 	"github.com/asciimoth/pasta/pasta"
 )
 
@@ -19,7 +20,7 @@ func TestWorkersTreePrintsWorkersUnderLivePlaceholderAndGoneNodes(t *testing.T) 
 			10: {Name: "server", Class: "test/server"},
 			20: {Name: "broken", Class: "test/broken", Placeholder: true},
 		},
-		Workers: map[uint64]pasta.WorkerSnapshot{
+		Workers: map[uint64]almagest.WorkerSnapshot{
 			3: {ID: 3, Node: 10, Class: "test/server", Name: "server", WorkerName: "accept", StartedAt: now.Add(-90 * time.Second)},
 			1: {ID: 1, Node: 10, Class: "test/server", Name: "server", WorkerName: "listen", StartedAt: now.Add(-2 * time.Minute)},
 			2: {ID: 2, Node: 20, Class: "test/broken", Name: "broken", WorkerName: "retry", StartedAt: now.Add(-time.Hour)},
@@ -55,7 +56,7 @@ func TestRunWorkersTreeRequestsWorkersSnapshot(t *testing.T) {
 		Nodes: map[uint64]pasta.NodeSnapshot{
 			10: {Name: "server", Class: "test/server"},
 		},
-		Workers: map[uint64]pasta.WorkerSnapshot{
+		Workers: map[uint64]almagest.WorkerSnapshot{
 			1: {ID: 1, Node: 10, Class: "test/server", Name: "server", WorkerName: "listen", StartedAt: time.Now().Add(-time.Second)},
 		},
 	})

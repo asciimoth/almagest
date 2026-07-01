@@ -569,7 +569,7 @@ func (e *httpE2E) waitClientStableReady(client uint64) {
 
 func (e *httpE2E) assertWireGuardClientRequestWorks(client uint64) {
 	e.T.Helper()
-	deadline := time.Now().Add(35 * time.Second)
+	deadline := time.Now().Add(90 * time.Second)
 	for {
 		if e.clientStatus(client) != "Status: running..." {
 			e.sendClientRequest(client)

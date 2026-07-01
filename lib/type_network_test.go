@@ -10,13 +10,13 @@ import (
 func TestAcceptNetworkPayloadClosesReadyDuplicateSource(t *testing.T) {
 	base := gonnect.NewLoopbackNetwok()
 	current := &testNetworkWrapper{
-		NetworkCloser: gonnect.DetachNetwork(base, nil),
+		NetworkCloser: gonnect.DetachNetwork(base, nil, nil),
 		wrapped:       base,
 		up:            true,
 	}
 	defer closeTestNetwork(current)
 	duplicate := &testNetworkWrapper{
-		NetworkCloser: gonnect.DetachNetwork(base, nil),
+		NetworkCloser: gonnect.DetachNetwork(base, nil, nil),
 		wrapped:       base,
 		up:            true,
 	}

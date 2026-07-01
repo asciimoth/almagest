@@ -226,7 +226,7 @@ func (n *testNativeNetworkNode) sendAll() {
 }
 
 func (n *testNativeNetworkNode) sendToLink(link uint64) {
-	wrapper := gonnect.DetachNetwork(n.net, nil)
+	wrapper := gonnect.DetachNetwork(n.net, nil, nil)
 	BindNetworkResource(n.w, n.id, link, wrapper)
 	n.w.EmitEvent(n.id, link, NetworkPayload{Network: wrapper})
 }

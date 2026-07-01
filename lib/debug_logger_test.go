@@ -1,6 +1,9 @@
 package almagest
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestDebugLogFactoryRecordsEngineWorkspaceAndNodeEntries(t *testing.T) {
 	logf := NewDebugLogFactory(3)
@@ -77,5 +80,31 @@ func TestDebugLoggerCanUseCallerOwnedChannel(t *testing.T) {
 	}
 	if entry.Message != "fatal 7" {
 		t.Fatalf("message = %q, want fatal 7", entry.Message)
+	}
+}
+
+func TestDebugLogFactoryDoesNotBlockWhenEntriesChannelIsFull(t *testing.T) {
+	logf := NewDebugLogFactory(1)
+	logger := logf.EngineLogger()
+
+	logger.Info("first")
+	done := make(chan struct{})
+	go func() {
+		logger.Info("second")
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("factory logger blocked on full entries channel")
+	}
+
+	entries := logf.Drain()
+	if len(entries) != 1 {
+		t.Fatalf("entry count = %d, want 1", len(entries))
+	}
+	if entries[0].Message != "second" {
+		t.Fatalf("message = %q, want second", entries[0].Message)
 	}
 }

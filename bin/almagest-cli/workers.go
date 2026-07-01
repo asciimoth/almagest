@@ -8,10 +8,11 @@ import (
 	"time"
 
 	"github.com/asciimoth/almagest/bin/api"
+	almagest "github.com/asciimoth/almagest/lib"
 	"github.com/asciimoth/pasta/pasta"
 )
 
-// runWorkers owns CLI commands for Pasta's workspace worker-system diagnostics.
+// runWorkers owns CLI commands for engine worker-system diagnostics.
 func runWorkers(ctx context.Context, c *client, args []string, stdout, stderr io.Writer) error {
 	if len(args) == 0 || args[0] == "--help" || args[0] == "-h" {
 		printWorkersHelp(stdout)
@@ -56,7 +57,7 @@ func renderWorkersTree(workspace string, snapshot api.WorkersSnapshotResponse, n
 		workspace = "workspace"
 	}
 
-	byNode := map[uint64][]pasta.WorkerSnapshot{}
+	byNode := map[uint64][]almagest.WorkerSnapshot{}
 	for _, worker := range snapshot.Workers {
 		byNode[worker.Node] = append(byNode[worker.Node], worker)
 	}
@@ -92,7 +93,7 @@ func renderWorkersTree(workspace string, snapshot api.WorkersSnapshotResponse, n
 	return joinLines(lines)
 }
 
-func workerNodeLine(id uint64, node pasta.NodeSnapshot, live bool, workers []pasta.WorkerSnapshot) string {
+func workerNodeLine(id uint64, node pasta.NodeSnapshot, live bool, workers []almagest.WorkerSnapshot) string {
 	name := node.Name
 	class := node.Class
 	status := ""
@@ -114,7 +115,7 @@ func workerNodeLine(id uint64, node pasta.NodeSnapshot, live bool, workers []pas
 	return fmt.Sprintf("node %d %s (%s)%s", id, name, class, status)
 }
 
-func workerLine(worker pasta.WorkerSnapshot, now time.Time) string {
+func workerLine(worker almagest.WorkerSnapshot, now time.Time) string {
 	name := worker.WorkerName
 	if name == "" {
 		name = "<unnamed>"

@@ -80,7 +80,8 @@ func (n *localProxyNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint
 		n.proxy = restored.RightPorts[0]
 	}
 	if n.engine != nil && n.engine.sys != nil {
-		n.localNetwork = gonnect.DetachNetwork(n.engine.sys.LocalNet(), nil)
+		// Nil spawner is intentional here; see the Gonnect spawner note in helpers.go.
+		n.localNetwork = gonnect.DetachNetwork(n.engine.sys.LocalNet(), nil, nil)
 		BindNetworkResource(n.w, n.id, 0, n.localNetwork)
 	}
 

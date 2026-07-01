@@ -9,14 +9,16 @@ import (
 )
 
 func init() {
-	regClass(func(*engine) pasta.NodeClass {
-		return debugErrorsWorkersClass{}
+	regClass(func(e *engine) pasta.NodeClass {
+		return debugErrorsWorkersClass{engine: e}
 	}, true)
 }
 
 const NodeTypeDebugErrorsWorkers = "debug.almagest/ErrorsWorkers"
 
-type debugErrorsWorkersClass struct{}
+type debugErrorsWorkersClass struct {
+	engine *engine
+}
 
 func (debugErrorsWorkersClass) ClassName() string { return NodeTypeDebugErrorsWorkers }
 func (debugErrorsWorkersClass) ShortDescription() string {
@@ -30,8 +32,8 @@ func (debugErrorsWorkersClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{InitialPorts: []pasta.Port{}}
 }
 
-func (debugErrorsWorkersClass) NewNode(configer.Config, ...*pasta.NodeClassState) (pasta.Node, error) {
-	return &debugErrorsWorkersNode{}, nil
+func (c debugErrorsWorkersClass) NewNode(configer.Config, ...*pasta.NodeClassState) (pasta.Node, error) {
+	return &debugErrorsWorkersNode{NodeBase: NodeBase{engine: c.engine}}, nil
 }
 
 type debugErrorsWorkersNode struct {

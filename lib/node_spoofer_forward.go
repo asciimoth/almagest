@@ -9,11 +9,10 @@ import (
 	"sync"
 
 	"github.com/asciimoth/gonnect"
-	"github.com/asciimoth/pasta/pasta"
 	"gvisor.dev/gvisor/pkg/tcpip/stack"
 )
 
-func forwardSpooferTCP(ctx context.Context, spawner pasta.NodeWorkerSpawner, network NetworkCloser, c net.Conn, ep stack.TransportEndpointID) {
+func forwardSpooferTCP(ctx context.Context, spawner EngineWorkerSpawner, network NetworkCloser, c net.Conn, ep stack.TransportEndpointID) {
 	target, ok := spooferEndpointAddress(ep)
 	if !ok || network == nil {
 		_ = c.Close()
@@ -44,7 +43,7 @@ func forwardSpooferTCP(ctx context.Context, spawner pasta.NodeWorkerSpawner, net
 	}
 }
 
-func forwardSpooferUDP(ctx context.Context, spawner pasta.NodeWorkerSpawner, network NetworkCloser, c gonnect.PacketConn, ep stack.TransportEndpointID) {
+func forwardSpooferUDP(ctx context.Context, spawner EngineWorkerSpawner, network NetworkCloser, c gonnect.PacketConn, ep stack.TransportEndpointID) {
 	target, ok := spooferEndpointUDPAddr(ep)
 	if !ok || network == nil {
 		_ = c.Close()

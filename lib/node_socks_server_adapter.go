@@ -50,7 +50,7 @@ func listenSocksUDPAssoc(ctx context.Context, network gonnect.Network, ctrl net.
 	return network.ListenPacket(ctx, "udp", net.JoinHostPort(host, "0"))
 }
 
-func serveSocksListener(ctx context.Context, logger pasta.Logger, server *socksgo.Server, ln net.Listener, errs chan<- error, spawner pasta.NodeWorkerSpawner) {
+func serveSocksListener(ctx context.Context, logger pasta.Logger, server *socksgo.Server, ln net.Listener, errs chan<- error, spawner EngineWorkerSpawner) {
 	for {
 		conn, err := ln.Accept()
 		if err != nil {

@@ -79,7 +79,7 @@ func (n *httpServerNode) stopWorker() {
 	}
 }
 
-func runHTTPServerWorker(ctx context.Context, logger pasta.Logger, w *pasta.Workspace, node uint64, stop <-chan struct{}, cfg httpServerConfig, spawner pasta.NodeWorkerSpawner) {
+func runHTTPServerWorker(ctx context.Context, logger pasta.Logger, w *pasta.Workspace, node uint64, stop <-chan struct{}, cfg httpServerConfig, spawner EngineWorkerSpawner) {
 	addr := net.JoinHostPort(cfg.host, strconv.Itoa(cfg.port))
 	for {
 		select {

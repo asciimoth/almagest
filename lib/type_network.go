@@ -75,7 +75,8 @@ func EmitDetachedNetwork(w *pasta.Workspace, node, link uint64, source gonnect.N
 	if _, ok := w.LinkSnapshot(link); !ok {
 		return nil
 	}
-	wrapper := gonnect.DetachNetwork(source, nil)
+	// Nil spawner is intentional here; see the Gonnect spawner note in helpers.go.
+	wrapper := gonnect.DetachNetwork(source, nil, nil)
 	BindNetworkResource(w, node, link, wrapper)
 	w.EmitEvent(node, link, NetworkPayload{Network: wrapper})
 	return wrapper
@@ -121,7 +122,8 @@ func (c *NetworkOutputCache) SendWrapped(w *pasta.Workspace, node, link uint64, 
 	}
 	c.Close(link)
 
-	var output NetworkCloser = gonnect.DetachNetwork(source, nil)
+	// Nil spawner is intentional here; see the Gonnect spawner note in helpers.go.
+	var output NetworkCloser = gonnect.DetachNetwork(source, nil, nil)
 	if wrap != nil {
 		wrapped := wrap(output)
 		if wrapped == nil {

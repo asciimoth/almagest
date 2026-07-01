@@ -103,6 +103,38 @@ A node must not publish "up" after a fatal runtime attachment error until the
 failed attachment has been replaced or detached.
 ```
 
+### Do Not Let Sentinel Errors Hide Active Failures
+
+Low-level I/O libraries often use sentinel errors such as `net.ErrClosed` for
+normal shutdown. Those same sentinels can also appear when the current active
+resource fails underneath a node. If an upstream loop treats the sentinel as
+expected shutdown before notifying subscribers, a wrapper that exposes the
+sentinel through `Unwrap` or `Is` can accidentally hide the failure from the
+node state machine.
+
+Do not encode lifecycle meaning in the sentinel alone. Carry explicit metadata
+that says whether the close was intentional and which runtime/open generation it
+belongs to. Preserve that metadata until the node-owned error handler can decide
+whether to ignore a stale/intentional close or fail and rebuild the current
+attachment.
+
+Good patterns:
+
+- wrapper error types that carry runtime, attachment, and open generation
+- an explicit `intentionalClose` or equivalent flag set before closing resources
+- opaque wrappers when the upstream library suppresses specific sentinels before
+  reporting errors
+- manual unwrapping inside the node after generation checks recover the concrete
+  wrapper type
+- tests proving unexpected active-resource closes are reported and recovered
+
+Invariant:
+
+```text
+A normal-shutdown sentinel from a lower layer is not proof that the current
+resource was intentionally closed by this node.
+```
+
 ### Rebuild Before Clearing Error State
 
 Retry code can accidentally make a stale resource look healthy:
@@ -197,6 +229,8 @@ When adding or refactoring a runtime node, answer these before merging:
 - Does every async completion carry enough identity to reject stale results?
 - Can an intentional close/reopen report an error after a replacement is active?
 - Does a routine error invalidate the specific attachment it depended on?
+- Can a sentinel error such as `net.ErrClosed` be suppressed before the node
+  records an active-resource failure?
 - Does retry rebuild failed attachments before applying config or clearing
   errors?
 - Can an old success clear a newer error or cancel a newer retry?

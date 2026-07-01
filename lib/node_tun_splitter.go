@@ -56,7 +56,6 @@ func (c tunSplitterClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassStat
 		pool:          pool,
 		rulesText:     configer.String(cfg, configer.Path{"rules"}, ""),
 		routingConfig: readTunSplitterRoutingConfig(cfg),
-		splitter:      tun.NewSplitter(pool),
 		slots: newSlotPorts(
 			tunSplitterMaxSlots,
 			"right",
@@ -99,7 +98,8 @@ type tunSplitterNode struct {
 func (n *tunSplitterNode) OnInit(w *pasta.Workspace, _ pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
 	n.InitBaseNode(w, nil, id)
 	if n.splitter == nil {
-		n.splitter = tun.NewSplitter(n.pool)
+		// Nil spawner is intentional here; see the Gonnect spawner note in helpers.go.
+		n.splitter = tun.NewSplitter(nil, n.pool)
 	}
 	if n.frontends == nil {
 		n.frontends = map[uint64]tun.Tun{}

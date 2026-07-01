@@ -164,7 +164,7 @@ func (n *socksServerNode) stopWorker() {
 	}
 }
 
-func runSocksServerWorker(ctx context.Context, logger pasta.Logger, w *pasta.Workspace, node uint64, stop <-chan struct{}, cfg socksServerWorkerConfig, spawner pasta.NodeWorkerSpawner) {
+func runSocksServerWorker(ctx context.Context, logger pasta.Logger, w *pasta.Workspace, node uint64, stop <-chan struct{}, cfg socksServerWorkerConfig, spawner EngineWorkerSpawner) {
 	for {
 		select {
 		case <-stop:
@@ -194,7 +194,7 @@ func runSocksServerWorker(ctx context.Context, logger pasta.Logger, w *pasta.Wor
 	}
 }
 
-func runSocksServerOnce(ctx context.Context, logger pasta.Logger, w *pasta.Workspace, node uint64, stop <-chan struct{}, cfg socksServerWorkerConfig, spawner pasta.NodeWorkerSpawner) error {
+func runSocksServerOnce(ctx context.Context, logger pasta.Logger, w *pasta.Workspace, node uint64, stop <-chan struct{}, cfg socksServerWorkerConfig, spawner EngineWorkerSpawner) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	go func() {
@@ -205,9 +205,10 @@ func runSocksServerOnce(ctx context.Context, logger pasta.Logger, w *pasta.Works
 		}
 	}()
 
-	listenNetwork := gonnect.DetachNetwork(cfg.listenNetwork, nil)
+	// Nil spawners are intentional here; see the Gonnect spawner note in helpers.go.
+	listenNetwork := gonnect.DetachNetwork(cfg.listenNetwork, nil, nil)
 	defer listenNetwork.Close() //nolint
-	proxyNetwork := gonnect.DetachNetwork(cfg.proxyNetwork, nil)
+	proxyNetwork := gonnect.DetachNetwork(cfg.proxyNetwork, nil, nil)
 	defer proxyNetwork.Close() //nolint
 	cfg.listenNetwork = listenNetwork
 	cfg.proxyNetwork = proxyNetwork

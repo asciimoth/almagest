@@ -40,7 +40,6 @@ func (networkRouterClass) DefaultNodeParams() pasta.NodeClassParams {
 func (networkRouterClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
 	return &networkRouterNode{
 		rulesText: configer.String(cfg, configer.Path{"rules"}, ""),
-		router:    gonnect.NewRouter(),
 		slots: newSlotPorts(
 			networkRouterMaxSlots,
 			"right",
@@ -70,7 +69,8 @@ type networkRouterNode struct {
 func (n *networkRouterNode) OnInit(w *pasta.Workspace, _ pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
 	n.InitBaseNode(w, nil, id)
 	if n.router == nil {
-		n.router = gonnect.NewRouter()
+		// Nil spawner is intentional here; see the Gonnect spawner note in helpers.go.
+		n.router = gonnect.NewRouter(nil)
 	}
 	if n.backends == nil {
 		n.backends = map[int]NetworkCloser{}

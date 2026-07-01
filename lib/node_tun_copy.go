@@ -37,7 +37,7 @@ func (tunCopyClass) DefaultNodeParams() pasta.NodeClassParams {
 }
 func (c tunCopyClass) NewNode(_ configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
 	pool := enginePool(c.engine)
-	return &tunCopyNode{pool: pool, p2p: tun.NewP2P(pool)}, nil
+	return &tunCopyNode{pool: pool}, nil
 }
 
 // tunCopyNode owns one Point2Point bridge. Both ports are left-directed
@@ -65,7 +65,8 @@ type tunCopyNode struct {
 func (n *tunCopyNode) OnInit(w *pasta.Workspace, _ pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
 	n.InitBaseNode(w, nil, id)
 	if n.p2p == nil {
-		n.p2p = tun.NewP2P(n.pool)
+		// Nil spawner is intentional here; see the Gonnect spawner note in helpers.go.
+		n.p2p = tun.NewP2P(n.pool, nil)
 	}
 	n.tunA = restoredLeft(restored, 0)
 	n.tunB = restoredLeft(restored, 1)
@@ -82,11 +83,17 @@ func (n *tunCopyNode) OnReady() error {
 }
 
 func (n *tunCopyNode) OnStop() {
+	if n.currentA != nil {
+		_ = n.currentA.Close()
+		n.currentA = nil
+	}
+	if n.currentB != nil {
+		_ = n.currentB.Close()
+		n.currentB = nil
+	}
 	if n.p2p != nil {
 		n.p2p.Stop()
 	}
-	n.currentA = nil
-	n.currentB = nil
 }
 
 func (n *tunCopyNode) PreLinkAdd(port uint64, linkType, portDirection string) error {
