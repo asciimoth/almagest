@@ -1,48 +1,47 @@
 {
 	"nodes": {
-		"MockNetwork 1728": {"Class": "almagest/MockNetwork", "Pos": "{\"x\":603,\"y\":483}"},
-		"Spoofer 1733": {
-			"Class":                "almagest/Spoofer",
-			"Pos":                  "{\"x\":400,\"y\":435}",
-			"Links":                ["Network -> [MockNetwork 1728] Network"],
-			"tcpForwardAttempts":   0,
-			"ttl":                  0,
-			"tcpSendBufferSize":    0,
-			"tcpReceiveBufferSize": 0,
-			"congestionControlAlg": "",
-			"disableNagle":         false,
-			"tcpKeepAlive":         false,
-			"tcpForwardWnd":        0,
-			"icmpLimit":            0,
-			"mtu":                  1500,
-			"disableSACK":          false,
-			"icmpBurst":            0,
-			"tcpKeepAliveIdle":     0,
-			"tcpKeepAliveInterval": 0,
-			"tcpKeepAliveCount":    0,
-			"queueLength":          1024,
-			"disableTCPModRecBuff": false
-		},
-		"HttpServer 1737": {
-			"Class":    "almagest/HttpServer",
-			"Pos":      "{\"x\":398,\"y\":547}",
-			"Links":    ["Network -> [MockNetwork 1728] Network"],
-			"response": "",
-			"host":     "10.199.20.1",
-			"port":     8080
-		},
-    // curl http://10.199.20.1:8080
-		"DefaultTun 1743": {
+		"DefaultTun": {
 			"Class":     "almagest/DefaultTun",
 			"Pos":       "{\"x\":205,\"y\":432}",
-			"Links":     ["Tun -> [Spoofer 1733] Tun"],
+			"Links":     ["Tun -> [Spoofer] Tun"],
+			"tunAddrs":  "",
+			"tunRoutes": "",
+			"mtu":       0,
 			"dnsIP":     "",
 			"strict":    false,
 			"exclude":   [],
-			"include":   [],
-			"tunAddrs":  "",
-			"tunRoutes": "",
-			"mtu":       0
+			"include":   []
+		},
+		"Spoofer": {
+			"Class":                "almagest/Spoofer",
+			"Pos":                  "{\"x\":400,\"y\":435}",
+			"Links":                ["Network -> [MockNetwork] Network"],
+			"queueLength":          1024,
+			"icmpLimit":            0,
+			"tcpSendBufferSize":    0,
+			"mtu":                  1500,
+			"ttl":                  0,
+			"icmpBurst":            0,
+			"tcpReceiveBufferSize": 0,
+			"disableNagle":         false,
+			"tcpKeepAliveInterval": 0,
+			"tcpKeepAliveCount":    0,
+			"tcpForwardAttempts":   0,
+			"tcpKeepAlive":         false,
+			"tcpKeepAliveIdle":     0,
+			"disableSACK":          false,
+			"congestionControlAlg": "",
+			"disableTCPModRecBuff": false,
+			"tcpForwardWnd":        0
+		},
+		"MockNetwork": {"Class": "almagest/MockNetwork", "Pos": "{\"x\":603,\"y\":483}"},
+		"HttpServer": {
+			"host":     "10.199.20.1",
+			"port":     8080,
+			"response": "",
+			"Class":    "almagest/HttpServer",
+			"Pos":      "{\"x\":398,\"y\":547}",
+			"Links":    ["Network -> [MockNetwork] Network"]
 		}
 	}
 }
