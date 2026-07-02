@@ -9,6 +9,7 @@ import (
 
 	"github.com/asciimoth/formular"
 	"github.com/asciimoth/gonnect"
+	"github.com/asciimoth/pasta/pasta"
 	"github.com/asciimoth/socksgo/protocol"
 )
 
@@ -159,6 +160,38 @@ func TestSocksServerEnsureWorkerStartedKeepsRunningWorker(t *testing.T) {
 	}
 }
 
+func TestSocksServerAcceptNetworkPayloadReplacesStaleCurrentSameSource(t *testing.T) {
+	// A closed same-source current wrapper should not make the SOCKS server
+	// discard a fresh re-emit from Select or another wrapper-preserving node.
+	base := gonnect.NewLoopbackNetwok()
+	current := &testNetworkWrapper{
+		NetworkCloser: gonnect.DetachNetwork(base, nil, nil),
+		wrapped:       base,
+		up:            true,
+	}
+	closeTestNetwork(current)
+	replacement := &testNetworkWrapper{
+		NetworkCloser: gonnect.DetachNetwork(base, nil, nil),
+		wrapped:       base,
+		up:            true,
+	}
+	defer closeTestNetwork(replacement)
+
+	next, changed := acceptSocksServerNetworkPayload(nil, 0, pasta.Event{
+		Link:    1,
+		Payload: NetworkPayload{Network: replacement},
+	}, current)
+	if !changed {
+		t.Fatal("acceptSocksServerNetworkPayload() changed = false, want true for stale current")
+	}
+	if !SameNetworkInstance(next, replacement) {
+		t.Fatal("acceptSocksServerNetworkPayload() did not return replacement")
+	}
+	if !NetworkIsReady(replacement) {
+		t.Fatal("replacement network is not ready")
+	}
+}
+
 func assertStringSlice(t *testing.T, got, want []string) {
 	t.Helper()
 	if len(got) != len(want) {
@@ -223,7 +256,9 @@ func (n *socksRouteNetwork) ListenUDPConfig(context.Context, *gonnect.ListenConf
 func (n *socksRouteNetwork) ListenMulticastUDP(context.Context, string, string, gonnect.MulticastOptions) (gonnect.MulticastPacketConn, error) {
 	return nil, gonnect.ErrUnsupported
 }
-func (n *socksRouteNetwork) InterfaceAddrs() ([]net.Addr, error) { return nil, gonnect.ErrUnsupported }
+func (n *socksRouteNetwork) InterfaceAddrs() ([]net.Addr, error) {
+	return nil, gonnect.ErrUnsupported
+}
 func (n *socksRouteNetwork) InterfaceMulticastAddrs() ([]net.Addr, error) {
 	return nil, gonnect.ErrUnsupported
 }
@@ -254,8 +289,12 @@ func (n *socksRouteNetwork) LookupCNAME(context.Context, string) (string, error)
 func (n *socksRouteNetwork) LookupPort(context.Context, string, string) (int, error) {
 	return 0, nil
 }
-func (n *socksRouteNetwork) LookupNS(context.Context, string) ([]*net.NS, error) { return nil, nil }
-func (n *socksRouteNetwork) LookupMX(context.Context, string) ([]*net.MX, error) { return nil, nil }
+func (n *socksRouteNetwork) LookupNS(context.Context, string) ([]*net.NS, error) {
+	return nil, nil
+}
+func (n *socksRouteNetwork) LookupMX(context.Context, string) ([]*net.MX, error) {
+	return nil, nil
+}
 func (n *socksRouteNetwork) LookupSRV(context.Context, string, string, string) (string, []*net.SRV, error) {
 	return "", nil, nil
 }

@@ -78,6 +78,37 @@ A late result from an old generation is data about the old generation only.
 It must not mutate the current runtime state.
 ```
 
+### Guard Runtime Event Streams Too
+
+Some runtime resources do not only report completion or errors back to the
+node. They can also drive the lower-level runtime directly through event
+streams. For example, a TUN wrapper can emit lifecycle events that tell an
+embedded device to go up or down.
+
+Those events can arrive after the graph attachment has been logically detached
+and its generation has been invalidated, but before the physical resource has
+been removed from the lower-level runtime. The node may correctly report
+`waiting for TUN` while the embedded runtime briefly reopens listeners or
+sockets in response to a stale event.
+
+Good patterns:
+
+- drain buffered lifecycle events before handing a wrapper to a runtime that
+  has its own event reader
+- explicitly detach stale installed resources before applying config that can
+  reopen sockets or listeners
+- treat "desired generation moved on" as inactive even if the old resource is
+  still physically installed
+- test monotonic side effects such as listen/open counts immediately after
+  link removal and config apply
+
+Invariant:
+
+```text
+A stale resource event must not be able to make the lower-level runtime active
+after the node has invalidated that resource's graph generation.
+```
+
 ### Keep Failed Attachments Distinct From Missing Attachments
 
 A failed runtime resource can still be non-nil. For example, a receive loop can
@@ -95,6 +126,11 @@ Good patterns:
 - retry path that treats failed attachments like missing attachments
 - label/state calculation that keeps the node in `error` while the failed bit is
   set
+
+Same-source re-emits can be useful recovery signals. If a current failed
+attachment belongs to the same source as a fresh payload, do not treat the
+source match as proof the failed attachment can be reused; rebuild or reattach
+before clearing errors.
 
 Invariant:
 
@@ -184,6 +220,11 @@ Consumers may already hold the previous wrapper. Closing it during `OnReady`,
 `OnLinkAdd`, `std.Request`, or config propagation can leave downstream nodes
 with a closed runtime path even though the underlying source did not change.
 
+Same-source suppression must still check that the current wrapper is ready. A
+stale or closed current wrapper should be replaced even when the replacement
+unwraps to the same underlying source; otherwise close/re-emit paths can leave
+consumers permanently bound to a dead wrapper.
+
 Prefer per-link output caches for detached wrappers. Close wrappers only when:
 
 - the link or node lifecycle ends
@@ -233,7 +274,14 @@ When adding or refactoring a runtime node, answer these before merging:
   records an active-resource failure?
 - Does retry rebuild failed attachments before applying config or clearing
   errors?
+- Does same-source suppression reject only ready current wrappers?
+- If an operation marks an attachment failed, did retry eligibility get captured
+  before that mutation?
 - Can an old success clear a newer error or cancel a newer retry?
+- Can a stale resource event reopen sockets after link detach but before
+  physical detach?
+- Are buffered lifecycle events drained before attaching resources to runtimes
+  with their own event readers?
 - Can a same-source request or re-emit close wrappers still held downstream?
 - Does config propagation rebuild live resources for equivalent effective
   options?
@@ -298,6 +346,43 @@ Related implementation:
 
 - `lib/node_wireguard.go`
 - `lib/node_wireguard_runtime.go`
+- `lib/node_wireguard_device.go`
+
+### WireGuard Opened Sockets After TUN Detach
+
+Bug:
+
+- Detached TUN wrappers can emit buffered lifecycle events, including an
+  initial `EventUp`.
+- `wgo` has its own TUN event reader that can call `device.Up()` independently
+  of Almagest's runtime generation checks.
+- After a TUN link was removed, Almagest invalidated the TUN generation and
+  scheduled async detach, but the old TUN could still be physically installed
+  briefly.
+- A stale TUN event could bring `wgo` up during that window. A following config
+  apply that changed `listenPort` then reopened UDP sockets even though the
+  node was already logically waiting for TUN.
+
+Fix:
+
+- WireGuard drains buffered TUN lifecycle events before attaching a TUN to
+  `wgo`.
+- Config apply first physically detaches any installed TUN whose generation is
+  no longer current.
+
+Coverage:
+
+```sh
+go test ./lib -run TestWireGuardNetworkAttachmentDoesNotOpenSocketsUntilTunAttached -race -count=300
+```
+
+Test location:
+
+- `lib/node_wireguard_test.go`:
+  `TestWireGuardNetworkAttachmentDoesNotOpenSocketsUntilTunAttached`
+
+Related implementation:
+
 - `lib/node_wireguard_device.go`
 
 ### VTun Rebuilt For Equivalent `TunConfig`

@@ -28,8 +28,8 @@ github.com/asciimoth/pasta/pasta v0.7.1 h1:bghomZ0SrpCj3eRvfYF8rkReT9ftkW1/z+bhf
 github.com/asciimoth/pasta/pasta v0.7.1/go.mod h1:Nlp2ZMjRX60Rv8Rt0QCLcSmIc0/YVsEEc9a+5IpPJZw=
 github.com/asciimoth/putback v0.3.0 h1:NKyX1K2yR/pHt9ov7BifA7qd8oMSOhsit4hMf694e30=
 github.com/asciimoth/putback v0.3.0/go.mod h1:K4u9GV2oQVToze+iKSA/e2V26lusyirYqBZuOZnw2YA=
-github.com/asciimoth/socksgo v0.3.9 h1:7hmZYp/Jt8EIoy+7vQqz/s7MADqsjzQM3EHonEQmZZ0=
-github.com/asciimoth/socksgo v0.3.9/go.mod h1:uxi9ezKjNN1iGJ7vQOVqo4hXFX9hnuDUMFExjK4aFvY=
+github.com/asciimoth/socksgo v0.4.0 h1:pjYrmfQeXjbm5OUrP5hImc+bTlw/o44DazNnlanlg0s=
+github.com/asciimoth/socksgo v0.4.0/go.mod h1:uxi9ezKjNN1iGJ7vQOVqo4hXFX9hnuDUMFExjK4aFvY=
 github.com/asciimoth/sysnet-linux v0.2.8 h1:QuQDpNKEXtxMEXcsJ/T9dZ9dxSuFDI9tn6VQVtxfCxs=
 github.com/asciimoth/sysnet-linux v0.2.8/go.mod h1:dWcXueoWGsDNR4zvcWsjkMW1J7N+vJN6rRVkWeJjpGI=
 github.com/asciimoth/tuntap v0.3.18 h1:0Md6oYAoGgMQnEOAmJmEH2ysqASvEISMcuAY6wGNOQw=

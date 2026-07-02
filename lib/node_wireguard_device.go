@@ -39,6 +39,9 @@ func (n *wireGuardNode) applyConfigToDeviceLocked(config wireGuardConfig, rebuil
 	if err := validateWireGuardConfig(config); err != nil {
 		return err
 	}
+	if err := n.detachStaleTunLocked(); err != nil {
+		return err
+	}
 	n.runtimeListenPort = config.listenPort
 	active := n.hasActiveAttachmentsLocked()
 	if !active {
@@ -62,6 +65,9 @@ func (n *wireGuardNode) applyConfigToDeviceLocked(config wireGuardConfig, rebuil
 		return nil
 	}
 	if err := n.dev.Up(); err != nil {
+		// A failed device bring-up can leave a non-nil bind behind, but that
+		// bind is not reusable until the attach path rebuilds it.
+		n.currentBindFailed = true
 		return fmt.Errorf("bring device up: %w", err)
 	}
 	n.runtimeListenPort = int(n.dev.ListenPort())
@@ -76,7 +82,29 @@ func (n *wireGuardNode) currentTunActiveLocked() bool {
 	return n.currentTun != nil && n.currentTunGeneration == n.currentTunGenerationValue()
 }
 func (n *wireGuardNode) currentNetworkActiveLocked() bool {
-	return n.currentNetwork != nil && n.currentNetworkGeneration == n.currentNetworkGenerationValue()
+	// Generation match and presence are not enough: wrapper-preserving
+	// middleware can close and later re-emit the same underlying source.
+	return n.currentNetwork != nil &&
+		n.currentNetworkGeneration == n.currentNetworkGenerationValue() &&
+		NetworkIsReady(n.currentNetwork)
+}
+
+func (n *wireGuardNode) detachStaleTunLocked() error {
+	if n.dev == nil || n.currentTun == nil || n.currentTunGeneration == n.currentTunGenerationValue() {
+		return nil
+	}
+	// A TUN event can bring wgo up after Almagest has already invalidated the
+	// TUN generation. Remove that stale TUN before ApplyConfig touches the
+	// listen port, because wgo updates the bind when it thinks the device is up.
+	n.currentTun = nil
+	n.currentTunGeneration = 0
+	if err := n.dev.Down(); err != nil {
+		return fmt.Errorf("bring device down before detaching stale TUN: %w", err)
+	}
+	if err := n.dev.DetachTUN(); err != nil {
+		return fmt.Errorf("detach stale TUN: %w", err)
+	}
+	return nil
 }
 
 func (n *wireGuardNode) attachCurrentTun(tunGeneration uint64, t tun.Tun) (bool, bool, error) {
@@ -100,6 +128,7 @@ func (n *wireGuardNode) attachCurrentTun(tunGeneration uint64, t tun.Tun) (bool,
 		return n.currentBind != nil, true, nil
 	}
 	n.ensureDeviceLocked()
+	drainWireGuardTunEvents(t)
 	var err error
 	if n.currentTun == nil {
 		err = n.dev.AttachTUN(t)
@@ -113,6 +142,26 @@ func (n *wireGuardNode) attachCurrentTun(tunGeneration uint64, t tun.Tun) (bool,
 	n.currentTun = t
 	n.currentTunGeneration = tunGeneration
 	return n.currentBind != nil, true, nil
+}
+
+// Detached TUN wrappers can have buffered lifecycle events, including their
+// initial EventUp. Almagest explicitly brings the device up after config apply,
+// so old buffered events should not drive wgo's state machine after attach.
+func drainWireGuardTunEvents(t tun.Tun) {
+	if t == nil {
+		return
+	}
+	events := t.Events()
+	for {
+		select {
+		case _, ok := <-events:
+			if !ok {
+				return
+			}
+		default:
+			return
+		}
+	}
 }
 
 func (n *wireGuardNode) attachNetworkPayload(networkGeneration uint64, network NetworkCloser) (bool, bool, bool, error) {
@@ -133,6 +182,12 @@ func (n *wireGuardNode) attachNetworkPayload(networkGeneration uint64, network N
 			_ = network.Close()
 		}
 		n.currentNetworkGeneration = networkGeneration
+		if n.currentBind == nil || n.currentBindFailed {
+			// A same-source re-emit is also the recovery signal for a failed
+			// network bind; rebuild before config apply can clear the error.
+			retry, err := n.attachCurrentNetworkBindLocked()
+			return n.hasActiveAttachmentsLocked(), true, retry, err
+		}
 		return n.hasActiveAttachmentsLocked(), true, false, nil
 	}
 	n.currentNetwork = network

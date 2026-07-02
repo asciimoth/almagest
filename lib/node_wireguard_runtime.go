@@ -93,8 +93,14 @@ func (n *wireGuardNode) scheduleConfigApply(config wireGuardConfig, rebuildPeers
 		if runtimeGeneration != n.currentRuntimeGeneration() {
 			return false, nil, false
 		}
+		// Capture retry eligibility before applyConfigToDeviceLocked can mark
+		// the current bind failed; the active attachments caused this failure.
+		retryOnError := n.currentTunActiveLocked() && n.currentNetworkActiveLocked() && n.currentBind != nil
 		err := n.applyConfigToDeviceLocked(config, rebuildPeers)
-		return n.hasActiveAttachmentsLocked(), err, true
+		if err != nil {
+			return retryOnError, err, true
+		}
+		return n.hasActiveAttachmentsLocked(), nil, true
 	})
 }
 

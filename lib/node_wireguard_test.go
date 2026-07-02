@@ -622,6 +622,86 @@ func TestWireGuardStateDoesNotReportUpBeforeNetworkBindAttachCompletes(t *testin
 	}
 }
 
+func TestWireGuardStateDoesNotReportUpWithClosedNetwork(t *testing.T) {
+	// Closed network wrappers can still be stored on the node, but they must
+	// not satisfy the active-attachment predicate used for "up".
+	privateKey, _ := wireGuardTestKeyPair(t, 7)
+	sourceTun, peerTun := tun.Pipe(4, 1500, 0, 0)
+	t.Cleanup(func() { _ = sourceTun.Close() })
+	t.Cleanup(func() { _ = peerTun.Close() })
+
+	network := gonnect.DetachNetwork(gonnect.NewLoopbackNetwok(), nil, nil)
+	if err := network.Close(); err != nil {
+		t.Fatalf("network.Close() error = %v, want nil", err)
+	}
+	n := &wireGuardNode{
+		config:                   defaultWireGuardConfig(),
+		currentTun:               sourceTun,
+		currentTunGeneration:     1,
+		currentNetwork:           network,
+		currentNetworkGeneration: 1,
+		currentBind:              wireGuardTrackedBind{},
+		runtimeReadyGeneration:   1,
+	}
+	n.config.privateKey = privateKey
+	n.config.listenPort = 51820
+	n.tunGeneration.Store(1)
+	n.networkGeneration.Store(1)
+	n.runtimeGeneration.Store(1)
+
+	if got := n.stateText(); got == "up" {
+		t.Fatalf("stateText() = %q with closed network, want not up", got)
+	}
+}
+
+func TestWireGuardSameSourceNetworkReemitRebuildsFailedBind(t *testing.T) {
+	// Same-source re-emits should preserve wrapper identity only for healthy
+	// binds; a failed bind needs to be rebuilt before config is retried.
+	sourceTun, peerTun := tun.Pipe(4, 1500, 0, 0)
+	t.Cleanup(func() { _ = sourceTun.Close() })
+	t.Cleanup(func() { _ = peerTun.Close() })
+
+	base := gonnect.NewLoopbackNetwok()
+	current := gonnect.DetachNetwork(base, nil, nil)
+	t.Cleanup(func() { _ = current.Close() })
+	duplicate := gonnect.DetachNetwork(base, nil, nil)
+
+	n := &wireGuardNode{
+		config:                   defaultWireGuardConfig(),
+		currentTun:               sourceTun,
+		currentTunGeneration:     1,
+		currentNetwork:           current,
+		currentNetworkGeneration: 1,
+		currentBind:              wireGuardTrackedBind{},
+		currentBindFailed:        true,
+	}
+	n.tunGeneration.Store(1)
+	n.networkGeneration.Store(2)
+
+	needsConfig, ok, retry, err := n.attachNetworkPayload(2, duplicate)
+	if err != nil {
+		t.Fatalf("attachNetworkPayload() error = %v, want nil", err)
+	}
+	if !ok {
+		t.Fatal("attachNetworkPayload() ok = false, want true")
+	}
+	if retry {
+		t.Fatal("attachNetworkPayload() retry = true, want false")
+	}
+	if !needsConfig {
+		t.Fatal("attachNetworkPayload() needsConfig = false, want true")
+	}
+	if n.currentBindFailed {
+		t.Fatal("currentBindFailed = true after same-source reemit, want false")
+	}
+	if n.currentBindGen == 0 {
+		t.Fatal("currentBindGen = 0, want rebuilt bind generation")
+	}
+	if NetworkIsReady(duplicate) {
+		t.Fatal("duplicate same-source network was not closed")
+	}
+}
+
 func TestWireGuardRetriesDeviceBringUpAfterNetworkListenFailure(t *testing.T) {
 	w := pasta.NewWorkspace(NewDebugLogFactory(1024))
 	t.Cleanup(func() { w.Close() })

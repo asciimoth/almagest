@@ -179,7 +179,9 @@ func acceptSocksServerNetworkPayload(w *pasta.Workspace, node uint64, event past
 	if !ok || !NetworkIsReady(payload.Network) {
 		return current, false
 	}
-	if current != nil && SameNetworkSource(current, payload.Network) {
+	// Same-source re-emits should be ignored only while the current wrapper is
+	// still usable; stale wrappers must be replaceable by a fresh detach.
+	if NetworkIsReady(current) && SameNetworkSource(current, payload.Network) {
 		if !SameNetworkInstance(current, payload.Network) {
 			_ = payload.Network.Close()
 		}
