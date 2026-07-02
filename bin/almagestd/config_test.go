@@ -103,6 +103,7 @@ func TestProtectedConfigWebFilters(t *testing.T) {
 	cfg, err := ParseConfig([]byte(`{}`), []byte(`{
 		"Admin": {
 			"Web": 8080,
+			"WebPProf": true,
 			"WebFilters": {
 				"UIDs": [1000],
 				"GIDs": [1001],
@@ -115,6 +116,9 @@ func TestProtectedConfigWebFilters(t *testing.T) {
 	}
 	if got := cfg.Protected.Admin.Web; got != 8080 {
 		t.Fatalf("Admin.Web = %d, want 8080", got)
+	}
+	if !cfg.Protected.Admin.WebPProf {
+		t.Fatal("Admin.WebPProf = false, want true")
 	}
 	if got := cfg.Protected.Admin.WebFilters.UIDs; len(got) != 1 || got[0] != 1000 {
 		t.Fatalf("Admin.WebFilters.UIDs = %v, want [1000]", got)
@@ -211,10 +215,14 @@ func TestProtectedConfigMergeWebFilterArgs(t *testing.T) {
 		WebAdmin:                &web,
 		WebAdminFilterUIDs:      []uint32{2000, 2001},
 		WebAdminFilterUsernames: []string{"bob", "carol"},
+		WebAdminPProf:           true,
 	})
 
 	if got := cfg.Protected.Admin.Web; got != 9090 {
 		t.Fatalf("Admin.Web = %d, want 9090", got)
+	}
+	if !cfg.Protected.Admin.WebPProf {
+		t.Fatal("Admin.WebPProf = false, want true")
 	}
 	if got := cfg.Protected.Admin.WebFilters.UIDs; len(got) != 2 || got[0] != 2000 || got[1] != 2001 {
 		t.Fatalf("Admin.WebFilters.UIDs = %v, want [2000 2001]", got)

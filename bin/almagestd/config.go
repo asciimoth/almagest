@@ -137,6 +137,9 @@ func (p *ProtectedConfig) Merge(args *args.Args) {
 	if len(args.WebAdminFilterUsernames) > 0 {
 		p.Admin.WebFilters.Usernames = args.WebAdminFilterUsernames
 	}
+	if args.WebAdminPProf {
+		p.Admin.WebPProf = true
+	}
 	if args.UnixAdmin != nil {
 		p.Admin.Unix = *args.UnixAdmin
 	}
@@ -154,6 +157,7 @@ func (p *ProtectedConfig) Merge(args *args.Args) {
 type AdminAPIConfig struct {
 	Web         uint16
 	WebFilters  AdminPeerFiltersConfig
+	WebPProf    bool
 	Unix        string
 	UnixFilters AdminPeerFiltersConfig
 }

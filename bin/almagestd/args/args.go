@@ -30,6 +30,7 @@ type Args struct {
 	WebAdminFilterUIDs      []uint32 `arg:"--web-filter-uid,separate,env:ALMAGEST_WEB_ADMIN_FILTER_UIDS" help:"allowed web admin peer owner UID; repeat flag or comma-separate env values"`
 	WebAdminFilterGIDs      []uint32 `arg:"--web-filter-gid,separate,env:ALMAGEST_WEB_ADMIN_FILTER_GIDS" help:"allowed web admin peer owner GID; repeat flag or comma-separate env values"`
 	WebAdminFilterUsernames []string `arg:"--web-filter-user,separate,env:ALMAGEST_WEB_ADMIN_FILTER_USERS" help:"allowed web admin peer owner username; repeat flag or comma-separate env values"`
+	WebAdminPProf           bool     `arg:"--web-pprof,env:ALMAGEST_WEB_ADMIN_PPROF" help:"enable net/http/pprof handlers on the web admin listener under /debug/pprof/"`
 
 	UnixAdmin                *string  `arg:"--unix,env:ALMAGEST_UNIX_ADMIN" help:"unix socket path for local admin API; empty disables it"`
 	UnixAdminFilterUIDs      []uint32 `arg:"--unix-filter-uid,separate,env:ALMAGEST_UNIX_ADMIN_FILTER_UIDS" help:"allowed unix admin peer UID; repeat flag or comma-separate env values"`

@@ -28,6 +28,11 @@
         "WebFilters": {
           "$ref": "#/$defs/adminPeerFiltersConfig"
         },
+        "WebPProf": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable Go net/http/pprof handlers on the web admin listener under /debug/pprof/. Requires Admin.Web to be non-zero. Command-line --web-pprof / ALMAGEST_WEB_ADMIN_PPROF can enable this value."
+        },
         "Unix": {
           "type": "string",
           "default": "/run/almagest/admin.sock",

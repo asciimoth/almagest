@@ -26,6 +26,7 @@ var webStatic embed.FS
 type AdminAPI struct {
 	webListener  net.Listener
 	webServer    *http.Server
+	webPProf     bool
 	unixListener net.Listener
 	unixPath     string
 
@@ -80,6 +81,9 @@ func (a *AdminAPI) Run(
 		}
 		mux.Handle("/", http.FileServer(http.FS(static)))
 		a.registerAPIHandlers(ctx, mux, engine, sys, logf)
+		if a.webPProf {
+			registerPProfHandlers(mux)
+		}
 
 		server := &http.Server{
 			Handler:           mux,
@@ -668,6 +672,10 @@ func PrepareAdminAPI(cfg *Config) (*AdminAPI, error) {
 			return nil, err
 		}
 		api.webListener = listener
+		api.webPProf = cfg.Protected.Admin.WebPProf
+		if api.webPProf {
+			golog.Warn("Web admin pprof endpoint is enabled on /debug/pprof/")
+		}
 	}
 	if cfg.Protected.Admin.Unix != "" {
 		listener, err := listenUnixAdmin(cfg.Protected.Admin.Unix, cfg.Protected.Admin.UnixFilters)
