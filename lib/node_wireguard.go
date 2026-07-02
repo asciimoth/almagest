@@ -304,6 +304,7 @@ func (n *wireGuardNode) OnSave(cfg configer.Config) error {
 	return configer.SetMap(cfg, map[string]any{
 		"privateKey": n.config.privateKey,
 		"listenPort": n.config.listenPort,
+		"batchSize":  n.config.batchSize,
 		"ownedIPs":   n.config.ownedIPs,
 		"amneziaWG":  wireGuardAmneziaConfigMap(n.config.amneziaWG),
 		"peers":      wireGuardPeersConfig(n.config.peers),

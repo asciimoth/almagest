@@ -55,6 +55,7 @@ func (n *wireGuardNode) configBlock() formular.Block {
 	items := []formular.Item{
 		secretTextField("privateKey", "Private key", n.config.privateKey, statusErr, n.formError, false),
 		configIntField("listenPort", "Listen port", n.config.listenPort, statusErr, n.formError),
+		wireGuardBatchSizeField(n.config.batchSize, statusErr, n.formError),
 		configTextField("ownedIPs", "Owned IPs", n.config.ownedIPs, statusErr, n.formError, true),
 	}
 	items = append(items, wireGuardAmneziaConfigItems(n.config.amneziaWG, statusErr, n.formError)...)
@@ -85,6 +86,10 @@ func (n *wireGuardNode) sendConfigFieldStatus(msg formular.FieldValidateMessage)
 	case "listenPort":
 		if value, ok := formular.IntValue(msg.Value); ok {
 			next.listenPort = value
+		}
+	case "batchSize":
+		if value, ok := formular.IntValue(msg.Value); ok {
+			next.batchSize = value
 		}
 	case "ownedIPs":
 		if value, ok := formular.StringValue(msg.Value); ok {
@@ -165,6 +170,11 @@ func attachedText(attached bool) string {
 		return "attached"
 	}
 	return "detached"
+}
+func wireGuardBatchSizeField(value int, statusErr bool, statusText string) formular.Item {
+	item := configIntField("batchSize", "Batch size", value, statusErr, statusText)
+	item.Help = "wgo and batchudp batch size. Use 0 for library defaults; smaller positive values reduce retained buffers and may reduce peak throughput."
+	return item
 }
 func wireGuardUint64Text(value uint64) string {
 	return strconv.FormatUint(value, 10)

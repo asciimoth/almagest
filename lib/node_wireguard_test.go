@@ -52,6 +52,10 @@ func TestWireGuardClassPortsAndMenuBlocks(t *testing.T) {
 	if !ok || item.Field == nil || !item.Multiline {
 		t.Fatalf("config ownedIPs item = %#v, want multiline field", item)
 	}
+	item, ok = e.MenuItem(node, "config", "batchSize")
+	if !ok || item.Field == nil || item.Help == "" {
+		t.Fatalf("config batchSize item = %#v, want documented field", item)
+	}
 	for _, fieldID := range []string{"amneziaJunkCount", "amneziaInitHeader", "amneziaInitiationPacket1"} {
 		item, ok = e.MenuItem(node, "config", fieldID)
 		if !ok || item.Field == nil {
@@ -79,11 +83,11 @@ func TestWireGuardClassPortsAndMenuBlocks(t *testing.T) {
 }
 
 func TestWireGuardRuntimeStatsMessageUpdatesStatusRows(t *testing.T) {
-	dev := wgdevice.NewDevice(nil, nil, wgdevice.NopLogger{}, nil)
+	dev := wgdevice.NewDevice(nil, nil, wgdevice.NopLogger{}, nil, wgdevice.DeviceOptions{})
 	defer dev.Close()
 
 	n := &wireGuardNode{dev: dev}
-	ignoredDev := wgdevice.NewDevice(nil, nil, wgdevice.NopLogger{}, nil)
+	ignoredDev := wgdevice.NewDevice(nil, nil, wgdevice.NopLogger{}, nil, wgdevice.DeviceOptions{})
 	defer ignoredDev.Close()
 
 	n.handleRuntimeStats(wireGuardRuntimeStatsMessage{
@@ -123,6 +127,39 @@ func TestWireGuardRuntimeStatsMessageUpdatesStatusRows(t *testing.T) {
 	assertWireGuardStatusItemValue(t, block, "rxPackets", "12")
 	assertWireGuardStatusItemValue(t, block, "txPackets", "34")
 	assertWireGuardStatusItemValue(t, block, "latestHandshake", "2026-06-28T12:34:56Z")
+}
+
+func TestWireGuardBatchSizeConfiguresDeviceAndBind(t *testing.T) {
+	privateKey, _ := wireGuardTestKeyPair(t, 51)
+	network := newMockLoopbackNetwork()
+	t.Cleanup(func() { _ = network.Close() })
+	node := &wireGuardNode{config: wireGuardConfig{
+		privateKey: privateKey,
+		batchSize:  3,
+		amneziaWG:  defaultWireGuardAmneziaConfig(),
+	}}
+	node.config.normalize()
+
+	node.runtimeMu.Lock()
+	node.ensureDeviceLocked()
+	if got := node.dev.BatchSize(); got != 3 {
+		node.runtimeMu.Unlock()
+		t.Fatalf("device BatchSize() = %d, want 3", got)
+	}
+	node.currentNetwork = network
+	node.networkGeneration.Store(1)
+	node.currentNetworkGeneration = 1
+	if _, err := node.attachCurrentNetworkBindLocked(); err != nil {
+		node.runtimeMu.Unlock()
+		t.Fatalf("attachCurrentNetworkBindLocked: %v", err)
+	}
+	if got := node.currentBind.BatchSize(); got != 3 {
+		node.runtimeMu.Unlock()
+		t.Fatalf("bind BatchSize() = %d, want 3", got)
+	}
+	dev := node.dev
+	node.runtimeMu.Unlock()
+	t.Cleanup(dev.Close)
 }
 
 func assertWireGuardStatusItemValue(t *testing.T, block formular.Block, id string, want any) {
@@ -209,7 +246,7 @@ func TestWireGuardConfigPersistsAcrossSaveRestoreAndCopyPaste(t *testing.T) {
 	peerAmneziaWG.initHeader = "6111-6113"
 	peerAmneziaWG.responseHeader = "6222-6225"
 	peerAmneziaWG.initiationPackets[0] = "<b 0xbeef><rc 2>"
-	applyWireGuardConfigWithOwnedIPs(t, e.Engine, node, privateKey, 51820, ownedIPs, []wireGuardPeerConfig{{
+	applyWireGuardConfigWithBatchAndOwnedIPs(t, e.Engine, node, privateKey, 51820, 8, ownedIPs, []wireGuardPeerConfig{{
 		id:                          "peer-main",
 		publicKey:                   peerPublicKey,
 		presharedKey:                "",
@@ -240,6 +277,13 @@ func TestWireGuardConfigPersistsAcrossSaveRestoreAndCopyPaste(t *testing.T) {
 	if got, ok := formular.IntValue(gotPort); !ok || got != 51820 {
 		t.Fatalf("saved listenPort = %#v, want 51820", gotPort)
 	}
+	gotBatchSize, err := cfg.Get(configer.Path{"nodes", "wg", "batchSize"})
+	if err != nil {
+		t.Fatalf("saved batchSize missing: %v", err)
+	}
+	if got, ok := formular.IntValue(gotBatchSize); !ok || got != 8 {
+		t.Fatalf("saved batchSize = %#v, want 8", gotBatchSize)
+	}
 	if got, err := cfg.Get(configer.Path{"nodes", "wg", "ownedIPs"}); err != nil || got != ownedIPs {
 		t.Fatalf("saved ownedIPs = %#v, %v; want %q", got, err, ownedIPs)
 	}
@@ -264,6 +308,7 @@ func TestWireGuardConfigPersistsAcrossSaveRestoreAndCopyPaste(t *testing.T) {
 	assertWireGuardPeerField(t, restored, restoredNode, "amneziaOverride", true)
 	assertWireGuardPeerField(t, restored, restoredNode, "amneziaInitHeader", peerAmneziaWG.initHeader)
 	assertWireGuardPeerField(t, restored, restoredNode, "amneziaInitiationPacket1", peerAmneziaWG.initiationPackets[0])
+	assertWireGuardConfigField(t, restored, restoredNode, "batchSize", 8)
 	assertWireGuardConfigField(t, restored, restoredNode, "ownedIPs", ownedIPs)
 	assertWireGuardConfigField(t, restored, restoredNode, "amneziaJunkCount", amneziaWG.junkCount)
 	assertWireGuardConfigField(t, restored, restoredNode, "amneziaInitHeader", amneziaWG.initHeader)
@@ -283,6 +328,7 @@ func TestWireGuardConfigPersistsAcrossSaveRestoreAndCopyPaste(t *testing.T) {
 		item, ok := e.MenuItem(pastedNode, "status", "publicKey")
 		return ok && item.Value == publicKey
 	}, "pasted wireguard public key status")
+	assertWireGuardConfigField(t, e, pastedNode, "batchSize", 8)
 	assertWireGuardConfigField(t, e, pastedNode, "ownedIPs", ownedIPs)
 	assertWireGuardConfigField(t, e, pastedNode, "amneziaJunkCount", amneziaWG.junkCount)
 	assertWireGuardConfigField(t, e, pastedNode, "amneziaInitHeader", amneziaWG.initHeader)
@@ -389,6 +435,9 @@ func TestWireGuardAppliesPeerAmneziaOverrideToDevice(t *testing.T) {
 	}}
 	node.config.normalize()
 
+	node.runtimeMu.Lock()
+	node.ensureDeviceLocked()
+	node.runtimeMu.Unlock()
 	if err := node.applyConfigToDevice(true); err != nil {
 		t.Fatalf("applyConfigToDevice: %v", err)
 	}
@@ -780,7 +829,7 @@ func TestWireGuardTrackedBindClosedReceiveErrorIsRecoverable(t *testing.T) {
 
 func TestWireGuardIntentionalClosedReceiveErrorIsIgnored(t *testing.T) {
 	wg := &wireGuardNode{}
-	dev := wgdevice.NewDevice(nil, nil, wgdevice.NopLogger{}, nil)
+	dev := wgdevice.NewDevice(nil, nil, wgdevice.NopLogger{}, nil, wgdevice.DeviceOptions{})
 	t.Cleanup(dev.Close)
 	wg.dev = dev
 
@@ -999,12 +1048,18 @@ func applyWireGuardConfig(t *testing.T, engine Engine, node uint64, privateKey s
 
 func applyWireGuardConfigWithOwnedIPs(t *testing.T, engine Engine, node uint64, privateKey string, listenPort int, ownedIPs string, peers []wireGuardPeerConfig) {
 	t.Helper()
+	applyWireGuardConfigWithBatchAndOwnedIPs(t, engine, node, privateKey, listenPort, 0, ownedIPs, peers)
+}
+
+func applyWireGuardConfigWithBatchAndOwnedIPs(t *testing.T, engine Engine, node uint64, privateKey string, listenPort, batchSize int, ownedIPs string, peers []wireGuardPeerConfig) {
+	t.Helper()
 	engine.SendNodeFormularMsg(E2EWorkspace, node, formular.FormApplyMessage{
 		MessageBase: FormMessageBase(formular.MessageFormApply, node),
 		BlockID:     "config",
 		Values: map[string]any{
 			"privateKey": privateKey,
 			"listenPort": listenPort,
+			"batchSize":  batchSize,
 			"ownedIPs":   ownedIPs,
 		},
 	})

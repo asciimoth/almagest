@@ -1,7 +1,7 @@
 github.com/asciimoth/badlock v0.1.1 h1:XO7bHuC/U+o8FAaQzSD92hnuPzaAKW/HYTEmQGGb6Zo=
 github.com/asciimoth/badlock v0.1.1/go.mod h1:cLiOGSU1lNHVYytvc5Uy87gmeeP6b+aDbvm6M4YGnV0=
-github.com/asciimoth/batchudp v0.2.1 h1:cEiuT3ut5reIqSAfGrH6JZGDGFVmO8WYKTHF36qw7nQ=
-github.com/asciimoth/batchudp v0.2.1/go.mod h1:c0/uINmTUzae+8YYhSJf6qJg2m8OV1KJKNwczyZuy1E=
+github.com/asciimoth/batchudp v0.3.0 h1:Y83AIkGdHzX7KrtKBzFRfxrZXNSzaNeTajRzTed1jm8=
+github.com/asciimoth/batchudp v0.3.0/go.mod h1:c0/uINmTUzae+8YYhSJf6qJg2m8OV1KJKNwczyZuy1E=
 github.com/asciimoth/bufpool v0.3.0 h1:tQMop/kZ3eOLSorM9i0cqtOIpxWQUroGZ6oNk5DTnQc=
 github.com/asciimoth/bufpool v0.3.0/go.mod h1:JV6H4hpj2bCS5Svr0wNqR+XOZFOOkdXfNZxCjm/3QHw=
 github.com/asciimoth/configer/configer v0.3.1 h1:7Yre5IQ9qihv2LhJNmnlv2ViKAGNVEN6SmwrPJKuiG8=
@@ -26,8 +26,8 @@ github.com/asciimoth/socksgo v0.4.0 h1:pjYrmfQeXjbm5OUrP5hImc+bTlw/o44DazNnlanlg
 github.com/asciimoth/socksgo v0.4.0/go.mod h1:uxi9ezKjNN1iGJ7vQOVqo4hXFX9hnuDUMFExjK4aFvY=
 github.com/asciimoth/tuntap v0.3.18 h1:0Md6oYAoGgMQnEOAmJmEH2ysqASvEISMcuAY6wGNOQw=
 github.com/asciimoth/tuntap v0.3.18/go.mod h1:73UAhYzDINGaTVDpJ/hO7xXJTtR6Y2qIaYhkXPbrqEY=
-github.com/asciimoth/wgo v0.4.0 h1:j8ZMStd5863+wvBW4xaR0U4RSowr/312ItvZXFSH6Jc=
-github.com/asciimoth/wgo v0.4.0/go.mod h1:7ezPFEPe2Ty0g/57iPugDLKLubIXcW1cPaJaWCWXIQ4=
+github.com/asciimoth/wgo v0.5.0 h1:nDbG6mnxjTGcLSNSDrDF8fXoV2hsFYs/X3lfaXxY5dE=
+github.com/asciimoth/wgo v0.5.0/go.mod h1:AaHM+4AfdzFeRJvV6UwIcBCnGt9AF1fbG74kSMWfjVk=
 github.com/bahlo/generic-list-go v0.2.0 h1:5sz/EEAK+ls5wF+NeqDpk5+iNdMDXrh3z3nPnH1Wvgk=
 github.com/bahlo/generic-list-go v0.2.0/go.mod h1:2KvAjgMlE5NNynlg/5iLrrCCZ2+5xWbdbCW3pNTGyYg=
 github.com/buger/jsonparser v1.1.1 h1:2PnMjfWD7wBILjqQbt530v576A/cAbQvEW9gGIpYMUs=

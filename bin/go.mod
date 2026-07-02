@@ -24,13 +24,13 @@ require (
 require (
 	github.com/alexflint/go-scalar v1.2.0 // indirect
 	github.com/asciimoth/badlock v0.1.1 // indirect
-	github.com/asciimoth/batchudp v0.2.1 // indirect
+	github.com/asciimoth/batchudp v0.3.0 // indirect
 	github.com/asciimoth/gonnect-routing v0.7.2 // indirect
 	github.com/asciimoth/ident v0.2.0 // indirect
 	github.com/asciimoth/p-mark v0.2.0 // indirect
 	github.com/asciimoth/putback v0.3.0 // indirect
 	github.com/asciimoth/tuntap v0.3.18 // indirect
-	github.com/asciimoth/wgo v0.4.0 // indirect
+	github.com/asciimoth/wgo v0.5.0 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/cilium/ebpf v0.21.0 // indirect

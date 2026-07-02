@@ -67,6 +67,12 @@ func TestWireGuardE2EVTunHTTPClientServer(t *testing.T) {
 	f.assertWireGuardRequestWorks()
 }
 
+func TestWireGuardE2EAlternativeBatchSize(t *testing.T) {
+	f := setupWireGuardE2EWithBatchSize(t, defaultWireGuardE2ENames("batch-"), 1)
+	f.assertWireGuardRequestWorks()
+	f.assertServerLog(f.server, "GET /")
+}
+
 func TestWireGuardE2EOverSocksClientServer(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
@@ -238,6 +244,11 @@ func TestWireGuardE2ESendsTunConfigToAttachedTun(t *testing.T) {
 
 func setupWireGuardE2E(t *testing.T, names wireGuardE2ENames) wireGuardE2EFixture {
 	t.Helper()
+	return setupWireGuardE2EWithBatchSize(t, names, 0)
+}
+
+func setupWireGuardE2EWithBatchSize(t *testing.T, names wireGuardE2ENames, batchSize int) wireGuardE2EFixture {
+	t.Helper()
 	names = completeWireGuardE2ENames(names)
 	e := newHTTPE2E(t)
 	f := wireGuardE2EFixture{
@@ -262,14 +273,14 @@ func setupWireGuardE2E(t *testing.T, names wireGuardE2ENames) wireGuardE2EFixtur
 
 	e.applyTunCopyVTunConfig(f.clientVTun, "wireguard-client-vtun", wireGuardE2EClientAddr+"/24")
 	e.applyTunCopyVTunConfig(f.serverVTun, "wireguard-server-vtun", wireGuardE2EServerAddr+"/24")
-	applyWireGuardConfig(t, e.Engine, f.clientWG, clientPrivate, f.clientWGPort, []wireGuardPeerConfig{{
+	applyWireGuardConfigWithBatchAndOwnedIPs(t, e.Engine, f.clientWG, clientPrivate, f.clientWGPort, batchSize, "", []wireGuardPeerConfig{{
 		id:                          "server",
 		publicKey:                   serverPublic,
 		endpoint:                    fmt.Sprintf("127.0.0.1:%d", f.serverWGPort),
 		allowedIPs:                  wireGuardE2EServerAddr + "/32",
 		persistentKeepaliveInterval: 1,
 	}})
-	applyWireGuardConfig(t, e.Engine, f.serverWG, serverPrivate, f.serverWGPort, []wireGuardPeerConfig{{
+	applyWireGuardConfigWithBatchAndOwnedIPs(t, e.Engine, f.serverWG, serverPrivate, f.serverWGPort, batchSize, "", []wireGuardPeerConfig{{
 		id:                          "client",
 		publicKey:                   clientPublic,
 		endpoint:                    fmt.Sprintf("127.0.0.1:%d", f.clientWGPort),

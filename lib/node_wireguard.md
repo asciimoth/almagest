@@ -1,8 +1,9 @@
 Runs one embedded `github.com/asciimoth/wgo` WireGuard device.
 
 The left `Tun` port consumes a TUN endpoint. The right `Network` port supplies
-the UDP network used by WireGuard peer endpoints. The node keeps the same
-device while links are rewired, replacing only the active TUN or UDP bind.
+the UDP network used by WireGuard peer endpoints. The node creates the embedded
+device lazily once runtime links exist, then keeps that device while links are
+rewired, replacing only the active TUN or UDP bind.
 
 `ownedIPs` are emitted upstream as `TunConfig` address suggestions for the
 attached TUN provider. Peer `allowedIPs` are installed into the WireGuard
@@ -13,6 +14,11 @@ The config menu also exposes device-level AmneziaWG obfuscation controls:
 Jc/Jmin/Jmax, S1-S4 padding values, H1-H4 header ranges, and I1-I5
 initiation-packet obfuscation chains. Leaving those values at defaults keeps
 plain WireGuard behavior.
+
+`Batch size` is passed to both `wgo.DeviceOptions.BatchSize` and
+`batchudp.StdNetBindOptions.BatchSize`. Use `0` to keep library defaults.
+Smaller positive values reduce retained packet buffers and may reduce peak
+throughput.
 
 Peer entries expose the same AmneziaWG controls behind `AWG override`. When the
 override is off, the peer inherits the device-level AmneziaWG profile. When it

@@ -15,6 +15,7 @@ import (
 type wireGuardConfig struct {
 	privateKey string
 	listenPort int
+	batchSize  int
 	ownedIPs   string
 	amneziaWG  wireGuardAmneziaConfig
 	peers      []wireGuardPeerConfig
@@ -39,6 +40,7 @@ func (c *wireGuardConfig) read(cfg configer.Config) {
 	}
 	c.privateKey = configer.String(cfg, configer.Path{"privateKey"}, c.privateKey)
 	c.listenPort = configer.Int(cfg, configer.Path{"listenPort"}, c.listenPort)
+	c.batchSize = configer.Int(cfg, configer.Path{"batchSize"}, c.batchSize)
 	c.ownedIPs = configer.String(cfg, configer.Path{"ownedIPs"}, c.ownedIPs)
 	c.amneziaWG = readWireGuardAmneziaConfig(cfg, c.amneziaWG)
 	if peers, ok := readWireGuardPeers(cfg); ok {
@@ -50,6 +52,9 @@ func (c *wireGuardConfig) normalize() {
 	c.privateKey = normalizeWireGuardKey(c.privateKey)
 	if c.listenPort < 0 || c.listenPort > 65535 {
 		c.listenPort = 0
+	}
+	if c.batchSize < 0 {
+		c.batchSize = 0
 	}
 	c.ownedIPs = normalizeListText(c.ownedIPs)
 	c.amneziaWG.normalize()
@@ -102,6 +107,9 @@ func applyWireGuardConfigValues(config *wireGuardConfig, values map[string]any) 
 	if value, ok := formular.IntValue(values["listenPort"]); ok {
 		config.listenPort = value
 	}
+	if value, ok := formular.IntValue(values["batchSize"]); ok {
+		config.batchSize = value
+	}
 	if value, ok := formular.StringValue(values["ownedIPs"]); ok {
 		config.ownedIPs = value
 	}
@@ -115,6 +123,9 @@ func validateWireGuardConfig(config wireGuardConfig) error {
 	}
 	if config.listenPort < 0 || config.listenPort > 65535 {
 		return errors.New("listen port must be between 0 and 65535")
+	}
+	if config.batchSize < 0 {
+		return errors.New("batch size must be 0 or greater")
 	}
 	if _, err := parseWireGuardAllowedIPs(config.ownedIPs); err != nil {
 		return fmt.Errorf("owned IPs: %w", err)

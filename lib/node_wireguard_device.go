@@ -23,7 +23,9 @@ func (n *wireGuardNode) ensureDeviceLocked() {
 	// after workspace callbacks have released the workspace lock. Calling wgo
 	// from a workspace callback would reintroduce the workspace -> runtimeMu ->
 	// wgo -> workspace cycle.
-	n.dev = wgdevice.NewDevice(nil, nil, logger, n.workerSpawner)
+	n.dev = wgdevice.NewDevice(nil, nil, logger, n.workerSpawner, wgdevice.DeviceOptions{
+		BatchSize: n.config.batchSize,
+	})
 	n.runtimeStats = n.dev.RuntimeStats()
 	n.subscribeToRuntimeStatsLocked(n.dev)
 	n.subscribeToReceiveErrorsLocked(n.dev)
@@ -35,7 +37,6 @@ func (n *wireGuardNode) applyConfigToDevice(rebuildPeers bool) error {
 	return n.applyConfigToDeviceLocked(config, rebuildPeers)
 }
 func (n *wireGuardNode) applyConfigToDeviceLocked(config wireGuardConfig, rebuildPeers bool) error {
-	n.ensureDeviceLocked()
 	if err := validateWireGuardConfig(config); err != nil {
 		return err
 	}
@@ -45,10 +46,15 @@ func (n *wireGuardNode) applyConfigToDeviceLocked(config wireGuardConfig, rebuil
 	n.runtimeListenPort = config.listenPort
 	active := n.hasActiveAttachmentsLocked()
 	if !active {
+		if n.dev == nil {
+			n.runtimeStats = wgdevice.RuntimeStats{}
+			return nil
+		}
 		if err := n.dev.Down(); err != nil {
 			return err
 		}
 	}
+	n.ensureDeviceLocked()
 	deviceConfig, err := wireGuardDeviceConfig(config)
 	if err != nil {
 		return err
@@ -216,12 +222,13 @@ func (n *wireGuardNode) attachCurrentNetworkBindLocked() (bool, error) {
 		return false, errors.New("network is detached")
 	}
 	n.ensureDeviceLocked()
-	networkBind := conn.NewDefaultBind(n.currentNetwork)
-	if !n.currentNetwork.IsNative() {
-		networkBind = conn.NewDefaultBindWithOptions(n.currentNetwork, conn.StdNetBindOptions{
-			AllowSingleFamily: true,
-		})
+	networkBindOptions := conn.StdNetBindOptions{
+		BatchSize: n.config.batchSize,
 	}
+	if !n.currentNetwork.IsNative() {
+		networkBindOptions.AllowSingleFamily = true
+	}
+	networkBind := conn.NewDefaultBindWithOptions(n.currentNetwork, networkBindOptions)
 	activeTun := n.currentTunActiveLocked()
 	if activeTun {
 		if n.currentBind != nil {
