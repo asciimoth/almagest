@@ -529,7 +529,7 @@ func (e *engine) SubscribeNotifications(callback NotificationCallback) uint64 {
 }
 
 func (e *engine) UnsubscribeNotifications(id uint64) {
-	subMap, ok := e.subscriptionIDMapping[id]
+	subMap, ok := e.takeSubscriptionMap(id)
 	if !ok {
 		return
 	}
@@ -540,7 +540,7 @@ func (e *engine) UnsubscribeNotifications(id uint64) {
 }
 
 func (e *engine) RequestFullSnapshot(id uint64) {
-	subMap, ok := e.subscriptionIDMapping[id]
+	subMap, ok := e.subscriptionMap(id)
 	if !ok {
 		return
 	}
@@ -557,7 +557,7 @@ func (e *engine) SubscribeNodeMenu(workspace string, node, id uint64) {
 		return
 	}
 
-	subMap, ok := e.subscriptionIDMapping[id]
+	subMap, ok := e.subscriptionMap(id)
 	if !ok {
 		return
 	}
@@ -570,12 +570,29 @@ func (e *engine) UnsubscribeNodeMenu(workspace string, node, id uint64) {
 		return
 	}
 
-	subMap, ok := e.subscriptionIDMapping[id]
+	subMap, ok := e.subscriptionMap(id)
 	if !ok {
 		return
 	}
 
 	e.mainWorkspace.UnsubscribeNodeMenu(node, subMap.MainWorkspace)
+}
+
+func (e *engine) subscriptionMap(id uint64) (subMap, bool) {
+	e.Lock()
+	defer e.Unlock()
+	mapping, ok := e.subscriptionIDMapping[id]
+	return mapping, ok
+}
+
+func (e *engine) takeSubscriptionMap(id uint64) (subMap, bool) {
+	e.Lock()
+	defer e.Unlock()
+	mapping, ok := e.subscriptionIDMapping[id]
+	if ok {
+		delete(e.subscriptionIDMapping, id)
+	}
+	return mapping, ok
 }
 
 func (e *engine) SendNodeFormularMsg(workspace string, node uint64, message any) {
