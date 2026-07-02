@@ -2,6 +2,18 @@ package main
 
 import "testing"
 
+func TestConfigureGlobalBufPoolNoPoolDisablesPool(t *testing.T) {
+	previous := globalBufPool
+	t.Cleanup(func() { globalBufPool = previous })
+
+	globalBufPool = leveledBufPool{}
+	configureGlobalBufPool(true)
+
+	if globalBufPool != nil {
+		t.Fatal("globalBufPool is not nil after configureGlobalBufPool(true)")
+	}
+}
+
 func TestLeveledBufPoolGetReturnsRequestedLength(t *testing.T) {
 	pool := leveledBufPool{}
 

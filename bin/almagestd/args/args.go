@@ -18,6 +18,8 @@ type Args struct {
 
 	LogLevel string `arg:"-l,--lvl,env:ALMAGEST_LOG_LVL" help:"logging level debug|info|warn|error|fatal"`
 
+	NoPool bool `arg:"--no-pool" help:"disable daemon global buffer pool"`
+
 	LogCacheDebug *int `arg:"--log-cache-debug,env:ALMAGEST_LOG_CACHE_DEBUG" help:"daemon debug log cache size"`
 	LogCacheInfo  *int `arg:"--log-cache-info,env:ALMAGEST_LOG_CACHE_INFO" help:"daemon info log cache size"`
 	LogCacheWarn  *int `arg:"--log-cache-warn,env:ALMAGEST_LOG_CACHE_WARN" help:"daemon warn log cache size"`

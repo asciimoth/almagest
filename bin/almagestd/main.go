@@ -25,6 +25,7 @@ func main() {
 		golog.Fatal(err)
 		return
 	}
+	configureGlobalBufPool(args.NoPool)
 
 	if args.LogLevel != "" {
 		golog.SetLevel(args.LogLevel)

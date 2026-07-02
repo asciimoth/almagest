@@ -9,6 +9,12 @@ import (
 
 var globalBufPool bufpool.Pool = leveledBufPool{}
 
+func configureGlobalBufPool(noPool bool) {
+	if noPool {
+		globalBufPool = nil
+	}
+}
+
 type leveledBufPool struct{}
 
 var bufPools [10]sync.Pool
