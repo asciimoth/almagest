@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
@@ -288,11 +289,17 @@ func (e *socksServerE2E) waitSocksHTTPGet(socksPort, httpPort int, auth *protoco
 	e.T.Helper()
 	var body string
 	var err error
-	Eventually(e.T, func() bool {
+	deadline := time.Now().Add(10 * time.Second)
+	for {
 		body, err = socksHTTPGet(socksPort, httpPort, auth)
-		return err == nil
-	}, "socks HTTP GET via %d to %d, last error: %v", socksPort, httpPort, err)
-	return body
+		if err == nil {
+			return body
+		}
+		if time.Now().After(deadline) {
+			e.T.Fatalf("timed out waiting for socks HTTP GET via %d to %d, last error: %v", socksPort, httpPort, err)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }
 
 func (e *socksServerE2E) waitSocksHTTPGetFailure(socksPort, httpPort int, auth *protocol.AuthMethods) {
@@ -320,12 +327,15 @@ func socksServerUserValues(users []socksServerUser) []formular.ArrayElementValue
 
 func socksHTTPGet(socksPort, httpPort int, auth *protocol.AuthMethods) (string, error) {
 	client := &socksgo.Client{
-		SocksVersion: "5",
-		ProxyAddr:    fmt.Sprintf("127.0.0.1:%d", socksPort),
-		Auth:         auth,
-		Filter:       func(_, _ string) bool { return false },
+		SocksVersion:     "5",
+		ProxyAddr:        fmt.Sprintf("127.0.0.1:%d", socksPort),
+		Auth:             auth,
+		Filter:           func(_, _ string) bool { return false },
+		HandshakeTimeout: 500 * time.Millisecond,
 	}
-	conn, err := client.Dial(context.Background(), "tcp", fmt.Sprintf("127.0.0.1:%d", httpPort))
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	conn, err := client.Dial(ctx, "tcp", fmt.Sprintf("127.0.0.1:%d", httpPort))
 	if err != nil {
 		return "", err
 	}

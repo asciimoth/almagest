@@ -63,6 +63,7 @@ func serveSocksListener(ctx context.Context, logger pasta.Logger, server *socksg
 		}
 		logger.Debugf("socks client connected from %s", conn.RemoteAddr())
 		if _, err := spawner.Spawn(func() {
+			prepareSocksHandshakeDeadline(server, conn)
 			err := server.Accept(ctx, conn, false)
 			if err != nil {
 				logger.Debugf("socks client %s closed: %v", conn.RemoteAddr(), err)
@@ -74,6 +75,13 @@ func serveSocksListener(ctx context.Context, logger pasta.Logger, server *socksg
 			_ = conn.Close()
 		}
 	}
+}
+
+func prepareSocksHandshakeDeadline(server *socksgo.Server, conn net.Conn) {
+	if server == nil || conn == nil || server.HandshakeTimeout <= 0 {
+		return
+	}
+	_ = conn.SetDeadline(time.Now().Add(server.HandshakeTimeout))
 }
 
 func socksWebSocketHandler(ctx context.Context, logger pasta.Logger, server *socksgo.Server, path string) http.Handler {

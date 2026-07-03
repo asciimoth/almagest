@@ -10,6 +10,7 @@ import (
 	"github.com/asciimoth/formular"
 	"github.com/asciimoth/gonnect"
 	"github.com/asciimoth/pasta/pasta"
+	"github.com/asciimoth/socksgo"
 	"github.com/asciimoth/socksgo/protocol"
 )
 
@@ -71,6 +72,19 @@ func TestSocksUDPAssocUsesAssignedRelayPort(t *testing.T) {
 	assertStringSlice(t, listenCalls, []string{
 		"listen.ListenPacket udp 127.0.0.1:0",
 	})
+}
+
+func TestPrepareSocksHandshakeDeadlineSetsInitialDeadline(t *testing.T) {
+	server := &socksgo.Server{HandshakeTimeout: time.Second}
+	conn := &socksRouteConn{}
+
+	before := time.Now()
+	prepareSocksHandshakeDeadline(server, conn)
+	after := time.Now()
+
+	if conn.deadline.Before(before) || conn.deadline.After(after.Add(server.HandshakeTimeout)) {
+		t.Fatalf("deadline = %v, want within handshake timeout after %v", conn.deadline, before)
+	}
 }
 
 func TestSocksServerAuthAllowsDuplicateUsernamePasswords(t *testing.T) {
@@ -301,8 +315,9 @@ func (n *socksRouteNetwork) LookupSRV(context.Context, string, string, string) (
 func (n *socksRouteNetwork) LookupTXT(context.Context, string) ([]string, error) { return nil, nil }
 
 type socksRouteConn struct {
-	local  net.Addr
-	remote net.Addr
+	local    net.Addr
+	remote   net.Addr
+	deadline time.Time
 }
 
 func (c *socksRouteConn) Read([]byte) (int, error)         { return 0, gonnect.ErrUnsupported }
@@ -310,7 +325,7 @@ func (c *socksRouteConn) Write([]byte) (int, error)        { return 0, gonnect.E
 func (c *socksRouteConn) Close() error                     { return nil }
 func (c *socksRouteConn) LocalAddr() net.Addr              { return c.local }
 func (c *socksRouteConn) RemoteAddr() net.Addr             { return c.remote }
-func (c *socksRouteConn) SetDeadline(time.Time) error      { return nil }
+func (c *socksRouteConn) SetDeadline(t time.Time) error    { c.deadline = t; return nil }
 func (c *socksRouteConn) SetReadDeadline(time.Time) error  { return nil }
 func (c *socksRouteConn) SetWriteDeadline(time.Time) error { return nil }
 
