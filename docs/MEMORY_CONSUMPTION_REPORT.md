@@ -1,6 +1,7 @@
 # Almagestd Memory Consumption Report
 
 Date: 2026-07-02
+Updated: 2026-07-03
 
 ## Summary
 
@@ -56,6 +57,37 @@ can still grow to roughly 94-214 MiB RSS without WireGuard because gVisor
 netstack state, packet/TCP buffers, daemon transfer buffers, and Go heap spans
 remain warm after load. The pure mock-network `select` setup stayed close to
 idle under repeated requests.
+
+A native-TUN comparison against `github.com/xjasonlyu/tun2socks` showed that
+Almagest's `DefaultTun -> Spoofer -> SocksClient -> OutNetwork` path is
+substantially heavier than tun2socks when both are reduced to the same basic
+TUN-to-SOCKS job. In Docker `--network none` runs, with management listeners
+disabled and the same in-container SOCKS target, almagestd idled at about
+29 MiB RSS while tun2socks idled at about 12 MiB RSS. After a 3,000-request
+small-response burst, almagestd retained about 144 MiB RSS versus about
+42 MiB for tun2socks. With 400 1 MiB responses, almagestd retained about
+128 MiB RSS versus about 95 MiB for tun2socks. This comparison does not
+exercise WireGuard. It points at general-purpose daemon, graph, native
+sysnet-linux, gonnect/socksgo wrapper, and Spoofer forwarding overhead on top
+of the shared gVisor netstack class.
+
+A native-TUN comparison against upstream `wireguard-go` showed the same pattern
+for the narrow WireGuard client job. With both clients reduced to one native
+TUN, one WireGuard peer, the same route, the same endpoint, the same
+in-container peer, and no management listener on the measured process,
+almagestd using `DefaultTun -> WireGuard -> OutNetwork` idled at about
+29 MiB RSS while upstream `wireguard-go` idled at about 10 MiB RSS. After a
+3,000-request small-response burst, almagestd retained about 56 MiB RSS versus
+about 13 MiB for `wireguard-go`. With 400 1 MiB responses, almagestd retained
+about 365 MiB RSS versus about 231 MiB for `wireguard-go`. The narrow daemon is
+much smaller, but the large-response run also confirms that userspace
+WireGuard itself can retain hundreds of MiB after high-volume payload traffic
+has dirtied packet buffers and Go heap spans.
+
+The follow-up `MEMORY_NON_GVISOR_OVERHEAD_REPORT.md` breaks that delta down
+into fixed daemon footprint, native `DefaultTun`/`sysnet-linux`, graph wrapper,
+per-flow forwarding, SOCKS client, copy-buffer, and Go runtime retention costs,
+with a ranked list of reduction candidates.
 
 The `--no-pool` flag does not materially change idle daemon memory and did not
 reduce resident memory under the heavy `tun2net` burst checks. It disables only
@@ -166,6 +198,123 @@ through the restored `LocalProxy -> VTun -> WireGuard -> MockNetwork ->
 WireGuard -> VTun -> HttpServer` graph. The only graph change in the
 small-response matrix was `batchSize` on both WireGuard nodes. The
 large-response matrix also replaced the debug HTTP response with a 1 MiB body.
+
+The tun2socks comparison was run with a dedicated Docker harness added under:
+
+```text
+tools/memory/tun2socks_compare.sh
+tools/memory/tun2socks_compare.Dockerfile
+tools/memory/tun_compare_runner.py
+```
+
+The harness builds the current almagestd and tun2socks v2.6.0
+(`4127937ea7c450a5230b273f406c9410acec2be7`) in Docker, then runs every
+measurement in a fresh container with:
+
+```text
+docker run --network none --cap-add NET_ADMIN --device /dev/net/tun
+```
+
+The common comparison setup is:
+
+- native Linux TUN, MTU 1500,
+- TUN address `198.18.0.1/15`,
+- only `10.199.20.1/32` routed into the tested TUN,
+- client workload connects to `http://10.199.20.1:8080/`,
+- tested process forwards TCP through SOCKS5 at `127.0.0.1:1080`,
+- the in-container SOCKS5 test server maps every CONNECT to a local fixed-body
+  HTTP server at `127.0.0.1:18080`, preventing the proxy's own upstream socket
+  from re-entering the TUN route,
+- management/admin listeners disabled for both tools.
+
+The almagestd graph used for the comparison was:
+
+```text
+DefaultTun -> Spoofer -> SocksClient -> OutNetwork
+```
+
+The almagestd `Spoofer` was configured to match tun2socks' exposed gVisor
+defaults where Almagest has equivalent knobs:
+
+```text
+mtu: 1500
+queueLength: 1024
+disableSACK: false
+ttl: 64
+icmpBurst: 50
+icmpLimit: 1000
+congestionControlAlg: "reno"
+disableNagle: true
+disableTCPModRecBuff: true
+tcpSendBufferSize: 0
+tcpReceiveBufferSize: 0
+```
+
+tun2socks was run as:
+
+```text
+tun2socks -loglevel error \
+  -device tun://t2s0 \
+  -mtu 1500 \
+  -proxy socks5://127.0.0.1:1080 \
+  -tun-post-up 'sh -c "ip addr add 198.18.0.1/15 dev t2s0 && ip link set dev t2s0 up && ip route add 10.199.20.1/32 dev t2s0"'
+```
+
+This is a functional comparison, not a byte-for-byte dependency comparison:
+almagestd used `gvisor.dev/gvisor v0.0.0-20260325202830-7644cf3a343c` through
+`gonnect-netstack v0.4.30`, while tun2socks v2.6.0 used
+`gvisor.dev/gvisor v0.0.0-20250523182742-eede7a881b20`.
+
+The upstream `wireguard-go` comparison was run with a dedicated Docker harness
+added under:
+
+```text
+tools/memory/wireguardgo_compare.sh
+tools/memory/wireguardgo_compare.Dockerfile
+tools/memory/wireguardgo_compare_runner.py
+```
+
+The harness builds the current almagestd and upstream `wireguard-go` commit
+`ecfc5a8d54462e18e13c72173e2623d16d8e25a0`, then runs each measurement in a
+fresh container with:
+
+```text
+docker run --network none --privileged --device /dev/net/tun
+```
+
+`--privileged` is used only because this harness creates an additional network
+namespace inside the already network-isolated Docker container; the benchmarked
+routes and TUN devices are not created in the host network namespace.
+
+The common comparison setup is:
+
+- measured client in the container root network namespace,
+- unmeasured upstream `wireguard-go` peer in an inner `ip netns` namespace,
+- veth underlay between client and peer namespaces,
+- client WireGuard address `10.77.0.1/24`,
+- peer WireGuard address `10.77.0.2/24`,
+- only `10.77.0.2/32` routed into the measured client TUN,
+- WireGuard MTU 1420,
+- endpoint pair `192.0.2.1:25221` and `192.0.2.2:25222`,
+- `PersistentKeepalive = 1` on both sides,
+- workload connects to `http://10.77.0.2:8080/`,
+- fixed-body HTTP server runs in the peer namespace,
+- management/admin listeners disabled for the measured process.
+
+The almagestd graph used for the comparison was:
+
+```text
+DefaultTun -> WireGuard -> OutNetwork
+```
+
+The almagestd WireGuard node used default `batchSize: 0`, which preserves the
+embedded `wgo` library default. Upstream `wireguard-go` has no equivalent CLI
+batch-size option. To ensure the measured peer was the userspace daemon and not
+the host kernel WireGuard implementation, the harness sets:
+
+```text
+WG_I_PREFER_BUGGY_USERSPACE_TO_POLISHED_KMOD=1
+```
 
 The `After forced-GC stats` columns below were added from companion Docker
 runs. They enabled the loopback web admin pprof endpoint inside the
@@ -330,6 +479,99 @@ but `DefaultTun`/`Spoofer` traffic can still push the daemon into the
 90-215 MiB range without WireGuard. That growth came from real packet/TCP
 traffic through gVisor netstacks and daemon buffers, not from `wgo` message
 buffer pools. The memory did not immediately return to idle after load.
+
+Native-TUN comparison with tun2socks:
+
+| Tool | Setup | Workload | Idle RSS | Idle private dirty | Peak/after-load RSS | After-load private dirty | Threads after load | Result |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | --- |
+| almagestd | `DefaultTun -> Spoofer -> SocksClient -> OutNetwork`, native TUN, SOCKS5 egress | none | 29.2 MiB | 8.1 MiB | 29.2 MiB | 8.1 MiB | 13 | running |
+| tun2socks v2.6.0 | native TUN, SOCKS5 egress | none | 12.2 MiB | 2.1 MiB | 12.2 MiB | 2.1 MiB | 9 | running |
+| almagestd | same | 3,000 1 KiB HTTP responses through TUN, parallelism 80 | 29.2 MiB | 8.1 MiB | 143.5 MiB | 121.6 MiB | 26 | 3,000 OK |
+| tun2socks v2.6.0 | same | same | 12.1 MiB | 2.1 MiB | 42.2 MiB | 31.5 MiB | 26 | 3,000 OK |
+| almagestd | same | 400 1 MiB HTTP responses through TUN, parallelism 40 | 28.6 MiB | 7.6 MiB | 128.3 MiB | 105.9 MiB | 26 | 400 OK |
+| tun2socks v2.6.0 | same | same | 12.2 MiB | 2.2 MiB | 95.2 MiB | 84.5 MiB | 24 | 400 OK |
+
+The small-response burst is the clearest apples-to-apples memory delta.
+Both tools completed 3,000 requests in about four seconds, but almagestd
+retained roughly 101 MiB more RSS after the burst. The large-response run is
+less latency-comparable: almagestd completed in about 10.4 seconds and
+tun2socks in about 2.4 seconds, so the two processes saw different instantaneous
+buffer pressure even though the request count and response size matched.
+
+The main almagestd-specific costs in this comparison are not WireGuard:
+
+- `sysnet-linux` default-TUN creation and route-management machinery,
+- Pasta workspace/node/runtime scaffolding,
+- the generic `gonnect` network abstraction and `socksgo` client wrapper,
+- Spoofer's TCP forwarding path, which creates per-flow gVisor TCP endpoint
+  state plus two forwarding workers using `io.Copy`,
+- Go heap spans and packet/application buffers retained after burst traffic.
+
+tun2socks is much narrower. Its stock path is one TUN device, one gVisor stack,
+one proxy/tunnel layer, and no graph engine, admin API, sysnet abstraction,
+node lifecycle, or general network-resource wrapping. Its retained memory still
+grew under load because the shared class of costs remains: gVisor TCP endpoint
+state, packet buffers, SOCKS transport buffers, goroutine stacks, and Go heap
+retention. It simply had a smaller fixed baseline and fewer layers around the
+netstack.
+
+This means the high non-WireGuard RSS seen in `DefaultTun`/`Spoofer` bursts is
+not inherent to gVisor alone. A single-purpose tun2socks-style implementation
+using gVisor stayed much smaller for the same TUN-to-SOCKS test. Almagest's
+extra memory buys graph composability, runtime node lifecycle, native system
+integration, and interchangeable `gonnect.Network` resources, but those layers
+are visible in RSS once traffic has warmed the path.
+
+Native-TUN comparison with upstream `wireguard-go`:
+
+| Tool | Setup | Workload | Idle RSS | Idle private dirty | Peak/after-load RSS | After-load private dirty | Threads after load | Result |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | --- |
+| almagestd | `DefaultTun -> WireGuard -> OutNetwork`, native TUN, native UDP egress | none | 29.1 MiB | 8.6 MiB | 29.1 MiB | 8.6 MiB | 14 | running |
+| upstream `wireguard-go` | native TUN, native UDP egress | none | 9.6 MiB | 5.2 MiB | 9.6 MiB | 5.2 MiB | 15 | running |
+| almagestd | same | 3,000 1 KiB HTTP responses through WireGuard, parallelism 80 | 29.1 MiB | 8.6 MiB | 55.8 MiB | 34.4 MiB | 16 | 3,000 OK |
+| upstream `wireguard-go` | same | same | 10.1 MiB | 5.7 MiB | 13.0 MiB | 8.6 MiB | 15 | 3,000 OK |
+| almagestd | same | 400 1 MiB HTTP responses through WireGuard, parallelism 40 | 28.9 MiB | 8.1 MiB | 365.0 MiB | 343.5 MiB | 25 | 400 OK |
+| upstream `wireguard-go` | same | same | 9.5 MiB | 5.1 MiB | 231.2 MiB | 226.8 MiB | 24 | 400 OK |
+
+The small-response burst is the cleanest daemon-overhead comparison. Both
+clients completed the same 3,000 tunneled requests in about one second:
+almagestd took 1.13 seconds and upstream `wireguard-go` took 1.00 seconds. The
+after-load RSS delta was about 43 MiB. Most of that is Almagest's fixed native
+daemon and graph cost plus a warmer Go heap after moving traffic through
+`DefaultTun`, `sysnet-linux`, the Pasta node runtime, `gonnect` wrappers, and
+the embedded `wgo` integration.
+
+The large-response run is a different regime. Upstream `wireguard-go` retained
+about 231 MiB RSS by itself after 400 MiB of response payload moved through the
+tunnel. Almagest retained about 365 MiB and took 4.85 seconds versus
+`wireguard-go`'s 1.21 seconds. That means the large-payload result should not
+be read only as graph overhead: the base userspace WireGuard daemon also keeps
+a large dirty resident set after high-volume payload traffic, and Almagest adds
+its own daemon/native-TUN/wrapper/runtime overhead on top.
+
+The source-level comparison explains the idle and small-burst gap:
+
+- upstream `wireguard-go` uses `conn.IdealBatchSize = 128`,
+- upstream native TUN and UDP receive paths allocate batch-sized slices and
+  message buffers in `device.RoutineReadFromTUN` and
+  `device.RoutineReceiveIncoming`,
+- almagestd uses the forked `github.com/asciimoth/wgo`; its default
+  `defaultDeviceBatchSize` is `256`,
+- almagestd passes `WireGuard.batchSize` into both
+  `wgo.DeviceOptions.BatchSize` and `batchudp.StdNetBindOptions.BatchSize`,
+- with `batchSize: 0`, Almagest preserves the larger `wgo` default, while
+  upstream `wireguard-go` stays at its native 128-slot default,
+- both implementations use full-size WireGuard message buffers, so large
+  payload traffic can dirty and retain much more RSS than idle profiles show,
+- Almagest also pays for `DefaultTun`/`sysnet-linux`, config restore, node
+  lifecycle, engine worker tracking, graph link wrappers, status subscriptions,
+  and a larger daemon binary.
+
+This comparison does not replace the two-WireGuard example checks above. It
+answers a narrower question: for one client-side userspace WireGuard interface,
+the original daemon is much smaller than almagestd configured as an equivalent
+graph, but both daemons can retain large resident sets after high-volume
+payload bursts.
 
 `examples/direct.hujson` and `examples/tun_split.hujson` were intentionally
 measured under debug isolation, not native host routing. In that mode
