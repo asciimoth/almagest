@@ -33,9 +33,18 @@ const (
 
 // WorkerSnapshot describes one live background worker owned by the engine.
 //
-// It intentionally mirrors pasta.WorkerSnapshot's JSON shape so existing
+// It intentionally mirrors the old pasta worker JSON shape so existing
 // worker UIs can consume engine workers without a model migration.
-type WorkerSnapshot = pasta.WorkerSnapshot
+type WorkerSnapshot struct {
+	ID         uint64    `json:"id"`
+	Node       uint64    `json:"node"`
+	Class      string    `json:"class"`
+	Name       string    `json:"name"`
+	WorkerName string    `json:"worker_name,omitempty"`
+	StartedAt  time.Time `json:"started_at"`
+	Orphan     bool      `json:"orphan"`
+	Error      string    `json:"error,omitempty"`
+}
 
 // WorkerNotification describes one worker-system state change.
 type WorkerNotification struct {

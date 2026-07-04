@@ -1,5 +1,7 @@
 import {
   applyNotification,
+  applyWorkspaceSnapshot,
+  applyWorkerNotification,
   DEFAULT_LINK_COLOR,
   DEFAULT_NODE_TEXT_COLOR,
   DEFAULT_NODE_TITLE_COLOR,
@@ -21,6 +23,7 @@ import {
   type NodeSnapshot,
   type PortSnapshot,
   type WorkerSnapshot,
+  type WorkerNotification,
   type WorkspaceNotification,
   type WorkspaceSnapshot,
 } from "./pasta_model.js";
@@ -85,9 +88,10 @@ type APIMessage = {
 };
 type TypePalette = { type?: string; text?: string; color?: string; textColor?: string };
 type EngineNotification = {
-  kind: "workspace" | "colormap" | string;
+  kind: "workspace" | "colormap" | "worker" | string;
   workspace_id?: string;
   workspace_notification?: WorkspaceNotification;
+  worker_notification?: WorkerNotification;
   colormap?: Record<string, TypePalette>;
 };
 type EngineNotificationEvent = {
@@ -319,6 +323,12 @@ function handleEngineNotification(event: EngineNotificationEvent): void {
     updateSidekick();
     return;
   }
+  if (notification.kind === "worker" && notification.workspace_id === "main" && notification.worker_notification) {
+    snapshot = applyWorkerNotification(snapshot, notification.worker_notification);
+    renderWorkers();
+    updateWorkerAgeTimer();
+    return;
+  }
   if (notification.kind !== "workspace" || notification.workspace_id !== "main" || !notification.workspace_notification) {
     return;
   }
@@ -327,18 +337,10 @@ function handleEngineNotification(event: EngineNotificationEvent): void {
     feedMenu(workspaceNotification);
   } else {
     snapshot = applyNotification(snapshot, workspaceNotification);
-    if (!isWorkerNotification(workspaceNotification)) {
-      renderGraph();
-    }
+    renderGraph();
     renderWorkers();
     updateWorkerAgeTimer();
   }
-}
-
-function isWorkerNotification(notification: WorkspaceNotification): boolean {
-  return notification.kind === "worker_spawned" ||
-    notification.kind === "worker_stopped" ||
-    notification.kind === "worker_failed";
 }
 
 function applyTypePalette(colormap: Record<string, TypePalette>): void {
@@ -1163,7 +1165,7 @@ function feedMenu(notification: WorkspaceNotification): void {
 async function requestSnapshot(): Promise<void> {
   const next = await tryBackend<WorkspaceSnapshot>("snapshot");
   if (next) {
-    snapshot = next;
+    snapshot = applyWorkspaceSnapshot(snapshot, next);
     renderGraph();
     renderWorkers();
     updateWorkerAgeTimer();

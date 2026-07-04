@@ -77,6 +77,13 @@ export type WorkspaceNotification = {
   formular?: unknown;
 };
 
+export type WorkerNotification = {
+  kind: "worker_snapshot" | "worker_spawned" | "worker_stopped" | "worker_failed" | string;
+  id?: ID;
+  snapshot?: Record<string, WorkerSnapshot>;
+  worker?: WorkerSnapshot;
+};
+
 export const DEFAULT_LINK_COLOR = "#9A9";
 export const DEFAULT_NODE_TITLE_COLOR = "#89b4fa";
 export const DEFAULT_NODE_TEXT_COLOR = "#f8f9ff";
@@ -103,7 +110,7 @@ export function applyNotification(
   notification: WorkspaceNotification,
 ): WorkspaceSnapshot {
   if (notification.kind === "workspace_snapshot" && notification.snapshot) {
-    return cloneSnapshot(notification.snapshot);
+    return applyWorkspaceSnapshot(current, notification.snapshot);
   }
   const next = cloneSnapshot(current);
   const id = notification.id ? String(notification.id) : "";
@@ -136,6 +143,38 @@ export function applyNotification(
       break;
     case "link_removed":
       if (id) delete next.links[id];
+      break;
+    case "worker_spawned":
+      if (id && notification.worker) next.workers[id] = notification.worker;
+      break;
+    case "worker_stopped":
+    case "worker_failed":
+      if (id) delete next.workers[id];
+      break;
+  }
+  return next;
+}
+
+export function applyWorkspaceSnapshot(
+  current: WorkspaceSnapshot,
+  incoming: WorkspaceSnapshot,
+): WorkspaceSnapshot {
+  const next = cloneSnapshot(incoming);
+  if (!Object.prototype.hasOwnProperty.call(incoming, "workers")) {
+    next.workers = cloneSnapshot(current).workers;
+  }
+  return next;
+}
+
+export function applyWorkerNotification(
+  current: WorkspaceSnapshot,
+  notification: WorkerNotification,
+): WorkspaceSnapshot {
+  const next = cloneSnapshot(current);
+  const id = notification.id ? String(notification.id) : "";
+  switch (notification.kind) {
+    case "worker_snapshot":
+      next.workers = { ...(notification.snapshot ?? {}) };
       break;
     case "worker_spawned":
       if (id && notification.worker) next.workers[id] = notification.worker;

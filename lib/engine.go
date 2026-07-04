@@ -29,6 +29,7 @@ const (
 	// NotificationWorkspace carries a wrapped workspace notification
 	NotificationWorkspace NotificationKind = "workspace"
 	NotificationColorMap  NotificationKind = "colormap"
+	NotificationWorker    NotificationKind = "worker"
 )
 
 // EngineNotification describes one observable engine state change.
@@ -41,6 +42,7 @@ type EngineNotification struct {
 	// Currently there is only "main" one.
 	WorkspaceID string                       `json:"workspace_id,omitempty"`
 	Workspace   *pasta.WorkspaceNotification `json:"workspace_notification,omitempty"`
+	Worker      *WorkerNotification          `json:"worker_notification,omitempty"`
 
 	ColorMap map[string]TypePalette `json:"colormap,omitempty"`
 }
@@ -285,11 +287,7 @@ func (e *engine) WorkspaceSnapshot(workspace string) (pasta.WorkspaceSnapshot, b
 	if workspace != "main" {
 		return pasta.WorkspaceSnapshot{}, false
 	}
-	snapshot := e.mainWorkspace.Snapshot()
-	if e.workers != nil {
-		snapshot.Workers = e.workers.snapshot()
-	}
-	return snapshot, true
+	return e.mainWorkspace.Snapshot(), true
 }
 
 func (e *engine) NodeClassSnapshot(workspace string, name string) (pasta.NodeClassSnapshot, bool) {
@@ -479,31 +477,8 @@ func (e *engine) SubscribeNotifications(callback NotificationCallback) uint64 {
 
 	// TODO: Send engine initial state here (when we'll have some)
 
-	workerCallback := func(worker WorkerNotification) {
-		notification, ok := workerWorkspaceNotification(worker)
-		if !ok {
-			return
-		}
-		notification.SubscriptionID = id
-		callback(EngineNotification{
-			SubscriptionID: id,
-			Kind:           NotificationWorkspace,
-			WorkspaceID:    "main",
-			Workspace:      &notification,
-		})
-	}
-	workerID := e.workers.subscribe(workerCallback)
-	if workerID == 0 {
-		return 0
-	}
-
 	WorkspaceCallback := func(pn pasta.WorkspaceNotification) {
 		pn.SubscriptionID = id
-		if pn.Kind == pasta.NotificationWorkspaceSnapshot && pn.Snapshot != nil {
-			snapshot := *pn.Snapshot
-			snapshot.Workers = e.workers.snapshot()
-			pn.Snapshot = &snapshot
-		}
 
 		en := EngineNotification{
 			SubscriptionID: id,
@@ -516,7 +491,21 @@ func (e *engine) SubscribeNotifications(callback NotificationCallback) uint64 {
 
 	wid := e.mainWorkspace.SubscribeNotifications(WorkspaceCallback)
 	if wid == 0 {
-		e.workers.unsubscribe(workerID)
+		return 0
+	}
+
+	workerCallback := func(worker WorkerNotification) {
+		worker.SubscriptionID = id
+		callback(EngineNotification{
+			SubscriptionID: id,
+			Kind:           NotificationWorker,
+			WorkspaceID:    "main",
+			Worker:         &worker,
+		})
+	}
+	workerID := e.workers.subscribe(workerCallback)
+	if workerID == 0 {
+		_ = e.mainWorkspace.UnsubscribeNotifications(wid)
 		return 0
 	}
 
@@ -546,10 +535,9 @@ func (e *engine) RequestFullSnapshot(id uint64) {
 	}
 
 	// TODO: Send engine state here (when we'll have some)
-	e.workers.requestFullSnapshot(subMap.Workers)
-
 	// TODO: Unsubscribe all workspaces here (when we'll have more than one)
 	_ = e.mainWorkspace.RequestFullSnapshot(subMap.MainWorkspace)
+	e.workers.requestFullSnapshot(subMap.Workers)
 }
 
 func (e *engine) SubscribeNodeMenu(workspace string, node, id uint64) {
@@ -647,23 +635,4 @@ func (e *engine) handleWorkerFailure(worker WorkerSnapshot) {
 	if _, err := e.mainWorkspace.AddNodePopup(worker.Node, pasta.NodePopupErr, workerFailureText(worker), false); err != nil && e.logger != nil {
 		e.logger.Errf("failed to add worker failure popup worker=%d node=%d: %v", worker.ID, worker.Node, err)
 	}
-}
-
-func workerWorkspaceNotification(worker WorkerNotification) (pasta.WorkspaceNotification, bool) {
-	var kind pasta.NotificationKind
-	switch worker.Kind {
-	case WorkerNotificationSpawned:
-		kind = pasta.NotificationWorkerSpawned
-	case WorkerNotificationStopped:
-		kind = pasta.NotificationWorkerStopped
-	case WorkerNotificationFailed:
-		kind = pasta.NotificationWorkerFailed
-	default:
-		return pasta.WorkspaceNotification{}, false
-	}
-	return pasta.WorkspaceNotification{
-		Kind:   kind,
-		ID:     worker.ID,
-		Worker: worker.Worker,
-	}, true
 }

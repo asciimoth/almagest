@@ -11,6 +11,47 @@ import (
 	"github.com/asciimoth/pasta/pasta"
 )
 
+func TestEngineWorkersSnapshotIncludesRestoredStartupWorkers(t *testing.T) {
+	engine, err := BuildEngine(
+		context.Background(),
+		configer.NewMemory(map[string]any{
+			"nodes": map[string]any{
+				"client": map[string]any{
+					"Class": NodeTypeHTTPClient,
+				},
+			},
+		}),
+		NewDebugLogFactory(1024),
+		&sysnetdebug.System{},
+		nil,
+		nil,
+		true,
+	)
+	if err != nil {
+		t.Fatalf("BuildEngine error = %v, want nil", err)
+	}
+	t.Cleanup(func() {
+		if err := engine.Close(); err != nil {
+			t.Errorf("engine.Close error = %v, want nil", err)
+		}
+	})
+
+	node, ok := engine.NodeByName(E2EWorkspace, "client")
+	if !ok {
+		t.Fatal("restored client node missing")
+	}
+	workers, ok := engine.WorkersSnapshot(E2EWorkspace)
+	if !ok {
+		t.Fatal("WorkersSnapshot ok = false, want true")
+	}
+	for _, worker := range workers {
+		if worker.Node == node && worker.WorkerName == "http client" {
+			return
+		}
+	}
+	t.Fatalf("workers = %#v, want restored http client startup worker for node %d", workers, node)
+}
+
 func TestEngineWorkerNotificationsTrackPanicLifecycle(t *testing.T) {
 	engine, err := BuildEngine(
 		context.Background(),

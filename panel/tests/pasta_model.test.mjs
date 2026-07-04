@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   applyNotification,
+  applyWorkspaceSnapshot,
+  applyWorkerNotification,
   emptySnapshot,
 } from "../public/build/pasta_model.js";
 
@@ -40,6 +42,43 @@ test("workspace snapshots initialize worker state", () => {
       links: {},
       workers: { 1: worker(1) },
     },
+  });
+
+  assert.deepEqual(Object.keys(next.workers), ["1"]);
+  assert.equal(next.workers["1"].worker_name, "worker-1");
+});
+
+test("workspace snapshots without workers preserve worker notifications", () => {
+  let snapshot = applyWorkerNotification(emptySnapshot(), {
+    kind: "worker_snapshot",
+    snapshot: { 1: worker(1) },
+  });
+
+  snapshot = applyNotification(snapshot, {
+    kind: "workspace_snapshot",
+    snapshot: {
+      classes: {},
+      nodes: { 10: node },
+      ports: {},
+      links: {},
+    },
+  });
+
+  assert.deepEqual(Object.keys(snapshot.workers), ["1"]);
+  assert.equal(snapshot.workers["1"].worker_name, "worker-1");
+});
+
+test("direct workspace refresh without workers preserves worker notifications", () => {
+  const snapshot = applyWorkerNotification(emptySnapshot(), {
+    kind: "worker_snapshot",
+    snapshot: { 1: worker(1) },
+  });
+
+  const next = applyWorkspaceSnapshot(snapshot, {
+    classes: {},
+    nodes: { 10: node },
+    ports: {},
+    links: {},
   });
 
   assert.deepEqual(Object.keys(next.workers), ["1"]);
