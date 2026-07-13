@@ -396,11 +396,7 @@ func (e *httpE2E) addSocksServer(name string, port int, users []socksServerUser)
 func (e *httpE2E) addStringConstant(name, value string) uint64 {
 	e.T.Helper()
 	id := e.AddNode(std.NodeTypeStringConstant, name)
-	e.Engine.SendNodeFormularMsg(E2EWorkspace, id, formular.FieldUpdateMessage{
-		MessageBase: FormMessageBase(formular.MessageFieldUpdate, id),
-		Field:       formular.FieldRef{BlockID: "state", FieldID: "value"},
-		Value:       value,
-	})
+	e.ApplyStdConstantValue(id, value)
 	e.WaitNodeLabel(id, value)
 	return id
 }

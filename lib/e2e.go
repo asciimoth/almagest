@@ -276,6 +276,16 @@ func (e *NodeE2E) WaitNodeLabel(node uint64, want string) {
 	}, "node %d label %q", node, want)
 }
 
+// ApplyStdConstantValue commits the current value form used by pasta std constant nodes.
+func (e *NodeE2E) ApplyStdConstantValue(node uint64, value any) {
+	e.T.Helper()
+	e.Engine.SendNodeFormularMsg(E2EWorkspace, node, formular.FormApplyMessage{
+		MessageBase: FormMessageBase(formular.MessageFormApply, node),
+		BlockID:     "state",
+		Values:      map[string]any{"value": value},
+	})
+}
+
 // AssertDebugLog waits until a matching debug log entry is observed.
 func (e *NodeE2E) AssertDebugLog(nodeClass, wantPart string) {
 	e.T.Helper()

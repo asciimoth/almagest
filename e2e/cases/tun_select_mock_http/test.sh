@@ -38,10 +38,10 @@ set_bool_constant() {
 	local node="$1"
 	local value="$2"
 
-	cli engine send-node-formular-msg \
+	cli graph apply-menu \
 		--node "$node" \
-		--message "{\"type\":\"field.update\",\"menuId\":\"NODE${node}MENU\",\"field\":{\"blockId\":\"state\",\"fieldId\":\"value\"},\"value\":$value}" \
-		>/tmp/e2e-tun-select-bool-update.json
+		--json "{\"state\":{\"value\":$value}}" \
+		>/tmp/e2e-tun-select-bool-apply.json
 }
 
 trap cleanup EXIT
