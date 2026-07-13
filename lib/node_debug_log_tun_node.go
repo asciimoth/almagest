@@ -84,7 +84,7 @@ func (n *debugLogTunNode) PreLinkAdd(port uint64, linkType, portDirection string
 
 func (n *debugLogTunNode) OnLinkAdd(link, port uint64, linkType, portDirection string) error {
 	if port == n.in && portDirection == "left" && linkType == TypeTun {
-		std.Request(n.w, n.id, link)
+		std.RequestLocked(n.w, n.id, link)
 		n.sendMergedTunConfigToLink(link)
 		return nil
 	}
@@ -118,7 +118,7 @@ func (n *debugLogTunNode) OnEvent(event pasta.Event, linkType string, _ []string
 	}
 	if event.ReceiverPort == n.out && receiverPortDirection == "right" {
 		if std.IsRequest(event.Payload) {
-			n.sendTunToLink(event.Link)
+			n.refreshTunToLink(event.Link)
 			return nil
 		}
 		if cfg, ok := event.Payload.(TunConfig); ok {
@@ -150,7 +150,7 @@ func (n *debugLogTunNode) OnEvent(event pasta.Event, linkType string, _ []string
 
 func (n *debugLogTunNode) requestInput() {
 	n.ForEachPortLink(n.in, func(link uint64) {
-		std.Request(n.w, n.id, link)
+		std.RequestLocked(n.w, n.id, link)
 	})
 }
 
@@ -164,7 +164,16 @@ func (n *debugLogTunNode) sendTunToLink(link uint64) {
 	if n.tun == nil {
 		return
 	}
-	n.outputTuns.SendWrapped(n.w, n.id, link, n.tun, func(t tun.Tun) tun.Tun {
+	n.outputTuns.SendWrappedLocked(n.w, n.id, link, n.tun, func(t tun.Tun) tun.Tun {
+		return &debugLogTun{Tun: t, logger: n.logger}
+	}, n.pool)
+}
+
+func (n *debugLogTunNode) refreshTunToLink(link uint64) {
+	if n.tun == nil {
+		return
+	}
+	n.outputTuns.RefreshWrappedLocked(n.w, n.id, link, n.tun, func(t tun.Tun) tun.Tun {
 		return &debugLogTun{Tun: t, logger: n.logger}
 	}, n.pool)
 }

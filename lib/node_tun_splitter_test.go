@@ -307,7 +307,7 @@ func (n *tunConfigReceiverNode) OnInit(w *pasta.Workspace, _ pasta.Logger, id ui
 		n.out = restored.RightPorts[0]
 		return nil
 	}
-	port, err := w.AddPort(pasta.Port{Node: id, Direction: "right", Name: "Tun", Types: []string{TypeTun}})
+	port, err := w.AddPortLocked(pasta.Port{Node: id, Direction: "right", Name: "Tun", Types: []string{TypeTun}})
 	if err != nil {
 		return err
 	}

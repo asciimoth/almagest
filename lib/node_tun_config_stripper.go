@@ -144,7 +144,7 @@ func (n *tunConfigStripperNode) OnEvent(event pasta.Event, linkType string, _ []
 			if n.tun == nil {
 				n.requestInput()
 			}
-			n.sendTunToOutput()
+			n.refreshTunToOutput()
 			return nil
 		}
 		n.forwardEvent(n.inputLink, event.Payload)
@@ -181,7 +181,7 @@ func (n *tunConfigStripperNode) OnEvent(event pasta.Event, linkType string, _ []
 
 func (n *tunConfigStripperNode) requestInput() {
 	if n.inputLink != 0 {
-		std.Request(n.w, n.id, n.inputLink)
+		std.RequestLocked(n.w, n.id, n.inputLink)
 	}
 }
 
@@ -189,7 +189,14 @@ func (n *tunConfigStripperNode) sendTunToOutput() {
 	if n.outputLink == 0 || n.tun == nil {
 		return
 	}
-	n.outputTuns.Send(n.w, n.id, n.outputLink, n.tun, n.pool)
+	n.outputTuns.SendLocked(n.w, n.id, n.outputLink, n.tun, n.pool)
+}
+
+func (n *tunConfigStripperNode) refreshTunToOutput() {
+	if n.outputLink == 0 || n.tun == nil {
+		return
+	}
+	n.outputTuns.RefreshLocked(n.w, n.id, n.outputLink, n.tun, n.pool)
 }
 
 func (n *tunConfigStripperNode) forwardEvent(link uint64, payload any) {

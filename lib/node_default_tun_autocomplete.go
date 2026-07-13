@@ -13,7 +13,7 @@ func (n *defaultTunNode) sendConfigAutocompleteHints(msg formular.AutocompleteRe
 	if n.w == nil || n.id == 0 {
 		return
 	}
-	n.w.SendNodeMenuMsg(n.id, formular.AutocompleteHints(pasta.NodeMenuID(n.id), 1, msg.Field, msg.Prefix, n.configAutocompleteHints(msg)))
+	n.w.SendNodeMenuMsgLocked(n.id, formular.AutocompleteHints(pasta.NodeMenuID(n.id), 1, msg.Field, msg.Prefix, n.configAutocompleteHints(msg)))
 }
 
 func (n *defaultTunNode) configAutocompleteHints(msg formular.AutocompleteRequestMessage) []string {

@@ -130,7 +130,7 @@ func (n *socksServerNode) PreLinkAdd(port uint64, linkType, portDirection string
 
 func (n *socksServerNode) OnLinkAdd(link, port uint64, _, _ string) error {
 	if port == n.listen || port == n.proxy {
-		std.Request(n.w, n.id, link)
+		std.RequestLocked(n.w, n.id, link)
 	}
 	return nil
 }
@@ -179,14 +179,10 @@ func acceptSocksServerNetworkPayload(w *pasta.Workspace, node uint64, event past
 	if !ok || !NetworkIsReady(payload.Network) {
 		return current, false
 	}
-	// Same-source re-emits should be ignored only while the current wrapper is
-	// still usable; stale wrappers must be replaceable by a fresh detach.
-	if NetworkIsReady(current) && SameNetworkSource(current, payload.Network) {
-		if !SameNetworkInstance(current, payload.Network) {
-			_ = payload.Network.Close()
-		}
+	if SameNetworkInstance(current, payload.Network) {
 		return current, false
 	}
+	_ = closeNetwork(current)
 	BindNetworkResource(w, node, event.Link, payload.Network)
 	return payload.Network, true
 }

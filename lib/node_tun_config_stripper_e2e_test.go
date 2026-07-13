@@ -215,7 +215,7 @@ func (n *tunConfigRecorderNode) OnInit(w *pasta.Workspace, _ pasta.Logger, id ui
 	if n.registry != nil {
 		n.registry.register(id, n)
 	}
-	return w.SetNodePrimary(id, TypeTun)
+	return w.SetNodePrimaryLocked(id, TypeTun)
 }
 
 func (n *tunConfigRecorderNode) PreLinkAdd(port uint64, linkType, portDirection string) error {
@@ -271,7 +271,7 @@ func (n *tunConfigEmitterNode) OnInit(w *pasta.Workspace, _ pasta.Logger, id uin
 	if restored != nil && len(restored.LeftPorts) > 0 {
 		n.in = restored.LeftPorts[0]
 	}
-	return n.w.SetNodePrimary(n.id, TypeTun)
+	return n.w.SetNodePrimaryLocked(n.id, TypeTun)
 }
 
 func (n *tunConfigEmitterNode) PreLinkAdd(port uint64, linkType, portDirection string) error {
@@ -285,7 +285,7 @@ func (n *tunConfigEmitterNode) OnLinkAdd(link, port uint64, linkType, portDirect
 	if port != n.in || portDirection != "left" || linkType != TypeTun {
 		return nil
 	}
-	n.w.EmitEvent(n.id, link, TunConfig{Addrs: []string{"10.221.0.2/32"}, MTU: 1300})
-	std.Request(n.w, n.id, link)
+	n.w.EmitEventLocked(n.id, link, TunConfig{Addrs: []string{"10.221.0.2/32"}, MTU: 1300})
+	std.RequestLocked(n.w, n.id, link)
 	return nil
 }

@@ -129,7 +129,7 @@ func (n *defaultTunNode) OnEvent(event pasta.Event, linkType string, _ []string,
 		return nil
 	}
 	if std.IsRequest(event.Payload) {
-		n.sendTunToLink(event.Link)
+		n.refreshTunToLink(event.Link)
 		return nil
 	}
 	cfg, ok := event.Payload.(TunConfig)

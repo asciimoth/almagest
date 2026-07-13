@@ -115,7 +115,7 @@ func (n *udpPingClientNode) PreLinkAdd(port uint64, linkType, portDirection stri
 
 func (n *udpPingClientNode) OnLinkAdd(link, port uint64, _, _ string) error {
 	if port == n.netp || n.isConfigPort(port) {
-		std.Request(n.w, n.id, link)
+		std.RequestLocked(n.w, n.id, link)
 	}
 	if n.isConfigPort(port) {
 		n.sendConfigBlock()

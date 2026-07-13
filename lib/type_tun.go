@@ -208,12 +208,12 @@ func TunPortHasLink(w *pasta.Workspace, port uint64) bool {
 	if w == nil || port == 0 {
 		return false
 	}
-	snapshot, ok := w.PortSnapshot(port)
+	snapshot, ok := w.PortSnapshotLocked(port)
 	if !ok {
 		return false
 	}
 	for _, link := range snapshot.Links {
-		linkSnapshot, ok := w.LinkSnapshot(link)
+		linkSnapshot, ok := w.LinkSnapshotLocked(link)
 		if ok && linkSnapshot.Type == TypeTun {
 			return true
 		}
@@ -226,9 +226,9 @@ func BindTunResource(w *pasta.Workspace, node, link uint64, t tun.Tun) {
 	if w == nil || t == nil {
 		return
 	}
-	_ = w.AddNodeResource(node, t)
+	_ = w.AddNodeResourceLocked(node, t)
 	if link != 0 {
-		_ = w.AddLinkResource(link, t)
+		_ = w.AddLinkResourceLocked(link, t)
 	}
 }
 
@@ -263,12 +263,10 @@ func acceptTunPayload(event pasta.Event, expectedLink uint64, current tun.Tun) (
 		_ = payload.Tun.Close()
 		return current, false
 	}
-	if TunIsReady(current) && SameTunSource(current, payload.Tun) {
-		if !SameTunInstance(current, payload.Tun) {
-			_ = payload.Tun.Close()
-		}
+	if SameTunInstance(current, payload.Tun) {
 		return current, false
 	}
+	_ = closeTun(current)
 	return payload.Tun, true
 }
 
@@ -280,6 +278,13 @@ func AcceptTunPayload(w *pasta.Workspace, node uint64, event pasta.Event, expect
 	}
 	BindTunResource(w, node, event.Link, next)
 	return next, true
+}
+
+func closeTun(t tun.Tun) error {
+	if t == nil {
+		return nil
+	}
+	return t.Close()
 }
 
 type tunOutputEntry struct {
@@ -303,19 +308,54 @@ func (c *TunOutputCache) Send(w *pasta.Workspace, node, link uint64, source tun.
 	return c.SendWrapped(w, node, link, source, nil, pool)
 }
 
+// SendLocked is Send for callers already running under the workspace lock.
+func (c *TunOutputCache) SendLocked(w *pasta.Workspace, node, link uint64, source tun.Tun, pool bufpool.Pool) bool {
+	return c.SendWrappedLocked(w, node, link, source, nil, pool)
+}
+
+// RefreshLocked emits a fresh detached TunPayload on link even when the source
+// is unchanged. Use it to answer std.Request callbacks from middleware that may
+// have just closed the previously routed payload.
+func (c *TunOutputCache) RefreshLocked(w *pasta.Workspace, node, link uint64, source tun.Tun, pool bufpool.Pool) bool {
+	return c.RefreshWrappedLocked(w, node, link, source, nil, pool)
+}
+
 // SendWrapped emits source as a detached TunPayload on link after wrapping the
 // detached Tun with wrap. The wrap hook is used by middleware that decorates the
 // detached TUN before publishing it.
 func (c *TunOutputCache) SendWrapped(w *pasta.Workspace, node, link uint64, source tun.Tun, wrap func(tun.Tun) tun.Tun, pool bufpool.Pool) bool {
+	if w == nil {
+		return false
+	}
+	w.Lock()
+	defer w.Unlock()
+	return c.SendWrappedLocked(w, node, link, source, wrap, pool)
+}
+
+// SendWrappedLocked is SendWrapped for callers already running under the
+// workspace lock.
+func (c *TunOutputCache) SendWrappedLocked(w *pasta.Workspace, node, link uint64, source tun.Tun, wrap func(tun.Tun) tun.Tun, pool bufpool.Pool) bool {
 	if w == nil || link == 0 || source == nil {
 		return false
 	}
 	if entry, ok := c.entries[link]; ok && TunIsReady(entry.output) && SameTunSource(entry.source, source) {
-		w.EmitEvent(node, link, TunPayload{Tun: entry.output})
+		w.EmitEventLocked(node, link, TunPayload{Tun: entry.output})
 		return true
 	}
 	c.Close(link)
+	return c.emitWrappedLocked(w, node, link, source, wrap, pool)
+}
 
+// RefreshWrappedLocked is RefreshLocked with an additional wrapper hook.
+func (c *TunOutputCache) RefreshWrappedLocked(w *pasta.Workspace, node, link uint64, source tun.Tun, wrap func(tun.Tun) tun.Tun, pool bufpool.Pool) bool {
+	if w == nil || link == 0 || source == nil {
+		return false
+	}
+	c.Close(link)
+	return c.emitWrappedLocked(w, node, link, source, wrap, pool)
+}
+
+func (c *TunOutputCache) emitWrappedLocked(w *pasta.Workspace, node, link uint64, source tun.Tun, wrap func(tun.Tun) tun.Tun, pool bufpool.Pool) bool {
 	// Nil spawner is intentional here; see the Gonnect spawner note in helpers.go.
 	var output tun.Tun = tun.Detach(source, nil, pool)
 	if wrap != nil {
@@ -331,7 +371,7 @@ func (c *TunOutputCache) SendWrapped(w *pasta.Workspace, node, link uint64, sour
 		c.entries = make(map[uint64]tunOutputEntry)
 	}
 	c.entries[link] = tunOutputEntry{source: source, output: output}
-	w.EmitEvent(node, link, TunPayload{Tun: output})
+	w.EmitEventLocked(node, link, TunPayload{Tun: output})
 	return true
 }
 

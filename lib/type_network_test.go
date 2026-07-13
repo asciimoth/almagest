@@ -7,38 +7,41 @@ import (
 	"github.com/asciimoth/pasta/pasta"
 )
 
-func TestAcceptNetworkPayloadClosesReadyDuplicateSource(t *testing.T) {
+func TestAcceptNetworkPayloadReplacesReadySameSourceWrapper(t *testing.T) {
 	base := gonnect.NewLoopbackNetwok()
 	current := &testNetworkWrapper{
 		NetworkCloser: gonnect.DetachNetwork(base, nil, nil),
 		wrapped:       base,
 		up:            true,
 	}
-	defer closeTestNetwork(current)
-	duplicate := &testNetworkWrapper{
+	replacement := &testNetworkWrapper{
 		NetworkCloser: gonnect.DetachNetwork(base, nil, nil),
 		wrapped:       base,
 		up:            true,
 	}
+	defer closeTestNetwork(replacement)
 
 	next, changed := AcceptNetworkPayload(nil, 0, pasta.Event{
 		Link:    1,
-		Payload: NetworkPayload{Network: duplicate},
+		Payload: NetworkPayload{Network: replacement},
 	}, current)
-	if changed {
-		t.Fatal("AcceptNetworkPayload() changed duplicate same-source wrapper, want unchanged")
+	if !changed {
+		t.Fatal("AcceptNetworkPayload() changed = false, want true for fresh same-source wrapper")
 	}
-	if !SameNetworkInstance(next, current) {
-		t.Fatal("AcceptNetworkPayload() returned a replacement for duplicate same-source wrapper")
+	if !SameNetworkInstance(next, replacement) {
+		t.Fatal("AcceptNetworkPayload() did not return replacement")
 	}
-	if !duplicate.closed {
-		t.Fatal("duplicate network was not closed")
+	if !current.closed {
+		t.Fatal("current network was not closed")
+	}
+	if !NetworkIsReady(replacement) {
+		t.Fatal("replacement network is not ready")
 	}
 }
 
 func TestAcceptNetworkPayloadReplacesStaleCurrentSameSource(t *testing.T) {
-	// Generic network consumers should suppress duplicate same-source payloads
-	// only when the current wrapper is still usable.
+	// Generic network consumers must accept fresh same-source wrappers because
+	// selector nodes can close previously routed wrapper instances.
 	base := gonnect.NewLoopbackNetwok()
 	current := &testNetworkWrapper{
 		NetworkCloser: gonnect.DetachNetwork(base, nil, nil),
@@ -103,6 +106,45 @@ func TestNetworkOutputCacheReusesReadyWrapperAndReplacesClosedWrapper(t *testing
 	third := receiveOutNetPayload(t, receiver.events).Network
 	if SameNetworkInstance(first, third) {
 		t.Fatal("NetworkOutputCache reused closed wrapper, want replacement")
+	}
+	cache.CloseAll()
+}
+
+func TestNetworkOutputCacheRefreshReplacesReadySameSourceWrapper(t *testing.T) {
+	w := pasta.NewWorkspace(NewDebugLogFactory(1024))
+	defer w.Close()
+	providerID, out := addNetworkOutputCacheTestPort(t, w)
+	receiver := &outNetReceiver{events: make(chan NetworkPayload, 2)}
+	_, err := w.AddNode(receiver, "test/NetworkReceiver", "receiver")
+	if err != nil {
+		t.Fatalf("AddNode receiver: %v", err)
+	}
+	link, _, err := w.AddLink(out, receiver.in)
+	if err != nil {
+		t.Fatalf("AddLink: %v", err)
+	}
+
+	source := gonnect.NewLoopbackNetwok()
+	var cache NetworkOutputCache
+	if !cache.Send(w, providerID, link, source) {
+		t.Fatal("NetworkOutputCache.Send() = false, want true")
+	}
+	first := receiveOutNetPayload(t, receiver.events).Network
+	w.Lock()
+	refreshedOK := cache.RefreshLocked(w, providerID, link, source)
+	w.Unlock()
+	if !refreshedOK {
+		t.Fatal("NetworkOutputCache.RefreshLocked() = false, want true")
+	}
+	second := receiveOutNetPayload(t, receiver.events).Network
+	if SameNetworkInstance(first, second) {
+		t.Fatal("NetworkOutputCache.RefreshLocked reused wrapper, want fresh detach")
+	}
+	if NetworkIsReady(first) {
+		t.Fatal("NetworkOutputCache.RefreshLocked left previous wrapper ready")
+	}
+	if !NetworkIsReady(second) {
+		t.Fatal("NetworkOutputCache.RefreshLocked emitted non-ready wrapper")
 	}
 	cache.CloseAll()
 }
@@ -181,7 +223,7 @@ type networkOutputCacheTestProvider struct {
 }
 
 func (n *networkOutputCacheTestProvider) OnInit(w *pasta.Workspace, _ pasta.Logger, id uint64, _ string, _ *pasta.NodeInitData, _, _, _, _ bool) error {
-	port, err := w.AddPort(pasta.Port{Node: id, Direction: "left", Name: "Network", Types: []string{TypeNetwork}})
+	port, err := w.AddPortLocked(pasta.Port{Node: id, Direction: "left", Name: "Network", Types: []string{TypeNetwork}})
 	if err != nil {
 		return err
 	}

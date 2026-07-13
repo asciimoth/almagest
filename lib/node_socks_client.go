@@ -119,10 +119,10 @@ func (n *socksClientNode) OnLinkAdd(link, port uint64, _, _ string) error {
 	case n.in:
 		n.sendNetworkToLink(link)
 	case n.out:
-		std.Request(n.w, n.id, link)
+		std.RequestLocked(n.w, n.id, link)
 	case n.url:
 		n.sendConfigBlock()
-		std.Request(n.w, n.id, link)
+		std.RequestLocked(n.w, n.id, link)
 	}
 	return nil
 }
@@ -143,7 +143,7 @@ func (n *socksClientNode) OnLinkRemoved(link uint64, port uint64, _, _ string) e
 
 func (n *socksClientNode) OnEvent(event pasta.Event, linkType string, _ []string, receiverPortDirection string) error {
 	if event.ReceiverPort == n.in && receiverPortDirection == "left" && linkType == TypeNetwork && std.IsRequest(event.Payload) {
-		n.sendNetworkToLink(event.Link)
+		n.refreshNetworkToLink(event.Link)
 		return nil
 	}
 
@@ -251,7 +251,14 @@ func (n *socksClientNode) sendNetworkToLink(link uint64) {
 	if n.client == nil || n.outNetwork == nil {
 		return
 	}
-	n.outputs.Send(n.w, n.id, link, n.client)
+	n.outputs.SendLocked(n.w, n.id, link, n.client)
+}
+
+func (n *socksClientNode) refreshNetworkToLink(link uint64) {
+	if n.client == nil || n.outNetwork == nil {
+		return
+	}
+	n.outputs.RefreshLocked(n.w, n.id, link, n.client)
 }
 
 func (n *socksClientNode) updateLabel() error {

@@ -704,8 +704,9 @@ func TestWireGuardStateDoesNotReportUpWithClosedNetwork(t *testing.T) {
 }
 
 func TestWireGuardSameSourceNetworkReemitRebuildsFailedBind(t *testing.T) {
-	// Same-source re-emits should preserve wrapper identity only for healthy
-	// binds; a failed bind needs to be rebuilt before config is retried.
+	// Fresh same-source wrappers must be accepted because selector nodes can close
+	// the previous routed wrapper. A failed bind still needs to be rebuilt before
+	// config is retried.
 	sourceTun, peerTun := tun.Pipe(4, 1500, 0, 0)
 	t.Cleanup(func() { _ = sourceTun.Close() })
 	t.Cleanup(func() { _ = peerTun.Close() })
@@ -746,8 +747,11 @@ func TestWireGuardSameSourceNetworkReemitRebuildsFailedBind(t *testing.T) {
 	if n.currentBindGen == 0 {
 		t.Fatal("currentBindGen = 0, want rebuilt bind generation")
 	}
-	if NetworkIsReady(duplicate) {
-		t.Fatal("duplicate same-source network was not closed")
+	if !SameNetworkInstance(n.currentNetwork, duplicate) {
+		t.Fatal("currentNetwork was not replaced with the fresh same-source wrapper")
+	}
+	if !NetworkIsReady(duplicate) {
+		t.Fatal("fresh same-source network was closed")
 	}
 }
 
@@ -1405,10 +1409,10 @@ func (n *wireGuardTestNetworkSourceNode) OnInit(w *pasta.Workspace, _ pasta.Logg
 	if restored != nil && len(restored.LeftPorts) > 0 {
 		n.out = restored.LeftPorts[0]
 	}
-	if err := n.w.SetNodePrimary(n.id, TypeNetwork); err != nil {
+	if err := n.w.SetNodePrimaryLocked(n.id, TypeNetwork); err != nil {
 		return err
 	}
-	return n.w.SetNodeLabel(n.id, "ready")
+	return n.w.SetNodeLabelLocked(n.id, "ready")
 }
 
 func (n *wireGuardTestNetworkSourceNode) OnReady() error {
@@ -1438,7 +1442,7 @@ func (n *wireGuardTestNetworkSourceNode) OnEvent(event pasta.Event, linkType str
 }
 
 func (n *wireGuardTestNetworkSourceNode) sendAll() {
-	snapshot, ok := n.w.PortSnapshot(n.out)
+	snapshot, ok := n.w.PortSnapshotLocked(n.out)
 	if !ok {
 		return
 	}
@@ -1452,5 +1456,5 @@ func (n *wireGuardTestNetworkSourceNode) sendToLink(link uint64) {
 		return
 	}
 	BindNetworkResource(n.w, n.id, link, n.network)
-	n.w.EmitEvent(n.id, link, NetworkPayload{Network: n.network})
+	n.w.EmitEventLocked(n.id, link, NetworkPayload{Network: n.network})
 }

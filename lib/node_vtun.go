@@ -153,12 +153,12 @@ func (n *vtunNode) OnLinkRemoved(link uint64, port uint64, _, _ string) error {
 
 func (n *vtunNode) OnEvent(event pasta.Event, linkType string, _ []string, receiverPortDirection string) error {
 	if event.ReceiverPort == n.network && receiverPortDirection == "left" && linkType == TypeNetwork && std.IsRequest(event.Payload) {
-		n.sendNetworkToLink(event.Link)
+		n.refreshNetworkToLink(event.Link)
 		return nil
 	}
 	if event.ReceiverPort == n.tunp && receiverPortDirection == "right" && linkType == TypeTun {
 		if std.IsRequest(event.Payload) {
-			n.sendTunToLink(event.Link)
+			n.refreshTunToLink(event.Link)
 			return nil
 		}
 		if cfg, ok := event.Payload.(TunConfig); ok {

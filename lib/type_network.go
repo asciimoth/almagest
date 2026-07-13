@@ -60,9 +60,9 @@ func BindNetworkResource(w *pasta.Workspace, node, link uint64, n NetworkCloser)
 	if w == nil || n == nil {
 		return
 	}
-	_ = w.AddNodeResource(node, n)
+	_ = w.AddNodeResourceLocked(node, n)
 	if link != 0 {
-		_ = w.AddLinkResource(link, n)
+		_ = w.AddLinkResourceLocked(link, n)
 	}
 }
 
@@ -72,13 +72,13 @@ func EmitDetachedNetwork(w *pasta.Workspace, node, link uint64, source gonnect.N
 	if w == nil || link == 0 || source == nil {
 		return nil
 	}
-	if _, ok := w.LinkSnapshot(link); !ok {
+	if _, ok := w.LinkSnapshotLocked(link); !ok {
 		return nil
 	}
 	// Nil spawner is intentional here; see the Gonnect spawner note in helpers.go.
 	wrapper := gonnect.DetachNetwork(source, nil, nil)
 	BindNetworkResource(w, node, link, wrapper)
-	w.EmitEvent(node, link, NetworkPayload{Network: wrapper})
+	w.EmitEventLocked(node, link, NetworkPayload{Network: wrapper})
 	return wrapper
 }
 
@@ -105,23 +105,61 @@ func (c *NetworkOutputCache) Send(w *pasta.Workspace, node, link uint64, source 
 	return c.SendWrapped(w, node, link, source, nil)
 }
 
+// SendLocked is Send for callers already running under the workspace lock.
+func (c *NetworkOutputCache) SendLocked(w *pasta.Workspace, node, link uint64, source gonnect.Network) bool {
+	return c.SendWrappedLocked(w, node, link, source, nil)
+}
+
+// RefreshLocked emits a fresh detached NetworkPayload on link even when the
+// source is unchanged. Use it to answer std.Request callbacks from middleware
+// that may have just closed the previously routed payload.
+func (c *NetworkOutputCache) RefreshLocked(w *pasta.Workspace, node, link uint64, source gonnect.Network) bool {
+	return c.RefreshWrappedLocked(w, node, link, source, nil)
+}
+
 // SendWrapped emits source as a detached NetworkPayload on link after wrapping
 // the detached network with wrap.
 func (c *NetworkOutputCache) SendWrapped(w *pasta.Workspace, node, link uint64, source gonnect.Network, wrap func(NetworkCloser) NetworkCloser) bool {
+	if w == nil {
+		return false
+	}
+	w.Lock()
+	defer w.Unlock()
+	return c.SendWrappedLocked(w, node, link, source, wrap)
+}
+
+// SendWrappedLocked is SendWrapped for callers already running under the
+// workspace lock.
+func (c *NetworkOutputCache) SendWrappedLocked(w *pasta.Workspace, node, link uint64, source gonnect.Network, wrap func(NetworkCloser) NetworkCloser) bool {
 	if w == nil || link == 0 || source == nil {
 		return false
 	}
-	if _, ok := w.LinkSnapshot(link); !ok {
+	if _, ok := w.LinkSnapshotLocked(link); !ok {
 		return false
 	}
 	if c.entries != nil {
 		if entry, ok := c.entries[link]; ok && NetworkIsReady(entry.output) && SameNetworkSource(entry.source, source) {
-			w.EmitEvent(node, link, NetworkPayload{Network: entry.output})
+			w.EmitEventLocked(node, link, NetworkPayload{Network: entry.output})
 			return true
 		}
 	}
 	c.Close(link)
+	return c.emitWrappedLocked(w, node, link, source, wrap)
+}
 
+// RefreshWrappedLocked is RefreshLocked with an additional wrapper hook.
+func (c *NetworkOutputCache) RefreshWrappedLocked(w *pasta.Workspace, node, link uint64, source gonnect.Network, wrap func(NetworkCloser) NetworkCloser) bool {
+	if w == nil || link == 0 || source == nil {
+		return false
+	}
+	if _, ok := w.LinkSnapshotLocked(link); !ok {
+		return false
+	}
+	c.Close(link)
+	return c.emitWrappedLocked(w, node, link, source, wrap)
+}
+
+func (c *NetworkOutputCache) emitWrappedLocked(w *pasta.Workspace, node, link uint64, source gonnect.Network, wrap func(NetworkCloser) NetworkCloser) bool {
 	// Nil spawner is intentional here; see the Gonnect spawner note in helpers.go.
 	var output NetworkCloser = gonnect.DetachNetwork(source, nil, nil)
 	if wrap != nil {
@@ -137,7 +175,7 @@ func (c *NetworkOutputCache) SendWrapped(w *pasta.Workspace, node, link uint64, 
 		c.entries = make(map[uint64]networkOutputEntry)
 	}
 	c.entries[link] = networkOutputEntry{source: source, output: output}
-	w.EmitEvent(node, link, NetworkPayload{Network: output})
+	w.EmitEventLocked(node, link, NetworkPayload{Network: output})
 	return true
 }
 
@@ -174,12 +212,10 @@ func acceptNetworkPayload(event pasta.Event, current NetworkCloser) (NetworkClos
 	if !ok || !NetworkIsReady(payload.Network) {
 		return current, false
 	}
-	if NetworkIsReady(current) && SameNetworkSource(current, payload.Network) {
-		if !SameNetworkInstance(current, payload.Network) {
-			_ = payload.Network.Close()
-		}
+	if SameNetworkInstance(current, payload.Network) {
 		return current, false
 	}
+	_ = closeNetwork(current)
 	return payload.Network, true
 }
 
@@ -205,6 +241,13 @@ func SameNetworkInstance(a, b NetworkCloser) bool {
 		return a == nil && b == nil
 	}
 	return SameComparableValue(a, b)
+}
+
+func closeNetwork(n NetworkCloser) error {
+	if n == nil {
+		return nil
+	}
+	return n.Close()
 }
 
 func NetworkSource(n any) any {
@@ -297,7 +340,7 @@ func (n *simpleNetworkProvider) OnEvent(event pasta.Event, linkType string, _ []
 	if event.ReceiverPort != n.out || receiverPortDirection != "left" || linkType != TypeNetwork || !std.IsRequest(event.Payload) {
 		return nil
 	}
-	n.sendToLink(event.Link)
+	n.refreshLink(event.Link)
 	return nil
 }
 
@@ -308,5 +351,9 @@ func (n *simpleNetworkProvider) sendAll() {
 }
 
 func (n *simpleNetworkProvider) sendToLink(link uint64) {
-	n.outputs.Send(n.w, n.id, link, n.network)
+	n.outputs.SendLocked(n.w, n.id, link, n.network)
+}
+
+func (n *simpleNetworkProvider) refreshLink(link uint64) {
+	n.outputs.RefreshLocked(n.w, n.id, link, n.network)
 }

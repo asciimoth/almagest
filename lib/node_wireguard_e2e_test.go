@@ -580,38 +580,7 @@ func (e *httpE2E) waitClientStableReady(client uint64) {
 
 func (e *httpE2E) assertWireGuardClientRequestWorks(client uint64) {
 	e.T.Helper()
-	deadline := time.Now().Add(90 * time.Second)
-	for {
-		if e.clientStatus(client) != "Status: running..." {
-			e.sendClientRequest(client)
-		}
-
-		requestDeadline := time.Now().Add(20 * time.Second)
-		for {
-			if e.clientStatus(client) == "Status: 200 OK" &&
-				e.clientResultField(client, "error") == "" &&
-				e.clientResultField(client, "response") == "Debug http server response" {
-				e.AssertNodeLabel(client, "200 OK")
-				return
-			}
-			if e.clientStatus(client) != "Status: running..." {
-				break
-			}
-			if time.Now().After(requestDeadline) {
-				break
-			}
-			time.Sleep(10 * time.Millisecond)
-		}
-		if time.Now().After(deadline) {
-			e.T.Fatalf(
-				"timed out waiting for wireguard client response; got status=%q error=%q response=%q",
-				e.clientStatus(client),
-				e.clientResultField(client, "error"),
-				e.clientResultField(client, "response"),
-			)
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
+	e.assertClientRequestReturns(client, "Debug http server response", 90*time.Second)
 }
 
 func defaultWireGuardE2ENames(prefix string) wireGuardE2ENames {

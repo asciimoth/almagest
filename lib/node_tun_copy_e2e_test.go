@@ -354,7 +354,7 @@ func (n *testTunProviderNode) sendAll() {
 
 func (n *testTunProviderNode) sendTunToLink(link uint64) {
 	n.ensurePipe()
-	n.outputs.Send(n.w, n.id, link, n.source, nil)
+	n.outputs.SendLocked(n.w, n.id, link, n.source, nil)
 }
 
 func (n *testTunProviderNode) ensurePipe() {

@@ -111,7 +111,7 @@ func (n *spooferNode) PreLinkAdd(port uint64, linkType, portDirection string) er
 func (n *spooferNode) OnLinkAdd(link, port uint64, _, _ string) error {
 	switch port {
 	case n.tunp, n.network:
-		std.Request(n.w, n.id, link)
+		std.RequestLocked(n.w, n.id, link)
 	}
 	return nil
 }

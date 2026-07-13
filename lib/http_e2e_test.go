@@ -480,30 +480,65 @@ func (e *httpE2E) waitClientResponse(client uint64, status, response string) {
 
 func (e *httpE2E) assertClientRequestWorks(client uint64) {
 	e.T.Helper()
-	deadline := time.Now().Add(10 * time.Second)
+	e.assertClientRequestReturns(client, "Debug http server response", 10*time.Second)
+}
+
+func (e *httpE2E) assertClientRequestReturns(client uint64, response string, timeout time.Duration) {
+	e.T.Helper()
+	deadline := time.Now().Add(timeout)
+	observedCurrentRequest := false
 	for {
-		if e.clientStatus(client) != "Status: running..." {
-			e.sendClientRequest(client)
-		}
-		Eventually(e.T, func() bool {
-			return e.clientStatus(client) != "Status: running..."
-		}, "client request finished")
-		if e.clientStatus(client) == "Status: 200 OK" &&
-			e.clientResultField(client, "error") == "" &&
-			e.clientResultField(client, "response") == "Debug http server response" {
-			e.AssertNodeLabel(client, "200 OK")
+		gotStatus, gotErr, gotResp, gotLabel := e.clientResultSnapshot(client)
+		running := gotStatus == "Status: "+httpClientStatusRunning || gotLabel == httpClientStatusRunning
+
+		if gotStatus == "Status: 200 OK" &&
+			gotErr == "" &&
+			gotResp == response &&
+			observedCurrentRequest &&
+			gotLabel == "200 OK" {
 			return
+		}
+
+		// Menu notifications are asynchronous with engine snapshots. A stale
+		// success from the previous request must not satisfy this helper after a
+		// fresh button press has already moved the node label to "running...".
+		if !observedCurrentRequest {
+			observedCurrentRequest = true
+			if !running {
+				e.sendClientRequest(client)
+			}
+		} else if !running {
+			e.sendClientRequest(client)
 		}
 		if time.Now().After(deadline) {
 			e.T.Fatalf(
-				"timed out waiting for retried client response; got status=%q error=%q response=%q",
-				e.clientStatus(client),
-				e.clientResultField(client, "error"),
-				e.clientResultField(client, "response"),
+				"timed out waiting for retried client response %q; got status=%q error=%q response=%q label=%q",
+				response,
+				gotStatus,
+				gotErr,
+				gotResp,
+				gotLabel,
 			)
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
+}
+
+func (e *httpE2E) clientResultSnapshot(client uint64) (status, errText, response, label string) {
+	e.T.Helper()
+	return e.clientStatus(client),
+		e.clientResultField(client, "error"),
+		e.clientResultField(client, "response"),
+		e.clientLabel(client)
+}
+
+func (e *httpE2E) clientLabel(client uint64) string {
+	e.T.Helper()
+	snapshot, ok := e.Engine.NodeSnapshot(E2EWorkspace, client)
+	if !ok {
+		e.T.Fatalf("NodeSnapshot(%d) missing", client)
+	}
+	return snapshot.Label
 }
 
 func (e *httpE2E) waitClientFailure(client uint64, wantErrPart string) {

@@ -172,7 +172,7 @@ func (n *tunNode) OnEvent(event pasta.Event, linkType string, _ []string, receiv
 		return nil
 	}
 	if std.IsRequest(event.Payload) {
-		n.sendTunToLink(event.Link)
+		n.refreshTunToLink(event.Link)
 		return nil
 	}
 	cfg, ok := event.Payload.(TunConfig)
@@ -351,7 +351,7 @@ func (n *tunNode) rebuildTun(opts sysnet.TunOpts, name string) error {
 	n.effective = copyTunOpts(opts)
 	n.effectiveName = name
 	n.hasEffective = true
-	_ = n.w.AddNodeResource(n.id, nextTun)
+	_ = n.w.AddNodeResourceLocked(n.id, nextTun)
 	_ = n.updateLabel()
 	n.sendEffectiveBlock()
 	n.sendAll()
@@ -442,7 +442,14 @@ func (n *tunNode) sendTunToLink(link uint64) {
 	if n.tun == nil {
 		return
 	}
-	n.outputTuns.Send(n.w, n.id, link, n.tun, enginePool(n.engine))
+	n.outputTuns.SendLocked(n.w, n.id, link, n.tun, enginePool(n.engine))
+}
+
+func (n *tunNode) refreshTunToLink(link uint64) {
+	if n.tun == nil {
+		return
+	}
+	n.outputTuns.RefreshLocked(n.w, n.id, link, n.tun, enginePool(n.engine))
 }
 
 func (n *tunNode) closeTun() {

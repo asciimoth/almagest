@@ -261,7 +261,7 @@ func (f tunJoinerVTunHTTPE2EFixture) assertParallelClientRequestsWork() {
 		}
 	}
 	for _, client := range f.clients {
-		f.AssertNodeLabel(client, "200 OK")
+		f.WaitNodeLabel(client, "200 OK")
 	}
 }
 
@@ -271,18 +271,20 @@ func (e *httpE2E) waitClientResponseResult(client uint64, status, response strin
 		gotStatus := e.clientStatus(client)
 		gotErr := e.clientResultField(client, "error")
 		gotResp := e.clientResultField(client, "response")
-		if gotStatus == "Status: "+status && gotErr == "" && gotResp == response {
+		gotLabel := e.clientLabel(client)
+		if gotStatus == "Status: "+status && gotErr == "" && gotResp == response && gotLabel == status {
 			return nil
 		}
 		if time.Now().After(deadline) {
 			return fmt.Errorf(
-				"timed out waiting for client %d response %q %q; got status=%q error=%q response=%q",
+				"timed out waiting for client %d response %q %q; got status=%q error=%q response=%q label=%q",
 				client,
 				status,
 				response,
 				gotStatus,
 				gotErr,
 				gotResp,
+				gotLabel,
 			)
 		}
 		time.Sleep(10 * time.Millisecond)
@@ -358,10 +360,10 @@ func (n *testTunSinkNode) OnInit(w *pasta.Workspace, _ pasta.Logger, id uint64, 
 	if n.registry != nil {
 		n.registry.register(id, n)
 	}
-	if err := n.w.SetNodePrimary(n.id, TypeTun); err != nil {
+	if err := n.w.SetNodePrimaryLocked(n.id, TypeTun); err != nil {
 		return err
 	}
-	return n.w.SetNodeLabel(n.id, "waiting")
+	return n.w.SetNodeLabelLocked(n.id, "waiting")
 }
 
 func (n *testTunSinkNode) OnStop() {
@@ -381,7 +383,7 @@ func (n *testTunSinkNode) PreLinkAdd(port uint64, linkType, portDirection string
 func (n *testTunSinkNode) OnLinkAdd(link, port uint64, linkType, portDirection string) error {
 	if port == n.in && portDirection == "left" && linkType == TypeTun {
 		n.link = link
-		std.Request(n.w, n.id, link)
+		std.RequestLocked(n.w, n.id, link)
 	}
 	return nil
 }
@@ -393,7 +395,7 @@ func (n *testTunSinkNode) OnLinkRemoved(link uint64, port uint64, linkType, port
 		}
 		n.link = 0
 		n.tun = nil
-		return n.w.SetNodeLabel(n.id, "waiting")
+		return n.w.SetNodeLabelLocked(n.id, "waiting")
 	}
 	return nil
 }
@@ -414,7 +416,7 @@ func (n *testTunSinkNode) OnEvent(event pasta.Event, linkType string, _ []string
 	}
 	BindTunResource(n.w, n.id, event.Link, payload.Tun)
 	n.tun = payload.Tun
-	return n.w.SetNodeLabel(n.id, "ready")
+	return n.w.SetNodeLabelLocked(n.id, "ready")
 }
 
 func assertTunPacketTransferred(t *testing.T, from, to tun.Tun, packet []byte) {

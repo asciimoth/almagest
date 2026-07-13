@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
@@ -269,9 +270,7 @@ func (f vtunSpooferE2EFixture) assertVTunSpooferRequestWorks(client uint64) {
 
 func (e *httpE2E) assertClientRequestWorksWithResponse(client uint64, response string) {
 	e.T.Helper()
-	e.sendClientRequest(client)
-	e.waitClientResponse(client, "200 OK", response)
-	e.AssertNodeLabel(client, "200 OK")
+	e.assertClientRequestReturns(client, response, 10*time.Second)
 }
 
 func (e *httpE2E) addHTTPServerOnHost(name, host string, port int) uint64 {

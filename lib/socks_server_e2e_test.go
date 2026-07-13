@@ -184,10 +184,10 @@ func (n *testNativeNetworkNode) OnInit(w *pasta.Workspace, _ pasta.Logger, id ui
 	if restored != nil && len(restored.LeftPorts) > 0 {
 		n.port = restored.LeftPorts[0]
 	}
-	if err := n.w.SetNodePrimary(n.id, TypeNetwork); err != nil {
+	if err := n.w.SetNodePrimaryLocked(n.id, TypeNetwork); err != nil {
 		return err
 	}
-	return n.w.SetNodeLabel(n.id, "native")
+	return n.w.SetNodeLabelLocked(n.id, "native")
 }
 
 func (n *testNativeNetworkNode) OnReady() error {
@@ -217,7 +217,7 @@ func (n *testNativeNetworkNode) OnEvent(event pasta.Event, linkType string, _ []
 }
 
 func (n *testNativeNetworkNode) sendAll() {
-	snapshot, ok := n.w.PortSnapshot(n.port)
+	snapshot, ok := n.w.PortSnapshotLocked(n.port)
 	if !ok {
 		return
 	}
@@ -229,7 +229,7 @@ func (n *testNativeNetworkNode) sendAll() {
 func (n *testNativeNetworkNode) sendToLink(link uint64) {
 	wrapper := gonnect.DetachNetwork(n.net, nil, nil)
 	BindNetworkResource(n.w, n.id, link, wrapper)
-	n.w.EmitEvent(n.id, link, NetworkPayload{Network: wrapper})
+	n.w.EmitEventLocked(n.id, link, NetworkPayload{Network: wrapper})
 }
 
 func (e *socksServerE2E) addHTTPServer(name string, port int) uint64 {

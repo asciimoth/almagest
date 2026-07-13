@@ -22,7 +22,7 @@ type outNetReceiver struct {
 func (n *outNetReceiver) OnInit(w *pasta.Workspace, _ pasta.Logger, id uint64, _ string, _ *pasta.NodeInitData, _, _, _, _ bool) error {
 	n.w = w
 	n.id = id
-	port, err := w.AddPort(pasta.Port{
+	port, err := w.AddPortLocked(pasta.Port{
 		Node:      id,
 		Direction: "right",
 		Name:      "Network",

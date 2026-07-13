@@ -77,7 +77,7 @@ func (n *vtunNode) rebuildVTunWithActive(active bool) error {
 	n.formError = ""
 	n.vtun = vt
 	n.vtunRuntime = runtimeConfig
-	_ = n.w.AddNodeResource(n.id, vt)
+	_ = n.w.AddNodeResourceLocked(n.id, vt)
 	_ = n.updateLabel()
 	n.sendEffectiveBlock()
 	n.sendAll()
@@ -197,14 +197,28 @@ func (n *vtunNode) sendNetworkToLink(link uint64) {
 	if n.vtun == nil {
 		return
 	}
-	n.outputNetworks.Send(n.w, n.id, link, n.vtun)
+	n.outputNetworks.SendLocked(n.w, n.id, link, n.vtun)
+}
+
+func (n *vtunNode) refreshNetworkToLink(link uint64) {
+	if n.vtun == nil {
+		return
+	}
+	n.outputNetworks.RefreshLocked(n.w, n.id, link, n.vtun)
 }
 
 func (n *vtunNode) sendTunToLink(link uint64) {
 	if n.vtun == nil {
 		return
 	}
-	n.outputTuns.Send(n.w, n.id, link, n.vtun, enginePool(n.engine))
+	n.outputTuns.SendLocked(n.w, n.id, link, n.vtun, enginePool(n.engine))
+}
+
+func (n *vtunNode) refreshTunToLink(link uint64) {
+	if n.vtun == nil {
+		return
+	}
+	n.outputTuns.RefreshLocked(n.w, n.id, link, n.vtun, enginePool(n.engine))
 }
 
 func (n *vtunNode) hasAnyLink() bool {

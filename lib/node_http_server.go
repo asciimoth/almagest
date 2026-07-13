@@ -143,11 +143,11 @@ func (n *httpServerNode) PreLinkAdd(port uint64, linkType, portDirection string)
 func (n *httpServerNode) OnLinkAdd(link, port uint64, _, _ string) error {
 	switch port {
 	case n.netp, n.in:
-		std.Request(n.w, n.id, link)
+		std.RequestLocked(n.w, n.id, link)
 
 	case n.hostp, n.portp:
 		n.sendListenBlock()
-		std.Request(n.w, n.id, link)
+		std.RequestLocked(n.w, n.id, link)
 	}
 
 	return nil

@@ -149,7 +149,7 @@ func TestDetachTunForLinkBindsWrapperResource(t *testing.T) {
 	}
 }
 
-func TestAcceptTunPayloadClosesReadyDuplicateSource(t *testing.T) {
+func TestAcceptTunPayloadReplacesReadySameSourceWrapper(t *testing.T) {
 	w, node, _, _, rightPort := newTunTypeLinkedWorkspace(t)
 	link := onlyPortLink(t, w, rightPort)
 
@@ -158,21 +158,24 @@ func TestAcceptTunPayloadClosesReadyDuplicateSource(t *testing.T) {
 	defer closeTestTun(peer)
 
 	current := testTunWrapper{Tun: tun.Detach(base, nil, nil), wrapped: base}
-	defer closeTestTun(current)
-	duplicate := testTunWrapper{Tun: tun.Detach(base, nil, nil), wrapped: base}
+	replacement := testTunWrapper{Tun: tun.Detach(base, nil, nil), wrapped: base}
+	defer closeTestTun(replacement)
 
 	next, changed := AcceptTunPayload(w, node, pasta.Event{
 		Link:    link,
-		Payload: TunPayload{Tun: duplicate},
+		Payload: TunPayload{Tun: replacement},
 	}, link, current)
-	if changed {
-		t.Fatal("AcceptTunPayload() changed duplicate same-source wrapper, want unchanged")
+	if !changed {
+		t.Fatal("AcceptTunPayload() changed = false, want true for fresh same-source wrapper")
 	}
-	if !SameTunInstance(next, current) {
-		t.Fatal("AcceptTunPayload() returned a replacement for duplicate same-source wrapper")
+	if !SameTunInstance(next, replacement) {
+		t.Fatal("AcceptTunPayload() did not return replacement")
 	}
-	if _, err := duplicate.MTU(); !errors.Is(err, os.ErrClosed) {
-		t.Fatalf("duplicate MTU() error = %v, want os.ErrClosed", err)
+	if _, err := current.MTU(); !errors.Is(err, os.ErrClosed) {
+		t.Fatalf("current MTU() error = %v, want os.ErrClosed", err)
+	}
+	if mtu, err := replacement.MTU(); err != nil || mtu != 1500 {
+		t.Fatalf("replacement MTU() = %d, %v; want 1500, nil", mtu, err)
 	}
 }
 
@@ -238,6 +241,42 @@ func TestTunOutputCacheReusesReadyWrapperAndReplacesClosedWrapper(t *testing.T) 
 		t.Fatal("third Send() reused a closed wrapper, want replacement")
 	}
 
+	cache.CloseAll()
+	closeTestTun(base)
+	closeTestTun(peer)
+	cache.Wait()
+}
+
+func TestTunOutputCacheRefreshReplacesReadySameSourceWrapper(t *testing.T) {
+	w, node, _, _, rightPort := newTunTypeLinkedWorkspace(t)
+	link := onlyPortLink(t, w, rightPort)
+
+	base, peer := tun.Pipe(1, 1500, 0, 0)
+	defer closeTestTun(base)
+	defer closeTestTun(peer)
+
+	var cache TunOutputCache
+	if !cache.Send(w, node, link, base, nil) {
+		t.Fatal("TunOutputCache.Send() = false, want true")
+	}
+	first := cache.entries[link].output
+	w.Lock()
+	refreshedOK := cache.RefreshLocked(w, node, link, base, nil)
+	w.Unlock()
+	if !refreshedOK {
+		t.Fatal("TunOutputCache.RefreshLocked() = false, want true")
+	}
+	second := cache.entries[link].output
+	if SameTunInstance(first, second) {
+		t.Fatal("TunOutputCache.RefreshLocked reused wrapper, want fresh detach")
+	}
+	eventually(t, func() bool {
+		_, err := first.MTU()
+		return errors.Is(err, os.ErrClosed)
+	})
+	if mtu, err := second.MTU(); err != nil || mtu != 1500 {
+		t.Fatalf("second MTU() = %d, %v; want 1500, nil", mtu, err)
+	}
 	cache.CloseAll()
 	closeTestTun(base)
 	closeTestTun(peer)

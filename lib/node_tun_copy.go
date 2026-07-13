@@ -115,7 +115,7 @@ func (n *tunCopyNode) OnLinkAdd(link, port uint64, linkType, portDirection strin
 	default:
 		return nil
 	}
-	std.Request(n.w, n.id, link)
+	std.RequestLocked(n.w, n.id, link)
 	return n.updateLabel()
 }
 

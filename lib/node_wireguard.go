@@ -184,12 +184,12 @@ func (n *wireGuardNode) OnLinkAdd(link, port uint64, linkType, portDirection str
 		n.nextTunGeneration()
 		n.nextRuntimeGeneration()
 		n.sendTunConfigToLink(link)
-		std.Request(n.w, n.id, link)
+		std.RequestLocked(n.w, n.id, link)
 	case port == n.netp && portDirection == "right" && linkType == TypeNetwork:
 		n.netLink = link
 		n.nextNetworkGeneration()
 		n.nextRuntimeGeneration()
-		std.Request(n.w, n.id, link)
+		std.RequestLocked(n.w, n.id, link)
 	}
 	_ = n.updateLabel()
 	n.sendStatusBlock()

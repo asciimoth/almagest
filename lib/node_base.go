@@ -27,7 +27,7 @@ func (b *NodeBase) InitBaseNode(w *pasta.Workspace, logger pasta.Logger, id uint
 	if b.engine != nil && b.engine.workers != nil && id != 0 {
 		b.workerSpawner = b.engine.workers.spawner(id)
 		if w != nil {
-			if snapshot, ok := w.NodeSnapshot(id); ok {
+			if snapshot, ok := w.NodeSnapshotLocked(id); ok {
 				b.engine.workers.observeNodeSnapshot(id, snapshot)
 			}
 		}
@@ -83,7 +83,7 @@ func (b *NodeBase) SetLabel(label string) error {
 	if b.w == nil || b.id == 0 {
 		return nil
 	}
-	return b.w.SetNodeLabel(b.id, label)
+	return b.w.SetNodeLabelLocked(b.id, label)
 }
 
 // SetPrimary updates the node primary type when the base has been initialized.
@@ -91,12 +91,12 @@ func (b *NodeBase) SetPrimary(primaryType string) error {
 	if b.w == nil || b.id == 0 {
 		return nil
 	}
-	return b.w.SetNodePrimary(b.id, primaryType)
+	return b.w.SetNodePrimaryLocked(b.id, primaryType)
 }
 
 func requestPortLinks(w *pasta.Workspace, node, port uint64) {
 	forEachPortLink(w, port, func(link uint64) {
-		std.Request(w, node, link)
+		std.RequestLocked(w, node, link)
 	})
 }
 
@@ -104,7 +104,7 @@ func forEachPortLink(w *pasta.Workspace, port uint64, fn func(link uint64)) {
 	if w == nil || port == 0 || fn == nil {
 		return
 	}
-	snapshot, ok := w.PortSnapshot(port)
+	snapshot, ok := w.PortSnapshotLocked(port)
 	if !ok {
 		return
 	}
@@ -117,7 +117,7 @@ func portHasLinks(w *pasta.Workspace, port uint64) bool {
 	if w == nil || port == 0 {
 		return false
 	}
-	snapshot, ok := w.PortSnapshot(port)
+	snapshot, ok := w.PortSnapshotLocked(port)
 	return ok && len(snapshot.Links) > 0
 }
 
@@ -139,10 +139,10 @@ func emitIfLinked(w *pasta.Workspace, node, link uint64, payload any) bool {
 	if w == nil || link == 0 {
 		return false
 	}
-	if _, ok := w.LinkSnapshot(link); !ok {
+	if _, ok := w.LinkSnapshotLocked(link); !ok {
 		return false
 	}
-	w.EmitEvent(node, link, payload)
+	w.EmitEventLocked(node, link, payload)
 	return true
 }
 
@@ -152,22 +152,22 @@ func sendNodeMenuSnapshot(w *pasta.Workspace, node uint64, force bool, blocks ..
 	}
 	menu := pasta.NodeMenuID(node)
 	if force {
-		w.SendNodeMenuMsg(node, formular.ForcedMenuSnapshot(menu, 1, blocks...))
+		w.SendNodeMenuMsgLocked(node, formular.ForcedMenuSnapshot(menu, 1, blocks...))
 		return
 	}
-	w.SendNodeMenuMsg(node, formular.MenuSnapshot(menu, 1, blocks...))
+	w.SendNodeMenuMsgLocked(node, formular.MenuSnapshot(menu, 1, blocks...))
 }
 
 func sendNodeBlockSnapshot(w *pasta.Workspace, node uint64, block formular.Block) {
 	if w == nil || node == 0 {
 		return
 	}
-	w.SendNodeMenuMsg(node, formular.BlockSnapshot(pasta.NodeMenuID(node), 1, block.Generation, block))
+	w.SendNodeMenuMsgLocked(node, formular.BlockSnapshot(pasta.NodeMenuID(node), 1, block.Generation, block))
 }
 
 func sendNodeFieldStatus(w *pasta.Workspace, node uint64, field formular.FieldRef, err error) {
 	if w == nil || node == 0 {
 		return
 	}
-	w.SendNodeMenuMsg(node, formular.FieldStatusFromError(pasta.NodeMenuID(node), 1, 1, field, err))
+	w.SendNodeMenuMsgLocked(node, formular.FieldStatusFromError(pasta.NodeMenuID(node), 1, 1, field, err))
 }

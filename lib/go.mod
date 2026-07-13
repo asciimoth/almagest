@@ -3,7 +3,6 @@ module github.com/asciimoth/almagest/lib
 go 1.25.5
 
 require (
-	github.com/asciimoth/badlock v0.1.1
 	github.com/asciimoth/batchudp v0.3.0
 	github.com/asciimoth/bufpool v0.3.0
 	github.com/asciimoth/configer/configer v0.3.1
@@ -11,7 +10,7 @@ require (
 	github.com/asciimoth/gonnect v0.31.0
 	github.com/asciimoth/gonnect-netstack v0.4.30
 	github.com/asciimoth/gonnect-routing v0.7.2
-	github.com/asciimoth/pasta/pasta v0.8.1
+	github.com/asciimoth/pasta/pasta v0.9.0
 	github.com/asciimoth/socksgo v0.4.0
 	github.com/asciimoth/wgo v0.5.0
 	github.com/coder/websocket v1.8.14

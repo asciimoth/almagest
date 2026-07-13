@@ -182,7 +182,7 @@ func (n *tunSplitterNode) OnLinkAdd(link, port uint64, linkType, portDirection s
 	switch {
 	case port == n.in && portDirection == "left":
 		n.inputLink = link
-		std.Request(n.w, n.id, link)
+		std.RequestLocked(n.w, n.id, link)
 		n.sendMergedTunConfig()
 	case n.slots.Slot(port) != 0 && portDirection == "right":
 		n.sendOutputTunToLink(link, port)
@@ -244,7 +244,7 @@ func (n *tunSplitterNode) OnEvent(event pasta.Event, linkType string, _ []string
 		return nil
 	}
 	if std.IsRequest(event.Payload) {
-		n.sendOutputTunToLink(event.Link, event.ReceiverPort)
+		n.refreshOutputTunToLink(event.Link, event.ReceiverPort)
 		return nil
 	}
 	cfg, ok := event.Payload.(TunConfig)
@@ -399,7 +399,7 @@ func (n *tunSplitterNode) sendOutputTunToLink(link, port uint64) {
 	if slot == 0 || n.splitter == nil {
 		return
 	}
-	if frontend := n.frontends[link]; TunIsReady(frontend) && n.outputTuns.Send(n.w, n.id, link, frontend, n.pool) {
+	if frontend := n.frontends[link]; TunIsReady(frontend) && n.outputTuns.SendLocked(n.w, n.id, link, frontend, n.pool) {
 		return
 	}
 	n.closeOutputTun(link)
@@ -409,10 +409,32 @@ func (n *tunSplitterNode) sendOutputTunToLink(link, port uint64) {
 	}
 	BindTunResource(n.w, n.id, link, frontend)
 	n.frontends[link] = frontend
-	if !n.outputTuns.Send(n.w, n.id, link, frontend, n.pool) {
+	if !n.outputTuns.SendLocked(n.w, n.id, link, frontend, n.pool) {
 		delete(n.frontends, link)
 		_ = frontend.Close()
 		return
+	}
+}
+
+func (n *tunSplitterNode) refreshOutputTunToLink(link, port uint64) {
+	slot := n.slots.Slot(port)
+	if slot == 0 || n.splitter == nil {
+		return
+	}
+	frontend := n.frontends[link]
+	if !TunIsReady(frontend) {
+		n.closeOutputTun(link)
+		nextFrontend := n.splitter.Get(slot)
+		if nextFrontend == nil {
+			return
+		}
+		frontend = nextFrontend
+		BindTunResource(n.w, n.id, link, frontend)
+		n.frontends[link] = frontend
+	}
+	if !n.outputTuns.RefreshLocked(n.w, n.id, link, frontend, n.pool) {
+		delete(n.frontends, link)
+		_ = frontend.Close()
 	}
 }
 

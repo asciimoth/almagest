@@ -143,7 +143,7 @@ func (n *tunJoinerNode) OnLinkAdd(link, port uint64, linkType, portDirection str
 		if port == n.defaultIn {
 			n.defaultLink = link
 		}
-		std.Request(n.w, n.id, link)
+		std.RequestLocked(n.w, n.id, link)
 		n.sendMergedTunConfigToLink(link)
 	case portDirection == "right" && port == n.out:
 		n.sendOutputTunToLink(link)
@@ -176,7 +176,7 @@ func (n *tunJoinerNode) OnEvent(event pasta.Event, linkType string, _ []string, 
 	}
 	if event.ReceiverPort == n.out && receiverPortDirection == "right" {
 		if std.IsRequest(event.Payload) {
-			n.sendOutputTunToLink(event.Link)
+			n.refreshOutputTunToLink(event.Link)
 			return nil
 		}
 		if cfg, ok := event.Payload.(TunConfig); ok {
@@ -261,7 +261,14 @@ func (n *tunJoinerNode) sendOutputTunToLink(link uint64) {
 	if n.joiner == nil {
 		return
 	}
-	n.outputTuns.Send(n.w, n.id, link, n.joiner, n.pool)
+	n.outputTuns.SendLocked(n.w, n.id, link, n.joiner, n.pool)
+}
+
+func (n *tunJoinerNode) refreshOutputTunToLink(link uint64) {
+	if n.joiner == nil {
+		return
+	}
+	n.outputTuns.RefreshLocked(n.w, n.id, link, n.joiner, n.pool)
 }
 
 func (n *tunJoinerNode) sendMergedTunConfig() {

@@ -3,6 +3,7 @@ package almagest
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/asciimoth/formular"
 	"github.com/asciimoth/gonnect"
@@ -130,23 +131,40 @@ func TestSocksClientNodeURLUpdateClosesOldWrapperAndEmitsNewClient(t *testing.T)
 		Value:       goURL,
 	})
 
-	second := receiveOutNetPayload(t, receiver.events)
-	secondWrapper, ok := second.Network.(*gonnect.DetachedNetwork)
-	if !ok {
-		t.Fatalf("second.Network = %T, want *gonnect.DetachedNetwork", second.Network)
-	}
-	secondClient, ok := secondWrapper.GetWrapped().(*socksgo.Client)
-	if !ok {
-		t.Fatalf("second wrapped network = %T, want *socksgo.Client", secondWrapper.GetWrapped())
-	}
-	if secondClient == firstClient {
-		t.Fatal("URL update reused socksgo.Client, want a new client")
-	}
-	if secondClient.GostMbind {
-		t.Fatal("second client GostMbind = true, want false for ?go")
-	}
+	secondWrapper, secondClient := receiveSocksClientPayload(t, receiver.events, func(client *socksgo.Client) bool {
+		return client != firstClient && !client.GostMbind
+	})
 	if up, err := firstWrapper.IsUp(); err != nil || up {
 		t.Fatalf("first wrapper IsUp = %v, %v; want false, nil", up, err)
+	}
+	if !SameComparableValue(secondWrapper.GetWrapped(), secondClient) {
+		t.Fatal("second wrapper does not wrap the returned second client")
+	}
+}
+
+func receiveSocksClientPayload(t *testing.T, events <-chan NetworkPayload, accept func(*socksgo.Client) bool) (*gonnect.DetachedNetwork, *socksgo.Client) {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	for {
+		select {
+		case payload := <-events:
+			wrapper, ok := payload.Network.(*gonnect.DetachedNetwork)
+			if !ok {
+				t.Fatalf("payload.Network = %T, want *gonnect.DetachedNetwork", payload.Network)
+			}
+			client, ok := wrapper.GetWrapped().(*socksgo.Client)
+			if !ok {
+				t.Fatalf("wrapped network = %T, want *socksgo.Client", wrapper.GetWrapped())
+			}
+			if accept(client) {
+				return wrapper, client
+			}
+		default:
+			if time.Now().After(deadline) {
+				t.Fatal("timed out waiting for matching socks client payload")
+			}
+			time.Sleep(time.Millisecond)
+		}
 	}
 }
 

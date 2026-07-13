@@ -132,7 +132,7 @@ func (s *slotPorts) Review(desired map[int]struct{}, opts slotPortReview) error 
 		port := s.Port(slot)
 		_, keep := desired[slot]
 		if !keep && port != 0 && !s.portHasLinks(port) {
-			s.w.RemovePort(port)
+			s.w.RemovePortLocked(port)
 			s.ports[slot] = 0
 			continue
 		}
@@ -140,7 +140,7 @@ func (s *slotPorts) Review(desired map[int]struct{}, opts slotPortReview) error 
 			port := s.newPort(slot)
 			port.Node = s.node
 			port.Direction = s.direction
-			id, err := s.w.AddPort(port)
+			id, err := s.w.AddPortLocked(port)
 			if err != nil {
 				return err
 			}
@@ -148,7 +148,7 @@ func (s *slotPorts) Review(desired map[int]struct{}, opts slotPortReview) error 
 			continue
 		}
 		if keep && port != 0 {
-			_ = s.w.SetPortName(port, s.name(slot))
+			_ = s.w.SetPortNameLocked(port, s.name(slot))
 		}
 	}
 
@@ -161,14 +161,14 @@ func (s *slotPorts) Review(desired map[int]struct{}, opts slotPortReview) error 
 	if len(order) == 0 {
 		return nil
 	}
-	return s.w.SetNodePortOrder(s.node, s.direction, order)
+	return s.w.SetNodePortOrderLocked(s.node, s.direction, order)
 }
 
 func (s *slotPorts) slotFromPort(port uint64, fallback int) int {
 	if s.w == nil || s.parseName == nil {
 		return fallback
 	}
-	snapshot, ok := s.w.PortSnapshot(port)
+	snapshot, ok := s.w.PortSnapshotLocked(port)
 	if !ok {
 		return fallback
 	}

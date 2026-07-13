@@ -338,41 +338,7 @@ func (f networkRouterE2EFixture) assertRouterRequestFails(slot int) {
 func (e *httpE2E) assertRouterRequestOnClient(client uint64, port int, response string) {
 	e.T.Helper()
 	e.setHTTPClientURL(client, port)
-	deadline := time.Now().Add(10 * time.Second)
-	for {
-		if e.clientStatus(client) != "Status: running..." {
-			e.sendClientRequest(client)
-		}
-		requestDeadline := time.Now().Add(500 * time.Millisecond)
-		for time.Now().Before(requestDeadline) {
-			if e.clientStatus(client) == "Status: 200 OK" &&
-				e.clientResultField(client, "error") == "" &&
-				e.clientResultField(client, "response") == response {
-				e.AssertNodeLabel(client, "200 OK")
-				return
-			}
-			if e.clientStatus(client) != "Status: running..." &&
-				e.clientStatus(client) != "Status: ready" {
-				break
-			}
-			time.Sleep(10 * time.Millisecond)
-		}
-		if time.Now().After(deadline) {
-			e.T.Fatalf(
-				"timed out waiting for router client response from port %d = %q; got status=%q error=%q response=%q",
-				port,
-				response,
-				e.clientStatus(client),
-				e.clientResultField(client, "error"),
-				e.clientResultField(client, "response"),
-			)
-		}
-		if e.clientStatus(client) == "Status: 200 OK" &&
-			e.clientResultField(client, "error") == "" &&
-			e.clientResultField(client, "response") != response {
-			e.T.Fatalf("router response from port %d = %q, want %q", port, e.clientResultField(client, "response"), response)
-		}
-	}
+	e.assertClientRequestReturns(client, response, 10*time.Second)
 }
 
 func (e *httpE2E) setHTTPClientURL(client uint64, port int) {

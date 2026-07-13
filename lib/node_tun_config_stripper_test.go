@@ -136,11 +136,11 @@ type tunEventRecorderNode struct {
 }
 
 func (n *tunEventRecorderNode) OnInit(w *pasta.Workspace, _ pasta.Logger, id uint64, _ string, _ *pasta.NodeInitData, _, _, _, _ bool) error {
-	in, err := w.AddPort(pasta.Port{Node: id, Direction: "left", Name: "TunIn", Types: []string{TypeTun}})
+	in, err := w.AddPortLocked(pasta.Port{Node: id, Direction: "left", Name: "TunIn", Types: []string{TypeTun}})
 	if err != nil {
 		return err
 	}
-	out, err := w.AddPort(pasta.Port{Node: id, Direction: "right", Name: "TunOut", Types: []string{TypeTun}})
+	out, err := w.AddPortLocked(pasta.Port{Node: id, Direction: "right", Name: "TunOut", Types: []string{TypeTun}})
 	if err != nil {
 		return err
 	}

@@ -126,10 +126,7 @@ func (n *wireGuardNode) attachCurrentTun(tunGeneration uint64, t tun.Tun) (bool,
 		_ = t.Close()
 		return false, false, nil
 	}
-	if TunIsReady(n.currentTun) && SameTunSource(n.currentTun, t) {
-		if !SameTunInstance(n.currentTun, t) {
-			_ = t.Close()
-		}
+	if SameTunInstance(n.currentTun, t) {
 		n.currentTunGeneration = tunGeneration
 		return n.currentBind != nil, true, nil
 	}
@@ -183,10 +180,7 @@ func (n *wireGuardNode) attachNetworkPayload(networkGeneration uint64, network N
 		_ = network.Close()
 		return false, false, false, nil
 	}
-	if NetworkIsReady(n.currentNetwork) && SameNetworkSource(n.currentNetwork, network) {
-		if !SameNetworkInstance(n.currentNetwork, network) {
-			_ = network.Close()
-		}
+	if SameNetworkInstance(n.currentNetwork, network) {
 		n.currentNetworkGeneration = networkGeneration
 		if n.currentBind == nil || n.currentBindFailed {
 			// A same-source re-emit is also the recovery signal for a failed

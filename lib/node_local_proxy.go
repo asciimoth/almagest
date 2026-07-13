@@ -117,7 +117,7 @@ func (n *localProxyNode) PreLinkAdd(port uint64, linkType, portDirection string)
 
 func (n *localProxyNode) OnLinkAdd(link, port uint64, _, _ string) error {
 	if port == n.proxy {
-		std.Request(n.w, n.id, link)
+		std.RequestLocked(n.w, n.id, link)
 	}
 	return nil
 }

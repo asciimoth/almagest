@@ -315,7 +315,7 @@ func (n *restoreReadyNetworkReceiver) OnEvent(event pasta.Event, linkType string
 	if _, ok := event.Payload.(NetworkPayload); !ok {
 		return nil
 	}
-	if !n.w.IsReady() {
+	if !n.w.IsReadyLocked() {
 		n.eventBeforeReady = true
 	}
 	n.events++

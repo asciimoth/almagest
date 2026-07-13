@@ -150,7 +150,7 @@ func (n *networkRouterNode) OnLinkAdd(link, port uint64, linkType, portDirection
 	}
 	if n.slots.Slot(port) != 0 && portDirection == "right" && linkType == TypeNetwork {
 		if n.ready {
-			std.Request(n.w, n.id, link)
+			std.RequestLocked(n.w, n.id, link)
 		}
 	}
 	return nil
@@ -179,7 +179,7 @@ func (n *networkRouterNode) OnPortRemoved(port uint64, direction string) error {
 
 func (n *networkRouterNode) OnEvent(event pasta.Event, linkType string, _ []string, receiverPortDirection string) error {
 	if event.ReceiverPort == n.in && receiverPortDirection == "left" && linkType == TypeNetwork && std.IsRequest(event.Payload) {
-		n.sendRouterToLink(event.Link)
+		n.refreshRouterToLink(event.Link)
 		return nil
 	}
 	slot := n.slots.Slot(event.ReceiverPort)
@@ -293,7 +293,14 @@ func (n *networkRouterNode) sendRouterToLink(link uint64) {
 	if n.router == nil {
 		return
 	}
-	n.outputs.Send(n.w, n.id, link, n.router)
+	n.outputs.SendLocked(n.w, n.id, link, n.router)
+}
+
+func (n *networkRouterNode) refreshRouterToLink(link uint64) {
+	if n.router == nil {
+		return
+	}
+	n.outputs.RefreshLocked(n.w, n.id, link, n.router)
 }
 
 func (n *networkRouterNode) isNonFatalAttachError(err error) bool {

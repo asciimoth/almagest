@@ -83,7 +83,7 @@ func (n *debugLogNetworkNode) OnLinkAdd(link, port uint64, linkType, portDirecti
 		return nil
 	}
 	if port == n.in && portDirection == "right" && linkType == TypeNetwork {
-		std.Request(n.w, n.id, link)
+		std.RequestLocked(n.w, n.id, link)
 	}
 	return nil
 }
@@ -105,7 +105,7 @@ func (n *debugLogNetworkNode) OnLinkRemoved(link, port uint64, linkType, portDir
 
 func (n *debugLogNetworkNode) OnEvent(event pasta.Event, linkType string, _ []string, receiverPortDirection string) error {
 	if event.ReceiverPort == n.out && receiverPortDirection == "left" && linkType == TypeNetwork && std.IsRequest(event.Payload) {
-		n.sendNetworkToLink(event.Link)
+		n.refreshNetworkToLink(event.Link)
 		return nil
 	}
 	if event.ReceiverPort != n.in || receiverPortDirection != "right" || linkType != TypeNetwork {
@@ -126,7 +126,7 @@ func (n *debugLogNetworkNode) OnEvent(event pasta.Event, linkType string, _ []st
 
 func (n *debugLogNetworkNode) requestInput() {
 	n.ForEachPortLink(n.in, func(link uint64) {
-		std.Request(n.w, n.id, link)
+		std.RequestLocked(n.w, n.id, link)
 	})
 }
 
@@ -140,7 +140,16 @@ func (n *debugLogNetworkNode) sendNetworkToLink(link uint64) {
 	if n.network == nil {
 		return
 	}
-	n.outputs.SendWrapped(n.w, n.id, link, n.network, func(output NetworkCloser) NetworkCloser {
+	n.outputs.SendWrappedLocked(n.w, n.id, link, n.network, func(output NetworkCloser) NetworkCloser {
+		return &debugLogNetwork{NetworkCloser: output, logger: n.logger}
+	})
+}
+
+func (n *debugLogNetworkNode) refreshNetworkToLink(link uint64) {
+	if n.network == nil {
+		return
+	}
+	n.outputs.RefreshWrappedLocked(n.w, n.id, link, n.network, func(output NetworkCloser) NetworkCloser {
 		return &debugLogNetwork{NetworkCloser: output, logger: n.logger}
 	})
 }

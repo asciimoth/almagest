@@ -51,7 +51,7 @@ func (n *mockNetNode) OnInit(w *pasta.Workspace, _ pasta.Logger, id uint64, _ st
 	if err := n.InitSimpleNetworkProvider(w, nil, id, restored, n.base, "loopback"); err != nil {
 		return err
 	}
-	return n.w.AddNodeResource(n.id, n.base)
+	return n.w.AddNodeResourceLocked(n.id, n.base)
 }
 
 // mockLoopbackNetwork normalizes mock UDP write errors at the source. The

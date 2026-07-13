@@ -62,7 +62,7 @@ func (n *defaultTunNode) rebuildDefaultTun(opts sysnet.DefaultTunOpts) error {
 	n.dtun = dtun
 	n.effective = opts.Copy()
 	n.hasEffective = true
-	_ = n.w.AddNodeResource(n.id, dtun)
+	_ = n.w.AddNodeResourceLocked(n.id, dtun)
 	_ = n.updateLabel()
 	n.sendEffectiveBlock()
 	n.outputTuns.CloseAll()
@@ -118,5 +118,12 @@ func (n *defaultTunNode) sendTunToLink(link uint64) {
 	if n.dtun == nil {
 		return
 	}
-	n.outputTuns.Send(n.w, n.id, link, n.dtun, enginePool(n.engine))
+	n.outputTuns.SendLocked(n.w, n.id, link, n.dtun, enginePool(n.engine))
+}
+
+func (n *defaultTunNode) refreshTunToLink(link uint64) {
+	if n.dtun == nil {
+		return
+	}
+	n.outputTuns.RefreshLocked(n.w, n.id, link, n.dtun, enginePool(n.engine))
 }
