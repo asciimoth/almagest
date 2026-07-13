@@ -11,7 +11,7 @@ require (
 	github.com/asciimoth/formular v0.3.1
 	github.com/asciimoth/gonnect v0.31.0
 	github.com/asciimoth/gonnect-netstack v0.4.30
-	github.com/asciimoth/pasta/pasta v0.9.0
+	github.com/asciimoth/pasta/pasta v0.9.1
 	github.com/asciimoth/socksgo v0.4.0
 	github.com/asciimoth/sysnet-linux v0.2.8
 	github.com/coder/websocket v1.8.14
@@ -27,6 +27,7 @@ require (
 	github.com/asciimoth/gonnect-routing v0.7.2 // indirect
 	github.com/asciimoth/ident v0.2.0 // indirect
 	github.com/asciimoth/p-mark v0.2.0 // indirect
+	github.com/asciimoth/persist v0.2.0 // indirect
 	github.com/asciimoth/putback v0.3.0 // indirect
 	github.com/asciimoth/tuntap v0.3.18 // indirect
 	github.com/asciimoth/wgo v0.5.0 // indirect
