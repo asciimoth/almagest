@@ -118,9 +118,50 @@ func TestRawPayloadIsPreserved(t *testing.T) {
 	}
 }
 
+func TestBatchNodePayloadsRoundTrip(t *testing.T) {
+	removeMsg, err := NewRequest("1", SurfaceEngine, string(MethodEngineRemoveNodes), IDsRequest{
+		Workspace: "main",
+		IDs:       []uint64{7, 8},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	removeReq, err := DecodePayload[IDsRequest](removeMsg.Payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if removeReq.Workspace != "main" || len(removeReq.IDs) != 2 || removeReq.IDs[1] != 8 {
+		t.Fatalf("unexpected remove_nodes payload: %#v", removeReq)
+	}
+
+	moveMsg, err := NewRequest("2", SurfaceEngine, string(MethodEngineMoveNodes), MoveNodesRequest{
+		Workspace: "main",
+		Positions: map[uint64]string{
+			7: "10 20",
+			8: "30 40",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	moveReq, err := DecodePayload[MoveNodesRequest](moveMsg.Payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if moveReq.Workspace != "main" || moveReq.Positions[7] != "10 20" || moveReq.Positions[8] != "30 40" {
+		t.Fatalf("unexpected move_nodes payload: %#v", moveReq)
+	}
+}
+
 func TestRequiresMutationLease(t *testing.T) {
 	if !RequiresMutationLease(SurfaceEngine, string(MethodEngineAddNode)) {
 		t.Fatal("add_node should require mutation lease")
+	}
+	if !RequiresMutationLease(SurfaceEngine, string(MethodEngineRemoveNodes)) {
+		t.Fatal("remove_nodes should require mutation lease")
+	}
+	if !RequiresMutationLease(SurfaceEngine, string(MethodEngineMoveNodes)) {
+		t.Fatal("move_nodes should require mutation lease")
 	}
 	if RequiresMutationLease(SurfaceEngine, string(MethodEngineWorkspaceSnapshot)) {
 		t.Fatal("workspace_snapshot should not require mutation lease")
@@ -134,10 +175,19 @@ func TestRequiresMutationLease(t *testing.T) {
 }
 
 func TestEngineMethodsIncludesWorkersSnapshot(t *testing.T) {
+	required := map[string]bool{
+		string(MethodEngineWorkersSnapshot): false,
+		string(MethodEngineRemoveNodes):     false,
+		string(MethodEngineMoveNodes):       false,
+	}
 	for _, method := range EngineMethods() {
-		if method == string(MethodEngineWorkersSnapshot) {
-			return
+		if _, ok := required[method]; ok {
+			required[method] = true
 		}
 	}
-	t.Fatal("EngineMethods does not include workers_snapshot")
+	for method, found := range required {
+		if !found {
+			t.Fatalf("EngineMethods does not include %s", method)
+		}
+	}
 }

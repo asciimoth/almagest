@@ -5,6 +5,7 @@ import {
   applyWorkspaceSnapshot,
   applyWorkerNotification,
   emptySnapshot,
+  nodePositionMap,
 } from "../public/build/pasta_model.js";
 
 const node = {
@@ -105,4 +106,58 @@ test("worker notifications update local worker state", () => {
 
   snapshot = applyNotification(snapshot, { kind: "worker_stopped", id: 2, worker: worker(2) });
   assert.deepEqual(snapshot.workers, {});
+});
+
+test("batch node notifications update local graph state", () => {
+  let snapshot = applyNotification(emptySnapshot(), {
+    kind: "workspace_snapshot",
+    snapshot: {
+      classes: {},
+      nodes: {
+        10: { ...node, name: "first", position: "" },
+        20: { ...node, name: "second", position: "" },
+        30: { ...node, name: "third", position: "" },
+      },
+      ports: { 1: { direction: "left", node: 10, name: "In", types: [], links: [3] } },
+      links: { 3: { type: "demo/net", placeholder: false, left_port: 1, left_port_node: 10, right_port: 2, right_port_node: 20 } },
+    },
+  });
+
+  snapshot = applyNotification(snapshot, {
+    kind: "nodes_updated",
+    nodes: {
+      10: { ...node, name: "first", position: "10 20" },
+      20: { ...node, name: "second", position: "30 40" },
+    },
+  });
+  assert.equal(snapshot.nodes["10"].position, "10 20");
+  assert.equal(snapshot.nodes["20"].position, "30 40");
+  assert.equal(snapshot.nodes["30"].name, "third");
+
+  snapshot = applyNotification(snapshot, {
+    kind: "nodes_removed",
+    nodes: {
+      10: { ...node, name: "first", position: "10 20" },
+      20: { ...node, name: "second", position: "30 40" },
+    },
+    snapshot: {
+      classes: {},
+      nodes: { 30: { ...node, name: "third", position: "" } },
+      ports: {},
+      links: {},
+    },
+  });
+  assert.deepEqual(Object.keys(snapshot.nodes), ["30"]);
+  assert.deepEqual(snapshot.ports, {});
+  assert.deepEqual(snapshot.links, {});
+});
+
+test("nodePositionMap builds batch move API payloads", () => {
+  assert.deepEqual(nodePositionMap([
+    { id: 10, position: "10 20" },
+    { id: 20, position: "30 40" },
+  ]), {
+    10: "10 20",
+    20: "30 40",
+  });
 });

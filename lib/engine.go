@@ -109,6 +109,10 @@ func BuildEngine(
 type PastaAPI interface {
 	RemoveNode(workspace string, id uint64)
 	RemoveNodeLocked(workspace string, id uint64)
+	// RemoveNodes removes every existing node in ids as one workspace
+	// mutation. Missing, duplicate, and invalid node IDs are ignored.
+	RemoveNodes(workspace string, ids []uint64)
+	RemoveNodesLocked(workspace string, ids []uint64)
 	// RemoveNodesByClass removes all nodes with class.
 	RemoveNodesByClass(workspace string, class string)
 	RemoveNodesByClassLocked(workspace string, class string)
@@ -159,6 +163,10 @@ type PastaAPI interface {
 
 	SetNodePosition(workspace string, id uint64, position string)
 	SetNodePositionLocked(workspace string, id uint64, position string)
+	// MoveNodes sets opaque frontend position strings for existing nodes as one
+	// workspace mutation. Missing and invalid node IDs are ignored.
+	MoveNodes(workspace string, positions map[uint64]string)
+	MoveNodesLocked(workspace string, positions map[uint64]string)
 	SetNodeName(workspace string, id uint64, name string)
 	SetNodeNameLocked(workspace string, id uint64, name string)
 
@@ -335,6 +343,20 @@ func (e *engine) RemoveNodeLocked(workspace string, id uint64) {
 		return
 	}
 	e.mainWorkspace.RemoveNodeLocked(id)
+}
+
+func (e *engine) RemoveNodes(workspace string, ids []uint64) {
+	if workspace != "main" {
+		return
+	}
+	_ = e.mainWorkspace.RemoveNodes(ids)
+}
+
+func (e *engine) RemoveNodesLocked(workspace string, ids []uint64) {
+	if workspace != "main" {
+		return
+	}
+	_ = e.mainWorkspace.RemoveNodesLocked(ids)
 }
 
 func (e *engine) RemoveNodesByClass(workspace string, class string) {
@@ -573,6 +595,20 @@ func (e *engine) SetNodePositionLocked(workspace string, id uint64, position str
 		return
 	}
 	_ = e.mainWorkspace.SetNodePositionLocked(id, position)
+}
+
+func (e *engine) MoveNodes(workspace string, positions map[uint64]string) {
+	if workspace != "main" {
+		return
+	}
+	_ = e.mainWorkspace.MoveNodes(positions)
+}
+
+func (e *engine) MoveNodesLocked(workspace string, positions map[uint64]string) {
+	if workspace != "main" {
+		return
+	}
+	_ = e.mainWorkspace.MoveNodesLocked(positions)
 }
 
 func (e *engine) SetNodeName(workspace string, id uint64, name string) {

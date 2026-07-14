@@ -52,6 +52,18 @@ func runGraph(ctx context.Context, c *client, args []string, stdin io.Reader, st
 			return err
 		}
 		return requestPretty(ctx, c, api.SurfaceEngine, string(api.MethodEngineRemoveNode), api.IDRequest{Workspace: workspace, ID: id}, stdout)
+	case "delete-nodes":
+		fs := commandFlagSet("graph delete-nodes", stderr)
+		workspace := fs.String("workspace", "main", "workspace name")
+		ids := fs.String("ids", "", "comma-separated node IDs")
+		if err := fs.Parse(args[1:]); err != nil {
+			return err
+		}
+		parsed, err := parseUintList(*ids)
+		if err != nil {
+			return err
+		}
+		return requestPretty(ctx, c, api.SurfaceEngine, string(api.MethodEngineRemoveNodes), api.IDsRequest{Workspace: *workspace, IDs: parsed}, stdout)
 	case "add-link":
 		fs := commandFlagSet("graph add-link", stderr)
 		workspace := fs.String("workspace", "main", "workspace name")
@@ -359,6 +371,7 @@ Commands:
   map                 compact node map: ids, classes, config-format links
   node                fetch one node snapshot with all node metadata
   delete-node         remove a node by --id
+  delete-nodes        remove multiple nodes by --ids
   add-link            create a link from --port-a to --port-b
   delete-link         remove a link by --id
   menu                fetch one node's current Formular menu snapshot

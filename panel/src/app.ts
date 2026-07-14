@@ -10,6 +10,7 @@ import {
   linkColor,
   latestPriorityPopup,
   nodeMenuID,
+  nodePositionMap,
   parsePosition,
   selectedNodeIDs,
   isKeyboardShortcut,
@@ -403,6 +404,8 @@ async function backend<T>(method: string, params: Record<string, unknown> = {}):
       return request<T>("engine", "remove_link", { workspace: "main", id: params.id });
     case "setNodePosition":
       return request<T>("engine", "set_node_position", { workspace: "main", id: params.id, position: params.position });
+    case "moveNodes":
+      return request<T>("engine", "move_nodes", { workspace: "main", positions: params.positions });
     case "setNodeName":
       await request("engine", "set_node_name", { workspace: "main", id: params.id, name: params.name });
       return true as T;
@@ -410,11 +413,15 @@ async function backend<T>(method: string, params: Record<string, unknown> = {}):
       return request<T>("engine", "remove_node_popup", { workspace: "main", node: params.id, popup: params.popupId });
     case "removeNodePopups":
       return request<T>("engine", "remove_node_popups", { workspace: "main", node: params.id });
-    case "removeNodes":
-      for (const id of (params.ids as number[] | undefined) ?? []) {
-        await request("engine", "remove_node", { workspace: "main", id });
+    case "removeNodes": {
+      const ids = (params.ids as number[] | undefined) ?? [];
+      if (ids.length === 1) {
+        await request("engine", "remove_node", { workspace: "main", id: ids[0] });
+      } else if (ids.length > 1) {
+        await request("engine", "remove_nodes", { workspace: "main", ids });
       }
       return {} as T;
+    }
     case "copy": {
       const result = await request<{ data: string }>("engine", "copy", { workspace: "main", ids: params.ids });
       return result.data as T;
@@ -861,8 +868,10 @@ function flushNodePositions(): void {
       changes.push({ id: node.id, position: next });
     }
   }
-  for (const change of changes) {
-    tryBackend("setNodePosition", change);
+  if (changes.length === 1) {
+    tryBackend("setNodePosition", changes[0]);
+  } else if (changes.length > 1) {
+    tryBackend("moveNodes", { positions: nodePositionMap(changes) });
   }
 }
 

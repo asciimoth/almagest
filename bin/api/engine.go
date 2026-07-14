@@ -28,9 +28,11 @@ const (
 	MethodEngineReplaceNodeWithPlaceholder EngineMethod = "replace_node_with_placeholder"
 	MethodEngineAddLink                    EngineMethod = "add_link"
 	MethodEngineRemoveNode                 EngineMethod = "remove_node"
+	MethodEngineRemoveNodes                EngineMethod = "remove_nodes"
 	MethodEngineRemoveNodesByClass         EngineMethod = "remove_nodes_by_class"
 	MethodEngineRemoveLink                 EngineMethod = "remove_link"
 	MethodEngineSetNodePosition            EngineMethod = "set_node_position"
+	MethodEngineMoveNodes                  EngineMethod = "move_nodes"
 	MethodEngineSetNodeName                EngineMethod = "set_node_name"
 	MethodEngineRemoveNodePopup            EngineMethod = "remove_node_popup"
 	MethodEngineRemoveNodePopups           EngineMethod = "remove_node_popups"
@@ -63,9 +65,11 @@ func EngineMethods() []string {
 		string(MethodEngineReplaceNodeWithPlaceholder),
 		string(MethodEngineAddLink),
 		string(MethodEngineRemoveNode),
+		string(MethodEngineRemoveNodes),
 		string(MethodEngineRemoveNodesByClass),
 		string(MethodEngineRemoveLink),
 		string(MethodEngineSetNodePosition),
+		string(MethodEngineMoveNodes),
 		string(MethodEngineSetNodeName),
 		string(MethodEngineRemoveNodePopup),
 		string(MethodEngineRemoveNodePopups),
@@ -85,9 +89,11 @@ func IsEngineMutation(method string) bool {
 		MethodEngineReplaceNodeWithPlaceholder,
 		MethodEngineAddLink,
 		MethodEngineRemoveNode,
+		MethodEngineRemoveNodes,
 		MethodEngineRemoveNodesByClass,
 		MethodEngineRemoveLink,
 		MethodEngineSetNodePosition,
+		MethodEngineMoveNodes,
 		MethodEngineSetNodeName,
 		MethodEngineRemoveNodePopup,
 		MethodEngineRemoveNodePopups,
@@ -110,6 +116,15 @@ type WorkspaceRequest struct {
 type IDRequest struct {
 	Workspace string `json:"workspace"`
 	ID        uint64 `json:"id"`
+}
+
+// IDsRequest identifies a batch of nodes in a workspace.
+//
+// Batch node mutations ignore missing, duplicate, and invalid IDs to match
+// pasta.Workspace batch behavior.
+type IDsRequest struct {
+	Workspace string   `json:"workspace"`
+	IDs       []uint64 `json:"ids"`
 }
 
 type ClassRequest struct {
@@ -147,6 +162,14 @@ type SetNodePositionRequest struct {
 	Workspace string `json:"workspace"`
 	ID        uint64 `json:"id"`
 	Position  string `json:"position"`
+}
+
+// MoveNodesRequest sets node position strings for multiple nodes in one
+// workspace mutation. Positions are opaque to the daemon and interpreted by the
+// panel frontend.
+type MoveNodesRequest struct {
+	Workspace string            `json:"workspace"`
+	Positions map[uint64]string `json:"positions"`
 }
 
 type SetNodeNameRequest struct {

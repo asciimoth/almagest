@@ -106,6 +106,56 @@ func TestRunRawSendsJSONPayload(t *testing.T) {
 	}
 }
 
+func TestRunEngineRemoveNodesSendsBatchRequest(t *testing.T) {
+	ft := &fakeTransport{reads: []api.Message{mustResponse(t, "1", struct{}{})}}
+	var stdout, stderr bytes.Buffer
+
+	err := run(context.Background(), []string{"engine", "remove-nodes", "--workspace", "main", "--ids", "7,8,9"}, nil, &stdout, &stderr, func(context.Context, endpoint) (apiTransport, error) {
+		return ft, nil
+	})
+	if err != nil {
+		t.Fatalf("run failed: %v\nstderr: %s", err, stderr.String())
+	}
+	if len(ft.writes) != 1 {
+		t.Fatalf("writes = %d, want 1", len(ft.writes))
+	}
+	if ft.writes[0].Surface != api.SurfaceEngine || ft.writes[0].Method != string(api.MethodEngineRemoveNodes) {
+		t.Fatalf("request = %#v", ft.writes[0])
+	}
+	req, err := api.DecodePayload[api.IDsRequest](ft.writes[0].Payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if req.Workspace != "main" || len(req.IDs) != 3 || req.IDs[0] != 7 || req.IDs[2] != 9 {
+		t.Fatalf("payload = %#v, want batch node IDs", req)
+	}
+}
+
+func TestRunGraphDeleteNodesSendsBatchRequest(t *testing.T) {
+	ft := &fakeTransport{reads: []api.Message{mustResponse(t, "1", struct{}{})}}
+	var stdout, stderr bytes.Buffer
+
+	err := run(context.Background(), []string{"graph", "delete-nodes", "--ids", "11,12"}, nil, &stdout, &stderr, func(context.Context, endpoint) (apiTransport, error) {
+		return ft, nil
+	})
+	if err != nil {
+		t.Fatalf("run failed: %v\nstderr: %s", err, stderr.String())
+	}
+	if len(ft.writes) != 1 {
+		t.Fatalf("writes = %d, want 1", len(ft.writes))
+	}
+	if ft.writes[0].Surface != api.SurfaceEngine || ft.writes[0].Method != string(api.MethodEngineRemoveNodes) {
+		t.Fatalf("request = %#v", ft.writes[0])
+	}
+	req, err := api.DecodePayload[api.IDsRequest](ft.writes[0].Payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if req.Workspace != "main" || len(req.IDs) != 2 || req.IDs[0] != 11 || req.IDs[1] != 12 {
+		t.Fatalf("payload = %#v, want batch node IDs", req)
+	}
+}
+
 func TestRunReturnsAPIError(t *testing.T) {
 	resp, err := api.NewErrorResponse("1", api.ErrorNotFound, "workspace was not found", nil)
 	if err != nil {

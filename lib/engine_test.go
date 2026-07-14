@@ -119,6 +119,84 @@ func TestEngineLockedWorkspaceWrappersFromNodeCallback(t *testing.T) {
 	}
 }
 
+func TestEngineBatchNodeRemovalAndMoveUseWorkspaceBatchMutations(t *testing.T) {
+	engineAPI, err := BuildEngine(
+		context.Background(),
+		configer.NewMemory(nil),
+		NewDebugLogFactory(1),
+		newE2EDebugSystem(),
+		[]pasta.NodeClass{engineBatchNodeClass{}},
+		nil,
+		false,
+	)
+	if err != nil {
+		t.Fatalf("BuildEngine error = %v, want nil", err)
+	}
+	t.Cleanup(func() {
+		if err := engineAPI.Close(); err != nil {
+			t.Errorf("engine.Close error = %v, want nil", err)
+		}
+	})
+
+	first, err := engineAPI.AddNode(E2EWorkspace, "test/EngineBatchNode", "first")
+	if err != nil {
+		t.Fatalf("AddNode first error = %v, want nil", err)
+	}
+	second, err := engineAPI.AddNode(E2EWorkspace, "test/EngineBatchNode", "second")
+	if err != nil {
+		t.Fatalf("AddNode second error = %v, want nil", err)
+	}
+	third, err := engineAPI.AddNode(E2EWorkspace, "test/EngineBatchNode", "third")
+	if err != nil {
+		t.Fatalf("AddNode third error = %v, want nil", err)
+	}
+
+	var notifications []pasta.WorkspaceNotification
+	sub := engineAPI.SubscribeNotifications(func(notification EngineNotification) {
+		if notification.Workspace != nil {
+			notifications = append(notifications, *notification.Workspace)
+		}
+	})
+	if sub == 0 {
+		t.Fatal("SubscribeNotifications returned 0")
+	}
+	defer engineAPI.UnsubscribeNotifications(sub)
+	notifications = nil
+
+	engineAPI.MoveNodes(E2EWorkspace, map[uint64]string{
+		0:      "ignored",
+		999999: "ignored",
+		first:  "10 20",
+		second: "30 40",
+	})
+	if len(notifications) != 1 || notifications[0].Kind != pasta.NotificationNodesUpdated {
+		t.Fatalf("move notifications = %#v, want one nodes_updated notification", notifications)
+	}
+	firstSnapshot, ok := engineAPI.NodeSnapshot(E2EWorkspace, first)
+	if !ok || firstSnapshot.Position != "10 20" {
+		t.Fatalf("first snapshot = %#v, %v; want position 10 20", firstSnapshot, ok)
+	}
+	secondSnapshot, ok := engineAPI.NodeSnapshot(E2EWorkspace, second)
+	if !ok || secondSnapshot.Position != "30 40" {
+		t.Fatalf("second snapshot = %#v, %v; want position 30 40", secondSnapshot, ok)
+	}
+
+	notifications = nil
+	engineAPI.RemoveNodes(E2EWorkspace, []uint64{0, first, second, first, 999999})
+	if len(notifications) != 1 || notifications[0].Kind != pasta.NotificationNodesRemoved {
+		t.Fatalf("remove notifications = %#v, want one nodes_removed notification", notifications)
+	}
+	if _, ok := engineAPI.NodeSnapshot(E2EWorkspace, first); ok {
+		t.Fatal("first node still exists after batch remove")
+	}
+	if _, ok := engineAPI.NodeSnapshot(E2EWorkspace, second); ok {
+		t.Fatal("second node still exists after batch remove")
+	}
+	if _, ok := engineAPI.NodeSnapshot(E2EWorkspace, third); !ok {
+		t.Fatal("third node should remain after batch remove")
+	}
+}
+
 type engineLockedCallbackClass struct {
 	engine *engine
 }
@@ -155,6 +233,33 @@ func (n *engineLockedCallbackNode) OnInit(w *pasta.Workspace, _ pasta.Logger, id
 	}
 	n.engine.SetNodePositionLocked(E2EWorkspace, id, "callback-position")
 	return nil
+}
+
+type engineBatchNodeClass struct{}
+
+func (engineBatchNodeClass) ClassName() string {
+	return "test/EngineBatchNode"
+}
+
+func (engineBatchNodeClass) ShortDescription() string {
+	return "Engine batch node test"
+}
+
+func (engineBatchNodeClass) LongDescription() string {
+	return "Tests Engine batch remove and move workspace wrappers."
+}
+
+func (engineBatchNodeClass) DefaultNodeParams() pasta.NodeClassParams {
+	return pasta.NodeClassParams{}
+}
+
+func (engineBatchNodeClass) NewNode(configer.Config, ...*pasta.NodeClassState) (pasta.Node, error) {
+	return &engineBatchNode{}, nil
+}
+
+type engineBatchNode struct {
+	pasta.BasicNode
+	_ byte
 }
 
 func assertNoDeadlock(t *testing.T, done <-chan struct{}, context string) {

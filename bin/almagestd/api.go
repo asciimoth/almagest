@@ -420,6 +420,14 @@ func (s *apiSession) handleEngineMessage(msg api.Message) (api.Message, error) {
 		s.engine.RemoveNode(req.Workspace, req.ID)
 		return api.NewResponse(msg.ID, struct{}{})
 
+	case api.MethodEngineRemoveNodes:
+		req, err := decodePayload[api.IDsRequest](msg)
+		if err != nil {
+			return newRequestError(msg.ID, api.ErrorInvalidPayload, err.Error())
+		}
+		s.engine.RemoveNodes(req.Workspace, req.IDs)
+		return api.NewResponse(msg.ID, struct{}{})
+
 	case api.MethodEngineRemoveNodesByClass:
 		req, err := decodePayload[api.ClassRequest](msg)
 		if err != nil {
@@ -442,6 +450,14 @@ func (s *apiSession) handleEngineMessage(msg api.Message) (api.Message, error) {
 			return newRequestError(msg.ID, api.ErrorInvalidPayload, err.Error())
 		}
 		s.engine.SetNodePosition(req.Workspace, req.ID, req.Position)
+		return api.NewResponse(msg.ID, struct{}{})
+
+	case api.MethodEngineMoveNodes:
+		req, err := decodePayload[api.MoveNodesRequest](msg)
+		if err != nil {
+			return newRequestError(msg.ID, api.ErrorInvalidPayload, err.Error())
+		}
+		s.engine.MoveNodes(req.Workspace, req.Positions)
 		return api.NewResponse(msg.ID, struct{}{})
 
 	case api.MethodEngineSetNodeName:

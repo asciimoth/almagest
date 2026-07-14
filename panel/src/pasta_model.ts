@@ -71,10 +71,16 @@ export type WorkspaceNotification = {
   snapshot?: WorkspaceSnapshot;
   node_class?: NodeClassSnapshot;
   node?: NodeSnapshot;
+  nodes?: Record<string, NodeSnapshot>;
   port?: PortSnapshot;
   link?: LinkSnapshot;
   worker?: WorkerSnapshot;
   formular?: unknown;
+};
+
+export type NodePositionChange = {
+  id: ID;
+  position: string;
 };
 
 export type WorkerNotification = {
@@ -129,6 +135,17 @@ export function applyNotification(
       break;
     case "node_removed":
       if (id) delete next.nodes[id];
+      break;
+    case "nodes_removed":
+      if (notification.snapshot) {
+        return applyWorkspaceSnapshot(next, notification.snapshot);
+      }
+      for (const nodeID of Object.keys(notification.nodes ?? {})) {
+        delete next.nodes[nodeID];
+      }
+      break;
+    case "nodes_updated":
+      Object.assign(next.nodes, notification.nodes ?? {});
       break;
     case "port_added":
     case "port_updated":
@@ -206,6 +223,14 @@ export function parsePosition(raw: string, fallbackX: number, fallbackY: number)
 
 export function formatPosition(pos: [number, number]): string {
   return JSON.stringify({ x: Math.round(pos[0]), y: Math.round(pos[1]) });
+}
+
+export function nodePositionMap(changes: NodePositionChange[]): Record<string, string> {
+  const positions: Record<string, string> = {};
+  for (const change of changes) {
+    if (Number.isFinite(change.id)) positions[String(change.id)] = change.position;
+  }
+  return positions;
 }
 
 export function selectedNodeIDs(selected: Record<string, { id: number }> | null | undefined): number[] {

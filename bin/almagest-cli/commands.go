@@ -266,6 +266,18 @@ func runEngine(ctx context.Context, c *client, args []string, stdin io.Reader, s
 			"remove-link":                   api.MethodEngineRemoveLink,
 		}[args[0]]
 		return requestPretty(ctx, c, api.SurfaceEngine, string(method), api.IDRequest{Workspace: workspace, ID: id}, stdout)
+	case "remove-nodes":
+		fs := commandFlagSet("engine remove-nodes", stderr)
+		workspace := fs.String("workspace", "main", "workspace name")
+		ids := fs.String("ids", "", "comma-separated node IDs")
+		if err := fs.Parse(args[1:]); err != nil {
+			return err
+		}
+		parsed, err := parseUintList(*ids)
+		if err != nil {
+			return err
+		}
+		return requestPretty(ctx, c, api.SurfaceEngine, string(api.MethodEngineRemoveNodes), api.IDsRequest{Workspace: *workspace, IDs: parsed}, stdout)
 	case "add-node":
 		fs := commandFlagSet("engine add-node", stderr)
 		workspace := fs.String("workspace", "main", "workspace name")
@@ -639,7 +651,7 @@ Snapshot commands:
   node-class-long-description
 
 Mutation commands:
-  add-node, replace-node-with-placeholder, add-link, remove-node
+  add-node, replace-node-with-placeholder, add-link, remove-node, remove-nodes
   remove-nodes-by-class, remove-link, set-node-position, set-node-name
   remove-node-popup, remove-node-popups, remove-node-popups-by-type
   copy, paste, send-inbox, undo, redo, send-node-formular-msg
