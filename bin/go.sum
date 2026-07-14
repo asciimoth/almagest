@@ -22,8 +22,8 @@ github.com/asciimoth/ident v0.2.0 h1:G6qaTnkxTH+idV5YzJ7AvgC2nLQDE/aoV7rPCOtN07I
 github.com/asciimoth/ident v0.2.0/go.mod h1:JNNFnfM7/hdcXVkFBBOAU/vpJM+0gucYaAYwB694bT0=
 github.com/asciimoth/p-mark v0.2.0 h1:ZmJQy+Te+fZBWwy5zFzbCzQiladixKCNMKtXS3rZzeU=
 github.com/asciimoth/p-mark v0.2.0/go.mod h1:uBcCKIk6x5hjb7rDnH4trBCAfHr/4xOWM8q+tydLJAw=
-github.com/asciimoth/pasta/pasta v0.9.2 h1:t4h8ORZFnvDGUnRQXNGNf7DpWmw/K/ttB7pYi4IJ0RA=
-github.com/asciimoth/pasta/pasta v0.9.2/go.mod h1:9BPomw96u1gyU3BAJaOrmSyuCAPquBzvV38mAXsPlbA=
+github.com/asciimoth/pasta/pasta v0.9.3 h1:683yop38s6fO5GSJNsGZ8d+LAy3aGTbTYamVFTNP7rI=
+github.com/asciimoth/pasta/pasta v0.9.3/go.mod h1:9BPomw96u1gyU3BAJaOrmSyuCAPquBzvV38mAXsPlbA=
 github.com/asciimoth/persist v0.2.0 h1:yqsu1+5pystESKm8yVVSdG15kqL3Tiwl2tEYtvjcBFE=
 github.com/asciimoth/persist v0.2.0/go.mod h1:idB/ttCb+L8i51uz/7ec+HzrIAbdPQsjVbu0P8hSQBk=
 github.com/asciimoth/putback v0.3.0 h1:NKyX1K2yR/pHt9ov7BifA7qd8oMSOhsit4hMf694e30=

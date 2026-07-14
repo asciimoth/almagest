@@ -11,7 +11,7 @@ require (
 	github.com/asciimoth/formular v0.3.1
 	github.com/asciimoth/gonnect v0.31.0
 	github.com/asciimoth/gonnect-netstack v0.4.30
-	github.com/asciimoth/pasta/pasta v0.9.2
+	github.com/asciimoth/pasta/pasta v0.9.3
 	github.com/asciimoth/socksgo v0.4.0
 	github.com/asciimoth/sysnet-linux v0.2.8
 	github.com/coder/websocket v1.8.14
