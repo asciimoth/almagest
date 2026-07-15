@@ -117,6 +117,11 @@ type GraphViewportState = {
   scale: number;
   offset: [number, number];
 };
+type PendingNodePlacement = {
+  className: string;
+  position: string;
+  id?: number;
+};
 
 declare global {
   interface Window {
@@ -163,6 +168,7 @@ let liteGraphDrawGuardInstalled = false;
 let liteGraphWidgetSelectionGuardInstalled = false;
 let logStoreLimit = 0;
 const liteLinkToPasta = new Map<number, number>();
+const pendingNodePlacements: PendingNodePlacement[] = [];
 const CLASS_DRAG_MIME = "application/x-almagest-node-class";
 const GRAPH_VIEWPORT_STORAGE_KEY = "almagest.panel.graph.viewport.v1";
 const PASTA_TRIGGER_CLASS = "pasta/Trigger";
@@ -348,11 +354,94 @@ function handleEngineNotification(event: EngineNotificationEvent): void {
   if (workspaceNotification.kind === "node_menu") {
     feedMenu(workspaceNotification);
   } else {
-    snapshot = applyNotification(snapshot, workspaceNotification);
+    snapshot = applyNotification(snapshot, applyPendingNodePlacement(workspaceNotification));
     renderGraph();
     renderWorkers();
     updateWorkerAgeTimer();
   }
+}
+
+function applyPendingNodePlacement(notification: WorkspaceNotification): WorkspaceNotification {
+  if (!pendingNodePlacements.length) return notification;
+
+  // Temporary panel-side bridge for the current two-step create flow:
+  // add_node emits node_added before set_node_position can run, so LiteGraph
+  // renders the new node at its fallback coordinates and then visibly jumps.
+  // Until the backend can create a node with its initial position atomically,
+  // patch local snapshots for matching in-flight nodes with the requested
+  // position. The real set_node_position notification later clears this entry.
+  if (notification.node && notification.id !== undefined) {
+    const node = patchPendingNodePlacement(notification.id, notification.node);
+    if (node === notification.node) return notification;
+    return { ...notification, node };
+  }
+
+  if (notification.nodes) {
+    const nodes = patchPendingNodePlacementMap(notification.nodes);
+    if (nodes === notification.nodes) return notification;
+    return { ...notification, nodes };
+  }
+
+  if (notification.snapshot?.nodes) {
+    const nodes = patchPendingNodePlacementMap(notification.snapshot.nodes);
+    if (nodes === notification.snapshot.nodes) return notification;
+    return { ...notification, snapshot: { ...notification.snapshot, nodes } };
+  }
+
+  return notification;
+}
+
+function patchPendingNodePlacementMap(nodes: Record<string, NodeSnapshot>): Record<string, NodeSnapshot> {
+  let next: Record<string, NodeSnapshot> | null = null;
+  for (const [idText, node] of Object.entries(nodes)) {
+    const id = Number(idText);
+    if (!Number.isFinite(id)) continue;
+    const patched = patchPendingNodePlacement(id, node);
+    if (patched === node) continue;
+    next ??= { ...nodes };
+    next[idText] = patched;
+  }
+  return next ?? nodes;
+}
+
+function patchPendingNodePlacement(id: number, node: NodeSnapshot): NodeSnapshot {
+  const placement = pendingPlacementForNode(id, node);
+  if (!placement) return node;
+  placement.id = id;
+
+  if (node.position === placement.position) {
+    forgetPendingNodePlacement(placement);
+    return node;
+  }
+  if (hasValidPanelPosition(node.position)) return node;
+
+  // This intentionally edits only the panel's incoming snapshot copy. Backend
+  // state still comes from set_node_position, so undo/save semantics remain the
+  // current two-mutation behavior while the visible graph avoids the fallback
+  // spawn position.
+  return { ...node, position: placement.position };
+}
+
+function pendingPlacementForNode(id: number, node: NodeSnapshot): PendingNodePlacement | null {
+  const byID = pendingNodePlacements.find((placement) => placement.id === id);
+  if (byID) return byID;
+  if (snapshot.nodes[String(id)]) return null;
+  return pendingNodePlacements.find((placement) => placement.id === undefined && placement.className === node.class) ?? null;
+}
+
+function hasValidPanelPosition(raw: string): boolean {
+  if (!raw) return false;
+  try {
+    const position = JSON.parse(raw) as { x?: unknown; y?: unknown };
+    return isFiniteNumber(position.x) && isFiniteNumber(position.y);
+  } catch {
+    return false;
+  }
+}
+
+function forgetPendingNodePlacement(placement: PendingNodePlacement): void {
+  const index = pendingNodePlacements.indexOf(placement);
+  if (index >= 0) pendingNodePlacements.splice(index, 1);
 }
 
 function applyTypePalette(colormap: Record<string, TypePalette>): void {
@@ -992,7 +1081,16 @@ function renderClassPanel(selectedCount: number): void {
 }
 
 function addPastaNodeAt(className: string, pos: [number, number]): void {
-  void tryBackend<number>("addNode", { class: className, position: formatPosition(pos) });
+  const position = formatPosition(pos);
+  const placement: PendingNodePlacement = { className, position };
+  pendingNodePlacements.push(placement);
+  void tryBackend<number>("addNode", { class: className, position }).then((id) => {
+    if (id === null) {
+      forgetPendingNodePlacement(placement);
+      return;
+    }
+    placement.id = id;
+  });
 }
 
 function visibleCanvasSpawnPosition(): [number, number] {
