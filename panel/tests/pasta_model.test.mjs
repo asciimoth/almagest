@@ -5,7 +5,9 @@ import {
   applyWorkspaceSnapshot,
   applyWorkerNotification,
   emptySnapshot,
+  isPastaClipboard,
   nodePositionMap,
+  positionClipboardAt,
 } from "../public/build/pasta_model.js";
 
 const node = {
@@ -160,4 +162,22 @@ test("nodePositionMap builds batch move API payloads", () => {
     10: "10 20",
     20: "30 40",
   });
+});
+
+test("clipboard helpers validate and place pasted nodes around target", () => {
+  const data = JSON.stringify({
+    version: 1,
+    nodes: [
+      { id: 10, class: "demo/server", name: "left", position: JSON.stringify({ x: 10, y: 20 }) },
+      { id: 20, class: "demo/server", name: "right", position: JSON.stringify({ x: 50, y: 60 }) },
+    ],
+    links: [],
+  });
+
+  assert.equal(isPastaClipboard(data), true);
+  assert.equal(isPastaClipboard("plain text"), false);
+
+  const positioned = JSON.parse(positionClipboardAt(data, [200, 300]));
+  assert.equal(positioned.nodes[0].position, JSON.stringify({ x: 180, y: 280 }));
+  assert.equal(positioned.nodes[1].position, JSON.stringify({ x: 220, y: 320 }));
 });

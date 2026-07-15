@@ -7,11 +7,13 @@ import {
   DEFAULT_NODE_TITLE_COLOR,
   emptySnapshot,
   formatPosition,
+  isPastaClipboard,
   linkColor,
   latestPriorityPopup,
   nodeMenuID,
   nodePositionMap,
   parsePosition,
+  positionClipboardAt,
   selectedNodeIDs,
   isKeyboardShortcut,
   setTypeColors,
@@ -144,6 +146,13 @@ let sidekickUpdate = 0;
 let workerAgeTimer = 0;
 let graphResizeObserver: ResizeObserver | null = null;
 let localClipboard = "";
+let graphShortcutsArmed = false;
+let graphPointerInside = false;
+let lastGraphPointer: { clientX: number; clientY: number } | null = null;
+let lastPastePlacement: { key: string; count: number } | null = null;
+let nativePasteEvents = 0;
+let pasteShortcutActive = false;
+let pasteShortcutConsumed = false;
 let socket: WebSocket | null = null;
 let nextRequestID = 1;
 let notificationSubscriptionID = 0;
@@ -157,7 +166,7 @@ const liteLinkToPasta = new Map<number, number>();
 const CLASS_DRAG_MIME = "application/x-almagest-node-class";
 const GRAPH_VIEWPORT_STORAGE_KEY = "almagest.panel.graph.viewport.v1";
 const PASTA_TRIGGER_CLASS = "pasta/Trigger";
-const debugClipboard = true;
+const debugClipboard = false;
 let graphViewportSaveTimeout = 0;
 
 const el = {
@@ -525,6 +534,18 @@ function initGraph(): void {
   graphResizeObserver = new ResizeObserver(resizeGraphCanvas);
   graphResizeObserver.observe(el.graphCanvas);
   graph.start();
+  el.graphCanvas.addEventListener("pointerdown", (event) => {
+    armGraphShortcuts(event);
+    el.graphCanvas.focus({ preventScroll: true });
+  });
+  el.graphCanvas.addEventListener("pointerenter", (event) => {
+    graphPointerInside = true;
+    rememberGraphPointer(event);
+  });
+  el.graphCanvas.addEventListener("pointermove", rememberGraphPointer);
+  el.graphCanvas.addEventListener("pointerleave", () => {
+    graphPointerInside = false;
+  });
   el.graphCanvas.addEventListener("mouseup", () => {
     flushNodePositions();
     scheduleGraphViewportSave();
@@ -536,6 +557,9 @@ function initGraph(): void {
   document.addEventListener("pointerup", () => {
     flushNodePositions();
     scheduleGraphViewportSave();
+  }, { capture: true });
+  document.addEventListener("pointerdown", (event) => {
+    if (event.target !== el.graphCanvas) graphShortcutsArmed = false;
   }, { capture: true });
   document.addEventListener("mouseup", scheduleGraphViewportSave, { capture: true });
   window.addEventListener("blur", () => {
@@ -1388,6 +1412,7 @@ function trimLogStore(): void {
 
 function setTab(name: string): void {
   activeTab = name;
+  if (name !== "graph") graphShortcutsArmed = false;
   for (const tab of el.tabs) tab.classList.toggle("active", tab.dataset.tab === name);
   for (const panel of el.panels) panel.classList.toggle("hidden", panel.dataset.panel !== name);
   if (name === "logs") renderLogs();
@@ -1397,7 +1422,7 @@ function setTab(name: string): void {
 }
 
 function graphKeydown(event: KeyboardEvent): void {
-  if (activeTab !== "graph" || isEditableTarget(event.target)) return;
+  if (!shouldHandleGraphKeydown(event)) return;
   debugLog("graph keydown", {
     key: event.key,
     ctrl: event.ctrlKey,
@@ -1416,8 +1441,13 @@ function graphKeydown(event: KeyboardEvent): void {
     consumeGraphShortcut(event);
     copySelection();
   } else if (isGraphShortcut(event, "KeyV", "v")) {
-    consumeGraphShortcut(event);
-    void pasteSelection();
+    if (event.repeat) {
+      consumeGraphShortcut(event);
+      return;
+    }
+    pasteShortcutActive = true;
+    pasteShortcutConsumed = false;
+    scheduleLocalPasteFallback();
   } else if (event.key === "Backspace" || event.key === "Delete") {
     const ids = currentSelectedNodeIDs();
     if (!ids.length) return;
@@ -1426,11 +1456,18 @@ function graphKeydown(event: KeyboardEvent): void {
   }
 }
 
+function graphKeyup(event: KeyboardEvent): void {
+  if (event.code === "KeyV" || event.key.toLowerCase() === "v") {
+    pasteShortcutActive = false;
+    pasteShortcutConsumed = false;
+  }
+}
+
 function isGraphShortcut(event: KeyboardEvent, code: string, key: string): boolean {
   return isKeyboardShortcut(event, code, key);
 }
 
-function consumeGraphShortcut(event: KeyboardEvent): void {
+function consumeGraphShortcut(event: Event): void {
   event.preventDefault();
   event.stopImmediatePropagation();
 }
@@ -1439,6 +1476,49 @@ function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   const tag = target.tagName.toLowerCase();
   return tag === "input" || tag === "textarea" || tag === "select" || target.isContentEditable;
+}
+
+function shouldHandleGraphKeydown(event: KeyboardEvent): boolean {
+  if (activeTab !== "graph" || isEditableTarget(event.target) || hasUserTextSelection()) return false;
+  return eventTargetsGraph(event.target) || document.activeElement === el.graphCanvas || graphShortcutsArmed;
+}
+
+function handleGraphPaste(event: ClipboardEvent): void {
+  if (!shouldHandleGraphClipboardEvent(event)) return;
+  nativePasteEvents += 1;
+  if (pasteShortcutActive && pasteShortcutConsumed) {
+    consumeGraphShortcut(event);
+    return;
+  }
+  const data = event.clipboardData?.getData("text/plain") ?? "";
+  if (!isPastaClipboard(data)) return;
+  consumeGraphShortcut(event);
+  if (pasteShortcutActive) pasteShortcutConsumed = true;
+  localClipboard = data;
+  void pasteSelection(data);
+}
+
+function shouldHandleGraphClipboardEvent(event: ClipboardEvent): boolean {
+  if (activeTab !== "graph" || isEditableTarget(event.target) || hasUserTextSelection()) return false;
+  return eventTargetsGraph(event.target) || document.activeElement === el.graphCanvas || graphShortcutsArmed;
+}
+
+function eventTargetsGraph(target: EventTarget | null): boolean {
+  return target === el.graphCanvas;
+}
+
+function hasUserTextSelection(): boolean {
+  const selection = window.getSelection();
+  return Boolean(selection && !selection.isCollapsed && selection.toString().length > 0);
+}
+
+function armGraphShortcuts(event: PointerEvent | MouseEvent): void {
+  graphShortcutsArmed = true;
+  rememberGraphPointer(event);
+}
+
+function rememberGraphPointer(event: PointerEvent | MouseEvent): void {
+  lastGraphPointer = { clientX: event.clientX, clientY: event.clientY };
 }
 
 async function runHistory(method: "undo" | "redo"): Promise<void> {
@@ -1468,84 +1548,86 @@ async function copySelection(): Promise<void> {
   });
 }
 
-async function pasteSelection(): Promise<void> {
-  let data = localClipboard;
+function scheduleLocalPasteFallback(): void {
+  const eventCount = nativePasteEvents;
+  window.setTimeout(() => {
+    if (nativePasteEvents !== eventCount || !isPastaClipboard(localClipboard)) return;
+    if (pasteShortcutActive && pasteShortcutConsumed) return;
+    if (pasteShortcutActive) pasteShortcutConsumed = true;
+    void pasteSelection(localClipboard);
+  }, 0);
+}
+
+async function pasteSelection(data: string): Promise<void> {
   debugLog("paste selection requested", {
-    localLength: localClipboard.length,
-    localValid: isPastaClipboard(localClipboard),
-    localPreview: localClipboard.slice(0, 160),
+    length: data.length,
+    valid: isPastaClipboard(data),
+    preview: data.slice(0, 160),
   });
-  try {
-    const systemClipboard = await navigator.clipboard?.readText();
-    debugLog("system clipboard read", {
-      hasData: Boolean(systemClipboard),
-      length: systemClipboard?.length ?? 0,
-      validPastaClipboard: systemClipboard ? isPastaClipboard(systemClipboard) : false,
-      preview: systemClipboard ? systemClipboard.slice(0, 160) : "",
-    });
-    if (systemClipboard && isPastaClipboard(systemClipboard)) {
-      data = systemClipboard;
-      localClipboard = systemClipboard;
-    }
-  } catch (error) {
-    debugLog("system paste failed", { error: (error as Error).message });
-    log("clipboard", "warn", `system paste failed, using local clipboard: ${(error as Error).message}`);
-  }
   if (!isPastaClipboard(data)) {
     debugLog("paste skipped: no valid Pasta clipboard data");
     return;
   }
-  const offsetData = offsetClipboardPositions(data, 40, 40);
+  const target = nextPasteTarget(data);
+  const positionedData = positionClipboardAt(data, target);
   debugLog("calling backend paste", {
-    dataLength: offsetData.length,
-    preview: offsetData.slice(0, 160),
+    dataLength: positionedData.length,
+    target,
+    preview: positionedData.slice(0, 160),
   });
-  const pasted = await tryBackend<number[]>("paste", { data: offsetData }) ?? [];
+  const pasted = await tryBackend<number[]>("paste", { data: positionedData }) ?? [];
   debugLog("backend paste returned", {
     pasted,
     snapshotNodesBeforeRefresh: Object.keys(snapshot.nodes).length,
     snapshotLinksBeforeRefresh: Object.keys(snapshot.links).length,
   });
-  requestSnapshot();
-  debugLog("snapshot after paste refresh", {
-    nodes: Object.keys(snapshot.nodes).length,
-    links: Object.keys(snapshot.links).length,
-  });
+  await requestSnapshot();
   if (pasted.length) {
-    setTimeout(() => selectGraphNodes(pasted), 0);
+    selectGraphNodes(pasted);
+    updateSidekick();
   }
 }
 
-function isPastaClipboard(data: string): boolean {
-  try {
-    const payload = JSON.parse(data) as { version?: unknown; nodes?: unknown };
-    return payload.version === 1 && Array.isArray(payload.nodes);
-  } catch (error) {
-    return false;
+function nextPasteTarget(data: string): [number, number] {
+  const base = currentPasteBasePosition();
+  const key = `${data.length}:${data.slice(0, 256)}:${Math.round(base[0])}:${Math.round(base[1])}`;
+  if (lastPastePlacement?.key === key) {
+    lastPastePlacement.count += 1;
+  } else {
+    lastPastePlacement = { key, count: 0 };
   }
+  const nudge = lastPastePlacement.count * 32;
+  return [base[0] + nudge, base[1] + nudge];
 }
 
-function offsetClipboardPositions(data: string, dx: number, dy: number): string {
-  try {
-    const payload = JSON.parse(data) as { nodes?: Array<{ position?: string }> };
-    if (!Array.isArray(payload.nodes)) return data;
-    for (const node of payload.nodes) {
-      if (!node.position) continue;
-      const position = JSON.parse(node.position) as { x?: unknown; y?: unknown };
-      if (typeof position.x !== "number" || typeof position.y !== "number") continue;
-      node.position = formatPosition([position.x + dx, position.y + dy]);
-    }
-    return JSON.stringify(payload);
-  } catch {
-    return data;
+function currentPasteBasePosition(): [number, number] {
+  if (graphPointerInside && lastGraphPointer) {
+    return canvasPositionFromClientPoint(lastGraphPointer.clientX, lastGraphPointer.clientY);
   }
+  return visibleCanvasCenterPosition();
+}
+
+function canvasPositionFromClientPoint(clientX: number, clientY: number): [number, number] {
+  if (!canvas?.convertCanvasToOffset) return visibleCanvasCenterPosition();
+  const rect = el.graphCanvas.getBoundingClientRect();
+  const x = clamp(clientX - rect.left, 0, rect.width);
+  const y = clamp(clientY - rect.top, 0, rect.height);
+  return canvas.convertCanvasToOffset([x, y]) as [number, number];
+}
+
+function visibleCanvasCenterPosition(): [number, number] {
+  if (!canvas?.convertCanvasToOffset) return [160, 120];
+  const rect = el.graphCanvas.getBoundingClientRect();
+  return canvas.convertCanvasToOffset([rect.width * 0.5, rect.height * 0.5]) as [number, number];
 }
 
 function wireUI(): void {
   for (const tab of el.tabs) tab.addEventListener("click", () => setTab(tab.dataset.tab ?? "graph"));
+  document.addEventListener("paste", handleGraphPaste, { capture: true });
   document.addEventListener("keydown", (event) => {
     graphKeydown(event);
   }, { capture: true });
+  document.addEventListener("keyup", graphKeyup, { capture: true });
 }
 
 function installTestHooks(): void {

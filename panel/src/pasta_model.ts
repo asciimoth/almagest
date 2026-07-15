@@ -90,6 +90,17 @@ export type WorkerNotification = {
   worker?: WorkerSnapshot;
 };
 
+type ClipboardNode = {
+  position?: unknown;
+  [key: string]: unknown;
+};
+
+type ClipboardPayload = {
+  version: 1;
+  nodes: ClipboardNode[];
+  [key: string]: unknown;
+};
+
 export const DEFAULT_LINK_COLOR = "#9A9";
 export const DEFAULT_NODE_TITLE_COLOR = "#89b4fa";
 export const DEFAULT_NODE_TEXT_COLOR = "#f8f9ff";
@@ -223,6 +234,65 @@ export function parsePosition(raw: string, fallbackX: number, fallbackY: number)
 
 export function formatPosition(pos: [number, number]): string {
   return JSON.stringify({ x: Math.round(pos[0]), y: Math.round(pos[1]) });
+}
+
+export function isPastaClipboard(data: string): boolean {
+  return parsePastaClipboard(data) !== null;
+}
+
+export function positionClipboardAt(data: string, target: [number, number]): string {
+  const payload = parsePastaClipboard(data);
+  if (!payload) return data;
+  const positions = payload.nodes
+    .map((node) => parseClipboardNodePosition(node.position))
+    .filter((position): position is [number, number] => position !== null);
+  if (!positions.length) return data;
+
+  const bounds = positions.reduce((box, [x, y]) => ({
+    minX: Math.min(box.minX, x),
+    minY: Math.min(box.minY, y),
+    maxX: Math.max(box.maxX, x),
+    maxY: Math.max(box.maxY, y),
+  }), {
+    minX: Number.POSITIVE_INFINITY,
+    minY: Number.POSITIVE_INFINITY,
+    maxX: Number.NEGATIVE_INFINITY,
+    maxY: Number.NEGATIVE_INFINITY,
+  });
+  const centerX = bounds.minX + (bounds.maxX - bounds.minX) * 0.5;
+  const centerY = bounds.minY + (bounds.maxY - bounds.minY) * 0.5;
+  const dx = target[0] - centerX;
+  const dy = target[1] - centerY;
+
+  for (const node of payload.nodes) {
+    const position = parseClipboardNodePosition(node.position);
+    if (!position) continue;
+    node.position = formatPosition([position[0] + dx, position[1] + dy]);
+  }
+  return JSON.stringify(payload);
+}
+
+function parsePastaClipboard(data: string): ClipboardPayload | null {
+  try {
+    const payload = JSON.parse(data) as { version?: unknown; nodes?: unknown };
+    if (payload.version !== 1 || !Array.isArray(payload.nodes)) return null;
+    if (!payload.nodes.every((node) => typeof node === "object" && node !== null)) return null;
+    return payload as ClipboardPayload;
+  } catch {
+    return null;
+  }
+}
+
+function parseClipboardNodePosition(raw: unknown): [number, number] | null {
+  if (typeof raw !== "string" || !raw) return null;
+  try {
+    const position = JSON.parse(raw) as { x?: unknown; y?: unknown };
+    if (typeof position.x !== "number" || typeof position.y !== "number") return null;
+    if (!Number.isFinite(position.x) || !Number.isFinite(position.y)) return null;
+    return [position.x, position.y];
+  } catch {
+    return null;
+  }
 }
 
 export function nodePositionMap(changes: NodePositionChange[]): Record<string, string> {
