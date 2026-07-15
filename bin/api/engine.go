@@ -40,6 +40,7 @@ const (
 	MethodEngineCopy                       EngineMethod = "copy"
 	MethodEnginePaste                      EngineMethod = "paste"
 	MethodEngineSendInbox                  EngineMethod = "send_inbox"
+	MethodEngineTriggerNode                EngineMethod = "trigger_node"
 	MethodEngineUndo                       EngineMethod = "undo"
 	MethodEngineRedo                       EngineMethod = "redo"
 	MethodEngineSendNodeFormularMessage    EngineMethod = "send_node_formular_msg"
@@ -77,6 +78,7 @@ func EngineMethods() []string {
 		string(MethodEngineCopy),
 		string(MethodEnginePaste),
 		string(MethodEngineSendInbox),
+		string(MethodEngineTriggerNode),
 		string(MethodEngineUndo),
 		string(MethodEngineRedo),
 		string(MethodEngineSendNodeFormularMessage),
@@ -100,6 +102,7 @@ func IsEngineMutation(method string) bool {
 		MethodEngineRemoveNodePopupsByType,
 		MethodEnginePaste,
 		MethodEngineSendInbox,
+		MethodEngineTriggerNode,
 		MethodEngineUndo,
 		MethodEngineRedo,
 		MethodEngineSendNodeFormularMessage:

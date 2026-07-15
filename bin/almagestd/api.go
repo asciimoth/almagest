@@ -514,6 +514,16 @@ func (s *apiSession) handleEngineMessage(msg api.Message) (api.Message, error) {
 		s.engine.SendInbox(req.Workspace, req.InboxMessage())
 		return api.NewResponse(msg.ID, struct{}{})
 
+	case api.MethodEngineTriggerNode:
+		req, err := decodePayload[api.IDRequest](msg)
+		if err != nil {
+			return newRequestError(msg.ID, api.ErrorInvalidPayload, err.Error())
+		}
+		if err := s.engine.Trigger(req.Workspace, req.ID); err != nil {
+			return newRequestError(msg.ID, api.ErrorBadRequest, err.Error())
+		}
+		return api.NewResponse(msg.ID, struct{}{})
+
 	case api.MethodEngineUndo:
 		req, err := decodePayload[api.WorkspaceRequest](msg)
 		if err != nil {

@@ -194,6 +194,9 @@ type PastaAPI interface {
 	// SendInbox schedules delivery of message to its receiver node.
 	SendInbox(workspace string, message pasta.InboxMessage)
 	SendInboxLocked(workspace string, message pasta.InboxMessage)
+	// Trigger invokes a node's explicit OnTrigger callback.
+	Trigger(workspace string, id uint64) error
+	TriggerLocked(workspace string, id uint64) error
 
 	Undo(workspace string)
 	UndoLocked(workspace string)
@@ -713,6 +716,22 @@ func (e *engine) SendInboxLocked(workspace string, message pasta.InboxMessage) {
 	}
 
 	e.mainWorkspace.SendInboxLocked(message)
+}
+
+func (e *engine) Trigger(workspace string, id uint64) error {
+	if workspace != "main" {
+		return ErrNoWorkspace
+	}
+
+	return e.mainWorkspace.Trigger(id)
+}
+
+func (e *engine) TriggerLocked(workspace string, id uint64) error {
+	if workspace != "main" {
+		return ErrNoWorkspace
+	}
+
+	return e.mainWorkspace.TriggerLocked(id)
 }
 
 func (e *engine) Undo(workspace string) {

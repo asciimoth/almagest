@@ -163,6 +163,9 @@ func TestRequiresMutationLease(t *testing.T) {
 	if !RequiresMutationLease(SurfaceEngine, string(MethodEngineMoveNodes)) {
 		t.Fatal("move_nodes should require mutation lease")
 	}
+	if !RequiresMutationLease(SurfaceEngine, string(MethodEngineTriggerNode)) {
+		t.Fatal("trigger_node should require mutation lease")
+	}
 	if RequiresMutationLease(SurfaceEngine, string(MethodEngineWorkspaceSnapshot)) {
 		t.Fatal("workspace_snapshot should not require mutation lease")
 	}
@@ -179,6 +182,7 @@ func TestEngineMethodsIncludesWorkersSnapshot(t *testing.T) {
 		string(MethodEngineWorkersSnapshot): false,
 		string(MethodEngineRemoveNodes):     false,
 		string(MethodEngineMoveNodes):       false,
+		string(MethodEngineTriggerNode):     false,
 	}
 	for _, method := range EngineMethods() {
 		if _, ok := required[method]; ok {

@@ -151,10 +151,12 @@ let logSubscriptionID = 0;
 const frontendLogs: LogEntry[] = [];
 let nextToastID = 1;
 let liteGraphDrawGuardInstalled = false;
+let liteGraphWidgetSelectionGuardInstalled = false;
 let logStoreLimit = 0;
 const liteLinkToPasta = new Map<number, number>();
 const CLASS_DRAG_MIME = "application/x-almagest-node-class";
 const GRAPH_VIEWPORT_STORAGE_KEY = "almagest.panel.graph.viewport.v1";
+const PASTA_TRIGGER_CLASS = "pasta/Trigger";
 const debugClipboard = true;
 let graphViewportSaveTimeout = 0;
 
@@ -422,6 +424,8 @@ async function backend<T>(method: string, params: Record<string, unknown> = {}):
       }
       return {} as T;
     }
+    case "triggerNode":
+      return request<T>("engine", "trigger_node", { workspace: "main", id: params.id });
     case "copy": {
       const result = await request<{ data: string }>("engine", "copy", { workspace: "main", ids: params.ids });
       return result.data as T;
@@ -508,6 +512,7 @@ function registerLiteGraphNode(): void {
 
 function initGraph(): void {
   installLiteGraphDrawGuard();
+  installLiteGraphWidgetSelectionGuard();
   registerLiteGraphNode();
   graph = new LGraph();
   canvas = new LGraphCanvas("#graph-canvas", graph);
@@ -554,6 +559,21 @@ function installLiteGraphDrawGuard(): void {
     return drawFrontCanvas.call(this);
   };
   liteGraphDrawGuardInstalled = true;
+}
+
+function installLiteGraphWidgetSelectionGuard(): void {
+  if (liteGraphWidgetSelectionGuardInstalled || !LGraphCanvas?.prototype?.processMouseDown) return;
+  const processMouseDown = LGraphCanvas.prototype.processMouseDown;
+  LGraphCanvas.prototype.processMouseDown = function (event: MouseEvent): unknown {
+    const selectedBefore = selectedNodeIDs(this.selected_nodes);
+    const result = processMouseDown.call(this, event);
+    const [node, widget] = this.node_widget ?? [];
+    if (widget?.options?.preserveSelection && node && event.type === `${LiteGraph.pointerevents_method}down`) {
+      restoreGraphSelection(this, selectedBefore);
+    }
+    return result;
+  };
+  liteGraphWidgetSelectionGuardInstalled = true;
 }
 
 function sanitizeLiteGraphConnectionState(targetCanvas: any): void {
@@ -699,6 +719,7 @@ function renderGraph(): void {
     node.pos = parsePosition(nodeSnapshot.position, 80 + graph._nodes.length * 24, 80 + graph._nodes.length * 24);
     for (const portID of nodeSnapshot.left_ports) addPort(node, snapshot.ports[String(portID)], portID);
     for (const portID of nodeSnapshot.right_ports) addPort(node, snapshot.ports[String(portID)], portID);
+    addNodeWidgets(node, id, nodeSnapshot);
     node.size = node.computeSize();
     fitLabelInNode(node, nodeSnapshot);
     graph.add(node);
@@ -722,6 +743,16 @@ function selectGraphNodes(ids: number[]): void {
   if (nodes.length) canvas.selectNodes(nodes);
 }
 
+function restoreGraphSelection(targetCanvas: any, ids: number[]): void {
+  const nodes = ids.map((id) => targetCanvas.graph?.getNodeById(id)).filter(Boolean);
+  if (nodes.length) {
+    targetCanvas.selectNodes(nodes);
+  } else {
+    targetCanvas.deselectAllNodes();
+  }
+  updateSidekick();
+}
+
 function nodeTitle(node: NodeSnapshot): string {
   return node.name;
 }
@@ -731,6 +762,13 @@ function fitLabelInNode(node: any, snapshot: NodeSnapshot): void {
   const labelWidth = Math.min(280, 32 + snapshot.label.length * 7);
   node.size[0] = Math.max(node.size[0], labelWidth);
   node.size[1] += 24;
+}
+
+function addNodeWidgets(node: any, id: number, nodeSnapshot: NodeSnapshot): void {
+  if (nodeSnapshot.class !== PASTA_TRIGGER_CLASS || nodeSnapshot.placeholder) return;
+  node.addWidget("button", "Trigger", null, () => {
+    void tryBackend("triggerNode", { id });
+  }, { preserveSelection: true });
 }
 
 function drawNodeLabel(ctx: CanvasRenderingContext2D, node: any): void {
