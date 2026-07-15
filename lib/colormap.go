@@ -29,6 +29,10 @@ var DefaultColorMap = map[string]TypePalette{
 		TypeColor: "#6f7782",
 		TextColor: "#ffffff",
 	},
+	"pasta/loop": {
+		TypeColor: "#2563eb",
+		TextColor: "#ffffff",
+	},
 	TypeNetwork: {
 		TypeColor: "#8a5cf6",
 		TextColor: "#ffffff",
