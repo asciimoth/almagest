@@ -88,7 +88,7 @@ func main() {
 		conf.Main,
 		logf,
 		sys,
-		nil,
+		daemonNodeClasses(conf.Protected.CommandRunner, commandRunner),
 		globalBufPool,
 		args.DebugNodes,
 	)

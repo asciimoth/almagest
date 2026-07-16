@@ -55,6 +55,12 @@ type AllowedCommand struct {
 	Sync    bool              `json:"Sync,omitempty"`
 	Timeout time.Duration     `json:"Timeout,omitempty"`
 	Slots   map[string]Slot   `json:"Slots,omitempty"`
+
+	// AllowNodes makes this protected allowlist entry visible to the
+	// almagestd/Command node. Commands without this explicit opt-in may still be
+	// used by other protected integrations, but command nodes must treat them as
+	// unavailable even when a workspace config names them.
+	AllowNodes bool `json:"AllowNodes,omitempty"`
 }
 
 // Configured reports whether c contains an argv array to execute.

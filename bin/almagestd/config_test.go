@@ -206,6 +206,7 @@ func TestProtectedConfigCommandRunner(t *testing.T) {
 					"GID": 1002,
 					"Sync": true,
 					"Timeout": 250000000,
+					"AllowNodes": true,
 					"Slots": {
 						"server": {
 							"MaxLength": 64,
@@ -239,6 +240,9 @@ func TestProtectedConfigCommandRunner(t *testing.T) {
 	}
 	if got := cmd.Timeout; got != 250*time.Millisecond {
 		t.Fatalf("CommandRunner Timeout = %s, want 250ms", got)
+	}
+	if !cmd.AllowNodes {
+		t.Fatal("CommandRunner AllowNodes = false, want true")
 	}
 	slot := cmd.Slots["server"]
 	if slot.MaxLength != 64 || slot.Pattern != "[0-9.]+" || !slot.Required {

@@ -114,6 +114,11 @@
           "additionalProperties": {
             "$ref": "#/$defs/commandSlot"
           }
+        },
+        "AllowNodes": {
+          "type": "boolean",
+          "default": false,
+          "description": "When true, this protected command is visible to almagestd/Command nodes and can be scheduled from workspace trigger events. Commands without this explicit opt-in remain usable by other protected integrations but are invisible to nodes."
         }
       },
       "additionalProperties": false
