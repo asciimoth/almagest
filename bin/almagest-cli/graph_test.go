@@ -47,6 +47,35 @@ func TestGraphMapPrintsCompactConfigLikeNodes(t *testing.T) {
 	}
 }
 
+func TestGraphNodeResolvesName(t *testing.T) {
+	ft := &fakeTransport{reads: []api.Message{
+		mustResponse(t, "1", api.WorkspaceSnapshotResponse{Snapshot: pasta.WorkspaceSnapshot{
+			Nodes: map[uint64]pasta.NodeSnapshot{
+				12: {Name: "server", Class: "test/server"},
+			},
+		}}),
+		mustResponse(t, "2", api.NodeSnapshotResponse{Snapshot: pasta.NodeSnapshot{Name: "server", Class: "test/server"}}),
+	}}
+	var stdout, stderr bytes.Buffer
+
+	err := run(context.Background(), []string{"graph", "node", "--name", "server"}, nil, &stdout, &stderr, func(context.Context, endpoint) (apiTransport, error) {
+		return ft, nil
+	})
+	if err != nil {
+		t.Fatalf("run failed: %v\nstderr: %s", err, stderr.String())
+	}
+	if len(ft.writes) != 2 {
+		t.Fatalf("writes = %d, want workspace snapshot and node snapshot", len(ft.writes))
+	}
+	req, err := api.DecodePayload[api.IDRequest](ft.writes[1].Payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if req.ID != 12 {
+		t.Fatalf("payload = %#v, want resolved node 12", req)
+	}
+}
+
 func TestGraphApplyMenuSendsFormApply(t *testing.T) {
 	menu := formular.MenuSnapshotMessage{
 		MessageBase: formular.MessageBase{Type: formular.MessageMenuSnapshot, MenuID: pasta.NodeMenuID(12), MenuGeneration: 7},

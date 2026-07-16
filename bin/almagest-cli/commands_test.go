@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/asciimoth/almagest/bin/api"
+	"github.com/asciimoth/pasta/pasta"
 )
 
 type fakeTransport struct {
@@ -128,6 +129,86 @@ func TestRunEngineRemoveNodesSendsBatchRequest(t *testing.T) {
 	}
 	if req.Workspace != "main" || len(req.IDs) != 3 || req.IDs[0] != 7 || req.IDs[2] != 9 {
 		t.Fatalf("payload = %#v, want batch node IDs", req)
+	}
+}
+
+func TestRunEngineSetNodePositionResolvesName(t *testing.T) {
+	ft := &fakeTransport{reads: []api.Message{
+		mustResponse(t, "1", api.WorkspaceSnapshotResponse{Snapshot: pasta.WorkspaceSnapshot{
+			Nodes: map[uint64]pasta.NodeSnapshot{
+				42: {Name: "server", Class: "test/server"},
+			},
+		}}),
+		mustResponse(t, "2", struct{}{}),
+	}}
+	var stdout, stderr bytes.Buffer
+
+	err := run(context.Background(), []string{"engine", "set-node-position", "--name", "server", "--position", "10 20"}, nil, &stdout, &stderr, func(context.Context, endpoint) (apiTransport, error) {
+		return ft, nil
+	})
+	if err != nil {
+		t.Fatalf("run failed: %v\nstderr: %s", err, stderr.String())
+	}
+	if len(ft.writes) != 2 {
+		t.Fatalf("writes = %d, want workspace snapshot and mutation", len(ft.writes))
+	}
+	if ft.writes[0].Method != string(api.MethodEngineWorkspaceSnapshot) || ft.writes[1].Method != string(api.MethodEngineSetNodePosition) {
+		t.Fatalf("methods = %q, %q", ft.writes[0].Method, ft.writes[1].Method)
+	}
+	req, err := api.DecodePayload[api.SetNodePositionRequest](ft.writes[1].Payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if req.ID != 42 || req.Position != "10 20" {
+		t.Fatalf("payload = %#v, want resolved node 42 position", req)
+	}
+}
+
+func TestRunEngineSetNodeNameResolvesNameWithNewName(t *testing.T) {
+	ft := &fakeTransport{reads: []api.Message{
+		mustResponse(t, "1", api.WorkspaceSnapshotResponse{Snapshot: pasta.WorkspaceSnapshot{
+			Nodes: map[uint64]pasta.NodeSnapshot{
+				42: {Name: "server", Class: "test/server"},
+			},
+		}}),
+		mustResponse(t, "2", struct{}{}),
+	}}
+	var stdout, stderr bytes.Buffer
+
+	err := run(context.Background(), []string{"engine", "set-node-name", "--name", "server", "--new-name", "renamed"}, nil, &stdout, &stderr, func(context.Context, endpoint) (apiTransport, error) {
+		return ft, nil
+	})
+	if err != nil {
+		t.Fatalf("run failed: %v\nstderr: %s", err, stderr.String())
+	}
+	req, err := api.DecodePayload[api.SetNodeNameRequest](ft.writes[1].Payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if req.ID != 42 || req.Name != "renamed" {
+		t.Fatalf("payload = %#v, want resolved node 42 renamed", req)
+	}
+}
+
+func TestRunEngineSetNodeNameKeepsIDNameForm(t *testing.T) {
+	ft := &fakeTransport{reads: []api.Message{mustResponse(t, "1", struct{}{})}}
+	var stdout, stderr bytes.Buffer
+
+	err := run(context.Background(), []string{"engine", "set-node-name", "--id", "42", "--name", "renamed"}, nil, &stdout, &stderr, func(context.Context, endpoint) (apiTransport, error) {
+		return ft, nil
+	})
+	if err != nil {
+		t.Fatalf("run failed: %v\nstderr: %s", err, stderr.String())
+	}
+	if len(ft.writes) != 1 {
+		t.Fatalf("writes = %d, want mutation only", len(ft.writes))
+	}
+	req, err := api.DecodePayload[api.SetNodeNameRequest](ft.writes[0].Payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if req.ID != 42 || req.Name != "renamed" {
+		t.Fatalf("payload = %#v, want ID 42 renamed", req)
 	}
 }
 

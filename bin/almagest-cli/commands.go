@@ -215,19 +215,25 @@ func runEngine(ctx context.Context, c *client, args []string, stdin io.Reader, s
 	case "subscribe-node-menu", "unsubscribe-node-menu":
 		fs := commandFlagSet("engine "+args[0], stderr)
 		workspace := fs.String("workspace", "main", "workspace name")
-		node := fs.Uint64("node", 0, "node ID")
+		id := fs.Uint64("id", 0, "node ID")
+		node := fs.Uint64("node", 0, "node ID (deprecated alias for --id)")
+		name := fs.String("name", "", "node name")
 		subID := fs.Uint64("subscription-id", 0, "notification subscription ID")
 		if err := fs.Parse(args[1:]); err != nil {
 			return err
 		}
-		if *node == 0 || *subID == 0 {
-			return fmt.Errorf("--node and --subscription-id are required")
+		nodeID, err := resolveNodeSelector(ctx, c, *workspace, nodeSelectorFromFlags(fs, *id, *node, *name, true))
+		if err != nil {
+			return err
+		}
+		if *subID == 0 {
+			return fmt.Errorf("--subscription-id is required")
 		}
 		method := api.MethodEngineSubscribeNodeMenu
 		if args[0] == "unsubscribe-node-menu" {
 			method = api.MethodEngineUnsubscribeNodeMenu
 		}
-		payload := api.NodeMenuSubscriptionRequest{Workspace: *workspace, Node: *node, SubscriptionID: *subID}
+		payload := api.NodeMenuSubscriptionRequest{Workspace: *workspace, Node: nodeID, SubscriptionID: *subID}
 		return requestPretty(ctx, c, api.SurfaceEngine, string(method), payload, stdout)
 	case "workspace-snapshot":
 		workspace, err := parseWorkspace(args[0], args[1:], stderr)
@@ -252,18 +258,26 @@ func runEngine(ctx context.Context, c *client, args []string, stdin io.Reader, s
 			"remove-nodes-by-class":       api.MethodEngineRemoveNodesByClass,
 		}[args[0]]
 		return requestPretty(ctx, c, api.SurfaceEngine, string(method), api.ClassRequest{Workspace: workspace, Class: class}, stdout)
-	case "node-snapshot", "port-snapshot", "link-snapshot", "replace-node-with-placeholder", "remove-node", "remove-link":
-		workspace, id, err := parseID(args[0], args[1:], stderr)
+	case "node-snapshot", "replace-node-with-placeholder", "remove-node":
+		workspace, id, err := parseNodeID(ctx, c, args[0], args[1:], stderr)
 		if err != nil {
 			return err
 		}
 		method := map[string]api.EngineMethod{
 			"node-snapshot":                 api.MethodEngineNodeSnapshot,
-			"port-snapshot":                 api.MethodEnginePortSnapshot,
-			"link-snapshot":                 api.MethodEngineLinkSnapshot,
 			"replace-node-with-placeholder": api.MethodEngineReplaceNodeWithPlaceholder,
 			"remove-node":                   api.MethodEngineRemoveNode,
-			"remove-link":                   api.MethodEngineRemoveLink,
+		}[args[0]]
+		return requestPretty(ctx, c, api.SurfaceEngine, string(method), api.IDRequest{Workspace: workspace, ID: id}, stdout)
+	case "port-snapshot", "link-snapshot", "remove-link":
+		workspace, id, err := parseID(args[0], args[1:], stderr)
+		if err != nil {
+			return err
+		}
+		method := map[string]api.EngineMethod{
+			"port-snapshot": api.MethodEnginePortSnapshot,
+			"link-snapshot": api.MethodEngineLinkSnapshot,
+			"remove-link":   api.MethodEngineRemoveLink,
 		}[args[0]]
 		return requestPretty(ctx, c, api.SurfaceEngine, string(method), api.IDRequest{Workspace: workspace, ID: id}, stdout)
 	case "remove-nodes":
@@ -308,46 +322,74 @@ func runEngine(ctx context.Context, c *client, args []string, stdin io.Reader, s
 		fs := commandFlagSet("engine set-node-position", stderr)
 		workspace := fs.String("workspace", "main", "workspace name")
 		id := fs.Uint64("id", 0, "node ID")
+		name := fs.String("name", "", "node name")
 		position := fs.String("position", "", "node position string")
 		if err := fs.Parse(args[1:]); err != nil {
 			return err
 		}
-		if *id == 0 || *position == "" {
-			return fmt.Errorf("--id and --position are required")
+		nodeID, err := resolveNodeSelector(ctx, c, *workspace, nodeSelectorFromFlags(fs, *id, 0, *name, false))
+		if err != nil {
+			return err
 		}
-		payload := api.SetNodePositionRequest{Workspace: *workspace, ID: *id, Position: *position}
+		if *position == "" {
+			return fmt.Errorf("--position is required")
+		}
+		payload := api.SetNodePositionRequest{Workspace: *workspace, ID: nodeID, Position: *position}
 		return requestPretty(ctx, c, api.SurfaceEngine, string(api.MethodEngineSetNodePosition), payload, stdout)
 	case "set-node-name":
 		fs := commandFlagSet("engine set-node-name", stderr)
 		workspace := fs.String("workspace", "main", "workspace name")
 		id := fs.Uint64("id", 0, "node ID")
 		name := fs.String("name", "", "node name")
+		newName := fs.String("new-name", "", "new node name")
 		if err := fs.Parse(args[1:]); err != nil {
 			return err
 		}
-		if *id == 0 {
-			return fmt.Errorf("--id is required")
+		var (
+			nodeID uint64
+			err    error
+			next   string
+		)
+		if flagSet(fs, "id") {
+			nodeID, err = resolveNodeSelector(ctx, c, *workspace, nodeSelector{id: *id, idSet: true})
+			if flagSet(fs, "new-name") {
+				next = *newName
+			} else {
+				next = *name
+			}
+		} else {
+			nodeID, err = resolveNodeSelector(ctx, c, *workspace, nodeSelectorFromFlags(fs, 0, 0, *name, false))
+			next = *newName
 		}
-		payload := api.SetNodeNameRequest{Workspace: *workspace, ID: *id, Name: *name}
+		if err != nil {
+			return err
+		}
+		if !flagSet(fs, "id") && !flagSet(fs, "new-name") {
+			return fmt.Errorf("--new-name is required when selecting by --name")
+		}
+		payload := api.SetNodeNameRequest{Workspace: *workspace, ID: nodeID, Name: next}
 		return requestPretty(ctx, c, api.SurfaceEngine, string(api.MethodEngineSetNodeName), payload, stdout)
 	case "remove-node-popup", "remove-node-popups", "remove-node-popups-by-type":
 		fs := commandFlagSet("engine "+args[0], stderr)
 		workspace := fs.String("workspace", "main", "workspace name")
-		node := fs.Uint64("node", 0, "node ID")
+		id := fs.Uint64("id", 0, "node ID")
+		node := fs.Uint64("node", 0, "node ID (deprecated alias for --id)")
+		name := fs.String("name", "", "node name")
 		popup := fs.Uint64("popup", 0, "popup ID")
 		typ := fs.String("type", "", "popup type")
 		if err := fs.Parse(args[1:]); err != nil {
 			return err
 		}
-		if *node == 0 {
-			return fmt.Errorf("--node is required")
+		nodeID, err := resolveNodeSelector(ctx, c, *workspace, nodeSelectorFromFlags(fs, *id, *node, *name, true))
+		if err != nil {
+			return err
 		}
 		method := map[string]api.EngineMethod{
 			"remove-node-popup":          api.MethodEngineRemoveNodePopup,
 			"remove-node-popups":         api.MethodEngineRemoveNodePopups,
 			"remove-node-popups-by-type": api.MethodEngineRemoveNodePopupsByType,
 		}[args[0]]
-		payload := api.NodePopupRequest{Workspace: *workspace, Node: *node, Popup: *popup, Type: *typ}
+		payload := api.NodePopupRequest{Workspace: *workspace, Node: nodeID, Popup: *popup, Type: *typ}
 		return requestPretty(ctx, c, api.SurfaceEngine, string(method), payload, stdout)
 	case "copy":
 		fs := commandFlagSet("engine copy", stderr)
@@ -372,35 +414,41 @@ func runEngine(ctx context.Context, c *client, args []string, stdin io.Reader, s
 	case "send-inbox":
 		fs := commandFlagSet("engine send-inbox", stderr)
 		workspace := fs.String("workspace", "main", "workspace name")
-		node := fs.Uint64("node", 0, "node ID")
+		id := fs.Uint64("id", 0, "node ID")
+		node := fs.Uint64("node", 0, "node ID (deprecated alias for --id)")
+		name := fs.String("name", "", "node name")
 		payload := fs.String("payload", "null", "JSON inbox payload")
 		if err := fs.Parse(args[1:]); err != nil {
 			return err
 		}
-		if *node == 0 {
-			return fmt.Errorf("--node is required")
+		nodeID, err := resolveNodeSelector(ctx, c, *workspace, nodeSelectorFromFlags(fs, *id, *node, *name, true))
+		if err != nil {
+			return err
 		}
 		raw, err := parseRawJSON(*payload, "--payload")
 		if err != nil {
 			return err
 		}
-		return requestPretty(ctx, c, api.SurfaceEngine, string(api.MethodEngineSendInbox), api.SendInboxRequest{Workspace: *workspace, Node: *node, Payload: raw}, stdout)
+		return requestPretty(ctx, c, api.SurfaceEngine, string(api.MethodEngineSendInbox), api.SendInboxRequest{Workspace: *workspace, Node: nodeID, Payload: raw}, stdout)
 	case "send-node-formular-msg":
 		fs := commandFlagSet("engine send-node-formular-msg", stderr)
 		workspace := fs.String("workspace", "main", "workspace name")
-		node := fs.Uint64("node", 0, "node ID")
+		id := fs.Uint64("id", 0, "node ID")
+		node := fs.Uint64("node", 0, "node ID (deprecated alias for --id)")
+		name := fs.String("name", "", "node name")
 		message := fs.String("message", "null", "JSON formular message")
 		if err := fs.Parse(args[1:]); err != nil {
 			return err
 		}
-		if *node == 0 {
-			return fmt.Errorf("--node is required")
+		nodeID, err := resolveNodeSelector(ctx, c, *workspace, nodeSelectorFromFlags(fs, *id, *node, *name, true))
+		if err != nil {
+			return err
 		}
 		raw, err := parseRawJSON(*message, "--message")
 		if err != nil {
 			return err
 		}
-		return requestPretty(ctx, c, api.SurfaceEngine, string(api.MethodEngineSendNodeFormularMessage), api.SendNodeFormularMessageRequest{Workspace: *workspace, Node: *node, Message: raw}, stdout)
+		return requestPretty(ctx, c, api.SurfaceEngine, string(api.MethodEngineSendNodeFormularMessage), api.SendNodeFormularMessageRequest{Workspace: *workspace, Node: nodeID, Message: raw}, stdout)
 	case "undo", "redo":
 		workspace, err := parseWorkspace(args[0], args[1:], stderr)
 		if err != nil {
@@ -550,6 +598,111 @@ func parseID(name string, args []string, stderr io.Writer) (string, uint64, erro
 	return *workspace, *id, nil
 }
 
+type nodeSelector struct {
+	id        uint64
+	node      uint64
+	name      string
+	idSet     bool
+	nodeSet   bool
+	nameSet   bool
+	allowNode bool
+}
+
+func parseNodeID(ctx context.Context, c *client, name string, args []string, stderr io.Writer) (string, uint64, error) {
+	fs := commandFlagSet("engine "+name, stderr)
+	workspace := fs.String("workspace", "main", "workspace name")
+	id := fs.Uint64("id", 0, "node ID")
+	nodeName := fs.String("name", "", "node name")
+	if err := fs.Parse(args); err != nil {
+		return "", 0, err
+	}
+	nodeID, err := resolveNodeSelector(ctx, c, *workspace, nodeSelectorFromFlags(fs, *id, 0, *nodeName, false))
+	if err != nil {
+		return "", 0, err
+	}
+	return *workspace, nodeID, nil
+}
+
+func nodeSelectorFromFlags(fs *flag.FlagSet, id, node uint64, name string, allowNode bool) nodeSelector {
+	return nodeSelector{
+		id:        id,
+		node:      node,
+		name:      name,
+		idSet:     flagSet(fs, "id"),
+		nodeSet:   allowNode && flagSet(fs, "node"),
+		nameSet:   flagSet(fs, "name"),
+		allowNode: allowNode,
+	}
+}
+
+func resolveNodeSelector(ctx context.Context, c *client, workspace string, selector nodeSelector) (uint64, error) {
+	set := 0
+	for _, ok := range []bool{selector.idSet, selector.nodeSet, selector.nameSet} {
+		if ok {
+			set++
+		}
+	}
+	if set == 0 {
+		if selector.allowNode {
+			return 0, fmt.Errorf("--id or --name is required (--node is also accepted for compatibility)")
+		}
+		return 0, fmt.Errorf("--id or --name is required")
+	}
+	if set > 1 {
+		if selector.allowNode {
+			return 0, fmt.Errorf("only one of --id, --name, or --node may be specified")
+		}
+		return 0, fmt.Errorf("only one of --id or --name may be specified")
+	}
+	if selector.idSet || selector.nodeSet {
+		if selector.idSet && selector.id == 0 {
+			return 0, fmt.Errorf("--id is required")
+		}
+		if selector.nodeSet && selector.node == 0 {
+			return 0, fmt.Errorf("--node is required")
+		}
+		if selector.nodeSet {
+			return selector.node, nil
+		}
+		return selector.id, nil
+	}
+	if selector.name == "" {
+		return 0, fmt.Errorf("--name is required")
+	}
+	return resolveNodeName(ctx, c, workspace, selector.name)
+}
+
+func resolveNodeName(ctx context.Context, c *client, workspace, name string) (uint64, error) {
+	snapshot, err := fetchWorkspaceSnapshot(ctx, c, workspace)
+	if err != nil {
+		return 0, err
+	}
+	var matched uint64
+	for id, node := range snapshot.Nodes {
+		if node.Name != name {
+			continue
+		}
+		if matched != 0 {
+			return 0, fmt.Errorf("node name %q is ambiguous", name)
+		}
+		matched = id
+	}
+	if matched == 0 {
+		return 0, fmt.Errorf("node name %q was not found", name)
+	}
+	return matched, nil
+}
+
+func flagSet(fs *flag.FlagSet, name string) bool {
+	found := false
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == name {
+			found = true
+		}
+	})
+	return found
+}
+
 func parseRawJSON(value, flagName string) (json.RawMessage, error) {
 	raw := json.RawMessage(value)
 	if !json.Valid(raw) {
@@ -655,6 +808,11 @@ Mutation commands:
   remove-nodes-by-class, remove-link, set-node-position, set-node-name
   remove-node-popup, remove-node-popups, remove-node-popups-by-type
   copy, paste, send-inbox, undo, redo, send-node-formular-msg
+
+Node selectors:
+  Node-specific commands accept --id or --name. Commands that historically used
+  --node still accept it as an alias for --id. For set-node-name with --name as
+  the selector, pass the new value with --new-name.
 `)
 }
 

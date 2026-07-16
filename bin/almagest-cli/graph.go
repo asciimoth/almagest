@@ -41,13 +41,13 @@ func runGraph(ctx context.Context, c *client, args []string, stdin io.Reader, st
 		}
 		return printPretty(stdout, compactFromWorkspace(snapshot))
 	case "node":
-		workspace, id, err := parseGraphID("graph node", args[1:], stderr)
+		workspace, id, err := parseGraphNodeID(ctx, c, "graph node", args[1:], stderr)
 		if err != nil {
 			return err
 		}
 		return requestPretty(ctx, c, api.SurfaceEngine, string(api.MethodEngineNodeSnapshot), api.IDRequest{Workspace: workspace, ID: id}, stdout)
 	case "delete-node":
-		workspace, id, err := parseGraphID("graph delete-node", args[1:], stderr)
+		workspace, id, err := parseGraphNodeID(ctx, c, "graph delete-node", args[1:], stderr)
 		if err != nil {
 			return err
 		}
@@ -84,7 +84,7 @@ func runGraph(ctx context.Context, c *client, args []string, stdin io.Reader, st
 		}
 		return requestPretty(ctx, c, api.SurfaceEngine, string(api.MethodEngineRemoveLink), api.IDRequest{Workspace: workspace, ID: id}, stdout)
 	case "menu":
-		workspace, node, err := parseGraphNode("graph menu", args[1:], stderr)
+		workspace, node, err := parseGraphNodeIDWithAlias(ctx, c, "graph menu", args[1:], stderr)
 		if err != nil {
 			return err
 		}
@@ -96,13 +96,16 @@ func runGraph(ctx context.Context, c *client, args []string, stdin io.Reader, st
 	case "apply-menu":
 		fs := commandFlagSet("graph apply-menu", stderr)
 		workspace := fs.String("workspace", "main", "workspace name")
-		node := fs.Uint64("node", 0, "node ID")
+		id := fs.Uint64("id", 0, "node ID")
+		node := fs.Uint64("node", 0, "node ID (deprecated alias for --id)")
+		name := fs.String("name", "", "node name")
 		input := fs.String("json", "", "desired menu state JSON, keyed by block ID")
 		if err := fs.Parse(args[1:]); err != nil {
 			return err
 		}
-		if *node == 0 {
-			return fmt.Errorf("--node is required")
+		nodeID, err := resolveNodeSelector(ctx, c, *workspace, nodeSelectorFromFlags(fs, *id, *node, *name, true))
+		if err != nil {
+			return err
 		}
 		raw, err := readJSONInput(*input, stdin)
 		if err != nil {
@@ -112,25 +115,31 @@ func runGraph(ctx context.Context, c *client, args []string, stdin io.Reader, st
 		if err := json.Unmarshal(raw, &desired); err != nil {
 			return fmt.Errorf("decode desired menu state: %w", err)
 		}
-		return applyMenuState(ctx, c, *workspace, *node, desired, stdout)
+		return applyMenuState(ctx, c, *workspace, nodeID, desired, stdout)
 	case "click-menu-button":
 		fs := commandFlagSet("graph click-menu-button", stderr)
 		workspace := fs.String("workspace", "main", "workspace name")
-		node := fs.Uint64("node", 0, "node ID")
+		id := fs.Uint64("id", 0, "node ID")
+		node := fs.Uint64("node", 0, "node ID (deprecated alias for --id)")
+		name := fs.String("name", "", "node name")
 		blockID := fs.String("block", "", "block ID")
 		buttonID := fs.String("button", "", "button ID")
 		if err := fs.Parse(args[1:]); err != nil {
 			return err
 		}
-		if *node == 0 || *blockID == "" || *buttonID == "" {
-			return fmt.Errorf("--node, --block, and --button are required")
+		nodeID, err := resolveNodeSelector(ctx, c, *workspace, nodeSelectorFromFlags(fs, *id, *node, *name, true))
+		if err != nil {
+			return err
+		}
+		if *blockID == "" || *buttonID == "" {
+			return fmt.Errorf("--block and --button are required")
 		}
 		msg := formular.ButtonPressMessage{
-			MessageBase: formular.MessageBase{Type: formular.MessageButtonPress, MenuID: nodeMenuID(*node)},
+			MessageBase: formular.MessageBase{Type: formular.MessageButtonPress, MenuID: nodeMenuID(nodeID)},
 			BlockID:     *blockID,
 			ButtonID:    *buttonID,
 		}
-		return sendFormularMessage(ctx, c, *workspace, *node, msg, stdout)
+		return sendFormularMessage(ctx, c, *workspace, nodeID, msg, stdout)
 	case "class-description":
 		workspace, class, err := parseClass("graph class-description", args[1:], stderr)
 		if err != nil {
@@ -298,17 +307,35 @@ func parseGraphID(name string, args []string, stderr io.Writer) (string, uint64,
 	return parseID(name, args, stderr)
 }
 
-func parseGraphNode(name string, args []string, stderr io.Writer) (string, uint64, error) {
+func parseGraphNodeID(ctx context.Context, c *client, name string, args []string, stderr io.Writer) (string, uint64, error) {
 	fs := commandFlagSet(name, stderr)
 	workspace := fs.String("workspace", "main", "workspace name")
-	node := fs.Uint64("node", 0, "node ID")
+	id := fs.Uint64("id", 0, "node ID")
+	nodeName := fs.String("name", "", "node name")
 	if err := fs.Parse(args); err != nil {
 		return "", 0, err
 	}
-	if *node == 0 {
-		return "", 0, fmt.Errorf("--node is required")
+	nodeID, err := resolveNodeSelector(ctx, c, *workspace, nodeSelectorFromFlags(fs, *id, 0, *nodeName, false))
+	if err != nil {
+		return "", 0, err
 	}
-	return *workspace, *node, nil
+	return *workspace, nodeID, nil
+}
+
+func parseGraphNodeIDWithAlias(ctx context.Context, c *client, name string, args []string, stderr io.Writer) (string, uint64, error) {
+	fs := commandFlagSet(name, stderr)
+	workspace := fs.String("workspace", "main", "workspace name")
+	id := fs.Uint64("id", 0, "node ID")
+	node := fs.Uint64("node", 0, "node ID (deprecated alias for --id)")
+	nodeName := fs.String("name", "", "node name")
+	if err := fs.Parse(args); err != nil {
+		return "", 0, err
+	}
+	nodeID, err := resolveNodeSelector(ctx, c, *workspace, nodeSelectorFromFlags(fs, *id, *node, *nodeName, true))
+	if err != nil {
+		return "", 0, err
+	}
+	return *workspace, nodeID, nil
 }
 
 func readJSONInput(value string, stdin io.Reader) (json.RawMessage, error) {
@@ -370,7 +397,7 @@ func printGraphHelp(w io.Writer) {
 Commands:
   map                 compact node map: ids, classes, config-format links
   node                fetch one node snapshot with all node metadata
-  delete-node         remove a node by --id
+  delete-node         remove a node by --id or --name
   delete-nodes        remove multiple nodes by --ids
   add-link            create a link from --port-a to --port-b
   delete-link         remove a link by --id
@@ -383,9 +410,10 @@ Commands:
 Examples:
   almagest-cli graph map
   almagest-cli graph node --id 12
+  almagest-cli graph node --name server
   almagest-cli graph add-link --port-a 4 --port-b 9
-  almagest-cli graph menu --node 12
-  almagest-cli graph apply-menu --node 12 --json '{"config":{"host":"127.0.0.1","port":8080}}'
-  almagest-cli graph click-menu-button --node 12 --block request --button send
+  almagest-cli graph menu --id 12
+  almagest-cli graph apply-menu --name server --json '{"config":{"host":"127.0.0.1","port":8080}}'
+  almagest-cli graph click-menu-button --name server --block request --button send
 `)
 }
