@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/asciimoth/almagest/bin/almagestd/args"
+	cmdrunner "github.com/asciimoth/almagest/bin/almagestd/command"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/configer/hujson"
 	tailscalehujson "github.com/tailscale/hujson"
@@ -120,8 +121,9 @@ func ParseConfig(cfg, prt []byte) (*Config, error) {
 // ProtectedConfig is intended for "protected" readonly options that should not
 // be editable via admin API.
 type ProtectedConfig struct {
-	Admin  AdminAPIConfig
-	System configer.Config `json:"-"`
+	Admin         AdminAPIConfig
+	CommandRunner cmdrunner.Config
+	System        configer.Config `json:"-"`
 }
 
 func (p *ProtectedConfig) Merge(args *args.Args) {

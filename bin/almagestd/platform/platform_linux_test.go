@@ -141,12 +141,11 @@ func TestReadLinuxSystemConfigCallbacks(t *testing.T) {
 		"Linux": {
 			"Callbacks": {
 				"DNSConfigured": {
-					"Command": ["notify-dns", "{{ .Server }}"],
-					"Env": {"ALMAGEST_CALLBACK": "dns"},
-					"UID": 1001,
-					"GID": 1002,
-					"Sync": true,
-					"Timeout": 250000000
+					"Command": "notify-dns",
+					"Slots": {
+						"callback": "{{ .Callback }}",
+						"server": "{{ .Server }}"
+					}
 				}
 			}
 		}
@@ -170,30 +169,17 @@ func TestReadLinuxSystemConfigCallbacks(t *testing.T) {
 		t.Fatalf("submitted requests = %d, want 1", len(runner.requests))
 	}
 	req := runner.requests[0]
-	if req.cmd.Name != linuxCallbackDNSConfigured {
-		t.Fatalf("command name = %q, want %q", req.cmd.Name, linuxCallbackDNSConfigured)
+	if req.Name != "notify-dns" {
+		t.Fatalf("request command name = %q, want notify-dns", req.Name)
 	}
-	if len(req.cmd.Command) != 2 || req.cmd.Command[1] != "{{ .Server }}" {
-		t.Fatalf("command argv = %#v, want configured template argv", req.cmd.Command)
+	if req.Label != linuxCallbackDNSConfigured {
+		t.Fatalf("request label = %q, want %q", req.Label, linuxCallbackDNSConfigured)
 	}
-	if got := req.cmd.Env["ALMAGEST_CALLBACK"]; got != "dns" {
-		t.Fatalf("command env ALMAGEST_CALLBACK = %q, want dns", got)
+	if got := req.Slots["callback"]; got != linuxCallbackDNSConfigured {
+		t.Fatalf("request slot callback = %q, want %q", got, linuxCallbackDNSConfigured)
 	}
-	if req.cmd.UID == nil || *req.cmd.UID != 1001 {
-		t.Fatalf("command UID = %v, want 1001", req.cmd.UID)
-	}
-	if req.cmd.GID == nil || *req.cmd.GID != 1002 {
-		t.Fatalf("command GID = %v, want 1002", req.cmd.GID)
-	}
-	if req.cmd.Timeout != 250000000 {
-		t.Fatalf("command timeout = %s, want 250ms", req.cmd.Timeout)
-	}
-	values, ok := req.values.(map[string]any)
-	if !ok {
-		t.Fatalf("values = %T, want map", req.values)
-	}
-	if got := values["Server"]; got != netip.MustParseAddr("192.0.2.53") {
-		t.Fatalf("template Server value = %v, want 192.0.2.53", got)
+	if got := req.Slots["server"]; got != "192.0.2.53" {
+		t.Fatalf("request slot server = %q, want 192.0.2.53", got)
 	}
 }
 
@@ -202,7 +188,7 @@ func TestReadLinuxSystemConfigCallbacksRequireRunner(t *testing.T) {
 		"Linux": {
 			"Callbacks": {
 				"DefaultTunClosed": {
-					"Command": ["notify-close"]
+					"Command": "notify-close"
 				}
 			}
 		}
@@ -222,14 +208,10 @@ type recordingDispatcher struct {
 }
 
 type recordedCommandRequest struct {
-	cmd    cmdrunner.Command
-	values any
+	cmdrunner.Request
 }
 
-func (d *recordingDispatcher) Submit(cmd cmdrunner.Command, values any) bool {
-	d.requests = append(d.requests, recordedCommandRequest{
-		cmd:    cmd,
-		values: values,
-	})
+func (d *recordingDispatcher) Submit(req cmdrunner.Request) bool {
+	d.requests = append(d.requests, recordedCommandRequest{Request: req})
 	return true
 }

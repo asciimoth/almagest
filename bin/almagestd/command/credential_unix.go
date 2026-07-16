@@ -8,7 +8,7 @@ import (
 	"syscall"
 )
 
-func setCommandCredential(cmd *exec.Cmd, cfg Command) error {
+func setCommandCredential(cmd *exec.Cmd, cfg resolvedCommand) error {
 	if cfg.UID == nil && cfg.GID == nil {
 		return nil
 	}

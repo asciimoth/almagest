@@ -58,7 +58,11 @@ func main() {
 	logProjectVersionStatus(admin.projectVersionStatus)
 	daemonLogger := logf.DaemonLogger()
 
-	commandRunner := cmdrunner.NewRunner(daemonLogger)
+	commandRunner, err := cmdrunner.NewRunner(daemonLogger, conf.Protected.CommandRunner)
+	if err != nil {
+		golog.Fatal(err)
+		return
+	}
 	commandRunner.Start(context.Background())
 	defer commandRunner.Close()
 

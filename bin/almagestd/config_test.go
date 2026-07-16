@@ -195,6 +195,57 @@ func TestProtectedConfigSystemView(t *testing.T) {
 	}
 }
 
+func TestProtectedConfigCommandRunner(t *testing.T) {
+	cfg, err := ParseConfig([]byte(`{}`), []byte(`{
+		"CommandRunner": {
+			"Commands": {
+				"notify-dns": {
+					"Command": ["/usr/local/bin/notify-dns", "${server}"],
+					"Env": {"ALMAGEST_CALLBACK": "dns"},
+					"UID": 1001,
+					"GID": 1002,
+					"Sync": true,
+					"Timeout": 250000000,
+					"Slots": {
+						"server": {
+							"MaxLength": 64,
+							"Pattern": "[0-9.]+",
+							"Required": true
+						}
+					}
+				}
+			}
+		}
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := cfg.Protected.CommandRunner.Commands["notify-dns"]
+	if len(cmd.Command) != 2 || cmd.Command[1] != "${server}" {
+		t.Fatalf("CommandRunner.Commands.notify-dns.Command = %#v, want configured argv", cmd.Command)
+	}
+	if got := cmd.Env["ALMAGEST_CALLBACK"]; got != "dns" {
+		t.Fatalf("CommandRunner env ALMAGEST_CALLBACK = %q, want dns", got)
+	}
+	if cmd.UID == nil || *cmd.UID != 1001 {
+		t.Fatalf("CommandRunner UID = %v, want 1001", cmd.UID)
+	}
+	if cmd.GID == nil || *cmd.GID != 1002 {
+		t.Fatalf("CommandRunner GID = %v, want 1002", cmd.GID)
+	}
+	if !cmd.Sync {
+		t.Fatal("CommandRunner Sync = false, want true")
+	}
+	if got := cmd.Timeout; got != 250*time.Millisecond {
+		t.Fatalf("CommandRunner Timeout = %s, want 250ms", got)
+	}
+	slot := cmd.Slots["server"]
+	if slot.MaxLength != 64 || slot.Pattern != "[0-9.]+" || !slot.Required {
+		t.Fatalf("CommandRunner slot = %#v, want configured limits", slot)
+	}
+}
+
 func TestProtectedConfigMergeWebFilterArgs(t *testing.T) {
 	cfg, err := ParseConfig([]byte(`{}`), []byte(`{
 		"Admin": {

@@ -8,6 +8,9 @@
     "Admin": {
       "$ref": "#/$defs/adminConfig"
     },
+    "CommandRunner": {
+      "$ref": "#/$defs/commandRunnerConfig"
+    },
     "System": {
       "$ref": "#/$defs/systemConfig"
     }
@@ -40,6 +43,105 @@
         },
         "UnixFilters": {
           "$ref": "#/$defs/adminPeerFiltersConfig"
+        }
+      },
+      "additionalProperties": false
+    },
+    "commandRunnerConfig": {
+      "type": "object",
+      "description": "Protected command-runner allowlist. The daemon reads this once at startup; runtime callers may only request one named entry with bounded slot values. Do not place executable argv in admin-editable config or owner-controlled API messages.",
+      "properties": {
+        "Commands": {
+          "type": "object",
+          "description": "Map of allowed command names to fixed executable definitions. Names are stable non-secret identifiers used by callbacks and logs.",
+          "propertyNames": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/allowedCommand"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "allowedCommand": {
+      "type": "object",
+      "description": "One allowed executable command. Command is an argv array with a fixed executable at element 0. Later argv elements may contain ${slot_name} placeholders. Slot values are validated before substitution; prefer direct executable argv over shells so slot values are never reinterpreted as shell syntax.",
+      "required": [
+        "Command"
+      ],
+      "properties": {
+        "Command": {
+          "type": "array",
+          "minItems": 1,
+          "description": "Executable argv array. Element 0 is the fixed executable path or name and must not contain slot placeholders.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "Env": {
+          "type": "object",
+          "description": "Environment variables added to the daemon process environment for the child command. Values are fixed by protected config and are not slot-rendered.",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "UID": {
+          "$ref": "#/$defs/uint32",
+          "description": "Optional UID to run the child command as."
+        },
+        "GID": {
+          "$ref": "#/$defs/uint32",
+          "description": "Optional GID to run the child command as."
+        },
+        "Sync": {
+          "type": "boolean",
+          "default": false,
+          "description": "When true, the command runner executes this command in order with other synchronous commands. When false, the command is spawned in a background goroutine."
+        },
+        "Timeout": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 10000000000,
+          "description": "Synchronous command timeout as a Go time.Duration encoded in nanoseconds. Zero uses the default 10s timeout. Background commands are not timed out by this field."
+        },
+        "Slots": {
+          "type": "object",
+          "description": "Declared runtime argument slots used by ${slot_name} placeholders. Every slot must have an explicit MaxLength and may also use Pattern for a full-value regexp check.",
+          "propertyNames": {
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/commandSlot"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "commandSlot": {
+      "type": "object",
+      "description": "Validation rules for one runtime command slot. MaxLength is mandatory and cannot exceed the daemon hard limit of 32768 bytes. Pattern is a Go regexp that must match the complete non-empty value. Required means the slot must be present and non-empty. AllowEmpty lets an optional slot be supplied as an empty string.",
+      "required": [
+        "MaxLength"
+      ],
+      "properties": {
+        "MaxLength": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 32768
+        },
+        "Pattern": {
+          "type": "string",
+          "description": "Optional Go regexp. The daemon accepts the slot only when this regexp matches the full value."
+        },
+        "Required": {
+          "type": "boolean",
+          "default": false
+        },
+        "AllowEmpty": {
+          "type": "boolean",
+          "default": false,
+          "description": "Only for optional slots. Required and AllowEmpty cannot both be true."
         }
       },
       "additionalProperties": false
@@ -358,87 +460,64 @@
     },
     "linuxCallbacksConfig": {
       "type": "object",
-      "description": "Optional command callbacks fired by the native sysnet-linux integration after successful lifecycle operations. Callback command names in daemon logs are predefined by the callback key.",
+      "description": "Optional command callbacks fired by the native sysnet-linux integration after successful lifecycle operations. Each callback references a CommandRunner.Commands allowlist entry and may render callback data into that command's declared slots. Callback labels in daemon logs are predefined by the callback key.",
       "properties": {
         "TunCreated": {
           "$ref": "#/$defs/callbackCommand",
-          "description": "Command submitted after a regular TUN is created. Templates receive Callback, Tun, TunName, TunMTU, and TunNative."
+          "description": "Command submitted after a regular TUN is created. Slot templates receive Callback, Tun, TunName, TunMTU, and TunNative."
         },
         "TunConfigured": {
           "$ref": "#/$defs/callbackCommand",
-          "description": "Command submitted after a regular TUN is configured. Templates receive Callback, Tun, TunName, TunMTU, TunNative, and Opts."
+          "description": "Command submitted after a regular TUN is configured. Slot templates receive Callback, Tun, TunName, TunMTU, TunNative, and Opts."
         },
         "DefaultTunCreated": {
           "$ref": "#/$defs/callbackCommand",
-          "description": "Command submitted after a DefaultTun is created. Templates receive Callback, Tun, DefaultTun, TunName, TunMTU, and TunNative."
+          "description": "Command submitted after a DefaultTun is created. Slot templates receive Callback, Tun, DefaultTun, TunName, TunMTU, and TunNative."
         },
         "DefaultTunConfigured": {
           "$ref": "#/$defs/callbackCommand",
-          "description": "Command submitted after a DefaultTun is configured. Templates receive Callback, Tun, DefaultTun, TunName, TunMTU, TunNative, and Opts."
+          "description": "Command submitted after a DefaultTun is configured. Slot templates receive Callback, Tun, DefaultTun, TunName, TunMTU, TunNative, and Opts."
         },
         "DefaultTunClosed": {
           "$ref": "#/$defs/callbackCommand",
-          "description": "Command submitted after a DefaultTun is closed. Templates receive Callback."
+          "description": "Command submitted after a DefaultTun is closed. Slot templates receive Callback."
         },
         "RoutingApplied": {
           "$ref": "#/$defs/callbackCommand",
-          "description": "Command submitted after sysnet-linux routing is applied. Templates receive Callback and Config."
+          "description": "Command submitted after sysnet-linux routing is applied. Slot templates receive Callback and Config."
         },
         "DNSConfigured": {
           "$ref": "#/$defs/callbackCommand",
-          "description": "Command submitted after sysnet-linux DNS is configured. Templates receive Callback and Server."
+          "description": "Command submitted after sysnet-linux DNS is configured. Slot templates receive Callback and Server."
         },
         "KillswitchUpdated": {
           "$ref": "#/$defs/callbackCommand",
-          "description": "Command submitted after sysnet-linux updates killswitch rules. Templates receive Callback and Rules."
+          "description": "Command submitted after sysnet-linux updates killswitch rules. Slot templates receive Callback and Rules."
         }
       },
       "additionalProperties": false
     },
     "callbackCommand": {
       "type": "object",
-      "description": "Executable callback command. Command is an argv array; argv elements may use Go text/template delimiters such as {{ .TunName }}. If a non-empty argv element renders to an empty string, it is omitted. Stdout and stderr are discarded; daemon logs record only command identity and process status.",
+      "description": "Reference to a protected command-runner allowlist entry. Callback config does not contain executable argv; it only chooses an allowed command name and maps callback data into declared slots.",
       "required": [
         "Command"
       ],
       "properties": {
-        "Name": {
-          "type": "string",
-          "description": "Non-secret display name for generic command logs. System.Linux.Callbacks ignores this field and uses predefined callback names."
-        },
         "Command": {
-          "type": "array",
-          "minItems": 1,
-          "description": "Executable argv array. Element 0 is the executable path or name.",
-          "items": {
-            "type": "string"
-          }
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+          "description": "Name of a CommandRunner.Commands allowlist entry."
         },
-        "Env": {
+        "Slots": {
           "type": "object",
-          "description": "Environment variables added to the daemon process environment for the child command.",
+          "description": "Optional slot templates rendered with Go text/template against callback data. The resulting values must satisfy the selected command's slot limits before exec.",
+          "propertyNames": {
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}$"
+          },
           "additionalProperties": {
             "type": "string"
           }
-        },
-        "UID": {
-          "$ref": "#/$defs/uint32",
-          "description": "Optional UID to run the child command as."
-        },
-        "GID": {
-          "$ref": "#/$defs/uint32",
-          "description": "Optional GID to run the child command as."
-        },
-        "Sync": {
-          "type": "boolean",
-          "default": false,
-          "description": "When true, the command runner executes this command in order with other synchronous commands. When false, the command is spawned in a background goroutine."
-        },
-        "Timeout": {
-          "type": "integer",
-          "minimum": 0,
-          "default": 10000000000,
-          "description": "Synchronous command timeout as a Go time.Duration encoded in nanoseconds. Zero uses the default 10s timeout. Background commands are not timed out by this field."
         }
       },
       "additionalProperties": false

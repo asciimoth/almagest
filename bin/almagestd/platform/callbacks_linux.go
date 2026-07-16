@@ -4,6 +4,7 @@ package platform
 
 import (
 	"net/netip"
+	"strings"
 
 	cmdrunner "github.com/asciimoth/almagest/bin/almagestd/command"
 	"github.com/asciimoth/gonnect/sysnet"
@@ -28,30 +29,44 @@ const (
 // linuxCallbacksConfig maps protected System.Linux.Callbacks entries to the
 // sysnet-linux lifecycle callback names.
 type linuxCallbacksConfig struct {
-	TunCreated           cmdrunner.Command
-	TunConfigured        cmdrunner.Command
-	DefaultTunCreated    cmdrunner.Command
-	DefaultTunConfigured cmdrunner.Command
-	DefaultTunClosed     cmdrunner.Command
-	RoutingApplied       cmdrunner.Command
-	DNSConfigured        cmdrunner.Command
-	KillswitchUpdated    cmdrunner.Command
+	TunCreated           linuxCallbackCommand
+	TunConfigured        linuxCallbackCommand
+	DefaultTunCreated    linuxCallbackCommand
+	DefaultTunConfigured linuxCallbackCommand
+	DefaultTunClosed     linuxCallbackCommand
+	RoutingApplied       linuxCallbackCommand
+	DNSConfigured        linuxCallbackCommand
+	KillswitchUpdated    linuxCallbackCommand
+}
+
+// linuxCallbackCommand connects a sysnet-linux callback to one command-runner
+// allowlist entry. Command must name a protected CommandRunner.Commands entry;
+// Slots are protected templates that derive bounded runtime slot values from
+// callback data. The callback config never contains executable argv, which keeps
+// future admin-facing callback controls from becoming arbitrary command exec.
+type linuxCallbackCommand struct {
+	Command string            `json:"Command"`
+	Slots   map[string]string `json:"Slots,omitempty"`
+}
+
+func (c linuxCallbackCommand) configured() bool {
+	return strings.TrimSpace(c.Command) != ""
 }
 
 func (c linuxCallbacksConfig) configured() bool {
-	return c.TunCreated.Configured() ||
-		c.TunConfigured.Configured() ||
-		c.DefaultTunCreated.Configured() ||
-		c.DefaultTunConfigured.Configured() ||
-		c.DefaultTunClosed.Configured() ||
-		c.RoutingApplied.Configured() ||
-		c.DNSConfigured.Configured() ||
-		c.KillswitchUpdated.Configured()
+	return c.TunCreated.configured() ||
+		c.TunConfigured.configured() ||
+		c.DefaultTunCreated.configured() ||
+		c.DefaultTunConfigured.configured() ||
+		c.DefaultTunClosed.configured() ||
+		c.RoutingApplied.configured() ||
+		c.DNSConfigured.configured() ||
+		c.KillswitchUpdated.configured()
 }
 
 func (c linuxCallbacksConfig) sysnetCallbacks(runner cmdrunner.Dispatcher) sysnetlinux.Callbacks {
 	var callbacks sysnetlinux.Callbacks
-	if c.TunCreated.Configured() {
+	if c.TunCreated.configured() {
 		callbacks.TunCreated = func(t gtun.Tun) {
 			submitLinuxCallbackCommand(
 				runner,
@@ -61,7 +76,7 @@ func (c linuxCallbacksConfig) sysnetCallbacks(runner cmdrunner.Dispatcher) sysne
 			)
 		}
 	}
-	if c.TunConfigured.Configured() {
+	if c.TunConfigured.configured() {
 		callbacks.TunConfigured = func(t gtun.Tun, opts sysnet.TunOpts) {
 			values := tunCallbackValues(linuxCallbackTunConfigured, t)
 			values["Opts"] = opts
@@ -73,7 +88,7 @@ func (c linuxCallbacksConfig) sysnetCallbacks(runner cmdrunner.Dispatcher) sysne
 			)
 		}
 	}
-	if c.DefaultTunCreated.Configured() {
+	if c.DefaultTunCreated.configured() {
 		callbacks.DefaultTunCreated = func(t sysnet.DefaultTun) {
 			values := tunCallbackValues(linuxCallbackDefaultTunCreated, t)
 			values["DefaultTun"] = t
@@ -85,7 +100,7 @@ func (c linuxCallbacksConfig) sysnetCallbacks(runner cmdrunner.Dispatcher) sysne
 			)
 		}
 	}
-	if c.DefaultTunConfigured.Configured() {
+	if c.DefaultTunConfigured.configured() {
 		callbacks.DefaultTunConfigured = func(t sysnet.DefaultTun, opts sysnet.DefaultTunOpts) {
 			values := tunCallbackValues(linuxCallbackDefaultTunConfigured, t)
 			values["DefaultTun"] = t
@@ -98,7 +113,7 @@ func (c linuxCallbacksConfig) sysnetCallbacks(runner cmdrunner.Dispatcher) sysne
 			)
 		}
 	}
-	if c.DefaultTunClosed.Configured() {
+	if c.DefaultTunClosed.configured() {
 		callbacks.DefaultTunClosed = func() {
 			submitLinuxCallbackCommand(
 				runner,
@@ -108,7 +123,7 @@ func (c linuxCallbacksConfig) sysnetCallbacks(runner cmdrunner.Dispatcher) sysne
 			)
 		}
 	}
-	if c.RoutingApplied.Configured() {
+	if c.RoutingApplied.configured() {
 		callbacks.RoutingApplied = func(config sysnetlinuxrouting.Config) {
 			submitLinuxCallbackCommand(
 				runner,
@@ -121,7 +136,7 @@ func (c linuxCallbacksConfig) sysnetCallbacks(runner cmdrunner.Dispatcher) sysne
 			)
 		}
 	}
-	if c.DNSConfigured.Configured() {
+	if c.DNSConfigured.configured() {
 		callbacks.DNSConfigured = func(server netip.Addr) {
 			submitLinuxCallbackCommand(
 				runner,
@@ -134,7 +149,7 @@ func (c linuxCallbacksConfig) sysnetCallbacks(runner cmdrunner.Dispatcher) sysne
 			)
 		}
 	}
-	if c.KillswitchUpdated.Configured() {
+	if c.KillswitchUpdated.configured() {
 		callbacks.KillswitchUpdated = func(rules sysnetlinuxkillswitch.AllowRules) {
 			submitLinuxCallbackCommand(
 				runner,
@@ -174,15 +189,24 @@ func tunCallbackValues(callback string, t gtun.Tun) map[string]any {
 func submitLinuxCallbackCommand(
 	runner cmdrunner.Dispatcher,
 	name string,
-	config cmdrunner.Command,
+	config linuxCallbackCommand,
 	values map[string]any,
 ) {
 	if runner == nil {
 		golog.Warnf("sysnet-linux callback command %s dropped: command runner is unavailable", name)
 		return
 	}
-	config.Name = name
-	if !runner.Submit(config, values) {
+	slots, err := cmdrunner.RenderSlotTemplates(config.Slots, values)
+	if err != nil {
+		golog.Warnf("sysnet-linux callback command %s dropped: %v", name, err)
+		return
+	}
+	req := cmdrunner.Request{
+		Name:  config.Command,
+		Label: name,
+		Slots: slots,
+	}
+	if !runner.Submit(req) {
 		golog.Warnf("sysnet-linux callback command %s dropped: command runner is stopped", name)
 	}
 }
