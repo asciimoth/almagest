@@ -41,6 +41,10 @@ var DefaultColorMap = map[string]TypePalette{
 		TypeColor: "#8a5cf6",
 		TextColor: "#ffffff",
 	},
+	TypeDNS: {
+		TypeColor: "#1f7a8c",
+		TextColor: "#ffffff",
+	},
 	TypeTun: {
 		TypeColor: "#c47a3c",
 		TextColor: "#ffffff",
