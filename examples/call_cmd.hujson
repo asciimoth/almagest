@@ -1,0 +1,20 @@
+{
+	"nodes": {
+		"Trigger Command": {
+			"Class": "pasta/Trigger",
+			"Pos":   "{\"x\":108,\"y\":76}",
+			"Links": ["Trigger -> [Run Local Echo] Trigger"]
+		},
+		"Command Message": {
+			"Class": "pasta/StringConstant",
+			"Pos":   "{\"x\":93,\"y\":216}",
+			"Links": ["output -> [Run Local Echo] slot message value"],
+			"value": "hello from almagestd command node"
+		},
+		"Run Local Echo": {
+			"Class":   "almagestd/Command",
+			"Pos":     "{\"x\":484,\"y\":132}",
+			"command": "local-echo"
+		}
+	}
+}
