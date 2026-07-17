@@ -56,8 +56,8 @@ func TestStaticDNSProviderRecordTypes(t *testing.T) {
 func TestStaticDNSMultipleConsumers(t *testing.T) {
 	e := newDNSE2E(t)
 	static := e.AddNode(NodeTypeStaticDNS, "static")
-	clientA := e.AddNode(NodeTypeDNSClient, "client-a")
-	clientB := e.AddNode(NodeTypeDNSClient, "client-b")
+	clientA := e.AddNode(NodeTypeDNSQuery, "client-a")
+	clientB := e.AddNode(NodeTypeDNSQuery, "client-b")
 	e.SubscribeMenus(static, clientA, clientB)
 	e.applyStaticDNSRecords(static, "example.test A 10.10.0.1")
 
@@ -75,7 +75,7 @@ func TestStaticDNSFallbackChain(t *testing.T) {
 	root := e.AddNode(NodeTypeStaticDNS, "root")
 	middle := e.AddNode(NodeTypeStaticDNS, "middle")
 	tail := e.AddNode(NodeTypeStaticDNS, "tail")
-	client := e.AddNode(NodeTypeDNSClient, "client")
+	client := e.AddNode(NodeTypeDNSQuery, "client")
 	e.SubscribeMenus(root, middle, tail, client)
 	e.applyStaticDNSRecords(root, "root.test A 10.20.0.1")
 	e.applyStaticDNSRecords(tail, "tail.test A 10.20.0.3")
@@ -84,11 +84,11 @@ func TestStaticDNSFallbackChain(t *testing.T) {
 	e.MustAddTypedLinkByPortName(TypeDNS, middle, "left", "DNS", root, "right", "Fallback")
 	e.MustAddTypedLinkByPortName(TypeDNS, root, "left", "DNS", client, "right", "DNS")
 
-	e.setDNSClientRequest(client, "tail.test.", "A")
+	e.setDNSQueryRequest(client, "tail.test.", "A")
 	e.sendDNSRequest(client)
 	e.waitDNSResponse(client, "NOERROR", "10.20.0.3")
 
-	e.setDNSClientRequest(client, "root.test.", "A")
+	e.setDNSQueryRequest(client, "root.test.", "A")
 	e.sendDNSRequest(client)
 	e.waitDNSResponse(client, "NOERROR", "10.20.0.1")
 }
@@ -96,7 +96,7 @@ func TestStaticDNSFallbackChain(t *testing.T) {
 func TestDNSLinksAttachDetachReattach(t *testing.T) {
 	e := newDNSE2E(t)
 	static := e.AddNode(NodeTypeStaticDNS, "static")
-	client := e.AddNode(NodeTypeDNSClient, "client")
+	client := e.AddNode(NodeTypeDNSQuery, "client")
 	e.SubscribeMenus(static, client)
 	e.applyStaticDNSRecords(static, "example.test A 10.30.0.1")
 
@@ -118,10 +118,10 @@ func TestDNSLinksAttachDetachReattach(t *testing.T) {
 func TestStaticDNSCopyPastePreservesConfigAndLinks(t *testing.T) {
 	e := newDNSE2E(t)
 	static := e.AddNode(NodeTypeStaticDNS, "static")
-	client := e.AddNode(NodeTypeDNSClient, "client")
+	client := e.AddNode(NodeTypeDNSQuery, "client")
 	e.SubscribeMenus(static, client)
 	e.applyStaticDNSRecords(static, "copy.test A 10.40.0.1")
-	e.setDNSClientRequest(client, "copy.test.", "A")
+	e.setDNSQueryRequest(client, "copy.test.", "A")
 	e.MustAddTypedLinkByPortName(TypeDNS, static, "left", "DNS", client, "right", "DNS")
 	e.sendDNSRequest(client)
 	e.waitDNSResponse(client, "NOERROR", "10.40.0.1")
@@ -134,7 +134,7 @@ func TestStaticDNSCopyPastePreservesConfigAndLinks(t *testing.T) {
 	if len(pasted) != 2 {
 		t.Fatalf("Paste returned %d nodes (%v), want 2", len(pasted), pasted)
 	}
-	pastedClient := pastedNodeByClass(t, e.Engine, pasted, NodeTypeDNSClient)
+	pastedClient := pastedNodeByClass(t, e.Engine, pasted, NodeTypeDNSQuery)
 	e.SubscribeMenus(pastedClient)
 	e.sendDNSRequest(pastedClient)
 	e.waitDNSResponse(pastedClient, "NOERROR", "10.40.0.1")
@@ -143,10 +143,10 @@ func TestStaticDNSCopyPastePreservesConfigAndLinks(t *testing.T) {
 func TestStaticDNSSaveRestorePreservesConfigAndLinks(t *testing.T) {
 	e := newDNSE2E(t)
 	static := e.AddNode(NodeTypeStaticDNS, "static")
-	client := e.AddNode(NodeTypeDNSClient, "client")
+	client := e.AddNode(NodeTypeDNSQuery, "client")
 	e.SubscribeMenus(static, client)
 	e.applyStaticDNSRecords(static, "restore.test A 10.50.0.1")
-	e.setDNSClientRequest(client, "restore.test.", "A")
+	e.setDNSQueryRequest(client, "restore.test.", "A")
 	e.MustAddTypedLinkByPortName(TypeDNS, static, "left", "DNS", client, "right", "DNS")
 
 	cfg := configer.NewMemory(nil)
@@ -237,7 +237,7 @@ func (e *dnsE2E) waitStaticDNSField(node uint64, field, want string) {
 	}, "StaticDns field %s = %q", field, want)
 }
 
-func (e *dnsE2E) setDNSClientRequest(client uint64, name, qtype string) {
+func (e *dnsE2E) setDNSQueryRequest(client uint64, name, qtype string) {
 	e.T.Helper()
 	e.Engine.SendNodeFormularMsg(E2EWorkspace, client, formular.FieldUpdateMessage{
 		MessageBase: FormMessageBase(formular.MessageFieldUpdate, client),
@@ -249,16 +249,16 @@ func (e *dnsE2E) setDNSClientRequest(client uint64, name, qtype string) {
 		Field:       formular.FieldRef{BlockID: "request", FieldID: "type"},
 		Value:       qtype,
 	})
-	e.waitDNSClientRequestField(client, "name", absDNSName(name))
-	e.waitDNSClientRequestField(client, "type", strings.ToUpper(qtype))
+	e.waitDNSQueryRequestField(client, "name", absDNSName(name))
+	e.waitDNSQueryRequestField(client, "type", strings.ToUpper(qtype))
 }
 
-func (e *dnsE2E) waitDNSClientRequestField(client uint64, field, want string) {
+func (e *dnsE2E) waitDNSQueryRequestField(client uint64, field, want string) {
 	e.T.Helper()
 	Eventually(e.T, func() bool {
 		item, ok := e.MenuItem(client, "request", field)
 		return ok && item.Field != nil && item.Value == want
-	}, "DnsClient field %s = %q", field, want)
+	}, "DnsQuery field %s = %q", field, want)
 }
 
 func (e *dnsE2E) sendDNSRequest(client uint64) {
@@ -273,10 +273,10 @@ func (e *dnsE2E) sendDNSRequest(client uint64) {
 func (e *dnsE2E) waitDNSResponse(client uint64, status string, wantParts ...string) {
 	e.T.Helper()
 	Eventually(e.T, func() bool {
-		if e.dnsClientStatus(client) != "Status: "+status || e.dnsClientResultField(client, "error") != "" {
+		if e.dnsQueryStatus(client) != "Status: "+status || e.dnsQueryResultField(client, "error") != "" {
 			return false
 		}
-		resp := e.dnsClientResultField(client, "response")
+		resp := e.dnsQueryResultField(client, "response")
 		for _, want := range wantParts {
 			if !strings.Contains(resp, want) {
 				return false
@@ -290,8 +290,8 @@ func (e *dnsE2E) waitDNSResponse(client uint64, status string, wantParts ...stri
 func (e *dnsE2E) waitDNSFailure(client uint64, wantErrPart string) {
 	e.T.Helper()
 	Eventually(e.T, func() bool {
-		return e.dnsClientStatus(client) == "Status: fail" &&
-			strings.Contains(e.dnsClientResultField(client, "error"), wantErrPart)
+		return e.dnsQueryStatus(client) == "Status: fail" &&
+			strings.Contains(e.dnsQueryResultField(client, "error"), wantErrPart)
 	}, "DNS failure containing %q", wantErrPart)
 	e.AssertNodeLabel(client, "fail")
 }
@@ -299,13 +299,13 @@ func (e *dnsE2E) waitDNSFailure(client uint64, wantErrPart string) {
 func (e *dnsE2E) waitDNSReady(client uint64) {
 	e.T.Helper()
 	Eventually(e.T, func() bool {
-		return e.dnsClientStatus(client) == "Status: ready" &&
-			e.dnsClientResultField(client, "error") == "" &&
-			e.dnsClientResultField(client, "response") == ""
-	}, "DNS client ready")
+		return e.dnsQueryStatus(client) == "Status: ready" &&
+			e.dnsQueryResultField(client, "error") == "" &&
+			e.dnsQueryResultField(client, "response") == ""
+	}, "DNS query ready")
 }
 
-func (e *dnsE2E) dnsClientStatus(client uint64) string {
+func (e *dnsE2E) dnsQueryStatus(client uint64) string {
 	item, ok := e.MenuItem(client, "result", "status")
 	if !ok {
 		return ""
@@ -313,7 +313,7 @@ func (e *dnsE2E) dnsClientStatus(client uint64) string {
 	return item.Text
 }
 
-func (e *dnsE2E) dnsClientResultField(client uint64, field string) string {
+func (e *dnsE2E) dnsQueryResultField(client uint64, field string) string {
 	item, ok := e.MenuItem(client, "result", field)
 	if !ok || item.Field == nil {
 		return ""

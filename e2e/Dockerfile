@@ -18,11 +18,13 @@ RUN apt-get update \
 		bash \
 		ca-certificates \
 		curl \
+		dnsmasq \
 		iproute2 \
 		iputils-ping \
 		jq \
 		netcat-openbsd \
 		nftables \
+		openssl \
 		procps \
 		python3 \
 		socat \

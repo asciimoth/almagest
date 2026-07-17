@@ -1,0 +1,52 @@
+{
+	"Logs": {
+		"Cache": {
+			"Debug": 1024,
+			"Info": 128,
+			"Warn": 128,
+			"Error": 128,
+			"Fatal": 32,
+		},
+	},
+	"nodes": {
+		"OutNetwork": {
+			"Class": "almagest/OutNetwork",
+			"Pos": "{\"x\":720,\"y\":420}",
+		},
+		"Bootstrap DNS": {
+			"Class": "almagest/StaticDns",
+			"Pos": "{\"x\":720,\"y\":620}",
+			"records": "dot-upstream.e2e.test A 127.0.0.1",
+			"ttl": 60,
+		},
+		"DNS UDP Client": {
+			"Class": "almagest/DnsClient",
+			"Pos": "{\"x\":480,\"y\":360}",
+			"Links": ["Network -> [OutNetwork] Network"],
+			"servers": ["udp://127.0.0.1:5353"],
+		},
+		"DNS DoT Client": {
+			"Class": "almagest/DnsClient",
+			"Pos": "{\"x\":480,\"y\":580}",
+			"Links": [
+				"Network -> [OutNetwork] Network",
+				"Bootstrap DNS -> [Bootstrap DNS] DNS",
+			],
+			"servers": ["dot://dot-upstream.e2e.test:5853"],
+		},
+		"UDP Query": {
+			"Class": "almagest/DnsQuery",
+			"Pos": "{\"x\":240,\"y\":360}",
+			"Links": ["DNS -> [DNS UDP Client] DNS"],
+			"name": "regular.e2e.test.",
+			"type": "A",
+		},
+		"DoT Query": {
+			"Class": "almagest/DnsQuery",
+			"Pos": "{\"x\":240,\"y\":580}",
+			"Links": ["DNS -> [DNS DoT Client] DNS"],
+			"name": "dot.e2e.test.",
+			"type": "A",
+		},
+	},
+}

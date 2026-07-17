@@ -122,7 +122,7 @@ func TestDns2NetworkCopyPastePreservesLinks(t *testing.T) {
 	if len(pasted) != 5 {
 		t.Fatalf("Paste returned %d nodes (%v), want 5", len(pasted), pasted)
 	}
-	pastedClient := pastedNodeByClass(t, e.Engine, pasted, NodeTypeDNSClient)
+	pastedClient := pastedNodeByClass(t, e.Engine, pasted, NodeTypeDNSQuery)
 	e.SubscribeMenus(pastedClient)
 	e.sendDNSRequest(pastedClient)
 	e.waitDNSResponse(pastedClient, "NOERROR", "10.60.0.1")
@@ -332,10 +332,10 @@ func (e *dnsE2E) setupDns2NetworkInjectGraph(host, ip, prefix string) dns2Networ
 		adapter:    e.AddNode(NodeTypeDns2Network, prefix+"-adapter"),
 		clientName: prefix + "-client",
 	}
-	graph.client = e.AddNode(NodeTypeDNSClient, graph.clientName)
+	graph.client = e.AddNode(NodeTypeDNSQuery, graph.clientName)
 	e.SubscribeMenus(graph.staticDNS, graph.client)
 	e.applyStaticDNSRecords(graph.staticDNS, fmt.Sprintf("%s A %s", host, ip))
-	e.setDNSClientRequest(graph.client, host+".", "A")
+	e.setDNSQueryRequest(graph.client, host+".", "A")
 	e.MustAddTypedLinkByPortName(TypeNetwork, graph.mock, "left", "Network", graph.inject, "right", "Network")
 	e.MustAddTypedLinkByPortName(TypeDNS, graph.staticDNS, "left", "DNS", graph.inject, "right", "DNS")
 	e.MustAddTypedLinkByPortName(TypeNetwork, graph.inject, "left", "Network", graph.adapter, "right", "Network")

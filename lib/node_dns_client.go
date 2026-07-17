@@ -1,17 +1,16 @@
 package almagest
 
 import (
-	"context"
-	"encoding/binary"
-	"encoding/hex"
+	_ "embed"
+	"errors"
 	"fmt"
-	"net"
-	"strconv"
+	"net/url"
+	"slices"
 	"strings"
-	"time"
 
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
+	"github.com/asciimoth/gonnect"
 	"github.com/asciimoth/gonnect/dns"
 	"github.com/asciimoth/pasta/pasta"
 	"github.com/asciimoth/pasta/pasta/std"
@@ -24,175 +23,247 @@ func init() {
 }
 
 const (
-	// NodeTypeDNSClient is the node class name for an interactive DNS client.
+	// NodeTypeDNSClient is the node class name for a DNS transport
+	// client backed by gonnect/dns.Client.
 	NodeTypeDNSClient = "almagest/DnsClient"
 
-	DefaultDNSClientName = "example.test."
-	DefaultDNSClientType = "A"
+	dnsClientConfigBlockID = "config"
+	dnsClientServersField  = "servers"
+	dnsClientServerField   = "url"
+)
 
-	dnsClientStatusReady   = "ready"
-	dnsClientStatusRunning = "running..."
-	dnsClientStatusFail    = "fail"
+var (
+	//go:embed node_dns_client.md
+	dnsClientClassLongDescription string
+
+	dnsClientNewClient = func(dial gonnect.Dial, bootstrap dns.Interface, spawner gonnect.Spawner, servers ...string) dns.Interface {
+		return dns.NewClient(dial, bootstrap, spawner, servers...)
+	}
 )
 
 type dnsClientClass struct {
 	engine *engine
 }
 
-func (dnsClientClass) ClassName() string        { return NodeTypeDNSClient }
-func (dnsClientClass) ShortDescription() string { return "DNS client" }
+func (dnsClientClass) ClassName() string { return NodeTypeDNSClient }
+func (dnsClientClass) ShortDescription() string {
+	return "DNS client"
+}
 func (dnsClientClass) LongDescription() string {
-	return "Runs DNS requests over a received almagest/dns interface in a background worker."
+	return dnsClientClassLongDescription
 }
 func (dnsClientClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: TypeDNS, InitialPorts: []pasta.Port{
-		DNSPort("right", "DNS"),
+		DNSPort("left", "DNS"),
+		NetworkPort("right", "Network"),
+		DNSPort("right", "Bootstrap DNS"),
 	}}
 }
 func (c dnsClientClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
-	return &dnsClientNode{
-		NodeBase:   NodeBase{engine: c.engine},
-		name:       configer.String(cfg, configer.Path{"name"}, DefaultDNSClientName),
-		qtype:      configer.String(cfg, configer.Path{"type"}, DefaultDNSClientType),
-		statusText: dnsClientStatusReady,
-	}, nil
+	config := defaultDNSClientConfig()
+	config.read(cfg)
+	return &dnsClientNode{NodeBase: NodeBase{engine: c.engine}, config: config}, nil
 }
 
+type dnsClientConfig struct {
+	servers []string
+}
+
+func defaultDNSClientConfig() dnsClientConfig {
+	return dnsClientConfig{}
+}
+
+func (c *dnsClientConfig) read(cfg configer.Config) {
+	if cfg == nil {
+		return
+	}
+	if servers, ok := readDNSClientServersConfig(cfg); ok {
+		c.servers = servers
+	}
+	c.normalize()
+}
+
+func (c *dnsClientConfig) normalize() {
+	c.servers = normalizeDNSClientServers(c.servers)
+}
+
+func (c dnsClientConfig) valid() error {
+	for i, server := range c.servers {
+		if err := validateDNSClientServerURL(server); err != nil {
+			return fmt.Errorf("server %d: %w", i+1, err)
+		}
+	}
+	return nil
+}
+
+func (c dnsClientConfig) copy() dnsClientConfig {
+	return dnsClientConfig{servers: slices.Clone(c.servers)}
+}
+
+// dnsClientNode owns one gonnect/dns.Client for the current Network,
+// optional bootstrap DNS, and normalized server list. Every material input or
+// config change closes emitted wrappers and the old client before publishing
+// detached wrappers around the new client to existing consumers.
 type dnsClientNode struct {
 	NodeBase
 
-	dnsp uint64
+	out       uint64
+	networkIn uint64
+	bootstrap uint64
 
-	resolver dns.Interface
-	name     string
-	qtype    string
+	networkLink   uint64
+	bootstrapLink uint64
 
-	requestID  uint64
-	pending    bool
-	statusText string
-	resp       string
-	errText    string
+	config dnsClientConfig
 
-	jobs chan dnsClientRequest
-	stop chan struct{}
+	network      NetworkCloser
+	bootstrapDNS dns.Interface
+	client       dns.Interface
+	outputs      DNSOutputCache
+
+	formError string
 }
 
 func (n *dnsClientNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
 	n.InitBaseNode(w, logger, id)
-	n.name = normalizeDNSClientName(n.name)
-	n.qtype = normalizeDNSClientType(n.qtype)
-	n.dnsp = restoredRight(restored, 0)
+	n.out = restoredLeft(restored, 0)
+	n.networkIn = restoredRight(restored, 0)
+	n.bootstrap = restoredRight(restored, 1)
 	if err := n.SetPrimary(TypeDNS); err != nil {
 		return err
 	}
+	if err := n.config.valid(); err != nil {
+		n.formError = err.Error()
+	}
 	_ = n.updateLabel()
-	n.startWorker()
 	n.sendMenuSnapshot()
 	return nil
 }
 
 func (n *dnsClientNode) OnReady() error {
-	n.RequestPort(n.dnsp)
+	n.RequestPort(n.networkIn)
+	n.RequestPort(n.bootstrap)
+	n.sendAll()
 	return nil
 }
 
 func (n *dnsClientNode) OnStop() {
-	n.stopWorker()
+	n.outputs.CloseAll()
+	closeDNS(n.client)
+	n.client = nil
+	closeDNS(n.bootstrapDNS)
+	n.bootstrapDNS = nil
+	_ = closeNetwork(n.network)
+	n.network = nil
+	n.networkLink = 0
+	n.bootstrapLink = 0
 }
 
 func (n *dnsClientNode) PreLinkAdd(port uint64, linkType, portDirection string) error {
-	if port != n.dnsp || portDirection != "right" || linkType != TypeDNS {
+	switch port {
+	case n.out:
+		if portDirection != "left" || linkType != TypeDNS {
+			return pasta.LinkTypeErr(linkType)
+		}
+	case n.networkIn:
+		if portDirection != "right" || linkType != TypeNetwork {
+			return pasta.LinkTypeErr(linkType)
+		}
+		if n.PortHasLinks(port) {
+			return pasta.ErrLinkDup
+		}
+	case n.bootstrap:
+		if portDirection != "right" || linkType != TypeDNS {
+			return pasta.LinkTypeErr(linkType)
+		}
+		if n.PortHasLinks(port) {
+			return pasta.ErrLinkDup
+		}
+	default:
 		return pasta.LinkTypeErr(linkType)
-	}
-	if n.PortHasLinks(port) {
-		return pasta.ErrLinkDup
 	}
 	return nil
 }
 
 func (n *dnsClientNode) OnLinkAdd(link, port uint64, linkType, portDirection string) error {
-	if port == n.dnsp && portDirection == "right" && linkType == TypeDNS {
+	switch {
+	case port == n.out && portDirection == "left" && linkType == TypeDNS:
+		n.sendToLink(link)
+	case port == n.networkIn && portDirection == "right" && linkType == TypeNetwork:
+		n.networkLink = link
+		std.RequestLocked(n.w, n.id, link)
+	case port == n.bootstrap && portDirection == "right" && linkType == TypeDNS:
+		n.bootstrapLink = link
 		std.RequestLocked(n.w, n.id, link)
 	}
-	return nil
+	return n.updateLabel()
 }
 
-func (n *dnsClientNode) OnLinkRemoved(_ uint64, port uint64, linkType, portDirection string) error {
-	if port == n.dnsp && portDirection == "right" && linkType == TypeDNS {
-		n.resolver = nil
-		n.resetStatusReady()
+func (n *dnsClientNode) OnLinkRemoved(link, port uint64, linkType, portDirection string) error {
+	switch {
+	case port == n.out && portDirection == "left" && linkType == TypeDNS:
+		n.outputs.Close(link)
+	case port == n.networkIn && portDirection == "right" && linkType == TypeNetwork && link == n.networkLink:
+		n.outputs.CloseAll()
+		closeDNS(n.client)
+		n.client = nil
+		_ = closeNetwork(n.network)
+		n.network = nil
+		n.networkLink = 0
+	case port == n.bootstrap && portDirection == "right" && linkType == TypeDNS && link == n.bootstrapLink:
+		closeDNS(n.bootstrapDNS)
+		n.bootstrapDNS = nil
+		n.bootstrapLink = 0
+		n.rebuildClient()
 	}
-	return nil
+	return n.updateLabel()
 }
 
 func (n *dnsClientNode) OnEvent(event pasta.Event, linkType string, _ []string, receiverPortDirection string) error {
-	if event.ReceiverPort != n.dnsp || receiverPortDirection != "right" || linkType != TypeDNS {
+	if event.ReceiverPort == n.out && receiverPortDirection == "left" && linkType == TypeDNS && std.IsRequest(event.Payload) {
+		n.refreshLink(event.Link)
 		return nil
 	}
-	next, changed := AcceptDNSPayload(n.w, n.id, event, n.resolver)
-	if !changed {
-		return nil
+	if event.ReceiverPort == n.networkIn && receiverPortDirection == "right" && linkType == TypeNetwork {
+		if event.Link != n.networkLink {
+			return nil
+		}
+		next, changed := AcceptNetworkPayload(n.w, n.id, event, n.network)
+		if !changed {
+			return nil
+		}
+		n.network = next
+		n.rebuildClient()
+		return n.updateLabel()
 	}
-	n.resolver = next
-	n.resetStatusReady()
-	return nil
-}
-
-func (n *dnsClientNode) OnInbox(message pasta.InboxMessage) error {
-	result, ok := message.Payload.(dnsClientResult)
-	if !ok || result.id != n.requestID {
-		return nil
+	if event.ReceiverPort == n.bootstrap && receiverPortDirection == "right" && linkType == TypeDNS {
+		if event.Link != n.bootstrapLink {
+			return nil
+		}
+		next, changed := AcceptDNSPayload(n.w, n.id, event, n.bootstrapDNS)
+		if !changed {
+			return nil
+		}
+		n.bootstrapDNS = next
+		n.rebuildClient()
+		return n.updateLabel()
 	}
-	n.pending = false
-	n.resp = result.body
-	n.errText = result.err
-	if result.err != "" {
-		n.statusText = dnsClientStatusFail
-	} else if result.status != "" {
-		n.statusText = result.status
-	} else {
-		n.statusText = dnsClientStatusReady
-	}
-	_ = n.updateLabel()
-	n.sendRequestBlock()
-	n.sendResultBlock()
 	return nil
 }
 
 func (n *dnsClientNode) OnFormularMsg(message any) error {
 	switch msg := message.(type) {
-	case formular.FieldUpdateMessage:
-		return n.onFieldUpdate(msg)
-	case formular.ButtonPressMessage:
-		return n.onButtonPress(msg)
-	default:
-		return nil
+	case formular.FormApplyMessage:
+		if msg.MenuID != pasta.NodeMenuID(n.id) || msg.BlockID != dnsClientConfigBlockID {
+			return nil
+		}
+		return n.applyConfigForm(msg.Values)
+	case formular.FieldValidateMessage:
+		if msg.MenuID != pasta.NodeMenuID(n.id) || msg.Field.BlockID != dnsClientConfigBlockID {
+			return nil
+		}
+		n.sendConfigFieldStatus(msg)
 	}
-}
-
-func (n *dnsClientNode) onFieldUpdate(msg formular.FieldUpdateMessage) error {
-	if msg.MenuID != pasta.NodeMenuID(n.id) || msg.Field.BlockID != "request" || len(msg.Field.ElementPath) > 0 {
-		return nil
-	}
-	value, ok := std.StringFromPayload(msg.Value)
-	if !ok {
-		n.sendRequestBlock()
-		return nil
-	}
-	switch msg.Field.FieldID {
-	case "name":
-		n.setName(value)
-	case "type":
-		n.setType(value)
-	}
-	return nil
-}
-
-func (n *dnsClientNode) onButtonPress(msg formular.ButtonPressMessage) error {
-	if msg.MenuID != pasta.NodeMenuID(n.id) || msg.BlockID != "request" || msg.ButtonID != "send" {
-		return nil
-	}
-	n.sendRequest()
 	return nil
 }
 
@@ -201,319 +272,254 @@ func (n *dnsClientNode) OnSave(cfg configer.Config) error {
 		return err
 	}
 	return configer.SetMap(cfg, map[string]any{
-		"name": n.name,
-		"type": n.qtype,
+		"servers": slices.Clone(n.config.servers),
 	})
 }
 
+func (n *dnsClientNode) applyConfigForm(values map[string]any) error {
+	next := n.config.copy()
+	if value, ok := dnsClientServersFromAny(values[dnsClientServersField]); ok {
+		next.servers = value
+	}
+	next.normalize()
+	if err := next.valid(); err != nil {
+		n.formError = err.Error()
+		n.sendForcedMenuSnapshot()
+		_ = n.updateLabel()
+		return nil
+	}
+	changed := !slices.Equal(n.config.servers, next.servers) || n.formError != ""
+	n.formError = ""
+	n.config = next
+	n.sendForcedMenuSnapshot()
+	if changed {
+		n.rebuildClient()
+	}
+	return n.updateLabel()
+}
+
+func (n *dnsClientNode) sendConfigFieldStatus(msg formular.FieldValidateMessage) {
+	sendNodeFieldStatus(n.w, n.id, msg.Field, validateDNSClientServerField(msg))
+}
+
+func (n *dnsClientNode) rebuildClient() {
+	n.outputs.CloseAll()
+	closeDNS(n.client)
+	n.client = nil
+	if n.formError != "" || len(n.config.servers) == 0 || !NetworkIsReady(n.network) {
+		return
+	}
+	client := dnsClientNewClient(n.network.Dial, n.bootstrapDNS, n.dnsSpawner(), n.config.servers...)
+	n.client = client
+	BindDNSResource(n.w, n.id, 0, client)
+	n.sendAll()
+}
+
+func (n *dnsClientNode) dnsSpawner() gonnect.Spawner {
+	if n.workerSpawner.tracker == nil {
+		return nil
+	}
+	return n.workerSpawner
+}
+
+func (n *dnsClientNode) sendAll() {
+	BroadcastDNSPort(n.w, n.id, n.out, func(link uint64) {
+		n.sendToLink(link)
+	})
+}
+
+func (n *dnsClientNode) sendToLink(link uint64) {
+	if n.client == nil {
+		return
+	}
+	n.outputs.SendLocked(n.w, n.id, link, n.client)
+}
+
+func (n *dnsClientNode) refreshLink(link uint64) {
+	if n.client == nil {
+		return
+	}
+	n.outputs.RefreshLocked(n.w, n.id, link, n.client)
+}
+
 func (n *dnsClientNode) updateLabel() error {
-	return n.SetLabel(n.currentStatusText())
+	switch {
+	case n.formError != "":
+		return n.SetLabel("invalid config")
+	case !NetworkIsReady(n.network):
+		return n.SetLabel("waiting for network")
+	case len(n.config.servers) == 0:
+		return n.SetLabel("no DNS servers")
+	case len(n.config.servers) == 1:
+		return n.SetLabel("1 DNS server")
+	default:
+		return n.SetLabel(fmt.Sprintf("%d DNS servers", len(n.config.servers)))
+	}
 }
 
 func (n *dnsClientNode) sendMenuSnapshot() {
-	sendNodeMenuSnapshot(n.w, n.id, false, n.requestBlock(), n.resultBlock())
+	sendNodeMenuSnapshot(n.w, n.id, false, n.configBlock())
 }
 
-func (n *dnsClientNode) sendRequestBlock() {
-	sendNodeBlockSnapshot(n.w, n.id, n.requestBlock())
+func (n *dnsClientNode) sendForcedMenuSnapshot() {
+	sendNodeMenuSnapshot(n.w, n.id, true, n.configBlock())
 }
 
-func (n *dnsClientNode) sendResultBlock() {
-	sendNodeBlockSnapshot(n.w, n.id, n.resultBlock())
-}
-
-func (n *dnsClientNode) requestBlock() formular.Block {
-	return formular.Block{ID: "request", Order: 10, Generation: 1, Items: []formular.Item{
-		formular.TextField("name", "Name", n.name, formular.Placeholder("example.test.")),
-		formular.TextField("type", "Type", n.qtype, formular.Placeholder("A")),
-		formular.Button("send", "Send request"),
+func (n *dnsClientNode) configBlock() formular.Block {
+	status := []formular.FieldOption{formular.Validation}
+	if n.formError != "" {
+		status = append(status, formular.Status(formular.StatusError), formular.StatusText(n.formError))
+	}
+	return formular.Block{ID: dnsClientConfigBlockID, Order: 10, Generation: 1, Form: true, Items: []formular.Item{
+		dnsClientServersFieldItem(dnsClientServersField, "DNS servers", n.config.servers, status...),
 	}}
 }
 
-func (n *dnsClientNode) resultBlock() formular.Block {
-	return formular.Block{ID: "result", Order: 20, Generation: 1, Items: []formular.Item{
-		{
-			Type:   formular.ItemLabel,
-			ID:     "status",
-			Text:   "Status: " + n.currentStatusText(),
-			Format: formular.TextPlain,
+func dnsClientServersFieldItem(id, label string, values []string, status ...formular.FieldOption) formular.Item {
+	return formular.Item{Type: formular.ItemField, ID: id, Label: label, Field: &formular.Field{
+		Kind:      formular.FieldArray,
+		Templates: []formular.ArrayTemplate{dnsClientServerTemplate(status...)},
+		Elements:  dnsClientServerElements(values, status...),
+	}}
+}
+
+func dnsClientServerTemplate(status ...formular.FieldOption) formular.ArrayTemplate {
+	return formular.ArrayTemplate{
+		Name:  "server",
+		Label: "Server",
+		Items: []formular.Item{
+			formular.TextField(dnsClientServerField, "URL", "", append(status, formular.Placeholder("udp://127.0.0.1:53"))...),
 		},
-		formular.ReadonlyTextField("error", "Error", n.errText),
-		formular.ReadonlyTextField("response", "Response", n.resp, formular.Multiline),
-	}}
-}
-
-func (n *dnsClientNode) currentStatusText() string {
-	if n.statusText == "" {
-		return dnsClientStatusReady
-	}
-	return n.statusText
-}
-
-func (n *dnsClientNode) setName(value string) {
-	n.name = normalizeDNSClientName(value)
-	n.sendRequestBlock()
-}
-
-func (n *dnsClientNode) setType(value string) {
-	n.qtype = normalizeDNSClientType(value)
-	n.sendRequestBlock()
-}
-
-func (n *dnsClientNode) sendRequest() {
-	if n.pending {
-		n.logger.Debug("request ignored: already pending")
-		return
-	}
-	qtype, err := staticDNSType(n.qtype)
-	if err != nil {
-		n.requestID++
-		n.pending = false
-		n.statusText = dnsClientStatusFail
-		n.resp = ""
-		n.errText = err.Error()
-		_ = n.updateLabel()
-		n.sendResultBlock()
-		return
-	}
-	n.requestID++
-	req := dnsClientRequest{
-		id:       n.requestID,
-		resolver: n.resolver,
-		name:     n.name,
-		qtype:    qtype,
-	}
-	n.pending = true
-	n.statusText = dnsClientStatusRunning
-	n.resp = ""
-	n.errText = ""
-	n.logger.Debugf("request %d: %s %s", req.id, req.name, dnsTypeName(req.qtype))
-	_ = n.updateLabel()
-	n.sendRequestBlock()
-	n.sendResultBlock()
-	if n.jobs == nil {
-		n.startWorker()
-	}
-	select {
-	case n.jobs <- req:
-	default:
-		n.logger.Debug("request failed: worker is busy")
-		n.w.SendInbox(pasta.InboxMessage{
-			ReceiverNode: n.id,
-			Payload:      dnsClientResult{id: req.id, err: "worker is busy"},
-		})
 	}
 }
 
-func (n *dnsClientNode) resetStatusReady() {
-	n.requestID++
-	n.pending = false
-	n.statusText = dnsClientStatusReady
-	n.resp = ""
-	n.errText = ""
-	n.restartWorker()
-	_ = n.updateLabel()
-	n.sendRequestBlock()
-	n.sendResultBlock()
+func dnsClientServerElements(values []string, status ...formular.FieldOption) []formular.ArrayElement {
+	template := dnsClientServerTemplate(status...)
+	out := make([]formular.ArrayElement, 0, len(values))
+	for i, value := range values {
+		out = append(out, formular.InstantiateArrayTemplate(template, fmt.Sprintf("server-%d", i), map[string]any{dnsClientServerField: value}))
+	}
+	return out
 }
 
-func normalizeDNSClientName(value string) string {
+func readDNSClientServersConfig(cfg configer.Config) ([]string, bool) {
+	if values, ok := configer.SliceAt(cfg, configer.Path{"servers"}); ok {
+		servers := make([]string, 0, len(values))
+		for _, raw := range values {
+			value, ok := configer.StringValue(raw)
+			if !ok {
+				continue
+			}
+			servers = append(servers, value)
+		}
+		return normalizeDNSClientServers(servers), true
+	}
+	if value, ok := configer.StringAt(cfg, configer.Path{"servers"}); ok {
+		return splitDNSClientServersText(value), true
+	}
+	return nil, false
+}
+
+func dnsClientServersFromAny(raw any) ([]string, bool) {
+	if value, ok := formular.StringValue(raw); ok {
+		return splitDNSClientServersText(value), true
+	}
+	values, ok := formular.ArrayElementValuesFromAny(raw)
+	if !ok {
+		return nil, false
+	}
+	servers := make([]string, 0, len(values))
+	for _, value := range values {
+		server, ok := formular.StringValue(value.Values[dnsClientServerField])
+		if !ok {
+			continue
+		}
+		servers = append(servers, server)
+	}
+	return normalizeDNSClientServers(servers), true
+}
+
+func validateDNSClientServerField(msg formular.FieldValidateMessage) error {
+	if msg.Field.FieldID == dnsClientServersField {
+		if servers, ok := dnsClientServersFromAny(msg.Value); ok {
+			config := dnsClientConfig{servers: servers}
+			config.normalize()
+			return config.valid()
+		}
+		return nil
+	}
+	if msg.Field.FieldID != dnsClientServerField {
+		return nil
+	}
+	value, ok := formular.StringValue(msg.Value)
+	if !ok {
+		return nil
+	}
+	value = normalizeDNSClientServer(value)
+	if value == "" {
+		return nil
+	}
+	return validateDNSClientServerURL(value)
+}
+
+func splitDNSClientServersText(value string) []string {
+	fields := strings.FieldsFunc(value, func(r rune) bool {
+		return r == ',' || r == ';' || r == '\n' || r == '\r' || r == '\t' || r == ' '
+	})
+	return normalizeDNSClientServers(fields)
+}
+
+func normalizeDNSClientServers(values []string) []string {
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		value = normalizeDNSClientServer(value)
+		if value != "" {
+			out = append(out, value)
+		}
+	}
+	return out
+}
+
+func normalizeDNSClientServer(value string) string {
 	value = strings.TrimSpace(value)
 	if value == "" {
-		return DefaultDNSClientName
+		return ""
 	}
-	return absDNSName(value)
-}
-
-func normalizeDNSClientType(value string) string {
-	value = strings.ToUpper(strings.TrimSpace(value))
-	if value == "" {
-		return DefaultDNSClientType
+	if !strings.Contains(value, "://") {
+		value = "udp://" + value
 	}
 	return value
 }
 
-type dnsClientRequest struct {
-	id       uint64
-	resolver dns.Interface
-	name     string
-	qtype    uint16
-}
-
-type dnsClientResult struct {
-	id     uint64
-	status string
-	body   string
-	err    string
-}
-
-func (n *dnsClientNode) startWorker() {
-	if n.jobs != nil || n.stop != nil {
-		return
+func validateDNSClientServerURL(server string) error {
+	if strings.TrimSpace(server) == "" {
+		return errors.New("empty server URL")
 	}
-	jobs := make(chan dnsClientRequest, 1)
-	stop := make(chan struct{})
-	n.jobs = jobs
-	n.stop = stop
-	n.logger.Debug("worker started")
-	_ = n.SpawnWorker("dns client", func() {
-		runDNSClientWorker(n.engine.ctx, n.logger, n.w, n.id, jobs, stop)
-	})
-}
-
-func (n *dnsClientNode) stopWorker() {
-	if n.stop != nil {
-		n.logger.Debug("worker stopping")
-		close(n.stop)
-		n.stop = nil
-	}
-	n.jobs = nil
-}
-
-func (n *dnsClientNode) restartWorker() {
-	n.stopWorker()
-	n.startWorker()
-}
-
-func runDNSClientWorker(ctx context.Context, logger pasta.Logger, w *pasta.Workspace, node uint64, jobs <-chan dnsClientRequest, stop <-chan struct{}) {
-	for {
-		select {
-		case <-stop:
-			logger.Debug("worker stopped")
-			return
-		case req := <-jobs:
-			logger.Debugf("request %d: worker processing", req.id)
-			ctx, cancel := context.WithCancel(ctx)
-			done := make(chan struct{})
-			go func() {
-				select {
-				case <-stop:
-					cancel()
-				case <-done:
-				}
-			}()
-			result := doDNSRequest(ctx, req)
-			cancel()
-			close(done)
-			if result.err != "" {
-				logger.Debugf("request %d failed: %s", req.id, result.err)
-			} else {
-				logger.Debugf("request %d complete: %s", req.id, result.status)
-			}
-			w.SendInbox(pasta.InboxMessage{ReceiverNode: node, Payload: result})
-		}
-	}
-}
-
-func doDNSRequest(parent context.Context, req dnsClientRequest) dnsClientResult {
-	if req.resolver == nil {
-		return dnsClientResult{id: req.id, err: "dns is not ready"}
-	}
-	ctx, cancel := context.WithTimeout(parent, 15*time.Second)
-	defer cancel()
-	resp, err := dns.Query(ctx, req.resolver, &dns.Message{
-		ID:               dns.NextID(),
-		RecursionDesired: true,
-		Opcode:           dns.OpcodeQuery,
-		Questions: []dns.Question{{
-			Name:  req.name,
-			Type:  req.qtype,
-			Class: dns.ClassIN,
-		}},
-	})
+	u, err := url.Parse(server)
 	if err != nil {
-		return dnsClientResult{id: req.id, err: err.Error()}
+		return err
 	}
-	if resp == nil {
-		return dnsClientResult{id: req.id, err: "empty DNS response"}
-	}
-	status := dnsRCodeName(resp.RCode)
-	return dnsClientResult{id: req.id, status: status, body: formatDNSMessage(resp)}
-}
-
-func formatDNSMessage(msg *dns.Message) string {
-	if msg == nil {
-		return ""
-	}
-	var b strings.Builder
-	for _, q := range msg.Questions {
-		fmt.Fprintf(&b, "QUESTION %s %s\n", q.Name, dnsTypeName(q.Type))
-	}
-	for _, rr := range msg.Answers {
-		fmt.Fprintf(&b, "ANSWER %s %s %d %s\n", rr.Name, dnsTypeName(rr.Type), rr.TTL, dnsResourceValue(rr))
-	}
-	for _, rr := range msg.Authorities {
-		fmt.Fprintf(&b, "AUTHORITY %s %s %d %s\n", rr.Name, dnsTypeName(rr.Type), rr.TTL, dnsResourceValue(rr))
-	}
-	for _, rr := range msg.Additionals {
-		fmt.Fprintf(&b, "ADDITIONAL %s %s %d %s\n", rr.Name, dnsTypeName(rr.Type), rr.TTL, dnsResourceValue(rr))
-	}
-	return strings.TrimSpace(b.String())
-}
-
-func dnsResourceValue(rr dns.Resource) string {
-	switch rr.Type {
-	case dns.TypeA:
-		if len(rr.Data) == net.IPv4len {
-			return net.IPv4(rr.Data[0], rr.Data[1], rr.Data[2], rr.Data[3]).String()
-		}
-	case dns.TypeAAAA:
-		if len(rr.Data) == net.IPv6len {
-			return net.IP(append([]byte(nil), rr.Data...)).String()
-		}
-	case dns.TypeCNAME, dns.TypeNS, dns.TypePTR, dns.TypeTXT:
-		return string(rr.Data)
-	case dns.TypeMX:
-		if len(rr.Data) >= 2 {
-			return strconv.Itoa(int(binary.BigEndian.Uint16(rr.Data[:2]))) + " " + string(rr.Data[2:])
-		}
-	case dns.TypeSRV:
-		if len(rr.Data) >= 6 {
-			return strconv.Itoa(int(binary.BigEndian.Uint16(rr.Data[0:2]))) + " " +
-				strconv.Itoa(int(binary.BigEndian.Uint16(rr.Data[2:4]))) + " " +
-				strconv.Itoa(int(binary.BigEndian.Uint16(rr.Data[4:6]))) + " " +
-				string(rr.Data[6:])
-		}
-	}
-	return "0x" + hex.EncodeToString(rr.Data)
-}
-
-func dnsTypeName(typ uint16) string {
-	switch typ {
-	case dns.TypeA:
-		return "A"
-	case dns.TypeAAAA:
-		return "AAAA"
-	case dns.TypeCNAME:
-		return "CNAME"
-	case dns.TypeNS:
-		return "NS"
-	case dns.TypePTR:
-		return "PTR"
-	case dns.TypeMX:
-		return "MX"
-	case dns.TypeTXT:
-		return "TXT"
-	case dns.TypeSRV:
-		return "SRV"
+	switch u.Scheme {
+	case "udp", "tcp", "dot":
 	default:
-		return strconv.Itoa(int(typ))
+		return fmt.Errorf("unsupported DNS server scheme %q", u.Scheme)
 	}
-}
-
-func dnsRCodeName(rcode uint8) string {
-	switch rcode {
-	case dns.RCodeSuccess:
-		return "NOERROR"
-	case dns.RCodeFormatError:
-		return "FORMERR"
-	case dns.RCodeServerFailure:
-		return "SERVFAIL"
-	case dns.RCodeNameError:
-		return "NXDOMAIN"
-	case dns.RCodeNotImplemented:
-		return "NOTIMP"
-	default:
-		return "RCODE " + strconv.Itoa(int(rcode))
+	if u.User != nil {
+		return errors.New("server URL must not include user info")
 	}
+	if u.RawQuery != "" || u.Fragment != "" {
+		return errors.New("server URL must not include query or fragment")
+	}
+	addr := u.Host
+	if addr == "" {
+		addr = u.Path
+	}
+	addr = strings.TrimSpace(addr)
+	if addr == "" {
+		return errors.New("empty server address")
+	}
+	if strings.ContainsAny(addr, " \t\r\n") {
+		return errors.New("server address must not contain whitespace")
+	}
+	return nil
 }
