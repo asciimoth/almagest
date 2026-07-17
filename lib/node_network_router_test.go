@@ -1,6 +1,7 @@
 package almagest
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -56,6 +57,164 @@ func TestNetworkRouterNodeEmitsSingleRouterInstance(t *testing.T) {
 	}
 }
 
+func TestNetworkRouterNodeInstallsDNSResolver(t *testing.T) {
+	w := newNetworkRouterTestWorkspace(t)
+
+	routerID, err := w.AddNodeByClass(NodeTypeNetworkRouter, "router")
+	if err != nil {
+		t.Fatalf("AddNodeByClass NetworkRouter: %v", err)
+	}
+	dnsID, err := w.AddNodeByClass(NodeTypeStaticDNS, "dns")
+	if err != nil {
+		t.Fatalf("AddNodeByClass StaticDns: %v", err)
+	}
+	backendID, err := w.AddNodeByClass(NodeTypeMockNetwork, "backend")
+	if err != nil {
+		t.Fatalf("AddNodeByClass MockNetwork: %v", err)
+	}
+	applyStaticDNSRecordsToWorkspace(t, w, dnsID, "router.test A 192.0.2.10")
+	receiver := &outNetReceiver{events: make(chan NetworkPayload, 3)}
+	if _, err := w.AddNode(receiver, "test/NetworkReceiver", "receiver"); err != nil {
+		t.Fatalf("AddNode receiver: %v", err)
+	}
+
+	router := mustNodeSnapshot(t, w, routerID)
+	backend := mustNodeSnapshot(t, w, backendID)
+	staticDNS := mustNodeSnapshot(t, w, dnsID)
+	if _, _, err := w.AddLink(backend.LeftPorts[0], networkRouterRightPort(t, w, routerID, slotPortName(1))); err != nil {
+		t.Fatalf("AddLink backend->router: %v", err)
+	}
+	if _, _, err := w.AddLink(staticDNS.LeftPorts[0], networkRouterRightPort(t, w, routerID, networkRouterDNSPortName)); err != nil {
+		t.Fatalf("AddLink dns->router: %v", err)
+	}
+	if _, _, err := w.AddLink(router.LeftPorts[0], receiver.in); err != nil {
+		t.Fatalf("AddLink router->receiver: %v", err)
+	}
+
+	network := receiveOutNetPayload(t, receiver.events).Network
+	hosts, err := network.LookupHost(context.Background(), "router.test")
+	if err != nil {
+		t.Fatalf("LookupHost through router resolver: %v", err)
+	}
+	assertStringSlice(t, hosts, []string{"192.0.2.10"})
+}
+
+func TestNetworkRouterDNSLinksAttachDetachReattach(t *testing.T) {
+	w := newNetworkRouterTestWorkspace(t)
+
+	routerID, err := w.AddNodeByClass(NodeTypeNetworkRouter, "router")
+	if err != nil {
+		t.Fatalf("AddNodeByClass NetworkRouter: %v", err)
+	}
+	backendID, err := w.AddNodeByClass(NodeTypeMockNetwork, "backend")
+	if err != nil {
+		t.Fatalf("AddNodeByClass MockNetwork: %v", err)
+	}
+	firstDNSID, err := w.AddNodeByClass(NodeTypeStaticDNS, "dns-a")
+	if err != nil {
+		t.Fatalf("AddNodeByClass StaticDns dns-a: %v", err)
+	}
+	secondDNSID, err := w.AddNodeByClass(NodeTypeStaticDNS, "dns-b")
+	if err != nil {
+		t.Fatalf("AddNodeByClass StaticDns dns-b: %v", err)
+	}
+	applyStaticDNSRecordsToWorkspace(t, w, firstDNSID, "router.test A 192.0.2.11")
+	applyStaticDNSRecordsToWorkspace(t, w, secondDNSID, "router.test A 192.0.2.12")
+	receiver := &outNetReceiver{events: make(chan NetworkPayload, 8)}
+	if _, err := w.AddNode(receiver, "test/NetworkReceiver", "receiver"); err != nil {
+		t.Fatalf("AddNode receiver: %v", err)
+	}
+
+	router := mustNodeSnapshot(t, w, routerID)
+	backend := mustNodeSnapshot(t, w, backendID)
+	if _, _, err := w.AddLink(backend.LeftPorts[0], networkRouterRightPort(t, w, routerID, slotPortName(1))); err != nil {
+		t.Fatalf("AddLink backend->router: %v", err)
+	}
+	if _, _, err := w.AddLink(router.LeftPorts[0], receiver.in); err != nil {
+		t.Fatalf("AddLink router->receiver: %v", err)
+	}
+	routerRuntime := receiveNetworkRouterRuntime(t, receiver.events)
+
+	firstDNS := mustNodeSnapshot(t, w, firstDNSID)
+	dnsPort := networkRouterRightPort(t, w, routerID, networkRouterDNSPortName)
+	dnsLink, _, err := w.AddLink(firstDNS.LeftPorts[0], dnsPort)
+	if err != nil {
+		t.Fatalf("AddLink dns-a->router: %v", err)
+	}
+	assertNetworkRouterLookupHost(t, routerRuntime, "router.test", "192.0.2.11")
+
+	w.RemoveLink(dnsLink)
+	if got := routerRuntime.GetResolver(); got != nil {
+		t.Fatalf("router resolver after DNS detach = %T, want nil", got)
+	}
+
+	secondDNS := mustNodeSnapshot(t, w, secondDNSID)
+	dnsLink, _, err = w.AddLink(secondDNS.LeftPorts[0], dnsPort)
+	if err != nil {
+		t.Fatalf("AddLink dns-b->router: %v", err)
+	}
+	assertNetworkRouterLookupHost(t, routerRuntime, "router.test", "192.0.2.12")
+	_ = dnsLink
+}
+
+func TestNetworkRouterDNSCopyPastePreservesResolverLink(t *testing.T) {
+	w := newNetworkRouterTestWorkspace(t)
+	routerID, backendID, dnsID := setupNetworkRouterDNSWorkspace(t, w, "copy", "192.0.2.30")
+	assertNetworkRouterLookupHost(t, networkRouterRuntimeFromWorkspace(t, w, routerID), "router.test", "192.0.2.30")
+
+	clip := w.Copy([]uint64{routerID, backendID, dnsID})
+	if clip == "" {
+		t.Fatal("Copy returned empty clipboard")
+	}
+	pasted := w.Paste(clip)
+	if len(pasted) != 3 {
+		t.Fatalf("Paste returned %d nodes (%v), want 3", len(pasted), pasted)
+	}
+	pastedRouter := workspaceNodeByClass(t, w, pasted, NodeTypeNetworkRouter)
+	pastedBackend := workspaceNodeByClass(t, w, pasted, NodeTypeMockNetwork)
+	pastedDNS := workspaceNodeByClass(t, w, pasted, NodeTypeStaticDNS)
+	assertNetworkRouterRightPorts(t, w, pastedRouter, []string{"slot 1", networkRouterDNSPortName})
+	mustWorkspaceTypedLink(t, w, TypeNetwork, pastedBackend, "left", "Network", pastedRouter, "right", "slot 1")
+	mustWorkspaceTypedLink(t, w, TypeDNS, pastedDNS, "left", "DNS", pastedRouter, "right", networkRouterDNSPortName)
+	assertNetworkRouterLookupHost(t, networkRouterRuntimeFromWorkspace(t, w, pastedRouter), "router.test", "192.0.2.30")
+}
+
+func TestNetworkRouterDNSSaveRestorePreservesResolverLink(t *testing.T) {
+	w := newNetworkRouterTestWorkspace(t)
+	setupNetworkRouterDNSWorkspace(t, w, "restore", "192.0.2.40")
+
+	cfg := configer.NewMemory(nil)
+	if err := w.SaveConfig(cfg); err != nil {
+		t.Fatalf("SaveConfig: %v", err)
+	}
+	restored, err := pasta.WorkspaceFromConfig([]pasta.NodeClass{
+		networkRouterClass{},
+		mockNetClass{},
+		staticDNSClass{},
+	}, cfg, NewDebugLogFactory(1024))
+	if err != nil {
+		t.Fatalf("WorkspaceFromConfig: %v", err)
+	}
+	t.Cleanup(func() { restored.Close() })
+
+	restoredRouter, ok := restored.NodeIDByName("restore-router")
+	if !ok {
+		t.Fatal("restored router missing")
+	}
+	restoredBackend, ok := restored.NodeIDByName("restore-backend")
+	if !ok {
+		t.Fatal("restored backend missing")
+	}
+	restoredDNS, ok := restored.NodeIDByName("restore-dns")
+	if !ok {
+		t.Fatal("restored DNS missing")
+	}
+	assertNetworkRouterRightPorts(t, restored, restoredRouter, []string{"slot 1", networkRouterDNSPortName})
+	mustWorkspaceTypedLink(t, restored, TypeNetwork, restoredBackend, "left", "Network", restoredRouter, "right", "slot 1")
+	mustWorkspaceTypedLink(t, restored, TypeDNS, restoredDNS, "left", "DNS", restoredRouter, "right", networkRouterDNSPortName)
+	assertNetworkRouterLookupHost(t, networkRouterRuntimeFromWorkspace(t, restored, restoredRouter), "router.test", "192.0.2.40")
+}
+
 func TestNetworkRouterNodeReviewsSlotPortsFromRulesAndLinks(t *testing.T) {
 	w := newNetworkRouterTestWorkspace(t)
 
@@ -63,14 +222,14 @@ func TestNetworkRouterNodeReviewsSlotPortsFromRulesAndLinks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddNodeByClass NetworkRouter: %v", err)
 	}
-	assertNetworkRouterRightPorts(t, w, routerID, []string{"slot 1"})
+	assertNetworkRouterRightPorts(t, w, routerID, []string{"slot 1", networkRouterDNSPortName})
 
 	w.SendNodeFormularMsg(routerID, formular.FormApplyMessage{
 		MessageBase: FormMessageBase(formular.MessageFormApply, routerID),
 		BlockID:     "config",
 		Values:      map[string]any{"rules": "TRUE\nSLOT 3\n"},
 	})
-	assertNetworkRouterRightPorts(t, w, routerID, []string{"slot 3"})
+	assertNetworkRouterRightPorts(t, w, routerID, []string{"slot 3", networkRouterDNSPortName})
 
 	backendID, err := w.AddNodeByClass(NodeTypeMockNetwork, "backend")
 	if err != nil {
@@ -87,7 +246,7 @@ func TestNetworkRouterNodeReviewsSlotPortsFromRulesAndLinks(t *testing.T) {
 		BlockID:     "config",
 		Values:      map[string]any{"rules": ""},
 	})
-	assertNetworkRouterRightPorts(t, w, routerID, []string{"slot 3"})
+	assertNetworkRouterRightPorts(t, w, routerID, []string{"slot 3", networkRouterDNSPortName})
 }
 
 func TestNetworkRouterNodeValidationReportsStatus(t *testing.T) {
@@ -223,7 +382,128 @@ func newNetworkRouterTestWorkspace(t *testing.T) *pasta.Workspace {
 	if err := w.AddNodeClass(mockNetClass{}); err != nil {
 		t.Fatalf("AddNodeClass MockNetwork: %v", err)
 	}
+	if err := w.AddNodeClass(staticDNSClass{}); err != nil {
+		t.Fatalf("AddNodeClass StaticDns: %v", err)
+	}
 	return w
+}
+
+func setupNetworkRouterDNSWorkspace(t *testing.T, w *pasta.Workspace, prefix, ip string) (uint64, uint64, uint64) {
+	t.Helper()
+	routerID, err := w.AddNodeByClass(NodeTypeNetworkRouter, prefix+"-router")
+	if err != nil {
+		t.Fatalf("AddNodeByClass NetworkRouter: %v", err)
+	}
+	backendID, err := w.AddNodeByClass(NodeTypeMockNetwork, prefix+"-backend")
+	if err != nil {
+		t.Fatalf("AddNodeByClass MockNetwork: %v", err)
+	}
+	dnsID, err := w.AddNodeByClass(NodeTypeStaticDNS, prefix+"-dns")
+	if err != nil {
+		t.Fatalf("AddNodeByClass StaticDns: %v", err)
+	}
+	applyStaticDNSRecordsToWorkspace(t, w, dnsID, "router.test A "+ip)
+
+	backend := mustNodeSnapshot(t, w, backendID)
+	dnsNode := mustNodeSnapshot(t, w, dnsID)
+	if _, _, err := w.AddLink(backend.LeftPorts[0], networkRouterRightPort(t, w, routerID, slotPortName(1))); err != nil {
+		t.Fatalf("AddLink backend->router: %v", err)
+	}
+	if _, _, err := w.AddLink(dnsNode.LeftPorts[0], networkRouterRightPort(t, w, routerID, networkRouterDNSPortName)); err != nil {
+		t.Fatalf("AddLink dns->router: %v", err)
+	}
+	return routerID, backendID, dnsID
+}
+
+func networkRouterRuntimeFromWorkspace(t *testing.T, w *pasta.Workspace, routerID uint64) *gonnect.Router {
+	t.Helper()
+	receiver := &outNetReceiver{events: make(chan NetworkPayload, 3)}
+	if _, err := w.AddNode(receiver, "test/NetworkReceiver", fmt.Sprintf("receiver-%d", routerID)); err != nil {
+		t.Fatalf("AddNode receiver: %v", err)
+	}
+	router := mustNodeSnapshot(t, w, routerID)
+	if _, _, err := w.AddLink(router.LeftPorts[0], receiver.in); err != nil {
+		t.Fatalf("AddLink router->receiver: %v", err)
+	}
+	return receiveNetworkRouterRuntime(t, receiver.events)
+}
+
+func workspaceNodeByClass(t *testing.T, w *pasta.Workspace, nodes []uint64, class string) uint64 {
+	t.Helper()
+	for _, node := range nodes {
+		snapshot := mustNodeSnapshot(t, w, node)
+		if snapshot.Class == class {
+			return node
+		}
+	}
+	t.Fatalf("pasted node of class %q missing in %v", class, nodes)
+	return 0
+}
+
+func mustWorkspaceTypedLink(t *testing.T, w *pasta.Workspace, linkType string, leftNode uint64, leftDir, leftName string, rightNode uint64, rightDir, rightName string) uint64 {
+	t.Helper()
+	left := workspaceNodePort(t, w, leftNode, leftDir, leftName)
+	right := workspaceNodePort(t, w, rightNode, rightDir, rightName)
+	link, snapshot, ok := w.LinkByPorts(left, right)
+	if !ok {
+		t.Fatalf("link missing between node %d %s %q and node %d %s %q", leftNode, leftDir, leftName, rightNode, rightDir, rightName)
+	}
+	if snapshot.Type != linkType {
+		t.Fatalf("link %d type = %q, want %q", link, snapshot.Type, linkType)
+	}
+	return link
+}
+
+func workspaceNodePort(t *testing.T, w *pasta.Workspace, node uint64, direction, name string) uint64 {
+	t.Helper()
+	snapshot := mustNodeSnapshot(t, w, node)
+	ports := snapshot.LeftPorts
+	if direction == "right" {
+		ports = snapshot.RightPorts
+	}
+	for _, port := range ports {
+		ps, ok := w.PortSnapshot(port)
+		if ok && ps.Direction == direction && ps.Name == name {
+			return port
+		}
+	}
+	t.Fatalf("node %d has no %s port named %q", node, direction, name)
+	return 0
+}
+
+func receiveNetworkRouterRuntime(t *testing.T, events <-chan NetworkPayload) *gonnect.Router {
+	t.Helper()
+	payload := receiveOutNetPayload(t, events)
+	wrapped, ok := payload.Network.(*gonnect.DetachedNetwork)
+	if !ok {
+		t.Fatalf("payload.Network = %T, want *gonnect.DetachedNetwork", payload.Network)
+	}
+	router, ok := wrapped.GetWrapped().(*gonnect.Router)
+	if !ok {
+		t.Fatalf("wrapped network = %T, want *gonnect.Router", wrapped.GetWrapped())
+	}
+	return router
+}
+
+func assertNetworkRouterLookupHost(t *testing.T, router *gonnect.Router, host, want string) {
+	t.Helper()
+	Eventually(t, func() bool {
+		hosts, err := router.LookupHost(context.Background(), host)
+		return err == nil && len(hosts) == 1 && hosts[0] == want
+	}, "router LookupHost(%q) = %q", host, want)
+}
+
+func networkRouterRightPort(t *testing.T, w *pasta.Workspace, node uint64, name string) uint64 {
+	t.Helper()
+	snapshot := mustNodeSnapshot(t, w, node)
+	for _, port := range snapshot.RightPorts {
+		ps, ok := w.PortSnapshot(port)
+		if ok && ps.Name == name {
+			return port
+		}
+	}
+	t.Fatalf("router right port %q missing", name)
+	return 0
 }
 
 func assertNetworkRouterRightPorts(t *testing.T, w *pasta.Workspace, node uint64, want []string) {

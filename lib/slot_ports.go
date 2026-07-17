@@ -10,6 +10,9 @@ import (
 type slotPortReview struct {
 	DefaultSlot int
 	EnsureFree  bool
+	// ExtraOrder lists same-direction ports that are not owned by this slot
+	// manager but still must be present when rewriting the node port order.
+	ExtraOrder []uint64
 }
 
 type slotPorts struct {
@@ -152,9 +155,14 @@ func (s *slotPorts) Review(desired map[int]struct{}, opts slotPortReview) error 
 		}
 	}
 
-	order := make([]uint64, 0, len(desired))
+	order := make([]uint64, 0, len(desired)+len(opts.ExtraOrder))
 	for slot := 1; slot <= s.max; slot++ {
 		if port := s.Port(slot); port != 0 {
+			order = append(order, port)
+		}
+	}
+	for _, port := range opts.ExtraOrder {
+		if port != 0 {
 			order = append(order, port)
 		}
 	}

@@ -87,7 +87,7 @@ func TestNetworkRouterE2EConfigSaveRestore(t *testing.T) {
 	backend1 := restored.mustNodeByName(backend1Name)
 	backend2 := restored.mustNodeByName(backend2Name)
 	restored.SubscribeMenus(client, restored.mustNodeByName(server1Name), restored.mustNodeByName(server2Name))
-	restored.assertNetworkRouterPorts(router, []string{"slot 1", "slot 2"})
+	restored.assertNetworkRouterPorts(router, []string{"slot 1", "slot 2", networkRouterDNSPortName})
 	restored.mustNetworkLink(router, "left", "Network", client, "right", "Network")
 	restored.mustNetworkLink(backend1, "left", "Network", router, "right", "slot 1")
 	restored.mustNetworkLink(backend2, "left", "Network", router, "right", "slot 2")
@@ -117,7 +117,7 @@ func TestNetworkRouterE2ERestoreLocalProxyConsumerBeforeSlots(t *testing.T) {
 			"rules": fmt.Sprintf("PORT %d\nSLOT 1\nPORT %d\nSLOT 2", port1, port2),
 		},
 	})
-	e.assertNetworkRouterPorts(router, []string{"slot 1", "slot 2"})
+	e.assertNetworkRouterPorts(router, []string{"slot 1", "slot 2", networkRouterDNSPortName})
 	e.connectByPortName(backend1, "left", "Network", server1, "right", "Network")
 	e.connectByPortName(backend2, "left", "Network", server2, "right", "Network")
 	e.connectByPortName(router, "left", "Network", proxy, "right", "proxy")
@@ -172,7 +172,7 @@ func TestNetworkRouterE2ECopyPaste(t *testing.T) {
 		t.Fatalf("Paste returned %d nodes (%v), want 3", len(pasted), pasted)
 	}
 	router := pasted[0]
-	f.assertNetworkRouterPorts(router, []string{"slot 1", "slot 2"})
+	f.assertNetworkRouterPorts(router, []string{"slot 1", "slot 2", networkRouterDNSPortName})
 	backend1 := f.routerBackendBySlot(router, 1)
 	backend2 := f.routerBackendBySlot(router, 2)
 	f.assertNodesLinked(backend1, router)
@@ -251,7 +251,7 @@ func setupNetworkRouterE2E(t *testing.T) networkRouterE2EFixture {
 	e.SubscribeMenus(f.router, f.server[1], f.server[2], f.client)
 
 	f.applyRouterRules()
-	f.assertNetworkRouterPorts(f.router, []string{"slot 1", "slot 2"})
+	f.assertNetworkRouterPorts(f.router, []string{"slot 1", "slot 2", networkRouterDNSPortName})
 	e.connectByPortName(f.backend[1], "left", "Network", f.server[1], "right", "Network")
 	e.connectByPortName(f.backend[2], "left", "Network", f.server[2], "right", "Network")
 	e.connectByPortName(f.backend[1], "left", "Network", f.router, "right", "slot 1")

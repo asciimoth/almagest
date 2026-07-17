@@ -8,6 +8,7 @@ import (
 	"github.com/asciimoth/formular"
 	"github.com/asciimoth/gonnect"
 	routing "github.com/asciimoth/gonnect-routing"
+	"github.com/asciimoth/gonnect/dns"
 	"github.com/asciimoth/pasta/pasta"
 	"github.com/asciimoth/pasta/pasta/std"
 )
@@ -22,6 +23,12 @@ const (
 	NodeTypeNetworkRouter = "almagest/NetworkRouter"
 
 	networkRouterMaxSlots = 16
+
+	// NetworkRouter reserves the "slot N" name pattern for generated backend
+	// slot ports. Static right-directed ports, including DNS, must use names
+	// outside that pattern so restore, copy/paste, and slot review can
+	// distinguish fixed inputs from dynamic backend slots.
+	networkRouterDNSPortName = "DNS"
 )
 
 type networkRouterClass struct{}
@@ -35,6 +42,7 @@ func (networkRouterClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: TypeNetwork, InitialPorts: []pasta.Port{
 		NetworkPort("left", "Network"),
 		NetworkPort("right", slotPortName(1)),
+		DNSPort("right", networkRouterDNSPortName),
 	}}
 }
 func (networkRouterClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
@@ -55,6 +63,7 @@ type networkRouterNode struct {
 	NodeBase
 
 	in    uint64
+	dnsIn uint64
 	slots slotPorts
 
 	router    *gonnect.Router
@@ -64,6 +73,15 @@ type networkRouterNode struct {
 	ready     bool
 	backends  map[int]NetworkCloser
 	outputs   NetworkOutputCache
+
+	// The right-directed DNS input installs an optional Resolver on router.
+	// DNS wrappers are kept separate from the received DNS value so replacing
+	// or detaching the input can close only the resolver generation installed
+	// on this router instance.
+	dnsLink     uint64
+	dns         dns.Interface
+	resolverDNS dns.Interface
+	resolver    *dns.Resolver
 }
 
 func (n *networkRouterNode) OnInit(w *pasta.Workspace, _ pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
@@ -85,7 +103,9 @@ func (n *networkRouterNode) OnInit(w *pasta.Workspace, _ pasta.Logger, id uint64
 		)
 	}
 	n.in = restoredLeft(restored, 0)
-	n.slots.Init(w, id, restoredRightPorts(restored))
+	var rightSlotPorts []uint64
+	n.dnsIn, rightSlotPorts = n.restoredRightPorts(restored)
+	n.slots.Init(w, id, rightSlotPorts)
 	if err := n.SetPrimary(TypeNetwork); err != nil {
 		return err
 	}
@@ -108,6 +128,7 @@ func (n *networkRouterNode) OnInit(w *pasta.Workspace, _ pasta.Logger, id uint64
 
 func (n *networkRouterNode) OnStop() {
 	n.outputs.CloseAll()
+	n.detachDNS()
 	if n.router != nil {
 		_ = n.router.Close()
 	}
@@ -115,6 +136,7 @@ func (n *networkRouterNode) OnStop() {
 
 func (n *networkRouterNode) OnReady() error {
 	n.ready = true
+	n.requestDNS()
 	n.requestSlots()
 	if len(n.backends) > 0 || !n.hasSlotLinks() {
 		n.sendAll()
@@ -126,6 +148,15 @@ func (n *networkRouterNode) PreLinkAdd(port uint64, linkType, portDirection stri
 	if port == n.in {
 		if portDirection != "left" || linkType != TypeNetwork {
 			return pasta.LinkTypeErr(linkType)
+		}
+		return nil
+	}
+	if port == n.dnsIn {
+		if portDirection != "right" || linkType != TypeDNS {
+			return pasta.LinkTypeErr(linkType)
+		}
+		if n.PortHasLinks(port) {
+			return pasta.ErrLinkDup
 		}
 		return nil
 	}
@@ -148,6 +179,13 @@ func (n *networkRouterNode) OnLinkAdd(link, port uint64, linkType, portDirection
 		}
 		return nil
 	}
+	if port == n.dnsIn && portDirection == "right" && linkType == TypeDNS {
+		n.dnsLink = link
+		if n.ready {
+			std.RequestLocked(n.w, n.id, link)
+		}
+		return nil
+	}
 	if n.slots.Slot(port) != 0 && portDirection == "right" && linkType == TypeNetwork {
 		if n.ready {
 			std.RequestLocked(n.w, n.id, link)
@@ -161,6 +199,10 @@ func (n *networkRouterNode) OnLinkRemoved(link, port uint64, linkType, portDirec
 		n.outputs.Close(link)
 		return nil
 	}
+	if port == n.dnsIn && portDirection == "right" && linkType == TypeDNS && link == n.dnsLink {
+		n.detachDNS()
+		return nil
+	}
 	if slot := n.slots.Slot(port); slot != 0 && portDirection == "right" && linkType == TypeNetwork {
 		n.detachSlot(slot)
 	}
@@ -169,6 +211,11 @@ func (n *networkRouterNode) OnLinkRemoved(link, port uint64, linkType, portDirec
 
 func (n *networkRouterNode) OnPortRemoved(port uint64, direction string) error {
 	if direction != "right" {
+		return nil
+	}
+	if port == n.dnsIn {
+		n.detachDNS()
+		n.dnsIn = 0
 		return nil
 	}
 	if slot := n.slots.Remove(port); slot != 0 {
@@ -180,6 +227,19 @@ func (n *networkRouterNode) OnPortRemoved(port uint64, direction string) error {
 func (n *networkRouterNode) OnEvent(event pasta.Event, linkType string, _ []string, receiverPortDirection string) error {
 	if event.ReceiverPort == n.in && receiverPortDirection == "left" && linkType == TypeNetwork && std.IsRequest(event.Payload) {
 		n.refreshRouterToLink(event.Link)
+		return nil
+	}
+	if event.ReceiverPort == n.dnsIn && receiverPortDirection == "right" && linkType == TypeDNS && event.Link == n.dnsLink {
+		next, changed := AcceptDNSPayload(n.w, n.id, event, n.dns)
+		if !changed {
+			return nil
+		}
+		n.clearResolver()
+		n.dns = next
+		n.installResolver(next)
+		if n.ready {
+			n.sendAll()
+		}
 		return nil
 	}
 	slot := n.slots.Slot(event.ReceiverPort)
@@ -274,7 +334,7 @@ func (n *networkRouterNode) reviewOutputPorts() error {
 			}
 		}
 	}
-	return n.slots.Review(desired, slotPortReview{DefaultSlot: 1})
+	return n.slots.Review(desired, slotPortReview{DefaultSlot: 1, ExtraOrder: []uint64{n.dnsIn}})
 }
 
 func (n *networkRouterNode) sendAll() {
@@ -287,6 +347,10 @@ func (n *networkRouterNode) requestSlots() {
 	n.slots.ForEach(func(_ int, portID uint64) {
 		n.RequestPort(portID)
 	})
+}
+
+func (n *networkRouterNode) requestDNS() {
+	n.RequestPort(n.dnsIn)
 }
 
 func (n *networkRouterNode) sendRouterToLink(link uint64) {
@@ -345,6 +409,60 @@ func (n *networkRouterNode) detachSlot(slot int) {
 		_ = old.Close()
 		delete(n.backends, slot)
 	}
+}
+
+func (n *networkRouterNode) restoredRightPorts(restored *pasta.NodeInitData) (uint64, []uint64) {
+	var dnsPort uint64
+	var slotPorts []uint64
+	for _, port := range restoredRightPorts(restored) {
+		snapshot, ok := n.w.PortSnapshotLocked(port)
+		if !ok {
+			continue
+		}
+		// Only ports named with the reserved "slot N" pattern are dynamic
+		// backend slots. Static right-directed ports such as DNS are excluded
+		// so slot review cannot rename or remove them as routing rules change.
+		if snapshot.Name == networkRouterDNSPortName {
+			dnsPort = port
+			continue
+		}
+		if _, ok := slotPortFromName(snapshot.Name, networkRouterMaxSlots); ok {
+			slotPorts = append(slotPorts, port)
+		}
+	}
+	return dnsPort, slotPorts
+}
+
+func (n *networkRouterNode) installResolver(input dns.Interface) {
+	if n.router == nil || input == nil {
+		return
+	}
+	n.resolverDNS = n.newResolverDNS(input)
+	n.resolver = dns.NewResolver(n.resolverDNS)
+	n.router.SetResolver(n.resolver)
+}
+
+func (n *networkRouterNode) newResolverDNS(input dns.Interface) dns.Interface {
+	if source, ok := DNSSource(input).(dns.Interface); ok && source != nil {
+		return newDetachedDNS(source)
+	}
+	return newDetachedDNS(input)
+}
+
+func (n *networkRouterNode) clearResolver() {
+	if n.router != nil {
+		n.router.SetResolver(nil)
+	}
+	closeDNS(n.resolverDNS)
+	n.resolverDNS = nil
+	n.resolver = nil
+}
+
+func (n *networkRouterNode) detachDNS() {
+	n.clearResolver()
+	closeDNS(n.dns)
+	n.dns = nil
+	n.dnsLink = 0
 }
 
 func (n *networkRouterNode) hasSlotLinks() bool {
