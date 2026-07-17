@@ -89,8 +89,9 @@ func BroadcastNetworkPort(w *pasta.Workspace, _ uint64, port uint64, send func(l
 }
 
 type networkOutputEntry struct {
-	source gonnect.Network
-	output NetworkCloser
+	source   gonnect.Network
+	resolver gonnect.Resolver
+	output   NetworkCloser
 }
 
 // NetworkOutputCache owns detached network wrappers emitted by a node, keyed
@@ -105,9 +106,22 @@ func (c *NetworkOutputCache) Send(w *pasta.Workspace, node, link uint64, source 
 	return c.SendWrapped(w, node, link, source, nil)
 }
 
+// SendResolved emits source as a detached NetworkPayload on link, using
+// resolver for lookup methods and hostname pre-resolution before operations
+// reach source.
+func (c *NetworkOutputCache) SendResolved(w *pasta.Workspace, node, link uint64, source gonnect.Network, resolver gonnect.Resolver) bool {
+	return c.SendResolvedWrapped(w, node, link, source, resolver, nil)
+}
+
 // SendLocked is Send for callers already running under the workspace lock.
 func (c *NetworkOutputCache) SendLocked(w *pasta.Workspace, node, link uint64, source gonnect.Network) bool {
 	return c.SendWrappedLocked(w, node, link, source, nil)
+}
+
+// SendResolvedLocked is SendResolved for callers already running under the
+// workspace lock.
+func (c *NetworkOutputCache) SendResolvedLocked(w *pasta.Workspace, node, link uint64, source gonnect.Network, resolver gonnect.Resolver) bool {
+	return c.SendResolvedWrappedLocked(w, node, link, source, resolver, nil)
 }
 
 // RefreshLocked emits a fresh detached NetworkPayload on link even when the
@@ -117,20 +131,38 @@ func (c *NetworkOutputCache) RefreshLocked(w *pasta.Workspace, node, link uint64
 	return c.RefreshWrappedLocked(w, node, link, source, nil)
 }
 
+// RefreshResolvedLocked emits a fresh resolver-backed detached NetworkPayload
+// on link even when the source and resolver are unchanged.
+func (c *NetworkOutputCache) RefreshResolvedLocked(w *pasta.Workspace, node, link uint64, source gonnect.Network, resolver gonnect.Resolver) bool {
+	return c.RefreshResolvedWrappedLocked(w, node, link, source, resolver, nil)
+}
+
 // SendWrapped emits source as a detached NetworkPayload on link after wrapping
 // the detached network with wrap.
 func (c *NetworkOutputCache) SendWrapped(w *pasta.Workspace, node, link uint64, source gonnect.Network, wrap func(NetworkCloser) NetworkCloser) bool {
+	return c.SendResolvedWrapped(w, node, link, source, nil, wrap)
+}
+
+// SendResolvedWrapped emits source as a resolver-backed detached NetworkPayload
+// on link after wrapping the detached network with wrap.
+func (c *NetworkOutputCache) SendResolvedWrapped(w *pasta.Workspace, node, link uint64, source gonnect.Network, resolver gonnect.Resolver, wrap func(NetworkCloser) NetworkCloser) bool {
 	if w == nil {
 		return false
 	}
 	w.Lock()
 	defer w.Unlock()
-	return c.SendWrappedLocked(w, node, link, source, wrap)
+	return c.SendResolvedWrappedLocked(w, node, link, source, resolver, wrap)
 }
 
 // SendWrappedLocked is SendWrapped for callers already running under the
 // workspace lock.
 func (c *NetworkOutputCache) SendWrappedLocked(w *pasta.Workspace, node, link uint64, source gonnect.Network, wrap func(NetworkCloser) NetworkCloser) bool {
+	return c.SendResolvedWrappedLocked(w, node, link, source, nil, wrap)
+}
+
+// SendResolvedWrappedLocked is SendResolvedWrapped for callers already running
+// under the workspace lock.
+func (c *NetworkOutputCache) SendResolvedWrappedLocked(w *pasta.Workspace, node, link uint64, source gonnect.Network, resolver gonnect.Resolver, wrap func(NetworkCloser) NetworkCloser) bool {
 	if w == nil || link == 0 || source == nil {
 		return false
 	}
@@ -138,17 +170,23 @@ func (c *NetworkOutputCache) SendWrappedLocked(w *pasta.Workspace, node, link ui
 		return false
 	}
 	if c.entries != nil {
-		if entry, ok := c.entries[link]; ok && NetworkIsReady(entry.output) && SameNetworkSource(entry.source, source) {
+		if entry, ok := c.entries[link]; ok && NetworkIsReady(entry.output) && SameNetworkSource(entry.source, source) && SameNetworkResolver(entry.resolver, resolver) {
 			w.EmitEventLocked(node, link, NetworkPayload{Network: entry.output})
 			return true
 		}
 	}
 	c.Close(link)
-	return c.emitWrappedLocked(w, node, link, source, wrap)
+	return c.emitWrappedLocked(w, node, link, source, resolver, wrap)
 }
 
 // RefreshWrappedLocked is RefreshLocked with an additional wrapper hook.
 func (c *NetworkOutputCache) RefreshWrappedLocked(w *pasta.Workspace, node, link uint64, source gonnect.Network, wrap func(NetworkCloser) NetworkCloser) bool {
+	return c.RefreshResolvedWrappedLocked(w, node, link, source, nil, wrap)
+}
+
+// RefreshResolvedWrappedLocked is RefreshResolvedLocked with an additional
+// wrapper hook.
+func (c *NetworkOutputCache) RefreshResolvedWrappedLocked(w *pasta.Workspace, node, link uint64, source gonnect.Network, resolver gonnect.Resolver, wrap func(NetworkCloser) NetworkCloser) bool {
 	if w == nil || link == 0 || source == nil {
 		return false
 	}
@@ -156,12 +194,12 @@ func (c *NetworkOutputCache) RefreshWrappedLocked(w *pasta.Workspace, node, link
 		return false
 	}
 	c.Close(link)
-	return c.emitWrappedLocked(w, node, link, source, wrap)
+	return c.emitWrappedLocked(w, node, link, source, resolver, wrap)
 }
 
-func (c *NetworkOutputCache) emitWrappedLocked(w *pasta.Workspace, node, link uint64, source gonnect.Network, wrap func(NetworkCloser) NetworkCloser) bool {
+func (c *NetworkOutputCache) emitWrappedLocked(w *pasta.Workspace, node, link uint64, source gonnect.Network, resolver gonnect.Resolver, wrap func(NetworkCloser) NetworkCloser) bool {
 	// Nil spawner is intentional here; see the Gonnect spawner note in helpers.go.
-	var output NetworkCloser = gonnect.DetachNetwork(source, nil, nil)
+	var output NetworkCloser = gonnect.DetachNetwork(source, resolver, nil)
 	if wrap != nil {
 		wrapped := wrap(output)
 		if wrapped == nil {
@@ -174,7 +212,7 @@ func (c *NetworkOutputCache) emitWrappedLocked(w *pasta.Workspace, node, link ui
 	if c.entries == nil {
 		c.entries = make(map[uint64]networkOutputEntry)
 	}
-	c.entries[link] = networkOutputEntry{source: source, output: output}
+	c.entries[link] = networkOutputEntry{source: source, resolver: resolver, output: output}
 	w.EmitEventLocked(node, link, NetworkPayload{Network: output})
 	return true
 }
@@ -237,6 +275,13 @@ func SameNetworkSource(a, b any) bool {
 }
 
 func SameNetworkInstance(a, b NetworkCloser) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return SameComparableValue(a, b)
+}
+
+func SameNetworkResolver(a, b gonnect.Resolver) bool {
 	if a == nil || b == nil {
 		return a == nil && b == nil
 	}
