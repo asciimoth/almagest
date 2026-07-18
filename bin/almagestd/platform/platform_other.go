@@ -88,6 +88,13 @@ func checkOtherPrivateDir(path string) error {
 	return nil
 }
 
+// TmpAdminUnixSocketPath returns a random temporary path for the local admin
+// Unix socket on non-Linux platforms. The regular Unix admin listener remains
+// responsible for platform support, bind-time setup, permissions, and cleanup.
+func TmpAdminUnixSocketPath() (string, error) {
+	return tmpAdminUnixSocketPathIn(os.TempDir())
+}
+
 type agent struct {
 	StdInConfig bool
 }

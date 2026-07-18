@@ -36,6 +36,7 @@ type Args struct {
 	WebAdminPProf           bool     `arg:"--web-pprof,env:ALMAGEST_WEB_ADMIN_PPROF" help:"enable net/http/pprof handlers on the web admin listener under /debug/pprof/"`
 
 	UnixAdmin                *string  `arg:"--unix,env:ALMAGEST_UNIX_ADMIN" help:"unix socket path for local admin API; empty disables it"`
+	TmpUnixAdmin             bool     `arg:"--tmp-unix-admin,env:ALMAGEST_TMP_UNIX_ADMIN" help:"create the local admin API unix socket at a random temporary alm-sock-* path"`
 	UnixAdminFilterUIDs      []uint32 `arg:"--unix-filter-uid,separate,env:ALMAGEST_UNIX_ADMIN_FILTER_UIDS" help:"allowed unix admin peer UID; repeat flag or comma-separate env values"`
 	UnixAdminFilterGIDs      []uint32 `arg:"--unix-filter-gid,separate,env:ALMAGEST_UNIX_ADMIN_FILTER_GIDS" help:"allowed unix admin peer GID; repeat flag or comma-separate env values"`
 	UnixAdminFilterUsernames []string `arg:"--unix-filter-user,separate,env:ALMAGEST_UNIX_ADMIN_FILTER_USERS" help:"allowed unix admin peer username; repeat flag or comma-separate env values"`

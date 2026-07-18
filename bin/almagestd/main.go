@@ -38,6 +38,10 @@ func main() {
 		fatal(err)
 		return
 	}
+	if err := resolveTmpUnixAdminArg(&args); err != nil {
+		fatal(err)
+		return
+	}
 	configureGlobalBufPool(args.NoPool)
 
 	agent := platform.RunAgent(args)

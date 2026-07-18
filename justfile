@@ -2,8 +2,8 @@ set shell := ["bash", "-euo", "pipefail", "-c"]
 set dotenv-load := true
 
 test-go:
-	go -C lib test ./... --race -count=1
-	go -C bin test ./... --race -count=1
+	go -C lib test ./... --race
+	go -C bin test ./... --race
 
 test-js:
   cd panel && npm ci && npm test
@@ -41,7 +41,7 @@ build: build-web
 	go build -o ./almagestd ./bin/almagestd/
 
 daemon: build
-  ./almagestd -c ./local -l debug -w 8090 --debug-nodes --unsafe-config
+  ./almagestd -c ./local -l debug -w 8090 --debug-nodes --unsafe-config --tmp-unix-admin
 
 daemon-sudo: build
   sudo ./almagestd -c ./local -l debug -w 8090 --debug-nodes --unsafe-config

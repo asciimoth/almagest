@@ -104,6 +104,23 @@ func TestSetupFSLinuxTemporaryIgnoresPathAndCleans(t *testing.T) {
 	}
 }
 
+func TestTmpAdminUnixSocketPathLinuxUsesRuntimeDir(t *testing.T) {
+	base := newSafePlatformTestDir(t)
+	t.Setenv("XDG_RUNTIME_DIR", base)
+
+	socketPath, err := TmpAdminUnixSocketPath()
+	if err != nil {
+		t.Fatalf("TmpAdminUnixSocketPath: %v", err)
+	}
+
+	if filepath.Dir(socketPath) != base {
+		t.Fatalf("socket parent = %q, want %q", filepath.Dir(socketPath), base)
+	}
+	if !strings.HasPrefix(filepath.Base(socketPath), tmpAdminUnixSocketPrefix) {
+		t.Fatalf("socket base = %q, want %s prefix", filepath.Base(socketPath), tmpAdminUnixSocketPrefix)
+	}
+}
+
 func TestSetupFSLinuxRejectsLooseStorageDirectory(t *testing.T) {
 	base := newSafePlatformTestDir(t)
 	loose := filepath.Join(base, "loose")

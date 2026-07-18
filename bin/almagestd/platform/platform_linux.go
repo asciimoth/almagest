@@ -111,6 +111,14 @@ func linuxTempFileStorageParent() string {
 	return os.TempDir()
 }
 
+// TmpAdminUnixSocketPath returns a random temporary path for the local admin
+// Unix socket. Linux prefers XDG_RUNTIME_DIR when it is an absolute existing
+// directory, matching temporary file storage; otherwise it falls back to the
+// process temporary directory.
+func TmpAdminUnixSocketPath() (string, error) {
+	return tmpAdminUnixSocketPathIn(linuxTempFileStorageParent())
+}
+
 func setupTempFS(parent string) (fs string, cleanup FSCleanup, err error) {
 	parent, err = filepath.Abs(parent)
 	if err != nil {
