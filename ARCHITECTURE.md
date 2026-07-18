@@ -106,6 +106,14 @@ Important flags and env:
   peer owner GIDs.
 - `--web-filter-user`, `ALMAGEST_WEB_ADMIN_FILTER_USERS`: allowed web admin
   peer owner usernames.
+- `--file-storage`, `ALMAGEST_FILE_STORAGE`: almagestd file storage directory.
+- `--tmp-file-storage`, `ALMAGEST_TMP_FILE_STORAGE`: create random temporary
+  file storage prefixed with `alm-store-` and remove it on exit.
+
+On Linux, persistent file storage defaults to
+`~/.local/share/almagest/store` for non-root users and
+`/var/lib/almagest/store` when running as root or when no current-user home is
+available.
 
 If `--config` points at a directory, use `alm.hujson` inside it. If protected
 config is omitted, use `protected_alm.hujson` next to the main config. Protected
@@ -122,3 +130,10 @@ System integration is selected from `Protected.System.Type`:
 
 Use debug integration for local runnable experiments. Native platform
 integration is currently a placeholder.
+
+Before loading config, almagestd resolves path-valued CLI args to absolute
+paths. After config parsing and before daemon resources are started or
+privileges are dropped, it sets up file storage and changes the process working
+directory to that storage directory. This keeps accidental relative file writes
+inside the daemon storage area without breaking relative paths supplied at
+startup.

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"os"
 	"os/signal"
 	"sync"
 	"syscall"
@@ -20,35 +21,69 @@ import (
 func main() {
 	gonnect.UnfuckGoDns()
 
+	fatal := func(v ...any) {
+		golog.Fatal(v...)
+	}
+
 	var args args.Args
 	if err := arg.Parse(&args); err != nil {
-		golog.Fatal(err)
+		fatal(err)
 		return
 	}
-	configureGlobalBufPool(args.NoPool)
 
 	if args.LogLevel != "" {
 		golog.SetLevel(args.LogLevel)
 	}
+	if err := resolveCLIPathArgs(&args); err != nil {
+		fatal(err)
+		return
+	}
+	configureGlobalBufPool(args.NoPool)
 
 	agent := platform.RunAgent(args)
 
 	configData, protectedData, err := agent.ReadConfig()
 	if err != nil {
-		golog.Fatal(err)
+		fatal(err)
 		return
 	}
 	conf, err := ParseConfig(configData, protectedData)
 	if err != nil {
-		golog.Fatal(err)
+		fatal(err)
 		return
 	}
 	conf.Protected.Merge(&args)
 
+	fsPath, fsCleanup, err := platform.SetupFS(args.FileStorage, args.TmpFileStorage)
+	if err != nil {
+		fatal(err)
+		return
+	}
+
+	var cleanupOnce sync.Once
+	cleanupFileStorage := func() {
+		cleanupOnce.Do(func() {
+			if err := fsCleanup(); err != nil {
+				golog.Warnf("File storage cleanup failed: %v", err)
+			}
+		})
+	}
+	defer cleanupFileStorage()
+	fatal = func(v ...any) {
+		cleanupFileStorage()
+		golog.Fatal(v...)
+	}
+
+	if err := os.Chdir(fsPath); err != nil {
+		fatal(err)
+		return
+	}
+	golog.Infof("Using file storage at %s", fsPath)
+
 	// Prepare admin api here (start listener/create unix socket/etc)
 	admin, err := PrepareAdminAPI(conf)
 	if err != nil {
-		golog.Fatal(err)
+		fatal(err)
 		return
 	}
 	admin.projectVersionStatus = projectVersionStatus
@@ -60,7 +95,7 @@ func main() {
 
 	commandRunner, err := cmdrunner.NewRunner(daemonLogger, conf.Protected.CommandRunner)
 	if err != nil {
-		golog.Fatal(err)
+		fatal(err)
 		return
 	}
 	commandRunner.Start(context.Background())
@@ -69,7 +104,7 @@ func main() {
 	// Setup system integration here before privileges drop
 	sys, err := SystemIntegration(conf, commandRunner)
 	if err != nil {
-		golog.Fatal(err)
+		fatal(err)
 		return
 	}
 	defer sys.Close() //nolint
@@ -95,7 +130,7 @@ func main() {
 	engineBuildElapsed := time.Since(engineBuildStart)
 	if err != nil {
 		daemonLogger.Debugf("engine build failed after %s: %v", engineBuildElapsed, err)
-		golog.Fatal("Engine setup", err)
+		fatal("Engine setup", err)
 	}
 	daemonLogger.Debugf("engine built in %s", engineBuildElapsed)
 	defer engine.Close() //nolint

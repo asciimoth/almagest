@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/netip"
 	"os"
+	"os/user"
 	"path"
 	"path/filepath"
 	"slices"
@@ -36,10 +37,107 @@ var DefaultProtectedConfigText string
 const DefaultConfig = "/etc/almagest/alm.hujson"
 
 const linuxDefaultUserMark uint32 = 0x414c4d01
+const linuxFallbackFileStorage = "/var/lib/almagest/store"
 
 var (
 	_ Agent = &agent{}
 )
+
+// SetupFS prepares almagestd file storage and returns its absolute path.
+//
+// Persistent storage uses storagePath when it is not empty. Otherwise it uses a
+// per-user data directory under the current user's home. When almagestd is
+// running as root, or when no home directory is available, it falls back to
+// /var/lib/almagest/store. Persistent cleanup is a no-op.
+//
+// Temporary storage ignores storagePath and creates a random 0700 directory
+// prefixed with "alm-store-" under the platform temporary data parent. Temporary
+// cleanup removes that directory.
+//
+// The final storage directory is always checked as a private 0700 directory
+// owned by root or the current effective UID. Persistent storage also walks all
+// parent directories with openat(), rejecting symlinks and writable untrusted
+// parents before creating missing components.
+func SetupFS(storagePath string, tmp bool) (fs string, cleanup FSCleanup, err error) {
+	cleanup = noopFSCleanup
+
+	if tmp {
+		return setupTempFS(linuxTempFileStorageParent())
+	}
+
+	if storagePath == "" {
+		storagePath = linuxDefaultFileStoragePath()
+	}
+
+	fs, err = filepath.Abs(storagePath)
+	if err != nil {
+		return "", nil, fmt.Errorf("file storage path %q: %w", storagePath, err)
+	}
+
+	if err := makeSurePrivateDirExists(fs); err != nil {
+		return "", nil, fmt.Errorf("file storage setup: %w", err)
+	}
+
+	return fs, cleanup, nil
+}
+
+func linuxDefaultFileStoragePath() string {
+	return linuxDefaultFileStoragePathFor(os.Geteuid(), currentUserHomeDir())
+}
+
+func linuxDefaultFileStoragePathFor(euid int, home string) string {
+	if euid == 0 || home == "" {
+		return linuxFallbackFileStorage
+	}
+	return filepath.Join(home, ".local", "share", "almagest", "store")
+}
+
+func currentUserHomeDir() string {
+	if home, err := os.UserHomeDir(); err == nil && home != "" && filepath.IsAbs(home) {
+		return home
+	}
+	if current, err := user.Current(); err == nil && current.HomeDir != "" && filepath.IsAbs(current.HomeDir) {
+		return current.HomeDir
+	}
+	return ""
+}
+
+func linuxTempFileStorageParent() string {
+	if runtimeDir := os.Getenv("XDG_RUNTIME_DIR"); runtimeDir != "" && filepath.IsAbs(runtimeDir) {
+		if info, err := os.Stat(runtimeDir); err == nil && info.IsDir() {
+			return runtimeDir
+		}
+	}
+	return os.TempDir()
+}
+
+func setupTempFS(parent string) (fs string, cleanup FSCleanup, err error) {
+	parent, err = filepath.Abs(parent)
+	if err != nil {
+		return "", nil, fmt.Errorf("temporary file storage parent: %w", err)
+	}
+
+	fs, err = os.MkdirTemp(parent, "alm-store-")
+	if err != nil {
+		return "", nil, fmt.Errorf("temporary file storage setup: %w", err)
+	}
+
+	tmpPath := fs
+	fs, err = filepath.Abs(tmpPath)
+	if err != nil {
+		_ = os.RemoveAll(tmpPath)
+		return "", nil, fmt.Errorf("temporary file storage path: %w", err)
+	}
+
+	if err := checkPrivateDirPath(fs); err != nil {
+		_ = os.RemoveAll(fs)
+		return "", nil, fmt.Errorf("temporary file storage setup: %w", err)
+	}
+
+	return fs, func() error {
+		return os.RemoveAll(fs)
+	}, nil
+}
 
 type agent struct {
 	StdInConfig  bool
@@ -437,6 +535,47 @@ func checkSafeFD(fd int, wantType uint32, label string) error {
 	return nil
 }
 
+// checkPrivateDirFD verifies that fd is the final storage directory.
+//
+// Parent directories only need to be non-writable by untrusted users so common
+// roots such as /, /home, and /var can be shared. The storage directory itself
+// is stricter: it must be exactly 0700 so future files can contain secrets
+// without exposing names or contents to group/other users.
+func checkPrivateDirFD(fd int, label string) error {
+	var st unix.Stat_t
+	if err := unix.Fstat(fd, &st); err != nil {
+		return fmt.Errorf("%s: fstat: %w", label, err)
+	}
+
+	if st.Mode&unix.S_IFMT != unix.S_IFDIR {
+		return fmt.Errorf("%s: unexpected file type: mode %#o", label, st.Mode)
+	}
+
+	if !trustedUID(st.Uid) {
+		return fmt.Errorf("%s: owner uid %d is not trusted", label, st.Uid)
+	}
+
+	if st.Mode&0o7777 != 0o700 {
+		return fmt.Errorf("%s: storage directory mode %#o, want 0700", label, st.Mode&0o7777)
+	}
+
+	return nil
+}
+
+func checkPrivateDirPath(path string) error {
+	fd, err := unix.Open(
+		path,
+		unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC,
+		0,
+	)
+	if err != nil {
+		return fmt.Errorf("%s: open: %w", path, err)
+	}
+	defer unix.Close(fd) //nolint:errcheck
+
+	return checkPrivateDirFD(fd, path)
+}
+
 // splitAbsPath splits an absolute path into path components.
 //
 // The function requires an absolute path because safety checks for relative
@@ -594,6 +733,28 @@ func MakeSureDirExists(path string) error {
 	}
 
 	return unix.Close(fd)
+}
+
+// makeSurePrivateDirExists creates path and missing parents, then verifies that
+// path itself is a private 0700 storage directory.
+//
+// Existing parent directories use the same non-symlink, trusted-owner, and
+// non-writable-by-group/other checks as config directories. Existing storage
+// directories are not chmodded; an unsafe mode is reported as a setup error so
+// the operator can inspect the path before secrets are written there.
+func makeSurePrivateDirExists(path string) error {
+	parts, err := splitAbsPath(path)
+	if err != nil {
+		return err
+	}
+
+	fd, err := openSafeDirComponents(parts, true)
+	if err != nil {
+		return err
+	}
+	defer unix.Close(fd) //nolint:errcheck
+
+	return checkPrivateDirFD(fd, path)
 }
 
 // openSafeFileAt opens a file inside an already-opened safe parent directory.

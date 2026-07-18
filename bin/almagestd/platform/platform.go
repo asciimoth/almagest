@@ -20,6 +20,16 @@ type Agent interface {
 	WriteConfig(cfg []byte) error
 }
 
+// FSCleanup releases resources owned by a file storage setup.
+//
+// Persistent storage returns a no-op cleanup. Temporary storage returns a
+// cleanup that removes the temporary storage directory.
+type FSCleanup func() error
+
+func noopFSCleanup() error {
+	return nil
+}
+
 // ReadStdinIfPiped returns fallback immediately if stdin is a terminal.
 // Otherwise, reads all piped/file input until EOF.
 func readStdinIfPiped(fallback []byte) ([]byte, error) {

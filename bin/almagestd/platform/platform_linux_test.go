@@ -4,11 +4,120 @@ package platform
 
 import (
 	"net/netip"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	cmdrunner "github.com/asciimoth/almagest/bin/almagestd/command"
 	"github.com/asciimoth/configer/hujson"
 )
+
+func TestSetupFSLinuxDefaultUsesHomeStorage(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root default storage intentionally uses /var instead of home")
+	}
+
+	home := newSafePlatformTestDir(t)
+	t.Setenv("HOME", home)
+
+	fs, cleanup, err := SetupFS("", false)
+	if err != nil {
+		t.Fatalf("SetupFS: %v", err)
+	}
+	if err := cleanup(); err != nil {
+		t.Fatalf("cleanup: %v", err)
+	}
+
+	want := filepath.Join(home, ".local", "share", "almagest", "store")
+	if fs != want {
+		t.Fatalf("fs = %q, want %q", fs, want)
+	}
+	assertPrivateDir(t, fs)
+}
+
+func TestLinuxDefaultFileStoragePathUsesVarForRoot(t *testing.T) {
+	if got := linuxDefaultFileStoragePathFor(0, "/root"); got != linuxFallbackFileStorage {
+		t.Fatalf("linuxDefaultFileStoragePathFor(root) = %q, want %q", got, linuxFallbackFileStorage)
+	}
+}
+
+func TestLinuxDefaultFileStoragePathUsesHomeForNonRoot(t *testing.T) {
+	home := "/home/alice"
+	want := filepath.Join(home, ".local", "share", "almagest", "store")
+	if got := linuxDefaultFileStoragePathFor(1000, home); got != want {
+		t.Fatalf("linuxDefaultFileStoragePathFor(non-root) = %q, want %q", got, want)
+	}
+}
+
+func TestLinuxDefaultFileStoragePathUsesVarWithoutHome(t *testing.T) {
+	if got := linuxDefaultFileStoragePathFor(1000, ""); got != linuxFallbackFileStorage {
+		t.Fatalf("linuxDefaultFileStoragePathFor(no home) = %q, want %q", got, linuxFallbackFileStorage)
+	}
+}
+
+func TestSetupFSLinuxRelativePathReturnsAbsoluteStorage(t *testing.T) {
+	base := newSafePlatformTestDir(t)
+	t.Chdir(base)
+
+	fs, cleanup, err := SetupFS("rel-store", false)
+	if err != nil {
+		t.Fatalf("SetupFS: %v", err)
+	}
+	if err := cleanup(); err != nil {
+		t.Fatalf("cleanup: %v", err)
+	}
+
+	want := filepath.Join(base, "rel-store")
+	if fs != want {
+		t.Fatalf("fs = %q, want %q", fs, want)
+	}
+	assertPrivateDir(t, fs)
+}
+
+func TestSetupFSLinuxTemporaryIgnoresPathAndCleans(t *testing.T) {
+	base := newSafePlatformTestDir(t)
+	t.Setenv("XDG_RUNTIME_DIR", base)
+	ignored := filepath.Join(base, "ignored")
+
+	fs, cleanup, err := SetupFS(ignored, true)
+	if err != nil {
+		t.Fatalf("SetupFS: %v", err)
+	}
+
+	if fs == ignored {
+		t.Fatalf("fs = ignored path %q, want generated temp path", fs)
+	}
+	if filepath.Dir(fs) != base {
+		t.Fatalf("fs parent = %q, want %q", filepath.Dir(fs), base)
+	}
+	if !strings.HasPrefix(filepath.Base(fs), "alm-store-") {
+		t.Fatalf("fs base = %q, want alm-store- prefix", filepath.Base(fs))
+	}
+	assertPrivateDir(t, fs)
+
+	if err := cleanup(); err != nil {
+		t.Fatalf("cleanup: %v", err)
+	}
+	if _, err := os.Stat(fs); !os.IsNotExist(err) {
+		t.Fatalf("temporary storage still exists after cleanup: %v", err)
+	}
+}
+
+func TestSetupFSLinuxRejectsLooseStorageDirectory(t *testing.T) {
+	base := newSafePlatformTestDir(t)
+	loose := filepath.Join(base, "loose")
+	if err := os.Mkdir(loose, 0o700); err != nil {
+		t.Fatalf("Mkdir: %v", err)
+	}
+	if err := os.Chmod(loose, 0o755); err != nil {
+		t.Fatalf("Chmod: %v", err)
+	}
+
+	if _, _, err := SetupFS(loose, false); err == nil {
+		t.Fatal("SetupFS succeeded for storage directory with loose permissions")
+	}
+}
 
 func TestReadLinuxSystemConfigDefaults(t *testing.T) {
 	cfg, err := hujson.Parse([]byte(`{}`))
@@ -214,4 +323,45 @@ type recordedCommandRequest struct {
 func (d *recordingDispatcher) Submit(req cmdrunner.Request) bool {
 	d.requests = append(d.requests, recordedCommandRequest{Request: req})
 	return true
+}
+
+func newSafePlatformTestDir(t *testing.T) string {
+	t.Helper()
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd: %v", err)
+	}
+	if err := MakeSureDirExists(cwd); err != nil {
+		t.Skipf("current test directory is not safe for platform storage tests: %v", err)
+	}
+
+	dir, err := os.MkdirTemp(cwd, ".almagest-platform-test-")
+	if err != nil {
+		t.Fatalf("MkdirTemp: %v", err)
+	}
+	if err := os.Chmod(dir, 0o700); err != nil {
+		_ = os.RemoveAll(dir)
+		t.Fatalf("Chmod: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.RemoveAll(dir)
+	})
+
+	return dir
+}
+
+func assertPrivateDir(t *testing.T, path string) {
+	t.Helper()
+
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("Stat(%q): %v", path, err)
+	}
+	if !info.IsDir() {
+		t.Fatalf("%q is not a directory", path)
+	}
+	if mode := info.Mode().Perm(); mode != 0o700 {
+		t.Fatalf("%q mode = %#o, want 0700", path, mode)
+	}
 }

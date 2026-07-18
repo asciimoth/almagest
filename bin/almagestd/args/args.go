@@ -16,6 +16,9 @@ type Args struct {
 	UnsafeConfig    bool   `arg:"--unsafe-config" help:"do not check config file permissions"`
 	// TODO: Read Only Config toggle
 
+	FileStorage    string `arg:"--file-storage,env:ALMAGEST_FILE_STORAGE" help:"file storage directory"`
+	TmpFileStorage bool   `arg:"--tmp-file-storage,env:ALMAGEST_TMP_FILE_STORAGE" help:"use temporary file storage and remove it on exit"`
+
 	LogLevel string `arg:"-l,--lvl,env:ALMAGEST_LOG_LVL" help:"logging level debug|info|warn|error|fatal"`
 
 	NoPool bool `arg:"--no-pool" help:"disable daemon global buffer pool"`
