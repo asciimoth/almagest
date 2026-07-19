@@ -68,11 +68,12 @@ start_daemon_named() {
 	mkdir -p "$E2E_RUNTIME"
 	: >"$daemon_log"
 	log "starting daemon $name"
-	almagestd \
+	XDG_RUNTIME_DIR="$E2E_RUNTIME" almagestd \
 		-c "$E2E_CONFIG_DIR/daemon-$name" \
 		-l debug \
 		--debug-nodes \
 		--unsafe-config \
+		--tmp-file-storage \
 		--unix "$admin_sock" \
 		--web 0 \
 		>"$daemon_log" 2>&1 &

@@ -58,11 +58,12 @@ start_daemon() {
 	mkdir -p "$E2E_RUNTIME"
 	: >"$E2E_DAEMON_LOG"
 	log "starting daemon"
-	almagestd \
+	XDG_RUNTIME_DIR="$E2E_RUNTIME" almagestd \
 		-c "$E2E_CONFIG_DIR" \
 		-l debug \
 		--debug-nodes \
 		--unsafe-config \
+		--tmp-file-storage \
 		--log-cache-debug "$ALMAGEST_E2E_LOG_CACHE_DEBUG" \
 		--log-cache-info "$ALMAGEST_E2E_LOG_CACHE_INFO" \
 		--log-cache-warn "$ALMAGEST_E2E_LOG_CACHE_WARN" \

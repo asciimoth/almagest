@@ -47,6 +47,7 @@ Use `start_daemon` from `common.sh`. It always starts `almagestd` with:
 - `--debug-nodes`
 - debug logging
 - `--unsafe-config`
+- isolated temporary file storage
 - an isolated Unix admin API socket from `protected_alm.hujson`
 - the web admin API disabled
 

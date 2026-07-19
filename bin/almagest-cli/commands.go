@@ -65,6 +65,8 @@ func run(
 		runErr = runAdmin(ctx, c, rest[1:], stdout, stderr)
 	case "engine":
 		runErr = runEngine(ctx, c, rest[1:], stdin, stdout, stderr)
+	case "kv":
+		runErr = runKV(ctx, c, rest[1:], stdout, stderr)
 	case "log":
 		runErr = runLog(ctx, c, rest[1:], stdout, stderr)
 	case "raw":
@@ -754,6 +756,7 @@ Endpoint URLs:
 Surfaces:
   admin    hello, ping, colormap, mutation lease commands, version status watch
   engine   workspace snapshots, graph mutations, notification subscriptions
+  kv       persistent key/value store snapshots, subscriptions, and mutations
   log      log subscription and watch commands
   graph    high-level node, link, class, and node menu commands
   workers  worker-system snapshots and tree rendering

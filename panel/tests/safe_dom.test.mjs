@@ -5,6 +5,9 @@ import { JSDOM } from "jsdom";
 import {
   createClassButtonContent,
   createEmptyWorkerItem,
+  createKVEntryTitle,
+  createKVStoreTitle,
+  createKVValuePreview,
   createLogItem,
   createNodeNameForm,
   createNotificationToast,
@@ -145,6 +148,50 @@ test("worker age updates preserve existing worker rows", () => {
   assert.equal(root.querySelector(".ps-worker"), row);
   assert.equal(root.querySelector(".ps-worker-age"), age);
   assert.equal(age?.textContent, "age 1m5s");
+});
+
+test("KV store and entry labels keep plugin and key payloads as text", () => {
+  installDOM();
+  const root = document.createElement("div");
+  root.append(
+    createKVStoreTitle({ kind: "plugin", name: payload }),
+    createKVEntryTitle({ kind: "bucket", name: payload }),
+    createKVEntryTitle({ kind: "value", name: payload, size: 12, string: true, hidden: true }),
+  );
+
+  assertNoParsedPayload(root);
+  assert.match(root.textContent ?? "", /<script>/);
+  assert.match(root.textContent ?? "", /hidden/);
+});
+
+test("KV value preview renders text safely and covers hidden text", () => {
+  installDOM();
+  const visible = createKVValuePreview({
+    data: payload,
+    encoding: "string",
+    size: payload.length,
+    string: true,
+  });
+  const hidden = createKVValuePreview({
+    data: payload,
+    encoding: "string",
+    size: payload.length,
+    string: true,
+    hidden: true,
+  });
+  const binary = createKVValuePreview({
+    data: "AAEC",
+    encoding: "base64",
+    size: 3,
+    string: false,
+  });
+  const root = document.createElement("div");
+  root.append(visible, hidden, binary);
+
+  assertNoParsedPayload(root);
+  assert.equal(hidden.querySelector(".kv-value-spoiler") !== null, true);
+  assert.equal(binary.querySelector("pre"), null);
+  assert.match(root.textContent ?? "", /<img src=x/);
 });
 
 

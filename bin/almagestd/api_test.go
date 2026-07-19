@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -41,6 +43,102 @@ func TestWorkersSnapshotResponseKeepsOnlyLiveWorkerParents(t *testing.T) {
 	}
 	if _, ok := resp.Nodes[99]; ok {
 		t.Fatal("idle node should not be included")
+	}
+}
+
+func TestKVSubscriptionSendsSnapshotEventsAndUnsubscribesDescendants(t *testing.T) {
+	manager, err := openKVManager(filepath.Join(t.TempDir(), "kv.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer manager.Close() //nolint:errcheck
+
+	var events []api.Message
+	session := (&AdminAPI{kv: manager}).newAPISession(nil, nil, func(msg api.Message) error {
+		if msg.Kind == api.MessageEvent && msg.Surface == api.SurfaceKV {
+			events = append(events, msg)
+		}
+		return nil
+	})
+	defer session.close()
+
+	subEntries := mustRequest(t, "1", api.SurfaceKV, string(api.MethodKVSubscribeEntries), api.KVEntriesRequest{})
+	resp, err := session.handleMessage(subEntries)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entriesResp, err := api.DecodePayload[api.KVSubscribeEntriesResponse](resp.Result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if entriesResp.SubscriptionID == 0 || !entriesResp.Snapshot.Exists {
+		t.Fatalf("entries subscribe response = %#v, want live subscription and root snapshot", entriesResp)
+	}
+
+	subValue := mustRequest(t, "2", api.SurfaceKV, string(api.MethodKVSubscribeValue), api.KVValueRequest{
+		Path: []string{"nested"},
+		Key:  "key",
+	})
+	resp, err = session.handleMessage(subValue)
+	if err != nil {
+		t.Fatal(err)
+	}
+	valueResp, err := api.DecodePayload[api.KVSubscribeValueResponse](resp.Result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if valueResp.SubscriptionID == 0 || valueResp.Snapshot.Found {
+		t.Fatalf("value subscribe response = %#v, want live missing-value subscription", valueResp)
+	}
+
+	events = nil
+	setReq := mustRequest(t, "3", api.SurfaceKV, string(api.MethodKVSet), api.KVSetRequest{
+		Key: "root",
+		Value: api.KVValue{
+			Data:     "value",
+			Encoding: "string",
+			String:   true,
+		},
+	})
+	if _, err := session.handleMessage(setReq); err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("events after set = %d, want one snapshot per subscription", len(events))
+	}
+	var entriesEvent api.KVEntriesEvent
+	for _, event := range events {
+		if event.Method == string(api.EventKVEntriesUpdate) {
+			if err := json.Unmarshal(event.Payload, &entriesEvent); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if entriesEvent.SubscriptionID != entriesResp.SubscriptionID || len(entriesEvent.Snapshot.Entries) != 1 || entriesEvent.Snapshot.Entries[0].Name != "root" {
+		t.Fatalf("entries event = %#v, want full root snapshot with root key", entriesEvent)
+	}
+
+	unsubReq := mustRequest(t, "4", api.SurfaceKV, string(api.MethodKVUnsubscribe), api.KVSubscriptionRequest{
+		SubscriptionID: entriesResp.SubscriptionID,
+	})
+	if _, err := session.handleMessage(unsubReq); err != nil {
+		t.Fatal(err)
+	}
+	events = nil
+	setNested := mustRequest(t, "5", api.SurfaceKV, string(api.MethodKVSet), api.KVSetRequest{
+		Path: []string{"nested"},
+		Key:  "key",
+		Value: api.KVValue{
+			Data:     "nested",
+			Encoding: "string",
+			String:   true,
+		},
+	})
+	if _, err := session.handleMessage(setNested); err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 0 {
+		t.Fatalf("events after ancestor unsubscribe = %d, want descendant subscriptions removed", len(events))
 	}
 }
 
@@ -141,4 +239,13 @@ func (adminAPIBatchNodeClass) NewNode(configer.Config, ...*pasta.NodeClassState)
 type adminAPIBatchNode struct {
 	pasta.BasicNode
 	_ byte
+}
+
+func mustRequest(t *testing.T, id string, surface api.Surface, method string, payload any) api.Message {
+	t.Helper()
+	msg, err := api.NewRequest(id, surface, method, payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return msg
 }

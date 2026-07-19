@@ -734,6 +734,447 @@ h1 {
   font-weight: 500;
 }
 
+.kv-panel {
+  overflow: auto;
+  background: var(--crust);
+}
+
+.kv-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  min-height: 100%;
+}
+
+.kv-panel.kv-value-open .kv-shell {
+  grid-template-columns: minmax(360px, 1fr) minmax(340px, 38vw);
+}
+
+.kv-tree {
+  min-width: 0;
+}
+
+.kv-tree-inner {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 10px 12px 16px;
+}
+
+.kv-header {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  margin: -10px -12px 4px;
+  border-bottom: 1px solid var(--surface0);
+  background: color-mix(in srgb, var(--crust), var(--mantle) 24%);
+  padding: 8px 12px;
+}
+
+.kv-header h2,
+.kv-value-header h2 {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.kv-value-header p,
+.kv-value-preview p,
+.kv-subtree-empty,
+.kv-subtree-missing,
+.kv-loading,
+.kv-value-missing {
+  margin: 2px 0 0;
+  color: var(--subtext);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.kv-row-actions button,
+.kv-inline-form button,
+.kv-value-actions button,
+.kv-value-header button,
+.kv-notice button {
+  min-height: 26px;
+  padding: 0 8px;
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.kv-notice {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 26px;
+  gap: 8px;
+  align-items: center;
+  border-left: 3px solid var(--surface1);
+  border-bottom: 1px solid var(--surface0);
+  padding: 6px 0 6px 8px;
+}
+
+.kv-notice span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+
+.kv-notice-info {
+  border-left-color: color-mix(in srgb, var(--green), var(--surface0) 42%);
+}
+
+.kv-notice-error {
+  border-left-color: color-mix(in srgb, var(--red), var(--surface0) 34%);
+}
+
+.kv-store-list,
+.kv-entry-list {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.kv-entry-list {
+  margin-top: 2px;
+}
+
+.kv-store,
+.kv-entry {
+  min-width: 0;
+}
+
+.kv-store + .kv-store {
+  margin-top: 6px;
+  border-top: 1px solid color-mix(in srgb, var(--surface0), transparent 30%);
+  padding-top: 6px;
+}
+
+.kv-row {
+  display: grid;
+  grid-template-columns: 24px minmax(140px, 1fr) max-content;
+  gap: 6px;
+  align-items: center;
+  min-height: 30px;
+  min-width: 0;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  padding: 1px 4px;
+}
+
+.kv-store-row {
+  background: color-mix(in srgb, var(--surface0), transparent 80%);
+}
+
+.kv-row:hover,
+.kv-row:focus-within {
+  border-color: color-mix(in srgb, var(--surface1), transparent 30%);
+  background: color-mix(in srgb, var(--surface0), transparent 62%);
+}
+
+.kv-row-selected,
+.kv-row-selected:hover,
+.kv-row-selected:focus-within {
+  border-color: color-mix(in srgb, var(--blue), var(--surface0) 50%);
+  background: color-mix(in srgb, var(--blue), var(--mantle) 88%);
+}
+
+.kv-disclosure {
+  width: 24px;
+  min-width: 24px;
+  min-height: 24px;
+  padding: 0;
+  border-color: transparent;
+  background: transparent;
+  color: var(--subtext);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-weight: 700;
+}
+
+.kv-disclosure:hover {
+  background: var(--surface0);
+}
+
+.kv-indent {
+  width: 24px;
+  min-width: 24px;
+  height: 1px;
+}
+
+.kv-store-title,
+.kv-entry-title {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+
+.kv-store-title strong,
+.kv-entry-title strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.kv-store-title em,
+.kv-entry-title em {
+  min-width: 0;
+  color: var(--surface2);
+  font-size: 11px;
+  font-style: normal;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.kv-entry-value .kv-entry-title strong {
+  color: color-mix(in srgb, var(--teal), var(--text) 28%);
+}
+
+.kv-row-actions,
+.kv-value-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  justify-content: end;
+  min-width: 0;
+}
+
+.kv-row-actions:empty {
+  display: none;
+}
+
+.kv-row-actions button {
+  border-color: transparent;
+  background: transparent;
+  color: var(--subtext);
+}
+
+.kv-row-actions button:hover {
+  border-color: var(--surface1);
+  background: var(--surface0);
+  color: var(--text);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .kv-row-actions {
+    opacity: 0.42;
+    transition: opacity 120ms ease;
+  }
+
+  .kv-row:hover .kv-row-actions,
+  .kv-row:focus-within .kv-row-actions {
+    opacity: 1;
+  }
+}
+
+.kv-row-actions .danger {
+  color: color-mix(in srgb, var(--red), var(--text) 20%);
+}
+
+.kv-node-body {
+  display: grid;
+  gap: 2px;
+  margin: 1px 0 3px 11px;
+  padding: 1px 0 2px 12px;
+  border-left: 1px solid color-mix(in srgb, var(--surface1), transparent 42%);
+}
+
+.kv-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+  min-height: 28px;
+  padding: 1px 4px;
+}
+
+.kv-path-label {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--surface2);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kv-toolbar button {
+  border-color: color-mix(in srgb, var(--surface1), transparent 28%);
+  background: color-mix(in srgb, var(--surface0), transparent 36%);
+  color: var(--text);
+}
+
+.kv-form-slot {
+  grid-column: 1 / -1;
+  margin: 2px 0 4px;
+}
+
+.kv-inline-form {
+  display: grid;
+  gap: 6px;
+  align-items: start;
+  border: 1px solid var(--surface0);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--mantle), transparent 16%);
+  padding: 7px;
+}
+
+.kv-subtree-form {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+}
+
+.kv-value-form {
+  grid-template-columns: minmax(120px, 1fr) 132px auto auto auto;
+}
+
+.kv-value-form textarea {
+  grid-column: 1 / -1;
+  min-height: 78px;
+  resize: vertical;
+}
+
+.kv-inline-form input,
+.kv-inline-form select,
+.kv-inline-form textarea {
+  min-width: 0;
+  border: 1px solid var(--surface1);
+  border-radius: 4px;
+  background: var(--crust);
+  color: var(--text);
+  padding: 6px 8px;
+  font-size: 12px;
+}
+
+.kv-inline-form input:focus,
+.kv-inline-form select:focus,
+.kv-inline-form textarea:focus {
+  border-color: var(--blue);
+  outline: none;
+}
+
+.kv-checkbox {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  min-height: 26px;
+  color: var(--subtext);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.kv-checkbox input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  padding: 0;
+}
+
+.kv-empty {
+  padding: 16px 4px;
+  color: var(--subtext);
+  font-size: 12px;
+}
+
+.kv-value-panel {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 8px;
+  height: calc(100vh - 59px);
+  min-width: 0;
+  overflow: auto;
+  border-left: 1px solid var(--surface0);
+  background: var(--mantle);
+  padding: 10px 12px;
+}
+
+.kv-value-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 26px;
+  gap: 8px;
+  align-items: start;
+  border-bottom: 1px solid var(--surface0);
+  padding-bottom: 8px;
+}
+
+.kv-value-header button {
+  width: 26px;
+  padding: 0;
+}
+
+.kv-value-detail {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.kv-value-meta {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+
+.kv-value-meta > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--subtext);
+  font-size: 12px;
+}
+
+.kv-value-preview {
+  min-width: 0;
+}
+
+.kv-value-text {
+  max-height: min(60vh, 520px);
+  margin: 0;
+  overflow: auto;
+  border: 1px solid var(--surface0);
+  border-radius: 4px;
+  background: var(--crust);
+  color: var(--text);
+  padding: 9px;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.kv-value-spoiler {
+  position: relative;
+  min-width: 0;
+}
+
+.kv-value-spoiler .kv-value-text {
+  filter: blur(7px);
+  pointer-events: none;
+  user-select: none;
+}
+
+.kv-value-spoiler-label {
+  position: absolute;
+  inset: 1px;
+  display: grid;
+  place-items: center;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--crust), transparent 16%);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .logs-panel {
   overflow: auto;
   background: var(--crust);
@@ -930,15 +1371,71 @@ h1 {
 
   .ps-node-header,
   .ps-worker,
-  .ps-worker-failed {
+  .ps-worker-failed,
+  .kv-subtree-form,
+  .kv-value-form,
+  .kv-value-meta {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .ps-node-header em {
+  .ps-node-header em,
+  .kv-store-title em,
+  .kv-entry-title em {
     text-align: left;
   }
 
   .ps-worker i {
     display: none;
+  }
+
+  .kv-panel.kv-value-open .kv-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .kv-tree-inner {
+    padding: 8px 8px 14px;
+  }
+
+  .kv-header {
+    margin: -8px -8px 4px;
+    padding: 8px;
+  }
+
+  .kv-row {
+    grid-template-columns: 24px minmax(0, 1fr);
+  }
+
+  .kv-row-actions {
+    grid-column: 2 / -1;
+    justify-content: start;
+  }
+
+  .kv-node-body {
+    margin-left: 11px;
+    padding-left: 10px;
+  }
+
+  .kv-toolbar {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+  }
+
+  .kv-row-actions,
+  .kv-value-actions {
+    flex-wrap: wrap;
+    justify-content: start;
+  }
+
+  .kv-value-panel {
+    position: fixed;
+    top: 12px;
+    right: 12px;
+    bottom: 12px;
+    left: 12px;
+    z-index: 12;
+    height: auto;
+    border: 1px solid var(--surface1);
+    border-radius: 6px;
+    box-shadow: 0 16px 42px color-mix(in srgb, black, transparent 55%);
   }
 }

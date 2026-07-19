@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"sync"
 	"syscall"
 	"time"
@@ -73,7 +74,11 @@ func main() {
 		})
 	}
 	defer cleanupFileStorage()
+	var kv *bboltKVManager
 	fatal = func(v ...any) {
+		if kv != nil {
+			_ = kv.Close()
+		}
 		cleanupFileStorage()
 		golog.Fatal(v...)
 	}
@@ -84,6 +89,14 @@ func main() {
 	}
 	golog.Infof("Using file storage at %s", fsPath)
 
+	kv, err = openKVManagerInStorage(fsPath)
+	if err != nil {
+		fatal(err)
+		return
+	}
+	defer kv.Close() //nolint
+	golog.Infof("Using kv database at %s", filepath.Join(fsPath, kvDBFileName))
+
 	// Prepare admin api here (start listener/create unix socket/etc)
 	admin, err := PrepareAdminAPI(conf)
 	if err != nil {
@@ -91,6 +104,7 @@ func main() {
 		return
 	}
 	admin.projectVersionStatus = projectVersionStatus
+	admin.kv = kv
 	defer admin.Stop()
 
 	logf := NewLogFactory(conf.LogCache().MergeArgs(&args))

@@ -57,11 +57,12 @@ start_daemon_a() {
 	mkdir -p "$E2E_RUNTIME"
 	: >"$daemon_log_a"
 	log "starting daemon a"
-	almagestd \
+	XDG_RUNTIME_DIR="$E2E_RUNTIME" almagestd \
 		-c "$E2E_CONFIG_DIR/daemon-a" \
 		-l debug \
 		--debug-nodes \
 		--unsafe-config \
+		--tmp-file-storage \
 		--unix "$admin_sock_a" \
 		--web 0 \
 		>"$daemon_log_a" 2>&1 &
@@ -80,11 +81,12 @@ start_daemon_b() {
 	mkdir -p "$E2E_RUNTIME"
 	: >"$daemon_log_b"
 	log "starting daemon b"
-	almagestd \
+	XDG_RUNTIME_DIR="$E2E_RUNTIME" almagestd \
 		-c "$E2E_CONFIG_DIR/daemon-b" \
 		-l debug \
 		--debug-nodes \
 		--unsafe-config \
+		--tmp-file-storage \
 		--unix "$admin_sock_b" \
 		--web 0 \
 		>"$daemon_log_b" 2>&1 &

@@ -107,6 +107,47 @@ func TestRunRawSendsJSONPayload(t *testing.T) {
 	}
 }
 
+func TestRunKVSetSendsRequest(t *testing.T) {
+	ft := &fakeTransport{reads: []api.Message{mustResponse(t, "1", api.KVValueSnapshot{
+		Found: true,
+		Value: &api.KVValue{Data: "value", Encoding: "string", Size: 5, String: true},
+	})}}
+	var stdout, stderr bytes.Buffer
+
+	err := run(context.Background(), []string{
+		"kv", "set",
+		"--plugin", "plug",
+		"--path", "bucket/nested",
+		"--key", "key",
+		"--data", "value",
+		"--hidden",
+	}, nil, &stdout, &stderr, func(context.Context, endpoint) (apiTransport, error) {
+		return ft, nil
+	})
+	if err != nil {
+		t.Fatalf("run failed: %v\nstderr: %s", err, stderr.String())
+	}
+	if len(ft.writes) != 1 {
+		t.Fatalf("writes = %d, want 1", len(ft.writes))
+	}
+	if ft.writes[0].Surface != api.SurfaceKV || ft.writes[0].Method != string(api.MethodKVSet) {
+		t.Fatalf("request = %#v", ft.writes[0])
+	}
+	req, err := api.DecodePayload[api.KVSetRequest](ft.writes[0].Payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if req.Store.Kind != api.KVStorePlugin || req.Store.Name != "plug" {
+		t.Fatalf("store = %#v, want plugin plug", req.Store)
+	}
+	if len(req.Path) != 2 || req.Path[0] != "bucket" || req.Path[1] != "nested" {
+		t.Fatalf("path = %#v, want bucket/nested", req.Path)
+	}
+	if req.Key != "key" || req.Value.Data != "value" || req.Value.Encoding != "string" || !req.Value.Hidden || !req.Value.String {
+		t.Fatalf("payload = %#v, want hidden string value", req)
+	}
+}
+
 func TestRunEngineRemoveNodesSendsBatchRequest(t *testing.T) {
 	ft := &fakeTransport{reads: []api.Message{mustResponse(t, "1", struct{}{})}}
 	var stdout, stderr bytes.Buffer

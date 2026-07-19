@@ -32,6 +32,7 @@ type AdminAPI struct {
 
 	projectVersionStatus api.ProjectVersionStatus
 	configAutosaver      *configAutosaver
+	kv                   *bboltKVManager
 
 	leaseMu       sync.Mutex
 	mutationLease *mutationLease
@@ -129,6 +130,11 @@ type apiSession struct {
 
 	engineSubscriptions []uint64
 	logSubscriptions    []uint64
+
+	kvMu                   sync.Mutex
+	kvNextSubscriptionID   uint64
+	kvChangeSubscriptionID uint64
+	kvSubscriptions        map[uint64]kvSubscription
 }
 
 func (a *AdminAPI) newAPISession(engine almagest.Engine, logf *LogFactory, send func(api.Message) error) *apiSession {
@@ -145,6 +151,7 @@ func (s *apiSession) close() {
 		s.engine.UnsubscribeNotifications(id)
 	}
 	s.engineSubscriptions = nil
+	s.closeKVSubscriptions()
 	if s.logf == nil {
 		return
 	}
@@ -168,6 +175,8 @@ func (s *apiSession) handleMessage(msg api.Message) (api.Message, error) {
 		return s.handleAdminMessage(msg)
 	case api.SurfaceEngine:
 		return s.handleEngineMessage(msg)
+	case api.SurfaceKV:
+		return s.handleKVMessage(msg)
 	case api.SurfaceLog:
 		return s.handleLogMessage(msg)
 	default:
@@ -191,6 +200,9 @@ func (s *apiSession) handleAdminMessage(msg api.Message) (api.Message, error) {
 				},
 				string(api.SurfaceEngine): map[string]any{
 					"methods": api.EngineMethods(),
+				},
+				string(api.SurfaceKV): map[string]any{
+					"methods": api.KVMethods(),
 				},
 				string(api.SurfaceLog): map[string]any{
 					"methods": api.LogMethods(),

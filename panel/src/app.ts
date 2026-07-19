@@ -34,10 +34,14 @@ import {
   createClassButtonContent,
   createEmptyLogItem,
   createEmptyWorkerItem,
+  createKVEntryTitle,
+  createKVStoreTitle,
+  createKVValuePreview,
   createLogItem,
   createNodeNameForm,
   createNotificationToast,
   createWorkerNodeBlock,
+  formatKVValueMeta,
   renderNodeDescription,
   shortClass,
   textElement,
@@ -45,6 +49,21 @@ import {
   type WorkerNodeBlock,
   type ClassPreviewPort,
 } from "./safe_dom.js";
+import {
+  KV_TEXT_RENDER_LIMIT,
+  childKVNodeKey,
+  desiredKVEntrySubscriptionKeys,
+  kvNodeDescendsFrom,
+  kvNodeKey,
+  normalizeKVStore,
+  parseKVNodeKey,
+  sameKVStore,
+  type KVEntriesSnapshot,
+  type KVEntryInfo,
+  type KVStoreInfo,
+  type KVValue,
+  type KVValueSnapshot,
+} from "./kv_model.js";
 
 declare const LiteGraph: any;
 declare const LGraph: any;
@@ -78,7 +97,51 @@ type SubscribeLogsResponse = {
   cache_size: number;
   entries: LogEntry[];
 };
-type Surface = "admin" | "engine" | "log";
+type KVStoresSnapshot = {
+  stores: KVStoreInfo[];
+};
+type KVSubscribeStoresResponse = {
+  subscription_id: number;
+  snapshot: KVStoresSnapshot;
+};
+type KVStoresEvent = {
+  subscription_id: number;
+  snapshot: KVStoresSnapshot;
+};
+type KVSubscribeEntriesResponse = {
+  subscription_id: number;
+  snapshot: KVEntriesSnapshot;
+};
+type KVEntriesEvent = {
+  subscription_id: number;
+  snapshot: KVEntriesSnapshot;
+};
+type KVSubscribeValueResponse = {
+  subscription_id: number;
+  snapshot: KVValueSnapshot;
+};
+type KVValueEvent = {
+  subscription_id: number;
+  snapshot: KVValueSnapshot;
+};
+type KVNoticeLevel = "info" | "error";
+type KVNotice = {
+  level: KVNoticeLevel;
+  text: string;
+};
+type KVOpenForm = {
+  nodeKey: string;
+  mode: "value" | "subtree";
+};
+type KVValuePanelState = {
+  store: KVStoreInfo;
+  path: string[];
+  key: string;
+  subscriptionID: number;
+  snapshot: KVValueSnapshot | null;
+  revealHidden: boolean;
+};
+type Surface = "admin" | "engine" | "kv" | "log";
 type APIMessage = {
   version: "v1";
   kind: "request" | "response" | "event";
@@ -163,6 +226,18 @@ let nextRequestID = 1;
 let notificationSubscriptionID = 0;
 let logSubscriptionID = 0;
 const frontendLogs: LogEntry[] = [];
+let kvStoreSubscriptionID = 0;
+let kvStoreSubscribePending = false;
+let kvScrollTop = 0;
+let kvNotice: KVNotice | null = null;
+let kvOpenForm: KVOpenForm | null = null;
+let kvValuePanel: KVValuePanelState | null = null;
+let kvValueSubscribePending = false;
+const kvStores: KVStoreInfo[] = [];
+const kvExpandedNodes = new Set<string>();
+const kvEntriesByNode = new Map<string, KVEntriesSnapshot>();
+const kvEntrySubscriptions = new Map<string, number>();
+const kvEntrySubscribePending = new Set<string>();
 let nextToastID = 1;
 let liteGraphDrawGuardInstalled = false;
 let liteGraphWidgetSelectionGuardInstalled = false;
@@ -182,6 +257,9 @@ const el = {
   panels: [...document.querySelectorAll<HTMLElement>("[data-panel]")],
   graphCanvas: document.querySelector<HTMLCanvasElement>("#graph-canvas")!,
   sidekick: document.querySelector<HTMLElement>("#sidekick")!,
+  kvPanel: document.querySelector<HTMLElement>("[data-panel='kv']")!,
+  kvTree: document.querySelector<HTMLElement>("#kv-tree")!,
+  kvValuePanel: document.querySelector<HTMLElement>("#kv-value-panel")!,
   psPanel: document.querySelector<HTMLElement>("[data-panel='ps']")!,
   ps: document.querySelector<HTMLElement>("#ps-list")!,
   logsPanel: document.querySelector<HTMLElement>("[data-panel='logs']")!,
@@ -317,6 +395,10 @@ function handleAPIMessage(msg: APIMessage): void {
   }
   if (msg.kind === "event" && msg.surface === "log" && msg.method === "entry") {
     appendLog(msg.payload as LogEntry);
+    return;
+  }
+  if (msg.kind === "event" && msg.surface === "kv" && msg.method) {
+    handleKVEvent(msg.method, msg.payload);
   }
 }
 
@@ -474,6 +556,22 @@ async function backend<T>(method: string, params: Record<string, unknown> = {}):
       renderLogs();
       return result as T;
     }
+    case "kvSubscribeStores":
+      return request<T>("kv", "subscribe_stores");
+    case "kvSubscribeEntries":
+      return request<T>("kv", "subscribe_entries", { store: params.store, path: params.path });
+    case "kvSubscribeValue":
+      return request<T>("kv", "subscribe_value", { store: params.store, path: params.path, key: params.key });
+    case "kvUnsubscribe":
+      return request<T>("kv", "unsubscribe", { subscription_id: params.subscriptionID });
+    case "kvEnsure":
+      return request<T>("kv", "ensure", { store: params.store, path: params.path });
+    case "kvSet":
+      return request<T>("kv", "set", { store: params.store, path: params.path, key: params.key, value: params.value });
+    case "kvDelete":
+      return request<T>("kv", "delete", { store: params.store, path: params.path, key: params.key });
+    case "kvDrop":
+      return request<T>("kv", "drop", { store: params.store, path: params.path });
     case "snapshot": {
       const result = await request<{ snapshot: WorkspaceSnapshot }>("engine", "workspace_snapshot", { workspace: "main" });
       return result.snapshot as T;
@@ -1341,6 +1439,702 @@ async function requestSnapshot(): Promise<void> {
   }
 }
 
+function handleKVEvent(method: string, payload: unknown): void {
+  if (method === "stores_update") {
+    const event = payload as KVStoresEvent;
+    if (event.subscription_id !== kvStoreSubscriptionID) return;
+    applyKVStoresSnapshot(event.snapshot);
+    return;
+  }
+  if (method === "entries_update") {
+    const event = payload as KVEntriesEvent;
+    const nodeKey = kvNodeKeyForEntrySubscription(event.subscription_id);
+    if (!nodeKey) return;
+    kvEntriesByNode.set(nodeKey, event.snapshot);
+    renderKV();
+    return;
+  }
+  if (method === "value_update") {
+    const event = payload as KVValueEvent;
+    if (!kvValuePanel || event.subscription_id !== kvValuePanel.subscriptionID) return;
+    kvValuePanel.snapshot = event.snapshot;
+    renderKVValuePanel();
+  }
+}
+
+// KV subscriptions are deliberately tab-scoped. The expanded tree and cached
+// snapshots stay in memory for quick return, but every live backend
+// subscription is released when the user leaves the KV tab.
+function activateKVPanel(): void {
+  renderKV();
+  restoreKVScrollState();
+  void ensureKVStoreSubscription();
+  syncKVEntrySubscriptions();
+  if (kvValuePanel && !kvValuePanel.subscriptionID) {
+    void subscribeKVValuePanel();
+  }
+}
+
+function deactivateKVPanel(): void {
+  rememberKVScrollState();
+  closeKVValuePanel();
+  if (kvStoreSubscriptionID) {
+    void tryBackend("kvUnsubscribe", { subscriptionID: kvStoreSubscriptionID });
+    kvStoreSubscriptionID = 0;
+  }
+  for (const id of kvEntrySubscriptions.values()) {
+    void tryBackend("kvUnsubscribe", { subscriptionID: id });
+  }
+  kvEntrySubscriptions.clear();
+}
+
+async function ensureKVStoreSubscription(): Promise<void> {
+  if (activeTab !== "kv" || kvStoreSubscriptionID || kvStoreSubscribePending) return;
+  kvStoreSubscribePending = true;
+  const response = await tryBackend<KVSubscribeStoresResponse>("kvSubscribeStores");
+  kvStoreSubscribePending = false;
+  if (!response) {
+    kvNotice = { level: "error", text: "KV storage is unavailable." };
+    renderKV();
+    return;
+  }
+  if (activeTab !== "kv") {
+    if (response.subscription_id) void tryBackend("kvUnsubscribe", { subscriptionID: response.subscription_id });
+    return;
+  }
+  kvStoreSubscriptionID = response.subscription_id;
+  applyKVStoresSnapshot(response.snapshot);
+}
+
+function applyKVStoresSnapshot(snapshot: KVStoresSnapshot): void {
+  kvStores.splice(0, kvStores.length, ...sortKVStores(snapshot.stores.map(normalizeKVStore)));
+  renderKV();
+}
+
+function sortKVStores(stores: KVStoreInfo[]): KVStoreInfo[] {
+  return [...stores].sort((left, right) => {
+    if (left.kind !== right.kind) return left.kind === "default" ? -1 : 1;
+    return (left.name ?? "").localeCompare(right.name ?? "");
+  });
+}
+
+function renderKV(): void {
+  const previousTop = el.kvPanel.scrollTop;
+  const tree = document.createElement("div");
+  tree.className = "kv-tree-inner";
+  tree.append(renderKVHeader());
+  if (kvNotice) tree.append(renderKVNotice(kvNotice));
+
+  const list = document.createElement("ol");
+  list.className = "kv-store-list";
+  if (!kvStores.length) {
+    list.append(renderKVEmptyState(kvStoreSubscribePending ? "Loading KV stores." : "No KV stores."));
+  } else {
+    for (const store of kvStores) {
+      list.append(renderKVStore(store));
+    }
+  }
+  tree.append(list);
+  el.kvTree.replaceChildren(tree);
+  el.kvPanel.scrollTop = activeTab === "kv" ? previousTop : kvScrollTop;
+  syncKVEntrySubscriptions();
+}
+
+function renderKVHeader(): HTMLElement {
+  const header = document.createElement("header");
+  header.className = "kv-header";
+  header.append(textElement("h2", "KV stores"));
+  return header;
+}
+
+function renderKVNotice(notice: KVNotice): HTMLElement {
+  const row = document.createElement("div");
+  row.className = `kv-notice kv-notice-${notice.level}`;
+  row.append(textElement("span", notice.text));
+  const close = textElement("button", "x");
+  close.type = "button";
+  close.title = "Dismiss";
+  close.setAttribute("aria-label", "Dismiss KV message");
+  close.addEventListener("click", () => {
+    kvNotice = null;
+    renderKV();
+  });
+  row.append(close);
+  return row;
+}
+
+function renderKVEmptyState(text: string): HTMLLIElement {
+  const item = document.createElement("li");
+  item.className = "kv-empty";
+  item.append(textElement("span", text));
+  return item;
+}
+
+function renderKVStore(store: KVStoreInfo): HTMLLIElement {
+  const nodeKey = kvNodeKey(store);
+  const expanded = kvExpandedNodes.has(nodeKey);
+  const item = document.createElement("li");
+  item.className = "kv-store";
+  const row = document.createElement("div");
+  row.className = "kv-row kv-store-row";
+  row.append(createKVDisclosure(expanded, `Toggle ${store.kind} KV store`, () => toggleKVNode(nodeKey)));
+  row.append(createKVStoreTitle(store));
+  const actions = document.createElement("div");
+  actions.className = "kv-row-actions";
+  row.append(actions);
+  item.append(row);
+  if (expanded) {
+    item.append(renderKVNodeBody(store, [], nodeKey));
+  }
+  return item;
+}
+
+function renderKVNodeBody(store: KVStoreInfo, path: string[], nodeKey: string): HTMLElement {
+  const body = document.createElement("div");
+  body.className = "kv-node-body";
+  body.append(renderKVPathToolbar(store, path, nodeKey));
+  const snapshot = kvEntriesByNode.get(nodeKey);
+  if (!snapshot) {
+    body.append(renderKVLoading());
+    return body;
+  }
+  if (!snapshot.exists) {
+    body.append(textElement("p", "Subtree does not exist.", "kv-subtree-missing"));
+    return body;
+  }
+  const entries = snapshot.entries ?? [];
+  if (!entries.length) {
+    body.append(textElement("p", "Empty subtree.", "kv-subtree-empty"));
+    return body;
+  }
+  const list = document.createElement("ol");
+  list.className = "kv-entry-list";
+  for (const entry of entries) {
+    list.append(renderKVEntry(store, path, nodeKey, entry));
+  }
+  body.append(list);
+  return body;
+}
+
+function renderKVLoading(): HTMLElement {
+  const loading = document.createElement("p");
+  loading.className = "kv-loading";
+  loading.textContent = "Loading subtree.";
+  return loading;
+}
+
+// Entry snapshots intentionally contain metadata only. Values are fetched with
+// a separate value subscription after the user explicitly opens the value
+// panel, so tree rendering cannot accidentally disclose value contents.
+function renderKVEntry(store: KVStoreInfo, path: string[], parentKey: string, entry: KVEntryInfo): HTMLLIElement {
+  const item = document.createElement("li");
+  item.className = `kv-entry kv-entry-${entry.kind}`;
+  const row = document.createElement("div");
+  row.className = "kv-row";
+  if (entry.kind === "bucket") {
+    const childKey = childKVNodeKey(parentKey, entry.name) ?? kvNodeKey(store, [...path, entry.name]);
+    const expanded = kvExpandedNodes.has(childKey);
+    row.append(createKVDisclosure(expanded, `Toggle subtree ${entry.name}`, () => toggleKVNode(childKey)));
+    row.append(createKVEntryTitle(entry));
+    row.append(renderKVBucketActions(store, [...path, entry.name]));
+    item.append(row);
+    if (expanded) item.append(renderKVNodeBody(store, [...path, entry.name], childKey));
+  } else {
+    row.append(createKVIndent());
+    row.append(createKVEntryTitle(entry));
+    row.append(renderKVValueActions(store, path, entry));
+    if (kvValuePanel && sameKVStore(kvValuePanel.store, store) && pathsEqual(kvValuePanel.path, path) && kvValuePanel.key === entry.name) {
+      row.classList.add("kv-row-selected");
+    }
+    item.append(row);
+  }
+  return item;
+}
+
+function createKVDisclosure(expanded: boolean, label: string, onClick: () => void): HTMLButtonElement {
+  const button = textElement("button", expanded ? "-" : "+", "kv-disclosure");
+  button.type = "button";
+  button.setAttribute("aria-label", label);
+  button.setAttribute("aria-expanded", String(expanded));
+  button.addEventListener("click", onClick);
+  return button;
+}
+
+function createKVIndent(): HTMLElement {
+  const indent = document.createElement("span");
+  indent.className = "kv-indent";
+  indent.setAttribute("aria-hidden", "true");
+  return indent;
+}
+
+function renderKVBucketActions(store: KVStoreInfo, path: string[]): HTMLElement {
+  const actions = document.createElement("div");
+  actions.className = "kv-row-actions";
+  const drop = textElement("button", "Drop");
+  drop.type = "button";
+  drop.title = "Drop subtree";
+  drop.className = "danger";
+  drop.addEventListener("click", () => dropKVSubtree(store, path));
+  actions.append(drop);
+  return actions;
+}
+
+function renderKVValueActions(store: KVStoreInfo, path: string[], entry: KVEntryInfo): HTMLElement {
+  const actions = document.createElement("div");
+  actions.className = "kv-row-actions";
+  const show = textElement("button", "Open");
+  show.type = "button";
+  show.title = "Open value";
+  show.addEventListener("click", () => openKVValuePanel(store, path, entry.name));
+  const remove = textElement("button", "Delete");
+  remove.type = "button";
+  remove.title = "Delete value";
+  remove.className = "danger";
+  remove.addEventListener("click", () => deleteKVValue(store, path, entry.name));
+  actions.append(show, remove);
+  return actions;
+}
+
+function renderKVPathToolbar(store: KVStoreInfo, path: string[], nodeKey: string): HTMLElement {
+  const toolbar = document.createElement("div");
+  toolbar.className = "kv-toolbar";
+  const pathLabel = textElement("span", kvPathLabel(store, path), "kv-path-label");
+  pathLabel.title = kvPathLabel(store, path);
+  const addValue = textElement("button", "+ Value");
+  addValue.type = "button";
+  addValue.title = "Create value in this subtree";
+  addValue.addEventListener("click", () => openKVForm(nodeKey, "value"));
+  const addSubtree = textElement("button", "+ Subtree");
+  addSubtree.type = "button";
+  addSubtree.title = "Create child subtree";
+  addSubtree.addEventListener("click", () => openKVForm(nodeKey, "subtree"));
+  toolbar.append(pathLabel, addValue, addSubtree);
+  if (kvOpenForm?.nodeKey === nodeKey) {
+    const form = kvOpenForm.mode === "value" ? renderKVValueForm(store, path) : renderKVSubtreeForm(store, path);
+    const wrapper = document.createElement("div");
+    wrapper.className = "kv-form-slot";
+    wrapper.append(form);
+    toolbar.append(wrapper);
+  }
+  return toolbar;
+}
+
+function kvPathLabel(store: KVStoreInfo, path: string[]): string {
+  const root = store.kind === "plugin" ? `plugin:${store.name ?? ""}` : "default";
+  return path.length ? `${root} / ${path.join(" / ")}` : root;
+}
+
+function renderKVSubtreeForm(store: KVStoreInfo, path: string[]): HTMLFormElement {
+  const form = document.createElement("form");
+  form.className = "kv-inline-form kv-subtree-form";
+  const name = document.createElement("input");
+  name.name = "name";
+  name.placeholder = "Subtree name";
+  name.autocomplete = "off";
+  name.required = true;
+  const save = textElement("button", "Create");
+  save.type = "submit";
+  const cancel = textElement("button", "Cancel");
+  cancel.type = "button";
+  cancel.addEventListener("click", closeKVForm);
+  form.append(name, save, cancel);
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void createKVSubtree(store, path, name.value);
+  });
+  return form;
+}
+
+function renderKVValueForm(store: KVStoreInfo, path: string[]): HTMLFormElement {
+  const form = document.createElement("form");
+  form.className = "kv-inline-form kv-value-form";
+  const key = document.createElement("input");
+  key.name = "key";
+  key.placeholder = "Key";
+  key.autocomplete = "off";
+  key.required = true;
+  const mode = document.createElement("select");
+  mode.name = "mode";
+  const textOption = document.createElement("option");
+  textOption.value = "text";
+  textOption.textContent = "Text";
+  const bytesOption = document.createElement("option");
+  bytesOption.value = "base64";
+  bytesOption.textContent = "Bytes base64";
+  mode.append(textOption, bytesOption);
+  const hiddenLabel = document.createElement("label");
+  hiddenLabel.className = "kv-checkbox";
+  const hidden = document.createElement("input");
+  hidden.type = "checkbox";
+  hidden.name = "hidden";
+  hiddenLabel.append(hidden, textElement("span", "Hidden"));
+  const data = document.createElement("textarea");
+  data.name = "data";
+  data.placeholder = "Value";
+  data.rows = 4;
+  const save = textElement("button", "Set");
+  save.type = "submit";
+  const cancel = textElement("button", "Cancel");
+  cancel.type = "button";
+  cancel.addEventListener("click", closeKVForm);
+  form.append(key, mode, hiddenLabel, data, save, cancel);
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void setKVValue(store, path, key.value, data.value, mode.value, hidden.checked);
+  });
+  return form;
+}
+
+function openKVForm(nodeKey: string, mode: "value" | "subtree"): void {
+  kvOpenForm = { nodeKey, mode };
+  renderKV();
+}
+
+function closeKVForm(): void {
+  kvOpenForm = null;
+  renderKV();
+}
+
+function toggleKVNode(nodeKey: string): void {
+  if (kvExpandedNodes.has(nodeKey)) {
+    kvExpandedNodes.delete(nodeKey);
+  } else {
+    kvExpandedNodes.add(nodeKey);
+  }
+  renderKV();
+}
+
+async function createKVSubtree(store: KVStoreInfo, path: string[], name: string): Promise<void> {
+  const childName = name;
+  if (!childName) {
+    kvNotice = { level: "error", text: "Subtree name is required." };
+    renderKV();
+    return;
+  }
+  const childPath = [...path, childName];
+  if (await runKVMutation("kvEnsure", { store, path: childPath }, "Subtree created.")) {
+    closeKVForm();
+  }
+}
+
+async function setKVValue(
+  store: KVStoreInfo,
+  path: string[],
+  key: string,
+  data: string,
+  mode: string,
+  hidden: boolean,
+): Promise<void> {
+  const name = key;
+  if (!name) {
+    kvNotice = { level: "error", text: "Key is required." };
+    renderKV();
+    return;
+  }
+  const textMode = mode !== "base64";
+  const value: KVValue = {
+    data,
+    encoding: textMode ? "string" : "base64",
+    string: textMode,
+    hidden,
+  };
+  if (await runKVMutation("kvSet", { store, path, key: name, value }, "Value saved.")) {
+    closeKVForm();
+  }
+}
+
+async function deleteKVValue(store: KVStoreInfo, path: string[], key: string): Promise<void> {
+  if (!window.confirm(`Delete value "${key}"?`)) return;
+  if (kvValuePanel && sameKVStore(kvValuePanel.store, store) && pathsEqual(kvValuePanel.path, path) && kvValuePanel.key === key) {
+    closeKVValuePanel();
+  }
+  await runKVMutation("kvDelete", { store, path, key }, "Value deleted.");
+}
+
+async function dropKVSubtree(store: KVStoreInfo, path: string[]): Promise<void> {
+  if (!path.length) return;
+  if (!window.confirm(`Drop subtree "${path[path.length - 1]}"?`)) return;
+  const targetKey = kvNodeKey(store, path);
+  if (kvValuePanel && sameKVStore(kvValuePanel.store, store) && pathHasPrefix(kvValuePanel.path, path)) {
+    closeKVValuePanel();
+  }
+  if (await runKVMutation("kvDrop", { store, path }, "Subtree dropped.")) {
+    for (const nodeKey of [...kvExpandedNodes]) {
+      if (kvNodeDescendsFrom(nodeKey, targetKey)) kvExpandedNodes.delete(nodeKey);
+    }
+    renderKV();
+  }
+}
+
+async function runKVMutation(method: string, params: Record<string, unknown>, success: string): Promise<boolean> {
+  try {
+    await backend(method, params);
+    kvNotice = { level: "info", text: success };
+    renderKV();
+    return true;
+  } catch (error) {
+    kvNotice = { level: "error", text: `${method}: ${(error as Error).message}` };
+    renderKV();
+    return false;
+  }
+}
+
+function syncKVEntrySubscriptions(): void {
+  if (activeTab !== "kv") return;
+  const desired = desiredKVEntrySubscriptionKeys(kvStores, kvExpandedNodes, kvEntriesByNode);
+  for (const [nodeKey, id] of [...kvEntrySubscriptions]) {
+    if (desired.has(nodeKey)) continue;
+    kvEntrySubscriptions.delete(nodeKey);
+    void tryBackend("kvUnsubscribe", { subscriptionID: id });
+  }
+  for (const nodeKey of desired) {
+    if (!kvEntrySubscriptions.has(nodeKey) && !kvEntrySubscribePending.has(nodeKey)) {
+      void subscribeKVEntries(nodeKey);
+    }
+  }
+}
+
+async function subscribeKVEntries(nodeKey: string): Promise<void> {
+  const ref = parseKVNodeKey(nodeKey);
+  if (!ref || kvEntrySubscribePending.has(nodeKey) || kvEntrySubscriptions.has(nodeKey)) return;
+  kvEntrySubscribePending.add(nodeKey);
+  const response = await tryBackend<KVSubscribeEntriesResponse>("kvSubscribeEntries", {
+    store: ref.store,
+    path: ref.path,
+  });
+  kvEntrySubscribePending.delete(nodeKey);
+  if (!response) {
+    kvNotice = { level: "error", text: `Failed to subscribe ${kvPathLabel(ref.store, ref.path)}.` };
+    renderKV();
+    return;
+  }
+  const desired = activeTab === "kv" && desiredKVEntrySubscriptionKeys(kvStores, kvExpandedNodes, kvEntriesByNode).has(nodeKey);
+  if (!desired) {
+    if (response.subscription_id) void tryBackend("kvUnsubscribe", { subscriptionID: response.subscription_id });
+    return;
+  }
+  kvEntrySubscriptions.set(nodeKey, response.subscription_id);
+  kvEntriesByNode.set(nodeKey, response.snapshot);
+  renderKV();
+}
+
+function kvNodeKeyForEntrySubscription(subscriptionID: number): string | null {
+  for (const [nodeKey, id] of kvEntrySubscriptions) {
+    if (id === subscriptionID) return nodeKey;
+  }
+  return null;
+}
+
+function openKVValuePanel(store: KVStoreInfo, path: string[], key: string): void {
+  closeKVValuePanel();
+  kvValuePanel = {
+    store: normalizeKVStore(store),
+    path: [...path],
+    key,
+    subscriptionID: 0,
+    snapshot: null,
+    revealHidden: false,
+  };
+  renderKVValuePanel();
+  void subscribeKVValuePanel();
+}
+
+async function subscribeKVValuePanel(): Promise<void> {
+  if (!kvValuePanel || activeTab !== "kv" || kvValueSubscribePending || kvValuePanel.subscriptionID) return;
+  kvValueSubscribePending = true;
+  const target = {
+    store: kvValuePanel.store,
+    path: [...kvValuePanel.path],
+    key: kvValuePanel.key,
+  };
+  const response = await tryBackend<KVSubscribeValueResponse>("kvSubscribeValue", target);
+  kvValueSubscribePending = false;
+  if (!response) {
+    kvNotice = { level: "error", text: "Failed to subscribe value." };
+    renderKVValuePanel();
+    return;
+  }
+  if (
+    activeTab !== "kv" ||
+    !kvValuePanel ||
+    !sameKVStore(kvValuePanel.store, target.store) ||
+    !pathsEqual(kvValuePanel.path, target.path) ||
+    kvValuePanel.key !== target.key
+  ) {
+    if (response.subscription_id) void tryBackend("kvUnsubscribe", { subscriptionID: response.subscription_id });
+    return;
+  }
+  kvValuePanel.subscriptionID = response.subscription_id;
+  kvValuePanel.snapshot = response.snapshot;
+  renderKVValuePanel();
+}
+
+function renderKVValuePanel(): void {
+  el.kvValuePanel.replaceChildren();
+  el.kvPanel.classList.toggle("kv-value-open", Boolean(kvValuePanel));
+  if (!kvValuePanel) {
+    el.kvValuePanel.classList.add("hidden");
+    return;
+  }
+  el.kvValuePanel.classList.remove("hidden");
+  const header = document.createElement("header");
+  header.className = "kv-value-header";
+  const title = document.createElement("div");
+  title.append(textElement("h2", kvValuePanel.key), textElement("p", kvPathLabel(kvValuePanel.store, kvValuePanel.path)));
+  const close = textElement("button", "x");
+  close.type = "button";
+  close.title = "Close";
+  close.setAttribute("aria-label", "Close value panel");
+  close.addEventListener("click", closeKVValuePanel);
+  header.append(title, close);
+  el.kvValuePanel.append(header);
+
+  const snapshot = kvValuePanel.snapshot;
+  if (!snapshot) {
+    el.kvValuePanel.append(renderKVLoading());
+    return;
+  }
+  if (!snapshot.found || !snapshot.value) {
+    el.kvValuePanel.append(textElement("p", "Value not found.", "kv-value-missing"));
+    return;
+  }
+  el.kvValuePanel.append(renderKVValueDetail(snapshot.value));
+}
+
+function renderKVValueDetail(value: KVValue): HTMLElement {
+  const detail = document.createElement("div");
+  detail.className = "kv-value-detail";
+  const meta = document.createElement("div");
+  meta.className = "kv-value-meta";
+  meta.append(textElement("span", formatKVValueMeta(value)));
+  const actions = document.createElement("div");
+  actions.className = "kv-value-actions";
+  const copy = textElement("button", "Copy");
+  copy.type = "button";
+  copy.title = "Copy value";
+  copy.addEventListener("click", () => copyKVValue(value));
+  const download = textElement("button", "Download");
+  download.type = "button";
+  download.title = "Download value";
+  download.addEventListener("click", () => downloadKVValue(value));
+  actions.append(copy, download);
+  if (value.hidden && !kvValuePanel?.revealHidden && value.string && isRenderableKVText(value)) {
+    const reveal = textElement("button", "Reveal hidden");
+    reveal.type = "button";
+    reveal.title = "Reveal hidden value";
+    reveal.addEventListener("click", () => {
+      if (!kvValuePanel) return;
+      kvValuePanel.revealHidden = true;
+      renderKVValuePanel();
+    });
+    actions.append(reveal);
+  }
+  meta.append(actions);
+  detail.append(meta, createKVValuePreview(value, {
+    revealHidden: kvValuePanel?.revealHidden ?? false,
+    limit: KV_TEXT_RENDER_LIMIT,
+  }));
+  return detail;
+}
+
+function closeKVValuePanel(): void {
+  if (kvValuePanel?.subscriptionID) {
+    void tryBackend("kvUnsubscribe", { subscriptionID: kvValuePanel.subscriptionID });
+  }
+  kvValuePanel = null;
+  kvValueSubscribePending = false;
+  renderKVValuePanel();
+}
+
+function isRenderableKVText(value: KVValue): boolean {
+  const data = value.data ?? "";
+  return Boolean(value.string) && (value.size ?? data.length) <= KV_TEXT_RENDER_LIMIT && data.length <= KV_TEXT_RENDER_LIMIT;
+}
+
+async function copyKVValue(value: KVValue): Promise<void> {
+  try {
+    if (value.string) {
+      await navigator.clipboard.writeText(value.data ?? "");
+    } else {
+      await copyBinaryKVValue(value);
+    }
+    kvNotice = { level: "info", text: "Value copied." };
+  } catch (error) {
+    kvNotice = { level: "error", text: `Copy failed: ${(error as Error).message}` };
+  }
+  renderKV();
+}
+
+// Browser binary clipboard support is uneven. Prefer real bytes when the
+// ClipboardItem API accepts them; otherwise fall back to copying the base64
+// representation returned by the KV API.
+async function copyBinaryKVValue(value: KVValue): Promise<void> {
+  const blob = new Blob([bytesFromBase64(value.data ?? "")], { type: "application/octet-stream" });
+  if (navigator.clipboard.write && typeof ClipboardItem !== "undefined") {
+    await navigator.clipboard.write([new ClipboardItem({ "application/octet-stream": blob })]);
+    return;
+  }
+  await navigator.clipboard.writeText(value.data ?? "");
+}
+
+function downloadKVValue(value: KVValue): void {
+  try {
+    const blob = value.string
+      ? new Blob([value.data ?? ""], { type: "text/plain;charset=utf-8" })
+      : new Blob([bytesFromBase64(value.data ?? "")], { type: "application/octet-stream" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = kvDownloadName(value);
+    link.rel = "noopener";
+    document.body.append(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    kvNotice = { level: "info", text: "Download started." };
+  } catch (error) {
+    kvNotice = { level: "error", text: `Download failed: ${(error as Error).message}` };
+  }
+  renderKV();
+}
+
+function kvDownloadName(value: KVValue): string {
+  const key = kvValuePanel?.key ?? "value";
+  const base = safeFilenamePart(key) || "value";
+  return `${base}.${value.string ? "txt" : "bin"}`;
+}
+
+function safeFilenamePart(value: string): string {
+  return value.replace(/[\x00-\x1f\x7f/\\?%*:|"<>]+/g, "_").slice(0, 80);
+}
+
+function bytesFromBase64(data: string): Uint8Array<ArrayBuffer> {
+  const binary = window.atob(data);
+  const bytes = new Uint8Array(new ArrayBuffer(binary.length));
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
+function rememberKVScrollState(): void {
+  kvScrollTop = el.kvPanel.scrollTop;
+}
+
+function restoreKVScrollState(): void {
+  window.setTimeout(() => {
+    el.kvPanel.scrollTop = kvScrollTop;
+  }, 0);
+}
+
+function pathsEqual(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((segment, index) => segment === right[index]);
+}
+
+function pathHasPrefix(path: string[], prefix: string[]): boolean {
+  return path.length >= prefix.length && prefix.every((segment, index) => path[index] === segment);
+}
+
 function renderLogs(): void {
   el.logs.replaceChildren();
   if (!frontendLogs.length) {
@@ -1509,10 +2303,13 @@ function trimLogStore(): void {
 }
 
 function setTab(name: string): void {
+  const previousTab = activeTab;
+  if (previousTab === "kv" && name !== "kv") deactivateKVPanel();
   activeTab = name;
   if (name !== "graph") graphShortcutsArmed = false;
   for (const tab of el.tabs) tab.classList.toggle("active", tab.dataset.tab === name);
   for (const panel of el.panels) panel.classList.toggle("hidden", panel.dataset.panel !== name);
+  if (name === "kv") activateKVPanel();
   if (name === "logs") renderLogs();
   if (name === "ps") renderWorkers();
   if (name === "graph") setTimeout(resizeGraphCanvas, 0);
@@ -1721,6 +2518,7 @@ function visibleCanvasCenterPosition(): [number, number] {
 
 function wireUI(): void {
   for (const tab of el.tabs) tab.addEventListener("click", () => setTab(tab.dataset.tab ?? "graph"));
+  el.kvPanel.addEventListener("scroll", rememberKVScrollState);
   document.addEventListener("paste", handleGraphPaste, { capture: true });
   document.addEventListener("keydown", (event) => {
     graphKeydown(event);

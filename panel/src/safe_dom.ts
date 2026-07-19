@@ -1,4 +1,5 @@
 import type { ID, NodeClassSnapshot, NodeSnapshot, WorkerSnapshot } from "./pasta_model.js";
+import { KV_TEXT_RENDER_LIMIT, formatKVByteSize, type KVEntryInfo, type KVStoreInfo, type KVValue } from "./kv_model.js";
 
 export type ClassPreviewPort = {
   name: string;
@@ -22,6 +23,11 @@ export type WorkerNodeBlock = {
   workers: WorkerSnapshot[];
   color?: string;
   textColor?: string;
+};
+
+export type KVValuePreviewOptions = {
+  revealHidden?: boolean;
+  limit?: number;
 };
 
 // Third-party nodes control class names, labels, descriptions, popups, menus,
@@ -129,6 +135,66 @@ export function createNotificationToast(message: string): HTMLDivElement {
   dismiss.setAttribute("aria-label", "Dismiss notification");
   toast.append(textElement("strong", "Config save failed"), textElement("span", message), dismiss);
   return toast;
+}
+
+export function createKVStoreTitle(store: KVStoreInfo): HTMLElement {
+  const title = document.createElement("span");
+  title.className = "kv-store-title";
+  title.append(
+    textElement("strong", store.kind === "plugin" ? store.name ?? "" : "default"),
+    textElement("em", store.kind === "plugin" ? "plugin" : "default store"),
+  );
+  return title;
+}
+
+export function createKVEntryTitle(entry: KVEntryInfo): HTMLElement {
+  const title = document.createElement("span");
+  title.className = "kv-entry-title";
+  title.append(textElement("strong", entry.name), textElement("em", formatKVEntryMeta(entry)));
+  return title;
+}
+
+export function formatKVEntryMeta(entry: KVEntryInfo): string {
+  if (entry.kind === "bucket") return "subtree";
+  const parts = [entry.string ? "text" : "bytes", formatKVByteSize(entry.size)];
+  if (entry.hidden) parts.push("hidden");
+  return parts.join(" · ");
+}
+
+export function formatKVValueMeta(value: KVValue): string {
+  const parts = [value.string ? "text" : "bytes", formatKVByteSize(value.size)];
+  if (value.hidden) parts.push("hidden");
+  return parts.join(" · ");
+}
+
+// KV values are plugin-controlled data. This helper never parses value bytes as
+// markup, refuses to render binary values, caps inline text rendering, and
+// covers hidden text until the caller records an explicit reveal action.
+export function createKVValuePreview(value: KVValue, options: KVValuePreviewOptions = {}): HTMLElement {
+  const preview = document.createElement("div");
+  preview.className = "kv-value-preview";
+  if (!value.string) {
+    preview.append(textElement("p", "Binary value"));
+    return preview;
+  }
+
+  const limit = options.limit ?? KV_TEXT_RENDER_LIMIT;
+  const text = value.data ?? "";
+  if ((value.size ?? text.length) > limit || text.length > limit) {
+    preview.append(textElement("p", `Text value is ${formatKVByteSize(value.size ?? text.length)}`));
+    return preview;
+  }
+
+  const pre = textElement("pre", text, "kv-value-text");
+  if (value.hidden && !options.revealHidden) {
+    const spoiler = document.createElement("div");
+    spoiler.className = "kv-value-spoiler";
+    spoiler.append(pre, textElement("span", "Hidden", "kv-value-spoiler-label"));
+    preview.append(spoiler);
+  } else {
+    preview.append(pre);
+  }
+  return preview;
 }
 
 export function createEmptyLogItem(): HTMLLIElement {
