@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"slices"
 	"testing"
 )
 
@@ -192,6 +193,28 @@ func TestEngineMethodsIncludesWorkersSnapshot(t *testing.T) {
 	for method, found := range required {
 		if !found {
 			t.Fatalf("EngineMethods does not include %s", method)
+		}
+	}
+}
+
+func TestDNSMethodsAndSurfaceAreAdvertised(t *testing.T) {
+	if !slices.Contains(Surfaces(), string(SurfaceDNS)) {
+		t.Fatal("Surfaces does not include dns")
+	}
+	required := map[string]bool{
+		string(MethodDNSSubscribeCaches): false,
+		string(MethodDNSSubscribeKeys):   false,
+		string(MethodDNSSubscribeValue):  false,
+		string(MethodDNSUnsubscribe):     false,
+	}
+	for _, method := range DNSMethods() {
+		if _, ok := required[method]; ok {
+			required[method] = true
+		}
+	}
+	for method, found := range required {
+		if !found {
+			t.Fatalf("DNSMethods does not include %s", method)
 		}
 	}
 }

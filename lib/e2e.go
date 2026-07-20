@@ -99,6 +99,8 @@ func NewNodeE2E(t *testing.T) *NodeE2E {
 		logf,
 		sys,
 		nil,
+		nil,
+		nil,
 		pool,
 		true,
 	)

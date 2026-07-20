@@ -105,6 +105,7 @@ func main() {
 	}
 	admin.projectVersionStatus = projectVersionStatus
 	admin.kv = kv
+	admin.dns = kv
 	defer admin.Stop()
 
 	logf := NewLogFactory(conf.LogCache().MergeArgs(&args))
@@ -141,6 +142,8 @@ func main() {
 		conf.Main,
 		logf,
 		sys,
+		kv,
+		kv,
 		daemonNodeClasses(conf.Protected.CommandRunner, commandRunner),
 		globalBufPool,
 		args.DebugNodes,

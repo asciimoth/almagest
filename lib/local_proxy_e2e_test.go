@@ -73,6 +73,8 @@ func newLocalProxyE2E(t *testing.T) *localProxyE2E {
 		configer.NewMemory(nil),
 		logf,
 		sys,
+		nil,
+		nil,
 		[]pasta.NodeClass{testNativeNetworkClass{}},
 		pool,
 		true,

@@ -27,6 +27,7 @@ type Surface string
 
 const (
 	SurfaceAdmin  Surface = "admin"
+	SurfaceDNS    Surface = "dns"
 	SurfaceEngine Surface = "engine"
 	SurfaceKV     Surface = "kv"
 	SurfaceLog    Surface = "log"
@@ -36,6 +37,7 @@ const (
 func Surfaces() []string {
 	return []string{
 		string(SurfaceAdmin),
+		string(SurfaceDNS),
 		string(SurfaceEngine),
 		string(SurfaceKV),
 		string(SurfaceLog),

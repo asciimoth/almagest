@@ -17,6 +17,7 @@ import (
 const (
 	kvDBFileName       = "kv.db"
 	kvDataBucketName   = "data"
+	dnsRootBucketName  = "dns"
 	kvPluginBucketName = "plugin data"
 )
 
@@ -26,10 +27,11 @@ const (
 )
 
 var (
-	_ almagest.KVManager = (*bboltKVManager)(nil)
-	_ almagest.KVStore   = (*bboltKVStore)(nil)
-	_ almagest.KVReadTx  = (*bboltKVReadTx)(nil)
-	_ almagest.KVWriteTx = (*bboltKVWriteTx)(nil)
+	_ almagest.KVManager       = (*bboltKVManager)(nil)
+	_ almagest.DnsCacheManager = (*bboltKVManager)(nil)
+	_ almagest.KVStore         = (*bboltKVStore)(nil)
+	_ almagest.KVReadTx        = (*bboltKVReadTx)(nil)
+	_ almagest.KVWriteTx       = (*bboltKVWriteTx)(nil)
 )
 
 type bboltKVManager struct {
@@ -38,6 +40,11 @@ type bboltKVManager struct {
 	mu         sync.Mutex
 	nextSub    uint64
 	changeSubs map[uint64]func()
+
+	dnsMu         sync.Mutex
+	dnsStores     map[string]*bboltDNSCacheStorage
+	dnsNextSub    uint64
+	dnsChangeSubs map[uint64]func(dnsCacheChange)
 }
 
 type bboltKVStore struct {
@@ -68,10 +75,16 @@ func openKVManager(path string) (*bboltKVManager, error) {
 		return nil, fmt.Errorf("open kv database: %w", err)
 	}
 	manager := &bboltKVManager{
-		db:         db,
-		changeSubs: map[uint64]func(){},
+		db:            db,
+		changeSubs:    map[uint64]func(){},
+		dnsStores:     map[string]*bboltDNSCacheStorage{},
+		dnsChangeSubs: map[uint64]func(dnsCacheChange){},
 	}
 	if err := manager.initRootBuckets(); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	if err := manager.cleanupExpiredDNS(time.Now()); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
@@ -81,6 +94,9 @@ func openKVManager(path string) (*bboltKVManager, error) {
 func (m *bboltKVManager) initRootBuckets() error {
 	return mapBboltKVError(m.db.Update(func(tx *bbolt.Tx) error {
 		if _, err := tx.CreateBucketIfNotExists([]byte(kvDataBucketName)); err != nil {
+			return err
+		}
+		if _, err := tx.CreateBucketIfNotExists([]byte(dnsRootBucketName)); err != nil {
 			return err
 		}
 		if _, err := tx.CreateBucketIfNotExists([]byte(kvPluginBucketName)); err != nil {

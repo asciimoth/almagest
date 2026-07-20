@@ -194,6 +194,8 @@ func buildTimeTriggerTestEngine(t *testing.T, cfg configer.Config, sinks *timeTr
 		cfg,
 		NewDebugLogFactory(1024),
 		newE2EDebugSystem(),
+		nil,
+		nil,
 		[]pasta.NodeClass{timeTriggerSinkClass{registry: sinks}},
 		nil,
 		true,

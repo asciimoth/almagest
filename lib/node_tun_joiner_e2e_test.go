@@ -127,6 +127,8 @@ func newTunJoinerE2E(t *testing.T) (*NodeE2E, *testTunProviderRegistry, *testTun
 		configer.NewMemory(nil),
 		logf,
 		sys,
+		nil,
+		nil,
 		[]pasta.NodeClass{
 			testTunProviderClass{registry: providers},
 			testTunSinkClass{registry: sinks},

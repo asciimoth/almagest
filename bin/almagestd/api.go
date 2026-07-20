@@ -33,6 +33,7 @@ type AdminAPI struct {
 	projectVersionStatus api.ProjectVersionStatus
 	configAutosaver      *configAutosaver
 	kv                   *bboltKVManager
+	dns                  *bboltKVManager
 
 	leaseMu       sync.Mutex
 	mutationLease *mutationLease
@@ -131,6 +132,11 @@ type apiSession struct {
 	engineSubscriptions []uint64
 	logSubscriptions    []uint64
 
+	dnsMu                   sync.Mutex
+	dnsNextSubscriptionID   uint64
+	dnsChangeSubscriptionID uint64
+	dnsSubscriptions        map[uint64]dnsSubscription
+
 	kvMu                   sync.Mutex
 	kvNextSubscriptionID   uint64
 	kvChangeSubscriptionID uint64
@@ -151,6 +157,7 @@ func (s *apiSession) close() {
 		s.engine.UnsubscribeNotifications(id)
 	}
 	s.engineSubscriptions = nil
+	s.closeDNSSubscriptions()
 	s.closeKVSubscriptions()
 	if s.logf == nil {
 		return
@@ -173,6 +180,8 @@ func (s *apiSession) handleMessage(msg api.Message) (api.Message, error) {
 	switch msg.Surface {
 	case api.SurfaceAdmin:
 		return s.handleAdminMessage(msg)
+	case api.SurfaceDNS:
+		return s.handleDNSMessage(msg)
 	case api.SurfaceEngine:
 		return s.handleEngineMessage(msg)
 	case api.SurfaceKV:
@@ -197,6 +206,9 @@ func (s *apiSession) handleAdminMessage(msg api.Message) (api.Message, error) {
 			Surfaces: map[string]any{
 				string(api.SurfaceAdmin): map[string]any{
 					"methods": api.AdminMethods(),
+				},
+				string(api.SurfaceDNS): map[string]any{
+					"methods": api.DNSMethods(),
 				},
 				string(api.SurfaceEngine): map[string]any{
 					"methods": api.EngineMethods(),

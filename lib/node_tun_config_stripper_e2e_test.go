@@ -98,6 +98,8 @@ func newTunConfigStripperConfigE2E(t *testing.T) (*NodeE2E, *tunConfigRecorderRe
 		configer.NewMemory(nil),
 		logf,
 		sys,
+		nil,
+		nil,
 		[]pasta.NodeClass{
 			tunConfigRecorderClass{registry: recorders},
 			tunConfigEmitterClass{},

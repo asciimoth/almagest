@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/asciimoth/configer/configer"
+	"github.com/asciimoth/gonnect/dns"
 	"github.com/asciimoth/pasta/pasta"
 )
 
@@ -15,6 +16,8 @@ func TestEngineUnsubscribeNotificationsRemovesSubscriptionMapping(t *testing.T) 
 		configer.NewMemory(nil),
 		NewDebugLogFactory(1),
 		newE2EDebugSystem(),
+		nil,
+		nil,
 		nil,
 		nil,
 		true,
@@ -53,6 +56,8 @@ func TestEngineSubscribeNotificationsCallbackCanReenterEngine(t *testing.T) {
 		newE2EDebugSystem(),
 		nil,
 		nil,
+		nil,
+		nil,
 		true,
 	)
 	if err != nil {
@@ -86,6 +91,8 @@ func TestEngineLockedWorkspaceWrappersFromNodeCallback(t *testing.T) {
 		configer.NewMemory(nil),
 		NewDebugLogFactory(1),
 		newE2EDebugSystem(),
+		nil,
+		nil,
 		nil,
 		nil,
 		true,
@@ -125,6 +132,8 @@ func TestEngineBatchNodeRemovalAndMoveUseWorkspaceBatchMutations(t *testing.T) {
 		configer.NewMemory(nil),
 		NewDebugLogFactory(1),
 		newE2EDebugSystem(),
+		nil,
+		nil,
 		[]pasta.NodeClass{engineBatchNodeClass{}},
 		nil,
 		false,
@@ -195,6 +204,53 @@ func TestEngineBatchNodeRemovalAndMoveUseWorkspaceBatchMutations(t *testing.T) {
 	if _, ok := engineAPI.NodeSnapshot(E2EWorkspace, third); !ok {
 		t.Fatal("third node should remain after batch remove")
 	}
+}
+
+func TestEngineManagersFromBuildEngine(t *testing.T) {
+	kv := testKVManager{}
+	dnsCache := testDnsCacheManager{}
+	engineAPI, err := BuildEngine(
+		context.Background(),
+		configer.NewMemory(nil),
+		NewDebugLogFactory(1),
+		newE2EDebugSystem(),
+		kv,
+		dnsCache,
+		nil,
+		nil,
+		true,
+	)
+	if err != nil {
+		t.Fatalf("BuildEngine error = %v, want nil", err)
+	}
+	t.Cleanup(func() {
+		if err := engineAPI.Close(); err != nil {
+			t.Errorf("engine.Close error = %v, want nil", err)
+		}
+	})
+
+	if got := engineAPI.KVManager(); got != kv {
+		t.Fatalf("KVManager() = %#v, want %#v", got, kv)
+	}
+	if got := engineAPI.DnsCacheManager(); got != dnsCache {
+		t.Fatalf("DnsCacheManager() = %#v, want %#v", got, dnsCache)
+	}
+}
+
+type testKVManager struct{}
+
+func (testKVManager) DefaultStore() KVStore {
+	return nil
+}
+
+func (testKVManager) PluginStore(string) KVStore {
+	return nil
+}
+
+type testDnsCacheManager struct{}
+
+func (testDnsCacheManager) Storage(string) dns.CacheStorage {
+	return nil
 }
 
 type engineLockedCallbackClass struct {

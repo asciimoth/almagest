@@ -202,6 +202,8 @@ func newTunCopyE2E(t *testing.T) (*NodeE2E, *testTunProviderRegistry) {
 		configer.NewMemory(nil),
 		logf,
 		sys,
+		nil,
+		nil,
 		[]pasta.NodeClass{testTunProviderClass{registry: providers}},
 		pool,
 		true,

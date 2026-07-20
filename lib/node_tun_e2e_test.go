@@ -71,6 +71,8 @@ func newNodeE2EWithConfig(t *testing.T, cfg configer.Config) *NodeE2E {
 		logf,
 		sys,
 		nil,
+		nil,
+		nil,
 		pool,
 		true,
 	)

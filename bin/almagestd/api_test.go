@@ -148,6 +148,8 @@ func TestEngineBatchNodeAPIDispatch(t *testing.T) {
 		configer.NewMemory(nil),
 		almagest.NewDebugLogFactory(16),
 		&sysnetdebug.System{},
+		nil,
+		nil,
 		[]pasta.NodeClass{adminAPIBatchNodeClass{}},
 		nil,
 		false,

@@ -89,6 +89,8 @@ func TestOutNetworkUsesSystemOutNetOnInit(t *testing.T) {
 		NewDebugLogFactory(1024),
 		sys,
 		nil,
+		nil,
+		nil,
 		pool,
 		true,
 	)
@@ -251,6 +253,8 @@ func TestEngineOutNetworkSendsCachedNetworkToHTTPServerOnLinkAdd(t *testing.T) {
 		configer.NewMemory(nil),
 		NewDebugLogFactory(1024),
 		sys,
+		nil,
+		nil,
 		[]pasta.NodeClass{captureHTTPServerClass{node: &server}},
 		pool,
 		true,
