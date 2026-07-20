@@ -211,6 +211,29 @@ test("DNS cache labels and value previews keep payloads as text", () => {
   assert.match(root.textContent ?? "", /42 B/);
 });
 
+test("DNS values render cached JSON as human-readable records", () => {
+  installDOM();
+  const root = document.createElement("div");
+  root.append(
+    createDNSKeyTitle({ key: "example.test.|1|1", size: 42 }),
+    createDNSValuePreview({
+      json: JSON.stringify({
+        message: {
+          questions: [{ name: "example.test.", type: 1, class: 1 }],
+          answers: [
+            { name: "example.test.", type: 1, class: 1, ttl: 60, data: Buffer.from([192, 0, 2, 40]).toString("base64") },
+          ],
+        },
+      }),
+    }),
+  );
+
+  assertNoParsedPayload(root);
+  assert.match(root.textContent ?? "", /example\.test\. IN A/);
+  assert.match(root.textContent ?? "", /192\.0\.2\.40/);
+  assert.equal(root.querySelector(".dns-record-preview") !== null, true);
+});
+
 
 test("node descriptions allow safe markdown only", () => {
   installDOM();

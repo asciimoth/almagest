@@ -55,10 +55,15 @@ import {
 } from "./safe_dom.js";
 import {
   DNS_JSON_RENDER_LIMIT,
+  DNS_RECORD_CLASSES,
+  DNS_RECORD_TYPES,
   applyDNSCacheChange,
   applyDNSKeyChange,
+  defaultDNSRecordInput,
   desiredDNSKeySubscriptionKeys,
   dnsCacheNodeKey,
+  editableDNSRecordFromValue,
+  formatDNSCacheKey,
   parseDNSCacheNodeKey,
   sortDNSCaches,
   type DNSCacheChange,
@@ -66,6 +71,7 @@ import {
   type DNSKeyChange,
   type DNSKeyInfo,
   type DNSKeysSnapshot,
+  type DNSRecordInput,
   type DNSValue,
   type DNSValueSnapshot,
 } from "./dns_model.js";
@@ -141,6 +147,10 @@ type DNSSubscribeValueResponse = {
   subscription_id: number;
   snapshot: DNSValueSnapshot;
 };
+type DNSSetResponse = {
+  key: string;
+  snapshot: DNSValueSnapshot;
+};
 type DNSValueEvent = {
   subscription_id: number;
   cache: string;
@@ -186,6 +196,10 @@ type DNSValuePanelState = {
   key: string;
   subscriptionID: number;
   snapshot: DNSValueSnapshot | null;
+  editing: boolean;
+};
+type DNSOpenForm = {
+  cache: string;
 };
 type KVOpenForm = {
   nodeKey: string;
@@ -289,6 +303,7 @@ let dnsCacheSubscribePending = false;
 let dnsScrollTop = 0;
 let dnsNotice: DNSNotice | null = null;
 let dnsValuePanel: DNSValuePanelState | null = null;
+let dnsOpenForm: DNSOpenForm | null = null;
 let dnsValueSubscribePending = false;
 const dnsCaches: DNSCacheInfo[] = [];
 const dnsExpandedCaches = new Set<string>();
@@ -640,6 +655,12 @@ async function backend<T>(method: string, params: Record<string, unknown> = {}):
       return request<T>("dns", "subscribe_value", { cache: params.cache, key: params.key });
     case "dnsUnsubscribe":
       return request<T>("dns", "unsubscribe", { subscription_id: params.subscriptionID });
+    case "dnsSet":
+      return request<T>("dns", "set", { cache: params.cache, key: params.key, record: params.record });
+    case "dnsDelete":
+      return request<T>("dns", "delete", { cache: params.cache, key: params.key });
+    case "dnsDrop":
+      return request<T>("dns", "drop", { cache: params.cache });
     case "kvSubscribeStores":
       return request<T>("kv", "subscribe_stores");
     case "kvSubscribeEntries":
@@ -1665,6 +1686,11 @@ function renderDNSCache(cache: DNSCacheInfo): HTMLLIElement {
   row.append(createDNSCacheTitle(cache));
   const actions = document.createElement("div");
   actions.className = "kv-row-actions";
+  const remove = textElement("button", "Delete", "danger");
+  remove.type = "button";
+  remove.title = "Delete DNS cache";
+  remove.addEventListener("click", () => dropDNSCache(cache.name));
+  actions.append(remove);
   row.append(actions);
   item.append(row);
   if (expanded) {
@@ -1705,7 +1731,22 @@ function renderDNSCacheToolbar(cache: string): HTMLElement {
   toolbar.className = "kv-toolbar";
   const pathLabel = textElement("span", cache, "kv-path-label");
   pathLabel.title = cache;
-  toolbar.append(pathLabel);
+  const addRecord = textElement("button", "+ Record");
+  addRecord.type = "button";
+  addRecord.title = "Create DNS record";
+  addRecord.addEventListener("click", () => openDNSForm(cache));
+  toolbar.append(pathLabel, addRecord);
+  if (dnsOpenForm?.cache === cache) {
+    const wrapper = document.createElement("div");
+    wrapper.className = "kv-form-slot";
+    wrapper.append(renderDNSRecordForm({
+      initial: defaultDNSRecordInput(),
+      submitLabel: "Create",
+      onSubmit: (record) => setDNSRecord(cache, "", record),
+      onCancel: closeDNSForm,
+    }));
+    toolbar.append(wrapper);
+  }
   return toolbar;
 }
 
@@ -1733,8 +1774,204 @@ function renderDNSKeyActions(cache: string, key: string): HTMLElement {
   show.type = "button";
   show.title = "Open DNS value";
   show.addEventListener("click", () => openDNSValuePanel(cache, key));
-  actions.append(show);
+  const remove = textElement("button", "Delete", "danger");
+  remove.type = "button";
+  remove.title = "Delete DNS record";
+  remove.addEventListener("click", () => deleteDNSValue(cache, key));
+  actions.append(show, remove);
   return actions;
+}
+
+function openDNSForm(cache: string): void {
+  dnsOpenForm = { cache };
+  renderDNS();
+}
+
+function closeDNSForm(): void {
+  dnsOpenForm = null;
+  renderDNS();
+}
+
+type DNSRecordFormOptions = {
+  initial: DNSRecordInput;
+  submitLabel: string;
+  onSubmit: (record: DNSRecordInput) => void;
+  onCancel: () => void;
+};
+
+function renderDNSRecordForm(options: DNSRecordFormOptions): HTMLFormElement {
+  const form = document.createElement("form");
+  form.className = "kv-inline-form dns-record-form";
+
+  const name = document.createElement("input");
+  name.name = "name";
+  name.placeholder = "example.test.";
+  name.autocomplete = "off";
+  name.required = true;
+  name.value = options.initial.name;
+
+  const type = document.createElement("select");
+  type.name = "type";
+  appendSelectOptions(type, [...DNS_RECORD_TYPES], options.initial.type);
+
+  const cls = document.createElement("select");
+  cls.name = "class";
+  appendSelectOptions(cls, [...DNS_RECORD_CLASSES], options.initial.class);
+
+  const ttl = document.createElement("input");
+  ttl.name = "ttl";
+  ttl.type = "number";
+  ttl.min = "1";
+  ttl.max = "4294967295";
+  ttl.step = "1";
+  ttl.required = true;
+  ttl.value = String(options.initial.ttl || 60);
+
+  const value = document.createElement("textarea");
+  value.name = "value";
+  value.rows = 2;
+  value.required = true;
+  value.value = options.initial.value;
+
+  const updateValuePlaceholder = () => {
+    value.placeholder = dnsRecordValuePlaceholder(type.value);
+  };
+  type.addEventListener("change", updateValuePlaceholder);
+  updateValuePlaceholder();
+
+  form.append(
+    dnsRecordField("Name", name, "dns-record-field-name"),
+    dnsRecordField("Type", type),
+    dnsRecordField("Class", cls),
+    dnsRecordField("TTL", ttl),
+    dnsRecordField("Value", value, "dns-record-field-value"),
+  );
+
+  const actions = document.createElement("div");
+  actions.className = "dns-record-form-actions";
+  const save = textElement("button", options.submitLabel);
+  save.type = "submit";
+  const cancel = textElement("button", "Cancel");
+  cancel.type = "button";
+  cancel.addEventListener("click", options.onCancel);
+  actions.append(save, cancel);
+  form.append(actions);
+
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    options.onSubmit({
+      name: name.value.trim(),
+      type: type.value,
+      class: cls.value,
+      ttl: Math.trunc(Number(ttl.value)),
+      value: value.value.trim(),
+    });
+  });
+  window.setTimeout(() => name.focus(), 0);
+  return form;
+}
+
+function dnsRecordField(label: string, control: HTMLElement, className = ""): HTMLLabelElement {
+  const field = document.createElement("label");
+  field.className = `dns-record-field ${className}`.trim();
+  field.append(textElement("span", label), control);
+  return field;
+}
+
+function appendSelectOptions(select: HTMLSelectElement, values: string[], selected: string): void {
+  for (const value of values) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = value;
+    select.append(option);
+  }
+  select.value = values.includes(selected) ? selected : values[0] ?? "";
+}
+
+function dnsRecordValuePlaceholder(type: string): string {
+  switch (type) {
+    case "A":
+      return "192.0.2.10";
+    case "AAAA":
+      return "2001:db8::10";
+    case "CNAME":
+      return "target.example.test.";
+    case "NS":
+      return "ns1.example.test.";
+    case "PTR":
+      return "host.example.test.";
+    case "MX":
+      return "10 mail.example.test.";
+    case "SRV":
+      return "1 2 443 srv.example.test.";
+    case "TXT":
+      return "hello world";
+    default:
+      return "Record value";
+  }
+}
+
+async function setDNSRecord(cache: string, previousKey: string, record: DNSRecordInput): Promise<void> {
+  if (!record.name) {
+    dnsNotice = { level: "error", text: "DNS record name is required." };
+    renderDNS();
+    return;
+  }
+  if (!Number.isInteger(record.ttl) || record.ttl <= 0) {
+    dnsNotice = { level: "error", text: "DNS TTL must be greater than zero." };
+    renderDNS();
+    return;
+  }
+  const response = await runDNSMutation<DNSSetResponse>("dnsSet", {
+    cache,
+    key: previousKey,
+    record,
+  }, "DNS record saved.");
+  if (!response) return;
+  closeDNSForm();
+  if (!previousKey || (dnsValuePanel?.cache === cache && (dnsValuePanel.key === previousKey || dnsValuePanel.key === response.key))) {
+    closeDNSValuePanel();
+    openDNSValuePanel(cache, response.key);
+  }
+}
+
+async function deleteDNSValue(cache: string, key: string): Promise<void> {
+  if (!window.confirm(`Delete DNS record "${formatDNSCacheKey(key)}"?`)) return;
+  if (dnsValuePanel?.cache === cache && dnsValuePanel.key === key) {
+    closeDNSValuePanel();
+  }
+  await runDNSMutation("dnsDelete", { cache, key }, "DNS record deleted.");
+}
+
+async function dropDNSCache(cache: string): Promise<void> {
+  if (!window.confirm(`Delete DNS cache "${cache}"?`)) return;
+  if (dnsValuePanel?.cache === cache) {
+    closeDNSValuePanel();
+  }
+  dnsOpenForm = dnsOpenForm?.cache === cache ? null : dnsOpenForm;
+  if (await runDNSMutation("dnsDrop", { cache }, "DNS cache deleted.")) {
+    const nodeKey = dnsCacheNodeKey(cache);
+    dnsExpandedCaches.delete(nodeKey);
+    dnsKeysByCache.delete(nodeKey);
+    renderDNS();
+  }
+}
+
+async function runDNSMutation<T = unknown>(
+  method: string,
+  params: Record<string, unknown>,
+  success: string,
+): Promise<T | null> {
+  try {
+    const result = await backend<T>(method, params);
+    dnsNotice = { level: "info", text: success };
+    renderDNS();
+    return result;
+  } catch (error) {
+    dnsNotice = { level: "error", text: `${method}: ${(error as Error).message}` };
+    renderDNS();
+    return null;
+  }
 }
 
 function toggleDNSCache(nodeKey: string): void {
@@ -1796,6 +2033,7 @@ function openDNSValuePanel(cache: string, key: string): void {
     key,
     subscriptionID: 0,
     snapshot: null,
+    editing: false,
   };
   renderDNSValuePanel();
   void subscribeDNSValuePanel();
@@ -1840,7 +2078,9 @@ function renderDNSValuePanel(): void {
   const header = document.createElement("header");
   header.className = "kv-value-header";
   const title = document.createElement("div");
-  title.append(textElement("h2", dnsValuePanel.key), textElement("p", dnsValuePanel.cache));
+  const heading = textElement("h2", formatDNSCacheKey(dnsValuePanel.key));
+  heading.title = dnsValuePanel.key;
+  title.append(heading, textElement("p", dnsValuePanel.cache));
   const close = textElement("button", "x");
   close.type = "button";
   close.title = "Close";
@@ -1869,6 +2109,17 @@ function renderDNSValueDetail(value: DNSValue): HTMLElement {
   meta.append(textElement("span", formatDNSValueMeta(value)));
   const actions = document.createElement("div");
   actions.className = "kv-value-actions";
+  if (dnsValuePanel && !dnsValuePanel.editing) {
+    const edit = textElement("button", "Edit");
+    edit.type = "button";
+    edit.title = "Edit DNS record";
+    edit.addEventListener("click", () => {
+      if (!dnsValuePanel) return;
+      dnsValuePanel.editing = true;
+      renderDNSValuePanel();
+    });
+    actions.append(edit);
+  }
   const copy = textElement("button", "Copy");
   copy.type = "button";
   copy.title = "Copy DNS value JSON";
@@ -1878,8 +2129,36 @@ function renderDNSValueDetail(value: DNSValue): HTMLElement {
   download.title = "Download DNS value JSON";
   download.addEventListener("click", () => downloadDNSValue(value));
   actions.append(copy, download);
+  if (dnsValuePanel) {
+    const remove = textElement("button", "Delete");
+    remove.type = "button";
+    remove.title = "Delete DNS record";
+    remove.className = "danger";
+    remove.addEventListener("click", () => {
+      if (!dnsValuePanel) return;
+      void deleteDNSValue(dnsValuePanel.cache, dnsValuePanel.key);
+    });
+    actions.append(remove);
+  }
   meta.append(actions);
-  detail.append(meta, createDNSValuePreview(value, { limit: DNS_JSON_RENDER_LIMIT }));
+  detail.append(meta);
+  if (dnsValuePanel?.editing) {
+    detail.append(renderDNSRecordForm({
+      initial: editableDNSRecordFromValue(dnsValuePanel.key, value),
+      submitLabel: "Save",
+      onSubmit: (record) => {
+        if (!dnsValuePanel) return;
+        void setDNSRecord(dnsValuePanel.cache, dnsValuePanel.key, record);
+      },
+      onCancel: () => {
+        if (!dnsValuePanel) return;
+        dnsValuePanel.editing = false;
+        renderDNSValuePanel();
+      },
+    }));
+  } else {
+    detail.append(createDNSValuePreview(value, { limit: DNS_JSON_RENDER_LIMIT }));
+  }
   return detail;
 }
 

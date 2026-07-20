@@ -29,6 +29,7 @@ type dnsCacheChangeKind string
 
 const (
 	dnsCacheChangeCacheUpsert dnsCacheChangeKind = "cache_upsert"
+	dnsCacheChangeCacheDelete dnsCacheChangeKind = "cache_delete"
 	dnsCacheChangeKeyUpsert   dnsCacheChangeKind = "key_upsert"
 	dnsCacheChangeKeyDelete   dnsCacheChangeKind = "key_delete"
 )
@@ -263,6 +264,12 @@ func (s *bboltDNSCacheStorage) memoryPut(key string, msg *gdns.Message, expires 
 func (s *bboltDNSCacheStorage) memoryDelete(key string) {
 	s.mu.Lock()
 	delete(s.entries, key)
+	s.mu.Unlock()
+}
+
+func (s *bboltDNSCacheStorage) memoryClear() {
+	s.mu.Lock()
+	s.entries = map[string]dnsMemoryCacheEntry{}
 	s.mu.Unlock()
 }
 

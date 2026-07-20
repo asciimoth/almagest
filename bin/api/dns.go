@@ -10,6 +10,9 @@ const (
 	MethodDNSValueSnapshot   DNSMethod = "value_snapshot"
 	MethodDNSSubscribeValue  DNSMethod = "subscribe_value"
 	MethodDNSUnsubscribe     DNSMethod = "unsubscribe"
+	MethodDNSSet             DNSMethod = "set"
+	MethodDNSDelete          DNSMethod = "delete"
+	MethodDNSDrop            DNSMethod = "drop"
 
 	EventDNSCachesUpdate DNSMethod = "caches_update"
 	EventDNSKeysUpdate   DNSMethod = "keys_update"
@@ -28,6 +31,9 @@ func DNSMethods() []string {
 		string(MethodDNSValueSnapshot),
 		string(MethodDNSSubscribeValue),
 		string(MethodDNSUnsubscribe),
+		string(MethodDNSSet),
+		string(MethodDNSDelete),
+		string(MethodDNSDrop),
 	}
 }
 
@@ -97,6 +103,14 @@ type DNSValue struct {
 	ExpiresAt string `json:"expires_at,omitempty"`
 }
 
+type DNSRecordInput struct {
+	Name  string `json:"name"`
+	Type  string `json:"type"`
+	Class string `json:"class,omitempty"`
+	TTL   uint32 `json:"ttl"`
+	Value string `json:"value"`
+}
+
 type DNSValueSnapshot struct {
 	Found bool      `json:"found"`
 	Value *DNSValue `json:"value,omitempty"`
@@ -113,6 +127,17 @@ type DNSValueEvent struct {
 	Key            string    `json:"key"`
 	Found          bool      `json:"found"`
 	Value          *DNSValue `json:"value,omitempty"`
+}
+
+type DNSSetRequest struct {
+	Cache  string         `json:"cache"`
+	Key    string         `json:"key,omitempty"`
+	Record DNSRecordInput `json:"record"`
+}
+
+type DNSSetResponse struct {
+	Key      string           `json:"key"`
+	Snapshot DNSValueSnapshot `json:"snapshot"`
 }
 
 type DNSSubscriptionRequest struct {

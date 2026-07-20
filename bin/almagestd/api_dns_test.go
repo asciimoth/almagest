@@ -160,3 +160,104 @@ func TestDNSSubscriptionSendsIncrementalEvents(t *testing.T) {
 		t.Fatalf("events after keys unsubscribe = %d, want descendant value subscription removed", len(events))
 	}
 }
+
+func TestDNSMutationMethodsUseReadableRecords(t *testing.T) {
+	manager, err := openKVManager(filepath.Join(t.TempDir(), "kv.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer manager.Close() //nolint:errcheck
+
+	session := (&AdminAPI{dns: manager}).newAPISession(nil, nil, nil)
+	defer session.close()
+
+	setReq := mustRequest(t, "1", api.SurfaceDNS, string(api.MethodDNSSet), api.DNSSetRequest{
+		Cache: "manual",
+		Record: api.DNSRecordInput{
+			Name:  "example.test.",
+			Type:  "A",
+			Class: "IN",
+			TTL:   60,
+			Value: "192.0.2.44",
+		},
+	})
+	resp, err := session.handleMessage(setReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	setResp, err := api.DecodePayload[api.DNSSetResponse](resp.Result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if setResp.Key != "example.test.|1|1" || !setResp.Snapshot.Found || setResp.Snapshot.Value == nil {
+		t.Fatalf("set response = %#v, want created A record", setResp)
+	}
+
+	snapshot, err := manager.dnsKeysSnapshot("manual")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.Keys) != 1 || snapshot.Keys[0].Key != "example.test.|1|1" {
+		t.Fatalf("keys after set = %#v, want A key", snapshot.Keys)
+	}
+
+	editReq := mustRequest(t, "2", api.SurfaceDNS, string(api.MethodDNSSet), api.DNSSetRequest{
+		Cache: "manual",
+		Key:   setResp.Key,
+		Record: api.DNSRecordInput{
+			Name:  "example.test.",
+			Type:  "AAAA",
+			Class: "IN",
+			TTL:   120,
+			Value: "2001:db8::44",
+		},
+	})
+	resp, err = session.handleMessage(editReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	editResp, err := api.DecodePayload[api.DNSSetResponse](resp.Result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if editResp.Key != "example.test.|28|1" {
+		t.Fatalf("edit key = %q, want AAAA key", editResp.Key)
+	}
+	snapshot, err = manager.dnsKeysSnapshot("manual")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.Keys) != 1 || snapshot.Keys[0].Key != editResp.Key {
+		t.Fatalf("keys after edit = %#v, want only new key", snapshot.Keys)
+	}
+
+	deleteReq := mustRequest(t, "3", api.SurfaceDNS, string(api.MethodDNSDelete), api.DNSValueRequest{
+		Cache: "manual",
+		Key:   editResp.Key,
+	})
+	if _, err := session.handleMessage(deleteReq); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err = manager.dnsKeysSnapshot("manual")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.Keys) != 0 {
+		t.Fatalf("keys after delete = %#v, want empty cache", snapshot.Keys)
+	}
+
+	if _, err := session.handleMessage(setReq); err != nil {
+		t.Fatal(err)
+	}
+	dropReq := mustRequest(t, "4", api.SurfaceDNS, string(api.MethodDNSDrop), api.DNSKeysRequest{Cache: "manual"})
+	if _, err := session.handleMessage(dropReq); err != nil {
+		t.Fatal(err)
+	}
+	caches, err := manager.dnsCachesSnapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(caches.Caches) != 0 {
+		t.Fatalf("caches after drop = %#v, want none", caches.Caches)
+	}
+}

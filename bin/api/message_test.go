@@ -206,6 +206,9 @@ func TestDNSMethodsAndSurfaceAreAdvertised(t *testing.T) {
 		string(MethodDNSSubscribeKeys):   false,
 		string(MethodDNSSubscribeValue):  false,
 		string(MethodDNSUnsubscribe):     false,
+		string(MethodDNSSet):             false,
+		string(MethodDNSDelete):          false,
+		string(MethodDNSDrop):            false,
 	}
 	for _, method := range DNSMethods() {
 		if _, ok := required[method]; ok {

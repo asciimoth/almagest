@@ -793,6 +793,7 @@ h1 {
 }
 
 .kv-row-actions button,
+.kv-toolbar button,
 .kv-inline-form button,
 .kv-value-actions button,
 .kv-value-header button,
@@ -977,6 +978,11 @@ h1 {
   color: color-mix(in srgb, var(--red), var(--text) 20%);
 }
 
+.kv-value-actions .danger {
+  border-color: color-mix(in srgb, var(--red), var(--surface0) 40%);
+  color: color-mix(in srgb, var(--red), var(--text) 18%);
+}
+
 .kv-node-body {
   display: grid;
   gap: 2px;
@@ -1040,6 +1046,38 @@ h1 {
   resize: vertical;
 }
 
+.dns-record-form {
+  grid-template-columns: minmax(160px, 1.5fr) 104px 90px 96px;
+}
+
+.dns-record-field {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.dns-record-field > span {
+  color: var(--surface2);
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.dns-record-field-value,
+.dns-record-form-actions {
+  grid-column: 1 / -1;
+}
+
+.dns-record-field-value textarea {
+  min-height: 66px;
+  resize: vertical;
+}
+
+.dns-record-form-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: end;
+}
+
 .kv-inline-form input,
 .kv-inline-form select,
 .kv-inline-form textarea {
@@ -1087,7 +1125,9 @@ h1 {
   top: 0;
   align-self: start;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  /* Keep inspector contents pinned to the top; scroll the panel instead of stretching rows. */
+  grid-template-rows: auto auto;
+  align-content: start;
   gap: 8px;
   height: calc(100vh - 59px);
   min-width: 0;
@@ -1150,6 +1190,67 @@ h1 {
   line-height: 1.45;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
+}
+
+.dns-record-preview {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.dns-record-section {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.dns-record-section h3 {
+  margin: 0;
+  color: var(--subtext);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.dns-record-list {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dns-record {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) 54px 48px 64px minmax(110px, 1.3fr);
+  gap: 8px;
+  min-width: 0;
+  border: 1px solid var(--surface0);
+  border-radius: 4px;
+  background: var(--crust);
+  padding: 7px 8px;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.dns-record span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.dns-record-ttl,
+.dns-record-class,
+.dns-record-type {
+  color: var(--surface2);
+  white-space: nowrap;
+}
+
+.dns-record-value {
+  color: color-mix(in srgb, var(--green), var(--text) 28%);
 }
 
 .kv-value-spoiler {
@@ -1374,6 +1475,7 @@ h1 {
   .ps-worker-failed,
   .kv-subtree-form,
   .kv-value-form,
+  .dns-record-form,
   .kv-value-meta {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -1424,6 +1526,15 @@ h1 {
   .kv-value-actions {
     flex-wrap: wrap;
     justify-content: start;
+  }
+
+  .dns-record-form-actions {
+    justify-content: start;
+  }
+
+  .dns-record {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 3px;
   }
 
   .kv-value-panel {

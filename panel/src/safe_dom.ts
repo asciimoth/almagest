@@ -1,9 +1,13 @@
 import type { ID, NodeClassSnapshot, NodeSnapshot, WorkerSnapshot } from "./pasta_model.js";
 import {
   DNS_JSON_RENDER_LIMIT,
+  dnsRecordsFromValue,
+  formatDNSCacheKey,
   formatDNSByteSize,
+  type DNSDisplayRecord,
   type DNSCacheInfo,
   type DNSKeyInfo,
+  type DNSRecordSection,
   type DNSValue,
 } from "./dns_model.js";
 import { KV_TEXT_RENDER_LIMIT, formatKVByteSize, type KVEntryInfo, type KVStoreInfo, type KVValue } from "./kv_model.js";
@@ -175,7 +179,9 @@ export function createDNSCacheTitle(cache: DNSCacheInfo): HTMLElement {
 export function createDNSKeyTitle(entry: DNSKeyInfo): HTMLElement {
   const title = document.createElement("span");
   title.className = "kv-entry-title";
-  title.append(textElement("strong", entry.key), textElement("em", formatDNSKeyMeta(entry)));
+  const label = textElement("strong", formatDNSCacheKey(entry.key));
+  label.title = entry.key;
+  title.append(label, textElement("em", formatDNSKeyMeta(entry)));
   return title;
 }
 
@@ -234,9 +240,9 @@ export function createKVValuePreview(value: KVValue, options: KVValuePreviewOpti
   return preview;
 }
 
-// DNS values are JSON strings derived from cached upstream DNS messages. Keep
-// them as plain text: the panel does not parse, pretty-print, or inject them as
-// markup, and large values are summarized before rendering.
+// DNS values are JSON strings derived from cached upstream DNS messages. Parse
+// only the known cache schema into record rows, keep all rendered content as
+// text, and fall back to raw JSON text when parsing is not possible.
 export function createDNSValuePreview(value: DNSValue, options: DNSValuePreviewOptions = {}): HTMLElement {
   const preview = document.createElement("div");
   preview.className = "kv-value-preview";
@@ -246,8 +252,48 @@ export function createDNSValuePreview(value: DNSValue, options: DNSValuePreviewO
     preview.append(textElement("p", `JSON value is ${formatDNSByteSize(value.size ?? text.length)}`));
     return preview;
   }
+  const sections = dnsRecordsFromValue(value);
+  if (sections) {
+    preview.append(createDNSRecordPreview(sections));
+    return preview;
+  }
   preview.append(textElement("pre", text, "kv-value-text"));
   return preview;
+}
+
+function createDNSRecordPreview(sections: DNSRecordSection[]): HTMLElement {
+  const preview = document.createElement("div");
+  preview.className = "dns-record-preview";
+  if (!sections.length) {
+    preview.append(textElement("p", "No DNS records in cached response."));
+    return preview;
+  }
+  for (const section of sections) {
+    const block = document.createElement("section");
+    block.className = "dns-record-section";
+    block.append(textElement("h3", section.title));
+    const list = document.createElement("ol");
+    list.className = "dns-record-list";
+    for (const record of section.records) {
+      list.append(createDNSRecordItem(record));
+    }
+    block.append(list);
+    preview.append(block);
+  }
+  return preview;
+}
+
+function createDNSRecordItem(record: DNSDisplayRecord): HTMLLIElement {
+  const item = document.createElement("li");
+  item.className = "dns-record";
+  item.append(
+    textElement("span", record.name, "dns-record-name"),
+    textElement("span", record.ttl === undefined ? "" : String(record.ttl), "dns-record-ttl"),
+    textElement("span", record.class, "dns-record-class"),
+    textElement("span", record.type, "dns-record-type"),
+    textElement("span", record.value ?? "", "dns-record-value"),
+  );
+  return item;
 }
 
 export function createEmptyLogItem(): HTMLLIElement {
