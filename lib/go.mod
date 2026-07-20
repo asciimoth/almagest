@@ -10,10 +10,12 @@ require (
 	github.com/asciimoth/gonnect v0.34.0
 	github.com/asciimoth/gonnect-netstack v0.4.34
 	github.com/asciimoth/gonnect-routing v0.8.0
+	github.com/asciimoth/mnlib v0.2.15
 	github.com/asciimoth/pasta/pasta v0.9.6
 	github.com/asciimoth/socksgo v0.4.3
 	github.com/asciimoth/wgo v0.5.3
 	github.com/coder/websocket v1.8.14
+	github.com/miekg/dns v1.1.72
 	gvisor.dev/gvisor v0.0.0-20260325202830-7644cf3a343c
 )
 
@@ -26,8 +28,11 @@ require (
 	github.com/xtaci/smux v1.5.44 // indirect
 	golang.org/x/crypto v0.51.0 // indirect
 	golang.org/x/exp v0.0.0-20231110203233-9a3e6036ecaa // indirect
+	golang.org/x/mod v0.31.0 // indirect
 	golang.org/x/net v0.54.0 // indirect
+	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.45.0 // indirect
 	golang.org/x/time v0.12.0 // indirect
+	golang.org/x/tools v0.40.0 // indirect
 	golang.zx2c4.com/wintun v0.0.0-20230126152724-0fa3db229ce2 // indirect
 )
