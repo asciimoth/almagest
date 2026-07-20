@@ -41,10 +41,10 @@ build: build-web
 	go build -o ./almagestd ./bin/almagestd/
 
 daemon: build
-  ./almagestd -c ./local -l debug -w 8090 --debug-nodes --unsafe-config --tmp-unix-admin
+  ./almagestd -c ./local -l debug -w 8090 --debug-nodes --unsafe-config --tmp-unix-admin --no-dns-cache-expiration
 
 daemon-sudo: build
-  sudo ./almagestd -c ./local -l debug -w 8090 --debug-nodes --unsafe-config
+  sudo ./almagestd -c ./local -l debug -w 8090 --debug-nodes --unsafe-config --no-dns-cache-expiration
 
 cli *args:
   go build -o ./cli ./bin/almagest-cli

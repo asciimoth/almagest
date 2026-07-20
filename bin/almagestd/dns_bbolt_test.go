@@ -87,6 +87,44 @@ func TestBboltDNSCacheStorageDeletesExpiredOnGet(t *testing.T) {
 	}
 }
 
+func TestBboltDNSCacheStorageCanDisableExpiration(t *testing.T) {
+	manager, err := openKVManagerWithOptions(filepath.Join(t.TempDir(), "kv.db"), bboltKVManagerOptions{
+		DisableDNSCacheExpiration: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer manager.Close() //nolint:errcheck
+
+	storage := manager.Storage("resolver").(*bboltDNSCacheStorage)
+	expiredAtSetTime := time.Now().Add(-time.Hour)
+	storage.Set("expired", testDNSCacheMessage("expired.test.", gdns.TypeA, []byte{192, 0, 2, 21}, 1), expiredAtSetTime)
+
+	got, ok := storage.Get("expired", time.Now())
+	if !ok {
+		t.Fatal("Get returned miss with DNS cache expiration disabled")
+	}
+	if got.Answers[0].Data[3] != 21 {
+		t.Fatalf("Get returned %#v, want expired cached DNS message", got)
+	}
+
+	keys, err := manager.dnsKeysSnapshot("resolver")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !keys.Exists || len(keys.Keys) != 1 || keys.Keys[0].Key != "expired" {
+		t.Fatalf("dnsKeysSnapshot = %#v, want expired key retained", keys)
+	}
+
+	value, err := manager.dnsValueSnapshot("resolver", "expired")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !value.Found || value.Value == nil || value.Value.ExpiresAt == "" {
+		t.Fatalf("dnsValueSnapshot = %#v, want expired value retained with expiration metadata", value)
+	}
+}
+
 func TestBboltDNSCacheStorageCleansExpiredEntriesOnStartup(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "kv.db")
 	manager, err := openKVManager(path)
@@ -114,6 +152,40 @@ func TestBboltDNSCacheStorageCleansExpiredEntriesOnStartup(t *testing.T) {
 		}
 		if raw := bucket.Get([]byte("live")); raw == nil {
 			t.Fatal("live startup value missing")
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestBboltDNSCacheStorageDisabledExpirationSkipsStartupCleanup(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "kv.db")
+	manager, err := openKVManager(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	storage := manager.Storage("resolver").(*bboltDNSCacheStorage)
+	storage.Set("expired", testDNSCacheMessage("expired.test.", gdns.TypeA, []byte{192, 0, 2, 32}, 1), time.Now().Add(-time.Hour))
+	if err := manager.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	manager, err = openKVManagerWithOptions(path, bboltKVManagerOptions{
+		DisableDNSCacheExpiration: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer manager.Close() //nolint:errcheck
+
+	storage = manager.Storage("resolver").(*bboltDNSCacheStorage)
+	if _, ok := storage.Get("expired", time.Now()); !ok {
+		t.Fatal("Get returned miss for expired startup entry with DNS cache expiration disabled")
+	}
+	if err := manager.db.View(func(tx *bbolt.Tx) error {
+		if raw := dnsCacheBucket(tx, "resolver").Get([]byte("expired")); raw == nil {
+			t.Fatal("expired startup value missing with DNS cache expiration disabled")
 		}
 		return nil
 	}); err != nil {

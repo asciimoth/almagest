@@ -173,7 +173,7 @@ func (m *bboltKVManager) dnsKeysSnapshot(cache string) (api.DNSKeysSnapshot, err
 			if err != nil {
 				return nil
 			}
-			if dnsCacheEntryExpired(entry.expires, now) {
+			if m.dnsCacheEntryExpired(entry.expires, now) {
 				expired = append(expired, dnsExpiredAPIEntry{cache: cache, key: key, raw: append([]byte(nil), v...)})
 				return nil
 			}
@@ -203,7 +203,7 @@ func (m *bboltKVManager) dnsKeyInfo(cache, key string) (api.DNSKeyInfo, bool, er
 	if err != nil {
 		return api.DNSKeyInfo{}, false, err
 	}
-	if dnsCacheEntryExpired(entry.expires, time.Now()) {
+	if m.dnsCacheEntryExpired(entry.expires, time.Now()) {
 		m.deleteExpiredAPIEntries([]dnsExpiredAPIEntry{{cache: cache, key: key, raw: raw}})
 		return api.DNSKeyInfo{}, false, nil
 	}
@@ -222,7 +222,7 @@ func (m *bboltKVManager) dnsValueSnapshot(cache, key string) (api.DNSValueSnapsh
 	if err != nil {
 		return api.DNSValueSnapshot{}, err
 	}
-	if dnsCacheEntryExpired(entry.expires, time.Now()) {
+	if m.dnsCacheEntryExpired(entry.expires, time.Now()) {
 		m.deleteExpiredAPIEntries([]dnsExpiredAPIEntry{{cache: cache, key: key, raw: raw}})
 		return api.DNSValueSnapshot{}, nil
 	}

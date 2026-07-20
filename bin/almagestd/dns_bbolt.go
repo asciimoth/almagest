@@ -143,7 +143,9 @@ func newBboltDNSCacheStorage(manager *bboltKVManager, name string, invalid bool)
 
 // Get returns a copy of the stored DNS message when the entry exists and has not
 // expired. Expired entries are deleted from both memory and bbolt before a miss
-// is reported, matching gonnect/dns.MemoryStorage expiration semantics.
+// is reported, matching gonnect/dns.MemoryStorage expiration semantics. When
+// the manager disables DNS cache expiration, past expiration timestamps are kept
+// as metadata only and do not turn entries into misses.
 func (s *bboltDNSCacheStorage) Get(key string, now time.Time) (*gdns.Message, bool) {
 	if s == nil || s.invalid || s.manager == nil || !validDNSName(key) {
 		return nil, false
@@ -166,7 +168,7 @@ func (s *bboltDNSCacheStorage) Get(key string, now time.Time) (*gdns.Message, bo
 		s.deleteExpiredEntry(key, raw)
 		return nil, false
 	}
-	if dnsCacheEntryExpired(entry.expires, now) {
+	if s.dnsCacheEntryExpired(entry.expires, now) {
 		s.deleteExpiredEntry(key, raw)
 		return nil, false
 	}
@@ -229,7 +231,7 @@ func (s *bboltDNSCacheStorage) memoryGet(key string, now time.Time) (*gdns.Messa
 	if !ok {
 		return nil, nil, false, false
 	}
-	if dnsCacheEntryExpired(entry.expires, now) {
+	if s.dnsCacheEntryExpired(entry.expires, now) {
 		delete(s.entries, key)
 		return nil, append([]byte(nil), entry.raw...), true, true
 	}
@@ -386,6 +388,9 @@ func (m *bboltKVManager) cleanupExpiredDNS(now time.Time) error {
 	if m == nil {
 		return nil
 	}
+	if m.disableDNSCacheExpiration {
+		return nil
+	}
 	return mapBboltDNSError(m.db.Update(func(tx *bbolt.Tx) error {
 		root := tx.Bucket([]byte(dnsRootBucketName))
 		if root == nil {
@@ -417,6 +422,20 @@ func (m *bboltKVManager) cleanupExpiredDNS(now time.Time) error {
 			return nil
 		})
 	}))
+}
+
+func (s *bboltDNSCacheStorage) dnsCacheEntryExpired(expires, now time.Time) bool {
+	if s != nil && s.manager != nil && s.manager.disableDNSCacheExpiration {
+		return false
+	}
+	return dnsCacheEntryExpired(expires, now)
+}
+
+func (m *bboltKVManager) dnsCacheEntryExpired(expires, now time.Time) bool {
+	if m != nil && m.disableDNSCacheExpiration {
+		return false
+	}
+	return dnsCacheEntryExpired(expires, now)
 }
 
 func (m *bboltKVManager) subscribeDNSChanges(callback func(dnsCacheChange)) uint64 {

@@ -89,7 +89,9 @@ func main() {
 	}
 	golog.Infof("Using file storage at %s", fsPath)
 
-	kv, err = openKVManagerInStorage(fsPath)
+	kv, err = openKVManagerInStorage(fsPath, bboltKVManagerOptions{
+		DisableDNSCacheExpiration: args.NoDNSCacheExpiration,
+	})
 	if err != nil {
 		fatal(err)
 		return

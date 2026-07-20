@@ -37,6 +37,8 @@ var (
 type bboltKVManager struct {
 	db *bbolt.DB
 
+	disableDNSCacheExpiration bool
+
 	mu         sync.Mutex
 	nextSub    uint64
 	changeSubs map[uint64]func()
@@ -69,16 +71,31 @@ type bboltKVWriteTx struct {
 	protectedDepth int
 }
 
+// bboltKVManagerOptions controls daemon-local persistence behavior that is not
+// part of the workspace graph. The options are fixed for the lifetime of the
+// opened manager.
+type bboltKVManagerOptions struct {
+	// DisableDNSCacheExpiration keeps DNS cache entries readable even after the
+	// expiration timestamp stored from their DNS TTL. Expiration timestamps are
+	// still persisted and reported by the admin API.
+	DisableDNSCacheExpiration bool
+}
+
 func openKVManager(path string) (*bboltKVManager, error) {
+	return openKVManagerWithOptions(path, bboltKVManagerOptions{})
+}
+
+func openKVManagerWithOptions(path string, options bboltKVManagerOptions) (*bboltKVManager, error) {
 	db, err := bbolt.Open(path, 0o600, &bbolt.Options{Timeout: time.Second})
 	if err != nil {
 		return nil, fmt.Errorf("open kv database: %w", err)
 	}
 	manager := &bboltKVManager{
-		db:            db,
-		changeSubs:    map[uint64]func(){},
-		dnsStores:     map[string]*bboltDNSCacheStorage{},
-		dnsChangeSubs: map[uint64]func(dnsCacheChange){},
+		db:                        db,
+		disableDNSCacheExpiration: options.DisableDNSCacheExpiration,
+		changeSubs:                map[uint64]func(){},
+		dnsStores:                 map[string]*bboltDNSCacheStorage{},
+		dnsChangeSubs:             map[uint64]func(dnsCacheChange){},
 	}
 	if err := manager.initRootBuckets(); err != nil {
 		_ = db.Close()
@@ -453,6 +470,6 @@ func mapBboltKVError(err error) error {
 	}
 }
 
-func openKVManagerInStorage(storagePath string) (*bboltKVManager, error) {
-	return openKVManager(filepath.Join(storagePath, kvDBFileName))
+func openKVManagerInStorage(storagePath string, options bboltKVManagerOptions) (*bboltKVManager, error) {
+	return openKVManagerWithOptions(filepath.Join(storagePath, kvDBFileName), options)
 }

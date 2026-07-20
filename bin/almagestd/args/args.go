@@ -23,6 +23,11 @@ type Args struct {
 
 	NoPool bool `arg:"--no-pool" help:"disable daemon global buffer pool"`
 
+	// NoDNSCacheExpiration keeps daemon DNS cache entries readable after their
+	// DNS TTL-derived expiration time. Entries still store expiration metadata
+	// so the admin API can show when an answer would normally expire.
+	NoDNSCacheExpiration bool `arg:"--no-dns-cache-expiration,env:ALMAGEST_NO_DNS_CACHE_EXPIRATION" help:"disable DNS cache entry expiration"`
+
 	LogCacheDebug *int `arg:"--log-cache-debug,env:ALMAGEST_LOG_CACHE_DEBUG" help:"daemon debug log cache size"`
 	LogCacheInfo  *int `arg:"--log-cache-info,env:ALMAGEST_LOG_CACHE_INFO" help:"daemon info log cache size"`
 	LogCacheWarn  *int `arg:"--log-cache-warn,env:ALMAGEST_LOG_CACHE_WARN" help:"daemon warn log cache size"`
