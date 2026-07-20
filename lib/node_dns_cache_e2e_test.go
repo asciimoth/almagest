@@ -2,6 +2,7 @@ package almagest
 
 import (
 	"context"
+	"slices"
 	"sync"
 	"testing"
 
@@ -271,4 +272,15 @@ func (m *memoryDNSCacheManager) Storage(name string) dns.CacheStorage {
 		m.storages[name] = storage
 	}
 	return storage
+}
+
+func (m *memoryDNSCacheManager) StorageNames() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	names := make([]string, 0, len(m.storages))
+	for name := range m.storages {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+	return names
 }

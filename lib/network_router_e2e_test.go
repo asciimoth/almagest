@@ -14,8 +14,9 @@ import (
 )
 
 const (
-	networkRouterSlot1Response = "Response from network 1"
-	networkRouterSlot2Response = "Response from network 2"
+	networkRouterSlot1Response      = "Response from network 1"
+	networkRouterSlot2Response      = "Response from network 2"
+	networkRouterReverseDNSResponse = "Response from reverse DNS cache route"
 )
 
 type networkRouterE2EFixture struct {
@@ -158,6 +159,50 @@ func TestNetworkRouterE2ERestoreLocalProxyConsumerBeforeSlots(t *testing.T) {
 	if body := restoredLocalProxy.waitLocalProxyHTTPGet(socksPort, port2, nil); body != networkRouterSlot2Response {
 		t.Fatalf("restored proxy port %d body = %q, want %q", port2, body, networkRouterSlot2Response)
 	}
+}
+
+func TestNetworkRouterE2ERoutesByReverseDNSCacheHostname(t *testing.T) {
+	manager := newMemoryDNSCacheManager()
+	dnsE := newDNSE2EWithDNSCacheManager(t, configer.NewMemory(nil), manager)
+	e := &httpE2E{NodeE2E: dnsE.NodeE2E}
+	const (
+		storageName = "network-router-routing-cache"
+		hostName    = "router-dst-cache.test."
+	)
+	port := httpTestPort()
+	warmDNSCacheReverseLookupsForRouting(
+		t,
+		e.NodeE2E,
+		"network-router",
+		storageName,
+		"router-dst-cache.test A 127.0.0.1",
+		dnsCacheWarmQuery{name: hostName, wantA: "127.0.0.1"},
+	)
+
+	router := e.AddNode(NodeTypeNetworkRouter, "router")
+	backend := e.AddNode(NodeTypeMockNetwork, "backend")
+	server := e.addHTTPServerWithResponse("server", port, networkRouterReverseDNSResponse)
+	client := e.addHTTPClient("client", port)
+	e.SubscribeMenus(router, server, client)
+	e.waitClientRequestField(client, "url", fmt.Sprintf("http://127.0.0.1:%d/", port))
+
+	e.Engine.SendNodeFormularMsg(E2EWorkspace, router, formular.FormApplyMessage{
+		MessageBase: FormMessageBase(formular.MessageFormApply, router),
+		BlockID:     networkRouterConfigBlockID,
+		Values: map[string]any{
+			networkRouterRulesField: fmt.Sprintf(
+				"ADDR_S %s\nSLOT 2\nTRUE\nSLOT 1",
+				hostName,
+			),
+			networkRouterDNSCacheStorageNameField: storageName,
+		},
+	})
+	e.assertNetworkRouterPorts(router, []string{"slot 1", "slot 2", networkRouterDNSPortName})
+	e.connectByPortName(backend, "left", "Network", server, "right", "Network")
+	e.connectByPortName(backend, "left", "Network", router, "right", "slot 2")
+	e.connectByPortName(router, "left", "Network", client, "right", "Network")
+	e.waitServerListening(server, fmt.Sprintf("127.0.0.1:%d", port))
+	e.assertClientRequestReturns(client, networkRouterReverseDNSResponse, 10*time.Second)
 }
 
 func TestNetworkRouterE2ECopyPaste(t *testing.T) {

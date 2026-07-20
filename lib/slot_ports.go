@@ -10,6 +10,10 @@ import (
 type slotPortReview struct {
 	DefaultSlot int
 	EnsureFree  bool
+	// PreserveExisting keeps currently known slot ports during this review even
+	// when they have no links yet. Use it for restore-time reviews, because
+	// Pasta restores node ports before it restores links.
+	PreserveExisting bool
 	// ExtraOrder lists same-direction ports that are not owned by this slot
 	// manager but still must be present when rewriting the node port order.
 	ExtraOrder []uint64
@@ -24,6 +28,8 @@ type slotPorts struct {
 	newPort   func(slot int) pasta.Port
 	name      func(slot int) string
 	parseName func(name string) (int, bool)
+
+	deferredReview bool
 }
 
 func newSlotPorts(max int, direction string, newPort func(slot int) pasta.Port, name func(slot int) string, parseName func(name string) (int, bool)) slotPorts {
@@ -114,6 +120,14 @@ func (s *slotPorts) Review(desired map[int]struct{}, opts slotPortReview) error 
 			delete(desired, slot)
 		}
 	}
+	if opts.PreserveExisting {
+		for slot := 1; slot <= s.max; slot++ {
+			if s.Port(slot) != 0 {
+				desired[slot] = struct{}{}
+			}
+		}
+		s.deferredReview = true
+	}
 	for slot := 1; slot <= s.max; slot++ {
 		if port := s.Port(slot); port != 0 && s.portHasLinks(port) {
 			desired[slot] = struct{}{}
@@ -170,6 +184,14 @@ func (s *slotPorts) Review(desired map[int]struct{}, opts slotPortReview) error 
 		return nil
 	}
 	return s.w.SetNodePortOrderLocked(s.node, s.direction, order)
+}
+
+func (s *slotPorts) TakeDeferredReview() bool {
+	if !s.deferredReview {
+		return false
+	}
+	s.deferredReview = false
+	return true
 }
 
 func (s *slotPorts) slotFromPort(port uint64, fallback int) int {

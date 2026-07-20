@@ -160,10 +160,27 @@ func TestTunSplitterNodeValidationReportsStatus(t *testing.T) {
 		Value:       "TRUE\nSLOT 1\n",
 	})
 	assertTunSplitterRulesStatus(t, state, splitter, formular.StatusOK)
+
+	w.SendNodeFormularMsg(splitter, formular.FieldValidateMessage{
+		MessageBase: FormMessageBase(formular.MessageFieldValidate, splitter),
+		Field:       formular.FieldRef{BlockID: tunSplitterConfigBlockID, FieldID: tunSplitterDNSCacheStorageNameField},
+		Value:       string([]byte{0xff}),
+	})
+	assertMenuItemStatus(t, state, splitter, tunSplitterDNSCacheStorageNameField, formular.StatusError)
+
+	w.SendNodeFormularMsg(splitter, formular.FieldValidateMessage{
+		MessageBase: FormMessageBase(formular.MessageFieldValidate, splitter),
+		Field:       formular.FieldRef{BlockID: tunSplitterConfigBlockID, FieldID: tunSplitterRulesField},
+		Value:       "TRUE\nSLOT 1\n",
+	})
+	assertTunSplitterRulesStatus(t, state, splitter, formular.StatusOK)
 }
 
 func TestTunSplitterNodeMenuAppliesAndSavesRoutingCacheConfig(t *testing.T) {
-	w := newTunSplitterTestWorkspace(t)
+	manager := newMemoryDNSCacheManager()
+	manager.Storage("shared")
+	manager.Storage("other")
+	w := newTunSplitterTestWorkspaceWithDNSCacheManager(t, manager)
 	state := formular.NewMenuSnapshotState()
 	sub := w.SubscribeNotifications(func(notification pasta.WorkspaceNotification) {
 		if notification.Kind == pasta.NotificationNodeMenu {
@@ -184,22 +201,26 @@ func TestTunSplitterNodeMenuAppliesAndSavesRoutingCacheConfig(t *testing.T) {
 	assertTunSplitterConfigFieldValue(t, state, splitter, "ruleCacheMaxEntries", 0)
 	assertTunSplitterConfigFieldValue(t, state, splitter, "routeCacheTTL", 0)
 	assertTunSplitterConfigFieldValue(t, state, splitter, "routeCacheMaxEntries", 0)
+	assertTunSplitterConfigFieldValue(t, state, splitter, tunSplitterDNSCacheStorageNameField, "")
+	assertConfigFieldAllowedValues(t, state, splitter, tunSplitterConfigBlockID, tunSplitterDNSCacheStorageNameField, []any{"", "other", "shared"})
 
 	w.SendNodeFormularMsg(splitter, formular.FormApplyMessage{
 		MessageBase: FormMessageBase(formular.MessageFormApply, splitter),
 		BlockID:     "config",
 		Values: map[string]any{
-			"rules":                "TRUE\nSLOT 1\n",
-			"ruleCacheTTL":         1500,
-			"ruleCacheMaxEntries":  32,
-			"routeCacheTTL":        -1,
-			"routeCacheMaxEntries": -1,
+			"rules":                             "TRUE\nSLOT 1\n",
+			"ruleCacheTTL":                      1500,
+			"ruleCacheMaxEntries":               32,
+			"routeCacheTTL":                     -1,
+			"routeCacheMaxEntries":              -1,
+			tunSplitterDNSCacheStorageNameField: "shared",
 		},
 	})
 	assertTunSplitterConfigFieldValue(t, state, splitter, "ruleCacheTTL", 1500)
 	assertTunSplitterConfigFieldValue(t, state, splitter, "ruleCacheMaxEntries", 32)
 	assertTunSplitterConfigFieldValue(t, state, splitter, "routeCacheTTL", -1)
 	assertTunSplitterConfigFieldValue(t, state, splitter, "routeCacheMaxEntries", -1)
+	assertTunSplitterConfigFieldValue(t, state, splitter, tunSplitterDNSCacheStorageNameField, "shared")
 
 	w.SendNodeFormularMsg(splitter, formular.FormApplyMessage{
 		MessageBase: FormMessageBase(formular.MessageFormApply, splitter),
@@ -210,17 +231,19 @@ func TestTunSplitterNodeMenuAppliesAndSavesRoutingCacheConfig(t *testing.T) {
 	assertTunSplitterConfigFieldValue(t, state, splitter, "ruleCacheMaxEntries", 32)
 	assertTunSplitterConfigFieldValue(t, state, splitter, "routeCacheTTL", -1)
 	assertTunSplitterConfigFieldValue(t, state, splitter, "routeCacheMaxEntries", -1)
+	assertTunSplitterConfigFieldValue(t, state, splitter, tunSplitterDNSCacheStorageNameField, "shared")
 
 	cfg := configer.NewMemory(nil)
 	if err := w.SaveConfig(cfg); err != nil {
 		t.Fatalf("SaveConfig: %v", err)
 	}
 	wantSaved := map[string]any{
-		"rules":                "TRUE\nSLOT 2\n",
-		"ruleCacheTTL":         1500,
-		"ruleCacheMaxEntries":  32,
-		"routeCacheTTL":        -1,
-		"routeCacheMaxEntries": -1,
+		"rules":                             "TRUE\nSLOT 2\n",
+		"ruleCacheTTL":                      1500,
+		"ruleCacheMaxEntries":               32,
+		"routeCacheTTL":                     -1,
+		"routeCacheMaxEntries":              -1,
+		tunSplitterDNSCacheStorageNameField: "shared",
 	}
 	for key, want := range wantSaved {
 		got, err := cfg.Get(configer.Path{"splitter", key})
@@ -235,9 +258,14 @@ func TestTunSplitterNodeMenuAppliesAndSavesRoutingCacheConfig(t *testing.T) {
 
 func newTunSplitterTestWorkspace(t *testing.T) *pasta.Workspace {
 	t.Helper()
+	return newTunSplitterTestWorkspaceWithDNSCacheManager(t, nil)
+}
+
+func newTunSplitterTestWorkspaceWithDNSCacheManager(t *testing.T, manager DnsCacheManager) *pasta.Workspace {
+	t.Helper()
 	w := pasta.NewWorkspace(NewDebugLogFactory(1024))
 	t.Cleanup(func() { w.Close() })
-	if err := w.AddNodeClass(tunSplitterClass{engine: &engine{sys: &sysnetdebug.System{}}}); err != nil {
+	if err := w.AddNodeClass(tunSplitterClass{engine: &engine{sys: &sysnetdebug.System{}, dns: manager}}); err != nil {
 		t.Fatalf("AddNodeClass TunSplitter: %v", err)
 	}
 	return w

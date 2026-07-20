@@ -88,7 +88,7 @@ type dnsRouterNode struct {
 	outputs  DNSOutputCache
 }
 
-func (n *dnsRouterNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
+func (n *dnsRouterNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, isRestored bool) error {
 	n.InitBaseNode(w, logger, id)
 	if n.router == nil {
 		n.router = dnsRouterNewRouter(n.dnsSpawner())
@@ -121,7 +121,7 @@ func (n *dnsRouterNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint6
 			return fmt.Errorf("set DNS router rules: %w", err)
 		}
 	}
-	if err := n.reviewOutputPorts(); err != nil {
+	if err := n.reviewOutputPorts(slotPortReview{DefaultSlot: 1, PreserveExisting: isRestored}); err != nil {
 		return err
 	}
 	if err := n.updateLabel(); err != nil {
@@ -132,6 +132,11 @@ func (n *dnsRouterNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint6
 }
 
 func (n *dnsRouterNode) OnReady() error {
+	if n.slots.TakeDeferredReview() {
+		if err := n.reviewOutputPorts(slotPortReview{DefaultSlot: 1}); err != nil {
+			return err
+		}
+	}
 	n.ready = true
 	n.requestSlots()
 	if len(n.backends) > 0 || !n.hasSlotLinks() {
@@ -278,7 +283,7 @@ func (n *dnsRouterNode) applyConfigForm(values map[string]any) error {
 	n.rulesText = text
 	n.rules = rules
 	n.formError = ""
-	if err := n.reviewOutputPorts(); err != nil {
+	if err := n.reviewOutputPorts(slotPortReview{DefaultSlot: 1}); err != nil {
 		return err
 	}
 	n.sendForcedMenuSnapshot()
@@ -292,12 +297,12 @@ func (n *dnsRouterNode) sendRulesFieldStatus(msg formular.FieldValidateMessage) 
 	sendNodeFieldStatus(n.w, n.id, msg.Field, err)
 }
 
-func (n *dnsRouterNode) reviewOutputPorts() error {
+func (n *dnsRouterNode) reviewOutputPorts(opts slotPortReview) error {
 	desired := map[int]struct{}{}
 	for _, slot := range n.rules.MentionedSlots() {
 		desired[slot] = struct{}{}
 	}
-	return n.slots.Review(desired, slotPortReview{DefaultSlot: 1})
+	return n.slots.Review(desired, opts)
 }
 
 func (n *dnsRouterNode) requestSlots() {

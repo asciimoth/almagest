@@ -24,7 +24,10 @@ const (
 	// NodeTypeTunSplitter is the node class name for a routing TUN splitter.
 	NodeTypeTunSplitter = "almagest/TunSplitter"
 
-	tunSplitterMaxSlots = 16
+	tunSplitterMaxSlots                 = 16
+	tunSplitterConfigBlockID            = "config"
+	tunSplitterRulesField               = "rules"
+	tunSplitterDNSCacheStorageNameField = "dnsCacheStorageName"
 )
 
 type tunSplitterRoutingConfig struct {
@@ -32,6 +35,7 @@ type tunSplitterRoutingConfig struct {
 	ruleCacheMaxEntries  int
 	routeCacheTTL        time.Duration
 	routeCacheMaxEntries int
+	dnsCacheStorageName  string
 }
 
 type tunSplitterClass struct {
@@ -54,7 +58,7 @@ func (c tunSplitterClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassStat
 	return &tunSplitterNode{
 		NodeBase:      NodeBase{engine: c.engine},
 		pool:          pool,
-		rulesText:     configer.String(cfg, configer.Path{"rules"}, ""),
+		rulesText:     configer.String(cfg, configer.Path{tunSplitterRulesField}, ""),
 		routingConfig: readTunSplitterRoutingConfig(cfg),
 		slots: newSlotPorts(
 			tunSplitterMaxSlots,
@@ -86,16 +90,17 @@ type tunSplitterNode struct {
 	splitter *tun.Splitter
 	router   routing.SplitRouter
 
-	rulesText     string
-	routingConfig tunSplitterRoutingConfig
-	formError     string
+	rulesText            string
+	routingConfig        tunSplitterRoutingConfig
+	formError            string
+	dnsCacheStorageError string
 
 	outputTuns TunOutputCache
 	frontends  map[uint64]tun.Tun
 	outputCfgs TunConfigByLink
 }
 
-func (n *tunSplitterNode) OnInit(w *pasta.Workspace, _ pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
+func (n *tunSplitterNode) OnInit(w *pasta.Workspace, _ pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, isRestored bool) error {
 	n.InitBaseNode(w, nil, id)
 	if n.splitter == nil {
 		// Nil spawner is intentional here; see the Gonnect spawner note in helpers.go.
@@ -122,13 +127,18 @@ func (n *tunSplitterNode) OnInit(w *pasta.Workspace, _ pasta.Logger, id uint64, 
 		return err
 	}
 
-	router, err := n.compileRules(n.rulesText, n.routingConfig)
+	compileConfig := n.routingConfig
+	if err := validateOptionalDNSCacheStorageName(compileConfig.dnsCacheStorageName); err != nil {
+		n.dnsCacheStorageError = err.Error()
+		compileConfig.dnsCacheStorageName = ""
+	}
+	router, err := n.compileRules(n.rulesText, compileConfig)
 	if err != nil {
 		n.formError = err.Error()
 	} else {
 		n.setRouter(router)
 	}
-	if err := n.reviewOutputPorts(); err != nil {
+	if err := n.reviewOutputPorts(slotPortReview{EnsureFree: true, PreserveExisting: isRestored}); err != nil {
 		return err
 	}
 	if err := n.updateLabel(); err != nil {
@@ -139,6 +149,11 @@ func (n *tunSplitterNode) OnInit(w *pasta.Workspace, _ pasta.Logger, id uint64, 
 }
 
 func (n *tunSplitterNode) OnReady() error {
+	if n.slots.TakeDeferredReview() {
+		if err := n.reviewOutputPorts(slotPortReview{EnsureFree: true}); err != nil {
+			return err
+		}
+	}
 	n.requestInput()
 	n.sendAllOutputTuns()
 	n.sendMergedTunConfig()
@@ -186,7 +201,7 @@ func (n *tunSplitterNode) OnLinkAdd(link, port uint64, linkType, portDirection s
 		n.sendMergedTunConfig()
 	case n.slots.Slot(port) != 0 && portDirection == "right":
 		n.sendOutputTunToLink(link, port)
-		if err := n.reviewOutputPorts(); err != nil {
+		if err := n.reviewOutputPorts(slotPortReview{EnsureFree: true}); err != nil {
 			return err
 		}
 	}
@@ -209,7 +224,7 @@ func (n *tunSplitterNode) OnLinkRemoved(link uint64, port uint64, linkType, port
 	case n.slots.Slot(port) != 0 && portDirection == "right":
 		n.closeOutputTun(link)
 		n.outputCfgs.Delete(link)
-		if err := n.reviewOutputPorts(); err != nil {
+		if err := n.reviewOutputPorts(slotPortReview{EnsureFree: true}); err != nil {
 			return err
 		}
 		n.sendMergedTunConfig()
@@ -259,19 +274,21 @@ func (n *tunSplitterNode) OnEvent(event pasta.Event, linkType string, _ []string
 func (n *tunSplitterNode) OnFormularMsg(message any) error {
 	switch msg := message.(type) {
 	case formular.FormApplyMessage:
-		if msg.MenuID != pasta.NodeMenuID(n.id) || msg.BlockID != "config" {
+		if msg.MenuID != pasta.NodeMenuID(n.id) || msg.BlockID != tunSplitterConfigBlockID {
 			return nil
 		}
 		return n.applyConfigForm(msg.Values)
 	case formular.FieldValidateMessage:
-		if msg.MenuID != pasta.NodeMenuID(n.id) || msg.Field.BlockID != "config" || len(msg.Field.ElementPath) > 0 {
+		if msg.MenuID != pasta.NodeMenuID(n.id) || msg.Field.BlockID != tunSplitterConfigBlockID || len(msg.Field.ElementPath) > 0 {
 			return nil
 		}
 		switch msg.Field.FieldID {
-		case "rules":
+		case tunSplitterRulesField:
 			n.sendRulesFieldStatus(msg)
 		case "ruleCacheTTL", "ruleCacheMaxEntries", "routeCacheTTL", "routeCacheMaxEntries":
 			n.sendIntFieldStatus(msg)
+		case tunSplitterDNSCacheStorageNameField:
+			n.sendDNSCacheStorageFieldStatus(msg)
 		}
 	}
 	return nil
@@ -282,20 +299,36 @@ func (n *tunSplitterNode) OnSave(cfg configer.Config) error {
 		return err
 	}
 	return configer.SetMap(cfg, map[string]any{
-		"rules":                n.rulesText,
-		"ruleCacheTTL":         durationMilliseconds(n.routingConfig.ruleCacheTTL),
-		"ruleCacheMaxEntries":  n.routingConfig.ruleCacheMaxEntries,
-		"routeCacheTTL":        durationMilliseconds(n.routingConfig.routeCacheTTL),
-		"routeCacheMaxEntries": n.routingConfig.routeCacheMaxEntries,
+		tunSplitterRulesField:               n.rulesText,
+		"ruleCacheTTL":                      durationMilliseconds(n.routingConfig.ruleCacheTTL),
+		"ruleCacheMaxEntries":               n.routingConfig.ruleCacheMaxEntries,
+		"routeCacheTTL":                     durationMilliseconds(n.routingConfig.routeCacheTTL),
+		"routeCacheMaxEntries":              n.routingConfig.routeCacheMaxEntries,
+		tunSplitterDNSCacheStorageNameField: n.routingConfig.dnsCacheStorageName,
 	})
 }
 
 func (n *tunSplitterNode) applyConfigForm(values map[string]any) error {
 	text := n.rulesText
-	if value, ok := formular.StringValue(values["rules"]); ok {
+	if value, ok := formular.StringValue(values[tunSplitterRulesField]); ok {
 		text = value
 	}
 	config := n.routingConfig.withValues(values)
+	if err := validateOptionalDNSCacheStorageName(config.dnsCacheStorageName); err != nil {
+		n.dnsCacheStorageError = err.Error()
+		syntaxConfig := config
+		syntaxConfig.dnsCacheStorageName = ""
+		if router, rulesErr := n.compileRules(text, syntaxConfig); rulesErr != nil {
+			n.formError = rulesErr.Error()
+		} else {
+			n.formError = ""
+			if router != nil {
+				_ = router.Close()
+			}
+		}
+		n.sendConfigBlock()
+		return nil
+	}
 	router, err := n.compileRules(text, config)
 	if err != nil {
 		n.formError = err.Error()
@@ -305,8 +338,9 @@ func (n *tunSplitterNode) applyConfigForm(values map[string]any) error {
 	n.rulesText = text
 	n.routingConfig = config
 	n.formError = ""
+	n.dnsCacheStorageError = ""
 	n.setRouter(router)
-	if err := n.reviewOutputPorts(); err != nil {
+	if err := n.reviewOutputPorts(slotPortReview{EnsureFree: true}); err != nil {
 		return err
 	}
 	n.sendForcedMenuSnapshot()
@@ -315,7 +349,9 @@ func (n *tunSplitterNode) applyConfigForm(values map[string]any) error {
 
 func (n *tunSplitterNode) sendRulesFieldStatus(msg formular.FieldValidateMessage) {
 	text, _ := formular.StringValue(msg.Value)
-	router, err := n.compileRules(text, n.routingConfig)
+	config := n.routingConfig
+	config.dnsCacheStorageName = ""
+	router, err := n.compileRules(text, config)
 	if err == nil && router != nil {
 		_ = router.Close()
 	}
@@ -330,9 +366,19 @@ func (n *tunSplitterNode) sendIntFieldStatus(msg formular.FieldValidateMessage) 
 	sendNodeFieldStatus(n.w, n.id, msg.Field, err)
 }
 
+func (n *tunSplitterNode) sendDNSCacheStorageFieldStatus(msg formular.FieldValidateMessage) {
+	value, _ := formular.StringValue(msg.Value)
+	value = normalizeOptionalDNSCacheStorageName(value)
+	sendNodeFieldStatus(n.w, n.id, msg.Field, validateOptionalDNSCacheStorageName(value))
+}
+
 func (n *tunSplitterNode) compileRules(text string, config tunSplitterRoutingConfig) (routing.SplitRouter, error) {
 	if n.engine == nil || n.engine.sys == nil {
 		return nil, fmt.Errorf("no sysnet system")
+	}
+	config.dnsCacheStorageName = normalizeOptionalDNSCacheStorageName(config.dnsCacheStorageName)
+	if err := validateOptionalDNSCacheStorageName(config.dnsCacheStorageName); err != nil {
+		return nil, err
 	}
 	rules, err := routing.NewSplitBytecodeRules(n.engine.sys, text)
 	if err != nil {
@@ -342,7 +388,15 @@ func (n *tunSplitterNode) compileRules(text string, config tunSplitterRoutingCon
 	rules.RuleCacheMaxEntries = config.ruleCacheMaxEntries
 	rules.RouteCacheTTL = config.routeCacheTTL
 	rules.RouteCacheMaxEntries = config.routeCacheMaxEntries
+	rules.DNSCacheStorage = dnsCacheStorageForRouting(n.cacheManager(), config.dnsCacheStorageName)
 	return routing.NewBytecodeSplitRouter(rules)
+}
+
+func (n *tunSplitterNode) cacheManager() DnsCacheManager {
+	if n.engine == nil {
+		return nil
+	}
+	return n.engine.DnsCacheManager()
 }
 
 func (n *tunSplitterNode) setRouter(router routing.SplitRouter) {
@@ -370,7 +424,7 @@ func (n *tunSplitterNode) attachInputTun(link uint64, t tun.Tun) error {
 	return n.updateLabel()
 }
 
-func (n *tunSplitterNode) reviewOutputPorts() error {
+func (n *tunSplitterNode) reviewOutputPorts(opts slotPortReview) error {
 	desired := map[int]struct{}{}
 	if n.router != nil {
 		for _, slot := range n.router.MentionedSlots() {
@@ -379,7 +433,7 @@ func (n *tunSplitterNode) reviewOutputPorts() error {
 			}
 		}
 	}
-	return n.slots.Review(desired, slotPortReview{EnsureFree: true})
+	return n.slots.Review(desired, opts)
 }
 
 func (n *tunSplitterNode) requestInput() {
@@ -495,8 +549,16 @@ func (n *tunSplitterNode) configBlock() formular.Block {
 		field.Status = formular.StatusError
 		field.StatusText = n.formError
 	}
-	return formular.Block{ID: "config", Order: 10, Generation: 1, Form: true, Items: []formular.Item{
-		{Type: formular.ItemField, ID: "rules", Label: "Routing rules", Field: field},
+	return formular.Block{ID: tunSplitterConfigBlockID, Order: 10, Generation: 1, Form: true, Items: []formular.Item{
+		{Type: formular.ItemField, ID: tunSplitterRulesField, Label: "Routing rules", Field: field},
+		dnsCacheStorageSelectorField(
+			tunSplitterDNSCacheStorageNameField,
+			"DNS cache storage",
+			n.routingConfig.dnsCacheStorageName,
+			n.cacheManager(),
+			n.dnsCacheStorageError != "",
+			n.dnsCacheStorageError,
+		),
 		tunSplitterIntField(
 			"ruleCacheTTL",
 			"Rule cache TTL (ms)",
@@ -536,6 +598,7 @@ func readTunSplitterRoutingConfig(cfg configer.Config) tunSplitterRoutingConfig 
 		ruleCacheMaxEntries:  configer.Int(cfg, configer.Path{"ruleCacheMaxEntries"}, 0),
 		routeCacheTTL:        time.Duration(configer.Int(cfg, configer.Path{"routeCacheTTL"}, 0)) * time.Millisecond,
 		routeCacheMaxEntries: configer.Int(cfg, configer.Path{"routeCacheMaxEntries"}, 0),
+		dnsCacheStorageName:  normalizeOptionalDNSCacheStorageName(configer.String(cfg, configer.Path{tunSplitterDNSCacheStorageNameField}, "")),
 	}
 }
 
@@ -551,6 +614,9 @@ func (c tunSplitterRoutingConfig) withValues(values map[string]any) tunSplitterR
 	}
 	if value, ok := formular.IntValue(values["routeCacheMaxEntries"]); ok {
 		c.routeCacheMaxEntries = value
+	}
+	if value, ok := formular.StringValue(values[tunSplitterDNSCacheStorageNameField]); ok {
+		c.dnsCacheStorageName = normalizeOptionalDNSCacheStorageName(value)
 	}
 	return c
 }

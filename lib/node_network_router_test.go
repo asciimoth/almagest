@@ -215,6 +215,50 @@ func TestNetworkRouterDNSSaveRestorePreservesResolverLink(t *testing.T) {
 	assertNetworkRouterLookupHost(t, networkRouterRuntimeFromWorkspace(t, restored, restoredRouter), "router.test", "192.0.2.40")
 }
 
+func TestNetworkRouterRestorePreservesLinkedSlotOmittedByRules(t *testing.T) {
+	cfg := configer.NewMemory(map[string]any{
+		"backend-1": map[string]any{
+			"Class": NodeTypeMockNetwork,
+		},
+		"backend-2": map[string]any{
+			"Class": NodeTypeMockNetwork,
+		},
+		"router": map[string]any{
+			"Class": NodeTypeNetworkRouter,
+			"Links": []any{
+				"slot 1 -> [backend-1] Network",
+				"slot 2 -> [backend-2] Network",
+			},
+			"rules": "TRUE\nSLOT 1\n",
+		},
+	})
+
+	w, err := pasta.WorkspaceFromConfig([]pasta.NodeClass{
+		networkRouterClass{},
+		mockNetClass{},
+	}, cfg, NewDebugLogFactory(1024))
+	if err != nil {
+		t.Fatalf("WorkspaceFromConfig: %v", err)
+	}
+	t.Cleanup(func() { w.Close() })
+
+	router, ok := w.NodeIDByName("router")
+	if !ok {
+		t.Fatal("restored router missing")
+	}
+	backend1, ok := w.NodeIDByName("backend-1")
+	if !ok {
+		t.Fatal("restored backend-1 missing")
+	}
+	backend2, ok := w.NodeIDByName("backend-2")
+	if !ok {
+		t.Fatal("restored backend-2 missing")
+	}
+	assertNetworkRouterRightPorts(t, w, router, []string{"slot 1", "slot 2", networkRouterDNSPortName})
+	mustWorkspaceTypedLink(t, w, TypeNetwork, backend1, "left", "Network", router, "right", "slot 1")
+	mustWorkspaceTypedLink(t, w, TypeNetwork, backend2, "left", "Network", router, "right", "slot 2")
+}
+
 func TestNetworkRouterNodeReviewsSlotPortsFromRulesAndLinks(t *testing.T) {
 	w := newNetworkRouterTestWorkspace(t)
 
@@ -304,6 +348,59 @@ func TestNetworkRouterNodeValidationReportsStatus(t *testing.T) {
 	}
 }
 
+func TestNetworkRouterNodeMenuAppliesAndSavesDNSCacheSelector(t *testing.T) {
+	manager := newMemoryDNSCacheManager()
+	manager.Storage("shared")
+	manager.Storage("other")
+	w := newNetworkRouterTestWorkspaceWithDNSCacheManager(t, manager)
+	state, sub := subscribeMenuState(t, w)
+	defer w.UnsubscribeNotifications(sub)
+
+	routerID, err := w.AddNodeByClass(NodeTypeNetworkRouter, "router")
+	if err != nil {
+		t.Fatalf("AddNodeByClass NetworkRouter: %v", err)
+	}
+	w.SubscribeNodeMenu(routerID, sub)
+	assertConfigFieldValue(t, state, routerID, networkRouterConfigBlockID, networkRouterDNSCacheStorageNameField, "")
+	assertConfigFieldAllowedValues(t, state, routerID, networkRouterConfigBlockID, networkRouterDNSCacheStorageNameField, []any{"", "other", "shared"})
+
+	w.SendNodeFormularMsg(routerID, formular.FieldValidateMessage{
+		MessageBase: FormMessageBase(formular.MessageFieldValidate, routerID),
+		Field:       formular.FieldRef{BlockID: networkRouterConfigBlockID, FieldID: networkRouterDNSCacheStorageNameField},
+		Value:       string([]byte{0xff}),
+	})
+	assertMenuItemStatus(t, state, routerID, networkRouterDNSCacheStorageNameField, formular.StatusError)
+
+	w.SendNodeFormularMsg(routerID, formular.FieldValidateMessage{
+		MessageBase: FormMessageBase(formular.MessageFieldValidate, routerID),
+		Field:       formular.FieldRef{BlockID: networkRouterConfigBlockID, FieldID: networkRouterRulesField},
+		Value:       "TRUE\nSLOT 1\n",
+	})
+	assertMenuItemStatus(t, state, routerID, networkRouterRulesField, formular.StatusOK)
+
+	w.SendNodeFormularMsg(routerID, formular.FormApplyMessage{
+		MessageBase: FormMessageBase(formular.MessageFormApply, routerID),
+		BlockID:     networkRouterConfigBlockID,
+		Values: map[string]any{
+			networkRouterRulesField:               "TRUE\nSLOT 1\n",
+			networkRouterDNSCacheStorageNameField: "shared",
+		},
+	})
+	assertConfigFieldValue(t, state, routerID, networkRouterConfigBlockID, networkRouterDNSCacheStorageNameField, "shared")
+
+	cfg := configer.NewMemory(nil)
+	if err := w.SaveConfig(cfg); err != nil {
+		t.Fatalf("SaveConfig: %v", err)
+	}
+	got, err := cfg.Get(configer.Path{"router", networkRouterDNSCacheStorageNameField})
+	if err != nil {
+		t.Fatalf("saved NetworkRouter DNS cache storage missing: %v", err)
+	}
+	if got != "shared" {
+		t.Fatalf("saved NetworkRouter DNS cache storage = %#v, want shared", got)
+	}
+}
+
 func TestNetworkRouterRestoreDefersConsumerOutputUntilReady(t *testing.T) {
 	var receiver *restoreReadyNetworkReceiver
 	cfg := configer.NewMemory(map[string]any{
@@ -374,9 +471,14 @@ func TestNetworkRouterTreatsClosedAttachNotificationsAsNonFatal(t *testing.T) {
 
 func newNetworkRouterTestWorkspace(t *testing.T) *pasta.Workspace {
 	t.Helper()
+	return newNetworkRouterTestWorkspaceWithDNSCacheManager(t, nil)
+}
+
+func newNetworkRouterTestWorkspaceWithDNSCacheManager(t *testing.T, manager DnsCacheManager) *pasta.Workspace {
+	t.Helper()
 	w := pasta.NewWorkspace(NewDebugLogFactory(1024))
 	t.Cleanup(func() { w.Close() })
-	if err := w.AddNodeClass(networkRouterClass{}); err != nil {
+	if err := w.AddNodeClass(networkRouterClass{engine: &engine{dns: manager}}); err != nil {
 		t.Fatalf("AddNodeClass NetworkRouter: %v", err)
 	}
 	if err := w.AddNodeClass(mockNetClass{}); err != nil {
@@ -518,6 +620,43 @@ func assertNetworkRouterRightPorts(t *testing.T, w *pasta.Workspace, node uint64
 		got = append(got, ps.Name)
 	}
 	assertStringSlice(t, got, want)
+}
+
+func assertConfigFieldValue(t *testing.T, state *formular.MenuSnapshotState, node uint64, blockID, fieldID string, want any) {
+	t.Helper()
+	item := configFieldItem(t, state, node, blockID, fieldID)
+	if item.Value != want {
+		t.Fatalf("%s.%s value = %#v, want %#v", blockID, fieldID, item.Value, want)
+	}
+}
+
+func assertConfigFieldAllowedValues(t *testing.T, state *formular.MenuSnapshotState, node uint64, blockID, fieldID string, want []any) {
+	t.Helper()
+	item := configFieldItem(t, state, node, blockID, fieldID)
+	if item.Field == nil {
+		t.Fatalf("%s.%s field missing", blockID, fieldID)
+	}
+	if len(item.AllowedValues) != len(want) {
+		t.Fatalf("%s.%s allowed values = %#v, want %#v", blockID, fieldID, item.AllowedValues, want)
+	}
+	for i := range want {
+		if item.AllowedValues[i] != want[i] {
+			t.Fatalf("%s.%s allowed values = %#v, want %#v", blockID, fieldID, item.AllowedValues, want)
+		}
+	}
+}
+
+func configFieldItem(t *testing.T, state *formular.MenuSnapshotState, node uint64, blockID, fieldID string) formular.Item {
+	t.Helper()
+	snapshot, ok := state.Snapshot(pasta.NodeMenuID(node))
+	if !ok {
+		t.Fatalf("menu snapshot missing for node %d", node)
+	}
+	item, ok := FindItem(mustFindBlock(t, snapshot, blockID), fieldID)
+	if !ok {
+		t.Fatalf("%s.%s item missing", blockID, fieldID)
+	}
+	return item
 }
 
 func assertIntSlice(t *testing.T, got, want []int) {

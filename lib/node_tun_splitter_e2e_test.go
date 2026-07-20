@@ -45,6 +45,78 @@ func TestTunSplitterE2EVTunHTTPPortRulesRouteToSlots(t *testing.T) {
 	f.assertServerLog(f.servers[2], "GET /")
 }
 
+func TestTunSplitterE2ERoutesByReverseDNSCacheHostname(t *testing.T) {
+	manager := newMemoryDNSCacheManager()
+	dnsE := newDNSE2EWithDNSCacheManager(t, configer.NewMemory(nil), manager)
+	e := &httpE2E{NodeE2E: dnsE.NodeE2E}
+	const (
+		storageName = "tun-splitter-routing-cache"
+		client1Name = "splitter-client-one.test."
+		client2Name = "splitter-client-two.test."
+	)
+	warmDNSCacheReverseLookupsForRouting(
+		t,
+		e.NodeE2E,
+		"tun-splitter",
+		storageName,
+		fmt.Sprintf(
+			"splitter-client-one.test A %s\nsplitter-client-two.test A %s",
+			tunSplitterE2EClientAddr1,
+			tunSplitterE2EClientAddr2,
+		),
+		dnsCacheWarmQuery{name: client1Name, wantA: tunSplitterE2EClientAddr1},
+		dnsCacheWarmQuery{name: client2Name, wantA: tunSplitterE2EClientAddr2},
+	)
+
+	f := tunSplitterVTunHTTPE2EFixture{httpE2E: e, port: httpTestPort()}
+	f.splitter = e.AddNode(NodeTypeTunSplitter, "splitter")
+	f.copy[1] = e.AddNode(NodeTypeTunCopy, "copy-1")
+	f.copy[2] = e.AddNode(NodeTypeTunCopy, "copy-2")
+	f.clientVTun[1] = e.AddNode(NodeTypeVTun, "client-vtun-1")
+	f.clientVTun[2] = e.AddNode(NodeTypeVTun, "client-vtun-2")
+	f.serverVTun = e.AddNode(NodeTypeVTun, "server-vtun")
+	f.server = e.addHTTPServerOnHost("server", tunSplitterE2EServerAddr, f.port)
+	f.client[1] = e.addHTTPClientToURL("client-1", fmt.Sprintf("http://%s:%d/", tunSplitterE2EServerAddr, f.port))
+	f.client[2] = e.addHTTPClientToURL("client-2", fmt.Sprintf("http://%s:%d/", tunSplitterE2EServerAddr, f.port))
+	e.SubscribeMenus(f.splitter, f.clientVTun[1], f.clientVTun[2], f.serverVTun, f.server, f.client[1], f.client[2])
+	e.waitClientRequestField(f.client[1], "url", fmt.Sprintf("http://%s:%d/", tunSplitterE2EServerAddr, f.port))
+	e.waitClientRequestField(f.client[2], "url", fmt.Sprintf("http://%s:%d/", tunSplitterE2EServerAddr, f.port))
+
+	e.Engine.SendNodeFormularMsg(E2EWorkspace, f.splitter, formular.FormApplyMessage{
+		MessageBase: FormMessageBase(formular.MessageFormApply, f.splitter),
+		BlockID:     tunSplitterConfigBlockID,
+		Values: map[string]any{
+			tunSplitterRulesField: fmt.Sprintf(
+				"ADDR_S %s\nSLOT 1\nADDR_S %s\nSLOT 2",
+				client1Name,
+				client2Name,
+			),
+			tunSplitterDNSCacheStorageNameField: storageName,
+		},
+	})
+	e.applyTunCopyVTunConfig(f.clientVTun[1], "client-vtun-1", tunSplitterE2EClientAddr1+"/24")
+	e.applyTunCopyVTunConfig(f.clientVTun[2], "client-vtun-2", tunSplitterE2EClientAddr2+"/24")
+	e.applyTunCopyVTunConfig(f.serverVTun, "server-vtun", tunSplitterE2EServerAddr+"/24")
+
+	e.connectTunByPortName(f.splitter, "left", "Tun", f.serverVTun, "right", "Tun")
+	e.connectTunByPortName(f.copy[1], "left", "TunA", f.splitter, "right", "slot 1")
+	e.connectTunByPortName(f.copy[1], "left", "TunB", f.clientVTun[1], "right", "Tun")
+	e.connectTunByPortName(f.copy[2], "left", "TunA", f.splitter, "right", "slot 2")
+	e.connectTunByPortName(f.copy[2], "left", "TunB", f.clientVTun[2], "right", "Tun")
+
+	e.connectByPortName(f.clientVTun[1], "left", "Network", f.client[1], "right", "Network")
+	e.connectByPortName(f.clientVTun[2], "left", "Network", f.client[2], "right", "Network")
+	e.connectByPortName(f.serverVTun, "left", "Network", f.server, "right", "Network")
+
+	e.WaitNodeLabel(f.splitter, "splitting")
+	e.WaitNodeLabel(f.copy[1], "copying")
+	e.WaitNodeLabel(f.copy[2], "copying")
+	e.waitServerListening(f.server, fmt.Sprintf("%s:%d", tunSplitterE2EServerAddr, f.port))
+	e.assertTunSplitterPorts(f.splitter, []string{"slot 1", "slot 2", "slot 3"})
+	f.assertClientRequestWorks(f.client[1])
+	f.assertClientRequestWorks(f.client[2])
+}
+
 func TestTunSplitterE2EConfigSaveRestore(t *testing.T) {
 	f := setupTunSplitterVTunHTTPE2E(t)
 	splitterName := f.nodeName(f.splitter)

@@ -193,6 +193,28 @@ func TestBboltDNSCacheStorageDisabledExpirationSkipsStartupCleanup(t *testing.T)
 	}
 }
 
+func TestBboltDNSCacheStorageNamesAreSorted(t *testing.T) {
+	manager, err := openKVManager(filepath.Join(t.TempDir(), "kv.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer manager.Close() //nolint:errcheck
+
+	manager.Storage("z-cache")
+	manager.Storage("a-cache")
+
+	got := manager.StorageNames()
+	want := []string{"a-cache", "z-cache"}
+	if len(got) != len(want) {
+		t.Fatalf("StorageNames() = %#v, want %#v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("StorageNames() = %#v, want %#v", got, want)
+		}
+	}
+}
+
 func testDNSCacheMessage(name string, typ uint16, data []byte, ttl uint32) *gdns.Message {
 	return &gdns.Message{
 		ID:                 42,

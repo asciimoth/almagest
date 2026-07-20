@@ -27,11 +27,12 @@ const (
 )
 
 var (
-	_ almagest.KVManager       = (*bboltKVManager)(nil)
-	_ almagest.DnsCacheManager = (*bboltKVManager)(nil)
-	_ almagest.KVStore         = (*bboltKVStore)(nil)
-	_ almagest.KVReadTx        = (*bboltKVReadTx)(nil)
-	_ almagest.KVWriteTx       = (*bboltKVWriteTx)(nil)
+	_ almagest.KVManager             = (*bboltKVManager)(nil)
+	_ almagest.DnsCacheManager       = (*bboltKVManager)(nil)
+	_ almagest.DnsCacheStorageLister = (*bboltKVManager)(nil)
+	_ almagest.KVStore               = (*bboltKVStore)(nil)
+	_ almagest.KVReadTx              = (*bboltKVReadTx)(nil)
+	_ almagest.KVWriteTx             = (*bboltKVWriteTx)(nil)
 )
 
 type bboltKVManager struct {

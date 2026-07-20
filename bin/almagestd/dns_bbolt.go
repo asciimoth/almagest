@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -107,6 +108,29 @@ type dnsJSONResource struct {
 
 func (m *bboltKVManager) Storage(name string) gdns.CacheStorage {
 	return m.dnsStorage(name)
+}
+
+// StorageNames returns known DNS cache storage buckets for menu selectors. It
+// never creates buckets and returns nil when the database cannot be read.
+func (m *bboltKVManager) StorageNames() []string {
+	if m == nil || m.db == nil {
+		return nil
+	}
+	var names []string
+	if err := m.db.View(func(tx *bbolt.Tx) error {
+		root := tx.Bucket([]byte(dnsRootBucketName))
+		if root == nil {
+			return nil
+		}
+		return root.ForEachBucket(func(name []byte) error {
+			names = append(names, string(name))
+			return nil
+		})
+	}); err != nil {
+		return nil
+	}
+	sort.Strings(names)
+	return names
 }
 
 func (m *bboltKVManager) dnsStorage(name string) *bboltDNSCacheStorage {
