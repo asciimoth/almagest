@@ -91,16 +91,29 @@ type DNSOutputCache struct {
 // Send emits source as a detached DNSPayload on link. It re-emits a cached
 // ready wrapper for the same source and replaces stale wrappers.
 func (c *DNSOutputCache) Send(w *pasta.Workspace, node, link uint64, source dns.Interface) bool {
+	return c.SendWrapped(w, node, link, source, nil)
+}
+
+// SendWrapped emits source as a detached DNSPayload on link after wrapping the
+// detached DNS interface with wrap. The wrap hook is used by middleware that
+// decorates the per-link detached interface before publishing it.
+func (c *DNSOutputCache) SendWrapped(w *pasta.Workspace, node, link uint64, source dns.Interface, wrap func(dns.Interface) dns.Interface) bool {
 	if w == nil {
 		return false
 	}
 	w.Lock()
 	defer w.Unlock()
-	return c.SendLocked(w, node, link, source)
+	return c.SendWrappedLocked(w, node, link, source, wrap)
 }
 
 // SendLocked is Send for callers already running under the workspace lock.
 func (c *DNSOutputCache) SendLocked(w *pasta.Workspace, node, link uint64, source dns.Interface) bool {
+	return c.SendWrappedLocked(w, node, link, source, nil)
+}
+
+// SendWrappedLocked is SendWrapped for callers already running under the
+// workspace lock.
+func (c *DNSOutputCache) SendWrappedLocked(w *pasta.Workspace, node, link uint64, source dns.Interface, wrap func(dns.Interface) dns.Interface) bool {
 	if w == nil || link == 0 || source == nil {
 		return false
 	}
@@ -114,13 +127,18 @@ func (c *DNSOutputCache) SendLocked(w *pasta.Workspace, node, link uint64, sourc
 		}
 	}
 	c.Close(link)
-	return c.emitLocked(w, node, link, source)
+	return c.emitWrappedLocked(w, node, link, source, wrap)
 }
 
 // RefreshLocked emits a fresh detached DNSPayload on link even when the source
 // is unchanged. Use it to answer std.Request callbacks from middleware that may
 // have just closed the previously routed payload.
 func (c *DNSOutputCache) RefreshLocked(w *pasta.Workspace, node, link uint64, source dns.Interface) bool {
+	return c.RefreshWrappedLocked(w, node, link, source, nil)
+}
+
+// RefreshWrappedLocked is RefreshLocked with an additional wrapper hook.
+func (c *DNSOutputCache) RefreshWrappedLocked(w *pasta.Workspace, node, link uint64, source dns.Interface, wrap func(dns.Interface) dns.Interface) bool {
 	if w == nil || link == 0 || source == nil {
 		return false
 	}
@@ -128,11 +146,19 @@ func (c *DNSOutputCache) RefreshLocked(w *pasta.Workspace, node, link uint64, so
 		return false
 	}
 	c.Close(link)
-	return c.emitLocked(w, node, link, source)
+	return c.emitWrappedLocked(w, node, link, source, wrap)
 }
 
-func (c *DNSOutputCache) emitLocked(w *pasta.Workspace, node, link uint64, source dns.Interface) bool {
-	output := newDetachedDNS(source)
+func (c *DNSOutputCache) emitWrappedLocked(w *pasta.Workspace, node, link uint64, source dns.Interface, wrap func(dns.Interface) dns.Interface) bool {
+	var output dns.Interface = newDetachedDNS(source)
+	if wrap != nil {
+		wrapped := wrap(output)
+		if wrapped == nil {
+			closeDNS(output)
+			return false
+		}
+		output = wrapped
+	}
 	BindDNSResource(w, node, link, output)
 	if c.entries == nil {
 		c.entries = make(map[uint64]dnsOutputEntry)

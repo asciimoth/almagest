@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/asciimoth/gonnect/dns"
 	"github.com/asciimoth/pasta/pasta"
 )
 
@@ -110,6 +111,60 @@ func TestDNSOutputCacheRefreshReplacesReadySameSourceWrapper(t *testing.T) {
 	}
 	if !DNSIsReady(second) {
 		t.Fatal("DNSOutputCache.RefreshLocked emitted non-ready wrapper")
+	}
+	cache.CloseAll()
+}
+
+func TestDNSOutputCacheWrappedSendAndRefresh(t *testing.T) {
+	w := pasta.NewWorkspace(NewDebugLogFactory(1024))
+	defer w.Close()
+	providerID, out := addDNSOutputCacheTestPort(t, w)
+	receiver := &dnsReceiverNode{events: make(chan DNSPayload, 3)}
+	_, err := w.AddNode(receiver, "test/DNSReceiver", "receiver")
+	if err != nil {
+		t.Fatalf("AddNode receiver: %v", err)
+	}
+	link, _, err := w.AddLink(out, receiver.in)
+	if err != nil {
+		t.Fatalf("AddLink: %v", err)
+	}
+
+	source := newStaticDNSProvider(staticDNSRecords{})
+	defer func() { _ = source.Close() }()
+	var cache DNSOutputCache
+	wrap := func(output dns.Interface) dns.Interface {
+		return newDebugLogDNS(output, nil)
+	}
+	w.Lock()
+	if !cache.SendWrappedLocked(w, providerID, link, source, wrap) {
+		t.Fatal("DNSOutputCache.SendWrappedLocked() = false, want true")
+	}
+	w.Unlock()
+	first := receiveDNSPayload(t, receiver.events).DNS
+	if _, ok := first.(*debugLogDNS); !ok {
+		t.Fatalf("payload DNS = %T, want *debugLogDNS", first)
+	}
+	w.Lock()
+	if !cache.SendWrappedLocked(w, providerID, link, source, wrap) {
+		t.Fatal("DNSOutputCache.SendWrappedLocked() second = false, want true")
+	}
+	w.Unlock()
+	second := receiveDNSPayload(t, receiver.events).DNS
+	if !SameDNSInstance(first, second) {
+		t.Fatal("DNSOutputCache did not reuse ready wrapped output")
+	}
+
+	w.Lock()
+	if !cache.RefreshWrappedLocked(w, providerID, link, source, wrap) {
+		t.Fatal("DNSOutputCache.RefreshWrappedLocked() = false, want true")
+	}
+	w.Unlock()
+	third := receiveDNSPayload(t, receiver.events).DNS
+	if SameDNSInstance(second, third) {
+		t.Fatal("DNSOutputCache.RefreshWrappedLocked reused output, want replacement")
+	}
+	if DNSIsReady(first) {
+		t.Fatal("previous wrapped output is still ready after refresh")
 	}
 	cache.CloseAll()
 }
