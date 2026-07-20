@@ -3,6 +3,9 @@ import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 import { JSDOM } from "jsdom";
 import {
+  createDNSCacheTitle,
+  createDNSKeyTitle,
+  createDNSValuePreview,
   createClassButtonContent,
   createEmptyWorkerItem,
   createKVEntryTitle,
@@ -192,6 +195,20 @@ test("KV value preview renders text safely and covers hidden text", () => {
   assert.equal(hidden.querySelector(".kv-value-spoiler") !== null, true);
   assert.equal(binary.querySelector("pre"), null);
   assert.match(root.textContent ?? "", /<img src=x/);
+});
+
+test("DNS cache labels and value previews keep payloads as text", () => {
+  installDOM();
+  const root = document.createElement("div");
+  root.append(
+    createDNSCacheTitle({ name: payload }),
+    createDNSKeyTitle({ key: payload, size: 42, expires_at: payload }),
+    createDNSValuePreview({ json: payload, size: payload.length, expires_at: payload }),
+  );
+
+  assertNoParsedPayload(root);
+  assert.match(root.textContent ?? "", /<script>/);
+  assert.match(root.textContent ?? "", /42 B/);
 });
 
 

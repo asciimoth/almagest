@@ -1,4 +1,11 @@
 import type { ID, NodeClassSnapshot, NodeSnapshot, WorkerSnapshot } from "./pasta_model.js";
+import {
+  DNS_JSON_RENDER_LIMIT,
+  formatDNSByteSize,
+  type DNSCacheInfo,
+  type DNSKeyInfo,
+  type DNSValue,
+} from "./dns_model.js";
 import { KV_TEXT_RENDER_LIMIT, formatKVByteSize, type KVEntryInfo, type KVStoreInfo, type KVValue } from "./kv_model.js";
 
 export type ClassPreviewPort = {
@@ -27,6 +34,10 @@ export type WorkerNodeBlock = {
 
 export type KVValuePreviewOptions = {
   revealHidden?: boolean;
+  limit?: number;
+};
+
+export type DNSValuePreviewOptions = {
   limit?: number;
 };
 
@@ -154,6 +165,20 @@ export function createKVEntryTitle(entry: KVEntryInfo): HTMLElement {
   return title;
 }
 
+export function createDNSCacheTitle(cache: DNSCacheInfo): HTMLElement {
+  const title = document.createElement("span");
+  title.className = "kv-store-title";
+  title.append(textElement("strong", cache.name), textElement("em", "DNS cache"));
+  return title;
+}
+
+export function createDNSKeyTitle(entry: DNSKeyInfo): HTMLElement {
+  const title = document.createElement("span");
+  title.className = "kv-entry-title";
+  title.append(textElement("strong", entry.key), textElement("em", formatDNSKeyMeta(entry)));
+  return title;
+}
+
 export function formatKVEntryMeta(entry: KVEntryInfo): string {
   if (entry.kind === "bucket") return "subtree";
   const parts = [entry.string ? "text" : "bytes", formatKVByteSize(entry.size)];
@@ -164,6 +189,18 @@ export function formatKVEntryMeta(entry: KVEntryInfo): string {
 export function formatKVValueMeta(value: KVValue): string {
   const parts = [value.string ? "text" : "bytes", formatKVByteSize(value.size)];
   if (value.hidden) parts.push("hidden");
+  return parts.join(" · ");
+}
+
+export function formatDNSKeyMeta(entry: DNSKeyInfo): string {
+  const parts = [formatDNSByteSize(entry.size)];
+  if (entry.expires_at) parts.push(`expires ${entry.expires_at}`);
+  return parts.join(" · ");
+}
+
+export function formatDNSValueMeta(value: DNSValue): string {
+  const parts = [formatDNSByteSize(value.size)];
+  if (value.expires_at) parts.push(`expires ${value.expires_at}`);
   return parts.join(" · ");
 }
 
@@ -194,6 +231,22 @@ export function createKVValuePreview(value: KVValue, options: KVValuePreviewOpti
   } else {
     preview.append(pre);
   }
+  return preview;
+}
+
+// DNS values are JSON strings derived from cached upstream DNS messages. Keep
+// them as plain text: the panel does not parse, pretty-print, or inject them as
+// markup, and large values are summarized before rendering.
+export function createDNSValuePreview(value: DNSValue, options: DNSValuePreviewOptions = {}): HTMLElement {
+  const preview = document.createElement("div");
+  preview.className = "kv-value-preview";
+  const limit = options.limit ?? DNS_JSON_RENDER_LIMIT;
+  const text = value.json ?? "";
+  if ((value.size ?? text.length) > limit || text.length > limit) {
+    preview.append(textElement("p", `JSON value is ${formatDNSByteSize(value.size ?? text.length)}`));
+    return preview;
+  }
+  preview.append(textElement("pre", text, "kv-value-text"));
   return preview;
 }
 

@@ -31,6 +31,9 @@ import {
   type WorkspaceSnapshot,
 } from "./pasta_model.js";
 import {
+  createDNSCacheTitle,
+  createDNSKeyTitle,
+  createDNSValuePreview,
   createClassButtonContent,
   createEmptyLogItem,
   createEmptyWorkerItem,
@@ -41,6 +44,7 @@ import {
   createNodeNameForm,
   createNotificationToast,
   createWorkerNodeBlock,
+  formatDNSValueMeta,
   formatKVValueMeta,
   renderNodeDescription,
   shortClass,
@@ -49,6 +53,22 @@ import {
   type WorkerNodeBlock,
   type ClassPreviewPort,
 } from "./safe_dom.js";
+import {
+  DNS_JSON_RENDER_LIMIT,
+  applyDNSCacheChange,
+  applyDNSKeyChange,
+  desiredDNSKeySubscriptionKeys,
+  dnsCacheNodeKey,
+  parseDNSCacheNodeKey,
+  sortDNSCaches,
+  type DNSCacheChange,
+  type DNSCacheInfo,
+  type DNSKeyChange,
+  type DNSKeyInfo,
+  type DNSKeysSnapshot,
+  type DNSValue,
+  type DNSValueSnapshot,
+} from "./dns_model.js";
 import {
   KV_TEXT_RENDER_LIMIT,
   childKVNodeKey,
@@ -97,6 +117,37 @@ type SubscribeLogsResponse = {
   cache_size: number;
   entries: LogEntry[];
 };
+type DNSCachesSnapshot = {
+  caches?: DNSCacheInfo[];
+};
+type DNSSubscribeCachesResponse = {
+  subscription_id: number;
+  snapshot: DNSCachesSnapshot;
+};
+type DNSCachesEvent = {
+  subscription_id: number;
+  change: DNSCacheChange;
+};
+type DNSSubscribeKeysResponse = {
+  subscription_id: number;
+  snapshot: DNSKeysSnapshot;
+};
+type DNSKeysEvent = {
+  subscription_id: number;
+  cache: string;
+  change: DNSKeyChange;
+};
+type DNSSubscribeValueResponse = {
+  subscription_id: number;
+  snapshot: DNSValueSnapshot;
+};
+type DNSValueEvent = {
+  subscription_id: number;
+  cache: string;
+  key: string;
+  found: boolean;
+  value?: DNSValue;
+};
 type KVStoresSnapshot = {
   stores: KVStoreInfo[];
 };
@@ -129,6 +180,13 @@ type KVNotice = {
   level: KVNoticeLevel;
   text: string;
 };
+type DNSNotice = KVNotice;
+type DNSValuePanelState = {
+  cache: string;
+  key: string;
+  subscriptionID: number;
+  snapshot: DNSValueSnapshot | null;
+};
 type KVOpenForm = {
   nodeKey: string;
   mode: "value" | "subtree";
@@ -141,7 +199,7 @@ type KVValuePanelState = {
   snapshot: KVValueSnapshot | null;
   revealHidden: boolean;
 };
-type Surface = "admin" | "engine" | "kv" | "log";
+type Surface = "admin" | "dns" | "engine" | "kv" | "log";
 type APIMessage = {
   version: "v1";
   kind: "request" | "response" | "event";
@@ -226,6 +284,17 @@ let nextRequestID = 1;
 let notificationSubscriptionID = 0;
 let logSubscriptionID = 0;
 const frontendLogs: LogEntry[] = [];
+let dnsCacheSubscriptionID = 0;
+let dnsCacheSubscribePending = false;
+let dnsScrollTop = 0;
+let dnsNotice: DNSNotice | null = null;
+let dnsValuePanel: DNSValuePanelState | null = null;
+let dnsValueSubscribePending = false;
+const dnsCaches: DNSCacheInfo[] = [];
+const dnsExpandedCaches = new Set<string>();
+const dnsKeysByCache = new Map<string, DNSKeysSnapshot>();
+const dnsKeySubscriptions = new Map<string, number>();
+const dnsKeySubscribePending = new Set<string>();
 let kvStoreSubscriptionID = 0;
 let kvStoreSubscribePending = false;
 let kvScrollTop = 0;
@@ -257,6 +326,9 @@ const el = {
   panels: [...document.querySelectorAll<HTMLElement>("[data-panel]")],
   graphCanvas: document.querySelector<HTMLCanvasElement>("#graph-canvas")!,
   sidekick: document.querySelector<HTMLElement>("#sidekick")!,
+  dnsPanel: document.querySelector<HTMLElement>("[data-panel='dns']")!,
+  dnsTree: document.querySelector<HTMLElement>("#dns-tree")!,
+  dnsValuePanel: document.querySelector<HTMLElement>("#dns-value-panel")!,
   kvPanel: document.querySelector<HTMLElement>("[data-panel='kv']")!,
   kvTree: document.querySelector<HTMLElement>("#kv-tree")!,
   kvValuePanel: document.querySelector<HTMLElement>("#kv-value-panel")!,
@@ -399,6 +471,10 @@ function handleAPIMessage(msg: APIMessage): void {
   }
   if (msg.kind === "event" && msg.surface === "kv" && msg.method) {
     handleKVEvent(msg.method, msg.payload);
+    return;
+  }
+  if (msg.kind === "event" && msg.surface === "dns" && msg.method) {
+    handleDNSEvent(msg.method, msg.payload);
   }
 }
 
@@ -556,6 +632,14 @@ async function backend<T>(method: string, params: Record<string, unknown> = {}):
       renderLogs();
       return result as T;
     }
+    case "dnsSubscribeCaches":
+      return request<T>("dns", "subscribe_caches");
+    case "dnsSubscribeKeys":
+      return request<T>("dns", "subscribe_keys", { cache: params.cache });
+    case "dnsSubscribeValue":
+      return request<T>("dns", "subscribe_value", { cache: params.cache, key: params.key });
+    case "dnsUnsubscribe":
+      return request<T>("dns", "unsubscribe", { subscription_id: params.subscriptionID });
     case "kvSubscribeStores":
       return request<T>("kv", "subscribe_stores");
     case "kvSubscribeEntries":
@@ -1439,6 +1523,414 @@ async function requestSnapshot(): Promise<void> {
   }
 }
 
+function handleDNSEvent(method: string, payload: unknown): void {
+  if (method === "caches_update") {
+    const event = payload as DNSCachesEvent;
+    if (event.subscription_id !== dnsCacheSubscriptionID) return;
+    applyDNSCacheChangeToState(event.change);
+    renderDNS();
+    return;
+  }
+  if (method === "keys_update") {
+    const event = payload as DNSKeysEvent;
+    const nodeKey = dnsNodeKeyForKeySubscription(event.subscription_id);
+    if (!nodeKey) return;
+    const snapshot = dnsKeysByCache.get(nodeKey) ?? { exists: true, keys: [] };
+    dnsKeysByCache.set(nodeKey, applyDNSKeyChange(snapshot, event.change));
+    renderDNS();
+    return;
+  }
+  if (method === "value_update") {
+    const event = payload as DNSValueEvent;
+    if (!dnsValuePanel || event.subscription_id !== dnsValuePanel.subscriptionID) return;
+    dnsValuePanel.snapshot = { found: event.found, value: event.value };
+    renderDNSValuePanel();
+  }
+}
+
+// DNS subscriptions follow the KV panel's scope: keep expanded/cache snapshots
+// locally for quick return, but only hold backend subscriptions while the DNS
+// tab is active and while a cache row is visibly expanded.
+function activateDNSPanel(): void {
+  renderDNS();
+  restoreDNSScrollState();
+  void ensureDNSCacheSubscription();
+  syncDNSKeySubscriptions();
+  if (dnsValuePanel && !dnsValuePanel.subscriptionID) {
+    void subscribeDNSValuePanel();
+  }
+}
+
+function deactivateDNSPanel(): void {
+  rememberDNSScrollState();
+  closeDNSValuePanel();
+  if (dnsCacheSubscriptionID) {
+    void tryBackend("dnsUnsubscribe", { subscriptionID: dnsCacheSubscriptionID });
+    dnsCacheSubscriptionID = 0;
+  }
+  for (const id of dnsKeySubscriptions.values()) {
+    void tryBackend("dnsUnsubscribe", { subscriptionID: id });
+  }
+  dnsKeySubscriptions.clear();
+}
+
+async function ensureDNSCacheSubscription(): Promise<void> {
+  if (activeTab !== "dns" || dnsCacheSubscriptionID || dnsCacheSubscribePending) return;
+  dnsCacheSubscribePending = true;
+  const response = await tryBackend<DNSSubscribeCachesResponse>("dnsSubscribeCaches");
+  dnsCacheSubscribePending = false;
+  if (!response) {
+    dnsNotice = { level: "error", text: "DNS cache storage is unavailable." };
+    renderDNS();
+    return;
+  }
+  if (activeTab !== "dns") {
+    if (response.subscription_id) void tryBackend("dnsUnsubscribe", { subscriptionID: response.subscription_id });
+    return;
+  }
+  dnsCacheSubscriptionID = response.subscription_id;
+  applyDNSCachesSnapshot(response.snapshot);
+}
+
+function applyDNSCachesSnapshot(snapshot: DNSCachesSnapshot): void {
+  dnsCaches.splice(0, dnsCaches.length, ...sortDNSCaches(snapshot.caches ?? []));
+  renderDNS();
+}
+
+function applyDNSCacheChangeToState(change: DNSCacheChange): void {
+  dnsCaches.splice(0, dnsCaches.length, ...applyDNSCacheChange(dnsCaches, change));
+  if (!change.deleted) return;
+  const nodeKey = dnsCacheNodeKey(change.name);
+  dnsExpandedCaches.delete(nodeKey);
+  dnsKeysByCache.delete(nodeKey);
+  const subscriptionID = dnsKeySubscriptions.get(nodeKey);
+  if (subscriptionID) void tryBackend("dnsUnsubscribe", { subscriptionID });
+  dnsKeySubscriptions.delete(nodeKey);
+  if (dnsValuePanel?.cache === change.name) closeDNSValuePanel();
+}
+
+function renderDNS(): void {
+  const previousTop = el.dnsPanel.scrollTop;
+  const tree = document.createElement("div");
+  tree.className = "kv-tree-inner";
+  tree.append(renderDNSHeader());
+  if (dnsNotice) tree.append(renderDNSNotice(dnsNotice));
+
+  const list = document.createElement("ol");
+  list.className = "kv-store-list";
+  if (!dnsCaches.length) {
+    list.append(renderKVEmptyState(dnsCacheSubscribePending ? "Loading DNS caches." : "No DNS caches."));
+  } else {
+    for (const cache of dnsCaches) {
+      list.append(renderDNSCache(cache));
+    }
+  }
+  tree.append(list);
+  el.dnsTree.replaceChildren(tree);
+  el.dnsPanel.scrollTop = activeTab === "dns" ? previousTop : dnsScrollTop;
+  syncDNSKeySubscriptions();
+}
+
+function renderDNSHeader(): HTMLElement {
+  const header = document.createElement("header");
+  header.className = "kv-header";
+  header.append(textElement("h2", "DNS caches"));
+  return header;
+}
+
+function renderDNSNotice(notice: DNSNotice): HTMLElement {
+  const row = document.createElement("div");
+  row.className = `kv-notice kv-notice-${notice.level}`;
+  row.append(textElement("span", notice.text));
+  const close = textElement("button", "x");
+  close.type = "button";
+  close.title = "Dismiss";
+  close.setAttribute("aria-label", "Dismiss DNS message");
+  close.addEventListener("click", () => {
+    dnsNotice = null;
+    renderDNS();
+  });
+  row.append(close);
+  return row;
+}
+
+function renderDNSCache(cache: DNSCacheInfo): HTMLLIElement {
+  const nodeKey = dnsCacheNodeKey(cache);
+  const expanded = dnsExpandedCaches.has(nodeKey);
+  const item = document.createElement("li");
+  item.className = "kv-store";
+  const row = document.createElement("div");
+  row.className = "kv-row kv-store-row";
+  row.append(createKVDisclosure(expanded, `Toggle DNS cache ${cache.name}`, () => toggleDNSCache(nodeKey)));
+  row.append(createDNSCacheTitle(cache));
+  const actions = document.createElement("div");
+  actions.className = "kv-row-actions";
+  row.append(actions);
+  item.append(row);
+  if (expanded) {
+    item.append(renderDNSCacheBody(cache.name, nodeKey));
+  }
+  return item;
+}
+
+function renderDNSCacheBody(cache: string, nodeKey: string): HTMLElement {
+  const body = document.createElement("div");
+  body.className = "kv-node-body";
+  body.append(renderDNSCacheToolbar(cache));
+  const snapshot = dnsKeysByCache.get(nodeKey);
+  if (!snapshot) {
+    body.append(renderKVLoading());
+    return body;
+  }
+  if (!snapshot.exists) {
+    body.append(textElement("p", "Cache does not exist.", "kv-subtree-missing"));
+    return body;
+  }
+  const keys = snapshot.keys ?? [];
+  if (!keys.length) {
+    body.append(textElement("p", "Empty cache.", "kv-subtree-empty"));
+    return body;
+  }
+  const list = document.createElement("ol");
+  list.className = "kv-entry-list";
+  for (const entry of keys) {
+    list.append(renderDNSKey(cache, entry));
+  }
+  body.append(list);
+  return body;
+}
+
+function renderDNSCacheToolbar(cache: string): HTMLElement {
+  const toolbar = document.createElement("div");
+  toolbar.className = "kv-toolbar";
+  const pathLabel = textElement("span", cache, "kv-path-label");
+  pathLabel.title = cache;
+  toolbar.append(pathLabel);
+  return toolbar;
+}
+
+// Key rows carry only metadata. Cached DNS message JSON is fetched through a
+// value subscription after explicit selection, matching the KV disclosure rule.
+function renderDNSKey(cache: string, entry: DNSKeyInfo): HTMLLIElement {
+  const item = document.createElement("li");
+  item.className = "kv-entry kv-entry-value";
+  const row = document.createElement("div");
+  row.className = "kv-row";
+  row.append(createKVIndent());
+  row.append(createDNSKeyTitle(entry));
+  row.append(renderDNSKeyActions(cache, entry.key));
+  if (dnsValuePanel?.cache === cache && dnsValuePanel.key === entry.key) {
+    row.classList.add("kv-row-selected");
+  }
+  item.append(row);
+  return item;
+}
+
+function renderDNSKeyActions(cache: string, key: string): HTMLElement {
+  const actions = document.createElement("div");
+  actions.className = "kv-row-actions";
+  const show = textElement("button", "Open");
+  show.type = "button";
+  show.title = "Open DNS value";
+  show.addEventListener("click", () => openDNSValuePanel(cache, key));
+  actions.append(show);
+  return actions;
+}
+
+function toggleDNSCache(nodeKey: string): void {
+  if (dnsExpandedCaches.has(nodeKey)) {
+    dnsExpandedCaches.delete(nodeKey);
+  } else {
+    dnsExpandedCaches.add(nodeKey);
+  }
+  renderDNS();
+}
+
+function syncDNSKeySubscriptions(): void {
+  if (activeTab !== "dns") return;
+  const desired = desiredDNSKeySubscriptionKeys(dnsCaches, dnsExpandedCaches);
+  for (const [nodeKey, id] of [...dnsKeySubscriptions]) {
+    if (desired.has(nodeKey)) continue;
+    dnsKeySubscriptions.delete(nodeKey);
+    void tryBackend("dnsUnsubscribe", { subscriptionID: id });
+  }
+  for (const nodeKey of desired) {
+    if (!dnsKeySubscriptions.has(nodeKey) && !dnsKeySubscribePending.has(nodeKey)) {
+      void subscribeDNSKeys(nodeKey);
+    }
+  }
+}
+
+async function subscribeDNSKeys(nodeKey: string): Promise<void> {
+  const ref = parseDNSCacheNodeKey(nodeKey);
+  if (!ref || dnsKeySubscribePending.has(nodeKey) || dnsKeySubscriptions.has(nodeKey)) return;
+  dnsKeySubscribePending.add(nodeKey);
+  const response = await tryBackend<DNSSubscribeKeysResponse>("dnsSubscribeKeys", { cache: ref.cache });
+  dnsKeySubscribePending.delete(nodeKey);
+  if (!response) {
+    dnsNotice = { level: "error", text: `Failed to subscribe DNS cache ${ref.cache}.` };
+    renderDNS();
+    return;
+  }
+  const desired = activeTab === "dns" && desiredDNSKeySubscriptionKeys(dnsCaches, dnsExpandedCaches).has(nodeKey);
+  if (!desired) {
+    if (response.subscription_id) void tryBackend("dnsUnsubscribe", { subscriptionID: response.subscription_id });
+    return;
+  }
+  dnsKeySubscriptions.set(nodeKey, response.subscription_id);
+  dnsKeysByCache.set(nodeKey, response.snapshot);
+  renderDNS();
+}
+
+function dnsNodeKeyForKeySubscription(subscriptionID: number): string | null {
+  for (const [nodeKey, id] of dnsKeySubscriptions) {
+    if (id === subscriptionID) return nodeKey;
+  }
+  return null;
+}
+
+function openDNSValuePanel(cache: string, key: string): void {
+  closeDNSValuePanel();
+  dnsValuePanel = {
+    cache,
+    key,
+    subscriptionID: 0,
+    snapshot: null,
+  };
+  renderDNSValuePanel();
+  void subscribeDNSValuePanel();
+}
+
+async function subscribeDNSValuePanel(): Promise<void> {
+  if (!dnsValuePanel || activeTab !== "dns" || dnsValueSubscribePending || dnsValuePanel.subscriptionID) return;
+  dnsValueSubscribePending = true;
+  const target = {
+    cache: dnsValuePanel.cache,
+    key: dnsValuePanel.key,
+  };
+  const response = await tryBackend<DNSSubscribeValueResponse>("dnsSubscribeValue", target);
+  dnsValueSubscribePending = false;
+  if (!response) {
+    dnsNotice = { level: "error", text: "Failed to subscribe DNS value." };
+    renderDNSValuePanel();
+    return;
+  }
+  if (
+    activeTab !== "dns" ||
+    !dnsValuePanel ||
+    dnsValuePanel.cache !== target.cache ||
+    dnsValuePanel.key !== target.key
+  ) {
+    if (response.subscription_id) void tryBackend("dnsUnsubscribe", { subscriptionID: response.subscription_id });
+    return;
+  }
+  dnsValuePanel.subscriptionID = response.subscription_id;
+  dnsValuePanel.snapshot = response.snapshot;
+  renderDNSValuePanel();
+}
+
+function renderDNSValuePanel(): void {
+  el.dnsValuePanel.replaceChildren();
+  el.dnsPanel.classList.toggle("kv-value-open", Boolean(dnsValuePanel));
+  if (!dnsValuePanel) {
+    el.dnsValuePanel.classList.add("hidden");
+    return;
+  }
+  el.dnsValuePanel.classList.remove("hidden");
+  const header = document.createElement("header");
+  header.className = "kv-value-header";
+  const title = document.createElement("div");
+  title.append(textElement("h2", dnsValuePanel.key), textElement("p", dnsValuePanel.cache));
+  const close = textElement("button", "x");
+  close.type = "button";
+  close.title = "Close";
+  close.setAttribute("aria-label", "Close DNS value panel");
+  close.addEventListener("click", closeDNSValuePanel);
+  header.append(title, close);
+  el.dnsValuePanel.append(header);
+
+  const snapshot = dnsValuePanel.snapshot;
+  if (!snapshot) {
+    el.dnsValuePanel.append(renderKVLoading());
+    return;
+  }
+  if (!snapshot.found || !snapshot.value) {
+    el.dnsValuePanel.append(textElement("p", "DNS value not found.", "kv-value-missing"));
+    return;
+  }
+  el.dnsValuePanel.append(renderDNSValueDetail(snapshot.value));
+}
+
+function renderDNSValueDetail(value: DNSValue): HTMLElement {
+  const detail = document.createElement("div");
+  detail.className = "kv-value-detail";
+  const meta = document.createElement("div");
+  meta.className = "kv-value-meta";
+  meta.append(textElement("span", formatDNSValueMeta(value)));
+  const actions = document.createElement("div");
+  actions.className = "kv-value-actions";
+  const copy = textElement("button", "Copy");
+  copy.type = "button";
+  copy.title = "Copy DNS value JSON";
+  copy.addEventListener("click", () => copyDNSValue(value));
+  const download = textElement("button", "Download");
+  download.type = "button";
+  download.title = "Download DNS value JSON";
+  download.addEventListener("click", () => downloadDNSValue(value));
+  actions.append(copy, download);
+  meta.append(actions);
+  detail.append(meta, createDNSValuePreview(value, { limit: DNS_JSON_RENDER_LIMIT }));
+  return detail;
+}
+
+function closeDNSValuePanel(): void {
+  if (dnsValuePanel?.subscriptionID) {
+    void tryBackend("dnsUnsubscribe", { subscriptionID: dnsValuePanel.subscriptionID });
+  }
+  dnsValuePanel = null;
+  dnsValueSubscribePending = false;
+  renderDNSValuePanel();
+}
+
+async function copyDNSValue(value: DNSValue): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(value.json ?? "");
+    dnsNotice = { level: "info", text: "DNS value copied." };
+  } catch (error) {
+    dnsNotice = { level: "error", text: `Copy failed: ${(error as Error).message}` };
+  }
+  renderDNS();
+}
+
+function downloadDNSValue(value: DNSValue): void {
+  try {
+    const blob = new Blob([value.json ?? ""], { type: "application/json;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${safeFilenamePart(dnsValuePanel?.key ?? "dns-value") || "dns-value"}.json`;
+    link.rel = "noopener";
+    document.body.append(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    dnsNotice = { level: "info", text: "Download started." };
+  } catch (error) {
+    dnsNotice = { level: "error", text: `Download failed: ${(error as Error).message}` };
+  }
+  renderDNS();
+}
+
+function rememberDNSScrollState(): void {
+  dnsScrollTop = el.dnsPanel.scrollTop;
+}
+
+function restoreDNSScrollState(): void {
+  window.setTimeout(() => {
+    el.dnsPanel.scrollTop = dnsScrollTop;
+  }, 0);
+}
+
 function handleKVEvent(method: string, payload: unknown): void {
   if (method === "stores_update") {
     const event = payload as KVStoresEvent;
@@ -2304,11 +2796,13 @@ function trimLogStore(): void {
 
 function setTab(name: string): void {
   const previousTab = activeTab;
+  if (previousTab === "dns" && name !== "dns") deactivateDNSPanel();
   if (previousTab === "kv" && name !== "kv") deactivateKVPanel();
   activeTab = name;
   if (name !== "graph") graphShortcutsArmed = false;
   for (const tab of el.tabs) tab.classList.toggle("active", tab.dataset.tab === name);
   for (const panel of el.panels) panel.classList.toggle("hidden", panel.dataset.panel !== name);
+  if (name === "dns") activateDNSPanel();
   if (name === "kv") activateKVPanel();
   if (name === "logs") renderLogs();
   if (name === "ps") renderWorkers();
@@ -2518,6 +3012,7 @@ function visibleCanvasCenterPosition(): [number, number] {
 
 function wireUI(): void {
   for (const tab of el.tabs) tab.addEventListener("click", () => setTab(tab.dataset.tab ?? "graph"));
+  el.dnsPanel.addEventListener("scroll", rememberDNSScrollState);
   el.kvPanel.addEventListener("scroll", rememberKVScrollState);
   document.addEventListener("paste", handleGraphPaste, { capture: true });
   document.addEventListener("keydown", (event) => {
