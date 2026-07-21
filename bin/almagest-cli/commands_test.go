@@ -148,6 +148,95 @@ func TestRunKVSetSendsRequest(t *testing.T) {
 	}
 }
 
+func TestRunDNSSetSendsReadableRecordRequest(t *testing.T) {
+	ft := &fakeTransport{reads: []api.Message{mustResponse(t, "1", api.DNSSetResponse{
+		Key: "example.test.|28|1",
+		Snapshot: api.DNSValueSnapshot{
+			Found: true,
+			Value: &api.DNSValue{JSON: `{"Answers":[]}`, Size: 14},
+		},
+	})}}
+	var stdout, stderr bytes.Buffer
+
+	err := run(context.Background(), []string{
+		"dns", "set",
+		"--cache", "manual",
+		"--key", "example.test.|1|1",
+		"--name", "example.test.",
+		"--type", "aaaa",
+		"--ttl", "120",
+		"--value", "2001:db8::44",
+	}, nil, &stdout, &stderr, func(context.Context, endpoint) (apiTransport, error) {
+		return ft, nil
+	})
+	if err != nil {
+		t.Fatalf("run failed: %v\nstderr: %s", err, stderr.String())
+	}
+	if len(ft.writes) != 1 {
+		t.Fatalf("writes = %d, want 1", len(ft.writes))
+	}
+	if ft.writes[0].Surface != api.SurfaceDNS || ft.writes[0].Method != string(api.MethodDNSSet) {
+		t.Fatalf("request = %#v", ft.writes[0])
+	}
+	req, err := api.DecodePayload[api.DNSSetRequest](ft.writes[0].Payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if req.Cache != "manual" || req.Key != "example.test.|1|1" {
+		t.Fatalf("target = %#v, want manual cache and old key", req)
+	}
+	if req.Record.Name != "example.test." || req.Record.Type != "AAAA" || req.Record.Class != "IN" || req.Record.TTL != 120 || req.Record.Value != "2001:db8::44" {
+		t.Fatalf("record = %#v, want normalized AAAA record", req.Record)
+	}
+	if !strings.Contains(stdout.String(), `"key": "example.test.|28|1"`) {
+		t.Fatalf("stdout = %q, want set response key", stdout.String())
+	}
+}
+
+func TestRunDNSGetAndDropSendCacheRequests(t *testing.T) {
+	ft := &fakeTransport{reads: []api.Message{
+		mustResponse(t, "1", api.DNSValueSnapshot{Found: true, Value: &api.DNSValue{Size: 1}}),
+		mustResponse(t, "1", struct{}{}),
+	}}
+	var stdout, stderr bytes.Buffer
+
+	err := run(context.Background(), []string{"dns", "get", "--cache", "manual", "--key", "example.test.|1|1"}, nil, &stdout, &stderr, func(context.Context, endpoint) (apiTransport, error) {
+		return ft, nil
+	})
+	if err != nil {
+		t.Fatalf("get failed: %v\nstderr: %s", err, stderr.String())
+	}
+	err = run(context.Background(), []string{"dns", "drop", "--cache", "manual"}, nil, &stdout, &stderr, func(context.Context, endpoint) (apiTransport, error) {
+		return ft, nil
+	})
+	if err != nil {
+		t.Fatalf("drop failed: %v\nstderr: %s", err, stderr.String())
+	}
+	if len(ft.writes) != 2 {
+		t.Fatalf("writes = %d, want get and drop", len(ft.writes))
+	}
+	if ft.writes[0].Surface != api.SurfaceDNS || ft.writes[0].Method != string(api.MethodDNSValueSnapshot) {
+		t.Fatalf("get request = %#v", ft.writes[0])
+	}
+	valueReq, err := api.DecodePayload[api.DNSValueRequest](ft.writes[0].Payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if valueReq.Cache != "manual" || valueReq.Key != "example.test.|1|1" {
+		t.Fatalf("value request = %#v, want manual/example", valueReq)
+	}
+	if ft.writes[1].Surface != api.SurfaceDNS || ft.writes[1].Method != string(api.MethodDNSDrop) {
+		t.Fatalf("drop request = %#v", ft.writes[1])
+	}
+	keysReq, err := api.DecodePayload[api.DNSKeysRequest](ft.writes[1].Payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if keysReq.Cache != "manual" {
+		t.Fatalf("keys request = %#v, want manual", keysReq)
+	}
+}
+
 func TestRunEngineRemoveNodesSendsBatchRequest(t *testing.T) {
 	ft := &fakeTransport{reads: []api.Message{mustResponse(t, "1", struct{}{})}}
 	var stdout, stderr bytes.Buffer
@@ -348,6 +437,52 @@ func TestLogWatchPrintsEventQueuedDuringSubscribe(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), `"message":"queued"`) {
 		t.Fatalf("stdout = %q, want queued log event", stdout.String())
+	}
+}
+
+func TestDNSWatchKeysPrintsInitialResponseAndQueuedEvents(t *testing.T) {
+	ft := &fakeTransport{reads: []api.Message{
+		mustEvent(t, api.SurfaceLog, string(api.EventLogEntry), api.LogEntry{Message: "ignore"}),
+		mustEvent(t, api.SurfaceDNS, string(api.EventDNSKeysUpdate), api.DNSKeysEvent{
+			SubscriptionID: 7,
+			Cache:          "manual",
+			Change:         api.DNSKeyChange{Key: "example.test.|1|1", Entry: &api.DNSKeyInfo{Key: "example.test.|1|1", Size: 12}},
+		}),
+		mustResponse(t, "1", api.DNSSubscribeKeysResponse{
+			SubscriptionID: 7,
+			Snapshot: api.DNSKeysSnapshot{
+				Exists: true,
+				Keys:   []api.DNSKeyInfo{{Key: "example.test.|1|1", Size: 12}},
+			},
+		}),
+	}}
+	var stdout, stderr bytes.Buffer
+
+	err := run(context.Background(), []string{"dns", "watch-keys", "--cache", "manual"}, nil, &stdout, &stderr, func(context.Context, endpoint) (apiTransport, error) {
+		return ft, nil
+	})
+	if !errors.Is(err, io.EOF) {
+		t.Fatalf("run error = %v, want EOF after queued event is drained", err)
+	}
+	if len(ft.writes) != 1 {
+		t.Fatalf("writes = %d, want subscribe request", len(ft.writes))
+	}
+	if ft.writes[0].Surface != api.SurfaceDNS || ft.writes[0].Method != string(api.MethodDNSSubscribeKeys) {
+		t.Fatalf("request = %#v", ft.writes[0])
+	}
+	req, err := api.DecodePayload[api.DNSKeysRequest](ft.writes[0].Payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if req.Cache != "manual" {
+		t.Fatalf("payload = %#v, want manual cache", req)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, `"subscription_id": 7`) {
+		t.Fatalf("stdout = %q, want pretty subscription response", out)
+	}
+	if !strings.Contains(out, `"method":"keys_update"`) || strings.Contains(out, "ignore") {
+		t.Fatalf("stdout = %q, want DNS key event only", out)
 	}
 }
 

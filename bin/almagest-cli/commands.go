@@ -63,6 +63,8 @@ func run(
 		runErr = runWorkers(ctx, c, rest[1:], stdout, stderr)
 	case "admin":
 		runErr = runAdmin(ctx, c, rest[1:], stdout, stderr)
+	case "dns":
+		runErr = runDNS(ctx, c, rest[1:], stdout, stderr)
 	case "engine":
 		runErr = runEngine(ctx, c, rest[1:], stdin, stdout, stderr)
 	case "kv":
@@ -755,6 +757,7 @@ Endpoint URLs:
 
 Surfaces:
   admin    hello, ping, colormap, mutation lease commands, version status watch
+  dns      DNS cache snapshots, subscriptions, and mutations
   engine   workspace snapshots, graph mutations, notification subscriptions
   kv       persistent key/value store snapshots, subscriptions, and mutations
   log      log subscription and watch commands
