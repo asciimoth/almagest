@@ -22,7 +22,8 @@ route to `203.0.113.0/24` through a gateway. This mirrors the old
 
 ## Initial Daemon Config
 
-`alm.hujson` starts `DefaultTun 1301` in non-strict mode. The daemon is started
+`alm.hujson` starts `DefaultTun 1301` in non-strict mode with its DNS port
+linked to `OutDns 1300` and no downstream TUN consumer. The daemon is started
 with debug nodes enabled so the test can attach `LogNetwork` later and assert
 bytes flowing through the recovered outbound chain.
 

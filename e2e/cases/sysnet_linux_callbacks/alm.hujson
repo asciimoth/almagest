@@ -20,6 +20,7 @@
 		"DefaultTun callbacks 1602": {
 			"Class":     "almagest/DefaultTun",
 			"Pos":       "{\"x\":120,\"y\":420}",
+			"Links":     ["DNS -> [OutDns callbacks 1600] DNS"],
 			"tunAddrs":  "",
 			"tunRoutes": "",
 			"mtu":       0,
@@ -27,6 +28,10 @@
 			"strict":    false,
 			"exclude":   [],
 			"include":   [],
+		},
+		"OutDns callbacks 1600": {
+			"Class": "almagest/OutDns",
+			"Pos":   "{\"x\":-120,\"y\":420}",
 		},
 	},
 }

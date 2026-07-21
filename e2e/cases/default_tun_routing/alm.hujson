@@ -12,6 +12,7 @@
 		"DefaultTun 1301": {
 			"Class":     "almagest/DefaultTun",
 			"Pos":       "{\"x\":120,\"y\":520}",
+			"Links":     ["DNS -> [OutDns 1300] DNS"],
 			"tunAddrs":  "",
 			"tunRoutes": "",
 			"mtu":       0,
@@ -19,6 +20,10 @@
 			"strict":    false,
 			"exclude":   [],
 			"include":   [],
+		},
+		"OutDns 1300": {
+			"Class": "almagest/OutDns",
+			"Pos":   "{\"x\":-120,\"y\":520}",
 		},
 	},
 }

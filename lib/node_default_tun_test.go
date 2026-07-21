@@ -6,8 +6,10 @@ import (
 	"errors"
 	"reflect"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
@@ -35,8 +37,109 @@ func TestDefaultTunClassFeatureGate(t *testing.T) {
 	if !class.Unique {
 		t.Fatal("DefaultTun class Unique = false, want true")
 	}
-	if len(class.InitialPorts) != 1 || class.InitialPorts[0].Direction != "right" || class.InitialPorts[0].Types[0] != TypeTun {
-		t.Fatalf("DefaultTun initial ports = %#v, want one right almagest/tun port", class.InitialPorts)
+	if len(class.InitialPorts) != 2 {
+		t.Fatalf("DefaultTun initial ports = %#v, want right Tun and DNS ports", class.InitialPorts)
+	}
+	if class.InitialPorts[0].Direction != "right" || class.InitialPorts[0].Name != "Tun" || len(class.InitialPorts[0].Types) != 1 || class.InitialPorts[0].Types[0] != TypeTun {
+		t.Fatalf("DefaultTun first initial port = %#v, want right almagest/tun port", class.InitialPorts[0])
+	}
+	if class.InitialPorts[1].Direction != "right" || class.InitialPorts[1].Name != "DNS" || len(class.InitialPorts[1].Types) != 1 || class.InitialPorts[1].Types[0] != TypeDNS {
+		t.Fatalf("DefaultTun second initial port = %#v, want right almagest/dns port", class.InitialPorts[1])
+	}
+}
+
+func TestDefaultTunDNSPortAttachesDetachesAndReattachesProvider(t *testing.T) {
+	source := newOutDNSTestProvider(t, "default-tun-dns.test A 10.134.0.1")
+	w, sys := newDefaultTunNodeTestWorkspace(t, false)
+	sys.OutDNSProvider = source
+	if err := w.AddNodeClass(outDNSClass{engine: &engine{sys: sys}}); err != nil {
+		t.Fatalf("AddNodeClass OutDns: %v", err)
+	}
+
+	defaultTun, err := w.AddNodeByClass(NodeTypeDefaultTun, "default tun")
+	if err != nil {
+		t.Fatalf("AddNodeByClass DefaultTun: %v", err)
+	}
+	if len(sys.tuns) != 1 {
+		t.Fatalf("built DefaultTun count = %d, want 1", len(sys.tuns))
+	}
+	dtun := sys.tuns[0]
+	if got := waitRecordingDefaultTunDNS(t, dtun, false); got != nil {
+		t.Fatalf("DefaultTun DNS without link = %T, want nil", got)
+	}
+	if got := dtun.dnsSetCount(); got == 0 {
+		t.Fatal("DefaultTun did not call SetDns(nil) after initial build")
+	}
+
+	out, err := w.AddNodeByClass(NodeTypeOutDNS, "out")
+	if err != nil {
+		t.Fatalf("AddNodeByClass OutDns: %v", err)
+	}
+	outSnapshot := mustNodeSnapshot(t, w, out)
+	defaultSnapshot := mustNodeSnapshot(t, w, defaultTun)
+	if len(outSnapshot.LeftPorts) != 1 {
+		t.Fatalf("OutDns left ports = %#v, want one", outSnapshot.LeftPorts)
+	}
+	if len(defaultSnapshot.RightPorts) != 2 {
+		t.Fatalf("DefaultTun right ports = %#v, want Tun and DNS", defaultSnapshot.RightPorts)
+	}
+
+	link, linkType, err := w.AddLink(outSnapshot.LeftPorts[0], defaultSnapshot.RightPorts[1])
+	if err != nil {
+		t.Fatalf("AddLink DNS: %v", err)
+	}
+	if linkType != TypeDNS {
+		t.Fatalf("DNS link type = %q, want %q", linkType, TypeDNS)
+	}
+	first := waitRecordingDefaultTunDNS(t, dtun, true)
+	if got := DNSSource(first); got != source {
+		t.Fatalf("DefaultTun DNS source = %T %p, want OutDns source %p", got, got, source)
+	}
+	assertDNSAnswer(t, first, "default-tun-dns.test.", dns.TypeA, "10.134.0.1")
+
+	w.RemoveLink(link)
+	if got := waitRecordingDefaultTunDNS(t, dtun, false); got != nil {
+		t.Fatalf("DefaultTun DNS after link removal = %T, want nil", got)
+	}
+	if DNSIsReady(first) {
+		t.Fatal("DefaultTun kept first DNS wrapper ready after link removal")
+	}
+
+	if _, _, err := w.AddLink(outSnapshot.LeftPorts[0], defaultSnapshot.RightPorts[1]); err != nil {
+		t.Fatalf("reattach DNS link: %v", err)
+	}
+	second := waitRecordingDefaultTunDNS(t, dtun, true)
+	if SameDNSInstance(first, second) {
+		t.Fatal("DefaultTun reused detached DNS wrapper after reattach")
+	}
+	if got := DNSSource(second); got != source {
+		t.Fatalf("reattached DefaultTun DNS source = %T %p, want OutDns source %p", got, got, source)
+	}
+	assertDNSAnswer(t, second, "default-tun-dns.test.", dns.TypeA, "10.134.0.1")
+}
+
+func TestDefaultTunOldConfigWithoutDNSLinkRestoresDNSPortAndDropResolver(t *testing.T) {
+	source := newOutDNSTestProvider(t, "old-default-tun.test A 10.134.0.5")
+	sys := newRecordingDefaultTunSystem()
+	sys.OutDNSProvider = source
+	cfg := configer.NewMemory(map[string]any{
+		"nodes": map[string]any{
+			"default tun": map[string]any{
+				"Class": NodeTypeDefaultTun,
+			},
+		},
+	})
+	engine := newDefaultTunTestEngine(t, sys, cfg)
+	node := nodeIDByName(t, engine, "default tun")
+	snapshot, ok := engine.NodeSnapshot(E2EWorkspace, node)
+	if !ok {
+		t.Fatalf("NodeSnapshot(%d) missing", node)
+	}
+	if len(snapshot.RightPorts) != 2 {
+		t.Fatalf("restored DefaultTun right ports = %#v, want Tun and DNS", snapshot.RightPorts)
+	}
+	if got := waitRecordingDefaultTunDNS(t, sys.tuns[0], false); got != nil {
+		t.Fatalf("restored DefaultTun DNS without link = %T, want nil", got)
 	}
 }
 
@@ -442,6 +545,143 @@ func TestDefaultTunLogsConfigureFailure(t *testing.T) {
 	t.Fatalf("missing DefaultTun configure failure log in %#v", entries)
 }
 
+func TestDefaultTunWarningsNoWarningsNoPopupAfterRebuild(t *testing.T) {
+	w, _ := newDefaultTunNodeTestWorkspace(t, false)
+	node, err := w.AddNodeByClass(NodeTypeDefaultTun, "default tun")
+	if err != nil {
+		t.Fatalf("AddNodeByClass DefaultTun: %v", err)
+	}
+
+	forceDefaultTunRebuild(t, w, node, "10.60.0.0/16")
+
+	if got := defaultTunWarningPopups(t, w, node); len(got) != 0 {
+		t.Fatalf("DefaultTun warning popups = %#v, want none", got)
+	}
+}
+
+func TestDefaultTunWarningsShowWarningPopup(t *testing.T) {
+	w, sys := newDefaultTunNodeTestWorkspace(t, false)
+	sys.defaultTunWarningsHook = func(sysnet.DefaultTun) []sysnet.Warning {
+		return []sysnet.Warning{sysnet.WarningDefaultTunDNSRouteNotExclusive}
+	}
+	node, err := w.AddNodeByClass(NodeTypeDefaultTun, "default tun")
+	if err != nil {
+		t.Fatalf("AddNodeByClass DefaultTun: %v", err)
+	}
+
+	got := defaultTunWarningPopups(t, w, node)
+	want := []string{string(sysnet.WarningDefaultTunDNSRouteNotExclusive)}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("DefaultTun warning popups = %#v, want %#v", got, want)
+	}
+}
+
+func TestDefaultTunWarningsDisappearAfterRebuild(t *testing.T) {
+	w, sys := newDefaultTunNodeTestWorkspace(t, false)
+	sys.defaultTunWarningsHook = func(sysnet.DefaultTun) []sysnet.Warning {
+		return []sysnet.Warning{sysnet.WarningDefaultTunDNSRouteNotExclusive}
+	}
+	node, err := w.AddNodeByClass(NodeTypeDefaultTun, "default tun")
+	if err != nil {
+		t.Fatalf("AddNodeByClass DefaultTun: %v", err)
+	}
+
+	sys.defaultTunWarningsHook = nil
+	forceDefaultTunRebuild(t, w, node, "10.61.0.0/16")
+
+	if got := defaultTunWarningPopups(t, w, node); len(got) != 0 {
+		t.Fatalf("DefaultTun warning popups after rebuild = %#v, want none", got)
+	}
+}
+
+func TestDefaultTunWarningsReplaceTrackedAndPreserveUnrelatedPopups(t *testing.T) {
+	w, sys := newDefaultTunNodeTestWorkspace(t, false)
+	sys.defaultTunWarningsHook = func(sysnet.DefaultTun) []sysnet.Warning {
+		return []sysnet.Warning{sysnet.WarningDefaultTunDNSRouteNotExclusive}
+	}
+	node, err := w.AddNodeByClass(NodeTypeDefaultTun, "default tun")
+	if err != nil {
+		t.Fatalf("AddNodeByClass DefaultTun: %v", err)
+	}
+	if _, err := w.AddNodePopup(node, pasta.NodePopupWard, "manual_warning", false); err != nil {
+		t.Fatalf("AddNodePopup unrelated warning: %v", err)
+	}
+	const replacement = sysnet.Warning("replacement_default_tun_warning")
+	sys.defaultTunWarningsHook = func(sysnet.DefaultTun) []sysnet.Warning {
+		return []sysnet.Warning{replacement}
+	}
+
+	forceDefaultTunRebuild(t, w, node, "10.62.0.0/16")
+
+	got := defaultTunWarningPopups(t, w, node)
+	want := []string{"manual_warning", string(replacement)}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("DefaultTun warning popups after replacement = %#v, want %#v", got, want)
+	}
+}
+
+func TestDefaultTunWarningsIgnoreStaleDefaultTunAfterRebuild(t *testing.T) {
+	w, sys := newDefaultTunNodeTestWorkspace(t, false)
+	node, err := w.AddNodeByClass(NodeTypeDefaultTun, "default tun")
+	if err != nil {
+		t.Fatalf("AddNodeByClass DefaultTun: %v", err)
+	}
+	firstTun := sys.tuns[0]
+	sys.defaultTunWarningsHook = func(dtun sysnet.DefaultTun) []sysnet.Warning {
+		if dtun == firstTun {
+			return []sysnet.Warning{sysnet.WarningDefaultTunDNSRouteNotExclusive}
+		}
+		return nil
+	}
+	forceDefaultTunRebuild(t, w, node, "10.63.0.0/16")
+
+	if got := defaultTunWarningPopups(t, w, node); len(got) != 0 {
+		t.Fatalf("DefaultTun stale warning popups = %#v, want none", got)
+	}
+}
+
+func TestDefaultTunWarningsRefreshAfterDynamicUpdate(t *testing.T) {
+	w, sys := newDefaultTunNodeTestWorkspace(t, true)
+	var warnings []sysnet.Warning
+	sys.defaultTunWarningsHook = func(sysnet.DefaultTun) []sysnet.Warning {
+		return warnings
+	}
+	node, err := w.AddNodeByClass(NodeTypeDefaultTun, "default tun")
+	if err != nil {
+		t.Fatalf("AddNodeByClass DefaultTun: %v", err)
+	}
+	receiver := &tunPayloadReceiver{events: make(chan TunPayload, 4)}
+	receiverID, err := w.AddNode(receiver, "test/TunReceiver", "tun receiver")
+	if err != nil {
+		t.Fatalf("AddNode receiver: %v", err)
+	}
+	nodeSnapshot := mustNodeSnapshot(t, w, node)
+	link, _, err := w.AddLink(receiver.in, nodeSnapshot.RightPorts[0])
+	if err != nil {
+		t.Fatalf("AddLink tun: %v", err)
+	}
+	_ = receiveTunPayload(t, receiver.events)
+
+	warnings = []sysnet.Warning{sysnet.WarningDefaultTunDNSRouteNotExclusive}
+	w.EmitEvent(receiverID, link, TunConfig{Addrs: []string{"10.64.0.2/32"}, MTU: 1300})
+	want := []string{string(sysnet.WarningDefaultTunDNSRouteNotExclusive)}
+	if got := defaultTunWarningPopups(t, w, node); !reflect.DeepEqual(got, want) {
+		t.Fatalf("DefaultTun warning popups after dynamic update = %#v, want %#v", got, want)
+	}
+	if got := sys.buildCount(); got != 1 {
+		t.Fatalf("build count after dynamic warning update = %d, want 1", got)
+	}
+
+	warnings = nil
+	w.EmitEvent(receiverID, link, TunConfig{Addrs: []string{"10.64.0.2/32", "10.64.0.3/32"}, MTU: 1280})
+	if got := defaultTunWarningPopups(t, w, node); len(got) != 0 {
+		t.Fatalf("DefaultTun warning popups after dynamic warning clear = %#v, want none", got)
+	}
+	if got := sys.buildCount(); got != 1 {
+		t.Fatalf("build count after dynamic warning clear = %d, want 1", got)
+	}
+}
+
 func TestDefaultTunConfigPersistsAcrossSaveRestoreAndCopyPaste(t *testing.T) {
 	sys := newRecordingDefaultTunSystem()
 	engine := newDefaultTunTestEngine(t, sys, nil)
@@ -474,6 +714,67 @@ func TestDefaultTunConfigPersistsAcrossSaveRestoreAndCopyPaste(t *testing.T) {
 	if got := sys.lastOpts(); !reflect.DeepEqual(got, defaultTunPersistedOpts()) {
 		t.Fatalf("pasted build opts = %#v, want %#v", got, defaultTunPersistedOpts())
 	}
+}
+
+func TestDefaultTunDNSProviderCopyPastePreservesLinksE2E(t *testing.T) {
+	e := newOutDNSE2E(t, nil, "copy-default-tun.test A 10.134.0.2", nil)
+	out := e.AddNode(NodeTypeOutDNS, "out")
+	defaultTun := e.AddNode(NodeTypeDefaultTun, "default tun")
+	e.WaitNodeLabel(defaultTun, "ready")
+	e.MustAddTypedLinkByPortName(TypeDNS, out, "left", "DNS", defaultTun, "right", "DNS")
+	e.waitDefaultTunSystemDNSResponse("copy-default-tun.test.", "10.134.0.2")
+
+	clip := e.Engine.Copy(E2EWorkspace, []uint64{out, defaultTun})
+	if clip == "" {
+		t.Fatal("Copy returned empty clipboard")
+	}
+	e.Engine.RemoveNode(E2EWorkspace, defaultTun)
+	e.Engine.RemoveNode(E2EWorkspace, out)
+
+	pasted := e.Engine.Paste(E2EWorkspace, clip)
+	if len(pasted) != 2 {
+		t.Fatalf("Paste returned %d nodes (%v), want 2", len(pasted), pasted)
+	}
+	pastedDefaultTun := pastedNodeByClass(t, e.Engine, pasted, NodeTypeDefaultTun)
+	e.WaitNodeLabel(pastedDefaultTun, "ready")
+	e.waitDefaultTunSystemDNSResponse("copy-default-tun.test.", "10.134.0.2")
+}
+
+func TestDefaultTunDNSProviderSaveRestorePreservesLinksE2E(t *testing.T) {
+	const records = "restore-default-tun.test A 10.134.0.3"
+	e := newOutDNSE2E(t, nil, records, nil)
+	out := e.AddNode(NodeTypeOutDNS, "out")
+	defaultTun := e.AddNode(NodeTypeDefaultTun, "default tun")
+	e.WaitNodeLabel(defaultTun, "ready")
+	e.MustAddTypedLinkByPortName(TypeDNS, out, "left", "DNS", defaultTun, "right", "DNS")
+	e.waitDefaultTunSystemDNSResponse("restore-default-tun.test.", "10.134.0.3")
+
+	cfg := configer.NewMemory(nil)
+	if err := e.Engine.SaveConfig(cfg); err != nil {
+		t.Fatalf("SaveConfig: %v", err)
+	}
+
+	restored := newOutDNSE2E(t, cfg, records, nil)
+	restoredDefaultTun := nodeIDByName(t, restored.Engine, "default tun")
+	restored.WaitNodeLabel(restoredDefaultTun, "ready")
+	restored.waitDefaultTunSystemDNSResponse("restore-default-tun.test.", "10.134.0.3")
+}
+
+func TestDefaultTunDNSProviderLinkAttachDetachReattachE2E(t *testing.T) {
+	e := newOutDNSE2E(t, nil, "lifecycle-default-tun.test A 10.134.0.4", nil)
+	out := e.AddNode(NodeTypeOutDNS, "out")
+	defaultTun := e.AddNode(NodeTypeDefaultTun, "default tun")
+	e.WaitNodeLabel(defaultTun, "ready")
+	e.waitDefaultTunSystemDNSFailure("lifecycle-default-tun.test.")
+
+	link := e.MustAddTypedLinkByPortName(TypeDNS, out, "left", "DNS", defaultTun, "right", "DNS")
+	e.waitDefaultTunSystemDNSResponse("lifecycle-default-tun.test.", "10.134.0.4")
+
+	e.Engine.RemoveLink(E2EWorkspace, link)
+	e.waitDefaultTunSystemDNSFailure("lifecycle-default-tun.test.")
+
+	e.MustAddTypedLinkByPortName(TypeDNS, out, "left", "DNS", defaultTun, "right", "DNS")
+	e.waitDefaultTunSystemDNSResponse("lifecycle-default-tun.test.", "10.134.0.4")
 }
 
 func newDefaultTunNodeTestWorkspace(t *testing.T, dynamic bool) (*pasta.Workspace, *recordingDefaultTunSystem) {
@@ -539,14 +840,38 @@ func defaultTunPersistedOpts() sysnet.DefaultTunOpts {
 	}
 }
 
+func forceDefaultTunRebuild(t *testing.T, w *pasta.Workspace, node uint64, route string) {
+	t.Helper()
+	w.SendNodeFormularMsg(node, formular.FormApplyMessage{
+		MessageBase: formular.MessageBase{Type: formular.MessageFormApply, MenuID: pasta.NodeMenuID(node)},
+		BlockID:     "config",
+		Values: map[string]any{
+			"tunRoutes": route,
+		},
+	})
+}
+
+func defaultTunWarningPopups(t *testing.T, w *pasta.Workspace, node uint64) []string {
+	t.Helper()
+	snapshot := mustNodeSnapshot(t, w, node)
+	out := make([]string, 0, len(snapshot.Popups))
+	for _, popup := range snapshot.Popups {
+		if popup.Type == pasta.NodePopupWard {
+			out = append(out, popup.Text)
+		}
+	}
+	return out
+}
+
 type recordingDefaultTunSystem struct {
 	*sysnetdebug.System
 
-	buildOpts     []sysnet.DefaultTunOpts
-	tuns          []*recordingDefaultTun
-	setMTUCalls   []int
-	setAddrsCalls [][]string
-	buildErr      error
+	buildOpts              []sysnet.DefaultTunOpts
+	tuns                   []*recordingDefaultTun
+	setMTUCalls            []int
+	setAddrsCalls          [][]string
+	buildErr               error
+	defaultTunWarningsHook func(sysnet.DefaultTun) []sysnet.Warning
 }
 
 func newRecordingDefaultTunSystem() *recordingDefaultTunSystem {
@@ -564,6 +889,24 @@ func (s *recordingDefaultTunSystem) BuildDefaultTun(opts sysnet.DefaultTunOpts) 
 	s.buildOpts = append(s.buildOpts, opts.Copy())
 	s.tuns = append(s.tuns, dtun)
 	return dtun, nil
+}
+
+func (s *recordingDefaultTunSystem) DefaultTunWarnings(t sysnet.DefaultTun) []sysnet.Warning {
+	dtun, ok := t.(*recordingDefaultTun)
+	if !ok || s.defaultTunWarningsHook == nil {
+		return nil
+	}
+	found := false
+	for _, built := range s.tuns {
+		if built == dtun {
+			found = true
+			break
+		}
+	}
+	if !found || dtun.closeCount() > 0 {
+		return nil
+	}
+	return slicesClone(s.defaultTunWarningsHook(t))
 }
 
 func (s *recordingDefaultTunSystem) SetTunMTU(t tun.Tun, mtu int) error {
@@ -601,7 +944,10 @@ type recordingDefaultTun struct {
 
 	mtu          int
 	closeCounter atomic.Int32
-	resolver     dns.Interface
+
+	mu          sync.Mutex
+	resolver    dns.Interface
+	dnsSetCalls []dns.Interface
 }
 
 func newRecordingDefaultTun(mtu int) *recordingDefaultTun {
@@ -613,7 +959,11 @@ func newRecordingDefaultTun(mtu int) *recordingDefaultTun {
 }
 
 func (t *recordingDefaultTun) SetDns(resolver dns.Interface) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
 	t.resolver = resolver
+	t.dnsSetCalls = append(t.dnsSetCalls, resolver)
 }
 
 func (t *recordingDefaultTun) MTU() (int, error) {
@@ -627,6 +977,63 @@ func (t *recordingDefaultTun) Close() error {
 
 func (t *recordingDefaultTun) closeCount() int {
 	return int(t.closeCounter.Load())
+}
+
+func (t *recordingDefaultTun) currentDNS() dns.Interface {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	return t.resolver
+}
+
+func (t *recordingDefaultTun) dnsSetCount() int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	return len(t.dnsSetCalls)
+}
+
+func waitRecordingDefaultTunDNS(t *testing.T, dtun *recordingDefaultTun, wantReady bool) dns.Interface {
+	t.Helper()
+
+	var got dns.Interface
+	Eventually(t, func() bool {
+		got = dtun.currentDNS()
+		if wantReady {
+			return DNSIsReady(got)
+		}
+		return got == nil
+	}, "DefaultTun DNS provider ready=%v", wantReady)
+	return got
+}
+
+func (e *dnsE2E) waitDefaultTunSystemDNSResponse(name, want string) {
+	e.T.Helper()
+
+	Eventually(e.T, func() bool {
+		resp, err := e.queryDefaultTunSystemDNS(name)
+		if err != nil || resp == nil || resp.RCode != dns.RCodeSuccess {
+			return false
+		}
+		return strings.Contains(formatDNSMessage(resp), want)
+	}, "DefaultTun system DNS response for %s containing %q", name, want)
+}
+
+func (e *dnsE2E) waitDefaultTunSystemDNSFailure(name string) {
+	e.T.Helper()
+
+	Eventually(e.T, func() bool {
+		resp, err := e.queryDefaultTunSystemDNS(name)
+		return err != nil || resp == nil || resp.RCode != dns.RCodeSuccess
+	}, "DefaultTun system DNS failure for %s", name)
+}
+
+func (e *dnsE2E) queryDefaultTunSystemDNS(name string) (*dns.Message, error) {
+	e.T.Helper()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	return dns.Query(ctx, e.DebugSystem, dnsTestQuery(name, dns.TypeA))
 }
 
 func slicesClone[T any](in []T) []T {

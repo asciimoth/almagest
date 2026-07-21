@@ -17,7 +17,7 @@ Assertions:
   the daemon app mark and the user exclude mark
 - `DefaultTun` `exclude` rule for `comm=curl` lets `curl` go directly to the
   outer network while killswitch remains active
-- unexcluded Python traffic is blocked by the disconnected `DefaultTun`, then
+- unexcluded Python traffic is blocked by the TUN-disconnected `DefaultTun`, then
   succeeds through `DefaultTun -> Spoofer -> LogNetwork -> OutNetwork`
 - after `almagestd` exits, direct `curl` traffic is blocked again by killswitch
 

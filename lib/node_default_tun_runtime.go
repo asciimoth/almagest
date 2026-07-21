@@ -5,6 +5,7 @@ import (
 	"slices"
 
 	"github.com/asciimoth/gonnect/sysnet"
+	"github.com/asciimoth/pasta/pasta"
 )
 
 func (n *defaultTunNode) configureDefaultTun() error {
@@ -20,6 +21,7 @@ func (n *defaultTunNode) configureDefaultTun() error {
 			n.formError = ""
 			_ = n.updateLabel()
 			n.sendEffectiveBlock()
+			n.refreshDefaultTunWarningsLocked()
 			return nil
 		}
 	}
@@ -55,16 +57,15 @@ func (n *defaultTunNode) rebuildDefaultTun(opts sysnet.DefaultTunOpts) error {
 		_ = n.updateLabel()
 		return err
 	}
-	if outDNS := n.engine.sys.OutDNS(); outDNS != nil {
-		dtun.SetDns(outDNS)
-	}
 	n.formError = ""
 	n.dtun = dtun
 	n.effective = opts.Copy()
 	n.hasEffective = true
 	_ = n.w.AddNodeResourceLocked(n.id, dtun)
+	n.applyDefaultTunDNS()
 	_ = n.updateLabel()
 	n.sendEffectiveBlock()
+	n.refreshDefaultTunWarningsLocked()
 	n.outputTuns.CloseAll()
 	n.sendAll()
 	if previous != nil {
@@ -72,6 +73,48 @@ func (n *defaultTunNode) rebuildDefaultTun(opts sysnet.DefaultTunOpts) error {
 	}
 	n.outputTuns.Wait()
 	return nil
+}
+
+func (n *defaultTunNode) refreshDefaultTunWarningsLocked() {
+	if n.w == nil {
+		n.warningPopupIDs = nil
+		return
+	}
+	for _, id := range n.warningPopupIDs {
+		if err := n.w.RemoveNodePopupLocked(n.id, id); err != nil && n.logger != nil {
+			n.logger.Errf("failed to remove DefaultTun warning popup node=%d popup=%d: %v", n.id, id, err)
+		}
+	}
+	n.warningPopupIDs = nil
+
+	if n.engine == nil || n.engine.sys == nil || n.dtun == nil {
+		return
+	}
+	for _, warning := range n.engine.sys.DefaultTunWarnings(n.dtun) {
+		id, err := n.w.AddNodePopupLocked(n.id, pasta.NodePopupWard, string(warning), true)
+		if err != nil {
+			if n.logger != nil {
+				n.logger.Errf("failed to add DefaultTun warning popup node=%d warning=%q: %v", n.id, warning, err)
+			}
+			continue
+		}
+		n.warningPopupIDs = append(n.warningPopupIDs, id)
+	}
+}
+
+// applyDefaultTunDNS installs the DNS provider currently connected to the
+// DefaultTun DNS port. A missing or no-longer-ready provider deliberately
+// installs nil so sysnet's local DefaultTun DNS server drops requests instead
+// of silently falling back to the system OutDNS provider.
+func (n *defaultTunNode) applyDefaultTunDNS() {
+	if n.dtun == nil {
+		return
+	}
+	if DNSIsReady(n.dnsProvider) {
+		n.dtun.SetDns(n.dnsProvider)
+		return
+	}
+	n.dtun.SetDns(nil)
 }
 
 func (n *defaultTunNode) applyDynamicDefaultTunOpts(opts sysnet.DefaultTunOpts) error {

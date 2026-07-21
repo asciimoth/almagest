@@ -108,12 +108,14 @@ wait_node_class_available "almagest/HttpServer" \
 wait_graph_node "Tun 1504" || fail "Tun 1504 node missing"
 wait_graph_node "Tun 1508" || fail "Tun 1508 node missing"
 wait_graph_node "DefaultTun 1543" || fail "DefaultTun node missing"
+wait_graph_node "OutDns 1542" || fail "OutDns node missing"
 wait_graph_node "Spoofer 1510" || fail "Spoofer 1510 node missing"
 wait_graph_node "Spoofer 1513" || fail "Spoofer 1513 node missing"
 
 tun_one="$(node_id_by_name "Tun 1504")"
 tun_two="$(node_id_by_name "Tun 1508")"
 default_tun="$(node_id_by_name "DefaultTun 1543")"
+out_dns="$(node_id_by_name "OutDns 1542")"
 spoofer_one="$(node_id_by_name "Spoofer 1510")"
 spoofer_two="$(node_id_by_name "Spoofer 1513")"
 
@@ -175,6 +177,8 @@ assert_example_reachable "example.com remains reachable after re-adding tun2"
 
 default_tun="$(add_node "almagest/DefaultTun" "DefaultTun dynamic 1")"
 wait_node_label "$default_tun" ready || fail "re-added DefaultTun did not become ready"
+add_link_by_port_name "$out_dns" left DNS "$default_tun" right DNS \
+	>/tmp/e2e-tun-routing-dynamic-1-link-dns.json
 assert_server_1_reachable "Server 1 unaffected after re-adding DefaultTun"
 assert_server_2_reachable "Server 2 unaffected after re-adding DefaultTun"
 assert_example_blocked "example.com blocked again after re-adding disconnected DefaultTun"
@@ -186,6 +190,8 @@ assert_example_reachable "example.com restored after removing dynamic DefaultTun
 
 default_tun="$(add_node "almagest/DefaultTun" "DefaultTun dynamic 2")"
 wait_node_label "$default_tun" ready || fail "second re-added DefaultTun did not become ready"
+add_link_by_port_name "$out_dns" left DNS "$default_tun" right DNS \
+	>/tmp/e2e-tun-routing-dynamic-2-link-dns.json
 assert_server_1_reachable "Server 1 unaffected after second DefaultTun re-add"
 assert_server_2_reachable "Server 2 unaffected after second DefaultTun re-add"
 assert_example_blocked "example.com blocked after second disconnected DefaultTun re-add"

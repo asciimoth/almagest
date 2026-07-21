@@ -12,7 +12,7 @@
 		"DefaultTun 1501": {
 			"Class":     "almagest/DefaultTun",
 			"Pos":       "{\"x\":120,\"y\":760}",
-			"Links":     ["Tun -> [TunSplitter 1502] Tun"],
+			"Links":     ["Tun -> [TunSplitter 1502] Tun", "DNS -> [OutDns 1500] DNS"],
 			"tunAddrs":  "",
 			"tunRoutes": "",
 			"mtu":       0,
@@ -20,6 +20,10 @@
 			"strict":    false,
 			"exclude":   [],
 			"include":   [],
+		},
+		"OutDns 1500": {
+			"Class": "almagest/OutDns",
+			"Pos":   "{\"x\":-120,\"y\":760}",
 		},
 		"TunSplitter 1502": {
 			"Class": "almagest/TunSplitter",

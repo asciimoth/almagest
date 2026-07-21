@@ -1,0 +1,35 @@
+{
+	"Logs": {
+		"Cache": {
+			"Debug": 2048,
+			"Info": 256,
+			"Warn": 256,
+			"Error": 128,
+			"Fatal": 32,
+		},
+	},
+	"nodes": {
+		"DefaultTun DNS 1701": {
+			"Class":     "almagest/DefaultTun",
+			"Pos":       "{\"x\":120,\"y\":420}",
+			"Links":     ["DNS -> [Provider DNS 1702] DNS"],
+			"tunAddrs":  "",
+			"tunRoutes": "",
+			"mtu":       0,
+			"dnsIP":     "",
+			"strict":    false,
+			"exclude":   [],
+			"include":   [],
+		},
+		"Provider DNS 1702": {
+			"Class":   "almagest/DnsClient",
+			"Pos":     "{\"x\":380,\"y\":420}",
+			"Links":   ["Network -> [OutNetwork 1703] Network"],
+			"servers": ["udp://127.0.0.1:5354"],
+		},
+		"OutNetwork 1703": {
+			"Class": "almagest/OutNetwork",
+			"Pos":   "{\"x\":640,\"y\":420}",
+		},
+	},
+}

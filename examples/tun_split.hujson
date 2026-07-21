@@ -3,7 +3,7 @@
 		"DefaultTun": {
 			"Class":     "almagest/DefaultTun",
 			"Pos":       "{\"x\":109,\"y\":401}",
-			"Links":     ["Tun -> [TunSplitter] Tun"],
+			"Links":     ["Tun -> [TunSplitter] Tun", "DNS -> [OutDns] DNS"],
 			"strict":    false,
 			"exclude":   [],
 			"include":   [],
@@ -27,6 +27,7 @@
 			"ruleCacheTTL":         0
 		},
 		"OutNetwork": {"Class": "almagest/OutNetwork", "Pos": "{\"x\":736,\"y\":511}"},
+		"OutDns":     {"Class": "almagest/OutDns", "Pos": "{\"x\":-84,\"y\":401}"},
 		"StringConstant curl": {
 			"Class": "pasta/StringConstant",
 			"Pos":   "{\"x\":295,\"y\":56}",

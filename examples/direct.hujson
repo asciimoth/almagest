@@ -3,7 +3,7 @@
 		"DefaultTun": {
 			"Class":     "almagest/DefaultTun",
 			"Pos":       "{\"x\":268,\"y\":384}",
-			"Links":     ["Tun -> [Spoofer] Tun"],
+			"Links":     ["Tun -> [Spoofer] Tun", "DNS -> [OutDns] DNS"],
 			"tunAddrs":  "",
 			"tunRoutes": "",
 			"mtu":       0,
@@ -34,6 +34,7 @@
 			"disableTCPModRecBuff": false,
 			"tcpKeepAliveCount":    0
 		},
-		"OutNetwork": {"Class": "almagest/OutNetwork", "Pos": "{\"x\":641,\"y\":382}"}
+		"OutNetwork": {"Class": "almagest/OutNetwork", "Pos": "{\"x\":641,\"y\":382}"},
+		"OutDns":     {"Class": "almagest/OutDns", "Pos": "{\"x\":81,\"y\":383}"}
 	}
 }
