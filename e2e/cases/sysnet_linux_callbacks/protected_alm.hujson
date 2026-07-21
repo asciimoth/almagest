@@ -3,6 +3,157 @@
 		"Web": 0,
 		"Unix": "%E2E_ADMIN_SOCK%",
 	},
+	"CommandRunner": {
+		"Commands": {
+			"sysnet-linux.tun-created": {
+				"Command": [
+					"%E2E_RUNTIME%/record-callback.sh",
+					"tun-created",
+					"${callback}",
+					"${tun_name}",
+					"${empty}",
+					"${secret}"
+				],
+				"Env": {
+					"E2E_CALLBACK_DIR": "%E2E_RUNTIME%/callbacks",
+					"E2E_CALLBACK_ENV": "tun-created",
+					"E2E_CALLBACK_STDOUT_SECRET": "stdout-secret-token"
+				},
+				"UID": 24020,
+				"GID": 24020,
+				"Slots": {
+					"callback": {"MaxLength": 128, "Required": true},
+					"tun_name": {"MaxLength": 64, "Required": true},
+					"empty": {"MaxLength": 32, "AllowEmpty": true},
+					"secret": {"MaxLength": 64, "Required": true}
+				}
+			},
+			"sysnet-linux.tun-configured": {
+				"Command": [
+					"%E2E_RUNTIME%/record-callback.sh",
+					"tun-configured",
+					"${callback}",
+					"${tun_name}",
+					"${mtu}"
+				],
+				"Env": {
+					"E2E_CALLBACK_DIR": "%E2E_RUNTIME%/callbacks",
+					"E2E_CALLBACK_ENV": "tun-configured"
+				},
+				"Sync": true,
+				"Slots": {
+					"callback": {"MaxLength": 128, "Required": true},
+					"tun_name": {"MaxLength": 64, "Required": true},
+					"mtu": {"MaxLength": 16, "Required": true}
+				}
+			},
+			"sysnet-linux.default-tun-created": {
+				"Command": [
+					"%E2E_RUNTIME%/record-callback.sh",
+					"default-created",
+					"${callback}",
+					"${tun_name}",
+					"${secret}"
+				],
+				"Env": {
+					"E2E_CALLBACK_DIR": "%E2E_RUNTIME%/callbacks",
+					"E2E_CALLBACK_ENV": "default-created",
+					"E2E_CALLBACK_STDOUT_SECRET": "default-stdout-secret-token"
+				},
+				"Sync": true,
+				"Slots": {
+					"callback": {"MaxLength": 128, "Required": true},
+					"tun_name": {"MaxLength": 64, "Required": true},
+					"secret": {"MaxLength": 64, "Required": true}
+				}
+			},
+			"sysnet-linux.default-tun-configured": {
+				"Command": [
+					"%E2E_RUNTIME%/record-callback.sh",
+					"default-configured",
+					"${callback}",
+					"${mtu}"
+				],
+				"Env": {
+					"E2E_CALLBACK_DIR": "%E2E_RUNTIME%/callbacks",
+					"E2E_CALLBACK_ENV": "default-configured"
+				},
+				"Sync": true,
+				"Slots": {
+					"callback": {"MaxLength": 128, "Required": true},
+					"mtu": {"MaxLength": 16, "Required": true}
+				}
+			},
+			"sysnet-linux.default-tun-closed": {
+				"Command": [
+					"%E2E_RUNTIME%/record-callback.sh",
+					"default-closed",
+					"${callback}"
+				],
+				"Env": {
+					"E2E_CALLBACK_DIR": "%E2E_RUNTIME%/callbacks",
+					"E2E_CALLBACK_ENV": "default-closed"
+				},
+				"Sync": true,
+				"Slots": {
+					"callback": {"MaxLength": 128, "Required": true}
+				}
+			},
+			"sysnet-linux.routing-applied": {
+				"Command": [
+					"%E2E_RUNTIME%/record-callback.sh",
+					"routing-applied",
+					"${callback}",
+					"${tun_index}"
+				],
+				"Env": {
+					"E2E_CALLBACK_DIR": "%E2E_RUNTIME%/callbacks",
+					"E2E_CALLBACK_ENV": "routing-applied"
+				},
+				"Sync": true,
+				"Slots": {
+					"callback": {"MaxLength": 128, "Required": true},
+					"tun_index": {"MaxLength": 16, "Required": true}
+				}
+			},
+			"sysnet-linux.dns-configured": {
+				"Command": [
+					"%E2E_RUNTIME%/record-callback.sh",
+					"dns-configured",
+					"${callback}",
+					"${server}"
+				],
+				"Env": {
+					"E2E_CALLBACK_DIR": "%E2E_RUNTIME%/callbacks",
+					"E2E_CALLBACK_ENV": "dns-configured"
+				},
+				"Sync": true,
+				"Slots": {
+					"callback": {"MaxLength": 128, "Required": true},
+					"server": {"MaxLength": 64, "Required": true}
+				}
+			},
+			"sysnet-linux.killswitch-updated": {
+				"Command": [
+					"%E2E_RUNTIME%/record-callback.sh",
+					"killswitch-updated",
+					"${callback}",
+					"${marks}"
+				],
+				"Env": {
+					"E2E_CALLBACK_DIR": "%E2E_RUNTIME%/callbacks",
+					"E2E_CALLBACK_ENV": "killswitch-updated",
+					"E2E_CALLBACK_SLEEP": "0.2"
+				},
+				"Sync": true,
+				"Timeout": 10000000,
+				"Slots": {
+					"callback": {"MaxLength": 128, "Required": true},
+					"marks": {"MaxLength": 128, "Required": true}
+				}
+			}
+		},
+	},
 	"System": {
 		"Linux": {
 			"DNS": {
@@ -13,116 +164,63 @@
 			"KillswitchAllowExclude": true,
 			"Callbacks": {
 				"TunCreated": {
-					"Command": [
-						"%E2E_RUNTIME%/record-callback.sh",
-						"tun-created",
-						"{{ .Callback }}",
-						"{{ .TunName }}",
-						"{{ if eq .Callback \"never\" }}drop-me{{ end }}",
-						"argv-secret-token"
-					],
-					"Env": {
-						"E2E_CALLBACK_DIR": "%E2E_RUNTIME%/callbacks",
-						"E2E_CALLBACK_ENV": "tun-created",
-						"E2E_CALLBACK_STDOUT_SECRET": "stdout-secret-token"
-					},
-					"UID": 24020,
-					"GID": 24020
+					"Command": "sysnet-linux.tun-created",
+					"Slots": {
+						"callback": "{{ .Callback }}",
+						"tun_name": "{{ .TunName }}",
+						"empty": "{{ if eq .Callback \"never\" }}drop-me{{ end }}",
+						"secret": "argv-secret-token"
+					}
 				},
 				"TunConfigured": {
-					"Command": [
-						"%E2E_RUNTIME%/record-callback.sh",
-						"tun-configured",
-						"{{ .Callback }}",
-						"{{ .TunName }}",
-						"{{ .TunMTU }}"
-					],
-					"Env": {
-						"E2E_CALLBACK_DIR": "%E2E_RUNTIME%/callbacks",
-						"E2E_CALLBACK_ENV": "tun-configured"
-					},
-					"Sync": true
+					"Command": "sysnet-linux.tun-configured",
+					"Slots": {
+						"callback": "{{ .Callback }}",
+						"tun_name": "{{ .TunName }}",
+						"mtu": "{{ .TunMTU }}"
+					}
 				},
 				"DefaultTunCreated": {
-					"Command": [
-						"%E2E_RUNTIME%/record-callback.sh",
-						"default-created",
-						"{{ .Callback }}",
-						"{{ .TunName }}",
-						"default-argv-secret-token"
-					],
-					"Env": {
-						"E2E_CALLBACK_DIR": "%E2E_RUNTIME%/callbacks",
-						"E2E_CALLBACK_ENV": "default-created",
-						"E2E_CALLBACK_STDOUT_SECRET": "default-stdout-secret-token"
-					},
-					"Sync": true
+					"Command": "sysnet-linux.default-tun-created",
+					"Slots": {
+						"callback": "{{ .Callback }}",
+						"tun_name": "{{ .TunName }}",
+						"secret": "default-argv-secret-token"
+					}
 				},
 				"DefaultTunConfigured": {
-					"Command": [
-						"%E2E_RUNTIME%/record-callback.sh",
-						"default-configured",
-						"{{ .Callback }}",
-						"{{ .TunMTU }}"
-					],
-					"Env": {
-						"E2E_CALLBACK_DIR": "%E2E_RUNTIME%/callbacks",
-						"E2E_CALLBACK_ENV": "default-configured"
-					},
-					"Sync": true
+					"Command": "sysnet-linux.default-tun-configured",
+					"Slots": {
+						"callback": "{{ .Callback }}",
+						"mtu": "{{ .TunMTU }}"
+					}
 				},
 				"DefaultTunClosed": {
-					"Command": [
-						"%E2E_RUNTIME%/record-callback.sh",
-						"default-closed",
-						"{{ .Callback }}"
-					],
-					"Env": {
-						"E2E_CALLBACK_DIR": "%E2E_RUNTIME%/callbacks",
-						"E2E_CALLBACK_ENV": "default-closed"
-					},
-					"Sync": true
+					"Command": "sysnet-linux.default-tun-closed",
+					"Slots": {
+						"callback": "{{ .Callback }}"
+					}
 				},
 				"RoutingApplied": {
-					"Command": [
-						"%E2E_RUNTIME%/record-callback.sh",
-						"routing-applied",
-						"{{ .Callback }}",
-						"{{ .Config.TUNIndex }}"
-					],
-					"Env": {
-						"E2E_CALLBACK_DIR": "%E2E_RUNTIME%/callbacks",
-						"E2E_CALLBACK_ENV": "routing-applied"
-					},
-					"Sync": true
+					"Command": "sysnet-linux.routing-applied",
+					"Slots": {
+						"callback": "{{ .Callback }}",
+						"tun_index": "{{ .Config.TUNIndex }}"
+					}
 				},
 				"DNSConfigured": {
-					"Command": [
-						"%E2E_RUNTIME%/record-callback.sh",
-						"dns-configured",
-						"{{ .Callback }}",
-						"{{ .Server }}"
-					],
-					"Env": {
-						"E2E_CALLBACK_DIR": "%E2E_RUNTIME%/callbacks",
-						"E2E_CALLBACK_ENV": "dns-configured"
-					},
-					"Sync": true
+					"Command": "sysnet-linux.dns-configured",
+					"Slots": {
+						"callback": "{{ .Callback }}",
+						"server": "{{ .Server }}"
+					}
 				},
 				"KillswitchUpdated": {
-					"Command": [
-						"%E2E_RUNTIME%/record-callback.sh",
-						"killswitch-updated",
-						"{{ .Callback }}",
-						"{{ range .Rules.AllowedMarks }}{{ . }}{{ end }}"
-					],
-					"Env": {
-						"E2E_CALLBACK_DIR": "%E2E_RUNTIME%/callbacks",
-						"E2E_CALLBACK_ENV": "killswitch-updated",
-						"E2E_CALLBACK_SLEEP": "0.2"
-					},
-					"Sync": true,
-					"Timeout": 10000000
+					"Command": "sysnet-linux.killswitch-updated",
+					"Slots": {
+						"callback": "{{ .Callback }}",
+						"marks": "{{ range .Rules.AllowedMarks }}{{ . }}{{ end }}"
+					}
 				}
 			},
 		},

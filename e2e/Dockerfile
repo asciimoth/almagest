@@ -19,6 +19,7 @@ RUN apt-get update \
 		ca-certificates \
 		curl \
 		dnsmasq \
+		dnsutils \
 		iproute2 \
 		iputils-ping \
 		jq \

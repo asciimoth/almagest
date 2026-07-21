@@ -197,6 +197,33 @@ node_port_id() {
 		'
 }
 
+link_id_by_port_names() {
+	local right_node="$1"
+	local right_port_name="$2"
+	local left_node="$3"
+	local left_port_name="$4"
+
+	cli engine workspace-snapshot | jq -er \
+		--arg right_node "$right_node" \
+		--arg right_port_name "$right_port_name" \
+		--arg left_node "$left_node" \
+		--arg left_port_name "$left_port_name" \
+		'
+		.snapshot as $workspace
+		| ($workspace.nodes | to_entries[] | select(.value.name == $right_node) | .key) as $rightNodeID
+		| ($workspace.nodes | to_entries[] | select(.value.name == $left_node) | .key) as $leftNodeID
+		| $workspace.links
+		| to_entries[]
+		| select(
+			(.value.right_port_node | tostring) == $rightNodeID
+			and (.value.left_port_node | tostring) == $leftNodeID
+			and $workspace.ports[(.value.right_port | tostring)].name == $right_port_name
+			and $workspace.ports[(.value.left_port | tostring)].name == $left_port_name
+		)
+		| .key
+		'
+}
+
 add_link_by_port_name() {
 	local node_a="$1"
 	local direction_a="$2"
