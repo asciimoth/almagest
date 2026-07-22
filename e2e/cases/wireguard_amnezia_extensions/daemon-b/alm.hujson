@@ -13,9 +13,9 @@
 			"Class":      "almagest/WireGuard",
 			"Pos":        "{\"x\":488,\"y\":180}",
 			"Links":      ["Network -> [OutNetwork B] Network"],
-			"privateKey": "MMXMEkWVwk/q4hkoW2S3HCXUGvsDHFellxv7Aw/HlFU=",
-			"listenPort": 51831,
-			"ownedIPs":   "",
+			"privateKeySecret": "wireguard-b-private-key",
+			"listenPort":       51831,
+			"ownedIPs":         "",
 			"amneziaWG": {
 				"junkCount":        2,
 				"junkMin":          11,

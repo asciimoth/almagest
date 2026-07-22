@@ -13,9 +13,9 @@
 			"Class":      "almagest/WireGuard",
 			"Pos":        "{\"x\":488,\"y\":180}",
 			"Links":      ["Network -> [OutNetwork B] Network"],
-			"privateKey": "MMXMEkWVwk/q4hkoW2S3HCXUGvsDHFellxv7Aw/HlFU=",
-			"listenPort": 51821,
-			"ownedIPs":   "",
+			"privateKeySecret": "wireguard-b-private-key",
+			"listenPort":       51821,
+			"ownedIPs":         "",
 			"peers": [{
 				"allowedIPs":                  "10.198.10.1/32",
 				"endpoint":                    "127.0.0.1:51820",

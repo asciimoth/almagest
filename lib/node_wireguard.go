@@ -48,10 +48,11 @@ func (wireGuardClass) DefaultNodeParams() pasta.NodeClassParams {
 func (c wireGuardClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
 	config := defaultWireGuardConfig()
 	config.read(cfg)
-	if err := config.ensurePrivateKey(); err != nil {
-		return nil, err
+	var secrets SecretsStorage
+	if c.engine != nil {
+		secrets = c.engine.SecretsStorage()
 	}
-	return &wireGuardNode{NodeBase: NodeBase{engine: c.engine}, config: config}, nil
+	return &wireGuardNode{NodeBase: NodeBase{engine: c.engine}, secrets: secrets, config: config}, nil
 }
 
 // wireGuardNode owns exactly one wgo Device.
@@ -79,6 +80,9 @@ func (c wireGuardClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState)
 // workspace callback -> runtimeMu -> wgo -> pasta worker spawn -> workspace.
 type wireGuardNode struct {
 	NodeBase
+
+	nodeName string
+	secrets  SecretsStorage
 
 	tunp uint64
 	netp uint64
@@ -131,16 +135,23 @@ type wireGuardConfigCommitOptions struct {
 	emitTunConfig bool
 }
 
-func (n *wireGuardNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
+func (n *wireGuardNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64, name string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
 	n.InitBaseNode(w, logger, id)
+	n.nodeName = name
 	n.config.normalize()
 	n.tunp = restoredLeft(restored, 0)
 	n.netp = restoredRight(restored, 0)
 	if err := n.SetPrimary(TypeTun); err != nil {
 		return err
 	}
-	generation := n.nextRuntimeGeneration()
-	n.scheduleConfigApply(n.config.clone(), true, generation, 0, false)
+	config, err := n.resolvePrivateKeyConfig(n.config)
+	if err != nil {
+		n.formError = err.Error()
+	} else {
+		n.config = config
+		generation := n.nextRuntimeGeneration()
+		n.scheduleConfigApply(n.config.clone(), true, generation, 0, false)
+	}
 	_ = n.updateLabel()
 	n.sendMenuSnapshot()
 	return nil
@@ -294,6 +305,8 @@ func (n *wireGuardNode) OnInbox(message pasta.InboxMessage) error {
 		n.handleRuntimeAttachmentResult(msg)
 	case wireGuardRuntimeStatsMessage:
 		n.handleRuntimeStats(msg)
+	case SecretValueChanged:
+		n.handleSecretValueChanged(msg)
 	}
 	return nil
 }
@@ -302,12 +315,12 @@ func (n *wireGuardNode) OnSave(cfg configer.Config) error {
 		return err
 	}
 	return configer.SetMap(cfg, map[string]any{
-		"privateKey": n.config.privateKey,
-		"listenPort": n.config.listenPort,
-		"batchSize":  n.config.batchSize,
-		"ownedIPs":   n.config.ownedIPs,
-		"amneziaWG":  wireGuardAmneziaConfigMap(n.config.amneziaWG),
-		"peers":      wireGuardPeersConfig(n.config.peers),
+		"privateKeySecret": n.config.privateKeySecret,
+		"listenPort":       n.config.listenPort,
+		"batchSize":        n.config.batchSize,
+		"ownedIPs":         n.config.ownedIPs,
+		"amneziaWG":        wireGuardAmneziaConfigMap(n.config.amneziaWG),
+		"peers":            wireGuardPeersConfig(n.config.peers),
 	})
 }
 func (n *wireGuardNode) applyConfigForm(values map[string]any) error {
@@ -334,7 +347,8 @@ func (n *wireGuardNode) applyFormBlock(blockID string, values map[string]any) er
 }
 func (n *wireGuardNode) commitConfigForm(next wireGuardConfig, opts wireGuardConfigCommitOptions) error {
 	next.normalize()
-	if err := next.ensurePrivateKey(); err != nil {
+	next, err := n.resolvePrivateKeyConfig(next)
+	if err != nil {
 		n.rejectConfigForm(err)
 		return nil
 	}

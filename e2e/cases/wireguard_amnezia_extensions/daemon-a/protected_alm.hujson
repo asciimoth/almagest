@@ -3,4 +3,10 @@
 		"Web": 0,
 		"Unix": "",
 	},
+	"Secrets": {
+		"wireguard-a-private-key": {
+			"Value": "iMBBlzD6x+4ZVFtXGpVr4hwdh8iqvCzPIhy+kE6oh2I=",
+			"Nodes": ["WireGuard A"],
+		},
+	},
 }

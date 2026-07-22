@@ -73,12 +73,12 @@
 			"localAddrs":     ""
 		},
 		"Inner WireGuard Client": {
-			"Class":      "almagest/WireGuard",
-			"Pos":        "{\"x\":135,\"y\":325}",
-			"Links":      ["Network -> [VTun Client] Network"],
-			"privateKey": "EEV59Re/rpHF8CBmvuDzPZfcgBgaa3sjkw0AW+ozCEk=",
-			"listenPort": 25220,
-			"ownedIPs":   "10.199.10.1/24",
+			"Class":            "almagest/WireGuard",
+			"Pos":              "{\"x\":135,\"y\":325}",
+			"Links":            ["Network -> [VTun Client] Network"],
+			"privateKeySecret": "inner-wireguard-client-private-key",
+			"listenPort":       25220,
+			"ownedIPs":         "10.199.10.1/24",
 			"amneziaWG": {
 				"cookieHeader":      "3",
 				"cookiePadding":     0,
@@ -118,12 +118,12 @@
 			}]
 		},
 		"Inner WireGuard Server": {
-			"Class":      "almagest/WireGuard",
-			"Pos":        "{\"x\":112,\"y\":588}",
-			"Links":      ["Network -> [VTun Server] Network"],
-			"privateKey": "2Ov1WxXIxDgsoyaFwHcXdosWL2Jq/9jneIDWcJSrBFI=",
-			"listenPort": 25221,
-			"ownedIPs":   "10.199.20.1/24",
+			"Class":            "almagest/WireGuard",
+			"Pos":              "{\"x\":112,\"y\":588}",
+			"Links":            ["Network -> [VTun Server] Network"],
+			"privateKeySecret": "inner-wireguard-server-private-key",
+			"listenPort":       25221,
+			"ownedIPs":         "10.199.20.1/24",
 			"amneziaWG": {
 				"cookieHeader":      "3",
 				"cookiePadding":     0,
@@ -189,12 +189,12 @@
 			"name":           "wireguard-server-vtun"
 		},
 		"WireGuard Client": {
-			"Class":      "almagest/WireGuard",
-			"Pos":        "{\"x\":594,\"y\":334}",
-			"Links":      ["Network -> [MockNetwork 1500] Network"],
-			"privateKey": "KCssLS4vMDEyMzQ1Njc4OTo7PD0+P0BBQkNERUZHSEk=",
-			"listenPort": 25120,
-			"ownedIPs":   "10.198.10.1/24",
+			"Class":            "almagest/WireGuard",
+			"Pos":              "{\"x\":594,\"y\":334}",
+			"Links":            ["Network -> [MockNetwork 1500] Network"],
+			"privateKeySecret": "wireguard-client-private-key",
+			"listenPort":       25120,
+			"ownedIPs":         "10.198.10.1/24",
 			"amneziaWG": {
 				"cookieHeader":      "3",
 				"cookiePadding":     0,
@@ -234,9 +234,10 @@
 			}]
 		},
 		"WireGuard Server": {
-			"Class": "almagest/WireGuard",
-			"Pos":   "{\"x\":571,\"y\":591}",
-			"Links": ["Network -> [MockNetwork 1500] Network"],
+			"Class":            "almagest/WireGuard",
+			"Pos":              "{\"x\":571,\"y\":591}",
+			"Links":            ["Network -> [MockNetwork 1500] Network"],
+			"privateKeySecret": "wireguard-server-private-key",
 			"peers": [{
 				"allowedIPs": "10.198.10.1/32",
 				"amneziaWG": {
@@ -260,7 +261,6 @@
 				"presharedKey":                "",
 				"publicKey":                   "f4iMlTOU1YOfovXWCeMMjeBsc6vVqqDE/7XQeHg2oVQ="
 			}],
-			"privateKey": "SEtMTU5PUFFSU1RVVldYWVpbXF1eX2BhYmNkZWZnaGk=",
 			"listenPort": 25121,
 			"ownedIPs":   "10.198.20.1/24",
 			"amneziaWG": {

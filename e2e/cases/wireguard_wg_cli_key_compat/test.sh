@@ -149,7 +149,7 @@ assert_key_equals "server status public key" "$(menu_field "$server_menu" status
 assert_key_equals "client status public key from setup" "$client_public_from_wg" "$CLIENT_PUBLIC"
 assert_key_equals "server status public key from setup" "$server_public_from_wg" "$SERVER_PUBLIC_PADDED"
 
-assert_key_equals "server private key normalized from unpadded input" "$(menu_field "$server_menu" config privateKey)" "$SERVER_PRIVATE_PADDED"
+assert_key_equals "server private key secret name" "$(menu_field "$server_menu" config privateKeySecret)" "wireguard-cli-server-private-key"
 assert_key_equals "client peer public key normalized from unpadded input" "$(peer_field "$client_menu" publicKey)" "$SERVER_PUBLIC_PADDED"
 assert_key_equals "client peer preshared key normalized from unpadded input" "$(peer_field "$client_menu" presharedKey)" "$PRESHARED_KEY_PADDED"
 assert_key_equals "server peer preshared key normalized from unpadded input" "$(peer_field "$server_menu" presharedKey)" "$PRESHARED_KEY_PADDED"

@@ -122,6 +122,23 @@ func TestWireGuardE2ECopyPaste(t *testing.T) {
 	f.assertNodesLinked(serverWG, serverVTun)
 	f.assertNodesLinked(mock, clientWG)
 	f.assertNodesLinked(mock, serverWG)
+	f.SubscribeMenus(clientWG, serverWG)
+	pastedClientPublic := waitWireGuardPublicKeyValue(t, f.NodeE2E, clientWG)
+	pastedServerPublic := waitWireGuardPublicKeyValue(t, f.NodeE2E, serverWG)
+	applyWireGuardPeers(t, f.Engine, clientWG, []wireGuardPeerConfig{{
+		id:                          "server",
+		publicKey:                   pastedServerPublic,
+		endpoint:                    fmt.Sprintf("127.0.0.1:%d", f.serverWGPort),
+		allowedIPs:                  wireGuardE2EServerAddr + "/32",
+		persistentKeepaliveInterval: 1,
+	}})
+	applyWireGuardPeers(t, f.Engine, serverWG, []wireGuardPeerConfig{{
+		id:                          "client",
+		publicKey:                   pastedClientPublic,
+		endpoint:                    fmt.Sprintf("127.0.0.1:%d", f.clientWGPort),
+		allowedIPs:                  wireGuardE2EClientAddr + "/32",
+		persistentKeepaliveInterval: 1,
+	}})
 
 	port := httpTestPort()
 	server := f.addHTTPServerOnHost("pasted-server", wireGuardE2EServerAddr, port)
@@ -181,7 +198,7 @@ func TestWireGuardE2ESaveRestoreLoadingOrders(t *testing.T) {
 				t.Fatalf("close saved engine: %v", err)
 			}
 
-			restored := newNetworkRouterConfigE2E(t, cfg)
+			restored := newNetworkRouterConfigE2EWithSecrets(t, cfg, f.Secrets)
 			mock := restored.mustNodeByName(tc.names.mock)
 			clientWG := restored.mustNodeByName(tc.names.clientWG)
 			serverWG := restored.mustNodeByName(tc.names.serverWG)
@@ -451,6 +468,7 @@ func newWireGuardTunConfigE2E(t *testing.T) (*NodeE2E, *tunConfigRecorderRegistr
 	pool := newE2ETestDebugPool(t)
 	logf := NewDebugLogFactory(16384)
 	sys := newE2EDebugSystem()
+	secrets := newE2ESecretsStorage()
 	recorders := newTunConfigRecorderRegistry()
 	engine, err := BuildEngine(
 		context.Background(),
@@ -458,7 +476,7 @@ func newWireGuardTunConfigE2E(t *testing.T) (*NodeE2E, *tunConfigRecorderRegistr
 		logf,
 		sys,
 		nil,
-		nil, nil,
+		nil, secrets,
 
 		[]pasta.NodeClass{tunConfigRecorderClass{registry: recorders}},
 		pool,
@@ -473,7 +491,7 @@ func newWireGuardTunConfigE2E(t *testing.T) (*NodeE2E, *tunConfigRecorderRegistr
 		}
 	})
 
-	e := &NodeE2E{T: t, Engine: engine, LogFactory: logf, DebugSystem: sys, menus: formular.NewMenuSnapshotState()}
+	e := &NodeE2E{T: t, Engine: engine, LogFactory: logf, DebugSystem: sys, Secrets: secrets, menus: formular.NewMenuSnapshotState()}
 	sub := engine.SubscribeNotifications(func(notification EngineNotification) {
 		if notification.Kind != NotificationWorkspace || notification.Workspace == nil {
 			return

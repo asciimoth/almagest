@@ -44,9 +44,9 @@ func TestWireGuardClassPortsAndMenuBlocks(t *testing.T) {
 	if !ok || item.Field == nil || !item.Readonly {
 		t.Fatalf("status publicKey item = %#v, want readonly field", item)
 	}
-	item, ok = e.MenuItem(node, "config", "privateKey")
-	if !ok || item.Field == nil || !item.Secret {
-		t.Fatalf("config privateKey item = %#v, want secret field", item)
+	item, ok = e.MenuItem(node, "config", "privateKeySecret")
+	if !ok || item.Field == nil || item.Secret || item.Help == "" {
+		t.Fatalf("config privateKeySecret item = %#v, want documented non-secret field", item)
 	}
 	item, ok = e.MenuItem(node, "config", "ownedIPs")
 	if !ok || item.Field == nil || !item.Multiline {
@@ -179,6 +179,9 @@ func assertWireGuardStatusItemValue(t *testing.T, block formular.Block, id strin
 func TestWireGuardClassLongDescriptionDocumentsPlainSocksLimit(t *testing.T) {
 	desc := wireGuardClass{}.LongDescription()
 	for _, want := range []string{
+		"`privateKeySecret` stores only the secret name",
+		"`SecretsStorage.NewSecret`",
+		"`SecretValueChanged`",
 		"standard SOCKS5 UDP ASSOCIATE",
 		"does not let the client request the relay listen port",
 		"?gost",
@@ -194,22 +197,31 @@ func TestWireGuardAutoGeneratesPrivateKey(t *testing.T) {
 	node := e.AddNode(NodeTypeWireGuard, "wg")
 	e.SubscribeMenus(node)
 
-	freshKey := waitWireGuardPrivateKey(t, e, node)
+	freshSecret, freshKey := waitWireGuardPrivateKeySecret(t, e, node)
 	assertWireGuardPublicKeyPresent(t, e, node)
 	cfg := configer.NewMemory(nil)
 	if err := e.Engine.SaveConfig(cfg); err != nil {
 		t.Fatalf("SaveConfig fresh node: %v", err)
 	}
-	if got, err := cfg.Get(configer.Path{"nodes", "wg", "privateKey"}); err != nil || got != freshKey {
-		t.Fatalf("saved fresh privateKey = %#v, %v; want %q", got, err, freshKey)
+	if got, err := cfg.Get(configer.Path{"nodes", "wg", "privateKeySecret"}); err != nil || got != freshSecret {
+		t.Fatalf("saved fresh privateKeySecret = %#v, %v; want %q", got, err, freshSecret)
+	}
+	if got, err := cfg.Get(configer.Path{"nodes", "wg", "privateKey"}); err == nil {
+		t.Fatalf("saved fresh privateKey = %#v, want missing", got)
+	}
+	if got, ok := e.Secrets.SecretValue(freshSecret); !ok || got != freshKey {
+		t.Fatalf("stored fresh private key = %#v, %v; want %q", got, ok, freshKey)
 	}
 
+	legacyPrivate, legacyPublic := wireGuardTestKeyPair(t, 72)
 	for _, tc := range []struct {
 		name     string
 		nodeData map[string]any
+		wantPub  string
 	}{
 		{name: "missing", nodeData: map[string]any{"Class": NodeTypeWireGuard}},
 		{name: "empty", nodeData: map[string]any{"Class": NodeTypeWireGuard, "privateKey": ""}},
+		{name: "legacy raw privateKey", nodeData: map[string]any{"Class": NodeTypeWireGuard, "privateKey": legacyPrivate}, wantPub: legacyPublic},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			restored := newNodeE2EWithConfig(t, configer.NewMemory(map[string]any{
@@ -220,18 +232,161 @@ func TestWireGuardAutoGeneratesPrivateKey(t *testing.T) {
 				t.Fatal("restored node wg missing")
 			}
 			restored.SubscribeMenus(restoredNode)
-			restoredKey := waitWireGuardPrivateKey(t, restored, restoredNode)
-			assertWireGuardPublicKeyPresent(t, restored, restoredNode)
+			restoredSecret, restoredKey := waitWireGuardPrivateKeySecret(t, restored, restoredNode)
+			if tc.wantPub != "" {
+				assertWireGuardPublicKey(t, restored, restoredNode, tc.wantPub)
+			} else {
+				assertWireGuardPublicKeyPresent(t, restored, restoredNode)
+			}
 
 			restoredCfg := configer.NewMemory(nil)
 			if err := restored.Engine.SaveConfig(restoredCfg); err != nil {
 				t.Fatalf("SaveConfig restored node: %v", err)
 			}
-			if got, err := restoredCfg.Get(configer.Path{"nodes", "wg", "privateKey"}); err != nil || got != restoredKey {
-				t.Fatalf("saved restored privateKey = %#v, %v; want %q", got, err, restoredKey)
+			if got, err := restoredCfg.Get(configer.Path{"nodes", "wg", "privateKeySecret"}); err != nil || got != restoredSecret {
+				t.Fatalf("saved restored privateKeySecret = %#v, %v; want %q", got, err, restoredSecret)
+			}
+			if got, err := restoredCfg.Get(configer.Path{"nodes", "wg", "privateKey"}); err == nil {
+				t.Fatalf("saved restored privateKey = %#v, want missing", got)
+			}
+			if got, ok := restored.Secrets.SecretValue(restoredSecret); !ok || got != restoredKey {
+				t.Fatalf("stored restored private key = %#v, %v; want %q", got, ok, restoredKey)
 			}
 		})
 	}
+}
+
+func TestWireGuardSecretValueChangedReloadsPrivateKey(t *testing.T) {
+	e := NewNodeE2E(t)
+	node := e.AddNode(NodeTypeWireGuard, "wg")
+	e.SubscribeMenus(node)
+	secretName, oldPrivateKey := waitWireGuardPrivateKeySecret(t, e, node)
+	oldPublicKey := wireGuardPublicKeyFromPrivateKey(t, oldPrivateKey)
+
+	newPrivateKey, newPublicKey := wireGuardTestKeyPair(t, 74)
+	e.Secrets.SetSecret(secretName, Secret{Value: newPrivateKey}, "wg")
+	sendWireGuardSecretValueChanged(t, e, node, secretName, secretName)
+	assertWireGuardPublicKey(t, e, node, newPublicKey)
+	assertWireGuardConfigField(t, e, node, "privateKeySecret", secretName)
+
+	e.Secrets.SetSecret(secretName, Secret{Value: "bad"}, "wg")
+	sendWireGuardSecretValueChanged(t, e, node, secretName, secretName)
+	Eventually(t, func() bool {
+		item, ok := e.MenuItem(node, "config", "privateKeySecret")
+		return ok && item.Status == formular.StatusError
+	}, "invalid WireGuard private key secret is rejected")
+	assertWireGuardPublicKey(t, e, node, newPublicKey)
+
+	e.Secrets.SetSecret(secretName, Secret{Value: oldPrivateKey}, "wg")
+	sendWireGuardSecretValueChanged(t, e, node, secretName, secretName)
+	assertWireGuardPublicKey(t, e, node, oldPublicKey)
+}
+
+func TestWireGuardSecretValueChangedRenamesOrRotatesPrivateKeySecret(t *testing.T) {
+	e := NewNodeE2E(t)
+	node := e.AddNode(NodeTypeWireGuard, "wg")
+	e.SubscribeMenus(node)
+	oldSecret, oldPrivateKey := waitWireGuardPrivateKeySecret(t, e, node)
+	oldPublicKey := wireGuardPublicKeyFromPrivateKey(t, oldPrivateKey)
+
+	renamedPrivateKey, renamedPublicKey := wireGuardTestKeyPair(t, 75)
+	renamedSecret := "renamed-wireguard-private-key"
+	e.Secrets.SetSecret(renamedSecret, Secret{Value: renamedPrivateKey}, "wg")
+	e.Secrets.DeleteSecret(oldSecret)
+	sendWireGuardSecretValueChanged(t, e, node, oldSecret, renamedSecret)
+	assertWireGuardConfigField(t, e, node, "privateKeySecret", renamedSecret)
+	assertWireGuardPublicKey(t, e, node, renamedPublicKey)
+
+	e.Secrets.DeleteSecret(renamedSecret)
+	sendWireGuardSecretValueChanged(t, e, node, renamedSecret, renamedSecret)
+	assertWireGuardConfigFieldNotEqual(t, e, node, "privateKeySecret", renamedSecret)
+	Eventually(t, func() bool {
+		item, ok := e.MenuItem(node, "config", "privateKeySecret")
+		if !ok {
+			return false
+		}
+		secretName, ok := formular.StringValue(item.Value)
+		if !ok || secretName == "" || secretName == renamedSecret {
+			return false
+		}
+		rotatedPrivateKey, ok := e.Secrets.SecretValue(secretName)
+		if !ok {
+			return false
+		}
+		return rotatedPrivateKey != renamedPrivateKey && wireGuardPublicKeyFromPrivateKey(t, rotatedPrivateKey) != oldPublicKey
+	}, "inaccessible WireGuard private key secret rotates")
+}
+
+func TestResolveWireGuardPrivateKeySecret(t *testing.T) {
+	nodeName := "wg"
+	storage := newE2ESecretsStorage()
+	validPrivate, validPublic := wireGuardTestKeyPair(t, 61)
+	legacyPrivate, legacyPublic := wireGuardTestKeyPair(t, 62)
+	accessibleSecret, err := storage.NewSecret(Secret{Value: validPrivate}, nodeName)
+	if err != nil {
+		t.Fatalf("NewSecret accessible: %v", err)
+	}
+	inaccessibleSecret := "inaccessible-wireguard-private-key"
+	storage.SetSecret(inaccessibleSecret, Secret{Value: validPrivate}, "other-wg")
+	invalidSecret := "invalid-wireguard-private-key"
+	storage.SetSecret(invalidSecret, Secret{Value: "bad"}, nodeName)
+
+	t.Run("accessible configured secret", func(t *testing.T) {
+		gotPrivate, gotSecret, err := resolveWireGuardPrivateKeySecret(storage, nodeName, accessibleSecret, legacyPrivate)
+		if err != nil {
+			t.Fatalf("resolve accessible secret: %v", err)
+		}
+		if gotSecret != accessibleSecret {
+			t.Fatalf("secret = %q, want %q", gotSecret, accessibleSecret)
+		}
+		if gotPublic := wireGuardPublicKeyFromPrivateKey(t, gotPrivate); gotPublic != validPublic {
+			t.Fatalf("public key = %q, want %q", gotPublic, validPublic)
+		}
+	})
+
+	t.Run("empty secret migrates legacy value", func(t *testing.T) {
+		gotPrivate, gotSecret, err := resolveWireGuardPrivateKeySecret(storage, nodeName, "", legacyPrivate)
+		if err != nil {
+			t.Fatalf("resolve legacy value: %v", err)
+		}
+		if gotSecret == "" {
+			t.Fatal("secret name is empty")
+		}
+		if gotPublic := wireGuardPublicKeyFromPrivateKey(t, gotPrivate); gotPublic != legacyPublic {
+			t.Fatalf("public key = %q, want %q", gotPublic, legacyPublic)
+		}
+		if stored, ok := storage.SecretValue(gotSecret); !ok || stored != legacyPrivate {
+			t.Fatalf("stored legacy private key = %q, %v; want %q", stored, ok, legacyPrivate)
+		}
+	})
+
+	t.Run("inaccessible configured secret rotates instead of using legacy", func(t *testing.T) {
+		gotPrivate, gotSecret, err := resolveWireGuardPrivateKeySecret(storage, nodeName, inaccessibleSecret, legacyPrivate)
+		if err != nil {
+			t.Fatalf("resolve inaccessible secret: %v", err)
+		}
+		if gotSecret == "" || gotSecret == inaccessibleSecret {
+			t.Fatalf("secret = %q, want generated replacement", gotSecret)
+		}
+		if gotPrivate == legacyPrivate {
+			t.Fatal("private key reused legacy value for inaccessible configured secret")
+		}
+		if stored, ok := storage.SecretValue(gotSecret); !ok || normalizeWireGuardKey(stored) != gotPrivate {
+			t.Fatalf("stored replacement key = %q, %v; want %q", stored, ok, gotPrivate)
+		}
+	})
+
+	t.Run("accessible invalid secret reports error", func(t *testing.T) {
+		if _, _, err := resolveWireGuardPrivateKeySecret(storage, nodeName, invalidSecret, ""); err == nil {
+			t.Fatal("resolve invalid secret succeeded")
+		}
+	})
+
+	t.Run("missing storage reports error", func(t *testing.T) {
+		if _, _, err := resolveWireGuardPrivateKeySecret(nil, nodeName, accessibleSecret, ""); !errors.Is(err, errWireGuardSecretsUnavailable) {
+			t.Fatalf("resolve missing storage error = %v, want %v", err, errWireGuardSecretsUnavailable)
+		}
+	})
 }
 
 func TestWireGuardConfigPersistsAcrossSaveRestoreAndCopyPaste(t *testing.T) {
@@ -267,8 +422,19 @@ func TestWireGuardConfigPersistsAcrossSaveRestoreAndCopyPaste(t *testing.T) {
 	if err := e.Engine.SaveConfig(cfg); err != nil {
 		t.Fatalf("SaveConfig: %v", err)
 	}
-	if got, err := cfg.Get(configer.Path{"nodes", "wg", "privateKey"}); err != nil || got != privateKey {
-		t.Fatalf("saved privateKey = %#v, %v; want %q", got, err, privateKey)
+	privateKeySecret, err := cfg.Get(configer.Path{"nodes", "wg", "privateKeySecret"})
+	if err != nil {
+		t.Fatalf("saved privateKeySecret missing: %v", err)
+	}
+	privateKeySecretText, ok := formular.StringValue(privateKeySecret)
+	if !ok || privateKeySecretText == "" {
+		t.Fatalf("saved privateKeySecret = %#v, want non-empty string", privateKeySecret)
+	}
+	if got, err := cfg.Get(configer.Path{"nodes", "wg", "privateKey"}); err == nil {
+		t.Fatalf("saved privateKey = %#v, want missing", got)
+	}
+	if got, ok := e.Secrets.SecretValue(privateKeySecretText); !ok || got != privateKey {
+		t.Fatalf("stored private key = %#v, %v; want %q", got, ok, privateKey)
 	}
 	gotPort, err := cfg.Get(configer.Path{"nodes", "wg", "listenPort"})
 	if err != nil {
@@ -292,7 +458,7 @@ func TestWireGuardConfigPersistsAcrossSaveRestoreAndCopyPaste(t *testing.T) {
 		t.Fatalf("saved fwmark = %#v, want missing removed field", got)
 	}
 
-	restored := newNodeE2EWithConfig(t, cfg)
+	restored := newNodeE2EWithConfigAndSecrets(t, cfg, e.Secrets)
 	restoredNode, ok := restored.Engine.NodeByName(E2EWorkspace, "wg")
 	if !ok {
 		t.Fatal("restored node wg missing")
@@ -326,8 +492,10 @@ func TestWireGuardConfigPersistsAcrossSaveRestoreAndCopyPaste(t *testing.T) {
 	e.SubscribeMenus(pastedNode)
 	Eventually(t, func() bool {
 		item, ok := e.MenuItem(pastedNode, "status", "publicKey")
-		return ok && item.Value == publicKey
-	}, "pasted wireguard public key status")
+		value, _ := formular.StringValue(item.Value)
+		return ok && value != "" && value != publicKey
+	}, "pasted wireguard public key rotated")
+	assertWireGuardConfigFieldNotEqual(t, e, pastedNode, "privateKeySecret", privateKeySecretText)
 	assertWireGuardConfigField(t, e, pastedNode, "batchSize", 8)
 	assertWireGuardConfigField(t, e, pastedNode, "ownedIPs", ownedIPs)
 	assertWireGuardConfigField(t, e, pastedNode, "amneziaJunkCount", amneziaWG.junkCount)
@@ -343,27 +511,29 @@ func TestWireGuardValidationReportsStatus(t *testing.T) {
 	e := NewNodeE2E(t)
 	node := e.AddNode(NodeTypeWireGuard, "wg")
 	e.SubscribeMenus(node)
-
-	e.Engine.SendNodeFormularMsg(E2EWorkspace, node, formular.FieldValidateMessage{
-		MessageBase: FormMessageBase(formular.MessageFieldValidate, node),
-		Field:       formular.FieldRef{BlockID: "config", FieldID: "privateKey"},
-		Value:       "bad",
-	})
-	Eventually(t, func() bool {
-		item, ok := e.MenuItem(node, "config", "privateKey")
-		return ok && item.Status == formular.StatusError
-	}, "private key validation error")
-
 	privateKey, _ := wireGuardTestKeyPair(t, 3)
+	invalidSecret := wireGuardTestPrivateKeySecret(t, e.Engine, node, "bad")
+	validSecret := wireGuardTestPrivateKeySecret(t, e.Engine, node, privateKey)
+
 	e.Engine.SendNodeFormularMsg(E2EWorkspace, node, formular.FieldValidateMessage{
 		MessageBase: FormMessageBase(formular.MessageFieldValidate, node),
-		Field:       formular.FieldRef{BlockID: "config", FieldID: "privateKey"},
-		Value:       privateKey,
+		Field:       formular.FieldRef{BlockID: "config", FieldID: "privateKeySecret"},
+		Value:       invalidSecret,
 	})
 	Eventually(t, func() bool {
-		item, ok := e.MenuItem(node, "config", "privateKey")
+		item, ok := e.MenuItem(node, "config", "privateKeySecret")
+		return ok && item.Status == formular.StatusError
+	}, "private key secret validation error")
+
+	e.Engine.SendNodeFormularMsg(E2EWorkspace, node, formular.FieldValidateMessage{
+		MessageBase: FormMessageBase(formular.MessageFieldValidate, node),
+		Field:       formular.FieldRef{BlockID: "config", FieldID: "privateKeySecret"},
+		Value:       validSecret,
+	})
+	Eventually(t, func() bool {
+		item, ok := e.MenuItem(node, "config", "privateKeySecret")
 		return ok && item.Status == formular.StatusOK
-	}, "private key validation ok")
+	}, "private key secret validation ok")
 
 	e.Engine.SendNodeFormularMsg(E2EWorkspace, node, formular.FieldValidateMessage{
 		MessageBase: FormMessageBase(formular.MessageFieldValidate, node),
@@ -602,13 +772,14 @@ func TestWireGuardNetworkAttachmentDoesNotOpenSocketsUntilTunAttached(t *testing
 	}
 
 	privateKey, _ := wireGuardTestKeyPair(t, 4)
+	privateKeySecret := wireGuardTestPrivateKeySecretForNode(t, wg.secrets, wg.nodeName, privateKey)
 	_, peerPublicKey := wireGuardTestKeyPair(t, 5)
 	w.SendNodeFormularMsg(wgID, formular.FormApplyMessage{
 		MessageBase: FormMessageBase(formular.MessageFormApply, wgID),
 		BlockID:     "config",
 		Values: map[string]any{
-			"privateKey": privateKey,
-			"listenPort": 51820,
+			"privateKeySecret": privateKeySecret,
+			"listenPort":       51820,
 		},
 	})
 	w.SendNodeFormularMsg(wgID, formular.FormApplyMessage{
@@ -641,8 +812,8 @@ func TestWireGuardNetworkAttachmentDoesNotOpenSocketsUntilTunAttached(t *testing
 		MessageBase: FormMessageBase(formular.MessageFormApply, wgID),
 		BlockID:     "config",
 		Values: map[string]any{
-			"privateKey": privateKey,
-			"listenPort": 51822,
+			"privateKeySecret": privateKeySecret,
+			"listenPort":       51822,
 		},
 	})
 	if got := network.listenCount(); got != listensAfterTunDetach {
@@ -1057,14 +1228,15 @@ func applyWireGuardConfigWithOwnedIPs(t *testing.T, engine Engine, node uint64, 
 
 func applyWireGuardConfigWithBatchAndOwnedIPs(t *testing.T, engine Engine, node uint64, privateKey string, listenPort, batchSize int, ownedIPs string, peers []wireGuardPeerConfig) {
 	t.Helper()
+	privateKeySecret := wireGuardTestPrivateKeySecret(t, engine, node, privateKey)
 	engine.SendNodeFormularMsg(E2EWorkspace, node, formular.FormApplyMessage{
 		MessageBase: FormMessageBase(formular.MessageFormApply, node),
 		BlockID:     "config",
 		Values: map[string]any{
-			"privateKey": privateKey,
-			"listenPort": listenPort,
-			"batchSize":  batchSize,
-			"ownedIPs":   ownedIPs,
+			"privateKeySecret": privateKeySecret,
+			"listenPort":       listenPort,
+			"batchSize":        batchSize,
+			"ownedIPs":         ownedIPs,
 		},
 	})
 	engine.SendNodeFormularMsg(E2EWorkspace, node, formular.FormApplyMessage{
@@ -1072,6 +1244,53 @@ func applyWireGuardConfigWithBatchAndOwnedIPs(t *testing.T, engine Engine, node 
 		BlockID:     "peers",
 		Values: map[string]any{
 			"peers": wireGuardPeerValues(peers),
+		},
+	})
+}
+
+func applyWireGuardPeers(t *testing.T, engine Engine, node uint64, peers []wireGuardPeerConfig) {
+	t.Helper()
+	engine.SendNodeFormularMsg(E2EWorkspace, node, formular.FormApplyMessage{
+		MessageBase: FormMessageBase(formular.MessageFormApply, node),
+		BlockID:     "peers",
+		Values: map[string]any{
+			"peers": wireGuardPeerValues(peers),
+		},
+	})
+}
+
+func wireGuardTestPrivateKeySecret(t *testing.T, engine Engine, node uint64, privateKey string) string {
+	t.Helper()
+	storage := engine.SecretsStorage()
+	if storage == nil {
+		t.Fatal("test engine has no secrets storage")
+	}
+	snapshot, ok := engine.NodeSnapshot(E2EWorkspace, node)
+	if !ok {
+		t.Fatalf("NodeSnapshot(%d) missing", node)
+	}
+	return wireGuardTestPrivateKeySecretForNode(t, storage, snapshot.Name, privateKey)
+}
+
+func wireGuardTestPrivateKeySecretForNode(t *testing.T, storage SecretsStorage, nodeName string, privateKey string) string {
+	t.Helper()
+	if storage == nil {
+		t.Fatal("test has no secrets storage")
+	}
+	name, err := storage.NewSecret(Secret{Value: privateKey}, nodeName)
+	if err != nil {
+		t.Fatalf("NewSecret for WireGuard private key: %v", err)
+	}
+	return name
+}
+
+func sendWireGuardSecretValueChanged(t *testing.T, e *NodeE2E, node uint64, prev, next string) {
+	t.Helper()
+	e.Engine.SendInbox(E2EWorkspace, pasta.InboxMessage{
+		ReceiverNode: node,
+		Payload: SecretValueChanged{
+			SecretNamePrev: prev,
+			SecretNameNew:  next,
 		},
 	})
 }
@@ -1241,11 +1460,18 @@ func assertWireGuardConfigField(t *testing.T, e *NodeE2E, node uint64, fieldID s
 	}, "wireguard config field %s = %#v", fieldID, want)
 }
 
-func waitWireGuardPrivateKey(t *testing.T, e *NodeE2E, node uint64) string {
+func assertWireGuardConfigFieldNotEqual(t *testing.T, e *NodeE2E, node uint64, fieldID string, notWant any) {
 	t.Helper()
-	var got string
 	Eventually(t, func() bool {
-		item, ok := e.MenuItem(node, "config", "privateKey")
+		item, ok := e.MenuItem(node, "config", fieldID)
+		return ok && !reflect.DeepEqual(item.Value, notWant)
+	}, "wireguard config field %s != %#v", fieldID, notWant)
+}
+
+func waitWireGuardPrivateKeySecret(t *testing.T, e *NodeE2E, node uint64) (secretName, privateKey string) {
+	t.Helper()
+	Eventually(t, func() bool {
+		item, ok := e.MenuItem(node, "config", "privateKeySecret")
 		if !ok || item.Field == nil {
 			return false
 		}
@@ -1253,14 +1479,19 @@ func waitWireGuardPrivateKey(t *testing.T, e *NodeE2E, node uint64) string {
 		if !ok || value == "" {
 			return false
 		}
-		key, err := parseWireGuardPrivateKey(value)
+		keyValue, ok := e.Secrets.SecretValue(value)
+		if !ok {
+			return false
+		}
+		key, err := parseWireGuardPrivateKey(keyValue)
 		if err != nil || key.IsZero() {
 			return false
 		}
-		got = value
+		secretName = value
+		privateKey = normalizeWireGuardKey(keyValue)
 		return true
-	}, "wireguard generated private key")
-	return got
+	}, "wireguard generated private key secret")
+	return secretName, privateKey
 }
 
 func assertWireGuardPublicKeyPresent(t *testing.T, e *NodeE2E, node uint64) {
@@ -1279,6 +1510,35 @@ func assertWireGuardPublicKeyPresent(t *testing.T, e *NodeE2E, node uint64) {
 	}, "wireguard generated public key")
 }
 
+func assertWireGuardPublicKey(t *testing.T, e *NodeE2E, node uint64, want string) {
+	t.Helper()
+	Eventually(t, func() bool {
+		item, ok := e.MenuItem(node, "status", "publicKey")
+		return ok && item.Value == want
+	}, "wireguard public key %q", want)
+}
+
+func waitWireGuardPublicKeyValue(t *testing.T, e *NodeE2E, node uint64) string {
+	t.Helper()
+	var got string
+	Eventually(t, func() bool {
+		item, ok := e.MenuItem(node, "status", "publicKey")
+		if !ok || item.Field == nil {
+			return false
+		}
+		value, ok := formular.StringValue(item.Value)
+		if !ok || value == "" {
+			return false
+		}
+		if _, err := parseWireGuardPublicKey(value); err != nil {
+			return false
+		}
+		got = value
+		return true
+	}, "wireguard public key value")
+	return got
+}
+
 func wireGuardTestKeyPair(t *testing.T, seed byte) (privateKeyBase64, publicKeyBase64 string) {
 	t.Helper()
 	var privateKey wgdevice.NoisePrivateKey
@@ -1294,8 +1554,22 @@ func wireGuardTestKeyPair(t *testing.T, seed byte) (privateKeyBase64, publicKeyB
 	return privateKey.Base64(), publicKeyBase64
 }
 
+func wireGuardPublicKeyFromPrivateKey(t *testing.T, privateKeyBase64 string) string {
+	t.Helper()
+	privateKey, err := parseWireGuardPrivateKey(privateKeyBase64)
+	if err != nil {
+		t.Fatalf("parseWireGuardPrivateKey: %v", err)
+	}
+	publicKey := wireGuardPublicKeyBase64(privateKey)
+	if publicKey == "" {
+		t.Fatal("wireGuardPublicKeyBase64 returned empty key")
+	}
+	return publicKey
+}
+
 type captureWireGuardClass struct {
-	node **wireGuardNode
+	node    **wireGuardNode
+	secrets SecretsStorage
 }
 
 func (captureWireGuardClass) ClassName() string        { return "test/WireGuard" }
@@ -1307,10 +1581,11 @@ func (captureWireGuardClass) DefaultNodeParams() pasta.NodeClassParams {
 func (c captureWireGuardClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
 	config := defaultWireGuardConfig()
 	config.read(cfg)
-	if err := config.ensurePrivateKey(); err != nil {
-		return nil, err
+	secrets := c.secrets
+	if secrets == nil {
+		secrets = newE2ESecretsStorage()
 	}
-	node := &wireGuardNode{config: config}
+	node := &wireGuardNode{config: config, secrets: secrets}
 	if c.node != nil {
 		*c.node = node
 	}

@@ -59,6 +59,25 @@ PRESHARED_KEY_PADDED='$preshared_key_padded'
 PRESHARED_KEY='$preshared_key'
 EOF
 
+cat >protected_alm.hujson <<EOF
+{
+	"Admin": {
+		"Web": 0,
+		"Unix": "$E2E_ADMIN_SOCK",
+	},
+	"Secrets": {
+		"wireguard-cli-client-private-key": {
+			"Value": "$client_private",
+			"Nodes": ["WireGuard CLI Client"],
+		},
+		"wireguard-cli-server-private-key": {
+			"Value": "$server_private",
+			"Nodes": ["WireGuard CLI Server"],
+		},
+	},
+}
+EOF
+
 cat >alm.hujson <<EOF
 {
 	"Logs": {
@@ -75,9 +94,9 @@ cat >alm.hujson <<EOF
 			"Class":      "almagest/WireGuard",
 			"Pos":        "{\"x\":488,\"y\":180}",
 			"Links":      ["Network -> [SocksClient CLI Client] Network"],
-			"privateKey": "$client_private",
-			"listenPort": 51840,
-			"ownedIPs":   "",
+			"privateKeySecret": "wireguard-cli-client-private-key",
+			"listenPort":       51840,
+			"ownedIPs":         "",
 			"peers": [{
 				"allowedIPs":                  "10.199.20.1/32",
 				"endpoint":                    "127.0.0.1:51841",
@@ -92,9 +111,9 @@ cat >alm.hujson <<EOF
 			"Class":      "almagest/WireGuard",
 			"Pos":        "{\"x\":476,\"y\":377}",
 			"Links":      ["Network -> [SocksClient CLI Server] Network"],
-			"privateKey": "$server_private",
-			"listenPort": 51841,
-			"ownedIPs":   "",
+			"privateKeySecret": "wireguard-cli-server-private-key",
+			"listenPort":       51841,
+			"ownedIPs":         "",
 			"peers": [{
 				"allowedIPs":                  "10.199.10.1/32",
 				"endpoint":                    "127.0.0.1:51840",

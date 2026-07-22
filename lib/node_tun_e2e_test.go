@@ -61,17 +61,24 @@ func TestTunE2EMultipleNodesSaveRestore(t *testing.T) {
 
 func newNodeE2EWithConfig(t *testing.T, cfg configer.Config) *NodeE2E {
 	t.Helper()
+	return newNodeE2EWithConfigAndSecrets(t, cfg, newE2ESecretsStorage())
+}
 
+func newNodeE2EWithConfigAndSecrets(t *testing.T, cfg configer.Config, secrets *e2eSecretsStorage) *NodeE2E {
+	t.Helper()
 	pool := newE2ETestDebugPool(t)
 	logf := NewDebugLogFactory(16384)
 	sys := newE2EDebugSystem()
+	if secrets == nil {
+		secrets = newE2ESecretsStorage()
+	}
 	engine, err := BuildEngine(
 		context.Background(),
 		cfg,
 		logf,
 		sys,
 		nil,
-		nil, nil,
+		nil, secrets,
 
 		nil,
 		pool,
@@ -86,7 +93,7 @@ func newNodeE2EWithConfig(t *testing.T, cfg configer.Config) *NodeE2E {
 		}
 	})
 
-	e := &NodeE2E{T: t, Engine: engine, LogFactory: logf, DebugSystem: sys, menus: formular.NewMenuSnapshotState()}
+	e := &NodeE2E{T: t, Engine: engine, LogFactory: logf, DebugSystem: sys, Secrets: secrets, menus: formular.NewMenuSnapshotState()}
 	sub := engine.SubscribeNotifications(func(notification EngineNotification) {
 		if notification.Kind != NotificationWorkspace || notification.Workspace == nil {
 			return

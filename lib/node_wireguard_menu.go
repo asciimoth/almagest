@@ -53,7 +53,7 @@ func (n *wireGuardNode) statusBlock() formular.Block {
 func (n *wireGuardNode) configBlock() formular.Block {
 	statusErr := n.formError != ""
 	items := []formular.Item{
-		secretTextField("privateKey", "Private key", n.config.privateKey, statusErr, n.formError, false),
+		wireGuardPrivateKeySecretField(n.config.privateKeySecret, statusErr, n.formError),
 		configIntField("listenPort", "Listen port", n.config.listenPort, statusErr, n.formError),
 		wireGuardBatchSizeField(n.config.batchSize, statusErr, n.formError),
 		configTextField("ownedIPs", "Owned IPs", n.config.ownedIPs, statusErr, n.formError, true),
@@ -79,9 +79,11 @@ func (n *wireGuardNode) peersBlock() formular.Block {
 func (n *wireGuardNode) sendConfigFieldStatus(msg formular.FieldValidateMessage) {
 	next := n.config.clone()
 	switch msg.Field.FieldID {
-	case "privateKey":
+	case "privateKeySecret":
 		if value, ok := formular.StringValue(msg.Value); ok {
-			next.privateKey = value
+			next.privateKeySecret = value
+			next.privateKey = ""
+			next.privateKeyLegacyValue = ""
 		}
 	case "listenPort":
 		if value, ok := formular.IntValue(msg.Value); ok {
@@ -101,6 +103,10 @@ func (n *wireGuardNode) sendConfigFieldStatus(msg formular.FieldValidateMessage)
 		}
 	}
 	next.normalize()
+	if msg.Field.FieldID == "privateKeySecret" {
+		n.sendFieldStatus(msg, n.validatePrivateKeySecretForForm(next.privateKeySecret))
+		return
+	}
 	n.sendFieldStatus(msg, validateWireGuardConfig(next))
 }
 func (n *wireGuardNode) sendFormFieldStatus(msg formular.FieldValidateMessage) {
@@ -176,6 +182,11 @@ func wireGuardBatchSizeField(value int, statusErr bool, statusText string) formu
 	item.Help = "wgo and batchudp batch size. Use 0 for library defaults; smaller positive values reduce retained buffers and may reduce peak throughput."
 	return item
 }
+func wireGuardPrivateKeySecretField(value string, statusErr bool, statusText string) formular.Item {
+	item := configTextField("privateKeySecret", "Private key secret", value, statusErr, statusText, false)
+	item.Help = "Secret name containing the WireGuard private key. Empty or inaccessible names are replaced with a newly generated private-key secret."
+	return item
+}
 func wireGuardUint64Text(value uint64) string {
 	return strconv.FormatUint(value, 10)
 }
@@ -184,16 +195,6 @@ func wireGuardTimeText(value time.Time) string {
 		return ""
 	}
 	return value.Format(time.RFC3339)
-}
-func secretTextField(id, label, value string, statusErr bool, statusText string, multiline bool) formular.Item {
-	opts := []formular.FieldOption{formular.Validation, formular.Secret}
-	if multiline {
-		opts = append(opts, formular.Multiline)
-	}
-	if statusErr {
-		opts = append(opts, formular.Status(formular.StatusError), formular.StatusText(statusText))
-	}
-	return formular.TextField(id, label, value, opts...)
 }
 func wireGuardPeerTemplate() formular.ArrayTemplate {
 	return formular.ArrayTemplate{

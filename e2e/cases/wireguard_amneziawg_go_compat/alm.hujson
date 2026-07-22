@@ -13,9 +13,9 @@
 			"Class":      "almagest/WireGuard",
 			"Pos":        "{\"x\":488,\"y\":180}",
 			"Links":      ["Network -> [OutNetwork Compat] Network"],
-			"privateKey": "iMBBlzD6x+4ZVFtXGpVr4hwdh8iqvCzPIhy+kE6oh2I=",
-			"listenPort": 51850,
-			"ownedIPs":   "",
+			"privateKeySecret": "wireguard-almagest-private-key",
+			"listenPort":       51850,
+			"ownedIPs":         "",
 			"amneziaWG": {
 				"junkCount":        2,
 				"junkMin":          11,

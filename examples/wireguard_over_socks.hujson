@@ -56,12 +56,12 @@
 			"eventCh":        10
 		},
 		"WireGuard Client": {
-			"Class":      "almagest/WireGuard",
-			"Pos":        "{\"x\":594,\"y\":334}",
-			"Links":      ["Network -> [SocksClient A] Network"],
-			"privateKey": "KCssLS4vMDEyMzQ1Njc4OTo7PD0+P0BBQkNERUZHSEk=",
-			"listenPort": 25120,
-			"ownedIPs":   "10.198.10.1/24",
+			"Class":            "almagest/WireGuard",
+			"Pos":              "{\"x\":594,\"y\":334}",
+			"Links":            ["Network -> [SocksClient A] Network"],
+			"privateKeySecret": "wireguard-client-private-key",
+			"listenPort":       25120,
+			"ownedIPs":         "10.198.10.1/24",
 			"amneziaWG": {
 				"cookieHeader":      "3",
 				"cookiePadding":     0,
@@ -114,12 +114,12 @@
 			"mtu":            1500
 		},
 		"WireGuard Server": {
-			"Class":      "almagest/WireGuard",
-			"Pos":        "{\"x\":571,\"y\":591}",
-			"Links":      ["Network -> [SocksClient B] Network"],
-			"privateKey": "SEtMTU5PUFFSU1RVVldYWVpbXF1eX2BhYmNkZWZnaGk=",
-			"listenPort": 25121,
-			"ownedIPs":   "10.198.20.1/24",
+			"Class":            "almagest/WireGuard",
+			"Pos":              "{\"x\":571,\"y\":591}",
+			"Links":            ["Network -> [SocksClient B] Network"],
+			"privateKeySecret": "wireguard-server-private-key",
+			"listenPort":       25121,
+			"ownedIPs":         "10.198.20.1/24",
 			"amneziaWG": {
 				"cookieHeader":      "3",
 				"cookiePadding":     0,

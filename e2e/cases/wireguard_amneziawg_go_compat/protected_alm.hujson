@@ -3,4 +3,10 @@
 		"Web": 0,
 		"Unix": "%E2E_ADMIN_SOCK%",
 	},
+	"Secrets": {
+		"wireguard-almagest-private-key": {
+			"Value": "iMBBlzD6x+4ZVFtXGpVr4hwdh8iqvCzPIhy+kE6oh2I=",
+			"Nodes": ["WireGuard Almagest"],
+		},
+	},
 }

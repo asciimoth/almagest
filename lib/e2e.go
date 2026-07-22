@@ -2,6 +2,7 @@ package almagest
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -25,6 +26,7 @@ type NodeE2E struct {
 	Engine      Engine
 	LogFactory  *DebugLogFactory
 	DebugSystem *sysnetdebug.System
+	Secrets     *e2eSecretsStorage
 
 	mu    sync.Mutex
 	menus *formular.MenuSnapshotState
@@ -93,13 +95,14 @@ func NewNodeE2E(t *testing.T) *NodeE2E {
 	pool := newE2ETestDebugPool(t)
 	logf := NewDebugLogFactory(16384)
 	sys := newE2EDebugSystem()
+	secrets := newE2ESecretsStorage()
 	engine, err := BuildEngine(
 		context.Background(),
 		configer.NewMemory(nil),
 		logf,
 		sys,
 		nil,
-		nil, nil,
+		nil, secrets,
 
 		nil,
 		pool,
@@ -114,7 +117,7 @@ func NewNodeE2E(t *testing.T) *NodeE2E {
 		}
 	})
 
-	e := &NodeE2E{T: t, Engine: engine, LogFactory: logf, DebugSystem: sys, menus: formular.NewMenuSnapshotState()}
+	e := &NodeE2E{T: t, Engine: engine, LogFactory: logf, DebugSystem: sys, Secrets: secrets, menus: formular.NewMenuSnapshotState()}
 	sub := engine.SubscribeNotifications(func(notification EngineNotification) {
 		if notification.Kind != NotificationWorkspace || notification.Workspace == nil {
 			return
@@ -130,6 +133,97 @@ func NewNodeE2E(t *testing.T) *NodeE2E {
 	}
 	t.Cleanup(func() { engine.UnsubscribeNotifications(sub) })
 	return e
+}
+
+type e2eSecretRecord struct {
+	secret Secret
+	nodes  map[string]struct{}
+}
+
+type e2eSecretsStorage struct {
+	mu      sync.Mutex
+	nextKey int
+	records map[string]e2eSecretRecord
+}
+
+func newE2ESecretsStorage() *e2eSecretsStorage {
+	return &e2eSecretsStorage{records: map[string]e2eSecretRecord{}}
+}
+
+func (s *e2eSecretsStorage) GetSecret(key string, node string) (Secret, error) {
+	if s == nil || key == "" || pasta.ValidateNodeName(node) != nil {
+		return Secret{}, ErrSecretAccessDenied
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	record, ok := s.records[key]
+	if !ok {
+		return Secret{}, ErrSecretAccessDenied
+	}
+	if _, ok := record.nodes[node]; !ok {
+		return Secret{}, ErrSecretAccessDenied
+	}
+	return record.secret, nil
+}
+
+func (s *e2eSecretsStorage) NewSecret(sec Secret, node string) (string, error) {
+	if s == nil {
+		return "", ErrSecretClosed
+	}
+	if pasta.ValidateNodeName(node) != nil {
+		return "", ErrSecretInvalidName
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for {
+		s.nextKey++
+		key := fmt.Sprintf("secret-%d", s.nextKey)
+		if _, exists := s.records[key]; exists {
+			continue
+		}
+		s.records[key] = e2eSecretRecord{
+			secret: Secret{Value: sec.Value},
+			nodes:  map[string]struct{}{node: {}},
+		}
+		return key, nil
+	}
+}
+
+func (s *e2eSecretsStorage) SetSecret(key string, sec Secret, nodes ...string) {
+	if s == nil {
+		return
+	}
+	allowed := make(map[string]struct{}, len(nodes))
+	for _, node := range nodes {
+		if pasta.ValidateNodeName(node) == nil {
+			allowed[node] = struct{}{}
+		}
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.records[key] = e2eSecretRecord{secret: sec, nodes: allowed}
+}
+
+func (s *e2eSecretsStorage) SecretValue(key string) (string, bool) {
+	if s == nil {
+		return "", false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	record, ok := s.records[key]
+	if !ok {
+		return "", false
+	}
+	return record.secret.Value, true
+}
+
+func (s *e2eSecretsStorage) DeleteSecret(key string) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.records, key)
 }
 
 // AddNode adds a node to the e2e workspace and fails the test on error.

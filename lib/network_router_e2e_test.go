@@ -313,15 +313,23 @@ func setupNetworkRouterE2E(t *testing.T) networkRouterE2EFixture {
 
 func newNetworkRouterConfigE2E(t *testing.T, cfg configer.Config) *httpE2E {
 	t.Helper()
+	return newNetworkRouterConfigE2EWithSecrets(t, cfg, newE2ESecretsStorage())
+}
+
+func newNetworkRouterConfigE2EWithSecrets(t *testing.T, cfg configer.Config, secrets *e2eSecretsStorage) *httpE2E {
+	t.Helper()
 	pool := newE2ETestDebugPool(t)
 	logf := NewDebugLogFactory(16384)
+	if secrets == nil {
+		secrets = newE2ESecretsStorage()
+	}
 	engine, err := BuildEngine(
 		context.Background(),
 		cfg,
 		logf,
 		newE2EDebugSystem(),
 		nil,
-		nil, nil,
+		nil, secrets,
 
 		nil,
 		pool,
@@ -335,7 +343,7 @@ func newNetworkRouterConfigE2E(t *testing.T, cfg configer.Config) *httpE2E {
 			t.Errorf("restored engine.Close error = %v, want nil", err)
 		}
 	})
-	e := &NodeE2E{T: t, Engine: engine, LogFactory: logf, menus: formular.NewMenuSnapshotState()}
+	e := &NodeE2E{T: t, Engine: engine, LogFactory: logf, Secrets: secrets, menus: formular.NewMenuSnapshotState()}
 	sub := engine.SubscribeNotifications(func(notification EngineNotification) {
 		if notification.Kind != NotificationWorkspace || notification.Workspace == nil {
 			return

@@ -3,4 +3,22 @@
 		"Web": 0,
 		"Unix": "%E2E_ADMIN_SOCK%",
 	},
+	"Secrets": {
+		"wireguard-client-1501-private-key": {
+			"Value": "KCssLS4vMDEyMzQ1Njc4OTo7PD0+P0BBQkNERUZHSEk=",
+			"Nodes": ["WireGuard Client 1501"],
+		},
+		"wireguard-server-1502-private-key": {
+			"Value": "SEtMTU5PUFFSU1RVVldYWVpbXF1eX2BhYmNkZWZnaGk=",
+			"Nodes": ["WireGuard Server 1502"],
+		},
+		"inner-wireguard-client-1507-private-key": {
+			"Value": "EEV59Re/rpHF8CBmvuDzPZfcgBgaa3sjkw0AW+ozCEk=",
+			"Nodes": ["Inner WireGuard Client 1507"],
+		},
+		"inner-wireguard-server-1508-private-key": {
+			"Value": "2Ov1WxXIxDgsoyaFwHcXdosWL2Jq/9jneIDWcJSrBFI=",
+			"Nodes": ["Inner WireGuard Server 1508"],
+		},
+	},
 }

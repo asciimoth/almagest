@@ -13,12 +13,19 @@ import (
 )
 
 type wireGuardConfig struct {
+	privateKeySecret string
+	// privateKey is the resolved key material used by the runtime. It is
+	// populated from SecretsStorage and must never be serialized or shown in the
+	// node menu.
 	privateKey string
-	listenPort int
-	batchSize  int
-	ownedIPs   string
-	amneziaWG  wireGuardAmneziaConfig
-	peers      []wireGuardPeerConfig
+	// privateKeyLegacyValue carries a raw privateKey from pre-secrets configs
+	// or old form clients just long enough to store it in SecretsStorage.
+	privateKeyLegacyValue string
+	listenPort            int
+	batchSize             int
+	ownedIPs              string
+	amneziaWG             wireGuardAmneziaConfig
+	peers                 []wireGuardPeerConfig
 }
 type wireGuardPeerConfig struct {
 	id                          string
@@ -38,7 +45,10 @@ func (c *wireGuardConfig) read(cfg configer.Config) {
 	if cfg == nil {
 		return
 	}
-	c.privateKey = configer.String(cfg, configer.Path{"privateKey"}, c.privateKey)
+	c.privateKeySecret = configer.String(cfg, configer.Path{"privateKeySecret"}, c.privateKeySecret)
+	if c.privateKeySecret == "" {
+		c.privateKeyLegacyValue = configer.String(cfg, configer.Path{"privateKey"}, c.privateKeyLegacyValue)
+	}
 	c.listenPort = configer.Int(cfg, configer.Path{"listenPort"}, c.listenPort)
 	c.batchSize = configer.Int(cfg, configer.Path{"batchSize"}, c.batchSize)
 	c.ownedIPs = configer.String(cfg, configer.Path{"ownedIPs"}, c.ownedIPs)
@@ -49,7 +59,9 @@ func (c *wireGuardConfig) read(cfg configer.Config) {
 	c.normalize()
 }
 func (c *wireGuardConfig) normalize() {
+	c.privateKeySecret = strings.TrimSpace(c.privateKeySecret)
 	c.privateKey = normalizeWireGuardKey(c.privateKey)
+	c.privateKeyLegacyValue = normalizeWireGuardKey(c.privateKeyLegacyValue)
 	if c.listenPort < 0 || c.listenPort > 65535 {
 		c.listenPort = 0
 	}
@@ -71,17 +83,6 @@ func (c wireGuardConfig) clone() wireGuardConfig {
 	c.peers = slices.Clone(c.peers)
 	return c
 }
-func (c *wireGuardConfig) ensurePrivateKey() error {
-	if c.privateKey != "" {
-		return nil
-	}
-	key, err := generateWireGuardPrivateKeyBase64()
-	if err != nil {
-		return fmt.Errorf("generate private key: %w", err)
-	}
-	c.privateKey = key
-	return nil
-}
 func (p *wireGuardPeerConfig) normalize(index int) {
 	p.publicKey = normalizeWireGuardKey(p.publicKey)
 	p.presharedKey = normalizeWireGuardKey(p.presharedKey)
@@ -101,8 +102,14 @@ func (p *wireGuardPeerConfig) normalize(index int) {
 	}
 }
 func applyWireGuardConfigValues(config *wireGuardConfig, values map[string]any) {
-	if value, ok := formular.StringValue(values["privateKey"]); ok {
-		config.privateKey = value
+	if value, ok := formular.StringValue(values["privateKeySecret"]); ok {
+		config.privateKeySecret = value
+		config.privateKey = ""
+		config.privateKeyLegacyValue = ""
+	} else if value, ok := formular.StringValue(values["privateKey"]); ok {
+		config.privateKeySecret = ""
+		config.privateKey = ""
+		config.privateKeyLegacyValue = value
 	}
 	if value, ok := formular.IntValue(values["listenPort"]); ok {
 		config.listenPort = value
