@@ -11,16 +11,17 @@ function cssRule(selector) {
   return match.groups.body;
 }
 
-test("KV and DNS value inspectors keep content top-aligned", () => {
+test("KV, DNS, and Sec value inspectors keep content top-aligned", () => {
   const rule = cssRule(".kv-value-panel");
 
   assert.match(rule, /grid-template-rows:\s*auto auto;/);
   assert.match(rule, /align-content:\s*start;/);
 });
 
-test("KV and DNS toolbar add buttons use compact tab controls", () => {
+test("KV, DNS, and Sec toolbar buttons use compact tab controls", () => {
   const compactButtonRule = css.match(/(?<selectors>(?:\.[\w-]+\s+button,\n)+\.[\w-]+\s+button)\s*\{[^}]*min-height:\s*26px;[^}]*\}/m);
 
   assert.ok(compactButtonRule?.groups?.selectors, "missing compact button rule");
+  assert.match(compactButtonRule.groups.selectors, /\.sec-header button/);
   assert.match(compactButtonRule.groups.selectors, /\.kv-toolbar button/);
 });

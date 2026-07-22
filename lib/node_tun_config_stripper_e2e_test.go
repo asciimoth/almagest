@@ -99,14 +99,15 @@ func newTunConfigStripperConfigE2E(t *testing.T) (*NodeE2E, *tunConfigRecorderRe
 		logf,
 		sys,
 		nil,
-		nil,
+		nil, nil,
+
 		[]pasta.NodeClass{
 			tunConfigRecorderClass{registry: recorders},
 			tunConfigEmitterClass{},
 		},
 		pool,
-		true,
-	)
+		true)
+
 	if err != nil {
 		t.Fatalf("BuildEngine error = %v, want nil", err)
 	}

@@ -11,6 +11,11 @@ import {
   type DNSValue,
 } from "./dns_model.js";
 import { KV_TEXT_RENDER_LIMIT, formatKVByteSize, type KVEntryInfo, type KVStoreInfo, type KVValue } from "./kv_model.js";
+import {
+  SECRET_TEXT_RENDER_LIMIT,
+  formatSecretSource,
+  type SecretEntry,
+} from "./secrets_model.js";
 
 export type ClassPreviewPort = {
   name: string;
@@ -42,6 +47,11 @@ export type KVValuePreviewOptions = {
 };
 
 export type DNSValuePreviewOptions = {
+  limit?: number;
+};
+
+export type SecretValuePreviewOptions = {
+  reveal?: boolean;
   limit?: number;
 };
 
@@ -185,6 +195,13 @@ export function createDNSKeyTitle(entry: DNSKeyInfo): HTMLElement {
   return title;
 }
 
+export function createSecretTitle(entry: SecretEntry): HTMLElement {
+  const title = document.createElement("span");
+  title.className = "kv-entry-title sec-secret-title";
+  title.append(textElement("strong", entry.key), textElement("em", formatSecretEntryMeta(entry)));
+  return title;
+}
+
 export function formatKVEntryMeta(entry: KVEntryInfo): string {
   if (entry.kind === "bucket") return "subtree";
   const parts = [entry.string ? "text" : "bytes", formatKVByteSize(entry.size)];
@@ -207,6 +224,16 @@ export function formatDNSKeyMeta(entry: DNSKeyInfo): string {
 export function formatDNSValueMeta(value: DNSValue): string {
   const parts = [formatDNSByteSize(value.size)];
   if (value.expires_at) parts.push(`expires ${value.expires_at}`);
+  return parts.join(" · ");
+}
+
+export function formatSecretEntryMeta(entry: SecretEntry): string {
+  const nodes = entry.nodes ?? [];
+  const parts = [
+    formatSecretSource(entry.source),
+    `${nodes.length} node${nodes.length === 1 ? "" : "s"}`,
+  ];
+  if (entry.read_only) parts.push("read-only");
   return parts.join(" · ");
 }
 
@@ -233,6 +260,31 @@ export function createKVValuePreview(value: KVValue, options: KVValuePreviewOpti
     const spoiler = document.createElement("div");
     spoiler.className = "kv-value-spoiler";
     spoiler.append(pre, textElement("span", "Hidden", "kv-value-spoiler-label"));
+    preview.append(spoiler);
+  } else {
+    preview.append(pre);
+  }
+  return preview;
+}
+
+// Secret values are intentionally returned by the admin API, but the panel
+// still avoids casual disclosure by covering previews until an explicit reveal.
+// Values remain plain text throughout and are never parsed as markup.
+export function createSecretValuePreview(entry: SecretEntry, options: SecretValuePreviewOptions = {}): HTMLElement {
+  const preview = document.createElement("div");
+  preview.className = "kv-value-preview";
+  const limit = options.limit ?? SECRET_TEXT_RENDER_LIMIT;
+  const text = entry.value ?? "";
+  if (text.length > limit) {
+    preview.append(textElement("p", "Secret value is too large to preview."));
+    return preview;
+  }
+
+  const pre = textElement("pre", text, "kv-value-text");
+  if (!options.reveal) {
+    const spoiler = document.createElement("div");
+    spoiler.className = "kv-value-spoiler sec-value-spoiler";
+    spoiler.append(pre, textElement("span", "Secret", "kv-value-spoiler-label"));
     preview.append(spoiler);
   } else {
     preview.append(pre);

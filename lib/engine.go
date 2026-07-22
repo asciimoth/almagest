@@ -56,6 +56,7 @@ func BuildEngine(
 	sys sysnet.System, // use sysnetdebug.System{} if you dont have one
 	kv KVManager, // may be nil
 	dns DnsCacheManager, // may be nil
+	secrets SecretsStorage, // may be nil
 	extra []pasta.NodeClass,
 	pool bufpool.Pool, // may be nil. Use bufpool.NewTestDebugPool() in tests
 	debug bool, // Should builtin debug nodes be added
@@ -71,6 +72,7 @@ func BuildEngine(
 		sys:                   sys,
 		kv:                    kv,
 		dns:                   dns,
+		secrets:               secrets,
 		mainWorkspace:         nil,
 		nextSubscriptionID:    100, // to avoid collision between our IDs and workspace ones
 		subscriptionIDMapping: make(map[uint64]subMap),
@@ -265,6 +267,7 @@ type Engine interface {
 
 	KVManager() KVManager
 	DnsCacheManager() DnsCacheManager
+	SecretsStorage() SecretsStorage
 }
 
 type subMap struct {
@@ -281,9 +284,10 @@ type engine struct {
 
 	pool bufpool.Pool
 
-	sys sysnet.System
-	kv  KVManager
-	dns DnsCacheManager
+	sys     sysnet.System
+	kv      KVManager
+	dns     DnsCacheManager
+	secrets SecretsStorage
 
 	mu sync.Mutex
 
@@ -317,6 +321,10 @@ func (e *engine) KVManager() KVManager {
 
 func (e *engine) DnsCacheManager() DnsCacheManager {
 	return e.dns
+}
+
+func (e *engine) SecretsStorage() SecretsStorage {
+	return e.secrets
 }
 
 func (e *engine) Close() error {

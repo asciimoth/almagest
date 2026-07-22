@@ -343,7 +343,7 @@ func newDnsInjectHTTPE2EFromConfig(t *testing.T, cfg configer.Config) *httpE2E {
 	pool := newE2ETestDebugPool(t)
 	logf := NewDebugLogFactory(16384)
 	sys := newE2EDebugSystem()
-	engine, err := BuildEngine(context.Background(), cfg, logf, sys, nil, nil, nil, pool, true)
+	engine, err := BuildEngine(context.Background(), cfg, logf, sys, nil, nil, nil, nil, pool, true)
 	if err != nil {
 		t.Fatalf("BuildEngine restore: %v", err)
 	}

@@ -164,11 +164,12 @@ func newTun2DNSTestE2EWithConfig(t *testing.T, cfg configer.Config, manager DnsC
 		logf,
 		sys,
 		nil,
-		manager,
+		manager, nil,
+
 		[]pasta.NodeClass{testTunProviderClass{registry: providers}},
 		pool,
-		true,
-	)
+		true)
+
 	if err != nil {
 		t.Fatalf("BuildEngine: %v", err)
 	}

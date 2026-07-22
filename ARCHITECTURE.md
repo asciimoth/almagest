@@ -62,7 +62,7 @@ Admin panel:
 - `sysnet.System` abstracts host/system network integration.
 
 ## Engine Notes
-`lib.BuildEngine(ctx, cfg, logf, sys, kv, dns, extra, pool)` builds one
+`lib.BuildEngine(ctx, cfg, logf, sys, kv, dns, secrets, extra, pool)` builds one
 workspace named `main`. Most public methods check the workspace ID and then
 forward to Pasta.
 

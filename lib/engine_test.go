@@ -20,8 +20,10 @@ func TestEngineUnsubscribeNotificationsRemovesSubscriptionMapping(t *testing.T) 
 		nil,
 		nil,
 		nil,
+		nil,
 		true,
 	)
+
 	if err != nil {
 		t.Fatalf("BuildEngine error = %v, want nil", err)
 	}
@@ -58,8 +60,10 @@ func TestEngineSubscribeNotificationsCallbackCanReenterEngine(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		nil,
 		true,
 	)
+
 	if err != nil {
 		t.Fatalf("BuildEngine error = %v, want nil", err)
 	}
@@ -95,8 +99,10 @@ func TestEngineLockedWorkspaceWrappersFromNodeCallback(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		nil,
 		true,
 	)
+
 	if err != nil {
 		t.Fatalf("BuildEngine error = %v, want nil", err)
 	}
@@ -134,10 +140,12 @@ func TestEngineBatchNodeRemovalAndMoveUseWorkspaceBatchMutations(t *testing.T) {
 		newE2EDebugSystem(),
 		nil,
 		nil,
+		nil,
 		[]pasta.NodeClass{engineBatchNodeClass{}},
 		nil,
 		false,
 	)
+
 	if err != nil {
 		t.Fatalf("BuildEngine error = %v, want nil", err)
 	}
@@ -209,6 +217,7 @@ func TestEngineBatchNodeRemovalAndMoveUseWorkspaceBatchMutations(t *testing.T) {
 func TestEngineManagersFromBuildEngine(t *testing.T) {
 	kv := testKVManager{}
 	dnsCache := testDnsCacheManager{}
+	secrets := testSecretsStorage{}
 	engineAPI, err := BuildEngine(
 		context.Background(),
 		configer.NewMemory(nil),
@@ -216,6 +225,7 @@ func TestEngineManagersFromBuildEngine(t *testing.T) {
 		newE2EDebugSystem(),
 		kv,
 		dnsCache,
+		secrets,
 		nil,
 		nil,
 		true,
@@ -235,6 +245,9 @@ func TestEngineManagersFromBuildEngine(t *testing.T) {
 	if got := engineAPI.DnsCacheManager(); got != dnsCache {
 		t.Fatalf("DnsCacheManager() = %#v, want %#v", got, dnsCache)
 	}
+	if got := engineAPI.SecretsStorage(); got != secrets {
+		t.Fatalf("SecretsStorage() = %#v, want %#v", got, secrets)
+	}
 }
 
 type testKVManager struct{}
@@ -251,6 +264,16 @@ type testDnsCacheManager struct{}
 
 func (testDnsCacheManager) Storage(string) dns.CacheStorage {
 	return nil
+}
+
+type testSecretsStorage struct{}
+
+func (testSecretsStorage) GetSecret(string, string) (Secret, error) {
+	return Secret{}, ErrSecretAccessDenied
+}
+
+func (testSecretsStorage) NewSecret(Secret, string) (string, error) {
+	return "", nil
 }
 
 type engineLockedCallbackClass struct {

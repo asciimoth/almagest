@@ -43,9 +43,10 @@ import {
   createLogItem,
   createNodeNameForm,
   createNotificationToast,
+  createSecretTitle,
+  createSecretValuePreview,
   createWorkerNodeBlock,
-  formatDNSValueMeta,
-  formatKVValueMeta,
+  formatSecretEntryMeta,
   renderNodeDescription,
   shortClass,
   textElement,
@@ -90,6 +91,22 @@ import {
   type KVValue,
   type KVValueSnapshot,
 } from "./kv_model.js";
+import {
+  SECRET_TEXT_RENDER_LIMIT,
+  applySecretChange,
+  normalizeSecretNodes,
+  parseSecretNodeText,
+  replaceSecretNodeTextToken,
+  secretNodesText,
+  secretNodeTextSuggestions,
+  sortSecrets,
+  type SecretChange,
+  type SecretEntry,
+  type SecretsSnapshot,
+} from "./secrets_model.js";
+
+const SECRET_NODE_AUTOCOMPLETE_LIMIT = 8;
+let secNodeAutocompleteID = 0;
 
 declare const LiteGraph: any;
 declare const LGraph: any;
@@ -185,12 +202,21 @@ type KVValueEvent = {
   subscription_id: number;
   snapshot: KVValueSnapshot;
 };
+type SecretsSubscribeResponse = {
+  subscription_id: number;
+  snapshot: SecretsSnapshot;
+};
+type SecretsEvent = {
+  subscription_id: number;
+  change: SecretChange;
+};
 type KVNoticeLevel = "info" | "error";
 type KVNotice = {
   level: KVNoticeLevel;
   text: string;
 };
 type DNSNotice = KVNotice;
+type SecNotice = KVNotice;
 type DNSValuePanelState = {
   cache: string;
   key: string;
@@ -213,7 +239,12 @@ type KVValuePanelState = {
   snapshot: KVValueSnapshot | null;
   revealHidden: boolean;
 };
-type Surface = "admin" | "dns" | "engine" | "kv" | "log";
+type SecValuePanelState = {
+  key: string;
+  reveal: boolean;
+  editing: "value" | "nodes" | "rename" | null;
+};
+type Surface = "admin" | "dns" | "engine" | "kv" | "log" | "secrets";
 type APIMessage = {
   version: "v1";
   kind: "request" | "response" | "event";
@@ -298,6 +329,13 @@ let nextRequestID = 1;
 let notificationSubscriptionID = 0;
 let logSubscriptionID = 0;
 const frontendLogs: LogEntry[] = [];
+let secSubscriptionID = 0;
+let secSubscribePending = false;
+let secScrollTop = 0;
+let secNotice: SecNotice | null = null;
+let secOpenForm = false;
+let secValuePanel: SecValuePanelState | null = null;
+const secrets: SecretEntry[] = [];
 let dnsCacheSubscriptionID = 0;
 let dnsCacheSubscribePending = false;
 let dnsScrollTop = 0;
@@ -341,6 +379,9 @@ const el = {
   panels: [...document.querySelectorAll<HTMLElement>("[data-panel]")],
   graphCanvas: document.querySelector<HTMLCanvasElement>("#graph-canvas")!,
   sidekick: document.querySelector<HTMLElement>("#sidekick")!,
+  secPanel: document.querySelector<HTMLElement>("[data-panel='sec']")!,
+  secTree: document.querySelector<HTMLElement>("#sec-tree")!,
+  secValuePanel: document.querySelector<HTMLElement>("#sec-value-panel")!,
   dnsPanel: document.querySelector<HTMLElement>("[data-panel='dns']")!,
   dnsTree: document.querySelector<HTMLElement>("#dns-tree")!,
   dnsValuePanel: document.querySelector<HTMLElement>("#dns-value-panel")!,
@@ -490,6 +531,10 @@ function handleAPIMessage(msg: APIMessage): void {
   }
   if (msg.kind === "event" && msg.surface === "dns" && msg.method) {
     handleDNSEvent(msg.method, msg.payload);
+    return;
+  }
+  if (msg.kind === "event" && msg.surface === "secrets" && msg.method) {
+    handleSecEvent(msg.method, msg.payload);
   }
 }
 
@@ -661,6 +706,18 @@ async function backend<T>(method: string, params: Record<string, unknown> = {}):
       return request<T>("dns", "delete", { cache: params.cache, key: params.key });
     case "dnsDrop":
       return request<T>("dns", "drop", { cache: params.cache });
+    case "secSubscribe":
+      return request<T>("secrets", "subscribe");
+    case "secUnsubscribe":
+      return request<T>("secrets", "unsubscribe", { subscription_id: params.subscriptionID });
+    case "secSetValue":
+      return request<T>("secrets", "set_value", { key: params.key, value: params.value });
+    case "secSetNodes":
+      return request<T>("secrets", "set_nodes", { key: params.key, nodes: params.nodes });
+    case "secRename":
+      return request<T>("secrets", "rename", { key: params.key, new_key: params.newKey });
+    case "secDelete":
+      return request<T>("secrets", "delete", { key: params.key });
     case "kvSubscribeStores":
       return request<T>("kv", "subscribe_stores");
     case "kvSubscribeEntries":
@@ -1544,6 +1601,674 @@ async function requestSnapshot(): Promise<void> {
   }
 }
 
+function handleSecEvent(method: string, payload: unknown): void {
+  if (method !== "update") return;
+  const event = payload as SecretsEvent;
+  if (event.subscription_id !== secSubscriptionID) return;
+  applySecretChangeToState(event.change);
+  renderSec();
+}
+
+// The secrets API already sends values with each entry, so this tab needs only
+// one list subscription. Values are rendered in an inspector after explicit
+// selection, keeping the tree usable without exposing every value at once.
+function activateSecPanel(): void {
+  renderSec();
+  restoreSecScrollState();
+  void ensureSecSubscription();
+}
+
+function deactivateSecPanel(): void {
+  rememberSecScrollState();
+  closeSecValuePanel();
+  if (secSubscriptionID) {
+    void tryBackend("secUnsubscribe", { subscriptionID: secSubscriptionID });
+    secSubscriptionID = 0;
+  }
+}
+
+async function ensureSecSubscription(): Promise<void> {
+  if (activeTab !== "sec" || secSubscriptionID || secSubscribePending) return;
+  secSubscribePending = true;
+  const response = await tryBackend<SecretsSubscribeResponse>("secSubscribe");
+  secSubscribePending = false;
+  if (!response) {
+    secNotice = { level: "error", text: "Secrets storage is unavailable." };
+    renderSec();
+    return;
+  }
+  if (activeTab !== "sec") {
+    if (response.subscription_id) void tryBackend("secUnsubscribe", { subscriptionID: response.subscription_id });
+    return;
+  }
+  secSubscriptionID = response.subscription_id;
+  applySecretsSnapshot(response.snapshot);
+}
+
+function applySecretsSnapshot(snapshot: SecretsSnapshot): void {
+  secrets.splice(0, secrets.length, ...sortSecrets(snapshot.secrets ?? []));
+  if (secValuePanel && !secretEntryByKey(secValuePanel.key)) closeSecValuePanel();
+  renderSec();
+}
+
+function applySecretChangeToState(change: SecretChange): void {
+  secrets.splice(0, secrets.length, ...applySecretChange(secrets, change));
+  if (change.deleted && secValuePanel?.key === change.key) {
+    closeSecValuePanel();
+  }
+}
+
+function renderSec(): void {
+  const previousTop = el.secPanel.scrollTop;
+  const tree = document.createElement("div");
+  tree.className = "kv-tree-inner";
+  tree.append(renderSecHeader());
+  if (secNotice) tree.append(renderSecNotice(secNotice));
+  if (secOpenForm) tree.append(renderSecretCreateForm());
+
+  const list = document.createElement("ol");
+  list.className = "kv-store-list";
+  if (!secrets.length) {
+    list.append(renderKVEmptyState(secSubscribePending ? "Loading secrets." : "No secrets."));
+  } else {
+    for (const entry of secrets) {
+      list.append(renderSecretRow(entry));
+    }
+  }
+  tree.append(list);
+  el.secTree.replaceChildren(tree);
+  el.secPanel.scrollTop = activeTab === "sec" ? previousTop : secScrollTop;
+  renderSecValuePanel();
+}
+
+function renderSecHeader(): HTMLElement {
+  const header = document.createElement("header");
+  header.className = "kv-header sec-header";
+  header.append(textElement("h2", "Secrets"));
+  const add = textElement("button", "+ Secret");
+  add.type = "button";
+  add.title = "Create secret";
+  add.addEventListener("click", () => {
+    secOpenForm = true;
+    renderSec();
+  });
+  header.append(add);
+  return header;
+}
+
+function renderSecNotice(notice: SecNotice): HTMLElement {
+  const row = document.createElement("div");
+  row.className = `kv-notice kv-notice-${notice.level}`;
+  row.append(textElement("span", notice.text));
+  const close = textElement("button", "x");
+  close.type = "button";
+  close.title = "Dismiss";
+  close.setAttribute("aria-label", "Dismiss Sec message");
+  close.addEventListener("click", () => {
+    secNotice = null;
+    renderSec();
+  });
+  row.append(close);
+  return row;
+}
+
+function renderSecretRow(entry: SecretEntry): HTMLLIElement {
+  const item = document.createElement("li");
+  item.className = "kv-entry kv-entry-value sec-secret";
+  item.classList.toggle("sec-secret-readonly", Boolean(entry.read_only));
+  const row = document.createElement("div");
+  row.className = "kv-row";
+  row.append(createKVIndent());
+  row.append(createSecretTitle(entry));
+  row.append(renderSecretRowActions(entry));
+  if (secValuePanel?.key === entry.key) {
+    row.classList.add("kv-row-selected");
+  }
+  item.append(row);
+  return item;
+}
+
+function renderSecretRowActions(entry: SecretEntry): HTMLElement {
+  const actions = document.createElement("div");
+  actions.className = "kv-row-actions";
+  const show = textElement("button", "Open");
+  show.type = "button";
+  show.title = "Open secret";
+  show.addEventListener("click", () => openSecValuePanel(entry.key));
+  actions.append(show);
+  if (!entry.read_only) {
+    const remove = textElement("button", "Delete");
+    remove.type = "button";
+    remove.title = "Delete secret";
+    remove.className = "danger";
+    remove.addEventListener("click", () => deleteSecret(entry.key));
+    actions.append(remove);
+  }
+  return actions;
+}
+
+function renderSecretCreateForm(): HTMLFormElement {
+  const form = document.createElement("form");
+  form.className = "kv-inline-form sec-secret-form";
+  const key = document.createElement("input");
+  key.name = "key";
+  key.placeholder = "Key";
+  key.autocomplete = "off";
+  key.required = true;
+  const nodeEditor = createSecretNodeEditor(2);
+  const nodes = nodeEditor.textarea;
+  nodes.placeholder = "Allowed nodes";
+  const value = document.createElement("textarea");
+  value.name = "value";
+  value.placeholder = "Value";
+  value.rows = 5;
+  const actions = document.createElement("div");
+  actions.className = "sec-form-actions";
+  const save = textElement("button", "Create");
+  save.type = "submit";
+  const cancel = textElement("button", "Cancel");
+  cancel.type = "button";
+  cancel.addEventListener("click", () => {
+    secOpenForm = false;
+    renderSec();
+  });
+  actions.append(save, cancel);
+  form.append(
+    secFormField("Key", key),
+    secFormField("Nodes", nodeEditor.root),
+    secFormField("Value", value, "sec-form-field-wide"),
+    actions,
+  );
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void createSecret(key.value, nodes.value, value.value);
+  });
+  window.setTimeout(() => key.focus(), 0);
+  return form;
+}
+
+function secFormField(label: string, control: HTMLElement, className = ""): HTMLLabelElement {
+  const field = document.createElement("label");
+  field.className = `sec-form-field ${className}`.trim();
+  field.append(textElement("span", label), control);
+  return field;
+}
+
+function createSecretNodeEditor(rows: number, value = ""): { root: HTMLElement; textarea: HTMLTextAreaElement } {
+  const root = document.createElement("div");
+  root.className = "sec-node-editor";
+  const textarea = document.createElement("textarea");
+  textarea.name = "nodes";
+  textarea.rows = rows;
+  textarea.value = value;
+  textarea.setAttribute("autocomplete", "off");
+  const suggestions = document.createElement("div");
+  suggestions.className = "sec-node-suggestions hidden";
+  suggestions.id = `sec-node-suggestions-${secNodeAutocompleteID}`;
+  suggestions.setAttribute("role", "listbox");
+  secNodeAutocompleteID += 1;
+  textarea.setAttribute("aria-autocomplete", "list");
+  textarea.setAttribute("aria-controls", suggestions.id);
+  textarea.setAttribute("aria-expanded", "false");
+  root.append(textarea, suggestions);
+  wireSecretNodeAutocomplete(textarea, suggestions);
+  return { root, textarea };
+}
+
+function wireSecretNodeAutocomplete(textarea: HTMLTextAreaElement, suggestions: HTMLElement): void {
+  let activeIndex = 0;
+  let result = secretNodeTextSuggestions(
+    textarea.value,
+    textarea.selectionStart,
+    workspaceSecretNodeNames(),
+    SECRET_NODE_AUTOCOMPLETE_LIMIT,
+  );
+
+  const hide = () => {
+    suggestions.classList.add("hidden");
+    suggestions.replaceChildren();
+    textarea.setAttribute("aria-expanded", "false");
+    textarea.removeAttribute("aria-activedescendant");
+  };
+
+  const render = () => {
+    suggestions.replaceChildren();
+    if (!result.suggestions.length || document.activeElement !== textarea) {
+      hide();
+      return;
+    }
+    activeIndex = Math.max(0, Math.min(activeIndex, result.suggestions.length - 1));
+    for (const [index, nodeName] of result.suggestions.entries()) {
+      const option = textElement("div", nodeName, "sec-node-suggestion");
+      option.id = `${suggestions.id}-${index}`;
+      option.setAttribute("role", "option");
+      option.setAttribute("aria-selected", String(index === activeIndex));
+      option.classList.toggle("active", index === activeIndex);
+      option.addEventListener("mousedown", (event) => {
+        event.preventDefault();
+        accept(index);
+      });
+      suggestions.append(option);
+    }
+    suggestions.classList.remove("hidden");
+    textarea.setAttribute("aria-expanded", "true");
+    textarea.setAttribute("aria-activedescendant", `${suggestions.id}-${activeIndex}`);
+  };
+
+  const update = () => {
+    result = secretNodeTextSuggestions(
+      textarea.value,
+      textarea.selectionStart,
+      workspaceSecretNodeNames(),
+      SECRET_NODE_AUTOCOMPLETE_LIMIT,
+    );
+    activeIndex = 0;
+    render();
+  };
+
+  const accept = (index: number) => {
+    const nodeName = result.suggestions[index];
+    if (!nodeName) return;
+    const replacement = replaceSecretNodeTextToken(textarea.value, result.token, nodeName);
+    textarea.value = replacement.text;
+    textarea.setSelectionRange(replacement.cursor, replacement.cursor);
+    textarea.dispatchEvent(new Event("input", { bubbles: true }));
+    hide();
+    textarea.focus();
+  };
+
+  textarea.addEventListener("input", update);
+  textarea.addEventListener("focus", update);
+  textarea.addEventListener("click", update);
+  textarea.addEventListener("keyup", (event) => {
+    if (["ArrowLeft", "ArrowRight", "Home", "End", "PageUp", "PageDown"].includes(event.key)) update();
+  });
+  textarea.addEventListener("keydown", (event) => {
+    if (suggestions.classList.contains("hidden")) return;
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      activeIndex = (activeIndex + 1) % result.suggestions.length;
+      render();
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      activeIndex = (activeIndex + result.suggestions.length - 1) % result.suggestions.length;
+      render();
+    } else if (event.key === "Enter" || event.key === "Tab") {
+      event.preventDefault();
+      accept(activeIndex);
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      hide();
+    }
+  });
+  textarea.addEventListener("blur", () => window.setTimeout(hide, 80));
+}
+
+async function createSecret(key: string, nodesText: string, value: string): Promise<void> {
+  const name = key.trim();
+  if (!name) {
+    secNotice = { level: "error", text: "Secret key is required." };
+    renderSec();
+    return;
+  }
+  if (secretEntryByKey(name)) {
+    secNotice = { level: "error", text: "Secret already exists." };
+    renderSec();
+    return;
+  }
+  const nodes = parseSecretNodeText(nodesText);
+  if (!validateSecretNodes(nodes)) return;
+  try {
+    const valueEntry = await backend<SecretEntry>("secSetValue", { key: name, value });
+    const entry = nodes.length
+      ? await backend<SecretEntry>("secSetNodes", { key: name, nodes })
+      : valueEntry;
+    upsertSecretEntry(entry);
+    secNotice = { level: "info", text: "Secret created." };
+    secOpenForm = false;
+    openSecValuePanel(entry.key);
+  } catch (error) {
+    secNotice = { level: "error", text: `secCreate: ${(error as Error).message}` };
+    renderSec();
+  }
+}
+
+function openSecValuePanel(key: string): void {
+  secValuePanel = {
+    key,
+    reveal: false,
+    editing: null,
+  };
+  renderSec();
+}
+
+function closeSecValuePanel(): void {
+  secValuePanel = null;
+  renderSecValuePanel();
+}
+
+function renderSecValuePanel(): void {
+  el.secValuePanel.replaceChildren();
+  el.secPanel.classList.toggle("kv-value-open", Boolean(secValuePanel));
+  if (!secValuePanel) {
+    el.secValuePanel.classList.add("hidden");
+    return;
+  }
+  el.secValuePanel.classList.remove("hidden");
+  const entry = secretEntryByKey(secValuePanel.key);
+  if (!entry) {
+    el.secValuePanel.append(textElement("p", "Secret not found.", "kv-value-missing"));
+    return;
+  }
+  if (entry.read_only && secValuePanel.editing) {
+    secValuePanel.editing = null;
+  }
+
+  const header = document.createElement("header");
+  header.className = "kv-value-header";
+  const title = document.createElement("div");
+  title.append(textElement("h2", entry.key), textElement("p", formatSecretEntryMeta(entry)));
+  const close = textElement("button", "x");
+  close.type = "button";
+  close.title = "Close";
+  close.setAttribute("aria-label", "Close secret panel");
+  close.addEventListener("click", closeSecValuePanel);
+  header.append(title, close);
+  el.secValuePanel.append(header, renderSecretDetail(entry));
+}
+
+function renderSecretDetail(entry: SecretEntry): HTMLElement {
+  const detail = document.createElement("div");
+  detail.className = "kv-value-detail";
+  const meta = document.createElement("div");
+  meta.className = "kv-value-meta";
+  meta.append(renderSecretValueActions(entry));
+  detail.append(meta);
+  switch (secValuePanel?.editing) {
+    case "value":
+      detail.append(renderSecretValueForm(entry));
+      break;
+    case "nodes":
+      detail.append(renderSecretNodesForm(entry));
+      break;
+    case "rename":
+      detail.append(renderSecretRenameForm(entry));
+      break;
+    default:
+      detail.append(createSecretValuePreview(entry, {
+        reveal: secValuePanel?.reveal ?? false,
+        limit: SECRET_TEXT_RENDER_LIMIT,
+      }));
+      detail.append(renderSecretNodes(entry));
+      break;
+  }
+  return detail;
+}
+
+function renderSecretValueActions(entry: SecretEntry): HTMLElement {
+  const actions = document.createElement("div");
+  actions.className = "kv-value-actions";
+  const copy = textElement("button", "Copy");
+  copy.type = "button";
+  copy.title = "Copy secret value";
+  copy.addEventListener("click", () => copySecretValue(entry));
+  const download = textElement("button", "Download");
+  download.type = "button";
+  download.title = "Download secret value";
+  download.addEventListener("click", () => downloadSecretValue(entry));
+  const reveal = textElement("button", secValuePanel?.reveal ? "Hide" : "Reveal");
+  reveal.type = "button";
+  reveal.title = secValuePanel?.reveal ? "Hide secret value" : "Reveal secret value";
+  reveal.addEventListener("click", () => {
+    if (!secValuePanel) return;
+    secValuePanel.reveal = !secValuePanel.reveal;
+    renderSecValuePanel();
+  });
+  actions.append(copy, download, reveal);
+  if (!entry.read_only) {
+    const editValue = textElement("button", "Edit");
+    editValue.type = "button";
+    editValue.title = "Edit secret value";
+    editValue.addEventListener("click", () => setSecEditor("value"));
+    const editNodes = textElement("button", "Nodes");
+    editNodes.type = "button";
+    editNodes.title = "Edit allowed nodes";
+    editNodes.addEventListener("click", () => setSecEditor("nodes"));
+    const rename = textElement("button", "Rename");
+    rename.type = "button";
+    rename.title = "Rename secret";
+    rename.addEventListener("click", () => setSecEditor("rename"));
+    const remove = textElement("button", "Delete");
+    remove.type = "button";
+    remove.title = "Delete secret";
+    remove.className = "danger";
+    remove.addEventListener("click", () => deleteSecret(entry.key));
+    actions.append(editValue, editNodes, rename, remove);
+  }
+  return actions;
+}
+
+function setSecEditor(editor: SecValuePanelState["editing"]): void {
+  if (!secValuePanel) return;
+  secValuePanel.editing = editor;
+  renderSecValuePanel();
+}
+
+function renderSecretValueForm(entry: SecretEntry): HTMLFormElement {
+  const form = document.createElement("form");
+  form.className = "kv-inline-form sec-value-edit-form";
+  const value = document.createElement("textarea");
+  value.name = "value";
+  value.rows = 8;
+  value.value = entry.value ?? "";
+  const actions = secEditActions();
+  form.append(secFormField("Value", value, "sec-form-field-wide"), actions);
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void updateSecretValue(entry.key, value.value);
+  });
+  window.setTimeout(() => value.focus(), 0);
+  return form;
+}
+
+function renderSecretNodesForm(entry: SecretEntry): HTMLFormElement {
+  const form = document.createElement("form");
+  form.className = "kv-inline-form sec-nodes-form";
+  const nodeEditor = createSecretNodeEditor(5, secretNodesText(entry.nodes));
+  const nodes = nodeEditor.textarea;
+  const actions = secEditActions();
+  form.append(secFormField("Nodes", nodeEditor.root, "sec-form-field-wide"), actions);
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void updateSecretNodes(entry.key, nodes.value);
+  });
+  window.setTimeout(() => nodes.focus(), 0);
+  return form;
+}
+
+function renderSecretRenameForm(entry: SecretEntry): HTMLFormElement {
+  const form = document.createElement("form");
+  form.className = "kv-inline-form sec-rename-form";
+  const key = document.createElement("input");
+  key.name = "key";
+  key.autocomplete = "off";
+  key.required = true;
+  key.value = entry.key;
+  const actions = secEditActions();
+  form.append(secFormField("Key", key), actions);
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void renameSecret(entry.key, key.value);
+  });
+  window.setTimeout(() => key.focus(), 0);
+  return form;
+}
+
+function secEditActions(): HTMLElement {
+  const actions = document.createElement("div");
+  actions.className = "sec-form-actions";
+  const save = textElement("button", "Save");
+  save.type = "submit";
+  const cancel = textElement("button", "Cancel");
+  cancel.type = "button";
+  cancel.addEventListener("click", () => setSecEditor(null));
+  actions.append(save, cancel);
+  return actions;
+}
+
+async function updateSecretValue(key: string, value: string): Promise<void> {
+  const entry = await runSecMutation<SecretEntry>("secSetValue", { key, value }, "Secret value saved.");
+  if (!entry) return;
+  upsertSecretEntry(entry);
+  if (secValuePanel) {
+    secValuePanel.editing = null;
+    secValuePanel.reveal = false;
+  }
+  renderSec();
+}
+
+async function updateSecretNodes(key: string, nodesText: string): Promise<void> {
+  const nodes = parseSecretNodeText(nodesText);
+  if (!validateSecretNodes(nodes)) return;
+  const entry = await runSecMutation<SecretEntry>("secSetNodes", { key, nodes }, "Secret nodes saved.");
+  if (!entry) return;
+  upsertSecretEntry(entry);
+  if (secValuePanel) secValuePanel.editing = null;
+  renderSec();
+}
+
+async function renameSecret(key: string, nextKey: string): Promise<void> {
+  const newKey = nextKey.trim();
+  if (!newKey) {
+    secNotice = { level: "error", text: "Secret key is required." };
+    renderSec();
+    return;
+  }
+  if (newKey !== key && secretEntryByKey(newKey)) {
+    secNotice = { level: "error", text: "Secret already exists." };
+    renderSec();
+    return;
+  }
+  const entry = await runSecMutation<SecretEntry>("secRename", { key, newKey }, "Secret renamed.");
+  if (!entry) return;
+  if (key !== entry.key) removeSecretEntry(key);
+  upsertSecretEntry(entry);
+  if (secValuePanel) {
+    secValuePanel.key = entry.key;
+    secValuePanel.editing = null;
+  }
+  renderSec();
+}
+
+async function deleteSecret(key: string): Promise<void> {
+  if (!window.confirm(`Delete secret "${key}"?`)) return;
+  if (await runSecMutation("secDelete", { key }, "Secret deleted.")) {
+    removeSecretEntry(key);
+    if (secValuePanel?.key === key) closeSecValuePanel();
+    renderSec();
+  }
+}
+
+async function runSecMutation<T = unknown>(
+  method: string,
+  params: Record<string, unknown>,
+  success: string,
+): Promise<T | null> {
+  try {
+    const result = await backend<T>(method, params);
+    secNotice = { level: "info", text: success };
+    renderSec();
+    return result;
+  } catch (error) {
+    secNotice = { level: "error", text: `${method}: ${(error as Error).message}` };
+    renderSec();
+    return null;
+  }
+}
+
+function renderSecretNodes(entry: SecretEntry): HTMLElement {
+  const block = document.createElement("section");
+  block.className = "sec-node-block";
+  block.append(textElement("h3", "Allowed nodes"));
+  const nodes = normalizeSecretNodes(entry.nodes ?? []);
+  if (!nodes.length) {
+    block.append(textElement("p", "No nodes allowed.", "kv-subtree-empty"));
+    return block;
+  }
+  const list = document.createElement("ol");
+  list.className = "sec-node-list";
+  for (const node of nodes) {
+    list.append(textElement("li", node, "sec-node-chip"));
+  }
+  block.append(list);
+  return block;
+}
+
+function validateSecretNodes(nodes: string[]): boolean {
+  const known = new Set(workspaceSecretNodeNames());
+  const unknown = nodes.filter((node) => !known.has(node));
+  if (!unknown.length) return true;
+  secNotice = { level: "error", text: `Unknown node${unknown.length === 1 ? "" : "s"}: ${unknown.join(", ")}` };
+  renderSec();
+  return false;
+}
+
+function workspaceSecretNodeNames(): string[] {
+  return normalizeSecretNodes(Object.values(snapshot.nodes).map((node) => node.name));
+}
+
+function secretEntryByKey(key: string): SecretEntry | null {
+  return secrets.find((entry) => entry.key === key) ?? null;
+}
+
+function upsertSecretEntry(entry: SecretEntry): void {
+  secrets.splice(0, secrets.length, ...sortSecrets([...secrets.filter((secret) => secret.key !== entry.key), entry]));
+}
+
+function removeSecretEntry(key: string): void {
+  const index = secrets.findIndex((entry) => entry.key === key);
+  if (index >= 0) secrets.splice(index, 1);
+}
+
+async function copySecretValue(entry: SecretEntry): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(entry.value ?? "");
+    secNotice = { level: "info", text: "Secret value copied." };
+  } catch (error) {
+    secNotice = { level: "error", text: `Copy failed: ${(error as Error).message}` };
+  }
+  renderSec();
+}
+
+function downloadSecretValue(entry: SecretEntry): void {
+  try {
+    const blob = new Blob([entry.value ?? ""], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${safeFilenamePart(entry.key) || "secret"}.txt`;
+    link.rel = "noopener";
+    document.body.append(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    secNotice = { level: "info", text: "Download started." };
+  } catch (error) {
+    secNotice = { level: "error", text: `Download failed: ${(error as Error).message}` };
+  }
+  renderSec();
+}
+
+function rememberSecScrollState(): void {
+  secScrollTop = el.secPanel.scrollTop;
+}
+
+function restoreSecScrollState(): void {
+  window.setTimeout(() => {
+    el.secPanel.scrollTop = secScrollTop;
+  }, 0);
+}
+
 function handleDNSEvent(method: string, payload: unknown): void {
   if (method === "caches_update") {
     const event = payload as DNSCachesEvent;
@@ -2106,7 +2831,6 @@ function renderDNSValueDetail(value: DNSValue): HTMLElement {
   detail.className = "kv-value-detail";
   const meta = document.createElement("div");
   meta.className = "kv-value-meta";
-  meta.append(textElement("span", formatDNSValueMeta(value)));
   const actions = document.createElement("div");
   actions.className = "kv-value-actions";
   if (dnsValuePanel && !dnsValuePanel.editing) {
@@ -2777,7 +3501,6 @@ function renderKVValueDetail(value: KVValue): HTMLElement {
   detail.className = "kv-value-detail";
   const meta = document.createElement("div");
   meta.className = "kv-value-meta";
-  meta.append(textElement("span", formatKVValueMeta(value)));
   const actions = document.createElement("div");
   actions.className = "kv-value-actions";
   const copy = textElement("button", "Copy");
@@ -3075,12 +3798,14 @@ function trimLogStore(): void {
 
 function setTab(name: string): void {
   const previousTab = activeTab;
+  if (previousTab === "sec" && name !== "sec") deactivateSecPanel();
   if (previousTab === "dns" && name !== "dns") deactivateDNSPanel();
   if (previousTab === "kv" && name !== "kv") deactivateKVPanel();
   activeTab = name;
   if (name !== "graph") graphShortcutsArmed = false;
   for (const tab of el.tabs) tab.classList.toggle("active", tab.dataset.tab === name);
   for (const panel of el.panels) panel.classList.toggle("hidden", panel.dataset.panel !== name);
+  if (name === "sec") activateSecPanel();
   if (name === "dns") activateDNSPanel();
   if (name === "kv") activateKVPanel();
   if (name === "logs") renderLogs();
@@ -3291,6 +4016,7 @@ function visibleCanvasCenterPosition(): [number, number] {
 
 function wireUI(): void {
   for (const tab of el.tabs) tab.addEventListener("click", () => setTab(tab.dataset.tab ?? "graph"));
+  el.secPanel.addEventListener("scroll", rememberSecScrollState);
   el.dnsPanel.addEventListener("scroll", rememberDNSScrollState);
   el.kvPanel.addEventListener("scroll", rememberKVScrollState);
   document.addEventListener("paste", handleGraphPaste, { capture: true });

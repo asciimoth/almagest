@@ -19,6 +19,7 @@ const (
 	kvDataBucketName   = "data"
 	dnsRootBucketName  = "dns"
 	kvPluginBucketName = "plugin data"
+	secretsBucketName  = "secrets"
 )
 
 const (
@@ -30,6 +31,7 @@ var (
 	_ almagest.KVManager             = (*bboltKVManager)(nil)
 	_ almagest.DnsCacheManager       = (*bboltKVManager)(nil)
 	_ almagest.DnsCacheStorageLister = (*bboltKVManager)(nil)
+	_ almagest.SecretsStorage        = (*bboltKVManager)(nil)
 	_ almagest.KVStore               = (*bboltKVStore)(nil)
 	_ almagest.KVReadTx              = (*bboltKVReadTx)(nil)
 	_ almagest.KVWriteTx             = (*bboltKVWriteTx)(nil)
@@ -48,6 +50,11 @@ type bboltKVManager struct {
 	dnsStores     map[string]*bboltDNSCacheStorage
 	dnsNextSub    uint64
 	dnsChangeSubs map[uint64]func(dnsCacheChange)
+
+	secretsMu         sync.Mutex
+	immutableSecrets  map[string]immutableSecret
+	secretsNextSub    uint64
+	secretsChangeSubs map[uint64]func(secretChange)
 }
 
 type bboltKVStore struct {
@@ -80,6 +87,10 @@ type bboltKVManagerOptions struct {
 	// expiration timestamp stored from their DNS TTL. Expiration timestamps are
 	// still persisted and reported by the admin API.
 	DisableDNSCacheExpiration bool
+	// ImmutableSecrets overlays protected config and environment-provided
+	// secrets on top of mutable bbolt entries. These entries are cloned during
+	// open and then maintained in memory for node rename/delete cleanup.
+	ImmutableSecrets map[string]immutableSecret
 }
 
 func openKVManager(path string) (*bboltKVManager, error) {
@@ -97,6 +108,8 @@ func openKVManagerWithOptions(path string, options bboltKVManagerOptions) (*bbol
 		changeSubs:                map[uint64]func(){},
 		dnsStores:                 map[string]*bboltDNSCacheStorage{},
 		dnsChangeSubs:             map[uint64]func(dnsCacheChange){},
+		immutableSecrets:          cloneImmutableSecrets(options.ImmutableSecrets),
+		secretsChangeSubs:         map[uint64]func(secretChange){},
 	}
 	if err := manager.initRootBuckets(); err != nil {
 		_ = db.Close()
@@ -118,6 +131,9 @@ func (m *bboltKVManager) initRootBuckets() error {
 			return err
 		}
 		if _, err := tx.CreateBucketIfNotExists([]byte(kvPluginBucketName)); err != nil {
+			return err
+		}
+		if _, err := tx.CreateBucketIfNotExists([]byte(secretsBucketName)); err != nil {
 			return err
 		}
 		return nil

@@ -266,11 +266,12 @@ func buildCommandNodeTestEngine(t *testing.T, cfg configer.Config, commandCfg cm
 		almagest.NewDebugLogFactory(1024),
 		&sysnetdebug.System{},
 		nil,
-		nil,
+		nil, nil,
+
 		daemonNodeClasses(commandCfg, dispatcher),
 		nil,
-		true,
-	)
+		true)
+
 	if err != nil {
 		t.Fatalf("BuildEngine: %v", err)
 	}

@@ -176,6 +176,12 @@ func TestRequiresMutationLease(t *testing.T) {
 	if RequiresMutationLease(SurfaceAdmin, string(MethodAdminPing)) {
 		t.Fatal("admin ping should not require mutation lease")
 	}
+	if !RequiresMutationLease(SurfaceSecrets, string(MethodSecretsSetValue)) {
+		t.Fatal("secrets set_value should require mutation lease")
+	}
+	if RequiresMutationLease(SurfaceSecrets, string(MethodSecretsSnapshot)) {
+		t.Fatal("secrets snapshot should not require mutation lease")
+	}
 }
 
 func TestEngineMethodsIncludesWorkersSnapshot(t *testing.T) {
@@ -218,6 +224,31 @@ func TestDNSMethodsAndSurfaceAreAdvertised(t *testing.T) {
 	for method, found := range required {
 		if !found {
 			t.Fatalf("DNSMethods does not include %s", method)
+		}
+	}
+}
+
+func TestSecretsMethodsAndSurfaceAreAdvertised(t *testing.T) {
+	if !slices.Contains(Surfaces(), string(SurfaceSecrets)) {
+		t.Fatal("Surfaces does not include secrets")
+	}
+	required := map[string]bool{
+		string(MethodSecretsSnapshot):    false,
+		string(MethodSecretsSubscribe):   false,
+		string(MethodSecretsUnsubscribe): false,
+		string(MethodSecretsSetValue):    false,
+		string(MethodSecretsSetNodes):    false,
+		string(MethodSecretsRename):      false,
+		string(MethodSecretsDelete):      false,
+	}
+	for _, method := range SecretsMethods() {
+		if _, ok := required[method]; ok {
+			required[method] = true
+		}
+	}
+	for method, found := range required {
+		if !found {
+			t.Fatalf("SecretsMethods does not include %s", method)
 		}
 	}
 }

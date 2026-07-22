@@ -99,11 +99,12 @@ func NewNodeE2E(t *testing.T) *NodeE2E {
 		logf,
 		sys,
 		nil,
-		nil,
+		nil, nil,
+
 		nil,
 		pool,
-		true,
-	)
+		true)
+
 	if err != nil {
 		t.Fatalf("BuildEngine error = %v, want nil", err)
 	}

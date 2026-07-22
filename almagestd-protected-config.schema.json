@@ -11,6 +11,9 @@
     "CommandRunner": {
       "$ref": "#/$defs/commandRunnerConfig"
     },
+    "Secrets": {
+      "$ref": "#/$defs/protectedSecretsConfig"
+    },
     "System": {
       "$ref": "#/$defs/systemConfig"
     }
@@ -62,6 +65,62 @@
           }
         }
       },
+      "additionalProperties": false
+    },
+    "protectedSecretsConfig": {
+      "type": "object",
+      "description": "Map of immutable daemon-owned secrets. These secrets override mutable secrets with the same key in the bbolt secrets bucket. Values are visible to admin API clients that can access the local admin API.",
+      "propertyNames": {
+        "minLength": 1
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/protectedSecret"
+      }
+    },
+    "protectedSecret": {
+      "type": "object",
+      "description": "One immutable secret value and the node names allowed to read it. Set Value for a literal protected-config value or Env to read the value from one process environment variable at daemon startup.",
+      "properties": {
+        "Value": {
+          "type": "string",
+          "description": "Literal secret value. Empty string is a valid secret value, but cannot be distinguished from an omitted Value when Env is also omitted."
+        },
+        "Env": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Environment variable name to read once at startup. The variable must be set; an empty value is allowed."
+        },
+        "Nodes": {
+          "type": "array",
+          "description": "Workspace node names allowed to read this secret.",
+          "items": {
+            "$ref": "#/$defs/nodeName"
+          },
+          "uniqueItems": true
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "Value"
+          ],
+          "not": {
+            "required": [
+              "Env"
+            ]
+          }
+        },
+        {
+          "required": [
+            "Env"
+          ],
+          "not": {
+            "required": [
+              "Value"
+            ]
+          }
+        }
+      ],
       "additionalProperties": false
     },
     "allowedCommand": {
@@ -183,6 +242,14 @@
         }
       },
       "additionalProperties": false
+    },
+    "nodeName": {
+      "type": "string",
+      "minLength": 1,
+      "not": {
+        "pattern": "[\\[\\]]"
+      },
+      "description": "Pasta node name. Node names must be non-empty and cannot contain '[' or ']'."
     },
     "systemConfig": {
       "type": "object",

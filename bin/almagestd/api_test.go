@@ -149,11 +149,12 @@ func TestEngineBatchNodeAPIDispatch(t *testing.T) {
 		almagest.NewDebugLogFactory(16),
 		&sysnetdebug.System{},
 		nil,
-		nil,
+		nil, nil,
+
 		[]pasta.NodeClass{adminAPIBatchNodeClass{}},
 		nil,
-		false,
-	)
+		false)
+
 	if err != nil {
 		t.Fatalf("BuildEngine error = %v, want nil", err)
 	}

@@ -3,10 +3,13 @@ package main
 import (
 	"errors"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/asciimoth/almagest/bin/almagestd/args"
 	cmdrunner "github.com/asciimoth/almagest/bin/almagestd/command"
+	"github.com/asciimoth/almagest/bin/api"
+	almagest "github.com/asciimoth/almagest/lib"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/configer/hujson"
 	tailscalehujson "github.com/tailscale/hujson"
@@ -123,7 +126,62 @@ func ParseConfig(cfg, prt []byte) (*Config, error) {
 type ProtectedConfig struct {
 	Admin         AdminAPIConfig
 	CommandRunner cmdrunner.Config
+	Secrets       map[string]ProtectedSecretConfig
 	System        configer.Config `json:"-"`
+}
+
+// ProtectedSecretConfig defines one immutable secret available to selected
+// workspace nodes. Value stores the literal secret. Env names an environment
+// variable whose value is read once at daemon startup. Exactly one of Value or
+// Env may be set.
+type ProtectedSecretConfig struct {
+	Value *string  `json:"Value"`
+	Env   string   `json:"Env"`
+	Nodes []string `json:"Nodes"`
+}
+
+func (p *ProtectedConfig) ImmutableSecrets() (map[string]immutableSecret, error) {
+	if len(p.Secrets) == 0 {
+		return nil, nil
+	}
+	out := make(map[string]immutableSecret, len(p.Secrets))
+	for key, cfg := range p.Secrets {
+		if !validSecretName(key) {
+			return nil, fmt.Errorf("%w: invalid protected secret key %q", almagest.ErrSecretInvalidName, key)
+		}
+		if cfg.Value != nil && cfg.Env != "" {
+			return nil, fmt.Errorf("%w: protected secret %q sets both Value and Env", almagest.ErrSecretInvalidValue, key)
+		}
+		if cfg.Value == nil && cfg.Env == "" {
+			return nil, fmt.Errorf("%w: protected secret %q must set Value or Env", almagest.ErrSecretInvalidValue, key)
+		}
+		for _, node := range cfg.Nodes {
+			if !validSecretNodeName(node) {
+				return nil, fmt.Errorf("%w: invalid protected secret node %q", almagest.ErrSecretInvalidName, node)
+			}
+		}
+		value := ""
+		source := api.SecretSourceProtected
+		if cfg.Value != nil {
+			value = *cfg.Value
+		}
+		if cfg.Env != "" {
+			envValue, ok := os.LookupEnv(cfg.Env)
+			if !ok {
+				return nil, fmt.Errorf("%w: environment variable %q for protected secret %q is not set", almagest.ErrSecretInvalidValue, cfg.Env, key)
+			}
+			value = envValue
+			source = api.SecretSourceEnv
+		}
+		out[key] = immutableSecret{
+			secretRecord: secretRecord{
+				Value: value,
+				Nodes: normalizeSecretNodes(cfg.Nodes),
+			},
+			source: source,
+		}
+	}
+	return out, nil
 }
 
 func (p *ProtectedConfig) Merge(args *args.Args) {

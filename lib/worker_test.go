@@ -24,11 +24,12 @@ func TestEngineWorkersSnapshotIncludesRestoredStartupWorkers(t *testing.T) {
 		NewDebugLogFactory(1024),
 		&sysnetdebug.System{},
 		nil,
+		nil, nil,
+
 		nil,
 		nil,
-		nil,
-		true,
-	)
+		true)
+
 	if err != nil {
 		t.Fatalf("BuildEngine error = %v, want nil", err)
 	}
@@ -61,11 +62,12 @@ func TestEngineWorkerNotificationsTrackPanicLifecycle(t *testing.T) {
 		NewDebugLogFactory(1024),
 		&sysnetdebug.System{},
 		nil,
+		nil, nil,
+
 		nil,
 		nil,
-		nil,
-		true,
-	)
+		true)
+
 	if err != nil {
 		t.Fatalf("BuildEngine error = %v, want nil", err)
 	}

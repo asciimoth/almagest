@@ -20,6 +20,7 @@
         </div>
         <nav class="tabs" aria-label="Admin tabs">
           <button class="active" data-tab="graph" type="button">Graph</button>
+          <button data-tab="sec" type="button">Sec</button>
           <button data-tab="dns" type="button">DNS</button>
           <button data-tab="kv" type="button">KV</button>
           <button data-tab="ps" type="button">Ps</button>
@@ -31,6 +32,13 @@
       <section class="panel graph-panel" data-panel="graph">
         <canvas id="graph-canvas"></canvas>
         <aside id="sidekick" aria-label="Node side panel"></aside>
+      </section>
+
+      <section class="panel hidden kv-panel sec-panel" data-panel="sec">
+        <div class="kv-shell">
+          <div id="sec-tree" class="kv-tree" aria-label="Secrets"></div>
+          <aside id="sec-value-panel" class="kv-value-panel hidden" aria-label="Secret value"></aside>
+        </div>
       </section>
 
       <section class="panel hidden kv-panel dns-panel" data-panel="dns">

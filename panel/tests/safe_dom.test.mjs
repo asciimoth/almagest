@@ -14,6 +14,8 @@ import {
   createLogItem,
   createNodeNameForm,
   createNotificationToast,
+  createSecretTitle,
+  createSecretValuePreview,
   createWorkerNodeBlock,
   renderNodeDescription,
   updateWorkerAgeElements,
@@ -232,6 +234,52 @@ test("DNS values render cached JSON as human-readable records", () => {
   assert.match(root.textContent ?? "", /example\.test\. IN A/);
   assert.match(root.textContent ?? "", /192\.0\.2\.40/);
   assert.equal(root.querySelector(".dns-record-preview") !== null, true);
+});
+
+test("secret labels and value previews keep payloads as covered text", () => {
+  installDOM();
+  const root = document.createElement("div");
+  root.append(
+    createSecretTitle({
+      key: payload,
+      value: payload,
+      nodes: [payload],
+      source: "protected",
+      read_only: true,
+    }),
+    createSecretValuePreview({
+      key: payload,
+      value: payload,
+      nodes: [payload],
+      source: "mutable",
+    }),
+  );
+
+  assertNoParsedPayload(root);
+  assert.equal(root.querySelector(".sec-value-spoiler") !== null, true);
+  assert.match(root.textContent ?? "", /<script>/);
+  assert.match(root.textContent ?? "", /read-only/);
+});
+
+test("secret metadata and oversized previews do not disclose value length", () => {
+  installDOM();
+  const root = document.createElement("div");
+  root.append(
+    createSecretTitle({
+      key: "api-token",
+      value: "abcd",
+      nodes: [],
+      source: "mutable",
+    }),
+    createSecretValuePreview({
+      key: "api-token",
+      value: "abcd",
+      source: "mutable",
+    }, { limit: 3 }),
+  );
+
+  assert.equal(root.textContent?.includes("4 chars"), false);
+  assert.match(root.textContent ?? "", /Secret value is too large to preview\./);
 });
 
 

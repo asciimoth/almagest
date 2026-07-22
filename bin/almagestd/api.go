@@ -34,6 +34,7 @@ type AdminAPI struct {
 	configAutosaver      *configAutosaver
 	kv                   *bboltKVManager
 	dns                  *bboltKVManager
+	secrets              *bboltKVManager
 
 	leaseMu       sync.Mutex
 	mutationLease *mutationLease
@@ -72,6 +73,18 @@ func (a *AdminAPI) Run(
 	logf *LogFactory,
 ) {
 	_ = sys
+	var secretNodeSyncID uint64
+	if logf != nil {
+		secretNodeSyncID = a.startSecretNodeNameSync(engine, logf.DaemonLogger())
+	} else {
+		secretNodeSyncID = a.startSecretNodeNameSync(engine, nil)
+	}
+	if secretNodeSyncID != 0 {
+		wg.Go(func() {
+			<-ctx.Done()
+			engine.UnsubscribeNotifications(secretNodeSyncID)
+		})
+	}
 
 	if a.webListener != nil {
 		mux := http.NewServeMux()
@@ -141,6 +154,11 @@ type apiSession struct {
 	kvNextSubscriptionID   uint64
 	kvChangeSubscriptionID uint64
 	kvSubscriptions        map[uint64]kvSubscription
+
+	secretsMu                   sync.Mutex
+	secretsNextSubscriptionID   uint64
+	secretsChangeSubscriptionID uint64
+	secretsSubscriptions        map[uint64]struct{}
 }
 
 func (a *AdminAPI) newAPISession(engine almagest.Engine, logf *LogFactory, send func(api.Message) error) *apiSession {
@@ -159,6 +177,7 @@ func (s *apiSession) close() {
 	s.engineSubscriptions = nil
 	s.closeDNSSubscriptions()
 	s.closeKVSubscriptions()
+	s.closeSecretsSubscriptions()
 	if s.logf == nil {
 		return
 	}
@@ -188,6 +207,8 @@ func (s *apiSession) handleMessage(msg api.Message) (api.Message, error) {
 		return s.handleKVMessage(msg)
 	case api.SurfaceLog:
 		return s.handleLogMessage(msg)
+	case api.SurfaceSecrets:
+		return s.handleSecretsMessage(msg)
 	default:
 		return newRequestError(msg.ID, api.ErrorInvalidMethod, "api surface is not implemented")
 	}
@@ -218,6 +239,9 @@ func (s *apiSession) handleAdminMessage(msg api.Message) (api.Message, error) {
 				},
 				string(api.SurfaceLog): map[string]any{
 					"methods": api.LogMethods(),
+				},
+				string(api.SurfaceSecrets): map[string]any{
+					"methods": api.SecretsMethods(),
 				},
 				string(api.SurfaceSystem): map[string]any{
 					"methods": []string{},

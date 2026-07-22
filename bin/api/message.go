@@ -26,12 +26,13 @@ const (
 type Surface string
 
 const (
-	SurfaceAdmin  Surface = "admin"
-	SurfaceDNS    Surface = "dns"
-	SurfaceEngine Surface = "engine"
-	SurfaceKV     Surface = "kv"
-	SurfaceLog    Surface = "log"
-	SurfaceSystem Surface = "system"
+	SurfaceAdmin   Surface = "admin"
+	SurfaceDNS     Surface = "dns"
+	SurfaceEngine  Surface = "engine"
+	SurfaceKV      Surface = "kv"
+	SurfaceLog     Surface = "log"
+	SurfaceSecrets Surface = "secrets"
+	SurfaceSystem  Surface = "system"
 )
 
 func Surfaces() []string {
@@ -41,6 +42,7 @@ func Surfaces() []string {
 		string(SurfaceEngine),
 		string(SurfaceKV),
 		string(SurfaceLog),
+		string(SurfaceSecrets),
 		string(SurfaceSystem),
 	}
 }
@@ -49,6 +51,8 @@ func RequiresMutationLease(surface Surface, method string) bool {
 	switch surface {
 	case SurfaceEngine:
 		return IsEngineMutation(method)
+	case SurfaceSecrets:
+		return IsSecretsMutation(method)
 	default:
 		return false
 	}

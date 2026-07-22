@@ -18,7 +18,7 @@ import (
 func TestUDPPingNodesAvailableOnlyInDebugEngines(t *testing.T) {
 	pool := newE2ETestDebugPool(t)
 
-	plain, err := BuildEngine(context.Background(), configer.NewMemory(nil), NewDebugLogFactory(16), &sysnetdebug.System{}, nil, nil, nil, pool, false)
+	plain, err := BuildEngine(context.Background(), configer.NewMemory(nil), NewDebugLogFactory(16), &sysnetdebug.System{}, nil, nil, nil, nil, pool, false)
 	if err != nil {
 		t.Fatalf("BuildEngine plain: %v", err)
 	}
@@ -30,7 +30,7 @@ func TestUDPPingNodesAvailableOnlyInDebugEngines(t *testing.T) {
 		t.Fatalf("%s is available in non-debug engine", NodeTypeUDPPingClient)
 	}
 
-	debugEngine, err := BuildEngine(context.Background(), configer.NewMemory(nil), NewDebugLogFactory(16), &sysnetdebug.System{}, nil, nil, nil, pool, true)
+	debugEngine, err := BuildEngine(context.Background(), configer.NewMemory(nil), NewDebugLogFactory(16), &sysnetdebug.System{}, nil, nil, nil, nil, pool, true)
 	if err != nil {
 		t.Fatalf("BuildEngine debug: %v", err)
 	}
@@ -253,11 +253,12 @@ func newUDPPingSocksE2E(t *testing.T) *NodeE2E {
 		logf,
 		sys,
 		nil,
+		nil, nil,
+
 		nil,
 		nil,
-		nil,
-		true,
-	)
+		true)
+
 	if err != nil {
 		t.Fatalf("BuildEngine error = %v, want nil", err)
 	}

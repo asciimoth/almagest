@@ -1,10 +1,12 @@
 package main
 
 import (
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/asciimoth/almagest/bin/almagestd/args"
+	almagest "github.com/asciimoth/almagest/lib"
 )
 
 func TestConfigSaveIdleDefault(t *testing.T) {
@@ -247,6 +249,63 @@ func TestProtectedConfigCommandRunner(t *testing.T) {
 	slot := cmd.Slots["server"]
 	if slot.MaxLength != 64 || slot.Pattern != "[0-9.]+" || !slot.Required {
 		t.Fatalf("CommandRunner slot = %#v, want configured limits", slot)
+	}
+}
+
+func TestProtectedConfigSecrets(t *testing.T) {
+	t.Setenv("ALMAGEST_TEST_SECRET", "env-value")
+	empty := ""
+	cfg, err := ParseConfig([]byte(`{}`), []byte(`{
+		"Secrets": {
+			"literal": {
+				"Value": "literal-value",
+				"Nodes": ["client"]
+			},
+			"empty": {
+				"Value": "",
+				"Nodes": ["client"]
+			},
+			"from-env": {
+				"Env": "ALMAGEST_TEST_SECRET",
+				"Nodes": ["client", "client"]
+			}
+		}
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Protected.Secrets["empty"].Value == nil || *cfg.Protected.Secrets["empty"].Value != empty {
+		t.Fatalf("empty protected secret value = %#v, want explicit empty string", cfg.Protected.Secrets["empty"].Value)
+	}
+	secrets, err := cfg.Protected.ImmutableSecrets()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := secrets["literal"].Value; got != "literal-value" {
+		t.Fatalf("literal secret value = %q, want literal-value", got)
+	}
+	if got := secrets["empty"].Value; got != "" {
+		t.Fatalf("empty secret value = %q, want empty string", got)
+	}
+	if got := secrets["from-env"].Value; got != "env-value" {
+		t.Fatalf("env secret value = %q, want env-value", got)
+	}
+	if got := secrets["from-env"].Nodes; len(got) != 1 || got[0] != "client" {
+		t.Fatalf("env secret nodes = %v, want normalized [client]", got)
+	}
+}
+
+func TestProtectedConfigSecretMissingEnvErrors(t *testing.T) {
+	cfg, err := ParseConfig([]byte(`{}`), []byte(`{
+		"Secrets": {
+			"missing": {"Env": "ALMAGEST_DOES_NOT_EXIST"}
+		}
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cfg.Protected.ImmutableSecrets(); !errors.Is(err, almagest.ErrSecretInvalidValue) {
+		t.Fatalf("ImmutableSecrets missing env error = %v, want ErrSecretInvalidValue", err)
 	}
 }
 

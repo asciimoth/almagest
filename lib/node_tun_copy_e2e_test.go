@@ -203,11 +203,12 @@ func newTunCopyE2E(t *testing.T) (*NodeE2E, *testTunProviderRegistry) {
 		logf,
 		sys,
 		nil,
-		nil,
+		nil, nil,
+
 		[]pasta.NodeClass{testTunProviderClass{registry: providers}},
 		pool,
-		true,
-	)
+		true)
+
 	if err != nil {
 		t.Fatalf("BuildEngine error = %v, want nil", err)
 	}

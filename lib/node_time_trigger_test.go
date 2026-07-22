@@ -195,11 +195,12 @@ func buildTimeTriggerTestEngine(t *testing.T, cfg configer.Config, sinks *timeTr
 		NewDebugLogFactory(1024),
 		newE2EDebugSystem(),
 		nil,
-		nil,
+		nil, nil,
+
 		[]pasta.NodeClass{timeTriggerSinkClass{registry: sinks}},
 		nil,
-		true,
-	)
+		true)
+
 	if err != nil {
 		t.Fatalf("BuildEngine: %v", err)
 	}

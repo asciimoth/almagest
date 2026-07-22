@@ -221,11 +221,12 @@ func newVTunSpooferConfigE2E(t *testing.T, cfg configer.Config) *httpE2E {
 		logf,
 		newE2EDebugSystem(),
 		nil,
-		nil,
+		nil, nil,
+
 		nil,
 		pool,
-		true,
-	)
+		true)
+
 	if err != nil {
 		t.Fatalf("BuildEngine restored: %v", err)
 	}

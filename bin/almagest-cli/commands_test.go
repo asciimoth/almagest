@@ -237,6 +237,136 @@ func TestRunDNSGetAndDropSendCacheRequests(t *testing.T) {
 	}
 }
 
+func TestRunSecretsSetAndSetNodesSendRequests(t *testing.T) {
+	ft := &fakeTransport{reads: []api.Message{
+		mustResponse(t, "1", api.SecretEntry{Key: "token", Value: "secret", Source: api.SecretSourceMutable}),
+		mustResponse(t, "1", api.SecretEntry{
+			Key:    "token",
+			Value:  "secret",
+			Nodes:  []string{"node,one", "node two"},
+			Source: api.SecretSourceMutable,
+		}),
+	}}
+	var stdout, stderr bytes.Buffer
+
+	err := run(context.Background(), []string{
+		"secrets", "set",
+		"--key", "token",
+		"--value", "secret",
+	}, nil, &stdout, &stderr, func(context.Context, endpoint) (apiTransport, error) {
+		return ft, nil
+	})
+	if err != nil {
+		t.Fatalf("set failed: %v\nstderr: %s", err, stderr.String())
+	}
+	err = run(context.Background(), []string{
+		"secrets", "set-nodes",
+		"--key", "token",
+		"--node", "node,one",
+		"--node", "node two",
+	}, nil, &stdout, &stderr, func(context.Context, endpoint) (apiTransport, error) {
+		return ft, nil
+	})
+	if err != nil {
+		t.Fatalf("set-nodes failed: %v\nstderr: %s", err, stderr.String())
+	}
+	if len(ft.writes) != 2 {
+		t.Fatalf("writes = %d, want set and set-nodes", len(ft.writes))
+	}
+	if ft.writes[0].Surface != api.SurfaceSecrets || ft.writes[0].Method != string(api.MethodSecretsSetValue) {
+		t.Fatalf("set request = %#v", ft.writes[0])
+	}
+	valueReq, err := api.DecodePayload[api.SecretsSetValueRequest](ft.writes[0].Payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if valueReq.Key != "token" || valueReq.Value != "secret" {
+		t.Fatalf("set payload = %#v, want token secret", valueReq)
+	}
+	if ft.writes[1].Surface != api.SurfaceSecrets || ft.writes[1].Method != string(api.MethodSecretsSetNodes) {
+		t.Fatalf("set-nodes request = %#v", ft.writes[1])
+	}
+	nodesReq, err := api.DecodePayload[api.SecretsSetNodesRequest](ft.writes[1].Payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if nodesReq.Key != "token" || len(nodesReq.Nodes) != 2 || nodesReq.Nodes[0] != "node,one" || nodesReq.Nodes[1] != "node two" {
+		t.Fatalf("set-nodes payload = %#v, want exact repeated node names", nodesReq)
+	}
+}
+
+func TestRunSecretsRenameDeleteAndClearNodesSendRequests(t *testing.T) {
+	ft := &fakeTransport{reads: []api.Message{
+		mustResponse(t, "1", api.SecretEntry{Key: "renamed", Value: "secret", Source: api.SecretSourceMutable}),
+		mustResponse(t, "1", api.SecretEntry{Key: "renamed", Value: "secret", Source: api.SecretSourceMutable}),
+		mustResponse(t, "1", struct{}{}),
+	}}
+	var stdout, stderr bytes.Buffer
+
+	err := run(context.Background(), []string{
+		"secrets", "rename",
+		"--key", "token",
+		"--new-key", "renamed",
+	}, nil, &stdout, &stderr, func(context.Context, endpoint) (apiTransport, error) {
+		return ft, nil
+	})
+	if err != nil {
+		t.Fatalf("rename failed: %v\nstderr: %s", err, stderr.String())
+	}
+	err = run(context.Background(), []string{
+		"secrets", "set-nodes",
+		"--key", "renamed",
+		"--clear-nodes",
+	}, nil, &stdout, &stderr, func(context.Context, endpoint) (apiTransport, error) {
+		return ft, nil
+	})
+	if err != nil {
+		t.Fatalf("clear nodes failed: %v\nstderr: %s", err, stderr.String())
+	}
+	err = run(context.Background(), []string{
+		"secrets", "delete",
+		"--key", "renamed",
+	}, nil, &stdout, &stderr, func(context.Context, endpoint) (apiTransport, error) {
+		return ft, nil
+	})
+	if err != nil {
+		t.Fatalf("delete failed: %v\nstderr: %s", err, stderr.String())
+	}
+	if len(ft.writes) != 3 {
+		t.Fatalf("writes = %d, want rename, clear, and delete", len(ft.writes))
+	}
+	if ft.writes[0].Surface != api.SurfaceSecrets || ft.writes[0].Method != string(api.MethodSecretsRename) {
+		t.Fatalf("rename request = %#v", ft.writes[0])
+	}
+	renameReq, err := api.DecodePayload[api.SecretsRenameRequest](ft.writes[0].Payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if renameReq.Key != "token" || renameReq.NewKey != "renamed" {
+		t.Fatalf("rename payload = %#v, want token renamed", renameReq)
+	}
+	if ft.writes[1].Surface != api.SurfaceSecrets || ft.writes[1].Method != string(api.MethodSecretsSetNodes) {
+		t.Fatalf("clear nodes request = %#v", ft.writes[1])
+	}
+	nodesReq, err := api.DecodePayload[api.SecretsSetNodesRequest](ft.writes[1].Payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if nodesReq.Key != "renamed" || len(nodesReq.Nodes) != 0 {
+		t.Fatalf("clear nodes payload = %#v, want renamed with no nodes", nodesReq)
+	}
+	if ft.writes[2].Surface != api.SurfaceSecrets || ft.writes[2].Method != string(api.MethodSecretsDelete) {
+		t.Fatalf("delete request = %#v", ft.writes[2])
+	}
+	deleteReq, err := api.DecodePayload[api.SecretKeyRequest](ft.writes[2].Payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if deleteReq.Key != "renamed" {
+		t.Fatalf("delete payload = %#v, want renamed", deleteReq)
+	}
+}
+
 func TestRunEngineRemoveNodesSendsBatchRequest(t *testing.T) {
 	ft := &fakeTransport{reads: []api.Message{mustResponse(t, "1", struct{}{})}}
 	var stdout, stderr bytes.Buffer
@@ -483,6 +613,46 @@ func TestDNSWatchKeysPrintsInitialResponseAndQueuedEvents(t *testing.T) {
 	}
 	if !strings.Contains(out, `"method":"keys_update"`) || strings.Contains(out, "ignore") {
 		t.Fatalf("stdout = %q, want DNS key event only", out)
+	}
+}
+
+func TestSecretsWatchPrintsInitialResponseAndQueuedEvents(t *testing.T) {
+	ft := &fakeTransport{reads: []api.Message{
+		mustEvent(t, api.SurfaceLog, string(api.EventLogEntry), api.LogEntry{Message: "ignore"}),
+		mustEvent(t, api.SurfaceSecrets, string(api.EventSecretsUpdate), api.SecretsEvent{
+			SubscriptionID: 4,
+			Change: api.SecretChange{
+				Key:   "token",
+				Entry: &api.SecretEntry{Key: "token", Value: "new", Source: api.SecretSourceMutable},
+			},
+		}),
+		mustResponse(t, "1", api.SecretsSubscribeResponse{
+			SubscriptionID: 4,
+			Snapshot: api.SecretsSnapshot{
+				Secrets: []api.SecretEntry{{Key: "token", Value: "old", Source: api.SecretSourceMutable}},
+			},
+		}),
+	}}
+	var stdout, stderr bytes.Buffer
+
+	err := run(context.Background(), []string{"secrets", "watch"}, nil, &stdout, &stderr, func(context.Context, endpoint) (apiTransport, error) {
+		return ft, nil
+	})
+	if !errors.Is(err, io.EOF) {
+		t.Fatalf("run error = %v, want EOF after queued event is drained", err)
+	}
+	if len(ft.writes) != 1 {
+		t.Fatalf("writes = %d, want subscribe request", len(ft.writes))
+	}
+	if ft.writes[0].Surface != api.SurfaceSecrets || ft.writes[0].Method != string(api.MethodSecretsSubscribe) {
+		t.Fatalf("request = %#v", ft.writes[0])
+	}
+	out := stdout.String()
+	if !strings.Contains(out, `"subscription_id": 4`) {
+		t.Fatalf("stdout = %q, want pretty subscription response", out)
+	}
+	if !strings.Contains(out, `"method":"update"`) || strings.Contains(out, "ignore") {
+		t.Fatalf("stdout = %q, want secrets event only", out)
 	}
 }
 

@@ -71,6 +71,8 @@ func run(
 		runErr = runKV(ctx, c, rest[1:], stdout, stderr)
 	case "log":
 		runErr = runLog(ctx, c, rest[1:], stdout, stderr)
+	case "secrets":
+		runErr = runSecrets(ctx, c, rest[1:], stdout, stderr)
 	case "raw":
 		runErr = runRaw(ctx, c, rest[1:], stdout, stderr)
 	default:
@@ -761,6 +763,7 @@ Surfaces:
   engine   workspace snapshots, graph mutations, notification subscriptions
   kv       persistent key/value store snapshots, subscriptions, and mutations
   log      log subscription and watch commands
+  secrets  secret snapshots, subscriptions, and mutations
   graph    high-level node, link, class, and node menu commands
   workers  worker-system snapshots and tree rendering
   raw      direct request for newly added or experimental methods

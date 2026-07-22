@@ -89,11 +89,11 @@ func TestOutNetworkUsesSystemOutNetOnInit(t *testing.T) {
 		NewDebugLogFactory(1024),
 		sys,
 		nil,
-		nil,
+		nil, nil,
+
 		nil,
 		pool,
-		true,
-	)
+		true)
 
 	if err != nil {
 		t.Fatalf("BuildEngine error = %v, want nil", err)
@@ -254,11 +254,12 @@ func TestEngineOutNetworkSendsCachedNetworkToHTTPServerOnLinkAdd(t *testing.T) {
 		NewDebugLogFactory(1024),
 		sys,
 		nil,
-		nil,
+		nil, nil,
+
 		[]pasta.NodeClass{captureHTTPServerClass{node: &server}},
 		pool,
-		true,
-	)
+		true)
+
 	if err != nil {
 		t.Fatalf("BuildEngine error = %v, want nil", err)
 	}

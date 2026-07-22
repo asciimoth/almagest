@@ -13,7 +13,7 @@ import (
 func TestDebugLogNodesAvailableOnlyInDebugEngines(t *testing.T) {
 	pool := newE2ETestDebugPool(t)
 
-	plain, err := BuildEngine(context.Background(), configer.NewMemory(nil), NewDebugLogFactory(16), &sysnetdebug.System{}, nil, nil, nil, pool, false)
+	plain, err := BuildEngine(context.Background(), configer.NewMemory(nil), NewDebugLogFactory(16), &sysnetdebug.System{}, nil, nil, nil, nil, pool, false)
 	if err != nil {
 		t.Fatalf("BuildEngine plain: %v", err)
 	}
@@ -28,7 +28,7 @@ func TestDebugLogNodesAvailableOnlyInDebugEngines(t *testing.T) {
 		t.Fatalf("%s is available in non-debug engine", NodeTypeDebugLogTun)
 	}
 
-	debugEngine, err := BuildEngine(context.Background(), configer.NewMemory(nil), NewDebugLogFactory(16), &sysnetdebug.System{}, nil, nil, nil, pool, true)
+	debugEngine, err := BuildEngine(context.Background(), configer.NewMemory(nil), NewDebugLogFactory(16), &sysnetdebug.System{}, nil, nil, nil, nil, pool, true)
 	if err != nil {
 		t.Fatalf("BuildEngine debug: %v", err)
 	}

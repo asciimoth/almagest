@@ -458,11 +458,12 @@ func newWireGuardTunConfigE2E(t *testing.T) (*NodeE2E, *tunConfigRecorderRegistr
 		logf,
 		sys,
 		nil,
-		nil,
+		nil, nil,
+
 		[]pasta.NodeClass{tunConfigRecorderClass{registry: recorders}},
 		pool,
-		true,
-	)
+		true)
+
 	if err != nil {
 		t.Fatalf("BuildEngine error = %v, want nil", err)
 	}

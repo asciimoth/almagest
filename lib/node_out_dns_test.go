@@ -48,11 +48,12 @@ func TestOutDnsUsesSystemOutDNSOnInit(t *testing.T) {
 		NewDebugLogFactory(1024),
 		&sysnetdebug.System{OutDNSProvider: source},
 		nil,
-		nil,
+		nil, nil,
+
 		nil,
 		pool,
-		true,
-	)
+		true)
+
 	if err != nil {
 		t.Fatalf("BuildEngine error = %v, want nil", err)
 	}
@@ -342,7 +343,7 @@ func newOutDNSE2E(t *testing.T, cfg configer.Config, recordsText string, manager
 	logf := NewDebugLogFactory(16384)
 	sys := newE2EDebugSystem()
 	sys.OutDNSProvider = source
-	engine, err := BuildEngine(context.Background(), cfg, logf, sys, nil, manager, nil, pool, true)
+	engine, err := BuildEngine(context.Background(), cfg, logf, sys, nil, manager, nil, nil, pool, true)
 	if err != nil {
 		t.Fatalf("BuildEngine: %v", err)
 	}

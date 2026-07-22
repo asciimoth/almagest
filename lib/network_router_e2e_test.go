@@ -252,11 +252,12 @@ func newNetworkRouterLocalProxyE2E(t *testing.T, cfg configer.Config) (*httpE2E,
 		logf,
 		sys,
 		nil,
-		nil,
+		nil, nil,
+
 		nil,
 		pool,
-		true,
-	)
+		true)
+
 	if err != nil {
 		t.Fatalf("BuildEngine error = %v, want nil", err)
 	}
@@ -320,11 +321,12 @@ func newNetworkRouterConfigE2E(t *testing.T, cfg configer.Config) *httpE2E {
 		logf,
 		newE2EDebugSystem(),
 		nil,
-		nil,
+		nil, nil,
+
 		nil,
 		pool,
-		true,
-	)
+		true)
+
 	if err != nil {
 		t.Fatalf("BuildEngine restored: %v", err)
 	}

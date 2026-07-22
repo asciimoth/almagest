@@ -89,8 +89,14 @@ func main() {
 	}
 	golog.Infof("Using file storage at %s", fsPath)
 
+	immutableSecrets, err := conf.Protected.ImmutableSecrets()
+	if err != nil {
+		fatal(err)
+		return
+	}
 	kv, err = openKVManagerInStorage(fsPath, bboltKVManagerOptions{
 		DisableDNSCacheExpiration: args.NoDNSCacheExpiration,
+		ImmutableSecrets:          immutableSecrets,
 	})
 	if err != nil {
 		fatal(err)
@@ -108,6 +114,7 @@ func main() {
 	admin.projectVersionStatus = projectVersionStatus
 	admin.kv = kv
 	admin.dns = kv
+	admin.secrets = kv
 	defer admin.Stop()
 
 	logf := NewLogFactory(conf.LogCache().MergeArgs(&args))
@@ -144,6 +151,7 @@ func main() {
 		conf.Main,
 		logf,
 		sys,
+		kv,
 		kv,
 		kv,
 		daemonNodeClasses(conf.Protected.CommandRunner, commandRunner),

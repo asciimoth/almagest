@@ -74,11 +74,12 @@ func newLocalProxyE2E(t *testing.T) *localProxyE2E {
 		logf,
 		sys,
 		nil,
-		nil,
+		nil, nil,
+
 		[]pasta.NodeClass{testNativeNetworkClass{}},
 		pool,
-		true,
-	)
+		true)
+
 	if err != nil {
 		t.Fatalf("BuildEngine error = %v, want nil", err)
 	}

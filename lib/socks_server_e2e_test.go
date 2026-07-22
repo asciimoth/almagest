@@ -136,11 +136,12 @@ func newNativeSocksServerE2E(t *testing.T) *socksServerE2E {
 		logf,
 		newE2EDebugSystem(),
 		nil,
-		nil,
+		nil, nil,
+
 		[]pasta.NodeClass{testNativeNetworkClass{}},
 		pool,
-		true,
-	)
+		true)
+
 	if err != nil {
 		t.Fatalf("BuildEngine error = %v, want nil", err)
 	}

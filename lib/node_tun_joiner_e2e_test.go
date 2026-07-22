@@ -128,14 +128,15 @@ func newTunJoinerE2E(t *testing.T) (*NodeE2E, *testTunProviderRegistry, *testTun
 		logf,
 		sys,
 		nil,
-		nil,
+		nil, nil,
+
 		[]pasta.NodeClass{
 			testTunProviderClass{registry: providers},
 			testTunSinkClass{registry: sinks},
 		},
 		pool,
-		true,
-	)
+		true)
+
 	if err != nil {
 		t.Fatalf("BuildEngine error = %v, want nil", err)
 	}
