@@ -1,6 +1,12 @@
 set shell := ["bash", "-euo", "pipefail", "-c"]
 set dotenv-load := true
 
+
+check: tidy typos fmt lint vet test-total
+
+typos:
+  typos
+
 test-go:
 	go -C lib test ./... --race
 	go -C bin test ./... --race
