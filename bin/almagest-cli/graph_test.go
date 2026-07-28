@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 
@@ -14,7 +15,7 @@ import (
 )
 
 func TestGraphMapPrintsCompactConfigLikeNodes(t *testing.T) {
-	resp, err := api.NewResponse("1", api.WorkspaceSnapshotResponse{Snapshot: pasta.WorkspaceSnapshot{
+	resp, err := api.NewResponse("1", api.WorkspaceSnapshotResponse{Snapshot: api.NewWorkspaceSnapshot(pasta.WorkspaceSnapshot{
 		Nodes: map[uint64]pasta.NodeSnapshot{
 			10: {Name: "source", Class: "test/source"},
 			20: {Name: "target", Class: "test/target"},
@@ -26,7 +27,7 @@ func TestGraphMapPrintsCompactConfigLikeNodes(t *testing.T) {
 		Links: map[uint64]pasta.LinkSnapshot{
 			1: {Type: "any", RightPort: 100, RightPortNode: 10, LeftPort: 200, LeftPortNode: 20},
 		},
-	}})
+	})})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,13 +48,44 @@ func TestGraphMapPrintsCompactConfigLikeNodes(t *testing.T) {
 	}
 }
 
+func TestGraphClassesPreservesAPIOrder(t *testing.T) {
+	ft := &fakeTransport{reads: []api.Message{
+		mustResponse(t, "1", api.WorkspaceSnapshotResponse{Snapshot: api.WorkspaceSnapshot{
+			Classes: []pasta.NodeClassSnapshot{
+				{Class: "zeta/Late"},
+				{Class: "almagest/First"},
+				{Class: "pasta/Second"},
+			},
+		}}),
+	}}
+	var stdout, stderr bytes.Buffer
+
+	err := run(context.Background(), []string{"graph", "classes"}, nil, &stdout, &stderr, func(context.Context, endpoint) (apiTransport, error) {
+		return ft, nil
+	})
+	if err != nil {
+		t.Fatalf("run failed: %v\nstderr: %s", err, stderr.String())
+	}
+
+	var got struct {
+		Classes []pasta.NodeClassSnapshot `json:"classes"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"zeta/Late", "almagest/First", "pasta/Second"}
+	if names := graphClassNames(got.Classes); !slices.Equal(names, want) {
+		t.Fatalf("classes = %v, want API order %v", names, want)
+	}
+}
+
 func TestGraphNodeResolvesName(t *testing.T) {
 	ft := &fakeTransport{reads: []api.Message{
-		mustResponse(t, "1", api.WorkspaceSnapshotResponse{Snapshot: pasta.WorkspaceSnapshot{
+		mustResponse(t, "1", api.WorkspaceSnapshotResponse{Snapshot: api.NewWorkspaceSnapshot(pasta.WorkspaceSnapshot{
 			Nodes: map[uint64]pasta.NodeSnapshot{
 				12: {Name: "server", Class: "test/server"},
 			},
-		}}),
+		})}),
 		mustResponse(t, "2", api.NodeSnapshotResponse{Snapshot: pasta.NodeSnapshot{Name: "server", Class: "test/server"}}),
 	}}
 	var stdout, stderr bytes.Buffer
@@ -74,6 +106,14 @@ func TestGraphNodeResolvesName(t *testing.T) {
 	if req.ID != 12 {
 		t.Fatalf("payload = %#v, want resolved node 12", req)
 	}
+}
+
+func graphClassNames(classes []pasta.NodeClassSnapshot) []string {
+	out := make([]string, 0, len(classes))
+	for _, class := range classes {
+		out = append(out, class.Class)
+	}
+	return out
 }
 
 func TestGraphApplyMenuSendsFormApply(t *testing.T) {
@@ -185,10 +225,10 @@ func mustMenuEvent(t *testing.T, node uint64, menu formular.MenuSnapshotMessage)
 	t.Helper()
 	msg, err := api.NewEvent(api.SurfaceEngine, string(api.EventEngineNotification), api.EngineNotificationEvent{
 		SubscriptionID: 55,
-		Notification: almagest.EngineNotification{
+		Notification: api.EngineNotification{
 			Kind:        almagest.NotificationWorkspace,
 			WorkspaceID: "main",
-			Workspace: &pasta.WorkspaceNotification{
+			Workspace: &api.WorkspaceNotification{
 				Kind:     pasta.NotificationNodeMenu,
 				ID:       node,
 				Formular: menu,

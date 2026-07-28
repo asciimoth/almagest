@@ -174,7 +174,7 @@
 			},
 		},
 		"LogDNS md": {
-			"Class": "debug.almagest/LogDNS",
+			"Class": "almagest/LogDNS",
 			"Pos":   "{\"x\":1089,\"y\":205}",
 			"Links": ["DNS -> [OutDns xP] DNS"],
 		},

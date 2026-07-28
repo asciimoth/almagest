@@ -16,7 +16,7 @@ import (
 const (
 	// NodeTypeProtectedCommand is the daemon-only node class for scheduling a
 	// protected command-runner allowlist entry from a pasta/trigger event.
-	NodeTypeProtectedCommand = "almagestd/Command"
+	NodeTypeProtectedCommand = "almagest/Command"
 
 	commandNodeConfigBlockID = "config"
 	commandNodeCommandField  = "command"

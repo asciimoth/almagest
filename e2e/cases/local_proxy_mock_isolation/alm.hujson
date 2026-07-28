@@ -42,12 +42,12 @@
 			"Pos": "{\"x\":600,\"y\":550}",
 		},
 		"LogNetwork 1204": {
-			"Class": "debug.almagest/LogNetwork",
+			"Class": "almagest/LogNetwork",
 			"Pos": "{\"x\":420,\"y\":480}",
 			"Links": ["Network -> [MockNetwork 1203] Network"],
 		},
 		"LogNetwork 1205": {
-			"Class": "debug.almagest/LogNetwork",
+			"Class": "almagest/LogNetwork",
 			"Pos": "{\"x\":420,\"y\":620}",
 			"Links": ["Network -> [MockNetwork 1203] Network"],
 		},

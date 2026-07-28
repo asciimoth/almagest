@@ -156,30 +156,25 @@ func runGraph(ctx context.Context, c *client, args []string, stdin io.Reader, st
 		if err != nil {
 			return err
 		}
-		classes := make([]pasta.NodeClassSnapshot, 0, len(snapshot.Classes))
-		for _, cls := range snapshot.Classes {
-			classes = append(classes, cls)
-		}
-		sort.Slice(classes, func(i, j int) bool { return classes[i].Class < classes[j].Class })
-		return printPretty(stdout, map[string]any{"classes": classes})
+		return printPretty(stdout, map[string]any{"classes": snapshot.Classes})
 	default:
 		return fmt.Errorf("unknown graph command %q", args[0])
 	}
 }
 
-func fetchWorkspaceSnapshot(ctx context.Context, c *client, workspace string) (pasta.WorkspaceSnapshot, error) {
+func fetchWorkspaceSnapshot(ctx context.Context, c *client, workspace string) (api.WorkspaceSnapshot, error) {
 	raw, err := c.request(ctx, api.SurfaceEngine, string(api.MethodEngineWorkspaceSnapshot), api.WorkspaceRequest{Workspace: workspace})
 	if err != nil {
-		return pasta.WorkspaceSnapshot{}, err
+		return api.WorkspaceSnapshot{}, err
 	}
 	resp, err := api.DecodePayload[api.WorkspaceSnapshotResponse](raw)
 	if err != nil {
-		return pasta.WorkspaceSnapshot{}, err
+		return api.WorkspaceSnapshot{}, err
 	}
 	return resp.Snapshot, nil
 }
 
-func compactFromWorkspace(snapshot pasta.WorkspaceSnapshot) compactWorkspace {
+func compactFromWorkspace(snapshot api.WorkspaceSnapshot) compactWorkspace {
 	nodeIDs := make([]uint64, 0, len(snapshot.Nodes))
 	for id := range snapshot.Nodes {
 		nodeIDs = append(nodeIDs, id)

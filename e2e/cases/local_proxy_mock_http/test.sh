@@ -5,7 +5,7 @@ source /e2e/lib/common.sh
 
 start_daemon
 
-wait_node_class_available "debug.almagest/LogNetwork" \
+wait_node_class_available "almagest/LogNetwork" \
 	|| fail "debug network log node class is unavailable"
 
 wait_graph_node "HttpServer 1001" || fail "HttpServer node missing"
@@ -34,11 +34,11 @@ wait_log_contains "almagest/LocalProxy" "connect 127.0.0.1:8091" \
 	|| fail "local proxy did not log the connect request"
 wait_log_contains "almagest/HttpServer" "GET /" \
 	|| fail "HTTP server did not log the GET request"
-wait_log_contains "debug.almagest/LogNetwork" "Dial tcp" \
+wait_log_contains "almagest/LogNetwork" "Dial tcp" \
 	|| fail "debug network log did not record the dial"
-wait_log_contains "debug.almagest/LogNetwork" "GET / HTTP/1.1" \
+wait_log_contains "almagest/LogNetwork" "GET / HTTP/1.1" \
 	|| fail "debug network log did not record request bytes"
-wait_log_contains "debug.almagest/LogNetwork" "Debug http server response" \
+wait_log_contains "almagest/LogNetwork" "Debug http server response" \
 	|| fail "debug network log did not record response bytes"
 
 if curl --fail --silent --show-error --max-time 2 \

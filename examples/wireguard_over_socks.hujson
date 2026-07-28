@@ -1,7 +1,7 @@
 {
 	"nodes": {
 		"UDPPingClient": {
-			"Class":       "debug.almagest/UDPPingClient",
+			"Class":       "almagest/UDPPingClient",
 			"Pos":         "{\"x\":114,\"y\":135}",
 			"Links":       ["Network -> [VTun Client] Network"],
 			"local_port":  0,
@@ -30,7 +30,7 @@
 			"response": ""
 		},
 		"UDPPingServer": {
-			"Class":       "debug.almagest/UDPPingServer",
+			"Class":       "almagest/UDPPingServer",
 			"Pos":         "{\"x\":45,\"y\":659}",
 			"Links":       ["Network -> [VTun Server] Network"],
 			"network":     "udp4",

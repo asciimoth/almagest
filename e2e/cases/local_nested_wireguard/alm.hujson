@@ -133,7 +133,7 @@
 			"noLoopbackAddr": false,
 		},
 		"UDPPingServer 1505": {
-			"Class":       "debug.almagest/UDPPingServer",
+			"Class":       "almagest/UDPPingServer",
 			"Pos":         "{\"x\":-514,\"y\":559}",
 			"Links":       ["Network -> [Inner VTun Server 1510] Network"],
 			"network":     "udp4",
@@ -146,7 +146,7 @@
 			"timeout_ms":  5000,
 		},
 		"UDPPingClient 1506": {
-			"Class":       "debug.almagest/UDPPingClient",
+			"Class":       "almagest/UDPPingClient",
 			"Pos":         "{\"x\":-444,\"y\":319}",
 			"Links":       ["Network -> [Inner VTun Client 1509] Network"],
 			"network":     "udp4",

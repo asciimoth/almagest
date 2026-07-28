@@ -16,8 +16,8 @@ func init() {
 }
 
 const (
-	NodeTypeUDPPingServer = "debug.almagest/UDPPingServer"
-	NodeTypeUDPPingClient = "debug.almagest/UDPPingClient"
+	NodeTypeUDPPingServer = "almagest/UDPPingServer"
+	NodeTypeUDPPingClient = "almagest/UDPPingClient"
 
 	udpSocketListen = "listen"
 	udpSocketDial   = "dial"

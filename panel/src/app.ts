@@ -10,6 +10,7 @@ import {
   isPastaClipboard,
   linkColor,
   latestPriorityPopup,
+  nodeClassByName,
   nodeMenuID,
   nodePositionMap,
   parsePosition,
@@ -1022,7 +1023,7 @@ function showPastaAddNodeMenu(event: MouseEvent, parentMenu: unknown): void {
 }
 
 function paletteClasses(): NodeClassSnapshot[] {
-  return Object.values(snapshot.classes).sort((a, b) => paletteLabel(a).localeCompare(paletteLabel(b)));
+  return snapshot.classes;
 }
 
 function paletteLabel(cls: NodeClassSnapshot): string {
@@ -1305,7 +1306,7 @@ function renderClassPanel(selectedCount: number): void {
   destroyMenu();
   el.sidekick.dataset.nodeId = "";
   el.sidekick.dataset.nodeClass = "";
-  const classes = Object.values(snapshot.classes).sort((a, b) => a.class.localeCompare(b.class));
+  const classes = snapshot.classes;
   const list = document.createElement("div");
   list.className = "class-list";
   el.sidekick.replaceChildren(
@@ -1379,7 +1380,7 @@ function canvasPositionFromDragEvent(event: DragEvent): [number, number] {
 
 function dragEventClassName(event: DragEvent): string {
   const className = event.dataTransfer?.getData(CLASS_DRAG_MIME) || event.dataTransfer?.getData("text/plain") || "";
-  return snapshot.classes[className] ? className : "";
+  return nodeClassByName(snapshot, className) ? className : "";
 }
 
 function handleGraphCanvasDragOver(event: DragEvent): void {
@@ -3682,7 +3683,7 @@ function workerNodeBlocks(): WorkerNodeBlock[] {
       workers.sort((left, right) => left.id - right.id);
       const node = snapshot.nodes[String(nodeID)];
       const fallback = workers[0];
-      const primaryType = node?.primary_type || snapshot.classes[fallback.class]?.primary_type || "";
+      const primaryType = node?.primary_type || nodeClassByName(snapshot, fallback.class)?.primary_type || "";
       const color = primaryType ? typeColor(primaryType) : null;
       return {
         nodeID,

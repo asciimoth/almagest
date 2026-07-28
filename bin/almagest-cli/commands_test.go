@@ -394,11 +394,11 @@ func TestRunEngineRemoveNodesSendsBatchRequest(t *testing.T) {
 
 func TestRunEngineSetNodePositionResolvesName(t *testing.T) {
 	ft := &fakeTransport{reads: []api.Message{
-		mustResponse(t, "1", api.WorkspaceSnapshotResponse{Snapshot: pasta.WorkspaceSnapshot{
+		mustResponse(t, "1", api.WorkspaceSnapshotResponse{Snapshot: api.NewWorkspaceSnapshot(pasta.WorkspaceSnapshot{
 			Nodes: map[uint64]pasta.NodeSnapshot{
 				42: {Name: "server", Class: "test/server"},
 			},
-		}}),
+		})}),
 		mustResponse(t, "2", struct{}{}),
 	}}
 	var stdout, stderr bytes.Buffer
@@ -426,11 +426,11 @@ func TestRunEngineSetNodePositionResolvesName(t *testing.T) {
 
 func TestRunEngineSetNodeNameResolvesNameWithNewName(t *testing.T) {
 	ft := &fakeTransport{reads: []api.Message{
-		mustResponse(t, "1", api.WorkspaceSnapshotResponse{Snapshot: pasta.WorkspaceSnapshot{
+		mustResponse(t, "1", api.WorkspaceSnapshotResponse{Snapshot: api.NewWorkspaceSnapshot(pasta.WorkspaceSnapshot{
 			Nodes: map[uint64]pasta.NodeSnapshot{
 				42: {Name: "server", Class: "test/server"},
 			},
-		}}),
+		})}),
 		mustResponse(t, "2", struct{}{}),
 	}}
 	var stdout, stderr bytes.Buffer

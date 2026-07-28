@@ -77,7 +77,7 @@ wait_node_class_available "almagest/Spoofer" \
 	|| fail "Spoofer node class is unavailable"
 wait_node_class_available "almagest/OutNetwork" \
 	|| fail "OutNetwork node class is unavailable"
-wait_node_class_available "debug.almagest/LogNetwork" \
+wait_node_class_available "almagest/LogNetwork" \
 	|| fail "debug network log node class is unavailable"
 wait_graph_node "DefaultTun 1301" || fail "DefaultTun node missing"
 default_tun="$(node_id_by_name "DefaultTun 1301")"
@@ -113,7 +113,7 @@ retry "$ALMAGEST_E2E_TIMEOUT" "public route remains blocked before OutNetwork ch
 	|| fail "public target unexpectedly worked before OutNetwork chain was attached"
 
 spoofer="$(add_node "almagest/Spoofer" "Spoofer 1302")"
-log_network="$(add_node "debug.almagest/LogNetwork" "LogNetwork 1303")"
+log_network="$(add_node "almagest/LogNetwork" "LogNetwork 1303")"
 out_network="$(add_node "almagest/OutNetwork" "OutNetwork 1304")"
 
 add_link_by_port_name "$default_tun" right Tun "$spoofer" left Tun >/tmp/e2e-default-tun-link-tun.json
@@ -127,11 +127,11 @@ retry "$ALMAGEST_E2E_TIMEOUT" "public route through DefaultTun Spoofer OutNetwor
 	|| fail "public target did not work through DefaultTun/Spoofer/OutNetwork chain"
 assert_body /tmp/e2e-default-tun-public-chain.txt "$public_body"
 
-wait_log_contains "debug.almagest/LogNetwork" "Dial tcp $public_target" \
+wait_log_contains "almagest/LogNetwork" "Dial tcp $public_target" \
 	|| fail "debug network log did not record public target dial"
-wait_log_contains "debug.almagest/LogNetwork" "GET /through-outnetwork-chain" \
+wait_log_contains "almagest/LogNetwork" "GET /through-outnetwork-chain" \
 	|| fail "debug network log did not record proxied public request"
-wait_log_contains "debug.almagest/LogNetwork" "$public_body" \
+wait_log_contains "almagest/LogNetwork" "$public_body" \
 	|| fail "debug network log did not record proxied public response"
 
 stop_daemon

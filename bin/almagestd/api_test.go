@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"path/filepath"
@@ -13,6 +14,66 @@ import (
 	sysnetdebug "github.com/asciimoth/gonnect/sysnet/debug"
 	"github.com/asciimoth/pasta/pasta"
 )
+
+func TestEngineWorkspaceSnapshotAPIClassesAreSortedList(t *testing.T) {
+	engine, err := almagest.BuildEngine(
+		context.Background(),
+		configer.NewMemory(nil),
+		almagest.NewDebugLogFactory(16),
+		&sysnetdebug.System{},
+		nil,
+		nil, nil,
+
+		[]pasta.NodeClass{
+			adminAPINodeClass{name: "zeta/Untyped"},
+			adminAPINodeClass{name: "alpha/Beta", primaryType: "alpha/value"},
+			adminAPINodeClass{name: "alpha/Alpha", primaryType: "alpha/value"},
+		},
+		nil,
+		false)
+
+	if err != nil {
+		t.Fatalf("BuildEngine error = %v, want nil", err)
+	}
+	t.Cleanup(func() {
+		if err := engine.Close(); err != nil {
+			t.Errorf("engine.Close error = %v, want nil", err)
+		}
+	})
+	session := (&AdminAPI{}).newAPISession(engine, nil, nil)
+	req := mustRequest(t, "1", api.SurfaceEngine, string(api.MethodEngineWorkspaceSnapshot), api.WorkspaceRequest{Workspace: almagest.E2EWorkspace})
+
+	resp, err := session.handleMessage(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Error != nil {
+		t.Fatalf("response error = %#v, want nil", resp.Error)
+	}
+
+	var raw struct {
+		Snapshot struct {
+			Classes json.RawMessage `json:"classes"`
+		} `json:"snapshot"`
+	}
+	if err := json.Unmarshal(resp.Result, &raw); err != nil {
+		t.Fatal(err)
+	}
+	if trimmed := bytes.TrimSpace(raw.Snapshot.Classes); len(trimmed) == 0 || trimmed[0] != '[' {
+		t.Fatalf("classes JSON = %s, want array", raw.Snapshot.Classes)
+	}
+
+	decoded, err := api.DecodePayload[api.WorkspaceSnapshotResponse](resp.Result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 1; i < len(decoded.Snapshot.Classes); i++ {
+		if api.CompareNodeClassSnapshots(decoded.Snapshot.Classes[i-1], decoded.Snapshot.Classes[i]) > 0 {
+			t.Fatalf("classes are not sorted at indexes %d and %d: %#v then %#v",
+				i-1, i, decoded.Snapshot.Classes[i-1], decoded.Snapshot.Classes[i])
+		}
+	}
+}
 
 func TestWorkersSnapshotResponseKeepsOnlyLiveWorkerParents(t *testing.T) {
 	started := time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)
@@ -236,6 +297,31 @@ func (adminAPIBatchNodeClass) DefaultNodeParams() pasta.NodeClassParams {
 }
 
 func (adminAPIBatchNodeClass) NewNode(configer.Config, ...*pasta.NodeClassState) (pasta.Node, error) {
+	return &adminAPIBatchNode{}, nil
+}
+
+type adminAPINodeClass struct {
+	name        string
+	primaryType string
+}
+
+func (c adminAPINodeClass) ClassName() string {
+	return c.name
+}
+
+func (adminAPINodeClass) ShortDescription() string {
+	return "Admin API node test"
+}
+
+func (adminAPINodeClass) LongDescription() string {
+	return "Tests admin API snapshot serialization."
+}
+
+func (c adminAPINodeClass) DefaultNodeParams() pasta.NodeClassParams {
+	return pasta.NodeClassParams{PrimaryType: c.primaryType}
+}
+
+func (adminAPINodeClass) NewNode(configer.Config, ...*pasta.NodeClassState) (pasta.Node, error) {
 	return &adminAPIBatchNode{}, nil
 }
 

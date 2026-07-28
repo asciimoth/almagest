@@ -6,6 +6,7 @@ import {
   applyWorkerNotification,
   emptySnapshot,
   isPastaClipboard,
+  nodeClassByName,
   nodePositionMap,
   positionClipboardAt,
 } from "../public/build/pasta_model.js";
@@ -23,6 +24,16 @@ const node = {
   right_ports: [],
 };
 
+function nodeClass(name, primaryType = "") {
+  return {
+    class: name,
+    short_description: "",
+    unique: false,
+    primary_type: primaryType,
+    initial_ports: [],
+  };
+}
+
 function worker(id, nodeID = 10) {
   return {
     id,
@@ -35,11 +46,46 @@ function worker(id, nodeID = 10) {
   };
 }
 
+test("workspace snapshots preserve received class order", () => {
+  const next = applyWorkspaceSnapshot(emptySnapshot(), {
+    classes: [
+      nodeClass("pasta/PopUp", "pasta/popup"),
+      nodeClass("almagest/Tun", "almagest/tun"),
+      nodeClass("example/Untyped"),
+    ],
+    nodes: {},
+    ports: {},
+    links: {},
+  });
+
+  assert.deepEqual(next.classes.map((cls) => cls.class), ["pasta/PopUp", "almagest/Tun", "example/Untyped"]);
+  assert.equal(nodeClassByName(next, "almagest/Tun")?.primary_type, "almagest/tun");
+});
+
+test("class notifications update the ordered class list without resorting it", () => {
+  let snapshot = applyWorkspaceSnapshot(emptySnapshot(), {
+    classes: [nodeClass("pasta/PopUp"), nodeClass("example/Worker")],
+    nodes: {},
+    ports: {},
+    links: {},
+  });
+
+  snapshot = applyNotification(snapshot, {
+    kind: "node_class_added",
+    class_name: "almagest/Tun",
+    node_class: nodeClass("almagest/Tun"),
+  });
+  assert.deepEqual(snapshot.classes.map((cls) => cls.class), ["pasta/PopUp", "example/Worker", "almagest/Tun"]);
+
+  snapshot = applyNotification(snapshot, { kind: "node_class_removed", class_name: "example/Worker" });
+  assert.deepEqual(snapshot.classes.map((cls) => cls.class), ["pasta/PopUp", "almagest/Tun"]);
+});
+
 test("workspace snapshots initialize worker state", () => {
   const next = applyNotification(emptySnapshot(), {
     kind: "workspace_snapshot",
     snapshot: {
-      classes: {},
+      classes: [],
       nodes: { 10: node },
       ports: {},
       links: {},
@@ -60,7 +106,7 @@ test("workspace snapshots without workers preserve worker notifications", () => 
   snapshot = applyNotification(snapshot, {
     kind: "workspace_snapshot",
     snapshot: {
-      classes: {},
+      classes: [],
       nodes: { 10: node },
       ports: {},
       links: {},
@@ -78,7 +124,7 @@ test("direct workspace refresh without workers preserves worker notifications", 
   });
 
   const next = applyWorkspaceSnapshot(snapshot, {
-    classes: {},
+    classes: [],
     nodes: { 10: node },
     ports: {},
     links: {},
@@ -92,7 +138,7 @@ test("worker notifications update local worker state", () => {
   let snapshot = applyNotification(emptySnapshot(), {
     kind: "workspace_snapshot",
     snapshot: {
-      classes: {},
+      classes: [],
       nodes: { 10: node },
       ports: {},
       links: {},
@@ -114,7 +160,7 @@ test("batch node notifications update local graph state", () => {
   let snapshot = applyNotification(emptySnapshot(), {
     kind: "workspace_snapshot",
     snapshot: {
-      classes: {},
+      classes: [],
       nodes: {
         10: { ...node, name: "first", position: "" },
         20: { ...node, name: "second", position: "" },
@@ -143,7 +189,7 @@ test("batch node notifications update local graph state", () => {
       20: { ...node, name: "second", position: "30 40" },
     },
     snapshot: {
-      classes: {},
+      classes: [],
       nodes: { 30: { ...node, name: "third", position: "" } },
       ports: {},
       links: {},

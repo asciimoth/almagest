@@ -30,7 +30,7 @@
 			},
 		},
 		"LogNetwork 1102": {
-			"Class": "debug.almagest/LogNetwork",
+			"Class": "almagest/LogNetwork",
 			"Pos": "{\"x\":420,\"y\":620}",
 			"Links": ["Network -> [OutNetwork 1103] Network"],
 		},

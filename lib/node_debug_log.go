@@ -17,7 +17,7 @@ func init() {
 }
 
 const (
-	NodeTypeDebugLogNetwork = "debug.almagest/LogNetwork"
-	NodeTypeDebugLogDNS     = "debug.almagest/LogDNS"
-	NodeTypeDebugLogTun     = "debug.almagest/LogTun"
+	NodeTypeDebugLogNetwork = "almagest/LogNetwork"
+	NodeTypeDebugLogDNS     = "almagest/LogDNS"
+	NodeTypeDebugLogTun     = "almagest/LogTun"
 )

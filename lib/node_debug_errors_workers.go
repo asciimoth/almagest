@@ -14,7 +14,7 @@ func init() {
 	}, true)
 }
 
-const NodeTypeDebugErrorsWorkers = "debug.almagest/ErrorsWorkers"
+const NodeTypeDebugErrorsWorkers = "almagest/ErrorsWorkers"
 
 type debugErrorsWorkersClass struct {
 	engine *engine

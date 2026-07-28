@@ -115,7 +115,7 @@ log_dns_example_request_count() {
 		[
 			.entries[]
 			| select(
-				.node_class == "debug.almagest/LogDNS"
+				.node_class == "almagest/LogDNS"
 				and (.message | contains("dns.Request "))
 				and (.message | contains("questions=example.com. A"))
 			)

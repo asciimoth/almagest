@@ -17,7 +17,7 @@ trap cleanup EXIT
 
 target_pid="$(start_static_http_target 127.0.0.1 18092 "$target_body" "$target_log")"
 
-wait_node_class_available "debug.almagest/LogNetwork" \
+wait_node_class_available "almagest/LogNetwork" \
 	|| fail "debug network log node class is unavailable"
 
 wait_graph_node "HttpServer 1201" || fail "HttpServer node missing"
@@ -41,7 +41,7 @@ direct_body="$(cat /tmp/e2e-mock-isolation-direct-body.txt)"
 [[ "$direct_body" == "$target_body" ]] \
 	|| fail "unexpected direct response body: $direct_body"
 
-assert_log_not_contains "debug.almagest/LogNetwork" "direct-outside-mock"
+assert_log_not_contains "almagest/LogNetwork" "direct-outside-mock"
 assert_log_not_contains "almagest/HttpServer" "direct-outside-mock"
 
 retry "$ALMAGEST_E2E_TIMEOUT" "proxied HTTP request inside MockNetwork" \
@@ -59,7 +59,7 @@ wait_log_contains "almagest/LocalProxy" "connect 127.0.0.1:8091" \
 	|| fail "local proxy did not log the MockNetwork connect request"
 wait_log_contains "almagest/HttpServer" "GET /" \
 	|| fail "HTTP server did not log the MockNetwork request"
-wait_log_contains "debug.almagest/LogNetwork" "Debug http server response" \
+wait_log_contains "almagest/LogNetwork" "Debug http server response" \
 	|| fail "debug network log did not record MockNetwork response bytes"
 
 if curl --fail --silent --show-error --max-time 2 \

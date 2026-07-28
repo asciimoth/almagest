@@ -5,7 +5,7 @@
 			"Pos":   "{\"x\":861,\"y\":453}"
 		},
 		"UDPPingClient": {
-			"Class":       "debug.almagest/UDPPingClient",
+			"Class":       "almagest/UDPPingClient",
 			"Pos":         "{\"x\":-394,\"y\":161}",
 			"Links":       ["Network -> [Inner VTun Client] Network"],
 			"payload":     "nested-wireguard-udp-ping",
@@ -34,7 +34,7 @@
 			"port":     8080
 		},
 		"UDPPingServer": {
-			"Class":       "debug.almagest/UDPPingServer",
+			"Class":       "almagest/UDPPingServer",
 			"Pos":         "{\"x\":-465,\"y\":684}",
 			"Links":       ["Network -> [Inner VTun Server] Network"],
 			"remote_host": "10.199.10.1",

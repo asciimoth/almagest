@@ -17,7 +17,7 @@ trap cleanup EXIT
 
 target_pid="$(start_static_http_target 127.0.0.1 18091 "$target_body" "$target_log")"
 
-wait_node_class_available "debug.almagest/LogNetwork" \
+wait_node_class_available "almagest/LogNetwork" \
 	|| fail "debug network log node class is unavailable"
 
 wait_graph_node "LocalProxy 1101" || fail "LocalProxy node missing"
@@ -37,7 +37,7 @@ direct_body="$(cat /tmp/e2e-out-http-direct-body.txt)"
 [[ "$direct_body" == "$target_body" ]] \
 	|| fail "unexpected direct response body: $direct_body"
 
-assert_log_not_contains "debug.almagest/LogNetwork" "direct-outside-proxy"
+assert_log_not_contains "almagest/LogNetwork" "direct-outside-proxy"
 assert_log_not_contains "almagest/LocalProxy" "18091"
 
 retry "$ALMAGEST_E2E_TIMEOUT" "proxied HTTP request through OutNetwork" \
@@ -58,11 +58,11 @@ grep -F "GET /proxied-outnetwork" "$target_log" >/dev/null \
 
 wait_log_contains "almagest/LocalProxy" "connect 127.0.0.1:18091" \
 	|| fail "local proxy did not log the OutNetwork connect request"
-wait_log_contains "debug.almagest/LogNetwork" "Dial tcp4 127.0.0.1:18091" \
+wait_log_contains "almagest/LogNetwork" "Dial tcp4 127.0.0.1:18091" \
 	|| fail "debug network log did not record the OutNetwork dial"
-wait_log_contains "debug.almagest/LogNetwork" "GET /proxied-outnetwork" \
+wait_log_contains "almagest/LogNetwork" "GET /proxied-outnetwork" \
 	|| fail "debug network log did not record proxied request bytes"
-wait_log_contains "debug.almagest/LogNetwork" "$target_body" \
+wait_log_contains "almagest/LogNetwork" "$target_body" \
 	|| fail "debug network log did not record proxied response bytes"
 
 log "case passed"

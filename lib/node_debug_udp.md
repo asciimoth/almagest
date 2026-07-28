@@ -1,7 +1,7 @@
 Provides debug UDP ping-pong nodes for checking packet connectivity through an
 `almagest/network` graph.
 
-Add `debug.almagest/UDPPingServer` and `debug.almagest/UDPPingClient`, connect
+Add `almagest/UDPPingServer` and `almagest/UDPPingClient`, connect
 both `Network` ports to the network path under test, configure matching
 addresses, then press `Send ping` on the client. A successful check returns
 `pong:<payload>` and sets the client status to `ok`.

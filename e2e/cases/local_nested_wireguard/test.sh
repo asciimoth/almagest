@@ -118,7 +118,7 @@ assert_udp_ping_works() {
 
 start_daemon
 
-wait_node_class_available "debug.almagest/UDPPingClient" \
+wait_node_class_available "almagest/UDPPingClient" \
 	|| fail "debug UDP ping client node class is unavailable"
 
 wait_graph_node "MockNetwork 1500" || fail "MockNetwork node missing"
@@ -148,7 +148,7 @@ http_client="$(node_id_by_name "HttpClient 1612")"
 
 wait_log_contains "almagest/HttpServer" "listening on 10.199.20.1:8080" \
 	|| fail "HTTP server did not start listening"
-wait_log_contains "debug.almagest/UDPPingServer" "udp server listening on 10.199.20.1:26120" \
+wait_log_contains "almagest/UDPPingServer" "udp server listening on 10.199.20.1:26120" \
 	|| fail "UDP ping server did not start listening"
 
 wait_node_label "$outer_client_wg" up || fail "outer client WireGuard node did not become up"
@@ -166,9 +166,9 @@ wait_node_label "$udp_client" ok || fail "UDP ping client node did not report ok
 assert_http_request_works "$http_client"
 wait_node_label "$http_client" "200 OK" || fail "HTTP client node did not report 200 OK"
 
-wait_log_contains "debug.almagest/UDPPingClient" "udp ping" \
+wait_log_contains "almagest/UDPPingClient" "udp ping" \
 	|| fail "UDP ping client did not log the ping"
-wait_log_contains "debug.almagest/UDPPingServer" "udp pong" \
+wait_log_contains "almagest/UDPPingServer" "udp pong" \
 	|| fail "UDP ping server did not log the pong"
 wait_log_contains "almagest/HttpServer" "GET /" \
 	|| fail "HTTP server did not log the nested WireGuard request"

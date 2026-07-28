@@ -302,7 +302,7 @@ func (s *apiSession) handleEngineMessage(msg api.Message) (api.Message, error) {
 		id := s.engine.SubscribeNotifications(func(notification almagest.EngineNotification) {
 			event, err := api.NewEvent(api.SurfaceEngine, string(api.EventEngineNotification), api.EngineNotificationEvent{
 				SubscriptionID: notification.SubscriptionID,
-				Notification:   notification,
+				Notification:   api.NewEngineNotification(notification),
 			})
 			if err == nil {
 				_ = s.send(event)
@@ -356,7 +356,7 @@ func (s *apiSession) handleEngineMessage(msg api.Message) (api.Message, error) {
 		if !ok {
 			return newRequestError(msg.ID, api.ErrorNotFound, "workspace was not found")
 		}
-		return api.NewResponse(msg.ID, api.WorkspaceSnapshotResponse{Snapshot: snapshot})
+		return api.NewResponse(msg.ID, api.WorkspaceSnapshotResponse{Snapshot: api.NewWorkspaceSnapshot(snapshot)})
 
 	case api.MethodEngineWorkersSnapshot:
 		req, err := decodePayload[api.WorkspaceRequest](msg)

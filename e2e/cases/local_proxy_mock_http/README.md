@@ -28,7 +28,7 @@ admin API disabled.
 ## Expected Behavior
 
 - The admin API answers `ping`.
-- `debug.almagest/LogNetwork` is available, proving debug nodes were enabled.
+- `almagest/LogNetwork` is available, proving debug nodes were enabled.
 - The configured graph is restored with the expected nodes.
 - The HTTP server logs that it is listening on `127.0.0.1:8091`.
 - The local proxy logs that it is listening on `127.0.0.1:1081`.

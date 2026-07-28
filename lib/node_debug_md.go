@@ -15,4 +15,4 @@ func init() {
 	}, true)
 }
 
-const NodeTypeDebugMarkdwon = "debug.almagest/Markdown"
+const NodeTypeDebugMarkdwon = "almagest/Markdown"

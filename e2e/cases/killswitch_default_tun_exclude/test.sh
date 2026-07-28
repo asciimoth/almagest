@@ -173,7 +173,7 @@ wait_node_class_available "almagest/Spoofer" \
 	|| fail "Spoofer node class is unavailable"
 wait_node_class_available "almagest/OutNetwork" \
 	|| fail "OutNetwork node class is unavailable"
-wait_node_class_available "debug.almagest/LogNetwork" \
+wait_node_class_available "almagest/LogNetwork" \
 	|| fail "debug network log node class is unavailable"
 wait_graph_node "DefaultTun 1401" || fail "DefaultTun node missing"
 default_tun="$(node_id_by_name "DefaultTun 1401")"
@@ -196,7 +196,7 @@ retry "$ALMAGEST_E2E_TIMEOUT" "unexcluded python blocked by disconnected Default
 	|| fail "unexcluded Python traffic unexpectedly bypassed disconnected DefaultTun"
 
 spoofer="$(add_node "almagest/Spoofer" "Spoofer 1402")"
-log_network="$(add_node "debug.almagest/LogNetwork" "LogNetwork 1403")"
+log_network="$(add_node "almagest/LogNetwork" "LogNetwork 1403")"
 out_network="$(add_node "almagest/OutNetwork" "OutNetwork 1404")"
 
 add_link_by_port_name "$default_tun" right Tun "$spoofer" left Tun >/tmp/e2e-killswitch-link-tun.json
@@ -210,11 +210,11 @@ retry "$ALMAGEST_E2E_TIMEOUT" "unexcluded python through DefaultTun OutNetwork c
 	|| fail "unexcluded Python traffic did not work through DefaultTun/Spoofer/OutNetwork"
 assert_body /tmp/e2e-killswitch-python-chain.txt "$target_body"
 
-wait_log_contains "debug.almagest/LogNetwork" "Dial tcp $target" \
+wait_log_contains "almagest/LogNetwork" "Dial tcp $target" \
 	|| fail "debug network log did not record target dial"
-wait_log_contains "debug.almagest/LogNetwork" "GET /python-through-outnetwork" \
+wait_log_contains "almagest/LogNetwork" "GET /python-through-outnetwork" \
 	|| fail "debug network log did not record proxied Python request"
-wait_log_contains "debug.almagest/LogNetwork" "$target_body" \
+wait_log_contains "almagest/LogNetwork" "$target_body" \
 	|| fail "debug network log did not record proxied Python response"
 
 stop_daemon

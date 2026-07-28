@@ -57,7 +57,9 @@ export type WorkerSnapshot = {
 };
 
 export type WorkspaceSnapshot = {
-  classes: Record<string, NodeClassSnapshot>;
+  // Classes are ordered by the daemon and must stay as an array so UI palettes
+  // can render exactly the server-provided order.
+  classes: NodeClassSnapshot[];
   nodes: Record<string, NodeSnapshot>;
   ports: Record<string, PortSnapshot>;
   links: Record<string, LinkSnapshot>;
@@ -113,13 +115,20 @@ export type TypeColor = {
 const loadedTypeColors: Record<string, TypeColor> = {};
 
 export function emptySnapshot(): WorkspaceSnapshot {
-  return { classes: {}, nodes: {}, ports: {}, links: {}, workers: {} };
+  return { classes: [], nodes: {}, ports: {}, links: {}, workers: {} };
 }
 
 export function cloneSnapshot(snapshot: WorkspaceSnapshot): WorkspaceSnapshot {
   const cloned = JSON.parse(JSON.stringify(snapshot)) as WorkspaceSnapshot;
+  cloned.classes ??= [];
   cloned.workers ??= {};
   return cloned;
+}
+
+// nodeClassByName provides key-style lookup without converting the ordered API
+// class list into an object that would hide the daemon's display order.
+export function nodeClassByName(snapshot: WorkspaceSnapshot, className: string): NodeClassSnapshot | undefined {
+  return snapshot.classes.find((cls) => cls.class === className);
 }
 
 export function applyNotification(
@@ -134,11 +143,12 @@ export function applyNotification(
   switch (notification.kind) {
     case "node_class_added":
       if (notification.class_name && notification.node_class) {
-        next.classes[notification.class_name] = notification.node_class;
+        next.classes = next.classes.filter((cls) => cls.class !== notification.class_name);
+        next.classes.push(notification.node_class);
       }
       break;
     case "node_class_removed":
-      if (notification.class_name) delete next.classes[notification.class_name];
+      if (notification.class_name) next.classes = next.classes.filter((cls) => cls.class !== notification.class_name);
       break;
     case "node_added":
     case "node_updated":
