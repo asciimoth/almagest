@@ -291,7 +291,7 @@ func newDNSClientWorkspace(t *testing.T) (*pasta.Workspace, *mockLoopbackNetwork
 	t.Helper()
 	w := pasta.NewWorkspace(NewDebugLogFactory(1024))
 	t.Cleanup(func() { w.Close() })
-	network := newMockLoopbackNetwork()
+	network := newMockLoopbackNetwork(true)
 	t.Cleanup(func() { _ = network.Close() })
 	for _, class := range []pasta.NodeClass{
 		dnsClientClass{},
@@ -516,7 +516,7 @@ func (dnsClientNetworkClass) DefaultNodeParams() pasta.NodeClassParams {
 func (c dnsClientNetworkClass) NewNode(configer.Config, ...*pasta.NodeClassState) (pasta.Node, error) {
 	network := c.network
 	if network == nil {
-		network = newMockLoopbackNetwork()
+		network = newMockLoopbackNetwork(true)
 	}
 	return &dnsClientNetworkNode{network: network}, nil
 }
@@ -528,7 +528,7 @@ type dnsClientNetworkNode struct {
 
 func (n *dnsClientNetworkNode) OnInit(w *pasta.Workspace, _ pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
 	if n.network == nil {
-		n.network = newMockLoopbackNetwork()
+		n.network = newMockLoopbackNetwork(true)
 	}
 	return n.InitSimpleNetworkProvider(w, nil, id, restored, n.network, "network")
 }

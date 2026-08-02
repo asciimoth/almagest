@@ -131,7 +131,7 @@ func TestWireGuardRuntimeStatsMessageUpdatesStatusRows(t *testing.T) {
 
 func TestWireGuardBatchSizeConfiguresDeviceAndBind(t *testing.T) {
 	privateKey, _ := wireGuardTestKeyPair(t, 51)
-	network := newMockLoopbackNetwork()
+	network := newMockLoopbackNetwork(true)
 	t.Cleanup(func() { _ = network.Close() })
 	node := &wireGuardNode{config: wireGuardConfig{
 		privateKey: privateKey,

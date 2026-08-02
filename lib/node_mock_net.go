@@ -9,6 +9,7 @@ import (
 	"syscall"
 
 	"github.com/asciimoth/configer/configer"
+	"github.com/asciimoth/formular"
 	"github.com/asciimoth/gonnect"
 	"github.com/asciimoth/pasta/pasta"
 )
@@ -33,25 +34,84 @@ func (mockNetClass) DefaultNodeParams() pasta.NodeClassParams {
 		NetworkPort("left", "Network"),
 	}}
 }
-func (mockNetClass) NewNode(_ configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
-	network := newMockLoopbackNetwork()
-	return &mockNetNode{base: network}, nil
+func (mockNetClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
+	config := defaultMockNetConfig()
+	config.read(cfg)
+	network := newMockLoopbackNetwork(config.allowAnyHost)
+	return &mockNetNode{config: config, base: network}, nil
+}
+
+type mockNetConfig struct {
+	// allowAnyHost keeps MockNetwork's historical all-address behavior. When
+	// enabled, gonnect rewrites non-loopback host names and addresses to
+	// loopback before binding or dialing.
+	allowAnyHost bool
+}
+
+func defaultMockNetConfig() mockNetConfig {
+	return mockNetConfig{allowAnyHost: true}
+}
+
+func (c *mockNetConfig) read(cfg configer.Config) {
+	if cfg == nil {
+		return
+	}
+	c.allowAnyHost = configer.Bool(cfg, configer.Path{"allowAnyHost"}, c.allowAnyHost)
 }
 
 type mockNetNode struct {
 	simpleNetworkProvider
 
-	base *mockLoopbackNetwork
+	config mockNetConfig
+	base   *mockLoopbackNetwork
 }
 
 func (n *mockNetNode) OnInit(w *pasta.Workspace, _ pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
 	if n.base == nil {
-		n.base = newMockLoopbackNetwork()
+		n.base = newMockLoopbackNetwork(n.config.allowAnyHost)
 	}
 	if err := n.InitSimpleNetworkProvider(w, nil, id, restored, n.base, "loopback"); err != nil {
 		return err
 	}
-	return n.w.AddNodeResourceLocked(n.id, n.base)
+	if err := n.w.AddNodeResourceLocked(n.id, n.base); err != nil {
+		return err
+	}
+	n.sendMenuSnapshot(false)
+	return nil
+}
+
+func (n *mockNetNode) OnFormularMsg(message any) error {
+	msg, ok := message.(formular.FormApplyMessage)
+	if !ok || msg.MenuID != pasta.NodeMenuID(n.id) || msg.BlockID != "config" {
+		return nil
+	}
+	if value, ok := formular.BoolValue(msg.Values["allowAnyHost"]); ok {
+		n.config.allowAnyHost = value
+		if n.base != nil {
+			n.base.AllowAnyHost = value
+		}
+	}
+	n.sendMenuSnapshot(true)
+	return nil
+}
+
+func (n *mockNetNode) OnSave(cfg configer.Config) error {
+	if err := pasta.DeleteNodeOwnedConfigKeys(cfg); err != nil {
+		return err
+	}
+	return configer.SetMap(cfg, map[string]any{
+		"allowAnyHost": n.config.allowAnyHost,
+	})
+}
+
+func (n *mockNetNode) sendMenuSnapshot(force bool) {
+	sendNodeMenuSnapshot(n.w, n.id, force, n.configBlock())
+}
+
+func (n *mockNetNode) configBlock() formular.Block {
+	return formular.Block{ID: "config", Order: 10, Generation: 1, Form: true, Items: []formular.Item{
+		configCheckbox("allowAnyHost", "Allow any host", n.config.allowAnyHost),
+	}}
 }
 
 // mockLoopbackNetwork normalizes mock UDP write errors at the source. The
@@ -63,11 +123,13 @@ type mockLoopbackNetwork struct {
 	*gonnect.LoopbackNetwork
 }
 
-// newMockLoopbackNetwork keeps MockNetwork's permissive loopback behavior while
-// installing the UDP error normalization needed by SOCKS tunnel tests.
-func newMockLoopbackNetwork() *mockLoopbackNetwork {
+// newMockLoopbackNetwork installs MockNetwork's UDP error normalization while
+// letting callers choose whether non-loopback host names and addresses should
+// be rewritten to loopback. MockNetwork enables that all-host support by
+// default, but tests and stricter debug setups can turn it off.
+func newMockLoopbackNetwork(allowAnyHost bool) *mockLoopbackNetwork {
 	network := gonnect.NewLoopbackNetwok()
-	network.AllowAnyHost = true
+	network.AllowAnyHost = allowAnyHost
 	return &mockLoopbackNetwork{LoopbackNetwork: network}
 }
 
