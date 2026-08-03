@@ -22,6 +22,7 @@
           <button class="active" data-tab="graph" type="button">Graph</button>
           <button data-tab="sec" type="button">Sec</button>
           <button data-tab="dns" type="button">DNS</button>
+          <button data-tab="tls" type="button">TLS</button>
           <button data-tab="kv" type="button">KV</button>
           <button data-tab="ps" type="button">Ps</button>
           <button data-tab="logs" type="button">Logs</button>
@@ -45,6 +46,13 @@
         <div class="kv-shell">
           <div id="dns-tree" class="kv-tree" aria-label="DNS caches"></div>
           <aside id="dns-value-panel" class="kv-value-panel hidden" aria-label="DNS value"></aside>
+        </div>
+      </section>
+
+      <section class="panel hidden kv-panel tls-panel" data-panel="tls">
+        <div class="kv-shell">
+          <div id="tls-tree" class="kv-tree" aria-label="TLS configs"></div>
+          <aside id="tls-value-panel" class="kv-value-panel hidden" aria-label="TLS config"></aside>
         </div>
       </section>
 

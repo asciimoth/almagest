@@ -23,6 +23,7 @@ func TestEngineWorkspaceSnapshotAPIClassesAreSortedList(t *testing.T) {
 		&sysnetdebug.System{},
 		nil,
 		nil, nil,
+		nil,
 
 		[]pasta.NodeClass{
 			adminAPINodeClass{name: "zeta/Untyped"},
@@ -211,6 +212,7 @@ func TestEngineBatchNodeAPIDispatch(t *testing.T) {
 		&sysnetdebug.System{},
 		nil,
 		nil, nil,
+		nil,
 
 		[]pasta.NodeClass{adminAPIBatchNodeClass{}},
 		nil,

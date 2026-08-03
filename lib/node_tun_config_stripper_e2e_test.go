@@ -100,6 +100,7 @@ func newTunConfigStripperConfigE2E(t *testing.T) (*NodeE2E, *tunConfigRecorderRe
 		sys,
 		nil,
 		nil, nil,
+		nil,
 
 		[]pasta.NodeClass{
 			tunConfigRecorderClass{registry: recorders},

@@ -25,6 +25,7 @@ func TestEngineWorkersSnapshotIncludesRestoredStartupWorkers(t *testing.T) {
 		&sysnetdebug.System{},
 		nil,
 		nil, nil,
+		nil,
 
 		nil,
 		nil,
@@ -63,6 +64,7 @@ func TestEngineWorkerNotificationsTrackPanicLifecycle(t *testing.T) {
 		&sysnetdebug.System{},
 		nil,
 		nil, nil,
+		nil,
 
 		nil,
 		nil,

@@ -129,6 +129,7 @@ func newTunJoinerE2E(t *testing.T) (*NodeE2E, *testTunProviderRegistry, *testTun
 		sys,
 		nil,
 		nil, nil,
+		nil,
 
 		[]pasta.NodeClass{
 			testTunProviderClass{registry: providers},

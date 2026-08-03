@@ -182,6 +182,12 @@ func TestRequiresMutationLease(t *testing.T) {
 	if RequiresMutationLease(SurfaceSecrets, string(MethodSecretsSnapshot)) {
 		t.Fatal("secrets snapshot should not require mutation lease")
 	}
+	if !RequiresMutationLease(SurfaceTLS, string(MethodTLSSetCert)) {
+		t.Fatal("TLS set_cert should require mutation lease")
+	}
+	if RequiresMutationLease(SurfaceTLS, string(MethodTLSSnapshot)) {
+		t.Fatal("TLS snapshot should not require mutation lease")
+	}
 }
 
 func TestEngineMethodsIncludesWorkersSnapshot(t *testing.T) {
@@ -249,6 +255,33 @@ func TestSecretsMethodsAndSurfaceAreAdvertised(t *testing.T) {
 	for method, found := range required {
 		if !found {
 			t.Fatalf("SecretsMethods does not include %s", method)
+		}
+	}
+}
+
+func TestTLSMethodsAndSurfaceAreAdvertised(t *testing.T) {
+	if !slices.Contains(Surfaces(), string(SurfaceTLS)) {
+		t.Fatal("Surfaces does not include tls")
+	}
+	required := map[string]bool{
+		string(MethodTLSSnapshot):     false,
+		string(MethodTLSSubscribe):    false,
+		string(MethodTLSUnsubscribe):  false,
+		string(MethodTLSSetCert):      false,
+		string(MethodTLSRenameCert):   false,
+		string(MethodTLSDeleteCert):   false,
+		string(MethodTLSSetPolicy):    false,
+		string(MethodTLSRenamePolicy): false,
+		string(MethodTLSDeletePolicy): false,
+	}
+	for _, method := range TLSMethods() {
+		if _, ok := required[method]; ok {
+			required[method] = true
+		}
+	}
+	for method, found := range required {
+		if !found {
+			t.Fatalf("TLSMethods does not include %s", method)
 		}
 	}
 }

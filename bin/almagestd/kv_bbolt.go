@@ -20,6 +20,7 @@ const (
 	dnsRootBucketName  = "dns"
 	kvPluginBucketName = "plugin data"
 	secretsBucketName  = "secrets"
+	tlsRootBucketName  = "tls"
 )
 
 const (
@@ -32,6 +33,7 @@ var (
 	_ almagest.DnsCacheManager       = (*bboltKVManager)(nil)
 	_ almagest.DnsCacheStorageLister = (*bboltKVManager)(nil)
 	_ almagest.SecretsStorage        = (*bboltKVManager)(nil)
+	_ almagest.TlsConfigStorage      = (*bboltKVManager)(nil)
 	_ almagest.KVStore               = (*bboltKVStore)(nil)
 	_ almagest.KVReadTx              = (*bboltKVReadTx)(nil)
 	_ almagest.KVWriteTx             = (*bboltKVWriteTx)(nil)
@@ -55,6 +57,12 @@ type bboltKVManager struct {
 	immutableSecrets  map[string]immutableSecret
 	secretsNextSub    uint64
 	secretsChangeSubs map[uint64]func(secretChange)
+
+	tlsMu         sync.Mutex
+	immutableTLS  immutableTLSData
+	tlsWatchers   map[string]map[string]struct{}
+	tlsNextSub    uint64
+	tlsChangeSubs map[uint64]func(tlsChange)
 }
 
 type bboltKVStore struct {
@@ -91,6 +99,10 @@ type bboltKVManagerOptions struct {
 	// secrets on top of mutable bbolt entries. These entries are cloned during
 	// open and then maintained in memory for node rename/delete cleanup.
 	ImmutableSecrets map[string]immutableSecret
+	// ImmutableTLS overlays protected config and OS-provided TLS data on top of
+	// mutable bbolt entries. The overlay is cloned during open and then kept
+	// only in memory.
+	ImmutableTLS immutableTLSData
 }
 
 func openKVManager(path string) (*bboltKVManager, error) {
@@ -110,6 +122,9 @@ func openKVManagerWithOptions(path string, options bboltKVManagerOptions) (*bbol
 		dnsChangeSubs:             map[uint64]func(dnsCacheChange){},
 		immutableSecrets:          cloneImmutableSecrets(options.ImmutableSecrets),
 		secretsChangeSubs:         map[uint64]func(secretChange){},
+		immutableTLS:              cloneImmutableTLSData(options.ImmutableTLS),
+		tlsWatchers:               map[string]map[string]struct{}{},
+		tlsChangeSubs:             map[uint64]func(tlsChange){},
 	}
 	if err := manager.initRootBuckets(); err != nil {
 		_ = db.Close()
@@ -134,6 +149,16 @@ func (m *bboltKVManager) initRootBuckets() error {
 			return err
 		}
 		if _, err := tx.CreateBucketIfNotExists([]byte(secretsBucketName)); err != nil {
+			return err
+		}
+		tlsRoot, err := tx.CreateBucketIfNotExists([]byte(tlsRootBucketName))
+		if err != nil {
+			return err
+		}
+		if _, err := tlsRoot.CreateBucketIfNotExists([]byte(tlsCertsBucketName)); err != nil {
+			return err
+		}
+		if _, err := tlsRoot.CreateBucketIfNotExists([]byte(tlsPoliciesBucketName)); err != nil {
 			return err
 		}
 		return nil

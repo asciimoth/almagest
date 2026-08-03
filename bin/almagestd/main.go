@@ -94,9 +94,20 @@ func main() {
 		fatal(err)
 		return
 	}
+	osTLSData, err := loadOSTLSData(context.Background(), platform.OSAuthorityFetcher())
+	if err != nil {
+		fatal(err)
+		return
+	}
+	protectedTLSData, err := conf.Protected.ImmutableTLS()
+	if err != nil {
+		fatal(err)
+		return
+	}
 	kv, err = openKVManagerInStorage(fsPath, bboltKVManagerOptions{
 		DisableDNSCacheExpiration: args.NoDNSCacheExpiration,
 		ImmutableSecrets:          immutableSecrets,
+		ImmutableTLS:              mergeImmutableTLSData(osTLSData, protectedTLSData),
 	})
 	if err != nil {
 		fatal(err)
@@ -115,6 +126,7 @@ func main() {
 	admin.kv = kv
 	admin.dns = kv
 	admin.secrets = kv
+	admin.tls = kv
 	defer admin.Stop()
 
 	logf := NewLogFactory(conf.LogCache().MergeArgs(&args))
@@ -151,6 +163,7 @@ func main() {
 		conf.Main,
 		logf,
 		sys,
+		kv,
 		kv,
 		kv,
 		kv,

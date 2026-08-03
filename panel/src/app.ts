@@ -46,6 +46,10 @@ import {
   createNotificationToast,
   createSecretTitle,
   createSecretValuePreview,
+  createTLSCertPreview,
+  createTLSCertTitle,
+  createTLSPolicyPreview,
+  createTLSPolicyTitle,
   createWorkerNodeBlock,
   formatSecretEntryMeta,
   renderNodeDescription,
@@ -105,9 +109,42 @@ import {
   type SecretEntry,
   type SecretsSnapshot,
 } from "./secrets_model.js";
+import {
+  TLS_POLICY_JSON_ROWS,
+  applyTLSChange,
+  emptyTLSPolicySpec,
+  formatTLSCertMeta,
+  formatTLSPolicyMeta,
+  formatTLSPolicySpec,
+  isMutableTLSCertName,
+  isMutableTLSPolicyName,
+  parseTLSPolicySpec,
+  sortTLSCerts,
+  sortTLSPolicies,
+  type TLSCertEntry,
+  type TLSChange,
+  type TLSDNSRule,
+  type TLSItemKind,
+  type TLSAuthorityConstraint,
+  type TLSPin,
+  type TLSPolicyEntry,
+  type TLSPolicySpec,
+  type TLSScope,
+  type TLSSnapshot,
+  type TLSTrustAnchor,
+} from "./tls_model.js";
 
 const SECRET_NODE_AUTOCOMPLETE_LIMIT = 8;
+const TLS_CERT_OPENSSL_COMMAND = [
+  "openssl req -x509 -newkey rsa:4096",
+  "-keyout tls.key -out tls.crt",
+  "-sha256 -days 365 -nodes",
+  '-subj "/CN=example.test"',
+].join(" ");
+const TLS_AUTHORITY_MATCHES = ["certificate", "spki"] as const;
+const TLS_PIN_KINDS = ["spki", "certificate"] as const;
 let secNodeAutocompleteID = 0;
+let tlsPolicyEditorID = 0;
 
 declare const LiteGraph: any;
 declare const LGraph: any;
@@ -211,6 +248,14 @@ type SecretsEvent = {
   subscription_id: number;
   change: SecretChange;
 };
+type TLSSubscribeResponse = {
+  subscription_id: number;
+  snapshot: TLSSnapshot;
+};
+type TLSEvent = {
+  subscription_id: number;
+  change: TLSChange;
+};
 type KVNoticeLevel = "info" | "error";
 type KVNotice = {
   level: KVNoticeLevel;
@@ -218,6 +263,7 @@ type KVNotice = {
 };
 type DNSNotice = KVNotice;
 type SecNotice = KVNotice;
+type TLSNotice = KVNotice;
 type DNSValuePanelState = {
   cache: string;
   key: string;
@@ -245,7 +291,15 @@ type SecValuePanelState = {
   reveal: boolean;
   editing: "value" | "nodes" | "rename" | null;
 };
-type Surface = "admin" | "dns" | "engine" | "kv" | "log" | "secrets";
+type TLSOpenForm = {
+  kind: TLSItemKind;
+};
+type TLSValuePanelState = {
+  kind: TLSItemKind;
+  name: string;
+  editing: "value" | "rename" | null;
+};
+type Surface = "admin" | "dns" | "engine" | "kv" | "log" | "secrets" | "tls";
 type APIMessage = {
   version: "v1";
   kind: "request" | "response" | "event";
@@ -349,6 +403,13 @@ const dnsExpandedCaches = new Set<string>();
 const dnsKeysByCache = new Map<string, DNSKeysSnapshot>();
 const dnsKeySubscriptions = new Map<string, number>();
 const dnsKeySubscribePending = new Set<string>();
+let tlsSubscriptionID = 0;
+let tlsSubscribePending = false;
+let tlsScrollTop = 0;
+let tlsNotice: TLSNotice | null = null;
+let tlsOpenForm: TLSOpenForm | null = null;
+let tlsValuePanel: TLSValuePanelState | null = null;
+let tlsSnapshot: TLSSnapshot = { certs: [], policies: [] };
 let kvStoreSubscriptionID = 0;
 let kvStoreSubscribePending = false;
 let kvScrollTop = 0;
@@ -386,6 +447,9 @@ const el = {
   dnsPanel: document.querySelector<HTMLElement>("[data-panel='dns']")!,
   dnsTree: document.querySelector<HTMLElement>("#dns-tree")!,
   dnsValuePanel: document.querySelector<HTMLElement>("#dns-value-panel")!,
+  tlsPanel: document.querySelector<HTMLElement>("[data-panel='tls']")!,
+  tlsTree: document.querySelector<HTMLElement>("#tls-tree")!,
+  tlsValuePanel: document.querySelector<HTMLElement>("#tls-value-panel")!,
   kvPanel: document.querySelector<HTMLElement>("[data-panel='kv']")!,
   kvTree: document.querySelector<HTMLElement>("#kv-tree")!,
   kvValuePanel: document.querySelector<HTMLElement>("#kv-value-panel")!,
@@ -532,6 +596,10 @@ function handleAPIMessage(msg: APIMessage): void {
   }
   if (msg.kind === "event" && msg.surface === "dns" && msg.method) {
     handleDNSEvent(msg.method, msg.payload);
+    return;
+  }
+  if (msg.kind === "event" && msg.surface === "tls" && msg.method) {
+    handleTLSEvent(msg.method, msg.payload);
     return;
   }
   if (msg.kind === "event" && msg.surface === "secrets" && msg.method) {
@@ -707,6 +775,22 @@ async function backend<T>(method: string, params: Record<string, unknown> = {}):
       return request<T>("dns", "delete", { cache: params.cache, key: params.key });
     case "dnsDrop":
       return request<T>("dns", "drop", { cache: params.cache });
+    case "tlsSubscribe":
+      return request<T>("tls", "subscribe");
+    case "tlsUnsubscribe":
+      return request<T>("tls", "unsubscribe", { subscription_id: params.subscriptionID });
+    case "tlsSetCert":
+      return request<T>("tls", "set_cert", { name: params.name, pem: params.pem });
+    case "tlsRenameCert":
+      return request<T>("tls", "rename_cert", { name: params.name, new_name: params.newName });
+    case "tlsDeleteCert":
+      return request<T>("tls", "delete_cert", { name: params.name });
+    case "tlsSetPolicy":
+      return request<T>("tls", "set_policy", { name: params.name, spec: params.spec });
+    case "tlsRenamePolicy":
+      return request<T>("tls", "rename_policy", { name: params.name, new_name: params.newName });
+    case "tlsDeletePolicy":
+      return request<T>("tls", "delete_policy", { name: params.name });
     case "secSubscribe":
       return request<T>("secrets", "subscribe");
     case "secUnsubscribe":
@@ -2935,6 +3019,996 @@ function restoreDNSScrollState(): void {
   }, 0);
 }
 
+function handleTLSEvent(method: string, payload: unknown): void {
+  if (method !== "update") return;
+  const event = payload as TLSEvent;
+  if (event.subscription_id !== tlsSubscriptionID) return;
+  applyTLSChangeToState(event.change);
+  renderTLS();
+}
+
+// TLS config entries contain their editable payloads in the tab snapshot. Keep
+// one tab-scoped subscription active and release it when the user leaves TLS.
+function activateTLSPanel(): void {
+  renderTLS();
+  restoreTLSScrollState();
+  void ensureTLSSubscription();
+}
+
+function deactivateTLSPanel(): void {
+  rememberTLSScrollState();
+  closeTLSValuePanel();
+  if (tlsSubscriptionID) {
+    void tryBackend("tlsUnsubscribe", { subscriptionID: tlsSubscriptionID });
+    tlsSubscriptionID = 0;
+  }
+}
+
+async function ensureTLSSubscription(): Promise<void> {
+  if (activeTab !== "tls" || tlsSubscriptionID || tlsSubscribePending) return;
+  tlsSubscribePending = true;
+  const response = await tryBackend<TLSSubscribeResponse>("tlsSubscribe");
+  tlsSubscribePending = false;
+  if (!response) {
+    tlsNotice = { level: "error", text: "TLS config storage is unavailable." };
+    renderTLS();
+    return;
+  }
+  if (activeTab !== "tls") {
+    if (response.subscription_id) void tryBackend("tlsUnsubscribe", { subscriptionID: response.subscription_id });
+    return;
+  }
+  tlsSubscriptionID = response.subscription_id;
+  applyTLSSnapshotToState(response.snapshot);
+}
+
+function applyTLSSnapshotToState(snapshot: TLSSnapshot): void {
+  tlsSnapshot = {
+    certs: sortTLSCerts(snapshot.certs ?? []),
+    policies: sortTLSPolicies(snapshot.policies ?? []),
+  };
+  if (tlsValuePanel && !tlsSelectedEntry()) closeTLSValuePanel();
+  renderTLS();
+}
+
+function applyTLSChangeToState(change: TLSChange): void {
+  tlsSnapshot = applyTLSChange(tlsSnapshot, change);
+  if (change.deleted && tlsValuePanel?.kind === change.kind && tlsValuePanel.name === change.name) {
+    closeTLSValuePanel();
+  }
+}
+
+function renderTLS(): void {
+  const previousTop = el.tlsPanel.scrollTop;
+  const tree = document.createElement("div");
+  tree.className = "kv-tree-inner";
+  tree.append(renderTLSHeader());
+  if (tlsNotice) tree.append(renderTLSNotice(tlsNotice));
+  if (tlsOpenForm) tree.append(tlsOpenForm.kind === "cert" ? renderTLSCertCreateForm() : renderTLSPolicyCreateForm());
+
+  const certs = tlsSnapshot.certs ?? [];
+  const policies = tlsSnapshot.policies ?? [];
+  const list = document.createElement("ol");
+  list.className = "kv-store-list tls-list";
+  list.append(renderTLSSection("Certificates", certs, renderTLSCertRow, "No TLS certificates."));
+  list.append(renderTLSSection("Policies", policies, renderTLSPolicyRow, "No TLS policies."));
+  tree.append(list);
+  el.tlsTree.replaceChildren(tree);
+  el.tlsPanel.scrollTop = activeTab === "tls" ? previousTop : tlsScrollTop;
+  renderTLSValuePanel();
+}
+
+function renderTLSHeader(): HTMLElement {
+  const header = document.createElement("header");
+  header.className = "kv-header sec-header tls-header";
+  header.append(textElement("h2", "TLS configs"));
+  const actions = document.createElement("div");
+  actions.className = "kv-row-actions tls-header-actions";
+  const addCert = textElement("button", "+ Certificate");
+  addCert.type = "button";
+  addCert.title = "Create TLS certificate";
+  addCert.addEventListener("click", () => {
+    tlsOpenForm = { kind: "cert" };
+    renderTLS();
+  });
+  const addPolicy = textElement("button", "+ Policy");
+  addPolicy.type = "button";
+  addPolicy.title = "Create TLS policy";
+  addPolicy.addEventListener("click", () => {
+    tlsOpenForm = { kind: "policy" };
+    renderTLS();
+  });
+  actions.append(addCert, addPolicy);
+  header.append(actions);
+  return header;
+}
+
+function renderTLSNotice(notice: TLSNotice): HTMLElement {
+  const row = document.createElement("div");
+  row.className = `kv-notice kv-notice-${notice.level}`;
+  row.append(textElement("span", notice.text));
+  const close = textElement("button", "x");
+  close.type = "button";
+  close.title = "Dismiss";
+  close.setAttribute("aria-label", "Dismiss TLS message");
+  close.addEventListener("click", () => {
+    tlsNotice = null;
+    renderTLS();
+  });
+  row.append(close);
+  return row;
+}
+
+function renderTLSSection<T>(
+  titleText: string,
+  entries: T[],
+  renderEntry: (entry: T) => HTMLLIElement,
+  emptyText: string,
+): HTMLLIElement {
+  const section = document.createElement("li");
+  section.className = "kv-store tls-section";
+  section.append(textElement("h3", titleText, "tls-section-title"));
+  const list = document.createElement("ol");
+  list.className = "kv-entry-list";
+  if (!entries.length) {
+    list.append(renderKVEmptyState(tlsSubscribePending ? "Loading TLS configs." : emptyText));
+  } else {
+    for (const entry of entries) list.append(renderEntry(entry));
+  }
+  section.append(list);
+  return section;
+}
+
+function renderTLSCertRow(entry: TLSCertEntry): HTMLLIElement {
+  const item = document.createElement("li");
+  item.className = "kv-entry kv-entry-value tls-cert";
+  item.classList.toggle("tls-readonly", Boolean(entry.read_only));
+  const row = document.createElement("div");
+  row.className = "kv-row";
+  row.append(createKVIndent(), createTLSCertTitle(entry), renderTLSRowActions("cert", entry));
+  if (tlsValuePanel?.kind === "cert" && tlsValuePanel.name === entry.name) row.classList.add("kv-row-selected");
+  item.append(row);
+  return item;
+}
+
+function renderTLSPolicyRow(entry: TLSPolicyEntry): HTMLLIElement {
+  const item = document.createElement("li");
+  item.className = "kv-entry kv-entry-value tls-policy";
+  item.classList.toggle("tls-readonly", Boolean(entry.read_only));
+  item.classList.toggle("tls-policy-invalid-row", !entry.valid);
+  const row = document.createElement("div");
+  row.className = "kv-row";
+  row.append(createKVIndent(), createTLSPolicyTitle(entry), renderTLSRowActions("policy", entry));
+  if (tlsValuePanel?.kind === "policy" && tlsValuePanel.name === entry.name) row.classList.add("kv-row-selected");
+  item.append(row);
+  return item;
+}
+
+function renderTLSRowActions(kind: TLSItemKind, entry: TLSCertEntry | TLSPolicyEntry): HTMLElement {
+  const actions = document.createElement("div");
+  actions.className = "kv-row-actions";
+  const show = textElement("button", "Open");
+  show.type = "button";
+  show.title = kind === "cert" ? "Open TLS certificate" : "Open TLS policy";
+  show.addEventListener("click", () => openTLSValuePanel(kind, entry.name));
+  actions.append(show);
+  if (!entry.read_only) {
+    const remove = textElement("button", "Delete");
+    remove.type = "button";
+    remove.title = kind === "cert" ? "Delete TLS certificate" : "Delete TLS policy";
+    remove.className = "danger";
+    remove.addEventListener("click", () => deleteTLSEntry(kind, entry.name));
+    actions.append(remove);
+  }
+  return actions;
+}
+
+function renderTLSCertCreateForm(): HTMLFormElement {
+  return renderTLSCertForm({
+    initialName: "",
+    initialPEM: "",
+    includeName: true,
+    submitLabel: "Create",
+    onSubmit: (name, pem) => createTLSCert(name, pem),
+    onCancel: closeTLSForm,
+  });
+}
+
+function renderTLSPolicyCreateForm(): HTMLFormElement {
+  return renderTLSPolicyForm({
+    initialName: "",
+    initialSpec: emptyTLSPolicySpec(),
+    includeName: true,
+    submitLabel: "Create",
+    onSubmit: (name, spec) => createTLSPolicy(name, spec),
+    onCancel: closeTLSForm,
+  });
+}
+
+type TLSCertFormOptions = {
+  initialName: string;
+  initialPEM: string;
+  includeName: boolean;
+  submitLabel: string;
+  onSubmit(name: string, pem: string): void;
+  onCancel(): void;
+};
+
+function renderTLSCertForm(options: TLSCertFormOptions): HTMLFormElement {
+  const form = document.createElement("form");
+  form.className = "kv-inline-form tls-cert-form";
+  const name = document.createElement("input");
+  name.name = "name";
+  name.placeholder = "Certificate name";
+  name.autocomplete = "off";
+  name.required = true;
+  name.value = options.initialName;
+  const pem = document.createElement("textarea");
+  pem.name = "pem";
+  pem.placeholder = "-----BEGIN CERTIFICATE-----";
+  pem.rows = 9;
+  pem.required = true;
+  pem.value = options.initialPEM;
+  const pemEditor = document.createElement("div");
+  pemEditor.className = "tls-cert-pem-editor";
+  const upload = document.createElement("input");
+  upload.type = "file";
+  upload.accept = ".pem,.crt,.cer,application/x-pem-file,application/pem-certificate,text/plain";
+  const hint = document.createElement("p");
+  hint.className = "sec-form-hint";
+  hint.append(
+    document.createTextNode("Generate a self-signed certificate: "),
+    textElement("code", TLS_CERT_OPENSSL_COMMAND),
+    document.createTextNode(". Upload or paste tls.crt here."),
+  );
+  upload.addEventListener("change", () => {
+    const file = upload.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.addEventListener("load", () => {
+      pem.value = typeof reader.result === "string" ? reader.result : "";
+      pem.focus();
+    });
+    reader.addEventListener("error", () => {
+      tlsNotice = { level: "error", text: `Certificate file read failed: ${reader.error?.message ?? "unknown error"}` };
+      renderTLS();
+    });
+    reader.readAsText(file);
+  });
+  pemEditor.append(upload, pem, hint);
+  const actions = tlsEditActions(options.submitLabel, options.onCancel);
+  if (options.includeName) form.append(secFormField("Name", name));
+  form.append(secFormField("PEM", pemEditor, "sec-form-field-wide"), actions);
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    options.onSubmit(name.value, pem.value);
+  });
+  window.setTimeout(() => (options.includeName ? name : pem).focus(), 0);
+  return form;
+}
+
+type TLSPolicyFormOptions = {
+  initialName: string;
+  initialSpec: TLSPolicySpec;
+  includeName: boolean;
+  submitLabel: string;
+  onSubmit(name: string, spec: TLSPolicySpec): void;
+  onCancel(): void;
+};
+
+function renderTLSPolicyForm(options: TLSPolicyFormOptions): HTMLFormElement {
+  const form = document.createElement("form");
+  form.className = "kv-inline-form tls-policy-form";
+  let mode: "form" | "json" = "form";
+  let gui = createTLSPolicyGUIEditor(options.initialSpec);
+  const name = document.createElement("input");
+  name.name = "name";
+  name.placeholder = "Policy name";
+  name.autocomplete = "off";
+  name.required = true;
+  name.value = options.initialName;
+  const modeToggle = document.createElement("div");
+  modeToggle.className = "tls-policy-mode-toggle";
+  const formMode = textElement("button", "Form");
+  formMode.type = "button";
+  formMode.setAttribute("aria-pressed", "true");
+  const jsonMode = textElement("button", "JSON");
+  jsonMode.type = "button";
+  jsonMode.setAttribute("aria-pressed", "false");
+  modeToggle.append(formMode, jsonMode);
+  const guiField = secFormField("Policy rules", gui.root, "sec-form-field-wide tls-policy-gui-field");
+  const spec = document.createElement("textarea");
+  spec.name = "spec";
+  spec.placeholder = '{"trust_anchors":[{"cert":"ca","scope":{"any":true}}]}';
+  spec.rows = TLS_POLICY_JSON_ROWS;
+  spec.required = true;
+  spec.value = formatTLSPolicySpec(options.initialSpec);
+  const jsonField = secFormField("Policy JSON", spec, "sec-form-field-wide tls-policy-json-field hidden");
+  const actions = tlsEditActions(options.submitLabel, options.onCancel);
+  if (options.includeName) form.append(secFormField("Name", name));
+  form.append(modeToggle, guiField, jsonField, actions);
+  const setMode = (nextMode: "form" | "json") => {
+    if (nextMode === mode) return;
+    if (nextMode === "json") {
+      try {
+        spec.value = formatTLSPolicySpec(gui.read());
+      } catch {
+        // Keep the last JSON text available when the form has incomplete rows.
+      }
+    } else {
+      let parsed: TLSPolicySpec;
+      try {
+        parsed = parseTLSPolicySpec(spec.value);
+      } catch (error) {
+        tlsNotice = { level: "error", text: (error as Error).message };
+        renderTLS();
+        return;
+      }
+      gui = createTLSPolicyGUIEditor(parsed);
+      guiField.replaceChildren(textElement("span", "Policy rules"), gui.root);
+    }
+    mode = nextMode;
+    formMode.classList.toggle("active", mode === "form");
+    jsonMode.classList.toggle("active", mode === "json");
+    formMode.setAttribute("aria-pressed", String(mode === "form"));
+    jsonMode.setAttribute("aria-pressed", String(mode === "json"));
+    guiField.classList.toggle("hidden", mode !== "form");
+    jsonField.classList.toggle("hidden", mode !== "json");
+    window.setTimeout(() => (mode === "form" ? gui.focus() : spec.focus()), 0);
+  };
+  formMode.classList.add("active");
+  formMode.addEventListener("click", () => setMode("form"));
+  jsonMode.addEventListener("click", () => setMode("json"));
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    let parsed: TLSPolicySpec;
+    try {
+      parsed = mode === "json" ? parseTLSPolicySpec(spec.value) : gui.read();
+    } catch (error) {
+      tlsNotice = { level: "error", text: (error as Error).message };
+      renderTLS();
+      return;
+    }
+    options.onSubmit(name.value, parsed);
+  });
+  window.setTimeout(() => (options.includeName ? name : gui.focus()), 0);
+  return form;
+}
+
+type TLSPolicyGUIEditor = {
+  root: HTMLElement;
+  read(): TLSPolicySpec;
+  focus(): void;
+};
+
+type TLSPolicyRuleEditor<T> = {
+  root: HTMLElement;
+  read(): T | null;
+  focus(): boolean;
+};
+
+function createTLSPolicyGUIEditor(spec: TLSPolicySpec): TLSPolicyGUIEditor {
+  const root = document.createElement("div");
+  root.className = "tls-policy-gui-editor";
+  const certListID = `tls-policy-certs-${tlsPolicyEditorID}`;
+  tlsPolicyEditorID += 1;
+  const certList = document.createElement("datalist");
+  certList.id = certListID;
+  for (const cert of tlsSnapshot.certs ?? []) {
+    const option = document.createElement("option");
+    option.value = cert.name;
+    certList.append(option);
+  }
+
+  const trustEditors: Array<TLSPolicyRuleEditor<TLSTrustAnchor>> = [];
+  const constraintEditors: Array<TLSPolicyRuleEditor<TLSAuthorityConstraint>> = [];
+  const pinEditors: Array<TLSPolicyRuleEditor<TLSPin>> = [];
+  root.append(
+    certList,
+    createTLSPolicyRuleSection("Trust anchors", "Add anchor", trustEditors, spec.trust_anchors ?? [], (rule) => (
+      createTLSTrustAnchorEditor(rule, certListID)
+    )),
+    createTLSPolicyRuleSection("Constraints", "Add constraint", constraintEditors, spec.constraints ?? [], (rule) => (
+      createTLSConstraintEditor(rule, certListID)
+    )),
+    createTLSPolicyRuleSection("Pins", "Add pin", pinEditors, spec.pins ?? [], createTLSPinEditor),
+  );
+
+  return {
+    root,
+    read: () => {
+      const trust_anchors = readTLSPolicyRuleEditors(trustEditors);
+      const constraints = readTLSPolicyRuleEditors(constraintEditors);
+      const pins = readTLSPolicyRuleEditors(pinEditors);
+      const out: TLSPolicySpec = {};
+      if (trust_anchors.length) out.trust_anchors = trust_anchors;
+      if (constraints.length) out.constraints = constraints;
+      if (pins.length) out.pins = pins;
+      return out;
+    },
+    focus: () => {
+      for (const editors of [trustEditors, constraintEditors, pinEditors]) {
+        for (const editor of editors) {
+          if (editor.focus()) return;
+        }
+      }
+    },
+  };
+}
+
+function createTLSPolicyRuleSection<T>(
+  titleText: string,
+  addText: string,
+  editors: Array<TLSPolicyRuleEditor<T>>,
+  rules: T[],
+  createEditor: (rule?: T) => TLSPolicyRuleEditor<T>,
+): HTMLElement {
+  const section = document.createElement("section");
+  section.className = "tls-policy-edit-section";
+  const header = document.createElement("header");
+  header.append(textElement("h3", titleText));
+  const add = textElement("button", addText);
+  add.type = "button";
+  const list = document.createElement("div");
+  list.className = "tls-policy-edit-list";
+  const appendEditor = (rule?: T) => {
+    const editor = createEditor(rule);
+    editors.push(editor);
+    list.append(editor.root);
+    editor.focus();
+  };
+  add.addEventListener("click", () => appendEditor());
+  header.append(add);
+  section.append(header, tlsPolicyHelp(tlsPolicySectionHelp(titleText)), list);
+  for (const rule of rules) appendEditor(rule);
+  if (!rules.length && titleText === "Trust anchors") appendEditor();
+  return section;
+}
+
+function createTLSTrustAnchorEditor(rule: TLSTrustAnchor | undefined, certListID: string): TLSPolicyRuleEditor<TLSTrustAnchor> {
+  const card = createTLSPolicyRuleCard("Trust anchor");
+  const cert = tlsPolicyTextInput("Certificate", "Cert name", rule?.cert ?? "", certListID);
+  const scope = createTLSScopeEditor(rule?.scope);
+  card.fields.append(cert.field, scope.root);
+  return {
+    root: card.root,
+    read: () => {
+      const certName = cert.input.value.trim();
+      if (!certName && scope.isBlank()) return null;
+      if (!certName) throw new Error("Trust anchor certificate is required.");
+      return { cert: certName, scope: scope.read() };
+    },
+    focus: () => {
+      cert.input.focus();
+      return true;
+    },
+  };
+}
+
+function createTLSConstraintEditor(
+  rule: TLSAuthorityConstraint | undefined,
+  certListID: string,
+): TLSPolicyRuleEditor<TLSAuthorityConstraint> {
+  const card = createTLSPolicyRuleCard("Constraint");
+  const cert = tlsPolicyTextInput("Certificate", "Cert name", rule?.cert ?? "", certListID);
+  const match = document.createElement("select");
+  appendTLSSelectOptions(match, [...TLS_AUTHORITY_MATCHES], rule?.match || "certificate");
+  const scope = createTLSScopeEditor(rule?.scope);
+  card.fields.append(cert.field, secFormField("Match", match), scope.root);
+  return {
+    root: card.root,
+    read: () => {
+      const certName = cert.input.value.trim();
+      if (!certName && scope.isBlank()) return null;
+      if (!certName) throw new Error("Constraint certificate is required.");
+      return { cert: certName, match: match.value, scope: scope.read() };
+    },
+    focus: () => {
+      cert.input.focus();
+      return true;
+    },
+  };
+}
+
+function createTLSPinEditor(rule?: TLSPin): TLSPolicyRuleEditor<TLSPin> {
+  const card = createTLSPolicyRuleCard("Pin");
+  const kind = document.createElement("select");
+  appendTLSSelectOptions(kind, [...TLS_PIN_KINDS], rule?.kind || "spki");
+  const fingerprint = tlsPolicyTextInput("Fingerprint", "sha256 fingerprint", rule?.fingerprint ?? "");
+  const scope = createTLSScopeEditor(rule?.scope);
+  card.fields.append(secFormField("Kind", kind), fingerprint.field, scope.root);
+  return {
+    root: card.root,
+    read: () => {
+      const value = fingerprint.input.value.trim();
+      if (!value && scope.isBlank()) return null;
+      if (!value) throw new Error("Pin fingerprint is required.");
+      return { kind: kind.value, fingerprint: value, scope: scope.read() };
+    },
+    focus: () => {
+      fingerprint.input.focus();
+      return true;
+    },
+  };
+}
+
+function createTLSPolicyRuleCard(titleText: string): { root: HTMLElement; fields: HTMLElement } {
+  const root = document.createElement("article");
+  root.className = "tls-policy-rule-card";
+  const header = document.createElement("header");
+  header.append(textElement("h4", titleText));
+  const remove = textElement("button", "Remove");
+  remove.type = "button";
+  remove.addEventListener("click", () => root.remove());
+  header.append(remove);
+  const fields = document.createElement("div");
+  fields.className = "tls-policy-rule-fields";
+  root.append(header, fields);
+  return { root, fields };
+}
+
+function createTLSScopeEditor(initial: TLSScope | undefined): {
+  root: HTMLElement;
+  read(): TLSScope;
+  isBlank(): boolean;
+} {
+  const root = document.createElement("div");
+  root.className = "tls-policy-scope-editor";
+  const anyLabel = document.createElement("label");
+  anyLabel.className = "tls-policy-checkbox";
+  const any = document.createElement("input");
+  any.type = "checkbox";
+  any.checked = Boolean(initial?.any);
+  anyLabel.append(any, textElement("span", "Any server"));
+  const dns = document.createElement("textarea");
+  dns.rows = 2;
+  dns.placeholder = "example.test";
+  dns.value = (initial?.dns ?? []).map(formatTLSDNSRuleInput).join("\n");
+  const ip = document.createElement("textarea");
+  ip.rows = 2;
+  ip.placeholder = "192.0.2.0/24";
+  ip.value = (initial?.ip_prefixes ?? []).join("\n");
+  const setScopeFieldState = () => {
+    dns.disabled = any.checked;
+    ip.disabled = any.checked;
+  };
+  any.addEventListener("change", setScopeFieldState);
+  setScopeFieldState();
+  root.append(
+    anyLabel,
+    secFormField("DNS names", dns),
+    tlsPolicyHelp("Limit this rule to these server names. Use *.example.test to include subdomains."),
+    secFormField("IP prefixes", ip),
+    tlsPolicyHelp("Limit this rule to servers in these IP ranges. A single IP address is also accepted."),
+  );
+  const scopeIsBlank = () => !any.checked && !splitTLSPolicyLines(dns.value).length && !splitTLSPolicyLines(ip.value).length;
+  return {
+    root,
+    read: () => {
+      if (any.checked) return { any: true };
+      const dnsRules = splitTLSPolicyLines(dns.value).map(parseTLSDNSRuleInput);
+      const ipPrefixes = splitTLSPolicyLines(ip.value);
+      if (!dnsRules.length && !ipPrefixes.length) throw new Error("Scope needs any server, DNS names, or IP prefixes.");
+      const scope: TLSScope = {};
+      if (dnsRules.length) scope.dns = dnsRules;
+      if (ipPrefixes.length) scope.ip_prefixes = ipPrefixes;
+      return scope;
+    },
+    isBlank: scopeIsBlank,
+  };
+}
+
+function tlsPolicyTextInput(label: string, placeholder: string, value: string, listID = ""): {
+  field: HTMLLabelElement;
+  input: HTMLInputElement;
+} {
+  const input = document.createElement("input");
+  input.placeholder = placeholder;
+  input.autocomplete = "off";
+  input.value = value;
+  if (listID) input.setAttribute("list", listID);
+  return { field: secFormField(label, input), input };
+}
+
+function readTLSPolicyRuleEditors<T>(editors: Array<TLSPolicyRuleEditor<T>>): T[] {
+  const out: T[] = [];
+  for (const editor of editors) {
+    if (!editor.root.isConnected) continue;
+    const rule = editor.read();
+    if (rule) out.push(rule);
+  }
+  return out;
+}
+
+function appendTLSSelectOptions(select: HTMLSelectElement, values: string[], selected: string): void {
+  appendSelectOptions(select, values, values.includes(selected) ? selected : values[0] ?? "");
+  if (selected && !values.includes(selected)) {
+    const option = document.createElement("option");
+    option.value = selected;
+    option.textContent = selected;
+    select.append(option);
+    select.value = selected;
+  }
+}
+
+function formatTLSDNSRuleInput(rule: TLSDNSRule): string {
+  return rule.include_subdomains ? `*.${rule.domain}` : rule.domain;
+}
+
+function parseTLSDNSRuleInput(value: string): TLSDNSRule {
+  const trimmed = value.trim();
+  if (trimmed.startsWith("*.")) return { domain: trimmed.slice(2), include_subdomains: true };
+  return { domain: trimmed };
+}
+
+function splitTLSPolicyLines(value: string): string[] {
+  return value.split(/[\n,]+/).map((part) => part.trim()).filter(Boolean);
+}
+
+function tlsPolicySectionHelp(titleText: string): string {
+  switch (titleText) {
+    case "Trust anchors":
+      return "Accept server certificates that chain to the selected certificate in the selected scope.";
+    case "Constraints":
+      return "Require certificates in the selected scope to also match this certificate authority.";
+    case "Pins":
+      return "Require certificates in the selected scope to match this certificate or public key fingerprint.";
+    default:
+      return "";
+  }
+}
+
+function tlsPolicyHelp(text: string): HTMLElement {
+  return textElement("p", text, "tls-policy-help");
+}
+
+function renderTLSRenameForm(kind: TLSItemKind, name: string): HTMLFormElement {
+  const form = document.createElement("form");
+  form.className = "kv-inline-form sec-rename-form tls-rename-form";
+  const input = document.createElement("input");
+  input.name = "name";
+  input.autocomplete = "off";
+  input.required = true;
+  input.value = name;
+  const actions = tlsEditActions("Save", () => setTLSEditor(null));
+  form.append(secFormField("Name", input), actions);
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void renameTLSEntry(kind, name, input.value);
+  });
+  window.setTimeout(() => input.focus(), 0);
+  return form;
+}
+
+function tlsEditActions(submitLabel: string, onCancel: () => void): HTMLElement {
+  const actions = document.createElement("div");
+  actions.className = "sec-form-actions";
+  const save = textElement("button", submitLabel);
+  save.type = "submit";
+  const cancel = textElement("button", "Cancel");
+  cancel.type = "button";
+  cancel.addEventListener("click", onCancel);
+  actions.append(save, cancel);
+  return actions;
+}
+
+function closeTLSForm(): void {
+  tlsOpenForm = null;
+  renderTLS();
+}
+
+async function createTLSCert(rawName: string, pem: string): Promise<void> {
+  const name = rawName.trim();
+  if (!isMutableTLSCertName(name)) {
+    tlsNotice = { level: "error", text: "Certificate name is required and must not start with os-ca:." };
+    renderTLS();
+    return;
+  }
+  const entry = await runTLSMutation<TLSCertEntry>("tlsSetCert", { name, pem }, "TLS certificate saved.");
+  if (!entry) return;
+  upsertTLSCert(entry);
+  tlsOpenForm = null;
+  openTLSValuePanel("cert", entry.name);
+}
+
+async function createTLSPolicy(rawName: string, spec: TLSPolicySpec): Promise<void> {
+  const name = rawName.trim();
+  if (!isMutableTLSPolicyName(name)) {
+    tlsNotice = { level: "error", text: "Policy name is required and must not be default." };
+    renderTLS();
+    return;
+  }
+  const entry = await runTLSMutation<TLSPolicyEntry>("tlsSetPolicy", { name, spec }, "TLS policy saved.");
+  if (!entry) return;
+  upsertTLSPolicy(entry);
+  tlsOpenForm = null;
+  openTLSValuePanel("policy", entry.name);
+}
+
+function openTLSValuePanel(kind: TLSItemKind, name: string): void {
+  tlsValuePanel = {
+    kind,
+    name,
+    editing: null,
+  };
+  renderTLS();
+}
+
+function closeTLSValuePanel(): void {
+  tlsValuePanel = null;
+  renderTLSValuePanel();
+}
+
+function renderTLSValuePanel(): void {
+  el.tlsValuePanel.replaceChildren();
+  el.tlsPanel.classList.toggle("kv-value-open", Boolean(tlsValuePanel));
+  if (!tlsValuePanel) {
+    el.tlsValuePanel.classList.add("hidden");
+    return;
+  }
+  el.tlsValuePanel.classList.remove("hidden");
+  const entry = tlsSelectedEntry();
+  if (!entry) {
+    el.tlsValuePanel.append(textElement("p", "TLS config not found.", "kv-value-missing"));
+    return;
+  }
+  if (entry.read_only && tlsValuePanel.editing) tlsValuePanel.editing = null;
+
+  const header = document.createElement("header");
+  header.className = "kv-value-header";
+  const title = document.createElement("div");
+  const meta = tlsValuePanel.kind === "cert"
+    ? formatTLSCertMeta(entry as TLSCertEntry)
+    : formatTLSPolicyMeta(entry as TLSPolicyEntry);
+  title.append(textElement("h2", entry.name), textElement("p", meta));
+  const close = textElement("button", "x");
+  close.type = "button";
+  close.title = "Close";
+  close.setAttribute("aria-label", "Close TLS config panel");
+  close.addEventListener("click", closeTLSValuePanel);
+  header.append(title, close);
+  el.tlsValuePanel.append(header, renderTLSDetail(entry));
+}
+
+function renderTLSDetail(entry: TLSCertEntry | TLSPolicyEntry): HTMLElement {
+  const detail = document.createElement("div");
+  detail.className = "kv-value-detail";
+  const meta = document.createElement("div");
+  meta.className = "kv-value-meta";
+  meta.append(renderTLSValueActions(entry));
+  detail.append(meta);
+  if (!tlsValuePanel) return detail;
+  if (tlsValuePanel.editing === "rename") {
+    detail.append(renderTLSRenameForm(tlsValuePanel.kind, entry.name));
+  } else if (tlsValuePanel.editing === "value" && tlsValuePanel.kind === "cert") {
+    detail.append(renderTLSCertForm({
+      initialName: entry.name,
+      initialPEM: (entry as TLSCertEntry).pem ?? "",
+      includeName: false,
+      submitLabel: "Save",
+      onSubmit: (_name, pem) => updateTLSCert(entry.name, pem),
+      onCancel: () => setTLSEditor(null),
+    }));
+  } else if (tlsValuePanel.editing === "value" && tlsValuePanel.kind === "policy") {
+    detail.append(renderTLSPolicyForm({
+      initialName: entry.name,
+      initialSpec: (entry as TLSPolicyEntry).spec,
+      includeName: false,
+      submitLabel: "Save",
+      onSubmit: (_name, spec) => updateTLSPolicy(entry.name, spec),
+      onCancel: () => setTLSEditor(null),
+    }));
+  } else if (tlsValuePanel.kind === "cert") {
+    detail.append(createTLSCertPreview(entry as TLSCertEntry));
+  } else {
+    detail.append(createTLSPolicyPreview(entry as TLSPolicyEntry));
+  }
+  return detail;
+}
+
+function renderTLSValueActions(entry: TLSCertEntry | TLSPolicyEntry): HTMLElement {
+  const actions = document.createElement("div");
+  actions.className = "kv-value-actions";
+  const copy = textElement("button", tlsValuePanel?.kind === "cert" ? "Copy PEM" : "Copy JSON");
+  copy.type = "button";
+  copy.title = tlsValuePanel?.kind === "cert" ? "Copy certificate PEM" : "Copy policy JSON";
+  copy.addEventListener("click", () => copyTLSEntry(entry));
+  const download = textElement("button", "Download");
+  download.type = "button";
+  download.title = tlsValuePanel?.kind === "cert" ? "Download certificate PEM" : "Download policy JSON";
+  download.addEventListener("click", () => downloadTLSEntry(entry));
+  actions.append(copy, download);
+  if (!entry.read_only) {
+    const edit = textElement("button", "Edit");
+    edit.type = "button";
+    edit.title = tlsValuePanel?.kind === "cert" ? "Edit certificate PEM" : "Edit policy JSON";
+    edit.addEventListener("click", () => setTLSEditor("value"));
+    const rename = textElement("button", "Rename");
+    rename.type = "button";
+    rename.title = "Rename TLS config";
+    rename.addEventListener("click", () => setTLSEditor("rename"));
+    const remove = textElement("button", "Delete");
+    remove.type = "button";
+    remove.title = "Delete TLS config";
+    remove.className = "danger";
+    remove.addEventListener("click", () => {
+      if (tlsValuePanel) void deleteTLSEntry(tlsValuePanel.kind, entry.name);
+    });
+    actions.append(edit, rename, remove);
+  }
+  return actions;
+}
+
+function setTLSEditor(editor: TLSValuePanelState["editing"]): void {
+  if (!tlsValuePanel) return;
+  tlsValuePanel.editing = editor;
+  renderTLSValuePanel();
+}
+
+async function updateTLSCert(name: string, pem: string): Promise<void> {
+  const entry = await runTLSMutation<TLSCertEntry>("tlsSetCert", { name, pem }, "TLS certificate saved.");
+  if (!entry) return;
+  upsertTLSCert(entry);
+  if (tlsValuePanel) tlsValuePanel.editing = null;
+  renderTLS();
+}
+
+async function updateTLSPolicy(name: string, spec: TLSPolicySpec): Promise<void> {
+  const entry = await runTLSMutation<TLSPolicyEntry>("tlsSetPolicy", { name, spec }, "TLS policy saved.");
+  if (!entry) return;
+  upsertTLSPolicy(entry);
+  if (tlsValuePanel) tlsValuePanel.editing = null;
+  renderTLS();
+}
+
+async function renameTLSEntry(kind: TLSItemKind, name: string, rawNewName: string): Promise<void> {
+  const newName = rawNewName.trim();
+  const valid = kind === "cert" ? isMutableTLSCertName(newName) : isMutableTLSPolicyName(newName);
+  if (!valid) {
+    tlsNotice = {
+      level: "error",
+      text: kind === "cert"
+        ? "Certificate name is required and must not start with os-ca:."
+        : "Policy name is required and must not be default.",
+    };
+    renderTLS();
+    return;
+  }
+  const method = kind === "cert" ? "tlsRenameCert" : "tlsRenamePolicy";
+  const entry = await runTLSMutation<TLSCertEntry | TLSPolicyEntry>(method, { name, newName }, "TLS config renamed.");
+  if (!entry) return;
+  if (kind === "cert") {
+    removeTLSCert(name);
+    upsertTLSCert(entry as TLSCertEntry);
+  } else {
+    removeTLSPolicy(name);
+    upsertTLSPolicy(entry as TLSPolicyEntry);
+  }
+  if (tlsValuePanel) {
+    tlsValuePanel.name = entry.name;
+    tlsValuePanel.editing = null;
+  }
+  renderTLS();
+}
+
+async function deleteTLSEntry(kind: TLSItemKind, name: string): Promise<void> {
+  const label = kind === "cert" ? "certificate" : "policy";
+  if (!window.confirm(`Delete TLS ${label} "${name}"?`)) return;
+  const method = kind === "cert" ? "tlsDeleteCert" : "tlsDeletePolicy";
+  if (await runTLSMutation(method, { name }, "TLS config deleted.")) {
+    if (kind === "cert") removeTLSCert(name);
+    else removeTLSPolicy(name);
+    if (tlsValuePanel?.kind === kind && tlsValuePanel.name === name) closeTLSValuePanel();
+    renderTLS();
+  }
+}
+
+async function runTLSMutation<T = unknown>(
+  method: string,
+  params: Record<string, unknown>,
+  success: string,
+): Promise<T | null> {
+  try {
+    const result = await backend<T>(method, params);
+    tlsNotice = { level: "info", text: success };
+    renderTLS();
+    return result;
+  } catch (error) {
+    tlsNotice = { level: "error", text: `${method}: ${(error as Error).message}` };
+    renderTLS();
+    return null;
+  }
+}
+
+function tlsSelectedEntry(): TLSCertEntry | TLSPolicyEntry | null {
+  if (!tlsValuePanel) return null;
+  return tlsValuePanel.kind === "cert"
+    ? tlsCertByName(tlsValuePanel.name)
+    : tlsPolicyByName(tlsValuePanel.name);
+}
+
+function tlsCertByName(name: string): TLSCertEntry | null {
+  return (tlsSnapshot.certs ?? []).find((entry) => entry.name === name) ?? null;
+}
+
+function tlsPolicyByName(name: string): TLSPolicyEntry | null {
+  return (tlsSnapshot.policies ?? []).find((entry) => entry.name === name) ?? null;
+}
+
+function upsertTLSCert(entry: TLSCertEntry): void {
+  tlsSnapshot = {
+    ...tlsSnapshot,
+    certs: sortTLSCerts([...(tlsSnapshot.certs ?? []).filter((cert) => cert.name !== entry.name), entry]),
+  };
+}
+
+function upsertTLSPolicy(entry: TLSPolicyEntry): void {
+  tlsSnapshot = {
+    ...tlsSnapshot,
+    policies: sortTLSPolicies([...(tlsSnapshot.policies ?? []).filter((policy) => policy.name !== entry.name), entry]),
+  };
+}
+
+function removeTLSCert(name: string): void {
+  tlsSnapshot = {
+    ...tlsSnapshot,
+    certs: (tlsSnapshot.certs ?? []).filter((entry) => entry.name !== name),
+  };
+}
+
+function removeTLSPolicy(name: string): void {
+  tlsSnapshot = {
+    ...tlsSnapshot,
+    policies: (tlsSnapshot.policies ?? []).filter((entry) => entry.name !== name),
+  };
+}
+
+async function copyTLSEntry(entry: TLSCertEntry | TLSPolicyEntry): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(tlsEntryText(entry));
+    tlsNotice = { level: "info", text: "TLS config copied." };
+  } catch (error) {
+    tlsNotice = { level: "error", text: `Copy failed: ${(error as Error).message}` };
+  }
+  renderTLS();
+}
+
+function downloadTLSEntry(entry: TLSCertEntry | TLSPolicyEntry): void {
+  try {
+    const isCert = tlsValuePanel?.kind === "cert";
+    const text = tlsEntryText(entry);
+    const blob = new Blob([text], { type: isCert ? "application/x-pem-file;charset=utf-8" : "application/json;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${safeFilenamePart(entry.name) || "tls-config"}.${isCert ? "pem" : "json"}`;
+    link.rel = "noopener";
+    document.body.append(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    tlsNotice = { level: "info", text: "Download started." };
+  } catch (error) {
+    tlsNotice = { level: "error", text: `Download failed: ${(error as Error).message}` };
+  }
+  renderTLS();
+}
+
+function tlsEntryText(entry: TLSCertEntry | TLSPolicyEntry): string {
+  if (tlsValuePanel?.kind === "cert") return (entry as TLSCertEntry).pem ?? "";
+  return formatTLSPolicySpec((entry as TLSPolicyEntry).spec);
+}
+
+function rememberTLSScrollState(): void {
+  tlsScrollTop = el.tlsPanel.scrollTop;
+}
+
+function restoreTLSScrollState(): void {
+  window.setTimeout(() => {
+    el.tlsPanel.scrollTop = tlsScrollTop;
+  }, 0);
+}
+
 function handleKVEvent(method: string, payload: unknown): void {
   if (method === "stores_update") {
     const event = payload as KVStoresEvent;
@@ -3801,6 +4875,7 @@ function setTab(name: string): void {
   const previousTab = activeTab;
   if (previousTab === "sec" && name !== "sec") deactivateSecPanel();
   if (previousTab === "dns" && name !== "dns") deactivateDNSPanel();
+  if (previousTab === "tls" && name !== "tls") deactivateTLSPanel();
   if (previousTab === "kv" && name !== "kv") deactivateKVPanel();
   activeTab = name;
   if (name !== "graph") graphShortcutsArmed = false;
@@ -3808,6 +4883,7 @@ function setTab(name: string): void {
   for (const panel of el.panels) panel.classList.toggle("hidden", panel.dataset.panel !== name);
   if (name === "sec") activateSecPanel();
   if (name === "dns") activateDNSPanel();
+  if (name === "tls") activateTLSPanel();
   if (name === "kv") activateKVPanel();
   if (name === "logs") renderLogs();
   if (name === "ps") renderWorkers();
@@ -4019,6 +5095,7 @@ function wireUI(): void {
   for (const tab of el.tabs) tab.addEventListener("click", () => setTab(tab.dataset.tab ?? "graph"));
   el.secPanel.addEventListener("scroll", rememberSecScrollState);
   el.dnsPanel.addEventListener("scroll", rememberDNSScrollState);
+  el.tlsPanel.addEventListener("scroll", rememberTLSScrollState);
   el.kvPanel.addEventListener("scroll", rememberKVScrollState);
   document.addEventListener("paste", handleGraphPaste, { capture: true });
   document.addEventListener("keydown", (event) => {

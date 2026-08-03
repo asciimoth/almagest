@@ -477,6 +477,7 @@ func newWireGuardTunConfigE2E(t *testing.T) (*NodeE2E, *tunConfigRecorderRegistr
 		sys,
 		nil,
 		nil, secrets,
+		nil,
 
 		[]pasta.NodeClass{tunConfigRecorderClass{registry: recorders}},
 		pool,

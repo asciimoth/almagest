@@ -137,6 +137,7 @@ func newNativeSocksServerE2E(t *testing.T) *socksServerE2E {
 		newE2EDebugSystem(),
 		nil,
 		nil, nil,
+		nil,
 
 		[]pasta.NodeClass{testNativeNetworkClass{}},
 		pool,

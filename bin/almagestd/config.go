@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/asciimoth/almagest/bin/almagestd/args"
@@ -128,6 +129,7 @@ type ProtectedConfig struct {
 	CommandRunner cmdrunner.Config
 	Secrets       map[string]ProtectedSecretConfig
 	System        configer.Config `json:"-"`
+	TLS           ProtectedTLSConfig
 }
 
 // ProtectedSecretConfig defines one immutable secret available to selected
@@ -138,6 +140,19 @@ type ProtectedSecretConfig struct {
 	Value *string  `json:"Value"`
 	Env   string   `json:"Env"`
 	Nodes []string `json:"Nodes"`
+}
+
+type ProtectedTLSConfig struct {
+	Certificates map[string]ProtectedTLSCertificateConfig `json:"Certificates"`
+	Policies     map[string]api.TLSPolicySpec             `json:"Policies"`
+}
+
+// ProtectedTLSCertificateConfig defines one immutable certificate authority.
+// PEM stores the literal certificate. File names a local PEM file read once at
+// daemon startup. Exactly one of PEM or File may be set.
+type ProtectedTLSCertificateConfig struct {
+	PEM  *string `json:"PEM"`
+	File string  `json:"File"`
 }
 
 func (p *ProtectedConfig) ImmutableSecrets() (map[string]immutableSecret, error) {
@@ -179,6 +194,54 @@ func (p *ProtectedConfig) ImmutableSecrets() (map[string]immutableSecret, error)
 				Nodes: normalizeSecretNodes(cfg.Nodes),
 			},
 			source: source,
+		}
+	}
+	return out, nil
+}
+
+func (p *ProtectedConfig) ImmutableTLS() (immutableTLSData, error) {
+	var out immutableTLSData
+	if len(p.TLS.Certificates) > 0 {
+		out.Certs = make(map[string]immutableTLSCert, len(p.TLS.Certificates))
+		for name, cfg := range p.TLS.Certificates {
+			if !validMutableTLSCertName(name) {
+				return immutableTLSData{}, fmt.Errorf("%w: invalid protected TLS certificate name %q", almagest.ErrTlsConfigInvalidName, name)
+			}
+			if cfg.PEM != nil && strings.TrimSpace(cfg.File) != "" {
+				return immutableTLSData{}, fmt.Errorf("%w: protected TLS certificate %q sets both PEM and File", almagest.ErrTlsConfigInvalidValue, name)
+			}
+			if cfg.PEM == nil && strings.TrimSpace(cfg.File) == "" {
+				return immutableTLSData{}, fmt.Errorf("%w: protected TLS certificate %q must set PEM or File", almagest.ErrTlsConfigInvalidValue, name)
+			}
+			pemText := ""
+			if cfg.PEM != nil {
+				pemText = *cfg.PEM
+			} else {
+				data, err := os.ReadFile(strings.TrimSpace(cfg.File))
+				if err != nil {
+					return immutableTLSData{}, fmt.Errorf("%w: read protected TLS certificate %q file %q: %v", almagest.ErrTlsConfigInvalidValue, name, cfg.File, err)
+				}
+				pemText = string(data)
+			}
+			if _, _, err := parseTLSAuthorityPEM(pemText); err != nil {
+				return immutableTLSData{}, fmt.Errorf("%w: protected TLS certificate %q: %v", almagest.ErrTlsConfigInvalidValue, name, err)
+			}
+			out.Certs[name] = immutableTLSCert{
+				tlsCertificateRecord: tlsCertificateRecord{PEM: pemText},
+				source:               api.TLSSourceProtected,
+			}
+		}
+	}
+	if len(p.TLS.Policies) > 0 {
+		out.Policies = make(map[string]immutableTLSPolicy, len(p.TLS.Policies))
+		for name, spec := range p.TLS.Policies {
+			if !validMutableTLSPolicyName(name) {
+				return immutableTLSData{}, fmt.Errorf("%w: invalid protected TLS policy name %q", almagest.ErrTlsConfigInvalidName, name)
+			}
+			out.Policies[name] = immutableTLSPolicy{
+				tlsPolicyRecord: tlsPolicyRecord{Spec: normalizeTLSPolicySpec(spec)},
+				source:          api.TLSSourceProtected,
+			}
 		}
 	}
 	return out, nil

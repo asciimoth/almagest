@@ -33,6 +33,7 @@ const (
 	SurfaceLog     Surface = "log"
 	SurfaceSecrets Surface = "secrets"
 	SurfaceSystem  Surface = "system"
+	SurfaceTLS     Surface = "tls"
 )
 
 func Surfaces() []string {
@@ -44,6 +45,7 @@ func Surfaces() []string {
 		string(SurfaceLog),
 		string(SurfaceSecrets),
 		string(SurfaceSystem),
+		string(SurfaceTLS),
 	}
 }
 
@@ -53,6 +55,8 @@ func RequiresMutationLease(surface Surface, method string) bool {
 		return IsEngineMutation(method)
 	case SurfaceSecrets:
 		return IsSecretsMutation(method)
+	case SurfaceTLS:
+		return IsTLSMutation(method)
 	default:
 		return false
 	}

@@ -75,6 +75,7 @@ func newLocalProxyE2E(t *testing.T) *localProxyE2E {
 		sys,
 		nil,
 		nil, nil,
+		nil,
 
 		[]pasta.NodeClass{testNativeNetworkClass{}},
 		pool,

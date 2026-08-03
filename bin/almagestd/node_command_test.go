@@ -267,6 +267,7 @@ func buildCommandNodeTestEngine(t *testing.T, cfg configer.Config, commandCfg cm
 		&sysnetdebug.System{},
 		nil,
 		nil, nil,
+		nil,
 
 		daemonNodeClasses(commandCfg, dispatcher),
 		nil,

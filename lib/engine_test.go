@@ -2,6 +2,7 @@ package almagest
 
 import (
 	"context"
+	"crypto/tls"
 	"testing"
 	"time"
 
@@ -16,6 +17,7 @@ func TestEngineUnsubscribeNotificationsRemovesSubscriptionMapping(t *testing.T) 
 		configer.NewMemory(nil),
 		NewDebugLogFactory(1),
 		newE2EDebugSystem(),
+		nil,
 		nil,
 		nil,
 		nil,
@@ -61,6 +63,7 @@ func TestEngineSubscribeNotificationsCallbackCanReenterEngine(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		nil,
 		true,
 	)
 
@@ -95,6 +98,7 @@ func TestEngineLockedWorkspaceWrappersFromNodeCallback(t *testing.T) {
 		configer.NewMemory(nil),
 		NewDebugLogFactory(1),
 		newE2EDebugSystem(),
+		nil,
 		nil,
 		nil,
 		nil,
@@ -138,6 +142,7 @@ func TestEngineBatchNodeRemovalAndMoveUseWorkspaceBatchMutations(t *testing.T) {
 		configer.NewMemory(nil),
 		NewDebugLogFactory(1),
 		newE2EDebugSystem(),
+		nil,
 		nil,
 		nil,
 		nil,
@@ -218,6 +223,7 @@ func TestEngineManagersFromBuildEngine(t *testing.T) {
 	kv := testKVManager{}
 	dnsCache := testDnsCacheManager{}
 	secrets := testSecretsStorage{}
+	tlsStorage := testTlsConfigStorage{}
 	engineAPI, err := BuildEngine(
 		context.Background(),
 		configer.NewMemory(nil),
@@ -226,6 +232,7 @@ func TestEngineManagersFromBuildEngine(t *testing.T) {
 		kv,
 		dnsCache,
 		secrets,
+		tlsStorage,
 		nil,
 		nil,
 		true,
@@ -247,6 +254,9 @@ func TestEngineManagersFromBuildEngine(t *testing.T) {
 	}
 	if got := engineAPI.SecretsStorage(); got != secrets {
 		t.Fatalf("SecretsStorage() = %#v, want %#v", got, secrets)
+	}
+	if got := engineAPI.TlsConfigStorage(); got != tlsStorage {
+		t.Fatalf("TlsConfigStorage() = %#v, want %#v", got, tlsStorage)
 	}
 }
 
@@ -274,6 +284,16 @@ func (testSecretsStorage) GetSecret(string, string) (Secret, error) {
 
 func (testSecretsStorage) NewSecret(Secret, string) (string, error) {
 	return "", nil
+}
+
+type testTlsConfigStorage struct{}
+
+func (testTlsConfigStorage) ListConfigs() []string {
+	return nil
+}
+
+func (testTlsConfigStorage) GetClientConfig(string, string) (tls.Config, error) {
+	return tls.Config{}, nil
 }
 
 type engineLockedCallbackClass struct {

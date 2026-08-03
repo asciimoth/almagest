@@ -103,6 +103,7 @@ func NewNodeE2E(t *testing.T) *NodeE2E {
 		sys,
 		nil,
 		nil, secrets,
+		nil,
 
 		nil,
 		pool,

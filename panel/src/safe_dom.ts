@@ -16,6 +16,15 @@ import {
   formatSecretSource,
   type SecretEntry,
 } from "./secrets_model.js";
+import {
+  describeTLSScope,
+  formatTLSCertMeta,
+  formatTLSPolicyMeta,
+  formatTLSPolicySpec,
+  type TLSCertEntry,
+  type TLSPolicyEntry,
+  type TLSScope,
+} from "./tls_model.js";
 
 export type ClassPreviewPort = {
   name: string;
@@ -202,6 +211,21 @@ export function createSecretTitle(entry: SecretEntry): HTMLElement {
   return title;
 }
 
+export function createTLSCertTitle(entry: TLSCertEntry): HTMLElement {
+  const title = document.createElement("span");
+  title.className = "kv-entry-title tls-cert-title";
+  title.append(textElement("strong", entry.name), textElement("em", formatTLSCertMeta(entry)));
+  return title;
+}
+
+export function createTLSPolicyTitle(entry: TLSPolicyEntry): HTMLElement {
+  const title = document.createElement("span");
+  title.className = "kv-entry-title tls-policy-title";
+  title.classList.toggle("tls-policy-invalid", !entry.valid);
+  title.append(textElement("strong", entry.name), textElement("em", formatTLSPolicyMeta(entry)));
+  return title;
+}
+
 export function formatKVEntryMeta(entry: KVEntryInfo): string {
   if (entry.kind === "bucket") return "subtree";
   const parts = [entry.string ? "text" : "bytes", formatKVByteSize(entry.size)];
@@ -290,6 +314,103 @@ export function createSecretValuePreview(entry: SecretEntry, options: SecretValu
     preview.append(pre);
   }
   return preview;
+}
+
+export function createTLSCertPreview(entry: TLSCertEntry): HTMLElement {
+  const preview = document.createElement("div");
+  preview.className = "kv-value-preview tls-cert-preview";
+  preview.append(createTLSFactList([
+    ["Subject", entry.subject],
+    ["Issuer", entry.issuer],
+    ["Serial", entry.serial_number],
+    ["Fingerprint", entry.fingerprint],
+    ["SPKI", entry.spki_fingerprint],
+    ["Not before", entry.not_before],
+    ["Not after", entry.not_after],
+  ]));
+  if (entry.pem) preview.append(textElement("pre", entry.pem, "kv-value-text"));
+  return preview;
+}
+
+export function createTLSPolicyPreview(entry: TLSPolicyEntry): HTMLElement {
+  const preview = document.createElement("div");
+  preview.className = "kv-value-preview tls-policy-preview";
+  preview.append(createTLSPolicySummary(entry));
+  preview.append(textElement("pre", formatTLSPolicySpec(entry.spec), "kv-value-text"));
+  return preview;
+}
+
+function createTLSFactList(facts: Array<[string, string | undefined]>): HTMLElement {
+  const list = document.createElement("dl");
+  list.className = "tls-fact-list";
+  for (const [label, value] of facts) {
+    if (!value) continue;
+    list.append(textElement("dt", label), textElement("dd", value));
+  }
+  if (!list.children.length) {
+    list.append(textElement("dt", "Details"), textElement("dd", "No certificate metadata available."));
+  }
+  return list;
+}
+
+function createTLSPolicySummary(entry: TLSPolicyEntry): HTMLElement {
+  const summary = document.createElement("div");
+  summary.className = "tls-policy-summary";
+  if (!entry.valid && entry.error) {
+    summary.append(textElement("p", entry.error, "tls-policy-error"));
+  }
+  summary.append(
+    createTLSPolicyRuleList("Trust anchors", entry.spec.trust_anchors ?? [], (rule) => rule.cert, (rule) => rule.scope),
+    createTLSPolicyRuleList("Constraints", entry.spec.constraints ?? [], (rule) => (
+      `${rule.cert}${rule.match ? ` (${rule.match})` : ""}`
+    ), (rule) => rule.scope),
+    createTLSPolicyRuleList("Pins", entry.spec.pins ?? [], (rule) => (
+      `${rule.kind} ${rule.fingerprint}`
+    ), (rule) => rule.scope),
+    createTLSPolicyWatchers(entry.watchers ?? []),
+  );
+  return summary;
+}
+
+function createTLSPolicyRuleList<T>(
+  title: string,
+  rules: T[],
+  label: (rule: T) => string,
+  scope: (rule: T) => TLSScope,
+): HTMLElement {
+  const block = document.createElement("section");
+  block.className = "tls-policy-section";
+  block.append(textElement("h3", title));
+  if (!rules.length) {
+    block.append(textElement("p", "None.", "kv-subtree-empty"));
+    return block;
+  }
+  const list = document.createElement("ol");
+  list.className = "tls-policy-rule-list";
+  for (const rule of rules) {
+    const item = document.createElement("li");
+    item.append(textElement("strong", label(rule)), textElement("span", describeTLSScope(scope(rule))));
+    list.append(item);
+  }
+  block.append(list);
+  return block;
+}
+
+function createTLSPolicyWatchers(watchers: string[]): HTMLElement {
+  const block = document.createElement("section");
+  block.className = "tls-policy-section";
+  block.append(textElement("h3", "Watchers"));
+  if (!watchers.length) {
+    block.append(textElement("p", "None.", "kv-subtree-empty"));
+    return block;
+  }
+  const list = document.createElement("ol");
+  list.className = "sec-node-list";
+  for (const watcher of watchers) {
+    list.append(textElement("li", watcher, "sec-node-chip"));
+  }
+  block.append(list);
+  return block;
 }
 
 // DNS values are JSON strings derived from cached upstream DNS messages. Parse

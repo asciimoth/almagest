@@ -253,6 +253,7 @@ func newNetworkRouterLocalProxyE2E(t *testing.T, cfg configer.Config) (*httpE2E,
 		sys,
 		nil,
 		nil, nil,
+		nil,
 
 		nil,
 		pool,
@@ -330,6 +331,7 @@ func newNetworkRouterConfigE2EWithSecrets(t *testing.T, cfg configer.Config, sec
 		newE2EDebugSystem(),
 		nil,
 		nil, secrets,
+		nil,
 
 		nil,
 		pool,

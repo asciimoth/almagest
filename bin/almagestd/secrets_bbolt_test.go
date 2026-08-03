@@ -93,6 +93,7 @@ func TestSecretsAdminEventsValidationAndInbox(t *testing.T) {
 		&sysnetdebug.System{},
 		nil,
 		nil, nil,
+		nil,
 
 		[]pasta.NodeClass{secretInboxNodeClass{inbox: inbox}},
 		nil,
@@ -227,6 +228,7 @@ func TestSecretNodeNameSyncUpdatesMutableAndImmutableAllowLists(t *testing.T) {
 		&sysnetdebug.System{},
 		nil,
 		nil, nil,
+		nil,
 
 		[]pasta.NodeClass{secretInboxNodeClass{}},
 		nil,

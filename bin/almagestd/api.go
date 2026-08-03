@@ -35,6 +35,7 @@ type AdminAPI struct {
 	kv                   *bboltKVManager
 	dns                  *bboltKVManager
 	secrets              *bboltKVManager
+	tls                  *bboltKVManager
 
 	leaseMu       sync.Mutex
 	mutationLease *mutationLease
@@ -74,15 +75,24 @@ func (a *AdminAPI) Run(
 ) {
 	_ = sys
 	var secretNodeSyncID uint64
+	var tlsNodeSyncID uint64
 	if logf != nil {
 		secretNodeSyncID = a.startSecretNodeNameSync(engine, logf.DaemonLogger())
+		tlsNodeSyncID = a.startTLSNodeNameSync(engine, logf.DaemonLogger())
 	} else {
 		secretNodeSyncID = a.startSecretNodeNameSync(engine, nil)
+		tlsNodeSyncID = a.startTLSNodeNameSync(engine, nil)
 	}
 	if secretNodeSyncID != 0 {
 		wg.Go(func() {
 			<-ctx.Done()
 			engine.UnsubscribeNotifications(secretNodeSyncID)
+		})
+	}
+	if tlsNodeSyncID != 0 {
+		wg.Go(func() {
+			<-ctx.Done()
+			engine.UnsubscribeNotifications(tlsNodeSyncID)
 		})
 	}
 
@@ -159,6 +169,11 @@ type apiSession struct {
 	secretsNextSubscriptionID   uint64
 	secretsChangeSubscriptionID uint64
 	secretsSubscriptions        map[uint64]struct{}
+
+	tlsMu                   sync.Mutex
+	tlsNextSubscriptionID   uint64
+	tlsChangeSubscriptionID uint64
+	tlsSubscriptions        map[uint64]struct{}
 }
 
 func (a *AdminAPI) newAPISession(engine almagest.Engine, logf *LogFactory, send func(api.Message) error) *apiSession {
@@ -178,6 +193,7 @@ func (s *apiSession) close() {
 	s.closeDNSSubscriptions()
 	s.closeKVSubscriptions()
 	s.closeSecretsSubscriptions()
+	s.closeTLSSubscriptions()
 	if s.logf == nil {
 		return
 	}
@@ -209,6 +225,8 @@ func (s *apiSession) handleMessage(msg api.Message) (api.Message, error) {
 		return s.handleLogMessage(msg)
 	case api.SurfaceSecrets:
 		return s.handleSecretsMessage(msg)
+	case api.SurfaceTLS:
+		return s.handleTLSMessage(msg)
 	default:
 		return newRequestError(msg.ID, api.ErrorInvalidMethod, "api surface is not implemented")
 	}
@@ -245,6 +263,9 @@ func (s *apiSession) handleAdminMessage(msg api.Message) (api.Message, error) {
 				},
 				string(api.SurfaceSystem): map[string]any{
 					"methods": []string{},
+				},
+				string(api.SurfaceTLS): map[string]any{
+					"methods": api.TLSMethods(),
 				},
 			},
 		})

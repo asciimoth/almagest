@@ -165,6 +165,7 @@ func newTun2DNSTestE2EWithConfig(t *testing.T, cfg configer.Config, manager DnsC
 		sys,
 		nil,
 		manager, nil,
+		nil,
 
 		[]pasta.NodeClass{testTunProviderClass{registry: providers}},
 		pool,

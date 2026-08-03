@@ -204,6 +204,7 @@ func newTunCopyE2E(t *testing.T) (*NodeE2E, *testTunProviderRegistry) {
 		sys,
 		nil,
 		nil, nil,
+		nil,
 
 		[]pasta.NodeClass{testTunProviderClass{registry: providers}},
 		pool,

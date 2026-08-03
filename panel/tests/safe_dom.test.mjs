@@ -16,6 +16,10 @@ import {
   createNotificationToast,
   createSecretTitle,
   createSecretValuePreview,
+  createTLSCertPreview,
+  createTLSCertTitle,
+  createTLSPolicyPreview,
+  createTLSPolicyTitle,
   createWorkerNodeBlock,
   renderNodeDescription,
   updateWorkerAgeElements,
@@ -280,6 +284,51 @@ test("secret metadata and oversized previews do not disclose value length", () =
 
   assert.equal(root.textContent?.includes("4 chars"), false);
   assert.match(root.textContent ?? "", /Secret value is too large to preview\./);
+});
+
+test("TLS labels and previews keep certificate and policy payloads as text", () => {
+  installDOM();
+  const root = document.createElement("div");
+  root.append(
+    createTLSCertTitle({
+      name: payload,
+      pem: payload,
+      subject: payload,
+      issuer: payload,
+      fingerprint: payload,
+      source: "protected",
+      read_only: true,
+    }),
+    createTLSCertPreview({
+      name: payload,
+      pem: payload,
+      subject: payload,
+      issuer: payload,
+      fingerprint: payload,
+      source: "mutable",
+    }),
+    createTLSPolicyTitle({
+      name: payload,
+      spec: {},
+      valid: false,
+      error: payload,
+      watchers: [payload],
+    }),
+    createTLSPolicyPreview({
+      name: payload,
+      spec: {
+        trust_anchors: [{ cert: payload, scope: { dns: [{ domain: payload, include_subdomains: true }] } }],
+      },
+      valid: false,
+      error: payload,
+      watchers: [payload],
+    }),
+  );
+
+  assertNoParsedPayload(root);
+  assert.match(root.textContent ?? "", /<script>/);
+  assert.match(root.textContent ?? "", /read-only/);
+  assert.equal(root.querySelector(".tls-policy-error") !== null, true);
 });
 
 

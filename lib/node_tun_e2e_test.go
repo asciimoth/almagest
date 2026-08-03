@@ -79,6 +79,7 @@ func newNodeE2EWithConfigAndSecrets(t *testing.T, cfg configer.Config, secrets *
 		sys,
 		nil,
 		nil, secrets,
+		nil,
 
 		nil,
 		pool,

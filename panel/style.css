@@ -949,6 +949,15 @@ h1 {
   color: color-mix(in srgb, var(--yellow), var(--text) 18%);
 }
 
+.tls-readonly .kv-entry-title strong {
+  color: color-mix(in srgb, var(--yellow), var(--text) 18%);
+}
+
+.tls-policy-invalid strong,
+.tls-policy-invalid-row .kv-entry-title strong {
+  color: color-mix(in srgb, var(--red), var(--text) 18%);
+}
+
 .kv-row-actions,
 .kv-value-actions {
   display: flex;
@@ -1066,6 +1075,11 @@ h1 {
   grid-template-columns: minmax(150px, 0.8fr) minmax(180px, 1fr) auto;
 }
 
+.tls-cert-form,
+.tls-policy-form {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .sec-value-edit-form,
 .sec-nodes-form,
 .sec-rename-form {
@@ -1111,6 +1125,24 @@ h1 {
   resize: vertical;
 }
 
+.sec-form-hint {
+  margin: 0;
+  color: var(--subtext);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.sec-form-hint code {
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.tls-cert-pem-editor {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
 .sec-node-editor {
   position: relative;
   display: grid;
@@ -1151,6 +1183,134 @@ h1 {
 
 .sec-value-edit-form .sec-form-field textarea {
   min-height: 160px;
+}
+
+.tls-cert-form textarea,
+.tls-policy-form textarea {
+  min-height: 220px;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+}
+
+.tls-policy-mode-toggle {
+  grid-column: 1 / -1;
+  display: inline-flex;
+  width: max-content;
+  max-width: 100%;
+  gap: 2px;
+  border: 1px solid var(--surface0);
+  border-radius: 4px;
+  background: var(--crust);
+  padding: 2px;
+}
+
+.tls-policy-mode-toggle button {
+  border-color: transparent;
+  background: transparent;
+  color: var(--subtext);
+}
+
+.tls-policy-mode-toggle button.active {
+  border-color: color-mix(in srgb, var(--blue), var(--surface0) 45%);
+  background: color-mix(in srgb, var(--blue), var(--surface0) 82%);
+  color: var(--text);
+}
+
+.tls-policy-gui-editor {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.tls-policy-edit-section {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.tls-policy-edit-section > header,
+.tls-policy-rule-card > header {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.tls-policy-edit-section h3,
+.tls-policy-rule-card h4 {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--subtext);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.tls-policy-edit-section > header button,
+.tls-policy-rule-card > header button {
+  border-color: color-mix(in srgb, var(--surface1), transparent 35%);
+  background: color-mix(in srgb, var(--surface0), transparent 48%);
+  color: var(--text);
+}
+
+.tls-policy-edit-list {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.tls-policy-help {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--surface2);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.tls-policy-rule-card {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  border: 1px solid var(--surface0);
+  border-radius: 4px;
+  background: var(--crust);
+  padding: 7px;
+}
+
+.tls-policy-rule-fields,
+.tls-policy-scope-editor {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  min-width: 0;
+}
+
+.tls-policy-scope-editor {
+  grid-column: 1 / -1;
+}
+
+.tls-policy-scope-editor textarea {
+  min-height: 54px;
+  font-family: inherit;
+}
+
+.tls-policy-checkbox {
+  display: flex;
+  grid-column: 1 / -1;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.tls-policy-checkbox input {
+  margin: 0;
 }
 
 .dns-record-field-value textarea {
@@ -1274,7 +1434,9 @@ h1 {
   min-width: 0;
 }
 
-.sec-node-block h3 {
+.sec-node-block h3,
+.tls-section-title,
+.tls-policy-section h3 {
   margin: 0;
   color: var(--subtext);
   font-size: 11px;
@@ -1282,6 +1444,90 @@ h1 {
   letter-spacing: 0;
   line-height: 1.2;
   text-transform: uppercase;
+}
+
+.tls-section {
+  display: grid;
+  gap: 5px;
+  padding: 4px 0 2px;
+}
+
+.tls-section-title {
+  padding: 0 4px;
+}
+
+.tls-fact-list {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 5px 10px;
+  margin: 0 0 8px;
+  min-width: 0;
+}
+
+.tls-fact-list dt,
+.tls-fact-list dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.tls-fact-list dt {
+  color: var(--surface2);
+}
+
+.tls-fact-list dd {
+  color: var(--text);
+}
+
+.tls-policy-summary,
+.tls-policy-section {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.tls-policy-rule-list {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tls-policy-rule-list li {
+  display: grid;
+  grid-template-columns: minmax(110px, 0.8fr) minmax(140px, 1.2fr);
+  gap: 8px;
+  border: 1px solid var(--surface0);
+  border-radius: 4px;
+  background: var(--crust);
+  padding: 6px 8px;
+}
+
+.tls-policy-rule-list strong,
+.tls-policy-rule-list span,
+.tls-policy-error {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.tls-policy-rule-list strong {
+  color: var(--text);
+}
+
+.tls-policy-rule-list span {
+  color: var(--subtext);
+}
+
+.tls-policy-error {
+  margin: 0;
+  border-left: 3px solid color-mix(in srgb, var(--red), var(--surface0) 34%);
+  color: color-mix(in srgb, var(--red), var(--text) 18%);
+  padding: 5px 0 5px 8px;
 }
 
 .sec-node-list {
@@ -1609,7 +1855,13 @@ h1 {
   .sec-value-edit-form,
   .sec-nodes-form,
   .sec-rename-form,
+  .tls-cert-form,
+  .tls-policy-form,
+  .tls-rename-form,
   .dns-record-form,
+  .tls-policy-rule-fields,
+  .tls-policy-scope-editor,
+  .tls-policy-rule-list li,
   .kv-value-meta {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -1622,6 +1874,10 @@ h1 {
 
   .ps-worker i {
     display: none;
+  }
+
+  .tls-fact-list {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .kv-panel.kv-value-open .kv-shell {

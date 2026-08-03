@@ -11,17 +11,23 @@ function cssRule(selector) {
   return match.groups.body;
 }
 
-test("KV, DNS, and Sec value inspectors keep content top-aligned", () => {
+test("KV, DNS, Sec, and TLS value inspectors keep content top-aligned", () => {
   const rule = cssRule(".kv-value-panel");
 
   assert.match(rule, /grid-template-rows:\s*auto auto;/);
   assert.match(rule, /align-content:\s*start;/);
 });
 
-test("KV, DNS, and Sec toolbar buttons use compact tab controls", () => {
+test("KV, DNS, Sec, and TLS toolbar buttons use compact tab controls", () => {
   const compactButtonRule = css.match(/(?<selectors>(?:\.[\w-]+\s+button,\n)+\.[\w-]+\s+button)\s*\{[^}]*min-height:\s*26px;[^}]*\}/m);
 
   assert.ok(compactButtonRule?.groups?.selectors, "missing compact button rule");
   assert.match(compactButtonRule.groups.selectors, /\.sec-header button/);
   assert.match(compactButtonRule.groups.selectors, /\.kv-toolbar button/);
+});
+
+test("TLS forms and policy rows collapse to one column on mobile", () => {
+  assert.match(css, /\.tls-cert-form,/);
+  assert.match(css, /\.tls-policy-form,/);
+  assert.match(css, /\.tls-policy-rule-list li,/);
 });

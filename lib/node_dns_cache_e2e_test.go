@@ -171,7 +171,7 @@ func newDNSE2EWithDNSCacheManager(t *testing.T, cfg configer.Config, manager Dns
 	pool := newE2ETestDebugPool(t)
 	logf := NewDebugLogFactory(16384)
 	sys := newE2EDebugSystem()
-	engine, err := BuildEngine(context.Background(), cfg, logf, sys, nil, manager, nil, nil, pool, true)
+	engine, err := BuildEngine(context.Background(), cfg, logf, sys, nil, manager, nil, nil, nil, pool, true)
 	if err != nil {
 		t.Fatalf("BuildEngine: %v", err)
 	}

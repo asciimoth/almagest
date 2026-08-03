@@ -90,6 +90,7 @@ func TestOutNetworkUsesSystemOutNetOnInit(t *testing.T) {
 		sys,
 		nil,
 		nil, nil,
+		nil,
 
 		nil,
 		pool,
@@ -255,6 +256,7 @@ func TestEngineOutNetworkSendsCachedNetworkToHTTPServerOnLinkAdd(t *testing.T) {
 		sys,
 		nil,
 		nil, nil,
+		nil,
 
 		[]pasta.NodeClass{captureHTTPServerClass{node: &server}},
 		pool,

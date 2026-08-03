@@ -222,6 +222,7 @@ func newVTunSpooferConfigE2E(t *testing.T, cfg configer.Config) *httpE2E {
 		newE2EDebugSystem(),
 		nil,
 		nil, nil,
+		nil,
 
 		nil,
 		pool,

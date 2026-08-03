@@ -306,7 +306,7 @@ func newTunTestEngine(t *testing.T, sys *recordingTunSystem, cfg configer.Config
 	if cfg == nil {
 		cfg = configer.NewMemory(nil)
 	}
-	engine, err := BuildEngine(context.Background(), cfg, NewDebugLogFactory(1024), sys, nil, nil, nil, nil, pool, true)
+	engine, err := BuildEngine(context.Background(), cfg, NewDebugLogFactory(1024), sys, nil, nil, nil, nil, nil, pool, true)
 	if err != nil {
 		t.Fatalf("BuildEngine: %v", err)
 	}
