@@ -8,11 +8,10 @@ import (
 	"github.com/asciimoth/gonnect/tlspolicy"
 )
 
-// OSAuthorityFetcher returns no certificates on platforms whose native trust
-// stores are not implemented yet. The daemon still creates the immutable
-// "default" TLS policy; it is fail-closed when no OS certificates are present.
+// OSAuthorityFetcher returns fallback certificate-authority candidates on
+// platforms whose native trust stores are not implemented yet.
 func OSAuthorityFetcher() tlspolicy.AuthorityFetcher {
-	return tlspolicy.AuthorityFetcherFunc(func(context.Context) ([]tlspolicy.AuthorityCandidate, error) {
-		return nil, nil
+	return tlspolicy.AuthorityFetcherFunc(func(ctx context.Context) ([]tlspolicy.AuthorityCandidate, error) {
+		return fallbackAuthorityCandidates(ctx)
 	})
 }

@@ -110,6 +110,8 @@ Important flags and env:
 - `--file-storage`, `ALMAGEST_FILE_STORAGE`: almagestd file storage directory.
 - `--tmp-file-storage`, `ALMAGEST_TMP_FILE_STORAGE`: create random temporary
   file storage prefixed with `alm-store-` and remove it on exit.
+- `ALMAGEST_TLS_FORCE_FALLBACK_ROOTS`: when set, use embedded NSS fallback
+  TLS roots instead of OS certificate storage.
 
 On Linux, persistent file storage defaults to
 `~/.local/share/almagest/store` for non-root users and

@@ -41,7 +41,14 @@ var linuxSystemAuthorityDirs = []string{
 // it builds a TLS policy.
 func OSAuthorityFetcher() tlspolicy.AuthorityFetcher {
 	return tlspolicy.AuthorityFetcherFunc(func(ctx context.Context) ([]tlspolicy.AuthorityCandidate, error) {
-		return linuxFetchAuthoritiesFromSources(ctx, linuxAuthorityFilesFromEnv(), linuxAuthorityDirsFromEnv())
+		if forceFallbackAuthorities() {
+			return fallbackAuthorityCandidates(ctx)
+		}
+		candidates, err := linuxFetchAuthoritiesFromSources(ctx, linuxAuthorityFilesFromEnv(), linuxAuthorityDirsFromEnv())
+		if err != nil || len(candidates) > 0 {
+			return candidates, err
+		}
+		return fallbackAuthorityCandidates(ctx)
 	})
 }
 

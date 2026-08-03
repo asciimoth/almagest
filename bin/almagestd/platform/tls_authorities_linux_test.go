@@ -87,6 +87,47 @@ func TestLinuxFetchAuthoritiesFromDirSkipsSameDirectorySymlinks(t *testing.T) {
 	}
 }
 
+func TestOSAuthorityFetcherLinuxFallsBackWhenSystemStoreIsEmpty(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv(linuxCertFileEnv, filepath.Join(dir, "missing.pem"))
+	t.Setenv(linuxCertDirEnv, dir)
+
+	candidates, err := OSAuthorityFetcher().FetchAuthorities(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(candidates) == 0 {
+		t.Fatal("candidates len = 0, want fallback roots")
+	}
+	if candidates[0].Source.Name != "fallback:nss" {
+		t.Fatalf("candidate source = %q, want fallback:nss", candidates[0].Source.Name)
+	}
+}
+
+func TestOSAuthorityFetcherLinuxForceFallbackIgnoresSystemStore(t *testing.T) {
+	bundle := filepath.Join(t.TempDir(), "bundle.pem")
+	writeLinuxAuthorityTestPEM(t, bundle, []byte{1})
+
+	t.Setenv(linuxCertFileEnv, bundle)
+	t.Setenv(forceFallbackAuthoritiesEnv, "1")
+
+	candidates, err := OSAuthorityFetcher().FetchAuthorities(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(candidates) == 0 {
+		t.Fatal("candidates len = 0, want fallback roots")
+	}
+	if bytes.Equal(candidates[0].DER, []byte{1}) {
+		t.Fatal("first candidate came from SSL_CERT_FILE, want forced fallback")
+	}
+	if candidates[0].Source.Name != "fallback:nss" {
+		t.Fatalf("candidate source = %q, want fallback:nss", candidates[0].Source.Name)
+	}
+}
+
 func writeLinuxAuthorityTestPEM(t *testing.T, path string, der []byte) {
 	t.Helper()
 	data := pem.EncodeToMemory(&pem.Block{

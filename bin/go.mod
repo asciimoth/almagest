@@ -19,6 +19,7 @@ require (
 	github.com/kataras/golog v0.1.15
 	github.com/tailscale/hujson v0.0.0-20260302212456-ecc657c15afd
 	go.etcd.io/bbolt v1.5.0
+	golang.org/x/crypto/x509roots/fallback v0.0.0-20260723152544-d701c51f7e4e
 	golang.org/x/sys v0.45.0
 )
 
