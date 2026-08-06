@@ -1,0 +1,143 @@
+{
+  "format_version": 1,
+  "entries": [
+    {
+      "id": "cloudflare-origin-ca-ecc",
+      "kind": "service_private_anchor",
+      "name": "Cloudflare Origin CA ECC",
+      "subject": "OU=CloudFlare Origin SSL ECC Certificate Authority,O=CloudFlare\\, Inc.,L=San Francisco,ST=California,C=US",
+      "certificate_sha256": "AA63697A22764B67B2134CE14CB5690EA336940B93986113F49545917832D80D",
+      "spki_sha256": "9114B3916B6457DBF19B6FC04EA6B61AA33A98668E71A01BA60C08F8A5167D5E",
+      "not_before": "2019-08-23T21:08:00Z",
+      "not_after": "2029-08-15T17:00:00Z",
+      "action": "offer_scoped_service_anchor",
+      "severity": "warning",
+      "recommendation": "only_use_for_explicit_cloudflare_origin_hosts",
+      "scope": {
+        "basis": "service_context",
+        "requires_explicit_allowlist": true,
+        "context": "Only hostnames whose expected certificate chain is Cloudflare Origin CA."
+      },
+      "sources": [
+        {
+          "id": "cloudflare-origin-ca-docs",
+          "url": "https://developers.cloudflare.com/ssl/origin-configuration/origin-ca/"
+        },
+        {
+          "id": "cloudflare-cloudflared-source",
+          "url": "https://raw.githubusercontent.com/cloudflare/cloudflared/master/tlsconfig/cloudflare_ca.go"
+        }
+      ]
+    },
+    {
+      "id": "cloudflare-origin-ca-rsa",
+      "kind": "service_private_anchor",
+      "name": "Cloudflare Origin CA RSA",
+      "subject": "ST=California,L=San Francisco,OU=CloudFlare Origin SSL Certificate Authority,O=CloudFlare\\, Inc.,C=US",
+      "certificate_sha256": "D3C7E85C91707FC0A12ABC5D88266747AA4FA8E7B162F633FFB3C9D989947620",
+      "spki_sha256": "B6E8C8CA4C7CA5E6934EFEA031364927BBFEDF086229499A60D83B5D587222B7",
+      "not_before": "2019-08-23T21:08:00Z",
+      "not_after": "2029-08-15T17:00:00Z",
+      "action": "offer_scoped_service_anchor",
+      "severity": "warning",
+      "recommendation": "only_use_for_explicit_cloudflare_origin_hosts",
+      "scope": {
+        "basis": "service_context",
+        "requires_explicit_allowlist": true,
+        "context": "Only hostnames whose expected certificate chain is Cloudflare Origin CA."
+      },
+      "sources": [
+        {
+          "id": "cloudflare-origin-ca-docs",
+          "url": "https://developers.cloudflare.com/ssl/origin-configuration/origin-ca/"
+        },
+        {
+          "id": "cloudflare-cloudflared-source",
+          "url": "https://raw.githubusercontent.com/cloudflare/cloudflared/master/tlsconfig/cloudflare_ca.go"
+        }
+      ]
+    },
+    {
+      "id": "cyberoam-shared-interception-key",
+      "kind": "hazard_certificate",
+      "name": "Cyberoam shared interception key",
+      "spki_sha256": "1AF56C98FF043EF92BEBFF54CEBB4DD67A25BA956C817F3E6DD3C1E52EB584C1",
+      "hazard_class": "private_key_disclosure",
+      "action": "deny",
+      "severity": "critical",
+      "recommendation": "deny_exact_spki",
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md"
+        }
+      ]
+    },
+    {
+      "id": "trustwave-enterprise-interception-subca",
+      "kind": "hazard_certificate",
+      "name": "Trustwave enterprise interception sub-CAs",
+      "spki_sha256": "32ECC96F912F96D889E73088CD031C7DED2C651C805016157A23B6F32F798A3B",
+      "hazard_class": "interception_ca",
+      "action": "deny",
+      "severity": "critical",
+      "recommendation": "deny_exact_spki",
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md"
+        }
+      ]
+    },
+    {
+      "id": "kazakhstan-qaznet-root-2019-a",
+      "kind": "hazard_certificate",
+      "name": "Kazakhstan Qaznet interception root",
+      "subject": "C=KZ,CN=Qaznet Trust Network",
+      "certificate_sha256": "00309C736DD661DA6F1EB24173AA849944C168A43A15BFFD192EECFDB6F8DBD2",
+      "hazard_class": "state_interception_ca",
+      "action": "deny_even_if_locally_installed",
+      "severity": "critical",
+      "recommendation": "deny_exact_certificate_even_if_user_or_os_installed",
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md"
+        },
+        {
+          "id": "mozilla-kazakhstan-2019",
+          "url": "https://blog.mozilla.org/security/2019/08/21/protecting-our-users-in-kazakhstan/"
+        },
+        {
+          "id": "mozilla-kazakhstan-2020",
+          "url": "https://blog.mozilla.org/netpolicy/2020/12/18/kazakhstan-root-2020/"
+        }
+      ]
+    },
+    {
+      "id": "entrust-chrome-2024-cutoff-a",
+      "kind": "hazard_certificate",
+      "name": "Entrust Chrome time-scoped distrust",
+      "certificate_sha256": "02ED0EB28C14DA45165C566791700D6451D7FB56F0B2AB1D3B8EB070E56EDFF5",
+      "hazard_class": "time_scoped_root_program_distrust",
+      "action": "enforce_platform_cutoff",
+      "severity": "high",
+      "recommendation": "apply_target_platform_distrust_cutoff",
+      "conditions": {
+        "chrome_enforcement_started": "2024-11-12",
+        "chrome_first_major_version": "131",
+        "chrome_sct_timestamp_after": "2024-11-11T23:59:59Z"
+      },
+      "sources": [
+        {
+          "id": "google-security-entrust-2024",
+          "url": "https://security.googleblog.com/2024/06/sustaining-digital-certificate-security.html"
+        },
+        {
+          "id": "chromium-security-quarterly-updates",
+          "url": "https://www.chromium.org/Home/chromium-security/quarterly-updates/"
+        }
+      ]
+    }
+  ]
+}

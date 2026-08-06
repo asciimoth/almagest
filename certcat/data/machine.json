@@ -1,0 +1,3481 @@
+{
+  "format_version": 1,
+  "generated_at": "2026-08-05T16:10:24Z",
+  "generated_by": "certcat-fetch",
+  "entries": [
+    {
+      "id": "chromium-cert-block-00309c736dd661da6f1eb24173aa849944c168a43a15bffd192eecfdb6f8dbd2",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "00309C736DD661DA6F1EB24173AA849944C168A43A15BFFD192EECFDB6F8DBD2",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/00309c736dd661da6f1eb24173aa849944c168a43a15bffd192eecfdb6f8dbd2.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-0230a604d99220e5612ee7862ab9f7a6e18e4f1ac4c9e27075788cc5220169ab",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "0230A604D99220E5612EE7862AB9F7A6E18E4F1AC4C9E27075788CC5220169AB",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/0230a604d99220e5612ee7862ab9f7a6e18e4f1ac4c9e27075788cc5220169ab.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-04f1bec36951bc1454a904ce32890c5da3cde1356b7900f6e62dfa2041ebad51",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "04F1BEC36951BC1454A904CE32890C5DA3CDE1356B7900F6E62DFA2041EBAD51",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/04f1bec36951bc1454a904ce32890c5da3cde1356b7900f6e62dfa2041ebad51.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "ccadb-nameconstraints-063627355c941a1c93fc515cbaef2f173d4a646ddeb139cb8c75c1022222994f",
+      "kind": "narrow_scope_ca",
+      "name": "TunTrust Services CA",
+      "subject": "CN=TunTrust Services CA; O=Agence Nationale de Certification Electronique; C=TN",
+      "issuer": "CN=TunTrust Root CA; O=Agence Nationale de Certification Electronique; C=TN",
+      "serial_hex": "601A7C2F6093B7A673DA5F8C9C885F37A75897C0",
+      "not_before": "2019-04-26T10:23:31Z",
+      "not_after": "2039-04-26T10:23:31Z",
+      "certificate_sha256": "063627355C941A1C93FC515CBAEF2F173D4A646DDEB139CB8C75C1022222994F",
+      "spki_sha256": "155166A41120A42FAF66E904AF1DCADE4F1DC41C964C0E813164FF1DF08E9460",
+      "action": "narrow_scope",
+      "severity": "warning",
+      "recommendation": "trust_only_for_declared_scope",
+      "scope": {
+        "basis": "x509_name_constraints",
+        "permitted_dns_subtrees": [
+          "tn"
+        ],
+        "reject_ip_targets": true
+      },
+      "sources": [
+        {
+          "id": "ccadb-mozilla-intermediate-report",
+          "url": "https://ccadb.my.salesforce-sites.com/mozilla/MozillaIntermediateCertsCSVReport",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-063e4afac491dfd332f3089b8542e94617d893d7fe944e10a7937ee29d9693c0",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "063E4AFAC491DFD332F3089B8542E94617D893D7FE944E10A7937EE29D9693C0",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/063e4afac491dfd332f3089b8542e94617d893d7fe944e10a7937ee29d9693c0.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-06fd20629c143b9eab28d2799caefc5d23fde267d16c631e3f5b8b4bab3f68e6",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "06FD20629C143B9EAB28D2799CAEFC5D23FDE267D16C631E3F5B8B4BAB3F68E6",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/06fd20629c143b9eab28d2799caefc5d23fde267d16c631e3f5b8b4bab3f68e6.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-0753e940378c1bd5e3836e395daea5cb839e5046f1bd0eae1951cf10fec7c965",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "0753E940378C1BD5E3836E395DAEA5CB839E5046F1BD0EAE1951CF10FEC7C965",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/0753e940378c1bd5e3836e395daea5cb839e5046f1bd0eae1951cf10fec7c965.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-0bd39de4793cdc117138f47708aa4d583acf67adb059a0d91f668d1803bf6489",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "0BD39DE4793CDC117138F47708AA4D583ACF67ADB059A0D91F668D1803BF6489",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/0bd39de4793cdc117138f47708aa4d583acf67adb059a0d91f668d1803bf6489.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-0c258a12a5674aef25f28ba7dcfaeceea348e541e6f5cc4ee63b71b361606ac3",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "0C258A12A5674AEF25F28BA7DCFAECEEA348E541E6F5CC4EE63B71B361606AC3",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/0c258a12a5674aef25f28ba7dcfaeceea348e541e6f5cc4ee63b71b361606ac3.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-0d136e439f0ab6e97f3a02a540da9f0641aa554e1d66ea51ae2920d51b2f7217",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "0D136E439F0AB6E97F3A02A540DA9F0641AA554E1D66EA51AE2920D51B2F7217",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/0d136e439f0ab6e97f3a02a540da9f0641aa554e1d66ea51ae2920d51b2f7217.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-0d90cd8e35209b4cefebdd62b644bed8eb55c74dddff26e75caf8ae70491f0bd",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "0D90CD8E35209B4CEFEBDD62B644BED8EB55C74DDDFF26E75CAF8AE70491F0BD",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/0d90cd8e35209b4cefebdd62b644bed8eb55c74dddff26e75caf8ae70491f0bd.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "ccadb-nameconstraints-0ee82ceb7eca241ccc29d4e588062c43e447ede6c696f135acc411966126ba83",
+      "kind": "narrow_scope_ca",
+      "name": "Aristotle University of Thessaloniki SSL RSA SubCA R2",
+      "subject": "CN=Aristotle University of Thessaloniki SSL RSA SubCA R2; O=Aristotle University of Thessaloniki; L=Thessaloniki; C=GR",
+      "issuer": "CN=Hellenic Academic and Research Institutions RootCA 2015; O=Hellenic Academic and Research Institutions Cert. Authority; L=Athens; C=GR",
+      "serial_hex": "4B657A92E8AD428C66537AB06C6AFE24",
+      "not_before": "2019-03-14T13:00:17Z",
+      "not_after": "2027-03-12T13:00:17Z",
+      "certificate_sha256": "0EE82CEB7ECA241CCC29D4E588062C43E447EDE6C696F135ACC411966126BA83",
+      "spki_sha256": "30E47D7A5698D863925D14349643D9B8E29D14D8E4D1EBD10F1655EF69741BA6",
+      "action": "narrow_scope",
+      "severity": "warning",
+      "recommendation": "trust_only_for_declared_scope",
+      "scope": {
+        "basis": "x509_name_constraints",
+        "permitted_dns_subtrees": [
+          "auth.edu.gr",
+          "auth.gr"
+        ],
+        "reject_ip_targets": true
+      },
+      "sources": [
+        {
+          "id": "ccadb-mozilla-intermediate-report",
+          "url": "https://ccadb.my.salesforce-sites.com/mozilla/MozillaIntermediateCertsCSVReport",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-0ef7c54a3af101a2cfedb0c9f36fe8214d51a504fdc2ad1e243019cefd7d03c2",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "0EF7C54A3AF101A2CFEDB0C9F36FE8214D51A504FDC2AD1E243019CEFD7D03C2",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/0ef7c54a3af101a2cfedb0c9f36fe8214d51a504fdc2ad1e243019cefd7d03c2.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-0f912fd7be760be25afbc56bdc09cd9e5dcc9c6f6a55a778aefcb6aa30e31554",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "0F912FD7BE760BE25AFBC56BDC09CD9E5DCC9C6F6A55A778AEFCB6AA30E31554",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/0f912fd7be760be25afbc56bdc09cd9e5dcc9c6f6a55a778aefcb6aa30e31554.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-136335439334a7698016a0d324de72284e079d7b5220bb8fbd747816eebebaca",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "136335439334A7698016A0D324DE72284E079D7B5220BB8FBD747816EEBEBACA",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/136335439334a7698016a0d324de72284e079d7b5220bb8fbd747816eebebaca.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-143315c857a9386973ed16840899c3f96b894a7a612c444efb691f14b0dedd87",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "143315C857A9386973ED16840899C3F96B894A7A612C444EFB691F14B0DEDD87",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/143315c857a9386973ed16840899c3f96b894a7a612c444efb691f14b0dedd87.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "ccadb-nameconstraints-146c1cf9bb7d231060d0fabd986e9850f00501f5a3b7b6ac42c51b38c8e22a23",
+      "kind": "narrow_scope_ca",
+      "name": "Inst. of Accelerating Systems and Applications TLS RSA SubCA R1",
+      "subject": "CN=Inst. of Accelerating Systems and Applications TLS RSA SubCA R1; O=Hellenic Academic and Research Institutions CA; C=GR",
+      "issuer": "CN=Hellenic Academic and Research Institutions RootCA 2015; O=Hellenic Academic and Research Institutions Cert. Authority; L=Athens; C=GR",
+      "serial_hex": "4F6E38626B8AD92C23F6E3A5FC3B287C",
+      "not_before": "2020-03-24T10:23:20Z",
+      "not_after": "2028-03-22T10:23:20Z",
+      "certificate_sha256": "146C1CF9BB7D231060D0FABD986E9850F00501F5A3B7B6AC42C51B38C8E22A23",
+      "spki_sha256": "0FB5DF93EED85208275D98AC6D5F075FB91C6188330E4332E7B637702D45AAAB",
+      "action": "narrow_scope",
+      "severity": "warning",
+      "recommendation": "trust_only_for_declared_scope",
+      "scope": {
+        "basis": "x509_name_constraints",
+        "permitted_dns_subtrees": [
+          "iasa.gr"
+        ],
+        "reject_ip_targets": true
+      },
+      "sources": [
+        {
+          "id": "ccadb-mozilla-intermediate-report",
+          "url": "https://ccadb.my.salesforce-sites.com/mozilla/MozillaIntermediateCertsCSVReport",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-159ca03a88897c8f13817a212629df84ce824709492b8c9adb8e5437d2fc72be",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "159CA03A88897C8F13817A212629DF84CE824709492B8C9ADB8E5437D2FC72BE",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/159ca03a88897c8f13817a212629df84ce824709492b8c9adb8e5437d2fc72be.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "ccadb-nameconstraints-1744b474101fe6a91936f5e60307c63da58b88405b045323dec8c8c00176af77",
+      "kind": "narrow_scope_ca",
+      "name": "National and Kapodistrian University of Athens TLS RSA SubCA R1",
+      "subject": "CN=National and Kapodistrian University of Athens TLS RSA SubCA R1; O=Hellenic Academic and Research Institutions CA; C=GR",
+      "issuer": "CN=Hellenic Academic and Research Institutions RootCA 2015; O=Hellenic Academic and Research Institutions Cert. Authority; L=Athens; C=GR",
+      "serial_hex": "667C03A9170D2FA2A85A738DDFA7341F",
+      "not_before": "2020-03-24T10:54:49Z",
+      "not_after": "2028-03-22T10:54:49Z",
+      "certificate_sha256": "1744B474101FE6A91936F5E60307C63DA58B88405B045323DEC8C8C00176AF77",
+      "spki_sha256": "3E614FF5A52D8C093B9C5CD0ED7FF742D2C338475E34127DB344486DF38507D6",
+      "action": "narrow_scope",
+      "severity": "warning",
+      "recommendation": "trust_only_for_declared_scope",
+      "scope": {
+        "basis": "x509_name_constraints",
+        "permitted_dns_subtrees": [
+          "uoa.gr"
+        ],
+        "reject_ip_targets": true
+      },
+      "sources": [
+        {
+          "id": "ccadb-mozilla-intermediate-report",
+          "url": "https://ccadb.my.salesforce-sites.com/mozilla/MozillaIntermediateCertsCSVReport",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "ccadb-nameconstraints-1af8b4d49c5a7b6da536dea92fdfaf45736205afca2dafffaecb712da9c3ebd1",
+      "kind": "narrow_scope_ca",
+      "name": "Technical University of Crete TLS RSA SubCA R1",
+      "subject": "CN=Technical University of Crete TLS RSA SubCA R1; O=Hellenic Academic and Research Institutions CA; C=GR",
+      "issuer": "CN=Hellenic Academic and Research Institutions RootCA 2015; O=Hellenic Academic and Research Institutions Cert. Authority; L=Athens; C=GR",
+      "serial_hex": "1FEB2A415CB14BF7974915D7C5A02660",
+      "not_before": "2020-03-24T10:44:03Z",
+      "not_after": "2028-03-22T10:44:03Z",
+      "certificate_sha256": "1AF8B4D49C5A7B6DA536DEA92FDFAF45736205AFCA2DAFFFAECB712DA9C3EBD1",
+      "spki_sha256": "B7EFBD31A6632AE0C47EEE085797136CDD135DA75FC09BBA4E7E20403116BA8A",
+      "action": "narrow_scope",
+      "severity": "warning",
+      "recommendation": "trust_only_for_declared_scope",
+      "scope": {
+        "basis": "x509_name_constraints",
+        "permitted_dns_subtrees": [
+          "tuc.gr"
+        ],
+        "reject_ip_targets": true
+      },
+      "sources": [
+        {
+          "id": "ccadb-mozilla-intermediate-report",
+          "url": "https://ccadb.my.salesforce-sites.com/mozilla/MozillaIntermediateCertsCSVReport",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-1c01c6f4dbb2fefc22558b2bca32563f49844acfc32b7be4b0ff599f9e8c7af7",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "1C01C6F4DBB2FEFC22558B2BCA32563F49844ACFC32B7BE4B0FF599F9E8C7AF7",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/1c01c6f4dbb2fefc22558b2bca32563f49844acfc32b7be4b0ff599f9e8c7af7.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "ccadb-nameconstraints-1c9d3e8e0cf1e4f39c734d19e479ae971fc3066c000353a2b6af32795a97ea1b",
+      "kind": "narrow_scope_ca",
+      "name": "University of the Peloponnese TLS RSA SubCA R1",
+      "subject": "CN=University of the Peloponnese TLS RSA SubCA R1; O=Hellenic Academic and Research Institutions CA; C=GR",
+      "issuer": "CN=Hellenic Academic and Research Institutions RootCA 2015; O=Hellenic Academic and Research Institutions Cert. Authority; L=Athens; C=GR",
+      "serial_hex": "4FB390F7D6873BFD99FCC131D396C296",
+      "not_before": "2020-03-24T11:13:01Z",
+      "not_after": "2028-03-22T11:13:01Z",
+      "certificate_sha256": "1C9D3E8E0CF1E4F39C734D19E479AE971FC3066C000353A2B6AF32795A97EA1B",
+      "spki_sha256": "0F90261EF82CCFC9E7B9F097CB00C72FC5699CA07CD0BFD0BD5267EF9B5050BB",
+      "action": "narrow_scope",
+      "severity": "warning",
+      "recommendation": "trust_only_for_declared_scope",
+      "scope": {
+        "basis": "x509_name_constraints",
+        "permitted_dns_subtrees": [
+          "uop.gr"
+        ],
+        "reject_ip_targets": true
+      },
+      "sources": [
+        {
+          "id": "ccadb-mozilla-intermediate-report",
+          "url": "https://ccadb.my.salesforce-sites.com/mozilla/MozillaIntermediateCertsCSVReport",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-1df696f021ab1c3ace9a376b07ed7256a40214cd3396d7934087614924e2d7ef",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "1DF696F021AB1C3ACE9A376B07ED7256A40214CD3396D7934087614924E2D7EF",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/1df696f021ab1c3ace9a376b07ed7256a40214cd3396d7934087614924e2d7ef.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "ccadb-nameconstraints-1e3349cd366a93e59ef4152a1e483dac6076184c5d46d4cda00e6093efc9e6a3",
+      "kind": "narrow_scope_ca",
+      "name": "University of West Attica TLS RSA SubCA R1",
+      "subject": "CN=University of West Attica TLS RSA SubCA R1; O=Hellenic Academic and Research Institutions CA; C=GR",
+      "issuer": "CN=Hellenic Academic and Research Institutions RootCA 2015; O=Hellenic Academic and Research Institutions Cert. Authority; L=Athens; C=GR",
+      "serial_hex": "5FC0E65F451D56C89A9C3DE96F49F6B3",
+      "not_before": "2020-05-20T07:33:29Z",
+      "not_after": "2028-05-18T07:33:29Z",
+      "certificate_sha256": "1E3349CD366A93E59EF4152A1E483DAC6076184C5D46D4CDA00E6093EFC9E6A3",
+      "spki_sha256": "0B26A374811CCB81EBFDCC5042A9EED2AAE7BA61641D13024D37090E020AE351",
+      "action": "narrow_scope",
+      "severity": "warning",
+      "recommendation": "trust_only_for_declared_scope",
+      "scope": {
+        "basis": "x509_name_constraints",
+        "permitted_dns_subtrees": [
+          "uniwa.gr"
+        ],
+        "reject_ip_targets": true
+      },
+      "sources": [
+        {
+          "id": "ccadb-mozilla-intermediate-report",
+          "url": "https://ccadb.my.salesforce-sites.com/mozilla/MozillaIntermediateCertsCSVReport",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "ccadb-nameconstraints-1e8f051f2226f992d17b7cf17f0dece0aa769902e9fe8d11f35b19b18a5a14f1",
+      "kind": "narrow_scope_ca",
+      "name": "National Technical University of Athens TLS RSA SubCA R1",
+      "subject": "CN=National Technical University of Athens TLS RSA SubCA R1; O=Hellenic Academic and Research Institutions CA; C=GR",
+      "issuer": "CN=Hellenic Academic and Research Institutions RootCA 2015; O=Hellenic Academic and Research Institutions Cert. Authority; L=Athens; C=GR",
+      "serial_hex": "3AD543F2262A023B38CA3F5706C71125",
+      "not_before": "2020-01-21T12:25:54Z",
+      "not_after": "2028-01-19T12:25:54Z",
+      "certificate_sha256": "1E8F051F2226F992D17B7CF17F0DECE0AA769902E9FE8D11F35B19B18A5A14F1",
+      "spki_sha256": "6229630B4C52DA53EADFF3278F33DB2A162154A0581414B7ECD83AB24D534190",
+      "action": "narrow_scope",
+      "severity": "warning",
+      "recommendation": "trust_only_for_declared_scope",
+      "scope": {
+        "basis": "x509_name_constraints",
+        "permitted_dns_subtrees": [
+          "emp.gr",
+          "ntua.gr"
+        ],
+        "reject_ip_targets": true
+      },
+      "sources": [
+        {
+          "id": "ccadb-mozilla-intermediate-report",
+          "url": "https://ccadb.my.salesforce-sites.com/mozilla/MozillaIntermediateCertsCSVReport",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-1f17f2cbb109f01c885c94d9e74a48625ae9659665d6d7e7bc5a10332976370f",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "1F17F2CBB109F01C885C94D9E74A48625AE9659665D6D7E7BC5A10332976370F",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/1f17f2cbb109f01c885c94d9e74a48625ae9659665d6d7e7bc5a10332976370f.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "ccadb-nameconstraints-220040dda377c944429e8ce913b7d81b36de34ebf2dc218d2066393d94863439",
+      "kind": "narrow_scope_ca",
+      "name": "Democritus University of Thrace TLS RSA SubCA R1",
+      "subject": "CN=Democritus University of Thrace TLS RSA SubCA R1; O=Hellenic Academic and Research Institutions CA; C=GR",
+      "issuer": "CN=Hellenic Academic and Research Institutions RootCA 2015; O=Hellenic Academic and Research Institutions Cert. Authority; L=Athens; C=GR",
+      "serial_hex": "2E78B7D87B52C112A6106C1C4A4B9E10",
+      "not_before": "2020-03-24T09:52:15Z",
+      "not_after": "2028-03-22T09:52:15Z",
+      "certificate_sha256": "220040DDA377C944429E8CE913B7D81B36DE34EBF2DC218D2066393D94863439",
+      "spki_sha256": "87084D3439D273233420FCCFD509D6C60EBC34AD5976E6F12DABF17D659146AF",
+      "action": "narrow_scope",
+      "severity": "warning",
+      "recommendation": "trust_only_for_declared_scope",
+      "scope": {
+        "basis": "x509_name_constraints",
+        "permitted_dns_subtrees": [
+          "duth.gr"
+        ],
+        "reject_ip_targets": true
+      },
+      "sources": [
+        {
+          "id": "ccadb-mozilla-intermediate-report",
+          "url": "https://ccadb.my.salesforce-sites.com/mozilla/MozillaIntermediateCertsCSVReport",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "ccadb-nameconstraints-25eed131d7193597e48d4e36536cc5cffbf9eb2042c62573ae8968d8a3695f1c",
+      "kind": "narrow_scope_ca",
+      "name": "University of Piraeus TLS RSA SubCA R1",
+      "subject": "CN=University of Piraeus TLS RSA SubCA R1; O=Hellenic Academic and Research Institutions CA; C=GR",
+      "issuer": "CN=Hellenic Academic and Research Institutions RootCA 2015; O=Hellenic Academic and Research Institutions Cert. Authority; L=Athens; C=GR",
+      "serial_hex": "67A51D907A7267726742736C966D5CDA",
+      "not_before": "2020-03-24T10:48:47Z",
+      "not_after": "2028-03-22T10:48:47Z",
+      "certificate_sha256": "25EED131D7193597E48D4E36536CC5CFFBF9EB2042C62573AE8968D8A3695F1C",
+      "spki_sha256": "CA86912F39B6DF37905E9B15775EB776C96A369162D7D57F5C104E731794256A",
+      "action": "narrow_scope",
+      "severity": "warning",
+      "recommendation": "trust_only_for_declared_scope",
+      "scope": {
+        "basis": "x509_name_constraints",
+        "permitted_dns_subtrees": [
+          "unipi.gr"
+        ],
+        "reject_ip_targets": true
+      },
+      "sources": [
+        {
+          "id": "ccadb-mozilla-intermediate-report",
+          "url": "https://ccadb.my.salesforce-sites.com/mozilla/MozillaIntermediateCertsCSVReport",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-2740d956b1127b791aa1b3cc644a4dbedba76186a23638b95102351a834ea861",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "2740D956B1127B791AA1B3CC644A4DBEDBA76186A23638B95102351A834EA861",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/2740d956b1127b791aa1b3cc644a4dbedba76186a23638b95102351a834ea861.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-289ed1676f42b679f2b665bb5a3f25610d9d19ac017beafa46787f1d6022986a",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "289ED1676F42B679F2B665BB5A3F25610D9D19AC017BEAFA46787F1D6022986A",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/289ed1676f42b679f2b665bb5a3f25610d9d19ac017beafa46787f1d6022986a.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-294f55ef3bd7244c6ff8a68ab797e9186ec27582751a791515e3292e48372d61",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "294F55EF3BD7244C6FF8A68AB797E9186EC27582751A791515E3292E48372D61",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/294f55ef3bd7244c6ff8a68ab797e9186ec27582751a791515e3292e48372d61.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-29abf614b2870ed70df11225e9ae2068e3074eb9845ae252c2064e31ce9fe8a1",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "29ABF614B2870ED70DF11225E9AE2068E3074EB9845AE252C2064E31CE9FE8A1",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/29abf614b2870ed70df11225e9ae2068e3074eb9845ae252c2064e31ce9fe8a1.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-2a33f5b48176523fd3c0d854f20093417175bfd498ef354cc7f38b54adabaf1a",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "2A33F5B48176523FD3C0D854F20093417175BFD498EF354CC7F38B54ADABAF1A",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/2a33f5b48176523fd3c0d854f20093417175bfd498ef354cc7f38b54adabaf1a.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-2a3699deca1e9fd099ba45de8489e205977c9f2a5e29d5dd747381eec0744d71",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "2A3699DECA1E9FD099BA45DE8489E205977C9F2A5E29D5DD747381EEC0744D71",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/2a3699deca1e9fd099ba45de8489e205977c9f2a5e29d5dd747381eec0744d71.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-2a4397aafa6227fa11f9f9d76ecbb022b0a4494852c2b93fb2085c8afb19b62a",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "2A4397AAFA6227FA11F9F9D76ECBB022B0A4494852C2B93FB2085C8AFB19B62A",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/2a4397aafa6227fa11f9f9d76ecbb022b0a4494852c2b93fb2085c8afb19b62a.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-2d11e736f0427fd6ba4b372755d34a0edd8d83f7e9e7f6c01b388c9b7afa850d",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "2D11E736F0427FD6BA4B372755D34A0EDD8D83F7E9E7F6C01B388C9B7AFA850D",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/2d11e736f0427fd6ba4b372755d34a0edd8d83f7e9e7f6c01b388c9b7afa850d.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-31c8fd37db9b56e708b03d1f01848b068c6da66f36fb5d82c008c6040fa3e133",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "31C8FD37DB9B56E708B03D1F01848B068C6DA66F36FB5D82C008C6040FA3E133",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/31c8fd37db9b56e708b03d1f01848b068c6da66f36fb5d82c008c6040fa3e133.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-3472e4f16c570e0dd388aaaa4a64a34a4b939f1ca770996b5be0037c1aded9c1",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "3472E4F16C570E0DD388AAAA4A64A34A4B939F1CA770996B5BE0037C1ADED9C1",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/3472e4f16c570e0dd388aaaa4a64a34a4b939f1ca770996b5be0037c1aded9c1.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-372447c43185c38edd2ce0e9c853f9ac1576ddd1704c2f54d96076c089cb4227",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "372447C43185C38EDD2CE0E9C853F9AC1576DDD1704C2F54D96076C089CB4227",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/372447c43185c38edd2ce0e9c853f9ac1576ddd1704c2f54d96076c089cb4227.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-3946901f46b0071e90d78279e82fababca177231a704be72c5b0e8918566ea66",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "3946901F46B0071E90D78279E82FABABCA177231A704BE72C5B0E8918566EA66",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/3946901f46b0071e90d78279e82fababca177231a704be72c5b0e8918566ea66.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "ccadb-nameconstraints-3995b01a17800aecf5480e939d9da44edccc7cf2935657c6179d5a1efa25d74d",
+      "kind": "narrow_scope_ca",
+      "name": "Athens University of Economics and Business TLS RSA SubCA R1",
+      "subject": "CN=Athens University of Economics and Business TLS RSA SubCA R1; O=Hellenic Academic and Research Institutions CA; C=GR",
+      "issuer": "CN=Hellenic Academic and Research Institutions RootCA 2015; O=Hellenic Academic and Research Institutions Cert. Authority; L=Athens; C=GR",
+      "serial_hex": "1AD1B3DDB0E2E3DF62872D8F1D732AC5",
+      "not_before": "2020-03-24T09:36:14Z",
+      "not_after": "2028-03-22T09:36:14Z",
+      "certificate_sha256": "3995B01A17800AECF5480E939D9DA44EDCCC7CF2935657C6179D5A1EFA25D74D",
+      "spki_sha256": "A0723ACC88F62411C9B6A8EDD7BB10498CA5608D3345A4800A406E4BDE7BF2D8",
+      "action": "narrow_scope",
+      "severity": "warning",
+      "recommendation": "trust_only_for_declared_scope",
+      "scope": {
+        "basis": "x509_name_constraints",
+        "permitted_dns_subtrees": [
+          "aueb.gr"
+        ],
+        "reject_ip_targets": true
+      },
+      "sources": [
+        {
+          "id": "ccadb-mozilla-intermediate-report",
+          "url": "https://ccadb.my.salesforce-sites.com/mozilla/MozillaIntermediateCertsCSVReport",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-3a554ead9dd3e881c0bf6b4c694755ca51acbfb5b99ded5af49da950be21f2f7",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "3A554EAD9DD3E881C0BF6B4C694755CA51ACBFB5B99DED5AF49DA950BE21F2F7",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/3a554ead9dd3e881c0bf6b4c694755ca51acbfb5b99ded5af49da950be21f2f7.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-3ab0fcc7287454c405863e3aa204fea8eb0c50a524d2a7e15524a830cd4ab0fe",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "3AB0FCC7287454C405863E3AA204FEA8EB0C50A524D2A7E15524A830CD4AB0FE",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/3ab0fcc7287454c405863e3aa204fea8eb0c50a524d2a7e15524a830cd4ab0fe.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-3ae699d94e8febdacb86d4f90d40903333478e65e0655c432451197e33fa07f2",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "3AE699D94E8FEBDACB86D4F90D40903333478E65E0655C432451197E33FA07F2",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/3ae699d94e8febdacb86d4f90d40903333478e65e0655c432451197e33fa07f2.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-3d3d823fad13dfeef32da580166d4a4992bed5a22d695d12c8b08cc3463c67a2",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "3D3D823FAD13DFEEF32DA580166D4A4992BED5A22D695D12C8B08CC3463C67A2",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/3d3d823fad13dfeef32da580166d4a4992bed5a22d695d12c8b08cc3463c67a2.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "ccadb-nameconstraints-3e1479804765a62bb7bd4f0ddebb55a946a2063cd2882f05461b1754f1b667b1",
+      "kind": "narrow_scope_ca",
+      "name": "HARICA Administration SSL ECC SubCA R2",
+      "subject": "CN=HARICA Administration SSL ECC SubCA R2; O=Hellenic Academic and Research Institutions Cert. Authority; L=Athens; C=GR",
+      "issuer": "CN=Hellenic Academic and Research Institutions ECC RootCA 2015; O=Hellenic Academic and Research Institutions Cert. Authority; L=Athens; C=GR",
+      "serial_hex": "1F1FE830126FAC99D30FA4117D555885",
+      "not_before": "2019-03-07T09:34:08Z",
+      "not_after": "2027-03-05T09:34:08Z",
+      "certificate_sha256": "3E1479804765A62BB7BD4F0DDEBB55A946A2063CD2882F05461B1754F1B667B1",
+      "spki_sha256": "5CB09483031A7C5AAB71D9B370CE6030B097D0E046EFFBDB9D52A28F91506218",
+      "action": "narrow_scope",
+      "severity": "warning",
+      "recommendation": "trust_only_for_declared_scope",
+      "scope": {
+        "basis": "x509_name_constraints",
+        "permitted_dns_subtrees": [
+          "harica.gr"
+        ],
+        "reject_ip_targets": true
+      },
+      "sources": [
+        {
+          "id": "ccadb-mozilla-intermediate-report",
+          "url": "https://ccadb.my.salesforce-sites.com/mozilla/MozillaIntermediateCertsCSVReport",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-3e26492e20b52de79e15766e6cb4251a1d566b0dbfb225aa7d08dda1dcebbf0a",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "3E26492E20B52DE79E15766E6CB4251A1D566B0DBFB225AA7D08DDA1DCEBBF0A",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/3e26492e20b52de79e15766e6cb4251a1d566b0dbfb225aa7d08dda1dcebbf0a.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-42187727be39faf667aeb92bf0cc4e268f6e2ead2cefbec575bdc90430024f69",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "42187727BE39FAF667AEB92BF0CC4E268F6E2EAD2CEFBEC575BDC90430024F69",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/42187727be39faf667aeb92bf0cc4e268f6e2ead2cefbec575bdc90430024f69.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-44a244105569a730791f509b24c3d7838a462216bb0f560ef87fbe76c2e6005a",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "44A244105569A730791F509B24C3D7838A462216BB0F560EF87FBE76C2E6005A",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/44a244105569a730791f509b24c3d7838a462216bb0f560ef87fbe76c2e6005a.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "ccadb-nameconstraints-44ce97f5c957dd056d44c3e1bdfceb2cf9a7b428ed089839264336303bcac7ef",
+      "kind": "narrow_scope_ca",
+      "name": "CEDEFOP TLS RSA SubCA R1",
+      "subject": "CN=CEDEFOP TLS RSA SubCA R1; O=Hellenic Academic and Research Institutions CA; C=GR",
+      "issuer": "CN=Hellenic Academic and Research Institutions RootCA 2015; O=Hellenic Academic and Research Institutions Cert. Authority; L=Athens; C=GR",
+      "serial_hex": "582A9165D15FE2CDB3B660AF2A7ED2AF",
+      "not_before": "2020-03-24T09:43:18Z",
+      "not_after": "2028-03-22T09:43:18Z",
+      "certificate_sha256": "44CE97F5C957DD056D44C3E1BDFCEB2CF9A7B428ED089839264336303BCAC7EF",
+      "spki_sha256": "E7A9FC10C06C32AC87E2935B0F82A652C6DE6ACDBAFA8B8FFA30C724C0C529C0",
+      "action": "narrow_scope",
+      "severity": "warning",
+      "recommendation": "trust_only_for_declared_scope",
+      "scope": {
+        "basis": "x509_name_constraints",
+        "permitted_dns_subtrees": [
+          "cedefop.europa.eu"
+        ],
+        "reject_ip_targets": true
+      },
+      "sources": [
+        {
+          "id": "ccadb-mozilla-intermediate-report",
+          "url": "https://ccadb.my.salesforce-sites.com/mozilla/MozillaIntermediateCertsCSVReport",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-450f1b421bb05c8609854884559c323319619e8b06b001ea2dcbb74a23aa3be2",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "450F1B421BB05C8609854884559C323319619E8B06B001EA2DCBB74A23AA3BE2",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/450f1b421bb05c8609854884559c323319619e8b06b001ea2dcbb74a23aa3be2.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "ccadb-nameconstraints-46727b90c5a5f73375082d9b1bc9f17b445f5020a95e37dfdf1ef20b287c5115",
+      "kind": "narrow_scope_ca",
+      "name": "University of Ioannina TLS RSA SubCA R1",
+      "subject": "CN=University of Ioannina TLS RSA SubCA R1; O=Hellenic Academic and Research Institutions CA; C=GR",
+      "issuer": "CN=Hellenic Academic and Research Institutions RootCA 2015; O=Hellenic Academic and Research Institutions Cert. Authority; L=Athens; C=GR",
+      "serial_hex": "668EA5117B2FECDAB77596E1E782065",
+      "not_before": "2020-01-21T12:08:23Z",
+      "not_after": "2028-01-19T12:08:23Z",
+      "certificate_sha256": "46727B90C5A5F73375082D9B1BC9F17B445F5020A95E37DFDF1EF20B287C5115",
+      "spki_sha256": "3D4665092525B5DB6640F90562E162BB89DF0775399E6491909383106ECCE7F5",
+      "action": "narrow_scope",
+      "severity": "warning",
+      "recommendation": "trust_only_for_declared_scope",
+      "scope": {
+        "basis": "x509_name_constraints",
+        "permitted_dns_subtrees": [
+          "teiep.gr",
+          "uoi.gr"
+        ],
+        "reject_ip_targets": true
+      },
+      "sources": [
+        {
+          "id": "ccadb-mozilla-intermediate-report",
+          "url": "https://ccadb.my.salesforce-sites.com/mozilla/MozillaIntermediateCertsCSVReport",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-487afc8d0d411b2a05561a2a6f35918f4040e5570c4c73ee323cc50583bcfbb7",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "487AFC8D0D411B2A05561A2A6F35918F4040E5570C4C73EE323CC50583BCFBB7",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/487afc8d0d411b2a05561a2a6f35918f4040e5570c4c73ee323cc50583bcfbb7.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-4aefc3d39ef59e4d4b0304b20f53a8af2efb69edece66def74494abfc10a2d66",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "4AEFC3D39EF59E4D4B0304B20F53A8AF2EFB69EDECE66DEF74494ABFC10A2D66",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/4aefc3d39ef59e4d4b0304b20f53a8af2efb69edece66def74494abfc10a2d66.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-4b22d5a6aec99f3cdb79aa5ec06838479cd5ecba7164f7f22dc1d65f63d85708",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "4B22D5A6AEC99F3CDB79AA5EC06838479CD5ECBA7164F7F22DC1D65F63D85708",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/4b22d5a6aec99f3cdb79aa5ec06838479cd5ecba7164f7f22dc1d65f63d85708.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-4bf6bb839b03b72839329b4ea70bb1b2f0d07e014d9d24aa9cc596114702bee3",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "4BF6BB839B03B72839329B4EA70BB1B2F0D07E014D9D24AA9CC596114702BEE3",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/4bf6bb839b03b72839329b4ea70bb1b2f0d07e014d9d24aa9cc596114702bee3.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-4fee0163686ecbd65db968e7494f55d84b25486d438e9de558d629d28cd4d176",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "4FEE0163686ECBD65DB968E7494F55D84B25486D438E9DE558D629D28CD4D176",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/4fee0163686ecbd65db968e7494f55d84b25486d438e9de558d629d28cd4d176.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-53d48e7b8869a3314f213fd2e0178219ca09022dbe50053bf6f76fccd61e8112",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "53D48E7B8869A3314F213FD2E0178219CA09022DBE50053BF6F76FCCD61E8112",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/53d48e7b8869a3314f213fd2e0178219ca09022dbe50053bf6f76fccd61e8112.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-5472692abe5d02cd22eae3e0a0077f17802721d6576cde1cba2263ee803410c5",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "5472692ABE5D02CD22EAE3E0A0077F17802721D6576CDE1CBA2263EE803410C5",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/5472692abe5d02cd22eae3e0a0077f17802721d6576cde1cba2263ee803410c5.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-5a885db19c01d912c5759388938cafbbdf031ab2d48e91ee15589b42971d039c",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "5A885DB19C01D912C5759388938CAFBBDF031AB2D48E91EE15589B42971D039C",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/5a885db19c01d912c5759388938cafbbdf031ab2d48e91ee15589b42971d039c.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-5ccaf9f8f2bb3a0d215922eca383354b6ee3c62407ed32e30f6fb2618edeea10",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "5CCAF9F8F2BB3A0D215922ECA383354B6EE3C62407ED32E30F6FB2618EDEEA10",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/5ccaf9f8f2bb3a0d215922eca383354b6ee3c62407ed32e30f6fb2618edeea10.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "ccadb-nameconstraints-5dabda046272eec89ecb95a6297dba910d0144f7eeb5814d073ae54a4a8cf646",
+      "kind": "narrow_scope_ca",
+      "name": "University of Crete TLS RSA SubCA R1",
+      "subject": "CN=University of Crete TLS RSA SubCA R1; O=Hellenic Academic and Research Institutions CA; C=GR",
+      "issuer": "CN=Hellenic Academic and Research Institutions RootCA 2015; O=Hellenic Academic and Research Institutions Cert. Authority; L=Athens; C=GR",
+      "serial_hex": "5C6BB6910DF075762A086AC8F0B05E43",
+      "not_before": "2020-03-24T11:03:01Z",
+      "not_after": "2028-03-22T11:03:01Z",
+      "certificate_sha256": "5DABDA046272EEC89ECB95A6297DBA910D0144F7EEB5814D073AE54A4A8CF646",
+      "spki_sha256": "3A2C98A88553BDACF3299B603E1523CC4FD452DACBE0B4CF7DC62D352191ADD2",
+      "action": "narrow_scope",
+      "severity": "warning",
+      "recommendation": "trust_only_for_declared_scope",
+      "scope": {
+        "basis": "x509_name_constraints",
+        "permitted_dns_subtrees": [
+          "uoc.gr"
+        ],
+        "reject_ip_targets": true
+      },
+      "sources": [
+        {
+          "id": "ccadb-mozilla-intermediate-report",
+          "url": "https://ccadb.my.salesforce-sites.com/mozilla/MozillaIntermediateCertsCSVReport",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-5e8e77aafdda2ba5ce442f27d8246650bbd6508befbeda35966a4dc7e6174edc",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "5E8E77AAFDDA2BA5CE442F27D8246650BBD6508BEFBEDA35966A4DC7E6174EDC",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/5e8e77aafdda2ba5ce442f27d8246650bbd6508befbeda35966a4dc7e6174edc.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-60911c79835c3739432d08c45df64311e06985c5889dc5420ce3d142c8c7ef58",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "60911C79835C3739432D08C45DF64311E06985C5889DC5420CE3D142C8C7EF58",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/60911c79835c3739432d08c45df64311e06985c5889dc5420ce3d142c8c7ef58.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-61c0fc2e38b5b6f9071b42cee54a9013d858b6697c68b460948551b3249576a1",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "61C0FC2E38B5B6F9071B42CEE54A9013D858B6697C68B460948551B3249576A1",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/61c0fc2e38b5b6f9071b42cee54a9013d858b6697c68b460948551b3249576a1.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-632b75ece2b543391dc3d520c4d9944cd6b9a302a9a60401aabcaaddf6b9451d",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "632B75ECE2B543391DC3D520C4D9944CD6B9A302A9A60401AABCAADDF6B9451D",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/632b75ece2b543391dc3d520c4d9944cd6b9a302a9a60401aabcaaddf6b9451d.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "ccadb-nameconstraints-6539235a5a1f94180c5233eaf8a5d67102deaa16c0751aef35b3e67ce5607f29",
+      "kind": "narrow_scope_ca",
+      "name": "University of Macedonia TLS RSA SubCA R1",
+      "subject": "CN=University of Macedonia TLS RSA SubCA R1; O=Hellenic Academic and Research Institutions CA; C=GR",
+      "issuer": "CN=Hellenic Academic and Research Institutions RootCA 2015; O=Hellenic Academic and Research Institutions Cert. Authority; L=Athens; C=GR",
+      "serial_hex": "38BAC7FEF6F200375BD8139663EAF6C4",
+      "not_before": "2020-03-24T11:08:07Z",
+      "not_after": "2028-03-22T11:08:07Z",
+      "certificate_sha256": "6539235A5A1F94180C5233EAF8A5D67102DEAA16C0751AEF35B3E67CE5607F29",
+      "spki_sha256": "62BD73526CD73510DE07D165204DE8AADD910229408428BDD26370F233B0E63D",
+      "action": "narrow_scope",
+      "severity": "warning",
+      "recommendation": "trust_only_for_declared_scope",
+      "scope": {
+        "basis": "x509_name_constraints",
+        "permitted_dns_subtrees": [
+          "uom.gr"
+        ],
+        "reject_ip_targets": true
+      },
+      "sources": [
+        {
+          "id": "ccadb-mozilla-intermediate-report",
+          "url": "https://ccadb.my.salesforce-sites.com/mozilla/MozillaIntermediateCertsCSVReport",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "ccadb-nameconstraints-673e34d7e1e6b25c187f391cc49138b4722a907e33f5b7487b613bb6dfe78909",
+      "kind": "narrow_scope_ca",
+      "name": "University of Patras TLS RSA SubCA R1",
+      "subject": "CN=University of Patras TLS RSA SubCA R1; O=Hellenic Academic and Research Institutions CA; C=GR",
+      "issuer": "CN=Hellenic Academic and Research Institutions RootCA 2015; O=Hellenic Academic and Research Institutions Cert. Authority; L=Athens; C=GR",
+      "serial_hex": "3B477F7A8815C405F2D819227E5E950F",
+      "not_before": "2020-01-21T12:16:20Z",
+      "not_after": "2028-01-19T12:16:20Z",
+      "certificate_sha256": "673E34D7E1E6B25C187F391CC49138B4722A907E33F5B7487B613BB6DFE78909",
+      "spki_sha256": "AE31B6AF4D6C9D1D6FB4D928E275A592B8B02711DF397A570411FAD640810569",
+      "action": "narrow_scope",
+      "severity": "warning",
+      "recommendation": "trust_only_for_declared_scope",
+      "scope": {
+        "basis": "x509_name_constraints",
+        "permitted_dns_subtrees": [
+          "teiwest.gr",
+          "upatras.gr",
+          "upnet.gr"
+        ],
+        "reject_ip_targets": true
+      },
+      "sources": [
+        {
+          "id": "ccadb-mozilla-intermediate-report",
+          "url": "https://ccadb.my.salesforce-sites.com/mozilla/MozillaIntermediateCertsCSVReport",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-67ed4b703d15dc555f8c444b3a05a32579cb7599bd19c9babe10c584ea327ae0",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "67ED4B703D15DC555F8C444B3A05A32579CB7599BD19C9BABE10C584EA327AE0",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/67ed4b703d15dc555f8c444b3a05a32579cb7599bd19c9babe10c584ea327ae0.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-79f69a47cfd6c4b4ceae8030d04b49f6171d3b5d6c812f58d040e586f1cb3f14",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "79F69A47CFD6C4B4CEAE8030D04B49F6171D3B5D6C812F58D040E586F1CB3F14",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/79f69a47cfd6c4b4ceae8030d04b49f6171d3b5d6c812f58d040e586f1cb3f14.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-7abd72a323c9d179c722564f4e27a51dd4afd24006b38a40ce918b94960bcf18",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "7ABD72A323C9D179C722564F4E27A51DD4AFD24006B38A40CE918B94960BCF18",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/7abd72a323c9d179c722564f4e27a51dd4afd24006b38a40ce918b94960bcf18.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-7d8ce822222b90c0b14342c7a8145d1f24351f4d1a1fe0edfd312ee73fb00149",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "7D8CE822222B90C0B14342C7A8145D1F24351F4D1A1FE0EDFD312EE73FB00149",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/7d8ce822222b90c0b14342c7a8145d1f24351f4d1a1fe0edfd312ee73fb00149.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "ccadb-nameconstraints-7e2c537397e7b8d9b24d87f304c96ea057a407ce11d0b66d99ba4b8a22bb1167",
+      "kind": "narrow_scope_ca",
+      "name": "University of the Aegean TLS RSA SubCA R1",
+      "subject": "CN=University of the Aegean TLS RSA SubCA R1; O=Hellenic Academic and Research Institutions CA; C=GR",
+      "issuer": "CN=Hellenic Academic and Research Institutions RootCA 2015; O=Hellenic Academic and Research Institutions Cert. Authority; L=Athens; C=GR",
+      "serial_hex": "3110D8BC68126739A745348452CA297A",
+      "not_before": "2020-01-21T12:35:30Z",
+      "not_after": "2028-01-19T12:35:30Z",
+      "certificate_sha256": "7E2C537397E7B8D9B24D87F304C96EA057A407CE11D0B66D99BA4B8A22BB1167",
+      "spki_sha256": "FB684E54CC1F01E5596DC5EEAEF62CF58417A20E9E0E3AFFD8BA4348758DE24F",
+      "action": "narrow_scope",
+      "severity": "warning",
+      "recommendation": "trust_only_for_declared_scope",
+      "scope": {
+        "basis": "x509_name_constraints",
+        "permitted_dns_subtrees": [
+          "aegean.gr"
+        ],
+        "reject_ip_targets": true
+      },
+      "sources": [
+        {
+          "id": "ccadb-mozilla-intermediate-report",
+          "url": "https://ccadb.my.salesforce-sites.com/mozilla/MozillaIntermediateCertsCSVReport",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-817d4e05063d5942869c47d8504dc56a5208f7569c3d6d67f3457cfe921b3e29",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "817D4E05063D5942869C47D8504DC56A5208F7569C3D6D67F3457CFE921B3E29",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/817d4e05063d5942869c47d8504dc56a5208f7569c3d6d67f3457cfe921b3e29.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-8253da6738b60c5c0bb139c78e045428a0c841272abdcb952f95ff05ed1ab476",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "8253DA6738B60C5C0BB139C78E045428A0C841272ABDCB952F95FF05ED1AB476",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/8253da6738b60c5c0bb139c78e045428a0c841272abdcb952f95ff05ed1ab476.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-8290cc3fc1c3aac3239782c141ace8f88aeef4e9576a43d01867cf19d025be66",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "8290CC3FC1C3AAC3239782C141ACE8F88AEEF4E9576A43D01867CF19D025BE66",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/8290cc3fc1c3aac3239782c141ace8f88aeef4e9576a43d01867cf19d025be66.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-82a4cedbc7f61ce5cb04482aa27ea3145bb0cea58ab63ba1931a1654bfbdbb4f",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "82A4CEDBC7F61CE5CB04482AA27EA3145BB0CEA58AB63BA1931A1654BFBDBB4F",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/82a4cedbc7f61ce5cb04482aa27ea3145bb0cea58ab63ba1931a1654bfbdbb4f.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-83618f932d6947744d5ecca299d4b2820c01483947bd16be814e683f7436be24",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "83618F932D6947744D5ECCA299D4B2820C01483947BD16BE814E683F7436BE24",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/83618f932d6947744d5ecca299d4b2820c01483947bd16be814e683f7436be24.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "ccadb-nameconstraints-88ce49e3a4fa37eae28e8e35f8ff8cf7568ca845639cef3b8dfdf4e4693ac14a",
+      "kind": "narrow_scope_ca",
+      "name": "GRNET TLS RSA SubCA R1",
+      "subject": "CN=GRNET TLS RSA SubCA R1; O=National Infrastructures for Research and Technology; L=Athens; C=GR",
+      "issuer": "CN=Hellenic Academic and Research Institutions RootCA 2015; O=Hellenic Academic and Research Institutions Cert. Authority; L=Athens; C=GR",
+      "serial_hex": "6A4238F84975928E7B1621AA3C5BAD85",
+      "not_before": "2019-11-07T09:57:14Z",
+      "not_after": "2027-11-05T09:57:14Z",
+      "certificate_sha256": "88CE49E3A4FA37EAE28E8E35F8FF8CF7568CA845639CEF3B8DFDF4E4693AC14A",
+      "spki_sha256": "99105037A1AB29FFCEB82C4BC70BDD2EE1F44B41DEAD235C2B48F82D411DDD13",
+      "action": "narrow_scope",
+      "severity": "warning",
+      "recommendation": "trust_only_for_declared_scope",
+      "scope": {
+        "basis": "x509_name_constraints",
+        "permitted_dns_subtrees": [
+          "grnet.gr"
+        ],
+        "reject_ip_targets": true
+      },
+      "sources": [
+        {
+          "id": "ccadb-mozilla-intermediate-report",
+          "url": "https://ccadb.my.salesforce-sites.com/mozilla/MozillaIntermediateCertsCSVReport",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-89107c8e50e029b7b5f4ff0ccd2956bcc9d0c8ba2bfb6a58374ed63a6b034a30",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "89107C8E50E029B7B5F4FF0CCD2956BCC9D0C8BA2BFB6A58374ED63A6B034A30",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/89107c8e50e029b7b5f4ff0ccd2956bcc9d0c8ba2bfb6a58374ed63a6b034a30.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-8a1bd21661c60015065212cc98b1abb50dfd14c872a208e66bae890f25c448af",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "8A1BD21661C60015065212CC98B1ABB50DFD14C872A208E66BAE890F25C448AF",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/8a1bd21661c60015065212cc98b1abb50dfd14c872a208e66bae890f25c448af.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-8b45da1c06f791eb0cabf26be588f5fb23165c2e614bf885562d0dce50b29b02",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "8B45DA1C06F791EB0CABF26BE588F5FB23165C2E614BF885562D0DCE50B29B02",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/8b45da1c06f791eb0cabf26be588f5fb23165c2e614bf885562d0dce50b29b02.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "ccadb-nameconstraints-8b7ed5358484781f4c08376b183b018c957908caac32aa72acd02e51707a58a7",
+      "kind": "narrow_scope_ca",
+      "name": "AgID CA SSL SERVER",
+      "subject": "CN=AgID CA SSL SERVER; OU=Area Soluzioni per la Pubblica Amministrazione; O=Agenzia per l'Italia Digitale; L=Roma; C=IT",
+      "issuer": "CN=Actalis Authentication Root CA; O=Actalis S.p.A./03358520967; L=Milan; C=IT",
+      "serial_hex": "4AFE3AD519F629EB7871927DF3CD5C07",
+      "not_before": "2021-11-24T10:24:27Z",
+      "not_after": "2030-09-22T11:22:02Z",
+      "certificate_sha256": "8B7ED5358484781F4C08376B183B018C957908CAAC32AA72ACD02E51707A58A7",
+      "spki_sha256": "C40EC8BEA3F5FA3C1112064914A3F762B233126D51D25BFE829F3ADCA106CA6F",
+      "action": "narrow_scope",
+      "severity": "warning",
+      "recommendation": "trust_only_for_declared_scope",
+      "scope": {
+        "basis": "x509_name_constraints",
+        "permitted_dns_subtrees": [
+          "agendadigitale.it",
+          "agid-ca1-test.it",
+          "agid.it",
+          "aipa.it",
+          "cert-pa.it",
+          "cert-spc.it",
+          "cnipa.it",
+          "crcitalia.it",
+          "difensorecivicodigitale.it",
+          "digitalagenda.it",
+          "digitpa.it",
+          "gov.it",
+          "indicepa.it",
+          "italia.it"
+        ],
+        "reject_ip_targets": true
+      },
+      "sources": [
+        {
+          "id": "ccadb-mozilla-intermediate-report",
+          "url": "https://ccadb.my.salesforce-sites.com/mozilla/MozillaIntermediateCertsCSVReport",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "ccadb-nameconstraints-8c0994b2aed0085fe542813ee03c4b2d732ecdcc257ae6453114c6c875933bd4",
+      "kind": "narrow_scope_ca",
+      "name": "HEAL-LINK Hellenic Academic Libraries Link TLS RSA SubCA R1",
+      "subject": "CN=HEAL-LINK Hellenic Academic Libraries Link TLS RSA SubCA R1; O=Hellenic Academic and Research Institutions CA; C=GR",
+      "issuer": "CN=Hellenic Academic and Research Institutions RootCA 2015; O=Hellenic Academic and Research Institutions Cert. Authority; L=Athens; C=GR",
+      "serial_hex": "3C095D0E44EC8C706DC58EFC53D02A1F",
+      "not_before": "2020-03-24T10:10:57Z",
+      "not_after": "2028-03-22T10:10:57Z",
+      "certificate_sha256": "8C0994B2AED0085FE542813EE03C4B2D732ECDCC257AE6453114C6C875933BD4",
+      "spki_sha256": "600B54B5D5020FD9883630C78699D9F9A588EEAF6B6EBFB2973F908F9632BAA3",
+      "action": "narrow_scope",
+      "severity": "warning",
+      "recommendation": "trust_only_for_declared_scope",
+      "scope": {
+        "basis": "x509_name_constraints",
+        "permitted_dns_subtrees": [
+          "heal-link.gr"
+        ],
+        "reject_ip_targets": true
+      },
+      "sources": [
+        {
+          "id": "ccadb-mozilla-intermediate-report",
+          "url": "https://ccadb.my.salesforce-sites.com/mozilla/MozillaIntermediateCertsCSVReport",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-91018fcd3e0dc73f48d011a123f604d846d66821c58304474f949d7449dd600a",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "91018FCD3E0DC73F48D011A123F604D846D66821C58304474F949D7449DD600A",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/91018fcd3e0dc73f48d011a123f604d846d66821c58304474f949d7449dd600a.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-91e5cc32910686c5cac25c18cc805696c7b33868c280caf0c72844a2a8eb91e2",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "91E5CC32910686C5CAC25C18CC805696C7B33868C280CAF0C72844A2A8EB91E2",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/91e5cc32910686c5cac25c18cc805696c7b33868c280caf0c72844a2a8eb91e2.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-933f7d8cda9f0d7c8bfd3c22bf4653f4161fd38ccdcf66b22e95a2f49c2650f8",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "933F7D8CDA9F0D7C8BFD3C22BF4653F4161FD38CCDCF66B22E95A2F49C2650F8",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/933f7d8cda9f0d7c8bfd3c22bf4653f4161fd38ccdcf66b22e95a2f49c2650f8.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-9532e8b504964331c271f3f5f10070131a08bf8ba438978ce394c34feeae246f",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "9532E8B504964331C271F3F5F10070131A08BF8BA438978CE394C34FEEAE246F",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/9532e8b504964331c271f3f5f10070131a08bf8ba438978ce394c34feeae246f.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-9717b1e4242ac93e7e6cafd2123130c9b6d12931c4b7d157f328dceb489ebdab",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "9717B1E4242AC93E7E6CAFD2123130C9B6D12931C4B7D157F328DCEB489EBDAB",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/9717b1e4242ac93e7e6cafd2123130c9b6d12931c4b7d157f328dceb489ebdab.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-9adb8bc0ad191ff90992722ab16f15d607b6c111e60f0aec704a09f3360a2d81",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "9ADB8BC0AD191FF90992722AB16F15D607B6C111E60F0AEC704A09F3360A2D81",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/9adb8bc0ad191ff90992722ab16f15d607b6c111e60f0aec704a09f3360a2d81.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "ccadb-nameconstraints-9c782f6b0558adcb1cc9ef845320d14592c9220fcf0030c0980d9d753b06624f",
+      "kind": "narrow_scope_ca",
+      "name": "International Hellenic University TLS RSA SubCA R1",
+      "subject": "CN=International Hellenic University TLS RSA SubCA R1; O=Hellenic Academic and Research Institutions CA; C=GR",
+      "issuer": "CN=Hellenic Academic and Research Institutions RootCA 2015; O=Hellenic Academic and Research Institutions Cert. Authority; L=Athens; C=GR",
+      "serial_hex": "78A335C59CE08EC9DE585BF21D27B22E",
+      "not_before": "2020-01-21T11:58:57Z",
+      "not_after": "2028-01-19T11:58:57Z",
+      "certificate_sha256": "9C782F6B0558ADCB1CC9EF845320D14592C9220FCF0030C0980D9D753B06624F",
+      "spki_sha256": "8B701834505C277057AD045F44799AB3B61DB5860C165F410D158B1CF40C0D7A",
+      "action": "narrow_scope",
+      "severity": "warning",
+      "recommendation": "trust_only_for_declared_scope",
+      "scope": {
+        "basis": "x509_name_constraints",
+        "permitted_dns_subtrees": [
+          "ihu.edu.gr",
+          "ihu.gr",
+          "teicm.gr",
+          "teiemt.gr",
+          "teithe.gr"
+        ],
+        "reject_ip_targets": true
+      },
+      "sources": [
+        {
+          "id": "ccadb-mozilla-intermediate-report",
+          "url": "https://ccadb.my.salesforce-sites.com/mozilla/MozillaIntermediateCertsCSVReport",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-9ed8f9b0e8e42a1656b8e1dd18f42ba42dc06fe52686173ba2fc70e756f207dc",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "9ED8F9B0E8E42A1656B8E1DD18F42BA42DC06FE52686173BA2FC70E756F207DC",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/9ed8f9b0e8e42a1656b8e1dd18f42ba42dc06fe52686173ba2fc70e756f207dc.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-a25a19546819d048000ef9c6577c4bcd8d2155b1e4346a4599d6c8b79799d4a1",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "A25A19546819D048000EF9C6577C4BCD8D2155B1E4346A4599D6C8B79799D4A1",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/a25a19546819d048000ef9c6577c4bcd8d2155b1e4346a4599d6c8b79799d4a1.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-a2e3bdaacaaf2d2e8204b3bc7eddc805d54d3ab8bdfe7bf102c035f67d8f898a",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "A2E3BDAACAAF2D2E8204B3BC7EDDC805D54D3AB8BDFE7BF102C035F67D8F898A",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/a2e3bdaacaaf2d2e8204b3bc7eddc805d54d3ab8bdfe7bf102c035f67d8f898a.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-a686fee577c88ab664d0787ecdfff035f4806f3de418dc9e4d516324fff02083",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "A686FEE577C88AB664D0787ECDFFF035F4806F3DE418DC9E4D516324FFF02083",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/a686fee577c88ab664d0787ecdfff035f4806f3de418dc9e4d516324fff02083.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-a8e1dfd9cd8e470aa2f443914f931cfd61c323e94d75827affee985241c35ce5",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "A8E1DFD9CD8E470AA2F443914F931CFD61C323E94D75827AFFEE985241C35CE5",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/a8e1dfd9cd8e470aa2f443914f931cfd61c323e94d75827affee985241c35ce5.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-b6fe9151402bad1c06d7e66db67a26aa7356f2e6c644dbcf9f98968ff632e1b7",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "B6FE9151402BAD1C06D7E66DB67A26AA7356F2E6C644DBCF9F98968FF632E1B7",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/b6fe9151402bad1c06d7e66db67a26aa7356f2e6c644dbcf9f98968ff632e1b7.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-b8686723e415534bc0dbd16326f9486f85b0b0799bf6639334e61daae67f36cd",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "B8686723E415534BC0DBD16326F9486F85B0B0799BF6639334E61DAAE67F36CD",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/b8686723e415534bc0dbd16326f9486f85b0b0799bf6639334e61daae67f36cd.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-b8c1b957c077ea76e00b0f45bff5ae3acb696f221d2e062164fe37125e5a8d25",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "B8C1B957C077EA76E00B0F45BFF5AE3ACB696F221D2E062164FE37125E5A8D25",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/b8c1b957c077ea76e00b0f45bff5ae3acb696f221d2e062164fe37125e5a8d25.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "ccadb-nameconstraints-ba425122f31d9bae7cbe1e7fa2ff437adf283e014333485f7691cb856aec776a",
+      "kind": "narrow_scope_ca",
+      "name": "Harokopio University TLS RSA SubCA R1",
+      "subject": "CN=Harokopio University TLS RSA SubCA R1; O=Hellenic Academic and Research Institutions CA; C=GR",
+      "issuer": "CN=Hellenic Academic and Research Institutions RootCA 2015; O=Hellenic Academic and Research Institutions Cert. Authority; L=Athens; C=GR",
+      "serial_hex": "40B09B020DE16EFABBE6505419CEB45E",
+      "not_before": "2020-03-24T10:15:52Z",
+      "not_after": "2028-03-22T10:15:52Z",
+      "certificate_sha256": "BA425122F31D9BAE7CBE1E7FA2FF437ADF283E014333485F7691CB856AEC776A",
+      "spki_sha256": "99349E7F2684BB951EEAE38725D6556EEED6315EBD4AC1CE124FBC3F6C76799C",
+      "action": "narrow_scope",
+      "severity": "warning",
+      "recommendation": "trust_only_for_declared_scope",
+      "scope": {
+        "basis": "x509_name_constraints",
+        "permitted_dns_subtrees": [
+          "hua.gr"
+        ],
+        "reject_ip_targets": true
+      },
+      "sources": [
+        {
+          "id": "ccadb-mozilla-intermediate-report",
+          "url": "https://ccadb.my.salesforce-sites.com/mozilla/MozillaIntermediateCertsCSVReport",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-be144b56fb1163c49c9a0e6b5a458df6b29f7e6449985960c178a4744624b7bc",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "BE144B56FB1163C49C9A0E6B5A458DF6B29F7E6449985960C178A4744624B7BC",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/be144b56fb1163c49c9a0e6b5a458df6b29f7e6449985960c178a4744624b7bc.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "ccadb-nameconstraints-c161f5aade40fbc9723f0892de963d4d10405561a6bdc69a72798f918bed19cd",
+      "kind": "narrow_scope_ca",
+      "name": "GRnet SSL RSA SubCA R2",
+      "subject": "CN=GRnet SSL RSA SubCA R2; O=Greek Research and Technology Network; L=Athens; C=GR",
+      "issuer": "CN=Hellenic Academic and Research Institutions RootCA 2015; O=Hellenic Academic and Research Institutions Cert. Authority; L=Athens; C=GR",
+      "serial_hex": "63D79EB53570CF2B0B098D03928016D7",
+      "not_before": "2019-03-14T13:22:07Z",
+      "not_after": "2027-03-12T13:22:07Z",
+      "certificate_sha256": "C161F5AADE40FBC9723F0892DE963D4D10405561A6BDC69A72798F918BED19CD",
+      "spki_sha256": "002F31AA98F913BA517935D9AE1DCDDF5CAAAB197B5109B4675E0ED20EF1C551",
+      "action": "narrow_scope",
+      "severity": "warning",
+      "recommendation": "trust_only_for_declared_scope",
+      "scope": {
+        "basis": "x509_name_constraints",
+        "permitted_dns_subtrees": [
+          "grnet.gr"
+        ],
+        "reject_ip_targets": true
+      },
+      "sources": [
+        {
+          "id": "ccadb-mozilla-intermediate-report",
+          "url": "https://ccadb.my.salesforce-sites.com/mozilla/MozillaIntermediateCertsCSVReport",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-c1d80ce474a51128b77e794a98aa2d62a0225da3f419e5c7ed73dfbf660e7109",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "C1D80CE474A51128B77E794A98AA2D62A0225DA3F419E5C7ED73DFBF660E7109",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/c1d80ce474a51128b77e794a98aa2d62a0225da3f419e5c7ed73dfbf660e7109.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-c43807a64c51a3fbde5421011698013d8b46f4e315c46186dc23aea2670cd34f",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "C43807A64C51A3FBDE5421011698013D8B46F4E315C46186DC23AEA2670CD34F",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/c43807a64c51a3fbde5421011698013d8b46f4e315c46186dc23aea2670cd34f.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-c530fadc9bfa265e63b755cc6ee04c2d70d60bb916ce2f331dc7359362571b25",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "C530FADC9BFA265E63B755CC6EE04C2D70D60BB916CE2F331DC7359362571B25",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/c530fadc9bfa265e63b755cc6ee04c2d70d60bb916ce2f331dc7359362571b25.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-c67d722c1495be02cbf9ef1159f5ca4aa782dc832dc6aa60c9aa076a0ad1e69d",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "C67D722C1495BE02CBF9EF1159F5CA4AA782DC832DC6AA60C9AA076A0AD1E69D",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/c67d722c1495be02cbf9ef1159f5ca4aa782dc832dc6aa60c9aa076a0ad1e69d.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-c71f33c36d8efeefbed9d44e85e21cfe96b36fb0e132c52dca2415868492bf8a",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "C71F33C36D8EFEEFBED9D44E85E21CFE96B36FB0E132C52DCA2415868492BF8A",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/c71f33c36d8efeefbed9d44e85e21cfe96b36fb0e132c52dca2415868492bf8a.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-c766a9bef2d4071c863a31aa4920e813b2d198608cb7b7cfe21143b836df09ea",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "C766A9BEF2D4071C863A31AA4920E813B2D198608CB7B7CFE21143B836DF09EA",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/c766a9bef2d4071c863a31aa4920e813b2d198608cb7b7cfe21143b836df09ea.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-c7ba6567de93a798ae1faa791e712d378fae1f93c4397fea441bb7cbe6fd5995",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "C7BA6567DE93A798AE1FAA791E712D378FAE1F93C4397FEA441BB7CBE6FD5995",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/c7ba6567de93a798ae1faa791e712d378fae1f93c4397fea441bb7cbe6fd5995.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-c95c133b68319ee516b5f41e377f589878af1556567cc2834ef03b1d10830fd3",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "C95C133B68319EE516B5F41E377F589878AF1556567CC2834EF03B1D10830FD3",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/c95c133b68319ee516b5f41e377f589878af1556567cc2834ef03b1d10830fd3.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-cb954e9d80a3e520ac71f1a84511657f2f309d172d0bb55e0ec2c236e74ff4b4",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "CB954E9D80A3E520AC71F1A84511657F2F309D172D0BB55E0EC2C236E74FF4B4",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/cb954e9d80a3e520ac71f1a84511657f2f309d172d0bb55e0ec2c236e74ff4b4.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "ccadb-nameconstraints-cdff27afa3daf9f706aa7ac530298337e520c8b10a22f6514e00e21fd2873b79",
+      "kind": "narrow_scope_ca",
+      "name": "Ecclesiastical Academy of Vella SSL RSA SubCA R2",
+      "subject": "CN=Ecclesiastical Academy of Vella SSL RSA SubCA R2; O=University Ecclesiastical Academy of Vella of Ioannina; L=Ioannina; C=GR",
+      "issuer": "CN=Hellenic Academic and Research Institutions RootCA 2015; O=Hellenic Academic and Research Institutions Cert. Authority; L=Athens; C=GR",
+      "serial_hex": "4DD7ECD8BFE3555392FA387B478E566F",
+      "not_before": "2019-03-14T13:16:24Z",
+      "not_after": "2027-03-12T13:16:24Z",
+      "certificate_sha256": "CDFF27AFA3DAF9F706AA7AC530298337E520C8B10A22F6514E00E21FD2873B79",
+      "spki_sha256": "5BE2CFD8BE86B62479C98A33B583F90016B1CFF7DACF7C814AE6F85B9334C1AE",
+      "action": "narrow_scope",
+      "severity": "warning",
+      "recommendation": "trust_only_for_declared_scope",
+      "scope": {
+        "basis": "x509_name_constraints",
+        "permitted_dns_subtrees": [
+          "aeavellas.gr"
+        ],
+        "reject_ip_targets": true
+      },
+      "sources": [
+        {
+          "id": "ccadb-mozilla-intermediate-report",
+          "url": "https://ccadb.my.salesforce-sites.com/mozilla/MozillaIntermediateCertsCSVReport",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "ccadb-nameconstraints-cfdfef037cfdbd6bb0e311e9bb281ca60271c5dae2695312033806fa4b0e94b7",
+      "kind": "narrow_scope_ca",
+      "name": "Greek School Network TLS RSA SubCA R1",
+      "subject": "CN=Greek School Network TLS RSA SubCA R1; O=Hellenic Academic and Research Institutions CA; C=GR",
+      "issuer": "CN=Hellenic Academic and Research Institutions RootCA 2015; O=Hellenic Academic and Research Institutions Cert. Authority; L=Athens; C=GR",
+      "serial_hex": "557549DDEDAA2F4FD210FA140640B73E",
+      "not_before": "2020-03-24T10:38:31Z",
+      "not_after": "2028-03-22T10:38:31Z",
+      "certificate_sha256": "CFDFEF037CFDBD6BB0E311E9BB281CA60271C5DAE2695312033806FA4B0E94B7",
+      "spki_sha256": "42B83CA0AA7908AF0F9948D50B8AE76E1F15668D88419916453F5C7B016674DC",
+      "action": "narrow_scope",
+      "severity": "warning",
+      "recommendation": "trust_only_for_declared_scope",
+      "scope": {
+        "basis": "x509_name_constraints",
+        "permitted_dns_subtrees": [
+          "sch.gr"
+        ],
+        "reject_ip_targets": true
+      },
+      "sources": [
+        {
+          "id": "ccadb-mozilla-intermediate-report",
+          "url": "https://ccadb.my.salesforce-sites.com/mozilla/MozillaIntermediateCertsCSVReport",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-d0d672c2547d574ae055d9e78a993ddbcc74044c4253fbfaca573a67d368e1db",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "D0D672C2547D574AE055D9E78A993DDBCC74044C4253FBFACA573A67D368E1DB",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/d0d672c2547d574ae055d9e78a993ddbcc74044c4253fbfaca573a67d368e1db.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-d40e9c86cd8fe468c1776959f49ea774fa548684b6c406f3909261f4dce2575c",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "D40E9C86CD8FE468C1776959F49EA774FA548684B6C406F3909261F4DCE2575C",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/d40e9c86cd8fe468c1776959f49ea774fa548684b6c406f3909261f4dce2575c.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-d487a56f83b07482e85e963394c1ecc2c9e51d0903ee946b02c301581ed99e16",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "D487A56F83B07482E85E963394C1ECC2C9E51D0903EE946B02C301581ED99E16",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/d487a56f83b07482e85e963394c1ecc2c9e51d0903ee946b02c301581ed99e16.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-d6f034bd94aa233f0297eca4245b283973e447aa590f310c77f48fdf83112254",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "D6F034BD94AA233F0297ECA4245B283973E447AA590F310C77F48FDF83112254",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/d6f034bd94aa233f0297eca4245b283973e447aa590f310c77f48fdf83112254.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-d8888f4a84f74c974dffb573a1bf5bbbacd1713b905096f8eb015062bf396c4d",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "D8888F4A84F74C974DFFB573A1BF5BBBACD1713B905096F8EB015062BF396C4D",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/d8888f4a84f74c974dffb573a1bf5bbbacd1713b905096f8eb015062bf396c4d.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "ccadb-nameconstraints-da0c4981f6336e06c129f7e8143b2a54aa85a14a63ca44fce2cddc69eee788c9",
+      "kind": "narrow_scope_ca",
+      "name": "Ionian University TLS RSA SubCA R1",
+      "subject": "CN=Ionian University TLS RSA SubCA R1; O=Hellenic Academic and Research Institutions CA; C=GR",
+      "issuer": "CN=Hellenic Academic and Research Institutions RootCA 2015; O=Hellenic Academic and Research Institutions Cert. Authority; L=Athens; C=GR",
+      "serial_hex": "4D2D3364D7E1C0DA2A46046801ADF36",
+      "not_before": "2020-03-24T10:27:04Z",
+      "not_after": "2028-03-22T10:27:04Z",
+      "certificate_sha256": "DA0C4981F6336E06C129F7E8143B2A54AA85A14A63CA44FCE2CDDC69EEE788C9",
+      "spki_sha256": "B50118040539DB39C53B1098CFA08166EE267DC061719550233B45B85B1A8F9C",
+      "action": "narrow_scope",
+      "severity": "warning",
+      "recommendation": "trust_only_for_declared_scope",
+      "scope": {
+        "basis": "x509_name_constraints",
+        "permitted_dns_subtrees": [
+          "ionio.gr"
+        ],
+        "reject_ip_targets": true
+      },
+      "sources": [
+        {
+          "id": "ccadb-mozilla-intermediate-report",
+          "url": "https://ccadb.my.salesforce-sites.com/mozilla/MozillaIntermediateCertsCSVReport",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "ccadb-nameconstraints-dc9455ca47f5fd9bf3bbabbeacf88f3deb3b58bfa85af404dfd21617ce90a0dd",
+      "kind": "narrow_scope_ca",
+      "name": "Academy of Athens SSL SubCA R2",
+      "subject": "CN=Academy of Athens SSL SubCA R2; O=Academy of Athens; L=Athens; C=GR",
+      "issuer": "CN=Hellenic Academic and Research Institutions RootCA 2015; O=Hellenic Academic and Research Institutions Cert. Authority; L=Athens; C=GR",
+      "serial_hex": "5B0952BC685679C0FB6FBC37F3139A9D",
+      "not_before": "2019-03-14T13:11:26Z",
+      "not_after": "2027-03-12T13:11:26Z",
+      "certificate_sha256": "DC9455CA47F5FD9BF3BBABBEACF88F3DEB3B58BFA85AF404DFD21617CE90A0DD",
+      "spki_sha256": "252060878F9DCDEA0857D4B4DB2494AC7BEFCBFAC3040454B15575B674F15F7E",
+      "action": "narrow_scope",
+      "severity": "warning",
+      "recommendation": "trust_only_for_declared_scope",
+      "scope": {
+        "basis": "x509_name_constraints",
+        "permitted_dns_subtrees": [
+          "academyofathens.gr"
+        ],
+        "reject_ip_targets": true
+      },
+      "sources": [
+        {
+          "id": "ccadb-mozilla-intermediate-report",
+          "url": "https://ccadb.my.salesforce-sites.com/mozilla/MozillaIntermediateCertsCSVReport",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "ccadb-nameconstraints-dc9993dc33a71fd95808787d19a4b55704e601d57ebceacc8802c78b5c36f5c7",
+      "kind": "narrow_scope_ca",
+      "name": "Greek Universities Network TLS RSA SubCA R1",
+      "subject": "CN=Greek Universities Network TLS RSA SubCA R1; O=Hellenic Academic and Research Institutions CA; C=GR",
+      "issuer": "CN=Hellenic Academic and Research Institutions RootCA 2015; O=Hellenic Academic and Research Institutions Cert. Authority; L=Athens; C=GR",
+      "serial_hex": "393204889DC6A26812CA8DAC35529785",
+      "not_before": "2020-03-24T10:03:20Z",
+      "not_after": "2028-03-22T10:03:20Z",
+      "certificate_sha256": "DC9993DC33A71FD95808787D19A4B55704E601D57EBCEACC8802C78B5C36F5C7",
+      "spki_sha256": "F96A3EDAAB82BFACB01BE728B28E5A1B6352310F8F2A1B9C0667DB8B1DACCAE0",
+      "action": "narrow_scope",
+      "severity": "warning",
+      "recommendation": "trust_only_for_declared_scope",
+      "scope": {
+        "basis": "x509_name_constraints",
+        "permitted_dns_subtrees": [
+          "gunet.gr"
+        ],
+        "reject_ip_targets": true
+      },
+      "sources": [
+        {
+          "id": "ccadb-mozilla-intermediate-report",
+          "url": "https://ccadb.my.salesforce-sites.com/mozilla/MozillaIntermediateCertsCSVReport",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-ddd8ab9178c99cbd9685ea4ae66dc28bfdc9a5a8a166f7f69ad0b5042ad6eb28",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "DDD8AB9178C99CBD9685EA4AE66DC28BFDC9A5A8A166F7F69AD0B5042AD6EB28",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/ddd8ab9178c99cbd9685ea4ae66dc28bfdc9a5a8a166f7f69ad0b5042ad6eb28.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-e0486928e42eeebca5e9ab5ce0f2d266f2ec9314542c0ab170736147383d21b0",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "E0486928E42EEEBCA5E9AB5CE0F2D266F2EC9314542C0AB170736147383D21B0",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/e0486928e42eeebca5e9ab5ce0f2d266f2ec9314542c0ab170736147383d21b0.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-e17890ee09a3fbf4f48b9c414a17d637b7a50647e9bc752322727fcc1742a911",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "E17890EE09A3FBF4F48B9C414A17D637B7A50647E9BC752322727FCC1742A911",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/e17890ee09a3fbf4f48b9c414a17d637b7a50647e9bc752322727fcc1742a911.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-e28393773da845a679f2080cc7fb44a3b7a1c3792cb7eb7729fdcb6a8d99aea7",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "E28393773DA845A679F2080CC7FB44A3B7A1C3792CB7EB7729FDCB6A8D99AEA7",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/e28393773da845a679f2080cc7fb44a3b7a1c3792cb7eb7729fdcb6a8d99aea7.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-e4f9a3235df7330255f36412bc849fb630f8519961ec3538301deb896c953da5",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "E4F9A3235DF7330255F36412BC849FB630F8519961EC3538301DEB896C953DA5",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/e4f9a3235df7330255f36412bc849fb630f8519961ec3538301deb896c953da5.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-e54e9fc27e7350ff63a77764a40267b7e95ae5df3ed7df5336e8f8541356c845",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "E54E9FC27E7350FF63A77764A40267B7E95AE5DF3ED7DF5336E8F8541356C845",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/e54e9fc27e7350ff63a77764a40267b7e95ae5df3ed7df5336e8f8541356c845.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-e757fd60d8dd4c26f77aca6a87f63ea4d38d0b736c7f79b56cad932d4c400fb5",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "E757FD60D8DD4C26F77ACA6A87F63EA4D38D0B736C7F79B56CAD932D4C400FB5",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/e757fd60d8dd4c26f77aca6a87f63ea4d38d0b736c7f79b56cad932d4c400fb5.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-ead610e6e90b439f2ecb51628b0932620f6ef340bd843fca38d3181b8f4ba197",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "EAD610E6E90B439F2ECB51628B0932620F6EF340BD843FCA38D3181B8F4BA197",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/ead610e6e90b439f2ecb51628b0932620f6ef340bd843fca38d3181b8f4ba197.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-ec30c9c3065a06bb07dc5b1c6b497f370c1ca65c0f30c08e042ba6bcecc78f2c",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "EC30C9C3065A06BB07DC5B1C6B497F370C1CA65C0F30C08E042BA6BCECC78F2C",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/ec30c9c3065a06bb07dc5b1c6b497f370c1ca65c0f30c08e042ba6bcecc78f2c.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-ef3cb417fc8ebf6f97876c9e4ece39de1ea5fe649141d1028b7d11c0b2298ced",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "EF3CB417FC8EBF6F97876C9E4ECE39DE1EA5FE649141D1028B7D11C0B2298CED",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/ef3cb417fc8ebf6f97876c9e4ece39de1ea5fe649141d1028b7d11c0b2298ced.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "ccadb-nameconstraints-efb44844f37ee6de3fb4cc8d2c0c832fc8feeba9506237e0d1fc7ad4574a4cca",
+      "kind": "narrow_scope_ca",
+      "name": "University of Western Macedonia TLS RSA SubCA R1",
+      "subject": "CN=University of Western Macedonia TLS RSA SubCA R1; O=Hellenic Academic and Research Institutions CA; C=GR",
+      "issuer": "CN=Hellenic Academic and Research Institutions RootCA 2015; O=Hellenic Academic and Research Institutions Cert. Authority; L=Athens; C=GR",
+      "serial_hex": "BF0ABE62EBB16292B29647582CF0DAC",
+      "not_before": "2020-03-24T11:18:35Z",
+      "not_after": "2028-03-22T11:18:35Z",
+      "certificate_sha256": "EFB44844F37EE6DE3FB4CC8D2C0C832FC8FEEBA9506237E0D1FC7AD4574A4CCA",
+      "spki_sha256": "913497FF84684442879080BEDB1AF549A5C766C01E6957268D1BBA7101AB6A81",
+      "action": "narrow_scope",
+      "severity": "warning",
+      "recommendation": "trust_only_for_declared_scope",
+      "scope": {
+        "basis": "x509_name_constraints",
+        "permitted_dns_subtrees": [
+          "uowm.gr"
+        ],
+        "reject_ip_targets": true
+      },
+      "sources": [
+        {
+          "id": "ccadb-mozilla-intermediate-report",
+          "url": "https://ccadb.my.salesforce-sites.com/mozilla/MozillaIntermediateCertsCSVReport",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "ccadb-nameconstraints-f0043e9fefb37aea794e690437dc239d6bd2c5ca0fb58a12244555a1a8a2a01a",
+      "kind": "narrow_scope_ca",
+      "name": "Panteion Univ. of Social and Political Sciences TLS RSA SubCA R1",
+      "subject": "CN=Panteion Univ. of Social and Political Sciences TLS RSA SubCA R1; O=Hellenic Academic and Research Institutions CA; C=GR",
+      "issuer": "CN=Hellenic Academic and Research Institutions RootCA 2015; O=Hellenic Academic and Research Institutions Cert. Authority; L=Athens; C=GR",
+      "serial_hex": "7AFFD4797901F7DA744DC5B40DC87E20",
+      "not_before": "2020-03-24T10:32:54Z",
+      "not_after": "2028-03-22T10:32:54Z",
+      "certificate_sha256": "F0043E9FEFB37AEA794E690437DC239D6BD2C5CA0FB58A12244555A1A8A2A01A",
+      "spki_sha256": "80F11CD23702565CB01C05101E160BDD7E4EA86F3D3BD6089EB0B0C838E02750",
+      "action": "narrow_scope",
+      "severity": "warning",
+      "recommendation": "trust_only_for_declared_scope",
+      "scope": {
+        "basis": "x509_name_constraints",
+        "permitted_dns_subtrees": [
+          "panteion.gr"
+        ],
+        "reject_ip_targets": true
+      },
+      "sources": [
+        {
+          "id": "ccadb-mozilla-intermediate-report",
+          "url": "https://ccadb.my.salesforce-sites.com/mozilla/MozillaIntermediateCertsCSVReport",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-f3bae5e9c0adbfbfb6dbf7e04e74be6ead3ca98a5604ffe591cea86c241848ec",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "F3BAE5E9C0ADBFBFB6DBF7E04E74BE6EAD3CA98A5604FFE591CEA86C241848EC",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/f3bae5e9c0adbfbfb6dbf7e04e74be6ead3ca98a5604ffe591cea86c241848ec.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-f4a5984324de98bd979ef181a100cf940f2166173319a86a0d9d7c8fac3b0a8f",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "F4A5984324DE98BD979EF181A100CF940F2166173319A86A0D9D7C8FAC3B0A8F",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/f4a5984324de98bd979ef181a100cf940f2166173319a86a0d9d7c8fac3b0a8f.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-f8a5ff189fedbfe34e21103389a68340174439ad12974a4e8d4d784d1f3a0faa",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "F8A5FF189FEDBFE34E21103389A68340174439AD12974A4E8D4D784D1F3A0FAA",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/f8a5ff189fedbfe34e21103389a68340174439ad12974a4e8d4d784d1f3a0faa.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-fa5a828c9a7e732692682e60b14c634309cbb2bb79eb12aef44318d853ee97e3",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "FA5A828C9A7E732692682E60B14C634309CBB2BB79EB12AEF44318D853EE97E3",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/fa5a828c9a7e732692682e60b14c634309cbb2bb79eb12aef44318d853ee97e3.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-cert-block-fdedb5bdfcb67411513a61aee5cb5b5d7c52af06028efc996cc1b05b1d6cea2b",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "certificate_sha256": "FDEDB5BDFCB67411513A61AEE5CB5B5D7C52AF06028EFC996CC1B05B1D6CEA2B",
+      "hazard_class": "chromium_certificate_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/fdedb5bdfcb67411513a61aee5cb5b5d7c52af06028efc996cc1b05b1d6cea2b.pem",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-spki-block-1af56c98ff043ef92bebff54cebb4dd67a25ba956c817f3e6dd3c1e52eb584c1",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "spki_sha256": "1AF56C98FF043EF92BEBFF54CEBB4DD67A25BA956C817F3E6DD3C1E52EB584C1",
+      "hazard_class": "chromium_spki_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/1af56c98ff043ef92bebff54cebb4dd67a25ba956c817f3e6dd3c1e52eb584c1.key",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-spki-block-32ecc96f912f96d889e73088cd031c7ded2c651c805016157a23b6f32f798a3b",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "spki_sha256": "32ECC96F912F96D889E73088CD031C7DED2C651C805016157A23B6F32F798A3B",
+      "hazard_class": "chromium_spki_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/32ecc96f912f96d889e73088cd031c7ded2c651c805016157a23b6f32f798a3b.key",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-spki-block-c4387d45364a313fbfe79812b35b815d42852ab03b06f11589638021c8f2cb44",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "spki_sha256": "C4387D45364A313FBFE79812B35B815D42852AB03B06F11589638021C8F2CB44",
+      "hazard_class": "chromium_spki_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/c4387d45364a313fbfe79812b35b815d42852ab03b06f11589638021c8f2cb44.key",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    },
+    {
+      "id": "chromium-spki-block-ea08c8d45d52ca593de524f0513ca6418da9859f7b08ef13ff9dd7bf612d6a37",
+      "kind": "hazard_certificate",
+      "name": "Chromium certificate blocklist entry",
+      "spki_sha256": "EA08C8D45D52CA593DE524F0513CA6418DA9859F7B08EF13FF9DD7BF612D6A37",
+      "hazard_class": "chromium_spki_blocklist",
+      "action": "deny",
+      "severity": "high",
+      "recommendation": "deny_exact_match",
+      "scope": {},
+      "sources": [
+        {
+          "id": "chromium-certificate-blocklist",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        },
+        {
+          "id": "chromium-certificate-blocklist-entry",
+          "url": "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/ea08c8d45d52ca593de524f0513ca6418da9859f7b08ef13ff9dd7bf612d6a37.key",
+          "retrieved_at": "2026-08-05T16:10:24Z"
+        }
+      ]
+    }
+  ]
+}

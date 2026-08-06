@@ -11,6 +11,9 @@ test-go:
 	go -C lib test ./... --race
 	go -C bin test ./... --race
 
+certcat-test: certcat-ensure-generated
+	go -C certcat test ./...
+
 test-js:
   cd panel && npm ci && npm test
 
@@ -18,32 +21,66 @@ test-js:
 test-e2e:
   ./e2e/run.sh
 
-test: test-go test-js
+test: certcat-test test-go test-js
 
 test-total: test test-e2e
 
 coverage:
 	go -C lib test ./... --race -coverprofile=../coverage.out -coverpkg=./...
 
-vet:
+vet: certcat-vet
 	go -C lib vet ./...
 	go -C bin vet ./...
+
+certcat-vet: certcat-ensure-generated
+	go -C certcat vet ./...
 
 tidy:
 	go -C lib mod tidy
 	go -C bin mod tidy
+	go -C certcat mod tidy
 	go work sync
 
-lint:
+certcat-tidy:
+	go -C certcat mod tidy
+
+lint: certcat-lint
   golangci-lint run ./lib/... ./bin/...
 
-fmt:
+certcat-lint: certcat-ensure-generated
+  golangci-lint run ./certcat/...
+
+fmt: certcat-fmt
   golangci-lint fmt ./lib/... ./bin/...
+
+certcat-fmt: certcat-ensure-generated
+  golangci-lint fmt ./certcat/...
+
+certcat-fetch:
+	@for n in 1 2 3; do \
+	  out="$(go -C certcat run ./cmd/certcat-fetch -out data/machine.json 2>&1)" && { printf '%s\n' "$out"; exit 0; }; \
+	  if [ "$n" = 3 ]; then printf '%s\n' "$out"; exit 1; fi; \
+	  printf 'certcat fetch attempt %s failed; retrying\n' "$n" >&2; \
+	  sleep "$((n * 2))"; \
+	done
+
+certcat-generate: certcat-fetch
+	go -C certcat run ./cmd/certcat-generate -manual data/manual.json -machine data/machine.json -out catalog_gen.go
+
+certcat-ensure-generated:
+	@if [ ! -f certcat/data/machine.json ]; then just certcat-fetch; fi
+	go -C certcat run ./cmd/certcat-generate -manual data/manual.json -machine data/machine.json -out catalog_gen.go
+
+certcat-clean:
+	rm -f ./certcat/data/machine.json ./certcat/catalog_gen.go
+
+clean: certcat-clean
+	rm -f ./almagestd ./cli
 
 build-web:
   cd panel && npm ci && npm run build
 
-build: build-web
+build: certcat-generate build-web
 	go build -o ./almagestd ./bin/almagestd/
 
 daemon: build

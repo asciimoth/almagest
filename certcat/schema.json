@@ -1,0 +1,189 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://asciimoth.github.io/almagest/certcat.schema.json",
+  "title": "Almagest certificate catalog",
+  "type": "object",
+  "required": [
+    "format_version",
+    "entries"
+  ],
+  "properties": {
+    "format_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "generated_by": {
+      "type": "string"
+    },
+    "entries": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/record"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "record": {
+      "type": "object",
+      "required": [
+        "id",
+        "kind",
+        "action",
+        "severity"
+      ],
+      "anyOf": [
+        {
+          "required": [
+            "certificate_sha256"
+          ]
+        },
+        {
+          "required": [
+            "spki_sha256"
+          ]
+        }
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "hazard_certificate",
+            "narrow_scope_ca",
+            "service_private_anchor",
+            "threat_feed_leaf"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "subject": {
+          "type": "string"
+        },
+        "issuer": {
+          "type": "string"
+        },
+        "serial_hex": {
+          "type": "string"
+        },
+        "not_before": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "not_after": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "certificate_sha256": {
+          "type": "string",
+          "pattern": "^[A-Fa-f0-9]{64}$"
+        },
+        "spki_sha256": {
+          "type": "string",
+          "pattern": "^[A-Fa-f0-9]{64}$"
+        },
+        "hazard_class": {
+          "type": "string"
+        },
+        "action": {
+          "enum": [
+            "deny",
+            "deny_even_if_locally_installed",
+            "warn",
+            "narrow_scope",
+            "offer_scoped_service_anchor",
+            "follow_platform_policy_or_deny",
+            "enforce_platform_cutoff"
+          ]
+        },
+        "severity": {
+          "enum": [
+            "info",
+            "warning",
+            "high",
+            "critical"
+          ]
+        },
+        "recommendation": {
+          "type": "string"
+        },
+        "scope": {
+          "$ref": "#/$defs/scope"
+        },
+        "conditions": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/source"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "scope": {
+      "type": "object",
+      "properties": {
+        "basis": {
+          "type": "string"
+        },
+        "permitted_dns_subtrees": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "permitted_ip_cidrs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "requires_explicit_allowlist": {
+          "type": "boolean"
+        },
+        "reject_ip_targets": {
+          "type": "boolean"
+        },
+        "context": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "source": {
+      "type": "object",
+      "required": [
+        "id",
+        "url"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "retrieved_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "note": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}
