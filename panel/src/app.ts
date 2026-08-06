@@ -2508,6 +2508,7 @@ function renderDNSCache(cache: DNSCacheInfo): HTMLLIElement {
   item.className = "kv-store";
   const row = document.createElement("div");
   row.className = "kv-row kv-store-row";
+  bindKVRowAction(row, `Toggle DNS cache ${cache.name}`, () => toggleDNSCache(nodeKey));
   row.append(createKVDisclosure(expanded, `Toggle DNS cache ${cache.name}`, () => toggleDNSCache(nodeKey)));
   row.append(createDNSCacheTitle(cache));
   const actions = document.createElement("div");
@@ -2583,6 +2584,7 @@ function renderDNSKey(cache: string, entry: DNSKeyInfo): HTMLLIElement {
   item.className = "kv-entry kv-entry-value";
   const row = document.createElement("div");
   row.className = "kv-row";
+  bindKVRowAction(row, `Open DNS value ${formatDNSCacheKey(entry.key)}`, () => openDNSValuePanel(cache, entry.key));
   row.append(createKVIndent());
   row.append(createDNSKeyTitle(entry));
   row.append(renderDNSKeyActions(cache, entry.key));
@@ -2596,15 +2598,11 @@ function renderDNSKey(cache: string, entry: DNSKeyInfo): HTMLLIElement {
 function renderDNSKeyActions(cache: string, key: string): HTMLElement {
   const actions = document.createElement("div");
   actions.className = "kv-row-actions";
-  const show = textElement("button", "Open");
-  show.type = "button";
-  show.title = "Open DNS value";
-  show.addEventListener("click", () => openDNSValuePanel(cache, key));
   const remove = textElement("button", "Delete", "danger");
   remove.type = "button";
   remove.title = "Delete DNS record";
   remove.addEventListener("click", () => deleteDNSValue(cache, key));
-  actions.append(show, remove);
+  actions.append(remove);
   return actions;
 }
 
@@ -3366,6 +3364,7 @@ function renderTLSCertGroup(
   item.className = "kv-entry tls-cert-group";
   const row = document.createElement("div");
   row.className = "kv-row kv-store-row tls-cert-group-row";
+  bindKVRowAction(row, `Toggle ${titleText}`, () => toggleTLSCertGroup(groupKey));
   row.append(createKVDisclosure(expanded, `Toggle ${titleText}`, () => toggleTLSCertGroup(groupKey)));
   row.append(createTLSCertGroupTitle(titleText, certs.length));
   const actions = document.createElement("div");
@@ -3403,6 +3402,7 @@ function renderTLSCertRow(entry: TLSCertEntry): HTMLLIElement {
   item.classList.toggle("tls-readonly", Boolean(entry.read_only));
   const row = document.createElement("div");
   row.className = "kv-row";
+  bindKVRowAction(row, `Open TLS certificate ${entry.name}`, () => openTLSValuePanel("cert", entry.name));
   row.append(createKVIndent(), createTLSCertTitle(entry), renderTLSRowActions("cert", entry));
   if (tlsValuePanel?.kind === "cert" && tlsValuePanel.name === entry.name) row.classList.add("kv-row-selected");
   item.append(row);
@@ -3416,6 +3416,7 @@ function renderTLSPolicyRow(entry: TLSPolicyEntry): HTMLLIElement {
   item.classList.toggle("tls-policy-invalid-row", !entry.valid);
   const row = document.createElement("div");
   row.className = "kv-row";
+  bindKVRowAction(row, `Open TLS policy ${entry.name}`, () => openTLSValuePanel("policy", entry.name));
   row.append(createKVIndent(), createTLSPolicyTitle(entry), renderTLSRowActions("policy", entry));
   if (tlsValuePanel?.kind === "policy" && tlsValuePanel.name === entry.name) row.classList.add("kv-row-selected");
   item.append(row);
@@ -3425,11 +3426,6 @@ function renderTLSPolicyRow(entry: TLSPolicyEntry): HTMLLIElement {
 function renderTLSRowActions(kind: TLSItemKind, entry: TLSCertEntry | TLSPolicyEntry): HTMLElement {
   const actions = document.createElement("div");
   actions.className = "kv-row-actions";
-  const show = textElement("button", "Open");
-  show.type = "button";
-  show.title = kind === "cert" ? "Open TLS certificate" : "Open TLS policy";
-  show.addEventListener("click", () => openTLSValuePanel(kind, entry.name));
-  actions.append(show);
   if (!entry.read_only) {
     const remove = textElement("button", "Delete");
     remove.type = "button";
@@ -4453,6 +4449,7 @@ function renderKVStore(store: KVStoreInfo): HTMLLIElement {
   item.className = "kv-store";
   const row = document.createElement("div");
   row.className = "kv-row kv-store-row";
+  bindKVRowAction(row, `Toggle ${store.kind} KV store`, () => toggleKVNode(nodeKey));
   row.append(createKVDisclosure(expanded, `Toggle ${store.kind} KV store`, () => toggleKVNode(nodeKey)));
   row.append(createKVStoreTitle(store));
   const actions = document.createElement("div");
@@ -4510,12 +4507,14 @@ function renderKVEntry(store: KVStoreInfo, path: string[], parentKey: string, en
   if (entry.kind === "bucket") {
     const childKey = childKVNodeKey(parentKey, entry.name) ?? kvNodeKey(store, [...path, entry.name]);
     const expanded = kvExpandedNodes.has(childKey);
+    bindKVRowAction(row, `Toggle subtree ${entry.name}`, () => toggleKVNode(childKey));
     row.append(createKVDisclosure(expanded, `Toggle subtree ${entry.name}`, () => toggleKVNode(childKey)));
     row.append(createKVEntryTitle(entry));
     row.append(renderKVBucketActions(store, [...path, entry.name]));
     item.append(row);
     if (expanded) item.append(renderKVNodeBody(store, [...path, entry.name], childKey));
   } else {
+    bindKVRowAction(row, `Open value ${entry.name}`, () => openKVValuePanel(store, path, entry.name));
     row.append(createKVIndent());
     row.append(createKVEntryTitle(entry));
     row.append(renderKVValueActions(store, path, entry));
@@ -4534,6 +4533,29 @@ function createKVDisclosure(expanded: boolean, label: string, onClick: () => voi
   button.setAttribute("aria-expanded", String(expanded));
   button.addEventListener("click", onClick);
   return button;
+}
+
+function bindKVRowAction(row: HTMLElement, label: string, onAction: () => void): void {
+  row.classList.add("kv-row-clickable");
+  row.tabIndex = 0;
+  row.setAttribute("role", "button");
+  row.setAttribute("aria-label", label);
+  row.addEventListener("click", (event) => {
+    if (isKVRowInteractiveEvent(row, event)) return;
+    onAction();
+  });
+  row.addEventListener("keydown", (event) => {
+    if (isKVRowInteractiveEvent(row, event)) return;
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    onAction();
+  });
+}
+
+function isKVRowInteractiveEvent(row: HTMLElement, event: Event): boolean {
+  if (event.defaultPrevented || !(event.target instanceof Element)) return true;
+  const interactive = event.target.closest("button, a, input, select, textarea, label, [role='button']");
+  return Boolean(interactive && interactive !== row);
 }
 
 function createKVIndent(): HTMLElement {
@@ -4558,16 +4580,12 @@ function renderKVBucketActions(store: KVStoreInfo, path: string[]): HTMLElement 
 function renderKVValueActions(store: KVStoreInfo, path: string[], entry: KVEntryInfo): HTMLElement {
   const actions = document.createElement("div");
   actions.className = "kv-row-actions";
-  const show = textElement("button", "Open");
-  show.type = "button";
-  show.title = "Open value";
-  show.addEventListener("click", () => openKVValuePanel(store, path, entry.name));
   const remove = textElement("button", "Delete");
   remove.type = "button";
   remove.title = "Delete value";
   remove.className = "danger";
   remove.addEventListener("click", () => deleteKVValue(store, path, entry.name));
-  actions.append(show, remove);
+  actions.append(remove);
   return actions;
 }
 

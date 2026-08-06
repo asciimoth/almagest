@@ -878,6 +878,10 @@ h1 {
   background: color-mix(in srgb, var(--surface0), transparent 80%);
 }
 
+.kv-row-clickable {
+  cursor: pointer;
+}
+
 .kv-row:hover,
 .kv-row:focus-within {
   border-color: color-mix(in srgb, var(--surface1), transparent 30%);
