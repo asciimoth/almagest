@@ -57,6 +57,13 @@ certcat-fmt: certcat-ensure-generated
   golangci-lint fmt ./certcat/...
 
 certcat-fetch:
+	@if [ -f certcat/data/machine.json ]; then \
+	  printf 'certcat/data/machine.json already exists; skipping fetch\n'; \
+	else \
+	  just certcat-fetch-force; \
+	fi
+
+certcat-fetch-force:
 	@for n in 1 2 3; do \
 	  out="$(go -C certcat run ./cmd/certcat-fetch -out data/machine.json 2>&1)" && { printf '%s\n' "$out"; exit 0; }; \
 	  if [ "$n" = 3 ]; then printf '%s\n' "$out"; exit 1; fi; \
@@ -68,7 +75,7 @@ certcat-generate: certcat-fetch
 	go -C certcat run ./cmd/certcat-generate -manual data/manual.json -machine data/machine.json -out catalog_gen.go
 
 certcat-ensure-generated:
-	@if [ ! -f certcat/data/machine.json ]; then just certcat-fetch; fi
+	@just certcat-fetch
 	go -C certcat run ./cmd/certcat-generate -manual data/manual.json -machine data/machine.json -out catalog_gen.go
 
 certcat-clean:

@@ -109,6 +109,71 @@ func TestTLSStorageDefaultPolicyAndImmutableOverride(t *testing.T) {
 	}
 }
 
+func TestTLSCertcatAnnotationsAndDefaultPolicy(t *testing.T) {
+	warningPEM := testCertcatExamplePEM(t, "warning-interception-root.pem")
+	narrowPEM := testCertcatExamplePEM(t, "narrow-scope-ca.pem")
+	normalPEM := testTLSCAPEM(t, "ordinary-os-root")
+
+	manager, err := openKVManagerWithOptions(filepath.Join(t.TempDir(), "kv.db"), bboltKVManagerOptions{
+		ImmutableTLS: immutableTLSData{
+			Certs: map[string]immutableTLSCert{
+				"os-ca:warning": {
+					tlsCertificateRecord: tlsCertificateRecord{PEM: warningPEM},
+					source:               api.TLSSourceOS,
+				},
+				"os-ca:narrow": {
+					tlsCertificateRecord: tlsCertificateRecord{PEM: narrowPEM},
+					source:               api.TLSSourceOS,
+				},
+				"os-ca:normal": {
+					tlsCertificateRecord: tlsCertificateRecord{PEM: normalPEM},
+					source:               api.TLSSourceOS,
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer manager.Close() //nolint:errcheck
+
+	snapshot, err := manager.tlsSnapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	warning := findTLSCertEntry(snapshot.Certs, "os-ca:warning")
+	if warning == nil || len(warning.CertcatMatches) != 1 {
+		t.Fatalf("warning cert = %#v, want one certcat match", warning)
+	}
+	if got := warning.CertcatMatches[0]; got.Action != "warn" || got.Severity != "warning" || got.Kind != "hazard_certificate" {
+		t.Fatalf("warning certcat match = %#v, want warning hazard", got)
+	}
+	narrow := findTLSCertEntry(snapshot.Certs, "os-ca:narrow")
+	if narrow == nil || len(narrow.CertcatMatches) != 1 || narrow.CertcatMatches[0].Action != "narrow_scope" {
+		t.Fatalf("narrow cert = %#v, want narrow_scope certcat match", narrow)
+	}
+
+	defaultPolicy := findTLSPolicyEntry(snapshot.Policies, tlsDefaultPolicyName)
+	if defaultPolicy == nil || !defaultPolicy.Valid {
+		t.Fatalf("default policy = %#v, want valid policy", defaultPolicy)
+	}
+	if anchor := findTLSTrustAnchor(defaultPolicy.Spec.TrustAnchors, "os-ca:warning"); anchor != nil {
+		t.Fatalf("default policy included warning cert anchor %#v", anchor)
+	}
+	normalAnchor := findTLSTrustAnchor(defaultPolicy.Spec.TrustAnchors, "os-ca:normal")
+	if normalAnchor == nil || !normalAnchor.Scope.Any {
+		t.Fatalf("normal default anchor = %#v, want any scope", normalAnchor)
+	}
+	narrowAnchor := findTLSTrustAnchor(defaultPolicy.Spec.TrustAnchors, "os-ca:narrow")
+	if narrowAnchor == nil || narrowAnchor.Scope.Any {
+		t.Fatalf("narrow default anchor = %#v, want restricted scope", narrowAnchor)
+	}
+	if !tlsScopeHasDNS(narrowAnchor.Scope, "apps.example.internal", true) ||
+		!tlsScopeHasDNS(narrowAnchor.Scope, "example.internal", false) {
+		t.Fatalf("narrow default anchor scope = %#v, want certcat DNS scope", narrowAnchor.Scope)
+	}
+}
+
 func TestTLSAdminEventsFixPoliciesAndNotifyFetchedNodes(t *testing.T) {
 	manager, err := openKVManager(filepath.Join(t.TempDir(), "kv.db"))
 	if err != nil {
@@ -359,6 +424,15 @@ func writeTestFile(path, value string) error {
 	return os.WriteFile(path, []byte(value), 0o600)
 }
 
+func testCertcatExamplePEM(t *testing.T, name string) string {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join("..", "..", "certcat", "data", "examples", name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
+}
+
 func findTLSCertEntry(entries []api.TLSCertEntry, name string) *api.TLSCertEntry {
 	for i := range entries {
 		if entries[i].Name == name {
@@ -375,6 +449,24 @@ func findTLSPolicyEntry(entries []api.TLSPolicyEntry, name string) *api.TLSPolic
 		}
 	}
 	return nil
+}
+
+func findTLSTrustAnchor(anchors []api.TLSTrustAnchor, cert string) *api.TLSTrustAnchor {
+	for i := range anchors {
+		if anchors[i].Cert == cert {
+			return &anchors[i]
+		}
+	}
+	return nil
+}
+
+func tlsScopeHasDNS(scope api.TLSScope, domain string, includeSubdomains bool) bool {
+	for _, rule := range scope.DNS {
+		if rule.Domain == domain && rule.IncludeSubdomains == includeSubdomains {
+			return true
+		}
+	}
+	return false
 }
 
 type tlsInboxNodeClass struct {

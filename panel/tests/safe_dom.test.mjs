@@ -298,6 +298,22 @@ test("TLS labels and previews keep certificate and policy payloads as text", () 
       fingerprint: payload,
       source: "protected",
       read_only: true,
+      certcat_matches: [{
+        fingerprint: payload,
+        match_kind: payload,
+        kind: "hazard_certificate",
+        hazard_class: "interception_ca",
+        action: "warn",
+        severity: "warning",
+        recommendation: "trust_only_for_declared_scope",
+        scope: {
+          basis: payload,
+          permitted_dns_subtrees: [payload],
+          permitted_ip_cidrs: [payload],
+          requires_explicit_allowlist: true,
+          reject_ip_targets: true,
+        },
+      }],
     }),
     createTLSCertPreview({
       name: payload,
@@ -306,6 +322,20 @@ test("TLS labels and previews keep certificate and policy payloads as text", () 
       issuer: payload,
       fingerprint: payload,
       source: "mutable",
+      certcat_matches: [{
+        fingerprint: payload,
+        match_kind: payload,
+        kind: "hazard_certificate",
+        hazard_class: "interception_ca",
+        action: "warn",
+        severity: "warning",
+        recommendation: "trust_only_for_declared_scope",
+      }],
+    }),
+    createTLSCertTitle({
+      name: "notice-cert",
+      source: "mutable",
+      certcat_matches: [{ severity: "info" }],
     }),
     createTLSPolicyTitle({
       name: payload,
@@ -328,6 +358,13 @@ test("TLS labels and previews keep certificate and policy payloads as text", () 
   assertNoParsedPayload(root);
   assert.match(root.textContent ?? "", /<script>/);
   assert.match(root.textContent ?? "", /read-only/);
+  assert.match(root.textContent ?? "", /warning/);
+  assert.match(root.textContent ?? "", /Interception certificate authority/);
+  assert.equal(root.querySelector(".tls-cert-meta-status-warning")?.textContent, "warning");
+  assert.equal(root.querySelector(".tls-cert-meta-status-notice")?.textContent, "notice");
+  assert.doesNotMatch(root.textContent ?? "", /certcat warning/);
+  assert.doesNotMatch(root.textContent ?? "", /warning · warn · hazard_certificate · interception_ca/);
+  assert.doesNotMatch(root.textContent ?? "", /trust_only_for_declared_scope/);
   assert.equal(root.querySelector(".tls-policy-error") !== null, true);
 });
 

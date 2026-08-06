@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   applyTLSChange,
+  describeTLSCertcatScope,
   describeTLSScope,
+  formatTLSCertcatBadge,
+  formatTLSCertcatMatch,
   formatTLSPolicySpec,
   isMutableTLSCertName,
   isMutableTLSPolicyName,
@@ -59,6 +62,24 @@ test("TLS policy formatter omits empty arrays and scope summaries are readable",
   assert.equal(formatTLSPolicySpec({ trust_anchors: [], constraints: [], pins: [] }), "{}\n");
   assert.equal(describeTLSScope({ any: true, dns: [{ domain: "ignored.test" }] }), "any server");
   assert.equal(describeTLSScope({ dns: [{ domain: "example.test", include_subdomains: true }], ip_prefixes: ["192.0.2.0/24"] }), "*.example.test, 192.0.2.0/24");
+});
+
+test("TLS certcat helpers summarize matches and scopes", () => {
+  const entry = {
+    name: "root",
+    certcat_matches: [
+      { severity: "warning", action: "narrow_scope", kind: "narrow_scope_ca" },
+      { severity: "critical", action: "deny", kind: "hazard_certificate" },
+    ],
+  };
+  assert.equal(formatTLSCertcatBadge(entry), "critical warning x2");
+  assert.equal(formatTLSCertcatMatch(entry.certcat_matches[0]), "Use only for a narrow address scope");
+  assert.equal(describeTLSCertcatScope({
+    basis: "x509_name_constraints",
+    permitted_dns_subtrees: ["example.test"],
+    permitted_ip_cidrs: ["192.0.2.0/24"],
+    reject_ip_targets: true,
+  }), "Use only for DNS names in example.test, Use only for IP ranges in 192.0.2.0/24, Do not use for direct IP targets");
 });
 
 test("TLS mutable name guards match backend reserved names", () => {

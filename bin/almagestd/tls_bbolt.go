@@ -77,6 +77,7 @@ type tlsEffectiveCert struct {
 	Certificate     *x509.Certificate
 	Fingerprint     string
 	SPKIFingerprint string
+	CertcatMatches  []api.TLSCertcatMatch
 	ReadOnly        bool
 	Source          api.TLSSource
 }
@@ -676,6 +677,7 @@ func tlsCertEntryToAPI(cert tlsEffectiveCert) api.TLSCertEntry {
 		IsCA:            cert.Certificate.IsCA,
 		ReadOnly:        cert.ReadOnly,
 		Source:          cert.Source,
+		CertcatMatches:  cert.CertcatMatches,
 	}
 }
 
@@ -694,6 +696,7 @@ func tlsEffectiveCertFromRecord(name string, record tlsCertificateRecord, readOn
 		Certificate:     cert,
 		Fingerprint:     authority.Fingerprint().String(),
 		SPKIFingerprint: authority.SPKIFingerprint().String(),
+		CertcatMatches:  tlsCertcatMatchesAPI(tlsCertcatMatches(cert)),
 		ReadOnly:        readOnly,
 		Source:          source,
 	}, nil
@@ -1409,20 +1412,35 @@ func ensureDefaultTLSPolicy(in immutableTLSData) immutableTLSData {
 }
 
 func defaultTLSPolicySpec(certs map[string]immutableTLSCert) api.TLSPolicySpec {
-	names := make([]string, 0, len(certs))
+	type defaultAnchor struct {
+		name  string
+		scope api.TLSScope
+	}
+	anchors := make([]defaultAnchor, 0, len(certs))
 	for name, cert := range certs {
-		if cert.source == api.TLSSourceOS {
-			names = append(names, name)
+		if cert.source != api.TLSSourceOS {
+			continue
 		}
+		_, parsed, err := parseTLSAuthorityPEM(cert.PEM)
+		if err != nil {
+			continue
+		}
+		scope, ok := defaultTLSScopeForCertcat(tlsCertcatMatches(parsed))
+		if !ok {
+			continue
+		}
+		anchors = append(anchors, defaultAnchor{name: name, scope: scope})
 	}
-	slices.Sort(names)
+	slices.SortFunc(anchors, func(a, b defaultAnchor) int {
+		return strings.Compare(a.name, b.name)
+	})
 	spec := api.TLSPolicySpec{
-		TrustAnchors: make([]api.TLSTrustAnchor, 0, len(names)),
+		TrustAnchors: make([]api.TLSTrustAnchor, 0, len(anchors)),
 	}
-	for _, name := range names {
+	for _, anchor := range anchors {
 		spec.TrustAnchors = append(spec.TrustAnchors, api.TLSTrustAnchor{
-			Cert:  name,
-			Scope: api.TLSScope{Any: true},
+			Cert:  anchor.name,
+			Scope: anchor.scope,
 		})
 	}
 	return spec

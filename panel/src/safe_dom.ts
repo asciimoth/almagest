@@ -17,10 +17,13 @@ import {
   type SecretEntry,
 } from "./secrets_model.js";
 import {
+  describeTLSCertcatRecommendation,
   describeTLSScope,
+  formatTLSCertcatMatch,
   formatTLSCertMeta,
   formatTLSPolicyMeta,
   formatTLSPolicySpec,
+  type TLSCertcatMatch,
   type TLSCertEntry,
   type TLSPolicyEntry,
   type TLSScope,
@@ -214,7 +217,7 @@ export function createSecretTitle(entry: SecretEntry): HTMLElement {
 export function createTLSCertTitle(entry: TLSCertEntry): HTMLElement {
   const title = document.createElement("span");
   title.className = "kv-entry-title tls-cert-title";
-  title.append(textElement("strong", entry.name), textElement("em", formatTLSCertMeta(entry)));
+  title.append(textElement("strong", entry.name), createTLSCertMeta(entry));
   return title;
 }
 
@@ -319,6 +322,7 @@ export function createSecretValuePreview(entry: SecretEntry, options: SecretValu
 export function createTLSCertPreview(entry: TLSCertEntry): HTMLElement {
   const preview = document.createElement("div");
   preview.className = "kv-value-preview tls-cert-preview";
+  preview.append(createTLSCertcatSummary(entry.certcat_matches ?? []));
   preview.append(createTLSFactList([
     ["Subject", entry.subject],
     ["Issuer", entry.issuer],
@@ -351,6 +355,107 @@ function createTLSFactList(facts: Array<[string, string | undefined]>): HTMLElem
     list.append(textElement("dt", "Details"), textElement("dd", "No certificate metadata available."));
   }
   return list;
+}
+
+function createTLSCertMeta(entry: TLSCertEntry): HTMLElement {
+  const meta = document.createElement("em");
+  appendTLSStatusText(meta, formatTLSCertMeta(entry));
+  return meta;
+}
+
+function appendTLSStatusText(parent: HTMLElement, text: string): void {
+  let lastIndex = 0;
+  const pattern = /\b(warning|notice)\b/g;
+  for (const match of text.matchAll(pattern)) {
+    const index = match.index ?? 0;
+    if (index > lastIndex) parent.append(document.createTextNode(text.slice(lastIndex, index)));
+    parent.append(textElement("span", match[1], `tls-cert-meta-status tls-cert-meta-status-${match[1]}`));
+    lastIndex = index + match[1].length;
+  }
+  if (lastIndex < text.length) parent.append(document.createTextNode(text.slice(lastIndex)));
+}
+
+function createTLSCertcatSummary(matches: TLSCertcatMatch[]): HTMLElement {
+  const block = document.createElement("section");
+  block.className = "tls-certcat-section";
+  block.append(textElement("h3", "Warnings"));
+  if (!matches.length) {
+    block.append(textElement("p", "No warnings.", "kv-subtree-empty"));
+    return block;
+  }
+
+  const list = document.createElement("ol");
+  list.className = "tls-certcat-list";
+  for (const match of matches) {
+    const item = document.createElement("li");
+    item.className = `tls-certcat-item tls-certcat-item-${tlsCertcatSeverityClass(match.severity)}`;
+    item.append(textElement("strong", formatTLSCertcatMatch(match)));
+    item.append(createTLSCertcatDetails(match));
+    list.append(item);
+  }
+  block.append(list);
+  return block;
+}
+
+function createTLSCertcatDetails(match: TLSCertcatMatch): HTMLElement {
+  const list = document.createElement("dl");
+  list.className = "tls-certcat-detail-list";
+  appendTLSCertcatTextDetail(list, "Recommendation", describeTLSCertcatRecommendation(match));
+  appendTLSCertcatAddressDetail(list, "DNS scope", match.scope?.permitted_dns_subtrees ?? []);
+  appendTLSCertcatAddressDetail(list, "IP scope", match.scope?.permitted_ip_cidrs ?? []);
+  if (match.scope?.requires_explicit_allowlist) {
+    appendTLSCertcatTextDetail(list, "Allowlist", "Use only for explicitly allowed addresses.");
+  }
+  if (match.scope?.reject_ip_targets) {
+    appendTLSCertcatTextDetail(list, "IP targets", "Do not use for direct IP targets.");
+  }
+  appendTLSCertcatTextDetail(list, "Platform", formatTLSCertcatCutoff(match));
+  if (match.fingerprint) appendTLSCertcatCodeDetail(list, "Fingerprint", match.fingerprint);
+  if (!list.children.length) appendTLSCertcatTextDetail(list, "Recommendation", "Review before you trust this certificate.");
+  return list;
+}
+
+function appendTLSCertcatTextDetail(list: HTMLElement, label: string, value: string): void {
+  if (!value) return;
+  list.append(textElement("dt", label), textElement("dd", value));
+}
+
+function appendTLSCertcatCodeDetail(list: HTMLElement, label: string, value: string): void {
+  if (!value) return;
+  const detail = document.createElement("dd");
+  detail.append(textElement("code", value));
+  list.append(textElement("dt", label), detail);
+}
+
+function appendTLSCertcatAddressDetail(list: HTMLElement, label: string, values: string[]): void {
+  if (!values.length) return;
+  const detail = document.createElement("dd");
+  detail.className = "tls-certcat-address-list";
+  for (const value of values) detail.append(textElement("code", value));
+  list.append(textElement("dt", label), detail);
+}
+
+function formatTLSCertcatCutoff(match: TLSCertcatMatch): string {
+  const cutoff = match.platform_cutoff;
+  if (!cutoff) return "";
+  const parts = [
+    cutoff.sct_timestamp_after ? `SCT after ${cutoff.sct_timestamp_after}` : "",
+    cutoff.enforcement_start ? `starts ${cutoff.enforcement_start}` : "",
+    cutoff.first_major_version ? `version ${cutoff.first_major_version}` : "",
+  ].filter(Boolean);
+  return parts.join(", ");
+}
+
+function tlsCertcatSeverityClass(severity: string | undefined): string {
+  switch (severity) {
+    case "critical":
+    case "high":
+    case "warning":
+    case "info":
+      return severity;
+    default:
+      return "warning";
+  }
 }
 
 function createTLSPolicySummary(entry: TLSPolicyEntry): HTMLElement {

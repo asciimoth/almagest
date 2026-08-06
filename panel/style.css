@@ -958,6 +958,18 @@ h1 {
   color: color-mix(in srgb, var(--red), var(--text) 18%);
 }
 
+.tls-cert-meta-status {
+  font-weight: 700;
+}
+
+.tls-cert-meta-status-warning {
+  color: #ffd84d;
+}
+
+.tls-cert-meta-status-notice {
+  color: #64e6ff;
+}
+
 .kv-row-actions,
 .kv-value-actions {
   display: flex;
@@ -1481,6 +1493,7 @@ h1 {
   color: var(--text);
 }
 
+.tls-certcat-section,
 .tls-policy-summary,
 .tls-policy-section {
   display: grid;
@@ -1488,6 +1501,13 @@ h1 {
   min-width: 0;
 }
 
+.tls-certcat-section {
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--surface0);
+}
+
+.tls-certcat-list,
 .tls-policy-rule-list {
   display: grid;
   gap: 4px;
@@ -1496,6 +1516,7 @@ h1 {
   list-style: none;
 }
 
+.tls-certcat-list li,
 .tls-policy-rule-list li {
   display: grid;
   grid-template-columns: minmax(110px, 0.8fr) minmax(140px, 1.2fr);
@@ -1506,6 +1527,32 @@ h1 {
   padding: 6px 8px;
 }
 
+.tls-certcat-list li {
+  grid-template-columns: minmax(145px, 0.45fr) minmax(0, 1fr);
+  gap: 8px 12px;
+  padding: 9px 10px;
+}
+
+.tls-certcat-list li {
+  border-color: color-mix(in srgb, #ffd84d, var(--surface0) 34%);
+  background: color-mix(in srgb, #ffd84d, var(--crust) 88%);
+}
+
+.tls-certcat-list .tls-certcat-item-info {
+  border-color: color-mix(in srgb, var(--blue), var(--surface0) 36%);
+  background: color-mix(in srgb, var(--blue), var(--crust) 90%);
+}
+
+.tls-certcat-list .tls-certcat-item-high,
+.tls-certcat-list .tls-certcat-item-critical {
+  border-color: color-mix(in srgb, #ff5c7a, var(--surface0) 24%);
+  background: color-mix(in srgb, #ff5c7a, var(--crust) 86%);
+}
+
+.tls-certcat-list strong,
+.tls-certcat-detail-list dt,
+.tls-certcat-detail-list dd,
+.tls-certcat-address-list code,
 .tls-policy-rule-list strong,
 .tls-policy-rule-list span,
 .tls-policy-error {
@@ -1515,12 +1562,63 @@ h1 {
   line-height: 1.35;
 }
 
+.tls-certcat-list strong,
 .tls-policy-rule-list strong {
   color: var(--text);
 }
 
+.tls-certcat-list strong {
+  color: #fff06a;
+}
+
+.tls-certcat-list .tls-certcat-item-info strong {
+  color: color-mix(in srgb, var(--blue), white 24%);
+}
+
+.tls-certcat-list .tls-certcat-item-high strong,
+.tls-certcat-list .tls-certcat-item-critical strong {
+  color: #ff8ea3;
+}
+
+.tls-certcat-detail-list {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 4px 10px;
+  margin: 0;
+  min-width: 0;
+}
+
+.tls-certcat-detail-list dt,
+.tls-certcat-detail-list dd {
+  margin: 0;
+}
+
+.tls-certcat-detail-list dt {
+  color: var(--surface2);
+}
+
+.tls-certcat-detail-list dd,
 .tls-policy-rule-list span {
   color: var(--subtext);
+}
+
+.tls-certcat-detail-list code {
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+.tls-certcat-address-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+}
+
+.tls-certcat-address-list code {
+  border: 1px solid color-mix(in srgb, var(--surface1), transparent 18%);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--surface0), transparent 28%);
+  padding: 1px 5px;
 }
 
 .tls-policy-error {
@@ -1861,6 +1959,8 @@ h1 {
   .dns-record-form,
   .tls-policy-rule-fields,
   .tls-policy-scope-editor,
+  .tls-certcat-detail-list,
+  .tls-certcat-list li,
   .tls-policy-rule-list li,
   .kv-value-meta {
     grid-template-columns: minmax(0, 1fr);

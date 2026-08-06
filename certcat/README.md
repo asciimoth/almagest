@@ -31,13 +31,15 @@ Do not identify a certificate by subject or issuer text alone. Use
 Refresh machine data:
 
 ```sh
-go run ./cmd/certcat-fetch -out data/machine.json
+just certcat-fetch-force
 ```
+
+Use `just certcat-fetch` to fetch only when `data/machine.json` is missing.
 
 Generate Go data:
 
 ```sh
-go run ./cmd/certcat-generate -manual data/manual.json -machine data/machine.json -out catalog_gen.go
+just certcat-generate
 ```
 
 The fetcher reads these default sources:

@@ -57,18 +57,19 @@ const (
 // When a read-only certificate and a mutable certificate use the same name, the
 // read-only certificate is reported here.
 type TLSCertEntry struct {
-	Name            string    `json:"name"`
-	PEM             string    `json:"pem,omitempty"`
-	Fingerprint     string    `json:"fingerprint,omitempty"`
-	SPKIFingerprint string    `json:"spki_fingerprint,omitempty"`
-	Subject         string    `json:"subject,omitempty"`
-	Issuer          string    `json:"issuer,omitempty"`
-	SerialNumber    string    `json:"serial_number,omitempty"`
-	NotBefore       string    `json:"not_before,omitempty"`
-	NotAfter        string    `json:"not_after,omitempty"`
-	IsCA            bool      `json:"is_ca,omitempty"`
-	ReadOnly        bool      `json:"read_only,omitempty"`
-	Source          TLSSource `json:"source,omitempty"`
+	Name            string            `json:"name"`
+	PEM             string            `json:"pem,omitempty"`
+	Fingerprint     string            `json:"fingerprint,omitempty"`
+	SPKIFingerprint string            `json:"spki_fingerprint,omitempty"`
+	Subject         string            `json:"subject,omitempty"`
+	Issuer          string            `json:"issuer,omitempty"`
+	SerialNumber    string            `json:"serial_number,omitempty"`
+	NotBefore       string            `json:"not_before,omitempty"`
+	NotAfter        string            `json:"not_after,omitempty"`
+	IsCA            bool              `json:"is_ca,omitempty"`
+	ReadOnly        bool              `json:"read_only,omitempty"`
+	Source          TLSSource         `json:"source,omitempty"`
+	CertcatMatches  []TLSCertcatMatch `json:"certcat_matches,omitempty"`
 }
 
 type TLSDNSRule struct {
@@ -82,6 +83,32 @@ type TLSScope struct {
 	Any        bool         `json:"any,omitempty"`
 	DNS        []TLSDNSRule `json:"dns,omitempty"`
 	IPPrefixes []string     `json:"ip_prefixes,omitempty"`
+}
+
+type TLSCertcatScope struct {
+	Basis                     string   `json:"basis,omitempty"`
+	PermittedDNSSubtrees      []string `json:"permitted_dns_subtrees,omitempty"`
+	PermittedIPCIDRs          []string `json:"permitted_ip_cidrs,omitempty"`
+	RequiresExplicitAllowlist bool     `json:"requires_explicit_allowlist,omitempty"`
+	RejectIPTargets           bool     `json:"reject_ip_targets,omitempty"`
+}
+
+type TLSCertcatPlatformCutoff struct {
+	SCTTimestampAfter string `json:"sct_timestamp_after,omitempty"`
+	EnforcementStart  string `json:"enforcement_start,omitempty"`
+	FirstMajorVersion uint16 `json:"first_major_version,omitempty"`
+}
+
+type TLSCertcatMatch struct {
+	Fingerprint    string                    `json:"fingerprint,omitempty"`
+	MatchKind      string                    `json:"match_kind,omitempty"`
+	Kind           string                    `json:"kind,omitempty"`
+	HazardClass    string                    `json:"hazard_class,omitempty"`
+	Action         string                    `json:"action,omitempty"`
+	Severity       string                    `json:"severity,omitempty"`
+	Recommendation string                    `json:"recommendation,omitempty"`
+	Scope          *TLSCertcatScope          `json:"scope,omitempty"`
+	PlatformCutoff *TLSCertcatPlatformCutoff `json:"platform_cutoff,omitempty"`
 }
 
 type TLSTrustAnchor struct {

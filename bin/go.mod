@@ -4,6 +4,7 @@ go 1.25.5
 
 require (
 	github.com/alexflint/go-arg v1.6.1
+	github.com/asciimoth/almagest/certcat v0.0.0-00010101000000-000000000000
 	github.com/asciimoth/almagest/lib v0.0.0-00010101000000-000000000000
 	github.com/asciimoth/bufpool v0.3.0
 	github.com/asciimoth/configer/configer v0.3.1
@@ -55,5 +56,7 @@ require (
 	golang.zx2c4.com/wintun v0.0.0-20230126152724-0fa3db229ce2 // indirect
 	gvisor.dev/gvisor v0.0.0-20260325202830-7644cf3a343c // indirect
 )
+
+replace github.com/asciimoth/almagest/certcat => ../certcat
 
 replace github.com/asciimoth/almagest/lib => ../lib

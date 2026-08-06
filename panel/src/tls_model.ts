@@ -13,6 +13,7 @@ export type TLSCertEntry = {
   is_ca?: boolean;
   read_only?: boolean;
   source?: TLSSource;
+  certcat_matches?: TLSCertcatMatch[];
 };
 
 export type TLSDNSRule = {
@@ -24,6 +25,32 @@ export type TLSScope = {
   any?: boolean;
   dns?: TLSDNSRule[];
   ip_prefixes?: string[];
+};
+
+export type TLSCertcatScope = {
+  basis?: string;
+  permitted_dns_subtrees?: string[];
+  permitted_ip_cidrs?: string[];
+  requires_explicit_allowlist?: boolean;
+  reject_ip_targets?: boolean;
+};
+
+export type TLSCertcatPlatformCutoff = {
+  sct_timestamp_after?: string;
+  enforcement_start?: string;
+  first_major_version?: number;
+};
+
+export type TLSCertcatMatch = {
+  fingerprint?: string;
+  match_kind?: string;
+  kind?: string;
+  hazard_class?: string;
+  action?: string;
+  severity?: string;
+  recommendation?: string;
+  scope?: TLSCertcatScope;
+  platform_cutoff?: TLSCertcatPlatformCutoff;
 };
 
 export type TLSTrustAnchor = {
@@ -145,6 +172,8 @@ export function formatTLSSource(source: TLSSource | undefined): string {
 export function formatTLSCertMeta(entry: TLSCertEntry): string {
   const parts = [formatTLSSource(entry.source)];
   if (entry.is_ca) parts.push("CA");
+  const certcat = formatTLSCertcatBadge(entry);
+  if (certcat) parts.push(certcat);
   if (entry.read_only) parts.push("read-only");
   if (entry.not_after) parts.push(`expires ${entry.not_after}`);
   return parts.join(" · ");
@@ -190,12 +219,135 @@ export function describeTLSScope(scope: TLSScope | undefined): string {
   return parts.length ? parts.join(", ") : "empty scope";
 }
 
+export function formatTLSCertcatBadge(entry: TLSCertEntry): string {
+  const matches = entry.certcat_matches ?? [];
+  if (!matches.length) return "";
+  const severity = highestTLSCertcatSeverity(matches);
+  const label = formatTLSCertcatSeverity(severity);
+  return matches.length === 1 ? label : `${label} x${matches.length}`;
+}
+
+export function formatTLSCertcatMatch(match: TLSCertcatMatch): string {
+  switch (match.hazard_class) {
+    case "private_key_disclosure":
+      return "Private key was disclosed";
+    case "interception_ca":
+      return "Interception certificate authority";
+    case "state_interception_ca":
+      return "State interception certificate authority";
+    case "time_scoped_root_program_distrust":
+      return "Platform distrust applies";
+    case "chromium_certificate_blocklist":
+    case "chromium_spki_blocklist":
+      return "Browser blocklist match";
+  }
+  switch (match.kind) {
+    case "narrow_scope_ca":
+      return "Use only for a narrow address scope";
+    case "service_private_anchor":
+      return "Use only for specific service addresses";
+    case "hazard_certificate":
+      return "Certificate warning";
+  }
+  return formatTLSCertcatSeverity(match.severity);
+}
+
+export function describeTLSCertcatScope(scope: TLSCertcatScope | undefined): string {
+  if (!scope) return "";
+  const parts: string[] = [];
+  if (scope.permitted_dns_subtrees?.length) {
+    parts.push(`Use only for DNS names in ${scope.permitted_dns_subtrees.join(", ")}`);
+  }
+  if (scope.permitted_ip_cidrs?.length) {
+    parts.push(`Use only for IP ranges in ${scope.permitted_ip_cidrs.join(", ")}`);
+  }
+  if (scope.requires_explicit_allowlist) parts.push("Use only for explicitly allowed addresses");
+  if (scope.reject_ip_targets) parts.push("Do not use for direct IP targets");
+  return parts.join(", ");
+}
+
+export function describeTLSCertcatRecommendation(match: TLSCertcatMatch): string {
+  switch (match.recommendation) {
+    case "deny_exact_match":
+    case "deny_exact_spki":
+      return "Do not trust this certificate.";
+    case "deny_exact_certificate_even_if_user_or_os_installed":
+      return "Do not trust this certificate, even if it is installed locally.";
+    case "trust_only_for_declared_scope":
+      return "Use this certificate only for the listed DNS names or IP ranges.";
+    case "only_use_for_explicit_cloudflare_origin_hosts":
+      return "Use this certificate only for explicit Cloudflare origin hosts.";
+    case "apply_target_platform_distrust_cutoff":
+      return "Follow the platform distrust date for this certificate.";
+  }
+  switch (match.action) {
+    case "deny":
+    case "deny_even_if_locally_installed":
+      return "Do not trust this certificate.";
+    case "narrow_scope":
+    case "offer_scoped_service_anchor":
+      return "Use this certificate only with a specific, narrow set of addresses.";
+    case "enforce_platform_cutoff":
+      return "Follow the platform distrust date for this certificate.";
+    case "warn":
+      return "Review before you trust this certificate.";
+  }
+  if (match.scope?.permitted_dns_subtrees?.length || match.scope?.permitted_ip_cidrs?.length) {
+    return "Use this certificate only with the listed narrow address scope.";
+  }
+  return "";
+}
+
 export function isMutableTLSCertName(name: string): boolean {
   return name.trim() !== "" && !name.startsWith("os-ca:");
 }
 
 export function isMutableTLSPolicyName(name: string): boolean {
   return name.trim() !== "" && name !== "default";
+}
+
+function highestTLSCertcatSeverity(matches: TLSCertcatMatch[]): string {
+  let out = "";
+  let outRank = -1;
+  for (const match of matches) {
+    const severity = match.severity ?? "";
+    const rank = tlsCertcatSeverityRank(severity);
+    if (rank > outRank) {
+      out = severity;
+      outRank = rank;
+    }
+  }
+  return out;
+}
+
+function tlsCertcatSeverityRank(severity: string): number {
+  switch (severity) {
+    case "critical":
+      return 4;
+    case "high":
+      return 3;
+    case "warning":
+      return 2;
+    case "info":
+      return 1;
+    default:
+      return 0;
+  }
+}
+
+function formatTLSCertcatSeverity(severity: string | undefined): string {
+  switch (severity) {
+    case "critical":
+      return "critical warning";
+    case "high":
+      return "high warning";
+    case "warning":
+      return "warning";
+    case "info":
+      return "notice";
+    default:
+      return "warning";
+  }
 }
 
 function parseTrustAnchor(input: unknown, index: number): TLSTrustAnchor {
