@@ -1,0 +1,7 @@
+{
+	"Config": {
+		"Save": {
+			"IdleMilliseconds": 100,
+		},
+	},
+}

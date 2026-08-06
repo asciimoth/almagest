@@ -17,6 +17,8 @@ ALMAGEST_E2E_LOG_CACHE_INFO="${ALMAGEST_E2E_LOG_CACHE_INFO:-4096}"
 ALMAGEST_E2E_LOG_CACHE_WARN="${ALMAGEST_E2E_LOG_CACHE_WARN:-4096}"
 ALMAGEST_E2E_LOG_CACHE_ERROR="${ALMAGEST_E2E_LOG_CACHE_ERROR:-2048}"
 ALMAGEST_E2E_LOG_CACHE_FATAL="${ALMAGEST_E2E_LOG_CACHE_FATAL:-512}"
+ALMAGEST_E2E_TMP_FILE_STORAGE="${ALMAGEST_E2E_TMP_FILE_STORAGE:-1}"
+ALMAGEST_E2E_FILE_STORAGE="${ALMAGEST_E2E_FILE_STORAGE:-}"
 
 log() {
 	printf '[%s] %s\n' "$E2E_CASE" "$*" >&2
@@ -58,12 +60,20 @@ start_daemon() {
 	mkdir -p "$E2E_RUNTIME"
 	: >"$E2E_DAEMON_LOG"
 	log "starting daemon"
+	local storage_args=()
+	if [[ "$ALMAGEST_E2E_TMP_FILE_STORAGE" == "1" ]]; then
+		storage_args=(--tmp-file-storage)
+	elif [[ -n "$ALMAGEST_E2E_FILE_STORAGE" ]]; then
+		mkdir -p "$ALMAGEST_E2E_FILE_STORAGE"
+		chmod 700 "$ALMAGEST_E2E_FILE_STORAGE"
+		storage_args=(--file-storage "$ALMAGEST_E2E_FILE_STORAGE")
+	fi
 	XDG_RUNTIME_DIR="$E2E_RUNTIME" almagestd \
 		-c "$E2E_CONFIG_DIR" \
 		-l debug \
 		--debug-nodes \
 		--unsafe-config \
-		--tmp-file-storage \
+		"${storage_args[@]}" \
 		--log-cache-debug "$ALMAGEST_E2E_LOG_CACHE_DEBUG" \
 		--log-cache-info "$ALMAGEST_E2E_LOG_CACHE_INFO" \
 		--log-cache-warn "$ALMAGEST_E2E_LOG_CACHE_WARN" \

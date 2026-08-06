@@ -47,9 +47,14 @@ Use `start_daemon` from `common.sh`. It always starts `almagestd` with:
 - `--debug-nodes`
 - debug logging
 - `--unsafe-config`
-- isolated temporary file storage
 - an isolated Unix admin API socket from `protected_alm.hujson`
 - the web admin API disabled
+
+By default it also uses isolated temporary file storage. A case that must check
+daemon storage across restarts can set `ALMAGEST_E2E_TMP_FILE_STORAGE=0` and
+`ALMAGEST_E2E_FILE_STORAGE` before calling `start_daemon`. Use a path accepted
+by daemon private-directory checks; on Linux, do not put persistent storage
+under `/tmp`.
 
 Assertions after daemon startup or config changes should use polling helpers
 such as `retry`, `wait_log_contains`, and `wait_node_class_available`. Avoid

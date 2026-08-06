@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"os"
 	"strings"
 	"testing"
 
@@ -367,6 +368,216 @@ func TestRunSecretsRenameDeleteAndClearNodesSendRequests(t *testing.T) {
 	}
 }
 
+func TestRunTLSCertCommandsSendRequests(t *testing.T) {
+	const certPEM = "-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----\n"
+	ft := &fakeTransport{reads: []api.Message{
+		mustResponse(t, "1", api.TLSCertEntry{Name: "manual-ca", PEM: certPEM, Source: api.TLSSourceMutable}),
+		mustResponse(t, "1", api.TLSCertEntry{Name: "renamed-ca", PEM: certPEM, Source: api.TLSSourceMutable}),
+		mustResponse(t, "1", struct{}{}),
+	}}
+	var stdout, stderr bytes.Buffer
+
+	err := run(context.Background(), []string{
+		"tls", "set-cert",
+		"--name", "manual-ca",
+		"--pem", certPEM,
+	}, nil, &stdout, &stderr, func(context.Context, endpoint) (apiTransport, error) {
+		return ft, nil
+	})
+	if err != nil {
+		t.Fatalf("set-cert failed: %v\nstderr: %s", err, stderr.String())
+	}
+	err = run(context.Background(), []string{
+		"tls", "rename-cert",
+		"--name", "manual-ca",
+		"--new-name", "renamed-ca",
+	}, nil, &stdout, &stderr, func(context.Context, endpoint) (apiTransport, error) {
+		return ft, nil
+	})
+	if err != nil {
+		t.Fatalf("rename-cert failed: %v\nstderr: %s", err, stderr.String())
+	}
+	err = run(context.Background(), []string{
+		"tls", "delete-cert",
+		"--name", "renamed-ca",
+	}, nil, &stdout, &stderr, func(context.Context, endpoint) (apiTransport, error) {
+		return ft, nil
+	})
+	if err != nil {
+		t.Fatalf("delete-cert failed: %v\nstderr: %s", err, stderr.String())
+	}
+	if len(ft.writes) != 3 {
+		t.Fatalf("writes = %d, want set, rename, and delete", len(ft.writes))
+	}
+	if ft.writes[0].Surface != api.SurfaceTLS || ft.writes[0].Method != string(api.MethodTLSSetCert) {
+		t.Fatalf("set-cert request = %#v", ft.writes[0])
+	}
+	setReq, err := api.DecodePayload[api.TLSSetCertRequest](ft.writes[0].Payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if setReq.Name != "manual-ca" || setReq.PEM != certPEM {
+		t.Fatalf("set-cert payload = %#v, want manual-ca PEM", setReq)
+	}
+	if ft.writes[1].Surface != api.SurfaceTLS || ft.writes[1].Method != string(api.MethodTLSRenameCert) {
+		t.Fatalf("rename-cert request = %#v", ft.writes[1])
+	}
+	renameReq, err := api.DecodePayload[api.TLSRenameRequest](ft.writes[1].Payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if renameReq.Name != "manual-ca" || renameReq.NewName != "renamed-ca" {
+		t.Fatalf("rename-cert payload = %#v, want manual-ca renamed-ca", renameReq)
+	}
+	if ft.writes[2].Surface != api.SurfaceTLS || ft.writes[2].Method != string(api.MethodTLSDeleteCert) {
+		t.Fatalf("delete-cert request = %#v", ft.writes[2])
+	}
+	deleteReq, err := api.DecodePayload[api.TLSNameRequest](ft.writes[2].Payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if deleteReq.Name != "renamed-ca" {
+		t.Fatalf("delete-cert payload = %#v, want renamed-ca", deleteReq)
+	}
+}
+
+func TestRunTLSPolicyCommandsSendRequests(t *testing.T) {
+	specPath := t.TempDir() + "/policy.json"
+	specJSON := `{"trust_anchors":[{"cert":"manual-ca","scope":{"dns":[{"domain":"example.test","include_subdomains":true}]}}],"constraints":[{"cert":"issuer-ca","match":"spki","scope":{"ip_prefixes":["192.0.2.0/24"]}}],"pins":[{"kind":"spki","fingerprint":"sha256:abc","scope":{"any":true}}]}`
+	if err := os.WriteFile(specPath, []byte(specJSON), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ft := &fakeTransport{reads: []api.Message{
+		mustResponse(t, "1", api.TLSPolicyEntry{Name: "custom", Valid: true}),
+		mustResponse(t, "1", api.TLSPolicyEntry{Name: "renamed", Valid: true}),
+		mustResponse(t, "1", struct{}{}),
+	}}
+	var stdout, stderr bytes.Buffer
+
+	err := run(context.Background(), []string{
+		"tls", "set-policy",
+		"--name", "custom",
+		"--spec-file", specPath,
+	}, nil, &stdout, &stderr, func(context.Context, endpoint) (apiTransport, error) {
+		return ft, nil
+	})
+	if err != nil {
+		t.Fatalf("set-policy failed: %v\nstderr: %s", err, stderr.String())
+	}
+	err = run(context.Background(), []string{
+		"tls", "rename-policy",
+		"--name", "custom",
+		"--new-name", "renamed",
+	}, nil, &stdout, &stderr, func(context.Context, endpoint) (apiTransport, error) {
+		return ft, nil
+	})
+	if err != nil {
+		t.Fatalf("rename-policy failed: %v\nstderr: %s", err, stderr.String())
+	}
+	err = run(context.Background(), []string{
+		"tls", "delete-policy",
+		"--name", "renamed",
+	}, nil, &stdout, &stderr, func(context.Context, endpoint) (apiTransport, error) {
+		return ft, nil
+	})
+	if err != nil {
+		t.Fatalf("delete-policy failed: %v\nstderr: %s", err, stderr.String())
+	}
+	if len(ft.writes) != 3 {
+		t.Fatalf("writes = %d, want set, rename, and delete", len(ft.writes))
+	}
+	if ft.writes[0].Surface != api.SurfaceTLS || ft.writes[0].Method != string(api.MethodTLSSetPolicy) {
+		t.Fatalf("set-policy request = %#v", ft.writes[0])
+	}
+	setReq, err := api.DecodePayload[api.TLSSetPolicyRequest](ft.writes[0].Payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if setReq.Name != "custom" || len(setReq.Spec.TrustAnchors) != 1 || setReq.Spec.TrustAnchors[0].Cert != "manual-ca" {
+		t.Fatalf("set-policy anchors = %#v, want custom manual-ca anchor", setReq)
+	}
+	if len(setReq.Spec.Constraints) != 1 || setReq.Spec.Constraints[0].Match != "spki" {
+		t.Fatalf("set-policy constraints = %#v, want spki constraint", setReq.Spec.Constraints)
+	}
+	if len(setReq.Spec.Pins) != 1 || setReq.Spec.Pins[0].Fingerprint != "sha256:abc" || !setReq.Spec.Pins[0].Scope.Any {
+		t.Fatalf("set-policy pins = %#v, want sha256:abc any pin", setReq.Spec.Pins)
+	}
+	if ft.writes[1].Surface != api.SurfaceTLS || ft.writes[1].Method != string(api.MethodTLSRenamePolicy) {
+		t.Fatalf("rename-policy request = %#v", ft.writes[1])
+	}
+	renameReq, err := api.DecodePayload[api.TLSRenameRequest](ft.writes[1].Payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if renameReq.Name != "custom" || renameReq.NewName != "renamed" {
+		t.Fatalf("rename-policy payload = %#v, want custom renamed", renameReq)
+	}
+	if ft.writes[2].Surface != api.SurfaceTLS || ft.writes[2].Method != string(api.MethodTLSDeletePolicy) {
+		t.Fatalf("delete-policy request = %#v", ft.writes[2])
+	}
+	deleteReq, err := api.DecodePayload[api.TLSNameRequest](ft.writes[2].Payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if deleteReq.Name != "renamed" {
+		t.Fatalf("delete-policy payload = %#v, want renamed", deleteReq)
+	}
+}
+
+func TestRunTLSBuiltinCAAndReloadCommandsSendRequests(t *testing.T) {
+	ft := &fakeTransport{reads: []api.Message{
+		mustResponse(t, "1", api.TLSBuiltinCAInfo{Options: api.TLSBuiltinCAOptions{Issuer: "Almagest"}}),
+		mustResponse(t, "1", api.TLSBuiltinCAInfo{Options: api.TLSBuiltinCAOptions{Issuer: "Changed", KeyAlgorithm: "rsa", KeyBits: 4096}}),
+		mustResponse(t, "1", api.TLSSnapshot{Certs: []api.TLSCertEntry{{Name: "os-ca:system", Source: api.TLSSourceOS}}}),
+	}}
+	var stdout, stderr bytes.Buffer
+
+	err := run(context.Background(), []string{"tls", "builtin-ca"}, nil, &stdout, &stderr, func(context.Context, endpoint) (apiTransport, error) {
+		return ft, nil
+	})
+	if err != nil {
+		t.Fatalf("builtin-ca failed: %v\nstderr: %s", err, stderr.String())
+	}
+	err = run(context.Background(), []string{
+		"tls", "set-builtin-ca",
+		"--issuer", "Changed",
+		"--validity-days", "365",
+		"--key-algorithm", "rsa",
+		"--key-bits", "4096",
+	}, nil, &stdout, &stderr, func(context.Context, endpoint) (apiTransport, error) {
+		return ft, nil
+	})
+	if err != nil {
+		t.Fatalf("set-builtin-ca failed: %v\nstderr: %s", err, stderr.String())
+	}
+	err = run(context.Background(), []string{"tls", "reload-os-certs"}, nil, &stdout, &stderr, func(context.Context, endpoint) (apiTransport, error) {
+		return ft, nil
+	})
+	if err != nil {
+		t.Fatalf("reload-os-certs failed: %v\nstderr: %s", err, stderr.String())
+	}
+	if len(ft.writes) != 3 {
+		t.Fatalf("writes = %d, want builtin, set builtin, and reload", len(ft.writes))
+	}
+	if ft.writes[0].Surface != api.SurfaceTLS || ft.writes[0].Method != string(api.MethodTLSBuiltinCA) {
+		t.Fatalf("builtin-ca request = %#v", ft.writes[0])
+	}
+	if ft.writes[1].Surface != api.SurfaceTLS || ft.writes[1].Method != string(api.MethodTLSSetBuiltinCA) {
+		t.Fatalf("set-builtin-ca request = %#v", ft.writes[1])
+	}
+	setReq, err := api.DecodePayload[api.TLSSetBuiltinCARequest](ft.writes[1].Payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if setReq.Options.Issuer != "Changed" || setReq.Options.ValidityDays != 365 ||
+		setReq.Options.KeyAlgorithm != "rsa" || setReq.Options.KeyBits != 4096 {
+		t.Fatalf("set-builtin-ca payload = %#v, want configured RSA options", setReq)
+	}
+	if ft.writes[2].Surface != api.SurfaceTLS || ft.writes[2].Method != string(api.MethodTLSReloadOSCerts) {
+		t.Fatalf("reload-os-certs request = %#v", ft.writes[2])
+	}
+}
+
 func TestRunEngineRemoveNodesSendsBatchRequest(t *testing.T) {
 	ft := &fakeTransport{reads: []api.Message{mustResponse(t, "1", struct{}{})}}
 	var stdout, stderr bytes.Buffer
@@ -653,6 +864,47 @@ func TestSecretsWatchPrintsInitialResponseAndQueuedEvents(t *testing.T) {
 	}
 	if !strings.Contains(out, `"method":"update"`) || strings.Contains(out, "ignore") {
 		t.Fatalf("stdout = %q, want secrets event only", out)
+	}
+}
+
+func TestTLSWatchPrintsInitialResponseAndQueuedEvents(t *testing.T) {
+	ft := &fakeTransport{reads: []api.Message{
+		mustEvent(t, api.SurfaceLog, string(api.EventLogEntry), api.LogEntry{Message: "ignore"}),
+		mustEvent(t, api.SurfaceTLS, string(api.EventTLSUpdate), api.TLSEvent{
+			SubscriptionID: 8,
+			Change: api.TLSChange{
+				Kind: api.TLSChangeCert,
+				Name: "manual-ca",
+				Cert: &api.TLSCertEntry{Name: "manual-ca", Source: api.TLSSourceMutable},
+			},
+		}),
+		mustResponse(t, "1", api.TLSSubscribeResponse{
+			SubscriptionID: 8,
+			Snapshot: api.TLSSnapshot{
+				Certs: []api.TLSCertEntry{{Name: "manual-ca", Source: api.TLSSourceMutable}},
+			},
+		}),
+	}}
+	var stdout, stderr bytes.Buffer
+
+	err := run(context.Background(), []string{"tls", "watch"}, nil, &stdout, &stderr, func(context.Context, endpoint) (apiTransport, error) {
+		return ft, nil
+	})
+	if !errors.Is(err, io.EOF) {
+		t.Fatalf("run error = %v, want EOF after queued event is drained", err)
+	}
+	if len(ft.writes) != 1 {
+		t.Fatalf("writes = %d, want subscribe request", len(ft.writes))
+	}
+	if ft.writes[0].Surface != api.SurfaceTLS || ft.writes[0].Method != string(api.MethodTLSSubscribe) {
+		t.Fatalf("request = %#v", ft.writes[0])
+	}
+	out := stdout.String()
+	if !strings.Contains(out, `"subscription_id": 8`) {
+		t.Fatalf("stdout = %q, want pretty subscription response", out)
+	}
+	if !strings.Contains(out, `"method":"update"`) || strings.Contains(out, "ignore") {
+		t.Fatalf("stdout = %q, want TLS event only", out)
 	}
 }
 
