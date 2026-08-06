@@ -74,6 +74,93 @@
       ]
     },
     {
+      "id": "example-warning-interception-root",
+      "kind": "hazard_certificate",
+      "name": "Example broad interception root",
+      "subject": "C=US,O=Almagest Certcat Examples,CN=Example Broad Interception Root",
+      "issuer": "C=US,O=Almagest Certcat Examples,CN=Example Broad Interception Root",
+      "serial_hex": "4DB1788C8FE104FFC96AE796205569D2B47A97D1",
+      "not_before": "2026-08-06T05:31:04Z",
+      "not_after": "2036-08-03T05:31:04Z",
+      "certificate_sha256": "C6724A7041C9BE5519BCB2CF65C41325E26268F942582B2D93ECB7B2488FA7ED",
+      "spki_sha256": "2BB076872B49759E59CFE9F0D086DD1C493E609CB6DBD34B6DE13E05E486BE27",
+      "hazard_class": "interception_ca",
+      "action": "warn",
+      "severity": "warning",
+      "sources": [
+        {
+          "id": "certcat-openssl-example",
+          "url": "file:certcat/data/examples/warning-interception-root.pem",
+          "note": "Generated with OpenSSL from certcat/data/examples/warning-interception-root.cnf."
+        }
+      ]
+    },
+    {
+      "id": "example-narrow-scope-ca",
+      "kind": "narrow_scope_ca",
+      "name": "Example narrow scope CA",
+      "subject": "C=US,O=Almagest Certcat Examples,CN=Example Narrow Scope CA",
+      "issuer": "C=US,O=Almagest Certcat Examples,CN=Example Narrow Scope CA",
+      "serial_hex": "63D57C3874066F541AC362AC20D86603D02EF642",
+      "not_before": "2026-08-06T05:31:04Z",
+      "not_after": "2036-08-03T05:31:04Z",
+      "certificate_sha256": "EEE8AE60183B0E1DEDC98682DAD197042051BC12B2AB7BA4EC35E417DE4A74DA",
+      "spki_sha256": "0C5B1EA19B8240DC605418DAC5E819A7918D3D5961FC949E6EADFBA90C5E162F",
+      "action": "narrow_scope",
+      "severity": "warning",
+      "recommendation": "trust_only_for_declared_scope",
+      "scope": {
+        "basis": "x509_name_constraints",
+        "permitted_dns_subtrees": [
+          ".apps.example.internal",
+          "example.internal"
+        ],
+        "reject_ip_targets": true,
+        "context": "Use only for the name-constrained internal DNS namespace carried by the certificate."
+      },
+      "sources": [
+        {
+          "id": "certcat-openssl-example",
+          "url": "file:certcat/data/examples/narrow-scope-ca.pem",
+          "note": "Generated with OpenSSL from certcat/data/examples/narrow-scope-ca.cnf."
+        }
+      ]
+    },
+    {
+      "id": "example-scoped-service-anchor",
+      "kind": "service_private_anchor",
+      "name": "Example scoped service anchor",
+      "subject": "C=US,O=Almagest Certcat Examples,OU=Private Service PKI,CN=Example Scoped Service Anchor",
+      "issuer": "C=US,O=Almagest Certcat Examples,OU=Private Service PKI,CN=Example Scoped Service Anchor",
+      "serial_hex": "47396E7FC541EF82EF6967B2D0998D536703110D",
+      "not_before": "2026-08-06T05:31:04Z",
+      "not_after": "2036-08-03T05:31:04Z",
+      "certificate_sha256": "1CCFFB2462EF9E3821AC151F333BECB4224F760B7D57D476BD70CE20BEF6AE64",
+      "spki_sha256": "E4DF9017177CFCB3434836BB64372DB48320A9D13529EF418962308C0D71761F",
+      "action": "offer_scoped_service_anchor",
+      "severity": "info",
+      "recommendation": "trust_only_for_declared_scope",
+      "scope": {
+        "basis": "service_context",
+        "permitted_dns_subtrees": [
+          "api.service.example.internal"
+        ],
+        "permitted_ip_cidrs": [
+          "10.42.0.0/16",
+          "fd42:5eed::/48"
+        ],
+        "requires_explicit_allowlist": true,
+        "context": "Only explicit service allowlist entries may use this private anchor."
+      },
+      "sources": [
+        {
+          "id": "certcat-openssl-example",
+          "url": "file:certcat/data/examples/scoped-service-anchor.pem",
+          "note": "Generated with OpenSSL from certcat/data/examples/scoped-service-anchor.cnf."
+        }
+      ]
+    },
+    {
       "id": "trustwave-enterprise-interception-subca",
       "kind": "hazard_certificate",
       "name": "Trustwave enterprise interception sub-CAs",

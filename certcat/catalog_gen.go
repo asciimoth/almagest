@@ -47,6 +47,17 @@ var recordScopes = []Scope{
 		RejectIPTargets: true,
 	},
 	{
+		Basis: ScopeBasisServiceContext,
+		PermittedDNSSubtrees: []string{
+			"api.service.example.internal",
+		},
+		PermittedIPCIDRs: []string{
+			"10.42.0.0/16",
+			"fd42:5eed::/48",
+		},
+		RequiresExplicitAllowlist: true,
+	},
+	{
 		Basis: ScopeBasisX509NameConstraints,
 		PermittedDNSSubtrees: []string{
 			"uniwa.gr",
@@ -222,6 +233,14 @@ var recordScopes = []Scope{
 		Basis: ScopeBasisX509NameConstraints,
 		PermittedDNSSubtrees: []string{
 			"gunet.gr",
+		},
+		RejectIPTargets: true,
+	},
+	{
+		Basis: ScopeBasisX509NameConstraints,
+		PermittedDNSSubtrees: []string{
+			".apps.example.internal",
+			"example.internal",
 		},
 		RejectIPTargets: true,
 	},
@@ -546,6 +565,18 @@ var Records = []Record{
 		Recommendation: RecommendationTrustOnlyForDeclaredScope,
 		Scope:          &recordScopes[5],
 	},
+	// example-scoped-service-anchor: Example scoped service anchor
+	// Sources:
+	// - certcat-openssl-example: file:certcat/data/examples/scoped-service-anchor.pem Generated with OpenSSL from certcat/data/examples/scoped-service-anchor.cnf.
+	{
+		Fingerprint:    Fingerprint{0x1C, 0xCF, 0xFB, 0x24, 0x62, 0xEF, 0x9E, 0x38, 0x21, 0xAC, 0x15, 0x1F, 0x33, 0x3B, 0xEC, 0xB4, 0x22, 0x4F, 0x76, 0x0B, 0x7D, 0x57, 0xD4, 0x76, 0xBD, 0x70, 0xCE, 0x20, 0xBE, 0xF6, 0xAE, 0x64},
+		MatchKind:      MatchKindCertificateSHA256,
+		Kind:           RecordKindServicePrivateAnchor,
+		Action:         ActionScopedServiceAnchor,
+		Severity:       SeverityInfo,
+		Recommendation: RecommendationTrustOnlyForDeclaredScope,
+		Scope:          &recordScopes[6],
+	},
 	// chromium-cert-block-1df696f021ab1c3ace9a376b07ed7256a40214cd3396d7934087614924e2d7ef: Chromium certificate blocklist entry
 	// Sources:
 	// - chromium-certificate-blocklist: https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md retrieved 2026-08-05T16:10:24Z
@@ -569,7 +600,7 @@ var Records = []Record{
 		Action:         ActionNarrowScope,
 		Severity:       SeverityWarning,
 		Recommendation: RecommendationTrustOnlyForDeclaredScope,
-		Scope:          &recordScopes[6],
+		Scope:          &recordScopes[7],
 	},
 	// ccadb-nameconstraints-1e8f051f2226f992d17b7cf17f0dece0aa769902e9fe8d11f35b19b18a5a14f1: National Technical University of Athens TLS RSA SubCA R1
 	// Sources:
@@ -581,7 +612,7 @@ var Records = []Record{
 		Action:         ActionNarrowScope,
 		Severity:       SeverityWarning,
 		Recommendation: RecommendationTrustOnlyForDeclaredScope,
-		Scope:          &recordScopes[7],
+		Scope:          &recordScopes[8],
 	},
 	// chromium-cert-block-1f17f2cbb109f01c885c94d9e74a48625ae9659665d6d7e7bc5a10332976370f: Chromium certificate blocklist entry
 	// Sources:
@@ -606,7 +637,7 @@ var Records = []Record{
 		Action:         ActionNarrowScope,
 		Severity:       SeverityWarning,
 		Recommendation: RecommendationTrustOnlyForDeclaredScope,
-		Scope:          &recordScopes[8],
+		Scope:          &recordScopes[9],
 	},
 	// ccadb-nameconstraints-25eed131d7193597e48d4e36536cc5cffbf9eb2042c62573ae8968d8a3695f1c: University of Piraeus TLS RSA SubCA R1
 	// Sources:
@@ -618,7 +649,7 @@ var Records = []Record{
 		Action:         ActionNarrowScope,
 		Severity:       SeverityWarning,
 		Recommendation: RecommendationTrustOnlyForDeclaredScope,
-		Scope:          &recordScopes[9],
+		Scope:          &recordScopes[10],
 	},
 	// chromium-cert-block-2740d956b1127b791aa1b3cc644a4dbedba76186a23638b95102351a834ea861: Chromium certificate blocklist entry
 	// Sources:
@@ -786,7 +817,7 @@ var Records = []Record{
 		Action:         ActionNarrowScope,
 		Severity:       SeverityWarning,
 		Recommendation: RecommendationTrustOnlyForDeclaredScope,
-		Scope:          &recordScopes[10],
+		Scope:          &recordScopes[11],
 	},
 	// chromium-cert-block-3a554ead9dd3e881c0bf6b4c694755ca51acbfb5b99ded5af49da950be21f2f7: Chromium certificate blocklist entry
 	// Sources:
@@ -850,7 +881,7 @@ var Records = []Record{
 		Action:         ActionNarrowScope,
 		Severity:       SeverityWarning,
 		Recommendation: RecommendationTrustOnlyForDeclaredScope,
-		Scope:          &recordScopes[11],
+		Scope:          &recordScopes[12],
 	},
 	// chromium-cert-block-3e26492e20b52de79e15766e6cb4251a1d566b0dbfb225aa7d08dda1dcebbf0a: Chromium certificate blocklist entry
 	// Sources:
@@ -901,7 +932,7 @@ var Records = []Record{
 		Action:         ActionNarrowScope,
 		Severity:       SeverityWarning,
 		Recommendation: RecommendationTrustOnlyForDeclaredScope,
-		Scope:          &recordScopes[12],
+		Scope:          &recordScopes[13],
 	},
 	// chromium-cert-block-450f1b421bb05c8609854884559c323319619e8b06b001ea2dcbb74a23aa3be2: Chromium certificate blocklist entry
 	// Sources:
@@ -926,7 +957,7 @@ var Records = []Record{
 		Action:         ActionNarrowScope,
 		Severity:       SeverityWarning,
 		Recommendation: RecommendationTrustOnlyForDeclaredScope,
-		Scope:          &recordScopes[13],
+		Scope:          &recordScopes[14],
 	},
 	// chromium-cert-block-487afc8d0d411b2a05561a2a6f35918f4040e5570c4c73ee323cc50583bcfbb7: Chromium certificate blocklist entry
 	// Sources:
@@ -1055,7 +1086,7 @@ var Records = []Record{
 		Action:         ActionNarrowScope,
 		Severity:       SeverityWarning,
 		Recommendation: RecommendationTrustOnlyForDeclaredScope,
-		Scope:          &recordScopes[14],
+		Scope:          &recordScopes[15],
 	},
 	// chromium-cert-block-5e8e77aafdda2ba5ce442f27d8246650bbd6508befbeda35966a4dc7e6174edc: Chromium certificate blocklist entry
 	// Sources:
@@ -1119,7 +1150,7 @@ var Records = []Record{
 		Action:         ActionNarrowScope,
 		Severity:       SeverityWarning,
 		Recommendation: RecommendationTrustOnlyForDeclaredScope,
-		Scope:          &recordScopes[15],
+		Scope:          &recordScopes[16],
 	},
 	// ccadb-nameconstraints-673e34d7e1e6b25c187f391cc49138b4722a907e33f5b7487b613bb6dfe78909: University of Patras TLS RSA SubCA R1
 	// Sources:
@@ -1131,7 +1162,7 @@ var Records = []Record{
 		Action:         ActionNarrowScope,
 		Severity:       SeverityWarning,
 		Recommendation: RecommendationTrustOnlyForDeclaredScope,
-		Scope:          &recordScopes[16],
+		Scope:          &recordScopes[17],
 	},
 	// chromium-cert-block-67ed4b703d15dc555f8c444b3a05a32579cb7599bd19c9babe10c584ea327ae0: Chromium certificate blocklist entry
 	// Sources:
@@ -1195,7 +1226,7 @@ var Records = []Record{
 		Action:         ActionNarrowScope,
 		Severity:       SeverityWarning,
 		Recommendation: RecommendationTrustOnlyForDeclaredScope,
-		Scope:          &recordScopes[17],
+		Scope:          &recordScopes[18],
 	},
 	// chromium-cert-block-817d4e05063d5942869c47d8504dc56a5208f7569c3d6d67f3457cfe921b3e29: Chromium certificate blocklist entry
 	// Sources:
@@ -1272,7 +1303,7 @@ var Records = []Record{
 		Action:         ActionNarrowScope,
 		Severity:       SeverityWarning,
 		Recommendation: RecommendationTrustOnlyForDeclaredScope,
-		Scope:          &recordScopes[18],
+		Scope:          &recordScopes[19],
 	},
 	// chromium-cert-block-89107c8e50e029b7b5f4ff0ccd2956bcc9d0c8ba2bfb6a58374ed63a6b034a30: Chromium certificate blocklist entry
 	// Sources:
@@ -1323,7 +1354,7 @@ var Records = []Record{
 		Action:         ActionNarrowScope,
 		Severity:       SeverityWarning,
 		Recommendation: RecommendationTrustOnlyForDeclaredScope,
-		Scope:          &recordScopes[19],
+		Scope:          &recordScopes[20],
 	},
 	// ccadb-nameconstraints-8c0994b2aed0085fe542813ee03c4b2d732ecdcc257ae6453114c6c875933bd4: HEAL-LINK Hellenic Academic Libraries Link TLS RSA SubCA R1
 	// Sources:
@@ -1335,7 +1366,7 @@ var Records = []Record{
 		Action:         ActionNarrowScope,
 		Severity:       SeverityWarning,
 		Recommendation: RecommendationTrustOnlyForDeclaredScope,
-		Scope:          &recordScopes[20],
+		Scope:          &recordScopes[21],
 	},
 	// chromium-cert-block-91018fcd3e0dc73f48d011a123f604d846d66821c58304474f949d7449dd600a: Chromium certificate blocklist entry
 	// Sources:
@@ -1425,7 +1456,7 @@ var Records = []Record{
 		Action:         ActionNarrowScope,
 		Severity:       SeverityWarning,
 		Recommendation: RecommendationTrustOnlyForDeclaredScope,
-		Scope:          &recordScopes[21],
+		Scope:          &recordScopes[22],
 	},
 	// chromium-cert-block-9ed8f9b0e8e42a1656b8e1dd18f42ba42dc06fe52686173ba2fc70e756f207dc: Chromium certificate blocklist entry
 	// Sources:
@@ -1503,7 +1534,7 @@ var Records = []Record{
 		Action:         ActionScopedServiceAnchor,
 		Severity:       SeverityWarning,
 		Recommendation: RecommendationOnlyUseForExplicitCloudflareOriginHosts,
-		Scope:          &recordScopes[22],
+		Scope:          &recordScopes[23],
 	},
 	// chromium-cert-block-b6fe9151402bad1c06d7e66db67a26aa7356f2e6c644dbcf9f98968ff632e1b7: Chromium certificate blocklist entry
 	// Sources:
@@ -1554,7 +1585,7 @@ var Records = []Record{
 		Action:         ActionNarrowScope,
 		Severity:       SeverityWarning,
 		Recommendation: RecommendationTrustOnlyForDeclaredScope,
-		Scope:          &recordScopes[23],
+		Scope:          &recordScopes[24],
 	},
 	// chromium-cert-block-be144b56fb1163c49c9a0e6b5a458df6b29f7e6449985960c178a4744624b7bc: Chromium certificate blocklist entry
 	// Sources:
@@ -1579,7 +1610,7 @@ var Records = []Record{
 		Action:         ActionNarrowScope,
 		Severity:       SeverityWarning,
 		Recommendation: RecommendationTrustOnlyForDeclaredScope,
-		Scope:          &recordScopes[18],
+		Scope:          &recordScopes[19],
 	},
 	// chromium-cert-block-c1d80ce474a51128b77e794a98aa2d62a0225da3f419e5c7ed73dfbf660e7109: Chromium certificate blocklist entry
 	// Sources:
@@ -1619,6 +1650,17 @@ var Records = []Record{
 		Action:         ActionDeny,
 		Severity:       SeverityHigh,
 		Recommendation: RecommendationDenyExactMatch,
+	},
+	// example-warning-interception-root: Example broad interception root
+	// Sources:
+	// - certcat-openssl-example: file:certcat/data/examples/warning-interception-root.pem Generated with OpenSSL from certcat/data/examples/warning-interception-root.cnf.
+	{
+		Fingerprint: Fingerprint{0xC6, 0x72, 0x4A, 0x70, 0x41, 0xC9, 0xBE, 0x55, 0x19, 0xBC, 0xB2, 0xCF, 0x65, 0xC4, 0x13, 0x25, 0xE2, 0x62, 0x68, 0xF9, 0x42, 0x58, 0x2B, 0x2D, 0x93, 0xEC, 0xB7, 0xB2, 0x48, 0x8F, 0xA7, 0xED},
+		MatchKind:   MatchKindCertificateSHA256,
+		Kind:        RecordKindHazardCertificate,
+		HazardClass: HazardClassInterceptionCA,
+		Action:      ActionWarn,
+		Severity:    SeverityWarning,
 	},
 	// chromium-cert-block-c67d722c1495be02cbf9ef1159f5ca4aa782dc832dc6aa60c9aa076a0ad1e69d: Chromium certificate blocklist entry
 	// Sources:
@@ -1708,7 +1750,7 @@ var Records = []Record{
 		Action:         ActionNarrowScope,
 		Severity:       SeverityWarning,
 		Recommendation: RecommendationTrustOnlyForDeclaredScope,
-		Scope:          &recordScopes[24],
+		Scope:          &recordScopes[25],
 	},
 	// ccadb-nameconstraints-cfdfef037cfdbd6bb0e311e9bb281ca60271c5dae2695312033806fa4b0e94b7: Greek School Network TLS RSA SubCA R1
 	// Sources:
@@ -1720,7 +1762,7 @@ var Records = []Record{
 		Action:         ActionNarrowScope,
 		Severity:       SeverityWarning,
 		Recommendation: RecommendationTrustOnlyForDeclaredScope,
-		Scope:          &recordScopes[25],
+		Scope:          &recordScopes[26],
 	},
 	// chromium-cert-block-d0d672c2547d574ae055d9e78a993ddbcc74044c4253fbfaca573a67d368e1db: Chromium certificate blocklist entry
 	// Sources:
@@ -1746,7 +1788,7 @@ var Records = []Record{
 		Action:         ActionScopedServiceAnchor,
 		Severity:       SeverityWarning,
 		Recommendation: RecommendationOnlyUseForExplicitCloudflareOriginHosts,
-		Scope:          &recordScopes[22],
+		Scope:          &recordScopes[23],
 	},
 	// chromium-cert-block-d40e9c86cd8fe468c1776959f49ea774fa548684b6c406f3909261f4dce2575c: Chromium certificate blocklist entry
 	// Sources:
@@ -1810,7 +1852,7 @@ var Records = []Record{
 		Action:         ActionNarrowScope,
 		Severity:       SeverityWarning,
 		Recommendation: RecommendationTrustOnlyForDeclaredScope,
-		Scope:          &recordScopes[26],
+		Scope:          &recordScopes[27],
 	},
 	// ccadb-nameconstraints-dc9455ca47f5fd9bf3bbabbeacf88f3deb3b58bfa85af404dfd21617ce90a0dd: Academy of Athens SSL SubCA R2
 	// Sources:
@@ -1822,7 +1864,7 @@ var Records = []Record{
 		Action:         ActionNarrowScope,
 		Severity:       SeverityWarning,
 		Recommendation: RecommendationTrustOnlyForDeclaredScope,
-		Scope:          &recordScopes[27],
+		Scope:          &recordScopes[28],
 	},
 	// ccadb-nameconstraints-dc9993dc33a71fd95808787d19a4b55704e601d57ebceacc8802c78b5c36f5c7: Greek Universities Network TLS RSA SubCA R1
 	// Sources:
@@ -1834,7 +1876,7 @@ var Records = []Record{
 		Action:         ActionNarrowScope,
 		Severity:       SeverityWarning,
 		Recommendation: RecommendationTrustOnlyForDeclaredScope,
-		Scope:          &recordScopes[28],
+		Scope:          &recordScopes[29],
 	},
 	// chromium-cert-block-ddd8ab9178c99cbd9685ea4ae66dc28bfdc9a5a8a166f7f69ad0b5042ad6eb28: Chromium certificate blocklist entry
 	// Sources:
@@ -1953,6 +1995,18 @@ var Records = []Record{
 		Severity:       SeverityHigh,
 		Recommendation: RecommendationDenyExactMatch,
 	},
+	// example-narrow-scope-ca: Example narrow scope CA
+	// Sources:
+	// - certcat-openssl-example: file:certcat/data/examples/narrow-scope-ca.pem Generated with OpenSSL from certcat/data/examples/narrow-scope-ca.cnf.
+	{
+		Fingerprint:    Fingerprint{0xEE, 0xE8, 0xAE, 0x60, 0x18, 0x3B, 0x0E, 0x1D, 0xED, 0xC9, 0x86, 0x82, 0xDA, 0xD1, 0x97, 0x04, 0x20, 0x51, 0xBC, 0x12, 0xB2, 0xAB, 0x7B, 0xA4, 0xEC, 0x35, 0xE4, 0x17, 0xDE, 0x4A, 0x74, 0xDA},
+		MatchKind:      MatchKindCertificateSHA256,
+		Kind:           RecordKindNarrowScopeCA,
+		Action:         ActionNarrowScope,
+		Severity:       SeverityWarning,
+		Recommendation: RecommendationTrustOnlyForDeclaredScope,
+		Scope:          &recordScopes[30],
+	},
 	// chromium-cert-block-ef3cb417fc8ebf6f97876c9e4ece39de1ea5fe649141d1028b7d11c0b2298ced: Chromium certificate blocklist entry
 	// Sources:
 	// - chromium-certificate-blocklist: https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md retrieved 2026-08-05T16:10:24Z
@@ -1976,7 +2030,7 @@ var Records = []Record{
 		Action:         ActionNarrowScope,
 		Severity:       SeverityWarning,
 		Recommendation: RecommendationTrustOnlyForDeclaredScope,
-		Scope:          &recordScopes[29],
+		Scope:          &recordScopes[31],
 	},
 	// ccadb-nameconstraints-f0043e9fefb37aea794e690437dc239d6bd2c5ca0fb58a12244555a1a8a2a01a: Panteion Univ. of Social and Political Sciences TLS RSA SubCA R1
 	// Sources:
@@ -1988,7 +2042,7 @@ var Records = []Record{
 		Action:         ActionNarrowScope,
 		Severity:       SeverityWarning,
 		Recommendation: RecommendationTrustOnlyForDeclaredScope,
-		Scope:          &recordScopes[30],
+		Scope:          &recordScopes[32],
 	},
 	// chromium-cert-block-f3bae5e9c0adbfbfb6dbf7e04e74be6ead3ca98a5604ffe591cea86c241848ec: Chromium certificate blocklist entry
 	// Sources:
