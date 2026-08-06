@@ -147,6 +147,7 @@ func main() {
 	admin.dns = kv
 	admin.secrets = kv
 	admin.tls = kv
+	admin.tlsOSAuthorityFetcher = platform.OSAuthorityFetcher()
 	defer admin.Stop()
 
 	logf := NewLogFactory(conf.LogCache().MergeArgs(&args))

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"reflect"
 	"slices"
 	"strings"
 	"time"
@@ -232,6 +233,77 @@ func (m *bboltKVManager) setTLSBuiltinCA(ca *tlsBuiltinCA) (tlsMutationResult, e
 		notifications = append(notifications, m.tlsPolicyNotification(name, name))
 	}
 	golog.Debugf("builtin TLS CA: activated certificate and queued %d TLS policy rebuild notifications", len(notifications))
+	m.notifyTLSChange(changes...)
+	return tlsMutationResult{policyNotifications: notifications}, nil
+}
+
+// setTLSOSData replaces the read-only OS certificate overlay in memory. It
+// preserves protected-config certificates and the daemon built-in CA, then
+// rebuilds the generated default policy from the new OS roots.
+func (m *bboltKVManager) setTLSOSData(data immutableTLSData) (tlsMutationResult, error) {
+	nextOSCerts := map[string]immutableTLSCert{}
+	for name, cert := range data.Certs {
+		if !validTLSName(name) || !strings.HasPrefix(name, tlsOSCertPrefix) {
+			return tlsMutationResult{}, almagest.ErrTlsConfigInvalidName
+		}
+		if _, _, err := parseTLSAuthorityPEM(cert.PEM); err != nil {
+			return tlsMutationResult{}, fmt.Errorf("%w: OS TLS certificate %q: %v", almagest.ErrTlsConfigInvalidValue, name, err)
+		}
+		nextOSCerts[name] = immutableTLSCert{
+			tlsCertificateRecord: tlsCertificateRecord{PEM: cert.PEM},
+			source:               api.TLSSourceOS,
+		}
+	}
+
+	oldPolicies, err := m.tlsEffectivePolicyMap()
+	if err != nil {
+		return tlsMutationResult{}, err
+	}
+	oldOSCerts := map[string]immutableTLSCert{}
+	nextVisibleOSCerts := map[string]immutableTLSCert{}
+
+	m.tlsMu.Lock()
+	next := cloneImmutableTLSDataWithoutDefault(m.immutableTLS)
+	if next.Certs == nil {
+		next.Certs = map[string]immutableTLSCert{}
+	}
+	for name, cert := range next.Certs {
+		if cert.source == api.TLSSourceOS {
+			oldOSCerts[name] = cert
+			delete(next.Certs, name)
+		}
+	}
+	for name, cert := range nextOSCerts {
+		if existing, ok := next.Certs[name]; ok && existing.source != api.TLSSourceOS {
+			continue
+		}
+		next.Certs[name] = cert
+		nextVisibleOSCerts[name] = cert
+	}
+	m.immutableTLS = ensureDefaultTLSPolicy(next)
+	m.tlsMu.Unlock()
+
+	newPolicies, err := m.tlsEffectivePolicyMap()
+	if err != nil {
+		return tlsMutationResult{}, err
+	}
+
+	deleted, upserted := diffTLSOSCerts(oldOSCerts, nextVisibleOSCerts)
+	changedCerts := map[string]struct{}{}
+	changes := make([]tlsChange, 0, len(deleted)+len(upserted))
+	for _, name := range deleted {
+		changedCerts[name] = struct{}{}
+		changes = append(changes, tlsChange{kind: tlsChangeCertDelete, name: name})
+	}
+	for _, name := range upserted {
+		changedCerts[name] = struct{}{}
+		changes = append(changes, tlsChange{kind: tlsChangeCertUpsert, name: name})
+	}
+
+	changedPolicies := tlsPoliciesAffectedByCerts(oldPolicies, newPolicies, changedCerts)
+	notifications := makeTLSCertPolicyNotifications(m, changedPolicies, &changes)
+	golog.Debugf("TLS OS certificate reload: %d deleted, %d added or changed, %d policies queued",
+		len(deleted), len(upserted), len(notifications))
 	m.notifyTLSChange(changes...)
 	return tlsMutationResult{policyNotifications: notifications}, nil
 }
@@ -1226,6 +1298,65 @@ func makeTLSCertPolicyNotifications(
 	return out
 }
 
+func diffTLSOSCerts(oldCerts, newCerts map[string]immutableTLSCert) (deleted, upserted []string) {
+	for name := range oldCerts {
+		if _, ok := newCerts[name]; !ok {
+			deleted = append(deleted, name)
+		}
+	}
+	for name, cert := range newCerts {
+		old, ok := oldCerts[name]
+		if !ok || old.PEM != cert.PEM {
+			upserted = append(upserted, name)
+		}
+	}
+	slices.Sort(deleted)
+	slices.Sort(upserted)
+	return deleted, upserted
+}
+
+func tlsPoliciesAffectedByCerts(
+	oldPolicies map[string]tlsEffectivePolicy,
+	newPolicies map[string]tlsEffectivePolicy,
+	certNames map[string]struct{},
+) map[string]struct{} {
+	out := map[string]struct{}{}
+	for name, policy := range oldPolicies {
+		if tlsPolicyMentionsAnyCert(policy.Spec, certNames) {
+			out[name] = struct{}{}
+		}
+	}
+	for name, policy := range newPolicies {
+		if tlsPolicyMentionsAnyCert(policy.Spec, certNames) {
+			out[name] = struct{}{}
+		}
+	}
+	if oldDefault, oldOK := oldPolicies[tlsDefaultPolicyName]; oldOK {
+		if newDefault, newOK := newPolicies[tlsDefaultPolicyName]; newOK &&
+			!reflect.DeepEqual(oldDefault.Spec, newDefault.Spec) {
+			out[tlsDefaultPolicyName] = struct{}{}
+		}
+	}
+	return out
+}
+
+func tlsPolicyMentionsAnyCert(spec api.TLSPolicySpec, names map[string]struct{}) bool {
+	if len(names) == 0 {
+		return false
+	}
+	for _, anchor := range spec.TrustAnchors {
+		if _, ok := names[anchor.Cert]; ok {
+			return true
+		}
+	}
+	for _, constraint := range spec.Constraints {
+		if _, ok := names[constraint.Cert]; ok {
+			return true
+		}
+	}
+	return false
+}
+
 func updateMutableTLSPoliciesInTx(
 	tx *bbolt.Tx,
 	update func(api.TLSPolicySpec) (api.TLSPolicySpec, bool),
@@ -1479,6 +1610,27 @@ func cloneImmutableTLSData(in immutableTLSData) immutableTLSData {
 		}
 	}
 	return ensureDefaultTLSPolicy(out)
+}
+
+func cloneImmutableTLSDataWithoutDefault(in immutableTLSData) immutableTLSData {
+	out := immutableTLSData{}
+	if len(in.Certs) > 0 {
+		out.Certs = make(map[string]immutableTLSCert, len(in.Certs))
+		for name, record := range in.Certs {
+			out.Certs[name] = record
+		}
+	}
+	if len(in.Policies) > 0 {
+		out.Policies = make(map[string]immutableTLSPolicy, len(in.Policies))
+		for name, record := range in.Policies {
+			if name == tlsDefaultPolicyName && record.source == api.TLSSourceOS {
+				continue
+			}
+			record.Spec = normalizeTLSPolicySpec(record.Spec)
+			out.Policies[name] = record
+		}
+	}
+	return out
 }
 
 func ensureDefaultTLSPolicy(in immutableTLSData) immutableTLSData {

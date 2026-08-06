@@ -16,6 +16,7 @@ import (
 	"github.com/asciimoth/almagest/lib"
 	"github.com/asciimoth/gonnect/protected"
 	"github.com/asciimoth/gonnect/sysnet"
+	"github.com/asciimoth/gonnect/tlspolicy"
 	"github.com/asciimoth/pasta/pasta"
 	"github.com/kataras/golog"
 )
@@ -30,15 +31,16 @@ type AdminAPI struct {
 	unixListener net.Listener
 	unixPath     string
 
-	projectVersionStatus api.ProjectVersionStatus
-	configAutosaver      *configAutosaver
-	config               *Config
-	configReadOnly       bool
-	fileStorage          string
-	kv                   *bboltKVManager
-	dns                  *bboltKVManager
-	secrets              *bboltKVManager
-	tls                  *bboltKVManager
+	projectVersionStatus  api.ProjectVersionStatus
+	configAutosaver       *configAutosaver
+	config                *Config
+	configReadOnly        bool
+	fileStorage           string
+	kv                    *bboltKVManager
+	dns                   *bboltKVManager
+	secrets               *bboltKVManager
+	tls                   *bboltKVManager
+	tlsOSAuthorityFetcher tlspolicy.AuthorityFetcher
 
 	leaseMu       sync.Mutex
 	mutationLease *mutationLease

@@ -410,6 +410,7 @@ const dnsKeySubscriptions = new Map<string, number>();
 const dnsKeySubscribePending = new Set<string>();
 let tlsSubscriptionID = 0;
 let tlsSubscribePending = false;
+let tlsReloadOSCertsPending = false;
 let tlsScrollTop = 0;
 let tlsNotice: TLSNotice | null = null;
 let tlsOpenForm: TLSOpenForm | null = null;
@@ -788,6 +789,8 @@ async function backend<T>(method: string, params: Record<string, unknown> = {}):
       return request<T>("tls", "builtin_ca");
     case "tlsSetBuiltinCA":
       return request<T>("tls", "set_builtin_ca_options", { options: params.options });
+    case "tlsReloadOSCerts":
+      return request<T>("tls", "reload_os_certs");
     case "tlsSetCert":
       return request<T>("tls", "set_cert", { name: params.name, pem: params.pem });
     case "tlsRenameCert":
@@ -3115,6 +3118,11 @@ function renderTLSHeader(): HTMLElement {
   header.append(textElement("h2", "TLS configs"));
   const actions = document.createElement("div");
   actions.className = "kv-row-actions tls-header-actions";
+  const reloadOS = textElement("button", tlsReloadOSCertsPending ? "Reloading..." : "Reload OS certs");
+  reloadOS.type = "button";
+  reloadOS.title = "Reload OS certificate authorities";
+  reloadOS.disabled = tlsReloadOSCertsPending;
+  reloadOS.addEventListener("click", () => void reloadTLSOSCerts());
   const addCert = textElement("button", "+ Certificate");
   addCert.type = "button";
   addCert.title = "Create TLS certificate";
@@ -3129,7 +3137,7 @@ function renderTLSHeader(): HTMLElement {
     tlsOpenForm = { kind: "policy" };
     renderTLS();
   });
-  actions.append(addCert, addPolicy);
+  actions.append(reloadOS, addCert, addPolicy);
   header.append(actions);
   return header;
 }
@@ -3908,6 +3916,24 @@ async function setTLSBuiltinCAOptions(options: TLSBuiltinCAOptions): Promise<voi
   if (!info) return;
   upsertTLSBuiltinCA(info);
   renderTLS();
+}
+
+async function reloadTLSOSCerts(): Promise<void> {
+  if (tlsReloadOSCertsPending) return;
+  tlsReloadOSCertsPending = true;
+  tlsNotice = null;
+  renderTLS();
+  try {
+    const snapshot = await backend<TLSSnapshot>("tlsReloadOSCerts", {});
+    tlsNotice = { level: "info", text: "OS TLS certificates reloaded." };
+    applyTLSSnapshotToState(snapshot);
+  } catch (error) {
+    tlsNotice = { level: "error", text: `tlsReloadOSCerts: ${(error as Error).message}` };
+    renderTLS();
+  } finally {
+    tlsReloadOSCertsPending = false;
+    renderTLS();
+  }
 }
 
 function openTLSValuePanel(kind: TLSItemKind, name: string): void {

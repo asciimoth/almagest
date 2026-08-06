@@ -1,10 +1,12 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"path/filepath"
 	"time"
 
+	"github.com/asciimoth/almagest/bin/almagestd/platform"
 	"github.com/asciimoth/almagest/bin/api"
 	almagest "github.com/asciimoth/almagest/lib"
 	"github.com/asciimoth/pasta/pasta"
@@ -65,6 +67,14 @@ func (s *apiSession) handleTLSMessage(msg api.Message) (api.Message, error) {
 		}
 		s.sendTLSMutationInbox(result)
 		return api.NewResponse(msg.ID, info)
+
+	case api.MethodTLSReloadOSCerts:
+		snapshot, result, err := s.admin.reloadTLSOSCerts(context.Background())
+		if err != nil {
+			return tlsRequestError(msg.ID, err)
+		}
+		s.sendTLSMutationInbox(result)
+		return api.NewResponse(msg.ID, snapshot)
 
 	case api.MethodTLSSetCert:
 		req, err := decodePayload[api.TLSSetCertRequest](msg)
@@ -227,6 +237,33 @@ func (a *AdminAPI) setTLSBuiltinCAOptions(options api.TLSBuiltinCAOptions) (api.
 		return api.TLSBuiltinCAInfo{}, tlsMutationResult{}, errTLSCertNotFound
 	}
 	return *snapshot.BuiltinCA, result, nil
+}
+
+// reloadTLSOSCerts reloads read-only certificate authorities from the OS trust
+// store and activates the new OS overlay in TLS storage. The returned mutation
+// result must be delivered to policy watchers so nodes rebuild configs that use
+// added, removed, or changed OS authorities.
+func (a *AdminAPI) reloadTLSOSCerts(ctx context.Context) (api.TLSSnapshot, tlsMutationResult, error) {
+	if a == nil || a.tls == nil {
+		return api.TLSSnapshot{}, tlsMutationResult{}, almagest.ErrTlsConfigNotFound
+	}
+	fetcher := a.tlsOSAuthorityFetcher
+	if fetcher == nil {
+		fetcher = platform.OSAuthorityFetcher()
+	}
+	data, err := loadOSTLSData(ctx, fetcher)
+	if err != nil {
+		return api.TLSSnapshot{}, tlsMutationResult{}, err
+	}
+	result, err := a.tls.setTLSOSData(data)
+	if err != nil {
+		return api.TLSSnapshot{}, tlsMutationResult{}, err
+	}
+	snapshot, err := a.tls.tlsSnapshot()
+	if err != nil {
+		return api.TLSSnapshot{}, tlsMutationResult{}, err
+	}
+	return snapshot, result, nil
 }
 
 func (s *apiSession) sendTLSMutationInbox(result tlsMutationResult) {

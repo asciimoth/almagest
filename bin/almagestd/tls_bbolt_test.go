@@ -565,6 +565,136 @@ func TestTLSBuiltinCAAPIRegeneratesAndNotifiesPolicies(t *testing.T) {
 	assertTLSEventsContain(t, events, api.TLSChangePolicy, "policy", false)
 }
 
+func TestTLSReloadOSCertsAPIUpdatesSnapshotAndEvents(t *testing.T) {
+	osPEM := testTLSCAPEM(t, "api-os-root")
+	manager, err := openKVManager(filepath.Join(t.TempDir(), "kv.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer manager.Close() //nolint:errcheck
+
+	var events []api.Message
+	session := (&AdminAPI{
+		tls: manager,
+		tlsOSAuthorityFetcher: tlspolicy.AuthorityFetcherFunc(func(context.Context) ([]tlspolicy.AuthorityCandidate, error) {
+			return []tlspolicy.AuthorityCandidate{testTLSAuthorityCandidate(t, osPEM)}, nil
+		}),
+	}).newAPISession(nil, nil, func(msg api.Message) error {
+		if msg.Kind == api.MessageEvent && msg.Surface == api.SurfaceTLS {
+			events = append(events, msg)
+		}
+		return nil
+	})
+	defer session.close()
+
+	subReq := mustRequest(t, "1", api.SurfaceTLS, string(api.MethodTLSSubscribe), nil)
+	resp, err := session.handleMessage(subReq)
+	if err != nil || resp.Error != nil {
+		t.Fatalf("subscribe response = %#v, err %v", resp, err)
+	}
+	subResp, err := api.DecodePayload[api.TLSSubscribeResponse](resp.Result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events = nil
+
+	reloadReq := mustRequest(t, "2", api.SurfaceTLS, string(api.MethodTLSReloadOSCerts), nil)
+	resp, err = session.handleMessage(reloadReq)
+	if err != nil || resp.Error != nil {
+		t.Fatalf("reload OS certs response = %#v, err %v", resp, err)
+	}
+	snapshot, err := api.DecodePayload[api.TLSSnapshot](resp.Result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.Certs) != 1 || snapshot.Certs[0].Source != api.TLSSourceOS {
+		t.Fatalf("reload snapshot certs = %#v, want one OS cert", snapshot.Certs)
+	}
+	if defaultPolicy := findTLSPolicyEntry(snapshot.Policies, tlsDefaultPolicyName); defaultPolicy == nil ||
+		findTLSTrustAnchor(defaultPolicy.Spec.TrustAnchors, snapshot.Certs[0].Name) == nil {
+		t.Fatalf("reload default policy = %#v, want new OS trust anchor %q", defaultPolicy, snapshot.Certs[0].Name)
+	}
+	assertTLSEventsContain(t, events, api.TLSChangeCert, snapshot.Certs[0].Name, false)
+	assertTLSEventsContain(t, events, api.TLSChangePolicy, tlsDefaultPolicyName, false)
+	for _, msg := range events {
+		var event api.TLSEvent
+		if err := json.Unmarshal(msg.Payload, &event); err != nil {
+			t.Fatal(err)
+		}
+		if event.SubscriptionID != subResp.SubscriptionID {
+			t.Fatalf("TLS event subscription = %d, want %d", event.SubscriptionID, subResp.SubscriptionID)
+		}
+	}
+}
+
+func TestTLSOSDataReloadDiffsAndNotifiesPolicies(t *testing.T) {
+	removedPEM := testTLSCAPEM(t, "removed")
+	changedOldPEM := testTLSCAPEM(t, "changed-old")
+	changedNewPEM := testTLSCAPEM(t, "changed-new")
+	keptPEM := testTLSCAPEM(t, "kept")
+	addedPEM := testTLSCAPEM(t, "added")
+	manager, err := openKVManagerWithOptions(filepath.Join(t.TempDir(), "kv.db"), bboltKVManagerOptions{
+		ImmutableTLS: immutableTLSData{
+			Certs: map[string]immutableTLSCert{
+				"os-ca:removed": {tlsCertificateRecord: tlsCertificateRecord{PEM: removedPEM}, source: api.TLSSourceOS},
+				"os-ca:changed": {tlsCertificateRecord: tlsCertificateRecord{PEM: changedOldPEM}, source: api.TLSSourceOS},
+				"os-ca:kept":    {tlsCertificateRecord: tlsCertificateRecord{PEM: keptPEM}, source: api.TLSSourceOS},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer manager.Close() //nolint:errcheck
+	if _, err := manager.setTLSPolicy("uses-changed", testTLSPolicy("os-ca:changed")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.GetClientConfig("uses-changed", "client"); err != nil {
+		t.Fatal(err)
+	}
+
+	var changes []tlsChange
+	subID := manager.subscribeTLSChanges(func(change tlsChange) {
+		changes = append(changes, change)
+	})
+	defer manager.unsubscribeTLSChanges(subID)
+
+	result, err := manager.setTLSOSData(immutableTLSData{
+		Certs: map[string]immutableTLSCert{
+			"os-ca:changed": {tlsCertificateRecord: tlsCertificateRecord{PEM: changedNewPEM}, source: api.TLSSourceOS},
+			"os-ca:kept":    {tlsCertificateRecord: tlsCertificateRecord{PEM: keptPEM}, source: api.TLSSourceOS},
+			"os-ca:added":   {tlsCertificateRecord: tlsCertificateRecord{PEM: addedPEM}, source: api.TLSSourceOS},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	assertTLSChange(t, changes, tlsChangeCertDelete, "os-ca:removed")
+	assertTLSChange(t, changes, tlsChangeCertUpsert, "os-ca:changed")
+	assertTLSChange(t, changes, tlsChangeCertUpsert, "os-ca:added")
+	assertTLSChange(t, changes, tlsChangePolicyUpsert, tlsDefaultPolicyName)
+	assertTLSChange(t, changes, tlsChangePolicyUpsert, "uses-changed")
+	assertTLSPolicyNotification(t, result.policyNotifications, "uses-changed", "client")
+
+	snapshot, err := manager.tlsSnapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if findTLSCertEntry(snapshot.Certs, "os-ca:removed") != nil {
+		t.Fatal("removed OS certificate is still present after reload")
+	}
+	if changed := findTLSCertEntry(snapshot.Certs, "os-ca:changed"); changed == nil || changed.PEM != changedNewPEM {
+		t.Fatalf("changed OS certificate = %#v, want new PEM", changed)
+	}
+	if findTLSCertEntry(snapshot.Certs, "os-ca:added") == nil {
+		t.Fatal("added OS certificate is missing after reload")
+	}
+	if policy := findTLSPolicyEntry(snapshot.Policies, "uses-changed"); policy == nil || !policy.Valid {
+		t.Fatalf("uses-changed policy = %#v, want valid after reload", policy)
+	}
+}
+
 func TestLoadOSTLSDataUsesReadableCertNames(t *testing.T) {
 	pemText := testTLSCAPEM(t, "Example Root CA")
 	authorities, err := tlspolicy.ParseAuthoritiesPEM([]byte(pemText))
@@ -654,6 +784,25 @@ func testTLSCAPEM(t *testing.T, commonName string) string {
 	t.Helper()
 	certPEM, _ := testTLSCAKeyPairPEM(t, commonName, time.Now().Add(-time.Hour), time.Now().Add(24*time.Hour))
 	return certPEM
+}
+
+func testTLSAuthorityCandidate(t *testing.T, pemText string) tlspolicy.AuthorityCandidate {
+	t.Helper()
+	authorities, err := tlspolicy.ParseAuthoritiesPEM([]byte(pemText))
+	if err != nil {
+		t.Fatal(err)
+	}
+	der, err := authorities[0].MarshalBinary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return tlspolicy.AuthorityCandidate{
+		DER: der,
+		Source: tlspolicy.AuthoritySource{
+			Name:  "test",
+			Trust: tlspolicy.TrustHintAnchor,
+		},
+	}
 }
 
 func testTLSCAKeyPairPEM(t *testing.T, commonName string, notBefore, notAfter time.Time) (string, string) {
@@ -800,6 +949,32 @@ func assertTLSEventsContain(t *testing.T, events []api.Message, kind api.TLSChan
 		}
 	}
 	t.Fatalf("TLS events %#v do not include %s %q deleted %v", events, kind, name, deleted)
+}
+
+func assertTLSChange(t *testing.T, changes []tlsChange, kind tlsChangeKind, name string) {
+	t.Helper()
+	for _, change := range changes {
+		if change.kind == kind && change.name == name {
+			return
+		}
+	}
+	t.Fatalf("TLS changes %#v do not include %s %q", changes, kind, name)
+}
+
+func assertTLSPolicyNotification(t *testing.T, notifications []tlsPolicyNotification, policy, node string) {
+	t.Helper()
+	for _, notification := range notifications {
+		if notification.prevName != policy || notification.newName != policy {
+			continue
+		}
+		for _, gotNode := range notification.nodes {
+			if gotNode == node {
+				return
+			}
+		}
+		t.Fatalf("TLS policy notification %#v for %q does not include node %q", notification, policy, node)
+	}
+	t.Fatalf("TLS policy notifications %#v do not include policy %q", notifications, policy)
 }
 
 func assertTLSBuiltinCAEvent(t *testing.T, events []api.Message, subscriptionID uint64) {

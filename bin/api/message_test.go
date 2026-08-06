@@ -188,6 +188,9 @@ func TestRequiresMutationLease(t *testing.T) {
 	if !RequiresMutationLease(SurfaceTLS, string(MethodTLSSetBuiltinCA)) {
 		t.Fatal("TLS set_builtin_ca_options should require mutation lease")
 	}
+	if !RequiresMutationLease(SurfaceTLS, string(MethodTLSReloadOSCerts)) {
+		t.Fatal("TLS reload_os_certs should require mutation lease")
+	}
 	if RequiresMutationLease(SurfaceTLS, string(MethodTLSSnapshot)) {
 		t.Fatal("TLS snapshot should not require mutation lease")
 	}
@@ -267,17 +270,18 @@ func TestTLSMethodsAndSurfaceAreAdvertised(t *testing.T) {
 		t.Fatal("Surfaces does not include tls")
 	}
 	required := map[string]bool{
-		string(MethodTLSSnapshot):     false,
-		string(MethodTLSSubscribe):    false,
-		string(MethodTLSUnsubscribe):  false,
-		string(MethodTLSBuiltinCA):    false,
-		string(MethodTLSSetBuiltinCA): false,
-		string(MethodTLSSetCert):      false,
-		string(MethodTLSRenameCert):   false,
-		string(MethodTLSDeleteCert):   false,
-		string(MethodTLSSetPolicy):    false,
-		string(MethodTLSRenamePolicy): false,
-		string(MethodTLSDeletePolicy): false,
+		string(MethodTLSSnapshot):      false,
+		string(MethodTLSSubscribe):     false,
+		string(MethodTLSUnsubscribe):   false,
+		string(MethodTLSBuiltinCA):     false,
+		string(MethodTLSSetBuiltinCA):  false,
+		string(MethodTLSReloadOSCerts): false,
+		string(MethodTLSSetCert):       false,
+		string(MethodTLSRenameCert):    false,
+		string(MethodTLSDeleteCert):    false,
+		string(MethodTLSSetPolicy):     false,
+		string(MethodTLSRenamePolicy):  false,
+		string(MethodTLSDeletePolicy):  false,
 	}
 	for _, method := range TLSMethods() {
 		if _, ok := required[method]; ok {

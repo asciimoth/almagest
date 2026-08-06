@@ -3,17 +3,18 @@ package api
 type TLSMethod string
 
 const (
-	MethodTLSSnapshot     TLSMethod = "snapshot"
-	MethodTLSSubscribe    TLSMethod = "subscribe"
-	MethodTLSUnsubscribe  TLSMethod = "unsubscribe"
-	MethodTLSBuiltinCA    TLSMethod = "builtin_ca"
-	MethodTLSSetBuiltinCA TLSMethod = "set_builtin_ca_options"
-	MethodTLSSetCert      TLSMethod = "set_cert"
-	MethodTLSRenameCert   TLSMethod = "rename_cert"
-	MethodTLSDeleteCert   TLSMethod = "delete_cert"
-	MethodTLSSetPolicy    TLSMethod = "set_policy"
-	MethodTLSRenamePolicy TLSMethod = "rename_policy"
-	MethodTLSDeletePolicy TLSMethod = "delete_policy"
+	MethodTLSSnapshot      TLSMethod = "snapshot"
+	MethodTLSSubscribe     TLSMethod = "subscribe"
+	MethodTLSUnsubscribe   TLSMethod = "unsubscribe"
+	MethodTLSBuiltinCA     TLSMethod = "builtin_ca"
+	MethodTLSSetBuiltinCA  TLSMethod = "set_builtin_ca_options"
+	MethodTLSReloadOSCerts TLSMethod = "reload_os_certs"
+	MethodTLSSetCert       TLSMethod = "set_cert"
+	MethodTLSRenameCert    TLSMethod = "rename_cert"
+	MethodTLSDeleteCert    TLSMethod = "delete_cert"
+	MethodTLSSetPolicy     TLSMethod = "set_policy"
+	MethodTLSRenamePolicy  TLSMethod = "rename_policy"
+	MethodTLSDeletePolicy  TLSMethod = "delete_policy"
 
 	EventTLSUpdate TLSMethod = "update"
 )
@@ -26,6 +27,7 @@ func TLSMethods() []string {
 		string(MethodTLSUnsubscribe),
 		string(MethodTLSBuiltinCA),
 		string(MethodTLSSetBuiltinCA),
+		string(MethodTLSReloadOSCerts),
 		string(MethodTLSSetCert),
 		string(MethodTLSRenameCert),
 		string(MethodTLSDeleteCert),
@@ -38,6 +40,7 @@ func TLSMethods() []string {
 func IsTLSMutation(method string) bool {
 	switch TLSMethod(method) {
 	case MethodTLSSetBuiltinCA,
+		MethodTLSReloadOSCerts,
 		MethodTLSSetCert,
 		MethodTLSRenameCert,
 		MethodTLSDeleteCert,
