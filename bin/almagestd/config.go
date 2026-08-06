@@ -240,9 +240,11 @@ func (p *ProtectedConfig) ImmutableSecrets() (map[string]immutableSecret, error)
 		value := ""
 		source := api.SecretSourceProtected
 		if cfg.Value != nil {
+			golog.Debugf("secrets storage: loading protected secret %q from inline value", key)
 			value = *cfg.Value
 		}
 		if cfg.Env != "" {
+			golog.Debugf("secrets storage: loading protected secret %q from environment variable %q", key, cfg.Env)
 			envValue, ok := os.LookupEnv(cfg.Env)
 			if !ok {
 				return nil, fmt.Errorf("%w: environment variable %q for protected secret %q is not set", almagest.ErrSecretInvalidValue, cfg.Env, key)
@@ -258,6 +260,7 @@ func (p *ProtectedConfig) ImmutableSecrets() (map[string]immutableSecret, error)
 			source: source,
 		}
 	}
+	golog.Debugf("secrets storage: loaded %d protected secrets", len(out))
 	return out, nil
 }
 
@@ -277,9 +280,12 @@ func (p *ProtectedConfig) ImmutableTLS() (immutableTLSData, error) {
 			}
 			pemText := ""
 			if cfg.PEM != nil {
+				golog.Debugf("TLS certificates: loading protected certificate %q from inline PEM", name)
 				pemText = *cfg.PEM
 			} else {
-				data, err := os.ReadFile(strings.TrimSpace(cfg.File))
+				path := strings.TrimSpace(cfg.File)
+				golog.Debugf("TLS certificates: loading protected certificate %q from file %s", name, path)
+				data, err := os.ReadFile(path)
 				if err != nil {
 					return immutableTLSData{}, fmt.Errorf("%w: read protected TLS certificate %q file %q: %v", almagest.ErrTlsConfigInvalidValue, name, cfg.File, err)
 				}
@@ -293,6 +299,7 @@ func (p *ProtectedConfig) ImmutableTLS() (immutableTLSData, error) {
 				source:               api.TLSSourceProtected,
 			}
 		}
+		golog.Debugf("TLS certificates: loaded %d protected certificates", len(out.Certs))
 	}
 	if len(p.TLS.Policies) > 0 {
 		out.Policies = make(map[string]immutableTLSPolicy, len(p.TLS.Policies))
@@ -305,6 +312,7 @@ func (p *ProtectedConfig) ImmutableTLS() (immutableTLSData, error) {
 				source:          api.TLSSourceProtected,
 			}
 		}
+		golog.Debugf("TLS policies: loaded %d protected policies", len(out.Policies))
 	}
 	return out, nil
 }

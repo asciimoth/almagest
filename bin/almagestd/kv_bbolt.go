@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sync"
 	"time"
 	"unicode/utf8"
 
 	"github.com/asciimoth/almagest/lib"
+	"github.com/kataras/golog"
 	"go.etcd.io/bbolt"
 	bberrors "go.etcd.io/bbolt/errors"
 )
@@ -114,6 +116,15 @@ func openKVManager(path string) (*bboltKVManager, error) {
 }
 
 func openKVManagerWithOptions(path string, options bboltKVManagerOptions) (*bboltKVManager, error) {
+	existing, err := bboltDatabaseExists(path)
+	if err != nil {
+		return nil, err
+	}
+	if existing {
+		golog.Debugf("bbolt database: opening existing database at %s", path)
+	} else {
+		golog.Debugf("bbolt database: creating new database at %s", path)
+	}
 	db, err := bbolt.Open(path, 0o600, &bbolt.Options{Timeout: time.Second})
 	if err != nil {
 		return nil, fmt.Errorf("open kv database: %w", err)
@@ -144,7 +155,22 @@ func openKVManagerWithOptions(path string, options bboltKVManagerOptions) (*bbol
 		_ = db.Close()
 		return nil, err
 	}
+	golog.Debugf("bbolt database: ready at %s", path)
 	return manager, nil
+}
+
+func bboltDatabaseExists(path string) (bool, error) {
+	info, err := os.Stat(path)
+	if err == nil {
+		if info.IsDir() {
+			return false, fmt.Errorf("open kv database: %s is a directory", path)
+		}
+		return true, nil
+	}
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	return false, fmt.Errorf("stat kv database: %w", err)
 }
 
 func (m *bboltKVManager) initRootBuckets() error {
@@ -183,6 +209,7 @@ func (m *bboltKVManager) Close() error {
 }
 
 func (m *bboltKVManager) DefaultStore() almagest.KVStore {
+	golog.Debug("KV storage: accessing default store")
 	return &bboltKVStore{
 		manager:        m,
 		path:           []string{kvDataBucketName},
@@ -192,6 +219,7 @@ func (m *bboltKVManager) DefaultStore() almagest.KVStore {
 
 func (m *bboltKVManager) PluginStore(name string) almagest.KVStore {
 	invalid := !validKVName(name)
+	golog.Debugf("KV storage: accessing plugin store name=%q invalid=%t", name, invalid)
 	return &bboltKVStore{
 		manager:        m,
 		path:           []string{kvPluginBucketName, name},
@@ -246,6 +274,7 @@ func (s *bboltKVStore) View(ctx context.Context, fn func(almagest.KVReadTx) erro
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	golog.Debugf("KV storage: read access path=%q", s.path)
 	return mapBboltKVError(s.manager.db.View(func(tx *bbolt.Tx) error {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -264,6 +293,7 @@ func (s *bboltKVStore) Update(ctx context.Context, fn func(almagest.KVWriteTx) e
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	golog.Debugf("KV storage: write access path=%q", s.path)
 	err := mapBboltKVError(s.manager.db.Update(func(tx *bbolt.Tx) error {
 		if err := ctx.Err(); err != nil {
 			return err

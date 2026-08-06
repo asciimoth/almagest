@@ -12,6 +12,7 @@ import (
 	"unicode/utf8"
 
 	gdns "github.com/asciimoth/gonnect/dns"
+	"github.com/kataras/golog"
 	"go.etcd.io/bbolt"
 	bberrors "go.etcd.io/bbolt/errors"
 )
@@ -107,6 +108,7 @@ type dnsJSONResource struct {
 }
 
 func (m *bboltKVManager) Storage(name string) gdns.CacheStorage {
+	golog.Debugf("DNS cache storage: access requested name=%q", name)
 	return m.dnsStorage(name)
 }
 
@@ -142,6 +144,7 @@ func (m *bboltKVManager) dnsStorage(name string) *bboltDNSCacheStorage {
 		}
 		if storage := m.dnsStores[name]; storage != nil {
 			m.dnsMu.Unlock()
+			golog.Debugf("DNS cache storage: reusing storage name=%q", name)
 			return storage
 		}
 		storage := newBboltDNSCacheStorage(m, name, false)
@@ -150,10 +153,16 @@ func (m *bboltKVManager) dnsStorage(name string) *bboltDNSCacheStorage {
 
 		created, err := m.ensureDNSCacheBucket(name)
 		if err == nil && created {
+			golog.Debugf("DNS cache storage: created bucket name=%q", name)
 			m.notifyDNSChange(dnsCacheChange{kind: dnsCacheChangeCacheUpsert, cache: name})
+		} else if err == nil {
+			golog.Debugf("DNS cache storage: opened existing bucket name=%q", name)
+		} else {
+			golog.Debugf("DNS cache storage: bucket access failed name=%q error=%v", name, err)
 		}
 		return storage
 	}
+	golog.Debugf("DNS cache storage: invalid access name=%q", name)
 	return newBboltDNSCacheStorage(m, name, true)
 }
 
@@ -177,26 +186,36 @@ func (s *bboltDNSCacheStorage) Get(key string, now time.Time) (*gdns.Message, bo
 	}
 	msg, raw, found, expired := s.memoryGet(key, now)
 	if found && !expired {
+		golog.Debugf("DNS cache storage: memory hit cache=%q key=%q", s.name, key)
 		return msg, true
 	}
 	if found && expired {
+		golog.Debugf("DNS cache storage: expired memory entry cache=%q key=%q", s.name, key)
 		s.deleteExpiredEntry(key, raw)
 		return nil, false
 	}
 
 	raw, found, err := s.manager.getDNSCacheEntryRaw(s.name, key)
 	if err != nil || !found {
+		if err != nil {
+			golog.Debugf("DNS cache storage: read failed cache=%q key=%q error=%v", s.name, key, err)
+		} else {
+			golog.Debugf("DNS cache storage: miss cache=%q key=%q", s.name, key)
+		}
 		return nil, false
 	}
 	entry, err := unmarshalDNSCacheEntry(raw)
 	if err != nil {
+		golog.Debugf("DNS cache storage: invalid stored entry cache=%q key=%q error=%v", s.name, key, err)
 		s.deleteExpiredEntry(key, raw)
 		return nil, false
 	}
 	if s.dnsCacheEntryExpired(entry.expires, now) {
+		golog.Debugf("DNS cache storage: expired stored entry cache=%q key=%q", s.name, key)
 		s.deleteExpiredEntry(key, raw)
 		return nil, false
 	}
+	golog.Debugf("DNS cache storage: bbolt hit cache=%q key=%q", s.name, key)
 	s.memoryPut(key, entry.msg, entry.expires, raw)
 	return entry.msg.Copy(), true
 }
@@ -228,8 +247,10 @@ func (s *bboltDNSCacheStorage) Set(key string, msg *gdns.Message, now time.Time)
 	}
 	created, err := s.manager.putDNSCacheEntry(s.name, key, raw)
 	if err != nil {
+		golog.Debugf("DNS cache storage: write failed cache=%q key=%q error=%v", s.name, key, err)
 		return
 	}
+	golog.Debugf("DNS cache storage: wrote entry cache=%q key=%q created_cache=%t", s.name, key, created)
 	s.memoryPut(key, msg, expires, raw)
 	changes := []dnsCacheChange{{kind: dnsCacheChangeKeyUpsert, cache: s.name, key: key}}
 	if created {
@@ -245,7 +266,10 @@ func (s *bboltDNSCacheStorage) Delete(key string) {
 	s.memoryDelete(key)
 	deleted, err := s.manager.deleteDNSCacheEntry(s.name, key, nil)
 	if err == nil && deleted {
+		golog.Debugf("DNS cache storage: deleted entry cache=%q key=%q", s.name, key)
 		s.manager.notifyDNSChange(dnsCacheChange{kind: dnsCacheChangeKeyDelete, cache: s.name, key: key})
+	} else if err != nil {
+		golog.Debugf("DNS cache storage: delete failed cache=%q key=%q error=%v", s.name, key, err)
 	}
 }
 

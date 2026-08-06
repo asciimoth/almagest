@@ -9,6 +9,7 @@ import (
 
 	"github.com/asciimoth/almagest/bin/api"
 	"github.com/asciimoth/gonnect/tlspolicy"
+	"github.com/kataras/golog"
 )
 
 const (
@@ -17,6 +18,7 @@ const (
 )
 
 func loadOSTLSData(ctx context.Context, fetcher tlspolicy.AuthorityFetcher) (immutableTLSData, error) {
+	golog.Debug("TLS certificates: loading OS authority catalog")
 	catalog, err := tlspolicy.FetchAuthorityCatalog(ctx, fetcher)
 	if err != nil {
 		return immutableTLSData{}, err
@@ -35,6 +37,7 @@ func loadOSTLSData(ctx context.Context, fetcher tlspolicy.AuthorityFetcher) (imm
 			source:               api.TLSSourceOS,
 		}
 	}
+	golog.Debugf("TLS certificates: loaded %d from OS authority catalog", len(out.Certs))
 	return out, nil
 }
 

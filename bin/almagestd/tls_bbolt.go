@@ -106,6 +106,7 @@ func (m *bboltKVManager) ListConfigs() []string {
 	if m == nil || m.db == nil {
 		return nil
 	}
+	golog.Debug("TLS storage: listing policy configs")
 	policies, err := m.tlsEffectivePolicyMap()
 	if err != nil {
 		return nil
@@ -125,6 +126,7 @@ func (m *bboltKVManager) GetClientConfig(name string, node string) (tls.Config, 
 	if !validTLSName(name) || (node != "" && !validSecretNodeName(node)) {
 		return tls.Config{}, almagest.ErrTlsConfigInvalidName
 	}
+	golog.Debugf("TLS storage: client config access policy=%q node=%q", name, node)
 	certs, err := m.tlsEffectiveCertMap()
 	if err != nil {
 		return tls.Config{}, err
@@ -151,6 +153,7 @@ func (m *bboltKVManager) GetClientConfig(name string, node string) (tls.Config, 
 }
 
 func (m *bboltKVManager) tlsSnapshot() (api.TLSSnapshot, error) {
+	golog.Debug("TLS storage: snapshot access")
 	certs, err := m.tlsEffectiveCertMap()
 	if err != nil {
 		return api.TLSSnapshot{}, err
@@ -184,6 +187,7 @@ func (m *bboltKVManager) tlsSnapshot() (api.TLSSnapshot, error) {
 }
 
 func (m *bboltKVManager) tlsCertAPIEntry(name string) (api.TLSCertEntry, bool, error) {
+	golog.Debugf("TLS storage: certificate entry access name=%q", name)
 	cert, found, err := m.tlsEffectiveCert(name)
 	if err != nil || !found {
 		return api.TLSCertEntry{}, false, err
@@ -192,6 +196,7 @@ func (m *bboltKVManager) tlsCertAPIEntry(name string) (api.TLSCertEntry, bool, e
 }
 
 func (m *bboltKVManager) tlsPolicyAPIEntry(name string) (api.TLSPolicyEntry, bool, error) {
+	golog.Debugf("TLS storage: policy entry access name=%q", name)
 	certs, err := m.tlsEffectiveCertMap()
 	if err != nil {
 		return api.TLSPolicyEntry{}, false, err
@@ -319,6 +324,7 @@ func (m *bboltKVManager) setTLSCert(name, pemText string) (tlsMutationResult, er
 	if _, _, err := parseTLSAuthorityPEM(record.PEM); err != nil {
 		return tlsMutationResult{}, fmt.Errorf("%w: %v", almagest.ErrTlsConfigInvalidValue, err)
 	}
+	golog.Debugf("TLS storage: writing mutable certificate name=%q", name)
 	affected, err := m.tlsPoliciesMentioningCert(name)
 	if err != nil {
 		return tlsMutationResult{}, err
@@ -352,6 +358,7 @@ func (m *bboltKVManager) renameTLSCert(name, newName string) (tlsMutationResult,
 	if !validMutableTLSCertName(name) || !validMutableTLSCertName(newName) {
 		return tlsMutationResult{}, almagest.ErrTlsConfigInvalidName
 	}
+	golog.Debugf("TLS storage: renaming mutable certificate name=%q new_name=%q", name, newName)
 	if name == newName {
 		cert, found, err := m.tlsEffectiveCert(name)
 		if err != nil {
@@ -421,6 +428,7 @@ func (m *bboltKVManager) deleteTLSCert(name string) (tlsMutationResult, error) {
 	if _, ok := m.immutableTLSCert(name); ok {
 		return tlsMutationResult{}, almagest.ErrTlsConfigReadOnly
 	}
+	golog.Debugf("TLS storage: deleting mutable certificate name=%q", name)
 
 	deleted := false
 	changedPolicies := map[string]struct{}{}
@@ -470,6 +478,7 @@ func (m *bboltKVManager) setTLSPolicy(name string, spec api.TLSPolicySpec) (tlsM
 	if _, err := compileTLSPolicySpec(spec, certs); err != nil {
 		return tlsMutationResult{}, fmt.Errorf("%w: %v", almagest.ErrTlsConfigInvalidValue, err)
 	}
+	golog.Debugf("TLS storage: writing mutable policy name=%q", name)
 	raw, err := encodeTLSPolicyRecord(tlsPolicyRecord{Spec: spec})
 	if err != nil {
 		return tlsMutationResult{}, err
@@ -494,6 +503,7 @@ func (m *bboltKVManager) renameTLSPolicy(name, newName string) (tlsMutationResul
 	if !validMutableTLSPolicyName(name) || !validMutableTLSPolicyName(newName) {
 		return tlsMutationResult{}, almagest.ErrTlsConfigInvalidName
 	}
+	golog.Debugf("TLS storage: renaming mutable policy name=%q new_name=%q", name, newName)
 	if name == newName {
 		policy, found, err := m.tlsEffectivePolicy(name)
 		if err != nil {
@@ -559,6 +569,7 @@ func (m *bboltKVManager) deleteTLSPolicy(name string) (tlsMutationResult, error)
 	if _, ok := m.immutableTLSPolicy(name); ok {
 		return tlsMutationResult{}, almagest.ErrTlsConfigReadOnly
 	}
+	golog.Debugf("TLS storage: deleting mutable policy name=%q", name)
 
 	deleted := false
 	err := mapBboltTLSError(m.db.Update(func(tx *bbolt.Tx) error {
