@@ -32,6 +32,9 @@ type AdminAPI struct {
 
 	projectVersionStatus api.ProjectVersionStatus
 	configAutosaver      *configAutosaver
+	config               *Config
+	configReadOnly       bool
+	fileStorage          string
 	kv                   *bboltKVManager
 	dns                  *bboltKVManager
 	secrets              *bboltKVManager
@@ -758,7 +761,7 @@ func mutationLeaseTTL(milliseconds int64) time.Duration {
 }
 
 func PrepareAdminAPI(cfg *Config) (*AdminAPI, error) {
-	api := AdminAPI{}
+	api := AdminAPI{config: cfg}
 	if cfg.Protected.Admin.Web != 0 {
 		golog.Warn("Web admin API is enabled; unix socket admin API is safer for local administration")
 		addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(int(cfg.Protected.Admin.Web)))

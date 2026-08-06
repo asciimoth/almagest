@@ -27,6 +27,9 @@
       "properties": {
         "Save": {
           "$ref": "#/$defs/saveConfig"
+        },
+        "TLS": {
+          "$ref": "#/$defs/daemonTLSConfig"
         }
       },
       "additionalProperties": true
@@ -43,6 +46,60 @@
         }
       },
       "additionalProperties": true
+    },
+    "daemonTLSConfig": {
+      "type": "object",
+      "description": "Daemon-owned TLS runtime settings.",
+      "properties": {
+        "BuiltinCA": {
+          "$ref": "#/$defs/tlsBuiltinCAOptions"
+        }
+      },
+      "additionalProperties": true
+    },
+    "tlsBuiltinCAOptions": {
+      "type": "object",
+      "description": "Generation options for the daemon-owned built-in TLS CA. The daemon stores the generated certificate and private key in the runtime file-storage directory. Empty or omitted ValidityDays means no practical expiration.",
+      "properties": {
+        "Issuer": {
+          "type": "string",
+          "default": "Almagest",
+          "description": "Certificate subject common name and issuer common name."
+        },
+        "ValidityDays": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0,
+          "description": "Certificate validity in whole days. 0 uses the daemon no-expiration fallback."
+        },
+        "KeyAlgorithm": {
+          "type": "string",
+          "enum": [
+            "ecdsa",
+            "ed25519",
+            "rsa"
+          ],
+          "default": "ecdsa"
+        },
+        "Curve": {
+          "type": "string",
+          "enum": [
+            "P256",
+            "P384",
+            "P521"
+          ],
+          "default": "P256",
+          "description": "ECDSA curve. Ignored for non-ECDSA keys."
+        },
+        "KeyBits": {
+          "type": "integer",
+          "minimum": 2048,
+          "maximum": 8192,
+          "default": 3072,
+          "description": "RSA key size in bits. Ignored for non-RSA keys."
+        }
+      },
+      "additionalProperties": false
     },
     "logsConfig": {
       "type": "object",

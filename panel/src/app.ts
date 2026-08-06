@@ -116,11 +116,14 @@ import {
   formatTLSCertMeta,
   formatTLSPolicyMeta,
   formatTLSPolicySpec,
+  isBuiltinTLSCertName,
   isMutableTLSCertName,
   isMutableTLSPolicyName,
   parseTLSPolicySpec,
   sortTLSCerts,
   sortTLSPolicies,
+  type TLSBuiltinCAInfo,
+  type TLSBuiltinCAOptions,
   type TLSCertEntry,
   type TLSChange,
   type TLSDNSRule,
@@ -141,6 +144,8 @@ const TLS_CERT_OPENSSL_COMMAND = [
   "-sha256 -days 365 -nodes",
   '-subj "/CN=example.test"',
 ].join(" ");
+const TLS_BUILTIN_CA_ALGORITHMS = ["ecdsa", "ed25519", "rsa"] as const;
+const TLS_BUILTIN_CA_CURVES = ["P256", "P384", "P521"] as const;
 const TLS_AUTHORITY_MATCHES = ["certificate", "spki"] as const;
 const TLS_PIN_KINDS = ["spki", "certificate"] as const;
 let secNodeAutocompleteID = 0;
@@ -779,6 +784,10 @@ async function backend<T>(method: string, params: Record<string, unknown> = {}):
       return request<T>("tls", "subscribe");
     case "tlsUnsubscribe":
       return request<T>("tls", "unsubscribe", { subscription_id: params.subscriptionID });
+    case "tlsBuiltinCA":
+      return request<T>("tls", "builtin_ca");
+    case "tlsSetBuiltinCA":
+      return request<T>("tls", "set_builtin_ca_options", { options: params.options });
     case "tlsSetCert":
       return request<T>("tls", "set_cert", { name: params.name, pem: params.pem });
     case "tlsRenameCert":
@@ -3064,6 +3073,7 @@ async function ensureTLSSubscription(): Promise<void> {
 
 function applyTLSSnapshotToState(snapshot: TLSSnapshot): void {
   tlsSnapshot = {
+    builtin_ca: snapshot.builtin_ca,
     certs: sortTLSCerts(snapshot.certs ?? []),
     policies: sortTLSPolicies(snapshot.policies ?? []),
   };
@@ -3084,6 +3094,7 @@ function renderTLS(): void {
   tree.className = "kv-tree-inner";
   tree.append(renderTLSHeader());
   if (tlsNotice) tree.append(renderTLSNotice(tlsNotice));
+  tree.append(renderTLSBuiltinCABlock());
   if (tlsOpenForm) tree.append(tlsOpenForm.kind === "cert" ? renderTLSCertCreateForm() : renderTLSPolicyCreateForm());
 
   const certs = tlsSnapshot.certs ?? [];
@@ -3121,6 +3132,147 @@ function renderTLSHeader(): HTMLElement {
   actions.append(addCert, addPolicy);
   header.append(actions);
   return header;
+}
+
+function renderTLSBuiltinCABlock(): HTMLElement {
+  const section = document.createElement("section");
+  section.className = "tls-builtin-ca";
+  const header = document.createElement("header");
+  header.append(textElement("h3", "Built-in CA"));
+  const actions = document.createElement("div");
+  actions.className = "kv-row-actions";
+  const info = tlsSnapshot.builtin_ca;
+  if (info?.cert.pem) {
+    const download = textElement("button", "Download PEM");
+    download.type = "button";
+    download.title = "Download built-in CA public certificate";
+    download.addEventListener("click", () => downloadTLSBuiltinCAPublic(info));
+    actions.append(download);
+  }
+  header.append(actions);
+  section.append(header);
+
+  if (!info) {
+    section.append(renderKVLoading());
+    return section;
+  }
+
+  section.append(renderTLSBuiltinCAFacts(info));
+  if (info.immutable || info.regeneration_disabled) {
+    section.append(textElement("p", "Protected config", "sec-form-hint"));
+  } else {
+    section.append(renderTLSBuiltinCAForm(info));
+  }
+  return section;
+}
+
+function renderTLSBuiltinCAFacts(info: TLSBuiltinCAInfo): HTMLElement {
+  const options = info.options ?? {};
+  const facts = document.createElement("dl");
+  facts.className = "tls-fact-list tls-builtin-ca-facts";
+  const validity = options.validity_days && options.validity_days > 0
+    ? `${options.validity_days} day${options.validity_days === 1 ? "" : "s"}`
+    : "none";
+  const crypto = [
+    options.key_algorithm || "ecdsa",
+    options.curve,
+    options.key_bits ? `${options.key_bits} bits` : "",
+  ].filter(Boolean).join(" / ");
+  for (const [label, value] of [
+    ["Issuer", options.issuer || "Almagest"],
+    ["Expiration", validity],
+    ["Crypto", crypto],
+    ["Fingerprint", info.cert.fingerprint],
+    ["SPKI", info.cert.spki_fingerprint],
+  ] as Array<[string, string | undefined]>) {
+    if (!value) continue;
+    facts.append(textElement("dt", label), textElement("dd", value));
+  }
+  return facts;
+}
+
+function renderTLSBuiltinCAForm(info: TLSBuiltinCAInfo): HTMLFormElement {
+  const options = info.options ?? {};
+  const form = document.createElement("form");
+  form.className = "kv-inline-form tls-builtin-ca-form";
+  const issuer = document.createElement("input");
+  issuer.name = "issuer";
+  issuer.autocomplete = "off";
+  issuer.value = options.issuer || "Almagest";
+
+  const validity = document.createElement("input");
+  validity.name = "validity_days";
+  validity.type = "number";
+  validity.min = "0";
+  validity.step = "1";
+  validity.value = String(options.validity_days ?? 0);
+
+  const algorithm = document.createElement("select");
+  appendSelectOptions(algorithm, [...TLS_BUILTIN_CA_ALGORITHMS], options.key_algorithm || "ecdsa");
+
+  const curve = document.createElement("select");
+  appendSelectOptions(curve, [...TLS_BUILTIN_CA_CURVES], options.curve || "P256");
+
+  const keyBits = document.createElement("input");
+  keyBits.name = "key_bits";
+  keyBits.type = "number";
+  keyBits.min = "2048";
+  keyBits.max = "8192";
+  keyBits.step = "256";
+  keyBits.value = String(options.key_bits || 3072);
+
+  const setCryptoFieldState = () => {
+    curve.disabled = algorithm.value !== "ecdsa";
+    keyBits.disabled = algorithm.value !== "rsa";
+  };
+  algorithm.addEventListener("change", setCryptoFieldState);
+  setCryptoFieldState();
+
+  const actions = document.createElement("div");
+  actions.className = "sec-form-actions";
+  const save = textElement("button", "Regenerate");
+  save.type = "submit";
+  actions.append(save);
+
+  form.append(
+    secFormField("Issuer", issuer),
+    secFormField("Validity days", validity),
+    secFormField("Key algorithm", algorithm),
+    secFormField("Curve", curve),
+    secFormField("RSA bits", keyBits),
+    actions,
+  );
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const next: TLSBuiltinCAOptions = {
+      issuer: issuer.value.trim(),
+      validity_days: Number.parseInt(validity.value, 10) || 0,
+      key_algorithm: algorithm.value,
+    };
+    if (algorithm.value === "ecdsa") next.curve = curve.value;
+    if (algorithm.value === "rsa") next.key_bits = Number.parseInt(keyBits.value, 10) || 0;
+    void setTLSBuiltinCAOptions(next);
+  });
+  return form;
+}
+
+function downloadTLSBuiltinCAPublic(info: TLSBuiltinCAInfo): void {
+  try {
+    const blob = new Blob([info.cert.pem ?? ""], { type: "application/x-pem-file;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${safeFilenamePart(info.cert.name) || "almagest-builtin-ca"}.pem`;
+    link.rel = "noopener";
+    document.body.append(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    tlsNotice = { level: "info", text: "Download started." };
+  } catch (error) {
+    tlsNotice = { level: "error", text: `Download failed: ${(error as Error).message}` };
+  }
+  renderTLS();
 }
 
 function renderTLSNotice(notice: TLSNotice): HTMLElement {
@@ -3392,6 +3544,10 @@ function createTLSPolicyGUIEditor(spec: TLSPolicySpec): TLSPolicyGUIEditor {
   root.className = "tls-policy-gui-editor";
   const certListID = `tls-policy-certs-${tlsPolicyEditorID}`;
   tlsPolicyEditorID += 1;
+  const builtinCAName = tlsSnapshot.builtin_ca?.cert.name ?? "";
+  const trustAnchors = (spec.trust_anchors ?? []).filter((rule) => (
+    rule.cert !== builtinCAName && !isBuiltinTLSCertName(rule.cert)
+  ));
   const certList = document.createElement("datalist");
   certList.id = certListID;
   for (const cert of tlsSnapshot.certs ?? []) {
@@ -3403,9 +3559,10 @@ function createTLSPolicyGUIEditor(spec: TLSPolicySpec): TLSPolicyGUIEditor {
   const trustEditors: Array<TLSPolicyRuleEditor<TLSTrustAnchor>> = [];
   const constraintEditors: Array<TLSPolicyRuleEditor<TLSAuthorityConstraint>> = [];
   const pinEditors: Array<TLSPolicyRuleEditor<TLSPin>> = [];
+  root.append(certList);
+  if (builtinCAName) root.append(createTLSBuiltinCAPolicyAnchor(builtinCAName));
   root.append(
-    certList,
-    createTLSPolicyRuleSection("Trust anchors", "Add anchor", trustEditors, spec.trust_anchors ?? [], (rule) => (
+    createTLSPolicyRuleSection("Trust anchors", "Add anchor", trustEditors, trustAnchors, (rule) => (
       createTLSTrustAnchorEditor(rule, certListID)
     )),
     createTLSPolicyRuleSection("Constraints", "Add constraint", constraintEditors, spec.constraints ?? [], (rule) => (
@@ -3434,6 +3591,23 @@ function createTLSPolicyGUIEditor(spec: TLSPolicySpec): TLSPolicyGUIEditor {
       }
     },
   };
+}
+
+function createTLSBuiltinCAPolicyAnchor(certName: string): HTMLElement {
+  const root = document.createElement("article");
+  root.className = "tls-policy-rule-card tls-policy-builtin-anchor";
+  root.append(textElement("h4", "Built-in trust anchor"));
+  const fields = document.createElement("div");
+  fields.className = "tls-policy-rule-fields";
+  const cert = document.createElement("input");
+  cert.value = certName;
+  cert.disabled = true;
+  const scope = document.createElement("input");
+  scope.value = "any server";
+  scope.disabled = true;
+  fields.append(secFormField("Certificate", cert), secFormField("Scope", scope));
+  root.append(fields);
+  return root;
 }
 
 function createTLSPolicyRuleSection<T>(
@@ -3725,6 +3899,17 @@ async function createTLSPolicy(rawName: string, spec: TLSPolicySpec): Promise<vo
   openTLSValuePanel("policy", entry.name);
 }
 
+async function setTLSBuiltinCAOptions(options: TLSBuiltinCAOptions): Promise<void> {
+  const info = await runTLSMutation<TLSBuiltinCAInfo>(
+    "tlsSetBuiltinCA",
+    { options },
+    "Built-in TLS CA updated.",
+  );
+  if (!info) return;
+  upsertTLSBuiltinCA(info);
+  renderTLS();
+}
+
 function openTLSValuePanel(kind: TLSItemKind, name: string): void {
   tlsValuePanel = {
     kind,
@@ -3946,6 +4131,14 @@ function upsertTLSPolicy(entry: TLSPolicyEntry): void {
   tlsSnapshot = {
     ...tlsSnapshot,
     policies: sortTLSPolicies([...(tlsSnapshot.policies ?? []).filter((policy) => policy.name !== entry.name), entry]),
+  };
+}
+
+function upsertTLSBuiltinCA(info: TLSBuiltinCAInfo): void {
+  tlsSnapshot = {
+    ...tlsSnapshot,
+    builtin_ca: info,
+    certs: sortTLSCerts([...(tlsSnapshot.certs ?? []).filter((cert) => cert.name !== info.cert.name), info.cert]),
   };
 }
 

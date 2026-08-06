@@ -1,4 +1,6 @@
-export type TLSSource = "mutable" | "protected" | "os" | (string & {});
+export type TLSSource = "mutable" | "protected" | "os" | "builtin" | (string & {});
+
+export const TLS_BUILTIN_CA_NAME = "builtin-ca:almagest";
 
 export type TLSCertEntry = {
   name: string;
@@ -14,6 +16,22 @@ export type TLSCertEntry = {
   read_only?: boolean;
   source?: TLSSource;
   certcat_matches?: TLSCertcatMatch[];
+};
+
+export type TLSBuiltinCAOptions = {
+  issuer?: string;
+  validity_days?: number;
+  key_algorithm?: string;
+  curve?: string;
+  key_bits?: number;
+};
+
+export type TLSBuiltinCAInfo = {
+  cert: TLSCertEntry;
+  options: TLSBuiltinCAOptions;
+  immutable?: boolean;
+  regeneration_disabled?: boolean;
+  regeneration_disabled_by?: string;
 };
 
 export type TLSDNSRule = {
@@ -87,21 +105,23 @@ export type TLSPolicyEntry = {
 };
 
 export type TLSSnapshot = {
+  builtin_ca?: TLSBuiltinCAInfo;
   certs?: TLSCertEntry[];
   policies?: TLSPolicyEntry[];
 };
 
-export type TLSChangeKind = "cert" | "policy";
+export type TLSChangeKind = "builtin_ca" | "cert" | "policy";
 
 export type TLSChange = {
   kind: TLSChangeKind;
-  name: string;
+  name?: string;
   deleted?: boolean;
+  builtin_ca?: TLSBuiltinCAInfo;
   cert?: TLSCertEntry;
   policy?: TLSPolicyEntry;
 };
 
-export type TLSItemKind = TLSChangeKind;
+export type TLSItemKind = "cert" | "policy";
 
 export type TLSItemRef = {
   kind: TLSItemKind;
@@ -137,6 +157,19 @@ export function sortTLSPolicies(policies: TLSPolicyEntry[]): TLSPolicyEntry[] {
 }
 
 export function applyTLSChange(snapshot: TLSSnapshot, change: TLSChange): TLSSnapshot {
+  if (change.kind === "builtin_ca") {
+    const builtin = change.builtin_ca;
+    const certs = builtin?.cert
+      ? sortTLSCerts([...(snapshot.certs ?? []).filter((cert) => cert.name !== builtin.cert.name), builtin.cert])
+      : snapshot.certs;
+    return {
+      ...snapshot,
+      builtin_ca: builtin ?? snapshot.builtin_ca,
+      certs,
+    };
+  }
+
+  if (!change.name) return snapshot;
   if (change.kind === "cert") {
     const certs = (snapshot.certs ?? []).filter((cert) => cert.name !== change.name);
     if (!change.deleted && change.cert) certs.push(change.cert);
@@ -158,6 +191,8 @@ export function formatTLSSource(source: TLSSource | undefined): string {
   switch (source) {
     case "os":
       return "OS";
+    case "builtin":
+      return "built-in";
     case "protected":
       return "protected";
     case "mutable":
@@ -181,6 +216,7 @@ export function formatTLSCertMeta(entry: TLSCertEntry): string {
 
 export function formatTLSPolicyMeta(entry: TLSPolicyEntry): string {
   const parts = [formatTLSSource(entry.source), entry.valid ? "valid" : "invalid"];
+  if (entry.spec.trust_anchors?.some((anchor) => isBuiltinTLSCertName(anchor.cert))) parts.push("built-in CA");
   const watchers = entry.watchers ?? [];
   if (watchers.length) parts.push(`${watchers.length} watcher${watchers.length === 1 ? "" : "s"}`);
   if (entry.read_only) parts.push("read-only");
@@ -299,11 +335,15 @@ export function describeTLSCertcatRecommendation(match: TLSCertcatMatch): string
 }
 
 export function isMutableTLSCertName(name: string): boolean {
-  return name.trim() !== "" && !name.startsWith("os-ca:");
+  return name.trim() !== "" && !name.startsWith("os-ca:") && !isBuiltinTLSCertName(name);
 }
 
 export function isMutableTLSPolicyName(name: string): boolean {
   return name.trim() !== "" && name !== "default";
+}
+
+export function isBuiltinTLSCertName(name: string): boolean {
+  return name === TLS_BUILTIN_CA_NAME || name.startsWith("builtin-ca:");
 }
 
 function highestTLSCertcatSeverity(matches: TLSCertcatMatch[]): string {

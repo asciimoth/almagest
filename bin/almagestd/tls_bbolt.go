@@ -16,6 +16,7 @@ import (
 	"github.com/asciimoth/almagest/bin/api"
 	almagest "github.com/asciimoth/almagest/lib"
 	"github.com/asciimoth/gonnect/tlspolicy"
+	"github.com/kataras/golog"
 	"go.etcd.io/bbolt"
 	bberrors "go.etcd.io/bbolt/errors"
 )
@@ -33,6 +34,7 @@ type tlsChangeKind string
 const (
 	tlsChangeCertUpsert   tlsChangeKind = "cert_upsert"
 	tlsChangeCertDelete   tlsChangeKind = "cert_delete"
+	tlsChangeBuiltinCA    tlsChangeKind = "builtin_ca"
 	tlsChangePolicyUpsert tlsChangeKind = "policy_upsert"
 	tlsChangePolicyDelete tlsChangeKind = "policy_delete"
 )
@@ -174,8 +176,9 @@ func (m *bboltKVManager) tlsSnapshot() (api.TLSSnapshot, error) {
 	})
 
 	return api.TLSSnapshot{
-		Certs:    certEntries,
-		Policies: policyEntries,
+		BuiltinCA: m.tlsBuiltinCAAPIInfo(certs),
+		Certs:     certEntries,
+		Policies:  policyEntries,
 	}, nil
 }
 
@@ -197,6 +200,40 @@ func (m *bboltKVManager) tlsPolicyAPIEntry(name string) (api.TLSPolicyEntry, boo
 		return api.TLSPolicyEntry{}, false, err
 	}
 	return m.tlsPolicyEntryToAPI(policy, certs), true, nil
+}
+
+func (m *bboltKVManager) setTLSBuiltinCA(ca *tlsBuiltinCA) (tlsMutationResult, error) {
+	if ca == nil {
+		return tlsMutationResult{}, almagest.ErrTlsConfigInvalidValue
+	}
+	policies, err := m.tlsEffectivePolicyMap()
+	if err != nil {
+		return tlsMutationResult{}, err
+	}
+
+	m.tlsMu.Lock()
+	m.builtinCA = cloneTLSBuiltinCA(ca)
+	m.immutableTLS = withTLSBuiltinCA(m.immutableTLS, m.builtinCA)
+	m.tlsMu.Unlock()
+
+	policyNames := make([]string, 0, len(policies))
+	for name := range policies {
+		policyNames = append(policyNames, name)
+	}
+	slices.Sort(policyNames)
+
+	changes := []tlsChange{
+		{kind: tlsChangeBuiltinCA, name: tlsBuiltinCACertName},
+		{kind: tlsChangeCertUpsert, name: tlsBuiltinCACertName},
+	}
+	notifications := make([]tlsPolicyNotification, 0, len(policyNames))
+	for _, name := range policyNames {
+		changes = append(changes, tlsChange{kind: tlsChangePolicyUpsert, name: name})
+		notifications = append(notifications, m.tlsPolicyNotification(name, name))
+	}
+	golog.Debugf("builtin TLS CA: activated certificate and queued %d TLS policy rebuild notifications", len(notifications))
+	m.notifyTLSChange(changes...)
+	return tlsMutationResult{policyNotifications: notifications}, nil
 }
 
 func (m *bboltKVManager) setTLSCert(name, pemText string) (tlsMutationResult, error) {
@@ -647,20 +684,50 @@ func (m *bboltKVManager) tlsPoliciesMentioningCert(certName string) ([]string, e
 }
 
 func (m *bboltKVManager) tlsPolicyEntryToAPI(policy tlsEffectivePolicy, certs map[string]tlsEffectiveCert) api.TLSPolicyEntry {
+	spec := tlsPolicySpecWithBuiltinCA(policy.Spec, certs)
 	entry := api.TLSPolicyEntry{
 		Name:     policy.Name,
-		Spec:     normalizeTLSPolicySpec(policy.Spec),
+		Spec:     spec,
 		ReadOnly: policy.ReadOnly,
 		Source:   policy.Source,
 		Watchers: m.tlsPolicyWatchers(policy.Name),
 	}
-	if _, err := compileTLSPolicySpec(entry.Spec, certs); err != nil {
+	if _, err := compileTLSPolicySpec(spec, certs); err != nil {
 		entry.Valid = false
 		entry.Error = err.Error()
 		return entry
 	}
 	entry.Valid = true
 	return entry
+}
+
+func (m *bboltKVManager) tlsBuiltinCAAPIInfo(certs map[string]tlsEffectiveCert) *api.TLSBuiltinCAInfo {
+	m.tlsMu.Lock()
+	ca := cloneTLSBuiltinCA(m.builtinCA)
+	m.tlsMu.Unlock()
+	if ca == nil {
+		return nil
+	}
+	cert, ok := certs[tlsBuiltinCACertName]
+	if !ok {
+		return nil
+	}
+	info := &api.TLSBuiltinCAInfo{
+		Cert:    tlsCertEntryToAPI(cert),
+		Options: ca.options,
+	}
+	if ca.immutable {
+		info.Immutable = true
+		info.RegenerationDisabled = true
+		info.RegenerationDisabledBy = "protected_config"
+	}
+	return info
+}
+
+func (m *bboltKVManager) currentTLSBuiltinCA() *tlsBuiltinCA {
+	m.tlsMu.Lock()
+	defer m.tlsMu.Unlock()
+	return cloneTLSBuiltinCA(m.builtinCA)
 }
 
 func tlsCertEntryToAPI(cert tlsEffectiveCert) api.TLSCertEntry {
@@ -703,7 +770,7 @@ func tlsEffectiveCertFromRecord(name string, record tlsCertificateRecord, readOn
 }
 
 func compileTLSPolicySpec(spec api.TLSPolicySpec, certs map[string]tlsEffectiveCert) (*tlspolicy.ServerPolicy, error) {
-	spec = normalizeTLSPolicySpec(spec)
+	spec = tlsPolicySpecWithBuiltinCA(spec, certs)
 	compiled := tlspolicy.ServerPolicySpec{
 		TrustAnchors: make([]tlspolicy.ScopedAuthority, 0, len(spec.TrustAnchors)),
 		Constraints:  make([]tlspolicy.AuthorityConstraint, 0, len(spec.Constraints)),
@@ -757,6 +824,16 @@ func compileTLSPolicySpec(spec api.TLSPolicySpec, certs map[string]tlsEffectiveC
 		})
 	}
 	return tlspolicy.CompileServerPolicy(compiled)
+}
+
+func tlsPolicySpecWithBuiltinCA(spec api.TLSPolicySpec, certs map[string]tlsEffectiveCert) api.TLSPolicySpec {
+	if _, ok := certs[tlsBuiltinCACertName]; ok {
+		spec.TrustAnchors = append(spec.TrustAnchors, api.TLSTrustAnchor{
+			Cert:  tlsBuiltinCACertName,
+			Scope: api.TLSScope{Any: true},
+		})
+	}
+	return normalizeTLSPolicySpec(spec)
 }
 
 func tlsAuthorityMatchFromAPI(value string) (tlspolicy.AuthorityMatch, error) {
@@ -929,6 +1006,10 @@ func cloneTLSByteSlices(in [][]byte) [][]byte {
 }
 
 func normalizeTLSPolicySpec(spec api.TLSPolicySpec) api.TLSPolicySpec {
+	spec.TrustAnchors = append([]api.TLSTrustAnchor(nil), spec.TrustAnchors...)
+	spec.Constraints = append([]api.TLSAuthorityConstraint(nil), spec.Constraints...)
+	spec.Pins = append([]api.TLSPin(nil), spec.Pins...)
+
 	anchors := map[string]api.TLSScope{}
 	for _, anchor := range spec.TrustAnchors {
 		anchors[anchor.Cert] = mergeTLSScope(anchors[anchor.Cert], normalizeTLSScope(anchor.Scope))
@@ -1519,7 +1600,7 @@ func validTLSName(name string) bool {
 }
 
 func validMutableTLSCertName(name string) bool {
-	return validTLSName(name) && !strings.HasPrefix(name, tlsOSCertPrefix)
+	return validTLSName(name) && !strings.HasPrefix(name, tlsOSCertPrefix) && !strings.HasPrefix(name, tlsBuiltinCACertPrefix)
 }
 
 func validMutableTLSPolicyName(name string) bool {

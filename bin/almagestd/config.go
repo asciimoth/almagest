@@ -13,6 +13,7 @@ import (
 	almagest "github.com/asciimoth/almagest/lib"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/configer/hujson"
+	"github.com/kataras/golog"
 	tailscalehujson "github.com/tailscale/hujson"
 )
 
@@ -97,6 +98,58 @@ func (c *Config) SaveIdle() time.Duration {
 	return time.Duration(cfg.IdleMilliseconds) * time.Millisecond
 }
 
+type tlsBuiltinCAConfig struct {
+	Issuer       string `json:"Issuer,omitempty"`
+	ValidityDays int    `json:"ValidityDays,omitempty"`
+	KeyAlgorithm string `json:"KeyAlgorithm,omitempty"`
+	Curve        string `json:"Curve,omitempty"`
+	KeyBits      int    `json:"KeyBits,omitempty"`
+}
+
+func (c *Config) TLSBuiltinCAOptions() (api.TLSBuiltinCAOptions, error) {
+	cfg := tlsBuiltinCAConfigFromAPI(defaultTLSBuiltinCAOptions())
+	if c != nil && c.Main != nil {
+		view := c.Main.View(configer.Path{"Config", "TLS", "BuiltinCA"})
+		if err := configer.Unmarshal(view, &cfg); err != nil {
+			return api.TLSBuiltinCAOptions{}, fmt.Errorf("%w: read builtin TLS CA config: %v", almagest.ErrTlsConfigInvalidValue, err)
+		}
+	}
+	return normalizeTLSBuiltinCAOptions(api.TLSBuiltinCAOptions{
+		Issuer:       cfg.Issuer,
+		ValidityDays: cfg.ValidityDays,
+		KeyAlgorithm: cfg.KeyAlgorithm,
+		Curve:        cfg.Curve,
+		KeyBits:      cfg.KeyBits,
+	})
+}
+
+func (c *Config) SetTLSBuiltinCAOptions(options api.TLSBuiltinCAOptions) (api.TLSBuiltinCAOptions, error) {
+	if c == nil || c.Main == nil {
+		return api.TLSBuiltinCAOptions{}, ErrConfigRO
+	}
+	options, err := normalizeTLSBuiltinCAOptions(options)
+	if err != nil {
+		return api.TLSBuiltinCAOptions{}, err
+	}
+	if err := configer.Marshal(
+		c.Main.View(configer.Path{"Config", "TLS", "BuiltinCA"}),
+		tlsBuiltinCAConfigFromAPI(options),
+	); err != nil {
+		return api.TLSBuiltinCAOptions{}, fmt.Errorf("%w: update builtin TLS CA config: %v", almagest.ErrTlsConfigInvalidValue, err)
+	}
+	return options, nil
+}
+
+func tlsBuiltinCAConfigFromAPI(options api.TLSBuiltinCAOptions) tlsBuiltinCAConfig {
+	return tlsBuiltinCAConfig{
+		Issuer:       options.Issuer,
+		ValidityDays: options.ValidityDays,
+		KeyAlgorithm: options.KeyAlgorithm,
+		Curve:        options.Curve,
+		KeyBits:      options.KeyBits,
+	}
+}
+
 func ParseConfig(cfg, prt []byte) (*Config, error) {
 	config, err := hujson.Parse(cfg)
 	if err != nil {
@@ -145,12 +198,21 @@ type ProtectedSecretConfig struct {
 type ProtectedTLSConfig struct {
 	Certificates map[string]ProtectedTLSCertificateConfig `json:"Certificates"`
 	Policies     map[string]api.TLSPolicySpec             `json:"Policies"`
+	BuiltinCA    ProtectedTLSBuiltinCAConfig              `json:"BuiltinCA"`
 }
 
 // ProtectedTLSCertificateConfig defines one immutable certificate authority.
 // PEM stores the literal certificate. File names a local PEM file read once at
 // daemon startup. Exactly one of PEM or File may be set.
 type ProtectedTLSCertificateConfig struct {
+	PEM  *string `json:"PEM"`
+	File string  `json:"File"`
+}
+
+// ProtectedTLSBuiltinCAConfig defines an immutable built-in CA keypair. PEM
+// stores one certificate and one private key in the same PEM text. File names a
+// local file with the same combined PEM content.
+type ProtectedTLSBuiltinCAConfig struct {
 	PEM  *string `json:"PEM"`
 	File string  `json:"File"`
 }
@@ -245,6 +307,35 @@ func (p *ProtectedConfig) ImmutableTLS() (immutableTLSData, error) {
 		}
 	}
 	return out, nil
+}
+
+func (p *ProtectedConfig) TLSBuiltinCA() (*tlsBuiltinCA, error) {
+	cfg := p.TLS.BuiltinCA
+	if cfg.PEM == nil && strings.TrimSpace(cfg.File) == "" {
+		return nil, nil
+	}
+	if cfg.PEM != nil && strings.TrimSpace(cfg.File) != "" {
+		return nil, fmt.Errorf("%w: protected builtin TLS CA sets both PEM and File", almagest.ErrTlsConfigInvalidValue)
+	}
+	pemText := ""
+	if cfg.PEM != nil {
+		golog.Debug("builtin TLS CA: reading immutable certificate from protected inline PEM")
+		pemText = *cfg.PEM
+	} else {
+		path := strings.TrimSpace(cfg.File)
+		golog.Debugf("builtin TLS CA: reading immutable certificate from protected file %s", path)
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("%w: read protected builtin TLS CA file %q: %v", almagest.ErrTlsConfigInvalidValue, cfg.File, err)
+		}
+		pemText = string(data)
+	}
+	ca, err := parseProtectedTLSBuiltinCA(pemText)
+	if err != nil {
+		return nil, fmt.Errorf("%w: protected builtin TLS CA: %v", almagest.ErrTlsConfigInvalidValue, err)
+	}
+	golog.Debugf("builtin TLS CA: using immutable protected certificate; runtime generation is disabled (%s)", describeTLSBuiltinCACert(ca))
+	return ca, nil
 }
 
 func (p *ProtectedConfig) Merge(args *args.Args) {

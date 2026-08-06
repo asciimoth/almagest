@@ -39,6 +39,61 @@ func TestConfigSaveIdleNonPositiveUsesDefault(t *testing.T) {
 	}
 }
 
+func TestTLSBuiltinCAOptionsDefaultAndConfigured(t *testing.T) {
+	cfg, err := ParseConfig([]byte(`{}`), []byte(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defaults, err := cfg.TLSBuiltinCAOptions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if defaults.Issuer != "Almagest" || defaults.ValidityDays != 0 || defaults.KeyAlgorithm != "ecdsa" || defaults.Curve != "P256" {
+		t.Fatalf("default TLS builtin CA options = %#v, want Almagest no-expiration ECDSA P256", defaults)
+	}
+
+	cfg, err = ParseConfig([]byte(`{
+		"Config": {
+			"TLS": {
+				"BuiltinCA": {
+					"Issuer": "Lab CA",
+					"ValidityDays": 30,
+					"KeyAlgorithm": "rsa",
+					"KeyBits": 4096
+				}
+			}
+		}
+	}`), []byte(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	options, err := cfg.TLSBuiltinCAOptions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if options.Issuer != "Lab CA" || options.ValidityDays != 30 || options.KeyAlgorithm != "rsa" || options.KeyBits != 4096 || options.Curve != "" {
+		t.Fatalf("configured TLS builtin CA options = %#v, want RSA config", options)
+	}
+}
+
+func TestTLSBuiltinCAOptionsInvalid(t *testing.T) {
+	cfg, err := ParseConfig([]byte(`{
+		"Config": {
+			"TLS": {
+				"BuiltinCA": {
+					"ValidityDays": -1
+				}
+			}
+		}
+	}`), []byte(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cfg.TLSBuiltinCAOptions(); !errors.Is(err, almagest.ErrTlsConfigInvalidValue) {
+		t.Fatalf("TLSBuiltinCAOptions error = %v, want invalid value", err)
+	}
+}
+
 func TestLogCacheConfigured(t *testing.T) {
 	cfg, err := ParseConfig([]byte(`{
 		"Logs": {

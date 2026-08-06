@@ -128,15 +128,18 @@
     },
     "protectedTLSConfig": {
       "type": "object",
-      "description": "Immutable TLS certificate authorities and TLS server-verification policies. These entries are read at startup, are not saved to bbolt, and override mutable TLS entries with the same names.",
+      "description": "Immutable TLS certificate authorities, the optional built-in CA keypair, and TLS server-verification policies. These entries are read at startup, are not saved to bbolt, and override mutable TLS entries with the same names.",
       "properties": {
+        "BuiltinCA": {
+          "$ref": "#/$defs/protectedTLSBuiltinCA"
+        },
         "Certificates": {
           "type": "object",
-          "description": "Map of protected certificate names to one PEM-encoded X.509 certificate authority. Names starting with os-ca: are reserved for OS certificate storage.",
+          "description": "Map of protected certificate names to one PEM-encoded X.509 certificate authority. Names starting with os-ca: or builtin-ca: are reserved.",
           "propertyNames": {
             "minLength": 1,
             "not": {
-              "pattern": "^os-ca:"
+              "pattern": "^(os-ca:|builtin-ca:)"
             }
           },
           "additionalProperties": {
@@ -171,6 +174,44 @@
           "type": "string",
           "minLength": 1,
           "description": "Path to a PEM file read by the daemon at startup. Relative paths are resolved by the daemon process before it changes to file storage."
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "PEM"
+          ],
+          "not": {
+            "required": [
+              "File"
+            ]
+          }
+        },
+        {
+          "required": [
+            "File"
+          ],
+          "not": {
+            "required": [
+              "PEM"
+            ]
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "protectedTLSBuiltinCA": {
+      "type": "object",
+      "description": "One immutable built-in CA keypair. Set PEM for literal protected-config value or File to read a local PEM file once at daemon startup. The PEM input must contain exactly one CERTIFICATE block and one private-key block. When set, mutable built-in CA generation options are ignored and regeneration is disabled.",
+      "properties": {
+        "PEM": {
+          "type": "string",
+          "description": "Literal PEM text containing the CA certificate and private key."
+        },
+        "File": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Path to a PEM file read by the daemon at startup."
         }
       },
       "oneOf": [

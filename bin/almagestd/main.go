@@ -104,10 +104,28 @@ func main() {
 		fatal(err)
 		return
 	}
+	builtinCAOptions, err := conf.TLSBuiltinCAOptions()
+	if err != nil {
+		fatal(err)
+		return
+	}
+	builtinCA, err := conf.Protected.TLSBuiltinCA()
+	if err != nil {
+		fatal(err)
+		return
+	}
+	if builtinCA == nil {
+		builtinCA, err = loadOrCreateTLSBuiltinCA(fsPath, builtinCAOptions, time.Now())
+		if err != nil {
+			fatal(err)
+			return
+		}
+	}
 	kv, err = openKVManagerInStorage(fsPath, bboltKVManagerOptions{
 		DisableDNSCacheExpiration: args.NoDNSCacheExpiration,
 		ImmutableSecrets:          immutableSecrets,
 		ImmutableTLS:              mergeImmutableTLSData(osTLSData, protectedTLSData),
+		BuiltinCA:                 builtinCA,
 	})
 	if err != nil {
 		fatal(err)
@@ -122,6 +140,8 @@ func main() {
 		fatal(err)
 		return
 	}
+	admin.configReadOnly = agent.ConfRO()
+	admin.fileStorage = fsPath
 	admin.projectVersionStatus = projectVersionStatus
 	admin.kv = kv
 	admin.dns = kv

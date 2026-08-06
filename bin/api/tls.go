@@ -6,6 +6,8 @@ const (
 	MethodTLSSnapshot     TLSMethod = "snapshot"
 	MethodTLSSubscribe    TLSMethod = "subscribe"
 	MethodTLSUnsubscribe  TLSMethod = "unsubscribe"
+	MethodTLSBuiltinCA    TLSMethod = "builtin_ca"
+	MethodTLSSetBuiltinCA TLSMethod = "set_builtin_ca_options"
 	MethodTLSSetCert      TLSMethod = "set_cert"
 	MethodTLSRenameCert   TLSMethod = "rename_cert"
 	MethodTLSDeleteCert   TLSMethod = "delete_cert"
@@ -22,6 +24,8 @@ func TLSMethods() []string {
 		string(MethodTLSSnapshot),
 		string(MethodTLSSubscribe),
 		string(MethodTLSUnsubscribe),
+		string(MethodTLSBuiltinCA),
+		string(MethodTLSSetBuiltinCA),
 		string(MethodTLSSetCert),
 		string(MethodTLSRenameCert),
 		string(MethodTLSDeleteCert),
@@ -33,7 +37,8 @@ func TLSMethods() []string {
 
 func IsTLSMutation(method string) bool {
 	switch TLSMethod(method) {
-	case MethodTLSSetCert,
+	case MethodTLSSetBuiltinCA,
+		MethodTLSSetCert,
 		MethodTLSRenameCert,
 		MethodTLSDeleteCert,
 		MethodTLSSetPolicy,
@@ -51,6 +56,7 @@ const (
 	TLSSourceMutable   TLSSource = "mutable"
 	TLSSourceProtected TLSSource = "protected"
 	TLSSourceOS        TLSSource = "os"
+	TLSSourceBuiltin   TLSSource = "builtin"
 )
 
 // TLSCertEntry is one effective certificate authority visible to admin clients.
@@ -70,6 +76,22 @@ type TLSCertEntry struct {
 	ReadOnly        bool              `json:"read_only,omitempty"`
 	Source          TLSSource         `json:"source,omitempty"`
 	CertcatMatches  []TLSCertcatMatch `json:"certcat_matches,omitempty"`
+}
+
+type TLSBuiltinCAOptions struct {
+	Issuer       string `json:"issuer"`
+	ValidityDays int    `json:"validity_days"`
+	KeyAlgorithm string `json:"key_algorithm"`
+	Curve        string `json:"curve,omitempty"`
+	KeyBits      int    `json:"key_bits,omitempty"`
+}
+
+type TLSBuiltinCAInfo struct {
+	Cert                   TLSCertEntry        `json:"cert"`
+	Options                TLSBuiltinCAOptions `json:"options"`
+	Immutable              bool                `json:"immutable,omitempty"`
+	RegenerationDisabled   bool                `json:"regeneration_disabled,omitempty"`
+	RegenerationDisabledBy string              `json:"regeneration_disabled_by,omitempty"`
 }
 
 type TLSDNSRule struct {
@@ -147,8 +169,9 @@ type TLSPolicyEntry struct {
 }
 
 type TLSSnapshot struct {
-	Certs    []TLSCertEntry   `json:"certs,omitempty"`
-	Policies []TLSPolicyEntry `json:"policies,omitempty"`
+	BuiltinCA *TLSBuiltinCAInfo `json:"builtin_ca,omitempty"`
+	Certs     []TLSCertEntry    `json:"certs,omitempty"`
+	Policies  []TLSPolicyEntry  `json:"policies,omitempty"`
 }
 
 type TLSSubscribeResponse struct {
@@ -159,16 +182,18 @@ type TLSSubscribeResponse struct {
 type TLSChangeKind string
 
 const (
-	TLSChangeCert   TLSChangeKind = "cert"
-	TLSChangePolicy TLSChangeKind = "policy"
+	TLSChangeBuiltinCA TLSChangeKind = "builtin_ca"
+	TLSChangeCert      TLSChangeKind = "cert"
+	TLSChangePolicy    TLSChangeKind = "policy"
 )
 
 type TLSChange struct {
-	Kind    TLSChangeKind   `json:"kind"`
-	Name    string          `json:"name"`
-	Deleted bool            `json:"deleted,omitempty"`
-	Cert    *TLSCertEntry   `json:"cert,omitempty"`
-	Policy  *TLSPolicyEntry `json:"policy,omitempty"`
+	Kind      TLSChangeKind     `json:"kind"`
+	Name      string            `json:"name,omitempty"`
+	Deleted   bool              `json:"deleted,omitempty"`
+	BuiltinCA *TLSBuiltinCAInfo `json:"builtin_ca,omitempty"`
+	Cert      *TLSCertEntry     `json:"cert,omitempty"`
+	Policy    *TLSPolicyEntry   `json:"policy,omitempty"`
 }
 
 type TLSEvent struct {
@@ -183,6 +208,10 @@ type TLSNameRequest struct {
 type TLSSetCertRequest struct {
 	Name string `json:"name"`
 	PEM  string `json:"pem"`
+}
+
+type TLSSetBuiltinCARequest struct {
+	Options TLSBuiltinCAOptions `json:"options"`
 }
 
 type TLSRenameRequest struct {

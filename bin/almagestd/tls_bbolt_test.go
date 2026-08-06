@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -174,6 +175,172 @@ func TestTLSCertcatAnnotationsAndDefaultPolicy(t *testing.T) {
 	}
 }
 
+func TestTLSBuiltinCAGenerationAndPolicyInjection(t *testing.T) {
+	storageDir := t.TempDir()
+	now := time.Date(2026, 8, 6, 12, 0, 0, 0, time.UTC)
+	ca, err := loadOrCreateTLSBuiltinCA(storageDir, api.TLSBuiltinCAOptions{}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ca.options.Issuer != "Almagest" || ca.options.KeyAlgorithm != "ecdsa" || ca.options.Curve != "P256" || ca.options.ValidityDays != 0 {
+		t.Fatalf("builtin CA options = %#v, want defaults", ca.options)
+	}
+	if ca.certificate.Subject.CommonName != "Almagest" || ca.certificate.NotAfter.Year() != 9999 {
+		t.Fatalf("builtin CA certificate subject=%q not_after=%s, want Almagest no-expiration fallback",
+			ca.certificate.Subject.CommonName, ca.certificate.NotAfter)
+	}
+	for _, name := range []string{tlsBuiltinCACertFile, tlsBuiltinCAKeyFile, tlsBuiltinCAStateFile} {
+		if _, err := os.Stat(filepath.Join(storageDir, tlsBuiltinCADirName, name)); err != nil {
+			t.Fatalf("stored builtin CA file %s: %v", name, err)
+		}
+	}
+
+	manager, err := openKVManagerWithOptions(filepath.Join(storageDir, "kv.db"), bboltKVManagerOptions{
+		BuiltinCA: ca,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer manager.Close() //nolint:errcheck
+
+	snapshot, err := manager.tlsSnapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.BuiltinCA == nil {
+		t.Fatal("snapshot BuiltinCA = nil, want generated CA info")
+	}
+	if snapshot.BuiltinCA.Cert.Name != tlsBuiltinCACertName ||
+		!snapshot.BuiltinCA.Cert.ReadOnly ||
+		snapshot.BuiltinCA.Cert.Source != api.TLSSourceBuiltin {
+		t.Fatalf("builtin CA entry = %#v, want read-only builtin cert", snapshot.BuiltinCA.Cert)
+	}
+	rawInfo, err := json.Marshal(snapshot.BuiltinCA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(rawInfo, []byte("PRIVATE KEY")) {
+		t.Fatalf("builtin CA API info leaked private key: %s", rawInfo)
+	}
+
+	defaultPolicy := findTLSPolicyEntry(snapshot.Policies, tlsDefaultPolicyName)
+	if defaultPolicy == nil {
+		t.Fatal("default TLS policy missing")
+	}
+	builtinAnchor := findTLSTrustAnchor(defaultPolicy.Spec.TrustAnchors, tlsBuiltinCACertName)
+	if builtinAnchor == nil || !builtinAnchor.Scope.Any {
+		t.Fatalf("default builtin anchor = %#v, want unscoped trust anchor", builtinAnchor)
+	}
+	if _, err := manager.setTLSCert(tlsBuiltinCACertName, testTLSCAPEM(t, "shadow")); !errors.Is(err, almagest.ErrTlsConfigInvalidName) {
+		t.Fatalf("set builtin cert error = %v, want invalid name", err)
+	}
+
+	if _, err := manager.setTLSPolicy("custom", api.TLSPolicySpec{}); err != nil {
+		t.Fatal(err)
+	}
+	custom, found, err := manager.tlsPolicyAPIEntry("custom")
+	if err != nil || !found {
+		t.Fatalf("custom policy found=%v err=%v", found, err)
+	}
+	builtinAnchor = findTLSTrustAnchor(custom.Spec.TrustAnchors, tlsBuiltinCACertName)
+	if builtinAnchor == nil || !builtinAnchor.Scope.Any {
+		t.Fatalf("custom builtin anchor = %#v, want unscoped trust anchor", builtinAnchor)
+	}
+}
+
+func TestTLSBuiltinCARegenerationTriggers(t *testing.T) {
+	storageDir := t.TempDir()
+	now := time.Date(2026, 8, 6, 12, 0, 0, 0, time.UTC)
+	options := api.TLSBuiltinCAOptions{
+		Issuer:       "First",
+		ValidityDays: 1,
+		KeyAlgorithm: "ecdsa",
+		Curve:        "P256",
+	}
+	first, err := loadOrCreateTLSBuiltinCA(storageDir, options, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reused, err := loadOrCreateTLSBuiltinCA(storageDir, options, now.Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reused.certPEM != first.certPEM {
+		t.Fatal("builtin CA was regenerated even though options matched and certificate was live")
+	}
+
+	changedOptions := options
+	changedOptions.Issuer = "Second"
+	changed, err := loadOrCreateTLSBuiltinCA(storageDir, changedOptions, now.Add(2*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed.certPEM == first.certPEM || changed.certificate.Subject.CommonName != "Second" {
+		t.Fatalf("changed-options CA subject=%q, same cert=%v; want regenerated Second cert",
+			changed.certificate.Subject.CommonName, changed.certPEM == first.certPEM)
+	}
+
+	expired, err := loadOrCreateTLSBuiltinCA(storageDir, changedOptions, now.Add(48*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if expired.certPEM == changed.certPEM {
+		t.Fatal("expired builtin CA was not regenerated")
+	}
+}
+
+func TestProtectedConfigTLSBuiltinCA(t *testing.T) {
+	notBefore := time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)
+	notAfter := time.Date(2026, 8, 2, 0, 0, 0, 0, time.UTC)
+	certPEM, keyPEM := testTLSCAKeyPairPEM(t, "protected builtin", notBefore, notAfter)
+	protected := `{
+		"TLS": {
+			"BuiltinCA": {"PEM": ` + strconv.Quote(certPEM+keyPEM) + `}
+		}
+	}`
+	cfg, err := ParseConfig([]byte(`{}`), []byte(protected))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ca, err := cfg.Protected.TLSBuiltinCA()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ca == nil || !ca.immutable {
+		t.Fatalf("protected builtin CA = %#v, want immutable CA", ca)
+	}
+	if ca.options.Issuer != "protected builtin" || ca.options.ValidityDays != 1 || ca.options.KeyAlgorithm != "ecdsa" {
+		t.Fatalf("protected builtin CA options = %#v, want derived options", ca.options)
+	}
+	if !tlsBuiltinCACertExpired(ca.certificate, notAfter.Add(time.Second)) {
+		t.Fatal("test protected builtin CA should be expired at test time")
+	}
+
+	manager, err := openKVManagerWithOptions(filepath.Join(t.TempDir(), "kv.db"), bboltKVManagerOptions{
+		BuiltinCA: ca,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer manager.Close() //nolint:errcheck
+	admin := &AdminAPI{
+		config:      cfg,
+		fileStorage: t.TempDir(),
+		tls:         manager,
+	}
+	if _, _, err := admin.setTLSBuiltinCAOptions(api.TLSBuiltinCAOptions{Issuer: "mutable"}); !errors.Is(err, almagest.ErrTlsConfigReadOnly) {
+		t.Fatalf("set protected builtin CA options error = %v, want read-only", err)
+	}
+
+	snapshot, err := manager.tlsSnapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.BuiltinCA == nil || !snapshot.BuiltinCA.Immutable || !snapshot.BuiltinCA.RegenerationDisabled {
+		t.Fatalf("protected builtin CA snapshot = %#v, want regeneration disabled", snapshot.BuiltinCA)
+	}
+}
+
 func TestTLSAdminEventsFixPoliciesAndNotifyFetchedNodes(t *testing.T) {
 	manager, err := openKVManager(filepath.Join(t.TempDir(), "kv.db"))
 	if err != nil {
@@ -306,6 +473,98 @@ func TestTLSAdminEventsFixPoliciesAndNotifyFetchedNodes(t *testing.T) {
 	assertTLSEvent(t, events, subResp.SubscriptionID, api.TLSChangePolicy, "renamed", true)
 }
 
+func TestTLSBuiltinCAAPIRegeneratesAndNotifiesPolicies(t *testing.T) {
+	storageDir := t.TempDir()
+	ca, err := loadOrCreateTLSBuiltinCA(storageDir, api.TLSBuiltinCAOptions{}, time.Date(2026, 8, 6, 12, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager, err := openKVManagerWithOptions(filepath.Join(storageDir, "kv.db"), bboltKVManagerOptions{
+		BuiltinCA: ca,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer manager.Close() //nolint:errcheck
+	if _, err := manager.setTLSPolicy("policy", api.TLSPolicySpec{}); err != nil {
+		t.Fatal(err)
+	}
+
+	inbox := make(chan almagest.TlsConfigChanged, 8)
+	engine, err := almagest.BuildEngine(
+		context.Background(),
+		configer.NewMemory(nil),
+		almagest.NewDebugLogFactory(16),
+		&sysnetdebug.System{},
+		nil,
+		nil,
+		nil,
+		manager,
+		[]pasta.NodeClass{tlsInboxNodeClass{inbox: inbox}},
+		nil,
+		false,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer engine.Close() //nolint:errcheck
+	if _, err := engine.AddNode("main", "test/TLSInbox", "client"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.GetClientConfig("policy", "client"); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := ParseConfig([]byte(`{}`), []byte(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var events []api.Message
+	session := (&AdminAPI{tls: manager, config: cfg, fileStorage: storageDir}).newAPISession(engine, nil, func(msg api.Message) error {
+		if msg.Kind == api.MessageEvent && msg.Surface == api.SurfaceTLS {
+			events = append(events, msg)
+		}
+		return nil
+	})
+	defer session.close()
+
+	subReq := mustRequest(t, "1", api.SurfaceTLS, string(api.MethodTLSSubscribe), nil)
+	resp, err := session.handleMessage(subReq)
+	if err != nil || resp.Error != nil {
+		t.Fatalf("subscribe response = %#v, err %v", resp, err)
+	}
+	subResp, err := api.DecodePayload[api.TLSSubscribeResponse](resp.Result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events = nil
+	setReq := mustRequest(t, "2", api.SurfaceTLS, string(api.MethodTLSSetBuiltinCA), api.TLSSetBuiltinCARequest{
+		Options: api.TLSBuiltinCAOptions{
+			Issuer:       "Changed",
+			KeyAlgorithm: "ecdsa",
+			Curve:        "P384",
+		},
+	})
+	resp, err = session.handleMessage(setReq)
+	if err != nil || resp.Error != nil {
+		t.Fatalf("set builtin CA response = %#v, err %v", resp, err)
+	}
+	info, err := api.DecodePayload[api.TLSBuiltinCAInfo](resp.Result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Options.Issuer != "Changed" || info.Options.Curve != "P384" {
+		t.Fatalf("builtin CA response options = %#v, want Changed P384", info.Options)
+	}
+	if got := configer.String(cfg.Main, configer.Path{"Config", "TLS", "BuiltinCA", "Issuer"}, ""); got != "Changed" {
+		t.Fatalf("config issuer = %q, want Changed", got)
+	}
+	assertTLSInbox(t, inbox, "policy", "policy")
+	assertTLSBuiltinCAEvent(t, events, subResp.SubscriptionID)
+	assertTLSEventsContain(t, events, api.TLSChangeCert, tlsBuiltinCACertName, false)
+	assertTLSEventsContain(t, events, api.TLSChangePolicy, "policy", false)
+}
+
 func TestLoadOSTLSDataUsesReadableCertNames(t *testing.T) {
 	pemText := testTLSCAPEM(t, "Example Root CA")
 	authorities, err := tlspolicy.ParseAuthoritiesPEM([]byte(pemText))
@@ -393,6 +652,12 @@ func testTLSPolicy(cert string) api.TLSPolicySpec {
 
 func testTLSCAPEM(t *testing.T, commonName string) string {
 	t.Helper()
+	certPEM, _ := testTLSCAKeyPairPEM(t, commonName, time.Now().Add(-time.Hour), time.Now().Add(24*time.Hour))
+	return certPEM
+}
+
+func testTLSCAKeyPairPEM(t *testing.T, commonName string, notBefore, notAfter time.Time) (string, string) {
+	t.Helper()
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		t.Fatal(err)
@@ -401,14 +666,13 @@ func testTLSCAPEM(t *testing.T, commonName string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	now := time.Now()
 	template := &x509.Certificate{
 		SerialNumber: serial,
 		Subject: pkix.Name{
 			CommonName: commonName,
 		},
-		NotBefore:             now.Add(-time.Hour),
-		NotAfter:              now.Add(24 * time.Hour),
+		NotBefore:             notBefore,
+		NotAfter:              notAfter,
 		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageDigitalSignature,
 		BasicConstraintsValid: true,
 		IsCA:                  true,
@@ -417,7 +681,12 @@ func testTLSCAPEM(t *testing.T, commonName string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}))
+	keyDER, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})),
+		string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyDER}))
 }
 
 func writeTestFile(path, value string) error {
@@ -531,6 +800,23 @@ func assertTLSEventsContain(t *testing.T, events []api.Message, kind api.TLSChan
 		}
 	}
 	t.Fatalf("TLS events %#v do not include %s %q deleted %v", events, kind, name, deleted)
+}
+
+func assertTLSBuiltinCAEvent(t *testing.T, events []api.Message, subscriptionID uint64) {
+	t.Helper()
+	for _, msg := range events {
+		var event api.TLSEvent
+		if err := json.Unmarshal(msg.Payload, &event); err != nil {
+			t.Fatal(err)
+		}
+		if event.SubscriptionID == subscriptionID &&
+			event.Change.Kind == api.TLSChangeBuiltinCA &&
+			event.Change.BuiltinCA != nil &&
+			event.Change.BuiltinCA.Cert.Name == tlsBuiltinCACertName {
+			return
+		}
+	}
+	t.Fatalf("TLS events %#v do not include builtin CA update", events)
 }
 
 func assertTLSInbox(t *testing.T, inbox <-chan almagest.TlsConfigChanged, prev, next string) {

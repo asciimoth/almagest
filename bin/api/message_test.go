@@ -185,6 +185,9 @@ func TestRequiresMutationLease(t *testing.T) {
 	if !RequiresMutationLease(SurfaceTLS, string(MethodTLSSetCert)) {
 		t.Fatal("TLS set_cert should require mutation lease")
 	}
+	if !RequiresMutationLease(SurfaceTLS, string(MethodTLSSetBuiltinCA)) {
+		t.Fatal("TLS set_builtin_ca_options should require mutation lease")
+	}
 	if RequiresMutationLease(SurfaceTLS, string(MethodTLSSnapshot)) {
 		t.Fatal("TLS snapshot should not require mutation lease")
 	}
@@ -267,6 +270,8 @@ func TestTLSMethodsAndSurfaceAreAdvertised(t *testing.T) {
 		string(MethodTLSSnapshot):     false,
 		string(MethodTLSSubscribe):    false,
 		string(MethodTLSUnsubscribe):  false,
+		string(MethodTLSBuiltinCA):    false,
+		string(MethodTLSSetBuiltinCA): false,
 		string(MethodTLSSetCert):      false,
 		string(MethodTLSRenameCert):   false,
 		string(MethodTLSDeleteCert):   false,

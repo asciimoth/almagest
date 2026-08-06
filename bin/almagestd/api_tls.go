@@ -2,10 +2,13 @@ package main
 
 import (
 	"errors"
+	"path/filepath"
+	"time"
 
 	"github.com/asciimoth/almagest/bin/api"
 	almagest "github.com/asciimoth/almagest/lib"
 	"github.com/asciimoth/pasta/pasta"
+	"github.com/kataras/golog"
 )
 
 func (s *apiSession) handleTLSMessage(msg api.Message) (api.Message, error) {
@@ -40,6 +43,28 @@ func (s *apiSession) handleTLSMessage(msg api.Message) (api.Message, error) {
 		}
 		s.removeTLSSubscription(req.SubscriptionID)
 		return api.NewResponse(msg.ID, struct{}{})
+
+	case api.MethodTLSBuiltinCA:
+		snapshot, err := manager.tlsSnapshot()
+		if err != nil {
+			return tlsRequestError(msg.ID, err)
+		}
+		if snapshot.BuiltinCA == nil {
+			return tlsRequestError(msg.ID, errTLSCertNotFound)
+		}
+		return api.NewResponse(msg.ID, snapshot.BuiltinCA)
+
+	case api.MethodTLSSetBuiltinCA:
+		req, err := decodePayload[api.TLSSetBuiltinCARequest](msg)
+		if err != nil {
+			return newRequestError(msg.ID, api.ErrorInvalidPayload, err.Error())
+		}
+		info, result, err := s.admin.setTLSBuiltinCAOptions(req.Options)
+		if err != nil {
+			return tlsRequestError(msg.ID, err)
+		}
+		s.sendTLSMutationInbox(result)
+		return api.NewResponse(msg.ID, info)
 
 	case api.MethodTLSSetCert:
 		req, err := decodePayload[api.TLSSetCertRequest](msg)
@@ -146,6 +171,64 @@ func (s *apiSession) handleTLSMessage(msg api.Message) (api.Message, error) {
 	}
 }
 
+func (a *AdminAPI) setTLSBuiltinCAOptions(options api.TLSBuiltinCAOptions) (api.TLSBuiltinCAInfo, tlsMutationResult, error) {
+	if a == nil || a.tls == nil {
+		return api.TLSBuiltinCAInfo{}, tlsMutationResult{}, almagest.ErrTlsConfigNotFound
+	}
+	current := a.tls.currentTLSBuiltinCA()
+	if current != nil && current.immutable {
+		return api.TLSBuiltinCAInfo{}, tlsMutationResult{}, almagest.ErrTlsConfigReadOnly
+	}
+	if a.configReadOnly || a.config == nil {
+		return api.TLSBuiltinCAInfo{}, tlsMutationResult{}, ErrConfigRO
+	}
+	options, err := normalizeTLSBuiltinCAOptions(options)
+	if err != nil {
+		return api.TLSBuiltinCAInfo{}, tlsMutationResult{}, err
+	}
+	golog.Debugf("builtin TLS CA: API requested options update to %s", describeTLSBuiltinCAOptions(options))
+
+	var next *tlsBuiltinCA
+	now := time.Now()
+	needsRegeneration := current == nil ||
+		!tlsBuiltinCAOptionsEqual(current.options, options) ||
+		tlsBuiltinCACertExpired(current.certificate, now)
+	if needsRegeneration {
+		if a.fileStorage == "" {
+			return api.TLSBuiltinCAInfo{}, tlsMutationResult{}, almagest.ErrTlsConfigInvalidValue
+		}
+		golog.Debug("builtin TLS CA: API options update requires certificate regeneration")
+		next, err = generateAndStoreTLSBuiltinCA(filepath.Join(a.fileStorage, tlsBuiltinCADirName), options, now)
+		if err != nil {
+			return api.TLSBuiltinCAInfo{}, tlsMutationResult{}, err
+		}
+	} else {
+		golog.Debug("builtin TLS CA: API options update does not require regeneration")
+		next = current
+	}
+
+	if _, err := a.config.SetTLSBuiltinCAOptions(options); err != nil {
+		return api.TLSBuiltinCAInfo{}, tlsMutationResult{}, err
+	}
+	golog.Debug("builtin TLS CA: saved configured generation options")
+
+	result := tlsMutationResult{}
+	if needsRegeneration {
+		result, err = a.tls.setTLSBuiltinCA(next)
+		if err != nil {
+			return api.TLSBuiltinCAInfo{}, tlsMutationResult{}, err
+		}
+	}
+	snapshot, err := a.tls.tlsSnapshot()
+	if err != nil {
+		return api.TLSBuiltinCAInfo{}, tlsMutationResult{}, err
+	}
+	if snapshot.BuiltinCA == nil {
+		return api.TLSBuiltinCAInfo{}, tlsMutationResult{}, errTLSCertNotFound
+	}
+	return *snapshot.BuiltinCA, result, nil
+}
+
 func (s *apiSession) sendTLSMutationInbox(result tlsMutationResult) {
 	if len(result.policyNotifications) == 0 || s.engine == nil {
 		return
@@ -225,6 +308,15 @@ func (s *apiSession) tlsSubscriptionSnapshot() []uint64 {
 func (s *apiSession) sendTLSSubscriptionChange(id uint64, change tlsChange) error {
 	var apiChange api.TLSChange
 	switch change.kind {
+	case tlsChangeBuiltinCA:
+		snapshot, err := s.admin.tls.tlsSnapshot()
+		if err != nil || snapshot.BuiltinCA == nil {
+			return err
+		}
+		apiChange = api.TLSChange{
+			Kind:      api.TLSChangeBuiltinCA,
+			BuiltinCA: snapshot.BuiltinCA,
+		}
 	case tlsChangeCertUpsert:
 		entry, found, err := s.admin.tls.tlsCertAPIEntry(change.name)
 		if err != nil || !found {
@@ -276,7 +368,7 @@ func tlsRequestError(id string, err error) (api.Message, error) {
 		return newRequestError(id, api.ErrorBadRequest, err.Error())
 	case errors.Is(err, errTLSCertNotFound), errors.Is(err, errTLSPolicyNotFound), errors.Is(err, almagest.ErrTlsConfigNotFound):
 		return newRequestError(id, api.ErrorNotFound, err.Error())
-	case errors.Is(err, almagest.ErrTlsConfigReadOnly), errors.Is(err, almagest.ErrTlsConfigConflict):
+	case errors.Is(err, almagest.ErrTlsConfigReadOnly), errors.Is(err, almagest.ErrTlsConfigConflict), errors.Is(err, ErrConfigRO):
 		return newRequestError(id, api.ErrorConflict, err.Error())
 	default:
 		return newRequestError(id, api.ErrorInternal, err.Error())

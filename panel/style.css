@@ -1155,6 +1155,50 @@ h1 {
   min-width: 0;
 }
 
+.tls-builtin-ca {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--surface0);
+  border-radius: 4px;
+  background: var(--mantle);
+  padding: 8px;
+}
+
+.tls-builtin-ca > header {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.tls-builtin-ca h3 {
+  margin: 0;
+  color: var(--subtext);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.tls-builtin-ca .tls-fact-list {
+  margin: 0;
+}
+
+.tls-builtin-ca-form {
+  grid-template-columns: minmax(140px, 1.2fr) 104px 132px 104px 96px;
+}
+
+.tls-policy-builtin-anchor {
+  border-style: dashed;
+}
+
+.tls-policy-builtin-anchor input:disabled {
+  color: var(--subtext);
+  opacity: 1;
+}
+
 .sec-node-editor {
   position: relative;
   display: grid;
@@ -1953,6 +1997,7 @@ h1 {
   .sec-value-edit-form,
   .sec-nodes-form,
   .sec-rename-form,
+  .tls-builtin-ca-form,
   .tls-cert-form,
   .tls-policy-form,
   .tls-rename-form,

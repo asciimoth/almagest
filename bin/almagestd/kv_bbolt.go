@@ -60,6 +60,7 @@ type bboltKVManager struct {
 
 	tlsMu         sync.Mutex
 	immutableTLS  immutableTLSData
+	builtinCA     *tlsBuiltinCA
 	tlsWatchers   map[string]map[string]struct{}
 	tlsNextSub    uint64
 	tlsChangeSubs map[uint64]func(tlsChange)
@@ -103,6 +104,9 @@ type bboltKVManagerOptions struct {
 	// mutable bbolt entries. The overlay is cloned during open and then kept
 	// only in memory.
 	ImmutableTLS immutableTLSData
+	// BuiltinCA is the daemon-owned CA keypair. Only its public certificate is
+	// added to the effective TLS certificate catalog.
+	BuiltinCA *tlsBuiltinCA
 }
 
 func openKVManager(path string) (*bboltKVManager, error) {
@@ -114,6 +118,11 @@ func openKVManagerWithOptions(path string, options bboltKVManagerOptions) (*bbol
 	if err != nil {
 		return nil, fmt.Errorf("open kv database: %w", err)
 	}
+	immutableTLS := cloneImmutableTLSData(options.ImmutableTLS)
+	builtinCA := cloneTLSBuiltinCA(options.BuiltinCA)
+	if builtinCA != nil {
+		immutableTLS = withTLSBuiltinCA(immutableTLS, builtinCA)
+	}
 	manager := &bboltKVManager{
 		db:                        db,
 		disableDNSCacheExpiration: options.DisableDNSCacheExpiration,
@@ -122,7 +131,8 @@ func openKVManagerWithOptions(path string, options bboltKVManagerOptions) (*bbol
 		dnsChangeSubs:             map[uint64]func(dnsCacheChange){},
 		immutableSecrets:          cloneImmutableSecrets(options.ImmutableSecrets),
 		secretsChangeSubs:         map[uint64]func(secretChange){},
-		immutableTLS:              cloneImmutableTLSData(options.ImmutableTLS),
+		immutableTLS:              immutableTLS,
+		builtinCA:                 builtinCA,
 		tlsWatchers:               map[string]map[string]struct{}{},
 		tlsChangeSubs:             map[uint64]func(tlsChange){},
 	}

@@ -7,6 +7,7 @@ import {
   formatTLSCertcatBadge,
   formatTLSCertcatMatch,
   formatTLSPolicySpec,
+  isBuiltinTLSCertName,
   isMutableTLSCertName,
   isMutableTLSPolicyName,
   parseTLSPolicySpec,
@@ -42,6 +43,17 @@ test("TLS changes upsert, delete, and keep deterministic order", () => {
 
   const deleted = applyTLSChange(withPolicy, { kind: "cert", name: "z", deleted: true });
   assert.deepEqual(deleted.certs.map((entry) => entry.name), ["a"]);
+
+  const withBuiltin = applyTLSChange(deleted, {
+    kind: "builtin_ca",
+    builtin_ca: {
+      cert: { name: "builtin-ca:almagest", fingerprint: "abc" },
+      options: { issuer: "Almagest", key_algorithm: "ecdsa", curve: "P256" },
+    },
+  });
+  assert.equal(withBuiltin.builtin_ca.options.curve, "P256");
+  assert.equal(withBuiltin.certs[0].name, "a");
+  assert.equal(withBuiltin.certs[1].name, "builtin-ca:almagest");
 });
 
 test("TLS policy JSON parser accepts the API shape and rejects wrong types", () => {
@@ -85,6 +97,8 @@ test("TLS certcat helpers summarize matches and scopes", () => {
 test("TLS mutable name guards match backend reserved names", () => {
   assert.equal(isMutableTLSCertName("ca"), true);
   assert.equal(isMutableTLSCertName("os-ca:system"), false);
+  assert.equal(isMutableTLSCertName("builtin-ca:almagest"), false);
+  assert.equal(isBuiltinTLSCertName("builtin-ca:almagest"), true);
   assert.equal(isMutableTLSCertName(""), false);
   assert.equal(isMutableTLSPolicyName("custom"), true);
   assert.equal(isMutableTLSPolicyName("default"), false);
