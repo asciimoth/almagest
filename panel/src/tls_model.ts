@@ -338,6 +338,10 @@ export function isMutableTLSCertName(name: string): boolean {
   return name.trim() !== "" && !name.startsWith("os-ca:") && !isBuiltinTLSCertName(name);
 }
 
+export function isImmutableTLSCertName(name: string): boolean {
+  return name.startsWith("os-ca:") || isBuiltinTLSCertName(name);
+}
+
 export function isMutableTLSPolicyName(name: string): boolean {
   return name.trim() !== "" && name !== "default";
 }

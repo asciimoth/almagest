@@ -117,6 +117,7 @@ import {
   formatTLSPolicyMeta,
   formatTLSPolicySpec,
   isBuiltinTLSCertName,
+  isImmutableTLSCertName,
   isMutableTLSCertName,
   isMutableTLSPolicyName,
   parseTLSPolicySpec,
@@ -148,6 +149,8 @@ const TLS_BUILTIN_CA_ALGORITHMS = ["ecdsa", "ed25519", "rsa"] as const;
 const TLS_BUILTIN_CA_CURVES = ["P256", "P384", "P521"] as const;
 const TLS_AUTHORITY_MATCHES = ["certificate", "spki"] as const;
 const TLS_PIN_KINDS = ["spki", "certificate"] as const;
+const TLS_IMMUTABLE_CERT_GROUP_KEY = "immutable";
+const TLS_USER_CERT_GROUP_KEY = "user";
 let secNodeAutocompleteID = 0;
 let tlsPolicyEditorID = 0;
 
@@ -416,6 +419,7 @@ let tlsNotice: TLSNotice | null = null;
 let tlsOpenForm: TLSOpenForm | null = null;
 let tlsValuePanel: TLSValuePanelState | null = null;
 let tlsSnapshot: TLSSnapshot = { certs: [], policies: [] };
+const tlsExpandedCertGroups = new Set<string>([TLS_USER_CERT_GROUP_KEY]);
 let kvStoreSubscriptionID = 0;
 let kvStoreSubscribePending = false;
 let kvScrollTop = 0;
@@ -3104,7 +3108,7 @@ function renderTLS(): void {
   const policies = tlsSnapshot.policies ?? [];
   const list = document.createElement("ol");
   list.className = "kv-store-list tls-list";
-  list.append(renderTLSSection("Certificates", certs, renderTLSCertRow, "No TLS certificates."));
+  list.append(renderTLSCertSection(certs));
   list.append(renderTLSSection("Policies", policies, renderTLSPolicyRow, "No TLS policies."));
   tree.append(list);
   el.tlsTree.replaceChildren(tree);
@@ -3317,6 +3321,80 @@ function renderTLSSection<T>(
   }
   section.append(list);
   return section;
+}
+
+function renderTLSCertSection(certs: TLSCertEntry[]): HTMLLIElement {
+  const section = document.createElement("li");
+  section.className = "kv-store tls-section";
+  section.append(textElement("h3", "Certificates", "tls-section-title"));
+  const list = document.createElement("ol");
+  list.className = "kv-entry-list";
+
+  if (!certs.length) {
+    list.append(renderKVEmptyState(tlsSubscribePending ? "Loading TLS configs." : "No TLS certificates."));
+  } else {
+    const immutableCerts = certs.filter((cert) => isImmutableTLSCertName(cert.name));
+    const userCerts = certs.filter((cert) => !isImmutableTLSCertName(cert.name));
+    list.append(
+      renderTLSCertGroup(
+        TLS_IMMUTABLE_CERT_GROUP_KEY,
+        "Built-in and OS certificates",
+        immutableCerts,
+        "No built-in or OS certificates.",
+      ),
+      renderTLSCertGroup(
+        TLS_USER_CERT_GROUP_KEY,
+        "User certificates",
+        userCerts,
+        "No user certificates.",
+      ),
+    );
+  }
+
+  section.append(list);
+  return section;
+}
+
+function renderTLSCertGroup(
+  groupKey: string,
+  titleText: string,
+  certs: TLSCertEntry[],
+  emptyText: string,
+): HTMLLIElement {
+  const expanded = tlsExpandedCertGroups.has(groupKey);
+  const item = document.createElement("li");
+  item.className = "kv-entry tls-cert-group";
+  const row = document.createElement("div");
+  row.className = "kv-row kv-store-row tls-cert-group-row";
+  row.append(createKVDisclosure(expanded, `Toggle ${titleText}`, () => toggleTLSCertGroup(groupKey)));
+  row.append(createTLSCertGroupTitle(titleText, certs.length));
+  const actions = document.createElement("div");
+  actions.className = "kv-row-actions";
+  row.append(actions);
+  item.append(row);
+
+  if (expanded) {
+    const list = document.createElement("ol");
+    list.className = "kv-entry-list";
+    if (!certs.length) {
+      list.append(renderKVEmptyState(emptyText));
+    } else {
+      for (const cert of certs) list.append(renderTLSCertRow(cert));
+    }
+    item.append(list);
+  }
+
+  return item;
+}
+
+function createTLSCertGroupTitle(titleText: string, count: number): HTMLElement {
+  const title = document.createElement("div");
+  title.className = "kv-store-title tls-cert-group-title";
+  title.append(
+    textElement("strong", titleText),
+    textElement("em", `${count} cert${count === 1 ? "" : "s"}`),
+  );
+  return title;
 }
 
 function renderTLSCertRow(entry: TLSCertEntry): HTMLLIElement {
@@ -3876,6 +3954,15 @@ function tlsEditActions(submitLabel: string, onCancel: () => void): HTMLElement 
 
 function closeTLSForm(): void {
   tlsOpenForm = null;
+  renderTLS();
+}
+
+function toggleTLSCertGroup(groupKey: string): void {
+  if (tlsExpandedCertGroups.has(groupKey)) {
+    tlsExpandedCertGroups.delete(groupKey);
+  } else {
+    tlsExpandedCertGroups.add(groupKey);
+  }
   renderTLS();
 }
 

@@ -8,6 +8,7 @@ import {
   formatTLSCertcatMatch,
   formatTLSPolicySpec,
   isBuiltinTLSCertName,
+  isImmutableTLSCertName,
   isMutableTLSCertName,
   isMutableTLSPolicyName,
   parseTLSPolicySpec,
@@ -99,6 +100,9 @@ test("TLS mutable name guards match backend reserved names", () => {
   assert.equal(isMutableTLSCertName("os-ca:system"), false);
   assert.equal(isMutableTLSCertName("builtin-ca:almagest"), false);
   assert.equal(isBuiltinTLSCertName("builtin-ca:almagest"), true);
+  assert.equal(isImmutableTLSCertName("ca"), false);
+  assert.equal(isImmutableTLSCertName("os-ca:system"), true);
+  assert.equal(isImmutableTLSCertName("builtin-ca:almagest"), true);
   assert.equal(isMutableTLSCertName(""), false);
   assert.equal(isMutableTLSPolicyName("custom"), true);
   assert.equal(isMutableTLSPolicyName("default"), false);
