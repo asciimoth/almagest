@@ -1,6 +1,7 @@
 package almagest
 
 import (
+	"crypto/tls"
 	"net/http"
 
 	"github.com/asciimoth/configer/configer"
@@ -47,11 +48,12 @@ func (httpClientClass) DefaultNodeParams() pasta.NodeClassParams {
 
 func (c httpClientClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
 	return &httpClientNode{
-		NodeBase:   NodeBase{engine: c.engine},
-		url:        configer.String(cfg, configer.Path{"url"}, DefaultHTTPClientURL),
-		method:     configer.String(cfg, configer.Path{"method"}, DefaultHTTPClientMethod),
-		body:       configer.String(cfg, configer.Path{"body"}, ""),
-		statusText: httpClientStatusReady,
+		NodeBase:      NodeBase{engine: c.engine},
+		url:           configer.String(cfg, configer.Path{"url"}, DefaultHTTPClientURL),
+		method:        configer.String(cfg, configer.Path{"method"}, DefaultHTTPClientMethod),
+		body:          configer.String(cfg, configer.Path{"body"}, ""),
+		tlsConfigName: readNodeTLSConfigName(cfg),
+		statusText:    httpClientStatusReady,
 	}, nil
 }
 
@@ -67,6 +69,11 @@ type httpClientNode struct {
 	url     string
 	method  string
 	body    string
+
+	tlsConfigName      string
+	tlsConfig          *tls.Config
+	tlsConfigEffective string
+	tlsConfigErr       string
 
 	requestID  uint64
 	pending    bool
@@ -90,6 +97,7 @@ func (n *httpClientNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint
 	if n.statusText == "" {
 		n.statusText = httpClientStatusReady
 	}
+	n.refreshTLSConfig()
 
 	n.netp = restoredRight(restored, 0)
 	n.urlp = restoredLeft(restored, 0)
@@ -200,8 +208,17 @@ func (n *httpClientNode) OnEvent(event pasta.Event, linkType string, _ []string,
 }
 
 func (n *httpClientNode) OnInbox(message pasta.InboxMessage) error {
-	result, ok := message.Payload.(httpClientResult)
-	if !ok || result.id != n.requestID {
+	switch payload := message.Payload.(type) {
+	case httpClientResult:
+		return n.handleRequestResult(payload)
+	case TlsConfigChanged:
+		n.handleTLSConfigChanged(payload)
+	}
+	return nil
+}
+
+func (n *httpClientNode) handleRequestResult(result httpClientResult) error {
+	if result.id != n.requestID {
 		return nil
 	}
 
@@ -223,6 +240,17 @@ func (n *httpClientNode) OnInbox(message pasta.InboxMessage) error {
 	return nil
 }
 
+func (n *httpClientNode) handleTLSConfigChanged(msg TlsConfigChanged) {
+	nextName, relevant := handleNodeTLSConfigChanged(n.tlsConfigName, n.tlsConfigEffective, msg)
+	if !relevant {
+		n.sendRequestBlock()
+		return
+	}
+	n.tlsConfigName = nextName
+	n.refreshTLSConfig()
+	n.resetStatusReady()
+}
+
 func (n *httpClientNode) OnFormularMsg(message any) error {
 	switch msg := message.(type) {
 	case formular.FieldUpdateMessage:
@@ -241,14 +269,13 @@ func (n *httpClientNode) onFieldUpdate(msg formular.FieldUpdateMessage) error {
 		return nil
 	}
 
-	value, ok := std.StringFromPayload(msg.Value)
-	if !ok {
-		n.sendRequestBlock()
-		return nil
-	}
-
 	switch msg.Field.FieldID {
 	case "url":
+		value, ok := std.StringFromPayload(msg.Value)
+		if !ok {
+			n.sendRequestBlock()
+			return nil
+		}
 		if n.PortHasLinks(n.urlp) {
 			n.sendRequestBlock()
 			return nil
@@ -256,6 +283,11 @@ func (n *httpClientNode) onFieldUpdate(msg formular.FieldUpdateMessage) error {
 		n.setURL(value)
 
 	case "method":
+		value, ok := std.StringFromPayload(msg.Value)
+		if !ok {
+			n.sendRequestBlock()
+			return nil
+		}
 		if n.PortHasLinks(n.methodp) {
 			n.sendRequestBlock()
 			return nil
@@ -263,11 +295,24 @@ func (n *httpClientNode) onFieldUpdate(msg formular.FieldUpdateMessage) error {
 		n.setMethod(value)
 
 	case "body":
+		value, ok := std.StringFromPayload(msg.Value)
+		if !ok {
+			n.sendRequestBlock()
+			return nil
+		}
 		if n.PortHasLinks(n.bodyp) {
 			n.sendRequestBlock()
 			return nil
 		}
 		n.setBody(value)
+
+	case nodeTLSConfigFieldID:
+		value, ok := nodeTLSConfigValueFromAny(msg.Value)
+		if !ok {
+			n.sendRequestBlock()
+			return nil
+		}
+		n.setTLSConfig(value)
 	}
 
 	return nil
@@ -286,9 +331,10 @@ func (n *httpClientNode) OnSave(cfg configer.Config) error {
 		return err
 	}
 	return configer.SetMap(cfg, map[string]any{
-		"url":    n.url,
-		"method": n.method,
-		"body":   n.body,
+		"url":       n.url,
+		"method":    n.method,
+		"body":      n.body,
+		"tlsConfig": n.tlsConfigName,
 	})
 }
 
@@ -300,11 +346,13 @@ func (n *httpClientNode) sendRequest() {
 
 	n.requestID++
 	req := httpClientRequest{
-		id:      n.requestID,
-		network: n.network,
-		url:     n.url,
-		method:  n.method,
-		body:    n.body,
+		id:           n.requestID,
+		network:      n.network,
+		url:          n.url,
+		method:       n.method,
+		body:         n.body,
+		tlsConfig:    n.currentTLSConfig(),
+		tlsConfigErr: n.tlsConfigErr,
 	}
 
 	n.pending = true

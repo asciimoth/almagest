@@ -2,6 +2,7 @@ package almagest
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -252,6 +253,68 @@ func TestDNSClientLiveConfigChangeClosesOldClient(t *testing.T) {
 	assertDNSAnswer(t, third, "live-config.test.", dns.TypeA, "192.0.2.60")
 }
 
+func TestDNSClientUsesSelectedTLSConfigAndHandlesRename(t *testing.T) {
+	tracker := installTrackedDNSClientFactory(t)
+	storage := newNodeTestTLSConfigStorage(map[string]string{
+		DefaultTlsConfigName: "default.test",
+		"custom":             "custom.test",
+	})
+	w := pasta.NewWorkspace(NewDebugLogFactory(1024))
+	t.Cleanup(func() { w.Close() })
+	network := newMockLoopbackNetwork(true)
+	t.Cleanup(func() { _ = network.Close() })
+	for _, class := range []pasta.NodeClass{
+		dnsClientClass{engine: &engine{tlsConfigs: storage}},
+		dnsClientNetworkClass{network: network},
+	} {
+		if err := w.AddNodeClass(class); err != nil {
+			t.Fatalf("AddNodeClass %s: %v", class.ClassName(), err)
+		}
+	}
+
+	clientID := addDNSClientNode(t, w, "client")
+	networkID := addDNSClientNetworkNode(t, w, "network")
+	client := mustNodeSnapshot(t, w, clientID)
+	networkNode := mustNodeSnapshot(t, w, networkID)
+	if _, _, err := w.AddLink(networkNode.LeftPorts[0], client.RightPorts[0]); err != nil {
+		t.Fatalf("AddLink network->client: %v", err)
+	}
+	w.SendNodeFormularMsg(clientID, formularApplyMessage(clientID, dnsClientConfigBlockID, map[string]any{
+		dnsClientServersField: dnsClientServerValues("dot://dns.example.test:853"),
+		nodeTLSConfigFieldID:  "custom",
+	}))
+
+	first := tracker.client(t, 0)
+	if first.tlsConfig == nil || first.tlsConfig.ServerName != "custom.test" {
+		t.Fatalf("first DNS client TLS config = %#v, want custom.test", first.tlsConfig)
+	}
+
+	storage.set("renamed", "renamed.test")
+	w.SendInbox(pasta.InboxMessage{
+		ReceiverNode: clientID,
+		Payload: TlsConfigChanged{
+			NamePrev: "custom",
+			NameNew:  "renamed",
+		},
+	})
+	second := tracker.client(t, 1)
+	if second.tlsConfig == nil || second.tlsConfig.ServerName != "renamed.test" {
+		t.Fatalf("second DNS client TLS config = %#v, want renamed.test", second.tlsConfig)
+	}
+	if first.closeCount() != 1 {
+		t.Fatalf("first DNS client close count = %d, want 1 after TLS config rename", first.closeCount())
+	}
+
+	out := configer.NewMemory(nil)
+	if err := w.SaveConfig(out); err != nil {
+		t.Fatalf("SaveConfig: %v", err)
+	}
+	got := configer.String(out.View(configer.Path{"client"}), configer.Path{nodeTLSConfigFieldID}, "")
+	if got != "renamed" {
+		t.Fatalf("saved TLS config = %q, want renamed", got)
+	}
+}
+
 func TestDNSClientSaveRestorePreservesServersAndLinks(t *testing.T) {
 	cfg := configer.NewMemory(map[string]any{
 		"nodes": map[string]any{
@@ -450,16 +513,20 @@ type trackedDNSClientFactory struct {
 
 type trackedDNSClient struct {
 	dns.Interface
-	closes atomic.Int32
+	tlsConfig *tls.Config
+	closes    atomic.Int32
 }
 
 func installTrackedDNSClientFactory(t *testing.T) *trackedDNSClientFactory {
 	t.Helper()
 	tracker := &trackedDNSClientFactory{}
 	previous := dnsClientNewClient
-	dnsClientNewClient = func(dial gonnect.Dial, bootstrap dns.Interface, spawner gonnect.Spawner, servers ...string) dns.Interface {
+	dnsClientNewClient = func(dial gonnect.Dial, bootstrap dns.Interface, spawner gonnect.Spawner, tlsConfig *tls.Config, servers ...string) dns.Interface {
+		dnsClient := dns.NewClient(dial, bootstrap, spawner, servers...)
+		dnsClient.TLSConfig = cloneTLSClientConfig(tlsConfig)
 		client := &trackedDNSClient{
-			Interface: dns.NewClient(dial, bootstrap, spawner, servers...),
+			Interface: dnsClient,
+			tlsConfig: cloneTLSClientConfig(tlsConfig),
 		}
 		tracker.mu.Lock()
 		tracker.clients = append(tracker.clients, client)

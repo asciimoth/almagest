@@ -100,6 +100,7 @@ type tlsPolicyNotification struct {
 
 type tlsMutationResult struct {
 	policyNotifications []tlsPolicyNotification
+	policyListChanged   bool
 }
 
 func (m *bboltKVManager) ListConfigs() []string {
@@ -478,6 +479,10 @@ func (m *bboltKVManager) setTLSPolicy(name string, spec api.TLSPolicySpec) (tlsM
 	if _, err := compileTLSPolicySpec(spec, certs); err != nil {
 		return tlsMutationResult{}, fmt.Errorf("%w: %v", almagest.ErrTlsConfigInvalidValue, err)
 	}
+	_, existed, err := m.tlsEffectivePolicy(name)
+	if err != nil {
+		return tlsMutationResult{}, err
+	}
 	golog.Debugf("TLS storage: writing mutable policy name=%q", name)
 	raw, err := encodeTLSPolicyRecord(tlsPolicyRecord{Spec: spec})
 	if err != nil {
@@ -496,6 +501,7 @@ func (m *bboltKVManager) setTLSPolicy(name string, spec api.TLSPolicySpec) (tlsM
 	m.notifyTLSChange(tlsChange{kind: tlsChangePolicyUpsert, name: name})
 	return tlsMutationResult{
 		policyNotifications: []tlsPolicyNotification{m.tlsPolicyNotification(name, name)},
+		policyListChanged:   !existed,
 	}, nil
 }
 
@@ -559,6 +565,7 @@ func (m *bboltKVManager) renameTLSPolicy(name, newName string) (tlsMutationResul
 			newName:  newName,
 			nodes:    nodes,
 		}},
+		policyListChanged: true,
 	}, nil
 }
 
@@ -599,6 +606,7 @@ func (m *bboltKVManager) deleteTLSPolicy(name string) (tlsMutationResult, error)
 			newName:  name,
 			nodes:    nodes,
 		}},
+		policyListChanged: deleted,
 	}, nil
 }
 

@@ -71,6 +71,7 @@ func (n *httpClientNode) requestBlock() formular.Block {
 				Multiline: true,
 			},
 		},
+		nodeTLSConfigSelectorItem(&n.NodeBase, n.tlsConfigName, n.tlsConfigErr),
 		{
 			Type:     formular.ItemButton,
 			ID:       "send",
@@ -173,4 +174,25 @@ func (n *httpClientNode) setBodyNoRefresh(value string) bool {
 	}
 	n.body = value
 	return true
+}
+
+func (n *httpClientNode) setTLSConfig(value string) {
+	value = normalizeNodeTLSConfigName(value)
+	if n.tlsConfigName == value {
+		n.sendRequestBlock()
+		return
+	}
+	n.tlsConfigName = value
+	n.refreshTLSConfig()
+	n.resetStatusReady()
+}
+
+func (n *httpClientNode) refreshTLSConfig() {
+	result, err := resolveNodeTLSClientConfig(&n.NodeBase, n.tlsConfigName)
+	n.tlsConfig = result.config
+	n.tlsConfigEffective = result.effectiveName
+	n.tlsConfigErr = ""
+	if err != nil {
+		n.tlsConfigErr = err.Error()
+	}
 }

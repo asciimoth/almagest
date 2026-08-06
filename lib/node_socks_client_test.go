@@ -2,6 +2,8 @@ package almagest
 
 import (
 	"context"
+	"crypto/tls"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,7 +17,7 @@ func TestBuildSocksGoClientUsesOutNetworkAndProxiesAllAddrs(t *testing.T) {
 	calls := make([]string, 0, 2)
 	out := &socksRouteNetwork{name: "out", calls: &calls}
 
-	client, err := buildSocksGoClient("socks5://proxy.example.test:1080", out, nil)
+	client, err := buildSocksGoClient("socks5://proxy.example.test:1080", out, nil, nil, "")
 	if err != nil {
 		t.Fatalf("buildSocksGoClient error = %v, want nil", err)
 	}
@@ -28,6 +30,60 @@ func TestBuildSocksGoClientUsesOutNetworkAndProxiesAllAddrs(t *testing.T) {
 	}
 
 	assertStringSlice(t, calls, []string{"out.Dial tcp proxy.example.test:1080"})
+}
+
+func TestBuildSocksGoClientUsesTLSConfigForTLSProxy(t *testing.T) {
+	client, err := buildSocksGoClient(
+		"socks5+tls://proxy.example.test:1080",
+		nil,
+		nil,
+		&tls.Config{ServerName: "policy.test", MinVersion: tls.VersionTLS12},
+		"",
+	)
+	if err != nil {
+		t.Fatalf("buildSocksGoClient error = %v, want nil", err)
+	}
+	if client.TLSConfig == nil || client.TLSConfig.ServerName != "policy.test" {
+		t.Fatalf("client TLS config = %#v, want policy.test", client.TLSConfig)
+	}
+}
+
+func TestBuildSocksGoClientReportsTLSConfigErrorOnlyForTLSProxy(t *testing.T) {
+	_, err := buildSocksGoClient("socks5+tls://proxy.example.test:1080", nil, nil, nil, "policy failed")
+	if err == nil || !strings.Contains(err.Error(), "policy failed") {
+		t.Fatalf("TLS proxy error = %v, want policy failed", err)
+	}
+
+	if _, err := buildSocksGoClient("socks5://proxy.example.test:1080", nil, nil, nil, "policy failed"); err != nil {
+		t.Fatalf("plain proxy error = %v, want nil", err)
+	}
+}
+
+func TestSocksClientHandlesTLSConfigChangedRename(t *testing.T) {
+	storage := newNodeTestTLSConfigStorage(map[string]string{
+		DefaultTlsConfigName: "default.test",
+		"custom":             "custom.test",
+		"renamed":            "renamed.test",
+	})
+	node := &socksClientNode{
+		NodeBase:      NodeBase{engine: &engine{tlsConfigs: storage}},
+		proxyURL:      "socks5+tls://proxy.example.test:1080",
+		tlsConfigName: "custom",
+	}
+	node.rebuildClient()
+	if node.client == nil || node.client.TLSConfig == nil || node.client.TLSConfig.ServerName != "custom.test" {
+		t.Fatalf("initial client TLS config = %#v, want custom.test", node.client)
+	}
+
+	if err := node.OnInbox(pasta.InboxMessage{Payload: TlsConfigChanged{NamePrev: "custom", NameNew: "renamed"}}); err != nil {
+		t.Fatalf("OnInbox error = %v, want nil", err)
+	}
+	if node.tlsConfigName != "renamed" {
+		t.Fatalf("node TLS config name = %q, want renamed", node.tlsConfigName)
+	}
+	if node.client == nil || node.client.TLSConfig == nil || node.client.TLSConfig.ServerName != "renamed.test" {
+		t.Fatalf("renamed client TLS config = %#v, want renamed.test", node.client)
+	}
 }
 
 func TestSocksClientNodeEmitsClientAfterOutNetworkUpdate(t *testing.T) {

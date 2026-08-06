@@ -275,9 +275,24 @@ func (s *apiSession) sendTLSMutationInbox(result tlsMutationResult) {
 			NamePrev: notification.prevName,
 			NameNew:  notification.newName,
 		}
+		sent := map[uint64]struct{}{}
+		if result.policyListChanged {
+			if snapshot, ok := s.engine.WorkspaceSnapshot("main"); ok {
+				for id := range snapshot.Nodes {
+					s.engine.SendInbox("main", pasta.InboxMessage{
+						ReceiverNode: id,
+						Payload:      payload,
+					})
+					sent[id] = struct{}{}
+				}
+			}
+		}
 		for _, node := range notification.nodes {
 			id, ok := s.engine.NodeByName("main", node)
 			if !ok {
+				continue
+			}
+			if _, ok := sent[id]; ok {
 				continue
 			}
 			s.engine.SendInbox("main", pasta.InboxMessage{

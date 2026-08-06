@@ -1,6 +1,7 @@
 package almagest
 
 import (
+	"crypto/tls"
 	_ "embed"
 	"errors"
 	"fmt"
@@ -36,8 +37,10 @@ var (
 	//go:embed node_dns_client.md
 	dnsClientClassLongDescription string
 
-	dnsClientNewClient = func(dial gonnect.Dial, bootstrap dns.Interface, spawner gonnect.Spawner, servers ...string) dns.Interface {
-		return dns.NewClient(dial, bootstrap, spawner, servers...)
+	dnsClientNewClient = func(dial gonnect.Dial, bootstrap dns.Interface, spawner gonnect.Spawner, tlsConfig *tls.Config, servers ...string) dns.Interface {
+		client := dns.NewClient(dial, bootstrap, spawner, servers...)
+		client.TLSConfig = cloneTLSClientConfig(tlsConfig)
+		return client
 	}
 )
 
@@ -66,7 +69,8 @@ func (c dnsClientClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState)
 }
 
 type dnsClientConfig struct {
-	servers []string
+	servers       []string
+	tlsConfigName string
 }
 
 func defaultDNSClientConfig() dnsClientConfig {
@@ -80,11 +84,13 @@ func (c *dnsClientConfig) read(cfg configer.Config) {
 	if servers, ok := readDNSClientServersConfig(cfg); ok {
 		c.servers = servers
 	}
+	c.tlsConfigName = readNodeTLSConfigName(cfg)
 	c.normalize()
 }
 
 func (c *dnsClientConfig) normalize() {
 	c.servers = normalizeDNSClientServers(c.servers)
+	c.tlsConfigName = normalizeNodeTLSConfigName(c.tlsConfigName)
 }
 
 func (c dnsClientConfig) valid() error {
@@ -97,7 +103,7 @@ func (c dnsClientConfig) valid() error {
 }
 
 func (c dnsClientConfig) copy() dnsClientConfig {
-	return dnsClientConfig{servers: slices.Clone(c.servers)}
+	return dnsClientConfig{servers: slices.Clone(c.servers), tlsConfigName: c.tlsConfigName}
 }
 
 // dnsClientNode owns one gonnect/dns.Client for the current Network,
@@ -121,6 +127,10 @@ type dnsClientNode struct {
 	client       dns.Interface
 	outputs      DNSOutputCache
 
+	tlsConfig          *tls.Config
+	tlsConfigEffective string
+	tlsConfigErr       string
+
 	formError string
 }
 
@@ -132,6 +142,7 @@ func (n *dnsClientNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint6
 	if err := n.SetPrimary(TypeDNS); err != nil {
 		return err
 	}
+	n.refreshTLSConfig()
 	if err := n.config.valid(); err != nil {
 		n.formError = err.Error()
 	}
@@ -251,6 +262,13 @@ func (n *dnsClientNode) OnEvent(event pasta.Event, linkType string, _ []string, 
 	return nil
 }
 
+func (n *dnsClientNode) OnInbox(message pasta.InboxMessage) error {
+	if msg, ok := message.Payload.(TlsConfigChanged); ok {
+		n.handleTLSConfigChanged(msg)
+	}
+	return nil
+}
+
 func (n *dnsClientNode) OnFormularMsg(message any) error {
 	switch msg := message.(type) {
 	case formular.FormApplyMessage:
@@ -272,7 +290,8 @@ func (n *dnsClientNode) OnSave(cfg configer.Config) error {
 		return err
 	}
 	return configer.SetMap(cfg, map[string]any{
-		"servers": slices.Clone(n.config.servers),
+		"servers":   slices.Clone(n.config.servers),
+		"tlsConfig": n.config.tlsConfigName,
 	})
 }
 
@@ -281,6 +300,9 @@ func (n *dnsClientNode) applyConfigForm(values map[string]any) error {
 	if value, ok := dnsClientServersFromAny(values[dnsClientServersField]); ok {
 		next.servers = value
 	}
+	if value, ok := nodeTLSConfigValueFromAny(values[nodeTLSConfigFieldID]); ok {
+		next.tlsConfigName = value
+	}
 	next.normalize()
 	if err := next.valid(); err != nil {
 		n.formError = err.Error()
@@ -288,9 +310,12 @@ func (n *dnsClientNode) applyConfigForm(values map[string]any) error {
 		_ = n.updateLabel()
 		return nil
 	}
-	changed := !slices.Equal(n.config.servers, next.servers) || n.formError != ""
+	changed := !slices.Equal(n.config.servers, next.servers) ||
+		n.config.tlsConfigName != next.tlsConfigName ||
+		n.formError != ""
 	n.formError = ""
 	n.config = next
+	n.refreshTLSConfig()
 	n.sendForcedMenuSnapshot()
 	if changed {
 		n.rebuildClient()
@@ -306,13 +331,40 @@ func (n *dnsClientNode) rebuildClient() {
 	n.outputs.CloseAll()
 	closeDNS(n.client)
 	n.client = nil
-	if n.formError != "" || len(n.config.servers) == 0 || !NetworkIsReady(n.network) {
+	if n.formError != "" || n.tlsConfigErr != "" || len(n.config.servers) == 0 || !NetworkIsReady(n.network) {
 		return
 	}
-	client := dnsClientNewClient(n.network.Dial, n.bootstrapDNS, n.dnsSpawner(), n.config.servers...)
+	client := dnsClientNewClient(n.network.Dial, n.bootstrapDNS, n.dnsSpawner(), n.currentTLSConfig(), n.config.servers...)
 	n.client = client
 	BindDNSResource(n.w, n.id, 0, client)
 	n.sendAll()
+}
+
+func (n *dnsClientNode) handleTLSConfigChanged(msg TlsConfigChanged) {
+	nextName, relevant := handleNodeTLSConfigChanged(n.config.tlsConfigName, n.tlsConfigEffective, msg)
+	if !relevant {
+		n.sendForcedMenuSnapshot()
+		return
+	}
+	n.config.tlsConfigName = nextName
+	n.refreshTLSConfig()
+	n.sendForcedMenuSnapshot()
+	n.rebuildClient()
+	_ = n.updateLabel()
+}
+
+func (n *dnsClientNode) refreshTLSConfig() {
+	result, err := resolveNodeTLSClientConfig(&n.NodeBase, n.config.tlsConfigName)
+	n.tlsConfig = result.config
+	n.tlsConfigEffective = result.effectiveName
+	n.tlsConfigErr = ""
+	if err != nil {
+		n.tlsConfigErr = err.Error()
+	}
+}
+
+func (n *dnsClientNode) currentTLSConfig() *tls.Config {
+	return cloneTLSClientConfig(n.tlsConfig)
 }
 
 func (n *dnsClientNode) dnsSpawner() gonnect.Spawner {
@@ -346,6 +398,8 @@ func (n *dnsClientNode) updateLabel() error {
 	switch {
 	case n.formError != "":
 		return n.SetLabel("invalid config")
+	case n.tlsConfigErr != "":
+		return n.SetLabel("invalid TLS config")
 	case !NetworkIsReady(n.network):
 		return n.SetLabel("waiting for network")
 	case len(n.config.servers) == 0:
@@ -372,6 +426,7 @@ func (n *dnsClientNode) configBlock() formular.Block {
 	}
 	return formular.Block{ID: dnsClientConfigBlockID, Order: 10, Generation: 1, Form: true, Items: []formular.Item{
 		dnsClientServersFieldItem(dnsClientServersField, "DNS servers", n.config.servers, status...),
+		nodeTLSConfigSelectorItem(&n.NodeBase, n.config.tlsConfigName, n.tlsConfigErr),
 	}}
 }
 

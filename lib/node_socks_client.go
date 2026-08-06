@@ -1,6 +1,7 @@
 package almagest
 
 import (
+	"crypto/tls"
 	"strings"
 
 	"github.com/asciimoth/bufpool"
@@ -43,7 +44,12 @@ func (socksClientClass) DefaultNodeParams() pasta.NodeClassParams {
 	}}
 }
 func (c socksClientClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
-	return &socksClientNode{pool: enginePool(c.engine), proxyURL: configer.String(cfg, configer.Path{"proxyURL"}, DefaultSocksClientProxyURL)}, nil
+	return &socksClientNode{
+		NodeBase:      NodeBase{engine: c.engine},
+		pool:          enginePool(c.engine),
+		proxyURL:      configer.String(cfg, configer.Path{"proxyURL"}, DefaultSocksClientProxyURL),
+		tlsConfigName: readNodeTLSConfigName(cfg),
+	}, nil
 }
 
 type socksClientNode struct {
@@ -60,6 +66,11 @@ type socksClientNode struct {
 	outputs    NetworkOutputCache
 	proxyURL   string
 	errText    string
+
+	tlsConfigName      string
+	tlsConfig          *tls.Config
+	tlsConfigEffective string
+	tlsConfigErr       string
 }
 
 func (n *socksClientNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
@@ -67,6 +78,7 @@ func (n *socksClientNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uin
 	if n.proxyURL == "" {
 		n.proxyURL = DefaultSocksClientProxyURL
 	}
+	n.refreshTLSConfig()
 
 	n.in = restoredLeft(restored, 0)
 	n.out = restoredRight(restored, 0)
@@ -168,21 +180,38 @@ func (n *socksClientNode) OnEvent(event pasta.Event, linkType string, _ []string
 	return nil
 }
 
+func (n *socksClientNode) OnInbox(message pasta.InboxMessage) error {
+	if msg, ok := message.Payload.(TlsConfigChanged); ok {
+		n.handleTLSConfigChanged(msg)
+	}
+	return nil
+}
+
 func (n *socksClientNode) OnFormularMsg(message any) error {
 	msg, ok := message.(formular.FieldUpdateMessage)
-	if !ok || msg.MenuID != pasta.NodeMenuID(n.id) || msg.Field.BlockID != "config" || msg.Field.FieldID != "proxyURL" || len(msg.Field.ElementPath) > 0 {
+	if !ok || msg.MenuID != pasta.NodeMenuID(n.id) || msg.Field.BlockID != "config" || len(msg.Field.ElementPath) > 0 {
 		return nil
 	}
-	if n.PortHasLinks(n.url) {
-		n.sendConfigBlock()
-		return nil
+	switch msg.Field.FieldID {
+	case "proxyURL":
+		value, ok := std.StringFromPayload(msg.Value)
+		if !ok {
+			n.sendConfigBlock()
+			return nil
+		}
+		if n.PortHasLinks(n.url) {
+			n.sendConfigBlock()
+			return nil
+		}
+		n.setProxyURL(value)
+	case nodeTLSConfigFieldID:
+		value, ok := nodeTLSConfigValueFromAny(msg.Value)
+		if !ok {
+			n.sendConfigBlock()
+			return nil
+		}
+		n.setTLSConfig(value)
 	}
-	value, ok := std.StringFromPayload(msg.Value)
-	if !ok {
-		n.sendConfigBlock()
-		return nil
-	}
-	n.setProxyURL(value)
 	return nil
 }
 
@@ -190,7 +219,10 @@ func (n *socksClientNode) OnSave(cfg configer.Config) error {
 	if err := pasta.DeleteNodeOwnedConfigKeys(cfg); err != nil {
 		return err
 	}
-	return cfg.Set(configer.Path{"proxyURL"}, n.proxyURL)
+	return configer.SetMap(cfg, map[string]any{
+		"proxyURL":  n.proxyURL,
+		"tlsConfig": n.tlsConfigName,
+	})
 }
 
 func (n *socksClientNode) setProxyURL(value string) {
@@ -208,9 +240,22 @@ func (n *socksClientNode) setProxyURL(value string) {
 	n.sendAll()
 }
 
+func (n *socksClientNode) setTLSConfig(value string) {
+	value = normalizeNodeTLSConfigName(value)
+	if n.tlsConfigName == value {
+		n.sendConfigBlock()
+		return
+	}
+	n.tlsConfigName = value
+	n.rebuildClient()
+	n.sendConfigBlock()
+	n.sendAll()
+}
+
 func (n *socksClientNode) rebuildClient() {
 	n.outputs.CloseAll()
-	client, err := buildSocksGoClient(n.proxyURL, n.outNetwork, n.pool)
+	n.refreshTLSConfig()
+	client, err := buildSocksGoClient(n.proxyURL, n.outNetwork, n.pool, n.currentTLSConfig(), n.tlsConfigErr)
 	if err != nil {
 		n.client = nil
 		n.errText = err.Error()
@@ -222,15 +267,45 @@ func (n *socksClientNode) rebuildClient() {
 	_ = n.updateLabel()
 }
 
-func buildSocksGoClient(proxyURL string, outNetwork NetworkCloser, pool bufpool.Pool) (*socksgo.Client, error) {
+func buildSocksGoClient(proxyURL string, outNetwork NetworkCloser, pool bufpool.Pool, tlsConfig *tls.Config, tlsConfigErr string) (*socksgo.Client, error) {
 	client, err := socksgo.ClientFromURL(proxyURL)
 	if err != nil {
 		return nil, err
 	}
+	if client.IsTLS() && tlsConfigErr != "" {
+		return nil, errNodeTLSConfig(tlsConfigErr)
+	}
+	client.TLSConfig = cloneTLSClientConfig(tlsConfig)
 	client.WithNetwork(outNetwork)
 	client.Pool = pool
 	client.Filter = gonnect.FalseFilter
 	return client, nil
+}
+
+func (n *socksClientNode) handleTLSConfigChanged(msg TlsConfigChanged) {
+	nextName, relevant := handleNodeTLSConfigChanged(n.tlsConfigName, n.tlsConfigEffective, msg)
+	if !relevant {
+		n.sendConfigBlock()
+		return
+	}
+	n.tlsConfigName = nextName
+	n.rebuildClient()
+	n.sendConfigBlock()
+	n.sendAll()
+}
+
+func (n *socksClientNode) refreshTLSConfig() {
+	result, err := resolveNodeTLSClientConfig(&n.NodeBase, n.tlsConfigName)
+	n.tlsConfig = result.config
+	n.tlsConfigEffective = result.effectiveName
+	n.tlsConfigErr = ""
+	if err != nil {
+		n.tlsConfigErr = err.Error()
+	}
+}
+
+func (n *socksClientNode) currentTLSConfig() *tls.Config {
+	return cloneTLSClientConfig(n.tlsConfig)
 }
 
 func (n *socksClientNode) requestOutNetwork() {
@@ -263,6 +338,9 @@ func (n *socksClientNode) refreshNetworkToLink(link uint64) {
 
 func (n *socksClientNode) updateLabel() error {
 	if n.errText != "" {
+		if strings.HasPrefix(n.errText, "TLS config:") {
+			return n.SetLabel("invalid TLS config")
+		}
 		return n.SetLabel("invalid proxy URL")
 	}
 	if n.outNetwork == nil {
@@ -291,6 +369,7 @@ func (n *socksClientNode) configBlock() formular.Block {
 				Readonly: n.PortHasLinks(n.url),
 			},
 		},
+		nodeTLSConfigSelectorItem(&n.NodeBase, n.tlsConfigName, n.tlsConfigErr),
 	}
 	if n.errText != "" {
 		items = append(items, formular.Item{

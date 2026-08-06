@@ -412,7 +412,7 @@ func TestTLSAdminEventsFixPoliciesAndNotifyFetchedNodes(t *testing.T) {
 		t.Fatalf("set policy response = %#v, err %v", resp, err)
 	}
 	assertTLSEvent(t, events, subResp.SubscriptionID, api.TLSChangePolicy, "policy", false)
-	assertNoTLSInbox(t, inbox)
+	assertTLSInbox(t, inbox, "policy", "policy")
 
 	if storage := engine.TlsConfigStorage(); storage == nil {
 		t.Fatal("Engine.TlsConfigStorage() = nil, want manager")

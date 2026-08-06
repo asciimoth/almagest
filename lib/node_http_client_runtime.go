@@ -2,6 +2,7 @@ package almagest
 
 import (
 	"context"
+	"crypto/tls"
 	"io"
 	"net"
 	"net/http"
@@ -17,6 +18,9 @@ type httpClientRequest struct {
 	url     string
 	method  string
 	body    string
+
+	tlsConfig    *tls.Config
+	tlsConfigErr string
 }
 
 type httpClientResult struct {
@@ -106,11 +110,15 @@ func doHTTPRequest(parent context.Context, req httpClientRequest) httpClientResu
 	if err != nil {
 		return httpClientResult{id: req.id, err: err.Error()}
 	}
+	if httpReq.URL.Scheme == "https" && req.tlsConfigErr != "" {
+		return httpClientResult{id: req.id, err: "TLS config: " + req.tlsConfigErr}
+	}
 
 	transport := &http.Transport{
 		DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
 			return req.network.Dial(ctx, network, address)
 		},
+		TLSClientConfig: req.tlsConfig,
 	}
 	defer transport.CloseIdleConnections()
 	client := &http.Client{Transport: transport}
@@ -140,4 +148,8 @@ func (n *httpClientNode) resetStatusReady() {
 	_ = n.updateLabel()
 	n.sendRequestBlock()
 	n.sendResultBlock()
+}
+
+func (n *httpClientNode) currentTLSConfig() *tls.Config {
+	return cloneTLSClientConfig(n.tlsConfig)
 }
