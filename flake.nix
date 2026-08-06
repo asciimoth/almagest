@@ -56,6 +56,14 @@
               ''; in builtins.toString script;
               stages = [ "pre-commit" ];
             };
+            govulncheck = {
+              enable = true;
+              description = "Run govulncheck";
+              entry = let script = pkgs.writeShellScript "govulncheckhook" ''
+                just vulncheck
+              ''; in builtins.toString script;
+              stages = [ "pre-commit" ];
+            };
           };
         };
       };
@@ -67,6 +75,7 @@
         buildInputs = with pkgs; [
           go
           golangci-lint
+          govulncheck
           gopls
 
           typos

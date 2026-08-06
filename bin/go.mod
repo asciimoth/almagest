@@ -21,7 +21,7 @@ require (
 	github.com/tailscale/hujson v0.0.0-20260302212456-ecc657c15afd
 	go.etcd.io/bbolt v1.5.0
 	golang.org/x/crypto/x509roots/fallback v0.0.0-20260723152544-d701c51f7e4e
-	golang.org/x/sys v0.45.0
+	golang.org/x/sys v0.46.0
 )
 
 require (
@@ -46,10 +46,10 @@ require (
 	github.com/vishvananda/netlink v1.3.1 // indirect
 	github.com/vishvananda/netns v0.0.5 // indirect
 	github.com/xtaci/smux v1.5.44 // indirect
-	golang.org/x/crypto v0.51.0 // indirect
+	golang.org/x/crypto v0.53.0 // indirect
 	golang.org/x/exp v0.0.0-20231110203233-9a3e6036ecaa // indirect
 	golang.org/x/mod v0.31.0 // indirect
-	golang.org/x/net v0.54.0 // indirect
+	golang.org/x/net v0.56.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/time v0.12.0 // indirect
 	golang.org/x/tools v0.40.0 // indirect

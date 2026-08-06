@@ -2,7 +2,7 @@ set shell := ["bash", "-euo", "pipefail", "-c"]
 set dotenv-load := true
 
 
-check: tidy typos fmt lint vet test-total
+check: tidy typos fmt lint vet vulncheck test-total
 
 typos:
   typos
@@ -34,6 +34,13 @@ vet: certcat-vet
 
 certcat-vet: certcat-ensure-generated
 	go -C certcat vet ./...
+
+vulncheck: certcat-vulncheck
+	cd lib && govulncheck ./...
+	cd bin && govulncheck ./...
+
+certcat-vulncheck: certcat-ensure-generated
+	cd certcat && govulncheck ./...
 
 tidy:
 	go -C lib mod tidy
