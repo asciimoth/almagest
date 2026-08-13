@@ -336,22 +336,14 @@ func (n *dnsCacheNode) dnsSpawner() gonnect.Spawner {
 }
 
 func (n *dnsCacheNode) sendAll() {
-	BroadcastDNSPort(n.w, n.id, n.out, func(link uint64) {
-		n.sendToLink(link)
-	})
+	n.outputs.SendPortLocked(n.w, n.id, n.out, n.cache)
 }
 
 func (n *dnsCacheNode) sendToLink(link uint64) {
-	if n.cache == nil {
-		return
-	}
 	n.outputs.SendLocked(n.w, n.id, link, n.cache)
 }
 
 func (n *dnsCacheNode) refreshLink(link uint64) {
-	if n.cache == nil {
-		return
-	}
 	n.outputs.RefreshLocked(n.w, n.id, link, n.cache)
 }
 

@@ -407,9 +407,7 @@ func (n *networkRouterNode) reviewOutputPorts(opts slotPortReview) error {
 }
 
 func (n *networkRouterNode) sendAll() {
-	n.ForEachPortLink(n.in, func(link uint64) {
-		n.sendRouterToLink(link)
-	})
+	n.outputs.SendPortLocked(n.w, n.id, n.in, n.router)
 }
 
 func (n *networkRouterNode) requestSlots() {
@@ -423,16 +421,10 @@ func (n *networkRouterNode) requestDNS() {
 }
 
 func (n *networkRouterNode) sendRouterToLink(link uint64) {
-	if n.router == nil {
-		return
-	}
 	n.outputs.SendLocked(n.w, n.id, link, n.router)
 }
 
 func (n *networkRouterNode) refreshRouterToLink(link uint64) {
-	if n.router == nil {
-		return
-	}
 	n.outputs.RefreshLocked(n.w, n.id, link, n.router)
 }
 

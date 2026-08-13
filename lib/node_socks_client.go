@@ -317,23 +317,21 @@ func (n *socksClientNode) requestProxyURL() {
 }
 
 func (n *socksClientNode) sendAll() {
-	n.ForEachPortLink(n.in, func(link uint64) {
-		n.sendNetworkToLink(link)
-	})
+	if n.client != nil && n.outNetwork != nil {
+		n.outputs.SendPortLocked(n.w, n.id, n.in, n.client)
+	}
 }
 
 func (n *socksClientNode) sendNetworkToLink(link uint64) {
-	if n.client == nil || n.outNetwork == nil {
-		return
+	if n.client != nil && n.outNetwork != nil {
+		n.outputs.SendLocked(n.w, n.id, link, n.client)
 	}
-	n.outputs.SendLocked(n.w, n.id, link, n.client)
 }
 
 func (n *socksClientNode) refreshNetworkToLink(link uint64) {
-	if n.client == nil || n.outNetwork == nil {
-		return
+	if n.client != nil && n.outNetwork != nil {
+		n.outputs.RefreshLocked(n.w, n.id, link, n.client)
 	}
-	n.outputs.RefreshLocked(n.w, n.id, link, n.client)
 }
 
 func (n *socksClientNode) updateLabel() error {

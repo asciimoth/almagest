@@ -312,22 +312,14 @@ func (n *dnsRouterNode) requestSlots() {
 }
 
 func (n *dnsRouterNode) sendAll() {
-	BroadcastDNSPort(n.w, n.id, n.out, func(link uint64) {
-		n.sendRouterToLink(link)
-	})
+	n.outputs.SendPortLocked(n.w, n.id, n.out, n.router)
 }
 
 func (n *dnsRouterNode) sendRouterToLink(link uint64) {
-	if n.router == nil {
-		return
-	}
 	n.outputs.SendLocked(n.w, n.id, link, n.router)
 }
 
 func (n *dnsRouterNode) refreshRouterToLink(link uint64) {
-	if n.router == nil {
-		return
-	}
 	n.outputs.RefreshLocked(n.w, n.id, link, n.router)
 }
 

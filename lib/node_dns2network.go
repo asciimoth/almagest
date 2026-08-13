@@ -157,22 +157,14 @@ func (n *dns2NetworkNode) rebuildProvider() {
 }
 
 func (n *dns2NetworkNode) sendAll() {
-	BroadcastDNSPort(n.w, n.id, n.dnsOut, func(link uint64) {
-		n.sendToLink(link)
-	})
+	n.outputs.SendPortLocked(n.w, n.id, n.dnsOut, n.provider)
 }
 
 func (n *dns2NetworkNode) sendToLink(link uint64) {
-	if n.provider == nil {
-		return
-	}
 	n.outputs.SendLocked(n.w, n.id, link, n.provider)
 }
 
 func (n *dns2NetworkNode) refreshLink(link uint64) {
-	if n.provider == nil {
-		return
-	}
 	n.outputs.RefreshLocked(n.w, n.id, link, n.provider)
 }
 

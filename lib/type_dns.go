@@ -130,6 +130,19 @@ func (c *DNSOutputCache) SendWrappedLocked(w *pasta.Workspace, node, link uint64
 	return c.emitWrappedLocked(w, node, link, source, wrap)
 }
 
+// SendPortLocked emits source to every link attached to port.
+func (c *DNSOutputCache) SendPortLocked(w *pasta.Workspace, node, port uint64, source dns.Interface) {
+	c.SendWrappedPortLocked(w, node, port, source, nil)
+}
+
+// SendWrappedPortLocked emits source to every link attached to port after
+// wrapping each detached DNS interface with wrap.
+func (c *DNSOutputCache) SendWrappedPortLocked(w *pasta.Workspace, node, port uint64, source dns.Interface, wrap func(dns.Interface) dns.Interface) {
+	BroadcastDNSPort(w, node, port, func(link uint64) {
+		c.SendWrappedLocked(w, node, link, source, wrap)
+	})
+}
+
 // RefreshLocked emits a fresh detached DNSPayload on link even when the source
 // is unchanged. Use it to answer std.Request callbacks from middleware that may
 // have just closed the previously routed payload.
@@ -254,6 +267,76 @@ func closeDNS(d dns.Interface) {
 	if d != nil {
 		_ = d.Close()
 	}
+}
+
+type simpleDNSProvider struct {
+	NodeBase
+
+	out      uint64
+	resolver dns.Interface
+	outputs  DNSOutputCache
+}
+
+func (n *simpleDNSProvider) InitSimpleDNSProvider(w *pasta.Workspace, logger pasta.Logger, id uint64, restored *pasta.NodeInitData, resolver dns.Interface, label string) error {
+	n.InitBaseNode(w, logger, id)
+	n.out = restoredLeft(restored, 0)
+	n.resolver = resolver
+	if err := n.SetPrimary(TypeDNS); err != nil {
+		return err
+	}
+	_ = n.SetLabel(label)
+	return nil
+}
+
+func (n *simpleDNSProvider) OnReady() error {
+	n.sendAll()
+	return nil
+}
+
+func (n *simpleDNSProvider) OnStop() {
+	n.outputs.CloseAll()
+	n.resolver = nil
+}
+
+func (n *simpleDNSProvider) PreLinkAdd(port uint64, linkType, portDirection string) error {
+	if port != n.out || portDirection != "left" || linkType != TypeDNS {
+		return pasta.LinkTypeErr(linkType)
+	}
+	return nil
+}
+
+func (n *simpleDNSProvider) OnLinkAdd(link, port uint64, linkType, portDirection string) error {
+	if port == n.out && portDirection == "left" && linkType == TypeDNS {
+		n.sendToLink(link)
+	}
+	return nil
+}
+
+func (n *simpleDNSProvider) OnLinkRemoved(link uint64, port uint64, linkType, portDirection string) error {
+	if port == n.out && portDirection == "left" && linkType == TypeDNS {
+		n.outputs.Close(link)
+	}
+	return nil
+}
+
+func (n *simpleDNSProvider) OnEvent(event pasta.Event, linkType string, _ []string, receiverPortDirection string) error {
+	if event.ReceiverPort != n.out || receiverPortDirection != "left" || linkType != TypeDNS || !std.IsRequest(event.Payload) {
+		return nil
+	}
+	n.refreshLink(event.Link)
+	return nil
+}
+
+func (n *simpleDNSProvider) sendAll() {
+	n.outputs.SendPortLocked(n.w, n.id, n.out, n.resolver)
+}
+
+func (n *simpleDNSProvider) sendToLink(link uint64) {
+	n.outputs.SendLocked(n.w, n.id, link, n.resolver)
+}
+
+func (n *simpleDNSProvider) refreshLink(link uint64) {
+	n.outputs.RefreshLocked(n.w, n.id, link, n.resolver)
 }
 
 // DNSSource unwraps gonnect.Wrapper values until it reaches the underlying DNS

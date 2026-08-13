@@ -263,21 +263,15 @@ func (n *staticDNSNode) sendConfigFieldStatus(msg formular.FieldValidateMessage)
 }
 
 func (n *staticDNSNode) sendAll() {
-	BroadcastDNSPort(n.w, n.id, n.out, func(link uint64) {
-		n.sendToLink(link)
-	})
+	n.outputs.SendPortLocked(n.w, n.id, n.out, n.resolver)
 }
 
 func (n *staticDNSNode) sendToLink(link uint64) {
-	if n.resolver != nil {
-		n.outputs.SendLocked(n.w, n.id, link, n.resolver)
-	}
+	n.outputs.SendLocked(n.w, n.id, link, n.resolver)
 }
 
 func (n *staticDNSNode) refreshLink(link uint64) {
-	if n.resolver != nil {
-		n.outputs.RefreshLocked(n.w, n.id, link, n.resolver)
-	}
+	n.outputs.RefreshLocked(n.w, n.id, link, n.resolver)
 }
 
 func (n *staticDNSNode) updateLabel() error {

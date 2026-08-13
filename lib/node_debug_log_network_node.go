@@ -125,31 +125,21 @@ func (n *debugLogNetworkNode) OnEvent(event pasta.Event, linkType string, _ []st
 }
 
 func (n *debugLogNetworkNode) requestInput() {
-	n.ForEachPortLink(n.in, func(link uint64) {
-		std.RequestLocked(n.w, n.id, link)
-	})
+	n.RequestPort(n.in)
 }
 
 func (n *debugLogNetworkNode) sendAll() {
-	n.ForEachPortLink(n.out, func(link uint64) {
-		n.sendNetworkToLink(link)
-	})
+	n.outputs.SendWrappedPortLocked(n.w, n.id, n.out, n.network, n.wrapNetwork)
 }
 
 func (n *debugLogNetworkNode) sendNetworkToLink(link uint64) {
-	if n.network == nil {
-		return
-	}
-	n.outputs.SendWrappedLocked(n.w, n.id, link, n.network, func(output NetworkCloser) NetworkCloser {
-		return &debugLogNetwork{NetworkCloser: output, logger: n.logger}
-	})
+	n.outputs.SendWrappedLocked(n.w, n.id, link, n.network, n.wrapNetwork)
 }
 
 func (n *debugLogNetworkNode) refreshNetworkToLink(link uint64) {
-	if n.network == nil {
-		return
-	}
-	n.outputs.RefreshWrappedLocked(n.w, n.id, link, n.network, func(output NetworkCloser) NetworkCloser {
-		return &debugLogNetwork{NetworkCloser: output, logger: n.logger}
-	})
+	n.outputs.RefreshWrappedLocked(n.w, n.id, link, n.network, n.wrapNetwork)
+}
+
+func (n *debugLogNetworkNode) wrapNetwork(output NetworkCloser) NetworkCloser {
+	return &debugLogNetwork{NetworkCloser: output, logger: n.logger}
 }

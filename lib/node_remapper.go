@@ -216,8 +216,12 @@ func (n *remapperNode) ready() bool {
 }
 
 func (n *remapperNode) sendAll() {
-	BroadcastNetworkPort(n.w, n.id, n.out, func(link uint64) {
-		n.sendOutputToLink(link)
+	if !n.ready() {
+		return
+	}
+	rules := append([]gonnect.RemapRule(nil), n.rules...)
+	n.outputs.SendWrappedPortLocked(n.w, n.id, n.out, n.network, func(output NetworkCloser) NetworkCloser {
+		return gonnect.NewRemapper(output, rules)
 	})
 }
 

@@ -149,9 +149,7 @@ func (n *debugLogTunNode) OnEvent(event pasta.Event, linkType string, _ []string
 }
 
 func (n *debugLogTunNode) requestInput() {
-	n.ForEachPortLink(n.in, func(link uint64) {
-		std.RequestLocked(n.w, n.id, link)
-	})
+	n.RequestPort(n.in)
 }
 
 func (n *debugLogTunNode) sendAll() {

@@ -122,31 +122,21 @@ func (n *debugLogDNSNode) OnEvent(event pasta.Event, linkType string, _ []string
 }
 
 func (n *debugLogDNSNode) requestInput() {
-	n.ForEachPortLink(n.in, func(link uint64) {
-		std.RequestLocked(n.w, n.id, link)
-	})
+	n.RequestPort(n.in)
 }
 
 func (n *debugLogDNSNode) sendAll() {
-	BroadcastDNSPort(n.w, n.id, n.out, func(link uint64) {
-		n.sendDNSToLink(link)
-	})
+	n.outputs.SendWrappedPortLocked(n.w, n.id, n.out, n.upstream, n.wrapDNS)
 }
 
 func (n *debugLogDNSNode) sendDNSToLink(link uint64) {
-	if n.upstream == nil {
-		return
-	}
-	n.outputs.SendWrappedLocked(n.w, n.id, link, n.upstream, func(output dns.Interface) dns.Interface {
-		return newDebugLogDNS(output, n.logger)
-	})
+	n.outputs.SendWrappedLocked(n.w, n.id, link, n.upstream, n.wrapDNS)
 }
 
 func (n *debugLogDNSNode) refreshDNSToLink(link uint64) {
-	if n.upstream == nil {
-		return
-	}
-	n.outputs.RefreshWrappedLocked(n.w, n.id, link, n.upstream, func(output dns.Interface) dns.Interface {
-		return newDebugLogDNS(output, n.logger)
-	})
+	n.outputs.RefreshWrappedLocked(n.w, n.id, link, n.upstream, n.wrapDNS)
+}
+
+func (n *debugLogDNSNode) wrapDNS(output dns.Interface) dns.Interface {
+	return newDebugLogDNS(output, n.logger)
 }

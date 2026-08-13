@@ -179,6 +179,31 @@ func (c *NetworkOutputCache) SendResolvedWrappedLocked(w *pasta.Workspace, node,
 	return c.emitWrappedLocked(w, node, link, source, resolver, wrap)
 }
 
+// SendPortLocked emits source to every link attached to port.
+func (c *NetworkOutputCache) SendPortLocked(w *pasta.Workspace, node, port uint64, source gonnect.Network) {
+	c.SendResolvedWrappedPortLocked(w, node, port, source, nil, nil)
+}
+
+// SendResolvedPortLocked emits source with resolver to every link attached to
+// port.
+func (c *NetworkOutputCache) SendResolvedPortLocked(w *pasta.Workspace, node, port uint64, source gonnect.Network, resolver gonnect.Resolver) {
+	c.SendResolvedWrappedPortLocked(w, node, port, source, resolver, nil)
+}
+
+// SendWrappedPortLocked emits source to every link attached to port after
+// wrapping each detached network with wrap.
+func (c *NetworkOutputCache) SendWrappedPortLocked(w *pasta.Workspace, node, port uint64, source gonnect.Network, wrap func(NetworkCloser) NetworkCloser) {
+	c.SendResolvedWrappedPortLocked(w, node, port, source, nil, wrap)
+}
+
+// SendResolvedWrappedPortLocked emits source with resolver to every link
+// attached to port after wrapping each detached network with wrap.
+func (c *NetworkOutputCache) SendResolvedWrappedPortLocked(w *pasta.Workspace, node, port uint64, source gonnect.Network, resolver gonnect.Resolver, wrap func(NetworkCloser) NetworkCloser) {
+	BroadcastNetworkPort(w, node, port, func(link uint64) {
+		c.SendResolvedWrappedLocked(w, node, link, source, resolver, wrap)
+	})
+}
+
 // RefreshWrappedLocked is RefreshLocked with an additional wrapper hook.
 func (c *NetworkOutputCache) RefreshWrappedLocked(w *pasta.Workspace, node, link uint64, source gonnect.Network, wrap func(NetworkCloser) NetworkCloser) bool {
 	return c.RefreshResolvedWrappedLocked(w, node, link, source, nil, wrap)
@@ -390,9 +415,7 @@ func (n *simpleNetworkProvider) OnEvent(event pasta.Event, linkType string, _ []
 }
 
 func (n *simpleNetworkProvider) sendAll() {
-	BroadcastNetworkPort(n.w, n.id, n.out, func(link uint64) {
-		n.sendToLink(link)
-	})
+	n.outputs.SendPortLocked(n.w, n.id, n.out, n.network)
 }
 
 func (n *simpleNetworkProvider) sendToLink(link uint64) {

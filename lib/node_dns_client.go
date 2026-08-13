@@ -375,22 +375,14 @@ func (n *dnsClientNode) dnsSpawner() gonnect.Spawner {
 }
 
 func (n *dnsClientNode) sendAll() {
-	BroadcastDNSPort(n.w, n.id, n.out, func(link uint64) {
-		n.sendToLink(link)
-	})
+	n.outputs.SendPortLocked(n.w, n.id, n.out, n.client)
 }
 
 func (n *dnsClientNode) sendToLink(link uint64) {
-	if n.client == nil {
-		return
-	}
 	n.outputs.SendLocked(n.w, n.id, link, n.client)
 }
 
 func (n *dnsClientNode) refreshLink(link uint64) {
-	if n.client == nil {
-		return
-	}
 	n.outputs.RefreshLocked(n.w, n.id, link, n.client)
 }
 

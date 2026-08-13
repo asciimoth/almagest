@@ -220,22 +220,14 @@ func (n *meshNamesNode) dnsSpawner() gonnect.Spawner {
 }
 
 func (n *meshNamesNode) sendAll() {
-	BroadcastDNSPort(n.w, n.id, n.out, func(link uint64) {
-		n.sendToLink(link)
-	})
+	n.outputs.SendPortLocked(n.w, n.id, n.out, n.provider)
 }
 
 func (n *meshNamesNode) sendToLink(link uint64) {
-	if n.provider == nil {
-		return
-	}
 	n.outputs.SendLocked(n.w, n.id, link, n.provider)
 }
 
 func (n *meshNamesNode) refreshLink(link uint64) {
-	if n.provider == nil {
-		return
-	}
 	n.outputs.RefreshLocked(n.w, n.id, link, n.provider)
 }
 

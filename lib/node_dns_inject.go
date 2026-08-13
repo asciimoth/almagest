@@ -201,23 +201,22 @@ func (n *dnsInjectNode) newResolverDNS(input dns.Interface) dns.Interface {
 }
 
 func (n *dnsInjectNode) sendAll() {
-	n.ForEachPortLink(n.out, func(link uint64) {
-		n.sendOutputToLink(link)
-	})
+	if !n.ready() {
+		return
+	}
+	n.outputs.SendResolvedPortLocked(n.w, n.id, n.out, n.network, n.resolver)
 }
 
 func (n *dnsInjectNode) sendOutputToLink(link uint64) {
-	if !n.ready() {
-		return
+	if n.ready() {
+		n.outputs.SendResolvedLocked(n.w, n.id, link, n.network, n.resolver)
 	}
-	n.outputs.SendResolvedLocked(n.w, n.id, link, n.network, n.resolver)
 }
 
 func (n *dnsInjectNode) refreshOutputToLink(link uint64) {
-	if !n.ready() {
-		return
+	if n.ready() {
+		n.outputs.RefreshResolvedLocked(n.w, n.id, link, n.network, n.resolver)
 	}
-	n.outputs.RefreshResolvedLocked(n.w, n.id, link, n.network, n.resolver)
 }
 
 func (n *dnsInjectNode) updateLabel() error {
