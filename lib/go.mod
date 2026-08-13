@@ -9,7 +9,6 @@ require (
 	github.com/asciimoth/formular v0.3.1
 	github.com/asciimoth/gonnect v0.39.0
 	github.com/asciimoth/gonnect-netstack v0.4.37
-	github.com/asciimoth/gonnect-routing v0.8.5
 	github.com/asciimoth/mnlib v0.2.18
 	github.com/asciimoth/pasta/pasta v0.9.6
 	github.com/asciimoth/socksgo v0.4.6

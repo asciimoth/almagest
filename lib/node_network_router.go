@@ -7,8 +7,8 @@ import (
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
 	"github.com/asciimoth/gonnect"
-	routing "github.com/asciimoth/gonnect-routing"
 	"github.com/asciimoth/gonnect/dns"
+	"github.com/asciimoth/gonnect/routing"
 	"github.com/asciimoth/pasta/pasta"
 	"github.com/asciimoth/pasta/pasta/std"
 )

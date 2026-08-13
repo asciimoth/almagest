@@ -27,7 +27,6 @@ require (
 require (
 	github.com/alexflint/go-scalar v1.2.0 // indirect
 	github.com/asciimoth/batchudp v0.3.6 // indirect
-	github.com/asciimoth/gonnect-routing v0.8.5 // indirect
 	github.com/asciimoth/ident v0.2.0 // indirect
 	github.com/asciimoth/mnlib v0.2.18 // indirect
 	github.com/asciimoth/p-mark v0.2.0 // indirect

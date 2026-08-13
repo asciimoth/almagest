@@ -8,7 +8,7 @@ import (
 	"github.com/asciimoth/bufpool"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
-	routing "github.com/asciimoth/gonnect-routing"
+	"github.com/asciimoth/gonnect/routing"
 	"github.com/asciimoth/gonnect/tun"
 	"github.com/asciimoth/pasta/pasta"
 	"github.com/asciimoth/pasta/pasta/std"

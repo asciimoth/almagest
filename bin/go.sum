@@ -16,8 +16,6 @@ github.com/asciimoth/gonnect v0.39.0 h1:jbGKqvlhJfK9J2Y5Ir+GcFI526BLho8lv4kheeyd
 github.com/asciimoth/gonnect v0.39.0/go.mod h1:CohhruGEkUgKLF0ypR/RNFrdrqmJgUkKhvjMilED9Kk=
 github.com/asciimoth/gonnect-netstack v0.4.37 h1:MdvZZ20ZK7WPCXVYD1J4fexzEFL/xuAyQnPXyYN4iuI=
 github.com/asciimoth/gonnect-netstack v0.4.37/go.mod h1:V5JKADz3GrrIfexv3A1gtWx9tX6zlmnM8XGQ4z6xtiQ=
-github.com/asciimoth/gonnect-routing v0.8.5 h1:tTlmCRJFW7fnFuYp75uP1fRdiARDQf8zSD3/Cc2MNCM=
-github.com/asciimoth/gonnect-routing v0.8.5/go.mod h1:GqZ/wMGAJyQ1HU3/rq4z31slYuMIPauO/mrQrBXOMco=
 github.com/asciimoth/ident v0.2.0 h1:G6qaTnkxTH+idV5YzJ7AvgC2nLQDE/aoV7rPCOtN07I=
 github.com/asciimoth/ident v0.2.0/go.mod h1:JNNFnfM7/hdcXVkFBBOAU/vpJM+0gucYaAYwB694bT0=
 github.com/asciimoth/mnlib v0.2.18 h1:yYaXs4sWRo1xEEh1tyNC3nDqaFJ57V21gTBpRD79zL8=
