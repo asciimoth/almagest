@@ -1,0 +1,43 @@
+{
+	"Logs": {
+		"Cache": {
+			"Debug": 512,
+			"Info": 128,
+			"Warn": 128,
+			"Error": 128,
+			"Fatal": 32,
+		},
+	},
+	"nodes": {
+		"LocalProxy 2001": {
+			"Class": "almagest/LocalProxy",
+			"Pos": "{\"x\":220,\"y\":420}",
+			"Links": ["proxy -> [Sniffer 2002] Network"],
+			"socksHost": "127.0.0.1",
+			"socksPort": 1081,
+			"wsHost": "",
+			"wsPort": 0,
+			"wsPath": "/socks",
+			"users": [],
+			"commands": {
+				"cmdBind": true,
+				"cmdConnect": true,
+				"cmdGostMuxBind": true,
+				"cmdGostUDPTun": true,
+				"cmdTorResolve": true,
+				"cmdTorResolvePtr": true,
+				"cmdUDPAssoc": true,
+			},
+		},
+		"Sniffer 2002": {
+			"Class": "almagest/Sniffer",
+			"Pos": "{\"x\":500,\"y\":420}",
+			"Links": ["slot 1 -> [OutNetwork 2003] Network"],
+			"rules": "DIAL\nTCP\nAND\nINTERCEPT\n\nSNIFF HTTP URL:/http-alpha\nROUTE 1 DST:127.0.0.1:18081\n\nSNIFF HTTP URL:/http-beta\nROUTE 1 DST:127.0.0.1:18082\n\nSNIFF TLS ALPN:http/1.1\nROUTE 1 DST:127.0.0.1:18443\n\nTRUE\nDROP",
+		},
+		"OutNetwork 2003": {
+			"Class": "almagest/OutNetwork",
+			"Pos": "{\"x\":780,\"y\":420}",
+		},
+	},
+}
