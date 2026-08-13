@@ -65,7 +65,7 @@ func newHTTPClientE2EWithTLSStorage(t *testing.T, storage TlsConfigStorage) *htt
 	logf := NewDebugLogFactory(16384)
 	sys := &sysnetdebug.System{
 		OutNetwork:   gonnect.DefaultNetwork(nil),
-		LocalNetwork: gonnect.NewLoopbackNetwok(),
+		LocalNetwork: gonnect.NewLoopbackNetwork(),
 	}
 	secrets := newE2ESecretsStorage()
 	engine, err := BuildEngine(

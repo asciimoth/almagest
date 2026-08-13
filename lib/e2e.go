@@ -34,9 +34,9 @@ type NodeE2E struct {
 }
 
 func newE2EDebugSystem() *sysnetdebug.System {
-	out := gonnect.NewLoopbackNetwok()
+	out := gonnect.NewLoopbackNetwork()
 	out.AllowAnyHost = true
-	local := gonnect.NewLoopbackNetwok()
+	local := gonnect.NewLoopbackNetwork()
 	local.AllowAnyHost = true
 	return &sysnetdebug.System{OutNetwork: out, LocalNetwork: local}
 }

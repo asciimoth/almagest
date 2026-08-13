@@ -128,7 +128,7 @@ type mockLoopbackNetwork struct {
 // be rewritten to loopback. MockNetwork enables that all-host support by
 // default, but tests and stricter debug setups can turn it off.
 func newMockLoopbackNetwork(allowAnyHost bool) *mockLoopbackNetwork {
-	network := gonnect.NewLoopbackNetwok()
+	network := gonnect.NewLoopbackNetwork()
 	network.AllowAnyHost = allowAnyHost
 	return &mockLoopbackNetwork{LoopbackNetwork: network}
 }

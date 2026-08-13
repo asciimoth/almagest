@@ -81,7 +81,7 @@ func (c captureHTTPServerClass) NewNode(cfg configer.Config, _ ...*pasta.NodeCla
 func TestOutNetworkUsesSystemOutNetOnInit(t *testing.T) {
 	pool := newE2ETestDebugPool(t)
 
-	base := gonnect.NewLoopbackNetwok()
+	base := gonnect.NewLoopbackNetwork()
 	sys := &sysnetdebug.System{OutNetwork: base}
 	engineIface, err := BuildEngine(
 		context.Background(),
@@ -131,7 +131,7 @@ func TestOutNetworkUsesSystemOutNetOnInit(t *testing.T) {
 func TestOutNetworkSendsSystemOutNetOnReadyAndRequest(t *testing.T) {
 	w := pasta.NewWorkspace(NewDebugLogFactory(1024))
 	defer w.Close()
-	base := gonnect.NewLoopbackNetwok()
+	base := gonnect.NewLoopbackNetwork()
 	if err := w.AddNodeClass(outNetClass{engine: &engine{sys: &sysnetdebug.System{OutNetwork: base}}}); err != nil {
 		t.Fatalf("AddNodeClass OutNetwork: %v", err)
 	}
@@ -167,7 +167,7 @@ func TestOutNetworkSendsSystemOutNetOnReadyAndRequest(t *testing.T) {
 func TestOutNetworkSendsSystemOutNetToNewLinks(t *testing.T) {
 	w := pasta.NewWorkspace(NewDebugLogFactory(1024))
 	defer w.Close()
-	base := gonnect.NewLoopbackNetwok()
+	base := gonnect.NewLoopbackNetwork()
 	if err := w.AddNodeClass(outNetClass{engine: &engine{sys: &sysnetdebug.System{OutNetwork: base}}}); err != nil {
 		t.Fatalf("AddNodeClass OutNetwork: %v", err)
 	}
@@ -197,7 +197,7 @@ func TestOutNetworkSendsSystemOutNetToNewLinks(t *testing.T) {
 func TestOutNetworkSendsCachedNetworkToHTTPServerOnLinkAdd(t *testing.T) {
 	w := pasta.NewWorkspace(NewDebugLogFactory(1024))
 	defer w.Close()
-	base := gonnect.NewLoopbackNetwok()
+	base := gonnect.NewLoopbackNetwork()
 	if err := w.AddNodeClass(outNetClass{engine: &engine{sys: &sysnetdebug.System{OutNetwork: base}}}); err != nil {
 		t.Fatalf("AddNodeClass OutNetwork: %v", err)
 	}
@@ -246,7 +246,7 @@ func TestOutNetworkSendsCachedNetworkToHTTPServerOnLinkAdd(t *testing.T) {
 func TestEngineOutNetworkSendsCachedNetworkToHTTPServerOnLinkAdd(t *testing.T) {
 	pool := newE2ETestDebugPool(t)
 
-	base := gonnect.NewLoopbackNetwok()
+	base := gonnect.NewLoopbackNetwork()
 	sys := &sysnetdebug.System{OutNetwork: base}
 	var server *httpServerNode
 	engineIface, err := BuildEngine(

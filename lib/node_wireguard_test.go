@@ -730,7 +730,7 @@ func TestWireGuardNetworkAttachmentDoesNotOpenSocketsUntilTunAttached(t *testing
 	if err := w.AddNodeClass(captureWireGuardClass{node: &wg}); err != nil {
 		t.Fatalf("AddNodeClass WireGuard: %v", err)
 	}
-	network := &recordingWireGuardTestNetwork{Network: gonnect.NewLoopbackNetwok()}
+	network := &recordingWireGuardTestNetwork{Network: gonnect.NewLoopbackNetwork()}
 	if err := w.AddNodeClass(wireGuardTestNetworkSourceClass{network: network}); err != nil {
 		t.Fatalf("AddNodeClass NetworkSource: %v", err)
 	}
@@ -831,7 +831,7 @@ func TestWireGuardStateDoesNotReportUpBeforeNetworkBindAttachCompletes(t *testin
 		config:     defaultWireGuardConfig(),
 		currentTun: sourceTun,
 		currentNetwork: &recordingWireGuardTestNetwork{
-			Network: gonnect.NewLoopbackNetwok(),
+			Network: gonnect.NewLoopbackNetwork(),
 		},
 	}
 	n.config.privateKey = privateKey
@@ -850,7 +850,7 @@ func TestWireGuardStateDoesNotReportUpWithClosedNetwork(t *testing.T) {
 	t.Cleanup(func() { _ = sourceTun.Close() })
 	t.Cleanup(func() { _ = peerTun.Close() })
 
-	network := gonnect.DetachNetwork(gonnect.NewLoopbackNetwok(), nil, nil)
+	network := gonnect.DetachNetwork(gonnect.NewLoopbackNetwork(), nil, nil)
 	if err := network.Close(); err != nil {
 		t.Fatalf("network.Close() error = %v, want nil", err)
 	}
@@ -882,7 +882,7 @@ func TestWireGuardSameSourceNetworkReemitRebuildsFailedBind(t *testing.T) {
 	t.Cleanup(func() { _ = sourceTun.Close() })
 	t.Cleanup(func() { _ = peerTun.Close() })
 
-	base := gonnect.NewLoopbackNetwok()
+	base := gonnect.NewLoopbackNetwork()
 	current := gonnect.DetachNetwork(base, nil, nil)
 	t.Cleanup(func() { _ = current.Close() })
 	duplicate := gonnect.DetachNetwork(base, nil, nil)
@@ -934,7 +934,7 @@ func TestWireGuardRetriesDeviceBringUpAfterNetworkListenFailure(t *testing.T) {
 	if err := w.AddNodeClass(captureWireGuardClass{node: &wg}); err != nil {
 		t.Fatalf("AddNodeClass WireGuard: %v", err)
 	}
-	network := &recordingWireGuardTestNetwork{Network: gonnect.NewLoopbackNetwok()}
+	network := &recordingWireGuardTestNetwork{Network: gonnect.NewLoopbackNetwork()}
 	network.failNextListens(2, errors.New("temporary listen failure"))
 	if err := w.AddNodeClass(wireGuardTestNetworkSourceClass{network: network}); err != nil {
 		t.Fatalf("AddNodeClass NetworkSource: %v", err)
@@ -1030,7 +1030,7 @@ func TestWireGuardRetriesBindAfterReceiveEOF(t *testing.T) {
 	if err := w.AddNodeClass(captureWireGuardClass{node: &wg}); err != nil {
 		t.Fatalf("AddNodeClass WireGuard: %v", err)
 	}
-	network := &recordingWireGuardTestNetwork{Network: gonnect.NewLoopbackNetwok()}
+	network := &recordingWireGuardTestNetwork{Network: gonnect.NewLoopbackNetwork()}
 	if err := w.AddNodeClass(wireGuardTestNetworkSourceClass{network: network}); err != nil {
 		t.Fatalf("AddNodeClass NetworkSource: %v", err)
 	}
@@ -1086,7 +1086,7 @@ func TestWireGuardReceiveEOFRebuildsBindBeforePublishingUp(t *testing.T) {
 	if err := w.AddNodeClass(captureWireGuardClass{node: &wg}); err != nil {
 		t.Fatalf("AddNodeClass WireGuard: %v", err)
 	}
-	network := &recordingWireGuardTestNetwork{Network: gonnect.NewLoopbackNetwok()}
+	network := &recordingWireGuardTestNetwork{Network: gonnect.NewLoopbackNetwork()}
 	if err := w.AddNodeClass(wireGuardTestNetworkSourceClass{network: network}); err != nil {
 		t.Fatalf("AddNodeClass NetworkSource: %v", err)
 	}

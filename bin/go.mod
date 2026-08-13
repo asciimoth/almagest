@@ -10,11 +10,11 @@ require (
 	github.com/asciimoth/configer/configer v0.3.1
 	github.com/asciimoth/configer/hujson v0.3.1
 	github.com/asciimoth/formular v0.3.1
-	github.com/asciimoth/gonnect v0.36.0
-	github.com/asciimoth/gonnect-netstack v0.4.36
+	github.com/asciimoth/gonnect v0.39.0
+	github.com/asciimoth/gonnect-netstack v0.4.37
 	github.com/asciimoth/pasta/pasta v0.9.6
-	github.com/asciimoth/socksgo v0.4.5
-	github.com/asciimoth/sysnet-linux v0.2.13
+	github.com/asciimoth/socksgo v0.4.6
+	github.com/asciimoth/sysnet-linux v0.2.14
 	github.com/coder/websocket v1.8.14
 	github.com/joho/godotenv v1.5.1
 	github.com/kataras/golog v0.1.15
@@ -26,15 +26,15 @@ require (
 
 require (
 	github.com/alexflint/go-scalar v1.2.0 // indirect
-	github.com/asciimoth/batchudp v0.3.5 // indirect
-	github.com/asciimoth/gonnect-routing v0.8.3 // indirect
+	github.com/asciimoth/batchudp v0.3.6 // indirect
+	github.com/asciimoth/gonnect-routing v0.8.5 // indirect
 	github.com/asciimoth/ident v0.2.0 // indirect
-	github.com/asciimoth/mnlib v0.2.17 // indirect
+	github.com/asciimoth/mnlib v0.2.18 // indirect
 	github.com/asciimoth/p-mark v0.2.0 // indirect
 	github.com/asciimoth/persist v0.2.0 // indirect
 	github.com/asciimoth/putback v0.3.0 // indirect
-	github.com/asciimoth/tuntap v0.3.24 // indirect
-	github.com/asciimoth/wgo v0.5.5 // indirect
+	github.com/asciimoth/tuntap v0.3.25 // indirect
+	github.com/asciimoth/wgo v0.5.6 // indirect
 	github.com/cilium/ebpf v0.21.0 // indirect
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/google/btree v1.1.2 // indirect

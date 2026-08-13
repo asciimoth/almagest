@@ -80,7 +80,7 @@ Notifications have two kinds:
 - `colormap`: type palette sent to subscribers before workspace events.
 
 ## Node Notes
-`almagest/MockNetwork` creates a `gonnect.NewLoopbackNetwok()` network and emits
+`almagest/MockNetwork` creates a `gonnect.NewLoopbackNetwork()` network and emits
 it on an `almagest/network` port.
 
 `almagest/HttpServer` receives a network, host, port, and response string. It

@@ -8,7 +8,7 @@ import (
 )
 
 func TestAcceptNetworkPayloadReplacesReadySameSourceWrapper(t *testing.T) {
-	base := gonnect.NewLoopbackNetwok()
+	base := gonnect.NewLoopbackNetwork()
 	current := &testNetworkWrapper{
 		NetworkCloser: gonnect.DetachNetwork(base, nil, nil),
 		wrapped:       base,
@@ -42,7 +42,7 @@ func TestAcceptNetworkPayloadReplacesReadySameSourceWrapper(t *testing.T) {
 func TestAcceptNetworkPayloadReplacesStaleCurrentSameSource(t *testing.T) {
 	// Generic network consumers must accept fresh same-source wrappers because
 	// selector nodes can close previously routed wrapper instances.
-	base := gonnect.NewLoopbackNetwok()
+	base := gonnect.NewLoopbackNetwork()
 	current := &testNetworkWrapper{
 		NetworkCloser: gonnect.DetachNetwork(base, nil, nil),
 		wrapped:       base,
@@ -85,7 +85,7 @@ func TestNetworkOutputCacheReusesReadyWrapperAndReplacesClosedWrapper(t *testing
 		t.Fatalf("AddLink: %v", err)
 	}
 
-	source := gonnect.NewLoopbackNetwok()
+	source := gonnect.NewLoopbackNetwork()
 	var cache NetworkOutputCache
 	if !cache.Send(w, providerID, link, source) {
 		t.Fatal("NetworkOutputCache.Send() = false, want true")
@@ -124,7 +124,7 @@ func TestNetworkOutputCacheRefreshReplacesReadySameSourceWrapper(t *testing.T) {
 		t.Fatalf("AddLink: %v", err)
 	}
 
-	source := gonnect.NewLoopbackNetwok()
+	source := gonnect.NewLoopbackNetwork()
 	var cache NetworkOutputCache
 	if !cache.Send(w, providerID, link, source) {
 		t.Fatal("NetworkOutputCache.Send() = false, want true")
@@ -164,11 +164,11 @@ func TestNetworkOutputCacheReplacesChangedSource(t *testing.T) {
 	}
 
 	var cache NetworkOutputCache
-	if !cache.Send(w, providerID, link, gonnect.NewLoopbackNetwok()) {
+	if !cache.Send(w, providerID, link, gonnect.NewLoopbackNetwork()) {
 		t.Fatal("NetworkOutputCache.Send() = false, want true")
 	}
 	first := receiveOutNetPayload(t, receiver.events).Network
-	if !cache.Send(w, providerID, link, gonnect.NewLoopbackNetwok()) {
+	if !cache.Send(w, providerID, link, gonnect.NewLoopbackNetwork()) {
 		t.Fatal("NetworkOutputCache.Send() changed source = false, want true")
 	}
 	second := receiveOutNetPayload(t, receiver.events).Network

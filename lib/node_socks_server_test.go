@@ -177,7 +177,7 @@ func TestSocksServerEnsureWorkerStartedKeepsRunningWorker(t *testing.T) {
 func TestSocksServerAcceptNetworkPayloadReplacesStaleCurrentSameSource(t *testing.T) {
 	// A closed same-source current wrapper should not make the SOCKS server
 	// discard a fresh re-emit from Select or another wrapper-preserving node.
-	base := gonnect.NewLoopbackNetwok()
+	base := gonnect.NewLoopbackNetwork()
 	current := &testNetworkWrapper{
 		NetworkCloser: gonnect.DetachNetwork(base, nil, nil),
 		wrapped:       base,
