@@ -17,7 +17,11 @@ func TestDnsRouterRoutesBetweenStaticDNSBackendsE2E(t *testing.T) {
 
 	e.applyStaticDNSRecords(east, "svc.east.router.test A 10.101.0.1")
 	e.applyStaticDNSRecords(west, "svc.west.router.test A 10.101.0.2")
-	e.applyDNSRouterRules(router, "SUFFIX east.router.test SLOT 1\nSUFFIX west.router.test SLOT 2")
+	e.applyDNSRouterRules(router, `ADDR_RE (^|.*\.)east\.router\.test\.$
+BACKEND slot 1
+
+ADDR_RE (^|.*\.)west\.router\.test\.$
+BACKEND slot 2`)
 	e.assertDNSRouterPorts(router, []string{"slot 1", "slot 2"})
 
 	e.MustAddTypedLinkByPortName(TypeDNS, east, "left", "DNS", router, "right", "slot 1")

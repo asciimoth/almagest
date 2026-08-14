@@ -10,19 +10,27 @@ import (
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
 	"github.com/asciimoth/gonnect"
+	"github.com/asciimoth/gonnect/routing"
 	"github.com/asciimoth/pasta/pasta"
 )
 
 var errRemapperCapture = errors.New("remapper capture")
 
-func TestParseRemapperRulesAppliesMatchAndOperationFilters(t *testing.T) {
-	rules, err := parseRemapperRules(`
-		# Only Dial to service.test:80 is rewritten.
-		DST ADDRPORT 127.0.0.1 8080 MATCH service.test:80 OP Dial
-		SRC ADDR 127.0.0.1 OP Listen
+func TestRemapperBytecodeRulesApplyMatchAndMethodFilters(t *testing.T) {
+	rules, err := routing.NewRemapRules(`
+# Only Dial to service.test:80 is rewritten.
+DIAL
+ADDR_S service.test
+AND
+PORT 80
+AND
+REMAP DST ADDR_PORT 127.0.0.1:8080
+
+LISTEN
+REMAP SRC ADDR 127.0.0.1
 	`)
 	if err != nil {
-		t.Fatalf("parseRemapperRules() error = %v, want nil", err)
+		t.Fatalf("NewRemapRules() error = %v, want nil", err)
 	}
 	wrapped := newRemapperCaptureNetwork()
 	remapper := gonnect.NewRemapper(wrapped, rules)
@@ -42,18 +50,18 @@ func TestParseRemapperRulesAppliesMatchAndOperationFilters(t *testing.T) {
 	}
 }
 
-func TestParseRemapperRulesReportsLineErrors(t *testing.T) {
+func TestRemapperBytecodeRulesReportErrors(t *testing.T) {
 	tests := []string{
-		"DST",
-		"REMOTE PORT 8080",
-		"DST ENDPOINT 127.0.0.1",
-		"DST PORT 8080 OP Unknown",
-		"DST PORT 8080 EXTRA value",
+		"REMAP",
+		"BOGUS\nREMAP DST PORT 8080",
+		"TRUE\nREMAP DST ADDR_PORT 127.0.0.1",
+		"TRUE\nREMAP DST PORT",
+		"TRUE\nDROP",
 	}
 	for _, text := range tests {
 		t.Run(text, func(t *testing.T) {
-			if _, err := parseRemapperRules(text); err == nil {
-				t.Fatalf("parseRemapperRules(%q) error = nil, want error", text)
+			if _, err := routing.NewRemapRules(text); err == nil {
+				t.Fatalf("NewRemapRules(%q) error = nil, want error", text)
 			}
 		})
 	}
@@ -103,10 +111,10 @@ func TestRemapperNodeMenuValidationAndSave(t *testing.T) {
 	w.SendNodeFormularMsg(node, formular.FormApplyMessage{
 		MessageBase: FormMessageBase(formular.MessageFormApply, node),
 		BlockID:     remapperConfigBlockID,
-		Values:      map[string]any{remapperRulesField: "DST PORT 8080 OP Bogus"},
+		Values:      map[string]any{remapperRulesField: "TRUE\nREMAP DST PORT"},
 	})
 	assertNodeLabel(t, w, node, "invalid config")
-	rulesText := "DST PORT 8080 MATCH example.test:80"
+	rulesText := "DIAL\nADDR_S example.test\nAND\nREMAP DST PORT 8080"
 	w.SendNodeFormularMsg(node, formular.FormApplyMessage{
 		MessageBase: FormMessageBase(formular.MessageFormApply, node),
 		BlockID:     remapperConfigBlockID,

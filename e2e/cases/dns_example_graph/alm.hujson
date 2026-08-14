@@ -150,7 +150,7 @@
 			"Class": "almagest/DnsRouter",
 			"Pos":   "{\"x\":413,\"y\":-112}",
 			"Links": ["slot 1 -> [DnsCache xP] DNS", "slot 2 -> [StaticDns xP] DNS"],
-			"rules": "NAME example1.test SLOT 2\nNAME example2.test SLOT 2\nDEFAULT SLOT 1",
+			"rules": "ADDR_S example1.test.\nBACKEND slot 2\n\nADDR_S example2.test.\nBACKEND slot 2\n\nTRUE\nBACKEND slot 1",
 		},
 		// curl -g --socks5-hostname 127.0.0.1:1081 http://example2.test:8080/
 		"LocalProxy I2": {

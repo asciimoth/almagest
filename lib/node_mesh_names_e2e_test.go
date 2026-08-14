@@ -53,7 +53,8 @@ func TestMeshNamesWorksThroughDnsCacheAndRouterE2E(t *testing.T) {
 	e.SubscribeMenus(cache, router, client)
 
 	e.applyDNSCacheConfig(cache, "mesh-cache", false, false)
-	e.applyDNSRouterRules(router, "SUFFIX meship SLOT 1")
+	e.applyDNSRouterRules(router, `ADDR_RE \.meship\.$
+BACKEND slot 1`)
 	e.setDNSQueryRequest(client, meshNamesTestMeship+".", "AAAA")
 
 	e.MustAddTypedLinkByPortName(TypeNetwork, mock, "left", "Network", mesh, "right", "Network")

@@ -40,13 +40,13 @@
 			"Class": "almagest/Remapper",
 			"Pos":   "{\"x\":265,\"y\":520}",
 			"Links": ["Network -> [MockNetwork remapper examples] Network"],
-			"rules": "# Server is configured for 127.0.0.1:8081, but the wrapped network listens on 127.0.0.1:18081.\nSRC PORT 18081 MATCH 127.0.0.1:8081 OP Listen"
+			"rules": "# Server is configured for 127.0.0.1:8081, but the wrapped network listens on 127.0.0.1:18081.\nLISTEN\nLADDR_S 127.0.0.1\nAND\nLPORT 8081\nAND\nREMAP SRC PORT 18081"
 		},
 		"Remapper dst": {
 			"Class": "almagest/Remapper",
 			"Pos":   "{\"x\":268,\"y\":405}",
 			"Links": ["Network -> [MockNetwork remapper examples] Network"],
-			"rules": "# Client dials 127.0.0.1:18080, but the wrapped network receives 127.0.0.1:8080.\nDST PORT 8080 MATCH 127.0.0.1:18080 OP Dial"
+			"rules": "# Client dials 127.0.0.1:18080, but the wrapped network receives 127.0.0.1:8080.\nDIAL\nADDR_S 127.0.0.1\nAND\nPORT 18080\nAND\nREMAP DST PORT 8080"
 		}
 	}
 }

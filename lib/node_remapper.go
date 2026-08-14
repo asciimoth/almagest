@@ -3,12 +3,11 @@ package almagest
 import (
 	_ "embed"
 	"fmt"
-	"net"
-	"strings"
 
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
 	"github.com/asciimoth/gonnect"
+	"github.com/asciimoth/gonnect/routing"
 	"github.com/asciimoth/pasta/pasta"
 	"github.com/asciimoth/pasta/pasta/std"
 )
@@ -28,10 +27,18 @@ const (
 	remapperRulesField    = "rules"
 )
 
-const remapperRulesPlaceholder = `# endpoint field replacement [MATCH pattern] [OP operation[,operation...]]
-DST PORT 8080 MATCH example.test:80
-SRC ADDR 127.0.0.1 OP Listen,ListenTCP
-DST ADDRPORT 127.0.0.1 8080`
+const remapperRulesPlaceholder = `# Predicates use gonnect/routing bytecode. Each segment ends with REMAP.
+DIAL
+TCP
+AND
+ADDR_S example.test
+AND
+REMAP DST ADDR_PORT 127.0.0.1:8080
+
+LISTEN
+TCP
+AND
+REMAP SRC ADDR 127.0.0.1`
 
 var (
 	//go:embed node_remapper.md
@@ -78,7 +85,7 @@ func (n *remapperNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64
 	n.InitBaseNode(w, logger, id)
 	n.out = restoredLeft(restored, 0)
 	n.in = restoredRight(restored, 0)
-	rules, err := parseRemapperRules(n.rulesText)
+	rules, err := routing.NewRemapRules(n.rulesText)
 	if err != nil {
 		n.formError = err.Error()
 	} else {
@@ -190,7 +197,7 @@ func (n *remapperNode) OnSave(cfg configer.Config) error {
 
 func (n *remapperNode) applyConfigForm(values map[string]any) error {
 	text, _ := formular.StringValue(values[remapperRulesField])
-	rules, err := parseRemapperRules(text)
+	rules, err := routing.NewRemapRules(text)
 	if err != nil {
 		n.formError = err.Error()
 		n.sendConfigBlock()
@@ -207,7 +214,7 @@ func (n *remapperNode) applyConfigForm(values map[string]any) error {
 
 func (n *remapperNode) sendRulesFieldStatus(msg formular.FieldValidateMessage) {
 	text, _ := formular.StringValue(msg.Value)
-	_, err := parseRemapperRules(text)
+	_, err := routing.NewRemapRules(text)
 	sendNodeFieldStatus(n.w, n.id, msg.Field, err)
 }
 
@@ -287,197 +294,4 @@ func (n *remapperNode) configBlock() formular.Block {
 	return formular.Block{ID: remapperConfigBlockID, Order: 10, Generation: 1, Form: true, Items: []formular.Item{
 		{Type: formular.ItemField, ID: remapperRulesField, Label: "Remap rules", Field: field},
 	}}
-}
-
-// parseRemapperRules parses a line-oriented rule language into gonnect remap
-// rules. Each non-empty, non-comment line has this shape:
-//
-//	ENDPOINT FIELD REPLACEMENT [MATCH pattern] [OP operation[,operation...]]
-//
-// ENDPOINT is SRC or DST. FIELD is ADDR, PORT, or ADDRPORT. ADDRPORT accepts
-// either "host port" or a single host:port token. MATCH uses gonnect's
-// NO_PROXY-style FilterFromString against the selected endpoint. OP limits the
-// rule to one or more gonnect.RemapOperation names, such as Dial, Listen,
-// DialTCP, ListenTCP, DialUDP, or ListenUDP.
-func parseRemapperRules(text string) ([]gonnect.RemapRule, error) {
-	var rules []gonnect.RemapRule
-	for lineNo, raw := range strings.Split(text, "\n") {
-		line := stripRemapperRuleComment(raw)
-		if line == "" {
-			continue
-		}
-		rule, err := parseRemapperRuleLine(line)
-		if err != nil {
-			return nil, fmt.Errorf("line %d: %w", lineNo+1, err)
-		}
-		rules = append(rules, rule)
-	}
-	return rules, nil
-}
-
-func stripRemapperRuleComment(line string) string {
-	if idx := strings.IndexByte(line, '#'); idx >= 0 {
-		line = line[:idx]
-	}
-	return strings.TrimSpace(line)
-}
-
-func parseRemapperRuleLine(line string) (gonnect.RemapRule, error) {
-	fields := strings.Fields(line)
-	if len(fields) < 3 {
-		return gonnect.RemapRule{}, fmt.Errorf("expected ENDPOINT FIELD REPLACEMENT")
-	}
-	endpoint, err := parseRemapperEndpoint(fields[0])
-	if err != nil {
-		return gonnect.RemapRule{}, err
-	}
-	field, err := parseRemapperField(fields[1])
-	if err != nil {
-		return gonnect.RemapRule{}, err
-	}
-	rule := gonnect.RemapRule{Endpoint: endpoint, Field: field}
-	idx, err := parseRemapperReplacement(&rule, fields, 2)
-	if err != nil {
-		return gonnect.RemapRule{}, err
-	}
-	ops := map[gonnect.RemapOperation]struct{}{}
-	var addressFilter gonnect.RemapFilter
-	for idx < len(fields) {
-		key := strings.ToUpper(fields[idx])
-		idx++
-		if idx >= len(fields) {
-			return gonnect.RemapRule{}, fmt.Errorf("%s missing value", key)
-		}
-		value := fields[idx]
-		idx++
-		switch key {
-		case "MATCH", "FILTER":
-			filter := gonnect.FilterFromString(value)
-			addressFilter = gonnect.RemapAddressFilter(filter.Filter)
-		case "OP", "OPS", "OPERATION", "OPERATIONS":
-			parsed, err := parseRemapperOperations(value)
-			if err != nil {
-				return gonnect.RemapRule{}, err
-			}
-			ops = parsed
-		default:
-			return gonnect.RemapRule{}, fmt.Errorf("unknown option %q", key)
-		}
-	}
-	rule.Filter = combineRemapperFilters(addressFilter, ops)
-	return rule, nil
-}
-
-func parseRemapperEndpoint(value string) (gonnect.RemapEndpoint, error) {
-	switch strings.ToUpper(value) {
-	case "DST", "DEST", "DESTINATION":
-		return gonnect.RemapDst, nil
-	case "SRC", "SOURCE":
-		return gonnect.RemapSrc, nil
-	default:
-		return 0, fmt.Errorf("unknown endpoint %q", value)
-	}
-}
-
-func parseRemapperField(value string) (gonnect.RemapField, error) {
-	switch strings.ToUpper(value) {
-	case "ADDR", "ADDRESS", "HOST":
-		return gonnect.RemapAddr, nil
-	case "PORT":
-		return gonnect.RemapPort, nil
-	case "ADDRPORT", "ADDRESSPORT", "ENDPOINT":
-		return gonnect.RemapAddrPort, nil
-	default:
-		return 0, fmt.Errorf("unknown field %q", value)
-	}
-}
-
-func parseRemapperReplacement(rule *gonnect.RemapRule, fields []string, idx int) (int, error) {
-	switch rule.Field {
-	case gonnect.RemapAddr:
-		rule.Addr = fields[idx]
-		return idx + 1, nil
-	case gonnect.RemapPort:
-		rule.Port = fields[idx]
-		return idx + 1, nil
-	case gonnect.RemapAddrPort:
-		if idx+1 < len(fields) && !isRemapperOption(fields[idx+1]) {
-			rule.Addr = fields[idx]
-			rule.Port = fields[idx+1]
-			return idx + 2, nil
-		}
-		host, port, err := net.SplitHostPort(fields[idx])
-		if err != nil {
-			return 0, fmt.Errorf("ADDRPORT replacement must be host port or host:port")
-		}
-		rule.Addr = host
-		rule.Port = port
-		return idx + 1, nil
-	default:
-		return 0, fmt.Errorf("unknown remap field")
-	}
-}
-
-func isRemapperOption(value string) bool {
-	switch strings.ToUpper(value) {
-	case "MATCH", "FILTER", "OP", "OPS", "OPERATION", "OPERATIONS":
-		return true
-	default:
-		return false
-	}
-}
-
-func parseRemapperOperations(value string) (map[gonnect.RemapOperation]struct{}, error) {
-	out := map[gonnect.RemapOperation]struct{}{}
-	for _, raw := range strings.Split(value, ",") {
-		op, err := parseRemapperOperation(strings.TrimSpace(raw))
-		if err != nil {
-			return nil, err
-		}
-		out[op] = struct{}{}
-	}
-	return out, nil
-}
-
-func parseRemapperOperation(value string) (gonnect.RemapOperation, error) {
-	switch strings.ToLower(value) {
-	case strings.ToLower(string(gonnect.RemapOpDial)):
-		return gonnect.RemapOpDial, nil
-	case strings.ToLower(string(gonnect.RemapOpListen)):
-		return gonnect.RemapOpListen, nil
-	case strings.ToLower(string(gonnect.RemapOpPacketDial)):
-		return gonnect.RemapOpPacketDial, nil
-	case strings.ToLower(string(gonnect.RemapOpListenPacket)):
-		return gonnect.RemapOpListenPacket, nil
-	case strings.ToLower(string(gonnect.RemapOpDialTCP)):
-		return gonnect.RemapOpDialTCP, nil
-	case strings.ToLower(string(gonnect.RemapOpListenTCP)):
-		return gonnect.RemapOpListenTCP, nil
-	case strings.ToLower(string(gonnect.RemapOpDialUDP)):
-		return gonnect.RemapOpDialUDP, nil
-	case strings.ToLower(string(gonnect.RemapOpListenUDP)):
-		return gonnect.RemapOpListenUDP, nil
-	case strings.ToLower(string(gonnect.RemapOpListenPacketConfig)):
-		return gonnect.RemapOpListenPacketConfig, nil
-	case strings.ToLower(string(gonnect.RemapOpListenUDPConfig)):
-		return gonnect.RemapOpListenUDPConfig, nil
-	case strings.ToLower(string(gonnect.RemapOpListenMulticastUDP)):
-		return gonnect.RemapOpListenMulticastUDP, nil
-	default:
-		return "", fmt.Errorf("unknown operation %q", value)
-	}
-}
-
-func combineRemapperFilters(addressFilter gonnect.RemapFilter, ops map[gonnect.RemapOperation]struct{}) gonnect.RemapFilter {
-	if addressFilter == nil && len(ops) == 0 {
-		return nil
-	}
-	return func(info gonnect.RemapInfo) bool {
-		if len(ops) > 0 {
-			if _, ok := ops[info.Operation]; !ok {
-				return false
-			}
-		}
-		return addressFilter == nil || addressFilter(info)
-	}
 }

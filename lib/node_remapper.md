@@ -9,36 +9,45 @@ Rules are evaluated from top to bottom. Each matching rule rewrites the selected
 source or destination endpoint, and later rules see the values left by earlier
 rules.
 
+Rules use the `github.com/asciimoth/gonnect/routing` remapper bytecode text
+form. Each segment contains zero or more predicates and ends with a `REMAP`
+action:
+
 ```text
-ENDPOINT FIELD REPLACEMENT [MATCH pattern] [OP operation[,operation...]]
+REMAP ENDPOINT FIELD VALUE
 ```
 
 `ENDPOINT` is `SRC` or `DST`.
 
 `FIELD` is:
 
+- `ADDR_PORT`: replace both host/address and port. `VALUE` must be one
+  `host:port` token, such as `127.0.0.1:8080` or `[::1]:9443`.
 - `ADDR`: replace only the host/address part.
 - `PORT`: replace only the port part.
-- `ADDRPORT`: replace both host/address and port. The replacement can be
-  `host port` or one `host:port` token.
 
-`MATCH` is optional. Its pattern uses Gonnect's `FilterFromString` syntax:
-hostnames, wildcard host patterns, IP literals, CIDRs, and optional ports are
-supported. Matching is syntactic and does not resolve names.
-
-`OP` is optional. It restricts a rule to specific Gonnect remap operation names,
-for example `Dial`, `Listen`, `PacketDial`, `ListenPacket`, `DialTCP`,
-`ListenTCP`, `DialUDP`, or `ListenUDP`.
+Predicates are stack-based bytecode operations such as `DIAL`, `LISTEN`, `TCP`,
+`UDP`, `ADDR_S`, `ADDR_RE`, `PORT`, `LADDR_S`, `LADDR_RE`, `LPORT`, `AND`,
+`OR`, and `NOT`. Matching is syntactic and does not resolve names.
 
 Examples:
 
 ```text
 # Redirect client dials from example.test:80 to a local service port.
-DST ADDRPORT 127.0.0.1 8080 MATCH example.test:80 OP Dial
+DIAL
+ADDR_S example.test
+AND
+PORT 80
+AND
+REMAP DST ADDR_PORT 127.0.0.1:8080
 
 # Rewrite listen addresses to bind on loopback.
-SRC ADDR 127.0.0.1 OP Listen,ListenTCP
+LISTEN
+REMAP SRC ADDR 127.0.0.1
 
 # Change only the destination port for every dial-style address with that port.
-DST PORT 8443 MATCH *:443
+DIAL
+PORT 443
+AND
+REMAP DST PORT 8443
 ```

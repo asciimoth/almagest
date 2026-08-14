@@ -1,25 +1,31 @@
 package almagest
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
 	"github.com/asciimoth/gonnect/dns"
+	"github.com/asciimoth/gonnect/routing"
 	"github.com/asciimoth/pasta/pasta"
 )
 
-func TestDNSRouterRulesRouteBySuffixNameTypeAndDefault(t *testing.T) {
-	rules, err := parseDNSRouterRules(strings.Join([]string{
-		"SUFFIX east.test TYPE A SLOT 2",
-		"NAME host.west.test TYPE AAAA SLOT 3",
-		"SUFFIX west.test SLOT 4",
-		"DEFAULT SLOT 1",
-	}, "\n"))
-	if err != nil {
-		t.Fatalf("parseDNSRouterRules: %v", err)
-	}
+func TestDNSRouterBytecodeRulesRouteByRegexpNameTypeAndDefault(t *testing.T) {
+	_, route := compileDNSRouterRulesForTest(t, `ADDR_RE (^|.*\.)east\.test\.$
+QTYPE A
+AND
+BACKEND slot 2
+
+ADDR_S host.west.test.
+QTYPE AAAA
+AND
+BACKEND slot 3
+
+ADDR_RE (^|.*\.)west\.test\.$
+BACKEND slot 4
+
+TRUE
+BACKEND slot 1`)
 
 	for _, tc := range []struct {
 		name  string
@@ -34,7 +40,7 @@ func TestDNSRouterRulesRouteBySuffixNameTypeAndDefault(t *testing.T) {
 		{name: "default", qname: "unknown.test.", qtype: dns.TypeA, want: "slot 1"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := rules.Route(dnsTestQuery(tc.qname, tc.qtype)); got != tc.want {
+			if got := route(dnsTestQuery(tc.qname, tc.qtype)); got != tc.want {
 				t.Fatalf("Route(%s %s) = %q, want %q", tc.qname, dnsTypeName(tc.qtype), got, tc.want)
 			}
 		})
@@ -42,28 +48,26 @@ func TestDNSRouterRulesRouteBySuffixNameTypeAndDefault(t *testing.T) {
 }
 
 func TestDNSRouterRulesEmptyRoutesDefaultSlot(t *testing.T) {
-	rules, err := parseDNSRouterRules("# comments only\n\n")
-	if err != nil {
-		t.Fatalf("parseDNSRouterRules: %v", err)
-	}
-	if got := rules.Route(dnsTestQuery("example.test.", dns.TypeA)); got != "slot 1" {
+	rules, route := compileDNSRouterRulesForTest(t, "# comments only\n\n")
+	if got := route(dnsTestQuery("example.test.", dns.TypeA)); got != "slot 1" {
 		t.Fatalf("empty rules Route() = %q, want slot 1", got)
 	}
-	if got := rules.MentionedSlots(); len(got) != 0 {
-		t.Fatalf("empty rules MentionedSlots() = %v, want none", got)
+	if got := dnsRouterRuleSlots(rules); len(got) != 1 || got[0] != 1 {
+		t.Fatalf("empty rules slots = %v, want [1]", got)
 	}
 }
 
 func TestDNSRouterRulesRejectInvalidInput(t *testing.T) {
 	for _, text := range []string{
-		"SUFFIX example.test",
-		"SUFFIX example.test SLOT 17",
-		"TYPE BADTYPE SLOT 1",
-		"NOPE example.test SLOT 1",
+		"ADDR_RE [\nBACKEND slot 1",
+		"TRUE\nBACKEND slot 17",
+		"QTYPE BADTYPE\nBACKEND slot 1",
+		"NOPE example.test\nBACKEND slot 1",
+		"TRUE\nBACKEND default",
 	} {
 		t.Run(text, func(t *testing.T) {
-			if _, err := parseDNSRouterRules(text); err == nil {
-				t.Fatal("parseDNSRouterRules succeeded, want error")
+			if _, _, err := (&dnsRouterNode{}).compileRules(text); err == nil {
+				t.Fatal("compileRules succeeded, want error")
 			}
 		})
 	}
@@ -87,7 +91,8 @@ func TestDNSRouterNodeEmitsStableRouterAndReviewsSlotPorts(t *testing.T) {
 	}
 
 	first := receiveDNSRouterRuntime(t, receiver.events)
-	applyDNSRouterRulesToWorkspace(t, w, routerID, "SUFFIX west.test SLOT 2\nDEFAULT SLOT 1")
+	rulesText := "ADDR_RE (^|.*\\.)west\\.test\\.$\nBACKEND slot 2\n\nTRUE\nBACKEND slot 1"
+	applyDNSRouterRulesToWorkspace(t, w, routerID, rulesText)
 	assertDNSRouterRightPorts(t, w, routerID, []string{"slot 1", "slot 2"})
 	second := receiveDNSRouterRuntime(t, receiver.events)
 	if first != second {
@@ -98,7 +103,7 @@ func TestDNSRouterNodeEmitsStableRouterAndReviewsSlotPorts(t *testing.T) {
 	if err := w.SaveConfig(cfg); err != nil {
 		t.Fatalf("SaveConfig: %v", err)
 	}
-	if got, err := cfg.Get(configer.Path{"router", dnsRouterRulesField}); err != nil || got != "SUFFIX west.test SLOT 2\nDEFAULT SLOT 1" {
+	if got, err := cfg.Get(configer.Path{"router", dnsRouterRulesField}); err != nil || got != rulesText {
 		t.Fatalf("saved DnsRouter rules = %q, %v", got, err)
 	}
 }
@@ -132,9 +137,18 @@ func TestDNSRouterNodeValidationReportsStatus(t *testing.T) {
 	w.SendNodeFormularMsg(routerID, formular.FieldValidateMessage{
 		MessageBase: FormMessageBase(formular.MessageFieldValidate, routerID),
 		Field:       formular.FieldRef{BlockID: dnsRouterConfigBlockID, FieldID: dnsRouterRulesField},
-		Value:       "SUFFIX example.test SLOT 1\n",
+		Value:       "ADDR_S example.test.\nBACKEND slot 1\n",
 	})
 	assertDNSRouterRulesStatus(t, state, routerID, formular.StatusOK)
+}
+
+func compileDNSRouterRulesForTest(t *testing.T, text string) (routing.DNSBytecodeRules, dns.RouteFunc) {
+	t.Helper()
+	rules, route, err := (&dnsRouterNode{}).compileRules(text)
+	if err != nil {
+		t.Fatalf("compileRules: %v", err)
+	}
+	return rules, route
 }
 
 func newDNSRouterTestWorkspace(t *testing.T) *pasta.Workspace {

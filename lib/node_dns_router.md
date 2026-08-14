@@ -7,25 +7,33 @@ under the same backend name. Detaching a slot removes that backend and closes
 only the DNS wrapper received by this node; the router instance and other slots
 remain alive.
 
-Routing rules are evaluated top to bottom against the first DNS question in the
-message. Empty or comment-only rules route everything to `slot 1`. A non-empty
-ruleset has no implicit fallback; add `DEFAULT SLOT N` when unmatched requests
-should continue to a backend.
+Routing rules use the `github.com/asciimoth/gonnect/routing` DNS bytecode text
+form. Rules are evaluated top to bottom against the first DNS question in the
+message. Empty or comment-only rules route everything to `slot 1` by compiling
+the same default as `TRUE` followed by `BACKEND slot 1`.
 
-Supported rule tokens:
+Each route segment ends with `BACKEND slot N` or `DROP`. `BACKEND` names must
+use the node's existing `slot N` port names, from `slot 1` through `slot 16`.
+A non-empty ruleset has no implicit fallback; add `TRUE` and `BACKEND slot N`
+when unmatched requests should continue to a backend.
 
 ```text
-SUFFIX example.test SLOT 1
-NAME host.example.test SLOT 2
-TYPE AAAA SLOT 3
-SUFFIX internal.test TYPE A SLOT 4
-DEFAULT SLOT 1
+ADDR_RE (^|.*\.)example\.test\.$
+BACKEND slot 1
+
+ADDR_S host.example.test.
+QTYPE AAAA
+AND
+BACKEND slot 2
+
+TRUE
+BACKEND slot 1
 ```
 
-`SUFFIX` matches the exact name and subdomains. `NAME` matches only the exact
-DNS name. `TYPE` accepts the record names supported by `StaticDns` or a numeric
-DNS type from 1 to 65535. `DOMAIN` is an alias for `SUFFIX`, `EXACT` is an alias
-for `NAME`, and `ANY` or `TRUE` can be used instead of `DEFAULT`.
+Useful DNS predicates include `ADDR_S` for exact case-insensitive names,
+`ADDR_RE` for regexp name matches, `QTYPE`, `QCLASS`, `OPCODE`, `NET4`, `NET6`,
+`ADDR4`, `ADDR6`, `SNET4`, and `SNET6`. Use `AND`, `OR`, and `NOT` to combine
+predicates. Line comments that start with `#` and blank lines are ignored.
 
 Only slots mentioned by rules, slots that still have links, and the default
 `slot 1` for an empty ruleset are kept visible. The node keeps the underlying

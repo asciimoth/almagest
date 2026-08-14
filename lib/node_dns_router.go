@@ -2,15 +2,15 @@ package almagest
 
 import (
 	_ "embed"
-	"errors"
 	"fmt"
-	"strconv"
+	"slices"
 	"strings"
 
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
 	"github.com/asciimoth/gonnect"
 	"github.com/asciimoth/gonnect/dns"
+	"github.com/asciimoth/gonnect/routing"
 	"github.com/asciimoth/pasta/pasta"
 	"github.com/asciimoth/pasta/pasta/std"
 )
@@ -29,6 +29,8 @@ const (
 	dnsRouterConfigBlockID = "config"
 	dnsRouterRulesField    = "rules"
 )
+
+const dnsRouterDefaultRules = "TRUE\nBACKEND slot 1"
 
 var (
 	//go:embed node_dns_router.md
@@ -78,7 +80,7 @@ type dnsRouterNode struct {
 	slots slotPorts
 
 	router *dns.Router
-	rules  dnsRouterRules
+	rules  routing.DNSBytecodeRules
 
 	rulesText string
 	formError string
@@ -112,12 +114,12 @@ func (n *dnsRouterNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint6
 	}
 	BindDNSResource(n.w, n.id, 0, n.router)
 
-	rules, err := parseDNSRouterRules(n.rulesText)
+	rules, route, err := n.compileRules(n.rulesText)
 	if err != nil {
 		n.formError = err.Error()
 	} else {
 		n.rules = rules
-		if err := n.router.SetRouter(rules.Route); err != nil {
+		if err := n.router.SetRouter(route); err != nil {
 			return fmt.Errorf("set DNS router rules: %w", err)
 		}
 	}
@@ -271,13 +273,13 @@ func (n *dnsRouterNode) OnSave(cfg configer.Config) error {
 
 func (n *dnsRouterNode) applyConfigForm(values map[string]any) error {
 	text, _ := formular.StringValue(values[dnsRouterRulesField])
-	rules, err := parseDNSRouterRules(text)
+	rules, route, err := n.compileRules(text)
 	if err != nil {
 		n.formError = err.Error()
 		n.sendConfigBlock()
 		return n.updateLabel()
 	}
-	if err := n.router.SetRouter(rules.Route); err != nil {
+	if err := n.router.SetRouter(route); err != nil {
 		return fmt.Errorf("set DNS router rules: %w", err)
 	}
 	n.rulesText = text
@@ -293,13 +295,13 @@ func (n *dnsRouterNode) applyConfigForm(values map[string]any) error {
 
 func (n *dnsRouterNode) sendRulesFieldStatus(msg formular.FieldValidateMessage) {
 	text, _ := formular.StringValue(msg.Value)
-	_, err := parseDNSRouterRules(text)
+	_, _, err := n.compileRules(text)
 	sendNodeFieldStatus(n.w, n.id, msg.Field, err)
 }
 
 func (n *dnsRouterNode) reviewOutputPorts(opts slotPortReview) error {
 	desired := map[int]struct{}{}
-	for _, slot := range n.rules.MentionedSlots() {
+	for _, slot := range dnsRouterRuleSlots(n.rules) {
 		desired[slot] = struct{}{}
 	}
 	return n.slots.Review(desired, opts)
@@ -378,7 +380,7 @@ func (n *dnsRouterNode) configBlock() formular.Block {
 		Value:       n.rulesText,
 		Multiline:   true,
 		Validation:  true,
-		Placeholder: "SUFFIX internal.test SLOT 1\nDEFAULT SLOT 2",
+		Placeholder: "ADDR_RE \\.internal\\.test\\.$\nBACKEND slot 1\n\nTRUE\nBACKEND slot 2",
 	}
 	if n.formError != "" {
 		field.Status = formular.StatusError
@@ -389,218 +391,50 @@ func (n *dnsRouterNode) configBlock() formular.Block {
 	}}
 }
 
-type dnsRouterRules struct {
-	rules []dnsRouterRule
+func (n *dnsRouterNode) compileRules(text string) (routing.DNSBytecodeRules, dns.RouteFunc, error) {
+	rules, err := routing.NewDNSBytecodeRules(dnsRouterCompileText(text))
+	if err != nil {
+		return routing.DNSBytecodeRules{}, nil, err
+	}
+	if _, err := dnsRouterBackendSlots(rules); err != nil {
+		return routing.DNSBytecodeRules{}, nil, err
+	}
+	route, err := routing.NewBytecodeDNSRouteFunc(rules)
+	if err != nil {
+		return routing.DNSBytecodeRules{}, nil, err
+	}
+	return rules, route, nil
 }
 
-func (r dnsRouterRules) Route(msg *dns.Message) string {
-	if len(r.rules) == 0 {
-		return slotPortName(1)
-	}
-	for _, rule := range r.rules {
-		if rule.Match(msg) {
-			return slotPortName(rule.slot)
+func dnsRouterCompileText(text string) string {
+	for _, raw := range strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n") {
+		trimmed := strings.TrimSpace(raw)
+		if trimmed != "" && !strings.HasPrefix(trimmed, "#") {
+			return text
 		}
 	}
-	return ""
+	return dnsRouterDefaultRules
 }
 
-func (r dnsRouterRules) MentionedSlots() []int {
-	seen := map[int]struct{}{}
-	var slots []int
-	for _, rule := range r.rules {
-		if _, ok := seen[rule.slot]; ok {
-			continue
-		}
-		seen[rule.slot] = struct{}{}
-		slots = append(slots, rule.slot)
-	}
+func dnsRouterRuleSlots(rules routing.DNSBytecodeRules) []int {
+	slots, _ := dnsRouterBackendSlots(rules)
 	return slots
 }
 
-type dnsRouterNameMatch int
-
-const (
-	dnsRouterNameAny dnsRouterNameMatch = iota
-	dnsRouterNameExact
-	dnsRouterNameSuffix
-)
-
-type dnsRouterRule struct {
-	nameMode dnsRouterNameMatch
-	name     string
-	qtype    uint16
-	slot     int
-}
-
-func (r dnsRouterRule) Match(msg *dns.Message) bool {
-	q, ok := firstDNSRouterQuestion(msg)
-	if r.qtype != 0 {
-		if !ok || q.Type != r.qtype {
-			return false
+func dnsRouterBackendSlots(rules routing.DNSBytecodeRules) ([]int, error) {
+	seen := map[int]struct{}{}
+	var slots []int
+	for _, backend := range rules.Backends {
+		slot, ok := slotPortFromName(backend, dnsRouterMaxSlots)
+		if !ok {
+			return nil, fmt.Errorf("backend %q must be named %q through %q", backend, slotPortName(1), slotPortName(dnsRouterMaxSlots))
 		}
-	}
-	switch r.nameMode {
-	case dnsRouterNameExact:
-		return ok && canonicalDNSName(q.Name) == r.name
-	case dnsRouterNameSuffix:
-		return ok && dnsRouterNameHasSuffix(canonicalDNSName(q.Name), r.name)
-	default:
-		return true
-	}
-}
-
-func parseDNSRouterRules(text string) (dnsRouterRules, error) {
-	var rules []dnsRouterRule
-	for i, raw := range strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n") {
-		line := strings.TrimSpace(raw)
-		if idx := strings.Index(line, "#"); idx >= 0 {
-			line = strings.TrimSpace(line[:idx])
-		}
-		if line == "" {
+		if _, ok := seen[slot]; ok {
 			continue
 		}
-		rule, err := parseDNSRouterRuleLine(line)
-		if err != nil {
-			return dnsRouterRules{}, fmt.Errorf("line %d: %w", i+1, err)
-		}
-		rules = append(rules, rule)
+		seen[slot] = struct{}{}
+		slots = append(slots, slot)
 	}
-	return dnsRouterRules{rules: rules}, nil
-}
-
-func parseDNSRouterRuleLine(line string) (dnsRouterRule, error) {
-	fields := strings.Fields(line)
-	if len(fields) == 0 {
-		return dnsRouterRule{}, errors.New("empty rule")
-	}
-	var rule dnsRouterRule
-	var sawName bool
-	var sawSlot bool
-	var sawType bool
-	var sawDefault bool
-	for i := 0; i < len(fields); {
-		token := strings.ToUpper(fields[i])
-		i++
-		switch token {
-		case "DEFAULT", "ANY", "TRUE":
-			if sawName || sawType {
-				return dnsRouterRule{}, errors.New("DEFAULT cannot be combined with NAME, SUFFIX, or TYPE")
-			}
-			rule.nameMode = dnsRouterNameAny
-			sawDefault = true
-		case "NAME", "EXACT":
-			if sawDefault {
-				return dnsRouterRule{}, errors.New("DEFAULT cannot be combined with NAME, SUFFIX, or TYPE")
-			}
-			if sawName {
-				return dnsRouterRule{}, errors.New("duplicate name matcher")
-			}
-			value, ok := nextDNSRouterRuleValue(fields, &i)
-			if !ok {
-				return dnsRouterRule{}, fmt.Errorf("%s requires a DNS name", token)
-			}
-			rule.nameMode = dnsRouterNameExact
-			rule.name = canonicalDNSName(value)
-			sawName = true
-		case "SUFFIX", "DOMAIN":
-			if sawDefault {
-				return dnsRouterRule{}, errors.New("DEFAULT cannot be combined with NAME, SUFFIX, or TYPE")
-			}
-			if sawName {
-				return dnsRouterRule{}, errors.New("duplicate name matcher")
-			}
-			value, ok := nextDNSRouterRuleValue(fields, &i)
-			if !ok {
-				return dnsRouterRule{}, fmt.Errorf("%s requires a DNS name", token)
-			}
-			rule.nameMode = dnsRouterNameSuffix
-			rule.name = canonicalDNSName(value)
-			sawName = true
-		case "TYPE":
-			if sawDefault {
-				return dnsRouterRule{}, errors.New("DEFAULT cannot be combined with NAME, SUFFIX, or TYPE")
-			}
-			if sawType {
-				return dnsRouterRule{}, errors.New("duplicate TYPE matcher")
-			}
-			value, ok := nextDNSRouterRuleValue(fields, &i)
-			if !ok {
-				return dnsRouterRule{}, errors.New("TYPE requires a DNS record type")
-			}
-			typ, err := parseDNSRouterType(value)
-			if err != nil {
-				return dnsRouterRule{}, err
-			}
-			rule.qtype = typ
-			sawType = true
-		case "SLOT":
-			if sawSlot {
-				return dnsRouterRule{}, errors.New("duplicate SLOT action")
-			}
-			value, ok := nextDNSRouterRuleValue(fields, &i)
-			if !ok {
-				return dnsRouterRule{}, errors.New("SLOT requires a number")
-			}
-			slot, err := parseDNSRouterSlot(value)
-			if err != nil {
-				return dnsRouterRule{}, err
-			}
-			rule.slot = slot
-			sawSlot = true
-		default:
-			return dnsRouterRule{}, fmt.Errorf("unknown token %q", fields[i-1])
-		}
-	}
-	if !sawSlot {
-		return dnsRouterRule{}, errors.New("missing SLOT action")
-	}
-	return rule, nil
-}
-
-func nextDNSRouterRuleValue(fields []string, i *int) (string, bool) {
-	if i == nil || *i >= len(fields) {
-		return "", false
-	}
-	value := fields[*i]
-	*i = *i + 1
-	if strings.TrimSpace(value) == "" {
-		return "", false
-	}
-	return value, true
-}
-
-func parseDNSRouterType(value string) (uint16, error) {
-	if n, err := strconv.Atoi(value); err == nil {
-		if n <= 0 || n > 65535 {
-			return 0, fmt.Errorf("DNS type %d must be between 1 and 65535", n)
-		}
-		return uint16(n), nil
-	}
-	return staticDNSType(value)
-}
-
-func parseDNSRouterSlot(value string) (int, error) {
-	slot, err := strconv.Atoi(value)
-	if err != nil || slot < 1 || slot > dnsRouterMaxSlots {
-		return 0, fmt.Errorf("slot must be between 1 and %d", dnsRouterMaxSlots)
-	}
-	return slot, nil
-}
-
-func firstDNSRouterQuestion(msg *dns.Message) (dns.Question, bool) {
-	if msg == nil || len(msg.Questions) == 0 {
-		return dns.Question{}, false
-	}
-	return msg.Questions[0], true
-}
-
-func dnsRouterNameHasSuffix(name, suffix string) bool {
-	if suffix == "." {
-		return true
-	}
-	if name == suffix {
-		return true
-	}
-	return strings.HasSuffix(name, "."+suffix)
+	slices.Sort(slots)
+	return slots, nil
 }

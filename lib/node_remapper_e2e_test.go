@@ -18,7 +18,12 @@ func TestRemapperE2ERemapsHTTPClientDestinationPort(t *testing.T) {
 	client := e.addHTTPClient("client", publicPort)
 	e.SubscribeMenus(remapper, server, client)
 
-	e.applyRemapperRules(remapper, fmt.Sprintf("DST PORT %d MATCH 127.0.0.1:%d OP Dial", listenPort, publicPort))
+	e.applyRemapperRules(remapper, fmt.Sprintf(`DIAL
+ADDR_S 127.0.0.1
+AND
+PORT %d
+AND
+REMAP DST PORT %d`, publicPort, listenPort))
 	e.connectByPortName(mock, "left", "Network", remapper, "right", "Network")
 	e.connectByPortName(remapper, "left", "Network", client, "right", "Network")
 	e.connectByPortName(mock, "left", "Network", server, "right", "Network")
@@ -40,7 +45,12 @@ func TestRemapperE2ERemapsHTTPServerListenPort(t *testing.T) {
 	client := e.addHTTPClient("client", listenPort)
 	e.SubscribeMenus(remapper, server, client)
 
-	e.applyRemapperRules(remapper, fmt.Sprintf("SRC PORT %d MATCH 127.0.0.1:%d OP Listen", listenPort, configuredPort))
+	e.applyRemapperRules(remapper, fmt.Sprintf(`LISTEN
+LADDR_S 127.0.0.1
+AND
+LPORT %d
+AND
+REMAP SRC PORT %d`, configuredPort, listenPort))
 	e.connectByPortName(mock, "left", "Network", remapper, "right", "Network")
 	e.connectByPortName(remapper, "left", "Network", server, "right", "Network")
 	e.connectByPortName(mock, "left", "Network", client, "right", "Network")
