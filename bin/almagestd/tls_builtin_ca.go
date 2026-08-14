@@ -574,19 +574,15 @@ func parseTLSBuiltinCAPrivateKeyDER(blockType string, der []byte) (any, error) {
 }
 
 func tlsBuiltinCAPublicKeysEqual(left, right crypto.PublicKey) bool {
-	switch l := left.(type) {
-	case *ecdsa.PublicKey:
-		r, ok := right.(*ecdsa.PublicKey)
-		return ok && l.Curve == r.Curve && l.X.Cmp(r.X) == 0 && l.Y.Cmp(r.Y) == 0
-	case ed25519.PublicKey:
-		r, ok := right.(ed25519.PublicKey)
-		return ok && bytes.Equal(l, r)
-	case *rsa.PublicKey:
-		r, ok := right.(*rsa.PublicKey)
-		return ok && l.E == r.E && l.N.Cmp(r.N) == 0
-	default:
+	leftDER, err := x509.MarshalPKIXPublicKey(left)
+	if err != nil {
 		return false
 	}
+	rightDER, err := x509.MarshalPKIXPublicKey(right)
+	if err != nil {
+		return false
+	}
+	return bytes.Equal(leftDER, rightDER)
 }
 
 func deriveTLSBuiltinCAOptions(cert *x509.Certificate, signer crypto.Signer) api.TLSBuiltinCAOptions {
