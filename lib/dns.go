@@ -1,15 +1,6 @@
 package almagest
 
-import "github.com/asciimoth/gonnect/dns"
+import "github.com/asciimoth/almagest/lib/storage"
 
-type DnsCacheManager interface {
-	// Storage returns named CacheStorage instance creating it if it is not exists
-	// yet.
-	Storage(name string) dns.CacheStorage
-}
-
-type DnsCacheStorageLister interface {
-	// StorageNames returns the currently known DNS cache storage names. It is an
-	// optional extension used by node menus to expose cache-backed selectors.
-	StorageNames() []string
-}
+type DnsCacheManager = storage.DnsCacheManager
+type DnsCacheStorageLister = storage.DnsCacheStorageLister

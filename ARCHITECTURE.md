@@ -1,7 +1,11 @@
 # ARCHITECTURE.md
 Almagest is a Go userspace network stack built around a Pasta node graph.
 - `lib/` is the reusable module. It owns the engine, built-in node classes,
-  Almagest link types, and workspace-facing APIs.
+  workspace-facing APIs, and small subpackages for shared contracts.
+- `lib/links/` owns Almagest Pasta link payloads and per-link output caches.
+- `lib/logging/` owns reusable logging interfaces and the in-memory debug
+  logger.
+- `lib/storage/` owns daemon-provided storage interfaces and error contracts.
 - `bin/` is the runnable module. It owns daemon startup, config files, platform
   integration, admin API plumbing, and the CLI placeholder.
 - `panel/` is the TypeScript admin UI. `just build-web` compiles it into
@@ -19,9 +23,12 @@ Runtime path:
    `/api/ws`.
 
 ## Module Boundaries
-`lib/` may depend on Pasta, Gonnect, Formular, Configer, and Bufpool. It should
-not know about daemon config paths, process lifecycle, platform defaults, CLI
-commands, or admin transports.
+`lib/` may depend on Pasta, Gonnect, Formular, Configer, and Bufpool. Root
+package files keep the engine, built-in node classes, and compatibility aliases
+for public contracts. Shared link, logging, and storage behavior belongs in the
+matching `lib/links`, `lib/logging`, or `lib/storage` package. Library code
+should not know about daemon config paths, process lifecycle, platform defaults,
+CLI commands, or admin transports.
 
 `bin/` imports `lib` through `bin/go.mod`. Keep daemon-only dependencies there.
 
@@ -30,7 +37,12 @@ Engine and workspace:
 - `lib/engine.go`: `BuildEngine`, workspace API forwarding, notifications,
   persistence hooks, lifecycle.
 - `lib/nodelist.go`: built-in node class registration.
-- `lib/type_network.go`: `almagest/network` payload type and resource binding.
+- `lib/links/`: `almagest/network`, `almagest/dns`, and `almagest/tun` payload
+  types, resource binding helpers, and output caches.
+- `lib/type_network.go`, `lib/type_dns.go`, `lib/type_tun.go`: root
+  compatibility aliases plus node-only helper providers.
+- `lib/logging/`: logger interfaces and debug logger implementation.
+- `lib/storage/`: KV, DNS cache, secret, and TLS config storage contracts.
 
 Built-in nodes:
 - `lib/node_mock_net.go`: virtual loopback network node.

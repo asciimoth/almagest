@@ -208,8 +208,7 @@ func TestAcceptTunPayloadReplacesStaleCurrentSameSource(t *testing.T) {
 }
 
 func TestTunOutputCacheReusesReadyWrapperAndReplacesClosedWrapper(t *testing.T) {
-	w, node, _, _, rightPort := newTunTypeLinkedWorkspace(t)
-	link := onlyPortLink(t, w, rightPort)
+	w, node, link, events := newTunOutputCacheTestLink(t)
 
 	base, peer := tun.Pipe(1, 1500, 0, 0)
 	defer closeTestTun(base)
@@ -219,15 +218,15 @@ func TestTunOutputCacheReusesReadyWrapperAndReplacesClosedWrapper(t *testing.T) 
 	if !cache.Send(w, node, link, base, nil) {
 		t.Fatal("Send() = false, want true")
 	}
-	first := cache.entries[link].output
+	first := receiveTunOutputCachePayload(t, events)
 	if first == nil {
-		t.Fatal("cached output = nil, want wrapper")
+		t.Fatal("output = nil, want wrapper")
 	}
 
 	if !cache.Send(w, node, link, base, nil) {
 		t.Fatal("second Send() = false, want true")
 	}
-	second := cache.entries[link].output
+	second := receiveTunOutputCachePayload(t, events)
 	if !SameTunInstance(first, second) {
 		t.Fatal("second Send() replaced a ready same-source wrapper")
 	}
@@ -236,7 +235,7 @@ func TestTunOutputCacheReusesReadyWrapperAndReplacesClosedWrapper(t *testing.T) 
 	if !cache.Send(w, node, link, base, nil) {
 		t.Fatal("third Send() = false, want true")
 	}
-	third := cache.entries[link].output
+	third := receiveTunOutputCachePayload(t, events)
 	if SameTunInstance(first, third) {
 		t.Fatal("third Send() reused a closed wrapper, want replacement")
 	}
@@ -248,8 +247,7 @@ func TestTunOutputCacheReusesReadyWrapperAndReplacesClosedWrapper(t *testing.T) 
 }
 
 func TestTunOutputCacheRefreshReplacesReadySameSourceWrapper(t *testing.T) {
-	w, node, _, _, rightPort := newTunTypeLinkedWorkspace(t)
-	link := onlyPortLink(t, w, rightPort)
+	w, node, link, events := newTunOutputCacheTestLink(t)
 
 	base, peer := tun.Pipe(1, 1500, 0, 0)
 	defer closeTestTun(base)
@@ -259,14 +257,14 @@ func TestTunOutputCacheRefreshReplacesReadySameSourceWrapper(t *testing.T) {
 	if !cache.Send(w, node, link, base, nil) {
 		t.Fatal("TunOutputCache.Send() = false, want true")
 	}
-	first := cache.entries[link].output
+	first := receiveTunOutputCachePayload(t, events)
 	w.Lock()
 	refreshedOK := cache.RefreshLocked(w, node, link, base, nil)
 	w.Unlock()
 	if !refreshedOK {
 		t.Fatal("TunOutputCache.RefreshLocked() = false, want true")
 	}
-	second := cache.entries[link].output
+	second := receiveTunOutputCachePayload(t, events)
 	if SameTunInstance(first, second) {
 		t.Fatal("TunOutputCache.RefreshLocked reused wrapper, want fresh detach")
 	}
@@ -284,8 +282,7 @@ func TestTunOutputCacheRefreshReplacesReadySameSourceWrapper(t *testing.T) {
 }
 
 func TestTunOutputCacheReplacesChangedSource(t *testing.T) {
-	w, node, _, _, rightPort := newTunTypeLinkedWorkspace(t)
-	link := onlyPortLink(t, w, rightPort)
+	w, node, link, events := newTunOutputCacheTestLink(t)
 
 	firstSource, firstPeer := tun.Pipe(1, 1500, 0, 0)
 	defer closeTestTun(firstSource)
@@ -298,16 +295,13 @@ func TestTunOutputCacheReplacesChangedSource(t *testing.T) {
 	if !cache.Send(w, node, link, firstSource, nil) {
 		t.Fatal("Send(firstSource) = false, want true")
 	}
-	first := cache.entries[link].output
+	first := receiveTunOutputCachePayload(t, events)
 	if !cache.Send(w, node, link, secondSource, nil) {
 		t.Fatal("Send(secondSource) = false, want true")
 	}
-	second := cache.entries[link].output
+	second := receiveTunOutputCachePayload(t, events)
 	if SameTunInstance(first, second) {
 		t.Fatal("Send(secondSource) reused first source wrapper")
-	}
-	if !SameTunInstance(cache.entries[link].source, secondSource) {
-		t.Fatal("cached entry source is not second source")
 	}
 	eventually(t, func() bool {
 		_, err := first.MTU()
@@ -323,8 +317,7 @@ func TestTunOutputCacheReplacesChangedSource(t *testing.T) {
 }
 
 func TestTunOutputCacheSendWrappedDecoratesDetachedTun(t *testing.T) {
-	w, node, _, _, rightPort := newTunTypeLinkedWorkspace(t)
-	link := onlyPortLink(t, w, rightPort)
+	w, node, link, events := newTunOutputCacheTestLink(t)
 
 	base, peer := tun.Pipe(1, 1500, 0, 0)
 	defer closeTestTun(base)
@@ -336,15 +329,16 @@ func TestTunOutputCacheSendWrappedDecoratesDetachedTun(t *testing.T) {
 	}, nil) {
 		t.Fatal("SendWrapped() = false, want true")
 	}
-	output := cache.entries[link].output
-	if _, ok := output.(testTunWrapper); !ok {
-		t.Fatalf("cached output type = %T, want testTunWrapper", output)
+	output := receiveTunOutputCachePayload(t, events)
+	wrapped, ok := output.(testTunWrapper)
+	if !ok {
+		t.Fatalf("output type = %T, want testTunWrapper", output)
 	}
 	if SameTunInstance(base, output) {
 		t.Fatal("SendWrapped() emitted the source directly, want detached wrapper")
 	}
-	if !SameTunInstance(cache.entries[link].source, base) {
-		t.Fatal("cached entry source is not original source")
+	if SameTunInstance(base, wrapped.Tun) {
+		t.Fatal("SendWrapped() decorated the source directly, want detached wrapper")
 	}
 
 	cache.CloseAll()
@@ -402,6 +396,66 @@ func (w testTunWrapper) IsUp() (bool, error) {
 
 func closeTestTun(t tun.Tun) {
 	_ = t.Close()
+}
+
+func receiveTunOutputCachePayload(t *testing.T, events <-chan TunPayload) tun.Tun {
+	t.Helper()
+	select {
+	case payload := <-events:
+		if payload.Tun == nil {
+			t.Fatal("payload.Tun = nil, want tun")
+		}
+		return payload.Tun
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("no tun payload received")
+		return nil
+	}
+}
+
+func newTunOutputCacheTestLink(t *testing.T) (*pasta.Workspace, uint64, uint64, <-chan TunPayload) {
+	t.Helper()
+
+	w := pasta.NewWorkspace(NewDebugLogFactory(1024))
+	receiver := &tunPayloadReceiver{events: make(chan TunPayload, 8)}
+	if _, err := w.AddNode(receiver, "test/TunOutputCacheReceiver", "receiver"); err != nil {
+		t.Fatalf("AddNode receiver: %v", err)
+	}
+	providerNode := &tunOutputCacheTestProvider{}
+	provider, err := w.AddNode(providerNode, "test/TunOutputCacheProvider", "provider")
+	if err != nil {
+		t.Fatalf("AddNode provider: %v", err)
+	}
+	link, _, err := w.AddLink(receiver.in, providerNode.out)
+	if err != nil {
+		t.Fatalf("AddLink: %v", err)
+	}
+	return w, provider, link, receiver.events
+}
+
+type tunOutputCacheTestProvider struct {
+	pasta.BasicNode
+	out uint64
+}
+
+func (n *tunOutputCacheTestProvider) OnInit(w *pasta.Workspace, _ pasta.Logger, id uint64, _ string, _ *pasta.NodeInitData, _, _, _, _ bool) error {
+	port, err := w.AddPortLocked(pasta.Port{
+		Node:      id,
+		Direction: "right",
+		Name:      "Tun",
+		Types:     []string{TypeTun},
+	})
+	if err != nil {
+		return err
+	}
+	n.out = port
+	return nil
+}
+
+func (n *tunOutputCacheTestProvider) PreLinkAdd(port uint64, linkType, portDirection string) error {
+	if port != n.out || portDirection != "right" {
+		return pasta.LinkTypeErr(linkType)
+	}
+	return TunPreLinkAdd(nil, 0, linkType)
 }
 
 func newTunTypeLinkedWorkspace(t *testing.T) (*pasta.Workspace, uint64, uint64, uint64, uint64) {
