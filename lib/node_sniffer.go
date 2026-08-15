@@ -12,6 +12,8 @@ import (
 	"github.com/asciimoth/gonnect/sniffer"
 	"github.com/asciimoth/pasta/pasta"
 	"github.com/asciimoth/pasta/pasta/std"
+
+	dnsnodes "github.com/asciimoth/almagest/lib/dns"
 )
 
 func init() {
@@ -70,7 +72,7 @@ func (c snifferClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState) (
 	return &snifferNode{
 		NodeBase:            NodeBase{engine: c.engine},
 		rulesText:           configer.String(cfg, configer.Path{snifferRulesField}, ""),
-		dnsCacheStorageName: normalizeOptionalDNSCacheStorageName(configer.String(cfg, configer.Path{snifferDNSCacheStorageNameField}, "")),
+		dnsCacheStorageName: dnsnodes.NormalizeOptionalCacheStorageName(configer.String(cfg, configer.Path{snifferDNSCacheStorageNameField}, "")),
 		slots: newSlotPorts(
 			snifferMaxSlots,
 			"right",
@@ -102,7 +104,7 @@ type snifferNode struct {
 	backends map[int]NetworkCloser
 	outputs  snifferOutputCache
 
-	// dnsCacheStorageName optionally selects a DnsCacheManager storage whose
+	// dnsCacheStorageName optionally selects a dnsnodes.DnsCacheManager storage whose
 	// synthetic PTR records are used by routing string and regexp address
 	// matchers. It does not install a resolver on the emitted network.
 	dnsCacheStorageName  string
@@ -130,7 +132,7 @@ func (n *snifferNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64,
 	}
 
 	storageName := n.dnsCacheStorageName
-	if err := validateOptionalDNSCacheStorageName(storageName); err != nil {
+	if err := dnsnodes.ValidateOptionalCacheStorageName(storageName); err != nil {
 		n.dnsCacheStorageError = err.Error()
 		storageName = ""
 	}
@@ -284,9 +286,9 @@ func (n *snifferNode) applyConfigForm(values map[string]any) error {
 	}
 	storageName := n.dnsCacheStorageName
 	if value, ok := formular.StringValue(values[snifferDNSCacheStorageNameField]); ok {
-		storageName = normalizeOptionalDNSCacheStorageName(value)
+		storageName = dnsnodes.NormalizeOptionalCacheStorageName(value)
 	}
-	if err := validateOptionalDNSCacheStorageName(storageName); err != nil {
+	if err := dnsnodes.ValidateOptionalCacheStorageName(storageName); err != nil {
 		n.dnsCacheStorageError = err.Error()
 		if _, _, rulesErr := n.compileRules(text, ""); rulesErr != nil {
 			n.formError = rulesErr.Error()
@@ -325,20 +327,20 @@ func (n *snifferNode) sendRulesFieldStatus(msg formular.FieldValidateMessage) {
 
 func (n *snifferNode) sendDNSCacheStorageFieldStatus(msg formular.FieldValidateMessage) {
 	value, _ := formular.StringValue(msg.Value)
-	value = normalizeOptionalDNSCacheStorageName(value)
-	sendNodeFieldStatus(n.w, n.id, msg.Field, validateOptionalDNSCacheStorageName(value))
+	value = dnsnodes.NormalizeOptionalCacheStorageName(value)
+	sendNodeFieldStatus(n.w, n.id, msg.Field, dnsnodes.ValidateOptionalCacheStorageName(value))
 }
 
 func (n *snifferNode) compileRules(text, dnsCacheStorageName string) (routing.SnifferBytecodeRules, routing.SnifferControls, error) {
-	dnsCacheStorageName = normalizeOptionalDNSCacheStorageName(dnsCacheStorageName)
-	if err := validateOptionalDNSCacheStorageName(dnsCacheStorageName); err != nil {
+	dnsCacheStorageName = dnsnodes.NormalizeOptionalCacheStorageName(dnsCacheStorageName)
+	if err := dnsnodes.ValidateOptionalCacheStorageName(dnsCacheStorageName); err != nil {
 		return routing.SnifferBytecodeRules{}, nil, err
 	}
 	rules, err := routing.NewSnifferBytecodeRules(nil, text)
 	if err != nil {
 		return routing.SnifferBytecodeRules{}, nil, err
 	}
-	rules.DNSCacheStorage = dnsCacheStorageForRouting(n.cacheManager(), dnsCacheStorageName)
+	rules.DNSCacheStorage = dnsnodes.CacheStorageForRouting(n.cacheManager(), dnsCacheStorageName)
 	controls, err := routing.NewBytecodeSnifferControls(rules)
 	if err != nil {
 		return routing.SnifferBytecodeRules{}, nil, err
@@ -351,7 +353,7 @@ func (n *snifferNode) compileRules(text, dnsCacheStorageName string) (routing.Sn
 	return rules, controls, nil
 }
 
-func (n *snifferNode) cacheManager() DnsCacheManager {
+func (n *snifferNode) cacheManager() dnsnodes.DnsCacheManager {
 	if n.engine == nil {
 		return nil
 	}
@@ -517,7 +519,7 @@ func (n *snifferNode) configBlock() formular.Block {
 	}
 	return formular.Block{ID: snifferConfigBlockID, Order: 10, Generation: 1, Form: true, Items: []formular.Item{
 		{Type: formular.ItemField, ID: snifferRulesField, Label: "Sniffer rules", Field: field},
-		dnsCacheStorageSelectorField(
+		dnsnodes.CacheStorageSelectorField(
 			snifferDNSCacheStorageNameField,
 			"DNS cache storage",
 			n.dnsCacheStorageName,

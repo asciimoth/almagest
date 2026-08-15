@@ -1,4 +1,4 @@
-package almagest
+package dnsnodes
 
 import (
 	"context"
@@ -15,40 +15,37 @@ import (
 	"github.com/asciimoth/gonnect/dns"
 	"github.com/asciimoth/pasta/pasta"
 	"github.com/asciimoth/pasta/pasta/std"
-)
 
-func init() {
-	regClass(func(e *engine) pasta.NodeClass {
-		return staticDNSClass{engine: e}
-	}, false)
-}
+	"github.com/asciimoth/almagest/lib/nodekit"
+)
 
 const (
 	// NodeTypeStaticDNS is the node class name for a static DNS provider.
 	NodeTypeStaticDNS = "almagest/StaticDns"
 
-	defaultStaticDNSTTL = 60
+	DefaultStaticDNSTTL = 60
 )
 
-type staticDNSClass struct {
-	engine *engine
+// StaticDNSClass builds static DNS provider nodes.
+type StaticDNSClass struct {
+	Runtime nodekit.Runtime
 }
 
-func (staticDNSClass) ClassName() string        { return NodeTypeStaticDNS }
-func (staticDNSClass) ShortDescription() string { return "Static DNS" }
-func (staticDNSClass) LongDescription() string {
+func (StaticDNSClass) ClassName() string        { return NodeTypeStaticDNS }
+func (StaticDNSClass) ShortDescription() string { return "Static DNS" }
+func (StaticDNSClass) LongDescription() string {
 	return "Provides static DNS records through almagest/dns and optionally forwards misses to a fallback DNS source."
 }
-func (staticDNSClass) DefaultNodeParams() pasta.NodeClassParams {
+func (StaticDNSClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: TypeDNS, InitialPorts: []pasta.Port{
 		DNSPort("left", "DNS"),
 		DNSPort("right", "Fallback"),
 	}}
 }
-func (c staticDNSClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
+func (c StaticDNSClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
 	config := defaultStaticDNSConfig()
 	config.read(cfg)
-	return &staticDNSNode{NodeBase: NodeBase{engine: c.engine}, config: config}, nil
+	return &staticDNSNode{Base: nodekit.Base{Runtime: c.Runtime}, config: config}, nil
 }
 
 type staticDNSConfig struct {
@@ -57,7 +54,7 @@ type staticDNSConfig struct {
 }
 
 func defaultStaticDNSConfig() staticDNSConfig {
-	return staticDNSConfig{ttl: defaultStaticDNSTTL}
+	return staticDNSConfig{ttl: DefaultStaticDNSTTL}
 }
 
 func (c *staticDNSConfig) read(cfg configer.Config) {
@@ -70,14 +67,14 @@ func (c *staticDNSConfig) read(cfg configer.Config) {
 }
 
 func (c *staticDNSConfig) normalize() {
-	c.recordsText = normalizeStaticDNSRecordsText(c.recordsText)
+	c.recordsText = NormalizeStaticRecordsText(c.recordsText)
 	if c.ttl < 0 {
-		c.ttl = defaultStaticDNSTTL
+		c.ttl = DefaultStaticDNSTTL
 	}
 }
 
 type staticDNSNode struct {
-	NodeBase
+	nodekit.Base
 
 	out      uint64
 	fallback uint64
@@ -93,8 +90,8 @@ type staticDNSNode struct {
 
 func (n *staticDNSNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
 	n.InitBaseNode(w, logger, id)
-	n.out = restoredLeft(restored, 0)
-	n.fallback = restoredRight(restored, 0)
+	n.out = nodekit.RestoredLeft(restored, 0)
+	n.fallback = nodekit.RestoredRight(restored, 0)
 	if err := n.SetPrimary(TypeDNS); err != nil {
 		return err
 	}
@@ -105,7 +102,7 @@ func (n *staticDNSNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint6
 	}
 	n.records = records
 	n.resolver = newStaticDNSProvider(records)
-	BindDNSResource(n.w, n.id, 0, n.resolver)
+	BindDNSResource(n.W, n.ID, 0, n.resolver)
 	_ = n.updateLabel()
 	n.sendMenuSnapshot()
 	return nil
@@ -119,7 +116,7 @@ func (n *staticDNSNode) OnReady() error {
 
 func (n *staticDNSNode) OnStop() {
 	n.outputs.CloseAll()
-	closeDNS(n.fallbackDNS)
+	CloseDNS(n.fallbackDNS)
 	n.fallbackDNS = nil
 	if n.resolver != nil {
 		_ = n.resolver.Close()
@@ -151,7 +148,7 @@ func (n *staticDNSNode) OnLinkAdd(link, port uint64, linkType, portDirection str
 	case port == n.out && portDirection == "left" && linkType == TypeDNS:
 		n.sendToLink(link)
 	case port == n.fallback && portDirection == "right" && linkType == TypeDNS:
-		std.RequestLocked(n.w, n.id, link)
+		std.RequestLocked(n.W, n.ID, link)
 	}
 	return nil
 }
@@ -161,7 +158,7 @@ func (n *staticDNSNode) OnLinkRemoved(link, port uint64, linkType, portDirection
 	case port == n.out && portDirection == "left" && linkType == TypeDNS:
 		n.outputs.Close(link)
 	case port == n.fallback && portDirection == "right" && linkType == TypeDNS:
-		closeDNS(n.fallbackDNS)
+		CloseDNS(n.fallbackDNS)
 		n.fallbackDNS = nil
 		if n.resolver != nil {
 			n.resolver.AttachFallback(nil)
@@ -178,7 +175,7 @@ func (n *staticDNSNode) OnEvent(event pasta.Event, linkType string, _ []string, 
 	if event.ReceiverPort != n.fallback || receiverPortDirection != "right" || linkType != TypeDNS {
 		return nil
 	}
-	next, changed := AcceptDNSPayload(n.w, n.id, event, n.fallbackDNS)
+	next, changed := AcceptDNSPayload(n.W, n.ID, event, n.fallbackDNS)
 	if !changed {
 		return nil
 	}
@@ -192,12 +189,12 @@ func (n *staticDNSNode) OnEvent(event pasta.Event, linkType string, _ []string, 
 func (n *staticDNSNode) OnFormularMsg(message any) error {
 	switch msg := message.(type) {
 	case formular.FormApplyMessage:
-		if msg.MenuID != pasta.NodeMenuID(n.id) || msg.BlockID != "config" {
+		if msg.MenuID != pasta.NodeMenuID(n.ID) || msg.BlockID != "config" {
 			return nil
 		}
 		return n.applyConfigForm(msg.Values)
 	case formular.FieldValidateMessage:
-		if msg.MenuID != pasta.NodeMenuID(n.id) || msg.Field.BlockID != "config" || len(msg.Field.ElementPath) > 0 {
+		if msg.MenuID != pasta.NodeMenuID(n.ID) || msg.Field.BlockID != "config" || len(msg.Field.ElementPath) > 0 {
 			return nil
 		}
 		n.sendConfigFieldStatus(msg)
@@ -250,7 +247,7 @@ func (n *staticDNSNode) sendConfigFieldStatus(msg formular.FieldValidateMessage)
 	case "ttl":
 		value, ok := formular.IntValue(msg.Value)
 		if !ok || value < 0 {
-			sendNodeFieldStatus(n.w, n.id, msg.Field, errors.New("ttl value must be a non-negative integer"))
+			nodekit.SendNodeFieldStatus(n.W, n.ID, msg.Field, errors.New("ttl value must be a non-negative integer"))
 			return
 		}
 		next.ttl = value
@@ -259,19 +256,19 @@ func (n *staticDNSNode) sendConfigFieldStatus(msg formular.FieldValidateMessage)
 	}
 	next.normalize()
 	_, err := parseStaticDNSRecords(next.recordsText, next.ttl)
-	sendNodeFieldStatus(n.w, n.id, msg.Field, err)
+	nodekit.SendNodeFieldStatus(n.W, n.ID, msg.Field, err)
 }
 
 func (n *staticDNSNode) sendAll() {
-	n.outputs.SendPortLocked(n.w, n.id, n.out, n.resolver)
+	n.outputs.SendPortLocked(n.W, n.ID, n.out, n.resolver)
 }
 
 func (n *staticDNSNode) sendToLink(link uint64) {
-	n.outputs.SendLocked(n.w, n.id, link, n.resolver)
+	n.outputs.SendLocked(n.W, n.ID, link, n.resolver)
 }
 
 func (n *staticDNSNode) refreshLink(link uint64) {
-	n.outputs.RefreshLocked(n.w, n.id, link, n.resolver)
+	n.outputs.RefreshLocked(n.W, n.ID, link, n.resolver)
 }
 
 func (n *staticDNSNode) updateLabel() error {
@@ -286,11 +283,11 @@ func (n *staticDNSNode) updateLabel() error {
 }
 
 func (n *staticDNSNode) sendMenuSnapshot() {
-	sendNodeMenuSnapshot(n.w, n.id, false, n.configBlock())
+	nodekit.SendNodeMenuSnapshot(n.W, n.ID, false, n.configBlock())
 }
 
 func (n *staticDNSNode) sendForcedMenuSnapshot() {
-	sendNodeMenuSnapshot(n.w, n.id, true, n.configBlock())
+	nodekit.SendNodeMenuSnapshot(n.W, n.ID, true, n.configBlock())
 }
 
 func (n *staticDNSNode) configBlock() formular.Block {
@@ -310,6 +307,15 @@ type staticDNSProvider struct {
 	mu       sync.Mutex
 	records  staticDNSRecords
 	fallback dns.Interface
+}
+
+// NewStaticProvider returns a standalone provider for static DNS records.
+func NewStaticProvider(recordsText string, ttl int) (dns.Interface, error) {
+	records, err := parseStaticDNSRecords(recordsText, ttl)
+	if err != nil {
+		return nil, err
+	}
+	return newStaticDNSProvider(records), nil
 }
 
 func newStaticDNSProvider(records staticDNSRecords) *staticDNSProvider {
@@ -453,7 +459,7 @@ func parseStaticDNSRecordLine(line string, ttl uint32) (dns.Resource, error) {
 	if len(fields) < 3 {
 		return dns.Resource{}, errors.New("record must be NAME TYPE VALUE")
 	}
-	name := absDNSName(fields[0])
+	name := AbsoluteName(fields[0])
 	typ, err := staticDNSType(fields[1])
 	if err != nil {
 		return dns.Resource{}, err
@@ -473,7 +479,7 @@ func parseStaticDNSRecordLine(line string, ttl uint32) (dns.Resource, error) {
 		}
 		rr.Data = append([]byte(nil), addr.AsSlice()...)
 	case dns.TypeCNAME, dns.TypeNS, dns.TypePTR:
-		rr.Data = []byte(absDNSName(fields[2]))
+		rr.Data = []byte(AbsoluteName(fields[2]))
 	case dns.TypeTXT:
 		rr.Data = []byte(strings.Join(fields[2:], " "))
 	case dns.TypeMX:
@@ -484,9 +490,9 @@ func parseStaticDNSRecordLine(line string, ttl uint32) (dns.Resource, error) {
 		if err != nil {
 			return dns.Resource{}, err
 		}
-		data := make([]byte, 2, 2+len(absDNSName(fields[3])))
+		data := make([]byte, 2, 2+len(AbsoluteName(fields[3])))
 		binary.BigEndian.PutUint16(data, pref)
-		rr.Data = append(data, absDNSName(fields[3])...)
+		rr.Data = append(data, AbsoluteName(fields[3])...)
 	case dns.TypeSRV:
 		if len(fields) != 6 {
 			return dns.Resource{}, errors.New("srv record value must be PRIORITY WEIGHT PORT TARGET")
@@ -503,11 +509,11 @@ func parseStaticDNSRecordLine(line string, ttl uint32) (dns.Resource, error) {
 		if err != nil {
 			return dns.Resource{}, err
 		}
-		data := make([]byte, 6, 6+len(absDNSName(fields[5])))
+		data := make([]byte, 6, 6+len(AbsoluteName(fields[5])))
 		binary.BigEndian.PutUint16(data[0:2], priority)
 		binary.BigEndian.PutUint16(data[2:4], weight)
 		binary.BigEndian.PutUint16(data[4:6], port)
-		rr.Data = append(data, absDNSName(fields[5])...)
+		rr.Data = append(data, AbsoluteName(fields[5])...)
 	default:
 		return dns.Resource{}, fmt.Errorf("unsupported type %s", fields[1])
 	}
@@ -580,7 +586,8 @@ func parseDNSUint16(value, label string) (uint16, error) {
 	return uint16(n), nil
 }
 
-func normalizeStaticDNSRecordsText(value string) string {
+// NormalizeStaticRecordsText normalizes static DNS record configuration text.
+func NormalizeStaticRecordsText(value string) string {
 	lines := strings.Split(strings.ReplaceAll(value, "\r\n", "\n"), "\n")
 	out := make([]string, 0, len(lines))
 	for _, line := range lines {
@@ -613,7 +620,7 @@ func dnsNameErrorResponse(req *dns.Message) *dns.Message {
 	return resp
 }
 
-func absDNSName(name string) string {
+func AbsoluteName(name string) string {
 	name = strings.TrimSpace(name)
 	if name == "" || name == "." {
 		return "."
@@ -625,5 +632,5 @@ func absDNSName(name string) string {
 }
 
 func canonicalDNSName(name string) string {
-	return strings.ToLower(absDNSName(name))
+	return strings.ToLower(AbsoluteName(name))
 }

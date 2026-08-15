@@ -3,6 +3,7 @@ package almagest
 import (
 	"context"
 	"fmt"
+	dnsnodes "github.com/asciimoth/almagest/lib/dns"
 	"net"
 	"net/netip"
 	"strings"
@@ -17,7 +18,7 @@ import (
 
 func TestDns2NetworkProvidesDNSFromNetworkLookup(t *testing.T) {
 	w, lookup := newDns2NetworkTestWorkspace(t)
-	adapterID, err := w.AddNodeByClass(NodeTypeDns2Network, "adapter")
+	adapterID, err := w.AddNodeByClass(dnsnodes.NodeTypeDns2Network, "adapter")
 	if err != nil {
 		t.Fatalf("AddNodeByClass Dns2Network: %v", err)
 	}
@@ -25,7 +26,7 @@ func TestDns2NetworkProvidesDNSFromNetworkLookup(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddNodeByClass lookup network: %v", err)
 	}
-	receiver := &dnsReceiverNode{events: make(chan DNSPayload, 2)}
+	receiver := &dnsReceiverNode{events: make(chan dnsnodes.DNSPayload, 2)}
 	if _, err := w.AddNode(receiver, "test/DNSReceiver", "receiver"); err != nil {
 		t.Fatalf("AddNode receiver: %v", err)
 	}
@@ -47,7 +48,7 @@ func TestDns2NetworkProvidesDNSFromNetworkLookup(t *testing.T) {
 
 func TestDns2NetworkLinksAttachDetachReattach(t *testing.T) {
 	w, _ := newDns2NetworkTestWorkspace(t)
-	adapterID, err := w.AddNodeByClass(NodeTypeDns2Network, "adapter")
+	adapterID, err := w.AddNodeByClass(dnsnodes.NodeTypeDns2Network, "adapter")
 	if err != nil {
 		t.Fatalf("AddNodeByClass Dns2Network: %v", err)
 	}
@@ -55,7 +56,7 @@ func TestDns2NetworkLinksAttachDetachReattach(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddNodeByClass lookup network: %v", err)
 	}
-	receiver := &dnsReceiverNode{events: make(chan DNSPayload, 4)}
+	receiver := &dnsReceiverNode{events: make(chan dnsnodes.DNSPayload, 4)}
 	if _, err := w.AddNode(receiver, "test/DNSReceiver", "receiver"); err != nil {
 		t.Fatalf("AddNode receiver: %v", err)
 	}
@@ -74,7 +75,7 @@ func TestDns2NetworkLinksAttachDetachReattach(t *testing.T) {
 	assertDNSAnswer(t, first, "example.test.", dns.TypeA, "192.0.2.44")
 
 	w.RemoveLink(networkLink)
-	if DNSIsReady(first) {
+	if dnsnodes.DNSIsReady(first) {
 		t.Fatal("DNS wrapper remained ready after network link removal")
 	}
 	assertNodeLabel(t, w, adapterID, "waiting for network")
@@ -84,14 +85,14 @@ func TestDns2NetworkLinksAttachDetachReattach(t *testing.T) {
 		t.Fatalf("reattach network link: %v", err)
 	}
 	second := receiveReadyDNSPayload(t, receiver.events).DNS
-	if SameDNSInstance(first, second) {
+	if dnsnodes.SameDNSInstance(first, second) {
 		t.Fatal("Dns2Network reused DNS wrapper after network reattach")
 	}
 	assertDNSAnswer(t, second, "example.test.", dns.TypeA, "192.0.2.44")
 	assertNodeLabel(t, w, adapterID, "resolving DNS")
 
 	w.RemoveLink(outputLink)
-	if DNSIsReady(second) {
+	if dnsnodes.DNSIsReady(second) {
 		t.Fatal("DNS wrapper remained ready after DNS link removal")
 	}
 
@@ -100,7 +101,7 @@ func TestDns2NetworkLinksAttachDetachReattach(t *testing.T) {
 		t.Fatalf("reattach DNS output link: %v", err)
 	}
 	third := receiveReadyDNSPayload(t, receiver.events).DNS
-	if SameDNSInstance(second, third) {
+	if dnsnodes.SameDNSInstance(second, third) {
 		t.Fatal("Dns2Network reused DNS wrapper after DNS output reattach")
 	}
 	assertDNSAnswer(t, third, "example.test.", dns.TypeA, "192.0.2.44")
@@ -122,7 +123,7 @@ func TestDns2NetworkCopyPastePreservesLinks(t *testing.T) {
 	if len(pasted) != 5 {
 		t.Fatalf("Paste returned %d nodes (%v), want 5", len(pasted), pasted)
 	}
-	pastedClient := pastedNodeByClass(t, e.Engine, pasted, NodeTypeDNSQuery)
+	pastedClient := pastedNodeByClass(t, e.Engine, pasted, dnsnodes.NodeTypeDNSQuery)
 	e.SubscribeMenus(pastedClient)
 	e.sendDNSRequest(pastedClient)
 	e.waitDNSResponse(pastedClient, "NOERROR", "10.60.0.1")
@@ -160,7 +161,7 @@ func newDns2NetworkTestWorkspace(t *testing.T) (*pasta.Workspace, *dns2NetworkLo
 	t.Cleanup(func() { w.Close() })
 	lookup := newDns2NetworkLookupNetwork()
 	for _, class := range []pasta.NodeClass{
-		dns2NetworkClass{},
+		dnsnodes.DNS2NetworkClass{},
 		dns2NetworkLookupNetworkClass{network: lookup},
 	} {
 		if err := w.AddNodeClass(class); err != nil {
@@ -172,7 +173,7 @@ func newDns2NetworkTestWorkspace(t *testing.T) (*pasta.Workspace, *dns2NetworkLo
 
 func assertDNSAnswer(t *testing.T, d dns.Interface, name string, qtype uint16, want string) {
 	t.Helper()
-	if !DNSIsReady(d) {
+	if !dnsnodes.DNSIsReady(d) {
 		t.Fatal("DNS wrapper is not ready before query")
 	}
 	resp, err := dns.Query(context.Background(), d, dnsTestQuery(name, qtype))
@@ -182,16 +183,16 @@ func assertDNSAnswer(t *testing.T, d dns.Interface, name string, qtype uint16, w
 	if resp == nil || resp.RCode != dns.RCodeSuccess {
 		t.Fatalf("DNS response = %#v, want success", resp)
 	}
-	if got := formatDNSMessage(resp); !strings.Contains(got, want) {
+	if got := dnsnodes.FormatMessage(resp); !strings.Contains(got, want) {
 		t.Fatalf("DNS response = %q, want to contain %q", got, want)
 	}
 }
 
-func receiveReadyDNSPayload(t *testing.T, ch <-chan DNSPayload) DNSPayload {
+func receiveReadyDNSPayload(t *testing.T, ch <-chan dnsnodes.DNSPayload) dnsnodes.DNSPayload {
 	t.Helper()
 	for {
 		payload := receiveDNSPayload(t, ch)
-		if DNSIsReady(payload.DNS) {
+		if dnsnodes.DNSIsReady(payload.DNS) {
 			return payload
 		}
 	}
@@ -327,19 +328,19 @@ func (e *dnsE2E) setupDns2NetworkInjectGraph(host, ip, prefix string) dns2Networ
 	e.T.Helper()
 	graph := dns2NetworkInjectGraph{
 		mock:       e.AddNode(NodeTypeMockNetwork, prefix+"-mock"),
-		staticDNS:  e.AddNode(NodeTypeStaticDNS, prefix+"-dns"),
-		inject:     e.AddNode(NodeTypeDnsInject, prefix+"-inject"),
-		adapter:    e.AddNode(NodeTypeDns2Network, prefix+"-adapter"),
+		staticDNS:  e.AddNode(dnsnodes.NodeTypeStaticDNS, prefix+"-dns"),
+		inject:     e.AddNode(dnsnodes.NodeTypeDnsInject, prefix+"-inject"),
+		adapter:    e.AddNode(dnsnodes.NodeTypeDns2Network, prefix+"-adapter"),
 		clientName: prefix + "-client",
 	}
-	graph.client = e.AddNode(NodeTypeDNSQuery, graph.clientName)
+	graph.client = e.AddNode(dnsnodes.NodeTypeDNSQuery, graph.clientName)
 	e.SubscribeMenus(graph.staticDNS, graph.client)
 	e.applyStaticDNSRecords(graph.staticDNS, fmt.Sprintf("%s A %s", host, ip))
 	e.setDNSQueryRequest(graph.client, host+".", "A")
 	e.MustAddTypedLinkByPortName(TypeNetwork, graph.mock, "left", "Network", graph.inject, "right", "Network")
-	e.MustAddTypedLinkByPortName(TypeDNS, graph.staticDNS, "left", "DNS", graph.inject, "right", "DNS")
+	e.MustAddTypedLinkByPortName(dnsnodes.TypeDNS, graph.staticDNS, "left", "DNS", graph.inject, "right", "DNS")
 	e.MustAddTypedLinkByPortName(TypeNetwork, graph.inject, "left", "Network", graph.adapter, "right", "Network")
-	e.MustAddTypedLinkByPortName(TypeDNS, graph.adapter, "left", "DNS", graph.client, "right", "DNS")
+	e.MustAddTypedLinkByPortName(dnsnodes.TypeDNS, graph.adapter, "left", "DNS", graph.client, "right", "DNS")
 	e.WaitNodeLabel(graph.inject, "injecting DNS")
 	e.WaitNodeLabel(graph.adapter, "resolving DNS")
 	return graph

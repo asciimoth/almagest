@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	dnsnodes "github.com/asciimoth/almagest/lib/dns"
+
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
 	"github.com/asciimoth/gonnect"
@@ -45,7 +47,7 @@ func TestDNSClientRebuildsOnNetworkAndBootstrapChanges(t *testing.T) {
 
 	clientID := addDNSClientNode(t, w, "client")
 	networkID := addDNSClientNetworkNode(t, w, "network")
-	bootstrapID, err := w.AddNodeByClass(NodeTypeStaticDNS, "bootstrap")
+	bootstrapID, err := w.AddNodeByClass(dnsnodes.NodeTypeStaticDNS, "bootstrap")
 	if err != nil {
 		t.Fatalf("AddNodeByClass StaticDns: %v", err)
 	}
@@ -70,26 +72,26 @@ func TestDNSClientRebuildsOnNetworkAndBootstrapChanges(t *testing.T) {
 		t.Fatalf("AddLink bootstrap->client: %v", err)
 	}
 	second := receiveReadyDNSPayload(t, receiver.events).DNS
-	if SameDNSInstance(first, second) {
+	if dnsnodes.SameDNSInstance(first, second) {
 		t.Fatal("DnsClient reused wrapper after bootstrap attach")
 	}
-	if DNSIsReady(first) {
+	if dnsnodes.DNSIsReady(first) {
 		t.Fatal("first DNS wrapper remained ready after bootstrap attach")
 	}
 	assertDNSAnswer(t, second, "rebuild.test.", dns.TypeA, "192.0.2.56")
 
 	w.RemoveLink(bootstrapLink)
 	third := receiveReadyDNSPayload(t, receiver.events).DNS
-	if SameDNSInstance(second, third) {
+	if dnsnodes.SameDNSInstance(second, third) {
 		t.Fatal("DnsClient reused wrapper after bootstrap detach")
 	}
-	if DNSIsReady(second) {
+	if dnsnodes.DNSIsReady(second) {
 		t.Fatal("second DNS wrapper remained ready after bootstrap detach")
 	}
 	assertDNSAnswer(t, third, "rebuild.test.", dns.TypeA, "192.0.2.56")
 
 	w.RemoveLink(networkLink)
-	if DNSIsReady(third) {
+	if dnsnodes.DNSIsReady(third) {
 		t.Fatal("third DNS wrapper remained ready after network detach")
 	}
 	assertNodeLabel(t, w, clientID, "waiting for network")
@@ -99,7 +101,7 @@ func TestDNSClientRebuildsOnNetworkAndBootstrapChanges(t *testing.T) {
 		t.Fatalf("reattach network link: %v", err)
 	}
 	fourth := receiveReadyDNSPayload(t, receiver.events).DNS
-	if SameDNSInstance(third, fourth) {
+	if dnsnodes.SameDNSInstance(third, fourth) {
 		t.Fatal("DnsClient reused wrapper after network reattach")
 	}
 	assertDNSAnswer(t, fourth, "rebuild.test.", dns.TypeA, "192.0.2.56")
@@ -112,7 +114,7 @@ func TestDNSClientUsesBootstrapForHostnameServer(t *testing.T) {
 
 	clientID := addDNSClientNode(t, w, "client")
 	networkID := addDNSClientNetworkNode(t, w, "network")
-	bootstrapID, err := w.AddNodeByClass(NodeTypeStaticDNS, "bootstrap")
+	bootstrapID, err := w.AddNodeByClass(dnsnodes.NodeTypeStaticDNS, "bootstrap")
 	if err != nil {
 		t.Fatalf("AddNodeByClass StaticDns: %v", err)
 	}
@@ -172,24 +174,24 @@ func TestDNSClientMenuConfigNormalizesAndRebuilds(t *testing.T) {
 
 	applyDNSClientServersToWorkspace(t, w, clientID, "udp://127.0.0.1:5355")
 	assertNoDNSPayload(t, receiver.events, 100*time.Millisecond)
-	if !DNSIsReady(first) {
+	if !dnsnodes.DNSIsReady(first) {
 		t.Fatal("equivalent config apply closed the current DNS wrapper")
 	}
 
 	applyDNSClientServersToWorkspace(t, w, clientID, "udp://127.0.0.1:5356")
 	second := receiveReadyDNSPayload(t, receiver.events).DNS
-	if SameDNSInstance(first, second) {
+	if dnsnodes.SameDNSInstance(first, second) {
 		t.Fatal("DnsClient reused wrapper after server list change")
 	}
-	if DNSIsReady(first) {
+	if dnsnodes.DNSIsReady(first) {
 		t.Fatal("first DNS wrapper remained ready after server list change")
 	}
 	assertDNSAnswer(t, second, "second-config.test.", dns.TypeA, "192.0.2.59")
 }
 
 func TestDNSClientLiveConfigChangeClosesOldClient(t *testing.T) {
-	tracker := installTrackedDNSClientFactory(t)
-	w, network := newDNSClientWorkspace(t)
+	tracker := &trackedDNSClientFactory{}
+	w, network := newDNSClientWorkspace(t, tracker.newClient)
 	startDNSClientUDPServer(t, network, "127.0.0.1:5358", "live-config.test A 192.0.2.60")
 	startDNSClientUDPServer(t, network, "127.0.0.1:5359", "live-config.test A 192.0.2.61")
 
@@ -216,10 +218,10 @@ func TestDNSClientLiveConfigChangeClosesOldClient(t *testing.T) {
 
 	applyDNSClientServersToWorkspace(t, w, clientID, "udp://127.0.0.1:5359")
 	second := receiveReadyDNSPayload(t, receiver.events).DNS
-	if SameDNSInstance(first, second) {
+	if dnsnodes.SameDNSInstance(first, second) {
 		t.Fatal("DnsClient reused wrapper after live server change")
 	}
-	if DNSIsReady(first) {
+	if dnsnodes.DNSIsReady(first) {
 		t.Fatal("old DNS wrapper remained ready after live server change")
 	}
 	if firstClient.closeCount() != 1 {
@@ -240,10 +242,10 @@ func TestDNSClientLiveConfigChangeClosesOldClient(t *testing.T) {
 
 	applyDNSClientServersToWorkspace(t, w, clientID, "udp://127.0.0.1:5358")
 	third := receiveReadyDNSPayload(t, receiver.events).DNS
-	if SameDNSInstance(second, third) {
+	if dnsnodes.SameDNSInstance(second, third) {
 		t.Fatal("DnsClient reused wrapper after second live server change")
 	}
-	if DNSIsReady(second) {
+	if dnsnodes.DNSIsReady(second) {
 		t.Fatal("second DNS wrapper remained ready after second live server change")
 	}
 	if secondClient.closeCount() != 1 {
@@ -254,7 +256,7 @@ func TestDNSClientLiveConfigChangeClosesOldClient(t *testing.T) {
 }
 
 func TestDNSClientUsesSelectedTLSConfigAndHandlesRename(t *testing.T) {
-	tracker := installTrackedDNSClientFactory(t)
+	tracker := &trackedDNSClientFactory{}
 	storage := newNodeTestTLSConfigStorage(map[string]string{
 		DefaultTlsConfigName: "default.test",
 		"custom":             "custom.test",
@@ -264,7 +266,7 @@ func TestDNSClientUsesSelectedTLSConfigAndHandlesRename(t *testing.T) {
 	network := newMockLoopbackNetwork(true)
 	t.Cleanup(func() { _ = network.Close() })
 	for _, class := range []pasta.NodeClass{
-		dnsClientClass{engine: &engine{tlsConfigs: storage}},
+		dnsnodes.DNSClientClass{Runtime: &engine{tlsConfigs: storage}, NewClient: tracker.newClient},
 		dnsClientNetworkClass{network: network},
 	} {
 		if err := w.AddNodeClass(class); err != nil {
@@ -279,9 +281,9 @@ func TestDNSClientUsesSelectedTLSConfigAndHandlesRename(t *testing.T) {
 	if _, _, err := w.AddLink(networkNode.LeftPorts[0], client.RightPorts[0]); err != nil {
 		t.Fatalf("AddLink network->client: %v", err)
 	}
-	w.SendNodeFormularMsg(clientID, formularApplyMessage(clientID, dnsClientConfigBlockID, map[string]any{
-		dnsClientServersField: dnsClientServerValues("dot://dns.example.test:853"),
-		nodeTLSConfigFieldID:  "custom",
+	w.SendNodeFormularMsg(clientID, formularApplyMessage(clientID, dnsnodes.DNSClientConfigBlockID, map[string]any{
+		dnsnodes.DNSClientServersField: dnsClientServerValues("dot://dns.example.test:853"),
+		nodeTLSConfigFieldID:           "custom",
 	}))
 
 	first := tracker.client(t, 0)
@@ -322,7 +324,7 @@ func TestDNSClientSaveRestorePreservesServersAndLinks(t *testing.T) {
 				"Class": NodeTypeMockNetwork,
 			},
 			"client": map[string]any{
-				"Class":   NodeTypeDNSClient,
+				"Class":   dnsnodes.NodeTypeDNSClient,
 				"Links":   []string{"Network -> [network] Network"},
 				"servers": []string{"127.0.0.1:5357", "dot://dns.example.test:853"},
 			},
@@ -350,15 +352,19 @@ func TestDNSClientSaveRestorePreservesServersAndLinks(t *testing.T) {
 	assertStringSlice(t, configStringSlice(t, saved), []string{"udp://127.0.0.1:5357", "dot://dns.example.test:853"})
 }
 
-func newDNSClientWorkspace(t *testing.T) (*pasta.Workspace, *mockLoopbackNetwork) {
+func newDNSClientWorkspace(t *testing.T, factories ...dnsnodes.DNSClientFactory) (*pasta.Workspace, *mockLoopbackNetwork) {
 	t.Helper()
 	w := pasta.NewWorkspace(NewDebugLogFactory(1024))
 	t.Cleanup(func() { w.Close() })
 	network := newMockLoopbackNetwork(true)
 	t.Cleanup(func() { _ = network.Close() })
+	var factory dnsnodes.DNSClientFactory
+	if len(factories) > 0 {
+		factory = factories[0]
+	}
 	for _, class := range []pasta.NodeClass{
-		dnsClientClass{},
-		staticDNSClass{},
+		dnsnodes.DNSClientClass{NewClient: factory},
+		dnsnodes.StaticDNSClass{},
 		dnsClientNetworkClass{network: network},
 	} {
 		if err := w.AddNodeClass(class); err != nil {
@@ -370,11 +376,10 @@ func newDNSClientWorkspace(t *testing.T) (*pasta.Workspace, *mockLoopbackNetwork
 
 func startDNSClientUDPServer(t *testing.T, network *mockLoopbackNetwork, address, recordsText string) {
 	t.Helper()
-	records, err := parseStaticDNSRecords(recordsText, defaultStaticDNSTTL)
+	upstream, err := dnsnodes.NewStaticProvider(recordsText, dnsnodes.DefaultStaticDNSTTL)
 	if err != nil {
-		t.Fatalf("parseStaticDNSRecords: %v", err)
+		t.Fatalf("NewStaticProvider: %v", err)
 	}
-	upstream := newStaticDNSProvider(records)
 	pc, err := network.ListenPacket(context.Background(), "udp", address)
 	if err != nil {
 		t.Fatalf("ListenPacket %s: %v", address, err)
@@ -388,7 +393,7 @@ func startDNSClientUDPServer(t *testing.T, network *mockLoopbackNetwork, address
 
 func addDNSClientNode(t *testing.T, w *pasta.Workspace, name string) uint64 {
 	t.Helper()
-	id, err := w.AddNodeByClass(NodeTypeDNSClient, name)
+	id, err := w.AddNodeByClass(dnsnodes.NodeTypeDNSClient, name)
 	if err != nil {
 		t.Fatalf("AddNodeByClass DnsClient: %v", err)
 	}
@@ -406,7 +411,7 @@ func addDNSClientNetworkNode(t *testing.T, w *pasta.Workspace, name string) uint
 
 func addDNSClientReceiver(t *testing.T, w *pasta.Workspace, size int) *dnsReceiverNode {
 	t.Helper()
-	receiver := &dnsReceiverNode{events: make(chan DNSPayload, size)}
+	receiver := &dnsReceiverNode{events: make(chan dnsnodes.DNSPayload, size)}
 	if _, err := w.AddNode(receiver, "test/DNSReceiver", "receiver"); err != nil {
 		t.Fatalf("AddNode receiver: %v", err)
 	}
@@ -415,8 +420,8 @@ func addDNSClientReceiver(t *testing.T, w *pasta.Workspace, size int) *dnsReceiv
 
 func applyDNSClientServersToWorkspace(t *testing.T, w *pasta.Workspace, node uint64, servers ...string) {
 	t.Helper()
-	w.SendNodeFormularMsg(node, formularApplyMessage(node, dnsClientConfigBlockID, map[string]any{
-		dnsClientServersField: dnsClientServerValues(servers...),
+	w.SendNodeFormularMsg(node, formularApplyMessage(node, dnsnodes.DNSClientConfigBlockID, map[string]any{
+		dnsnodes.DNSClientServersField: dnsClientServerValues(servers...),
 	}))
 }
 
@@ -426,7 +431,7 @@ func dnsClientServerValues(servers ...string) []formular.ArrayElementValue {
 		out = append(out, formular.ArrayElementValue{
 			ID:       fmt.Sprintf("server-%d", i),
 			Template: "server",
-			Values:   map[string]any{dnsClientServerField: server},
+			Values:   map[string]any{dnsnodes.DNSClientServerField: server},
 		})
 	}
 	return out
@@ -437,7 +442,7 @@ func (e *dnsE2E) waitDNSClientServersItem(node uint64) formular.Item {
 	var item formular.Item
 	Eventually(e.T, func() bool {
 		var ok bool
-		item, ok = e.MenuItem(node, dnsClientConfigBlockID, dnsClientServersField)
+		item, ok = e.MenuItem(node, dnsnodes.DNSClientConfigBlockID, dnsnodes.DNSClientServersField)
 		return ok && item.Field != nil
 	}, "DnsClient servers menu item")
 	return item
@@ -462,7 +467,7 @@ func dnsClientServerElementValues(t *testing.T, elements []formular.ArrayElement
 	for _, element := range elements {
 		var found bool
 		for _, item := range element.Items {
-			if item.ID != dnsClientServerField || item.Field == nil {
+			if item.ID != dnsnodes.DNSClientServerField || item.Field == nil {
 				continue
 			}
 			value, ok := formular.StringValue(item.Value)
@@ -480,7 +485,7 @@ func dnsClientServerElementValues(t *testing.T, elements []formular.ArrayElement
 	return out
 }
 
-func assertNoDNSPayload(t *testing.T, ch <-chan DNSPayload, d time.Duration) {
+func assertNoDNSPayload(t *testing.T, ch <-chan dnsnodes.DNSPayload, d time.Duration) {
 	t.Helper()
 	select {
 	case payload := <-ch:
@@ -517,26 +522,23 @@ type trackedDNSClient struct {
 	closes    atomic.Int32
 }
 
-func installTrackedDNSClientFactory(t *testing.T) *trackedDNSClientFactory {
-	t.Helper()
-	tracker := &trackedDNSClientFactory{}
-	previous := dnsClientNewClient
-	dnsClientNewClient = func(dial gonnect.Dial, bootstrap dns.Interface, spawner gonnect.Spawner, tlsConfig *tls.Config, servers ...string) dns.Interface {
-		dnsClient := dns.NewClient(dial, bootstrap, spawner, servers...)
-		dnsClient.TLSConfig = cloneTLSClientConfig(tlsConfig)
-		client := &trackedDNSClient{
-			Interface: dnsClient,
-			tlsConfig: cloneTLSClientConfig(tlsConfig),
-		}
-		tracker.mu.Lock()
-		tracker.clients = append(tracker.clients, client)
-		tracker.mu.Unlock()
-		return client
+func (f *trackedDNSClientFactory) newClient(
+	dial gonnect.Dial,
+	bootstrap dns.Interface,
+	spawner gonnect.Spawner,
+	tlsConfig *tls.Config,
+	servers ...string,
+) dns.Interface {
+	dnsClient := dns.NewClient(dial, bootstrap, spawner, servers...)
+	dnsClient.TLSConfig = cloneTLSClientConfig(tlsConfig)
+	client := &trackedDNSClient{
+		Interface: dnsClient,
+		tlsConfig: cloneTLSClientConfig(tlsConfig),
 	}
-	t.Cleanup(func() {
-		dnsClientNewClient = previous
-	})
-	return tracker
+	f.mu.Lock()
+	f.clients = append(f.clients, client)
+	f.mu.Unlock()
+	return client
 }
 
 func (f *trackedDNSClientFactory) count() int {

@@ -4,19 +4,17 @@ import (
 	"fmt"
 	"net"
 	"strconv"
-	"sync"
-	"sync/atomic"
 	"testing"
+
+	dnsnodes "github.com/asciimoth/almagest/lib/dns"
 
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
-	"github.com/asciimoth/gonnect"
-	"github.com/asciimoth/gonnect/dns"
 )
 
 func TestDNSServerPortsMenuAndSaveConfigE2E(t *testing.T) {
 	e := newDNSE2E(t)
-	server := e.AddNode(NodeTypeDNSServer, "server")
+	server := e.AddNode(dnsnodes.NodeTypeDNSServer, "server")
 	e.SubscribeMenus(server)
 
 	snapshot, ok := e.Engine.NodeSnapshot(E2EWorkspace, server)
@@ -27,8 +25,8 @@ func TestDNSServerPortsMenuAndSaveConfigE2E(t *testing.T) {
 		t.Fatalf("DnsServer ports = left %v right %v, want no left ports and two right ports", snapshot.LeftPorts, snapshot.RightPorts)
 	}
 	e.assertDNSServerPort(snapshot.RightPorts[0], "right", "Network", TypeNetwork)
-	e.assertDNSServerPort(snapshot.RightPorts[1], "right", "DNS", TypeDNS)
-	e.waitDNSServerConfig(server, DefaultDNSServerNetwork, DefaultDNSServerHost, DefaultDNSServerPort)
+	e.assertDNSServerPort(snapshot.RightPorts[1], "right", "DNS", dnsnodes.TypeDNS)
+	e.waitDNSServerConfig(server, dnsnodes.DefaultDNSServerNetwork, dnsnodes.DefaultDNSServerHost, dnsnodes.DefaultDNSServerPort)
 	e.WaitNodeLabel(server, "waiting for network")
 
 	port := httpTestPort()
@@ -40,54 +38,49 @@ func TestDNSServerPortsMenuAndSaveConfigE2E(t *testing.T) {
 		t.Fatalf("SaveConfig: %v", err)
 	}
 	nodeCfg := cfg.View(configer.Path{"nodes", "server"})
-	if got := configer.String(nodeCfg, configer.Path{dnsServerNetworkField}, ""); got != "udp4" {
+	if got := configer.String(nodeCfg, configer.Path{dnsnodes.DNSServerNetworkField}, ""); got != "udp4" {
 		t.Fatalf("saved network = %q, want udp4", got)
 	}
-	if got := configer.String(nodeCfg, configer.Path{dnsServerHostField}, ""); got != "127.0.0.1" {
+	if got := configer.String(nodeCfg, configer.Path{dnsnodes.DNSServerHostField}, ""); got != "127.0.0.1" {
 		t.Fatalf("saved host = %q, want 127.0.0.1", got)
 	}
-	if got := configer.Int(nodeCfg, configer.Path{dnsServerPortField}, 0); got != port {
+	if got := configer.Int(nodeCfg, configer.Path{dnsnodes.DNSServerPortField}, 0); got != port {
 		t.Fatalf("saved port = %d, want %d", got, port)
 	}
 }
 
 func TestDNSServerAttachesDNSWithoutReopeningListener(t *testing.T) {
-	tracker := installTrackedDNSServerFactory(t)
 	e := newDNSE2E(t)
 	port := httpTestPort()
 	nextPort := httpTestPort()
 	mock := e.AddNode(NodeTypeMockNetwork, "mock")
-	static := e.AddNode(NodeTypeStaticDNS, "static")
-	server := e.AddNode(NodeTypeDNSServer, "server")
+	static := e.AddNode(dnsnodes.NodeTypeStaticDNS, "static")
+	server := e.AddNode(dnsnodes.NodeTypeDNSServer, "server")
 	e.SubscribeMenus(static, server)
 	e.applyStaticDNSRecords(static, "attach.test A 10.121.0.1")
 	e.applyDNSServerConfig(server, "udp", "127.0.0.1", port)
 
 	e.MustAddTypedLinkByPortName(TypeNetwork, mock, "left", "Network", server, "right", "Network")
 	e.WaitNodeLabel(server, "waiting for DNS")
-	firstServer := tracker.server(t, 0)
-	if tracker.count() != 1 {
-		t.Fatalf("server runtime count = %d, want 1 after initial listen", tracker.count())
-	}
+	firstWorker := dnsServerWorkerID(t, e.Engine, server)
 
-	dnsLink := e.MustAddTypedLinkByPortName(TypeDNS, static, "left", "DNS", server, "right", "DNS")
+	dnsLink := e.MustAddTypedLinkByPortName(dnsnodes.TypeDNS, static, "left", "DNS", server, "right", "DNS")
 	e.waitDNSServerListening(server, "127.0.0.1", port)
-	Eventually(t, func() bool { return firstServer.attachCount() > 0 }, "DNS server upstream attach")
-	if tracker.count() != 1 {
-		t.Fatalf("server runtime count = %d, want 1 after DNS attach", tracker.count())
+	if got := dnsServerWorkerID(t, e.Engine, server); got != firstWorker {
+		t.Fatalf("DNS attach replaced worker %d with %d", firstWorker, got)
 	}
 
 	e.applyDNSServerConfig(server, "udp", "127.0.0.1", nextPort)
 	e.waitDNSServerListening(server, "127.0.0.1", nextPort)
-	Eventually(t, func() bool { return tracker.count() == 2 }, "second DNS server runtime")
-	Eventually(t, func() bool { return firstServer.closeCount() > 0 }, "old DNS server runtime close")
+	secondWorker := dnsServerWorkerID(t, e.Engine, server)
+	if secondWorker == firstWorker {
+		t.Fatalf("DNS listen config kept worker %d, want replacement", firstWorker)
+	}
 
-	secondServer := tracker.server(t, 1)
 	e.Engine.RemoveLink(E2EWorkspace, dnsLink)
 	e.WaitNodeLabel(server, "waiting for DNS")
-	Eventually(t, func() bool { return secondServer.detachCount() > 0 }, "DNS server upstream detach")
-	if tracker.count() != 2 {
-		t.Fatalf("server runtime count = %d, want 2 after DNS detach", tracker.count())
+	if got := dnsServerWorkerID(t, e.Engine, server); got != secondWorker {
+		t.Fatalf("DNS detach replaced worker %d with %d", secondWorker, got)
 	}
 }
 
@@ -104,11 +97,11 @@ func TestDNSServerWorksThroughDnsCacheE2E(t *testing.T) {
 	e := newDNSE2EWithDNSCacheManager(t, configer.NewMemory(nil), newMemoryDNSCacheManager())
 	port := httpTestPort()
 	mock := e.AddNode(NodeTypeMockNetwork, "cache-mock")
-	static := e.AddNode(NodeTypeStaticDNS, "cache-static")
-	cache := e.AddNode(NodeTypeDnsCache, "cache")
-	server := e.AddNode(NodeTypeDNSServer, "cache-server")
-	client := e.AddNode(NodeTypeDNSClient, "cache-client")
-	query := e.AddNode(NodeTypeDNSQuery, "cache-query")
+	static := e.AddNode(dnsnodes.NodeTypeStaticDNS, "cache-static")
+	cache := e.AddNode(dnsnodes.NodeTypeDnsCache, "cache")
+	server := e.AddNode(dnsnodes.NodeTypeDNSServer, "cache-server")
+	client := e.AddNode(dnsnodes.NodeTypeDNSClient, "cache-client")
+	query := e.AddNode(dnsnodes.NodeTypeDNSQuery, "cache-query")
 	e.SubscribeMenus(static, cache, server, client, query)
 
 	e.applyStaticDNSRecords(static, "server-cache.test A 10.123.0.1")
@@ -118,10 +111,10 @@ func TestDNSServerWorksThroughDnsCacheE2E(t *testing.T) {
 	e.setDNSQueryRequest(query, "server-cache.test.", "A")
 
 	e.MustAddTypedLinkByPortName(TypeNetwork, mock, "left", "Network", server, "right", "Network")
-	e.MustAddTypedLinkByPortName(TypeDNS, static, "left", "DNS", cache, "right", "DNS")
-	e.MustAddTypedLinkByPortName(TypeDNS, cache, "left", "DNS", server, "right", "DNS")
+	e.MustAddTypedLinkByPortName(dnsnodes.TypeDNS, static, "left", "DNS", cache, "right", "DNS")
+	e.MustAddTypedLinkByPortName(dnsnodes.TypeDNS, cache, "left", "DNS", server, "right", "DNS")
 	e.MustAddTypedLinkByPortName(TypeNetwork, mock, "left", "Network", client, "right", "Network")
-	e.MustAddTypedLinkByPortName(TypeDNS, client, "left", "DNS", query, "right", "DNS")
+	e.MustAddTypedLinkByPortName(dnsnodes.TypeDNS, client, "left", "DNS", query, "right", "DNS")
 	e.WaitNodeLabel(cache, "caching DNS")
 	e.waitDNSServerListening(server, "127.0.0.1", port)
 
@@ -143,8 +136,8 @@ func TestDNSServerCopyPastePreservesLinksE2E(t *testing.T) {
 	if len(pasted) != 5 {
 		t.Fatalf("Paste returned %d nodes (%v), want 5", len(pasted), pasted)
 	}
-	pastedServer := pastedNodeByClass(t, e.Engine, pasted, NodeTypeDNSServer)
-	pastedQuery := pastedNodeByClass(t, e.Engine, pasted, NodeTypeDNSQuery)
+	pastedServer := pastedNodeByClass(t, e.Engine, pasted, dnsnodes.NodeTypeDNSServer)
+	pastedQuery := pastedNodeByClass(t, e.Engine, pasted, dnsnodes.NodeTypeDNSQuery)
 	e.SubscribeMenus(pastedServer, pastedQuery)
 	e.waitDNSServerListening(pastedServer, "127.0.0.1", graph.port)
 	e.sendDNSRequest(pastedQuery)
@@ -187,14 +180,14 @@ func (e *dnsE2E) setupDNSServerGraph(prefix, host, ip string, port int) dnsServe
 	e.T.Helper()
 	graph := dnsServerE2EGraph{
 		mock:       e.AddNode(NodeTypeMockNetwork, prefix+"-mock"),
-		staticDNS:  e.AddNode(NodeTypeStaticDNS, prefix+"-static"),
+		staticDNS:  e.AddNode(dnsnodes.NodeTypeStaticDNS, prefix+"-static"),
 		serverName: prefix + "-server",
-		client:     e.AddNode(NodeTypeDNSClient, prefix+"-client"),
+		client:     e.AddNode(dnsnodes.NodeTypeDNSClient, prefix+"-client"),
 		queryName:  prefix + "-query",
 		port:       port,
 	}
-	graph.server = e.AddNode(NodeTypeDNSServer, graph.serverName)
-	graph.query = e.AddNode(NodeTypeDNSQuery, graph.queryName)
+	graph.server = e.AddNode(dnsnodes.NodeTypeDNSServer, graph.serverName)
+	graph.query = e.AddNode(dnsnodes.NodeTypeDNSQuery, graph.queryName)
 	e.SubscribeMenus(graph.staticDNS, graph.server, graph.client, graph.query)
 
 	e.applyStaticDNSRecords(graph.staticDNS, fmt.Sprintf("%s A %s", host, ip))
@@ -203,9 +196,9 @@ func (e *dnsE2E) setupDNSServerGraph(prefix, host, ip string, port int) dnsServe
 	e.setDNSQueryRequest(graph.query, host+".", "A")
 
 	e.MustAddTypedLinkByPortName(TypeNetwork, graph.mock, "left", "Network", graph.server, "right", "Network")
-	e.MustAddTypedLinkByPortName(TypeDNS, graph.staticDNS, "left", "DNS", graph.server, "right", "DNS")
+	e.MustAddTypedLinkByPortName(dnsnodes.TypeDNS, graph.staticDNS, "left", "DNS", graph.server, "right", "DNS")
 	e.MustAddTypedLinkByPortName(TypeNetwork, graph.mock, "left", "Network", graph.client, "right", "Network")
-	e.MustAddTypedLinkByPortName(TypeDNS, graph.client, "left", "DNS", graph.query, "right", "DNS")
+	e.MustAddTypedLinkByPortName(dnsnodes.TypeDNS, graph.client, "left", "DNS", graph.query, "right", "DNS")
 	e.waitDNSServerListening(graph.server, "127.0.0.1", port)
 	e.WaitNodeLabel(graph.client, "1 DNS server")
 	return graph
@@ -215,22 +208,22 @@ func (e *dnsE2E) applyDNSServerConfig(node uint64, network, host string, port in
 	e.T.Helper()
 	e.Engine.SendNodeFormularMsg(E2EWorkspace, node, formular.FormApplyMessage{
 		MessageBase: FormMessageBase(formular.MessageFormApply, node),
-		BlockID:     dnsServerConfigBlockID,
+		BlockID:     dnsnodes.DNSServerConfigBlockID,
 		Values: map[string]any{
-			dnsServerNetworkField: network,
-			dnsServerHostField:    host,
-			dnsServerPortField:    port,
+			dnsnodes.DNSServerNetworkField: network,
+			dnsnodes.DNSServerHostField:    host,
+			dnsnodes.DNSServerPortField:    port,
 		},
 	})
-	e.waitDNSServerConfig(node, normalizeDNSServerNetwork(network), host, port)
+	e.waitDNSServerConfig(node, dnsnodes.NormalizeDNSServerNetwork(network), host, port)
 }
 
 func (e *dnsE2E) waitDNSServerConfig(node uint64, network, host string, port int) {
 	e.T.Helper()
 	Eventually(e.T, func() bool {
-		return e.dnsServerFieldString(node, dnsServerNetworkField) == network &&
-			e.dnsServerFieldString(node, dnsServerHostField) == host &&
-			e.dnsServerFieldInt(node, dnsServerPortField) == port
+		return e.dnsServerFieldString(node, dnsnodes.DNSServerNetworkField) == network &&
+			e.dnsServerFieldString(node, dnsnodes.DNSServerHostField) == host &&
+			e.dnsServerFieldInt(node, dnsnodes.DNSServerPortField) == port
 	}, "DnsServer config %s %s:%d", network, host, port)
 }
 
@@ -240,7 +233,7 @@ func (e *dnsE2E) waitDNSServerListening(node uint64, host string, port int) {
 }
 
 func (e *dnsE2E) dnsServerFieldString(node uint64, field string) string {
-	item, ok := e.MenuItem(node, dnsServerConfigBlockID, field)
+	item, ok := e.MenuItem(node, dnsnodes.DNSServerConfigBlockID, field)
 	if !ok || item.Field == nil {
 		return ""
 	}
@@ -249,7 +242,7 @@ func (e *dnsE2E) dnsServerFieldString(node uint64, field string) string {
 }
 
 func (e *dnsE2E) dnsServerFieldInt(node uint64, field string) int {
-	item, ok := e.MenuItem(node, dnsServerConfigBlockID, field)
+	item, ok := e.MenuItem(node, dnsnodes.DNSServerConfigBlockID, field)
 	if !ok || item.Field == nil {
 		return 0
 	}
@@ -272,18 +265,18 @@ func (e *dnsE2E) applyDNSClientServers(node uint64, servers ...string) {
 	e.T.Helper()
 	e.Engine.SendNodeFormularMsg(E2EWorkspace, node, formular.FormApplyMessage{
 		MessageBase: FormMessageBase(formular.MessageFormApply, node),
-		BlockID:     dnsClientConfigBlockID,
+		BlockID:     dnsnodes.DNSClientConfigBlockID,
 		Values: map[string]any{
-			dnsClientServersField: dnsClientServerValues(servers...),
+			dnsnodes.DNSClientServersField: dnsClientServerValues(servers...),
 		},
 	})
-	e.waitDNSClientServers(node, normalizeDNSClientServers(servers))
+	e.waitDNSClientServers(node, dnsnodes.NormalizeDNSClientServers(servers))
 }
 
 func (e *dnsE2E) waitDNSClientServers(node uint64, want []string) {
 	e.T.Helper()
 	Eventually(e.T, func() bool {
-		item, ok := e.MenuItem(node, dnsClientConfigBlockID, dnsClientServersField)
+		item, ok := e.MenuItem(node, dnsnodes.DNSClientConfigBlockID, dnsnodes.DNSClientServersField)
 		if !ok || item.Field == nil {
 			return false
 		}
@@ -300,74 +293,24 @@ func (e *dnsE2E) waitDNSClientServers(node uint64, want []string) {
 	}, "DnsClient servers %v", want)
 }
 
-type trackedDNSServerFactory struct {
-	mu      sync.Mutex
-	servers []*trackedDNSServer
-}
-
-type trackedDNSServer struct {
-	dnsServerRuntime
-	attaches atomic.Int32
-	detaches atomic.Int32
-	closes   atomic.Int32
-}
-
-func installTrackedDNSServerFactory(t *testing.T) *trackedDNSServerFactory {
+func dnsServerWorkerID(t *testing.T, engine Engine, node uint64) uint64 {
 	t.Helper()
-	tracker := &trackedDNSServerFactory{}
-	previous := dnsServerNewServer
-	dnsServerNewServer = func(conn net.PacketConn, upstream dns.Interface, spawner gonnect.Spawner) dnsServerRuntime {
-		server := &trackedDNSServer{dnsServerRuntime: previous(conn, upstream, spawner)}
-		tracker.mu.Lock()
-		tracker.servers = append(tracker.servers, server)
-		tracker.mu.Unlock()
-		return server
-	}
-	t.Cleanup(func() {
-		dnsServerNewServer = previous
-	})
-	return tracker
-}
-
-func (f *trackedDNSServerFactory) count() int {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return len(f.servers)
-}
-
-func (f *trackedDNSServerFactory) server(t *testing.T, index int) *trackedDNSServer {
-	t.Helper()
+	var id uint64
 	Eventually(t, func() bool {
-		return f.count() > index
-	}, fmt.Sprintf("tracked DNS server %d", index))
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return f.servers[index]
-}
-
-func (s *trackedDNSServer) Attach(upstream dns.Interface) {
-	s.attaches.Add(1)
-	s.dnsServerRuntime.Attach(upstream)
-}
-
-func (s *trackedDNSServer) Detach() {
-	s.detaches.Add(1)
-	s.dnsServerRuntime.Detach()
-}
-
-func (s *trackedDNSServer) Close() error {
-	s.closes.Add(1)
-	return s.dnsServerRuntime.Close()
-}
-
-func (s *trackedDNSServer) attachCount() int {
-	return int(s.attaches.Load())
-}
-
-func (s *trackedDNSServer) detachCount() int {
-	return int(s.detaches.Load())
-}
-
-func (s *trackedDNSServer) closeCount() int {
-	return int(s.closes.Load())
+		workers, ok := engine.WorkersSnapshot(E2EWorkspace)
+		if !ok {
+			return false
+		}
+		id = 0
+		for workerID, worker := range workers {
+			if worker.Node == node && worker.WorkerName == "dns server" {
+				if id != 0 {
+					return false
+				}
+				id = workerID
+			}
+		}
+		return id != 0
+	}, "DNS server worker for node %d", node)
+	return id
 }

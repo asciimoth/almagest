@@ -2,6 +2,7 @@ package almagest
 
 import (
 	"context"
+	dnsnodes "github.com/asciimoth/almagest/lib/dns"
 	"strconv"
 	"testing"
 
@@ -21,8 +22,8 @@ func TestDebugLogNodesAvailableOnlyInDebugEngines(t *testing.T) {
 	if _, ok := plain.NodeClassSnapshot(E2EWorkspace, NodeTypeDebugLogNetwork); ok {
 		t.Fatalf("%s is available in non-debug engine", NodeTypeDebugLogNetwork)
 	}
-	if _, ok := plain.NodeClassSnapshot(E2EWorkspace, NodeTypeDebugLogDNS); ok {
-		t.Fatalf("%s is available in non-debug engine", NodeTypeDebugLogDNS)
+	if _, ok := plain.NodeClassSnapshot(E2EWorkspace, dnsnodes.NodeTypeDebugLogDNS); ok {
+		t.Fatalf("%s is available in non-debug engine", dnsnodes.NodeTypeDebugLogDNS)
 	}
 	if _, ok := plain.NodeClassSnapshot(E2EWorkspace, NodeTypeDebugLogTun); ok {
 		t.Fatalf("%s is available in non-debug engine", NodeTypeDebugLogTun)
@@ -36,8 +37,8 @@ func TestDebugLogNodesAvailableOnlyInDebugEngines(t *testing.T) {
 	if _, ok := debugEngine.NodeClassSnapshot(E2EWorkspace, NodeTypeDebugLogNetwork); !ok {
 		t.Fatalf("%s is missing from debug engine", NodeTypeDebugLogNetwork)
 	}
-	if _, ok := debugEngine.NodeClassSnapshot(E2EWorkspace, NodeTypeDebugLogDNS); !ok {
-		t.Fatalf("%s is missing from debug engine", NodeTypeDebugLogDNS)
+	if _, ok := debugEngine.NodeClassSnapshot(E2EWorkspace, dnsnodes.NodeTypeDebugLogDNS); !ok {
+		t.Fatalf("%s is missing from debug engine", dnsnodes.NodeTypeDebugLogDNS)
 	}
 	if _, ok := debugEngine.NodeClassSnapshot(E2EWorkspace, NodeTypeDebugLogTun); !ok {
 		t.Fatalf("%s is missing from debug engine", NodeTypeDebugLogTun)
@@ -89,32 +90,32 @@ func TestDebugLogNetworkE2EPassthroughDisconnectReconnect(t *testing.T) {
 
 func TestDebugLogDNSE2EPassthroughDisconnectReconnect(t *testing.T) {
 	e := newDNSE2E(t)
-	static := e.AddNode(NodeTypeStaticDNS, "static")
-	logDNS := e.AddNode(NodeTypeDebugLogDNS, "log-dns")
-	client := e.AddNode(NodeTypeDNSQuery, "client")
+	static := e.AddNode(dnsnodes.NodeTypeStaticDNS, "static")
+	logDNS := e.AddNode(dnsnodes.NodeTypeDebugLogDNS, "log-dns")
+	client := e.AddNode(dnsnodes.NodeTypeDNSQuery, "client")
 	e.SubscribeMenus(static, client)
 	e.applyStaticDNSRecords(static, "logged.e2e.test A 10.60.0.1")
 	e.setDNSQueryRequest(client, "logged.e2e.test.", "A")
 
-	upstream := e.MustAddTypedLinkByPortName(TypeDNS, static, "left", "DNS", logDNS, "right", "DNS")
-	clientLink := e.MustAddTypedLinkByPortName(TypeDNS, logDNS, "left", "DNS", client, "right", "DNS")
+	upstream := e.MustAddTypedLinkByPortName(dnsnodes.TypeDNS, static, "left", "DNS", logDNS, "right", "DNS")
+	clientLink := e.MustAddTypedLinkByPortName(dnsnodes.TypeDNS, logDNS, "left", "DNS", client, "right", "DNS")
 	e.sendDNSRequest(client)
 	e.waitDNSResponse(client, "NOERROR", "10.60.0.1")
-	e.AssertDebugLog(NodeTypeDebugLogDNS, "dns.Request")
-	e.AssertDebugLog(NodeTypeDebugLogDNS, "logged.e2e.test. A")
-	e.AssertDebugLog(NodeTypeDebugLogDNS, "dns.Response")
+	e.AssertDebugLog(dnsnodes.NodeTypeDebugLogDNS, "dns.Request")
+	e.AssertDebugLog(dnsnodes.NodeTypeDebugLogDNS, "logged.e2e.test. A")
+	e.AssertDebugLog(dnsnodes.NodeTypeDebugLogDNS, "dns.Response")
 
 	e.Engine.RemoveLink(E2EWorkspace, clientLink)
 	e.waitDNSReady(client)
 	e.sendDNSRequest(client)
 	e.waitDNSFailure(client, "dns is not ready")
-	clientLink = e.MustAddTypedLinkByPortName(TypeDNS, logDNS, "left", "DNS", client, "right", "DNS")
+	clientLink = e.MustAddTypedLinkByPortName(dnsnodes.TypeDNS, logDNS, "left", "DNS", client, "right", "DNS")
 	e.waitDNSReady(client)
 	e.sendDNSRequest(client)
 	e.waitDNSResponse(client, "NOERROR", "10.60.0.1")
 
 	e.Engine.RemoveLink(E2EWorkspace, upstream)
-	upstream = e.MustAddTypedLinkByPortName(TypeDNS, static, "left", "DNS", logDNS, "right", "DNS")
+	upstream = e.MustAddTypedLinkByPortName(dnsnodes.TypeDNS, static, "left", "DNS", logDNS, "right", "DNS")
 	e.waitDNSReady(client)
 	e.sendDNSRequest(client)
 	e.waitDNSResponse(client, "NOERROR", "10.60.0.1")

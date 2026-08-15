@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"testing"
 
+	dnsnodes "github.com/asciimoth/almagest/lib/dns"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
 	sysnetdebug "github.com/asciimoth/gonnect/sysnet/debug"
@@ -261,7 +262,7 @@ func newTunSplitterTestWorkspace(t *testing.T) *pasta.Workspace {
 	return newTunSplitterTestWorkspaceWithDNSCacheManager(t, nil)
 }
 
-func newTunSplitterTestWorkspaceWithDNSCacheManager(t *testing.T, manager DnsCacheManager) *pasta.Workspace {
+func newTunSplitterTestWorkspaceWithDNSCacheManager(t *testing.T, manager dnsnodes.DnsCacheManager) *pasta.Workspace {
 	t.Helper()
 	w := pasta.NewWorkspace(NewDebugLogFactory(1024))
 	t.Cleanup(func() { w.Close() })

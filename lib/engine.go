@@ -12,6 +12,8 @@ import (
 	"github.com/asciimoth/gonnect/subnet"
 	"github.com/asciimoth/gonnect/sysnet"
 	"github.com/asciimoth/pasta/pasta"
+
+	dnsnodes "github.com/asciimoth/almagest/lib/dns"
 )
 
 var (
@@ -55,7 +57,7 @@ func BuildEngine(
 	logf LogFactory,
 	sys sysnet.System, // use sysnetdebug.System{} if you dont have one
 	kv KVManager, // may be nil
-	dns DnsCacheManager, // may be nil
+	dns dnsnodes.DnsCacheManager, // may be nil
 	secrets SecretsStorage, // may be nil
 	tlsConfigs TlsConfigStorage, // may be nil
 	extra []pasta.NodeClass,
@@ -268,7 +270,7 @@ type Engine interface {
 	PoolLocked() bufpool.Pool
 
 	KVManager() KVManager
-	DnsCacheManager() DnsCacheManager
+	DnsCacheManager() dnsnodes.DnsCacheManager
 	SecretsStorage() SecretsStorage
 	TlsConfigStorage() TlsConfigStorage
 }
@@ -289,7 +291,7 @@ type engine struct {
 
 	sys        sysnet.System
 	kv         KVManager
-	dns        DnsCacheManager
+	dns        dnsnodes.DnsCacheManager
 	secrets    SecretsStorage
 	tlsConfigs TlsConfigStorage
 
@@ -323,7 +325,7 @@ func (e *engine) KVManager() KVManager {
 	return e.kv
 }
 
-func (e *engine) DnsCacheManager() DnsCacheManager {
+func (e *engine) DnsCacheManager() dnsnodes.DnsCacheManager {
 	return e.dns
 }
 

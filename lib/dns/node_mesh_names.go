@@ -1,4 +1,4 @@
-package almagest
+package dnsnodes
 
 import (
 	_ "embed"
@@ -10,13 +10,9 @@ import (
 	"github.com/asciimoth/mnlib"
 	"github.com/asciimoth/pasta/pasta"
 	"github.com/asciimoth/pasta/pasta/std"
-)
 
-func init() {
-	regClass(func(e *engine) pasta.NodeClass {
-		return meshNamesClass{engine: e}
-	}, false)
-}
+	"github.com/asciimoth/almagest/lib/nodekit"
+)
 
 const (
 	// NodeTypeMeshNames is the node class name for mesh-aware DNS resolution.
@@ -30,22 +26,23 @@ var (
 	meshNamesClassLongDescription string
 )
 
-type meshNamesClass struct {
-	engine *engine
+// MeshNamesClass builds mesh-aware DNS resolver nodes.
+type MeshNamesClass struct {
+	Runtime nodekit.Runtime
 }
 
-func (meshNamesClass) ClassName() string        { return NodeTypeMeshNames }
-func (meshNamesClass) ShortDescription() string { return "MeshNames DNS" }
-func (meshNamesClass) LongDescription() string  { return meshNamesClassLongDescription }
-func (meshNamesClass) DefaultNodeParams() pasta.NodeClassParams {
+func (MeshNamesClass) ClassName() string        { return NodeTypeMeshNames }
+func (MeshNamesClass) ShortDescription() string { return "MeshNames DNS" }
+func (MeshNamesClass) LongDescription() string  { return meshNamesClassLongDescription }
+func (MeshNamesClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: TypeDNS, InitialPorts: []pasta.Port{
 		DNSPort("left", "DNS"),
-		NetworkPort("right", "Network"),
+		nodekit.NetworkPort("right", "Network"),
 		DNSPort("right", "Fallback DNS"),
 	}}
 }
-func (c meshNamesClass) NewNode(_ configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
-	return &meshNamesNode{NodeBase: NodeBase{engine: c.engine}}, nil
+func (c MeshNamesClass) NewNode(_ configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
+	return &meshNamesNode{Base: nodekit.Base{Runtime: c.Runtime}}, nil
 }
 
 // meshNamesNode adapts mnlib.Resolver to the almagest/dns graph type. The
@@ -54,7 +51,7 @@ func (c meshNamesClass) NewNode(_ configer.Config, _ ...*pasta.NodeClassState) (
 // node. A fallback resolver is installed only from the optional Fallback DNS
 // input; nil fallback intentionally lets mnlib reject non-mesh names.
 type meshNamesNode struct {
-	NodeBase
+	nodekit.Base
 
 	out        uint64
 	networkIn  uint64
@@ -63,7 +60,7 @@ type meshNamesNode struct {
 	networkLink  uint64
 	fallbackLink uint64
 
-	network     NetworkCloser
+	network     nodekit.NetworkCloser
 	fallbackDNS dns.Interface
 	resolver    *mnlib.Resolver
 	provider    dns.Interface
@@ -72,9 +69,9 @@ type meshNamesNode struct {
 
 func (n *meshNamesNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
 	n.InitBaseNode(w, logger, id)
-	n.out = restoredLeft(restored, 0)
-	n.networkIn = restoredRight(restored, 0)
-	n.fallbackIn = restoredRight(restored, 1)
+	n.out = nodekit.RestoredLeft(restored, 0)
+	n.networkIn = nodekit.RestoredRight(restored, 0)
+	n.fallbackIn = nodekit.RestoredRight(restored, 1)
 	if err := n.SetPrimary(TypeDNS); err != nil {
 		return err
 	}
@@ -90,12 +87,12 @@ func (n *meshNamesNode) OnReady() error {
 
 func (n *meshNamesNode) OnStop() {
 	n.outputs.CloseAll()
-	closeDNS(n.provider)
+	CloseDNS(n.provider)
 	n.provider = nil
 	n.resolver = nil
-	closeDNS(n.fallbackDNS)
+	CloseDNS(n.fallbackDNS)
 	n.fallbackDNS = nil
-	_ = closeNetwork(n.network)
+	_ = nodekit.CloseNetwork(n.network)
 	n.network = nil
 	n.networkLink = 0
 	n.fallbackLink = 0
@@ -108,7 +105,7 @@ func (n *meshNamesNode) PreLinkAdd(port uint64, linkType, portDirection string) 
 			return pasta.LinkTypeErr(linkType)
 		}
 	case n.networkIn:
-		if portDirection != "right" || linkType != TypeNetwork {
+		if portDirection != "right" || linkType != nodekit.TypeNetwork {
 			return pasta.LinkTypeErr(linkType)
 		}
 		if n.PortHasLinks(port) {
@@ -131,12 +128,12 @@ func (n *meshNamesNode) OnLinkAdd(link, port uint64, linkType, portDirection str
 	switch {
 	case port == n.out && portDirection == "left" && linkType == TypeDNS:
 		n.sendToLink(link)
-	case port == n.networkIn && portDirection == "right" && linkType == TypeNetwork:
+	case port == n.networkIn && portDirection == "right" && linkType == nodekit.TypeNetwork:
 		n.networkLink = link
-		std.RequestLocked(n.w, n.id, link)
+		std.RequestLocked(n.W, n.ID, link)
 	case port == n.fallbackIn && portDirection == "right" && linkType == TypeDNS:
 		n.fallbackLink = link
-		std.RequestLocked(n.w, n.id, link)
+		std.RequestLocked(n.W, n.ID, link)
 	}
 	return n.updateLabel()
 }
@@ -145,16 +142,16 @@ func (n *meshNamesNode) OnLinkRemoved(link, port uint64, linkType, portDirection
 	switch {
 	case port == n.out && portDirection == "left" && linkType == TypeDNS:
 		n.outputs.Close(link)
-	case port == n.networkIn && portDirection == "right" && linkType == TypeNetwork && link == n.networkLink:
+	case port == n.networkIn && portDirection == "right" && linkType == nodekit.TypeNetwork && link == n.networkLink:
 		n.outputs.CloseAll()
-		closeDNS(n.provider)
+		CloseDNS(n.provider)
 		n.provider = nil
 		n.resolver = nil
-		_ = closeNetwork(n.network)
+		_ = nodekit.CloseNetwork(n.network)
 		n.network = nil
 		n.networkLink = 0
 	case port == n.fallbackIn && portDirection == "right" && linkType == TypeDNS && link == n.fallbackLink:
-		closeDNS(n.fallbackDNS)
+		CloseDNS(n.fallbackDNS)
 		n.fallbackDNS = nil
 		n.fallbackLink = 0
 		n.rebuildProvider()
@@ -167,11 +164,11 @@ func (n *meshNamesNode) OnEvent(event pasta.Event, linkType string, _ []string, 
 		n.refreshLink(event.Link)
 		return nil
 	}
-	if event.ReceiverPort == n.networkIn && receiverPortDirection == "right" && linkType == TypeNetwork {
+	if event.ReceiverPort == n.networkIn && receiverPortDirection == "right" && linkType == nodekit.TypeNetwork {
 		if event.Link != n.networkLink {
 			return nil
 		}
-		next, changed := AcceptNetworkPayload(n.w, n.id, event, n.network)
+		next, changed := nodekit.AcceptNetworkPayload(n.W, n.ID, event, n.network)
 		if !changed {
 			return nil
 		}
@@ -183,7 +180,7 @@ func (n *meshNamesNode) OnEvent(event pasta.Event, linkType string, _ []string, 
 		if event.Link != n.fallbackLink {
 			return nil
 		}
-		next, changed := AcceptDNSPayload(n.w, n.id, event, n.fallbackDNS)
+		next, changed := AcceptDNSPayload(n.W, n.ID, event, n.fallbackDNS)
 		if !changed {
 			return nil
 		}
@@ -196,10 +193,10 @@ func (n *meshNamesNode) OnEvent(event pasta.Event, linkType string, _ []string, 
 
 func (n *meshNamesNode) rebuildProvider() {
 	n.outputs.CloseAll()
-	closeDNS(n.provider)
+	CloseDNS(n.provider)
 	n.provider = nil
 	n.resolver = nil
-	if !NetworkIsReady(n.network) {
+	if !nodekit.NetworkIsReady(n.network) {
 		return
 	}
 	resolver := mnlib.NewResolver(n.network)
@@ -208,32 +205,32 @@ func (n *meshNamesNode) rebuildProvider() {
 	}
 	n.resolver = resolver
 	n.provider = dns.NewResolverProvider(resolver, defaultMeshNamesTTL, n.dnsSpawner())
-	BindDNSResource(n.w, n.id, 0, n.provider)
+	BindDNSResource(n.W, n.ID, 0, n.provider)
 	n.sendAll()
 }
 
 func (n *meshNamesNode) dnsSpawner() gonnect.Spawner {
-	if n.workerSpawner.tracker == nil {
+	if n.WorkerSpawner == nil {
 		return nil
 	}
-	return n.workerSpawner
+	return n.WorkerSpawner
 }
 
 func (n *meshNamesNode) sendAll() {
-	n.outputs.SendPortLocked(n.w, n.id, n.out, n.provider)
+	n.outputs.SendPortLocked(n.W, n.ID, n.out, n.provider)
 }
 
 func (n *meshNamesNode) sendToLink(link uint64) {
-	n.outputs.SendLocked(n.w, n.id, link, n.provider)
+	n.outputs.SendLocked(n.W, n.ID, link, n.provider)
 }
 
 func (n *meshNamesNode) refreshLink(link uint64) {
-	n.outputs.RefreshLocked(n.w, n.id, link, n.provider)
+	n.outputs.RefreshLocked(n.W, n.ID, link, n.provider)
 }
 
 func (n *meshNamesNode) updateLabel() error {
 	switch {
-	case !NetworkIsReady(n.network):
+	case !nodekit.NetworkIsReady(n.network):
 		return n.SetLabel("waiting for network")
 	case DNSIsReady(n.fallbackDNS):
 		return n.SetLabel("resolving MeshNames with fallback")

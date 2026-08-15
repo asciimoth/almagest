@@ -57,10 +57,6 @@ func AcceptTunPayload(w *pasta.Workspace, node uint64, event pasta.Event, expect
 	return links.AcceptTunPayload(w, node, event, expectedLink, current)
 }
 
-func closeTun(t tun.Tun) error {
-	return links.CloseTun(t)
-}
-
 func waitTun(t tun.Tun) {
 	links.WaitTun(t)
 }

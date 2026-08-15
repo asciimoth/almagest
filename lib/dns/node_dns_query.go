@@ -1,4 +1,4 @@
-package almagest
+package dnsnodes
 
 import (
 	"context"
@@ -15,13 +15,9 @@ import (
 	"github.com/asciimoth/gonnect/dns"
 	"github.com/asciimoth/pasta/pasta"
 	"github.com/asciimoth/pasta/pasta/std"
-)
 
-func init() {
-	regClass(func(e *engine) pasta.NodeClass {
-		return dnsQueryClass{engine: e}
-	}, false)
-}
+	"github.com/asciimoth/almagest/lib/nodekit"
+)
 
 const (
 	// NodeTypeDNSQuery is the node class name for an interactive DNS query.
@@ -35,23 +31,24 @@ const (
 	dnsQueryStatusFail    = "fail"
 )
 
-type dnsQueryClass struct {
-	engine *engine
+// DNSQueryClass builds interactive DNS query nodes.
+type DNSQueryClass struct {
+	Runtime nodekit.Runtime
 }
 
-func (dnsQueryClass) ClassName() string        { return NodeTypeDNSQuery }
-func (dnsQueryClass) ShortDescription() string { return "DNS query" }
-func (dnsQueryClass) LongDescription() string {
+func (DNSQueryClass) ClassName() string        { return NodeTypeDNSQuery }
+func (DNSQueryClass) ShortDescription() string { return "DNS query" }
+func (DNSQueryClass) LongDescription() string {
 	return "Runs DNS requests over a received almagest/dns interface in a background worker."
 }
-func (dnsQueryClass) DefaultNodeParams() pasta.NodeClassParams {
+func (DNSQueryClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: TypeDNS, InitialPorts: []pasta.Port{
 		DNSPort("right", "DNS"),
 	}}
 }
-func (c dnsQueryClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
+func (c DNSQueryClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
 	return &dnsQueryNode{
-		NodeBase:   NodeBase{engine: c.engine},
+		Base:       nodekit.Base{Runtime: c.Runtime},
 		name:       configer.String(cfg, configer.Path{"name"}, DefaultDNSQueryName),
 		qtype:      configer.String(cfg, configer.Path{"type"}, DefaultDNSQueryType),
 		statusText: dnsQueryStatusReady,
@@ -59,7 +56,7 @@ func (c dnsQueryClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState) 
 }
 
 type dnsQueryNode struct {
-	NodeBase
+	nodekit.Base
 
 	dnsp uint64
 
@@ -79,9 +76,9 @@ type dnsQueryNode struct {
 
 func (n *dnsQueryNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
 	n.InitBaseNode(w, logger, id)
-	n.name = normalizeDNSQueryName(n.name)
-	n.qtype = normalizeDNSQueryType(n.qtype)
-	n.dnsp = restoredRight(restored, 0)
+	n.name = NormalizeQueryName(n.name)
+	n.qtype = NormalizeQueryType(n.qtype)
+	n.dnsp = nodekit.RestoredRight(restored, 0)
 	if err := n.SetPrimary(TypeDNS); err != nil {
 		return err
 	}
@@ -112,7 +109,7 @@ func (n *dnsQueryNode) PreLinkAdd(port uint64, linkType, portDirection string) e
 
 func (n *dnsQueryNode) OnLinkAdd(link, port uint64, linkType, portDirection string) error {
 	if port == n.dnsp && portDirection == "right" && linkType == TypeDNS {
-		std.RequestLocked(n.w, n.id, link)
+		std.RequestLocked(n.W, n.ID, link)
 	}
 	return nil
 }
@@ -129,7 +126,7 @@ func (n *dnsQueryNode) OnEvent(event pasta.Event, linkType string, _ []string, r
 	if event.ReceiverPort != n.dnsp || receiverPortDirection != "right" || linkType != TypeDNS {
 		return nil
 	}
-	next, changed := AcceptDNSPayload(n.w, n.id, event, n.resolver)
+	next, changed := AcceptDNSPayload(n.W, n.ID, event, n.resolver)
 	if !changed {
 		return nil
 	}
@@ -171,7 +168,7 @@ func (n *dnsQueryNode) OnFormularMsg(message any) error {
 }
 
 func (n *dnsQueryNode) onFieldUpdate(msg formular.FieldUpdateMessage) error {
-	if msg.MenuID != pasta.NodeMenuID(n.id) || msg.Field.BlockID != "request" || len(msg.Field.ElementPath) > 0 {
+	if msg.MenuID != pasta.NodeMenuID(n.ID) || msg.Field.BlockID != "request" || len(msg.Field.ElementPath) > 0 {
 		return nil
 	}
 	value, ok := std.StringFromPayload(msg.Value)
@@ -189,7 +186,7 @@ func (n *dnsQueryNode) onFieldUpdate(msg formular.FieldUpdateMessage) error {
 }
 
 func (n *dnsQueryNode) onButtonPress(msg formular.ButtonPressMessage) error {
-	if msg.MenuID != pasta.NodeMenuID(n.id) || msg.BlockID != "request" || msg.ButtonID != "send" {
+	if msg.MenuID != pasta.NodeMenuID(n.ID) || msg.BlockID != "request" || msg.ButtonID != "send" {
 		return nil
 	}
 	n.sendRequest()
@@ -211,15 +208,15 @@ func (n *dnsQueryNode) updateLabel() error {
 }
 
 func (n *dnsQueryNode) sendMenuSnapshot() {
-	sendNodeMenuSnapshot(n.w, n.id, false, n.requestBlock(), n.resultBlock())
+	nodekit.SendNodeMenuSnapshot(n.W, n.ID, false, n.requestBlock(), n.resultBlock())
 }
 
 func (n *dnsQueryNode) sendRequestBlock() {
-	sendNodeBlockSnapshot(n.w, n.id, n.requestBlock())
+	nodekit.SendNodeBlockSnapshot(n.W, n.ID, n.requestBlock())
 }
 
 func (n *dnsQueryNode) sendResultBlock() {
-	sendNodeBlockSnapshot(n.w, n.id, n.resultBlock())
+	nodekit.SendNodeBlockSnapshot(n.W, n.ID, n.resultBlock())
 }
 
 func (n *dnsQueryNode) requestBlock() formular.Block {
@@ -251,18 +248,18 @@ func (n *dnsQueryNode) currentStatusText() string {
 }
 
 func (n *dnsQueryNode) setName(value string) {
-	n.name = normalizeDNSQueryName(value)
+	n.name = NormalizeQueryName(value)
 	n.sendRequestBlock()
 }
 
 func (n *dnsQueryNode) setType(value string) {
-	n.qtype = normalizeDNSQueryType(value)
+	n.qtype = NormalizeQueryType(value)
 	n.sendRequestBlock()
 }
 
 func (n *dnsQueryNode) sendRequest() {
 	if n.pending {
-		n.logger.Debug("request ignored: already pending")
+		n.Logger.Debug("request ignored: already pending")
 		return
 	}
 	qtype, err := staticDNSType(n.qtype)
@@ -287,7 +284,7 @@ func (n *dnsQueryNode) sendRequest() {
 	n.statusText = dnsQueryStatusRunning
 	n.resp = ""
 	n.errText = ""
-	n.logger.Debugf("request %d: %s %s", req.id, req.name, dnsTypeName(req.qtype))
+	n.Logger.Debugf("request %d: %s %s", req.id, req.name, TypeName(req.qtype))
 	_ = n.updateLabel()
 	n.sendRequestBlock()
 	n.sendResultBlock()
@@ -297,9 +294,9 @@ func (n *dnsQueryNode) sendRequest() {
 	select {
 	case n.jobs <- req:
 	default:
-		n.logger.Debug("request failed: worker is busy")
-		n.w.SendInbox(pasta.InboxMessage{
-			ReceiverNode: n.id,
+		n.Logger.Debug("request failed: worker is busy")
+		n.W.SendInbox(pasta.InboxMessage{
+			ReceiverNode: n.ID,
 			Payload:      dnsQueryResult{id: req.id, err: "worker is busy"},
 		})
 	}
@@ -317,15 +314,15 @@ func (n *dnsQueryNode) resetStatusReady() {
 	n.sendResultBlock()
 }
 
-func normalizeDNSQueryName(value string) string {
+func NormalizeQueryName(value string) string {
 	value = strings.TrimSpace(value)
 	if value == "" {
 		return DefaultDNSQueryName
 	}
-	return absDNSName(value)
+	return AbsoluteName(value)
 }
 
-func normalizeDNSQueryType(value string) string {
+func NormalizeQueryType(value string) string {
 	value = strings.ToUpper(strings.TrimSpace(value))
 	if value == "" {
 		return DefaultDNSQueryType
@@ -355,15 +352,15 @@ func (n *dnsQueryNode) startWorker() {
 	stop := make(chan struct{})
 	n.jobs = jobs
 	n.stop = stop
-	n.logger.Debug("worker started")
+	n.Logger.Debug("worker started")
 	_ = n.SpawnWorker("dns query", func() {
-		runDNSQueryWorker(n.engine.ctx, n.logger, n.w, n.id, jobs, stop)
+		runDNSQueryWorker(n.Context(), n.Logger, n.W, n.ID, jobs, stop)
 	})
 }
 
 func (n *dnsQueryNode) stopWorker() {
 	if n.stop != nil {
-		n.logger.Debug("worker stopping")
+		n.Logger.Debug("worker stopping")
 		close(n.stop)
 		n.stop = nil
 	}
@@ -427,26 +424,26 @@ func doDNSRequest(parent context.Context, req dnsQueryRequest) dnsQueryResult {
 	if resp == nil {
 		return dnsQueryResult{id: req.id, err: "empty DNS response"}
 	}
-	status := dnsRCodeName(resp.RCode)
-	return dnsQueryResult{id: req.id, status: status, body: formatDNSMessage(resp)}
+	status := RCodeName(resp.RCode)
+	return dnsQueryResult{id: req.id, status: status, body: FormatMessage(resp)}
 }
 
-func formatDNSMessage(msg *dns.Message) string {
+func FormatMessage(msg *dns.Message) string {
 	if msg == nil {
 		return ""
 	}
 	var b strings.Builder
 	for _, q := range msg.Questions {
-		fmt.Fprintf(&b, "QUESTION %s %s\n", q.Name, dnsTypeName(q.Type))
+		fmt.Fprintf(&b, "QUESTION %s %s\n", q.Name, TypeName(q.Type))
 	}
 	for _, rr := range msg.Answers {
-		fmt.Fprintf(&b, "ANSWER %s %s %d %s\n", rr.Name, dnsTypeName(rr.Type), rr.TTL, dnsResourceValue(rr))
+		fmt.Fprintf(&b, "ANSWER %s %s %d %s\n", rr.Name, TypeName(rr.Type), rr.TTL, dnsResourceValue(rr))
 	}
 	for _, rr := range msg.Authorities {
-		fmt.Fprintf(&b, "AUTHORITY %s %s %d %s\n", rr.Name, dnsTypeName(rr.Type), rr.TTL, dnsResourceValue(rr))
+		fmt.Fprintf(&b, "AUTHORITY %s %s %d %s\n", rr.Name, TypeName(rr.Type), rr.TTL, dnsResourceValue(rr))
 	}
 	for _, rr := range msg.Additionals {
-		fmt.Fprintf(&b, "ADDITIONAL %s %s %d %s\n", rr.Name, dnsTypeName(rr.Type), rr.TTL, dnsResourceValue(rr))
+		fmt.Fprintf(&b, "ADDITIONAL %s %s %d %s\n", rr.Name, TypeName(rr.Type), rr.TTL, dnsResourceValue(rr))
 	}
 	return strings.TrimSpace(b.String())
 }
@@ -478,7 +475,7 @@ func dnsResourceValue(rr dns.Resource) string {
 	return "0x" + hex.EncodeToString(rr.Data)
 }
 
-func dnsTypeName(typ uint16) string {
+func TypeName(typ uint16) string {
 	switch typ {
 	case dns.TypeA:
 		return "A"
@@ -501,7 +498,7 @@ func dnsTypeName(typ uint16) string {
 	}
 }
 
-func dnsRCodeName(rcode uint8) string {
+func RCodeName(rcode uint8) string {
 	switch rcode {
 	case dns.RCodeSuccess:
 		return "NOERROR"

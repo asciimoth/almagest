@@ -1,4 +1,4 @@
-package almagest
+package dnsnodes
 
 import (
 	_ "embed"
@@ -13,21 +13,17 @@ import (
 	"github.com/asciimoth/gonnect/routing"
 	"github.com/asciimoth/pasta/pasta"
 	"github.com/asciimoth/pasta/pasta/std"
-)
 
-func init() {
-	regClass(func(e *engine) pasta.NodeClass {
-		return dnsRouterClass{engine: e}
-	}, false)
-}
+	"github.com/asciimoth/almagest/lib/nodekit"
+)
 
 const (
 	// NodeTypeDnsRouter is the node class name for a routing DNS middleware.
 	NodeTypeDnsRouter = "almagest/DnsRouter"
 
 	dnsRouterMaxSlots      = 16
-	dnsRouterConfigBlockID = "config"
-	dnsRouterRulesField    = "rules"
+	DNSRouterConfigBlockID = "config"
+	DNSRouterRulesField    = "rules"
 )
 
 const dnsRouterDefaultRules = "TRUE\nBACKEND slot 1"
@@ -41,29 +37,30 @@ var (
 	}
 )
 
-type dnsRouterClass struct {
-	engine *engine
+// DNSRouterClass builds routing DNS middleware nodes.
+type DNSRouterClass struct {
+	Runtime nodekit.Runtime
 }
 
-func (dnsRouterClass) ClassName() string        { return NodeTypeDnsRouter }
-func (dnsRouterClass) ShortDescription() string { return "DNS router" }
-func (dnsRouterClass) LongDescription() string  { return dnsRouterClassLongDescription }
-func (dnsRouterClass) DefaultNodeParams() pasta.NodeClassParams {
+func (DNSRouterClass) ClassName() string        { return NodeTypeDnsRouter }
+func (DNSRouterClass) ShortDescription() string { return "DNS router" }
+func (DNSRouterClass) LongDescription() string  { return dnsRouterClassLongDescription }
+func (DNSRouterClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: TypeDNS, InitialPorts: []pasta.Port{
 		DNSPort("left", "DNS"),
-		DNSPort("right", slotPortName(1)),
+		DNSPort("right", nodekit.SlotPortName(1)),
 	}}
 }
-func (c dnsRouterClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
+func (c DNSRouterClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
 	return &dnsRouterNode{
-		NodeBase:  NodeBase{engine: c.engine},
-		rulesText: configer.String(cfg, configer.Path{dnsRouterRulesField}, ""),
-		slots: newSlotPorts(
+		Base:      nodekit.Base{Runtime: c.Runtime},
+		rulesText: configer.String(cfg, configer.Path{DNSRouterRulesField}, ""),
+		slots: nodekit.NewSlotPorts(
 			dnsRouterMaxSlots,
 			"right",
-			func(slot int) pasta.Port { return DNSPort("right", slotPortName(slot)) },
-			slotPortName,
-			func(name string) (int, bool) { return slotPortFromName(name, dnsRouterMaxSlots) },
+			func(slot int) pasta.Port { return DNSPort("right", nodekit.SlotPortName(slot)) },
+			nodekit.SlotPortName,
+			func(name string) (int, bool) { return nodekit.SlotPortFromName(name, dnsRouterMaxSlots) },
 		),
 		backends: map[int]dns.Interface{},
 	}, nil
@@ -74,10 +71,10 @@ func (c dnsRouterClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState)
 // slot port accepts one upstream DNS interface and installs it in the router
 // under the same "slot N" name used by the graph port.
 type dnsRouterNode struct {
-	NodeBase
+	nodekit.Base
 
 	out   uint64
-	slots slotPorts
+	slots nodekit.SlotPorts
 
 	router *dns.Router
 	rules  routing.DNSBytecodeRules
@@ -98,21 +95,21 @@ func (n *dnsRouterNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint6
 	if n.backends == nil {
 		n.backends = map[int]dns.Interface{}
 	}
-	if n.slots.max == 0 {
-		n.slots = newSlotPorts(
+	if n.slots.Max() == 0 {
+		n.slots = nodekit.NewSlotPorts(
 			dnsRouterMaxSlots,
 			"right",
-			func(slot int) pasta.Port { return DNSPort("right", slotPortName(slot)) },
-			slotPortName,
-			func(name string) (int, bool) { return slotPortFromName(name, dnsRouterMaxSlots) },
+			func(slot int) pasta.Port { return DNSPort("right", nodekit.SlotPortName(slot)) },
+			nodekit.SlotPortName,
+			func(name string) (int, bool) { return nodekit.SlotPortFromName(name, dnsRouterMaxSlots) },
 		)
 	}
-	n.out = restoredLeft(restored, 0)
-	n.slots.Init(w, id, restoredRightPorts(restored))
+	n.out = nodekit.RestoredLeft(restored, 0)
+	n.slots.Init(w, id, nodekit.RestoredRightPorts(restored))
 	if err := n.SetPrimary(TypeDNS); err != nil {
 		return err
 	}
-	BindDNSResource(n.w, n.id, 0, n.router)
+	BindDNSResource(n.W, n.ID, 0, n.router)
 
 	rules, route, err := n.compileRules(n.rulesText)
 	if err != nil {
@@ -123,7 +120,7 @@ func (n *dnsRouterNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint6
 			return fmt.Errorf("set DNS router rules: %w", err)
 		}
 	}
-	if err := n.reviewOutputPorts(slotPortReview{DefaultSlot: 1, PreserveExisting: isRestored}); err != nil {
+	if err := n.reviewOutputPorts(nodekit.SlotPortReview{DefaultSlot: 1, PreserveExisting: isRestored}); err != nil {
 		return err
 	}
 	if err := n.updateLabel(); err != nil {
@@ -135,7 +132,7 @@ func (n *dnsRouterNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint6
 
 func (n *dnsRouterNode) OnReady() error {
 	if n.slots.TakeDeferredReview() {
-		if err := n.reviewOutputPorts(slotPortReview{DefaultSlot: 1}); err != nil {
+		if err := n.reviewOutputPorts(nodekit.SlotPortReview{DefaultSlot: 1}); err != nil {
 			return err
 		}
 	}
@@ -187,7 +184,7 @@ func (n *dnsRouterNode) OnLinkAdd(link, port uint64, linkType, portDirection str
 		}
 	case n.slots.Slot(port) != 0 && portDirection == "right":
 		if n.ready {
-			std.RequestLocked(n.w, n.id, link)
+			std.RequestLocked(n.W, n.ID, link)
 		}
 	}
 	return n.updateLabel()
@@ -236,11 +233,11 @@ func (n *dnsRouterNode) OnEvent(event pasta.Event, linkType string, _ []string, 
 		return nil
 	}
 	n.detachSlot(slot)
-	if err := n.router.Attach(slotPortName(slot), payload.DNS); err != nil {
-		closeDNS(payload.DNS)
-		return fmt.Errorf("attach DNS router %s: %w", slotPortName(slot), err)
+	if err := n.router.Attach(nodekit.SlotPortName(slot), payload.DNS); err != nil {
+		CloseDNS(payload.DNS)
+		return fmt.Errorf("attach DNS router %s: %w", nodekit.SlotPortName(slot), err)
 	}
-	BindDNSResource(n.w, n.id, event.Link, payload.DNS)
+	BindDNSResource(n.W, n.ID, event.Link, payload.DNS)
 	n.backends[slot] = payload.DNS
 	if n.ready {
 		n.sendAll()
@@ -251,12 +248,12 @@ func (n *dnsRouterNode) OnEvent(event pasta.Event, linkType string, _ []string, 
 func (n *dnsRouterNode) OnFormularMsg(message any) error {
 	switch msg := message.(type) {
 	case formular.FormApplyMessage:
-		if msg.MenuID != pasta.NodeMenuID(n.id) || msg.BlockID != dnsRouterConfigBlockID {
+		if msg.MenuID != pasta.NodeMenuID(n.ID) || msg.BlockID != DNSRouterConfigBlockID {
 			return nil
 		}
 		return n.applyConfigForm(msg.Values)
 	case formular.FieldValidateMessage:
-		if msg.MenuID != pasta.NodeMenuID(n.id) || msg.Field.BlockID != dnsRouterConfigBlockID || msg.Field.FieldID != dnsRouterRulesField || len(msg.Field.ElementPath) > 0 {
+		if msg.MenuID != pasta.NodeMenuID(n.ID) || msg.Field.BlockID != DNSRouterConfigBlockID || msg.Field.FieldID != DNSRouterRulesField || len(msg.Field.ElementPath) > 0 {
 			return nil
 		}
 		n.sendRulesFieldStatus(msg)
@@ -268,11 +265,11 @@ func (n *dnsRouterNode) OnSave(cfg configer.Config) error {
 	if err := pasta.DeleteNodeOwnedConfigKeys(cfg); err != nil {
 		return err
 	}
-	return cfg.Set(configer.Path{dnsRouterRulesField}, n.rulesText)
+	return cfg.Set(configer.Path{DNSRouterRulesField}, n.rulesText)
 }
 
 func (n *dnsRouterNode) applyConfigForm(values map[string]any) error {
-	text, _ := formular.StringValue(values[dnsRouterRulesField])
+	text, _ := formular.StringValue(values[DNSRouterRulesField])
 	rules, route, err := n.compileRules(text)
 	if err != nil {
 		n.formError = err.Error()
@@ -285,7 +282,7 @@ func (n *dnsRouterNode) applyConfigForm(values map[string]any) error {
 	n.rulesText = text
 	n.rules = rules
 	n.formError = ""
-	if err := n.reviewOutputPorts(slotPortReview{DefaultSlot: 1}); err != nil {
+	if err := n.reviewOutputPorts(nodekit.SlotPortReview{DefaultSlot: 1}); err != nil {
 		return err
 	}
 	n.sendForcedMenuSnapshot()
@@ -296,10 +293,10 @@ func (n *dnsRouterNode) applyConfigForm(values map[string]any) error {
 func (n *dnsRouterNode) sendRulesFieldStatus(msg formular.FieldValidateMessage) {
 	text, _ := formular.StringValue(msg.Value)
 	_, _, err := n.compileRules(text)
-	sendNodeFieldStatus(n.w, n.id, msg.Field, err)
+	nodekit.SendNodeFieldStatus(n.W, n.ID, msg.Field, err)
 }
 
-func (n *dnsRouterNode) reviewOutputPorts(opts slotPortReview) error {
+func (n *dnsRouterNode) reviewOutputPorts(opts nodekit.SlotPortReview) error {
 	desired := map[int]struct{}{}
 	for _, slot := range dnsRouterRuleSlots(n.rules) {
 		desired[slot] = struct{}{}
@@ -314,15 +311,15 @@ func (n *dnsRouterNode) requestSlots() {
 }
 
 func (n *dnsRouterNode) sendAll() {
-	n.outputs.SendPortLocked(n.w, n.id, n.out, n.router)
+	n.outputs.SendPortLocked(n.W, n.ID, n.out, n.router)
 }
 
 func (n *dnsRouterNode) sendRouterToLink(link uint64) {
-	n.outputs.SendLocked(n.w, n.id, link, n.router)
+	n.outputs.SendLocked(n.W, n.ID, link, n.router)
 }
 
 func (n *dnsRouterNode) refreshRouterToLink(link uint64) {
-	n.outputs.RefreshLocked(n.w, n.id, link, n.router)
+	n.outputs.RefreshLocked(n.W, n.ID, link, n.router)
 }
 
 func (n *dnsRouterNode) detachSlot(slot int) {
@@ -331,9 +328,9 @@ func (n *dnsRouterNode) detachSlot(slot int) {
 	}
 	if old := n.backends[slot]; old != nil {
 		if n.router != nil {
-			_ = n.router.Detach(slotPortName(slot))
+			_ = n.router.Detach(nodekit.SlotPortName(slot))
 		}
-		closeDNS(old)
+		CloseDNS(old)
 		delete(n.backends, slot)
 	}
 }
@@ -343,10 +340,10 @@ func (n *dnsRouterNode) hasSlotLinks() bool {
 }
 
 func (n *dnsRouterNode) dnsSpawner() gonnect.Spawner {
-	if n.workerSpawner.tracker == nil {
+	if n.WorkerSpawner == nil {
 		return nil
 	}
-	return n.workerSpawner
+	return n.WorkerSpawner
 }
 
 func (n *dnsRouterNode) updateLabel() error {
@@ -363,15 +360,15 @@ func (n *dnsRouterNode) updateLabel() error {
 }
 
 func (n *dnsRouterNode) sendMenuSnapshot() {
-	sendNodeMenuSnapshot(n.w, n.id, false, n.configBlock())
+	nodekit.SendNodeMenuSnapshot(n.W, n.ID, false, n.configBlock())
 }
 
 func (n *dnsRouterNode) sendForcedMenuSnapshot() {
-	sendNodeMenuSnapshot(n.w, n.id, true, n.configBlock())
+	nodekit.SendNodeMenuSnapshot(n.W, n.ID, true, n.configBlock())
 }
 
 func (n *dnsRouterNode) sendConfigBlock() {
-	sendNodeBlockSnapshot(n.w, n.id, n.configBlock())
+	nodekit.SendNodeBlockSnapshot(n.W, n.ID, n.configBlock())
 }
 
 func (n *dnsRouterNode) configBlock() formular.Block {
@@ -386,8 +383,8 @@ func (n *dnsRouterNode) configBlock() formular.Block {
 		field.Status = formular.StatusError
 		field.StatusText = n.formError
 	}
-	return formular.Block{ID: dnsRouterConfigBlockID, Order: 10, Generation: 1, Form: true, Items: []formular.Item{
-		{Type: formular.ItemField, ID: dnsRouterRulesField, Label: "Routing rules", Field: field},
+	return formular.Block{ID: DNSRouterConfigBlockID, Order: 10, Generation: 1, Form: true, Items: []formular.Item{
+		{Type: formular.ItemField, ID: DNSRouterRulesField, Label: "Routing rules", Field: field},
 	}}
 }
 
@@ -421,13 +418,23 @@ func dnsRouterRuleSlots(rules routing.DNSBytecodeRules) []int {
 	return slots
 }
 
+// CompileRouterRules compiles DNS router bytecode rules and their route function.
+func CompileRouterRules(text string) (routing.DNSBytecodeRules, dns.RouteFunc, error) {
+	return (&dnsRouterNode{}).compileRules(text)
+}
+
+// RouterRuleSlots returns the numbered backend slots used by compiled rules.
+func RouterRuleSlots(rules routing.DNSBytecodeRules) []int {
+	return dnsRouterRuleSlots(rules)
+}
+
 func dnsRouterBackendSlots(rules routing.DNSBytecodeRules) ([]int, error) {
 	seen := map[int]struct{}{}
 	var slots []int
 	for _, backend := range rules.Backends {
-		slot, ok := slotPortFromName(backend, dnsRouterMaxSlots)
+		slot, ok := nodekit.SlotPortFromName(backend, dnsRouterMaxSlots)
 		if !ok {
-			return nil, fmt.Errorf("backend %q must be named %q through %q", backend, slotPortName(1), slotPortName(dnsRouterMaxSlots))
+			return nil, fmt.Errorf("backend %q must be named %q through %q", backend, nodekit.SlotPortName(1), nodekit.SlotPortName(dnsRouterMaxSlots))
 		}
 		if _, ok := seen[slot]; ok {
 			continue

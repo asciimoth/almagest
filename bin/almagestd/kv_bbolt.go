@@ -11,6 +11,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/asciimoth/almagest/lib"
+	dnsnodes "github.com/asciimoth/almagest/lib/dns"
 	"github.com/kataras/golog"
 	"go.etcd.io/bbolt"
 	bberrors "go.etcd.io/bbolt/errors"
@@ -32,8 +33,8 @@ const (
 
 var (
 	_ almagest.KVManager             = (*bboltKVManager)(nil)
-	_ almagest.DnsCacheManager       = (*bboltKVManager)(nil)
-	_ almagest.DnsCacheStorageLister = (*bboltKVManager)(nil)
+	_ dnsnodes.DnsCacheManager       = (*bboltKVManager)(nil)
+	_ dnsnodes.DnsCacheStorageLister = (*bboltKVManager)(nil)
 	_ almagest.SecretsStorage        = (*bboltKVManager)(nil)
 	_ almagest.TlsConfigStorage      = (*bboltKVManager)(nil)
 	_ almagest.KVStore               = (*bboltKVStore)(nil)

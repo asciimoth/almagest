@@ -7,6 +7,8 @@ import (
 	"net"
 	"testing"
 
+	dnsnodes "github.com/asciimoth/almagest/lib/dns"
+
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
 	"github.com/asciimoth/gonnect"
@@ -64,7 +66,7 @@ func TestNetworkRouterNodeInstallsDNSResolver(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddNodeByClass NetworkRouter: %v", err)
 	}
-	dnsID, err := w.AddNodeByClass(NodeTypeStaticDNS, "dns")
+	dnsID, err := w.AddNodeByClass(dnsnodes.NodeTypeStaticDNS, "dns")
 	if err != nil {
 		t.Fatalf("AddNodeByClass StaticDns: %v", err)
 	}
@@ -110,11 +112,11 @@ func TestNetworkRouterDNSLinksAttachDetachReattach(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddNodeByClass MockNetwork: %v", err)
 	}
-	firstDNSID, err := w.AddNodeByClass(NodeTypeStaticDNS, "dns-a")
+	firstDNSID, err := w.AddNodeByClass(dnsnodes.NodeTypeStaticDNS, "dns-a")
 	if err != nil {
 		t.Fatalf("AddNodeByClass StaticDns dns-a: %v", err)
 	}
-	secondDNSID, err := w.AddNodeByClass(NodeTypeStaticDNS, "dns-b")
+	secondDNSID, err := w.AddNodeByClass(dnsnodes.NodeTypeStaticDNS, "dns-b")
 	if err != nil {
 		t.Fatalf("AddNodeByClass StaticDns dns-b: %v", err)
 	}
@@ -172,10 +174,10 @@ func TestNetworkRouterDNSCopyPastePreservesResolverLink(t *testing.T) {
 	}
 	pastedRouter := workspaceNodeByClass(t, w, pasted, NodeTypeNetworkRouter)
 	pastedBackend := workspaceNodeByClass(t, w, pasted, NodeTypeMockNetwork)
-	pastedDNS := workspaceNodeByClass(t, w, pasted, NodeTypeStaticDNS)
+	pastedDNS := workspaceNodeByClass(t, w, pasted, dnsnodes.NodeTypeStaticDNS)
 	assertNetworkRouterRightPorts(t, w, pastedRouter, []string{"slot 1", networkRouterDNSPortName})
 	mustWorkspaceTypedLink(t, w, TypeNetwork, pastedBackend, "left", "Network", pastedRouter, "right", "slot 1")
-	mustWorkspaceTypedLink(t, w, TypeDNS, pastedDNS, "left", "DNS", pastedRouter, "right", networkRouterDNSPortName)
+	mustWorkspaceTypedLink(t, w, dnsnodes.TypeDNS, pastedDNS, "left", "DNS", pastedRouter, "right", networkRouterDNSPortName)
 	assertNetworkRouterLookupHost(t, networkRouterRuntimeFromWorkspace(t, w, pastedRouter), "router.test", "192.0.2.30")
 }
 
@@ -190,7 +192,7 @@ func TestNetworkRouterDNSSaveRestorePreservesResolverLink(t *testing.T) {
 	restored, err := pasta.WorkspaceFromConfig([]pasta.NodeClass{
 		networkRouterClass{},
 		mockNetClass{},
-		staticDNSClass{},
+		dnsnodes.StaticDNSClass{},
 	}, cfg, NewDebugLogFactory(1024))
 	if err != nil {
 		t.Fatalf("WorkspaceFromConfig: %v", err)
@@ -211,7 +213,7 @@ func TestNetworkRouterDNSSaveRestorePreservesResolverLink(t *testing.T) {
 	}
 	assertNetworkRouterRightPorts(t, restored, restoredRouter, []string{"slot 1", networkRouterDNSPortName})
 	mustWorkspaceTypedLink(t, restored, TypeNetwork, restoredBackend, "left", "Network", restoredRouter, "right", "slot 1")
-	mustWorkspaceTypedLink(t, restored, TypeDNS, restoredDNS, "left", "DNS", restoredRouter, "right", networkRouterDNSPortName)
+	mustWorkspaceTypedLink(t, restored, dnsnodes.TypeDNS, restoredDNS, "left", "DNS", restoredRouter, "right", networkRouterDNSPortName)
 	assertNetworkRouterLookupHost(t, networkRouterRuntimeFromWorkspace(t, restored, restoredRouter), "router.test", "192.0.2.40")
 }
 
@@ -474,7 +476,7 @@ func newNetworkRouterTestWorkspace(t *testing.T) *pasta.Workspace {
 	return newNetworkRouterTestWorkspaceWithDNSCacheManager(t, nil)
 }
 
-func newNetworkRouterTestWorkspaceWithDNSCacheManager(t *testing.T, manager DnsCacheManager) *pasta.Workspace {
+func newNetworkRouterTestWorkspaceWithDNSCacheManager(t *testing.T, manager dnsnodes.DnsCacheManager) *pasta.Workspace {
 	t.Helper()
 	w := pasta.NewWorkspace(NewDebugLogFactory(1024))
 	t.Cleanup(func() { w.Close() })
@@ -484,7 +486,7 @@ func newNetworkRouterTestWorkspaceWithDNSCacheManager(t *testing.T, manager DnsC
 	if err := w.AddNodeClass(mockNetClass{}); err != nil {
 		t.Fatalf("AddNodeClass MockNetwork: %v", err)
 	}
-	if err := w.AddNodeClass(staticDNSClass{}); err != nil {
+	if err := w.AddNodeClass(dnsnodes.StaticDNSClass{}); err != nil {
 		t.Fatalf("AddNodeClass StaticDns: %v", err)
 	}
 	return w
@@ -500,7 +502,7 @@ func setupNetworkRouterDNSWorkspace(t *testing.T, w *pasta.Workspace, prefix, ip
 	if err != nil {
 		t.Fatalf("AddNodeByClass MockNetwork: %v", err)
 	}
-	dnsID, err := w.AddNodeByClass(NodeTypeStaticDNS, prefix+"-dns")
+	dnsID, err := w.AddNodeByClass(dnsnodes.NodeTypeStaticDNS, prefix+"-dns")
 	if err != nil {
 		t.Fatalf("AddNodeByClass StaticDns: %v", err)
 	}

@@ -1,6 +1,10 @@
 package almagest
 
-import "testing"
+import (
+	"testing"
+
+	dnsnodes "github.com/asciimoth/almagest/lib/dns"
+)
 
 type dnsCacheWarmQuery struct {
 	name  string
@@ -17,15 +21,15 @@ func warmDNSCacheReverseLookupsForRouting(
 ) {
 	t.Helper()
 	dnsE := &dnsE2E{NodeE2E: e}
-	static := e.AddNode(NodeTypeStaticDNS, prefix+"-static-dns")
-	cache := e.AddNode(NodeTypeDnsCache, prefix+"-dns-cache")
-	query := e.AddNode(NodeTypeDNSQuery, prefix+"-dns-query")
+	static := e.AddNode(dnsnodes.NodeTypeStaticDNS, prefix+"-static-dns")
+	cache := e.AddNode(dnsnodes.NodeTypeDnsCache, prefix+"-dns-cache")
+	query := e.AddNode(dnsnodes.NodeTypeDNSQuery, prefix+"-dns-query")
 	e.SubscribeMenus(static, cache, query)
 
 	dnsE.applyStaticDNSRecords(static, records)
 	dnsE.applyDNSCacheConfig(cache, storageName, true, false)
-	e.MustAddTypedLinkByPortName(TypeDNS, static, "left", "DNS", cache, "right", "DNS")
-	e.MustAddTypedLinkByPortName(TypeDNS, cache, "left", "DNS", query, "right", "DNS")
+	e.MustAddTypedLinkByPortName(dnsnodes.TypeDNS, static, "left", "DNS", cache, "right", "DNS")
+	e.MustAddTypedLinkByPortName(dnsnodes.TypeDNS, cache, "left", "DNS", query, "right", "DNS")
 	e.WaitNodeLabel(cache, "caching DNS")
 
 	for _, q := range queries {

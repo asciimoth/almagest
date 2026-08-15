@@ -6,6 +6,8 @@ import (
 	"sync"
 	"testing"
 
+	dnsnodes "github.com/asciimoth/almagest/lib/dns"
+
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
 	"github.com/asciimoth/gonnect/dns"
@@ -15,7 +17,7 @@ import (
 
 func TestDnsCachePortsMenuAndSaveConfigE2E(t *testing.T) {
 	e := newDNSE2EWithDNSCacheManager(t, configer.NewMemory(nil), newMemoryDNSCacheManager())
-	cache := e.AddNode(NodeTypeDnsCache, "cache")
+	cache := e.AddNode(dnsnodes.NodeTypeDnsCache, "cache")
 	e.SubscribeMenus(cache)
 
 	snapshot, ok := e.Engine.NodeSnapshot(E2EWorkspace, cache)
@@ -27,7 +29,7 @@ func TestDnsCachePortsMenuAndSaveConfigE2E(t *testing.T) {
 	}
 	assertDNSCachePort(t, e.Engine, snapshot.LeftPorts[0], "left")
 	assertDNSCachePort(t, e.Engine, snapshot.RightPorts[0], "right")
-	e.waitDNSCacheConfig(cache, defaultDnsCacheStorageName, false, false)
+	e.waitDNSCacheConfig(cache, dnsnodes.DefaultDNSCacheStorageName, false, false)
 	e.WaitNodeLabel(cache, "cache-only DNS")
 
 	e.applyDNSCacheConfig(cache, "shared", true, true)
@@ -38,28 +40,28 @@ func TestDnsCachePortsMenuAndSaveConfigE2E(t *testing.T) {
 		t.Fatalf("SaveConfig: %v", err)
 	}
 	nodeCfg := cfg.View(configer.Path{"nodes", "cache"})
-	if got := configer.String(nodeCfg, configer.Path{dnsCacheStorageNameField}, ""); got != "shared" {
+	if got := configer.String(nodeCfg, configer.Path{dnsnodes.DNSCacheStorageNameField}, ""); got != "shared" {
 		t.Fatalf("saved storageName = %q, want shared", got)
 	}
-	if got := configer.Bool(nodeCfg, configer.Path{dnsCacheReverseLookupsField}, false); !got {
+	if got := configer.Bool(nodeCfg, configer.Path{dnsnodes.DNSCacheReverseLookupsField}, false); !got {
 		t.Fatal("saved reverseLookups = false, want true")
 	}
-	if got := configer.Bool(nodeCfg, configer.Path{dnsCacheStorageWriteOnlyField}, false); !got {
+	if got := configer.Bool(nodeCfg, configer.Path{dnsnodes.DNSCacheStorageWriteOnlyField}, false); !got {
 		t.Fatal("saved writeOnly = false, want true")
 	}
 }
 
 func TestDnsCacheServesCachedStaticDNSAfterInputDetachE2E(t *testing.T) {
 	e := newDNSE2EWithDNSCacheManager(t, configer.NewMemory(nil), newMemoryDNSCacheManager())
-	static := e.AddNode(NodeTypeStaticDNS, "static")
-	cache := e.AddNode(NodeTypeDnsCache, "cache")
-	client := e.AddNode(NodeTypeDNSQuery, "client")
+	static := e.AddNode(dnsnodes.NodeTypeStaticDNS, "static")
+	cache := e.AddNode(dnsnodes.NodeTypeDnsCache, "cache")
+	client := e.AddNode(dnsnodes.NodeTypeDNSQuery, "client")
 	e.SubscribeMenus(static, cache, client)
 	e.applyStaticDNSRecords(static, "cached.test A 10.90.0.1")
 	e.setDNSQueryRequest(client, "cached.test.", "A")
 
-	inputLink := e.MustAddTypedLinkByPortName(TypeDNS, static, "left", "DNS", cache, "right", "DNS")
-	e.MustAddTypedLinkByPortName(TypeDNS, cache, "left", "DNS", client, "right", "DNS")
+	inputLink := e.MustAddTypedLinkByPortName(dnsnodes.TypeDNS, static, "left", "DNS", cache, "right", "DNS")
+	e.MustAddTypedLinkByPortName(dnsnodes.TypeDNS, cache, "left", "DNS", client, "right", "DNS")
 	e.WaitNodeLabel(cache, "caching DNS")
 
 	e.sendDNSRequest(client)
@@ -78,11 +80,11 @@ func TestDnsCacheServesCachedStaticDNSAfterInputDetachE2E(t *testing.T) {
 func TestDnsCacheWriteOnlyWarmsSharedStorageE2E(t *testing.T) {
 	manager := newMemoryDNSCacheManager()
 	e := newDNSE2EWithDNSCacheManager(t, configer.NewMemory(nil), manager)
-	static := e.AddNode(NodeTypeStaticDNS, "static")
-	writer := e.AddNode(NodeTypeDnsCache, "writer")
-	reader := e.AddNode(NodeTypeDnsCache, "reader")
-	writerClient := e.AddNode(NodeTypeDNSQuery, "writer-client")
-	readerClient := e.AddNode(NodeTypeDNSQuery, "reader-client")
+	static := e.AddNode(dnsnodes.NodeTypeStaticDNS, "static")
+	writer := e.AddNode(dnsnodes.NodeTypeDnsCache, "writer")
+	reader := e.AddNode(dnsnodes.NodeTypeDnsCache, "reader")
+	writerClient := e.AddNode(dnsnodes.NodeTypeDNSQuery, "writer-client")
+	readerClient := e.AddNode(dnsnodes.NodeTypeDNSQuery, "reader-client")
 	e.SubscribeMenus(static, writer, reader, writerClient, readerClient)
 
 	e.applyStaticDNSRecords(static, "shared-cache.test A 10.91.0.1")
@@ -91,9 +93,9 @@ func TestDnsCacheWriteOnlyWarmsSharedStorageE2E(t *testing.T) {
 	e.setDNSQueryRequest(writerClient, "shared-cache.test.", "A")
 	e.setDNSQueryRequest(readerClient, "shared-cache.test.", "A")
 
-	inputLink := e.MustAddTypedLinkByPortName(TypeDNS, static, "left", "DNS", writer, "right", "DNS")
-	e.MustAddTypedLinkByPortName(TypeDNS, writer, "left", "DNS", writerClient, "right", "DNS")
-	e.MustAddTypedLinkByPortName(TypeDNS, reader, "left", "DNS", readerClient, "right", "DNS")
+	inputLink := e.MustAddTypedLinkByPortName(dnsnodes.TypeDNS, static, "left", "DNS", writer, "right", "DNS")
+	e.MustAddTypedLinkByPortName(dnsnodes.TypeDNS, writer, "left", "DNS", writerClient, "right", "DNS")
+	e.MustAddTypedLinkByPortName(dnsnodes.TypeDNS, reader, "left", "DNS", readerClient, "right", "DNS")
 	e.WaitNodeLabel(writer, "warming DNS cache")
 	e.WaitNodeLabel(reader, "cache-only DNS")
 
@@ -111,16 +113,16 @@ func TestDnsCacheWriteOnlyWarmsSharedStorageE2E(t *testing.T) {
 
 func TestDnsCacheReverseLookupToggleE2E(t *testing.T) {
 	e := newDNSE2EWithDNSCacheManager(t, configer.NewMemory(nil), newMemoryDNSCacheManager())
-	static := e.AddNode(NodeTypeStaticDNS, "static")
-	cache := e.AddNode(NodeTypeDnsCache, "cache")
-	client := e.AddNode(NodeTypeDNSQuery, "client")
+	static := e.AddNode(dnsnodes.NodeTypeStaticDNS, "static")
+	cache := e.AddNode(dnsnodes.NodeTypeDnsCache, "cache")
+	client := e.AddNode(dnsnodes.NodeTypeDNSQuery, "client")
 	e.SubscribeMenus(static, cache, client)
 
 	e.applyStaticDNSRecords(static, "reverse-cache.test A 10.92.0.7")
 	e.applyDNSCacheConfig(cache, "reverse-storage", true, false)
 	e.setDNSQueryRequest(client, "reverse-cache.test.", "A")
-	inputLink := e.MustAddTypedLinkByPortName(TypeDNS, static, "left", "DNS", cache, "right", "DNS")
-	e.MustAddTypedLinkByPortName(TypeDNS, cache, "left", "DNS", client, "right", "DNS")
+	inputLink := e.MustAddTypedLinkByPortName(dnsnodes.TypeDNS, static, "left", "DNS", cache, "right", "DNS")
+	e.MustAddTypedLinkByPortName(dnsnodes.TypeDNS, cache, "left", "DNS", client, "right", "DNS")
 
 	e.sendDNSRequest(client)
 	e.waitDNSResponse(client, "NOERROR", "10.92.0.7")
@@ -134,16 +136,16 @@ func TestDnsCacheReverseLookupToggleE2E(t *testing.T) {
 
 func TestDnsCacheSaveRestorePreservesConfigAndLinksE2E(t *testing.T) {
 	e := newDNSE2EWithDNSCacheManager(t, configer.NewMemory(nil), newMemoryDNSCacheManager())
-	static := e.AddNode(NodeTypeStaticDNS, "static")
-	cache := e.AddNode(NodeTypeDnsCache, "cache")
-	client := e.AddNode(NodeTypeDNSQuery, "client")
+	static := e.AddNode(dnsnodes.NodeTypeStaticDNS, "static")
+	cache := e.AddNode(dnsnodes.NodeTypeDnsCache, "cache")
+	client := e.AddNode(dnsnodes.NodeTypeDNSQuery, "client")
 	e.SubscribeMenus(static, cache, client)
 
 	e.applyStaticDNSRecords(static, "restore-cache.test A 10.93.0.1")
 	e.applyDNSCacheConfig(cache, "restore-storage", true, false)
 	e.setDNSQueryRequest(client, "restore-cache.test.", "A")
-	e.MustAddTypedLinkByPortName(TypeDNS, static, "left", "DNS", cache, "right", "DNS")
-	e.MustAddTypedLinkByPortName(TypeDNS, cache, "left", "DNS", client, "right", "DNS")
+	e.MustAddTypedLinkByPortName(dnsnodes.TypeDNS, static, "left", "DNS", cache, "right", "DNS")
+	e.MustAddTypedLinkByPortName(dnsnodes.TypeDNS, cache, "left", "DNS", client, "right", "DNS")
 	e.sendDNSRequest(client)
 	e.waitDNSResponse(client, "NOERROR", "10.93.0.1")
 
@@ -163,7 +165,7 @@ func TestDnsCacheSaveRestorePreservesConfigAndLinksE2E(t *testing.T) {
 	restored.waitDNSResponse(restoredClient, "NOERROR", "10.93.0.1")
 }
 
-func newDNSE2EWithDNSCacheManager(t *testing.T, cfg configer.Config, manager DnsCacheManager) *dnsE2E {
+func newDNSE2EWithDNSCacheManager(t *testing.T, cfg configer.Config, manager dnsnodes.DnsCacheManager) *dnsE2E {
 	t.Helper()
 	if cfg == nil {
 		cfg = configer.NewMemory(nil)
@@ -205,8 +207,8 @@ func assertDNSCachePort(t *testing.T, engine Engine, port uint64, direction stri
 	if !ok {
 		t.Fatalf("PortSnapshot(%d) missing", port)
 	}
-	if snapshot.Direction != direction || snapshot.Name != "DNS" || len(snapshot.Types) != 1 || snapshot.Types[0] != TypeDNS {
-		t.Fatalf("DNS cache port = %#v, want %s DNS %s", snapshot, direction, TypeDNS)
+	if snapshot.Direction != direction || snapshot.Name != "DNS" || len(snapshot.Types) != 1 || snapshot.Types[0] != dnsnodes.TypeDNS {
+		t.Fatalf("DNS cache port = %#v, want %s DNS %s", snapshot, direction, dnsnodes.TypeDNS)
 	}
 }
 
@@ -214,11 +216,11 @@ func (e *dnsE2E) applyDNSCacheConfig(node uint64, storageName string, reverseLoo
 	e.T.Helper()
 	e.Engine.SendNodeFormularMsg(E2EWorkspace, node, formular.FormApplyMessage{
 		MessageBase: FormMessageBase(formular.MessageFormApply, node),
-		BlockID:     dnsCacheConfigBlockID,
+		BlockID:     dnsnodes.DNSCacheConfigBlockID,
 		Values: map[string]any{
-			dnsCacheStorageNameField:      storageName,
-			dnsCacheReverseLookupsField:   reverseLookups,
-			dnsCacheStorageWriteOnlyField: writeOnly,
+			dnsnodes.DNSCacheStorageNameField:      storageName,
+			dnsnodes.DNSCacheReverseLookupsField:   reverseLookups,
+			dnsnodes.DNSCacheStorageWriteOnlyField: writeOnly,
 		},
 	})
 	e.waitDNSCacheConfig(node, storageName, reverseLookups, writeOnly)
@@ -227,14 +229,14 @@ func (e *dnsE2E) applyDNSCacheConfig(node uint64, storageName string, reverseLoo
 func (e *dnsE2E) waitDNSCacheConfig(node uint64, storageName string, reverseLookups, writeOnly bool) {
 	e.T.Helper()
 	Eventually(e.T, func() bool {
-		return e.dnsCacheFieldString(node, dnsCacheStorageNameField) == storageName &&
-			e.dnsCacheFieldBool(node, dnsCacheReverseLookupsField) == reverseLookups &&
-			e.dnsCacheFieldBool(node, dnsCacheStorageWriteOnlyField) == writeOnly
+		return e.dnsCacheFieldString(node, dnsnodes.DNSCacheStorageNameField) == storageName &&
+			e.dnsCacheFieldBool(node, dnsnodes.DNSCacheReverseLookupsField) == reverseLookups &&
+			e.dnsCacheFieldBool(node, dnsnodes.DNSCacheStorageWriteOnlyField) == writeOnly
 	}, "DnsCache config %q reverse=%v writeOnly=%v", storageName, reverseLookups, writeOnly)
 }
 
 func (e *dnsE2E) dnsCacheFieldString(node uint64, field string) string {
-	item, ok := e.MenuItem(node, dnsCacheConfigBlockID, field)
+	item, ok := e.MenuItem(node, dnsnodes.DNSCacheConfigBlockID, field)
 	if !ok || item.Field == nil {
 		return ""
 	}
@@ -243,7 +245,7 @@ func (e *dnsE2E) dnsCacheFieldString(node uint64, field string) string {
 }
 
 func (e *dnsE2E) dnsCacheFieldBool(node uint64, field string) bool {
-	item, ok := e.MenuItem(node, dnsCacheConfigBlockID, field)
+	item, ok := e.MenuItem(node, dnsnodes.DNSCacheConfigBlockID, field)
 	if !ok || item.Field == nil {
 		return false
 	}

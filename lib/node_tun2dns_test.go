@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	dnsnodes "github.com/asciimoth/almagest/lib/dns"
+
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
 	"github.com/asciimoth/gonnect/dns"
@@ -14,7 +16,7 @@ import (
 
 func TestTun2DnsPortsAndInitialLabel(t *testing.T) {
 	e, _ := newTun2DNSTestE2E(t)
-	bridge := e.AddNode(NodeTypeTun2Dns, "bridge")
+	bridge := e.AddNode(dnsnodes.NodeTypeTun2Dns, "bridge")
 
 	snapshot, ok := e.Engine.NodeSnapshot(E2EWorkspace, bridge)
 	if !ok {
@@ -24,25 +26,25 @@ func TestTun2DnsPortsAndInitialLabel(t *testing.T) {
 		t.Fatalf("Tun2Dns ports = left %v right %v, want one of each", snapshot.LeftPorts, snapshot.RightPorts)
 	}
 	assertPortShape(t, e.NodeE2E, snapshot.LeftPorts[0], "left", "Tun", TypeTun)
-	assertPortShape(t, e.NodeE2E, snapshot.RightPorts[0], "right", "DNS", TypeDNS)
+	assertPortShape(t, e.NodeE2E, snapshot.RightPorts[0], "right", "DNS", dnsnodes.TypeDNS)
 	e.AssertNodeLabel(bridge, "waiting for TUN")
 }
 
 func TestTun2DnsAdaptsPipeTunPacketsToStaticDNS(t *testing.T) {
 	e, providers := newTun2DNSTestE2E(t)
 	provider := e.AddNode(testTunProviderNodeType, "tun")
-	static := e.AddNode(NodeTypeStaticDNS, "static")
-	bridge := e.AddNode(NodeTypeTun2Dns, "bridge")
+	static := e.AddNode(dnsnodes.NodeTypeStaticDNS, "static")
+	bridge := e.AddNode(dnsnodes.NodeTypeTun2Dns, "bridge")
 	e.SubscribeMenus(static)
 	e.applyStaticDNSRecords(static, "pipe.tun2dns.test A 10.144.0.53")
 
 	e.MustAddTypedLinkByPortName(TypeTun, bridge, "left", "Tun", provider, "right", "Tun")
-	e.MustAddTypedLinkByPortName(TypeDNS, static, "left", "DNS", bridge, "right", "DNS")
+	e.MustAddTypedLinkByPortName(dnsnodes.TypeDNS, static, "left", "DNS", bridge, "right", "DNS")
 	e.WaitNodeLabel(bridge, "adapting DNS")
 
 	peer := providers.peer(t, provider)
 	resp := queryTun2DNSPeer(t, peer, "pipe.tun2dns.test.")
-	if got := formatDNSMessage(resp); !strings.Contains(got, "10.144.0.53") {
+	if got := dnsnodes.FormatMessage(resp); !strings.Contains(got, "10.144.0.53") {
 		t.Fatalf("DNS response = %q, want A 10.144.0.53", got)
 	}
 }
@@ -50,27 +52,27 @@ func TestTun2DnsAdaptsPipeTunPacketsToStaticDNS(t *testing.T) {
 func TestTun2DnsReattachesDNSWithoutReplacingTun(t *testing.T) {
 	e, providers := newTun2DNSTestE2E(t)
 	provider := e.AddNode(testTunProviderNodeType, "tun")
-	static := e.AddNode(NodeTypeStaticDNS, "static")
-	bridge := e.AddNode(NodeTypeTun2Dns, "bridge")
+	static := e.AddNode(dnsnodes.NodeTypeStaticDNS, "static")
+	bridge := e.AddNode(dnsnodes.NodeTypeTun2Dns, "bridge")
 	e.SubscribeMenus(static)
 	e.applyStaticDNSRecords(static, "reattach.tun2dns.test A 10.145.0.53")
 
 	e.MustAddTypedLinkByPortName(TypeTun, bridge, "left", "Tun", provider, "right", "Tun")
-	dnsLink := e.MustAddTypedLinkByPortName(TypeDNS, static, "left", "DNS", bridge, "right", "DNS")
+	dnsLink := e.MustAddTypedLinkByPortName(dnsnodes.TypeDNS, static, "left", "DNS", bridge, "right", "DNS")
 	e.WaitNodeLabel(bridge, "adapting DNS")
 	peer := providers.peer(t, provider)
 	first := queryTun2DNSPeer(t, peer, "reattach.tun2dns.test.")
-	if got := formatDNSMessage(first); !strings.Contains(got, "10.145.0.53") {
+	if got := dnsnodes.FormatMessage(first); !strings.Contains(got, "10.145.0.53") {
 		t.Fatalf("first DNS response = %q, want A 10.145.0.53", got)
 	}
 
 	e.Engine.RemoveLink(E2EWorkspace, dnsLink)
 	e.WaitNodeLabel(bridge, "waiting for DNS")
-	e.MustAddTypedLinkByPortName(TypeDNS, static, "left", "DNS", bridge, "right", "DNS")
+	e.MustAddTypedLinkByPortName(dnsnodes.TypeDNS, static, "left", "DNS", bridge, "right", "DNS")
 	e.WaitNodeLabel(bridge, "adapting DNS")
 
 	second := queryTun2DNSPeer(t, peer, "reattach.tun2dns.test.")
-	if got := formatDNSMessage(second); !strings.Contains(got, "10.145.0.53") {
+	if got := dnsnodes.FormatMessage(second); !strings.Contains(got, "10.145.0.53") {
 		t.Fatalf("second DNS response = %q, want A 10.145.0.53", got)
 	}
 }
@@ -79,24 +81,24 @@ func TestTun2DnsE2ETunMiddlewareAndDNSCache(t *testing.T) {
 	e, providers := newTun2DNSTestE2EWithDNSCache(t)
 	provider := e.AddNode(testTunProviderNodeType, "provider")
 	stripper := e.AddNode(NodeTypeTunConfigStripper, "stripper")
-	static := e.AddNode(NodeTypeStaticDNS, "static")
-	cache := e.AddNode(NodeTypeDnsCache, "cache")
-	bridge := e.AddNode(NodeTypeTun2Dns, "bridge")
+	static := e.AddNode(dnsnodes.NodeTypeStaticDNS, "static")
+	cache := e.AddNode(dnsnodes.NodeTypeDnsCache, "cache")
+	bridge := e.AddNode(dnsnodes.NodeTypeTun2Dns, "bridge")
 	e.SubscribeMenus(static, cache)
 
 	e.applyStaticDNSRecords(static, "cached.tun2dns.test A 10.146.0.80")
 
 	e.MustAddTypedLinkByPortName(TypeTun, stripper, "left", "Tun", provider, "right", "Tun")
 	e.MustAddTypedLinkByPortName(TypeTun, bridge, "left", "Tun", stripper, "right", "Tun")
-	e.MustAddTypedLinkByPortName(TypeDNS, static, "left", "DNS", cache, "right", "DNS")
-	e.MustAddTypedLinkByPortName(TypeDNS, cache, "left", "DNS", bridge, "right", "DNS")
+	e.MustAddTypedLinkByPortName(dnsnodes.TypeDNS, static, "left", "DNS", cache, "right", "DNS")
+	e.MustAddTypedLinkByPortName(dnsnodes.TypeDNS, cache, "left", "DNS", bridge, "right", "DNS")
 
 	e.WaitNodeLabel(bridge, "adapting DNS")
 	e.WaitNodeLabel(cache, "caching DNS")
 
 	peer := providers.peer(t, provider)
 	resp := queryTun2DNSPeer(t, peer, "cached.tun2dns.test.")
-	if got := formatDNSMessage(resp); !strings.Contains(got, "10.146.0.80") {
+	if got := dnsnodes.FormatMessage(resp); !strings.Contains(got, "10.146.0.80") {
 		t.Fatalf("DNS response = %q, want A 10.146.0.80", got)
 	}
 }
@@ -105,17 +107,17 @@ func TestTun2DnsSaveRestorePreservesLinks(t *testing.T) {
 	e, providers := newTun2DNSTestE2E(t)
 	provider := e.AddNode(testTunProviderNodeType, "restore-provider")
 	stripper := e.AddNode(NodeTypeTunConfigStripper, "restore-stripper")
-	static := e.AddNode(NodeTypeStaticDNS, "restore-static")
-	bridge := e.AddNode(NodeTypeTun2Dns, "restore-bridge")
+	static := e.AddNode(dnsnodes.NodeTypeStaticDNS, "restore-static")
+	bridge := e.AddNode(dnsnodes.NodeTypeTun2Dns, "restore-bridge")
 	e.SubscribeMenus(static)
 
 	e.applyStaticDNSRecords(static, "restore.tun2dns.test A 10.148.0.90")
 	e.MustAddTypedLinkByPortName(TypeTun, stripper, "left", "Tun", provider, "right", "Tun")
 	e.MustAddTypedLinkByPortName(TypeTun, bridge, "left", "Tun", stripper, "right", "Tun")
-	e.MustAddTypedLinkByPortName(TypeDNS, static, "left", "DNS", bridge, "right", "DNS")
+	e.MustAddTypedLinkByPortName(dnsnodes.TypeDNS, static, "left", "DNS", bridge, "right", "DNS")
 	e.WaitNodeLabel(bridge, "adapting DNS")
 	resp := queryTun2DNSPeer(t, providers.peer(t, provider), "restore.tun2dns.test.")
-	if got := formatDNSMessage(resp); !strings.Contains(got, "10.148.0.90") {
+	if got := dnsnodes.FormatMessage(resp); !strings.Contains(got, "10.148.0.90") {
 		t.Fatalf("DNS response = %q, want A 10.148.0.90", got)
 	}
 
@@ -129,7 +131,7 @@ func TestTun2DnsSaveRestorePreservesLinks(t *testing.T) {
 	restored.WaitNodeLabel(restoredBridge, "adapting DNS")
 	restoredProvider := nodeIDByName(t, restored.Engine, "restore-provider")
 	restoredResp := queryTun2DNSPeer(t, restoredProviders.peer(t, restoredProvider), "restore.tun2dns.test.")
-	if got := formatDNSMessage(restoredResp); !strings.Contains(got, "10.148.0.90") {
+	if got := dnsnodes.FormatMessage(restoredResp); !strings.Contains(got, "10.148.0.90") {
 		t.Fatalf("restored DNS response = %q, want A 10.148.0.90", got)
 	}
 }
@@ -149,7 +151,7 @@ func newTun2DNSTestE2EFromConfig(t *testing.T, cfg configer.Config) (*dnsE2E, *t
 	return newTun2DNSTestE2EWithConfig(t, cfg, nil)
 }
 
-func newTun2DNSTestE2EWithConfig(t *testing.T, cfg configer.Config, manager DnsCacheManager) (*dnsE2E, *testTunProviderRegistry) {
+func newTun2DNSTestE2EWithConfig(t *testing.T, cfg configer.Config, manager dnsnodes.DnsCacheManager) (*dnsE2E, *testTunProviderRegistry) {
 	t.Helper()
 	providers := newTestTunProviderRegistry()
 	pool := newE2ETestDebugPool(t)

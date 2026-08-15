@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	dnsnodes "github.com/asciimoth/almagest/lib/dns"
+
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
 	"github.com/asciimoth/gonnect/dns"
@@ -18,10 +20,10 @@ func TestOutDnsPortsAndLabel(t *testing.T) {
 	w := pasta.NewWorkspace(NewDebugLogFactory(1024))
 	defer w.Close()
 
-	if err := w.AddNodeClass(outDNSClass{engine: &engine{sys: &sysnetdebug.System{OutDNSProvider: source}}}); err != nil {
+	if err := w.AddNodeClass(dnsnodes.OutDNSClass{Runtime: &engine{sys: &sysnetdebug.System{OutDNSProvider: source}}}); err != nil {
 		t.Fatalf("AddNodeClass OutDns: %v", err)
 	}
-	outID, err := w.AddNodeByClass(NodeTypeOutDNS, "out")
+	outID, err := w.AddNodeByClass(dnsnodes.NodeTypeOutDNS, "out")
 	if err != nil {
 		t.Fatalf("AddNodeByClass OutDns: %v", err)
 	}
@@ -64,7 +66,7 @@ func TestOutDnsUsesSystemOutDNSOnInit(t *testing.T) {
 		}
 	}()
 
-	outID, err := engineIface.AddNode(E2EWorkspace, NodeTypeOutDNS, "out")
+	outID, err := engineIface.AddNode(E2EWorkspace, dnsnodes.NodeTypeOutDNS, "out")
 	if err != nil {
 		t.Fatalf("AddNode OutDns: %v", err)
 	}
@@ -74,7 +76,7 @@ func TestOutDnsUsesSystemOutDNSOnInit(t *testing.T) {
 		t.Fatalf("OutDns snapshot = %#v, %v; want one left port", out, ok)
 	}
 
-	receiver := &dnsReceiverNode{events: make(chan DNSPayload, 2)}
+	receiver := &dnsReceiverNode{events: make(chan dnsnodes.DNSPayload, 2)}
 	if _, err := engine.mainWorkspace.AddNode(receiver, "test/DNSReceiver", "receiver"); err != nil {
 		t.Fatalf("AddNode receiver: %v", err)
 	}
@@ -83,7 +85,7 @@ func TestOutDnsUsesSystemOutDNSOnInit(t *testing.T) {
 	}
 
 	payload := receiveReadyDNSPayload(t, receiver.events)
-	if got := DNSSource(payload.DNS); got != source {
+	if got := dnsnodes.DNSSource(payload.DNS); got != source {
 		t.Fatalf("wrapped DNS source = %T %p, want system OutDNS %p", got, got, source)
 	}
 	assertDNSAnswer(t, payload.DNS, "system-out.test.", dns.TypeA, "10.132.0.1")
@@ -93,10 +95,10 @@ func TestOutDnsSendsSystemOutDNSOnReadyAndRequest(t *testing.T) {
 	source := newOutDNSTestProvider(t, "refresh-out.test A 10.132.0.2")
 	w := pasta.NewWorkspace(NewDebugLogFactory(1024))
 	defer w.Close()
-	if err := w.AddNodeClass(outDNSClass{engine: &engine{sys: &sysnetdebug.System{OutDNSProvider: source}}}); err != nil {
+	if err := w.AddNodeClass(dnsnodes.OutDNSClass{Runtime: &engine{sys: &sysnetdebug.System{OutDNSProvider: source}}}); err != nil {
 		t.Fatalf("AddNodeClass OutDns: %v", err)
 	}
-	outID, err := w.AddNodeByClass(NodeTypeOutDNS, "out")
+	outID, err := w.AddNodeByClass(dnsnodes.NodeTypeOutDNS, "out")
 	if err != nil {
 		t.Fatalf("AddNodeByClass OutDns: %v", err)
 	}
@@ -105,7 +107,7 @@ func TestOutDnsSendsSystemOutDNSOnReadyAndRequest(t *testing.T) {
 		t.Fatalf("OutDns snapshot = %#v, %v; want one left port", out, ok)
 	}
 
-	receiver := &dnsReceiverNode{events: make(chan DNSPayload, 3)}
+	receiver := &dnsReceiverNode{events: make(chan dnsnodes.DNSPayload, 3)}
 	receiverID, err := w.AddNode(receiver, "test/DNSReceiver", "receiver")
 	if err != nil {
 		t.Fatalf("AddNode receiver: %v", err)
@@ -115,19 +117,19 @@ func TestOutDnsSendsSystemOutDNSOnReadyAndRequest(t *testing.T) {
 		t.Fatalf("AddLink: %v", err)
 	}
 	first := receiveReadyDNSPayload(t, receiver.events).DNS
-	if got := DNSSource(first); got != source {
+	if got := dnsnodes.DNSSource(first); got != source {
 		t.Fatalf("first wrapped DNS source = %T %p, want %p", got, got, source)
 	}
 
 	w.EmitEvent(receiverID, link, std.RequestValue{})
 	second := receiveReadyDNSPayload(t, receiver.events).DNS
-	if got := DNSSource(second); got != source {
+	if got := dnsnodes.DNSSource(second); got != source {
 		t.Fatalf("request wrapped DNS source = %T %p, want %p", got, got, source)
 	}
-	if SameDNSInstance(first, second) {
+	if dnsnodes.SameDNSInstance(first, second) {
 		t.Fatal("OutDns reused wrapper for explicit request, want fresh detached DNS")
 	}
-	if DNSIsReady(first) {
+	if dnsnodes.DNSIsReady(first) {
 		t.Fatal("first DNS wrapper remained ready after request refresh")
 	}
 	assertDNSAnswer(t, second, "refresh-out.test.", dns.TypeA, "10.132.0.2")
@@ -137,10 +139,10 @@ func TestOutDnsLinkDetachClosesWrapperAndReattachSendsNewWrapper(t *testing.T) {
 	source := newOutDNSTestProvider(t, "reattach-out.test A 10.132.0.3")
 	w := pasta.NewWorkspace(NewDebugLogFactory(1024))
 	defer w.Close()
-	if err := w.AddNodeClass(outDNSClass{engine: &engine{sys: &sysnetdebug.System{OutDNSProvider: source}}}); err != nil {
+	if err := w.AddNodeClass(dnsnodes.OutDNSClass{Runtime: &engine{sys: &sysnetdebug.System{OutDNSProvider: source}}}); err != nil {
 		t.Fatalf("AddNodeClass OutDns: %v", err)
 	}
-	outID, err := w.AddNodeByClass(NodeTypeOutDNS, "out")
+	outID, err := w.AddNodeByClass(dnsnodes.NodeTypeOutDNS, "out")
 	if err != nil {
 		t.Fatalf("AddNodeByClass OutDns: %v", err)
 	}
@@ -149,7 +151,7 @@ func TestOutDnsLinkDetachClosesWrapperAndReattachSendsNewWrapper(t *testing.T) {
 		t.Fatalf("OutDns snapshot = %#v, %v; want one left port", out, ok)
 	}
 
-	receiver := &dnsReceiverNode{events: make(chan DNSPayload, 3)}
+	receiver := &dnsReceiverNode{events: make(chan dnsnodes.DNSPayload, 3)}
 	if _, err := w.AddNode(receiver, "test/DNSReceiver", "receiver"); err != nil {
 		t.Fatalf("AddNode receiver: %v", err)
 	}
@@ -159,7 +161,7 @@ func TestOutDnsLinkDetachClosesWrapperAndReattachSendsNewWrapper(t *testing.T) {
 	}
 	first := receiveReadyDNSPayload(t, receiver.events).DNS
 	w.RemoveLink(link)
-	if DNSIsReady(first) {
+	if dnsnodes.DNSIsReady(first) {
 		t.Fatal("first DNS wrapper remained ready after link removal")
 	}
 
@@ -167,7 +169,7 @@ func TestOutDnsLinkDetachClosesWrapperAndReattachSendsNewWrapper(t *testing.T) {
 		t.Fatalf("reattach link: %v", err)
 	}
 	second := receiveReadyDNSPayload(t, receiver.events).DNS
-	if SameDNSInstance(first, second) {
+	if dnsnodes.SameDNSInstance(first, second) {
 		t.Fatal("OutDns reused detached wrapper after reattach")
 	}
 	assertDNSAnswer(t, second, "reattach-out.test.", dns.TypeA, "10.132.0.3")
@@ -176,10 +178,10 @@ func TestOutDnsLinkDetachClosesWrapperAndReattachSendsNewWrapper(t *testing.T) {
 func TestOutDnsWithoutSystemDoesNotSend(t *testing.T) {
 	w := pasta.NewWorkspace(NewDebugLogFactory(1024))
 	defer w.Close()
-	if err := w.AddNodeClass(outDNSClass{}); err != nil {
+	if err := w.AddNodeClass(dnsnodes.OutDNSClass{}); err != nil {
 		t.Fatalf("AddNodeClass OutDns: %v", err)
 	}
-	outID, err := w.AddNodeByClass(NodeTypeOutDNS, "out")
+	outID, err := w.AddNodeByClass(dnsnodes.NodeTypeOutDNS, "out")
 	if err != nil {
 		t.Fatalf("AddNodeByClass OutDns: %v", err)
 	}
@@ -188,7 +190,7 @@ func TestOutDnsWithoutSystemDoesNotSend(t *testing.T) {
 		t.Fatalf("OutDns snapshot = %#v, %v; want one left port", out, ok)
 	}
 
-	receiver := &dnsReceiverNode{events: make(chan DNSPayload, 2)}
+	receiver := &dnsReceiverNode{events: make(chan dnsnodes.DNSPayload, 2)}
 	receiverID, err := w.AddNode(receiver, "test/DNSReceiver", "receiver")
 	if err != nil {
 		t.Fatalf("AddNode receiver: %v", err)
@@ -204,12 +206,12 @@ func TestOutDnsWithoutSystemDoesNotSend(t *testing.T) {
 
 func TestOutDnsResolvesSystemDefaultDNSE2E(t *testing.T) {
 	e := newOutDNSE2E(t, nil, "default-out.test A 10.133.0.1", nil)
-	out := e.AddNode(NodeTypeOutDNS, "out")
-	query := e.AddNode(NodeTypeDNSQuery, "query")
+	out := e.AddNode(dnsnodes.NodeTypeOutDNS, "out")
+	query := e.AddNode(dnsnodes.NodeTypeDNSQuery, "query")
 	e.SubscribeMenus(query)
 	e.setDNSQueryRequest(query, "default-out.test.", "A")
 
-	e.MustAddTypedLinkByPortName(TypeDNS, out, "left", "DNS", query, "right", "DNS")
+	e.MustAddTypedLinkByPortName(dnsnodes.TypeDNS, out, "left", "DNS", query, "right", "DNS")
 	e.sendDNSRequest(query)
 	e.waitDNSResponse(query, "NOERROR", "10.133.0.1")
 }
@@ -217,16 +219,16 @@ func TestOutDnsResolvesSystemDefaultDNSE2E(t *testing.T) {
 func TestOutDnsWorksThroughDnsCacheAndRouterE2E(t *testing.T) {
 	manager := newMemoryDNSCacheManager()
 	e := newOutDNSE2E(t, nil, "cached-out.test A 10.133.0.2", manager)
-	out := e.AddNode(NodeTypeOutDNS, "out")
-	cache := e.AddNode(NodeTypeDnsCache, "cache")
-	router := e.AddNode(NodeTypeDnsRouter, "router")
-	query := e.AddNode(NodeTypeDNSQuery, "query")
+	out := e.AddNode(dnsnodes.NodeTypeOutDNS, "out")
+	cache := e.AddNode(dnsnodes.NodeTypeDnsCache, "cache")
+	router := e.AddNode(dnsnodes.NodeTypeDnsRouter, "router")
+	query := e.AddNode(dnsnodes.NodeTypeDNSQuery, "query")
 	e.SubscribeMenus(cache, router, query)
 	e.setDNSQueryRequest(query, "cached-out.test.", "A")
 
-	inputLink := e.MustAddTypedLinkByPortName(TypeDNS, out, "left", "DNS", cache, "right", "DNS")
-	e.MustAddTypedLinkByPortName(TypeDNS, cache, "left", "DNS", router, "right", "slot 1")
-	e.MustAddTypedLinkByPortName(TypeDNS, router, "left", "DNS", query, "right", "DNS")
+	inputLink := e.MustAddTypedLinkByPortName(dnsnodes.TypeDNS, out, "left", "DNS", cache, "right", "DNS")
+	e.MustAddTypedLinkByPortName(dnsnodes.TypeDNS, cache, "left", "DNS", router, "right", "slot 1")
+	e.MustAddTypedLinkByPortName(dnsnodes.TypeDNS, router, "left", "DNS", query, "right", "DNS")
 	e.WaitNodeLabel(cache, "caching DNS")
 	e.WaitNodeLabel(router, "routing DNS")
 
@@ -241,11 +243,11 @@ func TestOutDnsWorksThroughDnsCacheAndRouterE2E(t *testing.T) {
 
 func TestOutDnsCopyPastePreservesLinksE2E(t *testing.T) {
 	e := newOutDNSE2E(t, nil, "copy-out.test A 10.133.0.3", nil)
-	out := e.AddNode(NodeTypeOutDNS, "out")
-	query := e.AddNode(NodeTypeDNSQuery, "query")
+	out := e.AddNode(dnsnodes.NodeTypeOutDNS, "out")
+	query := e.AddNode(dnsnodes.NodeTypeDNSQuery, "query")
 	e.SubscribeMenus(query)
 	e.setDNSQueryRequest(query, "copy-out.test.", "A")
-	e.MustAddTypedLinkByPortName(TypeDNS, out, "left", "DNS", query, "right", "DNS")
+	e.MustAddTypedLinkByPortName(dnsnodes.TypeDNS, out, "left", "DNS", query, "right", "DNS")
 	e.sendDNSRequest(query)
 	e.waitDNSResponse(query, "NOERROR", "10.133.0.3")
 
@@ -257,7 +259,7 @@ func TestOutDnsCopyPastePreservesLinksE2E(t *testing.T) {
 	if len(pasted) != 2 {
 		t.Fatalf("Paste returned %d nodes (%v), want 2", len(pasted), pasted)
 	}
-	pastedQuery := pastedNodeByClass(t, e.Engine, pasted, NodeTypeDNSQuery)
+	pastedQuery := pastedNodeByClass(t, e.Engine, pasted, dnsnodes.NodeTypeDNSQuery)
 	e.SubscribeMenus(pastedQuery)
 	e.sendDNSRequest(pastedQuery)
 	e.waitDNSResponse(pastedQuery, "NOERROR", "10.133.0.3")
@@ -266,11 +268,11 @@ func TestOutDnsCopyPastePreservesLinksE2E(t *testing.T) {
 func TestOutDnsSaveRestorePreservesLinksE2E(t *testing.T) {
 	const records = "restore-out.test A 10.133.0.4"
 	e := newOutDNSE2E(t, nil, records, nil)
-	out := e.AddNode(NodeTypeOutDNS, "out")
-	query := e.AddNode(NodeTypeDNSQuery, "query")
+	out := e.AddNode(dnsnodes.NodeTypeOutDNS, "out")
+	query := e.AddNode(dnsnodes.NodeTypeDNSQuery, "query")
 	e.SubscribeMenus(query)
 	e.setDNSQueryRequest(query, "restore-out.test.", "A")
-	e.MustAddTypedLinkByPortName(TypeDNS, out, "left", "DNS", query, "right", "DNS")
+	e.MustAddTypedLinkByPortName(dnsnodes.TypeDNS, out, "left", "DNS", query, "right", "DNS")
 	e.sendDNSRequest(query)
 	e.waitDNSResponse(query, "NOERROR", "10.133.0.4")
 
@@ -288,12 +290,12 @@ func TestOutDnsSaveRestorePreservesLinksE2E(t *testing.T) {
 
 func TestOutDnsLinkAttachDetachReattachE2E(t *testing.T) {
 	e := newOutDNSE2E(t, nil, "lifecycle-out.test A 10.133.0.5", nil)
-	out := e.AddNode(NodeTypeOutDNS, "out")
-	query := e.AddNode(NodeTypeDNSQuery, "query")
+	out := e.AddNode(dnsnodes.NodeTypeOutDNS, "out")
+	query := e.AddNode(dnsnodes.NodeTypeDNSQuery, "query")
 	e.SubscribeMenus(query)
 	e.setDNSQueryRequest(query, "lifecycle-out.test.", "A")
 
-	link := e.MustAddTypedLinkByPortName(TypeDNS, out, "left", "DNS", query, "right", "DNS")
+	link := e.MustAddTypedLinkByPortName(dnsnodes.TypeDNS, out, "left", "DNS", query, "right", "DNS")
 	e.sendDNSRequest(query)
 	e.waitDNSResponse(query, "NOERROR", "10.133.0.5")
 
@@ -302,7 +304,7 @@ func TestOutDnsLinkAttachDetachReattachE2E(t *testing.T) {
 	e.sendDNSRequest(query)
 	e.waitDNSFailure(query, "dns is not ready")
 
-	e.MustAddTypedLinkByPortName(TypeDNS, out, "left", "DNS", query, "right", "DNS")
+	e.MustAddTypedLinkByPortName(dnsnodes.TypeDNS, out, "left", "DNS", query, "right", "DNS")
 	e.waitDNSReady(query)
 	e.sendDNSRequest(query)
 	e.waitDNSResponse(query, "NOERROR", "10.133.0.5")
@@ -314,18 +316,17 @@ func assertOutDNSPort(t *testing.T, w *pasta.Workspace, port uint64) {
 	if !ok {
 		t.Fatalf("PortSnapshot(%d) missing", port)
 	}
-	if snapshot.Direction != "left" || snapshot.Name != "DNS" || len(snapshot.Types) != 1 || snapshot.Types[0] != TypeDNS {
-		t.Fatalf("OutDns port = %#v, want left DNS %s", snapshot, TypeDNS)
+	if snapshot.Direction != "left" || snapshot.Name != "DNS" || len(snapshot.Types) != 1 || snapshot.Types[0] != dnsnodes.TypeDNS {
+		t.Fatalf("OutDns port = %#v, want left DNS %s", snapshot, dnsnodes.TypeDNS)
 	}
 }
 
-func newOutDNSTestProvider(t *testing.T, recordsText string) *staticDNSProvider {
+func newOutDNSTestProvider(t *testing.T, recordsText string) dns.Interface {
 	t.Helper()
-	records, err := parseStaticDNSRecords(recordsText, defaultStaticDNSTTL)
+	provider, err := dnsnodes.NewStaticProvider(recordsText, dnsnodes.DefaultStaticDNSTTL)
 	if err != nil {
-		t.Fatalf("parseStaticDNSRecords(%q): %v", recordsText, err)
+		t.Fatalf("NewStaticProvider(%q): %v", recordsText, err)
 	}
-	provider := newStaticDNSProvider(records)
 	t.Cleanup(func() {
 		if err := provider.Close(); err != nil {
 			t.Errorf("OutDNS provider Close error = %v, want nil", err)
@@ -334,7 +335,7 @@ func newOutDNSTestProvider(t *testing.T, recordsText string) *staticDNSProvider 
 	return provider
 }
 
-func newOutDNSE2E(t *testing.T, cfg configer.Config, recordsText string, manager DnsCacheManager) *dnsE2E {
+func newOutDNSE2E(t *testing.T, cfg configer.Config, recordsText string, manager dnsnodes.DnsCacheManager) *dnsE2E {
 	t.Helper()
 	source := newOutDNSTestProvider(t, recordsText)
 	if cfg == nil {

@@ -1,4 +1,4 @@
-package almagest
+package dnsnodes
 
 import (
 	"crypto/tls"
@@ -15,57 +15,72 @@ import (
 	"github.com/asciimoth/gonnect/dns"
 	"github.com/asciimoth/pasta/pasta"
 	"github.com/asciimoth/pasta/pasta/std"
-)
 
-func init() {
-	regClass(func(e *engine) pasta.NodeClass {
-		return dnsClientClass{engine: e}
-	}, false)
-}
+	"github.com/asciimoth/almagest/lib/nodekit"
+)
 
 const (
 	// NodeTypeDNSClient is the node class name for a DNS transport
 	// client backed by gonnect/dns.Client.
 	NodeTypeDNSClient = "almagest/DnsClient"
 
-	dnsClientConfigBlockID = "config"
-	dnsClientServersField  = "servers"
-	dnsClientServerField   = "url"
+	DNSClientConfigBlockID = "config"
+	DNSClientServersField  = "servers"
+	DNSClientServerField   = "url"
 )
 
-var (
-	//go:embed node_dns_client.md
-	dnsClientClassLongDescription string
+//go:embed node_dns_client.md
+var dnsClientClassLongDescription string
 
-	dnsClientNewClient = func(dial gonnect.Dial, bootstrap dns.Interface, spawner gonnect.Spawner, tlsConfig *tls.Config, servers ...string) dns.Interface {
-		client := dns.NewClient(dial, bootstrap, spawner, servers...)
-		client.TLSConfig = cloneTLSClientConfig(tlsConfig)
-		return client
-	}
-)
+// DNSClientFactory creates the transport client owned by a DNS client node.
+type DNSClientFactory func(
+	dial gonnect.Dial,
+	bootstrap dns.Interface,
+	spawner gonnect.Spawner,
+	tlsConfig *tls.Config,
+	servers ...string,
+) dns.Interface
 
-type dnsClientClass struct {
-	engine *engine
+func defaultDNSClientFactory(
+	dial gonnect.Dial,
+	bootstrap dns.Interface,
+	spawner gonnect.Spawner,
+	tlsConfig *tls.Config,
+	servers ...string,
+) dns.Interface {
+	client := dns.NewClient(dial, bootstrap, spawner, servers...)
+	client.TLSConfig = nodekit.CloneTLSClientConfig(tlsConfig)
+	return client
 }
 
-func (dnsClientClass) ClassName() string { return NodeTypeDNSClient }
-func (dnsClientClass) ShortDescription() string {
+// DNSClientClass builds DNS transport client nodes.
+type DNSClientClass struct {
+	Runtime   nodekit.Runtime
+	NewClient DNSClientFactory
+}
+
+func (DNSClientClass) ClassName() string { return NodeTypeDNSClient }
+func (DNSClientClass) ShortDescription() string {
 	return "DNS client"
 }
-func (dnsClientClass) LongDescription() string {
+func (DNSClientClass) LongDescription() string {
 	return dnsClientClassLongDescription
 }
-func (dnsClientClass) DefaultNodeParams() pasta.NodeClassParams {
+func (DNSClientClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: TypeDNS, InitialPorts: []pasta.Port{
 		DNSPort("left", "DNS"),
-		NetworkPort("right", "Network"),
+		nodekit.NetworkPort("right", "Network"),
 		DNSPort("right", "Bootstrap DNS"),
 	}}
 }
-func (c dnsClientClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
+func (c DNSClientClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
 	config := defaultDNSClientConfig()
 	config.read(cfg)
-	return &dnsClientNode{NodeBase: NodeBase{engine: c.engine}, config: config}, nil
+	newClient := c.NewClient
+	if newClient == nil {
+		newClient = defaultDNSClientFactory
+	}
+	return &dnsClientNode{Base: nodekit.Base{Runtime: c.Runtime}, config: config, newClient: newClient}, nil
 }
 
 type dnsClientConfig struct {
@@ -84,13 +99,13 @@ func (c *dnsClientConfig) read(cfg configer.Config) {
 	if servers, ok := readDNSClientServersConfig(cfg); ok {
 		c.servers = servers
 	}
-	c.tlsConfigName = readNodeTLSConfigName(cfg)
+	c.tlsConfigName = nodekit.ReadTLSConfigName(cfg)
 	c.normalize()
 }
 
 func (c *dnsClientConfig) normalize() {
-	c.servers = normalizeDNSClientServers(c.servers)
-	c.tlsConfigName = normalizeNodeTLSConfigName(c.tlsConfigName)
+	c.servers = NormalizeDNSClientServers(c.servers)
+	c.tlsConfigName = nodekit.NormalizeTLSConfigName(c.tlsConfigName)
 }
 
 func (c dnsClientConfig) valid() error {
@@ -111,7 +126,7 @@ func (c dnsClientConfig) copy() dnsClientConfig {
 // config change closes emitted wrappers and the old client before publishing
 // detached wrappers around the new client to existing consumers.
 type dnsClientNode struct {
-	NodeBase
+	nodekit.Base
 
 	out       uint64
 	networkIn uint64
@@ -120,9 +135,10 @@ type dnsClientNode struct {
 	networkLink   uint64
 	bootstrapLink uint64
 
-	config dnsClientConfig
+	config    dnsClientConfig
+	newClient DNSClientFactory
 
-	network      NetworkCloser
+	network      nodekit.NetworkCloser
 	bootstrapDNS dns.Interface
 	client       dns.Interface
 	outputs      DNSOutputCache
@@ -136,9 +152,9 @@ type dnsClientNode struct {
 
 func (n *dnsClientNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
 	n.InitBaseNode(w, logger, id)
-	n.out = restoredLeft(restored, 0)
-	n.networkIn = restoredRight(restored, 0)
-	n.bootstrap = restoredRight(restored, 1)
+	n.out = nodekit.RestoredLeft(restored, 0)
+	n.networkIn = nodekit.RestoredRight(restored, 0)
+	n.bootstrap = nodekit.RestoredRight(restored, 1)
 	if err := n.SetPrimary(TypeDNS); err != nil {
 		return err
 	}
@@ -160,11 +176,11 @@ func (n *dnsClientNode) OnReady() error {
 
 func (n *dnsClientNode) OnStop() {
 	n.outputs.CloseAll()
-	closeDNS(n.client)
+	CloseDNS(n.client)
 	n.client = nil
-	closeDNS(n.bootstrapDNS)
+	CloseDNS(n.bootstrapDNS)
 	n.bootstrapDNS = nil
-	_ = closeNetwork(n.network)
+	_ = nodekit.CloseNetwork(n.network)
 	n.network = nil
 	n.networkLink = 0
 	n.bootstrapLink = 0
@@ -177,7 +193,7 @@ func (n *dnsClientNode) PreLinkAdd(port uint64, linkType, portDirection string) 
 			return pasta.LinkTypeErr(linkType)
 		}
 	case n.networkIn:
-		if portDirection != "right" || linkType != TypeNetwork {
+		if portDirection != "right" || linkType != nodekit.TypeNetwork {
 			return pasta.LinkTypeErr(linkType)
 		}
 		if n.PortHasLinks(port) {
@@ -200,12 +216,12 @@ func (n *dnsClientNode) OnLinkAdd(link, port uint64, linkType, portDirection str
 	switch {
 	case port == n.out && portDirection == "left" && linkType == TypeDNS:
 		n.sendToLink(link)
-	case port == n.networkIn && portDirection == "right" && linkType == TypeNetwork:
+	case port == n.networkIn && portDirection == "right" && linkType == nodekit.TypeNetwork:
 		n.networkLink = link
-		std.RequestLocked(n.w, n.id, link)
+		std.RequestLocked(n.W, n.ID, link)
 	case port == n.bootstrap && portDirection == "right" && linkType == TypeDNS:
 		n.bootstrapLink = link
-		std.RequestLocked(n.w, n.id, link)
+		std.RequestLocked(n.W, n.ID, link)
 	}
 	return n.updateLabel()
 }
@@ -214,15 +230,15 @@ func (n *dnsClientNode) OnLinkRemoved(link, port uint64, linkType, portDirection
 	switch {
 	case port == n.out && portDirection == "left" && linkType == TypeDNS:
 		n.outputs.Close(link)
-	case port == n.networkIn && portDirection == "right" && linkType == TypeNetwork && link == n.networkLink:
+	case port == n.networkIn && portDirection == "right" && linkType == nodekit.TypeNetwork && link == n.networkLink:
 		n.outputs.CloseAll()
-		closeDNS(n.client)
+		CloseDNS(n.client)
 		n.client = nil
-		_ = closeNetwork(n.network)
+		_ = nodekit.CloseNetwork(n.network)
 		n.network = nil
 		n.networkLink = 0
 	case port == n.bootstrap && portDirection == "right" && linkType == TypeDNS && link == n.bootstrapLink:
-		closeDNS(n.bootstrapDNS)
+		CloseDNS(n.bootstrapDNS)
 		n.bootstrapDNS = nil
 		n.bootstrapLink = 0
 		n.rebuildClient()
@@ -235,11 +251,11 @@ func (n *dnsClientNode) OnEvent(event pasta.Event, linkType string, _ []string, 
 		n.refreshLink(event.Link)
 		return nil
 	}
-	if event.ReceiverPort == n.networkIn && receiverPortDirection == "right" && linkType == TypeNetwork {
+	if event.ReceiverPort == n.networkIn && receiverPortDirection == "right" && linkType == nodekit.TypeNetwork {
 		if event.Link != n.networkLink {
 			return nil
 		}
-		next, changed := AcceptNetworkPayload(n.w, n.id, event, n.network)
+		next, changed := nodekit.AcceptNetworkPayload(n.W, n.ID, event, n.network)
 		if !changed {
 			return nil
 		}
@@ -251,7 +267,7 @@ func (n *dnsClientNode) OnEvent(event pasta.Event, linkType string, _ []string, 
 		if event.Link != n.bootstrapLink {
 			return nil
 		}
-		next, changed := AcceptDNSPayload(n.w, n.id, event, n.bootstrapDNS)
+		next, changed := AcceptDNSPayload(n.W, n.ID, event, n.bootstrapDNS)
 		if !changed {
 			return nil
 		}
@@ -263,7 +279,7 @@ func (n *dnsClientNode) OnEvent(event pasta.Event, linkType string, _ []string, 
 }
 
 func (n *dnsClientNode) OnInbox(message pasta.InboxMessage) error {
-	if msg, ok := message.Payload.(TlsConfigChanged); ok {
+	if msg, ok := message.Payload.(nodekit.TlsConfigChanged); ok {
 		n.handleTLSConfigChanged(msg)
 	}
 	return nil
@@ -272,12 +288,12 @@ func (n *dnsClientNode) OnInbox(message pasta.InboxMessage) error {
 func (n *dnsClientNode) OnFormularMsg(message any) error {
 	switch msg := message.(type) {
 	case formular.FormApplyMessage:
-		if msg.MenuID != pasta.NodeMenuID(n.id) || msg.BlockID != dnsClientConfigBlockID {
+		if msg.MenuID != pasta.NodeMenuID(n.ID) || msg.BlockID != DNSClientConfigBlockID {
 			return nil
 		}
 		return n.applyConfigForm(msg.Values)
 	case formular.FieldValidateMessage:
-		if msg.MenuID != pasta.NodeMenuID(n.id) || msg.Field.BlockID != dnsClientConfigBlockID {
+		if msg.MenuID != pasta.NodeMenuID(n.ID) || msg.Field.BlockID != DNSClientConfigBlockID {
 			return nil
 		}
 		n.sendConfigFieldStatus(msg)
@@ -297,10 +313,10 @@ func (n *dnsClientNode) OnSave(cfg configer.Config) error {
 
 func (n *dnsClientNode) applyConfigForm(values map[string]any) error {
 	next := n.config.copy()
-	if value, ok := dnsClientServersFromAny(values[dnsClientServersField]); ok {
+	if value, ok := dnsClientServersFromAny(values[DNSClientServersField]); ok {
 		next.servers = value
 	}
-	if value, ok := nodeTLSConfigValueFromAny(values[nodeTLSConfigFieldID]); ok {
+	if value, ok := nodekit.TLSConfigValueFromAny(values[nodekit.TLSConfigFieldID]); ok {
 		next.tlsConfigName = value
 	}
 	next.normalize()
@@ -324,24 +340,24 @@ func (n *dnsClientNode) applyConfigForm(values map[string]any) error {
 }
 
 func (n *dnsClientNode) sendConfigFieldStatus(msg formular.FieldValidateMessage) {
-	sendNodeFieldStatus(n.w, n.id, msg.Field, validateDNSClientServerField(msg))
+	nodekit.SendNodeFieldStatus(n.W, n.ID, msg.Field, validateDNSClientServerField(msg))
 }
 
 func (n *dnsClientNode) rebuildClient() {
 	n.outputs.CloseAll()
-	closeDNS(n.client)
+	CloseDNS(n.client)
 	n.client = nil
-	if n.formError != "" || n.tlsConfigErr != "" || len(n.config.servers) == 0 || !NetworkIsReady(n.network) {
+	if n.formError != "" || n.tlsConfigErr != "" || len(n.config.servers) == 0 || !nodekit.NetworkIsReady(n.network) {
 		return
 	}
-	client := dnsClientNewClient(n.network.Dial, n.bootstrapDNS, n.dnsSpawner(), n.currentTLSConfig(), n.config.servers...)
+	client := n.newClient(n.network.Dial, n.bootstrapDNS, n.dnsSpawner(), n.currentTLSConfig(), n.config.servers...)
 	n.client = client
-	BindDNSResource(n.w, n.id, 0, client)
+	BindDNSResource(n.W, n.ID, 0, client)
 	n.sendAll()
 }
 
-func (n *dnsClientNode) handleTLSConfigChanged(msg TlsConfigChanged) {
-	nextName, relevant := handleNodeTLSConfigChanged(n.config.tlsConfigName, n.tlsConfigEffective, msg)
+func (n *dnsClientNode) handleTLSConfigChanged(msg nodekit.TlsConfigChanged) {
+	nextName, relevant := nodekit.HandleTLSConfigChanged(n.config.tlsConfigName, n.tlsConfigEffective, msg)
 	if !relevant {
 		n.sendForcedMenuSnapshot()
 		return
@@ -354,9 +370,9 @@ func (n *dnsClientNode) handleTLSConfigChanged(msg TlsConfigChanged) {
 }
 
 func (n *dnsClientNode) refreshTLSConfig() {
-	result, err := resolveNodeTLSClientConfig(&n.NodeBase, n.config.tlsConfigName)
-	n.tlsConfig = result.config
-	n.tlsConfigEffective = result.effectiveName
+	result, err := nodekit.ResolveTLSClientConfig(&n.Base, n.config.tlsConfigName)
+	n.tlsConfig = result.Config
+	n.tlsConfigEffective = result.EffectiveName
 	n.tlsConfigErr = ""
 	if err != nil {
 		n.tlsConfigErr = err.Error()
@@ -364,26 +380,26 @@ func (n *dnsClientNode) refreshTLSConfig() {
 }
 
 func (n *dnsClientNode) currentTLSConfig() *tls.Config {
-	return cloneTLSClientConfig(n.tlsConfig)
+	return nodekit.CloneTLSClientConfig(n.tlsConfig)
 }
 
 func (n *dnsClientNode) dnsSpawner() gonnect.Spawner {
-	if n.workerSpawner.tracker == nil {
+	if n.WorkerSpawner == nil {
 		return nil
 	}
-	return n.workerSpawner
+	return n.WorkerSpawner
 }
 
 func (n *dnsClientNode) sendAll() {
-	n.outputs.SendPortLocked(n.w, n.id, n.out, n.client)
+	n.outputs.SendPortLocked(n.W, n.ID, n.out, n.client)
 }
 
 func (n *dnsClientNode) sendToLink(link uint64) {
-	n.outputs.SendLocked(n.w, n.id, link, n.client)
+	n.outputs.SendLocked(n.W, n.ID, link, n.client)
 }
 
 func (n *dnsClientNode) refreshLink(link uint64) {
-	n.outputs.RefreshLocked(n.w, n.id, link, n.client)
+	n.outputs.RefreshLocked(n.W, n.ID, link, n.client)
 }
 
 func (n *dnsClientNode) updateLabel() error {
@@ -392,7 +408,7 @@ func (n *dnsClientNode) updateLabel() error {
 		return n.SetLabel("invalid config")
 	case n.tlsConfigErr != "":
 		return n.SetLabel("invalid TLS config")
-	case !NetworkIsReady(n.network):
+	case !nodekit.NetworkIsReady(n.network):
 		return n.SetLabel("waiting for network")
 	case len(n.config.servers) == 0:
 		return n.SetLabel("no DNS servers")
@@ -404,11 +420,11 @@ func (n *dnsClientNode) updateLabel() error {
 }
 
 func (n *dnsClientNode) sendMenuSnapshot() {
-	sendNodeMenuSnapshot(n.w, n.id, false, n.configBlock())
+	nodekit.SendNodeMenuSnapshot(n.W, n.ID, false, n.configBlock())
 }
 
 func (n *dnsClientNode) sendForcedMenuSnapshot() {
-	sendNodeMenuSnapshot(n.w, n.id, true, n.configBlock())
+	nodekit.SendNodeMenuSnapshot(n.W, n.ID, true, n.configBlock())
 }
 
 func (n *dnsClientNode) configBlock() formular.Block {
@@ -416,9 +432,9 @@ func (n *dnsClientNode) configBlock() formular.Block {
 	if n.formError != "" {
 		status = append(status, formular.Status(formular.StatusError), formular.StatusText(n.formError))
 	}
-	return formular.Block{ID: dnsClientConfigBlockID, Order: 10, Generation: 1, Form: true, Items: []formular.Item{
-		dnsClientServersFieldItem(dnsClientServersField, "DNS servers", n.config.servers, status...),
-		nodeTLSConfigSelectorItem(&n.NodeBase, n.config.tlsConfigName, n.tlsConfigErr),
+	return formular.Block{ID: DNSClientConfigBlockID, Order: 10, Generation: 1, Form: true, Items: []formular.Item{
+		dnsClientServersFieldItem(DNSClientServersField, "DNS servers", n.config.servers, status...),
+		nodekit.TLSConfigSelectorItem(&n.Base, n.config.tlsConfigName, n.tlsConfigErr),
 	}}
 }
 
@@ -435,7 +451,7 @@ func dnsClientServerTemplate(status ...formular.FieldOption) formular.ArrayTempl
 		Name:  "server",
 		Label: "Server",
 		Items: []formular.Item{
-			formular.TextField(dnsClientServerField, "URL", "", append(status, formular.Placeholder("udp://127.0.0.1:53"))...),
+			formular.TextField(DNSClientServerField, "URL", "", append(status, formular.Placeholder("udp://127.0.0.1:53"))...),
 		},
 	}
 }
@@ -444,7 +460,7 @@ func dnsClientServerElements(values []string, status ...formular.FieldOption) []
 	template := dnsClientServerTemplate(status...)
 	out := make([]formular.ArrayElement, 0, len(values))
 	for i, value := range values {
-		out = append(out, formular.InstantiateArrayTemplate(template, fmt.Sprintf("server-%d", i), map[string]any{dnsClientServerField: value}))
+		out = append(out, formular.InstantiateArrayTemplate(template, fmt.Sprintf("server-%d", i), map[string]any{DNSClientServerField: value}))
 	}
 	return out
 }
@@ -459,7 +475,7 @@ func readDNSClientServersConfig(cfg configer.Config) ([]string, bool) {
 			}
 			servers = append(servers, value)
 		}
-		return normalizeDNSClientServers(servers), true
+		return NormalizeDNSClientServers(servers), true
 	}
 	if value, ok := configer.StringAt(cfg, configer.Path{"servers"}); ok {
 		return splitDNSClientServersText(value), true
@@ -477,17 +493,17 @@ func dnsClientServersFromAny(raw any) ([]string, bool) {
 	}
 	servers := make([]string, 0, len(values))
 	for _, value := range values {
-		server, ok := formular.StringValue(value.Values[dnsClientServerField])
+		server, ok := formular.StringValue(value.Values[DNSClientServerField])
 		if !ok {
 			continue
 		}
 		servers = append(servers, server)
 	}
-	return normalizeDNSClientServers(servers), true
+	return NormalizeDNSClientServers(servers), true
 }
 
 func validateDNSClientServerField(msg formular.FieldValidateMessage) error {
-	if msg.Field.FieldID == dnsClientServersField {
+	if msg.Field.FieldID == DNSClientServersField {
 		if servers, ok := dnsClientServersFromAny(msg.Value); ok {
 			config := dnsClientConfig{servers: servers}
 			config.normalize()
@@ -495,7 +511,7 @@ func validateDNSClientServerField(msg formular.FieldValidateMessage) error {
 		}
 		return nil
 	}
-	if msg.Field.FieldID != dnsClientServerField {
+	if msg.Field.FieldID != DNSClientServerField {
 		return nil
 	}
 	value, ok := formular.StringValue(msg.Value)
@@ -513,10 +529,11 @@ func splitDNSClientServersText(value string) []string {
 	fields := strings.FieldsFunc(value, func(r rune) bool {
 		return r == ',' || r == ';' || r == '\n' || r == '\r' || r == '\t' || r == ' '
 	})
-	return normalizeDNSClientServers(fields)
+	return NormalizeDNSClientServers(fields)
 }
 
-func normalizeDNSClientServers(values []string) []string {
+// NormalizeDNSClientServers normalizes and removes empty DNS server URLs.
+func NormalizeDNSClientServers(values []string) []string {
 	out := make([]string, 0, len(values))
 	for _, value := range values {
 		value = normalizeDNSClientServer(value)

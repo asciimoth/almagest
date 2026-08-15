@@ -10,8 +10,7 @@ type nodeClassConstructor struct {
 	constructor func(*engine) pasta.NodeClass
 }
 
-// This list is populated by init functions via regClass()
-var nodeClassConstructors = []nodeClassConstructor{}
+var nodeClassConstructors []nodeClassConstructor
 
 func regClass(constructor func(*engine) pasta.NodeClass, isDebug bool) {
 	nodeClassConstructors = append(nodeClassConstructors, nodeClassConstructor{
@@ -22,14 +21,14 @@ func regClass(constructor func(*engine) pasta.NodeClass, isDebug bool) {
 
 func nodeClasses(engine *engine, isDebug bool) []pasta.NodeClass {
 	// WARN: At init time engine.mainWorkspace is nil
-	classes := make([]pasta.NodeClass, 0, len(nodeClassConstructors))
+	classes := packageNodeClasses(engine, isDebug)
 	defaultTunSupported := engine != nil && engine.sys != nil && engine.sys.Features().DefaultTun
 	tunSupported := engine != nil && engine.sys != nil && engine.sys.Features().Tun
-	for _, class := range nodeClassConstructors {
-		if class.isDebug && !isDebug {
+	for _, registered := range nodeClassConstructors {
+		if registered.isDebug && !isDebug {
 			continue
 		}
-		nodeClass := class.constructor(engine)
+		nodeClass := registered.constructor(engine)
 		if nodeClass.ClassName() == NodeTypeDefaultTun && !defaultTunSupported {
 			continue
 		}

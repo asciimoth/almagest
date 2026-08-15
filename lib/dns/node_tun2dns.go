@@ -1,4 +1,4 @@
-package almagest
+package dnsnodes
 
 import (
 	"errors"
@@ -11,13 +11,9 @@ import (
 	"github.com/asciimoth/gonnect/tun"
 	"github.com/asciimoth/pasta/pasta"
 	"github.com/asciimoth/pasta/pasta/std"
-)
 
-func init() {
-	regClass(func(e *engine) pasta.NodeClass {
-		return tun2DNSClass{engine: e}
-	}, false)
-}
+	"github.com/asciimoth/almagest/lib/nodekit"
+)
 
 const (
 	// NodeTypeTun2Dns is the node class name for a TUN-to-DNS packet adapter.
@@ -26,23 +22,25 @@ const (
 	defaultTun2DNSPacketSize = 1500
 )
 
-type tun2DNSClass struct {
-	engine *engine
+// Tun2DNSClass builds TUN-to-DNS packet adapter nodes.
+type Tun2DNSClass struct {
+	Runtime nodekit.Runtime
 }
 
-func (tun2DNSClass) ClassName() string        { return NodeTypeTun2Dns }
-func (tun2DNSClass) ShortDescription() string { return "TUN to DNS" }
-func (tun2DNSClass) LongDescription() string {
+func (Tun2DNSClass) ClassName() string        { return NodeTypeTun2Dns }
+func (Tun2DNSClass) ShortDescription() string { return "TUN to DNS" }
+func (Tun2DNSClass) LongDescription() string {
 	return "Adapts raw UDP DNS packets received from an almagest/tun endpoint into requests on an almagest/dns interface, then writes raw IP DNS responses back to the TUN."
 }
-func (tun2DNSClass) DefaultNodeParams() pasta.NodeClassParams {
-	return pasta.NodeClassParams{PrimaryType: TypeTun, InitialPorts: []pasta.Port{
-		TunPort("left", "Tun"),
+func (Tun2DNSClass) DefaultNodeParams() pasta.NodeClassParams {
+	return pasta.NodeClassParams{PrimaryType: nodekit.TypeTun, InitialPorts: []pasta.Port{
+		nodekit.TunPort("left", "Tun"),
 		DNSPort("right", "DNS"),
 	}}
 }
-func (c tun2DNSClass) NewNode(_ configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
-	return &tun2DNSNode{NodeBase: NodeBase{engine: c.engine}, pool: enginePool(c.engine)}, nil
+func (c Tun2DNSClass) NewNode(_ configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
+	base := nodekit.Base{Runtime: c.Runtime}
+	return &tun2DNSNode{Base: base, pool: base.Pool()}, nil
 }
 
 // tun2DNSNode is a two-input adapter around gonnect/dns.IPPacketAdapter. The
@@ -51,7 +49,7 @@ func (c tun2DNSClass) NewNode(_ configer.Config, _ ...*pasta.NodeClassState) (pa
 // current TUN wrapper; replacing the DNS input swaps only the IPPacketAdapter,
 // avoiding competing reads from the same TUN.
 type tun2DNSNode struct {
-	NodeBase
+	nodekit.Base
 
 	pool bufpool.Pool
 
@@ -72,9 +70,9 @@ type tun2DNSNode struct {
 
 func (n *tun2DNSNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
 	n.InitBaseNode(w, logger, id)
-	n.tunIn = restoredLeft(restored, 0)
-	n.dnsIn = restoredRight(restored, 0)
-	if err := n.SetPrimary(TypeTun); err != nil {
+	n.tunIn = nodekit.RestoredLeft(restored, 0)
+	n.dnsIn = nodekit.RestoredRight(restored, 0)
+	if err := n.SetPrimary(nodekit.TypeTun); err != nil {
 		return err
 	}
 	return n.updateLabel()
@@ -96,7 +94,7 @@ func (n *tun2DNSNode) PreLinkAdd(port uint64, linkType, portDirection string) er
 		if portDirection != "left" {
 			return pasta.LinkTypeErr(linkType)
 		}
-		return TunPreLinkAdd(n.w, port, linkType)
+		return nodekit.TunPreLinkAdd(n.W, port, linkType)
 	case n.dnsIn:
 		if portDirection != "right" || linkType != TypeDNS {
 			return pasta.LinkTypeErr(linkType)
@@ -112,19 +110,19 @@ func (n *tun2DNSNode) PreLinkAdd(port uint64, linkType, portDirection string) er
 
 func (n *tun2DNSNode) OnLinkAdd(link, port uint64, linkType, portDirection string) error {
 	switch {
-	case port == n.tunIn && portDirection == "left" && linkType == TypeTun:
+	case port == n.tunIn && portDirection == "left" && linkType == nodekit.TypeTun:
 		n.tunLink = link
-		std.RequestLocked(n.w, n.id, link)
+		std.RequestLocked(n.W, n.ID, link)
 	case port == n.dnsIn && portDirection == "right" && linkType == TypeDNS:
 		n.dnsLink = link
-		std.RequestLocked(n.w, n.id, link)
+		std.RequestLocked(n.W, n.ID, link)
 	}
 	return n.updateLabel()
 }
 
 func (n *tun2DNSNode) OnLinkRemoved(link, port uint64, linkType, portDirection string) error {
 	switch {
-	case port == n.tunIn && portDirection == "left" && linkType == TypeTun && link == n.tunLink:
+	case port == n.tunIn && portDirection == "left" && linkType == nodekit.TypeTun && link == n.tunLink:
 		n.detachRuntime(true, false)
 		n.tunLink = 0
 	case port == n.dnsIn && portDirection == "right" && linkType == TypeDNS && link == n.dnsLink:
@@ -135,9 +133,9 @@ func (n *tun2DNSNode) OnLinkRemoved(link, port uint64, linkType, portDirection s
 }
 
 func (n *tun2DNSNode) OnEvent(event pasta.Event, linkType string, _ []string, receiverPortDirection string) error {
-	if event.ReceiverPort == n.tunIn && receiverPortDirection == "left" && linkType == TypeTun {
+	if event.ReceiverPort == n.tunIn && receiverPortDirection == "left" && linkType == nodekit.TypeTun {
 		if std.IsRequest(event.Payload) {
-			EmitTunConfig(n.w, n.id, event.Link, TunConfig{})
+			nodekit.EmitTunConfig(n.W, n.ID, event.Link, nodekit.TunConfig{})
 			return nil
 		}
 		return n.acceptTun(event)
@@ -158,7 +156,7 @@ func (n *tun2DNSNode) acceptTun(event pasta.Event) error {
 	start := false
 
 	n.mu.Lock()
-	accepted, changed := acceptTunPayload(event, n.tunLink, n.currentTun)
+	accepted, changed := nodekit.AcceptTunPayloadValue(event, n.tunLink, n.currentTun)
 	if !changed {
 		n.mu.Unlock()
 		return nil
@@ -180,7 +178,7 @@ func (n *tun2DNSNode) acceptTun(event pasta.Event) error {
 	n.mu.Unlock()
 
 	closeIPPacketAdapter(oldAdapter)
-	BindTunResource(n.w, n.id, event.Link, next)
+	nodekit.BindTunResource(n.W, n.ID, event.Link, next)
 	if start {
 		n.startTunPump(gen, next)
 	}
@@ -193,7 +191,7 @@ func (n *tun2DNSNode) acceptDNS(event pasta.Event) error {
 	var gen uint64
 
 	n.mu.Lock()
-	next, changed := acceptDNSPayload(event, n.currentDNS)
+	next, changed := AcceptDNSPayloadValue(event, n.currentDNS)
 	if !changed {
 		n.mu.Unlock()
 		return nil
@@ -204,7 +202,7 @@ func (n *tun2DNSNode) acceptDNS(event pasta.Event) error {
 	}
 	n.currentDNS = next
 	n.lastErr = ""
-	if TunIsReady(n.currentTun) && !n.tunFailed {
+	if nodekit.TunIsReady(n.currentTun) && !n.tunFailed {
 		currentTun = n.currentTun
 		gen = n.generation
 		n.adapter = n.newAdapterLocked(gen, currentTun, next)
@@ -212,7 +210,7 @@ func (n *tun2DNSNode) acceptDNS(event pasta.Event) error {
 	n.mu.Unlock()
 
 	closeIPPacketAdapter(oldAdapter)
-	BindDNSResource(n.w, n.id, event.Link, next)
+	BindDNSResource(n.W, n.ID, event.Link, next)
 	return n.updateLabel()
 }
 
@@ -240,8 +238,8 @@ func (n *tun2DNSNode) detachRuntime(dropTun, dropDNS bool) {
 	n.mu.Unlock()
 
 	closeIPPacketAdapter(oldAdapter)
-	_ = closeTun(oldTun)
-	closeDNS(oldDNS)
+	_ = nodekit.CloseTun(oldTun)
+	CloseDNS(oldDNS)
 }
 
 func (n *tun2DNSNode) newAdapterLocked(gen uint64, t tun.Tun, upstream dns.Interface) *dns.IPPacketAdapter {
@@ -307,7 +305,7 @@ func (n *tun2DNSNode) runTunPump(gen uint64, t tun.Tun) {
 func (n *tun2DNSNode) adapterFor(gen uint64, t tun.Tun) *dns.IPPacketAdapter {
 	n.mu.Lock()
 	defer n.mu.Unlock()
-	if gen != n.generation || !SameTunInstance(n.currentTun, t) || n.tunFailed {
+	if gen != n.generation || !nodekit.SameTunInstance(n.currentTun, t) || n.tunFailed {
 		return nil
 	}
 	return n.adapter
@@ -326,7 +324,7 @@ func (n *tun2DNSNode) failTunPump(gen uint64, t tun.Tun, err error) {
 	var oldAdapter *dns.IPPacketAdapter
 	updateLabel := false
 	n.mu.Lock()
-	if gen == n.generation && SameTunInstance(n.currentTun, t) {
+	if gen == n.generation && nodekit.SameTunInstance(n.currentTun, t) {
 		n.tunFailed = true
 		n.lastErr = err.Error()
 		oldAdapter = n.adapter
@@ -335,8 +333,8 @@ func (n *tun2DNSNode) failTunPump(gen uint64, t tun.Tun, err error) {
 	}
 	n.mu.Unlock()
 	closeIPPacketAdapter(oldAdapter)
-	if updateLabel && n.w != nil && n.id != 0 {
-		_ = n.w.SetNodeLabel(n.id, "TUN error")
+	if updateLabel && n.W != nil && n.ID != 0 {
+		_ = n.W.SetNodeLabel(n.ID, "TUN error")
 	}
 }
 
@@ -349,7 +347,7 @@ func (n *tun2DNSNode) updateLabel() error {
 			return n.SetLabel("TUN error")
 		}
 		return n.SetLabel("TUN error")
-	case !TunIsReady(n.currentTun):
+	case !nodekit.TunIsReady(n.currentTun):
 		return n.SetLabel("waiting for TUN")
 	case !DNSIsReady(n.currentDNS):
 		return n.SetLabel("waiting for DNS")

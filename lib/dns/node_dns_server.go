@@ -1,4 +1,4 @@
-package almagest
+package dnsnodes
 
 import (
 	_ "embed"
@@ -8,13 +8,9 @@ import (
 	"github.com/asciimoth/gonnect/dns"
 	"github.com/asciimoth/pasta/pasta"
 	"github.com/asciimoth/pasta/pasta/std"
-)
 
-func init() {
-	regClass(func(e *engine) pasta.NodeClass {
-		return dnsServerClass{engine: e}
-	}, false)
-}
+	"github.com/asciimoth/almagest/lib/nodekit"
+)
 
 const (
 	// NodeTypeDNSServer is the node class name for a UDP DNS server backed by
@@ -27,23 +23,24 @@ var (
 	dnsServerClassLongDescription string
 )
 
-type dnsServerClass struct {
-	engine *engine
+// DNSServerClass builds DNS server nodes.
+type DNSServerClass struct {
+	Runtime nodekit.Runtime
 }
 
-func (dnsServerClass) ClassName() string        { return NodeTypeDNSServer }
-func (dnsServerClass) ShortDescription() string { return "DNS server" }
-func (dnsServerClass) LongDescription() string  { return dnsServerClassLongDescription }
-func (dnsServerClass) DefaultNodeParams() pasta.NodeClassParams {
+func (DNSServerClass) ClassName() string        { return NodeTypeDNSServer }
+func (DNSServerClass) ShortDescription() string { return "DNS server" }
+func (DNSServerClass) LongDescription() string  { return dnsServerClassLongDescription }
+func (DNSServerClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: TypeDNS, InitialPorts: []pasta.Port{
-		NetworkPort("right", "Network"),
+		nodekit.NetworkPort("right", "Network"),
 		DNSPort("right", "DNS"),
 	}}
 }
-func (c dnsServerClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
+func (c DNSServerClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
 	config := defaultDNSServerConfig()
 	config.read(cfg)
-	return &dnsServerNode{NodeBase: NodeBase{engine: c.engine}, config: config}, nil
+	return &dnsServerNode{Base: nodekit.Base{Runtime: c.Runtime}, config: config}, nil
 }
 
 // dnsServerNode owns one UDP packet listener and one gonnect/dns.Server for
@@ -51,7 +48,7 @@ func (c dnsServerClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState)
 // listener lifecycle so DNS link changes can attach to the live server without
 // closing the packet socket.
 type dnsServerNode struct {
-	NodeBase
+	nodekit.Base
 
 	networkIn uint64
 	dnsIn     uint64
@@ -61,7 +58,7 @@ type dnsServerNode struct {
 
 	config dnsServerConfig
 
-	network  NetworkCloser
+	network  nodekit.NetworkCloser
 	upstream dns.Interface
 
 	worker    *dnsServerWorker
@@ -75,8 +72,8 @@ type dnsServerNode struct {
 
 func (n *dnsServerNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
 	n.InitBaseNode(w, logger, id)
-	n.networkIn = restoredRight(restored, 0)
-	n.dnsIn = restoredRight(restored, 1)
+	n.networkIn = nodekit.RestoredRight(restored, 0)
+	n.dnsIn = nodekit.RestoredRight(restored, 1)
 	if err := n.SetPrimary(TypeDNS); err != nil {
 		return err
 	}
@@ -97,9 +94,9 @@ func (n *dnsServerNode) OnReady() error {
 
 func (n *dnsServerNode) OnStop() {
 	n.stopServer()
-	_ = closeNetwork(n.network)
+	_ = nodekit.CloseNetwork(n.network)
 	n.network = nil
-	closeDNS(n.upstream)
+	CloseDNS(n.upstream)
 	n.upstream = nil
 	n.networkLink = 0
 	n.dnsLink = 0
@@ -108,7 +105,7 @@ func (n *dnsServerNode) OnStop() {
 func (n *dnsServerNode) PreLinkAdd(port uint64, linkType, portDirection string) error {
 	switch port {
 	case n.networkIn:
-		if portDirection != "right" || linkType != TypeNetwork {
+		if portDirection != "right" || linkType != nodekit.TypeNetwork {
 			return pasta.LinkTypeErr(linkType)
 		}
 		if n.PortHasLinks(port) {
@@ -129,26 +126,26 @@ func (n *dnsServerNode) PreLinkAdd(port uint64, linkType, portDirection string) 
 
 func (n *dnsServerNode) OnLinkAdd(link, port uint64, linkType, portDirection string) error {
 	switch {
-	case port == n.networkIn && portDirection == "right" && linkType == TypeNetwork:
+	case port == n.networkIn && portDirection == "right" && linkType == nodekit.TypeNetwork:
 		n.networkLink = link
-		std.RequestLocked(n.w, n.id, link)
+		std.RequestLocked(n.W, n.ID, link)
 	case port == n.dnsIn && portDirection == "right" && linkType == TypeDNS:
 		n.dnsLink = link
-		std.RequestLocked(n.w, n.id, link)
+		std.RequestLocked(n.W, n.ID, link)
 	}
 	return n.updateLabel()
 }
 
 func (n *dnsServerNode) OnLinkRemoved(link, port uint64, linkType, portDirection string) error {
 	switch {
-	case port == n.networkIn && portDirection == "right" && linkType == TypeNetwork && link == n.networkLink:
+	case port == n.networkIn && portDirection == "right" && linkType == nodekit.TypeNetwork && link == n.networkLink:
 		old := n.network
 		n.network = nil
 		n.networkLink = 0
 		n.restartServer()
-		_ = closeNetwork(old)
+		_ = nodekit.CloseNetwork(old)
 	case port == n.dnsIn && portDirection == "right" && linkType == TypeDNS && link == n.dnsLink:
-		closeDNS(n.upstream)
+		CloseDNS(n.upstream)
 		n.upstream = nil
 		n.dnsLink = 0
 		n.attachUpstream()
@@ -157,11 +154,11 @@ func (n *dnsServerNode) OnLinkRemoved(link, port uint64, linkType, portDirection
 }
 
 func (n *dnsServerNode) OnEvent(event pasta.Event, linkType string, _ []string, receiverPortDirection string) error {
-	if event.ReceiverPort == n.networkIn && receiverPortDirection == "right" && linkType == TypeNetwork {
+	if event.ReceiverPort == n.networkIn && receiverPortDirection == "right" && linkType == nodekit.TypeNetwork {
 		if event.Link != n.networkLink {
 			return nil
 		}
-		next, changed := AcceptNetworkPayload(n.w, n.id, event, n.network)
+		next, changed := nodekit.AcceptNetworkPayload(n.W, n.ID, event, n.network)
 		if !changed {
 			return nil
 		}
@@ -173,7 +170,7 @@ func (n *dnsServerNode) OnEvent(event pasta.Event, linkType string, _ []string, 
 		if event.Link != n.dnsLink {
 			return nil
 		}
-		next, changed := AcceptDNSPayload(n.w, n.id, event, n.upstream)
+		next, changed := AcceptDNSPayload(n.W, n.ID, event, n.upstream)
 		if !changed {
 			return nil
 		}
@@ -187,7 +184,7 @@ func (n *dnsServerNode) OnEvent(event pasta.Event, linkType string, _ []string, 
 func (n *dnsServerNode) OnInbox(message pasta.InboxMessage) error {
 	switch payload := message.Payload.(type) {
 	case dnsServerStart:
-		if payload.id == n.restartID && n.worker == nil && NetworkIsReady(n.network) && n.formError == "" {
+		if payload.id == n.restartID && n.worker == nil && nodekit.NetworkIsReady(n.network) && n.formError == "" {
 			n.startServer(payload.id, payload.cfg)
 		}
 	case dnsServerReady:
@@ -204,12 +201,12 @@ func (n *dnsServerNode) OnInbox(message pasta.InboxMessage) error {
 func (n *dnsServerNode) OnFormularMsg(message any) error {
 	switch msg := message.(type) {
 	case formular.FormApplyMessage:
-		if msg.MenuID != pasta.NodeMenuID(n.id) || msg.BlockID != dnsServerConfigBlockID {
+		if msg.MenuID != pasta.NodeMenuID(n.ID) || msg.BlockID != DNSServerConfigBlockID {
 			return nil
 		}
 		return n.applyConfigForm(msg.Values)
 	case formular.FieldValidateMessage:
-		if msg.MenuID != pasta.NodeMenuID(n.id) || msg.Field.BlockID != dnsServerConfigBlockID || len(msg.Field.ElementPath) > 0 {
+		if msg.MenuID != pasta.NodeMenuID(n.ID) || msg.Field.BlockID != DNSServerConfigBlockID || len(msg.Field.ElementPath) > 0 {
 			return nil
 		}
 		n.sendConfigFieldStatus(msg)

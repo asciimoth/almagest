@@ -1,4 +1,4 @@
-package almagest
+package dnsnodes
 
 import (
 	"errors"
@@ -34,11 +34,13 @@ func DNSCacheStorageNames(manager DnsCacheManager) []string {
 	return append([]string(nil), out...)
 }
 
-func normalizeOptionalDNSCacheStorageName(name string) string {
+// NormalizeOptionalCacheStorageName normalizes an optional cache storage name.
+func NormalizeOptionalCacheStorageName(name string) string {
 	return strings.TrimSpace(name)
 }
 
-func validateOptionalDNSCacheStorageName(name string) error {
+// ValidateOptionalCacheStorageName validates an optional cache storage name.
+func ValidateOptionalCacheStorageName(name string) error {
 	if name == "" {
 		return nil
 	}
@@ -48,26 +50,28 @@ func validateOptionalDNSCacheStorageName(name string) error {
 	return nil
 }
 
-func dnsCacheStorageForRouting(manager DnsCacheManager, name string) dns.CacheStorage {
-	name = normalizeOptionalDNSCacheStorageName(name)
+// CacheStorageForRouting returns a selected cache storage for routing rules.
+func CacheStorageForRouting(manager DnsCacheManager, name string) dns.CacheStorage {
+	name = NormalizeOptionalCacheStorageName(name)
 	if manager == nil || name == "" {
 		return nil
 	}
 	return manager.Storage(name)
 }
 
-func dnsCacheStorageSelectorField(
+// CacheStorageSelectorField builds a cache storage selector field.
+func CacheStorageSelectorField(
 	id, label, value string,
 	manager DnsCacheManager,
 	statusErr bool,
 	statusText string,
 ) formular.Item {
-	value = normalizeOptionalDNSCacheStorageName(value)
+	value = NormalizeOptionalCacheStorageName(value)
 	opts := []formular.FieldOption{
 		formular.Validation,
 		formular.Placeholder(dnsCacheStorageDisabledPlaceholder),
 	}
-	if allowed := dnsCacheStorageAllowedValues(manager, value); len(allowed) > 0 {
+	if allowed := cacheStorageAllowedValues(manager, value); len(allowed) > 0 {
 		opts = append(opts, formular.AllowedValues(allowed...))
 	}
 	if statusErr {
@@ -78,11 +82,11 @@ func dnsCacheStorageSelectorField(
 	return item
 }
 
-func dnsCacheStorageAllowedValues(manager DnsCacheManager, selected string) []any {
+func cacheStorageAllowedValues(manager DnsCacheManager, selected string) []any {
 	if _, ok := manager.(DnsCacheStorageLister); !ok {
 		return nil
 	}
-	selected = normalizeOptionalDNSCacheStorageName(selected)
+	selected = NormalizeOptionalCacheStorageName(selected)
 	names := DNSCacheStorageNames(manager)
 	values := make([]any, 0, len(names)+2)
 	values = append(values, "")

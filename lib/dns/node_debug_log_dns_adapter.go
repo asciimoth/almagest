@@ -1,4 +1,4 @@
-package almagest
+package dnsnodes
 
 import (
 	"context"
@@ -44,7 +44,7 @@ func (d *debugLogDNS) Close() error {
 	d.log("dns.Close")
 	d.once.Do(func() {
 		d.cancel()
-		closeDNS(d.upstream)
+		CloseDNS(d.upstream)
 		<-d.done
 		d.wg.Wait()
 	})
@@ -120,12 +120,12 @@ func dnsLogMessageSummary(msg *dns.Message) string {
 		fmt.Sprintf("response=%t", msg.Response),
 	}
 	if msg.Response {
-		parts = append(parts, fmt.Sprintf("rcode=%s", dnsRCodeName(msg.RCode)))
+		parts = append(parts, fmt.Sprintf("rcode=%s", RCodeName(msg.RCode)))
 	}
 	if len(msg.Questions) > 0 {
 		questions := make([]string, 0, len(msg.Questions))
 		for _, q := range msg.Questions {
-			questions = append(questions, q.Name+" "+dnsTypeName(q.Type))
+			questions = append(questions, q.Name+" "+TypeName(q.Type))
 		}
 		parts = append(parts, "questions="+strings.Join(questions, ","))
 	}

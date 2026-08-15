@@ -1,4 +1,4 @@
-package almagest
+package dnsnodes
 
 import (
 	"context"
@@ -8,16 +8,18 @@ import (
 	"time"
 
 	"github.com/asciimoth/gonnect/dns"
+
+	"github.com/asciimoth/almagest/lib/logging"
 )
 
 func TestDebugLogDNSLogsRequestAndResponse(t *testing.T) {
-	records, err := parseStaticDNSRecords("logged.test A 192.0.2.55", defaultStaticDNSTTL)
+	records, err := parseStaticDNSRecords("logged.test A 192.0.2.55", DefaultStaticDNSTTL)
 	if err != nil {
 		t.Fatalf("parseStaticDNSRecords: %v", err)
 	}
 	upstream := newStaticDNSProvider(records)
 	t.Cleanup(func() { _ = upstream.Close() })
-	logf := NewDebugLogFactory(16)
+	logf := logging.NewDebugLogFactory(16)
 	logger := newDebugLogDNS(upstream, logf.NodeLogger(1, NodeTypeDebugLogDNS))
 	t.Cleanup(func() { _ = logger.Close() })
 
@@ -39,7 +41,7 @@ func TestDebugLogDNSLogsRequestAndResponse(t *testing.T) {
 
 func TestDebugLogDNSLogsForwardError(t *testing.T) {
 	wantErr := errors.New("upstream failed")
-	logf := NewDebugLogFactory(16)
+	logf := logging.NewDebugLogFactory(16)
 	upstream := newFailingDNS(wantErr)
 	logger := newDebugLogDNS(upstream, logf.NodeLogger(1, NodeTypeDebugLogDNS))
 	t.Cleanup(func() { _ = logger.Close() })
@@ -54,7 +56,7 @@ func TestDebugLogDNSLogsForwardError(t *testing.T) {
 	assertLogContains(t, logs, "error=upstream failed")
 }
 
-func debugLogMessages(entries []DebugLogEntry, class string) []string {
+func debugLogMessages(entries []logging.DebugLogEntry, class string) []string {
 	out := make([]string, 0, len(entries))
 	for _, entry := range entries {
 		if entry.Source.NodeClass == class {

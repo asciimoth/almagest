@@ -1,5 +1,7 @@
 package almagest
 
+import dnsnodes "github.com/asciimoth/almagest/lib/dns"
+
 type TypePalette struct {
 	// TypeColor is a color for rendering links/ports/node primary color in UI
 	TypeColor string `json:"type"`
@@ -41,7 +43,7 @@ var DefaultColorMap = map[string]TypePalette{
 		TypeColor: "#8a5cf6",
 		TextColor: "#ffffff",
 	},
-	TypeDNS: {
+	dnsnodes.TypeDNS: {
 		TypeColor: "#1f7a8c",
 		TextColor: "#ffffff",
 	},

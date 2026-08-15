@@ -7,6 +7,8 @@ import (
 	"github.com/asciimoth/gonnect/sysnet"
 	"github.com/asciimoth/pasta/pasta"
 	"github.com/asciimoth/pasta/pasta/std"
+
+	dnsnodes "github.com/asciimoth/almagest/lib/dns"
 )
 
 func init() {
@@ -32,7 +34,7 @@ func (defaultTunClass) LongDescription() string {
 func (defaultTunClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{Unique: true, PrimaryType: TypeTun, InitialPorts: []pasta.Port{
 		TunPort("right", "Tun"),
-		DNSPort("right", "DNS"),
+		dnsnodes.DNSPort("right", "DNS"),
 	}}
 }
 func (c defaultTunClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
@@ -96,7 +98,7 @@ func (n *defaultTunNode) OnStop() {
 	if n.dtun != nil {
 		n.dtun.SetDns(nil)
 	}
-	closeDNS(n.dnsProvider)
+	dnsnodes.CloseDNS(n.dnsProvider)
 	n.dnsProvider = nil
 	n.dnsLink = 0
 	n.outputTuns.CloseAll()
@@ -118,7 +120,7 @@ func (n *defaultTunNode) PreLinkAdd(port uint64, linkType, portDirection string)
 		}
 		return TunPreLinkAdd(n.w, port, linkType)
 	case n.dnsp:
-		if portDirection != "right" || linkType != TypeDNS {
+		if portDirection != "right" || linkType != dnsnodes.TypeDNS {
 			return pasta.LinkTypeErr(linkType)
 		}
 		if n.PortHasLinks(port) {
@@ -137,7 +139,7 @@ func (n *defaultTunNode) OnLinkAdd(link, port uint64, linkType, portDirection st
 			return nil
 		}
 		n.sendTunToLink(link)
-	case port == n.dnsp && portDirection == "right" && linkType == TypeDNS:
+	case port == n.dnsp && portDirection == "right" && linkType == dnsnodes.TypeDNS:
 		n.dnsLink = link
 		std.RequestLocked(n.w, n.id, link)
 	}
@@ -152,12 +154,12 @@ func (n *defaultTunNode) OnLinkRemoved(link uint64, port uint64, linkType, portD
 		if err := n.configureDefaultTun(); err != nil {
 			return nil
 		}
-	case port == n.dnsp && portDirection == "right" && linkType == TypeDNS && link == n.dnsLink:
+	case port == n.dnsp && portDirection == "right" && linkType == dnsnodes.TypeDNS && link == n.dnsLink:
 		old := n.dnsProvider
 		n.dnsProvider = nil
 		n.dnsLink = 0
 		n.applyDefaultTunDNS()
-		closeDNS(old)
+		dnsnodes.CloseDNS(old)
 	}
 	return nil
 }
@@ -181,11 +183,11 @@ func (n *defaultTunNode) OnEvent(event pasta.Event, linkType string, _ []string,
 		}
 		return nil
 	}
-	if event.ReceiverPort == n.dnsp && receiverPortDirection == "right" && linkType == TypeDNS {
+	if event.ReceiverPort == n.dnsp && receiverPortDirection == "right" && linkType == dnsnodes.TypeDNS {
 		if event.Link != n.dnsLink {
 			return nil
 		}
-		next, changed := AcceptDNSPayload(n.w, n.id, event, n.dnsProvider)
+		next, changed := dnsnodes.AcceptDNSPayload(n.w, n.id, event, n.dnsProvider)
 		if !changed {
 			return nil
 		}

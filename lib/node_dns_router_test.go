@@ -3,6 +3,8 @@ package almagest
 import (
 	"testing"
 
+	dnsnodes "github.com/asciimoth/almagest/lib/dns"
+
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
 	"github.com/asciimoth/gonnect/dns"
@@ -41,7 +43,7 @@ BACKEND slot 1`)
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := route(dnsTestQuery(tc.qname, tc.qtype)); got != tc.want {
-				t.Fatalf("Route(%s %s) = %q, want %q", tc.qname, dnsTypeName(tc.qtype), got, tc.want)
+				t.Fatalf("Route(%s %s) = %q, want %q", tc.qname, dnsnodes.TypeName(tc.qtype), got, tc.want)
 			}
 		})
 	}
@@ -52,7 +54,7 @@ func TestDNSRouterRulesEmptyRoutesDefaultSlot(t *testing.T) {
 	if got := route(dnsTestQuery("example.test.", dns.TypeA)); got != "slot 1" {
 		t.Fatalf("empty rules Route() = %q, want slot 1", got)
 	}
-	if got := dnsRouterRuleSlots(rules); len(got) != 1 || got[0] != 1 {
+	if got := dnsnodes.RouterRuleSlots(rules); len(got) != 1 || got[0] != 1 {
 		t.Fatalf("empty rules slots = %v, want [1]", got)
 	}
 }
@@ -66,7 +68,7 @@ func TestDNSRouterRulesRejectInvalidInput(t *testing.T) {
 		"TRUE\nBACKEND default",
 	} {
 		t.Run(text, func(t *testing.T) {
-			if _, _, err := (&dnsRouterNode{}).compileRules(text); err == nil {
+			if _, _, err := dnsnodes.CompileRouterRules(text); err == nil {
 				t.Fatal("compileRules succeeded, want error")
 			}
 		})
@@ -75,13 +77,13 @@ func TestDNSRouterRulesRejectInvalidInput(t *testing.T) {
 
 func TestDNSRouterNodeEmitsStableRouterAndReviewsSlotPorts(t *testing.T) {
 	w := newDNSRouterTestWorkspace(t)
-	routerID, err := w.AddNodeByClass(NodeTypeDnsRouter, "router")
+	routerID, err := w.AddNodeByClass(dnsnodes.NodeTypeDnsRouter, "router")
 	if err != nil {
 		t.Fatalf("AddNodeByClass DnsRouter: %v", err)
 	}
 	assertDNSRouterRightPorts(t, w, routerID, []string{"slot 1"})
 
-	receiver := &dnsReceiverNode{events: make(chan DNSPayload, 3)}
+	receiver := &dnsReceiverNode{events: make(chan dnsnodes.DNSPayload, 3)}
 	if _, err := w.AddNode(receiver, "test/DNSReceiver", "receiver"); err != nil {
 		t.Fatalf("AddNode receiver: %v", err)
 	}
@@ -103,7 +105,7 @@ func TestDNSRouterNodeEmitsStableRouterAndReviewsSlotPorts(t *testing.T) {
 	if err := w.SaveConfig(cfg); err != nil {
 		t.Fatalf("SaveConfig: %v", err)
 	}
-	if got, err := cfg.Get(configer.Path{"router", dnsRouterRulesField}); err != nil || got != rulesText {
+	if got, err := cfg.Get(configer.Path{"router", dnsnodes.DNSRouterRulesField}); err != nil || got != rulesText {
 		t.Fatalf("saved DnsRouter rules = %q, %v", got, err)
 	}
 }
@@ -121,7 +123,7 @@ func TestDNSRouterNodeValidationReportsStatus(t *testing.T) {
 	}
 	defer w.UnsubscribeNotifications(sub)
 
-	routerID, err := w.AddNodeByClass(NodeTypeDnsRouter, "router")
+	routerID, err := w.AddNodeByClass(dnsnodes.NodeTypeDnsRouter, "router")
 	if err != nil {
 		t.Fatalf("AddNodeByClass DnsRouter: %v", err)
 	}
@@ -129,14 +131,14 @@ func TestDNSRouterNodeValidationReportsStatus(t *testing.T) {
 
 	w.SendNodeFormularMsg(routerID, formular.FieldValidateMessage{
 		MessageBase: FormMessageBase(formular.MessageFieldValidate, routerID),
-		Field:       formular.FieldRef{BlockID: dnsRouterConfigBlockID, FieldID: dnsRouterRulesField},
+		Field:       formular.FieldRef{BlockID: dnsnodes.DNSRouterConfigBlockID, FieldID: dnsnodes.DNSRouterRulesField},
 		Value:       "NOPE\n",
 	})
 	assertDNSRouterRulesStatus(t, state, routerID, formular.StatusError)
 
 	w.SendNodeFormularMsg(routerID, formular.FieldValidateMessage{
 		MessageBase: FormMessageBase(formular.MessageFieldValidate, routerID),
-		Field:       formular.FieldRef{BlockID: dnsRouterConfigBlockID, FieldID: dnsRouterRulesField},
+		Field:       formular.FieldRef{BlockID: dnsnodes.DNSRouterConfigBlockID, FieldID: dnsnodes.DNSRouterRulesField},
 		Value:       "ADDR_S example.test.\nBACKEND slot 1\n",
 	})
 	assertDNSRouterRulesStatus(t, state, routerID, formular.StatusOK)
@@ -144,7 +146,7 @@ func TestDNSRouterNodeValidationReportsStatus(t *testing.T) {
 
 func compileDNSRouterRulesForTest(t *testing.T, text string) (routing.DNSBytecodeRules, dns.RouteFunc) {
 	t.Helper()
-	rules, route, err := (&dnsRouterNode{}).compileRules(text)
+	rules, route, err := dnsnodes.CompileRouterRules(text)
 	if err != nil {
 		t.Fatalf("compileRules: %v", err)
 	}
@@ -156,8 +158,8 @@ func newDNSRouterTestWorkspace(t *testing.T) *pasta.Workspace {
 	w := pasta.NewWorkspace(NewDebugLogFactory(1024))
 	t.Cleanup(func() { w.Close() })
 	for _, class := range []pasta.NodeClass{
-		dnsRouterClass{},
-		staticDNSClass{},
+		dnsnodes.DNSRouterClass{},
+		dnsnodes.StaticDNSClass{},
 	} {
 		if err := w.AddNodeClass(class); err != nil {
 			t.Fatalf("AddNodeClass %s: %v", class.ClassName(), err)
@@ -170,14 +172,14 @@ func applyDNSRouterRulesToWorkspace(t *testing.T, w *pasta.Workspace, node uint6
 	t.Helper()
 	w.SendNodeFormularMsg(node, formular.FormApplyMessage{
 		MessageBase: FormMessageBase(formular.MessageFormApply, node),
-		BlockID:     dnsRouterConfigBlockID,
+		BlockID:     dnsnodes.DNSRouterConfigBlockID,
 		Values: map[string]any{
-			dnsRouterRulesField: rules,
+			dnsnodes.DNSRouterRulesField: rules,
 		},
 	})
 }
 
-func receiveDNSRouterRuntime(t *testing.T, events <-chan DNSPayload) *dns.Router {
+func receiveDNSRouterRuntime(t *testing.T, events <-chan dnsnodes.DNSPayload) *dns.Router {
 	t.Helper()
 	payload := receiveReadyDNSPayload(t, events)
 	wrapped, ok := payload.DNS.(interface{ GetWrapped() any })
@@ -211,7 +213,7 @@ func assertDNSRouterRulesStatus(t *testing.T, state *formular.MenuSnapshotState,
 	if !ok {
 		t.Fatal("menu snapshot missing")
 	}
-	item, ok := FindItem(mustFindBlock(t, snapshot, dnsRouterConfigBlockID), dnsRouterRulesField)
+	item, ok := FindItem(mustFindBlock(t, snapshot, dnsnodes.DNSRouterConfigBlockID), dnsnodes.DNSRouterRulesField)
 	if !ok {
 		t.Fatal("rules item missing")
 	}

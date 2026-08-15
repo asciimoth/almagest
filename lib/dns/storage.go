@@ -1,4 +1,4 @@
-package storage
+package dnsnodes
 
 import "github.com/asciimoth/gonnect/dns"
 

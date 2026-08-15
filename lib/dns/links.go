@@ -1,4 +1,4 @@
-package links
+package dnsnodes
 
 import (
 	"sync"
@@ -7,6 +7,8 @@ import (
 	"github.com/asciimoth/gonnect/dns"
 	"github.com/asciimoth/pasta/pasta"
 	"github.com/asciimoth/pasta/pasta/std"
+
+	"github.com/asciimoth/almagest/lib/links"
 )
 
 // TypeDNS is the Pasta link type carrying gonnect/dns.Interface values.
@@ -77,7 +79,16 @@ func EmitDetachedDNS(w *pasta.Workspace, node, link uint64, source dns.Interface
 
 // BroadcastDNSPort calls send for every link attached to a DNS output port.
 func BroadcastDNSPort(w *pasta.Workspace, _ uint64, port uint64, send func(link uint64)) {
-	forEachPortLink(w, port, send)
+	if w == nil || port == 0 || send == nil {
+		return
+	}
+	snapshot, ok := w.PortSnapshotLocked(port)
+	if !ok {
+		return
+	}
+	for _, link := range snapshot.Links {
+		send(link)
+	}
 }
 
 type dnsOutputEntry struct {
@@ -238,7 +249,7 @@ func SameDNSSource(a, b dns.Interface) bool {
 	if a == nil || b == nil {
 		return a == nil && b == nil
 	}
-	return SameComparableValue(DNSSource(a), DNSSource(b))
+	return links.SameComparableValue(DNSSource(a), DNSSource(b))
 }
 
 // SameDNSInstance reports whether a and b are the same comparable DNS object.
@@ -247,7 +258,7 @@ func SameDNSInstance(a, b dns.Interface) bool {
 	if a == nil || b == nil {
 		return a == nil && b == nil
 	}
-	return SameComparableValue(a, b)
+	return links.SameComparableValue(a, b)
 }
 
 // DNSIsReady reports whether d is usable now. Detached DNS wrappers expose

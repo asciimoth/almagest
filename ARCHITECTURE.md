@@ -2,7 +2,9 @@
 Almagest is a Go userspace network stack built around a Pasta node graph.
 - `lib/` is the reusable module. It owns the engine, built-in node classes,
   workspace-facing APIs, and small subpackages for shared contracts.
-- `lib/links/` owns Almagest Pasta link payloads and per-link output caches.
+- `lib/links/` owns shared non-DNS Pasta link payloads and output caches.
+- `lib/dns/` owns DNS link contracts, cache storage contracts, helpers, and
+  built-in DNS nodes.
 - `lib/logging/` owns reusable logging interfaces and the in-memory debug
   logger.
 - `lib/storage/` owns daemon-provided storage interfaces and error contracts.
@@ -24,9 +26,10 @@ Runtime path:
 
 ## Module Boundaries
 `lib/` may depend on Pasta, Gonnect, Formular, Configer, and Bufpool. Root
-package files keep the engine, built-in node classes, and compatibility aliases
-for public contracts. Shared link, logging, and storage behavior belongs in the
-matching `lib/links`, `lib/logging`, or `lib/storage` package. Library code
+package files keep the engine and cross-domain built-in node classes. Domain
+node packages expose their own classes and public contracts. Shared non-DNS
+link, logging, and storage behavior belongs in the matching `lib/links`,
+`lib/logging`, or `lib/storage` package. Library code
 should not know about daemon config paths, process lifecycle, platform defaults,
 CLI commands, or admin transports.
 
@@ -36,15 +39,18 @@ CLI commands, or admin transports.
 Engine and workspace:
 - `lib/engine.go`: `BuildEngine`, workspace API forwarding, notifications,
   persistence hooks, lifecycle.
-- `lib/nodelist.go`: built-in node class registration.
-- `lib/links/`: `almagest/network`, `almagest/dns`, and `almagest/tun` payload
-  types, resource binding helpers, and output caches.
-- `lib/type_network.go`, `lib/type_dns.go`, `lib/type_tun.go`: root
-  compatibility aliases plus node-only helper providers.
+- `lib/nodelist.go`: root built-in node class registration and filtering.
+- `lib/node_packages.go`: central registration for node subpackages.
+- `lib/links/`: `almagest/network` and `almagest/tun` payload types, resource
+  binding helpers, and output caches.
+- `lib/type_network.go`, `lib/type_tun.go`: root network and TUN facades plus
+  node-only helper providers.
+- `lib/dns/`: DNS links, cache storage contracts, node classes, and helpers.
 - `lib/logging/`: logger interfaces and debug logger implementation.
-- `lib/storage/`: KV, DNS cache, secret, and TLS config storage contracts.
+- `lib/storage/`: KV, secret, and TLS config storage contracts.
 
 Built-in nodes:
+- `lib/dns/`: all DNS-owned node implementations.
 - `lib/node_mock_net.go`: virtual loopback network node.
 - `lib/node_http_server.go`: debug HTTP server over a received network.
 - `lib/node_http_client.go`: HTTP client over a received network.

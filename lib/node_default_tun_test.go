@@ -4,6 +4,7 @@ package almagest
 import (
 	"context"
 	"errors"
+	dnsnodes "github.com/asciimoth/almagest/lib/dns"
 	"reflect"
 	"strings"
 	"sync"
@@ -43,7 +44,7 @@ func TestDefaultTunClassFeatureGate(t *testing.T) {
 	if class.InitialPorts[0].Direction != "right" || class.InitialPorts[0].Name != "Tun" || len(class.InitialPorts[0].Types) != 1 || class.InitialPorts[0].Types[0] != TypeTun {
 		t.Fatalf("DefaultTun first initial port = %#v, want right almagest/tun port", class.InitialPorts[0])
 	}
-	if class.InitialPorts[1].Direction != "right" || class.InitialPorts[1].Name != "DNS" || len(class.InitialPorts[1].Types) != 1 || class.InitialPorts[1].Types[0] != TypeDNS {
+	if class.InitialPorts[1].Direction != "right" || class.InitialPorts[1].Name != "DNS" || len(class.InitialPorts[1].Types) != 1 || class.InitialPorts[1].Types[0] != dnsnodes.TypeDNS {
 		t.Fatalf("DefaultTun second initial port = %#v, want right almagest/dns port", class.InitialPorts[1])
 	}
 }
@@ -52,7 +53,7 @@ func TestDefaultTunDNSPortAttachesDetachesAndReattachesProvider(t *testing.T) {
 	source := newOutDNSTestProvider(t, "default-tun-dns.test A 10.134.0.1")
 	w, sys := newDefaultTunNodeTestWorkspace(t, false)
 	sys.OutDNSProvider = source
-	if err := w.AddNodeClass(outDNSClass{engine: &engine{sys: sys}}); err != nil {
+	if err := w.AddNodeClass(dnsnodes.OutDNSClass{Runtime: &engine{sys: sys}}); err != nil {
 		t.Fatalf("AddNodeClass OutDns: %v", err)
 	}
 
@@ -71,7 +72,7 @@ func TestDefaultTunDNSPortAttachesDetachesAndReattachesProvider(t *testing.T) {
 		t.Fatal("DefaultTun did not call SetDns(nil) after initial build")
 	}
 
-	out, err := w.AddNodeByClass(NodeTypeOutDNS, "out")
+	out, err := w.AddNodeByClass(dnsnodes.NodeTypeOutDNS, "out")
 	if err != nil {
 		t.Fatalf("AddNodeByClass OutDns: %v", err)
 	}
@@ -88,11 +89,11 @@ func TestDefaultTunDNSPortAttachesDetachesAndReattachesProvider(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddLink DNS: %v", err)
 	}
-	if linkType != TypeDNS {
-		t.Fatalf("DNS link type = %q, want %q", linkType, TypeDNS)
+	if linkType != dnsnodes.TypeDNS {
+		t.Fatalf("DNS link type = %q, want %q", linkType, dnsnodes.TypeDNS)
 	}
 	first := waitRecordingDefaultTunDNS(t, dtun, true)
-	if got := DNSSource(first); got != source {
+	if got := dnsnodes.DNSSource(first); got != source {
 		t.Fatalf("DefaultTun DNS source = %T %p, want OutDns source %p", got, got, source)
 	}
 	assertDNSAnswer(t, first, "default-tun-dns.test.", dns.TypeA, "10.134.0.1")
@@ -101,7 +102,7 @@ func TestDefaultTunDNSPortAttachesDetachesAndReattachesProvider(t *testing.T) {
 	if got := waitRecordingDefaultTunDNS(t, dtun, false); got != nil {
 		t.Fatalf("DefaultTun DNS after link removal = %T, want nil", got)
 	}
-	if DNSIsReady(first) {
+	if dnsnodes.DNSIsReady(first) {
 		t.Fatal("DefaultTun kept first DNS wrapper ready after link removal")
 	}
 
@@ -109,10 +110,10 @@ func TestDefaultTunDNSPortAttachesDetachesAndReattachesProvider(t *testing.T) {
 		t.Fatalf("reattach DNS link: %v", err)
 	}
 	second := waitRecordingDefaultTunDNS(t, dtun, true)
-	if SameDNSInstance(first, second) {
+	if dnsnodes.SameDNSInstance(first, second) {
 		t.Fatal("DefaultTun reused detached DNS wrapper after reattach")
 	}
-	if got := DNSSource(second); got != source {
+	if got := dnsnodes.DNSSource(second); got != source {
 		t.Fatalf("reattached DefaultTun DNS source = %T %p, want OutDns source %p", got, got, source)
 	}
 	assertDNSAnswer(t, second, "default-tun-dns.test.", dns.TypeA, "10.134.0.1")
@@ -718,10 +719,10 @@ func TestDefaultTunConfigPersistsAcrossSaveRestoreAndCopyPaste(t *testing.T) {
 
 func TestDefaultTunDNSProviderCopyPastePreservesLinksE2E(t *testing.T) {
 	e := newOutDNSE2E(t, nil, "copy-default-tun.test A 10.134.0.2", nil)
-	out := e.AddNode(NodeTypeOutDNS, "out")
+	out := e.AddNode(dnsnodes.NodeTypeOutDNS, "out")
 	defaultTun := e.AddNode(NodeTypeDefaultTun, "default tun")
 	e.WaitNodeLabel(defaultTun, "ready")
-	e.MustAddTypedLinkByPortName(TypeDNS, out, "left", "DNS", defaultTun, "right", "DNS")
+	e.MustAddTypedLinkByPortName(dnsnodes.TypeDNS, out, "left", "DNS", defaultTun, "right", "DNS")
 	e.waitDefaultTunSystemDNSResponse("copy-default-tun.test.", "10.134.0.2")
 
 	clip := e.Engine.Copy(E2EWorkspace, []uint64{out, defaultTun})
@@ -743,10 +744,10 @@ func TestDefaultTunDNSProviderCopyPastePreservesLinksE2E(t *testing.T) {
 func TestDefaultTunDNSProviderSaveRestorePreservesLinksE2E(t *testing.T) {
 	const records = "restore-default-tun.test A 10.134.0.3"
 	e := newOutDNSE2E(t, nil, records, nil)
-	out := e.AddNode(NodeTypeOutDNS, "out")
+	out := e.AddNode(dnsnodes.NodeTypeOutDNS, "out")
 	defaultTun := e.AddNode(NodeTypeDefaultTun, "default tun")
 	e.WaitNodeLabel(defaultTun, "ready")
-	e.MustAddTypedLinkByPortName(TypeDNS, out, "left", "DNS", defaultTun, "right", "DNS")
+	e.MustAddTypedLinkByPortName(dnsnodes.TypeDNS, out, "left", "DNS", defaultTun, "right", "DNS")
 	e.waitDefaultTunSystemDNSResponse("restore-default-tun.test.", "10.134.0.3")
 
 	cfg := configer.NewMemory(nil)
@@ -762,18 +763,18 @@ func TestDefaultTunDNSProviderSaveRestorePreservesLinksE2E(t *testing.T) {
 
 func TestDefaultTunDNSProviderLinkAttachDetachReattachE2E(t *testing.T) {
 	e := newOutDNSE2E(t, nil, "lifecycle-default-tun.test A 10.134.0.4", nil)
-	out := e.AddNode(NodeTypeOutDNS, "out")
+	out := e.AddNode(dnsnodes.NodeTypeOutDNS, "out")
 	defaultTun := e.AddNode(NodeTypeDefaultTun, "default tun")
 	e.WaitNodeLabel(defaultTun, "ready")
 	e.waitDefaultTunSystemDNSFailure("lifecycle-default-tun.test.")
 
-	link := e.MustAddTypedLinkByPortName(TypeDNS, out, "left", "DNS", defaultTun, "right", "DNS")
+	link := e.MustAddTypedLinkByPortName(dnsnodes.TypeDNS, out, "left", "DNS", defaultTun, "right", "DNS")
 	e.waitDefaultTunSystemDNSResponse("lifecycle-default-tun.test.", "10.134.0.4")
 
 	e.Engine.RemoveLink(E2EWorkspace, link)
 	e.waitDefaultTunSystemDNSFailure("lifecycle-default-tun.test.")
 
-	e.MustAddTypedLinkByPortName(TypeDNS, out, "left", "DNS", defaultTun, "right", "DNS")
+	e.MustAddTypedLinkByPortName(dnsnodes.TypeDNS, out, "left", "DNS", defaultTun, "right", "DNS")
 	e.waitDefaultTunSystemDNSResponse("lifecycle-default-tun.test.", "10.134.0.4")
 }
 
@@ -1000,7 +1001,7 @@ func waitRecordingDefaultTunDNS(t *testing.T, dtun *recordingDefaultTun, wantRea
 	Eventually(t, func() bool {
 		got = dtun.currentDNS()
 		if wantReady {
-			return DNSIsReady(got)
+			return dnsnodes.DNSIsReady(got)
 		}
 		return got == nil
 	}, "DefaultTun DNS provider ready=%v", wantReady)
@@ -1015,7 +1016,7 @@ func (e *dnsE2E) waitDefaultTunSystemDNSResponse(name, want string) {
 		if err != nil || resp == nil || resp.RCode != dns.RCodeSuccess {
 			return false
 		}
-		return strings.Contains(formatDNSMessage(resp), want)
+		return strings.Contains(dnsnodes.FormatMessage(resp), want)
 	}, "DefaultTun system DNS response for %s containing %q", name, want)
 }
 

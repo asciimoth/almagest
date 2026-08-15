@@ -8,9 +8,6 @@ func init() {
 	regClass(func(*engine) pasta.NodeClass {
 		return debugLogNetworkClass{}
 	}, true)
-	regClass(func(*engine) pasta.NodeClass {
-		return debugLogDNSClass{}
-	}, true)
 	regClass(func(e *engine) pasta.NodeClass {
 		return debugLogTunClass{engine: e}
 	}, true)
@@ -18,6 +15,5 @@ func init() {
 
 const (
 	NodeTypeDebugLogNetwork = "almagest/LogNetwork"
-	NodeTypeDebugLogDNS     = "almagest/LogDNS"
 	NodeTypeDebugLogTun     = "almagest/LogTun"
 )

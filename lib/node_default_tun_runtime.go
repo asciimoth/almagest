@@ -6,6 +6,8 @@ import (
 
 	"github.com/asciimoth/gonnect/sysnet"
 	"github.com/asciimoth/pasta/pasta"
+
+	dnsnodes "github.com/asciimoth/almagest/lib/dns"
 )
 
 func (n *defaultTunNode) configureDefaultTun() error {
@@ -110,7 +112,7 @@ func (n *defaultTunNode) applyDefaultTunDNS() {
 	if n.dtun == nil {
 		return
 	}
-	if DNSIsReady(n.dnsProvider) {
+	if dnsnodes.DNSIsReady(n.dnsProvider) {
 		n.dtun.SetDns(n.dnsProvider)
 		return
 	}

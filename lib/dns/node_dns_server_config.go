@@ -1,4 +1,4 @@
-package almagest
+package dnsnodes
 
 import (
 	"errors"
@@ -10,6 +10,8 @@ import (
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
 	"github.com/asciimoth/pasta/pasta"
+
+	"github.com/asciimoth/almagest/lib/nodekit"
 )
 
 const (
@@ -17,10 +19,10 @@ const (
 	DefaultDNSServerHost    = "127.0.0.1"
 	DefaultDNSServerPort    = 5353
 
-	dnsServerConfigBlockID = "listen"
-	dnsServerNetworkField  = "network"
-	dnsServerHostField     = "host"
-	dnsServerPortField     = "port"
+	DNSServerConfigBlockID = "listen"
+	DNSServerNetworkField  = "network"
+	DNSServerHostField     = "host"
+	DNSServerPortField     = "port"
 )
 
 type dnsServerConfig struct {
@@ -41,14 +43,14 @@ func (c *dnsServerConfig) read(cfg configer.Config) {
 	if cfg == nil {
 		return
 	}
-	c.network = configer.String(cfg, configer.Path{dnsServerNetworkField}, c.network)
-	c.host = configer.String(cfg, configer.Path{dnsServerHostField}, c.host)
-	c.port = configer.Int(cfg, configer.Path{dnsServerPortField}, c.port)
+	c.network = configer.String(cfg, configer.Path{DNSServerNetworkField}, c.network)
+	c.host = configer.String(cfg, configer.Path{DNSServerHostField}, c.host)
+	c.port = configer.Int(cfg, configer.Path{DNSServerPortField}, c.port)
 	c.normalize()
 }
 
 func (c *dnsServerConfig) normalize() {
-	c.network = normalizeDNSServerNetwork(c.network)
+	c.network = NormalizeDNSServerNetwork(c.network)
 	c.host = strings.TrimSpace(c.host)
 	if c.host == "" {
 		c.host = defaultDNSServerHostForNetwork(c.network)
@@ -59,7 +61,7 @@ func (c *dnsServerConfig) normalize() {
 }
 
 func (c dnsServerConfig) valid() error {
-	if normalizeDNSServerNetwork(c.network) != c.network {
+	if NormalizeDNSServerNetwork(c.network) != c.network {
 		return fmt.Errorf("unsupported DNS server network %q", c.network)
 	}
 	if strings.TrimSpace(c.host) == "" {
@@ -82,7 +84,8 @@ func (c dnsServerConfig) copy() dnsServerConfig {
 	return c
 }
 
-func normalizeDNSServerNetwork(value string) string {
+// NormalizeDNSServerNetwork normalizes a DNS server network name.
+func NormalizeDNSServerNetwork(value string) string {
 	switch strings.TrimSpace(value) {
 	case "udp", "udp4", "udp6":
 		return strings.TrimSpace(value)
@@ -103,21 +106,21 @@ func (n *dnsServerNode) OnSave(cfg configer.Config) error {
 		return err
 	}
 	return configer.SetMap(cfg, map[string]any{
-		dnsServerNetworkField: n.config.network,
-		dnsServerHostField:    n.config.host,
-		dnsServerPortField:    n.config.port,
+		DNSServerNetworkField: n.config.network,
+		DNSServerHostField:    n.config.host,
+		DNSServerPortField:    n.config.port,
 	})
 }
 
 func (n *dnsServerNode) applyConfigForm(values map[string]any) error {
 	next := n.config.copy()
-	if value, ok := formular.StringValue(values[dnsServerNetworkField]); ok {
+	if value, ok := formular.StringValue(values[DNSServerNetworkField]); ok {
 		next.network = value
 	}
-	if value, ok := formular.StringValue(values[dnsServerHostField]); ok {
+	if value, ok := formular.StringValue(values[DNSServerHostField]); ok {
 		next.host = value
 	}
-	if value, ok := formular.IntValue(values[dnsServerPortField]); ok {
+	if value, ok := formular.IntValue(values[DNSServerPortField]); ok {
 		next.port = value
 	}
 	next.normalize()
@@ -138,20 +141,20 @@ func (n *dnsServerNode) applyConfigForm(values map[string]any) error {
 }
 
 func (n *dnsServerNode) sendConfigFieldStatus(msg formular.FieldValidateMessage) {
-	sendNodeFieldStatus(n.w, n.id, msg.Field, validateDNSServerConfigField(msg))
+	nodekit.SendNodeFieldStatus(n.W, n.ID, msg.Field, validateDNSServerConfigField(msg))
 }
 
 func validateDNSServerConfigField(msg formular.FieldValidateMessage) error {
 	switch msg.Field.FieldID {
-	case dnsServerNetworkField:
+	case DNSServerNetworkField:
 		value, ok := formular.StringValue(msg.Value)
 		if !ok {
 			return nil
 		}
-		if normalizeDNSServerNetwork(value) != strings.TrimSpace(value) {
+		if NormalizeDNSServerNetwork(value) != strings.TrimSpace(value) {
 			return fmt.Errorf("unsupported DNS server network %q", value)
 		}
-	case dnsServerHostField:
+	case DNSServerHostField:
 		value, ok := formular.StringValue(msg.Value)
 		if !ok {
 			return nil
@@ -163,7 +166,7 @@ func validateDNSServerConfigField(msg formular.FieldValidateMessage) error {
 		if strings.ContainsAny(value, " \t\r\n") {
 			return errors.New("host must not contain whitespace")
 		}
-	case dnsServerPortField:
+	case DNSServerPortField:
 		value, ok := formular.IntValue(msg.Value)
 		if !ok {
 			return nil

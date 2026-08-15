@@ -3,6 +3,7 @@ package almagest
 import (
 	"context"
 	"fmt"
+	dnsnodes "github.com/asciimoth/almagest/lib/dns"
 	"net"
 	"net/netip"
 	"strings"
@@ -26,11 +27,11 @@ const (
 
 func TestMeshNamesPortsAndRequiresExplicitNetwork(t *testing.T) {
 	w, _ := newMeshNamesTestWorkspace(t, nil)
-	meshID, err := w.AddNodeByClass(NodeTypeMeshNames, "mesh")
+	meshID, err := w.AddNodeByClass(dnsnodes.NodeTypeMeshNames, "mesh")
 	if err != nil {
 		t.Fatalf("AddNodeByClass MeshNames: %v", err)
 	}
-	receiver := &dnsReceiverNode{events: make(chan DNSPayload, 1)}
+	receiver := &dnsReceiverNode{events: make(chan dnsnodes.DNSPayload, 1)}
 	if _, err := w.AddNode(receiver, "test/DNSReceiver", "receiver"); err != nil {
 		t.Fatalf("AddNode receiver: %v", err)
 	}
@@ -39,9 +40,9 @@ func TestMeshNamesPortsAndRequiresExplicitNetwork(t *testing.T) {
 	if len(mesh.LeftPorts) != 1 || len(mesh.RightPorts) != 2 {
 		t.Fatalf("MeshNames ports = left %v right %v, want one left and two right", mesh.LeftPorts, mesh.RightPorts)
 	}
-	assertMeshNamesPort(t, w, mesh.LeftPorts[0], "left", "DNS", TypeDNS)
+	assertMeshNamesPort(t, w, mesh.LeftPorts[0], "left", "DNS", dnsnodes.TypeDNS)
 	assertMeshNamesPort(t, w, mesh.RightPorts[0], "right", "Network", TypeNetwork)
-	assertMeshNamesPort(t, w, mesh.RightPorts[1], "right", "Fallback DNS", TypeDNS)
+	assertMeshNamesPort(t, w, mesh.RightPorts[1], "right", "Fallback DNS", dnsnodes.TypeDNS)
 
 	if _, _, err := w.AddLink(mesh.LeftPorts[0], receiver.in); err != nil {
 		t.Fatalf("AddLink mesh->receiver: %v", err)
@@ -99,7 +100,7 @@ func TestMeshNamesFallbackDNSIsExplicitAndRemovedOnDetach(t *testing.T) {
 	w, _ := newMeshNamesTestWorkspace(t, newMeshNamesTestNetwork())
 
 	meshID, networkID, receiver := addMeshNamesNetworkAndReceiver(t, w)
-	staticID, err := w.AddNodeByClass(NodeTypeStaticDNS, "fallback")
+	staticID, err := w.AddNodeByClass(dnsnodes.NodeTypeStaticDNS, "fallback")
 	if err != nil {
 		t.Fatalf("AddNodeByClass StaticDns: %v", err)
 	}
@@ -124,7 +125,7 @@ func TestMeshNamesFallbackDNSIsExplicitAndRemovedOnDetach(t *testing.T) {
 	assertNodeLabel(t, w, meshID, "resolving MeshNames with fallback")
 
 	w.RemoveLink(fallbackLink)
-	if DNSIsReady(first) {
+	if dnsnodes.DNSIsReady(first) {
 		t.Fatal("MeshNames left stale DNS output ready after fallback detach")
 	}
 	second := receiveReadyDNSPayload(t, receiver.events).DNS
@@ -150,7 +151,7 @@ func TestMeshNamesLinksAttachDetachReattach(t *testing.T) {
 	assertDNSAnswer(t, first, meshNamesTestMeship+".", gdns.TypeAAAA, meshNamesTestAuthority)
 
 	w.RemoveLink(networkLink)
-	if DNSIsReady(first) {
+	if dnsnodes.DNSIsReady(first) {
 		t.Fatal("MeshNames DNS wrapper remained ready after network detach")
 	}
 	assertNodeLabel(t, w, meshID, "waiting for network")
@@ -160,13 +161,13 @@ func TestMeshNamesLinksAttachDetachReattach(t *testing.T) {
 		t.Fatalf("reattach network link: %v", err)
 	}
 	second := receiveReadyDNSPayload(t, receiver.events).DNS
-	if SameDNSInstance(first, second) {
+	if dnsnodes.SameDNSInstance(first, second) {
 		t.Fatal("MeshNames reused DNS wrapper after network reattach")
 	}
 	assertDNSAnswer(t, second, meshNamesTestMeship+".", gdns.TypeAAAA, meshNamesTestAuthority)
 
 	w.RemoveLink(outputLink)
-	if DNSIsReady(second) {
+	if dnsnodes.DNSIsReady(second) {
 		t.Fatal("MeshNames DNS wrapper remained ready after output link detach")
 	}
 	_ = networkLink
@@ -180,8 +181,8 @@ func newMeshNamesTestWorkspace(t *testing.T, network *meshNamesTestNetwork) (*pa
 	w := pasta.NewWorkspace(NewDebugLogFactory(1024))
 	t.Cleanup(func() { w.Close() })
 	for _, class := range []pasta.NodeClass{
-		meshNamesClass{},
-		staticDNSClass{},
+		dnsnodes.MeshNamesClass{},
+		dnsnodes.StaticDNSClass{},
 		meshNamesTestNetworkClass{network: network},
 	} {
 		if err := w.AddNodeClass(class); err != nil {
@@ -193,7 +194,7 @@ func newMeshNamesTestWorkspace(t *testing.T, network *meshNamesTestNetwork) (*pa
 
 func addMeshNamesNetworkAndReceiver(t *testing.T, w *pasta.Workspace) (uint64, uint64, *dnsReceiverNode) {
 	t.Helper()
-	meshID, err := w.AddNodeByClass(NodeTypeMeshNames, "mesh")
+	meshID, err := w.AddNodeByClass(dnsnodes.NodeTypeMeshNames, "mesh")
 	if err != nil {
 		t.Fatalf("AddNodeByClass MeshNames: %v", err)
 	}
@@ -201,7 +202,7 @@ func addMeshNamesNetworkAndReceiver(t *testing.T, w *pasta.Workspace) (uint64, u
 	if err != nil {
 		t.Fatalf("AddNodeByClass mesh test network: %v", err)
 	}
-	receiver := &dnsReceiverNode{events: make(chan DNSPayload, 6)}
+	receiver := &dnsReceiverNode{events: make(chan dnsnodes.DNSPayload, 6)}
 	if _, err := w.AddNode(receiver, "test/DNSReceiver", "receiver"); err != nil {
 		t.Fatalf("AddNode receiver: %v", err)
 	}
@@ -221,7 +222,7 @@ func assertMeshNamesPort(t *testing.T, w *pasta.Workspace, port uint64, directio
 
 func assertDNSRCode(t *testing.T, d gdns.Interface, name string, qtype uint16, want uint8) *gdns.Message {
 	t.Helper()
-	if !DNSIsReady(d) {
+	if !dnsnodes.DNSIsReady(d) {
 		t.Fatal("DNS wrapper is not ready before query")
 	}
 	resp, err := gdns.Query(context.Background(), d, dnsTestQuery(name, qtype))
@@ -232,7 +233,7 @@ func assertDNSRCode(t *testing.T, d gdns.Interface, name string, qtype uint16, w
 		t.Fatal("DNS response = nil")
 	}
 	if resp.RCode != want {
-		t.Fatalf("DNS response rcode = %s, want %s; response = %s", dnsRCodeName(resp.RCode), dnsRCodeName(want), formatDNSMessage(resp))
+		t.Fatalf("DNS response rcode = %s, want %s; response = %s", dnsnodes.RCodeName(resp.RCode), dnsnodes.RCodeName(want), dnsnodes.FormatMessage(resp))
 	}
 	return resp
 }

@@ -8,6 +8,8 @@ import (
 	"sync"
 	"testing"
 
+	dnsnodes "github.com/asciimoth/almagest/lib/dns"
+
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
 	"github.com/asciimoth/gonnect"
@@ -18,7 +20,7 @@ var errDnsInjectCaptureNetwork = errors.New("dns inject capture network called")
 
 func TestDnsInjectNodeRoutesLookupsAndPreResolvesDialThroughDNS(t *testing.T) {
 	w, capture := newDnsInjectTestWorkspace(t)
-	injectID, err := w.AddNodeByClass(NodeTypeDnsInject, "inject")
+	injectID, err := w.AddNodeByClass(dnsnodes.NodeTypeDnsInject, "inject")
 	if err != nil {
 		t.Fatalf("AddNodeByClass DnsInject: %v", err)
 	}
@@ -26,7 +28,7 @@ func TestDnsInjectNodeRoutesLookupsAndPreResolvesDialThroughDNS(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddNodeByClass capture network: %v", err)
 	}
-	dnsID, err := w.AddNodeByClass(NodeTypeStaticDNS, "dns")
+	dnsID, err := w.AddNodeByClass(dnsnodes.NodeTypeStaticDNS, "dns")
 	if err != nil {
 		t.Fatalf("AddNodeByClass StaticDns: %v", err)
 	}
@@ -65,7 +67,7 @@ func TestDnsInjectNodeRoutesLookupsAndPreResolvesDialThroughDNS(t *testing.T) {
 
 func TestDnsInjectLinksAttachDetachReattach(t *testing.T) {
 	w, capture := newDnsInjectTestWorkspace(t)
-	injectID, err := w.AddNodeByClass(NodeTypeDnsInject, "inject")
+	injectID, err := w.AddNodeByClass(dnsnodes.NodeTypeDnsInject, "inject")
 	if err != nil {
 		t.Fatalf("AddNodeByClass DnsInject: %v", err)
 	}
@@ -73,7 +75,7 @@ func TestDnsInjectLinksAttachDetachReattach(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddNodeByClass capture network: %v", err)
 	}
-	dnsID, err := w.AddNodeByClass(NodeTypeStaticDNS, "dns")
+	dnsID, err := w.AddNodeByClass(dnsnodes.NodeTypeStaticDNS, "dns")
 	if err != nil {
 		t.Fatalf("AddNodeByClass StaticDns: %v", err)
 	}
@@ -186,8 +188,8 @@ func newDnsInjectTestWorkspace(t *testing.T) (*pasta.Workspace, *dnsInjectCaptur
 	t.Cleanup(func() { w.Close() })
 	capture := newDnsInjectCaptureNetwork()
 	for _, class := range []pasta.NodeClass{
-		dnsInjectClass{},
-		staticDNSClass{},
+		dnsnodes.DNSInjectClass{},
+		dnsnodes.StaticDNSClass{},
 		dnsInjectCaptureNetworkClass{network: capture},
 	} {
 		if err := w.AddNodeClass(class); err != nil {
@@ -201,7 +203,7 @@ func applyStaticDNSRecordsToWorkspace(t *testing.T, w *pasta.Workspace, node uin
 	t.Helper()
 	w.SendNodeFormularMsg(node, formularApplyMessage(node, "config", map[string]any{
 		"records": records,
-		"ttl":     defaultStaticDNSTTL,
+		"ttl":     dnsnodes.DefaultStaticDNSTTL,
 	}))
 }
 
@@ -374,8 +376,8 @@ func (e *httpE2E) setupDnsInjectHTTPGraph(host, ip string, port int, prefix stri
 	e.T.Helper()
 	graph := dnsInjectHTTPGraph{
 		mock:       e.AddNode(NodeTypeMockNetwork, prefix+"-mock"),
-		dns:        e.AddNode(NodeTypeStaticDNS, prefix+"-dns"),
-		inject:     e.AddNode(NodeTypeDnsInject, prefix+"-inject"),
+		dns:        e.AddNode(dnsnodes.NodeTypeStaticDNS, prefix+"-dns"),
+		inject:     e.AddNode(dnsnodes.NodeTypeDnsInject, prefix+"-inject"),
 		port:       port,
 		serverName: prefix + "-server",
 		clientName: prefix + "-client",
@@ -386,7 +388,7 @@ func (e *httpE2E) setupDnsInjectHTTPGraph(host, ip string, port int, prefix stri
 	e.applyStaticDNSRecordsEngine(graph.dns, fmt.Sprintf("%s A %s", host, ip))
 	e.waitStaticDNSRecordsEngine(graph.dns, fmt.Sprintf("%s A %s", host, ip))
 	e.MustAddTypedLinkByPortName(TypeNetwork, graph.mock, "left", "Network", graph.inject, "right", "Network")
-	e.MustAddTypedLinkByPortName(TypeDNS, graph.dns, "left", "DNS", graph.inject, "right", "DNS")
+	e.MustAddTypedLinkByPortName(dnsnodes.TypeDNS, graph.dns, "left", "DNS", graph.inject, "right", "DNS")
 	e.MustAddTypedLinkByPortName(TypeNetwork, graph.inject, "left", "Network", graph.server, "right", "Network")
 	e.MustAddTypedLinkByPortName(TypeNetwork, graph.inject, "left", "Network", graph.client, "right", "Network")
 	e.WaitNodeLabel(graph.inject, "injecting DNS")
@@ -402,14 +404,14 @@ func (e *httpE2E) applyStaticDNSRecordsEngine(node uint64, records string) {
 		BlockID:     "config",
 		Values: map[string]any{
 			"records": records,
-			"ttl":     defaultStaticDNSTTL,
+			"ttl":     dnsnodes.DefaultStaticDNSTTL,
 		},
 	})
 }
 
 func (e *httpE2E) waitStaticDNSRecordsEngine(node uint64, records string) {
 	e.T.Helper()
-	want := normalizeStaticDNSRecordsText(records)
+	want := dnsnodes.NormalizeStaticRecordsText(records)
 	Eventually(e.T, func() bool {
 		item, ok := e.MenuItem(node, "config", "records")
 		return ok && item.Field != nil && item.Value == want

@@ -1,4 +1,4 @@
-package almagest
+package dnsnodes
 
 import (
 	"context"
@@ -10,6 +10,8 @@ import (
 	"github.com/asciimoth/gonnect"
 	"github.com/asciimoth/gonnect/dns"
 	"github.com/asciimoth/pasta/pasta"
+
+	"github.com/asciimoth/almagest/lib/nodekit"
 )
 
 var dnsServerNewServer = func(conn net.PacketConn, upstream dns.Interface, spawner gonnect.Spawner) dnsServerRuntime {
@@ -22,11 +24,11 @@ type dnsServerRuntime interface {
 	Detach()
 }
 
-type dnsServerWorker = restartableWorker
+type dnsServerWorker = nodekit.RestartableWorker
 
 type dnsServerWorkerConfig struct {
 	config   dnsServerConfig
-	network  NetworkCloser
+	network  nodekit.NetworkCloser
 	upstream dns.Interface
 	spawner  gonnect.Spawner
 }
@@ -57,7 +59,7 @@ func (n *dnsServerNode) restartServer() {
 	id := n.restartID
 	n.listenErr = ""
 	n.server = nil
-	n.logger.Debug("worker restarting")
+	n.Logger.Debug("worker restarting")
 	n.appendLog(formular.LogInfo, "worker restarting")
 	n.sendLogsBlock()
 
@@ -70,8 +72,8 @@ func (n *dnsServerNode) restartServer() {
 		_ = n.updateLabel()
 		return
 	}
-	if !NetworkIsReady(n.network) {
-		n.logger.Debug("waiting for network")
+	if !nodekit.NetworkIsReady(n.network) {
+		n.Logger.Debug("waiting for network")
 		n.appendLog(formular.LogWarn, "waiting for network")
 		n.sendLogsBlock()
 		_ = n.updateLabel()
@@ -86,8 +88,8 @@ func (n *dnsServerNode) restartServer() {
 	}
 	if old != nil {
 		go func() {
-			<-old.done
-			n.w.SendInbox(pasta.InboxMessage{ReceiverNode: n.id, Payload: dnsServerStart{id: id, cfg: cfg}})
+			<-old.Done()
+			n.W.SendInbox(pasta.InboxMessage{ReceiverNode: n.ID, Payload: dnsServerStart{id: id, cfg: cfg}})
 		}()
 		_ = n.updateLabel()
 		return
@@ -98,15 +100,12 @@ func (n *dnsServerNode) restartServer() {
 
 func (n *dnsServerNode) startServer(id uint64, cfg dnsServerWorkerConfig) {
 	addr := cfg.config.addr()
-	n.logger.Debugf("worker starting on %s/%s", cfg.config.network, addr)
+	n.Logger.Debugf("worker starting on %s/%s", cfg.config.network, addr)
 	n.appendLog(formular.LogInfo, "worker starting on "+cfg.config.network+"/"+addr)
 	n.sendLogsBlock()
-	ctx := context.Background()
-	if n.engine != nil && n.engine.ctx != nil {
-		ctx = n.engine.ctx
-	}
+	ctx := n.Context()
 	worker, err := n.NewRestartableWorker("dns server", func(stop <-chan struct{}) {
-		runDNSServerWorker(ctx, n.logger, n.w, n.id, stop, id, cfg)
+		runDNSServerWorker(ctx, n.Logger, n.W, n.ID, stop, id, cfg)
 	})
 	if err != nil {
 		n.listenErr = err.Error()
@@ -121,7 +120,7 @@ func (n *dnsServerNode) stopServer() {
 	n.server = nil
 	n.listenErr = ""
 	if n.worker != nil {
-		n.logger.Debug("worker stopping")
+		n.Logger.Debug("worker stopping")
 		n.worker.Stop()
 		n.worker = nil
 	}
@@ -140,10 +139,10 @@ func (n *dnsServerNode) attachUpstream() {
 }
 
 func (n *dnsServerNode) dnsSpawner() gonnect.Spawner {
-	if n.workerSpawner.tracker == nil {
+	if n.WorkerSpawner == nil {
 		return nil
 	}
-	return n.workerSpawner
+	return n.WorkerSpawner
 }
 
 func (n *dnsServerNode) onServerReady(payload dnsServerReady) {
@@ -198,7 +197,7 @@ func runDNSServerWorker(ctx context.Context, logger pasta.Logger, w *pasta.Works
 			logger.Debugf("listen failed on %s/%s: %v", cfg.config.network, addr, err)
 			w.SendInbox(pasta.InboxMessage{ReceiverNode: node, Payload: dnsServerRuntimeFailed{id: id, err: err.Error()}})
 			sendDNSServerLog(w, node, formular.LogDebug, "listen failed: "+err.Error())
-			if !sleepOrStopped(stop, time.Second) {
+			if !nodekit.SleepOrStopped(stop, time.Second) {
 				logger.Debug("worker stopped")
 				return
 			}
@@ -223,7 +222,7 @@ func runDNSServerWorker(ctx context.Context, logger pasta.Logger, w *pasta.Works
 			}
 			logger.Debugf("server stopped on %s/%s: %v", cfg.config.network, addr, err)
 			w.SendInbox(pasta.InboxMessage{ReceiverNode: node, Payload: dnsServerRuntimeFailed{id: id, err: err.Error()}})
-			if !sleepOrStopped(stop, time.Second) {
+			if !nodekit.SleepOrStopped(stop, time.Second) {
 				logger.Debug("worker stopped")
 				return
 			}

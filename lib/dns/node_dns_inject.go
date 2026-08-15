@@ -1,41 +1,38 @@
-package almagest
+package dnsnodes
 
 import (
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/gonnect/dns"
 	"github.com/asciimoth/pasta/pasta"
 	"github.com/asciimoth/pasta/pasta/std"
-)
 
-func init() {
-	regClass(func(e *engine) pasta.NodeClass {
-		return dnsInjectClass{engine: e}
-	}, false)
-}
+	"github.com/asciimoth/almagest/lib/nodekit"
+)
 
 const (
 	// NodeTypeDnsInject is the node class name for a network DNS injector.
 	NodeTypeDnsInject = "almagest/DnsInject"
 )
 
-type dnsInjectClass struct {
-	engine *engine
+// DNSInjectClass builds network DNS injector nodes.
+type DNSInjectClass struct {
+	Runtime nodekit.Runtime
 }
 
-func (dnsInjectClass) ClassName() string        { return NodeTypeDnsInject }
-func (dnsInjectClass) ShortDescription() string { return "DNS inject" }
-func (dnsInjectClass) LongDescription() string {
+func (DNSInjectClass) ClassName() string        { return NodeTypeDnsInject }
+func (DNSInjectClass) ShortDescription() string { return "DNS inject" }
+func (DNSInjectClass) LongDescription() string {
 	return "Publishes a received almagest/network value with DNS lookups and hostname pre-resolution routed through a received almagest/dns interface."
 }
-func (dnsInjectClass) DefaultNodeParams() pasta.NodeClassParams {
-	return pasta.NodeClassParams{PrimaryType: TypeNetwork, InitialPorts: []pasta.Port{
-		NetworkPort("left", "Network"),
-		NetworkPort("right", "Network"),
+func (DNSInjectClass) DefaultNodeParams() pasta.NodeClassParams {
+	return pasta.NodeClassParams{PrimaryType: nodekit.TypeNetwork, InitialPorts: []pasta.Port{
+		nodekit.NetworkPort("left", "Network"),
+		nodekit.NetworkPort("right", "Network"),
 		DNSPort("right", "DNS"),
 	}}
 }
-func (c dnsInjectClass) NewNode(_ configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
-	return &dnsInjectNode{NodeBase: NodeBase{engine: c.engine}}, nil
+func (c DNSInjectClass) NewNode(_ configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
+	return &dnsInjectNode{Base: nodekit.Base{Runtime: c.Runtime}}, nil
 }
 
 // dnsInjectNode is a two-input network middleware. The left-directed Network
@@ -45,7 +42,7 @@ func (c dnsInjectClass) NewNode(_ configer.Config, _ ...*pasta.NodeClassState) (
 // hostname resolution use the DNS branch instead of the backend Network's own
 // resolver.
 type dnsInjectNode struct {
-	NodeBase
+	nodekit.Base
 
 	out        uint64
 	networkIn  uint64
@@ -53,19 +50,19 @@ type dnsInjectNode struct {
 	networkLnk uint64
 	dnsLink    uint64
 
-	network     NetworkCloser
+	network     nodekit.NetworkCloser
 	dns         dns.Interface
 	resolverDNS dns.Interface
 	resolver    *dns.Resolver
-	outputs     NetworkOutputCache
+	outputs     nodekit.NetworkOutputCache
 }
 
 func (n *dnsInjectNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
 	n.InitBaseNode(w, logger, id)
-	n.out = restoredLeft(restored, 0)
-	n.networkIn = restoredRight(restored, 0)
-	n.dnsIn = restoredRight(restored, 1)
-	if err := n.SetPrimary(TypeNetwork); err != nil {
+	n.out = nodekit.RestoredLeft(restored, 0)
+	n.networkIn = nodekit.RestoredRight(restored, 0)
+	n.dnsIn = nodekit.RestoredRight(restored, 1)
+	if err := n.SetPrimary(nodekit.TypeNetwork); err != nil {
 		return err
 	}
 	return n.updateLabel()
@@ -80,11 +77,11 @@ func (n *dnsInjectNode) OnReady() error {
 
 func (n *dnsInjectNode) OnStop() {
 	n.outputs.CloseAll()
-	_ = closeNetwork(n.network)
+	_ = nodekit.CloseNetwork(n.network)
 	n.network = nil
-	closeDNS(n.resolverDNS)
+	CloseDNS(n.resolverDNS)
 	n.resolverDNS = nil
-	closeDNS(n.dns)
+	CloseDNS(n.dns)
 	n.dns = nil
 	n.resolver = nil
 	n.networkLnk = 0
@@ -94,11 +91,11 @@ func (n *dnsInjectNode) OnStop() {
 func (n *dnsInjectNode) PreLinkAdd(port uint64, linkType, portDirection string) error {
 	switch port {
 	case n.out:
-		if portDirection != "left" || linkType != TypeNetwork {
+		if portDirection != "left" || linkType != nodekit.TypeNetwork {
 			return pasta.LinkTypeErr(linkType)
 		}
 	case n.networkIn:
-		if portDirection != "right" || linkType != TypeNetwork {
+		if portDirection != "right" || linkType != nodekit.TypeNetwork {
 			return pasta.LinkTypeErr(linkType)
 		}
 		if n.PortHasLinks(port) {
@@ -119,32 +116,32 @@ func (n *dnsInjectNode) PreLinkAdd(port uint64, linkType, portDirection string) 
 
 func (n *dnsInjectNode) OnLinkAdd(link, port uint64, linkType, portDirection string) error {
 	switch {
-	case port == n.out && portDirection == "left" && linkType == TypeNetwork:
+	case port == n.out && portDirection == "left" && linkType == nodekit.TypeNetwork:
 		n.sendOutputToLink(link)
-	case port == n.networkIn && portDirection == "right" && linkType == TypeNetwork:
+	case port == n.networkIn && portDirection == "right" && linkType == nodekit.TypeNetwork:
 		n.networkLnk = link
-		std.RequestLocked(n.w, n.id, link)
+		std.RequestLocked(n.W, n.ID, link)
 	case port == n.dnsIn && portDirection == "right" && linkType == TypeDNS:
 		n.dnsLink = link
-		std.RequestLocked(n.w, n.id, link)
+		std.RequestLocked(n.W, n.ID, link)
 	}
 	return n.updateLabel()
 }
 
 func (n *dnsInjectNode) OnLinkRemoved(link uint64, port uint64, linkType, portDirection string) error {
 	switch {
-	case port == n.out && portDirection == "left" && linkType == TypeNetwork:
+	case port == n.out && portDirection == "left" && linkType == nodekit.TypeNetwork:
 		n.outputs.Close(link)
-	case port == n.networkIn && portDirection == "right" && linkType == TypeNetwork && link == n.networkLnk:
+	case port == n.networkIn && portDirection == "right" && linkType == nodekit.TypeNetwork && link == n.networkLnk:
 		n.outputs.CloseAll()
-		_ = closeNetwork(n.network)
+		_ = nodekit.CloseNetwork(n.network)
 		n.network = nil
 		n.networkLnk = 0
 	case port == n.dnsIn && portDirection == "right" && linkType == TypeDNS && link == n.dnsLink:
 		n.outputs.CloseAll()
-		closeDNS(n.resolverDNS)
+		CloseDNS(n.resolverDNS)
 		n.resolverDNS = nil
-		closeDNS(n.dns)
+		CloseDNS(n.dns)
 		n.dns = nil
 		n.resolver = nil
 		n.dnsLink = 0
@@ -153,15 +150,15 @@ func (n *dnsInjectNode) OnLinkRemoved(link uint64, port uint64, linkType, portDi
 }
 
 func (n *dnsInjectNode) OnEvent(event pasta.Event, linkType string, _ []string, receiverPortDirection string) error {
-	if event.ReceiverPort == n.out && receiverPortDirection == "left" && linkType == TypeNetwork && std.IsRequest(event.Payload) {
+	if event.ReceiverPort == n.out && receiverPortDirection == "left" && linkType == nodekit.TypeNetwork && std.IsRequest(event.Payload) {
 		n.refreshOutputToLink(event.Link)
 		return nil
 	}
-	if event.ReceiverPort == n.networkIn && receiverPortDirection == "right" && linkType == TypeNetwork {
+	if event.ReceiverPort == n.networkIn && receiverPortDirection == "right" && linkType == nodekit.TypeNetwork {
 		if event.Link != n.networkLnk {
 			return nil
 		}
-		next, changed := AcceptNetworkPayload(n.w, n.id, event, n.network)
+		next, changed := nodekit.AcceptNetworkPayload(n.W, n.ID, event, n.network)
 		if !changed {
 			return nil
 		}
@@ -174,12 +171,12 @@ func (n *dnsInjectNode) OnEvent(event pasta.Event, linkType string, _ []string, 
 		if event.Link != n.dnsLink {
 			return nil
 		}
-		next, changed := AcceptDNSPayload(n.w, n.id, event, n.dns)
+		next, changed := AcceptDNSPayload(n.W, n.ID, event, n.dns)
 		if !changed {
 			return nil
 		}
 		n.outputs.CloseAll()
-		closeDNS(n.resolverDNS)
+		CloseDNS(n.resolverDNS)
 		n.dns = next
 		n.resolverDNS = n.newResolverDNS(next)
 		n.resolver = dns.NewResolver(n.resolverDNS)
@@ -190,38 +187,38 @@ func (n *dnsInjectNode) OnEvent(event pasta.Event, linkType string, _ []string, 
 }
 
 func (n *dnsInjectNode) ready() bool {
-	return NetworkIsReady(n.network) && DNSIsReady(n.resolverDNS) && n.resolver != nil
+	return nodekit.NetworkIsReady(n.network) && DNSIsReady(n.resolverDNS) && n.resolver != nil
 }
 
 func (n *dnsInjectNode) newResolverDNS(input dns.Interface) dns.Interface {
 	if source, ok := DNSSource(input).(dns.Interface); ok && source != nil {
-		return newDetachedDNS(source)
+		return NewDetachedDNS(source)
 	}
-	return newDetachedDNS(input)
+	return NewDetachedDNS(input)
 }
 
 func (n *dnsInjectNode) sendAll() {
 	if !n.ready() {
 		return
 	}
-	n.outputs.SendResolvedPortLocked(n.w, n.id, n.out, n.network, n.resolver)
+	n.outputs.SendResolvedPortLocked(n.W, n.ID, n.out, n.network, n.resolver)
 }
 
 func (n *dnsInjectNode) sendOutputToLink(link uint64) {
 	if n.ready() {
-		n.outputs.SendResolvedLocked(n.w, n.id, link, n.network, n.resolver)
+		n.outputs.SendResolvedLocked(n.W, n.ID, link, n.network, n.resolver)
 	}
 }
 
 func (n *dnsInjectNode) refreshOutputToLink(link uint64) {
 	if n.ready() {
-		n.outputs.RefreshResolvedLocked(n.w, n.id, link, n.network, n.resolver)
+		n.outputs.RefreshResolvedLocked(n.W, n.ID, link, n.network, n.resolver)
 	}
 }
 
 func (n *dnsInjectNode) updateLabel() error {
 	switch {
-	case !NetworkIsReady(n.network):
+	case !nodekit.NetworkIsReady(n.network):
 		return n.SetLabel("waiting for network")
 	case !DNSIsReady(n.dns):
 		return n.SetLabel("waiting for DNS")

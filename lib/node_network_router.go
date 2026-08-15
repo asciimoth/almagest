@@ -11,6 +11,8 @@ import (
 	"github.com/asciimoth/gonnect/routing"
 	"github.com/asciimoth/pasta/pasta"
 	"github.com/asciimoth/pasta/pasta/std"
+
+	dnsnodes "github.com/asciimoth/almagest/lib/dns"
 )
 
 func init() {
@@ -47,14 +49,14 @@ func (networkRouterClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: TypeNetwork, InitialPorts: []pasta.Port{
 		NetworkPort("left", "Network"),
 		NetworkPort("right", slotPortName(1)),
-		DNSPort("right", networkRouterDNSPortName),
+		dnsnodes.DNSPort("right", networkRouterDNSPortName),
 	}}
 }
 func (c networkRouterClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
 	return &networkRouterNode{
 		NodeBase:            NodeBase{engine: c.engine},
 		rulesText:           configer.String(cfg, configer.Path{networkRouterRulesField}, ""),
-		dnsCacheStorageName: normalizeOptionalDNSCacheStorageName(configer.String(cfg, configer.Path{networkRouterDNSCacheStorageNameField}, "")),
+		dnsCacheStorageName: dnsnodes.NormalizeOptionalCacheStorageName(configer.String(cfg, configer.Path{networkRouterDNSCacheStorageNameField}, "")),
 		slots: newSlotPorts(
 			networkRouterMaxSlots,
 			"right",
@@ -81,7 +83,7 @@ type networkRouterNode struct {
 	backends  map[int]NetworkCloser
 	outputs   NetworkOutputCache
 
-	// dnsCacheStorageName optionally selects a DnsCacheManager storage whose
+	// dnsCacheStorageName optionally selects a dnsnodes.DnsCacheManager storage whose
 	// synthetic PTR records are used by routing string and regexp address
 	// matchers. The DNS resolver input below is independent and only resolves
 	// LookupHost calls made through the router network.
@@ -127,7 +129,7 @@ func (n *networkRouterNode) OnInit(w *pasta.Workspace, _ pasta.Logger, id uint64
 	BindNetworkResource(n.w, n.id, 0, n.router)
 
 	routingStorageName := n.dnsCacheStorageName
-	if err := validateOptionalDNSCacheStorageName(routingStorageName); err != nil {
+	if err := dnsnodes.ValidateOptionalCacheStorageName(routingStorageName); err != nil {
 		n.dnsCacheStorageError = err.Error()
 		routingStorageName = ""
 	}
@@ -176,7 +178,7 @@ func (n *networkRouterNode) PreLinkAdd(port uint64, linkType, portDirection stri
 		return nil
 	}
 	if port == n.dnsIn {
-		if portDirection != "right" || linkType != TypeDNS {
+		if portDirection != "right" || linkType != dnsnodes.TypeDNS {
 			return pasta.LinkTypeErr(linkType)
 		}
 		if n.PortHasLinks(port) {
@@ -203,7 +205,7 @@ func (n *networkRouterNode) OnLinkAdd(link, port uint64, linkType, portDirection
 		}
 		return nil
 	}
-	if port == n.dnsIn && portDirection == "right" && linkType == TypeDNS {
+	if port == n.dnsIn && portDirection == "right" && linkType == dnsnodes.TypeDNS {
 		n.dnsLink = link
 		if n.ready {
 			std.RequestLocked(n.w, n.id, link)
@@ -223,7 +225,7 @@ func (n *networkRouterNode) OnLinkRemoved(link, port uint64, linkType, portDirec
 		n.outputs.Close(link)
 		return nil
 	}
-	if port == n.dnsIn && portDirection == "right" && linkType == TypeDNS && link == n.dnsLink {
+	if port == n.dnsIn && portDirection == "right" && linkType == dnsnodes.TypeDNS && link == n.dnsLink {
 		n.detachDNS()
 		return nil
 	}
@@ -253,8 +255,8 @@ func (n *networkRouterNode) OnEvent(event pasta.Event, linkType string, _ []stri
 		n.refreshRouterToLink(event.Link)
 		return nil
 	}
-	if event.ReceiverPort == n.dnsIn && receiverPortDirection == "right" && linkType == TypeDNS && event.Link == n.dnsLink {
-		next, changed := AcceptDNSPayload(n.w, n.id, event, n.dns)
+	if event.ReceiverPort == n.dnsIn && receiverPortDirection == "right" && linkType == dnsnodes.TypeDNS && event.Link == n.dnsLink {
+		next, changed := dnsnodes.AcceptDNSPayload(n.w, n.id, event, n.dns)
 		if !changed {
 			return nil
 		}
@@ -328,9 +330,9 @@ func (n *networkRouterNode) applyConfigForm(values map[string]any) error {
 	}
 	storageName := n.dnsCacheStorageName
 	if value, ok := formular.StringValue(values[networkRouterDNSCacheStorageNameField]); ok {
-		storageName = normalizeOptionalDNSCacheStorageName(value)
+		storageName = dnsnodes.NormalizeOptionalCacheStorageName(value)
 	}
-	if err := validateOptionalDNSCacheStorageName(storageName); err != nil {
+	if err := dnsnodes.ValidateOptionalCacheStorageName(storageName); err != nil {
 		n.dnsCacheStorageError = err.Error()
 		if _, rulesErr := n.compileRules(text, ""); rulesErr != nil {
 			n.formError = rulesErr.Error()
@@ -370,24 +372,24 @@ func (n *networkRouterNode) sendRulesFieldStatus(msg formular.FieldValidateMessa
 
 func (n *networkRouterNode) sendDNSCacheStorageFieldStatus(msg formular.FieldValidateMessage) {
 	value, _ := formular.StringValue(msg.Value)
-	value = normalizeOptionalDNSCacheStorageName(value)
-	sendNodeFieldStatus(n.w, n.id, msg.Field, validateOptionalDNSCacheStorageName(value))
+	value = dnsnodes.NormalizeOptionalCacheStorageName(value)
+	sendNodeFieldStatus(n.w, n.id, msg.Field, dnsnodes.ValidateOptionalCacheStorageName(value))
 }
 
 func (n *networkRouterNode) compileRules(text, dnsCacheStorageName string) (routing.RouterCfg, error) {
-	dnsCacheStorageName = normalizeOptionalDNSCacheStorageName(dnsCacheStorageName)
-	if err := validateOptionalDNSCacheStorageName(dnsCacheStorageName); err != nil {
+	dnsCacheStorageName = dnsnodes.NormalizeOptionalCacheStorageName(dnsCacheStorageName)
+	if err := dnsnodes.ValidateOptionalCacheStorageName(dnsCacheStorageName); err != nil {
 		return nil, err
 	}
 	rules, err := routing.NewBytecodeRulesProgram(text)
 	if err != nil {
 		return nil, err
 	}
-	rules.DNSCacheStorage = dnsCacheStorageForRouting(n.cacheManager(), dnsCacheStorageName)
+	rules.DNSCacheStorage = dnsnodes.CacheStorageForRouting(n.cacheManager(), dnsCacheStorageName)
 	return routing.NewBytecodeRouterCfg(rules)
 }
 
-func (n *networkRouterNode) cacheManager() DnsCacheManager {
+func (n *networkRouterNode) cacheManager() dnsnodes.DnsCacheManager {
 	if n.engine == nil {
 		return nil
 	}
@@ -504,24 +506,24 @@ func (n *networkRouterNode) installResolver(input dns.Interface) {
 }
 
 func (n *networkRouterNode) newResolverDNS(input dns.Interface) dns.Interface {
-	if source, ok := DNSSource(input).(dns.Interface); ok && source != nil {
-		return newDetachedDNS(source)
+	if source, ok := dnsnodes.DNSSource(input).(dns.Interface); ok && source != nil {
+		return dnsnodes.NewDetachedDNS(source)
 	}
-	return newDetachedDNS(input)
+	return dnsnodes.NewDetachedDNS(input)
 }
 
 func (n *networkRouterNode) clearResolver() {
 	if n.router != nil {
 		n.router.SetResolver(nil)
 	}
-	closeDNS(n.resolverDNS)
+	dnsnodes.CloseDNS(n.resolverDNS)
 	n.resolverDNS = nil
 	n.resolver = nil
 }
 
 func (n *networkRouterNode) detachDNS() {
 	n.clearResolver()
-	closeDNS(n.dns)
+	dnsnodes.CloseDNS(n.dns)
 	n.dns = nil
 	n.dnsLink = 0
 }
@@ -556,7 +558,7 @@ func (n *networkRouterNode) configBlock() formular.Block {
 	}
 	return formular.Block{ID: networkRouterConfigBlockID, Order: 10, Generation: 1, Form: true, Items: []formular.Item{
 		{Type: formular.ItemField, ID: networkRouterRulesField, Label: "Routing rules", Field: field},
-		dnsCacheStorageSelectorField(
+		dnsnodes.CacheStorageSelectorField(
 			networkRouterDNSCacheStorageNameField,
 			"DNS cache storage",
 			n.dnsCacheStorageName,

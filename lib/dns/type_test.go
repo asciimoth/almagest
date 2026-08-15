@@ -1,4 +1,4 @@
-package almagest
+package dnsnodes
 
 import (
 	"testing"
@@ -6,13 +6,15 @@ import (
 
 	"github.com/asciimoth/gonnect/dns"
 	"github.com/asciimoth/pasta/pasta"
+
+	"github.com/asciimoth/almagest/lib/logging"
 )
 
 func TestAcceptDNSPayloadReplacesReadySameSourceWrapper(t *testing.T) {
 	base := newStaticDNSProvider(staticDNSRecords{})
 	defer func() { _ = base.Close() }()
-	current := newDetachedDNS(base)
-	replacement := newDetachedDNS(base)
+	current := NewDetachedDNS(base)
+	replacement := NewDetachedDNS(base)
 	defer func() { _ = replacement.Close() }()
 
 	next, changed := AcceptDNSPayload(nil, 0, pasta.Event{
@@ -34,7 +36,7 @@ func TestAcceptDNSPayloadReplacesReadySameSourceWrapper(t *testing.T) {
 }
 
 func TestDNSOutputCacheReusesReadyWrapperAndReplacesClosedWrapper(t *testing.T) {
-	w := pasta.NewWorkspace(NewDebugLogFactory(1024))
+	w := pasta.NewWorkspace(logging.NewDebugLogFactory(1024))
 	defer w.Close()
 	providerID, out := addDNSOutputCacheTestPort(t, w)
 	receiver := &dnsReceiverNode{events: make(chan DNSPayload, 3)}
@@ -76,7 +78,7 @@ func TestDNSOutputCacheReusesReadyWrapperAndReplacesClosedWrapper(t *testing.T) 
 }
 
 func TestDNSOutputCacheRefreshReplacesReadySameSourceWrapper(t *testing.T) {
-	w := pasta.NewWorkspace(NewDebugLogFactory(1024))
+	w := pasta.NewWorkspace(logging.NewDebugLogFactory(1024))
 	defer w.Close()
 	providerID, out := addDNSOutputCacheTestPort(t, w)
 	receiver := &dnsReceiverNode{events: make(chan DNSPayload, 2)}
@@ -116,7 +118,7 @@ func TestDNSOutputCacheRefreshReplacesReadySameSourceWrapper(t *testing.T) {
 }
 
 func TestDNSOutputCacheWrappedSendAndRefresh(t *testing.T) {
-	w := pasta.NewWorkspace(NewDebugLogFactory(1024))
+	w := pasta.NewWorkspace(logging.NewDebugLogFactory(1024))
 	defer w.Close()
 	providerID, out := addDNSOutputCacheTestPort(t, w)
 	receiver := &dnsReceiverNode{events: make(chan DNSPayload, 3)}
@@ -170,7 +172,7 @@ func TestDNSOutputCacheWrappedSendAndRefresh(t *testing.T) {
 }
 
 func TestDNSOutputCacheReplacesChangedSource(t *testing.T) {
-	w := pasta.NewWorkspace(NewDebugLogFactory(1024))
+	w := pasta.NewWorkspace(logging.NewDebugLogFactory(1024))
 	defer w.Close()
 	providerID, out := addDNSOutputCacheTestPort(t, w)
 	receiver := &dnsReceiverNode{events: make(chan DNSPayload, 2)}

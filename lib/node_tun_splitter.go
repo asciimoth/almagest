@@ -12,6 +12,8 @@ import (
 	"github.com/asciimoth/gonnect/tun"
 	"github.com/asciimoth/pasta/pasta"
 	"github.com/asciimoth/pasta/pasta/std"
+
+	dnsnodes "github.com/asciimoth/almagest/lib/dns"
 )
 
 func init() {
@@ -128,7 +130,7 @@ func (n *tunSplitterNode) OnInit(w *pasta.Workspace, _ pasta.Logger, id uint64, 
 	}
 
 	compileConfig := n.routingConfig
-	if err := validateOptionalDNSCacheStorageName(compileConfig.dnsCacheStorageName); err != nil {
+	if err := dnsnodes.ValidateOptionalCacheStorageName(compileConfig.dnsCacheStorageName); err != nil {
 		n.dnsCacheStorageError = err.Error()
 		compileConfig.dnsCacheStorageName = ""
 	}
@@ -314,7 +316,7 @@ func (n *tunSplitterNode) applyConfigForm(values map[string]any) error {
 		text = value
 	}
 	config := n.routingConfig.withValues(values)
-	if err := validateOptionalDNSCacheStorageName(config.dnsCacheStorageName); err != nil {
+	if err := dnsnodes.ValidateOptionalCacheStorageName(config.dnsCacheStorageName); err != nil {
 		n.dnsCacheStorageError = err.Error()
 		syntaxConfig := config
 		syntaxConfig.dnsCacheStorageName = ""
@@ -368,16 +370,16 @@ func (n *tunSplitterNode) sendIntFieldStatus(msg formular.FieldValidateMessage) 
 
 func (n *tunSplitterNode) sendDNSCacheStorageFieldStatus(msg formular.FieldValidateMessage) {
 	value, _ := formular.StringValue(msg.Value)
-	value = normalizeOptionalDNSCacheStorageName(value)
-	sendNodeFieldStatus(n.w, n.id, msg.Field, validateOptionalDNSCacheStorageName(value))
+	value = dnsnodes.NormalizeOptionalCacheStorageName(value)
+	sendNodeFieldStatus(n.w, n.id, msg.Field, dnsnodes.ValidateOptionalCacheStorageName(value))
 }
 
 func (n *tunSplitterNode) compileRules(text string, config tunSplitterRoutingConfig) (routing.SplitRouter, error) {
 	if n.engine == nil || n.engine.sys == nil {
 		return nil, fmt.Errorf("no sysnet system")
 	}
-	config.dnsCacheStorageName = normalizeOptionalDNSCacheStorageName(config.dnsCacheStorageName)
-	if err := validateOptionalDNSCacheStorageName(config.dnsCacheStorageName); err != nil {
+	config.dnsCacheStorageName = dnsnodes.NormalizeOptionalCacheStorageName(config.dnsCacheStorageName)
+	if err := dnsnodes.ValidateOptionalCacheStorageName(config.dnsCacheStorageName); err != nil {
 		return nil, err
 	}
 	rules, err := routing.NewSplitBytecodeRules(n.engine.sys, text)
@@ -388,11 +390,11 @@ func (n *tunSplitterNode) compileRules(text string, config tunSplitterRoutingCon
 	rules.RuleCacheMaxEntries = config.ruleCacheMaxEntries
 	rules.RouteCacheTTL = config.routeCacheTTL
 	rules.RouteCacheMaxEntries = config.routeCacheMaxEntries
-	rules.DNSCacheStorage = dnsCacheStorageForRouting(n.cacheManager(), config.dnsCacheStorageName)
+	rules.DNSCacheStorage = dnsnodes.CacheStorageForRouting(n.cacheManager(), config.dnsCacheStorageName)
 	return routing.NewBytecodeSplitRouter(rules)
 }
 
-func (n *tunSplitterNode) cacheManager() DnsCacheManager {
+func (n *tunSplitterNode) cacheManager() dnsnodes.DnsCacheManager {
 	if n.engine == nil {
 		return nil
 	}
@@ -551,7 +553,7 @@ func (n *tunSplitterNode) configBlock() formular.Block {
 	}
 	return formular.Block{ID: tunSplitterConfigBlockID, Order: 10, Generation: 1, Form: true, Items: []formular.Item{
 		{Type: formular.ItemField, ID: tunSplitterRulesField, Label: "Routing rules", Field: field},
-		dnsCacheStorageSelectorField(
+		dnsnodes.CacheStorageSelectorField(
 			tunSplitterDNSCacheStorageNameField,
 			"DNS cache storage",
 			n.routingConfig.dnsCacheStorageName,
@@ -598,7 +600,7 @@ func readTunSplitterRoutingConfig(cfg configer.Config) tunSplitterRoutingConfig 
 		ruleCacheMaxEntries:  configer.Int(cfg, configer.Path{"ruleCacheMaxEntries"}, 0),
 		routeCacheTTL:        time.Duration(configer.Int(cfg, configer.Path{"routeCacheTTL"}, 0)) * time.Millisecond,
 		routeCacheMaxEntries: configer.Int(cfg, configer.Path{"routeCacheMaxEntries"}, 0),
-		dnsCacheStorageName:  normalizeOptionalDNSCacheStorageName(configer.String(cfg, configer.Path{tunSplitterDNSCacheStorageNameField}, "")),
+		dnsCacheStorageName:  dnsnodes.NormalizeOptionalCacheStorageName(configer.String(cfg, configer.Path{tunSplitterDNSCacheStorageNameField}, "")),
 	}
 }
 
@@ -616,7 +618,7 @@ func (c tunSplitterRoutingConfig) withValues(values map[string]any) tunSplitterR
 		c.routeCacheMaxEntries = value
 	}
 	if value, ok := formular.StringValue(values[tunSplitterDNSCacheStorageNameField]); ok {
-		c.dnsCacheStorageName = normalizeOptionalDNSCacheStorageName(value)
+		c.dnsCacheStorageName = dnsnodes.NormalizeOptionalCacheStorageName(value)
 	}
 	return c
 }

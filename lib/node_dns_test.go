@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	dnsnodes "github.com/asciimoth/almagest/lib/dns"
+
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
 	"github.com/asciimoth/gonnect/dns"
@@ -13,7 +15,7 @@ import (
 )
 
 func TestStaticDNSProviderRecordTypes(t *testing.T) {
-	records, err := parseStaticDNSRecords(strings.Join([]string{
+	provider, err := dnsnodes.NewStaticProvider(strings.Join([]string{
 		"example.test A 192.0.2.10",
 		"example.test AAA 2001:db8::10",
 		"example.test TXT \"hello world\"",
@@ -21,9 +23,8 @@ func TestStaticDNSProviderRecordTypes(t *testing.T) {
 		"_svc._tcp.example.test SRV 1 2 443 srv.example.test",
 	}, "\n"), 30)
 	if err != nil {
-		t.Fatalf("parseStaticDNSRecords: %v", err)
+		t.Fatalf("NewStaticProvider: %v", err)
 	}
-	provider := newStaticDNSProvider(records)
 	defer func() { _ = provider.Close() }()
 
 	for _, tc := range []struct {
@@ -46,7 +47,7 @@ func TestStaticDNSProviderRecordTypes(t *testing.T) {
 			if resp.RCode != dns.RCodeSuccess || len(resp.Answers) == 0 {
 				t.Fatalf("response = %#v, want successful answers", resp)
 			}
-			if got := formatDNSMessage(resp); !strings.Contains(got, tc.wantPart) {
+			if got := dnsnodes.FormatMessage(resp); !strings.Contains(got, tc.wantPart) {
 				t.Fatalf("formatted response = %q, want to contain %q", got, tc.wantPart)
 			}
 		})
@@ -55,14 +56,14 @@ func TestStaticDNSProviderRecordTypes(t *testing.T) {
 
 func TestStaticDNSMultipleConsumers(t *testing.T) {
 	e := newDNSE2E(t)
-	static := e.AddNode(NodeTypeStaticDNS, "static")
-	clientA := e.AddNode(NodeTypeDNSQuery, "client-a")
-	clientB := e.AddNode(NodeTypeDNSQuery, "client-b")
+	static := e.AddNode(dnsnodes.NodeTypeStaticDNS, "static")
+	clientA := e.AddNode(dnsnodes.NodeTypeDNSQuery, "client-a")
+	clientB := e.AddNode(dnsnodes.NodeTypeDNSQuery, "client-b")
 	e.SubscribeMenus(static, clientA, clientB)
 	e.applyStaticDNSRecords(static, "example.test A 10.10.0.1")
 
-	e.MustAddTypedLinkByPortName(TypeDNS, static, "left", "DNS", clientA, "right", "DNS")
-	e.MustAddTypedLinkByPortName(TypeDNS, static, "left", "DNS", clientB, "right", "DNS")
+	e.MustAddTypedLinkByPortName(dnsnodes.TypeDNS, static, "left", "DNS", clientA, "right", "DNS")
+	e.MustAddTypedLinkByPortName(dnsnodes.TypeDNS, static, "left", "DNS", clientB, "right", "DNS")
 
 	e.sendDNSRequest(clientA)
 	e.waitDNSResponse(clientA, "NOERROR", "10.10.0.1")
@@ -72,17 +73,17 @@ func TestStaticDNSMultipleConsumers(t *testing.T) {
 
 func TestStaticDNSFallbackChain(t *testing.T) {
 	e := newDNSE2E(t)
-	root := e.AddNode(NodeTypeStaticDNS, "root")
-	middle := e.AddNode(NodeTypeStaticDNS, "middle")
-	tail := e.AddNode(NodeTypeStaticDNS, "tail")
-	client := e.AddNode(NodeTypeDNSQuery, "client")
+	root := e.AddNode(dnsnodes.NodeTypeStaticDNS, "root")
+	middle := e.AddNode(dnsnodes.NodeTypeStaticDNS, "middle")
+	tail := e.AddNode(dnsnodes.NodeTypeStaticDNS, "tail")
+	client := e.AddNode(dnsnodes.NodeTypeDNSQuery, "client")
 	e.SubscribeMenus(root, middle, tail, client)
 	e.applyStaticDNSRecords(root, "root.test A 10.20.0.1")
 	e.applyStaticDNSRecords(tail, "tail.test A 10.20.0.3")
 
-	e.MustAddTypedLinkByPortName(TypeDNS, tail, "left", "DNS", middle, "right", "Fallback")
-	e.MustAddTypedLinkByPortName(TypeDNS, middle, "left", "DNS", root, "right", "Fallback")
-	e.MustAddTypedLinkByPortName(TypeDNS, root, "left", "DNS", client, "right", "DNS")
+	e.MustAddTypedLinkByPortName(dnsnodes.TypeDNS, tail, "left", "DNS", middle, "right", "Fallback")
+	e.MustAddTypedLinkByPortName(dnsnodes.TypeDNS, middle, "left", "DNS", root, "right", "Fallback")
+	e.MustAddTypedLinkByPortName(dnsnodes.TypeDNS, root, "left", "DNS", client, "right", "DNS")
 
 	e.setDNSQueryRequest(client, "tail.test.", "A")
 	e.sendDNSRequest(client)
@@ -95,12 +96,12 @@ func TestStaticDNSFallbackChain(t *testing.T) {
 
 func TestDNSLinksAttachDetachReattach(t *testing.T) {
 	e := newDNSE2E(t)
-	static := e.AddNode(NodeTypeStaticDNS, "static")
-	client := e.AddNode(NodeTypeDNSQuery, "client")
+	static := e.AddNode(dnsnodes.NodeTypeStaticDNS, "static")
+	client := e.AddNode(dnsnodes.NodeTypeDNSQuery, "client")
 	e.SubscribeMenus(static, client)
 	e.applyStaticDNSRecords(static, "example.test A 10.30.0.1")
 
-	link := e.MustAddTypedLinkByPortName(TypeDNS, static, "left", "DNS", client, "right", "DNS")
+	link := e.MustAddTypedLinkByPortName(dnsnodes.TypeDNS, static, "left", "DNS", client, "right", "DNS")
 	e.sendDNSRequest(client)
 	e.waitDNSResponse(client, "NOERROR", "10.30.0.1")
 
@@ -109,7 +110,7 @@ func TestDNSLinksAttachDetachReattach(t *testing.T) {
 	e.sendDNSRequest(client)
 	e.waitDNSFailure(client, "dns is not ready")
 
-	e.MustAddTypedLinkByPortName(TypeDNS, static, "left", "DNS", client, "right", "DNS")
+	e.MustAddTypedLinkByPortName(dnsnodes.TypeDNS, static, "left", "DNS", client, "right", "DNS")
 	e.waitDNSReady(client)
 	e.sendDNSRequest(client)
 	e.waitDNSResponse(client, "NOERROR", "10.30.0.1")
@@ -117,12 +118,12 @@ func TestDNSLinksAttachDetachReattach(t *testing.T) {
 
 func TestStaticDNSCopyPastePreservesConfigAndLinks(t *testing.T) {
 	e := newDNSE2E(t)
-	static := e.AddNode(NodeTypeStaticDNS, "static")
-	client := e.AddNode(NodeTypeDNSQuery, "client")
+	static := e.AddNode(dnsnodes.NodeTypeStaticDNS, "static")
+	client := e.AddNode(dnsnodes.NodeTypeDNSQuery, "client")
 	e.SubscribeMenus(static, client)
 	e.applyStaticDNSRecords(static, "copy.test A 10.40.0.1")
 	e.setDNSQueryRequest(client, "copy.test.", "A")
-	e.MustAddTypedLinkByPortName(TypeDNS, static, "left", "DNS", client, "right", "DNS")
+	e.MustAddTypedLinkByPortName(dnsnodes.TypeDNS, static, "left", "DNS", client, "right", "DNS")
 	e.sendDNSRequest(client)
 	e.waitDNSResponse(client, "NOERROR", "10.40.0.1")
 
@@ -134,7 +135,7 @@ func TestStaticDNSCopyPastePreservesConfigAndLinks(t *testing.T) {
 	if len(pasted) != 2 {
 		t.Fatalf("Paste returned %d nodes (%v), want 2", len(pasted), pasted)
 	}
-	pastedClient := pastedNodeByClass(t, e.Engine, pasted, NodeTypeDNSQuery)
+	pastedClient := pastedNodeByClass(t, e.Engine, pasted, dnsnodes.NodeTypeDNSQuery)
 	e.SubscribeMenus(pastedClient)
 	e.sendDNSRequest(pastedClient)
 	e.waitDNSResponse(pastedClient, "NOERROR", "10.40.0.1")
@@ -142,12 +143,12 @@ func TestStaticDNSCopyPastePreservesConfigAndLinks(t *testing.T) {
 
 func TestStaticDNSSaveRestorePreservesConfigAndLinks(t *testing.T) {
 	e := newDNSE2E(t)
-	static := e.AddNode(NodeTypeStaticDNS, "static")
-	client := e.AddNode(NodeTypeDNSQuery, "client")
+	static := e.AddNode(dnsnodes.NodeTypeStaticDNS, "static")
+	client := e.AddNode(dnsnodes.NodeTypeDNSQuery, "client")
 	e.SubscribeMenus(static, client)
 	e.applyStaticDNSRecords(static, "restore.test A 10.50.0.1")
 	e.setDNSQueryRequest(client, "restore.test.", "A")
-	e.MustAddTypedLinkByPortName(TypeDNS, static, "left", "DNS", client, "right", "DNS")
+	e.MustAddTypedLinkByPortName(dnsnodes.TypeDNS, static, "left", "DNS", client, "right", "DNS")
 
 	cfg := configer.NewMemory(nil)
 	if err := e.Engine.SaveConfig(cfg); err != nil {
@@ -223,10 +224,10 @@ func (e *dnsE2E) applyStaticDNSRecords(node uint64, records string) {
 		BlockID:     "config",
 		Values: map[string]any{
 			"records": records,
-			"ttl":     defaultStaticDNSTTL,
+			"ttl":     dnsnodes.DefaultStaticDNSTTL,
 		},
 	})
-	e.waitStaticDNSField(node, "records", normalizeStaticDNSRecordsText(records))
+	e.waitStaticDNSField(node, "records", dnsnodes.NormalizeStaticRecordsText(records))
 }
 
 func (e *dnsE2E) waitStaticDNSField(node uint64, field, want string) {
@@ -249,7 +250,7 @@ func (e *dnsE2E) setDNSQueryRequest(client uint64, name, qtype string) {
 		Field:       formular.FieldRef{BlockID: "request", FieldID: "type"},
 		Value:       qtype,
 	})
-	e.waitDNSQueryRequestField(client, "name", absDNSName(name))
+	e.waitDNSQueryRequestField(client, "name", dnsnodes.AbsoluteName(name))
 	e.waitDNSQueryRequestField(client, "type", strings.ToUpper(qtype))
 }
 
