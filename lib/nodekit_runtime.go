@@ -38,24 +38,3 @@ func (e *engine) ObserveNodeSnapshot(node uint64, snapshot pasta.NodeSnapshot) {
 	}
 	e.workers.observeNodeSnapshot(node, snapshot)
 }
-
-func (b *NodeBase) NodeRuntime() nodekit.Runtime {
-	if b == nil {
-		return nil
-	}
-	return b.engine
-}
-
-func (b *NodeBase) NodeWorkspace() *pasta.Workspace {
-	if b == nil {
-		return nil
-	}
-	return b.w
-}
-
-func (b *NodeBase) NodeID() uint64 {
-	if b == nil {
-		return 0
-	}
-	return b.id
-}

@@ -3,9 +3,9 @@ package main
 import (
 	"errors"
 	"fmt"
+	"github.com/asciimoth/almagest/lib/storage"
 
 	"github.com/asciimoth/almagest/bin/api"
-	almagest "github.com/asciimoth/almagest/lib"
 	"github.com/asciimoth/pasta/pasta"
 )
 
@@ -138,7 +138,7 @@ func (s *apiSession) handleSecretsMessage(msg api.Message) (api.Message, error) 
 
 func (s *apiSession) validateSecretNodes(nodes []string) error {
 	if !validSecretNodeNames(nodes) {
-		return almagest.ErrSecretInvalidName
+		return storage.ErrSecretInvalidName
 	}
 	for _, node := range normalizeSecretNodes(nodes) {
 		if _, ok := s.engine.NodeByName("main", node); !ok {
@@ -152,7 +152,7 @@ func (s *apiSession) sendSecretMutationInbox(result secretMutationResult) {
 	if len(result.notifyNodes) == 0 || s.engine == nil {
 		return
 	}
-	payload := almagest.SecretValueChanged{
+	payload := storage.SecretValueChanged{
 		SecretNamePrev: result.prevKey,
 		SecretNameNew:  result.newKey,
 	}
@@ -254,15 +254,15 @@ func (s *apiSession) sendSecretSubscriptionChange(id uint64, change secretChange
 
 func secretRequestError(id string, err error) (api.Message, error) {
 	switch {
-	case errors.Is(err, almagest.ErrSecretClosed):
+	case errors.Is(err, storage.ErrSecretClosed):
 		return newRequestError(id, api.ErrorUnavailable, err.Error())
-	case errors.Is(err, almagest.ErrSecretInvalidName), errors.Is(err, almagest.ErrSecretInvalidValue):
+	case errors.Is(err, storage.ErrSecretInvalidName), errors.Is(err, storage.ErrSecretInvalidValue):
 		return newRequestError(id, api.ErrorBadRequest, err.Error())
 	case errors.Is(err, errSecretUnknownNode):
 		return newRequestError(id, api.ErrorNotFound, err.Error())
 	case errors.Is(err, errSecretNotFound):
 		return newRequestError(id, api.ErrorNotFound, err.Error())
-	case errors.Is(err, almagest.ErrSecretReadOnly), errors.Is(err, almagest.ErrSecretConflict):
+	case errors.Is(err, storage.ErrSecretReadOnly), errors.Is(err, storage.ErrSecretConflict):
 		return newRequestError(id, api.ErrorConflict, err.Error())
 	case errors.Is(err, errSecretEngineUnavailable):
 		return newRequestError(id, api.ErrorUnavailable, err.Error())

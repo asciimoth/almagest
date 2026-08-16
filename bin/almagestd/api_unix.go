@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/asciimoth/almagest/lib"
+	almagest "github.com/asciimoth/almagest/lib"
 	"github.com/asciimoth/gonnect/sysnet"
 	"github.com/kataras/golog"
 )

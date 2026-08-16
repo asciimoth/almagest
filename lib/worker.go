@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/asciimoth/pasta/pasta"
+
+	"github.com/asciimoth/almagest/lib/logging"
 )
 
 var (
@@ -109,7 +111,7 @@ type workerTracker struct {
 	workers       map[uint64]workerRecord
 	subscriptions map[uint64]WorkerNotificationCallback
 	workspace     func() *pasta.Workspace
-	logger        Logger
+	logger        logging.Logger
 	onFailure     func(WorkerSnapshot)
 }
 
@@ -118,7 +120,7 @@ type workerNotificationDelivery struct {
 	notification WorkerNotification
 }
 
-func newWorkerTracker(workspace func() *pasta.Workspace, logger Logger) *workerTracker {
+func newWorkerTracker(workspace func() *pasta.Workspace, logger logging.Logger) *workerTracker {
 	return &workerTracker{
 		nextWorkerID:       1,
 		nextSubscriptionID: 1,

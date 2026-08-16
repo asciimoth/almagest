@@ -5,6 +5,10 @@ import (
 	"testing"
 	"time"
 
+	debugnodes "github.com/asciimoth/almagest/lib/debug"
+	httpnodes "github.com/asciimoth/almagest/lib/http"
+	"github.com/asciimoth/almagest/lib/logging"
+	"github.com/asciimoth/almagest/lib/testkit"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
 	sysnetdebug "github.com/asciimoth/gonnect/sysnet/debug"
@@ -17,11 +21,11 @@ func TestEngineWorkersSnapshotIncludesRestoredStartupWorkers(t *testing.T) {
 		configer.NewMemory(map[string]any{
 			"nodes": map[string]any{
 				"client": map[string]any{
-					"Class": NodeTypeHTTPClient,
+					"Class": httpnodes.NodeTypeHTTPClient,
 				},
 			},
 		}),
-		NewDebugLogFactory(1024),
+		logging.NewDebugLogFactory(1024),
 		&sysnetdebug.System{},
 		nil,
 		nil, nil,
@@ -40,11 +44,11 @@ func TestEngineWorkersSnapshotIncludesRestoredStartupWorkers(t *testing.T) {
 		}
 	})
 
-	node, ok := engine.NodeByName(E2EWorkspace, "client")
+	node, ok := engine.NodeByName(MainWorkspace, "client")
 	if !ok {
 		t.Fatal("restored client node missing")
 	}
-	workers, ok := engine.WorkersSnapshot(E2EWorkspace)
+	workers, ok := engine.WorkersSnapshot(MainWorkspace)
 	if !ok {
 		t.Fatal("WorkersSnapshot ok = false, want true")
 	}
@@ -60,7 +64,7 @@ func TestEngineWorkerNotificationsTrackPanicLifecycle(t *testing.T) {
 	engine, err := BuildEngine(
 		context.Background(),
 		configer.NewMemory(nil),
-		NewDebugLogFactory(1024),
+		logging.NewDebugLogFactory(1024),
 		&sysnetdebug.System{},
 		nil,
 		nil, nil,
@@ -88,12 +92,12 @@ func TestEngineWorkerNotificationsTrackPanicLifecycle(t *testing.T) {
 	}
 	t.Cleanup(func() { engine.UnsubscribeWorkerNotifications(sub) })
 
-	node, err := engine.AddNode(E2EWorkspace, NodeTypeDebugErrorsWorkers, "workers")
+	node, err := engine.AddNode(MainWorkspace, debugnodes.NodeTypeDebugErrorsWorkers, "workers")
 	if err != nil {
 		t.Fatalf("AddNode error = %v, want nil", err)
 	}
-	engine.SendNodeFormularMsg(E2EWorkspace, node, formular.ButtonPressMessage{
-		MessageBase: FormMessageBase(formular.MessageButtonPress, node),
+	engine.SendNodeFormularMsg(MainWorkspace, node, formular.ButtonPressMessage{
+		MessageBase: testkit.FormMessageBase(formular.MessageButtonPress, node),
 		BlockID:     "actions",
 		ButtonID:    "panic-worker",
 	})
@@ -109,13 +113,13 @@ func TestEngineWorkerNotificationsTrackPanicLifecycle(t *testing.T) {
 
 	deadline := time.Now().Add(time.Second)
 	for time.Now().Before(deadline) {
-		snapshot, ok := engine.NodeSnapshot(E2EWorkspace, node)
+		snapshot, ok := engine.NodeSnapshot(MainWorkspace, node)
 		if ok && snapshot.Placeholder && len(snapshot.Popups) > 0 && snapshot.Popups[0].Type == pasta.NodePopupErr {
 			return
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	snapshot, _ := engine.NodeSnapshot(E2EWorkspace, node)
+	snapshot, _ := engine.NodeSnapshot(MainWorkspace, node)
 	t.Fatalf("node snapshot after worker panic = %#v, want placeholder with error popup", snapshot)
 }
 

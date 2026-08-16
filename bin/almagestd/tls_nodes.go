@@ -4,12 +4,13 @@ import (
 	"sync"
 
 	almagest "github.com/asciimoth/almagest/lib"
+	"github.com/asciimoth/almagest/lib/logging"
 	"github.com/asciimoth/pasta/pasta"
 )
 
 type tlsNodeNameSync struct {
 	manager *bboltKVManager
-	logger  almagest.Logger
+	logger  logging.Logger
 
 	mu    sync.Mutex
 	nodes map[uint64]string
@@ -17,7 +18,7 @@ type tlsNodeNameSync struct {
 
 // startTLSNodeNameSync keeps TLS policy watcher names in step with workspace
 // node renames and removals. Watchers are runtime-only and are not persisted.
-func (a *AdminAPI) startTLSNodeNameSync(engine almagest.Engine, logger almagest.Logger) uint64 {
+func (a *AdminAPI) startTLSNodeNameSync(engine almagest.Engine, logger logging.Logger) uint64 {
 	if a == nil || a.tls == nil || engine == nil {
 		return 0
 	}

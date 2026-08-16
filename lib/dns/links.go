@@ -29,7 +29,7 @@ import (
 // close previously-routed wrappers when switching paths. Left-directed
 // almagest/dns ports allow an arbitrary count of incoming links; right-directed
 // almagest/dns ports allow at most one outgoing link.
-const TypeDNS = "almagest/dns"
+const TypeDNS = links.TypeDNS
 
 var _ std.ClosablePayload = &DNSPayload{}
 

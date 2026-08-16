@@ -15,6 +15,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"github.com/asciimoth/almagest/lib/storage"
 	"math"
 	"math/big"
 	"os"
@@ -24,7 +25,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/asciimoth/almagest/bin/api"
-	almagest "github.com/asciimoth/almagest/lib"
 	"github.com/kataras/golog"
 )
 
@@ -105,13 +105,13 @@ func normalizeTLSBuiltinCAOptions(in api.TLSBuiltinCAOptions) (api.TLSBuiltinCAO
 		out.Issuer = tlsBuiltinCADefaultIssuer
 	}
 	if !utf8.ValidString(out.Issuer) {
-		return api.TLSBuiltinCAOptions{}, fmt.Errorf("%w: builtin TLS CA issuer is not valid UTF-8", almagest.ErrTlsConfigInvalidValue)
+		return api.TLSBuiltinCAOptions{}, fmt.Errorf("%w: builtin TLS CA issuer is not valid UTF-8", storage.ErrTlsConfigInvalidValue)
 	}
 	if len([]rune(out.Issuer)) > tlsBuiltinCAMaxIssuerRunes {
-		return api.TLSBuiltinCAOptions{}, fmt.Errorf("%w: builtin TLS CA issuer is longer than %d characters", almagest.ErrTlsConfigInvalidValue, tlsBuiltinCAMaxIssuerRunes)
+		return api.TLSBuiltinCAOptions{}, fmt.Errorf("%w: builtin TLS CA issuer is longer than %d characters", storage.ErrTlsConfigInvalidValue, tlsBuiltinCAMaxIssuerRunes)
 	}
 	if out.ValidityDays < 0 {
-		return api.TLSBuiltinCAOptions{}, fmt.Errorf("%w: builtin TLS CA validity days cannot be negative", almagest.ErrTlsConfigInvalidValue)
+		return api.TLSBuiltinCAOptions{}, fmt.Errorf("%w: builtin TLS CA validity days cannot be negative", storage.ErrTlsConfigInvalidValue)
 	}
 
 	out.KeyAlgorithm = strings.ToLower(strings.TrimSpace(out.KeyAlgorithm))
@@ -137,13 +137,13 @@ func normalizeTLSBuiltinCAOptions(in api.TLSBuiltinCAOptions) (api.TLSBuiltinCAO
 		if out.KeyBits < tlsBuiltinCAMinRSAKeyBits || out.KeyBits > tlsBuiltinCAMaxRSAKeyBits {
 			return api.TLSBuiltinCAOptions{}, fmt.Errorf(
 				"%w: builtin TLS CA RSA key bits must be between %d and %d",
-				almagest.ErrTlsConfigInvalidValue,
+				storage.ErrTlsConfigInvalidValue,
 				tlsBuiltinCAMinRSAKeyBits,
 				tlsBuiltinCAMaxRSAKeyBits,
 			)
 		}
 	default:
-		return api.TLSBuiltinCAOptions{}, fmt.Errorf("%w: unsupported builtin TLS CA key algorithm %q", almagest.ErrTlsConfigInvalidValue, in.KeyAlgorithm)
+		return api.TLSBuiltinCAOptions{}, fmt.Errorf("%w: unsupported builtin TLS CA key algorithm %q", storage.ErrTlsConfigInvalidValue, in.KeyAlgorithm)
 	}
 	return out, nil
 }
@@ -157,7 +157,7 @@ func normalizeTLSBuiltinCACurve(value string) (string, error) {
 	case "p521", "secp521r1":
 		return "P521", nil
 	default:
-		return "", fmt.Errorf("%w: unsupported builtin TLS CA ECDSA curve %q", almagest.ErrTlsConfigInvalidValue, value)
+		return "", fmt.Errorf("%w: unsupported builtin TLS CA ECDSA curve %q", storage.ErrTlsConfigInvalidValue, value)
 	}
 }
 
@@ -383,7 +383,7 @@ func generateTLSBuiltinCAKey(options api.TLSBuiltinCAOptions) (crypto.Signer, st
 		case "P521":
 			curve = elliptic.P521()
 		default:
-			return nil, "", fmt.Errorf("%w: unsupported builtin TLS CA ECDSA curve %q", almagest.ErrTlsConfigInvalidValue, options.Curve)
+			return nil, "", fmt.Errorf("%w: unsupported builtin TLS CA ECDSA curve %q", storage.ErrTlsConfigInvalidValue, options.Curve)
 		}
 		signer, err = ecdsa.GenerateKey(curve, rand.Reader)
 	case "ed25519":
@@ -393,7 +393,7 @@ func generateTLSBuiltinCAKey(options api.TLSBuiltinCAOptions) (crypto.Signer, st
 	case "rsa":
 		signer, err = rsa.GenerateKey(rand.Reader, options.KeyBits)
 	default:
-		return nil, "", fmt.Errorf("%w: unsupported builtin TLS CA key algorithm %q", almagest.ErrTlsConfigInvalidValue, options.KeyAlgorithm)
+		return nil, "", fmt.Errorf("%w: unsupported builtin TLS CA key algorithm %q", storage.ErrTlsConfigInvalidValue, options.KeyAlgorithm)
 	}
 	if err != nil {
 		return nil, "", fmt.Errorf("generate builtin TLS CA private key: %w", err)

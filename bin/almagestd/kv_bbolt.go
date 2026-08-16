@@ -10,8 +10,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/asciimoth/almagest/lib"
-	dnsnodes "github.com/asciimoth/almagest/lib/dns"
+	"github.com/asciimoth/almagest/lib/storage"
 	"github.com/kataras/golog"
 	"go.etcd.io/bbolt"
 	bberrors "go.etcd.io/bbolt/errors"
@@ -32,14 +31,14 @@ const (
 )
 
 var (
-	_ almagest.KVManager             = (*bboltKVManager)(nil)
-	_ dnsnodes.DnsCacheManager       = (*bboltKVManager)(nil)
-	_ dnsnodes.DnsCacheStorageLister = (*bboltKVManager)(nil)
-	_ almagest.SecretsStorage        = (*bboltKVManager)(nil)
-	_ almagest.TlsConfigStorage      = (*bboltKVManager)(nil)
-	_ almagest.KVStore               = (*bboltKVStore)(nil)
-	_ almagest.KVReadTx              = (*bboltKVReadTx)(nil)
-	_ almagest.KVWriteTx             = (*bboltKVWriteTx)(nil)
+	_ storage.KVManager             = (*bboltKVManager)(nil)
+	_ storage.DnsCacheManager       = (*bboltKVManager)(nil)
+	_ storage.DnsCacheStorageLister = (*bboltKVManager)(nil)
+	_ storage.SecretsStorage        = (*bboltKVManager)(nil)
+	_ storage.TlsConfigStorage      = (*bboltKVManager)(nil)
+	_ storage.KVStore               = (*bboltKVStore)(nil)
+	_ storage.KVReadTx              = (*bboltKVReadTx)(nil)
+	_ storage.KVWriteTx             = (*bboltKVWriteTx)(nil)
 )
 
 type bboltKVManager struct {
@@ -209,7 +208,7 @@ func (m *bboltKVManager) Close() error {
 	return mapBboltKVError(m.db.Close())
 }
 
-func (m *bboltKVManager) DefaultStore() almagest.KVStore {
+func (m *bboltKVManager) DefaultStore() storage.KVStore {
 	golog.Debug("KV storage: accessing default store")
 	return &bboltKVStore{
 		manager:        m,
@@ -218,7 +217,7 @@ func (m *bboltKVManager) DefaultStore() almagest.KVStore {
 	}
 }
 
-func (m *bboltKVManager) PluginStore(name string) almagest.KVStore {
+func (m *bboltKVManager) PluginStore(name string) storage.KVStore {
 	invalid := !validKVName(name)
 	golog.Debugf("KV storage: accessing plugin store name=%q invalid=%t", name, invalid)
 	return &bboltKVStore{
@@ -257,7 +256,7 @@ func (m *bboltKVManager) notifyChange() {
 	}
 }
 
-func (s *bboltKVStore) Subtree(path ...string) almagest.KVStore {
+func (s *bboltKVStore) Subtree(path ...string) storage.KVStore {
 	next := &bboltKVStore{
 		manager:        s.manager,
 		path:           cloneKVPath(s.path),
@@ -268,9 +267,9 @@ func (s *bboltKVStore) Subtree(path ...string) almagest.KVStore {
 	return next
 }
 
-func (s *bboltKVStore) View(ctx context.Context, fn func(almagest.KVReadTx) error) error {
+func (s *bboltKVStore) View(ctx context.Context, fn func(storage.KVReadTx) error) error {
 	if s.invalid {
-		return almagest.ErrKVInvalidName
+		return storage.ErrKVInvalidName
 	}
 	if err := ctx.Err(); err != nil {
 		return err
@@ -287,9 +286,9 @@ func (s *bboltKVStore) View(ctx context.Context, fn func(almagest.KVReadTx) erro
 	}))
 }
 
-func (s *bboltKVStore) Update(ctx context.Context, fn func(almagest.KVWriteTx) error) error {
+func (s *bboltKVStore) Update(ctx context.Context, fn func(storage.KVWriteTx) error) error {
 	if s.invalid {
-		return almagest.ErrKVInvalidName
+		return storage.ErrKVInvalidName
 	}
 	if err := ctx.Err(); err != nil {
 		return err
@@ -321,9 +320,9 @@ func (r *bboltKVReader) Exists() bool {
 	return r.bucket() != nil
 }
 
-func (r *bboltKVReader) Get(key string) (*almagest.KValue, bool, error) {
+func (r *bboltKVReader) Get(key string) (*storage.KValue, bool, error) {
 	if r.invalid || !validKVName(key) {
-		return nil, false, almagest.ErrKVInvalidName
+		return nil, false, storage.ErrKVInvalidName
 	}
 	bucket := r.bucket()
 	if bucket == nil || bucket.Bucket([]byte(key)) != nil {
@@ -340,9 +339,9 @@ func (r *bboltKVReader) Get(key string) (*almagest.KValue, bool, error) {
 	return &value, true, nil
 }
 
-func (r *bboltKVReader) ForEachValue(fn func(key string, value almagest.KValue) error) error {
+func (r *bboltKVReader) ForEachValue(fn func(key string, value storage.KValue) error) error {
 	if r.invalid {
-		return almagest.ErrKVInvalidName
+		return storage.ErrKVInvalidName
 	}
 	bucket := r.bucket()
 	if bucket == nil {
@@ -362,7 +361,7 @@ func (r *bboltKVReader) ForEachValue(fn func(key string, value almagest.KValue) 
 
 func (r *bboltKVReader) ForEachSubtree(fn func(name string) error) error {
 	if r.invalid {
-		return almagest.ErrKVInvalidName
+		return storage.ErrKVInvalidName
 	}
 	bucket := r.bucket()
 	if bucket == nil {
@@ -373,7 +372,7 @@ func (r *bboltKVReader) ForEachSubtree(fn func(name string) error) error {
 	}))
 }
 
-func (r *bboltKVReadTx) Subtree(path ...string) almagest.KVReadTx {
+func (r *bboltKVReadTx) Subtree(path ...string) storage.KVReadTx {
 	next := &bboltKVReadTx{bboltKVReader: bboltKVReader{
 		tx:      r.tx,
 		path:    cloneKVPath(r.path),
@@ -383,7 +382,7 @@ func (r *bboltKVReadTx) Subtree(path ...string) almagest.KVReadTx {
 	return next
 }
 
-func (w *bboltKVWriteTx) Subtree(path ...string) almagest.KVWriteTx {
+func (w *bboltKVWriteTx) Subtree(path ...string) storage.KVWriteTx {
 	next := &bboltKVWriteTx{
 		bboltKVReader: bboltKVReader{
 			tx:      w.tx,
@@ -398,15 +397,15 @@ func (w *bboltKVWriteTx) Subtree(path ...string) almagest.KVWriteTx {
 
 func (w *bboltKVWriteTx) Ensure() error {
 	if w.invalid {
-		return almagest.ErrKVInvalidName
+		return storage.ErrKVInvalidName
 	}
 	_, err := ensureBboltBucket(w.tx, w.path)
 	return mapBboltKVError(err)
 }
 
-func (w *bboltKVWriteTx) Set(key string, value almagest.KValue) error {
+func (w *bboltKVWriteTx) Set(key string, value storage.KValue) error {
 	if w.invalid || !validKVName(key) {
-		return almagest.ErrKVInvalidName
+		return storage.ErrKVInvalidName
 	}
 	data, err := encodeBboltKValue(value)
 	if err != nil {
@@ -421,7 +420,7 @@ func (w *bboltKVWriteTx) Set(key string, value almagest.KValue) error {
 
 func (w *bboltKVWriteTx) Delete(key string) error {
 	if w.invalid || !validKVName(key) {
-		return almagest.ErrKVInvalidName
+		return storage.ErrKVInvalidName
 	}
 	bucket := w.bucket()
 	if bucket == nil || bucket.Bucket([]byte(key)) != nil {
@@ -432,10 +431,10 @@ func (w *bboltKVWriteTx) Delete(key string) error {
 
 func (w *bboltKVWriteTx) Drop() error {
 	if w.invalid {
-		return almagest.ErrKVInvalidName
+		return storage.ErrKVInvalidName
 	}
 	if len(w.path) <= w.protectedDepth {
-		return almagest.ErrKVRoot
+		return storage.ErrKVRoot
 	}
 	parent := bucketAtPath(w.tx, w.path[:len(w.path)-1])
 	if parent == nil {
@@ -471,10 +470,10 @@ func bucketAtPath(tx *bbolt.Tx, path []string) *bbolt.Bucket {
 
 func ensureBboltBucket(tx *bbolt.Tx, path []string) (*bbolt.Bucket, error) {
 	if !validKVPath(path) {
-		return nil, almagest.ErrKVInvalidName
+		return nil, storage.ErrKVInvalidName
 	}
 	if len(path) == 0 {
-		return nil, almagest.ErrKVInvalidName
+		return nil, storage.ErrKVInvalidName
 	}
 	bucket, err := tx.CreateBucketIfNotExists([]byte(path[0]))
 	if err != nil {
@@ -489,9 +488,9 @@ func ensureBboltBucket(tx *bbolt.Tx, path []string) (*bbolt.Bucket, error) {
 	return bucket, nil
 }
 
-func encodeBboltKValue(value almagest.KValue) ([]byte, error) {
+func encodeBboltKValue(value storage.KValue) ([]byte, error) {
 	if value.String && !utf8.Valid(value.Data) {
-		return nil, almagest.ErrKVInvalidValue
+		return nil, storage.ErrKVInvalidValue
 	}
 	data := make([]byte, len(value.Data)+1)
 	if value.Hidden {
@@ -504,15 +503,15 @@ func encodeBboltKValue(value almagest.KValue) ([]byte, error) {
 	return data, nil
 }
 
-func decodeBboltKValue(data []byte) (almagest.KValue, error) {
+func decodeBboltKValue(data []byte) (storage.KValue, error) {
 	if len(data) == 0 {
-		return almagest.KValue{}, fmt.Errorf("decode kv value: missing flags")
+		return storage.KValue{}, fmt.Errorf("decode kv value: missing flags")
 	}
 	flags := data[0]
 	if flags&^(kvValueHiddenFlag|kvValueStringFlag) != 0 {
-		return almagest.KValue{}, fmt.Errorf("decode kv value: unsupported flags 0x%02x", flags)
+		return storage.KValue{}, fmt.Errorf("decode kv value: unsupported flags 0x%02x", flags)
 	}
-	return almagest.KValue{
+	return storage.KValue{
 		Data:   append([]byte(nil), data[1:]...),
 		Hidden: flags&kvValueHiddenFlag != 0,
 		String: flags&kvValueStringFlag != 0,
@@ -541,13 +540,13 @@ func mapBboltKVError(err error) error {
 	case err == nil:
 		return nil
 	case errors.Is(err, bberrors.ErrDatabaseNotOpen), errors.Is(err, bberrors.ErrTxClosed):
-		return almagest.ErrKVClosed
+		return storage.ErrKVClosed
 	case errors.Is(err, bberrors.ErrBucketNameRequired), errors.Is(err, bberrors.ErrKeyRequired), errors.Is(err, bberrors.ErrKeyTooLarge):
-		return almagest.ErrKVInvalidName
+		return storage.ErrKVInvalidName
 	case errors.Is(err, bberrors.ErrValueTooLarge):
-		return almagest.ErrKVInvalidValue
+		return storage.ErrKVInvalidValue
 	case errors.Is(err, bberrors.ErrIncompatibleValue):
-		return almagest.ErrKVKindConflict
+		return storage.ErrKVKindConflict
 	default:
 		return err
 	}

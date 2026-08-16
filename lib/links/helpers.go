@@ -6,6 +6,11 @@ import (
 	"github.com/asciimoth/pasta/pasta"
 )
 
+// TypeDNS is the Pasta link type carrying DNS resolver values. The DNS node
+// package owns the DNS payload contract; this package keeps the shared type
+// identifier so package-neutral code can refer to it without importing nodes.
+const TypeDNS = "almagest/dns"
+
 func forEachPortLink(w *pasta.Workspace, port uint64, fn func(link uint64)) {
 	if w == nil || port == 0 || fn == nil {
 		return

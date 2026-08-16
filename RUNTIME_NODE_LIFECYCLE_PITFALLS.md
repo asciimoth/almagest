@@ -334,19 +334,19 @@ Fix:
 Coverage:
 
 ```sh
-go test ./lib -run TestWireGuardStateDoesNotReportUpBeforeNetworkBindAttachCompletes -count=1 -timeout 20s -v
+go -C lib test ./wireguard -run TestWireGuardStateDoesNotReportUpBeforeNetworkBindAttachCompletes -count=1 -timeout 20s -v
 ```
 
 Test location:
 
-- `lib/node_wireguard_test.go`:
+- `lib/wireguard/node_wireguard_internal_test.go`:
   `TestWireGuardStateDoesNotReportUpBeforeNetworkBindAttachCompletes`
 
 Related implementation:
 
-- `lib/node_wireguard.go`
-- `lib/node_wireguard_runtime.go`
-- `lib/node_wireguard_device.go`
+- `lib/wireguard/node_wireguard.go`
+- `lib/wireguard/node_wireguard_runtime.go`
+- `lib/wireguard/node_wireguard_device.go`
 
 ### WireGuard Opened Sockets After TUN Detach
 
@@ -373,17 +373,17 @@ Fix:
 Coverage:
 
 ```sh
-go test ./lib -run TestWireGuardNetworkAttachmentDoesNotOpenSocketsUntilTunAttached -race -count=300
+go -C lib test ./wireguard -run TestWireGuardNetworkAttachmentDoesNotOpenSocketsUntilTunAttached -race -count=300
 ```
 
 Test location:
 
-- `lib/node_wireguard_test.go`:
+- `lib/wireguard/node_wireguard_internal_test.go`:
   `TestWireGuardNetworkAttachmentDoesNotOpenSocketsUntilTunAttached`
 
 Related implementation:
 
-- `lib/node_wireguard_device.go`
+- `lib/wireguard/node_wireguard_device.go`
 
 ### VTun Rebuilt For Equivalent `TunConfig`
 
@@ -405,18 +405,18 @@ Fix:
 Coverage:
 
 ```sh
-go test ./lib -run TestVTunEquivalentTunConfigDoesNotRebuildActiveVTun -count=1 -timeout 20s -v
+go -C lib test ./tun -run TestVTunEquivalentTunConfigDoesNotRebuildActiveVTun -count=1 -timeout 20s -v
 ```
 
 Test location:
 
-- `lib/node_vtun_spoofer_test.go`:
+- `lib/tun/node_vtun_external_test.go`:
   `TestVTunEquivalentTunConfigDoesNotRebuildActiveVTun`
 
 Related implementation:
 
-- `lib/node_vtun.go`
-- `lib/node_vtun_runtime.go`
+- `lib/tun/node_vtun.go`
+- `lib/tun/node_vtun_runtime.go`
 
 ### WireGuard Receive EOF Reused Failed Bind
 
@@ -440,19 +440,19 @@ Fix:
 Coverage:
 
 ```sh
-go test ./lib -run TestWireGuardReceiveEOFRebuildsBindBeforePublishingUp -count=1 -timeout 20s -v
+go -C lib test ./wireguard -run TestWireGuardReceiveEOFRebuildsBindBeforePublishingUp -count=1 -timeout 20s -v
 ```
 
 Test location:
 
-- `lib/node_wireguard_test.go`:
+- `lib/wireguard/node_wireguard_internal_test.go`:
   `TestWireGuardReceiveEOFRebuildsBindBeforePublishingUp`
 
 Related implementation:
 
-- `lib/node_wireguard.go`
-- `lib/node_wireguard_bind.go`
-- `lib/node_wireguard_runtime.go`
+- `lib/wireguard/node_wireguard.go`
+- `lib/wireguard/node_wireguard_bind.go`
+- `lib/wireguard/node_wireguard_runtime.go`
 
 ### WireGuard Accepted Stale Receive Errors
 
@@ -499,14 +499,14 @@ Fix:
 Coverage:
 
 ```sh
-go test ./lib -run 'TestNetworkOutputCache(ReusesReadyWrapperAndReplacesClosedWrapper|ReplacesChangedSource)' -count=1
+go -C lib test ./links -run 'TestNetworkOutputCache(ReusesReadyWrapperAndReplacesClosedWrapper|ReplacesChangedSource)' -count=1
 ```
 
 Test location:
 
-- `lib/type_network_test.go`:
+- `lib/links/network_test.go`:
   `TestNetworkOutputCacheReusesReadyWrapperAndReplacesClosedWrapper`
-- `lib/type_network_test.go`:
+- `lib/links/network_test.go`:
   `TestNetworkOutputCacheReplacesChangedSource`
 
 ## Full Validation

@@ -6,12 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/asciimoth/almagest/lib/storage"
 	"slices"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/asciimoth/almagest/bin/api"
-	almagest "github.com/asciimoth/almagest/lib"
 	"github.com/asciimoth/pasta/pasta"
 	"github.com/kataras/golog"
 	"go.etcd.io/bbolt"
@@ -66,30 +66,30 @@ type secretMutationResult struct {
 	notifyNodes []string
 }
 
-func (m *bboltKVManager) GetSecret(key string, node string) (almagest.Secret, error) {
+func (m *bboltKVManager) GetSecret(key string, node string) (storage.Secret, error) {
 	if !validSecretName(key) || !validSecretNodeName(node) {
-		return almagest.Secret{}, almagest.ErrSecretAccessDenied
+		return storage.Secret{}, storage.ErrSecretAccessDenied
 	}
 	golog.Debugf("secrets storage: secret access key=%q node=%q", key, node)
 	entry, found, err := m.secretEffectiveEntry(key)
 	if err != nil {
-		return almagest.Secret{}, err
+		return storage.Secret{}, err
 	}
 	if !found || !secretNodeAllowed(entry.Nodes, node) {
-		return almagest.Secret{}, almagest.ErrSecretAccessDenied
+		return storage.Secret{}, storage.ErrSecretAccessDenied
 	}
-	return almagest.Secret{
+	return storage.Secret{
 		Value:    entry.Value,
 		ReadOnly: entry.ReadOnly,
 	}, nil
 }
 
-func (m *bboltKVManager) NewSecret(sec almagest.Secret, node string) (string, error) {
+func (m *bboltKVManager) NewSecret(sec storage.Secret, node string) (string, error) {
 	if !validSecretNodeName(node) {
-		return "", almagest.ErrSecretInvalidName
+		return "", storage.ErrSecretInvalidName
 	}
 	if !utf8.ValidString(sec.Value) {
-		return "", almagest.ErrSecretInvalidValue
+		return "", storage.ErrSecretInvalidValue
 	}
 	golog.Debugf("secrets storage: creating mutable secret for node=%q", node)
 	record := secretRecord{
@@ -110,7 +110,7 @@ func (m *bboltKVManager) NewSecret(sec almagest.Secret, node string) (string, er
 			return key, nil
 		}
 	}
-	return "", fmt.Errorf("%w: could not generate an unused secret key", almagest.ErrSecretConflict)
+	return "", fmt.Errorf("%w: could not generate an unused secret key", storage.ErrSecretConflict)
 }
 
 func (m *bboltKVManager) secretsSnapshot() (api.SecretsSnapshot, error) {
@@ -174,13 +174,13 @@ func (m *bboltKVManager) secretAPIEntry(key string) (api.SecretEntry, bool, erro
 
 func (m *bboltKVManager) setSecretValue(key, value string) (secretMutationResult, error) {
 	if !validSecretName(key) {
-		return secretMutationResult{}, almagest.ErrSecretInvalidName
+		return secretMutationResult{}, storage.ErrSecretInvalidName
 	}
 	if !utf8.ValidString(value) {
-		return secretMutationResult{}, almagest.ErrSecretInvalidValue
+		return secretMutationResult{}, storage.ErrSecretInvalidValue
 	}
 	if _, ok := m.immutableSecret(key); ok {
-		return secretMutationResult{}, almagest.ErrSecretReadOnly
+		return secretMutationResult{}, storage.ErrSecretReadOnly
 	}
 	golog.Debugf("secrets storage: writing mutable secret value key=%q", key)
 	var notifyNodes []string
@@ -214,10 +214,10 @@ func (m *bboltKVManager) setSecretValue(key, value string) (secretMutationResult
 
 func (m *bboltKVManager) setSecretNodes(key string, nodes []string) (secretMutationResult, error) {
 	if !validSecretName(key) || !validSecretNodeNames(nodes) {
-		return secretMutationResult{}, almagest.ErrSecretInvalidName
+		return secretMutationResult{}, storage.ErrSecretInvalidName
 	}
 	if _, ok := m.immutableSecret(key); ok {
-		return secretMutationResult{}, almagest.ErrSecretReadOnly
+		return secretMutationResult{}, storage.ErrSecretReadOnly
 	}
 	nodes = normalizeSecretNodes(nodes)
 	golog.Debugf("secrets storage: writing mutable secret nodes key=%q nodes=%q", key, nodes)
@@ -255,7 +255,7 @@ func (m *bboltKVManager) setSecretNodes(key string, nodes []string) (secretMutat
 
 func (m *bboltKVManager) renameSecret(key, newKey string) (secretMutationResult, error) {
 	if !validSecretName(key) || !validSecretName(newKey) {
-		return secretMutationResult{}, almagest.ErrSecretInvalidName
+		return secretMutationResult{}, storage.ErrSecretInvalidName
 	}
 	golog.Debugf("secrets storage: renaming mutable secret key=%q new_key=%q", key, newKey)
 	if key == newKey {
@@ -267,15 +267,15 @@ func (m *bboltKVManager) renameSecret(key, newKey string) (secretMutationResult,
 			return secretMutationResult{}, errSecretNotFound
 		}
 		if entry.ReadOnly {
-			return secretMutationResult{}, almagest.ErrSecretReadOnly
+			return secretMutationResult{}, storage.ErrSecretReadOnly
 		}
 		return secretMutationResult{prevKey: key, newKey: key, notifyNodes: normalizeSecretNodes(entry.Nodes)}, nil
 	}
 	if _, ok := m.immutableSecret(key); ok {
-		return secretMutationResult{}, almagest.ErrSecretReadOnly
+		return secretMutationResult{}, storage.ErrSecretReadOnly
 	}
 	if _, ok := m.immutableSecret(newKey); ok {
-		return secretMutationResult{}, almagest.ErrSecretConflict
+		return secretMutationResult{}, storage.ErrSecretConflict
 	}
 	var notifyNodes []string
 	err := mapBboltSecretError(m.db.Update(func(tx *bbolt.Tx) error {
@@ -284,7 +284,7 @@ func (m *bboltKVManager) renameSecret(key, newKey string) (secretMutationResult,
 			return errSecretNotFound
 		}
 		if bucket.Get([]byte(newKey)) != nil {
-			return almagest.ErrSecretConflict
+			return storage.ErrSecretConflict
 		}
 		raw := bucket.Get([]byte(key))
 		if raw == nil {
@@ -312,10 +312,10 @@ func (m *bboltKVManager) renameSecret(key, newKey string) (secretMutationResult,
 
 func (m *bboltKVManager) deleteSecret(key string) (secretMutationResult, error) {
 	if !validSecretName(key) {
-		return secretMutationResult{}, almagest.ErrSecretInvalidName
+		return secretMutationResult{}, storage.ErrSecretInvalidName
 	}
 	if _, ok := m.immutableSecret(key); ok {
-		return secretMutationResult{}, almagest.ErrSecretReadOnly
+		return secretMutationResult{}, storage.ErrSecretReadOnly
 	}
 	golog.Debugf("secrets storage: deleting mutable secret key=%q", key)
 	var notifyNodes []string
@@ -356,7 +356,7 @@ func (m *bboltKVManager) renameSecretNodeReferences(oldName, newName string) err
 		return nil
 	}
 	if !validSecretNodeName(oldName) || !validSecretNodeName(newName) {
-		return almagest.ErrSecretInvalidName
+		return storage.ErrSecretInvalidName
 	}
 	changed := map[string]struct{}{}
 	if err := m.updateMutableSecretNodes(func(nodes []string) ([]string, bool) {
@@ -375,7 +375,7 @@ func (m *bboltKVManager) renameSecretNodeReferences(oldName, newName string) err
 // runtime immutable allow list. Secrets themselves are left in place.
 func (m *bboltKVManager) deleteSecretNodeReferences(name string) error {
 	if !validSecretNodeName(name) {
-		return almagest.ErrSecretInvalidName
+		return storage.ErrSecretInvalidName
 	}
 	changed := map[string]struct{}{}
 	if err := m.updateMutableSecretNodes(func(nodes []string) ([]string, bool) {
@@ -392,10 +392,10 @@ func (m *bboltKVManager) deleteSecretNodeReferences(name string) error {
 
 func (m *bboltKVManager) createMutableSecret(key string, record secretRecord) (bool, error) {
 	if !validSecretName(key) || !validSecretNodeNames(record.Nodes) {
-		return false, almagest.ErrSecretInvalidName
+		return false, storage.ErrSecretInvalidName
 	}
 	if !utf8.ValidString(record.Value) {
-		return false, almagest.ErrSecretInvalidValue
+		return false, storage.ErrSecretInvalidValue
 	}
 	if _, ok := m.immutableSecret(key); ok {
 		return false, nil
@@ -427,7 +427,7 @@ func (m *bboltKVManager) createMutableSecret(key string, record secretRecord) (b
 
 func (m *bboltKVManager) secretEffectiveEntry(key string) (secretEffectiveEntry, bool, error) {
 	if !validSecretName(key) {
-		return secretEffectiveEntry{}, false, almagest.ErrSecretInvalidName
+		return secretEffectiveEntry{}, false, storage.ErrSecretInvalidName
 	}
 	if record, ok := m.immutableSecret(key); ok {
 		return secretEffectiveEntry{
@@ -605,10 +605,10 @@ func cloneImmutableSecrets(in map[string]immutableSecret) map[string]immutableSe
 
 func encodeSecretRecord(record secretRecord) ([]byte, error) {
 	if !utf8.ValidString(record.Value) {
-		return nil, almagest.ErrSecretInvalidValue
+		return nil, storage.ErrSecretInvalidValue
 	}
 	if !validSecretNodeNames(record.Nodes) {
-		return nil, almagest.ErrSecretInvalidName
+		return nil, storage.ErrSecretInvalidName
 	}
 	record.Nodes = normalizeSecretNodes(record.Nodes)
 	return json.Marshal(record)
@@ -617,13 +617,13 @@ func encodeSecretRecord(record secretRecord) ([]byte, error) {
 func decodeSecretRecord(data []byte) (secretRecord, error) {
 	var record secretRecord
 	if err := json.Unmarshal(data, &record); err != nil {
-		return secretRecord{}, fmt.Errorf("%w: decode secret: %v", almagest.ErrSecretInvalidValue, err)
+		return secretRecord{}, fmt.Errorf("%w: decode secret: %v", storage.ErrSecretInvalidValue, err)
 	}
 	if !utf8.ValidString(record.Value) {
-		return secretRecord{}, almagest.ErrSecretInvalidValue
+		return secretRecord{}, storage.ErrSecretInvalidValue
 	}
 	if !validSecretNodeNames(record.Nodes) {
-		return secretRecord{}, almagest.ErrSecretInvalidName
+		return secretRecord{}, storage.ErrSecretInvalidName
 	}
 	record.Nodes = normalizeSecretNodes(record.Nodes)
 	return record, nil
@@ -725,11 +725,11 @@ func mapBboltSecretError(err error) error {
 	case err == nil:
 		return nil
 	case errors.Is(err, bberrors.ErrDatabaseNotOpen), errors.Is(err, bberrors.ErrTxClosed):
-		return almagest.ErrSecretClosed
+		return storage.ErrSecretClosed
 	case errors.Is(err, bberrors.ErrBucketNameRequired), errors.Is(err, bberrors.ErrKeyRequired), errors.Is(err, bberrors.ErrKeyTooLarge):
-		return almagest.ErrSecretInvalidName
+		return storage.ErrSecretInvalidName
 	case errors.Is(err, bberrors.ErrValueTooLarge):
-		return almagest.ErrSecretInvalidValue
+		return storage.ErrSecretInvalidValue
 	default:
 		return err
 	}

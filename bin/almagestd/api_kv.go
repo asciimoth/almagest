@@ -5,12 +5,12 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"github.com/asciimoth/almagest/lib/storage"
 	"slices"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/asciimoth/almagest/bin/api"
-	"github.com/asciimoth/almagest/lib"
 	"go.etcd.io/bbolt"
 )
 
@@ -204,10 +204,10 @@ func (m *bboltKVManager) entriesSnapshot(ctx context.Context, selector api.KVSto
 		return api.KVEntriesSnapshot{}, err
 	}
 	if !validKVPath(path) {
-		return api.KVEntriesSnapshot{}, almagest.ErrKVInvalidName
+		return api.KVEntriesSnapshot{}, storage.ErrKVInvalidName
 	}
 	var snapshot api.KVEntriesSnapshot
-	err = store.Subtree(path...).View(ctx, func(tx almagest.KVReadTx) error {
+	err = store.Subtree(path...).View(ctx, func(tx storage.KVReadTx) error {
 		snapshot.Exists = tx.Exists()
 		if !snapshot.Exists {
 			return nil
@@ -221,7 +221,7 @@ func (m *bboltKVManager) entriesSnapshot(ctx context.Context, selector api.KVSto
 		}); err != nil {
 			return err
 		}
-		return tx.ForEachValue(func(key string, value almagest.KValue) error {
+		return tx.ForEachValue(func(key string, value storage.KValue) error {
 			snapshot.Entries = append(snapshot.Entries, api.KVEntryInfo{
 				Kind:   api.KVEntryValue,
 				Name:   key,
@@ -250,10 +250,10 @@ func (m *bboltKVManager) valueSnapshot(ctx context.Context, selector api.KVStore
 		return api.KVValueSnapshot{}, err
 	}
 	if !validKVPath(path) || !validKVName(key) {
-		return api.KVValueSnapshot{}, almagest.ErrKVInvalidName
+		return api.KVValueSnapshot{}, storage.ErrKVInvalidName
 	}
 	var snapshot api.KVValueSnapshot
-	err = store.Subtree(path...).View(ctx, func(tx almagest.KVReadTx) error {
+	err = store.Subtree(path...).View(ctx, func(tx storage.KVReadTx) error {
 		value, found, err := tx.Get(key)
 		if err != nil || !found {
 			return err
@@ -275,22 +275,22 @@ func (m *bboltKVManager) ensure(ctx context.Context, selector api.KVStoreSelecto
 		return err
 	}
 	if !validKVPath(path) {
-		return almagest.ErrKVInvalidName
+		return storage.ErrKVInvalidName
 	}
-	return store.Subtree(path...).Update(ctx, func(tx almagest.KVWriteTx) error {
+	return store.Subtree(path...).Update(ctx, func(tx storage.KVWriteTx) error {
 		return tx.Ensure()
 	})
 }
 
-func (m *bboltKVManager) set(ctx context.Context, selector api.KVStoreSelector, path []string, key string, value almagest.KValue) error {
+func (m *bboltKVManager) set(ctx context.Context, selector api.KVStoreSelector, path []string, key string, value storage.KValue) error {
 	store, err := m.selectedStore(selector)
 	if err != nil {
 		return err
 	}
 	if !validKVPath(path) || !validKVName(key) {
-		return almagest.ErrKVInvalidName
+		return storage.ErrKVInvalidName
 	}
-	return store.Subtree(path...).Update(ctx, func(tx almagest.KVWriteTx) error {
+	return store.Subtree(path...).Update(ctx, func(tx storage.KVWriteTx) error {
 		return tx.Set(key, value)
 	})
 }
@@ -301,9 +301,9 @@ func (m *bboltKVManager) delete(ctx context.Context, selector api.KVStoreSelecto
 		return err
 	}
 	if !validKVPath(path) || !validKVName(key) {
-		return almagest.ErrKVInvalidName
+		return storage.ErrKVInvalidName
 	}
-	return store.Subtree(path...).Update(ctx, func(tx almagest.KVWriteTx) error {
+	return store.Subtree(path...).Update(ctx, func(tx storage.KVWriteTx) error {
 		return tx.Delete(key)
 	})
 }
@@ -314,17 +314,17 @@ func (m *bboltKVManager) drop(ctx context.Context, selector api.KVStoreSelector,
 		return err
 	}
 	if !validKVPath(path) {
-		return almagest.ErrKVInvalidName
+		return storage.ErrKVInvalidName
 	}
-	return store.Subtree(path...).Update(ctx, func(tx almagest.KVWriteTx) error {
+	return store.Subtree(path...).Update(ctx, func(tx storage.KVWriteTx) error {
 		return tx.Drop()
 	})
 }
 
-func (m *bboltKVManager) selectedStore(selector api.KVStoreSelector) (almagest.KVStore, error) {
+func (m *bboltKVManager) selectedStore(selector api.KVStoreSelector) (storage.KVStore, error) {
 	selector, ok := normalizeKVStoreSelector(selector)
 	if !ok {
-		return nil, almagest.ErrKVInvalidName
+		return nil, storage.ErrKVInvalidName
 	}
 	switch selector.Kind {
 	case api.KVStoreDefault:
@@ -332,7 +332,7 @@ func (m *bboltKVManager) selectedStore(selector api.KVStoreSelector) (almagest.K
 	case api.KVStorePlugin:
 		return m.PluginStore(selector.Name), nil
 	default:
-		return nil, almagest.ErrKVInvalidName
+		return nil, storage.ErrKVInvalidName
 	}
 }
 
@@ -356,10 +356,10 @@ func normalizeKVStoreSelector(selector api.KVStoreSelector) (api.KVStoreSelector
 	}
 }
 
-func kValueToAPI(value almagest.KValue) (api.KVValue, error) {
+func kValueToAPI(value storage.KValue) (api.KVValue, error) {
 	if value.String {
 		if !utf8.Valid(value.Data) {
-			return api.KVValue{}, almagest.ErrKVInvalidValue
+			return api.KVValue{}, storage.ErrKVInvalidValue
 		}
 		return api.KVValue{
 			Data:     string(value.Data),
@@ -378,7 +378,7 @@ func kValueToAPI(value almagest.KValue) (api.KVValue, error) {
 	}, nil
 }
 
-func kValueFromAPI(value api.KVValue) (almagest.KValue, error) {
+func kValueFromAPI(value api.KVValue) (storage.KValue, error) {
 	encoding := strings.ToLower(value.Encoding)
 	if encoding == "" {
 		if value.String {
@@ -391,19 +391,19 @@ func kValueFromAPI(value api.KVValue) (almagest.KValue, error) {
 	switch encoding {
 	case "string", "utf8", "plain":
 		if value.String && !utf8.ValidString(value.Data) {
-			return almagest.KValue{}, almagest.ErrKVInvalidValue
+			return storage.KValue{}, storage.ErrKVInvalidValue
 		}
 		data = []byte(value.Data)
 	case "base64":
 		decoded, err := base64.StdEncoding.DecodeString(value.Data)
 		if err != nil {
-			return almagest.KValue{}, fmt.Errorf("%w: invalid base64 data", almagest.ErrKVInvalidValue)
+			return storage.KValue{}, fmt.Errorf("%w: invalid base64 data", storage.ErrKVInvalidValue)
 		}
 		data = decoded
 	default:
-		return almagest.KValue{}, fmt.Errorf("%w: unsupported encoding %q", almagest.ErrKVInvalidValue, value.Encoding)
+		return storage.KValue{}, fmt.Errorf("%w: unsupported encoding %q", storage.ErrKVInvalidValue, value.Encoding)
 	}
-	return almagest.KValue{
+	return storage.KValue{
 		Data:   data,
 		Hidden: value.Hidden,
 		String: value.String,
@@ -541,11 +541,11 @@ func kvPathHasPrefix(path, prefix []string) bool {
 
 func kvRequestError(id string, err error) (api.Message, error) {
 	switch {
-	case errors.Is(err, almagest.ErrKVClosed):
+	case errors.Is(err, storage.ErrKVClosed):
 		return newRequestError(id, api.ErrorUnavailable, err.Error())
-	case errors.Is(err, almagest.ErrKVInvalidName), errors.Is(err, almagest.ErrKVInvalidValue):
+	case errors.Is(err, storage.ErrKVInvalidName), errors.Is(err, storage.ErrKVInvalidValue):
 		return newRequestError(id, api.ErrorBadRequest, err.Error())
-	case errors.Is(err, almagest.ErrKVKindConflict), errors.Is(err, almagest.ErrKVRoot):
+	case errors.Is(err, storage.ErrKVKindConflict), errors.Is(err, storage.ErrKVRoot):
 		return newRequestError(id, api.ErrorConflict, err.Error())
 	default:
 		return newRequestError(id, api.ErrorInternal, err.Error())

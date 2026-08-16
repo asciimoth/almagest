@@ -585,7 +585,7 @@ the restored TUN, splitter, Spoofer, and forwarding paths under burst pressure.
 Almagest creates a `wgo.Device` in:
 
 ```text
-lib/node_wireguard_device.go
+lib/wireguard/node_wireguard_device.go
 ```
 
 Relevant code path:
@@ -599,7 +599,7 @@ n.dev = wgdevice.NewDevice(nil, nil, logger, n.workerSpawner, wgdevice.DeviceOpt
 The WireGuard device stores the runtime pointer on the node:
 
 ```text
-lib/node_wireguard.go
+lib/wireguard/node_wireguard.go
 ```
 
 Relevant field:
@@ -753,7 +753,7 @@ retained heap source in idle profiles.
 `VTun` creation path:
 
 ```text
-lib/node_vtun_runtime.go
+lib/tun/node_vtun_runtime.go
 github.com/asciimoth/gonnect-netstack@v0.4.30/vtun/vtun.go
 ```
 
@@ -769,7 +769,7 @@ Almagest exposes this endpoint queue as `endpointCh` on `almagest/VTun`.
 The default is `1024`:
 
 ```text
-lib/node_vtun.go
+lib/tun/node_vtun.go
 defaultVTunEndpointCh = 1024
 ```
 
@@ -803,7 +803,7 @@ queue.
 `Spoofer` creation path:
 
 ```text
-lib/node_spoofer_runtime.go
+lib/network/node_spoofer_runtime.go
 github.com/asciimoth/gonnect-netstack@v0.4.30/spoofer/io.go
 ```
 
@@ -819,7 +819,7 @@ Almagest exposes this as `queueLength` on `almagest/Spoofer`; the daemon default
 is also `1024`:
 
 ```text
-lib/node_spoofer.go
+lib/network/node_spoofer.go
 defaultSpooferQueue = 1024
 ```
 
@@ -1168,8 +1168,8 @@ Secondary:
 ```text
 github.com/asciimoth/wgo/device/receive.go
 github.com/asciimoth/batchudp/bind_std.go
-lib/node_wireguard_device.go
-lib/node_wireguard.go
+lib/wireguard/node_wireguard_device.go
+lib/wireguard/node_wireguard.go
 ```
 
 ## Conclusion

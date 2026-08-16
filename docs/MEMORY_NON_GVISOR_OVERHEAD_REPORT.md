@@ -152,7 +152,7 @@ main non-gVisor graph idle cost.
 Relevant path:
 
 ```text
-lib/node_default_tun_runtime.go
+lib/tun/node_default_tun_runtime.go
   defaultTunNode.rebuildDefaultTun
 github.com/asciimoth/sysnet-linux@v0.2.8/default_tun.go
   System.BuildDefaultTun
@@ -185,9 +185,9 @@ Reduction options:
 Almagest emits network and TUN values through detached wrappers:
 
 ```text
-lib/type_network.go
+lib/links/network.go
   NetworkOutputCache.Send -> gonnect.DetachNetwork
-lib/type_tun.go
+lib/links/tun.go
   TunOutputCache.Send -> tun.Detach
 ```
 
@@ -241,7 +241,7 @@ Reduction options:
 For each intercepted TCP flow, Almagest starts two engine-tracked workers:
 
 ```text
-lib/node_spoofer_forward.go
+lib/network/node_spoofer_forward.go
   forwardSpooferTCP
     spawner.Spawn(io.Copy(upstream, c), "spoofer tcp upstream")
     spawner.Spawn(io.Copy(c, upstream), "spoofer tcp downstream")

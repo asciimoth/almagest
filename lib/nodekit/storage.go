@@ -2,6 +2,15 @@ package nodekit
 
 import "github.com/asciimoth/almagest/lib/storage"
 
+var (
+	ErrSecretClosed       = storage.ErrSecretClosed
+	ErrSecretAccessDenied = storage.ErrSecretAccessDenied
+	ErrSecretConflict     = storage.ErrSecretConflict
+	ErrSecretInvalidName  = storage.ErrSecretInvalidName
+	ErrSecretInvalidValue = storage.ErrSecretInvalidValue
+	ErrSecretReadOnly     = storage.ErrSecretReadOnly
+)
+
 // KVManager is the engine key-value storage manager.
 type KVManager = storage.KVManager
 

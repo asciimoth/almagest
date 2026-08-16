@@ -2,12 +2,27 @@
 Almagest is a Go userspace network stack built around a Pasta node graph.
 - `lib/` is the reusable module. It owns the engine, built-in node classes,
   workspace-facing APIs, and small subpackages for shared contracts.
-- `lib/links/` owns shared non-DNS Pasta link payloads and output caches.
-- `lib/dns/` owns DNS link contracts, cache storage contracts, helpers, and
-  built-in DNS nodes.
+- `lib/links/` owns shared Pasta link type identifiers, non-DNS link payloads,
+  and output caches.
+- `lib/nodekit/` owns node runtime interfaces, common node base helpers,
+  workspace helpers, menu helpers, and node-facing aliases for shared
+  contracts.
+- `lib/dns/` owns DNS link payload contracts, DNS provider helpers, DNS node
+  classes, and built-in DNS nodes.
+- `lib/http/` owns HTTP client and server nodes.
+- `lib/network/` owns network middleware nodes such as router, remapper, and
+  spoofer. It also owns the mock network node.
+- `lib/socks/` owns SOCKS client/server nodes and the local proxy node.
+- `lib/tun/` owns TUN nodes and TUN debug-log nodes.
+- `lib/wireguard/` owns WireGuard nodes.
+- `lib/debug/` owns debug-only helper nodes.
 - `lib/logging/` owns reusable logging interfaces and the in-memory debug
   logger.
-- `lib/storage/` owns daemon-provided storage interfaces and error contracts.
+- `lib/storage/` owns daemon-provided storage interfaces and error contracts,
+  including DNS cache storage contracts.
+- `lib/typecolor/` owns graph type palette data.
+- `lib/testkit/` owns package-neutral test helpers and domain-specific E2E
+  helper subpackages.
 - `bin/` is the runnable module. It owns daemon startup, config files, platform
   integration, admin API plumbing, and the CLI placeholder.
 - `panel/` is the TypeScript admin UI. `just build-web` compiles it into
@@ -26,12 +41,17 @@ Runtime path:
 
 ## Module Boundaries
 `lib/` may depend on Pasta, Gonnect, Formular, Configer, and Bufpool. Root
-package files keep the engine and cross-domain built-in node classes. Domain
-node packages expose their own classes and public contracts. Shared non-DNS
-link, logging, and storage behavior belongs in the matching `lib/links`,
-`lib/logging`, or `lib/storage` package. Library code
-should not know about daemon config paths, process lifecycle, platform defaults,
-CLI commands, or admin transports.
+package files keep only the engine API, engine worker API, nodekit runtime
+bridge, built-in class registration, and node class list glue. Domain node
+packages expose their own classes and public contracts. Their package names use
+a `nodes` suffix, such as `dnsnodes`, to avoid collisions with standard library
+or Gonnect package names in code that imports multiple domains. Shared link,
+runtime, logging, storage, type-color, and test behavior belongs in the matching
+`lib/links`, `lib/nodekit`, `lib/logging`, `lib/storage`, `lib/typecolor`, or
+`lib/testkit` package. Production subpackages must not import root
+`github.com/asciimoth/almagest/lib`. Library code should not know about daemon
+config paths, process lifecycle, platform defaults, CLI commands, or admin
+transports.
 
 `bin/` imports `lib` through `bin/go.mod`. Keep daemon-only dependencies there.
 
@@ -39,32 +59,52 @@ CLI commands, or admin transports.
 Engine and workspace:
 - `lib/engine.go`: `BuildEngine`, workspace API forwarding, notifications,
   persistence hooks, lifecycle.
-- `lib/nodelist.go`: root built-in node class registration and filtering.
+- `lib/worker.go`: engine worker tracking, worker snapshots, and worker
+  notifications.
 - `lib/node_packages.go`: central registration for node subpackages.
-- `lib/links/`: `almagest/network` and `almagest/tun` payload types, resource
-  binding helpers, and output caches.
-- `lib/type_network.go`, `lib/type_tun.go`: root network and TUN facades plus
-  node-only helper providers.
-- `lib/dns/`: DNS links, cache storage contracts, node classes, and helpers.
+- `lib/nodelist.go`: root built-in node class registration and filtering.
+- `lib/nodekit_runtime.go`: adapter that makes the root engine implement
+  `nodekit.Runtime`.
+- `lib/links/`: shared link type identifiers, `almagest/network` and
+  `almagest/tun` payload types, resource binding helpers, and output caches.
+- `lib/nodekit/`: node runtime interface, node base, worker helpers, workspace
+  helpers, menu helpers, TLS selector helpers, and node-facing aliases to
+  `links` and `storage`.
+- `lib/dns/`: DNS payload contracts, provider helpers, node classes, and
+  built-in DNS nodes.
+- `lib/http/`: HTTP client and server node classes.
+- `lib/network/`: network router, remapper, and spoofer node classes.
+- `lib/socks/`: SOCKS client/server and local proxy node classes.
+- `lib/tun/`: TUN, default TUN, VTun, TUN copy/join/split/config-stripper, and
+  TUN debug-log node classes.
+- `lib/wireguard/`: WireGuard node classes.
+- `lib/debug/`: debug-only node classes.
 - `lib/logging/`: logger interfaces and debug logger implementation.
-- `lib/storage/`: KV, secret, and TLS config storage contracts.
+- `lib/storage/`: KV, DNS cache, secret, and TLS config storage contracts.
+- `lib/typecolor/`: graph type palette data.
+- `lib/testkit/`: package-neutral assertions and E2E helper subpackages.
 
 Built-in nodes:
 - `lib/dns/`: all DNS-owned node implementations.
-- `lib/node_mock_net.go`: virtual loopback network node.
-- `lib/node_http_server.go`: debug HTTP server over a received network.
-- `lib/node_http_client.go`: HTTP client over a received network.
+- `lib/debug/`: debug-only node implementations.
+- `lib/http/`: HTTP client and server node implementations.
+- `lib/network/`: network router, remapper, and spoofer node implementations.
+- `lib/socks/`: SOCKS and local proxy node implementations.
+- `lib/tun/`: TUN node implementations.
+- `lib/wireguard/`: WireGuard node implementation.
+- `lib/network/node_mock_net.go`: virtual loopback network node.
 
 Daemon:
 - `bin/almagestd/main.go`: startup sequence and shutdown context.
-- `bin/almagestd/agent.go`: config path resolution, reading, fallback behavior.
+- `bin/almagestd/cli_paths.go`: CLI config path resolution.
 - `bin/almagestd/config.go`: HuJSON parsing and config structs.
 - `bin/almagestd/system.go`: debug/native system integration selection.
 - `bin/almagestd/api.go`: localhost admin api listener.
 
 Platform and CLI:
 - `bin/almagestd/platform/`: build-tagged defaults and platform operations.
-- `bin/almagest-cli/cli.go`: CLI placeholder.
+- `bin/almagest-cli/main.go`: CLI entry point.
+- `bin/almagest-cli/commands.go`: CLI command registration and dispatch.
 
 Admin panel:
 - `panel/src/app.ts`: graph UI and WebSocket admin API client.
@@ -80,17 +120,20 @@ Admin panel:
 - `sysnet.System` abstracts host/system network integration.
 
 ## Engine Notes
-`lib.BuildEngine(ctx, cfg, logf, sys, kv, dns, secrets, extra, pool)` builds one
-workspace named `main`. Most public methods check the workspace ID and then
-forward to Pasta.
+`lib.BuildEngine(ctx, cfg, logf, sys, kv, dns, secrets, tlsConfigs, extra,
+pool, debug)` builds one workspace named `lib.MainWorkspace` (`"main"`). Most
+public methods check the workspace ID and then forward to Pasta.
 
 Engine API groups:
 - graph mutation and inspection
 - copy/paste, undo/redo
 - inbox and Formular messages
 - subscriptions and full snapshots
+- worker snapshots and worker notifications
 - admin type color map for graph rendering
 - workspace config save under a caller-provided `nodes` config view
+- accessors for buffer pool, KV storage, DNS cache manager, secret storage, and
+  TLS config storage
 - close of workspace and system integration
 
 Notifications have two kinds:

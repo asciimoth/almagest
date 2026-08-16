@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"github.com/asciimoth/almagest/lib/logging"
 	"path/filepath"
 	"testing"
 	"time"
@@ -19,7 +20,7 @@ func TestEngineWorkspaceSnapshotAPIClassesAreSortedList(t *testing.T) {
 	engine, err := almagest.BuildEngine(
 		context.Background(),
 		configer.NewMemory(nil),
-		almagest.NewDebugLogFactory(16),
+		logging.NewDebugLogFactory(16),
 		&sysnetdebug.System{},
 		nil,
 		nil, nil,
@@ -42,7 +43,7 @@ func TestEngineWorkspaceSnapshotAPIClassesAreSortedList(t *testing.T) {
 		}
 	})
 	session := (&AdminAPI{}).newAPISession(engine, nil, nil)
-	req := mustRequest(t, "1", api.SurfaceEngine, string(api.MethodEngineWorkspaceSnapshot), api.WorkspaceRequest{Workspace: almagest.E2EWorkspace})
+	req := mustRequest(t, "1", api.SurfaceEngine, string(api.MethodEngineWorkspaceSnapshot), api.WorkspaceRequest{Workspace: almagest.MainWorkspace})
 
 	resp, err := session.handleMessage(req)
 	if err != nil {
@@ -208,7 +209,7 @@ func TestEngineBatchNodeAPIDispatch(t *testing.T) {
 	engine, err := almagest.BuildEngine(
 		context.Background(),
 		configer.NewMemory(nil),
-		almagest.NewDebugLogFactory(16),
+		logging.NewDebugLogFactory(16),
 		&sysnetdebug.System{},
 		nil,
 		nil, nil,
@@ -228,17 +229,17 @@ func TestEngineBatchNodeAPIDispatch(t *testing.T) {
 	})
 	session := (&AdminAPI{}).newAPISession(engine, nil, nil)
 
-	first, err := engine.AddNode(almagest.E2EWorkspace, "test/AdminAPIBatchNode", "first")
+	first, err := engine.AddNode(almagest.MainWorkspace, "test/AdminAPIBatchNode", "first")
 	if err != nil {
 		t.Fatalf("AddNode first error = %v, want nil", err)
 	}
-	second, err := engine.AddNode(almagest.E2EWorkspace, "test/AdminAPIBatchNode", "second")
+	second, err := engine.AddNode(almagest.MainWorkspace, "test/AdminAPIBatchNode", "second")
 	if err != nil {
 		t.Fatalf("AddNode second error = %v, want nil", err)
 	}
 
 	moveReq, err := api.NewRequest("1", api.SurfaceEngine, string(api.MethodEngineMoveNodes), api.MoveNodesRequest{
-		Workspace: almagest.E2EWorkspace,
+		Workspace: almagest.MainWorkspace,
 		Positions: map[uint64]string{
 			first:  "10 20",
 			second: "30 40",
@@ -254,12 +255,12 @@ func TestEngineBatchNodeAPIDispatch(t *testing.T) {
 	if moveResp.Error != nil {
 		t.Fatalf("move response error = %#v, want nil", moveResp.Error)
 	}
-	if got, ok := engine.NodeSnapshot(almagest.E2EWorkspace, second); !ok || got.Position != "30 40" {
+	if got, ok := engine.NodeSnapshot(almagest.MainWorkspace, second); !ok || got.Position != "30 40" {
 		t.Fatalf("second snapshot = %#v, %v; want position 30 40", got, ok)
 	}
 
 	removeReq, err := api.NewRequest("2", api.SurfaceEngine, string(api.MethodEngineRemoveNodes), api.IDsRequest{
-		Workspace: almagest.E2EWorkspace,
+		Workspace: almagest.MainWorkspace,
 		IDs:       []uint64{first, second},
 	})
 	if err != nil {
@@ -272,10 +273,10 @@ func TestEngineBatchNodeAPIDispatch(t *testing.T) {
 	if removeResp.Error != nil {
 		t.Fatalf("remove response error = %#v, want nil", removeResp.Error)
 	}
-	if _, ok := engine.NodeSnapshot(almagest.E2EWorkspace, first); ok {
+	if _, ok := engine.NodeSnapshot(almagest.MainWorkspace, first); ok {
 		t.Fatal("first node still exists after remove_nodes dispatch")
 	}
-	if _, ok := engine.NodeSnapshot(almagest.E2EWorkspace, second); ok {
+	if _, ok := engine.NodeSnapshot(almagest.MainWorkspace, second); ok {
 		t.Fatal("second node still exists after remove_nodes dispatch")
 	}
 }

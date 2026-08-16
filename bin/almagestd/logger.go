@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/asciimoth/almagest/lib/logging"
 	"os"
 	"slices"
 	"strings"
@@ -9,13 +10,12 @@ import (
 	"time"
 
 	"github.com/asciimoth/almagest/bin/api"
-	"github.com/asciimoth/almagest/lib"
 	"github.com/asciimoth/pasta/pasta"
 	"github.com/kataras/golog"
 )
 
 var (
-	_ almagest.Logger = &Logger{}
+	_ logging.Logger = &Logger{}
 )
 
 // TODO: Improve performance
@@ -79,7 +79,7 @@ func NewLogFactory(cfg LogCacheConfig) *LogFactory {
 	}
 }
 
-func (l *LogFactory) EngineLogger() almagest.Logger {
+func (l *LogFactory) EngineLogger() logging.Logger {
 	return &Logger{
 		prefix: "[engine]",
 		level:  l.level,
@@ -88,7 +88,7 @@ func (l *LogFactory) EngineLogger() almagest.Logger {
 	}
 }
 
-func (l *LogFactory) DaemonLogger() almagest.Logger {
+func (l *LogFactory) DaemonLogger() logging.Logger {
 	return &Logger{
 		prefix: "[daemon]",
 		level:  l.level,

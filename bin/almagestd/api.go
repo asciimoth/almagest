@@ -13,7 +13,8 @@ import (
 	"time"
 
 	"github.com/asciimoth/almagest/bin/api"
-	"github.com/asciimoth/almagest/lib"
+	almagest "github.com/asciimoth/almagest/lib"
+	"github.com/asciimoth/almagest/lib/typecolor"
 	"github.com/asciimoth/gonnect/protected"
 	"github.com/asciimoth/gonnect/sysnet"
 	"github.com/asciimoth/gonnect/tlspolicy"
@@ -283,8 +284,8 @@ func (s *apiSession) handleAdminMessage(msg api.Message) (api.Message, error) {
 		return api.NewResponse(msg.ID, api.PingResponse(req))
 
 	case api.MethodAdminColorMap:
-		colormap := make(map[string]almagest.TypePalette)
-		maps.Copy(colormap, almagest.DefaultColorMap)
+		colormap := make(map[string]typecolor.TypePalette)
+		maps.Copy(colormap, typecolor.DefaultColorMap)
 		return api.NewResponse(msg.ID, colormap)
 
 	case api.MethodAdminAcquireMutation:

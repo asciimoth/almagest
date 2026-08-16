@@ -6,7 +6,7 @@ import (
 	"sync"
 
 	"github.com/asciimoth/almagest/bin/api"
-	"github.com/asciimoth/almagest/lib"
+	almagest "github.com/asciimoth/almagest/lib"
 	"github.com/asciimoth/gonnect/sysnet"
 	"github.com/coder/websocket"
 	"github.com/kataras/golog"

@@ -36,6 +36,7 @@ type Runtime interface {
 	Pool() bufpool.Pool
 	System() sysnet.System
 	KVManager() storage.KVManager
+	DnsCacheManager() storage.DnsCacheManager
 	SecretsStorage() storage.SecretsStorage
 	TlsConfigStorage() storage.TlsConfigStorage
 	WorkerSpawner(node uint64) WorkerSpawner

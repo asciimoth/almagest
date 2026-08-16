@@ -7,16 +7,29 @@ import (
 	"time"
 
 	"github.com/asciimoth/configer/configer"
+	"github.com/asciimoth/gonnect"
 	"github.com/asciimoth/gonnect/dns"
+	sysnetdebug "github.com/asciimoth/gonnect/sysnet/debug"
 	"github.com/asciimoth/pasta/pasta"
+
+	"github.com/asciimoth/almagest/lib/logging"
+	"github.com/asciimoth/almagest/lib/storage"
 )
+
+func newEngineTestDebugSystem() *sysnetdebug.System {
+	out := gonnect.NewLoopbackNetwork()
+	out.AllowAnyHost = true
+	local := gonnect.NewLoopbackNetwork()
+	local.AllowAnyHost = true
+	return &sysnetdebug.System{OutNetwork: out, LocalNetwork: local}
+}
 
 func TestEngineUnsubscribeNotificationsRemovesSubscriptionMapping(t *testing.T) {
 	engineAPI, err := BuildEngine(
 		context.Background(),
 		configer.NewMemory(nil),
-		NewDebugLogFactory(1),
-		newE2EDebugSystem(),
+		logging.NewDebugLogFactory(1),
+		newEngineTestDebugSystem(),
 		nil,
 		nil,
 		nil,
@@ -56,8 +69,8 @@ func TestEngineSubscribeNotificationsCallbackCanReenterEngine(t *testing.T) {
 	engineAPI, err := BuildEngine(
 		context.Background(),
 		configer.NewMemory(nil),
-		NewDebugLogFactory(1),
-		newE2EDebugSystem(),
+		logging.NewDebugLogFactory(1),
+		newEngineTestDebugSystem(),
 		nil,
 		nil,
 		nil,
@@ -96,8 +109,8 @@ func TestEngineLockedWorkspaceWrappersFromNodeCallback(t *testing.T) {
 	engineAPI, err := BuildEngine(
 		context.Background(),
 		configer.NewMemory(nil),
-		NewDebugLogFactory(1),
-		newE2EDebugSystem(),
+		logging.NewDebugLogFactory(1),
+		newEngineTestDebugSystem(),
 		nil,
 		nil,
 		nil,
@@ -122,7 +135,7 @@ func TestEngineLockedWorkspaceWrappersFromNodeCallback(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		_, err := engineAPI.AddNode(E2EWorkspace, "test/EngineLockedCallback", "locked-callback")
+		_, err := engineAPI.AddNode(MainWorkspace, "test/EngineLockedCallback", "locked-callback")
 		done <- err
 	}()
 
@@ -140,8 +153,8 @@ func TestEngineBatchNodeRemovalAndMoveUseWorkspaceBatchMutations(t *testing.T) {
 	engineAPI, err := BuildEngine(
 		context.Background(),
 		configer.NewMemory(nil),
-		NewDebugLogFactory(1),
-		newE2EDebugSystem(),
+		logging.NewDebugLogFactory(1),
+		newEngineTestDebugSystem(),
 		nil,
 		nil,
 		nil,
@@ -160,15 +173,15 @@ func TestEngineBatchNodeRemovalAndMoveUseWorkspaceBatchMutations(t *testing.T) {
 		}
 	})
 
-	first, err := engineAPI.AddNode(E2EWorkspace, "test/EngineBatchNode", "first")
+	first, err := engineAPI.AddNode(MainWorkspace, "test/EngineBatchNode", "first")
 	if err != nil {
 		t.Fatalf("AddNode first error = %v, want nil", err)
 	}
-	second, err := engineAPI.AddNode(E2EWorkspace, "test/EngineBatchNode", "second")
+	second, err := engineAPI.AddNode(MainWorkspace, "test/EngineBatchNode", "second")
 	if err != nil {
 		t.Fatalf("AddNode second error = %v, want nil", err)
 	}
-	third, err := engineAPI.AddNode(E2EWorkspace, "test/EngineBatchNode", "third")
+	third, err := engineAPI.AddNode(MainWorkspace, "test/EngineBatchNode", "third")
 	if err != nil {
 		t.Fatalf("AddNode third error = %v, want nil", err)
 	}
@@ -185,7 +198,7 @@ func TestEngineBatchNodeRemovalAndMoveUseWorkspaceBatchMutations(t *testing.T) {
 	defer engineAPI.UnsubscribeNotifications(sub)
 	notifications = nil
 
-	engineAPI.MoveNodes(E2EWorkspace, map[uint64]string{
+	engineAPI.MoveNodes(MainWorkspace, map[uint64]string{
 		0:      "ignored",
 		999999: "ignored",
 		first:  "10 20",
@@ -194,27 +207,27 @@ func TestEngineBatchNodeRemovalAndMoveUseWorkspaceBatchMutations(t *testing.T) {
 	if len(notifications) != 1 || notifications[0].Kind != pasta.NotificationNodesUpdated {
 		t.Fatalf("move notifications = %#v, want one nodes_updated notification", notifications)
 	}
-	firstSnapshot, ok := engineAPI.NodeSnapshot(E2EWorkspace, first)
+	firstSnapshot, ok := engineAPI.NodeSnapshot(MainWorkspace, first)
 	if !ok || firstSnapshot.Position != "10 20" {
 		t.Fatalf("first snapshot = %#v, %v; want position 10 20", firstSnapshot, ok)
 	}
-	secondSnapshot, ok := engineAPI.NodeSnapshot(E2EWorkspace, second)
+	secondSnapshot, ok := engineAPI.NodeSnapshot(MainWorkspace, second)
 	if !ok || secondSnapshot.Position != "30 40" {
 		t.Fatalf("second snapshot = %#v, %v; want position 30 40", secondSnapshot, ok)
 	}
 
 	notifications = nil
-	engineAPI.RemoveNodes(E2EWorkspace, []uint64{0, first, second, first, 999999})
+	engineAPI.RemoveNodes(MainWorkspace, []uint64{0, first, second, first, 999999})
 	if len(notifications) != 1 || notifications[0].Kind != pasta.NotificationNodesRemoved {
 		t.Fatalf("remove notifications = %#v, want one nodes_removed notification", notifications)
 	}
-	if _, ok := engineAPI.NodeSnapshot(E2EWorkspace, first); ok {
+	if _, ok := engineAPI.NodeSnapshot(MainWorkspace, first); ok {
 		t.Fatal("first node still exists after batch remove")
 	}
-	if _, ok := engineAPI.NodeSnapshot(E2EWorkspace, second); ok {
+	if _, ok := engineAPI.NodeSnapshot(MainWorkspace, second); ok {
 		t.Fatal("second node still exists after batch remove")
 	}
-	if _, ok := engineAPI.NodeSnapshot(E2EWorkspace, third); !ok {
+	if _, ok := engineAPI.NodeSnapshot(MainWorkspace, third); !ok {
 		t.Fatal("third node should remain after batch remove")
 	}
 }
@@ -227,8 +240,8 @@ func TestEngineManagersFromBuildEngine(t *testing.T) {
 	engineAPI, err := BuildEngine(
 		context.Background(),
 		configer.NewMemory(nil),
-		NewDebugLogFactory(1),
-		newE2EDebugSystem(),
+		logging.NewDebugLogFactory(1),
+		newEngineTestDebugSystem(),
 		kv,
 		dnsCache,
 		secrets,
@@ -262,11 +275,11 @@ func TestEngineManagersFromBuildEngine(t *testing.T) {
 
 type testKVManager struct{}
 
-func (testKVManager) DefaultStore() KVStore {
+func (testKVManager) DefaultStore() storage.KVStore {
 	return nil
 }
 
-func (testKVManager) PluginStore(string) KVStore {
+func (testKVManager) PluginStore(string) storage.KVStore {
 	return nil
 }
 
@@ -278,11 +291,11 @@ func (testDnsCacheManager) Storage(string) dns.CacheStorage {
 
 type testSecretsStorage struct{}
 
-func (testSecretsStorage) GetSecret(string, string) (Secret, error) {
-	return Secret{}, ErrSecretAccessDenied
+func (testSecretsStorage) GetSecret(string, string) (storage.Secret, error) {
+	return storage.Secret{}, storage.ErrSecretAccessDenied
 }
 
-func (testSecretsStorage) NewSecret(Secret, string) (string, error) {
+func (testSecretsStorage) NewSecret(storage.Secret, string) (string, error) {
 	return "", nil
 }
 
@@ -327,10 +340,10 @@ type engineLockedCallbackNode struct {
 }
 
 func (n *engineLockedCallbackNode) OnInit(w *pasta.Workspace, _ pasta.Logger, id uint64, _ string, _ *pasta.NodeInitData, _, _, _, _ bool) error {
-	if _, ok := n.engine.NodeSnapshotLocked(E2EWorkspace, id); !ok {
+	if _, ok := n.engine.NodeSnapshotLocked(MainWorkspace, id); !ok {
 		return pasta.ErrNoNode
 	}
-	n.engine.SetNodePositionLocked(E2EWorkspace, id, "callback-position")
+	n.engine.SetNodePositionLocked(MainWorkspace, id, "callback-position")
 	return nil
 }
 

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/asciimoth/almagest/lib"
+	"github.com/asciimoth/almagest/lib/typecolor"
 	"github.com/asciimoth/pasta/pasta"
 )
 
@@ -240,7 +241,7 @@ type EngineNotification struct {
 	Workspace   *WorkspaceNotification       `json:"workspace_notification,omitempty"`
 	Worker      *almagest.WorkerNotification `json:"worker_notification,omitempty"`
 
-	ColorMap map[string]almagest.TypePalette `json:"colormap,omitempty"`
+	ColorMap map[string]typecolor.TypePalette `json:"colormap,omitempty"`
 }
 
 // NewEngineNotification converts a library engine notification into the public

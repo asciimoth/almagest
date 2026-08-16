@@ -7,6 +7,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"github.com/asciimoth/almagest/lib/storage"
 	"net/netip"
 	"reflect"
 	"slices"
@@ -15,7 +16,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/asciimoth/almagest/bin/api"
-	almagest "github.com/asciimoth/almagest/lib"
 	"github.com/asciimoth/gonnect/tlspolicy"
 	"github.com/kataras/golog"
 	"go.etcd.io/bbolt"
@@ -122,10 +122,10 @@ func (m *bboltKVManager) ListConfigs() []string {
 
 func (m *bboltKVManager) GetClientConfig(name string, node string) (tls.Config, error) {
 	if m == nil || m.db == nil {
-		return tls.Config{}, almagest.ErrTlsConfigNotFound
+		return tls.Config{}, storage.ErrTlsConfigNotFound
 	}
 	if !validTLSName(name) || (node != "" && !validSecretNodeName(node)) {
-		return tls.Config{}, almagest.ErrTlsConfigInvalidName
+		return tls.Config{}, storage.ErrTlsConfigInvalidName
 	}
 	golog.Debugf("TLS storage: client config access policy=%q node=%q", name, node)
 	certs, err := m.tlsEffectiveCertMap()
@@ -137,7 +137,7 @@ func (m *bboltKVManager) GetClientConfig(name string, node string) (tls.Config, 
 		return tls.Config{}, err
 	}
 	if !found {
-		return tls.Config{}, almagest.ErrTlsConfigNotFound
+		return tls.Config{}, storage.ErrTlsConfigNotFound
 	}
 	compiled, err := compileTLSPolicySpec(policy.Spec, certs)
 	if err != nil {
@@ -211,7 +211,7 @@ func (m *bboltKVManager) tlsPolicyAPIEntry(name string) (api.TLSPolicyEntry, boo
 
 func (m *bboltKVManager) setTLSBuiltinCA(ca *tlsBuiltinCA) (tlsMutationResult, error) {
 	if ca == nil {
-		return tlsMutationResult{}, almagest.ErrTlsConfigInvalidValue
+		return tlsMutationResult{}, storage.ErrTlsConfigInvalidValue
 	}
 	policies, err := m.tlsEffectivePolicyMap()
 	if err != nil {
@@ -250,10 +250,10 @@ func (m *bboltKVManager) setTLSOSData(data immutableTLSData) (tlsMutationResult,
 	nextOSCerts := map[string]immutableTLSCert{}
 	for name, cert := range data.Certs {
 		if !validTLSName(name) || !strings.HasPrefix(name, tlsOSCertPrefix) {
-			return tlsMutationResult{}, almagest.ErrTlsConfigInvalidName
+			return tlsMutationResult{}, storage.ErrTlsConfigInvalidName
 		}
 		if _, _, err := parseTLSAuthorityPEM(cert.PEM); err != nil {
-			return tlsMutationResult{}, fmt.Errorf("%w: OS TLS certificate %q: %v", almagest.ErrTlsConfigInvalidValue, name, err)
+			return tlsMutationResult{}, fmt.Errorf("%w: OS TLS certificate %q: %v", storage.ErrTlsConfigInvalidValue, name, err)
 		}
 		nextOSCerts[name] = immutableTLSCert{
 			tlsCertificateRecord: tlsCertificateRecord{PEM: cert.PEM},
@@ -316,14 +316,14 @@ func (m *bboltKVManager) setTLSOSData(data immutableTLSData) (tlsMutationResult,
 
 func (m *bboltKVManager) setTLSCert(name, pemText string) (tlsMutationResult, error) {
 	if !validMutableTLSCertName(name) {
-		return tlsMutationResult{}, almagest.ErrTlsConfigInvalidName
+		return tlsMutationResult{}, storage.ErrTlsConfigInvalidName
 	}
 	if _, ok := m.immutableTLSCert(name); ok {
-		return tlsMutationResult{}, almagest.ErrTlsConfigReadOnly
+		return tlsMutationResult{}, storage.ErrTlsConfigReadOnly
 	}
 	record := tlsCertificateRecord{PEM: pemText}
 	if _, _, err := parseTLSAuthorityPEM(record.PEM); err != nil {
-		return tlsMutationResult{}, fmt.Errorf("%w: %v", almagest.ErrTlsConfigInvalidValue, err)
+		return tlsMutationResult{}, fmt.Errorf("%w: %v", storage.ErrTlsConfigInvalidValue, err)
 	}
 	golog.Debugf("TLS storage: writing mutable certificate name=%q", name)
 	affected, err := m.tlsPoliciesMentioningCert(name)
@@ -357,7 +357,7 @@ func (m *bboltKVManager) setTLSCert(name, pemText string) (tlsMutationResult, er
 
 func (m *bboltKVManager) renameTLSCert(name, newName string) (tlsMutationResult, error) {
 	if !validMutableTLSCertName(name) || !validMutableTLSCertName(newName) {
-		return tlsMutationResult{}, almagest.ErrTlsConfigInvalidName
+		return tlsMutationResult{}, storage.ErrTlsConfigInvalidName
 	}
 	golog.Debugf("TLS storage: renaming mutable certificate name=%q new_name=%q", name, newName)
 	if name == newName {
@@ -369,15 +369,15 @@ func (m *bboltKVManager) renameTLSCert(name, newName string) (tlsMutationResult,
 			return tlsMutationResult{}, errTLSCertNotFound
 		}
 		if cert.ReadOnly {
-			return tlsMutationResult{}, almagest.ErrTlsConfigReadOnly
+			return tlsMutationResult{}, storage.ErrTlsConfigReadOnly
 		}
 		return tlsMutationResult{}, nil
 	}
 	if _, ok := m.immutableTLSCert(name); ok {
-		return tlsMutationResult{}, almagest.ErrTlsConfigReadOnly
+		return tlsMutationResult{}, storage.ErrTlsConfigReadOnly
 	}
 	if _, ok := m.immutableTLSCert(newName); ok {
-		return tlsMutationResult{}, almagest.ErrTlsConfigConflict
+		return tlsMutationResult{}, storage.ErrTlsConfigConflict
 	}
 
 	changedPolicies := map[string]struct{}{}
@@ -390,7 +390,7 @@ func (m *bboltKVManager) renameTLSCert(name, newName string) (tlsMutationResult,
 			return errTLSCertNotFound
 		}
 		if bucket.Get([]byte(newName)) != nil {
-			return almagest.ErrTlsConfigConflict
+			return storage.ErrTlsConfigConflict
 		}
 		raw := bucket.Get([]byte(name))
 		if raw == nil {
@@ -424,10 +424,10 @@ func (m *bboltKVManager) renameTLSCert(name, newName string) (tlsMutationResult,
 
 func (m *bboltKVManager) deleteTLSCert(name string) (tlsMutationResult, error) {
 	if !validMutableTLSCertName(name) {
-		return tlsMutationResult{}, almagest.ErrTlsConfigInvalidName
+		return tlsMutationResult{}, storage.ErrTlsConfigInvalidName
 	}
 	if _, ok := m.immutableTLSCert(name); ok {
-		return tlsMutationResult{}, almagest.ErrTlsConfigReadOnly
+		return tlsMutationResult{}, storage.ErrTlsConfigReadOnly
 	}
 	golog.Debugf("TLS storage: deleting mutable certificate name=%q", name)
 
@@ -466,10 +466,10 @@ func (m *bboltKVManager) deleteTLSCert(name string) (tlsMutationResult, error) {
 
 func (m *bboltKVManager) setTLSPolicy(name string, spec api.TLSPolicySpec) (tlsMutationResult, error) {
 	if !validMutableTLSPolicyName(name) {
-		return tlsMutationResult{}, almagest.ErrTlsConfigInvalidName
+		return tlsMutationResult{}, storage.ErrTlsConfigInvalidName
 	}
 	if _, ok := m.immutableTLSPolicy(name); ok {
-		return tlsMutationResult{}, almagest.ErrTlsConfigReadOnly
+		return tlsMutationResult{}, storage.ErrTlsConfigReadOnly
 	}
 	spec = normalizeTLSPolicySpec(spec)
 	certs, err := m.tlsEffectiveCertMap()
@@ -477,7 +477,7 @@ func (m *bboltKVManager) setTLSPolicy(name string, spec api.TLSPolicySpec) (tlsM
 		return tlsMutationResult{}, err
 	}
 	if _, err := compileTLSPolicySpec(spec, certs); err != nil {
-		return tlsMutationResult{}, fmt.Errorf("%w: %v", almagest.ErrTlsConfigInvalidValue, err)
+		return tlsMutationResult{}, fmt.Errorf("%w: %v", storage.ErrTlsConfigInvalidValue, err)
 	}
 	_, existed, err := m.tlsEffectivePolicy(name)
 	if err != nil {
@@ -507,7 +507,7 @@ func (m *bboltKVManager) setTLSPolicy(name string, spec api.TLSPolicySpec) (tlsM
 
 func (m *bboltKVManager) renameTLSPolicy(name, newName string) (tlsMutationResult, error) {
 	if !validMutableTLSPolicyName(name) || !validMutableTLSPolicyName(newName) {
-		return tlsMutationResult{}, almagest.ErrTlsConfigInvalidName
+		return tlsMutationResult{}, storage.ErrTlsConfigInvalidName
 	}
 	golog.Debugf("TLS storage: renaming mutable policy name=%q new_name=%q", name, newName)
 	if name == newName {
@@ -519,15 +519,15 @@ func (m *bboltKVManager) renameTLSPolicy(name, newName string) (tlsMutationResul
 			return tlsMutationResult{}, errTLSPolicyNotFound
 		}
 		if policy.ReadOnly {
-			return tlsMutationResult{}, almagest.ErrTlsConfigReadOnly
+			return tlsMutationResult{}, storage.ErrTlsConfigReadOnly
 		}
 		return tlsMutationResult{}, nil
 	}
 	if _, ok := m.immutableTLSPolicy(name); ok {
-		return tlsMutationResult{}, almagest.ErrTlsConfigReadOnly
+		return tlsMutationResult{}, storage.ErrTlsConfigReadOnly
 	}
 	if _, ok := m.immutableTLSPolicy(newName); ok {
-		return tlsMutationResult{}, almagest.ErrTlsConfigConflict
+		return tlsMutationResult{}, storage.ErrTlsConfigConflict
 	}
 
 	err := mapBboltTLSError(m.db.Update(func(tx *bbolt.Tx) error {
@@ -539,7 +539,7 @@ func (m *bboltKVManager) renameTLSPolicy(name, newName string) (tlsMutationResul
 			return errTLSPolicyNotFound
 		}
 		if bucket.Get([]byte(newName)) != nil {
-			return almagest.ErrTlsConfigConflict
+			return storage.ErrTlsConfigConflict
 		}
 		raw := bucket.Get([]byte(name))
 		if raw == nil {
@@ -571,10 +571,10 @@ func (m *bboltKVManager) renameTLSPolicy(name, newName string) (tlsMutationResul
 
 func (m *bboltKVManager) deleteTLSPolicy(name string) (tlsMutationResult, error) {
 	if !validMutableTLSPolicyName(name) {
-		return tlsMutationResult{}, almagest.ErrTlsConfigInvalidName
+		return tlsMutationResult{}, storage.ErrTlsConfigInvalidName
 	}
 	if _, ok := m.immutableTLSPolicy(name); ok {
-		return tlsMutationResult{}, almagest.ErrTlsConfigReadOnly
+		return tlsMutationResult{}, storage.ErrTlsConfigReadOnly
 	}
 	golog.Debugf("TLS storage: deleting mutable policy name=%q", name)
 
@@ -612,7 +612,7 @@ func (m *bboltKVManager) deleteTLSPolicy(name string) (tlsMutationResult, error)
 
 func (m *bboltKVManager) tlsEffectiveCert(name string) (tlsEffectiveCert, bool, error) {
 	if !validTLSName(name) {
-		return tlsEffectiveCert{}, false, almagest.ErrTlsConfigInvalidName
+		return tlsEffectiveCert{}, false, storage.ErrTlsConfigInvalidName
 	}
 	if record, ok := m.immutableTLSCert(name); ok {
 		cert, err := tlsEffectiveCertFromRecord(name, record.tlsCertificateRecord, true, record.source)
@@ -681,7 +681,7 @@ func (m *bboltKVManager) tlsEffectiveCertMap() (map[string]tlsEffectiveCert, err
 
 func (m *bboltKVManager) tlsEffectivePolicy(name string) (tlsEffectivePolicy, bool, error) {
 	if !validTLSName(name) {
-		return tlsEffectivePolicy{}, false, almagest.ErrTlsConfigInvalidName
+		return tlsEffectivePolicy{}, false, storage.ErrTlsConfigInvalidName
 	}
 	if record, ok := m.immutableTLSPolicy(name); ok {
 		return tlsEffectivePolicy{
@@ -841,11 +841,11 @@ func tlsCertEntryToAPI(cert tlsEffectiveCert) api.TLSCertEntry {
 
 func tlsEffectiveCertFromRecord(name string, record tlsCertificateRecord, readOnly bool, source api.TLSSource) (tlsEffectiveCert, error) {
 	if !validTLSName(name) {
-		return tlsEffectiveCert{}, almagest.ErrTlsConfigInvalidName
+		return tlsEffectiveCert{}, storage.ErrTlsConfigInvalidName
 	}
 	authority, cert, err := parseTLSAuthorityPEM(record.PEM)
 	if err != nil {
-		return tlsEffectiveCert{}, fmt.Errorf("%w: %v", almagest.ErrTlsConfigInvalidValue, err)
+		return tlsEffectiveCert{}, fmt.Errorf("%w: %v", storage.ErrTlsConfigInvalidValue, err)
 	}
 	return tlsEffectiveCert{
 		Name:            name,
@@ -1498,7 +1498,7 @@ func (m *bboltKVManager) renameTLSPolicyNodeReferences(oldName, newName string) 
 		return nil
 	}
 	if !validSecretNodeName(oldName) || !validSecretNodeName(newName) {
-		return almagest.ErrTlsConfigInvalidName
+		return storage.ErrTlsConfigInvalidName
 	}
 	m.tlsMu.Lock()
 	defer m.tlsMu.Unlock()
@@ -1515,7 +1515,7 @@ func (m *bboltKVManager) renameTLSPolicyNodeReferences(oldName, newName string) 
 
 func (m *bboltKVManager) deleteTLSPolicyNodeReferences(name string) error {
 	if !validSecretNodeName(name) {
-		return almagest.ErrTlsConfigInvalidName
+		return storage.ErrTlsConfigInvalidName
 	}
 	m.tlsMu.Lock()
 	defer m.tlsMu.Unlock()
@@ -1700,7 +1700,7 @@ func defaultTLSPolicySpec(certs map[string]immutableTLSCert) api.TLSPolicySpec {
 
 func encodeTLSCertificateRecord(record tlsCertificateRecord) ([]byte, error) {
 	if _, _, err := parseTLSAuthorityPEM(record.PEM); err != nil {
-		return nil, fmt.Errorf("%w: %v", almagest.ErrTlsConfigInvalidValue, err)
+		return nil, fmt.Errorf("%w: %v", storage.ErrTlsConfigInvalidValue, err)
 	}
 	return json.Marshal(record)
 }
@@ -1708,10 +1708,10 @@ func encodeTLSCertificateRecord(record tlsCertificateRecord) ([]byte, error) {
 func decodeTLSCertificateRecord(data []byte) (tlsCertificateRecord, error) {
 	var record tlsCertificateRecord
 	if err := json.Unmarshal(data, &record); err != nil {
-		return tlsCertificateRecord{}, fmt.Errorf("%w: decode tls certificate: %v", almagest.ErrTlsConfigInvalidValue, err)
+		return tlsCertificateRecord{}, fmt.Errorf("%w: decode tls certificate: %v", storage.ErrTlsConfigInvalidValue, err)
 	}
 	if _, _, err := parseTLSAuthorityPEM(record.PEM); err != nil {
-		return tlsCertificateRecord{}, fmt.Errorf("%w: %v", almagest.ErrTlsConfigInvalidValue, err)
+		return tlsCertificateRecord{}, fmt.Errorf("%w: %v", storage.ErrTlsConfigInvalidValue, err)
 	}
 	return record, nil
 }
@@ -1724,7 +1724,7 @@ func encodeTLSPolicyRecord(record tlsPolicyRecord) ([]byte, error) {
 func decodeTLSPolicyRecord(data []byte) (tlsPolicyRecord, error) {
 	var record tlsPolicyRecord
 	if err := json.Unmarshal(data, &record); err != nil {
-		return tlsPolicyRecord{}, fmt.Errorf("%w: decode tls policy: %v", almagest.ErrTlsConfigInvalidValue, err)
+		return tlsPolicyRecord{}, fmt.Errorf("%w: decode tls policy: %v", storage.ErrTlsConfigInvalidValue, err)
 	}
 	record.Spec = normalizeTLSPolicySpec(record.Spec)
 	return record, nil
@@ -1783,11 +1783,11 @@ func mapBboltTLSError(err error) error {
 	case err == nil:
 		return nil
 	case errors.Is(err, bberrors.ErrDatabaseNotOpen), errors.Is(err, bberrors.ErrTxClosed):
-		return almagest.ErrTlsConfigNotFound
+		return storage.ErrTlsConfigNotFound
 	case errors.Is(err, bberrors.ErrBucketNameRequired), errors.Is(err, bberrors.ErrKeyRequired), errors.Is(err, bberrors.ErrKeyTooLarge):
-		return almagest.ErrTlsConfigInvalidName
+		return storage.ErrTlsConfigInvalidName
 	case errors.Is(err, bberrors.ErrValueTooLarge), errors.Is(err, bberrors.ErrIncompatibleValue):
-		return almagest.ErrTlsConfigInvalidValue
+		return storage.ErrTlsConfigInvalidValue
 	default:
 		return err
 	}

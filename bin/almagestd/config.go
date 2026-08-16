@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"github.com/asciimoth/almagest/lib/storage"
 	"os"
 	"strings"
 	"time"
@@ -10,7 +11,6 @@ import (
 	"github.com/asciimoth/almagest/bin/almagestd/args"
 	cmdrunner "github.com/asciimoth/almagest/bin/almagestd/command"
 	"github.com/asciimoth/almagest/bin/api"
-	almagest "github.com/asciimoth/almagest/lib"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/configer/hujson"
 	"github.com/kataras/golog"
@@ -111,7 +111,7 @@ func (c *Config) TLSBuiltinCAOptions() (api.TLSBuiltinCAOptions, error) {
 	if c != nil && c.Main != nil {
 		view := c.Main.View(configer.Path{"Config", "TLS", "BuiltinCA"})
 		if err := configer.Unmarshal(view, &cfg); err != nil {
-			return api.TLSBuiltinCAOptions{}, fmt.Errorf("%w: read builtin TLS CA config: %v", almagest.ErrTlsConfigInvalidValue, err)
+			return api.TLSBuiltinCAOptions{}, fmt.Errorf("%w: read builtin TLS CA config: %v", storage.ErrTlsConfigInvalidValue, err)
 		}
 	}
 	return normalizeTLSBuiltinCAOptions(api.TLSBuiltinCAOptions{
@@ -135,7 +135,7 @@ func (c *Config) SetTLSBuiltinCAOptions(options api.TLSBuiltinCAOptions) (api.TL
 		c.Main.View(configer.Path{"Config", "TLS", "BuiltinCA"}),
 		tlsBuiltinCAConfigFromAPI(options),
 	); err != nil {
-		return api.TLSBuiltinCAOptions{}, fmt.Errorf("%w: update builtin TLS CA config: %v", almagest.ErrTlsConfigInvalidValue, err)
+		return api.TLSBuiltinCAOptions{}, fmt.Errorf("%w: update builtin TLS CA config: %v", storage.ErrTlsConfigInvalidValue, err)
 	}
 	return options, nil
 }
@@ -224,17 +224,17 @@ func (p *ProtectedConfig) ImmutableSecrets() (map[string]immutableSecret, error)
 	out := make(map[string]immutableSecret, len(p.Secrets))
 	for key, cfg := range p.Secrets {
 		if !validSecretName(key) {
-			return nil, fmt.Errorf("%w: invalid protected secret key %q", almagest.ErrSecretInvalidName, key)
+			return nil, fmt.Errorf("%w: invalid protected secret key %q", storage.ErrSecretInvalidName, key)
 		}
 		if cfg.Value != nil && cfg.Env != "" {
-			return nil, fmt.Errorf("%w: protected secret %q sets both Value and Env", almagest.ErrSecretInvalidValue, key)
+			return nil, fmt.Errorf("%w: protected secret %q sets both Value and Env", storage.ErrSecretInvalidValue, key)
 		}
 		if cfg.Value == nil && cfg.Env == "" {
-			return nil, fmt.Errorf("%w: protected secret %q must set Value or Env", almagest.ErrSecretInvalidValue, key)
+			return nil, fmt.Errorf("%w: protected secret %q must set Value or Env", storage.ErrSecretInvalidValue, key)
 		}
 		for _, node := range cfg.Nodes {
 			if !validSecretNodeName(node) {
-				return nil, fmt.Errorf("%w: invalid protected secret node %q", almagest.ErrSecretInvalidName, node)
+				return nil, fmt.Errorf("%w: invalid protected secret node %q", storage.ErrSecretInvalidName, node)
 			}
 		}
 		value := ""
@@ -247,7 +247,7 @@ func (p *ProtectedConfig) ImmutableSecrets() (map[string]immutableSecret, error)
 			golog.Debugf("secrets storage: loading protected secret %q from environment variable %q", key, cfg.Env)
 			envValue, ok := os.LookupEnv(cfg.Env)
 			if !ok {
-				return nil, fmt.Errorf("%w: environment variable %q for protected secret %q is not set", almagest.ErrSecretInvalidValue, cfg.Env, key)
+				return nil, fmt.Errorf("%w: environment variable %q for protected secret %q is not set", storage.ErrSecretInvalidValue, cfg.Env, key)
 			}
 			value = envValue
 			source = api.SecretSourceEnv
@@ -270,13 +270,13 @@ func (p *ProtectedConfig) ImmutableTLS() (immutableTLSData, error) {
 		out.Certs = make(map[string]immutableTLSCert, len(p.TLS.Certificates))
 		for name, cfg := range p.TLS.Certificates {
 			if !validMutableTLSCertName(name) {
-				return immutableTLSData{}, fmt.Errorf("%w: invalid protected TLS certificate name %q", almagest.ErrTlsConfigInvalidName, name)
+				return immutableTLSData{}, fmt.Errorf("%w: invalid protected TLS certificate name %q", storage.ErrTlsConfigInvalidName, name)
 			}
 			if cfg.PEM != nil && strings.TrimSpace(cfg.File) != "" {
-				return immutableTLSData{}, fmt.Errorf("%w: protected TLS certificate %q sets both PEM and File", almagest.ErrTlsConfigInvalidValue, name)
+				return immutableTLSData{}, fmt.Errorf("%w: protected TLS certificate %q sets both PEM and File", storage.ErrTlsConfigInvalidValue, name)
 			}
 			if cfg.PEM == nil && strings.TrimSpace(cfg.File) == "" {
-				return immutableTLSData{}, fmt.Errorf("%w: protected TLS certificate %q must set PEM or File", almagest.ErrTlsConfigInvalidValue, name)
+				return immutableTLSData{}, fmt.Errorf("%w: protected TLS certificate %q must set PEM or File", storage.ErrTlsConfigInvalidValue, name)
 			}
 			pemText := ""
 			if cfg.PEM != nil {
@@ -287,12 +287,12 @@ func (p *ProtectedConfig) ImmutableTLS() (immutableTLSData, error) {
 				golog.Debugf("TLS certificates: loading protected certificate %q from file %s", name, path)
 				data, err := os.ReadFile(path)
 				if err != nil {
-					return immutableTLSData{}, fmt.Errorf("%w: read protected TLS certificate %q file %q: %v", almagest.ErrTlsConfigInvalidValue, name, cfg.File, err)
+					return immutableTLSData{}, fmt.Errorf("%w: read protected TLS certificate %q file %q: %v", storage.ErrTlsConfigInvalidValue, name, cfg.File, err)
 				}
 				pemText = string(data)
 			}
 			if _, _, err := parseTLSAuthorityPEM(pemText); err != nil {
-				return immutableTLSData{}, fmt.Errorf("%w: protected TLS certificate %q: %v", almagest.ErrTlsConfigInvalidValue, name, err)
+				return immutableTLSData{}, fmt.Errorf("%w: protected TLS certificate %q: %v", storage.ErrTlsConfigInvalidValue, name, err)
 			}
 			out.Certs[name] = immutableTLSCert{
 				tlsCertificateRecord: tlsCertificateRecord{PEM: pemText},
@@ -305,7 +305,7 @@ func (p *ProtectedConfig) ImmutableTLS() (immutableTLSData, error) {
 		out.Policies = make(map[string]immutableTLSPolicy, len(p.TLS.Policies))
 		for name, spec := range p.TLS.Policies {
 			if !validMutableTLSPolicyName(name) {
-				return immutableTLSData{}, fmt.Errorf("%w: invalid protected TLS policy name %q", almagest.ErrTlsConfigInvalidName, name)
+				return immutableTLSData{}, fmt.Errorf("%w: invalid protected TLS policy name %q", storage.ErrTlsConfigInvalidName, name)
 			}
 			out.Policies[name] = immutableTLSPolicy{
 				tlsPolicyRecord: tlsPolicyRecord{Spec: normalizeTLSPolicySpec(spec)},
@@ -323,7 +323,7 @@ func (p *ProtectedConfig) TLSBuiltinCA() (*tlsBuiltinCA, error) {
 		return nil, nil
 	}
 	if cfg.PEM != nil && strings.TrimSpace(cfg.File) != "" {
-		return nil, fmt.Errorf("%w: protected builtin TLS CA sets both PEM and File", almagest.ErrTlsConfigInvalidValue)
+		return nil, fmt.Errorf("%w: protected builtin TLS CA sets both PEM and File", storage.ErrTlsConfigInvalidValue)
 	}
 	pemText := ""
 	if cfg.PEM != nil {
@@ -334,13 +334,13 @@ func (p *ProtectedConfig) TLSBuiltinCA() (*tlsBuiltinCA, error) {
 		golog.Debugf("builtin TLS CA: reading immutable certificate from protected file %s", path)
 		data, err := os.ReadFile(path)
 		if err != nil {
-			return nil, fmt.Errorf("%w: read protected builtin TLS CA file %q: %v", almagest.ErrTlsConfigInvalidValue, cfg.File, err)
+			return nil, fmt.Errorf("%w: read protected builtin TLS CA file %q: %v", storage.ErrTlsConfigInvalidValue, cfg.File, err)
 		}
 		pemText = string(data)
 	}
 	ca, err := parseProtectedTLSBuiltinCA(pemText)
 	if err != nil {
-		return nil, fmt.Errorf("%w: protected builtin TLS CA: %v", almagest.ErrTlsConfigInvalidValue, err)
+		return nil, fmt.Errorf("%w: protected builtin TLS CA: %v", storage.ErrTlsConfigInvalidValue, err)
 	}
 	golog.Debugf("builtin TLS CA: using immutable protected certificate; runtime generation is disabled (%s)", describeTLSBuiltinCACert(ca))
 	return ca, nil

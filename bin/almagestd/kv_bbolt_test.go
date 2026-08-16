@@ -4,10 +4,10 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"github.com/asciimoth/almagest/lib/storage"
 	"path/filepath"
 	"testing"
 
-	almagest "github.com/asciimoth/almagest/lib"
 	"go.etcd.io/bbolt"
 )
 
@@ -19,16 +19,16 @@ func TestBboltKVManagerPersistsDefaultAndPluginStores(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := manager.DefaultStore().Update(ctx, func(tx almagest.KVWriteTx) error {
-		if err := tx.Set("root", almagest.KValue{Data: []byte("value"), String: true}); err != nil {
+	if err := manager.DefaultStore().Update(ctx, func(tx storage.KVWriteTx) error {
+		if err := tx.Set("root", storage.KValue{Data: []byte("value"), String: true}); err != nil {
 			return err
 		}
-		return tx.Subtree("nested").Set("key", almagest.KValue{Data: []byte{0xde, 0xad}})
+		return tx.Subtree("nested").Set("key", storage.KValue{Data: []byte{0xde, 0xad}})
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := manager.PluginStore("plugin-a").Update(ctx, func(tx almagest.KVWriteTx) error {
-		return tx.Set("plugin-key", almagest.KValue{Data: []byte("plugin-value"), String: true})
+	if err := manager.PluginStore("plugin-a").Update(ctx, func(tx storage.KVWriteTx) error {
+		return tx.Set("plugin-key", storage.KValue{Data: []byte("plugin-value"), String: true})
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +42,7 @@ func TestBboltKVManagerPersistsDefaultAndPluginStores(t *testing.T) {
 	}
 	defer manager.Close() //nolint:errcheck
 
-	if err := manager.DefaultStore().View(ctx, func(tx almagest.KVReadTx) error {
+	if err := manager.DefaultStore().View(ctx, func(tx storage.KVReadTx) error {
 		value, found, err := tx.Get("root")
 		if err != nil {
 			return err
@@ -62,7 +62,7 @@ func TestBboltKVManagerPersistsDefaultAndPluginStores(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := manager.PluginStore("plugin-a").View(ctx, func(tx almagest.KVReadTx) error {
+	if err := manager.PluginStore("plugin-a").View(ctx, func(tx storage.KVReadTx) error {
 		value, found, err := tx.Get("plugin-key")
 		if err != nil {
 			return err
@@ -85,11 +85,11 @@ func TestBboltKVValueStoredAsFlagPrefixedBytes(t *testing.T) {
 	defer manager.Close() //nolint:errcheck
 
 	payload := []byte{'{', '"', 'v', '"', ':', 0xff, 0x00, '}'}
-	if err := manager.DefaultStore().Update(ctx, func(tx almagest.KVWriteTx) error {
-		if err := tx.Set("bytes", almagest.KValue{Data: payload, Hidden: true}); err != nil {
+	if err := manager.DefaultStore().Update(ctx, func(tx storage.KVWriteTx) error {
+		if err := tx.Set("bytes", storage.KValue{Data: payload, Hidden: true}); err != nil {
 			return err
 		}
-		return tx.Set("text", almagest.KValue{Data: []byte("value"), Hidden: true, String: true})
+		return tx.Set("text", storage.KValue{Data: []byte("value"), Hidden: true, String: true})
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -123,24 +123,24 @@ func TestBboltKVStoreProtectsRootAndDropsSubtree(t *testing.T) {
 	}
 	defer manager.Close() //nolint:errcheck
 
-	err = manager.DefaultStore().Update(ctx, func(tx almagest.KVWriteTx) error {
+	err = manager.DefaultStore().Update(ctx, func(tx storage.KVWriteTx) error {
 		return tx.Drop()
 	})
-	if !errors.Is(err, almagest.ErrKVRoot) {
+	if !errors.Is(err, storage.ErrKVRoot) {
 		t.Fatalf("drop root error = %v, want ErrKVRoot", err)
 	}
 
-	if err := manager.DefaultStore().Subtree("cache").Update(ctx, func(tx almagest.KVWriteTx) error {
-		return tx.Set("key", almagest.KValue{Data: []byte("value"), String: true})
+	if err := manager.DefaultStore().Subtree("cache").Update(ctx, func(tx storage.KVWriteTx) error {
+		return tx.Set("key", storage.KValue{Data: []byte("value"), String: true})
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := manager.DefaultStore().Subtree("cache").Update(ctx, func(tx almagest.KVWriteTx) error {
+	if err := manager.DefaultStore().Subtree("cache").Update(ctx, func(tx storage.KVWriteTx) error {
 		return tx.Drop()
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := manager.DefaultStore().View(ctx, func(tx almagest.KVReadTx) error {
+	if err := manager.DefaultStore().View(ctx, func(tx storage.KVReadTx) error {
 		if tx.Subtree("cache").Exists() {
 			t.Fatal("dropped subtree still exists")
 		}

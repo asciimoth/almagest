@@ -2,11 +2,11 @@ package main
 
 import (
 	"errors"
+	"github.com/asciimoth/almagest/lib/storage"
 	"testing"
 	"time"
 
 	"github.com/asciimoth/almagest/bin/almagestd/args"
-	almagest "github.com/asciimoth/almagest/lib"
 )
 
 func TestConfigSaveIdleDefault(t *testing.T) {
@@ -89,7 +89,7 @@ func TestTLSBuiltinCAOptionsInvalid(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := cfg.TLSBuiltinCAOptions(); !errors.Is(err, almagest.ErrTlsConfigInvalidValue) {
+	if _, err := cfg.TLSBuiltinCAOptions(); !errors.Is(err, storage.ErrTlsConfigInvalidValue) {
 		t.Fatalf("TLSBuiltinCAOptions error = %v, want invalid value", err)
 	}
 }
@@ -359,7 +359,7 @@ func TestProtectedConfigSecretMissingEnvErrors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := cfg.Protected.ImmutableSecrets(); !errors.Is(err, almagest.ErrSecretInvalidValue) {
+	if _, err := cfg.Protected.ImmutableSecrets(); !errors.Is(err, storage.ErrSecretInvalidValue) {
 		t.Fatalf("ImmutableSecrets missing env error = %v, want ErrSecretInvalidValue", err)
 	}
 }

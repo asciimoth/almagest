@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-func TestDebugLogFactoryRecordsEntries(t *testing.T) {
+func TestDebugLogFactoryRecordsEngineWorkspaceAndNodeEntries(t *testing.T) {
 	logf := NewDebugLogFactory(3)
 
 	logf.EngineLogger().Debug("engine ready")
@@ -16,14 +16,52 @@ func TestDebugLogFactoryRecordsEntries(t *testing.T) {
 	if len(entries) != 3 {
 		t.Fatalf("entry count = %d, want 3", len(entries))
 	}
-	if entries[0].Level != DebugLogLevelDebug || entries[0].Source.Name != "engine" || entries[0].Message != "engine ready" {
-		t.Fatalf("engine entry = %#v", entries[0])
+
+	tests := []struct {
+		name    string
+		entry   DebugLogEntry
+		level   DebugLogLevel
+		source  DebugLogSource
+		message string
+	}{
+		{
+			name:    "engine",
+			entry:   entries[0],
+			level:   DebugLogLevelDebug,
+			source:  DebugLogSource{Name: "engine"},
+			message: "engine ready",
+		},
+		{
+			name:    "workspace",
+			entry:   entries[1],
+			level:   DebugLogLevelInfo,
+			source:  DebugLogSource{Name: "workspace"},
+			message: "workspace ready",
+		},
+		{
+			name:    "node",
+			entry:   entries[2],
+			level:   DebugLogLevelError,
+			source:  DebugLogSource{Name: "node", NodeID: 42, NodeClass: "test/Node"},
+			message: "node failed",
+		},
 	}
-	if entries[1].Level != DebugLogLevelInfo || entries[1].Source.Name != "workspace" || entries[1].Message != "workspace ready" {
-		t.Fatalf("workspace entry = %#v", entries[1])
-	}
-	if entries[2].Level != DebugLogLevelError || entries[2].Source.NodeID != 42 || entries[2].Source.NodeClass != "test/Node" || entries[2].Message != "node failed" {
-		t.Fatalf("node entry = %#v", entries[2])
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.entry.At.IsZero() {
+				t.Fatal("entry At is zero")
+			}
+			if tt.entry.Level != tt.level {
+				t.Fatalf("level = %q, want %q", tt.entry.Level, tt.level)
+			}
+			if tt.entry.Source != tt.source {
+				t.Fatalf("source = %#v, want %#v", tt.entry.Source, tt.source)
+			}
+			if tt.entry.Message != tt.message {
+				t.Fatalf("message = %q, want %q", tt.entry.Message, tt.message)
+			}
+		})
 	}
 }
 

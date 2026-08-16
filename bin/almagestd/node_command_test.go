@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"github.com/asciimoth/almagest/lib/logging"
 	"reflect"
 	"sync"
 	"testing"
@@ -22,7 +23,7 @@ func TestCommandNodeClassShapeAndMenuFiltersAllowNodes(t *testing.T) {
 		"hidden":  commandNodeTestAllowedCommand(false, "secret"),
 	}}, nil)
 
-	class, ok := engine.NodeClassSnapshot(almagest.E2EWorkspace, NodeTypeProtectedCommand)
+	class, ok := engine.NodeClassSnapshot(almagest.MainWorkspace, NodeTypeProtectedCommand)
 	if !ok {
 		t.Fatal("command node class missing")
 	}
@@ -86,7 +87,7 @@ func TestCommandNodeTriggerSubmitsSelectedCommandWithStringInputs(t *testing.T) 
 	trigger := addStdNode(t, engine, std.NodeTypeTrigger, "trigger")
 	mustAddTypedLinkByPortName(t, engine, std.TypeTrigger, trigger, "right", commandNodeTriggerPort, cmd, "left", commandNodeTriggerPort)
 
-	if err := engine.Trigger(almagest.E2EWorkspace, trigger); err != nil {
+	if err := engine.Trigger(almagest.MainWorkspace, trigger); err != nil {
 		t.Fatalf("Trigger: %v", err)
 	}
 	req := dispatcher.waitRequest(t)
@@ -109,11 +110,11 @@ func TestCommandNodeCopyPasteAndSaveRestorePreserveCommandPorts(t *testing.T) {
 	cmd := addCommandNode(t, engine, "cmd")
 	applyCommandNodeCommand(t, engine, cmd, "notify")
 
-	clip := engine.Copy(almagest.E2EWorkspace, []uint64{cmd})
+	clip := engine.Copy(almagest.MainWorkspace, []uint64{cmd})
 	if clip == "" {
 		t.Fatal("Copy returned empty clipboard")
 	}
-	pasted := engine.Paste(almagest.E2EWorkspace, clip)
+	pasted := engine.Paste(almagest.MainWorkspace, clip)
 	pastedCmd := commandNodePastedByClass(t, engine, pasted, NodeTypeProtectedCommand)
 	assertCommandNodeLeftPorts(t, engine, pastedCmd, []string{
 		commandNodeTriggerPort,
@@ -152,7 +153,7 @@ func TestCommandNodePasteAndRestoreReconcileChangedCommandTemplate(t *testing.T)
 	if err := source.SaveConfig(saved); err != nil {
 		t.Fatalf("SaveConfig: %v", err)
 	}
-	clip := source.Copy(almagest.E2EWorkspace, []uint64{cmd, message})
+	clip := source.Copy(almagest.MainWorkspace, []uint64{cmd, message})
 	if clip == "" {
 		t.Fatal("Copy returned empty clipboard")
 	}
@@ -170,7 +171,7 @@ func TestCommandNodePasteAndRestoreReconcileChangedCommandTemplate(t *testing.T)
 	assertCommandNodeHasNoLinks(t, restored, restoredCmd)
 
 	target := buildCommandNodeTestEngine(t, configer.NewMemory(nil), newCfg, nil)
-	pasted := target.Paste(almagest.E2EWorkspace, clip)
+	pasted := target.Paste(almagest.MainWorkspace, clip)
 	pastedCmd := commandNodePastedByClass(t, target, pasted, NodeTypeProtectedCommand)
 	assertCommandNodeLeftPorts(t, target, pastedCmd, []string{
 		commandNodeTriggerPort,
@@ -195,7 +196,7 @@ func TestCommandNodeRestoreMissingCommandIsUnavailableAndDoesNotDispatch(t *test
 	assertCommandNodeLeftPorts(t, engine, cmd, []string{commandNodeTriggerPort})
 	assertCommandNodeLabel(t, engine, cmd, "unavailable command")
 
-	if err := engine.Trigger(almagest.E2EWorkspace, cmd); err != nil {
+	if err := engine.Trigger(almagest.MainWorkspace, cmd); err != nil {
 		t.Fatalf("Trigger command node: %v", err)
 	}
 	if got := dispatcher.requests(); len(got) != 0 {
@@ -263,7 +264,7 @@ func buildCommandNodeTestEngine(t *testing.T, cfg configer.Config, commandCfg cm
 	engine, err := almagest.BuildEngine(
 		context.Background(),
 		cfg,
-		almagest.NewDebugLogFactory(1024),
+		logging.NewDebugLogFactory(1024),
 		&sysnetdebug.System{},
 		nil,
 		nil, nil,
@@ -300,7 +301,7 @@ func commandNodeTestAllowedCommand(allowNodes bool, slots ...string) cmdrunner.A
 
 func addCommandNode(t *testing.T, engine almagest.Engine, name string) uint64 {
 	t.Helper()
-	id, err := engine.AddNode(almagest.E2EWorkspace, NodeTypeProtectedCommand, name)
+	id, err := engine.AddNode(almagest.MainWorkspace, NodeTypeProtectedCommand, name)
 	if err != nil {
 		t.Fatalf("AddNode command: %v", err)
 	}
@@ -309,7 +310,7 @@ func addCommandNode(t *testing.T, engine almagest.Engine, name string) uint64 {
 
 func addStdNode(t *testing.T, engine almagest.Engine, class, name string) uint64 {
 	t.Helper()
-	id, err := engine.AddNode(almagest.E2EWorkspace, class, name)
+	id, err := engine.AddNode(almagest.MainWorkspace, class, name)
 	if err != nil {
 		t.Fatalf("AddNode %s: %v", class, err)
 	}
@@ -318,7 +319,7 @@ func addStdNode(t *testing.T, engine almagest.Engine, class, name string) uint64
 
 func applyCommandNodeCommand(t *testing.T, engine almagest.Engine, node uint64, command string) {
 	t.Helper()
-	engine.SendNodeFormularMsg(almagest.E2EWorkspace, node, formular.FormApplyMessage{
+	engine.SendNodeFormularMsg(almagest.MainWorkspace, node, formular.FormApplyMessage{
 		MessageBase: commandNodeFormMessageBase(formular.MessageFormApply, node),
 		BlockID:     commandNodeConfigBlockID,
 		Values:      map[string]any{commandNodeCommandField: command},
@@ -327,7 +328,7 @@ func applyCommandNodeCommand(t *testing.T, engine almagest.Engine, node uint64, 
 
 func applyStdConstantValue(t *testing.T, engine almagest.Engine, node uint64, value any) {
 	t.Helper()
-	engine.SendNodeFormularMsg(almagest.E2EWorkspace, node, formular.FormApplyMessage{
+	engine.SendNodeFormularMsg(almagest.MainWorkspace, node, formular.FormApplyMessage{
 		MessageBase: commandNodeFormMessageBase(formular.MessageFormApply, node),
 		BlockID:     "state",
 		Values:      map[string]any{"value": value},
@@ -364,7 +365,7 @@ func subscribeCommandNodeMenu(t *testing.T, engine almagest.Engine, node uint64)
 		t.Fatal("SubscribeNotifications returned 0")
 	}
 	t.Cleanup(func() { engine.UnsubscribeNotifications(sub) })
-	engine.SubscribeNodeMenu(almagest.E2EWorkspace, node, sub)
+	engine.SubscribeNodeMenu(almagest.MainWorkspace, node, sub)
 	return capture
 }
 
@@ -397,7 +398,7 @@ func mustAddTypedLinkByPortName(t *testing.T, engine almagest.Engine, wantType s
 	t.Helper()
 	left := commandNodePortByName(t, engine, leftNode, leftDir, leftName)
 	right := commandNodePortByName(t, engine, rightNode, rightDir, rightName)
-	link, gotType, err := engine.AddLink(almagest.E2EWorkspace, left, right)
+	link, gotType, err := engine.AddLink(almagest.MainWorkspace, left, right)
 	if err != nil {
 		t.Fatalf("AddLink: %v", err)
 	}
@@ -409,7 +410,7 @@ func mustAddTypedLinkByPortName(t *testing.T, engine almagest.Engine, wantType s
 
 func commandNodePortByName(t *testing.T, engine almagest.Engine, node uint64, direction, name string) uint64 {
 	t.Helper()
-	snapshot, ok := engine.NodeSnapshot(almagest.E2EWorkspace, node)
+	snapshot, ok := engine.NodeSnapshot(almagest.MainWorkspace, node)
 	if !ok {
 		t.Fatalf("NodeSnapshot(%d) missing", node)
 	}
@@ -418,7 +419,7 @@ func commandNodePortByName(t *testing.T, engine almagest.Engine, node uint64, di
 		ports = snapshot.RightPorts
 	}
 	for _, port := range ports {
-		portSnapshot, ok := engine.PortSnapshot(almagest.E2EWorkspace, port)
+		portSnapshot, ok := engine.PortSnapshot(almagest.MainWorkspace, port)
 		if ok && portSnapshot.Direction == direction && portSnapshot.Name == name {
 			return port
 		}
@@ -429,13 +430,13 @@ func commandNodePortByName(t *testing.T, engine almagest.Engine, node uint64, di
 
 func assertCommandNodeLeftPorts(t *testing.T, engine almagest.Engine, node uint64, want []string) {
 	t.Helper()
-	snapshot, ok := engine.NodeSnapshot(almagest.E2EWorkspace, node)
+	snapshot, ok := engine.NodeSnapshot(almagest.MainWorkspace, node)
 	if !ok {
 		t.Fatalf("NodeSnapshot(%d) missing", node)
 	}
 	got := make([]string, 0, len(snapshot.LeftPorts))
 	for _, port := range snapshot.LeftPorts {
-		portSnapshot, ok := engine.PortSnapshot(almagest.E2EWorkspace, port)
+		portSnapshot, ok := engine.PortSnapshot(almagest.MainWorkspace, port)
 		if !ok {
 			t.Fatalf("PortSnapshot(%d) missing", port)
 		}
@@ -448,7 +449,7 @@ func assertCommandNodeLeftPorts(t *testing.T, engine almagest.Engine, node uint6
 
 func assertCommandNodeRightPortCount(t *testing.T, engine almagest.Engine, node uint64, want int) {
 	t.Helper()
-	snapshot, ok := engine.NodeSnapshot(almagest.E2EWorkspace, node)
+	snapshot, ok := engine.NodeSnapshot(almagest.MainWorkspace, node)
 	if !ok {
 		t.Fatalf("NodeSnapshot(%d) missing", node)
 	}
@@ -459,12 +460,12 @@ func assertCommandNodeRightPortCount(t *testing.T, engine almagest.Engine, node 
 
 func assertCommandNodeHasNoPort(t *testing.T, engine almagest.Engine, node uint64, name string) {
 	t.Helper()
-	snapshot, ok := engine.NodeSnapshot(almagest.E2EWorkspace, node)
+	snapshot, ok := engine.NodeSnapshot(almagest.MainWorkspace, node)
 	if !ok {
 		t.Fatalf("NodeSnapshot(%d) missing", node)
 	}
 	for _, port := range append(snapshot.LeftPorts, snapshot.RightPorts...) {
-		portSnapshot, ok := engine.PortSnapshot(almagest.E2EWorkspace, port)
+		portSnapshot, ok := engine.PortSnapshot(almagest.MainWorkspace, port)
 		if ok && portSnapshot.Name == name {
 			t.Fatalf("node %d unexpectedly has port %q", node, name)
 		}
@@ -473,12 +474,12 @@ func assertCommandNodeHasNoPort(t *testing.T, engine almagest.Engine, node uint6
 
 func assertCommandNodeHasNoLinks(t *testing.T, engine almagest.Engine, node uint64) {
 	t.Helper()
-	snapshot, ok := engine.NodeSnapshot(almagest.E2EWorkspace, node)
+	snapshot, ok := engine.NodeSnapshot(almagest.MainWorkspace, node)
 	if !ok {
 		t.Fatalf("NodeSnapshot(%d) missing", node)
 	}
 	for _, port := range append(snapshot.LeftPorts, snapshot.RightPorts...) {
-		portSnapshot, ok := engine.PortSnapshot(almagest.E2EWorkspace, port)
+		portSnapshot, ok := engine.PortSnapshot(almagest.MainWorkspace, port)
 		if ok && len(portSnapshot.Links) > 0 {
 			t.Fatalf("port %q links = %v, want none", portSnapshot.Name, portSnapshot.Links)
 		}
@@ -487,7 +488,7 @@ func assertCommandNodeHasNoLinks(t *testing.T, engine almagest.Engine, node uint
 
 func assertCommandNodeLabel(t *testing.T, engine almagest.Engine, node uint64, want string) {
 	t.Helper()
-	snapshot, ok := engine.NodeSnapshot(almagest.E2EWorkspace, node)
+	snapshot, ok := engine.NodeSnapshot(almagest.MainWorkspace, node)
 	if !ok {
 		t.Fatalf("NodeSnapshot(%d) missing", node)
 	}
@@ -499,7 +500,7 @@ func assertCommandNodeLabel(t *testing.T, engine almagest.Engine, node uint64, w
 func commandNodePastedByClass(t *testing.T, engine almagest.Engine, ids []uint64, class string) uint64 {
 	t.Helper()
 	for _, id := range ids {
-		snapshot, ok := engine.NodeSnapshot(almagest.E2EWorkspace, id)
+		snapshot, ok := engine.NodeSnapshot(almagest.MainWorkspace, id)
 		if ok && snapshot.Class == class {
 			return id
 		}
@@ -510,7 +511,7 @@ func commandNodePastedByClass(t *testing.T, engine almagest.Engine, ids []uint64
 
 func commandNodeByName(t *testing.T, engine almagest.Engine, name string) uint64 {
 	t.Helper()
-	id, ok := engine.NodeByName(almagest.E2EWorkspace, name)
+	id, ok := engine.NodeByName(almagest.MainWorkspace, name)
 	if !ok {
 		t.Fatalf("node named %q missing", name)
 	}

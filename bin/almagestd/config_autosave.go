@@ -5,7 +5,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/asciimoth/almagest/lib"
+	almagest "github.com/asciimoth/almagest/lib"
+	"github.com/asciimoth/almagest/lib/logging"
 )
 
 const defaultConfigAutosaveIdle = 500 * time.Millisecond
@@ -18,7 +19,7 @@ type configAutosaver struct {
 	engine almagest.Engine
 	config *Config
 	agent  configWriter
-	logger almagest.Logger
+	logger logging.Logger
 	idle   time.Duration
 
 	mu     sync.Mutex
@@ -31,7 +32,7 @@ func newConfigAutosaver(
 	engine almagest.Engine,
 	config *Config,
 	agent configWriter,
-	logger almagest.Logger,
+	logger logging.Logger,
 	idle time.Duration,
 ) *configAutosaver {
 	if idle <= 0 {

@@ -1,0 +1,1278 @@
+package wireguardnodes
+
+import (
+	"context"
+	"encoding/hex"
+	"errors"
+	"io"
+	"net"
+	"reflect"
+	"strconv"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/asciimoth/almagest/lib/testkit"
+	"github.com/asciimoth/configer/configer"
+	"github.com/asciimoth/formular"
+	"github.com/asciimoth/gonnect"
+	"github.com/asciimoth/gonnect/tun"
+	"github.com/asciimoth/pasta/pasta"
+	"github.com/asciimoth/pasta/pasta/std"
+	wgdevice "github.com/asciimoth/wgo/device"
+)
+
+func TestWireGuardRuntimeStatsMessageUpdatesStatusRows(t *testing.T) {
+	dev := wgdevice.NewDevice(nil, nil, wgdevice.NopLogger{}, nil, wgdevice.DeviceOptions{})
+	defer dev.Close()
+
+	n := &wireGuardNode{dev: dev}
+	ignoredDev := wgdevice.NewDevice(nil, nil, wgdevice.NopLogger{}, nil, wgdevice.DeviceOptions{})
+	defer ignoredDev.Close()
+
+	n.handleRuntimeStats(wireGuardRuntimeStatsMessage{
+		dev: ignoredDev,
+		stats: wgdevice.RuntimeStats{
+			PeerCount:       99,
+			ActivePeerCount: 99,
+			RxBytes:         99,
+			TxBytes:         99,
+		},
+	})
+	if n.runtimeStats.PeerCount != 0 {
+		t.Fatalf("runtime stats accepted stale device update: %+v", n.runtimeStats)
+	}
+
+	handshake := time.Date(2026, 6, 28, 12, 34, 56, 0, time.UTC)
+	n.handleRuntimeStats(wireGuardRuntimeStatsMessage{
+		dev: dev,
+		stats: wgdevice.RuntimeStats{
+			PeerCount:          3,
+			ActivePeerCount:    2,
+			ConnectedPeerCount: 1,
+			RxBytes:            1234,
+			TxBytes:            5678,
+			RxPackets:          12,
+			TxPackets:          34,
+			LastHandshakeTime:  handshake,
+		},
+	})
+
+	block := n.statusBlock()
+	assertWireGuardStatusItemValue(t, block, "runtimePeers", 3)
+	assertWireGuardStatusItemValue(t, block, "activePeers", 2)
+	assertWireGuardStatusItemValue(t, block, "connectedPeers", 1)
+	assertWireGuardStatusItemValue(t, block, "rxBytes", "1234")
+	assertWireGuardStatusItemValue(t, block, "txBytes", "5678")
+	assertWireGuardStatusItemValue(t, block, "rxPackets", "12")
+	assertWireGuardStatusItemValue(t, block, "txPackets", "34")
+	assertWireGuardStatusItemValue(t, block, "latestHandshake", "2026-06-28T12:34:56Z")
+}
+
+func TestWireGuardBatchSizeConfiguresDeviceAndBind(t *testing.T) {
+	privateKey, _ := wireGuardTestKeyPair(t, 51)
+	network := gonnect.NewLoopbackNetwork()
+	t.Cleanup(func() { _ = network.Close() })
+	node := &wireGuardNode{config: wireGuardConfig{
+		privateKey: privateKey,
+		batchSize:  3,
+		amneziaWG:  defaultWireGuardAmneziaConfig(),
+	}}
+	node.config.normalize()
+
+	node.runtimeMu.Lock()
+	node.ensureDeviceLocked()
+	if got := node.dev.BatchSize(); got != 3 {
+		node.runtimeMu.Unlock()
+		t.Fatalf("device BatchSize() = %d, want 3", got)
+	}
+	node.currentNetwork = network
+	node.networkGeneration.Store(1)
+	node.currentNetworkGeneration = 1
+	if _, err := node.attachCurrentNetworkBindLocked(); err != nil {
+		node.runtimeMu.Unlock()
+		t.Fatalf("attachCurrentNetworkBindLocked: %v", err)
+	}
+	if got := node.currentBind.BatchSize(); got != 3 {
+		node.runtimeMu.Unlock()
+		t.Fatalf("bind BatchSize() = %d, want 3", got)
+	}
+	dev := node.dev
+	node.runtimeMu.Unlock()
+	t.Cleanup(dev.Close)
+}
+
+func TestResolveWireGuardPrivateKeySecret(t *testing.T) {
+	nodeName := "wg"
+	storage := newWireGuardTestSecretsStorage()
+	validPrivate, validPublic := wireGuardTestKeyPair(t, 61)
+	legacyPrivate, legacyPublic := wireGuardTestKeyPair(t, 62)
+	accessibleSecret, err := storage.NewSecret(Secret{Value: validPrivate}, nodeName)
+	if err != nil {
+		t.Fatalf("NewSecret accessible: %v", err)
+	}
+	inaccessibleSecret := "inaccessible-wireguard-private-key"
+	storage.SetSecret(inaccessibleSecret, Secret{Value: validPrivate}, "other-wg")
+	invalidSecret := "invalid-wireguard-private-key"
+	storage.SetSecret(invalidSecret, Secret{Value: "bad"}, nodeName)
+
+	t.Run("accessible configured secret", func(t *testing.T) {
+		gotPrivate, gotSecret, err := resolveWireGuardPrivateKeySecret(storage, nodeName, accessibleSecret, legacyPrivate)
+		if err != nil {
+			t.Fatalf("resolve accessible secret: %v", err)
+		}
+		if gotSecret != accessibleSecret {
+			t.Fatalf("secret = %q, want %q", gotSecret, accessibleSecret)
+		}
+		if gotPublic := wireGuardPublicKeyFromPrivateKey(t, gotPrivate); gotPublic != validPublic {
+			t.Fatalf("public key = %q, want %q", gotPublic, validPublic)
+		}
+	})
+
+	t.Run("empty secret migrates legacy value", func(t *testing.T) {
+		gotPrivate, gotSecret, err := resolveWireGuardPrivateKeySecret(storage, nodeName, "", legacyPrivate)
+		if err != nil {
+			t.Fatalf("resolve legacy value: %v", err)
+		}
+		if gotSecret == "" {
+			t.Fatal("secret name is empty")
+		}
+		if gotPublic := wireGuardPublicKeyFromPrivateKey(t, gotPrivate); gotPublic != legacyPublic {
+			t.Fatalf("public key = %q, want %q", gotPublic, legacyPublic)
+		}
+		if stored, ok := storage.SecretValue(gotSecret); !ok || stored != legacyPrivate {
+			t.Fatalf("stored legacy private key = %q, %v; want %q", stored, ok, legacyPrivate)
+		}
+	})
+
+	t.Run("inaccessible configured secret rotates instead of using legacy", func(t *testing.T) {
+		gotPrivate, gotSecret, err := resolveWireGuardPrivateKeySecret(storage, nodeName, inaccessibleSecret, legacyPrivate)
+		if err != nil {
+			t.Fatalf("resolve inaccessible secret: %v", err)
+		}
+		if gotSecret == "" || gotSecret == inaccessibleSecret {
+			t.Fatalf("secret = %q, want generated replacement", gotSecret)
+		}
+		if gotPrivate == legacyPrivate {
+			t.Fatal("private key reused legacy value for inaccessible configured secret")
+		}
+		if stored, ok := storage.SecretValue(gotSecret); !ok || normalizeWireGuardKey(stored) != gotPrivate {
+			t.Fatalf("stored replacement key = %q, %v; want %q", stored, ok, gotPrivate)
+		}
+	})
+
+	t.Run("accessible invalid secret reports error", func(t *testing.T) {
+		if _, _, err := resolveWireGuardPrivateKeySecret(storage, nodeName, invalidSecret, ""); err == nil {
+			t.Fatal("resolve invalid secret succeeded")
+		}
+	})
+
+	t.Run("missing storage reports error", func(t *testing.T) {
+		if _, _, err := resolveWireGuardPrivateKeySecret(nil, nodeName, accessibleSecret, ""); !errors.Is(err, errWireGuardSecretsUnavailable) {
+			t.Fatalf("resolve missing storage error = %v, want %v", err, errWireGuardSecretsUnavailable)
+		}
+	})
+}
+
+func TestWireGuardAppliesPeerAmneziaOverrideToDevice(t *testing.T) {
+	privateKey, _ := wireGuardTestKeyPair(t, 42)
+	_, peerPublicKey := wireGuardTestKeyPair(t, 43)
+	peerAmneziaWG := wireGuardTestAmneziaConfig()
+	peerAmneziaWG.initHeader = "7111-7113"
+	peerAmneziaWG.initiationPackets[0] = "<b 0xcafe><rd 2>"
+	node := &wireGuardNode{config: wireGuardConfig{
+		privateKey: privateKey,
+		amneziaWG:  defaultWireGuardAmneziaConfig(),
+		peers: []wireGuardPeerConfig{{
+			id:                "peer-device-override",
+			publicKey:         peerPublicKey,
+			amneziaWGOverride: true,
+			amneziaWG:         peerAmneziaWG,
+		}},
+	}}
+	node.config.normalize()
+
+	node.runtimeMu.Lock()
+	node.ensureDeviceLocked()
+	node.runtimeMu.Unlock()
+	if err := node.applyConfigToDevice(true); err != nil {
+		t.Fatalf("applyConfigToDevice: %v", err)
+	}
+	t.Cleanup(func() { node.dev.Close() })
+	publicKey, err := parseWireGuardPublicKey(peerPublicKey)
+	if err != nil {
+		t.Fatalf("parseWireGuardPublicKey: %v", err)
+	}
+	cfg, ok := node.dev.PeerConfig(publicKey)
+	if !ok {
+		t.Fatal("PeerConfig reported missing peer")
+	}
+	if cfg.AmneziaWG == nil {
+		t.Fatal("PeerConfig().AmneziaWG = nil, want override")
+	}
+	if cfg.AmneziaWG.InitHeader.Spec() != peerAmneziaWG.initHeader || cfg.AmneziaWG.InitiationPackets[0] != peerAmneziaWG.initiationPackets[0] {
+		t.Fatalf("PeerConfig().AmneziaWG = %+v, want peer override", *cfg.AmneziaWG)
+	}
+}
+
+func TestWireGuardKeysUseBase64AndAcceptUnpaddedOrLegacyHex(t *testing.T) {
+	var privateKey wgdevice.NoisePrivateKey
+	for i := range privateKey {
+		privateKey[i] = byte(i + 1)
+	}
+	privateKey[0] &= 248
+	privateKey[31] = (privateKey[31] & 127) | 64
+
+	privateKeyBase64 := privateKey.Base64()
+	if len(privateKeyBase64) != 44 || !strings.HasSuffix(privateKeyBase64, "=") {
+		t.Fatalf("private key base64 = %q, want 44 chars with trailing padding", privateKeyBase64)
+	}
+	privateKeyUnpadded := strings.TrimSuffix(privateKeyBase64, "=")
+	if len(privateKeyUnpadded) != 43 {
+		t.Fatalf("unpadded private key length = %d, want 43", len(privateKeyUnpadded))
+	}
+	for _, value := range []string{privateKeyBase64, privateKeyUnpadded, hex.EncodeToString(privateKey[:])} {
+		got, err := parseWireGuardPrivateKey(value)
+		if err != nil {
+			t.Fatalf("parseWireGuardPrivateKey(%q): %v", value, err)
+		}
+		if !got.Equals(privateKey) {
+			t.Fatalf("parseWireGuardPrivateKey(%q) = %x, want %x", value, got, privateKey)
+		}
+		if normalized := normalizeWireGuardKey(value); normalized != privateKeyBase64 {
+			t.Fatalf("normalizeWireGuardKey(%q) = %q, want %q", value, normalized, privateKeyBase64)
+		}
+	}
+
+	publicKeyBase64 := wireGuardPublicKeyBase64(privateKey)
+	publicKeyUnpadded := strings.TrimSuffix(publicKeyBase64, "=")
+	publicKey, err := parseWireGuardPublicKey(publicKeyBase64)
+	if err != nil {
+		t.Fatalf("parseWireGuardPublicKey(padded): %v", err)
+	}
+	if got, err := parseWireGuardPublicKey(publicKeyUnpadded); err != nil || !got.Equals(publicKey) {
+		t.Fatalf("parseWireGuardPublicKey(unpadded) = %x, %v; want %x", got, err, publicKey)
+	}
+	if normalized := normalizeWireGuardKey(publicKeyUnpadded); normalized != publicKeyBase64 {
+		t.Fatalf("normalizeWireGuardKey(public unpadded) = %q, want %q", normalized, publicKeyBase64)
+	}
+
+	var presharedKey wgdevice.NoisePresharedKey
+	for i := range presharedKey {
+		presharedKey[i] = byte(255 - i)
+	}
+	presharedKeyBase64 := presharedKey.Base64()
+	presharedKeyUnpadded := strings.TrimSuffix(presharedKeyBase64, "=")
+	if got, err := parseWireGuardPresharedKey(presharedKeyUnpadded); err != nil || got != presharedKey {
+		t.Fatalf("parseWireGuardPresharedKey(unpadded) = %x, %v; want %x", got, err, presharedKey)
+	}
+}
+
+func TestWireGuardOwnedIPAddrsNormalizeAndDedupe(t *testing.T) {
+	got := wireGuardOwnedIPAddrs("10.30.0.2 10.30.0.2/32\n10.30.0.0/24\nfd00:30::2")
+	want := []string{"10.30.0.2/32", "10.30.0.0/24", "fd00:30::2/128"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("wireGuardOwnedIPAddrs() = %#v, want %#v", got, want)
+	}
+
+	if got := wireGuardOwnedIPAddrs("bad"); got != nil {
+		t.Fatalf("wireGuardOwnedIPAddrs(invalid) = %#v, want nil", got)
+	}
+}
+
+func TestWireGuardPeerRoutesNormalizeAndDedupe(t *testing.T) {
+	got := wireGuardPeerRoutes([]wireGuardPeerConfig{
+		{allowedIPs: "10.40.0.0/24 10.40.0.2"},
+		{allowedIPs: "10.40.0.0/24\nfd00:40::/64\n10.40.0.2/32"},
+	})
+	want := []string{"10.40.0.0/24", "10.40.0.2/32", "fd00:40::/64"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("wireGuardPeerRoutes() = %#v, want %#v", got, want)
+	}
+
+	if got := wireGuardPeerRoutes([]wireGuardPeerConfig{{allowedIPs: "bad"}}); got != nil {
+		t.Fatalf("wireGuardPeerRoutes(invalid) = %#v, want nil", got)
+	}
+}
+
+func TestWireGuardNetworkAttachmentDoesNotOpenSocketsUntilTunAttached(t *testing.T) {
+	w := pasta.NewWorkspace(wireGuardTestLogFactory{})
+	t.Cleanup(func() { w.Close() })
+
+	var wg *wireGuardNode
+	if err := w.AddNodeClass(captureWireGuardClass{node: &wg}); err != nil {
+		t.Fatalf("AddNodeClass WireGuard: %v", err)
+	}
+	network := &recordingWireGuardTestNetwork{Network: gonnect.NewLoopbackNetwork()}
+	if err := w.AddNodeClass(wireGuardTestNetworkSourceClass{network: network}); err != nil {
+		t.Fatalf("AddNodeClass NetworkSource: %v", err)
+	}
+	if err := w.AddNodeClass(wireGuardTestTunProviderClass{}); err != nil {
+		t.Fatalf("AddNodeClass TunProvider: %v", err)
+	}
+
+	wgID, err := w.AddNodeByClass("test/WireGuard", "wg")
+	if err != nil {
+		t.Fatalf("AddNodeByClass WireGuard: %v", err)
+	}
+	networkID, err := w.AddNodeByClass("test/WireGuardNetworkSource", "network")
+	if err != nil {
+		t.Fatalf("AddNodeByClass NetworkSource: %v", err)
+	}
+	tunID, err := w.AddNodeByClass(wireGuardTestTunProviderNodeType, "tun")
+	if err != nil {
+		t.Fatalf("AddNodeByClass TunProvider: %v", err)
+	}
+	if wg == nil {
+		t.Fatal("captured WireGuard node = nil")
+	}
+
+	wgSnapshot := testkit.MustNodeSnapshot(t, w, wgID)
+	networkSnapshot := testkit.MustNodeSnapshot(t, w, networkID)
+	tunSnapshot := testkit.MustNodeSnapshot(t, w, tunID)
+
+	if _, _, err := w.AddLink(networkSnapshot.LeftPorts[0], wgSnapshot.RightPorts[0]); err != nil {
+		t.Fatalf("AddLink network: %v", err)
+	}
+	eventually(t, func() bool {
+		wg.runtimeMu.Lock()
+		attached := wg.currentNetwork != nil && wg.currentBind != nil
+		wg.runtimeMu.Unlock()
+		return attached
+	}, "wireguard network attached")
+	if got := network.listenCount(); got != 0 {
+		t.Fatalf("network listen count after network-only attach = %d, want 0", got)
+	}
+
+	privateKey, _ := wireGuardTestKeyPair(t, 4)
+	privateKeySecret := wireGuardTestPrivateKeySecretForNode(t, wg.secrets, wg.nodeName, privateKey)
+	_, peerPublicKey := wireGuardTestKeyPair(t, 5)
+	w.SendNodeFormularMsg(wgID, formular.FormApplyMessage{
+		MessageBase: formular.MessageBase{Type: formular.MessageFormApply, MenuID: pasta.NodeMenuID(wgID)},
+		BlockID:     "config",
+		Values: map[string]any{
+			"privateKeySecret": privateKeySecret,
+			"listenPort":       51820,
+		},
+	})
+	w.SendNodeFormularMsg(wgID, formular.FormApplyMessage{
+		MessageBase: formular.MessageBase{Type: formular.MessageFormApply, MenuID: pasta.NodeMenuID(wgID)},
+		BlockID:     "peers",
+		Values: map[string]any{
+			"peers": wireGuardPeerValues([]wireGuardPeerConfig{{
+				id:         "peer",
+				publicKey:  peerPublicKey,
+				endpoint:   "127.0.0.1:51821",
+				allowedIPs: "10.10.20.1/32",
+			}}),
+		},
+	})
+	if got := network.listenCount(); got != 0 {
+		t.Fatalf("network listen count after config with no TUN = %d, want 0", got)
+	}
+
+	tunLink, _, err := w.AddLink(wgSnapshot.LeftPorts[0], tunSnapshot.RightPorts[0])
+	if err != nil {
+		t.Fatalf("AddLink tun: %v", err)
+	}
+	eventually(t, func() bool {
+		return network.listenCount() > 0
+	}, "wireguard opens network after TUN attaches")
+
+	w.RemoveLink(tunLink)
+	listensAfterTunDetach := network.listenCount()
+	w.SendNodeFormularMsg(wgID, formular.FormApplyMessage{
+		MessageBase: formular.MessageBase{Type: formular.MessageFormApply, MenuID: pasta.NodeMenuID(wgID)},
+		BlockID:     "config",
+		Values: map[string]any{
+			"privateKeySecret": privateKeySecret,
+			"listenPort":       51822,
+		},
+	})
+	if got := network.listenCount(); got != listensAfterTunDetach {
+		t.Fatalf("network listen count after TUN detach config = %d, want %d", got, listensAfterTunDetach)
+	}
+}
+
+func TestWireGuardStateDoesNotReportUpBeforeNetworkBindAttachCompletes(t *testing.T) {
+	privateKey, _ := wireGuardTestKeyPair(t, 6)
+	sourceTun, peerTun := tun.Pipe(4, 1500, 0, 0)
+	t.Cleanup(func() { _ = sourceTun.Close() })
+	t.Cleanup(func() { _ = peerTun.Close() })
+
+	n := &wireGuardNode{
+		config:     defaultWireGuardConfig(),
+		currentTun: sourceTun,
+		currentNetwork: &recordingWireGuardTestNetwork{
+			Network: gonnect.NewLoopbackNetwork(),
+		},
+	}
+	n.config.privateKey = privateKey
+	n.config.listenPort = 51820
+
+	if got := n.stateText(); got == "up" {
+		t.Fatalf("stateText() = %q with TUN and network present but no attached bind", got)
+	}
+}
+
+func TestWireGuardStateDoesNotReportUpWithClosedNetwork(t *testing.T) {
+	privateKey, _ := wireGuardTestKeyPair(t, 7)
+	sourceTun, peerTun := tun.Pipe(4, 1500, 0, 0)
+	t.Cleanup(func() { _ = sourceTun.Close() })
+	t.Cleanup(func() { _ = peerTun.Close() })
+
+	network := gonnect.DetachNetwork(gonnect.NewLoopbackNetwork(), nil, nil)
+	if err := network.Close(); err != nil {
+		t.Fatalf("network.Close() error = %v, want nil", err)
+	}
+	n := &wireGuardNode{
+		config:                   defaultWireGuardConfig(),
+		currentTun:               sourceTun,
+		currentTunGeneration:     1,
+		currentNetwork:           network,
+		currentNetworkGeneration: 1,
+		currentBind:              wireGuardTrackedBind{},
+		runtimeReadyGeneration:   1,
+	}
+	n.config.privateKey = privateKey
+	n.config.listenPort = 51820
+	n.tunGeneration.Store(1)
+	n.networkGeneration.Store(1)
+	n.runtimeGeneration.Store(1)
+
+	if got := n.stateText(); got == "up" {
+		t.Fatalf("stateText() = %q with closed network, want not up", got)
+	}
+}
+
+func TestWireGuardSameSourceNetworkReemitRebuildsFailedBind(t *testing.T) {
+	sourceTun, peerTun := tun.Pipe(4, 1500, 0, 0)
+	t.Cleanup(func() { _ = sourceTun.Close() })
+	t.Cleanup(func() { _ = peerTun.Close() })
+
+	base := gonnect.NewLoopbackNetwork()
+	current := gonnect.DetachNetwork(base, nil, nil)
+	t.Cleanup(func() { _ = current.Close() })
+	duplicate := gonnect.DetachNetwork(base, nil, nil)
+
+	n := &wireGuardNode{
+		config:                   defaultWireGuardConfig(),
+		currentTun:               sourceTun,
+		currentTunGeneration:     1,
+		currentNetwork:           current,
+		currentNetworkGeneration: 1,
+		currentBind:              wireGuardTrackedBind{},
+		currentBindFailed:        true,
+	}
+	n.tunGeneration.Store(1)
+	n.networkGeneration.Store(2)
+
+	needsConfig, ok, retry, err := n.attachNetworkPayload(2, duplicate)
+	if err != nil {
+		t.Fatalf("attachNetworkPayload() error = %v, want nil", err)
+	}
+	if !ok {
+		t.Fatal("attachNetworkPayload() ok = false, want true")
+	}
+	if retry {
+		t.Fatal("attachNetworkPayload() retry = true, want false")
+	}
+	if !needsConfig {
+		t.Fatal("attachNetworkPayload() needsConfig = false, want true")
+	}
+	if n.currentBindFailed {
+		t.Fatal("currentBindFailed = true after same-source reemit, want false")
+	}
+	if n.currentBindGen == 0 {
+		t.Fatal("currentBindGen = 0, want rebuilt bind generation")
+	}
+	if !SameNetworkInstance(n.currentNetwork, duplicate) {
+		t.Fatal("currentNetwork was not replaced with the fresh same-source wrapper")
+	}
+	if !NetworkIsReady(duplicate) {
+		t.Fatal("fresh same-source network was closed")
+	}
+}
+
+func TestWireGuardRetriesDeviceBringUpAfterNetworkListenFailure(t *testing.T) {
+	w := pasta.NewWorkspace(wireGuardTestLogFactory{})
+	t.Cleanup(func() { w.Close() })
+
+	var wg *wireGuardNode
+	if err := w.AddNodeClass(captureWireGuardClass{node: &wg}); err != nil {
+		t.Fatalf("AddNodeClass WireGuard: %v", err)
+	}
+	network := &recordingWireGuardTestNetwork{Network: gonnect.NewLoopbackNetwork()}
+	network.failNextListens(2, errors.New("temporary listen failure"))
+	if err := w.AddNodeClass(wireGuardTestNetworkSourceClass{network: network}); err != nil {
+		t.Fatalf("AddNodeClass NetworkSource: %v", err)
+	}
+	if err := w.AddNodeClass(wireGuardTestTunProviderClass{}); err != nil {
+		t.Fatalf("AddNodeClass TunProvider: %v", err)
+	}
+
+	wgID, err := w.AddNodeByClass("test/WireGuard", "wg")
+	if err != nil {
+		t.Fatalf("AddNodeByClass WireGuard: %v", err)
+	}
+	networkID, err := w.AddNodeByClass("test/WireGuardNetworkSource", "network")
+	if err != nil {
+		t.Fatalf("AddNodeByClass NetworkSource: %v", err)
+	}
+	tunID, err := w.AddNodeByClass(wireGuardTestTunProviderNodeType, "tun")
+	if err != nil {
+		t.Fatalf("AddNodeByClass TunProvider: %v", err)
+	}
+	if wg == nil {
+		t.Fatal("captured WireGuard node = nil")
+	}
+
+	wgSnapshot := testkit.MustNodeSnapshot(t, w, wgID)
+	networkSnapshot := testkit.MustNodeSnapshot(t, w, networkID)
+	tunSnapshot := testkit.MustNodeSnapshot(t, w, tunID)
+
+	if _, _, err := w.AddLink(networkSnapshot.LeftPorts[0], wgSnapshot.RightPorts[0]); err != nil {
+		t.Fatalf("AddLink network: %v", err)
+	}
+	if _, _, err := w.AddLink(wgSnapshot.LeftPorts[0], tunSnapshot.RightPorts[0]); err != nil {
+		t.Fatalf("AddLink tun: %v", err)
+	}
+
+	eventually(t, func() bool {
+		snapshot, ok := w.NodeSnapshot(wgID)
+		return ok && snapshot.Label == "error" && network.listenCount() >= 1
+	}, "wireguard initial listen failure")
+
+	eventually(t, func() bool {
+		snapshot, ok := w.NodeSnapshot(wgID)
+		return ok && snapshot.Label == "up" && network.listenCount() >= 3
+	}, "wireguard retry after transient listen failure")
+}
+
+func TestWireGuardTrackedBindClosedReceiveErrorIsRecoverable(t *testing.T) {
+	var err error = wireGuardTrackedBindReceiveError{
+		generation:     1,
+		openGeneration: 1,
+		err:            net.ErrClosed,
+	}
+	if errors.Is(err, net.ErrClosed) {
+		t.Fatal("tracked unexpected close matched net.ErrClosed and would be hidden by wgo")
+	}
+	if !wgdevice.ReceiveErrorShouldRecover(err) {
+		t.Fatal("tracked unexpected close is not recoverable")
+	}
+	var tracked wireGuardTrackedBindReceiveError
+	if !errors.As(err, &tracked) {
+		t.Fatal("tracked unexpected close cannot be recovered with errors.As")
+	}
+	if !errors.Is(tracked.err, net.ErrClosed) {
+		t.Fatalf("tracked underlying err = %v, want net.ErrClosed", tracked.err)
+	}
+}
+
+func TestWireGuardIntentionalClosedReceiveErrorIsIgnored(t *testing.T) {
+	wg := &wireGuardNode{}
+	dev := wgdevice.NewDevice(nil, nil, wgdevice.NopLogger{}, nil, wgdevice.DeviceOptions{})
+	t.Cleanup(dev.Close)
+	wg.dev = dev
+
+	wg.handleReceiveError(wireGuardReceiveErrorMessage{
+		dev:              dev,
+		intentionalClose: true,
+		err:              net.ErrClosed,
+	})
+
+	if wg.runtimeError != "" {
+		t.Fatalf("runtimeError = %q, want empty", wg.runtimeError)
+	}
+	if wg.currentBindFailed {
+		t.Fatal("currentBindFailed = true, want false")
+	}
+}
+
+func TestWireGuardRetriesBindAfterReceiveEOF(t *testing.T) {
+	w := pasta.NewWorkspace(wireGuardTestLogFactory{})
+	t.Cleanup(func() { w.Close() })
+
+	var wg *wireGuardNode
+	if err := w.AddNodeClass(captureWireGuardClass{node: &wg}); err != nil {
+		t.Fatalf("AddNodeClass WireGuard: %v", err)
+	}
+	network := &recordingWireGuardTestNetwork{Network: gonnect.NewLoopbackNetwork()}
+	if err := w.AddNodeClass(wireGuardTestNetworkSourceClass{network: network}); err != nil {
+		t.Fatalf("AddNodeClass NetworkSource: %v", err)
+	}
+	if err := w.AddNodeClass(wireGuardTestTunProviderClass{}); err != nil {
+		t.Fatalf("AddNodeClass TunProvider: %v", err)
+	}
+
+	wgID, err := w.AddNodeByClass("test/WireGuard", "wg")
+	if err != nil {
+		t.Fatalf("AddNodeByClass WireGuard: %v", err)
+	}
+	networkID, err := w.AddNodeByClass("test/WireGuardNetworkSource", "network")
+	if err != nil {
+		t.Fatalf("AddNodeByClass NetworkSource: %v", err)
+	}
+	tunID, err := w.AddNodeByClass(wireGuardTestTunProviderNodeType, "tun")
+	if err != nil {
+		t.Fatalf("AddNodeByClass TunProvider: %v", err)
+	}
+	if wg == nil {
+		t.Fatal("captured WireGuard node = nil")
+	}
+
+	wgSnapshot := testkit.MustNodeSnapshot(t, w, wgID)
+	networkSnapshot := testkit.MustNodeSnapshot(t, w, networkID)
+	tunSnapshot := testkit.MustNodeSnapshot(t, w, tunID)
+
+	if _, _, err := w.AddLink(networkSnapshot.LeftPorts[0], wgSnapshot.RightPorts[0]); err != nil {
+		t.Fatalf("AddLink network: %v", err)
+	}
+	if _, _, err := w.AddLink(wgSnapshot.LeftPorts[0], tunSnapshot.RightPorts[0]); err != nil {
+		t.Fatalf("AddLink tun: %v", err)
+	}
+
+	eventually(t, func() bool {
+		snapshot, ok := w.NodeSnapshot(wgID)
+		return ok && snapshot.Label == "up" && network.listenCount() >= 1
+	}, "wireguard initial listen")
+
+	injectWireGuardReceiveEOF(t, wg)
+
+	eventually(t, func() bool {
+		snapshot, ok := w.NodeSnapshot(wgID)
+		return ok && snapshot.Label == "up" && network.listenCount() >= 2
+	}, "wireguard retry after receive EOF")
+}
+
+func TestWireGuardReceiveEOFRebuildsBindBeforePublishingUp(t *testing.T) {
+	w := pasta.NewWorkspace(wireGuardTestLogFactory{})
+	t.Cleanup(func() { w.Close() })
+
+	var wg *wireGuardNode
+	if err := w.AddNodeClass(captureWireGuardClass{node: &wg}); err != nil {
+		t.Fatalf("AddNodeClass WireGuard: %v", err)
+	}
+	network := &recordingWireGuardTestNetwork{Network: gonnect.NewLoopbackNetwork()}
+	if err := w.AddNodeClass(wireGuardTestNetworkSourceClass{network: network}); err != nil {
+		t.Fatalf("AddNodeClass NetworkSource: %v", err)
+	}
+	if err := w.AddNodeClass(wireGuardTestTunProviderClass{}); err != nil {
+		t.Fatalf("AddNodeClass TunProvider: %v", err)
+	}
+
+	wgID, err := w.AddNodeByClass("test/WireGuard", "wg")
+	if err != nil {
+		t.Fatalf("AddNodeByClass WireGuard: %v", err)
+	}
+	networkID, err := w.AddNodeByClass("test/WireGuardNetworkSource", "network")
+	if err != nil {
+		t.Fatalf("AddNodeByClass NetworkSource: %v", err)
+	}
+	tunID, err := w.AddNodeByClass(wireGuardTestTunProviderNodeType, "tun")
+	if err != nil {
+		t.Fatalf("AddNodeByClass TunProvider: %v", err)
+	}
+	if wg == nil {
+		t.Fatal("captured WireGuard node = nil")
+	}
+
+	labels := make(chan string, 32)
+	sub := w.SubscribeNotifications(func(notification pasta.WorkspaceNotification) {
+		if notification.Kind != pasta.NotificationNodeUpdated || notification.ID != wgID || notification.Node == nil {
+			return
+		}
+		select {
+		case labels <- notification.Node.Label:
+		default:
+		}
+	})
+	if sub == 0 {
+		t.Fatal("SubscribeNotifications returned 0")
+	}
+	t.Cleanup(func() { w.UnsubscribeNotifications(sub) })
+
+	wgSnapshot := testkit.MustNodeSnapshot(t, w, wgID)
+	networkSnapshot := testkit.MustNodeSnapshot(t, w, networkID)
+	tunSnapshot := testkit.MustNodeSnapshot(t, w, tunID)
+
+	if _, _, err := w.AddLink(networkSnapshot.LeftPorts[0], wgSnapshot.RightPorts[0]); err != nil {
+		t.Fatalf("AddLink network: %v", err)
+	}
+	if _, _, err := w.AddLink(wgSnapshot.LeftPorts[0], tunSnapshot.RightPorts[0]); err != nil {
+		t.Fatalf("AddLink tun: %v", err)
+	}
+
+	eventually(t, func() bool {
+		snapshot, ok := w.NodeSnapshot(wgID)
+		return ok && snapshot.Label == "up" && network.listenCount() >= 1
+	}, "wireguard initial up")
+	drainWireGuardTestLabels(labels)
+
+	injectWireGuardReceiveEOF(t, wg)
+
+	waitWireGuardTestLabel(t, labels, "error")
+	listensAfterError := network.listenCount()
+	deadline := time.NewTimer(10 * time.Second)
+	defer deadline.Stop()
+	for {
+		select {
+		case label := <-labels:
+			if label == "up" {
+				if got := network.listenCount(); got <= listensAfterError {
+					t.Fatalf("WireGuard label returned to up before rebuilding bind; listen count after first error=%d now=%d", listensAfterError, got)
+				}
+				return
+			}
+		case <-deadline.C:
+			t.Fatalf("timed out waiting for WireGuard to recover after receive EOF; listen count after first error=%d now=%d", listensAfterError, network.listenCount())
+		}
+	}
+}
+
+func assertWireGuardStatusItemValue(t *testing.T, block formular.Block, id string, want any) {
+	t.Helper()
+	item, ok := findWireGuardTestItem(block, id)
+	if !ok {
+		t.Fatalf("status item %q missing", id)
+	}
+	if item.Field == nil {
+		t.Fatalf("status item %q has no field: %#v", id, item)
+	}
+	if !reflect.DeepEqual(item.Value, want) {
+		t.Fatalf("status item %q value = %#v, want %#v", id, item.Value, want)
+	}
+}
+
+func findWireGuardTestItem(block formular.Block, id string) (formular.Item, bool) {
+	for _, item := range block.Items {
+		if item.ID == id {
+			return item, true
+		}
+	}
+	return formular.Item{}, false
+}
+
+func wireGuardPeerValues(peers []wireGuardPeerConfig) []formular.ArrayElementValue {
+	out := make([]formular.ArrayElementValue, 0, len(peers))
+	for i, peer := range peers {
+		peer.normalize(i)
+		out = append(out, formular.ArrayElementValue{
+			ID:       peer.id,
+			Template: "peer",
+			Values: map[string]any{
+				"publicKey":                   peer.publicKey,
+				"presharedKey":                peer.presharedKey,
+				"endpoint":                    peer.endpoint,
+				"allowedIPs":                  peer.allowedIPs,
+				"persistentKeepaliveInterval": peer.persistentKeepaliveInterval,
+				"amneziaOverride":             peer.amneziaWGOverride,
+				"amneziaJunkCount":            peer.amneziaWG.junkCount,
+				"amneziaJunkMin":              peer.amneziaWG.junkMin,
+				"amneziaJunkMax":              peer.amneziaWG.junkMax,
+				"amneziaInitPadding":          peer.amneziaWG.initPadding,
+				"amneziaResponsePadding":      peer.amneziaWG.responsePadding,
+				"amneziaCookiePadding":        peer.amneziaWG.cookiePadding,
+				"amneziaTransportPadding":     peer.amneziaWG.transportPadding,
+				"amneziaInitHeader":           peer.amneziaWG.initHeader,
+				"amneziaResponseHeader":       peer.amneziaWG.responseHeader,
+				"amneziaCookieHeader":         peer.amneziaWG.cookieHeader,
+				"amneziaTransportHeader":      peer.amneziaWG.transportHeader,
+				"amneziaInitiationPacket1":    peer.amneziaWG.initiationPackets[0],
+				"amneziaInitiationPacket2":    peer.amneziaWG.initiationPackets[1],
+				"amneziaInitiationPacket3":    peer.amneziaWG.initiationPackets[2],
+				"amneziaInitiationPacket4":    peer.amneziaWG.initiationPackets[3],
+				"amneziaInitiationPacket5":    peer.amneziaWG.initiationPackets[4],
+			},
+		})
+	}
+	return out
+}
+
+func wireGuardTestAmneziaConfig() wireGuardAmneziaConfig {
+	config := defaultWireGuardAmneziaConfig()
+	config.junkCount = 2
+	config.junkMin = 11
+	config.junkMax = 23
+	config.initPadding = 7
+	config.responsePadding = 8
+	config.cookiePadding = 9
+	config.transportPadding = 10
+	config.initHeader = "1111-1113"
+	config.responseHeader = "2222-2225"
+	config.cookieHeader = "3333"
+	config.transportHeader = "4444-4449"
+	config.initiationPackets[0] = "<b 0xaa55><rc 3><rd 2><t>"
+	config.initiationPackets[1] = "<r 5>"
+	config.initiationPackets[2] = "<rd 4>"
+	config.initiationPackets[3] = "<rc 6>"
+	config.initiationPackets[4] = "<b 0x01020304>"
+	return config
+}
+
+func wireGuardTestKeyPair(t *testing.T, seed byte) (privateKeyBase64, publicKeyBase64 string) {
+	t.Helper()
+	var privateKey wgdevice.NoisePrivateKey
+	for i := range privateKey {
+		privateKey[i] = seed + byte(i) + 1
+	}
+	privateKey[0] &= 248
+	privateKey[31] = (privateKey[31] & 127) | 64
+	publicKeyBase64 = wireGuardPublicKeyBase64(privateKey)
+	if publicKeyBase64 == "" {
+		t.Fatal("wireGuardPublicKeyBase64 returned empty key")
+	}
+	return privateKey.Base64(), publicKeyBase64
+}
+
+func wireGuardPublicKeyFromPrivateKey(t *testing.T, privateKeyBase64 string) string {
+	t.Helper()
+	privateKey, err := parseWireGuardPrivateKey(privateKeyBase64)
+	if err != nil {
+		t.Fatalf("parseWireGuardPrivateKey: %v", err)
+	}
+	publicKey := wireGuardPublicKeyBase64(privateKey)
+	if publicKey == "" {
+		t.Fatal("wireGuardPublicKeyBase64 returned empty key")
+	}
+	return publicKey
+}
+
+func wireGuardTestPrivateKeySecretForNode(t *testing.T, storage SecretsStorage, nodeName string, privateKey string) string {
+	t.Helper()
+	if storage == nil {
+		t.Fatal("test has no secrets storage")
+	}
+	name, err := storage.NewSecret(Secret{Value: privateKey}, nodeName)
+	if err != nil {
+		t.Fatalf("NewSecret for WireGuard private key: %v", err)
+	}
+	return name
+}
+
+func injectWireGuardReceiveEOF(t *testing.T, wg *wireGuardNode) {
+	t.Helper()
+	var dev *wgdevice.Device
+	var bindGeneration uint64
+	var bindOpenGeneration uint64
+	eventually(t, func() bool {
+		wg.runtimeMu.Lock()
+		defer wg.runtimeMu.Unlock()
+		if wg.dev == nil || wg.currentBind == nil || wg.currentBindOpen == nil || wg.currentBindFailed {
+			return false
+		}
+		openGeneration := wg.currentBindOpen.Load()
+		if openGeneration == 0 {
+			return false
+		}
+		dev = wg.dev
+		bindGeneration = wg.currentBindGen
+		bindOpenGeneration = openGeneration
+		return true
+	}, "wireguard bind open before receive EOF injection")
+	wg.notifyReceiveError(dev, wireGuardTrackedBindReceiveError{
+		generation:     bindGeneration,
+		openGeneration: bindOpenGeneration,
+		err:            io.EOF,
+	})
+}
+
+func drainWireGuardTestLabels(labels <-chan string) {
+	for {
+		select {
+		case <-labels:
+		default:
+			return
+		}
+	}
+}
+
+func waitWireGuardTestLabel(t *testing.T, labels <-chan string, want string) {
+	t.Helper()
+	deadline := time.NewTimer(10 * time.Second)
+	defer deadline.Stop()
+	for {
+		select {
+		case got := <-labels:
+			if got == want {
+				return
+			}
+		case <-deadline.C:
+			t.Fatalf("timed out waiting for WireGuard label %q", want)
+		}
+	}
+}
+
+type captureWireGuardClass struct {
+	node    **wireGuardNode
+	secrets SecretsStorage
+}
+
+func (captureWireGuardClass) ClassName() string        { return "test/WireGuard" }
+func (captureWireGuardClass) ShortDescription() string { return WireGuardClass{}.ShortDescription() }
+func (captureWireGuardClass) LongDescription() string  { return WireGuardClass{}.LongDescription() }
+func (captureWireGuardClass) DefaultNodeParams() pasta.NodeClassParams {
+	return WireGuardClass{}.DefaultNodeParams()
+}
+func (c captureWireGuardClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
+	config := defaultWireGuardConfig()
+	config.read(cfg)
+	secrets := c.secrets
+	if secrets == nil {
+		secrets = newWireGuardTestSecretsStorage()
+	}
+	node := &wireGuardNode{config: config, secrets: secrets}
+	if c.node != nil {
+		*c.node = node
+	}
+	return node, nil
+}
+
+type recordingWireGuardTestNetwork struct {
+	gonnect.Network
+	mu          sync.Mutex
+	listenCalls int
+	failListens int
+	listenErr   error
+}
+
+func (n *recordingWireGuardTestNetwork) ListenUDP(ctx context.Context, network, laddr string) (gonnect.UDPConn, error) {
+	n.recordListen()
+	if err := n.consumeListenFailure(); err != nil {
+		return nil, err
+	}
+	return n.Network.ListenUDP(ctx, network, laddr)
+}
+
+func (n *recordingWireGuardTestNetwork) ListenUDPConfig(ctx context.Context, lc *gonnect.ListenConfig, network, laddr string) (gonnect.UDPConn, error) {
+	n.recordListen()
+	if err := n.consumeListenFailure(); err != nil {
+		return nil, err
+	}
+	return n.Network.ListenUDPConfig(ctx, lc, network, laddr)
+}
+
+func (n *recordingWireGuardTestNetwork) Close() error { return nil }
+
+func (n *recordingWireGuardTestNetwork) recordListen() {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.listenCalls++
+}
+
+func (n *recordingWireGuardTestNetwork) listenCount() int {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return n.listenCalls
+}
+
+func (n *recordingWireGuardTestNetwork) failNextListens(count int, err error) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.failListens = count
+	n.listenErr = err
+}
+
+func (n *recordingWireGuardTestNetwork) consumeListenFailure() error {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.failListens <= 0 {
+		return nil
+	}
+	n.failListens--
+	return n.listenErr
+}
+
+type wireGuardTestNetworkSourceClass struct {
+	network NetworkCloser
+}
+
+func (wireGuardTestNetworkSourceClass) ClassName() string {
+	return "test/WireGuardNetworkSource"
+}
+func (wireGuardTestNetworkSourceClass) ShortDescription() string {
+	return "test WireGuard network source"
+}
+func (wireGuardTestNetworkSourceClass) LongDescription() string {
+	return "Test-only left-directed almagest/network source."
+}
+func (wireGuardTestNetworkSourceClass) DefaultNodeParams() pasta.NodeClassParams {
+	return pasta.NodeClassParams{PrimaryType: TypeNetwork, InitialPorts: []pasta.Port{
+		NetworkPort("left", "Network"),
+	}}
+}
+func (c wireGuardTestNetworkSourceClass) NewNode(configer.Config, ...*pasta.NodeClassState) (pasta.Node, error) {
+	return &wireGuardTestNetworkSourceNode{network: c.network}, nil
+}
+
+type wireGuardTestNetworkSourceNode struct {
+	pasta.BasicNode
+
+	w       *pasta.Workspace
+	id      uint64
+	out     uint64
+	network NetworkCloser
+}
+
+func (n *wireGuardTestNetworkSourceNode) OnInit(w *pasta.Workspace, _ pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
+	n.w = w
+	n.id = id
+	n.out = restoredLeft(restored, 0)
+	if err := n.w.SetNodePrimaryLocked(n.id, TypeNetwork); err != nil {
+		return err
+	}
+	return n.w.SetNodeLabelLocked(n.id, "ready")
+}
+
+func (n *wireGuardTestNetworkSourceNode) OnReady() error {
+	n.sendAll()
+	return nil
+}
+
+func (n *wireGuardTestNetworkSourceNode) PreLinkAdd(port uint64, linkType, portDirection string) error {
+	if port != n.out || portDirection != "left" || linkType != TypeNetwork {
+		return pasta.LinkTypeErr(linkType)
+	}
+	return nil
+}
+
+func (n *wireGuardTestNetworkSourceNode) OnLinkAdd(link, port uint64, linkType, portDirection string) error {
+	if port == n.out && portDirection == "left" && linkType == TypeNetwork {
+		n.sendToLink(link)
+	}
+	return nil
+}
+
+func (n *wireGuardTestNetworkSourceNode) OnEvent(event pasta.Event, linkType string, _ []string, receiverPortDirection string) error {
+	if event.ReceiverPort == n.out && receiverPortDirection == "left" && linkType == TypeNetwork {
+		n.sendToLink(event.Link)
+	}
+	return nil
+}
+
+func (n *wireGuardTestNetworkSourceNode) sendAll() {
+	snapshot, ok := n.w.PortSnapshotLocked(n.out)
+	if !ok {
+		return
+	}
+	for _, link := range snapshot.Links {
+		n.sendToLink(link)
+	}
+}
+
+func (n *wireGuardTestNetworkSourceNode) sendToLink(link uint64) {
+	if n.network == nil {
+		return
+	}
+	BindNetworkResource(n.w, n.id, link, n.network)
+	n.w.EmitEventLocked(n.id, link, NetworkPayload{Network: n.network})
+}
+
+const wireGuardTestTunProviderNodeType = "test/WireGuardTunProvider"
+
+type wireGuardTestTunProviderClass struct{}
+
+func (wireGuardTestTunProviderClass) ClassName() string        { return wireGuardTestTunProviderNodeType }
+func (wireGuardTestTunProviderClass) ShortDescription() string { return "test TUN provider" }
+func (wireGuardTestTunProviderClass) LongDescription() string {
+	return "Test-only right-directed almagest/tun source."
+}
+func (wireGuardTestTunProviderClass) DefaultNodeParams() pasta.NodeClassParams {
+	return pasta.NodeClassParams{PrimaryType: TypeTun, InitialPorts: []pasta.Port{
+		TunPort("right", "Tun"),
+	}}
+}
+func (wireGuardTestTunProviderClass) NewNode(configer.Config, ...*pasta.NodeClassState) (pasta.Node, error) {
+	source, peer := tun.Pipe(4, 1500, 0, 0)
+	return &wireGuardTestTunProviderNode{tun: source, peer: peer}, nil
+}
+
+type wireGuardTestTunProviderNode struct {
+	pasta.BasicNode
+
+	w    *pasta.Workspace
+	id   uint64
+	out  uint64
+	tun  tun.Tun
+	peer tun.Tun
+}
+
+func (n *wireGuardTestTunProviderNode) OnInit(w *pasta.Workspace, _ pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
+	n.w = w
+	n.id = id
+	n.out = restoredRight(restored, 0)
+	if err := n.w.SetNodePrimaryLocked(n.id, TypeTun); err != nil {
+		return err
+	}
+	return n.w.SetNodeLabelLocked(n.id, "ready")
+}
+
+func (n *wireGuardTestTunProviderNode) OnReady() error {
+	n.sendAll()
+	return nil
+}
+
+func (n *wireGuardTestTunProviderNode) OnStop() {
+	_ = n.tun.Close()
+	_ = n.peer.Close()
+}
+
+func (n *wireGuardTestTunProviderNode) PreLinkAdd(port uint64, linkType, portDirection string) error {
+	if port != n.out || portDirection != "right" {
+		return pasta.LinkTypeErr(linkType)
+	}
+	return TunPreLinkAdd(n.w, port, linkType)
+}
+
+func (n *wireGuardTestTunProviderNode) OnLinkAdd(link, port uint64, linkType, portDirection string) error {
+	if port == n.out && portDirection == "right" && linkType == TypeTun {
+		n.sendToLink(link)
+	}
+	return nil
+}
+
+func (n *wireGuardTestTunProviderNode) OnEvent(event pasta.Event, linkType string, _ []string, receiverPortDirection string) error {
+	if event.ReceiverPort == n.out && receiverPortDirection == "right" && linkType == TypeTun && std.IsRequest(event.Payload) {
+		n.sendToLink(event.Link)
+	}
+	return nil
+}
+
+func (n *wireGuardTestTunProviderNode) sendAll() {
+	snapshot, ok := n.w.PortSnapshotLocked(n.out)
+	if !ok {
+		return
+	}
+	for _, link := range snapshot.Links {
+		n.sendToLink(link)
+	}
+}
+
+func (n *wireGuardTestTunProviderNode) sendToLink(link uint64) {
+	if n.tun == nil {
+		return
+	}
+	BindTunResource(n.w, n.id, link, n.tun)
+	n.w.EmitEventLocked(n.id, link, TunPayload{Tun: n.tun})
+}
+
+type wireGuardTestSecretsStorage struct {
+	mu      sync.Mutex
+	nextKey int
+	records map[string]wireGuardTestSecretRecord
+}
+
+type wireGuardTestSecretRecord struct {
+	secret Secret
+	nodes  map[string]struct{}
+}
+
+func newWireGuardTestSecretsStorage() *wireGuardTestSecretsStorage {
+	return &wireGuardTestSecretsStorage{records: map[string]wireGuardTestSecretRecord{}}
+}
+
+func (s *wireGuardTestSecretsStorage) GetSecret(key string, node string) (Secret, error) {
+	if s == nil || key == "" || node == "" {
+		return Secret{}, errors.New("secret access denied")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	record, ok := s.records[key]
+	if !ok {
+		return Secret{}, errors.New("secret access denied")
+	}
+	if _, ok := record.nodes[node]; !ok {
+		return Secret{}, errors.New("secret access denied")
+	}
+	return record.secret, nil
+}
+
+func (s *wireGuardTestSecretsStorage) NewSecret(sec Secret, node string) (string, error) {
+	if s == nil {
+		return "", errors.New("secret storage closed")
+	}
+	if node == "" {
+		return "", ErrSecretInvalidName
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for {
+		s.nextKey++
+		key := "secret-" + strconv.Itoa(s.nextKey)
+		if _, exists := s.records[key]; exists {
+			continue
+		}
+		s.records[key] = wireGuardTestSecretRecord{
+			secret: Secret{Value: sec.Value},
+			nodes:  map[string]struct{}{node: {}},
+		}
+		return key, nil
+	}
+}
+
+func (s *wireGuardTestSecretsStorage) SetSecret(key string, sec Secret, nodes ...string) {
+	if s == nil {
+		return
+	}
+	allowed := make(map[string]struct{}, len(nodes))
+	for _, node := range nodes {
+		if node != "" {
+			allowed[node] = struct{}{}
+		}
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.records[key] = wireGuardTestSecretRecord{secret: sec, nodes: allowed}
+}
+
+func (s *wireGuardTestSecretsStorage) SecretValue(key string) (string, bool) {
+	if s == nil {
+		return "", false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	record, ok := s.records[key]
+	if !ok {
+		return "", false
+	}
+	return record.secret.Value, true
+}
+
+func eventually(t *testing.T, fn func() bool, format string, args ...any) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	var last bool
+	for time.Now().Before(deadline) {
+		last = fn()
+		if last {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("condition failed: "+format, args...)
+}
+
+type wireGuardTestLogFactory struct{}
+
+func (wireGuardTestLogFactory) WorkspaceLogger() pasta.Logger {
+	return wireGuardTestLogger{}
+}
+
+func (wireGuardTestLogFactory) NodeLogger(uint64, string) pasta.Logger {
+	return wireGuardTestLogger{}
+}
+
+type wireGuardTestLogger struct{}
+
+func (wireGuardTestLogger) Debug(...any)          {}
+func (wireGuardTestLogger) Debugf(string, ...any) {}
+func (wireGuardTestLogger) Info(...any)           {}
+func (wireGuardTestLogger) Infof(string, ...any)  {}
+func (wireGuardTestLogger) Warn(...any)           {}
+func (wireGuardTestLogger) Warnf(string, ...any)  {}
+func (wireGuardTestLogger) Err(...any)            {}
+func (wireGuardTestLogger) Errf(string, ...any)   {}
+func (wireGuardTestLogger) Fatal(...any)          {}
+func (wireGuardTestLogger) Fatalf(string, ...any) {}

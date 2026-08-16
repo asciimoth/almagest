@@ -13,7 +13,8 @@ import (
 	"github.com/asciimoth/gonnect/sysnet"
 	"github.com/asciimoth/pasta/pasta"
 
-	dnsnodes "github.com/asciimoth/almagest/lib/dns"
+	"github.com/asciimoth/almagest/lib/logging"
+	"github.com/asciimoth/almagest/lib/storage"
 )
 
 var (
@@ -24,6 +25,9 @@ var (
 var (
 	ErrNoWorkspace = errors.New("no such workspace")
 )
+
+// MainWorkspace is the engine workspace name used by the public API.
+const MainWorkspace = "main"
 
 type NotificationKind string
 
@@ -54,12 +58,12 @@ type NotificationCallback func(EngineNotification)
 func BuildEngine(
 	ctx context.Context,
 	cfg configer.Config, // may be nil
-	logf LogFactory,
+	logf logging.LogFactory,
 	sys sysnet.System, // use sysnetdebug.System{} if you dont have one
-	kv KVManager, // may be nil
-	dns dnsnodes.DnsCacheManager, // may be nil
-	secrets SecretsStorage, // may be nil
-	tlsConfigs TlsConfigStorage, // may be nil
+	kv storage.KVManager, // may be nil
+	dns storage.DnsCacheManager, // may be nil
+	secrets storage.SecretsStorage, // may be nil
+	tlsConfigs storage.TlsConfigStorage, // may be nil
 	extra []pasta.NodeClass,
 	pool bufpool.Pool, // may be nil. Use bufpool.NewTestDebugPool() in tests
 	debug bool, // Should builtin debug nodes be added
@@ -269,10 +273,10 @@ type Engine interface {
 	Pool() bufpool.Pool
 	PoolLocked() bufpool.Pool
 
-	KVManager() KVManager
-	DnsCacheManager() dnsnodes.DnsCacheManager
-	SecretsStorage() SecretsStorage
-	TlsConfigStorage() TlsConfigStorage
+	KVManager() storage.KVManager
+	DnsCacheManager() storage.DnsCacheManager
+	SecretsStorage() storage.SecretsStorage
+	TlsConfigStorage() storage.TlsConfigStorage
 }
 
 type subMap struct {
@@ -284,16 +288,16 @@ type engine struct {
 	ctx       context.Context
 	ctxCancel context.CancelFunc
 
-	logf   LogFactory
-	logger Logger
+	logf   logging.LogFactory
+	logger logging.Logger
 
 	pool bufpool.Pool
 
 	sys        sysnet.System
-	kv         KVManager
-	dns        dnsnodes.DnsCacheManager
-	secrets    SecretsStorage
-	tlsConfigs TlsConfigStorage
+	kv         storage.KVManager
+	dns        storage.DnsCacheManager
+	secrets    storage.SecretsStorage
+	tlsConfigs storage.TlsConfigStorage
 
 	mu sync.Mutex
 
@@ -321,19 +325,19 @@ func (e *engine) PoolLocked() bufpool.Pool {
 	return e.pool
 }
 
-func (e *engine) KVManager() KVManager {
+func (e *engine) KVManager() storage.KVManager {
 	return e.kv
 }
 
-func (e *engine) DnsCacheManager() dnsnodes.DnsCacheManager {
+func (e *engine) DnsCacheManager() storage.DnsCacheManager {
 	return e.dns
 }
 
-func (e *engine) SecretsStorage() SecretsStorage {
+func (e *engine) SecretsStorage() storage.SecretsStorage {
 	return e.secrets
 }
 
-func (e *engine) TlsConfigStorage() TlsConfigStorage {
+func (e *engine) TlsConfigStorage() storage.TlsConfigStorage {
 	return e.tlsConfigs
 }
 

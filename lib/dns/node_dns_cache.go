@@ -79,10 +79,8 @@ func (c DNSCacheClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState) 
 	config := defaultDNSCacheConfig()
 	config.read(cfg)
 	manager := c.Manager
-	if manager == nil {
-		if runtime, ok := c.Runtime.(interface{ DnsCacheManager() DnsCacheManager }); ok {
-			manager = runtime.DnsCacheManager()
-		}
+	if manager == nil && c.Runtime != nil {
+		manager = c.Runtime.DnsCacheManager()
 	}
 	return &dnsCacheNode{Base: nodekit.Base{Runtime: c.Runtime}, manager: manager, config: config}, nil
 }

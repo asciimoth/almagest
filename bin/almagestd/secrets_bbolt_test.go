@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/asciimoth/almagest/lib/logging"
 	"path/filepath"
 	"testing"
 
 	"github.com/asciimoth/almagest/bin/api"
 	almagest "github.com/asciimoth/almagest/lib"
+	"github.com/asciimoth/almagest/lib/storage"
 	"github.com/asciimoth/configer/configer"
 	sysnetdebug "github.com/asciimoth/gonnect/sysnet/debug"
 	"github.com/asciimoth/pasta/pasta"
@@ -53,7 +55,7 @@ func TestSecretsStorageImmutableOverridesMutable(t *testing.T) {
 	if sec.Value != "protected" || !sec.ReadOnly {
 		t.Fatalf("GetSecret immutable = %#v, want protected read-only value", sec)
 	}
-	if _, err := manager.GetSecret("shared", "mutable-node"); !errors.Is(err, almagest.ErrSecretAccessDenied) {
+	if _, err := manager.GetSecret("shared", "mutable-node"); !errors.Is(err, storage.ErrSecretAccessDenied) {
 		t.Fatalf("GetSecret shadowed mutable node error = %v, want ErrSecretAccessDenied", err)
 	}
 
@@ -65,7 +67,7 @@ func TestSecretsStorageImmutableOverridesMutable(t *testing.T) {
 		t.Fatalf("snapshot = %#v, want only effective immutable secret", snapshot)
 	}
 
-	key, err := manager.NewSecret(almagest.Secret{Value: "generated", ReadOnly: true}, "creator")
+	key, err := manager.NewSecret(storage.Secret{Value: "generated", ReadOnly: true}, "creator")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,11 +87,11 @@ func TestSecretsAdminEventsValidationAndInbox(t *testing.T) {
 	}
 	defer manager.Close() //nolint:errcheck
 
-	inbox := make(chan almagest.SecretValueChanged, 8)
+	inbox := make(chan storage.SecretValueChanged, 8)
 	engine, err := almagest.BuildEngine(
 		context.Background(),
 		configer.NewMemory(nil),
-		almagest.NewDebugLogFactory(16),
+		logging.NewDebugLogFactory(16),
 		&sysnetdebug.System{},
 		nil,
 		nil, nil,
@@ -224,7 +226,7 @@ func TestSecretNodeNameSyncUpdatesMutableAndImmutableAllowLists(t *testing.T) {
 	engine, err := almagest.BuildEngine(
 		context.Background(),
 		configer.NewMemory(nil),
-		almagest.NewDebugLogFactory(16),
+		logging.NewDebugLogFactory(16),
 		&sysnetdebug.System{},
 		nil,
 		nil, nil,
@@ -262,7 +264,7 @@ func TestSecretNodeNameSyncUpdatesMutableAndImmutableAllowLists(t *testing.T) {
 }
 
 type secretInboxNodeClass struct {
-	inbox chan almagest.SecretValueChanged
+	inbox chan storage.SecretValueChanged
 }
 
 func (c secretInboxNodeClass) ClassName() string { return "test/SecretInbox" }
@@ -281,14 +283,14 @@ func (c secretInboxNodeClass) NewNode(configer.Config, ...*pasta.NodeClassState)
 
 type secretInboxNode struct {
 	pasta.BasicNode
-	inbox chan almagest.SecretValueChanged
+	inbox chan storage.SecretValueChanged
 }
 
 func (n *secretInboxNode) OnInbox(message pasta.InboxMessage) error {
 	if n.inbox == nil {
 		return nil
 	}
-	if payload, ok := message.Payload.(almagest.SecretValueChanged); ok {
+	if payload, ok := message.Payload.(storage.SecretValueChanged); ok {
 		n.inbox <- payload
 	}
 	return nil
@@ -320,7 +322,7 @@ func assertSecretEvent(t *testing.T, events []api.Message, subscriptionID uint64
 	}
 }
 
-func assertSecretInbox(t *testing.T, inbox <-chan almagest.SecretValueChanged, prev, next string) {
+func assertSecretInbox(t *testing.T, inbox <-chan storage.SecretValueChanged, prev, next string) {
 	t.Helper()
 	select {
 	case got := <-inbox:
@@ -332,7 +334,7 @@ func assertSecretInbox(t *testing.T, inbox <-chan almagest.SecretValueChanged, p
 	}
 }
 
-func assertNoSecretInbox(t *testing.T, inbox <-chan almagest.SecretValueChanged) {
+func assertNoSecretInbox(t *testing.T, inbox <-chan storage.SecretValueChanged) {
 	t.Helper()
 	select {
 	case got := <-inbox:
@@ -354,7 +356,7 @@ func assertSecretAccess(t *testing.T, manager *bboltKVManager, key, node, value 
 
 func assertSecretDenied(t *testing.T, manager *bboltKVManager, key, node string) {
 	t.Helper()
-	if _, err := manager.GetSecret(key, node); !errors.Is(err, almagest.ErrSecretAccessDenied) {
+	if _, err := manager.GetSecret(key, node); !errors.Is(err, storage.ErrSecretAccessDenied) {
 		t.Fatalf("GetSecret(%q, %q) error = %v, want ErrSecretAccessDenied", key, node, err)
 	}
 }

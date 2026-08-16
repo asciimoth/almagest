@@ -4,12 +4,13 @@ import (
 	"sync"
 
 	almagest "github.com/asciimoth/almagest/lib"
+	"github.com/asciimoth/almagest/lib/logging"
 	"github.com/asciimoth/pasta/pasta"
 )
 
 type secretNodeNameSync struct {
 	manager *bboltKVManager
-	logger  almagest.Logger
+	logger  logging.Logger
 
 	mu    sync.Mutex
 	nodes map[uint64]string
@@ -18,7 +19,7 @@ type secretNodeNameSync struct {
 // startSecretNodeNameSync keeps secret allow lists keyed by the current
 // workspace node names. It observes engine notifications from almagestd without
 // adding secrets storage to lib.Engine.
-func (a *AdminAPI) startSecretNodeNameSync(engine almagest.Engine, logger almagest.Logger) uint64 {
+func (a *AdminAPI) startSecretNodeNameSync(engine almagest.Engine, logger logging.Logger) uint64 {
 	if a == nil || a.secrets == nil || engine == nil {
 		return 0
 	}

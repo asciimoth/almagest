@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
+	"github.com/asciimoth/almagest/lib/logging"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -20,6 +21,7 @@ import (
 
 	"github.com/asciimoth/almagest/bin/api"
 	almagest "github.com/asciimoth/almagest/lib"
+	"github.com/asciimoth/almagest/lib/storage"
 	"github.com/asciimoth/configer/configer"
 	sysnetdebug "github.com/asciimoth/gonnect/sysnet/debug"
 	"github.com/asciimoth/gonnect/tlspolicy"
@@ -91,13 +93,13 @@ func TestTLSStorageDefaultPolicyAndImmutableOverride(t *testing.T) {
 		t.Fatalf("shadow policy = %#v, want protected overlay", shadow)
 	}
 
-	if _, err := manager.setTLSCert("shared", testTLSCAPEM(t, "replacement")); !errors.Is(err, almagest.ErrTlsConfigReadOnly) {
+	if _, err := manager.setTLSCert("shared", testTLSCAPEM(t, "replacement")); !errors.Is(err, storage.ErrTlsConfigReadOnly) {
 		t.Fatalf("set protected cert error = %v, want read-only", err)
 	}
-	if _, err := manager.setTLSPolicy("shadow", testTLSPolicy("shared")); !errors.Is(err, almagest.ErrTlsConfigReadOnly) {
+	if _, err := manager.setTLSPolicy("shadow", testTLSPolicy("shared")); !errors.Is(err, storage.ErrTlsConfigReadOnly) {
 		t.Fatalf("set protected policy error = %v, want read-only", err)
 	}
-	if _, err := manager.setTLSCert("os-ca:user", testTLSCAPEM(t, "reserved")); !errors.Is(err, almagest.ErrTlsConfigInvalidName) {
+	if _, err := manager.setTLSCert("os-ca:user", testTLSCAPEM(t, "reserved")); !errors.Is(err, storage.ErrTlsConfigInvalidName) {
 		t.Fatalf("set OS-prefixed cert error = %v, want invalid name", err)
 	}
 
@@ -231,7 +233,7 @@ func TestTLSBuiltinCAGenerationAndPolicyInjection(t *testing.T) {
 	if builtinAnchor == nil || !builtinAnchor.Scope.Any {
 		t.Fatalf("default builtin anchor = %#v, want unscoped trust anchor", builtinAnchor)
 	}
-	if _, err := manager.setTLSCert(tlsBuiltinCACertName, testTLSCAPEM(t, "shadow")); !errors.Is(err, almagest.ErrTlsConfigInvalidName) {
+	if _, err := manager.setTLSCert(tlsBuiltinCACertName, testTLSCAPEM(t, "shadow")); !errors.Is(err, storage.ErrTlsConfigInvalidName) {
 		t.Fatalf("set builtin cert error = %v, want invalid name", err)
 	}
 
@@ -328,7 +330,7 @@ func TestProtectedConfigTLSBuiltinCA(t *testing.T) {
 		fileStorage: t.TempDir(),
 		tls:         manager,
 	}
-	if _, _, err := admin.setTLSBuiltinCAOptions(api.TLSBuiltinCAOptions{Issuer: "mutable"}); !errors.Is(err, almagest.ErrTlsConfigReadOnly) {
+	if _, _, err := admin.setTLSBuiltinCAOptions(api.TLSBuiltinCAOptions{Issuer: "mutable"}); !errors.Is(err, storage.ErrTlsConfigReadOnly) {
 		t.Fatalf("set protected builtin CA options error = %v, want read-only", err)
 	}
 
@@ -348,11 +350,11 @@ func TestTLSAdminEventsFixPoliciesAndNotifyFetchedNodes(t *testing.T) {
 	}
 	defer manager.Close() //nolint:errcheck
 
-	inbox := make(chan almagest.TlsConfigChanged, 8)
+	inbox := make(chan storage.TlsConfigChanged, 8)
 	engine, err := almagest.BuildEngine(
 		context.Background(),
 		configer.NewMemory(nil),
-		almagest.NewDebugLogFactory(16),
+		logging.NewDebugLogFactory(16),
 		&sysnetdebug.System{},
 		nil,
 		nil,
@@ -490,11 +492,11 @@ func TestTLSBuiltinCAAPIRegeneratesAndNotifiesPolicies(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	inbox := make(chan almagest.TlsConfigChanged, 8)
+	inbox := make(chan storage.TlsConfigChanged, 8)
 	engine, err := almagest.BuildEngine(
 		context.Background(),
 		configer.NewMemory(nil),
-		almagest.NewDebugLogFactory(16),
+		logging.NewDebugLogFactory(16),
 		&sysnetdebug.System{},
 		nil,
 		nil,
@@ -888,7 +890,7 @@ func tlsScopeHasDNS(scope api.TLSScope, domain string, includeSubdomains bool) b
 }
 
 type tlsInboxNodeClass struct {
-	inbox chan almagest.TlsConfigChanged
+	inbox chan storage.TlsConfigChanged
 }
 
 func (c tlsInboxNodeClass) ClassName() string { return "test/TLSInbox" }
@@ -907,14 +909,14 @@ func (c tlsInboxNodeClass) NewNode(configer.Config, ...*pasta.NodeClassState) (p
 
 type tlsInboxNode struct {
 	pasta.BasicNode
-	inbox chan almagest.TlsConfigChanged
+	inbox chan storage.TlsConfigChanged
 }
 
 func (n *tlsInboxNode) OnInbox(message pasta.InboxMessage) error {
 	if n.inbox == nil {
 		return nil
 	}
-	if payload, ok := message.Payload.(almagest.TlsConfigChanged); ok {
+	if payload, ok := message.Payload.(storage.TlsConfigChanged); ok {
 		n.inbox <- payload
 	}
 	return nil
@@ -994,7 +996,7 @@ func assertTLSBuiltinCAEvent(t *testing.T, events []api.Message, subscriptionID 
 	t.Fatalf("TLS events %#v do not include builtin CA update", events)
 }
 
-func assertTLSInbox(t *testing.T, inbox <-chan almagest.TlsConfigChanged, prev, next string) {
+func assertTLSInbox(t *testing.T, inbox <-chan storage.TlsConfigChanged, prev, next string) {
 	t.Helper()
 	select {
 	case got := <-inbox:
@@ -1006,7 +1008,7 @@ func assertTLSInbox(t *testing.T, inbox <-chan almagest.TlsConfigChanged, prev, 
 	}
 }
 
-func assertNoTLSInbox(t *testing.T, inbox <-chan almagest.TlsConfigChanged) {
+func assertNoTLSInbox(t *testing.T, inbox <-chan storage.TlsConfigChanged) {
 	t.Helper()
 	select {
 	case got := <-inbox:

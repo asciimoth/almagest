@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	almagest "github.com/asciimoth/almagest/lib"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -13,7 +14,6 @@ import (
 	"github.com/asciimoth/almagest/bin/almagestd/args"
 	cmdrunner "github.com/asciimoth/almagest/bin/almagestd/command"
 	"github.com/asciimoth/almagest/bin/almagestd/platform"
-	"github.com/asciimoth/almagest/lib"
 	"github.com/asciimoth/gonnect"
 	_ "github.com/joho/godotenv/autoload"
 	"github.com/kataras/golog"
