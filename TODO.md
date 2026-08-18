@@ -83,6 +83,7 @@ Proxy/VPN protocols support
 - Socks
     - [X] Client
         - [X] Noproxy string field
+        - [ ] DNS port for tor resolve extension
     - [X] Server
 - [ ] SSH
     - [ ] Sshutle like?
@@ -93,6 +94,7 @@ Proxy/VPN protocols support
 - [ ] Nebula
     - https://github.com/slackhq/nebula
     - https://github.com/forgekeep/nebula-mesh
+- [ ] Tink?
 - [ ] NaiveProxy
 - [ ] Stunnel / [go-tunnel](https://github.com/opencoff/go-tunnel)
 - [ ] iodine?
@@ -131,6 +133,10 @@ Etc
 - [ ] Rate limit node
     - Tun and Network versions
     - for both outgoing (dial) and incoming (listen+accept) connections
+- [ ] UDP over TCP
+    - https://github.com/mullvad/udp-over-tcp
+    - https://github.com/jonhoo/udp-over-tcp
+    - https://sing-box.sagernet.org/configuration/shared/udp-over-tcp/
 - [ ] https://github.com/norouter/norouter
 - [ ] Shell callback for IP/Subnet filtering
 - [ ] UpNp?
