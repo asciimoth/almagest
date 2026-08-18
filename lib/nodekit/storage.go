@@ -28,3 +28,6 @@ type TlsConfigStorage = storage.TlsConfigStorage
 
 // TlsConfigChanged notifies a node that a TLS config changed.
 type TlsConfigChanged = storage.TlsConfigChanged
+
+// TlsLocalCAChanged notifies a node that the local TLS CA changed.
+type TlsLocalCAChanged = storage.TlsLocalCAChanged

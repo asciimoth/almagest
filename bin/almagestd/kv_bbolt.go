@@ -64,6 +64,7 @@ type bboltKVManager struct {
 	immutableTLS  immutableTLSData
 	builtinCA     *tlsBuiltinCA
 	tlsWatchers   map[string]map[string]struct{}
+	tlsCAWatchers map[string]struct{}
 	tlsNextSub    uint64
 	tlsChangeSubs map[uint64]func(tlsChange)
 }
@@ -145,6 +146,7 @@ func openKVManagerWithOptions(path string, options bboltKVManagerOptions) (*bbol
 		immutableTLS:              immutableTLS,
 		builtinCA:                 builtinCA,
 		tlsWatchers:               map[string]map[string]struct{}{},
+		tlsCAWatchers:             map[string]struct{}{},
 		tlsChangeSubs:             map[uint64]func(tlsChange){},
 	}
 	if err := manager.initRootBuckets(); err != nil {

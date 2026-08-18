@@ -92,12 +92,40 @@ func ResolveTLSClientConfig(base NodeContext, selectedName string) (TLSConfigRes
 	}, nil
 }
 
+// ResolveTLSLocalCA resolves the engine-local TLS CA from node storage.
+func ResolveTLSLocalCA(base NodeContext) (tls.Certificate, error) {
+	store := tlsConfigStorage(base)
+	if store == nil {
+		return tls.Certificate{}, storage.ErrTlsConfigNotFound
+	}
+	ca, err := store.GetLocalCA(currentNodeName(base))
+	if err != nil {
+		return tls.Certificate{}, err
+	}
+	return CloneTLSCertificate(ca), nil
+}
+
 // CloneTLSClientConfig returns an independent TLS config copy.
 func CloneTLSClientConfig(cfg *tls.Config) *tls.Config {
 	if cfg == nil {
 		return nil
 	}
 	return cfg.Clone()
+}
+
+// CloneTLSCertificate returns an independent TLS certificate value. PrivateKey
+// is copied by reference because key implementations are not generally
+// cloneable.
+func CloneTLSCertificate(cert tls.Certificate) tls.Certificate {
+	out := tls.Certificate{
+		Certificate:                  cloneTLSByteSlices(cert.Certificate),
+		PrivateKey:                   cert.PrivateKey,
+		SupportedSignatureAlgorithms: append([]tls.SignatureScheme(nil), cert.SupportedSignatureAlgorithms...),
+		OCSPStaple:                   append([]byte(nil), cert.OCSPStaple...),
+		SignedCertificateTimestamps:  cloneTLSByteSlices(cert.SignedCertificateTimestamps),
+		Leaf:                         cert.Leaf,
+	}
+	return out
 }
 
 // TLSConfigSelectorItem builds the common TLS policy selector.
@@ -200,6 +228,17 @@ func stringsToAny(values []string) []any {
 	out := make([]any, len(values))
 	for i, value := range values {
 		out[i] = value
+	}
+	return out
+}
+
+func cloneTLSByteSlices(in [][]byte) [][]byte {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([][]byte, len(in))
+	for i, value := range in {
+		out[i] = append([]byte(nil), value...)
 	}
 	return out
 }

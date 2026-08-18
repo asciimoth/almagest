@@ -309,6 +309,10 @@ func (testTlsConfigStorage) GetClientConfig(string, string) (tls.Config, error) 
 	return tls.Config{}, nil
 }
 
+func (testTlsConfigStorage) GetLocalCA(string) (tls.Certificate, error) {
+	return tls.Certificate{}, storage.ErrTlsConfigNotFound
+}
+
 type engineLockedCallbackClass struct {
 	engine *engine
 }

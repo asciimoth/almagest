@@ -267,7 +267,13 @@ func (a *AdminAPI) reloadTLSOSCerts(ctx context.Context) (api.TLSSnapshot, tlsMu
 }
 
 func (s *apiSession) sendTLSMutationInbox(result tlsMutationResult) {
-	if len(result.policyNotifications) == 0 || s.engine == nil {
+	if s.engine == nil {
+		return
+	}
+	if len(result.localCANotifications) > 0 {
+		s.sendTLSLocalCAInbox(result.localCANotifications)
+	}
+	if len(result.policyNotifications) == 0 {
 		return
 	}
 	for _, notification := range result.policyNotifications {
@@ -300,6 +306,19 @@ func (s *apiSession) sendTLSMutationInbox(result tlsMutationResult) {
 				Payload:      payload,
 			})
 		}
+	}
+}
+
+func (s *apiSession) sendTLSLocalCAInbox(nodes []string) {
+	for _, node := range nodes {
+		id, ok := s.engine.NodeByName("main", node)
+		if !ok {
+			continue
+		}
+		s.engine.SendInbox("main", pasta.InboxMessage{
+			ReceiverNode: id,
+			Payload:      storage.TlsLocalCAChanged{},
+		})
 	}
 }
 

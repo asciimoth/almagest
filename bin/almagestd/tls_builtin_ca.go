@@ -9,13 +9,13 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha1"
+	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"github.com/asciimoth/almagest/lib/storage"
 	"math"
 	"math/big"
 	"os"
@@ -25,6 +25,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/asciimoth/almagest/bin/api"
+	"github.com/asciimoth/almagest/lib/storage"
 	"github.com/kataras/golog"
 )
 
@@ -74,6 +75,20 @@ func cloneTLSBuiltinCA(in *tlsBuiltinCA) *tlsBuiltinCA {
 	}
 	out := *in
 	return &out
+}
+
+func tlsBuiltinCATLSCertificate(ca *tlsBuiltinCA) (tls.Certificate, error) {
+	if ca == nil || ca.certificate == nil || ca.signer == nil {
+		return tls.Certificate{}, storage.ErrTlsConfigNotFound
+	}
+	if len(ca.certificate.Raw) == 0 {
+		return tls.Certificate{}, storage.ErrTlsConfigInvalidValue
+	}
+	return cloneTLSCertificate(tls.Certificate{
+		Certificate: [][]byte{ca.certificate.Raw},
+		PrivateKey:  ca.signer,
+		Leaf:        ca.certificate,
+	}), nil
 }
 
 func withTLSBuiltinCA(data immutableTLSData, ca *tlsBuiltinCA) immutableTLSData {

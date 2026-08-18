@@ -7,7 +7,6 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"github.com/asciimoth/almagest/lib/storage"
 	"net/netip"
 	"reflect"
 	"slices"
@@ -16,6 +15,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/asciimoth/almagest/bin/api"
+	"github.com/asciimoth/almagest/lib/storage"
 	"github.com/asciimoth/gonnect/tlspolicy"
 	"github.com/kataras/golog"
 	"go.etcd.io/bbolt"
@@ -99,8 +99,9 @@ type tlsPolicyNotification struct {
 }
 
 type tlsMutationResult struct {
-	policyNotifications []tlsPolicyNotification
-	policyListChanged   bool
+	policyNotifications  []tlsPolicyNotification
+	localCANotifications []string
+	policyListChanged    bool
 }
 
 func (m *bboltKVManager) ListConfigs() []string {
@@ -151,6 +152,29 @@ func (m *bboltKVManager) GetClientConfig(name string, node string) (tls.Config, 
 		m.trackTLSPolicyWatcher(name, node)
 	}
 	return tlsConfigValue(cfg), nil
+}
+
+func (m *bboltKVManager) GetLocalCA(node string) (tls.Certificate, error) {
+	if m == nil || m.db == nil {
+		return tls.Certificate{}, storage.ErrTlsConfigNotFound
+	}
+	if node != "" && !validSecretNodeName(node) {
+		return tls.Certificate{}, storage.ErrTlsConfigInvalidName
+	}
+	golog.Debugf("TLS storage: local CA access node=%q", node)
+	m.tlsMu.Lock()
+	ca := cloneTLSBuiltinCA(m.builtinCA)
+	if node != "" {
+		if m.tlsCAWatchers == nil {
+			m.tlsCAWatchers = map[string]struct{}{}
+		}
+		m.tlsCAWatchers[node] = struct{}{}
+	}
+	m.tlsMu.Unlock()
+	if ca == nil {
+		return tls.Certificate{}, storage.ErrTlsConfigNotFound
+	}
+	return tlsBuiltinCATLSCertificate(ca)
 }
 
 func (m *bboltKVManager) tlsSnapshot() (api.TLSSnapshot, error) {
@@ -233,6 +257,7 @@ func (m *bboltKVManager) setTLSBuiltinCA(ca *tlsBuiltinCA) (tlsMutationResult, e
 		{kind: tlsChangeBuiltinCA, name: tlsBuiltinCACertName},
 		{kind: tlsChangeCertUpsert, name: tlsBuiltinCACertName},
 	}
+	localCANotifications := m.tlsLocalCAWatchers()
 	notifications := make([]tlsPolicyNotification, 0, len(policyNames))
 	for _, name := range policyNames {
 		changes = append(changes, tlsChange{kind: tlsChangePolicyUpsert, name: name})
@@ -240,7 +265,10 @@ func (m *bboltKVManager) setTLSBuiltinCA(ca *tlsBuiltinCA) (tlsMutationResult, e
 	}
 	golog.Debugf("builtin TLS CA: activated certificate and queued %d TLS policy rebuild notifications", len(notifications))
 	m.notifyTLSChange(changes...)
-	return tlsMutationResult{policyNotifications: notifications}, nil
+	return tlsMutationResult{
+		policyNotifications:  notifications,
+		localCANotifications: localCANotifications,
+	}, nil
 }
 
 // setTLSOSData replaces the read-only OS certificate overlay in memory. It
@@ -1459,6 +1487,20 @@ func (m *bboltKVManager) tlsPolicyNotification(prevName, newName string) tlsPoli
 	}
 }
 
+func (m *bboltKVManager) tlsLocalCAWatchers() []string {
+	m.tlsMu.Lock()
+	defer m.tlsMu.Unlock()
+	if len(m.tlsCAWatchers) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(m.tlsCAWatchers))
+	for node := range m.tlsCAWatchers {
+		out = append(out, node)
+	}
+	slices.Sort(out)
+	return out
+}
+
 func (m *bboltKVManager) renameTLSPolicyWatchers(name, newName string) []string {
 	m.tlsMu.Lock()
 	defer m.tlsMu.Unlock()
@@ -1510,6 +1552,10 @@ func (m *bboltKVManager) renameTLSPolicyNodeReferences(oldName, newName string) 
 		nodes[newName] = struct{}{}
 		m.tlsWatchers[policy] = nodes
 	}
+	if _, ok := m.tlsCAWatchers[oldName]; ok {
+		delete(m.tlsCAWatchers, oldName)
+		m.tlsCAWatchers[newName] = struct{}{}
+	}
 	return nil
 }
 
@@ -1525,6 +1571,7 @@ func (m *bboltKVManager) deleteTLSPolicyNodeReferences(name string) error {
 			delete(m.tlsWatchers, policy)
 		}
 	}
+	delete(m.tlsCAWatchers, name)
 	return nil
 }
 

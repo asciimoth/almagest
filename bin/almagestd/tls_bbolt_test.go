@@ -11,7 +11,6 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
-	"github.com/asciimoth/almagest/lib/logging"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -21,6 +20,7 @@ import (
 
 	"github.com/asciimoth/almagest/bin/api"
 	almagest "github.com/asciimoth/almagest/lib"
+	"github.com/asciimoth/almagest/lib/logging"
 	"github.com/asciimoth/almagest/lib/storage"
 	"github.com/asciimoth/configer/configer"
 	sysnetdebug "github.com/asciimoth/gonnect/sysnet/debug"
@@ -250,6 +250,49 @@ func TestTLSBuiltinCAGenerationAndPolicyInjection(t *testing.T) {
 	}
 }
 
+func TestTLSLocalCAAccessAndMutationNotifications(t *testing.T) {
+	now := time.Date(2026, 8, 6, 12, 0, 0, 0, time.UTC)
+	initial, err := generateTLSBuiltinCA(api.TLSBuiltinCAOptions{Issuer: "Initial"}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager, err := openKVManagerWithOptions(filepath.Join(t.TempDir(), "kv.db"), bboltKVManagerOptions{
+		BuiltinCA: initial,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer manager.Close() //nolint:errcheck
+
+	if _, err := manager.GetLocalCA("wrapper"); err != nil {
+		t.Fatalf("GetLocalCA wrapper error = %v", err)
+	}
+	if _, err := manager.GetLocalCA("mitm"); err != nil {
+		t.Fatalf("GetLocalCA mitm error = %v", err)
+	}
+	if _, err := manager.GetLocalCA(""); err != nil {
+		t.Fatalf("GetLocalCA anonymous error = %v", err)
+	}
+
+	changed, err := generateTLSBuiltinCA(api.TLSBuiltinCAOptions{Issuer: "Changed"}, now.Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := manager.setTLSBuiltinCA(changed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTLSLocalCANotifications(t, result.localCANotifications, "mitm", "wrapper")
+
+	localCA, err := manager.GetLocalCA("wrapper")
+	if err != nil {
+		t.Fatalf("GetLocalCA wrapper after change error = %v", err)
+	}
+	if localCA.Leaf == nil || localCA.Leaf.Subject.CommonName != "Changed" {
+		t.Fatalf("local CA subject = %#v, want Changed", localCA.Leaf)
+	}
+}
+
 func TestTLSBuiltinCARegenerationTriggers(t *testing.T) {
 	storageDir := t.TempDir()
 	now := time.Date(2026, 8, 6, 12, 0, 0, 0, time.UTC)
@@ -475,7 +518,7 @@ func TestTLSAdminEventsFixPoliciesAndNotifyFetchedNodes(t *testing.T) {
 	assertTLSEvent(t, events, subResp.SubscriptionID, api.TLSChangePolicy, "renamed", true)
 }
 
-func TestTLSBuiltinCAAPIRegeneratesAndNotifiesPolicies(t *testing.T) {
+func TestTLSBuiltinCAAPIRegeneratesAndNotifiesPoliciesAndLocalCAUsers(t *testing.T) {
 	storageDir := t.TempDir()
 	ca, err := loadOrCreateTLSBuiltinCA(storageDir, api.TLSBuiltinCAOptions{}, time.Date(2026, 8, 6, 12, 0, 0, 0, time.UTC))
 	if err != nil {
@@ -493,6 +536,7 @@ func TestTLSBuiltinCAAPIRegeneratesAndNotifiesPolicies(t *testing.T) {
 	}
 
 	inbox := make(chan storage.TlsConfigChanged, 8)
+	localCAInbox := make(chan storage.TlsLocalCAChanged, 8)
 	engine, err := almagest.BuildEngine(
 		context.Background(),
 		configer.NewMemory(nil),
@@ -502,7 +546,7 @@ func TestTLSBuiltinCAAPIRegeneratesAndNotifiesPolicies(t *testing.T) {
 		nil,
 		nil,
 		manager,
-		[]pasta.NodeClass{tlsInboxNodeClass{inbox: inbox}},
+		[]pasta.NodeClass{tlsInboxNodeClass{inbox: inbox, localCAInbox: localCAInbox}},
 		nil,
 		false,
 	)
@@ -514,6 +558,9 @@ func TestTLSBuiltinCAAPIRegeneratesAndNotifiesPolicies(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := manager.GetClientConfig("policy", "client"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.GetLocalCA("client"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -562,6 +609,7 @@ func TestTLSBuiltinCAAPIRegeneratesAndNotifiesPolicies(t *testing.T) {
 		t.Fatalf("config issuer = %q, want Changed", got)
 	}
 	assertTLSInbox(t, inbox, "policy", "policy")
+	assertTLSLocalCAInbox(t, localCAInbox)
 	assertTLSBuiltinCAEvent(t, events, subResp.SubscriptionID)
 	assertTLSEventsContain(t, events, api.TLSChangeCert, tlsBuiltinCACertName, false)
 	assertTLSEventsContain(t, events, api.TLSChangePolicy, "policy", false)
@@ -890,7 +938,8 @@ func tlsScopeHasDNS(scope api.TLSScope, domain string, includeSubdomains bool) b
 }
 
 type tlsInboxNodeClass struct {
-	inbox chan storage.TlsConfigChanged
+	inbox        chan storage.TlsConfigChanged
+	localCAInbox chan storage.TlsLocalCAChanged
 }
 
 func (c tlsInboxNodeClass) ClassName() string { return "test/TLSInbox" }
@@ -904,20 +953,21 @@ func (c tlsInboxNodeClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{}
 }
 func (c tlsInboxNodeClass) NewNode(configer.Config, ...*pasta.NodeClassState) (pasta.Node, error) {
-	return &tlsInboxNode{inbox: c.inbox}, nil
+	return &tlsInboxNode{inbox: c.inbox, localCAInbox: c.localCAInbox}, nil
 }
 
 type tlsInboxNode struct {
 	pasta.BasicNode
-	inbox chan storage.TlsConfigChanged
+	inbox        chan storage.TlsConfigChanged
+	localCAInbox chan storage.TlsLocalCAChanged
 }
 
 func (n *tlsInboxNode) OnInbox(message pasta.InboxMessage) error {
-	if n.inbox == nil {
-		return nil
-	}
-	if payload, ok := message.Payload.(storage.TlsConfigChanged); ok {
+	if payload, ok := message.Payload.(storage.TlsConfigChanged); ok && n.inbox != nil {
 		n.inbox <- payload
+	}
+	if payload, ok := message.Payload.(storage.TlsLocalCAChanged); ok && n.localCAInbox != nil {
+		n.localCAInbox <- payload
 	}
 	return nil
 }
@@ -979,6 +1029,18 @@ func assertTLSPolicyNotification(t *testing.T, notifications []tlsPolicyNotifica
 	t.Fatalf("TLS policy notifications %#v do not include policy %q", notifications, policy)
 }
 
+func assertTLSLocalCANotifications(t *testing.T, got []string, want ...string) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("TLS local CA notifications = %#v, want %#v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("TLS local CA notifications = %#v, want %#v", got, want)
+		}
+	}
+}
+
 func assertTLSBuiltinCAEvent(t *testing.T, events []api.Message, subscriptionID uint64) {
 	t.Helper()
 	for _, msg := range events {
@@ -1005,6 +1067,15 @@ func assertTLSInbox(t *testing.T, inbox <-chan storage.TlsConfigChanged, prev, n
 		}
 	default:
 		t.Fatalf("missing TLS inbox %q -> %q", prev, next)
+	}
+}
+
+func assertTLSLocalCAInbox(t *testing.T, inbox <-chan storage.TlsLocalCAChanged) {
+	t.Helper()
+	select {
+	case <-inbox:
+	default:
+		t.Fatal("missing TLS local CA inbox")
 	}
 }
 

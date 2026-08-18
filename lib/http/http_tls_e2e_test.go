@@ -127,6 +127,10 @@ func (s *httpClientE2ETLSConfigStorage) GetClientConfig(name string, _ string) (
 	return tls.Config{MinVersion: tls.VersionTLS12}, nil
 }
 
+func (s *httpClientE2ETLSConfigStorage) GetLocalCA(string) (tls.Certificate, error) {
+	return tls.Certificate{}, ErrTlsConfigNotFound
+}
+
 func newRuntimeCAHTTPSServer(t *testing.T, response string) (*httptest.Server, *x509.CertPool) {
 	t.Helper()
 	caCert, caKey := newRuntimeTestCA(t)

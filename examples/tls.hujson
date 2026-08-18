@@ -1,0 +1,159 @@
+{
+	// TLS nodes local example.
+	//
+	// In the web panel, use "Send request" on these nodes:
+	// - HttpClient Terminator: HTTPS client -> TlsTerminator -> HttpServer.
+	// - HttpClient Wrapper: HTTP client -> TlsWrapper -> TlsTerminator -> HttpServer.
+	// - HttpClient MITM: HTTPS client -> TlsMitm -> TlsTerminator -> HttpServer.
+	//
+	// To test with external tools, first export the daemon built-in CA:
+	// almagest-cli tls builtin-ca | jq -r '.cert.pem' > /tmp/almagest-local-ca.pem
+	//
+	// Then send requests through the local SOCKS proxies. The mock network
+	// accepts these DNS-style hostnames without /etc/hosts entries.
+	// curl --socks5-hostname 127.0.0.1:1181 --cacert /tmp/almagest-local-ca.pem https://tls-mitm.local:18080/mitm
+	// curl --socks5-hostname 127.0.0.1:1182 --cacert /tmp/almagest-local-ca.pem https://tls-terminator.local:18080/terminated
+	// curl --socks5-hostname 127.0.0.1:1183 http://tls-wrapper.local:18080/wrapped
+	//
+	// The wrapper curl command uses http:// because TlsWrapper adds TLS to the
+	// upstream side of the connection.
+	"nodes": {
+		"MockNetwork TLS Target": {
+			"Class":        "almagest/MockNetwork",
+			"Pos":          "{\"x\":842,\"y\":271}",
+			"allowAnyHost": true,
+		},
+		"HttpServer TLS Target": {
+			"Class":    "almagest/HttpServer",
+			"Pos":      "{\"x\":623,\"y\":88}",
+			"Links":    ["Network -> [MockNetwork TLS Target] Network"],
+			"response": "TLS nodes local example response",
+			"host":     "127.0.0.1",
+			"port":     18080,
+		},
+
+		"TlsTerminator": {
+			"Class":             "almagest/TlsTerminator",
+			"Pos":               "{\"x\":650,\"y\":300}",
+			"Links":             ["Network -> [MockNetwork TLS Target] Network"],
+			"destinationRemaps": "[]",
+			"leafTTLSeconds":    300,
+			"serverAlpn":        "http/1.1",
+			"sniffBufferSize":   8192,
+			"useSNIHostname":    false,
+		},
+		"TlsWrapper": {
+			"Class":            "almagest/TlsWrapper",
+			"Pos":              "{\"x\":360,\"y\":520}",
+			"Links":            ["Network -> [TlsTerminator] Network"],
+			"clientAlpn":       "http/1.1",
+			"clientServerName": "tls-wrapper.local",
+			"leafTTLSeconds":   300,
+			"serverAlpn":       "http/1.1",
+			"serverName":       "tls-wrapper.local",
+			"tlsConfig":        "default",
+		},
+		"TlsMitm": {
+			"Class":           "almagest/TlsMitm",
+			"Pos":             "{\"x\":360,\"y\":120}",
+			"Links":           ["Network -> [TlsTerminator] Network"],
+			"filterMode":      "off",
+			"filterRules":     "[]",
+			"leafTTLSeconds":  300,
+			"sniffBufferSize": 8192,
+			"tlsConfig":       "default",
+		},
+
+		"HttpClient MITM": {
+			"Class":     "almagest/HttpClient",
+			"Pos":       "{\"x\":62,\"y\":-16}",
+			"Links":     ["Network -> [TlsMitm] Network"],
+			"url":       "https://tls-mitm.local:18080/mitm",
+			"method":    "GET",
+			"body":      "",
+			"tlsConfig": "default",
+		},
+		"HttpClient Terminator": {
+			"Class":     "almagest/HttpClient",
+			"Pos":       "{\"x\":40,\"y\":224}",
+			"Links":     ["Network -> [TlsTerminator] Network"],
+			"url":       "https://tls-terminator.local:18080/terminated",
+			"method":    "GET",
+			"body":      "",
+			"tlsConfig": "default",
+		},
+		"HttpClient Wrapper": {
+			"Class":     "almagest/HttpClient",
+			"Pos":       "{\"x\":33,\"y\":476}",
+			"Links":     ["Network -> [TlsWrapper] Network"],
+			"url":       "http://tls-wrapper.local:18080/wrapped",
+			"method":    "GET",
+			"body":      "",
+			"tlsConfig": "default",
+		},
+
+		// curl --socks5-hostname 127.0.0.1:1181 --cacert /tmp/almagest-local-ca.pem https://tls-mitm.local:18080/mitm
+		"LocalProxy MITM": {
+			"Class":  "almagest/LocalProxy",
+			"Pos":    "{\"x\":56,\"y\":123}",
+			"Links":  ["proxy -> [TlsMitm] Network"],
+			"wsPath": "/socks",
+			"users":  [],
+			"commands": {
+				"cmdBind":          true,
+				"cmdConnect":       true,
+				"cmdGostMuxBind":   true,
+				"cmdGostUDPTun":    true,
+				"cmdTorResolve":    true,
+				"cmdTorResolvePtr": true,
+				"cmdUDPAssoc":      true,
+			},
+			"socksHost": "127.0.0.1",
+			"socksPort": 1181,
+			"wsHost":    "",
+			"wsPort":    0,
+		},
+		// curl --socks5-hostname 127.0.0.1:1182 --cacert /tmp/almagest-local-ca.pem https://tls-terminator.local:18080/terminated
+		"LocalProxy Terminator": {
+			"Class":  "almagest/LocalProxy",
+			"Pos":    "{\"x\":22,\"y\":364}",
+			"Links":  ["proxy -> [TlsTerminator] Network"],
+			"wsPort": 0,
+			"wsPath": "/socks",
+			"users":  [],
+			"commands": {
+				"cmdBind":          true,
+				"cmdConnect":       true,
+				"cmdGostMuxBind":   true,
+				"cmdGostUDPTun":    true,
+				"cmdTorResolve":    true,
+				"cmdTorResolvePtr": true,
+				"cmdUDPAssoc":      true,
+			},
+			"socksHost": "127.0.0.1",
+			"socksPort": 1182,
+			"wsHost":    "",
+		},
+		// curl --socks5-hostname 127.0.0.1:1183 http://tls-wrapper.local:18080/wrapped
+		"LocalProxy Wrapper": {
+			"Class": "almagest/LocalProxy",
+			"Pos":   "{\"x\":52,\"y\":618}",
+			"Links": ["proxy -> [TlsWrapper] Network"],
+			"users": [],
+			"commands": {
+				"cmdBind":          true,
+				"cmdConnect":       true,
+				"cmdGostMuxBind":   true,
+				"cmdGostUDPTun":    true,
+				"cmdTorResolve":    true,
+				"cmdTorResolvePtr": true,
+				"cmdUDPAssoc":      true,
+			},
+			"socksHost": "127.0.0.1",
+			"socksPort": 1183,
+			"wsHost":    "",
+			"wsPort":    0,
+			"wsPath":    "/socks",
+		},
+	},
+}

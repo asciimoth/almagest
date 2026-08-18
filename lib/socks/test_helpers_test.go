@@ -93,6 +93,10 @@ func (s *nodeTestTLSConfigStorage) GetClientConfig(name string, _ string) (tls.C
 	return tls.Config{ServerName: serverName}, nil
 }
 
+func (s *nodeTestTLSConfigStorage) GetLocalCA(string) (tls.Certificate, error) {
+	return tls.Certificate{}, storage.ErrTlsConfigNotFound
+}
+
 type testNativeNetworkClass struct{}
 
 func (testNativeNetworkClass) ClassName() string        { return testNativeNetworkNodeType }

@@ -106,3 +106,8 @@ daemon-sudo: build
 cli *args:
   go build -o ./cli ./bin/almagest-cli
   ./cli {{args}}
+
+cli-sudo *args:
+  go build -o ./cli ./bin/almagest-cli
+  sudo ./cli {{args}}
+
