@@ -2,8 +2,10 @@ package networknodes
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net"
+	"sync"
 	"testing"
 	"time"
 
@@ -75,6 +77,27 @@ func TestSpooferForwardUDPNilSpawnerClosesConn(t *testing.T) {
 	}
 }
 
+func TestSpooferForwardUDPDialsConfiguredTarget(t *testing.T) {
+	network := &spooferForwardRecordingNetwork{LoopbackNetwork: gonnect.NewLoopbackNetwork()}
+	t.Cleanup(func() { _ = network.Close() })
+	conn := &spooferForwardTestPacketConn{}
+
+	forwardSpooferUDP(context.Background(), spooferForwardStopSpawner{}, network, conn, spooferForwardTestEndpoint())
+
+	if network.listenPacketCalls != 0 {
+		t.Fatalf("ListenPacket calls = %d, want 0", network.listenPacketCalls)
+	}
+	if network.packetDialCalls != 1 {
+		t.Fatalf("PacketDial calls = %d, want 1", network.packetDialCalls)
+	}
+	if network.packetDialNetwork != "udp" || network.packetDialAddress != "127.0.0.1:80" {
+		t.Fatalf("PacketDial(%q, %q), want udp 127.0.0.1:80", network.packetDialNetwork, network.packetDialAddress)
+	}
+	if !conn.closed {
+		t.Fatal("packet conn was not closed after spawner failure")
+	}
+}
+
 func newSpooferNodeTestWorkspace(t *testing.T) *pasta.Workspace {
 	t.Helper()
 	w := pasta.NewWorkspace(logging.NewDebugLogFactory(1024))
@@ -110,6 +133,37 @@ func (spooferTestRuntime) WorkerSpawner(uint64) WorkerSpawner {
 	return nil
 }
 func (spooferTestRuntime) ObserveNodeSnapshot(uint64, pasta.NodeSnapshot) {}
+
+type spooferForwardStopSpawner struct{}
+
+func (spooferForwardStopSpawner) Spawn(func(), string) (uint64, error) {
+	return 0, errors.New("stop spoofer test")
+}
+
+func (spooferForwardStopSpawner) SpawnWg(func(), *sync.WaitGroup, string) (uint64, error) {
+	return 0, errors.New("stop spoofer test")
+}
+
+type spooferForwardRecordingNetwork struct {
+	*gonnect.LoopbackNetwork
+
+	packetDialCalls   int
+	packetDialNetwork string
+	packetDialAddress string
+	listenPacketCalls int
+}
+
+func (n *spooferForwardRecordingNetwork) PacketDial(_ context.Context, network, address string) (gonnect.PacketConn, error) {
+	n.packetDialCalls++
+	n.packetDialNetwork = network
+	n.packetDialAddress = address
+	return &spooferForwardTestPacketConn{}, nil
+}
+
+func (n *spooferForwardRecordingNetwork) ListenPacket(ctx context.Context, network, address string) (gonnect.PacketConn, error) {
+	n.listenPacketCalls++
+	return n.LoopbackNetwork.ListenPacket(ctx, network, address)
+}
 
 func spooferForwardTestEndpoint() stack.TransportEndpointID {
 	return stack.TransportEndpointID{

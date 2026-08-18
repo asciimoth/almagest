@@ -61,10 +61,13 @@ func TestWireGuardClassPortsAndMenuBlocks(t *testing.T) {
 	if !ok || item.Field == nil || item.Kind != formular.FieldArray {
 		t.Fatalf("peers item = %#v, want array field", item)
 	}
-	for _, fieldID := range []string{"amneziaOverride", "amneziaJunkCount", "amneziaInitHeader", "amneziaInitiationPacket1"} {
+	for _, fieldID := range []string{"presharedKeySecret", "amneziaOverride", "amneziaJunkCount", "amneziaInitHeader", "amneziaInitiationPacket1"} {
 		if !wireGuardTemplateHasField(item, fieldID) {
 			t.Fatalf("peers template missing %q field", fieldID)
 		}
+	}
+	if wireGuardTemplateHasField(item, "presharedKey") {
+		t.Fatalf("peers template has legacy raw presharedKey field")
 	}
 	for _, fieldID := range []string{"runtimePeers", "activePeers", "connectedPeers", "rxBytes", "txBytes", "rxPackets", "txPackets", "latestHandshake"} {
 		item, ok = e.MenuItem(node, "status", fieldID)
@@ -197,6 +200,72 @@ func TestWireGuardSecretValueChangedRenamesOrRotatesPrivateKeySecret(t *testing.
 		}
 		return rotatedPrivateKey != renamedPrivateKey && wireGuardPublicKeyFromPrivateKey(t, rotatedPrivateKey) != oldPublicKey
 	}, "inaccessible WireGuard private key secret rotates")
+}
+
+func TestWireGuardSecretValueChangedReloadsPeerPresharedKey(t *testing.T) {
+	e := NewNodeE2E(t)
+	node := e.AddNode(NodeTypeWireGuard, "wg")
+	e.SubscribeMenus(node)
+	privateKey, _ := wireGuardTestKeyPair(t, 76)
+	_, peerPublicKey := wireGuardTestKeyPair(t, 77)
+	oldPresharedKey := wireGuardTestPresharedKey(78)
+	applyWireGuardConfig(t, e.Engine, node, privateKey, 0, []wireGuardPeerConfig{{
+		id:           "peer-psk",
+		publicKey:    peerPublicKey,
+		presharedKey: oldPresharedKey,
+		allowedIPs:   "10.77.0.2/32",
+	}})
+	var secretName string
+	Eventually(t, func() bool {
+		item, ok := e.MenuItem(node, "peers", "peers")
+		if !ok || item.Field == nil || len(item.Elements) == 0 {
+			return false
+		}
+		for _, child := range item.Elements[0].Items {
+			if child.ID != "presharedKeySecret" {
+				continue
+			}
+			value, ok := formular.StringValue(child.Value)
+			if ok && value != "" {
+				secretName = value
+				return true
+			}
+		}
+		return false
+	}, "peer preshared key migrates to secret")
+	if got, ok := e.Secrets.SecretValue(secretName); !ok || got != oldPresharedKey {
+		t.Fatalf("stored old peer preshared key = %#v, %v; want %q", got, ok, oldPresharedKey)
+	}
+	cfg := configer.NewMemory(nil)
+	if err := e.Engine.SaveConfig(cfg); err != nil {
+		t.Fatalf("SaveConfig with peer preshared key: %v", err)
+	}
+	savedPeer := savedWireGuardPeerConfig(t, cfg, "wg", 0)
+	if got, ok := savedPeer["presharedKey"]; ok {
+		t.Fatalf("saved peer presharedKey = %#v, want missing", got)
+	}
+	if got, ok := formular.StringValue(savedPeer["presharedKeySecret"]); !ok || got != secretName {
+		t.Fatalf("saved peer presharedKeySecret = %#v, want %q", savedPeer["presharedKeySecret"], secretName)
+	}
+
+	newPresharedKey := wireGuardTestPresharedKey(79)
+	e.Secrets.SetSecret(secretName, Secret{Value: newPresharedKey}, "wg")
+	sendWireGuardSecretValueChanged(t, e, node, secretName, secretName)
+	assertWireGuardPeerField(t, e, node, "presharedKeySecret", secretName)
+
+	renamedSecret := "renamed-wireguard-peer-psk"
+	renamedPresharedKey := wireGuardTestPresharedKey(80)
+	e.Secrets.SetSecret(renamedSecret, Secret{Value: renamedPresharedKey}, "wg")
+	e.Secrets.DeleteSecret(secretName)
+	sendWireGuardSecretValueChanged(t, e, node, secretName, renamedSecret)
+	assertWireGuardPeerField(t, e, node, "presharedKeySecret", renamedSecret)
+
+	e.Secrets.SetSecret(renamedSecret, Secret{Value: "bad"}, "wg")
+	sendWireGuardSecretValueChanged(t, e, node, renamedSecret, renamedSecret)
+	Eventually(t, func() bool {
+		item, ok := e.MenuItem(node, "peers", "peers")
+		return ok && item.Status == formular.StatusError
+	}, "invalid WireGuard peer preshared key secret is rejected")
 }
 
 func TestWireGuardConfigPersistsAcrossSaveRestoreAndCopyPaste(t *testing.T) {
@@ -411,6 +480,33 @@ func wireGuardTemplateHasField(item formular.Item, fieldID string) bool {
 	return false
 }
 
+func savedWireGuardPeerConfig(t *testing.T, cfg configer.Config, nodeName string, index int) map[string]any {
+	t.Helper()
+	raw, err := cfg.Get(configer.Path{"nodes", nodeName, "peers"})
+	if err != nil {
+		t.Fatalf("saved peers missing: %v", err)
+	}
+	switch peers := raw.(type) {
+	case []map[string]any:
+		if index < 0 || index >= len(peers) {
+			t.Fatalf("saved peer index %d outside %#v", index, peers)
+		}
+		return peers[index]
+	case []any:
+		if index < 0 || index >= len(peers) {
+			t.Fatalf("saved peer index %d outside %#v", index, peers)
+		}
+		peer, ok := peers[index].(map[string]any)
+		if !ok {
+			t.Fatalf("saved peer %d = %#v, want map", index, peers[index])
+		}
+		return peer
+	default:
+		t.Fatalf("saved peers = %#v, want array", raw)
+		return nil
+	}
+}
+
 const wireGuardAmneziaInitiationPacketCount = 5
 
 type wireGuardAmneziaConfig struct {
@@ -519,6 +615,14 @@ func wireGuardTestPrivateKeySecretForNode(t *testing.T, storage SecretsStorage, 
 		t.Fatalf("NewSecret for WireGuard private key: %v", err)
 	}
 	return name
+}
+
+func wireGuardTestPresharedKey(seed byte) string {
+	var key wgdevice.NoisePresharedKey
+	for i := range key {
+		key[i] = seed + byte(i)
+	}
+	return key.Base64()
 }
 
 func sendWireGuardSecretValueChanged(t *testing.T, e *NodeE2E, node uint64, prev, next string) {

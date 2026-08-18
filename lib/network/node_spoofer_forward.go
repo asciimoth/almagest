@@ -57,7 +57,7 @@ func forwardSpooferUDP(ctx context.Context, spawner WorkerSpawner, network Netwo
 		_ = c.Close()
 		return
 	}
-	upstream, err := network.ListenPacket(ctx, "udp", "")
+	upstream, err := network.PacketDial(ctx, "udp", target.String())
 	if err != nil {
 		_ = c.Close()
 		return
@@ -74,7 +74,7 @@ func forwardSpooferUDP(ctx context.Context, spawner WorkerSpawner, network Netwo
 			if err != nil {
 				return
 			}
-			if _, err := upstream.WriteTo(buf[:n], target); err != nil {
+			if _, err := upstream.Write(buf[:n]); err != nil {
 				return
 			}
 		}
@@ -86,7 +86,7 @@ func forwardSpooferUDP(ctx context.Context, spawner WorkerSpawner, network Netwo
 		defer closeBoth()
 		buf := make([]byte, 64*1024)
 		for {
-			n, _, err := upstream.ReadFrom(buf)
+			n, err := upstream.Read(buf)
 			if err != nil {
 				return
 			}

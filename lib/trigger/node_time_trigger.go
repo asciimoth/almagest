@@ -15,8 +15,7 @@ import (
 )
 
 const (
-	// NodeTypeTimeTrigger is the node class name for a wall-clock trigger
-	// source.
+	// NodeTypeTimeTrigger is the node class name for a timer trigger source.
 	NodeTypeTimeTrigger = "almagest/TimeTrigger"
 
 	TimeTriggerModeDisabled = ""
@@ -50,7 +49,7 @@ type TimeTriggerClass struct {
 func (TimeTriggerClass) ClassName() string        { return NodeTypeTimeTrigger }
 func (TimeTriggerClass) ShortDescription() string { return "Time trigger" }
 func (TimeTriggerClass) LongDescription() string {
-	return "Emits pasta/trigger events from one right-directed Trigger port on a configured interval or once per day at a local wall-clock time."
+	return "Emits pasta/trigger events from one right-directed Trigger port on a configured interval, or daily with a fixed 24 hour step after the next matching local time."
 }
 func (TimeTriggerClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: std.TypeTrigger, InitialPorts: []pasta.Port{

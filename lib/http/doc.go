@@ -1,2 +1,2 @@
-// Package httpnodes contains Almagest HTTP client and server nodes.
+// Package httpnodes contains Almagest HTTP debug and tracing client and server nodes.
 package httpnodes

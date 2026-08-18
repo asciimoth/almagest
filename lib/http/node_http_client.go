@@ -28,9 +28,9 @@ type HTTPClientClass struct {
 }
 
 func (HTTPClientClass) ClassName() string        { return NodeTypeHTTPClient }
-func (HTTPClientClass) ShortDescription() string { return "HTTP client" }
+func (HTTPClientClass) ShortDescription() string { return "Debug HTTP client" }
 func (HTTPClientClass) LongDescription() string {
-	return "Runs HTTP requests over a received demo.pasta/network in a background worker."
+	return "Runs HTTP requests for debug and tracing over a received almagest/network in a background worker."
 }
 
 func (HTTPClientClass) DefaultNodeParams() pasta.NodeClassParams {

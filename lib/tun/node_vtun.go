@@ -30,7 +30,7 @@ type VTunClass struct {
 func (VTunClass) ClassName() string        { return NodeTypeVTun }
 func (VTunClass) ShortDescription() string { return "Virtual TUN network" }
 func (VTunClass) LongDescription() string {
-	return "Creates one virtual netstack instance and exposes it as both an almagest/network and an almagest/tun endpoint."
+	return "Creates one virtual netstack instance and exposes it as both an almagest/network and an almagest/tun endpoint. When it receives TunConfig, it uses Addrs and MTU only; Routes are ignored."
 }
 func (VTunClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: TypeTun, InitialPorts: []pasta.Port{

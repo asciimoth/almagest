@@ -141,7 +141,13 @@ func (n *wireGuardNode) sendPeersFieldStatus(msg formular.FieldValidateMessage) 
 		}
 	case "presharedKey":
 		if value, ok := formular.StringValue(msg.Value); ok {
+			peers[index].presharedKeySecret = ""
 			peers[index].presharedKey = value
+		}
+	case "presharedKeySecret":
+		if value, ok := formular.StringValue(msg.Value); ok {
+			peers[index].presharedKeySecret = value
+			peers[index].presharedKey = ""
 		}
 	case "endpoint":
 		if value, ok := formular.StringValue(msg.Value); ok {
@@ -166,6 +172,10 @@ func (n *wireGuardNode) sendPeersFieldStatus(msg formular.FieldValidateMessage) 
 	}
 	next.peers = peers
 	next.normalize()
+	if msg.Field.FieldID == "presharedKeySecret" {
+		n.sendFieldStatus(msg, n.validatePresharedKeySecretForForm(peers[index].presharedKeySecret, peerLabel(peers[index])))
+		return
+	}
 	n.sendFieldStatus(msg, validateWireGuardConfig(next))
 }
 func (n *wireGuardNode) sendFieldStatus(msg formular.FieldValidateMessage, err error) {
@@ -202,7 +212,7 @@ func wireGuardPeerTemplate() formular.ArrayTemplate {
 		Label: "Peer",
 		Items: append([]formular.Item{
 			formular.TextField("publicKey", "Public key", "", formular.Validation, formular.Required),
-			formular.SecretTextField("presharedKey", "Preshared key", "", formular.Validation),
+			formular.TextField("presharedKeySecret", "Preshared key secret", "", formular.Validation),
 			formular.TextField("endpoint", "Endpoint", "", formular.Validation),
 			formular.MultilineTextField("allowedIPs", "Allowed IPs", "", formular.Validation),
 			formular.IntField("persistentKeepaliveInterval", "Keepalive", 0, formular.Validation),
@@ -232,7 +242,7 @@ func wireGuardPeerElements(peers []wireGuardPeerConfig) []formular.ArrayElement 
 func wireGuardPeerFormValues(peer wireGuardPeerConfig) map[string]any {
 	values := map[string]any{
 		"publicKey":                   peer.publicKey,
-		"presharedKey":                peer.presharedKey,
+		"presharedKeySecret":          peer.presharedKeySecret,
 		"endpoint":                    peer.endpoint,
 		"allowedIPs":                  peer.allowedIPs,
 		"persistentKeepaliveInterval": peer.persistentKeepaliveInterval,

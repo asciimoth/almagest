@@ -53,6 +53,53 @@ func TestDNSServerPortsMenuAndSaveConfigE2E(t *testing.T) {
 	}
 }
 
+func TestDNSServerRestoreRejectsInvalidNetwork(t *testing.T) {
+	e := newDNSE2EFromConfig(t, configer.NewMemory(map[string]any{
+		"nodes": map[string]any{
+			"server": map[string]any{
+				"Class":                        dnsnodes.NodeTypeDNSServer,
+				dnsnodes.DNSServerNetworkField: "tcp",
+				dnsnodes.DNSServerHostField:    "127.0.0.1",
+				dnsnodes.DNSServerPortField:    5353,
+			},
+		},
+	}))
+	server := testkit.NodeIDByName(t, e.Engine, E2EWorkspace, "server")
+	e.SubscribeMenus(server)
+
+	Eventually(t, func() bool {
+		item, ok := e.MenuItem(server, dnsnodes.DNSServerConfigBlockID, dnsnodes.DNSServerNetworkField)
+		if !ok || item.Field == nil {
+			return false
+		}
+		return item.Status == formular.StatusError && item.Value == "tcp"
+	}, "DnsServer invalid saved network is reported")
+	e.WaitNodeLabel(server, "invalid config")
+}
+
+func TestDNSServerFormApplyRejectsInvalidNetwork(t *testing.T) {
+	e := newDNSE2E(t)
+	server := e.AddNode(dnsnodes.NodeTypeDNSServer, "server")
+	e.SubscribeMenus(server)
+	e.waitDNSServerConfig(server, dnsnodes.DefaultDNSServerNetwork, dnsnodes.DefaultDNSServerHost, dnsnodes.DefaultDNSServerPort)
+
+	e.Engine.SendNodeFormularMsg(E2EWorkspace, server, formular.FormApplyMessage{
+		MessageBase: FormMessageBase(formular.MessageFormApply, server),
+		BlockID:     dnsnodes.DNSServerConfigBlockID,
+		Values: map[string]any{
+			dnsnodes.DNSServerNetworkField: "tcp",
+			dnsnodes.DNSServerHostField:    "127.0.0.1",
+			dnsnodes.DNSServerPortField:    5353,
+		},
+	})
+
+	Eventually(t, func() bool {
+		item, ok := e.MenuItem(server, dnsnodes.DNSServerConfigBlockID, dnsnodes.DNSServerNetworkField)
+		return ok && item.Status == formular.StatusError
+	}, "DnsServer invalid form network is rejected")
+	e.WaitNodeLabel(server, "invalid config")
+}
+
 func TestDNSServerAttachesDNSWithoutReopeningListener(t *testing.T) {
 	e := newDNSE2E(t)
 	port := httpTestPort()

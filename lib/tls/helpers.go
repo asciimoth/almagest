@@ -367,6 +367,7 @@ func emitWrappedNetwork(
 	return cache.SendWrappedLocked(w, node, link, source, func(input NetworkCloser) NetworkCloser {
 		output, err := wrap(input)
 		if err != nil {
+			reportWrappedNetworkError(w, node, err)
 			_ = input.Close()
 			return nil
 		}
@@ -388,6 +389,7 @@ func refreshWrappedNetwork(
 	return cache.RefreshWrappedLocked(w, node, link, source, func(input NetworkCloser) NetworkCloser {
 		output, err := wrap(input)
 		if err != nil {
+			reportWrappedNetworkError(w, node, err)
 			_ = input.Close()
 			return nil
 		}
@@ -406,4 +408,11 @@ func broadcastWrappedNetwork(
 	links.BroadcastNetworkPort(w, node, port, func(link uint64) {
 		emitWrappedNetwork(cache, w, node, link, source, wrap)
 	})
+}
+
+func reportWrappedNetworkError(w *pasta.Workspace, node uint64, err error) {
+	if w == nil || node == 0 || err == nil {
+		return
+	}
+	_, _ = w.AddNodePopupLocked(node, pasta.NodePopupErr, err.Error(), true)
 }

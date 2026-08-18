@@ -1,9 +1,12 @@
 package tlsnodes
 
 import (
+	"errors"
 	"testing"
 
+	"github.com/asciimoth/almagest/lib/logging"
 	"github.com/asciimoth/formular"
+	"github.com/asciimoth/pasta/pasta"
 )
 
 func TestTLSNodeConfigFieldsHaveExamplePlaceholders(t *testing.T) {
@@ -60,6 +63,33 @@ func TestTLSNodeConfigFieldsHaveExamplePlaceholders(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestReportWrappedNetworkErrorAddsDeduplicatedPopup(t *testing.T) {
+	w := pasta.NewWorkspace(logging.NewDebugLogFactory(1024))
+	t.Cleanup(w.Close)
+	if err := w.AddNodeClass(TLSWrapperClass{}); err != nil {
+		t.Fatalf("AddNodeClass TLS wrapper: %v", err)
+	}
+	node, err := w.AddNodeByClass(NodeTypeTLSWrapper, "wrapper")
+	if err != nil {
+		t.Fatalf("AddNodeByClass TLS wrapper: %v", err)
+	}
+
+	w.Lock()
+	reportWrappedNetworkError(w, node, errors.New("wrap failed"))
+	reportWrappedNetworkError(w, node, errors.New("wrap failed"))
+	snapshot, ok := w.NodeSnapshotLocked(node)
+	w.Unlock()
+	if !ok {
+		t.Fatalf("NodeSnapshot(%d) missing", node)
+	}
+	if len(snapshot.Popups) != 1 {
+		t.Fatalf("popups = %#v, want one deduplicated error", snapshot.Popups)
+	}
+	if snapshot.Popups[0].Type != pasta.NodePopupErr || snapshot.Popups[0].Text != "wrap failed" {
+		t.Fatalf("popup = %#v, want wrap failed error", snapshot.Popups[0])
 	}
 }
 

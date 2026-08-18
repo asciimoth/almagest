@@ -39,8 +39,12 @@ func (DNSServerClass) DefaultNodeParams() pasta.NodeClassParams {
 }
 func (c DNSServerClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
 	config := defaultDNSServerConfig()
-	config.read(cfg)
-	return &dnsServerNode{Base: nodekit.Base{Runtime: c.Runtime}, config: config}, nil
+	err := config.read(cfg)
+	node := &dnsServerNode{Base: nodekit.Base{Runtime: c.Runtime}, config: config}
+	if err != nil {
+		node.formError = err.Error()
+	}
+	return node, nil
 }
 
 // dnsServerNode owns one UDP packet listener and one gonnect/dns.Server for
@@ -77,8 +81,10 @@ func (n *dnsServerNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint6
 	if err := n.SetPrimary(TypeDNS); err != nil {
 		return err
 	}
-	if err := n.config.valid(); err != nil {
-		n.formError = err.Error()
+	if n.formError == "" {
+		if err := n.config.valid(); err != nil {
+			n.formError = err.Error()
+		}
 	}
 	_ = n.updateLabel()
 	n.sendMenuSnapshot()

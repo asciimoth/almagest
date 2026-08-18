@@ -28,8 +28,11 @@ type wireGuardConfig struct {
 	peers                 []wireGuardPeerConfig
 }
 type wireGuardPeerConfig struct {
-	id                          string
-	publicKey                   string
+	id                 string
+	publicKey          string
+	presharedKeySecret string
+	// presharedKey is runtime-only key material resolved from SecretsStorage.
+	// Legacy config and old form clients may set it before secret migration.
 	presharedKey                string
 	endpoint                    string
 	allowedIPs                  string
@@ -85,6 +88,7 @@ func (c wireGuardConfig) clone() wireGuardConfig {
 }
 func (p *wireGuardPeerConfig) normalize(index int) {
 	p.publicKey = normalizeWireGuardKey(p.publicKey)
+	p.presharedKeySecret = strings.TrimSpace(p.presharedKeySecret)
 	p.presharedKey = normalizeWireGuardKey(p.presharedKey)
 	p.endpoint = strings.TrimSpace(p.endpoint)
 	p.allowedIPs = normalizeListText(p.allowedIPs)
@@ -280,7 +284,10 @@ func wireGuardPeersFromArray(values []formular.ArrayElementValue) []wireGuardPee
 		}
 		peer := wireGuardPeerConfig{id: value.ID}
 		peer.publicKey, _ = formular.StringValue(value.Values["publicKey"])
-		peer.presharedKey, _ = formular.StringValue(value.Values["presharedKey"])
+		peer.presharedKeySecret, _ = formular.StringValue(value.Values["presharedKeySecret"])
+		if peer.presharedKeySecret == "" {
+			peer.presharedKey, _ = formular.StringValue(value.Values["presharedKey"])
+		}
 		peer.endpoint, _ = formular.StringValue(value.Values["endpoint"])
 		peer.allowedIPs, _ = formular.StringValue(value.Values["allowedIPs"])
 		if keepalive, ok := formular.IntValue(value.Values["persistentKeepaliveInterval"]); ok {
@@ -301,7 +308,7 @@ func compactWireGuardPeers(peers []wireGuardPeerConfig) []wireGuardPeerConfig {
 	for i := range peers {
 		peer := peers[i]
 		peer.normalize(i)
-		if peer.publicKey == "" && peer.presharedKey == "" && peer.endpoint == "" && peer.allowedIPs == "" && peer.persistentKeepaliveInterval == 0 && !peer.amneziaWGOverride {
+		if peer.publicKey == "" && peer.presharedKeySecret == "" && peer.presharedKey == "" && peer.endpoint == "" && peer.allowedIPs == "" && peer.persistentKeepaliveInterval == 0 && !peer.amneziaWGOverride {
 			continue
 		}
 		if _, ok := seenIDs[peer.id]; ok {
@@ -318,7 +325,7 @@ func wireGuardPeersConfig(peers []wireGuardPeerConfig) []map[string]any {
 		out = append(out, map[string]any{
 			"id":                          peer.id,
 			"publicKey":                   peer.publicKey,
-			"presharedKey":                peer.presharedKey,
+			"presharedKeySecret":          peer.presharedKeySecret,
 			"endpoint":                    peer.endpoint,
 			"allowedIPs":                  peer.allowedIPs,
 			"persistentKeepaliveInterval": peer.persistentKeepaliveInterval,
@@ -356,7 +363,10 @@ func wireGuardPeerFromConfigMap(index int, value map[string]any) wireGuardPeerCo
 	peer := wireGuardPeerConfig{}
 	peer.id, _ = formular.StringValue(value["id"])
 	peer.publicKey, _ = formular.StringValue(value["publicKey"])
-	peer.presharedKey, _ = formular.StringValue(value["presharedKey"])
+	peer.presharedKeySecret, _ = formular.StringValue(value["presharedKeySecret"])
+	if peer.presharedKeySecret == "" {
+		peer.presharedKey, _ = formular.StringValue(value["presharedKey"])
+	}
 	peer.endpoint, _ = formular.StringValue(value["endpoint"])
 	peer.allowedIPs, _ = formular.StringValue(value["allowedIPs"])
 	if keepalive, ok := formular.IntValue(value["persistentKeepaliveInterval"]); ok {

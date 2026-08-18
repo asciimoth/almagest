@@ -72,6 +72,7 @@ Secrets system
 - Use secrets for
     - [X] WG priv key
     - [ ] socks client/server password (optional)
+        - SOCKS server passwords are stored and echoed as plaintext node config; add secret storage or credential handling.
 
 WireGuard
 - [X] AmnesiaWG extension

@@ -144,13 +144,14 @@ Notifications have two kinds:
 `almagest/MockNetwork` creates a `gonnect.NewLoopbackNetwork()` network and emits
 it on an `almagest/network` port.
 
-`almagest/HttpServer` receives a network, host, port, and response string. It
-listens with `network.Listen(ctx, "tcp", addr)`, serves a debug response, and
-keeps recent worker logs for its Formular menu.
+`almagest/HttpServer` is a debug and tracing tool. It receives a network, host,
+port, and response string. It listens with `network.Listen(ctx, "tcp", addr)`,
+serves a debug response, and keeps recent worker logs for its Formular menu.
 
-`almagest/HttpClient` receives a network, URL, method, and body. It builds an
-HTTP transport that dials through `gonnect.Network`, runs requests on a worker,
-and updates Formular result fields.
+`almagest/HttpClient` is a debug and tracing tool. It receives a network, URL,
+method, and body. It builds an HTTP transport that dials through
+`gonnect.Network`, runs requests on a worker, and updates Formular result
+fields.
 
 Network payloads own closeable resources. Use `BindNetworkResource` when a node
 receives or emits a network so Pasta cleanup can close it.

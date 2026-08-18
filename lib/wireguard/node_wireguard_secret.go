@@ -19,9 +19,11 @@ var errWireGuardSecretsUnavailable = errors.New("secrets storage is unavailable"
 // new random key instead of silently continuing with stale runtime material.
 func (n *wireGuardNode) resolvePrivateKeyConfig(config wireGuardConfig) (wireGuardConfig, error) {
 	config.normalize()
+	storage := n.privateKeySecretsStorage()
+	nodeName := n.currentSecretNodeName()
 	key, secretName, err := resolveWireGuardPrivateKeySecret(
-		n.privateKeySecretsStorage(),
-		n.currentPrivateKeySecretNodeName(),
+		storage,
+		nodeName,
 		config.privateKeySecret,
 		config.privateKeyLegacyValue,
 	)
@@ -31,16 +33,30 @@ func (n *wireGuardNode) resolvePrivateKeyConfig(config wireGuardConfig) (wireGua
 	config.privateKeySecret = secretName
 	config.privateKey = key
 	config.privateKeyLegacyValue = ""
+	for i := range config.peers {
+		key, secretName, err := resolveWireGuardPresharedKeySecret(
+			storage,
+			nodeName,
+			config.peers[i].presharedKeySecret,
+			config.peers[i].presharedKey,
+			peerLabel(config.peers[i]),
+		)
+		if err != nil {
+			return config, err
+		}
+		config.peers[i].presharedKeySecret = secretName
+		config.peers[i].presharedKey = key
+	}
 	config.normalize()
 	return config, nil
 }
 
-// currentPrivateKeySecretNodeName returns the workspace node name used for
-// SecretsStorage access. Secret allow lists are keyed by node name, and
-// almagestd rewrites those allow lists when nodes are renamed. Looking up the
-// current snapshot here avoids using the stale OnInit name after a rename while
-// still keeping the OnInit name as a fallback for direct unit-test nodes.
-func (n *wireGuardNode) currentPrivateKeySecretNodeName() string {
+// currentSecretNodeName returns the workspace node name used for SecretsStorage
+// access. Secret allow lists are keyed by node name, and almagestd rewrites
+// those allow lists when nodes are renamed. Looking up the current snapshot here
+// avoids using the stale OnInit name after a rename while still keeping the
+// OnInit name as a fallback for direct unit-test nodes.
+func (n *wireGuardNode) currentSecretNodeName() string {
 	if n.W != nil && n.ID != 0 {
 		if snapshot, ok := n.W.NodeSnapshotLocked(n.ID); ok {
 			return snapshot.Name
@@ -104,6 +120,48 @@ func resolveWireGuardPrivateKeySecret(storage SecretsStorage, nodeName, secretNa
 	return key, newName, nil
 }
 
+func resolveWireGuardPresharedKeySecret(storage SecretsStorage, nodeName, secretName, legacyValue, peer string) (presharedKey, resolvedSecretName string, err error) {
+	nodeName = strings.TrimSpace(nodeName)
+	secretName = strings.TrimSpace(secretName)
+	legacyValue = normalizeWireGuardKey(legacyValue)
+	peer = strings.TrimSpace(peer)
+	if peer == "" {
+		peer = "peer"
+	}
+	if secretName == "" && legacyValue == "" {
+		return "", "", nil
+	}
+	if storage == nil {
+		return "", secretName, errWireGuardSecretsUnavailable
+	}
+	if nodeName == "" {
+		return "", secretName, fmt.Errorf("%w: missing WireGuard node name", ErrSecretInvalidName)
+	}
+	if secretName != "" {
+		sec, err := storage.GetSecret(secretName, nodeName)
+		if err != nil {
+			return "", secretName, fmt.Errorf("peer %s preshared key secret %q: %w", peer, secretName, err)
+		}
+		key := normalizeWireGuardKey(sec.Value)
+		if _, err := parseWireGuardPresharedKey(key); err != nil {
+			return "", secretName, fmt.Errorf("peer %s preshared key secret %q: %w", peer, secretName, err)
+		}
+		return key, secretName, nil
+	}
+	if _, err := parseWireGuardPresharedKey(legacyValue); err != nil {
+		return "", secretName, fmt.Errorf("peer %s legacy preshared key: %w", peer, err)
+	}
+	newName, err := storage.NewSecret(Secret{Value: legacyValue}, nodeName)
+	if err != nil {
+		return "", secretName, fmt.Errorf("create peer %s preshared key secret: %w", peer, err)
+	}
+	newName = strings.TrimSpace(newName)
+	if newName == "" {
+		return "", secretName, fmt.Errorf("%w: storage returned empty peer %s preshared key secret name", ErrSecretInvalidName, peer)
+	}
+	return legacyValue, newName, nil
+}
+
 // validatePrivateKeySecretForForm checks only accessible secret values. Empty
 // and inaccessible names are valid form input because submit will create a new
 // generated private-key secret for those cases.
@@ -116,7 +174,7 @@ func (n *wireGuardNode) validatePrivateKeySecretForForm(secretName string) error
 	if storage == nil {
 		return errWireGuardSecretsUnavailable
 	}
-	sec, err := storage.GetSecret(secretName, n.currentPrivateKeySecretNodeName())
+	sec, err := storage.GetSecret(secretName, n.currentSecretNodeName())
 	if err != nil {
 		return nil
 	}
@@ -127,23 +185,64 @@ func (n *wireGuardNode) validatePrivateKeySecretForForm(secretName string) error
 	return nil
 }
 
-func (n *wireGuardNode) handleSecretValueChanged(msg SecretValueChanged) {
-	current := n.config.privateKeySecret
-	if current == "" {
-		return
+func (n *wireGuardNode) validatePresharedKeySecretForForm(secretName, peer string) error {
+	secretName = strings.TrimSpace(secretName)
+	if secretName == "" {
+		return nil
 	}
+	storage := n.privateKeySecretsStorage()
+	if storage == nil {
+		return errWireGuardSecretsUnavailable
+	}
+	sec, err := storage.GetSecret(secretName, n.currentSecretNodeName())
+	if err != nil {
+		return fmt.Errorf("peer %s preshared key secret %q: %w", peer, secretName, err)
+	}
+	key := normalizeWireGuardKey(sec.Value)
+	if _, err := parseWireGuardPresharedKey(key); err != nil {
+		return fmt.Errorf("peer %s preshared key secret %q: %w", peer, secretName, err)
+	}
+	return nil
+}
+
+func (n *wireGuardNode) handleSecretValueChanged(msg SecretValueChanged) {
 	prev := strings.TrimSpace(msg.SecretNamePrev)
 	nextName := strings.TrimSpace(msg.SecretNameNew)
-	if current != prev && current != nextName {
+	if !wireGuardSecretChangeRelevant(n.config, prev, nextName) {
 		return
 	}
-	if current == prev && nextName != "" && nextName != prev {
+	if n.config.privateKeySecret == prev && nextName != "" && nextName != prev {
 		// Persist the rename before validation so a temporarily invalid renamed
 		// secret can still be repaired by a later SecretValueChanged for nextName.
 		n.config.privateKeySecret = nextName
 	}
+	for i := range n.config.peers {
+		if n.config.peers[i].presharedKeySecret == prev && nextName != "" && nextName != prev {
+			n.config.peers[i].presharedKeySecret = nextName
+		}
+	}
 	next := n.config.clone()
 	next.privateKey = ""
 	next.privateKeyLegacyValue = ""
+	for i := range next.peers {
+		next.peers[i].presharedKey = ""
+	}
 	_ = n.commitConfigForm(next, wireGuardConfigCommitOptions{rebuildPeers: true, emitTunConfig: true})
+}
+
+func wireGuardSecretChangeRelevant(config wireGuardConfig, prev, nextName string) bool {
+	prev = strings.TrimSpace(prev)
+	nextName = strings.TrimSpace(nextName)
+	if prev == "" && nextName == "" {
+		return false
+	}
+	if config.privateKeySecret != "" && (config.privateKeySecret == prev || config.privateKeySecret == nextName) {
+		return true
+	}
+	for _, peer := range config.peers {
+		if peer.presharedKeySecret != "" && (peer.presharedKeySecret == prev || peer.presharedKeySecret == nextName) {
+			return true
+		}
+	}
+	return false
 }

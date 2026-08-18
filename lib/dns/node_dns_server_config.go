@@ -39,14 +39,22 @@ func defaultDNSServerConfig() dnsServerConfig {
 	}
 }
 
-func (c *dnsServerConfig) read(cfg configer.Config) {
+func (c *dnsServerConfig) read(cfg configer.Config) error {
 	if cfg == nil {
-		return
+		return nil
 	}
-	c.network = configer.String(cfg, configer.Path{DNSServerNetworkField}, c.network)
+	network := configer.String(cfg, configer.Path{DNSServerNetworkField}, c.network)
+	if err := validateDNSServerNetwork(network); err != nil {
+		c.network = strings.TrimSpace(network)
+		c.host = configer.String(cfg, configer.Path{DNSServerHostField}, c.host)
+		c.port = configer.Int(cfg, configer.Path{DNSServerPortField}, c.port)
+		return err
+	}
+	c.network = network
 	c.host = configer.String(cfg, configer.Path{DNSServerHostField}, c.host)
 	c.port = configer.Int(cfg, configer.Path{DNSServerPortField}, c.port)
 	c.normalize()
+	return nil
 }
 
 func (c *dnsServerConfig) normalize() {
@@ -61,8 +69,8 @@ func (c *dnsServerConfig) normalize() {
 }
 
 func (c dnsServerConfig) valid() error {
-	if NormalizeDNSServerNetwork(c.network) != c.network {
-		return fmt.Errorf("unsupported DNS server network %q", c.network)
+	if err := validateDNSServerNetwork(c.network); err != nil {
+		return err
 	}
 	if strings.TrimSpace(c.host) == "" {
 		return errors.New("host must not be empty")
@@ -94,6 +102,14 @@ func NormalizeDNSServerNetwork(value string) string {
 	}
 }
 
+func validateDNSServerNetwork(value string) error {
+	value = strings.TrimSpace(value)
+	if NormalizeDNSServerNetwork(value) != value {
+		return fmt.Errorf("unsupported DNS server network %q", value)
+	}
+	return nil
+}
+
 func defaultDNSServerHostForNetwork(network string) string {
 	if network == "udp6" {
 		return "::1"
@@ -123,6 +139,12 @@ func (n *dnsServerNode) applyConfigForm(values map[string]any) error {
 	if value, ok := formular.IntValue(values[DNSServerPortField]); ok {
 		next.port = value
 	}
+	if err := validateDNSServerNetwork(next.network); err != nil {
+		n.formError = err.Error()
+		n.sendForcedMenuSnapshot()
+		_ = n.updateLabel()
+		return nil
+	}
 	next.normalize()
 	if err := next.valid(); err != nil {
 		n.formError = err.Error()
@@ -151,9 +173,7 @@ func validateDNSServerConfigField(msg formular.FieldValidateMessage) error {
 		if !ok {
 			return nil
 		}
-		if NormalizeDNSServerNetwork(value) != strings.TrimSpace(value) {
-			return fmt.Errorf("unsupported DNS server network %q", value)
-		}
+		return validateDNSServerNetwork(value)
 	case DNSServerHostField:
 		value, ok := formular.StringValue(msg.Value)
 		if !ok {

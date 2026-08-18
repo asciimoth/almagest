@@ -41,6 +41,28 @@ peer_field() {
 	' "$path"
 }
 
+peer_field_exists() {
+	local path="$1"
+	local field="$2"
+	jq -e --arg field "$field" '
+		.blocks[]
+		| select(.id == "peers")
+		| .items[]
+		| select(.id == "peers")
+		| .elements[0].items[]
+		| select(.id == $field)
+	' "$path" >/dev/null
+}
+
+secret_value() {
+	local key="$1"
+	cli secrets list | jq -er --arg key "$key" '
+		.secrets[]
+		| select(.key == $key)
+		| .value
+	'
+}
+
 client_status() {
 	jq -er '
 		.blocks[]
@@ -151,8 +173,18 @@ assert_key_equals "server status public key from setup" "$server_public_from_wg"
 
 assert_key_equals "server private key secret name" "$(menu_field "$server_menu" config privateKeySecret)" "wireguard-cli-server-private-key"
 assert_key_equals "client peer public key normalized from unpadded input" "$(peer_field "$client_menu" publicKey)" "$SERVER_PUBLIC_PADDED"
-assert_key_equals "client peer preshared key normalized from unpadded input" "$(peer_field "$client_menu" presharedKey)" "$PRESHARED_KEY_PADDED"
-assert_key_equals "server peer preshared key normalized from unpadded input" "$(peer_field "$server_menu" presharedKey)" "$PRESHARED_KEY_PADDED"
+if peer_field_exists "$client_menu" presharedKey; then
+	fail "client peer menu exposed raw presharedKey"
+fi
+if peer_field_exists "$server_menu" presharedKey; then
+	fail "server peer menu exposed raw presharedKey"
+fi
+client_psk_secret="$(peer_field "$client_menu" presharedKeySecret)"
+server_psk_secret="$(peer_field "$server_menu" presharedKeySecret)"
+[[ -n "$client_psk_secret" ]] || fail "client peer presharedKeySecret is empty"
+[[ -n "$server_psk_secret" ]] || fail "server peer presharedKeySecret is empty"
+assert_key_equals "client peer preshared key secret value normalized from unpadded input" "$(secret_value "$client_psk_secret")" "$PRESHARED_KEY_PADDED"
+assert_key_equals "server peer preshared key secret value normalized from unpadded input" "$(secret_value "$server_psk_secret")" "$PRESHARED_KEY_PADDED"
 
 assert_client_request_works "$http_client"
 wait_node_label "$http_client" "200 OK" || fail "HTTP client node did not report 200 OK"

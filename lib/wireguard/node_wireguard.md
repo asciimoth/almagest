@@ -14,11 +14,21 @@ random private key, stores it with `SecretsStorage.NewSecret`, and replaces
 `privateKey` are migrated once by storing that value as a new secret; future
 saves write only `privateKeySecret`.
 
+Peer preshared keys use the same storage model. The peer field
+`presharedKeySecret` stores only the secret name; the preshared key value is not
+saved into node config or shown in the node menu. Old configs and old form
+clients that still send `presharedKey` are migrated once by storing that value
+as a new secret; future saves write only `presharedKeySecret`. A missing or
+inaccessible peer preshared-key secret is rejected as invalid config instead of
+silently removing the peer PSK.
+
 When the configured secret is changed, renamed, deleted, or has its node access
 changed, the daemon sends `SecretValueChanged` to the node. The node refetches
-the secret and applies the key with the same runtime generation checks used for
-form submissions. Invalid secret values are rejected as invalid config; missing
-or inaccessible secrets are replaced by a newly generated private-key secret.
+the private-key and peer preshared-key secrets and applies them with the same
+runtime generation checks used for form submissions. Invalid secret values are
+rejected as invalid config. Missing or inaccessible private-key secrets are
+replaced by a newly generated private-key secret; missing or inaccessible peer
+preshared-key secrets are reported as invalid config.
 
 `ownedIPs` are emitted upstream as `TunConfig` address suggestions for the
 attached TUN provider. Peer `allowedIPs` are installed into the WireGuard
