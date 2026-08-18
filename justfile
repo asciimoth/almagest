@@ -7,26 +7,25 @@ check: tidy typos fmt lint vet vulncheck test-total
 typos:
   typos
 
-test-go:
-	go -C lib test ./... --race
-	go -C bin test ./... --race
+test-go: certcat-ensure-generated
+  ./scripts/test-go-coverage.sh
 
 certcat-test: certcat-ensure-generated
-	go -C certcat test ./...
+  ./scripts/test-go-coverage.sh certcat
 
 test-js:
   cd panel && npm ci && npm test
 
 
 test-e2e:
-  ./e2e/run.sh
+  E2E_COVERAGE=1 ./e2e/run.sh
 
-test: certcat-test test-go test-js
+test: test-go test-js
 
 test-total: test test-e2e
+  ./scripts/coverage-report.sh
 
-coverage:
-	go -C lib test ./... --race -coverprofile=../coverage.out -coverpkg=./...
+coverage: test-total
 
 vet: certcat-vet
 	go -C lib vet ./...
@@ -110,4 +109,3 @@ cli *args:
 cli-sudo *args:
   go build -o ./cli ./bin/almagest-cli
   sudo ./cli {{args}}
-

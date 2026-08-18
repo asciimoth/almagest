@@ -3,7 +3,14 @@ FROM golang:1.26.6-bookworm AS build
 WORKDIR /src
 COPY . .
 
-RUN go build -C bin -o /usr/local/bin/almagestd ./almagestd
+ARG E2E_COVERAGE=0
+ARG E2E_COVERPKG=github.com/asciimoth/almagest/bin/...,github.com/asciimoth/almagest/lib/...,github.com/asciimoth/almagest/certcat/...
+
+RUN if [ "$E2E_COVERAGE" = "1" ]; then \
+		go build -C bin -cover -covermode=atomic -coverpkg="$E2E_COVERPKG" -o /usr/local/bin/almagestd ./almagestd; \
+	else \
+		go build -C bin -o /usr/local/bin/almagestd ./almagestd; \
+	fi
 RUN go build -C bin -o /usr/local/bin/almagest-cli ./almagest-cli
 RUN go install github.com/asciimoth/killswitch/cmd/killswitch@v0.1.5
 RUN go install github.com/asciimoth/killswitch/cmd/killswitch-cli@v0.1.5

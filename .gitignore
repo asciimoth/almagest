@@ -13,6 +13,8 @@
 coverage.*
 *.coverprofile
 profile.cov
+coverage/
+e2e/coverage/
 
 # Dependency directories (remove the comment below to include it)
 # vendor/

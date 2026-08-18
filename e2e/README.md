@@ -11,6 +11,12 @@ Run all cases:
 just test-e2e
 ```
 
+The `just test-e2e`, `just test-total`, and `just check` paths run the daemon
+with Go coverage instrumentation. This writes raw Go coverage data, a package
+summary, a function report, and a text coverage profile under `e2e/coverage/`.
+Set `E2E_COVERAGE_DIR` to write to another path. Set `E2E_COVERPKG` to change
+the package set passed to `go build -coverpkg`.
+
 Run selected cases:
 
 ```sh

@@ -3,10 +3,27 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 image="${E2E_IMAGE:-almagest-e2e:local}"
+coverage_enabled="${E2E_COVERAGE:-0}"
+coverage_dir="${E2E_COVERAGE_DIR:-$repo_root/e2e/coverage}"
+coverpkg="${E2E_COVERPKG:-github.com/asciimoth/almagest/bin/...,github.com/asciimoth/almagest/lib/...,github.com/asciimoth/almagest/certcat/...}"
 
 cd "$repo_root"
 
-docker build -f e2e/Dockerfile -t "$image" .
+build_args=()
+coverage_inputs=()
+if [[ "$coverage_enabled" == "1" ]]; then
+	mkdir -p "$coverage_dir"
+	rm -rf "$coverage_dir/raw"
+	rm -f "$coverage_dir/coverage.out" "$coverage_dir/functions.txt" "$coverage_dir/summary.txt" "$coverage_dir/total.txt"
+	mkdir -p "$coverage_dir/raw"
+	build_args=(
+		--build-arg E2E_COVERAGE=1
+		--build-arg "E2E_COVERPKG=$coverpkg"
+	)
+	echo "==> e2e coverage output: $coverage_dir"
+fi
+
+docker build "${build_args[@]}" -f e2e/Dockerfile -t "$image" .
 
 if (($# > 0)); then
 	cases=("$@")
@@ -25,6 +42,24 @@ fi
 
 for case_name in "${cases[@]}"; do
 	echo "==> e2e: $case_name"
+	docker_run_args=()
+	if [[ "$coverage_enabled" == "1" ]]; then
+		case_coverage_dir="$coverage_dir/raw/$case_name"
+		mkdir -p "$case_coverage_dir"
+		coverage_inputs+=("$case_coverage_dir")
+		docker_run_args=(
+			-e GOCOVERDIR=/e2e-coverage
+			-v "$case_coverage_dir:/e2e-coverage"
+		)
+	fi
 	# shellcheck disable=SC2086
-	docker run --rm ${E2E_DOCKER_RUN_ARGS:-} "$image" "$case_name"
+	docker run --rm ${E2E_DOCKER_RUN_ARGS:-} "${docker_run_args[@]}" "$image" "$case_name"
 done
+
+if [[ "$coverage_enabled" == "1" ]]; then
+	input_dirs="$(IFS=,; printf '%s' "${coverage_inputs[*]}")"
+	go tool covdata percent -i="$input_dirs" | tee "$coverage_dir/summary.txt"
+	go tool covdata textfmt -i="$input_dirs" -o "$coverage_dir/coverage.out"
+	go tool cover -func="$coverage_dir/coverage.out" >"$coverage_dir/functions.txt"
+	tail -1 "$coverage_dir/functions.txt" | tee "$coverage_dir/total.txt"
+fi
