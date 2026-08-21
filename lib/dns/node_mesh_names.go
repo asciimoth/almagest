@@ -7,7 +7,7 @@ import (
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/gonnect"
 	"github.com/asciimoth/gonnect/dns"
-	"github.com/asciimoth/mnlib"
+	"github.com/asciimoth/gonnect/dns/meshnames"
 	"github.com/asciimoth/pasta/pasta"
 	"github.com/asciimoth/pasta/pasta/std"
 
@@ -45,11 +45,11 @@ func (c MeshNamesClass) NewNode(_ configer.Config, _ ...*pasta.NodeClassState) (
 	return &meshNamesNode{Base: nodekit.Base{Runtime: c.Runtime}}, nil
 }
 
-// meshNamesNode adapts mnlib.Resolver to the almagest/dns graph type. The
+// meshNamesNode adapts meshnames.Resolver to the almagest/dns graph type. The
 // resolver is created only after an explicit Network input is received, so even
-// direct mnlib name forms such as .meship cannot resolve through an unlinked
+// direct mesh name forms such as .meship cannot resolve through an unlinked
 // node. A fallback resolver is installed only from the optional Fallback DNS
-// input; nil fallback intentionally lets mnlib reject non-mesh names.
+// input; nil fallback intentionally lets meshnames reject non-mesh names.
 type meshNamesNode struct {
 	nodekit.Base
 
@@ -62,7 +62,7 @@ type meshNamesNode struct {
 
 	network     nodekit.NetworkCloser
 	fallbackDNS dns.Interface
-	resolver    *mnlib.Resolver
+	resolver    *meshnames.Resolver
 	provider    dns.Interface
 	outputs     DNSOutputCache
 }
@@ -199,7 +199,7 @@ func (n *meshNamesNode) rebuildProvider() {
 	if !nodekit.NetworkIsReady(n.network) {
 		return
 	}
-	resolver := mnlib.NewResolver(n.network)
+	resolver := meshnames.NewResolver(n.network)
 	if DNSIsReady(n.fallbackDNS) {
 		resolver.Fallback = dns.NewResolver(n.fallbackDNS)
 	}

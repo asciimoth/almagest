@@ -18,8 +18,6 @@ github.com/asciimoth/gonnect-netstack v0.4.40 h1:QdKE9v6qJ0OCJHizeUjen2G0jh5u+ek
 github.com/asciimoth/gonnect-netstack v0.4.40/go.mod h1:1YJrC+2gQ6ggSzo4RAC7Xs7im9up5WM/mntXyOVokSE=
 github.com/asciimoth/ident v0.2.0 h1:G6qaTnkxTH+idV5YzJ7AvgC2nLQDE/aoV7rPCOtN07I=
 github.com/asciimoth/ident v0.2.0/go.mod h1:JNNFnfM7/hdcXVkFBBOAU/vpJM+0gucYaAYwB694bT0=
-github.com/asciimoth/mnlib v0.2.19 h1:1imVY79IdEOEgW5QWjCcpLvzh4f4SY1sZ8XMLF4MCVI=
-github.com/asciimoth/mnlib v0.2.19/go.mod h1:af/mqMQYRvY0mvr1XBOpdRHczZIsfTVx4QZjCYGihcQ=
 github.com/asciimoth/p-mark v0.2.0 h1:ZmJQy+Te+fZBWwy5zFzbCzQiladixKCNMKtXS3rZzeU=
 github.com/asciimoth/p-mark v0.2.0/go.mod h1:uBcCKIk6x5hjb7rDnH4trBCAfHr/4xOWM8q+tydLJAw=
 github.com/asciimoth/pasta/pasta v0.9.6 h1:eORQCkYzx/V6qFOJDHLHvvXDLdsXOkJetgn30ObNp6U=

@@ -1,7 +1,7 @@
 # MeshNames Node
 
 `almagest/MeshNames` publishes an `almagest/dns` provider backed by
-`github.com/asciimoth/mnlib.Resolver`.
+`github.com/asciimoth/gonnect/dns/meshnames.Resolver`.
 
 ## Ports
 
@@ -12,17 +12,17 @@
   until this input is linked and ready.
 - `Fallback DNS`, right-directed `almagest/dns`: optional. The node adapts this
   DNS input to a `gonnect.Resolver` and installs it as the MeshNames fallback
-  for names outside the mesh-specific suffixes understood by `mnlib`.
+  for names outside the mesh-specific suffixes understood by `meshnames`.
 
 ## Resolution
 
 Mesh-specific names such as `.meshname`, `.meship`, `.pk.ygg`, and `.ygg` are
-handled by `mnlib`. Names outside those schemes are rejected unless `Fallback
-DNS` is explicitly linked.
+handled by `gonnect/dns/meshnames`. Names outside those schemes are rejected
+unless `Fallback DNS` is explicitly linked.
 
 ## Lifecycle
 
-The node owns one `mnlib.Resolver` and one `dns.ResolverProvider` for the
+The node owns one `meshnames.Resolver` and one `dns.ResolverProvider` for the
 current Network and optional Fallback DNS inputs. Replacing or detaching either
 input closes previously emitted DNS wrappers, closes the old provider, and
 publishes a fresh provider when the required Network input is ready. Detaching

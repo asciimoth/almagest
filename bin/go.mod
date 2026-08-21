@@ -28,7 +28,6 @@ require (
 	github.com/alexflint/go-scalar v1.2.0 // indirect
 	github.com/asciimoth/batchudp v0.3.9 // indirect
 	github.com/asciimoth/ident v0.2.0 // indirect
-	github.com/asciimoth/mnlib v0.2.19 // indirect
 	github.com/asciimoth/p-mark v0.2.0 // indirect
 	github.com/asciimoth/persist v0.2.0 // indirect
 	github.com/asciimoth/putback v0.3.0 // indirect
