@@ -10,10 +10,10 @@ require (
 	github.com/asciimoth/configer/configer v0.3.1
 	github.com/asciimoth/configer/hujson v0.3.1
 	github.com/asciimoth/formular v0.3.1
-	github.com/asciimoth/gonnect v0.40.0
-	github.com/asciimoth/gonnect-netstack v0.4.38
+	github.com/asciimoth/gonnect v0.45.0
+	github.com/asciimoth/gonnect-netstack v0.4.40
 	github.com/asciimoth/pasta/pasta v0.9.6
-	github.com/asciimoth/socksgo v0.4.7
+	github.com/asciimoth/socksgo v0.4.9
 	github.com/asciimoth/sysnet-linux v0.2.15
 	github.com/coder/websocket v1.8.14
 	github.com/joho/godotenv v1.5.1
@@ -26,15 +26,15 @@ require (
 
 require (
 	github.com/alexflint/go-scalar v1.2.0 // indirect
-	github.com/asciimoth/batchudp v0.3.7 // indirect
+	github.com/asciimoth/batchudp v0.3.9 // indirect
 	github.com/asciimoth/ident v0.2.0 // indirect
 	github.com/asciimoth/mnlib v0.2.19 // indirect
 	github.com/asciimoth/p-mark v0.2.0 // indirect
 	github.com/asciimoth/persist v0.2.0 // indirect
 	github.com/asciimoth/putback v0.3.0 // indirect
-	github.com/asciimoth/tuntap v0.3.26 // indirect
-	github.com/asciimoth/wgo v0.5.7 // indirect
-	github.com/cilium/ebpf v0.21.0 // indirect
+	github.com/asciimoth/tuntap v0.3.28 // indirect
+	github.com/asciimoth/wgo v0.5.9 // indirect
+	github.com/cilium/ebpf v0.22.0 // indirect
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/google/btree v1.1.2 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
@@ -47,11 +47,11 @@ require (
 	github.com/xtaci/smux v1.5.44 // indirect
 	golang.org/x/crypto v0.53.0 // indirect
 	golang.org/x/exp v0.0.0-20231110203233-9a3e6036ecaa // indirect
-	golang.org/x/mod v0.31.0 // indirect
+	golang.org/x/mod v0.36.0 // indirect
 	golang.org/x/net v0.56.0 // indirect
-	golang.org/x/sync v0.20.0 // indirect
+	golang.org/x/sync v0.21.0 // indirect
 	golang.org/x/time v0.12.0 // indirect
-	golang.org/x/tools v0.40.0 // indirect
+	golang.org/x/tools v0.45.0 // indirect
 	golang.zx2c4.com/wintun v0.0.0-20230126152724-0fa3db229ce2 // indirect
 	gvisor.dev/gvisor v0.0.0-20260325202830-7644cf3a343c // indirect
 )
