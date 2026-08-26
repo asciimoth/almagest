@@ -24,8 +24,8 @@ github.com/asciimoth/socksgo v0.4.9 h1:Cc6nUwZE5OtF0yRpCIOUWgFnm5F0HFSuhY64YL6Pj
 github.com/asciimoth/socksgo v0.4.9/go.mod h1:I5HBMFlJHxKHoG69JMsae12cnUBhkqh7H4Uzb+9g/DU=
 github.com/asciimoth/tuntap v0.3.28 h1:YeY7BWfSCxJRf6ekRwvu0WFq6IRXhTqcySssNAPF6Hs=
 github.com/asciimoth/tuntap v0.3.28/go.mod h1:9orOhNG5XE39zS9B1mEwitCPH2feE3f/R6HFUCt4U2M=
-github.com/asciimoth/wgo v0.5.9 h1:uJ02HK3LI1kRd86hESzU4VWxq20hTeI0w+h5ocPkALg=
-github.com/asciimoth/wgo v0.5.9/go.mod h1:tKUpAR/3TFw0vOpGafC5KKE3ZuDc0sw7lAVhabPK64o=
+github.com/asciimoth/wgo v0.5.10 h1:vYbaSwlfOEXdkO+3TU0GCNjzbQL98dy+nHnnAgEG4X8=
+github.com/asciimoth/wgo v0.5.10/go.mod h1:tKUpAR/3TFw0vOpGafC5KKE3ZuDc0sw7lAVhabPK64o=
 github.com/coder/websocket v1.8.14 h1:9L0p0iKiNOibykf283eHkKUHHrpG7f65OE3BhhO7v9g=
 github.com/coder/websocket v1.8.14/go.mod h1:NX3SzP+inril6yawo5CQXx8+fk145lPDC6pumgx0mVg=
 github.com/google/btree v1.1.2 h1:xf4v41cLI2Z6FxbKm+8Bu+m8ifhj15JuZ9sa0jZCMUU=
