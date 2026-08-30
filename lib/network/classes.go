@@ -11,6 +11,7 @@ func Classes(runtime nodekit.Runtime) []pasta.NodeClass {
 	return []pasta.NodeClass{
 		OutNetworkClass{Runtime: runtime},
 		MockNetworkClass{},
+		NetworkFirewallClass{},
 		NetworkRouterClass{Runtime: runtime},
 		RemapperClass{},
 		SnifferClass{Runtime: runtime},

@@ -10,10 +10,11 @@ Almagest is a Go userspace network stack built around a Pasta node graph.
 - `lib/dns/` owns DNS link payload contracts, DNS provider helpers, DNS node
   classes, and built-in DNS nodes.
 - `lib/http/` owns HTTP client and server nodes.
-- `lib/network/` owns network middleware nodes such as router, remapper, and
-  spoofer. It also owns the mock network node.
+- `lib/network/` owns network middleware nodes such as firewall, router,
+  remapper, and spoofer. It also owns the mock network node.
 - `lib/socks/` owns SOCKS client/server nodes and the local proxy node.
-- `lib/tun/` owns TUN nodes and TUN debug-log nodes.
+- `lib/tun/` owns TUN nodes, including TUN firewall middleware, and TUN
+  debug-log nodes.
 - `lib/wireguard/` owns WireGuard nodes.
 - `lib/debug/` owns debug-only helper nodes.
 - `lib/logging/` owns reusable logging interfaces and the in-memory debug
@@ -73,10 +74,10 @@ Engine and workspace:
 - `lib/dns/`: DNS payload contracts, provider helpers, node classes, and
   built-in DNS nodes.
 - `lib/http/`: HTTP client and server node classes.
-- `lib/network/`: network router, remapper, and spoofer node classes.
+- `lib/network/`: network firewall, router, remapper, and spoofer node classes.
 - `lib/socks/`: SOCKS client/server and local proxy node classes.
-- `lib/tun/`: TUN, default TUN, VTun, TUN copy/join/split/config-stripper, and
-  TUN debug-log node classes.
+- `lib/tun/`: TUN, default TUN, VTun, TUN copy/join/split/config-stripper,
+  TUN firewall, and TUN debug-log node classes.
 - `lib/wireguard/`: WireGuard node classes.
 - `lib/debug/`: debug-only node classes.
 - `lib/logging/`: logger interfaces and debug logger implementation.

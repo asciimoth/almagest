@@ -1,0 +1,49 @@
+{
+	"Logs": {
+		"Cache": {
+			"Debug": 1024,
+			"Info": 256,
+			"Warn": 128,
+			"Error": 128,
+			"Fatal": 32,
+		},
+	},
+	"nodes": {
+		"Firewall curl proxy": {
+			"Class":     "almagest/LocalProxy",
+			"Pos":       "{\"x\":120,\"y\":320}",
+			"Links":     ["proxy -> [Network Firewall curl] Network"],
+			"socksHost": "127.0.0.1",
+			"socksPort": 1191,
+			"wsHost":    "",
+			"wsPort":    0,
+			"wsPath":    "/socks",
+			"users":     [],
+			"commands": {
+				"cmdBind":          true,
+				"cmdConnect":       true,
+				"cmdGostMuxBind":   true,
+				"cmdGostUDPTun":    true,
+				"cmdTorResolve":    true,
+				"cmdTorResolvePtr": true,
+				"cmdUDPAssoc":      true,
+			},
+		},
+		"Network Firewall curl": {
+			"Class": "almagest/NetworkFirewall",
+			"Pos":   "{\"x\":390,\"y\":320}",
+			"Links": ["Network -> [Firewall OutNetwork] Network"],
+			"rules": {},
+		},
+		"Firewall object policy": {
+			"Class": "pasta/ObjectConstant",
+			"Pos":   "{\"x\":390,\"y\":120}",
+			"Links": ["output -> [Network Firewall curl] Config"],
+			"value": {},
+		},
+		"Firewall OutNetwork": {
+			"Class": "almagest/OutNetwork",
+			"Pos":   "{\"x\":680,\"y\":320}",
+		},
+	},
+}

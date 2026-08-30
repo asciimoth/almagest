@@ -13,6 +13,7 @@ func Classes(runtime nodekit.Runtime) []pasta.NodeClass {
 		TunClass{Runtime: runtime},
 		TunConfigStripperClass{Runtime: runtime},
 		TunCopyClass{Runtime: runtime},
+		TunFirewallClass{Runtime: runtime},
 		TunJoinerClass{Runtime: runtime},
 		TunSplitterClass{Runtime: runtime},
 		VTunClass{Runtime: runtime},

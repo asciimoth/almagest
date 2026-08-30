@@ -1,0 +1,61 @@
+{
+	"Logs": {
+		"Cache": {
+			"Debug": 2048,
+			"Info": 256,
+			"Warn": 128,
+			"Error": 128,
+			"Fatal": 32,
+		},
+	},
+	"nodes": {
+		"Firewall Tun": {
+			"Class":     "almagest/Tun",
+			"Pos":       "{\"x\":100,\"y\":380}",
+			"Links":     ["Tun -> [TUN Firewall curl] Tun"],
+			"name":      "almfw0",
+			"tunAddrs":  "10.213.17.1/24",
+			"tunRoutes": "10.213.17.0/24",
+			"mtu":       1500,
+		},
+		"TUN Firewall curl": {
+			"Class": "almagest/TunFirewall",
+			"Pos":   "{\"x\":350,\"y\":380}",
+			"Links": ["Tun -> [Firewall Spoofer] Tun"],
+			"rules": {},
+		},
+		"TUN firewall object policy": {
+			"Class": "pasta/ObjectConstant",
+			"Pos":   "{\"x\":350,\"y\":150}",
+			"Links": ["output -> [TUN Firewall curl] Config"],
+			"value": {},
+		},
+		"Firewall Spoofer": {
+			"Class":       "almagest/Spoofer",
+			"Pos":         "{\"x\":610,\"y\":380}",
+			"Links":       ["Network -> [Firewall MockNetwork] Network"],
+			"mtu":         1500,
+			"queueLength": 1024,
+		},
+		"Firewall MockNetwork": {
+			"Class": "almagest/MockNetwork",
+			"Pos":   "{\"x\":860,\"y\":380}",
+		},
+		"Firewall HTTP service one": {
+			"Class":    "almagest/HttpServer",
+			"Pos":      "{\"x\":850,\"y\":170}",
+			"Links":    ["Network -> [Firewall MockNetwork] Network"],
+			"host":     "10.213.17.2",
+			"port":     18111,
+			"response": "tun firewall service one",
+		},
+		"Firewall HTTP service two": {
+			"Class":    "almagest/HttpServer",
+			"Pos":      "{\"x\":850,\"y\":590}",
+			"Links":    ["Network -> [Firewall MockNetwork] Network"],
+			"host":     "10.213.17.2",
+			"port":     18112,
+			"response": "tun firewall service two",
+		},
+	},
+}
