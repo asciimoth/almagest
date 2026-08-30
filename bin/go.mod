@@ -10,11 +10,11 @@ require (
 	github.com/asciimoth/configer/configer v0.3.1
 	github.com/asciimoth/configer/hujson v0.3.1
 	github.com/asciimoth/formular v0.3.1
-	github.com/asciimoth/gonnect v0.45.0
-	github.com/asciimoth/gonnect-netstack v0.4.40
+	github.com/asciimoth/gonnect v0.47.0
+	github.com/asciimoth/gonnect-netstack v0.5.2
 	github.com/asciimoth/pasta/pasta v0.9.6
-	github.com/asciimoth/socksgo v0.4.9
-	github.com/asciimoth/sysnet-linux v0.2.15
+	github.com/asciimoth/socksgo v0.4.12
+	github.com/asciimoth/sysnet-linux v0.2.19
 	github.com/coder/websocket v1.8.14
 	github.com/joho/godotenv v1.5.1
 	github.com/kataras/golog v0.1.15
@@ -26,13 +26,13 @@ require (
 
 require (
 	github.com/alexflint/go-scalar v1.2.0 // indirect
-	github.com/asciimoth/batchudp v0.3.9 // indirect
+	github.com/asciimoth/batchudp v0.3.11 // indirect
 	github.com/asciimoth/ident v0.2.0 // indirect
 	github.com/asciimoth/p-mark v0.2.0 // indirect
 	github.com/asciimoth/persist v0.2.0 // indirect
 	github.com/asciimoth/putback v0.3.0 // indirect
-	github.com/asciimoth/tuntap v0.3.28 // indirect
-	github.com/asciimoth/wgo v0.5.10 // indirect
+	github.com/asciimoth/tuntap v0.3.30 // indirect
+	github.com/asciimoth/wgo v0.6.2 // indirect
 	github.com/cilium/ebpf v0.22.0 // indirect
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/google/btree v1.1.2 // indirect

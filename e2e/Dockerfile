@@ -39,7 +39,8 @@ RUN apt-get update \
 		util-linux \
 		wireguard-tools \
 		wget \
-	&& rm -rf /var/lib/apt/lists/*
+	&& rm -rf /var/lib/apt/lists/* \
+	&& chmod 0755 /
 
 COPY --from=build /usr/local/bin/almagestd /usr/local/bin/almagestd
 COPY --from=build /usr/local/bin/almagest-cli /usr/local/bin/almagest-cli
