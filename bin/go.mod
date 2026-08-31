@@ -32,7 +32,7 @@ require (
 	github.com/asciimoth/persist v0.2.0 // indirect
 	github.com/asciimoth/putback v0.3.0 // indirect
 	github.com/asciimoth/tuntap v0.3.30 // indirect
-	github.com/asciimoth/wgo v0.6.2 // indirect
+	github.com/asciimoth/wgo v0.7.0 // indirect
 	github.com/cilium/ebpf v0.22.0 // indirect
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/google/btree v1.1.2 // indirect

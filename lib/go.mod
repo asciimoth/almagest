@@ -11,7 +11,7 @@ require (
 	github.com/asciimoth/gonnect-netstack v0.5.2
 	github.com/asciimoth/pasta/pasta v0.9.6
 	github.com/asciimoth/socksgo v0.4.12
-	github.com/asciimoth/wgo v0.6.2
+	github.com/asciimoth/wgo v0.7.0
 	github.com/coder/websocket v1.8.14
 	github.com/miekg/dns v1.1.72
 	gvisor.dev/gvisor v0.0.0-20260325202830-7644cf3a343c

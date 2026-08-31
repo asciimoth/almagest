@@ -32,8 +32,8 @@ github.com/asciimoth/sysnet-linux v0.2.19 h1:YxjlKqxKzcDEDVG572Zxnl22gf8SuoejrFW
 github.com/asciimoth/sysnet-linux v0.2.19/go.mod h1:2Hq13jQ98DpwqFL1n+YFfqBojjRw0+hdQpqoMCbpsn0=
 github.com/asciimoth/tuntap v0.3.30 h1:ezpxxHRF5CIzA+R3hZyXE6UMa7YJecFjlzBnD7jT/kk=
 github.com/asciimoth/tuntap v0.3.30/go.mod h1:EqFsmjUHRovceZuHFSvesQjypSGO0wy5/iI436zHRkw=
-github.com/asciimoth/wgo v0.6.2 h1:11uRFMPQiu4IdmR/bMJb5TEn/X+EA/IPNxnUJNfxVE4=
-github.com/asciimoth/wgo v0.6.2/go.mod h1:2rPMrYdgKfKxqX3bnbWlXzCkOWiJPcTjfPdh+qegZS4=
+github.com/asciimoth/wgo v0.7.0 h1:T3clpkNkrDti9Y2CllfZaXkEyn7DVo7XIHcnkdHMVCU=
+github.com/asciimoth/wgo v0.7.0/go.mod h1:2rPMrYdgKfKxqX3bnbWlXzCkOWiJPcTjfPdh+qegZS4=
 github.com/cilium/ebpf v0.22.0 h1:v2ktp0roffpMOj2MMf3idtCQZOsAoC4BJbAJN+ke2bY=
 github.com/cilium/ebpf v0.22.0/go.mod h1:CDzZbe2hC5JjlDC+CY3KFCzlYwN4gbxppYM+Z10bQt4=
 github.com/coder/websocket v1.8.14 h1:9L0p0iKiNOibykf283eHkKUHHrpG7f65OE3BhhO7v9g=
