@@ -21,11 +21,12 @@ func TestWireGuardClassPortsAndMenuBlocks(t *testing.T) {
 	if !ok {
 		t.Fatalf("NodeSnapshot(%d) missing", node)
 	}
-	if len(snapshot.LeftPorts) != 2 || len(snapshot.RightPorts) != 1 {
-		t.Fatalf("ports = left %d right %d, want two left and one right", len(snapshot.LeftPorts), len(snapshot.RightPorts))
+	if len(snapshot.LeftPorts) != 3 || len(snapshot.RightPorts) != 1 {
+		t.Fatalf("ports = left %d right %d, want three left and one right", len(snapshot.LeftPorts), len(snapshot.RightPorts))
 	}
 	assertPortShape(t, e, snapshot.LeftPorts[0], "left", "Tun", TypeTun)
 	assertPortShape(t, e, snapshot.LeftPorts[1], "left", "Peers", "pasta/object")
+	assertPortShape(t, e, snapshot.LeftPorts[2], "left", "WGCtrl", TypeWGCtrl)
 	assertPortShape(t, e, snapshot.RightPorts[0], "right", "Network", TypeNetwork)
 
 	for _, blockID := range []string{"status", "config", "peers"} {

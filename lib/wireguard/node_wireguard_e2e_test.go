@@ -68,6 +68,31 @@ func TestWireGuardE2EVTunHTTPClientServer(t *testing.T) {
 	f.assertWireGuardRequestWorks()
 }
 
+func TestWireGuardE2EWGConfigUsesNamedUDPTransport(t *testing.T) {
+	f := setupWireGuardE2E(t, defaultWireGuardE2ENames("wg-config-"))
+	f.assertWireGuardRequestWorks()
+
+	// Move the client peer from the WireGuard menu to WGConfig. Waiting for the
+	// local removal avoids an intentional duplicate-key ownership conflict.
+	applyWireGuardPeers(t, f.Engine, f.clientWG, nil)
+	waitWireGuardConfiguredAndRuntimePeerCounts(t, f.NodeE2E, f.clientWG, 0, 0)
+	config := f.AddNode(NodeTypeWGConfig, "wireguard-client-peers")
+	f.SubscribeMenus(config)
+	_, serverPublic := wireGuardTestKeyPair(t, 73)
+	applyWireGuardPeers(t, f.Engine, config, []wireGuardPeerConfig{{
+		id:                          "server",
+		publicKey:                   serverPublic,
+		endpoint:                    fmt.Sprintf("127.0.0.1:%d", f.serverWGPort),
+		allowedIPs:                  wireGuardE2EServerAddr + "/32",
+		persistentKeepaliveInterval: 1,
+	}})
+	f.MustAddTypedLinkByPortName(TypeWGCtrl, f.clientWG, "left", "WGCtrl", config, "right", "WireGuard")
+	f.MustAddTypedLinkByPortName(TypeNetwork, f.mock, "left", "Network", config, "right", "Network")
+	assertWGConfigState(t, f.NodeE2E, config, "up")
+	waitWireGuardConfiguredAndRuntimePeerCounts(t, f.NodeE2E, f.clientWG, 0, 1)
+	f.assertWireGuardRequestWorks()
+}
+
 func TestWireGuardE2EObjectPeersMergeUpdateDetachAndReattach(t *testing.T) {
 	f := setupWireGuardE2E(t, defaultWireGuardE2ENames("object-peers-"))
 	first := f.AddNode(std.NodeTypeObjectConstant, "object-peers-first")

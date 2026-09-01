@@ -147,6 +147,7 @@ func (n *wireGuardNode) handleRuntimeResult(msg wireGuardRuntimeResultMessage) {
 	}
 	n.cancelConfigRetry()
 	n.clearRuntimeError()
+	n.sendWGCtrl()
 	_ = n.updateLabel()
 	n.sendStatusBlock()
 }

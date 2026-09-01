@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/asciimoth/almagest/lib/links"
 	conn "github.com/asciimoth/batchudp"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
@@ -37,9 +38,10 @@ func (WireGuardClass) ClassName() string        { return NodeTypeWireGuard }
 func (WireGuardClass) ShortDescription() string { return "WireGuard" }
 func (WireGuardClass) LongDescription() string  { return WireGuardClassLongDescription }
 func (WireGuardClass) DefaultNodeParams() pasta.NodeClassParams {
-	return pasta.NodeClassParams{PrimaryType: TypeTun, InitialPorts: []pasta.Port{
+	return pasta.NodeClassParams{PrimaryType: links.TypeWGCtrl, InitialPorts: []pasta.Port{
 		TunPort("left", "Tun"),
 		{Direction: "left", Name: "Peers", Types: []string{std.TypeObject}},
+		WGCtrlPort("left", "WGCtrl"),
 		NetworkPort("right", "Network"),
 	}}
 }
@@ -57,6 +59,7 @@ func (c WireGuardClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState)
 		objectPeerInputs: map[uint64][]wireGuardPeerConfig{},
 		objectPeers:      map[uint64][]wireGuardPeerConfig{},
 		objectErrors:     map[uint64]string{},
+		wgctrlPayloads:   map[uint64]WGCtrlPayload{},
 	}, nil
 }
 
@@ -91,6 +94,7 @@ type wireGuardNode struct {
 
 	tunp  uint64
 	peerp uint64
+	ctrlp uint64
 	netp  uint64
 
 	tunLink uint64
@@ -111,6 +115,13 @@ type wireGuardNode struct {
 	config wireGuardConfig
 	dev    *wgdevice.Device
 
+	// controllerSource is published only after a successful device config
+	// apply. Workspace callbacks can load it without taking runtimeMu.
+	controllerSource atomic.Pointer[wgdevice.Device]
+	// wgctrlPayloads is workspace-owned and keeps one detached API per link.
+	// Re-emitting the same live payload preserves controller-owned resources.
+	wgctrlPayloads map[uint64]WGCtrlPayload
+
 	// objectPeerInputs keeps the latest source-owned value for each attached
 	// object link. objectPeers contains only resolved and validated values that
 	// currently contribute to the device. Keeping the input separately lets a
@@ -118,6 +129,11 @@ type wireGuardNode struct {
 	objectPeerInputs map[uint64][]wireGuardPeerConfig
 	objectPeers      map[uint64][]wireGuardPeerConfig
 	objectErrors     map[uint64]string
+
+	// runtimeOwnedPeerKeys contains only peers contributed by this node's menu
+	// and object inputs. Controller peers are deliberately absent so config
+	// rebuilds can remove stale local peers without deleting WGConfig peers.
+	runtimeOwnedPeerKeys map[wgdevice.NoisePublicKey]struct{}
 
 	runtimeMu              sync.Mutex
 	runtimeGeneration      atomic.Uint64
@@ -155,9 +171,13 @@ func (n *wireGuardNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint6
 	n.config.normalize()
 	n.tunp = restoredLeft(restored, 0)
 	n.peerp = restoredLeft(restored, 1)
+	n.ctrlp = restoredLeft(restored, 2)
 	n.netp = restoredRight(restored, 0)
 	n.ensureObjectPeerMaps()
-	if err := n.SetPrimary(TypeTun); err != nil {
+	if n.wgctrlPayloads == nil {
+		n.wgctrlPayloads = map[uint64]WGCtrlPayload{}
+	}
+	if err := n.SetPrimary(links.TypeWGCtrl); err != nil {
 		return err
 	}
 	config, err := n.resolvePrivateKeyConfig(n.config)
@@ -177,9 +197,11 @@ func (n *wireGuardNode) OnReady() error {
 	n.RequestPort(n.tunp)
 	n.RequestPort(n.peerp)
 	n.RequestPort(n.netp)
+	n.sendWGCtrl()
 	return nil
 }
 func (n *wireGuardNode) OnStop() {
+	n.controllerSource.Store(nil)
 	n.cancelConfigRetry()
 	n.nextRuntimeGeneration()
 	n.nextTunGeneration()
@@ -196,6 +218,8 @@ func (n *wireGuardNode) PreLinkAdd(port uint64, linkType, portDirection string) 
 	case port == n.peerp && portDirection == "left" && linkType == std.TypeObject:
 		// Each object link owns one independent peer-list contribution.
 		return nil
+	case port == n.ctrlp:
+		return WGCtrlPreLinkAdd(n.W, port, linkType, portDirection)
 	case port == n.netp:
 		if portDirection != "right" || linkType != TypeNetwork {
 			return pasta.LinkTypeErr(linkType)
@@ -218,6 +242,8 @@ func (n *wireGuardNode) OnLinkAdd(link, port uint64, linkType, portDirection str
 		std.RequestLocked(n.W, n.ID, link)
 	case port == n.peerp && portDirection == "left" && linkType == std.TypeObject:
 		std.RequestLocked(n.W, n.ID, link)
+	case port == n.ctrlp && portDirection == "left" && linkType == TypeWGCtrl:
+		n.sendWGCtrlToLink(link)
 	case port == n.netp && portDirection == "right" && linkType == TypeNetwork:
 		n.netLink = link
 		n.nextNetworkGeneration()
@@ -241,6 +267,8 @@ func (n *wireGuardNode) OnLinkRemoved(link uint64, port uint64, linkType, portDi
 		delete(n.objectPeers, link)
 		delete(n.objectErrors, link)
 		n.applyEffectivePeerConfig()
+	case port == n.ctrlp && portDirection == "left" && linkType == TypeWGCtrl:
+		delete(n.wgctrlPayloads, link)
 	case port == n.netp && portDirection == "right" && linkType == TypeNetwork && link == n.netLink:
 		n.cancelConfigRetry()
 		n.netLink = 0
@@ -253,6 +281,12 @@ func (n *wireGuardNode) OnLinkRemoved(link uint64, port uint64, linkType, portDi
 	return nil
 }
 func (n *wireGuardNode) OnEvent(event pasta.Event, linkType string, _ []string, receiverPortDirection string) error {
+	if event.ReceiverPort == n.ctrlp && receiverPortDirection == "left" && linkType == TypeWGCtrl {
+		if std.IsRequest(event.Payload) {
+			n.refreshWGCtrlToLink(event.Link)
+		}
+		return nil
+	}
 	if event.ReceiverPort == n.peerp && receiverPortDirection == "left" && linkType == std.TypeObject {
 		return n.acceptObjectPeers(event)
 	}

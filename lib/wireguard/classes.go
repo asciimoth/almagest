@@ -10,5 +10,6 @@ import (
 func Classes(runtime nodekit.Runtime) []pasta.NodeClass {
 	return []pasta.NodeClass{
 		WireGuardClass{Runtime: runtime},
+		WGConfigClass{Runtime: runtime},
 	}
 }

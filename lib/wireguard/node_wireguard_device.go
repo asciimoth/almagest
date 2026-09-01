@@ -46,12 +46,10 @@ func (n *wireGuardNode) applyConfigToDeviceLocked(config wireGuardConfig, rebuil
 	n.runtimeListenPort = config.listenPort
 	active := n.hasActiveAttachmentsLocked()
 	if !active {
-		if n.dev == nil {
-			n.runtimeStats = wgdevice.RuntimeStats{}
-			return nil
-		}
-		if err := n.dev.Down(); err != nil {
-			return err
+		if n.dev != nil {
+			if err := n.dev.Down(); err != nil {
+				return err
+			}
 		}
 	}
 	n.ensureDeviceLocked()
@@ -59,13 +57,31 @@ func (n *wireGuardNode) applyConfigToDeviceLocked(config wireGuardConfig, rebuil
 	if err != nil {
 		return err
 	}
+	nextPeerKeys := make(map[wgdevice.NoisePublicKey]struct{}, len(deviceConfig.Peers))
+	for _, peer := range deviceConfig.Peers {
+		nextPeerKeys[peer.PublicKey] = struct{}{}
+	}
+	if rebuildPeers {
+		for key := range n.runtimeOwnedPeerKeys {
+			if _, keep := nextPeerKeys[key]; keep {
+				continue
+			}
+			if _, err := n.dev.DeletePeer(key); err != nil {
+				return fmt.Errorf("delete removed local peer: %w", err)
+			}
+		}
+	}
 	if err := n.dev.ApplyConfig(deviceConfig, wgdevice.ApplyConfigOptions{
-		ReplacePeers:   rebuildPeers,
+		// ReplacePeers is intentionally false. WGConfig nodes own peers through
+		// detached APIs, and a global replacement would delete those peers.
+		ReplacePeers:   false,
 		ApplyEndpoints: active,
 		ActivatePeers:  active,
 	}); err != nil {
 		return fmt.Errorf("apply config: %w", err)
 	}
+	n.runtimeOwnedPeerKeys = nextPeerKeys
+	n.controllerSource.Store(n.dev)
 	n.refreshRuntimeStatsLocked()
 	if !active {
 		return nil
@@ -309,6 +325,7 @@ func (n *wireGuardNode) stopRuntime() {
 	n.unsubscribeFromReceiveErrorsLocked()
 	dev := n.dev
 	n.dev = nil
+	n.controllerSource.Store(nil)
 	n.currentTun = nil
 	n.currentTunGeneration = 0
 	n.currentNetwork = nil
@@ -318,6 +335,7 @@ func (n *wireGuardNode) stopRuntime() {
 	n.currentBindOpen = nil
 	n.currentBindFailed = false
 	n.runtimeStats = wgdevice.RuntimeStats{}
+	n.runtimeOwnedPeerKeys = nil
 	n.runtimeListenPort = 0
 	n.runtimeMu.Unlock()
 	if dev != nil {
@@ -340,40 +358,51 @@ func wireGuardDeviceConfig(config wireGuardConfig) (wgdevice.DeviceConfig, error
 		Peers:      make([]wgdevice.PeerConfig, 0, len(config.peers)),
 	}
 	for _, peer := range config.peers {
-		if peer.publicKey == "" {
-			return wgdevice.DeviceConfig{}, errors.New("peer public key is required")
-		}
-		publicKey, err := parseWireGuardPublicKey(peer.publicKey)
+		peerConfig, err := wireGuardPeerDeviceConfig(peer)
 		if err != nil {
-			return wgdevice.DeviceConfig{}, fmt.Errorf("peer %s public key: %w", peerLabel(peer), err)
-		}
-		presharedKey, err := parseWireGuardPresharedKey(peer.presharedKey)
-		if err != nil {
-			return wgdevice.DeviceConfig{}, fmt.Errorf("peer %s preshared key: %w", peerLabel(peer), err)
-		}
-		allowedIPs, err := parseWireGuardAllowedIPs(peer.allowedIPs)
-		if err != nil {
-			return wgdevice.DeviceConfig{}, fmt.Errorf("peer %s allowed IPs: %w", peerLabel(peer), err)
-		}
-		if peer.persistentKeepaliveInterval < 0 || peer.persistentKeepaliveInterval > 65535 {
-			return wgdevice.DeviceConfig{}, fmt.Errorf("peer %s persistent keepalive must be between 0 and 65535", peerLabel(peer))
-		}
-		peerConfig := wgdevice.PeerConfig{
-			PublicKey:                   publicKey,
-			PresharedKey:                presharedKey,
-			ProtocolVersion:             1,
-			Endpoint:                    peer.endpoint,
-			PersistentKeepaliveInterval: uint16(peer.persistentKeepaliveInterval),
-			AllowedIPs:                  allowedIPs,
-		}
-		if peer.amneziaWGOverride {
-			amneziaWG, err := peer.amneziaWG.deviceConfig()
-			if err != nil {
-				return wgdevice.DeviceConfig{}, fmt.Errorf("peer %s amneziawg: %w", peerLabel(peer), err)
-			}
-			peerConfig.AmneziaWG = &amneziaWG
+			return wgdevice.DeviceConfig{}, err
 		}
 		out.Peers = append(out.Peers, peerConfig)
+	}
+	return out, nil
+}
+
+// wireGuardPeerDeviceConfig converts the shared persisted/menu peer model to
+// wgo's validated configuration model. WireGuard and WGConfig use this one
+// conversion path so their form fields have identical semantics.
+func wireGuardPeerDeviceConfig(peer wireGuardPeerConfig) (wgdevice.PeerConfig, error) {
+	if peer.publicKey == "" {
+		return wgdevice.PeerConfig{}, errors.New("peer public key is required")
+	}
+	publicKey, err := parseWireGuardPublicKey(peer.publicKey)
+	if err != nil {
+		return wgdevice.PeerConfig{}, fmt.Errorf("peer %s public key: %w", peerLabel(peer), err)
+	}
+	presharedKey, err := parseWireGuardPresharedKey(peer.presharedKey)
+	if err != nil {
+		return wgdevice.PeerConfig{}, fmt.Errorf("peer %s preshared key: %w", peerLabel(peer), err)
+	}
+	allowedIPs, err := parseWireGuardAllowedIPs(peer.allowedIPs)
+	if err != nil {
+		return wgdevice.PeerConfig{}, fmt.Errorf("peer %s allowed IPs: %w", peerLabel(peer), err)
+	}
+	if peer.persistentKeepaliveInterval < 0 || peer.persistentKeepaliveInterval > 65535 {
+		return wgdevice.PeerConfig{}, fmt.Errorf("peer %s persistent keepalive must be between 0 and 65535", peerLabel(peer))
+	}
+	out := wgdevice.PeerConfig{
+		PublicKey:                   publicKey,
+		PresharedKey:                presharedKey,
+		ProtocolVersion:             1,
+		Endpoint:                    peer.endpoint,
+		PersistentKeepaliveInterval: uint16(peer.persistentKeepaliveInterval),
+		AllowedIPs:                  allowedIPs,
+	}
+	if peer.amneziaWGOverride {
+		amneziaWG, err := peer.amneziaWG.deviceConfig()
+		if err != nil {
+			return wgdevice.PeerConfig{}, fmt.Errorf("peer %s amneziawg: %w", peerLabel(peer), err)
+		}
+		out.AmneziaWG = &amneziaWG
 	}
 	return out, nil
 }

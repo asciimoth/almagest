@@ -51,4 +51,8 @@ var DefaultColorMap = map[string]TypePalette{
 		TypeColor: "#c47a3c",
 		TextColor: "#ffffff",
 	},
+	links.TypeWGCtrl: {
+		TypeColor: "#5267a8",
+		TextColor: "#ffffff",
+	},
 }

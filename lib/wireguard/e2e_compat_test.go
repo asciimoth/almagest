@@ -34,6 +34,7 @@ const (
 	E2EWorkspace = e2etest.E2EWorkspace
 	TypeNetwork  = links.TypeNetwork
 	TypeTun      = links.TypeTun
+	TypeWGCtrl   = wireguardnodes.TypeWGCtrl
 
 	NodeTypeMockNetwork = networknodes.NodeTypeMockNetwork
 	NodeTypeOutNetwork  = networknodes.NodeTypeOutNetwork
@@ -43,6 +44,7 @@ const (
 	NodeTypeTunConfigStripper = tunnodes.NodeTypeTunConfigStripper
 	NodeTypeVTun              = tunnodes.NodeTypeVTun
 	NodeTypeWireGuard         = wireguardnodes.NodeTypeWireGuard
+	NodeTypeWGConfig          = wireguardnodes.NodeTypeWGConfig
 )
 
 type (

@@ -1,10 +1,11 @@
 Runs one embedded `github.com/asciimoth/wgo` WireGuard device.
 
 The left `Tun` port consumes a TUN endpoint. The left `Peers` port accepts any
-number of `pasta/object` links. The right `Network` port supplies the UDP
-network used by WireGuard peer endpoints. The node creates the embedded device
-lazily once runtime links exist, then keeps that device while links are
-rewired, replacing only the active TUN or UDP bind.
+number of `pasta/object` links. The left `WGCtrl` port provides detached
+controller APIs to WGConfig nodes and typed middleware. The right `Network`
+port supplies the default UDP network used by menu and object peer endpoints.
+The node keeps one embedded device while links are rewired and replaces only
+the active TUN or default UDP bind.
 
 Each object input must have the same `{"peers": [...]}` structure used by the
 WireGuard node config. The node keeps the latest object received from each
@@ -15,6 +16,13 @@ for conflicts between object sources. Detaching a link removes only its peer
 contribution; reattaching requests the producer's current value. Object values
 stay owned by their producer and are not copied into the WireGuard node's saved
 config.
+
+WGConfig peers coexist with menu and object peers. WireGuard reconciles only
+the peer public keys owned by its menu and object inputs; it does not use a
+global replace-all operation that would delete controller-owned peers. Each WG
+control link gets an independently closeable API. Removing a direct link or
+switching a `pasta/Select` path releases only the peers and named transports
+tracked through that API.
 
 The device private key is read from the daemon secrets storage. The config
 field `privateKeySecret` stores only the secret name; the private key value is
