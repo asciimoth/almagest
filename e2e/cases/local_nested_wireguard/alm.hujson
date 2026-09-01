@@ -22,31 +22,53 @@
 			"Links":      ["Network -> [MockNetwork 1500] Network"],
 			"listenPort": 25120,
 			"ownedIPs":   "",
-			"peers": [{
+			"peers": [],
+			"privateKeySecret": "wireguard-client-1501-private-key",
+		},
+		"Outer Client Server Peer 1513": {
+			"Class": "pasta/ObjectConstant",
+			"Pos":   "{\"x\":590,\"y\":185}",
+			"Links": ["output -> [WireGuard Client 1501] Peers"],
+			"value": {"peers": [{
 				"allowedIPs":                  "10.198.20.1/32",
 				"endpoint":                    "127.0.0.1:25121",
 				"id":                          "server",
 				"persistentKeepaliveInterval": 1,
-				"presharedKey":                "",
 				"publicKey":                   "laFBiTT/wW7x80sMEG6yQhZxM7h0+3hv5kI6dxP081g=",
-			}],
-			"privateKeySecret": "wireguard-client-1501-private-key",
+			}]},
+		},
+		// This second link demonstrates that one WireGuard node merges the
+		// latest peers object from every attached object source.
+		"Outer Client Supplemental Peer 1514": {
+			"Class": "pasta/ObjectConstant",
+			"Pos":   "{\"x\":820,\"y\":185}",
+			"Links": ["output -> [WireGuard Client 1501] Peers"],
+			"value": {"peers": [{
+				"allowedIPs": "",
+				"id":         "supplemental-object-peer",
+				"publicKey":  "AnHE/xRsd1dmMrr0gpacdwAjHOsAksT8SMHlwm3tfE8=",
+			}]},
 		},
 		"WireGuard Server 1502": {
 			"Class":    "almagest/WireGuard",
 			"Pos":      "{\"x\":571,\"y\":591}",
 			"Links":    ["Network -> [MockNetwork 1500] Network"],
 			"ownedIPs": "",
-			"peers": [{
+			"peers": [],
+			"privateKeySecret": "wireguard-server-1502-private-key",
+			"listenPort":       25121,
+		},
+		"Outer Server Client Peer 1515": {
+			"Class": "pasta/ObjectConstant",
+			"Pos":   "{\"x\":820,\"y\":700}",
+			"Links": ["output -> [WireGuard Server 1502] Peers"],
+			"value": {"peers": [{
 				"allowedIPs":                  "10.198.10.1/32",
 				"endpoint":                    "127.0.0.1:25120",
 				"id":                          "client",
 				"persistentKeepaliveInterval": 1,
-				"presharedKey":                "",
 				"publicKey":                   "f4iMlTOU1YOfovXWCeMMjeBsc6vVqqDE/7XQeHg2oVQ=",
-			}],
-			"privateKeySecret": "wireguard-server-1502-private-key",
-			"listenPort":       25121,
+			}]},
 		},
 		"VTun Client 1503": {
 			"Class":          "almagest/VTun",
@@ -81,14 +103,19 @@
 			"privateKeySecret": "inner-wireguard-client-1507-private-key",
 			"listenPort":       25220,
 			"ownedIPs":         "",
-			"peers": [{
+			"peers": [],
+		},
+		"Inner Client Server Peer 1516": {
+			"Class": "pasta/ObjectConstant",
+			"Pos":   "{\"x\":120,\"y\":185}",
+			"Links": ["output -> [Inner WireGuard Client 1507] Peers"],
+			"value": {"peers": [{
 				"allowedIPs":                  "10.199.20.1/32",
 				"endpoint":                    "10.198.20.1:25221",
 				"id":                          "inner-server",
 				"persistentKeepaliveInterval": 1,
-				"presharedKey":                "",
 				"publicKey":                   "AnHE/xRsd1dmMrr0gpacdwAjHOsAksT8SMHlwm3tfE8=",
-			}],
+			}]},
 		},
 		"Inner WireGuard Server 1508": {
 			"Class":      "almagest/WireGuard",
@@ -97,14 +124,19 @@
 			"privateKeySecret": "inner-wireguard-server-1508-private-key",
 			"listenPort":       25221,
 			"ownedIPs":         "",
-			"peers": [{
+			"peers": [],
+		},
+		"Inner Server Client Peer 1517": {
+			"Class": "pasta/ObjectConstant",
+			"Pos":   "{\"x\":110,\"y\":700}",
+			"Links": ["output -> [Inner WireGuard Server 1508] Peers"],
+			"value": {"peers": [{
 				"allowedIPs":                  "10.199.10.1/32",
 				"endpoint":                    "10.198.10.1:25220",
 				"id":                          "inner-client",
 				"persistentKeepaliveInterval": 1,
-				"presharedKey":                "",
 				"publicKey":                   "0hf/aFMgYJutFOElgMQEm+afp6PWscQy4T2MTqb742o=",
-			}],
+			}]},
 		},
 		"Inner VTun Client 1509": {
 			"Class":          "almagest/VTun",

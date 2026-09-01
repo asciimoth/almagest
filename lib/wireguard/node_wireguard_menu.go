@@ -30,15 +30,19 @@ func (n *wireGuardNode) statusBlock() formular.Block {
 	status := n.runtimeStatusSnapshot()
 	statusErr := n.formError
 	if statusErr == "" {
+		statusErr = n.objectErrorText()
+	}
+	if statusErr == "" {
 		statusErr = n.runtimeError
 	}
+	effective := n.effectiveConfig()
 	return formular.Block{ID: "status", Order: 10, Generation: 1, Items: []formular.Item{
 		readonlyTextField("state", "State", n.stateTextFromSnapshot(status)),
 		readonlyTextField("publicKey", "Public key", publicKey),
 		readonlyIntField("listenPort", "Listen port", status.listenPort),
 		readonlyTextField("tun", "TUN", attachedText(status.hasTun)),
 		readonlyTextField("network", "Network", attachedText(status.hasNetwork)),
-		readonlyIntField("peers", "Peers", len(n.config.peers)),
+		readonlyIntField("peers", "Peers", len(effective.peers)),
 		readonlyIntField("runtimePeers", "Runtime peers", status.stats.PeerCount),
 		readonlyIntField("activePeers", "Active peers", status.stats.ActivePeerCount),
 		readonlyIntField("connectedPeers", "Connected peers", status.stats.ConnectedPeerCount),

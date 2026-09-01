@@ -36,6 +36,18 @@ menu_field() {
 	' "$path"
 }
 
+wireguard_status_field() {
+	local node="$1"
+	local field="$2"
+	cli graph menu --node "$node" | jq -er --arg field "$field" '
+		.blocks[]
+		| select(.id == "status")
+		| .items[]
+		| select(.id == $field)
+		| (.value // "")
+	'
+}
+
 click_menu_button() {
 	local node="$1"
 	local block="$2"
@@ -124,10 +136,15 @@ wait_node_class_available "almagest/UDPPingClient" \
 wait_graph_node "MockNetwork 1500" || fail "MockNetwork node missing"
 wait_graph_node "WireGuard Client 1501" || fail "outer client WireGuard node missing"
 wait_graph_node "WireGuard Server 1502" || fail "outer server WireGuard node missing"
+wait_graph_node "Outer Client Server Peer 1513" || fail "outer client server peer object missing"
+wait_graph_node "Outer Client Supplemental Peer 1514" || fail "outer client supplemental peer object missing"
+wait_graph_node "Outer Server Client Peer 1515" || fail "outer server client peer object missing"
 wait_graph_node "VTun Client 1503" || fail "outer client VTun node missing"
 wait_graph_node "VTun Server 1504" || fail "outer server VTun node missing"
 wait_graph_node "Inner WireGuard Client 1507" || fail "inner client WireGuard node missing"
 wait_graph_node "Inner WireGuard Server 1508" || fail "inner server WireGuard node missing"
+wait_graph_node "Inner Client Server Peer 1516" || fail "inner client server peer object missing"
+wait_graph_node "Inner Server Client Peer 1517" || fail "inner server client peer object missing"
 wait_graph_node "Inner VTun Client 1509" || fail "inner client VTun node missing"
 wait_graph_node "Inner VTun Server 1510" || fail "inner server VTun node missing"
 wait_graph_node "UDPPingServer 1505" || fail "UDP ping server node missing"
@@ -155,6 +172,10 @@ wait_node_label "$outer_client_wg" up || fail "outer client WireGuard node did n
 wait_node_label "$outer_server_wg" up || fail "outer server WireGuard node did not become up"
 wait_node_label "$inner_client_wg" up || fail "inner client WireGuard node did not become up"
 wait_node_label "$inner_server_wg" up || fail "inner server WireGuard node did not become up"
+[[ "$(wireguard_status_field "$outer_client_wg" peers)" == "2" ]] \
+	|| fail "outer client did not merge two effective object peers"
+[[ "$(wireguard_status_field "$outer_client_wg" runtimePeers)" == "2" ]] \
+	|| fail "outer client did not apply two object peers to wgo"
 wait_node_label "$outer_client_vtun" wireguard-client-vtun || fail "outer client VTun did not become ready"
 wait_node_label "$outer_server_vtun" wireguard-server-vtun || fail "outer server VTun did not become ready"
 wait_node_label "$inner_client_vtun" inner-wireguard-client-vtun || fail "inner client VTun did not become ready"

@@ -33,22 +33,38 @@ func (n *wireGuardNode) resolvePrivateKeyConfig(config wireGuardConfig) (wireGua
 	config.privateKeySecret = secretName
 	config.privateKey = key
 	config.privateKeyLegacyValue = ""
-	for i := range config.peers {
-		key, secretName, err := resolveWireGuardPresharedKeySecret(
-			storage,
-			nodeName,
-			config.peers[i].presharedKeySecret,
-			config.peers[i].presharedKey,
-			peerLabel(config.peers[i]),
-		)
-		if err != nil {
-			return config, err
-		}
-		config.peers[i].presharedKeySecret = secretName
-		config.peers[i].presharedKey = key
+	config.peers, err = resolveWireGuardPeerSecrets(storage, nodeName, config.peers)
+	if err != nil {
+		return config, err
 	}
 	config.normalize()
 	return config, nil
+}
+
+// resolveObjectPeerSecrets resolves runtime-only preshared key material for an
+// object input without changing the node's private-key configuration.
+func (n *wireGuardNode) resolveObjectPeerSecrets(peers []wireGuardPeerConfig) ([]wireGuardPeerConfig, error) {
+	return resolveWireGuardPeerSecrets(n.privateKeySecretsStorage(), n.currentSecretNodeName(), peers)
+}
+
+func resolveWireGuardPeerSecrets(storage SecretsStorage, nodeName string, peers []wireGuardPeerConfig) ([]wireGuardPeerConfig, error) {
+	out := make([]wireGuardPeerConfig, len(peers))
+	copy(out, peers)
+	for i := range out {
+		key, secretName, err := resolveWireGuardPresharedKeySecret(
+			storage,
+			nodeName,
+			out[i].presharedKeySecret,
+			out[i].presharedKey,
+			peerLabel(out[i]),
+		)
+		if err != nil {
+			return out, err
+		}
+		out[i].presharedKeySecret = secretName
+		out[i].presharedKey = key
+	}
+	return out, nil
 }
 
 // currentSecretNodeName returns the workspace node name used for SecretsStorage
@@ -208,7 +224,7 @@ func (n *wireGuardNode) validatePresharedKeySecretForForm(secretName, peer strin
 func (n *wireGuardNode) handleSecretValueChanged(msg SecretValueChanged) {
 	prev := strings.TrimSpace(msg.SecretNamePrev)
 	nextName := strings.TrimSpace(msg.SecretNameNew)
-	if !wireGuardSecretChangeRelevant(n.config, prev, nextName) {
+	if !n.wireGuardSecretChangeRelevant(prev, nextName) {
 		return
 	}
 	if n.config.privateKeySecret == prev && nextName != "" && nextName != prev {
@@ -221,6 +237,14 @@ func (n *wireGuardNode) handleSecretValueChanged(msg SecretValueChanged) {
 			n.config.peers[i].presharedKeySecret = nextName
 		}
 	}
+	for link, peers := range n.objectPeerInputs {
+		for i := range peers {
+			if peers[i].presharedKeySecret == prev && nextName != "" && nextName != prev {
+				peers[i].presharedKeySecret = nextName
+			}
+		}
+		n.objectPeerInputs[link] = peers
+	}
 	next := n.config.clone()
 	next.privateKey = ""
 	next.privateKeyLegacyValue = ""
@@ -228,6 +252,46 @@ func (n *wireGuardNode) handleSecretValueChanged(msg SecretValueChanged) {
 		next.peers[i].presharedKey = ""
 	}
 	_ = n.commitConfigForm(next, wireGuardConfigCommitOptions{rebuildPeers: true, emitTunConfig: true})
+
+	objectsChanged := false
+	for link, input := range n.objectPeerInputs {
+		if !wireGuardPeerSecretChangeRelevant(input, prev, nextName) {
+			continue
+		}
+		objectsChanged = true
+		for i := range input {
+			input[i].presharedKey = ""
+		}
+		resolved, err := n.resolveObjectPeerSecrets(input)
+		if err == nil {
+			candidate := n.config.clone()
+			candidate.peers = resolved
+			err = validateWireGuardConfig(candidate)
+		}
+		if err != nil {
+			delete(n.objectPeers, link)
+			n.objectErrors[link] = err.Error()
+			continue
+		}
+		n.objectPeerInputs[link] = wireGuardPeerInputs(resolved)
+		n.objectPeers[link] = resolved
+		delete(n.objectErrors, link)
+	}
+	if objectsChanged {
+		n.applyEffectivePeerConfig()
+	}
+}
+
+func (n *wireGuardNode) wireGuardSecretChangeRelevant(prev, nextName string) bool {
+	if wireGuardSecretChangeRelevant(n.config, prev, nextName) {
+		return true
+	}
+	for _, peers := range n.objectPeerInputs {
+		if wireGuardPeerSecretChangeRelevant(peers, prev, nextName) {
+			return true
+		}
+	}
+	return false
 }
 
 func wireGuardSecretChangeRelevant(config wireGuardConfig, prev, nextName string) bool {
@@ -239,7 +303,11 @@ func wireGuardSecretChangeRelevant(config wireGuardConfig, prev, nextName string
 	if config.privateKeySecret != "" && (config.privateKeySecret == prev || config.privateKeySecret == nextName) {
 		return true
 	}
-	for _, peer := range config.peers {
+	return wireGuardPeerSecretChangeRelevant(config.peers, prev, nextName)
+}
+
+func wireGuardPeerSecretChangeRelevant(peers []wireGuardPeerConfig, prev, nextName string) bool {
+	for _, peer := range peers {
 		if peer.presharedKeySecret != "" && (peer.presharedKeySecret == prev || peer.presharedKeySecret == nextName) {
 			return true
 		}

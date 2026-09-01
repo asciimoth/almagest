@@ -1,9 +1,20 @@
 Runs one embedded `github.com/asciimoth/wgo` WireGuard device.
 
-The left `Tun` port consumes a TUN endpoint. The right `Network` port supplies
-the UDP network used by WireGuard peer endpoints. The node creates the embedded
-device lazily once runtime links exist, then keeps that device while links are
+The left `Tun` port consumes a TUN endpoint. The left `Peers` port accepts any
+number of `pasta/object` links. The right `Network` port supplies the UDP
+network used by WireGuard peer endpoints. The node creates the embedded device
+lazily once runtime links exist, then keeps that device while links are
 rewired, replacing only the active TUN or UDP bind.
+
+Each object input must have the same `{"peers": [...]}` structure used by the
+WireGuard node config. The node keeps the latest object received from each
+attached link and merges all peer lists into the `wgo` device. A normalized
+WireGuard public key identifies a conflict. Peers configured in the node menu
+always win conflicts with object peers. Object links use stable link-ID order
+for conflicts between object sources. Detaching a link removes only its peer
+contribution; reattaching requests the producer's current value. Object values
+stay owned by their producer and are not copied into the WireGuard node's saved
+config.
 
 The device private key is read from the daemon secrets storage. The config
 field `privateKeySecret` stores only the secret name; the private key value is
@@ -31,9 +42,9 @@ replaced by a newly generated private-key secret; missing or inaccessible peer
 preshared-key secrets are reported as invalid config.
 
 `ownedIPs` are emitted upstream as `TunConfig` address suggestions for the
-attached TUN provider. Peer `allowedIPs` are installed into the WireGuard
-device as crypto-routing rules and are also emitted upstream as `TunConfig`
-route suggestions for providers that install host routes.
+attached TUN provider. Effective menu and object peer `allowedIPs` are installed
+into the WireGuard device as crypto-routing rules and are also emitted upstream
+as `TunConfig` route suggestions for providers that install host routes.
 
 The config menu also exposes device-level AmneziaWG obfuscation controls:
 Jc/Jmin/Jmax, S1-S4 padding values, H1-H4 header ranges, and I1-I5

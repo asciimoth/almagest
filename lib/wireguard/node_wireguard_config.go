@@ -1,6 +1,7 @@
 package wireguardnodes
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/netip"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
+	"github.com/asciimoth/pasta/pasta/std"
 	wgdevice "github.com/asciimoth/wgo/device"
 )
 
@@ -359,6 +361,74 @@ func readWireGuardPeers(cfg configer.Config) ([]wireGuardPeerConfig, bool) {
 		return nil, false
 	}
 }
+
+// wireGuardPeersFromObject reads the peer list carried by a pasta/object
+// input. The object has the same {"peers": [...]} shape as WireGuard node
+// config. Other top-level fields are ignored so a producer can add metadata
+// without changing the WireGuard contract.
+func wireGuardPeersFromObject(object std.Object) ([]wireGuardPeerConfig, error) {
+	data, err := object.JSON()
+	if err != nil {
+		return nil, fmt.Errorf("encode object: %w", err)
+	}
+	decoder := json.NewDecoder(strings.NewReader(string(data)))
+	decoder.UseNumber()
+	var root map[string]any
+	if err := decoder.Decode(&root); err != nil {
+		return nil, fmt.Errorf("decode object: %w", err)
+	}
+	if root == nil {
+		return nil, errors.New("object must contain a peers array")
+	}
+	rawPeers, ok := root["peers"]
+	if !ok {
+		return nil, errors.New("object must contain a peers array")
+	}
+	values, ok := rawPeers.([]any)
+	if !ok {
+		return nil, errors.New("object peers must be an array")
+	}
+	peers := make([]wireGuardPeerConfig, 0, len(values))
+	for i, rawPeer := range values {
+		value, ok := rawPeer.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("object peer %d must be an object", i+1)
+		}
+		peers = append(peers, wireGuardPeerFromConfigMap(i, value))
+	}
+	return compactWireGuardPeers(peers), nil
+}
+
+// mergeWireGuardPeers combines the latest peer list from each object link with
+// the node menu peer list. A WireGuard public key is the peer identity. Menu
+// peers are added first and suppress object peers with the same normalized key,
+// which gives the menu the required conflict priority. Object links are read in
+// stable link-ID order; the lower link ID wins conflicts between object links.
+func mergeWireGuardPeers(menu []wireGuardPeerConfig, byLink map[uint64][]wireGuardPeerConfig) []wireGuardPeerConfig {
+	out := slices.Clone(menu)
+	seen := make(map[string]struct{}, len(menu))
+	for _, peer := range menu {
+		seen[normalizeWireGuardKey(peer.publicKey)] = struct{}{}
+	}
+
+	links := make([]uint64, 0, len(byLink))
+	for link := range byLink {
+		links = append(links, link)
+	}
+	slices.Sort(links)
+	for _, link := range links {
+		for _, peer := range byLink[link] {
+			key := normalizeWireGuardKey(peer.publicKey)
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			out = append(out, peer)
+		}
+	}
+	return out
+}
+
 func wireGuardPeerFromConfigMap(index int, value map[string]any) wireGuardPeerConfig {
 	peer := wireGuardPeerConfig{}
 	peer.id, _ = formular.StringValue(value["id"])

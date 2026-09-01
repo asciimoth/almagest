@@ -362,7 +362,7 @@ func (n *wireGuardNode) retryConfigToDevice(generation uint64) {
 		n.scheduleCurrentNetworkBindAttach(networkGeneration, generation, true)
 		return
 	}
-	n.scheduleConfigApply(n.config.clone(), false, runtimeGeneration, generation, true)
+	n.scheduleConfigApply(n.effectiveConfig(), false, runtimeGeneration, generation, true)
 }
 func (n *wireGuardNode) failRuntime(err error, retry bool) {
 	n.setRuntimeError(err)
@@ -448,9 +448,10 @@ func (n *wireGuardNode) sendTunConfigToLink(link uint64) {
 	EmitTunConfig(n.W, n.ID, link, n.tunConfig())
 }
 func (n *wireGuardNode) tunConfig() TunConfig {
+	effective := n.effectiveConfig()
 	return TunConfig{
-		Addrs:  wireGuardOwnedIPAddrs(n.config.ownedIPs),
-		Routes: wireGuardPeerRoutes(n.config.peers),
+		Addrs:  wireGuardOwnedIPAddrs(effective.ownedIPs),
+		Routes: wireGuardPeerRoutes(effective.peers),
 	}
 }
 func (n *wireGuardNode) updateLabel() error {
@@ -494,6 +495,8 @@ func (n *wireGuardNode) stateTextFromSnapshot(status wireGuardStatusSnapshot) st
 	switch {
 	case n.formError != "":
 		return "invalid config"
+	case len(n.objectErrors) != 0:
+		return "invalid object config"
 	case n.runtimeError != "" || status.bindFailed:
 		return "error"
 	case n.config.privateKey == "":
@@ -522,7 +525,7 @@ func (n *wireGuardNode) handleRuntimeAttachmentResult(msg wireGuardRuntimeAttach
 		return
 	}
 	if msg.needsConfigApply {
-		n.scheduleConfigApply(n.config.clone(), false, n.currentRuntimeGeneration(), 0, false)
+		n.scheduleConfigApply(n.effectiveConfig(), false, n.currentRuntimeGeneration(), 0, false)
 		_ = n.updateLabel()
 		n.sendStatusBlock()
 		return

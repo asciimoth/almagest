@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"reflect"
@@ -293,6 +294,65 @@ func TestWireGuardPeerRoutesNormalizeAndDedupe(t *testing.T) {
 
 	if got := wireGuardPeerRoutes([]wireGuardPeerConfig{{allowedIPs: "bad"}}); got != nil {
 		t.Fatalf("wireGuardPeerRoutes(invalid) = %#v, want nil", got)
+	}
+}
+
+func TestWireGuardObjectPeersParseAndMenuConflictWins(t *testing.T) {
+	_, menuKey := wireGuardTestKeyPair(t, 101)
+	_, objectKey := wireGuardTestKeyPair(t, 102)
+	object, err := std.ObjectFromJSON([]byte(fmt.Sprintf(`{
+		"metadata":{"source":"test"},
+		"peers":[
+			{"id":"object-conflict","publicKey":%q,"endpoint":"127.0.0.1:1","allowedIPs":"10.101.0.0/24"},
+			{"id":"object-only","publicKey":%q,"allowedIPs":"10.102.0.0/24","persistentKeepaliveInterval":17}
+		]
+	}`, menuKey, objectKey)))
+	if err != nil {
+		t.Fatalf("ObjectFromJSON: %v", err)
+	}
+	peers, err := wireGuardPeersFromObject(object)
+	if err != nil {
+		t.Fatalf("wireGuardPeersFromObject: %v", err)
+	}
+	if len(peers) != 2 || peers[1].persistentKeepaliveInterval != 17 {
+		t.Fatalf("parsed object peers = %#v, want two peers and keepalive 17", peers)
+	}
+
+	menu := []wireGuardPeerConfig{{
+		id:         "menu-winner",
+		publicKey:  menuKey,
+		endpoint:   "127.0.0.1:51820",
+		allowedIPs: "10.200.0.0/24",
+	}}
+	merged := mergeWireGuardPeers(menu, map[uint64][]wireGuardPeerConfig{
+		20: peers,
+		10: {{id: "lower-link-winner", publicKey: objectKey, allowedIPs: "10.201.0.0/24"}},
+	})
+	if len(merged) != 2 {
+		t.Fatalf("merged peers = %d, want 2", len(merged))
+	}
+	if merged[0].id != "menu-winner" || merged[0].endpoint != "127.0.0.1:51820" {
+		t.Fatalf("merged menu conflict = %#v, want menu peer", merged[0])
+	}
+	if merged[1].id != "lower-link-winner" {
+		t.Fatalf("merged object conflict = %#v, want lower link ID peer", merged[1])
+	}
+}
+
+func TestWireGuardPeersFromObjectRejectsMissingOrInvalidPeers(t *testing.T) {
+	for _, input := range []string{
+		`null`,
+		`{"metadata":true}`,
+		`{"peers":{}}`,
+		`{"peers":[true]}`,
+	} {
+		object, err := std.ObjectFromJSON([]byte(input))
+		if err != nil {
+			t.Fatalf("ObjectFromJSON(%s): %v", input, err)
+		}
+		if _, err := wireGuardPeersFromObject(object); err == nil {
+			t.Fatalf("wireGuardPeersFromObject(%s) succeeded", input)
+		}
 	}
 }
 

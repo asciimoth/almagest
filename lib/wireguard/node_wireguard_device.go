@@ -31,7 +31,7 @@ func (n *wireGuardNode) ensureDeviceLocked() {
 	n.subscribeToReceiveErrorsLocked(n.dev)
 }
 func (n *wireGuardNode) applyConfigToDevice(rebuildPeers bool) error {
-	config := n.config.clone()
+	config := n.effectiveConfig()
 	n.runtimeMu.Lock()
 	defer n.runtimeMu.Unlock()
 	return n.applyConfigToDeviceLocked(config, rebuildPeers)

@@ -2,6 +2,7 @@ package wireguardnodes_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"testing"
@@ -65,6 +66,84 @@ func TestWireGuardE2EVTunHTTPClientServer(t *testing.T) {
 	f.clientWGTunLink = f.connectTunByPortName(f.clientWG, "left", "Tun", f.clientVTun, "right", "Tun")
 	f.WaitNodeLabel(f.clientWG, "up")
 	f.assertWireGuardRequestWorks()
+}
+
+func TestWireGuardE2EObjectPeersMergeUpdateDetachAndReattach(t *testing.T) {
+	f := setupWireGuardE2E(t, defaultWireGuardE2ENames("object-peers-"))
+	first := f.AddNode(std.NodeTypeObjectConstant, "object-peers-first")
+	second := f.AddNode(std.NodeTypeObjectConstant, "object-peers-second")
+	_, firstKey := wireGuardTestKeyPair(t, 111)
+	_, secondKey := wireGuardTestKeyPair(t, 112)
+	_, replacementKeyA := wireGuardTestKeyPair(t, 113)
+	_, replacementKeyB := wireGuardTestKeyPair(t, 114)
+	_, serverPublic := wireGuardTestKeyPair(t, 73)
+
+	f.ApplyStdConstantValue(first, wireGuardObjectPeersJSON(t, []wireGuardPeerConfig{{
+		id: "first", publicKey: firstKey, allowedIPs: "10.211.1.1/32",
+	}}))
+	f.ApplyStdConstantValue(second, wireGuardObjectPeersJSON(t, []wireGuardPeerConfig{
+		{
+			// This peer conflicts with the working menu peer. If the object
+			// won, its wrong endpoint and route would break the tunnel.
+			id: "server-object-conflict", publicKey: serverPublic,
+			endpoint: "127.0.0.1:1", allowedIPs: "10.255.255.1/32",
+		},
+		{id: "second", publicKey: secondKey, allowedIPs: "10.211.2.1/32"},
+	}))
+	firstLink := f.MustAddTypedLinkByPortName(std.TypeObject, first, "right", "output", f.clientWG, "left", "Peers")
+	secondLink := f.MustAddTypedLinkByPortName(std.TypeObject, second, "right", "output", f.clientWG, "left", "Peers")
+	waitWireGuardPeerCounts(t, f.httpE2E, f.clientWG, 3)
+	f.assertWireGuardRequestWorks()
+
+	// A new value from an existing link replaces only that link's latest
+	// contribution and removes the old peer from the live wgo device.
+	f.ApplyStdConstantValue(first, wireGuardObjectPeersJSON(t, []wireGuardPeerConfig{
+		{id: "replacement-a", publicKey: replacementKeyA, allowedIPs: "10.211.3.1/32"},
+		{id: "replacement-b", publicKey: replacementKeyB, allowedIPs: "10.211.4.1/32"},
+	}))
+	waitWireGuardPeerCounts(t, f.httpE2E, f.clientWG, 4)
+	f.assertWireGuardRequestWorks()
+
+	// Detach removes only the second source. Reattach requests its latest
+	// object and restores both its unique peer and its shadowed conflict.
+	f.Engine.RemoveLink(E2EWorkspace, secondLink)
+	waitWireGuardPeerCounts(t, f.httpE2E, f.clientWG, 3)
+	f.assertWireGuardRequestWorks()
+	secondLink = f.MustAddTypedLinkByPortName(std.TypeObject, second, "right", "output", f.clientWG, "left", "Peers")
+	waitWireGuardPeerCounts(t, f.httpE2E, f.clientWG, 4)
+	f.assertWireGuardRequestWorks()
+
+	_ = firstLink
+	_ = secondLink
+}
+
+func wireGuardObjectPeersJSON(t *testing.T, peers []wireGuardPeerConfig) string {
+	t.Helper()
+	values := make([]map[string]any, 0, len(peers))
+	for i, peer := range peers {
+		peer.normalize(i)
+		values = append(values, map[string]any{
+			"id":                          peer.id,
+			"publicKey":                   peer.publicKey,
+			"endpoint":                    peer.endpoint,
+			"allowedIPs":                  peer.allowedIPs,
+			"persistentKeepaliveInterval": peer.persistentKeepaliveInterval,
+		})
+	}
+	data, err := json.Marshal(map[string]any{"peers": values})
+	if err != nil {
+		t.Fatalf("marshal WireGuard object peers: %v", err)
+	}
+	return string(data)
+}
+
+func waitWireGuardPeerCounts(t *testing.T, e *httpE2E, node uint64, want int) {
+	t.Helper()
+	wantText := fmt.Sprint(want)
+	Eventually(t, func() bool {
+		return e.wireGuardStatusValue(node, "peers") == wantText &&
+			e.wireGuardStatusValue(node, "runtimePeers") == wantText
+	}, "WireGuard node %d effective and runtime peer count %d", node, want)
 }
 
 func TestWireGuardE2EAlternativeBatchSize(t *testing.T) {

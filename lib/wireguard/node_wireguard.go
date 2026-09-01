@@ -2,6 +2,9 @@ package wireguardnodes
 
 import (
 	_ "embed"
+	"fmt"
+	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -36,6 +39,7 @@ func (WireGuardClass) LongDescription() string  { return WireGuardClassLongDescr
 func (WireGuardClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: TypeTun, InitialPorts: []pasta.Port{
 		TunPort("left", "Tun"),
+		{Direction: "left", Name: "Peers", Types: []string{std.TypeObject}},
 		NetworkPort("right", "Network"),
 	}}
 }
@@ -46,7 +50,14 @@ func (c WireGuardClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState)
 	if c.Runtime != nil {
 		secrets = c.Runtime.SecretsStorage()
 	}
-	return &wireGuardNode{NodeBase: NodeBase{Runtime: c.Runtime}, secrets: secrets, config: config}, nil
+	return &wireGuardNode{
+		NodeBase:         NodeBase{Runtime: c.Runtime},
+		secrets:          secrets,
+		config:           config,
+		objectPeerInputs: map[uint64][]wireGuardPeerConfig{},
+		objectPeers:      map[uint64][]wireGuardPeerConfig{},
+		objectErrors:     map[uint64]string{},
+	}, nil
 }
 
 // wireGuardNode owns exactly one wgo Device.
@@ -78,8 +89,9 @@ type wireGuardNode struct {
 	nodeName string
 	secrets  SecretsStorage
 
-	tunp uint64
-	netp uint64
+	tunp  uint64
+	peerp uint64
+	netp  uint64
 
 	tunLink uint64
 	netLink uint64
@@ -98,6 +110,14 @@ type wireGuardNode struct {
 
 	config wireGuardConfig
 	dev    *wgdevice.Device
+
+	// objectPeerInputs keeps the latest source-owned value for each attached
+	// object link. objectPeers contains only resolved and validated values that
+	// currently contribute to the device. Keeping the input separately lets a
+	// SecretValueChanged event retry a source after its secret becomes valid.
+	objectPeerInputs map[uint64][]wireGuardPeerConfig
+	objectPeers      map[uint64][]wireGuardPeerConfig
+	objectErrors     map[uint64]string
 
 	runtimeMu              sync.Mutex
 	runtimeGeneration      atomic.Uint64
@@ -134,7 +154,9 @@ func (n *wireGuardNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint6
 	n.nodeName = name
 	n.config.normalize()
 	n.tunp = restoredLeft(restored, 0)
+	n.peerp = restoredLeft(restored, 1)
 	n.netp = restoredRight(restored, 0)
+	n.ensureObjectPeerMaps()
 	if err := n.SetPrimary(TypeTun); err != nil {
 		return err
 	}
@@ -153,6 +175,7 @@ func (n *wireGuardNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint6
 func (n *wireGuardNode) OnReady() error {
 	n.sendTunConfig()
 	n.RequestPort(n.tunp)
+	n.RequestPort(n.peerp)
 	n.RequestPort(n.netp)
 	return nil
 }
@@ -164,13 +187,16 @@ func (n *wireGuardNode) OnStop() {
 	n.scheduleRuntimeStop()
 }
 func (n *wireGuardNode) PreLinkAdd(port uint64, linkType, portDirection string) error {
-	switch port {
-	case n.tunp:
+	switch {
+	case port == n.tunp:
 		if portDirection != "left" {
 			return pasta.LinkTypeErr(linkType)
 		}
 		return TunPreLinkAdd(n.W, port, linkType)
-	case n.netp:
+	case port == n.peerp && portDirection == "left" && linkType == std.TypeObject:
+		// Each object link owns one independent peer-list contribution.
+		return nil
+	case port == n.netp:
 		if portDirection != "right" || linkType != TypeNetwork {
 			return pasta.LinkTypeErr(linkType)
 		}
@@ -190,6 +216,8 @@ func (n *wireGuardNode) OnLinkAdd(link, port uint64, linkType, portDirection str
 		n.nextRuntimeGeneration()
 		n.sendTunConfigToLink(link)
 		std.RequestLocked(n.W, n.ID, link)
+	case port == n.peerp && portDirection == "left" && linkType == std.TypeObject:
+		std.RequestLocked(n.W, n.ID, link)
 	case port == n.netp && portDirection == "right" && linkType == TypeNetwork:
 		n.netLink = link
 		n.nextNetworkGeneration()
@@ -208,6 +236,11 @@ func (n *wireGuardNode) OnLinkRemoved(link uint64, port uint64, linkType, portDi
 		tunGeneration := n.nextTunGeneration()
 		n.nextRuntimeGeneration()
 		n.scheduleTunDetach(tunGeneration)
+	case port == n.peerp && portDirection == "left" && linkType == std.TypeObject:
+		delete(n.objectPeerInputs, link)
+		delete(n.objectPeers, link)
+		delete(n.objectErrors, link)
+		n.applyEffectivePeerConfig()
 	case port == n.netp && portDirection == "right" && linkType == TypeNetwork && link == n.netLink:
 		n.cancelConfigRetry()
 		n.netLink = 0
@@ -220,6 +253,9 @@ func (n *wireGuardNode) OnLinkRemoved(link uint64, port uint64, linkType, portDi
 	return nil
 }
 func (n *wireGuardNode) OnEvent(event pasta.Event, linkType string, _ []string, receiverPortDirection string) error {
+	if event.ReceiverPort == n.peerp && receiverPortDirection == "left" && linkType == std.TypeObject {
+		return n.acceptObjectPeers(event)
+	}
 	if event.ReceiverPort == n.tunp && receiverPortDirection == "left" && linkType == TypeTun {
 		if std.IsRequest(event.Payload) {
 			n.sendTunConfigToLink(event.Link)
@@ -350,6 +386,11 @@ func (n *wireGuardNode) commitConfigForm(next wireGuardConfig, opts wireGuardCon
 		n.rejectConfigForm(err)
 		return nil
 	}
+	effective := n.effectiveConfigWithMenu(next)
+	if err := validateWireGuardConfig(effective); err != nil {
+		n.rejectConfigForm(err)
+		return nil
+	}
 	n.formError = ""
 	n.config = next
 	generation := n.nextRuntimeGeneration()
@@ -363,11 +404,114 @@ func (n *wireGuardNode) commitConfigForm(next wireGuardConfig, opts wireGuardCon
 	// Applying config may open sockets, update peer endpoints, and bring the
 	// device up. Schedule it after the form callback has released workspace
 	// state so daemon restore and snapshots are not blocked by runtime I/O.
-	n.scheduleConfigApply(next.clone(), opts.rebuildPeers, generation, 0, false)
+	n.scheduleConfigApply(effective, opts.rebuildPeers, generation, 0, false)
 	return nil
 }
 func (n *wireGuardNode) rejectConfigForm(err error) {
 	n.formError = err.Error()
 	n.sendForcedMenuSnapshot()
 	_ = n.updateLabel()
+}
+
+// acceptObjectPeers replaces only the contribution owned by event.Link. A bad
+// latest value removes the previous valid contribution from that link, records
+// a link-specific error, and still applies all remaining valid peers.
+func (n *wireGuardNode) acceptObjectPeers(event pasta.Event) error {
+	if std.IsRequest(event.Payload) {
+		return nil
+	}
+	object, ok := std.ObjectFromPayload(event.Payload)
+	if !ok {
+		return nil
+	}
+	input, err := wireGuardPeersFromObject(object)
+	if err == nil {
+		// Store the source value before secret resolution so a later secret
+		// notification can recover this link without another producer event.
+		n.objectPeerInputs[event.Link] = slices.Clone(input)
+	}
+	peers := input
+	if err == nil {
+		peers, err = n.resolveObjectPeerSecrets(input)
+	}
+	if err == nil {
+		candidate := n.config.clone()
+		candidate.peers = slices.Clone(peers)
+		err = validateWireGuardConfig(candidate)
+	}
+	if err == nil {
+		n.objectPeerInputs[event.Link] = wireGuardPeerInputs(peers)
+		n.objectPeers[event.Link] = slices.Clone(peers)
+		delete(n.objectErrors, event.Link)
+		effective := n.effectiveConfig()
+		if effectiveErr := validateWireGuardConfig(effective); effectiveErr != nil {
+			delete(n.objectPeers, event.Link)
+			n.objectErrors[event.Link] = effectiveErr.Error()
+		}
+	} else {
+		if input == nil {
+			delete(n.objectPeerInputs, event.Link)
+		}
+		delete(n.objectPeers, event.Link)
+		n.objectErrors[event.Link] = err.Error()
+	}
+	n.applyEffectivePeerConfig()
+	return nil
+}
+
+// applyEffectivePeerConfig invalidates older async applies before it installs
+// the newest merged peer snapshot. ReplacePeers is required so detach and
+// object replacement remove peers that are no longer present.
+func (n *wireGuardNode) applyEffectivePeerConfig() {
+	generation := n.nextRuntimeGeneration()
+	n.cancelConfigRetry()
+	n.sendTunConfig()
+	_ = n.updateLabel()
+	n.sendStatusBlock()
+	n.scheduleConfigApply(n.effectiveConfig(), true, generation, 0, false)
+}
+
+func (n *wireGuardNode) effectiveConfig() wireGuardConfig {
+	return n.effectiveConfigWithMenu(n.config)
+}
+
+func (n *wireGuardNode) effectiveConfigWithMenu(menu wireGuardConfig) wireGuardConfig {
+	effective := menu.clone()
+	effective.peers = mergeWireGuardPeers(menu.peers, n.objectPeers)
+	return effective
+}
+
+func (n *wireGuardNode) ensureObjectPeerMaps() {
+	if n.objectPeerInputs == nil {
+		n.objectPeerInputs = map[uint64][]wireGuardPeerConfig{}
+	}
+	if n.objectPeers == nil {
+		n.objectPeers = map[uint64][]wireGuardPeerConfig{}
+	}
+	if n.objectErrors == nil {
+		n.objectErrors = map[uint64]string{}
+	}
+}
+
+func wireGuardPeerInputs(peers []wireGuardPeerConfig) []wireGuardPeerConfig {
+	out := slices.Clone(peers)
+	for i := range out {
+		// Resolved key material is runtime-only. Keep the secret name so a later
+		// secret notification can fetch a new value without another object event.
+		out[i].presharedKey = ""
+	}
+	return out
+}
+
+func (n *wireGuardNode) objectErrorText() string {
+	links := make([]uint64, 0, len(n.objectErrors))
+	for link := range n.objectErrors {
+		links = append(links, link)
+	}
+	slices.Sort(links)
+	parts := make([]string, 0, len(links))
+	for _, link := range links {
+		parts = append(parts, fmt.Sprintf("link %d: %s", link, n.objectErrors[link]))
+	}
+	return strings.Join(parts, "; ")
 }
