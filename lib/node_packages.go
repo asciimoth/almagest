@@ -3,6 +3,7 @@ package almagest
 import (
 	"github.com/asciimoth/pasta/pasta"
 
+	amnesianodes "github.com/asciimoth/almagest/lib/amnesia"
 	debugnodes "github.com/asciimoth/almagest/lib/debug"
 	dnsnodes "github.com/asciimoth/almagest/lib/dns"
 	httpnodes "github.com/asciimoth/almagest/lib/http"
@@ -17,7 +18,8 @@ import (
 // packageNodeClasses is the central registration point for node classes that
 // are implemented outside the root package.
 func packageNodeClasses(runtime *engine, isDebug bool) []pasta.NodeClass {
-	classes := dnsnodes.Classes(runtime)
+	classes := amnesianodes.Classes(runtime)
+	classes = append(classes, dnsnodes.Classes(runtime)...)
 	classes = append(classes, httpnodes.Classes(runtime)...)
 	classes = append(classes, networknodes.Classes(runtime)...)
 	classes = append(classes, socksnodes.Classes(runtime)...)

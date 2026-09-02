@@ -2,6 +2,8 @@ package wireguardnodes
 
 import (
 	"errors"
+	"reflect"
+	"slices"
 	"sync"
 
 	"github.com/asciimoth/pasta/pasta"
@@ -19,6 +21,12 @@ import (
 // links and must give each link a separate API created with
 // wgdevice.DetachDevice. A controller owns a right-directed consumer port and
 // should accept at most one TypeWGCtrl link.
+//
+// WGCtrlInterfaceConfig values flow in the opposite direction. Each controller
+// can suggest interface addresses that the WireGuard node merges with its menu
+// owned IPs and suggestions from all other attached controller links. Only the
+// latest config from each link is current. An empty config withdraws that
+// link's suggestion, and removing the link removes its suggestion.
 //
 // Each detached API has an independent lifecycle. Closing it does not close
 // the shared WireGuard device or another controller API. Providers must bind
@@ -65,12 +73,43 @@ type WGCtrlPayload struct {
 	resource *wgCtrlResource
 }
 
+// WGCtrlInterfaceConfig carries controller-owned WireGuard interface settings
+// from a right-directed controller port to a left-directed provider port.
+// OwnedIPs accepts IP addresses or CIDR prefixes.
+type WGCtrlInterfaceConfig struct {
+	OwnedIPs []string
+}
+
+// wgCtrlInterfaceConfigApply carries a config update that must complete before
+// the controller continues with peer or transport changes. result must be
+// buffered so the provider never blocks a workspace callback.
+type wgCtrlInterfaceConfigApply struct {
+	config WGCtrlInterfaceConfig
+	result chan<- error
+	link   uint64
+	err    error
+}
+
+type wgCtrlInterfaceConfigCommit struct {
+	apply *wgCtrlInterfaceConfigApply
+}
+
+// Clone returns a deep copy of cfg.
+func (cfg WGCtrlInterfaceConfig) Clone() WGCtrlInterfaceConfig {
+	return WGCtrlInterfaceConfig{OwnedIPs: slices.Clone(cfg.OwnedIPs)}
+}
+
+// IsZero reports whether cfg has no interface setting suggestions.
+func (cfg WGCtrlInterfaceConfig) IsZero() bool {
+	return len(cfg.OwnedIPs) == 0
+}
+
 // Close closes the detached API and releases its tracked wgo resources.
 func (p WGCtrlPayload) Close() error {
 	if p.resource != nil {
 		return p.resource.Close()
 	}
-	if p.API != nil {
+	if !wgCtrlIsNil(p.API) {
 		p.API.Close()
 	}
 	return nil
@@ -120,12 +159,53 @@ func WGCtrlPortHasLink(w *pasta.Workspace, port uint64) bool {
 	return false
 }
 
+// EmitWGCtrlInterfaceConfig sends a controller's current interface suggestions
+// to the WireGuard provider on link. The workspace must be locked. A zero
+// config withdraws the controller's previous suggestions.
+func EmitWGCtrlInterfaceConfig(w *pasta.Workspace, node, link uint64, cfg WGCtrlInterfaceConfig) bool {
+	if w == nil || node == 0 || link == 0 {
+		return false
+	}
+	snapshot, ok := w.LinkSnapshotLocked(link)
+	if !ok || snapshot.Type != TypeWGCtrl || snapshot.RightPortNode != node {
+		return false
+	}
+	w.EmitEventLocked(node, link, cfg.Clone())
+	return true
+}
+
+// EmitWGCtrlInterfaceConfigApply sends a controller's interface suggestions.
+// It reports only after the provider has validated them and the resulting TUN
+// generation is attached. The workspace must be locked. result must have
+// capacity for one value.
+func EmitWGCtrlInterfaceConfigApply(
+	w *pasta.Workspace,
+	node, link uint64,
+	cfg WGCtrlInterfaceConfig,
+	result chan<- error,
+) bool {
+	if w == nil || node == 0 || link == 0 || result == nil {
+		return false
+	}
+	snapshot, ok := w.LinkSnapshotLocked(link)
+	if !ok || snapshot.Type != TypeWGCtrl || snapshot.RightPortNode != node {
+		return false
+	}
+	apply := &wgCtrlInterfaceConfigApply{
+		config: cfg.Clone(),
+		result: result,
+	}
+	w.EmitEventLocked(node, link, apply)
+	w.EmitLowPriorityEventLocked(node, link, wgCtrlInterfaceConfigCommit{apply: apply})
+	return true
+}
+
 // BindWGCtrlResource binds payload to both link endpoint nodes and the link.
 //
 // The workspace must be locked. Calls for a missing or non-TypeWGCtrl link, or
 // for a payload without an API, have no effect.
 func BindWGCtrlResource(w *pasta.Workspace, link uint64, payload WGCtrlPayload) {
-	if w == nil || link == 0 || payload.API == nil {
+	if w == nil || link == 0 || wgCtrlIsNil(payload.API) {
 		return
 	}
 	snapshot, ok := w.LinkSnapshotLocked(link)
@@ -224,7 +304,7 @@ func AcceptWGCtrlPayload(w *pasta.Workspace, event pasta.Event, expectedLink uin
 
 // WGCtrlPublicKey returns the shared device public key visible through api.
 func WGCtrlPublicKey(api WGCtrlAPI) (wgdevice.NoisePublicKey, bool) {
-	if api == nil {
+	if wgCtrlIsNil(api) {
 		return wgdevice.NoisePublicKey{}, false
 	}
 	privateKey := api.PrivateKey()
@@ -236,7 +316,7 @@ func WGCtrlPublicKey(api WGCtrlAPI) (wgdevice.NoisePublicKey, bool) {
 
 // WGCtrlIsReady reports whether api is present and has not closed.
 func WGCtrlIsReady(api WGCtrlAPI) bool {
-	if api == nil {
+	if wgCtrlIsNil(api) {
 		return false
 	}
 	select {
@@ -250,16 +330,33 @@ func WGCtrlIsReady(api WGCtrlAPI) bool {
 // SameWGCtrlInstance reports whether a and b are the same comparable API
 // object. Non-comparable API values are never considered the same.
 func SameWGCtrlInstance(a, b WGCtrlAPI) bool {
-	if a == nil || b == nil {
-		return a == nil && b == nil
+	aNil := wgCtrlIsNil(a)
+	bNil := wgCtrlIsNil(b)
+	if aNil || bNil {
+		return aNil && bNil
 	}
 	return links.SameComparableValue(a, b)
 }
 
 // CloseWGCtrl closes api when it is not nil.
 func CloseWGCtrl(api WGCtrlAPI) {
-	if api != nil {
+	if !wgCtrlIsNil(api) {
 		api.Close()
+	}
+}
+
+// wgCtrlIsNil also detects a nil pointer stored in an interface. This state
+// occurs while a WireGuard node has not published its runtime device yet.
+func wgCtrlIsNil(api WGCtrlAPI) bool {
+	if api == nil {
+		return true
+	}
+	value := reflect.ValueOf(api)
+	switch value.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		return value.IsNil()
+	default:
+		return false
 	}
 }
 

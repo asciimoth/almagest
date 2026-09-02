@@ -94,13 +94,14 @@ func (n *wireGuardNode) scheduleConfigApply(config wireGuardConfig, rebuildPeers
 			return false, nil, false
 		}
 		// Capture retry eligibility before applyConfigToDeviceLocked can mark
-		// the current bind failed; the active attachments caused this failure.
-		retryOnError := n.currentTunActiveLocked() && n.currentNetworkActiveLocked() && n.currentBind != nil
+		// the current bind failed. A running device remains eligible while it
+		// waits for a replacement TUN.
+		retryOnError := n.shouldRunDeviceLocked()
 		err := n.applyConfigToDeviceLocked(config, rebuildPeers)
 		if err != nil {
 			return retryOnError, err, true
 		}
-		return n.hasActiveAttachmentsLocked(), nil, true
+		return n.shouldRunDeviceLocked(), nil, true
 	})
 }
 
@@ -138,6 +139,7 @@ func (n *wireGuardNode) handleRuntimeResult(msg wireGuardRuntimeResultMessage) {
 		return
 	}
 	if msg.err != nil {
+		n.failWGCtrlInterfaceConfigAppliesForTunGeneration(0, msg.err)
 		n.failRuntime(msg.err, msg.retryOnError)
 		return
 	}
@@ -147,6 +149,7 @@ func (n *wireGuardNode) handleRuntimeResult(msg wireGuardRuntimeResultMessage) {
 	}
 	n.cancelConfigRetry()
 	n.clearRuntimeError()
+	n.checkPendingWGCtrlInterfaceConfigApplies()
 	n.sendWGCtrl()
 	_ = n.updateLabel()
 	n.sendStatusBlock()
@@ -169,7 +172,7 @@ func (n *wireGuardNode) tryMarkRuntimeReady(generation uint64) bool {
 	if !n.runtimeMu.TryLock() {
 		return false
 	}
-	if generation == n.currentRuntimeGeneration() && n.hasActiveAttachmentsLocked() {
+	if generation == n.currentRuntimeGeneration() && n.runtimeDeviceUp && n.hasActiveAttachmentsLocked() {
 		n.runtimeReadyGeneration = generation
 	}
 	n.runtimeMu.Unlock()
@@ -327,7 +330,7 @@ func (n *wireGuardNode) handleReceiveError(msg wireGuardReceiveErrorMessage) {
 	// reached this handler with its generation metadata intact, intentional
 	// current closes can be dropped safely.
 	intentionalClose := current && msg.intentionalClose
-	retry := n.currentTunActiveLocked() && n.currentNetworkActiveLocked() && n.currentBind != nil
+	retry := n.shouldRunDeviceLocked()
 	if current && !intentionalClose && retry {
 		// The bind object can remain non-nil after its receive loop dies. Mark
 		// it failed and advance the runtime generation before publishing the
@@ -451,7 +454,7 @@ func (n *wireGuardNode) sendTunConfigToLink(link uint64) {
 func (n *wireGuardNode) tunConfig() TunConfig {
 	effective := n.effectiveConfig()
 	return TunConfig{
-		Addrs:  wireGuardOwnedIPAddrs(effective.ownedIPs),
+		Addrs:  n.effectiveOwnedIPAddrs(),
 		Routes: wireGuardPeerRoutes(effective.peers),
 	}
 }
@@ -522,6 +525,7 @@ func (n *wireGuardNode) handleRuntimeAttachmentResult(msg wireGuardRuntimeAttach
 		return
 	}
 	if msg.err != nil {
+		n.failWGCtrlInterfaceConfigAppliesForTunGeneration(msg.tunGeneration, msg.err)
 		n.failRuntime(msg.err, msg.retryOnError)
 		return
 	}
@@ -531,8 +535,13 @@ func (n *wireGuardNode) handleRuntimeAttachmentResult(msg wireGuardRuntimeAttach
 		n.sendStatusBlock()
 		return
 	}
+	if !n.tryMarkRuntimeReady(n.currentRuntimeGeneration()) {
+		n.deferInternal(msg)
+		return
+	}
 	n.cancelConfigRetry()
 	n.clearRuntimeError()
+	n.checkPendingWGCtrlInterfaceConfigApplies()
 	_ = n.updateLabel()
 	n.sendStatusBlock()
 }

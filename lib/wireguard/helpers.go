@@ -105,6 +105,10 @@ func readonlyTextField(id, label, value string) formular.Item {
 	return nodekit.ReadonlyTextField(id, label, value)
 }
 
+func readonlyStringListField(id, label string, values []string) formular.Item {
+	return nodekit.ReadonlyStringListField(id, label, values)
+}
+
 func readonlyIntField(id, label string, value int) formular.Item {
 	return nodekit.ReadonlyIntField(id, label, value)
 }

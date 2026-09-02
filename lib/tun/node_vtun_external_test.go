@@ -2,6 +2,7 @@ package tunnodes
 
 import (
 	"context"
+	"net/netip"
 	"strings"
 	"testing"
 
@@ -153,6 +154,7 @@ func TestVTunGeneratedAddrsAreNotSaved(t *testing.T) {
 		t.Fatal("effective localAddrs is empty, want engine allocation cached")
 	}
 	testkit.AssertReadonlyMenuFieldValue(t, state, vtunID, "effective", "localAddrs", localAddrs)
+	testkit.AssertReadonlyMenuFieldValue(t, state, vtunID, "effective", "dnsServers", DefaultVTunDNSServer)
 	testkit.AssertReadonlyMenuFieldValue(t, state, vtunID, "effective", "mtu", DefaultVTunMTU)
 	cfg := configer.NewMemory(nil)
 	if err := w.SaveConfig(cfg); err != nil {
@@ -161,6 +163,21 @@ func TestVTunGeneratedAddrsAreNotSaved(t *testing.T) {
 	raw := configer.String(cfg.View(configer.Path{"vtun"}), configer.Path{"localAddrs"}, "")
 	if raw != "" {
 		t.Fatalf("saved localAddrs = %q, want empty generated value omitted", raw)
+	}
+}
+
+func TestVTunUsesDefaultDNSWhenNotConfigured(t *testing.T) {
+	node := &vtunNode{config: defaultVTunConfig()}
+	runtimeConfig, opts, err := node.buildRuntimeConfig()
+	if err != nil {
+		t.Fatalf("build runtime config: %v", err)
+	}
+	want := netip.MustParseAddr(DefaultVTunDNSServer)
+	if len(runtimeConfig.dnsServers) != 1 || runtimeConfig.dnsServers[0] != want {
+		t.Fatalf("runtime DNS servers = %v, want [%s]", runtimeConfig.dnsServers, want)
+	}
+	if len(opts.DnsServers) != 1 || opts.DnsServers[0] != want {
+		t.Fatalf("VTun DNS servers = %v, want [%s]", opts.DnsServers, want)
 	}
 }
 

@@ -348,7 +348,7 @@ Related implementation:
 - `lib/wireguard/node_wireguard_runtime.go`
 - `lib/wireguard/node_wireguard_device.go`
 
-### WireGuard Opened Sockets After TUN Detach
+### WireGuard TUN Events Changed Device State Outside The Node
 
 Bug:
 
@@ -356,19 +356,22 @@ Bug:
   initial `EventUp`.
 - `wgo` has its own TUN event reader that can call `device.Up()` independently
   of Almagest's runtime generation checks.
-- After a TUN link was removed, Almagest invalidated the TUN generation and
-  scheduled async detach, but the old TUN could still be physically installed
-  briefly.
-- A stale TUN event could bring `wgo` up during that window. A following config
-  apply that changed `listenPort` then reopened UDP sockets even though the
-  node was already logically waiting for TUN.
+- During a TUN replacement, an old `EventDown` could stop peers after the new
+  WireGuard configuration was applied.
+- After a TUN link was removed, a stale `EventUp` could also bring `wgo` up
+  outside Almagest's runtime generation checks.
 
 Fix:
 
-- WireGuard drains buffered TUN lifecycle events before attaching a TUN to
-  `wgo`.
+- WireGuard filters TUN `EventUp` and `EventDown` values. The node owns device
+  state changes, while MTU update events still reach `wgo`.
 - Config apply first physically detaches any installed TUN whose generation is
   no longer current.
+- An already-active device keeps its peers and UDP transport running while it
+  waits for a replacement TUN. Initial startup still requires both TUN and
+  network attachments before the device starts.
+- A hot TUN replacement does not reapply unchanged device configuration or
+  refresh the UDP bind.
 
 Coverage:
 

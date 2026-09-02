@@ -42,6 +42,7 @@ func (n *wireGuardNode) statusBlock() formular.Block {
 		readonlyIntField("listenPort", "Listen port", status.listenPort),
 		readonlyTextField("tun", "TUN", attachedText(status.hasTun)),
 		readonlyTextField("network", "Network", attachedText(status.hasNetwork)),
+		readonlyStringListField("ownedIPs", "Effective owned IPs", n.effectiveOwnedIPAddrs()),
 		readonlyIntField("peers", "Peers", len(effective.peers)),
 		readonlyIntField("runtimePeers", "Runtime peers", status.stats.PeerCount),
 		readonlyIntField("activePeers", "Active peers", status.stats.ActivePeerCount),

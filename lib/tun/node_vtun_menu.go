@@ -35,7 +35,7 @@ func (n *vtunNode) sendEffectiveBlock() {
 
 func (n *vtunNode) effectiveBlock() formular.Block {
 	localAddrs := n.effectiveLocalAddrsForMenu()
-	dnsServers, _ := parseAddrList(n.config.dnsServers, false)
+	dnsServers, _ := n.effectiveDNSServers()
 	mtu := n.config.mtu
 	if mtu <= 0 && n.tunConfig.MTU > 0 {
 		mtu = n.tunConfig.MTU
@@ -68,10 +68,12 @@ func (n *vtunNode) effectiveLocalAddrsForMenu() []netip.Addr {
 
 func (n *vtunNode) configBlock() formular.Block {
 	statusErr := n.formError != ""
+	dnsServers := configTextField("dnsServers", "DNS servers", n.config.dnsServers, statusErr, n.formError, true)
+	dnsServers.Help = "DNS server IP addresses. If this field is empty, VTun uses 8.8.8.8."
 	return formular.Block{ID: "config", Order: 10, Generation: 1, Form: true, Items: []formular.Item{
 		configTextField("name", "Name", n.config.name, statusErr, n.formError, false),
 		configTextField("localAddrs", "Local addrs", n.config.localAddrs, statusErr, n.formError, true),
-		configTextField("dnsServers", "DNS servers", n.config.dnsServers, statusErr, n.formError, true),
+		dnsServers,
 		configIntField("mtu", "MTU", n.config.mtu, statusErr, n.formError),
 		configIntField("endpointCh", "Endpoint channel", n.config.endpointCh, statusErr, n.formError),
 		configIntField("eventCh", "Event channel", n.config.eventCh, statusErr, n.formError),

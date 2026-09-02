@@ -71,6 +71,37 @@ func TestWireGuardRuntimeStatsMessageUpdatesStatusRows(t *testing.T) {
 	assertWireGuardStatusItemValue(t, block, "latestHandshake", "2026-06-28T12:34:56Z")
 }
 
+func TestWireGuardMergesMenuAndControllerOwnedIPs(t *testing.T) {
+	node := &wireGuardNode{
+		config: wireGuardConfig{ownedIPs: "10.60.0.2\nfd00:60::2/128"},
+		wgctrlConfigs: map[uint64]WGCtrlInterfaceConfig{
+			9: {OwnedIPs: []string{"10.90.0.2/32", "10.40.0.2/32"}},
+			4: {OwnedIPs: []string{"10.40.0.2/32", "10.60.0.2/32"}},
+		},
+	}
+	want := []string{"10.60.0.2/32", "fd00:60::2/128", "10.40.0.2/32", "10.90.0.2/32"}
+	if got := node.effectiveOwnedIPAddrs(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("effective owned IPs = %v, want %v", got, want)
+	}
+	assertWireGuardStatusItemValue(t, node.statusBlock(), "ownedIPs", strings.Join(want, "\n"))
+
+	if err := node.acceptWGCtrlInterfaceConfig(4, WGCtrlInterfaceConfig{OwnedIPs: []string{"10.41.0.2"}}); err != nil {
+		t.Fatalf("update controller owned IP: %v", err)
+	}
+	want = []string{"10.60.0.2/32", "fd00:60::2/128", "10.41.0.2/32", "10.90.0.2/32", "10.40.0.2/32"}
+	if got := node.effectiveOwnedIPAddrs(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("updated effective owned IPs = %v, want %v", got, want)
+	}
+
+	if err := node.acceptWGCtrlInterfaceConfig(4, WGCtrlInterfaceConfig{}); err != nil {
+		t.Fatalf("withdraw controller owned IPs: %v", err)
+	}
+	want = []string{"10.60.0.2/32", "fd00:60::2/128", "10.90.0.2/32", "10.40.0.2/32"}
+	if got := node.effectiveOwnedIPAddrs(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("withdrawn effective owned IPs = %v, want %v", got, want)
+	}
+}
+
 func TestWireGuardBatchSizeConfiguresDeviceAndBind(t *testing.T) {
 	privateKey, _ := wireGuardTestKeyPair(t, 51)
 	network := gonnect.NewLoopbackNetwork()
@@ -282,6 +313,57 @@ func TestWireGuardOwnedIPAddrsNormalizeAndDedupe(t *testing.T) {
 	}
 }
 
+func TestWGCtrlInterfaceConfigApplyAcknowledgesValidation(t *testing.T) {
+	node := &wireGuardNode{
+		ctrlp:         1,
+		wgctrlConfigs: map[uint64]WGCtrlInterfaceConfig{},
+		config:        defaultWireGuardConfig(),
+	}
+	apply := func(addresses []string) error {
+		t.Helper()
+		result := make(chan error, 1)
+		request := &wgCtrlInterfaceConfigApply{
+			config: WGCtrlInterfaceConfig{OwnedIPs: addresses},
+			result: result,
+		}
+		err := node.OnEvent(pasta.Event{
+			ReceiverPort: 1,
+			Link:         7,
+			Payload:      request,
+		}, TypeWGCtrl, nil, "left")
+		if err != nil {
+			t.Fatalf("OnEvent() error = %v", err)
+		}
+		if err := node.OnEvent(pasta.Event{
+			ReceiverPort: 1,
+			Link:         7,
+			Payload:      wgCtrlInterfaceConfigCommit{apply: request},
+		}, TypeWGCtrl, nil, "left"); err != nil {
+			t.Fatalf("commit OnEvent() error = %v", err)
+		}
+		select {
+		case err := <-result:
+			return err
+		case <-time.After(time.Second):
+			t.Fatal("timed out waiting for interface config result")
+			return nil
+		}
+	}
+
+	if err := apply([]string{"10.31.0.2/32"}); err != nil {
+		t.Fatalf("valid interface config error = %v", err)
+	}
+	if got := node.effectiveOwnedIPAddrs(); !reflect.DeepEqual(got, []string{"10.31.0.2/32"}) {
+		t.Fatalf("effective addresses = %v, want [10.31.0.2/32]", got)
+	}
+	if err := apply([]string{"invalid"}); err == nil {
+		t.Fatal("invalid interface config error = nil")
+	}
+	if got := node.effectiveOwnedIPAddrs(); got != nil {
+		t.Fatalf("effective addresses after rejection = %v, want nil", got)
+	}
+}
+
 func TestWireGuardPeerRoutesNormalizeAndDedupe(t *testing.T) {
 	got := wireGuardPeerRoutes([]wireGuardPeerConfig{
 		{allowedIPs: "10.40.0.0/24 10.40.0.2"},
@@ -439,9 +521,20 @@ func TestWireGuardNetworkAttachmentDoesNotOpenSocketsUntilTunAttached(t *testing
 	eventually(t, func() bool {
 		return network.listenCount() > 0
 	}, "wireguard opens network after TUN attaches")
+	eventually(t, func() bool {
+		wg.runtimeMu.Lock()
+		defer wg.runtimeMu.Unlock()
+		return wg.runtimeDeviceUp && wg.dev != nil && wg.dev.RuntimeStats().ActivePeerCount == 1
+	}, "wireguard peer becomes active")
 
 	w.RemoveLink(tunLink)
-	listensAfterTunDetach := network.listenCount()
+	eventually(t, func() bool {
+		wg.runtimeMu.Lock()
+		defer wg.runtimeMu.Unlock()
+		return wg.currentTun == nil && wg.runtimeDeviceUp && wg.dev != nil &&
+			wg.dev.RuntimeStats().ActivePeerCount == 1 &&
+			wg.dev.RuntimeStats().ActiveTransportCount == 1
+	}, "wireguard remains active while waiting for a replacement TUN")
 	w.SendNodeFormularMsg(wgID, formular.FormApplyMessage{
 		MessageBase: formular.MessageBase{Type: formular.MessageFormApply, MenuID: pasta.NodeMenuID(wgID)},
 		BlockID:     "config",
@@ -450,9 +543,12 @@ func TestWireGuardNetworkAttachmentDoesNotOpenSocketsUntilTunAttached(t *testing
 			"listenPort":       51822,
 		},
 	})
-	if got := network.listenCount(); got != listensAfterTunDetach {
-		t.Fatalf("network listen count after TUN detach config = %d, want %d", got, listensAfterTunDetach)
-	}
+	eventually(t, func() bool {
+		wg.runtimeMu.Lock()
+		defer wg.runtimeMu.Unlock()
+		return wg.runtimeDeviceUp && wg.dev != nil && wg.dev.ListenPort() == 51822 &&
+			wg.dev.RuntimeStats().ActivePeerCount == 1
+	}, "wireguard remains active after config apply without a TUN")
 }
 
 func TestWireGuardStateDoesNotReportUpBeforeNetworkBindAttachCompletes(t *testing.T) {
@@ -473,6 +569,34 @@ func TestWireGuardStateDoesNotReportUpBeforeNetworkBindAttachCompletes(t *testin
 
 	if got := n.stateText(); got == "up" {
 		t.Fatalf("stateText() = %q with TUN and network present but no attached bind", got)
+	}
+}
+
+func TestWireGuardHotTunReplacementDoesNotNeedConfigApply(t *testing.T) {
+	first, firstPeer := tun.Pipe(4, 1500, 0, 0)
+	second, secondPeer := tun.Pipe(4, 1500, 0, 0)
+	t.Cleanup(func() { _ = firstPeer.Close() })
+	t.Cleanup(func() { _ = secondPeer.Close() })
+
+	node := &wireGuardNode{config: defaultWireGuardConfig()}
+	t.Cleanup(node.stopRuntime)
+	node.tunGeneration.Store(1)
+	needsConfig, attached, err := node.attachCurrentTun(1, first)
+	if err != nil || !attached || needsConfig {
+		t.Fatalf("initial TUN attach = needsConfig %t, attached %t, error %v", needsConfig, attached, err)
+	}
+
+	node.runtimeMu.Lock()
+	node.currentBind = wireGuardTrackedBind{}
+	node.runtimeDeviceUp = true
+	node.runtimeMu.Unlock()
+	node.tunGeneration.Store(2)
+	needsConfig, attached, err = node.attachCurrentTun(2, second)
+	if err != nil || !attached {
+		t.Fatalf("replacement TUN attach = attached %t, error %v", attached, err)
+	}
+	if needsConfig {
+		t.Fatal("hot TUN replacement requested an unchanged device config apply")
 	}
 }
 

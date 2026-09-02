@@ -89,7 +89,7 @@ func (n *vtunNode) buildRuntimeConfig() (vtunRuntimeConfig, *netstackvtun.Opts, 
 	if err != nil {
 		return vtunRuntimeConfig{}, nil, err
 	}
-	dnsServers, err := parseAddrList(n.config.dnsServers, false)
+	dnsServers, err := n.effectiveDNSServers()
 	if err != nil {
 		return vtunRuntimeConfig{}, nil, err
 	}
@@ -124,6 +124,17 @@ func (n *vtunNode) buildRuntimeConfig() (vtunRuntimeConfig, *netstackvtun.Opts, 
 		// MWO: n.config.mwo,
 		// MRO: n.config.mro,
 	}, nil
+}
+
+func (n *vtunNode) effectiveDNSServers() ([]netip.Addr, error) {
+	servers, err := parseAddrList(n.config.dnsServers, false)
+	if err != nil {
+		return nil, err
+	}
+	if len(servers) == 0 {
+		return []netip.Addr{netip.MustParseAddr(DefaultVTunDNSServer)}, nil
+	}
+	return servers, nil
 }
 
 func (n *vtunNode) effectiveLocalAddrs() ([]netip.Addr, error) {

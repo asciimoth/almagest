@@ -46,6 +46,57 @@ func TestWGCtrlPortAndLinkCardinality(t *testing.T) {
 	}
 }
 
+func TestWGCtrlTypedNilDeviceIsNotReady(t *testing.T) {
+	var device *wgdevice.Device
+	var api WGCtrlAPI = device
+
+	if WGCtrlIsReady(api) {
+		t.Fatal("typed nil WireGuard controller is ready")
+	}
+	if _, ok := WGCtrlPublicKey(api); ok {
+		t.Fatal("typed nil WireGuard controller has a public key")
+	}
+	if !SameWGCtrlInstance(api, nil) {
+		t.Fatal("typed nil and nil WireGuard controllers differ")
+	}
+	CloseWGCtrl(api)
+	if err := (WGCtrlPayload{API: api}).Close(); err != nil {
+		t.Fatalf("close typed nil payload: %v", err)
+	}
+}
+
+func TestEmitWGCtrlInterfaceConfigFlowsFromController(t *testing.T) {
+	w := pasta.NewWorkspace(logging.NewDebugLogFactory(1024))
+	defer w.Close()
+	configs := make(chan WGCtrlInterfaceConfig, 1)
+	provider := addWGCtrlTestNode(t, w, "left", nil)
+	provider.configs = configs
+	controller := addWGCtrlTestNode(t, w, "right", nil)
+	link := addWGCtrlTestLink(t, w, provider.port, controller.port)
+
+	cfg := WGCtrlInterfaceConfig{OwnedIPs: []string{"10.44.0.2/32"}}
+	w.Lock()
+	if !EmitWGCtrlInterfaceConfig(w, controller.id, link, cfg) {
+		w.Unlock()
+		t.Fatal("EmitWGCtrlInterfaceConfig() = false, want true")
+	}
+	if EmitWGCtrlInterfaceConfig(w, provider.id, link, cfg) {
+		w.Unlock()
+		t.Fatal("provider emitted a controller config")
+	}
+	w.Unlock()
+	cfg.OwnedIPs[0] = "10.44.0.99/32"
+
+	select {
+	case got := <-configs:
+		if len(got.OwnedIPs) != 1 || got.OwnedIPs[0] != "10.44.0.2/32" {
+			t.Fatalf("received config = %#v", got)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for WGCtrl interface config")
+	}
+}
+
 func TestWGCtrlDetachedAPIsTrackPeersTransportsAndGraphLifecycle(t *testing.T) {
 	w := pasta.NewWorkspace(logging.NewDebugLogFactory(1024))
 	defer w.Close()
@@ -206,6 +257,7 @@ type wgCtrlTestNode struct {
 	link      uint64
 	current   WGCtrlAPI
 	events    chan<- WGCtrlAPI
+	configs   chan<- WGCtrlInterfaceConfig
 }
 
 type wgCtrlTestBind struct {
@@ -273,7 +325,13 @@ func (n *wgCtrlTestNode) OnLinkAdd(link, port uint64, linkType, portDirection st
 }
 
 func (n *wgCtrlTestNode) OnEvent(event pasta.Event, linkType string, _ []string, receiverPortDirection string) error {
-	if n.direction != "right" || event.ReceiverPort != n.port || linkType != TypeWGCtrl || receiverPortDirection != "right" {
+	if event.ReceiverPort != n.port || linkType != TypeWGCtrl || receiverPortDirection != n.direction {
+		return nil
+	}
+	if n.direction == "left" {
+		if cfg, ok := event.Payload.(WGCtrlInterfaceConfig); ok && n.configs != nil {
+			n.configs <- cfg.Clone()
+		}
 		return nil
 	}
 	next, changed := AcceptWGCtrlPayload(n.w, event, n.link, n.current)

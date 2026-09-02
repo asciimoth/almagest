@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	amnesianodes "github.com/asciimoth/almagest/lib/amnesia"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
 	"github.com/asciimoth/pasta/pasta"
@@ -361,6 +362,158 @@ func TestWireGuardE2ESendsTunConfigToAttachedTun(t *testing.T) {
 
 	applyWireGuardConfigWithOwnedIPs(t, e.Engine, wg, privateKey, 0, "", nil)
 	recorders.assertLastConfig(t, recorder, TunConfig{})
+}
+
+func TestAmnesiaOwnedIPsFlowThroughWireGuardToTun(t *testing.T) {
+	e, _ := newWireGuardTunConfigE2E(t)
+	wg := e.AddNode(NodeTypeWireGuard, "wg")
+	amnesia := e.AddNode(amnesianodes.NodeTypeAmnesia, "amnesia")
+	vtun := e.AddNode(NodeTypeVTun, "vtun")
+	network := e.AddNode(NodeTypeMockNetwork, "network")
+	e.SubscribeMenus(amnesia, vtun)
+	privateKey, _ := wireGuardTestKeyPair(t, 93)
+	_, peerPublicKey := wireGuardTestKeyPair(t, 94)
+	applyWireGuardConfigWithOwnedIPs(t, e.Engine, wg, privateKey, 0, "10.93.0.2/32", nil)
+
+	const connectionSecret = "amnesia-native-profile"
+	e.Secrets.SetSecret(connectionSecret, Secret{Value: fmt.Sprintf(`[Interface]
+PrivateKey = %s
+Address = 10.94.0.2/32
+DNS = 8.8.8.8
+
+[Peer]
+PublicKey = %s
+Endpoint = 127.0.0.1:51820
+AllowedIPs = 0.0.0.0/0
+`, privateKey, peerPublicKey)}, "amnesia")
+	e.Engine.SendNodeFormularMsg(E2EWorkspace, amnesia, formular.FormApplyMessage{
+		MessageBase: FormMessageBase(formular.MessageFormApply, amnesia),
+		BlockID:     "config",
+		Values: map[string]any{
+			"enabled":          true,
+			"connectionSecret": connectionSecret,
+		},
+	})
+
+	e.MustAddTypedLinkByPortName(TypeTun, wg, "left", "Tun", vtun, "right", "Tun")
+	e.MustAddTypedLinkByPortName(TypeNetwork, network, "left", "Network", wg, "right", "Network")
+	ctrlLink := e.MustAddTypedLinkByPortName(TypeWGCtrl, wg, "left", "WGCtrl", amnesia, "right", "WireGuard")
+	waitAmnesiaUp(t, e, amnesia)
+	waitVTunEffectiveLocalAddrs(t, e, vtun, "10.93.0.2\n10.94.0.2")
+
+	e.Engine.SendNodeFormularMsg(E2EWorkspace, amnesia, formular.FormApplyMessage{
+		MessageBase: FormMessageBase(formular.MessageFormApply, amnesia),
+		BlockID:     "config",
+		Values:      map[string]any{"enabled": false},
+	})
+	waitVTunEffectiveLocalAddrs(t, e, vtun, "10.93.0.2")
+
+	e.Engine.SendNodeFormularMsg(E2EWorkspace, amnesia, formular.FormApplyMessage{
+		MessageBase: FormMessageBase(formular.MessageFormApply, amnesia),
+		BlockID:     "config",
+		Values:      map[string]any{"enabled": true},
+	})
+	waitVTunEffectiveLocalAddrs(t, e, vtun, "10.93.0.2\n10.94.0.2")
+
+	e.Engine.RemoveLink(E2EWorkspace, ctrlLink)
+	waitVTunEffectiveLocalAddrs(t, e, vtun, "10.93.0.2")
+}
+
+func TestAmnesiaOwnedIPEnablesVTunHTTPRequest(t *testing.T) {
+	e := newHTTPE2E(t)
+	clientWGPort := httpTestPort()
+	serverWGPort := httpTestPort()
+	httpPort := httpTestPort()
+	clientPrivate, clientPublic := wireGuardTestKeyPair(t, 95)
+	serverPrivate, serverPublic := wireGuardTestKeyPair(t, 96)
+
+	mock := e.AddNode(NodeTypeMockNetwork, "amnesia-http-network")
+	clientWG := e.AddNode(NodeTypeWireGuard, "amnesia-http-client-wg")
+	serverWG := e.AddNode(NodeTypeWireGuard, "amnesia-http-server-wg")
+	amnesia := e.AddNode(amnesianodes.NodeTypeAmnesia, "amnesia-http-controller")
+	clientVTun := e.AddNode(NodeTypeVTun, "amnesia-http-client-vtun")
+	serverVTun := e.AddNode(NodeTypeVTun, "amnesia-http-server-vtun")
+	server := e.addHTTPServerOnHost("amnesia-http-server", wireGuardE2EServerAddr, httpPort)
+	client := e.addHTTPClientToURL("amnesia-http-client", fmt.Sprintf("http://%s:%d/", wireGuardE2EServerAddr, httpPort))
+	e.SubscribeMenus(clientWG, serverWG, amnesia, clientVTun, serverVTun, server, client)
+
+	e.applyTunCopyVTunConfig(clientVTun, "amnesia-http-client-vtun", "")
+	e.applyTunCopyVTunConfig(serverVTun, "amnesia-http-server-vtun", wireGuardE2EServerAddr+"/24")
+	applyWireGuardConfig(t, e.Engine, clientWG, clientPrivate, clientWGPort, nil)
+	applyWireGuardConfig(t, e.Engine, serverWG, serverPrivate, serverWGPort, []wireGuardPeerConfig{{
+		id:                          "client",
+		publicKey:                   clientPublic,
+		endpoint:                    fmt.Sprintf("127.0.0.1:%d", clientWGPort),
+		allowedIPs:                  wireGuardE2EClientAddr + "/32",
+		persistentKeepaliveInterval: 1,
+	}})
+
+	const connectionSecret = "amnesia-http-native-profile"
+	e.Secrets.SetSecret(connectionSecret, Secret{Value: fmt.Sprintf(`[Interface]
+PrivateKey = %s
+Address = %s/32
+
+[Peer]
+PublicKey = %s
+Endpoint = 127.0.0.1:%d
+AllowedIPs = %s/32
+PersistentKeepalive = 1
+`, clientPrivate, wireGuardE2EClientAddr, serverPublic, serverWGPort, wireGuardE2EServerAddr)}, "amnesia-http-controller")
+	e.Engine.SendNodeFormularMsg(E2EWorkspace, amnesia, formular.FormApplyMessage{
+		MessageBase: FormMessageBase(formular.MessageFormApply, amnesia),
+		BlockID:     "config",
+		Values: map[string]any{
+			"enabled":          true,
+			"connectionSecret": connectionSecret,
+		},
+	})
+
+	e.connectTunByPortName(clientWG, "left", "Tun", clientVTun, "right", "Tun")
+	e.connectTunByPortName(serverWG, "left", "Tun", serverVTun, "right", "Tun")
+	e.connectByPortName(mock, "left", "Network", clientWG, "right", "Network")
+	e.connectByPortName(mock, "left", "Network", serverWG, "right", "Network")
+	e.MustAddTypedLinkByPortName(TypeWGCtrl, clientWG, "left", "WGCtrl", amnesia, "right", "WireGuard")
+	e.connectByPortName(clientVTun, "left", "Network", client, "right", "Network")
+	e.connectByPortName(serverVTun, "left", "Network", server, "right", "Network")
+
+	waitAmnesiaUp(t, e.NodeE2E, amnesia)
+	waitVTunEffectiveLocalAddrs(t, e.NodeE2E, clientVTun, wireGuardE2EClientAddr)
+	e.waitWireGuardUp(clientWG)
+	e.waitWireGuardUp(serverWG)
+	e.waitServerListening(server, fmt.Sprintf("%s:%d", wireGuardE2EServerAddr, httpPort))
+	e.waitClientStableReady(client)
+	e.assertWireGuardClientRequestWorks(client)
+}
+
+func waitAmnesiaUp(t *testing.T, e *NodeE2E, node uint64) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		snapshot, ok := e.Engine.NodeSnapshot(E2EWorkspace, node)
+		if ok && snapshot.Label == "up" {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	snapshot, _ := e.Engine.NodeSnapshot(E2EWorkspace, node)
+	state, _ := e.MenuItem(node, "status", "state")
+	errItem, _ := e.MenuItem(node, "status", "error")
+	wg, _ := e.MenuItem(node, "status", "wireGuard")
+	t.Fatalf("Amnesia %d label=%q state=%#v WireGuard=%#v error=%#v", node, snapshot.Label, state.Value, wg.Value, errItem.Value)
+}
+
+func waitVTunEffectiveLocalAddrs(t *testing.T, e *NodeE2E, node uint64, want string) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		item, ok := e.MenuItem(node, "effective", "localAddrs")
+		if ok && item.Value == want {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	item, ok := e.MenuItem(node, "effective", "localAddrs")
+	t.Fatalf("VTun %d effective local addresses = %#v (present=%t), want %q", node, item.Value, ok, want)
 }
 
 func setupWireGuardE2E(t *testing.T, names wireGuardE2ENames) wireGuardE2EFixture {

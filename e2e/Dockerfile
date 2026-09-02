@@ -14,9 +14,15 @@ RUN if [ "$E2E_COVERAGE" = "1" ]; then \
 RUN go build -C bin -o /usr/local/bin/almagest-cli ./almagest-cli
 RUN go install github.com/asciimoth/killswitch/cmd/killswitch@v0.1.5
 RUN go install github.com/asciimoth/killswitch/cmd/killswitch-cli@v0.1.5
-RUN git clone --depth 1 https://github.com/amnezia-vpn/amneziawg-go.git /tmp/amneziawg-go \
-	&& go build -C /tmp/amneziawg-go -o /usr/local/bin/amneziawg-go . \
-	&& git -C /tmp/amneziawg-go rev-parse HEAD >/usr/local/share/amneziawg-go.commit
+RUN go install -tags=e2e github.com/asciimoth/wgo/tests/amnesia/cmd/amnesia_e2e_tool@v0.7.0 \
+	&& mv /go/bin/amnesia_e2e_tool /usr/local/bin/amnesia-e2e-tool
+ARG AMNEZIAWG_GO_COMMIT=b5928efb6ca19f0153958460c3d141f04abc5c2e
+RUN curl -fsSL --retry 5 --retry-all-errors \
+		"https://codeload.github.com/amnezia-vpn/amneziawg-go/tar.gz/$AMNEZIAWG_GO_COMMIT" \
+		-o /tmp/amneziawg-go.tar.gz \
+	&& tar -xzf /tmp/amneziawg-go.tar.gz -C /tmp \
+	&& go build -C "/tmp/amneziawg-go-$AMNEZIAWG_GO_COMMIT" -o /usr/local/bin/amneziawg-go . \
+	&& printf '%s\n' "$AMNEZIAWG_GO_COMMIT" >/usr/local/share/amneziawg-go.commit
 
 FROM debian:bookworm-slim
 
@@ -47,6 +53,7 @@ COPY --from=build /usr/local/bin/almagest-cli /usr/local/bin/almagest-cli
 COPY --from=build /go/bin/killswitch /usr/local/bin/killswitch
 COPY --from=build /go/bin/killswitch-cli /usr/local/bin/killswitch-cli
 COPY --from=build /usr/local/bin/amneziawg-go /usr/local/bin/amneziawg-go
+COPY --from=build /usr/local/bin/amnesia-e2e-tool /usr/local/bin/amnesia-e2e-tool
 COPY --from=build /usr/local/share/amneziawg-go.commit /usr/local/share/amneziawg-go.commit
 COPY e2e /e2e
 

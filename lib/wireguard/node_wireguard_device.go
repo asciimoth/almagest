@@ -26,6 +26,7 @@ func (n *wireGuardNode) ensureDeviceLocked() {
 	n.dev = wgdevice.NewDevice(nil, nil, logger, n.WorkerSpawner, wgdevice.DeviceOptions{
 		BatchSize: n.config.batchSize,
 	})
+	n.runtimeDeviceUp = false
 	n.runtimeStats = n.dev.RuntimeStats()
 	n.subscribeToRuntimeStatsLocked(n.dev)
 	n.subscribeToReceiveErrorsLocked(n.dev)
@@ -44,12 +45,10 @@ func (n *wireGuardNode) applyConfigToDeviceLocked(config wireGuardConfig, rebuil
 		return err
 	}
 	n.runtimeListenPort = config.listenPort
-	active := n.hasActiveAttachmentsLocked()
-	if !active {
-		if n.dev != nil {
-			if err := n.dev.Down(); err != nil {
-				return err
-			}
+	running := n.shouldRunDeviceLocked()
+	if !running && n.dev != nil {
+		if err := n.bringDeviceDownLocked(); err != nil {
+			return err
 		}
 	}
 	n.ensureDeviceLocked()
@@ -75,18 +74,18 @@ func (n *wireGuardNode) applyConfigToDeviceLocked(config wireGuardConfig, rebuil
 		// ReplacePeers is intentionally false. WGConfig nodes own peers through
 		// detached APIs, and a global replacement would delete those peers.
 		ReplacePeers:   false,
-		ApplyEndpoints: active,
-		ActivatePeers:  active,
+		ApplyEndpoints: running,
+		ActivatePeers:  running,
 	}); err != nil {
 		return fmt.Errorf("apply config: %w", err)
 	}
 	n.runtimeOwnedPeerKeys = nextPeerKeys
 	n.controllerSource.Store(n.dev)
 	n.refreshRuntimeStatsLocked()
-	if !active {
+	if !running {
 		return nil
 	}
-	if err := n.dev.Up(); err != nil {
+	if err := n.bringDeviceUpLocked(); err != nil {
 		// A failed device bring-up can leave a non-nil bind behind, but that
 		// bind is not reusable until the attach path rebuilds it.
 		n.currentBindFailed = true
@@ -97,7 +96,41 @@ func (n *wireGuardNode) applyConfigToDeviceLocked(config wireGuardConfig, rebuil
 	return nil
 }
 func (n *wireGuardNode) hasActiveAttachmentsLocked() bool {
-	return n.currentTunActiveLocked() && n.currentNetworkActiveLocked() && n.currentBind != nil && !n.currentBindFailed
+	return n.currentTunActiveLocked() && n.hasActiveTransportLocked()
+}
+
+func (n *wireGuardNode) hasActiveTransportLocked() bool {
+	return n.currentNetworkActiveLocked() && n.currentBind != nil && !n.currentBindFailed
+}
+
+// shouldRunDeviceLocked keeps an already-running transport and its peers alive
+// while the node waits for a replacement TUN. A device that has not completed
+// its first full attachment still waits for both TUN and network inputs.
+func (n *wireGuardNode) shouldRunDeviceLocked() bool {
+	return n.hasActiveAttachmentsLocked() || n.runtimeDeviceUp && n.hasActiveTransportLocked()
+}
+
+func (n *wireGuardNode) bringDeviceUpLocked() error {
+	if n.dev == nil {
+		return nil
+	}
+	if err := n.dev.Up(); err != nil {
+		return err
+	}
+	n.runtimeDeviceUp = true
+	return nil
+}
+
+func (n *wireGuardNode) bringDeviceDownLocked() error {
+	if n.dev == nil {
+		n.runtimeDeviceUp = false
+		return nil
+	}
+	if err := n.dev.Down(); err != nil {
+		return err
+	}
+	n.runtimeDeviceUp = false
+	return nil
 }
 
 func (n *wireGuardNode) currentTunActiveLocked() bool {
@@ -115,14 +148,10 @@ func (n *wireGuardNode) detachStaleTunLocked() error {
 	if n.dev == nil || n.currentTun == nil || n.currentTunGeneration == n.currentTunGenerationValue() {
 		return nil
 	}
-	// A TUN event can bring wgo up after Almagest has already invalidated the
-	// TUN generation. Remove that stale TUN before ApplyConfig touches the
-	// listen port, because wgo updates the bind when it thinks the device is up.
+	// Remove the stale attachment without stopping the device. WireGuard keeps
+	// its transport and peer sessions alive while it waits for the replacement.
 	n.currentTun = nil
 	n.currentTunGeneration = 0
-	if err := n.dev.Down(); err != nil {
-		return fmt.Errorf("bring device down before detaching stale TUN: %w", err)
-	}
 	if err := n.dev.DetachTUN(); err != nil {
 		return fmt.Errorf("detach stale TUN: %w", err)
 	}
@@ -144,15 +173,23 @@ func (n *wireGuardNode) attachCurrentTun(tunGeneration uint64, t tun.Tun) (bool,
 	}
 	if SameTunInstance(n.currentTun, t) {
 		n.currentTunGeneration = tunGeneration
-		return n.currentBind != nil, true, nil
+		needsConfigApply := n.currentBind != nil && (!n.runtimeDeviceUp || n.currentBindFailed)
+		return needsConfigApply, true, nil
 	}
 	n.ensureDeviceLocked()
 	drainWireGuardTunEvents(t)
-	var err error
+	// A running device already has its current config and transport. Replacing
+	// only its TUN must not reapply device config or refresh the UDP bind.
+	needsConfigApply := n.currentBind != nil && (!n.runtimeDeviceUp || n.currentBindFailed)
+	managedTun, err := n.newManagedTun(t)
+	if err != nil {
+		_ = t.Close()
+		return false, true, fmt.Errorf("prepare TUN event filter: %w", err)
+	}
 	if n.currentTun == nil {
-		err = n.dev.AttachTUN(t)
+		err = n.dev.AttachTUN(managedTun)
 	} else {
-		err = n.dev.ReplaceTUN(t)
+		err = n.dev.ReplaceTUN(managedTun)
 	}
 	if err != nil {
 		_ = t.Close()
@@ -160,7 +197,7 @@ func (n *wireGuardNode) attachCurrentTun(tunGeneration uint64, t tun.Tun) (bool,
 	}
 	n.currentTun = t
 	n.currentTunGeneration = tunGeneration
-	return n.currentBind != nil, true, nil
+	return needsConfigApply, true, nil
 }
 
 // Detached TUN wrappers can have buffered lifecycle events, including their
@@ -244,7 +281,7 @@ func (n *wireGuardNode) attachCurrentNetworkBindLocked() (bool, error) {
 		if n.currentBind != nil {
 			n.nextBindGenerationLocked()
 		}
-		if err := n.dev.Down(); err != nil {
+		if err := n.bringDeviceDownLocked(); err != nil {
 			_ = networkBind.Close()
 			return n.currentNetworkActiveLocked(), fmt.Errorf("bring device down before attaching network: %w", err)
 		}
@@ -284,14 +321,10 @@ func (n *wireGuardNode) detachCurrentTun(tunGeneration uint64) (error, bool) {
 	if n.dev == nil {
 		return nil, true
 	}
-	var detachErr error
-	if err := n.dev.Down(); err != nil {
-		detachErr = fmt.Errorf("bring device down before detaching TUN: %w", err)
-	}
 	if err := n.dev.DetachTUN(); err != nil {
-		detachErr = fmt.Errorf("detach TUN: %w", err)
+		return fmt.Errorf("detach TUN: %w", err), true
 	}
-	return detachErr, true
+	return nil, true
 }
 
 func (n *wireGuardNode) detachCurrentNetwork(networkGeneration uint64) (error, bool) {
@@ -310,7 +343,7 @@ func (n *wireGuardNode) detachCurrentNetwork(networkGeneration uint64) (error, b
 		return nil, true
 	}
 	var detachErr error
-	if err := n.dev.Down(); err != nil {
+	if err := n.bringDeviceDownLocked(); err != nil {
 		detachErr = fmt.Errorf("bring device down before detaching network bind: %w", err)
 	}
 	if err := n.dev.DetachBind(); err != nil {
@@ -334,6 +367,7 @@ func (n *wireGuardNode) stopRuntime() {
 	n.currentBindGen = 0
 	n.currentBindOpen = nil
 	n.currentBindFailed = false
+	n.runtimeDeviceUp = false
 	n.runtimeStats = wgdevice.RuntimeStats{}
 	n.runtimeOwnedPeerKeys = nil
 	n.runtimeListenPort = 0

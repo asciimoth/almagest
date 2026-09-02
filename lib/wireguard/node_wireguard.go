@@ -2,6 +2,7 @@ package wireguardnodes
 
 import (
 	_ "embed"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -53,13 +54,15 @@ func (c WireGuardClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState)
 		secrets = c.Runtime.SecretsStorage()
 	}
 	return &wireGuardNode{
-		NodeBase:         NodeBase{Runtime: c.Runtime},
-		secrets:          secrets,
-		config:           config,
-		objectPeerInputs: map[uint64][]wireGuardPeerConfig{},
-		objectPeers:      map[uint64][]wireGuardPeerConfig{},
-		objectErrors:     map[uint64]string{},
-		wgctrlPayloads:   map[uint64]WGCtrlPayload{},
+		NodeBase:             NodeBase{Runtime: c.Runtime},
+		secrets:              secrets,
+		config:               config,
+		objectPeerInputs:     map[uint64][]wireGuardPeerConfig{},
+		objectPeers:          map[uint64][]wireGuardPeerConfig{},
+		objectErrors:         map[uint64]string{},
+		wgctrlPayloads:       map[uint64]WGCtrlPayload{},
+		wgctrlConfigs:        map[uint64]WGCtrlInterfaceConfig{},
+		wgctrlPendingApplies: map[*wgCtrlInterfaceConfigApply]uint64{},
 	}, nil
 }
 
@@ -114,6 +117,9 @@ type wireGuardNode struct {
 
 	config wireGuardConfig
 	dev    *wgdevice.Device
+	// runtimeDeviceUp records device state controlled by this node. TUN
+	// lifecycle events are filtered, so only the node changes this state.
+	runtimeDeviceUp bool
 
 	// controllerSource is published only after a successful device config
 	// apply. Workspace callbacks can load it without taking runtimeMu.
@@ -121,6 +127,12 @@ type wireGuardNode struct {
 	// wgctrlPayloads is workspace-owned and keeps one detached API per link.
 	// Re-emitting the same live payload preserves controller-owned resources.
 	wgctrlPayloads map[uint64]WGCtrlPayload
+	// wgctrlConfigs is workspace-owned and keeps the latest interface setting
+	// suggestions received from each attached controller link.
+	wgctrlConfigs map[uint64]WGCtrlInterfaceConfig
+	// wgctrlPendingApplies waits for the TUN generation caused by an
+	// acknowledged interface update to become physically attached.
+	wgctrlPendingApplies map[*wgCtrlInterfaceConfigApply]uint64
 
 	// objectPeerInputs keeps the latest source-owned value for each attached
 	// object link. objectPeers contains only resolved and validated values that
@@ -176,6 +188,12 @@ func (n *wireGuardNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint6
 	n.ensureObjectPeerMaps()
 	if n.wgctrlPayloads == nil {
 		n.wgctrlPayloads = map[uint64]WGCtrlPayload{}
+	}
+	if n.wgctrlConfigs == nil {
+		n.wgctrlConfigs = map[uint64]WGCtrlInterfaceConfig{}
+	}
+	if n.wgctrlPendingApplies == nil {
+		n.wgctrlPendingApplies = map[*wgCtrlInterfaceConfigApply]uint64{}
 	}
 	if err := n.SetPrimary(links.TypeWGCtrl); err != nil {
 		return err
@@ -269,6 +287,9 @@ func (n *wireGuardNode) OnLinkRemoved(link uint64, port uint64, linkType, portDi
 		n.applyEffectivePeerConfig()
 	case port == n.ctrlp && portDirection == "left" && linkType == TypeWGCtrl:
 		delete(n.wgctrlPayloads, link)
+		delete(n.wgctrlConfigs, link)
+		n.failWGCtrlInterfaceConfigApplies(link, errors.New("WireGuard controller link was removed"))
+		n.sendTunConfig()
 	case port == n.netp && portDirection == "right" && linkType == TypeNetwork && link == n.netLink:
 		n.cancelConfigRetry()
 		n.netLink = 0
@@ -284,6 +305,16 @@ func (n *wireGuardNode) OnEvent(event pasta.Event, linkType string, _ []string, 
 	if event.ReceiverPort == n.ctrlp && receiverPortDirection == "left" && linkType == TypeWGCtrl {
 		if std.IsRequest(event.Payload) {
 			n.refreshWGCtrlToLink(event.Link)
+			return nil
+		}
+		switch payload := event.Payload.(type) {
+		case WGCtrlInterfaceConfig:
+			_ = n.acceptWGCtrlInterfaceConfig(event.Link, payload)
+		case *wgCtrlInterfaceConfigApply:
+			payload.link = event.Link
+			payload.err = n.acceptWGCtrlInterfaceConfig(event.Link, payload.config)
+		case wgCtrlInterfaceConfigCommit:
+			n.commitWGCtrlInterfaceConfigApply(event.Link, payload.apply)
 		}
 		return nil
 	}
@@ -367,6 +398,8 @@ func (n *wireGuardNode) OnInbox(message pasta.InboxMessage) error {
 		n.handleRuntimeResult(msg)
 	case wireGuardRuntimeAttachmentResultMessage:
 		n.handleRuntimeAttachmentResult(msg)
+	case wireGuardWGCtrlInterfaceConfigCheckResult:
+		n.handleWGCtrlInterfaceConfigCheckResult(msg)
 	case wireGuardRuntimeStatsMessage:
 		n.handleRuntimeStats(msg)
 	case SecretValueChanged:

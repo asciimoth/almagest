@@ -196,6 +196,18 @@ func wireGuardOwnedIPAddrs(value string) []string {
 	if err != nil {
 		return nil
 	}
+	return wireGuardOwnedIPPrefixes(prefixes)
+}
+
+func normalizeWireGuardOwnedIPValues(values []string) ([]string, error) {
+	prefixes, err := parseWireGuardAllowedIPs(strings.Join(values, "\n"))
+	if err != nil {
+		return nil, err
+	}
+	return wireGuardOwnedIPPrefixes(prefixes), nil
+}
+
+func wireGuardOwnedIPPrefixes(prefixes []netip.Prefix) []string {
 	if len(prefixes) == 0 {
 		return nil
 	}

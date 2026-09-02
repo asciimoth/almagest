@@ -16,6 +16,8 @@ const (
 
 	// DefaultVTunMTU is the default VTun interface MTU.
 	DefaultVTunMTU = 1500
+	// DefaultVTunDNSServer is used when the DNS servers field is empty.
+	DefaultVTunDNSServer = "8.8.8.8"
 
 	defaultVTunName       = "vtun"
 	defaultVTunMTU        = DefaultVTunMTU
@@ -30,7 +32,7 @@ type VTunClass struct {
 func (VTunClass) ClassName() string        { return NodeTypeVTun }
 func (VTunClass) ShortDescription() string { return "Virtual TUN network" }
 func (VTunClass) LongDescription() string {
-	return "Creates one virtual netstack instance and exposes it as both an almagest/network and an almagest/tun endpoint. When it receives TunConfig, it uses Addrs and MTU only; Routes are ignored."
+	return "Creates one virtual netstack instance and exposes it as both an almagest/network and an almagest/tun endpoint. When it receives TunConfig, it uses Addrs and MTU only; Routes are ignored. If the DNS servers field is empty, VTun uses 8.8.8.8."
 }
 func (VTunClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: TypeTun, InitialPorts: []pasta.Port{
