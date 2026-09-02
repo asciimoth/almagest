@@ -36,3 +36,17 @@ func TestNoDNSCacheExpirationEnv(t *testing.T) {
 		t.Fatal("NoDNSCacheExpiration = false, want true from environment")
 	}
 }
+
+func TestLogWorkersFlag(t *testing.T) {
+	var a Args
+	parser, err := arg.NewParser(arg.Config{IgnoreEnv: true, Out: new(bytes.Buffer)}, &a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := parser.Parse([]string{"--log-workers"}); err != nil {
+		t.Fatalf("Parse(--log-workers): %v", err)
+	}
+	if !a.LogWorkers {
+		t.Fatal("LogWorkers = false, want true")
+	}
+}

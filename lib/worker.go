@@ -112,6 +112,7 @@ type workerTracker struct {
 	subscriptions map[uint64]WorkerNotificationCallback
 	workspace     func() *pasta.Workspace
 	logger        logging.Logger
+	logEvents     bool
 	onFailure     func(WorkerSnapshot)
 }
 
@@ -120,7 +121,7 @@ type workerNotificationDelivery struct {
 	notification WorkerNotification
 }
 
-func newWorkerTracker(workspace func() *pasta.Workspace, logger logging.Logger) *workerTracker {
+func newWorkerTracker(workspace func() *pasta.Workspace, logger logging.Logger, logEvents bool) *workerTracker {
 	return &workerTracker{
 		nextWorkerID:       1,
 		nextSubscriptionID: 1,
@@ -129,6 +130,7 @@ func newWorkerTracker(workspace func() *pasta.Workspace, logger logging.Logger) 
 		subscriptions:      make(map[uint64]WorkerNotificationCallback),
 		workspace:          workspace,
 		logger:             logger,
+		logEvents:          logEvents,
 	}
 }
 
@@ -191,7 +193,7 @@ func (t *workerTracker) prepare(node uint64, name string) (workerRecord, error) 
 	}
 	t.workers[id] = record
 	t.wg.Add(1)
-	if t.logger != nil {
+	if t.logEvents && t.logger != nil {
 		t.logger.Debugf("engine worker spawned worker=%d node=%d class=%s name=%q worker_name=%q", id, node, record.Class, record.Name, name)
 	}
 	deliveries := t.deliveriesLocked(WorkerNotification{
@@ -224,7 +226,7 @@ func (t *workerTracker) finish(record workerRecord, normalStop bool) {
 	var deliver bool
 	t.mu.Lock()
 	if normalStop {
-		if t.logger != nil {
+		if t.logEvents && t.logger != nil {
 			t.logger.Debugf("engine worker stopped worker=%d node=%d class=%s name=%q worker_name=%q", record.ID, record.Node, record.Class, record.Name, record.WorkerName)
 		}
 		notify = WorkerNotification{
@@ -252,7 +254,7 @@ func (t *workerTracker) fail(record workerRecord, cause error) {
 		ID:     record.ID,
 		Worker: &snapshot,
 	})
-	if t.logger != nil {
+	if t.logEvents && t.logger != nil {
 		if snapshot.Orphan {
 			t.logger.Errf(
 				"engine worker failed after node was unavailable worker=%d node=%d class=%s name=%q worker_name=%q cause=%v",
@@ -292,7 +294,7 @@ func (t *workerTracker) close() {
 	}
 	t.closed = true
 	for _, worker := range t.workers {
-		if t.logger != nil {
+		if t.logEvents && t.logger != nil {
 			snapshot := t.workerSnapshotLocked(worker, "")
 			t.logger.Debugf(
 				"waiting for engine worker worker=%d node=%d class=%s name=%q worker_name=%q orphan=%t",

@@ -2,6 +2,7 @@ package almagest
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -14,6 +15,88 @@ import (
 	sysnetdebug "github.com/asciimoth/gonnect/sysnet/debug"
 	"github.com/asciimoth/pasta/pasta"
 )
+
+func TestEngineWorkerEventLoggingIsOptIn(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		options []BuildEngineOption
+	}{
+		{name: "disabled"},
+		{name: "enabled", options: []BuildEngineOption{WithWorkerEventLogging(true)}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			logf := logging.NewDebugLogFactory(32)
+			engineAPI, err := BuildEngine(
+				context.Background(),
+				configer.NewMemory(nil),
+				logf,
+				&sysnetdebug.System{},
+				nil,
+				nil,
+				nil,
+				nil,
+				nil,
+				nil,
+				true,
+				test.options...,
+			)
+			if err != nil {
+				t.Fatalf("BuildEngine error = %v, want nil", err)
+			}
+			t.Cleanup(func() {
+				if err := engineAPI.Close(); err != nil {
+					t.Errorf("engine.Close error = %v, want nil", err)
+				}
+			})
+
+			node, err := engineAPI.AddNode(MainWorkspace, debugnodes.NodeTypeDebugErrorsWorkers, "workers")
+			if err != nil {
+				t.Fatalf("AddNode error = %v, want nil", err)
+			}
+			tracker := engineAPI.(*engine).workers
+			done := make(chan struct{})
+			if _, err := tracker.spawner(node).Spawn(func() { close(done) }, "normal test worker"); err != nil {
+				t.Fatalf("Spawn normal worker error = %v, want nil", err)
+			}
+			<-done
+
+			failedNode, err := engineAPI.AddNode(MainWorkspace, debugnodes.NodeTypeDebugErrorsWorkers, "failed workers")
+			if err != nil {
+				t.Fatalf("AddNode for failed worker error = %v, want nil", err)
+			}
+			if _, err := tracker.spawner(failedNode).Spawn(func() { panic("test") }, "failed test worker"); err != nil {
+				t.Fatalf("Spawn failed worker error = %v, want nil", err)
+			}
+			waitWorkerTrackerEmpty(t, tracker)
+
+			messages := make([]string, 0, 3)
+			for _, entry := range logf.Drain() {
+				if strings.HasPrefix(entry.Message, "engine worker ") {
+					messages = append(messages, entry.Message)
+				}
+			}
+			joined := strings.Join(messages, "\n")
+			for _, event := range []string{"engine worker spawned", "engine worker stopped", "engine worker failed"} {
+				want := len(test.options) > 0
+				if got := strings.Contains(joined, event); got != want {
+					t.Errorf("log contains %q = %t, want %t; logs:\n%s", event, got, want, joined)
+				}
+			}
+		})
+	}
+}
+
+func waitWorkerTrackerEmpty(t *testing.T, tracker *workerTracker) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if len(tracker.snapshot()) == 0 {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatalf("workers did not stop: %#v", tracker.snapshot())
+}
 
 func TestEngineWorkersSnapshotIncludesRestoredStartupWorkers(t *testing.T) {
 	engine, err := BuildEngine(

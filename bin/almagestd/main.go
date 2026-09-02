@@ -191,6 +191,7 @@ func main() {
 		daemonNodeClasses(conf.Protected.CommandRunner, commandRunner),
 		globalBufPool,
 		args.DebugNodes,
+		almagest.WithWorkerEventLogging(args.LogWorkers),
 	)
 	engineBuildElapsed := time.Since(engineBuildStart)
 	if err != nil {

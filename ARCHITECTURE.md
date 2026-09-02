@@ -169,6 +169,7 @@ Important flags and env:
 - `-c, --config`, `ALMAGEST_CONF`: main config path or directory.
 - `-p, --protected`, `ALMAGEST_PROTECTED_CONF`: protected config path.
 - `-l, --lvl`, `ALMAGEST_LOG_LVL`: logging level.
+- `--log-workers`: log engine worker lifecycle events.
 - `-w, --web`, `ALMAGEST_WEB_ADMIN`: localhost web admin port.
 - `--web-filter-uid`, `ALMAGEST_WEB_ADMIN_FILTER_UIDS`: allowed web admin
   peer owner UIDs.

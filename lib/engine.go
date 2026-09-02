@@ -29,6 +29,20 @@ var (
 // MainWorkspace is the engine workspace name used by the public API.
 const MainWorkspace = "main"
 
+// BuildEngineOption changes optional engine build behavior.
+type BuildEngineOption func(*buildEngineOptions)
+
+type buildEngineOptions struct {
+	logWorkerEvents bool
+}
+
+// WithWorkerEventLogging controls engine worker lifecycle logs.
+func WithWorkerEventLogging(enabled bool) BuildEngineOption {
+	return func(options *buildEngineOptions) {
+		options.logWorkerEvents = enabled
+	}
+}
+
 type NotificationKind string
 
 const (
@@ -67,8 +81,15 @@ func BuildEngine(
 	extra []pasta.NodeClass,
 	pool bufpool.Pool, // may be nil. Use bufpool.NewTestDebugPool() in tests
 	debug bool, // Should builtin debug nodes be added
+	options ...BuildEngineOption,
 ) (Engine, error) {
 	ctx, cancel := context.WithCancel(ctx)
+	buildOptions := buildEngineOptions{}
+	for _, option := range options {
+		if option != nil {
+			option(&buildOptions)
+		}
+	}
 
 	engine := &engine{
 		ctx:                   ctx,
@@ -87,7 +108,7 @@ func BuildEngine(
 	}
 	engine.workers = newWorkerTracker(func() *pasta.Workspace {
 		return engine.mainWorkspace
-	}, engine.logger)
+	}, engine.logger, buildOptions.logWorkerEvents)
 	engine.workers.onFailure = engine.handleWorkerFailure
 
 	classes := nodeClasses(engine, debug)
