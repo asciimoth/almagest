@@ -13,6 +13,7 @@ import (
 	"github.com/asciimoth/gonnect/sysnet"
 	"github.com/asciimoth/pasta/pasta"
 
+	amnesianodes "github.com/asciimoth/almagest/lib/amnesia"
 	"github.com/asciimoth/almagest/lib/logging"
 	"github.com/asciimoth/almagest/lib/storage"
 )
@@ -735,7 +736,7 @@ func (e *engine) Copy(workspace string, ids []uint64) string {
 		return ""
 	}
 
-	return e.mainWorkspace.Copy(ids)
+	return amnesianodes.SanitizeClipboard(e.mainWorkspace.Copy(ids))
 }
 
 func (e *engine) CopyLocked(workspace string, ids []uint64) string {
@@ -743,7 +744,7 @@ func (e *engine) CopyLocked(workspace string, ids []uint64) string {
 		return ""
 	}
 
-	return e.mainWorkspace.CopyLocked(ids)
+	return amnesianodes.SanitizeClipboard(e.mainWorkspace.CopyLocked(ids))
 }
 
 func (e *engine) Paste(workspace string, data string) []uint64 {

@@ -1,0 +1,378 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+: "${ALMAGEST_E2E_TIMEOUT:=60}"
+source /e2e/lib/common.sh
+source "$E2E_CONFIG_DIR/amnesia.env"
+
+ALMAGEST_E2E_TMP_FILE_STORAGE=0
+ALMAGEST_E2E_FILE_STORAGE="/root/almagest-e2e-store/$E2E_CASE"
+
+upstream_iface="wg0"
+upstream_pid=""
+gateway_pid=""
+proxy_pid=""
+http_pid=""
+gateway_count="$E2E_RUNTIME/gateway-requests.log"
+
+cleanup() {
+	trap - EXIT
+	stop_static_http_target "$http_pid"
+	for pid in "$proxy_pid" "$gateway_pid" "$upstream_pid"; do
+		if [[ -n "$pid" ]]; then
+			kill "$pid" 2>/dev/null || true
+			wait "$pid" 2>/dev/null || true
+		fi
+	done
+	ip link del "$upstream_iface" 2>/dev/null || true
+	stop_daemon
+}
+trap cleanup EXIT
+
+uapi_set() {
+	local payload="$1"
+	local reply
+	reply="$(printf '%s\n\n' "$payload" | socat - "UNIX-CONNECT:/var/run/amneziawg/$upstream_iface.sock")"
+	printf '%s\n\n' "$reply" >>"$E2E_RUNTIME/amnezia-uapi.log"
+	grep -q '^errno=0$' <<<"$reply" || fail "amneziawg-go UAPI request failed: $reply"
+}
+
+start_upstream() {
+	mkdir -p /var/run/amneziawg
+	WG_PROCESS_FOREGROUND=1 LOG_LEVEL=verbose amneziawg-go -f "$upstream_iface" \
+		>"$E2E_RUNTIME/amneziawg-go.log" 2>&1 &
+	upstream_pid="$!"
+	retry "$ALMAGEST_E2E_TIMEOUT" "amneziawg-go UAPI" \
+		test -S "/var/run/amneziawg/$upstream_iface.sock" \
+		|| fail "amneziawg-go did not create its UAPI socket"
+	ip addr replace 10.205.20.1/32 dev "$upstream_iface"
+	ip link set dev "$upstream_iface" mtu 1420 up
+	ip route replace 10.205.10.1/32 dev "$upstream_iface"
+	uapi_set "$(cat <<EOF
+set=1
+private_key=$SERVER_PRIVATE_HEX
+listen_port=51861
+jc=2
+jmin=11
+jmax=23
+s1=12
+s2=12
+s3=12
+s4=12
+h1=6111
+h2=6222
+h3=6333
+h4=6444
+i1=<b 0xaa55><rc 3><rd 2><t>
+i2=<r 5>
+i3=<rd 4>
+i4=<rc 6>
+i5=<b 0x01020304>
+header_protection_key=$HEADER_KEY
+content_padding_addition=4-16
+rekey_after_time=90-120
+rekey_timeout=5-8
+reject_after_time=180-220
+keepalive_timeout=10-15
+max_handshake_attempts=3-5
+random_trailers=true
+disable_cookies=true
+replace_peers=true
+EOF
+)"
+}
+
+set_server_peer() {
+	local public_key="$1"
+	local public_key_hex
+	public_key_hex="$(printf '%s' "$public_key" | base64 -d | od -An -tx1 -v | tr -d ' \n')"
+	uapi_set "$(cat <<EOF
+set=1
+replace_peers=true
+public_key=$public_key_hex
+protocol_version=1
+replace_allowed_ips=true
+allowed_ip=10.205.10.1/32
+persistent_keepalive_interval=1
+EOF
+)"
+}
+
+start_gateway() {
+	amnesia-e2e-tool serve-gateway -listen 127.0.0.1:18090 \
+		-private-key "$E2E_CONFIG_DIR/gateway-private.pem" \
+		-config-file "$E2E_CONFIG_DIR/gateway-profile.vpn" \
+		>"$E2E_RUNTIME/gateway.log" 2>&1 &
+	gateway_pid="$!"
+	retry "$ALMAGEST_E2E_TIMEOUT" "mock Amnezia gateway" \
+		curl -fsS http://127.0.0.1:18090/health >/dev/null \
+		|| fail "mock Amnezia gateway did not start"
+
+	: >"$gateway_count"
+	python3 -u - 18490 18090 "$E2E_CONFIG_DIR/gateway.pem" \
+		"$E2E_CONFIG_DIR/gateway.key" "$gateway_count" <<'PY' \
+		>"$E2E_RUNTIME/gateway-proxy.log" 2>&1 &
+import http.client
+import http.server
+import ssl
+import sys
+
+listen_port, upstream_port = map(int, sys.argv[1:3])
+cert, key, count_path = sys.argv[3:]
+
+class Handler(http.server.BaseHTTPRequestHandler):
+    def forward(self):
+        size = int(self.headers.get("Content-Length", "0"))
+        body = self.rfile.read(size)
+        headers = {k: v for k, v in self.headers.items()
+                   if k.lower() not in {"host", "connection", "content-length"}}
+        upstream = http.client.HTTPConnection("127.0.0.1", upstream_port, timeout=15)
+        upstream.request(self.command, self.path, body=body, headers=headers)
+        response = upstream.getresponse()
+        data = response.read()
+        if self.command == "POST":
+            with open(count_path, "a", encoding="utf-8") as output:
+                output.write(self.path + "\n")
+        self.send_response(response.status)
+        for name, value in response.getheaders():
+            if name.lower() not in {"connection", "content-length", "transfer-encoding"}:
+                self.send_header(name, value)
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+        upstream.close()
+
+    do_GET = forward
+    do_POST = forward
+
+    def log_message(self, fmt, *args):
+        return
+
+server = http.server.ThreadingHTTPServer(("127.0.0.1", listen_port), Handler)
+context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+context.load_cert_chain(cert, key)
+server.socket = context.wrap_socket(server.socket, server_side=True)
+server.serve_forever()
+PY
+	proxy_pid="$!"
+	retry "$ALMAGEST_E2E_TIMEOUT" "HTTPS Amnezia gateway" \
+		curl -fsS --cacert "$E2E_CONFIG_DIR/amnesia-root.pem" \
+		https://gateway.amnesia.test:18490/health >/dev/null \
+		|| fail "HTTPS Amnezia gateway did not start"
+}
+
+menu_field() {
+	local node="$1"
+	local block="$2"
+	local field="$3"
+	cli graph menu --node "$node" | jq -er --arg block "$block" --arg field "$field" '
+		.blocks[] | select(.id == $block) | .items[] | select(.id == $field) | (.value // .text // "")
+	'
+}
+
+gateway_requests() {
+	wc -l <"$gateway_count" | tr -d ' '
+}
+
+gateway_requests_greater_than() {
+	local previous="$1"
+	(( $(gateway_requests) > previous ))
+}
+
+connection_creations() {
+	grep -c 'Amnesia connection created:' "$E2E_DAEMON_LOG" || true
+}
+
+current_client_key() {
+	sed -n 's/.*local_public_key=\([^ ]*\).*/\1/p' "$E2E_DAEMON_LOG" | tail -1
+}
+
+client_key_changed() {
+	local previous="$1"
+	local current
+	current="$(current_client_key)"
+	[[ -n "$current" && "$current" != "$previous" ]]
+}
+
+server_ping_works() {
+	ping -I "$upstream_iface" -c 1 -W 1 10.205.10.1 >/dev/null 2>&1
+}
+
+server_ping_fails() {
+	! server_ping_works
+}
+
+http_client_ready() {
+	local node="$1"
+	[[ "$(menu_field "$node" result status)" == "Status: 200 OK" \
+		&& -z "$(menu_field "$node" result error)" \
+		&& "$(menu_field "$node" result response)" == "managed amnesia e2e" ]]
+}
+
+assert_tunnel_works() {
+	local client="$1"
+	# The managed client has an ephemeral UDP source port. Send client traffic
+	# first so the server learns that roaming endpoint during the handshake.
+	cli graph click-menu-button --node "$client" --block request --button send >/dev/null
+	retry "$ALMAGEST_E2E_TIMEOUT" "server-to-client managed AmneziaWG ping" server_ping_works \
+		|| fail "server could not ping the managed Amnesia tunnel"
+	# The first HTTP request can expire while the client retries its initial
+	# handshake. Start a clean request after the reverse path is ready.
+	cli graph click-menu-button --node "$client" --block request --button send >/dev/null
+	retry "$ALMAGEST_E2E_TIMEOUT" "client-to-server managed AmneziaWG HTTP" http_client_ready "$client" \
+		|| fail "HTTP client could not use the managed Amnesia tunnel"
+}
+
+config_saves() {
+	grep -c 'config saved' "$E2E_DAEMON_LOG" || true
+}
+
+config_saves_greater_than() {
+	local previous="$1"
+	(( $(config_saves) > previous ))
+}
+
+start_upstream
+start_gateway
+http_pid="$(start_static_http_target 10.205.20.1 18085 "managed amnesia e2e" "$E2E_RUNTIME/upstream-http.log")"
+start_daemon
+trap cleanup EXIT
+
+wait_node_class_available "almagest/Amnesia" || fail "Amnesia node class is unavailable"
+wait_graph_node "Amnesia Service" || fail "managed Amnesia node is missing"
+amnesia_node="$(node_id_by_name "Amnesia Service")"
+vtun_node="$(node_id_by_name "VTun Amnesia")"
+http_client="$(node_id_by_name "HTTP Client Amnesia")"
+out_node="$(node_id_by_name "OutNetwork Amnesia")"
+
+cli tls set-cert --name amnesia-root --pem-file "$E2E_CONFIG_DIR/amnesia-root.pem" >/dev/null
+cli tls set-cert --name wrong-root --pem-file "$E2E_CONFIG_DIR/wrong-root.pem" >/dev/null
+cli tls set-policy --name amnesia-tls \
+	--spec '{"trust_anchors":[{"cert":"amnesia-root","scope":{"any":true}}]}' >/dev/null
+cli secrets set --key amnesia-activation --value "$(cat "$E2E_CONFIG_DIR/activation-one.vpn")" >/dev/null
+cli secrets set-nodes --key amnesia-activation --node "Amnesia Service" >/dev/null
+cli secrets set --key amnesia-gateway-public --value "$(cat "$E2E_CONFIG_DIR/gateway-public.pem")" >/dev/null
+cli secrets set-nodes --key amnesia-gateway-public --node "Amnesia Service" >/dev/null
+
+wait_node_label "$amnesia_node" up || fail "managed Amnesia node did not import the service profile"
+# The profile config replaces the initial VTun during startup. Device creation
+# must wait for that replacement and must use the registered profile key.
+[[ "$(connection_creations)" == "1" ]] \
+	|| fail "managed Amnesia startup created more than one tunnel device"
+[[ "$(gateway_requests)" == "1" ]] \
+	|| fail "managed Amnesia startup registered more than one service key"
+client_key="$(current_client_key)"
+[[ -n "$client_key" && "$client_key" != "none" ]] || fail "managed Amnesia key was not generated"
+set_server_peer "$client_key"
+assert_tunnel_works "$http_client"
+
+[[ "$(menu_field "$amnesia_node" status state)" == "up" ]] || fail "status did not report up"
+[[ "$(menu_field "$amnesia_node" status inputFormat)" == "service-key" ]] \
+	|| fail "status did not report service-key input"
+[[ "$(menu_field "$amnesia_node" status profile)" == "wgo mock gateway e2e" ]] \
+	|| fail "status did not report the gateway profile"
+[[ "$(menu_field "$amnesia_node" status country)" == "de" ]] \
+	|| fail "status did not report the selected server country"
+[[ "$(menu_field "$amnesia_node" status addresses)" == "10.205.10.1/32" ]] \
+	|| fail "status did not report the tunnel address"
+[[ "$(menu_field "$amnesia_node" status dns)" == "1.1.1.1" ]] \
+	|| fail "status did not report the DNS server"
+[[ -n "$(menu_field "$amnesia_node" status installationUUID)" ]] \
+	|| fail "status did not report the installation UUID"
+[[ "$(menu_field "$vtun_node" effective localAddrs)" == "10.205.10.1" ]] \
+	|| fail "Amnesia did not propagate its address to VTun"
+[[ "$(menu_field "$vtun_node" effective dnsServers)" == "1.1.1.1" ]] \
+	|| fail "Amnesia did not propagate its DNS server to VTun"
+for field in connectEvent reconnect latestHandshake peerPublicKey peers privateKey listenPort; do
+	if cli graph menu --node "$amnesia_node" | jq -e --arg field "$field" \
+		'.blocks[].items[] | select(.id == $field)' >/dev/null; then
+		fail "managed Amnesia menu contains forbidden field $field"
+	fi
+done
+
+# Changing activation data creates a new client-owned device and identity.
+previous_key="$client_key"
+previous_requests="$(gateway_requests)"
+cli secrets set --key amnesia-activation --value "$(cat "$E2E_CONFIG_DIR/activation-two.vpn")" >/dev/null
+retry "$ALMAGEST_E2E_TIMEOUT" "gateway request after activation-key change" \
+	gateway_requests_greater_than "$previous_requests" \
+	|| fail "activation-key change did not cause a new import"
+retry "$ALMAGEST_E2E_TIMEOUT" "new key after activation-key change" \
+	client_key_changed "$previous_key" \
+	|| fail "activation-key change did not rotate the managed WireGuard key"
+wait_node_label "$amnesia_node" up || fail "managed Amnesia did not recover after secret change"
+client_key="$(current_client_key)"
+set_server_peer "$client_key"
+assert_tunnel_works "$http_client"
+
+# The only outgoing link carries both API and WireGuard traffic. Detaching it
+# closes the tunnel. Reattaching it negotiates another fresh identity.
+previous_saves="$(config_saves)"
+network_link="$(link_id_by_port_names "Amnesia Service" Network "OutNetwork Amnesia" Network)"
+cli graph delete-link --id "$network_link" >/dev/null
+wait_node_label "$amnesia_node" "waiting for network" || fail "Amnesia did not observe network detach"
+retry 8 "managed tunnel close after network detach" server_ping_fails \
+	|| fail "managed tunnel remained active after network detach"
+previous_key="$client_key"
+add_link_by_port_name "$amnesia_node" right Network "$out_node" left Network >/dev/null
+retry "$ALMAGEST_E2E_TIMEOUT" "new key after network reattach" \
+	client_key_changed "$previous_key" \
+	|| fail "network reattach did not rotate the managed WireGuard key"
+wait_node_label "$amnesia_node" up || fail "Amnesia did not recover after network reattach"
+client_key="$(current_client_key)"
+set_server_peer "$client_key"
+assert_tunnel_works "$http_client"
+retry "$ALMAGEST_E2E_TIMEOUT" "reattached graph config autosave" \
+	config_saves_greater_than "$previous_saves" \
+	|| fail "reattached graph state was not saved"
+
+# Replacing the selected TLS policy rebuilds the API client and its device.
+cli tls set-policy --name amnesia-tls \
+	--spec '{"trust_anchors":[{"cert":"wrong-root","scope":{"any":true}}]}' >/dev/null
+wait_node_label "$amnesia_node" error || fail "bad TLS policy did not put Amnesia in error"
+retry 8 "managed tunnel close after TLS failure" server_ping_fails \
+	|| fail "managed tunnel remained active after TLS failure"
+previous_key="$client_key"
+cli tls set-policy --name amnesia-tls \
+	--spec '{"trust_anchors":[{"cert":"amnesia-root","scope":{"any":true}}]}' >/dev/null
+retry "$ALMAGEST_E2E_TIMEOUT" "new key after TLS recovery" \
+	client_key_changed "$previous_key" \
+	|| fail "TLS recovery did not rotate the managed WireGuard key"
+wait_node_label "$amnesia_node" up || fail "Amnesia did not recover after TLS policy restore"
+client_key="$(current_client_key)"
+set_server_peer "$client_key"
+assert_tunnel_works "$http_client"
+
+storage_id="$(cli kv entries --path nodes/amnesia | jq -er '
+	[.entries[] | select(.kind == "bucket") | .name]
+	| if length == 1 then .[0] else error("expected one Amnesia KV subtree") end
+')" || fail "could not identify the managed Amnesia KV subtree"
+uuid_before="$(cli kv get --path "nodes/amnesia/$storage_id" --key installation_uuid | jq -er '.value.data')" \
+	|| fail "persistent installation UUID was absent before restart"
+[[ "$uuid_before" == "$(menu_field "$amnesia_node" status installationUUID)" ]] \
+	|| fail "menu and KV installation UUID values differ"
+
+# The API UUID survives restart. The WireGuard identity does not.
+previous_key="$client_key"
+stop_daemon
+start_daemon
+trap cleanup EXIT
+amnesia_node="$(node_id_by_name "Amnesia Service")"
+http_client="$(node_id_by_name "HTTP Client Amnesia")"
+wait_node_label "$amnesia_node" up || fail "managed Amnesia did not recover after daemon restart"
+client_key="$(current_client_key)"
+[[ -n "$client_key" && "$client_key" != "$previous_key" ]] \
+	|| fail "daemon restart restored or reused the WireGuard identity"
+set_server_peer "$client_key"
+assert_tunnel_works "$http_client"
+storage_id_after="$(cli kv entries --path nodes/amnesia | jq -er '
+	[.entries[] | select(.kind == "bucket") | .name]
+	| if length == 1 then .[0] else error("expected one Amnesia KV subtree") end
+')" || fail "managed Amnesia created an extra KV subtree after restart"
+[[ "$storage_id_after" == "$storage_id" ]] || fail "Amnesia KV subtree changed across restart"
+uuid_after="$(cli kv get --path "nodes/amnesia/$storage_id_after" --key installation_uuid | jq -er '.value.data')" \
+	|| fail "persistent installation UUID was absent after restart"
+[[ "$uuid_after" == "$uuid_before" ]] \
+	|| fail "installation UUID changed across restart: $uuid_before -> $uuid_after"
+
+log "case passed"

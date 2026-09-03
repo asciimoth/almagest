@@ -7,9 +7,9 @@ Almagest is a Go userspace network stack built around a Pasta node graph.
 - `lib/nodekit/` owns node runtime interfaces, common node base helpers,
   workspace helpers, menu helpers, and node-facing aliases for shared
   contracts.
-- `lib/amnesia/` owns the AmnesiaCtrl node. It imports profiles
-  through `wgo/amnesia` and manages one tracked peer on a shared WireGuard
-  device.
+- `lib/amnesia/` owns the Amnesia and AmnesiaCtrl nodes. Amnesia owns an
+  ephemeral WireGuard device. AmnesiaCtrl manages one tracked peer on a shared
+  WireGuard device. Both import profiles through `wgo/amnesia`.
 - `lib/dns/` owns DNS link payload contracts, DNS provider helpers, DNS node
   classes, and built-in DNS nodes.
 - `lib/http/` owns HTTP client and server nodes.
@@ -75,7 +75,8 @@ Engine and workspace:
   helpers, menu helpers, TLS selector helpers, and node-facing aliases to
   `links` and `storage`.
 - `lib/amnesia/`: Amnesia service and profile import, persistent client state,
-  and WireGuard controller integration.
+  an ephemeral managed WireGuard runtime, and WireGuard controller
+  integration.
 - `lib/dns/`: DNS payload contracts, provider helpers, node classes, and
   built-in DNS nodes.
 - `lib/http/`: HTTP client and server node classes.
@@ -91,7 +92,7 @@ Engine and workspace:
 - `lib/testkit/`: package-neutral assertions and E2E helper subpackages.
 
 Built-in nodes:
-- `lib/amnesia/`: AmnesiaCtrl implementation.
+- `lib/amnesia/`: Amnesia and AmnesiaCtrl implementations.
 - `lib/dns/`: all DNS-owned node implementations.
 - `lib/debug/`: debug-only node implementations.
 - `lib/http/`: HTTP client and server node implementations.

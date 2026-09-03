@@ -1,10 +1,7 @@
-// Package amnesianodes provides the AmnesiaCtrl node.
+// Package amnesianodes provides Amnesia VPN nodes.
 //
-// The node imports Amnezia service keys, self-hosted guest keys, and native
-// WireGuard or AmneziaWG configurations through github.com/asciimoth/wgo/amnesia.
-// It owns one tracked peer on a WireGuard device received through a wgctrl
-// link. For a service-key import, it sends the attached device's existing
-// public key to the service. It does not use wgo's fallback key generator, and
-// reconnecting does not rotate the device key. Its network input is only for
-// Amnezia control-plane HTTP traffic.
+// Amnesia owns an API client and an ephemeral userspace WireGuard device. Its
+// single network input carries control-plane and tunnel traffic. AmnesiaCtrl
+// manages one tracked peer on a separate WireGuard node through a wgctrl link.
+// Both nodes import profiles through github.com/asciimoth/wgo/amnesia.
 package amnesianodes
