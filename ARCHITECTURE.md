@@ -8,10 +8,12 @@ Almagest is a Go userspace network stack built around a Pasta node graph.
   workspace helpers, menu helpers, and node-facing aliases for shared
   contracts.
 - `lib/amnesia/` owns the Amnesia and AmnesiaCtrl nodes. Amnesia owns an
-  ephemeral WireGuard device. AmnesiaCtrl manages one tracked peer on a shared
-  WireGuard device. Both import profiles through `wgo/amnesia`.
+  ephemeral WireGuard device and publishes its profile DNS through that
+  device's TUN path. AmnesiaCtrl manages one tracked peer on a shared WireGuard
+  device. Both import profiles through `wgo/amnesia`.
 - `lib/dns/` owns DNS link payload contracts, DNS provider helpers, DNS node
-  classes, and built-in DNS nodes.
+  classes, built-in DNS nodes, and the UDP DNS adapter for an existing TUN data
+  path.
 - `lib/http/` owns HTTP client and server nodes.
 - `lib/network/` owns network middleware nodes such as firewall, router,
   remapper, and spoofer. It also owns the mock network node.
@@ -75,10 +77,10 @@ Engine and workspace:
   helpers, menu helpers, TLS selector helpers, and node-facing aliases to
   `links` and `storage`.
 - `lib/amnesia/`: Amnesia service and profile import, persistent client state,
-  an ephemeral managed WireGuard runtime, and WireGuard controller
-  integration.
+  an ephemeral managed WireGuard runtime, tunnel DNS publication, and
+  WireGuard controller integration.
 - `lib/dns/`: DNS payload contracts, provider helpers, node classes, and
-  built-in DNS nodes.
+  built-in DNS nodes, including the raw UDP tunnel DNS adapter.
 - `lib/http/`: HTTP client and server node classes.
 - `lib/network/`: network firewall, router, remapper, and spoofer node classes.
 - `lib/socks/`: SOCKS client/server and local proxy node classes.

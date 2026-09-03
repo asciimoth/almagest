@@ -13,6 +13,7 @@ import (
 	wgoamnesia "github.com/asciimoth/wgo/amnesia"
 	wgdevice "github.com/asciimoth/wgo/device"
 
+	dnsnodes "github.com/asciimoth/almagest/lib/dns"
 	"github.com/asciimoth/almagest/lib/nodekit"
 )
 
@@ -97,6 +98,7 @@ func (n *managedAmnesiaNode) reconcile(req managedAmnesiaRuntimeRequest) (manage
 			result.ready = true
 			result.profile = n.runtimeProfile
 			result.stats = n.runtimeDevice.RuntimeStats()
+			result.dns = n.runtimeDNS
 			return result, true
 		}
 	}
@@ -216,9 +218,26 @@ func (n *managedAmnesiaNode) activatePreparedRuntimeLocked(
 		return result, true
 	}
 
-	// The graph owns req.tun. The device owns only this detached child. Closing
-	// the connection therefore does not consume the graph payload.
-	deviceTun := gtun.Detach(req.tun, nil, n.Pool())
+	// The graph owns req.tun. The device owns only a detached child, either
+	// directly or through TunnelDNS. Closing the connection therefore does not
+	// consume the graph payload.
+	var deviceTun gtun.Tun
+	if len(profile.Interface.DNS) != 0 {
+		resolver, err := dnsnodes.NewTunnelDNS(req.tun, n.Pool(), n.WorkerSpawner, dnsnodes.TunnelDNSOptions{
+			Addresses:  profile.Interface.Addresses,
+			Servers:    profile.Interface.DNS,
+			AllowedIPs: profile.Peer.AllowedIPs,
+		})
+		if err != nil {
+			n.closeRuntimeLocked()
+			result.err = formatRuntimeError("create tunnel DNS resolver", err)
+			return result, true
+		}
+		deviceTun = resolver
+		n.runtimeDNS = resolver
+	} else {
+		deviceTun = gtun.Detach(req.tun, nil, n.Pool())
+	}
 	bindOptions := conn.StdNetBindOptions{}
 	if !req.network.IsNative() {
 		bindOptions.AllowSingleFamily = true
@@ -266,6 +285,7 @@ func (n *managedAmnesiaNode) activatePreparedRuntimeLocked(
 	result.ready = true
 	result.profile = n.runtimeProfile
 	result.stats = dev.RuntimeStats()
+	result.dns = n.runtimeDNS
 	privateKey := dev.PrivateKey()
 	localPublicKey := "none"
 	if !privateKey.IsZero() {
@@ -362,8 +382,11 @@ func (n *managedAmnesiaNode) closeRuntimeDeviceLocked() {
 	}
 	if n.runtimeDevice != nil {
 		n.runtimeDevice.Close()
+	} else if n.runtimeDNS != nil {
+		dnsnodes.CloseDNS(n.runtimeDNS)
 	}
 	n.runtimeDevice = nil
+	n.runtimeDNS = nil
 	n.runtimeTunSource = nil
 }
 

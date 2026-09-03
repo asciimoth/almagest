@@ -11,6 +11,7 @@ import (
 	wgoamnesia "github.com/asciimoth/wgo/amnesia"
 	wgdevice "github.com/asciimoth/wgo/device"
 
+	dnsnodes "github.com/asciimoth/almagest/lib/dns"
 	"github.com/asciimoth/almagest/lib/nodekit"
 	wireguardnodes "github.com/asciimoth/almagest/lib/wireguard"
 )
@@ -21,13 +22,16 @@ func TestAmnesiaClassHasOnlyManagedPortsAndMenuFields(t *testing.T) {
 		t.Fatalf("Amnesia class name = %q", class.ClassName())
 	}
 	params := class.DefaultNodeParams()
-	if params.PrimaryType != wireguardnodes.TypeWGCtrl || len(params.InitialPorts) != 2 {
+	if params.PrimaryType != wireguardnodes.TypeWGCtrl || len(params.InitialPorts) != 3 {
 		t.Fatalf("default params = %#v", params)
 	}
 	if port := params.InitialPorts[0]; port.Direction != "left" || port.Name != "Tun" || len(port.Types) != 1 || port.Types[0] != nodekit.TypeTun {
 		t.Fatalf("TUN port = %#v", port)
 	}
-	if port := params.InitialPorts[1]; port.Direction != "right" || port.Name != "Network" || len(port.Types) != 1 || port.Types[0] != nodekit.TypeNetwork {
+	if port := params.InitialPorts[1]; port.Direction != "left" || port.Name != "DNS" || len(port.Types) != 1 || port.Types[0] != dnsnodes.TypeDNS {
+		t.Fatalf("DNS port = %#v", port)
+	}
+	if port := params.InitialPorts[2]; port.Direction != "right" || port.Name != "Network" || len(port.Types) != 1 || port.Types[0] != nodekit.TypeNetwork {
 		t.Fatalf("network port = %#v", port)
 	}
 
@@ -110,7 +114,13 @@ func TestManagedAmnesiaRuntimeUsesEphemeralDeviceAndRotatesKey(t *testing.T) {
 		"connection": amnesiaTestActivationKey(t, "managed"),
 	}}
 	peerKey := amnesiaTestPrivateKey(t).PublicKey()
-	recorder := &managedAmnesiaClientRecorder{t: t, peerKey: peerKey}
+	recorder := &managedAmnesiaClientRecorder{
+		t: t, peerKey: peerKey,
+		dnsByCountry: map[string][]string{
+			"de": {"10.20.0.1"},
+			"nl": {"10.20.0.3"},
+		},
+	}
 	node := &managedAmnesiaNode{
 		secrets: secrets,
 		config: managedAmnesiaConfig{
@@ -166,6 +176,10 @@ func TestManagedAmnesiaRuntimeUsesEphemeralDeviceAndRotatesKey(t *testing.T) {
 	if node.runtimeDevice == nil || len(recorder.negotiations) != 1 {
 		t.Fatal("TUN configuration replacement negotiated a second connection")
 	}
+	if activated.dns == nil || !dnsnodes.SameDNSInstance(activated.dns, node.runtimeDNS) {
+		t.Fatal("activated runtime did not publish its tunnel DNS resolver")
+	}
+	firstDNS := activated.dns
 	firstDevice := node.runtimeDevice
 	if firstDevice.PrivateKey() != firstKey {
 		t.Fatal("managed device did not receive the negotiated private key")
@@ -178,6 +192,9 @@ func TestManagedAmnesiaRuntimeUsesEphemeralDeviceAndRotatesKey(t *testing.T) {
 	}
 	if node.runtimeDevice != firstDevice {
 		t.Fatal("equivalent reconcile rebuilt the managed connection")
+	}
+	if !dnsnodes.SameDNSInstance(reused.dns, firstDNS) {
+		t.Fatal("equivalent reconcile replaced the tunnel DNS resolver")
 	}
 
 	// A material connection change creates a new zero-key device. The client
@@ -195,6 +212,9 @@ func TestManagedAmnesiaRuntimeUsesEphemeralDeviceAndRotatesKey(t *testing.T) {
 	default:
 		t.Fatal("old WireGuard device remained open after rotation")
 	}
+	if dnsnodes.DNSIsReady(firstDNS) {
+		t.Fatal("old tunnel DNS resolver remained ready after country change")
+	}
 	if !node.markRuntimeTunConfigured(secondPrepared.runtimeID) {
 		t.Fatal("replacement runtime could not be marked as TUN-configured")
 	}
@@ -207,6 +227,13 @@ func TestManagedAmnesiaRuntimeUsesEphemeralDeviceAndRotatesKey(t *testing.T) {
 	}
 	if node.runtimeDevice.PrivateKey() != recorder.privateKeys[1] {
 		t.Fatal("replacement device did not receive the new private key")
+	}
+	if secondActivated.dns == nil || dnsnodes.SameDNSInstance(secondActivated.dns, firstDNS) ||
+		!dnsnodes.DNSIsReady(secondActivated.dns) {
+		t.Fatal("country change did not publish a fresh ready tunnel DNS resolver")
+	}
+	if len(node.runtimeProfile.dns) != 1 || node.runtimeProfile.dns[0] != "10.20.0.3" {
+		t.Fatalf("replacement country DNS servers = %v, want [10.20.0.3]", node.runtimeProfile.dns)
 	}
 	if !nodekit.TunIsReady(tunSource) || !nodekit.TunIsReady(replacementTun) {
 		t.Fatal("device rotation consumed the graph-owned TUN")
@@ -285,6 +312,7 @@ type managedAmnesiaClientRecorder struct {
 	options      []wgoamnesia.ClientOptions
 	privateKeys  []wgdevice.NoisePrivateKey
 	negotiations []wgoamnesia.NegotiationOptions
+	dnsByCountry map[string][]string
 	onImport     func()
 }
 
@@ -313,6 +341,9 @@ func (c *recordingManagedAmnesiaClient) ImportNonInteractive(
 	c.owner.negotiations = append(c.owner.negotiations, options)
 	profile := amnesiaTestProfile(privateKey.PublicKey(), c.owner.peerKey, options.ServerCountryCode)
 	profile.Interface.PrivateKey = privateKey.Base64()
+	if servers, ok := c.owner.dnsByCountry[options.ServerCountryCode]; ok {
+		profile.Interface.DNS = append([]string(nil), servers...)
+	}
 	if c.owner.onImport != nil {
 		onImport := c.owner.onImport
 		c.owner.onImport = nil

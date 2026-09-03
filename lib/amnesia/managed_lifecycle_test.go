@@ -8,11 +8,15 @@ import (
 
 	"github.com/asciimoth/bufpool"
 	"github.com/asciimoth/configer/configer"
+	"github.com/asciimoth/formular"
 	"github.com/asciimoth/gonnect"
+	"github.com/asciimoth/gonnect/dns"
 	"github.com/asciimoth/gonnect/sysnet"
 	"github.com/asciimoth/gonnect/tun"
 	"github.com/asciimoth/pasta/pasta"
+	"github.com/asciimoth/pasta/pasta/std"
 
+	dnsnodes "github.com/asciimoth/almagest/lib/dns"
 	"github.com/asciimoth/almagest/lib/logging"
 	"github.com/asciimoth/almagest/lib/nodekit"
 	"github.com/asciimoth/almagest/lib/storage"
@@ -124,6 +128,121 @@ func TestManagedAmnesiaLinksAttachDetachReattach(t *testing.T) {
 	}
 }
 
+func TestManagedAmnesiaDNSLinkAndCountryChangeLifecycle(t *testing.T) {
+	spawner := &managedAmnesiaLifecycleSpawner{}
+	runtime := managedAmnesiaLifecycleRuntime{
+		kv: managedAmnesiaKVManager{store: newAmnesiaMemoryKV()}, spawner: spawner,
+	}
+	class := &recordingManagedAmnesiaClass{base: AmnesiaClass{Runtime: runtime}}
+	w, err := pasta.WorkspaceFromConfig(
+		[]pasta.NodeClass{class}, managedAmnesiaLifecycleConfig("amnesia DNS"),
+		logging.NewDebugLogFactory(256),
+	)
+	if err != nil {
+		t.Fatalf("build workspace: %v", err)
+	}
+	spawner.wait()
+	t.Cleanup(func() {
+		w.Close()
+		spawner.wait()
+	})
+	node := class.onlyNode(t)
+	firstSource := newManagedAmnesiaTestDNS()
+	replacementSource := newManagedAmnesiaTestDNS()
+	t.Cleanup(func() {
+		_ = firstSource.Close()
+		_ = replacementSource.Close()
+	})
+	w.Lock()
+	node.runtimeReady = true
+	node.dnsProvider = firstSource
+	w.Unlock()
+
+	consumer := &managedAmnesiaDNSPeer{}
+	consumerID, err := w.AddNode(consumer, "test/AmnesiaDNSConsumer", "DNS consumer")
+	if err != nil {
+		t.Fatalf("add DNS consumer: %v", err)
+	}
+	consumerPort, err := w.AddPort(pasta.Port{
+		Node: consumerID, Direction: "right", Name: "DNS", Types: []string{dnsnodes.TypeDNS},
+	})
+	if err != nil {
+		t.Fatalf("add DNS consumer port: %v", err)
+	}
+	firstLink, _, err := w.AddLink(node.dnsp, consumerPort)
+	if err != nil {
+		t.Fatalf("attach first DNS link: %v", err)
+	}
+	firstOutput := consumer.latest(t)
+	if !dnsnodes.DNSIsReady(firstOutput) || !dnsnodes.SameDNSSource(firstOutput, firstSource) {
+		t.Fatal("first DNS link did not receive a ready detached resolver")
+	}
+
+	generationBeforeRelink := node.generation.Load()
+	w.RemoveLink(firstLink)
+	if dnsnodes.DNSIsReady(firstOutput) {
+		t.Fatal("removed DNS link left its detached resolver ready")
+	}
+	if !dnsnodes.DNSIsReady(firstSource) {
+		t.Fatal("removing a DNS link closed the runtime resolver")
+	}
+	secondLink, _, err := w.AddLink(node.dnsp, consumerPort)
+	if err != nil {
+		t.Fatalf("reattach DNS link: %v", err)
+	}
+	secondOutput := consumer.latest(t)
+	if secondLink == firstLink || dnsnodes.SameDNSInstance(firstOutput, secondOutput) ||
+		!dnsnodes.SameDNSSource(secondOutput, firstSource) {
+		t.Fatal("reattached DNS link did not receive a fresh detached resolver")
+	}
+	if node.generation.Load() != generationBeforeRelink {
+		t.Fatal("DNS-only detach and reattach rebuilt the VPN runtime")
+	}
+
+	// Apply a country change through the node menu. The old output must close
+	// before negotiation starts, so downstream nodes cannot use stale profile
+	// DNS servers during the replacement.
+	w.SendNodeFormularMsg(node.ID, formular.FormApplyMessage{
+		MessageBase: formular.MessageBase{
+			Type: formular.MessageFormApply, MenuID: pasta.NodeMenuID(node.ID),
+		},
+		BlockID: "config",
+		Values:  map[string]any{fieldServerCountryCode: "de"},
+	})
+	if node.config.serverCountryCode != "de" {
+		t.Fatalf("country after menu apply = %q, want de", node.config.serverCountryCode)
+	}
+	if dnsnodes.DNSIsReady(secondOutput) {
+		t.Fatal("country change left the old detached resolver ready")
+	}
+	spawner.wait()
+
+	// Model the ready result from the replacement runtime. The existing link
+	// must receive a new wrapper without detach and reattach operations.
+	w.Lock()
+	node.handleRuntimeResult(managedAmnesiaRuntimeResult{
+		generation: node.generation.Load(), ready: true, dns: replacementSource,
+	})
+	w.Unlock()
+	replacementOutput := consumer.latest(t)
+	if dnsnodes.SameDNSInstance(replacementOutput, secondOutput) ||
+		!dnsnodes.DNSIsReady(replacementOutput) ||
+		!dnsnodes.SameDNSSource(replacementOutput, replacementSource) {
+		t.Fatal("ready country replacement did not refresh the attached DNS link")
+	}
+	if !dnsnodes.DNSIsReady(firstSource) {
+		t.Fatal("country replacement output handling closed the old runtime source")
+	}
+
+	std.Request(w, consumerID, secondLink)
+	refreshedOutput := consumer.latest(t)
+	if dnsnodes.DNSIsReady(replacementOutput) ||
+		dnsnodes.SameDNSInstance(refreshedOutput, replacementOutput) ||
+		!dnsnodes.SameDNSSource(refreshedOutput, replacementSource) {
+		t.Fatal("DNS value request did not replace the per-link wrapper")
+	}
+}
+
 func TestManagedAmnesiaSaveRestorePreservesConfigAndInstallationUUID(t *testing.T) {
 	manager := managedAmnesiaKVManager{store: newAmnesiaMemoryKV()}
 	spawner := &managedAmnesiaLifecycleSpawner{}
@@ -177,7 +296,7 @@ func TestManagedAmnesiaSaveRestorePreservesConfigAndInstallationUUID(t *testing.
 		)
 	}
 	snapshot, ok := restoredWorkspace.NodeSnapshot(restored.ID)
-	if !ok || len(snapshot.LeftPorts) != 1 || len(snapshot.RightPorts) != 1 {
+	if !ok || len(snapshot.LeftPorts) != 2 || len(snapshot.RightPorts) != 1 {
 		t.Fatalf("restored Amnesia ports = %#v", snapshot)
 	}
 }
@@ -236,6 +355,54 @@ type managedAmnesiaLinkPeer struct {
 }
 
 func (*managedAmnesiaLinkPeer) PreLinkAdd(uint64, string, string) error { return nil }
+
+type managedAmnesiaDNSPeer struct {
+	pasta.BasicNode
+
+	received []dns.Interface
+}
+
+func (*managedAmnesiaDNSPeer) PreLinkAdd(uint64, string, string) error { return nil }
+
+func (p *managedAmnesiaDNSPeer) OnEvent(
+	event pasta.Event,
+	linkType string,
+	_ []string,
+	receiverPortDirection string,
+) error {
+	if linkType != dnsnodes.TypeDNS || receiverPortDirection != "right" {
+		return nil
+	}
+	payload, ok := event.Payload.(dnsnodes.DNSPayload)
+	if ok && payload.DNS != nil {
+		p.received = append(p.received, payload.DNS)
+	}
+	return nil
+}
+
+func (p *managedAmnesiaDNSPeer) latest(t *testing.T) dns.Interface {
+	t.Helper()
+	if len(p.received) == 0 {
+		t.Fatal("DNS consumer received no resolver")
+	}
+	return p.received[len(p.received)-1]
+}
+
+type managedAmnesiaTestDNS struct {
+	requests chan dns.Request
+	closed   atomic.Bool
+}
+
+func newManagedAmnesiaTestDNS() *managedAmnesiaTestDNS {
+	return &managedAmnesiaTestDNS{requests: make(chan dns.Request)}
+}
+
+func (d *managedAmnesiaTestDNS) Requests() chan<- dns.Request { return d.requests }
+func (d *managedAmnesiaTestDNS) Close() error {
+	d.closed.Store(true)
+	return nil
+}
+func (d *managedAmnesiaTestDNS) IsUp() (bool, error) { return !d.closed.Load(), nil }
 
 type managedAmnesiaKVManager struct{ store *amnesiaMemoryKV }
 

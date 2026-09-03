@@ -11,12 +11,14 @@ import (
 
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
+	"github.com/asciimoth/gonnect/dns"
 	"github.com/asciimoth/gonnect/tun"
 	"github.com/asciimoth/pasta/pasta"
 	"github.com/asciimoth/pasta/pasta/std"
 	wgoamnesia "github.com/asciimoth/wgo/amnesia"
 	wgdevice "github.com/asciimoth/wgo/device"
 
+	dnsnodes "github.com/asciimoth/almagest/lib/dns"
 	"github.com/asciimoth/almagest/lib/nodekit"
 	"github.com/asciimoth/almagest/lib/storage"
 	wireguardnodes "github.com/asciimoth/almagest/lib/wireguard"
@@ -48,6 +50,7 @@ func (AmnesiaClass) LongDescription() string  { return AmnesiaClassLongDescripti
 func (AmnesiaClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: wireguardnodes.TypeWGCtrl, InitialPorts: []pasta.Port{
 		nodekit.TunPort("left", "Tun"),
+		dnsnodes.DNSPort("left", "DNS"),
 		nodekit.NetworkPort("right", "Network"),
 	}}
 }
@@ -85,6 +88,7 @@ type managedAmnesiaNode struct {
 	kv       storage.KVManager
 
 	tunp uint64
+	dnsp uint64
 	netp uint64
 
 	tunLink uint64
@@ -93,6 +97,9 @@ type managedAmnesiaNode struct {
 	tun     tun.Tun
 	network nodekit.NetworkCloser
 	config  managedAmnesiaConfig
+
+	dnsProvider dns.Interface
+	dnsOutputs  dnsnodes.DNSOutputCache
 
 	tlsConfig          *tls.Config
 	tlsConfigEffective string
@@ -112,6 +119,7 @@ type managedAmnesiaNode struct {
 	runtimeClient        Client
 	runtimeConfig        *wgoamnesia.Profile
 	runtimeDevice        *wgdevice.Device
+	runtimeDNS           dns.Interface
 	runtimeHTTP          interface{ CloseIdleConnections() }
 	runtimeTunSource     tun.Tun
 	runtimeNetwork       nodekit.NetworkCloser
@@ -160,6 +168,7 @@ type managedAmnesiaRuntimeResult struct {
 	stats            wgdevice.RuntimeStats
 	installationUUID string
 	persistent       bool
+	dns              dns.Interface
 	err              error
 }
 
@@ -180,6 +189,7 @@ func (n *managedAmnesiaNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id 
 		n.config.storageID = amnesiaStorageID(n.nodeName)
 	}
 	n.tunp = nodekit.RestoredLeft(restored, 0)
+	n.dnsp = nodekit.RestoredLeft(restored, 1)
 	n.netp = nodekit.RestoredRight(restored, 0)
 	n.nodeStore = amnesiaNodeStore(n.kv, n.config.storageID)
 	n.refreshTLSConfig()
@@ -203,6 +213,8 @@ func (n *managedAmnesiaNode) OnReady() error {
 func (n *managedAmnesiaNode) OnStop() {
 	n.generation.Add(1)
 	n.cancelCurrentRun()
+	n.dnsOutputs.CloseAll()
+	n.dnsProvider = nil
 	go n.stopRuntime()
 }
 
@@ -213,6 +225,11 @@ func (n *managedAmnesiaNode) PreLinkAdd(port uint64, linkType, portDirection str
 			return pasta.LinkTypeErr(linkType)
 		}
 		return nodekit.TunPreLinkAdd(n.W, port, linkType)
+	case n.dnsp:
+		if portDirection != "left" || linkType != dnsnodes.TypeDNS {
+			return pasta.LinkTypeErr(linkType)
+		}
+		return nil
 	case n.netp:
 		if portDirection != "right" || linkType != nodekit.TypeNetwork {
 			return pasta.LinkTypeErr(linkType)
@@ -227,29 +244,43 @@ func (n *managedAmnesiaNode) PreLinkAdd(port uint64, linkType, portDirection str
 }
 
 func (n *managedAmnesiaNode) OnLinkAdd(link, port uint64, linkType, portDirection string) error {
+	changedInput := false
 	switch {
 	case port == n.tunp && portDirection == "left" && linkType == nodekit.TypeTun:
 		n.tunLink = link
 		n.sendTunConfigToLink(link)
 		std.RequestLocked(n.W, n.ID, link)
+		changedInput = true
+	case port == n.dnsp && portDirection == "left" && linkType == dnsnodes.TypeDNS:
+		n.sendDNSToLink(link)
 	case port == n.netp && portDirection == "right" && linkType == nodekit.TypeNetwork:
 		n.netLink = link
 		std.RequestLocked(n.W, n.ID, link)
+		changedInput = true
 	}
-	n.scheduleReconcile(true)
+	if changedInput {
+		n.scheduleReconcile(true)
+	}
 	return nil
 }
 
 func (n *managedAmnesiaNode) OnLinkRemoved(link, port uint64, linkType, portDirection string) error {
+	changedInput := false
 	switch {
 	case port == n.tunp && portDirection == "left" && linkType == nodekit.TypeTun && link == n.tunLink:
 		n.tunLink = 0
 		n.tun = nil
+		changedInput = true
+	case port == n.dnsp && portDirection == "left" && linkType == dnsnodes.TypeDNS:
+		n.dnsOutputs.Close(link)
 	case port == n.netp && portDirection == "right" && linkType == nodekit.TypeNetwork && link == n.netLink:
 		n.netLink = 0
 		n.network = nil
+		changedInput = true
 	}
-	n.scheduleReconcile(true)
+	if changedInput {
+		n.scheduleReconcile(true)
+	}
 	return nil
 }
 
@@ -278,6 +309,11 @@ func (n *managedAmnesiaNode) OnEvent(event pasta.Event, linkType string, _ []str
 			n.network = next
 			n.scheduleReconcile(true)
 		}
+		return nil
+	}
+	if event.ReceiverPort == n.dnsp && receiverPortDirection == "left" &&
+		linkType == dnsnodes.TypeDNS && std.IsRequest(event.Payload) {
+		n.refreshDNSLink(event.Link)
 	}
 	return nil
 }
@@ -462,6 +498,10 @@ func (n *managedAmnesiaNode) scheduleReconcile(invalidate bool) {
 		n.runtimeReady = false
 		n.runtimeStats = wgdevice.RuntimeStats{}
 		n.runtimeError = ""
+		// A detached DNS output must not keep using the previous profile while
+		// this generation negotiates or activates its replacement.
+		n.dnsOutputs.CloseAll()
+		n.dnsProvider = nil
 	}
 	_ = n.updateLabel()
 	n.sendStatusBlock()
@@ -514,6 +554,8 @@ func (n *managedAmnesiaNode) handleRuntimeResult(msg managedAmnesiaRuntimeResult
 		}
 		n.profileStatus = amnesiaProfileStatus{}
 		n.runtimeStats = wgdevice.RuntimeStats{}
+		n.dnsOutputs.CloseAll()
+		n.dnsProvider = nil
 		n.sendTunConfig()
 	} else if msg.waitingForTun {
 		// Keep the negotiated profile while the linked TUN provider replaces its
@@ -535,9 +577,13 @@ func (n *managedAmnesiaNode) handleRuntimeResult(msg managedAmnesiaRuntimeResult
 		return
 	} else if msg.ready {
 		n.runtimeReady = true
+		n.dnsProvider = msg.dns
+		n.sendDNSAll()
 	} else {
 		n.profileStatus = amnesiaProfileStatus{}
 		n.runtimeStats = wgdevice.RuntimeStats{}
+		n.dnsOutputs.CloseAll()
+		n.dnsProvider = nil
 		n.sendTunConfig()
 	}
 	_ = n.updateLabel()
@@ -584,6 +630,18 @@ func (n *managedAmnesiaNode) sendProfileTunConfig(profile amnesiaProfileStatus) 
 		Routes: append([]string(nil), profile.allowedIPs...),
 		DNS:    firstAmnesiaDNS(profile.dns),
 	})
+}
+
+func (n *managedAmnesiaNode) sendDNSAll() {
+	n.dnsOutputs.SendPortLocked(n.W, n.ID, n.dnsp, n.dnsProvider)
+}
+
+func (n *managedAmnesiaNode) sendDNSToLink(link uint64) {
+	n.dnsOutputs.SendLocked(n.W, n.ID, link, n.dnsProvider)
+}
+
+func (n *managedAmnesiaNode) refreshDNSLink(link uint64) {
+	n.dnsOutputs.RefreshLocked(n.W, n.ID, link, n.dnsProvider)
 }
 
 func (n *managedAmnesiaNode) stateText() string {
