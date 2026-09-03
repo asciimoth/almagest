@@ -239,7 +239,7 @@ func TestAmnesiaDebugLogsIncludeUUIDAndRedactSecrets(t *testing.T) {
 	recorder := &amnesiaClientRecorder{profile: profile}
 	logFactory := logging.NewDebugLogFactory(256)
 	node := &amnesiaNode{
-		Base:    nodekit.Base{Logger: logFactory.NodeLogger(42, NodeTypeAmnesia)},
+		Base:    nodekit.Base{Logger: logFactory.NodeLogger(42, NodeTypeAmnesiaCtrl)},
 		secrets: secrets,
 		config: amnesiaConfig{
 			enabled: true, connectionSecret: "connection-name", serverCountryCode: "de",

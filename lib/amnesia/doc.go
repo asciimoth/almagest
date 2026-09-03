@@ -1,4 +1,4 @@
-// Package amnesianodes provides the Amnesia WireGuard controller node.
+// Package amnesianodes provides the AmnesiaCtrl node.
 //
 // The node imports Amnezia service keys, self-hosted guest keys, and native
 // WireGuard or AmneziaWG configurations through github.com/asciimoth/wgo/amnesia.

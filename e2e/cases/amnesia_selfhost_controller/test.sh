@@ -213,8 +213,8 @@ start_gateway
 http_pid="$(start_static_http_target 10.205.20.1 18085 "amnesia controller e2e" "$E2E_RUNTIME/upstream-http.log")"
 start_daemon
 
-wait_node_class_available "almagest/Amnesia" || fail "Amnesia node class is unavailable"
-wait_graph_node "Amnesia Service" || fail "Amnesia node is missing"
+wait_node_class_available "almagest/AmnesiaCtrl" || fail "AmnesiaCtrl node class is unavailable"
+wait_graph_node "Amnesia Service" || fail "AmnesiaCtrl node is missing"
 amnesia_node="$(node_id_by_name "Amnesia Service")"
 wireguard_node="$(node_id_by_name "WireGuard Amnesia")"
 http_client="$(node_id_by_name "HTTP Client Amnesia")"
@@ -230,7 +230,7 @@ cli secrets set-nodes --key amnesia-gateway-public --node "Amnesia Service" >/de
 
 wait_node_label "$wireguard_node" up || fail "WireGuard node did not become ready"
 add_link_by_port_name "$amnesia_node" right WireGuard "$wireguard_node" left WGCtrl >/dev/null
-wait_node_label "$amnesia_node" up || fail "Amnesia node did not import the service profile"
+wait_node_label "$amnesia_node" up || fail "AmnesiaCtrl node did not import the service profile"
 [[ "$(menu_field "$amnesia_node" status inputFormat)" == "service-key" ]] \
 	|| fail "Amnesia status did not report service-key input"
 [[ "$(menu_field "$amnesia_node" status peerTransport)" == "WireGuard default" ]] \

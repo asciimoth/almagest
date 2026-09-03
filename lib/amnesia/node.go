@@ -24,18 +24,18 @@ import (
 )
 
 const (
-	// NodeTypeAmnesia is the class name of the Amnesia controller node.
-	NodeTypeAmnesia = "almagest/Amnesia"
+	// NodeTypeAmnesiaCtrl is the class name of the AmnesiaCtrl node.
+	NodeTypeAmnesiaCtrl = "almagest/AmnesiaCtrl"
 
 	amnesiaImportTimeout = 2 * time.Minute
 )
 
 var (
-	// AmnesiaClassLongDescription is the user-visible description of the
-	// Amnesia node, including its attached WireGuard identity lifetime and
+	// AmnesiaCtrlClassLongDescription is the user-visible description of the
+	// AmnesiaCtrl node, including its attached WireGuard identity lifetime and
 	// recovery procedure.
-	//go:embed node_amnesia.md
-	AmnesiaClassLongDescription string
+	//go:embed node_amnesia_ctrl.md
+	AmnesiaCtrlClassLongDescription string
 
 	// ErrCaptchaUnsupported reports that an Amnezia service requested a
 	// CAPTCHA. Almagest does not currently have a suitable secure CAPTCHA UI.
@@ -52,27 +52,27 @@ type Client interface {
 // ClientFactory constructs one wgo/amnesia client for one import attempt.
 type ClientFactory func(wgoamnesia.ClientOptions) (Client, error)
 
-// AmnesiaClass creates nodes that import an Amnezia connection and own one
+// AmnesiaCtrlClass creates nodes that import an Amnezia connection and own one
 // tracked peer on a shared WireGuard device. A service-key import uses the
 // device's current WireGuard identity. The identity remains unchanged across
 // imports, reconnects, and daemon restarts until the WireGuard node rotates
 // its private key.
-type AmnesiaClass struct {
+type AmnesiaCtrlClass struct {
 	Runtime   nodekit.Runtime
 	NewClient ClientFactory
 }
 
-func (AmnesiaClass) ClassName() string        { return NodeTypeAmnesia }
-func (AmnesiaClass) ShortDescription() string { return "Amnesia VPN controller" }
-func (AmnesiaClass) LongDescription() string  { return AmnesiaClassLongDescription }
-func (AmnesiaClass) DefaultNodeParams() pasta.NodeClassParams {
+func (AmnesiaCtrlClass) ClassName() string        { return NodeTypeAmnesiaCtrl }
+func (AmnesiaCtrlClass) ShortDescription() string { return "AmnesiaCtrl VPN controller" }
+func (AmnesiaCtrlClass) LongDescription() string  { return AmnesiaCtrlClassLongDescription }
+func (AmnesiaCtrlClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: wireguardnodes.TypeWGCtrl, InitialPorts: []pasta.Port{
 		wireguardnodes.WGCtrlPort("right", "WireGuard"),
 		nodekit.NetworkPort("right", "Network"),
 	}}
 }
 
-func (c AmnesiaClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
+func (c AmnesiaCtrlClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
 	newClient := c.NewClient
 	if newClient == nil {
 		newClient = func(options wgoamnesia.ClientOptions) (Client, error) {
@@ -686,7 +686,7 @@ func (n *amnesiaNode) handleRuntimeResult(msg amnesiaRuntimeResult) {
 	if msg.err != nil {
 		n.runtimeError = msg.err.Error()
 		if n.Logger != nil {
-			n.Logger.Errf("Amnesia node error: %v", msg.err)
+			n.Logger.Errf("AmnesiaCtrl node error: %v", msg.err)
 		}
 	}
 	n.logDebugf(

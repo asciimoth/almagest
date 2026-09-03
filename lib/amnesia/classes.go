@@ -6,7 +6,7 @@ import (
 	"github.com/asciimoth/almagest/lib/nodekit"
 )
 
-// Classes returns all standard Amnesia node classes.
+// Classes returns all standard AmnesiaCtrl node classes.
 func Classes(runtime nodekit.Runtime) []pasta.NodeClass {
-	return []pasta.NodeClass{AmnesiaClass{Runtime: runtime}}
+	return []pasta.NodeClass{AmnesiaCtrlClass{Runtime: runtime}}
 }

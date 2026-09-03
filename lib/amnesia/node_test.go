@@ -10,8 +10,15 @@ import (
 	"github.com/asciimoth/almagest/lib/wireguard"
 )
 
-func TestAmnesiaClassPortsAndMenu(t *testing.T) {
-	params := (AmnesiaClass{}).DefaultNodeParams()
+func TestAmnesiaCtrlClassPortsAndMenu(t *testing.T) {
+	class := AmnesiaCtrlClass{}
+	if NodeTypeAmnesiaCtrl != "almagest/AmnesiaCtrl" {
+		t.Fatalf("node type = %q, want %q", NodeTypeAmnesiaCtrl, "almagest/AmnesiaCtrl")
+	}
+	if got := class.ClassName(); got != NodeTypeAmnesiaCtrl {
+		t.Fatalf("class name = %q, want %q", got, NodeTypeAmnesiaCtrl)
+	}
+	params := class.DefaultNodeParams()
 	if params.PrimaryType != wireguardnodes.TypeWGCtrl || len(params.InitialPorts) != 2 {
 		t.Fatalf("default params = %#v", params)
 	}
@@ -22,7 +29,7 @@ func TestAmnesiaClassPortsAndMenu(t *testing.T) {
 		t.Fatalf("Network port = %#v", port)
 	}
 
-	raw, err := (AmnesiaClass{}).NewNode(configer.NewMemory(map[string]any{
+	raw, err := (AmnesiaCtrlClass{}).NewNode(configer.NewMemory(map[string]any{
 		fieldEnabled: true, fieldConnectionSecret: "connection-name", fieldServerCountryCode: "DE",
 	}))
 	if err != nil {
@@ -98,7 +105,7 @@ func TestAmnesiaFieldValidationDoesNotUseOtherUncommittedFields(t *testing.T) {
 }
 
 func TestAmnesiaStorageIDSurvivesConfigRoundTripAndRename(t *testing.T) {
-	raw, err := (AmnesiaClass{}).NewNode(configer.NewMemory(map[string]any{
+	raw, err := (AmnesiaCtrlClass{}).NewNode(configer.NewMemory(map[string]any{
 		fieldConnectionSecret: "connection-name",
 		fieldStorageID:        "invalid user value",
 	}))
@@ -118,7 +125,7 @@ func TestAmnesiaStorageIDSurvivesConfigRoundTripAndRename(t *testing.T) {
 	if err := node.OnSave(saved); err != nil {
 		t.Fatalf("save node: %v", err)
 	}
-	restoredRaw, err := (AmnesiaClass{}).NewNode(saved)
+	restoredRaw, err := (AmnesiaCtrlClass{}).NewNode(saved)
 	if err != nil {
 		t.Fatalf("restore node: %v", err)
 	}

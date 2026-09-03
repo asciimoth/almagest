@@ -1,8 +1,8 @@
-# Amnesia self-host controller
+# AmnesiaCtrl self-host controller
 
 This privileged case runs the upstream `amneziawg-go` service and the mock
 encrypted API-v2 gateway from `wgo` v0.7.0. The gateway is exposed through a
-locally generated HTTPS certificate. An Almagest Amnesia node imports the
+locally generated HTTPS certificate. An Almagest AmnesiaCtrl node imports the
 service key, owns a tracked peer on a WireGuard node, and sends tunnel traffic
 to the real upstream service.
 

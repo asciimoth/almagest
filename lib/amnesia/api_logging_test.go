@@ -120,7 +120,7 @@ func TestAmnesiaEndpointHostPort(t *testing.T) {
 
 func TestAmnesiaAPIClientErrorLogRedactsServerMessage(t *testing.T) {
 	logFactory := logging.NewDebugLogFactory(16)
-	node := &amnesiaNode{Base: nodekit.Base{Logger: logFactory.NodeLogger(42, NodeTypeAmnesia)}}
+	node := &amnesiaNode{Base: nodekit.Base{Logger: logFactory.NodeLogger(42, NodeTypeAmnesiaCtrl)}}
 	node.logAmnesiaClientFailure(&wgoamnesia.APIError{
 		Code:       wgoamnesia.ErrorSubscriptionInactive,
 		HTTPStatus: http.StatusPaymentRequired,

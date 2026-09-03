@@ -4,7 +4,7 @@
 	},
 	"nodes": {
 		"Amnesia Service": {
-			"Class": "almagest/Amnesia",
+			"Class": "almagest/AmnesiaCtrl",
 			"Pos": "{\"x\":500,\"y\":120}",
 			"Links": [
 				"Network -> [OutNetwork API] Network",

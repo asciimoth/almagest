@@ -372,7 +372,7 @@ func TestWireGuardE2ESendsTunConfigToAttachedTun(t *testing.T) {
 func TestAmnesiaInterfaceConfigFlowsThroughWireGuardToTun(t *testing.T) {
 	e, _ := newWireGuardTunConfigE2E(t)
 	wg := e.AddNode(NodeTypeWireGuard, "wg")
-	amnesia := e.AddNode(amnesianodes.NodeTypeAmnesia, "amnesia")
+	amnesia := e.AddNode(amnesianodes.NodeTypeAmnesiaCtrl, "amnesia")
 	vtun := e.AddNode(NodeTypeVTun, "vtun")
 	network := e.AddNode(NodeTypeMockNetwork, "network")
 	e.SubscribeMenus(amnesia, vtun)
@@ -444,7 +444,7 @@ func TestAmnesiaOwnedIPEnablesVTunHTTPRequest(t *testing.T) {
 	mock := e.AddNode(NodeTypeMockNetwork, "amnesia-http-network")
 	clientWG := e.AddNode(NodeTypeWireGuard, "amnesia-http-client-wg")
 	serverWG := e.AddNode(NodeTypeWireGuard, "amnesia-http-server-wg")
-	amnesia := e.AddNode(amnesianodes.NodeTypeAmnesia, "amnesia-http-controller")
+	amnesia := e.AddNode(amnesianodes.NodeTypeAmnesiaCtrl, "amnesia-http-controller")
 	clientVTun := e.AddNode(NodeTypeVTun, "amnesia-http-client-vtun")
 	serverVTun := e.AddNode(NodeTypeVTun, "amnesia-http-server-vtun")
 	server := e.addHTTPServerOnHost("amnesia-http-server", wireGuardE2EServerAddr, httpPort)
