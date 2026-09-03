@@ -79,6 +79,7 @@ func TestTunConfigStripperDropsTunConfigFromOutput(t *testing.T) {
 		Addrs:  []string{"10.0.0.2/32"},
 		Routes: []string{"10.10.0.0/24"},
 		MTU:    1400,
+		DNS:    "8.8.8.8",
 	})
 	std.Request(w, consumerID, outputLink)
 	assertTunRequestReceived(t, provider.requests)
@@ -114,6 +115,7 @@ func TestTunConfigStripperDropsTunConfigFromInput(t *testing.T) {
 		Addrs:  []string{"fd00::2/128"},
 		Routes: []string{"fd00:10::/64"},
 		MTU:    1280,
+		DNS:    "2001:4860:4860::8888",
 	})
 	w.EmitEvent(providerID, inputLink, std.RequestValue{})
 	assertTunRequestReceived(t, consumer.requests)

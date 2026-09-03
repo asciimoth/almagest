@@ -37,7 +37,9 @@ func (c DefaultTunClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState
 	return &defaultTunNode{NodeBase: NodeBase{Runtime: c.Runtime}, config: config}, nil
 }
 
-// defaultTunNode owns the current sysnet.DefaultTun selected by the node.
+// defaultTunNode owns the current sysnet.DefaultTun selected by the node. DNS
+// service is configured only through its almagest/dns port, so DNS addresses in
+// TunConfig are discarded.
 type defaultTunNode struct {
 	NodeBase
 
@@ -171,7 +173,7 @@ func (n *defaultTunNode) OnEvent(event pasta.Event, linkType string, _ []string,
 		if n.portCfg == nil {
 			n.portCfg = TunConfigByLink{}
 		}
-		n.portCfg.Set(event.Link, cfg)
+		n.portCfg.Set(event.Link, cfg.WithoutDNS())
 		if err := n.configureDefaultTun(); err != nil {
 			return nil
 		}

@@ -3,6 +3,7 @@ package tunnodes
 import (
 	"context"
 	"net/netip"
+	"slices"
 	"strings"
 	"testing"
 
@@ -123,7 +124,11 @@ func TestVTunEquivalentTunConfigDoesNotRebuildActiveVTun(t *testing.T) {
 		t.Fatal("effective localAddrs is empty, want dynamic VTun address")
 	}
 
-	w.EmitEvent(tunReceiverID, tunLink, TunConfig{Addrs: addrs, MTU: DefaultVTunMTU})
+	w.EmitEvent(tunReceiverID, tunLink, TunConfig{
+		Addrs: addrs,
+		MTU:   DefaultVTunMTU,
+		DNS:   DefaultVTunDNSServer,
+	})
 
 	networktest.AssertNoEvent(t, netReceiver.Events)
 }
@@ -178,6 +183,44 @@ func TestVTunUsesDefaultDNSWhenNotConfigured(t *testing.T) {
 	}
 	if len(opts.DnsServers) != 1 || opts.DnsServers[0] != want {
 		t.Fatalf("VTun DNS servers = %v, want [%s]", opts.DnsServers, want)
+	}
+}
+
+func TestVTunUsesSuggestedDNSWhenNotConfigured(t *testing.T) {
+	node := &vtunNode{
+		config:    defaultVTunConfig(),
+		tunConfig: TunConfig{DNS: "1.1.1.1"},
+	}
+	runtimeConfig, opts, err := node.buildRuntimeConfig()
+	if err != nil {
+		t.Fatalf("build runtime config: %v", err)
+	}
+	want := netip.MustParseAddr("1.1.1.1")
+	if !slices.Equal(runtimeConfig.dnsServers, []netip.Addr{want}) {
+		t.Fatalf("runtime DNS servers = %v, want [%s]", runtimeConfig.dnsServers, want)
+	}
+	if !slices.Equal(opts.DnsServers, []netip.Addr{want}) {
+		t.Fatalf("VTun DNS servers = %v, want [%s]", opts.DnsServers, want)
+	}
+}
+
+func TestVTunConfiguredDNSOverridesSuggestion(t *testing.T) {
+	config := defaultVTunConfig()
+	config.dnsServers = "9.9.9.9\n149.112.112.112"
+	node := &vtunNode{
+		config:    config,
+		tunConfig: TunConfig{DNS: "1.1.1.1"},
+	}
+	runtimeConfig, _, err := node.buildRuntimeConfig()
+	if err != nil {
+		t.Fatalf("build runtime config: %v", err)
+	}
+	want := []netip.Addr{
+		netip.MustParseAddr("9.9.9.9"),
+		netip.MustParseAddr("149.112.112.112"),
+	}
+	if !slices.Equal(runtimeConfig.dnsServers, want) {
+		t.Fatalf("runtime DNS servers = %v, want %v", runtimeConfig.dnsServers, want)
 	}
 }
 

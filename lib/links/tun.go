@@ -37,9 +37,18 @@ import (
 // TunConfig values flow in the opposite direction, from left-directed ports to
 // right-directed ports. Config values are suggestions for Tun-providing nodes:
 // the provider may configure its device with the suggested interface addresses,
-// route prefixes, and MTU. Only the latest config received through a specific
-// link is current for that link, and config must be forgotten when that link
-// detaches.
+// route prefixes, MTU, and DNS server address. The DNS suggestion is intended
+// only for simple topologies, such as a VTun connected to WireGuard. Use the
+// almagest/dns link type and DNS nodes when a topology needs DNS routing,
+// composition, or policy.
+//
+// Middleware with one TUN input and one TUN output should pass DNS suggestions
+// through. Middleware with multiple TUN inputs or outputs must drop them because
+// one DNS server suggestion cannot describe a branched topology. TunJoiner is
+// the exception: it sends the same downstream suggestion to all input TUNs.
+//
+// Only the latest config received through a specific link is current for that
+// link, and config must be forgotten when that link detaches.
 //
 // Both left-directed and right-directed almagest/tun ports allow at most one
 // almagest/tun link at a time.
@@ -77,6 +86,11 @@ type TunConfig struct {
 
 	// MTU is the suggested interface MTU. Zero means no MTU suggestion.
 	MTU int
+
+	// DNS is the suggested DNS server IP address, for example "8.8.8.8".
+	// An empty string means no DNS suggestion. DNS must not contain a CIDR
+	// prefix or a host name.
+	DNS string
 }
 
 // Clone returns a deep copy of cfg.
@@ -85,12 +99,23 @@ func (cfg TunConfig) Clone() TunConfig {
 		Addrs:  slices.Clone(cfg.Addrs),
 		Routes: slices.Clone(cfg.Routes),
 		MTU:    cfg.MTU,
+		DNS:    cfg.DNS,
 	}
 }
 
-// IsZero reports whether cfg carries no address, route, or MTU suggestion.
+// WithoutDNS returns a deep copy of cfg without its DNS suggestion.
+//
+// TUN providers that cannot use DNS suggestions and middleware that has
+// multiple TUN inputs or outputs can use this method at their boundary.
+func (cfg TunConfig) WithoutDNS() TunConfig {
+	out := cfg.Clone()
+	out.DNS = ""
+	return out
+}
+
+// IsZero reports whether cfg carries no address, route, MTU, or DNS suggestion.
 func (cfg TunConfig) IsZero() bool {
-	return len(cfg.Addrs) == 0 && len(cfg.Routes) == 0 && cfg.MTU == 0
+	return len(cfg.Addrs) == 0 && len(cfg.Routes) == 0 && cfg.MTU == 0 && cfg.DNS == ""
 }
 
 // TunConfigByLink stores the latest TunConfig received per link.
@@ -121,7 +146,9 @@ func (s TunConfigByLink) Delete(link uint64) {
 // preserving first-seen order by ascending link ID and then by each config's
 // slice order. MTU suggestions are merged by taking the smallest positive MTU,
 // which is the conservative value when one Tun must satisfy multiple consumers.
-// A non-positive MTU is ignored.
+// A non-positive MTU is ignored. The first non-empty DNS suggestion in link-ID
+// order wins. TypeTun ports normally have one link, but deterministic behavior
+// keeps this helper safe for the TunJoiner exception and custom middleware.
 func (s TunConfigByLink) Merge() TunConfig {
 	if len(s) == 0 {
 		return TunConfig{}
@@ -153,6 +180,9 @@ func (s TunConfigByLink) Merge() TunConfig {
 		}
 		if cfg.MTU > 0 && (merged.MTU == 0 || cfg.MTU < merged.MTU) {
 			merged.MTU = cfg.MTU
+		}
+		if merged.DNS == "" && cfg.DNS != "" {
+			merged.DNS = cfg.DNS
 		}
 	}
 	return merged

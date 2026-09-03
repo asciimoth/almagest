@@ -77,7 +77,9 @@ func (c tunNodeConfig) opts() sysnet.TunOpts {
 
 // tunNode owns one regular sysnet Tun and publishes detached wrappers for each
 // connected TypeTun link. Downstream TunConfig suggestions can alter only the
-// generic regular-TUN settings: interface addresses, routes, and MTU.
+// generic regular-TUN settings: interface addresses, routes, and MTU. The node
+// discards DNS suggestions because system TUN DNS configuration belongs to DNS
+// links and DefaultTun integration.
 type tunNode struct {
 	NodeBase
 
@@ -176,7 +178,7 @@ func (n *tunNode) OnEvent(event pasta.Event, linkType string, _ []string, receiv
 	if n.portCfg == nil {
 		n.portCfg = TunConfigByLink{}
 	}
-	n.portCfg.Set(event.Link, cfg)
+	n.portCfg.Set(event.Link, cfg.WithoutDNS())
 	if err := n.configureTun(); err != nil {
 		return nil
 	}

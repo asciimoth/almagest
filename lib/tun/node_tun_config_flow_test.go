@@ -3,6 +3,7 @@ package tunnodes
 import (
 	"errors"
 	"reflect"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -51,7 +52,7 @@ func TestTunJoinerForwardsTunConfigToInputsAndClearsOnOutputDisconnect(t *testin
 	if err != nil {
 		t.Fatalf("AddLink output: %v", err)
 	}
-	cfg := TunConfig{Addrs: []string{"10.0.0.2/32"}, Routes: []string{"10.10.0.0/24"}, MTU: 1400}
+	cfg := TunConfig{Addrs: []string{"10.0.0.2/32"}, Routes: []string{"10.10.0.0/24"}, MTU: 1400, DNS: "8.8.8.8"}
 	w.EmitEvent(consumerID, outputLink, cfg)
 	assertTunConfigReceived(t, defaultProvider.configs, cfg)
 	assertTunConfigReceived(t, secondaryProvider.configs, cfg)
@@ -62,7 +63,8 @@ func TestTunJoinerForwardsTunConfigToInputsAndClearsOnOutputDisconnect(t *testin
 }
 
 func TestDebugLogTunForwardsTunConfigAndClearsOnOutputDisconnect(t *testing.T) {
-	w := pasta.NewWorkspace(logging.NewDebugLogFactory(1024))
+	logf := logging.NewDebugLogFactory(1024)
+	w := pasta.NewWorkspace(logf)
 	t.Cleanup(w.Close)
 	if err := w.AddNodeClass(DebugLogTunClass{}); err != nil {
 		t.Fatalf("AddNodeClass DebugLogTun: %v", err)
@@ -91,12 +93,26 @@ func TestDebugLogTunForwardsTunConfigAndClearsOnOutputDisconnect(t *testing.T) {
 		t.Fatalf("AddLink output: %v", err)
 	}
 
-	cfg := TunConfig{Addrs: []string{"fd00::2/128"}, Routes: []string{"fd00:10::/64"}, MTU: 1280}
+	cfg := TunConfig{Addrs: []string{"fd00::2/128"}, Routes: []string{"fd00:10::/64"}, MTU: 1280, DNS: "2001:4860:4860::8888"}
 	w.EmitEvent(consumerID, outputLink, cfg)
 	assertTunConfigReceived(t, provider.configs, cfg)
+	assertDebugLogTunConfigLogged(t, logf, cfg)
 
 	w.RemoveLink(outputLink)
 	assertTunConfigReceived(t, provider.configs, TunConfig{})
+}
+
+func assertDebugLogTunConfigLogged(t *testing.T, logf *logging.DebugLogFactory, want TunConfig) {
+	t.Helper()
+	wantDNS := "dns=\"" + want.DNS + "\""
+	for _, entry := range logf.Drain() {
+		if entry.Source.NodeClass == NodeTypeDebugLogTun &&
+			strings.Contains(entry.Message, "tun.TunConfig") &&
+			strings.Contains(entry.Message, wantDNS) {
+			return
+		}
+	}
+	t.Fatalf("LogTun did not log TunConfig DNS %q", want.DNS)
 }
 
 func TestTunSplitterClearsConfigOnOutputDisconnectAndReplaysOnInputReconnect(t *testing.T) {
@@ -130,9 +146,9 @@ func TestTunSplitterClearsConfigOnOutputDisconnectAndReplaysOnInputReconnect(t *
 		t.Fatalf("AddLink output: %v", err)
 	}
 
-	cfg := TunConfig{Addrs: []string{"10.0.0.3/32"}, Routes: []string{"10.30.0.0/24"}, MTU: 1300}
+	cfg := TunConfig{Addrs: []string{"10.0.0.3/32"}, Routes: []string{"10.30.0.0/24"}, MTU: 1300, DNS: "9.9.9.9"}
 	w.EmitEvent(consumerID, outputLink, cfg)
-	assertTunConfigReceived(t, provider.configs, cfg)
+	assertTunConfigReceived(t, provider.configs, cfg.WithoutDNS())
 
 	w.RemoveLink(inputLink)
 	reconnectedInputLink, _, err := w.AddLink(splitterSnapshot.LeftPorts[0], reconnectedProvider.out)
@@ -140,7 +156,7 @@ func TestTunSplitterClearsConfigOnOutputDisconnectAndReplaysOnInputReconnect(t *
 		t.Fatalf("AddLink reconnected input: %v", err)
 	}
 	_ = reconnectedInputLink
-	assertTunConfigReceived(t, reconnectedProvider.configs, cfg)
+	assertTunConfigReceived(t, reconnectedProvider.configs, cfg.WithoutDNS())
 
 	w.RemoveLink(outputLink)
 	assertTunConfigReceived(t, reconnectedProvider.configs, TunConfig{})
@@ -164,7 +180,7 @@ func TestDefaultTunForgetsTunConfigOnDisconnectAndReconnect(t *testing.T) {
 	}
 	_ = receiveTunPayload(t, receiver.events)
 
-	cfg := TunConfig{Addrs: []string{"10.70.0.2/32"}, Routes: []string{"10.71.0.0/16"}, MTU: 1300}
+	cfg := TunConfig{Addrs: []string{"10.70.0.2/32"}, Routes: []string{"10.71.0.0/16"}, MTU: 1300, DNS: "8.8.8.8"}
 	w.EmitEvent(receiverID, link, cfg)
 	_ = receiveTunPayload(t, receiver.events)
 	wantSuggested := sysnet.DefaultTunOpts{

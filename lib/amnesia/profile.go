@@ -16,7 +16,9 @@ import (
 // controller-owned part of a shared wgo device. It intentionally does not
 // apply the profile's private key, listen port, firewall mark, TUN addresses,
 // or default UDP bind. Those are device-global resources owned by the
-// WireGuard and TUN nodes.
+// WireGuard and TUN nodes. A service-key negotiation therefore uses and keeps
+// the attached WireGuard node's identity. Rebuilding this tracked peer does
+// not rotate that identity.
 func amnesiaProfilePeer(controller wgdevice.DeviceAPI, profile *wgoamnesia.Profile) (wgdevice.PeerSpec, error) {
 	if controller == nil {
 		return wgdevice.PeerSpec{}, errors.New("WireGuard controller is not attached")

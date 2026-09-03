@@ -134,7 +134,7 @@ func TestTunSplitterNodeForwardsMergedTunConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddLink consumer->splitter: %v", err)
 	}
-	w.EmitEvent(consumerID, outputLink, TunConfig{Addrs: []string{"10.0.0.2/32"}, MTU: 1400})
+	w.EmitEvent(consumerID, outputLink, TunConfig{Addrs: []string{"10.0.0.2/32"}, MTU: 1400, DNS: "8.8.8.8"})
 	assertTunConfigReceived(t, provider.configs, TunConfig{Addrs: []string{"10.0.0.2/32"}, MTU: 1400})
 
 	w.RemoveLink(inputLink)
@@ -390,6 +390,9 @@ func assertTunConfigReceived(t *testing.T, configs <-chan TunConfig, want TunCon
 		testkit.AssertStringSlice(t, got.Routes, want.Routes)
 		if got.MTU != want.MTU {
 			t.Fatalf("TunConfig MTU = %d, want %d", got.MTU, want.MTU)
+		}
+		if got.DNS != want.DNS {
+			t.Fatalf("TunConfig DNS = %q, want %q", got.DNS, want.DNS)
 		}
 	default:
 		t.Fatalf("no TunConfig received, want %#v", want)

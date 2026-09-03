@@ -23,10 +23,13 @@ import (
 // should accept at most one TypeWGCtrl link.
 //
 // WGCtrlInterfaceConfig values flow in the opposite direction. Each controller
-// can suggest interface addresses that the WireGuard node merges with its menu
-// owned IPs and suggestions from all other attached controller links. Only the
-// latest config from each link is current. An empty config withdraws that
-// link's suggestion, and removing the link removes its suggestion.
+// can suggest interface addresses and one DNS server address. The WireGuard
+// node merges interface addresses with its menu owned IPs and suggestions from
+// all other attached controller links. For DNS, the most recently received
+// current suggestion wins. A DNS value set in the WireGuard menu has priority
+// over all controller suggestions. Only the latest config from each link is
+// current. An empty config withdraws that link's suggestions, and removing the
+// link removes its suggestions.
 //
 // Each detached API has an independent lifecycle. Closing it does not close
 // the shared WireGuard device or another controller API. Providers must bind
@@ -75,9 +78,11 @@ type WGCtrlPayload struct {
 
 // WGCtrlInterfaceConfig carries controller-owned WireGuard interface settings
 // from a right-directed controller port to a left-directed provider port.
-// OwnedIPs accepts IP addresses or CIDR prefixes.
+// OwnedIPs accepts IP addresses or CIDR prefixes. DNS accepts one IP address
+// without a CIDR prefix or host name.
 type WGCtrlInterfaceConfig struct {
 	OwnedIPs []string
+	DNS      string
 }
 
 // wgCtrlInterfaceConfigApply carries a config update that must complete before
@@ -96,12 +101,12 @@ type wgCtrlInterfaceConfigCommit struct {
 
 // Clone returns a deep copy of cfg.
 func (cfg WGCtrlInterfaceConfig) Clone() WGCtrlInterfaceConfig {
-	return WGCtrlInterfaceConfig{OwnedIPs: slices.Clone(cfg.OwnedIPs)}
+	return WGCtrlInterfaceConfig{OwnedIPs: slices.Clone(cfg.OwnedIPs), DNS: cfg.DNS}
 }
 
 // IsZero reports whether cfg has no interface setting suggestions.
 func (cfg WGCtrlInterfaceConfig) IsZero() bool {
-	return len(cfg.OwnedIPs) == 0
+	return len(cfg.OwnedIPs) == 0 && cfg.DNS == ""
 }
 
 // Close closes the detached API and releases its tracked wgo resources.

@@ -45,6 +45,11 @@ func TestTunBuildsEmitsAndClosesPreviousBeforeRebuild(t *testing.T) {
 	}
 	firstPayload := tuntest.ReceivePayload(t, receiver.Events)
 	firstTun := sys.Tuns[0]
+	w.EmitEvent(receiverID, link, TunConfig{DNS: "8.8.8.8"})
+	if got := sys.BuildCount(); got != 1 {
+		t.Fatalf("build count after DNS-only TunConfig = %d, want 1", got)
+	}
+	tuntest.AssertNoEvent(t, receiver.Events)
 
 	w.SendNodeFormularMsg(node, formular.FormApplyMessage{
 		MessageBase: formular.MessageBase{Type: formular.MessageFormApply, MenuID: pasta.NodeMenuID(node)},
@@ -82,6 +87,7 @@ func TestTunBuildsEmitsAndClosesPreviousBeforeRebuild(t *testing.T) {
 		Addrs:  []string{"10.60.0.2/32", "10.80.0.2/32"},
 		Routes: []string{"10.70.0.0/16", "10.81.0.0/16"},
 		MTU:    1280,
+		DNS:    "8.8.8.8",
 	})
 	if got := sys.BuildCount(); got != 3 {
 		t.Fatalf("build count after TunConfig = %d, want 3", got)
@@ -156,6 +162,7 @@ func TestTunDynamicConfigUsesSettersWhenAvailable(t *testing.T) {
 		Addrs:  []string{"10.90.0.2/32", "10.92.0.2/32"},
 		Routes: []string{"10.91.0.0/16", "10.93.0.0/16"},
 		MTU:    1280,
+		DNS:    "8.8.8.8",
 	})
 	if got := sys.BuildCount(); got != 1 {
 		t.Fatalf("build count after dynamic TunConfig = %d, want 1", got)

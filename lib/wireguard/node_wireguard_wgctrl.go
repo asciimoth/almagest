@@ -3,6 +3,7 @@ package wireguardnodes
 import (
 	"errors"
 	"slices"
+	"strings"
 )
 
 type wireGuardWGCtrlInterfaceConfigCheckResult struct {
@@ -60,26 +61,40 @@ func (n *wireGuardNode) refreshWGCtrlToLink(link uint64) {
 
 // acceptWGCtrlInterfaceConfig replaces the suggestion owned by one controller
 // link. Invalid latest input removes that link's previous valid suggestion so
-// stale addresses cannot remain active.
+// stale interface settings cannot remain active.
 func (n *wireGuardNode) acceptWGCtrlInterfaceConfig(link uint64, cfg WGCtrlInterfaceConfig) error {
+	if n.wgctrlConfigs == nil {
+		n.wgctrlConfigs = map[uint64]WGCtrlInterfaceConfig{}
+	}
 	ownedIPs, err := normalizeWireGuardOwnedIPValues(cfg.OwnedIPs)
+	dns := strings.TrimSpace(cfg.DNS)
+	if err == nil {
+		err = validateWireGuardDNS(dns)
+	}
 	action := "replace"
 	if err != nil {
 		action = "reject"
 		delete(n.wgctrlConfigs, link)
+		delete(n.wgctrlConfigOrder, link)
 		if n.Logger != nil {
-			n.Logger.Errf("WGCtrl link %d supplied invalid owned IPs: %v", link, err)
+			n.Logger.Errf("WGCtrl link %d supplied invalid interface config: %v", link, err)
 		}
-	} else if len(ownedIPs) == 0 {
+	} else if len(ownedIPs) == 0 && dns == "" {
 		action = "withdraw"
 		delete(n.wgctrlConfigs, link)
+		delete(n.wgctrlConfigOrder, link)
 	} else {
-		n.wgctrlConfigs[link] = WGCtrlInterfaceConfig{OwnedIPs: ownedIPs}
+		if n.wgctrlConfigOrder == nil {
+			n.wgctrlConfigOrder = map[uint64]uint64{}
+		}
+		n.wgctrlConfigSeq++
+		n.wgctrlConfigOrder[link] = n.wgctrlConfigSeq
+		n.wgctrlConfigs[link] = WGCtrlInterfaceConfig{OwnedIPs: ownedIPs, DNS: dns}
 	}
 	if n.Logger != nil {
 		n.Logger.Debugf(
-			"WireGuard WGCtrl interface address update: link=%d action=%s supplied_addresses=%v normalized_addresses=%v effective_addresses=%v",
-			link, action, cfg.OwnedIPs, ownedIPs, n.effectiveOwnedIPAddrs(),
+			"WireGuard WGCtrl interface update: link=%d action=%s supplied_addresses=%v normalized_addresses=%v supplied_dns=%q normalized_dns=%q effective_addresses=%v effective_dns=%q",
+			link, action, cfg.OwnedIPs, ownedIPs, cfg.DNS, dns, n.effectiveOwnedIPAddrs(), n.effectiveDNS(),
 		)
 	}
 	n.sendTunConfig()
@@ -191,4 +206,28 @@ func (n *wireGuardNode) effectiveOwnedIPAddrs() []string {
 		appendValues(n.wgctrlConfigs[link].OwnedIPs)
 	}
 	return out
+}
+
+// effectiveDNS returns the menu value when it is set. Otherwise, it returns
+// the most recently received DNS suggestion that still belongs to an attached
+// controller link.
+func (n *wireGuardNode) effectiveDNS() string {
+	if dns := strings.TrimSpace(n.config.dns); dns != "" {
+		return dns
+	}
+	var (
+		latestDNS   string
+		latestOrder uint64
+		latestLink  uint64
+	)
+	for link, cfg := range n.wgctrlConfigs {
+		dns := strings.TrimSpace(cfg.DNS)
+		order := n.wgctrlConfigOrder[link]
+		if dns != "" && (order > latestOrder || order == latestOrder && link > latestLink) {
+			latestDNS = dns
+			latestOrder = order
+			latestLink = link
+		}
+	}
+	return latestDNS
 }

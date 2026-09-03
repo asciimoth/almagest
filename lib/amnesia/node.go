@@ -31,6 +31,9 @@ const (
 )
 
 var (
+	// AmnesiaClassLongDescription is the user-visible description of the
+	// Amnesia node, including its attached WireGuard identity lifetime and
+	// recovery procedure.
 	//go:embed node_amnesia.md
 	AmnesiaClassLongDescription string
 
@@ -50,7 +53,10 @@ type Client interface {
 type ClientFactory func(wgoamnesia.ClientOptions) (Client, error)
 
 // AmnesiaClass creates nodes that import an Amnezia connection and own one
-// tracked peer on a shared WireGuard device.
+// tracked peer on a shared WireGuard device. A service-key import uses the
+// device's current WireGuard identity. The identity remains unchanged across
+// imports, reconnects, and daemon restarts until the WireGuard node rotates
+// its private key.
 type AmnesiaClass struct {
 	Runtime   nodekit.Runtime
 	NewClient ClientFactory
@@ -161,7 +167,7 @@ type amnesiaRuntimeRequest struct {
 	forceRevision      uint64
 	nodeName           string
 	ctx                context.Context
-	setInterfaceConfig func(context.Context, uint64, []string) error
+	setInterfaceConfig func(context.Context, uint64, []string, string) error
 }
 
 type amnesiaRuntimeResult struct {
@@ -189,6 +195,7 @@ type amnesiaPeerStatus struct {
 type amnesiaWGCtrlInterfaceConfigRequest struct {
 	generation uint64
 	addresses  []string
+	dns        string
 	result     chan<- error
 }
 
@@ -612,7 +619,7 @@ func (n *amnesiaNode) scheduleReconcile(invalidate bool) {
 	}
 }
 
-func (n *amnesiaNode) setWGCtrlInterfaceConfig(ctx context.Context, generation uint64, addresses []string) error {
+func (n *amnesiaNode) setWGCtrlInterfaceConfig(ctx context.Context, generation uint64, addresses []string, dns string) error {
 	if n.W == nil || n.ID == 0 {
 		return errors.New("workspace is unavailable")
 	}
@@ -620,6 +627,7 @@ func (n *amnesiaNode) setWGCtrlInterfaceConfig(ctx context.Context, generation u
 	n.W.SendInbox(pasta.InboxMessage{ReceiverNode: n.ID, Payload: amnesiaWGCtrlInterfaceConfigRequest{
 		generation: generation,
 		addresses:  append([]string(nil), addresses...),
+		dns:        dns,
 		result:     result,
 	}})
 	select {
@@ -635,10 +643,13 @@ func (n *amnesiaNode) handleWGCtrlInterfaceConfigRequest(msg amnesiaWGCtrlInterf
 		msg.result <- context.Canceled
 		return
 	}
-	cfg := wireguardnodes.WGCtrlInterfaceConfig{OwnedIPs: append([]string(nil), msg.addresses...)}
+	cfg := wireguardnodes.WGCtrlInterfaceConfig{
+		OwnedIPs: append([]string(nil), msg.addresses...),
+		DNS:      msg.dns,
+	}
 	n.logDebugf(
-		"Amnesia WGCtrl interface address update preparing before peer apply: link=%d generation=%d address_count=%d addresses=%v",
-		n.ctrlLink, msg.generation, len(cfg.OwnedIPs), cfg.OwnedIPs,
+		"Amnesia WGCtrl interface update preparing before peer apply: link=%d generation=%d address_count=%d addresses=%v dns=%q",
+		n.ctrlLink, msg.generation, len(cfg.OwnedIPs), cfg.OwnedIPs, cfg.DNS,
 	)
 	if !wireguardnodes.EmitWGCtrlInterfaceConfigApply(n.W, n.ID, n.ctrlLink, cfg, msg.result) {
 		msg.result <- errors.New("WireGuard controller link is unavailable")
@@ -697,19 +708,29 @@ func (n *amnesiaNode) sendWGCtrlInterfaceConfig() {
 	action := "withdraw"
 	if n.runtimeReady {
 		cfg.OwnedIPs = append([]string(nil), n.profileStatus.addresses...)
-		if len(cfg.OwnedIPs) != 0 {
+		cfg.DNS = firstAmnesiaDNS(n.profileStatus.dns)
+		if !cfg.IsZero() {
 			action = "replace"
 		}
 	}
 	n.logDebugf(
-		"Amnesia WGCtrl interface address update preparing: link=%d action=%s runtime_ready=%t address_count=%d addresses=%v",
-		n.ctrlLink, action, n.runtimeReady, len(cfg.OwnedIPs), cfg.OwnedIPs,
+		"Amnesia WGCtrl interface update preparing: link=%d action=%s runtime_ready=%t address_count=%d addresses=%v dns=%q",
+		n.ctrlLink, action, n.runtimeReady, len(cfg.OwnedIPs), cfg.OwnedIPs, cfg.DNS,
 	)
 	emitted := wireguardnodes.EmitWGCtrlInterfaceConfig(n.W, n.ID, n.ctrlLink, cfg)
 	n.logDebugf(
-		"Amnesia WGCtrl interface address update submitted: link=%d action=%s address_count=%d addresses=%v emitted=%t",
-		n.ctrlLink, action, len(cfg.OwnedIPs), cfg.OwnedIPs, emitted,
+		"Amnesia WGCtrl interface update submitted: link=%d action=%s address_count=%d addresses=%v dns=%q emitted=%t",
+		n.ctrlLink, action, len(cfg.OwnedIPs), cfg.OwnedIPs, cfg.DNS, emitted,
 	)
+}
+
+func firstAmnesiaDNS(values []string) string {
+	for _, value := range values {
+		if value = strings.TrimSpace(value); value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func (n *amnesiaNode) handlePeerStatus(msg amnesiaPeerStatus) {

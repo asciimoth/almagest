@@ -74,6 +74,15 @@ peer `allowedIPs` are installed into the WireGuard device as crypto-routing
 rules and are also emitted upstream as `TunConfig` route suggestions for
 providers that install host routes.
 
+The optional menu field `dns` accepts one DNS server IPv4 or IPv6 address.
+WG control links can also suggest one DNS server. The last current suggestion
+received from these links wins, but a value in the menu field always has
+priority. WireGuard emits the effective value upstream as `TunConfig.DNS`.
+This setting is for a simple TUN path, such as WireGuard connected directly to
+VTun. It does not configure the WireGuard protocol or the WireGuard UDP
+transport. Use the `almagest/dns` link type and DNS nodes when the graph needs
+DNS routing, multiple resolvers, caching, or policy.
+
 The config menu also exposes device-level AmneziaWG obfuscation controls:
 Jc/Jmin/Jmax, S1-S4 padding values, H1-H4 header ranges, and I1-I5
 initiation-packet obfuscation chains. Leaving those values at defaults keeps

@@ -69,7 +69,7 @@ func (n *vtunNode) effectiveLocalAddrsForMenu() []netip.Addr {
 func (n *vtunNode) configBlock() formular.Block {
 	statusErr := n.formError != ""
 	dnsServers := configTextField("dnsServers", "DNS servers", n.config.dnsServers, statusErr, n.formError, true)
-	dnsServers.Help = "DNS server IP addresses. If this field is empty, VTun uses 8.8.8.8."
+	dnsServers.Help = "DNS server IP addresses. An explicit value has priority over a TUN DNS suggestion. If neither is set, VTun uses 8.8.8.8. Use almagest/dns nodes for DNS routing or policy."
 	return formular.Block{ID: "config", Order: 10, Generation: 1, Form: true, Items: []formular.Item{
 		configTextField("name", "Name", n.config.name, statusErr, n.formError, false),
 		configTextField("localAddrs", "Local addrs", n.config.localAddrs, statusErr, n.formError, true),

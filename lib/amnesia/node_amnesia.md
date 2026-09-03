@@ -6,11 +6,33 @@ WireGuard node.
 The **WireGuard** port supplies the shared WireGuard device. Amnesia owns only
 the peer that it adds through this port. The WireGuard node continues to own
 the device private key, TUN attachment, listen settings, and UDP transports.
-Amnesia also sends the profile interface addresses as owned-IP suggestions.
-The WireGuard node merges them with its other controller suggestions and menu
-owned IPs, then sends the effective addresses to its TUN provider.
-Amnesia waits for the WireGuard node to accept these addresses and attach the
-resulting TUN generation before it adds or activates the profile peer.
+For an API-v2 service key, Amnesia sends the attached WireGuard device's
+existing public key to the service. It does not generate a new WireGuard client
+key. The key remains the same across imports, **Reconnect** requests, and daemon
+restarts. This differs from a standalone wgo import without an attached device,
+which generates a new client key for each import.
+
+Some service backends can return a valid profile but stop accepting handshakes
+for an old client public key. In this state, the Amnesia status can show
+**up** and **handshaking**, transmit bytes can increase, receive bytes remain
+zero, and the latest handshake stays empty. **Reconnect** alone can reuse the
+same unusable identity.
+
+To recover, clear **Private key secret** on the attached WireGuard node and
+apply its configuration. The WireGuard node generates and stores a new private
+key. Then press **Reconnect** on this Amnesia node so the service receives the
+new public key. You do not need to delete either node or detach their links.
+Rotating the private key changes the identity of the complete WireGuard device
+and affects all peers and controllers that share it. Use a dedicated WireGuard
+node when a service connection must rotate its identity independently.
+
+Amnesia also sends the profile interface addresses as owned-IP suggestions and
+the first non-empty profile DNS server as a DNS suggestion. The WireGuard node
+merges the addresses with its other controller suggestions and menu owned IPs.
+It uses the last DNS suggestion received from its controller links unless its
+menu DNS field is set. It then sends the effective interface config to its TUN
+provider. Amnesia waits for the WireGuard node to accept this config and attach
+the resulting TUN generation before it adds or activates the profile peer.
 
 The **Network** port is used only for Amnezia service API and profile
 pre-connect traffic. It is needed for API-v2 service keys and profiles that

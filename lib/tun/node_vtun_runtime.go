@@ -131,10 +131,13 @@ func (n *vtunNode) effectiveDNSServers() ([]netip.Addr, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(servers) == 0 {
-		return []netip.Addr{netip.MustParseAddr(DefaultVTunDNSServer)}, nil
+	if len(servers) > 0 {
+		return servers, nil
 	}
-	return servers, nil
+	if suggested, err := netip.ParseAddr(strings.TrimSpace(n.tunConfig.DNS)); err == nil {
+		return []netip.Addr{suggested}, nil
+	}
+	return []netip.Addr{netip.MustParseAddr(DefaultVTunDNSServer)}, nil
 }
 
 func (n *vtunNode) effectiveLocalAddrs() ([]netip.Addr, error) {
@@ -151,7 +154,9 @@ func (n *vtunNode) effectiveLocalAddrs() ([]netip.Addr, error) {
 }
 
 func (n *vtunNode) usesTunConfig() bool {
-	return strings.TrimSpace(n.config.localAddrs) == "" || n.config.mtu <= 0
+	return strings.TrimSpace(n.config.localAddrs) == "" ||
+		strings.TrimSpace(n.config.dnsServers) == "" ||
+		n.config.mtu <= 0
 }
 
 func (n *vtunNode) allocLocalAddrs() []netip.Addr {

@@ -26,6 +26,7 @@ type wireGuardConfig struct {
 	listenPort            int
 	batchSize             int
 	ownedIPs              string
+	dns                   string
 	amneziaWG             wireGuardAmneziaConfig
 	peers                 []wireGuardPeerConfig
 }
@@ -57,6 +58,7 @@ func (c *wireGuardConfig) read(cfg configer.Config) {
 	c.listenPort = configer.Int(cfg, configer.Path{"listenPort"}, c.listenPort)
 	c.batchSize = configer.Int(cfg, configer.Path{"batchSize"}, c.batchSize)
 	c.ownedIPs = configer.String(cfg, configer.Path{"ownedIPs"}, c.ownedIPs)
+	c.dns = configer.String(cfg, configer.Path{"dns"}, c.dns)
 	c.amneziaWG = readWireGuardAmneziaConfig(cfg, c.amneziaWG)
 	if peers, ok := readWireGuardPeers(cfg); ok {
 		c.peers = peers
@@ -74,6 +76,7 @@ func (c *wireGuardConfig) normalize() {
 		c.batchSize = 0
 	}
 	c.ownedIPs = normalizeListText(c.ownedIPs)
+	c.dns = strings.TrimSpace(c.dns)
 	c.amneziaWG.normalize()
 	for i := range c.peers {
 		c.peers[i].normalize(i)
@@ -126,6 +129,9 @@ func applyWireGuardConfigValues(config *wireGuardConfig, values map[string]any) 
 	if value, ok := formular.StringValue(values["ownedIPs"]); ok {
 		config.ownedIPs = value
 	}
+	if value, ok := formular.StringValue(values["dns"]); ok {
+		config.dns = value
+	}
 	applyWireGuardAmneziaValues(&config.amneziaWG, values)
 }
 func validateWireGuardConfig(config wireGuardConfig) error {
@@ -143,11 +149,28 @@ func validateWireGuardConfig(config wireGuardConfig) error {
 	if _, err := parseWireGuardAllowedIPs(config.ownedIPs); err != nil {
 		return fmt.Errorf("owned IPs: %w", err)
 	}
+	if err := validateWireGuardDNS(config.dns); err != nil {
+		return fmt.Errorf("DNS: %w", err)
+	}
 	deviceConfig, err := wireGuardDeviceConfig(config)
 	if err != nil {
 		return err
 	}
 	return wgdevice.ValidateConfig(deviceConfig)
+}
+
+// validateWireGuardDNS accepts one optional DNS server IP address. TunConfig
+// DNS is intentionally a small convenience for direct TUN topologies, so it
+// does not accept host names, prefixes, or multiple servers.
+func validateWireGuardDNS(value string) error {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	if _, err := netip.ParseAddr(value); err != nil {
+		return fmt.Errorf("%q is not an IP address", value)
+	}
+	return nil
 }
 func parseWireGuardPrivateKey(value string) (wgdevice.NoisePrivateKey, error) {
 	return wgdevice.ParsePrivateKey(strings.TrimSpace(value))

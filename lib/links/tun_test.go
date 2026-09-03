@@ -34,7 +34,7 @@ func TestTunPayloadClose(t *testing.T) {
 }
 
 func TestTunConfigCloneAndIsZero(t *testing.T) {
-	cfg := TunConfig{Addrs: []string{"10.0.0.2/32"}, Routes: []string{"10.0.0.0/24"}, MTU: 1500}
+	cfg := TunConfig{Addrs: []string{"10.0.0.2/32"}, Routes: []string{"10.0.0.0/24"}, MTU: 1500, DNS: "8.8.8.8"}
 	clone := cfg.Clone()
 	cfg.Addrs[0] = "10.0.0.3/32"
 	cfg.Routes[0] = "10.0.1.0/24"
@@ -44,11 +44,25 @@ func TestTunConfigCloneAndIsZero(t *testing.T) {
 	if got, want := clone.Routes, []string{"10.0.0.0/24"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("Clone().Routes = %#v, want %#v", got, want)
 	}
+	if clone.DNS != "8.8.8.8" {
+		t.Fatalf("Clone().DNS = %q, want 8.8.8.8", clone.DNS)
+	}
+	withoutDNS := clone.WithoutDNS()
+	if withoutDNS.DNS != "" {
+		t.Fatalf("WithoutDNS().DNS = %q, want empty", withoutDNS.DNS)
+	}
+	withoutDNS.Addrs[0] = "mutated"
+	if clone.Addrs[0] != "10.0.0.2/32" {
+		t.Fatal("WithoutDNS() did not copy Addrs")
+	}
 	if clone.IsZero() {
 		t.Fatal("non-empty config IsZero() = true, want false")
 	}
 	if (TunConfig{Routes: []string{"10.0.0.0/24"}}).IsZero() {
 		t.Fatal("routes-only config IsZero() = true, want false")
+	}
+	if (TunConfig{DNS: "8.8.8.8"}).IsZero() {
+		t.Fatal("DNS-only config IsZero() = true, want false")
 	}
 	if !((TunConfig{}).IsZero()) {
 		t.Fatal("empty config IsZero() = false, want true")

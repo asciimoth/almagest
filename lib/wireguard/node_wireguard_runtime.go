@@ -26,12 +26,13 @@ type wireGuardReceiveErrorMessage struct {
 // runtime work. It covers bind attach, config apply, and retry attempts so stale
 // generation checks and retry/error handling stay in one place.
 type wireGuardRuntimeResultMessage struct {
-	generation      uint64
-	retryGeneration uint64
-	checkRetry      bool
-	retryOnError    bool
-	ready           bool
-	err             error
+	generation        uint64
+	failureGeneration uint64
+	retryGeneration   uint64
+	checkRetry        bool
+	retryOnError      bool
+	ready             bool
+	err               error
 }
 
 // wireGuardRuntimeAttachmentResultMessage reports TUN/network attach or detach
@@ -42,6 +43,7 @@ type wireGuardRuntimeResultMessage struct {
 type wireGuardRuntimeAttachmentResultMessage struct {
 	tunGeneration     uint64
 	networkGeneration uint64
+	failureGeneration uint64
 	retryOnError      bool
 	needsConfigApply  bool
 	err               error
@@ -73,6 +75,9 @@ func (n *wireGuardNode) nextRuntimeGeneration() uint64 {
 // work without taking runtimeMu while the runtime worker is still active.
 func (n *wireGuardNode) currentRuntimeGeneration() uint64 {
 	return n.runtimeGeneration.Load()
+}
+func (n *wireGuardNode) currentRuntimeFailureGeneration() uint64 {
+	return n.runtimeFailureGeneration.Load()
 }
 func (n *wireGuardNode) nextTunGeneration() uint64 {
 	return n.tunGeneration.Add(1)
@@ -112,6 +117,7 @@ func (n *wireGuardNode) scheduleRuntimeWork(generation, retryGeneration uint64, 
 	if n.W == nil || n.ID == 0 {
 		return
 	}
+	failureGeneration := n.currentRuntimeFailureGeneration()
 	go func() {
 		if checkRetry && !n.isCurrentConfigRetry(retryGeneration) {
 			return
@@ -121,12 +127,13 @@ func (n *wireGuardNode) scheduleRuntimeWork(generation, retryGeneration uint64, 
 			return
 		}
 		n.sendInternal(wireGuardRuntimeResultMessage{
-			generation:      generation,
-			retryGeneration: retryGeneration,
-			checkRetry:      checkRetry,
-			retryOnError:    retryOnError,
-			ready:           err == nil && retryOnError,
-			err:             err,
+			generation:        generation,
+			failureGeneration: failureGeneration,
+			retryGeneration:   retryGeneration,
+			checkRetry:        checkRetry,
+			retryOnError:      retryOnError,
+			ready:             err == nil && retryOnError,
+			err:               err,
 		})
 	}()
 }
@@ -141,6 +148,9 @@ func (n *wireGuardNode) handleRuntimeResult(msg wireGuardRuntimeResultMessage) {
 	if msg.err != nil {
 		n.failWGCtrlInterfaceConfigAppliesForTunGeneration(0, msg.err)
 		n.failRuntime(msg.err, msg.retryOnError)
+		return
+	}
+	if msg.failureGeneration != n.currentRuntimeFailureGeneration() {
 		return
 	}
 	if msg.ready && !n.tryMarkRuntimeReady(msg.generation) {
@@ -205,31 +215,36 @@ func (n *wireGuardNode) deferInternal(payload any) {
 }
 
 func (n *wireGuardNode) scheduleTunAttach(tunGeneration uint64, t tun.Tun) {
+	failureGeneration := n.currentRuntimeFailureGeneration()
 	go func() {
 		needsConfig, ok, err := n.attachCurrentTun(tunGeneration, t)
 		if !ok {
 			return
 		}
 		n.sendInternal(wireGuardRuntimeAttachmentResultMessage{
-			tunGeneration:    tunGeneration,
-			needsConfigApply: needsConfig,
-			err:              err,
+			tunGeneration:     tunGeneration,
+			failureGeneration: failureGeneration,
+			needsConfigApply:  needsConfig,
+			err:               err,
 		})
 	}()
 }
 func (n *wireGuardNode) scheduleTunDetach(tunGeneration uint64) {
+	failureGeneration := n.currentRuntimeFailureGeneration()
 	go func() {
 		err, ok := n.detachCurrentTun(tunGeneration)
 		if !ok {
 			return
 		}
 		n.sendInternal(wireGuardRuntimeAttachmentResultMessage{
-			tunGeneration: tunGeneration,
-			err:           err,
+			tunGeneration:     tunGeneration,
+			failureGeneration: failureGeneration,
+			err:               err,
 		})
 	}()
 }
 func (n *wireGuardNode) scheduleNetworkAttach(networkGeneration uint64, network NetworkCloser) {
+	failureGeneration := n.currentRuntimeFailureGeneration()
 	go func() {
 		needsConfig, ok, retry, err := n.attachNetworkPayload(networkGeneration, network)
 		if !ok {
@@ -237,6 +252,7 @@ func (n *wireGuardNode) scheduleNetworkAttach(networkGeneration uint64, network 
 		}
 		n.sendInternal(wireGuardRuntimeAttachmentResultMessage{
 			networkGeneration: networkGeneration,
+			failureGeneration: failureGeneration,
 			retryOnError:      retry,
 			needsConfigApply:  needsConfig,
 			err:               err,
@@ -244,6 +260,7 @@ func (n *wireGuardNode) scheduleNetworkAttach(networkGeneration uint64, network 
 	}()
 }
 func (n *wireGuardNode) scheduleCurrentNetworkBindAttach(networkGeneration, retryGeneration uint64, checkRetry bool) {
+	failureGeneration := n.currentRuntimeFailureGeneration()
 	go func() {
 		if checkRetry && !n.isCurrentConfigRetry(retryGeneration) {
 			return
@@ -254,6 +271,7 @@ func (n *wireGuardNode) scheduleCurrentNetworkBindAttach(networkGeneration, retr
 		}
 		n.sendInternal(wireGuardRuntimeAttachmentResultMessage{
 			networkGeneration: networkGeneration,
+			failureGeneration: failureGeneration,
 			retryOnError:      retry,
 			needsConfigApply:  needsConfig,
 			err:               err,
@@ -261,6 +279,7 @@ func (n *wireGuardNode) scheduleCurrentNetworkBindAttach(networkGeneration, retr
 	}()
 }
 func (n *wireGuardNode) scheduleNetworkDetach(networkGeneration uint64) {
+	failureGeneration := n.currentRuntimeFailureGeneration()
 	go func() {
 		err, ok := n.detachCurrentNetwork(networkGeneration)
 		if !ok {
@@ -268,6 +287,7 @@ func (n *wireGuardNode) scheduleNetworkDetach(networkGeneration uint64) {
 		}
 		n.sendInternal(wireGuardRuntimeAttachmentResultMessage{
 			networkGeneration: networkGeneration,
+			failureGeneration: failureGeneration,
 			err:               err,
 		})
 	}()
@@ -369,6 +389,7 @@ func (n *wireGuardNode) retryConfigToDevice(generation uint64) {
 	n.scheduleConfigApply(n.effectiveConfig(), false, runtimeGeneration, generation, true)
 }
 func (n *wireGuardNode) failRuntime(err error, retry bool) {
+	n.runtimeFailureGeneration.Add(1)
 	n.setRuntimeError(err)
 	if retry {
 		n.scheduleConfigRetry()
@@ -434,11 +455,11 @@ func (n *wireGuardNode) isCurrentConfigRetry(generation uint64) bool {
 	return n.retryGeneration == generation
 }
 
-// sendTunConfig publishes this WireGuard interface's owned IP prefixes and
-// peer route prefixes to the attached TUN provider. TypeTun defines TunConfig
-// as flowing opposite the TUN payload, so this left-directed consumer sends
-// suggestions upstream to the right-directed provider whenever the link or
-// WireGuard config changes.
+// sendTunConfig publishes this WireGuard interface's owned IP prefixes, peer
+// route prefixes, and optional DNS server to the attached TUN provider. TypeTun
+// defines TunConfig as flowing opposite the TUN payload, so this left-directed
+// consumer sends suggestions upstream to the right-directed provider whenever
+// the link or WireGuard config changes.
 func (n *wireGuardNode) sendTunConfig() {
 	if n.tunLink == 0 {
 		return
@@ -456,6 +477,7 @@ func (n *wireGuardNode) tunConfig() TunConfig {
 	return TunConfig{
 		Addrs:  n.effectiveOwnedIPAddrs(),
 		Routes: wireGuardPeerRoutes(effective.peers),
+		DNS:    n.effectiveDNS(),
 	}
 }
 func (n *wireGuardNode) updateLabel() error {
@@ -531,6 +553,11 @@ func (n *wireGuardNode) handleRuntimeAttachmentResult(msg wireGuardRuntimeAttach
 	}
 	if msg.needsConfigApply {
 		n.scheduleConfigApply(n.effectiveConfig(), false, n.currentRuntimeGeneration(), 0, false)
+		_ = n.updateLabel()
+		n.sendStatusBlock()
+		return
+	}
+	if msg.failureGeneration != n.currentRuntimeFailureGeneration() {
 		_ = n.updateLabel()
 		n.sendStatusBlock()
 		return

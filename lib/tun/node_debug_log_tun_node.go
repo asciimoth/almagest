@@ -17,7 +17,7 @@ type DebugLogTunClass struct {
 func (DebugLogTunClass) ClassName() string        { return NodeTypeDebugLogTun }
 func (DebugLogTunClass) ShortDescription() string { return "DEBUG TUN logger" }
 func (DebugLogTunClass) LongDescription() string {
-	return "Passes almagest/tun operations through unchanged while debug logging reads, writes, and packet payload bytes."
+	return "Passes almagest/tun operations and configuration suggestions through unchanged while debug logging reads, writes, packet payload bytes, and TunConfig values."
 }
 func (DebugLogTunClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: TypeTun, InitialPorts: []pasta.Port{
@@ -124,6 +124,7 @@ func (n *debugLogTunNode) OnEvent(event pasta.Event, linkType string, _ []string
 			return nil
 		}
 		if cfg, ok := event.Payload.(TunConfig); ok {
+			n.logTunConfig(event.Link, cfg)
 			n.outputCfgs.Set(event.Link, cfg)
 			n.sendMergedTunConfig()
 		}
@@ -148,6 +149,18 @@ func (n *debugLogTunNode) OnEvent(event pasta.Event, linkType string, _ []string
 	n.tun = next
 	n.sendAll()
 	return nil
+}
+
+// logTunConfig records all suggestion fields, including DNS, before the value
+// is forwarded to the upstream TUN provider.
+func (n *debugLogTunNode) logTunConfig(link uint64, cfg TunConfig) {
+	if n.Logger == nil {
+		return
+	}
+	n.Logger.Debugf(
+		"tun.TunConfig link=%d addrs=%v routes=%v mtu=%d dns=%q",
+		link, cfg.Addrs, cfg.Routes, cfg.MTU, cfg.DNS,
+	)
 }
 
 func (n *debugLogTunNode) requestInput() {

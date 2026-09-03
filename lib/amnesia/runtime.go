@@ -152,7 +152,10 @@ func (n *amnesiaNode) reconcile(req amnesiaRuntimeRequest) (amnesiaRuntimeResult
 		apiTransport := newAmnesiaAPIRoundTripper(transport, n.logDebugf)
 		clientOptions := wgoamnesia.ClientOptions{
 			HTTPClient: &http.Client{Transport: apiTransport},
-			Device:     session,
+			// The attached device makes negotiation use its current public key.
+			// Do not assume that a new client identity is generated for this
+			// import or for a Reconnect request.
+			Device: session,
 			Metadata: wgoamnesia.ClientMetadata{
 				InstallationUUID: uuid,
 			},
@@ -215,12 +218,13 @@ func (n *amnesiaNode) reconcile(req amnesiaRuntimeRequest) (amnesiaRuntimeResult
 	}
 	profileState := profileStatus(profile, req.config.serverCountryCode)
 	if req.setInterfaceConfig != nil {
+		dns := firstAmnesiaDNS(profileState.dns)
 		n.logDebugf(
-			"Amnesia WGCtrl interface address update starting before tracked peer upsert: generation=%d addresses=%v",
-			req.generation, profileState.addresses,
+			"Amnesia WGCtrl interface update starting before tracked peer upsert: generation=%d addresses=%v dns=%q",
+			req.generation, profileState.addresses, dns,
 		)
-		if err := req.setInterfaceConfig(req.ctx, req.generation, profileState.addresses); err != nil {
-			n.logDebugf("Amnesia WGCtrl interface address update failed before tracked peer upsert: generation=%d", req.generation)
+		if err := req.setInterfaceConfig(req.ctx, req.generation, profileState.addresses, dns); err != nil {
+			n.logDebugf("Amnesia WGCtrl interface update failed before tracked peer upsert: generation=%d", req.generation)
 			session.Close()
 			if req.ctx.Err() != nil || req.generation != n.generation.Load() {
 				return amnesiaRuntimeResult{}, false
@@ -228,7 +232,7 @@ func (n *amnesiaNode) reconcile(req amnesiaRuntimeRequest) (amnesiaRuntimeResult
 			result.err = formatRuntimeError("apply WireGuard interface config", err)
 			return result, true
 		}
-		n.logDebugf("Amnesia WGCtrl interface address update complete before tracked peer upsert: generation=%d", req.generation)
+		n.logDebugf("Amnesia WGCtrl interface update complete before tracked peer upsert: generation=%d", req.generation)
 	}
 	peerEndpoint := amnesiaPeerEndpoint(spec)
 	peerEndpointHost, peerEndpointPort := amnesiaEndpointHostPort(peerEndpoint)

@@ -344,11 +344,13 @@ func TestWireGuardE2ESendsTunConfigToAttachedTun(t *testing.T) {
 		publicKey:  peerPublicKey,
 		allowedIPs: "10.252.0.0/24",
 	}})
+	applyWireGuardDNS(t, e.Engine, wg, "8.8.8.8")
 
 	e.MustAddTypedLinkByPortName(TypeTun, wg, "left", "Tun", recorder, "right", "Tun")
 	recorders.assertLastConfig(t, recorder, TunConfig{
 		Addrs:  []string{"10.251.0.2/32", "fd00:251::2/128"},
 		Routes: []string{"10.252.0.0/24"},
+		DNS:    "8.8.8.8",
 	})
 
 	applyWireGuardConfigWithOwnedIPs(t, e.Engine, wg, privateKey, 0, "10.251.0.3", []wireGuardPeerConfig{{
@@ -358,13 +360,16 @@ func TestWireGuardE2ESendsTunConfigToAttachedTun(t *testing.T) {
 	recorders.assertLastConfig(t, recorder, TunConfig{
 		Addrs:  []string{"10.251.0.3/32"},
 		Routes: []string{"10.253.0.1/32"},
+		DNS:    "8.8.8.8",
 	})
 
 	applyWireGuardConfigWithOwnedIPs(t, e.Engine, wg, privateKey, 0, "", nil)
+	recorders.assertLastConfig(t, recorder, TunConfig{DNS: "8.8.8.8"})
+	applyWireGuardDNS(t, e.Engine, wg, "")
 	recorders.assertLastConfig(t, recorder, TunConfig{})
 }
 
-func TestAmnesiaOwnedIPsFlowThroughWireGuardToTun(t *testing.T) {
+func TestAmnesiaInterfaceConfigFlowsThroughWireGuardToTun(t *testing.T) {
 	e, _ := newWireGuardTunConfigE2E(t)
 	wg := e.AddNode(NodeTypeWireGuard, "wg")
 	amnesia := e.AddNode(amnesianodes.NodeTypeAmnesia, "amnesia")
@@ -379,7 +384,7 @@ func TestAmnesiaOwnedIPsFlowThroughWireGuardToTun(t *testing.T) {
 	e.Secrets.SetSecret(connectionSecret, Secret{Value: fmt.Sprintf(`[Interface]
 PrivateKey = %s
 Address = 10.94.0.2/32
-DNS = 8.8.8.8
+DNS = 9.9.9.9
 
 [Peer]
 PublicKey = %s
@@ -400,6 +405,12 @@ AllowedIPs = 0.0.0.0/0
 	ctrlLink := e.MustAddTypedLinkByPortName(TypeWGCtrl, wg, "left", "WGCtrl", amnesia, "right", "WireGuard")
 	waitAmnesiaUp(t, e, amnesia)
 	waitVTunEffectiveLocalAddrs(t, e, vtun, "10.93.0.2\n10.94.0.2")
+	waitVTunEffectiveDNS(t, e, vtun, "9.9.9.9")
+
+	applyWireGuardDNS(t, e.Engine, wg, "1.1.1.1")
+	waitVTunEffectiveDNS(t, e, vtun, "1.1.1.1")
+	applyWireGuardDNS(t, e.Engine, wg, "")
+	waitVTunEffectiveDNS(t, e, vtun, "9.9.9.9")
 
 	e.Engine.SendNodeFormularMsg(E2EWorkspace, amnesia, formular.FormApplyMessage{
 		MessageBase: FormMessageBase(formular.MessageFormApply, amnesia),
@@ -407,6 +418,7 @@ AllowedIPs = 0.0.0.0/0
 		Values:      map[string]any{"enabled": false},
 	})
 	waitVTunEffectiveLocalAddrs(t, e, vtun, "10.93.0.2")
+	waitVTunEffectiveDNS(t, e, vtun, DefaultVTunDNSServer)
 
 	e.Engine.SendNodeFormularMsg(E2EWorkspace, amnesia, formular.FormApplyMessage{
 		MessageBase: FormMessageBase(formular.MessageFormApply, amnesia),
@@ -414,9 +426,11 @@ AllowedIPs = 0.0.0.0/0
 		Values:      map[string]any{"enabled": true},
 	})
 	waitVTunEffectiveLocalAddrs(t, e, vtun, "10.93.0.2\n10.94.0.2")
+	waitVTunEffectiveDNS(t, e, vtun, "9.9.9.9")
 
 	e.Engine.RemoveLink(E2EWorkspace, ctrlLink)
 	waitVTunEffectiveLocalAddrs(t, e, vtun, "10.93.0.2")
+	waitVTunEffectiveDNS(t, e, vtun, DefaultVTunDNSServer)
 }
 
 func TestAmnesiaOwnedIPEnablesVTunHTTPRequest(t *testing.T) {
@@ -514,6 +528,14 @@ func waitVTunEffectiveLocalAddrs(t *testing.T, e *NodeE2E, node uint64, want str
 	}
 	item, ok := e.MenuItem(node, "effective", "localAddrs")
 	t.Fatalf("VTun %d effective local addresses = %#v (present=%t), want %q", node, item.Value, ok, want)
+}
+
+func waitVTunEffectiveDNS(t *testing.T, e *NodeE2E, node uint64, want string) {
+	t.Helper()
+	Eventually(t, func() bool {
+		item, ok := e.MenuItem(node, "effective", "dnsServers")
+		return ok && item.Value == want
+	}, "VTun effective DNS servers = %q", want)
 }
 
 func setupWireGuardE2E(t *testing.T, names wireGuardE2ENames) wireGuardE2EFixture {

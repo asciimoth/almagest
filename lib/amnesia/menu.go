@@ -85,7 +85,7 @@ func (n *amnesiaNode) configBlock() formular.Block {
 	reconnect := formular.Item{
 		Type: formular.ItemButton, ID: "reconnect", Label: "Reconnect",
 		Inactive: n.pending || !n.config.enabled,
-		Help:     "Import the connection again and replace this node's tracked peer.",
+		Help:     "Import the connection again and replace this node's tracked peer. This does not rotate the attached WireGuard node's private key.",
 	}
 	return formular.Block{ID: "config", Order: 20, Generation: 1, Form: true, Items: []formular.Item{
 		enabled,

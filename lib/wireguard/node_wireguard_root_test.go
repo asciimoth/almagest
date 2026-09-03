@@ -46,6 +46,10 @@ func TestWireGuardClassPortsAndMenuBlocks(t *testing.T) {
 	if !ok || item.Field == nil || !item.Multiline {
 		t.Fatalf("config ownedIPs item = %#v, want multiline field", item)
 	}
+	item, ok = e.MenuItem(node, "config", "dns")
+	if !ok || item.Field == nil || item.Multiline || item.Help == "" {
+		t.Fatalf("config dns item = %#v, want documented single-line field", item)
+	}
 	item, ok = e.MenuItem(node, "config", "batchSize")
 	if !ok || item.Field == nil || item.Help == "" {
 		t.Fatalf("config batchSize item = %#v, want documented field", item)
@@ -277,6 +281,7 @@ func TestWireGuardConfigPersistsAcrossSaveRestoreAndCopyPaste(t *testing.T) {
 	privateKey, publicKey := wireGuardTestKeyPair(t, 1)
 	_, peerPublicKey := wireGuardTestKeyPair(t, 2)
 	ownedIPs := "10.10.10.2/32\nfd00:10:10::2/128"
+	dns := "8.8.8.8"
 	amneziaWG := wireGuardTestAmneziaConfig()
 	peerAmneziaWG := wireGuardTestAmneziaConfig()
 	peerAmneziaWG.initHeader = "6111-6113"
@@ -292,6 +297,7 @@ func TestWireGuardConfigPersistsAcrossSaveRestoreAndCopyPaste(t *testing.T) {
 		amneziaWGOverride:           true,
 		amneziaWG:                   peerAmneziaWG,
 	}})
+	applyWireGuardDNS(t, e.Engine, node, dns)
 	applyWireGuardAmneziaConfig(t, e.Engine, node, amneziaWG)
 
 	Eventually(t, func() bool {
@@ -334,6 +340,9 @@ func TestWireGuardConfigPersistsAcrossSaveRestoreAndCopyPaste(t *testing.T) {
 	if got, err := cfg.Get(configer.Path{"nodes", "wg", "ownedIPs"}); err != nil || got != ownedIPs {
 		t.Fatalf("saved ownedIPs = %#v, %v; want %q", got, err, ownedIPs)
 	}
+	if got, err := cfg.Get(configer.Path{"nodes", "wg", "dns"}); err != nil || got != dns {
+		t.Fatalf("saved dns = %#v, %v; want %q", got, err, dns)
+	}
 	assertSavedWireGuardAmneziaConfig(t, cfg, "wg", amneziaWG)
 	if got, err := cfg.Get(configer.Path{"nodes", "wg", "fwmark"}); err == nil {
 		t.Fatalf("saved fwmark = %#v, want missing removed field", got)
@@ -357,6 +366,7 @@ func TestWireGuardConfigPersistsAcrossSaveRestoreAndCopyPaste(t *testing.T) {
 	assertWireGuardPeerField(t, restored, restoredNode, "amneziaInitiationPacket1", peerAmneziaWG.initiationPackets[0])
 	assertWireGuardConfigField(t, restored, restoredNode, "batchSize", 8)
 	assertWireGuardConfigField(t, restored, restoredNode, "ownedIPs", ownedIPs)
+	assertWireGuardConfigField(t, restored, restoredNode, "dns", dns)
 	assertWireGuardConfigField(t, restored, restoredNode, "amneziaJunkCount", amneziaWG.junkCount)
 	assertWireGuardConfigField(t, restored, restoredNode, "amneziaInitHeader", amneziaWG.initHeader)
 	assertWireGuardConfigField(t, restored, restoredNode, "amneziaInitiationPacket1", amneziaWG.initiationPackets[0])
@@ -379,6 +389,7 @@ func TestWireGuardConfigPersistsAcrossSaveRestoreAndCopyPaste(t *testing.T) {
 	assertWireGuardConfigFieldNotEqual(t, e, pastedNode, "privateKeySecret", privateKeySecretText)
 	assertWireGuardConfigField(t, e, pastedNode, "batchSize", 8)
 	assertWireGuardConfigField(t, e, pastedNode, "ownedIPs", ownedIPs)
+	assertWireGuardConfigField(t, e, pastedNode, "dns", dns)
 	assertWireGuardConfigField(t, e, pastedNode, "amneziaJunkCount", amneziaWG.junkCount)
 	assertWireGuardConfigField(t, e, pastedNode, "amneziaInitHeader", amneziaWG.initHeader)
 	assertWireGuardConfigField(t, e, pastedNode, "amneziaInitiationPacket1", amneziaWG.initiationPackets[0])
@@ -425,6 +436,26 @@ func TestWireGuardValidationReportsStatus(t *testing.T) {
 		item, ok := e.MenuItem(node, "config", "ownedIPs")
 		return ok && item.Status == formular.StatusError
 	}, "owned IPs validation error")
+
+	e.Engine.SendNodeFormularMsg(E2EWorkspace, node, formular.FieldValidateMessage{
+		MessageBase: FormMessageBase(formular.MessageFieldValidate, node),
+		Field:       formular.FieldRef{BlockID: "config", FieldID: "dns"},
+		Value:       "8.8.8.8/32",
+	})
+	Eventually(t, func() bool {
+		item, ok := e.MenuItem(node, "config", "dns")
+		return ok && item.Status == formular.StatusError
+	}, "DNS validation error")
+
+	e.Engine.SendNodeFormularMsg(E2EWorkspace, node, formular.FieldValidateMessage{
+		MessageBase: FormMessageBase(formular.MessageFieldValidate, node),
+		Field:       formular.FieldRef{BlockID: "config", FieldID: "dns"},
+		Value:       "2001:4860:4860::8888",
+	})
+	Eventually(t, func() bool {
+		item, ok := e.MenuItem(node, "config", "dns")
+		return ok && item.Status == formular.StatusOK
+	}, "DNS validation ok")
 
 	e.Engine.SendNodeFormularMsg(E2EWorkspace, node, formular.FieldValidateMessage{
 		MessageBase: FormMessageBase(formular.MessageFieldValidate, node),
@@ -580,6 +611,15 @@ func applyWireGuardConfigWithBatchAndOwnedIPs(t *testing.T, engine Engine, node 
 		Values: map[string]any{
 			"peers": wireGuardPeerValues(peers),
 		},
+	})
+}
+
+func applyWireGuardDNS(t *testing.T, engine Engine, node uint64, dns string) {
+	t.Helper()
+	engine.SendNodeFormularMsg(E2EWorkspace, node, formular.FormApplyMessage{
+		MessageBase: FormMessageBase(formular.MessageFormApply, node),
+		BlockID:     "config",
+		Values:      map[string]any{"dns": dns},
 	})
 }
 

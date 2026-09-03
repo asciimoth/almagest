@@ -194,7 +194,7 @@ func TestTunFirewallForwardsAndForgetsDownstreamTunConfig(t *testing.T) {
 	addTunFirewallTestLink(t, w, firewallSnapshot.LeftPorts[0], upstream.out, TypeTun)
 	discardTunConfig(t, upstream.configs)
 	outputLink := addTunFirewallTestLink(t, w, downstream.in, firewallSnapshot.RightPorts[0], TypeTun)
-	want := TunConfig{Addrs: []string{"10.42.0.1/24"}, Routes: []string{"10.43.0.0/16"}, MTU: 1280}
+	want := TunConfig{Addrs: []string{"10.42.0.1/24"}, Routes: []string{"10.43.0.0/16"}, MTU: 1280, DNS: "1.1.1.1"}
 	w.EmitEvent(downstreamID, outputLink, want)
 	assertTunConfigReceived(t, upstream.configs, want)
 

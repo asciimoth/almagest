@@ -71,6 +71,16 @@ func ReceivePayload(t *testing.T, events <-chan links.TunPayload) links.TunPaylo
 	}
 }
 
+// AssertNoEvent fails if a TUN payload is ready.
+func AssertNoEvent(t *testing.T, events <-chan links.TunPayload) {
+	t.Helper()
+	select {
+	case payload := <-events:
+		t.Fatalf("unexpected TUN payload: %#v", payload)
+	default:
+	}
+}
+
 // RecordingSystem records regular TUN builds and dynamic configuration calls.
 type RecordingSystem struct {
 	*sysnetdebug.System

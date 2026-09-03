@@ -62,6 +62,7 @@ func (c WireGuardClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState)
 		objectErrors:         map[uint64]string{},
 		wgctrlPayloads:       map[uint64]WGCtrlPayload{},
 		wgctrlConfigs:        map[uint64]WGCtrlInterfaceConfig{},
+		wgctrlConfigOrder:    map[uint64]uint64{},
 		wgctrlPendingApplies: map[*wgCtrlInterfaceConfigApply]uint64{},
 	}, nil
 }
@@ -130,6 +131,10 @@ type wireGuardNode struct {
 	// wgctrlConfigs is workspace-owned and keeps the latest interface setting
 	// suggestions received from each attached controller link.
 	wgctrlConfigs map[uint64]WGCtrlInterfaceConfig
+	// wgctrlConfigOrder records when each current controller suggestion was
+	// received. It selects the last received DNS suggestion across links.
+	wgctrlConfigOrder map[uint64]uint64
+	wgctrlConfigSeq   uint64
 	// wgctrlPendingApplies waits for the TUN generation caused by an
 	// acknowledged interface update to become physically attached.
 	wgctrlPendingApplies map[*wgCtrlInterfaceConfigApply]uint64
@@ -147,9 +152,13 @@ type wireGuardNode struct {
 	// rebuilds can remove stale local peers without deleting WGConfig peers.
 	runtimeOwnedPeerKeys map[wgdevice.NoisePublicKey]struct{}
 
-	runtimeMu              sync.Mutex
-	runtimeGeneration      atomic.Uint64
-	runtimeReadyGeneration uint64
+	runtimeMu         sync.Mutex
+	runtimeGeneration atomic.Uint64
+	// runtimeFailureGeneration prevents a successful async completion that was
+	// scheduled before a newer runtime failure from clearing that failure or
+	// cancelling its retry.
+	runtimeFailureGeneration atomic.Uint64
+	runtimeReadyGeneration   uint64
 
 	runtimeStats            wgdevice.RuntimeStats
 	runtimeListenPort       int
@@ -191,6 +200,9 @@ func (n *wireGuardNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint6
 	}
 	if n.wgctrlConfigs == nil {
 		n.wgctrlConfigs = map[uint64]WGCtrlInterfaceConfig{}
+	}
+	if n.wgctrlConfigOrder == nil {
+		n.wgctrlConfigOrder = map[uint64]uint64{}
 	}
 	if n.wgctrlPendingApplies == nil {
 		n.wgctrlPendingApplies = map[*wgCtrlInterfaceConfigApply]uint64{}
@@ -288,6 +300,7 @@ func (n *wireGuardNode) OnLinkRemoved(link uint64, port uint64, linkType, portDi
 	case port == n.ctrlp && portDirection == "left" && linkType == TypeWGCtrl:
 		delete(n.wgctrlPayloads, link)
 		delete(n.wgctrlConfigs, link)
+		delete(n.wgctrlConfigOrder, link)
 		n.failWGCtrlInterfaceConfigApplies(link, errors.New("WireGuard controller link was removed"))
 		n.sendTunConfig()
 	case port == n.netp && portDirection == "right" && linkType == TypeNetwork && link == n.netLink:
@@ -416,6 +429,7 @@ func (n *wireGuardNode) OnSave(cfg configer.Config) error {
 		"listenPort":       n.config.listenPort,
 		"batchSize":        n.config.batchSize,
 		"ownedIPs":         n.config.ownedIPs,
+		"dns":              n.config.dns,
 		"amneziaWG":        wireGuardAmneziaConfigMap(n.config.amneziaWG),
 		"peers":            wireGuardPeersConfig(n.config.peers),
 	})

@@ -177,6 +177,11 @@ func TestDefaultTunBuildsEmitsAndRebuildsFromFormAndTunConfig(t *testing.T) {
 	if firstTun.closeCount() != 0 {
 		t.Fatalf("first DefaultTun close count after link = %d, want 0", firstTun.closeCount())
 	}
+	w.EmitEvent(receiverID, link, TunConfig{DNS: "8.8.8.8"})
+	if got := sys.buildCount(); got != 1 {
+		t.Fatalf("build count after DNS-only TunConfig = %d, want 1", got)
+	}
+	tuntest.AssertNoEvent(t, receiver.Events)
 
 	w.SendNodeFormularMsg(node, formular.FormApplyMessage{
 		MessageBase: formular.MessageBase{Type: formular.MessageFormApply, MenuID: pasta.NodeMenuID(node)},

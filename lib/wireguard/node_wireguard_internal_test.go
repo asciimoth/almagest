@@ -102,6 +102,50 @@ func TestWireGuardMergesMenuAndControllerOwnedIPs(t *testing.T) {
 	}
 }
 
+func TestWireGuardUsesLatestWGCtrlDNSUnlessMenuDNSIsSet(t *testing.T) {
+	node := &wireGuardNode{config: defaultWireGuardConfig()}
+
+	if err := node.acceptWGCtrlInterfaceConfig(4, WGCtrlInterfaceConfig{DNS: "1.1.1.1"}); err != nil {
+		t.Fatalf("accept first controller DNS: %v", err)
+	}
+	if got := node.effectiveDNS(); got != "1.1.1.1" {
+		t.Fatalf("effective DNS = %q, want 1.1.1.1", got)
+	}
+	if err := node.acceptWGCtrlInterfaceConfig(9, WGCtrlInterfaceConfig{DNS: "8.8.8.8"}); err != nil {
+		t.Fatalf("accept second controller DNS: %v", err)
+	}
+	if got := node.effectiveDNS(); got != "8.8.8.8" {
+		t.Fatalf("effective DNS = %q, want latest 8.8.8.8", got)
+	}
+	if err := node.acceptWGCtrlInterfaceConfig(4, WGCtrlInterfaceConfig{
+		OwnedIPs: []string{"10.41.0.2/32"},
+		DNS:      "9.9.9.9",
+	}); err != nil {
+		t.Fatalf("replace first controller DNS: %v", err)
+	}
+	if got := node.effectiveDNS(); got != "9.9.9.9" {
+		t.Fatalf("effective DNS = %q, want latest replacement 9.9.9.9", got)
+	}
+
+	node.config.dns = "4.4.4.4"
+	if got := node.tunConfig().DNS; got != "4.4.4.4" {
+		t.Fatalf("TUN DNS = %q, want menu DNS 4.4.4.4", got)
+	}
+	node.config.dns = ""
+	if err := node.acceptWGCtrlInterfaceConfig(4, WGCtrlInterfaceConfig{}); err != nil {
+		t.Fatalf("withdraw latest controller DNS: %v", err)
+	}
+	if got := node.effectiveDNS(); got != "8.8.8.8" {
+		t.Fatalf("effective DNS = %q, want previous current suggestion 8.8.8.8", got)
+	}
+	if err := node.acceptWGCtrlInterfaceConfig(9, WGCtrlInterfaceConfig{DNS: "invalid"}); err == nil {
+		t.Fatal("invalid controller DNS was accepted")
+	}
+	if got := node.effectiveDNS(); got != "" {
+		t.Fatalf("effective DNS after rejection = %q, want empty", got)
+	}
+}
+
 func TestWireGuardBatchSizeConfiguresDeviceAndBind(t *testing.T) {
 	privateKey, _ := wireGuardTestKeyPair(t, 51)
 	network := gonnect.NewLoopbackNetwork()
@@ -310,6 +354,19 @@ func TestWireGuardOwnedIPAddrsNormalizeAndDedupe(t *testing.T) {
 
 	if got := wireGuardOwnedIPAddrs("bad"); got != nil {
 		t.Fatalf("wireGuardOwnedIPAddrs(invalid) = %#v, want nil", got)
+	}
+}
+
+func TestValidateWireGuardDNS(t *testing.T) {
+	for _, value := range []string{"", "8.8.8.8", "2001:4860:4860::8888", " 1.1.1.1 "} {
+		if err := validateWireGuardDNS(value); err != nil {
+			t.Errorf("validateWireGuardDNS(%q) error = %v, want nil", value, err)
+		}
+	}
+	for _, value := range []string{"dns.example", "8.8.8.8/32", "8.8.8.8 1.1.1.1"} {
+		if err := validateWireGuardDNS(value); err == nil {
+			t.Errorf("validateWireGuardDNS(%q) error = nil, want error", value)
+		}
 	}
 }
 
@@ -772,6 +829,29 @@ func TestWireGuardIntentionalClosedReceiveErrorIsIgnored(t *testing.T) {
 	}
 	if wg.currentBindFailed {
 		t.Fatal("currentBindFailed = true, want false")
+	}
+}
+
+func TestWireGuardStaleAttachmentSuccessDoesNotCancelFailureRetry(t *testing.T) {
+	n := &wireGuardNode{
+		currentBindFailed: true,
+		runtimeError:      "receive from bind: EOF",
+		retryCancel:       make(chan struct{}),
+	}
+	n.runtimeFailureGeneration.Store(1)
+
+	n.handleRuntimeAttachmentResult(wireGuardRuntimeAttachmentResultMessage{
+		failureGeneration: 0,
+	})
+
+	if n.runtimeError == "" {
+		t.Fatal("stale attachment success cleared the current runtime error")
+	}
+	if n.retryCancel == nil {
+		t.Fatal("stale attachment success cancelled the current retry")
+	}
+	if got := n.currentRuntimeFailureGeneration(); got != 1 {
+		t.Fatalf("runtime failure generation = %d, want 1", got)
 	}
 }
 

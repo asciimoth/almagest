@@ -76,7 +76,9 @@ func (c TunSplitterClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassStat
 // tunSplitterNode owns one gonnect/tun.Splitter. Its left-directed input
 // accepts the backend Tun and each right-directed slot port publishes one
 // SplitFrontend. TunConfig suggestions received from slot consumers are merged
-// and forwarded to the backend provider through the input link.
+// and forwarded to the backend provider through the input link. DNS suggestions
+// are discarded because one DNS server cannot be selected safely from multiple
+// routed outputs; use almagest/dns nodes for that topology.
 type tunSplitterNode struct {
 	NodeBase
 
@@ -267,7 +269,7 @@ func (n *tunSplitterNode) OnEvent(event pasta.Event, linkType string, _ []string
 	if !ok {
 		return nil
 	}
-	n.outputCfgs.Set(event.Link, cfg)
+	n.outputCfgs.Set(event.Link, cfg.WithoutDNS())
 	n.sendMergedTunConfig()
 	return nil
 }

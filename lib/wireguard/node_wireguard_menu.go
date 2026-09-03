@@ -57,11 +57,14 @@ func (n *wireGuardNode) statusBlock() formular.Block {
 }
 func (n *wireGuardNode) configBlock() formular.Block {
 	statusErr := n.formError != ""
+	dns := configTextField("dns", "DNS", n.config.dns, statusErr, n.formError, false)
+	dns.Help = "Optional DNS server IP suggested to the connected TUN provider. This is for simple topologies such as WireGuard connected directly to VTun. Use almagest/dns nodes for DNS routing or policy."
 	items := []formular.Item{
 		wireGuardPrivateKeySecretField(n.config.privateKeySecret, statusErr, n.formError),
 		configIntField("listenPort", "Listen port", n.config.listenPort, statusErr, n.formError),
 		wireGuardBatchSizeField(n.config.batchSize, statusErr, n.formError),
 		configTextField("ownedIPs", "Owned IPs", n.config.ownedIPs, statusErr, n.formError, true),
+		dns,
 	}
 	items = append(items, wireGuardAmneziaConfigItems(n.config.amneziaWG, statusErr, n.formError)...)
 	return formular.Block{ID: "config", Order: 20, Generation: 1, Form: true, Items: items}
@@ -101,6 +104,10 @@ func (n *wireGuardNode) sendConfigFieldStatus(msg formular.FieldValidateMessage)
 	case "ownedIPs":
 		if value, ok := formular.StringValue(msg.Value); ok {
 			next.ownedIPs = value
+		}
+	case "dns":
+		if value, ok := formular.StringValue(msg.Value); ok {
+			next.dns = value
 		}
 	default:
 		if !applyWireGuardAmneziaValue(&next.amneziaWG, msg.Field.FieldID, msg.Value) {

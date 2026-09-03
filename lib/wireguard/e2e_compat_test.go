@@ -43,6 +43,7 @@ const (
 
 	NodeTypeTunConfigStripper = tunnodes.NodeTypeTunConfigStripper
 	NodeTypeVTun              = tunnodes.NodeTypeVTun
+	DefaultVTunDNSServer      = tunnodes.DefaultVTunDNSServer
 	NodeTypeWireGuard         = wireguardnodes.NodeTypeWireGuard
 	NodeTypeWGConfig          = wireguardnodes.NodeTypeWGConfig
 )
