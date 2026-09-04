@@ -88,6 +88,19 @@ export function kvNodeDescendsFrom(descendantKey: string, ancestorKey: string): 
   return ancestor.path.every((segment, index) => descendant.path[index] === segment);
 }
 
+// A subscription event can arrive before the subscribe response tells the
+// panel which ID belongs to the requested view. Prefer that event over the
+// response snapshot because it contains the later observable state.
+export function takePendingKVSnapshot<T>(
+  pending: Map<number, T>,
+  subscriptionID: number,
+  responseSnapshot: T,
+): T {
+  const eventSnapshot = pending.get(subscriptionID);
+  pending.delete(subscriptionID);
+  return eventSnapshot ?? responseSnapshot;
+}
+
 export function childKVNodeKey(parentKey: string, name: string): string | null {
   const parent = parseKVNodeKey(parentKey);
   if (!parent) return null;

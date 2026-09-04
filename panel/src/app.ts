@@ -90,6 +90,7 @@ import {
   normalizeKVStore,
   parseKVNodeKey,
   sameKVStore,
+  takePendingKVSnapshot,
   type KVEntriesSnapshot,
   type KVEntryInfo,
   type KVStoreInfo,
@@ -432,6 +433,9 @@ const kvExpandedNodes = new Set<string>();
 const kvEntriesByNode = new Map<string, KVEntriesSnapshot>();
 const kvEntrySubscriptions = new Map<string, number>();
 const kvEntrySubscribePending = new Set<string>();
+const kvPendingStoreSnapshots = new Map<number, KVStoresSnapshot>();
+const kvPendingEntrySnapshots = new Map<number, KVEntriesSnapshot>();
+const kvPendingValueSnapshots = new Map<number, KVValueSnapshot>();
 let nextToastID = 1;
 let liteGraphDrawGuardInstalled = false;
 let liteGraphWidgetSelectionGuardInstalled = false;
@@ -4314,21 +4318,30 @@ function restoreTLSScrollState(): void {
 function handleKVEvent(method: string, payload: unknown): void {
   if (method === "stores_update") {
     const event = payload as KVStoresEvent;
-    if (event.subscription_id !== kvStoreSubscriptionID) return;
+    if (event.subscription_id !== kvStoreSubscriptionID) {
+      if (kvStoreSubscribePending) kvPendingStoreSnapshots.set(event.subscription_id, event.snapshot);
+      return;
+    }
     applyKVStoresSnapshot(event.snapshot);
     return;
   }
   if (method === "entries_update") {
     const event = payload as KVEntriesEvent;
     const nodeKey = kvNodeKeyForEntrySubscription(event.subscription_id);
-    if (!nodeKey) return;
+    if (!nodeKey) {
+      if (kvEntrySubscribePending.size) kvPendingEntrySnapshots.set(event.subscription_id, event.snapshot);
+      return;
+    }
     kvEntriesByNode.set(nodeKey, event.snapshot);
     renderKV();
     return;
   }
   if (method === "value_update") {
     const event = payload as KVValueEvent;
-    if (!kvValuePanel || event.subscription_id !== kvValuePanel.subscriptionID) return;
+    if (!kvValuePanel || event.subscription_id !== kvValuePanel.subscriptionID) {
+      if (kvValueSubscribePending) kvPendingValueSnapshots.set(event.subscription_id, event.snapshot);
+      return;
+    }
     kvValuePanel.snapshot = event.snapshot;
     renderKVValuePanel();
   }
@@ -4358,6 +4371,9 @@ function deactivateKVPanel(): void {
     void tryBackend("kvUnsubscribe", { subscriptionID: id });
   }
   kvEntrySubscriptions.clear();
+  kvPendingStoreSnapshots.clear();
+  kvPendingEntrySnapshots.clear();
+  kvPendingValueSnapshots.clear();
 }
 
 async function ensureKVStoreSubscription(): Promise<void> {
@@ -4366,16 +4382,19 @@ async function ensureKVStoreSubscription(): Promise<void> {
   const response = await tryBackend<KVSubscribeStoresResponse>("kvSubscribeStores");
   kvStoreSubscribePending = false;
   if (!response) {
+    kvPendingStoreSnapshots.clear();
     kvNotice = { level: "error", text: "KV storage is unavailable." };
     renderKV();
     return;
   }
   if (activeTab !== "kv") {
+    kvPendingStoreSnapshots.delete(response.subscription_id);
     if (response.subscription_id) void tryBackend("kvUnsubscribe", { subscriptionID: response.subscription_id });
     return;
   }
   kvStoreSubscriptionID = response.subscription_id;
-  applyKVStoresSnapshot(response.snapshot);
+  applyKVStoresSnapshot(takePendingKVSnapshot(kvPendingStoreSnapshots, response.subscription_id, response.snapshot));
+  kvPendingStoreSnapshots.clear();
 }
 
 function applyKVStoresSnapshot(snapshot: KVStoresSnapshot): void {
@@ -4798,17 +4817,24 @@ async function subscribeKVEntries(nodeKey: string): Promise<void> {
   });
   kvEntrySubscribePending.delete(nodeKey);
   if (!response) {
+    if (!kvEntrySubscribePending.size) kvPendingEntrySnapshots.clear();
     kvNotice = { level: "error", text: `Failed to subscribe ${kvPathLabel(ref.store, ref.path)}.` };
     renderKV();
     return;
   }
   const desired = activeTab === "kv" && desiredKVEntrySubscriptionKeys(kvStores, kvExpandedNodes, kvEntriesByNode).has(nodeKey);
   if (!desired) {
+    kvPendingEntrySnapshots.delete(response.subscription_id);
     if (response.subscription_id) void tryBackend("kvUnsubscribe", { subscriptionID: response.subscription_id });
+    if (!kvEntrySubscribePending.size) kvPendingEntrySnapshots.clear();
     return;
   }
   kvEntrySubscriptions.set(nodeKey, response.subscription_id);
-  kvEntriesByNode.set(nodeKey, response.snapshot);
+  kvEntriesByNode.set(
+    nodeKey,
+    takePendingKVSnapshot(kvPendingEntrySnapshots, response.subscription_id, response.snapshot),
+  );
+  if (!kvEntrySubscribePending.size) kvPendingEntrySnapshots.clear();
   renderKV();
 }
 
@@ -4844,6 +4870,7 @@ async function subscribeKVValuePanel(): Promise<void> {
   const response = await tryBackend<KVSubscribeValueResponse>("kvSubscribeValue", target);
   kvValueSubscribePending = false;
   if (!response) {
+    kvPendingValueSnapshots.clear();
     kvNotice = { level: "error", text: "Failed to subscribe value." };
     renderKVValuePanel();
     return;
@@ -4855,11 +4882,13 @@ async function subscribeKVValuePanel(): Promise<void> {
     !pathsEqual(kvValuePanel.path, target.path) ||
     kvValuePanel.key !== target.key
   ) {
+    kvPendingValueSnapshots.delete(response.subscription_id);
     if (response.subscription_id) void tryBackend("kvUnsubscribe", { subscriptionID: response.subscription_id });
     return;
   }
   kvValuePanel.subscriptionID = response.subscription_id;
-  kvValuePanel.snapshot = response.snapshot;
+  kvValuePanel.snapshot = takePendingKVSnapshot(kvPendingValueSnapshots, response.subscription_id, response.snapshot);
+  kvPendingValueSnapshots.clear();
   renderKVValuePanel();
 }
 

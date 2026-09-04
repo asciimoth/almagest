@@ -4,13 +4,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"github.com/asciimoth/almagest/lib/logging"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/asciimoth/almagest/bin/api"
 	almagest "github.com/asciimoth/almagest/lib"
+	"github.com/asciimoth/almagest/lib/logging"
+	"github.com/asciimoth/almagest/lib/storage"
 	"github.com/asciimoth/configer/configer"
 	sysnetdebug "github.com/asciimoth/gonnect/sysnet/debug"
 	"github.com/asciimoth/pasta/pasta"
@@ -202,6 +203,64 @@ func TestKVSubscriptionSendsSnapshotEventsAndUnsubscribesDescendants(t *testing.
 	}
 	if len(events) != 0 {
 		t.Fatalf("events after ancestor unsubscribe = %d, want descendant subscriptions removed", len(events))
+	}
+}
+
+func TestKVSubscriptionObservesDirectStoreUpdate(t *testing.T) {
+	manager, err := openKVManager(filepath.Join(t.TempDir(), "kv.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer manager.Close() //nolint:errcheck
+
+	var events []api.Message
+	session := (&AdminAPI{kv: manager}).newAPISession(nil, nil, func(msg api.Message) error {
+		if msg.Kind == api.MessageEvent && msg.Surface == api.SurfaceKV {
+			events = append(events, msg)
+		}
+		return nil
+	})
+	defer session.close()
+
+	subscribe := mustRequest(t, "1", api.SurfaceKV, string(api.MethodKVSubscribeEntries), api.KVEntriesRequest{
+		Path: []string{"nodes", "amnesia"},
+	})
+	response, err := session.handleMessage(subscribe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := api.DecodePayload[api.KVSubscribeEntriesResponse](response.Result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.SubscriptionID == 0 {
+		t.Fatal("entries subscription ID is zero")
+	}
+
+	store := manager.DefaultStore().Subtree("nodes", "amnesia", "node-storage-id")
+	if err := store.Update(context.Background(), func(tx storage.KVWriteTx) error {
+		return tx.Set("installation_uuid", storage.KValue{
+			Data:   []byte("runtime-generated"),
+			Hidden: true,
+			String: true,
+		})
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(events) != 1 {
+		t.Fatalf("events after direct store update = %d, want 1", len(events))
+	}
+	var event api.KVEntriesEvent
+	if err := json.Unmarshal(events[0].Payload, &event); err != nil {
+		t.Fatal(err)
+	}
+	if event.SubscriptionID != result.SubscriptionID || len(event.Snapshot.Entries) != 1 {
+		t.Fatalf("entries event = %#v, want the new Amnesia subtree", event)
+	}
+	entry := event.Snapshot.Entries[0]
+	if entry.Kind != api.KVEntryBucket || entry.Name != "node-storage-id" {
+		t.Fatalf("entry = %#v, want node-storage-id subtree", entry)
 	}
 }
 

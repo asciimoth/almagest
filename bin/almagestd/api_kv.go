@@ -40,8 +40,8 @@ func (s *apiSession) handleKVMessage(msg api.Message) (api.Message, error) {
 		return api.NewResponse(msg.ID, s.admin.kv.storesSnapshot())
 
 	case api.MethodKVSubscribeStores:
-		snapshot := s.admin.kv.storesSnapshot()
 		id := s.addKVSubscription(kvSubscription{kind: kvSubscriptionStores})
+		snapshot := s.admin.kv.storesSnapshot()
 		return api.NewResponse(msg.ID, api.KVSubscribeStoresResponse{
 			SubscriptionID: id,
 			Snapshot:       snapshot,
@@ -67,15 +67,16 @@ func (s *apiSession) handleKVMessage(msg api.Message) (api.Message, error) {
 		if !ok || !validKVPath(req.Path) {
 			return api.NewResponse(msg.ID, api.KVSubscribeEntriesResponse{})
 		}
-		snapshot, err := s.admin.kv.entriesSnapshot(context.Background(), selector, req.Path)
-		if err != nil {
-			return api.NewResponse(msg.ID, api.KVSubscribeEntriesResponse{})
-		}
 		id := s.addKVSubscription(kvSubscription{
 			kind:  kvSubscriptionEntries,
 			store: selector,
 			path:  cloneKVPath(req.Path),
 		})
+		snapshot, err := s.admin.kv.entriesSnapshot(context.Background(), selector, req.Path)
+		if err != nil {
+			s.removeKVSubscriptionTree(id)
+			return api.NewResponse(msg.ID, api.KVSubscribeEntriesResponse{})
+		}
 		return api.NewResponse(msg.ID, api.KVSubscribeEntriesResponse{
 			SubscriptionID: id,
 			Snapshot:       snapshot,
@@ -101,16 +102,17 @@ func (s *apiSession) handleKVMessage(msg api.Message) (api.Message, error) {
 		if !ok || !validKVPath(req.Path) || !validKVName(req.Key) {
 			return api.NewResponse(msg.ID, api.KVSubscribeValueResponse{})
 		}
-		snapshot, err := s.admin.kv.valueSnapshot(context.Background(), selector, req.Path, req.Key)
-		if err != nil {
-			return api.NewResponse(msg.ID, api.KVSubscribeValueResponse{})
-		}
 		id := s.addKVSubscription(kvSubscription{
 			kind:  kvSubscriptionValue,
 			store: selector,
 			path:  cloneKVPath(req.Path),
 			key:   req.Key,
 		})
+		snapshot, err := s.admin.kv.valueSnapshot(context.Background(), selector, req.Path, req.Key)
+		if err != nil {
+			s.removeKVSubscriptionTree(id)
+			return api.NewResponse(msg.ID, api.KVSubscribeValueResponse{})
+		}
 		return api.NewResponse(msg.ID, api.KVSubscribeValueResponse{
 			SubscriptionID: id,
 			Snapshot:       snapshot,

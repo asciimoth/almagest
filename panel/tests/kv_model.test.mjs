@@ -6,6 +6,7 @@ import {
   kvNodeDescendsFrom,
   kvNodeKey,
   parseKVNodeKey,
+  takePendingKVSnapshot,
 } from "../public/build/kv_model.js";
 
 test("KV node keys round-trip untrusted names without delimiter parsing", () => {
@@ -49,4 +50,16 @@ test("KV descendant checks are scoped to the same store", () => {
 
   assert.equal(kvNodeDescendsFrom(defaultChild, defaultRoot), true);
   assert.equal(kvNodeDescendsFrom(pluginChild, defaultRoot), false);
+});
+
+test("KV subscribe handshake keeps an update that arrives before its response", () => {
+  const pending = new Map([[17, { exists: true, entries: [{ kind: "value", name: "installation_uuid" }] }]]);
+  const initial = { exists: true, entries: [] };
+
+  assert.deepEqual(takePendingKVSnapshot(pending, 17, initial), {
+    exists: true,
+    entries: [{ kind: "value", name: "installation_uuid" }],
+  });
+  assert.equal(pending.has(17), false);
+  assert.equal(takePendingKVSnapshot(pending, 18, initial), initial);
 });
