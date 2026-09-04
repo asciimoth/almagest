@@ -54,7 +54,7 @@ func (e *httpE2E) clientURLForPort(port int) string {
 	return "http://127.0.0.1:" + itoa(port) + "/"
 }
 
-func TestDebugLogNodesAvailableOnlyInDebugEngines(t *testing.T) {
+func TestDebugNodesAvailableOnlyInDebugEngines(t *testing.T) {
 	pool := e2etest.NewTestDebugPool(t)
 
 	plain, err := almagest.BuildEngine(context.Background(), configer.NewMemory(nil), logging.NewDebugLogFactory(16), &sysnetdebug.System{}, nil, nil, nil, nil, nil, pool, false)
@@ -64,6 +64,9 @@ func TestDebugLogNodesAvailableOnlyInDebugEngines(t *testing.T) {
 	t.Cleanup(func() { _ = plain.Close() })
 	if _, ok := plain.NodeClassSnapshot(e2etest.E2EWorkspace, debugnodes.NodeTypeDebugLogNetwork); ok {
 		t.Fatalf("%s is available in non-debug engine", debugnodes.NodeTypeDebugLogNetwork)
+	}
+	if _, ok := plain.NodeClassSnapshot(e2etest.E2EWorkspace, debugnodes.NodeTypeDebugKV); ok {
+		t.Fatalf("%s is available in non-debug engine", debugnodes.NodeTypeDebugKV)
 	}
 	if _, ok := plain.NodeClassSnapshot(e2etest.E2EWorkspace, dnsnodes.NodeTypeDebugLogDNS); ok {
 		t.Fatalf("%s is available in non-debug engine", dnsnodes.NodeTypeDebugLogDNS)
@@ -79,6 +82,9 @@ func TestDebugLogNodesAvailableOnlyInDebugEngines(t *testing.T) {
 	t.Cleanup(func() { _ = debugEngine.Close() })
 	if _, ok := debugEngine.NodeClassSnapshot(e2etest.E2EWorkspace, debugnodes.NodeTypeDebugLogNetwork); !ok {
 		t.Fatalf("%s is missing from debug engine", debugnodes.NodeTypeDebugLogNetwork)
+	}
+	if _, ok := debugEngine.NodeClassSnapshot(e2etest.E2EWorkspace, debugnodes.NodeTypeDebugKV); !ok {
+		t.Fatalf("%s is missing from debug engine", debugnodes.NodeTypeDebugKV)
 	}
 	if _, ok := debugEngine.NodeClassSnapshot(e2etest.E2EWorkspace, dnsnodes.NodeTypeDebugLogDNS); !ok {
 		t.Fatalf("%s is missing from debug engine", dnsnodes.NodeTypeDebugLogDNS)
