@@ -60,9 +60,9 @@ func (n *amnesiaNode) configBlock() formular.Block {
 	statusErr := n.formError != ""
 	enabled := nodekit.ConfigCheckbox(fieldEnabled, "Enabled", n.config.enabled)
 	enabled.Help = "Import the selected connection and keep its peer on the attached WireGuard node. Disable this option to remove the peer and stop Amnezia API activity."
-	connection := nodekit.ConfigTextField(
+	connection := nodekit.ConfigSecretNameField(
 		fieldConnectionSecret, "Connection secret", n.config.connectionSecret,
-		statusErr, n.formError, false,
+		statusErr, n.formError,
 	)
 	connection.Help = "Secret name containing an Amnezia vpn:// URL or native WireGuard/AmneziaWG configuration."
 	country := nodekit.ConfigTextField(
@@ -75,9 +75,9 @@ func (n *amnesiaNode) configBlock() formular.Block {
 		statusErr, n.formError, false,
 	)
 	gatewayURL.Help = "Optional API-v2 gateway URL for a custom Amnezia service. HTTPS uses the selected TLS config."
-	gatewayKey := nodekit.ConfigTextField(
+	gatewayKey := nodekit.ConfigSecretNameField(
 		fieldGatewayPublicKeySecret, "Gateway public key secret", n.config.gatewayPublicKeySecret,
-		statusErr, n.formError, false,
+		statusErr, n.formError,
 	)
 	gatewayKey.Help = "Optional secret name containing the custom gateway RSA public key in PEM format."
 	connectEvent := nodekit.ConfigCheckbox(fieldConnectEvent, "Send connect event", n.config.connectEvent)

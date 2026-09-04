@@ -47,9 +47,9 @@ func (n *managedAmnesiaNode) configBlock() formular.Block {
 	statusErr := n.formError != ""
 	enabled := nodekit.ConfigCheckbox(fieldEnabled, "Enabled", n.config.enabled)
 	enabled.Help = "Create and keep an Amnezia connection while both ports are attached."
-	connection := nodekit.ConfigTextField(
+	connection := nodekit.ConfigSecretNameField(
 		fieldConnectionSecret, "Connection secret", n.config.connectionSecret,
-		statusErr, n.formError, false,
+		statusErr, n.formError,
 	)
 	connection.Help = "Secret name containing an Amnezia vpn:// URL or native WireGuard/AmneziaWG configuration."
 	country := nodekit.ConfigTextField(
@@ -62,9 +62,9 @@ func (n *managedAmnesiaNode) configBlock() formular.Block {
 		statusErr, n.formError, false,
 	)
 	gatewayURL.Help = "Optional API-v2 gateway URL for a custom Amnezia service."
-	gatewayKey := nodekit.ConfigTextField(
+	gatewayKey := nodekit.ConfigSecretNameField(
 		fieldGatewayPublicKeySecret, "Gateway public key secret", n.config.gatewayPublicKeySecret,
-		statusErr, n.formError, false,
+		statusErr, n.formError,
 	)
 	gatewayKey.Help = "Optional secret name containing the custom gateway RSA public key in PEM format."
 	return formular.Block{ID: "config", Order: 20, Generation: 1, Form: true, Items: []formular.Item{

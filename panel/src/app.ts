@@ -98,11 +98,13 @@ import {
   type KVValueSnapshot,
 } from "./kv_model.js";
 import {
+  FORMULAR_SECRET_SELECTOR,
   SECRET_TEXT_RENDER_LIMIT,
   applySecretChange,
   normalizeSecretNodes,
   parseSecretNodeText,
   replaceSecretNodeTextToken,
+  secretNamesForNode,
   secretNodesText,
   secretNodeTextSuggestions,
   sortSecrets,
@@ -162,10 +164,12 @@ type FormularMenuInstance = {
   feed(message: unknown): void;
   destroy(): void;
 };
+type FormularSelectorProvider = (selector: string) => readonly string[] | null | undefined;
 type FormularMenuConstructor = new (
   container: string | HTMLElement,
   menuID: string,
   send: (message: unknown) => void,
+  options?: { selectors?: FormularSelectorProvider },
 ) => FormularMenuInstance;
 // The built module runs from public/build, while vendored browser dependencies
 // are served from vendor at the panel root.
@@ -1679,9 +1683,19 @@ function mountMenu(nodeID: number): void {
     node: nodeID,
     menu: new FormularMenu("node-menu", nodeMenuID(nodeID), (message: unknown) => {
       tryBackend("formular", { id: nodeID, message });
+    }, {
+      selectors: (selector: string) => formularSelectorValues(nodeID, selector),
     }),
   };
   tryBackend("subscribeNodeMenu", { id: nodeID });
+}
+
+function formularSelectorValues(nodeID: number, selector: string): readonly string[] | null {
+  if (selector !== FORMULAR_SECRET_SELECTOR) return null;
+  const nodeName = snapshot.nodes[String(nodeID)]?.name ?? "";
+  // An empty value removes an optional reference or requests a new generated
+  // WireGuard private-key secret.
+  return ["", ...secretNamesForNode(secrets, nodeName)];
 }
 
 function destroyMenu(): void {
@@ -1714,9 +1728,9 @@ function handleSecEvent(method: string, payload: unknown): void {
   renderSec();
 }
 
-// The secrets API already sends values with each entry, so this tab needs only
-// one list subscription. Values are rendered in an inspector after explicit
-// selection, keeping the tree usable without exposing every value at once.
+// The secrets API already sends node allowlists with each entry. Keep this
+// subscription for the full panel session so node-menu selectors stay current.
+// Values are shown in this tab only after explicit selection.
 function activateSecPanel(): void {
   renderSec();
   restoreSecScrollState();
@@ -1726,24 +1740,16 @@ function activateSecPanel(): void {
 function deactivateSecPanel(): void {
   rememberSecScrollState();
   closeSecValuePanel();
-  if (secSubscriptionID) {
-    void tryBackend("secUnsubscribe", { subscriptionID: secSubscriptionID });
-    secSubscriptionID = 0;
-  }
 }
 
 async function ensureSecSubscription(): Promise<void> {
-  if (activeTab !== "sec" || secSubscriptionID || secSubscribePending) return;
+  if (secSubscriptionID || secSubscribePending) return;
   secSubscribePending = true;
   const response = await tryBackend<SecretsSubscribeResponse>("secSubscribe");
   secSubscribePending = false;
   if (!response) {
     secNotice = { level: "error", text: "Secrets storage is unavailable." };
     renderSec();
-    return;
-  }
-  if (activeTab !== "sec") {
-    if (response.subscription_id) void tryBackend("secUnsubscribe", { subscriptionID: response.subscription_id });
     return;
   }
   secSubscriptionID = response.subscription_id;
@@ -5530,6 +5536,7 @@ async function boot(): Promise<void> {
   applyTypePalette(colormap);
   await backend("subscribeLogs");
   await backend("subscribeNotifications");
+  await ensureSecSubscription();
   await requestSnapshot();
   el.status.textContent = "Admin API connected";
   setTab("graph");

@@ -35,6 +35,7 @@ export type SecretNodeTextSuggestionResult = {
 };
 
 export const SECRET_TEXT_RENDER_LIMIT = 32 * 1024;
+export const FORMULAR_SECRET_SELECTOR = "secrets";
 
 // Secret keys are arbitrary user/admin-controlled strings. Use a reversible
 // tuple key for panel state instead of delimiter parsing so odd names cannot
@@ -61,6 +62,13 @@ export function applySecretChange(secrets: SecretEntry[], change: SecretChange):
 
 export function sortSecrets(secrets: SecretEntry[]): SecretEntry[] {
   return [...secrets].map(normalizeSecretEntry).sort((left, right) => left.key.localeCompare(right.key));
+}
+
+export function secretNamesForNode(secrets: SecretEntry[], nodeName: string): string[] {
+  if (!nodeName) return [];
+  return sortSecrets(secrets)
+    .filter((secret) => secret.nodes?.includes(nodeName))
+    .map((secret) => secret.key);
 }
 
 export function normalizeSecretEntry(entry: SecretEntry): SecretEntry {

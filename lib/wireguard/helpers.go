@@ -97,6 +97,10 @@ func configTextField(id, label, value string, statusErr bool, statusText string,
 	return nodekit.ConfigTextField(id, label, value, statusErr, statusText, multiline)
 }
 
+func configSecretNameField(id, label, value string, statusErr bool, statusText string) formular.Item {
+	return nodekit.ConfigSecretNameField(id, label, value, statusErr, statusText)
+}
+
 func configIntField(id, label string, value int, statusErr bool, statusText string) formular.Item {
 	return nodekit.ConfigIntField(id, label, value, statusErr, statusText)
 }

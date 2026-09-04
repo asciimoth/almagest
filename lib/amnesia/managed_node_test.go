@@ -66,6 +66,9 @@ func TestAmnesiaClassHasOnlyManagedPortsAndMenuFields(t *testing.T) {
 		if !ok || item.Field == nil {
 			t.Errorf("managed config field %q = %#v", id, item)
 		}
+		if (id == fieldConnectionSecret || id == fieldGatewayPublicKeySecret) && item.Selector != nodekit.SecretNameSelector {
+			t.Errorf("managed secret field %q selector = %q, want %q", id, item.Selector, nodekit.SecretNameSelector)
+		}
 	}
 	for _, id := range []string{fieldConnectEvent, "reconnect", "privateKey", "peers"} {
 		if item, ok := amnesiaMenuItem(node.configBlock(), id); ok {

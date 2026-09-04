@@ -9,7 +9,7 @@ require (
 	github.com/asciimoth/bufpool v0.3.0
 	github.com/asciimoth/configer/configer v0.3.1
 	github.com/asciimoth/configer/hujson v0.3.1
-	github.com/asciimoth/formular v0.3.1
+	github.com/asciimoth/formular v0.3.2
 	github.com/asciimoth/gonnect v0.47.0
 	github.com/asciimoth/gonnect-netstack v0.5.2
 	github.com/asciimoth/pasta/pasta v0.10.0

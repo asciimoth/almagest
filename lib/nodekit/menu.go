@@ -11,6 +11,12 @@ import (
 	"github.com/asciimoth/pasta/pasta"
 )
 
+const (
+	// SecretNameSelector identifies frontend-provided secret names that the
+	// current node can access.
+	SecretNameSelector = "secrets"
+)
+
 // NormalizeListText normalizes comma, semicolon, space, and newline separated
 // values to one value per line.
 func NormalizeListText(value string) string {
@@ -88,6 +94,16 @@ func ConfigTextField(id, label, value string, statusErr bool, statusText string,
 	if multiline {
 		opts = append(opts, formular.Multiline)
 	}
+	if statusErr {
+		opts = append(opts, formular.Status(formular.StatusError), formular.StatusText(statusText))
+	}
+	return formular.TextField(id, label, value, opts...)
+}
+
+// ConfigSecretNameField builds a validated selector for a node-scoped secret
+// name. The frontend supplies the names that the current node can access.
+func ConfigSecretNameField(id, label, value string, statusErr bool, statusText string) formular.Item {
+	opts := []formular.FieldOption{formular.Validation, formular.Selector(SecretNameSelector)}
 	if statusErr {
 		opts = append(opts, formular.Status(formular.StatusError), formular.StatusText(statusText))
 	}

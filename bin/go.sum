@@ -10,8 +10,8 @@ github.com/asciimoth/configer/configer v0.3.1 h1:7Yre5IQ9qihv2LhJNmnlv2ViKAGNVEN
 github.com/asciimoth/configer/configer v0.3.1/go.mod h1:SL8ymjshD5/tNKeLp5UBp+/2dEoB9D1fgjdfSrdQQek=
 github.com/asciimoth/configer/hujson v0.3.1 h1:+aXIekLOqm6uPjS8cwI6h/jz9inZXObksmRvoJMloow=
 github.com/asciimoth/configer/hujson v0.3.1/go.mod h1:tnXfz2bBAlg6WK3ZE+Zh+nxn033tQ2K7hBFkvPKD7Yk=
-github.com/asciimoth/formular v0.3.1 h1:XNOLs0v5kpO/YrAGIwRKiHHpX2wbHdOAsa5S/owhAy8=
-github.com/asciimoth/formular v0.3.1/go.mod h1:6VBEx4KTWp18mpkQn7d3Buoojzf9II5+ZAVuc4DF8AE=
+github.com/asciimoth/formular v0.3.2 h1:x3Hw2iXT/OwT5tvkCl1I1ZEfzvA1VZsbAgAV9lNUJjg=
+github.com/asciimoth/formular v0.3.2/go.mod h1:6VBEx4KTWp18mpkQn7d3Buoojzf9II5+ZAVuc4DF8AE=
 github.com/asciimoth/gonnect v0.47.0 h1:DSdj278Xy2/sG/SywaXk9jPMD7RubmUvSRtD8eg8VYc=
 github.com/asciimoth/gonnect v0.47.0/go.mod h1:W5OAXiqFw48MTm54+dPua9calyVjez/uqjcbrQwcvPU=
 github.com/asciimoth/gonnect-netstack v0.5.2 h1:OfbhZgPWH29fOoGOQLldAN70yssEhGLeybftMB5xBz0=

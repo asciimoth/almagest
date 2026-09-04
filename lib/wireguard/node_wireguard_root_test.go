@@ -39,7 +39,7 @@ func TestWireGuardClassPortsAndMenuBlocks(t *testing.T) {
 		t.Fatalf("status publicKey item = %#v, want readonly field", item)
 	}
 	item, ok = e.MenuItem(node, "config", "privateKeySecret")
-	if !ok || item.Field == nil || item.Secret || item.Help == "" {
+	if !ok || item.Field == nil || item.Secret || item.Selector != "secrets" || item.Help == "" {
 		t.Fatalf("config privateKeySecret item = %#v, want documented non-secret field", item)
 	}
 	item, ok = e.MenuItem(node, "config", "ownedIPs")
@@ -70,6 +70,13 @@ func TestWireGuardClassPortsAndMenuBlocks(t *testing.T) {
 	for _, fieldID := range []string{"presharedKeySecret", "amneziaOverride", "amneziaJunkCount", "amneziaInitHeader", "amneziaInitiationPacket1"} {
 		if !wireGuardTemplateHasField(item, fieldID) {
 			t.Fatalf("peers template missing %q field", fieldID)
+		}
+	}
+	for _, template := range item.Templates {
+		for _, child := range template.Items {
+			if child.ID == "presharedKeySecret" && (child.Field == nil || child.Selector != "secrets") {
+				t.Fatalf("presharedKeySecret selector = %#v, want secrets", child)
+			}
 		}
 	}
 	if wireGuardTemplateHasField(item, "presharedKey") {

@@ -205,7 +205,7 @@ func wireGuardBatchSizeField(value int, statusErr bool, statusText string) formu
 	return item
 }
 func wireGuardPrivateKeySecretField(value string, statusErr bool, statusText string) formular.Item {
-	item := configTextField("privateKeySecret", "Private key secret", value, statusErr, statusText, false)
+	item := configSecretNameField("privateKeySecret", "Private key secret", value, statusErr, statusText)
 	item.Help = "Secret name containing the WireGuard private key. Empty or inaccessible names are replaced with a newly generated private-key secret."
 	return item
 }
@@ -224,7 +224,7 @@ func wireGuardPeerTemplate() formular.ArrayTemplate {
 		Label: "Peer",
 		Items: append([]formular.Item{
 			formular.TextField("publicKey", "Public key", "", formular.Validation, formular.Required),
-			formular.TextField("presharedKeySecret", "Preshared key secret", "", formular.Validation),
+			configSecretNameField("presharedKeySecret", "Preshared key secret", "", false, ""),
 			formular.TextField("endpoint", "Endpoint", "", formular.Validation),
 			formular.MultilineTextField("allowedIPs", "Allowed IPs", "", formular.Validation),
 			formular.IntField("persistentKeepaliveInterval", "Keepalive", 0, formular.Validation),

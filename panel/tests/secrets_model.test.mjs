@@ -6,6 +6,7 @@ import {
   parseSecretNodeKey,
   parseSecretNodeText,
   replaceSecretNodeTextToken,
+  secretNamesForNode,
   secretNodeKey,
   secretNodeTextSuggestions,
   secretNodesText,
@@ -35,6 +36,19 @@ test("secret changes upsert, delete, and keep deterministic order", () => {
   assert.deepEqual(upserted.find((entry) => entry.key === "m")?.nodes, ["node-a", "node-c"]);
 
   assert.deepEqual(applySecretChange(upserted, { key: "a", deleted: true }).map((entry) => entry.key), ["m", "z"]);
+});
+
+test("secret selectors include only names allowed for the current node", () => {
+  const entries = [
+    { key: "z-shared", value: "", nodes: ["node-a", "node-b"] },
+    { key: "a-private", value: "", nodes: ["node-a"] },
+    { key: "denied", value: "", nodes: ["node-b"] },
+    { key: "unassigned", value: "" },
+  ];
+
+  assert.deepEqual(secretNamesForNode(entries, "node-a"), ["a-private", "z-shared"]);
+  assert.deepEqual(secretNamesForNode(entries, "missing"), []);
+  assert.deepEqual(secretNamesForNode(entries, ""), []);
 });
 
 test("secret node text treats each line as one node name", () => {
