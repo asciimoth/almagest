@@ -42,6 +42,7 @@ type AdminAPI struct {
 	secrets               *bboltKVManager
 	tls                   *bboltKVManager
 	tlsOSAuthorityFetcher tlspolicy.AuthorityFetcher
+	nodeNames             *nodeNameIndex
 
 	leaseMu       sync.Mutex
 	mutationLease *mutationLease

@@ -25,9 +25,14 @@ func main() {
 	fatal := func(v ...any) {
 		golog.Fatal(v...)
 	}
+	randomSeeds, err := newDaemonRandomSeeds()
+	if err != nil {
+		fatal(err)
+		return
+	}
 
 	var args args.Args
-	if err := arg.Parse(&args); err != nil {
+	if err = arg.Parse(&args); err != nil {
 		fatal(err)
 		return
 	}
@@ -153,6 +158,13 @@ func main() {
 	logf := NewLogFactory(conf.LogCache().MergeArgs(&args))
 	logProjectVersionStatus(admin.projectVersionStatus)
 	daemonLogger := logf.DaemonLogger()
+	nodeNames, err := newDaemonNodeNameIndex(kv, conf.Main, daemonLogger)
+	if err != nil {
+		fatal("Node name index setup", err)
+		return
+	}
+	defer nodeNames.Close()
+	admin.nodeNames = nodeNames.index
 
 	commandRunner, err := cmdrunner.NewRunner(daemonLogger, conf.Protected.CommandRunner)
 	if err != nil {
@@ -163,7 +175,7 @@ func main() {
 	defer commandRunner.Close()
 
 	// Setup system integration here before privileges drop
-	sys, err := SystemIntegration(conf, commandRunner)
+	sys, err := SystemIntegration(conf, commandRunner, randomSeeds.system)
 	if err != nil {
 		fatal(err)
 		return
@@ -192,6 +204,8 @@ func main() {
 		globalBufPool,
 		args.DebugNodes,
 		almagest.WithWorkerEventLogging(args.LogWorkers),
+		almagest.WithNodeNameAvailableCallback(nodeNames.index.available),
+		almagest.WithRandomSeed(randomSeeds.workspace),
 	)
 	engineBuildElapsed := time.Since(engineBuildStart)
 	if err != nil {

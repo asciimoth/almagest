@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/netip"
 	"os"
 	"os/user"
@@ -274,12 +275,15 @@ func RunAgent(args args.Args) Agent {
 	return agent
 }
 
-func SystemIntegration(cfg configer.Config, runner cmdrunner.Dispatcher) (sysnet.System, error) {
+func SystemIntegration(cfg configer.Config, runner cmdrunner.Dispatcher, randomSeed ...int64) (sysnet.System, error) {
 	config, err := readLinuxSystemConfig(cfg, runner)
 	if err != nil {
 		return nil, err
 	}
 	config.DefaultTunBaseName = "alm"
+	if len(randomSeed) > 0 {
+		config.Allocator.Rng = rand.New(rand.NewSource(randomSeed[0])) //nolint:gosec // The daemon supplies a crypto-random seed.
+	}
 	return sysnetlinux.New(config)
 }
 

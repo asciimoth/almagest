@@ -34,13 +34,32 @@ const MainWorkspace = "main"
 type BuildEngineOption func(*buildEngineOptions)
 
 type buildEngineOptions struct {
-	logWorkerEvents bool
+	logWorkerEvents   bool
+	nodeNameAvailable pasta.NodeNameAvailableCallback
+	randomSeed        *int64
 }
 
 // WithWorkerEventLogging controls engine worker lifecycle logs.
 func WithWorkerEventLogging(enabled bool) BuildEngineOption {
 	return func(options *buildEngineOptions) {
 		options.logWorkerEvents = enabled
+	}
+}
+
+// WithNodeNameAvailableCallback sets the optional callback that checks names
+// generated for new workspace nodes.
+func WithNodeNameAvailableCallback(callback pasta.NodeNameAvailableCallback) BuildEngineOption {
+	return func(options *buildEngineOptions) {
+		options.nodeNameAvailable = callback
+	}
+}
+
+// WithRandomSeed sets the seed for pseudo-random generators owned by the
+// engine. If this option is not set, each generator keeps its deterministic
+// default seed.
+func WithRandomSeed(seed int64) BuildEngineOption {
+	return func(options *buildEngineOptions) {
+		options.randomSeed = &seed
 	}
 }
 
@@ -132,6 +151,10 @@ func BuildEngine(
 		cancel()
 		return nil, err
 	}
+	if buildOptions.randomSeed != nil {
+		work.SetNodeNameRandomSeed(*buildOptions.randomSeed)
+	}
+	work.SetNodeNameAvailableCallback(buildOptions.nodeNameAvailable)
 
 	engine.mainWorkspace = work
 	_ = work.SubscribeNotifications(func(notification pasta.WorkspaceNotification) {

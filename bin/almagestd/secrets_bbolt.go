@@ -163,6 +163,42 @@ func (m *bboltKVManager) secretsSnapshot() (api.SecretsSnapshot, error) {
 	return api.SecretsSnapshot{Secrets: out}, nil
 }
 
+// secretNodeNames returns every node name in mutable and immutable secret
+// allow lists. It includes mutable entries hidden by immutable entries.
+func (m *bboltKVManager) secretNodeNames() ([]string, error) {
+	names := map[string]struct{}{}
+	for _, record := range m.cloneImmutableSecrets() {
+		for _, node := range record.Nodes {
+			names[node] = struct{}{}
+		}
+	}
+	err := mapBboltSecretError(m.db.View(func(tx *bbolt.Tx) error {
+		bucket := tx.Bucket([]byte(secretsBucketName))
+		if bucket == nil {
+			return nil
+		}
+		return bucket.ForEach(func(_, value []byte) error {
+			record, err := decodeSecretRecord(value)
+			if err != nil {
+				return err
+			}
+			for _, node := range record.Nodes {
+				names[node] = struct{}{}
+			}
+			return nil
+		})
+	}))
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(names))
+	for name := range names {
+		out = append(out, name)
+	}
+	slices.Sort(out)
+	return out, nil
+}
+
 func (m *bboltKVManager) secretAPIEntry(key string) (api.SecretEntry, bool, error) {
 	golog.Debugf("secrets storage: entry access key=%q", key)
 	entry, found, err := m.secretEffectiveEntry(key)

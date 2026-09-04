@@ -1,6 +1,7 @@
 package main
 
 import (
+	"net"
 	"testing"
 
 	"github.com/asciimoth/gonnect/sysnet"
@@ -70,6 +71,56 @@ func TestSystemIntegrationUsesProtectedSystemType(t *testing.T) {
 	if _, ok := system.(*sysnetdebug.System); !ok {
 		t.Fatalf("system = %T, want *sysnetdebug.System", system)
 	}
+}
+
+func TestBuildDebugIntegrationRandomSeedControlsAllocator(t *testing.T) {
+	firstSeed := int64(42)
+	secondSeed := int64(43)
+	first := firstDebugIntegrationSubnet(t, &firstSeed)
+	if got := firstDebugIntegrationSubnet(t, &firstSeed); !got.IP.Equal(first.IP) {
+		t.Fatalf("same seed allocated subnet %v, want %v", got, first)
+	}
+	if got := firstDebugIntegrationSubnet(t, &secondSeed); got.IP.Equal(first.IP) {
+		t.Fatalf("different seeds allocated the same subnet %v", got)
+	}
+
+	defaultSubnet := firstDebugIntegrationSubnet(t, nil)
+	if got := firstDebugIntegrationSubnet(t, nil); !got.IP.Equal(defaultSubnet.IP) {
+		t.Fatalf("default seeds allocated subnets %v and %v, want equal subnets", defaultSubnet, got)
+	}
+}
+
+func firstDebugIntegrationSubnet(t *testing.T, seed *int64) *net.IPNet {
+	t.Helper()
+	cfg, err := ParseConfig([]byte(`{}`), []byte(`{
+		"System": {
+			"Debug": {
+				"DefaultTun": {"Builder": "pipe"}
+			}
+		}
+	}`))
+	if err != nil {
+		t.Fatalf("ParseConfig: %v", err)
+	}
+	var system sysnet.System
+	if seed == nil {
+		system, err = BuildDebugIntegration(cfg)
+	} else {
+		system, err = BuildDebugIntegration(cfg, *seed)
+	}
+	if err != nil {
+		t.Fatalf("BuildDebugIntegration: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := system.Close(); err != nil {
+			t.Errorf("system close: %v", err)
+		}
+	})
+	subnet := system.AllocSubnet().AllocSubnet4(24)
+	if subnet == nil {
+		t.Fatal("AllocSubnet4 returned nil")
+	}
+	return subnet
 }
 
 func TestBuildDebugIntegrationVTunSocksDefaultTunBuilder(t *testing.T) {

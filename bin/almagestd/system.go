@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand"
 	"net"
 	"net/netip"
 	"strconv"
@@ -17,6 +18,7 @@ import (
 	"github.com/asciimoth/gonnect"
 	netstackhelpers "github.com/asciimoth/gonnect-netstack/helpers"
 	netstackvtun "github.com/asciimoth/gonnect-netstack/vtun"
+	"github.com/asciimoth/gonnect/subnet"
 	"github.com/asciimoth/gonnect/sysnet"
 	sysnetdebug "github.com/asciimoth/gonnect/sysnet/debug"
 	"github.com/asciimoth/gonnect/tun"
@@ -55,7 +57,7 @@ type debugDefaultTunConfig struct {
 	EventCh        int
 }
 
-func SystemIntegration(cfg *Config, runner cmdrunner.Dispatcher) (sysnet.System, error) {
+func SystemIntegration(cfg *Config, runner cmdrunner.Dispatcher, randomSeed ...int64) (sysnet.System, error) {
 	view := cfg.systemConfig()
 	if view != nil {
 		typ, err := view.Get(configer.Path{"Type"})
@@ -64,7 +66,7 @@ func SystemIntegration(cfg *Config, runner cmdrunner.Dispatcher) (sysnet.System,
 				switch typ {
 				case "debug":
 					golog.Warn("Using debug system integration")
-					return BuildDebugIntegration(cfg)
+					return BuildDebugIntegration(cfg, randomSeed...)
 				case "native":
 					// noop
 				default:
@@ -73,7 +75,11 @@ func SystemIntegration(cfg *Config, runner cmdrunner.Dispatcher) (sysnet.System,
 			}
 		}
 	}
-	return platform.SystemIntegration(view, runner)
+	system, err := platform.SystemIntegration(view, runner, randomSeed...)
+	if err != nil {
+		return nil, err
+	}
+	return withDebugSystemRandomSeed(system, randomSeed), nil
 }
 
 func (cfg *Config) systemConfig() configer.Config {
@@ -83,7 +89,7 @@ func (cfg *Config) systemConfig() configer.Config {
 	return cfg.Protected.System
 }
 
-func BuildDebugIntegration(cfg *Config) (sysnet.System, error) {
+func BuildDebugIntegration(cfg *Config, randomSeed ...int64) (sysnet.System, error) {
 	debugCfg := readDebugSystemConfig(cfg)
 	localNetwork := gonnect.NativeConfig{}.Build()
 	system := &sysnetdebug.System{
@@ -106,7 +112,36 @@ func BuildDebugIntegration(cfg *Config) (sysnet.System, error) {
 		return nil, fmt.Errorf("system debug default tun builder %q", debugCfg.DefaultTun.Builder)
 	}
 	// TODO: Separated debug admin API for IP packets on Tun emulation and so on
-	return system, nil
+	return withDebugSystemRandomSeed(system, randomSeed), nil
+}
+
+type systemWithAllocator struct {
+	sysnet.System
+	allocator *subnet.CombinedAllocator
+}
+
+func (s *systemWithAllocator) AllocIP() subnet.IPAllocator {
+	return s.allocator
+}
+
+func (s *systemWithAllocator) AllocSubnet() subnet.SubnetAllocator {
+	return s.allocator
+}
+
+func withDebugSystemRandomSeed(system sysnet.System, randomSeed []int64) sysnet.System {
+	if len(randomSeed) == 0 {
+		return system
+	}
+	if _, ok := system.(*sysnetdebug.System); !ok {
+		return system
+	}
+	rng := rand.New(rand.NewSource(randomSeed[0])) //nolint:gosec // The daemon supplies a crypto-random seed.
+	return &systemWithAllocator{
+		System: system,
+		allocator: subnet.NewDefaultAllocator(subnet.DefaultAllocatorConfig{
+			Rng: rng,
+		}),
+	}
 }
 
 func readDebugSystemConfig(cfg *Config) debugSystemConfig {

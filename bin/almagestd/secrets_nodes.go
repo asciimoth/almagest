@@ -9,8 +9,9 @@ import (
 )
 
 type secretNodeNameSync struct {
-	manager *bboltKVManager
-	logger  logging.Logger
+	manager   *bboltKVManager
+	nodeNames *nodeNameIndex
+	logger    logging.Logger
 
 	mu    sync.Mutex
 	nodes map[uint64]string
@@ -20,13 +21,14 @@ type secretNodeNameSync struct {
 // workspace node names. It observes engine notifications from almagestd without
 // adding secrets storage to lib.Engine.
 func (a *AdminAPI) startSecretNodeNameSync(engine almagest.Engine, logger logging.Logger) uint64 {
-	if a == nil || a.secrets == nil || engine == nil {
+	if a == nil || (a.secrets == nil && a.nodeNames == nil) || engine == nil {
 		return 0
 	}
 	syncer := &secretNodeNameSync{
-		manager: a.secrets,
-		logger:  logger,
-		nodes:   map[uint64]string{},
+		manager:   a.secrets,
+		nodeNames: a.nodeNames,
+		logger:    logger,
+		nodes:     map[uint64]string{},
 	}
 	return engine.SubscribeNotifications(syncer.handle)
 }
@@ -116,17 +118,24 @@ func (s *secretNodeNameSync) deleteNode(id uint64, fallbackName string) {
 		name = fallbackName
 	}
 	if name != "" {
+		s.nodeNames.remember(name)
 		s.deleteReferences(name)
 	}
 }
 
 func (s *secretNodeNameSync) renameReferences(oldName, newName string) {
+	if s.manager == nil {
+		return
+	}
 	if err := s.manager.renameSecretNodeReferences(oldName, newName); err != nil && s.logger != nil {
 		s.logger.Errf("failed to rename secret node references %q -> %q: %v", oldName, newName, err)
 	}
 }
 
 func (s *secretNodeNameSync) deleteReferences(name string) {
+	if s.manager == nil {
+		return
+	}
 	if err := s.manager.deleteSecretNodeReferences(name); err != nil && s.logger != nil {
 		s.logger.Errf("failed to delete secret node references for %q: %v", name, err)
 	}

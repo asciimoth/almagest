@@ -9,7 +9,7 @@ require (
 	github.com/asciimoth/formular v0.3.1
 	github.com/asciimoth/gonnect v0.47.0
 	github.com/asciimoth/gonnect-netstack v0.5.2
-	github.com/asciimoth/pasta/pasta v0.9.6
+	github.com/asciimoth/pasta/pasta v0.10.0
 	github.com/asciimoth/socksgo v0.4.12
 	github.com/asciimoth/wgo v0.7.0
 	github.com/coder/websocket v1.8.14

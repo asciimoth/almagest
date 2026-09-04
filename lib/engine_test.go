@@ -232,6 +232,113 @@ func TestEngineBatchNodeRemovalAndMoveUseWorkspaceBatchMutations(t *testing.T) {
 	}
 }
 
+func TestEngineNodeNameAvailableCallbackChecksGeneratedNames(t *testing.T) {
+	var checked []string
+	engineAPI, err := BuildEngine(
+		context.Background(),
+		configer.NewMemory(nil),
+		logging.NewDebugLogFactory(1),
+		newEngineTestDebugSystem(),
+		nil,
+		nil,
+		nil,
+		nil,
+		[]pasta.NodeClass{engineBatchNodeClass{}},
+		nil,
+		false,
+		WithNodeNameAvailableCallback(func(name string) bool {
+			checked = append(checked, name)
+			return len(checked) > 1
+		}),
+	)
+	if err != nil {
+		t.Fatalf("BuildEngine error = %v, want nil", err)
+	}
+	t.Cleanup(func() {
+		if err := engineAPI.Close(); err != nil {
+			t.Errorf("engine.Close error = %v, want nil", err)
+		}
+	})
+
+	id, err := engineAPI.AddNode(MainWorkspace, "test/EngineBatchNode", "")
+	if err != nil {
+		t.Fatalf("AddNode error = %v, want nil", err)
+	}
+	if len(checked) < 2 {
+		t.Fatalf("checked names = %q, want at least two generated candidates", checked)
+	}
+	snapshot, ok := engineAPI.NodeSnapshot(MainWorkspace, id)
+	if !ok {
+		t.Fatal("generated node was not found")
+	}
+	if snapshot.Name == checked[0] {
+		t.Fatalf("generated node name = %q, want rejected candidate to be skipped", snapshot.Name)
+	}
+}
+
+func TestBuildEngineRandomSeedControlsGeneratedNodeNames(t *testing.T) {
+	firstSeed := int64(42)
+	secondSeed := int64(43)
+	first := generatedEngineNodeName(t, &firstSeed)
+	if got := generatedEngineNodeName(t, &firstSeed); got != first {
+		t.Fatalf("same seed generated node name %q, want %q", got, first)
+	}
+	if got := generatedEngineNodeName(t, &secondSeed); got == first {
+		t.Fatalf("different seeds generated the same node name %q", got)
+	}
+
+	defaultName := generatedEngineNodeName(t, nil)
+	if got := generatedEngineNodeName(t, nil); got != defaultName {
+		t.Fatalf("default seeds generated node names %q and %q, want equal names", defaultName, got)
+	}
+}
+
+func generatedEngineNodeName(t *testing.T, seed *int64) string {
+	t.Helper()
+	checked := 0
+	options := []BuildEngineOption{
+		WithNodeNameAvailableCallback(func(string) bool {
+			checked++
+			return checked > 1
+		}),
+	}
+	if seed != nil {
+		options = append(options, WithRandomSeed(*seed))
+	}
+	engineAPI, err := BuildEngine(
+		context.Background(),
+		configer.NewMemory(nil),
+		logging.NewDebugLogFactory(1),
+		newEngineTestDebugSystem(),
+		nil,
+		nil,
+		nil,
+		nil,
+		[]pasta.NodeClass{engineBatchNodeClass{}},
+		nil,
+		false,
+		options...,
+	)
+	if err != nil {
+		t.Fatalf("BuildEngine error = %v, want nil", err)
+	}
+	t.Cleanup(func() {
+		if err := engineAPI.Close(); err != nil {
+			t.Errorf("engine.Close error = %v, want nil", err)
+		}
+	})
+
+	id, err := engineAPI.AddNode(MainWorkspace, "test/EngineBatchNode", "")
+	if err != nil {
+		t.Fatalf("AddNode error = %v, want nil", err)
+	}
+	snapshot, ok := engineAPI.NodeSnapshot(MainWorkspace, id)
+	if !ok {
+		t.Fatal("generated node was not found")
+	}
+	return snapshot.Name
+}
+
 func TestEngineManagersFromBuildEngine(t *testing.T) {
 	kv := testKVManager{}
 	dnsCache := testDnsCacheManager{}

@@ -41,11 +41,15 @@ vulncheck: certcat-vulncheck
 certcat-vulncheck: certcat-ensure-generated
 	cd certcat && govulncheck ./...
 
-tidy:
+tidy: repair-go-work
 	go -C lib mod tidy
 	go -C bin mod tidy
 	go -C certcat mod tidy
 	go work sync
+
+repair-go-work:
+	@if [ ! -f go.work ]; then go work init; fi
+	go work use ./lib ./bin ./certcat
 
 certcat-tidy:
 	go -C certcat mod tidy

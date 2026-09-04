@@ -130,8 +130,9 @@ func RunAgent(args args.Args) Agent {
 	}
 }
 
-func SystemIntegration(cfg configer.Config, runner cmdrunner.Dispatcher) (sysnet.System, error) {
+func SystemIntegration(cfg configer.Config, runner cmdrunner.Dispatcher, randomSeed ...int64) (sysnet.System, error) {
 	_ = runner
+	_ = randomSeed
 	golog.Warn("No system integration sor this platform; Using stub one.")
 	return &sysnetdebug.System{}, nil
 }
