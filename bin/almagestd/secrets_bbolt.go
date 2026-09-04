@@ -426,6 +426,36 @@ func (m *bboltKVManager) deleteSecretNodeReferences(name string) error {
 	return nil
 }
 
+// reconcileSecretNodeReferences removes every node name that is not present in
+// the current workspace. This repairs stale allow-list entries after startup or
+// a missed incremental notification.
+func (m *bboltKVManager) reconcileSecretNodeReferences(active map[string]struct{}) error {
+	for name := range active {
+		if !validSecretNodeName(name) {
+			return storage.ErrSecretInvalidName
+		}
+	}
+	changed := map[string]struct{}{}
+	removeInactive := func(nodes []string) ([]string, bool) {
+		next := make([]string, 0, len(nodes))
+		for _, node := range nodes {
+			if _, ok := active[node]; ok {
+				next = append(next, node)
+			}
+		}
+		if len(next) == len(nodes) {
+			return nil, false
+		}
+		return normalizeSecretNodes(next), true
+	}
+	if err := m.updateMutableSecretNodes(removeInactive, changed); err != nil {
+		return err
+	}
+	m.updateImmutableSecretNodes(removeInactive, changed)
+	m.notifySecretKeysChanged(changed)
+	return nil
+}
+
 func (m *bboltKVManager) createMutableSecret(key string, record secretRecord) (bool, error) {
 	if !validSecretName(key) || !validSecretNodeNames(record.Nodes) {
 		return false, storage.ErrSecretInvalidName

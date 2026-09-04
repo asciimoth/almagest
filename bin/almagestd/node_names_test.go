@@ -140,6 +140,53 @@ func TestSecretNodeNameSyncRemembersDeletedNodeName(t *testing.T) {
 	}
 }
 
+func TestSecretNodeNameSyncRemembersRenamedNodeName(t *testing.T) {
+	candidate := firstGeneratedSecretInboxNodeName(t)
+	index := newNodeNameIndex(2)
+	engine, err := almagest.BuildEngine(
+		context.Background(),
+		configer.NewMemory(nil),
+		logging.NewDebugLogFactory(16),
+		&sysnetdebug.System{},
+		nil,
+		nil,
+		nil,
+		nil,
+		[]pasta.NodeClass{secretInboxNodeClass{}},
+		nil,
+		false,
+		almagest.WithNodeNameAvailableCallback(index.available),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer engine.Close() //nolint:errcheck
+
+	id, err := engine.AddNode(almagest.MainWorkspace, "test/SecretInbox", candidate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	admin := &AdminAPI{nodeNames: index}
+	subscriptionID := admin.startSecretNodeNameSync(engine, nil)
+	if subscriptionID == 0 {
+		t.Fatal("node name sync subscription failed")
+	}
+	defer engine.UnsubscribeNotifications(subscriptionID)
+
+	engine.SetNodeName(almagest.MainWorkspace, id, "renamed")
+	newID, err := engine.AddNode(almagest.MainWorkspace, "test/SecretInbox", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, ok := engine.NodeSnapshot(almagest.MainWorkspace, newID)
+	if !ok {
+		t.Fatal("new node was not found")
+	}
+	if snapshot.Name == candidate {
+		t.Fatalf("generated node name = %q, want renamed name to be skipped", snapshot.Name)
+	}
+}
+
 func TestConfiguredNodeNamesAreSorted(t *testing.T) {
 	cfg := configer.NewMemory(map[string]any{
 		"nodes": map[string]any{

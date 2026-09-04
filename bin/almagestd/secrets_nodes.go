@@ -58,15 +58,21 @@ func (s *secretNodeNameSync) handle(notification almagest.EngineNotification) {
 		}
 		s.deleteNode(wn.ID, name)
 	case pasta.NotificationNodesUpdated:
+		if wn.Snapshot != nil {
+			s.reconcileSnapshot(wn.Snapshot.Nodes)
+			return
+		}
 		for id, node := range wn.Nodes {
 			s.renameNode(id, node.Name)
 		}
 	case pasta.NotificationNodesRemoved:
+		if wn.Snapshot != nil {
+			s.reconcileSnapshot(wn.Snapshot.Nodes)
+			return
+		}
 		for id, node := range wn.Nodes {
 			s.deleteNode(id, node.Name)
 		}
-	case pasta.NotificationWorkspaceStopped:
-		s.reconcileSnapshot(nil)
 	}
 }
 
@@ -84,13 +90,16 @@ func (s *secretNodeNameSync) reconcileSnapshot(nodes map[uint64]pasta.NodeSnapsh
 	for id, oldName := range old {
 		newName, ok := next[id]
 		if !ok {
+			s.nodeNames.remember(oldName)
 			s.deleteReferences(oldName)
 			continue
 		}
 		if oldName != newName {
+			s.nodeNames.remember(oldName)
 			s.renameReferences(oldName, newName)
 		}
 	}
+	s.reconcileReferences(next)
 }
 
 func (s *secretNodeNameSync) setNodeName(id uint64, name string) {
@@ -105,6 +114,7 @@ func (s *secretNodeNameSync) renameNode(id uint64, newName string) {
 	s.nodes[id] = newName
 	s.mu.Unlock()
 	if oldName != "" && oldName != newName {
+		s.nodeNames.remember(oldName)
 		s.renameReferences(oldName, newName)
 	}
 }
@@ -138,5 +148,18 @@ func (s *secretNodeNameSync) deleteReferences(name string) {
 	}
 	if err := s.manager.deleteSecretNodeReferences(name); err != nil && s.logger != nil {
 		s.logger.Errf("failed to delete secret node references for %q: %v", name, err)
+	}
+}
+
+func (s *secretNodeNameSync) reconcileReferences(nodes map[uint64]string) {
+	if s.manager == nil {
+		return
+	}
+	active := make(map[string]struct{}, len(nodes))
+	for _, name := range nodes {
+		active[name] = struct{}{}
+	}
+	if err := s.manager.reconcileSecretNodeReferences(active); err != nil && s.logger != nil {
+		s.logger.Errf("failed to reconcile secret node references: %v", err)
 	}
 }

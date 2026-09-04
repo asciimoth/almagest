@@ -263,6 +263,65 @@ func TestSecretNodeNameSyncUpdatesMutableAndImmutableAllowLists(t *testing.T) {
 	assertSecretDenied(t, manager, "immutable", "beta")
 }
 
+func TestSecretNodeNameSyncInitialSnapshotRemovesStaleAllowListNames(t *testing.T) {
+	manager, err := openKVManagerWithOptions(filepath.Join(t.TempDir(), "kv.db"), bboltKVManagerOptions{
+		ImmutableSecrets: map[string]immutableSecret{
+			"immutable": {
+				secretRecord: secretRecord{
+					Value: "protected",
+					Nodes: []string{"active", "stale"},
+				},
+				source: api.SecretSourceProtected,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer manager.Close() //nolint:errcheck
+	if _, err := manager.setSecretValue("mutable", "value"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.setSecretNodes("mutable", []string{"active", "stale"}); err != nil {
+		t.Fatal(err)
+	}
+
+	engine, err := almagest.BuildEngine(
+		context.Background(),
+		configer.NewMemory(nil),
+		logging.NewDebugLogFactory(16),
+		&sysnetdebug.System{},
+		nil,
+		nil, nil,
+		nil,
+
+		[]pasta.NodeClass{secretInboxNodeClass{}},
+		nil,
+		false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := engine.AddNode("main", "test/SecretInbox", "active"); err != nil {
+		t.Fatal(err)
+	}
+
+	admin := &AdminAPI{secrets: manager}
+	subID := admin.startSecretNodeNameSync(engine, nil)
+	if subID == 0 {
+		t.Fatal("secret node sync subscription failed")
+	}
+
+	assertSecretAccess(t, manager, "mutable", "active", "value")
+	assertSecretAccess(t, manager, "immutable", "active", "protected")
+	assertSecretDenied(t, manager, "mutable", "stale")
+	assertSecretDenied(t, manager, "immutable", "stale")
+
+	if err := engine.Close(); err != nil {
+		t.Fatal(err)
+	}
+	assertSecretAccess(t, manager, "mutable", "active", "value")
+}
+
 type secretInboxNodeClass struct {
 	inbox chan storage.SecretValueChanged
 }
