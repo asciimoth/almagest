@@ -518,7 +518,7 @@ func (n *managedAmnesiaNode) scheduleReconcile(invalidate bool) {
 		}
 	}); err != nil {
 		cancel()
-		n.W.SendInbox(pasta.InboxMessage{ReceiverNode: n.ID, Payload: managedAmnesiaRuntimeResult{
+		n.W.SendInboxLocked(pasta.InboxMessage{ReceiverNode: n.ID, Payload: managedAmnesiaRuntimeResult{
 			generation: generation,
 			err:        err,
 		}})

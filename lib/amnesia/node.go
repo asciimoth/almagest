@@ -27,7 +27,8 @@ const (
 	// NodeTypeAmnesiaCtrl is the class name of the AmnesiaCtrl node.
 	NodeTypeAmnesiaCtrl = "almagest/AmnesiaCtrl"
 
-	amnesiaImportTimeout = 2 * time.Minute
+	amnesiaCtrlDeprecationWarning = "The AmnesiaCtrl node is deprecated. Use the Amnesia node instead."
+	amnesiaImportTimeout          = 2 * time.Minute
 )
 
 var (
@@ -211,6 +212,11 @@ type amnesiaProfileStatus struct {
 
 func (n *amnesiaNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64, name string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
 	n.InitBaseNode(w, logger, id)
+	if w != nil {
+		if _, err := w.AddNodePopupLocked(id, pasta.NodePopupWard, amnesiaCtrlDeprecationWarning, true); err != nil {
+			return fmt.Errorf("add AmnesiaCtrl deprecation warning: %w", err)
+		}
+	}
 	n.nodeName = name
 	if !validAmnesiaStorageID(n.config.storageID) {
 		n.config.storageID = amnesiaStorageID(name)
@@ -613,7 +619,7 @@ func (n *amnesiaNode) scheduleReconcile(invalidate bool) {
 	}); err != nil {
 		n.logDebugf("Amnesia reconcile worker failed to start: generation=%d", generation)
 		cancel()
-		n.W.SendInbox(pasta.InboxMessage{ReceiverNode: n.ID, Payload: amnesiaRuntimeResult{
+		n.W.SendInboxLocked(pasta.InboxMessage{ReceiverNode: n.ID, Payload: amnesiaRuntimeResult{
 			generation: generation, err: err,
 		}})
 	}

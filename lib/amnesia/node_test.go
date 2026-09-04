@@ -3,12 +3,38 @@ package amnesianodes
 import (
 	"testing"
 
+	"github.com/asciimoth/almagest/lib/logging"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
+	"github.com/asciimoth/pasta/pasta"
 
 	"github.com/asciimoth/almagest/lib/nodekit"
 	"github.com/asciimoth/almagest/lib/wireguard"
 )
+
+func TestAmnesiaCtrlAddsDeprecationWarning(t *testing.T) {
+	w := pasta.NewWorkspace(logging.NewDebugLogFactory(1024))
+	t.Cleanup(func() { w.Close() })
+	if err := w.AddNodeClass(AmnesiaCtrlClass{}); err != nil {
+		t.Fatalf("add AmnesiaCtrl class: %v", err)
+	}
+
+	id, err := w.AddNodeByClass(NodeTypeAmnesiaCtrl, "legacy")
+	if err != nil {
+		t.Fatalf("add AmnesiaCtrl node: %v", err)
+	}
+	snapshot, ok := w.NodeSnapshot(id)
+	if !ok {
+		t.Fatalf("AmnesiaCtrl node %d is missing", id)
+	}
+	if len(snapshot.Popups) != 1 {
+		t.Fatalf("AmnesiaCtrl popups = %#v, want one deprecation warning", snapshot.Popups)
+	}
+	warning := snapshot.Popups[0]
+	if warning.Type != pasta.NodePopupWard || warning.Text != amnesiaCtrlDeprecationWarning {
+		t.Fatalf("AmnesiaCtrl popup = %#v, want warning %q", warning, amnesiaCtrlDeprecationWarning)
+	}
+}
 
 func TestAmnesiaCtrlClassPortsAndMenu(t *testing.T) {
 	class := AmnesiaCtrlClass{}

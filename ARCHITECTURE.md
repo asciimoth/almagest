@@ -163,6 +163,11 @@ method, and body. It builds an HTTP transport that dials through
 `gonnect.Network`, runs requests on a worker, and updates Formular result
 fields.
 
+`almagest/FetchAddr` queries a selected public connection-information service
+through a received network. It normalizes the public IP address, country code,
+city, latitude, and longitude, and emits success or failure triggers after its
+data outputs are updated.
+
 Network payloads own closeable resources. Use `BindNetworkResource` when a node
 receives or emits a network so Pasta cleanup can close it.
 
