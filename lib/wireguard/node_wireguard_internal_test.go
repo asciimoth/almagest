@@ -264,6 +264,7 @@ func TestWireGuardAppliesPeerAmneziaOverrideToDevice(t *testing.T) {
 			id:                "peer-device-override",
 			publicKey:         peerPublicKey,
 			amneziaWGOverride: true,
+			amneziaWGEnabled:  true,
 			amneziaWG:         peerAmneziaWG,
 		}},
 	}}

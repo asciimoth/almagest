@@ -83,19 +83,28 @@ VTun. It does not configure the WireGuard protocol or the WireGuard UDP
 transport. Use the `almagest/dns` link type and DNS nodes when the graph needs
 DNS routing, multiple resolvers, caching, or policy.
 
-The config menu also exposes device-level AmneziaWG obfuscation controls:
-Jc/Jmin/Jmax, S1-S4 padding values, H1-H4 header ranges, and I1-I5
-initiation-packet obfuscation chains. Leaving those values at defaults keeps
-plain WireGuard behavior.
+The `AWG obfuscation` checkbox in the config menu controls the device-level
+AmneziaWG profile. The checkbox is off by default. When it is off, the menu
+hides the Jc/Jmin/Jmax, S1-S4 padding, H1-H4 header, and I1-I5 initiation-packet
+fields. The backend uses the plain WireGuard-compatible defaults while the
+checkbox is off, even if hidden fields contain values from an earlier profile.
+The values remain in the saved config so they are available if obfuscation is
+enabled again. A legacy config that has a non-default AWG profile and no toggle
+keeps that profile enabled during migration.
 
 `Batch size` is passed to both `wgo.DeviceOptions.BatchSize` and
 `batchudp.StdNetBindOptions.BatchSize`. Use `0` to keep library defaults.
 Smaller positive values reduce retained packet buffers and may reduce peak
 throughput.
 
-Peer entries expose the same AmneziaWG controls behind `AWG override`. When the
-override is off, the peer inherits the device-level AmneziaWG profile. When it
-is on, the peer's J/S/H/I values are applied as a peer-local override.
+Peer entries expose the same controls behind `AWG override` and `AWG
+obfuscation`. When the override is off, the peer inherits the device-level
+profile. When the override is on and obfuscation is on, the peer's J/S/H/I
+values are a peer-local profile. When the override is on and obfuscation is
+off, the backend applies the plain WireGuard-compatible defaults to that peer.
+This last combination lets one peer disable obfuscation when the device profile
+is enabled. Legacy peers with `amneziaWGOverride` and no obfuscation toggle keep
+their override enabled.
 
 The status menu subscribes to the embedded device's runtime stats and shows
 live readonly counters: runtime peers, active peers, connected peers, RX/TX

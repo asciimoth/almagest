@@ -23,10 +23,13 @@ func TestWGConfigRuntimeUsesNamedTransportAndDropsWithoutNetwork(t *testing.T) {
 		t.Fatalf("parse public key: %v", err)
 	}
 	peers := []wireGuardPeerConfig{{
-		id:         "owned",
-		publicKey:  publicKeyText,
-		endpoint:   "127.0.0.1:51820",
-		allowedIPs: "10.181.0.1/32",
+		id:                "owned",
+		publicKey:         publicKeyText,
+		endpoint:          "127.0.0.1:51820",
+		allowedIPs:        "10.181.0.1/32",
+		amneziaWGOverride: true,
+		amneziaWGEnabled:  true,
+		amneziaWG:         wireGuardTestAmneziaConfig(),
 	}}
 	node := &wgConfigNode{NodeBase: NodeBase{ID: 42}}
 
@@ -45,6 +48,9 @@ func TestWGConfigRuntimeUsesNamedTransportAndDropsWithoutNetwork(t *testing.T) {
 	spec, found := device.PeerSpec(publicKey)
 	if !found || spec.Endpoint == nil || spec.Endpoint.Transport != transportID || spec.Endpoint.Address != peers[0].endpoint {
 		t.Fatalf("attached peer endpoint = %#v, want transport %q address %q", spec.Endpoint, transportID, peers[0].endpoint)
+	}
+	if spec.AmneziaWG == nil || spec.AmneziaWG.InitHeader.Spec() != peers[0].amneziaWG.initHeader {
+		t.Fatalf("attached peer AWG profile = %#v, want enabled WGConfig profile", spec.AmneziaWG)
 	}
 
 	node.generation.Store(2)
@@ -68,6 +74,21 @@ func TestWGConfigRuntimeUsesNamedTransportAndDropsWithoutNetwork(t *testing.T) {
 	spec, found = device.PeerSpec(publicKey)
 	if !found || spec.Endpoint == nil || spec.Endpoint.Transport != transportID {
 		t.Fatalf("reattached peer endpoint = %#v, want transport %q", spec.Endpoint, transportID)
+	}
+
+	// A disabled peer-local profile must remain an explicit default override on
+	// the detached controller path. A nil override would inherit the provider's
+	// device-level profile instead.
+	peers[0].amneziaWGEnabled = false
+	peers[0].amneziaWG.initHeader = "invalid-hidden-value"
+	node.generation.Store(4)
+	wgReady, networkReady, count, err, ok = node.reconcile(4, controller, network, peers)
+	if err != nil || !ok || !wgReady || !networkReady || count != 1 {
+		t.Fatalf("disabled AWG reconcile = (%t, %t, %d, %v, %t)", wgReady, networkReady, count, err, ok)
+	}
+	spec, found = device.PeerSpec(publicKey)
+	if !found || spec.AmneziaWG == nil || *spec.AmneziaWG != wgdevice.DefaultAmneziaWGConfig() {
+		t.Fatalf("disabled WGConfig peer AWG profile = %#v, want explicit defaults", spec.AmneziaWG)
 	}
 }
 

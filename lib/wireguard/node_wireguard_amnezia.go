@@ -26,6 +26,11 @@ type wireGuardAmneziaConfig struct {
 
 const wireGuardAmneziaInitiationPacketCount = 5
 
+// wireGuardAmneziaEnabledField is shared by the persisted config and Formular
+// fields. In an array element, Formular resolves conditions against the
+// element-local field with this ID.
+const wireGuardAmneziaEnabledField = "amneziaWGEnabled"
+
 type wireGuardAmneziaIntField struct {
 	formID   string
 	configID string
@@ -143,6 +148,14 @@ func wireGuardAmneziaPacketField(index int, formID, label string) wireGuardAmnez
 func defaultWireGuardAmneziaConfig() wireGuardAmneziaConfig {
 	return wireGuardAmneziaConfigFromDevice(wgdevice.DefaultAmneziaWGConfig())
 }
+
+// isDefault reports whether c has plain WireGuard-compatible AWG values. It
+// normalizes header text before comparison so equivalent legacy values do not
+// incorrectly enable obfuscation during config migration.
+func (c wireGuardAmneziaConfig) isDefault() bool {
+	c.normalize()
+	return c == defaultWireGuardAmneziaConfig()
+}
 func wireGuardAmneziaConfigFromDevice(cfg wgdevice.AmneziaWGConfig) wireGuardAmneziaConfig {
 	out := wireGuardAmneziaConfig{
 		junkCount:        cfg.JunkCount,
@@ -203,6 +216,17 @@ func (c wireGuardAmneziaConfig) deviceConfig() (wgdevice.AmneziaWGConfig, error)
 	}
 	copy(cfg.InitiationPackets[:], c.initiationPackets[:])
 	return cfg, nil
+}
+
+// deviceConfigWhenEnabled returns the plain WireGuard-compatible profile when
+// enabled is false. Hidden form values are retained in persisted config, but
+// they cannot affect validation or runtime behavior until the user enables
+// them.
+func (c wireGuardAmneziaConfig) deviceConfigWhenEnabled(enabled bool) (wgdevice.AmneziaWGConfig, error) {
+	if !enabled {
+		return wgdevice.DefaultAmneziaWGConfig(), nil
+	}
+	return c.deviceConfig()
 }
 func parseWireGuardAmneziaHeader(value string, fallback wgdevice.AmneziaWGHeaderRange) (wgdevice.AmneziaWGHeaderRange, error) {
 	value = strings.TrimSpace(value)

@@ -8,7 +8,7 @@
     "test": "npm run build && node --test tests/*.mjs"
   },
   "dependencies": {
-    "@asciimoth/formular-menu": "^0.3.3",
+    "@asciimoth/formular-menu": "^0.3.5",
     "litegraph.js": "^0.7.18"
   },
   "devDependencies": {

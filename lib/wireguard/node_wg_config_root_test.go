@@ -33,7 +33,7 @@ func TestWGConfigClassPortsMenuAndPersistence(t *testing.T) {
 	if !ok || item.Field == nil || item.Kind != formular.FieldArray {
 		t.Fatalf("peers item = %#v, want array field", item)
 	}
-	for _, fieldID := range []string{"presharedKeySecret", "endpoint", "allowedIPs", "amneziaOverride"} {
+	for _, fieldID := range []string{"presharedKeySecret", "endpoint", "allowedIPs", "amneziaOverride", "amneziaWGEnabled"} {
 		if !wireGuardTemplateHasField(item, fieldID) {
 			t.Fatalf("peers template missing %q", fieldID)
 		}

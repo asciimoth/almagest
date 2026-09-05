@@ -27,8 +27,12 @@ type wireGuardConfig struct {
 	batchSize             int
 	ownedIPs              string
 	dns                   string
-	amneziaWG             wireGuardAmneziaConfig
-	peers                 []wireGuardPeerConfig
+	// amneziaWGEnabled controls whether the menu-owned device profile is
+	// effective. Keep amneziaWG separately so disabling the profile does not
+	// discard values that the user can enable again later.
+	amneziaWGEnabled bool
+	amneziaWG        wireGuardAmneziaConfig
+	peers            []wireGuardPeerConfig
 }
 type wireGuardPeerConfig struct {
 	id                 string
@@ -41,7 +45,10 @@ type wireGuardPeerConfig struct {
 	allowedIPs                  string
 	persistentKeepaliveInterval int
 	amneziaWGOverride           bool
-	amneziaWG                   wireGuardAmneziaConfig
+	// amneziaWGEnabled controls a peer-local override. It has no effect while
+	// amneziaWGOverride is false and the peer inherits the device profile.
+	amneziaWGEnabled bool
+	amneziaWG        wireGuardAmneziaConfig
 }
 
 func defaultWireGuardConfig() wireGuardConfig {
@@ -60,6 +67,13 @@ func (c *wireGuardConfig) read(cfg configer.Config) {
 	c.ownedIPs = configer.String(cfg, configer.Path{"ownedIPs"}, c.ownedIPs)
 	c.dns = configer.String(cfg, configer.Path{"dns"}, c.dns)
 	c.amneziaWG = readWireGuardAmneziaConfig(cfg, c.amneziaWG)
+	if enabled, ok := configer.BoolAt(cfg, configer.Path{wireGuardAmneziaEnabledField}); ok {
+		c.amneziaWGEnabled = enabled
+	} else if !c.amneziaWG.isDefault() {
+		// Configs written before the explicit toggle used any non-default AWG
+		// profile immediately. Preserve that behavior during migration.
+		c.amneziaWGEnabled = true
+	}
 	if peers, ok := readWireGuardPeers(cfg); ok {
 		c.peers = peers
 	}
@@ -131,6 +145,9 @@ func applyWireGuardConfigValues(config *wireGuardConfig, values map[string]any) 
 	}
 	if value, ok := formular.StringValue(values["dns"]); ok {
 		config.dns = value
+	}
+	if value, ok := formular.BoolValue(values[wireGuardAmneziaEnabledField]); ok {
+		config.amneziaWGEnabled = value
 	}
 	applyWireGuardAmneziaValues(&config.amneziaWG, values)
 }
@@ -333,6 +350,7 @@ func wireGuardPeersFromArray(values []formular.ArrayElementValue) []wireGuardPee
 		if override, ok := formular.BoolValue(value.Values["amneziaOverride"]); ok {
 			peer.amneziaWGOverride = override
 		}
+		peer.amneziaWGEnabled = wireGuardPeerAmneziaEnabled(value.Values, peer.amneziaWGOverride)
 		applyWireGuardAmneziaValues(&peer.amneziaWG, value.Values)
 		peer.normalize(i)
 		out = append(out, peer)
@@ -345,7 +363,7 @@ func compactWireGuardPeers(peers []wireGuardPeerConfig) []wireGuardPeerConfig {
 	for i := range peers {
 		peer := peers[i]
 		peer.normalize(i)
-		if peer.publicKey == "" && peer.presharedKeySecret == "" && peer.presharedKey == "" && peer.endpoint == "" && peer.allowedIPs == "" && peer.persistentKeepaliveInterval == 0 && !peer.amneziaWGOverride {
+		if peer.publicKey == "" && peer.presharedKeySecret == "" && peer.presharedKey == "" && peer.endpoint == "" && peer.allowedIPs == "" && peer.persistentKeepaliveInterval == 0 && !peer.amneziaWGOverride && !peer.amneziaWGEnabled {
 			continue
 		}
 		if _, ok := seenIDs[peer.id]; ok {
@@ -367,6 +385,7 @@ func wireGuardPeersConfig(peers []wireGuardPeerConfig) []map[string]any {
 			"allowedIPs":                  peer.allowedIPs,
 			"persistentKeepaliveInterval": peer.persistentKeepaliveInterval,
 			"amneziaWGOverride":           peer.amneziaWGOverride,
+			wireGuardAmneziaEnabledField:  peer.amneziaWGEnabled,
 			"amneziaWG":                   wireGuardAmneziaConfigMap(peer.amneziaWG),
 		})
 	}
@@ -480,7 +499,19 @@ func wireGuardPeerFromConfigMap(index int, value map[string]any) wireGuardPeerCo
 	if override, ok := formular.BoolValue(value["amneziaWGOverride"]); ok {
 		peer.amneziaWGOverride = override
 	}
+	peer.amneziaWGEnabled = wireGuardPeerAmneziaEnabled(value, peer.amneziaWGOverride)
 	peer.amneziaWG = readWireGuardAmneziaConfigMap(value["amneziaWG"], peer.amneziaWG)
 	peer.normalize(index)
 	return peer
+}
+
+// wireGuardPeerAmneziaEnabled reads the explicit peer toggle. Legacy peer
+// values do not have this field, so an old AWG override remains enabled. This
+// compatibility rule applies equally to saved config, object inputs, and old
+// Formular clients.
+func wireGuardPeerAmneziaEnabled(values map[string]any, legacyOverride bool) bool {
+	if enabled, ok := formular.BoolValue(values[wireGuardAmneziaEnabledField]); ok {
+		return enabled
+	}
+	return legacyOverride
 }

@@ -60,6 +60,10 @@ func TestWireGuardClassPortsAndMenuBlocks(t *testing.T) {
 			t.Fatalf("config %s item = %#v, want field", fieldID, item)
 		}
 	}
+	item, ok = e.MenuItem(node, "config", "amneziaWGEnabled")
+	if !ok || item.Field == nil || item.Kind != formular.FieldCheckbox || item.Value != false {
+		t.Fatalf("config AWG obfuscation item = %#v, want disabled checkbox", item)
+	}
 	if item, ok = e.MenuItem(node, "config", "fwmark"); ok {
 		t.Fatalf("config fwmark item = %#v, want removed field", item)
 	}
@@ -67,7 +71,7 @@ func TestWireGuardClassPortsAndMenuBlocks(t *testing.T) {
 	if !ok || item.Field == nil || item.Kind != formular.FieldArray {
 		t.Fatalf("peers item = %#v, want array field", item)
 	}
-	for _, fieldID := range []string{"presharedKeySecret", "amneziaOverride", "amneziaJunkCount", "amneziaInitHeader", "amneziaInitiationPacket1"} {
+	for _, fieldID := range []string{"presharedKeySecret", "amneziaOverride", "amneziaWGEnabled", "amneziaJunkCount", "amneziaInitHeader", "amneziaInitiationPacket1"} {
 		if !wireGuardTemplateHasField(item, fieldID) {
 			t.Fatalf("peers template missing %q field", fieldID)
 		}
@@ -302,6 +306,7 @@ func TestWireGuardConfigPersistsAcrossSaveRestoreAndCopyPaste(t *testing.T) {
 		allowedIPs:                  "10.10.20.1/32",
 		persistentKeepaliveInterval: 15,
 		amneziaWGOverride:           true,
+		amneziaWGEnabled:            true,
 		amneziaWG:                   peerAmneziaWG,
 	}})
 	applyWireGuardDNS(t, e.Engine, node, dns)
@@ -350,6 +355,9 @@ func TestWireGuardConfigPersistsAcrossSaveRestoreAndCopyPaste(t *testing.T) {
 	if got, err := cfg.Get(configer.Path{"nodes", "wg", "dns"}); err != nil || got != dns {
 		t.Fatalf("saved dns = %#v, %v; want %q", got, err, dns)
 	}
+	if got, err := cfg.Get(configer.Path{"nodes", "wg", "amneziaWGEnabled"}); err != nil || got != true {
+		t.Fatalf("saved amneziaWGEnabled = %#v, %v; want true", got, err)
+	}
 	assertSavedWireGuardAmneziaConfig(t, cfg, "wg", amneziaWG)
 	if got, err := cfg.Get(configer.Path{"nodes", "wg", "fwmark"}); err == nil {
 		t.Fatalf("saved fwmark = %#v, want missing removed field", got)
@@ -369,6 +377,7 @@ func TestWireGuardConfigPersistsAcrossSaveRestoreAndCopyPaste(t *testing.T) {
 	assertWireGuardPeerField(t, restored, restoredNode, "endpoint", "127.0.0.1:51821")
 	assertWireGuardPeerField(t, restored, restoredNode, "allowedIPs", "10.10.20.1/32")
 	assertWireGuardPeerField(t, restored, restoredNode, "amneziaOverride", true)
+	assertWireGuardPeerField(t, restored, restoredNode, "amneziaWGEnabled", true)
 	assertWireGuardPeerField(t, restored, restoredNode, "amneziaInitHeader", peerAmneziaWG.initHeader)
 	assertWireGuardPeerField(t, restored, restoredNode, "amneziaInitiationPacket1", peerAmneziaWG.initiationPackets[0])
 	assertWireGuardConfigField(t, restored, restoredNode, "batchSize", 8)
@@ -402,6 +411,7 @@ func TestWireGuardConfigPersistsAcrossSaveRestoreAndCopyPaste(t *testing.T) {
 	assertWireGuardConfigField(t, e, pastedNode, "amneziaInitiationPacket1", amneziaWG.initiationPackets[0])
 	assertWireGuardPeerField(t, e, pastedNode, "publicKey", peerPublicKey)
 	assertWireGuardPeerField(t, e, pastedNode, "amneziaOverride", true)
+	assertWireGuardPeerField(t, e, pastedNode, "amneziaWGEnabled", true)
 	assertWireGuardPeerField(t, e, pastedNode, "amneziaInitHeader", peerAmneziaWG.initHeader)
 	assertWireGuardPeerField(t, e, pastedNode, "amneziaInitiationPacket1", peerAmneziaWG.initiationPackets[0])
 }
@@ -464,6 +474,12 @@ func TestWireGuardValidationReportsStatus(t *testing.T) {
 		return ok && item.Status == formular.StatusOK
 	}, "DNS validation ok")
 
+	e.Engine.SendNodeFormularMsg(E2EWorkspace, node, formular.FormApplyMessage{
+		MessageBase: FormMessageBase(formular.MessageFormApply, node),
+		BlockID:     "config",
+		Values:      map[string]any{"amneziaWGEnabled": true},
+	})
+
 	e.Engine.SendNodeFormularMsg(E2EWorkspace, node, formular.FieldValidateMessage{
 		MessageBase: FormMessageBase(formular.MessageFieldValidate, node),
 		Field:       formular.FieldRef{BlockID: "config", FieldID: "amneziaInitHeader"},
@@ -490,6 +506,7 @@ func TestWireGuardValidationReportsStatus(t *testing.T) {
 		id:                "peer-amnezia-validation",
 		publicKey:         peerPublicKey,
 		amneziaWGOverride: true,
+		amneziaWGEnabled:  true,
 		amneziaWG:         wireGuardTestAmneziaConfig(),
 	}})
 	e.Engine.SendNodeFormularMsg(E2EWorkspace, node, formular.FieldValidateMessage{
@@ -572,6 +589,7 @@ type wireGuardPeerConfig struct {
 	allowedIPs                  string
 	persistentKeepaliveInterval int
 	amneziaWGOverride           bool
+	amneziaWGEnabled            bool
 	amneziaWG                   wireGuardAmneziaConfig
 }
 
@@ -696,6 +714,7 @@ func applyWireGuardAmneziaConfig(t *testing.T, engine Engine, node uint64, confi
 
 func wireGuardAmneziaFormValues(config wireGuardAmneziaConfig) map[string]any {
 	return map[string]any{
+		"amneziaWGEnabled":         true,
 		"amneziaJunkCount":         config.junkCount,
 		"amneziaJunkMin":           config.junkMin,
 		"amneziaJunkMax":           config.junkMax,
@@ -729,6 +748,7 @@ func wireGuardPeerValues(peers []wireGuardPeerConfig) []formular.ArrayElementVal
 				"allowedIPs":                  peer.allowedIPs,
 				"persistentKeepaliveInterval": peer.persistentKeepaliveInterval,
 				"amneziaOverride":             peer.amneziaWGOverride,
+				"amneziaWGEnabled":            peer.amneziaWGEnabled,
 				"amneziaJunkCount":            peer.amneziaWG.junkCount,
 				"amneziaJunkMin":              peer.amneziaWG.junkMin,
 				"amneziaJunkMax":              peer.amneziaWG.junkMax,

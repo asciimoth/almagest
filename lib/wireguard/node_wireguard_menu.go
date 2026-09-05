@@ -65,6 +65,12 @@ func (n *wireGuardNode) configBlock() formular.Block {
 		wireGuardBatchSizeField(n.config.batchSize, statusErr, n.formError),
 		configTextField("ownedIPs", "Owned IPs", n.config.ownedIPs, statusErr, n.formError, true),
 		dns,
+		formular.CheckboxField(
+			wireGuardAmneziaEnabledField,
+			"AWG obfuscation",
+			n.config.amneziaWGEnabled,
+			formular.Help("Enable the device AWG profile. When disabled, the device uses plain WireGuard-compatible defaults."),
+		),
 	}
 	items = append(items, wireGuardAmneziaConfigItems(n.config.amneziaWG, statusErr, n.formError)...)
 	return formular.Block{ID: "config", Order: 20, Generation: 1, Form: true, Items: items}
@@ -108,6 +114,10 @@ func (n *wireGuardNode) sendConfigFieldStatus(msg formular.FieldValidateMessage)
 	case "dns":
 		if value, ok := formular.StringValue(msg.Value); ok {
 			next.dns = value
+		}
+	case wireGuardAmneziaEnabledField:
+		if value, ok := formular.BoolValue(msg.Value); ok {
+			next.amneziaWGEnabled = value
 		}
 	default:
 		if !applyWireGuardAmneziaValue(&next.amneziaWG, msg.Field.FieldID, msg.Value) {
@@ -177,6 +187,10 @@ func (n *wireGuardNode) sendPeersFieldStatus(msg formular.FieldValidateMessage) 
 		if value, ok := formular.BoolValue(msg.Value); ok {
 			peers[index].amneziaWGOverride = value
 		}
+	case wireGuardAmneziaEnabledField:
+		if value, ok := formular.BoolValue(msg.Value); ok {
+			peers[index].amneziaWGEnabled = value
+		}
 	default:
 		if !applyWireGuardAmneziaValue(&peers[index].amneziaWG, msg.Field.FieldID, msg.Value) {
 			return
@@ -219,6 +233,7 @@ func wireGuardTimeText(value time.Time) string {
 	return value.Format(time.RFC3339)
 }
 func wireGuardPeerTemplate() formular.ArrayTemplate {
+	peerProfileSelected := formular.FieldEquals("amneziaOverride", true)
 	return formular.ArrayTemplate{
 		Name:  "peer",
 		Label: "Peer",
@@ -228,17 +243,34 @@ func wireGuardPeerTemplate() formular.ArrayTemplate {
 			formular.TextField("endpoint", "Endpoint", "", formular.Validation),
 			formular.MultilineTextField("allowedIPs", "Allowed IPs", "", formular.Validation),
 			formular.IntField("persistentKeepaliveInterval", "Keepalive", 0, formular.Validation),
-			formular.CheckboxField("amneziaOverride", "AWG override", false),
+			formular.CheckboxField(
+				"amneziaOverride",
+				"AWG override",
+				false,
+				formular.Help("Use a peer-specific AWG profile instead of the device profile."),
+			),
+			formular.CheckboxField(
+				wireGuardAmneziaEnabledField,
+				"AWG obfuscation",
+				false,
+				formular.VisibleWhen(peerProfileSelected),
+				formular.Help("Enable this peer's AWG profile. When disabled, this peer uses plain WireGuard-compatible defaults."),
+			),
 		}, wireGuardPeerAmneziaTemplateItems()...),
 	}
 }
 func wireGuardAmneziaConfigItems(config wireGuardAmneziaConfig, statusErr bool, statusText string) []formular.Item {
+	visible := formular.FieldEquals(wireGuardAmneziaEnabledField, true)
 	out := make([]formular.Item, 0, len(wireGuardAmneziaIntFieldSpecs)+len(wireGuardAmneziaStringFieldSpecs))
 	for _, spec := range wireGuardAmneziaIntFieldSpecs {
-		out = append(out, configIntField(spec.formID, spec.label, spec.value(config), statusErr, statusText))
+		item := configIntField(spec.formID, spec.label, spec.value(config), statusErr, statusText)
+		formular.VisibleWhen(visible)(&item)
+		out = append(out, item)
 	}
 	for _, spec := range wireGuardAmneziaStringFieldSpecs {
-		out = append(out, configTextField(spec.formID, spec.label, spec.value(config), statusErr, statusText, false))
+		item := configTextField(spec.formID, spec.label, spec.value(config), statusErr, statusText, false)
+		formular.VisibleWhen(visible)(&item)
+		out = append(out, item)
 	}
 	return out
 }
@@ -259,6 +291,7 @@ func wireGuardPeerFormValues(peer wireGuardPeerConfig) map[string]any {
 		"allowedIPs":                  peer.allowedIPs,
 		"persistentKeepaliveInterval": peer.persistentKeepaliveInterval,
 		"amneziaOverride":             peer.amneziaWGOverride,
+		wireGuardAmneziaEnabledField:  peer.amneziaWGEnabled,
 	}
 	maps.Copy(values, wireGuardAmneziaElementValues(peer.amneziaWG))
 	return values
@@ -274,12 +307,16 @@ func wireGuardAmneziaElementValues(config wireGuardAmneziaConfig) map[string]any
 	return values
 }
 func wireGuardPeerAmneziaTemplateItems() []formular.Item {
+	visible := formular.AllStateConditions(
+		formular.FieldEquals("amneziaOverride", true),
+		formular.FieldEquals(wireGuardAmneziaEnabledField, true),
+	)
 	out := make([]formular.Item, 0, len(wireGuardAmneziaIntFieldSpecs)+len(wireGuardAmneziaStringFieldSpecs))
 	for _, spec := range wireGuardAmneziaIntFieldSpecs {
-		out = append(out, formular.IntField(spec.formID, spec.label, 0, formular.Validation))
+		out = append(out, formular.IntField(spec.formID, spec.label, 0, formular.Validation, formular.VisibleWhen(visible)))
 	}
 	for _, spec := range wireGuardAmneziaStringFieldSpecs {
-		out = append(out, formular.TextField(spec.formID, spec.label, "", formular.Validation))
+		out = append(out, formular.TextField(spec.formID, spec.label, "", formular.Validation, formular.VisibleWhen(visible)))
 	}
 	return out
 }

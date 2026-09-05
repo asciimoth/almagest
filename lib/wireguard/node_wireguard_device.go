@@ -381,7 +381,7 @@ func wireGuardDeviceConfig(config wireGuardConfig) (wgdevice.DeviceConfig, error
 	if err != nil {
 		return wgdevice.DeviceConfig{}, fmt.Errorf("private key: %w", err)
 	}
-	amneziaWG, err := config.amneziaWG.deviceConfig()
+	amneziaWG, err := config.amneziaWG.deviceConfigWhenEnabled(config.amneziaWGEnabled)
 	if err != nil {
 		return wgdevice.DeviceConfig{}, fmt.Errorf("amneziawg: %w", err)
 	}
@@ -432,7 +432,7 @@ func wireGuardPeerDeviceConfig(peer wireGuardPeerConfig) (wgdevice.PeerConfig, e
 		AllowedIPs:                  allowedIPs,
 	}
 	if peer.amneziaWGOverride {
-		amneziaWG, err := peer.amneziaWG.deviceConfig()
+		amneziaWG, err := peer.amneziaWG.deviceConfigWhenEnabled(peer.amneziaWGEnabled)
 		if err != nil {
 			return wgdevice.PeerConfig{}, fmt.Errorf("peer %s amneziawg: %w", peerLabel(peer), err)
 		}

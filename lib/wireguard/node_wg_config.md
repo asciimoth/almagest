@@ -18,3 +18,10 @@ Peer menu fields have the same format and validation as WireGuard node peers.
 Preshared keys are loaded from `presharedKeySecret`; raw key material is not
 saved or shown in the menu. Legacy raw `presharedKey` values are migrated to the
 daemon secrets storage on load or form apply.
+
+`AWG override` selects a peer-local AmneziaWG profile. Its `AWG obfuscation`
+checkbox is off by default and controls the visibility of the J/S/H/I profile
+fields. When the override is selected but obfuscation is off, WGConfig applies
+the plain WireGuard-compatible values to the peer. Hidden values remain saved
+for later use. Legacy peer configs with an AWG override and no obfuscation
+toggle keep the override enabled.

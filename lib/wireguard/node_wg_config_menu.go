@@ -82,6 +82,8 @@ func (n *wgConfigNode) sendPeersFieldStatus(msg formular.FieldValidateMessage) {
 		peers[index].persistentKeepaliveInterval, _ = formular.IntValue(msg.Value)
 	case "amneziaOverride":
 		peers[index].amneziaWGOverride, _ = formular.BoolValue(msg.Value)
+	case wireGuardAmneziaEnabledField:
+		peers[index].amneziaWGEnabled, _ = formular.BoolValue(msg.Value)
 	default:
 		if !applyWireGuardAmneziaValue(&peers[index].amneziaWG, msg.Field.FieldID, msg.Value) {
 			return
