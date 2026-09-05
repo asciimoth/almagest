@@ -1,0 +1,57 @@
+{
+	"nodes": {
+		"OutNetwork ZG": {"Class": "almagest/OutNetwork", "Pos": "{\"x\":748,\"y\":410}"},
+		"VTun BS": {
+			"Class":          "almagest/VTun",
+			"Pos":            "{\"x\":317,\"y\":407}",
+			"Links":          ["Tun -> [Amnesia EZ] Tun"],
+			"dnsServers":     "",
+			"mtu":            1500,
+			"endpointCh":     1024,
+			"eventCh":        10,
+			"noLoopbackAddr": false,
+			"disableSACK":    false,
+			"name":           "vtun",
+			"localAddrs":     ""
+		},
+		"HttpClient I2": {
+			"Class":     "almagest/HttpClient",
+			"Pos":       "{\"x\":126,\"y\":409}",
+			"Links":     ["Network -> [VTun BS] Network"],
+			"url":       "https://example.com",
+			"method":    "GET",
+			"body":      "",
+			"tlsConfig": ""
+		},
+		"DnsQuery xP": {
+			"Class": "almagest/DnsQuery",
+			"Pos":   "{\"x\":331,\"y\":547}",
+			"Links": ["DNS -> [Amnesia EZ] DNS"],
+			"type":  "A",
+			"name":  "example.com."
+		},
+		"FetchAddr xP": {"Class": "almagest/FetchAddr", "Pos": "{\"x\":72,\"y\":135}", "Links": [
+			"Network -> [VTun BS] Network",
+			"Success -> [PopUp LN] Trigger",
+			"Public IP -> [PopUp LN] Text"
+		], "provider": "ifconfig.co", "tlsConfig": ""},
+		"PopUp LN": {"Class": "pasta/PopUp", "Pos": "{\"x\":342,\"y\":150}"},
+		"Trigger ZG": {
+			"Class": "pasta/Trigger",
+			"Pos":   "{\"x\":-210,\"y\":136}",
+			"Links": ["Trigger -> [FetchAddr xP] Check"]
+		},
+		"Amnesia EZ": {
+			"Class":                  "almagest/Amnesia",
+			"Pos":                    "{\"x\":554,\"y\":412}",
+			"Links":                  ["Network -> [OutNetwork ZG] Network"],
+			"serverCountryCode":      "ae",
+			"tlsConfig":              "default",
+			"gatewayURL":             "",
+			"gatewayPublicKeySecret": "",
+			"storageID":              "e14d996a00252d5cba4f277dc1182c42471ec1d993bed11afe0014505c5d2929",
+			"enabled":                true,
+			"connectionSecret":       "amnesia free"
+		}
+	}
+}
