@@ -106,7 +106,8 @@ type managedAmnesiaNode struct {
 	tlsConfigErr       string
 	tlsRevision        uint64
 
-	newClient ClientFactory
+	newClient   ClientFactory
+	startImport managedAmnesiaImportStarter
 
 	generation atomic.Uint64
 	cancelMu   sync.Mutex
@@ -117,6 +118,8 @@ type managedAmnesiaNode struct {
 	ephemeralID string
 
 	runtimeClient        Client
+	runtimeImport        managedAmnesiaImportSession
+	runtimeCaptcha       *amnesiaCaptchaPrompt
 	runtimeConfig        *wgoamnesia.Profile
 	runtimeDevice        *wgdevice.Device
 	runtimeDNS           dns.Interface
@@ -142,6 +145,9 @@ type managedAmnesiaNode struct {
 	formError        string
 	runtimeError     string
 	loggedState      string
+	captchaPrompt    *amnesiaCaptchaPrompt
+	captchaPopupID   uint64
+	captchaResponse  *managedAmnesiaCaptchaResponse
 }
 
 type managedAmnesiaRuntimeRequest struct {
@@ -155,6 +161,7 @@ type managedAmnesiaRuntimeRequest struct {
 	tlsRevision  uint64
 	nodeName     string
 	ctx          context.Context
+	captcha      *managedAmnesiaCaptchaResponse
 }
 
 type managedAmnesiaRuntimeResult struct {
@@ -169,8 +176,26 @@ type managedAmnesiaRuntimeResult struct {
 	installationUUID string
 	persistent       bool
 	dns              dns.Interface
+	captcha          *amnesiaCaptchaPrompt
 	err              error
 }
+
+type managedAmnesiaCaptchaResponse struct {
+	runtimeID uint64
+	dialogID  string
+	solution  string
+}
+
+type managedAmnesiaImportSession interface {
+	Next(context.Context) (wgoamnesia.Step, error)
+	Resume(context.Context, wgoamnesia.InteractionResponse) (wgoamnesia.Step, error)
+}
+
+type managedAmnesiaImportStarter func(
+	Client,
+	string,
+	wgoamnesia.NegotiationOptions,
+) (managedAmnesiaImportSession, error)
 
 type managedAmnesiaStats struct {
 	generation uint64
@@ -345,6 +370,13 @@ func (n *managedAmnesiaNode) OnFormularMsg(message any) error {
 		if msg.MenuID == pasta.NodeMenuID(n.ID) && msg.Field.BlockID == "config" {
 			n.validateConfigField(msg)
 		}
+	case formular.ButtonPressMessage:
+		if msg.MenuID == pasta.NodeMenuID(n.ID) && msg.BlockID == amnesiaCaptchaBlockID &&
+			msg.ButtonID == amnesiaCaptchaButtonID {
+			n.showCaptchaDialog()
+		}
+	case formular.DialogResponseMessage:
+		n.handleCaptchaResponse(msg)
 	}
 	return nil
 }
@@ -494,6 +526,10 @@ func (n *managedAmnesiaNode) scheduleReconcile(invalidate bool) {
 	n.cancelRun = cancel
 	n.cancelMu.Unlock()
 	if invalidate {
+		captchaCleared := n.captchaPrompt != nil && n.captchaResponse == nil
+		if captchaCleared {
+			n.clearCaptchaPrompt()
+		}
 		n.pending = true
 		n.runtimeReady = false
 		n.runtimeStats = wgdevice.RuntimeStats{}
@@ -502,6 +538,9 @@ func (n *managedAmnesiaNode) scheduleReconcile(invalidate bool) {
 		// this generation negotiates or activates its replacement.
 		n.dnsOutputs.CloseAll()
 		n.dnsProvider = nil
+		if captchaCleared {
+			n.sendForcedMenuSnapshot()
+		}
 	}
 	_ = n.updateLabel()
 	n.sendStatusBlock()
@@ -510,7 +549,9 @@ func (n *managedAmnesiaNode) scheduleReconcile(invalidate bool) {
 		config:     n.config, tunLinked: n.tunLink != 0, tun: n.tun, network: n.network,
 		tlsConfig: nodekit.CloneTLSClientConfig(n.tlsConfig), tlsConfigErr: n.tlsConfigErr,
 		tlsRevision: n.tlsRevision, nodeName: n.currentNodeName(), ctx: ctx,
+		captcha: n.captchaResponse,
 	}
+	n.captchaResponse = nil
 	if err := n.SpawnWorker("Amnesia reconcile", func() {
 		result, ok := n.reconcile(request)
 		if ok {
@@ -547,7 +588,9 @@ func (n *managedAmnesiaNode) handleRuntimeResult(msg managedAmnesiaRuntimeResult
 		n.installationUUID = msg.installationUUID
 	}
 	n.runtimeError = ""
+	hadCaptcha := n.captchaPrompt != nil
 	if msg.err != nil {
+		n.clearCaptchaPrompt()
 		n.runtimeError = msg.err.Error()
 		if n.Logger != nil {
 			n.Logger.Errf("Amnesia node error: %v", msg.err)
@@ -557,10 +600,19 @@ func (n *managedAmnesiaNode) handleRuntimeResult(msg managedAmnesiaRuntimeResult
 		n.dnsOutputs.CloseAll()
 		n.dnsProvider = nil
 		n.sendTunConfig()
+	} else if msg.captcha != nil {
+		n.setCaptchaPrompt(msg.captcha)
+		n.profileStatus = amnesiaProfileStatus{}
+		n.runtimeStats = wgdevice.RuntimeStats{}
+		n.dnsOutputs.CloseAll()
+		n.dnsProvider = nil
+		n.sendTunConfig()
 	} else if msg.waitingForTun {
+		n.clearCaptchaPrompt()
 		// Keep the negotiated profile while the linked TUN provider replaces its
 		// payload. The next TUN event schedules device creation and activation.
 	} else if msg.prepared {
+		n.clearCaptchaPrompt()
 		// Configure the graph TUN before the WireGuard device exists. A provider
 		// can synchronously replace its TUN and advance the generation here. The
 		// next reconcile creates the device with the final configured TUN.
@@ -576,10 +628,12 @@ func (n *managedAmnesiaNode) handleRuntimeResult(msg managedAmnesiaRuntimeResult
 		n.scheduleReconcile(false)
 		return
 	} else if msg.ready {
+		n.clearCaptchaPrompt()
 		n.runtimeReady = true
 		n.dnsProvider = msg.dns
 		n.sendDNSAll()
 	} else {
+		n.clearCaptchaPrompt()
 		n.profileStatus = amnesiaProfileStatus{}
 		n.runtimeStats = wgdevice.RuntimeStats{}
 		n.dnsOutputs.CloseAll()
@@ -587,7 +641,11 @@ func (n *managedAmnesiaNode) handleRuntimeResult(msg managedAmnesiaRuntimeResult
 		n.sendTunConfig()
 	}
 	_ = n.updateLabel()
-	n.sendStatusBlock()
+	if hadCaptcha || n.captchaPrompt != nil {
+		n.sendForcedMenuSnapshot()
+	} else {
+		n.sendStatusBlock()
+	}
 }
 
 // markRuntimeTunConfigured advances only the negotiated runtime named by the
@@ -650,6 +708,8 @@ func (n *managedAmnesiaNode) stateText() string {
 		return "disabled"
 	case n.formError != "" || n.runtimeError != "":
 		return "error"
+	case n.captchaPrompt != nil:
+		return "waiting for captcha"
 	case n.config.connectionSecret == "":
 		return "waiting for connection secret"
 	case n.tunLink == 0:

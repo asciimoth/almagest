@@ -22,6 +22,13 @@ server to the attached TUN provider. This gives a simple TUN setup the same
 address and DNS configuration that an AmnesiaCtrl and WireGuard pair provides.
 The connection event is always enabled for service imports.
 
+If the API server requests a captcha during a service import, the node pauses
+the import and shows a warning popup. Open the node menu and select **Complete
+captcha** at the top. The dialog shows the server-provided image and message.
+Canceling the dialog keeps the import paused so you can open it again. A
+submitted answer resumes the same import and keeps its generated WireGuard
+identity. An invalid answer can replace the dialog with a refreshed challenge.
+
 The **DNS** port exposes a resolver that uses the usable DNS server IP addresses
 from the active profile in profile order. A server is usable when the profile
 has a local address of the same IP family and an allowed-IP route to the server.

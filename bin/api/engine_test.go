@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	almagest "github.com/asciimoth/almagest/lib"
+	"github.com/asciimoth/formular"
 	"github.com/asciimoth/pasta/pasta"
 )
 
@@ -99,6 +100,53 @@ func TestEngineNotificationConvertsWorkspaceSnapshotClasses(t *testing.T) {
 	}
 	if got := classNames(got.Workspace.Snapshot.Classes); !slices.Equal(got, []string{"almagest/Tun", "pasta/PopUp"}) {
 		t.Fatalf("notification snapshot classes = %v, want sorted list", got)
+	}
+}
+
+func TestEngineNotificationPreservesCaptchaDialogOnWire(t *testing.T) {
+	dialog := formular.CaptchaDialog(
+		"amnesia-captcha-1-1",
+		"Complete captcha",
+		"Verify this request.",
+		formular.DialogResourceFromBytes("challenge", "image/png", "Captcha challenge", []byte("image")),
+	)
+	notification := NewEngineNotification(almagest.EngineNotification{
+		Kind:        almagest.NotificationWorkspace,
+		WorkspaceID: "main",
+		Workspace: &pasta.WorkspaceNotification{
+			Kind:     pasta.NotificationNodeMenu,
+			ID:       1,
+			Formular: formular.DialogCreate(pasta.NodeMenuID(1), 1, dialog),
+		},
+	})
+
+	data, err := json.Marshal(notification)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wire struct {
+		Workspace struct {
+			Formular struct {
+				Type   string `json:"type"`
+				MenuID string `json:"menuId"`
+				Dialog struct {
+					Kind      string `json:"kind"`
+					Resources []struct {
+						MIMEType string `json:"mimeType"`
+						Data     string `json:"data"`
+					} `json:"resources"`
+				} `json:"dialog"`
+			} `json:"formular"`
+		} `json:"workspace_notification"`
+	}
+	if err := json.Unmarshal(data, &wire); err != nil {
+		t.Fatal(err)
+	}
+	message := wire.Workspace.Formular
+	if message.Type != formular.MessageDialogCreate || message.MenuID != pasta.NodeMenuID(1) ||
+		message.Dialog.Kind != formular.DialogKindCaptcha || len(message.Dialog.Resources) != 1 ||
+		message.Dialog.Resources[0].MIMEType != "image/png" || message.Dialog.Resources[0].Data == "" {
+		t.Fatalf("captcha dialog wire message = %#v", message)
 	}
 }
 

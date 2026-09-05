@@ -39,7 +39,8 @@ var (
 	AmnesiaCtrlClassLongDescription string
 
 	// ErrCaptchaUnsupported reports that an Amnezia service requested a
-	// CAPTCHA. Almagest does not currently have a suitable secure CAPTCHA UI.
+	// CAPTCHA from the deprecated AmnesiaCtrl node, which does not support
+	// interactive imports.
 	ErrCaptchaUnsupported = errors.New("amnezia CAPTCHA is not supported")
 )
 

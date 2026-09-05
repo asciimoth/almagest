@@ -161,7 +161,7 @@ declare const LiteGraph: any;
 declare const LGraph: any;
 declare const LGraphCanvas: any;
 type FormularMenuInstance = {
-  feed(message: unknown): void;
+  feed(message: unknown): boolean;
   destroy(): void;
 };
 type FormularSelectorProvider = (selector: string) => readonly string[] | null | undefined;
@@ -172,9 +172,13 @@ type FormularMenuConstructor = new (
   options?: { selectors?: FormularSelectorProvider },
 ) => FormularMenuInstance;
 // The built module runs from public/build, while vendored browser dependencies
-// are served from vendor at the panel root.
-// @ts-expect-error static browser vendor path
-const { FormularMenu } = (await import("../../vendor/formular-menu/formular-menu.js")) as {
+// are served from vendor at the panel root. The build adds a content version to
+// this module URL. Pass it to the dependency URL so a panel update cannot reuse
+// an older Formular renderer from the browser cache.
+const panelModuleURL = new URL(import.meta.url);
+const formularMenuURL = new URL("../../vendor/formular-menu/formular-menu.js", panelModuleURL);
+formularMenuURL.search = panelModuleURL.search;
+const { FormularMenu } = (await import(formularMenuURL.href)) as {
   FormularMenu: FormularMenuConstructor;
 };
 
@@ -1707,7 +1711,22 @@ function destroyMenu(): void {
 
 function feedMenu(notification: WorkspaceNotification): void {
   if (!selectedMenu || notification.id !== selectedMenu.node || !notification.formular) return;
-  selectedMenu.menu.feed(notification.formular);
+  const message = notification.formular as { type?: unknown; dialog?: { kind?: unknown } };
+  try {
+    const accepted = selectedMenu.menu.feed(message);
+    if (message.type === "dialog.create" && !accepted) {
+      const text = "The node menu rejected a dialog request. Reload the panel to use the current Formular renderer.";
+      log("frontend", "error", text);
+      notifyError(text);
+    } else if (message.type === "dialog.create" && message.dialog?.kind === "captcha") {
+      log("frontend", "debug", `Captcha dialog opened for node ${notification.id}.`);
+    }
+  } catch (error) {
+    if (message.type !== "dialog.create") throw error;
+    const text = `The node menu could not open a dialog: ${(error as Error).message}`;
+    log("frontend", "error", text);
+    notifyError(text);
+  }
 }
 
 async function requestSnapshot(): Promise<void> {

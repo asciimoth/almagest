@@ -83,6 +83,12 @@ func (n *managedAmnesiaNode) reconcile(req managedAmnesiaRuntimeRequest) (manage
 		gatewayPublicKey = []byte(value)
 	}
 	material := managedAmnesiaMaterial(req, parsed.Format, input, gatewayPublicKey)
+	if n.runtimeImport != nil {
+		if n.pausedImportMatches(req, material) {
+			return n.continuePausedImportLocked(req, result)
+		}
+		n.closeRuntimeLocked()
+	}
 	if n.runtimeMatches(req, material) {
 		if n.runtimeDevice == nil {
 			if n.runtimeTunConfigured {
@@ -101,6 +107,10 @@ func (n *managedAmnesiaNode) reconcile(req managedAmnesiaRuntimeRequest) (manage
 			result.dns = n.runtimeDNS
 			return result, true
 		}
+	}
+	if req.captcha != nil {
+		result.err = errors.New("complete Amnezia captcha: the challenge is no longer active")
+		return result, true
 	}
 
 	// A connection owns its client, profile, device, and private key as one unit.
@@ -148,33 +158,111 @@ func (n *managedAmnesiaNode) reconcile(req managedAmnesiaRuntimeRequest) (manage
 	if serviceImport {
 		importContext, cancelImport = context.WithTimeout(req.ctx, amnesiaImportTimeout)
 	}
-	profile, err := client.ImportNonInteractive(importContext, input, wgoamnesia.NegotiationOptions{
-		InteractionPolicy: wgoamnesia.FailOnInteraction,
+	options := wgoamnesia.NegotiationOptions{
+		InteractionPolicy: wgoamnesia.PauseOnInteraction,
 		ServerCountryCode: req.config.serverCountryCode,
 		// A managed Amnesia node always represents an active connection.
 		ConnectEvent: true,
-	})
+	}
+	var step wgoamnesia.Step
+	if serviceImport && (n.startImport != nil || isStatefulAmnesiaClient(client)) {
+		importSession, startErr := n.startManagedImport(client, input, options)
+		if startErr != nil {
+			cancelImport()
+			result.err = formatRuntimeError("start Amnezia connection import", startErr)
+			return result, true
+		}
+		n.nextRuntimeID++
+		n.runtimeID = n.nextRuntimeID
+		n.runtimeClient = client
+		n.runtimeImport = importSession
+		n.runtimeHTTP = transport
+		n.runtimeNetwork = req.network
+		n.runtimeMaterial = material
+		n.runtimeFormat = parsed.Format
+		n.runtimePersistent = persistent
+		cleanupTransport = false
+		n.logDebugf("Amnesia resumable import started: generation=%d runtime=%d", req.generation, n.runtimeID)
+		step, err = importSession.Next(importContext)
+	} else {
+		var profile *wgoamnesia.Profile
+		profile, err = client.ImportNonInteractive(importContext, input, options)
+		step = wgoamnesia.Step{State: wgoamnesia.NegotiationComplete, Profile: profile}
+	}
 	cancelImport()
 	if err != nil {
 		n.logDebugf("Amnesia profile import failed: generation=%d error=%v", req.generation, err)
+		n.closeRuntimeLocked()
 		result.err = amnesiaImportError(err)
 		return result, true
 	}
-	if profile == nil {
-		result.err = errors.New("import Amnezia connection: client returned no profile")
+	if n.runtimeID == 0 {
+		n.nextRuntimeID++
+		n.runtimeID = n.nextRuntimeID
+	}
+	profile, captcha, finishErr := n.finishImportStepLocked(step)
+	if finishErr != nil {
+		n.closeRuntimeLocked()
+		result.err = finishErr
 		return result, true
 	}
+	if captcha != nil {
+		result.runtimeID = n.runtimeID
+		result.captcha = captcha
+		return result, true
+	}
+	cleanupTransport = false
+	return n.prepareImportedProfileLocked(req, result, client, transport, material, parsed.Format, profile, persistent)
+}
+
+func isStatefulAmnesiaClient(client Client) bool {
+	_, ok := client.(amnesiaStatefulClient)
+	return ok
+}
+
+func (n *managedAmnesiaNode) startManagedImport(
+	client Client,
+	input string,
+	options wgoamnesia.NegotiationOptions,
+) (managedAmnesiaImportSession, error) {
+	if n.startImport != nil {
+		session, err := n.startImport(client, input, options)
+		if err == nil && session == nil {
+			err = errors.New("amnezia client returned no import session")
+		}
+		return session, err
+	}
+	stateful, ok := client.(amnesiaStatefulClient)
+	if !ok {
+		return nil, errors.New("amnezia client does not support resumable imports")
+	}
+	session, err := stateful.StartImport(input, options)
+	if err == nil && session == nil {
+		err = errors.New("amnezia client returned no import session")
+	}
+	return session, err
+}
+
+func (n *managedAmnesiaNode) prepareImportedProfileLocked(
+	req managedAmnesiaRuntimeRequest,
+	result managedAmnesiaRuntimeResult,
+	client Client,
+	transport interface{ CloseIdleConnections() },
+	material [32]byte,
+	format wgoamnesia.InputFormat,
+	profile *wgoamnesia.Profile,
+	persistent bool,
+) (managedAmnesiaRuntimeResult, bool) {
 	n.runtimeClient = client
+	n.runtimeImport = nil
+	n.runtimeCaptcha = nil
 	n.runtimeConfig = profile
 	n.runtimeHTTP = transport
 	n.runtimeNetwork = req.network
 	n.runtimeMaterial = material
 	n.runtimeProfile = profileStatus(profile, req.config.serverCountryCode)
-	n.runtimeFormat = parsed.Format
+	n.runtimeFormat = format
 	n.runtimePersistent = persistent
-	n.nextRuntimeID++
-	n.runtimeID = n.nextRuntimeID
-	cleanupTransport = false
 	n.logDebugf(
 		"Amnesia connection prepared: generation=%d runtime=%d format=%s profile=%q country=%q endpoint=%q protocol=%q mtu=%d addresses=%v dns=%v",
 		req.generation, n.runtimeID, n.runtimeFormat, n.runtimeProfile.name,
@@ -199,6 +287,88 @@ func (n *managedAmnesiaNode) reconcile(req managedAmnesiaRuntimeRequest) (manage
 	result.prepared = true
 	result.profile = n.runtimeProfile
 	return result, true
+}
+
+func (n *managedAmnesiaNode) pausedImportMatches(req managedAmnesiaRuntimeRequest, material [32]byte) bool {
+	return n.runtimeImport != nil && n.runtimeConfig == nil && n.runtimeMaterial == material &&
+		nodekit.SameNetworkInstance(n.runtimeNetwork, req.network)
+}
+
+func (n *managedAmnesiaNode) continuePausedImportLocked(
+	req managedAmnesiaRuntimeRequest,
+	result managedAmnesiaRuntimeResult,
+) (managedAmnesiaRuntimeResult, bool) {
+	result.format = n.runtimeFormat
+	result.runtimeID = n.runtimeID
+	responseMatches := req.captcha != nil && n.runtimeCaptcha != nil && req.captcha.runtimeID == n.runtimeID &&
+		req.captcha.dialogID == n.runtimeCaptcha.dialogID
+	if !responseMatches {
+		n.logDebugf(
+			"Amnesia captcha remains pending: generation=%d runtime=%d response_present=%t",
+			req.generation, n.runtimeID, req.captcha != nil,
+		)
+		result.captcha = cloneAmnesiaCaptchaPrompt(n.runtimeCaptcha)
+		return result, true
+	}
+
+	attempt := n.runtimeCaptcha.request.Attempt
+	n.logDebugf("Amnesia captcha submission started: generation=%d runtime=%d attempt=%d", req.generation, n.runtimeID, attempt)
+	ctx, cancel := context.WithTimeout(req.ctx, amnesiaImportTimeout)
+	step, err := n.runtimeImport.Resume(ctx, wgoamnesia.InteractionResponse{
+		CaptchaSolution: req.captcha.solution,
+	})
+	cancel()
+	if err != nil {
+		n.logDebugf(
+			"Amnesia captcha submission failed: generation=%d runtime=%d attempt=%d error_type=%T",
+			req.generation, n.runtimeID, attempt, err,
+		)
+		n.closeRuntimeLocked()
+		result.err = amnesiaImportError(err)
+		return result, true
+	}
+	profile, captcha, err := n.finishImportStepLocked(step)
+	if err != nil {
+		n.closeRuntimeLocked()
+		result.err = err
+		return result, true
+	}
+	if captcha != nil {
+		n.logDebugf("Amnesia captcha submission returned another challenge: generation=%d runtime=%d attempt=%d", req.generation, n.runtimeID, attempt)
+		result.captcha = captcha
+		return result, true
+	}
+	n.logDebugf("Amnesia captcha submission completed: generation=%d runtime=%d attempt=%d", req.generation, n.runtimeID, attempt)
+	return n.prepareImportedProfileLocked(
+		req, result, n.runtimeClient, n.runtimeHTTP, n.runtimeMaterial,
+		n.runtimeFormat, profile, n.runtimePersistent,
+	)
+}
+
+func (n *managedAmnesiaNode) finishImportStepLocked(
+	step wgoamnesia.Step,
+) (*wgoamnesia.Profile, *amnesiaCaptchaPrompt, error) {
+	if step.Interaction != nil {
+		previousAttempt := 0
+		if n.runtimeCaptcha != nil {
+			previousAttempt = n.runtimeCaptcha.request.Attempt
+		}
+		prompt, err := newAmnesiaCaptchaPrompt(n.runtimeID, step.Interaction)
+		if err != nil {
+			return nil, nil, err
+		}
+		n.runtimeCaptcha = cloneAmnesiaCaptchaPrompt(prompt)
+		n.logDebugf(
+			"Amnesia captcha challenge received: runtime=%d attempt=%d previous_attempt=%d reason=%s",
+			n.runtimeID, prompt.request.Attempt, previousAttempt, prompt.request.Captcha.Reason,
+		)
+		return nil, prompt, nil
+	}
+	if step.Profile == nil {
+		return nil, nil, errors.New("import Amnezia connection: client returned no profile")
+	}
+	n.runtimeCaptcha = nil
+	return step.Profile, nil, nil
 }
 
 // activatePreparedRuntimeLocked creates the device only after the graph has
@@ -363,6 +533,8 @@ func (n *managedAmnesiaNode) closeRuntimeLocked() {
 		n.runtimeHTTP.CloseIdleConnections()
 	}
 	n.runtimeClient = nil
+	n.runtimeImport = nil
+	n.runtimeCaptcha = nil
 	n.runtimeConfig = nil
 	n.runtimeHTTP = nil
 	n.runtimeNetwork = nil

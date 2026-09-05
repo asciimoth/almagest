@@ -28,6 +28,8 @@ func decodeFormularMessage(data json.RawMessage) (any, error) {
 		return decodeFormularMessageAs[formular.ButtonPressMessage](data)
 	case formular.MessageAutocompleteRequest:
 		return decodeFormularMessageAs[formular.AutocompleteRequestMessage](data)
+	case formular.MessageDialogResponse:
+		return decodeFormularMessageAs[formular.DialogResponseMessage](data)
 	default:
 		return nil, fmt.Errorf("unsupported formular message type %q", base.Type)
 	}

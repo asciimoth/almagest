@@ -9,11 +9,19 @@ import (
 )
 
 func (n *managedAmnesiaNode) sendMenuSnapshot() {
-	nodekit.SendNodeMenuSnapshot(n.W, n.ID, false, n.statusBlock(), n.configBlock())
+	nodekit.SendNodeMenuSnapshot(n.W, n.ID, false, n.menuBlocks()...)
 }
 
 func (n *managedAmnesiaNode) sendForcedMenuSnapshot() {
-	nodekit.SendNodeMenuSnapshot(n.W, n.ID, true, n.statusBlock(), n.configBlock())
+	nodekit.SendNodeMenuSnapshot(n.W, n.ID, true, n.menuBlocks()...)
+}
+
+func (n *managedAmnesiaNode) menuBlocks() []formular.Block {
+	blocks := make([]formular.Block, 0, 3)
+	if n.captchaPrompt != nil {
+		blocks = append(blocks, n.captchaBlock())
+	}
+	return append(blocks, n.statusBlock(), n.configBlock())
 }
 
 func (n *managedAmnesiaNode) sendStatusBlock() {
