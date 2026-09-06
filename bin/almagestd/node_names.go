@@ -154,3 +154,12 @@ func configuredNodeNames(cfg configer.Config) []string {
 	sort.Strings(names)
 	return names
 }
+
+func configuredNodeNameSet(cfg configer.Config) map[string]struct{} {
+	names := configuredNodeNames(cfg)
+	out := make(map[string]struct{}, len(names))
+	for _, name := range names {
+		out[name] = struct{}{}
+	}
+	return out
+}

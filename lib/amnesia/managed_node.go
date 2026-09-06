@@ -214,7 +214,7 @@ func (n *managedAmnesiaNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id 
 	n.tunp = nodekit.RestoredLeft(restored, 0)
 	n.dnsp = nodekit.RestoredLeft(restored, 1)
 	n.netp = nodekit.RestoredRight(restored, 0)
-	n.nodeStore = amnesiaNodeStore(n.kv, n.config.storageID)
+	n.nodeStore = amnesiaNodeStore(n.kv, n.config.storageID, n.nodeName)
 	n.refreshTLSConfig()
 	if err := n.SetPrimary(wireguardnodes.TypeWGCtrl); err != nil {
 		return err

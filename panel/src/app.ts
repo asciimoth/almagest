@@ -51,6 +51,7 @@ import {
   createTLSPolicyPreview,
   createTLSPolicyTitle,
   createWorkerNodeBlock,
+  formatKVValueMeta,
   formatSecretEntryMeta,
   renderNodeDescription,
   shortClass,
@@ -4976,7 +4977,7 @@ function renderKVValueDetail(value: KVValue): HTMLElement {
     });
     actions.append(reveal);
   }
-  meta.append(actions);
+  meta.append(textElement("span", formatKVValueMeta(value)), actions);
   detail.append(meta, createKVValuePreview(value, {
     revealHidden: kvValuePanel?.revealHidden ?? false,
     limit: KV_TEXT_RENDER_LIMIT,

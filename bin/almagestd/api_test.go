@@ -237,7 +237,7 @@ func TestKVSubscriptionObservesDirectStoreUpdate(t *testing.T) {
 		t.Fatal("entries subscription ID is zero")
 	}
 
-	store := manager.DefaultStore().Subtree("nodes", "amnesia", "node-storage-id")
+	store := manager.DefaultStore().Subtree("nodes", "amnesia", "node-storage-id").OwnedBy("Amnesia")
 	if err := store.Update(context.Background(), func(tx storage.KVWriteTx) error {
 		return tx.Set("installation_uuid", storage.KValue{
 			Data:   []byte("runtime-generated"),
@@ -261,6 +261,18 @@ func TestKVSubscriptionObservesDirectStoreUpdate(t *testing.T) {
 	entry := event.Snapshot.Entries[0]
 	if entry.Kind != api.KVEntryBucket || entry.Name != "node-storage-id" {
 		t.Fatalf("entry = %#v, want node-storage-id subtree", entry)
+	}
+	if entry.Owner != "Amnesia" {
+		t.Fatalf("entry owner = %q, want Amnesia", entry.Owner)
+	}
+	valueSnapshot, err := manager.valueSnapshot(context.Background(), api.KVStoreSelector{}, []string{
+		"nodes", "amnesia", "node-storage-id",
+	}, "installation_uuid")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !valueSnapshot.Found || valueSnapshot.Value == nil || valueSnapshot.Value.Owner != "Amnesia" {
+		t.Fatalf("value snapshot = %#v, want owner Amnesia", valueSnapshot)
 	}
 }
 

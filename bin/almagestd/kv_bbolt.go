@@ -19,6 +19,7 @@ import (
 const (
 	kvDBFileName       = "kv.db"
 	kvDataBucketName   = "data"
+	kvOwnersBucketName = "kv owners"
 	dnsRootBucketName  = "dns"
 	kvPluginBucketName = "plugin data"
 	secretsBucketName  = "secrets"
@@ -50,6 +51,12 @@ type bboltKVManager struct {
 	nextSub    uint64
 	changeSubs map[uint64]func()
 
+	// kvOwnerMu serializes owner lifecycle changes with writes through owned
+	// store handles. This prevents a late write from restoring an old owner name
+	// after a rename or recreating data after its owner was deleted.
+	kvOwnerMu   sync.RWMutex
+	kvOwnerRefs map[*bboltKVOwner]struct{}
+
 	dnsMu         sync.Mutex
 	dnsStores     map[string]*bboltDNSCacheStorage
 	dnsNextSub    uint64
@@ -74,6 +81,16 @@ type bboltKVStore struct {
 	path           []string
 	protectedDepth int
 	invalid        bool
+	invalidOwner   bool
+	owner          *bboltKVOwner
+	ownershipDepth int
+}
+
+// bboltKVOwner is shared by an owned store and all of its subtrees. Its fields
+// are protected by the manager's kvOwnerMu.
+type bboltKVOwner struct {
+	name   string
+	active bool
 }
 
 type bboltKVReader struct {
@@ -89,6 +106,8 @@ type bboltKVReadTx struct {
 type bboltKVWriteTx struct {
 	bboltKVReader
 	protectedDepth int
+	owner          string
+	ownershipDepth int
 }
 
 // bboltKVManagerOptions controls daemon-local persistence behavior that is not
@@ -139,6 +158,7 @@ func openKVManagerWithOptions(path string, options bboltKVManagerOptions) (*bbol
 		db:                        db,
 		disableDNSCacheExpiration: options.DisableDNSCacheExpiration,
 		changeSubs:                map[uint64]func(){},
+		kvOwnerRefs:               map[*bboltKVOwner]struct{}{},
 		dnsStores:                 map[string]*bboltDNSCacheStorage{},
 		dnsChangeSubs:             map[uint64]func(dnsCacheChange){},
 		immutableSecrets:          cloneImmutableSecrets(options.ImmutableSecrets),
@@ -178,6 +198,9 @@ func bboltDatabaseExists(path string) (bool, error) {
 func (m *bboltKVManager) initRootBuckets() error {
 	return mapBboltKVError(m.db.Update(func(tx *bbolt.Tx) error {
 		if _, err := tx.CreateBucketIfNotExists([]byte(kvDataBucketName)); err != nil {
+			return err
+		}
+		if _, err := tx.CreateBucketIfNotExists([]byte(kvOwnersBucketName)); err != nil {
 			return err
 		}
 		if _, err := tx.CreateBucketIfNotExists([]byte(dnsRootBucketName)); err != nil {
@@ -264,8 +287,30 @@ func (s *bboltKVStore) Subtree(path ...string) storage.KVStore {
 		path:           cloneKVPath(s.path),
 		protectedDepth: s.protectedDepth,
 		invalid:        s.invalid || !validKVPath(path),
+		invalidOwner:   s.invalidOwner,
+		owner:          s.owner,
+		ownershipDepth: s.ownershipDepth,
 	}
 	next.path = append(next.path, path...)
+	return next
+}
+
+func (s *bboltKVStore) OwnedBy(owner string) storage.KVStore {
+	next := &bboltKVStore{
+		manager:        s.manager,
+		path:           cloneKVPath(s.path),
+		protectedDepth: s.protectedDepth,
+		invalid:        s.invalid,
+		invalidOwner:   !validKVOwner(owner),
+		ownershipDepth: len(s.path),
+	}
+	if next.invalidOwner {
+		return next
+	}
+	next.owner = &bboltKVOwner{name: owner, active: true}
+	s.manager.kvOwnerMu.Lock()
+	s.manager.kvOwnerRefs[next.owner] = struct{}{}
+	s.manager.kvOwnerMu.Unlock()
 	return next
 }
 
@@ -292,8 +337,20 @@ func (s *bboltKVStore) Update(ctx context.Context, fn func(storage.KVWriteTx) er
 	if s.invalid {
 		return storage.ErrKVInvalidName
 	}
+	if s.invalidOwner {
+		return storage.ErrKVInvalidOwner
+	}
 	if err := ctx.Err(); err != nil {
 		return err
+	}
+	owner := ""
+	if s.owner != nil {
+		s.manager.kvOwnerMu.RLock()
+		if !s.owner.active {
+			s.manager.kvOwnerMu.RUnlock()
+			return storage.ErrKVOwnerDeleted
+		}
+		owner = s.owner.name
 	}
 	golog.Debugf("KV storage: write access path=%q", s.path)
 	err := mapBboltKVError(s.manager.db.Update(func(tx *bbolt.Tx) error {
@@ -306,8 +363,13 @@ func (s *bboltKVStore) Update(ctx context.Context, fn func(storage.KVWriteTx) er
 				path: cloneKVPath(s.path),
 			},
 			protectedDepth: s.protectedDepth,
+			owner:          owner,
+			ownershipDepth: s.ownershipDepth,
 		})
 	}))
+	if s.owner != nil {
+		s.manager.kvOwnerMu.RUnlock()
+	}
 	if err != nil {
 		return err
 	}
@@ -320,6 +382,16 @@ func (r *bboltKVReader) Exists() bool {
 		return false
 	}
 	return r.bucket() != nil
+}
+
+func (r *bboltKVReader) Owner() (string, error) {
+	if r.invalid {
+		return "", storage.ErrKVInvalidName
+	}
+	if r.bucket() == nil {
+		return "", nil
+	}
+	return bboltKVOwnerAt(r.tx, kvOwnershipBucket, r.path)
 }
 
 func (r *bboltKVReader) Get(key string) (*storage.KValue, bool, error) {
@@ -335,6 +407,10 @@ func (r *bboltKVReader) Get(key string) (*storage.KValue, bool, error) {
 		return nil, false, nil
 	}
 	value, err := decodeBboltKValue(raw)
+	if err != nil {
+		return nil, false, err
+	}
+	value.Owner, err = bboltKVOwnerAt(r.tx, kvOwnershipValue, appendKVPath(r.path, key))
 	if err != nil {
 		return nil, false, err
 	}
@@ -354,6 +430,10 @@ func (r *bboltKVReader) ForEachValue(fn func(key string, value storage.KValue) e
 			return nil
 		}
 		value, err := decodeBboltKValue(v)
+		if err != nil {
+			return err
+		}
+		value.Owner, err = bboltKVOwnerAt(r.tx, kvOwnershipValue, appendKVPath(r.path, string(k)))
 		if err != nil {
 			return err
 		}
@@ -392,6 +472,8 @@ func (w *bboltKVWriteTx) Subtree(path ...string) storage.KVWriteTx {
 			invalid: w.invalid || !validKVPath(path),
 		},
 		protectedDepth: w.protectedDepth,
+		owner:          w.owner,
+		ownershipDepth: w.ownershipDepth,
 	}
 	next.path = append(next.path, path...)
 	return next
@@ -402,7 +484,10 @@ func (w *bboltKVWriteTx) Ensure() error {
 		return storage.ErrKVInvalidName
 	}
 	_, err := ensureBboltBucket(w.tx, w.path)
-	return mapBboltKVError(err)
+	if err != nil {
+		return mapBboltKVError(err)
+	}
+	return mapBboltKVError(w.claimSubtrees())
 }
 
 func (w *bboltKVWriteTx) Set(key string, value storage.KValue) error {
@@ -417,7 +502,16 @@ func (w *bboltKVWriteTx) Set(key string, value storage.KValue) error {
 	if err != nil {
 		return mapBboltKVError(err)
 	}
-	return mapBboltKVError(bucket.Put([]byte(key), data))
+	if err := w.claimSubtrees(); err != nil {
+		return mapBboltKVError(err)
+	}
+	if err := bucket.Put([]byte(key), data); err != nil {
+		return mapBboltKVError(err)
+	}
+	if w.owner == "" {
+		return nil
+	}
+	return mapBboltKVError(putBboltKVOwner(w.tx, kvOwnershipValue, appendKVPath(w.path, key), w.owner))
 }
 
 func (w *bboltKVWriteTx) Delete(key string) error {
@@ -425,10 +519,15 @@ func (w *bboltKVWriteTx) Delete(key string) error {
 		return storage.ErrKVInvalidName
 	}
 	bucket := w.bucket()
-	if bucket == nil || bucket.Bucket([]byte(key)) != nil {
+	if bucket != nil && bucket.Bucket([]byte(key)) != nil {
 		return nil
 	}
-	return mapBboltKVError(bucket.Delete([]byte(key)))
+	if bucket != nil {
+		if err := bucket.Delete([]byte(key)); err != nil {
+			return mapBboltKVError(err)
+		}
+	}
+	return mapBboltKVError(deleteBboltKVOwner(w.tx, kvOwnershipValue, appendKVPath(w.path, key)))
 }
 
 func (w *bboltKVWriteTx) Drop() error {
@@ -440,13 +539,29 @@ func (w *bboltKVWriteTx) Drop() error {
 	}
 	parent := bucketAtPath(w.tx, w.path[:len(w.path)-1])
 	if parent == nil {
-		return nil
+		return mapBboltKVError(deleteBboltKVOwnershipSubtree(w.tx, w.path))
 	}
 	err := parent.DeleteBucket([]byte(w.path[len(w.path)-1]))
 	if errors.Is(err, bberrors.ErrBucketNotFound) {
+		return mapBboltKVError(deleteBboltKVOwnershipSubtree(w.tx, w.path))
+	}
+	if err != nil {
+		return mapBboltKVError(err)
+	}
+	return mapBboltKVError(deleteBboltKVOwnershipSubtree(w.tx, w.path))
+}
+
+func (w *bboltKVWriteTx) claimSubtrees() error {
+	if w.owner == "" {
 		return nil
 	}
-	return mapBboltKVError(err)
+	depth := max(w.ownershipDepth, w.protectedDepth+1)
+	for ; depth <= len(w.path); depth++ {
+		if err := putBboltKVOwner(w.tx, kvOwnershipBucket, w.path[:depth], w.owner); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (r *bboltKVReader) bucket() *bbolt.Bucket {
@@ -535,6 +650,13 @@ func validKVName(name string) bool {
 
 func cloneKVPath(path []string) []string {
 	return append([]string(nil), path...)
+}
+
+func appendKVPath(path []string, name string) []string {
+	out := make([]string, len(path)+1)
+	copy(out, path)
+	out[len(path)] = name
+	return out
 }
 
 func mapBboltKVError(err error) error {

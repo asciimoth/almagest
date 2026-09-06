@@ -257,11 +257,19 @@ type debugKVMemoryStore struct {
 	manager *debugKVMemoryManager
 	root    *debugKVMemoryRoot
 	path    []string
+	owner   string
 }
 
 func (s *debugKVMemoryStore) Subtree(path ...string) storage.KVStore {
 	next := *s
 	next.path = append(append([]string(nil), s.path...), path...)
+	return &next
+}
+
+func (s *debugKVMemoryStore) OwnedBy(owner string) storage.KVStore {
+	next := *s
+	next.path = append([]string(nil), s.path...)
+	next.owner = owner
 	return &next
 }
 
@@ -271,7 +279,7 @@ func (s *debugKVMemoryStore) View(ctx context.Context, fn func(storage.KVReadTx)
 	}
 	s.manager.mu.Lock()
 	defer s.manager.mu.Unlock()
-	return fn(debugKVMemoryReadTx{root: s.root, path: append([]string(nil), s.path...)})
+	return fn(debugKVMemoryReadTx{root: s.root, path: append([]string(nil), s.path...), owner: s.owner})
 }
 
 func (s *debugKVMemoryStore) Update(ctx context.Context, fn func(storage.KVWriteTx) error) error {
@@ -280,7 +288,7 @@ func (s *debugKVMemoryStore) Update(ctx context.Context, fn func(storage.KVWrite
 	}
 	s.manager.mu.Lock()
 	defer s.manager.mu.Unlock()
-	return fn(debugKVMemoryWriteTx{debugKVMemoryReadTx{root: s.root, path: append([]string(nil), s.path...)}})
+	return fn(debugKVMemoryWriteTx{debugKVMemoryReadTx{root: s.root, path: append([]string(nil), s.path...), owner: s.owner}})
 }
 
 func (s *debugKVMemoryStore) value(path []string, key string) (storage.KValue, bool) {
@@ -297,11 +305,13 @@ func (s *debugKVMemoryStore) put(path []string, key string, value storage.KValue
 }
 
 type debugKVMemoryReadTx struct {
-	root *debugKVMemoryRoot
-	path []string
+	root  *debugKVMemoryRoot
+	path  []string
+	owner string
 }
 
-func (tx debugKVMemoryReadTx) Exists() bool { return tx.root.exists[debugKVMemoryPath(tx.path)] }
+func (tx debugKVMemoryReadTx) Exists() bool           { return tx.root.exists[debugKVMemoryPath(tx.path)] }
+func (tx debugKVMemoryReadTx) Owner() (string, error) { return tx.owner, nil }
 
 func (tx debugKVMemoryReadTx) Get(key string) (*storage.KValue, bool, error) {
 	if key == "" {
@@ -376,6 +386,7 @@ func (tx debugKVMemoryWriteTx) Set(key string, value storage.KValue) error {
 	if key == "" {
 		return storage.ErrKVInvalidName
 	}
+	value.Owner = tx.owner
 	debugKVMemorySet(tx.root, tx.path, key, value)
 	return nil
 }

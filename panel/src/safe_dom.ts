@@ -230,15 +230,16 @@ export function createTLSPolicyTitle(entry: TLSPolicyEntry): HTMLElement {
 }
 
 export function formatKVEntryMeta(entry: KVEntryInfo): string {
-  if (entry.kind === "bucket") return "subtree";
-  const parts = [entry.string ? "text" : "bytes", formatKVByteSize(entry.size)];
+  const parts = entry.kind === "bucket" ? ["subtree"] : [entry.string ? "text" : "bytes", formatKVByteSize(entry.size)];
   if (entry.hidden) parts.push("hidden");
+  if (entry.owner) parts.push(`owned by ${entry.owner}`);
   return parts.join(" · ");
 }
 
 export function formatKVValueMeta(value: KVValue): string {
   const parts = [value.string ? "text" : "bytes", formatKVByteSize(value.size)];
   if (value.hidden) parts.push("hidden");
+  if (value.owner) parts.push(`owned by ${value.owner}`);
   return parts.join(" · ");
 }
 

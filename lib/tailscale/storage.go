@@ -30,7 +30,9 @@ func validTailscaleStorageID(value string) bool {
 	return err == nil && len(decoded) == sha256.Size
 }
 
-func tailscaleNodeStore(manager storage.KVManager, storageID string) storage.KVStore {
+// tailscaleNodeStore returns the private persistent subtree owned by nodeName.
+// The storage ID fixes the path while ownership continues to follow renames.
+func tailscaleNodeStore(manager storage.KVManager, storageID, nodeName string) storage.KVStore {
 	if manager == nil || !validTailscaleStorageID(storageID) {
 		return nil
 	}
@@ -38,7 +40,7 @@ func tailscaleNodeStore(manager storage.KVManager, storageID string) storage.KVS
 	if root == nil {
 		return nil
 	}
-	return root.Subtree("nodes", "tailscale", storageID)
+	return root.Subtree("nodes", "tailscale", storageID).OwnedBy(nodeName)
 }
 
 // tailscaleCache preserves one client identity across client rebuilds. KV is

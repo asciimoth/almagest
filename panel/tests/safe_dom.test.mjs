@@ -164,13 +164,14 @@ test("KV store and entry labels keep plugin and key payloads as text", () => {
   const root = document.createElement("div");
   root.append(
     createKVStoreTitle({ kind: "plugin", name: payload }),
-    createKVEntryTitle({ kind: "bucket", name: payload }),
-    createKVEntryTitle({ kind: "value", name: payload, size: 12, string: true, hidden: true }),
+    createKVEntryTitle({ kind: "bucket", name: payload, owner: payload }),
+    createKVEntryTitle({ kind: "value", name: payload, size: 12, string: true, hidden: true, owner: payload }),
   );
 
   assertNoParsedPayload(root);
   assert.match(root.textContent ?? "", /<script>/);
   assert.match(root.textContent ?? "", /hidden/);
+  assert.match(root.textContent ?? "", /owned by/);
 });
 
 test("KV value preview renders text safely and covers hidden text", () => {

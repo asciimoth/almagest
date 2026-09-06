@@ -11,7 +11,8 @@ import (
 
 func TestTailscaleCachePersistsHiddenCopies(t *testing.T) {
 	store := &tailscaleCacheTestStore{}
-	cache := &tailscaleCache{store: store}
+	manager := tailscaleCacheTestManager{store: store}
+	cache := &tailscaleCache{store: tailscaleNodeStore(manager, tailscaleStorageID("Tailscale"), "Tailscale")}
 	want := []byte("private client identity")
 	input := bytes.Clone(want)
 	if err := cache.storeValue(context.Background(), input); err != nil {
@@ -34,13 +35,22 @@ func TestTailscaleCachePersistsHiddenCopies(t *testing.T) {
 
 	if err := store.View(context.Background(), func(tx storage.KVReadTx) error {
 		value, found, getErr := tx.Get(tailscaleCacheKey)
-		if getErr != nil || !found || !value.Hidden || value.String {
+		if getErr != nil || !found || !value.Hidden || value.String || value.Owner != "Tailscale" {
 			t.Fatalf("stored cache = %#v, found=%t, err=%v", value, found, getErr)
 		}
 		return nil
 	}); err != nil {
 		t.Fatalf("inspect cache: %v", err)
 	}
+}
+
+type tailscaleCacheTestManager struct {
+	store *tailscaleCacheTestStore
+}
+
+func (m tailscaleCacheTestManager) DefaultStore() storage.KVStore { return m.store }
+func (m tailscaleCacheTestManager) PluginStore(string) storage.KVStore {
+	return nil
 }
 
 func TestTailscaleCacheTreatsStoredEmptyValueAsAuthoritative(t *testing.T) {
@@ -63,9 +73,14 @@ func TestTailscaleCacheTreatsStoredEmptyValueAsAuthoritative(t *testing.T) {
 type tailscaleCacheTestStore struct {
 	mu     sync.Mutex
 	values map[string]storage.KValue
+	owner  string
 }
 
 func (s *tailscaleCacheTestStore) Subtree(...string) storage.KVStore { return s }
+func (s *tailscaleCacheTestStore) OwnedBy(owner string) storage.KVStore {
+	s.owner = owner
+	return s
+}
 
 func (s *tailscaleCacheTestStore) View(ctx context.Context, fn func(storage.KVReadTx) error) error {
 	if err := ctx.Err(); err != nil {
@@ -89,7 +104,8 @@ type tailscaleCacheTestReadTx struct {
 	store *tailscaleCacheTestStore
 }
 
-func (tx tailscaleCacheTestReadTx) Exists() bool { return true }
+func (tx tailscaleCacheTestReadTx) Exists() bool           { return true }
+func (tx tailscaleCacheTestReadTx) Owner() (string, error) { return tx.store.owner, nil }
 
 func (tx tailscaleCacheTestReadTx) Get(key string) (*storage.KValue, bool, error) {
 	value, found := tx.store.values[key]
@@ -112,7 +128,8 @@ type tailscaleCacheTestWriteTx struct {
 	store *tailscaleCacheTestStore
 }
 
-func (tx tailscaleCacheTestWriteTx) Exists() bool { return true }
+func (tx tailscaleCacheTestWriteTx) Exists() bool           { return true }
+func (tx tailscaleCacheTestWriteTx) Owner() (string, error) { return tx.store.owner, nil }
 
 func (tx tailscaleCacheTestWriteTx) Get(key string) (*storage.KValue, bool, error) {
 	return tailscaleCacheTestReadTx(tx).Get(key)
@@ -132,6 +149,7 @@ func (tx tailscaleCacheTestWriteTx) Set(key string, value storage.KValue) error 
 	if tx.store.values == nil {
 		tx.store.values = make(map[string]storage.KValue)
 	}
+	value.Owner = tx.store.owner
 	tx.store.values[key] = value.Clone()
 	return nil
 }

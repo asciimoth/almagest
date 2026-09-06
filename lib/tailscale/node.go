@@ -209,7 +209,7 @@ func (n *tailscaleNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint6
 	if !validTailscaleStorageID(n.config.storageID) {
 		n.config.storageID = tailscaleStorageID(n.nodeName)
 	}
-	n.cache = &tailscaleCache{store: tailscaleNodeStore(n.kv, n.config.storageID)}
+	n.cache = &tailscaleCache{store: tailscaleNodeStore(n.kv, n.config.storageID, n.nodeName)}
 	n.dnsp = nodekit.RestoredLeft(restored, 0)
 	n.ctrlp = nodekit.RestoredRight(restored, 0)
 	n.netp = nodekit.RestoredRight(restored, 1)

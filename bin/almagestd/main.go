@@ -138,6 +138,10 @@ func main() {
 	}
 	defer kv.Close() //nolint
 	golog.Infof("Using kv database at %s", filepath.Join(fsPath, kvDBFileName))
+	if err := kv.reconcileKVOwnerEntries(configuredNodeNameSet(conf.Main)); err != nil {
+		fatal("KV ownership cleanup", err)
+		return
+	}
 
 	// Prepare admin api here (start listener/create unix socket/etc)
 	admin, err := PrepareAdminAPI(conf)

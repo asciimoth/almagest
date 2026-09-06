@@ -197,6 +197,16 @@ func TestConfiguredNodeNamesAreSorted(t *testing.T) {
 	if got, want := configuredNodeNames(cfg), []string{"alpha", "zeta"}; !slices.Equal(got, want) {
 		t.Fatalf("configured node names = %q, want %q", got, want)
 	}
+	set := configuredNodeNameSet(cfg)
+	if len(set) != 2 {
+		t.Fatalf("configured node name set = %#v, want alpha and zeta", set)
+	}
+	if _, ok := set["alpha"]; !ok {
+		t.Fatal("configured node name set does not contain alpha")
+	}
+	if _, ok := set["zeta"]; !ok {
+		t.Fatal("configured node name set does not contain zeta")
+	}
 }
 
 func firstGeneratedSecretInboxNodeName(t *testing.T) string {

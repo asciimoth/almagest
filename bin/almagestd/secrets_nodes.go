@@ -9,7 +9,8 @@ import (
 )
 
 type secretNodeNameSync struct {
-	manager   *bboltKVManager
+	secrets   *bboltKVManager
+	kv        *bboltKVManager
 	nodeNames *nodeNameIndex
 	logger    logging.Logger
 
@@ -17,15 +18,18 @@ type secretNodeNameSync struct {
 	nodes map[uint64]string
 }
 
-// startSecretNodeNameSync keeps secret allow lists keyed by the current
-// workspace node names. It observes engine notifications from almagestd without
-// adding secrets storage to lib.Engine.
+// startSecretNodeNameSync keeps all persisted node-name references keyed by
+// current workspace names. Secret allow lists are rewritten on rename and
+// cleared on delete. KV ownership is rewritten on rename, and owned entries are
+// deleted with their node. It observes daemon engine notifications without
+// adding backend-specific lifecycle methods to lib.Engine.
 func (a *AdminAPI) startSecretNodeNameSync(engine almagest.Engine, logger logging.Logger) uint64 {
-	if a == nil || (a.secrets == nil && a.nodeNames == nil) || engine == nil {
+	if a == nil || (a.secrets == nil && a.kv == nil && a.nodeNames == nil) || engine == nil {
 		return 0
 	}
 	syncer := &secretNodeNameSync{
-		manager:   a.secrets,
+		secrets:   a.secrets,
+		kv:        a.kv,
 		nodeNames: a.nodeNames,
 		logger:    logger,
 		nodes:     map[uint64]string{},
@@ -134,32 +138,47 @@ func (s *secretNodeNameSync) deleteNode(id uint64, fallbackName string) {
 }
 
 func (s *secretNodeNameSync) renameReferences(oldName, newName string) {
-	if s.manager == nil {
-		return
+	if s.secrets != nil {
+		if err := s.secrets.renameSecretNodeReferences(oldName, newName); err != nil && s.logger != nil {
+			s.logger.Errf("failed to rename secret node references %q -> %q: %v", oldName, newName, err)
+		}
 	}
-	if err := s.manager.renameSecretNodeReferences(oldName, newName); err != nil && s.logger != nil {
-		s.logger.Errf("failed to rename secret node references %q -> %q: %v", oldName, newName, err)
+	if s.kv != nil {
+		if err := s.kv.renameKVOwnerReferences(oldName, newName); err != nil && s.logger != nil {
+			s.logger.Errf("failed to rename KV owner %q -> %q: %v", oldName, newName, err)
+		}
 	}
 }
 
 func (s *secretNodeNameSync) deleteReferences(name string) {
-	if s.manager == nil {
-		return
+	if s.secrets != nil {
+		if err := s.secrets.deleteSecretNodeReferences(name); err != nil && s.logger != nil {
+			s.logger.Errf("failed to delete secret node references for %q: %v", name, err)
+		}
 	}
-	if err := s.manager.deleteSecretNodeReferences(name); err != nil && s.logger != nil {
-		s.logger.Errf("failed to delete secret node references for %q: %v", name, err)
+	if s.kv != nil {
+		if err := s.kv.deleteKVOwnerEntries(name); err != nil && s.logger != nil {
+			s.logger.Errf("failed to delete KV entries owned by %q: %v", name, err)
+		}
 	}
 }
 
 func (s *secretNodeNameSync) reconcileReferences(nodes map[uint64]string) {
-	if s.manager == nil {
+	if s.secrets == nil && s.kv == nil {
 		return
 	}
 	active := make(map[string]struct{}, len(nodes))
 	for _, name := range nodes {
 		active[name] = struct{}{}
 	}
-	if err := s.manager.reconcileSecretNodeReferences(active); err != nil && s.logger != nil {
-		s.logger.Errf("failed to reconcile secret node references: %v", err)
+	if s.secrets != nil {
+		if err := s.secrets.reconcileSecretNodeReferences(active); err != nil && s.logger != nil {
+			s.logger.Errf("failed to reconcile secret node references: %v", err)
+		}
+	}
+	if s.kv != nil {
+		if err := s.kv.reconcileKVOwnerEntries(active); err != nil && s.logger != nil {
+			s.logger.Errf("failed to reconcile KV owners: %v", err)
+		}
 	}
 }

@@ -15,6 +15,7 @@ export type KVEntryKind = "bucket" | "value";
 export type KVEntryInfo = {
   kind: KVEntryKind;
   name: string;
+  owner?: string;
   size?: number;
   hidden?: boolean;
   string?: boolean;
@@ -28,6 +29,7 @@ export type KVEntriesSnapshot = {
 export type KVValue = {
   data?: string;
   encoding?: string;
+  owner?: string;
   size?: number;
   hidden?: boolean;
   string?: boolean;

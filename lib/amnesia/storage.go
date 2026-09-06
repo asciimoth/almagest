@@ -13,7 +13,10 @@ import (
 
 const installationUUIDKey = "installation_uuid"
 
-func amnesiaNodeStore(manager storage.KVManager, storageID string) storage.KVStore {
+// amnesiaNodeStore returns the private persistent subtree owned by nodeName.
+// The stable storage ID keeps the path unchanged across a node rename, while
+// the storage manager updates the ownership metadata and this live handle.
+func amnesiaNodeStore(manager storage.KVManager, storageID, nodeName string) storage.KVStore {
 	if manager == nil {
 		return nil
 	}
@@ -21,7 +24,7 @@ func amnesiaNodeStore(manager storage.KVManager, storageID string) storage.KVSto
 	if store == nil {
 		return nil
 	}
-	return store.Subtree("nodes", "amnesia", storageID)
+	return store.Subtree("nodes", "amnesia", storageID).OwnedBy(nodeName)
 }
 
 // amnesiaStorageID gives an old config a stable KV namespace before its first

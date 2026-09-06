@@ -215,9 +215,14 @@ func (m *bboltKVManager) entriesSnapshot(ctx context.Context, selector api.KVSto
 			return nil
 		}
 		if err := tx.ForEachSubtree(func(name string) error {
+			owner, err := tx.Subtree(name).Owner()
+			if err != nil {
+				return err
+			}
 			snapshot.Entries = append(snapshot.Entries, api.KVEntryInfo{
-				Kind: api.KVEntryBucket,
-				Name: name,
+				Kind:  api.KVEntryBucket,
+				Name:  name,
+				Owner: owner,
 			})
 			return nil
 		}); err != nil {
@@ -227,6 +232,7 @@ func (m *bboltKVManager) entriesSnapshot(ctx context.Context, selector api.KVSto
 			snapshot.Entries = append(snapshot.Entries, api.KVEntryInfo{
 				Kind:   api.KVEntryValue,
 				Name:   key,
+				Owner:  value.Owner,
 				Size:   len(value.Data),
 				Hidden: value.Hidden,
 				String: value.String,
@@ -366,6 +372,7 @@ func kValueToAPI(value storage.KValue) (api.KVValue, error) {
 		return api.KVValue{
 			Data:     string(value.Data),
 			Encoding: "string",
+			Owner:    value.Owner,
 			Size:     len(value.Data),
 			Hidden:   value.Hidden,
 			String:   value.String,
@@ -374,6 +381,7 @@ func kValueToAPI(value storage.KValue) (api.KVValue, error) {
 	return api.KVValue{
 		Data:     base64.StdEncoding.EncodeToString(value.Data),
 		Encoding: "base64",
+		Owner:    value.Owner,
 		Size:     len(value.Data),
 		Hidden:   value.Hidden,
 		String:   value.String,

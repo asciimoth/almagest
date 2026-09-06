@@ -322,6 +322,73 @@ func TestSecretNodeNameSyncInitialSnapshotRemovesStaleAllowListNames(t *testing.
 	assertSecretAccess(t, manager, "mutable", "active", "value")
 }
 
+func TestNodeNameSyncRenamesAndDeletesOwnedKVEntries(t *testing.T) {
+	manager, err := openKVManager(filepath.Join(t.TempDir(), "kv.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer manager.Close() //nolint:errcheck
+
+	engine, err := almagest.BuildEngine(
+		context.Background(),
+		configer.NewMemory(nil),
+		logging.NewDebugLogFactory(16),
+		&sysnetdebug.System{},
+		nil,
+		nil, nil,
+		nil,
+		[]pasta.NodeClass{secretInboxNodeClass{}},
+		nil,
+		false,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer engine.Close() //nolint:errcheck
+	nodeID, err := engine.AddNode(almagest.MainWorkspace, "test/SecretInbox", "alpha")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	admin := &AdminAPI{kv: manager}
+	subID := admin.startSecretNodeNameSync(engine, nil)
+	if subID == 0 {
+		t.Fatal("node name sync subscription failed")
+	}
+	defer engine.UnsubscribeNotifications(subID)
+	owned := manager.DefaultStore().Subtree("node-state").OwnedBy("alpha")
+	if err := owned.Update(context.Background(), func(tx storage.KVWriteTx) error {
+		return tx.Set("value", storage.KValue{Data: []byte("state")})
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	engine.SetNodeName(almagest.MainWorkspace, nodeID, "beta")
+	if err := owned.View(context.Background(), func(tx storage.KVReadTx) error {
+		owner, err := tx.Owner()
+		if err != nil || owner != "beta" {
+			t.Fatalf("KV owner after rename = %q, err=%v; want beta", owner, err)
+		}
+		value, found, err := tx.Get("value")
+		if err != nil || !found || value.Owner != "beta" {
+			t.Fatalf("KV value after rename = %#v, found=%t, err=%v", value, found, err)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	engine.RemoveNode(almagest.MainWorkspace, nodeID)
+	if err := manager.DefaultStore().View(context.Background(), func(tx storage.KVReadTx) error {
+		if tx.Subtree("node-state").Exists() {
+			t.Fatal("owned KV subtree exists after node deletion")
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 type secretInboxNodeClass struct {
 	inbox chan storage.SecretValueChanged
 }

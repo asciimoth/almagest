@@ -72,6 +72,7 @@ const (
 type KVEntryInfo struct {
 	Kind   KVEntryKind `json:"kind"`
 	Name   string      `json:"name"`
+	Owner  string      `json:"owner,omitempty"`
 	Size   int         `json:"size,omitempty"`
 	Hidden bool        `json:"hidden,omitempty"`
 	String bool        `json:"string,omitempty"`
@@ -100,6 +101,7 @@ type KVEntriesEvent struct {
 type KVValue struct {
 	Data     string `json:"data,omitempty"`
 	Encoding string `json:"encoding,omitempty"`
+	Owner    string `json:"owner,omitempty"`
 	Size     int    `json:"size,omitempty"`
 	Hidden   bool   `json:"hidden,omitempty"`
 	String   bool   `json:"string,omitempty"`

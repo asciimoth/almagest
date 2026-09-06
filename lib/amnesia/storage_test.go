@@ -64,7 +64,8 @@ func TestFreshAmnesiaNodesUseDistinctStorageIDs(t *testing.T) {
 }
 
 func TestAmnesiaInstallationUUIDAndProxyCacheUseKVStorage(t *testing.T) {
-	store := newAmnesiaMemoryKV()
+	manager := amnesiaStorageTestManager{store: newAmnesiaMemoryKV()}
+	store := amnesiaNodeStore(manager, amnesiaStorageID("Amnesia"), "Amnesia")
 	fallback := ""
 	uuid, persistent, err := loadOrCreateInstallationUUID(context.Background(), store, &fallback)
 	if err != nil {
@@ -79,7 +80,7 @@ func TestAmnesiaInstallationUUIDAndProxyCacheUseKVStorage(t *testing.T) {
 	}
 	if err := store.View(context.Background(), func(tx storage.KVReadTx) error {
 		value, found, getErr := tx.Get(installationUUIDKey)
-		if getErr != nil || !found || !value.Hidden || !value.String {
+		if getErr != nil || !found || !value.Hidden || !value.String || value.Owner != "Amnesia" {
 			t.Fatalf("stored UUID = %#v found=%t err=%v", value, found, getErr)
 		}
 		return nil
@@ -99,6 +100,24 @@ func TestAmnesiaInstallationUUIDAndProxyCacheUseKVStorage(t *testing.T) {
 	if _, found, err := cache.Load(context.Background(), "other key"); err != nil || found {
 		t.Fatalf("missing proxy cache found=%t err=%v", found, err)
 	}
+	if err := store.Subtree("proxy_cache").View(context.Background(), func(tx storage.KVReadTx) error {
+		value, found, getErr := tx.Get(proxyCacheStorageKey("secret cache key"))
+		if getErr != nil || !found || value.Owner != "Amnesia" {
+			t.Fatalf("stored proxy cache = %#v found=%t err=%v", value, found, getErr)
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("inspect proxy cache: %v", err)
+	}
+}
+
+type amnesiaStorageTestManager struct {
+	store *amnesiaMemoryKV
+}
+
+func (m amnesiaStorageTestManager) DefaultStore() storage.KVStore { return m.store }
+func (m amnesiaStorageTestManager) PluginStore(name string) storage.KVStore {
+	return m.store.Subtree("plugins", name)
 }
 
 func TestAmnesiaInstallationUUIDHasStableEphemeralFallback(t *testing.T) {
@@ -132,6 +151,7 @@ func TestAmnesiaStorageIDIsStableForNodeName(t *testing.T) {
 type amnesiaMemoryKV struct {
 	shared *amnesiaMemoryKVData
 	path   []string
+	owner  string
 }
 
 type amnesiaMemoryKVData struct {
@@ -144,7 +164,11 @@ func newAmnesiaMemoryKV() *amnesiaMemoryKV {
 }
 
 func (s *amnesiaMemoryKV) Subtree(path ...string) storage.KVStore {
-	return &amnesiaMemoryKV{shared: s.shared, path: append(append([]string(nil), s.path...), path...)}
+	return &amnesiaMemoryKV{shared: s.shared, path: append(append([]string(nil), s.path...), path...), owner: s.owner}
+}
+
+func (s *amnesiaMemoryKV) OwnedBy(owner string) storage.KVStore {
+	return &amnesiaMemoryKV{shared: s.shared, path: append([]string(nil), s.path...), owner: owner}
 }
 
 func (s *amnesiaMemoryKV) View(ctx context.Context, fn func(storage.KVReadTx) error) error {
@@ -173,7 +197,8 @@ type amnesiaMemoryKVReadTx struct {
 	store *amnesiaMemoryKV
 }
 
-func (tx amnesiaMemoryKVReadTx) Exists() bool { return true }
+func (tx amnesiaMemoryKVReadTx) Exists() bool           { return true }
+func (tx amnesiaMemoryKVReadTx) Owner() (string, error) { return tx.store.owner, nil }
 
 func (tx amnesiaMemoryKVReadTx) Get(key string) (*storage.KValue, bool, error) {
 	return amnesiaMemoryGet(tx.store, key)
@@ -186,7 +211,8 @@ func (tx amnesiaMemoryKVReadTx) Subtree(path ...string) storage.KVReadTx {
 	return amnesiaMemoryKVReadTx{store: tx.store.Subtree(path...).(*amnesiaMemoryKV)}
 }
 
-func (tx amnesiaMemoryKVTx) Exists() bool { return true }
+func (tx amnesiaMemoryKVTx) Exists() bool           { return true }
+func (tx amnesiaMemoryKVTx) Owner() (string, error) { return tx.store.owner, nil }
 
 func (tx amnesiaMemoryKVTx) Get(key string) (*storage.KValue, bool, error) {
 	return amnesiaMemoryGet(tx.store, key)
@@ -211,6 +237,7 @@ func (tx amnesiaMemoryKVTx) Subtree(path ...string) storage.KVWriteTx {
 func (amnesiaMemoryKVTx) Ensure() error { return nil }
 
 func (tx amnesiaMemoryKVTx) Set(key string, value storage.KValue) error {
+	value.Owner = tx.store.owner
 	tx.store.shared.values[tx.key(key)] = value.Clone()
 	return nil
 }

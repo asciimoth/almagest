@@ -227,7 +227,7 @@ func (n *amnesiaNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64,
 	}
 	n.ctrlp = nodekit.RestoredRight(restored, 0)
 	n.netp = nodekit.RestoredRight(restored, 1)
-	n.nodeStore = amnesiaNodeStore(n.kv, n.config.storageID)
+	n.nodeStore = amnesiaNodeStore(n.kv, n.config.storageID, n.nodeName)
 	n.refreshTLSConfig()
 	n.logDebugf(
 		"Amnesia initialized: node=%d name=%q restored=%t storage_id=%s enabled=%t connection_secret_configured=%t country=%q connect_event=%t tls_configured=%t custom_gateway=%t gateway_public_key_configured=%t",

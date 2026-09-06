@@ -43,6 +43,7 @@
             gotidy = {
               enable = true;
               description = "Makes sure go.mod matches the source code";
+              pass_filenames = false;
               entry = let script = pkgs.writeShellScript "gotidyhook" ''
                 just tidy
               ''; in builtins.toString script;
@@ -51,6 +52,7 @@
             golangtest = {
               enable = true;
               description = "go test ./... --race";
+              pass_filenames = false;
               entry = let script = pkgs.writeShellScript "gotesthook" ''
                 just test-go
               ''; in builtins.toString script;
@@ -59,6 +61,7 @@
             govulncheck = {
               enable = true;
               description = "Run govulncheck";
+              pass_filenames = false;
               entry = let script = pkgs.writeShellScript "govulncheckhook" ''
                 just vulncheck
               ''; in builtins.toString script;
