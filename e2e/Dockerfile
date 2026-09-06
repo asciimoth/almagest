@@ -11,6 +11,15 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 	&& go install -tags=e2e github.com/asciimoth/wgo/tests/amnesia/cmd/amnesia_e2e_tool@v0.7.0 \
 	&& mv /go/bin/amnesia_e2e_tool /usr/local/bin/amnesia-e2e-tool
 
+ARG GOST_COMMIT=91e12c44284163559e40cc142329409222cdd95e
+RUN --mount=type=cache,target=/go/pkg/mod \
+	--mount=type=cache,target=/root/.cache/go-build \
+	curl -fsSL --retry 5 --retry-all-errors \
+		"https://codeload.github.com/ginuerzh/gost/tar.gz/$GOST_COMMIT" \
+		-o /tmp/gost.tar.gz \
+	&& tar -xzf /tmp/gost.tar.gz -C /tmp \
+	&& go build -C "/tmp/gost-$GOST_COMMIT" -o /go/bin/gost ./cmd/gost
+
 ARG AMNEZIAWG_GO_COMMIT=b5928efb6ca19f0153958460c3d141f04abc5c2e
 RUN --mount=type=cache,target=/go/pkg/mod \
 	--mount=type=cache,target=/root/.cache/go-build \
@@ -51,8 +60,11 @@ FROM headscale/headscale:v0.29.3 AS headscale
 
 FROM debian:bookworm-slim
 
+ARG E2E_SYSTEM_FLAVOR=direct
+ARG E2E_SOCKS_COMPAT=0
+ARG E2E_PACKET_ANALYZER=0
 RUN apt-get update \
-	&& apt-get install -y --no-install-recommends \
+	&& DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
 		bash \
 		ca-certificates \
 		curl \
@@ -71,6 +83,28 @@ RUN apt-get update \
 		util-linux \
 		wireguard-tools \
 		wget \
+	&& if [ "$E2E_SOCKS_COMPAT" = "1" ]; then \
+		DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends tor; \
+	fi \
+	&& if [ "$E2E_PACKET_ANALYZER" = "1" ]; then \
+		DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends tcpdump tshark; \
+	fi \
+	&& case "$E2E_SYSTEM_FLAVOR" in \
+		direct) ;; \
+		debian-resolvconf) \
+			DEBIAN_FRONTEND=noninteractive apt-get install -y --download-only --no-install-recommends resolvconf; \
+			dpkg --unpack /var/cache/apt/archives/resolvconf_*.deb; \
+			sed -i 's@^[[:space:]]*ln -nsf .* /etc/resolv.conf@        true # Docker e2e keeps /etc/resolv.conf as a writable file@' /var/lib/dpkg/info/resolvconf.postinst; \
+			dpkg --configure resolvconf; \
+			;; \
+		openresolv) \
+			DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends openresolv; \
+			;; \
+		systemd-resolved) \
+			DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends dbus systemd systemd-resolved; \
+			;; \
+		*) printf 'unknown E2E_SYSTEM_FLAVOR=%s\n' "$E2E_SYSTEM_FLAVOR" >&2; exit 2 ;; \
+	esac \
 	&& rm -rf /var/lib/apt/lists/* \
 	&& chmod 0755 /
 
@@ -78,6 +112,7 @@ COPY --from=build /usr/local/bin/almagestd /usr/local/bin/almagestd
 COPY --from=build /usr/local/bin/almagest-cli /usr/local/bin/almagest-cli
 COPY --from=build /go/bin/killswitch /usr/local/bin/killswitch
 COPY --from=build /go/bin/killswitch-cli /usr/local/bin/killswitch-cli
+COPY --from=build /go/bin/gost /usr/local/bin/gost
 COPY --from=build /usr/local/bin/amneziawg-go /usr/local/bin/amneziawg-go
 COPY --from=build /usr/local/bin/amnesia-e2e-tool /usr/local/bin/amnesia-e2e-tool
 COPY --from=build /usr/local/share/amneziawg-go.commit /usr/local/share/amneziawg-go.commit

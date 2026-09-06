@@ -18,6 +18,8 @@ declare -A daemon_logs=(
 )
 
 client_menu="/tmp/e2e-wireguard-amnezia-client-menu.json"
+capture_file="$E2E_RUNTIME/wireguard-outer-traffic.pcapng"
+capture_pid=""
 
 fail() {
 	log "FAILED: $*"
@@ -39,6 +41,7 @@ cli_daemon() {
 
 stop_daemons() {
 	trap - EXIT
+	stop_capture
 	for name in "${daemon_names[@]}"; do
 		local pid="${daemon_pids[$name]:-}"
 		if [[ -z "$pid" ]]; then
@@ -58,6 +61,52 @@ stop_daemons() {
 		wait "$pid" 2>/dev/null || true
 		daemon_pids[$name]=""
 	done
+}
+
+stop_capture() {
+	if [[ -z "${capture_pid:-}" ]]; then
+		return
+	fi
+	if kill -0 "$capture_pid" 2>/dev/null; then
+		kill -INT "$capture_pid" 2>/dev/null || true
+	fi
+	wait "$capture_pid" 2>/dev/null || true
+	capture_pid=""
+}
+
+capture_report() {
+	local port="$1"
+	local report="$2"
+	tshark -n -r "$capture_file" -Y "udp.port == $port" -T fields -e udp.payload \
+		| awk '
+			BEGIN { total=0; initiation=0; response=0; cookie=0; transport=0 }
+			{
+				payload=$0
+				gsub(":", "", payload)
+				if (payload == "") next
+				total++
+				payload_len=length(payload)/2
+				prefix=substr(payload, 1, 8)
+				if (prefix == "01000000" && payload_len == 148) initiation++
+				else if (prefix == "02000000" && payload_len == 92) response++
+				else if (prefix == "03000000" && payload_len == 64) cookie++
+				else if (prefix == "04000000" && payload_len >= 32) transport++
+			}
+			END {
+				printf "packet_count=%d\n", total
+				printf "initiation_packets=%d\n", initiation
+				printf "response_packets=%d\n", response
+				printf "cookie_packets=%d\n", cookie
+				printf "transport_packets=%d\n", transport
+				printf "wireguard_signature_packets=%d\n", initiation+response+cookie+transport
+			}
+		' >"$report"
+}
+
+report_value() {
+	local report="$1"
+	local key="$2"
+	awk -F= -v key="$key" '$1 == key { print $2 }' "$report"
 }
 
 start_daemon_named() {
@@ -210,6 +259,13 @@ assert_client_request_works() {
 	fail "$description did not receive tunneled response; status=$status error=$err response=$response"
 }
 
+tcpdump -n -U -i lo -w "$capture_file" \
+	'(udp port 51830 or udp port 51831)' \
+	>"$E2E_RUNTIME/tcpdump.log" 2>&1 &
+capture_pid="$!"
+sleep 0.5
+kill -0 "$capture_pid" 2>/dev/null || fail "tcpdump did not start"
+
 for name in "${daemon_names[@]}"; do
 	start_daemon_named "$name"
 done
@@ -262,5 +318,23 @@ wait_node_label_daemon c "$http_client_c_to_b" "200 OK" \
 	|| fail "daemon c HTTP client to daemon b did not report 200 OK"
 wait_log_contains_daemon b "almagest/HttpServer" "GET /" \
 	|| fail "daemon b HTTP server did not log the AmneziaWG request"
+
+stop_capture
+plain_report="$E2E_RUNTIME/wireguard-signatures.txt"
+amnezia_report="$E2E_RUNTIME/amnezia-signatures.txt"
+capture_report 51830 "$plain_report"
+capture_report 51831 "$amnezia_report"
+
+plain_packets="$(report_value "$plain_report" packet_count)"
+plain_init="$(report_value "$plain_report" initiation_packets)"
+plain_response="$(report_value "$plain_report" response_packets)"
+plain_transport="$(report_value "$plain_report" transport_packets)"
+amnezia_packets="$(report_value "$amnezia_report" packet_count)"
+amnezia_signatures="$(report_value "$amnezia_report" wireguard_signature_packets)"
+
+((plain_packets > 0 && plain_init > 0 && plain_response > 0 && plain_transport > 0)) \
+	|| fail "plain peer capture does not contain all standard WireGuard signatures: $(cat "$plain_report")"
+((amnezia_packets > 0 && amnezia_signatures == 0)) \
+	|| fail "AmneziaWG capture exposed standard WireGuard signatures: $(cat "$amnezia_report")"
 
 log "case passed"

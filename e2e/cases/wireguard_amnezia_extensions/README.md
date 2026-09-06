@@ -32,3 +32,7 @@ clients.
 - Daemon C's HTTP client can access daemon B's AmneziaWG-obfuscated WireGuard
   HTTP server.
 - Both HTTP servers log a tunneled `GET /` request.
+- A loopback packet capture exposes the standard WireGuard initiation,
+  response, and transport signatures for daemon A.
+- The same capture exposes no standard WireGuard packet signatures for the
+  non-default AmneziaWG profile on daemon B.

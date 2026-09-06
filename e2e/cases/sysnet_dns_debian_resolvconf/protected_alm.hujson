@@ -1,0 +1,15 @@
+{
+	"Admin": {
+		"Web": 0,
+		"Unix": "%E2E_ADMIN_SOCK%",
+	},
+	"System": {
+		"Linux": {
+			"DNS": {
+				"Mode": "",
+				"FallbackServers": ["%E2E_DNS_UPSTREAM%:53"],
+			},
+		},
+	},
+}
+

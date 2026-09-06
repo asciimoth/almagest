@@ -23,8 +23,6 @@ if [[ "$coverage_enabled" == "1" ]]; then
 	echo "==> e2e coverage output: $coverage_dir"
 fi
 
-docker build "${build_args[@]}" -f e2e/Dockerfile -t "$image" .
-
 if (($# > 0)); then
 	cases=("$@")
 else
@@ -40,8 +38,23 @@ if ((${#cases[@]} == 0)); then
 	exit 1
 fi
 
+declare -A built_images=()
+
 for case_name in "${cases[@]}"; do
 	echo "==> e2e: $case_name"
+	case_image="$image"
+	case_build_args=("${build_args[@]}")
+	if [[ -f "e2e/cases/$case_name/docker-build-args" ]]; then
+		case_image="$image-$case_name"
+		while IFS= read -r build_arg; do
+			[[ -z "$build_arg" || "$build_arg" == \#* ]] && continue
+			case_build_args+=(--build-arg "$build_arg")
+		done <"e2e/cases/$case_name/docker-build-args"
+	fi
+	if [[ -z "${built_images[$case_image]:-}" ]]; then
+		docker build "${case_build_args[@]}" -f e2e/Dockerfile -t "$case_image" .
+		built_images[$case_image]=1
+	fi
 	docker_run_args=()
 	if [[ "$coverage_enabled" == "1" ]]; then
 		case_coverage_dir="$coverage_dir/raw/$case_name"
@@ -53,7 +66,7 @@ for case_name in "${cases[@]}"; do
 		)
 	fi
 	# shellcheck disable=SC2086
-	docker run --rm ${E2E_DOCKER_RUN_ARGS:-} "${docker_run_args[@]}" "$image" "$case_name"
+	docker run --rm ${E2E_DOCKER_RUN_ARGS:-} "${docker_run_args[@]}" "$case_image" "$case_name"
 done
 
 if [[ "$coverage_enabled" == "1" ]]; then

@@ -1,0 +1,36 @@
+{
+	"Logs": {
+		"Cache": {
+			"Debug": 2048,
+			"Info": 512,
+			"Warn": 256,
+			"Error": 128,
+			"Fatal": 32,
+		},
+	},
+	"nodes": {
+		"DefaultTun DNS Manager": {
+			"Class": "almagest/DefaultTun",
+			"Pos": "{\"x\":120,\"y\":320}",
+			"Links": ["DNS -> [DNS Manager Upstream] DNS"],
+			"tunAddrs": "",
+			"tunRoutes": "",
+			"mtu": 0,
+			"dnsIP": "",
+			"strict": false,
+			"exclude": [],
+			"include": [],
+		},
+		"DNS Manager Upstream": {
+			"Class": "almagest/DnsClient",
+			"Pos": "{\"x\":400,\"y\":320}",
+			"Links": ["Network -> [OutNetwork DNS Manager] Network"],
+			"servers": ["udp://%E2E_DNS_UPSTREAM%:53"],
+		},
+		"OutNetwork DNS Manager": {
+			"Class": "almagest/OutNetwork",
+			"Pos": "{\"x\":680,\"y\":320}",
+		},
+	},
+}
+
