@@ -103,8 +103,8 @@ Proxy/VPN protocols support
 - [ ] https://github.com/jpillora/chisel ?
 
 Services clients
-- [ ] tailscale
-- [ ] amnesia
+- [X] tailscale
+- [X] amnesia
 - [ ] netbird?
 - ngrok-like
     - [ ] Ngrok itself
