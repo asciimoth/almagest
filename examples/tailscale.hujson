@@ -1,0 +1,155 @@
+{
+	"nodes": {
+		"OutNetwork ZG": {"Class": "almagest/OutNetwork", "Pos": "{\"x\":806,\"y\":189}"},
+		"DnsQuery xP": {
+			"Class": "almagest/DnsQuery",
+			"Pos":   "{\"x\":44,\"y\":294}",
+			"Links": ["DNS -> [TailscaleCtrl eO] DNS"],
+			"name":  "nixos-moth-thinkpad.",
+			"type":  "A"
+		},
+		"HttpClient I2": {
+			"Class":     "almagest/HttpClient",
+			"Pos":       "{\"x\":188,\"y\":140}",
+			"Links":     ["Network -> [VTun BS] Network"],
+			"url":       "http://100.97.143.122",
+			"method":    "GET",
+			"body":      "",
+			"tlsConfig": ""
+		},
+		"VTun BS": {
+			"Class":          "almagest/VTun",
+			"Pos":            "{\"x\":423,\"y\":191}",
+			"Links":          ["Tun -> [WireGuard t0] Tun"],
+			"eventCh":        10,
+			"noLoopbackAddr": false,
+			"disableSACK":    false,
+			"name":           "vtun",
+			"localAddrs":     "",
+			"dnsServers":     "",
+			"mtu":            1500,
+			"endpointCh":     1024
+		},
+		"OutNetwork r6": {"Class": "almagest/OutNetwork", "Pos": "{\"x\":827,\"y\":424}"},
+		"VTun tQ": {
+			"Class":          "almagest/VTun",
+			"Pos":            "{\"x\":504,\"y\":457}",
+			"Links":          ["Tun -> [WireGuard NI] Tun"],
+			"eventCh":        10,
+			"noLoopbackAddr": false,
+			"disableSACK":    false,
+			"name":           "vtun",
+			"localAddrs":     "",
+			"dnsServers":     "",
+			"mtu":            1500,
+			"endpointCh":     1024
+		},
+		"DnsQuery Et": {
+			"Class": "almagest/DnsQuery",
+			"Pos":   "{\"x\":-3,\"y\":588}",
+			"Links": ["DNS -> [TailscaleCtrl mz] DNS"],
+			"type":  "A",
+			"name":  "nixos-moth-thinkpad."
+		},
+		"HttpServer SO": {
+			"Class":    "almagest/HttpServer",
+			"Pos":      "{\"x\":88,\"y\":426}",
+			"Links":    ["Network -> [NetworkFirewall kA] Network"],
+			"response": "",
+			"host":     "100.97.143.122",
+			"port":     80
+		},
+		"WireGuard t0": {
+			"Class":            "almagest/WireGuard",
+			"Pos":              "{\"x\":617,\"y\":242}",
+			"Links":            ["Network -> [OutNetwork ZG] Network"],
+			"dns":              "",
+			"amneziaWGEnabled": false,
+			"amneziaWG": {
+				"cookieHeader":      "3",
+				"cookiePadding":     0,
+				"initHeader":        "1",
+				"initPadding":       0,
+				"initiationPackets": ["", "", "", "", ""],
+				"junkCount":         0,
+				"junkMax":           0,
+				"junkMin":           0,
+				"responseHeader":    "2",
+				"responsePadding":   0,
+				"transportHeader":   "4",
+				"transportPadding":  0
+			},
+			"peers":            [],
+			"privateKeySecret": "secret-b9f5adffdcbcae60467d07826ab0759e",
+			"listenPort":       0,
+			"batchSize":        0,
+			"ownedIPs":         ""
+		},
+		"TailscaleCtrl eO": {
+			"Class":            "almagest/TailscaleCtrl",
+			"Pos":              "{\"x\":340,\"y\":297}",
+			"Links":            ["WireGuard -> [WireGuard t0] WGCtrl", "Network -> [OutNetwork ZG] Network"],
+			"controlURL":       "https://controlplane.tailscale.com",
+			"hostname":         "",
+			"disableDERP":      false,
+			"disableDiscovery": false,
+			"tlsConfig":        "",
+			"enabled":          true,
+			"authKeySecret":    "",
+			"ephemeral":        false,
+			"listenPort":       0,
+			"storageID":        "47ba5b37b0e06f02d47c8a29ab9421acd115bc692d0ccd9de5fb8415a09372fb"
+		},
+		"WireGuard NI": {
+			"Class": "almagest/WireGuard",
+			"Pos":   "{\"x\":665,\"y\":498}",
+			"Links": ["Network -> [OutNetwork r6] Network"],
+			"amneziaWG": {
+				"cookieHeader":      "3",
+				"cookiePadding":     0,
+				"initHeader":        "1",
+				"initPadding":       0,
+				"initiationPackets": ["", "", "", "", ""],
+				"junkCount":         0,
+				"junkMax":           0,
+				"junkMin":           0,
+				"responseHeader":    "2",
+				"responsePadding":   0,
+				"transportHeader":   "4",
+				"transportPadding":  0
+			},
+			"peers":            [],
+			"privateKeySecret": "secret-6381065c5e216facbc3d5ef0477d4c39",
+			"listenPort":       0,
+			"batchSize":        0,
+			"ownedIPs":         "",
+			"dns":              "",
+			"amneziaWGEnabled": false
+		},
+		"TailscaleCtrl mz": {
+			"Class": "almagest/TailscaleCtrl",
+			"Pos":   "{\"x\":171,\"y\":591}",
+			"Links": [
+				"WireGuard -> [WireGuard NI] WGCtrl",
+				"Network -> [OutNetwork r6] Network",
+				"Firewall -> [NetworkFirewall kA] Config"
+			],
+			"disableDERP":      false,
+			"storageID":        "b4969fd0d2e91e7d4490a38888b550c2e52865297048c43c950f69630b29e2f1",
+			"hostname":         "",
+			"authKeySecret":    "",
+			"ephemeral":        false,
+			"disableDiscovery": false,
+			"tlsConfig":        "",
+			"enabled":          true,
+			"controlURL":       "https://controlplane.tailscale.com",
+			"listenPort":       0
+		},
+		"NetworkFirewall kA": {
+			"Class": "almagest/NetworkFirewall",
+			"Pos":   "{\"x\":307,\"y\":458}",
+			"Links": ["Network -> [VTun tQ] Network"],
+			"rules": {}
+		}
+	}
+}
