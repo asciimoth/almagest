@@ -2,6 +2,7 @@ package socksnodes
 
 import (
 	_ "embed"
+	"strings"
 
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
@@ -194,8 +195,33 @@ func (n *socksServerNode) OnInbox(message pasta.InboxMessage) error {
 		if payload.id == n.restartID && n.worker == nil {
 			n.startWorkerIfReady(payload.id, nil)
 		}
+	case SecretValueChanged:
+		n.handlePasswordSecretChanged(payload)
 	}
 	return nil
+}
+
+// handlePasswordSecretChanged reloads each affected runtime password. A rename
+// also updates the persisted selector while an unavailable or deleted secret
+// leaves the inline password as the fallback.
+func (n *socksServerNode) handlePasswordSecretChanged(msg SecretValueChanged) {
+	relevant := false
+	prev := strings.TrimSpace(msg.SecretNamePrev)
+	next := strings.TrimSpace(msg.SecretNameNew)
+	for i := range n.config.users {
+		if !socksSecretChangeMatches(n.config.users[i].passwordSecret, msg) {
+			continue
+		}
+		relevant = true
+		if n.config.users[i].passwordSecret == prev && next != "" && next != prev {
+			n.config.users[i].passwordSecret = next
+		}
+	}
+	if !relevant {
+		return
+	}
+	n.sendConfigBlock()
+	n.restartWorker("password secret updated")
 }
 
 func (n *socksServerNode) OnFormularMsg(message any) error {

@@ -12,3 +12,8 @@ For plain SOCKS5 UDP ASSOCIATE, the server chooses the UDP relay port returned
 to the client; the protocol does not let a client reserve its own relay port.
 Use gost UDP tunnel support when a UDP application needs stable externally
 configured endpoint ports, such as WireGuard peers with fixed endpoints.
+
+Each username/password authentication entry can select an optional Password
+secret. When that secret is available to this node, its value replaces the
+inline password in the running SOCKS server. The inline password remains a
+fallback when the selected secret cannot be read.

@@ -25,9 +25,10 @@ type socksServerConfig struct {
 }
 
 type socksServerUser struct {
-	id       string
-	username string
-	password string
+	id             string
+	username       string
+	password       string
+	passwordSecret string
 }
 
 func defaultSocksServerConfig() socksServerConfig {
@@ -231,7 +232,9 @@ func socksServerUsersFromArray(values []formular.ArrayElementValue) []socksServe
 		}
 		username, _ := formular.StringValue(value.Values["username"])
 		password, _ := formular.StringValue(value.Values["password"])
+		passwordSecret, _ := formular.StringValue(value.Values["passwordSecret"])
 		username = strings.TrimSpace(username)
+		passwordSecret = strings.TrimSpace(passwordSecret)
 		if username == "" {
 			continue
 		}
@@ -243,7 +246,7 @@ func socksServerUsersFromArray(values []formular.ArrayElementValue) []socksServe
 			id = fmt.Sprintf("%s-%d", id, i+1)
 		}
 		seen[id] = struct{}{}
-		out = append(out, socksServerUser{id: id, username: username, password: password})
+		out = append(out, socksServerUser{id: id, username: username, password: password, passwordSecret: passwordSecret})
 	}
 	return out
 }
@@ -251,7 +254,12 @@ func socksServerUsersFromArray(values []formular.ArrayElementValue) []socksServe
 func socksServerUsersConfig(users []socksServerUser) []map[string]any {
 	out := make([]map[string]any, 0, len(users))
 	for _, user := range users {
-		out = append(out, map[string]any{"id": user.id, "username": user.username, "password": user.password})
+		out = append(out, map[string]any{
+			"id":             user.id,
+			"username":       user.username,
+			"password":       user.password,
+			"passwordSecret": user.passwordSecret,
+		})
 	}
 	return out
 }
@@ -285,10 +293,16 @@ func socksServerUserFromConfigMap(index int, value map[string]any) socksServerUs
 	id, _ := formular.StringValue(value["id"])
 	username, _ := formular.StringValue(value["username"])
 	password, _ := formular.StringValue(value["password"])
+	passwordSecret, _ := formular.StringValue(value["passwordSecret"])
 	if id == "" {
 		id = fmt.Sprintf("user-%d", index+1)
 	}
-	return socksServerUser{id: id, username: strings.TrimSpace(username), password: password}
+	return socksServerUser{
+		id:             id,
+		username:       strings.TrimSpace(username),
+		password:       password,
+		passwordSecret: strings.TrimSpace(passwordSecret),
+	}
 }
 
 func compactSocksServerUsers(users []socksServerUser) []socksServerUser {

@@ -11,6 +11,7 @@ import (
 	"github.com/asciimoth/pasta/pasta"
 	"github.com/asciimoth/pasta/pasta/std"
 	"github.com/asciimoth/socksgo"
+	"github.com/asciimoth/socksgo/protocol"
 )
 
 const (
@@ -19,6 +20,8 @@ const (
 
 	// DefaultSocksClientProxyURL is the default SOCKS proxy URL.
 	DefaultSocksClientProxyURL = "socks5://127.0.0.1:1080"
+
+	socksClientPasswordSecretFieldID = "passwordSecret"
 )
 
 type SocksClientClass struct {
@@ -28,7 +31,8 @@ type SocksClientClass struct {
 func (SocksClientClass) ClassName() string        { return NodeTypeSocksClient }
 func (SocksClientClass) ShortDescription() string { return "SOCKS client" }
 func (SocksClientClass) LongDescription() string {
-	return "Provides a network that proxies all operations through a SOCKS server reached over the out network."
+	return "Provides a network that proxies all operations through a SOCKS server reached over the out network. " +
+		"An optional Password secret replaces the password parsed from the proxy URL when the secret is available."
 }
 func (SocksClientClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: TypeNetwork, InitialPorts: []pasta.Port{
@@ -39,10 +43,11 @@ func (SocksClientClass) DefaultNodeParams() pasta.NodeClassParams {
 }
 func (c SocksClientClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
 	return &socksClientNode{
-		NodeBase:      NodeBase{Runtime: c.Runtime},
-		pool:          enginePool(c.Runtime),
-		proxyURL:      configer.String(cfg, configer.Path{"proxyURL"}, DefaultSocksClientProxyURL),
-		tlsConfigName: readNodeTLSConfigName(cfg),
+		NodeBase:       NodeBase{Runtime: c.Runtime},
+		pool:           enginePool(c.Runtime),
+		proxyURL:       configer.String(cfg, configer.Path{"proxyURL"}, DefaultSocksClientProxyURL),
+		passwordSecret: strings.TrimSpace(configer.String(cfg, configer.Path{socksClientPasswordSecretFieldID}, "")),
+		tlsConfigName:  readNodeTLSConfigName(cfg),
 	}, nil
 }
 
@@ -59,7 +64,10 @@ type socksClientNode struct {
 	client     *socksgo.Client
 	outputs    NetworkOutputCache
 	proxyURL   string
-	errText    string
+	// passwordSecret is persisted, but its value is read only into the
+	// short-lived socksgo client built from proxyURL.
+	passwordSecret string
+	errText        string
 
 	tlsConfigName      string
 	tlsConfig          *tls.Config
@@ -175,8 +183,11 @@ func (n *socksClientNode) OnEvent(event pasta.Event, linkType string, _ []string
 }
 
 func (n *socksClientNode) OnInbox(message pasta.InboxMessage) error {
-	if msg, ok := message.Payload.(TlsConfigChanged); ok {
+	switch msg := message.Payload.(type) {
+	case TlsConfigChanged:
 		n.handleTLSConfigChanged(msg)
+	case SecretValueChanged:
+		n.handlePasswordSecretChanged(msg)
 	}
 	return nil
 }
@@ -198,6 +209,13 @@ func (n *socksClientNode) OnFormularMsg(message any) error {
 			return nil
 		}
 		n.setProxyURL(value)
+	case socksClientPasswordSecretFieldID:
+		value, ok := formular.StringValue(msg.Value)
+		if !ok {
+			n.sendConfigBlock()
+			return nil
+		}
+		n.setPasswordSecret(value)
 	case nodeTLSConfigFieldID:
 		value, ok := nodeTLSConfigValueFromAny(msg.Value)
 		if !ok {
@@ -214,8 +232,9 @@ func (n *socksClientNode) OnSave(cfg configer.Config) error {
 		return err
 	}
 	return configer.SetMap(cfg, map[string]any{
-		"proxyURL":  n.proxyURL,
-		"tlsConfig": n.tlsConfigName,
+		"proxyURL":       n.proxyURL,
+		"passwordSecret": n.passwordSecret,
+		"tlsConfig":      n.tlsConfigName,
 	})
 }
 
@@ -246,6 +265,18 @@ func (n *socksClientNode) setTLSConfig(value string) {
 	n.sendAll()
 }
 
+func (n *socksClientNode) setPasswordSecret(value string) {
+	value = strings.TrimSpace(value)
+	if n.passwordSecret == value {
+		n.sendConfigBlock()
+		return
+	}
+	n.passwordSecret = value
+	n.rebuildClient()
+	n.sendConfigBlock()
+	n.sendAll()
+}
+
 func (n *socksClientNode) rebuildClient() {
 	n.outputs.CloseAll()
 	n.refreshTLSConfig()
@@ -256,9 +287,49 @@ func (n *socksClientNode) rebuildClient() {
 		_ = n.updateLabel()
 		return
 	}
+	n.overwriteClientPasswordFromSecret(client)
 	n.client = client
 	n.errText = ""
 	_ = n.updateLabel()
+}
+
+// overwriteClientPasswordFromSecret replaces only the password parsed from
+// the proxy URL. The URL must still define a username so socksgo creates the
+// RFC 1929 authentication method. If the selected secret is unavailable, the
+// URL password remains the runtime fallback.
+func (n *socksClientNode) overwriteClientPasswordFromSecret(client *socksgo.Client) {
+	password, ok := socksSecretValue(&n.NodeBase, n.passwordSecret)
+	if ok {
+		overwriteSocksClientPassword(client, password)
+	}
+}
+
+// overwriteSocksClientPassword updates the RFC 1929 method that socksgo
+// created from URL user information. It returns false when the URL did not
+// create username/password authentication.
+func overwriteSocksClientPassword(client *socksgo.Client, password string) bool {
+	if client == nil || client.Auth == nil {
+		return false
+	}
+	auth, ok := client.Auth.Get(protocol.PassAuthCode).(*protocol.PassAuthMethod)
+	if ok {
+		auth.Pass = password
+	}
+	return ok
+}
+
+func (n *socksClientNode) handlePasswordSecretChanged(msg SecretValueChanged) {
+	if !socksSecretChangeMatches(n.passwordSecret, msg) {
+		return
+	}
+	prev := strings.TrimSpace(msg.SecretNamePrev)
+	next := strings.TrimSpace(msg.SecretNameNew)
+	if n.passwordSecret == prev && next != "" && next != prev {
+		n.passwordSecret = next
+	}
+	n.rebuildClient()
+	n.sendConfigBlock()
+	n.sendAll()
 }
 
 func buildSocksGoClient(proxyURL string, outNetwork NetworkCloser, pool bufpool.Pool, tlsConfig *tls.Config, tlsConfigErr string) (*socksgo.Client, error) {
@@ -361,6 +432,7 @@ func (n *socksClientNode) configBlock() formular.Block {
 				Readonly: n.PortHasLinks(n.url),
 			},
 		},
+		configSecretNameField(socksClientPasswordSecretFieldID, "Password secret", n.passwordSecret),
 		nodeTLSConfigSelectorItem(&n.NodeBase, n.tlsConfigName, n.tlsConfigErr),
 	}
 	if n.errText != "" {

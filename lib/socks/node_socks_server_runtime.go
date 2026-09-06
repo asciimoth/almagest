@@ -138,11 +138,38 @@ func (n *socksServerNode) workerConfig() socksServerWorkerConfig {
 		proxy = n.proxyNetwork
 	}
 	return socksServerWorkerConfig{
-		config:        n.config,
+		config:        n.resolvedPasswordConfig(),
 		listenNetwork: n.listenNetwork,
 		proxyNetwork:  proxy,
 		pool:          enginePool(n.Runtime),
 	}
+}
+
+// resolvedPasswordConfig makes a worker-only config copy and overwrites each
+// inline password whose selected secret is available. The resolved value never
+// enters n.config and therefore cannot be saved or returned in a menu snapshot.
+func (n *socksServerNode) resolvedPasswordConfig() socksServerConfig {
+	return resolveSocksServerPasswordConfig(n.config, func(name string) (string, bool) {
+		return socksSecretValue(&n.NodeBase, name)
+	})
+}
+
+// resolveSocksServerPasswordConfig copies the user slice before it puts
+// resolved secrets into runtime password fields. Failed resolutions preserve
+// the corresponding inline fallback.
+func resolveSocksServerPasswordConfig(config socksServerConfig, resolve func(string) (string, bool)) socksServerConfig {
+	users := config.users
+	config.users = append([]socksServerUser(nil), users...)
+	for i := range config.users {
+		if resolve != nil {
+			password, ok := resolve(config.users[i].passwordSecret)
+			if !ok {
+				continue
+			}
+			config.users[i].password = password
+		}
+	}
+	return config
 }
 
 func (n *socksServerNode) startWorker(cfg socksServerWorkerConfig) {

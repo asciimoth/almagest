@@ -1,0 +1,49 @@
+{
+	"Logs": {
+		"Cache": {
+			"Debug": 512,
+			"Info": 128,
+			"Warn": 128,
+			"Error": 128,
+			"Fatal": 32,
+		},
+	},
+	"nodes": {
+		"SOCKS Server Secret": {
+			"Class": "almagest/SocksServer",
+			"Pos": "{\"x\":200,\"y\":180}",
+			"Links": [
+				"listen -> [OutNetwork SOCKS Listen] Network",
+				"proxy -> [OutNetwork SOCKS Proxy] Network",
+			],
+			"socksHost": "127.0.0.1",
+			"socksPort": 11097,
+			"wsHost": "",
+			"wsPort": 0,
+			"wsPath": "/socks",
+			"users": [{
+				"id": "alice",
+				"username": "alice",
+				"password": "wrong-inline-password",
+				"passwordSecret": "almagest-socks-password",
+			}],
+			"commands": {
+				"cmdBind": true,
+				"cmdConnect": true,
+				"cmdGostMuxBind": true,
+				"cmdGostUDPTun": true,
+				"cmdTorResolve": true,
+				"cmdTorResolvePtr": true,
+				"cmdUDPAssoc": true,
+			},
+		},
+		"OutNetwork SOCKS Listen": {
+			"Class": "almagest/OutNetwork",
+			"Pos": "{\"x\":600,\"y\":100}",
+		},
+		"OutNetwork SOCKS Proxy": {
+			"Class": "almagest/OutNetwork",
+			"Pos": "{\"x\":600,\"y\":260}",
+		},
+	},
+}

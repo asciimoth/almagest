@@ -9,9 +9,10 @@ import (
 
 // User is a SOCKS server user used by e2e test form helpers.
 type User struct {
-	ID       string
-	Username string
-	Password string
+	ID             string
+	Username       string
+	Password       string
+	PasswordSecret string
 }
 
 // ServerUserValues builds form values for SOCKS server users.
@@ -22,8 +23,9 @@ func ServerUserValues(users []User) []formular.ArrayElementValue {
 			ID:       user.ID,
 			Template: "user",
 			Values: map[string]any{
-				"username": user.Username,
-				"password": user.Password,
+				"username":       user.Username,
+				"password":       user.Password,
+				"passwordSecret": user.PasswordSecret,
 			},
 		})
 	}

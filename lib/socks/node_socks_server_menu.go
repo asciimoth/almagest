@@ -73,6 +73,7 @@ func socksServerUserTemplate() formular.ArrayTemplate {
 		Items: []formular.Item{
 			formular.TextField("username", "Username", ""),
 			formular.SecretTextField("password", "Password", ""),
+			configSecretNameField("passwordSecret", "Password secret", ""),
 		},
 	}
 }
@@ -81,7 +82,11 @@ func socksServerUserElements(users []socksServerUser) []formular.ArrayElement {
 	template := socksServerUserTemplate()
 	out := make([]formular.ArrayElement, 0, len(users))
 	for _, user := range users {
-		out = append(out, formular.InstantiateArrayTemplate(template, user.id, map[string]any{"username": user.username, "password": user.password}))
+		out = append(out, formular.InstantiateArrayTemplate(template, user.id, map[string]any{
+			"username":       user.username,
+			"password":       user.password,
+			"passwordSecret": user.passwordSecret,
+		}))
 	}
 	return out
 }

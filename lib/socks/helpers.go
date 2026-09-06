@@ -11,6 +11,7 @@ import (
 	"github.com/asciimoth/pasta/pasta"
 
 	"github.com/asciimoth/almagest/lib/nodekit"
+	"github.com/asciimoth/almagest/lib/storage"
 )
 
 const (
@@ -26,6 +27,7 @@ type NodeBase = nodekit.Base
 type Runtime = nodekit.Runtime
 type restartableWorker = nodekit.RestartableWorker
 type TlsConfigChanged = nodekit.TlsConfigChanged
+type SecretValueChanged = storage.SecretValueChanged
 type WorkerSpawner = nodekit.WorkerSpawner
 
 func NetworkPort(direction, name string) pasta.Port {
@@ -74,6 +76,10 @@ func sendNodeBlockSnapshot(w *pasta.Workspace, node uint64, block formular.Block
 
 func sendNodeFieldStatus(w *pasta.Workspace, node uint64, field formular.FieldRef, err error) {
 	nodekit.SendNodeFieldStatus(w, node, field, err)
+}
+
+func configSecretNameField(id, label, value string) formular.Item {
+	return nodekit.ConfigSecretNameField(id, label, value, false, "")
 }
 
 func appendCappedLog(logs *[]formular.LogLine, max int, level, text string) {

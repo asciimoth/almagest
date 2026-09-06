@@ -1,0 +1,12 @@
+{
+	"Admin": {
+		"Web": 0,
+		"Unix": "%E2E_ADMIN_SOCK%",
+	},
+	"Secrets": {
+		"external-socks-password": {
+			"Value": "micro-socks-secret",
+			"Nodes": ["SOCKS Client Secret"],
+		},
+	},
+}

@@ -1,0 +1,12 @@
+{
+	"Admin": {
+		"Web": 0,
+		"Unix": "%E2E_ADMIN_SOCK%",
+	},
+	"Secrets": {
+		"almagest-socks-password": {
+			"Value": "curl-socks-secret",
+			"Nodes": ["SOCKS Server Secret"],
+		},
+	},
+}

@@ -126,8 +126,9 @@ func TestParseSocksServerUsersKeepsAppliedRemoval(t *testing.T) {
 			ID:       "user-2",
 			Template: "user",
 			Values: map[string]any{
-				"username": "bob",
-				"password": "secret",
+				"username":       "bob",
+				"password":       "fallback",
+				"passwordSecret": "bob-password",
 			},
 		},
 	})
@@ -137,8 +138,42 @@ func TestParseSocksServerUsersKeepsAppliedRemoval(t *testing.T) {
 	if len(users) != 1 {
 		t.Fatalf("users = %#v, want one user", users)
 	}
-	if users[0] != (socksServerUser{id: "user-2", username: "bob", password: "secret"}) {
+	if users[0] != (socksServerUser{id: "user-2", username: "bob", password: "fallback", passwordSecret: "bob-password"}) {
 		t.Fatalf("users[0] = %#v, want bob", users[0])
+	}
+}
+
+func TestSocksServerUserMenuOffersPasswordSecretSelector(t *testing.T) {
+	template := socksServerUserTemplate()
+	if len(template.Items) != 3 {
+		t.Fatalf("user template items = %d, want 3", len(template.Items))
+	}
+	item := template.Items[2]
+	if item.ID != "passwordSecret" || item.Field == nil || item.Selector != nodekit.SecretNameSelector {
+		t.Fatalf("password secret menu item = %#v, want secret selector", item)
+	}
+}
+
+func TestResolveSocksServerPasswordConfigKeepsSecretsRuntimeOnly(t *testing.T) {
+	persisted := socksServerConfig{users: []socksServerUser{
+		{id: "alice", username: "alice", password: "inline-alice", passwordSecret: "alice-secret"},
+		{id: "bob", username: "bob", password: "inline-bob", passwordSecret: "missing-secret"},
+	}}
+	runtime := resolveSocksServerPasswordConfig(persisted, func(name string) (string, bool) {
+		if name == "alice-secret" {
+			return "secret-alice", true
+		}
+		return "", false
+	})
+
+	if runtime.users[0].password != "secret-alice" {
+		t.Fatalf("resolved Alice password = %q, want secret value", runtime.users[0].password)
+	}
+	if runtime.users[1].password != "inline-bob" {
+		t.Fatalf("resolved Bob password = %q, want inline fallback", runtime.users[1].password)
+	}
+	if persisted.users[0].password != "inline-alice" {
+		t.Fatalf("persisted Alice password = %q, want unchanged inline value", persisted.users[0].password)
 	}
 }
 

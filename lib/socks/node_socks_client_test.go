@@ -7,12 +7,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/asciimoth/almagest/lib/nodekit"
 	"github.com/asciimoth/almagest/lib/testkit"
 	"github.com/asciimoth/almagest/lib/testkit/networktest"
 	"github.com/asciimoth/formular"
 	"github.com/asciimoth/gonnect"
 	"github.com/asciimoth/pasta/pasta"
 	"github.com/asciimoth/socksgo"
+	"github.com/asciimoth/socksgo/protocol"
 )
 
 func TestBuildSocksGoClientUsesOutNetworkAndProxiesAllAddrs(t *testing.T) {
@@ -59,6 +61,43 @@ func TestBuildSocksGoClientReportsTLSConfigErrorOnlyForTLSProxy(t *testing.T) {
 	if _, err := buildSocksGoClient("socks5://proxy.example.test:1080", nil, nil, nil, "policy failed"); err != nil {
 		t.Fatalf("plain proxy error = %v, want nil", err)
 	}
+}
+
+func TestOverwriteSocksClientPasswordReplacesURLPassword(t *testing.T) {
+	client, err := buildSocksGoClient("socks5://alice:inline@proxy.example.test:1080", nil, nil, nil, "")
+	if err != nil {
+		t.Fatalf("buildSocksGoClient error = %v, want nil", err)
+	}
+	if !overwriteSocksClientPassword(client, "from-secret") {
+		t.Fatal("overwriteSocksClientPassword = false, want true")
+	}
+	auth, ok := client.Auth.Get(protocol.PassAuthCode).(*protocol.PassAuthMethod)
+	if !ok || auth.User != "alice" || auth.Pass != "from-secret" {
+		t.Fatalf("client auth = %#v, want alice with secret password", auth)
+	}
+
+	clientWithoutUser, err := buildSocksGoClient("socks5://proxy.example.test:1080", nil, nil, nil, "")
+	if err != nil {
+		t.Fatalf("buildSocksGoClient without user error = %v, want nil", err)
+	}
+	if overwriteSocksClientPassword(clientWithoutUser, "from-secret") {
+		t.Fatal("overwriteSocksClientPassword without URL user = true, want false")
+	}
+}
+
+func TestSocksClientMenuOffersPasswordSecretSelector(t *testing.T) {
+	node := &socksClientNode{proxyURL: DefaultSocksClientProxyURL, passwordSecret: "proxy-password"}
+	block := node.configBlock()
+	for _, item := range block.Items {
+		if item.ID != socksClientPasswordSecretFieldID {
+			continue
+		}
+		if item.Field == nil || item.Value != "proxy-password" || item.Selector != nodekit.SecretNameSelector {
+			t.Fatalf("password secret item = %#v, want selected secret selector", item)
+		}
+		return
+	}
+	t.Fatal("password secret menu item is missing")
 }
 
 func TestSocksClientHandlesTLSConfigChangedRename(t *testing.T) {

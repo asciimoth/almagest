@@ -61,6 +61,7 @@ RUN apt-get update \
 		iproute2 \
 		iputils-ping \
 		jq \
+		microsocks \
 		netcat-openbsd \
 		nftables \
 		openssl \

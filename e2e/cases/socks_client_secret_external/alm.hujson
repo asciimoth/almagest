@@ -1,0 +1,32 @@
+{
+	"Logs": {
+		"Cache": {
+			"Debug": 512,
+			"Info": 128,
+			"Warn": 128,
+			"Error": 128,
+			"Fatal": 32,
+		},
+	},
+	"nodes": {
+		"HTTP Client External SOCKS": {
+			"Class": "almagest/HttpClient",
+			"Pos": "{\"x\":100,\"y\":160}",
+			"Links": ["Network -> [SOCKS Client Secret] Network"],
+			"url": "http://127.0.0.1:18096/client-secret",
+			"method": "GET",
+			"body": "",
+		},
+		"SOCKS Client Secret": {
+			"Class": "almagest/SocksClient",
+			"Pos": "{\"x\":400,\"y\":160}",
+			"Links": ["out -> [OutNetwork External SOCKS] Network"],
+			"proxyURL": "socks5://alice:wrong-inline-password@127.0.0.1:11096",
+			"passwordSecret": "external-socks-password",
+		},
+		"OutNetwork External SOCKS": {
+			"Class": "almagest/OutNetwork",
+			"Pos": "{\"x\":700,\"y\":160}",
+		},
+	},
+}
