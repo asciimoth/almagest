@@ -4,12 +4,11 @@ import (
 	"errors"
 	"fmt"
 
-	conn "github.com/asciimoth/batchudp"
 	"github.com/asciimoth/gonnect/tun"
 	wgdevice "github.com/asciimoth/wgo/device"
 )
 
-func (n *wireGuardNode) ensureDeviceLocked() {
+func (n *wireGuardNode) ensureDeviceLocked(batchSize int) {
 	if n.dev != nil {
 		return
 	}
@@ -24,7 +23,7 @@ func (n *wireGuardNode) ensureDeviceLocked() {
 	// from a workspace callback would reintroduce the workspace -> runtimeMu ->
 	// wgo -> workspace cycle.
 	n.dev = wgdevice.NewDevice(nil, nil, logger, n.WorkerSpawner, wgdevice.DeviceOptions{
-		BatchSize: n.config.batchSize,
+		BatchSize: batchSize,
 	})
 	n.runtimeDeviceUp = false
 	n.runtimeStats = n.dev.RuntimeStats()
@@ -51,7 +50,7 @@ func (n *wireGuardNode) applyConfigToDeviceLocked(config wireGuardConfig, rebuil
 			return err
 		}
 	}
-	n.ensureDeviceLocked()
+	n.ensureDeviceLocked(config.batchSize)
 	deviceConfig, err := wireGuardDeviceConfig(config)
 	if err != nil {
 		return err
@@ -158,7 +157,7 @@ func (n *wireGuardNode) detachStaleTunLocked() error {
 	return nil
 }
 
-func (n *wireGuardNode) attachCurrentTun(tunGeneration uint64, t tun.Tun) (bool, bool, error) {
+func (n *wireGuardNode) attachCurrentTun(tunGeneration uint64, t tun.Tun, batchSize int) (bool, bool, error) {
 	n.runtimeMu.Lock()
 	defer n.runtimeMu.Unlock()
 	if tunGeneration != n.currentTunGenerationValue() {
@@ -176,7 +175,7 @@ func (n *wireGuardNode) attachCurrentTun(tunGeneration uint64, t tun.Tun) (bool,
 		needsConfigApply := n.currentBind != nil && (!n.runtimeDeviceUp || n.currentBindFailed)
 		return needsConfigApply, true, nil
 	}
-	n.ensureDeviceLocked()
+	n.ensureDeviceLocked(batchSize)
 	drainWireGuardTunEvents(t)
 	// A running device already has its current config and transport. Replacing
 	// only its TUN must not reapply device config or refresh the UDP bind.
@@ -220,7 +219,7 @@ func drainWireGuardTunEvents(t tun.Tun) {
 	}
 }
 
-func (n *wireGuardNode) attachNetworkPayload(networkGeneration uint64, network NetworkCloser) (bool, bool, bool, error) {
+func (n *wireGuardNode) attachNetworkPayload(networkGeneration uint64, network NetworkCloser, batchSize int) (bool, bool, bool, error) {
 	n.runtimeMu.Lock()
 	defer n.runtimeMu.Unlock()
 	if networkGeneration != n.currentNetworkGenerationValue() {
@@ -238,7 +237,7 @@ func (n *wireGuardNode) attachNetworkPayload(networkGeneration uint64, network N
 		if n.currentBind == nil || n.currentBindFailed {
 			// A same-source re-emit is also the recovery signal for a failed
 			// network bind; rebuild before config apply can clear the error.
-			retry, err := n.attachCurrentNetworkBindLocked()
+			retry, err := n.attachCurrentNetworkBindLocked(batchSize)
 			return n.hasActiveAttachmentsLocked(), true, retry, err
 		}
 		return n.hasActiveAttachmentsLocked(), true, false, nil
@@ -246,17 +245,17 @@ func (n *wireGuardNode) attachNetworkPayload(networkGeneration uint64, network N
 	n.currentNetwork = network
 	n.currentNetworkGeneration = networkGeneration
 	n.currentBindFailed = false
-	retry, err := n.attachCurrentNetworkBindLocked()
+	retry, err := n.attachCurrentNetworkBindLocked(batchSize)
 	return n.hasActiveAttachmentsLocked(), true, retry, err
 }
 
-func (n *wireGuardNode) attachCurrentNetworkBind(networkGeneration uint64) (bool, bool, bool, error) {
+func (n *wireGuardNode) attachCurrentNetworkBind(networkGeneration uint64, batchSize int) (bool, bool, bool, error) {
 	n.runtimeMu.Lock()
 	defer n.runtimeMu.Unlock()
 	if networkGeneration != n.currentNetworkGenerationValue() {
 		return false, false, false, nil
 	}
-	retry, err := n.attachCurrentNetworkBindLocked()
+	retry, err := n.attachCurrentNetworkBindLocked(batchSize)
 	return n.hasActiveAttachmentsLocked(), true, retry, err
 }
 
@@ -264,18 +263,12 @@ func (n *wireGuardNode) attachCurrentNetworkBind(networkGeneration uint64) (bool
 // current desired network. It intentionally leaves the device down when a TUN
 // is active; the following config-apply job is responsible for bringing the
 // device up with the latest workspace-owned config snapshot.
-func (n *wireGuardNode) attachCurrentNetworkBindLocked() (bool, error) {
+func (n *wireGuardNode) attachCurrentNetworkBindLocked(batchSize int) (bool, error) {
 	if !n.currentNetworkActiveLocked() {
 		return false, errors.New("network is detached")
 	}
-	n.ensureDeviceLocked()
-	networkBindOptions := conn.StdNetBindOptions{
-		BatchSize: n.config.batchSize,
-	}
-	if !n.currentNetwork.IsNative() {
-		networkBindOptions.AllowSingleFamily = true
-	}
-	networkBind := conn.NewDefaultBindWithOptions(n.currentNetwork, networkBindOptions)
+	n.ensureDeviceLocked(batchSize)
+	networkBind := newWireGuardNetworkBind(n.currentNetwork, batchSize)
 	activeTun := n.currentTunActiveLocked()
 	if activeTun {
 		if n.currentBind != nil {

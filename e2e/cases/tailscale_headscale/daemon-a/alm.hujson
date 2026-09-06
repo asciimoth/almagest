@@ -1,0 +1,63 @@
+{
+	"Logs": {
+		"Cache": {"Debug": 4096, "Info": 512, "Warn": 512, "Error": 512, "Fatal": 64},
+	},
+	"nodes": {
+		"Tailscale A": {
+			"Class": "almagest/TailscaleCtrl",
+			"Links": [
+				"WireGuard -> [WireGuard A] WGCtrl",
+				"Network -> [Control Network A] Network"
+			],
+			"enabled": true,
+			"controlURL": "https://headscale.e2e.internal:18090",
+			"tlsConfig": "headscale",
+			"hostname": "alpha",
+			"authKeySecret": "headscale-auth-key",
+			"listenPort": 41641,
+			"disableDERP": true
+		},
+		"WireGuard A": {
+			"Class": "almagest/WireGuard",
+			"Links": ["Network -> [UDP Network A] Network"],
+			"privateKeySecret": "wireguard-a-private-key",
+			"listenPort": 51820,
+			"ownedIPs": "",
+			"peers": []
+		},
+		"VTun A": {
+			"Class": "almagest/VTun",
+			"Links": ["Tun -> [WireGuard A] Tun"],
+			"name": "tailscale-a",
+			"localAddrs": "",
+			"dnsServers": "",
+			"mtu": 1280,
+			"endpointCh": 1024,
+			"eventCh": 10,
+			"noLoopbackAddr": false,
+			"disableSACK": false
+		},
+		"MagicDNS Query": {
+			"Class": "almagest/DnsQuery",
+			"Links": ["DNS -> [Tailscale A] DNS"],
+			"name": "beta.e2e.internal.",
+			"type": "A"
+		},
+		"MagicDNS Network A": {
+			"Class": "almagest/DnsInject",
+			"Links": [
+				"Network -> [VTun A] Network",
+				"DNS -> [Tailscale A] DNS"
+			]
+		},
+		"HTTP Client A": {
+			"Class": "almagest/HttpClient",
+			"Links": ["Network -> [MagicDNS Network A] Network"],
+			"url": "http://beta.e2e.internal:18080/",
+			"method": "GET",
+			"body": ""
+		},
+		"Control Network A": {"Class": "almagest/OutNetwork"},
+		"UDP Network A": {"Class": "almagest/OutNetwork"}
+	}
+}

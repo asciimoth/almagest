@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/asciimoth/almagest/lib/testkit"
+	conn "github.com/asciimoth/batchudp"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
 	"github.com/asciimoth/gonnect"
@@ -158,7 +159,7 @@ func TestWireGuardBatchSizeConfiguresDeviceAndBind(t *testing.T) {
 	node.config.normalize()
 
 	node.runtimeMu.Lock()
-	node.ensureDeviceLocked()
+	node.ensureDeviceLocked(node.config.batchSize)
 	if got := node.dev.BatchSize(); got != 3 {
 		node.runtimeMu.Unlock()
 		t.Fatalf("device BatchSize() = %d, want 3", got)
@@ -166,7 +167,7 @@ func TestWireGuardBatchSizeConfiguresDeviceAndBind(t *testing.T) {
 	node.currentNetwork = network
 	node.networkGeneration.Store(1)
 	node.currentNetworkGeneration = 1
-	if _, err := node.attachCurrentNetworkBindLocked(); err != nil {
+	if _, err := node.attachCurrentNetworkBindLocked(node.config.batchSize); err != nil {
 		node.runtimeMu.Unlock()
 		t.Fatalf("attachCurrentNetworkBindLocked: %v", err)
 	}
@@ -271,7 +272,7 @@ func TestWireGuardAppliesPeerAmneziaOverrideToDevice(t *testing.T) {
 	node.config.normalize()
 
 	node.runtimeMu.Lock()
-	node.ensureDeviceLocked()
+	node.ensureDeviceLocked(node.config.batchSize)
 	node.runtimeMu.Unlock()
 	if err := node.applyConfigToDevice(true); err != nil {
 		t.Fatalf("applyConfigToDevice: %v", err)
@@ -639,7 +640,7 @@ func TestWireGuardHotTunReplacementDoesNotNeedConfigApply(t *testing.T) {
 	node := &wireGuardNode{config: defaultWireGuardConfig()}
 	t.Cleanup(node.stopRuntime)
 	node.tunGeneration.Store(1)
-	needsConfig, attached, err := node.attachCurrentTun(1, first)
+	needsConfig, attached, err := node.attachCurrentTun(1, first, node.config.batchSize)
 	if err != nil || !attached || needsConfig {
 		t.Fatalf("initial TUN attach = needsConfig %t, attached %t, error %v", needsConfig, attached, err)
 	}
@@ -649,7 +650,7 @@ func TestWireGuardHotTunReplacementDoesNotNeedConfigApply(t *testing.T) {
 	node.runtimeDeviceUp = true
 	node.runtimeMu.Unlock()
 	node.tunGeneration.Store(2)
-	needsConfig, attached, err = node.attachCurrentTun(2, second)
+	needsConfig, attached, err = node.attachCurrentTun(2, second, node.config.batchSize)
 	if err != nil || !attached {
 		t.Fatalf("replacement TUN attach = attached %t, error %v", attached, err)
 	}
@@ -710,7 +711,7 @@ func TestWireGuardSameSourceNetworkReemitRebuildsFailedBind(t *testing.T) {
 	n.tunGeneration.Store(1)
 	n.networkGeneration.Store(2)
 
-	needsConfig, ok, retry, err := n.attachNetworkPayload(2, duplicate)
+	needsConfig, ok, retry, err := n.attachNetworkPayload(2, duplicate, n.config.batchSize)
 	if err != nil {
 		t.Fatalf("attachNetworkPayload() error = %v, want nil", err)
 	}
@@ -811,6 +812,40 @@ func TestWireGuardTrackedBindClosedReceiveErrorIsRecoverable(t *testing.T) {
 	if !errors.Is(tracked.err, net.ErrClosed) {
 		t.Fatalf("tracked underlying err = %v, want net.ErrClosed", tracked.err)
 	}
+}
+
+func TestWireGuardNetworkBindSerializesNonNativeSends(t *testing.T) {
+	underlying := &blockingWireGuardTestBind{
+		entered: make(chan struct{}, 2),
+		release: make(chan struct{}, 2),
+	}
+	bind := &wireGuardSerializedSendBind{Bind: underlying}
+
+	done := make(chan struct{}, 2)
+	go func() {
+		_ = bind.Send(nil, nil)
+		done <- struct{}{}
+	}()
+	<-underlying.entered
+
+	attempted := make(chan struct{})
+	go func() {
+		close(attempted)
+		_ = bind.Send(nil, nil)
+		done <- struct{}{}
+	}()
+	<-attempted
+	select {
+	case <-underlying.entered:
+		t.Fatal("second Send entered the non-native bind concurrently")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	underlying.release <- struct{}{}
+	<-underlying.entered
+	underlying.release <- struct{}{}
+	<-done
+	<-done
 }
 
 func TestWireGuardIntentionalClosedReceiveErrorIsIgnored(t *testing.T) {
@@ -1541,3 +1576,25 @@ func (wireGuardTestLogger) Err(...any)            {}
 func (wireGuardTestLogger) Errf(string, ...any)   {}
 func (wireGuardTestLogger) Fatal(...any)          {}
 func (wireGuardTestLogger) Fatalf(string, ...any) {}
+
+type blockingWireGuardTestBind struct {
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (*blockingWireGuardTestBind) Open(uint16) ([]conn.ReceiveFunc, uint16, error) {
+	return nil, 0, nil
+}
+
+func (*blockingWireGuardTestBind) Close() error         { return nil }
+func (*blockingWireGuardTestBind) SetMark(uint32) error { return nil }
+func (*blockingWireGuardTestBind) BatchSize() int       { return 1 }
+func (*blockingWireGuardTestBind) ParseEndpoint(string) (conn.Endpoint, error) {
+	return nil, nil
+}
+
+func (b *blockingWireGuardTestBind) Send([][]byte, conn.Endpoint) error {
+	b.entered <- struct{}{}
+	<-b.release
+	return nil
+}

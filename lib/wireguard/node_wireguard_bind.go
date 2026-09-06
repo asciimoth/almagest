@@ -2,6 +2,7 @@ package wireguardnodes
 
 import (
 	"fmt"
+	"sync"
 	"sync/atomic"
 
 	conn "github.com/asciimoth/batchudp"
@@ -38,6 +39,34 @@ func (b wireGuardTrackedBind) Close() error {
 		b.state.closing.Store(b.state.open.Load())
 	}
 	return b.Bind.Close()
+}
+
+type wireGuardSerializedSendBind struct {
+	conn.Bind
+	sendMu sync.Mutex
+}
+
+func (b *wireGuardSerializedSendBind) Send(bufs [][]byte, endpoint conn.Endpoint) error {
+	// Non-native networks can implement a UDP socket with a framed stream.
+	// Keep each Bind.Send call atomic for those implementations. For example,
+	// Gost UDP-over-TCP writes a datagram header and payload separately, so two
+	// concurrent calls can otherwise interleave and corrupt the stream.
+	b.sendMu.Lock()
+	defer b.sendMu.Unlock()
+	return b.Bind.Send(bufs, endpoint)
+}
+
+func newWireGuardNetworkBind(network NetworkCloser, batchSize int) conn.Bind {
+	nonNative := !network.IsNative()
+	options := conn.StdNetBindOptions{
+		BatchSize:         batchSize,
+		AllowSingleFamily: nonNative,
+	}
+	bind := conn.NewDefaultBindWithOptions(network, options)
+	if nonNative {
+		return &wireGuardSerializedSendBind{Bind: bind}
+	}
+	return bind
 }
 
 func (b wireGuardTrackedBind) wrapReceiveFunc(fn conn.ReceiveFunc, openGeneration uint64) conn.ReceiveFunc {

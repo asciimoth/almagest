@@ -1,0 +1,74 @@
+server_url: https://headscale-a.e2e.internal:18190
+listen_addr: 127.0.0.1:18190
+metrics_listen_addr: ""
+grpc_listen_addr: 127.0.0.1:51443
+grpc_allow_insecure: true
+trusted_proxies: []
+
+noise:
+  private_key_path: %E2E_RUNTIME%/headscale-a/noise_private.key
+
+prefixes:
+  v4: 100.64.0.0/24
+  v6: fd7a:115c:a1e0::/48
+  allocation: sequential
+derp:
+  server:
+    enabled: true
+    region_id: 991
+    region_code: local-a
+    region_name: Local test DERP A
+    verify_clients: true
+    stun_listen_addr: 127.0.0.1:13578
+    private_key_path: %E2E_RUNTIME%/headscale-a/derp_server_private.key
+    automatically_add_embedded_derp_region: true
+  urls: []
+  paths: []
+  auto_update_enabled: false
+  update_frequency: 3h
+
+disable_check_updates: true
+
+node:
+  expiry: 0
+  ephemeral:
+    inactivity_timeout: 30m
+  routes:
+    ha:
+      probe_interval: 0s
+      probe_timeout: 1s
+
+database:
+  type: sqlite
+  debug: false
+  sqlite:
+    path: %E2E_RUNTIME%/headscale-a/db.sqlite
+    write_ahead_log: true
+
+tls_cert_path: %E2E_RUNTIME%/headscale-a/tls.crt
+tls_key_path: %E2E_RUNTIME%/headscale-a/tls.key
+
+log:
+  level: info
+  format: text
+
+policy:
+  mode: file
+  path: %E2E_RUNTIME%/config/policy.hujson
+
+dns:
+  magic_dns: true
+  base_domain: a.e2e.internal
+  override_local_dns: false
+  nameservers:
+    global: []
+    split: {}
+  search_domains: []
+  extra_records: []
+
+unix_socket: %E2E_RUNTIME%/headscale-a/headscale.sock
+unix_socket_permission: "0777"
+logtail:
+  enabled: false
+taildrop:
+  enabled: false

@@ -356,7 +356,7 @@ func (n *wireGuardNode) OnEvent(event pasta.Event, linkType string, _ []string, 
 		n.cancelConfigRetry()
 		tunGeneration := n.nextTunGeneration()
 		n.nextRuntimeGeneration()
-		n.scheduleTunAttach(tunGeneration, payload.Tun)
+		n.scheduleTunAttach(tunGeneration, payload.Tun, n.config.batchSize)
 		return nil
 	}
 	if event.ReceiverPort == n.netp && receiverPortDirection == "right" && linkType == TypeNetwork {
@@ -377,7 +377,7 @@ func (n *wireGuardNode) OnEvent(event pasta.Event, linkType string, _ []string, 
 		n.cancelConfigRetry()
 		networkGeneration := n.nextNetworkGeneration()
 		n.nextRuntimeGeneration()
-		n.scheduleNetworkAttach(networkGeneration, payload.Network)
+		n.scheduleNetworkAttach(networkGeneration, payload.Network, n.config.batchSize)
 		return nil
 	}
 	return nil

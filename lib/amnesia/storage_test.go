@@ -8,8 +8,60 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/asciimoth/almagest/lib/logging"
 	"github.com/asciimoth/almagest/lib/storage"
+	"github.com/asciimoth/configer/configer"
+	"github.com/asciimoth/pasta/pasta"
 )
+
+func TestFreshAmnesiaNodesUseDistinctStorageIDs(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		class interface {
+			ClassName() string
+			NewNode(configer.Config, ...*pasta.NodeClassState) (pasta.Node, error)
+		}
+		storageID func(pasta.Node) string
+	}{
+		{
+			name:  "managed",
+			class: AmnesiaClass{},
+			storageID: func(raw pasta.Node) string {
+				return raw.(*managedAmnesiaNode).config.storageID
+			},
+		},
+		{
+			name:  "controller",
+			class: AmnesiaCtrlClass{},
+			storageID: func(raw pasta.Node) string {
+				return raw.(*amnesiaNode).config.storageID
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			w := pasta.NewWorkspace(logging.NewDebugLogFactory(128))
+			t.Cleanup(func() { w.Close() })
+			var storageIDs []string
+			for _, name := range []string{"Fresh Amnesia A", "Fresh Amnesia B"} {
+				raw, err := test.class.NewNode(nil)
+				if err != nil {
+					t.Fatalf("create %s: %v", name, err)
+				}
+				if _, err := w.AddNode(raw, test.class.ClassName(), name); err != nil {
+					t.Fatalf("add %s: %v", name, err)
+				}
+				storageID := test.storageID(raw)
+				if storageID != amnesiaStorageID(name) {
+					t.Fatalf("%s storage ID = %q, want node-name namespace", name, storageID)
+				}
+				storageIDs = append(storageIDs, storageID)
+			}
+			if storageIDs[0] == storageIDs[1] {
+				t.Fatalf("fresh %s Amnesia nodes share storage ID %q", test.name, storageIDs[0])
+			}
+		})
+	}
+}
 
 func TestAmnesiaInstallationUUIDAndProxyCacheUseKVStorage(t *testing.T) {
 	store := newAmnesiaMemoryKV()

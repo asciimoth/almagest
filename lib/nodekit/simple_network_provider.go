@@ -81,5 +81,8 @@ func (n *SimpleNetworkProvider) sendToLink(link uint64) {
 }
 
 func (n *SimpleNetworkProvider) refreshLink(link uint64) {
+	// Select-like middleware can schedule the last routed payload for closure
+	// before it requests the active path. Always emit a fresh wrapper here so
+	// that delayed cleanup cannot close the replacement path.
 	n.outputs.RefreshLocked(n.W, n.ID, link, n.network)
 }

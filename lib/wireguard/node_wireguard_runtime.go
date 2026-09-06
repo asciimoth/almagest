@@ -214,10 +214,10 @@ func (n *wireGuardNode) deferInternal(payload any) {
 	}()
 }
 
-func (n *wireGuardNode) scheduleTunAttach(tunGeneration uint64, t tun.Tun) {
+func (n *wireGuardNode) scheduleTunAttach(tunGeneration uint64, t tun.Tun, batchSize int) {
 	failureGeneration := n.currentRuntimeFailureGeneration()
 	go func() {
-		needsConfig, ok, err := n.attachCurrentTun(tunGeneration, t)
+		needsConfig, ok, err := n.attachCurrentTun(tunGeneration, t, batchSize)
 		if !ok {
 			return
 		}
@@ -243,10 +243,10 @@ func (n *wireGuardNode) scheduleTunDetach(tunGeneration uint64) {
 		})
 	}()
 }
-func (n *wireGuardNode) scheduleNetworkAttach(networkGeneration uint64, network NetworkCloser) {
+func (n *wireGuardNode) scheduleNetworkAttach(networkGeneration uint64, network NetworkCloser, batchSize int) {
 	failureGeneration := n.currentRuntimeFailureGeneration()
 	go func() {
-		needsConfig, ok, retry, err := n.attachNetworkPayload(networkGeneration, network)
+		needsConfig, ok, retry, err := n.attachNetworkPayload(networkGeneration, network, batchSize)
 		if !ok {
 			return
 		}
@@ -259,13 +259,13 @@ func (n *wireGuardNode) scheduleNetworkAttach(networkGeneration uint64, network 
 		})
 	}()
 }
-func (n *wireGuardNode) scheduleCurrentNetworkBindAttach(networkGeneration, retryGeneration uint64, checkRetry bool) {
+func (n *wireGuardNode) scheduleCurrentNetworkBindAttach(networkGeneration, retryGeneration uint64, checkRetry bool, batchSize int) {
 	failureGeneration := n.currentRuntimeFailureGeneration()
 	go func() {
 		if checkRetry && !n.isCurrentConfigRetry(retryGeneration) {
 			return
 		}
-		needsConfig, ok, retry, err := n.attachCurrentNetworkBind(networkGeneration)
+		needsConfig, ok, retry, err := n.attachCurrentNetworkBind(networkGeneration, batchSize)
 		if !ok {
 			return
 		}
@@ -383,7 +383,7 @@ func (n *wireGuardNode) retryConfigToDevice(generation uint64) {
 		// If an earlier bind attach failed before currentBind was installed, or
 		// the active receive routine failed, recreate the bind before config can
 		// be applied.
-		n.scheduleCurrentNetworkBindAttach(networkGeneration, generation, true)
+		n.scheduleCurrentNetworkBindAttach(networkGeneration, generation, true, n.config.batchSize)
 		return
 	}
 	n.scheduleConfigApply(n.effectiveConfig(), false, runtimeGeneration, generation, true)

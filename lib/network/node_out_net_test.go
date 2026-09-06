@@ -59,11 +59,18 @@ func TestOutNetworkSendsSystemOutNetOnReadyAndRequest(t *testing.T) {
 	if got := payload.Network.(*gonnect.DetachedNetwork).GetWrapped(); got != base {
 		t.Fatalf("wrapped network = %T %p, want base %p", got, got, base)
 	}
+	first := payload.Network
 
 	w.workspace.EmitEvent(receiver.ID, link, std.RequestValue{})
 	payload = networktest.ReceivePayload(t, receiver.Events)
 	if got := payload.Network.(*gonnect.DetachedNetwork).GetWrapped(); got != base {
 		t.Fatalf("request wrapped network = %T %p, want base %p", got, got, base)
+	}
+	if nodekit.SameNetworkInstance(payload.Network, first) {
+		t.Fatal("request reused the previous network wrapper")
+	}
+	if nodekit.NetworkIsReady(first) {
+		t.Fatal("request left the previous network wrapper ready")
 	}
 }
 

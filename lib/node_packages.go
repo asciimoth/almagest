@@ -9,6 +9,7 @@ import (
 	httpnodes "github.com/asciimoth/almagest/lib/http"
 	networknodes "github.com/asciimoth/almagest/lib/network"
 	socksnodes "github.com/asciimoth/almagest/lib/socks"
+	tailscalenodes "github.com/asciimoth/almagest/lib/tailscale"
 	tlsnodes "github.com/asciimoth/almagest/lib/tls"
 	triggernodes "github.com/asciimoth/almagest/lib/trigger"
 	tunnodes "github.com/asciimoth/almagest/lib/tun"
@@ -23,6 +24,7 @@ func packageNodeClasses(runtime *engine, isDebug bool) []pasta.NodeClass {
 	classes = append(classes, httpnodes.Classes(runtime)...)
 	classes = append(classes, networknodes.Classes(runtime)...)
 	classes = append(classes, socksnodes.Classes(runtime)...)
+	classes = append(classes, tailscalenodes.Classes(runtime)...)
 	classes = append(classes, tlsnodes.Classes(runtime)...)
 	classes = append(classes, tunnodes.Classes(runtime)...)
 	classes = append(classes, triggernodes.TimeTriggerClass{Runtime: runtime})

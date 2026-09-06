@@ -1,0 +1,47 @@
+{
+	"Admin": {"Web": 0, "Unix": ""},
+	"TLS": {
+		"Certificates": {
+			"headscale-a-ca": {"File": "%E2E_RUNTIME%/headscale-a/ca.crt"},
+			"headscale-b-ca": {"File": "%E2E_RUNTIME%/headscale-b/ca.crt"}
+		},
+		"Policies": {
+			"headscale-a": {
+				"trust_anchors": [
+					{"cert": "headscale-a-ca", "scope": {"any": true}}
+				]
+			},
+			"headscale-b": {
+				"trust_anchors": [
+					{"cert": "headscale-b-ca", "scope": {"any": true}}
+				]
+			}
+		}
+	},
+	"Secrets": {
+		"headscale-a-auth-key": {
+			"Value": "%HEADSCALE_A_AUTH_KEY%",
+			"Nodes": ["Tailscale A1", "Tailscale A2"]
+		},
+		"headscale-b-auth-key": {
+			"Value": "%HEADSCALE_B_AUTH_KEY%",
+			"Nodes": ["Tailscale B1", "Tailscale B2"]
+		},
+		"wireguard-a1-private-key": {
+			"Value": "OKkWGzqWe8UZ8KwtwqHNWnODKwZsBcAjDVBEzk4E8F4=",
+			"Nodes": ["WireGuard A1"]
+		},
+		"wireguard-a2-private-key": {
+			"Value": "cOHDHbnF8x6n0kEqoy8ZbrjyuTjcE8AAIpwd65+6FHo=",
+			"Nodes": ["WireGuard A2"]
+		},
+		"wireguard-b1-private-key": {
+			"Value": "uDYc9WiS9jNeVnw3pQ48/B8E0LniidJN90yZi1J9Pk4=",
+			"Nodes": ["WireGuard B1"]
+		},
+		"wireguard-b2-private-key": {
+			"Value": "yJxmPeA411vdFOfGb1Zv2o0bFtKQLCi38khE4VBgPGM=",
+			"Nodes": ["WireGuard B2"]
+		}
+	}
+}

@@ -19,6 +19,8 @@ ALMAGEST_E2E_LOG_CACHE_ERROR="${ALMAGEST_E2E_LOG_CACHE_ERROR:-2048}"
 ALMAGEST_E2E_LOG_CACHE_FATAL="${ALMAGEST_E2E_LOG_CACHE_FATAL:-512}"
 ALMAGEST_E2E_TMP_FILE_STORAGE="${ALMAGEST_E2E_TMP_FILE_STORAGE:-1}"
 ALMAGEST_E2E_FILE_STORAGE="${ALMAGEST_E2E_FILE_STORAGE:-}"
+ALMAGEST_E2E_WEB_ADMIN="${ALMAGEST_E2E_WEB_ADMIN:-0}"
+ALMAGEST_E2E_WEB_PPROF="${ALMAGEST_E2E_WEB_PPROF:-0}"
 
 log() {
 	printf '[%s] %s\n' "$E2E_CASE" "$*" >&2
@@ -61,12 +63,19 @@ start_daemon() {
 	: >"$E2E_DAEMON_LOG"
 	log "starting daemon"
 	local storage_args=()
+	local web_args=(--web "$ALMAGEST_E2E_WEB_ADMIN")
 	if [[ "$ALMAGEST_E2E_TMP_FILE_STORAGE" == "1" ]]; then
 		storage_args=(--tmp-file-storage)
 	elif [[ -n "$ALMAGEST_E2E_FILE_STORAGE" ]]; then
 		mkdir -p "$ALMAGEST_E2E_FILE_STORAGE"
 		chmod 700 "$ALMAGEST_E2E_FILE_STORAGE"
 		storage_args=(--file-storage "$ALMAGEST_E2E_FILE_STORAGE")
+	fi
+	if [[ "$ALMAGEST_E2E_WEB_PPROF" == "1" ]]; then
+		if [[ "$ALMAGEST_E2E_WEB_ADMIN" == "0" ]]; then
+			fail "ALMAGEST_E2E_WEB_PPROF requires a nonzero web admin port"
+		fi
+		web_args+=(--web-pprof)
 	fi
 	XDG_RUNTIME_DIR="$E2E_RUNTIME" almagestd \
 		-c "$E2E_CONFIG_DIR" \
@@ -80,7 +89,7 @@ start_daemon() {
 		--log-cache-error "$ALMAGEST_E2E_LOG_CACHE_ERROR" \
 		--log-cache-fatal "$ALMAGEST_E2E_LOG_CACHE_FATAL" \
 		--unix "$E2E_ADMIN_SOCK" \
-		--web 0 \
+		"${web_args[@]}" \
 		>"$E2E_DAEMON_LOG" 2>&1 &
 	daemon_pid="$!"
 	trap stop_daemon EXIT

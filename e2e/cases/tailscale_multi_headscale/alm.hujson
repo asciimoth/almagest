@@ -1,0 +1,196 @@
+{
+	"Logs": {
+		"Cache": {"Debug": 16384, "Info": 2048, "Warn": 1024, "Error": 1024, "Fatal": 64}
+	},
+	"nodes": {
+		"Tailscale A1": {
+			"Class": "almagest/TailscaleCtrl",
+			"Links": [
+				"WireGuard -> [WireGuard A1] WGCtrl",
+				"Network -> [Control Network A1] Network"
+			],
+			"controlURL": "https://headscale-a.e2e.internal:18190",
+			"tlsConfig": "headscale-a",
+			"hostname": "a-one",
+			"authKeySecret": "headscale-a-auth-key",
+			"listenPort": 41641,
+			"disableDERP": true
+		},
+		"WireGuard A1": {
+			"Class": "almagest/WireGuard",
+			"Links": ["Network -> [UDP Network A1] Network"],
+			"privateKeySecret": "wireguard-a1-private-key",
+			"listenPort": 51820,
+			"ownedIPs": "",
+			"peers": []
+		},
+		"VTun A1": {
+			"Class": "almagest/VTun",
+			"Links": ["Tun -> [WireGuard A1] Tun"],
+			"name": "tailscale-ma1",
+			"localAddrs": "",
+			"dnsServers": "",
+			"mtu": 1280,
+			"endpointCh": 1024,
+			"eventCh": 10
+		},
+		"MagicDNS Network A": {
+			"Class": "almagest/DnsInject",
+			"Links": [
+				"Network -> [VTun A1] Network",
+				"DNS -> [Tailscale A1] DNS"
+			]
+		},
+		"MagicDNS Query A": {
+			"Class": "almagest/DnsQuery",
+			"Links": ["DNS -> [Tailscale A1] DNS"],
+			"name": "a-two.a.e2e.internal.",
+			"type": "A"
+		},
+		"HTTP Client A": {
+			"Class": "almagest/HttpClient",
+			"Links": ["Network -> [MagicDNS Network A] Network"],
+			"url": "http://a-two.a.e2e.internal:18180/",
+			"method": "GET",
+			"body": ""
+		},
+		"Control Network A1": {"Class": "almagest/OutNetwork"},
+		"UDP Network A1": {"Class": "almagest/OutNetwork"},
+
+		"Tailscale A2": {
+			"Class": "almagest/TailscaleCtrl",
+			"Links": [
+				"WireGuard -> [WireGuard A2] WGCtrl",
+				"Network -> [Control Network A2] Network"
+			],
+			"controlURL": "https://headscale-a.e2e.internal:18190",
+			"tlsConfig": "headscale-a",
+			"hostname": "a-two",
+			"authKeySecret": "headscale-a-auth-key",
+			"listenPort": 41642,
+			"disableDERP": true
+		},
+		"WireGuard A2": {
+			"Class": "almagest/WireGuard",
+			"Links": ["Network -> [UDP Network A2] Network"],
+			"privateKeySecret": "wireguard-a2-private-key",
+			"listenPort": 51821,
+			"ownedIPs": "",
+			"peers": []
+		},
+		"VTun A2": {
+			"Class": "almagest/VTun",
+			"Links": ["Tun -> [WireGuard A2] Tun"],
+			"name": "tailscale-ma2",
+			"localAddrs": "",
+			"dnsServers": "",
+			"mtu": 1280,
+			"endpointCh": 1024,
+			"eventCh": 10
+		},
+		"HTTP Server A": {
+			"Class": "almagest/HttpServer",
+			"Links": ["Network -> [VTun A2] Network"],
+			"host": "0.0.0.0",
+			"port": 18180,
+			"response": "hello from isolated tailnet A"
+		},
+		"Control Network A2": {"Class": "almagest/OutNetwork"},
+		"UDP Network A2": {"Class": "almagest/OutNetwork"},
+
+		"Tailscale B1": {
+			"Class": "almagest/TailscaleCtrl",
+			"Links": [
+				"WireGuard -> [WireGuard B1] WGCtrl",
+				"Network -> [Control Network B1] Network"
+			],
+			"controlURL": "https://headscale-b.e2e.internal:18290",
+			"tlsConfig": "headscale-b",
+			"hostname": "b-one",
+			"authKeySecret": "headscale-b-auth-key",
+			"listenPort": 41643,
+			"disableDERP": true
+		},
+		"WireGuard B1": {
+			"Class": "almagest/WireGuard",
+			"Links": ["Network -> [UDP Network B1] Network"],
+			"privateKeySecret": "wireguard-b1-private-key",
+			"listenPort": 51822,
+			"ownedIPs": "",
+			"peers": []
+		},
+		"VTun B1": {
+			"Class": "almagest/VTun",
+			"Links": ["Tun -> [WireGuard B1] Tun"],
+			"name": "tailscale-mb1",
+			"localAddrs": "",
+			"dnsServers": "",
+			"mtu": 1280,
+			"endpointCh": 1024,
+			"eventCh": 10
+		},
+		"MagicDNS Network B": {
+			"Class": "almagest/DnsInject",
+			"Links": [
+				"Network -> [VTun B1] Network",
+				"DNS -> [Tailscale B1] DNS"
+			]
+		},
+		"MagicDNS Query B": {
+			"Class": "almagest/DnsQuery",
+			"Links": ["DNS -> [Tailscale B1] DNS"],
+			"name": "b-two.b.e2e.internal.",
+			"type": "A"
+		},
+		"HTTP Client B": {
+			"Class": "almagest/HttpClient",
+			"Links": ["Network -> [MagicDNS Network B] Network"],
+			"url": "http://b-two.b.e2e.internal:18280/",
+			"method": "GET",
+			"body": ""
+		},
+		"Control Network B1": {"Class": "almagest/OutNetwork"},
+		"UDP Network B1": {"Class": "almagest/OutNetwork"},
+
+		"Tailscale B2": {
+			"Class": "almagest/TailscaleCtrl",
+			"Links": [
+				"WireGuard -> [WireGuard B2] WGCtrl",
+				"Network -> [Control Network B2] Network"
+			],
+			"controlURL": "https://headscale-b.e2e.internal:18290",
+			"tlsConfig": "headscale-b",
+			"hostname": "b-two",
+			"authKeySecret": "headscale-b-auth-key",
+			"listenPort": 41644,
+			"disableDERP": true
+		},
+		"WireGuard B2": {
+			"Class": "almagest/WireGuard",
+			"Links": ["Network -> [UDP Network B2] Network"],
+			"privateKeySecret": "wireguard-b2-private-key",
+			"listenPort": 51823,
+			"ownedIPs": "",
+			"peers": []
+		},
+		"VTun B2": {
+			"Class": "almagest/VTun",
+			"Links": ["Tun -> [WireGuard B2] Tun"],
+			"name": "tailscale-mb2",
+			"localAddrs": "",
+			"dnsServers": "",
+			"mtu": 1280,
+			"endpointCh": 1024,
+			"eventCh": 10
+		},
+		"HTTP Server B": {
+			"Class": "almagest/HttpServer",
+			"Links": ["Network -> [VTun B2] Network"],
+			"host": "0.0.0.0",
+			"port": 18280,
+			"response": "hello from isolated tailnet B"
+		},
+		"Control Network B2": {"Class": "almagest/OutNetwork"},
+		"UDP Network B2": {"Class": "almagest/OutNetwork"}
+	}
+}

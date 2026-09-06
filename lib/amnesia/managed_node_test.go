@@ -8,6 +8,7 @@ import (
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/gonnect"
 	"github.com/asciimoth/gonnect/tun"
+	"github.com/asciimoth/pasta/pasta"
 	wgoamnesia "github.com/asciimoth/wgo/amnesia"
 	wgdevice "github.com/asciimoth/wgo/device"
 
@@ -45,7 +46,7 @@ func TestAmnesiaClassHasOnlyManagedPortsAndMenuFields(t *testing.T) {
 		t.Fatalf("create node: %v", err)
 	}
 	node := raw.(*managedAmnesiaNode)
-	if err := node.OnInit(nil, nil, 0, "Amnesia Service", nil, false, false, false, false); err != nil {
+	if err := node.OnInit(nil, nil, 0, NodeTypeAmnesia, &pasta.NodeInitData{Name: "Amnesia Service"}, false, false, false, false); err != nil {
 		t.Fatalf("initialize node: %v", err)
 	}
 	if want := amnesiaStorageID("Amnesia Service"); node.config.storageID != want {

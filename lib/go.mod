@@ -12,6 +12,7 @@ require (
 	github.com/asciimoth/pasta/pasta v0.10.0
 	github.com/asciimoth/socksgo v0.4.12
 	github.com/asciimoth/wgo v0.7.0
+	github.com/asciimoth/wgo-tailscale v0.3.1
 	github.com/coder/websocket v1.8.14
 	github.com/miekg/dns v1.1.72
 	gvisor.dev/gvisor v0.0.0-20260325202830-7644cf3a343c
@@ -26,11 +27,12 @@ require (
 	github.com/xtaci/smux v1.5.44 // indirect
 	golang.org/x/crypto v0.53.0 // indirect
 	golang.org/x/exp v0.0.0-20231110203233-9a3e6036ecaa // indirect
-	golang.org/x/mod v0.36.0 // indirect
+	golang.org/x/mod v0.37.0 // indirect
 	golang.org/x/net v0.56.0 // indirect
 	golang.org/x/sync v0.21.0 // indirect
 	golang.org/x/sys v0.46.0 // indirect
+	golang.org/x/text v0.39.0 // indirect
 	golang.org/x/time v0.12.0 // indirect
-	golang.org/x/tools v0.45.0 // indirect
+	golang.org/x/tools v0.47.0 // indirect
 	golang.zx2c4.com/wintun v0.0.0-20230126152724-0fa3db229ce2 // indirect
 )

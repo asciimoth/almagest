@@ -74,6 +74,22 @@ func PortHasLinks(w *pasta.Workspace, port uint64) bool {
 	return ok && len(snapshot.Links) > 0
 }
 
+// InitialNodeName returns the workspace-owned node name available during
+// OnInit. The workspace record is authoritative when it exists. Restored is a
+// fallback when the record is unavailable. The caller must hold the workspace
+// lock when w is not nil.
+func InitialNodeName(w *pasta.Workspace, node uint64, restored *pasta.NodeInitData) string {
+	if w != nil && node != 0 {
+		if snapshot, ok := w.NodeSnapshotLocked(node); ok && snapshot.Name != "" {
+			return snapshot.Name
+		}
+	}
+	if restored != nil {
+		return restored.Name
+	}
+	return ""
+}
+
 // RestoredLeft returns a restored left port by index.
 func RestoredLeft(restored *pasta.NodeInitData, index int) uint64 {
 	if restored == nil || index < 0 || index >= len(restored.LeftPorts) {

@@ -24,6 +24,8 @@ RUN curl -fsSL --retry 5 --retry-all-errors \
 	&& go build -C "/tmp/amneziawg-go-$AMNEZIAWG_GO_COMMIT" -o /usr/local/bin/amneziawg-go . \
 	&& printf '%s\n' "$AMNEZIAWG_GO_COMMIT" >/usr/local/share/amneziawg-go.commit
 
+FROM headscale/headscale:v0.29.3 AS headscale
+
 FROM debian:bookworm-slim
 
 RUN apt-get update \
@@ -55,6 +57,7 @@ COPY --from=build /go/bin/killswitch-cli /usr/local/bin/killswitch-cli
 COPY --from=build /usr/local/bin/amneziawg-go /usr/local/bin/amneziawg-go
 COPY --from=build /usr/local/bin/amnesia-e2e-tool /usr/local/bin/amnesia-e2e-tool
 COPY --from=build /usr/local/share/amneziawg-go.commit /usr/local/share/amneziawg-go.commit
+COPY --from=headscale /ko-app/headscale /usr/local/bin/headscale
 COPY e2e /e2e
 
 WORKDIR /e2e

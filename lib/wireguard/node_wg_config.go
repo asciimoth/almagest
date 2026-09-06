@@ -9,7 +9,6 @@ import (
 	"sync"
 	"sync/atomic"
 
-	conn "github.com/asciimoth/batchudp"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
 	"github.com/asciimoth/pasta/pasta"
@@ -427,11 +426,7 @@ func (n *wgConfigNode) closeRuntimeControllerLocked() {
 }
 
 func (n *wgConfigNode) installRuntimeTransportLocked(network NetworkCloser) error {
-	options := conn.StdNetBindOptions{BatchSize: n.runtimeController.BatchSize()}
-	if !network.IsNative() {
-		options.AllowSingleFamily = true
-	}
-	bind := conn.NewDefaultBindWithOptions(network, options)
+	bind := newWireGuardNetworkBind(network, n.runtimeController.BatchSize())
 	config := wgdevice.TransportConfig{Bind: bind}
 	id := WGConfigTransportID(n.ID)
 	var err error

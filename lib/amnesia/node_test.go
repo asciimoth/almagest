@@ -139,7 +139,7 @@ func TestAmnesiaStorageIDSurvivesConfigRoundTripAndRename(t *testing.T) {
 		t.Fatalf("create node: %v", err)
 	}
 	node := raw.(*amnesiaNode)
-	if err := node.OnInit(nil, nil, 0, "Amnesia Service", nil, false, false, false, false); err != nil {
+	if err := node.OnInit(nil, nil, 0, NodeTypeAmnesiaCtrl, &pasta.NodeInitData{Name: "Amnesia Service"}, false, false, false, false); err != nil {
 		t.Fatalf("initialize node: %v", err)
 	}
 	want := amnesiaStorageID("Amnesia Service")
@@ -156,7 +156,7 @@ func TestAmnesiaStorageIDSurvivesConfigRoundTripAndRename(t *testing.T) {
 		t.Fatalf("restore node: %v", err)
 	}
 	restored := restoredRaw.(*amnesiaNode)
-	if err := restored.OnInit(nil, nil, 0, "Renamed Amnesia", nil, false, false, false, false); err != nil {
+	if err := restored.OnInit(nil, nil, 0, NodeTypeAmnesiaCtrl, &pasta.NodeInitData{Name: "Renamed Amnesia"}, false, false, false, false); err != nil {
 		t.Fatalf("initialize restored node: %v", err)
 	}
 	if restored.config.storageID != want {

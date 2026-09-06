@@ -18,6 +18,8 @@ Almagest is a Go userspace network stack built around a Pasta node graph.
 - `lib/network/` owns network middleware nodes such as firewall, router,
   remapper, and spoofer. It also owns the mock network node.
 - `lib/socks/` owns SOCKS client/server nodes and the local proxy node.
+- `lib/tailscale/` owns the Tailscale control-plane node, its persistent
+  identity cache, MagicDNS output, and ACL-derived firewall output.
 - `lib/tun/` owns TUN nodes, including TUN firewall middleware, and TUN
   debug-log nodes.
 - `lib/wireguard/` owns WireGuard nodes.
@@ -84,6 +86,8 @@ Engine and workspace:
 - `lib/http/`: HTTP client and server node classes.
 - `lib/network/`: network firewall, router, remapper, and spoofer node classes.
 - `lib/socks/`: SOCKS client/server and local proxy node classes.
+- `lib/tailscale/`: Tailscale control-plane integration for a shared WireGuard
+  device, including MagicDNS and firewall object outputs.
 - `lib/tun/`: TUN, default TUN, VTun, TUN copy/join/split/config-stripper,
   TUN firewall, and TUN debug-log node classes.
 - `lib/wireguard/`: WireGuard node classes.
@@ -100,6 +104,8 @@ Built-in nodes:
 - `lib/http/`: HTTP client and server node implementations.
 - `lib/network/`: network router, remapper, and spoofer node implementations.
 - `lib/socks/`: SOCKS and local proxy node implementations.
+- `lib/tailscale/`: the Tailscale control-plane node and its DNS and firewall
+  outputs.
 - `lib/tun/`: TUN node implementations.
 - `lib/wireguard/`: WireGuard node implementation.
 - `lib/network/node_mock_net.go`: virtual loopback network node.

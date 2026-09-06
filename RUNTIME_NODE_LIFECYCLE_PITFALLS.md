@@ -512,6 +512,39 @@ Test location:
 - `lib/links/network_test.go`:
   `TestNetworkOutputCacheReplacesChangedSource`
 
+### Tailscale Consumed An Event Before Runtime Activation
+
+Bug:
+
+- Tailscale subscribed to coalesced client events before it started the client.
+- Its event watcher could consume the newest event before the workspace handled
+  the initial runtime result.
+- The workspace rejected that early event because the runtime ID was not active
+  yet. If no later event arrived, the node kept an older initial snapshot.
+
+Fix:
+
+- The event watcher waits on a runtime-specific activation signal.
+- The runtime result applies its initial snapshot and marks the runtime active
+  before it releases the watcher.
+- Generation cancellation releases an unactivated watcher without consuming
+  its buffered event.
+
+Coverage:
+
+```sh
+go -C lib test ./tailscale -run TestTailscaleRuntimeEventWatcherWaitsForActivation -race -count=1
+```
+
+Test location:
+
+- `lib/tailscale/runtime_test.go`:
+  `TestTailscaleRuntimeEventWatcherWaitsForActivation`
+
+Related implementation:
+
+- `lib/tailscale/runtime.go`
+
 ## Full Validation
 
 After changes that affect runtime lifecycle, run the project-level checks:

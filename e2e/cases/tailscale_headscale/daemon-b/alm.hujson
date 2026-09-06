@@ -1,0 +1,56 @@
+{
+	"Logs": {
+		"Cache": {"Debug": 4096, "Info": 512, "Warn": 512, "Error": 512, "Fatal": 64},
+	},
+	"nodes": {
+		"Tailscale B": {
+			"Class": "almagest/TailscaleCtrl",
+			"Links": [
+				"WireGuard -> [WireGuard B] WGCtrl",
+				"Network -> [Control Network B] Network",
+				"Firewall -> [Tailnet Firewall B] Config"
+			],
+			"enabled": true,
+			"controlURL": "https://headscale.e2e.internal:18090",
+			"tlsConfig": "headscale",
+			"hostname": "beta",
+			"authKeySecret": "headscale-auth-key",
+			"listenPort": 41642,
+			"disableDERP": true
+		},
+		"WireGuard B": {
+			"Class": "almagest/WireGuard",
+			"Links": ["Network -> [UDP Network B] Network"],
+			"privateKeySecret": "wireguard-b-private-key",
+			"listenPort": 51821,
+			"ownedIPs": "",
+			"peers": []
+		},
+		"VTun B": {
+			"Class": "almagest/VTun",
+			"Links": ["Tun -> [WireGuard B] Tun"],
+			"name": "tailscale-b",
+			"localAddrs": "",
+			"dnsServers": "",
+			"mtu": 1280,
+			"endpointCh": 1024,
+			"eventCh": 10,
+			"noLoopbackAddr": false,
+			"disableSACK": false
+		},
+		"Tailnet Firewall B": {
+			"Class": "almagest/NetworkFirewall",
+			"Links": ["Network -> [VTun B] Network"],
+			"rules": {}
+		},
+		"HTTP Server B": {
+			"Class": "almagest/HttpServer",
+			"Links": ["Network -> [Tailnet Firewall B] Network"],
+			"host": "0.0.0.0",
+			"port": 18080,
+			"response": "hello from tailscale beta"
+		},
+		"Control Network B": {"Class": "almagest/OutNetwork"},
+		"UDP Network B": {"Class": "almagest/OutNetwork"}
+	}
+}

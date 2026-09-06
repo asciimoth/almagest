@@ -202,13 +202,11 @@ type managedAmnesiaStats struct {
 	stats      wgdevice.RuntimeStats
 }
 
-func (n *managedAmnesiaNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64, className string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
+func (n *managedAmnesiaNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
 	n.InitBaseNode(w, logger, id)
-	n.nodeName = className
-	if n.W != nil {
-		if snapshot, ok := n.W.NodeSnapshotLocked(n.ID); ok && snapshot.Name != "" {
-			n.nodeName = snapshot.Name
-		}
+	n.nodeName = nodekit.InitialNodeName(w, id, restored)
+	if n.nodeName == "" {
+		return errors.New("amnesia node name is unavailable during initialization")
 	}
 	if !validAmnesiaStorageID(n.config.storageID) {
 		n.config.storageID = amnesiaStorageID(n.nodeName)

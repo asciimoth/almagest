@@ -1,0 +1,25 @@
+{
+	"Admin": {"Web": 0, "Unix": ""},
+	"TLS": {
+		"Certificates": {
+			"headscale-ca": {"File": "%E2E_RUNTIME%/headscale/ca.crt"}
+		},
+		"Policies": {
+			"headscale": {
+				"trust_anchors": [
+					{"cert": "headscale-ca", "scope": {"any": true}}
+				]
+			}
+		}
+	},
+	"Secrets": {
+		"headscale-auth-key": {
+			"Value": "%HEADSCALE_AUTH_KEY%",
+			"Nodes": ["Tailscale B"]
+		},
+		"wireguard-b-private-key": {
+			"Value": "MMXMEkWVwk/q4hkoW2S3HCXUGvsDHFellxv7Aw/HlFU=",
+			"Nodes": ["WireGuard B"]
+		}
+	}
+}

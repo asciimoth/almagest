@@ -211,16 +211,19 @@ type amnesiaProfileStatus struct {
 	allowedIPs    []string
 }
 
-func (n *amnesiaNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64, name string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
+func (n *amnesiaNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
 	n.InitBaseNode(w, logger, id)
 	if w != nil {
 		if _, err := w.AddNodePopupLocked(id, pasta.NodePopupWard, amnesiaCtrlDeprecationWarning, true); err != nil {
 			return fmt.Errorf("add AmnesiaCtrl deprecation warning: %w", err)
 		}
 	}
-	n.nodeName = name
+	n.nodeName = nodekit.InitialNodeName(w, id, restored)
+	if n.nodeName == "" {
+		return errors.New("amnesia controller node name is unavailable during initialization")
+	}
 	if !validAmnesiaStorageID(n.config.storageID) {
-		n.config.storageID = amnesiaStorageID(name)
+		n.config.storageID = amnesiaStorageID(n.nodeName)
 	}
 	n.ctrlp = nodekit.RestoredRight(restored, 0)
 	n.netp = nodekit.RestoredRight(restored, 1)
@@ -228,7 +231,7 @@ func (n *amnesiaNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64,
 	n.refreshTLSConfig()
 	n.logDebugf(
 		"Amnesia initialized: node=%d name=%q restored=%t storage_id=%s enabled=%t connection_secret_configured=%t country=%q connect_event=%t tls_configured=%t custom_gateway=%t gateway_public_key_configured=%t",
-		n.ID, name, restored != nil, n.config.storageID, n.config.enabled,
+		n.ID, n.nodeName, restored != nil, n.config.storageID, n.config.enabled,
 		n.config.connectionSecret != "", n.config.serverCountryCode, n.config.connectEvent,
 		n.config.tlsConfigName != "", n.config.gatewayURL != "", n.config.gatewayPublicKeySecret != "",
 	)
