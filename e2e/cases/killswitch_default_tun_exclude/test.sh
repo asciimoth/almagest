@@ -3,7 +3,6 @@ set -euo pipefail
 
 source /e2e/lib/common.sh
 
-router_ns="alm-e2e-ks-router"
 target_ns="alm-e2e-ks-target"
 target_host="203.0.114.2"
 target_port="18095"

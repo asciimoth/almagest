@@ -4,7 +4,10 @@ set -euo pipefail
 source /e2e/lib/common.sh
 
 headscale_pid=""
+# These variables are read through indirect expansion in stop_processes.
+# shellcheck disable=SC2034
 daemon_pid_a=""
+# shellcheck disable=SC2034
 daemon_pid_b=""
 admin_sock_a="$E2E_RUNTIME/daemon-a.sock"
 admin_sock_b="$E2E_RUNTIME/daemon-b.sock"

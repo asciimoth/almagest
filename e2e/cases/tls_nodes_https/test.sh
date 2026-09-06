@@ -85,7 +85,8 @@ assert_socks_https_body() {
 	local ca_file="$2"
 	local url="$3"
 	local expected="$4"
-	local out="$E2E_RUNTIME/$(echo "$url" | tr -c 'A-Za-z0-9' '_').txt"
+	local out
+	out="$E2E_RUNTIME/$(echo "$url" | tr -c 'A-Za-z0-9' '_').txt"
 
 	retry "$ALMAGEST_E2E_TIMEOUT" "curl HTTPS $url through SOCKS port $socks_port" \
 		curl -g --fail --silent --show-error \

@@ -66,6 +66,8 @@ start_daemon_a() {
 		--unix "$admin_sock_a" \
 		--web 0 \
 		>"$daemon_log_a" 2>&1 &
+	# This variable is read through indirect expansion in stop_daemons.
+	# shellcheck disable=SC2034
 	daemon_pid_a="$!"
 	trap stop_daemons EXIT
 	retry "$ALMAGEST_E2E_TIMEOUT" "daemon a admin API socket" test -S "$admin_sock_a" \
@@ -90,6 +92,8 @@ start_daemon_b() {
 		--unix "$admin_sock_b" \
 		--web 0 \
 		>"$daemon_log_b" 2>&1 &
+	# This variable is read through indirect expansion in stop_daemons.
+	# shellcheck disable=SC2034
 	daemon_pid_b="$!"
 	trap stop_daemons EXIT
 	retry "$ALMAGEST_E2E_TIMEOUT" "daemon b admin API socket" test -S "$admin_sock_b" \

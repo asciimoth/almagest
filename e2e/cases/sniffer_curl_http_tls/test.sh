@@ -55,7 +55,8 @@ PY
 assert_socks_body() {
 	local url="$1"
 	local expected="$2"
-	local out="$E2E_RUNTIME/$(echo "$url" | tr -c 'A-Za-z0-9' '_').txt"
+	local out
+	out="$E2E_RUNTIME/$(echo "$url" | tr -c 'A-Za-z0-9' '_').txt"
 
 	retry "$ALMAGEST_E2E_TIMEOUT" "curl $url through sniffer" \
 		curl -g --fail --silent --show-error \

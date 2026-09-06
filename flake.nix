@@ -80,6 +80,7 @@
 
           typos
           commitizen
+          shellcheck
 
           just
 

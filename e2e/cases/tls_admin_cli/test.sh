@@ -111,6 +111,8 @@ cli tls list >"$E2E_RUNTIME/snapshot-renamed.json"
 assert_jq "$E2E_RUNTIME/snapshot-renamed.json" "renamed certificate was not present" '
 	any(.certs[]; .name == "renamed-ca" and .source == "mutable")
 '
+# Dollar-prefixed names in this expression are jq variables.
+# shellcheck disable=SC2016
 assert_jq "$E2E_RUNTIME/snapshot-renamed.json" "policy did not rewrite certificate reference after rename" '
 	(.policies[] | select(.name == "manual-policy")) as $p
 	| any($p.spec.trust_anchors[]; .cert == "renamed-ca")
@@ -125,6 +127,8 @@ cli tls list >"$E2E_RUNTIME/snapshot-deleted.json"
 assert_jq "$E2E_RUNTIME/snapshot-deleted.json" "deleted certificate was still present" '
 	([ .certs[] | select(.name == "renamed-ca") ] | length) == 0
 '
+# Dollar-prefixed names in this expression are jq variables.
+# shellcheck disable=SC2016
 assert_jq "$E2E_RUNTIME/snapshot-deleted.json" "policy did not remove deleted certificate reference" '
 	(.policies[] | select(.name == "manual-policy")) as $p
 	| $p.valid == true

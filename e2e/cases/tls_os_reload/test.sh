@@ -88,6 +88,8 @@ assert_jq "$E2E_RUNTIME/snapshot-reload.json" "replacement OS root was not prese
 assert_jq "$E2E_RUNTIME/snapshot-reload.json" "narrow OS root did not survive reload" '
 	any(.certs[]; .name == "'"$narrow_name"'" and .source == "os")
 '
+# Dollar-prefixed names in this expression are jq variables.
+# shellcheck disable=SC2016
 assert_jq "$E2E_RUNTIME/snapshot-reload.json" "default policy did not rebuild after reload" '
 	(.policies[] | select(.name == "default")) as $p
 	| $p.source == "os"
@@ -97,6 +99,8 @@ assert_jq "$E2E_RUNTIME/snapshot-reload.json" "default policy did not rebuild af
 	and ([ $p.spec.trust_anchors[] | select(.cert == "'"$initial_name"'" or .cert == "'"$warning_name"'") ] | length) == 0
 '
 
+# Dollar-prefixed names in this expression are jq variables.
+# shellcheck disable=SC2016
 retry "$ALMAGEST_E2E_TIMEOUT" "TLS reload watch events" \
 	jq -s -e \
 		--arg initial "$initial_name" \

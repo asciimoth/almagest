@@ -2,7 +2,7 @@ set shell := ["bash", "-euo", "pipefail", "-c"]
 set dotenv-load := true
 
 
-check: tidy typos fmt lint vet vulncheck test-total
+check: tidy typos fmt lint shellcheck vet vulncheck test-total
 
 typos:
   typos
@@ -56,6 +56,9 @@ certcat-tidy:
 
 lint: certcat-lint
   golangci-lint run ./lib/... ./bin/...
+
+shellcheck:
+  git ls-files -z '*.sh' | xargs -0 shellcheck
 
 certcat-lint: certcat-ensure-generated
   golangci-lint run ./certcat/...
