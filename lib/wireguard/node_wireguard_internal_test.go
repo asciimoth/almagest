@@ -705,6 +705,87 @@ func TestWireGuardTryMarkRuntimeReadyRequiresActiveRuntime(t *testing.T) {
 	}
 }
 
+func TestWireGuardDuplicateTunPayloadDoesNotInvalidatePendingAttach(t *testing.T) {
+	source, peer := tun.Pipe(4, 1500, 0, 0)
+	t.Cleanup(func() { _ = peer.Close() })
+	n := &wireGuardNode{
+		config:  defaultWireGuardConfig(),
+		tunp:    1,
+		tunLink: 2,
+	}
+	t.Cleanup(n.stopRuntime)
+
+	// Keep the first asynchronous attach pending while the provider repeats
+	// its cached payload. This is the restore ordering that previously let the
+	// duplicate invalidate, and later detach, the first installation.
+	n.runtimeMu.Lock()
+	event := pasta.Event{ReceiverPort: n.tunp, Link: n.tunLink, Payload: TunPayload{Tun: source}}
+	if err := n.OnEvent(event, TypeTun, nil, "left"); err != nil {
+		n.runtimeMu.Unlock()
+		t.Fatalf("first OnEvent() error = %v", err)
+	}
+	wantTunGeneration := n.currentTunGenerationValue()
+	wantRuntimeGeneration := n.currentRuntimeGeneration()
+	if err := n.OnEvent(event, TypeTun, nil, "left"); err != nil {
+		n.runtimeMu.Unlock()
+		t.Fatalf("duplicate OnEvent() error = %v", err)
+	}
+	if got := n.currentTunGenerationValue(); got != wantTunGeneration {
+		n.runtimeMu.Unlock()
+		t.Fatalf("TUN generation after duplicate = %d, want %d", got, wantTunGeneration)
+	}
+	if got := n.currentRuntimeGeneration(); got != wantRuntimeGeneration {
+		n.runtimeMu.Unlock()
+		t.Fatalf("runtime generation after duplicate = %d, want %d", got, wantRuntimeGeneration)
+	}
+	n.runtimeMu.Unlock()
+
+	eventually(t, func() bool {
+		n.runtimeMu.Lock()
+		defer n.runtimeMu.Unlock()
+		return n.currentTun == source && n.currentTunGeneration == wantTunGeneration
+	}, "first TUN payload remains current after duplicate")
+}
+
+func TestWireGuardDuplicateNetworkPayloadDoesNotInvalidatePendingAttach(t *testing.T) {
+	network := gonnect.DetachNetwork(gonnect.NewLoopbackNetwork(), nil, nil)
+	t.Cleanup(func() { _ = network.Close() })
+	n := &wireGuardNode{
+		config:  defaultWireGuardConfig(),
+		netp:    1,
+		netLink: 2,
+	}
+	t.Cleanup(n.stopRuntime)
+
+	n.runtimeMu.Lock()
+	event := pasta.Event{ReceiverPort: n.netp, Link: n.netLink, Payload: NetworkPayload{Network: network}}
+	if err := n.OnEvent(event, TypeNetwork, nil, "right"); err != nil {
+		n.runtimeMu.Unlock()
+		t.Fatalf("first OnEvent() error = %v", err)
+	}
+	wantNetworkGeneration := n.currentNetworkGenerationValue()
+	wantRuntimeGeneration := n.currentRuntimeGeneration()
+	if err := n.OnEvent(event, TypeNetwork, nil, "right"); err != nil {
+		n.runtimeMu.Unlock()
+		t.Fatalf("duplicate OnEvent() error = %v", err)
+	}
+	if got := n.currentNetworkGenerationValue(); got != wantNetworkGeneration {
+		n.runtimeMu.Unlock()
+		t.Fatalf("network generation after duplicate = %d, want %d", got, wantNetworkGeneration)
+	}
+	if got := n.currentRuntimeGeneration(); got != wantRuntimeGeneration {
+		n.runtimeMu.Unlock()
+		t.Fatalf("runtime generation after duplicate = %d, want %d", got, wantRuntimeGeneration)
+	}
+	n.runtimeMu.Unlock()
+
+	eventually(t, func() bool {
+		n.runtimeMu.Lock()
+		defer n.runtimeMu.Unlock()
+		return n.currentNetwork == network && n.currentNetworkGeneration == wantNetworkGeneration
+	}, "first network payload remains current after duplicate")
+}
+
 func TestWireGuardSameSourceNetworkReemitRebuildsFailedBind(t *testing.T) {
 	sourceTun, peerTun := tun.Pipe(4, 1500, 0, 0)
 	t.Cleanup(func() { _ = sourceTun.Close() })

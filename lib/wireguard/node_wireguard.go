@@ -103,11 +103,15 @@ type wireGuardNode struct {
 
 	tunLink uint64
 	netLink uint64
-	// Payload receipt is workspace-owned. It prevents OnReady from repeating an
-	// OnLinkAdd request while the accepted attachment is still queued for async
-	// runtime installation.
+	// Payload receipt and identity are workspace-owned. They prevent OnReady and
+	// repeated provider sends from queuing the same attachment more than once
+	// while asynchronous runtime installation is still pending. Without the
+	// identity check, a duplicate advances the desired generation and a config
+	// apply can detach the first installation before the duplicate job runs.
 	tunPayloadReceived     bool
 	networkPayloadReceived bool
+	desiredTun             tun.Tun
+	desiredNetwork         NetworkCloser
 
 	tunGeneration     atomic.Uint64
 	networkGeneration atomic.Uint64
@@ -277,6 +281,7 @@ func (n *wireGuardNode) OnLinkAdd(link, port uint64, linkType, portDirection str
 	case port == n.tunp && portDirection == "left" && linkType == TypeTun:
 		n.tunLink = link
 		n.tunPayloadReceived = false
+		n.desiredTun = nil
 		n.nextTunGeneration()
 		n.nextRuntimeGeneration()
 		n.sendTunConfigToLink(link)
@@ -288,6 +293,7 @@ func (n *wireGuardNode) OnLinkAdd(link, port uint64, linkType, portDirection str
 	case port == n.netp && portDirection == "right" && linkType == TypeNetwork:
 		n.netLink = link
 		n.networkPayloadReceived = false
+		n.desiredNetwork = nil
 		n.nextNetworkGeneration()
 		n.nextRuntimeGeneration()
 		std.RequestLocked(n.W, n.ID, link)
@@ -302,6 +308,7 @@ func (n *wireGuardNode) OnLinkRemoved(link uint64, port uint64, linkType, portDi
 		n.cancelConfigRetry()
 		n.tunLink = 0
 		n.tunPayloadReceived = false
+		n.desiredTun = nil
 		tunGeneration := n.nextTunGeneration()
 		n.nextRuntimeGeneration()
 		n.scheduleTunDetach(tunGeneration)
@@ -320,6 +327,7 @@ func (n *wireGuardNode) OnLinkRemoved(link uint64, port uint64, linkType, portDi
 		n.cancelConfigRetry()
 		n.netLink = 0
 		n.networkPayloadReceived = false
+		n.desiredNetwork = nil
 		networkGeneration := n.nextNetworkGeneration()
 		n.nextRuntimeGeneration()
 		n.scheduleNetworkDetach(networkGeneration)
@@ -366,7 +374,11 @@ func (n *wireGuardNode) OnEvent(event pasta.Event, linkType string, _ []string, 
 			}(payload.Tun)
 			return nil
 		}
+		if n.tunPayloadReceived && SameTunInstance(n.desiredTun, payload.Tun) {
+			return nil
+		}
 		n.tunPayloadReceived = true
+		n.desiredTun = payload.Tun
 		BindTunResource(n.W, n.ID, event.Link, payload.Tun)
 		n.cancelConfigRetry()
 		tunGeneration := n.nextTunGeneration()
@@ -388,7 +400,11 @@ func (n *wireGuardNode) OnEvent(event pasta.Event, linkType string, _ []string, 
 			}(payload.Network)
 			return nil
 		}
+		if n.networkPayloadReceived && SameNetworkInstance(n.desiredNetwork, payload.Network) {
+			return nil
+		}
 		n.networkPayloadReceived = true
+		n.desiredNetwork = payload.Network
 		BindNetworkResource(n.W, n.ID, event.Link, payload.Network)
 		n.cancelConfigRetry()
 		networkGeneration := n.nextNetworkGeneration()
