@@ -251,7 +251,7 @@ func (n *wireGuardNode) handleSecretValueChanged(msg SecretValueChanged) {
 	for i := range next.peers {
 		next.peers[i].presharedKey = ""
 	}
-	_ = n.commitConfigForm(next, wireGuardConfigCommitOptions{rebuildPeers: true, emitTunConfig: true})
+	_ = n.commitConfigForm(next, wireGuardConfigCommitOptions{emitTunConfig: true})
 
 	objectsChanged := false
 	for link, input := range n.objectPeerInputs {

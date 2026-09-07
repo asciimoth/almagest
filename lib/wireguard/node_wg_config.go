@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
@@ -98,6 +99,8 @@ type wgConfigNode struct {
 	runtimeWGReady      bool
 	runtimeNetworkReady bool
 	runtimePeerCount    int
+	reconcilePending    bool
+	retryDelay          time.Duration
 	formError           string
 	runtimeError        string
 }
@@ -112,6 +115,10 @@ type wgConfigRuntimeResult struct {
 
 type wgConfigControllerClosed struct {
 	controller WGCtrlAPI
+}
+
+type wgConfigRetryMessage struct {
+	generation uint64
 }
 
 func (n *wgConfigNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64, name string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
@@ -242,6 +249,12 @@ func (n *wgConfigNode) OnInbox(message pasta.InboxMessage) error {
 			_ = n.updateLabel()
 			n.sendStatusBlock()
 		}
+	case wgConfigRetryMessage:
+		if msg.generation == n.generation.Load() {
+			n.scheduleReconcile()
+			_ = n.updateLabel()
+			n.sendStatusBlock()
+		}
 	case SecretValueChanged:
 		n.handleSecretValueChanged(msg)
 	}
@@ -350,6 +363,7 @@ func (n *wgConfigNode) scheduleReconcile() {
 		return
 	}
 	generation := n.generation.Add(1)
+	n.reconcilePending = true
 	controller := n.controller
 	network := n.network
 	peers := slices.Clone(n.peers)
@@ -429,6 +443,7 @@ func (n *wgConfigNode) installRuntimeTransportLocked(network NetworkCloser) erro
 	bind := newWireGuardNetworkBind(network, n.runtimeController.BatchSize())
 	config := wgdevice.TransportConfig{Bind: bind}
 	id := WGConfigTransportID(n.ID)
+	oldNetwork := n.runtimeNetwork
 	var err error
 	if n.runtimeTransport {
 		err = n.runtimeController.ReplaceTrackedTransport(id, config)
@@ -441,6 +456,9 @@ func (n *wgConfigNode) installRuntimeTransportLocked(network NetworkCloser) erro
 	}
 	n.runtimeNetwork = network
 	n.runtimeTransport = true
+	if oldNetwork != nil && !SameNetworkInstance(oldNetwork, network) {
+		_ = oldNetwork.Close()
+	}
 	return nil
 }
 
@@ -458,6 +476,9 @@ func (n *wgConfigNode) removeRuntimeTransportLocked() error {
 }
 
 func (n *wgConfigNode) syncRuntimePeersLocked(peers []wireGuardPeerConfig, useTransport bool) error {
+	if n.runtimePeerKeys == nil {
+		n.runtimePeerKeys = map[wgdevice.NoisePublicKey]struct{}{}
+	}
 	nextKeys := make(map[wgdevice.NoisePublicKey]struct{}, len(peers))
 	specs := make([]wgdevice.PeerSpec, 0, len(peers))
 	for _, peer := range peers {
@@ -490,13 +511,19 @@ func (n *wgConfigNode) syncRuntimePeersLocked(peers []wireGuardPeerConfig, useTr
 		if _, err := n.runtimeController.DeleteTrackedPeer(key); err != nil {
 			return fmt.Errorf("delete peer: %w", err)
 		}
+		// Update ownership after each operation. A later failure must not make
+		// this successful deletion appear pending again or hide a partial apply.
+		delete(n.runtimePeerKeys, key)
 	}
 	for _, spec := range specs {
+		// Upsert can change the device before it reports an error. Claim the key
+		// first so a later desired snapshot can always delete a partially applied
+		// peer. DeleteTrackedPeer is idempotent when the peer was not created.
+		n.runtimePeerKeys[spec.PublicKey] = struct{}{}
 		if err := n.runtimeController.UpsertTrackedPeer(spec); err != nil {
 			return fmt.Errorf("apply peer: %w", err)
 		}
 	}
-	n.runtimePeerKeys = nextKeys
 	return nil
 }
 
@@ -510,6 +537,7 @@ func (n *wgConfigNode) handleRuntimeResult(msg wgConfigRuntimeResult) {
 	if msg.generation != n.generation.Load() {
 		return
 	}
+	n.reconcilePending = false
 	n.runtimeWGReady = msg.wgReady
 	n.runtimeNetworkReady = msg.networkReady
 	n.runtimePeerCount = msg.peerCount
@@ -518,11 +546,36 @@ func (n *wgConfigNode) handleRuntimeResult(msg wgConfigRuntimeResult) {
 		if n.Logger != nil {
 			n.Logger.Errf("WGConfig node error: %v", msg.err)
 		}
+		n.scheduleRetry(msg.generation)
 	} else {
 		n.runtimeError = ""
+		n.retryDelay = wireGuardConfigRetryInitialDelay
 	}
 	_ = n.updateLabel()
 	n.sendStatusBlock()
+}
+
+func (n *wgConfigNode) scheduleRetry(generation uint64) {
+	if n.W == nil || n.ID == 0 {
+		return
+	}
+	delay := n.retryDelay
+	if delay <= 0 {
+		delay = wireGuardConfigRetryInitialDelay
+	}
+	n.retryDelay = min(delay*2, wireGuardConfigRetryMaxDelay)
+	go func() {
+		timer := time.NewTimer(delay)
+		defer timer.Stop()
+		<-timer.C
+		if generation != n.generation.Load() {
+			return
+		}
+		n.W.SendInbox(pasta.InboxMessage{
+			ReceiverNode: n.ID,
+			Payload:      wgConfigRetryMessage{generation: generation},
+		})
+	}()
 }
 
 func (n *wgConfigNode) stateText() string {
@@ -531,6 +584,8 @@ func (n *wgConfigNode) stateText() string {
 		return "error"
 	case n.ctrlLink == 0:
 		return "waiting for WireGuard"
+	case n.reconcilePending:
+		return "starting"
 	case !n.runtimeWGReady:
 		return "starting"
 	case n.netLink == 0 || !n.runtimeNetworkReady:

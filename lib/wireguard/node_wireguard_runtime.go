@@ -80,6 +80,9 @@ func (n *wireGuardNode) currentRuntimeGeneration() uint64 {
 func (n *wireGuardNode) currentRuntimeFailureGeneration() uint64 {
 	return n.runtimeFailureGeneration.Load()
 }
+func (n *wireGuardNode) currentConfigGeneration() uint64 {
+	return n.configGeneration.Load()
+}
 func (n *wireGuardNode) nextTunGeneration() uint64 {
 	return n.tunGeneration.Add(1)
 }
@@ -92,20 +95,33 @@ func (n *wireGuardNode) nextNetworkGeneration() uint64 {
 func (n *wireGuardNode) currentNetworkGenerationValue() uint64 {
 	return n.networkGeneration.Load()
 }
-func (n *wireGuardNode) scheduleConfigApply(config wireGuardConfig, rebuildPeers bool, runtimeGeneration, retryGeneration uint64, checkRetry bool) {
+func (n *wireGuardNode) scheduleConfigApply(config wireGuardConfig, runtimeGeneration, retryGeneration uint64, checkRetry bool) {
+	configGeneration := n.currentConfigGeneration()
 	n.scheduleRuntimeWork(runtimeGeneration, retryGeneration, checkRetry, func() (bool, error, bool) {
 		n.runtimeMu.Lock()
 		defer n.runtimeMu.Unlock()
-		if runtimeGeneration != n.currentRuntimeGeneration() {
+		if runtimeGeneration != n.currentRuntimeGeneration() || configGeneration != n.currentConfigGeneration() {
 			return false, nil, false
 		}
-		// Capture retry eligibility before applyConfigToDeviceLocked can mark
-		// the current bind failed. A running device remains eligible while it
-		// waits for a replacement TUN.
-		retryOnError := n.shouldRunDeviceLocked()
-		err := n.applyConfigToDeviceLocked(config, rebuildPeers)
+		// Capture retry eligibility before applyConfigToDeviceLocked can mark the
+		// current bind failed. An attached current network is also eligible when a
+		// previous failure has already made shouldRunDeviceLocked false; config
+		// convergence repairs that bind before applying the config.
+		retryOnError := n.shouldRunDeviceLocked() || n.currentNetworkActiveLocked()
+		// Every desired snapshot fully reconciles the peers owned by this node.
+		// Otherwise, a stale peer-removal job followed by attachment recovery
+		// could forget ownership without deleting the old peer.
+		err := n.applyConfigToDeviceLocked(config, true)
 		if err != nil {
 			return retryOnError, err, true
+		}
+		// The runtime generation can change while ApplyConfig is running because
+		// workspace callbacks do not take runtimeMu. The applied config is still
+		// current when its independent generation matches. Recording that fact
+		// prevents a hot attachment replacement from applying the same config
+		// again, while a skipped stale job remains detectable.
+		if configGeneration == n.currentConfigGeneration() {
+			n.appliedConfigGeneration = configGeneration
 		}
 		return n.shouldRunDeviceLocked(), nil, true
 	})
@@ -245,13 +261,14 @@ func (n *wireGuardNode) scheduleTunAttach(tunGeneration uint64, t tun.Tun, batch
 func (n *wireGuardNode) scheduleTunDetach(tunGeneration uint64) {
 	failureGeneration := n.currentRuntimeFailureGeneration()
 	go func() {
-		err, ok := n.detachCurrentTun(tunGeneration)
+		needsConfig, err, ok := n.detachCurrentTun(tunGeneration)
 		if !ok {
 			return
 		}
 		n.sendInternal(wireGuardRuntimeAttachmentResultMessage{
 			tunGeneration:     tunGeneration,
 			failureGeneration: failureGeneration,
+			needsConfigApply:  needsConfig,
 			err:               err,
 		})
 	}()
@@ -294,13 +311,14 @@ func (n *wireGuardNode) scheduleCurrentNetworkBindAttach(networkGeneration, retr
 func (n *wireGuardNode) scheduleNetworkDetach(networkGeneration uint64) {
 	failureGeneration := n.currentRuntimeFailureGeneration()
 	go func() {
-		err, ok := n.detachCurrentNetwork(networkGeneration)
+		needsConfig, err, ok := n.detachCurrentNetwork(networkGeneration)
 		if !ok {
 			return
 		}
 		n.sendInternal(wireGuardRuntimeAttachmentResultMessage{
 			networkGeneration: networkGeneration,
 			failureGeneration: failureGeneration,
+			needsConfigApply:  needsConfig,
 			err:               err,
 		})
 	}()
@@ -352,9 +370,10 @@ func (n *wireGuardNode) handleReceiveError(msg wireGuardReceiveErrorMessage) {
 	// A receive error from the current device is only actionable if it still
 	// belongs to the bind open generation that is current now. Close/reopen
 	// operations can report asynchronously after a newer Open has already
-	// installed replacement receive funcs; those stale closes must not poison
-	// the new bind.
-	if current && msg.intentionalClose && msg.bindOpenGeneration != 0 && n.currentBindOpen != nil && msg.bindOpenGeneration != n.currentBindOpen.Load() {
+	// installed replacement receive funcs. This applies to unexpected errors
+	// that occurred just before Close as well as intentional close errors; neither
+	// may poison the new bind.
+	if current && msg.bindOpenGeneration != 0 && n.currentBindOpen != nil && msg.bindOpenGeneration != n.currentBindOpen.Load() {
 		current = false
 	}
 	// Intentional closes are expected during device down, detach, and rebind.
@@ -400,7 +419,7 @@ func (n *wireGuardNode) retryConfigToDevice(generation uint64) {
 		n.scheduleCurrentNetworkBindAttach(networkGeneration, generation, true, n.config.batchSize)
 		return
 	}
-	n.scheduleConfigApply(n.effectiveConfig(), false, runtimeGeneration, generation, true)
+	n.scheduleConfigApply(n.effectiveConfig(), runtimeGeneration, generation, true)
 }
 func (n *wireGuardNode) failRuntime(err error, retry bool) {
 	n.runtimeFailureGeneration.Add(1)
@@ -580,10 +599,23 @@ func (n *wireGuardNode) handleRuntimeAttachmentResult(msg wireGuardRuntimeAttach
 		return
 	}
 	if msg.needsConfigApply {
-		n.scheduleConfigApply(n.effectiveConfig(), false, n.currentRuntimeGeneration(), 0, false)
-		_ = n.updateLabel()
-		n.sendStatusBlock()
-		return
+		if !n.runtimeMu.TryLock() {
+			n.deferInternal(msg)
+			return
+		}
+		needsConfigApply := n.configApplyNeededLocked()
+		n.runtimeMu.Unlock()
+		if !needsConfigApply {
+			// Another current-generation config job converged while this
+			// attachment result waited in the inbox. Do not refresh live sockets
+			// again for an already-applied config.
+			msg.needsConfigApply = false
+		} else {
+			n.scheduleConfigApply(n.effectiveConfig(), n.currentRuntimeGeneration(), 0, false)
+			_ = n.updateLabel()
+			n.sendStatusBlock()
+			return
+		}
 	}
 	if msg.failureGeneration != n.currentRuntimeFailureGeneration() {
 		_ = n.updateLabel()
@@ -595,6 +627,11 @@ func (n *wireGuardNode) handleRuntimeAttachmentResult(msg wireGuardRuntimeAttach
 		n.deferInternal(msg)
 		return
 	}
+	// An interface-config apply waits for its TUN, but an intentionally absent
+	// network does not prevent that apply from completing. Check waiters after
+	// every current attachment transition, including transitions that cannot
+	// make the complete WireGuard runtime ready.
+	n.checkPendingWGCtrlInterfaceConfigApplies()
 	if !ready {
 		_ = n.updateLabel()
 		n.sendStatusBlock()
@@ -602,7 +639,6 @@ func (n *wireGuardNode) handleRuntimeAttachmentResult(msg wireGuardRuntimeAttach
 	}
 	n.cancelConfigRetry()
 	n.clearRuntimeError()
-	n.checkPendingWGCtrlInterfaceConfigApplies()
 	_ = n.updateLabel()
 	n.sendStatusBlock()
 }

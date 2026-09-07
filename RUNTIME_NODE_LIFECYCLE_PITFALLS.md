@@ -191,6 +191,63 @@ close an old receive routine. That close can report asynchronously after the new
 runtime is already active, so the error handler must verify the reported
 generation before marking the current runtime failed.
 
+### Keep Desired Config Separate From Runtime Identity
+
+A config operation and an attachment operation can invalidate different work.
+Do not use one generation for both meanings.
+
+For example, a config update can emit a new TUN configuration. The provider can
+then replace its TUN and advance the runtime generation before the original
+device-config job starts. Dropping that old runtime job is correct, but the
+latest desired device config is still unapplied.
+
+Track both values:
+
+- the latest desired config generation
+- the latest config generation applied successfully
+
+Every current attachment transition must check whether these values differ. If
+they differ, it must schedule config work for the current runtime. Link changes
+must also preserve pending config work when no attachment payload or detach
+completion will arrive.
+
+Every replacement config job must do the same full resource reconciliation as
+the job that it replaces. For example, a WireGuard attachment retry must still
+delete removed node-owned peers. A partial apply can otherwise record the new
+ownership set while the removed peer stays in the device permanently.
+
+Update resource ownership after each operation that can have a partial effect.
+Do not wait for a multi-resource batch to succeed. A failed batch must retain
+enough ownership data for the next desired snapshot to remove all partial
+results.
+
+Invariant:
+
+```text
+Invalidating one runtime operation must not lose an unapplied desired config.
+```
+
+### Cancel Retry Only After Proven Convergence
+
+The arrival of a replacement payload is progress, but it is not proof of
+recovery. The payload can arrive after a failure result schedules retry and
+before its own attachment result is handled. If payload receipt cancels retry,
+a stale or incomplete attachment result can leave no recovery work.
+
+Keep retry active until a current-generation operation proves the required
+runtime is healthy. A new desired config can replace old retry work only when it
+also schedules its own convergence operation.
+
+### Complete Async Requests On Every Terminal Path
+
+Some controller operations wait for runtime readiness through a result channel.
+Generation rejection alone is not completion. Node stop, link removal, resource
+replacement, and terminal runtime failure must either complete or explicitly
+fail every affected waiter.
+
+Readiness for a waiter must use current desired resources. An older installed
+TUN or bind is not sufficient while its replacement is pending.
+
 ### Avoid Equivalent Rebuild Churn
 
 Config events can arrive after a node has already emitted wrappers or after
@@ -278,6 +335,9 @@ When adding or refactoring a runtime node, answer these before merging:
 - If an operation marks an attachment failed, did retry eligibility get captured
   before that mutation?
 - Can an old success clear a newer error or cancel a newer retry?
+- Can a replacement payload cancel the only retry before recovery succeeds?
+- Can a config generation remain unapplied after runtime generation changes?
+- Does every pending result channel complete on stop, detach, and failure?
 - Can a stale resource event reopen sockets after link detach but before
   physical detach?
 - Are buffered lifecycle events drained before attaching resources to runtimes
@@ -482,6 +542,59 @@ Coverage:
   logs after `engine built`; startup socket churn may produce debug receive EOF
   lines, but steady-state `WireGuard node error: receive from bind: EOF` should
   not remain. Shutdown-time EOF after `Stopping` is normal shutdown noise.
+
+### WireGuard Replacement Lost Recovery Work
+
+Bug:
+
+- A named controller transport could be temporarily closed while WireGuard
+  reopened all transports.
+- WireGuard correctly scheduled a retry after the reopen failed.
+- A replacement TUN or network payload then cancelled that retry before its
+  attachment result proved recovery.
+- In the opposite ordering, the attachment generation made the failed config
+  job stale, but no later job knew that the desired config was still unapplied.
+- The node stayed in `starting` until the e2e timeout.
+
+Fix:
+
+- Attachment payload receipt does not cancel recovery retry.
+- WireGuard tracks desired and successfully applied config generations
+  separately.
+- Current attachment and link transitions reschedule skipped config work.
+- Config convergence repairs a failed current bind before it can succeed or
+  cancel retry. Recovery does not depend on which event scheduled the job.
+- A successful current-generation operation rechecks whether config work is
+  still needed before it refreshes live sockets.
+- Every replacement config job fully reconciles node-owned peers.
+
+Coverage:
+
+```sh
+go -C lib test ./wireguard -run 'TestWireGuard(AttachmentPayloadsDoNotCancelFailureRetry|TunReplacementAppliesSkippedCurrentConfig|LinkChangesDoNotDropPendingConfigApply|LocalPeerRebuildPreservesControllerPeers)' -race -count=10
+```
+
+### WireGuard Waiters And Controller Reconcile Could Stop Permanently
+
+Bug:
+
+- A WireGuard interface-config apply could wait forever after TUN removal or a
+  later TUN generation failure.
+- An older TUN could satisfy the apply while a replacement was still pending.
+- WGConfig kept an old `up` state while reconcile was pending and did not retry
+  transient reconcile failures.
+- Replaced network wrappers remained open.
+
+Fix:
+
+- Pending interface applies fail on stop, link removal, and applicable runtime
+  failures. They require the current desired TUN and, when expected, a healthy
+  current network bind.
+- WGConfig reports `starting` during reconcile and retries failures with bounded
+  exponential backoff.
+- Peer ownership survives partial reconciliation failures, so later retries or
+  removals can clean all applied peers.
+- Both WireGuard nodes close stale and replaced network wrappers.
 
 ### Same-Source Network Re-Emits Closed Wrappers
 

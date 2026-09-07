@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -372,7 +373,7 @@ func TestValidateWireGuardDNS(t *testing.T) {
 	}
 }
 
-func TestWGCtrlInterfaceConfigApplyAcknowledgesValidation(t *testing.T) {
+func TestWGCtrlInterfaceConfigApplyValidatesWithoutTun(t *testing.T) {
 	node := &wireGuardNode{
 		ctrlp:         1,
 		wgctrlConfigs: map[uint64]WGCtrlInterfaceConfig{},
@@ -409,8 +410,8 @@ func TestWGCtrlInterfaceConfigApplyAcknowledgesValidation(t *testing.T) {
 		}
 	}
 
-	if err := apply([]string{"10.31.0.2/32"}); err != nil {
-		t.Fatalf("valid interface config error = %v", err)
+	if err := apply([]string{"10.31.0.2/32"}); err == nil {
+		t.Fatal("valid interface config succeeded without a TUN link")
 	}
 	if got := node.effectiveOwnedIPAddrs(); !reflect.DeepEqual(got, []string{"10.31.0.2/32"}) {
 		t.Fatalf("effective addresses = %v, want [10.31.0.2/32]", got)
@@ -420,6 +421,82 @@ func TestWGCtrlInterfaceConfigApplyAcknowledgesValidation(t *testing.T) {
 	}
 	if got := node.effectiveOwnedIPAddrs(); got != nil {
 		t.Fatalf("effective addresses after rejection = %v, want nil", got)
+	}
+}
+
+func TestWGCtrlInterfaceConfigApplyFailsWhenTunLinkIsRemoved(t *testing.T) {
+	result := make(chan error, 1)
+	apply := &wgCtrlInterfaceConfigApply{link: 7, result: result}
+	n := &wireGuardNode{
+		config:               defaultWireGuardConfig(),
+		tunp:                 1,
+		tunLink:              2,
+		wgctrlPendingApplies: map[*wgCtrlInterfaceConfigApply]uint64{apply: 3},
+	}
+
+	if err := n.OnLinkRemoved(2, 1, TypeTun, "left"); err != nil {
+		t.Fatalf("OnLinkRemoved() error = %v", err)
+	}
+	select {
+	case err := <-result:
+		if err == nil {
+			t.Fatal("pending interface config apply succeeded after TUN removal")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("pending interface config apply did not terminate after TUN removal")
+	}
+	if len(n.wgctrlPendingApplies) != 0 {
+		t.Fatal("TUN removal left a pending interface config apply")
+	}
+}
+
+func TestWGCtrlInterfaceConfigApplyFailsWithoutTunLink(t *testing.T) {
+	result := make(chan error, 1)
+	apply := &wgCtrlInterfaceConfigApply{link: 7, result: result}
+	n := &wireGuardNode{}
+
+	n.commitWGCtrlInterfaceConfigApply(7, apply)
+	select {
+	case err := <-result:
+		if err == nil {
+			t.Fatal("interface config apply succeeded without a TUN link")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("interface config apply did not terminate without a TUN link")
+	}
+}
+
+func TestWGCtrlInterfaceConfigApplyRequiresHealthyDesiredTransport(t *testing.T) {
+	sourceTun, peerTun := tun.Pipe(1, 1500, 0, 0)
+	t.Cleanup(func() { _ = sourceTun.Close() })
+	t.Cleanup(func() { _ = peerTun.Close() })
+	network := gonnect.DetachNetwork(gonnect.NewLoopbackNetwork(), nil, nil)
+	t.Cleanup(func() { _ = network.Close() })
+	n := &wireGuardNode{
+		currentTun:               sourceTun,
+		currentTunGeneration:     3,
+		currentNetwork:           network,
+		currentNetworkGeneration: 1,
+		currentBind:              wireGuardTrackedBind{},
+		currentBindFailed:        true,
+	}
+	n.tunGeneration.Store(3)
+	n.networkGeneration.Store(1)
+
+	// Generation 3 supersedes generation 2 and includes its still-current
+	// controller contribution, but a failed desired transport must prevent the
+	// acknowledgement until the device is usable.
+	if n.wgCtrlInterfaceConfigReadyLocked(2, true) {
+		t.Fatal("interface config was ready while the desired bind was failed")
+	}
+	n.currentBindFailed = false
+	n.runtimeDeviceUp = true
+	if !n.wgCtrlInterfaceConfigReadyLocked(2, true) {
+		t.Fatal("later healthy TUN generation did not satisfy earlier interface config")
+	}
+	n.tunGeneration.Store(4)
+	if n.wgCtrlInterfaceConfigReadyLocked(2, true) {
+		t.Fatal("older installed TUN satisfied interface config while a replacement was pending")
 	}
 }
 
@@ -610,6 +687,67 @@ func TestWireGuardNetworkAttachmentDoesNotOpenSocketsUntilTunAttached(t *testing
 	}, "wireguard remains active after config apply without a TUN")
 }
 
+func TestWireGuardLinkChangesDoNotDropPendingConfigApply(t *testing.T) {
+	w := pasta.NewWorkspace(wireGuardTestLogFactory{})
+	t.Cleanup(func() { w.Close() })
+
+	var wg *wireGuardNode
+	if err := w.AddNodeClass(captureWireGuardClass{node: &wg, lockRuntime: true}); err != nil {
+		t.Fatalf("AddNodeClass WireGuard: %v", err)
+	}
+	if err := w.AddNodeClass(wireGuardTestTunProviderClass{silent: true}); err != nil {
+		t.Fatalf("AddNodeClass TunProvider: %v", err)
+	}
+	wgID, err := w.AddNodeByClass("test/WireGuard", "wg")
+	if err != nil {
+		t.Fatalf("AddNodeByClass WireGuard: %v", err)
+	}
+	if wg == nil {
+		t.Fatal("captured WireGuard node = nil")
+	}
+	runtimeLocked := true
+	t.Cleanup(func() {
+		if runtimeLocked {
+			wg.runtimeMu.Unlock()
+		}
+	})
+	tunID, err := w.AddNodeByClass(wireGuardTestTunProviderNodeType, "silent-tun")
+	if err != nil {
+		t.Fatalf("AddNodeByClass TunProvider: %v", err)
+	}
+	wgSnapshot := testkit.MustNodeSnapshot(t, w, wgID)
+	tunSnapshot := testkit.MustNodeSnapshot(t, w, tunID)
+	link, _, err := w.AddLink(wgSnapshot.LeftPorts[0], tunSnapshot.RightPorts[0])
+	if err != nil {
+		t.Fatalf("AddLink tun: %v", err)
+	}
+
+	// OnInit's config job is blocked behind runtimeMu. The link add invalidates
+	// its runtime generation, and the silent provider produces no attachment
+	// result that could otherwise trigger convergence.
+	wg.runtimeMu.Unlock()
+	runtimeLocked = false
+	eventually(t, func() bool {
+		return wg.controllerSource.Load() != nil
+	}, "link add reschedules invalidated initial config")
+
+	// Repeat the ordering for link removal while no TUN is physically attached.
+	// The detach job has no result in this state, so OnLinkRemoved must preserve
+	// the pending desired config itself.
+	wg.runtimeMu.Lock()
+	runtimeLocked = true
+	wg.configGeneration.Add(1)
+	wg.scheduleConfigApply(wg.config.clone(), wg.currentRuntimeGeneration(), 0, false)
+	w.RemoveLink(link)
+	wg.runtimeMu.Unlock()
+	runtimeLocked = false
+	eventually(t, func() bool {
+		wg.runtimeMu.Lock()
+		defer wg.runtimeMu.Unlock()
+		return wg.appliedConfigGeneration == wg.currentConfigGeneration()
+	}, "link removal reschedules invalidated config without an attachment")
+}
+
 func TestWireGuardStateDoesNotReportUpBeforeNetworkBindAttachCompletes(t *testing.T) {
 	privateKey, _ := wireGuardTestKeyPair(t, 6)
 	sourceTun, peerTun := tun.Pipe(4, 1500, 0, 0)
@@ -656,6 +794,114 @@ func TestWireGuardHotTunReplacementDoesNotNeedConfigApply(t *testing.T) {
 	}
 	if needsConfig {
 		t.Fatal("hot TUN replacement requested an unchanged device config apply")
+	}
+}
+
+func TestWireGuardTunReplacementAppliesSkippedCurrentConfig(t *testing.T) {
+	first, firstPeer := tun.Pipe(4, 1500, 0, 0)
+	second, secondPeer := tun.Pipe(4, 1500, 0, 0)
+	t.Cleanup(func() { _ = firstPeer.Close() })
+	t.Cleanup(func() { _ = secondPeer.Close() })
+
+	n := &wireGuardNode{config: defaultWireGuardConfig()}
+	t.Cleanup(n.stopRuntime)
+	n.tunGeneration.Store(1)
+	if _, attached, err := n.attachCurrentTun(1, first, n.config.batchSize); err != nil || !attached {
+		t.Fatalf("initial TUN attach = attached %t, error %v", attached, err)
+	}
+	n.runtimeMu.Lock()
+	n.currentBind = wireGuardTrackedBind{}
+	n.runtimeDeviceUp = true
+	n.appliedConfigGeneration = 1
+	n.runtimeMu.Unlock()
+
+	// A config apply can become stale before it takes runtimeMu when its TunConfig
+	// output causes a replacement payload. The replacement must observe that the
+	// latest desired config was not applied and schedule a new apply.
+	n.configGeneration.Store(2)
+	n.tunGeneration.Store(2)
+	needsConfig, attached, err := n.attachCurrentTun(2, second, n.config.batchSize)
+	if err != nil || !attached {
+		t.Fatalf("replacement TUN attach = attached %t, error %v", attached, err)
+	}
+	if !needsConfig {
+		t.Fatal("TUN replacement accepted a skipped current config as applied")
+	}
+}
+
+func TestWireGuardBindRecoveryAppliesSkippedCurrentConfigWithoutTun(t *testing.T) {
+	network := gonnect.DetachNetwork(gonnect.NewLoopbackNetwork(), nil, nil)
+	t.Cleanup(func() { _ = network.Close() })
+	n := &wireGuardNode{
+		config:                   defaultWireGuardConfig(),
+		currentNetwork:           network,
+		currentNetworkGeneration: 1,
+		currentBindFailed:        true,
+		appliedConfigGeneration:  1,
+	}
+	t.Cleanup(n.stopRuntime)
+	n.networkGeneration.Store(1)
+	n.configGeneration.Store(2)
+
+	needsConfig, attached, retry, err := n.attachCurrentNetworkBind(1, n.config.batchSize)
+	if err != nil || !attached || retry {
+		t.Fatalf("bind recovery = attached %t, retry %t, error %v", attached, retry, err)
+	}
+	if !needsConfig {
+		t.Fatal("bind recovery stopped before applying the skipped current config")
+	}
+}
+
+func TestWireGuardConfigApplyFailureInvalidatesActiveBind(t *testing.T) {
+	privateKey, _ := wireGuardTestKeyPair(t, 10)
+	sourceTun, peerTun := tun.Pipe(4, 1500, 0, 0)
+	t.Cleanup(func() { _ = peerTun.Close() })
+	network := &recordingWireGuardTestNetwork{Network: gonnect.NewLoopbackNetwork()}
+	n := &wireGuardNode{config: defaultWireGuardConfig()}
+	n.config.privateKey = privateKey
+	n.config.listenPort = 51820
+	t.Cleanup(n.stopRuntime)
+
+	n.tunGeneration.Store(1)
+	if _, attached, err := n.attachCurrentTun(1, sourceTun, n.config.batchSize); err != nil || !attached {
+		t.Fatalf("TUN attach = attached %t, error %v", attached, err)
+	}
+	n.networkGeneration.Store(1)
+	if _, attached, _, err := n.attachNetworkPayload(1, network, n.config.batchSize); err != nil || !attached {
+		t.Fatalf("network attach = attached %t, error %v", attached, err)
+	}
+	if err := n.applyConfigToDevice(true); err != nil {
+		t.Fatalf("initial config apply: %v", err)
+	}
+
+	network.failNextListens(1, errors.New("forced bind refresh failure"))
+	if err := n.applyConfigToDevice(false); err == nil {
+		t.Fatal("config apply with failed bind refresh succeeded")
+	}
+	n.runtimeMu.Lock()
+	defer n.runtimeMu.Unlock()
+	if n.runtimeDeviceUp {
+		t.Fatal("failed active config apply left runtimeDeviceUp true")
+	}
+	if !n.currentBindFailed {
+		t.Fatal("failed active config apply left the unusable bind reusable")
+	}
+	if !n.configApplyNeededLocked() {
+		t.Fatal("failed bind did not require convergence when config generations matched")
+	}
+	n.runtimeMu.Unlock()
+
+	// The next config convergence must repair the failed bind itself. It must
+	// not depend on a particular retry or attachment-result ordering.
+	if err := n.applyConfigToDevice(false); err != nil {
+		t.Fatalf("config convergence after bind failure: %v", err)
+	}
+	n.runtimeMu.Lock()
+	if n.currentBindFailed {
+		t.Fatal("config convergence did not repair the failed bind")
+	}
+	if !n.runtimeDeviceUp {
+		t.Fatal("config convergence repaired the bind but left the device down")
 	}
 }
 
@@ -708,6 +954,8 @@ func TestWireGuardTryMarkRuntimeReadyRequiresActiveRuntime(t *testing.T) {
 func TestWireGuardFailedReopenRequiresConfigApplyAfterTunReplacement(t *testing.T) {
 	source, peer := tun.Pipe(4, 1500, 0, 0)
 	t.Cleanup(func() { _ = peer.Close() })
+	network := gonnect.DetachNetwork(gonnect.NewLoopbackNetwork(), nil, nil)
+	t.Cleanup(func() { _ = network.Close() })
 
 	n := &wireGuardNode{config: defaultWireGuardConfig()}
 	n.ensureDeviceLocked(n.config.batchSize)
@@ -737,6 +985,9 @@ func TestWireGuardFailedReopenRequiresConfigApplyAfterTunReplacement(t *testing.
 	n.currentTun = source
 	n.currentTunGeneration = 1
 	n.tunGeneration.Store(2)
+	n.currentNetwork = network
+	n.currentNetworkGeneration = 1
+	n.networkGeneration.Store(1)
 	n.currentBind = wireGuardTrackedBind{}
 	needsConfig, ok, err := n.attachCurrentTun(2, source, n.config.batchSize)
 	if err != nil {
@@ -831,6 +1082,93 @@ func TestWireGuardDuplicateNetworkPayloadDoesNotInvalidatePendingAttach(t *testi
 	}, "first network payload remains current after duplicate")
 }
 
+func TestWireGuardStaleAttachmentPayloadsAreClosed(t *testing.T) {
+	baseTun, peerTun := tun.Pipe(4, 1500, 0, 0)
+	t.Cleanup(func() { _ = baseTun.Close() })
+	t.Cleanup(func() { _ = peerTun.Close() })
+	staleTun := tun.Detach(baseTun, nil, nil)
+	staleNetwork := gonnect.DetachNetwork(gonnect.NewLoopbackNetwork(), nil, nil)
+	t.Cleanup(func() { _ = staleTun.Close() })
+	t.Cleanup(func() { _ = staleNetwork.Close() })
+	n := &wireGuardNode{config: defaultWireGuardConfig()}
+	n.tunGeneration.Store(2)
+	n.networkGeneration.Store(2)
+
+	if _, current, err := n.attachCurrentTun(1, staleTun, n.config.batchSize); err != nil || current {
+		t.Fatalf("stale TUN attach = current %t, error %v", current, err)
+	}
+	if TunIsReady(staleTun) {
+		t.Fatal("stale TUN payload remained ready")
+	}
+	if _, current, _, err := n.attachNetworkPayload(1, staleNetwork, n.config.batchSize); err != nil || current {
+		t.Fatalf("stale network attach = current %t, error %v", current, err)
+	}
+	if NetworkIsReady(staleNetwork) {
+		t.Fatal("stale network payload remained ready")
+	}
+}
+
+func TestWireGuardAttachmentPayloadsDoNotCancelFailureRetry(t *testing.T) {
+	sourceTun, peerTun := tun.Pipe(4, 1500, 0, 0)
+	t.Cleanup(func() { _ = sourceTun.Close() })
+	t.Cleanup(func() { _ = peerTun.Close() })
+	network := gonnect.DetachNetwork(gonnect.NewLoopbackNetwork(), nil, nil)
+	t.Cleanup(func() { _ = network.Close() })
+
+	n := &wireGuardNode{
+		config:          defaultWireGuardConfig(),
+		tunp:            1,
+		tunLink:         2,
+		netp:            3,
+		netLink:         4,
+		retryGeneration: 7,
+		retryCancel:     make(chan struct{}),
+	}
+	t.Cleanup(n.stopRuntime)
+
+	// Keep both attachment jobs pending. This models startup when an attachment
+	// payload reaches the workspace after a device operation fails but before
+	// its failure result is handled. The failure result owns the retry, and an
+	// attachment receipt must not revoke it before recovery succeeds.
+	n.runtimeMu.Lock()
+	for _, event := range []struct {
+		value     pasta.Event
+		linkType  string
+		direction string
+	}{
+		{
+			value: pasta.Event{
+				ReceiverPort: n.tunp,
+				Link:         n.tunLink,
+				Payload:      TunPayload{Tun: sourceTun},
+			},
+			linkType: TypeTun, direction: "left",
+		},
+		{
+			value: pasta.Event{
+				ReceiverPort: n.netp,
+				Link:         n.netLink,
+				Payload:      NetworkPayload{Network: network},
+			},
+			linkType: TypeNetwork, direction: "right",
+		},
+	} {
+		if err := n.OnEvent(event.value, event.linkType, nil, event.direction); err != nil {
+			n.runtimeMu.Unlock()
+			t.Fatalf("OnEvent(%s) error = %v", event.linkType, err)
+		}
+		if n.retryCancel == nil {
+			n.runtimeMu.Unlock()
+			t.Fatalf("OnEvent(%s) cancelled the active failure retry", event.linkType)
+		}
+		if n.retryGeneration != 7 {
+			n.runtimeMu.Unlock()
+			t.Fatalf("retryGeneration after %s payload = %d, want 7", event.linkType, n.retryGeneration)
+		}
+	}
+	n.runtimeMu.Unlock()
+}
+
 func TestWireGuardSameSourceNetworkReemitRebuildsFailedBind(t *testing.T) {
 	sourceTun, peerTun := tun.Pipe(4, 1500, 0, 0)
 	t.Cleanup(func() { _ = sourceTun.Close() })
@@ -874,6 +1212,9 @@ func TestWireGuardSameSourceNetworkReemitRebuildsFailedBind(t *testing.T) {
 	}
 	if !SameNetworkInstance(n.currentNetwork, duplicate) {
 		t.Fatal("currentNetwork was not replaced with the fresh same-source wrapper")
+	}
+	if NetworkIsReady(current) {
+		t.Fatal("replaced network wrapper remained ready")
 	}
 	if !NetworkIsReady(duplicate) {
 		t.Fatal("fresh same-source network was closed")
@@ -1064,6 +1405,51 @@ func TestWireGuardIntentionalClosedReceiveErrorIsIgnored(t *testing.T) {
 	}
 	if wg.currentBindFailed {
 		t.Fatal("currentBindFailed = true, want false")
+	}
+}
+
+func TestWireGuardUnexpectedReceiveErrorFromOldOpenIsIgnored(t *testing.T) {
+	dev := wgdevice.NewDevice(nil, nil, wgdevice.NopLogger{}, nil, wgdevice.DeviceOptions{})
+	t.Cleanup(dev.Close)
+	openGeneration := &atomic.Uint64{}
+	openGeneration.Store(2)
+	network := gonnect.DetachNetwork(gonnect.NewLoopbackNetwork(), nil, nil)
+	t.Cleanup(func() { _ = network.Close() })
+	sourceTun, peerTun := tun.Pipe(1, 1500, 0, 0)
+	t.Cleanup(func() { _ = sourceTun.Close() })
+	t.Cleanup(func() { _ = peerTun.Close() })
+
+	n := &wireGuardNode{
+		dev:                      dev,
+		currentTun:               sourceTun,
+		currentTunGeneration:     1,
+		currentNetwork:           network,
+		currentNetworkGeneration: 1,
+		currentBind:              wireGuardTrackedBind{},
+		currentBindGen:           4,
+		currentBindOpen:          openGeneration,
+		runtimeDeviceUp:          true,
+	}
+	n.runtimeGeneration.Store(1)
+	n.tunGeneration.Store(1)
+	n.networkGeneration.Store(1)
+
+	n.handleReceiveError(wireGuardReceiveErrorMessage{
+		dev:                dev,
+		generation:         1,
+		bindGeneration:     4,
+		bindOpenGeneration: 1,
+		err:                io.EOF,
+	})
+
+	if n.runtimeError != "" {
+		t.Fatalf("runtimeError = %q after stale receive error, want empty", n.runtimeError)
+	}
+	if n.currentBindFailed {
+		t.Fatal("stale receive error marked the current bind failed")
+	}
+	if got := n.currentRuntimeGeneration(); got != 1 {
+		t.Fatalf("runtime generation = %d after stale receive error, want 1", got)
 	}
 }
 
@@ -1405,8 +1791,9 @@ func waitWireGuardTestLabel(t *testing.T, labels <-chan string, want string) {
 }
 
 type captureWireGuardClass struct {
-	node    **wireGuardNode
-	secrets SecretsStorage
+	node        **wireGuardNode
+	secrets     SecretsStorage
+	lockRuntime bool
 }
 
 func (captureWireGuardClass) ClassName() string        { return "test/WireGuard" }
@@ -1423,6 +1810,9 @@ func (c captureWireGuardClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClas
 		secrets = newWireGuardTestSecretsStorage()
 	}
 	node := &wireGuardNode{config: config, secrets: secrets}
+	if c.lockRuntime {
+		node.runtimeMu.Lock()
+	}
 	if c.node != nil {
 		*c.node = node
 	}
@@ -1571,7 +1961,9 @@ func (n *wireGuardTestNetworkSourceNode) sendToLink(link uint64) {
 
 const wireGuardTestTunProviderNodeType = "test/WireGuardTunProvider"
 
-type wireGuardTestTunProviderClass struct{}
+type wireGuardTestTunProviderClass struct {
+	silent bool
+}
 
 func (wireGuardTestTunProviderClass) ClassName() string        { return wireGuardTestTunProviderNodeType }
 func (wireGuardTestTunProviderClass) ShortDescription() string { return "test TUN provider" }
@@ -1583,19 +1975,20 @@ func (wireGuardTestTunProviderClass) DefaultNodeParams() pasta.NodeClassParams {
 		TunPort("right", "Tun"),
 	}}
 }
-func (wireGuardTestTunProviderClass) NewNode(configer.Config, ...*pasta.NodeClassState) (pasta.Node, error) {
+func (c wireGuardTestTunProviderClass) NewNode(configer.Config, ...*pasta.NodeClassState) (pasta.Node, error) {
 	source, peer := tun.Pipe(4, 1500, 0, 0)
-	return &wireGuardTestTunProviderNode{tun: source, peer: peer}, nil
+	return &wireGuardTestTunProviderNode{tun: source, peer: peer, silent: c.silent}, nil
 }
 
 type wireGuardTestTunProviderNode struct {
 	pasta.BasicNode
 
-	w    *pasta.Workspace
-	id   uint64
-	out  uint64
-	tun  tun.Tun
-	peer tun.Tun
+	w      *pasta.Workspace
+	id     uint64
+	out    uint64
+	tun    tun.Tun
+	peer   tun.Tun
+	silent bool
 }
 
 func (n *wireGuardTestTunProviderNode) OnInit(w *pasta.Workspace, _ pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
@@ -1609,7 +2002,9 @@ func (n *wireGuardTestTunProviderNode) OnInit(w *pasta.Workspace, _ pasta.Logger
 }
 
 func (n *wireGuardTestTunProviderNode) OnReady() error {
-	n.sendAll()
+	if !n.silent {
+		n.sendAll()
+	}
 	return nil
 }
 
@@ -1626,14 +2021,14 @@ func (n *wireGuardTestTunProviderNode) PreLinkAdd(port uint64, linkType, portDir
 }
 
 func (n *wireGuardTestTunProviderNode) OnLinkAdd(link, port uint64, linkType, portDirection string) error {
-	if port == n.out && portDirection == "right" && linkType == TypeTun {
+	if !n.silent && port == n.out && portDirection == "right" && linkType == TypeTun {
 		n.sendToLink(link)
 	}
 	return nil
 }
 
 func (n *wireGuardTestTunProviderNode) OnEvent(event pasta.Event, linkType string, _ []string, receiverPortDirection string) error {
-	if event.ReceiverPort == n.out && receiverPortDirection == "right" && linkType == TypeTun && std.IsRequest(event.Payload) {
+	if !n.silent && event.ReceiverPort == n.out && receiverPortDirection == "right" && linkType == TypeTun && std.IsRequest(event.Payload) {
 		n.sendToLink(event.Link)
 	}
 	return nil

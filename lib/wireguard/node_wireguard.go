@@ -87,6 +87,8 @@ func (c WireGuardClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState)
 //   - runtimeGeneration invalidates config-apply/readiness completions. It is
 //     separate from the attachment generations so a config edit does not drop a
 //     still-current TUN/network payload that was already queued.
+//   - configGeneration is separate from runtimeGeneration. It lets an attachment
+//     transition detect and reschedule a desired config job that became stale.
 //
 // This avoids lock inversions such as:
 // workspace callback -> runtimeMu -> wgo -> pasta worker spawn -> workspace.
@@ -163,6 +165,13 @@ type wireGuardNode struct {
 
 	runtimeMu         sync.Mutex
 	runtimeGeneration atomic.Uint64
+	// configGeneration identifies the latest desired device configuration.
+	// appliedConfigGeneration is runtime-owned and records the latest desired
+	// configuration that was applied successfully. Attachment events can
+	// invalidate runtime work without changing the desired configuration, so a
+	// separate generation is required to detect a skipped config apply.
+	configGeneration        atomic.Uint64
+	appliedConfigGeneration uint64
 	// runtimeFailureGeneration prevents a successful async completion that was
 	// scheduled before a newer runtime failure from clearing that failure or
 	// cancelling its retry.
@@ -192,7 +201,6 @@ type wireGuardNode struct {
 	retryCancel     chan struct{}
 }
 type wireGuardConfigCommitOptions struct {
-	rebuildPeers  bool
 	emitTunConfig bool
 }
 
@@ -225,8 +233,9 @@ func (n *wireGuardNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint6
 		n.formError = err.Error()
 	} else {
 		n.config = config
+		n.configGeneration.Add(1)
 		generation := n.nextRuntimeGeneration()
-		n.scheduleConfigApply(n.config.clone(), true, generation, 0, false)
+		n.scheduleConfigApply(n.config.clone(), generation, 0, false)
 	}
 	_ = n.updateLabel()
 	n.sendMenuSnapshot()
@@ -246,6 +255,7 @@ func (n *wireGuardNode) OnReady() error {
 }
 func (n *wireGuardNode) OnStop() {
 	n.controllerSource.Store(nil)
+	n.failWGCtrlInterfaceConfigApplies(0, errors.New("WireGuard node stopped"))
 	n.cancelConfigRetry()
 	n.nextRuntimeGeneration()
 	n.nextTunGeneration()
@@ -277,6 +287,7 @@ func (n *wireGuardNode) PreLinkAdd(port uint64, linkType, portDirection string) 
 	}
 }
 func (n *wireGuardNode) OnLinkAdd(link, port uint64, linkType, portDirection string) error {
+	configWorkInvalidated := false
 	switch {
 	case port == n.tunp && portDirection == "left" && linkType == TypeTun:
 		n.tunLink = link
@@ -284,6 +295,7 @@ func (n *wireGuardNode) OnLinkAdd(link, port uint64, linkType, portDirection str
 		n.desiredTun = nil
 		n.nextTunGeneration()
 		n.nextRuntimeGeneration()
+		configWorkInvalidated = true
 		n.sendTunConfigToLink(link)
 		std.RequestLocked(n.W, n.ID, link)
 	case port == n.peerp && portDirection == "left" && linkType == std.TypeObject:
@@ -296,21 +308,31 @@ func (n *wireGuardNode) OnLinkAdd(link, port uint64, linkType, portDirection str
 		n.desiredNetwork = nil
 		n.nextNetworkGeneration()
 		n.nextRuntimeGeneration()
+		configWorkInvalidated = true
 		std.RequestLocked(n.W, n.ID, link)
+	}
+	// Link callbacks can invalidate the config job started by OnInit before a
+	// provider has a payload to return. Queue work for the final generation so
+	// the device controller and config do not depend on a future payload.
+	if configWorkInvalidated && n.formError == "" {
+		n.scheduleConfigApply(n.effectiveConfig(), n.currentRuntimeGeneration(), 0, false)
 	}
 	_ = n.updateLabel()
 	n.sendStatusBlock()
 	return nil
 }
 func (n *wireGuardNode) OnLinkRemoved(link uint64, port uint64, linkType, portDirection string) error {
+	configWorkInvalidated := false
 	switch {
 	case port == n.tunp && portDirection == "left" && linkType == TypeTun && link == n.tunLink:
 		n.cancelConfigRetry()
+		n.failWGCtrlInterfaceConfigApplies(0, errors.New("WireGuard TUN link was removed"))
 		n.tunLink = 0
 		n.tunPayloadReceived = false
 		n.desiredTun = nil
 		tunGeneration := n.nextTunGeneration()
 		n.nextRuntimeGeneration()
+		configWorkInvalidated = true
 		n.scheduleTunDetach(tunGeneration)
 	case port == n.peerp && portDirection == "left" && linkType == std.TypeObject:
 		delete(n.objectPeerInputs, link)
@@ -330,7 +352,14 @@ func (n *wireGuardNode) OnLinkRemoved(link uint64, port uint64, linkType, portDi
 		n.desiredNetwork = nil
 		networkGeneration := n.nextNetworkGeneration()
 		n.nextRuntimeGeneration()
+		configWorkInvalidated = true
 		n.scheduleNetworkDetach(networkGeneration)
+	}
+	// A detach can find no physical attachment and therefore produce no runtime
+	// result. Queue the current config explicitly so a config job invalidated by
+	// this link change cannot be lost.
+	if configWorkInvalidated && n.formError == "" {
+		n.scheduleConfigApply(n.effectiveConfig(), n.currentRuntimeGeneration(), 0, false)
 	}
 	_ = n.updateLabel()
 	n.sendStatusBlock()
@@ -380,7 +409,12 @@ func (n *wireGuardNode) OnEvent(event pasta.Event, linkType string, _ []string, 
 		n.tunPayloadReceived = true
 		n.desiredTun = payload.Tun
 		BindTunResource(n.W, n.ID, event.Link, payload.Tun)
-		n.cancelConfigRetry()
+		// Do not cancel an active recovery retry here. The attachment job and
+		// the runtime failure result use different inbox messages, so the new
+		// payload can arrive between the failed operation and its result. If we
+		// cancel here, a later stale attachment result can leave no work that
+		// can recover the device. A successful current-generation completion
+		// cancels the retry.
 		tunGeneration := n.nextTunGeneration()
 		n.nextRuntimeGeneration()
 		n.scheduleTunAttach(tunGeneration, payload.Tun, n.config.batchSize)
@@ -406,7 +440,8 @@ func (n *wireGuardNode) OnEvent(event pasta.Event, linkType string, _ []string, 
 		n.networkPayloadReceived = true
 		n.desiredNetwork = payload.Network
 		BindNetworkResource(n.W, n.ID, event.Link, payload.Network)
-		n.cancelConfigRetry()
+		// Keep an active recovery retry until current-generation runtime work
+		// succeeds. See the TUN payload path above.
 		networkGeneration := n.nextNetworkGeneration()
 		n.nextRuntimeGeneration()
 		n.scheduleNetworkAttach(networkGeneration, payload.Network, n.config.batchSize)
@@ -473,14 +508,14 @@ func (n *wireGuardNode) OnSave(cfg configer.Config) error {
 func (n *wireGuardNode) applyConfigForm(values map[string]any) error {
 	next := n.config.clone()
 	applyWireGuardConfigValues(&next, values)
-	return n.commitConfigForm(next, wireGuardConfigCommitOptions{rebuildPeers: true, emitTunConfig: true})
+	return n.commitConfigForm(next, wireGuardConfigCommitOptions{emitTunConfig: true})
 }
 func (n *wireGuardNode) applyPeersForm(values map[string]any) error {
 	next := n.config.clone()
 	if peers, ok := parseWireGuardPeers(values["peers"]); ok {
 		next.peers = peers
 	}
-	return n.commitConfigForm(next, wireGuardConfigCommitOptions{rebuildPeers: true, emitTunConfig: true})
+	return n.commitConfigForm(next, wireGuardConfigCommitOptions{emitTunConfig: true})
 }
 func (n *wireGuardNode) applyFormBlock(blockID string, values map[string]any) error {
 	switch blockID {
@@ -510,6 +545,7 @@ func (n *wireGuardNode) commitConfigForm(next wireGuardConfig, opts wireGuardCon
 	}
 	n.formError = ""
 	n.config = next
+	n.configGeneration.Add(1)
 	generation := n.nextRuntimeGeneration()
 	n.cancelConfigRetry()
 	if opts.emitTunConfig {
@@ -521,7 +557,7 @@ func (n *wireGuardNode) commitConfigForm(next wireGuardConfig, opts wireGuardCon
 	// Applying config may open sockets, update peer endpoints, and bring the
 	// device up. Schedule it after the form callback has released workspace
 	// state so daemon restore and snapshots are not blocked by runtime I/O.
-	n.scheduleConfigApply(effective, opts.rebuildPeers, generation, 0, false)
+	n.scheduleConfigApply(effective, generation, 0, false)
 	return nil
 }
 func (n *wireGuardNode) rejectConfigForm(err error) {
@@ -580,12 +616,13 @@ func (n *wireGuardNode) acceptObjectPeers(event pasta.Event) error {
 // the newest merged peer snapshot. ReplacePeers is required so detach and
 // object replacement remove peers that are no longer present.
 func (n *wireGuardNode) applyEffectivePeerConfig() {
+	n.configGeneration.Add(1)
 	generation := n.nextRuntimeGeneration()
 	n.cancelConfigRetry()
 	n.sendTunConfig()
 	_ = n.updateLabel()
 	n.sendStatusBlock()
-	n.scheduleConfigApply(n.effectiveConfig(), true, generation, 0, false)
+	n.scheduleConfigApply(n.effectiveConfig(), generation, 0, false)
 }
 
 func (n *wireGuardNode) effectiveConfig() wireGuardConfig {

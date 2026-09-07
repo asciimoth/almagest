@@ -113,8 +113,19 @@ func (n *wireGuardNode) commitWGCtrlInterfaceConfigApply(link uint64, apply *wgC
 		n.completeWGCtrlInterfaceConfigApply(apply, errors.New("WireGuard interface config apply was not accepted"))
 		return
 	}
-	if apply.err != nil || n.tunLink == 0 {
+	if n.W != nil && n.ID != 0 {
+		snapshot, ok := n.W.LinkSnapshotLocked(link)
+		if !ok || snapshot.Type != TypeWGCtrl || snapshot.LeftPortNode != n.ID {
+			n.completeWGCtrlInterfaceConfigApply(apply, errors.New("WireGuard controller link is unavailable"))
+			return
+		}
+	}
+	if apply.err != nil {
 		n.completeWGCtrlInterfaceConfigApply(apply, apply.err)
+		return
+	}
+	if n.tunLink == 0 {
+		n.completeWGCtrlInterfaceConfigApply(apply, errors.New("WireGuard TUN link is unavailable"))
 		return
 	}
 	if n.wgctrlPendingApplies == nil {
@@ -126,17 +137,29 @@ func (n *wireGuardNode) commitWGCtrlInterfaceConfigApply(link uint64, apply *wgC
 }
 
 func (n *wireGuardNode) scheduleWGCtrlInterfaceConfigCheck(apply *wgCtrlInterfaceConfigApply, generation uint64) {
+	networkExpected := n.netLink != 0
 	go func() {
 		n.runtimeMu.Lock()
-		ready := generation == n.currentTunGenerationValue() &&
-			n.currentTunGeneration == generation &&
-			n.currentTun != nil && TunIsReady(n.currentTun) &&
-			(n.runtimeDeviceUp || !n.hasActiveTransportLocked())
+		ready := n.wgCtrlInterfaceConfigReadyLocked(generation, networkExpected)
 		n.runtimeMu.Unlock()
 		n.sendInternal(wireGuardWGCtrlInterfaceConfigCheckResult{
 			apply: apply, generation: generation, ready: ready,
 		})
 	}()
+}
+
+func (n *wireGuardNode) wgCtrlInterfaceConfigReadyLocked(generation uint64, networkExpected bool) bool {
+	// A later TUN generation also contains an earlier controller contribution,
+	// unless that controller has explicitly superseded it. Requiring exact
+	// equality can leave an apply pending forever when two controller updates
+	// cause adjacent TUN replacements.
+	return n.currentTunGeneration == n.currentTunGenerationValue() &&
+		n.currentTunGeneration >= generation &&
+		n.currentTun != nil && TunIsReady(n.currentTun) &&
+		// A desired network with no healthy current bind is a failed or
+		// incomplete transport, not the same condition as an intentionally
+		// absent network.
+		(!networkExpected || n.runtimeDeviceUp && n.hasActiveTransportLocked())
 }
 
 func (n *wireGuardNode) handleWGCtrlInterfaceConfigCheckResult(msg wireGuardWGCtrlInterfaceConfigCheckResult) {
@@ -163,7 +186,7 @@ func (n *wireGuardNode) failWGCtrlInterfaceConfigApplies(link uint64, err error)
 
 func (n *wireGuardNode) failWGCtrlInterfaceConfigAppliesForTunGeneration(generation uint64, err error) {
 	for apply, expected := range n.wgctrlPendingApplies {
-		if generation == 0 || expected == generation {
+		if generation == 0 || expected <= generation {
 			n.completeWGCtrlInterfaceConfigApply(apply, err)
 		}
 	}
