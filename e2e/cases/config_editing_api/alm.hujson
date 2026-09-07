@@ -1,0 +1,48 @@
+{
+	"nodes": {
+		"Router Proxy": {
+			"Class": "almagest/LocalProxy",
+			"Links": ["proxy -> [Router] Network"],
+			"socksHost": "127.0.0.1",
+			"socksPort": 1081,
+		},
+		"Router": {
+			"Class": "almagest/NetworkRouter",
+			"Links": [
+				"slot 1 -> [Mock A] Network",
+				"slot 2 -> [Mock B] Network",
+			],
+			"rules": "ADDR_S alpha\nSLOT 1\n\nTRUE\nSLOT 2",
+		},
+		"Mock A": {"Class": "almagest/MockNetwork"},
+		"Mock B": {"Class": "almagest/MockNetwork"},
+		"Server A": {
+			"Class": "almagest/HttpServer",
+			"Links": ["Network -> [Mock A] Network"],
+			"host": "127.0.0.1",
+			"port": 8080,
+			"response": "router-a",
+		},
+		"Server B": {
+			"Class": "almagest/HttpServer",
+			"Links": ["Network -> [Mock B] Network"],
+			"host": "127.0.0.1",
+			"port": 8080,
+			"response": "router-b",
+		},
+		"Stable Proxy": {
+			"Class": "almagest/LocalProxy",
+			"Links": ["proxy -> [Stable Mock] Network"],
+			"socksHost": "127.0.0.1",
+			"socksPort": 1082,
+		},
+		"Stable Mock": {"Class": "almagest/MockNetwork"},
+		"Stable Server": {
+			"Class": "almagest/HttpServer",
+			"Links": ["Network -> [Stable Mock] Network"],
+			"host": "127.0.0.1",
+			"port": 8081,
+			"response": "stable",
+		},
+	},
+}

@@ -115,7 +115,9 @@ Daemon:
 - `bin/almagestd/cli_paths.go`: CLI config path resolution.
 - `bin/almagestd/config.go`: HuJSON parsing and config structs.
 - `bin/almagestd/system.go`: debug/native system integration selection.
-- `bin/almagestd/api.go`: localhost admin api listener.
+- `bin/almagestd/api.go`: localhost admin API listener and surface dispatch.
+- `bin/almagestd/api_config.go`: editable HuJSON config API. It never exposes
+  protected config and uses revision tokens for conflict detection.
 
 Platform and CLI:
 - `bin/almagestd/platform/`: build-tagged defaults and platform operations.
@@ -126,6 +128,19 @@ Admin panel:
 - `panel/src/app.ts`: graph UI and WebSocket admin API client.
 - `panel/src/pasta_model.ts`: snapshot/notification helpers.
 - `panel/scripts/`: dependency vendoring and static publish scripts.
+
+Editable config flow:
+1. A client reads the `config.snapshot` API result and keeps its revision.
+2. The client submits a complete HuJSON document to `config.update` with that
+   revision. A top-level `Protected` member is rejected.
+3. The engine compares saved node-owned config and semantic links. It removes
+   obsolete links first, reconstructs only changed nodes, adds new links, and
+   keeps unrelated records live.
+4. The daemon exports the resulting workspace into the submitted HuJSON,
+   writes it immediately, and returns the new canonical text and revision.
+
+The API is read-only when the daemon config source is read-only. Protected
+config is loaded once at startup and is not part of this flow.
 
 ## Core Concepts
 - Pasta provides the graph workspace, node classes, ports, links,
@@ -148,6 +163,8 @@ Engine API groups:
 - worker snapshots and worker notifications
 - admin type color map for graph rendering
 - workspace config save under a caller-provided `nodes` config view
+- partial live reconciliation from a complete `nodes` config view; unchanged
+  node and link records keep their IDs and runtime resources
 - accessors for buffer pool, KV storage, DNS cache manager, secret storage, and
   TLS config storage
 - close of workspace and system integration

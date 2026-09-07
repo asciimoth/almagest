@@ -87,7 +87,7 @@ type dnsRouterNode struct {
 	outputs  DNSOutputCache
 }
 
-func (n *dnsRouterNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, isRestored bool) error {
+func (n *dnsRouterNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, isPlaceholderReplacement, _, isRestored bool) error {
 	n.InitBaseNode(w, logger, id)
 	if n.router == nil {
 		n.router = dnsRouterNewRouter(n.dnsSpawner())
@@ -120,7 +120,7 @@ func (n *dnsRouterNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint6
 			return fmt.Errorf("set DNS router rules: %w", err)
 		}
 	}
-	if err := n.reviewOutputPorts(nodekit.SlotPortReview{DefaultSlot: 1, PreserveExisting: isRestored}); err != nil {
+	if err := n.reviewOutputPorts(nodekit.SlotPortReview{DefaultSlot: 1, PreserveExisting: isRestored || isPlaceholderReplacement}); err != nil {
 		return err
 	}
 	if err := n.updateLabel(); err != nil {

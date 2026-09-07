@@ -55,7 +55,7 @@ func (a *AdminAPI) serveAPIStream(
 			}
 			continue
 		}
-		if response.Error == nil && api.RequiresMutationLease(msg.Surface, msg.Method) {
+		if response.Error == nil && api.SchedulesConfigAutosave(msg.Surface, msg.Method) {
 			a.configAutosaver.Schedule()
 		}
 		if err := codec.Write(response); err != nil {

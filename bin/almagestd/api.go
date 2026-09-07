@@ -222,6 +222,8 @@ func (s *apiSession) handleMessage(msg api.Message) (api.Message, error) {
 	switch msg.Surface {
 	case api.SurfaceAdmin:
 		return s.handleAdminMessage(msg)
+	case api.SurfaceConfig:
+		return s.handleConfigMessage(msg)
 	case api.SurfaceDNS:
 		return s.handleDNSMessage(msg)
 	case api.SurfaceEngine:
@@ -252,6 +254,9 @@ func (s *apiSession) handleAdminMessage(msg api.Message) (api.Message, error) {
 			Surfaces: map[string]any{
 				string(api.SurfaceAdmin): map[string]any{
 					"methods": api.AdminMethods(),
+				},
+				string(api.SurfaceConfig): map[string]any{
+					"methods": api.ConfigMethods(),
 				},
 				string(api.SurfaceDNS): map[string]any{
 					"methods": api.DNSMethods(),

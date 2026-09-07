@@ -240,6 +240,27 @@ func TestDNSMethodsAndSurfaceAreAdvertised(t *testing.T) {
 	}
 }
 
+func TestConfigMethodsAndSurfaceAreAdvertised(t *testing.T) {
+	if !slices.Contains(Surfaces(), string(SurfaceConfig)) {
+		t.Fatal("Surfaces does not include config")
+	}
+	methods := ConfigMethods()
+	for _, method := range []ConfigMethod{MethodConfigSnapshot, MethodConfigUpdate} {
+		if !slices.Contains(methods, string(method)) {
+			t.Fatalf("ConfigMethods does not include %q", method)
+		}
+	}
+	if IsConfigMutation(string(MethodConfigSnapshot)) {
+		t.Fatal("config snapshot is a mutation")
+	}
+	if !RequiresMutationLease(SurfaceConfig, string(MethodConfigUpdate)) {
+		t.Fatal("config update does not require a mutation lease")
+	}
+	if SchedulesConfigAutosave(SurfaceConfig, string(MethodConfigUpdate)) {
+		t.Fatal("config update schedules a redundant autosave")
+	}
+}
+
 func TestSecretsMethodsAndSurfaceAreAdvertised(t *testing.T) {
 	if !slices.Contains(Surfaces(), string(SurfaceSecrets)) {
 		t.Fatal("Surfaces does not include secrets")

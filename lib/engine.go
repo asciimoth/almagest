@@ -157,6 +157,7 @@ func BuildEngine(
 	work.SetNodeNameAvailableCallback(buildOptions.nodeNameAvailable)
 
 	engine.mainWorkspace = work
+	engine.configCommentPopups = initialConfigCommentPopups(nodesCfg, work.Snapshot())
 	_ = work.SubscribeNotifications(func(notification pasta.WorkspaceNotification) {
 		engine.workers.observeWorkspaceNotification(notification)
 	})
@@ -281,6 +282,14 @@ type Engine interface {
 	SaveConfig(cfg configer.Config) error
 	SaveConfigLocked(cfg configer.Config) error
 
+	// ReconcileConfig applies the `nodes` section of cfg to the live workspace.
+	// Nodes and links whose saved configuration did not change keep their
+	// workspace IDs and runtime resources. The method validates the document
+	// structure before it starts. A runtime lifecycle error can stop the apply
+	// after partial work, so callers that require atomic behavior must reconcile
+	// their previous config after an error.
+	ReconcileConfig(cfg configer.Config) (ConfigReconcileResult, error)
+
 	AllocIP() subnet.IPAllocator
 	AllocIPLocked() subnet.IPAllocator
 	AllocSubnet() subnet.SubnetAllocator
@@ -345,6 +354,9 @@ type engine struct {
 	tlsConfigs storage.TlsConfigStorage
 
 	mu sync.Mutex
+
+	configReconcileMu   sync.Mutex
+	configCommentPopups map[string]configCommentPopup
 
 	mainWorkspace *pasta.Workspace
 	workers       *workerTracker

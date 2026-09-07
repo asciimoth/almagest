@@ -106,7 +106,7 @@ type snifferNode struct {
 	dnsCacheStorageError string
 }
 
-func (n *snifferNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, isRestored bool) error {
+func (n *snifferNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, isPlaceholderReplacement, _, isRestored bool) error {
 	n.InitBaseNode(w, logger, id)
 	if n.backends == nil {
 		n.backends = map[int]NetworkCloser{}
@@ -138,7 +138,7 @@ func (n *snifferNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64,
 		n.rules = rules
 		n.controls = controls
 	}
-	if err := n.reviewOutputPorts(slotPortReview{DefaultSlot: 1, PreserveExisting: isRestored}); err != nil {
+	if err := n.reviewOutputPorts(slotPortReview{DefaultSlot: 1, PreserveExisting: isRestored || isPlaceholderReplacement}); err != nil {
 		return err
 	}
 	n.sendMenuSnapshot()

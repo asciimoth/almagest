@@ -103,7 +103,7 @@ type tunSplitterNode struct {
 	outputCfgs TunConfigByLink
 }
 
-func (n *tunSplitterNode) OnInit(w *pasta.Workspace, _ pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, isRestored bool) error {
+func (n *tunSplitterNode) OnInit(w *pasta.Workspace, _ pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, isPlaceholderReplacement, _, isRestored bool) error {
 	n.InitBaseNode(w, nil, id)
 	if n.splitter == nil {
 		// Nil spawner is intentional here; see the Gonnect spawner note in helpers.go.
@@ -141,7 +141,7 @@ func (n *tunSplitterNode) OnInit(w *pasta.Workspace, _ pasta.Logger, id uint64, 
 	} else {
 		n.setRouter(router)
 	}
-	if err := n.reviewOutputPorts(slotPortReview{EnsureFree: true, PreserveExisting: isRestored}); err != nil {
+	if err := n.reviewOutputPorts(slotPortReview{EnsureFree: true, PreserveExisting: isRestored || isPlaceholderReplacement}); err != nil {
 		return err
 	}
 	if err := n.updateLabel(); err != nil {

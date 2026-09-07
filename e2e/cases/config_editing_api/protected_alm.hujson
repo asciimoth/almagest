@@ -1,0 +1,10 @@
+{
+	"Admin": {"Unix": "%E2E_ADMIN_SOCK%"},
+	"System": {"Type": "debug"},
+	"Secrets": {
+		"config-api-protected-token": {
+			"Value": "config-api-protected-value",
+			"Nodes": [],
+		},
+	},
+}

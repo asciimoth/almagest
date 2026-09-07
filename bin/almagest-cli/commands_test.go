@@ -108,6 +108,55 @@ func TestRunRawSendsJSONPayload(t *testing.T) {
 	}
 }
 
+func TestRunConfigGetPrintsHuJSON(t *testing.T) {
+	const text = "{\n  // editable\n  nodes: {},\n}\n"
+	ft := &fakeTransport{reads: []api.Message{mustResponse(t, "1", api.ConfigSnapshot{
+		Text:     text,
+		Revision: "revision-1",
+	})}}
+	var stdout, stderr bytes.Buffer
+
+	err := run(context.Background(), []string{"config", "get"}, nil, &stdout, &stderr, func(context.Context, endpoint) (apiTransport, error) {
+		return ft, nil
+	})
+	if err != nil {
+		t.Fatalf("config get failed: %v\nstderr: %s", err, stderr.String())
+	}
+	if stdout.String() != text {
+		t.Fatalf("stdout = %q, want HuJSON text", stdout.String())
+	}
+	if len(ft.writes) != 1 || ft.writes[0].Surface != api.SurfaceConfig || ft.writes[0].Method != string(api.MethodConfigSnapshot) {
+		t.Fatalf("request = %#v, want config snapshot", ft.writes)
+	}
+}
+
+func TestRunConfigApplyReadsStdinAndSendsRevision(t *testing.T) {
+	const text = "{nodes: {}}\n"
+	response := api.ConfigUpdateResponse{Snapshot: api.ConfigSnapshot{Text: text, Revision: "revision-2"}}
+	ft := &fakeTransport{reads: []api.Message{mustResponse(t, "1", response)}}
+	var stdout, stderr bytes.Buffer
+
+	err := run(context.Background(), []string{"config", "apply", "--revision", "revision-1", "-"}, strings.NewReader(text), &stdout, &stderr, func(context.Context, endpoint) (apiTransport, error) {
+		return ft, nil
+	})
+	if err != nil {
+		t.Fatalf("config apply failed: %v\nstderr: %s", err, stderr.String())
+	}
+	if len(ft.writes) != 1 || ft.writes[0].Surface != api.SurfaceConfig || ft.writes[0].Method != string(api.MethodConfigUpdate) {
+		t.Fatalf("request = %#v, want config update", ft.writes)
+	}
+	req, err := api.DecodePayload[api.ConfigUpdateRequest](ft.writes[0].Payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if req.Text != text || req.Revision != "revision-1" {
+		t.Fatalf("config update request = %#v", req)
+	}
+	if !strings.Contains(stdout.String(), `"revision": "revision-2"`) {
+		t.Fatalf("stdout = %q, want update response", stdout.String())
+	}
+}
+
 func TestRunKVSetSendsRequest(t *testing.T) {
 	ft := &fakeTransport{reads: []api.Message{mustResponse(t, "1", api.KVValueSnapshot{
 		Found: true,

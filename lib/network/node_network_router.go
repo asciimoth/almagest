@@ -95,7 +95,7 @@ type networkRouterNode struct {
 	resolver    *dns.Resolver
 }
 
-func (n *networkRouterNode) OnInit(w *pasta.Workspace, _ pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, isRestored bool) error {
+func (n *networkRouterNode) OnInit(w *pasta.Workspace, _ pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, isPlaceholderReplacement, _, isRestored bool) error {
 	n.InitBaseNode(w, nil, id)
 	if n.router == nil {
 		// Nil spawner is intentional here; see the Gonnect spawner note in helpers.go.
@@ -135,7 +135,7 @@ func (n *networkRouterNode) OnInit(w *pasta.Workspace, _ pasta.Logger, id uint64
 		n.cfg = cfg
 		n.router.SetCfg(cfg)
 	}
-	if err := n.reviewOutputPorts(slotPortReview{DefaultSlot: 1, ExtraOrder: []uint64{n.dnsIn}, PreserveExisting: isRestored}); err != nil {
+	if err := n.reviewOutputPorts(slotPortReview{DefaultSlot: 1, ExtraOrder: []uint64{n.dnsIn}, PreserveExisting: isRestored || isPlaceholderReplacement}); err != nil {
 		return err
 	}
 	n.sendMenuSnapshot()

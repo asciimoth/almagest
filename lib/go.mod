@@ -6,6 +6,7 @@ require (
 	github.com/asciimoth/batchudp v0.3.11
 	github.com/asciimoth/bufpool v0.3.0
 	github.com/asciimoth/configer/configer v0.3.1
+	github.com/asciimoth/configer/hujson v0.3.1
 	github.com/asciimoth/formular v0.3.5
 	github.com/asciimoth/gonnect v0.47.0
 	github.com/asciimoth/gonnect-netstack v0.5.2
@@ -24,6 +25,7 @@ require (
 	github.com/asciimoth/putback v0.3.0 // indirect
 	github.com/asciimoth/tuntap v0.3.30 // indirect
 	github.com/google/btree v1.1.2 // indirect
+	github.com/tailscale/hujson v0.0.0-20260302212456-ecc657c15afd // indirect
 	github.com/xtaci/smux v1.5.44 // indirect
 	golang.org/x/crypto v0.53.0 // indirect
 	golang.org/x/exp v0.0.0-20231110203233-9a3e6036ecaa // indirect

@@ -48,6 +48,28 @@ wireguard_status_field() {
 	'
 }
 
+wait_wireguard_up() {
+	local node="$1"
+	local description="$2"
+	local label
+	local state
+	local tun_state
+	local network_state
+	local error
+	local runtime_peers
+
+	if wait_node_label "$node" up; then
+		return 0
+	fi
+	label="$(node_label "$node" 2>/dev/null || true)"
+	state="$(wireguard_status_field "$node" state 2>/dev/null || true)"
+	tun_state="$(wireguard_status_field "$node" tun 2>/dev/null || true)"
+	network_state="$(wireguard_status_field "$node" network 2>/dev/null || true)"
+	error="$(wireguard_status_field "$node" error 2>/dev/null || true)"
+	runtime_peers="$(wireguard_status_field "$node" runtimePeers 2>/dev/null || true)"
+	fail "$description did not become up; label=$label state=$state tun=$tun_state network=$network_state runtimePeers=$runtime_peers error=$error"
+}
+
 click_menu_button() {
 	local node="$1"
 	local block="$2"
@@ -168,10 +190,10 @@ wait_log_contains "almagest/HttpServer" "listening on 10.199.20.1:8080" \
 wait_log_contains "almagest/UDPPingServer" "udp server listening on 10.199.20.1:26120" \
 	|| fail "UDP ping server did not start listening"
 
-wait_node_label "$outer_client_wg" up || fail "outer client WireGuard node did not become up"
-wait_node_label "$outer_server_wg" up || fail "outer server WireGuard node did not become up"
-wait_node_label "$inner_client_wg" up || fail "inner client WireGuard node did not become up"
-wait_node_label "$inner_server_wg" up || fail "inner server WireGuard node did not become up"
+wait_wireguard_up "$outer_client_wg" "outer client WireGuard node"
+wait_wireguard_up "$outer_server_wg" "outer server WireGuard node"
+wait_wireguard_up "$inner_client_wg" "inner client WireGuard node"
+wait_wireguard_up "$inner_server_wg" "inner server WireGuard node"
 [[ "$(wireguard_status_field "$outer_client_wg" peers)" == "2" ]] \
 	|| fail "outer client did not merge two effective object peers"
 [[ "$(wireguard_status_field "$outer_client_wg" runtimePeers)" == "2" ]] \

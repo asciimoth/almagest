@@ -72,7 +72,22 @@
       </section>
 
       <section class="panel hidden config-panel" data-panel="config">
-        <div class="placeholder-panel">Config editing is not implemented yet.</div>
+        <div class="config-shell">
+          <header class="config-header">
+            <div>
+              <h2>HuJSON config</h2>
+              <p>Only editable config is shown. Protected daemon config is never available here.</p>
+            </div>
+            <div class="config-actions">
+              <button id="config-reload" type="button">Reload</button>
+              <button id="config-apply" type="button">Apply config</button>
+            </div>
+          </header>
+          <textarea id="config-editor" aria-label="Editable HuJSON config" autocomplete="off" autocapitalize="off" spellcheck="false"></textarea>
+          <footer class="config-footer">
+            <span id="config-status">Open this tab to load the editable config.</span>
+          </footer>
+        </div>
       </section>
     </main>
     <div id="notifications" aria-live="polite" aria-atomic="true"></div>

@@ -6,6 +6,7 @@ import (
 	"github.com/asciimoth/almagest/lib/storage"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/asciimoth/almagest/bin/almagestd/args"
@@ -22,6 +23,8 @@ var (
 )
 
 type Config struct {
+	mu sync.RWMutex
+
 	Main      *hujson.Config
 	Protected ProtectedConfig
 }
@@ -39,10 +42,21 @@ type LogCacheConfig struct {
 }
 
 func (c *Config) MainToBytes() ([]byte, error) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.mainToBytesLocked()
+}
+
+func (c *Config) mainToBytesLocked() ([]byte, error) {
+	if c == nil || c.Main == nil {
+		return nil, ErrConfigRO
+	}
 	return tailscalehujson.Format(c.Main.Pack())
 }
 
 func (c *Config) LogCache() LogCacheConfig {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	cfg := LogCacheConfig{
 		Debug: 32,
 		Info:  64,
@@ -85,6 +99,8 @@ func (cfg LogCacheConfig) MergeArgs(a *args.Args) LogCacheConfig {
 }
 
 func (c *Config) SaveIdle() time.Duration {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	cfg := saveConfig{
 		IdleMilliseconds: 500,
 	}
@@ -107,6 +123,8 @@ type tlsBuiltinCAConfig struct {
 }
 
 func (c *Config) TLSBuiltinCAOptions() (api.TLSBuiltinCAOptions, error) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	cfg := tlsBuiltinCAConfigFromAPI(defaultTLSBuiltinCAOptions())
 	if c != nil && c.Main != nil {
 		view := c.Main.View(configer.Path{"Config", "TLS", "BuiltinCA"})
@@ -124,6 +142,8 @@ func (c *Config) TLSBuiltinCAOptions() (api.TLSBuiltinCAOptions, error) {
 }
 
 func (c *Config) SetTLSBuiltinCAOptions(options api.TLSBuiltinCAOptions) (api.TLSBuiltinCAOptions, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if c == nil || c.Main == nil {
 		return api.TLSBuiltinCAOptions{}, ErrConfigRO
 	}

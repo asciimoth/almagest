@@ -282,6 +282,24 @@ type KVNotice = {
 type DNSNotice = KVNotice;
 type SecNotice = KVNotice;
 type TLSNotice = KVNotice;
+type ConfigSnapshot = {
+  text: string;
+  revision: string;
+  read_only: boolean;
+};
+type ConfigChanges = {
+  added?: string[];
+  removed?: string[];
+  reinitialized?: string[];
+  positions_updated?: string[];
+  primary_types_updated?: string[];
+  links_added?: string[];
+  links_removed?: string[];
+};
+type ConfigUpdateResponse = {
+  snapshot: ConfigSnapshot;
+  changes: ConfigChanges;
+};
 type DNSValuePanelState = {
   cache: string;
   key: string;
@@ -317,7 +335,7 @@ type TLSValuePanelState = {
   name: string;
   editing: "value" | "rename" | null;
 };
-type Surface = "admin" | "dns" | "engine" | "kv" | "log" | "secrets" | "tls";
+type Surface = "admin" | "config" | "dns" | "engine" | "kv" | "log" | "secrets" | "tls";
 type APIMessage = {
   version: "v1";
   kind: "request" | "response" | "event";
@@ -456,6 +474,10 @@ const GRAPH_VIEWPORT_STORAGE_KEY = "almagest.panel.graph.viewport.v1";
 const PASTA_TRIGGER_CLASS = "pasta/Trigger";
 const debugClipboard = false;
 let graphViewportSaveTimeout = 0;
+let configSnapshot: ConfigSnapshot | null = null;
+let configDraft = "";
+let configLoading = false;
+let configApplying = false;
 
 const el = {
   status: document.querySelector<HTMLElement>("#backend-status")!,
@@ -480,6 +502,10 @@ const el = {
   ps: document.querySelector<HTMLElement>("#ps-list")!,
   logsPanel: document.querySelector<HTMLElement>("[data-panel='logs']")!,
   logs: document.querySelector<HTMLElement>("#logs-list")!,
+  configEditor: document.querySelector<HTMLTextAreaElement>("#config-editor")!,
+  configReload: document.querySelector<HTMLButtonElement>("#config-reload")!,
+  configApply: document.querySelector<HTMLButtonElement>("#config-apply")!,
+  configStatus: document.querySelector<HTMLElement>("#config-status")!,
   notifications: document.querySelector<HTMLElement>("#notifications"),
 };
 
@@ -771,6 +797,10 @@ async function backend<T>(method: string, params: Record<string, unknown> = {}):
       return request<T>("admin", "hello", { client_name: "almagest-panel", version: "v1" });
     case "colormap":
       return request<T>("admin", "colormap");
+    case "configSnapshot":
+      return request<T>("config", "snapshot");
+    case "configUpdate":
+      return request<T>("config", "update", { text: params.text, revision: params.revision });
     case "subscribeNotifications": {
       const result = await request<{ subscription_id: number }>("engine", "subscribe_notifications", { workspace: "main" });
       notificationSubscriptionID = result.subscription_id;
@@ -5231,6 +5261,85 @@ function isConfigSaveFailure(entry: LogEntry): boolean {
   return entry.source === "daemon" && entry.level === "error" && entry.message.startsWith("config save failed:");
 }
 
+async function activateConfigPanel(): Promise<void> {
+  if (configSnapshot || configLoading) {
+    updateConfigControls();
+    return;
+  }
+  await loadConfig();
+}
+
+async function loadConfig(): Promise<void> {
+  if (configLoading || configApplying) return;
+  configLoading = true;
+  el.configStatus.textContent = "Loading editable config.";
+  updateConfigControls();
+  try {
+    const next = await backend<ConfigSnapshot>("configSnapshot");
+    configSnapshot = next;
+    configDraft = next.text;
+    el.configEditor.value = next.text;
+    el.configStatus.textContent = next.read_only
+      ? "This daemon started with a read-only config."
+      : `Loaded revision ${shortConfigRevision(next.revision)}.`;
+  } catch (error) {
+    el.configStatus.textContent = `Config load failed: ${(error as Error).message}`;
+  } finally {
+    configLoading = false;
+    updateConfigControls();
+  }
+}
+
+async function applyConfig(): Promise<void> {
+  if (!configSnapshot || configSnapshot.read_only || configApplying || configDraft === configSnapshot.text) return;
+  configApplying = true;
+  el.configStatus.textContent = "Applying config.";
+  updateConfigControls();
+  try {
+    const response = await backend<ConfigUpdateResponse>("configUpdate", {
+      text: configDraft,
+      revision: configSnapshot.revision,
+    });
+    configSnapshot = response.snapshot;
+    configDraft = response.snapshot.text;
+    el.configEditor.value = response.snapshot.text;
+    el.configStatus.textContent = configChangeSummary(response.changes, response.snapshot.revision);
+  } catch (error) {
+    el.configStatus.textContent = `Config apply failed: ${(error as Error).message}`;
+  } finally {
+    configApplying = false;
+    updateConfigControls();
+  }
+}
+
+function updateConfigControls(): void {
+  const readOnly = configSnapshot?.read_only ?? false;
+  const dirty = configSnapshot !== null && configDraft !== configSnapshot.text;
+  el.configEditor.disabled = configLoading || configApplying || readOnly;
+  el.configReload.disabled = configLoading || configApplying;
+  el.configApply.disabled = configLoading || configApplying || readOnly || !dirty;
+}
+
+function shortConfigRevision(revision: string): string {
+  return revision.slice(0, 12);
+}
+
+function configChangeSummary(changes: ConfigChanges, revision: string): string {
+  const parts: string[] = [];
+  const addCount = (label: string, values: string[] | undefined): void => {
+    if (values?.length) parts.push(`${values.length} ${label}`);
+  };
+  addCount("node(s) added", changes.added);
+  addCount("node(s) removed", changes.removed);
+  addCount("node(s) reinitialized", changes.reinitialized);
+  addCount("position(s) updated", changes.positions_updated);
+  addCount("primary type(s) updated", changes.primary_types_updated);
+  addCount("link(s) added", changes.links_added);
+  addCount("link(s) removed", changes.links_removed);
+  const detail = parts.length ? parts.join(", ") : "no live graph changes";
+  return `Applied revision ${shortConfigRevision(revision)}: ${detail}.`;
+}
+
 function notifyError(message: string): void {
   const toast = createNotificationToast(message);
   const id = nextToastID++;
@@ -5266,6 +5375,7 @@ function setTab(name: string): void {
   if (name === "kv") activateKVPanel();
   if (name === "logs") renderLogs();
   if (name === "ps") renderWorkers();
+  if (name === "config") void activateConfigPanel();
   if (name === "graph") setTimeout(resizeGraphCanvas, 0);
   updateWorkerAgeTimer();
 }
@@ -5476,6 +5586,15 @@ function wireUI(): void {
   el.dnsPanel.addEventListener("scroll", rememberDNSScrollState);
   el.tlsPanel.addEventListener("scroll", rememberTLSScrollState);
   el.kvPanel.addEventListener("scroll", rememberKVScrollState);
+  el.configEditor.addEventListener("input", () => {
+    configDraft = el.configEditor.value;
+    updateConfigControls();
+    el.configStatus.textContent = configDraft === configSnapshot?.text
+      ? `Loaded revision ${shortConfigRevision(configSnapshot.revision)}.`
+      : "Config has unapplied changes.";
+  });
+  el.configReload.addEventListener("click", () => void loadConfig());
+  el.configApply.addEventListener("click", () => void applyConfig());
   document.addEventListener("paste", handleGraphPaste, { capture: true });
   document.addEventListener("keydown", (event) => {
     graphKeydown(event);

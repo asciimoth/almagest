@@ -197,6 +197,77 @@ h1 {
   display: none !important;
 }
 
+.config-panel {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--crust);
+  padding: 14px;
+}
+
+.config-shell {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  height: 100%;
+  min-height: 0;
+}
+
+.config-header {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.config-header h2,
+.config-header p {
+  margin: 0;
+}
+
+.config-header h2 {
+  font-size: 16px;
+}
+
+.config-header p,
+.config-footer {
+  color: var(--subtext);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.config-actions {
+  display: flex;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+#config-editor {
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  resize: none;
+  border: 1px solid var(--surface1);
+  border-radius: 6px;
+  outline: none;
+  background: var(--mantle);
+  color: var(--text);
+  padding: 12px;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  tab-size: 2;
+}
+
+#config-editor:focus {
+  border-color: var(--blue);
+}
+
+#config-editor:disabled {
+  color: var(--subtext);
+  opacity: 0.8;
+}
+
 .graph-panel {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 420px;
@@ -1952,11 +2023,6 @@ h1 {
 #logs-list .log-fatal b,
 #logs-list .log-fatal i {
   color: color-mix(in srgb, var(--red), var(--subtext) 70%);
-}
-
-.config-panel {
-  background: var(--crust);
-  padding: 14px;
 }
 
 .placeholder-panel {
