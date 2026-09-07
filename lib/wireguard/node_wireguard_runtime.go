@@ -57,6 +57,7 @@ type wireGuardRuntimeStatsMessage struct {
 	dev   *wgdevice.Device
 	stats wgdevice.RuntimeStats
 }
+type wireGuardLabelRefreshMessage struct{}
 
 const (
 	wireGuardConfigRetryInitialDelay = 100 * time.Millisecond
@@ -153,9 +154,17 @@ func (n *wireGuardNode) handleRuntimeResult(msg wireGuardRuntimeResultMessage) {
 	if msg.failureGeneration != n.currentRuntimeFailureGeneration() {
 		return
 	}
-	if msg.ready && !n.tryMarkRuntimeReady(msg.generation) {
-		n.deferInternal(msg)
-		return
+	if msg.ready {
+		locked, ready := n.tryMarkRuntimeReady(msg.generation)
+		if !locked {
+			n.deferInternal(msg)
+			return
+		}
+		if !ready {
+			_ = n.updateLabel()
+			n.sendStatusBlock()
+			return
+		}
 	}
 	n.cancelConfigRetry()
 	n.clearRuntimeError()
@@ -178,15 +187,19 @@ func (n *wireGuardNode) acceptRuntimeResult(msg wireGuardRuntimeResultMessage) b
 	return true
 }
 
-func (n *wireGuardNode) tryMarkRuntimeReady(generation uint64) bool {
+// tryMarkRuntimeReady reports lock acquisition and actual readiness separately.
+// A completion must not treat a transiently incomplete attachment set as ready
+// only because runtimeMu was available.
+func (n *wireGuardNode) tryMarkRuntimeReady(generation uint64) (locked, ready bool) {
 	if !n.runtimeMu.TryLock() {
-		return false
+		return false, false
 	}
 	if generation == n.currentRuntimeGeneration() && n.runtimeDeviceUp && n.hasActiveAttachmentsLocked() {
 		n.runtimeReadyGeneration = generation
+		ready = true
 	}
 	n.runtimeMu.Unlock()
-	return true
+	return true, ready
 }
 
 // sendInternal delivers node-owned messages through the workspace inbox rather
@@ -299,6 +312,7 @@ func (n *wireGuardNode) notifyReceiveError(dev *wgdevice.Device, err error) {
 	if n.W == nil || n.ID == 0 {
 		return
 	}
+	runtimeGeneration := n.currentRuntimeGeneration()
 	var trackedErr wireGuardTrackedBindReceiveError
 	var bindGeneration uint64
 	var bindOpenGeneration uint64
@@ -312,7 +326,7 @@ func (n *wireGuardNode) notifyReceiveError(dev *wgdevice.Device, err error) {
 	go func() {
 		n.sendInternal(wireGuardReceiveErrorMessage{
 			dev:                dev,
-			generation:         n.currentRuntimeGeneration(),
+			generation:         runtimeGeneration,
 			bindGeneration:     bindGeneration,
 			bindOpenGeneration: bindOpenGeneration,
 			intentionalClose:   intentionalClose,
@@ -481,7 +495,21 @@ func (n *wireGuardNode) tunConfig() TunConfig {
 	}
 }
 func (n *wireGuardNode) updateLabel() error {
-	return n.SetLabel(n.stateText())
+	status := n.runtimeStatusSnapshot()
+	if status.runtimeBusy {
+		n.queueLabelRefresh()
+	}
+	return n.SetLabel(n.stateTextFromSnapshot(status))
+}
+
+func (n *wireGuardNode) queueLabelRefresh() {
+	if n.W == nil || n.ID == 0 {
+		return
+	}
+	if !n.labelRefreshQueued.CompareAndSwap(false, true) {
+		return
+	}
+	n.deferInternal(wireGuardLabelRefreshMessage{})
 }
 
 type wireGuardStatusSnapshot struct {
@@ -562,8 +590,14 @@ func (n *wireGuardNode) handleRuntimeAttachmentResult(msg wireGuardRuntimeAttach
 		n.sendStatusBlock()
 		return
 	}
-	if !n.tryMarkRuntimeReady(n.currentRuntimeGeneration()) {
+	locked, ready := n.tryMarkRuntimeReady(n.currentRuntimeGeneration())
+	if !locked {
 		n.deferInternal(msg)
+		return
+	}
+	if !ready {
+		_ = n.updateLabel()
+		n.sendStatusBlock()
 		return
 	}
 	n.cancelConfigRetry()

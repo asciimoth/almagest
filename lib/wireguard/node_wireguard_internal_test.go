@@ -689,6 +689,22 @@ func TestWireGuardStateDoesNotReportUpWithClosedNetwork(t *testing.T) {
 	}
 }
 
+func TestWireGuardTryMarkRuntimeReadyRequiresActiveRuntime(t *testing.T) {
+	n := &wireGuardNode{}
+	n.runtimeGeneration.Store(1)
+
+	locked, ready := n.tryMarkRuntimeReady(1)
+	if !locked {
+		t.Fatal("tryMarkRuntimeReady did not acquire an available runtime lock")
+	}
+	if ready {
+		t.Fatal("tryMarkRuntimeReady reported ready without an active runtime")
+	}
+	if n.runtimeReadyGeneration != 0 {
+		t.Fatalf("runtimeReadyGeneration = %d, want 0", n.runtimeReadyGeneration)
+	}
+}
+
 func TestWireGuardSameSourceNetworkReemitRebuildsFailedBind(t *testing.T) {
 	sourceTun, peerTun := tun.Pipe(4, 1500, 0, 0)
 	t.Cleanup(func() { _ = sourceTun.Close() })

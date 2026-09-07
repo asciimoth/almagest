@@ -227,8 +227,12 @@ func (n *tailscaleNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint6
 }
 
 func (n *tailscaleNode) OnReady() error {
-	n.RequestPort(n.ctrlp)
-	n.RequestPort(n.netp)
+	if n.controller == nil {
+		n.RequestPort(n.ctrlp)
+	}
+	if !nodekit.NetworkIsReady(n.network) {
+		n.RequestPort(n.netp)
+	}
 	n.sendDNSAll()
 	n.sendFirewallAll()
 	n.scheduleReconcile()

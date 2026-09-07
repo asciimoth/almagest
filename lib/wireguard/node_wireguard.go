@@ -103,6 +103,11 @@ type wireGuardNode struct {
 
 	tunLink uint64
 	netLink uint64
+	// Payload receipt is workspace-owned. It prevents OnReady from repeating an
+	// OnLinkAdd request while the accepted attachment is still queued for async
+	// runtime installation.
+	tunPayloadReceived     bool
+	networkPayloadReceived bool
 
 	tunGeneration     atomic.Uint64
 	networkGeneration atomic.Uint64
@@ -159,6 +164,7 @@ type wireGuardNode struct {
 	// cancelling its retry.
 	runtimeFailureGeneration atomic.Uint64
 	runtimeReadyGeneration   uint64
+	labelRefreshQueued       atomic.Bool
 
 	runtimeStats            wgdevice.RuntimeStats
 	runtimeListenPort       int
@@ -224,9 +230,13 @@ func (n *wireGuardNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint6
 }
 func (n *wireGuardNode) OnReady() error {
 	n.sendTunConfig()
-	n.RequestPort(n.tunp)
+	if !n.tunPayloadReceived {
+		n.RequestPort(n.tunp)
+	}
 	n.RequestPort(n.peerp)
-	n.RequestPort(n.netp)
+	if !n.networkPayloadReceived {
+		n.RequestPort(n.netp)
+	}
 	n.sendWGCtrl()
 	return nil
 }
@@ -266,6 +276,7 @@ func (n *wireGuardNode) OnLinkAdd(link, port uint64, linkType, portDirection str
 	switch {
 	case port == n.tunp && portDirection == "left" && linkType == TypeTun:
 		n.tunLink = link
+		n.tunPayloadReceived = false
 		n.nextTunGeneration()
 		n.nextRuntimeGeneration()
 		n.sendTunConfigToLink(link)
@@ -276,6 +287,7 @@ func (n *wireGuardNode) OnLinkAdd(link, port uint64, linkType, portDirection str
 		n.sendWGCtrlToLink(link)
 	case port == n.netp && portDirection == "right" && linkType == TypeNetwork:
 		n.netLink = link
+		n.networkPayloadReceived = false
 		n.nextNetworkGeneration()
 		n.nextRuntimeGeneration()
 		std.RequestLocked(n.W, n.ID, link)
@@ -289,6 +301,7 @@ func (n *wireGuardNode) OnLinkRemoved(link uint64, port uint64, linkType, portDi
 	case port == n.tunp && portDirection == "left" && linkType == TypeTun && link == n.tunLink:
 		n.cancelConfigRetry()
 		n.tunLink = 0
+		n.tunPayloadReceived = false
 		tunGeneration := n.nextTunGeneration()
 		n.nextRuntimeGeneration()
 		n.scheduleTunDetach(tunGeneration)
@@ -306,6 +319,7 @@ func (n *wireGuardNode) OnLinkRemoved(link uint64, port uint64, linkType, portDi
 	case port == n.netp && portDirection == "right" && linkType == TypeNetwork && link == n.netLink:
 		n.cancelConfigRetry()
 		n.netLink = 0
+		n.networkPayloadReceived = false
 		networkGeneration := n.nextNetworkGeneration()
 		n.nextRuntimeGeneration()
 		n.scheduleNetworkDetach(networkGeneration)
@@ -352,6 +366,7 @@ func (n *wireGuardNode) OnEvent(event pasta.Event, linkType string, _ []string, 
 			}(payload.Tun)
 			return nil
 		}
+		n.tunPayloadReceived = true
 		BindTunResource(n.W, n.ID, event.Link, payload.Tun)
 		n.cancelConfigRetry()
 		tunGeneration := n.nextTunGeneration()
@@ -373,6 +388,7 @@ func (n *wireGuardNode) OnEvent(event pasta.Event, linkType string, _ []string, 
 			}(payload.Network)
 			return nil
 		}
+		n.networkPayloadReceived = true
 		BindNetworkResource(n.W, n.ID, event.Link, payload.Network)
 		n.cancelConfigRetry()
 		networkGeneration := n.nextNetworkGeneration()
@@ -413,6 +429,9 @@ func (n *wireGuardNode) OnInbox(message pasta.InboxMessage) error {
 		n.handleRuntimeAttachmentResult(msg)
 	case wireGuardWGCtrlInterfaceConfigCheckResult:
 		n.handleWGCtrlInterfaceConfigCheckResult(msg)
+	case wireGuardLabelRefreshMessage:
+		n.labelRefreshQueued.Store(false)
+		_ = n.updateLabel()
 	case wireGuardRuntimeStatsMessage:
 		n.handleRuntimeStats(msg)
 	case SecretValueChanged:

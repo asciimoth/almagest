@@ -98,8 +98,12 @@ func (n *socksServerNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uin
 }
 
 func (n *socksServerNode) OnReady() error {
-	n.RequestPort(n.listen)
-	n.RequestPort(n.proxy)
+	if !NetworkIsReady(n.listenNetwork) {
+		n.RequestPort(n.listen)
+	}
+	if !NetworkIsReady(n.proxyNetwork) {
+		n.RequestPort(n.proxy)
+	}
 	n.ensureWorkerStarted("ready")
 	return nil
 }

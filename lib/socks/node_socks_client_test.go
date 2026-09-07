@@ -13,6 +13,7 @@ import (
 	"github.com/asciimoth/formular"
 	"github.com/asciimoth/gonnect"
 	"github.com/asciimoth/pasta/pasta"
+	"github.com/asciimoth/pasta/pasta/std"
 	"github.com/asciimoth/socksgo"
 	"github.com/asciimoth/socksgo/protocol"
 )
@@ -152,7 +153,8 @@ func TestSocksClientNodeEmitsClientAfterOutNetworkUpdate(t *testing.T) {
 
 	out := testkit.MustNodeSnapshot(t, w, outID)
 	client := testkit.MustNodeSnapshot(t, w, clientID)
-	if _, _, err := w.AddLink(client.LeftPorts[0], receiver.In); err != nil {
+	link, _, err := w.AddLink(client.LeftPorts[0], receiver.In)
+	if err != nil {
 		t.Fatalf("AddLink client->receiver: %v", err)
 	}
 	if _, _, err := w.AddLink(out.LeftPorts[0], client.RightPorts[0]); err != nil {
@@ -160,12 +162,29 @@ func TestSocksClientNodeEmitsClientAfterOutNetworkUpdate(t *testing.T) {
 	}
 
 	payload := networktest.ReceivePayload(t, receiver.Events)
+drain:
+	for {
+		select {
+		case payload = <-receiver.Events:
+		default:
+			break drain
+		}
+	}
 	wrapped, ok := payload.Network.(*gonnect.DetachedNetwork)
 	if !ok {
 		t.Fatalf("payload.Network = %T, want *gonnect.DetachedNetwork", payload.Network)
 	}
 	if _, ok := wrapped.GetWrapped().(*socksgo.Client); !ok {
 		t.Fatalf("wrapped network = %T, want *socksgo.Client", wrapped.GetWrapped())
+	}
+
+	w.EmitEvent(receiver.ID, link, std.RequestValue{})
+	requested := networktest.ReceivePayload(t, receiver.Events)
+	if !SameNetworkInstance(requested.Network, payload.Network) {
+		t.Fatal("request replaced the ready SOCKS client wrapper")
+	}
+	if !NetworkIsReady(payload.Network) {
+		t.Fatal("request closed the ready SOCKS client wrapper")
 	}
 }
 

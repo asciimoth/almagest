@@ -5,3 +5,6 @@ pn = "pn"
 gost = "gost"
 snet = "snet"
 
+[files]
+extend-exclude = ["tests-fail"]
+

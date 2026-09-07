@@ -96,7 +96,9 @@ func (n *socksClientNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uin
 }
 
 func (n *socksClientNode) OnReady() error {
-	n.requestOutNetwork()
+	if !NetworkIsReady(n.outNetwork) {
+		n.requestOutNetwork()
+	}
 	n.requestProxyURL()
 	n.sendAll()
 	return nil
@@ -395,7 +397,7 @@ func (n *socksClientNode) sendNetworkToLink(link uint64) {
 
 func (n *socksClientNode) refreshNetworkToLink(link uint64) {
 	if n.client != nil && n.outNetwork != nil {
-		n.outputs.RefreshLocked(n.W, n.ID, link, n.client)
+		n.outputs.SendLocked(n.W, n.ID, link, n.client)
 	}
 }
 
