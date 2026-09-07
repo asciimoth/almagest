@@ -22,9 +22,25 @@ func (n *wireGuardNode) ensureDeviceLocked(batchSize int) {
 	// after workspace callbacks have released the workspace lock. Calling wgo
 	// from a workspace callback would reintroduce the workspace -> runtimeMu ->
 	// wgo -> workspace cycle.
-	n.dev = wgdevice.NewDevice(nil, nil, logger, n.WorkerSpawner, wgdevice.DeviceOptions{
+	//
+	// Keep handshake processing sequential for each device. wgo otherwise starts
+	// one handshake consumer per CPU, but every consumer mutates the same state
+	// machine in each peer. An initiation and response can then overtake each
+	// other between the protocol operations. This can install different current
+	// keypairs on the two peers: traffic works in one direction, incoming
+	// keepalives keep the stale state alive, and the normal handshake retry never
+	// repairs it. Encryption and decryption workers remain parallel.
+	spawner := newWireGuardDeviceWorkerSpawner(n.WorkerSpawner)
+	options := wgdevice.DeviceOptions{
 		BatchSize: batchSize,
-	})
+	}
+	if spawner == nil {
+		// Runtime-backed nodes always have a spawner. Keep direct test and
+		// library construction safe when no spawner is available to select the
+		// single handshake consumer.
+		options.WorkerCount = 1
+	}
+	n.dev = wgdevice.NewDevice(nil, nil, logger, spawner, options)
 	n.runtimeDeviceUp = false
 	n.runtimeStats = n.dev.RuntimeStats()
 	n.subscribeToRuntimeStatsLocked(n.dev)

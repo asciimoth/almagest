@@ -990,6 +990,63 @@ func TestWireGuardNetworkBindSerializesNonNativeSends(t *testing.T) {
 	<-done
 }
 
+func TestWireGuardDeviceSpawnerRunsOneHandshakeConsumer(t *testing.T) {
+	base := &wireGuardTestWorkerSpawner{}
+	spawner := newWireGuardDeviceWorkerSpawner(base)
+	handshakeEntered := make(chan struct{}, 2)
+	handshakeRelease := make(chan struct{})
+	var handshakeReleaseOnce sync.Once
+	releaseHandshake := func() { handshakeReleaseOnce.Do(func() { close(handshakeRelease) }) }
+	defer func() {
+		releaseHandshake()
+		base.wait()
+	}()
+
+	for i := 1; i <= 2; i++ {
+		_, err := spawner.Spawn(func() {
+			handshakeEntered <- struct{}{}
+			<-handshakeRelease
+		}, wireGuardHandshakeWorkerPrefix+strconv.Itoa(i))
+		if err != nil {
+			t.Fatalf("spawn handshake worker %d: %v", i, err)
+		}
+	}
+
+	<-handshakeEntered
+	select {
+	case <-handshakeEntered:
+		t.Fatal("two handshake consumers ran concurrently")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	regularEntered := make(chan struct{}, 2)
+	regularRelease := make(chan struct{})
+	defer close(regularRelease)
+	for i := 1; i <= 2; i++ {
+		_, err := spawner.Spawn(func() {
+			regularEntered <- struct{}{}
+			<-regularRelease
+		}, "wgo: encryption worker "+strconv.Itoa(i))
+		if err != nil {
+			t.Fatalf("spawn encryption worker %d: %v", i, err)
+		}
+	}
+	for i := 0; i < 2; i++ {
+		select {
+		case <-regularEntered:
+		case <-time.After(time.Second):
+			t.Fatal("non-handshake workers were serialized")
+		}
+	}
+
+	releaseHandshake()
+	select {
+	case <-handshakeEntered:
+	case <-time.After(time.Second):
+		t.Fatal("waiting handshake consumer did not run during shutdown")
+	}
+}
+
 func TestWireGuardIntentionalClosedReceiveErrorIsIgnored(t *testing.T) {
 	wg := &wireGuardNode{}
 	dev := wgdevice.NewDevice(nil, nil, wgdevice.NopLogger{}, nil, wgdevice.DeviceOptions{})
@@ -1722,6 +1779,37 @@ func (wireGuardTestLogger) Fatalf(string, ...any) {}
 type blockingWireGuardTestBind struct {
 	entered chan struct{}
 	release chan struct{}
+}
+
+type wireGuardTestWorkerSpawner struct {
+	mu sync.Mutex
+	wg sync.WaitGroup
+}
+
+func (s *wireGuardTestWorkerSpawner) Spawn(worker func(), _ string) (uint64, error) {
+	s.mu.Lock()
+	s.wg.Add(1)
+	s.mu.Unlock()
+	go func() {
+		defer s.wg.Done()
+		worker()
+	}()
+	return 0, nil
+}
+
+func (s *wireGuardTestWorkerSpawner) SpawnWg(worker func(), wg *sync.WaitGroup, name string) (uint64, error) {
+	if wg == nil {
+		return 0, errors.New("wait group is nil")
+	}
+	wg.Add(1)
+	return s.Spawn(func() {
+		defer wg.Done()
+		worker()
+	}, name)
+}
+
+func (s *wireGuardTestWorkerSpawner) wait() {
+	s.wg.Wait()
 }
 
 type failingWireGuardTestBind struct {
