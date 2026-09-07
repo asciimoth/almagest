@@ -705,6 +705,51 @@ func TestWireGuardTryMarkRuntimeReadyRequiresActiveRuntime(t *testing.T) {
 	}
 }
 
+func TestWireGuardFailedReopenRequiresConfigApplyAfterTunReplacement(t *testing.T) {
+	source, peer := tun.Pipe(4, 1500, 0, 0)
+	t.Cleanup(func() { _ = peer.Close() })
+
+	n := &wireGuardNode{config: defaultWireGuardConfig()}
+	n.ensureDeviceLocked(n.config.batchSize)
+	t.Cleanup(n.stopRuntime)
+
+	// A controller owns named transports on the shared WireGuard device. A
+	// graph network refresh can close its old transport before the controller
+	// replaces it. Model WireGuard reopening the device during that exact
+	// interval after it had previously recorded an up state.
+	openErr := errors.New("controller network was replaced")
+	if err := n.dev.AddTransport("test-controller", wgdevice.TransportConfig{
+		Bind: &failingWireGuardTestBind{err: openErr},
+	}); err != nil {
+		t.Fatalf("AddTransport() error = %v", err)
+	}
+	n.runtimeDeviceUp = true
+	if err := n.bringDeviceUpLocked(); !errors.Is(err, openErr) {
+		t.Fatalf("bringDeviceUpLocked() error = %v, want %v", err, openErr)
+	}
+	if n.runtimeDeviceUp {
+		t.Fatal("runtimeDeviceUp remained true after Device.Up failed")
+	}
+
+	// The current TUN re-emission is the next convergence event in the failing
+	// startup trace. It must request a config apply so the device is reopened
+	// after the controller finishes replacing its transport.
+	n.currentTun = source
+	n.currentTunGeneration = 1
+	n.tunGeneration.Store(2)
+	n.currentBind = wireGuardTrackedBind{}
+	needsConfig, ok, err := n.attachCurrentTun(2, source, n.config.batchSize)
+	if err != nil {
+		t.Fatalf("attachCurrentTun() error = %v", err)
+	}
+	if !ok {
+		t.Fatal("attachCurrentTun() did not accept the current TUN generation")
+	}
+	if !needsConfig {
+		t.Fatal("TUN replacement did not request recovery config apply after failed reopen")
+	}
+}
+
 func TestWireGuardDuplicateTunPayloadDoesNotInvalidatePendingAttach(t *testing.T) {
 	source, peer := tun.Pipe(4, 1500, 0, 0)
 	t.Cleanup(func() { _ = peer.Close() })
@@ -1677,6 +1722,24 @@ func (wireGuardTestLogger) Fatalf(string, ...any) {}
 type blockingWireGuardTestBind struct {
 	entered chan struct{}
 	release chan struct{}
+}
+
+type failingWireGuardTestBind struct {
+	err error
+}
+
+func (b *failingWireGuardTestBind) Open(uint16) ([]conn.ReceiveFunc, uint16, error) {
+	return nil, 0, b.err
+}
+
+func (*failingWireGuardTestBind) Close() error         { return nil }
+func (*failingWireGuardTestBind) SetMark(uint32) error { return nil }
+func (*failingWireGuardTestBind) BatchSize() int       { return 1 }
+func (*failingWireGuardTestBind) Send([][]byte, conn.Endpoint) error {
+	return nil
+}
+func (*failingWireGuardTestBind) ParseEndpoint(string) (conn.Endpoint, error) {
+	return nil, nil
 }
 
 func (*blockingWireGuardTestBind) Open(uint16) ([]conn.ReceiveFunc, uint16, error) {

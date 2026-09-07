@@ -111,8 +111,16 @@ func (n *wireGuardNode) shouldRunDeviceLocked() bool {
 
 func (n *wireGuardNode) bringDeviceUpLocked() error {
 	if n.dev == nil {
+		n.runtimeDeviceUp = false
 		return nil
 	}
+	// Device.Up returns with the device down when any default or named
+	// transport cannot reopen. Clear the mirror before the call so a failed
+	// reopen cannot leave this node believing that the previous up state is
+	// still active. Attachment completion uses this value to decide whether it
+	// must schedule a new config apply, which is the recovery path after a
+	// concurrent controller transport replacement.
+	n.runtimeDeviceUp = false
 	if err := n.dev.Up(); err != nil {
 		return err
 	}
@@ -125,10 +133,12 @@ func (n *wireGuardNode) bringDeviceDownLocked() error {
 		n.runtimeDeviceUp = false
 		return nil
 	}
+	// Device.Down transitions to down even when closing one transport reports
+	// an error. Keep the local state conservative on that error path too.
+	n.runtimeDeviceUp = false
 	if err := n.dev.Down(); err != nil {
 		return err
 	}
-	n.runtimeDeviceUp = false
 	return nil
 }
 
