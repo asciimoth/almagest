@@ -103,6 +103,14 @@ func (a *agent) ConfRO() bool {
 	return true
 }
 
+func (a *agent) ConfigFilePath() string {
+	return ""
+}
+
+func (a *agent) ProtectedConfigFilePath() string {
+	return ""
+}
+
 func (a *agent) ReadConfig() (cfg, prt []byte, err error) {
 	if a.StdInConfig {
 		golog.Info("Loading config from stdin")

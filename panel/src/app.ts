@@ -99,6 +99,12 @@ import {
   type KVValueSnapshot,
 } from "./kv_model.js";
 import {
+  removeSnapshot as removeSnapshotEntry,
+  renderSnapshotList,
+  upsertSnapshot,
+  type SnapshotInfo,
+} from "./snapshots_panel.js";
+import {
   FORMULAR_SECRET_SELECTOR,
   SECRET_TEXT_RENDER_LIMIT,
   applySecretChange,
@@ -300,6 +306,14 @@ type ConfigUpdateResponse = {
   snapshot: ConfigSnapshot;
   changes: ConfigChanges;
 };
+type SnapshotsListResponse = {
+  snapshots: SnapshotInfo[];
+};
+type SnapshotRestoreResponse = {
+  snapshot: SnapshotInfo;
+  config_written: boolean;
+  config_write_error?: string;
+};
 type DNSValuePanelState = {
   cache: string;
   key: string;
@@ -335,7 +349,7 @@ type TLSValuePanelState = {
   name: string;
   editing: "value" | "rename" | null;
 };
-type Surface = "admin" | "config" | "dns" | "engine" | "kv" | "log" | "secrets" | "tls";
+type Surface = "admin" | "config" | "dns" | "engine" | "kv" | "log" | "secrets" | "snapshots" | "tls";
 type APIMessage = {
   version: "v1";
   kind: "request" | "response" | "event";
@@ -478,6 +492,9 @@ let configSnapshot: ConfigSnapshot | null = null;
 let configDraft = "";
 let configLoading = false;
 let configApplying = false;
+let snapshotsLoading = false;
+let snapshotMutationPending = false;
+let snapshotEntries: SnapshotInfo[] = [];
 
 const el = {
   status: document.querySelector<HTMLElement>("#backend-status")!,
@@ -506,6 +523,11 @@ const el = {
   configReload: document.querySelector<HTMLButtonElement>("#config-reload")!,
   configApply: document.querySelector<HTMLButtonElement>("#config-apply")!,
   configStatus: document.querySelector<HTMLElement>("#config-status")!,
+  snapshotName: document.querySelector<HTMLInputElement>("#snapshot-name")!,
+  snapshotCreate: document.querySelector<HTMLButtonElement>("#snapshot-create")!,
+  snapshotsReload: document.querySelector<HTMLButtonElement>("#snapshots-reload")!,
+  snapshotsList: document.querySelector<HTMLOListElement>("#snapshots-list")!,
+  snapshotsStatus: document.querySelector<HTMLElement>("#snapshots-status")!,
   notifications: document.querySelector<HTMLElement>("#notifications"),
 };
 
@@ -801,6 +823,16 @@ async function backend<T>(method: string, params: Record<string, unknown> = {}):
       return request<T>("config", "snapshot");
     case "configUpdate":
       return request<T>("config", "update", { text: params.text, revision: params.revision });
+    case "snapshotsList":
+      return request<T>("snapshots", "list");
+    case "snapshotCreate":
+      return request<T>("snapshots", "create", { name: params.name });
+    case "snapshotDelete":
+      return request<T>("snapshots", "delete", { uuid: params.uuid });
+    case "snapshotRename":
+      return request<T>("snapshots", "rename", { uuid: params.uuid, name: params.name });
+    case "snapshotRestore":
+      return request<T>("snapshots", "restore", { uuid: params.uuid });
     case "subscribeNotifications": {
       const result = await request<{ subscription_id: number }>("engine", "subscribe_notifications", { workspace: "main" });
       notificationSubscriptionID = result.subscription_id;
@@ -5340,6 +5372,133 @@ function configChangeSummary(changes: ConfigChanges, revision: string): string {
   return `Applied revision ${shortConfigRevision(revision)}: ${detail}.`;
 }
 
+async function activateSnapshotsPanel(): Promise<void> {
+  if (snapshotEntries.length || snapshotsLoading) {
+    updateSnapshotControls();
+    return;
+  }
+  await loadSnapshots();
+}
+
+async function loadSnapshots(): Promise<void> {
+  if (snapshotsLoading || snapshotMutationPending) return;
+  snapshotsLoading = true;
+  el.snapshotsStatus.textContent = "Loading snapshots.";
+  updateSnapshotControls();
+  try {
+    const response = await backend<SnapshotsListResponse>("snapshotsList");
+    snapshotEntries = response.snapshots ?? [];
+    renderSnapshots();
+    el.snapshotsStatus.textContent = `${snapshotEntries.length} snapshot(s).`;
+  } catch (error) {
+    el.snapshotsStatus.textContent = `Snapshot load failed: ${(error as Error).message}`;
+  } finally {
+    snapshotsLoading = false;
+    updateSnapshotControls();
+  }
+}
+
+async function createSnapshot(): Promise<void> {
+  if (snapshotsLoading || snapshotMutationPending) return;
+  snapshotMutationPending = true;
+  el.snapshotsStatus.textContent = "Creating snapshot.";
+  updateSnapshotControls();
+  try {
+    const created = await backend<SnapshotInfo>("snapshotCreate", { name: el.snapshotName.value });
+    el.snapshotName.value = "";
+    snapshotEntries = upsertSnapshot(snapshotEntries, created);
+    renderSnapshots();
+    el.snapshotsStatus.textContent = `Created snapshot ${created.uuid}.`;
+  } catch (error) {
+    el.snapshotsStatus.textContent = `Snapshot creation failed: ${(error as Error).message}`;
+  } finally {
+    snapshotMutationPending = false;
+    updateSnapshotControls();
+  }
+}
+
+async function restoreSnapshot(entry: SnapshotInfo): Promise<void> {
+  const label = entry.name ? `“${entry.name}” (${entry.uuid})` : entry.uuid;
+  if (!window.confirm(`Restore snapshot ${label}? Current daemon state will be replaced.`)) return;
+  if (snapshotsLoading || snapshotMutationPending) return;
+  snapshotMutationPending = true;
+  el.snapshotsStatus.textContent = `Restoring snapshot ${entry.uuid}.`;
+  updateSnapshotControls();
+  try {
+    const response = await backend<SnapshotRestoreResponse>("snapshotRestore", { uuid: entry.uuid });
+    configSnapshot = null;
+    configDraft = "";
+    const persistence = response.config_written
+      ? " Config was written to disk."
+      : response.config_write_error
+        ? ` Config is active in memory; the config file write failed: ${response.config_write_error}`
+        : " Config is active in memory only.";
+    el.snapshotsStatus.textContent = `Restored snapshot ${response.snapshot.uuid}.${persistence}`;
+  } catch (error) {
+    el.snapshotsStatus.textContent = `Snapshot restore failed: ${(error as Error).message}`;
+  } finally {
+    snapshotMutationPending = false;
+    updateSnapshotControls();
+  }
+}
+
+async function renameSnapshot(entry: SnapshotInfo): Promise<void> {
+  const name = window.prompt("Snapshot name (leave empty for no name):", entry.name ?? "");
+  if (name === null || snapshotsLoading || snapshotMutationPending) return;
+  snapshotMutationPending = true;
+  el.snapshotsStatus.textContent = `Renaming snapshot ${entry.uuid}.`;
+  updateSnapshotControls();
+  try {
+    const renamed = await backend<SnapshotInfo>("snapshotRename", { uuid: entry.uuid, name });
+    snapshotEntries = upsertSnapshot(snapshotEntries, renamed);
+    renderSnapshots();
+    el.snapshotsStatus.textContent = `Renamed snapshot ${entry.uuid}.`;
+  } catch (error) {
+    el.snapshotsStatus.textContent = `Snapshot rename failed: ${(error as Error).message}`;
+  } finally {
+    snapshotMutationPending = false;
+    updateSnapshotControls();
+  }
+}
+
+async function deleteSnapshot(entry: SnapshotInfo): Promise<void> {
+  const label = entry.name ? `“${entry.name}” (${entry.uuid})` : entry.uuid;
+  if (!window.confirm(`Delete snapshot ${label}? This action cannot be undone.`)) return;
+  if (snapshotsLoading || snapshotMutationPending) return;
+  snapshotMutationPending = true;
+  el.snapshotsStatus.textContent = `Deleting snapshot ${entry.uuid}.`;
+  updateSnapshotControls();
+  try {
+    await backend<Record<string, never>>("snapshotDelete", { uuid: entry.uuid });
+    snapshotEntries = removeSnapshotEntry(snapshotEntries, entry.uuid);
+    renderSnapshots();
+    el.snapshotsStatus.textContent = `Deleted snapshot ${entry.uuid}.`;
+  } catch (error) {
+    el.snapshotsStatus.textContent = `Snapshot deletion failed: ${(error as Error).message}`;
+  } finally {
+    snapshotMutationPending = false;
+    updateSnapshotControls();
+  }
+}
+
+function renderSnapshots(): void {
+  renderSnapshotList(el.snapshotsList, snapshotEntries, snapshotMutationPending, {
+    rename: (entry) => void renameSnapshot(entry),
+    restore: (entry) => void restoreSnapshot(entry),
+    delete: (entry) => void deleteSnapshot(entry),
+  });
+}
+
+function updateSnapshotControls(): void {
+  const disabled = snapshotsLoading || snapshotMutationPending;
+  el.snapshotName.disabled = disabled;
+  el.snapshotCreate.disabled = disabled;
+  el.snapshotsReload.disabled = disabled;
+  for (const button of el.snapshotsList.querySelectorAll<HTMLButtonElement>("button")) {
+    button.disabled = disabled;
+  }
+}
+
 function notifyError(message: string): void {
   const toast = createNotificationToast(message);
   const id = nextToastID++;
@@ -5376,6 +5535,7 @@ function setTab(name: string): void {
   if (name === "logs") renderLogs();
   if (name === "ps") renderWorkers();
   if (name === "config") void activateConfigPanel();
+  if (name === "snapshots") void activateSnapshotsPanel();
   if (name === "graph") setTimeout(resizeGraphCanvas, 0);
   updateWorkerAgeTimer();
 }
@@ -5595,6 +5755,8 @@ function wireUI(): void {
   });
   el.configReload.addEventListener("click", () => void loadConfig());
   el.configApply.addEventListener("click", () => void applyConfig());
+  el.snapshotCreate.addEventListener("click", () => void createSnapshot());
+  el.snapshotsReload.addEventListener("click", () => void loadSnapshots());
   document.addEventListener("paste", handleGraphPaste, { capture: true });
   document.addEventListener("keydown", (event) => {
     graphKeydown(event);

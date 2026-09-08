@@ -205,6 +205,124 @@ h1 {
   padding: 14px;
 }
 
+.snapshots-panel {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  background: var(--crust);
+  padding: 14px;
+}
+
+.snapshots-shell {
+  display: grid;
+  gap: 12px;
+}
+
+.snapshots-header {
+  display: flex;
+  gap: 16px;
+  align-items: end;
+  justify-content: space-between;
+}
+
+.snapshots-header h2,
+.snapshots-header p {
+  margin: 0;
+}
+
+.snapshots-header h2 {
+  font-size: 16px;
+}
+
+.snapshots-header p,
+.snapshots-footer,
+.snapshots-actions label,
+.snapshot-meta {
+  color: var(--subtext);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.snapshots-actions {
+  display: grid;
+  grid-template-columns: minmax(140px, 260px) auto auto;
+  gap: 6px 8px;
+  align-items: end;
+}
+
+.snapshots-actions label {
+  grid-column: 1 / 2;
+}
+
+.snapshots-actions input {
+  grid-column: 1 / 2;
+  min-width: 0;
+  height: 34px;
+  border: 1px solid var(--surface1);
+  border-radius: 6px;
+  outline: none;
+  background: var(--mantle);
+  color: var(--text);
+  padding: 0 10px;
+}
+
+.snapshots-actions input:focus {
+  border-color: var(--blue);
+}
+
+#snapshots-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.snapshot-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px 16px;
+  align-items: center;
+  border: 1px solid var(--surface0);
+  border-radius: 6px;
+  background: var(--mantle);
+  padding: 10px 12px;
+}
+
+.snapshot-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.snapshot-copy strong,
+.snapshot-copy code {
+  overflow-wrap: anywhere;
+}
+
+.snapshot-copy code {
+  color: var(--teal);
+  font-size: 12px;
+}
+
+.snapshot-row button {
+  padding: 0 12px;
+}
+
+.snapshot-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.snapshot-row-actions .danger {
+  color: color-mix(in srgb, var(--red), var(--text) 20%);
+}
+
+.snapshot-empty {
+  color: var(--subtext);
+}
+
 .config-shell {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
@@ -2046,6 +2164,15 @@ h1 {
   .tabs,
   .actions {
     flex-wrap: wrap;
+  }
+
+  .snapshots-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .snapshots-actions {
+    grid-template-columns: minmax(0, 1fr) auto auto;
   }
 
   .graph-panel {

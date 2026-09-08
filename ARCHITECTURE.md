@@ -118,6 +118,10 @@ Daemon:
 - `bin/almagestd/api.go`: localhost admin API listener and surface dispatch.
 - `bin/almagestd/api_config.go`: editable HuJSON config API. It never exposes
   protected config and uses revision tokens for conflict detection.
+- `bin/almagestd/snapshots.go`: snapshot archive creation, validation,
+  file-storage restore, graph rebuild, and rollback.
+- `bin/almagestd/snapshot_bbolt.go`: consistent bbolt copies and transactional
+  replacement of live database buckets.
 
 Platform and CLI:
 - `bin/almagestd/platform/`: build-tagged defaults and platform operations.
@@ -141,6 +145,25 @@ Editable config flow:
 
 The API is read-only when the daemon config source is read-only. Protected
 config is loaded once at startup and is not part of this flow.
+
+Snapshot flow:
+1. `snapshots.create` writes `file-storage/snapshots/<uuid>.zip`. The archive
+   contains the regular config, a consistent bbolt image, and all file-storage
+   content except paths in the daemon exclusion list. The `snapshots` subtree
+   itself is currently the only hard-coded exclusion.
+2. The daemon removes every top-level `Protected` member from the archived
+   regular config. It also excludes the active regular and protected config
+   source files if they are inside file storage.
+3. `snapshots.restore` validates and stages the complete archive, saves an
+   internal recovery archive, removes the current graph, mirrors storage, and
+   replaces all bbolt buckets in one transaction. It then reapplies protected
+   and host-derived state and reconstructs the graph from the restored config.
+4. If restore fails, the daemon uses the recovery archive to restore the prior
+   in-memory and persistent state. A later config-file write failure does not
+   roll back a successful restore; the restored config stays active in memory.
+5. Snapshot create, delete, rename, and restore operations exclude concurrent admin API state
+   operations. Listing remains read-only. The CLI uses `almagest-cli snapshots`
+   and the panel provides the same create, delete, list, rename, and restore operations.
 
 ## Core Concepts
 - Pasta provides the graph workspace, node classes, ports, links,

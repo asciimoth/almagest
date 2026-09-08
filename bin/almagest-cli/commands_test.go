@@ -157,6 +157,73 @@ func TestRunConfigApplyReadsStdinAndSendsRevision(t *testing.T) {
 	}
 }
 
+func TestRunSnapshotCommandsSendCreateListRenameRestoreAndDeleteRequests(t *testing.T) {
+	info := api.SnapshotInfo{
+		UUID:      "11111111-1111-4111-8111-111111111111",
+		Timestamp: 1788955200000000000,
+		Name:      "same name",
+	}
+	transport := &fakeTransport{reads: []api.Message{
+		mustResponse(t, "1", info),
+		mustResponse(t, "1", api.SnapshotsListResponse{Snapshots: []api.SnapshotInfo{info}}),
+		mustResponse(t, "1", api.SnapshotInfo{UUID: info.UUID, Timestamp: info.Timestamp, Name: "renamed"}),
+		mustResponse(t, "1", api.SnapshotsRestoreResponse{Snapshot: info, ConfigWritten: true}),
+		mustResponse(t, "1", struct{}{}),
+	}}
+	var stdout, stderr bytes.Buffer
+	dial := func(context.Context, endpoint) (apiTransport, error) { return transport, nil }
+
+	if err := run(context.Background(), []string{"snapshots", "create", "--name", "same name"}, nil, &stdout, &stderr, dial); err != nil {
+		t.Fatalf("snapshot create failed: %v\nstderr: %s", err, stderr.String())
+	}
+	if err := run(context.Background(), []string{"snapshots", "list"}, nil, &stdout, &stderr, dial); err != nil {
+		t.Fatalf("snapshot list failed: %v\nstderr: %s", err, stderr.String())
+	}
+	if err := run(context.Background(), []string{"snapshots", "rename", "--name", "renamed", info.UUID}, nil, &stdout, &stderr, dial); err != nil {
+		t.Fatalf("snapshot rename failed: %v\nstderr: %s", err, stderr.String())
+	}
+	if err := run(context.Background(), []string{"snapshots", "restore", info.UUID}, nil, &stdout, &stderr, dial); err != nil {
+		t.Fatalf("snapshot restore failed: %v\nstderr: %s", err, stderr.String())
+	}
+	if err := run(context.Background(), []string{"snapshots", "delete", "--uuid", info.UUID}, nil, &stdout, &stderr, dial); err != nil {
+		t.Fatalf("snapshot delete failed: %v\nstderr: %s", err, stderr.String())
+	}
+	if len(transport.writes) != 5 {
+		t.Fatalf("snapshot writes = %d, want 5", len(transport.writes))
+	}
+	wantMethods := []api.SnapshotsMethod{
+		api.MethodSnapshotsCreate,
+		api.MethodSnapshotsList,
+		api.MethodSnapshotsRename,
+		api.MethodSnapshotsRestore,
+		api.MethodSnapshotsDelete,
+	}
+	for index, message := range transport.writes {
+		if message.Surface != api.SurfaceSnapshots || message.Method != string(wantMethods[index]) {
+			t.Fatalf("snapshot request %d = %#v", index, message)
+		}
+	}
+	createRequest, err := api.DecodePayload[api.SnapshotsCreateRequest](transport.writes[0].Payload)
+	if err != nil || createRequest.Name != info.Name {
+		t.Fatalf("create request = %#v, err=%v", createRequest, err)
+	}
+	renameRequest, err := api.DecodePayload[api.SnapshotsRenameRequest](transport.writes[2].Payload)
+	if err != nil || renameRequest.UUID != info.UUID || renameRequest.Name != "renamed" {
+		t.Fatalf("rename request = %#v, err=%v", renameRequest, err)
+	}
+	restoreRequest, err := api.DecodePayload[api.SnapshotUUIDRequest](transport.writes[3].Payload)
+	if err != nil || restoreRequest.UUID != info.UUID {
+		t.Fatalf("restore request = %#v, err=%v", restoreRequest, err)
+	}
+	deleteRequest, err := api.DecodePayload[api.SnapshotUUIDRequest](transport.writes[4].Payload)
+	if err != nil || deleteRequest.UUID != info.UUID {
+		t.Fatalf("delete request = %#v, err=%v", deleteRequest, err)
+	}
+	if !strings.Contains(stdout.String(), `"config_written": true`) {
+		t.Fatalf("snapshot output = %q", stdout.String())
+	}
+}
+
 func TestRunKVSetSendsRequest(t *testing.T) {
 	ft := &fakeTransport{reads: []api.Message{mustResponse(t, "1", api.KVValueSnapshot{
 		Found: true,

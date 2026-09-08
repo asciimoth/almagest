@@ -43,6 +43,11 @@ type AdminAPI struct {
 	tls                   *bboltKVManager
 	tlsOSAuthorityFetcher tlspolicy.AuthorityFetcher
 	nodeNames             *nodeNameIndex
+	snapshots             *snapshotService
+
+	// stateMu prevents snapshot mutations from overlapping admin API operations
+	// that read or mutate the graph and persistent storage.
+	stateMu sync.RWMutex
 
 	leaseMu       sync.Mutex
 	mutationLease *mutationLease
@@ -219,6 +224,15 @@ func (s *apiSession) handleMessage(msg api.Message) (api.Message, error) {
 		)
 	}
 
+	if msg.Surface == api.SurfaceSnapshots &&
+		(api.SnapshotsMethod(msg.Method) == api.MethodSnapshotsCreate || api.SnapshotsMethod(msg.Method) == api.MethodSnapshotsRestore) {
+		s.admin.stateMu.Lock()
+		defer s.admin.stateMu.Unlock()
+	} else {
+		s.admin.stateMu.RLock()
+		defer s.admin.stateMu.RUnlock()
+	}
+
 	switch msg.Surface {
 	case api.SurfaceAdmin:
 		return s.handleAdminMessage(msg)
@@ -234,6 +248,8 @@ func (s *apiSession) handleMessage(msg api.Message) (api.Message, error) {
 		return s.handleLogMessage(msg)
 	case api.SurfaceSecrets:
 		return s.handleSecretsMessage(msg)
+	case api.SurfaceSnapshots:
+		return s.handleSnapshotsMessage(msg)
 	case api.SurfaceTLS:
 		return s.handleTLSMessage(msg)
 	default:
@@ -272,6 +288,9 @@ func (s *apiSession) handleAdminMessage(msg api.Message) (api.Message, error) {
 				},
 				string(api.SurfaceSecrets): map[string]any{
 					"methods": api.SecretsMethods(),
+				},
+				string(api.SurfaceSnapshots): map[string]any{
+					"methods": api.SnapshotsMethods(),
 				},
 				string(api.SurfaceSystem): map[string]any{
 					"methods": []string{},

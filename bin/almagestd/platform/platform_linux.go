@@ -161,6 +161,14 @@ func (a *agent) ConfRO() bool {
 	return a.ReadOnly
 }
 
+func (a *agent) ConfigFilePath() string {
+	return a.ConfigPath
+}
+
+func (a *agent) ProtectedConfigFilePath() string {
+	return a.ProtectedPath
+}
+
 func (a *agent) ReadConfig() ([]byte, []byte, error) {
 	var err error
 

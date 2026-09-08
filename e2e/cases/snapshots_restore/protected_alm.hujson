@@ -1,0 +1,12 @@
+{
+	"Admin": {
+		"Web": 0,
+		"Unix": "%E2E_ADMIN_SOCK%",
+	},
+	"Secrets": {
+		"snapshot-protected-marker": {
+			"Value": "protected-socks-password",
+			"Nodes": ["SOCKS Snapshot"],
+		},
+	},
+}

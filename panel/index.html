@@ -27,6 +27,7 @@
           <button data-tab="ps" type="button">Ps</button>
           <button data-tab="logs" type="button">Logs</button>
           <button data-tab="config" type="button">Config</button>
+          <button data-tab="snapshots" type="button">Snapshots</button>
         </nav>
       </header>
 
@@ -86,6 +87,27 @@
           <textarea id="config-editor" aria-label="Editable HuJSON config" autocomplete="off" autocapitalize="off" spellcheck="false"></textarea>
           <footer class="config-footer">
             <span id="config-status">Open this tab to load the editable config.</span>
+          </footer>
+        </div>
+      </section>
+
+      <section class="panel hidden snapshots-panel" data-panel="snapshots">
+        <div class="snapshots-shell">
+          <header class="snapshots-header">
+            <div>
+              <h2>Daemon snapshots</h2>
+              <p>Snapshots include editable config and file storage. Protected config is never included.</p>
+            </div>
+            <div class="snapshots-actions">
+              <label for="snapshot-name">Optional name</label>
+              <input id="snapshot-name" type="text" autocomplete="off" maxlength="256">
+              <button id="snapshot-create" type="button">Create snapshot</button>
+              <button id="snapshots-reload" type="button">Reload</button>
+            </div>
+          </header>
+          <ol id="snapshots-list" aria-label="Daemon snapshots"></ol>
+          <footer class="snapshots-footer">
+            <span id="snapshots-status">Open this tab to load snapshots.</span>
           </footer>
         </div>
       </section>

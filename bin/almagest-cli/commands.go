@@ -75,6 +75,8 @@ func run(
 		runErr = runLog(ctx, c, rest[1:], stdout, stderr)
 	case "secrets":
 		runErr = runSecrets(ctx, c, rest[1:], stdout, stderr)
+	case "snapshots":
+		runErr = runSnapshots(ctx, c, rest[1:], stdout, stderr)
 	case "tls":
 		runErr = runTLS(ctx, c, rest[1:], stdin, stdout, stderr)
 	case "raw":
@@ -769,6 +771,7 @@ Surfaces:
   kv       persistent key/value store snapshots, subscriptions, and mutations
   log      log subscription and watch commands
   secrets  secret snapshots, subscriptions, and mutations
+  snapshots create, delete, list, rename, and restore daemon snapshots
   tls      TLS certificate, policy, and built-in CA commands
   graph    high-level node, link, class, and node menu commands
   workers  worker-system snapshots and tree rendering

@@ -1,0 +1,47 @@
+{
+	"Logs": {
+		"Cache": {"Debug": 1024, "Info": 256, "Warn": 256, "Error": 256},
+	},
+	"nodes": {
+		"SOCKS Snapshot": {
+			"Class": "almagest/SocksServer",
+			"Pos": "{\"x\":180,\"y\":180}",
+			"Links": [
+				"listen -> [SOCKS Listen Network] Network",
+				"proxy -> [SOCKS Proxy Network] Network",
+			],
+			"socksHost": "127.0.0.1",
+			"socksPort": 11108,
+			"wsHost": "",
+			"wsPort": 0,
+			"wsPath": "/snapshot-socks",
+			"users": [{
+				"id": "snapshot-user",
+				"username": "snapshot-user",
+				"password": "unused-inline-value",
+				"passwordSecret": "snapshot-protected-marker",
+			}],
+			"commands": {
+				"cmdBind": true,
+				"cmdConnect": true,
+				"cmdGostMuxBind": true,
+				"cmdGostUDPTun": true,
+				"cmdTorResolve": true,
+				"cmdTorResolvePtr": true,
+				"cmdUDPAssoc": true,
+			},
+		},
+		"SOCKS Listen Network": {
+			"Class": "almagest/OutNetwork",
+			"Pos": "{\"x\":580,\"y\":100}",
+		},
+		"SOCKS Proxy Network": {
+			"Class": "almagest/OutNetwork",
+			"Pos": "{\"x\":580,\"y\":260}",
+		},
+		"Persistent Mock": {
+			"Class": "almagest/MockNetwork",
+			"Pos": "{\"x\":180,\"y\":420}",
+		},
+	},
+}

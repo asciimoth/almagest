@@ -285,6 +285,16 @@ func (s *configAutosaver) changeRevision() uint64 {
 	return s.change
 }
 
+// noteRestoredConfig advances the revision after snapshot restore installs a
+// complete config document. The caller must hold saveMu while it replaces
+// Config.Main and rebuilds the engine.
+func (s *configAutosaver) noteRestoredConfig() {
+	s.mu.Lock()
+	s.change++
+	s.last = time.Now()
+	s.mu.Unlock()
+}
+
 func parseEditableConfig(data []byte) (*hujson.Config, error) {
 	cfg, err := hujson.Parse(data)
 	if err != nil {

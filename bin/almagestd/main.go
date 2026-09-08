@@ -221,6 +221,17 @@ func main() {
 
 	var wg sync.WaitGroup
 	admin.configAutosaver = newConfigAutosaver(engine, conf, agent, daemonLogger, conf.SaveIdle())
+	admin.snapshots = newSnapshotService(
+		fsPath,
+		admin.configAutosaver,
+		engine,
+		kv,
+		conf,
+		agent,
+		admin.configReadOnly,
+		daemonLogger,
+		admin.tlsOSAuthorityFetcher,
+	)
 	wg.Go(func() {
 		admin.configAutosaver.Run(ctx)
 	})

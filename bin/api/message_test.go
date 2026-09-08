@@ -194,6 +194,15 @@ func TestRequiresMutationLease(t *testing.T) {
 	if RequiresMutationLease(SurfaceTLS, string(MethodTLSSnapshot)) {
 		t.Fatal("TLS snapshot should not require mutation lease")
 	}
+	if !RequiresMutationLease(SurfaceSnapshots, string(MethodSnapshotsCreate)) ||
+		!RequiresMutationLease(SurfaceSnapshots, string(MethodSnapshotsDelete)) ||
+		!RequiresMutationLease(SurfaceSnapshots, string(MethodSnapshotsRename)) ||
+		!RequiresMutationLease(SurfaceSnapshots, string(MethodSnapshotsRestore)) {
+		t.Fatal("snapshot create, delete, rename, and restore should require a mutation lease")
+	}
+	if RequiresMutationLease(SurfaceSnapshots, string(MethodSnapshotsList)) {
+		t.Fatal("snapshot list should not require a mutation lease")
+	}
 }
 
 func TestEngineMethodsIncludesWorkersSnapshot(t *testing.T) {
@@ -258,6 +267,24 @@ func TestConfigMethodsAndSurfaceAreAdvertised(t *testing.T) {
 	}
 	if SchedulesConfigAutosave(SurfaceConfig, string(MethodConfigUpdate)) {
 		t.Fatal("config update schedules a redundant autosave")
+	}
+}
+
+func TestSnapshotsMethodsAndSurfaceAreAdvertised(t *testing.T) {
+	if !slices.Contains(Surfaces(), string(SurfaceSnapshots)) {
+		t.Fatal("Surfaces does not include snapshots")
+	}
+	methods := SnapshotsMethods()
+	for _, method := range []SnapshotsMethod{MethodSnapshotsCreate, MethodSnapshotsDelete, MethodSnapshotsList, MethodSnapshotsRename, MethodSnapshotsRestore} {
+		if !slices.Contains(methods, string(method)) {
+			t.Fatalf("SnapshotsMethods does not include %q", method)
+		}
+	}
+	if SchedulesConfigAutosave(SurfaceSnapshots, string(MethodSnapshotsCreate)) ||
+		SchedulesConfigAutosave(SurfaceSnapshots, string(MethodSnapshotsDelete)) ||
+		SchedulesConfigAutosave(SurfaceSnapshots, string(MethodSnapshotsRename)) ||
+		SchedulesConfigAutosave(SurfaceSnapshots, string(MethodSnapshotsRestore)) {
+		t.Fatal("snapshot operations schedule a redundant config autosave")
 	}
 }
 
