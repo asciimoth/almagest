@@ -6,8 +6,87 @@ image="${E2E_IMAGE:-almagest-e2e:local}"
 coverage_enabled="${E2E_COVERAGE:-0}"
 coverage_dir="${E2E_COVERAGE_DIR:-$repo_root/e2e/coverage}"
 coverpkg="${E2E_COVERPKG:-github.com/asciimoth/almagest/bin/...,github.com/asciimoth/almagest/lib/...,github.com/asciimoth/almagest/certcat/...}"
+build_attempts="${E2E_BUILD_ATTEMPTS:-10}"
+build_retry_delay="${E2E_BUILD_RETRY_DELAY:-1}"
+build_retry_max_delay="${E2E_BUILD_RETRY_MAX_DELAY:-60}"
+image_input_label="io.almagest.e2e.input-sha256"
 
 cd "$repo_root"
+
+for integer_setting in \
+	"E2E_BUILD_ATTEMPTS=$build_attempts" \
+	"E2E_BUILD_RETRY_DELAY=$build_retry_delay" \
+	"E2E_BUILD_RETRY_MAX_DELAY=$build_retry_max_delay"; do
+	setting_name="${integer_setting%%=*}"
+	value="${integer_setting#*=}"
+	if [[ ! "$value" =~ ^[0-9]+$ ]]; then
+		echo "$setting_name must be a non-negative integer" >&2
+		exit 2
+	fi
+done
+if ((build_attempts == 0)); then
+	echo "E2E_BUILD_ATTEMPTS must be greater than zero" >&2
+	exit 2
+fi
+
+docker_build_with_retry() {
+	local attempt=1
+	local delay="$build_retry_delay"
+	local status=0
+	if ((delay > build_retry_max_delay)); then
+		delay="$build_retry_max_delay"
+	fi
+
+	while true; do
+		if docker build "$@"; then
+			return 0
+		else
+			status=$?
+		fi
+		if ((attempt >= build_attempts)); then
+			echo "docker build failed after $attempt attempts" >&2
+			return "$status"
+		fi
+		echo "docker build attempt $attempt/$build_attempts failed; retrying in ${delay}s" >&2
+		sleep "$delay"
+		((attempt += 1))
+		if ((delay < build_retry_max_delay)); then
+			delay=$((delay * 2))
+			if ((delay > build_retry_max_delay)); then
+				delay="$build_retry_max_delay"
+			fi
+		fi
+	done
+}
+
+hash_image_inputs() {
+	local path
+	{
+		find .dockerignore go.work go.work.sum bin certcat lib e2e \
+			-path e2e/coverage -prune -o \
+			\( -type f -o -type l \) -print0 \
+			| sort -z \
+			| while IFS= read -r -d '' path; do
+				printf '%s\0' "$path" "$(stat -c '%f' "$path")"
+				if [[ -L "$path" ]]; then
+					printf '%s\0' "$(readlink "$path")"
+				else
+					sha256sum --zero "$path"
+				fi
+			done
+	} | sha256sum | cut -d ' ' -f 1
+}
+
+image_matches_inputs() {
+	local image_name="$1"
+	local input_hash="$2"
+	local image_hash
+
+	image_hash="$(docker image inspect \
+		--format "{{ index .Config.Labels \"$image_input_label\" }}" \
+		"$image_name" 2>/dev/null || true)"
+	[[ "$image_hash" == "$input_hash" ]]
+}
 
 build_args=()
 coverage_inputs=()
@@ -39,6 +118,7 @@ if ((${#cases[@]} == 0)); then
 fi
 
 declare -A built_images=()
+source_input_hash="$(hash_image_inputs)"
 
 for case_name in "${cases[@]}"; do
 	echo "==> e2e: $case_name"
@@ -52,7 +132,17 @@ for case_name in "${cases[@]}"; do
 		done <"e2e/cases/$case_name/docker-build-args"
 	fi
 	if [[ -z "${built_images[$case_image]:-}" ]]; then
-		docker build "${case_build_args[@]}" -f e2e/Dockerfile -t "$case_image" .
+		case_input_hash="$({
+			printf '%s\0' "$source_input_hash"
+			printf '%s\0' "${case_build_args[@]}"
+		} | sha256sum | cut -d ' ' -f 1)"
+		if [[ "${E2E_REBUILD:-0}" != "1" ]] && image_matches_inputs "$case_image" "$case_input_hash"; then
+			echo "==> e2e: reusing unchanged image $case_image"
+		else
+			docker_build_with_retry "${case_build_args[@]}" \
+				--label "$image_input_label=$case_input_hash" \
+				-f e2e/Dockerfile -t "$case_image" .
+		fi
 		built_images[$case_image]=1
 	fi
 	docker_run_args=()

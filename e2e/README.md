@@ -17,6 +17,17 @@ summary, a function report, and a text coverage profile under `e2e/coverage/`.
 Set `E2E_COVERAGE_DIR` to write to another path. Set `E2E_COVERPKG` to change
 the package set passed to `go build -coverpkg`.
 
+The runner retries a failed Docker image build up to 10 times. The delay starts
+at one second, doubles after each failure, and stops growing at 60 seconds. Set
+`E2E_BUILD_ATTEMPTS`, `E2E_BUILD_RETRY_DELAY`, or
+`E2E_BUILD_RETRY_MAX_DELAY` to change these values.
+
+The runner labels each image with a hash of its source files and build
+arguments. Later runs reuse the image without contacting an image registry when
+these inputs did not change. Set `E2E_REBUILD=1` to force a Docker build. The
+Dockerfile pins its base images by digest; update the tag and digest together
+when you update a base image.
+
 Run selected cases:
 
 ```sh
