@@ -157,7 +157,7 @@ func TestRunConfigApplyReadsStdinAndSendsRevision(t *testing.T) {
 	}
 }
 
-func TestRunSnapshotCommandsSendCreateListRenameRestoreAndDeleteRequests(t *testing.T) {
+func TestRunSnapshotCommandsSendAllSnapshotRequests(t *testing.T) {
 	info := api.SnapshotInfo{
 		UUID:      "11111111-1111-4111-8111-111111111111",
 		Timestamp: 1788955200000000000,
@@ -166,6 +166,8 @@ func TestRunSnapshotCommandsSendCreateListRenameRestoreAndDeleteRequests(t *test
 	transport := &fakeTransport{reads: []api.Message{
 		mustResponse(t, "1", info),
 		mustResponse(t, "1", api.SnapshotsListResponse{Snapshots: []api.SnapshotInfo{info}}),
+		mustResponse(t, "1", api.SnapshotsExportResponse{Snapshot: info, Archive: []byte("ZIP archive")}),
+		mustResponse(t, "1", api.SnapshotInfo{UUID: info.UUID, Timestamp: info.Timestamp, Name: "imported"}),
 		mustResponse(t, "1", api.SnapshotInfo{UUID: info.UUID, Timestamp: info.Timestamp, Name: "renamed"}),
 		mustResponse(t, "1", api.SnapshotsRestoreResponse{Snapshot: info, ConfigWritten: true}),
 		mustResponse(t, "1", struct{}{}),
@@ -179,6 +181,16 @@ func TestRunSnapshotCommandsSendCreateListRenameRestoreAndDeleteRequests(t *test
 	if err := run(context.Background(), []string{"snapshots", "list"}, nil, &stdout, &stderr, dial); err != nil {
 		t.Fatalf("snapshot list failed: %v\nstderr: %s", err, stderr.String())
 	}
+	archivePath := t.TempDir() + "/" + info.UUID + ".zip"
+	if err := run(context.Background(), []string{"snapshots", "export", "--output", archivePath, info.UUID}, nil, &stdout, &stderr, dial); err != nil {
+		t.Fatalf("snapshot export failed: %v\nstderr: %s", err, stderr.String())
+	}
+	if data, err := os.ReadFile(archivePath); err != nil || string(data) != "ZIP archive" {
+		t.Fatalf("exported archive = %q, err=%v", data, err)
+	}
+	if err := run(context.Background(), []string{"snapshots", "import", "--name", "imported", archivePath}, nil, &stdout, &stderr, dial); err != nil {
+		t.Fatalf("snapshot import failed: %v\nstderr: %s", err, stderr.String())
+	}
 	if err := run(context.Background(), []string{"snapshots", "rename", "--name", "renamed", info.UUID}, nil, &stdout, &stderr, dial); err != nil {
 		t.Fatalf("snapshot rename failed: %v\nstderr: %s", err, stderr.String())
 	}
@@ -188,12 +200,14 @@ func TestRunSnapshotCommandsSendCreateListRenameRestoreAndDeleteRequests(t *test
 	if err := run(context.Background(), []string{"snapshots", "delete", "--uuid", info.UUID}, nil, &stdout, &stderr, dial); err != nil {
 		t.Fatalf("snapshot delete failed: %v\nstderr: %s", err, stderr.String())
 	}
-	if len(transport.writes) != 5 {
-		t.Fatalf("snapshot writes = %d, want 5", len(transport.writes))
+	if len(transport.writes) != 7 {
+		t.Fatalf("snapshot writes = %d, want 7", len(transport.writes))
 	}
 	wantMethods := []api.SnapshotsMethod{
 		api.MethodSnapshotsCreate,
 		api.MethodSnapshotsList,
+		api.MethodSnapshotsExport,
+		api.MethodSnapshotsImport,
 		api.MethodSnapshotsRename,
 		api.MethodSnapshotsRestore,
 		api.MethodSnapshotsDelete,
@@ -207,15 +221,23 @@ func TestRunSnapshotCommandsSendCreateListRenameRestoreAndDeleteRequests(t *test
 	if err != nil || createRequest.Name != info.Name {
 		t.Fatalf("create request = %#v, err=%v", createRequest, err)
 	}
-	renameRequest, err := api.DecodePayload[api.SnapshotsRenameRequest](transport.writes[2].Payload)
+	exportRequest, err := api.DecodePayload[api.SnapshotUUIDRequest](transport.writes[2].Payload)
+	if err != nil || exportRequest.UUID != info.UUID {
+		t.Fatalf("export request = %#v, err=%v", exportRequest, err)
+	}
+	importRequest, err := api.DecodePayload[api.SnapshotsImportRequest](transport.writes[3].Payload)
+	if err != nil || string(importRequest.Archive) != "ZIP archive" || importRequest.Name == nil || *importRequest.Name != "imported" {
+		t.Fatalf("import request = %#v, err=%v", importRequest, err)
+	}
+	renameRequest, err := api.DecodePayload[api.SnapshotsRenameRequest](transport.writes[4].Payload)
 	if err != nil || renameRequest.UUID != info.UUID || renameRequest.Name != "renamed" {
 		t.Fatalf("rename request = %#v, err=%v", renameRequest, err)
 	}
-	restoreRequest, err := api.DecodePayload[api.SnapshotUUIDRequest](transport.writes[3].Payload)
+	restoreRequest, err := api.DecodePayload[api.SnapshotUUIDRequest](transport.writes[5].Payload)
 	if err != nil || restoreRequest.UUID != info.UUID {
 		t.Fatalf("restore request = %#v, err=%v", restoreRequest, err)
 	}
-	deleteRequest, err := api.DecodePayload[api.SnapshotUUIDRequest](transport.writes[4].Payload)
+	deleteRequest, err := api.DecodePayload[api.SnapshotUUIDRequest](transport.writes[6].Payload)
 	if err != nil || deleteRequest.UUID != info.UUID {
 		t.Fatalf("delete request = %#v, err=%v", deleteRequest, err)
 	}

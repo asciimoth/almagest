@@ -15,6 +15,10 @@ type Args struct {
 	ProtectedConfig string `arg:"-p,--protected,env:ALMAGEST_PROTECTED_CONF" help:"protected config path"`
 	UnsafeConfig    bool   `arg:"--unsafe-config" help:"do not check config file permissions"`
 	// TODO: Read Only Config toggle
+	// Snapshot is an archive path loaded before the engine starts. A value of
+	// "-" reads the archive from stdin. It cannot be combined with --stdin,
+	// because one input stream cannot contain both config and an archive.
+	Snapshot string `arg:"--snapshot,env:ALMAGEST_SNAPSHOT" help:"load startup state from snapshot archive path; use - for stdin"`
 
 	FileStorage    string `arg:"--file-storage,env:ALMAGEST_FILE_STORAGE" help:"file storage directory"`
 	TmpFileStorage bool   `arg:"--tmp-file-storage,env:ALMAGEST_TMP_FILE_STORAGE" help:"use temporary file storage and remove it on exit"`

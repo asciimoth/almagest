@@ -196,12 +196,14 @@ func TestRequiresMutationLease(t *testing.T) {
 	}
 	if !RequiresMutationLease(SurfaceSnapshots, string(MethodSnapshotsCreate)) ||
 		!RequiresMutationLease(SurfaceSnapshots, string(MethodSnapshotsDelete)) ||
+		!RequiresMutationLease(SurfaceSnapshots, string(MethodSnapshotsImport)) ||
 		!RequiresMutationLease(SurfaceSnapshots, string(MethodSnapshotsRename)) ||
 		!RequiresMutationLease(SurfaceSnapshots, string(MethodSnapshotsRestore)) {
-		t.Fatal("snapshot create, delete, rename, and restore should require a mutation lease")
+		t.Fatal("snapshot create, delete, import, rename, and restore should require a mutation lease")
 	}
-	if RequiresMutationLease(SurfaceSnapshots, string(MethodSnapshotsList)) {
-		t.Fatal("snapshot list should not require a mutation lease")
+	if RequiresMutationLease(SurfaceSnapshots, string(MethodSnapshotsExport)) ||
+		RequiresMutationLease(SurfaceSnapshots, string(MethodSnapshotsList)) {
+		t.Fatal("snapshot export and list should not require a mutation lease")
 	}
 }
 
@@ -275,13 +277,23 @@ func TestSnapshotsMethodsAndSurfaceAreAdvertised(t *testing.T) {
 		t.Fatal("Surfaces does not include snapshots")
 	}
 	methods := SnapshotsMethods()
-	for _, method := range []SnapshotsMethod{MethodSnapshotsCreate, MethodSnapshotsDelete, MethodSnapshotsList, MethodSnapshotsRename, MethodSnapshotsRestore} {
+	for _, method := range []SnapshotsMethod{
+		MethodSnapshotsCreate,
+		MethodSnapshotsDelete,
+		MethodSnapshotsExport,
+		MethodSnapshotsImport,
+		MethodSnapshotsList,
+		MethodSnapshotsRename,
+		MethodSnapshotsRestore,
+	} {
 		if !slices.Contains(methods, string(method)) {
 			t.Fatalf("SnapshotsMethods does not include %q", method)
 		}
 	}
 	if SchedulesConfigAutosave(SurfaceSnapshots, string(MethodSnapshotsCreate)) ||
 		SchedulesConfigAutosave(SurfaceSnapshots, string(MethodSnapshotsDelete)) ||
+		SchedulesConfigAutosave(SurfaceSnapshots, string(MethodSnapshotsExport)) ||
+		SchedulesConfigAutosave(SurfaceSnapshots, string(MethodSnapshotsImport)) ||
 		SchedulesConfigAutosave(SurfaceSnapshots, string(MethodSnapshotsRename)) ||
 		SchedulesConfigAutosave(SurfaceSnapshots, string(MethodSnapshotsRestore)) {
 		t.Fatal("snapshot operations schedule a redundant config autosave")

@@ -161,9 +161,16 @@ Snapshot flow:
 4. If restore fails, the daemon uses the recovery archive to restore the prior
    in-memory and persistent state. A later config-file write failure does not
    roll back a successful restore; the restored config stays active in memory.
-5. Snapshot create, delete, rename, and restore operations exclude concurrent admin API state
-   operations. Listing remains read-only. The CLI uses `almagest-cli snapshots`
-   and the panel provides the same create, delete, list, rename, and restore operations.
+5. `snapshots.export` returns the stored ZIP and `snapshots.import` validates a
+   ZIP before publishing it without replacing an existing UUID. Import can
+   preserve the archived display name or replace it with an optional name.
+6. Snapshot create, delete, import, rename, and restore operations exclude
+   concurrent admin API state operations. Listing and export remain read-only.
+   The CLI uses `almagest-cli snapshots`; the panel provides the same archive
+   and snapshot-store operations. Panel downloads use `<uuid>.zip` names.
+7. `almagestd --snapshot PATH` validates and restores an archive before it
+   opens bbolt or builds the engine. `--snapshot -` reads the archive from
+   stdin. Protected config and the snapshot-store subtree remain host-local.
 
 ## Core Concepts
 - Pasta provides the graph workspace, node classes, ports, links,
@@ -220,6 +227,8 @@ receives or emits a network so Pasta cleanup can close it.
 ## Daemon Notes
 Important flags and env:
 - `--stdin`: read main config from stdin and make it read-only.
+- `--snapshot`, `ALMAGEST_SNAPSHOT`: restore startup state from an archive
+  path. Use `--snapshot -` for stdin; this cannot be combined with `--stdin`.
 - `-c, --config`, `ALMAGEST_CONF`: main config path or directory.
 - `-p, --protected`, `ALMAGEST_PROTECTED_CONF`: protected config path.
 - `-l, --lvl`, `ALMAGEST_LOG_LVL`: logging level.

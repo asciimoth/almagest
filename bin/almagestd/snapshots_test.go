@@ -264,6 +264,117 @@ func TestSnapshotCreateDoesNotReplaceExistingUUID(t *testing.T) {
 	}
 }
 
+func TestSnapshotExportImportPreservesMetadataAndSupportsNameOverride(t *testing.T) {
+	service, _, _, _, storagePath := newSnapshotTestService(t, false)
+	created, err := service.Create(context.Background(), "archive name")
+	if err != nil {
+		t.Fatal(err)
+	}
+	exported, err := service.Export(created.UUID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if exported.Snapshot != created || len(exported.Archive) == 0 {
+		t.Fatalf("exported snapshot = %#v, archive bytes = %d", exported.Snapshot, len(exported.Archive))
+	}
+	if err := service.Delete(created.UUID); err != nil {
+		t.Fatal(err)
+	}
+
+	imported, err := service.Import(context.Background(), bytes.NewReader(exported.Archive), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if imported != created {
+		t.Fatalf("imported snapshot = %#v, want %#v", imported, created)
+	}
+	if _, err := service.Import(context.Background(), bytes.NewReader(exported.Archive), nil); !errors.Is(err, errSnapshotInvalid) {
+		t.Fatalf("duplicate import error = %v, want invalid snapshot", err)
+	}
+	if err := service.Delete(created.UUID); err != nil {
+		t.Fatal(err)
+	}
+
+	name := "import override"
+	imported, err = service.Import(context.Background(), bytes.NewReader(exported.Archive), &name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if imported.UUID != created.UUID || imported.Timestamp != created.Timestamp || imported.Name != name {
+		t.Fatalf("name-overridden import = %#v", imported)
+	}
+	manifest, err := readSnapshotManifest(filepath.Join(storagePath, snapshotDirectoryName, created.UUID+".zip"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if manifest.Snapshot != imported {
+		t.Fatalf("imported manifest = %#v, want %#v", manifest.Snapshot, imported)
+	}
+}
+
+func TestRestoreStartupSnapshotLoadsConfigDatabaseAndFilesFromStdin(t *testing.T) {
+	service, manager, _, _, sourceStorage := newSnapshotTestService(t, false)
+	if err := manager.DefaultStore().Update(context.Background(), func(tx storage.KVWriteTx) error {
+		return tx.Set("startup-kv", storage.KValue{Data: []byte("from-archive"), String: true})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	filePath := filepath.Join(sourceStorage, "startup-files", "value.txt")
+	if err := os.MkdirAll(filepath.Dir(filePath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filePath, []byte("from-archive"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	created, err := service.Create(context.Background(), "startup")
+	if err != nil {
+		t.Fatal(err)
+	}
+	exported, err := service.Export(created.UUID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	destination := t.TempDir()
+	configPath := filepath.Join(destination, "config", "alm.hujson")
+	protectedPath := filepath.Join(destination, "config", "protected_alm.hujson")
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, []byte("old config"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	protected := []byte("host protected config")
+	if err := os.WriteFile(protectedPath, protected, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(destination, "remove.txt"), []byte("remove"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	locator := &snapshotTestWriter{configPath: configPath, protectedPath: protectedPath}
+	configData, info, err := restoreStartupSnapshot(
+		context.Background(), destination, "-", bytes.NewReader(exported.Archive), locator,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info != created || !bytes.Contains(configData, []byte("saved-node")) || bytes.Contains(configData, []byte("Protected")) {
+		t.Fatalf("startup snapshot info = %#v, config = %s", info, configData)
+	}
+	if data, err := os.ReadFile(protectedPath); err != nil || !bytes.Equal(data, protected) {
+		t.Fatalf("protected config = %q, err=%v", data, err)
+	}
+	if _, err := os.Stat(filepath.Join(destination, "remove.txt")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("file absent from startup snapshot still exists: %v", err)
+	}
+	if data, err := os.ReadFile(filepath.Join(destination, "startup-files", "value.txt")); err != nil || string(data) != "from-archive" {
+		t.Fatalf("startup file = %q, err=%v", data, err)
+	}
+	if err := validateBboltDatabase(filepath.Join(destination, kvDBFileName)); err != nil {
+		t.Fatalf("restored startup database: %v", err)
+	}
+}
+
 func TestSnapshotAdminAPIRejectsUnknownAndMalformedUUIDs(t *testing.T) {
 	service, _, engine, _, _ := newSnapshotTestService(t, false)
 	session := (&AdminAPI{snapshots: service}).newAPISession(engine, nil, nil)
@@ -331,6 +442,47 @@ func TestSnapshotAdminAPIDeletesArchive(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(storagePath, snapshotDirectoryName, info.UUID+".zip")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("deleted snapshot archive still exists: %v", err)
+	}
+}
+
+func TestSnapshotAdminAPIExportsAndImportsArchive(t *testing.T) {
+	service, _, engine, _, _ := newSnapshotTestService(t, false)
+	created, err := service.Create(context.Background(), "API archive")
+	if err != nil {
+		t.Fatal(err)
+	}
+	session := (&AdminAPI{snapshots: service}).newAPISession(engine, nil, nil)
+	exportRequest := mustRequest(t, "1", api.SurfaceSnapshots, string(api.MethodSnapshotsExport), api.SnapshotUUIDRequest{UUID: created.UUID})
+	exportResponse, err := session.handleMessage(exportRequest)
+	if err != nil || exportResponse.Error != nil {
+		t.Fatalf("export response = %#v, err=%v", exportResponse, err)
+	}
+	exported, err := api.DecodePayload[api.SnapshotsExportResponse](exportResponse.Result)
+	if err != nil || exported.Snapshot != created || len(exported.Archive) == 0 {
+		t.Fatalf("exported snapshot = %#v, err=%v", exported, err)
+	}
+	if err := service.Delete(created.UUID); err != nil {
+		t.Fatal(err)
+	}
+
+	name := "API import"
+	importRequest := mustRequest(t, "2", api.SurfaceSnapshots, string(api.MethodSnapshotsImport), api.SnapshotsImportRequest{
+		Archive: exported.Archive,
+		Name:    &name,
+	})
+	importResponse, err := session.handleMessage(importRequest)
+	if err != nil || importResponse.Error != nil {
+		t.Fatalf("import response = %#v, err=%v", importResponse, err)
+	}
+	imported, err := api.DecodePayload[api.SnapshotInfo](importResponse.Result)
+	if err != nil || imported.UUID != created.UUID || imported.Name != name {
+		t.Fatalf("imported snapshot = %#v, err=%v", imported, err)
+	}
+
+	invalidRequest := mustRequest(t, "3", api.SurfaceSnapshots, string(api.MethodSnapshotsImport), api.SnapshotsImportRequest{Archive: []byte("not a ZIP")})
+	invalidResponse, err := session.handleMessage(invalidRequest)
+	if err != nil || invalidResponse.Error == nil || invalidResponse.Error.Code != api.ErrorInvalidPayload {
+		t.Fatalf("invalid import response = %#v, err=%v", invalidResponse, err)
 	}
 }
 

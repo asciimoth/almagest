@@ -18,6 +18,7 @@ test("snapshot rows render safe metadata and invoke all management actions", () 
   const list = dom.window.document.querySelector("#snapshots");
   const calls = [];
   renderSnapshotList(list, [{ ...first, name: "<img src=x onerror=alert(1)>" }], false, {
+    export: (entry) => calls.push(["export", entry.uuid]),
     rename: (entry) => calls.push(["rename", entry.uuid]),
     restore: (entry) => calls.push(["restore", entry.uuid]),
     delete: (entry) => calls.push(["delete", entry.uuid]),
@@ -27,10 +28,11 @@ test("snapshot rows render safe metadata and invoke all management actions", () 
   assert.equal(list.querySelector("strong")?.textContent, "<img src=x onerror=alert(1)>");
   assert.equal(list.querySelector("code")?.textContent, first.uuid);
   assert.notEqual(list.querySelector(".snapshot-meta")?.textContent, "");
-  for (const selector of [".snapshot-rename", ".snapshot-restore", ".snapshot-delete"]) {
+  for (const selector of [".snapshot-export", ".snapshot-rename", ".snapshot-restore", ".snapshot-delete"]) {
     list.querySelector(selector)?.click();
   }
   assert.deepEqual(calls, [
+    ["export", first.uuid],
     ["rename", first.uuid],
     ["restore", first.uuid],
     ["delete", first.uuid],
@@ -56,12 +58,12 @@ test("snapshot management updates create, rename, and delete state", () => {
 test("snapshot list shows empty state and disables actions during mutations", () => {
   const dom = new JSDOM("<ol id='snapshots'></ol>");
   const list = dom.window.document.querySelector("#snapshots");
-  const actions = { rename() {}, restore() {}, delete() {} };
+  const actions = { export() {}, rename() {}, restore() {}, delete() {} };
 
   renderSnapshotList(list, [], false, actions);
   assert.equal(list.querySelector(".snapshot-empty")?.textContent, "No snapshots are available.");
 
   renderSnapshotList(list, [first], true, actions);
-  assert.equal(list.querySelectorAll("button").length, 3);
+  assert.equal(list.querySelectorAll("button").length, 4);
   assert.equal([...list.querySelectorAll("button")].every((button) => button.disabled), true);
 });

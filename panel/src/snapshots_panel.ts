@@ -5,6 +5,7 @@ export type SnapshotInfo = {
 };
 
 export type SnapshotRowActions = {
+  export(entry: SnapshotInfo): void;
   rename(entry: SnapshotInfo): void;
   restore(entry: SnapshotInfo): void;
   delete(entry: SnapshotInfo): void;
@@ -48,6 +49,7 @@ export function renderSnapshotList(
     const rowActions = document.createElement("div");
     rowActions.className = "snapshot-row-actions";
     rowActions.append(
+      actionButton(document, "Export", "snapshot-export", disabled, () => actions.export(entry)),
       actionButton(document, "Rename", "snapshot-rename", disabled, () => actions.rename(entry)),
       actionButton(document, "Restore", "snapshot-restore", disabled, () => actions.restore(entry)),
       actionButton(document, "Delete", "snapshot-delete danger", disabled, () => actions.delete(entry)),

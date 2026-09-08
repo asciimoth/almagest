@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 
 	"github.com/asciimoth/almagest/bin/api"
 )
@@ -13,6 +14,7 @@ func runSnapshots(
 	ctx context.Context,
 	c *client,
 	args []string,
+	stdin io.Reader,
 	stdout io.Writer,
 	stderr io.Writer,
 ) error {
@@ -35,6 +37,43 @@ func runSnapshots(
 
 	case "list":
 		return parseNoArgsAndRequest(ctx, c, args[1:], api.SurfaceSnapshots, string(api.MethodSnapshotsList), struct{}{}, stdout, stderr)
+
+	case "export":
+		flags := commandFlagSet("snapshots export", stderr)
+		uuidFlag := flags.String("uuid", "", "UUID of the snapshot to export")
+		var output string
+		flags.StringVar(&output, "output", "", "archive output path; defaults to UUID.zip; use - for stdout")
+		flags.StringVar(&output, "o", "", "archive output path; defaults to UUID.zip; use - for stdout")
+		if err := flags.Parse(args[1:]); err != nil {
+			return err
+		}
+		uuid, err := resolveSnapshotUUID("export", *uuidFlag, flags.Args())
+		if err != nil {
+			return err
+		}
+		return exportSnapshot(ctx, c, uuid, output, stdout)
+
+	case "import":
+		flags := commandFlagSet("snapshots import", stderr)
+		name := flags.String("name", "", "optional imported snapshot name")
+		if err := flags.Parse(args[1:]); err != nil {
+			return err
+		}
+		if flags.NArg() != 1 {
+			return fmt.Errorf("snapshots import requires one archive path; use - for stdin")
+		}
+		archive, err := readSnapshotArchive(flags.Arg(0), stdin)
+		if err != nil {
+			return err
+		}
+		var importName *string
+		flags.Visit(func(flag *flag.Flag) {
+			if flag.Name == "name" {
+				importName = name
+			}
+		})
+		request := api.SnapshotsImportRequest{Archive: archive, Name: importName}
+		return requestPretty(ctx, c, api.SurfaceSnapshots, string(api.MethodSnapshotsImport), request, stdout)
 
 	case "rename":
 		flags := commandFlagSet("snapshots rename", stderr)
@@ -78,6 +117,50 @@ func runSnapshots(
 	}
 }
 
+// exportSnapshot writes archive bytes without JSON encoding. When output is a
+// file, stdout receives only the exported snapshot metadata.
+func exportSnapshot(ctx context.Context, c *client, uuid, output string, stdout io.Writer) error {
+	raw, err := c.request(ctx, api.SurfaceSnapshots, string(api.MethodSnapshotsExport), api.SnapshotUUIDRequest{UUID: uuid})
+	if err != nil {
+		return err
+	}
+	response, err := api.DecodePayload[api.SnapshotsExportResponse](raw)
+	if err != nil {
+		return err
+	}
+	if output == "" {
+		output = response.Snapshot.UUID + ".zip"
+	}
+	if output == "-" {
+		_, err = stdout.Write(response.Archive)
+		return err
+	}
+	if err := os.WriteFile(output, response.Archive, 0o600); err != nil {
+		return fmt.Errorf("write snapshot archive %s: %w", output, err)
+	}
+	return printPretty(stdout, response.Snapshot)
+}
+
+// readSnapshotArchive reads an import from a named file or from stdin when
+// path is "-".
+func readSnapshotArchive(path string, stdin io.Reader) ([]byte, error) {
+	if path == "-" {
+		if stdin == nil {
+			return nil, fmt.Errorf("snapshot archive path - requires stdin")
+		}
+		archive, err := io.ReadAll(stdin)
+		if err != nil {
+			return nil, fmt.Errorf("read snapshot archive from stdin: %w", err)
+		}
+		return archive, nil
+	}
+	archive, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read snapshot archive %s: %w", path, err)
+	}
+	return archive, nil
+}
+
 func parseSnapshotUUIDArgument(command string, args []string, stderr io.Writer) (string, error) {
 	flags := commandFlagSet("snapshots "+command, stderr)
 	uuid := flags.String("uuid", "", "UUID of the snapshot to "+command)
@@ -109,6 +192,9 @@ func printSnapshotsHelp(w io.Writer) {
   almagest-cli snapshots list
   almagest-cli snapshots delete UUID
   almagest-cli snapshots delete --uuid UUID
+  almagest-cli snapshots export [--output PATH] UUID
+  almagest-cli snapshots export [--output PATH] --uuid UUID
+  almagest-cli snapshots import [--name NAME] ARCHIVE
   almagest-cli snapshots rename --name NAME UUID
   almagest-cli snapshots rename --name NAME --uuid UUID
   almagest-cli snapshots restore UUID
@@ -117,6 +203,8 @@ func printSnapshotsHelp(w io.Writer) {
 Commands:
   create   save regular config, bbolt data, and daemon file storage
   delete   permanently delete one snapshot
+  export   write one snapshot archive; use --output - for stdout
+  import   add an exported archive; use - to read stdin
   list     list snapshots in newest-first order
   rename   change or remove a snapshot display name
   restore  restore all saved state and rebuild the engine graph

@@ -224,8 +224,7 @@ func (s *apiSession) handleMessage(msg api.Message) (api.Message, error) {
 		)
 	}
 
-	if msg.Surface == api.SurfaceSnapshots &&
-		(api.SnapshotsMethod(msg.Method) == api.MethodSnapshotsCreate || api.SnapshotsMethod(msg.Method) == api.MethodSnapshotsRestore) {
+	if msg.Surface == api.SurfaceSnapshots && api.IsSnapshotsMutation(msg.Method) {
 		s.admin.stateMu.Lock()
 		defer s.admin.stateMu.Unlock()
 	} else {

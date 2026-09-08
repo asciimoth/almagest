@@ -16,6 +16,7 @@ func TestResolveCLIPathArgs(t *testing.T) {
 		Config:          "conf/alm.hujson",
 		ProtectedConfig: "conf/protected.hujson",
 		FileStorage:     "store",
+		Snapshot:        "backups/state.zip",
 		UnixAdmin:       &unixSocket,
 	}
 
@@ -32,8 +33,21 @@ func TestResolveCLIPathArgs(t *testing.T) {
 	if got, want := a.FileStorage, filepath.Join(base, "store"); got != want {
 		t.Fatalf("FileStorage = %q, want %q", got, want)
 	}
+	if got, want := a.Snapshot, filepath.Join(base, "backups", "state.zip"); got != want {
+		t.Fatalf("Snapshot = %q, want %q", got, want)
+	}
 	if got, want := *a.UnixAdmin, filepath.Join(base, "run", "admin.sock"); got != want {
 		t.Fatalf("UnixAdmin = %q, want %q", got, want)
+	}
+}
+
+func TestResolveCLIPathArgsKeepsSnapshotStdin(t *testing.T) {
+	a := args.Args{Snapshot: "-"}
+	if err := resolveCLIPathArgs(&a); err != nil {
+		t.Fatalf("resolveCLIPathArgs: %v", err)
+	}
+	if a.Snapshot != "-" {
+		t.Fatalf("Snapshot = %q, want stdin marker", a.Snapshot)
 	}
 }
 

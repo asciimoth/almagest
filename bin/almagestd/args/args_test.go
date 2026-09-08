@@ -50,3 +50,41 @@ func TestLogWorkersFlag(t *testing.T) {
 		t.Fatal("LogWorkers = false, want true")
 	}
 }
+
+func TestStartupSnapshotFlagsAndEnvironment(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "file", args: []string{"--snapshot", "/tmp/state.zip"}, want: "/tmp/state.zip"},
+		{name: "stdin", args: []string{"--snapshot", "-"}, want: "-"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var a Args
+			parser, err := arg.NewParser(arg.Config{IgnoreEnv: true, Out: new(bytes.Buffer)}, &a)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := parser.Parse(test.args); err != nil {
+				t.Fatalf("parse startup snapshot flag: %v", err)
+			}
+			if a.Snapshot != test.want {
+				t.Fatalf("Snapshot = %q, want %q", a.Snapshot, test.want)
+			}
+		})
+	}
+
+	t.Setenv("ALMAGEST_SNAPSHOT", "/tmp/from-env.zip")
+	var a Args
+	parser, err := arg.NewParser(arg.Config{Out: new(bytes.Buffer)}, &a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := parser.Parse(nil); err != nil {
+		t.Fatalf("parse ALMAGEST_SNAPSHOT: %v", err)
+	}
+	if a.Snapshot != "/tmp/from-env.zip" {
+		t.Fatalf("Snapshot = %q, want environment value", a.Snapshot)
+	}
+}

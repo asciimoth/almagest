@@ -13,6 +13,9 @@ test("snapshots tab provides snapshot management controls", () => {
   assert.notEqual(dom.window.document.querySelector("[data-tab='snapshots']"), null);
   assert.notEqual(panel?.querySelector("#snapshot-name"), null);
   assert.notEqual(panel?.querySelector("#snapshot-create"), null);
+  assert.notEqual(panel?.querySelector("#snapshot-import-file"), null);
+  assert.notEqual(panel?.querySelector("#snapshot-import-name"), null);
+  assert.notEqual(panel?.querySelector("#snapshot-import"), null);
   assert.notEqual(panel?.querySelector("#snapshots-reload"), null);
   assert.notEqual(panel?.querySelector("#snapshots-list"), null);
   assert.match(panel?.textContent ?? "", /Protected config is never included/);
@@ -21,6 +24,8 @@ test("snapshots tab provides snapshot management controls", () => {
 test("snapshots panel uses all snapshot API methods and confirms destructive actions", () => {
   assert.match(app, /request\([^)]*"snapshots",\s*"create"/);
   assert.match(app, /request\([^)]*"snapshots",\s*"list"/);
+  assert.match(app, /request\([^)]*"snapshots",\s*"export"/);
+  assert.match(app, /request\([^)]*"snapshots",\s*"import"/);
   assert.match(app, /request\([^)]*"snapshots",\s*"restore"/);
   assert.match(app, /request\([^)]*"snapshots",\s*"delete"/);
   assert.match(app, /request\([^)]*"snapshots",\s*"rename"/);
@@ -28,4 +33,5 @@ test("snapshots panel uses all snapshot API methods and confirms destructive act
   assert.match(app, /window\.confirm\([^)]*Delete snapshot/);
   assert.match(app, /window\.prompt\([^)]*Snapshot name/);
   assert.doesNotMatch(app, /Unix nanoseconds/);
+  assert.match(app, /link\.download\s*=\s*`\$\{entry\.uuid\}\.zip`/);
 });

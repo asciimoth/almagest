@@ -9,8 +9,8 @@ import (
 
 // resolveCLIPathArgs makes path-valued CLI arguments absolute before the daemon
 // changes its working directory to file storage. Without this step, relative
-// config or socket paths would be interpreted relative to storage instead of
-// the directory where almagestd was started.
+// config, snapshot, or socket paths would be interpreted relative to storage
+// instead of the directory where almagestd was started.
 func resolveCLIPathArgs(a *args.Args) error {
 	if a == nil {
 		return nil
@@ -25,6 +25,11 @@ func resolveCLIPathArgs(a *args.Args) error {
 	}
 	if a.FileStorage, err = absCLIPath("file storage", a.FileStorage); err != nil {
 		return err
+	}
+	if a.Snapshot != "-" {
+		if a.Snapshot, err = absCLIPath("snapshot archive", a.Snapshot); err != nil {
+			return err
+		}
 	}
 	if a.UnixAdmin != nil && *a.UnixAdmin != "" {
 		unixAdmin, err := absCLIPath("unix admin socket", *a.UnixAdmin)

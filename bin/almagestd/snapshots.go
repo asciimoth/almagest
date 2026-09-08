@@ -2,6 +2,7 @@ package main
 
 import (
 	"archive/zip"
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -150,6 +151,87 @@ func pathWithinStorage(root, path string) (string, bool) {
 	return filepath.Clean(relative), true
 }
 
+// restoreStartupSnapshot validates and restores an archive before bbolt and
+// the engine are opened. Protected config source files and the snapshot store
+// remain host-local, as they do during a live restore.
+func restoreStartupSnapshot(
+	ctx context.Context,
+	storagePath string,
+	archivePath string,
+	stdin io.Reader,
+	locator any,
+) ([]byte, api.SnapshotInfo, error) {
+	if storagePath == "" {
+		return nil, api.SnapshotInfo{}, fmt.Errorf("snapshot storage is unavailable")
+	}
+	directory := filepath.Join(storagePath, snapshotDirectoryName)
+	if err := os.MkdirAll(directory, 0o700); err != nil {
+		return nil, api.SnapshotInfo{}, fmt.Errorf("create snapshots directory: %w", err)
+	}
+
+	var source io.ReadCloser
+	if archivePath == "-" {
+		if stdin == nil {
+			return nil, api.SnapshotInfo{}, fmt.Errorf("snapshot archive path - requires stdin")
+		}
+		source = io.NopCloser(stdin)
+	} else {
+		file, err := os.Open(archivePath)
+		if err != nil {
+			return nil, api.SnapshotInfo{}, fmt.Errorf("open startup snapshot archive %s: %w", archivePath, err)
+		}
+		source = file
+	}
+	defer source.Close() //nolint:errcheck
+
+	temporary, err := os.CreateTemp(directory, ".startup-*.tmp")
+	if err != nil {
+		return nil, api.SnapshotInfo{}, fmt.Errorf("create startup snapshot copy: %w", err)
+	}
+	temporaryPath := temporary.Name()
+	defer removeFileIfPresent(temporaryPath)
+	_, copyErr := io.Copy(temporary, source)
+	closeSourceErr := source.Close()
+	if copyErr != nil {
+		_ = temporary.Close()
+		return nil, api.SnapshotInfo{}, fmt.Errorf("read startup snapshot archive: %w", copyErr)
+	}
+	if closeSourceErr != nil {
+		_ = temporary.Close()
+		return nil, api.SnapshotInfo{}, fmt.Errorf("close startup snapshot archive: %w", closeSourceErr)
+	}
+	if err := temporary.Sync(); err != nil {
+		_ = temporary.Close()
+		return nil, api.SnapshotInfo{}, fmt.Errorf("sync startup snapshot archive: %w", err)
+	}
+	if err := temporary.Close(); err != nil {
+		return nil, api.SnapshotInfo{}, fmt.Errorf("close startup snapshot archive: %w", err)
+	}
+
+	service := &snapshotService{
+		storagePath:       storagePath,
+		dynamicExclusions: map[string]struct{}{},
+	}
+	if configLocator, ok := locator.(snapshotConfigFileLocator); ok {
+		service.addDynamicExclusion(configLocator.ConfigFilePath())
+		service.addDynamicExclusion(configLocator.ProtectedConfigFilePath())
+	}
+	loaded, err := service.loadArchive(ctx, temporaryPath, "")
+	if err != nil {
+		return nil, api.SnapshotInfo{}, err
+	}
+	defer loaded.cleanup()
+	if err := service.restoreStorageFiles(loaded.filesPath); err != nil {
+		return nil, api.SnapshotInfo{}, fmt.Errorf("restore startup snapshot files: %w", err)
+	}
+	// Live restore replaces bbolt through its open database handle. At startup
+	// no handle exists, so publish the already validated database file directly.
+	if err := mirrorStorageEntry(loaded.filesPath, storagePath, kvDBFileName, service); err != nil {
+		return nil, api.SnapshotInfo{}, fmt.Errorf("restore startup snapshot database: %w", err)
+	}
+	return bytes.Clone(loaded.configData), loaded.info, nil
+}
+
 // Create writes one self-contained zip archive under file-storage/snapshots.
 // The config entry is sanitized independently from the file walk.
 func (s *snapshotService) Create(ctx context.Context, name string) (api.SnapshotInfo, error) {
@@ -269,6 +351,89 @@ func (s *snapshotService) Delete(uuid string) error {
 	return nil
 }
 
+// Export reads one validated snapshot archive from the store. The caller gets
+// a private byte slice, so later rename or delete operations cannot change the
+// response while it is being sent.
+func (s *snapshotService) Export(uuid string) (api.SnapshotsExportResponse, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s == nil || s.storagePath == "" {
+		return api.SnapshotsExportResponse{}, fmt.Errorf("snapshot storage is unavailable")
+	}
+	uuid, err := normalizeSnapshotUUID(uuid)
+	if err != nil {
+		return api.SnapshotsExportResponse{}, err
+	}
+	path := filepath.Join(s.storagePath, snapshotDirectoryName, uuid+".zip")
+	manifest, err := readSnapshotManifest(path)
+	if err != nil {
+		return api.SnapshotsExportResponse{}, err
+	}
+	if manifest.Snapshot.UUID != uuid {
+		return api.SnapshotsExportResponse{}, fmt.Errorf("%w: archive UUID does not match its manifest", errSnapshotInvalid)
+	}
+	archive, err := os.ReadFile(path)
+	if err != nil {
+		return api.SnapshotsExportResponse{}, fmt.Errorf("read snapshot archive: %w", err)
+	}
+	return api.SnapshotsExportResponse{Snapshot: manifest.Snapshot, Archive: archive}, nil
+}
+
+// Import validates an exported archive and publishes it in the snapshot store.
+// Existing UUIDs are never replaced. An optional name changes only the copied
+// manifest and does not modify the caller's archive.
+func (s *snapshotService) Import(ctx context.Context, archive io.Reader, name *string) (api.SnapshotInfo, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s == nil || s.storagePath == "" {
+		return api.SnapshotInfo{}, fmt.Errorf("snapshot storage is unavailable")
+	}
+	if archive == nil {
+		return api.SnapshotInfo{}, fmt.Errorf("%w: archive is missing", errSnapshotInvalid)
+	}
+	directory := filepath.Join(s.storagePath, snapshotDirectoryName)
+	if err := os.MkdirAll(directory, 0o700); err != nil {
+		return api.SnapshotInfo{}, fmt.Errorf("create snapshots directory: %w", err)
+	}
+	temporary, err := os.CreateTemp(directory, ".import-*.tmp")
+	if err != nil {
+		return api.SnapshotInfo{}, fmt.Errorf("create imported snapshot archive: %w", err)
+	}
+	temporaryPath := temporary.Name()
+	defer removeFileIfPresent(temporaryPath)
+	if _, err := io.Copy(temporary, archive); err != nil {
+		_ = temporary.Close()
+		return api.SnapshotInfo{}, fmt.Errorf("read imported snapshot archive: %w", err)
+	}
+	if err := temporary.Sync(); err != nil {
+		_ = temporary.Close()
+		return api.SnapshotInfo{}, fmt.Errorf("sync imported snapshot archive: %w", err)
+	}
+	if err := temporary.Close(); err != nil {
+		return api.SnapshotInfo{}, fmt.Errorf("close imported snapshot archive: %w", err)
+	}
+
+	loaded, err := s.loadArchive(ctx, temporaryPath, "")
+	if err != nil {
+		return api.SnapshotInfo{}, err
+	}
+	info := loaded.info
+	loaded.cleanup()
+	if name != nil && info.Name != *name {
+		info, err = rewriteSnapshotName(temporaryPath, info.UUID, *name)
+		if err != nil {
+			return api.SnapshotInfo{}, err
+		}
+	}
+	finalPath := filepath.Join(directory, info.UUID+".zip")
+	if err := os.Link(temporaryPath, finalPath); errors.Is(err, fs.ErrExist) {
+		return api.SnapshotInfo{}, fmt.Errorf("%w: snapshot UUID %s already exists", errSnapshotInvalid, info.UUID)
+	} else if err != nil {
+		return api.SnapshotInfo{}, fmt.Errorf("publish imported snapshot archive: %w", err)
+	}
+	return info, nil
+}
+
 // Rename updates the display name in one snapshot manifest. The archive is
 // replaced atomically after all unchanged entries are copied in raw form.
 func (s *snapshotService) Rename(uuid, name string) (api.SnapshotInfo, error) {
@@ -283,11 +448,18 @@ func (s *snapshotService) Rename(uuid, name string) (api.SnapshotInfo, error) {
 	}
 	directory := filepath.Join(s.storagePath, snapshotDirectoryName)
 	path := filepath.Join(directory, uuid+".zip")
+	return rewriteSnapshotName(path, uuid, name)
+}
+
+// rewriteSnapshotName replaces only the manifest entry and raw-copies all
+// other ZIP entries. The replacement is atomic because its temporary file is
+// in the same directory as the source archive.
+func rewriteSnapshotName(path, expectedUUID, name string) (api.SnapshotInfo, error) {
 	manifest, err := readSnapshotManifest(path)
 	if err != nil {
 		return api.SnapshotInfo{}, err
 	}
-	if manifest.Snapshot.UUID != uuid {
+	if manifest.Snapshot.UUID != expectedUUID {
 		return api.SnapshotInfo{}, fmt.Errorf("%w: archive UUID does not match its manifest", errSnapshotInvalid)
 	}
 	manifest.Snapshot.Name = name
@@ -297,7 +469,7 @@ func (s *snapshotService) Rename(uuid, name string) (api.SnapshotInfo, error) {
 		return api.SnapshotInfo{}, fmt.Errorf("%w: open archive: %v", errSnapshotInvalid, err)
 	}
 	defer source.Close() //nolint:errcheck
-	temporary, err := os.CreateTemp(directory, ".rename-*.tmp")
+	temporary, err := os.CreateTemp(filepath.Dir(path), ".rename-*.tmp")
 	if err != nil {
 		return api.SnapshotInfo{}, fmt.Errorf("create renamed snapshot archive: %w", err)
 	}
@@ -663,9 +835,14 @@ func (s *snapshotService) loadArchive(ctx context.Context, path, expectedUUID st
 			if err := json.Unmarshal(data, &manifest); err != nil {
 				return fail(fmt.Errorf("%w: decode manifest: %v", errSnapshotInvalid, err))
 			}
-			if manifest.Version != snapshotArchiveVersion || manifest.Snapshot.UUID != expectedUUID || manifest.Snapshot.Timestamp <= 0 {
+			if manifest.Version != snapshotArchiveVersion || manifest.Snapshot.Timestamp <= 0 {
 				return fail(fmt.Errorf("%w: manifest metadata does not match archive", errSnapshotInvalid))
 			}
+			uuid, err := normalizeSnapshotUUID(manifest.Snapshot.UUID)
+			if err != nil || (expectedUUID != "" && uuid != expectedUUID) {
+				return fail(fmt.Errorf("%w: manifest metadata does not match archive", errSnapshotInvalid))
+			}
+			manifest.Snapshot.UUID = uuid
 			loaded.info = manifest.Snapshot
 			manifestFound = true
 		case name == snapshotConfigName:

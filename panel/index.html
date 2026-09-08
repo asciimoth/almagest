@@ -98,13 +98,28 @@
               <h2>Daemon snapshots</h2>
               <p>Snapshots include editable config and file storage. Protected config is never included.</p>
             </div>
-            <div class="snapshots-actions">
-              <label for="snapshot-name">Optional name</label>
-              <input id="snapshot-name" type="text" autocomplete="off" maxlength="256">
-              <button id="snapshot-create" type="button">Create snapshot</button>
-              <button id="snapshots-reload" type="button">Reload</button>
-            </div>
+            <button id="snapshots-reload" type="button">Reload</button>
           </header>
+          <div class="snapshots-actions">
+            <div class="snapshot-action-group">
+              <label class="snapshot-field" for="snapshot-name">
+                <span>Optional create name</span>
+                <input id="snapshot-name" type="text" autocomplete="off" maxlength="256">
+              </label>
+              <button id="snapshot-create" type="button">Create snapshot</button>
+            </div>
+            <div class="snapshot-action-group snapshot-import-group">
+              <label class="snapshot-field snapshot-archive-field" for="snapshot-import-file">
+                <span>Snapshot archive</span>
+                <input id="snapshot-import-file" type="file" accept=".zip,application/zip">
+              </label>
+              <label class="snapshot-field" for="snapshot-import-name">
+                <span>Optional import name</span>
+                <input id="snapshot-import-name" type="text" autocomplete="off" maxlength="256">
+              </label>
+              <button id="snapshot-import" type="button">Import snapshot</button>
+            </div>
+          </div>
           <ol id="snapshots-list" aria-label="Daemon snapshots"></ol>
           <footer class="snapshots-footer">
             <span id="snapshots-status">Open this tab to load snapshots.</span>

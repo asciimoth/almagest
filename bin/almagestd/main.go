@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	almagest "github.com/asciimoth/almagest/lib"
+	"fmt"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -14,6 +14,8 @@ import (
 	"github.com/asciimoth/almagest/bin/almagestd/args"
 	cmdrunner "github.com/asciimoth/almagest/bin/almagestd/command"
 	"github.com/asciimoth/almagest/bin/almagestd/platform"
+	"github.com/asciimoth/almagest/bin/api"
+	almagest "github.com/asciimoth/almagest/lib"
 	"github.com/asciimoth/gonnect"
 	_ "github.com/joho/godotenv/autoload"
 	"github.com/kataras/golog"
@@ -48,6 +50,10 @@ func main() {
 		fatal(err)
 		return
 	}
+	if args.StdInConfig && args.Snapshot == "-" {
+		fatal(fmt.Errorf("--stdin and --snapshot - cannot read from stdin together"))
+		return
+	}
 	configureGlobalBufPool(args.NoPool)
 
 	agent := platform.RunAgent(args)
@@ -57,13 +63,6 @@ func main() {
 		fatal(err)
 		return
 	}
-	conf, err := ParseConfig(configData, protectedData)
-	if err != nil {
-		fatal(err)
-		return
-	}
-	conf.Protected.Merge(&args)
-
 	fsPath, fsCleanup, err := platform.SetupFS(args.FileStorage, args.TmpFileStorage)
 	if err != nil {
 		fatal(err)
@@ -93,6 +92,26 @@ func main() {
 		return
 	}
 	golog.Infof("Using file storage at %s", fsPath)
+	if args.Snapshot != "" {
+		var info api.SnapshotInfo
+		configData, info, err = restoreStartupSnapshot(context.Background(), fsPath, args.Snapshot, os.Stdin, agent)
+		if err != nil {
+			fatal("Load startup snapshot", err)
+			return
+		}
+		golog.Infof("Loaded startup snapshot %s", info.UUID)
+		if !agent.ConfRO() {
+			if err := agent.WriteConfig(configData); err != nil {
+				golog.Warnf("Startup snapshot config is active but could not be written: %v", err)
+			}
+		}
+	}
+	conf, err := ParseConfig(configData, protectedData)
+	if err != nil {
+		fatal(err)
+		return
+	}
+	conf.Protected.Merge(&args)
 
 	immutableSecrets, err := conf.Protected.ImmutableSecrets()
 	if err != nil {

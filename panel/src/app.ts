@@ -309,6 +309,10 @@ type ConfigUpdateResponse = {
 type SnapshotsListResponse = {
   snapshots: SnapshotInfo[];
 };
+type SnapshotExportResponse = {
+  snapshot: SnapshotInfo;
+  archive: string;
+};
 type SnapshotRestoreResponse = {
   snapshot: SnapshotInfo;
   config_written: boolean;
@@ -525,6 +529,9 @@ const el = {
   configStatus: document.querySelector<HTMLElement>("#config-status")!,
   snapshotName: document.querySelector<HTMLInputElement>("#snapshot-name")!,
   snapshotCreate: document.querySelector<HTMLButtonElement>("#snapshot-create")!,
+  snapshotImportFile: document.querySelector<HTMLInputElement>("#snapshot-import-file")!,
+  snapshotImportName: document.querySelector<HTMLInputElement>("#snapshot-import-name")!,
+  snapshotImport: document.querySelector<HTMLButtonElement>("#snapshot-import")!,
   snapshotsReload: document.querySelector<HTMLButtonElement>("#snapshots-reload")!,
   snapshotsList: document.querySelector<HTMLOListElement>("#snapshots-list")!,
   snapshotsStatus: document.querySelector<HTMLElement>("#snapshots-status")!,
@@ -827,6 +834,13 @@ async function backend<T>(method: string, params: Record<string, unknown> = {}):
       return request<T>("snapshots", "list");
     case "snapshotCreate":
       return request<T>("snapshots", "create", { name: params.name });
+    case "snapshotExport":
+      return request<T>("snapshots", "export", { uuid: params.uuid });
+    case "snapshotImport": {
+      const payload: { archive: unknown; name?: string } = { archive: params.archive };
+      if (typeof params.name === "string") payload.name = params.name;
+      return request<T>("snapshots", "import", payload);
+    }
     case "snapshotDelete":
       return request<T>("snapshots", "delete", { uuid: params.uuid });
     case "snapshotRename":
@@ -5417,6 +5431,83 @@ async function createSnapshot(): Promise<void> {
   }
 }
 
+// exportSnapshot downloads the exact stored ZIP. Snapshot UUIDs are stable
+// archive identities, so the UI always uses the UUID as the file name.
+async function exportSnapshot(entry: SnapshotInfo): Promise<void> {
+  if (snapshotsLoading || snapshotMutationPending) return;
+  snapshotMutationPending = true;
+  el.snapshotsStatus.textContent = `Exporting snapshot ${entry.uuid}.`;
+  updateSnapshotControls();
+  try {
+    const response = await backend<SnapshotExportResponse>("snapshotExport", { uuid: entry.uuid });
+    const blob = new Blob([bytesFromBase64(response.archive)], { type: "application/zip" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${entry.uuid}.zip`;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    el.snapshotsStatus.textContent = `Exported snapshot ${response.snapshot.uuid}.`;
+  } catch (error) {
+    el.snapshotsStatus.textContent = `Snapshot export failed: ${(error as Error).message}`;
+  } finally {
+    snapshotMutationPending = false;
+    updateSnapshotControls();
+  }
+}
+
+// importSnapshot reads the selected ZIP as base64 because the shared daemon
+// API uses JSON on both WebSocket and Unix-socket transports.
+async function importSnapshot(): Promise<void> {
+  if (snapshotsLoading || snapshotMutationPending) return;
+  const file = el.snapshotImportFile.files?.[0];
+  if (!file) {
+    el.snapshotsStatus.textContent = "Select a snapshot archive to import.";
+    return;
+  }
+  snapshotMutationPending = true;
+  el.snapshotsStatus.textContent = `Importing snapshot archive ${file.name}.`;
+  updateSnapshotControls();
+  try {
+    const archive = await fileAsBase64(file);
+    const params: Record<string, unknown> = { archive };
+    if (el.snapshotImportName.value !== "") params.name = el.snapshotImportName.value;
+    const imported = await backend<SnapshotInfo>("snapshotImport", params);
+    el.snapshotImportFile.value = "";
+    el.snapshotImportName.value = "";
+    snapshotEntries = upsertSnapshot(snapshotEntries, imported);
+    renderSnapshots();
+    el.snapshotsStatus.textContent = `Imported snapshot ${imported.uuid}.`;
+  } catch (error) {
+    el.snapshotsStatus.textContent = `Snapshot import failed: ${(error as Error).message}`;
+  } finally {
+    snapshotMutationPending = false;
+    updateSnapshotControls();
+  }
+}
+
+function fileAsBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener("error", () => reject(reader.error ?? new Error("Snapshot archive read failed.")));
+    reader.addEventListener("load", () => {
+      if (typeof reader.result !== "string") {
+        reject(new Error("Snapshot archive read returned an invalid result."));
+        return;
+      }
+      const separator = reader.result.indexOf(",");
+      if (separator < 0) {
+        reject(new Error("Snapshot archive encoding failed."));
+        return;
+      }
+      resolve(reader.result.slice(separator + 1));
+    });
+    reader.readAsDataURL(file);
+  });
+}
+
 async function restoreSnapshot(entry: SnapshotInfo): Promise<void> {
   const label = entry.name ? `“${entry.name}” (${entry.uuid})` : entry.uuid;
   if (!window.confirm(`Restore snapshot ${label}? Current daemon state will be replaced.`)) return;
@@ -5483,6 +5574,7 @@ async function deleteSnapshot(entry: SnapshotInfo): Promise<void> {
 
 function renderSnapshots(): void {
   renderSnapshotList(el.snapshotsList, snapshotEntries, snapshotMutationPending, {
+    export: (entry) => void exportSnapshot(entry),
     rename: (entry) => void renameSnapshot(entry),
     restore: (entry) => void restoreSnapshot(entry),
     delete: (entry) => void deleteSnapshot(entry),
@@ -5493,6 +5585,9 @@ function updateSnapshotControls(): void {
   const disabled = snapshotsLoading || snapshotMutationPending;
   el.snapshotName.disabled = disabled;
   el.snapshotCreate.disabled = disabled;
+  el.snapshotImportFile.disabled = disabled;
+  el.snapshotImportName.disabled = disabled;
+  el.snapshotImport.disabled = disabled;
   el.snapshotsReload.disabled = disabled;
   for (const button of el.snapshotsList.querySelectorAll<HTMLButtonElement>("button")) {
     button.disabled = disabled;
@@ -5757,6 +5852,7 @@ function wireUI(): void {
   el.configApply.addEventListener("click", () => void applyConfig());
   el.snapshotCreate.addEventListener("click", () => void createSnapshot());
   el.snapshotsReload.addEventListener("click", () => void loadSnapshots());
+  el.snapshotImport.addEventListener("click", () => void importSnapshot());
   document.addEventListener("paste", handleGraphPaste, { capture: true });
   document.addEventListener("keydown", (event) => {
     graphKeydown(event);

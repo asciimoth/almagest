@@ -41,6 +41,10 @@ func (a *AdminAPI) serveWebsocket(
 		golog.Debugf("WebSocket accept failed: %v", err)
 		return
 	}
+	// Snapshot import requests can be larger than the WebSocket package's
+	// 32 KiB default. The local admin endpoint already accepts unbounded JSON
+	// messages on Unix sockets, so use the same behavior for WebSockets.
+	conn.SetReadLimit(-1)
 	defer conn.CloseNow() //nolint
 
 	var writeMu sync.Mutex

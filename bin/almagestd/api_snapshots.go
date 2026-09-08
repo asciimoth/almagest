@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"strings"
@@ -35,6 +36,34 @@ func (s *apiSession) handleSnapshotsMessage(msg api.Message) (api.Message, error
 			return snapshotRequestError(msg.ID, err)
 		}
 		return api.NewResponse(msg.ID, api.SnapshotsListResponse{Snapshots: snapshots})
+
+	case api.MethodSnapshotsExport:
+		req, err := decodePayload[api.SnapshotUUIDRequest](msg)
+		if err != nil {
+			return newRequestError(msg.ID, api.ErrorInvalidPayload, err.Error())
+		}
+		if strings.TrimSpace(req.UUID) == "" {
+			return newRequestError(msg.ID, api.ErrorInvalidPayload, "snapshot UUID is required")
+		}
+		response, err := service.Export(req.UUID)
+		if err != nil {
+			return snapshotRequestError(msg.ID, err)
+		}
+		return api.NewResponse(msg.ID, response)
+
+	case api.MethodSnapshotsImport:
+		req, err := decodePayload[api.SnapshotsImportRequest](msg)
+		if err != nil {
+			return newRequestError(msg.ID, api.ErrorInvalidPayload, err.Error())
+		}
+		if len(req.Archive) == 0 {
+			return newRequestError(msg.ID, api.ErrorInvalidPayload, "snapshot archive is required")
+		}
+		info, err := service.Import(context.Background(), bytes.NewReader(req.Archive), req.Name)
+		if err != nil {
+			return snapshotRequestError(msg.ID, err)
+		}
+		return api.NewResponse(msg.ID, info)
 
 	case api.MethodSnapshotsDelete:
 		req, err := decodePayload[api.SnapshotUUIDRequest](msg)

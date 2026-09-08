@@ -70,6 +70,7 @@ protected_checksum="$(sha256sum "$E2E_CONFIG_DIR/protected_alm.hujson" | cut -d 
 
 cli snapshots create --name "complex daemon" >/tmp/snapshot-created.json
 snapshot_uuid="$(jq -er '.uuid' /tmp/snapshot-created.json)"
+exported_archive="$E2E_RUNTIME/$snapshot_uuid.zip"
 jq -e --arg uuid "$snapshot_uuid" --arg name "complex daemon" \
 	'.snapshots | length == 1 and .[0].uuid == $uuid and .[0].name == $name and (.[0].timestamp > 0)' \
 	<(cli snapshots list) >/dev/null || fail "snapshot listing does not contain the created snapshot"
@@ -81,6 +82,20 @@ jq -e --arg uuid "$snapshot_uuid" \
 jq -e --arg uuid "$snapshot_uuid" \
 	'.snapshots | length == 1 and .[0].uuid == $uuid and .[0].name == "renamed daemon"' \
 	<(cli snapshots list) >/dev/null || fail "snapshot listing does not contain the renamed snapshot"
+
+cli snapshots export --output "$exported_archive" "$snapshot_uuid" >/tmp/snapshot-exported.json
+jq -e --arg uuid "$snapshot_uuid" '.uuid == $uuid and .name == "renamed daemon"' \
+	/tmp/snapshot-exported.json >/dev/null || fail "snapshot export response is invalid"
+cmp "$exported_archive" "$ALMAGEST_E2E_FILE_STORAGE/snapshots/$snapshot_uuid.zip" \
+	|| fail "exported snapshot archive differs from the stored archive"
+
+cli snapshots delete "$snapshot_uuid" >/tmp/snapshot-deleted-before-import.json
+jq -e '.snapshots | length == 0' <(cli snapshots list) >/dev/null \
+	|| fail "snapshot remained after the pre-import delete"
+cli snapshots import --name "imported daemon" "$exported_archive" >/tmp/snapshot-imported.json
+jq -e --arg uuid "$snapshot_uuid" '.uuid == $uuid and .name == "imported daemon"' \
+	/tmp/snapshot-imported.json >/dev/null || fail "snapshot import response is invalid"
+cli snapshots rename --name "renamed daemon" "$snapshot_uuid" >/tmp/snapshot-renamed-after-import.json
 
 python3 - "$ALMAGEST_E2E_FILE_STORAGE/snapshots/$snapshot_uuid.zip" <<'PY'
 import sys
@@ -157,6 +172,31 @@ if grep -F 'Mutated Graph' "$E2E_CONFIG_DIR/alm.hujson" >/dev/null; then
 fi
 [[ -f "$ALMAGEST_E2E_FILE_STORAGE/snapshots/$snapshot_uuid.zip" ]] \
 	|| fail "restoring a snapshot removed the snapshot archive"
+
+# Mutate persisted state, then prove that --snapshot restores the exported
+# archive before bbolt and the engine open.
+cli kv set --key snapshot-default --data before-startup-load >/tmp/snapshot-kv-before-startup-load.json
+cat > /tmp/snapshot-startup-mutated.hujson <<'EOF'
+{
+	"nodes": {
+		"Startup Mutated Graph": {"Class": "almagest/MockNetwork"},
+	},
+}
+EOF
+cli config apply /tmp/snapshot-startup-mutated.hujson >/tmp/snapshot-startup-config-mutated.json
+wait_graph_node "Startup Mutated Graph" || fail "startup mutation did not apply"
+stop_daemon
+export ALMAGEST_E2E_STARTUP_SNAPSHOT="$exported_archive"
+start_daemon
+trap cleanup EXIT
+wait_graph_node "SOCKS Snapshot" || fail "startup snapshot graph was not loaded"
+if node_id_by_name "Startup Mutated Graph" >/dev/null 2>&1; then
+	fail "mutated graph survived startup snapshot loading"
+fi
+[[ "$(cli kv get --key snapshot-default | jq -er '.value.data')" == "before-default" ]] \
+	|| fail "startup snapshot did not restore bbolt data"
+[[ "$(<"$ALMAGEST_E2E_FILE_STORAGE/future-storage/nested/value.txt")" == "before-file" ]] \
+	|| fail "startup snapshot did not restore file storage"
 
 cli snapshots delete "$snapshot_uuid" >/tmp/snapshot-deleted.json
 jq -e '. == {}' /tmp/snapshot-deleted.json >/dev/null || fail "snapshot delete response is invalid"

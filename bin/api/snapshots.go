@@ -6,6 +6,8 @@ type SnapshotsMethod string
 const (
 	MethodSnapshotsCreate  SnapshotsMethod = "create"
 	MethodSnapshotsDelete  SnapshotsMethod = "delete"
+	MethodSnapshotsExport  SnapshotsMethod = "export"
+	MethodSnapshotsImport  SnapshotsMethod = "import"
 	MethodSnapshotsList    SnapshotsMethod = "list"
 	MethodSnapshotsRename  SnapshotsMethod = "rename"
 	MethodSnapshotsRestore SnapshotsMethod = "restore"
@@ -16,6 +18,8 @@ func SnapshotsMethods() []string {
 	return []string{
 		string(MethodSnapshotsCreate),
 		string(MethodSnapshotsDelete),
+		string(MethodSnapshotsExport),
+		string(MethodSnapshotsImport),
 		string(MethodSnapshotsList),
 		string(MethodSnapshotsRename),
 		string(MethodSnapshotsRestore),
@@ -23,11 +27,11 @@ func SnapshotsMethods() []string {
 }
 
 // IsSnapshotsMutation reports whether a snapshots method changes daemon
-// state. Creating, deleting, and renaming snapshots write file storage.
-// Restoring also replaces the current runtime state.
+// state. Creating, importing, deleting, and renaming snapshots write file
+// storage. Restoring also replaces the current runtime state.
 func IsSnapshotsMutation(method string) bool {
 	switch SnapshotsMethod(method) {
-	case MethodSnapshotsCreate, MethodSnapshotsDelete, MethodSnapshotsRename, MethodSnapshotsRestore:
+	case MethodSnapshotsCreate, MethodSnapshotsDelete, MethodSnapshotsImport, MethodSnapshotsRename, MethodSnapshotsRestore:
 		return true
 	default:
 		return false
@@ -46,6 +50,21 @@ type SnapshotInfo struct {
 // Names do not identify snapshots and do not need to be unique.
 type SnapshotsCreateRequest struct {
 	Name string `json:"name,omitempty"`
+}
+
+// SnapshotsImportRequest adds one exported archive to the snapshot store.
+// Name overrides the name in the archive when it is present. A non-nil empty
+// string removes the archived name.
+type SnapshotsImportRequest struct {
+	Archive []byte  `json:"archive"`
+	Name    *string `json:"name,omitempty"`
+}
+
+// SnapshotsExportResponse contains one snapshot archive and its metadata.
+// Archive uses standard base64 encoding when this value is encoded as JSON.
+type SnapshotsExportResponse struct {
+	Snapshot SnapshotInfo `json:"snapshot"`
+	Archive  []byte       `json:"archive"`
 }
 
 // SnapshotsRenameRequest changes the display name of one snapshot. An empty

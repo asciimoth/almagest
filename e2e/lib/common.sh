@@ -21,6 +21,7 @@ ALMAGEST_E2E_TMP_FILE_STORAGE="${ALMAGEST_E2E_TMP_FILE_STORAGE:-1}"
 ALMAGEST_E2E_FILE_STORAGE="${ALMAGEST_E2E_FILE_STORAGE:-}"
 ALMAGEST_E2E_WEB_ADMIN="${ALMAGEST_E2E_WEB_ADMIN:-0}"
 ALMAGEST_E2E_WEB_PPROF="${ALMAGEST_E2E_WEB_PPROF:-0}"
+ALMAGEST_E2E_STARTUP_SNAPSHOT="${ALMAGEST_E2E_STARTUP_SNAPSHOT:-}"
 
 log() {
 	printf '[%s] %s\n' "$E2E_CASE" "$*" >&2
@@ -64,6 +65,7 @@ start_daemon() {
 	log "starting daemon"
 	local storage_args=()
 	local web_args=(--web "$ALMAGEST_E2E_WEB_ADMIN")
+	local snapshot_args=()
 	if [[ "$ALMAGEST_E2E_TMP_FILE_STORAGE" == "1" ]]; then
 		storage_args=(--tmp-file-storage)
 	elif [[ -n "$ALMAGEST_E2E_FILE_STORAGE" ]]; then
@@ -77,6 +79,9 @@ start_daemon() {
 		fi
 		web_args+=(--web-pprof)
 	fi
+	if [[ -n "$ALMAGEST_E2E_STARTUP_SNAPSHOT" ]]; then
+		snapshot_args=(--snapshot "$ALMAGEST_E2E_STARTUP_SNAPSHOT")
+	fi
 	XDG_RUNTIME_DIR="$E2E_RUNTIME" almagestd \
 		-c "$E2E_CONFIG_DIR" \
 		-l debug \
@@ -89,6 +94,7 @@ start_daemon() {
 		--log-cache-error "$ALMAGEST_E2E_LOG_CACHE_ERROR" \
 		--log-cache-fatal "$ALMAGEST_E2E_LOG_CACHE_FATAL" \
 		--unix "$E2E_ADMIN_SOCK" \
+		"${snapshot_args[@]}" \
 		"${web_args[@]}" \
 		>"$E2E_DAEMON_LOG" 2>&1 &
 	daemon_pid="$!"
