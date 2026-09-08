@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,6 +20,7 @@ import (
 	sysnetdebug "github.com/asciimoth/gonnect/sysnet/debug"
 	"github.com/asciimoth/gonnect/tlspolicy"
 	"github.com/asciimoth/pasta/pasta"
+	"go.etcd.io/bbolt"
 )
 
 type snapshotTestWriter struct {
@@ -26,6 +28,13 @@ type snapshotTestWriter struct {
 	protectedPath string
 	writes        [][]byte
 	err           error
+}
+
+type repeatingZeroReader struct{}
+
+func (repeatingZeroReader) Read(data []byte) (int, error) {
+	clear(data)
+	return len(data), nil
 }
 
 func (w *snapshotTestWriter) WriteConfig(data []byte) error {
@@ -312,6 +321,104 @@ func TestSnapshotExportImportPreservesMetadataAndSupportsNameOverride(t *testing
 	}
 }
 
+func TestSnapshotImportRejectsSymlinkThatEscapesStorage(t *testing.T) {
+	service, _, _, _, _ := newSnapshotTestService(t, false)
+	created, err := service.Create(context.Background(), "unsafe link")
+	if err != nil {
+		t.Fatal(err)
+	}
+	exported, err := service.Export(created.UUID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := service.Delete(created.UUID); err != nil {
+		t.Fatal(err)
+	}
+
+	outside := t.TempDir()
+	archive := appendSnapshotArchiveEntry(
+		t, exported.Archive, snapshotFilesPrefix+"escape", []byte(outside), os.ModeSymlink|0o777,
+	)
+	if _, err := service.Import(context.Background(), bytes.NewReader(archive), nil); !errors.Is(err, errSnapshotInvalid) {
+		t.Fatalf("escaping symlink import error = %v, want invalid snapshot", err)
+	}
+	if entries, err := os.ReadDir(filepath.Join(service.storagePath, snapshotDirectoryName)); err != nil {
+		t.Fatal(err)
+	} else {
+		for _, entry := range entries {
+			if filepath.Ext(entry.Name()) == ".zip" {
+				t.Fatalf("unsafe imported archive was published as %s", entry.Name())
+			}
+		}
+	}
+}
+
+func TestSnapshotRestorePreservesSafeInternalSymlink(t *testing.T) {
+	service, _, _, _, storagePath := newSnapshotTestService(t, false)
+	targetPath := filepath.Join(storagePath, "linked", "target.txt")
+	if err := os.MkdirAll(filepath.Dir(targetPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(targetPath, []byte("snapshot value"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	linkPath := filepath.Join(storagePath, "link.txt")
+	if err := os.Symlink(filepath.Join("linked", "target.txt"), linkPath); err != nil {
+		t.Fatal(err)
+	}
+	created, err := service.Create(context.Background(), "safe link")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(linkPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(targetPath, []byte("changed value"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := service.Restore(context.Background(), created.UUID); err != nil {
+		t.Fatal(err)
+	}
+	if target, err := os.Readlink(linkPath); err != nil || target != filepath.Join("linked", "target.txt") {
+		t.Fatalf("restored symlink target = %q, err=%v", target, err)
+	}
+	if data, err := os.ReadFile(linkPath); err != nil || string(data) != "snapshot value" {
+		t.Fatalf("restored symlink data = %q, err=%v", data, err)
+	}
+}
+
+func TestSnapshotRestorePreservesConfigDirectoryWhenArchiveOmitsIt(t *testing.T) {
+	service, _, _, writer, storagePath := newSnapshotTestService(t, false)
+	created, err := service.Create(context.Background(), "no config directory")
+	if err != nil {
+		t.Fatal(err)
+	}
+	exported, err := service.Export(created.UUID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	archive := filterSnapshotArchivePrefix(t, exported.Archive, snapshotFilesPrefix+"config")
+	archivePath := filepath.Join(storagePath, snapshotDirectoryName, created.UUID+".zip")
+	if err := os.WriteFile(archivePath, archive, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	protected := []byte("protected after archive creation")
+	if err := os.WriteFile(writer.protectedPath, protected, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := service.Restore(context.Background(), created.UUID); err != nil {
+		t.Fatal(err)
+	}
+	if data, err := os.ReadFile(writer.protectedPath); err != nil || !bytes.Equal(data, protected) {
+		t.Fatalf("protected config after restore = %q, err=%v", data, err)
+	}
+	if info, err := os.Stat(filepath.Dir(writer.configPath)); err != nil || !info.IsDir() {
+		t.Fatalf("config parent after restore = %#v, err=%v", info, err)
+	}
+}
+
 func TestRestoreStartupSnapshotLoadsConfigDatabaseAndFilesFromStdin(t *testing.T) {
 	service, manager, _, _, sourceStorage := newSnapshotTestService(t, false)
 	if err := manager.DefaultStore().Update(context.Background(), func(tx storage.KVWriteTx) error {
@@ -352,8 +459,9 @@ func TestRestoreStartupSnapshotLoadsConfigDatabaseAndFilesFromStdin(t *testing.T
 		t.Fatal(err)
 	}
 	locator := &snapshotTestWriter{configPath: configPath, protectedPath: protectedPath}
+	archive := filterSnapshotArchivePrefix(t, exported.Archive, snapshotFilesPrefix+"config")
 	configData, info, err := restoreStartupSnapshot(
-		context.Background(), destination, "-", bytes.NewReader(exported.Archive), locator,
+		context.Background(), destination, "-", bytes.NewReader(archive), locator,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -372,6 +480,135 @@ func TestRestoreStartupSnapshotLoadsConfigDatabaseAndFilesFromStdin(t *testing.T
 	}
 	if err := validateBboltDatabase(filepath.Join(destination, kvDBFileName)); err != nil {
 		t.Fatalf("restored startup database: %v", err)
+	}
+}
+
+func TestRestoreStartupSnapshotRollsBackPartialStorageChanges(t *testing.T) {
+	service, _, _, _, sourceStorage := newSnapshotTestService(t, false)
+	firstPath := filepath.Join(sourceStorage, "a-first.txt")
+	if err := os.WriteFile(firstPath, []byte("snapshot value"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	created, err := service.Create(context.Background(), "rollback")
+	if err != nil {
+		t.Fatal(err)
+	}
+	exported, err := service.Export(created.UUID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	archive := filterSnapshotArchivePrefix(t, exported.Archive, snapshotFilesPrefix+"config")
+	archive = appendSnapshotArchiveEntry(t, archive, snapshotFilesPrefix+"config", []byte("type conflict"), 0o600)
+
+	destination := t.TempDir()
+	configPath := filepath.Join(destination, "config", "alm.hujson")
+	protectedPath := filepath.Join(destination, "config", "protected_alm.hujson")
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, []byte("original config"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(protectedPath, []byte("original protected config"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(destination, "a-first.txt"), []byte("original value"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	databasePath := filepath.Join(destination, kvDBFileName)
+	database, err := bbolt.Open(databasePath, 0o600, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Update(func(tx *bbolt.Tx) error {
+		bucket, err := tx.CreateBucket([]byte("rollback"))
+		if err != nil {
+			return err
+		}
+		return bucket.Put([]byte("key"), []byte("original database"))
+	}); err != nil {
+		_ = database.Close()
+		t.Fatal(err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	locator := &snapshotTestWriter{configPath: configPath, protectedPath: protectedPath}
+	if _, _, err := restoreStartupSnapshot(
+		context.Background(), destination, "-", bytes.NewReader(archive), locator,
+	); err == nil || !strings.Contains(err.Error(), "would replace a directory") {
+		t.Fatalf("startup restore error = %v, want config directory conflict", err)
+	}
+	for path, expected := range map[string]string{
+		configPath:    "original config",
+		protectedPath: "original protected config",
+		filepath.Join(destination, "a-first.txt"): "original value",
+	} {
+		if data, err := os.ReadFile(path); err != nil || string(data) != expected {
+			t.Fatalf("rolled-back file %s = %q, err=%v; want %q", path, data, err, expected)
+		}
+	}
+	database, err = bbolt.Open(databasePath, 0o600, &bbolt.Options{ReadOnly: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close() //nolint:errcheck
+	if err := database.View(func(tx *bbolt.Tx) error {
+		bucket := tx.Bucket([]byte("rollback"))
+		if bucket == nil || string(bucket.Get([]byte("key"))) != "original database" {
+			return errors.New("startup rollback did not restore the original database")
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSnapshotArchiveSizeLimits(t *testing.T) {
+	if _, err := copySnapshotArchive(io.Discard, repeatingZeroReader{}); !errors.Is(err, errSnapshotTooLarge) {
+		t.Fatalf("stream size error = %v, want snapshot too large", err)
+	}
+	path := filepath.Join(t.TempDir(), "oversized.zip")
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Truncate(api.SnapshotArchiveMaxBytes + 1); err != nil {
+		_ = file.Close()
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateSnapshotArchiveSize(path); !errors.Is(err, errSnapshotTooLarge) {
+		t.Fatalf("stored archive size error = %v, want snapshot too large", err)
+	}
+
+	service, _, _, _, _ := newSnapshotTestService(t, false)
+	created, err := service.Create(context.Background(), "oversized extracted data")
+	if err != nil {
+		t.Fatal(err)
+	}
+	exported, err := service.Export(created.UUID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := service.Delete(created.UUID); err != nil {
+		t.Fatal(err)
+	}
+	archive := appendSnapshotArchive(t, exported.Archive, func(writer *zip.Writer) error {
+		header := &zip.FileHeader{
+			Name:               snapshotFilesPrefix + "oversized.bin",
+			Method:             zip.Store,
+			UncompressedSize64: snapshotExtractedMaxBytes + 1,
+		}
+		header.SetMode(0o600)
+		_, err := writer.CreateRaw(header)
+		return err
+	})
+	if _, err := service.Import(context.Background(), bytes.NewReader(archive), nil); !errors.Is(err, errSnapshotTooLarge) {
+		t.Fatalf("extracted size error = %v, want snapshot too large", err)
 	}
 }
 
@@ -630,4 +867,66 @@ func assertSnapshotArchiveIsSanitized(t *testing.T, storagePath, uuid string) {
 			t.Fatalf("snapshot config contains protected content: %s", data)
 		}
 	}
+}
+
+func filterSnapshotArchivePrefix(t *testing.T, archive []byte, excludedPrefix string) []byte {
+	t.Helper()
+	return rewriteSnapshotArchive(t, archive, func(writer *zip.Writer, file *zip.File) error {
+		if strings.HasPrefix(file.Name, excludedPrefix) {
+			return nil
+		}
+		return writer.Copy(file)
+	})
+}
+
+func appendSnapshotArchiveEntry(t *testing.T, archive []byte, name string, data []byte, mode fs.FileMode) []byte {
+	t.Helper()
+	return appendSnapshotArchive(t, archive, func(writer *zip.Writer) error {
+		return writeZipBytes(writer, name, data, mode, time.Now())
+	})
+}
+
+func appendSnapshotArchive(t *testing.T, archive []byte, appendEntry func(*zip.Writer) error) []byte {
+	t.Helper()
+	reader, err := zip.NewReader(bytes.NewReader(archive), int64(len(archive)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var output bytes.Buffer
+	writer := zip.NewWriter(&output)
+	for _, file := range reader.File {
+		if err := writer.Copy(file); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := appendEntry(writer); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return output.Bytes()
+}
+
+func rewriteSnapshotArchive(
+	t *testing.T,
+	archive []byte,
+	copyEntry func(*zip.Writer, *zip.File) error,
+) []byte {
+	t.Helper()
+	reader, err := zip.NewReader(bytes.NewReader(archive), int64(len(archive)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var output bytes.Buffer
+	writer := zip.NewWriter(&output)
+	for _, file := range reader.File {
+		if err := copyEntry(writer, file); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return output.Bytes()
 }

@@ -153,7 +153,8 @@ Snapshot flow:
    itself is currently the only hard-coded exclusion.
 2. The daemon removes every top-level `Protected` member from the archived
    regular config. It also excludes the active regular and protected config
-   source files if they are inside file storage.
+   source files if they are inside file storage. Restore keeps their parent
+   directories when the archive does not contain those directories.
 3. `snapshots.restore` validates and stages the complete archive, saves an
    internal recovery archive, removes the current graph, mirrors storage, and
    replaces all bbolt buckets in one transaction. It then reapplies protected
@@ -171,6 +172,17 @@ Snapshot flow:
 7. `almagestd --snapshot PATH` validates and restores an archive before it
    opens bbolt or builds the engine. `--snapshot -` reads the archive from
    stdin. Protected config and the snapshot-store subtree remain host-local.
+   The daemon first copies the closed storage state and restores that copy if
+   startup restore changes some files and then fails.
+8. A compressed archive can be at most 32 MiB. Its extracted storage entries
+   can be at most 256 MiB in total. The manifest can be at most 64 KiB, the
+   regular config can be at most 8 MiB, and a display name can be at most 256
+   UTF-8 bytes. Stream and WebSocket transports also have a finite JSON message
+   limit that includes base64 expansion and envelope data.
+9. A stored symlink must use a relative target. Its complete target chain must
+   resolve inside the staged storage tree and outside all excluded paths.
+   Dangling symlinks, absolute targets, and links that escape storage make the
+   archive invalid. The daemon applies the same rule during create and import.
 
 ## Core Concepts
 - Pasta provides the graph workspace, node classes, ports, links,

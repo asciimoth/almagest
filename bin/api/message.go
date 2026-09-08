@@ -111,6 +111,7 @@ const (
 	ErrorInvalidMethod    ErrorCode = "invalid_method"
 	ErrorInvalidPayload   ErrorCode = "invalid_payload"
 	ErrorUnavailable      ErrorCode = "unavailable"
+	ErrorTooLarge         ErrorCode = "too_large"
 	ErrorInternal         ErrorCode = "internal"
 	ErrorMutationRejected ErrorCode = "mutation_rejected"
 )

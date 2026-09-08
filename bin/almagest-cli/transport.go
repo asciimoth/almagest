@@ -35,8 +35,8 @@ func realDial(ctx context.Context, ep endpoint) (apiTransport, error) {
 			return nil, err
 		}
 		// Snapshot export responses can be larger than the WebSocket package's
-		// 32 KiB default. Unix-socket responses do not have that limit.
-		conn.SetReadLimit(-1)
+		// 32 KiB default. Keep the same finite bound as the daemon.
+		conn.SetReadLimit(api.SnapshotAPIMessageMaxBytes)
 		return &websocketTransport{conn: conn}, nil
 	default:
 		panic("unknown endpoint kind")

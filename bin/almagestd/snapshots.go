@@ -17,6 +17,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/asciimoth/almagest/bin/api"
 	almagest "github.com/asciimoth/almagest/lib"
@@ -31,6 +32,14 @@ const (
 	snapshotManifestName   = "manifest.json"
 	snapshotConfigName     = "config.hujson"
 	snapshotFilesPrefix    = "files/"
+
+	// The JSON API keeps an archive and its base64 representation in memory.
+	// Keep compressed archives small enough for that transport, and separately
+	// bound extracted data so a highly compressed ZIP cannot exhaust storage.
+	snapshotExtractedMaxBytes uint64 = 256 << 20
+	snapshotManifestMaxBytes  uint64 = 64 << 10
+	snapshotConfigMaxBytes    uint64 = 8 << 20
+	snapshotNameMaxBytes             = 256
 )
 
 // snapshotExcludedStoragePaths is the explicit list of file-storage-relative
@@ -43,6 +52,7 @@ var snapshotExcludedStoragePaths = []string{
 var (
 	errSnapshotNotFound = errors.New("snapshot was not found")
 	errSnapshotInvalid  = errors.New("snapshot is invalid")
+	errSnapshotTooLarge = errors.New("snapshot exceeds the size limit")
 )
 
 type snapshotManifest struct {
@@ -82,6 +92,15 @@ type loadedSnapshot struct {
 	configData []byte
 	filesPath  string
 	cleanup    func()
+}
+
+// startupStorageRecovery is a private copy of the storage state that existed
+// before --snapshot started to mutate it. Config source files and the snapshot
+// store are excluded because restore must keep those host-local paths intact.
+type startupStorageRecovery struct {
+	filesPath       string
+	databasePresent bool
+	cleanup         func()
 }
 
 type storageSnapshotIndex struct {
@@ -190,7 +209,7 @@ func restoreStartupSnapshot(
 	}
 	temporaryPath := temporary.Name()
 	defer removeFileIfPresent(temporaryPath)
-	_, copyErr := io.Copy(temporary, source)
+	_, copyErr := copySnapshotArchive(temporary, source)
 	closeSourceErr := source.Close()
 	if copyErr != nil {
 		_ = temporary.Close()
@@ -221,13 +240,16 @@ func restoreStartupSnapshot(
 		return nil, api.SnapshotInfo{}, err
 	}
 	defer loaded.cleanup()
-	if err := service.restoreStorageFiles(loaded.filesPath); err != nil {
-		return nil, api.SnapshotInfo{}, fmt.Errorf("restore startup snapshot files: %w", err)
+	recovery, err := service.captureStartupRecovery()
+	if err != nil {
+		return nil, api.SnapshotInfo{}, fmt.Errorf("capture pre-restore startup state: %w", err)
 	}
-	// Live restore replaces bbolt through its open database handle. At startup
-	// no handle exists, so publish the already validated database file directly.
-	if err := mirrorStorageEntry(loaded.filesPath, storagePath, kvDBFileName, service); err != nil {
-		return nil, api.SnapshotInfo{}, fmt.Errorf("restore startup snapshot database: %w", err)
+	defer recovery.cleanup()
+	if err := service.applyStartupStorage(loaded.filesPath); err != nil {
+		if rollbackErr := service.restoreStartupRecovery(recovery); rollbackErr != nil {
+			return nil, api.SnapshotInfo{}, fmt.Errorf("restore startup snapshot: %w; rollback failed: %v", err, rollbackErr)
+		}
+		return nil, api.SnapshotInfo{}, fmt.Errorf("restore startup snapshot: %w", err)
 	}
 	return bytes.Clone(loaded.configData), loaded.info, nil
 }
@@ -235,9 +257,15 @@ func restoreStartupSnapshot(
 // Create writes one self-contained zip archive under file-storage/snapshots.
 // The config entry is sanitized independently from the file walk.
 func (s *snapshotService) Create(ctx context.Context, name string) (api.SnapshotInfo, error) {
+	if s == nil {
+		return api.SnapshotInfo{}, fmt.Errorf("snapshot service is not ready")
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err := s.ready(); err != nil {
+		return api.SnapshotInfo{}, err
+	}
+	if err := validateSnapshotName(name); err != nil {
 		return api.SnapshotInfo{}, err
 	}
 
@@ -275,6 +303,9 @@ func (s *snapshotService) Create(ctx context.Context, name string) (api.Snapshot
 	if err := s.writeArchive(ctx, temporaryPath, info, configData); err != nil {
 		return api.SnapshotInfo{}, err
 	}
+	if err := validateSnapshotArchiveSize(temporaryPath); err != nil {
+		return api.SnapshotInfo{}, err
+	}
 	finalPath := filepath.Join(directory, uuid+".zip")
 	// A hard-link publication is atomic and cannot replace an archive if the
 	// generated UUID already exists. Both paths are in the same directory.
@@ -288,6 +319,9 @@ func (s *snapshotService) Create(ctx context.Context, name string) (api.Snapshot
 
 // List validates snapshot manifests and returns newest snapshots first.
 func (s *snapshotService) List() ([]api.SnapshotInfo, error) {
+	if s == nil {
+		return nil, fmt.Errorf("snapshot storage is unavailable")
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.storagePath == "" {
@@ -333,9 +367,12 @@ func (s *snapshotService) List() ([]api.SnapshotInfo, error) {
 
 // Delete removes one snapshot archive by UUID.
 func (s *snapshotService) Delete(uuid string) error {
+	if s == nil {
+		return fmt.Errorf("snapshot storage is unavailable")
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s == nil || s.storagePath == "" {
+	if s.storagePath == "" {
 		return fmt.Errorf("snapshot storage is unavailable")
 	}
 	uuid, err := normalizeSnapshotUUID(uuid)
@@ -355,9 +392,12 @@ func (s *snapshotService) Delete(uuid string) error {
 // a private byte slice, so later rename or delete operations cannot change the
 // response while it is being sent.
 func (s *snapshotService) Export(uuid string) (api.SnapshotsExportResponse, error) {
+	if s == nil {
+		return api.SnapshotsExportResponse{}, fmt.Errorf("snapshot storage is unavailable")
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s == nil || s.storagePath == "" {
+	if s.storagePath == "" {
 		return api.SnapshotsExportResponse{}, fmt.Errorf("snapshot storage is unavailable")
 	}
 	uuid, err := normalizeSnapshotUUID(uuid)
@@ -365,6 +405,9 @@ func (s *snapshotService) Export(uuid string) (api.SnapshotsExportResponse, erro
 		return api.SnapshotsExportResponse{}, err
 	}
 	path := filepath.Join(s.storagePath, snapshotDirectoryName, uuid+".zip")
+	if err := validateSnapshotArchiveSize(path); err != nil {
+		return api.SnapshotsExportResponse{}, err
+	}
 	manifest, err := readSnapshotManifest(path)
 	if err != nil {
 		return api.SnapshotsExportResponse{}, err
@@ -383,13 +426,21 @@ func (s *snapshotService) Export(uuid string) (api.SnapshotsExportResponse, erro
 // Existing UUIDs are never replaced. An optional name changes only the copied
 // manifest and does not modify the caller's archive.
 func (s *snapshotService) Import(ctx context.Context, archive io.Reader, name *string) (api.SnapshotInfo, error) {
+	if s == nil {
+		return api.SnapshotInfo{}, fmt.Errorf("snapshot storage is unavailable")
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s == nil || s.storagePath == "" {
+	if s.storagePath == "" {
 		return api.SnapshotInfo{}, fmt.Errorf("snapshot storage is unavailable")
 	}
 	if archive == nil {
 		return api.SnapshotInfo{}, fmt.Errorf("%w: archive is missing", errSnapshotInvalid)
+	}
+	if name != nil {
+		if err := validateSnapshotName(*name); err != nil {
+			return api.SnapshotInfo{}, err
+		}
 	}
 	directory := filepath.Join(s.storagePath, snapshotDirectoryName)
 	if err := os.MkdirAll(directory, 0o700); err != nil {
@@ -401,7 +452,7 @@ func (s *snapshotService) Import(ctx context.Context, archive io.Reader, name *s
 	}
 	temporaryPath := temporary.Name()
 	defer removeFileIfPresent(temporaryPath)
-	if _, err := io.Copy(temporary, archive); err != nil {
+	if _, err := copySnapshotArchive(temporary, archive); err != nil {
 		_ = temporary.Close()
 		return api.SnapshotInfo{}, fmt.Errorf("read imported snapshot archive: %w", err)
 	}
@@ -437,10 +488,16 @@ func (s *snapshotService) Import(ctx context.Context, archive io.Reader, name *s
 // Rename updates the display name in one snapshot manifest. The archive is
 // replaced atomically after all unchanged entries are copied in raw form.
 func (s *snapshotService) Rename(uuid, name string) (api.SnapshotInfo, error) {
+	if s == nil {
+		return api.SnapshotInfo{}, fmt.Errorf("snapshot storage is unavailable")
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s == nil || s.storagePath == "" {
+	if s.storagePath == "" {
 		return api.SnapshotInfo{}, fmt.Errorf("snapshot storage is unavailable")
+	}
+	if err := validateSnapshotName(name); err != nil {
+		return api.SnapshotInfo{}, err
 	}
 	uuid, err := normalizeSnapshotUUID(uuid)
 	if err != nil {
@@ -455,6 +512,9 @@ func (s *snapshotService) Rename(uuid, name string) (api.SnapshotInfo, error) {
 // other ZIP entries. The replacement is atomic because its temporary file is
 // in the same directory as the source archive.
 func rewriteSnapshotName(path, expectedUUID, name string) (api.SnapshotInfo, error) {
+	if err := validateSnapshotName(name); err != nil {
+		return api.SnapshotInfo{}, err
+	}
 	manifest, err := readSnapshotManifest(path)
 	if err != nil {
 		return api.SnapshotInfo{}, err
@@ -507,6 +567,9 @@ func rewriteSnapshotName(path, expectedUUID, name string) (api.SnapshotInfo, err
 	if err := temporary.Close(); err != nil {
 		return api.SnapshotInfo{}, err
 	}
+	if err := validateSnapshotArchiveSize(temporaryPath); err != nil {
+		return api.SnapshotInfo{}, err
+	}
 	if err := source.Close(); err != nil {
 		return api.SnapshotInfo{}, fmt.Errorf("close source snapshot archive: %w", err)
 	}
@@ -520,6 +583,9 @@ func rewriteSnapshotName(path, expectedUUID, name string) (api.SnapshotInfo, err
 // the snapshot config. Failure triggers a best-effort rollback from an internal
 // archive captured immediately before the restore.
 func (s *snapshotService) Restore(ctx context.Context, uuid string) (api.SnapshotsRestoreResponse, error) {
+	if s == nil {
+		return api.SnapshotsRestoreResponse{}, fmt.Errorf("snapshot service is not ready")
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err := s.ready(); err != nil {
@@ -637,6 +703,12 @@ func (s *snapshotService) writeArchive(ctx context.Context, archivePath string, 
 		return fail(err)
 	}
 	manifestData = append(manifestData, '\n')
+	if uint64(len(manifestData)) > snapshotManifestMaxBytes {
+		return fail(fmt.Errorf("%w: manifest exceeds %d bytes", errSnapshotTooLarge, snapshotManifestMaxBytes))
+	}
+	if uint64(len(configData)) > snapshotConfigMaxBytes {
+		return fail(fmt.Errorf("%w: config exceeds %d bytes", errSnapshotTooLarge, snapshotConfigMaxBytes))
+	}
 	if err := writeZipBytes(zw, snapshotManifestName, manifestData, 0o600, s.now()); err != nil {
 		return fail(err)
 	}
@@ -661,6 +733,7 @@ func (s *snapshotService) writeArchive(ctx context.Context, archivePath string, 
 }
 
 func (s *snapshotService) writeStorageFiles(ctx context.Context, zw *zip.Writer, databasePath string) error {
+	var storedBytes uint64
 	return filepath.WalkDir(s.storagePath, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -682,11 +755,36 @@ func (s *snapshotService) writeStorageFiles(ctx context.Context, zw *zip.Writer,
 			}
 			return nil
 		}
+		archiveSourcePath := path
 		if relative == kvDBFileName {
-			return writeZipFile(zw, snapshotFilesPrefix+filepath.ToSlash(relative), databasePath)
+			archiveSourcePath = databasePath
 		}
-		return writeZipFile(zw, snapshotFilesPrefix+filepath.ToSlash(relative), path)
+		if entry.Type()&os.ModeSymlink != 0 {
+			if err := validateStorageSymlink(s.storagePath, path, s); err != nil {
+				return err
+			}
+		}
+		if err := reserveSnapshotStorageBytes(archiveSourcePath, &storedBytes); err != nil {
+			return err
+		}
+		return writeZipFile(zw, snapshotFilesPrefix+filepath.ToSlash(relative), archiveSourcePath)
 	})
+}
+
+func reserveSnapshotStorageBytes(path string, total *uint64) error {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	if info.IsDir() {
+		return nil
+	}
+	size := uint64(max(info.Size(), 0))
+	if size > snapshotExtractedMaxBytes-*total {
+		return fmt.Errorf("%w: stored files exceed %d bytes", errSnapshotTooLarge, snapshotExtractedMaxBytes)
+	}
+	*total += size
+	return nil
 }
 
 func (s *snapshotService) storagePathExcluded(relative string) bool {
@@ -699,6 +797,19 @@ func (s *snapshotService) storagePathExcluded(relative string) bool {
 	}
 	_, excluded := s.dynamicExclusions[relative]
 	return excluded
+}
+
+// storagePathContainsDynamicExclusion reports whether relative is an ancestor
+// of an active config source. Such directories cannot be removed as a unit;
+// mirroring must enter them and preserve the excluded descendant.
+func (s *snapshotService) storagePathContainsDynamicExclusion(relative string) bool {
+	relative = filepath.Clean(relative)
+	for excluded := range s.dynamicExclusions {
+		if relative == "." || excluded == relative || strings.HasPrefix(excluded, relative+string(filepath.Separator)) {
+			return true
+		}
+	}
+	return false
 }
 
 func writeZipBytes(zw *zip.Writer, name string, data []byte, mode fs.FileMode, modified time.Time) error {
@@ -762,6 +873,9 @@ func writeZipFile(zw *zip.Writer, name, path string) error {
 }
 
 func readSnapshotManifest(path string) (snapshotManifest, error) {
+	if err := validateSnapshotArchiveSize(path); err != nil {
+		return snapshotManifest{}, err
+	}
 	reader, err := zip.OpenReader(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return snapshotManifest{}, errSnapshotNotFound
@@ -774,7 +888,7 @@ func readSnapshotManifest(path string) (snapshotManifest, error) {
 		if file.Name != snapshotManifestName {
 			continue
 		}
-		data, err := readZipEntry(file)
+		data, err := readZipEntry(file, snapshotManifestMaxBytes)
 		if err != nil {
 			return snapshotManifest{}, err
 		}
@@ -788,12 +902,18 @@ func readSnapshotManifest(path string) (snapshotManifest, error) {
 		if _, err := normalizeSnapshotUUID(manifest.Snapshot.UUID); err != nil || manifest.Snapshot.Timestamp <= 0 {
 			return snapshotManifest{}, fmt.Errorf("%w: invalid manifest metadata", errSnapshotInvalid)
 		}
+		if err := validateSnapshotName(manifest.Snapshot.Name); err != nil {
+			return snapshotManifest{}, err
+		}
 		return manifest, nil
 	}
 	return snapshotManifest{}, fmt.Errorf("%w: manifest is missing", errSnapshotInvalid)
 }
 
 func (s *snapshotService) loadArchive(ctx context.Context, path, expectedUUID string) (*loadedSnapshot, error) {
+	if err := validateSnapshotArchiveSize(path); err != nil {
+		return nil, err
+	}
 	reader, err := zip.OpenReader(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, errSnapshotNotFound
@@ -813,6 +933,7 @@ func (s *snapshotService) loadArchive(ctx context.Context, path, expectedUUID st
 	}
 	seen := map[string]struct{}{}
 	var manifestFound, configFound bool
+	var extractedBytes uint64
 	for _, file := range reader.File {
 		if err := ctx.Err(); err != nil {
 			return fail(err)
@@ -827,7 +948,7 @@ func (s *snapshotService) loadArchive(ctx context.Context, path, expectedUUID st
 		seen[name] = struct{}{}
 		switch {
 		case name == snapshotManifestName:
-			data, err := readZipEntry(file)
+			data, err := readZipEntry(file, snapshotManifestMaxBytes)
 			if err != nil {
 				return fail(err)
 			}
@@ -843,10 +964,13 @@ func (s *snapshotService) loadArchive(ctx context.Context, path, expectedUUID st
 				return fail(fmt.Errorf("%w: manifest metadata does not match archive", errSnapshotInvalid))
 			}
 			manifest.Snapshot.UUID = uuid
+			if err := validateSnapshotName(manifest.Snapshot.Name); err != nil {
+				return fail(err)
+			}
 			loaded.info = manifest.Snapshot
 			manifestFound = true
 		case name == snapshotConfigName:
-			data, err := readZipEntry(file)
+			data, err := readZipEntry(file, snapshotConfigMaxBytes)
 			if err != nil {
 				return fail(err)
 			}
@@ -866,6 +990,10 @@ func (s *snapshotService) loadArchive(ctx context.Context, path, expectedUUID st
 			if relative == "" {
 				continue
 			}
+			if file.UncompressedSize64 > snapshotExtractedMaxBytes-extractedBytes {
+				return fail(fmt.Errorf("%w: extracted files exceed %d bytes", errSnapshotTooLarge, snapshotExtractedMaxBytes))
+			}
+			extractedBytes += file.UncompressedSize64
 			if err := extractSnapshotFile(file, loaded.filesPath, relative); err != nil {
 				return fail(err)
 			}
@@ -875,6 +1003,9 @@ func (s *snapshotService) loadArchive(ctx context.Context, path, expectedUUID st
 	}
 	if !manifestFound || !configFound {
 		return fail(fmt.Errorf("%w: archive metadata or config is missing", errSnapshotInvalid))
+	}
+	if err := validateSnapshotSymlinks(loaded.filesPath, s); err != nil {
+		return fail(err)
 	}
 	databasePath := filepath.Join(loaded.filesPath, kvDBFileName)
 	if info, err := os.Lstat(databasePath); err != nil || !info.Mode().IsRegular() {
@@ -898,13 +1029,19 @@ func cleanSnapshotEntryName(name string) (string, error) {
 	return cleaned, nil
 }
 
-func readZipEntry(file *zip.File) ([]byte, error) {
+func readZipEntry(file *zip.File, limit uint64) ([]byte, error) {
+	if file.UncompressedSize64 > limit {
+		return nil, fmt.Errorf("%w: archive entry %q exceeds %d bytes", errSnapshotTooLarge, file.Name, limit)
+	}
 	reader, err := file.Open()
 	if err != nil {
 		return nil, err
 	}
-	data, readErr := io.ReadAll(reader)
+	data, readErr := io.ReadAll(io.LimitReader(reader, int64(limit)+1))
 	closeErr := reader.Close()
+	if uint64(len(data)) > limit {
+		return nil, fmt.Errorf("%w: archive entry %q exceeds %d bytes", errSnapshotTooLarge, file.Name, limit)
+	}
 	if readErr != nil {
 		return nil, readErr
 	}
@@ -928,7 +1065,7 @@ func extractSnapshotFile(file *zip.File, root, relative string) error {
 		return err
 	}
 	if mode&os.ModeSymlink != 0 {
-		data, err := readZipEntry(file)
+		data, err := readZipEntry(file, snapshotExtractedMaxBytes)
 		if err != nil {
 			return err
 		}
@@ -978,6 +1115,57 @@ func rejectSymlinkExtractionParents(root, relativeParent string) error {
 		case !info.IsDir():
 			return fmt.Errorf("%w: storage entry has non-directory parent %q", errSnapshotInvalid, relativeParent)
 		}
+	}
+	return nil
+}
+
+// validateSnapshotSymlinks checks the completed staging tree before any live
+// state changes. EvalSymlinks follows complete chains, so this rejects absolute
+// targets, escaping relative targets, dangling links, and chains that leave the
+// staging root. A target that maps to a host-local config exclusion is also
+// rejected because that path is intentionally different in live storage.
+func validateSnapshotSymlinks(root string, service *snapshotService) error {
+	return filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return fmt.Errorf("%w: inspect staged symlink: %v", errSnapshotInvalid, walkErr)
+		}
+		if entry.Type()&os.ModeSymlink == 0 {
+			return nil
+		}
+		return validateStorageSymlink(root, path, service)
+	})
+}
+
+// validateStorageSymlink permits only complete relative links that stay in the
+// snapshotted part of file storage. This rule applies to locally created and
+// imported archives, so a snapshot is never published in an unrestorable form.
+func validateStorageSymlink(root, path string, service *snapshotService) error {
+	if service != nil {
+		if relative, ok := pathWithinStorage(root, path); ok && service.storagePathExcluded(relative) {
+			return fmt.Errorf("%w: symlink %q occupies an excluded storage path", errSnapshotInvalid, path)
+		}
+	}
+	target, err := os.Readlink(path)
+	if err != nil {
+		return fmt.Errorf("%w: read storage symlink %q: %v", errSnapshotInvalid, path, err)
+	}
+	if filepath.IsAbs(target) {
+		return fmt.Errorf("%w: symlink %q has an absolute target", errSnapshotInvalid, path)
+	}
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return fmt.Errorf("%w: symlink %q is dangling or invalid: %v", errSnapshotInvalid, path, err)
+	}
+	resolved = filepath.Clean(resolved)
+	if resolved == filepath.Clean(root) {
+		return nil
+	}
+	relative, ok := pathWithinStorage(root, resolved)
+	if !ok {
+		return fmt.Errorf("%w: symlink %q resolves outside file storage", errSnapshotInvalid, path)
+	}
+	if service != nil && service.storagePathExcluded(relative) {
+		return fmt.Errorf("%w: symlink %q resolves through an excluded storage path", errSnapshotInvalid, path)
 	}
 	return nil
 }
@@ -1056,10 +1244,71 @@ func (s *snapshotService) restoreImmutableState(ctx context.Context, restored *h
 }
 
 func (s *snapshotService) restoreStorageFiles(sourceRoot string) error {
-	return s.mirrorStorageDirectory(sourceRoot, s.storagePath, "")
+	return s.mirrorStorageDirectory(sourceRoot, s.storagePath, "", false)
 }
 
-func (s *snapshotService) mirrorStorageDirectory(sourceRoot, destinationRoot, relative string) error {
+// captureStartupRecovery copies the current closed storage tree before
+// --snapshot changes it. The copy lives below snapshots/, which both the source
+// walk and later restore operations exclude.
+func (s *snapshotService) captureStartupRecovery() (*startupStorageRecovery, error) {
+	stage, err := os.MkdirTemp(filepath.Join(s.storagePath, snapshotDirectoryName), ".startup-recovery-*")
+	if err != nil {
+		return nil, err
+	}
+	recovery := &startupStorageRecovery{
+		filesPath: filepath.Join(stage, "files"),
+		cleanup:   func() { _ = os.RemoveAll(stage) },
+	}
+	if err := os.MkdirAll(recovery.filesPath, 0o700); err != nil {
+		recovery.cleanup()
+		return nil, err
+	}
+	if _, err := os.Lstat(filepath.Join(s.storagePath, kvDBFileName)); err == nil {
+		recovery.databasePresent = true
+	} else if !errors.Is(err, os.ErrNotExist) {
+		recovery.cleanup()
+		return nil, err
+	}
+	if err := s.mirrorStorageDirectory(s.storagePath, recovery.filesPath, "", true); err != nil {
+		recovery.cleanup()
+		return nil, err
+	}
+	return recovery, nil
+}
+
+func (s *snapshotService) applyStartupStorage(sourceRoot string) error {
+	if err := s.restoreStorageFiles(sourceRoot); err != nil {
+		return fmt.Errorf("restore files: %w", err)
+	}
+	// At startup no bbolt handle exists, so publish the validated database file
+	// directly after all other files have been mirrored.
+	if err := mirrorStorageEntry(sourceRoot, s.storagePath, kvDBFileName, s, true); err != nil {
+		return fmt.Errorf("restore database: %w", err)
+	}
+	return nil
+}
+
+func (s *snapshotService) restoreStartupRecovery(recovery *startupStorageRecovery) error {
+	if recovery == nil {
+		return errors.New("startup recovery state is unavailable")
+	}
+	if err := s.restoreStorageFiles(recovery.filesPath); err != nil {
+		return fmt.Errorf("restore previous files: %w", err)
+	}
+	databasePath := filepath.Join(s.storagePath, kvDBFileName)
+	if !recovery.databasePresent {
+		if err := os.RemoveAll(databasePath); err != nil {
+			return fmt.Errorf("remove restored database: %w", err)
+		}
+		return nil
+	}
+	if err := mirrorStorageEntry(recovery.filesPath, s.storagePath, kvDBFileName, s, true); err != nil {
+		return fmt.Errorf("restore previous database: %w", err)
+	}
+	return nil
+}
+
+func (s *snapshotService) mirrorStorageDirectory(sourceRoot, destinationRoot, relative string, includeDatabase bool) error {
 	sourcePath := filepath.Join(sourceRoot, relative)
 	destinationPath := filepath.Join(destinationRoot, relative)
 	sourceEntries, err := os.ReadDir(sourcePath)
@@ -1078,10 +1327,18 @@ func (s *snapshotService) mirrorStorageDirectory(sourceRoot, destinationRoot, re
 	}
 	for _, entry := range destinationEntries {
 		childRelative := filepath.Join(relative, entry.Name())
-		if s.storagePathExcluded(childRelative) || childRelative == kvDBFileName {
+		if s.storagePathExcluded(childRelative) || (!includeDatabase && childRelative == kvDBFileName) {
 			continue
 		}
 		if _, found := sourceByName[entry.Name()]; !found {
+			if s.storagePathContainsDynamicExclusion(childRelative) {
+				if entry.IsDir() {
+					if err := s.mirrorStorageDirectory(sourceRoot, destinationRoot, childRelative, includeDatabase); err != nil {
+						return err
+					}
+				}
+				continue
+			}
 			if err := os.RemoveAll(filepath.Join(destinationRoot, childRelative)); err != nil {
 				return fmt.Errorf("remove storage path %s: %w", childRelative, err)
 			}
@@ -1089,17 +1346,21 @@ func (s *snapshotService) mirrorStorageDirectory(sourceRoot, destinationRoot, re
 	}
 	for _, entry := range sourceEntries {
 		childRelative := filepath.Join(relative, entry.Name())
-		if s.storagePathExcluded(childRelative) || childRelative == kvDBFileName {
+		if s.storagePathExcluded(childRelative) || (!includeDatabase && childRelative == kvDBFileName) {
 			continue
 		}
-		if err := mirrorStorageEntry(sourceRoot, destinationRoot, childRelative, s); err != nil {
+		if err := mirrorStorageEntry(sourceRoot, destinationRoot, childRelative, s, includeDatabase); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func mirrorStorageEntry(sourceRoot, destinationRoot, relative string, service *snapshotService) error {
+func mirrorStorageEntry(
+	sourceRoot, destinationRoot, relative string,
+	service *snapshotService,
+	includeDatabase bool,
+) error {
 	sourcePath := filepath.Join(sourceRoot, relative)
 	destinationPath := filepath.Join(destinationRoot, relative)
 	info, err := os.Lstat(sourcePath)
@@ -1114,6 +1375,10 @@ func mirrorStorageEntry(sourceRoot, destinationRoot, relative string, service *s
 		info.IsDir() == destinationInfo.IsDir() &&
 		(info.Mode()&os.ModeSymlink != 0) == (destinationInfo.Mode()&os.ModeSymlink != 0) &&
 		info.Mode().IsRegular() == destinationInfo.Mode().IsRegular()
+	if service.storagePathContainsDynamicExclusion(relative) &&
+		(!info.IsDir() || (destinationErr == nil && !destinationInfo.IsDir())) {
+		return fmt.Errorf("restore storage path %s would replace a directory that contains an active config source", relative)
+	}
 	if !sameKind && destinationErr == nil {
 		if err := os.RemoveAll(destinationPath); err != nil {
 			return err
@@ -1123,7 +1388,7 @@ func mirrorStorageEntry(sourceRoot, destinationRoot, relative string, service *s
 		if err := os.MkdirAll(destinationPath, info.Mode().Perm()); err != nil {
 			return err
 		}
-		if err := service.mirrorStorageDirectory(sourceRoot, destinationRoot, relative); err != nil {
+		if err := service.mirrorStorageDirectory(sourceRoot, destinationRoot, relative, includeDatabase); err != nil {
 			return err
 		}
 		return os.Chmod(destinationPath, info.Mode().Perm())
@@ -1272,4 +1537,45 @@ func normalizeSnapshotUUID(value string) (string, error) {
 		return "", fmt.Errorf("%w: malformed UUID", errSnapshotInvalid)
 	}
 	return value, nil
+}
+
+func validateSnapshotName(name string) error {
+	if !utf8.ValidString(name) {
+		return fmt.Errorf("%w: snapshot name is not valid UTF-8", errSnapshotInvalid)
+	}
+	if len(name) > snapshotNameMaxBytes {
+		return fmt.Errorf("%w: snapshot name exceeds %d bytes", errSnapshotTooLarge, snapshotNameMaxBytes)
+	}
+	return nil
+}
+
+func validateSnapshotArchiveSize(path string) error {
+	info, err := os.Stat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return errSnapshotNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("%w: archive is not a regular file", errSnapshotInvalid)
+	}
+	if info.Size() > api.SnapshotArchiveMaxBytes {
+		return fmt.Errorf("%w: compressed archive exceeds %d bytes", errSnapshotTooLarge, api.SnapshotArchiveMaxBytes)
+	}
+	return nil
+}
+
+// copySnapshotArchive bounds a stream before JSON-decoded imports or startup
+// stdin can fill the filesystem with an arbitrarily large temporary archive.
+func copySnapshotArchive(destination io.Writer, source io.Reader) (int64, error) {
+	limited := &io.LimitedReader{R: source, N: api.SnapshotArchiveMaxBytes + 1}
+	written, err := io.Copy(destination, limited)
+	if err != nil {
+		return written, err
+	}
+	if written > api.SnapshotArchiveMaxBytes {
+		return written, fmt.Errorf("%w: compressed archive exceeds %d bytes", errSnapshotTooLarge, api.SnapshotArchiveMaxBytes)
+	}
+	return written, nil
 }

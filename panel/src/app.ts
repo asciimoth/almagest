@@ -99,6 +99,7 @@ import {
   type KVValueSnapshot,
 } from "./kv_model.js";
 import {
+  SNAPSHOT_ARCHIVE_MAX_BYTES,
   removeSnapshot as removeSnapshotEntry,
   renderSnapshotList,
   upsertSnapshot,
@@ -5465,6 +5466,10 @@ async function importSnapshot(): Promise<void> {
   const file = el.snapshotImportFile.files?.[0];
   if (!file) {
     el.snapshotsStatus.textContent = "Select a snapshot archive to import.";
+    return;
+  }
+  if (file.size > SNAPSHOT_ARCHIVE_MAX_BYTES) {
+    el.snapshotsStatus.textContent = "Snapshot archive exceeds the 32 MiB limit.";
     return;
   }
   snapshotMutationPending = true;

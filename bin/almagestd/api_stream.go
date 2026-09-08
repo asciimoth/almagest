@@ -32,7 +32,7 @@ func (a *AdminAPI) serveAPIStream(
 	}()
 	defer close(done)
 
-	codec := api.NewReadWriteCodec(conn)
+	codec := api.NewLimitedReadWriteCodec(conn, api.SnapshotAPIMessageMaxBytes)
 	session := a.newAPISession(engine, logf, codec.Write)
 	defer session.close()
 	if err := session.sendProjectVersionStatus(); err != nil {

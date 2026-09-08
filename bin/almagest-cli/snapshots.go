@@ -148,15 +148,34 @@ func readSnapshotArchive(path string, stdin io.Reader) ([]byte, error) {
 		if stdin == nil {
 			return nil, fmt.Errorf("snapshot archive path - requires stdin")
 		}
-		archive, err := io.ReadAll(stdin)
+		archive, err := readBoundedSnapshotArchive(stdin)
 		if err != nil {
 			return nil, fmt.Errorf("read snapshot archive from stdin: %w", err)
 		}
 		return archive, nil
 	}
-	archive, err := os.ReadFile(path)
+	file, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("read snapshot archive %s: %w", path, err)
+	}
+	archive, readErr := readBoundedSnapshotArchive(file)
+	closeErr := file.Close()
+	if readErr != nil {
+		return nil, fmt.Errorf("read snapshot archive %s: %w", path, readErr)
+	}
+	if closeErr != nil {
+		return nil, fmt.Errorf("close snapshot archive %s: %w", path, closeErr)
+	}
+	return archive, nil
+}
+
+func readBoundedSnapshotArchive(reader io.Reader) ([]byte, error) {
+	archive, err := io.ReadAll(io.LimitReader(reader, api.SnapshotArchiveMaxBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(archive)) > api.SnapshotArchiveMaxBytes {
+		return nil, fmt.Errorf("archive exceeds %d bytes", api.SnapshotArchiveMaxBytes)
 	}
 	return archive, nil
 }
@@ -211,5 +230,6 @@ Commands:
 
 Snapshots are identified by UUID. Optional names do not need to be unique.
 Protected config is never included or replaced.
+Imported and exported archives are limited to 32 MiB compressed.
 `)
 }

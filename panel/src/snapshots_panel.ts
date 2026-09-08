@@ -4,6 +4,11 @@ export type SnapshotInfo = {
   name?: string;
 };
 
+// Snapshot archives use base64 inside the shared JSON API. Keep this value in
+// step with api.SnapshotArchiveMaxBytes so the panel rejects oversized files
+// before FileReader creates another complete in-memory copy.
+export const SNAPSHOT_ARCHIVE_MAX_BYTES = 32 * 1024 * 1024;
+
 export type SnapshotRowActions = {
   export(entry: SnapshotInfo): void;
   rename(entry: SnapshotInfo): void;

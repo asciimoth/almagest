@@ -35,3 +35,13 @@ test("snapshots panel uses all snapshot API methods and confirms destructive act
   assert.doesNotMatch(app, /Unix nanoseconds/);
   assert.match(app, /link\.download\s*=\s*`\$\{entry\.uuid\}\.zip`/);
 });
+
+test("snapshot import rejects oversized files before reading them", () => {
+  const sizeCheck = app.indexOf("file.size > SNAPSHOT_ARCHIVE_MAX_BYTES");
+  const fileRead = app.indexOf("fileAsBase64(file)");
+
+  assert.notEqual(sizeCheck, -1);
+  assert.notEqual(fileRead, -1);
+  assert.ok(sizeCheck < fileRead);
+  assert.match(app, /Snapshot archive exceeds the 32 MiB limit/);
+});

@@ -59,6 +59,9 @@ func (s *apiSession) handleSnapshotsMessage(msg api.Message) (api.Message, error
 		if len(req.Archive) == 0 {
 			return newRequestError(msg.ID, api.ErrorInvalidPayload, "snapshot archive is required")
 		}
+		if int64(len(req.Archive)) > api.SnapshotArchiveMaxBytes {
+			return newRequestError(msg.ID, api.ErrorTooLarge, "snapshot archive exceeds the 32 MiB limit")
+		}
 		info, err := service.Import(context.Background(), bytes.NewReader(req.Archive), req.Name)
 		if err != nil {
 			return snapshotRequestError(msg.ID, err)
@@ -117,6 +120,8 @@ func snapshotRequestError(id string, err error) (api.Message, error) {
 		return newRequestError(id, api.ErrorNotFound, err.Error())
 	case errors.Is(err, errSnapshotInvalid):
 		return newRequestError(id, api.ErrorInvalidPayload, err.Error())
+	case errors.Is(err, errSnapshotTooLarge):
+		return newRequestError(id, api.ErrorTooLarge, err.Error())
 	default:
 		return newRequestError(id, api.ErrorInternal, err.Error())
 	}

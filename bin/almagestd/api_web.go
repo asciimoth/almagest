@@ -42,9 +42,9 @@ func (a *AdminAPI) serveWebsocket(
 		return
 	}
 	// Snapshot import requests can be larger than the WebSocket package's
-	// 32 KiB default. The local admin endpoint already accepts unbounded JSON
-	// messages on Unix sockets, so use the same behavior for WebSockets.
-	conn.SetReadLimit(-1)
+	// 32 KiB default. Keep a finite limit so JSON decoding cannot allocate an
+	// unbounded request before the snapshot service validates the archive.
+	conn.SetReadLimit(api.SnapshotAPIMessageMaxBytes)
 	defer conn.CloseNow() //nolint
 
 	var writeMu sync.Mutex

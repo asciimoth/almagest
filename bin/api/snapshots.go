@@ -1,5 +1,17 @@
 package api
 
+const (
+	// SnapshotArchiveMaxBytes is the largest compressed snapshot archive that
+	// can cross the JSON admin API. The limit bounds the byte slice and base64
+	// copies that the current request protocol must keep in memory.
+	SnapshotArchiveMaxBytes int64 = 32 << 20
+
+	// SnapshotAPIMessageMaxBytes allows one maximum-size base64 archive plus
+	// its JSON envelope and metadata. Admin transports use this value as their
+	// per-message read limit.
+	SnapshotAPIMessageMaxBytes int64 = ((SnapshotArchiveMaxBytes + 2) / 3 * 4) + (1 << 20)
+)
+
 // SnapshotsMethod identifies a daemon file-storage snapshot operation.
 type SnapshotsMethod string
 

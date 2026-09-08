@@ -2,10 +2,15 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { JSDOM } from "jsdom";
 import {
+  SNAPSHOT_ARCHIVE_MAX_BYTES,
   removeSnapshot,
   renderSnapshotList,
   upsertSnapshot,
 } from "../public/build/snapshots_panel.js";
+
+test("snapshot archive limit matches the daemon limit", () => {
+  assert.equal(SNAPSHOT_ARCHIVE_MAX_BYTES, 32 * 1024 * 1024);
+});
 
 const first = {
   uuid: "11111111-1111-4111-8111-111111111111",
