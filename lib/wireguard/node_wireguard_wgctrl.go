@@ -67,6 +67,10 @@ func (n *wireGuardNode) acceptWGCtrlInterfaceConfig(link uint64, cfg WGCtrlInter
 		n.wgctrlConfigs = map[uint64]WGCtrlInterfaceConfig{}
 	}
 	ownedIPs, err := normalizeWireGuardOwnedIPValues(cfg.OwnedIPs)
+	routes := []string(nil)
+	if err == nil {
+		routes, err = normalizeWireGuardOwnedIPValues(cfg.Routes)
+	}
 	dns := strings.TrimSpace(cfg.DNS)
 	if err == nil {
 		err = validateWireGuardDNS(dns)
@@ -79,7 +83,7 @@ func (n *wireGuardNode) acceptWGCtrlInterfaceConfig(link uint64, cfg WGCtrlInter
 		if n.Logger != nil {
 			n.Logger.Errf("WGCtrl link %d supplied invalid interface config: %v", link, err)
 		}
-	} else if len(ownedIPs) == 0 && dns == "" {
+	} else if len(ownedIPs) == 0 && len(routes) == 0 && dns == "" {
 		action = "withdraw"
 		delete(n.wgctrlConfigs, link)
 		delete(n.wgctrlConfigOrder, link)
@@ -89,12 +93,13 @@ func (n *wireGuardNode) acceptWGCtrlInterfaceConfig(link uint64, cfg WGCtrlInter
 		}
 		n.wgctrlConfigSeq++
 		n.wgctrlConfigOrder[link] = n.wgctrlConfigSeq
-		n.wgctrlConfigs[link] = WGCtrlInterfaceConfig{OwnedIPs: ownedIPs, DNS: dns}
+		n.wgctrlConfigs[link] = WGCtrlInterfaceConfig{OwnedIPs: ownedIPs, Routes: routes, DNS: dns}
 	}
 	if n.Logger != nil {
 		n.Logger.Debugf(
-			"WireGuard WGCtrl interface update: link=%d action=%s supplied_addresses=%v normalized_addresses=%v supplied_dns=%q normalized_dns=%q effective_addresses=%v effective_dns=%q",
-			link, action, cfg.OwnedIPs, ownedIPs, cfg.DNS, dns, n.effectiveOwnedIPAddrs(), n.effectiveDNS(),
+			"WireGuard WGCtrl interface update: link=%d action=%s supplied_addresses=%v normalized_addresses=%v supplied_routes=%v normalized_routes=%v supplied_dns=%q normalized_dns=%q effective_addresses=%v effective_routes=%v effective_dns=%q",
+			link, action, cfg.OwnedIPs, ownedIPs, cfg.Routes, routes, cfg.DNS, dns,
+			n.effectiveOwnedIPAddrs(), n.effectiveTunRoutes(), n.effectiveDNS(),
 		)
 	}
 	n.sendTunConfig()
@@ -227,6 +232,34 @@ func (n *wireGuardNode) effectiveOwnedIPAddrs() []string {
 	slices.Sort(links)
 	for _, link := range links {
 		appendValues(n.wgctrlConfigs[link].OwnedIPs)
+	}
+	return out
+}
+
+// effectiveTunRoutes merges peer routes owned by the WireGuard node with
+// runtime route suggestions from controllers. Controller routes use stable
+// link-ID order. Exact normalized duplicates keep their first occurrence.
+func (n *wireGuardNode) effectiveTunRoutes() []string {
+	seen := map[string]struct{}{}
+	var out []string
+	appendValues := func(values []string) {
+		for _, value := range values {
+			if _, exists := seen[value]; exists {
+				continue
+			}
+			seen[value] = struct{}{}
+			out = append(out, value)
+		}
+	}
+	appendValues(wireGuardPeerRoutes(n.effectiveConfig().peers))
+
+	links := make([]uint64, 0, len(n.wgctrlConfigs))
+	for link := range n.wgctrlConfigs {
+		links = append(links, link)
+	}
+	slices.Sort(links)
+	for _, link := range links {
+		appendValues(n.wgctrlConfigs[link].Routes)
 	}
 	return out
 }

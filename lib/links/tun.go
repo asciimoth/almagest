@@ -2,6 +2,7 @@ package links
 
 import (
 	"errors"
+	"net/netip"
 	"slices"
 
 	"github.com/asciimoth/bufpool"
@@ -37,10 +38,10 @@ import (
 // TunConfig values flow in the opposite direction, from left-directed ports to
 // right-directed ports. Config values are suggestions for Tun-providing nodes:
 // the provider may configure its device with the suggested interface addresses,
-// route prefixes, MTU, and DNS server address. The DNS suggestion is intended
-// only for simple topologies, such as a VTun connected to WireGuard. Use the
-// almagest/dns link type and DNS nodes when a topology needs DNS routing,
-// composition, or policy.
+// route prefixes, destination-to-source routes, MTU, and DNS server address.
+// The DNS suggestion is intended only for simple topologies, such as a VTun
+// connected to WireGuard. Use the almagest/dns link type and DNS nodes when a
+// topology needs DNS routing, composition, or policy.
 //
 // Middleware with one TUN input and one TUN output should pass DNS suggestions
 // through. Middleware with multiple TUN inputs or outputs must drop them because
@@ -84,6 +85,11 @@ type TunConfig struct {
 	// example "10.0.0.0/24".
 	Routes []string
 
+	// SourceRoutes maps remote destination prefixes to local source addresses.
+	// A userspace network stack can use this policy when one TUN endpoint has
+	// multiple local addresses from the same IP family.
+	SourceRoutes []TunSourceRoute
+
 	// MTU is the suggested interface MTU. Zero means no MTU suggestion.
 	MTU int
 
@@ -93,14 +99,78 @@ type TunConfig struct {
 	DNS string
 }
 
+// TunSourceRoute selects a local source address for one destination prefix.
+// The most-specific matching destination has priority.
+type TunSourceRoute struct {
+	Destination netip.Prefix
+	Source      netip.Addr
+}
+
 // Clone returns a deep copy of cfg.
 func (cfg TunConfig) Clone() TunConfig {
 	return TunConfig{
-		Addrs:  slices.Clone(cfg.Addrs),
-		Routes: slices.Clone(cfg.Routes),
-		MTU:    cfg.MTU,
-		DNS:    cfg.DNS,
+		Addrs:        slices.Clone(cfg.Addrs),
+		Routes:       slices.Clone(cfg.Routes),
+		SourceRoutes: slices.Clone(cfg.SourceRoutes),
+		MTU:          cfg.MTU,
+		DNS:          cfg.DNS,
 	}
+}
+
+// WithInferredSourceRoutes returns a copy of cfg with a source route for each
+// route prefix that does not already have one. The first valid address of the
+// same IP family is the source. This preserves the source identity of one TUN
+// consumer before a middleware node merges it with other consumer configs.
+func (cfg TunConfig) WithInferredSourceRoutes() TunConfig {
+	out := cfg.Clone()
+	first4, first6 := firstTunConfigAddrs(out.Addrs)
+	seenDestinations := make(map[netip.Prefix]struct{}, len(out.SourceRoutes))
+	for _, route := range out.SourceRoutes {
+		if route.Destination.IsValid() {
+			seenDestinations[route.Destination.Masked()] = struct{}{}
+		}
+	}
+	for _, value := range out.Routes {
+		destination, err := netip.ParsePrefix(value)
+		if err != nil {
+			continue
+		}
+		destination = destination.Masked()
+		if _, ok := seenDestinations[destination]; ok {
+			continue
+		}
+		source := first6
+		if destination.Addr().Is4() {
+			source = first4
+		}
+		if !source.IsValid() {
+			continue
+		}
+		out.SourceRoutes = append(out.SourceRoutes, TunSourceRoute{
+			Destination: destination,
+			Source:      source,
+		})
+		seenDestinations[destination] = struct{}{}
+	}
+	return out
+}
+
+func firstTunConfigAddrs(values []string) (first4, first6 netip.Addr) {
+	for _, value := range values {
+		var addr netip.Addr
+		if prefix, err := netip.ParsePrefix(value); err == nil {
+			addr = prefix.Addr()
+		} else if parsed, err := netip.ParseAddr(value); err == nil {
+			addr = parsed
+		}
+		switch {
+		case addr.Is4() && !first4.IsValid():
+			first4 = addr
+		case addr.Is6() && !first6.IsValid():
+			first6 = addr
+		}
+	}
+	return first4, first6
 }
 
 // WithoutDNS returns a deep copy of cfg without its DNS suggestion.
@@ -113,9 +183,10 @@ func (cfg TunConfig) WithoutDNS() TunConfig {
 	return out
 }
 
-// IsZero reports whether cfg carries no address, route, MTU, or DNS suggestion.
+// IsZero reports whether cfg carries no address, route, source-route, MTU, or
+// DNS suggestion.
 func (cfg TunConfig) IsZero() bool {
-	return len(cfg.Addrs) == 0 && len(cfg.Routes) == 0 && cfg.MTU == 0 && cfg.DNS == ""
+	return len(cfg.Addrs) == 0 && len(cfg.Routes) == 0 && len(cfg.SourceRoutes) == 0 && cfg.MTU == 0 && cfg.DNS == ""
 }
 
 // TunConfigByLink stores the latest TunConfig received per link.
@@ -142,8 +213,9 @@ func (s TunConfigByLink) Delete(link uint64) {
 
 // Merge returns one config suggestion from all configs currently in the store.
 //
-// Address and route suggestions are de-duplicated by exact string value while
-// preserving first-seen order by ascending link ID and then by each config's
+// Address and route suggestions are de-duplicated by exact string value.
+// Source routes are de-duplicated by exact destination and source values.
+// First-seen order is preserved by ascending link ID and then by each config's
 // slice order. MTU suggestions are merged by taking the smallest positive MTU,
 // which is the conservative value when one Tun must satisfy multiple consumers.
 // A non-positive MTU is ignored. The first non-empty DNS suggestion in link-ID
@@ -161,6 +233,7 @@ func (s TunConfigByLink) Merge() TunConfig {
 
 	seenAddrs := make(map[string]struct{})
 	seenRoutes := make(map[string]struct{})
+	seenSourceRoutes := make(map[TunSourceRoute]struct{})
 	var merged TunConfig
 	for _, link := range links {
 		cfg := s[link]
@@ -177,6 +250,13 @@ func (s TunConfigByLink) Merge() TunConfig {
 			}
 			seenRoutes[route] = struct{}{}
 			merged.Routes = append(merged.Routes, route)
+		}
+		for _, route := range cfg.SourceRoutes {
+			if _, ok := seenSourceRoutes[route]; ok {
+				continue
+			}
+			seenSourceRoutes[route] = struct{}{}
+			merged.SourceRoutes = append(merged.SourceRoutes, route)
 		}
 		if cfg.MTU > 0 && (merged.MTU == 0 || cfg.MTU < merged.MTU) {
 			merged.MTU = cfg.MTU

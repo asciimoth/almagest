@@ -46,7 +46,7 @@ type TunSplitterClass struct {
 func (TunSplitterClass) ClassName() string        { return NodeTypeTunSplitter }
 func (TunSplitterClass) ShortDescription() string { return "TUN splitter" }
 func (TunSplitterClass) LongDescription() string {
-	return "Splits one almagest/tun endpoint into routed gonnect/tun.Splitter frontend slots using bytecode routing rules."
+	return "Splits one almagest/tun endpoint into routed gonnect/tun.Splitter frontend slots using bytecode routing rules. It preserves each output's route-to-address association so an upstream userspace network stack can select the correct local source address."
 }
 func (TunSplitterClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: TypeTun, InitialPorts: []pasta.Port{
@@ -269,7 +269,7 @@ func (n *tunSplitterNode) OnEvent(event pasta.Event, linkType string, _ []string
 	if !ok {
 		return nil
 	}
-	n.outputCfgs.Set(event.Link, cfg.WithoutDNS())
+	n.outputCfgs.Set(event.Link, cfg.WithoutDNS().WithInferredSourceRoutes())
 	n.sendMergedTunConfig()
 	return nil
 }

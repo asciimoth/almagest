@@ -220,10 +220,16 @@ func (n *amnesiaNode) reconcile(req amnesiaRuntimeRequest) (amnesiaRuntimeResult
 	if req.setInterfaceConfig != nil {
 		dns := firstAmnesiaDNS(profileState.dns)
 		n.logDebugf(
-			"Amnesia WGCtrl interface update starting before tracked peer upsert: generation=%d addresses=%v dns=%q",
-			req.generation, profileState.addresses, dns,
+			"Amnesia WGCtrl interface update starting before tracked peer upsert: generation=%d addresses=%v routes=%v dns=%q",
+			req.generation, profileState.addresses, profileState.allowedIPs, dns,
 		)
-		if err := req.setInterfaceConfig(req.ctx, req.generation, profileState.addresses, dns); err != nil {
+		if err := req.setInterfaceConfig(
+			req.ctx,
+			req.generation,
+			profileState.addresses,
+			profileState.allowedIPs,
+			dns,
+		); err != nil {
 			n.logDebugf("Amnesia WGCtrl interface update failed before tracked peer upsert: generation=%d", req.generation)
 			session.Close()
 			if req.ctx.Err() != nil || req.generation != n.generation.Load() {

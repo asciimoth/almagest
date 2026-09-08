@@ -22,6 +22,7 @@ type NetworkOutputCache = links.NetworkOutputCache
 
 type TunPayload = links.TunPayload
 type TunConfig = links.TunConfig
+type TunSourceRoute = links.TunSourceRoute
 type TunConfigByLink = links.TunConfigByLink
 type TunOutputCache = links.TunOutputCache
 

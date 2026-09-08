@@ -30,18 +30,18 @@ control link gets an independently closeable API. Removing a direct link or
 switching a `pasta/Select` path releases only the peers and named transports
 tracked through that API.
 
-WG control clients can also suggest owned interface IPs. The node keeps the
-latest suggestion from each attached WG control link and merges all of them
-with `ownedIPs` from the node menu. Menu addresses come first. Controller
-addresses follow in stable link-ID order, and duplicate normalized prefixes are
-removed. Controller suggestions are runtime state: they are not saved in the
-WireGuard node config, and they are removed when their link detaches or when a
-controller sends an empty suggestion.
+WG control clients can also suggest owned interface IPs and routes. The node
+keeps the latest suggestion from each attached WG control link and merges all
+of them with addresses and peer routes from the node config. Menu values come
+first. Controller values follow in stable link-ID order, and duplicate
+normalized prefixes are removed. Controller suggestions are runtime state:
+they are not saved in the WireGuard node config, and they are removed when
+their link detaches or when a controller sends an empty suggestion.
 
-WG control clients can request an acknowledged interface-IP update. The
-provider validates the update and waits for its resulting TUN generation to be
-attached before the client applies peer or transport changes that depend on the
-addresses.
+WG control clients can request an acknowledged interface update. The provider
+validates the addresses and routes and waits for the resulting TUN generation
+to be attached before the client applies peer or transport changes that depend
+on them.
 
 The device private key is read from the daemon secrets storage. The config
 field `privateKeySecret` stores only the secret name; the private key value is
@@ -70,9 +70,9 @@ preshared-key secrets are reported as invalid config.
 
 The effective menu and WG control owned IPs are emitted upstream as `TunConfig`
 address suggestions for the attached TUN provider. Effective menu and object
-peer `allowedIPs` are installed into the WireGuard device as crypto-routing
-rules and are also emitted upstream as `TunConfig` route suggestions for
-providers that install host routes.
+peer `allowedIPs`, together with WG control routes, are emitted as `TunConfig`
+route suggestions. The peer `allowedIPs` are also installed into the WireGuard
+device as crypto-routing rules.
 
 The optional menu field `dns` accepts one DNS server IPv4 or IPv6 address.
 WG control links can also suggest one DNS server. The last current suggestion

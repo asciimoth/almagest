@@ -169,7 +169,7 @@ type amnesiaRuntimeRequest struct {
 	forceRevision      uint64
 	nodeName           string
 	ctx                context.Context
-	setInterfaceConfig func(context.Context, uint64, []string, string) error
+	setInterfaceConfig func(context.Context, uint64, []string, []string, string) error
 }
 
 type amnesiaRuntimeResult struct {
@@ -197,6 +197,7 @@ type amnesiaPeerStatus struct {
 type amnesiaWGCtrlInterfaceConfigRequest struct {
 	generation uint64
 	addresses  []string
+	routes     []string
 	dns        string
 	result     chan<- error
 }
@@ -629,7 +630,12 @@ func (n *amnesiaNode) scheduleReconcile(invalidate bool) {
 	}
 }
 
-func (n *amnesiaNode) setWGCtrlInterfaceConfig(ctx context.Context, generation uint64, addresses []string, dns string) error {
+func (n *amnesiaNode) setWGCtrlInterfaceConfig(
+	ctx context.Context,
+	generation uint64,
+	addresses, routes []string,
+	dns string,
+) error {
 	if n.W == nil || n.ID == 0 {
 		return errors.New("workspace is unavailable")
 	}
@@ -637,6 +643,7 @@ func (n *amnesiaNode) setWGCtrlInterfaceConfig(ctx context.Context, generation u
 	n.W.SendInbox(pasta.InboxMessage{ReceiverNode: n.ID, Payload: amnesiaWGCtrlInterfaceConfigRequest{
 		generation: generation,
 		addresses:  append([]string(nil), addresses...),
+		routes:     append([]string(nil), routes...),
 		dns:        dns,
 		result:     result,
 	}})
@@ -655,11 +662,12 @@ func (n *amnesiaNode) handleWGCtrlInterfaceConfigRequest(msg amnesiaWGCtrlInterf
 	}
 	cfg := wireguardnodes.WGCtrlInterfaceConfig{
 		OwnedIPs: append([]string(nil), msg.addresses...),
+		Routes:   append([]string(nil), msg.routes...),
 		DNS:      msg.dns,
 	}
 	n.logDebugf(
-		"Amnesia WGCtrl interface update preparing before peer apply: link=%d generation=%d address_count=%d addresses=%v dns=%q",
-		n.ctrlLink, msg.generation, len(cfg.OwnedIPs), cfg.OwnedIPs, cfg.DNS,
+		"Amnesia WGCtrl interface update preparing before peer apply: link=%d generation=%d address_count=%d addresses=%v routes=%v dns=%q",
+		n.ctrlLink, msg.generation, len(cfg.OwnedIPs), cfg.OwnedIPs, cfg.Routes, cfg.DNS,
 	)
 	if !wireguardnodes.EmitWGCtrlInterfaceConfigApply(n.W, n.ID, n.ctrlLink, cfg, msg.result) {
 		msg.result <- errors.New("WireGuard controller link is unavailable")
@@ -718,19 +726,20 @@ func (n *amnesiaNode) sendWGCtrlInterfaceConfig() {
 	action := "withdraw"
 	if n.runtimeReady {
 		cfg.OwnedIPs = append([]string(nil), n.profileStatus.addresses...)
+		cfg.Routes = append([]string(nil), n.profileStatus.allowedIPs...)
 		cfg.DNS = firstAmnesiaDNS(n.profileStatus.dns)
 		if !cfg.IsZero() {
 			action = "replace"
 		}
 	}
 	n.logDebugf(
-		"Amnesia WGCtrl interface update preparing: link=%d action=%s runtime_ready=%t address_count=%d addresses=%v dns=%q",
-		n.ctrlLink, action, n.runtimeReady, len(cfg.OwnedIPs), cfg.OwnedIPs, cfg.DNS,
+		"Amnesia WGCtrl interface update preparing: link=%d action=%s runtime_ready=%t address_count=%d addresses=%v routes=%v dns=%q",
+		n.ctrlLink, action, n.runtimeReady, len(cfg.OwnedIPs), cfg.OwnedIPs, cfg.Routes, cfg.DNS,
 	)
 	emitted := wireguardnodes.EmitWGCtrlInterfaceConfig(n.W, n.ID, n.ctrlLink, cfg)
 	n.logDebugf(
-		"Amnesia WGCtrl interface update submitted: link=%d action=%s address_count=%d addresses=%v dns=%q emitted=%t",
-		n.ctrlLink, action, len(cfg.OwnedIPs), cfg.OwnedIPs, cfg.DNS, emitted,
+		"Amnesia WGCtrl interface update submitted: link=%d action=%s address_count=%d addresses=%v routes=%v dns=%q emitted=%t",
+		n.ctrlLink, action, len(cfg.OwnedIPs), cfg.OwnedIPs, cfg.Routes, cfg.DNS, emitted,
 	)
 }
 

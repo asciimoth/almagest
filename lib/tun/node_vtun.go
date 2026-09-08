@@ -33,7 +33,7 @@ type VTunClass struct {
 func (VTunClass) ClassName() string        { return NodeTypeVTun }
 func (VTunClass) ShortDescription() string { return "Virtual TUN network" }
 func (VTunClass) LongDescription() string {
-	return "Creates one virtual netstack instance and exposes it as both an almagest/network and an almagest/tun endpoint. When it receives TunConfig, it uses Addrs, MTU, and DNS; Routes are ignored. An explicit DNS servers value has priority over a TUN DNS suggestion. If neither is set, VTun uses 8.8.8.8. TUN DNS suggestions are for simple topologies only; use almagest/dns nodes for DNS routing or policy."
+	return "Creates one virtual netstack instance and exposes it as both an almagest/network and an almagest/tun endpoint. When it receives TunConfig, it uses Addrs, source routes, MTU, and DNS. Source routes select the local address for each destination; plain Routes are not installed in the userspace stack. An explicit local addrs value disables suggested source routes. An explicit DNS servers value has priority over a TUN DNS suggestion. If neither is set, VTun uses 8.8.8.8. TUN DNS suggestions are for simple topologies only; use almagest/dns nodes for DNS routing or policy."
 }
 func (VTunClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: TypeTun, InitialPorts: []pasta.Port{

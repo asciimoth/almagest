@@ -2,6 +2,7 @@ package wireguardnodes
 
 import (
 	"errors"
+	"slices"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -74,7 +75,11 @@ func TestEmitWGCtrlInterfaceConfigFlowsFromController(t *testing.T) {
 	controller := addWGCtrlTestNode(t, w, "right", nil)
 	link := addWGCtrlTestLink(t, w, provider.port, controller.port)
 
-	cfg := WGCtrlInterfaceConfig{OwnedIPs: []string{"10.44.0.2/32"}, DNS: "8.8.8.8"}
+	cfg := WGCtrlInterfaceConfig{
+		OwnedIPs: []string{"10.44.0.2/32"},
+		Routes:   []string{"10.80.0.0/16", "fd00:80::/64"},
+		DNS:      "8.8.8.8",
+	}
 	w.Lock()
 	if !EmitWGCtrlInterfaceConfig(w, controller.id, link, cfg) {
 		w.Unlock()
@@ -86,11 +91,13 @@ func TestEmitWGCtrlInterfaceConfigFlowsFromController(t *testing.T) {
 	}
 	w.Unlock()
 	cfg.OwnedIPs[0] = "10.44.0.99/32"
+	cfg.Routes[0] = "10.99.0.0/16"
 	cfg.DNS = "1.1.1.1"
 
 	select {
 	case got := <-configs:
-		if len(got.OwnedIPs) != 1 || got.OwnedIPs[0] != "10.44.0.2/32" || got.DNS != "8.8.8.8" {
+		if len(got.OwnedIPs) != 1 || got.OwnedIPs[0] != "10.44.0.2/32" ||
+			!slices.Equal(got.Routes, []string{"10.80.0.0/16", "fd00:80::/64"}) || got.DNS != "8.8.8.8" {
 			t.Fatalf("received config = %#v", got)
 		}
 	case <-time.After(time.Second):
@@ -104,6 +111,9 @@ func TestWGCtrlInterfaceConfigZeroIncludesDNS(t *testing.T) {
 	}
 	if (WGCtrlInterfaceConfig{DNS: "8.8.8.8"}).IsZero() {
 		t.Fatal("WGCtrl interface config with DNS is zero")
+	}
+	if (WGCtrlInterfaceConfig{Routes: []string{"10.0.0.0/8"}}).IsZero() {
+		t.Fatal("WGCtrl interface config with routes is zero")
 	}
 }
 

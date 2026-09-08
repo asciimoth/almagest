@@ -1,6 +1,7 @@
 package links
 
 import (
+	"net/netip"
 	"reflect"
 	"testing"
 )
@@ -24,30 +25,42 @@ func TestSameComparableValue(t *testing.T) {
 }
 
 func TestTunConfigByLinkSetMergeDelete(t *testing.T) {
+	sourceRouteA := TunSourceRoute{
+		Destination: netip.MustParsePrefix("10.10.0.0/24"),
+		Source:      netip.MustParseAddr("10.0.0.3"),
+	}
+	sourceRouteB := TunSourceRoute{
+		Destination: netip.MustParsePrefix("10.20.0.0/24"),
+		Source:      netip.MustParseAddr("10.0.0.2"),
+	}
 	store := TunConfigByLink{}
 	cfg := TunConfig{
-		Addrs:  []string{"10.0.0.2/32", "fd00::2/128"},
-		Routes: []string{"10.20.0.0/24", "fd00:20::/64"},
-		MTU:    1420,
-		DNS:    "1.1.1.1",
+		Addrs:        []string{"10.0.0.2/32", "fd00::2/128"},
+		Routes:       []string{"10.20.0.0/24", "fd00:20::/64"},
+		SourceRoutes: []TunSourceRoute{sourceRouteB},
+		MTU:          1420,
+		DNS:          "1.1.1.1",
 	}
 	store.Set(2, cfg)
 	cfg.Addrs[0] = "mutated"
 	cfg.Routes[0] = "mutated"
+	cfg.SourceRoutes[0].Source = netip.MustParseAddr("10.0.0.99")
 	store.Set(1, TunConfig{
-		Addrs:  []string{"10.0.0.3/32", "10.0.0.2/32"},
-		Routes: []string{"10.10.0.0/24", "10.20.0.0/24"},
-		MTU:    1280,
-		DNS:    "8.8.8.8",
+		Addrs:        []string{"10.0.0.3/32", "10.0.0.2/32"},
+		Routes:       []string{"10.10.0.0/24", "10.20.0.0/24"},
+		SourceRoutes: []TunSourceRoute{sourceRouteA, sourceRouteB},
+		MTU:          1280,
+		DNS:          "8.8.8.8",
 	})
 	store.Set(0, TunConfig{Addrs: []string{"ignored"}, Routes: []string{"ignored"}, MTU: 1})
 
 	merged := store.Merge()
 	want := TunConfig{
-		Addrs:  []string{"10.0.0.3/32", "10.0.0.2/32", "fd00::2/128"},
-		Routes: []string{"10.10.0.0/24", "10.20.0.0/24", "fd00:20::/64"},
-		MTU:    1280,
-		DNS:    "8.8.8.8",
+		Addrs:        []string{"10.0.0.3/32", "10.0.0.2/32", "fd00::2/128"},
+		Routes:       []string{"10.10.0.0/24", "10.20.0.0/24", "fd00:20::/64"},
+		SourceRoutes: []TunSourceRoute{sourceRouteA, sourceRouteB},
+		MTU:          1280,
+		DNS:          "8.8.8.8",
 	}
 	if !reflect.DeepEqual(merged, want) {
 		t.Fatalf("Merge() = %#v, want %#v", merged, want)
@@ -56,10 +69,11 @@ func TestTunConfigByLinkSetMergeDelete(t *testing.T) {
 	store.Delete(1)
 	merged = store.Merge()
 	want = TunConfig{
-		Addrs:  []string{"10.0.0.2/32", "fd00::2/128"},
-		Routes: []string{"10.20.0.0/24", "fd00:20::/64"},
-		MTU:    1420,
-		DNS:    "1.1.1.1",
+		Addrs:        []string{"10.0.0.2/32", "fd00::2/128"},
+		Routes:       []string{"10.20.0.0/24", "fd00:20::/64"},
+		SourceRoutes: []TunSourceRoute{sourceRouteB},
+		MTU:          1420,
+		DNS:          "1.1.1.1",
 	}
 	if !reflect.DeepEqual(merged, want) {
 		t.Fatalf("Merge() after Delete = %#v, want %#v", merged, want)

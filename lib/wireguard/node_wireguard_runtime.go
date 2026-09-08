@@ -488,11 +488,11 @@ func (n *wireGuardNode) isCurrentConfigRetry(generation uint64) bool {
 	return n.retryGeneration == generation
 }
 
-// sendTunConfig publishes this WireGuard interface's owned IP prefixes, peer
-// route prefixes, and optional DNS server to the attached TUN provider. TypeTun
-// defines TunConfig as flowing opposite the TUN payload, so this left-directed
-// consumer sends suggestions upstream to the right-directed provider whenever
-// the link or WireGuard config changes.
+// sendTunConfig publishes this WireGuard interface's owned IP prefixes,
+// effective route prefixes, and optional DNS server to the attached TUN
+// provider. TypeTun defines TunConfig as flowing opposite the TUN payload, so
+// this left-directed consumer sends suggestions upstream to the right-directed
+// provider whenever the link or WireGuard config changes.
 func (n *wireGuardNode) sendTunConfig() {
 	if n.tunLink == 0 {
 		return
@@ -506,10 +506,9 @@ func (n *wireGuardNode) sendTunConfigToLink(link uint64) {
 	EmitTunConfig(n.W, n.ID, link, n.tunConfig())
 }
 func (n *wireGuardNode) tunConfig() TunConfig {
-	effective := n.effectiveConfig()
 	return TunConfig{
 		Addrs:  n.effectiveOwnedIPAddrs(),
-		Routes: wireGuardPeerRoutes(effective.peers),
+		Routes: n.effectiveTunRoutes(),
 		DNS:    n.effectiveDNS(),
 	}
 }

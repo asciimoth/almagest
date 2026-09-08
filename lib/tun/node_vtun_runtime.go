@@ -12,6 +12,7 @@ import (
 
 type vtunRuntimeConfig struct {
 	localAddrs     []netip.Addr
+	sourceRoutes   []netstackvtun.SourceRoute
 	dnsServers     []netip.Addr
 	name           string
 	mtu            int
@@ -29,7 +30,14 @@ func (c vtunRuntimeConfig) equal(other vtunRuntimeConfig) bool {
 		c.noLoopbackAddr == other.noLoopbackAddr &&
 		c.disableSACK == other.disableSACK &&
 		slices.Equal(c.localAddrs, other.localAddrs) &&
+		slices.Equal(c.sourceRoutes, other.sourceRoutes) &&
 		slices.Equal(c.dnsServers, other.dnsServers)
+}
+
+func (c vtunRuntimeConfig) equalExceptSourceRoutes(other vtunRuntimeConfig) bool {
+	c.sourceRoutes = nil
+	other.sourceRoutes = nil
+	return c.equal(other)
 }
 
 func (n *vtunNode) ensureVTun() error {
@@ -66,7 +74,19 @@ func (n *vtunNode) rebuildVTunWithActive(active bool) error {
 		n.sendEffectiveBlock()
 		return nil
 	}
-	n.dropVTun()
+	if n.vtun != nil && n.vtunRuntime.equalExceptSourceRoutes(runtimeConfig) {
+		if err := n.vtun.SetSourceRoutes(opts.SourceRoutes); err != nil {
+			n.formError = err.Error()
+			n.sendForcedMenuSnapshot()
+			_ = n.updateLabel()
+			return err
+		}
+		n.formError = ""
+		n.vtunRuntime = runtimeConfig
+		_ = n.updateLabel()
+		n.sendEffectiveBlock()
+		return nil
+	}
 	vt, err := opts.Build()
 	if err != nil {
 		n.formError = err.Error()
@@ -74,6 +94,7 @@ func (n *vtunNode) rebuildVTunWithActive(active bool) error {
 		_ = n.updateLabel()
 		return err
 	}
+	n.dropVTun()
 	n.formError = ""
 	n.vtun = vt
 	n.vtunRuntime = runtimeConfig
@@ -89,6 +110,7 @@ func (n *vtunNode) buildRuntimeConfig() (vtunRuntimeConfig, *netstackvtun.Opts, 
 	if err != nil {
 		return vtunRuntimeConfig{}, nil, err
 	}
+	sourceRoutes := n.effectiveSourceRoutes()
 	dnsServers, err := n.effectiveDNSServers()
 	if err != nil {
 		return vtunRuntimeConfig{}, nil, err
@@ -102,6 +124,7 @@ func (n *vtunNode) buildRuntimeConfig() (vtunRuntimeConfig, *netstackvtun.Opts, 
 	}
 	runtimeConfig := vtunRuntimeConfig{
 		localAddrs:     slices.Clone(localAddrs),
+		sourceRoutes:   slices.Clone(sourceRoutes),
 		dnsServers:     slices.Clone(dnsServers),
 		name:           n.config.name,
 		mtu:            mtu,
@@ -114,6 +137,7 @@ func (n *vtunNode) buildRuntimeConfig() (vtunRuntimeConfig, *netstackvtun.Opts, 
 		EndpointCh:     n.config.endpointCh,
 		EventCh:        n.config.eventCh,
 		LocalAddrs:     localAddrs,
+		SourceRoutes:   sourceRoutes,
 		DnsServers:     dnsServers,
 		Name:           n.config.name,
 		NoLoopbackAddr: n.config.noLoopbackAddr,
@@ -124,6 +148,22 @@ func (n *vtunNode) buildRuntimeConfig() (vtunRuntimeConfig, *netstackvtun.Opts, 
 		// MWO: n.config.mwo,
 		// MRO: n.config.mro,
 	}, nil
+}
+
+func (n *vtunNode) effectiveSourceRoutes() []netstackvtun.SourceRoute {
+	// Explicit local addresses replace the address suggestions. Their list can
+	// differ from the source addresses in the suggested policy.
+	if strings.TrimSpace(n.config.localAddrs) != "" {
+		return nil
+	}
+	out := make([]netstackvtun.SourceRoute, 0, len(n.tunConfig.SourceRoutes))
+	for _, route := range n.tunConfig.SourceRoutes {
+		out = append(out, netstackvtun.SourceRoute{
+			Destination: route.Destination,
+			Source:      route.Source,
+		})
+	}
+	return out
 }
 
 func (n *vtunNode) effectiveDNSServers() ([]netip.Addr, error) {

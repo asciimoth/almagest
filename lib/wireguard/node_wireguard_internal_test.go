@@ -104,6 +104,50 @@ func TestWireGuardMergesMenuAndControllerOwnedIPs(t *testing.T) {
 	}
 }
 
+func TestWireGuardMergesConfiguredAndControllerTunRoutes(t *testing.T) {
+	node := &wireGuardNode{
+		config: wireGuardConfig{peers: []wireGuardPeerConfig{
+			{allowedIPs: "0.0.0.0/0 10.40.0.0/16"},
+			{allowedIPs: "fd00:40::/48"},
+		}},
+		wgctrlConfigs: map[uint64]WGCtrlInterfaceConfig{
+			9: {Routes: []string{"10.90.0.0/16", "10.40.0.0/16"}},
+			4: {Routes: []string{"100.64.0.0/10", "fd00:40::/48"}},
+		},
+	}
+	want := []string{
+		"0.0.0.0/0", "10.40.0.0/16", "fd00:40::/48",
+		"100.64.0.0/10", "10.90.0.0/16",
+	}
+	if got := node.effectiveTunRoutes(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("effective TUN routes = %v, want %v", got, want)
+	}
+	if got := node.tunConfig().Routes; !reflect.DeepEqual(got, want) {
+		t.Fatalf("TUN config routes = %v, want %v", got, want)
+	}
+
+	if err := node.acceptWGCtrlInterfaceConfig(4, WGCtrlInterfaceConfig{
+		Routes: []string{"100.97.143.122", "fd7a:115c:a1e0::/48", "100.97.143.122/32"},
+	}); err != nil {
+		t.Fatalf("replace controller routes: %v", err)
+	}
+	want = []string{
+		"0.0.0.0/0", "10.40.0.0/16", "fd00:40::/48",
+		"100.97.143.122/32", "fd7a:115c:a1e0::/48", "10.90.0.0/16",
+	}
+	if got := node.effectiveTunRoutes(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("updated effective TUN routes = %v, want %v", got, want)
+	}
+
+	if err := node.acceptWGCtrlInterfaceConfig(4, WGCtrlInterfaceConfig{Routes: []string{"bad route"}}); err == nil {
+		t.Fatal("invalid controller route was accepted")
+	}
+	want = []string{"0.0.0.0/0", "10.40.0.0/16", "fd00:40::/48", "10.90.0.0/16"}
+	if got := node.effectiveTunRoutes(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("routes after invalid update = %v, want %v", got, want)
+	}
+}
+
 func TestWireGuardUsesLatestWGCtrlDNSUnlessMenuDNSIsSet(t *testing.T) {
 	node := &wireGuardNode{config: defaultWireGuardConfig()}
 

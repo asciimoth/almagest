@@ -17,6 +17,7 @@ import (
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
 	"github.com/asciimoth/gonnect"
+	netstackvtun "github.com/asciimoth/gonnect-netstack/vtun"
 	"github.com/asciimoth/gonnect/subnet"
 	"github.com/asciimoth/gonnect/sysnet"
 	sysnetdebug "github.com/asciimoth/gonnect/sysnet/debug"
@@ -221,6 +222,146 @@ func TestVTunConfiguredDNSOverridesSuggestion(t *testing.T) {
 	}
 	if !slices.Equal(runtimeConfig.dnsServers, want) {
 		t.Fatalf("runtime DNS servers = %v, want %v", runtimeConfig.dnsServers, want)
+	}
+}
+
+func TestVTunUsesSuggestedSourceRoutes(t *testing.T) {
+	defaultSource := netip.MustParseAddr("10.20.0.2")
+	tailnetSource := netip.MustParseAddr("100.64.0.2")
+	suggested := []TunSourceRoute{
+		{Destination: netip.MustParsePrefix("0.0.0.0/0"), Source: defaultSource},
+		{Destination: netip.MustParsePrefix("100.64.0.0/10"), Source: tailnetSource},
+	}
+	node := &vtunNode{
+		config: defaultVTunConfig(),
+		tunConfig: TunConfig{
+			Addrs:        []string{defaultSource.String(), tailnetSource.String()},
+			SourceRoutes: suggested,
+		},
+	}
+
+	runtimeConfig, opts, err := node.buildRuntimeConfig()
+	if err != nil {
+		t.Fatalf("build runtime config: %v", err)
+	}
+	want := []netstackvtun.SourceRoute{
+		{Destination: suggested[0].Destination, Source: defaultSource},
+		{Destination: suggested[1].Destination, Source: tailnetSource},
+	}
+	if !slices.Equal(runtimeConfig.sourceRoutes, want) {
+		t.Fatalf("runtime source routes = %#v, want %#v", runtimeConfig.sourceRoutes, want)
+	}
+	if !slices.Equal(opts.SourceRoutes, want) {
+		t.Fatalf("VTun source routes = %#v, want %#v", opts.SourceRoutes, want)
+	}
+}
+
+func TestVTunExplicitLocalAddrsDisableSuggestedSourceRoutes(t *testing.T) {
+	config := defaultVTunConfig()
+	config.localAddrs = "192.0.2.2"
+	node := &vtunNode{
+		config: config,
+		tunConfig: TunConfig{
+			Addrs: []string{"10.20.0.2", "100.64.0.2"},
+			SourceRoutes: []TunSourceRoute{{
+				Destination: netip.MustParsePrefix("100.64.0.0/10"),
+				Source:      netip.MustParseAddr("100.64.0.2"),
+			}},
+		},
+	}
+
+	runtimeConfig, opts, err := node.buildRuntimeConfig()
+	if err != nil {
+		t.Fatalf("build runtime config: %v", err)
+	}
+	if len(runtimeConfig.sourceRoutes) != 0 || len(opts.SourceRoutes) != 0 {
+		t.Fatalf("source routes = %#v, %#v; want none with explicit local addrs", runtimeConfig.sourceRoutes, opts.SourceRoutes)
+	}
+}
+
+func TestVTunUpdatesOnlySourceRoutesInPlaceAndRejectsConflictAtomically(t *testing.T) {
+	w := newVTunNodeTestWorkspace(t)
+	vtunID, err := w.AddNodeByClass(NodeTypeVTun, "vtun")
+	if err != nil {
+		t.Fatalf("AddNodeByClass VTun: %v", err)
+	}
+	netReceiver := networktest.NewReceiver(4)
+	if _, err := w.AddNode(netReceiver, "test/NetworkReceiver", "network receiver"); err != nil {
+		t.Fatalf("AddNode network receiver: %v", err)
+	}
+	tunReceiver := tuntest.NewReceiver(4)
+	tunReceiverID, err := w.AddNode(tunReceiver, "test/TunReceiver", "tun receiver")
+	if err != nil {
+		t.Fatalf("AddNode tun receiver: %v", err)
+	}
+
+	vtunSnapshot := testkit.MustNodeSnapshot(t, w, vtunID)
+	if _, _, err := w.AddLink(vtunSnapshot.LeftPorts[0], netReceiver.In); err != nil {
+		t.Fatalf("AddLink network: %v", err)
+	}
+	tunLink, _, err := w.AddLink(tunReceiver.In, vtunSnapshot.RightPorts[0])
+	if err != nil {
+		t.Fatalf("AddLink tun: %v", err)
+	}
+	_ = networktest.ReceivePayload(t, netReceiver.Events)
+	_ = tuntest.ReceivePayload(t, tunReceiver.Events)
+
+	defaultSource := netip.MustParseAddr("10.20.0.2")
+	tailnetSource := netip.MustParseAddr("100.64.0.2")
+	base := TunConfig{
+		Addrs: []string{defaultSource.String(), tailnetSource.String()},
+		SourceRoutes: []TunSourceRoute{
+			{Destination: netip.MustParsePrefix("0.0.0.0/0"), Source: defaultSource},
+			{Destination: netip.MustParsePrefix("100.64.0.0/10"), Source: tailnetSource},
+		},
+	}
+	w.EmitEvent(tunReceiverID, tunLink, base)
+	networkPayload := networktest.ReceivePayload(t, netReceiver.Events)
+	_ = tuntest.ReceivePayload(t, tunReceiver.Events)
+	detached, ok := networkPayload.Network.(*gonnect.DetachedNetwork)
+	if !ok {
+		t.Fatalf("network = %T, want *gonnect.DetachedNetwork", networkPayload.Network)
+	}
+	device, ok := detached.GetWrapped().(*netstackvtun.VTun)
+	if !ok {
+		t.Fatalf("wrapped network = %T, want *vtun.VTun", detached.GetWrapped())
+	}
+
+	replacement := base.Clone()
+	replacement.SourceRoutes = append(replacement.SourceRoutes, TunSourceRoute{
+		Destination: netip.MustParsePrefix("100.80.0.0/16"),
+		Source:      defaultSource,
+	})
+	w.EmitEvent(tunReceiverID, tunLink, replacement)
+	networktest.AssertNoEvent(t, netReceiver.Events)
+	tuntest.AssertNoEvent(t, tunReceiver.Events)
+	wantReplacement := []netstackvtun.SourceRoute{
+		{Destination: replacement.SourceRoutes[0].Destination, Source: defaultSource},
+		{Destination: replacement.SourceRoutes[1].Destination, Source: tailnetSource},
+		{Destination: replacement.SourceRoutes[2].Destination, Source: defaultSource},
+	}
+	if got := device.SourceRoutes(); !slices.Equal(got, wantReplacement) {
+		t.Fatalf("source routes after live update = %#v, want %#v", got, wantReplacement)
+	}
+
+	conflicting := replacement.Clone()
+	conflicting.SourceRoutes = append(conflicting.SourceRoutes, TunSourceRoute{
+		Destination: netip.MustParsePrefix("100.64.0.0/10"),
+		Source:      defaultSource,
+	})
+	w.EmitEvent(tunReceiverID, tunLink, conflicting)
+	networktest.AssertNoEvent(t, netReceiver.Events)
+	tuntest.AssertNoEvent(t, tunReceiver.Events)
+	if got := device.SourceRoutes(); !slices.Equal(got, wantReplacement) {
+		t.Fatalf("source routes after rejected update = %#v, want unchanged %#v", got, wantReplacement)
+	}
+	if got := testkit.MustNodeSnapshot(t, w, vtunID).Label; got != "invalid config" {
+		t.Fatalf("VTun label after conflicting routes = %q, want invalid config", got)
+	}
+
+	w.EmitEvent(tunReceiverID, tunLink, replacement)
+	if got := testkit.MustNodeSnapshot(t, w, vtunID).Label; got != defaultVTunName {
+		t.Fatalf("VTun label after valid route recovery = %q, want %q", got, defaultVTunName)
 	}
 }
 

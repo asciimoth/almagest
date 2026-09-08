@@ -297,12 +297,7 @@ func (n *tailscaleNode) applyWGConfigForSnapshot(snapshot wgotailscale.Snapshot)
 		n.withdrawWGConfig(false)
 		return
 	}
-	addresses := make([]string, len(snapshot.Network.Addresses))
-	for i, address := range snapshot.Network.Addresses {
-		addresses[i] = address.String()
-	}
-	slices.Sort(addresses)
-	desired := wireguardnodes.WGCtrlInterfaceConfig{OwnedIPs: addresses}
+	desired := tailscaleWGInterfaceConfig(snapshot)
 	if n.wgAppliedID == n.activeRuntimeID && sameWGConfig(n.wgAppliedConfig, desired) && (n.wgConfigured || n.wgApplyPending) {
 		return
 	}
@@ -407,7 +402,28 @@ func firewallObject(config *gonnect.FirewallConfig) std.Object {
 }
 
 func sameWGConfig(a, b wireguardnodes.WGCtrlInterfaceConfig) bool {
-	return a.DNS == b.DNS && slices.Equal(a.OwnedIPs, b.OwnedIPs)
+	return a.DNS == b.DNS && slices.Equal(a.OwnedIPs, b.OwnedIPs) && slices.Equal(a.Routes, b.Routes)
+}
+
+func tailscaleWGInterfaceConfig(snapshot wgotailscale.Snapshot) wireguardnodes.WGCtrlInterfaceConfig {
+	addresses := make([]string, 0, len(snapshot.Network.Addresses))
+	for _, address := range snapshot.Network.Addresses {
+		if address.IsValid() {
+			addresses = append(addresses, address.String())
+		}
+	}
+	slices.Sort(addresses)
+	addresses = slices.Compact(addresses)
+
+	routes := make([]string, 0, len(snapshot.Network.Routes))
+	for _, route := range snapshot.Network.Routes {
+		if route.Prefix.IsValid() {
+			routes = append(routes, route.Prefix.String())
+		}
+	}
+	slices.Sort(routes)
+	routes = slices.Compact(routes)
+	return wireguardnodes.WGCtrlInterfaceConfig{OwnedIPs: addresses, Routes: routes}
 }
 
 func tailscaleTransportID(storageID string) wgdevice.TransportID {

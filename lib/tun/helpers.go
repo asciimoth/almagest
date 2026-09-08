@@ -24,6 +24,7 @@ type NodeBase = nodekit.Base
 type Runtime = nodekit.Runtime
 type TunPayload = nodekit.TunPayload
 type TunConfig = nodekit.TunConfig
+type TunSourceRoute = nodekit.TunSourceRoute
 type TunConfigByLink = nodekit.TunConfigByLink
 type TunOutputCache = nodekit.TunOutputCache
 type WorkerSpawner = nodekit.WorkerSpawner

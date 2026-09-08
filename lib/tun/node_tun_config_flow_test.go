@@ -148,7 +148,7 @@ func TestTunSplitterClearsConfigOnOutputDisconnectAndReplaysOnInputReconnect(t *
 
 	cfg := TunConfig{Addrs: []string{"10.0.0.3/32"}, Routes: []string{"10.30.0.0/24"}, MTU: 1300, DNS: "9.9.9.9"}
 	w.EmitEvent(consumerID, outputLink, cfg)
-	assertTunConfigReceived(t, provider.configs, cfg.WithoutDNS())
+	assertTunConfigReceived(t, provider.configs, cfg.WithoutDNS().WithInferredSourceRoutes())
 
 	w.RemoveLink(inputLink)
 	reconnectedInputLink, _, err := w.AddLink(splitterSnapshot.LeftPorts[0], reconnectedProvider.out)
@@ -156,7 +156,7 @@ func TestTunSplitterClearsConfigOnOutputDisconnectAndReplaysOnInputReconnect(t *
 		t.Fatalf("AddLink reconnected input: %v", err)
 	}
 	_ = reconnectedInputLink
-	assertTunConfigReceived(t, reconnectedProvider.configs, cfg.WithoutDNS())
+	assertTunConfigReceived(t, reconnectedProvider.configs, cfg.WithoutDNS().WithInferredSourceRoutes())
 
 	w.RemoveLink(outputLink)
 	assertTunConfigReceived(t, reconnectedProvider.configs, TunConfig{})

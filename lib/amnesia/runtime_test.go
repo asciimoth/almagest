@@ -154,12 +154,15 @@ func TestAmnesiaSetsInterfaceAddressesBeforeTrackedPeerUpsert(t *testing.T) {
 	req := amnesiaRuntimeRequest{
 		config: node.config, controller: controller, network: apiNetwork,
 		nodeName: "Amnesia", ctx: context.Background(),
-		setInterfaceConfig: func(_ context.Context, generation uint64, addresses []string, dns string) error {
+		setInterfaceConfig: func(_ context.Context, generation uint64, addresses, routes []string, dns string) error {
 			if generation != node.generation.Load() {
 				t.Fatalf("interface config generation = %d, want %d", generation, node.generation.Load())
 			}
 			if !slices.Equal(addresses, profile.Interface.Addresses) {
 				t.Fatalf("interface addresses = %v, want %v", addresses, profile.Interface.Addresses)
+			}
+			if !slices.Equal(routes, profile.Peer.AllowedIPs) {
+				t.Fatalf("interface routes = %v, want %v", routes, profile.Peer.AllowedIPs)
 			}
 			if dns != profile.Interface.DNS[0] {
 				t.Fatalf("interface DNS = %q, want %q", dns, profile.Interface.DNS[0])

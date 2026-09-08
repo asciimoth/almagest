@@ -11,10 +11,10 @@ require (
 	github.com/asciimoth/configer/hujson v0.3.1
 	github.com/asciimoth/formular v0.3.5
 	github.com/asciimoth/gonnect v0.47.0
-	github.com/asciimoth/gonnect-netstack v0.5.2
+	github.com/asciimoth/gonnect-netstack v0.6.0
 	github.com/asciimoth/pasta/pasta v0.10.0
 	github.com/asciimoth/socksgo v0.4.12
-	github.com/asciimoth/sysnet-linux v0.2.19
+	github.com/asciimoth/sysnet-linux v0.2.20
 	github.com/coder/websocket v1.8.14
 	github.com/joho/godotenv v1.5.1
 	github.com/kataras/golog v0.1.15
@@ -32,8 +32,8 @@ require (
 	github.com/asciimoth/persist v0.2.0 // indirect
 	github.com/asciimoth/putback v0.3.0 // indirect
 	github.com/asciimoth/tuntap v0.3.30 // indirect
-	github.com/asciimoth/wgo v0.7.0 // indirect
-	github.com/asciimoth/wgo-tailscale v0.3.1 // indirect
+	github.com/asciimoth/wgo v0.7.1 // indirect
+	github.com/asciimoth/wgo-tailscale v0.3.2 // indirect
 	github.com/cilium/ebpf v0.22.0 // indirect
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/google/btree v1.1.2 // indirect

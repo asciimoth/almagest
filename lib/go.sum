@@ -10,8 +10,8 @@ github.com/asciimoth/formular v0.3.5 h1:l8DHWUgr97cRixdrSICmuGQ4BhoE5CfFg8oERX5g
 github.com/asciimoth/formular v0.3.5/go.mod h1:6VBEx4KTWp18mpkQn7d3Buoojzf9II5+ZAVuc4DF8AE=
 github.com/asciimoth/gonnect v0.47.0 h1:DSdj278Xy2/sG/SywaXk9jPMD7RubmUvSRtD8eg8VYc=
 github.com/asciimoth/gonnect v0.47.0/go.mod h1:W5OAXiqFw48MTm54+dPua9calyVjez/uqjcbrQwcvPU=
-github.com/asciimoth/gonnect-netstack v0.5.2 h1:OfbhZgPWH29fOoGOQLldAN70yssEhGLeybftMB5xBz0=
-github.com/asciimoth/gonnect-netstack v0.5.2/go.mod h1:jX1x/qtUikHKd9KMVz1QMiwKbngsEOz0b2WNK9SZay8=
+github.com/asciimoth/gonnect-netstack v0.6.0 h1:sbHdIn4JYKFlUCeTfWAujSA+jgcIyMRZkt68P4RiuVA=
+github.com/asciimoth/gonnect-netstack v0.6.0/go.mod h1:jX1x/qtUikHKd9KMVz1QMiwKbngsEOz0b2WNK9SZay8=
 github.com/asciimoth/ident v0.2.0 h1:G6qaTnkxTH+idV5YzJ7AvgC2nLQDE/aoV7rPCOtN07I=
 github.com/asciimoth/ident v0.2.0/go.mod h1:JNNFnfM7/hdcXVkFBBOAU/vpJM+0gucYaAYwB694bT0=
 github.com/asciimoth/pasta/pasta v0.10.0 h1:wTwhhkQnkmcTXvRbXyPmoyIzp2q1LrgkGDzMa0gMPjI=
@@ -24,10 +24,10 @@ github.com/asciimoth/socksgo v0.4.12 h1:3PVo5uRIyJCeei9+EQXUQCKRFnERmsIF4QUJDYK+
 github.com/asciimoth/socksgo v0.4.12/go.mod h1:tWVz7MuueZIZPAERY22mT/T9ZXmyhkI7bbgVS1iavCY=
 github.com/asciimoth/tuntap v0.3.30 h1:ezpxxHRF5CIzA+R3hZyXE6UMa7YJecFjlzBnD7jT/kk=
 github.com/asciimoth/tuntap v0.3.30/go.mod h1:EqFsmjUHRovceZuHFSvesQjypSGO0wy5/iI436zHRkw=
-github.com/asciimoth/wgo v0.7.0 h1:T3clpkNkrDti9Y2CllfZaXkEyn7DVo7XIHcnkdHMVCU=
-github.com/asciimoth/wgo v0.7.0/go.mod h1:2rPMrYdgKfKxqX3bnbWlXzCkOWiJPcTjfPdh+qegZS4=
-github.com/asciimoth/wgo-tailscale v0.3.1 h1:NeSEPlXuEqU56MLyTUt2TMz40VAlCP+teAn1V5wDAGQ=
-github.com/asciimoth/wgo-tailscale v0.3.1/go.mod h1:5x7RE6RQ+zRPi+h5RZSeSwYjiGlN8b2XzJCgjr1KjGY=
+github.com/asciimoth/wgo v0.7.1 h1:FO8XbrNcgZT9YZD6/MyWZQrJrQlZoEVxsJ/3P/pf1B8=
+github.com/asciimoth/wgo v0.7.1/go.mod h1:00CqpPCr2t0AXtOwE0hNVw9Vl9nrN1sp/LqxC+ZVwdg=
+github.com/asciimoth/wgo-tailscale v0.3.2 h1:pif4/+qS0N0k9DQABybFt+2PJulX54AkEzO75e9hXrA=
+github.com/asciimoth/wgo-tailscale v0.3.2/go.mod h1:PHjQ4icEiWTC1hawH0/48RCE8DiUP3tP5QZzNRG2asc=
 github.com/coder/websocket v1.8.14 h1:9L0p0iKiNOibykf283eHkKUHHrpG7f65OE3BhhO7v9g=
 github.com/coder/websocket v1.8.14/go.mod h1:NX3SzP+inril6yawo5CQXx8+fk145lPDC6pumgx0mVg=
 github.com/google/btree v1.1.2 h1:xf4v41cLI2Z6FxbKm+8Bu+m8ifhj15JuZ9sa0jZCMUU=

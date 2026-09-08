@@ -4,6 +4,11 @@ TailscaleCtrl connects a shared **WireGuard** node to a Tailscale-compatible
 control server. It uses the WireGuard node's existing private key and owns only
 the Tailscale peers and named relay transport that it adds.
 
+The controller sends its current interface addresses and applied peer routes
+to the WireGuard node. WireGuard forwards them as TUN configuration. This lets
+a userspace TUN select the Tailscale address for Tailscale destinations when
+the TUN combines more than one upstream route.
+
 The **Network** input carries control API requests, DNS lookup for control
 hosts, STUN and DISCO discovery, and DERP-over-TLS relay traffic. Direct peer
 UDP traffic uses the WireGuard node's default transport and therefore uses the

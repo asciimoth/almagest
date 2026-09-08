@@ -72,6 +72,7 @@ type (
 	NetworkPayload    = links.NetworkPayload
 	TunPayload        = links.TunPayload
 	TunConfig         = links.TunConfig
+	TunSourceRoute    = links.TunSourceRoute
 	TunConfigByLink   = links.TunConfigByLink
 	TunOutputCache    = links.TunOutputCache
 	e2eSecretsStorage = e2etest.SecretsStorage

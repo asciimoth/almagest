@@ -158,8 +158,8 @@ func (n *debugLogTunNode) logTunConfig(link uint64, cfg TunConfig) {
 		return
 	}
 	n.Logger.Debugf(
-		"tun.TunConfig link=%d addrs=%v routes=%v mtu=%d dns=%q",
-		link, cfg.Addrs, cfg.Routes, cfg.MTU, cfg.DNS,
+		"tun.TunConfig link=%d addrs=%v routes=%v sourceRoutes=%v mtu=%d dns=%q",
+		link, cfg.Addrs, cfg.Routes, cfg.SourceRoutes, cfg.MTU, cfg.DNS,
 	)
 }
 

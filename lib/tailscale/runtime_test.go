@@ -15,6 +15,7 @@ import (
 	wgdevice "github.com/asciimoth/wgo/device"
 
 	"github.com/asciimoth/almagest/lib/nodekit"
+	wireguardnodes "github.com/asciimoth/almagest/lib/wireguard"
 )
 
 func TestReconcileUsesControlNetworkAndWireGuardDefaultUDPForDirectPeers(t *testing.T) {
@@ -176,6 +177,37 @@ func TestTailscaleStateWaitsForCurrentWireGuardConfig(t *testing.T) {
 	})
 	if got := node.stateText(); got != "error" {
 		t.Fatalf("state after WireGuard apply failure = %q", got)
+	}
+}
+
+func TestTailscaleWGInterfaceConfigIncludesAppliedPeerRoutes(t *testing.T) {
+	snapshot := wgotailscale.Snapshot{Network: wgotailscale.NetworkConfiguration{
+		Addresses: []netip.Prefix{
+			netip.MustParsePrefix("fd7a:115c:a1e0::84/128"),
+			netip.MustParsePrefix("100.82.132.84/32"),
+			netip.MustParsePrefix("100.82.132.84/32"),
+			{},
+		},
+		Routes: []wgotailscale.Route{
+			{Prefix: netip.MustParsePrefix("fd7a:115c:a1e0::/48")},
+			{Prefix: netip.MustParsePrefix("100.97.143.122/32")},
+			{Prefix: netip.MustParsePrefix("10.20.0.0/16")},
+			{Prefix: netip.MustParsePrefix("100.97.143.122/32")},
+			{},
+		},
+	}}
+	want := wireguardnodes.WGCtrlInterfaceConfig{
+		OwnedIPs: []string{"100.82.132.84/32", "fd7a:115c:a1e0::84/128"},
+		Routes:   []string{"10.20.0.0/16", "100.97.143.122/32", "fd7a:115c:a1e0::/48"},
+	}
+	if got := tailscaleWGInterfaceConfig(snapshot); !sameWGConfig(got, want) {
+		t.Fatalf("WireGuard interface config = %#v, want %#v", got, want)
+	}
+
+	changedRoutes := want.Clone()
+	changedRoutes.Routes = append(changedRoutes.Routes, "192.0.2.0/24")
+	if sameWGConfig(want, changedRoutes) {
+		t.Fatal("configs with different route sets compare equal")
 	}
 }
 

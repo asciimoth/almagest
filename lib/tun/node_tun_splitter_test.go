@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"net/netip"
 	"slices"
 	"sync"
 	"testing"
@@ -13,9 +14,11 @@ import (
 	"github.com/asciimoth/almagest/lib/logging"
 	"github.com/asciimoth/almagest/lib/storage"
 	"github.com/asciimoth/almagest/lib/testkit"
+	"github.com/asciimoth/almagest/lib/testkit/networktest"
 	"github.com/asciimoth/bufpool"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
+	"github.com/asciimoth/gonnect"
 	"github.com/asciimoth/gonnect/dns"
 	"github.com/asciimoth/gonnect/sysnet"
 	sysnetdebug "github.com/asciimoth/gonnect/sysnet/debug"
@@ -112,10 +115,15 @@ func TestTunSplitterNodeForwardsMergedTunConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddNodeByClass TunSplitter: %v", err)
 	}
-	consumer := &tunPayloadReceiver{events: make(chan TunPayload, 2)}
-	consumerID, err := w.AddNode(consumer, "test/TunReceiver", "consumer")
+	defaultConsumer := &tunPayloadReceiver{events: make(chan TunPayload, 2)}
+	defaultConsumerID, err := w.AddNode(defaultConsumer, "test/TunReceiver", "default consumer")
 	if err != nil {
-		t.Fatalf("AddNode consumer: %v", err)
+		t.Fatalf("AddNode default consumer: %v", err)
+	}
+	tailnetConsumer := &tunPayloadReceiver{events: make(chan TunPayload, 2)}
+	tailnetConsumerID, err := w.AddNode(tailnetConsumer, "test/TunReceiver", "tailnet consumer")
+	if err != nil {
+		t.Fatalf("AddNode tailnet consumer: %v", err)
 	}
 
 	w.SendNodeFormularMsg(splitter, formular.FormApplyMessage{
@@ -130,15 +138,280 @@ func TestTunSplitterNodeForwardsMergedTunConfig(t *testing.T) {
 	}
 	discardTunConfig(t, provider.configs)
 
-	outputLink, _, err := w.AddLink(consumer.in, splitterSnapshot.RightPorts[0])
+	defaultLink, _, err := w.AddLink(defaultConsumer.in, splitterSnapshot.RightPorts[0])
 	if err != nil {
-		t.Fatalf("AddLink consumer->splitter: %v", err)
+		t.Fatalf("AddLink default consumer->splitter: %v", err)
 	}
-	w.EmitEvent(consumerID, outputLink, TunConfig{Addrs: []string{"10.0.0.2/32"}, MTU: 1400, DNS: "8.8.8.8"})
-	assertTunConfigReceived(t, provider.configs, TunConfig{Addrs: []string{"10.0.0.2/32"}, MTU: 1400})
+	tailnetLink, _, err := w.AddLink(tailnetConsumer.in, splitterSnapshot.RightPorts[1])
+	if err != nil {
+		t.Fatalf("AddLink tailnet consumer->splitter: %v", err)
+	}
+
+	defaultConfig := TunConfig{
+		Addrs:  []string{"10.20.0.2/32", "2001:db8:ffff::2/128"},
+		Routes: []string{"0.0.0.0/0", "::/0"},
+		MTU:    1400,
+		DNS:    "8.8.8.8",
+	}.WithInferredSourceRoutes()
+	w.EmitEvent(defaultConsumerID, defaultLink, TunConfig{
+		Addrs:  defaultConfig.Addrs,
+		Routes: defaultConfig.Routes,
+		MTU:    defaultConfig.MTU,
+		DNS:    defaultConfig.DNS,
+	})
+	assertTunConfigReceived(t, provider.configs, defaultConfig.WithoutDNS())
+
+	tailnetSpecific := TunSourceRoute{
+		Destination: netip.MustParsePrefix("100.80.0.0/16"),
+		Source:      netip.MustParseAddr("100.80.0.2"),
+	}
+	tailnetConfig := TunConfig{
+		Addrs: []string{
+			"100.64.0.2/32",
+			"100.80.0.2/32",
+			"fd7a:115c:a1e0::2/128",
+		},
+		Routes: []string{
+			"100.64.0.0/10",
+			"100.80.0.0/16",
+			"fd7a:115c:a1e0::/48",
+		},
+		SourceRoutes: []TunSourceRoute{tailnetSpecific},
+		MTU:          1280,
+		DNS:          "100.100.100.100",
+	}.WithInferredSourceRoutes()
+	w.EmitEvent(tailnetConsumerID, tailnetLink, TunConfig{
+		Addrs:        tailnetConfig.Addrs,
+		Routes:       tailnetConfig.Routes,
+		SourceRoutes: []TunSourceRoute{tailnetSpecific},
+		MTU:          tailnetConfig.MTU,
+		DNS:          tailnetConfig.DNS,
+	})
+	wantMerged := TunConfigByLink{
+		1: defaultConfig.WithoutDNS(),
+		2: tailnetConfig.WithoutDNS(),
+	}.Merge()
+	assertTunConfigReceived(t, provider.configs, wantMerged)
+
+	w.RemoveLink(tailnetLink)
+	assertTunConfigReceived(t, provider.configs, defaultConfig.WithoutDNS())
 
 	w.RemoveLink(inputLink)
-	w.RemoveLink(outputLink)
+	w.RemoveLink(defaultLink)
+}
+
+func TestVTunTunSplitterSelectsSourceAddressForComplexDestinationRoutes(t *testing.T) {
+	w := newVTunTunSplitterTestWorkspace(t)
+	vtunID, err := w.AddNodeByClass(NodeTypeVTun, "vtun")
+	if err != nil {
+		t.Fatalf("AddNodeByClass VTun: %v", err)
+	}
+	splitterID, err := w.AddNodeByClass(NodeTypeTunSplitter, "splitter")
+	if err != nil {
+		t.Fatalf("AddNodeByClass TunSplitter: %v", err)
+	}
+	netReceiver := networktest.NewReceiver(4)
+	if _, err := w.AddNode(netReceiver, "test/NetworkReceiver", "network receiver"); err != nil {
+		t.Fatalf("AddNode network receiver: %v", err)
+	}
+	defaultConsumer := &tunPayloadReceiver{events: make(chan TunPayload, 8)}
+	defaultConsumerID, err := w.AddNode(defaultConsumer, "test/TunReceiver", "default consumer")
+	if err != nil {
+		t.Fatalf("AddNode default consumer: %v", err)
+	}
+	tailnetConsumer := &tunPayloadReceiver{events: make(chan TunPayload, 8)}
+	tailnetConsumerID, err := w.AddNode(tailnetConsumer, "test/TunReceiver", "tailnet consumer")
+	if err != nil {
+		t.Fatalf("AddNode tailnet consumer: %v", err)
+	}
+
+	w.SendNodeFormularMsg(splitterID, formular.FormApplyMessage{
+		MessageBase: testkit.FormMessageBase(formular.MessageFormApply, splitterID),
+		BlockID:     TunSplitterConfigBlockID,
+		Values: map[string]any{"rules": "SNET4 100.64.0.0/10\nSLOT 2\n\n" +
+			"SNET6 fd7a:115c:a1e0::/48\nSLOT 2\n\nTRUE\nSLOT 1\n"},
+	})
+	vtunSnapshot := testkit.MustNodeSnapshot(t, w, vtunID)
+	splitterSnapshot := testkit.MustNodeSnapshot(t, w, splitterID)
+	if _, _, err := w.AddLink(vtunSnapshot.LeftPorts[0], netReceiver.In); err != nil {
+		t.Fatalf("AddLink VTun network: %v", err)
+	}
+	_ = networktest.ReceivePayload(t, netReceiver.Events)
+	if _, _, err := w.AddLink(splitterSnapshot.LeftPorts[0], vtunSnapshot.RightPorts[0]); err != nil {
+		t.Fatalf("AddLink VTun->TunSplitter: %v", err)
+	}
+	defaultLink, _, err := w.AddLink(defaultConsumer.in, splitterSnapshot.RightPorts[0])
+	if err != nil {
+		t.Fatalf("AddLink default consumer: %v", err)
+	}
+	tailnetLink, _, err := w.AddLink(tailnetConsumer.in, splitterSnapshot.RightPorts[1])
+	if err != nil {
+		t.Fatalf("AddLink tailnet consumer: %v", err)
+	}
+	defaultFrontend := receiveTunPayload(t, defaultConsumer.events).Tun
+	tailnetFrontend := receiveTunPayload(t, tailnetConsumer.events).Tun
+
+	default4 := netip.MustParseAddr("10.20.0.2")
+	default6 := netip.MustParseAddr("2001:db8:ffff::2")
+	carrier4 := netip.MustParseAddr("100.64.0.2")
+	specific4 := netip.MustParseAddr("100.80.0.2")
+	tailnet6 := netip.MustParseAddr("fd7a:115c:a1e0::2")
+	w.EmitEvent(defaultConsumerID, defaultLink, TunConfig{
+		Addrs:  []string{default4.String() + "/32", default6.String() + "/128"},
+		Routes: []string{"0.0.0.0/0", "::/0"},
+	})
+	_ = networktest.ReceivePayload(t, netReceiver.Events)
+	tailnetConfig := TunConfig{
+		Addrs: []string{
+			carrier4.String() + "/32",
+			specific4.String() + "/32",
+			tailnet6.String() + "/128",
+		},
+		Routes: []string{
+			"100.64.0.0/10",
+			"100.80.0.0/16",
+			"fd7a:115c:a1e0::/48",
+		},
+		SourceRoutes: []TunSourceRoute{{
+			Destination: netip.MustParsePrefix("100.80.0.0/16"),
+			Source:      specific4,
+		}},
+	}
+	w.EmitEvent(tailnetConsumerID, tailnetLink, tailnetConfig)
+	network := networktest.ReceivePayload(t, netReceiver.Events).Network
+
+	tests := []struct {
+		name        string
+		destination netip.Addr
+		wantSource  netip.Addr
+		frontend    tun.Tun
+	}{
+		{
+			name:        "IPv4 default route",
+			destination: netip.MustParseAddr("203.0.113.1"),
+			wantSource:  default4,
+			frontend:    defaultFrontend,
+		},
+		{
+			name:        "IPv4 Tailnet route",
+			destination: netip.MustParseAddr("100.97.143.122"),
+			wantSource:  carrier4,
+			frontend:    tailnetFrontend,
+		},
+		{
+			name:        "IPv4 longest-prefix route",
+			destination: netip.MustParseAddr("100.80.0.1"),
+			wantSource:  specific4,
+			frontend:    tailnetFrontend,
+		},
+		{
+			name:        "IPv6 default route",
+			destination: netip.MustParseAddr("2001:db8:1234::1"),
+			wantSource:  default6,
+			frontend:    defaultFrontend,
+		},
+		{
+			name:        "IPv6 Tailnet route",
+			destination: netip.MustParseAddr("fd7a:115c:a1e0::99"),
+			wantSource:  tailnet6,
+			frontend:    tailnetFrontend,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			writeVTunUDPAndAssertPacket(t, network, test.frontend, test.destination, test.wantSource)
+		})
+	}
+
+	// Change only the source policy. VTun must update the existing stack, and
+	// new flows must use the new source without a Network or TUN replacement.
+	tailnetConfig.SourceRoutes = []TunSourceRoute{
+		{Destination: netip.MustParsePrefix("100.80.0.0/16"), Source: specific4},
+		{Destination: netip.MustParsePrefix("100.64.0.0/10"), Source: specific4},
+	}
+	w.EmitEvent(tailnetConsumerID, tailnetLink, tailnetConfig)
+	networktest.AssertNoEvent(t, netReceiver.Events)
+	writeVTunUDPAndAssertPacket(
+		t,
+		network,
+		tailnetFrontend,
+		netip.MustParseAddr("100.97.143.122"),
+		specific4,
+	)
+}
+
+func newVTunTunSplitterTestWorkspace(t *testing.T) *pasta.Workspace {
+	t.Helper()
+	w := pasta.NewWorkspace(logging.NewDebugLogFactory(1024))
+	t.Cleanup(w.Close)
+	runtime := &tunSplitterTestRuntime{sys: &sysnetdebug.System{}}
+	for _, class := range []pasta.NodeClass{
+		VTunClass{Runtime: runtime},
+		TunSplitterClass{Runtime: runtime},
+	} {
+		if err := w.AddNodeClass(class); err != nil {
+			t.Fatalf("AddNodeClass %s: %v", class.ClassName(), err)
+		}
+	}
+	return w
+}
+
+func writeVTunUDPAndAssertPacket(
+	t *testing.T,
+	network gonnect.Network,
+	frontend tun.Tun,
+	destination, wantSource netip.Addr,
+) {
+	t.Helper()
+	networkName := "udp4"
+	if destination.Is6() {
+		networkName = "udp6"
+	}
+	conn, err := network.DialUDP(
+		context.Background(),
+		networkName,
+		"",
+		netip.AddrPortFrom(destination, 42000).String(),
+	)
+	if err != nil {
+		t.Fatalf("DialUDP to %s: %v", destination, err)
+	}
+	defer func() { _ = conn.Close() }()
+	if _, err := conn.Write([]byte("vtun-tun-splitter-source-route")); err != nil {
+		t.Fatalf("UDP Write to %s: %v", destination, err)
+	}
+	packet := readTunPacket(t, frontend)
+	gotSource, gotDestination := tunPacketAddresses(t, packet)
+	if gotDestination != destination {
+		t.Fatalf("packet destination = %s, want %s", gotDestination, destination)
+	}
+	if gotSource != wantSource {
+		t.Fatalf("packet source to %s = %s, want %s", destination, gotSource, wantSource)
+	}
+}
+
+func tunPacketAddresses(t *testing.T, packet []byte) (source, destination netip.Addr) {
+	t.Helper()
+	if len(packet) == 0 {
+		t.Fatal("empty IP packet")
+	}
+	switch packet[0] >> 4 {
+	case 4:
+		if len(packet) < 20 {
+			t.Fatalf("short IPv4 packet: %d bytes", len(packet))
+		}
+		source, _ = netip.AddrFromSlice(packet[12:16])
+		destination, _ = netip.AddrFromSlice(packet[16:20])
+	case 6:
+		if len(packet) < 40 {
+			t.Fatalf("short IPv6 packet: %d bytes", len(packet))
+		}
+		source, _ = netip.AddrFromSlice(packet[8:24])
+		destination, _ = netip.AddrFromSlice(packet[24:40])
+	default:
+		t.Fatalf("unsupported IP version %d", packet[0]>>4)
+	}
+	return source, destination
 }
 
 func TestTunSplitterNodeValidationReportsStatus(t *testing.T) {
@@ -388,6 +661,9 @@ func assertTunConfigReceived(t *testing.T, configs <-chan TunConfig, want TunCon
 	case got := <-configs:
 		testkit.AssertStringSlice(t, got.Addrs, want.Addrs)
 		testkit.AssertStringSlice(t, got.Routes, want.Routes)
+		if !slices.Equal(got.SourceRoutes, want.SourceRoutes) {
+			t.Fatalf("TunConfig SourceRoutes = %#v, want %#v", got.SourceRoutes, want.SourceRoutes)
+		}
 		if got.MTU != want.MTU {
 			t.Fatalf("TunConfig MTU = %d, want %d", got.MTU, want.MTU)
 		}
