@@ -11,6 +11,11 @@ Run all cases:
 just test-e2e
 ```
 
+The runner starts up to four cases in parallel. Set `E2E_JOBS` to change the
+limit. Use `E2E_JOBS=1` for sequential execution. Each case's output stays
+grouped, and the runner reports all case failures after the active cases
+finish.
+
 The `just test-e2e`, `just test-total`, and `just check` paths run the daemon
 with Go coverage instrumentation. This writes raw Go coverage data, a package
 summary, a function report, and a text coverage profile under `e2e/coverage/`.

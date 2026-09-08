@@ -6,6 +6,7 @@ image="${E2E_IMAGE:-almagest-e2e:local}"
 coverage_enabled="${E2E_COVERAGE:-0}"
 coverage_dir="${E2E_COVERAGE_DIR:-$repo_root/e2e/coverage}"
 coverpkg="${E2E_COVERPKG:-github.com/asciimoth/almagest/bin/...,github.com/asciimoth/almagest/lib/...,github.com/asciimoth/almagest/certcat/...}"
+jobs="${E2E_JOBS:-4}"
 build_attempts="${E2E_BUILD_ATTEMPTS:-10}"
 build_retry_delay="${E2E_BUILD_RETRY_DELAY:-1}"
 build_retry_max_delay="${E2E_BUILD_RETRY_MAX_DELAY:-60}"
@@ -14,6 +15,7 @@ image_input_label="io.almagest.e2e.input-sha256"
 cd "$repo_root"
 
 for integer_setting in \
+	"E2E_JOBS=$jobs" \
 	"E2E_BUILD_ATTEMPTS=$build_attempts" \
 	"E2E_BUILD_RETRY_DELAY=$build_retry_delay" \
 	"E2E_BUILD_RETRY_MAX_DELAY=$build_retry_max_delay"; do
@@ -24,6 +26,10 @@ for integer_setting in \
 		exit 2
 	fi
 done
+if ((jobs == 0)); then
+	echo "E2E_JOBS must be greater than zero" >&2
+	exit 2
+fi
 if ((build_attempts == 0)); then
 	echo "E2E_BUILD_ATTEMPTS must be greater than zero" >&2
 	exit 2
@@ -118,10 +124,13 @@ if ((${#cases[@]} == 0)); then
 fi
 
 declare -A built_images=()
+case_images=()
+case_coverage_dirs=()
 source_input_hash="$(hash_image_inputs)"
 
-for case_name in "${cases[@]}"; do
-	echo "==> e2e: $case_name"
+for case_index in "${!cases[@]}"; do
+	case_name="${cases[$case_index]}"
+	echo "==> e2e: preparing $case_name"
 	case_image="$image"
 	case_build_args=("${build_args[@]}")
 	if [[ -f "e2e/cases/$case_name/docker-build-args" ]]; then
@@ -145,19 +154,100 @@ for case_name in "${cases[@]}"; do
 		fi
 		built_images[$case_image]=1
 	fi
-	docker_run_args=()
+	case_images[case_index]="$case_image"
 	if [[ "$coverage_enabled" == "1" ]]; then
-		case_coverage_dir="$coverage_dir/raw/$case_name"
-		mkdir -p "$case_coverage_dir"
-		coverage_inputs+=("$case_coverage_dir")
+		case_coverage_dirs[case_index]="$coverage_dir/raw/$case_name"
+		mkdir -p "${case_coverage_dirs[case_index]}"
+		coverage_inputs+=("${case_coverage_dirs[case_index]}")
+	fi
+done
+
+run_dir="$(mktemp -d "${TMPDIR:-/tmp}/almagest-e2e-run.XXXXXX")"
+declare -A running_cases=()
+case_logs=()
+case_cidfiles=()
+
+cleanup() {
+	local exit_status="$?"
+	local cidfile
+	local container_id
+	local pid
+
+	trap - EXIT INT TERM
+	for pid in "${!running_cases[@]}"; do
+		kill "$pid" 2>/dev/null || true
+	done
+	for pid in "${!running_cases[@]}"; do
+		wait "$pid" 2>/dev/null || true
+	done
+	for cidfile in "$run_dir"/*.cid; do
+		[[ -f "$cidfile" ]] || continue
+		container_id="$(<"$cidfile")"
+		[[ -n "$container_id" ]] || continue
+		docker rm --force "$container_id" >/dev/null 2>&1 || true
+	done
+	rm -rf "$run_dir"
+	exit "$exit_status"
+}
+
+trap cleanup EXIT
+trap 'exit 130' INT TERM
+
+run_case() {
+	local case_index="$1"
+	local case_name="${cases[$case_index]}"
+	local case_image="${case_images[$case_index]}"
+	local docker_run_args=()
+	if [[ "$coverage_enabled" == "1" ]]; then
 		docker_run_args=(
 			-e GOCOVERDIR=/e2e-coverage
-			-v "$case_coverage_dir:/e2e-coverage"
+			-v "${case_coverage_dirs[$case_index]}:/e2e-coverage"
 		)
 	fi
 	# shellcheck disable=SC2086
-	docker run --rm ${E2E_DOCKER_RUN_ARGS:-} "${docker_run_args[@]}" "$case_image" "$case_name"
+	docker run --rm --cidfile "${case_cidfiles[$case_index]}" \
+		${E2E_DOCKER_RUN_ARGS:-} "${docker_run_args[@]}" "$case_image" "$case_name"
+}
+
+next_case=0
+failure_count=0
+failed_cases=()
+
+while ((next_case < ${#cases[@]} || ${#running_cases[@]} > 0)); do
+	while ((next_case < ${#cases[@]} && ${#running_cases[@]} < jobs)); do
+		case_name="${cases[$next_case]}"
+		case_logs[next_case]="$run_dir/$next_case.log"
+		case_cidfiles[next_case]="$run_dir/$next_case.cid"
+		echo "==> e2e: starting $case_name"
+		run_case "$next_case" >"${case_logs[$next_case]}" 2>&1 &
+		running_cases[$!]="$next_case"
+		((next_case += 1))
+	done
+
+	completed_pid=""
+	case_status=0
+	if wait -n -p completed_pid "${!running_cases[@]}"; then
+		case_status=0
+	else
+		case_status=$?
+	fi
+	completed_index="${running_cases[$completed_pid]}"
+	case_name="${cases[$completed_index]}"
+	cat "${case_logs[$completed_index]}"
+	if ((case_status == 0)); then
+		echo "==> e2e: PASS $case_name"
+	else
+		echo "==> e2e: FAIL $case_name (exit $case_status)" >&2
+		failed_cases+=("$case_name")
+		((failure_count += 1))
+	fi
+	unset 'running_cases[$completed_pid]'
 done
+
+if ((failure_count > 0)); then
+	echo "e2e failed: ${failed_cases[*]}" >&2
+	exit 1
+fi
 
 if [[ "$coverage_enabled" == "1" ]]; then
 	input_dirs="$(IFS=,; printf '%s' "${coverage_inputs[*]}")"
