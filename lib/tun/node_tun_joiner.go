@@ -22,7 +22,7 @@ type TunJoinerClass struct {
 func (TunJoinerClass) ClassName() string        { return NodeTypeTunJoiner }
 func (TunJoinerClass) ShortDescription() string { return "TUN joiner" }
 func (TunJoinerClass) LongDescription() string {
-	return "Joins one default almagest/tun endpoint and any number of secondary almagest/tun endpoints using gonnect/tun.Joiner."
+	return "Joins one default almagest/tun endpoint and any number of secondary almagest/tun endpoints using flow-aware gonnect/tun.Joiner routing."
 }
 func (TunJoinerClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: TypeTun, InitialPorts: []pasta.Port{
@@ -70,7 +70,9 @@ func (n *tunJoinerNode) OnInit(w *pasta.Workspace, _ pasta.Logger, id uint64, _ 
 	n.InitBaseNode(w, nil, id)
 	if n.joiner == nil {
 		// Nil spawner is intentional here; see the Gonnect spawner note in helpers.go.
-		n.joiner = tun.NewJoiner(nil, n.pool)
+		n.joiner = tun.NewJoinerWithOptions(nil, n.pool, tun.JoinerOptions{
+			SharedAddressRouting: true,
+		})
 	}
 	if n.secondaryTuns == nil {
 		n.secondaryTuns = map[uint64]tun.Tun{}

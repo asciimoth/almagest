@@ -2,6 +2,7 @@ package tunnodes
 
 import (
 	"errors"
+	"net/netip"
 	"reflect"
 	"strings"
 	"sync"
@@ -60,6 +61,80 @@ func TestTunJoinerForwardsTunConfigToInputsAndClearsOnOutputDisconnect(t *testin
 	w.RemoveLink(outputLink)
 	assertTunConfigReceived(t, defaultProvider.configs, TunConfig{})
 	assertTunConfigReceived(t, secondaryProvider.configs, TunConfig{})
+}
+
+func TestTunJoinerReplaysCurrentTunConfigToLateAndReplacementInputs(t *testing.T) {
+	w := newTunJoinerConfigFlowWorkspace(t)
+	joiner, err := w.AddNodeByClass(NodeTypeTunJoiner, "joiner")
+	if err != nil {
+		t.Fatalf("AddNodeByClass TunJoiner: %v", err)
+	}
+	consumer := &tunPayloadReceiver{events: make(chan TunPayload, 2)}
+	consumerID, err := w.AddNode(consumer, "test/TunReceiver", "consumer")
+	if err != nil {
+		t.Fatalf("AddNode consumer: %v", err)
+	}
+	joinerSnapshot := testkit.MustNodeSnapshot(t, w, joiner)
+	outputLink, _, err := w.AddLink(consumer.in, joinerSnapshot.RightPorts[0])
+	if err != nil {
+		t.Fatalf("AddLink output: %v", err)
+	}
+	_ = receiveTunPayload(t, consumer.events)
+
+	cfg := TunConfig{
+		Addrs:  []string{"10.0.0.2/32", "fd00::2/128"},
+		Routes: []string{"10.10.0.0/24", "fd00:10::/64"},
+		SourceRoutes: []TunSourceRoute{
+			{
+				Destination: netip.MustParsePrefix("10.10.0.0/24"),
+				Source:      netip.MustParseAddr("10.0.0.2"),
+			},
+			{
+				Destination: netip.MustParsePrefix("fd00:10::/64"),
+				Source:      netip.MustParseAddr("fd00::2"),
+			},
+		},
+		MTU: 1280,
+		DNS: "9.9.9.9",
+	}
+	want := cfg.Clone()
+	w.EmitEvent(consumerID, outputLink, cfg)
+	cfg.Addrs[0] = "192.0.2.99/32"
+	cfg.Routes[0] = "192.0.2.0/24"
+	cfg.SourceRoutes[0].Source = netip.MustParseAddr("192.0.2.99")
+
+	defaultProvider := &tunConfigReceiverNode{configs: make(chan TunConfig, 8)}
+	if _, err := w.AddNode(defaultProvider, "test/TunConfigReceiver", "default late"); err != nil {
+		t.Fatalf("AddNode default provider: %v", err)
+	}
+	if _, _, err := w.AddLink(joinerSnapshot.LeftPorts[0], defaultProvider.out); err != nil {
+		t.Fatalf("AddLink default provider: %v", err)
+	}
+	assertTunConfigReceived(t, defaultProvider.configs, want)
+
+	secondaryProvider := &tunConfigReceiverNode{configs: make(chan TunConfig, 8)}
+	if _, err := w.AddNode(secondaryProvider, "test/TunConfigReceiver", "secondary late"); err != nil {
+		t.Fatalf("AddNode secondary provider: %v", err)
+	}
+	secondaryLink, _, err := w.AddLink(joinerSnapshot.LeftPorts[1], secondaryProvider.out)
+	if err != nil {
+		t.Fatalf("AddLink secondary provider: %v", err)
+	}
+	assertTunConfigReceived(t, secondaryProvider.configs, want)
+
+	w.RemoveLink(secondaryLink)
+	replacementProvider := &tunConfigReceiverNode{configs: make(chan TunConfig, 8)}
+	if _, err := w.AddNode(replacementProvider, "test/TunConfigReceiver", "secondary replacement"); err != nil {
+		t.Fatalf("AddNode replacement provider: %v", err)
+	}
+	if _, _, err := w.AddLink(joinerSnapshot.LeftPorts[1], replacementProvider.out); err != nil {
+		t.Fatalf("AddLink replacement provider: %v", err)
+	}
+	assertTunConfigReceived(t, replacementProvider.configs, want)
+
+	w.RemoveLink(outputLink)
+	assertTunConfigReceived(t, defaultProvider.configs, TunConfig{})
+	assertTunConfigReceived(t, replacementProvider.configs, TunConfig{})
 }
 
 func TestDebugLogTunForwardsTunConfigAndClearsOnOutputDisconnect(t *testing.T) {

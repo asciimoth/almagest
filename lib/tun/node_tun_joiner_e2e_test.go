@@ -24,6 +24,8 @@ const (
 	tunJoinerE2ESecondaryClientAddr1 = "10.2.0.1"
 	tunJoinerE2ESecondaryClientAddr2 = "10.7.160.1"
 	tunJoinerE2EServerAddr           = "10.210.148.1"
+	tunJoinerE2EServerAddr2          = "10.210.148.2"
+	tunJoinerE2EOverlayServerAddr    = "100.97.143.122"
 )
 
 func TestTunJoinerE2EVTunHTTPParallelClients(t *testing.T) {
@@ -87,6 +89,232 @@ func TestTunJoinerE2EJoinsMultipleSecondariesAndReattaches(t *testing.T) {
 	e.WaitNodeLabel(joiner, "joined default + 2 secondary")
 	defaultReplacementPeer := providers.peer(t, defaultReplacement)
 	assertTunPacketTransferred(t, output, defaultReplacementPeer, testIPv4Packet(clientIP, unknownIP))
+}
+
+func TestTunJoinerE2ERoutesSharedAddressTCPAndUDPFlowsToTheirOwners(t *testing.T) {
+	e, providers, sinks := newTunJoinerE2E(t)
+	joiner := e.AddNode(NodeTypeTunJoiner, "joiner")
+	defaultProvider := e.AddNode(testTunProviderNodeType, "default")
+	secondaryProvider := e.AddNode(testTunProviderNodeType, "secondary")
+	sink := e.AddNode(testTunSinkNodeType, "sink")
+
+	e.MustAddTypedLinkByPortName(TypeTun, joiner, "left", "Default", defaultProvider, "right", "Tun")
+	e.MustAddTypedLinkByPortName(TypeTun, joiner, "left", "Secondary", secondaryProvider, "right", "Tun")
+	e.MustAddTypedLinkByPortName(TypeTun, sink, "left", "Tun", joiner, "right", "Tun")
+	e.WaitNodeLabel(joiner, "joined default + 1 secondary")
+
+	defaultPeer := providers.peer(t, defaultProvider)
+	secondaryPeer := providers.peer(t, secondaryProvider)
+	output := sinks.tun(t, sink)
+	sharedIP := [4]byte{10, 90, 0, 1}
+	remoteIP := [4]byte{10, 210, 148, 1}
+
+	flows := []struct {
+		name       string
+		owner      tun.Tun
+		protocol   uint8
+		localPort  uint16
+		remotePort uint16
+	}{
+		{name: "default TCP", owner: defaultPeer, protocol: 6, localPort: 40001, remotePort: 443},
+		{name: "default UDP", owner: defaultPeer, protocol: 17, localPort: 40002, remotePort: 53},
+		{name: "secondary TCP", owner: secondaryPeer, protocol: 6, localPort: 41001, remotePort: 443},
+		{name: "secondary UDP", owner: secondaryPeer, protocol: 17, localPort: 41002, remotePort: 51820},
+	}
+	for _, flow := range flows {
+		outbound := testIPv4TransportPacket(
+			sharedIP,
+			remoteIP,
+			flow.protocol,
+			flow.localPort,
+			flow.remotePort,
+		)
+		assertTunPacketTransferred(t, flow.owner, output, outbound)
+	}
+
+	// The secondary input sent the last packet from the shared address. Each
+	// response must still return to the owner of its transport flow.
+	for _, flow := range flows {
+		flow := flow
+		t.Run(flow.name, func(t *testing.T) {
+			response := testIPv4TransportPacket(
+				remoteIP,
+				sharedIP,
+				flow.protocol,
+				flow.remotePort,
+				flow.localPort,
+			)
+			assertTunPacketTransferred(t, output, flow.owner, response)
+		})
+	}
+}
+
+func TestTunJoinerE2EVTunSplitterSharedAddressRouting(t *testing.T) {
+	for _, secondaryFirst := range []bool{false, true} {
+		name := "default connected first"
+		if secondaryFirst {
+			name = "secondary connected first"
+		}
+		t.Run(name, func(t *testing.T) {
+			f := setupTunJoinerSplitterSharedAddressE2E(t, secondaryFirst)
+			f.assertParallelRequestsWork()
+			f.WaitNodeLabel(f.joiner, "joined default + 1 secondary")
+			f.WaitNodeLabel(f.routeSplitter, "splitting")
+		})
+	}
+}
+
+type tunJoinerSplitterSharedAddressE2EFixture struct {
+	*httpE2E
+
+	joiner        uint64
+	routeSplitter uint64
+	clients       []uint64
+	responses     []string
+}
+
+func setupTunJoinerSplitterSharedAddressE2E(t *testing.T, secondaryFirst bool) tunJoinerSplitterSharedAddressE2EFixture {
+	t.Helper()
+	e := newHTTPE2E(t)
+	f := tunJoinerSplitterSharedAddressE2EFixture{
+		httpE2E:   e,
+		clients:   make([]uint64, 0, 3),
+		responses: []string{"default public", "overlay", "secondary public"},
+	}
+	port := httpTestPort()
+	f.joiner = e.AddNode(NodeTypeTunJoiner, "joiner")
+	f.routeSplitter = e.AddNode(NodeTypeTunSplitter, "route-splitter")
+	publicSplitter := e.AddNode(NodeTypeTunSplitter, "public-splitter")
+	applicationVTun := e.AddNode(NodeTypeVTun, "application-vtun")
+	transportVTun := e.AddNode(NodeTypeVTun, "transport-vtun")
+	overlayCopy := e.AddNode(NodeTypeTunCopy, "overlay-copy")
+	overlayVTun := e.AddNode(NodeTypeVTun, "overlay-server-vtun")
+	publicCopies := []uint64{
+		e.AddNode(NodeTypeTunCopy, "public-copy-1"),
+		e.AddNode(NodeTypeTunCopy, "public-copy-2"),
+	}
+	publicVTuns := []uint64{
+		e.AddNode(NodeTypeVTun, "public-server-vtun-1"),
+		e.AddNode(NodeTypeVTun, "public-server-vtun-2"),
+	}
+	serverAddrs := []string{
+		tunJoinerE2EServerAddr,
+		tunJoinerE2EOverlayServerAddr,
+		tunJoinerE2EServerAddr2,
+	}
+	servers := make([]uint64, 0, len(serverAddrs))
+	for i, address := range serverAddrs {
+		response := e.addStringConstant(fmt.Sprintf("response-%d", i+1), f.responses[i])
+		server := e.addHTTPServerOnHost(fmt.Sprintf("server-%d", i+1), address, port)
+		e.MustAddTypedLinkByPortName(std.TypeString, response, "right", "output", server, "left", "Response")
+		servers = append(servers, server)
+		f.clients = append(f.clients, e.addHTTPClientToURL(
+			fmt.Sprintf("client-%d", i+1),
+			fmt.Sprintf("http://%s:%d/", address, port),
+		))
+	}
+	e.SubscribeMenus(append(
+		[]uint64{f.routeSplitter, publicSplitter, applicationVTun, transportVTun, overlayVTun},
+		append(publicVTuns, append(servers, f.clients...)...)...,
+	)...)
+	for i, client := range f.clients {
+		e.waitClientRequestField(client, "url", fmt.Sprintf("http://%s:%d/", serverAddrs[i], port))
+	}
+
+	applyTunSplitterE2ERules(e, f.routeSplitter, fmt.Sprintf(
+		"SNET4 %s/32\nSLOT 2\n\nTRUE\nSLOT 1",
+		tunJoinerE2EOverlayServerAddr,
+	))
+	applyTunSplitterE2ERules(e, publicSplitter, fmt.Sprintf(
+		"SNET4 %s/32\nSLOT 1\n\nSNET4 %s/32\nSLOT 2",
+		tunJoinerE2EServerAddr,
+		tunJoinerE2EServerAddr2,
+	))
+	e.applyTunCopyVTunConfig(applicationVTun, "application-vtun", tunJoinerE2EDefaultClientAddr+"/24")
+	e.applyTunCopyVTunConfig(transportVTun, "transport-vtun", tunJoinerE2EDefaultClientAddr+"/24")
+	e.applyTunCopyVTunConfig(overlayVTun, "overlay-server-vtun", tunJoinerE2EOverlayServerAddr+"/24")
+	e.applyTunCopyVTunConfig(publicVTuns[0], "public-server-vtun-1", tunJoinerE2EServerAddr+"/24")
+	e.applyTunCopyVTunConfig(publicVTuns[1], "public-server-vtun-2", tunJoinerE2EServerAddr2+"/24")
+
+	e.connectTunByPortName(f.routeSplitter, "left", "Tun", applicationVTun, "right", "Tun")
+	connectDefault := func() {
+		e.connectTunByPortName(f.joiner, "left", "Default", f.routeSplitter, "right", "slot 1")
+	}
+	connectSecondary := func() {
+		e.connectTunByPortName(f.joiner, "left", "Secondary", transportVTun, "right", "Tun")
+	}
+	if secondaryFirst {
+		connectSecondary()
+		connectDefault()
+	} else {
+		connectDefault()
+		connectSecondary()
+	}
+	e.connectTunByPortName(overlayCopy, "left", "TunA", f.routeSplitter, "right", "slot 2")
+	e.connectTunByPortName(overlayCopy, "left", "TunB", overlayVTun, "right", "Tun")
+	e.connectTunByPortName(publicSplitter, "left", "Tun", f.joiner, "right", "Tun")
+	for i := range publicCopies {
+		e.connectTunByPortName(publicCopies[i], "left", "TunA", publicSplitter, "right", fmt.Sprintf("slot %d", i+1))
+		e.connectTunByPortName(publicCopies[i], "left", "TunB", publicVTuns[i], "right", "Tun")
+	}
+
+	e.connectByPortName(applicationVTun, "left", "Network", f.clients[0], "right", "Network")
+	e.connectByPortName(applicationVTun, "left", "Network", f.clients[1], "right", "Network")
+	e.connectByPortName(transportVTun, "left", "Network", f.clients[2], "right", "Network")
+	e.connectByPortName(publicVTuns[0], "left", "Network", servers[0], "right", "Network")
+	e.connectByPortName(overlayVTun, "left", "Network", servers[1], "right", "Network")
+	e.connectByPortName(publicVTuns[1], "left", "Network", servers[2], "right", "Network")
+
+	e.WaitNodeLabel(f.joiner, "joined default + 1 secondary")
+	e.WaitNodeLabel(f.routeSplitter, "splitting")
+	e.WaitNodeLabel(publicSplitter, "splitting")
+	e.WaitNodeLabel(overlayCopy, "copying")
+	for _, copy := range publicCopies {
+		e.WaitNodeLabel(copy, "copying")
+	}
+	for i, server := range servers {
+		e.waitServerListening(server, fmt.Sprintf("%s:%d", serverAddrs[i], port))
+	}
+	return f
+}
+
+func applyTunSplitterE2ERules(e *httpE2E, splitter uint64, rules string) {
+	e.T.Helper()
+	e.Engine.SendNodeFormularMsg(E2EWorkspace, splitter, formular.FormApplyMessage{
+		MessageBase: FormMessageBase(formular.MessageFormApply, splitter),
+		BlockID:     "config",
+		Values:      map[string]any{"rules": rules},
+	})
+}
+
+func (f tunJoinerSplitterSharedAddressE2EFixture) assertParallelRequestsWork() {
+	f.T.Helper()
+	start := make(chan struct{})
+	errCh := make(chan error, len(f.clients))
+	var wg sync.WaitGroup
+	for i, client := range f.clients {
+		client := client
+		response := f.responses[i]
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			f.Engine.SendNodeFormularMsg(E2EWorkspace, client, formular.ButtonPressMessage{
+				MessageBase: FormMessageBase(formular.MessageButtonPress, client),
+				BlockID:     "request",
+				ButtonID:    "send",
+			})
+			errCh <- f.waitClientResponseResult(client, "200 OK", response)
+		}()
+	}
+	close(start)
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		if err != nil {
+			f.T.Fatal(err)
+		}
+	}
 }
 
 func TestTunJoinerE2EClassPortsAndNoMenu(t *testing.T) {
@@ -464,6 +692,18 @@ func testIPv4Packet(src, dst [4]byte) []byte {
 	return p
 }
 
+func testIPv4TransportPacket(src, dst [4]byte, protocol uint8, srcPort, dstPort uint16) []byte {
+	p := make([]byte, 24)
+	p[0] = 0x45
+	binary.BigEndian.PutUint16(p[2:4], uint16(len(p)))
+	p[9] = protocol
+	copy(p[12:16], src[:])
+	copy(p[16:20], dst[:])
+	binary.BigEndian.PutUint16(p[20:22], srcPort)
+	binary.BigEndian.PutUint16(p[22:24], dstPort)
+	return p
+}
+
 func TestTunJoinerE2ERejectsSecondDefaultLink(t *testing.T) {
 	e, _, _ := newTunJoinerE2E(t)
 	joiner := e.AddNode(NodeTypeTunJoiner, "joiner")
@@ -474,5 +714,18 @@ func TestTunJoinerE2ERejectsSecondDefaultLink(t *testing.T) {
 	_, _, err := e.Engine.AddLink(E2EWorkspace, e.LeftPort(joiner, "Default"), e.RightPort(default2, "Tun"))
 	if !errors.Is(err, ErrTunPortBusy) {
 		t.Fatalf("second Default link error = %v, want ErrTunPortBusy", err)
+	}
+}
+
+func TestTunJoinerE2ERejectsSecondOutputLink(t *testing.T) {
+	e, _, _ := newTunJoinerE2E(t)
+	joiner := e.AddNode(NodeTypeTunJoiner, "joiner")
+	sink1 := e.AddNode(testTunSinkNodeType, "sink-1")
+	sink2 := e.AddNode(testTunSinkNodeType, "sink-2")
+
+	e.MustAddTypedLinkByPortName(TypeTun, sink1, "left", "Tun", joiner, "right", "Tun")
+	_, _, err := e.Engine.AddLink(E2EWorkspace, e.LeftPort(sink2, "Tun"), e.RightPort(joiner, "Tun"))
+	if !errors.Is(err, ErrTunPortBusy) {
+		t.Fatalf("second output link error = %v, want ErrTunPortBusy", err)
 	}
 }
