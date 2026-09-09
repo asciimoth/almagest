@@ -12,6 +12,7 @@ func Classes(runtime nodekit.Runtime) []pasta.NodeClass {
 		DNS2NetworkClass{Runtime: runtime},
 		DNSCacheClass{Runtime: runtime},
 		DNSClientClass{Runtime: runtime},
+		DNSFallbackClass{Runtime: runtime},
 		DNSInjectClass{Runtime: runtime},
 		DNSQueryClass{Runtime: runtime},
 		DNSRouterClass{Runtime: runtime},
