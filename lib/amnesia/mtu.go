@@ -69,12 +69,17 @@ func (n *managedAmnesiaNode) setManagedNetworkMTU(provider links.DatagramMTUProv
 	n.networkMTUGeneration++
 	generation := n.networkMTUGeneration
 	n.unsubscribeNetworkMTU = provider.SubscribeDatagramMTU(func(next uint64) {
-		if n.W != nil && n.ID != 0 {
-			n.W.SendInbox(pasta.InboxMessage{ReceiverNode: n.ID, Payload: managedAmnesiaMTUChanged{
-				generation: generation,
-				revision:   next,
-			}})
-		}
+		// A provider can change during a graph callback while Pasta holds the
+		// workspace lock. Cross the asynchronous inbox boundary without trying
+		// to acquire that lock from the provider callback.
+		go func() {
+			if n.W != nil && n.ID != 0 {
+				n.W.SendInbox(pasta.InboxMessage{ReceiverNode: n.ID, Payload: managedAmnesiaMTUChanged{
+					generation: generation,
+					revision:   next,
+				}})
+			}
+		}()
 	})
 }
 

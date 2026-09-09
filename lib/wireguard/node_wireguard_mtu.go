@@ -39,7 +39,10 @@ func (n *wireGuardNode) setCarrierMTUProvider(provider links.DatagramMTUProvider
 	n.desiredMTURevision = revision
 	networkGeneration := n.currentNetworkGenerationValue()
 	n.unsubscribeDatagramMTU = provider.SubscribeDatagramMTU(func(next uint64) {
-		n.sendInternal(wireGuardMTUChanged{networkGeneration: networkGeneration, revision: next})
+		// A provider can change during a graph callback while Pasta holds the
+		// workspace lock. Cross the asynchronous inbox boundary without trying
+		// to acquire that lock from the provider callback.
+		go n.sendInternal(wireGuardMTUChanged{networkGeneration: networkGeneration, revision: next})
 	})
 }
 

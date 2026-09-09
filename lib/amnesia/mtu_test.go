@@ -4,11 +4,14 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/asciimoth/gonnect"
+	"github.com/asciimoth/pasta/pasta"
 	wgoamnesia "github.com/asciimoth/wgo/amnesia"
 
 	"github.com/asciimoth/almagest/lib/links"
+	"github.com/asciimoth/almagest/lib/logging"
 )
 
 func TestCalculateAmnesiaProfileMTUUsesProfileCeilingAndS4(t *testing.T) {
@@ -47,6 +50,35 @@ func TestCalculateAmnesiaProfileMTURejectsIPv6BelowMinimum(t *testing.T) {
 	_, _, err := calculateAmnesiaProfileMTU(context.Background(), network, profile, 12, "")
 	if err == nil || !strings.Contains(err.Error(), "incompatible with IPv6") {
 		t.Fatalf("error = %v, want IPv6 incompatibility", err)
+	}
+}
+
+func TestManagedAmnesiaMTUProviderCallbackDoesNotReenterWorkspaceLock(t *testing.T) {
+	w := pasta.NewWorkspace(logging.NewDebugLogFactory(16))
+	node := &managedAmnesiaNode{}
+	node.W = w
+	node.ID = 1
+	provider := links.NewLayer3DatagramMTUProvider(
+		1500, true, false, links.MTUConstraint{Source: "carrier"},
+	)
+	node.setManagedNetworkMTU(provider, provider.Revision())
+	defer node.unsubscribeManagedNetworkMTU()
+
+	w.Lock()
+	returned := make(chan struct{})
+	go func() {
+		provider.SetMTU(1400, true, false, links.MTUConstraint{Source: "changed carrier"})
+		close(returned)
+	}()
+	select {
+	case <-returned:
+		w.Unlock()
+	case <-time.After(time.Second):
+		// Release a callback that incorrectly tries to reenter the workspace so
+		// the failed test does not leave a blocked goroutine.
+		w.Unlock()
+		<-returned
+		t.Fatal("MTU provider callback blocked on the workspace lock")
 	}
 }
 

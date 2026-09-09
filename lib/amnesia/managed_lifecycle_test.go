@@ -5,6 +5,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/asciimoth/bufpool"
 	"github.com/asciimoth/configer/configer"
@@ -154,10 +155,12 @@ func TestManagedAmnesiaLinksAttachDetachReattach(t *testing.T) {
 		t.Fatal("detached MTU provider changed the reattached network")
 	}
 	secondMTU.SetMTU(1320, true, false, links.MTUConstraint{Source: "second carrier update"})
+	waitManagedAmnesiaLifecycle(t, func() bool {
+		w.Lock()
+		defer w.Unlock()
+		return node.networkPayload.CapabilityRevision == secondMTU.Revision()
+	}, "reattached MTU provider update was not processed")
 	spawner.wait()
-	if node.networkPayload.CapabilityRevision != secondMTU.Revision() {
-		t.Fatal("reattached MTU provider update was not processed")
-	}
 }
 
 func TestManagedAmnesiaDNSLinkAndCountryChangeLifecycle(t *testing.T) {
@@ -493,3 +496,14 @@ func (s *managedAmnesiaLifecycleSpawner) SpawnWg(
 }
 
 func (s *managedAmnesiaLifecycleSpawner) wait() { s.wg.Wait() }
+
+func waitManagedAmnesiaLifecycle(t *testing.T, condition func() bool, failure string) {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	for !condition() {
+		if time.Now().After(deadline) {
+			t.Fatal(failure)
+		}
+		time.Sleep(time.Millisecond)
+	}
+}

@@ -121,6 +121,33 @@ func TestCalculateWireGuardCarrierMTUComposesThreeLayers(t *testing.T) {
 	}
 }
 
+func TestWireGuardMTUProviderCallbackDoesNotReenterWorkspaceLock(t *testing.T) {
+	w := pasta.NewWorkspace(wireGuardTestLogFactory{})
+	node := &wireGuardNode{NodeBase: NodeBase{W: w, ID: 1}}
+	provider := links.NewLayer3DatagramMTUProvider(
+		1500, true, false, links.MTUConstraint{Source: "carrier"},
+	)
+	node.setCarrierMTUProvider(provider, provider.Revision())
+	defer node.unsubscribeCarrierMTU()
+
+	w.Lock()
+	returned := make(chan struct{})
+	go func() {
+		provider.SetMTU(1400, true, false, links.MTUConstraint{Source: "changed carrier"})
+		close(returned)
+	}()
+	select {
+	case <-returned:
+		w.Unlock()
+	case <-time.After(time.Second):
+		// Release a callback that incorrectly tries to reenter the workspace so
+		// the failed test does not leave a blocked goroutine.
+		w.Unlock()
+		<-returned
+		t.Fatal("MTU provider callback blocked on the workspace lock")
+	}
+}
+
 func TestWireGuardMTUProviderAttachDetachReattach(t *testing.T) {
 	w := pasta.NewWorkspace(wireGuardTestLogFactory{})
 	t.Cleanup(func() { w.Close() })
