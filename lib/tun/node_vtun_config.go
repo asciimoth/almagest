@@ -26,7 +26,7 @@ type vtunConfig struct {
 func defaultVTunConfig() vtunConfig {
 	return vtunConfig{
 		name:       defaultVTunName,
-		mtu:        defaultVTunMTU,
+		mtu:        0,
 		endpointCh: defaultVTunEndpointCh,
 		eventCh:    defaultVTunEventCh,
 	}
@@ -56,9 +56,6 @@ func (c *vtunConfig) normalize() {
 	}
 	c.localAddrs = normalizeListText(c.localAddrs)
 	c.dnsServers = normalizeListText(c.dnsServers)
-	if c.mtu <= 0 {
-		c.mtu = defaultVTunMTU
-	}
 	if c.endpointCh <= 0 {
 		c.endpointCh = defaultVTunEndpointCh
 	}
@@ -74,8 +71,8 @@ func validateVTunConfig(config vtunConfig) error {
 	if _, err := parseAddrList(config.dnsServers, false); err != nil {
 		return fmt.Errorf("DNS servers: %w", err)
 	}
-	if config.mtu <= 0 {
-		return errors.New("MTU must be positive")
+	if config.mtu < 0 {
+		return errors.New("MTU must not be negative")
 	}
 	if config.endpointCh <= 0 {
 		return errors.New("endpoint channel size must be positive")
@@ -106,8 +103,8 @@ func validateVTunConfigField(msg formular.FieldValidateMessage) error {
 		}
 	case "mtu":
 		value, ok := formular.IntValue(msg.Value)
-		if !ok || value <= 0 {
-			return errors.New("MTU must be positive")
+		if !ok || value < 0 {
+			return errors.New("MTU must not be negative")
 		}
 	case "endpointCh":
 		value, ok := formular.IntValue(msg.Value)

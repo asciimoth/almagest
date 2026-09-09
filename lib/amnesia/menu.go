@@ -44,6 +44,7 @@ func (n *amnesiaNode) statusBlock() formular.Block {
 		nodekit.ReadonlyStringListField("addresses", "Tunnel addresses", n.profileStatus.addresses),
 		nodekit.ReadonlyStringListField("dns", "DNS servers", n.profileStatus.dns),
 		nodekit.ReadonlyStringListField("allowedIPs", "Allowed IPs", n.profileStatus.allowedIPs),
+		nodekit.ReadonlyTextField("mtu", "Profile MTU ceiling", strconv.Itoa(n.profileStatus.profileMTU)),
 		nodekit.ReadonlyTextField("peerTransport", "Peer UDP transport", "WireGuard default"),
 		nodekit.ReadonlyBoolField("peerActive", "Peer active", n.peerStatus.Active),
 		nodekit.ReadonlyBoolField("peerConnected", "Peer connected", n.peerStatus.Connected),

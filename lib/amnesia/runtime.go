@@ -229,6 +229,7 @@ func (n *amnesiaNode) reconcile(req amnesiaRuntimeRequest) (amnesiaRuntimeResult
 			profileState.addresses,
 			profileState.allowedIPs,
 			dns,
+			profileState.mtu,
 		); err != nil {
 			n.logDebugf("Amnesia WGCtrl interface update failed before tracked peer upsert: generation=%d", req.generation)
 			session.Close()
@@ -416,6 +417,9 @@ func profileStatus(profile *wgoamnesia.Profile, requestedCountry string) amnesia
 		addresses:     append([]string(nil), profile.Interface.Addresses...),
 		dns:           append([]string(nil), profile.Interface.DNS...),
 		allowedIPs:    append([]string(nil), profile.Peer.AllowedIPs...),
+		mtu:           profile.Interface.MTU,
+		profileMTU:    profile.Interface.MTU,
+		transportS4:   int(profile.AmneziaWG.TransportPadding),
 	}
 }
 

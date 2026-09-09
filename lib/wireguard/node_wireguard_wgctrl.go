@@ -75,6 +75,9 @@ func (n *wireGuardNode) acceptWGCtrlInterfaceConfig(link uint64, cfg WGCtrlInter
 	if err == nil {
 		err = validateWireGuardDNS(dns)
 	}
+	if err == nil && cfg.MTU < 0 {
+		err = errors.New("MTU must not be negative")
+	}
 	action := "replace"
 	if err != nil {
 		action = "reject"
@@ -83,7 +86,7 @@ func (n *wireGuardNode) acceptWGCtrlInterfaceConfig(link uint64, cfg WGCtrlInter
 		if n.Logger != nil {
 			n.Logger.Errf("WGCtrl link %d supplied invalid interface config: %v", link, err)
 		}
-	} else if len(ownedIPs) == 0 && len(routes) == 0 && dns == "" {
+	} else if len(ownedIPs) == 0 && len(routes) == 0 && dns == "" && cfg.MTU == 0 {
 		action = "withdraw"
 		delete(n.wgctrlConfigs, link)
 		delete(n.wgctrlConfigOrder, link)
@@ -93,14 +96,17 @@ func (n *wireGuardNode) acceptWGCtrlInterfaceConfig(link uint64, cfg WGCtrlInter
 		}
 		n.wgctrlConfigSeq++
 		n.wgctrlConfigOrder[link] = n.wgctrlConfigSeq
-		n.wgctrlConfigs[link] = WGCtrlInterfaceConfig{OwnedIPs: ownedIPs, Routes: routes, DNS: dns}
+		n.wgctrlConfigs[link] = WGCtrlInterfaceConfig{OwnedIPs: ownedIPs, Routes: routes, DNS: dns, MTU: cfg.MTU}
 	}
 	if n.Logger != nil {
 		n.Logger.Debugf(
-			"WireGuard WGCtrl interface update: link=%d action=%s supplied_addresses=%v normalized_addresses=%v supplied_routes=%v normalized_routes=%v supplied_dns=%q normalized_dns=%q effective_addresses=%v effective_routes=%v effective_dns=%q",
+			"WireGuard WGCtrl interface update: link=%d action=%s supplied_addresses=%v normalized_addresses=%v supplied_routes=%v normalized_routes=%v supplied_dns=%q normalized_dns=%q supplied_mtu=%d effective_addresses=%v effective_routes=%v effective_dns=%q effective_mtu=%d",
 			link, action, cfg.OwnedIPs, ownedIPs, cfg.Routes, routes, cfg.DNS, dns,
-			n.effectiveOwnedIPAddrs(), n.effectiveTunRoutes(), n.effectiveDNS(),
+			cfg.MTU, n.effectiveOwnedIPAddrs(), n.effectiveTunRoutes(), n.effectiveDNS(), n.effectiveControllerMTU(),
 		)
+	}
+	if n.networkPayloadReceived {
+		n.scheduleCarrierMTUCalculation()
 	}
 	n.sendTunConfig()
 	n.sendStatusBlock()
@@ -143,9 +149,10 @@ func (n *wireGuardNode) commitWGCtrlInterfaceConfigApply(link uint64, apply *wgC
 
 func (n *wireGuardNode) scheduleWGCtrlInterfaceConfigCheck(apply *wgCtrlInterfaceConfigApply, generation uint64) {
 	networkExpected := n.netLink != 0
+	mtuReady := !n.mtuPending
 	go func() {
 		n.runtimeMu.Lock()
-		ready := n.wgCtrlInterfaceConfigReadyLocked(generation, networkExpected)
+		ready := mtuReady && n.wgCtrlInterfaceConfigReadyLocked(generation, networkExpected)
 		n.runtimeMu.Unlock()
 		n.sendInternal(wireGuardWGCtrlInterfaceConfigCheckResult{
 			apply: apply, generation: generation, ready: ready,
@@ -286,4 +293,15 @@ func (n *wireGuardNode) effectiveDNS() string {
 		}
 	}
 	return latestDNS
+}
+
+// effectiveControllerMTU returns the smallest positive controller ceiling.
+func (n *wireGuardNode) effectiveControllerMTU() int {
+	minimum := 0
+	for _, cfg := range n.wgctrlConfigs {
+		if cfg.MTU > 0 && (minimum == 0 || cfg.MTU < minimum) {
+			minimum = cfg.MTU
+		}
+	}
+	return minimum
 }

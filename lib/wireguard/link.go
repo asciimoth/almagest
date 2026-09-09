@@ -79,11 +79,13 @@ type WGCtrlPayload struct {
 // WGCtrlInterfaceConfig carries controller-owned WireGuard interface settings
 // from a right-directed controller port to a left-directed provider port.
 // OwnedIPs and Routes accept IP addresses or CIDR prefixes. DNS accepts one IP
-// address without a CIDR prefix or host name.
+// address without a CIDR prefix or host name. A positive MTU is a controller
+// ceiling. Zero means that the controller has no MTU constraint.
 type WGCtrlInterfaceConfig struct {
 	OwnedIPs []string
 	Routes   []string
 	DNS      string
+	MTU      int
 }
 
 // wgCtrlInterfaceConfigApply carries a config update that must complete before
@@ -106,12 +108,13 @@ func (cfg WGCtrlInterfaceConfig) Clone() WGCtrlInterfaceConfig {
 		OwnedIPs: slices.Clone(cfg.OwnedIPs),
 		Routes:   slices.Clone(cfg.Routes),
 		DNS:      cfg.DNS,
+		MTU:      cfg.MTU,
 	}
 }
 
 // IsZero reports whether cfg has no interface setting suggestions.
 func (cfg WGCtrlInterfaceConfig) IsZero() bool {
-	return len(cfg.OwnedIPs) == 0 && len(cfg.Routes) == 0 && cfg.DNS == ""
+	return len(cfg.OwnedIPs) == 0 && len(cfg.Routes) == 0 && cfg.DNS == "" && cfg.MTU <= 0
 }
 
 // Close closes the detached API and releases its tracked wgo resources.

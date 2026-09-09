@@ -8,6 +8,8 @@ import (
 
 	netstackhelpers "github.com/asciimoth/gonnect-netstack/helpers"
 	netstackvtun "github.com/asciimoth/gonnect-netstack/vtun"
+
+	"github.com/asciimoth/almagest/lib/links"
 )
 
 type vtunRuntimeConfig struct {
@@ -34,9 +36,11 @@ func (c vtunRuntimeConfig) equal(other vtunRuntimeConfig) bool {
 		slices.Equal(c.dnsServers, other.dnsServers)
 }
 
-func (c vtunRuntimeConfig) equalExceptSourceRoutes(other vtunRuntimeConfig) bool {
+func (c vtunRuntimeConfig) equalExceptMutable(other vtunRuntimeConfig) bool {
 	c.sourceRoutes = nil
 	other.sourceRoutes = nil
+	c.mtu = 0
+	other.mtu = 0
 	return c.equal(other)
 }
 
@@ -74,19 +78,36 @@ func (n *vtunNode) rebuildVTunWithActive(active bool) error {
 		n.sendEffectiveBlock()
 		return nil
 	}
-	if n.vtun != nil && n.vtunRuntime.equalExceptSourceRoutes(runtimeConfig) {
-		if err := n.vtun.SetSourceRoutes(opts.SourceRoutes); err != nil {
-			n.formError = err.Error()
-			n.sendForcedMenuSnapshot()
-			_ = n.updateLabel()
-			return err
+	if n.vtun != nil && n.vtunRuntime.equalExceptMutable(runtimeConfig) {
+		if n.vtunRuntime.mtu != runtimeConfig.mtu {
+			setter, ok := any(n.vtun).(interface{ SetMTU(int) error })
+			if !ok {
+				goto rebuild
+			}
+			if err := setter.SetMTU(runtimeConfig.mtu); err != nil {
+				n.formError = err.Error()
+				n.sendForcedMenuSnapshot()
+				_ = n.updateLabel()
+				return err
+			}
+		}
+		if !slices.Equal(n.vtunRuntime.sourceRoutes, runtimeConfig.sourceRoutes) {
+			if err := n.vtun.SetSourceRoutes(opts.SourceRoutes); err != nil {
+				n.formError = err.Error()
+				n.sendForcedMenuSnapshot()
+				_ = n.updateLabel()
+				return err
+			}
 		}
 		n.formError = ""
 		n.vtunRuntime = runtimeConfig
+		n.updateMTUProvider(runtimeConfig)
 		_ = n.updateLabel()
 		n.sendEffectiveBlock()
 		return nil
 	}
+
+rebuild:
 	vt, err := opts.Build()
 	if err != nil {
 		n.formError = err.Error()
@@ -98,6 +119,8 @@ func (n *vtunNode) rebuildVTunWithActive(active bool) error {
 	n.formError = ""
 	n.vtun = vt
 	n.vtunRuntime = runtimeConfig
+	n.updateMTUProvider(runtimeConfig)
+	n.vtunNetwork = links.AttachDatagramMTUProvider(vt, n.mtuProvider)
 	_ = n.W.AddNodeResourceLocked(n.ID, vt)
 	_ = n.updateLabel()
 	n.sendEffectiveBlock()
@@ -115,13 +138,7 @@ func (n *vtunNode) buildRuntimeConfig() (vtunRuntimeConfig, *netstackvtun.Opts, 
 	if err != nil {
 		return vtunRuntimeConfig{}, nil, err
 	}
-	mtu := n.config.mtu
-	if mtu <= 0 && n.tunConfig.MTU > 0 {
-		mtu = n.tunConfig.MTU
-	}
-	if mtu <= 0 {
-		mtu = defaultVTunMTU
-	}
+	mtu, _ := n.effectiveMTU()
 	runtimeConfig := vtunRuntimeConfig{
 		localAddrs:     slices.Clone(localAddrs),
 		sourceRoutes:   slices.Clone(sourceRoutes),
@@ -148,6 +165,60 @@ func (n *vtunNode) buildRuntimeConfig() (vtunRuntimeConfig, *netstackvtun.Opts, 
 		// MWO: n.config.mwo,
 		// MRO: n.config.mro,
 	}, nil
+}
+
+func (n *vtunNode) effectiveMTU() (int, links.MTUConstraint) {
+	var constraints []links.MTUConstraint
+	if n.config.mtu > 0 {
+		constraints = append(constraints, links.MTUConstraint{
+			Value: n.config.mtu, SourceNode: n.ID, Source: n.config.name,
+			Reason: "user MTU ceiling", InputValue: n.config.mtu, Result: n.config.mtu,
+			Path: []uint64{n.ID},
+		})
+	}
+	if n.tunConfig.MTU > 0 {
+		constraint := links.MTUConstraint{
+			Value: n.tunConfig.MTU, Source: "TUN config", Reason: "downstream MTU constraint",
+			InputValue: n.tunConfig.MTU, Result: n.tunConfig.MTU,
+		}
+		if n.tunConfig.MTUConstraint != nil {
+			constraint = n.tunConfig.MTUConstraint.Clone()
+			constraint.Value = n.tunConfig.MTU
+		}
+		if withNode, err := constraint.WithNode(n.ID); err == nil {
+			constraint = withNode
+		}
+		constraints = append(constraints, constraint)
+	}
+	selected := links.MinimumMTUConstraint(constraints...)
+	if selected.Value > 0 {
+		n.fallbackLogged = false
+		return selected.Value, selected
+	}
+	fallback := links.MTUConstraint{
+		Value: defaultVTunMTU, SourceNode: n.ID, Source: n.config.name,
+		Reason:     "fallback because no positive MTU constraint is known",
+		InputValue: defaultVTunMTU, Result: defaultVTunMTU, Path: []uint64{n.ID},
+	}
+	if !n.fallbackLogged && n.Logger != nil {
+		n.Logger.Debugf("VTun automatic MTU has no positive constraint; using fallback MTU %d", defaultVTunMTU)
+		n.fallbackLogged = true
+	}
+	return fallback.Value, fallback
+}
+
+func (n *vtunNode) updateMTUProvider(config vtunRuntimeConfig) {
+	_, constraint := n.effectiveMTU()
+	hasIPv4, hasIPv6 := false, false
+	for _, addr := range config.localAddrs {
+		hasIPv4 = hasIPv4 || addr.Is4()
+		hasIPv6 = hasIPv6 || addr.Is6()
+	}
+	if n.mtuProvider == nil {
+		n.mtuProvider = links.NewLayer3DatagramMTUProvider(config.mtu, hasIPv4, hasIPv6, constraint)
+		return
+	}
+	n.mtuProvider.SetMTU(config.mtu, hasIPv4, hasIPv6, constraint)
 }
 
 func (n *vtunNode) effectiveSourceRoutes() []netstackvtun.SourceRoute {
@@ -233,11 +304,14 @@ func (n *vtunNode) freeGeneratedAddrs() {
 func (n *vtunNode) dropVTun() {
 	n.outputNetworks.CloseAll()
 	n.outputTuns.CloseAll()
+	links.DetachDatagramMTUProvider(n.vtunNetwork)
 	if n.vtun != nil {
 		_ = n.vtun.Close()
 		n.vtun = nil
 	}
 	n.vtunRuntime = vtunRuntimeConfig{}
+	n.vtunNetwork = nil
+	n.mtuProvider = nil
 	n.outputTuns.Wait()
 }
 
@@ -253,14 +327,14 @@ func (n *vtunNode) sendNetworkToLink(link uint64) {
 	if n.vtun == nil {
 		return
 	}
-	n.outputNetworks.SendLocked(n.W, n.ID, link, n.vtun)
+	n.outputNetworks.SendLocked(n.W, n.ID, link, n.vtunNetwork)
 }
 
 func (n *vtunNode) refreshNetworkToLink(link uint64) {
 	if n.vtun == nil {
 		return
 	}
-	n.outputNetworks.RefreshLocked(n.W, n.ID, link, n.vtun)
+	n.outputNetworks.RefreshLocked(n.W, n.ID, link, n.vtunNetwork)
 }
 
 func (n *vtunNode) sendTunToLink(link uint64) {

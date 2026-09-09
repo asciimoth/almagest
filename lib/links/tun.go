@@ -93,6 +93,10 @@ type TunConfig struct {
 	// MTU is the suggested interface MTU. Zero means no MTU suggestion.
 	MTU int
 
+	// MTUConstraint explains MTU when diagnostic provenance is available.
+	// Its numeric value does not replace MTU.
+	MTUConstraint *MTUConstraint
+
 	// DNS is the suggested DNS server IP address, for example "8.8.8.8".
 	// An empty string means no DNS suggestion. DNS must not contain a CIDR
 	// prefix or a host name.
@@ -108,13 +112,18 @@ type TunSourceRoute struct {
 
 // Clone returns a deep copy of cfg.
 func (cfg TunConfig) Clone() TunConfig {
-	return TunConfig{
+	out := TunConfig{
 		Addrs:        slices.Clone(cfg.Addrs),
 		Routes:       slices.Clone(cfg.Routes),
 		SourceRoutes: slices.Clone(cfg.SourceRoutes),
 		MTU:          cfg.MTU,
 		DNS:          cfg.DNS,
 	}
+	if cfg.MTUConstraint != nil {
+		constraint := cfg.MTUConstraint.Clone()
+		out.MTUConstraint = &constraint
+	}
+	return out
 }
 
 // WithInferredSourceRoutes returns a copy of cfg with a source route for each
@@ -260,6 +269,11 @@ func (s TunConfigByLink) Merge() TunConfig {
 		}
 		if cfg.MTU > 0 && (merged.MTU == 0 || cfg.MTU < merged.MTU) {
 			merged.MTU = cfg.MTU
+			merged.MTUConstraint = nil
+			if cfg.MTUConstraint != nil {
+				constraint := cfg.MTUConstraint.Clone()
+				merged.MTUConstraint = &constraint
+			}
 		}
 		if merged.DNS == "" && cfg.DNS != "" {
 			merged.DNS = cfg.DNS

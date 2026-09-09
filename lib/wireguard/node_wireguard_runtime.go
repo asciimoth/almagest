@@ -8,6 +8,8 @@ import (
 	"github.com/asciimoth/gonnect/tun"
 	"github.com/asciimoth/pasta/pasta"
 	wgdevice "github.com/asciimoth/wgo/device"
+
+	"github.com/asciimoth/almagest/lib/links"
 )
 
 type wireGuardRetryMessage struct {
@@ -58,6 +60,33 @@ type wireGuardRuntimeStatsMessage struct {
 	stats wgdevice.RuntimeStats
 }
 type wireGuardLabelRefreshMessage struct{}
+type wireGuardDatagramTooLargeMessage struct {
+	networkGeneration uint64
+	configGeneration  uint64
+	bindGeneration    uint64
+	endpoint          string
+	ipv6              bool
+	attemptedSize     int
+	err               error
+}
+
+func (n *wireGuardNode) handleDatagramTooLarge(msg wireGuardDatagramTooLargeMessage) {
+	if msg.networkGeneration != n.currentNetworkGenerationValue() ||
+		msg.configGeneration != n.currentConfigGeneration() {
+		return
+	}
+	if n.Logger != nil {
+		family := "IPv4"
+		if msg.ipv6 {
+			family = "IPv6"
+		}
+		n.Logger.Warnf(
+			"WireGuard UDP datagram is too large: endpoint=%q family=%s attempted=%d network_generation=%d config_generation=%d bind_generation=%d error=%v",
+			msg.endpoint, family, msg.attemptedSize, msg.networkGeneration,
+			msg.configGeneration, msg.bindGeneration, msg.err,
+		)
+	}
+}
 
 const (
 	wireGuardConfigRetryInitialDelay = 100 * time.Millisecond
@@ -210,7 +239,7 @@ func (n *wireGuardNode) tryMarkRuntimeReady(generation uint64) (locked, ready bo
 	if !n.runtimeMu.TryLock() {
 		return false, false
 	}
-	if generation == n.currentRuntimeGeneration() && n.runtimeDeviceUp && n.hasActiveAttachmentsLocked() {
+	if generation == n.currentRuntimeGeneration() && !n.mtuPending && n.runtimeDeviceUp && n.hasActiveAttachmentsLocked() {
 		n.runtimeReadyGeneration = generation
 		ready = true
 	}
@@ -494,6 +523,7 @@ func (n *wireGuardNode) isCurrentConfigRetry(generation uint64) bool {
 // this left-directed consumer sends suggestions upstream to the right-directed
 // provider whenever the link or WireGuard config changes.
 func (n *wireGuardNode) sendTunConfig() {
+	n.updateTransportContentMTU(n.tunConfig().MTU)
 	if n.tunLink == 0 {
 		return
 	}
@@ -506,11 +536,42 @@ func (n *wireGuardNode) sendTunConfigToLink(link uint64) {
 	EmitTunConfig(n.W, n.ID, link, n.tunConfig())
 }
 func (n *wireGuardNode) tunConfig() TunConfig {
-	return TunConfig{
+	constraints := make([]links.MTUConstraint, 0, 2)
+	if controllerMTU := n.effectiveControllerMTU(); controllerMTU > 0 {
+		constraints = append(constraints, links.MTUConstraint{
+			Value: controllerMTU, SourceNode: n.ID, Source: n.nodeName,
+			Reason: "WireGuard controller MTU ceiling", InputValue: controllerMTU,
+			Result: controllerMTU, Path: []uint64{n.ID},
+		})
+	}
+	if n.carrierMTUConstraint.Value > 0 {
+		constraints = append(constraints, n.carrierMTUConstraint)
+	}
+	selected := links.MinimumMTUConstraint(constraints...)
+	config := TunConfig{
 		Addrs:  n.effectiveOwnedIPAddrs(),
 		Routes: n.effectiveTunRoutes(),
+		MTU:    selected.Value,
 		DNS:    n.effectiveDNS(),
 	}
+	if selected.Value > 0 {
+		constraint := selected.Clone()
+		config.MTUConstraint = &constraint
+	}
+	return config
+}
+
+func (n *wireGuardNode) updateTransportContentMTU(mtu int) {
+	if n.transportContentMTU.Swap(int64(mtu)) == int64(mtu) {
+		return
+	}
+	go func() {
+		n.runtimeMu.Lock()
+		if n.currentManagedTun != nil {
+			n.currentManagedTun.SetMTU(mtu)
+		}
+		n.runtimeMu.Unlock()
+	}()
 }
 func (n *wireGuardNode) updateLabel() error {
 	status := n.runtimeStatusSnapshot()
@@ -537,11 +598,12 @@ type wireGuardStatusSnapshot struct {
 	bindFailed  bool
 	ready       bool
 	runtimeBusy bool
+	mtuPending  bool
 	stats       wgdevice.RuntimeStats
 }
 
 func (n *wireGuardNode) runtimeStatusSnapshot() wireGuardStatusSnapshot {
-	status := wireGuardStatusSnapshot{listenPort: n.config.listenPort}
+	status := wireGuardStatusSnapshot{listenPort: n.config.listenPort, mtuPending: n.mtuPending}
 	if !n.runtimeMu.TryLock() {
 		status.runtimeBusy = true
 		return status
@@ -575,6 +637,8 @@ func (n *wireGuardNode) stateTextFromSnapshot(status wireGuardStatusSnapshot) st
 		return "missing private key"
 	case status.runtimeBusy:
 		return "starting"
+	case status.mtuPending:
+		return "calculating MTU"
 	case !status.hasTun && !status.hasNetwork:
 		return "waiting for TUN and network"
 	case !status.hasTun:

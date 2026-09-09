@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"net/http"
 
 	conn "github.com/asciimoth/batchudp"
@@ -14,7 +15,9 @@ import (
 	wgdevice "github.com/asciimoth/wgo/device"
 
 	dnsnodes "github.com/asciimoth/almagest/lib/dns"
+	"github.com/asciimoth/almagest/lib/links"
 	"github.com/asciimoth/almagest/lib/nodekit"
+	wireguardnodes "github.com/asciimoth/almagest/lib/wireguard"
 )
 
 func (n *managedAmnesiaNode) reconcile(req managedAmnesiaRuntimeRequest) (managedAmnesiaRuntimeResult, bool) {
@@ -88,6 +91,30 @@ func (n *managedAmnesiaNode) reconcile(req managedAmnesiaRuntimeRequest) (manage
 			return n.continuePausedImportLocked(req, result)
 		}
 		n.closeRuntimeLocked()
+	}
+	if n.runtimeProfileInputsMatch(req, material) && n.runtimeMTURevision != req.networkMTURevision {
+		profileState, mtuWarning, mtuErr := calculateAmnesiaProfileMTU(
+			req.ctx, req.network, n.runtimeConfig, n.ID, req.config.serverCountryCode,
+		)
+		if mtuErr != nil {
+			n.closeRuntimeLocked()
+			result.err = fmt.Errorf("validate changed Amnezia carrier MTU: %w", mtuErr)
+			return result, true
+		}
+		if mtuWarning != "" && n.Logger != nil {
+			n.Logger.Warnf("Amnesia automatic MTU update: %s; profile ceiling=%d", mtuWarning, n.runtimeConfig.Interface.MTU)
+		}
+		mtuChanged := n.runtimeProfile.mtu != profileState.mtu
+		n.runtimeProfile = profileState
+		n.runtimeMTURevision = req.networkMTURevision
+		if mtuChanged {
+			n.closeRuntimeDeviceLocked()
+			n.runtimeTunConfigured = false
+			result.runtimeID = n.runtimeID
+			result.prepared = true
+			result.profile = n.runtimeProfile
+			return result, true
+		}
 	}
 	if n.runtimeMatches(req, material) {
 		if n.runtimeDevice == nil {
@@ -253,6 +280,9 @@ func (n *managedAmnesiaNode) prepareImportedProfileLocked(
 	profile *wgoamnesia.Profile,
 	persistent bool,
 ) (managedAmnesiaRuntimeResult, bool) {
+	profileState, mtuWarning, mtuErr := calculateAmnesiaProfileMTU(
+		req.ctx, req.network, profile, n.ID, req.config.serverCountryCode,
+	)
 	n.runtimeClient = client
 	n.runtimeImport = nil
 	n.runtimeCaptcha = nil
@@ -260,14 +290,24 @@ func (n *managedAmnesiaNode) prepareImportedProfileLocked(
 	n.runtimeHTTP = transport
 	n.runtimeNetwork = req.network
 	n.runtimeMaterial = material
-	n.runtimeProfile = profileStatus(profile, req.config.serverCountryCode)
+	n.runtimeProfile = profileState
 	n.runtimeFormat = format
 	n.runtimePersistent = persistent
+	n.runtimeMTURevision = req.networkMTURevision
+	if mtuErr != nil {
+		n.closeRuntimeLocked()
+		result.err = fmt.Errorf("validate Amnezia carrier MTU: %w", mtuErr)
+		return result, true
+	}
+	if mtuWarning != "" && n.Logger != nil {
+		n.Logger.Warnf("Amnesia automatic MTU: %s; profile ceiling=%d", mtuWarning, profile.Interface.MTU)
+	}
 	n.logDebugf(
-		"Amnesia connection prepared: generation=%d runtime=%d format=%s profile=%q country=%q endpoint=%q protocol=%q mtu=%d addresses=%v dns=%v",
+		"Amnesia connection prepared: generation=%d runtime=%d format=%s profile=%q country=%q endpoint=%q protocol=%q effective_mtu=%d profile_mtu=%d carrier_udp_payload=%d s4=%d addresses=%v dns=%v",
 		req.generation, n.runtimeID, n.runtimeFormat, n.runtimeProfile.name,
 		n.runtimeProfile.serverCountry, profile.Peer.Endpoint, profile.AmneziaWG.ProtocolVersion,
-		profile.Interface.MTU, n.runtimeProfile.addresses, n.runtimeProfile.dns,
+		n.runtimeProfile.mtu, n.runtimeProfile.profileMTU, n.runtimeProfile.carrierMaxUDP,
+		n.runtimeProfile.transportS4, n.runtimeProfile.addresses, n.runtimeProfile.dns,
 	)
 	if req.ctx.Err() != nil || req.generation != n.generation.Load() {
 		// A successful negotiation has already registered this profile key. Keep
@@ -408,11 +448,16 @@ func (n *managedAmnesiaNode) activatePreparedRuntimeLocked(
 	} else {
 		deviceTun = gtun.Detach(req.tun, nil, n.Pool())
 	}
+	deviceTun = wireguardnodes.NewContentCeilingTun(deviceTun, n.runtimeProfile.mtu)
 	bindOptions := conn.StdNetBindOptions{}
 	if !req.network.IsNative() {
 		bindOptions.AllowSingleFamily = true
 	}
-	bind := conn.NewDefaultBindWithOptions(req.network, bindOptions)
+	baseBind := conn.NewDefaultBindWithOptions(req.network, bindOptions)
+	bind := conn.Bind(baseBind)
+	if learner, ok := links.DatagramMTUProviderFromNetwork(req.network).(links.DatagramMTULearner); ok {
+		bind = managedAmnesiaLearningBind{Bind: baseBind, node: n, generation: req.generation, learner: learner}
+	}
 	var logger wgdevice.Logger = wgdevice.NopLogger{}
 	if n.Logger != nil {
 		logger = n.Logger
@@ -484,7 +529,8 @@ func (n *managedAmnesiaNode) runtimeMatches(req managedAmnesiaRuntimeRequest, ma
 		default:
 		}
 	}
-	matched := materialMatches && nodekit.TunIsReady(req.tun) && networkReady && networkMatches
+	matched := materialMatches && nodekit.TunIsReady(req.tun) && networkReady && networkMatches &&
+		n.runtimeMTURevision == req.networkMTURevision
 	if !matched {
 		n.logDebugf(
 			"Amnesia runtime cannot be reused: material_match=%t tun_ready=%t network_ready=%t network_match=%t",
@@ -492,6 +538,11 @@ func (n *managedAmnesiaNode) runtimeMatches(req managedAmnesiaRuntimeRequest, ma
 		)
 	}
 	return matched
+}
+
+func (n *managedAmnesiaNode) runtimeProfileInputsMatch(req managedAmnesiaRuntimeRequest, material [32]byte) bool {
+	return n.runtimeClient != nil && n.runtimeConfig != nil && n.runtimeMaterial == material &&
+		nodekit.NetworkIsReady(req.network) && nodekit.SameNetworkInstance(n.runtimeNetwork, req.network)
 }
 
 func (n *managedAmnesiaNode) refreshStatsSubscriptionLocked(generation uint64) {
@@ -541,6 +592,7 @@ func (n *managedAmnesiaNode) closeRuntimeLocked() {
 	n.runtimeMaterial = [32]byte{}
 	n.runtimeProfile = amnesiaProfileStatus{}
 	n.runtimeFormat = wgoamnesia.InputFormatUnknown
+	n.runtimeMTURevision = 0
 	n.runtimeTunConfigured = false
 	n.runtimeID = 0
 }

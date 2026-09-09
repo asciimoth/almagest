@@ -19,6 +19,7 @@ import (
 	wgdevice "github.com/asciimoth/wgo/device"
 
 	dnsnodes "github.com/asciimoth/almagest/lib/dns"
+	"github.com/asciimoth/almagest/lib/links"
 	"github.com/asciimoth/almagest/lib/nodekit"
 	"github.com/asciimoth/almagest/lib/storage"
 	wireguardnodes "github.com/asciimoth/almagest/lib/wireguard"
@@ -94,9 +95,13 @@ type managedAmnesiaNode struct {
 	tunLink uint64
 	netLink uint64
 
-	tun     tun.Tun
-	network nodekit.NetworkCloser
-	config  managedAmnesiaConfig
+	tun                   tun.Tun
+	network               nodekit.NetworkCloser
+	networkPayload        links.NetworkPayload
+	unsubscribeNetworkMTU func()
+	networkMTUGeneration  uint64
+	networkMTURevision    uint64
+	config                managedAmnesiaConfig
 
 	dnsProvider dns.Interface
 	dnsOutputs  dnsnodes.DNSOutputCache
@@ -135,6 +140,7 @@ type managedAmnesiaNode struct {
 	runtimeID            uint64
 	nextRuntimeID        uint64
 	runtimeUnsubscribe   func()
+	runtimeMTURevision   uint64
 
 	pending          bool
 	runtimeReady     bool
@@ -151,17 +157,18 @@ type managedAmnesiaNode struct {
 }
 
 type managedAmnesiaRuntimeRequest struct {
-	generation   uint64
-	config       managedAmnesiaConfig
-	tunLinked    bool
-	tun          tun.Tun
-	network      nodekit.NetworkCloser
-	tlsConfig    *tls.Config
-	tlsConfigErr string
-	tlsRevision  uint64
-	nodeName     string
-	ctx          context.Context
-	captcha      *managedAmnesiaCaptchaResponse
+	generation         uint64
+	config             managedAmnesiaConfig
+	tunLinked          bool
+	tun                tun.Tun
+	network            nodekit.NetworkCloser
+	networkMTURevision uint64
+	tlsConfig          *tls.Config
+	tlsConfigErr       string
+	tlsRevision        uint64
+	nodeName           string
+	ctx                context.Context
+	captcha            *managedAmnesiaCaptchaResponse
 }
 
 type managedAmnesiaRuntimeResult struct {
@@ -236,6 +243,7 @@ func (n *managedAmnesiaNode) OnReady() error {
 func (n *managedAmnesiaNode) OnStop() {
 	n.generation.Add(1)
 	n.cancelCurrentRun()
+	n.unsubscribeManagedNetworkMTU()
 	n.dnsOutputs.CloseAll()
 	n.dnsProvider = nil
 	go n.stopRuntime()
@@ -277,6 +285,8 @@ func (n *managedAmnesiaNode) OnLinkAdd(link, port uint64, linkType, portDirectio
 	case port == n.dnsp && portDirection == "left" && linkType == dnsnodes.TypeDNS:
 		n.sendDNSToLink(link)
 	case port == n.netp && portDirection == "right" && linkType == nodekit.TypeNetwork:
+		n.unsubscribeManagedNetworkMTU()
+		n.networkPayload = links.NetworkPayload{}
 		n.netLink = link
 		std.RequestLocked(n.W, n.ID, link)
 		changedInput = true
@@ -297,8 +307,10 @@ func (n *managedAmnesiaNode) OnLinkRemoved(link, port uint64, linkType, portDire
 	case port == n.dnsp && portDirection == "left" && linkType == dnsnodes.TypeDNS:
 		n.dnsOutputs.Close(link)
 	case port == n.netp && portDirection == "right" && linkType == nodekit.TypeNetwork && link == n.netLink:
+		n.unsubscribeManagedNetworkMTU()
 		n.netLink = 0
 		n.network = nil
+		n.networkPayload = links.NetworkPayload{}
 		changedInput = true
 	}
 	if changedInput {
@@ -327,9 +339,12 @@ func (n *managedAmnesiaNode) OnEvent(event pasta.Event, linkType string, _ []str
 		if std.IsRequest(event.Payload) || event.Link != n.netLink {
 			return nil
 		}
-		next, changed := nodekit.AcceptNetworkPayload(n.W, n.ID, event, n.network)
+		nextPayload, changed := links.AcceptNetworkPayloadUpdate(event, n.networkPayload)
 		if changed {
-			n.network = next
+			n.network = nextPayload.Network
+			n.networkPayload = nextPayload
+			n.setManagedNetworkMTU(nextPayload.DatagramMTU, nextPayload.CapabilityRevision)
+			nodekit.BindNetworkResource(n.W, n.ID, event.Link, nextPayload.Network)
 			n.scheduleReconcile(true)
 		}
 		return nil
@@ -350,6 +365,8 @@ func (n *managedAmnesiaNode) OnInbox(message pasta.InboxMessage) error {
 			n.runtimeStats = msg.stats
 			n.sendStatusBlock()
 		}
+	case managedAmnesiaMTUChanged:
+		n.handleManagedNetworkMTUChanged(msg)
 	case storage.SecretValueChanged:
 		n.handleSecretChanged(msg)
 	case storage.TlsConfigChanged:
@@ -545,7 +562,8 @@ func (n *managedAmnesiaNode) scheduleReconcile(invalidate bool) {
 	request := managedAmnesiaRuntimeRequest{
 		generation: generation,
 		config:     n.config, tunLinked: n.tunLink != 0, tun: n.tun, network: n.network,
-		tlsConfig: nodekit.CloneTLSClientConfig(n.tlsConfig), tlsConfigErr: n.tlsConfigErr,
+		networkMTURevision: n.networkMTURevision,
+		tlsConfig:          nodekit.CloneTLSClientConfig(n.tlsConfig), tlsConfigErr: n.tlsConfigErr,
 		tlsRevision: n.tlsRevision, nodeName: n.currentNodeName(), ctx: ctx,
 		captcha: n.captchaResponse,
 	}
@@ -682,10 +700,20 @@ func (n *managedAmnesiaNode) sendProfileTunConfig(profile amnesiaProfileStatus) 
 		return
 	}
 	nodekit.EmitTunConfig(n.W, n.ID, n.tunLink, nodekit.TunConfig{
-		Addrs:  append([]string(nil), profile.addresses...),
-		Routes: append([]string(nil), profile.allowedIPs...),
-		DNS:    firstAmnesiaDNS(profile.dns),
+		Addrs:         append([]string(nil), profile.addresses...),
+		Routes:        append([]string(nil), profile.allowedIPs...),
+		MTU:           profile.mtu,
+		MTUConstraint: cloneMTUConstraint(profile.mtuConstraint),
+		DNS:           firstAmnesiaDNS(profile.dns),
 	})
+}
+
+func cloneMTUConstraint(constraint *links.MTUConstraint) *links.MTUConstraint {
+	if constraint == nil {
+		return nil
+	}
+	clone := constraint.Clone()
+	return &clone
 }
 
 func (n *managedAmnesiaNode) sendDNSAll() {

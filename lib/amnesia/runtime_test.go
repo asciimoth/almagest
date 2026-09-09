@@ -154,7 +154,7 @@ func TestAmnesiaSetsInterfaceAddressesBeforeTrackedPeerUpsert(t *testing.T) {
 	req := amnesiaRuntimeRequest{
 		config: node.config, controller: controller, network: apiNetwork,
 		nodeName: "Amnesia", ctx: context.Background(),
-		setInterfaceConfig: func(_ context.Context, generation uint64, addresses, routes []string, dns string) error {
+		setInterfaceConfig: func(_ context.Context, generation uint64, addresses, routes []string, dns string, mtu int) error {
 			if generation != node.generation.Load() {
 				t.Fatalf("interface config generation = %d, want %d", generation, node.generation.Load())
 			}
@@ -166,6 +166,9 @@ func TestAmnesiaSetsInterfaceAddressesBeforeTrackedPeerUpsert(t *testing.T) {
 			}
 			if dns != profile.Interface.DNS[0] {
 				t.Fatalf("interface DNS = %q, want %q", dns, profile.Interface.DNS[0])
+			}
+			if mtu != profile.Interface.MTU {
+				t.Fatalf("interface MTU = %d, want %d", mtu, profile.Interface.MTU)
 			}
 			if _, found := device.PeerSpec(peerKey); found {
 				t.Fatal("tracked peer exists before interface addresses are applied")

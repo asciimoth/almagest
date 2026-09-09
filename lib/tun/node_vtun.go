@@ -5,16 +5,20 @@ import (
 
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
+	"github.com/asciimoth/gonnect"
 	netstackvtun "github.com/asciimoth/gonnect-netstack/vtun"
 	"github.com/asciimoth/pasta/pasta"
 	"github.com/asciimoth/pasta/pasta/std"
+
+	"github.com/asciimoth/almagest/lib/links"
 )
 
 const (
 	// NodeTypeVTun is the node class name for a virtual network-to-TUN adapter.
 	NodeTypeVTun = "almagest/VTun"
 
-	// DefaultVTunMTU is the default VTun interface MTU.
+	// DefaultVTunMTU is the fallback used when automatic mode has no positive
+	// constraint.
 	DefaultVTunMTU = 1500
 	// DefaultVTunDNSServer is used when the DNS servers field and the TUN DNS
 	// suggestion are empty.
@@ -33,7 +37,7 @@ type VTunClass struct {
 func (VTunClass) ClassName() string        { return NodeTypeVTun }
 func (VTunClass) ShortDescription() string { return "Virtual TUN network" }
 func (VTunClass) LongDescription() string {
-	return "Creates one virtual netstack instance and exposes it as both an almagest/network and an almagest/tun endpoint. When it receives TunConfig, it uses Addrs, source routes, MTU, and DNS. Source routes select the local address for each destination; plain Routes are not installed in the userspace stack. An explicit local addrs value disables suggested source routes. An explicit DNS servers value has priority over a TUN DNS suggestion. If neither is set, VTun uses 8.8.8.8. TUN DNS suggestions are for simple topologies only; use almagest/dns nodes for DNS routing or policy."
+	return "Creates one virtual netstack instance and exposes it as both an almagest/network and an almagest/tun endpoint. When it receives TunConfig, it uses Addrs, source routes, MTU, and DNS. MTU zero enables automatic selection. A positive configured MTU is a ceiling and can be reduced by a received constraint. Source routes select the local address for each destination; plain Routes are not installed in the userspace stack. An explicit local addrs value disables suggested source routes. An explicit DNS servers value has priority over a TUN DNS suggestion. If neither is set, VTun uses 8.8.8.8. TUN DNS suggestions are for simple topologies only; use almagest/dns nodes for DNS routing or policy."
 }
 func (VTunClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: TypeTun, InitialPorts: []pasta.Port{
@@ -62,10 +66,13 @@ type vtunNode struct {
 
 	generatedAddrs []netip.Addr
 	vtun           *netstackvtun.VTun
+	vtunNetwork    gonnect.Network
 	vtunRuntime    vtunRuntimeConfig
+	mtuProvider    *links.Layer3DatagramMTUProvider
 	outputNetworks NetworkOutputCache
 	outputTuns     TunOutputCache
 	formError      string
+	fallbackLogged bool
 }
 
 func (n *vtunNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
@@ -162,6 +169,13 @@ func (n *vtunNode) OnEvent(event pasta.Event, linkType string, _ []string, recei
 			return nil
 		}
 		if cfg, ok := event.Payload.(TunConfig); ok {
+			if cfg.MTUConstraint != nil && cfg.MTUConstraint.ContainsNode(n.ID) {
+				if n.Logger != nil {
+					n.Logger.Errf("VTun rejected MTU dependency cycle from node %d: path=%v", cfg.MTUConstraint.SourceNode, cfg.MTUConstraint.Path)
+				}
+				cfg.MTU = 0
+				cfg.MTUConstraint = nil
+			}
 			n.tunConfig = cfg.Clone()
 			if n.usesTunConfig() {
 				if err := n.rebuildVTun(); err != nil {

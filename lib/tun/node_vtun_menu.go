@@ -36,18 +36,14 @@ func (n *vtunNode) sendEffectiveBlock() {
 func (n *vtunNode) effectiveBlock() formular.Block {
 	localAddrs := n.effectiveLocalAddrsForMenu()
 	dnsServers, _ := n.effectiveDNSServers()
-	mtu := n.config.mtu
-	if mtu <= 0 && n.tunConfig.MTU > 0 {
-		mtu = n.tunConfig.MTU
-	}
-	if mtu <= 0 {
-		mtu = defaultVTunMTU
-	}
+	mtu, constraint := n.effectiveMTU()
+	mtuSource := constraint.Source + ": " + constraint.Reason
 	return formular.Block{ID: "effective", Order: 0, Generation: 1, Items: []formular.Item{
 		readonlyTextField("name", "Name", n.config.name),
 		readonlyStringListField("localAddrs", "Local addrs", netipAddrsText(localAddrs)),
 		readonlyStringListField("dnsServers", "DNS servers", netipAddrsText(dnsServers)),
 		readonlyIntField("mtu", "MTU", mtu),
+		readonlyTextField("mtuSource", "MTU source", mtuSource),
 		readonlyIntField("endpointCh", "Endpoint channel", n.config.endpointCh),
 		readonlyIntField("eventCh", "Event channel", n.config.eventCh),
 		readonlyBoolField("noLoopbackAddr", "No loopback addrs", n.config.noLoopbackAddr),
@@ -74,7 +70,11 @@ func (n *vtunNode) configBlock() formular.Block {
 		configTextField("name", "Name", n.config.name, statusErr, n.formError, false),
 		configTextField("localAddrs", "Local addrs", n.config.localAddrs, statusErr, n.formError, true),
 		dnsServers,
-		configIntField("mtu", "MTU", n.config.mtu, statusErr, n.formError),
+		func() formular.Item {
+			item := configIntField("mtu", "MTU ceiling", n.config.mtu, statusErr, n.formError)
+			item.Help = "Maximum interface MTU. Zero enables automatic selection from graph constraints. A positive value can be reduced when the path requires a smaller MTU."
+			return item
+		}(),
 		configIntField("endpointCh", "Endpoint channel", n.config.endpointCh, statusErr, n.formError),
 		configIntField("eventCh", "Event channel", n.config.eventCh, statusErr, n.formError),
 		// configIntField("mwo", "Max write offset", n.config.mwo, false, ""),

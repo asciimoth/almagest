@@ -72,6 +72,27 @@ func TestAcceptNetworkPayloadReplacesStaleCurrentSameSource(t *testing.T) {
 	}
 }
 
+func TestAcceptNetworkPayloadUpdateAcceptsSameNetworkCapabilityRevision(t *testing.T) {
+	base := gonnect.NewLoopbackNetwork()
+	network := gonnect.DetachNetwork(base, nil, nil)
+	defer closeTestNetwork(network)
+	provider := NewLayer3DatagramMTUProvider(1500, true, false, MTUConstraint{Source: "test"})
+	current := NetworkPayload{Network: network, DatagramMTU: provider, CapabilityRevision: provider.Revision()}
+	provider.SetMTU(1400, true, false, MTUConstraint{Source: "test update"})
+	next, changed := AcceptNetworkPayloadUpdate(pasta.Event{Payload: NetworkPayload{
+		Network: network, DatagramMTU: provider, CapabilityRevision: provider.Revision(),
+	}}, current)
+	if !changed {
+		t.Fatal("AcceptNetworkPayloadUpdate() ignored a capability revision")
+	}
+	if !SameNetworkInstance(next.Network, network) || next.CapabilityRevision != provider.Revision() {
+		t.Fatalf("AcceptNetworkPayloadUpdate() = %+v", next)
+	}
+	if !NetworkIsReady(network) {
+		t.Fatal("same-network capability update closed the network")
+	}
+}
+
 func TestNetworkOutputCacheReusesReadyWrapperAndReplacesClosedWrapper(t *testing.T) {
 	w := pasta.NewWorkspace(logging.NewDebugLogFactory(1024))
 	defer w.Close()
@@ -182,11 +203,149 @@ func TestNetworkOutputCacheReplacesChangedSource(t *testing.T) {
 	cache.CloseAll()
 }
 
+func TestNetworkOutputCacheMTUCapabilityAttachDetachReattach(t *testing.T) {
+	w := pasta.NewWorkspace(logging.NewDebugLogFactory(1024))
+	defer w.Close()
+	providerID, out := addNetworkOutputCacheTestPort(t, w)
+	receiver := &networkPayloadReceiver{events: make(chan NetworkPayload, 4)}
+	_, err := w.AddNode(receiver, "test/NetworkReceiver", "receiver")
+	if err != nil {
+		t.Fatalf("AddNode receiver: %v", err)
+	}
+
+	source := gonnect.NewLoopbackNetwork()
+	firstProvider := NewLayer3DatagramMTUProvider(1500, true, false, MTUConstraint{Source: "first path"})
+	AttachDatagramMTUProvider(source, firstProvider)
+	defer DetachDatagramMTUProvider(source)
+
+	firstLink, _, err := w.AddLink(out, receiver.in)
+	if err != nil {
+		t.Fatalf("AddLink first: %v", err)
+	}
+	var cache NetworkOutputCache
+	defer cache.CloseAll()
+	if !cache.Send(w, providerID, firstLink, source) {
+		t.Fatal("Send() first link = false, want true")
+	}
+	first := receiveOutNetPayload(t, receiver.events)
+	if !SameDatagramMTUProvider(first.DatagramMTU, firstProvider) {
+		t.Fatal("first payload did not carry the attached MTU provider")
+	}
+	assertDatagramMTUPayload(t, first, 1472)
+
+	firstProvider.SetMTU(1400, true, false, MTUConstraint{Source: "first path update"})
+	if !cache.Send(w, providerID, firstLink, source) {
+		t.Fatal("Send() capability update = false, want true")
+	}
+	updated := receiveOutNetPayload(t, receiver.events)
+	if !SameNetworkInstance(updated.Network, first.Network) {
+		t.Fatal("capability update replaced a ready network wrapper")
+	}
+	assertDatagramMTUPayload(t, updated, 1372)
+
+	w.RemoveLink(firstLink)
+	cache.Close(firstLink)
+	if NetworkIsReady(first.Network) {
+		t.Fatal("detached link left its network wrapper ready")
+	}
+
+	secondProvider := NewLayer3DatagramMTUProvider(1300, true, false, MTUConstraint{Source: "second path"})
+	AttachDatagramMTUProvider(source, secondProvider)
+	secondLink, _, err := w.AddLink(out, receiver.in)
+	if err != nil {
+		t.Fatalf("AddLink second: %v", err)
+	}
+	if !cache.Send(w, providerID, secondLink, source) {
+		t.Fatal("Send() reattached link = false, want true")
+	}
+	second := receiveOutNetPayload(t, receiver.events)
+	if SameNetworkInstance(second.Network, first.Network) {
+		t.Fatal("reattached link reused the closed network wrapper")
+	}
+	if !SameDatagramMTUProvider(second.DatagramMTU, secondProvider) {
+		t.Fatal("reattached link did not use the new MTU provider")
+	}
+	assertDatagramMTUPayload(t, second, 1272)
+
+	firstProvider.SetMTU(1200, true, false, MTUConstraint{Source: "stale path update"})
+	if !cache.Send(w, providerID, secondLink, source) {
+		t.Fatal("Send() after stale update = false, want true")
+	}
+	afterStaleUpdate := receiveOutNetPayload(t, receiver.events)
+	if !SameDatagramMTUProvider(afterStaleUpdate.DatagramMTU, secondProvider) {
+		t.Fatal("a detached provider replaced the active provider")
+	}
+	assertDatagramMTUPayload(t, afterStaleUpdate, 1272)
+}
+
+func TestAcceptNetworkPayloadUpdateKeepsLegacyPayloadBehavior(t *testing.T) {
+	base := gonnect.NewLoopbackNetwork()
+	first := &legacyTestNetwork{
+		NetworkCloser: gonnect.DetachNetwork(base, nil, nil),
+	}
+	replacement := &legacyTestNetwork{
+		NetworkCloser: gonnect.DetachNetwork(base, nil, nil),
+	}
+	defer closeTestNetwork(replacement)
+
+	current, changed := AcceptNetworkPayloadUpdate(pasta.Event{Payload: NetworkPayload{Network: first}}, NetworkPayload{})
+	if !changed || !SameNetworkInstance(current.Network, first) {
+		t.Fatal("legacy payload was not accepted")
+	}
+	if current.DatagramMTU != nil || current.CapabilityRevision != 0 {
+		t.Fatalf("legacy payload gained an unexpected MTU capability: %+v", current)
+	}
+	unchanged, changed := AcceptNetworkPayloadUpdate(pasta.Event{Payload: NetworkPayload{Network: first}}, current)
+	if changed || !SameNetworkInstance(unchanged.Network, first) {
+		t.Fatal("duplicate legacy payload changed the current network")
+	}
+	next, changed := AcceptNetworkPayloadUpdate(pasta.Event{Payload: NetworkPayload{Network: replacement}}, current)
+	if !changed || !SameNetworkInstance(next.Network, replacement) {
+		t.Fatal("replacement legacy payload was not accepted")
+	}
+	if NetworkIsReady(first) {
+		t.Fatal("replacement legacy payload left the old wrapper ready")
+	}
+	if next.DatagramMTU != nil || next.CapabilityRevision != 0 {
+		t.Fatalf("replacement legacy payload gained an unexpected MTU capability: %+v", next)
+	}
+}
+
+func assertDatagramMTUPayload(t *testing.T, payload NetworkPayload, want int) {
+	t.Helper()
+	if payload.DatagramMTU == nil {
+		t.Fatal("payload.DatagramMTU = nil")
+	}
+	if payload.CapabilityRevision != payload.DatagramMTU.Revision() {
+		t.Fatalf("payload capability revision = %d, provider revision = %d", payload.CapabilityRevision, payload.DatagramMTU.Revision())
+	}
+	result, err := payload.DatagramMTU.MaxUDPPayload(t.Context(), "udp4", "192.0.2.1:53")
+	if err != nil || !result.Known || result.MaxPayload != want {
+		t.Fatalf("MaxUDPPayload() = %+v, %v; want %d", result, err, want)
+	}
+}
+
 type testNetworkWrapper struct {
 	NetworkCloser
 	wrapped any
 	up      bool
 	closed  bool
+}
+
+type legacyTestNetwork struct {
+	NetworkCloser
+	closed bool
+}
+
+func (*legacyTestNetwork) GetWrapped() any { return nil }
+
+func (*legacyTestNetwork) IsNative() bool { return false }
+
+func (n *legacyTestNetwork) IsUp() (bool, error) { return !n.closed, nil }
+
+func (n *legacyTestNetwork) Close() error {
+	n.closed = true
+	return n.NetworkCloser.Close()
 }
 
 func (w *testNetworkWrapper) GetWrapped() any { return w.wrapped }

@@ -1,17 +1,24 @@
 package wireguardnodes
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
+	"syscall"
 
+	"github.com/asciimoth/almagest/lib/links"
 	conn "github.com/asciimoth/batchudp"
 )
 
 type wireGuardTrackedBind struct {
 	conn.Bind
-	generation uint64
-	state      *wireGuardTrackedBindState
+	generation        uint64
+	state             *wireGuardTrackedBindState
+	learner           links.DatagramMTULearner
+	node              *wireGuardNode
+	networkGeneration uint64
+	configGeneration  uint64
 }
 
 type wireGuardTrackedBindState struct {
@@ -39,6 +46,39 @@ func (b wireGuardTrackedBind) Close() error {
 		b.state.closing.Store(b.state.open.Load())
 	}
 	return b.Bind.Close()
+}
+
+func (b wireGuardTrackedBind) Send(bufs [][]byte, endpoint conn.Endpoint) error {
+	err := b.Bind.Send(bufs, endpoint)
+	if err == nil || !errors.Is(err, syscall.EMSGSIZE) || endpoint == nil {
+		return err
+	}
+	attemptedSize := 0
+	for _, packet := range bufs {
+		if len(packet) > attemptedSize {
+			attemptedSize = len(packet)
+		}
+	}
+	if attemptedSize == 0 {
+		return err
+	}
+	current := b.node == nil || (b.networkGeneration == b.node.currentNetworkGenerationValue() &&
+		b.configGeneration == b.node.currentConfigGeneration())
+	if current && b.learner != nil {
+		b.learner.LearnDatagramMTU("udp", endpoint.DstToString(), endpoint.DstIP().Is6(), attemptedSize)
+	}
+	if b.node != nil {
+		b.node.sendInternal(wireGuardDatagramTooLargeMessage{
+			networkGeneration: b.networkGeneration,
+			configGeneration:  b.configGeneration,
+			bindGeneration:    b.generation,
+			endpoint:          endpoint.DstToString(),
+			ipv6:              endpoint.DstIP().Is6(),
+			attemptedSize:     attemptedSize,
+			err:               err,
+		})
+	}
+	return err
 }
 
 type wireGuardSerializedSendBind struct {

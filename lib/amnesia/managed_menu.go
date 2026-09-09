@@ -44,11 +44,22 @@ func (n *managedAmnesiaNode) statusBlock() formular.Block {
 		nodekit.ReadonlyTextField("country", "Server country", n.profileStatus.serverCountry),
 		nodekit.ReadonlyStringListField("addresses", "Tunnel addresses", n.profileStatus.addresses),
 		nodekit.ReadonlyStringListField("dns", "DNS servers", n.profileStatus.dns),
+		nodekit.ReadonlyTextField("mtu", "Effective MTU", strconv.Itoa(n.profileStatus.mtu)),
+		nodekit.ReadonlyTextField("profileMTU", "Profile MTU ceiling", strconv.Itoa(n.profileStatus.profileMTU)),
+		nodekit.ReadonlyTextField("carrierMaxUDP", "Carrier UDP payload", strconv.Itoa(n.profileStatus.carrierMaxUDP)),
+		nodekit.ReadonlyTextField("mtuSource", "MTU source", amnesiaMTUSourceText(n.profileStatus)),
 		nodekit.ReadonlyTextField("installationUUID", "UUID", n.installationUUID),
 		nodekit.ReadonlyTextField("rxBytes", "RX bytes", strconv.FormatUint(n.runtimeStats.RxBytes, 10)),
 		nodekit.ReadonlyTextField("txBytes", "TX bytes", strconv.FormatUint(n.runtimeStats.TxBytes, 10)),
 		nodekit.ReadonlyTextField("error", "Error", errText),
 	}}
+}
+
+func amnesiaMTUSourceText(status amnesiaProfileStatus) string {
+	if status.mtuConstraint == nil {
+		return "unknown"
+	}
+	return status.mtuConstraint.Source + ": " + status.mtuConstraint.Reason
 }
 
 func (n *managedAmnesiaNode) configBlock() formular.Block {

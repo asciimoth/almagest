@@ -87,6 +87,46 @@ func TestTunConfigCloneAndIsZero(t *testing.T) {
 	}
 }
 
+func TestTunConfigMTUConstraintAttachDetachReattachCompatibility(t *testing.T) {
+	configs := TunConfigByLink{}
+	configs.Set(1, TunConfig{MTU: 1400, Addrs: []string{"192.0.2.1/32"}})
+	constraint := MTUConstraint{Value: 1300, Source: "nested tunnel", Path: []uint64{10, 20}}
+	configs.Set(2, TunConfig{MTU: 1300, MTUConstraint: &constraint})
+
+	constraint.Source = "mutated caller value"
+	constraint.Path[0] = 99
+	merged := configs.Merge()
+	if merged.MTU != 1300 || merged.MTUConstraint == nil {
+		t.Fatalf("Merge() = %+v, want constrained MTU 1300", merged)
+	}
+	if merged.MTUConstraint.Source != "nested tunnel" || !reflect.DeepEqual(merged.MTUConstraint.Path, []uint64{10, 20}) {
+		t.Fatalf("stored constraint = %+v, want an independent copy", merged.MTUConstraint)
+	}
+	merged.MTUConstraint.Path[0] = 77
+	if next := configs.Merge(); next.MTUConstraint == nil || next.MTUConstraint.Path[0] != 10 {
+		t.Fatal("Merge() returned a constraint that aliases stored state")
+	}
+
+	configs.Delete(2)
+	legacy := configs.Merge()
+	if legacy.MTU != 1400 || legacy.MTUConstraint != nil {
+		t.Fatalf("Merge() after detach = %+v, want legacy MTU 1400 without provenance", legacy)
+	}
+
+	replacement := MTUConstraint{Value: 1350, Source: "reattached tunnel", Path: []uint64{30}}
+	configs.Set(2, TunConfig{MTU: 1350, MTUConstraint: &replacement})
+	reattached := configs.Merge()
+	if reattached.MTU != 1350 || reattached.MTUConstraint == nil || reattached.MTUConstraint.Source != "reattached tunnel" {
+		t.Fatalf("Merge() after reattach = %+v, want constrained MTU 1350", reattached)
+	}
+
+	configs.Delete(1)
+	configs.Delete(2)
+	if final := configs.Merge(); !final.IsZero() {
+		t.Fatalf("Merge() after all links detach = %+v, want zero config", final)
+	}
+}
+
 func TestTunConfigWithInferredSourceRoutesDualStackAndExplicitOverride(t *testing.T) {
 	explicit := TunSourceRoute{
 		Destination: netip.MustParsePrefix("100.80.0.0/16"),

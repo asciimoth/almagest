@@ -36,6 +36,11 @@ func (n *wireGuardNode) statusBlock() formular.Block {
 		statusErr = n.runtimeError
 	}
 	effective := n.effectiveConfig()
+	mtuConfig := n.tunConfig()
+	mtuSource := "unknown"
+	if mtuConfig.MTUConstraint != nil {
+		mtuSource = mtuConfig.MTUConstraint.Source + ": " + mtuConfig.MTUConstraint.Reason
+	}
 	return formular.Block{ID: "status", Order: 10, Generation: 1, Items: []formular.Item{
 		readonlyTextField("state", "State", n.stateTextFromSnapshot(status)),
 		readonlyTextField("publicKey", "Public key", publicKey),
@@ -44,6 +49,12 @@ func (n *wireGuardNode) statusBlock() formular.Block {
 		readonlyTextField("network", "Network", attachedText(status.hasNetwork)),
 		readonlyStringListField("ownedIPs", "Effective owned IPs", n.effectiveOwnedIPAddrs()),
 		readonlyIntField("peers", "Peers", len(effective.peers)),
+		readonlyIntField("effectiveMTU", "Effective MTU", mtuConfig.MTU),
+		readonlyIntField("controllerMTU", "Controller MTU ceiling", n.effectiveControllerMTU()),
+		readonlyIntField("carrierUDP", "Carrier UDP payload", n.carrierMaxUDPPayload),
+		readonlyIntField("carrierMTU", "Carrier MTU cap", n.carrierMTUConstraint.Value),
+		readonlyTextField("mtuSource", "MTU source", mtuSource),
+		readonlyTextField("mtuCalculationError", "MTU calculation error", n.carrierMTUError),
 		readonlyIntField("runtimePeers", "Runtime peers", status.stats.PeerCount),
 		readonlyIntField("activePeers", "Active peers", status.stats.ActivePeerCount),
 		readonlyIntField("connectedPeers", "Connected peers", status.stats.ConnectedPeerCount),

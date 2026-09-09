@@ -25,6 +25,13 @@ import (
 // register any received Network object with the Workspace resource tracking
 // system, bound to the owning node and link.
 //
+// NetworkPayload can also carry a maximum-UDP-payload capability. Native
+// networks derive it from the routed interface and socket PMTU. VTun derives
+// it from its effective link MTU. Transparent middleware that uses
+// NetworkOutputCache preserves it. NetworkRouter exposes the conservative
+// minimum of its active backends. Encapsulating transports, such as SOCKS,
+// report unknown unless they implement a specific size contract.
+//
 // The event payload implements std.ClosablePayload, so middleware nodes such as
 // std.SelectClass can close a previously-routed wrapper when switching paths.
 // Peers that only implement gonnect.Network without io.Closer should wrap their
@@ -44,6 +51,12 @@ type NetworkCloser interface {
 // NetworkPayload carries one network wrapper over an almagest/network event.
 type NetworkPayload struct {
 	Network NetworkCloser
+
+	// DatagramMTU is an optional destination-aware maximum UDP payload
+	// provider. CapabilityRevision lets a consumer process a provider update
+	// even when Network keeps the same identity.
+	DatagramMTU        DatagramMTUProvider
+	CapabilityRevision uint64
 }
 
 // Close closes the carried network when present.
@@ -51,6 +64,7 @@ func (p NetworkPayload) Close() error {
 	if p.Network == nil {
 		return nil
 	}
+	DetachDatagramMTUProvider(p.Network)
 	return p.Network.Close()
 }
 
@@ -80,9 +94,11 @@ func EmitDetachedNetwork(w *pasta.Workspace, node, link uint64, source gonnect.N
 	if _, ok := w.LinkSnapshotLocked(link); !ok {
 		return nil
 	}
+	provider := DatagramMTUProviderFromNetwork(source)
 	wrapper := gonnect.DetachNetwork(source, nil, nil)
+	AttachDatagramMTUProvider(wrapper, provider)
 	BindNetworkResource(w, node, link, wrapper)
-	w.EmitEventLocked(node, link, NetworkPayload{Network: wrapper})
+	w.EmitEventLocked(node, link, networkPayload(wrapper, provider))
 	return wrapper
 }
 
@@ -96,6 +112,7 @@ type networkOutputEntry struct {
 	source   gonnect.Network
 	resolver gonnect.Resolver
 	output   NetworkCloser
+	provider DatagramMTUProvider
 }
 
 // NetworkOutputCache owns detached network wrappers emitted by a node, keyed
@@ -175,7 +192,7 @@ func (c *NetworkOutputCache) SendResolvedWrappedLocked(w *pasta.Workspace, node,
 	}
 	if c.entries != nil {
 		if entry, ok := c.entries[link]; ok && NetworkIsReady(entry.output) && SameNetworkSource(entry.source, source) && SameNetworkResolver(entry.resolver, resolver) {
-			w.EmitEventLocked(node, link, NetworkPayload{Network: entry.output})
+			w.EmitEventLocked(node, link, networkPayload(entry.output, entry.provider))
 			return true
 		}
 	}
@@ -227,6 +244,7 @@ func (c *NetworkOutputCache) RefreshResolvedWrappedLocked(w *pasta.Workspace, no
 }
 
 func (c *NetworkOutputCache) emitWrappedLocked(w *pasta.Workspace, node, link uint64, source gonnect.Network, resolver gonnect.Resolver, wrap func(NetworkCloser) NetworkCloser) bool {
+	provider := DatagramMTUProviderFromNetwork(source)
 	var output NetworkCloser = gonnect.DetachNetwork(source, resolver, nil)
 	if wrap != nil {
 		wrapped := wrap(output)
@@ -236,13 +254,22 @@ func (c *NetworkOutputCache) emitWrappedLocked(w *pasta.Workspace, node, link ui
 		}
 		output = wrapped
 	}
+	AttachDatagramMTUProvider(output, provider)
 	BindNetworkResource(w, node, link, output)
 	if c.entries == nil {
 		c.entries = make(map[uint64]networkOutputEntry)
 	}
-	c.entries[link] = networkOutputEntry{source: source, resolver: resolver, output: output}
-	w.EmitEventLocked(node, link, NetworkPayload{Network: output})
+	c.entries[link] = networkOutputEntry{source: source, resolver: resolver, output: output, provider: provider}
+	w.EmitEventLocked(node, link, networkPayload(output, provider))
 	return true
+}
+
+func networkPayload(network NetworkCloser, provider DatagramMTUProvider) NetworkPayload {
+	payload := NetworkPayload{Network: network, DatagramMTU: provider}
+	if provider != nil {
+		payload.CapabilityRevision = provider.Revision()
+	}
+	return payload
 }
 
 // Close closes and forgets the wrapper emitted on link.
@@ -252,6 +279,7 @@ func (c *NetworkOutputCache) Close(link uint64) {
 	}
 	entry := c.entries[link]
 	delete(c.entries, link)
+	DetachDatagramMTUProvider(entry.output)
 	_ = CloseNetwork(entry.output)
 }
 
@@ -262,6 +290,7 @@ func (c *NetworkOutputCache) CloseAll() {
 	}
 	for link, entry := range c.entries {
 		delete(c.entries, link)
+		DetachDatagramMTUProvider(entry.output)
 		_ = CloseNetwork(entry.output)
 	}
 }
@@ -276,11 +305,46 @@ func AcceptNetworkPayloadValue(event pasta.Event, current NetworkCloser) (Networ
 	if !ok || !NetworkIsReady(payload.Network) {
 		return current, false
 	}
+	provider := payload.DatagramMTU
+	if provider == nil {
+		provider = DatagramMTUProviderFromNetwork(payload.Network)
+	}
+	AttachDatagramMTUProvider(payload.Network, provider)
 	if SameNetworkInstance(current, payload.Network) {
 		return current, false
 	}
 	_ = CloseNetwork(current)
 	return payload.Network, true
+}
+
+// AcceptNetworkPayloadUpdate validates a network event and also compares its
+// datagram capability. It processes a material capability revision when the
+// Network instance is unchanged. It closes the old Network only when the
+// Network instance changes.
+func AcceptNetworkPayloadUpdate(event pasta.Event, current NetworkPayload) (NetworkPayload, bool) {
+	if std.IsRequest(event.Payload) {
+		return current, false
+	}
+	next, ok := event.Payload.(NetworkPayload)
+	if !ok || !NetworkIsReady(next.Network) {
+		return current, false
+	}
+	if next.DatagramMTU == nil {
+		next.DatagramMTU = DatagramMTUProviderFromNetwork(next.Network)
+	}
+	AttachDatagramMTUProvider(next.Network, next.DatagramMTU)
+	if next.DatagramMTU != nil && next.CapabilityRevision == 0 {
+		next.CapabilityRevision = next.DatagramMTU.Revision()
+	}
+	if SameNetworkInstance(current.Network, next.Network) {
+		if SameDatagramMTUProvider(current.DatagramMTU, next.DatagramMTU) &&
+			current.CapabilityRevision == next.CapabilityRevision {
+			return current, false
+		}
+		return next, true
+	}
+	_ = CloseNetwork(current.Network)
+	return next, true
 }
 
 // AcceptNetworkPayload validates and binds a received NetworkPayload.
@@ -321,11 +385,21 @@ func SameNetworkResolver(a, b gonnect.Resolver) bool {
 	return SameComparableValue(a, b)
 }
 
+// SameDatagramMTUProvider reports whether a and b are the same comparable
+// provider. Non-comparable providers are never considered the same.
+func SameDatagramMTUProvider(a, b DatagramMTUProvider) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return SameComparableValue(a, b)
+}
+
 // CloseNetwork closes n when it is not nil.
 func CloseNetwork(n NetworkCloser) error {
 	if n == nil {
 		return nil
 	}
+	DetachDatagramMTUProvider(n)
 	return n.Close()
 }
 

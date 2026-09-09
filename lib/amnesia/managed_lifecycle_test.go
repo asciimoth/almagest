@@ -17,6 +17,7 @@ import (
 	"github.com/asciimoth/pasta/pasta/std"
 
 	dnsnodes "github.com/asciimoth/almagest/lib/dns"
+	"github.com/asciimoth/almagest/lib/links"
 	"github.com/asciimoth/almagest/lib/logging"
 	"github.com/asciimoth/almagest/lib/nodekit"
 	"github.com/asciimoth/almagest/lib/storage"
@@ -81,14 +82,21 @@ func TestManagedAmnesiaLinksAttachDetachReattach(t *testing.T) {
 		_ = firstTunPeer.Close()
 	})
 	firstNetwork := gonnect.DetachNetwork(gonnect.NewLoopbackNetwork(), nil, nil)
+	firstMTU := links.NewLayer3DatagramMTUProvider(1500, true, false, links.MTUConstraint{Source: "first carrier"})
 	w.EmitEvent(tunProviderID, firstTunLink, nodekit.TunPayload{Tun: firstTun})
-	w.EmitEvent(networkProviderID, firstNetworkLink, nodekit.NetworkPayload{Network: firstNetwork})
+	w.EmitEvent(networkProviderID, firstNetworkLink, nodekit.NetworkPayload{
+		Network: firstNetwork, DatagramMTU: firstMTU, CapabilityRevision: firstMTU.Revision(),
+	})
 	spawner.wait()
 	if node.tunLink != firstTunLink || node.tun != firstTun {
 		t.Fatalf("attached TUN = link %d value %p, want link %d value %p", node.tunLink, node.tun, firstTunLink, firstTun)
 	}
 	if node.netLink != firstNetworkLink || node.network != firstNetwork {
 		t.Fatalf("attached network = link %d value %p, want link %d value %p", node.netLink, node.network, firstNetworkLink, firstNetwork)
+	}
+	if !links.SameDatagramMTUProvider(node.networkPayload.DatagramMTU, firstMTU) ||
+		node.networkPayload.CapabilityRevision != firstMTU.Revision() || node.unsubscribeNetworkMTU == nil {
+		t.Fatal("first network did not attach its MTU capability")
 	}
 
 	w.RemoveLink(firstTunLink)
@@ -100,6 +108,12 @@ func TestManagedAmnesiaLinksAttachDetachReattach(t *testing.T) {
 			node.tunLink, node.tun, node.netLink, node.network,
 		)
 	}
+	if node.networkPayload.Network != nil || node.networkPayload.DatagramMTU != nil ||
+		node.networkMTURevision != 0 || node.unsubscribeNetworkMTU != nil {
+		t.Fatalf("detached MTU state was not cleared: %+v", node.networkPayload)
+	}
+	firstMTU.SetMTU(1400, true, false, links.MTUConstraint{Source: "stale carrier update"})
+	spawner.wait()
 	secondTunLink, _, err := w.AddLink(tunPort, node.tunp)
 	if err != nil {
 		t.Fatalf("reattach TUN link: %v", err)
@@ -114,8 +128,11 @@ func TestManagedAmnesiaLinksAttachDetachReattach(t *testing.T) {
 		_ = secondTunPeer.Close()
 	})
 	secondNetwork := gonnect.DetachNetwork(gonnect.NewLoopbackNetwork(), nil, nil)
+	secondMTU := links.NewLayer3DatagramMTUProvider(1350, true, false, links.MTUConstraint{Source: "second carrier"})
 	w.EmitEvent(tunProviderID, secondTunLink, nodekit.TunPayload{Tun: secondTun})
-	w.EmitEvent(networkProviderID, secondNetworkLink, nodekit.NetworkPayload{Network: secondNetwork})
+	w.EmitEvent(networkProviderID, secondNetworkLink, nodekit.NetworkPayload{
+		Network: secondNetwork, DatagramMTU: secondMTU, CapabilityRevision: secondMTU.Revision(),
+	})
 	spawner.wait()
 	if secondTunLink == firstTunLink || secondNetworkLink == firstNetworkLink {
 		t.Fatal("reattach reused a removed link ID")
@@ -125,6 +142,21 @@ func TestManagedAmnesiaLinksAttachDetachReattach(t *testing.T) {
 	}
 	if node.netLink != secondNetworkLink || node.network != secondNetwork {
 		t.Fatalf("reattached network = link %d value %p, want link %d value %p", node.netLink, node.network, secondNetworkLink, secondNetwork)
+	}
+	if !links.SameDatagramMTUProvider(node.networkPayload.DatagramMTU, secondMTU) ||
+		node.networkPayload.CapabilityRevision != secondMTU.Revision() || node.unsubscribeNetworkMTU == nil {
+		t.Fatal("reattached network did not replace the MTU capability")
+	}
+	firstMTU.SetMTU(1300, true, false, links.MTUConstraint{Source: "second stale update"})
+	spawner.wait()
+	if !links.SameDatagramMTUProvider(node.networkPayload.DatagramMTU, secondMTU) ||
+		node.networkPayload.CapabilityRevision != secondMTU.Revision() {
+		t.Fatal("detached MTU provider changed the reattached network")
+	}
+	secondMTU.SetMTU(1320, true, false, links.MTUConstraint{Source: "second carrier update"})
+	spawner.wait()
+	if node.networkPayload.CapabilityRevision != secondMTU.Revision() {
+		t.Fatal("reattached MTU provider update was not processed")
 	}
 }
 

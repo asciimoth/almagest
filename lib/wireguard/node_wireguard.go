@@ -114,11 +114,21 @@ type wireGuardNode struct {
 	networkPayloadReceived bool
 	desiredTun             tun.Tun
 	desiredNetwork         NetworkCloser
+	desiredDatagramMTU     links.DatagramMTUProvider
+	desiredMTURevision     uint64
+	unsubscribeDatagramMTU func()
+	mtuCalculation         atomic.Uint64
+	mtuPending             bool
+	carrierMaxUDPPayload   int
+	carrierMTUConstraint   links.MTUConstraint
+	carrierMTUError        string
+	transportContentMTU    atomic.Int64
 
 	tunGeneration     atomic.Uint64
 	networkGeneration atomic.Uint64
 
 	currentTun               tun.Tun
+	currentManagedTun        *wireGuardManagedTun
 	currentTunGeneration     uint64
 	currentNetwork           NetworkCloser
 	currentNetworkGeneration uint64
@@ -254,6 +264,7 @@ func (n *wireGuardNode) OnReady() error {
 	return nil
 }
 func (n *wireGuardNode) OnStop() {
+	n.unsubscribeCarrierMTU()
 	n.controllerSource.Store(nil)
 	n.failWGCtrlInterfaceConfigApplies(0, errors.New("WireGuard node stopped"))
 	n.cancelConfigRetry()
@@ -303,6 +314,12 @@ func (n *wireGuardNode) OnLinkAdd(link, port uint64, linkType, portDirection str
 	case port == n.ctrlp && portDirection == "left" && linkType == TypeWGCtrl:
 		n.sendWGCtrlToLink(link)
 	case port == n.netp && portDirection == "right" && linkType == TypeNetwork:
+		n.unsubscribeCarrierMTU()
+		n.mtuCalculation.Add(1)
+		n.mtuPending = false
+		n.carrierMaxUDPPayload = 0
+		n.carrierMTUConstraint = links.MTUConstraint{}
+		n.carrierMTUError = ""
 		n.netLink = link
 		n.networkPayloadReceived = false
 		n.desiredNetwork = nil
@@ -346,10 +363,17 @@ func (n *wireGuardNode) OnLinkRemoved(link uint64, port uint64, linkType, portDi
 		n.failWGCtrlInterfaceConfigApplies(link, errors.New("WireGuard controller link was removed"))
 		n.sendTunConfig()
 	case port == n.netp && portDirection == "right" && linkType == TypeNetwork && link == n.netLink:
+		n.unsubscribeCarrierMTU()
+		n.mtuCalculation.Add(1)
+		n.mtuPending = false
+		n.carrierMaxUDPPayload = 0
+		n.carrierMTUConstraint = links.MTUConstraint{}
+		n.carrierMTUError = ""
 		n.cancelConfigRetry()
 		n.netLink = 0
 		n.networkPayloadReceived = false
 		n.desiredNetwork = nil
+		n.sendTunConfig()
 		networkGeneration := n.nextNetworkGeneration()
 		n.nextRuntimeGeneration()
 		configWorkInvalidated = true
@@ -434,7 +458,21 @@ func (n *wireGuardNode) OnEvent(event pasta.Event, linkType string, _ []string, 
 			}(payload.Network)
 			return nil
 		}
+		provider := payload.DatagramMTU
+		if provider == nil {
+			provider = links.DatagramMTUProviderFromNetwork(payload.Network)
+		}
 		if n.networkPayloadReceived && SameNetworkInstance(n.desiredNetwork, payload.Network) {
+			providerChanged := !links.SameDatagramMTUProvider(provider, n.desiredDatagramMTU)
+			revision := payload.CapabilityRevision
+			if provider != nil && revision == 0 {
+				revision = provider.Revision()
+			}
+			if !providerChanged && revision == n.desiredMTURevision {
+				return nil
+			}
+			n.setCarrierMTUProvider(provider, revision)
+			n.scheduleCarrierMTUCalculation()
 			return nil
 		}
 		n.networkPayloadReceived = true
@@ -444,7 +482,16 @@ func (n *wireGuardNode) OnEvent(event pasta.Event, linkType string, _ []string, 
 		// succeeds. See the TUN payload path above.
 		networkGeneration := n.nextNetworkGeneration()
 		n.nextRuntimeGeneration()
-		n.scheduleNetworkAttach(networkGeneration, payload.Network, n.config.batchSize)
+		n.setCarrierMTUProvider(provider, payload.CapabilityRevision)
+		// A node without a workspace cannot receive the asynchronous MTU result.
+		// Keep the attachment primitive usable for lifecycle tests and pre-init
+		// callers; initialized nodes always use the destination-aware calculation.
+		if n.W == nil || n.ID == 0 {
+			n.mtuPending = false
+			n.scheduleNetworkAttach(networkGeneration, payload.Network, n.config.batchSize)
+			return nil
+		}
+		n.scheduleCarrierMTUCalculation()
 		return nil
 	}
 	return nil
@@ -485,6 +532,12 @@ func (n *wireGuardNode) OnInbox(message pasta.InboxMessage) error {
 		_ = n.updateLabel()
 	case wireGuardRuntimeStatsMessage:
 		n.handleRuntimeStats(msg)
+	case wireGuardMTUChanged:
+		n.handleCarrierMTUChanged(msg)
+	case wireGuardMTUResult:
+		n.handleCarrierMTUResult(msg)
+	case wireGuardDatagramTooLargeMessage:
+		n.handleDatagramTooLarge(msg)
 	case SecretValueChanged:
 		n.handleSecretValueChanged(msg)
 	}
@@ -546,6 +599,10 @@ func (n *wireGuardNode) commitConfigForm(next wireGuardConfig, opts wireGuardCon
 	n.formError = ""
 	n.config = next
 	n.configGeneration.Add(1)
+	waitForMTU := n.networkPayloadReceived
+	if waitForMTU {
+		n.scheduleCarrierMTUCalculation()
+	}
 	generation := n.nextRuntimeGeneration()
 	n.cancelConfigRetry()
 	if opts.emitTunConfig {
@@ -557,7 +614,9 @@ func (n *wireGuardNode) commitConfigForm(next wireGuardConfig, opts wireGuardCon
 	// Applying config may open sockets, update peer endpoints, and bring the
 	// device up. Schedule it after the form callback has released workspace
 	// state so daemon restore and snapshots are not blocked by runtime I/O.
-	n.scheduleConfigApply(effective, generation, 0, false)
+	if !waitForMTU {
+		n.scheduleConfigApply(effective, generation, 0, false)
+	}
 	return nil
 }
 func (n *wireGuardNode) rejectConfigForm(err error) {
@@ -617,12 +676,18 @@ func (n *wireGuardNode) acceptObjectPeers(event pasta.Event) error {
 // object replacement remove peers that are no longer present.
 func (n *wireGuardNode) applyEffectivePeerConfig() {
 	n.configGeneration.Add(1)
+	waitForMTU := n.networkPayloadReceived
+	if waitForMTU {
+		n.scheduleCarrierMTUCalculation()
+	}
 	generation := n.nextRuntimeGeneration()
 	n.cancelConfigRetry()
 	n.sendTunConfig()
 	_ = n.updateLabel()
 	n.sendStatusBlock()
-	n.scheduleConfigApply(n.effectiveConfig(), generation, 0, false)
+	if !waitForMTU {
+		n.scheduleConfigApply(n.effectiveConfig(), generation, 0, false)
+	}
 }
 
 func (n *wireGuardNode) effectiveConfig() wireGuardConfig {

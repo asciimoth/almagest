@@ -187,6 +187,42 @@ func TestVTunUsesDefaultDNSWhenNotConfigured(t *testing.T) {
 	}
 }
 
+func TestVTunAutomaticMTUAndPositiveCeiling(t *testing.T) {
+	config := defaultVTunConfig()
+	if config.mtu != 0 {
+		t.Fatalf("default VTun MTU = %d, want automatic value 0", config.mtu)
+	}
+	node := &vtunNode{config: config, tunConfig: TunConfig{MTU: 1280}}
+	if mtu, _ := node.effectiveMTU(); mtu != 1280 {
+		t.Fatalf("automatic effective MTU = %d, want 1280", mtu)
+	}
+	node.config.mtu = 1400
+	if mtu, _ := node.effectiveMTU(); mtu != 1280 {
+		t.Fatalf("effective MTU with larger ceiling = %d, want 1280", mtu)
+	}
+	node.config.mtu = 1200
+	if mtu, constraint := node.effectiveMTU(); mtu != 1200 || constraint.Reason != "user MTU ceiling" {
+		t.Fatalf("effective MTU with smaller ceiling = %d, %+v; want user ceiling 1200", mtu, constraint)
+	}
+	node.config.mtu = 0
+	node.tunConfig = TunConfig{}
+	if mtu, constraint := node.effectiveMTU(); mtu != DefaultVTunMTU || !strings.Contains(constraint.Reason, "fallback") {
+		t.Fatalf("fallback MTU = %d, %+v; want %d", mtu, constraint, DefaultVTunMTU)
+	}
+}
+
+func TestVTunConfigAcceptsAutomaticMTUAndRejectsNegative(t *testing.T) {
+	config := defaultVTunConfig()
+	config.mtu = 0
+	if err := validateVTunConfig(config); err != nil {
+		t.Fatalf("validateVTunConfig(MTU 0) error = %v", err)
+	}
+	config.mtu = -1
+	if err := validateVTunConfig(config); err == nil {
+		t.Fatal("validateVTunConfig() accepted a negative MTU")
+	}
+}
+
 func TestVTunUsesSuggestedDNSWhenNotConfigured(t *testing.T) {
 	node := &vtunNode{
 		config:    defaultVTunConfig(),

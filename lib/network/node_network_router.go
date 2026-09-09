@@ -13,6 +13,7 @@ import (
 	"github.com/asciimoth/pasta/pasta/std"
 
 	dnsnodes "github.com/asciimoth/almagest/lib/dns"
+	"github.com/asciimoth/almagest/lib/links"
 	"github.com/asciimoth/almagest/lib/storage"
 )
 
@@ -59,7 +60,8 @@ func (c NetworkRouterClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassSt
 			slotPortName,
 			func(name string) (int, bool) { return slotPortFromName(name, networkRouterMaxSlots) },
 		),
-		backends: map[int]NetworkCloser{},
+		backends:        map[int]NetworkCloser{},
+		backendPayloads: map[int]links.NetworkPayload{},
 	}, nil
 }
 
@@ -70,13 +72,16 @@ type networkRouterNode struct {
 	dnsIn uint64
 	slots slotPorts
 
-	router    *gonnect.Router
-	cfg       routing.RouterCfg
-	rulesText string
-	formError string
-	ready     bool
-	backends  map[int]NetworkCloser
-	outputs   NetworkOutputCache
+	router          *gonnect.Router
+	routerNetwork   gonnect.Network
+	mtuProvider     *links.MinimumDatagramMTUProvider
+	cfg             routing.RouterCfg
+	rulesText       string
+	formError       string
+	ready           bool
+	backends        map[int]NetworkCloser
+	backendPayloads map[int]links.NetworkPayload
+	outputs         NetworkOutputCache
 
 	// dnsCacheStorageName optionally selects a storage.DnsCacheManager storage whose
 	// synthetic PTR records are used by routing string and regexp address
@@ -101,8 +106,17 @@ func (n *networkRouterNode) OnInit(w *pasta.Workspace, _ pasta.Logger, id uint64
 		// Nil spawner is intentional here; see the Gonnect spawner note in helpers.go.
 		n.router = gonnect.NewRouter(nil)
 	}
+	if n.mtuProvider == nil {
+		n.mtuProvider = links.NewMinimumDatagramMTUProvider()
+	}
+	if n.routerNetwork == nil {
+		n.routerNetwork = links.AttachDatagramMTUProvider(n.router, n.mtuProvider)
+	}
 	if n.backends == nil {
 		n.backends = map[int]NetworkCloser{}
+	}
+	if n.backendPayloads == nil {
+		n.backendPayloads = map[int]links.NetworkPayload{}
 	}
 	if n.slots.Max() == 0 {
 		n.slots = newSlotPorts(
@@ -145,6 +159,8 @@ func (n *networkRouterNode) OnInit(w *pasta.Workspace, _ pasta.Logger, id uint64
 func (n *networkRouterNode) OnStop() {
 	n.outputs.CloseAll()
 	n.detachDNS()
+	links.DetachDatagramMTUProvider(n.routerNetwork)
+	n.mtuProvider.Close()
 	if n.router != nil {
 		_ = n.router.Close()
 	}
@@ -267,17 +283,24 @@ func (n *networkRouterNode) OnEvent(event pasta.Event, linkType string, _ []stri
 	if slot == 0 || receiverPortDirection != "right" || linkType != TypeNetwork {
 		return nil
 	}
-	next, changed := acceptNetworkPayload(event, n.backends[slot])
+	nextPayload, changed := links.AcceptNetworkPayloadUpdate(event, n.backendPayloads[slot])
 	if !changed {
 		return nil
 	}
-	if SameNetworkInstance(n.backends[slot], next) {
+	if SameNetworkInstance(n.backends[slot], nextPayload.Network) {
+		n.backendPayloads[slot] = nextPayload
+		n.mtuProvider.SetProvider(uint64(slot), nextPayload.DatagramMTU)
+		if n.ready {
+			n.sendAll()
+		}
 		return nil
 	}
 	n.detachSlot(slot)
-	err := n.router.Attach(slot, next)
-	BindNetworkResource(n.W, n.ID, event.Link, next)
-	n.backends[slot] = next
+	err := n.router.Attach(slot, nextPayload.Network)
+	BindNetworkResource(n.W, n.ID, event.Link, nextPayload.Network)
+	n.backends[slot] = nextPayload.Network
+	n.backendPayloads[slot] = nextPayload
+	n.mtuProvider.SetProvider(uint64(slot), nextPayload.DatagramMTU)
 	if err != nil && !n.isNonFatalAttachError(err) {
 		return err
 	}
@@ -401,7 +424,7 @@ func (n *networkRouterNode) reviewOutputPorts(opts slotPortReview) error {
 }
 
 func (n *networkRouterNode) sendAll() {
-	n.outputs.SendPortLocked(n.W, n.ID, n.in, n.router)
+	n.outputs.SendPortLocked(n.W, n.ID, n.in, n.routerNetwork)
 }
 
 func (n *networkRouterNode) requestSlots() {
@@ -415,11 +438,11 @@ func (n *networkRouterNode) requestDNS() {
 }
 
 func (n *networkRouterNode) sendRouterToLink(link uint64) {
-	n.outputs.SendLocked(n.W, n.ID, link, n.router)
+	n.outputs.SendLocked(n.W, n.ID, link, n.routerNetwork)
 }
 
 func (n *networkRouterNode) refreshRouterToLink(link uint64) {
-	n.outputs.RefreshLocked(n.W, n.ID, link, n.router)
+	n.outputs.RefreshLocked(n.W, n.ID, link, n.routerNetwork)
 }
 
 func (n *networkRouterNode) isNonFatalAttachError(err error) bool {
@@ -464,6 +487,8 @@ func (n *networkRouterNode) detachSlot(slot int) {
 		_ = old.Close()
 		delete(n.backends, slot)
 	}
+	delete(n.backendPayloads, slot)
+	n.mtuProvider.RemoveProvider(uint64(slot))
 }
 
 func (n *networkRouterNode) restoredRightPorts(restored *pasta.NodeInitData) (uint64, []uint64) {

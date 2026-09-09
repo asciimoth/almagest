@@ -182,6 +182,7 @@ func TestTailscaleStateWaitsForCurrentWireGuardConfig(t *testing.T) {
 
 func TestTailscaleWGInterfaceConfigIncludesAppliedPeerRoutes(t *testing.T) {
 	snapshot := wgotailscale.Snapshot{Network: wgotailscale.NetworkConfiguration{
+		MTU: 1280,
 		Addresses: []netip.Prefix{
 			netip.MustParsePrefix("fd7a:115c:a1e0::84/128"),
 			netip.MustParsePrefix("100.82.132.84/32"),
@@ -199,6 +200,7 @@ func TestTailscaleWGInterfaceConfigIncludesAppliedPeerRoutes(t *testing.T) {
 	want := wireguardnodes.WGCtrlInterfaceConfig{
 		OwnedIPs: []string{"100.82.132.84/32", "fd7a:115c:a1e0::84/128"},
 		Routes:   []string{"10.20.0.0/16", "100.97.143.122/32", "fd7a:115c:a1e0::/48"},
+		MTU:      1280,
 	}
 	if got := tailscaleWGInterfaceConfig(snapshot); !sameWGConfig(got, want) {
 		t.Fatalf("WireGuard interface config = %#v, want %#v", got, want)

@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/asciimoth/almagest/lib/links"
 	"github.com/asciimoth/almagest/lib/testkit"
 	conn "github.com/asciimoth/batchudp"
 	"github.com/asciimoth/configer/configer"
@@ -1919,7 +1920,9 @@ func (n *recordingWireGuardTestNetwork) consumeListenFailure() error {
 }
 
 type wireGuardTestNetworkSourceClass struct {
-	network NetworkCloser
+	network  NetworkCloser
+	provider links.DatagramMTUProvider
+	node     **wireGuardTestNetworkSourceNode
 }
 
 func (wireGuardTestNetworkSourceClass) ClassName() string {
@@ -1937,16 +1940,21 @@ func (wireGuardTestNetworkSourceClass) DefaultNodeParams() pasta.NodeClassParams
 	}}
 }
 func (c wireGuardTestNetworkSourceClass) NewNode(configer.Config, ...*pasta.NodeClassState) (pasta.Node, error) {
-	return &wireGuardTestNetworkSourceNode{network: c.network}, nil
+	node := &wireGuardTestNetworkSourceNode{network: c.network, provider: c.provider}
+	if c.node != nil {
+		*c.node = node
+	}
+	return node, nil
 }
 
 type wireGuardTestNetworkSourceNode struct {
 	pasta.BasicNode
 
-	w       *pasta.Workspace
-	id      uint64
-	out     uint64
-	network NetworkCloser
+	w        *pasta.Workspace
+	id       uint64
+	out      uint64
+	network  NetworkCloser
+	provider links.DatagramMTUProvider
 }
 
 func (n *wireGuardTestNetworkSourceNode) OnInit(w *pasta.Workspace, _ pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
@@ -1999,8 +2007,13 @@ func (n *wireGuardTestNetworkSourceNode) sendToLink(link uint64) {
 	if n.network == nil {
 		return
 	}
+	links.AttachDatagramMTUProvider(n.network, n.provider)
 	BindNetworkResource(n.w, n.id, link, n.network)
-	n.w.EmitEventLocked(n.id, link, NetworkPayload{Network: n.network})
+	payload := NetworkPayload{Network: n.network, DatagramMTU: n.provider}
+	if n.provider != nil {
+		payload.CapabilityRevision = n.provider.Revision()
+	}
+	n.w.EmitEventLocked(n.id, link, payload)
 }
 
 const wireGuardTestTunProviderNodeType = "test/WireGuardTunProvider"

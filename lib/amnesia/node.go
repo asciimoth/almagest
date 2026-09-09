@@ -18,6 +18,7 @@ import (
 	wgoamnesia "github.com/asciimoth/wgo/amnesia"
 	wgdevice "github.com/asciimoth/wgo/device"
 
+	"github.com/asciimoth/almagest/lib/links"
 	"github.com/asciimoth/almagest/lib/nodekit"
 	"github.com/asciimoth/almagest/lib/storage"
 	wireguardnodes "github.com/asciimoth/almagest/lib/wireguard"
@@ -169,7 +170,7 @@ type amnesiaRuntimeRequest struct {
 	forceRevision      uint64
 	nodeName           string
 	ctx                context.Context
-	setInterfaceConfig func(context.Context, uint64, []string, []string, string) error
+	setInterfaceConfig func(context.Context, uint64, []string, []string, string, int) error
 }
 
 type amnesiaRuntimeResult struct {
@@ -199,6 +200,7 @@ type amnesiaWGCtrlInterfaceConfigRequest struct {
 	addresses  []string
 	routes     []string
 	dns        string
+	mtu        int
 	result     chan<- error
 }
 
@@ -210,6 +212,11 @@ type amnesiaProfileStatus struct {
 	addresses     []string
 	dns           []string
 	allowedIPs    []string
+	mtu           int
+	profileMTU    int
+	carrierMaxUDP int
+	transportS4   int
+	mtuConstraint *links.MTUConstraint
 }
 
 func (n *amnesiaNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
@@ -635,6 +642,7 @@ func (n *amnesiaNode) setWGCtrlInterfaceConfig(
 	generation uint64,
 	addresses, routes []string,
 	dns string,
+	mtu int,
 ) error {
 	if n.W == nil || n.ID == 0 {
 		return errors.New("workspace is unavailable")
@@ -645,6 +653,7 @@ func (n *amnesiaNode) setWGCtrlInterfaceConfig(
 		addresses:  append([]string(nil), addresses...),
 		routes:     append([]string(nil), routes...),
 		dns:        dns,
+		mtu:        mtu,
 		result:     result,
 	}})
 	select {
@@ -664,6 +673,7 @@ func (n *amnesiaNode) handleWGCtrlInterfaceConfigRequest(msg amnesiaWGCtrlInterf
 		OwnedIPs: append([]string(nil), msg.addresses...),
 		Routes:   append([]string(nil), msg.routes...),
 		DNS:      msg.dns,
+		MTU:      msg.mtu,
 	}
 	n.logDebugf(
 		"Amnesia WGCtrl interface update preparing before peer apply: link=%d generation=%d address_count=%d addresses=%v routes=%v dns=%q",
@@ -728,6 +738,7 @@ func (n *amnesiaNode) sendWGCtrlInterfaceConfig() {
 		cfg.OwnedIPs = append([]string(nil), n.profileStatus.addresses...)
 		cfg.Routes = append([]string(nil), n.profileStatus.allowedIPs...)
 		cfg.DNS = firstAmnesiaDNS(n.profileStatus.dns)
+		cfg.MTU = n.profileStatus.mtu
 		if !cfg.IsZero() {
 			action = "replace"
 		}

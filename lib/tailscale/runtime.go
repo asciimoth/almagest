@@ -402,7 +402,7 @@ func firewallObject(config *gonnect.FirewallConfig) std.Object {
 }
 
 func sameWGConfig(a, b wireguardnodes.WGCtrlInterfaceConfig) bool {
-	return a.DNS == b.DNS && slices.Equal(a.OwnedIPs, b.OwnedIPs) && slices.Equal(a.Routes, b.Routes)
+	return a.DNS == b.DNS && a.MTU == b.MTU && slices.Equal(a.OwnedIPs, b.OwnedIPs) && slices.Equal(a.Routes, b.Routes)
 }
 
 func tailscaleWGInterfaceConfig(snapshot wgotailscale.Snapshot) wireguardnodes.WGCtrlInterfaceConfig {
@@ -423,7 +423,7 @@ func tailscaleWGInterfaceConfig(snapshot wgotailscale.Snapshot) wireguardnodes.W
 	}
 	slices.Sort(routes)
 	routes = slices.Compact(routes)
-	return wireguardnodes.WGCtrlInterfaceConfig{OwnedIPs: addresses, Routes: routes}
+	return wireguardnodes.WGCtrlInterfaceConfig{OwnedIPs: addresses, Routes: routes, MTU: snapshot.Network.MTU}
 }
 
 func tailscaleTransportID(storageID string) wgdevice.TransportID {

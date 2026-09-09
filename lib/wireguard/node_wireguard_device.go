@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/asciimoth/almagest/lib/links"
 	"github.com/asciimoth/gonnect/tun"
 	wgdevice "github.com/asciimoth/wgo/device"
 )
@@ -204,6 +205,7 @@ func (n *wireGuardNode) detachStaleTunLocked() error {
 	// Remove the stale attachment without stopping the device. WireGuard keeps
 	// its transport and peer sessions alive while it waits for the replacement.
 	n.currentTun = nil
+	n.currentManagedTun = nil
 	n.currentTunGeneration = 0
 	if err := n.dev.DetachTUN(); err != nil {
 		return fmt.Errorf("detach stale TUN: %w", err)
@@ -235,21 +237,22 @@ func (n *wireGuardNode) attachCurrentTun(tunGeneration uint64, t tun.Tun, batchS
 	drainWireGuardTunEvents(t)
 	// A running device already has its current config and transport. Replacing
 	// only its TUN must not reapply device config or refresh the UDP bind.
-	managedTun, err := n.newManagedTun(t)
+	managedTunValue, err := n.newManagedTun(t)
 	if err != nil {
 		_ = t.Close()
 		return false, true, fmt.Errorf("prepare TUN event filter: %w", err)
 	}
 	if n.currentTun == nil {
-		err = n.dev.AttachTUN(managedTun)
+		err = n.dev.AttachTUN(managedTunValue)
 	} else {
-		err = n.dev.ReplaceTUN(managedTun)
+		err = n.dev.ReplaceTUN(managedTunValue)
 	}
 	if err != nil {
 		_ = t.Close()
 		return false, true, fmt.Errorf("attach TUN: %w", err)
 	}
 	n.currentTun = t
+	n.currentManagedTun, _ = managedTunValue.(*wireGuardManagedTun)
 	n.currentTunGeneration = tunGeneration
 	return n.configApplyNeededLocked(), true, nil
 }
@@ -344,7 +347,13 @@ func (n *wireGuardNode) attachCurrentNetworkBindLocked(batchSize int) (bool, err
 	var err error
 	bindGeneration := n.nextBindGenerationLocked()
 	bindState := &wireGuardTrackedBindState{}
-	trackedBind := wireGuardTrackedBind{Bind: networkBind, generation: bindGeneration, state: bindState}
+	provider := links.DatagramMTUProviderFromNetwork(n.currentNetwork)
+	learner, _ := provider.(links.DatagramMTULearner)
+	trackedBind := wireGuardTrackedBind{
+		Bind: networkBind, generation: bindGeneration, state: bindState,
+		learner: learner, node: n, networkGeneration: n.currentNetworkGeneration,
+		configGeneration: n.currentConfigGeneration(),
+	}
 	if n.currentBind == nil {
 		err = n.dev.AttachBind(trackedBind)
 	} else {
@@ -372,6 +381,7 @@ func (n *wireGuardNode) detachCurrentTun(tunGeneration uint64) (bool, error, boo
 		return false, nil, false
 	}
 	n.currentTun = nil
+	n.currentManagedTun = nil
 	n.currentTunGeneration = 0
 	if n.dev == nil {
 		return n.configApplyNeededLocked(), nil, true
@@ -418,6 +428,7 @@ func (n *wireGuardNode) stopRuntime() {
 	n.dev = nil
 	n.controllerSource.Store(nil)
 	n.currentTun = nil
+	n.currentManagedTun = nil
 	n.currentTunGeneration = 0
 	n.currentNetwork = nil
 	n.currentNetworkGeneration = 0
