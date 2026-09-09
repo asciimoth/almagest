@@ -1,0 +1,24 @@
+{
+	"Logs": {
+		"Cache": {
+			"Debug": 512,
+			"Info": 128,
+			"Warn": 128,
+			"Error": 128,
+			"Fatal": 32,
+		},
+	},
+	"nodes": {
+		"DefaultTun zero routes": {
+			"Class":     "almagest/DefaultTun",
+			"Pos":       "{\"x\":120,\"y\":120}",
+			"tunAddrs":  "",
+			"tunRoutes": "0.0.0.0/0\n::/0",
+			"mtu":       0,
+			"dnsIP":     "",
+			"strict":    false,
+			"exclude":   [],
+			"include":   [],
+		},
+	},
+}

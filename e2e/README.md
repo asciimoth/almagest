@@ -123,6 +123,7 @@ Linux environments used by Almagest's direct dependencies:
 - `sysnet_dns_debian_resolvconf`, `sysnet_dns_openresolv`, and
   `sysnet_dns_systemd_resolved`: DNS-manager auto-detection and system queries
   from the sysnet-linux v0.2.19 Docker suite.
-- `default_tun_routing`, `default_tun_dns_provider`,
+- `default_tun_routing`, `default_tun_zero_prefix_routes`,
+  `default_tun_dns_provider`,
   `killswitch_default_tun_exclude`, and `tun_splitter_process_routing`:
   sysnet-linux routing, DNS, strict mode, process marks, and lifecycle behavior.
