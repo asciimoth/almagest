@@ -157,8 +157,23 @@ func (n *defaultTunNode) effectiveDefaultTunOpts() sysnet.DefaultTunOpts {
 	portCfg := n.portCfg.Merge()
 	opts.TunAddrs = mergeDefaultTunStringLists(opts.TunAddrs, portCfg.Addrs)
 	opts.TunRoutes = mergeDefaultTunStringLists(opts.TunRoutes, portCfg.Routes)
+	opts.SourceRoutes = defaultTunSourceRoutes(portCfg.SourceRoutes)
 	opts.MTU = mergeDefaultTunMTU(opts.MTU, portCfg.MTU)
 	return opts
+}
+
+func defaultTunSourceRoutes(routes []TunSourceRoute) []sysnet.TunSourceRoute {
+	if routes == nil {
+		return nil
+	}
+	out := make([]sysnet.TunSourceRoute, 0, len(routes))
+	for _, route := range routes {
+		out = append(out, sysnet.TunSourceRoute{
+			Destination: route.Destination,
+			Source:      route.Source,
+		})
+	}
+	return out
 }
 
 func (n *defaultTunNode) verifyDefaultTunOpts(opts sysnet.DefaultTunOpts) error {

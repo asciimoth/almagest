@@ -1,0 +1,16 @@
+{
+	"Admin": {
+		"Web": 0,
+		"Unix": "%E2E_ADMIN_SOCK%",
+	},
+	"Secrets": {
+		"default-source-private-key": {
+			"Value": "KCssLS4vMDEyMzQ1Njc4OTo7PD0+P0BBQkNERUZHSEk=",
+			"Nodes": ["Default WireGuard"],
+		},
+		"overlay-source-private-key": {
+			"Value": "TU5PUFFSU1RVVldYWVpbXF1eX2BhYmNkZWZnaGlqa2w=",
+			"Nodes": ["Overlay WireGuard"],
+		},
+	},
+}

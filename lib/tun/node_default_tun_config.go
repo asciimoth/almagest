@@ -140,6 +140,7 @@ func (c defaultTunConfig) defaultTunOpts() sysnet.DefaultTunOpts {
 
 func defaultTunOptsDynamicallyCompatible(a, b sysnet.DefaultTunOpts) bool {
 	return slices.Equal(a.TunRoutes, b.TunRoutes) &&
+		slices.Equal(a.SourceRoutes, b.SourceRoutes) &&
 		a.DnsIP == b.DnsIP &&
 		a.Strict == b.Strict &&
 		slices.Equal(a.Exclude, b.Exclude) &&

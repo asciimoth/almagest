@@ -4,6 +4,7 @@ package tunnodes_test
 import (
 	"context"
 	"errors"
+	"net/netip"
 	"os"
 	"reflect"
 	"strings"
@@ -225,9 +226,22 @@ func TestDefaultTunBuildsEmitsAndRebuildsFromFormAndTunConfig(t *testing.T) {
 	}
 
 	w.EmitEvent(receiverID, link, TunConfig{
-		Addrs:  []string{"10.10.0.2/32", "10.20.0.2/32"},
-		Routes: []string{"0.0.0.0/0", "10.20.0.0/16"},
-		MTU:    1280,
+		Addrs: []string{"10.10.0.2/32", "10.20.0.2/32"},
+		Routes: []string{
+			"0.0.0.0/0",
+			"10.20.0.0/16",
+		},
+		SourceRoutes: []TunSourceRoute{
+			{
+				Destination: netip.MustParsePrefix("0.0.0.0/0"),
+				Source:      netip.MustParseAddr("10.10.0.2"),
+			},
+			{
+				Destination: netip.MustParsePrefix("10.20.0.0/16"),
+				Source:      netip.MustParseAddr("10.20.0.2"),
+			},
+		},
+		MTU: 1280,
 	})
 	if got := sys.buildCount(); got != 3 {
 		t.Fatalf("build count after TunConfig = %d, want 3", got)
@@ -236,6 +250,16 @@ func TestDefaultTunBuildsEmitsAndRebuildsFromFormAndTunConfig(t *testing.T) {
 	wantMergedOpts := wantFormOpts
 	wantMergedOpts.TunAddrs = []string{"10.10.0.2/32", "fd00::2/128", "10.20.0.2/32"}
 	wantMergedOpts.TunRoutes = []string{"0.0.0.0/0", "::/0", "10.20.0.0/16"}
+	wantMergedOpts.SourceRoutes = []sysnet.TunSourceRoute{
+		{
+			Destination: netip.MustParsePrefix("0.0.0.0/0"),
+			Source:      netip.MustParseAddr("10.10.0.2"),
+		},
+		{
+			Destination: netip.MustParsePrefix("10.20.0.0/16"),
+			Source:      netip.MustParseAddr("10.20.0.2"),
+		},
+	}
 	wantMergedOpts.MTU = 1280
 	if got := sys.lastOpts(); !reflect.DeepEqual(got, wantMergedOpts) {
 		t.Fatalf("merged build opts = %#v, want %#v", got, wantMergedOpts)
@@ -312,6 +336,121 @@ func TestDefaultTunDynamicConfigUsesSettersWhenOnlyMTUAndAddrsChange(t *testing.
 	if got := sys.buildCount(); got != 3 {
 		t.Fatalf("build count after route change = %d, want 3", got)
 	}
+}
+
+func TestDefaultTunSourceRouteChangeRebuildsAndPreservesReusedNativeDevice(t *testing.T) {
+	w, sys := newDefaultTunNodeTestWorkspace(t, true)
+	nativeFile, err := os.CreateTemp(t.TempDir(), "default-tun-source-route-")
+	if err != nil {
+		t.Fatalf("CreateTemp native device identity: %v", err)
+	}
+	t.Cleanup(func() { _ = nativeFile.Close() })
+	sys.reuseNativeDevice = true
+	sys.nativeFile = nativeFile
+
+	node, err := w.AddNodeByClass(NodeTypeDefaultTun, "default tun")
+	if err != nil {
+		t.Fatalf("AddNodeByClass DefaultTun: %v", err)
+	}
+	receiver := tuntest.NewReceiver(4)
+	receiverID, err := w.AddNode(receiver, "test/TunReceiver", "tun receiver")
+	if err != nil {
+		t.Fatalf("AddNode receiver: %v", err)
+	}
+	nodeSnapshot := testkit.MustNodeSnapshot(t, w, node)
+	link, _, err := w.AddLink(receiver.In, nodeSnapshot.RightPorts[0])
+	if err != nil {
+		t.Fatalf("AddLink tun: %v", err)
+	}
+	firstPayload := tuntest.ReceivePayload(t, receiver.Events)
+
+	defaultSource := netip.MustParseAddr("10.40.0.2")
+	specificSource := netip.MustParseAddr("100.64.0.2")
+	config := TunConfig{
+		Addrs: []string{defaultSource.String() + "/32", specificSource.String() + "/32"},
+		Routes: []string{
+			"0.0.0.0/0",
+			"100.64.0.0/10",
+		},
+		SourceRoutes: []TunSourceRoute{
+			{Destination: netip.MustParsePrefix("0.0.0.0/0"), Source: defaultSource},
+			{Destination: netip.MustParsePrefix("100.64.0.0/10"), Source: specificSource},
+		},
+	}
+	w.EmitEvent(receiverID, link, config)
+	if got := sys.buildCount(); got != 2 {
+		t.Fatalf("build count after initial source routes = %d, want 2", got)
+	}
+	tuntest.AssertNoEvent(t, receiver.Events)
+	if got, want := sys.lastOpts().SourceRoutes, []sysnet.TunSourceRoute{
+		{Destination: netip.MustParsePrefix("0.0.0.0/0"), Source: defaultSource},
+		{Destination: netip.MustParsePrefix("100.64.0.0/10"), Source: specificSource},
+	}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("initial source routes = %#v, want %#v", got, want)
+	}
+
+	config.SourceRoutes = []TunSourceRoute{
+		{Destination: netip.MustParsePrefix("0.0.0.0/0"), Source: specificSource},
+		{Destination: netip.MustParsePrefix("100.64.0.0/10"), Source: defaultSource},
+	}
+	w.EmitEvent(receiverID, link, config)
+	if got := sys.buildCount(); got != 3 {
+		t.Fatalf("build count after source-route-only change = %d, want 3", got)
+	}
+	tuntest.AssertNoEvent(t, receiver.Events)
+	if got := len(sys.setAddrsCalls); got != 0 {
+		t.Fatalf("SetTunAddrs calls after source-route changes = %d, want 0", got)
+	}
+	if got := len(sys.setMTUCalls); got != 0 {
+		t.Fatalf("SetTunMTU calls after source-route changes = %d, want 0", got)
+	}
+	if got := sys.tuns[len(sys.tuns)-1].File(); got != nativeFile {
+		t.Fatal("source-route rebuild did not reuse the native TUN file")
+	}
+	up, err := firstPayload.Tun.(interface{ IsUp() (bool, error) }).IsUp()
+	if err != nil || !up {
+		t.Fatal("existing output wrapper stopped after source-route rebuild")
+	}
+}
+
+func TestDefaultTunRejectsConflictingSourceRoutesWithoutReplacingRuntime(t *testing.T) {
+	w, sys := newDefaultTunNodeTestWorkspace(t, false)
+	node, err := w.AddNodeByClass(NodeTypeDefaultTun, "default tun")
+	if err != nil {
+		t.Fatalf("AddNodeByClass DefaultTun: %v", err)
+	}
+	receiver := tuntest.NewReceiver(4)
+	receiverID, err := w.AddNode(receiver, "test/TunReceiver", "tun receiver")
+	if err != nil {
+		t.Fatalf("AddNode receiver: %v", err)
+	}
+	nodeSnapshot := testkit.MustNodeSnapshot(t, w, node)
+	link, _, err := w.AddLink(receiver.In, nodeSnapshot.RightPorts[0])
+	if err != nil {
+		t.Fatalf("AddLink tun: %v", err)
+	}
+	_ = tuntest.ReceivePayload(t, receiver.Events)
+	active := sys.tuns[0]
+
+	defaultDestination := netip.MustParsePrefix("0.0.0.0/0")
+	w.EmitEvent(receiverID, link, TunConfig{
+		Addrs:  []string{"10.50.0.2/32", "10.60.0.2/32"},
+		Routes: []string{defaultDestination.String()},
+		SourceRoutes: []TunSourceRoute{
+			{Destination: defaultDestination, Source: netip.MustParseAddr("10.50.0.2")},
+			{Destination: defaultDestination, Source: netip.MustParseAddr("10.60.0.2")},
+		},
+	})
+	if got := sys.buildCount(); got != 1 {
+		t.Fatalf("build count after conflicting policy = %d, want 1", got)
+	}
+	if got := active.closeCount(); got != 0 {
+		t.Fatalf("active DefaultTun close count after rejected policy = %d, want 0", got)
+	}
+	if got := testkit.MustNodeSnapshot(t, w, node).Label; got != "invalid config" {
+		t.Fatalf("DefaultTun label after rejected policy = %q, want invalid config", got)
+	}
+	tuntest.AssertNoEvent(t, receiver.Events)
 }
 
 func TestDefaultTunRebuildKeepsOutputsForReusedNativeDevice(t *testing.T) {

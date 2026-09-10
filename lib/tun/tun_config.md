@@ -52,7 +52,10 @@ Node behavior is as follows:
   Its own field has priority. If neither value is set, VTun uses `8.8.8.8`.
 - `Tun` drops the DNS suggestion. It continues to use address, route, and MTU
   suggestions.
-- `DefaultTun` drops the DNS suggestion. Configure its DNS service through its
+- `DefaultTun` passes source-route suggestions to the system network
+  implementation. A source-route change rebuilds the logical default-TUN
+  configuration, but an implementation can reuse the active native device.
+  `DefaultTun` drops the DNS suggestion. Configure its DNS service through its
   `almagest/dns` port.
 - `TunConfigStripper` drops the complete `TunConfig`, including DNS.
 

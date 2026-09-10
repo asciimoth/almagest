@@ -1,0 +1,79 @@
+{
+	"Logs": {
+		"Cache": {
+			"Debug": 4096,
+			"Info": 512,
+			"Warn": 256,
+			"Error": 128,
+			"Fatal": 32,
+		},
+	},
+	"nodes": {
+		"DefaultTun entry": {
+			"Class": "almagest/DefaultTun",
+			"Pos": "{\"x\":80,\"y\":320}",
+			"Links": [
+				"Tun -> [Route TunSplitter] Tun",
+				"DNS -> [Original OutDns] DNS",
+			],
+			"tunAddrs": "",
+			"tunRoutes": "",
+			"mtu": 0,
+			"dnsIP": "",
+			"strict": false,
+			"exclude": [],
+			"include": [],
+		},
+		"Original OutDns": {
+			"Class": "almagest/OutDns",
+			"Pos": "{\"x\":80,\"y\":540}",
+		},
+		"Route TunSplitter": {
+			"Class": "almagest/TunSplitter",
+			"Pos": "{\"x\":390,\"y\":320}",
+			"Links": [
+				"slot 2 -> [Overlay WireGuard] Tun",
+				"slot 1 -> [Default WireGuard] Tun",
+			],
+			"rules": "SNET4 100.64.0.0/10\nSNET6 fd7a:115c:a1e0::/48\nOR\nSLOT 2\n\nTRUE\nSLOT 1",
+		},
+		"Default WireGuard": {
+			"Class": "almagest/WireGuard",
+			"Pos": "{\"x\":700,\"y\":180}",
+			"Links": ["Network -> [Default OutNetwork] Network"],
+			"privateKeySecret": "default-source-private-key",
+			"listenPort": 51880,
+			"ownedIPs": "10.250.0.1/32\nfd10:250::1/128",
+			"peers": [{
+				"id": "default-kernel-peer",
+				"publicKey": "laFBiTT/wW7x80sMEG6yQhZxM7h0+3hv5kI6dxP081g=",
+				"endpoint": "203.0.113.2:51881",
+				"allowedIPs": "0.0.0.0/0\n::/0",
+				"persistentKeepaliveInterval": 1,
+			}],
+		},
+		"Default OutNetwork": {
+			"Class": "almagest/OutNetwork",
+			"Pos": "{\"x\":1010,\"y\":180}",
+		},
+		"Overlay WireGuard": {
+			"Class": "almagest/WireGuard",
+			"Pos": "{\"x\":700,\"y\":460}",
+			"Links": ["Network -> [Overlay OutNetwork] Network"],
+			"privateKeySecret": "overlay-source-private-key",
+			"listenPort": 51883,
+			"ownedIPs": "100.100.0.1/32\nfd7a:115c:a1e0::1/128",
+			"peers": [{
+				"id": "overlay-kernel-peer",
+				"publicKey": "mVUt3ykrlk6bIfIqZ8u+MeDh5mZrqtCA5I5WPrnEwxc=",
+				"endpoint": "203.0.113.2:51882",
+				"allowedIPs": "100.64.0.0/10\nfd7a:115c:a1e0::/48",
+				"persistentKeepaliveInterval": 1,
+			}],
+		},
+		"Overlay OutNetwork": {
+			"Class": "almagest/OutNetwork",
+			"Pos": "{\"x\":1010,\"y\":460}",
+		},
+	},
+}
