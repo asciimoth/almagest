@@ -28,8 +28,8 @@ github.com/asciimoth/putback v0.3.0 h1:NKyX1K2yR/pHt9ov7BifA7qd8oMSOhsit4hMf694e
 github.com/asciimoth/putback v0.3.0/go.mod h1:K4u9GV2oQVToze+iKSA/e2V26lusyirYqBZuOZnw2YA=
 github.com/asciimoth/socksgo v0.4.14 h1:kMB45sJfu7E+WV5wHOtHVaWBlcfRYnhFfNRtosAy1eo=
 github.com/asciimoth/socksgo v0.4.14/go.mod h1:g6sqSdRNnQSvn4FsGPfIckQftJRRNV8kMzypIY9WolY=
-github.com/asciimoth/sysnet-linux v0.2.23 h1:n76nIaKCsJXroGBebyXh73uiR9NEyr/juwx3+3Sl17I=
-github.com/asciimoth/sysnet-linux v0.2.23/go.mod h1:8B+bvZBNcZoGuNC1EHkJ8ImsE/jjEGvKYPWsyhMdhxk=
+github.com/asciimoth/sysnet-linux v0.2.26 h1:TL81J3OWiGnxnyHOM8QLl23Le7ey4oQnECgFfVHlS7k=
+github.com/asciimoth/sysnet-linux v0.2.26/go.mod h1:8B+bvZBNcZoGuNC1EHkJ8ImsE/jjEGvKYPWsyhMdhxk=
 github.com/asciimoth/tuntap v0.3.32 h1:l4BXTId+tA7NEoJezD57YxF5ejnnuSK0Uj+9Edd9XCM=
 github.com/asciimoth/tuntap v0.3.32/go.mod h1:O9qEbHSSe+fPYdUxqsuGoqfzt9hV0WZjnSPwdZIseqg=
 github.com/asciimoth/wgo v0.7.3 h1:Q9tOI0Llo3Z+G8Hgz53323GC4RLage9rnCQCI9X71xw=

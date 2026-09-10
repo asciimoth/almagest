@@ -1,1 +1,1 @@
-default_tun_dns_provider creates a DefaultTun and mutates system DNS settings.
+default_tun_dns_provider creates a DefaultTun, network namespaces, routes, and DNS settings.

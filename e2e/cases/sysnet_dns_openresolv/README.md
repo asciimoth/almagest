@@ -1,7 +1,10 @@
 # sysnet-linux openresolv compatibility
 
-This privileged case ports the openresolv Docker scenario from
-`github.com/asciimoth/sysnet-linux` v0.2.19 to `almagestd`. The native system
-integration auto-detects openresolv, a DefaultTun node installs its DNS
-provider, and a normal system resolver query must reach the graph-connected
-DnsClient and its deterministic upstream.
+This privileged case uses the real openresolv implementation. A DefaultTun
+node installs a managed DNS server, while OutNetwork keeps a separate original
+upstream. The two servers return conflicting answers so the test can detect
+use of the wrong path.
+
+The test sends system, DNS-backed OutNetwork, hosts-file, `localhost`, and
+`NXDOMAIN` requests. It verifies the response and the query log of each DNS
+server.

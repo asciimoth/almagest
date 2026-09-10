@@ -7,7 +7,7 @@
 		"Linux": {
 			"DNS": {
 				"Mode": "direct",
-				"FallbackServers": ["127.0.0.1:5355"],
+				"FallbackServers": ["127.0.0.54:53"],
 			},
 		},
 	},

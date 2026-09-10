@@ -4,6 +4,7 @@ package tunnodes_test
 import (
 	"context"
 	"errors"
+	"os"
 	"reflect"
 	"strings"
 	"sync"
@@ -22,6 +23,7 @@ import (
 	sysnetdebug "github.com/asciimoth/gonnect/sysnet/debug"
 	"github.com/asciimoth/gonnect/tun"
 	"github.com/asciimoth/pasta/pasta"
+	"github.com/asciimoth/pasta/pasta/std"
 )
 
 func TestDefaultTunClassFeatureGate(t *testing.T) {
@@ -309,6 +311,68 @@ func TestDefaultTunDynamicConfigUsesSettersWhenOnlyMTUAndAddrsChange(t *testing.
 	})
 	if got := sys.buildCount(); got != 3 {
 		t.Fatalf("build count after route change = %d, want 3", got)
+	}
+}
+
+func TestDefaultTunRebuildKeepsOutputsForReusedNativeDevice(t *testing.T) {
+	w, sys := newDefaultTunNodeTestWorkspace(t, false)
+	nativeFile, err := os.CreateTemp(t.TempDir(), "default-tun-device-")
+	if err != nil {
+		t.Fatalf("CreateTemp native device identity: %v", err)
+	}
+	t.Cleanup(func() { _ = nativeFile.Close() })
+	sys.reuseNativeDevice = true
+	sys.nativeFile = nativeFile
+
+	node, err := w.AddNodeByClass(NodeTypeDefaultTun, "default tun")
+	if err != nil {
+		t.Fatalf("AddNodeByClass DefaultTun: %v", err)
+	}
+	receiver := tuntest.NewReceiver(4)
+	receiverID, err := w.AddNode(receiver, "test/TunReceiver", "tun receiver")
+	if err != nil {
+		t.Fatalf("AddNode receiver: %v", err)
+	}
+	nodeSnapshot := testkit.MustNodeSnapshot(t, w, node)
+	link, _, err := w.AddLink(receiver.In, nodeSnapshot.RightPorts[0])
+	if err != nil {
+		t.Fatalf("AddLink tun: %v", err)
+	}
+	firstPayload := tuntest.ReceivePayload(t, receiver.Events)
+	w.EmitEvent(receiverID, link, std.RequestValue{})
+	requestedPayload := tuntest.ReceivePayload(t, receiver.Events)
+	if requestedPayload.Tun != firstPayload.Tun {
+		t.Fatal("DefaultTun request replaced a ready detached output")
+	}
+
+	done := make(chan struct{})
+	go func() {
+		w.SendNodeFormularMsg(node, formular.FormApplyMessage{
+			MessageBase: formular.MessageBase{Type: formular.MessageFormApply, MenuID: pasta.NodeMenuID(node)},
+			BlockID:     "config",
+			Values: map[string]any{
+				"tunRoutes": "0.0.0.0/0",
+			},
+		})
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		// Release a read pump that old behavior waited for while it still held
+		// the workspace lock. This lets the test fail without hanging cleanup.
+		_ = sys.closeSharedNativeDevice()
+		<-done
+		t.Fatal("DefaultTun rebuild blocked while reusing its native device")
+	}
+
+	if got := sys.buildCount(); got != 2 {
+		t.Fatalf("build count after native-device reuse = %d, want 2", got)
+	}
+	tuntest.AssertNoEvent(t, receiver.Events)
+	up, err := firstPayload.Tun.(interface{ IsUp() (bool, error) }).IsUp()
+	if err != nil || !up {
+		t.Fatal("existing output wrapper stopped after native-device reuse")
 	}
 }
 
@@ -861,6 +925,8 @@ type recordingDefaultTunSystem struct {
 	setAddrsCalls          [][]string
 	buildErr               error
 	defaultTunWarningsHook func(sysnet.DefaultTun) []sysnet.Warning
+	reuseNativeDevice      bool
+	nativeFile             *os.File
 }
 
 func newRecordingDefaultTunSystem() *recordingDefaultTunSystem {
@@ -875,9 +941,25 @@ func (s *recordingDefaultTunSystem) BuildDefaultTun(opts sysnet.DefaultTunOpts) 
 		return nil, s.buildErr
 	}
 	dtun := newRecordingDefaultTun(opts.MTU)
+	if s.reuseNativeDevice {
+		dtun.nativeFile = s.nativeFile
+		if len(s.tuns) > 0 {
+			previous := s.tuns[len(s.tuns)-1]
+			previous.closeUnderlying = false
+			dtun.Tun = previous.Tun
+			dtun.peer = previous.peer
+		}
+	}
 	s.buildOpts = append(s.buildOpts, opts.Copy())
 	s.tuns = append(s.tuns, dtun)
 	return dtun, nil
+}
+
+func (s *recordingDefaultTunSystem) closeSharedNativeDevice() error {
+	if len(s.tuns) == 0 {
+		return nil
+	}
+	return errors.Join(s.tuns[0].Tun.Close(), s.tuns[0].peer.Close())
 }
 
 func (s *recordingDefaultTunSystem) DefaultTunWarnings(t sysnet.DefaultTun) []sysnet.Warning {
@@ -931,8 +1013,10 @@ type recordingDefaultTun struct {
 	tun.Tun
 	peer tun.Tun
 
-	mtu          int
-	closeCounter atomic.Int32
+	mtu             int
+	closeCounter    atomic.Int32
+	nativeFile      *os.File
+	closeUnderlying bool
 
 	mu          sync.Mutex
 	resolver    dns.Interface
@@ -944,7 +1028,14 @@ func newRecordingDefaultTun(mtu int) *recordingDefaultTun {
 		mtu = 1500
 	}
 	base, peer := tun.Pipe(1, mtu, 0, 0)
-	return &recordingDefaultTun{Tun: base, peer: peer, mtu: mtu}
+	return &recordingDefaultTun{Tun: base, peer: peer, mtu: mtu, closeUnderlying: true}
+}
+
+func (t *recordingDefaultTun) File() *os.File {
+	if t.nativeFile != nil {
+		return t.nativeFile
+	}
+	return t.Tun.File()
 }
 
 func (t *recordingDefaultTun) SetDns(resolver dns.Interface) {
@@ -961,6 +1052,9 @@ func (t *recordingDefaultTun) MTU() (int, error) {
 
 func (t *recordingDefaultTun) Close() error {
 	t.closeCounter.Add(1)
+	if !t.closeUnderlying {
+		return nil
+	}
 	return errors.Join(t.Tun.Close(), t.peer.Close())
 }
 

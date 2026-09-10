@@ -273,6 +273,7 @@ start_static_http_target() {
 	rm -f "$access_log"
 	python3 -u - "$host" "$port" "$body" "$access_log" <<'PY' >/dev/null 2>"$access_log.stderr" &
 import http.server
+import socket
 import sys
 
 host = sys.argv[1]
@@ -295,7 +296,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
         return
 
 
-server = http.server.ThreadingHTTPServer((host, port), Handler)
+class Server(http.server.ThreadingHTTPServer):
+    address_family = socket.AF_INET6 if ":" in host else socket.AF_INET
+
+
+server = Server((host, port), Handler)
 server.serve_forever()
 PY
 	echo "$!"
@@ -311,6 +316,7 @@ start_static_http_target_in_netns() {
 	rm -f "$access_log"
 	ip netns exec "$netns" python3 -u -c '
 import http.server
+import socket
 import sys
 
 host = sys.argv[1]
@@ -333,7 +339,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
         return
 
 
-server = http.server.ThreadingHTTPServer((host, port), Handler)
+class Server(http.server.ThreadingHTTPServer):
+    address_family = socket.AF_INET6 if ":" in host else socket.AF_INET
+
+
+server = Server((host, port), Handler)
 server.serve_forever()
 ' "$host" "$port" "$body" "$access_log" >/dev/null 2>"$access_log.stderr" &
 	echo "$!"

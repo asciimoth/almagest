@@ -103,19 +103,24 @@ assert_socks_https_body() {
 		|| fail "unexpected body for $url: $body"
 }
 
-mitm_pid="$(start_static_https_target 127.0.0.1 18443 "mitm body" "$E2E_RUNTIME/mitm-target.log" "$E2E_CONFIG_DIR/origin.pem" "$E2E_CONFIG_DIR/origin.key")"
-wrapper_pid="$(start_static_https_target 127.0.0.1 18444 "wrapper body" "$E2E_RUNTIME/wrapper-target.log" "$E2E_CONFIG_DIR/wrapper-origin.pem" "$E2E_CONFIG_DIR/wrapper-origin.key")"
-terminator_pid="$(start_static_http_target 127.0.0.1 18080 "terminator body" "$E2E_RUNTIME/terminator-target.log")"
+mitm_pid=""
+wrapper_pid=""
+terminator_pid=""
 
 cleanup() {
+	trap - EXIT
+	stop_daemon
 	stop_static_http_target "$mitm_pid"
 	stop_static_http_target "$wrapper_pid"
 	stop_static_http_target "$terminator_pid"
-	stop_daemon
 }
 trap cleanup EXIT
 
+mitm_pid="$(start_static_https_target 127.0.0.1 18443 "mitm body" "$E2E_RUNTIME/mitm-target.log" "$E2E_CONFIG_DIR/origin.pem" "$E2E_CONFIG_DIR/origin.key")"
+wrapper_pid="$(start_static_https_target 127.0.0.1 18444 "wrapper body" "$E2E_RUNTIME/wrapper-target.log" "$E2E_CONFIG_DIR/wrapper-origin.pem" "$E2E_CONFIG_DIR/wrapper-origin.key")"
+terminator_pid="$(start_static_http_target 127.0.0.1 18080 "terminator body" "$E2E_RUNTIME/terminator-target.log")"
 start_daemon
+trap cleanup EXIT
 
 wait_node_class_available "almagest/TlsMitm" || fail "TlsMitm class missing"
 wait_node_class_available "almagest/TlsTerminator" || fail "TlsTerminator class missing"

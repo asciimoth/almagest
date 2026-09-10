@@ -214,6 +214,7 @@ start_upstream
 start_gateway
 http_pid="$(start_static_http_target 10.205.20.1 18085 "amnesia controller e2e" "$E2E_RUNTIME/upstream-http.log")"
 start_daemon
+trap cleanup EXIT
 
 wait_node_class_available "almagest/AmnesiaCtrl" || fail "AmnesiaCtrl node class is unavailable"
 wait_graph_node "Amnesia Service" || fail "AmnesiaCtrl node is missing"
@@ -324,6 +325,7 @@ retry "$ALMAGEST_E2E_TIMEOUT" "detached graph config autosave" \
 	|| fail "detached graph state was not saved before restart"
 stop_daemon
 start_daemon
+trap cleanup EXIT
 amnesia_node_after="$(node_id_by_name "Amnesia Service")"
 wireguard_node_after="$(node_id_by_name "WireGuard Amnesia")"
 http_client_after="$(node_id_by_name "HTTP Client Amnesia")"

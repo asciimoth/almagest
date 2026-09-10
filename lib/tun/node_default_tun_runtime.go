@@ -68,13 +68,29 @@ func (n *defaultTunNode) rebuildDefaultTun(opts sysnet.DefaultTunOpts) error {
 	_ = n.updateLabel()
 	n.sendEffectiveBlock()
 	n.refreshDefaultTunWarningsLocked()
+	if defaultTunsShareNativeDevice(previous, dtun) {
+		// sysnet-linux can return a new generation wrapper around the same
+		// native TUN. Keep the emitted detached wrappers in that case. Their
+		// read pumps still use the active native device, while waiting for them
+		// here would require closing that device and would deadlock the rebuild.
+		_ = previous.Close()
+		return nil
+	}
 	n.outputTuns.CloseAll()
-	n.sendAll()
 	if previous != nil {
 		_ = previous.Close()
 	}
 	n.outputTuns.Wait()
+	n.sendAll()
 	return nil
+}
+
+func defaultTunsShareNativeDevice(a, b sysnet.DefaultTun) bool {
+	if a == nil || b == nil {
+		return false
+	}
+	aFile := a.File()
+	return aFile != nil && aFile == b.File()
 }
 
 func (n *defaultTunNode) refreshDefaultTunWarningsLocked() {
@@ -170,5 +186,8 @@ func (n *defaultTunNode) refreshTunToLink(link uint64) {
 	if n.dtun == nil {
 		return
 	}
-	n.outputTuns.RefreshLocked(n.W, n.ID, link, n.dtun, enginePool(n.Runtime))
+	// Reuse a ready detached wrapper. Replacing one that is blocked in a
+	// native TUN read leaves two readers on the same device until the old read
+	// returns. The old reader can then consume and discard the next packet.
+	n.outputTuns.SendLocked(n.W, n.ID, link, n.dtun, enginePool(n.Runtime))
 }

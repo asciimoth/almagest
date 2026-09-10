@@ -3,24 +3,48 @@ set -euo pipefail
 
 run_sysnet_dns_compat() {
 	local flavor="$1"
-	local query_name="almagest-$flavor.e2e.test"
-	local answer="203.0.113.53"
-	local upstream_log="$E2E_RUNTIME/upstream-dns.log"
-	local dnsmasq_pid=""
+	local system_name="system-$flavor.e2e.test"
+	local outnet_name="outnet-$flavor.e2e.test"
+	local hosts_name="hosts-$flavor.e2e.test"
+	local hosts_alias="hosts-alias-$flavor.e2e.test"
+	local missing_name="missing-$flavor.e2e.test"
+	local system_answer="203.0.113.53"
+	local original_target="127.0.0.21"
+	local hosts_target="127.0.0.22"
+	local poison_target="127.0.0.23"
+	local target_port="18098"
+	local localhost_port="18099"
+	local original_body="original DNS answer through $flavor"
+	local hosts_body="hosts answer through $flavor"
+	local poison_body="managed DNS poison answer through $flavor"
+	local localhost_body="localhost answer through $flavor"
+	local upstream_log="$E2E_RUNTIME/original-dns.log"
+	local managed_log="$E2E_RUNTIME/managed-dns.log"
+	local original_dns_pid=""
+	local managed_dns_pid=""
 	local resolved_pid=""
 	local resolv_backup="$E2E_RUNTIME/resolv.conf.original"
+	local hosts_backup="$E2E_RUNTIME/hosts.original"
+	local target_pids=()
 
 	cp -a /etc/resolv.conf "$resolv_backup"
+	cp -a /etc/hosts "$hosts_backup"
 
 	cleanup_sysnet_dns_compat() {
+		trap - EXIT
 		stop_daemon
-		if [[ -n "$dnsmasq_pid" ]]; then
-			kill "$dnsmasq_pid" 2>/dev/null || true
-			wait "$dnsmasq_pid" 2>/dev/null || true
-		fi
-		if [[ -n "$resolved_pid" ]]; then
-			kill "$resolved_pid" 2>/dev/null || true
-			wait "$resolved_pid" 2>/dev/null || true
+		local pid
+		for pid in "${target_pids[@]}"; do
+			stop_static_http_target "$pid"
+		done
+		for pid in "$managed_dns_pid" "$original_dns_pid" "$resolved_pid"; do
+			if [[ -n "$pid" ]]; then
+				kill "$pid" 2>/dev/null || true
+				wait "$pid" 2>/dev/null || true
+			fi
+		done
+		if [[ -f "$hosts_backup" ]]; then
+			cp -a "$hosts_backup" /etc/hosts
 		fi
 		if [[ -f "$resolv_backup" ]]; then
 			cp -a "$resolv_backup" /etc/resolv.conf
@@ -88,37 +112,86 @@ EOF
 		;;
 	esac
 
-	cat >"$E2E_RUNTIME/dnsmasq.conf" <<EOF
+	cat >>/etc/hosts <<EOF
+$hosts_target $hosts_name HOSTS-ALIAS-$flavor.E2E.TEST. # E2E aliases
+EOF
+	cat >"$E2E_RUNTIME/original-dnsmasq.conf" <<EOF
 port=53
 listen-address=$E2E_DNS_UPSTREAM
 bind-interfaces
 no-resolv
 no-hosts
+cache-size=0
 log-queries
 log-facility=$upstream_log
-address=/$query_name/$answer
+host-record=$outnet_name,$original_target
+host-record=$hosts_name,$poison_target
+host-record=$hosts_alias,$poison_target
+address=/$missing_name/#
 EOF
-	dnsmasq --no-daemon --conf-file="$E2E_RUNTIME/dnsmasq.conf" \
-		>/dev/null 2>"$E2E_RUNTIME/dnsmasq.stderr" &
-	dnsmasq_pid="$!"
+	cat >"$E2E_RUNTIME/managed-dnsmasq.conf" <<EOF
+port=5354
+listen-address=127.0.0.55
+bind-interfaces
+no-resolv
+no-hosts
+cache-size=0
+log-queries
+log-facility=$managed_log
+host-record=$system_name,$system_answer
+address=/#/$poison_target
+EOF
+	dnsmasq --no-daemon --conf-file="$E2E_RUNTIME/original-dnsmasq.conf" \
+		>/dev/null 2>"$E2E_RUNTIME/original-dns.stderr" &
+	original_dns_pid="$!"
+	dnsmasq --no-daemon --conf-file="$E2E_RUNTIME/managed-dnsmasq.conf" \
+		>/dev/null 2>"$E2E_RUNTIME/managed-dns.stderr" &
+	managed_dns_pid="$!"
+
 	# The retry helper invokes these functions by name.
 	# shellcheck disable=SC2329
-	upstream_answers() {
-		dig +time=1 +tries=1 +short "@$E2E_DNS_UPSTREAM" "$query_name" A \
-			| grep -Fx "$answer" >/dev/null
+	original_dns_answers() {
+		dig +time=1 +tries=1 +short "@$E2E_DNS_UPSTREAM" "$outnet_name" A \
+			| grep -Fx "$original_target" >/dev/null
 	}
-	retry "$ALMAGEST_E2E_TIMEOUT" "DNS upstream $E2E_DNS_UPSTREAM" \
-		upstream_answers \
-		|| fail "DNS upstream did not return $answer"
+	# shellcheck disable=SC2329
+	managed_dns_answers() {
+		dig +time=1 +tries=1 +short -p 5354 @127.0.0.55 "$system_name" A \
+			| grep -Fx "$system_answer" >/dev/null
+	}
+	retry "$ALMAGEST_E2E_TIMEOUT" "original DNS $E2E_DNS_UPSTREAM" \
+		original_dns_answers \
+		|| fail "original DNS did not return $original_target"
+	retry "$ALMAGEST_E2E_TIMEOUT" "managed DNS 127.0.0.55:5354" \
+		managed_dns_answers \
+		|| fail "managed DNS did not return $system_answer"
+
+	target_pids+=("$(start_static_http_target \
+		"$original_target" "$target_port" "$original_body" \
+		"$E2E_RUNTIME/original-target.log")")
+	target_pids+=("$(start_static_http_target \
+		"$hosts_target" "$target_port" "$hosts_body" \
+		"$E2E_RUNTIME/hosts-target.log")")
+	target_pids+=("$(start_static_http_target \
+		"$poison_target" "$target_port" "$poison_body" \
+		"$E2E_RUNTIME/poison-target.log")")
+	target_pids+=("$(start_static_http_target \
+		127.0.0.1 "$localhost_port" "$localhost_body" \
+		"$E2E_RUNTIME/localhost-target.log")")
 
 	start_daemon
 	trap cleanup_sysnet_dns_compat EXIT
 	wait_graph_node "DefaultTun DNS Manager" || fail "DefaultTun node missing"
 	wait_graph_node "DNS Manager Upstream" || fail "DnsClient node missing"
+	wait_graph_node "OutNetwork Probe" || fail "OutNetwork probe node missing"
+	local default_tun
+	local dns_client
 	default_tun="$(node_id_by_name "DefaultTun DNS Manager")"
 	dns_client="$(node_id_by_name "DNS Manager Upstream")"
 	wait_node_label "$default_tun" ready || fail "DefaultTun did not become ready"
 	wait_node_label "$dns_client" "1 DNS server" || fail "DnsClient did not become ready"
+	wait_log_contains "almagest/LocalProxy" "socks listening on 127.0.0.1:1081" \
+		|| fail "OutNetwork probe proxy did not start"
 
 	if [[ "$flavor" == "systemd-resolved" ]]; then
 		# The sysnet allocator randomizes the DefaultTun interface suffix.
@@ -154,19 +227,110 @@ EOF
 	fi
 
 	# shellcheck disable=SC2329
-	resolve_name() {
-		getent ahostsv4 "$query_name" | awk 'NR == 1 { print $1 }'
+	system_resolves() {
+		[[ "$(getent ahostsv4 "$system_name" | awk 'NR == 1 { print $1 }')" == "$system_answer" ]]
 	}
 	# shellcheck disable=SC2329
-	system_resolves() {
-		[[ "$(resolve_name)" == "$answer" ]]
+	proxy_get() {
+		local host="$1"
+		local port="$2"
+		local path="$3"
+		local output="$4"
+		curl --fail --silent --show-error \
+			--connect-timeout 2 --max-time 6 \
+			--socks5-hostname 127.0.0.1:1081 \
+			"http://$host:$port$path" --output "$output"
 	}
+	# shellcheck disable=SC2329
+	proxy_missing_fails() {
+		if proxy_get "$missing_name" "$target_port" /must-not-connect \
+			"$E2E_RUNTIME/unexpected-missing-body.txt" \
+			>"$E2E_RUNTIME/unexpected-missing-stdout.txt" \
+			2>"$E2E_RUNTIME/expected-missing-error.txt"; then
+			return 1
+		fi
+		return 0
+	}
+	# shellcheck disable=SC2329
+	dns_query_count() {
+		local log_file="$1"
+		local host="$2"
+		grep -Fci -- "$host" "$log_file" 2>/dev/null || true
+	}
+
 	retry "$ALMAGEST_E2E_TIMEOUT" "system query through $flavor" \
 		system_resolves \
-		|| fail "system resolver did not return $answer through $flavor"
-	retry "$ALMAGEST_E2E_TIMEOUT" "$flavor upstream query" \
-		grep -F "$query_name" "$upstream_log" >/dev/null \
-		|| fail "upstream DNS did not receive $query_name"
+		|| fail "system resolver did not return $system_answer through $flavor"
+	retry "$ALMAGEST_E2E_TIMEOUT" "$flavor managed DNS query" \
+		grep -Fi "$system_name" "$managed_log" >/dev/null \
+		|| fail "managed DNS did not receive $system_name"
+	# systemd-resolved can query more than one eligible link in parallel. Its
+	# selected answer and the managed-server query prove the takeover there.
+	if [[ "$flavor" != "systemd-resolved" ]] && \
+		grep -Fi "$system_name" "$upstream_log" >/dev/null 2>&1; then
+		fail "system query bypassed the managed DefaultTun DNS path"
+	fi
+
+	local managed_before
+	managed_before="$(dns_query_count "$managed_log" "$outnet_name")"
+	retry "$ALMAGEST_E2E_TIMEOUT" "OutNetwork DNS request through $flavor" \
+		proxy_get "$outnet_name" "$target_port" /outnet-dns \
+		"$E2E_RUNTIME/outnet-body.txt" \
+		|| fail "OutNetwork DNS request failed through $flavor"
+	[[ "$(cat "$E2E_RUNTIME/outnet-body.txt")" == "$original_body" ]] \
+		|| fail "OutNetwork used the wrong DNS answer through $flavor"
+	retry "$ALMAGEST_E2E_TIMEOUT" "$flavor original OutNetwork DNS query" \
+		grep -Fi "$outnet_name" "$upstream_log" >/dev/null \
+		|| fail "original DNS did not receive $outnet_name"
+	[[ "$(dns_query_count "$managed_log" "$outnet_name")" == "$managed_before" ]] \
+		|| fail "OutNetwork sent $outnet_name to the managed DNS through $flavor"
+
+	local original_hosts_before
+	local managed_hosts_before
+	original_hosts_before="$(dns_query_count "$upstream_log" "$hosts_alias")"
+	managed_hosts_before="$(dns_query_count "$managed_log" "$hosts_alias")"
+	retry "$ALMAGEST_E2E_TIMEOUT" "OutNetwork hosts request through $flavor" \
+		proxy_get "HOSTS-ALIAS-$flavor.E2E.TEST." "$target_port" /outnet-hosts \
+		"$E2E_RUNTIME/hosts-body.txt" \
+		|| fail "OutNetwork hosts request failed through $flavor"
+	[[ "$(cat "$E2E_RUNTIME/hosts-body.txt")" == "$hosts_body" ]] \
+		|| fail "OutNetwork did not use the hosts entry through $flavor"
+	[[ "$(dns_query_count "$upstream_log" "$hosts_alias")" == "$original_hosts_before" ]] \
+		|| fail "hosts request reached original DNS through $flavor"
+	[[ "$(dns_query_count "$managed_log" "$hosts_alias")" == "$managed_hosts_before" ]] \
+		|| fail "hosts request reached managed DNS through $flavor"
+
+	local original_localhost_before
+	local managed_localhost_before
+	original_localhost_before="$(dns_query_count "$upstream_log" localhost)"
+	managed_localhost_before="$(dns_query_count "$managed_log" localhost)"
+	retry "$ALMAGEST_E2E_TIMEOUT" "OutNetwork localhost request through $flavor" \
+		proxy_get LOCALHOST. "$localhost_port" /outnet-localhost \
+		"$E2E_RUNTIME/localhost-body.txt" \
+		|| fail "OutNetwork localhost request failed through $flavor"
+	[[ "$(cat "$E2E_RUNTIME/localhost-body.txt")" == "$localhost_body" ]] \
+		|| fail "OutNetwork did not use local localhost data through $flavor"
+	[[ "$(dns_query_count "$upstream_log" localhost)" == "$original_localhost_before" ]] \
+		|| fail "localhost request reached original DNS through $flavor"
+	[[ "$(dns_query_count "$managed_log" localhost)" == "$managed_localhost_before" ]] \
+		|| fail "localhost request reached managed DNS through $flavor"
+
+	local managed_missing_before
+	managed_missing_before="$(dns_query_count "$managed_log" "$missing_name")"
+	retry "$ALMAGEST_E2E_TIMEOUT" "OutNetwork NXDOMAIN through $flavor" \
+		proxy_missing_fails \
+		|| fail "OutNetwork used native fallback after NXDOMAIN through $flavor"
+	retry "$ALMAGEST_E2E_TIMEOUT" "$flavor original NXDOMAIN query" \
+		grep -Fi "$missing_name" "$upstream_log" >/dev/null \
+		|| fail "original DNS did not receive $missing_name"
+	[[ "$(dns_query_count "$managed_log" "$missing_name")" == "$managed_missing_before" ]] \
+		|| fail "NXDOMAIN fell back to managed DNS through $flavor"
+
+	wait_log_contains "almagest/LogNetwork" "Dial tcp $outnet_name:$target_port" \
+		|| fail "LogNetwork did not observe the OutNetwork host-name dial"
+	if grep -F "GET /" "$E2E_RUNTIME/poison-target.log" >/dev/null 2>&1; then
+		fail "managed DNS poison target received a request through $flavor"
+	fi
 
 	log "case passed: $flavor"
 	cleanup_sysnet_dns_compat

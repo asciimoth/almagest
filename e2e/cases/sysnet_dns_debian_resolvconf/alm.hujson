@@ -25,12 +25,31 @@
 			"Class": "almagest/DnsClient",
 			"Pos": "{\"x\":400,\"y\":320}",
 			"Links": ["Network -> [OutNetwork DNS Manager] Network"],
-			"servers": ["udp://%E2E_DNS_UPSTREAM%:53"],
+			"servers": ["udp://127.0.0.55:5354"],
 		},
 		"OutNetwork DNS Manager": {
 			"Class": "almagest/OutNetwork",
 			"Pos": "{\"x\":680,\"y\":320}",
 		},
+		"OutNetwork Probe": {
+			"Class": "almagest/LocalProxy",
+			"Pos": "{\"x\":120,\"y\":560}",
+			"Links": ["proxy -> [OutNetwork Probe Log] Network"],
+			"socksHost": "127.0.0.1",
+			"socksPort": 1081,
+			"wsHost": "",
+			"wsPort": 0,
+			"wsPath": "/socks",
+			"users": [],
+		},
+		"OutNetwork Probe Log": {
+			"Class": "almagest/LogNetwork",
+			"Pos": "{\"x\":400,\"y\":560}",
+			"Links": ["Network -> [OutNetwork Probe Native] Network"],
+		},
+		"OutNetwork Probe Native": {
+			"Class": "almagest/OutNetwork",
+			"Pos": "{\"x\":680,\"y\":560}",
+		},
 	},
 }
-

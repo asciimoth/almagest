@@ -182,7 +182,7 @@ tailscale_runtime_resources_are_bounded() {
 	((after_goroutines <= 2048 && growth <= 512 && used_ticks <= max_ticks))
 }
 
-trap stop_headscales EXIT
+trap stop_all EXIT
 start_headscale a 18190
 start_headscale b 18290
 start_daemon

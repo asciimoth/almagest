@@ -1,9 +1,9 @@
-# default_tun_zero_prefix_routes
+# DefaultTun route isolation
 
 ## Setup
 
 This case runs in a privileged Docker container. It creates a native TUN
-interface and changes routes only in the container network namespace. Run it
+interface and an IPv6 gateway only in the container network namespace. Run it
 with:
 
 ```sh
@@ -11,21 +11,24 @@ E2E_DOCKER_RUN_ARGS="--privileged --device /dev/net/tun" \
   ./e2e/run.sh default_tun_zero_prefix_routes
 ```
 
-## Initial daemon config
+## Coverage
 
-The config creates one `DefaultTun` with these explicit TUN routes:
+The initial `DefaultTun` config has dual-stack subnet addresses and these
+explicit route suggestions:
 
-- `0.0.0.0/0`
-- `::/0`
+- IPv4 and IPv6 default routes.
+- IPv4 and IPv6 host routes.
 
-These prefixes exercise the zero-prefix route conversion in `sysnet-linux`.
+The test verifies these behaviors:
 
-## Expected behavior
+- `DefaultTun` does not add explicit or connected TUN routes to the main table.
+- The original IPv4 and IPv6 main-table defaults stay unchanged.
+- Unmarked IPv4 and IPv6 traffic selects the TUN policy table.
+- Traffic with an application-bypass mark selects the original main route.
+- Route-only and address-only live updates do not leak routes into the main
+  table.
+- Deleting and recreating `DefaultTun` restores the same route isolation.
+- Daemon shutdown removes policy routing and keeps the original defaults.
 
-- The `DefaultTun` node becomes ready.
-- The native TUN interface has an IPv4 default route in the main table.
-- The native TUN interface has an IPv6 default route in the main table.
-- The daemon does not log a `DefaultTun` configuration failure.
-
-The container is disposable because the IPv4 route replaces the container's
-ordinary main-table default route during this test.
+This is a regression test for `sysnet-linux` handling of routes that the
+kernel creates when it assigns TUN addresses.
