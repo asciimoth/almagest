@@ -77,7 +77,7 @@ rekey_timeout=5-8
 reject_after_time=180-220
 keepalive_timeout=10-15
 max_handshake_attempts=3-5
-random_trailers=true
+random_trailers=false
 disable_cookies=true
 replace_peers=true
 EOF
@@ -93,6 +93,7 @@ set=1
 replace_peers=true
 public_key=$public_key_hex
 protocol_version=1
+endpoint=127.0.0.1:$CLIENT_LISTEN_PORT
 replace_allowed_ips=true
 allowed_ip=10.205.10.1/32
 persistent_keepalive_interval=1

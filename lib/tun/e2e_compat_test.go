@@ -140,6 +140,10 @@ func BindTunResource(w *pasta.Workspace, node, link uint64, t tun.Tun) {
 	links.BindTunResource(w, node, link, t)
 }
 
+func TunIsReady(t tun.Tun) bool {
+	return links.TunIsReady(t)
+}
+
 func SameTunInstance(a, b tun.Tun) bool {
 	return links.SameTunInstance(a, b)
 }

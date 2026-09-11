@@ -2,6 +2,7 @@ package tunnodes
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/asciimoth/bufpool"
 	"github.com/asciimoth/configer/configer"
@@ -34,10 +35,12 @@ func (TunJoinerClass) DefaultNodeParams() pasta.NodeClassParams {
 func (c TunJoinerClass) NewNode(_ configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
 	pool := enginePool(c.Runtime)
 	return &tunJoinerNode{
-		NodeBase:      NodeBase{Runtime: c.Runtime},
-		pool:          pool,
-		secondaryTuns: map[uint64]tun.Tun{},
-		outputCfgs:    TunConfigByLink{},
+		NodeBase:         NodeBase{Runtime: c.Runtime},
+		pool:             pool,
+		secondaryTuns:    map[uint64]tun.Tun{},
+		secondaryGens:    map[uint64]uint64{},
+		secondaryRetries: map[uint64]*time.Timer{},
+		outputCfgs:       TunConfigByLink{},
 	}, nil
 }
 
@@ -56,18 +59,22 @@ type tunJoinerNode struct {
 	secondaryIn uint64
 	out         uint64
 
-	defaultLink uint64
-	defaultTun  tun.Tun
+	defaultLink  uint64
+	defaultTun   tun.Tun
+	defaultGen   uint64
+	defaultRetry *time.Timer
 
-	secondaryTuns map[uint64]tun.Tun
-	outputTuns    TunOutputCache
-	outputCfgs    TunConfigByLink
+	secondaryTuns    map[uint64]tun.Tun
+	secondaryGens    map[uint64]uint64
+	secondaryRetries map[uint64]*time.Timer
+	outputTuns       TunOutputCache
+	outputCfgs       TunConfigByLink
 
 	joiner *tun.Joiner
 }
 
-func (n *tunJoinerNode) OnInit(w *pasta.Workspace, _ pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
-	n.InitBaseNode(w, nil, id)
+func (n *tunJoinerNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
+	n.InitBaseNode(w, logger, id)
 	if n.joiner == nil {
 		// Nil spawner is intentional here; see the Gonnect spawner note in helpers.go.
 		n.joiner = tun.NewJoinerWithOptions(nil, n.pool, tun.JoinerOptions{
@@ -76,6 +83,12 @@ func (n *tunJoinerNode) OnInit(w *pasta.Workspace, _ pasta.Logger, id uint64, _ 
 	}
 	if n.secondaryTuns == nil {
 		n.secondaryTuns = map[uint64]tun.Tun{}
+	}
+	if n.secondaryGens == nil {
+		n.secondaryGens = map[uint64]uint64{}
+	}
+	if n.secondaryRetries == nil {
+		n.secondaryRetries = map[uint64]*time.Timer{}
 	}
 	if n.outputCfgs == nil {
 		n.outputCfgs = TunConfigByLink{}
@@ -98,6 +111,10 @@ func (n *tunJoinerNode) OnReady() error {
 }
 
 func (n *tunJoinerNode) OnStop() {
+	n.invalidateDefaultInput()
+	for link := range n.secondaryGens {
+		n.invalidateSecondaryInput(link)
+	}
 	n.outputTuns.CloseAll()
 	if n.joiner != nil {
 		_ = n.joiner.Close()
@@ -105,6 +122,8 @@ func (n *tunJoinerNode) OnStop() {
 	n.outputTuns.Wait()
 	n.defaultTun = nil
 	n.secondaryTuns = map[uint64]tun.Tun{}
+	n.secondaryGens = map[uint64]uint64{}
+	n.secondaryRetries = map[uint64]*time.Timer{}
 	n.outputCfgs = TunConfigByLink{}
 }
 
@@ -137,7 +156,10 @@ func (n *tunJoinerNode) OnLinkAdd(link, port uint64, linkType, portDirection str
 	switch {
 	case portDirection == "left" && (port == n.defaultIn || port == n.secondaryIn):
 		if port == n.defaultIn {
+			n.invalidateDefaultInput()
 			n.defaultLink = link
+		} else {
+			n.invalidateSecondaryInput(link)
 		}
 		std.RequestLocked(n.W, n.ID, link)
 		n.sendMergedTunConfigToLink(link)
@@ -145,6 +167,17 @@ func (n *tunJoinerNode) OnLinkAdd(link, port uint64, linkType, portDirection str
 		n.sendOutputTunToLink(link)
 	}
 	return n.updateLabel()
+}
+
+func (n *tunJoinerNode) OnInbox(message pasta.InboxMessage) error {
+	switch msg := message.Payload.(type) {
+	case tunJoinerInputFailed:
+		return n.handleInputFailed(msg)
+	case tunJoinerInputRetry:
+		return n.handleInputRetry(msg)
+	default:
+		return nil
+	}
 }
 
 func (n *tunJoinerNode) OnLinkRemoved(link uint64, port uint64, linkType, portDirection string) error {
@@ -158,6 +191,7 @@ func (n *tunJoinerNode) OnLinkRemoved(link uint64, port uint64, linkType, portDi
 		}
 	case portDirection == "left" && port == n.secondaryIn:
 		n.detachSecondaryTun(link)
+		delete(n.secondaryGens, link)
 	case portDirection == "right" && port == n.out:
 		n.outputTuns.Close(link)
 		n.outputCfgs.Delete(link)
@@ -190,13 +224,13 @@ func (n *tunJoinerNode) OnEvent(event pasta.Event, linkType string, _ []string, 
 	}
 	switch event.ReceiverPort {
 	case n.defaultIn:
-		next, changed := acceptTunPayload(event, n.defaultLink, n.defaultTun)
+		next, changed := acceptTunPayload(event, n.defaultLink, tunInputFailureObserverSource(n.defaultTun))
 		if !changed {
 			return nil
 		}
 		return n.attachDefaultTun(event.Link, next)
 	case n.secondaryIn:
-		next, changed := acceptTunPayload(event, 0, n.secondaryTuns[event.Link])
+		next, changed := acceptTunPayload(event, 0, tunInputFailureObserverSource(n.secondaryTuns[event.Link]))
 		if !changed {
 			return nil
 		}
@@ -207,27 +241,57 @@ func (n *tunJoinerNode) OnEvent(event pasta.Event, linkType string, _ []string, 
 }
 
 func (n *tunJoinerNode) attachDefaultTun(link uint64, t tun.Tun) error {
-	if link != n.defaultLink || SameTunInstance(n.defaultTun, t) {
+	current := tunInputFailureObserverSource(n.defaultTun)
+	if link != n.defaultLink || SameTunInstance(current, t) {
 		return nil
 	}
-	if err := n.joiner.AttachDefault(t); err != nil {
+	n.stopDefaultRetry()
+	n.defaultGen++
+	generation := n.defaultGen
+	observed := newTunInputFailureObserver(t, func(err error) {
+		go n.W.SendInbox(pasta.InboxMessage{
+			ReceiverNode: n.ID,
+			Payload: tunJoinerInputFailed{
+				link:       link,
+				generation: generation,
+				role:       tunJoinerInputDefault,
+				err:        err,
+			},
+		})
+	})
+	if err := n.joiner.AttachDefault(observed); err != nil {
 		return fmt.Errorf("attach default tun: %w", err)
 	}
 	BindTunResource(n.W, n.ID, link, t)
-	n.defaultTun = t
+	n.defaultTun = observed
 	return n.updateLabel()
 }
 
 func (n *tunJoinerNode) attachSecondaryTun(link uint64, t tun.Tun) error {
-	if SameTunInstance(n.secondaryTuns[link], t) {
+	current := tunInputFailureObserverSource(n.secondaryTuns[link])
+	if SameTunInstance(current, t) {
 		return nil
 	}
 	n.detachSecondaryTun(link)
-	if err := n.joiner.AttachSecondary(t); err != nil {
+	n.stopSecondaryRetry(link)
+	n.secondaryGens[link]++
+	generation := n.secondaryGens[link]
+	observed := newTunInputFailureObserver(t, func(err error) {
+		go n.W.SendInbox(pasta.InboxMessage{
+			ReceiverNode: n.ID,
+			Payload: tunJoinerInputFailed{
+				link:       link,
+				generation: generation,
+				role:       tunJoinerInputSecondary,
+				err:        err,
+			},
+		})
+	})
+	if err := n.joiner.AttachSecondary(observed); err != nil {
 		return fmt.Errorf("attach secondary tun: %w", err)
 	}
 	BindTunResource(n.W, n.ID, link, t)
-	n.secondaryTuns[link] = t
+	n.secondaryTuns[link] = observed
 	return n.updateLabel()
 }
 
@@ -235,8 +299,8 @@ func (n *tunJoinerNode) detachDefaultTun() {
 	if n.defaultTun != nil {
 		_ = n.joiner.Detach(n.defaultTun)
 	}
+	n.invalidateDefaultInput()
 	n.defaultLink = 0
-	n.defaultTun = nil
 }
 
 func (n *tunJoinerNode) detachSecondaryTun(link uint64) {
@@ -245,6 +309,150 @@ func (n *tunJoinerNode) detachSecondaryTun(link uint64) {
 	if t != nil {
 		_ = n.joiner.Detach(t)
 	}
+	n.invalidateSecondaryInput(link)
+}
+
+const tunJoinerInputRetryDelay = 50 * time.Millisecond
+
+type tunJoinerInputRole uint8
+
+const (
+	tunJoinerInputDefault tunJoinerInputRole = iota
+	tunJoinerInputSecondary
+)
+
+type tunJoinerInputFailed struct {
+	link       uint64
+	generation uint64
+	role       tunJoinerInputRole
+	err        error
+}
+
+type tunJoinerInputRetry struct {
+	link       uint64
+	generation uint64
+	role       tunJoinerInputRole
+}
+
+func (n *tunJoinerNode) handleInputFailed(msg tunJoinerInputFailed) error {
+	var current tun.Tun
+	var generation uint64
+	switch msg.role {
+	case tunJoinerInputDefault:
+		if msg.link != n.defaultLink {
+			return nil
+		}
+		current = n.defaultTun
+		generation = n.defaultGen
+	case tunJoinerInputSecondary:
+		current = n.secondaryTuns[msg.link]
+		generation = n.secondaryGens[msg.link]
+	default:
+		return nil
+	}
+	if msg.generation != generation || current == nil {
+		return nil
+	}
+	if n.Logger != nil {
+		n.Logger.Warnf(
+			"TUN joiner %s input failed; requesting a replacement: link=%d generation=%d terminal=%t error=%v input={%s}",
+			n.joinerInputRoleName(msg.role),
+			msg.link,
+			msg.generation,
+			tun.IsTunTermError(msg.err),
+			msg.err,
+			tunDebugString(current),
+		)
+	}
+	_ = n.joiner.Detach(current)
+	switch msg.role {
+	case tunJoinerInputDefault:
+		n.defaultTun = nil
+		n.defaultGen++
+		n.scheduleDefaultRetry(msg.link, n.defaultGen)
+	case tunJoinerInputSecondary:
+		delete(n.secondaryTuns, msg.link)
+		n.secondaryGens[msg.link]++
+		n.scheduleSecondaryRetry(msg.link, n.secondaryGens[msg.link])
+	}
+	return n.updateLabel()
+}
+
+func (n *tunJoinerNode) handleInputRetry(msg tunJoinerInputRetry) error {
+	switch msg.role {
+	case tunJoinerInputDefault:
+		if msg.link != n.defaultLink || msg.generation != n.defaultGen || n.defaultTun != nil {
+			return nil
+		}
+		n.defaultRetry = nil
+	case tunJoinerInputSecondary:
+		if msg.generation != n.secondaryGens[msg.link] || n.secondaryTuns[msg.link] != nil {
+			return nil
+		}
+		delete(n.secondaryRetries, msg.link)
+	default:
+		return nil
+	}
+	std.RequestLocked(n.W, n.ID, msg.link)
+	return nil
+}
+
+func (n *tunJoinerNode) scheduleDefaultRetry(link, generation uint64) {
+	n.stopDefaultRetry()
+	n.defaultRetry = n.newInputRetryTimer(link, generation, tunJoinerInputDefault)
+}
+
+func (n *tunJoinerNode) scheduleSecondaryRetry(link, generation uint64) {
+	n.stopSecondaryRetry(link)
+	n.secondaryRetries[link] = n.newInputRetryTimer(link, generation, tunJoinerInputSecondary)
+}
+
+func (n *tunJoinerNode) newInputRetryTimer(link, generation uint64, role tunJoinerInputRole) *time.Timer {
+	w := n.W
+	node := n.ID
+	return time.AfterFunc(tunJoinerInputRetryDelay, func() {
+		w.SendInbox(pasta.InboxMessage{
+			ReceiverNode: node,
+			Payload: tunJoinerInputRetry{
+				link:       link,
+				generation: generation,
+				role:       role,
+			},
+		})
+	})
+}
+
+func (n *tunJoinerNode) invalidateDefaultInput() {
+	n.defaultGen++
+	n.defaultTun = nil
+	n.stopDefaultRetry()
+}
+
+func (n *tunJoinerNode) invalidateSecondaryInput(link uint64) {
+	n.secondaryGens[link]++
+	delete(n.secondaryTuns, link)
+	n.stopSecondaryRetry(link)
+}
+
+func (n *tunJoinerNode) stopDefaultRetry() {
+	if n.defaultRetry != nil {
+		n.defaultRetry.Stop()
+		n.defaultRetry = nil
+	}
+}
+
+func (n *tunJoinerNode) stopSecondaryRetry(link uint64) {
+	if retry := n.secondaryRetries[link]; retry != nil {
+		retry.Stop()
+		delete(n.secondaryRetries, link)
+	}
+}
+
+func (n *tunJoinerNode) joinerInputRoleName(role tunJoinerInputRole) string {
+	if role == tunJoinerInputSecondary {
+		return "secondary"
+	}
+	return "default"
 }
 
 func (n *tunJoinerNode) sendAllOutputTuns() {

@@ -539,6 +539,53 @@ func (r *testTunSinkRegistry) tun(t *testing.T, id uint64) tun.Tun {
 	return out
 }
 
+func (r *testTunSinkRegistry) readyTunAfterPayloads(t *testing.T, id uint64, minimum int) tun.Tun {
+	t.Helper()
+	var out tun.Tun
+	Eventually(t, func() bool {
+		r.mu.Lock()
+		node := r.nodes[id]
+		r.mu.Unlock()
+		if node == nil {
+			return false
+		}
+		node.w.Lock()
+		defer node.w.Unlock()
+		out = node.tun
+		return node.payloadCount >= minimum && TunIsReady(out)
+	}, "test tun sink %d ready tun after %d payloads", id, minimum)
+	return out
+}
+
+func (r *testTunSinkRegistry) payloadCount(id uint64) int {
+	r.mu.Lock()
+	node := r.nodes[id]
+	r.mu.Unlock()
+	if node == nil {
+		return 0
+	}
+	node.w.Lock()
+	defer node.w.Unlock()
+	return node.payloadCount
+}
+
+func (r *testTunSinkRegistry) configure(t *testing.T, id uint64, cfg TunConfig) {
+	t.Helper()
+	r.mu.Lock()
+	node := r.nodes[id]
+	r.mu.Unlock()
+	if node == nil {
+		t.Fatalf("test tun sink %d is not registered", id)
+	}
+
+	node.w.Lock()
+	defer node.w.Unlock()
+	if node.tun == nil || node.link == 0 {
+		t.Fatalf("test tun sink %d is not ready for config", id)
+	}
+	node.w.EmitEventLocked(node.id, node.link, cfg.Clone())
+}
+
 type testTunSinkClass struct {
 	registry *testTunSinkRegistry
 }
@@ -553,19 +600,30 @@ func (testTunSinkClass) DefaultNodeParams() pasta.NodeClassParams {
 		TunPort("left", "Tun"),
 	}}
 }
-func (c testTunSinkClass) NewNode(configer.Config, ...*pasta.NodeClassState) (pasta.Node, error) {
-	return &testTunSinkNode{registry: c.registry}, nil
+func (c testTunSinkClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
+	node := &testTunSinkNode{registry: c.registry}
+	if configer.Bool(cfg, configer.Path{"emitStartupConfig"}, false) {
+		node.startupConfig = TunConfig{
+			Addrs:  []string{"10.221.0.2/32"},
+			Routes: []string{"0.0.0.0/0"},
+			MTU:    1300,
+		}
+	}
+	return node, nil
 }
 
 type testTunSinkNode struct {
 	pasta.BasicNode
 
-	registry *testTunSinkRegistry
-	w        *pasta.Workspace
-	id       uint64
-	in       uint64
-	link     uint64
-	tun      tun.Tun
+	registry     *testTunSinkRegistry
+	w            *pasta.Workspace
+	id           uint64
+	in           uint64
+	link         uint64
+	tun          tun.Tun
+	payloadCount int
+
+	startupConfig TunConfig
 }
 
 func (n *testTunSinkNode) OnInit(w *pasta.Workspace, _ pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
@@ -600,6 +658,11 @@ func (n *testTunSinkNode) PreLinkAdd(port uint64, linkType, portDirection string
 func (n *testTunSinkNode) OnLinkAdd(link, port uint64, linkType, portDirection string) error {
 	if port == n.in && portDirection == "left" && linkType == TypeTun {
 		n.link = link
+		if !n.startupConfig.IsZero() {
+			// Model a restored graph where a downstream config reaches the
+			// provider before a later startup request.
+			n.w.EmitEventLocked(n.id, link, n.startupConfig.Clone())
+		}
 		std.RequestLocked(n.w, n.id, link)
 	}
 	return nil
@@ -633,6 +696,7 @@ func (n *testTunSinkNode) OnEvent(event pasta.Event, linkType string, _ []string
 	}
 	BindTunResource(n.w, n.id, event.Link, payload.Tun)
 	n.tun = payload.Tun
+	n.payloadCount++
 	return n.w.SetNodeLabelLocked(n.id, "ready")
 }
 
@@ -645,7 +709,7 @@ func assertTunPacketTransferred(t *testing.T, from, to tun.Tun, packet []byte) {
 	ch := make(chan result, 1)
 	go func() {
 		offset := to.MRO()
-		buf := make([]byte, offset+2048)
+		buf := make([]byte, offset+max(2048, len(packet)))
 		sizes := []int{0}
 		n, err := to.Read([][]byte{buf}, sizes, offset)
 		if err != nil {
@@ -669,6 +733,44 @@ func assertTunPacketTransferred(t *testing.T, from, to tun.Tun, packet []byte) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for transferred tun packet")
+	}
+}
+
+func readUntilTunPacketAsync(source tun.Tun, want []byte, maxReads int) <-chan error {
+	result := make(chan error, 1)
+	go func() {
+		for range maxReads {
+			offset := source.MRO()
+			buf := make([]byte, offset+len(want))
+			sizes := []int{0}
+			count, err := source.Read([][]byte{buf}, sizes, offset)
+			if err != nil {
+				result <- err
+				return
+			}
+			if count != 1 {
+				result <- fmt.Errorf("read packet count %d, want 1", count)
+				return
+			}
+			if sizes[0] == len(want) && bytes.Equal(buf[offset:offset+sizes[0]], want) {
+				result <- nil
+				return
+			}
+		}
+		result <- errors.New("wanted packet did not arrive within read limit")
+	}()
+	return result
+}
+
+func assertMatchedTunPacketResult(t *testing.T, result <-chan error, scenario string) {
+	t.Helper()
+	select {
+	case err := <-result:
+		if err != nil {
+			t.Fatalf("%s tun Read: %v", scenario, err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("timed out waiting for %s packet", scenario)
 	}
 }
 

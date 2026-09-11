@@ -137,6 +137,7 @@ type managedAmnesiaNode struct {
 	runtimeUUID          string
 	runtimePersistent    bool
 	runtimeTunConfigured bool
+	runtimeAnnounced     bool
 	runtimeID            uint64
 	nextRuntimeID        uint64
 	runtimeUnsubscribe   func()
@@ -161,6 +162,7 @@ type managedAmnesiaRuntimeRequest struct {
 	config             managedAmnesiaConfig
 	tunLinked          bool
 	tun                tun.Tun
+	networkLinked      bool
 	network            nodekit.NetworkCloser
 	networkMTURevision uint64
 	tlsConfig          *tls.Config
@@ -172,19 +174,20 @@ type managedAmnesiaRuntimeRequest struct {
 }
 
 type managedAmnesiaRuntimeResult struct {
-	generation       uint64
-	runtimeID        uint64
-	waitingForTun    bool
-	prepared         bool
-	ready            bool
-	format           wgoamnesia.InputFormat
-	profile          amnesiaProfileStatus
-	stats            wgdevice.RuntimeStats
-	installationUUID string
-	persistent       bool
-	dns              dns.Interface
-	captcha          *amnesiaCaptchaPrompt
-	err              error
+	generation        uint64
+	runtimeID         uint64
+	waitingForTun     bool
+	waitingForNetwork bool
+	prepared          bool
+	ready             bool
+	format            wgoamnesia.InputFormat
+	profile           amnesiaProfileStatus
+	stats             wgdevice.RuntimeStats
+	installationUUID  string
+	persistent        bool
+	dns               dns.Interface
+	captcha           *amnesiaCaptchaPrompt
+	err               error
 }
 
 type managedAmnesiaCaptchaResponse struct {
@@ -561,7 +564,8 @@ func (n *managedAmnesiaNode) scheduleReconcile(invalidate bool) {
 	n.sendStatusBlock()
 	request := managedAmnesiaRuntimeRequest{
 		generation: generation,
-		config:     n.config, tunLinked: n.tunLink != 0, tun: n.tun, network: n.network,
+		config:     n.config, tunLinked: n.tunLink != 0, tun: n.tun,
+		networkLinked: n.netLink != 0, network: n.network,
 		networkMTURevision: n.networkMTURevision,
 		tlsConfig:          nodekit.CloneTLSClientConfig(n.tlsConfig), tlsConfigErr: n.tlsConfigErr,
 		tlsRevision: n.tlsRevision, nodeName: n.currentNodeName(), ctx: ctx,
@@ -623,10 +627,10 @@ func (n *managedAmnesiaNode) handleRuntimeResult(msg managedAmnesiaRuntimeResult
 		n.dnsOutputs.CloseAll()
 		n.dnsProvider = nil
 		n.sendTunConfig()
-	} else if msg.waitingForTun {
+	} else if msg.waitingForTun || msg.waitingForNetwork {
 		n.clearCaptchaPrompt()
-		// Keep the negotiated profile while the linked TUN provider replaces its
-		// payload. The next TUN event schedules device creation and activation.
+		// Keep the negotiated profile while a linked provider replaces its
+		// payload. The next TUN or network event schedules device activation.
 	} else if msg.prepared {
 		n.clearCaptchaPrompt()
 		// Configure the graph TUN before the WireGuard device exists. A provider

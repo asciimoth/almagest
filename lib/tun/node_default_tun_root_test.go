@@ -461,6 +461,7 @@ func TestDefaultTunRebuildKeepsOutputsForReusedNativeDevice(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = nativeFile.Close() })
 	sys.reuseNativeDevice = true
+	sys.stablePublic = true
 	sys.nativeFile = nativeFile
 
 	node, err := w.AddNodeByClass(NodeTypeDefaultTun, "default tun")
@@ -508,10 +509,58 @@ func TestDefaultTunRebuildKeepsOutputsForReusedNativeDevice(t *testing.T) {
 	if got := sys.buildCount(); got != 2 {
 		t.Fatalf("build count after native-device reuse = %d, want 2", got)
 	}
+	if sys.tuns[0] != sys.tuns[1] {
+		t.Fatal("DefaultTun rebuild replaced the stable public wrapper")
+	}
+	if got := sys.tuns[0].closeCount(); got != 0 {
+		t.Fatalf("stable DefaultTun close count after rebuild = %d, want 0", got)
+	}
 	tuntest.AssertNoEvent(t, receiver.Events)
 	up, err := firstPayload.Tun.(interface{ IsUp() (bool, error) }).IsUp()
 	if err != nil || !up {
 		t.Fatal("existing output wrapper stopped after native-device reuse")
+	}
+}
+
+func TestDefaultTunRebuildKeepsStablePublicWrapperAfterSourceReplacement(t *testing.T) {
+	w, sys := newDefaultTunNodeTestWorkspace(t, false)
+	firstFile, err := os.CreateTemp(t.TempDir(), "default-tun-stable-first-")
+	if err != nil {
+		t.Fatalf("CreateTemp first native device identity: %v", err)
+	}
+	t.Cleanup(func() { _ = firstFile.Close() })
+	secondFile, err := os.CreateTemp(t.TempDir(), "default-tun-stable-second-")
+	if err != nil {
+		t.Fatalf("CreateTemp second native device identity: %v", err)
+	}
+	t.Cleanup(func() { _ = secondFile.Close() })
+	sys.stablePublic = true
+	sys.nativeFile = firstFile
+	sys.replacementNativeFile = secondFile
+	sys.replaceNativeOnBuild = 2
+
+	node, err := w.AddNodeByClass(NodeTypeDefaultTun, "default tun")
+	if err != nil {
+		t.Fatalf("AddNodeByClass DefaultTun: %v", err)
+	}
+	first := sys.tuns[0]
+	firstGeneration := first.SourceGeneration()
+
+	forceDefaultTunRebuild(t, w, node, "0.0.0.0/0")
+	if got := sys.buildCount(); got != 2 {
+		t.Fatalf("build count after source replacement = %d, want 2", got)
+	}
+	if sys.tuns[1] != first {
+		t.Fatal("source replacement changed the stable public wrapper")
+	}
+	if got := first.SourceGeneration(); got <= firstGeneration {
+		t.Fatalf("source generation after replacement = %d, want greater than %d", got, firstGeneration)
+	}
+	if got := first.File(); got != secondFile {
+		t.Fatalf("native file after replacement = %p, want %p", got, secondFile)
+	}
+	if got := first.closeCount(); got != 0 {
+		t.Fatalf("stable DefaultTun close count after source replacement = %d, want 0", got)
 	}
 }
 
@@ -1057,6 +1106,7 @@ func defaultTunWarningPopups(t *testing.T, w *pasta.Workspace, node uint64) []st
 
 type recordingDefaultTunSystem struct {
 	*sysnetdebug.System
+	mu sync.RWMutex
 
 	buildOpts              []sysnet.DefaultTunOpts
 	tuns                   []*recordingDefaultTun
@@ -1066,6 +1116,11 @@ type recordingDefaultTunSystem struct {
 	defaultTunWarningsHook func(sysnet.DefaultTun) []sysnet.Warning
 	reuseNativeDevice      bool
 	nativeFile             *os.File
+	replaceNativeOnBuild   int
+	replacementNativeFile  *os.File
+	tunWrapper             func(tun.Tun) tun.Tun
+	stablePublic           bool
+	nextSourceGeneration   uint64
 }
 
 func newRecordingDefaultTunSystem() *recordingDefaultTunSystem {
@@ -1073,6 +1128,9 @@ func newRecordingDefaultTunSystem() *recordingDefaultTunSystem {
 }
 
 func (s *recordingDefaultTunSystem) BuildDefaultTun(opts sysnet.DefaultTunOpts) (sysnet.DefaultTun, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if err := s.VerifyDefaultTunOpts(opts); err != nil {
 		return nil, err
 	}
@@ -1080,14 +1138,63 @@ func (s *recordingDefaultTunSystem) BuildDefaultTun(opts sysnet.DefaultTunOpts) 
 		return nil, s.buildErr
 	}
 	dtun := newRecordingDefaultTun(opts.MTU)
-	if s.reuseNativeDevice {
+	build := len(s.tuns) + 1
+	sourceReused := false
+	if s.replaceNativeOnBuild > 0 {
+		dtun.nativeFileFunc = func() *os.File { return s.nativeFile }
+		if build == s.replaceNativeOnBuild {
+			previous := s.tuns[len(s.tuns)-1]
+			previous.closeUnderlying = false
+			previousTun, previousPeer := previous.packetSource()
+			_ = previousTun.Close()
+			_ = previousPeer.Close()
+			s.nativeFile = s.replacementNativeFile
+		} else if len(s.tuns) > 0 {
+			previous := s.tuns[len(s.tuns)-1]
+			previous.closeUnderlying = false
+			_ = dtun.Tun.Close()
+			_ = dtun.peer.Close()
+			dtun.Tun, dtun.peer = previous.packetSource()
+			sourceReused = true
+		}
+		if s.tunWrapper != nil &&
+			(build == 1 || build == s.replaceNativeOnBuild) {
+			dtun.Tun = s.tunWrapper(dtun.Tun)
+		}
+	} else if s.reuseNativeDevice {
 		dtun.nativeFile = s.nativeFile
 		if len(s.tuns) > 0 {
 			previous := s.tuns[len(s.tuns)-1]
 			previous.closeUnderlying = false
-			dtun.Tun = previous.Tun
-			dtun.peer = previous.peer
+			dtun.Tun, dtun.peer = previous.packetSource()
+			sourceReused = true
+		} else if s.tunWrapper != nil {
+			dtun.Tun = s.tunWrapper(dtun.Tun)
 		}
+	} else if s.tunWrapper != nil {
+		dtun.Tun = s.tunWrapper(dtun.Tun)
+	}
+	if sourceReused {
+		dtun.sourceGeneration.Store(s.tuns[len(s.tuns)-1].SourceGeneration())
+	} else {
+		s.nextSourceGeneration++
+		dtun.sourceGeneration.Store(s.nextSourceGeneration)
+	}
+	if s.stablePublic && len(s.tuns) > 0 {
+		currentNativeFile := dtun.File()
+		stable := s.tuns[len(s.tuns)-1]
+		stable.sourceMu.Lock()
+		if !sourceReused {
+			stable.Tun = dtun.Tun
+			stable.peer = dtun.peer
+			stable.nativeFile = currentNativeFile
+			stable.nativeFileFunc = nil
+			stable.sourceGeneration.Store(dtun.SourceGeneration())
+		}
+		stable.mtu = dtun.mtu
+		stable.closeUnderlying = true
+		stable.sourceMu.Unlock()
+		dtun = stable
 	}
 	s.buildOpts = append(s.buildOpts, opts.Copy())
 	s.tuns = append(s.tuns, dtun)
@@ -1095,13 +1202,20 @@ func (s *recordingDefaultTunSystem) BuildDefaultTun(opts sysnet.DefaultTunOpts) 
 }
 
 func (s *recordingDefaultTunSystem) closeSharedNativeDevice() error {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
 	if len(s.tuns) == 0 {
 		return nil
 	}
-	return errors.Join(s.tuns[0].Tun.Close(), s.tuns[0].peer.Close())
+	source, peer := s.tuns[0].packetSource()
+	return errors.Join(source.Close(), peer.Close())
 }
 
 func (s *recordingDefaultTunSystem) DefaultTunWarnings(t sysnet.DefaultTun) []sysnet.Warning {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
 	dtun, ok := t.(*recordingDefaultTun)
 	if !ok || s.defaultTunWarningsHook == nil {
 		return nil
@@ -1120,16 +1234,24 @@ func (s *recordingDefaultTunSystem) DefaultTunWarnings(t sysnet.DefaultTun) []sy
 }
 
 func (s *recordingDefaultTunSystem) SetTunMTU(t tun.Tun, mtu int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	dtun, ok := t.(*recordingDefaultTun)
 	if !ok {
 		return sysnet.ErrUnknownTun
 	}
 	s.setMTUCalls = append(s.setMTUCalls, mtu)
+	dtun.sourceMu.Lock()
 	dtun.mtu = mtu
+	dtun.sourceMu.Unlock()
 	return nil
 }
 
 func (s *recordingDefaultTunSystem) SetTunAddrs(t tun.Tun, addrs []string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if _, ok := t.(*recordingDefaultTun); !ok {
 		return sysnet.ErrUnknownTun
 	}
@@ -1138,24 +1260,63 @@ func (s *recordingDefaultTunSystem) SetTunAddrs(t tun.Tun, addrs []string) error
 }
 
 func (s *recordingDefaultTunSystem) buildCount() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
 	return len(s.buildOpts)
 }
 
 func (s *recordingDefaultTunSystem) lastOpts() sysnet.DefaultTunOpts {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
 	if len(s.buildOpts) == 0 {
 		return sysnet.DefaultTunOpts{}
 	}
 	return s.buildOpts[len(s.buildOpts)-1].Copy()
 }
 
+func (s *recordingDefaultTunSystem) lastTun() *recordingDefaultTun {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if len(s.tuns) == 0 {
+		return nil
+	}
+	return s.tuns[len(s.tuns)-1]
+}
+
+func (s *recordingDefaultTunSystem) lastPeer() tun.Tun {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if len(s.tuns) == 0 {
+		return nil
+	}
+	_, peer := s.tuns[len(s.tuns)-1].packetSource()
+	return peer
+}
+
+func (s *recordingDefaultTunSystem) scheduleNativeReplacement() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	build := len(s.buildOpts) + 1
+	s.replaceNativeOnBuild = build
+	return build
+}
+
 type recordingDefaultTun struct {
 	tun.Tun
-	peer tun.Tun
+	peer     tun.Tun
+	sourceMu sync.RWMutex
 
-	mtu             int
-	closeCounter    atomic.Int32
-	nativeFile      *os.File
-	closeUnderlying bool
+	mtu              int
+	closeCounter     atomic.Int32
+	nativeFile       *os.File
+	nativeFileFunc   func() *os.File
+	closeUnderlying  bool
+	sourceGeneration atomic.Uint64
 
 	mu          sync.Mutex
 	resolver    dns.Interface
@@ -1171,10 +1332,61 @@ func newRecordingDefaultTun(mtu int) *recordingDefaultTun {
 }
 
 func (t *recordingDefaultTun) File() *os.File {
+	t.sourceMu.RLock()
+	defer t.sourceMu.RUnlock()
+	if t.nativeFileFunc != nil {
+		return t.nativeFileFunc()
+	}
 	if t.nativeFile != nil {
 		return t.nativeFile
 	}
 	return t.Tun.File()
+}
+
+func (t *recordingDefaultTun) packetSource() (tun.Tun, tun.Tun) {
+	t.sourceMu.RLock()
+	defer t.sourceMu.RUnlock()
+	return t.Tun, t.peer
+}
+
+func (t *recordingDefaultTun) Read(bufs [][]byte, sizes []int, offset int) (int, error) {
+	source, _ := t.packetSource()
+	return source.Read(bufs, sizes, offset)
+}
+
+func (t *recordingDefaultTun) Write(bufs [][]byte, offset int) (int, error) {
+	source, _ := t.packetSource()
+	return source.Write(bufs, offset)
+}
+
+func (t *recordingDefaultTun) IsNative() bool {
+	source, _ := t.packetSource()
+	return source.IsNative()
+}
+
+func (t *recordingDefaultTun) MWO() int {
+	source, _ := t.packetSource()
+	return source.MWO()
+}
+
+func (t *recordingDefaultTun) MRO() int {
+	source, _ := t.packetSource()
+	return source.MRO()
+}
+
+func (t *recordingDefaultTun) Name() (string, error) {
+	source, _ := t.packetSource()
+	return source.Name()
+}
+
+func (t *recordingDefaultTun) Events() <-chan tun.Event {
+	source, _ := t.packetSource()
+	return source.Events()
+}
+
+func (t *recordingDefaultTun) BatchSize() int {
+	source, _ := t.packetSource()
+	return source.BatchSize()
 }
 
 func (t *recordingDefaultTun) SetDns(resolver dns.Interface) {
@@ -1186,11 +1398,19 @@ func (t *recordingDefaultTun) SetDns(resolver dns.Interface) {
 }
 
 func (t *recordingDefaultTun) MTU() (int, error) {
+	t.sourceMu.RLock()
+	defer t.sourceMu.RUnlock()
 	return t.mtu, nil
+}
+
+func (t *recordingDefaultTun) SourceGeneration() uint64 {
+	return t.sourceGeneration.Load()
 }
 
 func (t *recordingDefaultTun) Close() error {
 	t.closeCounter.Add(1)
+	t.sourceMu.RLock()
+	defer t.sourceMu.RUnlock()
 	if !t.closeUnderlying {
 		return nil
 	}

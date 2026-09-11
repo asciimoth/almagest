@@ -2,6 +2,7 @@ package tunnodes
 
 import (
 	"errors"
+	"os"
 	"slices"
 
 	"github.com/asciimoth/gonnect/sysnet"
@@ -25,6 +26,8 @@ func (n *defaultTunNode) configureDefaultTun() error {
 			n.sendEffectiveBlock()
 			n.refreshDefaultTunWarningsLocked()
 			return nil
+		} else if n.Logger != nil {
+			n.Logger.Warnf("DefaultTun dynamic configuration failed; rebuilding: %v", err)
 		}
 	}
 	if err := n.rebuildDefaultTun(opts); err != nil {
@@ -52,6 +55,10 @@ func (n *defaultTunNode) rebuildDefaultTun(opts sysnet.DefaultTunOpts) error {
 		return err
 	}
 	previous := n.dtun
+	// A stable DefaultTun wrapper can change its native source during the
+	// build. Capture source identity before the call so the old and new states
+	// do not become indistinguishable through the same mutable object.
+	previousSource := captureDefaultTunSource(previous)
 	dtun, err := n.System().BuildDefaultTun(opts.Copy())
 	if err != nil {
 		n.formError = err.Error()
@@ -68,16 +75,46 @@ func (n *defaultTunNode) rebuildDefaultTun(opts sysnet.DefaultTunOpts) error {
 	_ = n.updateLabel()
 	n.sendEffectiveBlock()
 	n.refreshDefaultTunWarningsLocked()
-	if defaultTunsShareNativeDevice(previous, dtun) {
-		// sysnet-linux can return a new generation wrapper around the same
-		// native TUN. Keep the emitted detached wrappers in that case. Their
-		// read pumps still use the active native device, while waiting for them
-		// here would require closing that device and would deadlock the rebuild.
-		_ = previous.Close()
+	nativeUnchanged := defaultTunSourceUnchanged(previousSource, dtun)
+	samePublicTun := SameTunInstance(previous, dtun)
+	if previous == nil && n.Logger != nil {
+		mtu, mtuErr := dtun.MTU()
+		n.Logger.Infof(
+			"DefaultTun native source ready: generation=%d generation_available=%t file=%p mtu=%d mtu_error=%v mro=%d mwo=%d batch=%d",
+			defaultTunSourceGenerationOf(dtun),
+			defaultTunHasSourceGeneration(dtun),
+			defaultTunNativeFile(dtun),
+			mtu,
+			mtuErr,
+			dtun.MRO(),
+			dtun.MWO(),
+			dtun.BatchSize(),
+		)
+	} else if !nativeUnchanged && n.Logger != nil {
+		n.Logger.Infof(
+			"DefaultTun native source replaced: previous_generation=%d current_generation=%d previous_file=%p current_file=%p generation_available=%t mro=%d mwo=%d batch=%d",
+			previousSource.generation,
+			defaultTunSourceGenerationOf(dtun),
+			previousSource.nativeFile,
+			defaultTunNativeFile(dtun),
+			previousSource.hasGeneration && defaultTunHasSourceGeneration(dtun),
+			dtun.MRO(),
+			dtun.MWO(),
+			dtun.BatchSize(),
+		)
+	}
+	if nativeUnchanged {
+		// Some systems return a new public wrapper for the same source. Keep the
+		// emitted detached wrappers and update only their cache source identity.
+		// A system with a stable public wrapper needs no rebind or close.
+		if !samePublicTun {
+			n.outputTuns.RebindSource(previous, dtun)
+			_ = previous.Close()
+		}
 		return nil
 	}
 	n.outputTuns.CloseAll()
-	if previous != nil {
+	if previous != nil && !samePublicTun {
 		_ = previous.Close()
 	}
 	n.outputTuns.Wait()
@@ -85,12 +122,58 @@ func (n *defaultTunNode) rebuildDefaultTun(opts sysnet.DefaultTunOpts) error {
 	return nil
 }
 
-func defaultTunsShareNativeDevice(a, b sysnet.DefaultTun) bool {
-	if a == nil || b == nil {
+type defaultTunSourceGeneration interface {
+	SourceGeneration() uint64
+}
+
+type defaultTunSourceSnapshot struct {
+	nativeFile    *os.File
+	generation    uint64
+	hasGeneration bool
+}
+
+func captureDefaultTunSource(t sysnet.DefaultTun) defaultTunSourceSnapshot {
+	if t == nil {
+		return defaultTunSourceSnapshot{}
+	}
+	generation, hasGeneration := t.(defaultTunSourceGeneration)
+	snapshot := defaultTunSourceSnapshot{
+		nativeFile:    defaultTunNativeFile(t),
+		hasGeneration: hasGeneration,
+	}
+	if hasGeneration {
+		snapshot.generation = generation.SourceGeneration()
+	}
+	return snapshot
+}
+
+func defaultTunSourceUnchanged(previous defaultTunSourceSnapshot, current sysnet.DefaultTun) bool {
+	if current == nil {
 		return false
 	}
-	aFile := a.File()
-	return aFile != nil && aFile == b.File()
+	if generation, ok := current.(defaultTunSourceGeneration); previous.hasGeneration && ok {
+		return generation.SourceGeneration() == previous.generation
+	}
+	return previous.nativeFile != nil && previous.nativeFile == defaultTunNativeFile(current)
+}
+
+func defaultTunSourceGenerationOf(t sysnet.DefaultTun) uint64 {
+	if generation, ok := t.(defaultTunSourceGeneration); ok {
+		return generation.SourceGeneration()
+	}
+	return 0
+}
+
+func defaultTunHasSourceGeneration(t sysnet.DefaultTun) bool {
+	_, ok := t.(defaultTunSourceGeneration)
+	return ok
+}
+
+func defaultTunNativeFile(t sysnet.DefaultTun) *os.File {
+	if t == nil {
+		return nil
+	}
+	return t.File()
 }
 
 func (n *defaultTunNode) refreshDefaultTunWarningsLocked() {

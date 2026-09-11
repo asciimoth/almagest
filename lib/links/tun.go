@@ -2,7 +2,9 @@ package links
 
 import (
 	"errors"
+	"fmt"
 	"net/netip"
+	"reflect"
 	"slices"
 
 	"github.com/asciimoth/bufpool"
@@ -407,18 +409,44 @@ func CloseTun(t tun.Tun) error {
 }
 
 type tunOutputEntry struct {
-	source tun.Tun
+	source *tunOutputSource
 	output tun.Tun
+}
+
+type tunOutputSource struct {
+	source tun.Tun
+	root   *tun.DetachedTun
+}
+
+func (s *tunOutputSource) ready() bool {
+	return s != nil && TunIsReady(s.root)
 }
 
 // TunOutputCache owns detached TUN wrappers emitted by a node, keyed by link.
 //
-// It keeps repeated sends idempotent while a wrapper is still ready and the
-// source has not changed, and centralizes the close/wait lifecycle required by
-// detached TUN wrappers.
+// Each source has one stable detached root. Replacement link wrappers are
+// nested under that root, so closing a consumer wrapper cannot leave an old
+// read blocked directly on the source while a replacement starts a second
+// source read.
 type TunOutputCache struct {
 	entries map[uint64]tunOutputEntry
+	sources []*tunOutputSource
 	waiting []tun.Tun
+}
+
+// RebindSource updates the source identity for cached outputs without replacing
+// their detached wrappers. The caller must ensure oldSource and newSource use
+// the same live packet stream.
+func (c *TunOutputCache) RebindSource(oldSource, newSource tun.Tun) {
+	if c == nil || oldSource == nil || newSource == nil {
+		return
+	}
+	for _, state := range c.sources {
+		if !SameTunSource(state.source, oldSource) {
+			continue
+		}
+		state.source = newSource
+	}
 }
 
 // Send emits source as a detached TunPayload on link. It re-emits a cached
@@ -460,11 +488,10 @@ func (c *TunOutputCache) SendWrappedLocked(w *pasta.Workspace, node, link uint64
 	if _, ok := w.LinkSnapshotLocked(link); !ok {
 		return false
 	}
-	if entry, ok := c.entries[link]; ok && TunIsReady(entry.output) && SameTunSource(entry.source, source) {
+	if entry, ok := c.entries[link]; ok && entry.source.ready() && TunIsReady(entry.output) && SameTunSource(entry.source.source, source) {
 		w.EmitEventLocked(node, link, TunPayload{Tun: entry.output})
 		return true
 	}
-	c.Close(link)
 	return c.emitWrappedLocked(w, node, link, source, wrap, pool)
 }
 
@@ -476,16 +503,24 @@ func (c *TunOutputCache) RefreshWrappedLocked(w *pasta.Workspace, node, link uin
 	if _, ok := w.LinkSnapshotLocked(link); !ok {
 		return false
 	}
-	c.Close(link)
 	return c.emitWrappedLocked(w, node, link, source, wrap, pool)
 }
 
 func (c *TunOutputCache) emitWrappedLocked(w *pasta.Workspace, node, link uint64, source tun.Tun, wrap func(tun.Tun) tun.Tun, pool bufpool.Pool) bool {
-	var output tun.Tun = tun.Detach(source, nil, pool)
+	state := c.outputSource(w, node, source, pool)
+	if state == nil {
+		c.Close(link)
+		return false
+	}
+	if previous, ok := c.entries[link]; ok {
+		CloseTunForLaterWait(&c.waiting, previous.output)
+	}
+	var output tun.Tun = tun.Detach(state.root, nil, pool)
 	if wrap != nil {
 		wrapped := wrap(output)
 		if wrapped == nil {
-			_ = output.Close()
+			CloseTunForLaterWait(&c.waiting, output)
+			delete(c.entries, link)
 			return false
 		}
 		output = wrapped
@@ -494,12 +529,40 @@ func (c *TunOutputCache) emitWrappedLocked(w *pasta.Workspace, node, link uint64
 	if c.entries == nil {
 		c.entries = make(map[uint64]tunOutputEntry)
 	}
-	c.entries[link] = tunOutputEntry{source: source, output: output}
+	c.entries[link] = tunOutputEntry{source: state, output: output}
 	w.EmitEventLocked(node, link, TunPayload{Tun: output})
 	return true
 }
 
-// Close closes and forgets the wrapper emitted on link.
+func (c *TunOutputCache) outputSource(w *pasta.Workspace, node uint64, source tun.Tun, pool bufpool.Pool) *tunOutputSource {
+	for index := 0; index < len(c.sources); {
+		state := c.sources[index]
+		if !state.ready() {
+			CloseTunForLaterWait(&c.waiting, state.root)
+			c.sources = append(c.sources[:index], c.sources[index+1:]...)
+			continue
+		}
+		if !SameTunSource(state.source, source) {
+			index++
+			continue
+		}
+		return state
+	}
+	state := &tunOutputSource{
+		source: source,
+	}
+	state.root = tun.Detach(source, nil, pool)
+	if !TunIsReady(state.root) {
+		CloseTunForLaterWait(&c.waiting, state.root)
+		return nil
+	}
+	_ = w.AddNodeResourceLocked(node, state.root)
+	c.sources = append(c.sources, state)
+	return state
+}
+
+// Close closes and forgets the wrapper emitted on link. It keeps the source
+// root ready for a later link so no uncancelable source read is abandoned.
 func (c *TunOutputCache) Close(link uint64) {
 	if c == nil || c.entries == nil {
 		return
@@ -518,6 +581,10 @@ func (c *TunOutputCache) CloseAll() {
 		delete(c.entries, link)
 		CloseTunForLaterWait(&c.waiting, entry.output)
 	}
+	for _, state := range c.sources {
+		CloseTunForLaterWait(&c.waiting, state.root)
+	}
+	c.sources = nil
 }
 
 // Wait waits for detached wrappers closed by Close or CloseAll.
@@ -573,6 +640,64 @@ func TunIsReady(t tun.Tun) bool {
 	}
 	up, err := updown.IsUp()
 	return err == nil && up
+}
+
+// TunDebugString returns lifecycle metadata for diagnostics. It does not read
+// packets or consume lifecycle events.
+func TunDebugString(t tun.Tun) string {
+	if t == nil {
+		return "nil"
+	}
+	name, nameErr := t.Name()
+	mtu, mtuErr := t.MTU()
+	up := true
+	var upErr error
+	if updown, ok := t.(interface {
+		IsUp() (bool, error)
+	}); ok {
+		up, upErr = updown.IsUp()
+	}
+	fd := -1
+	filePointer := "nil"
+	if file := t.File(); file != nil {
+		fd = int(file.Fd())
+		filePointer = fmt.Sprintf("%p", file)
+	}
+	return fmt.Sprintf(
+		"type=%T pointer=%s source_type=%T source_pointer=%s native=%t file=%s fd=%d name=%q name_error=%v mtu=%d mtu_error=%v mro=%d mwo=%d batch=%d up=%t up_error=%v",
+		t,
+		valuePointer(t),
+		TunSource(t),
+		valuePointer(TunSource(t)),
+		t.IsNative(),
+		filePointer,
+		fd,
+		name,
+		nameErr,
+		mtu,
+		mtuErr,
+		t.MRO(),
+		t.MWO(),
+		t.BatchSize(),
+		up,
+		upErr,
+	)
+}
+
+func valuePointer(value any) string {
+	if value == nil {
+		return "nil"
+	}
+	v := reflect.ValueOf(value)
+	switch v.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Map, reflect.Pointer, reflect.Slice, reflect.UnsafePointer:
+		if v.IsNil() {
+			return "nil"
+		}
+		return fmt.Sprintf("0x%x", v.Pointer())
+	default:
+		return "non-pointer"
+	}
 }
 
 // SameTunSource reports whether a and b ultimately wrap the same comparable

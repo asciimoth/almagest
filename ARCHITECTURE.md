@@ -236,6 +236,15 @@ data outputs are updated.
 Network payloads own closeable resources. Use `BindNetworkResource` when a node
 receives or emits a network so Pasta cleanup can close it.
 
+TUN providers use `TunOutputCache` to keep one detached read root for each
+native source. Per-link outputs are children of that root. A ready root is
+reused, but a failed root or a new native source gets a new root. DefaultTun
+captures the sysnet source generation before each rebuild because its stable
+public wrapper can change native source during the build call. TunSplitter and
+TunJoiner observe terminal input errors and down events. They use link and
+attachment generations when they request replacements. TunJoiner tracks its
+default input and each secondary input separately.
+
 ## Daemon Notes
 Important flags and env:
 - `--stdin`: read main config from stdin and make it read-only.

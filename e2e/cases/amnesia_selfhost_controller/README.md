@@ -17,6 +17,11 @@ The case verifies:
 - HTTP and ICMP traffic pass through the real AmneziaWG data plane after each
   recovery.
 
+The service profile disables random trailers. An unbounded random handshake
+trailer can exceed the IPv4 UDP payload limit and make this lifecycle test
+probabilistic. The `wireguard_amneziawg_go_compat` case tests random-trailer
+interoperability separately.
+
 Run it with a privileged container and `/dev/net/tun`, for example:
 
 ```sh

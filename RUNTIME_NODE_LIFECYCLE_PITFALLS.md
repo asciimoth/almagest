@@ -49,7 +49,7 @@ Useful state usually includes:
 Invariant:
 
 ```text
-A node must not reports that it is fully up until the runtime attachment that
+A node must not report that it is fully up until the runtime attachment that
 makes it usable is active for the current runtime generation.
 ```
 
@@ -227,6 +227,47 @@ Invariant:
 Invalidating one runtime operation must not lose an unapplied desired config.
 ```
 
+### Separate Durable Control State From Replaceable Data Plane State
+
+One runtime object can contain state with different lifetimes. For example, an
+external service can register a generated key before the node creates and
+attaches its local packet device. The registration and key are durable control
+state. The local device, TUN child, bind, and DNS wrapper are replaceable data
+plane state.
+
+A data-plane activation can fail after it has created part of the data plane.
+Do not use request-generation status to select its cleanup. The request can be
+current when cleanup runs and become stale before its result is delivered.
+Close only the partial data plane and let an equivalent generation reuse the
+registration. A current failure can report an error without deleting the
+durable control state.
+
+Delete durable state only when the desired material changes or its owning
+lifecycle object is explicitly detached. A temporary down payload from a still
+linked TUN or network provider is not a detach. Preserve the durable state and
+wait for that provider's replacement payload.
+
+Tests must inject both forms:
+
+- invalidate the generation during setup, return an error, and verify that the
+  next generation reuses the registration and key;
+- return the same error while the request is current, advance the generation
+  before handling its result, and verify that the next generation still reuses
+  the registration and key;
+- make a linked TUN or network payload temporarily unavailable, replace it,
+  and verify that no second registration occurs;
+- explicitly detach the TUN or network link and verify that the complete
+  control and data-plane state closes; and
+- permit a new data-plane object when an in-place attachment replacement is
+  not supported, but require the same durable identity and no second external
+  registration.
+
+Invariant:
+
+```text
+A local data-plane failure must not delete matching durable control state.
+```
+
 ### Cancel Retry Only After Proven Convergence
 
 The arrival of a replacement payload is progress, but it is not proof of
@@ -288,6 +329,69 @@ Prefer per-link output caches for detached wrappers. Close wrappers only when:
 - the underlying source is intentionally replaced
 - the wrapper itself is known to be closed or invalid
 
+Cache identity and cache health are separate properties. A shared root can
+still refer to the same source after its read or write worker stops. New child
+wrappers on that root do not repair the data path. A cache must include root
+health in its reuse decision and must replace a terminally failed root.
+
+### Treat Runtime Geometry As Mutable State
+
+Values read when a worker starts can become stale while the resource identity
+stays the same. Examples include MTU, packet capacity, read and write offsets,
+batch size, queue depth, and address-family support.
+
+The worker that owns the source operation must also own changes to the buffers
+used by that operation. Keep one source reader while a read capacity changes.
+Do not start a second reader as a quick recovery action. Serialize the change
+with the read pump, discard the packet that found an insufficient capacity when
+necessary, and verify that a later packet is delivered.
+
+Validate the complete I/O result. A nil error does not make a reported packet
+size valid when that size is larger than the visible output region given to the
+callee. A larger backing allocation does not extend the visible slice. Prefer a
+typed capacity error so the owner can distinguish a recoverable resize from a
+terminal source failure.
+
+Invariant:
+
+```text
+Create-time resource geometry must not remain authoritative after the live
+source changes that geometry.
+```
+
+### Observe Terminal TUN Failure On I/O And Event Paths
+
+A detached TUN can publish `EventDown` before its consumer receives the
+terminal I/O error. A lower-level splitter can process that event first, mark
+its backend down, and wait for `EventUp`. It then does not call `Read` again and
+cannot observe the terminal error that requires source replacement.
+
+If a node owns replacement policy, observe terminal state on both paths:
+
+- report terminal errors returned by `Read` and `Write`;
+- when `EventDown` arrives, distinguish a terminal detached-pump failure from
+  a recoverable down state;
+- treat unexpected closure of the event stream as terminal; and
+- carry the link and attachment generation in the recovery message.
+
+This policy applies to each consumer input, not only to the first splitter in
+a graph. `TunSplitter` tracks its input generation. `TunJoiner` tracks the
+default input and each secondary link independently. On a terminal failure,
+the consumer detaches that input and requests a new payload. The generation
+guard rejects an old failure or retry after a newer payload is attached. A
+lower-level detach is not sufficient because it cannot request a replacement
+from the graph owner.
+
+MTU capacity errors are different. Gonnect can grow a detached root's read
+capacity and continue with the same source reader. Do not replace that root or
+add a second native reader. The packet that discovers the larger capacity can
+be lost, so tests must send and verify a later packet.
+
+For a mutable public DefaultTun wrapper, capture source generation before a
+rebuild call. After the call, the same wrapper can already refer to a different
+native source. Do not use wrapper equality or a post-build file lookup as the
+only source-identity check, and do not close the active stable wrapper.
+
 ### First Requests Expose Readiness Bugs
 
 HTTP clients, UDP ping clients, and similar request nodes generally use the
@@ -308,6 +412,31 @@ For startup-sensitive paths, add tests that:
 Keep eventual-success tests, but do not treat them as proof of first-request
 readiness.
 
+### Probe Each Data-Plane Boundary Separately
+
+A successful probe can enter the graph after the failed component. It then
+proves that the later path works, but it does not prove that the complete path
+works. During the DefaultTun incident, in-daemon HTTP clients succeeded while
+the host path through the native DefaultTun reader was stopped.
+
+Map the start and end point of each probe. For a host TUN path, test at least:
+
+- a host request that must enter the native TUN
+- an internal graph request that does not use that ingress
+- direct addressing when DNS is a separate possible failure
+- the same probes after the intended repair action
+
+A target reproduction is conclusive only when its prerequisite probes succeed
+and the target boundary fails. Classify a failed prerequisite as inconclusive.
+Do not use it as evidence for the target bug.
+
+Invariant:
+
+```text
+Success on an adjacent data path is not proof that the affected ingress or
+egress boundary is healthy.
+```
+
 ### Keep Runtime Work Off Workspace Callbacks
 
 Long-running runtime operations should not run while holding workspace callback
@@ -317,6 +446,42 @@ messages, then apply state changes on the node-owned path.
 The completion handler should still perform generation checks before changing
 status, retry state, labels, resources, or menus. Async boundaries prevent lock
 contention; they do not by themselves solve stale completion bugs.
+
+### Recheck Identity After Async And Lock Boundaries
+
+A current-generation decision can become stale before its visible side effect.
+For example, a worker can record a TUN failure under the node mutex, release the
+mutex to close an adapter, wait for the workspace lock, and then overwrite the
+label of a replacement TUN.
+
+Carry the generation and resource identity across every boundary. Recheck them
+under the lock that protects the visible side effect immediately before you
+publish a label, emit a wrapper, cancel retry, update a menu, or close a shared
+resource. Follow the established lock order; do not retain a node mutex while
+you wait for a workspace callback that can call the node again.
+
+Invariant:
+
+```text
+A generation check authorizes work only until the next asynchronous or lock
+boundary.
+```
+
+### A Stop Request Is Not Worker Completion
+
+Closing a worker's stop channel only requests shutdown. The worker can still
+own a listener, socket, TUN reader, or other exclusive resource until its done
+signal closes. Starting the replacement immediately can make both generations
+active and can cause bind conflicts or concurrent reads.
+
+Keep the stopping worker identity until it finishes. Coalesce later config
+changes into the latest desired state. After the old worker's done signal
+closes, verify its identity and start one replacement with the current desired
+config.
+
+Tests should hold the old worker after it receives the stop request. Verify
+that no replacement starts before release, then verify that exactly one worker
+starts with the newest config.
 
 ## Implementation Checklist
 
@@ -332,6 +497,9 @@ When adding or refactoring a runtime node, answer these before merging:
 - Does retry rebuild failed attachments before applying config or clearing
   errors?
 - Does same-source suppression reject only ready current wrappers?
+- Does a cache verify the health of its shared root, not only source identity?
+- Can runtime geometry change while the wrapper or native source stays the same?
+- Does resize or replacement preserve the one-reader or one-listener invariant?
 - If an operation marks an attachment failed, did retry eligibility get captured
   before that mutation?
 - Can an old success clear a newer error or cancel a newer retry?
@@ -340,11 +508,16 @@ When adding or refactoring a runtime node, answer these before merging:
 - Does every pending result channel complete on stop, detach, and failure?
 - Can a stale resource event reopen sockets after link detach but before
   physical detach?
+- Does replacement wait for the old worker to release exclusive resources?
 - Are buffered lifecycle events drained before attaching resources to runtimes
   with their own event readers?
 - Can a same-source request or re-emit close wrappers still held downstream?
 - Does config propagation rebuild live resources for equivalent effective
   options?
+- Does temporary provider unavailability differ from an explicit graph unlink?
+- Is identity rechecked after each async or lock boundary and before visible
+  workspace state changes?
+- Do probes cross the exact ingress or egress boundary under investigation?
 - Do tests prove resource ordering, or only that retry eventually happened?
 
 ## Regression Test Patterns
@@ -371,7 +544,95 @@ For readiness tests:
 Avoid tests that only assert "retry was attempted". They can pass while the node
 still loops between `error` and `up` on the same stale resource.
 
+For an intermittent runtime failure, use a layered investigation:
+
+1. Capture failed, clean, and repaired runs with the same script and topology.
+2. Record precise timestamps, source and attachment generations, effective
+   runtime geometry, counters, file descriptors, and worker stacks.
+3. Compare normalized route, rule, firewall, DNS, socket, and graph state to
+   reject competing causes.
+4. Reproduce the lowest failing interface contract in a deterministic test.
+5. Test the dependency that owns that contract, then the Almagest consumer,
+   then a representative deep graph, and finally the affected host boundary.
+
+Do not select a root cause from one warning or one failed run. A clean run with
+the same warning or state transition can show that the event is not sufficient.
+Use a repair that changes one suspected lifecycle owner when possible, and
+verify that both worker state and data transfer recover.
+
+Capture-script readiness checks must use stable semantics. Prefer node class and
+operational label patterns over generated node names or exact dynamic counts.
+Require the labels to stay operational for a short stable interval. If a wait
+times out, record the actual labels so a script defect is distinct from a daemon
+defect.
+
+Keep unrelated randomness out of lifecycle tests. Bound protocol fields below
+transport limits, and remove timing dependencies that need a retransmission to
+succeed. Test randomized protocol compatibility in a separate case. This keeps
+a protocol stimulus failure from looking like a resource-lifecycle failure.
+
 ## Fixed Bugs And Coverage
+
+### DefaultTun Reused A Stopped Detached Root
+
+Bug:
+
+- A detached output root started with an MTU of 1420 and kept that read
+  capacity after the same native TUN changed to MTU 1428.
+- The Linux virtual-network-header and GSO path could report one successful
+  1428-byte packet through the old visible packet region.
+- Gonnect converted the invalid result to `io.ErrShortBuffer` and stopped the
+  root read pump. The old root still reported `up`.
+- `TunOutputCache` matched the same source and attached replacement children to
+  the stopped root. New children could not repair the host data path.
+- Internal graph probes stayed healthy because they did not enter through the
+  native DefaultTun reader.
+
+Investigation:
+
+- Two failed captures had the same MTU-growth and short-buffer sequence. Their
+  goroutine stacks had the root write pump, but not its read pump or native TUN
+  read. A clean capture had both pumps.
+- Route, policy-rule, firewall, and resolved state were equivalent in the clean,
+  failed, and repaired states. DNS and internal HTTP probes also succeeded
+  during the host failure.
+- A clean run survived the same MTU increase. This showed that the MTU change
+  alone was not sufficient. A larger GSO result during that window was the
+  required trigger.
+- A deterministic dependency test reproduced the successful oversized result.
+  A cache test then reproduced the stopped read root without using host
+  networking.
+
+Fix:
+
+- Gonnect grows the owning root after an MTU event, a short-buffer result, or a
+  successful result that exceeds the current visible packet capacity. It keeps
+  one source reader and reports terminal pump failure through root health.
+- tuntap validates visible output capacity before Linux GSO splitting and
+  returns a typed capacity error.
+- `TunOutputCache` reuses only a ready root. It replaces a terminally failed
+  root and nests per-link children below one stable root.
+- sysnet-linux exposes one stable public DefaultTun wrapper and a source
+  generation. DefaultTun captures the generation before a build that can change
+  the wrapper's native source.
+- TunSplitter and TunJoiner observe terminal state on I/O and event paths. They
+  request replacements with independent link and attachment generations.
+- Tun2Dns retries a failed input request until it accepts a replacement. Its
+  failure publication rechecks the input generation after it acquires the
+  workspace lock.
+
+Coverage includes deterministic capacity growth, terminal read and write
+failure, same-source reuse, native-source replacement, stale consumer messages,
+and generated graphs at depths 1, 4, and 8. The privileged
+`default_tun_routing` case also uses two splitter/joiner stages, IPv4 and IPv6,
+TCP and UDP, an MTU matrix from 1280 through 9000, and forced native-device
+replacement.
+
+The final acceptance gate on 2026-09-12 was six consecutive clean runs of
+`scripts/capture-default-tun-flake.sh` on the affected host and 40 consecutive
+clean runs of `just test-total`. The incident is resolved. See
+[DEFAULT_TUN_HOST_NETWORK_FAILURE.md](DEFAULT_TUN_HOST_NETWORK_FAILURE.md) for
+the full evidence, dependency versions, test list, and return-of-failure guide.
 
 ### WireGuard Published `up` Before Bind Attach
 
@@ -657,6 +918,88 @@ Test location:
 Related implementation:
 
 - `lib/tailscale/runtime.go`
+
+### Managed Amnesia Activation Removed Durable Registration
+
+Bug:
+
+- A successful service negotiation registered an ephemeral public key before
+  the local WireGuard device became active.
+- A later TUN, bind, DNS, pre-connect, or device-start failure could close the
+  complete runtime. Recovery then registered another service key even when the
+  requested connection material had not changed.
+- A generation check during cleanup was not sufficient. A request could be
+  current when cleanup ran and become stale before its result was delivered.
+- A temporary missing payload from a linked TUN or network provider was treated
+  like an explicit unlink and could also discard the registration.
+
+Fix:
+
+- The service client, negotiated profile, and registered key are durable
+  control state. The device, detached TUN, bind, and tunnel DNS resolver are
+  replaceable data-plane state.
+- Activation failure always closes only the partial data plane. An equivalent
+  generation can reuse the registered profile.
+- A temporary linked-provider gap keeps the control state. An explicit unlink
+  or changed connection material closes the complete runtime.
+- Network replacement creates a new local data plane because the bind cannot
+  move to another network wrapper. TUN replacement uses in-place replacement
+  when supported and otherwise rebuilds the device with the same registered
+  identity.
+
+Coverage:
+
+```sh
+go -C lib test ./amnesia -run 'TestManagedAmnesiaRuntime(KeepsSuccessfulNegotiationAcrossStaleGeneration|KeepsPreparedProfileWhenTunGoesDownDuringReconcile|KeepsProfileAcrossCarrierReplacement|ReattachesTunAfterStaleActivation|KeepsProfileAfterStaleTunSetupFailure)' -race -count=1
+```
+
+### Tun2Dns Could Stop Without A Usable Replacement
+
+Bug:
+
+- A terminal TUN read stopped the packet pump. The adapter stayed in an error
+  state without persistent replacement work.
+- A replacement could arrive after the old pump changed its local state but
+  before the old failure acquired the workspace lock. The old failure could
+  then publish a stale error label over the replacement state.
+
+Fix:
+
+- A terminal current-generation failure closes the adapter and starts a retry
+  for the failed link and generation.
+- Retry continues while that exact generation is failed. A replacement, unlink,
+  or stop invalidates the timer.
+- The failure path rechecks generation, TUN identity, and failed state after it
+  acquires the workspace lock and before it changes the label.
+
+Coverage:
+
+```sh
+go -C lib test ./dns -run 'TestTun2Dns(RequestsReplacementAfterTerminalTunRead|StalePumpFailureCannotOverwriteReplacementLabel)' -race -count=1
+```
+
+### HTTP Server Restart Overlapped The Previous Worker
+
+Bug:
+
+- Restart requested stop but cleared the old worker identity immediately.
+- A second config event could start a replacement while the old worker still
+  owned its listener.
+- Multiple events could also schedule obsolete replacement configs while the
+  old worker stopped.
+
+Fix:
+
+- The node retains the old worker and a stopping flag until `Done` closes.
+- Later events update desired node state but do not start another worker.
+- The done message verifies the old worker identity and starts one replacement
+  from the latest desired state.
+
+Coverage:
+
+```sh
+go -C lib test ./http -run TestHTTPServerRestartWaitsForPreviousWorker -race -count=1
+```
 
 ## Full Validation
 

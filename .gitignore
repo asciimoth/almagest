@@ -15,6 +15,7 @@ coverage.*
 profile.cov
 coverage/
 e2e/coverage/
+/artifacts/
 
 # Dependency directories (remove the comment below to include it)
 # vendor/

@@ -1,10 +1,14 @@
 package tunnodes
 
 import (
+	"bytes"
 	"context"
+	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/asciimoth/almagest/lib/logging"
 	"github.com/asciimoth/almagest/lib/nodekit"
@@ -14,6 +18,7 @@ import (
 	"github.com/asciimoth/bufpool"
 	"github.com/asciimoth/formular"
 	"github.com/asciimoth/gonnect/sysnet"
+	"github.com/asciimoth/gonnect/tun"
 	"github.com/asciimoth/pasta/pasta"
 )
 
@@ -176,6 +181,79 @@ func TestTunDynamicConfigUsesSettersWhenAvailable(t *testing.T) {
 	if got, want := sys.SetMTUCalls, []int{1350, 1280}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("SetTunMTU calls after TunConfig = %#v, want %#v", got, want)
 	}
+}
+
+func TestTunNodeDynamicMTUGrowthKeepsTrafficOnSameSource(t *testing.T) {
+	w, sys := newTunNodeTestWorkspace(t, true)
+	node, err := w.AddNodeByClass(NodeTypeTun, "tun")
+	if err != nil {
+		t.Fatalf("AddNodeByClass Tun: %v", err)
+	}
+	receiver := tuntest.NewReceiver(4)
+	receiverID, err := w.AddNode(receiver, "test/TunReceiver", "receiver")
+	if err != nil {
+		t.Fatalf("AddNode receiver: %v", err)
+	}
+	nodeSnapshot := testkit.MustNodeSnapshot(t, w, node)
+	link, _, err := w.AddLink(receiver.In, nodeSnapshot.RightPorts[0])
+	if err != nil {
+		t.Fatalf("AddLink tun: %v", err)
+	}
+	output := tuntest.ReceivePayload(t, receiver.Events).Tun
+	source := sys.Tuns[0]
+
+	w.EmitEvent(receiverID, link, TunConfig{MTU: 9000})
+	if got := sys.BuildCount(); got != 1 {
+		t.Fatalf("build count after dynamic MTU growth = %d, want 1", got)
+	}
+	if got, err := output.MTU(); err != nil || got != 9000 {
+		t.Fatalf("output MTU() = %d, %v; want 9000, nil", got, err)
+	}
+
+	trigger := bytes.Repeat([]byte{0x31}, 9000)
+	trigger[0] = 0x45
+	want := bytes.Repeat([]byte{0x42}, 9000)
+	want[0] = 0x45
+	result := readTunUntilPacket(output, want, 2)
+	writeTunPacket(t, source.Peer, trigger)
+	writeTunPacket(t, source.Peer, want)
+	select {
+	case err := <-result:
+		if err != nil {
+			t.Fatalf("read after dynamic MTU growth: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for packet after dynamic MTU growth")
+	}
+	if sys.Tuns[0] != source {
+		t.Fatal("dynamic MTU growth replaced the regular TUN source")
+	}
+}
+
+func readTunUntilPacket(source tun.Tun, want []byte, maxReads int) <-chan error {
+	result := make(chan error, 1)
+	go func() {
+		for range maxReads {
+			offset := source.MRO()
+			buf := make([]byte, offset+len(want))
+			sizes := []int{0}
+			count, err := source.Read([][]byte{buf}, sizes, offset)
+			if err != nil {
+				result <- err
+				return
+			}
+			if count != 1 {
+				result <- fmt.Errorf("read packet count %d, want 1", count)
+				return
+			}
+			if sizes[0] == len(want) && bytes.Equal(buf[offset:offset+sizes[0]], want) {
+				result <- nil
+				return
+			}
+		}
+		result <- errors.New("wanted packet did not arrive within read limit")
+	}()
+	return result
 }
 
 func TestTunNameValidationUsesSystem(t *testing.T) {

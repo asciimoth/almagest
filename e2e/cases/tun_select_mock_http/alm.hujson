@@ -101,7 +101,7 @@
 			"Pos":      "{\"x\":1180,\"y\":250}",
 			"Links":    ["Network -> [MockNetwork 1853] Network"],
 			"host":     "10.72.160.2",
-			"port":     8080,
+			"port":     8081,
 			"response": "Server A",
 		},
 		"HttpServer 1873": {
@@ -117,7 +117,7 @@
 			"Pos":      "{\"x\":1180,\"y\":706}",
 			"Links":    ["Network -> [MockNetwork 1855] Network"],
 			"host":     "10.72.160.2",
-			"port":     8080,
+			"port":     8081,
 			"response": "Server B",
 		},
 		"StringConstant 1881": {

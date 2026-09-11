@@ -19,8 +19,7 @@ type httpServerLog struct {
 }
 
 type httpServerStart struct {
-	id  uint64
-	cfg httpServerConfig
+	previous *httpServerWorker
 }
 
 type httpServerWorker = restartableWorker
@@ -33,16 +32,28 @@ type httpServerConfig struct {
 }
 
 func (n *httpServerNode) restartWorker() {
-	n.restartID++
-	id := n.restartID
 	n.Logger.Debug("worker restarting")
 	n.appendLog(formular.LogInfo, "worker restarting")
 	n.sendLogsBlock()
 	old := n.worker
 	if old != nil {
-		n.worker = nil
-		old.Stop()
+		if !n.workerStopping {
+			n.workerStopping = true
+			old.Stop()
+			go func() {
+				<-old.Done()
+				n.W.SendInbox(pasta.InboxMessage{
+					ReceiverNode: n.ID,
+					Payload:      httpServerStart{previous: old},
+				})
+			}()
+		}
+		return
 	}
+	n.startCurrentWorker()
+}
+
+func (n *httpServerNode) startCurrentWorker() {
 	if n.network == nil {
 		n.Logger.Debug("waiting for network")
 		n.appendLog(formular.LogWarn, "waiting for network")
@@ -50,13 +61,6 @@ func (n *httpServerNode) restartWorker() {
 		return
 	}
 	cfg := httpServerConfig{host: n.host, port: n.port, response: n.response, network: n.network}
-	if old != nil {
-		go func() {
-			<-old.Done()
-			n.W.SendInbox(pasta.InboxMessage{ReceiverNode: n.ID, Payload: httpServerStart{id: id, cfg: cfg}})
-		}()
-		return
-	}
 	n.startWorker(cfg)
 }
 
@@ -74,8 +78,11 @@ func (n *httpServerNode) startWorker(cfg httpServerConfig) {
 func (n *httpServerNode) stopWorker() {
 	if n.worker != nil {
 		n.Logger.Debug("worker stopping")
-		n.worker.Stop()
+		if !n.workerStopping {
+			n.worker.Stop()
+		}
 		n.worker = nil
+		n.workerStopping = false
 	}
 }
 

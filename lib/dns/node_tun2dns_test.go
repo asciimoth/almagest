@@ -80,6 +80,32 @@ func TestTun2DnsReattachesDNSWithoutReplacingTun(t *testing.T) {
 	}
 }
 
+func TestTun2DnsRequestsReplacementAfterTerminalTunRead(t *testing.T) {
+	e, providers := newTun2DNSTestE2E(t)
+	provider := e.AddNode(testTunProviderNodeType, "tun")
+	static := e.AddNode(dnsnodes.NodeTypeStaticDNS, "static")
+	bridge := e.AddNode(dnsnodes.NodeTypeTun2Dns, "bridge")
+	e.SubscribeMenus(static)
+	e.applyStaticDNSRecords(static, "recover.tun2dns.test A 10.147.0.53")
+
+	tunLink := e.MustAddTypedLinkByPortName(links.TypeTun, bridge, "left", "Tun", provider, "right", "Tun")
+	e.MustAddTypedLinkByPortName(dnsnodes.TypeDNS, static, "left", "DNS", bridge, "right", "DNS")
+	e.WaitNodeLabel(bridge, "adapting DNS")
+
+	requestsBefore := providers.requestCount(t, provider)
+	providers.ignoreRequests(t, provider, 2)
+	providers.closeOutput(t, provider, tunLink)
+	Eventually(t, func() bool {
+		return providers.requestCount(t, provider) >= requestsBefore+3
+	}, "Tun2Dns did not request a replacement TUN")
+	e.WaitNodeLabel(bridge, "adapting DNS")
+
+	resp := queryTun2DNSPeer(t, providers.peer(t, provider), "recover.tun2dns.test.")
+	if got := dnsnodes.FormatMessage(resp); !strings.Contains(got, "10.147.0.53") {
+		t.Fatalf("DNS response after TUN replacement = %q, want A 10.147.0.53", got)
+	}
+}
+
 func TestTun2DnsE2ETunMiddlewareAndDNSCache(t *testing.T) {
 	e, providers := newTun2DNSTestE2EWithDNSCache(t)
 	provider := e.AddNode(testTunProviderNodeType, "provider")

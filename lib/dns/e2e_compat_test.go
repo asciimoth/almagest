@@ -229,6 +229,45 @@ func (r *testTunProviderRegistry) peer(t *testing.T, id uint64) tun.Tun {
 	return peer
 }
 
+func (r *testTunProviderRegistry) requestCount(t *testing.T, id uint64) int {
+	t.Helper()
+	r.mu.Lock()
+	node := r.nodes[id]
+	r.mu.Unlock()
+	if node == nil {
+		t.Fatalf("test tun provider %d is not registered", id)
+	}
+	node.W.Lock()
+	defer node.W.Unlock()
+	return node.requests
+}
+
+func (r *testTunProviderRegistry) closeOutput(t *testing.T, id, link uint64) {
+	t.Helper()
+	r.mu.Lock()
+	node := r.nodes[id]
+	r.mu.Unlock()
+	if node == nil {
+		t.Fatalf("test tun provider %d is not registered", id)
+	}
+	node.W.Lock()
+	defer node.W.Unlock()
+	node.outputs.Close(link)
+}
+
+func (r *testTunProviderRegistry) ignoreRequests(t *testing.T, id uint64, count int) {
+	t.Helper()
+	r.mu.Lock()
+	node := r.nodes[id]
+	r.mu.Unlock()
+	if node == nil {
+		t.Fatalf("test tun provider %d is not registered", id)
+	}
+	node.W.Lock()
+	defer node.W.Unlock()
+	node.ignoredRequests = count
+}
+
 type testTunProviderClass struct {
 	registry *testTunProviderRegistry
 }
@@ -253,9 +292,11 @@ type testTunProviderNode struct {
 	registry *testTunProviderRegistry
 	out      uint64
 
-	source  tun.Tun
-	peer    tun.Tun
-	outputs links.TunOutputCache
+	source          tun.Tun
+	peer            tun.Tun
+	outputs         links.TunOutputCache
+	requests        int
+	ignoredRequests int
 }
 
 func (n *testTunProviderNode) OnInit(w *pasta.Workspace, _ pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
@@ -305,6 +346,11 @@ func (n *testTunProviderNode) OnLinkRemoved(link uint64, port uint64, linkType, 
 
 func (n *testTunProviderNode) OnEvent(event pasta.Event, linkType string, _ []string, receiverPortDirection string) error {
 	if event.ReceiverPort != n.out || receiverPortDirection != "right" || linkType != links.TypeTun || !std.IsRequest(event.Payload) {
+		return nil
+	}
+	n.requests++
+	if n.ignoredRequests > 0 {
+		n.ignoredRequests--
 		return nil
 	}
 	n.sendTunToLink(event.Link)

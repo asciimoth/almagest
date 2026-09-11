@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/asciimoth/bufpool"
 	"github.com/asciimoth/configer/configer"
@@ -66,6 +67,14 @@ type tun2DNSNode struct {
 	adapter    *dns.IPPacketAdapter
 	tunFailed  bool
 	lastErr    string
+	tunRetry   *time.Timer
+}
+
+const tun2DNSRetryDelay = 50 * time.Millisecond
+
+type tun2DNSRetry struct {
+	link       uint64
+	generation uint64
 }
 
 func (n *tun2DNSNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
@@ -85,6 +94,7 @@ func (n *tun2DNSNode) OnReady() error {
 }
 
 func (n *tun2DNSNode) OnStop() {
+	n.stopTunRetry()
 	n.detachRuntime(true, true)
 }
 
@@ -123,6 +133,7 @@ func (n *tun2DNSNode) OnLinkAdd(link, port uint64, linkType, portDirection strin
 func (n *tun2DNSNode) OnLinkRemoved(link, port uint64, linkType, portDirection string) error {
 	switch {
 	case port == n.tunIn && portDirection == "left" && linkType == nodekit.TypeTun && link == n.tunLink:
+		n.stopTunRetry()
 		n.detachRuntime(true, false)
 		n.tunLink = 0
 	case port == n.dnsIn && portDirection == "right" && linkType == TypeDNS && link == n.dnsLink:
@@ -130,6 +141,26 @@ func (n *tun2DNSNode) OnLinkRemoved(link, port uint64, linkType, portDirection s
 		n.dnsLink = 0
 	}
 	return n.updateLabel()
+}
+
+func (n *tun2DNSNode) OnInbox(message pasta.InboxMessage) error {
+	retry, ok := message.Payload.(tun2DNSRetry)
+	if !ok {
+		return nil
+	}
+	n.mu.Lock()
+	current := retry.link == n.tunLink && retry.generation == n.generation && n.tunFailed
+	if current {
+		n.scheduleTunRetryLocked(retry.link, retry.generation)
+	}
+	n.mu.Unlock()
+	if current {
+		if n.Logger != nil {
+			n.Logger.Debugf("requesting replacement TUN: link=%d generation=%d", retry.link, retry.generation)
+		}
+		std.RequestLocked(n.W, n.ID, retry.link)
+	}
+	return nil
 }
 
 func (n *tun2DNSNode) OnEvent(event pasta.Event, linkType string, _ []string, receiverPortDirection string) error {
@@ -169,6 +200,7 @@ func (n *tun2DNSNode) acceptTun(event pasta.Event) error {
 	n.currentTun = next
 	n.tunFailed = false
 	n.lastErr = ""
+	n.stopTunRetryLocked()
 	n.generation++
 	gen = n.generation
 	start = true
@@ -225,6 +257,7 @@ func (n *tun2DNSNode) detachRuntime(dropTun, dropDNS bool) {
 		n.adapter = nil
 	}
 	if dropTun {
+		n.stopTunRetryLocked()
 		oldTun = n.currentTun
 		n.currentTun = nil
 		n.tunFailed = false
@@ -322,6 +355,7 @@ func (n *tun2DNSNode) writeResponsePacket(gen uint64, t tun.Tun, pkt []byte) {
 
 func (n *tun2DNSNode) failTunPump(gen uint64, t tun.Tun, err error) {
 	var oldAdapter *dns.IPPacketAdapter
+	var retryLink uint64
 	updateLabel := false
 	n.mu.Lock()
 	if gen == n.generation && nodekit.SameTunInstance(n.currentTun, t) {
@@ -329,13 +363,65 @@ func (n *tun2DNSNode) failTunPump(gen uint64, t tun.Tun, err error) {
 		n.lastErr = err.Error()
 		oldAdapter = n.adapter
 		n.adapter = nil
+		retryLink = n.tunLink
+		n.scheduleTunRetryLocked(retryLink, gen)
 		updateLabel = true
 	}
 	n.mu.Unlock()
 	closeIPPacketAdapter(oldAdapter)
 	if updateLabel && n.W != nil && n.ID != 0 {
-		_ = n.W.SetNodeLabel(n.ID, "TUN error")
+		if n.Logger != nil {
+			n.Logger.Warnf(
+				"TUN packet pump failed: link=%d generation=%d retry_scheduled=%t terminal=%t error=%v input={%s}",
+				retryLink,
+				gen,
+				retryLink != 0,
+				tun.IsTunTermError(err),
+				err,
+				nodekit.TunDebugString(t),
+			)
+		}
+		n.W.Lock()
+		n.mu.Lock()
+		current := gen == n.generation && nodekit.SameTunInstance(n.currentTun, t) && n.tunFailed
+		n.mu.Unlock()
+		if current {
+			_ = n.updateLabel()
+		}
+		n.W.Unlock()
 	}
+}
+
+func (n *tun2DNSNode) scheduleTunRetryLocked(link, generation uint64) {
+	n.stopTunRetryLocked()
+	if link == 0 || n.W == nil || n.ID == 0 {
+		return
+	}
+	w := n.W
+	node := n.ID
+	n.tunRetry = time.AfterFunc(tun2DNSRetryDelay, func() {
+		w.SendInbox(pasta.InboxMessage{
+			ReceiverNode: node,
+			Payload: tun2DNSRetry{
+				link:       link,
+				generation: generation,
+			},
+		})
+	})
+}
+
+func (n *tun2DNSNode) stopTunRetry() {
+	n.mu.Lock()
+	n.stopTunRetryLocked()
+	n.mu.Unlock()
+}
+
+func (n *tun2DNSNode) stopTunRetryLocked() {
+	if n.tunRetry == nil {
+		return
+	}
+	n.tunRetry.Stop()
+	n.tunRetry = nil
 }
 
 func (n *tun2DNSNode) updateLabel() error {

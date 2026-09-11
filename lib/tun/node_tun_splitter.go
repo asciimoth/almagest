@@ -3,6 +3,7 @@ package tunnodes
 import (
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/asciimoth/bufpool"
@@ -87,8 +88,10 @@ type tunSplitterNode struct {
 	in    uint64
 	slots slotPorts
 
-	inputLink uint64
-	inputTun  tun.Tun
+	inputLink  uint64
+	inputTun   tun.Tun
+	inputGen   uint64
+	inputRetry *time.Timer
 
 	splitter *tun.Splitter
 	router   routing.SplitRouter
@@ -103,8 +106,8 @@ type tunSplitterNode struct {
 	outputCfgs TunConfigByLink
 }
 
-func (n *tunSplitterNode) OnInit(w *pasta.Workspace, _ pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, isPlaceholderReplacement, _, isRestored bool) error {
-	n.InitBaseNode(w, nil, id)
+func (n *tunSplitterNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, isPlaceholderReplacement, _, isRestored bool) error {
+	n.InitBaseNode(w, logger, id)
 	if n.splitter == nil {
 		// Nil spawner is intentional here; see the Gonnect spawner note in helpers.go.
 		n.splitter = tun.NewSplitter(nil, n.pool)
@@ -164,6 +167,7 @@ func (n *tunSplitterNode) OnReady() error {
 }
 
 func (n *tunSplitterNode) OnStop() {
+	n.invalidateInput()
 	n.closeOutputTuns()
 	if n.router != nil {
 		_ = n.router.Close()
@@ -173,7 +177,6 @@ func (n *tunSplitterNode) OnStop() {
 		_ = n.splitter.Close()
 	}
 	n.inputLink = 0
-	n.inputTun = nil
 	n.outputCfgs = TunConfigByLink{}
 }
 
@@ -199,6 +202,7 @@ func (n *tunSplitterNode) OnLinkAdd(link, port uint64, linkType, portDirection s
 	}
 	switch {
 	case port == n.in && portDirection == "left":
+		n.invalidateInput()
 		n.inputLink = link
 		std.RequestLocked(n.W, n.ID, link)
 		n.sendMergedTunConfig()
@@ -218,8 +222,8 @@ func (n *tunSplitterNode) OnLinkRemoved(link uint64, port uint64, linkType, port
 	switch {
 	case port == n.in && portDirection == "left":
 		if link == n.inputLink {
+			n.invalidateInput()
 			n.inputLink = 0
-			n.inputTun = nil
 			if n.splitter != nil {
 				_ = n.splitter.Detach()
 			}
@@ -233,6 +237,17 @@ func (n *tunSplitterNode) OnLinkRemoved(link uint64, port uint64, linkType, port
 		n.sendMergedTunConfig()
 	}
 	return n.updateLabel()
+}
+
+func (n *tunSplitterNode) OnInbox(message pasta.InboxMessage) error {
+	switch msg := message.Payload.(type) {
+	case tunSplitterInputFailed:
+		return n.handleInputFailed(msg)
+	case tunSplitterInputRetry:
+		return n.handleInputRetry(msg)
+	default:
+		return nil
+	}
 }
 
 func (n *tunSplitterNode) OnPortRemoved(port uint64, direction string) error {
@@ -417,14 +432,192 @@ func (n *tunSplitterNode) attachInputTun(link uint64, t tun.Tun) error {
 	if link != n.inputLink || SameTunInstance(n.inputTun, t) {
 		return nil
 	}
+	n.stopInputRetry()
+	n.inputGen++
+	generation := n.inputGen
+	observed := newTunInputFailureObserver(t, func(err error) {
+		// SendInbox takes the workspace lock. The Splitter waits for its read
+		// worker during shutdown while OnStop already holds that lock.
+		// Dispatch the report separately so a shutdown read error cannot
+		// deadlock the workspace.
+		go n.W.SendInbox(pasta.InboxMessage{
+			ReceiverNode: n.ID,
+			Payload: tunSplitterInputFailed{
+				link:       link,
+				generation: generation,
+				err:        err,
+			},
+		})
+	})
 	BindTunResource(n.W, n.ID, link, t)
 	n.inputTun = t
-	if err := n.splitter.Attach(t); err != nil {
+	if err := n.splitter.Attach(observed); err != nil {
 		n.inputTun = nil
 		return fmt.Errorf("attach splitter tun: %w", err)
 	}
 	n.sendAllOutputTuns()
 	return n.updateLabel()
+}
+
+const tunSplitterInputRetryDelay = 50 * time.Millisecond
+
+type tunSplitterInputFailed struct {
+	link       uint64
+	generation uint64
+	err        error
+}
+
+type tunSplitterInputRetry struct {
+	link       uint64
+	generation uint64
+}
+
+type tunInputFailureObserver struct {
+	tun.Tun
+	reportFailureOnce sync.Once
+	eventsOnce        sync.Once
+	closeOnce         sync.Once
+	done              chan struct{}
+	events            chan tun.Event
+	report            func(error)
+}
+
+func newTunInputFailureObserver(t tun.Tun, report func(error)) *tunInputFailureObserver {
+	return &tunInputFailureObserver{
+		Tun:    t,
+		done:   make(chan struct{}),
+		report: report,
+	}
+}
+
+func tunInputFailureObserverSource(t tun.Tun) tun.Tun {
+	if observed, ok := t.(*tunInputFailureObserver); ok {
+		return observed.Tun
+	}
+	return t
+}
+
+func (t *tunInputFailureObserver) Read(bufs [][]byte, sizes []int, offset int) (int, error) {
+	count, err := t.Tun.Read(bufs, sizes, offset)
+	t.reportOnce(err)
+	return count, err
+}
+
+func (t *tunInputFailureObserver) Write(bufs [][]byte, offset int) (int, error) {
+	count, err := t.Tun.Write(bufs, offset)
+	t.reportOnce(err)
+	return count, err
+}
+
+func (t *tunInputFailureObserver) Events() <-chan tun.Event {
+	t.eventsOnce.Do(func() {
+		t.events = make(chan tun.Event, 8)
+		go t.forwardEvents()
+	})
+	return t.events
+}
+
+func (t *tunInputFailureObserver) Close() error {
+	t.closeOnce.Do(func() { close(t.done) })
+	return t.Tun.Close()
+}
+
+func (t *tunInputFailureObserver) forwardEvents() {
+	defer close(t.events)
+	events := t.Tun.Events()
+	for {
+		select {
+		case <-t.done:
+			return
+		case event, ok := <-events:
+			if !ok {
+				t.reportOnce(errors.New("TUN input event stream closed"))
+				return
+			}
+			if event == tun.EventDown {
+				_, err := t.MTU()
+				if errors.Is(err, tun.ErrDetachedTunFailed) {
+					t.reportOnce(err)
+				}
+			}
+			select {
+			case <-t.done:
+				return
+			case t.events <- event:
+			}
+		}
+	}
+}
+
+func (t *tunInputFailureObserver) reportOnce(err error) {
+	if err != nil && t.report != nil {
+		t.reportFailureOnce.Do(func() { t.report(err) })
+	}
+}
+
+func (n *tunSplitterNode) handleInputFailed(msg tunSplitterInputFailed) error {
+	if msg.link != n.inputLink || msg.generation != n.inputGen || n.inputTun == nil {
+		return nil
+	}
+	if n.Logger != nil {
+		n.Logger.Warnf(
+			"TUN splitter input failed; requesting a replacement: link=%d generation=%d terminal=%t error=%v input={%s}",
+			msg.link,
+			msg.generation,
+			tun.IsTunTermError(msg.err),
+			msg.err,
+			tunDebugString(n.inputTun),
+		)
+	}
+	n.inputGen++
+	generation := n.inputGen
+	n.inputTun = nil
+	if n.splitter != nil {
+		_ = n.splitter.Detach()
+	}
+	// A frontend read can fail while the Splitter changes from the input
+	// metadata to its detached defaults. Rebuild all frontends so no consumer
+	// keeps a pump that ended during this transition.
+	n.closeOutputTuns()
+	if err := n.updateLabel(); err != nil {
+		return err
+	}
+	n.stopInputRetry()
+	w := n.W
+	node := n.ID
+	n.inputRetry = time.AfterFunc(tunSplitterInputRetryDelay, func() {
+		w.SendInbox(pasta.InboxMessage{
+			ReceiverNode: node,
+			Payload: tunSplitterInputRetry{
+				link:       msg.link,
+				generation: generation,
+			},
+		})
+	})
+	return nil
+}
+
+func (n *tunSplitterNode) handleInputRetry(msg tunSplitterInputRetry) error {
+	if msg.link != n.inputLink || msg.generation != n.inputGen || n.inputTun != nil {
+		return nil
+	}
+	n.inputRetry = nil
+	std.RequestLocked(n.W, n.ID, msg.link)
+	return nil
+}
+
+func (n *tunSplitterNode) invalidateInput() {
+	n.inputGen++
+	n.inputTun = nil
+	n.stopInputRetry()
+}
+
+func (n *tunSplitterNode) stopInputRetry() {
+	if n.inputRetry == nil {
+		return
+	}
+	n.inputRetry.Stop()
+	n.inputRetry = nil
 }
 
 func (n *tunSplitterNode) reviewOutputPorts(opts slotPortReview) error {

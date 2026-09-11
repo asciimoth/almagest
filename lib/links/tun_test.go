@@ -1,10 +1,15 @@
 package links
 
 import (
+	"bytes"
 	"errors"
+	"fmt"
+	"io"
 	"net/netip"
 	"os"
 	"reflect"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -321,6 +326,437 @@ func TestTunOutputCacheReusesReadyWrapperAndReplacesClosedWrapper(t *testing.T) 
 	cache.Wait()
 }
 
+func TestTunOutputCacheReplacementDoesNotStartSecondSourceRead(t *testing.T) {
+	w, node, link, events := newTunOutputCacheTestLink(t)
+
+	base, peer := tun.Pipe(1, 1500, 0, 0)
+	source := newExclusiveReadTun(base)
+	var cache TunOutputCache
+	t.Cleanup(func() {
+		cache.CloseAll()
+		closeTestTun(base)
+		closeTestTun(peer)
+		cache.Wait()
+	})
+
+	if !cache.Send(w, node, link, source, nil) {
+		t.Fatal("Send() = false, want true")
+	}
+	first := receiveTunOutputCachePayload(t, events)
+	select {
+	case <-source.readStarted:
+	case <-time.After(time.Second):
+		t.Fatal("source read did not start")
+	}
+
+	// Model a runtime attachment failure. The consumer closes its payload and
+	// asks the provider for a fresh wrapper on the same graph link.
+	closeTestTun(first)
+	w.Lock()
+	refreshed := cache.RefreshLocked(w, node, link, source, nil)
+	w.Unlock()
+	if !refreshed {
+		t.Fatal("RefreshLocked() = false, want true")
+	}
+	second := receiveTunOutputCachePayload(t, events)
+
+	packet := []byte{0x45, 0, 0, 4}
+	result := make(chan error, 1)
+	go func() {
+		buf := make([]byte, 64)
+		sizes := []int{0}
+		n, err := second.Read([][]byte{buf}, sizes, 0)
+		if err != nil {
+			result <- err
+			return
+		}
+		if n != 1 || !bytes.Equal(buf[:sizes[0]], packet) {
+			result <- fmt.Errorf("read = %d, %v; want 1, %v", n, buf[:sizes[0]], packet)
+			return
+		}
+		result <- nil
+	}()
+	if _, err := peer.Write([][]byte{packet}, 0); err != nil {
+		t.Fatalf("peer.Write() error = %v", err)
+	}
+	select {
+	case err := <-result:
+		if err != nil {
+			t.Fatalf("replacement Read() error = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("replacement did not receive the first source packet")
+	}
+	if source.hadConcurrentRead() {
+		t.Fatal("replacement started a concurrent read on the same source")
+	}
+}
+
+func TestTunOutputCacheReplacesSourcePumpAfterReadFailure(t *testing.T) {
+	w, node, link, events := newTunOutputCacheTestLink(t)
+
+	base, peer := tun.Pipe(1, 1500, 0, 0)
+	source := &failNextReadTun{
+		Tun:         base,
+		readStarted: make(chan struct{}),
+	}
+	var cache TunOutputCache
+	t.Cleanup(func() {
+		cache.CloseAll()
+		closeTestTun(base)
+		closeTestTun(peer)
+		cache.Wait()
+	})
+
+	if !cache.Send(w, node, link, source, nil) {
+		t.Fatal("Send() = false, want true")
+	}
+	first := receiveTunOutputCachePayload(t, events)
+	select {
+	case <-source.readStarted:
+	case <-time.After(time.Second):
+		t.Fatal("source Read() did not start")
+	}
+
+	// Complete the current source read. The next source read fails and makes
+	// the detached root unhealthy.
+	source.failNext.Store(true)
+	if _, err := peer.Write([][]byte{{0x45, 0, 0, 1}}, 0); err != nil {
+		t.Fatalf("peer.Write() error = %v", err)
+	}
+	eventually(t, func() bool {
+		return len(cache.sources) == 1 && !TunIsReady(cache.sources[0].root)
+	})
+
+	// A consumer closes the failed payload before it requests a replacement.
+	// The stable source root must also be replaced because its read pump ended.
+	closeTestTun(first)
+	w.Lock()
+	refreshed := cache.RefreshLocked(w, node, link, source, nil)
+	w.Unlock()
+	if !refreshed {
+		t.Fatal("RefreshLocked() = false, want true")
+	}
+	second := receiveTunOutputCachePayload(t, events)
+
+	packet := []byte{0x45, 0, 0, 4}
+	result := make(chan error, 1)
+	go func() {
+		buf := make([]byte, 64)
+		sizes := []int{0}
+		n, err := second.Read([][]byte{buf}, sizes, 0)
+		if err == nil && (n != 1 || !bytes.Equal(buf[:sizes[0]], packet)) {
+			err = fmt.Errorf("read = %d, %v; want 1, %v", n, buf[:sizes[0]], packet)
+		}
+		result <- err
+	}()
+	if _, err := peer.Write([][]byte{packet}, 0); err != nil {
+		t.Fatalf("peer.Write() error = %v", err)
+	}
+	select {
+	case err := <-result:
+		if err != nil {
+			t.Fatalf("replacement Read() error = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("replacement source pump did not recover")
+	}
+}
+
+func TestTunOutputCacheReplacesSourcePumpAfterWriteFailure(t *testing.T) {
+	w, node, link, events := newTunOutputCacheTestLink(t)
+
+	base, peer := tun.Pipe(1, 1500, 0, 0)
+	source := &failOnceWriteTun{Tun: base}
+	var cache TunOutputCache
+	t.Cleanup(func() {
+		cache.CloseAll()
+		closeTestTun(base)
+		closeTestTun(peer)
+		cache.Wait()
+	})
+
+	if !cache.Send(w, node, link, source, nil) {
+		t.Fatal("Send() = false, want true")
+	}
+	first := receiveTunOutputCachePayload(t, events)
+	packet := []byte{0x45, 0, 0, 4}
+	if _, err := first.Write([][]byte{packet}, 0); err == nil {
+		t.Fatal("first Write() error = nil, want injected failure")
+	}
+	eventually(t, func() bool {
+		return len(cache.sources) == 1 && !TunIsReady(cache.sources[0].root)
+	})
+
+	closeTestTun(first)
+	w.Lock()
+	refreshed := cache.RefreshLocked(w, node, link, source, nil)
+	w.Unlock()
+	if !refreshed {
+		t.Fatal("RefreshLocked() = false, want true")
+	}
+	second := receiveTunOutputCachePayload(t, events)
+
+	result := make(chan error, 1)
+	go func() {
+		buf := make([]byte, 64)
+		sizes := []int{0}
+		n, err := peer.Read([][]byte{buf}, sizes, 0)
+		if err == nil && (n != 1 || !bytes.Equal(buf[:sizes[0]], packet)) {
+			err = fmt.Errorf("read = %d, %v; want 1, %v", n, buf[:sizes[0]], packet)
+		}
+		result <- err
+	}()
+	if _, err := second.Write([][]byte{packet}, 0); err != nil {
+		t.Fatalf("replacement Write() error = %v", err)
+	}
+	select {
+	case err := <-result:
+		if err != nil {
+			t.Fatalf("peer Read() error = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("replacement source pump did not recover")
+	}
+}
+
+func TestTunOutputCacheReadSurvivesSourceMTUGrowth(t *testing.T) {
+	tests := []struct {
+		name       string
+		initialMTU int
+		grownMTU   int
+		mro        int
+		batch      int
+		emitEvent  bool
+	}{
+		{name: "1420 to 1428 batch 1", initialMTU: 1420, grownMTU: 1428, batch: 1, emitEvent: true},
+		{name: "1420 to 1500 MRO 16 batch 128", initialMTU: 1420, grownMTU: 1500, mro: 16, batch: 128, emitEvent: true},
+		{name: "1280 to 9000 MRO 256 batch 128 without event", initialMTU: 1280, grownMTU: 9000, mro: 256, batch: 128},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			w, node, link, events := newTunOutputCacheTestLink(t)
+			source := newGrowingMTUTunWithGeometry(test.initialMTU, test.mro, test.batch)
+			var cache TunOutputCache
+			t.Cleanup(func() {
+				cache.CloseAll()
+				closeTestTun(source)
+				cache.Wait()
+			})
+
+			if !cache.Send(w, node, link, source, nil) {
+				t.Fatal("Send() = false, want true")
+			}
+			output := receiveTunOutputCachePayload(t, events)
+			if mtu, err := output.MTU(); err != nil || mtu != test.initialMTU {
+				t.Fatalf("output MTU() = %d, %v; want %d, nil", mtu, err, test.initialMTU)
+			}
+			if got := output.MRO(); got != test.mro {
+				t.Fatalf("output MRO() = %d, want %d", got, test.mro)
+			}
+			if got := output.BatchSize(); got != test.batch {
+				t.Fatalf("output BatchSize() = %d, want %d", got, test.batch)
+			}
+			assertGrowingMTUReadCapacity(t, source, test.initialMTU)
+			if test.emitEvent {
+				source.setMTU(test.grownMTU)
+			} else {
+				source.mtu.Store(int64(test.grownMTU))
+			}
+			if mtu, err := output.MTU(); err != nil || mtu != test.grownMTU {
+				t.Fatalf("output MTU() after growth = %d, %v; want %d, nil", mtu, err, test.grownMTU)
+			}
+
+			discarded := testGrowingPacket(test.grownMTU, 0x41)
+			first := testGrowingPacket(test.grownMTU, 0x51)
+			later := testGrowingPacket(test.grownMTU, 0x61)
+			result := readGrowingPackets(output, first, later)
+			// This packet completes the read that is blocked with the old
+			// capacity. Gonnect discards it and grows the same pump.
+			sendGrowingPacket(t, source, discarded)
+			assertGrowingMTUReadCapacity(t, source, test.grownMTU)
+			sendGrowingPacket(t, source, first)
+			assertGrowingMTUReadCapacity(t, source, test.grownMTU)
+			sendGrowingPacket(t, source, later)
+			assertGrowingReadResult(t, result, "MTU growth")
+
+			if len(cache.sources) != 1 || !cache.sources[0].ready() {
+				t.Fatal("MTU growth replaced or failed the source root")
+			}
+			if source.concurrentRead.Load() {
+				t.Fatal("source had concurrent reads during MTU growth")
+			}
+		})
+	}
+}
+
+func TestTunOutputCacheRecoversAfterSourceShortBuffer(t *testing.T) {
+	w, node, link, events := newTunOutputCacheTestLink(t)
+	source := newGrowingMTUTunWithGeometry(1420, 16, 128)
+	var cache TunOutputCache
+	t.Cleanup(func() {
+		cache.CloseAll()
+		closeTestTun(source)
+		cache.Wait()
+	})
+
+	if !cache.Send(w, node, link, source, nil) {
+		t.Fatal("Send() = false, want true")
+	}
+	output := receiveTunOutputCachePayload(t, events)
+	state := cache.sources[0]
+	assertGrowingMTUReadCapacity(t, source, 1420)
+	source.mtu.Store(9000)
+	source.shortBufferNext.Store(true)
+	first := testGrowingPacket(9000, 0x72)
+	later := testGrowingPacket(9000, 0x73)
+	result := readGrowingPackets(output, first, later)
+
+	// The source reports a typed capacity error for the read that used the old
+	// visible length. Gonnect polls MTU, grows the pump, and retries.
+	sendGrowingPacket(t, source, []byte{0x45})
+	assertGrowingMTUReadCapacity(t, source, 9000)
+	sendGrowingPacket(t, source, first)
+	assertGrowingMTUReadCapacity(t, source, 9000)
+	sendGrowingPacket(t, source, later)
+	assertGrowingReadResult(t, result, "source short buffer")
+
+	if len(cache.sources) != 1 || cache.sources[0] != state || !state.ready() {
+		t.Fatal("short-buffer recovery replaced or failed the source root")
+	}
+	if source.concurrentRead.Load() {
+		t.Fatal("source had concurrent reads during short-buffer recovery")
+	}
+}
+
+func TestTunOutputCacheMTUGrowthThroughEightNestedDetachedWrappers(t *testing.T) {
+	w, node, link, events := newTunOutputCacheTestLink(t)
+	source := newGrowingMTUTunWithGeometry(1420, 16, 128)
+	var cache TunOutputCache
+	var nested []*tun.DetachedTun
+	t.Cleanup(func() {
+		for i := len(nested) - 1; i >= 0; i-- {
+			closeTestTun(nested[i])
+		}
+		cache.CloseAll()
+		closeTestTun(source)
+		for i := len(nested) - 1; i >= 0; i-- {
+			nested[i].Wait()
+		}
+		cache.Wait()
+	})
+
+	if !cache.Send(w, node, link, source, nil) {
+		t.Fatal("Send() = false, want true")
+	}
+	output := receiveTunOutputCachePayload(t, events)
+	for range 8 {
+		detached := tun.Detach(output, nil, nil)
+		nested = append(nested, detached)
+		output = detached
+	}
+	assertGrowingMTUReadCapacity(t, source, 1420)
+	source.mtu.Store(9000)
+	first := testGrowingPacket(9000, 0x81)
+	later := testGrowingPacket(9000, 0x82)
+	result := readGrowingPackets(output, first, later)
+	sendGrowingPacket(t, source, testGrowingPacket(9000, 0x80))
+	assertGrowingMTUReadCapacity(t, source, 9000)
+	sendGrowingPacket(t, source, first)
+	assertGrowingMTUReadCapacity(t, source, 9000)
+	sendGrowingPacket(t, source, later)
+	assertGrowingReadResult(t, result, "eight nested detached wrappers")
+
+	if source.concurrentRead.Load() {
+		t.Fatal("nested wrappers started concurrent source reads")
+	}
+	if len(cache.sources) != 1 || !cache.sources[0].ready() {
+		t.Fatal("nested MTU growth replaced or failed the source root")
+	}
+}
+
+func TestTunOutputCacheRecoversAfterReadExceedsInitialMTU(t *testing.T) {
+	w, node, link, events := newTunOutputCacheTestLink(t)
+
+	source := newGrowingMTUTun(1420)
+	var cache TunOutputCache
+	t.Cleanup(func() {
+		cache.CloseAll()
+		closeTestTun(source)
+		cache.Wait()
+	})
+
+	if !cache.Send(w, node, link, source, nil) {
+		t.Fatal("Send() = false, want true")
+	}
+	output := receiveTunOutputCachePayload(t, events)
+	state := cache.sources[0]
+	assertGrowingMTUReadCapacity(t, source, 1420)
+	source.mtu.Store(1600)
+
+	discarded := make([]byte, 1600)
+	discarded[0] = 0x45
+	want := bytes.Repeat([]byte{0x6b}, 1600)
+	want[0] = 0x45
+	result := make(chan error, 1)
+	go func() {
+		buf := make([]byte, len(want))
+		sizes := []int{0}
+		n, err := output.Read([][]byte{buf}, sizes, 0)
+		if err == nil && (n != 1 || sizes[0] != len(want) || !bytes.Equal(buf, want)) {
+			err = fmt.Errorf("read = %d, size %d; want 1, size %d", n, sizes[0], len(want))
+		}
+		result <- err
+	}()
+	source.packets <- discarded
+	assertGrowingMTUReadCapacity(t, source, 1600)
+	source.packets <- want
+	select {
+	case err := <-result:
+		if err != nil {
+			t.Fatalf("Read() after capacity recovery error = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Read() after capacity recovery did not return")
+	}
+	if len(cache.sources) != 1 || cache.sources[0] != state || !state.ready() {
+		t.Fatal("capacity recovery replaced or failed the source root")
+	}
+	if source.concurrentRead.Load() {
+		t.Fatal("source had concurrent reads during capacity recovery")
+	}
+}
+
+func TestTunOutputCacheRebindSourceKeepsReadyWrapper(t *testing.T) {
+	w, node, link, events := newTunOutputCacheTestLink(t)
+
+	base, peer := tun.Pipe(1, 1500, 0, 0)
+	defer closeTestTun(base)
+	defer closeTestTun(peer)
+	firstSource := &opaqueTunSource{Tun: base}
+	secondSource := &opaqueTunSource{Tun: base}
+
+	var cache TunOutputCache
+	if !cache.Send(w, node, link, firstSource, nil) {
+		t.Fatal("Send(firstSource) = false, want true")
+	}
+	first := receiveTunOutputCachePayload(t, events)
+
+	cache.RebindSource(firstSource, secondSource)
+	if !cache.Send(w, node, link, secondSource, nil) {
+		t.Fatal("Send(secondSource) = false, want true")
+	}
+	second := receiveTunOutputCachePayload(t, events)
+	if !SameTunInstance(first, second) {
+		t.Fatal("Send after RebindSource replaced the ready wrapper")
+	}
+
+	cache.CloseAll()
+	closeTestTun(base)
+	closeTestTun(peer)
+	cache.Wait()
+}
+
 func TestTunOutputCacheRefreshReplacesReadySameSourceWrapper(t *testing.T) {
 	w, node, link, events := newTunOutputCacheTestLink(t)
 
@@ -455,6 +891,249 @@ func TestTunSourceAndComparisonHelpers(t *testing.T) {
 type testTunWrapper struct {
 	tun.Tun
 	wrapped any
+}
+
+type opaqueTunSource struct {
+	tun.Tun
+}
+
+type exclusiveReadTun struct {
+	tun.Tun
+
+	mu             sync.Mutex
+	reading        bool
+	concurrentRead bool
+	readStarted    chan struct{}
+	startOnce      sync.Once
+}
+
+type failNextReadTun struct {
+	tun.Tun
+	failNext    atomic.Bool
+	readStarted chan struct{}
+	startOnce   sync.Once
+}
+
+type failOnceWriteTun struct {
+	tun.Tun
+	failed atomic.Bool
+}
+
+type growingMTUTun struct {
+	mtu             atomic.Int64
+	mro             int
+	batch           int
+	packets         chan []byte
+	readCaps        chan int
+	events          chan tun.Event
+	closed          chan struct{}
+	closeOnce       sync.Once
+	readMu          sync.Mutex
+	reading         bool
+	concurrentRead  atomic.Bool
+	shortBufferNext atomic.Bool
+}
+
+func newGrowingMTUTun(mtu int) *growingMTUTun {
+	return newGrowingMTUTunWithGeometry(mtu, 0, 1)
+}
+
+func newGrowingMTUTunWithGeometry(mtu, mro, batch int) *growingMTUTun {
+	t := &growingMTUTun{
+		mro:      mro,
+		batch:    batch,
+		packets:  make(chan []byte),
+		readCaps: make(chan int, 16),
+		events:   make(chan tun.Event, 8),
+		closed:   make(chan struct{}),
+	}
+	t.mtu.Store(int64(mtu))
+	t.events <- tun.EventUp
+	return t
+}
+
+func (t *growingMTUTun) File() *os.File { return nil }
+
+func (t *growingMTUTun) IsNative() bool { return true }
+
+func (t *growingMTUTun) Read(bufs [][]byte, sizes []int, offset int) (int, error) {
+	t.readMu.Lock()
+	if t.reading {
+		t.concurrentRead.Store(true)
+		t.readMu.Unlock()
+		return 0, errors.New("concurrent source read")
+	}
+	t.reading = true
+	t.readMu.Unlock()
+	defer func() {
+		t.readMu.Lock()
+		t.reading = false
+		t.readMu.Unlock()
+	}()
+	capacity := -1
+	if len(bufs) > 0 && offset >= 0 && offset <= len(bufs[0]) {
+		capacity = len(bufs[0]) - offset
+	}
+	select {
+	case t.readCaps <- capacity:
+	case <-t.closed:
+		return 0, os.ErrClosed
+	}
+
+	select {
+	case <-t.closed:
+		return 0, os.ErrClosed
+	case packet := <-t.packets:
+		if t.shortBufferNext.CompareAndSwap(true, false) {
+			return 0, io.ErrShortBuffer
+		}
+		copy(bufs[0][offset:], packet)
+		sizes[0] = len(packet)
+		return 1, nil
+	}
+}
+
+func (t *growingMTUTun) Write(bufs [][]byte, _ int) (int, error) {
+	select {
+	case <-t.closed:
+		return 0, os.ErrClosed
+	default:
+		return len(bufs), nil
+	}
+}
+
+func (t *growingMTUTun) MWO() int { return 0 }
+
+func (t *growingMTUTun) MRO() int { return t.mro }
+
+func (t *growingMTUTun) MTU() (int, error) { return int(t.mtu.Load()), nil }
+
+func (t *growingMTUTun) setMTU(mtu int) {
+	t.mtu.Store(int64(mtu))
+	t.events <- tun.EventMTUUpdate
+}
+
+func (t *growingMTUTun) Name() (string, error) { return "growing-mtu", nil }
+
+func (t *growingMTUTun) Events() <-chan tun.Event { return t.events }
+
+func (t *growingMTUTun) Close() error {
+	t.closeOnce.Do(func() {
+		close(t.closed)
+		close(t.events)
+	})
+	return nil
+}
+
+func (t *growingMTUTun) BatchSize() int { return t.batch }
+
+func (t *failNextReadTun) Read(bufs [][]byte, sizes []int, offset int) (int, error) {
+	fail := t.failNext.CompareAndSwap(true, false)
+	t.startOnce.Do(func() {
+		if t.readStarted != nil {
+			close(t.readStarted)
+		}
+	})
+	if fail {
+		return 0, errors.New("injected source read failure")
+	}
+	return t.Tun.Read(bufs, sizes, offset)
+}
+
+func assertGrowingMTUReadCapacity(t *testing.T, source *growingMTUTun, want int) {
+	t.Helper()
+	select {
+	case got := <-source.readCaps:
+		if got != want {
+			t.Fatalf("source read capacity = %d, want %d", got, want)
+		}
+	case <-time.After(time.Second):
+		t.Fatalf("source Read() did not start with capacity %d", want)
+	}
+}
+
+func testGrowingPacket(size int, fill byte) []byte {
+	packet := bytes.Repeat([]byte{fill}, size)
+	packet[0] = 0x45
+	return packet
+}
+
+func sendGrowingPacket(t *testing.T, source *growingMTUTun, packet []byte) {
+	t.Helper()
+	select {
+	case source.packets <- packet:
+	case <-time.After(time.Second):
+		t.Fatal("source did not accept test packet")
+	}
+}
+
+func readGrowingPackets(output tun.Tun, want ...[]byte) <-chan error {
+	result := make(chan error, 1)
+	go func() {
+		for i, packet := range want {
+			offset := output.MRO()
+			buf := make([]byte, offset+len(packet))
+			sizes := []int{0}
+			count, err := output.Read([][]byte{buf}, sizes, offset)
+			if err != nil {
+				result <- err
+				return
+			}
+			if count != 1 || sizes[0] != len(packet) || !bytes.Equal(buf[offset:], packet) {
+				result <- fmt.Errorf("read %d = %d, size %d; want 1, size %d", i, count, sizes[0], len(packet))
+				return
+			}
+		}
+		result <- nil
+	}()
+	return result
+}
+
+func assertGrowingReadResult(t *testing.T, result <-chan error, scenario string) {
+	t.Helper()
+	select {
+	case err := <-result:
+		if err != nil {
+			t.Fatalf("Read() after %s error = %v", scenario, err)
+		}
+	case <-time.After(time.Second):
+		t.Fatalf("Read() after %s did not return", scenario)
+	}
+}
+
+func (t *failOnceWriteTun) Write(bufs [][]byte, offset int) (int, error) {
+	if t.failed.CompareAndSwap(false, true) {
+		return 0, errors.New("injected source write failure")
+	}
+	return t.Tun.Write(bufs, offset)
+}
+
+func newExclusiveReadTun(t tun.Tun) *exclusiveReadTun {
+	return &exclusiveReadTun{Tun: t, readStarted: make(chan struct{})}
+}
+
+func (t *exclusiveReadTun) Read(bufs [][]byte, sizes []int, offset int) (int, error) {
+	t.mu.Lock()
+	if t.reading {
+		t.concurrentRead = true
+		t.mu.Unlock()
+		return 0, errors.New("concurrent source read")
+	}
+	t.reading = true
+	t.startOnce.Do(func() { close(t.readStarted) })
+	t.mu.Unlock()
+	defer func() {
+		t.mu.Lock()
+		t.reading = false
+		t.mu.Unlock()
+	}()
+	return t.Tun.Read(bufs, sizes, offset)
+}
+
+func (t *exclusiveReadTun) hadConcurrentRead() bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.concurrentRead
 }
 
 func (w testTunWrapper) GetWrapped() any { return w.wrapped }

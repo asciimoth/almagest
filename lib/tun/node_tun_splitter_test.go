@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"net/netip"
 	"slices"
@@ -101,6 +102,133 @@ func TestTunSplitterNodeRoutesPacketsThroughFrontend(t *testing.T) {
 	writeTunPacket(t, peer, packet)
 	if got := readTunPacket(t, frontend); !bytes.Equal(got, packet) {
 		t.Fatalf("frontend packet = %x, want %x", got, packet)
+	}
+}
+
+func TestTunSplitterNodeRecoversInputAfterStartupReadFailure(t *testing.T) {
+	w := newTunSplitterTestWorkspace(t)
+	providers := newTestTunProviderRegistry()
+	failed := make(chan struct{})
+	recoveryRead := make(chan struct{})
+	failRead := make(chan struct{})
+	if err := w.AddNodeClass(testTunProviderClass{
+		registry: providers,
+		wrapSource: func(source tun.Tun) tun.Tun {
+			return &failFirstTunRead{
+				Tun:                source,
+				trigger:            failRead,
+				failedSignal:       failed,
+				recoveryReadSignal: recoveryRead,
+			}
+		},
+	}); err != nil {
+		t.Fatalf("AddNodeClass provider: %v", err)
+	}
+
+	splitter, err := w.AddNodeByClass(NodeTypeTunSplitter, "splitter")
+	if err != nil {
+		t.Fatalf("AddNodeByClass TunSplitter: %v", err)
+	}
+	provider, err := w.AddNodeByClass(testTunProviderNodeType, "provider")
+	if err != nil {
+		t.Fatalf("AddNodeByClass provider: %v", err)
+	}
+	receiver := &tunPayloadReceiver{events: make(chan TunPayload, 4)}
+	if _, err := w.AddNode(receiver, "test/TunReceiver", "receiver"); err != nil {
+		t.Fatalf("AddNode receiver: %v", err)
+	}
+
+	w.SendNodeFormularMsg(splitter, formular.FormApplyMessage{
+		MessageBase: testkit.FormMessageBase(formular.MessageFormApply, splitter),
+		BlockID:     "config",
+		Values:      map[string]any{"rules": "TRUE\nSLOT 1\n"},
+	})
+	splitterSnapshot := testkit.MustNodeSnapshot(t, w, splitter)
+	providerSnapshot := testkit.MustNodeSnapshot(t, w, provider)
+	if _, _, err := w.AddLink(splitterSnapshot.LeftPorts[0], providerSnapshot.RightPorts[0]); err != nil {
+		t.Fatalf("AddLink provider->splitter: %v", err)
+	}
+	if _, _, err := w.AddLink(receiver.in, splitterSnapshot.RightPorts[0]); err != nil {
+		t.Fatalf("AddLink splitter->receiver: %v", err)
+	}
+
+	frontend := receiveTunPayload(t, receiver.events).Tun
+	peer := providers.peer(t, provider)
+	testkit.Eventually(t, func() bool {
+		return testkit.MustNodeSnapshot(t, w, splitter).Label == "splitting"
+	}, "splitter attaches its initial input")
+	close(failRead)
+	select {
+	case <-failed:
+	case <-time.After(time.Second):
+		t.Fatal("injected input read failure did not occur")
+	}
+	select {
+	case <-recoveryRead:
+	case <-time.After(time.Second):
+		t.Fatal("replacement input did not start reading")
+	}
+	testkit.Eventually(t, func() bool {
+		return providers.sendCount(provider) >= 2 &&
+			testkit.MustNodeSnapshot(t, w, splitter).Label == "splitting"
+	}, "splitter recovers its failed input attachment")
+	testkit.Eventually(t, func() bool {
+		for {
+			select {
+			case payload := <-receiver.events:
+				frontend = payload.Tun
+			default:
+				return TunIsReady(frontend)
+			}
+		}
+	}, "splitter publishes a ready output after input recovery")
+	packet := testIPv4Packet([4]byte{10, 0, 0, 1}, [4]byte{10, 0, 0, 2})
+	writeTunPacket(t, peer, packet)
+	if got := readTunPacket(t, frontend); !bytes.Equal(got, packet) {
+		t.Fatalf("frontend packet = %x, want %x", got, packet)
+	}
+}
+
+func TestTunInputFailureObserverReportsTerminalFailureFromEvent(t *testing.T) {
+	base, peer := tun.Pipe(1, 1500, 0, 0)
+	root := tun.Detach(&failFirstTunRead{Tun: base}, nil, nil)
+	reported := make(chan error, 1)
+	observed := &tunInputFailureObserver{
+		Tun:    root,
+		done:   make(chan struct{}),
+		report: func(err error) { reported <- err },
+	}
+	t.Cleanup(func() {
+		_ = observed.Close()
+		_ = base.Close()
+		_ = peer.Close()
+		root.Wait()
+	})
+
+	events := observed.Events()
+
+waitForDown:
+	for {
+		select {
+		case event, ok := <-events:
+			if !ok {
+				t.Fatal("observer event stream closed before EventDown")
+			}
+			if event == tun.EventDown {
+				break waitForDown
+			}
+		case <-time.After(time.Second):
+			t.Fatal("observer did not forward terminal EventDown")
+		}
+	}
+
+	select {
+	case err := <-reported:
+		if !errors.Is(err, tun.ErrDetachedTunFailed) {
+			t.Fatalf("reported error = %v, want ErrDetachedTunFailed", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("observer did not report terminal failure from EventDown")
 	}
 }
 
@@ -789,8 +917,18 @@ func (r *testTunProviderRegistry) peer(t *testing.T, id uint64) tun.Tun {
 	return nil
 }
 
+func (r *testTunProviderRegistry) sendCount(id uint64) int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if node := r.nodes[id]; node != nil {
+		return node.sendCount
+	}
+	return 0
+}
+
 type testTunProviderClass struct {
-	registry *testTunProviderRegistry
+	registry   *testTunProviderRegistry
+	wrapSource func(tun.Tun) tun.Tun
 }
 
 const testTunProviderNodeType = "test/TunProvider"
@@ -806,18 +944,20 @@ func (testTunProviderClass) DefaultNodeParams() pasta.NodeClassParams {
 	}}
 }
 func (c testTunProviderClass) NewNode(configer.Config, ...*pasta.NodeClassState) (pasta.Node, error) {
-	return &testTunProviderNode{registry: c.registry}, nil
+	return &testTunProviderNode{registry: c.registry, wrapSource: c.wrapSource}, nil
 }
 
 type testTunProviderNode struct {
 	NodeBase
 
-	registry *testTunProviderRegistry
-	out      uint64
+	registry   *testTunProviderRegistry
+	out        uint64
+	wrapSource func(tun.Tun) tun.Tun
 
-	source  tun.Tun
-	peer    tun.Tun
-	outputs TunOutputCache
+	source    tun.Tun
+	peer      tun.Tun
+	outputs   TunOutputCache
+	sendCount int
 }
 
 func (n *testTunProviderNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
@@ -882,6 +1022,11 @@ func (n *testTunProviderNode) sendAll() {
 func (n *testTunProviderNode) sendTunToLink(link uint64) {
 	n.ensurePipe()
 	n.outputs.SendLocked(n.W, n.ID, link, n.source, nil)
+	if n.registry != nil {
+		n.registry.mu.Lock()
+		n.sendCount++
+		n.registry.mu.Unlock()
+	}
 }
 
 func (n *testTunProviderNode) ensurePipe() {
@@ -889,6 +1034,39 @@ func (n *testTunProviderNode) ensurePipe() {
 		return
 	}
 	n.source, n.peer = tun.Pipe(4, 1500, 0, 0)
+	if n.wrapSource != nil {
+		n.source = n.wrapSource(n.source)
+	}
+}
+
+type failFirstTunRead struct {
+	tun.Tun
+	mu                 sync.Mutex
+	failed             bool
+	trigger            <-chan struct{}
+	failedSignal       chan struct{}
+	recoveryOnce       sync.Once
+	recoveryReadSignal chan struct{}
+}
+
+func (t *failFirstTunRead) Read(bufs [][]byte, sizes []int, offset int) (int, error) {
+	t.mu.Lock()
+	if !t.failed {
+		t.failed = true
+		t.mu.Unlock()
+		if t.trigger != nil {
+			<-t.trigger
+		}
+		if t.failedSignal != nil {
+			close(t.failedSignal)
+		}
+		return 0, errors.New("injected startup read failure")
+	}
+	t.mu.Unlock()
+	if t.recoveryReadSignal != nil {
+		t.recoveryOnce.Do(func() { close(t.recoveryReadSignal) })
+	}
+	return t.Tun.Read(bufs, sizes, offset)
 }
 
 func (n *testTunProviderNode) closePipe() {

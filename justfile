@@ -109,6 +109,9 @@ daemon: build
 daemon-sudo: build
   sudo ./almagestd -c ./local -l debug -w 8090 --debug-nodes --unsafe-config --no-dns-cache-expiration
 
+capture-default-tun-flake:
+  ./scripts/capture-default-tun-flake.sh
+
 cli *args:
   go build -o ./cli ./bin/almagest-cli
   ./cli {{args}}

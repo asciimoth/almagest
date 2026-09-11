@@ -9,6 +9,7 @@ import (
 	"net/http"
 
 	conn "github.com/asciimoth/batchudp"
+	"github.com/asciimoth/gonnect/dns"
 	gtun "github.com/asciimoth/gonnect/tun"
 	"github.com/asciimoth/pasta/pasta"
 	wgoamnesia "github.com/asciimoth/wgo/amnesia"
@@ -35,22 +36,7 @@ func (n *managedAmnesiaNode) reconcile(req managedAmnesiaRuntimeRequest) (manage
 	}
 	result.installationUUID = uuid
 	result.persistent = persistent
-	if !req.config.enabled || req.config.connectionSecret == "" ||
-		!req.tunLinked || !nodekit.NetworkIsReady(req.network) {
-		n.closeRuntimeLocked()
-		return result, true
-	}
-	if !nodekit.TunIsReady(req.tun) {
-		if n.runtimeClient != nil && n.runtimeConfig != nil && n.runtimeDevice == nil {
-			// A linked TUN provider can briefly withdraw its old payload while it
-			// applies this runtime's profile configuration. No device exists yet,
-			// so retain the negotiated key and profile until the replacement
-			// payload arrives.
-			result.waitingForTun = true
-			result.format = n.runtimeFormat
-			result.profile = n.runtimeProfile
-			return result, true
-		}
+	if !req.config.enabled || req.config.connectionSecret == "" || !req.tunLinked {
 		n.closeRuntimeLocked()
 		return result, true
 	}
@@ -86,18 +72,62 @@ func (n *managedAmnesiaNode) reconcile(req managedAmnesiaRuntimeRequest) (manage
 		gatewayPublicKey = []byte(value)
 	}
 	material := managedAmnesiaMaterial(req, parsed.Format, input, gatewayPublicKey)
+	profileMaterialMatches := n.runtimeProfileMaterialMatches(material)
+	if !nodekit.NetworkIsReady(req.network) {
+		if profileMaterialMatches && req.networkLinked {
+			// A linked carrier provider can temporarily withdraw its payload while
+			// it rebuilds a nested graph. The bind belongs to the old payload, so
+			// discard the data plane. Keep the registered service profile and key
+			// for the replacement. An explicit graph unlink has networkLinked=false
+			// and still closes the complete runtime.
+			n.closeRuntimeDeviceLocked()
+			result.waitingForNetwork = true
+			result.format = n.runtimeFormat
+			result.profile = n.runtimeProfile
+			return result, true
+		}
+		n.closeRuntimeLocked()
+		return result, true
+	}
+	if !nodekit.TunIsReady(req.tun) {
+		if profileMaterialMatches {
+			// A linked TUN provider can briefly withdraw its old payload while it
+			// applies this runtime's profile configuration. Retain the negotiated
+			// key and profile until the replacement payload arrives. The old data
+			// plane can be closing already, so do not try to retain its device.
+			n.closeRuntimeDeviceLocked()
+			result.waitingForTun = true
+			result.format = n.runtimeFormat
+			result.profile = n.runtimeProfile
+			return result, true
+		}
+		n.closeRuntimeLocked()
+		return result, true
+	}
 	if n.runtimeImport != nil {
 		if n.pausedImportMatches(req, material) {
 			return n.continuePausedImportLocked(req, result)
 		}
 		n.closeRuntimeLocked()
 	}
-	if n.runtimeProfileInputsMatch(req, material) && n.runtimeMTURevision != req.networkMTURevision {
+	networkChanged := profileMaterialMatches &&
+		!nodekit.SameNetworkInstance(n.runtimeNetwork, req.network)
+	if networkChanged {
+		// The configured bind cannot move between network wrappers. Close the
+		// device, but keep the imported profile and its registered private key.
+		n.closeRuntimeDeviceLocked()
+		if n.runtimeHTTP != nil {
+			n.runtimeHTTP.CloseIdleConnections()
+		}
+		n.runtimeNetwork = req.network
+	}
+	if profileMaterialMatches &&
+		(networkChanged || n.runtimeMTURevision != req.networkMTURevision) {
 		profileState, mtuWarning, mtuErr := calculateAmnesiaProfileMTU(
 			req.ctx, req.network, n.runtimeConfig, n.ID, req.config.serverCountryCode,
 		)
 		if mtuErr != nil {
-			n.closeRuntimeLocked()
+			n.closeRuntimeDeviceLocked()
 			result.err = fmt.Errorf("validate changed Amnezia carrier MTU: %w", mtuErr)
 			return result, true
 		}
@@ -116,24 +146,47 @@ func (n *managedAmnesiaNode) reconcile(req managedAmnesiaRuntimeRequest) (manage
 			return result, true
 		}
 	}
-	if n.runtimeMatches(req, material) {
-		if n.runtimeDevice == nil {
-			if n.runtimeTunConfigured {
-				return n.activatePreparedRuntimeLocked(req, result)
+	if profileMaterialMatches && n.runtimeMTURevision == req.networkMTURevision {
+		if n.runtimeDevice != nil {
+			select {
+			case <-n.runtimeDevice.Wait():
+				n.logDebugf(
+					"Amnesia closed data-plane device will be rebuilt from registered profile: generation=%d runtime=%d",
+					req.generation, n.runtimeID,
+				)
+				n.closeRuntimeDeviceLocked()
+			default:
 			}
-			result.runtimeID = n.runtimeID
-			result.prepared = true
+		}
+		if n.runtimeDevice != nil {
+			if nodekit.SameTunInstance(n.runtimeTunSource, req.tun) {
+				n.refreshStatsSubscriptionLocked(req.generation)
+				result.ready = true
+				result.profile = n.runtimeProfile
+				result.stats = n.runtimeDevice.RuntimeStats()
+				result.dns = n.runtimeDNS
+				return result, true
+			}
+			return n.replaceRuntimeTunLocked(req, result)
+		}
+		// The TUN can become unavailable after the readiness check at the start
+		// of this reconcile. This happens when the profile configuration makes a
+		// provider replace its current TUN while an equivalent graph notification
+		// is already queued. Keep the registered profile across that gap. Starting
+		// another import can register a second service key for the same material.
+		if !nodekit.TunIsReady(req.tun) {
+			result.waitingForTun = true
+			result.format = n.runtimeFormat
 			result.profile = n.runtimeProfile
 			return result, true
 		}
-		if nodekit.SameTunInstance(n.runtimeTunSource, req.tun) {
-			n.refreshStatsSubscriptionLocked(req.generation)
-			result.ready = true
-			result.profile = n.runtimeProfile
-			result.stats = n.runtimeDevice.RuntimeStats()
-			result.dns = n.runtimeDNS
-			return result, true
+		if n.runtimeTunConfigured {
+			return n.activatePreparedRuntimeLocked(req, result)
 		}
+		result.runtimeID = n.runtimeID
+		result.prepared = true
+		result.profile = n.runtimeProfile
+		return result, true
 	}
 	if req.captcha != nil {
 		result.err = errors.New("complete Amnezia captcha: the challenge is no longer active")
@@ -294,6 +347,7 @@ func (n *managedAmnesiaNode) prepareImportedProfileLocked(
 	n.runtimeFormat = format
 	n.runtimePersistent = persistent
 	n.runtimeMTURevision = req.networkMTURevision
+	n.runtimeAnnounced = false
 	if mtuErr != nil {
 		n.closeRuntimeLocked()
 		result.err = fmt.Errorf("validate Amnezia carrier MTU: %w", mtuErr)
@@ -303,11 +357,12 @@ func (n *managedAmnesiaNode) prepareImportedProfileLocked(
 		n.Logger.Warnf("Amnesia automatic MTU: %s; profile ceiling=%d", mtuWarning, profile.Interface.MTU)
 	}
 	n.logDebugf(
-		"Amnesia connection prepared: generation=%d runtime=%d format=%s profile=%q country=%q endpoint=%q protocol=%q effective_mtu=%d profile_mtu=%d carrier_udp_payload=%d s4=%d addresses=%v dns=%v",
+		"Amnesia connection prepared: generation=%d runtime=%d format=%s profile=%q country=%q endpoint=%q protocol=%q effective_mtu=%d profile_mtu=%d carrier_udp_payload=%d s4=%d tls_revision=%d network_mtu_revision=%d addresses=%v dns=%v",
 		req.generation, n.runtimeID, n.runtimeFormat, n.runtimeProfile.name,
 		n.runtimeProfile.serverCountry, profile.Peer.Endpoint, profile.AmneziaWG.ProtocolVersion,
 		n.runtimeProfile.mtu, n.runtimeProfile.profileMTU, n.runtimeProfile.carrierMaxUDP,
-		n.runtimeProfile.transportS4, n.runtimeProfile.addresses, n.runtimeProfile.dns,
+		n.runtimeProfile.transportS4, req.tlsRevision, req.networkMTURevision,
+		n.runtimeProfile.addresses, n.runtimeProfile.dns,
 	)
 	if req.ctx.Err() != nil || req.generation != n.generation.Load() {
 		// A successful negotiation has already registered this profile key. Keep
@@ -428,27 +483,10 @@ func (n *managedAmnesiaNode) activatePreparedRuntimeLocked(
 		return result, true
 	}
 
-	// The graph owns req.tun. The device owns only a detached child, either
-	// directly or through TunnelDNS. Closing the connection therefore does not
-	// consume the graph payload.
-	var deviceTun gtun.Tun
-	if len(profile.Interface.DNS) != 0 {
-		resolver, err := dnsnodes.NewTunnelDNS(req.tun, n.Pool(), n.WorkerSpawner, dnsnodes.TunnelDNSOptions{
-			Addresses:  profile.Interface.Addresses,
-			Servers:    profile.Interface.DNS,
-			AllowedIPs: profile.Peer.AllowedIPs,
-		})
-		if err != nil {
-			n.closeRuntimeLocked()
-			result.err = formatRuntimeError("create tunnel DNS resolver", err)
-			return result, true
-		}
-		deviceTun = resolver
-		n.runtimeDNS = resolver
-	} else {
-		deviceTun = gtun.Detach(req.tun, nil, n.Pool())
+	deviceTun, resolver, err := n.newRuntimeTunLocked(req.tun)
+	if err != nil {
+		return n.failPreparedActivationLocked(req, result, err)
 	}
-	deviceTun = wireguardnodes.NewContentCeilingTun(deviceTun, n.runtimeProfile.mtu)
 	bindOptions := conn.StdNetBindOptions{}
 	if !req.network.IsNative() {
 		bindOptions.AllowSingleFamily = true
@@ -465,32 +503,24 @@ func (n *managedAmnesiaNode) activatePreparedRuntimeLocked(
 	dev := wgdevice.NewDevice(deviceTun, bind, logger, n.WorkerSpawner, wgdevice.DeviceOptions{})
 
 	n.runtimeDevice = dev
+	n.runtimeDNS = resolver
 	if err := wgoamnesia.ApplyProfile(dev, profile); err != nil {
 		n.logDebugf("Amnesia profile apply failed: generation=%d error=%v", req.generation, err)
-		n.closeRuntimeLocked()
-		result.err = formatRuntimeError("apply Amnezia profile", err)
-		return result, true
+		return n.failPreparedActivationLocked(
+			req, result, formatRuntimeError("apply Amnezia profile", err),
+		)
 	}
 	if err := executePreConnectActionsLogged(req.ctx, req.network, profile.PreConnect, n.logDebugf); err != nil {
-		if req.ctx.Err() != nil || req.generation != n.generation.Load() {
-			// Keep the registered profile so the next generation can retry it with
-			// a fresh device if the effective inputs did not change.
-			n.closeRuntimeDeviceLocked()
-			return managedAmnesiaRuntimeResult{}, false
-		}
-		n.closeRuntimeLocked()
-		result.err = err
-		return result, true
+		return n.failPreparedActivationLocked(req, result, err)
 	}
 	if err := dev.Up(); err != nil {
-		n.closeRuntimeLocked()
-		result.err = formatRuntimeError("start WireGuard device", err)
-		return result, true
+		return n.failPreparedActivationLocked(
+			req, result, formatRuntimeError("start WireGuard device", err),
+		)
 	}
 	if req.ctx.Err() != nil || req.generation != n.generation.Load() {
-		// The profile key is already registered. Retain the profile across an
-		// equivalent graph generation, but never retain a device that consumed a
-		// stale TUN payload.
+		// The profile key is already registered. Discard the stale data plane so
+		// a newer generation can create one from its current graph inputs.
 		n.closeRuntimeDeviceLocked()
 		return managedAmnesiaRuntimeResult{}, false
 	}
@@ -501,48 +531,127 @@ func (n *managedAmnesiaNode) activatePreparedRuntimeLocked(
 	result.profile = n.runtimeProfile
 	result.stats = dev.RuntimeStats()
 	result.dns = n.runtimeDNS
-	privateKey := dev.PrivateKey()
+	n.logRuntimeReadyLocked(req.generation, false)
+	return result, true
+}
+
+func (n *managedAmnesiaNode) failPreparedActivationLocked(
+	req managedAmnesiaRuntimeRequest,
+	result managedAmnesiaRuntimeResult,
+	err error,
+) (managedAmnesiaRuntimeResult, bool) {
+	// Device, TUN, bind, DNS, and pre-connect failures do not invalidate the
+	// profile that the service has already registered. Always discard only the
+	// local data plane. A newer generation can arrive immediately after this
+	// decision, so a current/stale check cannot safely select full cleanup.
+	n.closeRuntimeDeviceLocked()
+	if req.ctx.Err() != nil || req.generation != n.generation.Load() {
+		// A newer graph generation owns the prepared service registration. Close
+		// only the partial data plane created by this activation attempt. The next
+		// generation can attach its current TUN without registering another key.
+		n.logDebugf(
+			"Amnesia stale activation failure retained prepared profile: generation=%d current_generation=%d runtime=%d error=%v",
+			req.generation, n.generation.Load(), n.runtimeID, err,
+		)
+		return managedAmnesiaRuntimeResult{}, false
+	}
+	result.err = err
+	result.format = n.runtimeFormat
+	result.profile = n.runtimeProfile
+	return result, true
+}
+
+func (n *managedAmnesiaNode) newRuntimeTunLocked(source gtun.Tun) (gtun.Tun, dns.Interface, error) {
+	profile := n.runtimeConfig
+	if profile == nil {
+		return nil, nil, errors.New("create Amnesia TUN: negotiated profile is unavailable")
+	}
+	// The graph owns source. The device owns only a detached child, either
+	// directly or through TunnelDNS. Closing or replacing the device TUN does
+	// not consume the graph payload.
+	var deviceTun gtun.Tun
+	var resolver dns.Interface
+	if len(profile.Interface.DNS) != 0 {
+		tunnelResolver, err := dnsnodes.NewTunnelDNS(source, n.Pool(), n.WorkerSpawner, dnsnodes.TunnelDNSOptions{
+			Addresses:  profile.Interface.Addresses,
+			Servers:    profile.Interface.DNS,
+			AllowedIPs: profile.Peer.AllowedIPs,
+		})
+		if err != nil {
+			return nil, nil, formatRuntimeError("create tunnel DNS resolver", err)
+		}
+		deviceTun = tunnelResolver
+		resolver = tunnelResolver
+	} else {
+		deviceTun = gtun.Detach(source, nil, n.Pool())
+	}
+	return wireguardnodes.NewContentCeilingTun(deviceTun, n.runtimeProfile.mtu), resolver, nil
+}
+
+func (n *managedAmnesiaNode) replaceRuntimeTunLocked(
+	req managedAmnesiaRuntimeRequest,
+	result managedAmnesiaRuntimeResult,
+) (managedAmnesiaRuntimeResult, bool) {
+	dev := n.runtimeDevice
+	if dev == nil {
+		return n.activatePreparedRuntimeLocked(req, result)
+	}
+	deviceTun, resolver, err := n.newRuntimeTunLocked(req.tun)
+	if err != nil {
+		return n.failPreparedActivationLocked(req, result, err)
+	}
+	if err := dev.ReplaceTUN(deviceTun); err != nil {
+		_ = deviceTun.Close()
+		if req.ctx.Err() != nil || req.generation != n.generation.Load() {
+			return n.failPreparedActivationLocked(req, result, err)
+		}
+		// A replacement with larger fixed geometry can require a new device.
+		// Keep the registered profile while the data plane is rebuilt.
+		n.closeRuntimeDeviceLocked()
+		return n.activatePreparedRuntimeLocked(req, result)
+	}
+	n.runtimeDNS = resolver
+	if err := dev.Up(); err != nil {
+		return n.failPreparedActivationLocked(
+			req, result, formatRuntimeError("start WireGuard device after TUN replacement", err),
+		)
+	}
+	if req.ctx.Err() != nil || req.generation != n.generation.Load() || !nodekit.TunIsReady(req.tun) {
+		n.closeRuntimeDeviceLocked()
+		return managedAmnesiaRuntimeResult{}, false
+	}
+	n.runtimeTunSource = req.tun
+	n.refreshStatsSubscriptionLocked(req.generation)
+	result.ready = true
+	result.profile = n.runtimeProfile
+	result.stats = dev.RuntimeStats()
+	result.dns = n.runtimeDNS
+	n.logRuntimeReadyLocked(req.generation, true)
+	return result, true
+}
+
+func (n *managedAmnesiaNode) logRuntimeReadyLocked(generation uint64, replaced bool) {
+	if n.runtimeAnnounced {
+		if replaced {
+			n.logDebugf("Amnesia runtime TUN replaced: generation=%d runtime=%d", generation, n.runtimeID)
+		}
+		return
+	}
+	privateKey := n.runtimeDevice.PrivateKey()
 	localPublicKey := "none"
 	if !privateKey.IsZero() {
 		localPublicKey = privateKey.PublicKey().Base64()
 	}
 	n.logDebugf(
 		"Amnesia connection created: generation=%d format=%s local_public_key=%s profile=%q country=%q addresses=%v dns=%v",
-		req.generation, n.runtimeFormat, localPublicKey, n.runtimeProfile.name,
+		generation, n.runtimeFormat, localPublicKey, n.runtimeProfile.name,
 		n.runtimeProfile.serverCountry, n.runtimeProfile.addresses, n.runtimeProfile.dns,
 	)
-	return result, true
+	n.runtimeAnnounced = true
 }
 
-func (n *managedAmnesiaNode) runtimeMatches(req managedAmnesiaRuntimeRequest, material [32]byte) bool {
-	if n.runtimeClient == nil || n.runtimeConfig == nil {
-		return false
-	}
-	materialMatches := n.runtimeMaterial == material
-	networkReady := nodekit.NetworkIsReady(req.network)
-	networkMatches := nodekit.SameNetworkInstance(n.runtimeNetwork, req.network)
-	if n.runtimeDevice != nil {
-		select {
-		case <-n.runtimeDevice.Wait():
-			n.logDebugf("Amnesia runtime cannot be reused: device_closed=true")
-			return false
-		default:
-		}
-	}
-	matched := materialMatches && nodekit.TunIsReady(req.tun) && networkReady && networkMatches &&
-		n.runtimeMTURevision == req.networkMTURevision
-	if !matched {
-		n.logDebugf(
-			"Amnesia runtime cannot be reused: material_match=%t tun_ready=%t network_ready=%t network_match=%t",
-			materialMatches, nodekit.TunIsReady(req.tun), networkReady, networkMatches,
-		)
-	}
-	return matched
-}
-
-func (n *managedAmnesiaNode) runtimeProfileInputsMatch(req managedAmnesiaRuntimeRequest, material [32]byte) bool {
-	return n.runtimeClient != nil && n.runtimeConfig != nil && n.runtimeMaterial == material &&
-		nodekit.NetworkIsReady(req.network) && nodekit.SameNetworkInstance(n.runtimeNetwork, req.network)
+func (n *managedAmnesiaNode) runtimeProfileMaterialMatches(material [32]byte) bool {
+	return n.runtimeClient != nil && n.runtimeConfig != nil && n.runtimeMaterial == material
 }
 
 func (n *managedAmnesiaNode) refreshStatsSubscriptionLocked(generation uint64) {
@@ -594,6 +703,7 @@ func (n *managedAmnesiaNode) closeRuntimeLocked() {
 	n.runtimeFormat = wgoamnesia.InputFormatUnknown
 	n.runtimeMTURevision = 0
 	n.runtimeTunConfigured = false
+	n.runtimeAnnounced = false
 	n.runtimeID = 0
 }
 

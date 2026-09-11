@@ -62,6 +62,33 @@ amnesia-e2e-tool make-gateway-profile \
 	-allowed-ip "10.205.20.1/32" \
 	-header-protection-key "$header_key" \
 	-mtu 1420 -keepalive 1 >"$E2E_CONFIG_DIR/gateway-profile.vpn"
+
+python3 - "$E2E_CONFIG_DIR/gateway-profile.vpn" <<'PY'
+import base64
+import json
+import sys
+import zlib
+
+path = sys.argv[1]
+text = open(path, encoding="utf-8").read().strip().removeprefix("vpn://")
+text += "=" * (-len(text) % 4)
+framed = base64.urlsafe_b64decode(text)
+document = json.loads(zlib.decompress(framed[4:]))
+protocol = document["containers"][0]["awg"]
+# A random handshake trailer can grow to 65535 bytes. It cannot fit in the
+# maximum IPv4 UDP payload of 65507 bytes. The dedicated WGO compatibility
+# case tests random-trailer interoperability separately; this lifecycle case
+# needs a consistently usable service profile.
+protocol["RandomTrailers"] = "false"
+client = json.loads(protocol["last_config"])
+client["RandomTrailers"] = "false"
+protocol["last_config"] = json.dumps(client, separators=(",", ":"))
+plain = json.dumps(document, separators=(",", ":")).encode()
+payload = b"\x00\x00\x00\xff" + zlib.compress(plain, 6)
+encoded = base64.urlsafe_b64encode(payload).decode().rstrip("=")
+open(path, "w", encoding="utf-8").write("vpn://" + encoded + "\n")
+PY
+
 amnesia-e2e-tool make-activation-key -country ge >"$E2E_CONFIG_DIR/activation-one.vpn"
 
 python3 - "$E2E_CONFIG_DIR/activation-one.vpn" "$E2E_CONFIG_DIR/activation-two.vpn" <<'PY'
@@ -76,7 +103,7 @@ encoded = text.removeprefix("vpn://")
 encoded += "=" * (-len(encoded) % 4)
 framed = base64.urlsafe_b64decode(encoded)
 document = json.loads(zlib.decompress(framed[4:]))
-document["auth_data"]["api_key"] = "wgo-e2e-secret-replaced"
+document["auth_data"]["api_key"] = "c4f9a207e15d683b"
 plain = json.dumps(document, separators=(",", ":")).encode()
 updated = b"\x00\x00\x00\xff" + zlib.compress(plain, 6)
 value = base64.urlsafe_b64encode(updated).decode().rstrip("=")

@@ -53,6 +53,7 @@ fixture_public="$(printf '%s\n' "$fixture_private" | wg pubkey)"
 server_private="$(wg genkey)"
 server_public="$(printf '%s\n' "$server_private" | wg pubkey)"
 header_key="000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+client_listen_port=51862
 
 amnesia-e2e-tool make-gateway-rsa \
 	-private-file "$E2E_CONFIG_DIR/gateway-private.pem" \
@@ -67,22 +68,36 @@ amnesia-e2e-tool make-gateway-profile \
 	-mtu 1420 -keepalive 1 >"$E2E_CONFIG_DIR/gateway-profile-fixture.vpn"
 
 python3 - "$E2E_CONFIG_DIR/gateway-profile-fixture.vpn" \
-	"$E2E_CONFIG_DIR/gateway-profile.vpn" <<'PY'
+	"$E2E_CONFIG_DIR/gateway-profile.vpn" "$client_listen_port" <<'PY'
 import base64
 import json
 import sys
 import zlib
 
-source, target = sys.argv[1:]
+source, target, listen_port = sys.argv[1:]
 text = open(source, encoding="utf-8").read().strip().removeprefix("vpn://")
 text += "=" * (-len(text) % 4)
 framed = base64.urlsafe_b64decode(text)
 document = json.loads(zlib.decompress(framed[4:]))
 protocol = document["containers"][0]["awg"]
 protocol.pop("client_pub_key", None)
+# A random handshake trailer can grow to 65535 bytes. It cannot fit in the
+# maximum IPv4 UDP payload of 65507 bytes, so a usable managed profile must
+# disable it. The WGO compatibility case tests random trailers separately.
+protocol["RandomTrailers"] = "false"
 client = json.loads(protocol["last_config"])
 client.pop("client_pub_key", None)
 client.pop("client_priv_key", None)
+client["RandomTrailers"] = "false"
+# The server peer is installed after the managed node reports its generated
+# key. A fixed client port lets the server initiate the first usable handshake
+# without depending on retransmission of the client's earlier unknown-key
+# initiation.
+client["config"] = (
+    "[Interface]\n"
+    "PrivateKey = $WIREGUARD_CLIENT_PRIVATE_KEY\n"
+    "ListenPort = " + listen_port + "\n"
+)
 protocol["last_config"] = json.dumps(client, separators=(",", ":"))
 plain = json.dumps(document, separators=(",", ":")).encode()
 payload = b"\x00\x00\x00\xff" + zlib.compress(plain, 6)
@@ -102,7 +117,7 @@ text = open(source, encoding="utf-8").read().strip().removeprefix("vpn://")
 text += "=" * (-len(text) % 4)
 framed = base64.urlsafe_b64decode(text)
 document = json.loads(zlib.decompress(framed[4:]))
-document["auth_data"]["api_key"] = "wgo-e2e-secret-replaced"
+document["auth_data"]["api_key"] = "c4f9a207e15d683b"
 plain = json.dumps(document, separators=(",", ":")).encode()
 updated = b"\x00\x00\x00\xff" + zlib.compress(plain, 6)
 value = base64.urlsafe_b64encode(updated).decode().rstrip("=")
@@ -113,6 +128,7 @@ server_private_hex="$(printf '%s' "$server_private" | base64 -d | od -An -tx1 -v
 {
 	printf 'SERVER_PRIVATE_HEX=%q\n' "$server_private_hex"
 	printf 'HEADER_KEY=%q\n' "$header_key"
+	printf 'CLIENT_LISTEN_PORT=%q\n' "$client_listen_port"
 } >"$E2E_CONFIG_DIR/amnesia.env"
 
 cat >"$E2E_CONFIG_DIR/protected_alm.hujson" <<EOF

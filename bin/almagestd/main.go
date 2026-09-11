@@ -23,6 +23,10 @@ import (
 
 func main() {
 	gonnect.UnfuckGoDns()
+	// TUN and graph startup events can occur many times in one second. Keep
+	// enough timestamp precision to correlate the daemon log with host network
+	// captures and admin API actions.
+	golog.SetTimeFormat("2006/01/02 15:04:05.000000")
 
 	fatal := func(v ...any) {
 		golog.Fatal(v...)

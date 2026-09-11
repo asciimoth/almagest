@@ -14,6 +14,15 @@ The case verifies:
 - installation UUID persistence across daemon restart;
 - the reduced managed-node menu and the absence of WireGuard configuration.
 
+The fixture disables random handshake trailers because their 65535-byte
+maximum cannot fit in the 65507-byte IPv4 UDP payload limit. The dedicated WGO
+compatibility case tests random-trailer interoperability.
+
+The generated client profile uses a fixed loopback listen port. The mock
+server learns the generated public key only after import, so the fixed endpoint
+lets it initiate the first usable handshake without a client retransmission
+race.
+
 Run it with:
 
 ```sh

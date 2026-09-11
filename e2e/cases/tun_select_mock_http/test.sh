@@ -82,17 +82,17 @@ wait_node_label "$spoofer_b" forwarding || fail "Server B Spoofer did not start 
 
 wait_log_contains "almagest/HttpServer" "listening on 10.71.160.2:8080" \
 	|| fail "target A HTTP bindings did not start listening"
-wait_log_contains "almagest/HttpServer" "listening on 10.72.160.2:8080" \
+wait_log_contains "almagest/HttpServer" "listening on 10.72.160.2:8081" \
 	|| fail "target B HTTP bindings did not start listening"
 
 assert_tun_body http://10.71.160.2:8080/ "Server A" /tmp/e2e-tun-select-initial-a.txt
-assert_tun_body http://10.72.160.2:8080/ "Server B" /tmp/e2e-tun-select-initial-b.txt
+assert_tun_body http://10.72.160.2:8081/ "Server B" /tmp/e2e-tun-select-initial-b.txt
 
 set_bool_constant "$bool_node" true
 wait_node_label "$bool_node" "true"
 
 assert_tun_body http://10.71.160.2:8080/ "Server B" /tmp/e2e-tun-select-swapped-a.txt
-assert_tun_body http://10.72.160.2:8080/ "Server A" /tmp/e2e-tun-select-swapped-b.txt
+assert_tun_body http://10.72.160.2:8081/ "Server A" /tmp/e2e-tun-select-swapped-b.txt
 
 wait_log_contains "almagest/HttpServer" "GET /" \
 	|| fail "HTTP servers did not log GET requests"

@@ -5,6 +5,7 @@ command -v ip >/dev/null
 command -v jq >/dev/null
 command -v killswitch >/dev/null
 command -v killswitch-cli >/dev/null
+command -v flock >/dev/null
 test -c /dev/net/tun
 
 root_if="almcb0"
@@ -49,13 +50,14 @@ if [[ -n "${E2E_CALLBACK_STDOUT_SECRET:-}" ]]; then
 fi
 
 {
+	flock 9
 	printf '%s|uid=%s|gid=%s|env=%s|argc=%s' \
 		"$name" "$(id -u)" "$(id -g)" "${E2E_CALLBACK_ENV:-}" "$#"
 	for arg in "$@"; do
 		printf '|%s' "$arg"
 	done
 	printf '\n'
-} >>"$dir/events.log"
+} 9>>"$dir/events.log" >&9
 
 if [[ -n "${E2E_CALLBACK_SLEEP:-}" ]]; then
 	sleep "$E2E_CALLBACK_SLEEP"

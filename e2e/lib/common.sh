@@ -192,8 +192,14 @@ node_label_is() {
 wait_node_label() {
 	local id="$1"
 	local label="$2"
-	retry "$ALMAGEST_E2E_TIMEOUT" "node $id label $label" \
-		node_label_is "$id" "$label"
+	local actual
+	if retry "$ALMAGEST_E2E_TIMEOUT" "node $id label $label" \
+		node_label_is "$id" "$label"; then
+		return 0
+	fi
+	actual="$(node_label "$id" 2>/dev/null || true)"
+	log "node $id current label: ${actual:-unavailable}"
+	return 1
 }
 
 add_node() {

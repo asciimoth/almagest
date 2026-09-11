@@ -131,11 +131,17 @@ func (n *defaultTunNode) PreLinkAdd(port uint64, linkType, portDirection string)
 func (n *defaultTunNode) OnLinkAdd(link, port uint64, linkType, portDirection string) error {
 	switch {
 	case port == n.tunp && portDirection == "right" && linkType == TypeTun:
+		if n.Logger != nil {
+			n.Logger.Debugf("DefaultTun TUN link added: link=%d", link)
+		}
 		if err := n.configureDefaultTun(); err != nil {
 			return nil
 		}
 		n.sendTunToLink(link)
 	case port == n.dnsp && portDirection == "right" && linkType == dnsnodes.TypeDNS:
+		if n.Logger != nil {
+			n.Logger.Debugf("DefaultTun DNS link added: link=%d", link)
+		}
 		n.dnsLink = link
 		std.RequestLocked(n.W, n.ID, link)
 	}
@@ -145,12 +151,18 @@ func (n *defaultTunNode) OnLinkAdd(link, port uint64, linkType, portDirection st
 func (n *defaultTunNode) OnLinkRemoved(link uint64, port uint64, linkType, portDirection string) error {
 	switch {
 	case port == n.tunp && portDirection == "right" && linkType == TypeTun:
+		if n.Logger != nil {
+			n.Logger.Debugf("DefaultTun TUN link removed: link=%d", link)
+		}
 		n.outputTuns.Close(link)
 		n.portCfg.Delete(link)
 		if err := n.configureDefaultTun(); err != nil {
 			return nil
 		}
 	case port == n.dnsp && portDirection == "right" && linkType == dnsnodes.TypeDNS && link == n.dnsLink:
+		if n.Logger != nil {
+			n.Logger.Debugf("DefaultTun DNS link removed: link=%d", link)
+		}
 		old := n.dnsProvider
 		n.dnsProvider = nil
 		n.dnsLink = 0
@@ -174,6 +186,16 @@ func (n *defaultTunNode) OnEvent(event pasta.Event, linkType string, _ []string,
 			n.portCfg = TunConfigByLink{}
 		}
 		n.portCfg.Set(event.Link, cfg.WithoutDNS())
+		if n.Logger != nil {
+			n.Logger.Debugf(
+				"DefaultTun config received: link=%d addrs=%v routes=%v source_routes=%v mtu=%d",
+				event.Link,
+				cfg.Addrs,
+				cfg.Routes,
+				cfg.SourceRoutes,
+				cfg.MTU,
+			)
+		}
 		if err := n.configureDefaultTun(); err != nil {
 			return nil
 		}

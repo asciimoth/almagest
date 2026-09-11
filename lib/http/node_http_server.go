@@ -58,9 +58,9 @@ type httpServerNode struct {
 	response string
 	network  NetworkCloser
 
-	worker    *httpServerWorker
-	restartID uint64
-	logs      []formular.LogLine
+	worker         *httpServerWorker
+	workerStopping bool
+	logs           []formular.LogLine
 }
 
 func (n *httpServerNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
@@ -200,8 +200,10 @@ func (n *httpServerNode) OnInbox(message pasta.InboxMessage) error {
 		n.appendLog(payload.level, payload.text)
 		n.sendLogsBlock()
 	case httpServerStart:
-		if payload.id == n.restartID && n.worker == nil && n.network != nil {
-			n.startWorker(payload.cfg)
+		if payload.previous != nil && payload.previous == n.worker {
+			n.worker = nil
+			n.workerStopping = false
+			n.startCurrentWorker()
 		}
 	}
 	return nil

@@ -94,6 +94,11 @@ func TunPreLinkAdd(w *pasta.Workspace, port uint64, linkType string) error {
 	return links.TunPreLinkAdd(w, port, linkType)
 }
 
+// TunDebugString returns TUN lifecycle metadata for debug logs.
+func TunDebugString(t tun.Tun) string {
+	return links.TunDebugString(t)
+}
+
 func TunPortHasLink(w *pasta.Workspace, port uint64) bool {
 	return links.TunPortHasLink(w, port)
 }

@@ -36,9 +36,12 @@ bytes flowing through the recovered outbound chain.
 - Enabling strict mode through `graph apply-menu` blocks the private target too.
 - Disabling strict mode restores the private target while the public target
   remains blocked.
-- Dynamically adding `Spoofer`, `LogNetwork`, and `OutNetwork`, then linking
-  `DefaultTun -> Spoofer -> LogNetwork -> OutNetwork`, restores public target
-  access.
+- Dynamically adding two `TunSplitter` and two `TunJoiner` nodes before the
+  `Spoofer`, `LogNetwork`, and `OutNetwork` nodes restores public target access
+  through a deep TUN wrapper graph.
 - The public request through the attached chain is visible in `LogNetwork`.
+- Same-file MTU changes through 1280, 1420, 1428, 1500, and 9000 keep large
+  HTTP requests working. Carrier MTUs 1280, 1500, and 9000 are also tested.
+- The deep graph stays attached after the native TUN is deleted and recreated.
 - After daemon shutdown, the public target is reachable through ordinary root
   namespace routing again.

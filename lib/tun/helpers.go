@@ -71,6 +71,10 @@ func TunIsReady(t tun.Tun) bool {
 	return nodekit.TunIsReady(t)
 }
 
+func tunDebugString(t tun.Tun) string {
+	return nodekit.TunDebugString(t)
+}
+
 func EmitMergedTunConfig(w *pasta.Workspace, node, link uint64, cfgs TunConfigByLink) bool {
 	return nodekit.EmitMergedTunConfig(w, node, link, cfgs)
 }
