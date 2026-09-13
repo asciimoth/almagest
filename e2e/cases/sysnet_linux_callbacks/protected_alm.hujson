@@ -143,10 +143,11 @@
 				"Env": {
 					"E2E_CALLBACK_DIR": "%E2E_RUNTIME%/callbacks",
 					"E2E_CALLBACK_ENV": "killswitch-updated",
-					"E2E_CALLBACK_SLEEP": "0.2"
+					"E2E_CALLBACK_BEFORE_RECORD_SLEEP": "0.1",
+					"E2E_CALLBACK_SLEEP": "5"
 				},
 				"Sync": true,
-				"Timeout": 10000000,
+				"Timeout": 1000000000,
 				"Slots": {
 					"callback": {"MaxLength": 128, "Required": true},
 					"marks": {"MaxLength": 128, "Required": true}

@@ -158,10 +158,15 @@ access_log = sys.argv[3]
 family = socket.AF_INET6 if ":" in address else socket.AF_INET
 server = socket.socket(family, socket.SOCK_DGRAM)
 server.bind((address, port))
+seen = set()
 while True:
     data, peer = server.recvfrom(65535)
     with open(access_log, "ab") as output:
         output.write(data + b"\n")
+    # Make every request prove that its client tolerates one lost datagram.
+    if data not in seen:
+        seen.add(data)
+        continue
     server.sendto(b"pong:" + data, peer)
 ' "$address" "$port" "$access_log" \
 		>/dev/null 2>"$access_log.stderr" &
@@ -175,17 +180,28 @@ host_udp_request() {
 	python3 -c '
 import socket
 import sys
+import time
 
 address = sys.argv[1]
 port = int(sys.argv[2])
 token = sys.argv[3].encode()
 family = socket.AF_INET6 if ":" in address else socket.AF_INET
 client = socket.socket(family, socket.SOCK_DGRAM)
-client.settimeout(5)
-client.sendto(token, (address, port))
-response, _ = client.recvfrom(65535)
-if response != b"pong:" + token:
-    raise SystemExit(f"unexpected UDP response: {response!r}")
+client.connect((address, port))
+deadline = time.monotonic() + 5
+while True:
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise SystemExit("UDP echo response timed out")
+    client.settimeout(min(0.25, remaining))
+    client.send(token)
+    try:
+        response = client.recv(65535)
+    except TimeoutError:
+        continue
+    if response != b"pong:" + token:
+        raise SystemExit(f"unexpected UDP response: {response!r}")
+    break
 ' "$address" "$port" "$token"
 }
 

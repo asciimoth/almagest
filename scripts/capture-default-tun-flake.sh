@@ -8,7 +8,7 @@
 #
 #   1. All required runtime nodes are operational.
 #   2. All four in-daemon probes succeed.
-#   3. A verbose host curl request fails.
+#   3. Multiple host curl requests fail while fresh in-daemon controls pass.
 #
 # When the condition occurs, the script deletes DefaultTun, creates a new
 # DefaultTun with the same name, reconnects its TUN and DNS links, and repeats
@@ -25,6 +25,10 @@
 # Important environment variables:
 #   ARTIFACT_BASE       Parent output directory.
 #   HOST_PROBE_URL      URL used to classify host connectivity.
+#   HOST_FAILURE_CONFIRMATIONS
+#                       Consecutive host failures required for classification.
+#   HOST_FAILURE_CONFIRM_DELAY
+#                       Delay between host failure confirmations, in seconds.
 #   INITIAL_DELAY       Delay after daemon start, in seconds.
 #   OPERATIONAL_TIMEOUT Maximum time to wait for required node labels.
 #   SETTLE_DELAY        Extra delay after nodes become operational.
@@ -57,6 +61,8 @@ cd "$repo_root"
 
 artifact_base="${ARTIFACT_BASE:-$repo_root/artifacts/default-tun-flake}"
 host_probe_url="${HOST_PROBE_URL:-https://example.com/}"
+host_failure_confirmations="${HOST_FAILURE_CONFIRMATIONS:-3}"
+host_failure_confirm_delay="${HOST_FAILURE_CONFIRM_DELAY:-2}"
 initial_delay="${INITIAL_DELAY:-15}"
 operational_timeout="${OPERATIONAL_TIMEOUT:-300}"
 operational_stable_seconds="${OPERATIONAL_STABLE_SECONDS:-5}"
@@ -621,6 +627,8 @@ jq -e . <<<"$operational_classes_json" >/dev/null \
 	|| die "OPERATIONAL_CLASSES_JSON is not valid JSON"
 jq -e . <<<"$operational_nodes_json" >/dev/null \
 	|| die "OPERATIONAL_NODES_JSON is not valid JSON"
+[[ "$host_failure_confirmations" =~ ^[1-9][0-9]*$ ]] \
+	|| die "HOST_FAILURE_CONFIRMATIONS must be a positive integer"
 
 say "Preparing capture session $session_id"
 if ((EUID != 0)); then
@@ -663,6 +671,8 @@ web_admin_url="http://127.0.0.1:$web_admin_port"
 	printf 'started_at=%s\n' "$(timestamp)"
 	printf 'repo_root=%s\n' "$repo_root"
 	printf 'host_probe_url=%s\n' "$host_probe_url"
+	printf 'host_failure_confirmations=%s\n' "$host_failure_confirmations"
+	printf 'host_failure_confirm_delay=%s\n' "$host_failure_confirm_delay"
 	printf 'admin_socket=%s\n' "$admin_socket"
 	printf 'config_dir=%s\n' "$config_dir"
 	printf 'file_storage=%s\n' "$file_storage"
@@ -764,16 +774,19 @@ capture_runtime_snapshot() {
 
 host_probe() {
 	local output_dir="$1"
+	local include_diagnostics="${2:-1}"
 	mkdir -p "$output_dir"
 	action "probing host connectivity with $host_probe_url"
-	local diagnostics="$output_dir/diagnostics.txt"
-	: >"$diagnostics"
-	capture_command "$diagnostics" date --iso-8601=ns
-	capture_command "$diagnostics" getent ahosts "$(sed -E 's#^[a-zA-Z]+://([^/:]+).*#\1#' <<<"$host_probe_url")"
-	capture_command "$diagnostics" resolvectl query "$(sed -E 's#^[a-zA-Z]+://([^/:]+).*#\1#' <<<"$host_probe_url")"
-	capture_command "$diagnostics" ip -4 route get 1.1.1.1
-	capture_command "$diagnostics" ping -n -c 3 -W 3 1.1.1.1
-	capture_command "$diagnostics" tracepath -n 1.1.1.1
+	if [[ "$include_diagnostics" == "1" ]]; then
+		local diagnostics="$output_dir/diagnostics.txt"
+		: >"$diagnostics"
+		capture_command "$diagnostics" date --iso-8601=ns
+		capture_command "$diagnostics" getent ahosts "$(sed -E 's#^[a-zA-Z]+://([^/:]+).*#\1#' <<<"$host_probe_url")"
+		capture_command "$diagnostics" resolvectl query "$(sed -E 's#^[a-zA-Z]+://([^/:]+).*#\1#' <<<"$host_probe_url")"
+		capture_command "$diagnostics" ip -4 route get 1.1.1.1
+		capture_command "$diagnostics" ping -n -c 3 -W 3 1.1.1.1
+		capture_command "$diagnostics" tracepath -n 1.1.1.1
+	fi
 
 	local status
 	if curl --noproxy '*' --verbose --fail --show-error --location \
@@ -788,6 +801,28 @@ host_probe() {
 	printf 'curl_exit=%d\nurl=%s\nat=%s\n' "$status" "$host_probe_url" "$(timestamp)" \
 		>"$output_dir/status.txt"
 	return "$status"
+}
+
+# Return 0 only when the host failure is sustained and fresh in-daemon probes
+# still pass. Return 1 when a later host probe succeeds, and 2 when a graph or
+# in-daemon control stops being healthy.
+confirm_host_failure() {
+	local output_dir="$1"
+	mkdir -p "$output_dir"
+	local confirmation
+	for ((confirmation = 2; confirmation <= host_failure_confirmations; confirmation++)); do
+		sleep "$host_failure_confirm_delay"
+		if ! workspace_operational_state "$output_dir/operational-$confirmation.json"; then
+			return 2
+		fi
+		if host_probe "$output_dir/host-$confirmation" 0; then
+			return 1
+		fi
+	done
+	if ! run_internal_probes "$output_dir/internal-controls"; then
+		return 2
+	fi
+	return 0
 }
 
 workspace_operational_state() {
@@ -1047,7 +1082,7 @@ recreate_default_tun() {
 	printf 'old_default_tun_name=%s\nold_default_tun_id=%s\nsplitter_id=%s\ndns_cache_id=%s\n' \
 		"$old_name" "$old_id" "$splitter_id" "$dns_id" >"$output_dir/ids.txt"
 
-	say "Bug found. Deleting DefaultTun node $old_name ($old_id)"
+	say "Confirmed target failure. Deleting DefaultTun node $old_name ($old_id)"
 	cli graph delete-node --id "$old_id" >"$output_dir/delete.json" 2>"$output_dir/delete.stderr"
 	local deadline=$((SECONDS + 30))
 	while node_id_by_name "$old_name" >/dev/null 2>&1; do
@@ -1289,7 +1324,32 @@ while ((max_tries == 0 || try_number <= max_tries)); do
 		continue
 	fi
 
-	say "Try $try_number reproduced the target failure"
+	say "Try $try_number: first host probe failed; checking that the failure is sustained"
+	capture_runtime_snapshot "$try_dir/05-first-host-failure"
+	if confirm_host_failure "$try_dir/05-host-failure-confirmation"; then
+		confirmation_status=0
+	else
+		confirmation_status=$?
+	fi
+	if ((confirmation_status != 0)); then
+		if ((confirmation_status == 1)); then
+			say "Try $try_number is inconclusive: the host probe recovered without graph changes"
+			printf 'result=inconclusive_transient_host_probe\n' >"$try_dir/result.txt"
+		else
+			say "Try $try_number is inconclusive: a control failed during host failure confirmation"
+			printf 'result=inconclusive_confirmation_control\n' >"$try_dir/result.txt"
+		fi
+		finish_try inconclusive
+		((consecutive_inconclusive += 1))
+		if ((max_inconclusive > 0 && consecutive_inconclusive >= max_inconclusive)); then
+			die "reached MAX_INCONCLUSIVE=$max_inconclusive"
+		fi
+		((try_number += 1))
+		sleep "$between_tries_delay"
+		continue
+	fi
+
+	say "Try $try_number reproduced a sustained target failure"
 	printf 'result=bug_reproduced\n' >"$try_dir/result.txt"
 	capture_runtime_snapshot "$try_dir/05-broken"
 	if ! recreate_default_tun "$try_dir/06-recreate"; then

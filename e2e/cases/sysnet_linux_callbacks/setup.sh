@@ -44,6 +44,10 @@ dir="${E2E_CALLBACK_DIR:?}"
 name="${1:?}"
 shift
 
+if [[ -n "${E2E_CALLBACK_BEFORE_RECORD_SLEEP:-}" ]]; then
+	sleep "$E2E_CALLBACK_BEFORE_RECORD_SLEEP"
+fi
+
 if [[ -n "${E2E_CALLBACK_STDOUT_SECRET:-}" ]]; then
 	printf '%s\n' "$E2E_CALLBACK_STDOUT_SECRET"
 	printf '%s\n' "$E2E_CALLBACK_STDOUT_SECRET" >&2
