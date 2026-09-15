@@ -40,11 +40,6 @@ const DefaultConfig = "/etc/almagest/alm.hujson"
 const linuxDefaultUserMark uint32 = 0x414c4d01
 const linuxFallbackFileStorage = "/var/lib/almagest/store"
 
-const (
-	linuxSystemTunProbeAttempts   = 3
-	linuxSystemTunProbeRetryDelay = 20 * time.Millisecond
-)
-
 var (
 	_ Agent = &agent{}
 )
@@ -297,41 +292,7 @@ func SystemIntegration(cfg configer.Config, runner cmdrunner.Dispatcher, randomS
 	if len(randomSeed) > 0 {
 		config.Allocator.Rng = rand.New(rand.NewSource(randomSeed[0])) //nolint:gosec // The daemon supplies a crypto-random seed.
 	}
-	return newLinuxSystemWithRetry(config, func(config sysnetlinux.SystemConfig) (sysnet.System, error) {
-		return sysnetlinux.New(config)
-	}, time.Sleep)
-}
-
-func newLinuxSystemWithRetry(
-	config sysnetlinux.SystemConfig,
-	newSystem func(sysnetlinux.SystemConfig) (sysnet.System, error),
-	wait func(time.Duration),
-) (sysnet.System, error) {
-	tunRequested := config.Features == (sysnetlinux.FeatureConfig{}) || config.Features.Tun
-	logf := config.Logf
-	if logf == nil {
-		logf = func(string, ...any) {}
-	}
-
-	for attempt := 1; ; attempt++ {
-		system, err := newSystem(config)
-		if err != nil {
-			return nil, err
-		}
-		if !tunRequested || system.Features().Tun || attempt == linuxSystemTunProbeAttempts {
-			return system, nil
-		}
-
-		logf(
-			"system auto-detect: requested TUN support is unavailable; retrying capability probe (%d/%d)",
-			attempt,
-			linuxSystemTunProbeAttempts,
-		)
-		if err := system.Close(); err != nil {
-			logf("system auto-detect: failed to close degraded system before retry: %v", err)
-		}
-		wait(time.Duration(attempt) * linuxSystemTunProbeRetryDelay)
-	}
+	return sysnetlinux.New(config)
 }
 
 type linuxSystemConfigFile struct {

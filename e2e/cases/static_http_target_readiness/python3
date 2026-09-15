@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+sleep "${E2E_TEST_PYTHON_DELAY:?}"
+exec "${E2E_REAL_PYTHON3:?}" "$@"

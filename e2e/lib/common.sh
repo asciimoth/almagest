@@ -270,14 +270,50 @@ add_link_by_port_name() {
 	cli graph add-link --port-a "$port_a" --port-b "$port_b" | jq -er '.id'
 }
 
+wait_static_http_target_ready() {
+	local pid="$1"
+	local ready_file="$2"
+	local error_log="$3"
+	local deadline=$((SECONDS + ALMAGEST_E2E_TIMEOUT))
+	local status=0
+
+	while ((SECONDS <= deadline)); do
+		if [[ -f "$ready_file" ]] && kill -0 "$pid" 2>/dev/null; then
+			rm -f "$ready_file"
+			return 0
+		fi
+		if ! kill -0 "$pid" 2>/dev/null; then
+			wait "$pid" || status=$?
+			if ((status == 0)); then
+				status=1
+			fi
+			log "static HTTP target exited before it was ready"
+			if [[ -s "$error_log" ]]; then
+				log "static HTTP target stderr follows"
+				cat "$error_log" >&2
+			fi
+			rm -f "$ready_file"
+			return "$status"
+		fi
+		sleep 0.05
+	done
+
+	log "timed out waiting for static HTTP target"
+	stop_static_http_target "$pid"
+	rm -f "$ready_file"
+	return 1
+}
+
 start_static_http_target() {
 	local host="$1"
 	local port="$2"
 	local body="$3"
 	local access_log="$4"
+	local ready_file="${access_log}.ready"
+	local pid
 
-	rm -f "$access_log"
-	python3 -u - "$host" "$port" "$body" "$access_log" <<'PY' >/dev/null 2>"$access_log.stderr" &
+	rm -f "$access_log" "$access_log.stderr" "$ready_file"
+	python3 -u - "$host" "$port" "$body" "$access_log" "$ready_file" <<'PY' >/dev/null 2>"$access_log.stderr" &
 import http.server
 import socket
 import sys
@@ -286,6 +322,7 @@ host = sys.argv[1]
 port = int(sys.argv[2])
 body = sys.argv[3].encode()
 access_log = sys.argv[4]
+ready_file = sys.argv[5]
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
@@ -307,9 +344,13 @@ class Server(http.server.ThreadingHTTPServer):
 
 
 server = Server((host, port), Handler)
+with open(ready_file, "x", encoding="utf-8"):
+    pass
 server.serve_forever()
 PY
-	echo "$!"
+	pid="$!"
+	wait_static_http_target_ready "$pid" "$ready_file" "$access_log.stderr" || return
+	echo "$pid"
 }
 
 start_static_http_target_in_netns() {
@@ -318,8 +359,10 @@ start_static_http_target_in_netns() {
 	local port="$3"
 	local body="$4"
 	local access_log="$5"
+	local ready_file="${access_log}.ready"
+	local pid
 
-	rm -f "$access_log"
+	rm -f "$access_log" "$access_log.stderr" "$ready_file"
 	ip netns exec "$netns" python3 -u -c '
 import http.server
 import socket
@@ -329,6 +372,7 @@ host = sys.argv[1]
 port = int(sys.argv[2])
 body = sys.argv[3].encode()
 access_log = sys.argv[4]
+ready_file = sys.argv[5]
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
@@ -350,9 +394,13 @@ class Server(http.server.ThreadingHTTPServer):
 
 
 server = Server((host, port), Handler)
+with open(ready_file, "x", encoding="utf-8"):
+    pass
 server.serve_forever()
-' "$host" "$port" "$body" "$access_log" >/dev/null 2>"$access_log.stderr" &
-	echo "$!"
+' "$host" "$port" "$body" "$access_log" "$ready_file" >/dev/null 2>"$access_log.stderr" &
+	pid="$!"
+	wait_static_http_target_ready "$pid" "$ready_file" "$access_log.stderr" || return
+	echo "$pid"
 }
 
 stop_static_http_target() {
