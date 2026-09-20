@@ -15,6 +15,7 @@ public_name="almagest-public-$run_id"
 example_name="almagest-example-$run_id"
 main_name="almagest-main-$run_id"
 
+# shellcheck disable=SC2329 # Invoked through cleanup, which is an EXIT trap.
 service_logs() {
 	local name
 	for name in "$public_name" "$example_name" "$amnesia_name" "$headscale_name"; do
@@ -25,6 +26,7 @@ service_logs() {
 	done
 }
 
+# shellcheck disable=SC2329 # Invoked through cleanup, which is an EXIT trap.
 service_diagnostics() {
 	if docker container inspect "$headscale_name" >/dev/null 2>&1; then
 		echo "==> e2e: tailnet peer menus" >&2
@@ -56,6 +58,7 @@ service_diagnostics() {
 	fi
 }
 
+# shellcheck disable=SC2329 # Invoked through the EXIT trap.
 cleanup() {
 	local status="$?"
 	trap - EXIT INT TERM

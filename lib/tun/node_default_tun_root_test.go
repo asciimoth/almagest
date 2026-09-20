@@ -817,6 +817,37 @@ func TestDefaultTunWarningsShowWarningPopup(t *testing.T) {
 	}
 }
 
+func TestDefaultTunWarningsCloseWithoutPopupRemovalError(t *testing.T) {
+	logf := NewDebugLogFactory(1024)
+	w := pasta.NewWorkspace(logf)
+	t.Cleanup(w.Close)
+	sys := newRecordingDefaultTunSystem()
+	sys.defaultTunWarningsHook = func(sysnet.DefaultTun) []sysnet.Warning {
+		return []sysnet.Warning{sysnet.WarningDefaultTunDNSRouteNotExclusive}
+	}
+	engine := &engine{ctx: context.Background(), sys: sys}
+	if err := w.AddNodeClass(tunnodes.DefaultTunClass{Runtime: engine}); err != nil {
+		t.Fatalf("AddNodeClass DefaultTun: %v", err)
+	}
+	node, err := w.AddNodeByClass(NodeTypeDefaultTun, "default tun")
+	if err != nil {
+		t.Fatalf("AddNodeByClass DefaultTun: %v", err)
+	}
+	if got := defaultTunWarningPopups(t, w, node); len(got) != 1 {
+		t.Fatalf("DefaultTun warning popups = %#v, want one", got)
+	}
+	_ = logf.Drain()
+
+	w.Close()
+
+	for _, entry := range logf.Drain() {
+		if entry.Level == DebugLogLevelError &&
+			strings.Contains(entry.Message, "failed to remove DefaultTun warning popup") {
+			t.Fatalf("unexpected DefaultTun popup cleanup error: %s", entry.Message)
+		}
+	}
+}
+
 func TestDefaultTunWarningsDisappearAfterRebuild(t *testing.T) {
 	w, sys := newDefaultTunNodeTestWorkspace(t, false)
 	sys.defaultTunWarningsHook = func(sysnet.DefaultTun) []sysnet.Warning {

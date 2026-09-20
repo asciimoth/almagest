@@ -13,6 +13,7 @@ self_ip="$(ip -4 -o addr show dev "$control_if" scope global | awk '{split($4, a
 [[ -n "$internet_if" && -n "$control_if" && -n "$self_ip" && "$internet_if" != "$control_if" ]]
 
 pids=()
+# shellcheck disable=SC2329 # Invoked through the EXIT trap.
 cleanup() {
 	local status="$?"
 	trap - EXIT INT TERM
@@ -46,6 +47,7 @@ retry() {
 	return 1
 }
 
+# shellcheck disable=SC2329 # Invoked by retry through its command arguments.
 dns_ready() {
 	dig +time=1 +tries=1 @"$self_ip" -p 53 public.stack.test A \
 		+noall +answer \

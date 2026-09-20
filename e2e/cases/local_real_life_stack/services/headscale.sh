@@ -19,6 +19,7 @@ printf '%s headscale.stack.test\n' "$self_ip" >"$shared/dns-hosts/headscale.host
 headscale_pid=""
 peer_pid=""
 capture_pid=""
+# shellcheck disable=SC2329 # Invoked through the EXIT trap.
 cleanup() {
 	local status="$?"
 	trap - EXIT INT TERM
@@ -55,6 +56,7 @@ retry() {
 	return 1
 }
 
+# shellcheck disable=SC2329 # Invoked by retry through its command arguments.
 headscale_ready() {
 	curl -fsS --cacert "$headscale_dir/ca.crt" \
 		"https://$self_ip:18090/health" >/dev/null 2>&1
@@ -283,6 +285,7 @@ capture_pid="$!"
 peer_cli() {
 	timeout --kill-after=2 5 almagest-cli --url "unix://$peer_socket" "$@"
 }
+# shellcheck disable=SC2329 # Invoked by retry through its command arguments.
 node_label_is() {
 	local name="$1"
 	local label="$2"

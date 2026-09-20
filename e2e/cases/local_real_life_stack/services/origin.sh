@@ -35,6 +35,7 @@ http.server.ThreadingHTTPServer(("0.0.0.0", 80), Handler).serve_forever()
 PY
 server_pid="$!"
 
+# shellcheck disable=SC2329 # Invoked through the EXIT trap.
 cleanup() {
 	local status="$?"
 	trap - EXIT INT TERM

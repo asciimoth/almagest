@@ -104,7 +104,7 @@ func (n *defaultTunNode) OnStop() {
 	n.outputTuns.Wait()
 	n.dtun = nil
 	n.hasEffective = false
-	n.refreshDefaultTunWarningsLocked()
+	n.warningPopupIDs = nil
 	n.portCfg = TunConfigByLink{}
 }
 
