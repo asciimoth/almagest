@@ -61,6 +61,12 @@ Each case lives in `e2e/cases/<case-name>/` and should include:
   one per line. The runner builds a case-specific cached image when this file
   exists. Use this only when the case needs an incompatible system package
   variant, such as one of the mutually exclusive resolvconf implementations.
+- `docker-run.sh`: optional executable case runner for a multi-container
+  topology. The harness passes the case name as its only argument and provides
+  `E2E_CASE_IMAGE`, `E2E_CASE_CIDFILE`, `E2E_CASE_COVERAGE`, and
+  `E2E_CASE_COVERAGE_DIR`. The script must remove its service containers,
+  network, and volumes on every exit. Use the main container CID file supplied
+  by the harness so an interrupted suite can still remove that container.
 
 The harness copies a case directory to `/tmp/almagest-e2e/<case-name>` before
 running it so daemon config autosaves and generated files never modify the

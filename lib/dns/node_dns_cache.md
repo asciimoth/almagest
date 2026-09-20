@@ -18,7 +18,7 @@ The node menu exposes three fields. Saved config uses the same config keys:
 {
   "Class": "almagest/DnsCache",
   "storageName": "default",
-  "reverseLookups": false,
+  "reverseLookups": true,
   "writeOnly": false
 }
 ```
@@ -26,9 +26,9 @@ The node menu exposes three fields. Saved config uses the same config keys:
 `storageName` selects the `dns.CacheStorage` returned by the engine's
 `DnsCacheManager`. Nodes using the same name share storage.
 
-`reverseLookups` makes successful A and AAAA answers populate synthetic PTR
-entries. Enable it only when every consumer sharing the same storage can observe
-that lookup history.
+`reverseLookups` is enabled by default. It makes successful A and AAAA answers
+populate synthetic PTR entries. Disable it when consumers sharing the same
+storage must not observe that lookup history.
 
 `writeOnly` keeps writing successful upstream answers into shared storage while
 refusing to serve entries already present there.

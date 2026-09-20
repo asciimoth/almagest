@@ -197,12 +197,21 @@ run_case() {
 	local case_index="$1"
 	local case_name="${cases[$case_index]}"
 	local case_image="${case_images[$case_index]}"
+	local case_runner="e2e/cases/$case_name/docker-run.sh"
 	local docker_run_args=()
 	if [[ "$coverage_enabled" == "1" ]]; then
 		docker_run_args=(
 			-e GOCOVERDIR=/e2e-coverage
 			-v "${case_coverage_dirs[$case_index]}:/e2e-coverage"
 		)
+	fi
+	if [[ -x "$case_runner" ]]; then
+		E2E_CASE_IMAGE="$case_image" \
+			E2E_CASE_CIDFILE="${case_cidfiles[$case_index]}" \
+			E2E_CASE_COVERAGE_DIR="${case_coverage_dirs[$case_index]:-}" \
+			E2E_CASE_COVERAGE="$coverage_enabled" \
+			"$case_runner" "$case_name"
+		return
 	fi
 	# shellcheck disable=SC2086
 	docker run --rm --cidfile "${case_cidfiles[$case_index]}" \

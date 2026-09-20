@@ -30,7 +30,7 @@ func TestDnsCachePortsMenuAndSaveConfigE2E(t *testing.T) {
 	}
 	assertDNSCachePort(t, e.Engine, snapshot.LeftPorts[0], "left")
 	assertDNSCachePort(t, e.Engine, snapshot.RightPorts[0], "right")
-	e.waitDNSCacheConfig(cache, dnsnodes.DefaultDNSCacheStorageName, false, false)
+	e.waitDNSCacheConfig(cache, dnsnodes.DefaultDNSCacheStorageName, true, false)
 	e.WaitNodeLabel(cache, "cache-only DNS")
 
 	e.applyDNSCacheConfig(cache, "shared", true, true)

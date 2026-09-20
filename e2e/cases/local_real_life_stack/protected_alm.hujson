@@ -1,0 +1,46 @@
+{
+	"Admin": {"Web": 0, "Unix": "%E2E_ADMIN_SOCK%"},
+	"System": {
+		"Linux": {
+			"Pmark": {
+				"PinPath": "/sys/fs/bpf/almagest-e2e-local-real-life-stack",
+			},
+		},
+	},
+	"TLS": {
+		"Certificates": {
+			"amnesia-root": {"File": "/stack-shared/amnesia-root.pem"},
+			"headscale-root": {"File": "/stack-shared/headscale-root.pem"},
+		},
+		"Policies": {
+			"amnesia-tls": {
+				"trust_anchors": [
+					{"cert": "amnesia-root", "scope": {"any": true}},
+				],
+			},
+			"headscale-tls": {
+				"trust_anchors": [
+					{"cert": "headscale-root", "scope": {"any": true}},
+				],
+			},
+		},
+	},
+	"Secrets": {
+		"amnesia-activation": {
+			"Env": "E2E_AMNESIA_ACTIVATION",
+			"Nodes": ["Amnesia VPN"],
+		},
+		"amnesia-gateway-public": {
+			"Env": "E2E_AMNESIA_GATEWAY_PUBLIC",
+			"Nodes": ["Amnesia VPN"],
+		},
+		"headscale-auth-key": {
+			"Env": "E2E_HEADSCALE_AUTH_KEY",
+			"Nodes": ["TailscaleCtrl"],
+		},
+		"wireguard-tailscale-private": {
+			"Env": "E2E_WIREGUARD_TAILSCALE_PRIVATE",
+			"Nodes": ["WireGuard Tailscale"],
+		},
+	},
+}

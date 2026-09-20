@@ -92,7 +92,10 @@ type dnsCacheConfig struct {
 }
 
 func defaultDNSCacheConfig() dnsCacheConfig {
-	return dnsCacheConfig{storageName: defaultDnsCacheStorageName}
+	return dnsCacheConfig{
+		storageName:    defaultDnsCacheStorageName,
+		reverseLookups: true,
+	}
 }
 
 func (c *dnsCacheConfig) read(cfg configer.Config) {
