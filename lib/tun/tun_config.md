@@ -50,6 +50,24 @@ Node behavior is as follows:
   disables source-route suggestions because it replaces the suggested address
   list. VTun uses the DNS suggestion when its own DNS servers field is empty.
   Its own field has priority. If neither value is set, VTun uses `8.8.8.8`.
+
+  VTun infers source routes again after it merges all TUN suggestions. This
+  permits one consumer to advertise a route and another consumer to supply the
+  address for that route. If a family has source routes but no default source
+  route, VTun adds a default that uses the first suggested source for that
+  family. This keeps general traffic reachable while more-specific source
+  routes keep priority.
+
+  VTun reports its effective address families in the node menu. The value shows
+  which families the userspace stack can use. It does not prove that the carrier
+  can reach the public Internet with those families. A dual-stack VTun uses the
+  gonnect-netstack TCP fallback behavior when one resolved family cannot connect.
+
+  `noLoopbackAddr` controls whether VTun adds `127.0.0.1` and `::1`. It controls
+  address assignment only. It is not a reachability check and does not replace
+  TCP fallback. To require IPv4-only operation, configure one unique IPv4 local
+  address and enable `noLoopbackAddr`. The equivalent rule applies to IPv6-only
+  operation.
 - `Tun` drops the DNS suggestion. It continues to use address, route, and MTU
   suggestions.
 - `DefaultTun` passes source-route suggestions to the system network

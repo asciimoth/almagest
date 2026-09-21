@@ -9,14 +9,15 @@ require (
 	github.com/asciimoth/configer/hujson v0.3.1
 	github.com/asciimoth/formular v0.3.5
 	github.com/asciimoth/gonnect v0.51.0
-	github.com/asciimoth/gonnect-netstack v0.6.4
+	github.com/asciimoth/gonnect-netstack v0.7.0
 	github.com/asciimoth/pasta/pasta v0.10.0
 	github.com/asciimoth/socksgo v0.4.16
-	github.com/asciimoth/wgo v0.7.6
-	github.com/asciimoth/wgo-tailscale v0.3.8
+	github.com/asciimoth/wgo v0.7.7
+	github.com/asciimoth/wgo-tailscale v0.3.9
 	github.com/coder/websocket v1.8.14
 	github.com/miekg/dns v1.1.72
 	golang.org/x/sys v0.46.0
+	golang.org/x/time v0.12.0
 	gvisor.dev/gvisor v0.0.0-20260325202830-7644cf3a343c
 )
 
@@ -34,7 +35,6 @@ require (
 	golang.org/x/net v0.56.0 // indirect
 	golang.org/x/sync v0.21.0 // indirect
 	golang.org/x/text v0.39.0 // indirect
-	golang.org/x/time v0.12.0 // indirect
 	golang.org/x/tools v0.47.0 // indirect
 	golang.zx2c4.com/wintun v0.0.0-20230126152724-0fa3db229ce2 // indirect
 )

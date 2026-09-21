@@ -227,11 +227,53 @@ func (n *vtunNode) effectiveSourceRoutes() []netstackvtun.SourceRoute {
 	if strings.TrimSpace(n.config.localAddrs) != "" {
 		return nil
 	}
-	out := make([]netstackvtun.SourceRoute, 0, len(n.tunConfig.SourceRoutes))
-	for _, route := range n.tunConfig.SourceRoutes {
+	// A consumer can advertise a route without an address, while another
+	// branch supplies the addresses after TunConfig merge. Infer again from the
+	// merged config, then keep a default for each family that has a source
+	// policy. Gonnect-netstack intentionally removes that family's implicit
+	// default when the first source route is installed.
+	config := n.tunConfig.WithInferredSourceRoutes()
+	sourceRoutes := completeVTunSourceRouteDefaults(config.SourceRoutes)
+	out := make([]netstackvtun.SourceRoute, 0, len(sourceRoutes))
+	for _, route := range sourceRoutes {
 		out = append(out, netstackvtun.SourceRoute{
 			Destination: route.Destination,
 			Source:      route.Source,
+		})
+	}
+	return out
+}
+
+func completeVTunSourceRouteDefaults(routes []TunSourceRoute) []TunSourceRoute {
+	out := slices.Clone(routes)
+	var first4, first6 netip.Addr
+	hasDefault4, hasDefault6 := false, false
+	for _, route := range routes {
+		if !route.Destination.IsValid() || !route.Source.IsValid() {
+			continue
+		}
+		if route.Destination.Addr().Is4() {
+			if !first4.IsValid() {
+				first4 = route.Source
+			}
+			hasDefault4 = hasDefault4 || route.Destination.Bits() == 0
+			continue
+		}
+		if !first6.IsValid() {
+			first6 = route.Source
+		}
+		hasDefault6 = hasDefault6 || route.Destination.Bits() == 0
+	}
+	if first4.IsValid() && !hasDefault4 {
+		out = append(out, TunSourceRoute{
+			Destination: netip.MustParsePrefix("0.0.0.0/0"),
+			Source:      first4,
+		})
+	}
+	if first6.IsValid() && !hasDefault6 {
+		out = append(out, TunSourceRoute{
+			Destination: netip.MustParsePrefix("::/0"),
+			Source:      first6,
 		})
 	}
 	return out

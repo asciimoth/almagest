@@ -172,6 +172,63 @@ func TestVTunGeneratedAddrsAreNotSaved(t *testing.T) {
 	}
 }
 
+func TestVTunEffectiveAddressFamiliesReflectRuntimeAddresses(t *testing.T) {
+	w := newVTunNodeTestWorkspace(t)
+	state, sub := testkit.SubscribeMenuState(t, w)
+	defer w.UnsubscribeNotifications(sub)
+
+	vtunID, err := w.AddNodeByClass(NodeTypeVTun, "vtun")
+	if err != nil {
+		t.Fatalf("AddNodeByClass VTun: %v", err)
+	}
+	w.SubscribeNodeMenu(vtunID, sub)
+	netReceiver := networktest.NewReceiver(4)
+	if _, err := w.AddNode(netReceiver, "test/NetworkReceiver", "network receiver"); err != nil {
+		t.Fatalf("AddNode network receiver: %v", err)
+	}
+	vtunSnapshot := testkit.MustNodeSnapshot(t, w, vtunID)
+	if _, _, err := w.AddLink(vtunSnapshot.LeftPorts[0], netReceiver.In); err != nil {
+		t.Fatalf("AddLink network: %v", err)
+	}
+	_ = networktest.ReceivePayload(t, netReceiver.Events)
+	testkit.AssertReadonlyMenuFieldValue(t, state, vtunID, "effective", "addressFamilies", "ipv4\nipv6")
+
+	values := vtunExternalTestFormValues("ipv4-vtun")
+	values["localAddrs"] = "192.0.2.2"
+	values["noLoopbackAddr"] = true
+	w.SendNodeFormularMsg(vtunID, formular.FormApplyMessage{
+		MessageBase: formular.MessageBase{Type: formular.MessageFormApply, MenuID: pasta.NodeMenuID(vtunID)},
+		BlockID:     "config",
+		Values:      values,
+	})
+	_ = networktest.ReceivePayload(t, netReceiver.Events)
+	testkit.AssertReadonlyMenuFieldValue(t, state, vtunID, "effective", "addressFamilies", "ipv4")
+
+	values = vtunExternalTestFormValues("ipv6-vtun")
+	values["localAddrs"] = "2001:db8::2"
+	values["noLoopbackAddr"] = true
+	w.SendNodeFormularMsg(vtunID, formular.FormApplyMessage{
+		MessageBase: formular.MessageBase{Type: formular.MessageFormApply, MenuID: pasta.NodeMenuID(vtunID)},
+		BlockID:     "config",
+		Values:      values,
+	})
+	_ = networktest.ReceivePayload(t, netReceiver.Events)
+	testkit.AssertReadonlyMenuFieldValue(t, state, vtunID, "effective", "addressFamilies", "ipv6")
+}
+
+func vtunExternalTestFormValues(name string) map[string]any {
+	return map[string]any{
+		"name":           name,
+		"localAddrs":     "",
+		"dnsServers":     DefaultVTunDNSServer,
+		"mtu":            DefaultVTunMTU,
+		"endpointCh":     defaultVTunEndpointCh,
+		"eventCh":        defaultVTunEventCh,
+		"noLoopbackAddr": false,
+		"disableSACK":    false,
+	}
+}
+
 func TestVTunUsesDefaultDNSWhenNotConfigured(t *testing.T) {
 	node := &vtunNode{config: defaultVTunConfig()}
 	runtimeConfig, opts, err := node.buildRuntimeConfig()
@@ -289,6 +346,177 @@ func TestVTunUsesSuggestedSourceRoutes(t *testing.T) {
 	}
 	if !slices.Equal(opts.SourceRoutes, want) {
 		t.Fatalf("VTun source routes = %#v, want %#v", opts.SourceRoutes, want)
+	}
+}
+
+func TestVTunCompletesSuggestedSourceRouteFamiliesWithDefaults(t *testing.T) {
+	default4 := netip.MustParseAddr("100.82.132.84")
+	default6 := netip.MustParseAddr("fd7a:115c:a1e0::962f:8455")
+	tail4 := TunSourceRoute{
+		Destination: netip.MustParsePrefix("100.64.0.0/10"),
+		Source:      default4,
+	}
+	tail6 := TunSourceRoute{
+		Destination: netip.MustParsePrefix("fd7a:115c:a1e0::/48"),
+		Source:      default6,
+	}
+	node := &vtunNode{
+		config: defaultVTunConfig(),
+		tunConfig: TunConfig{
+			Addrs:        []string{default4.String() + "/32", default6.String() + "/128"},
+			Routes:       []string{tail4.Destination.String(), tail6.Destination.String()},
+			SourceRoutes: []TunSourceRoute{tail4, tail6},
+		},
+	}
+
+	runtimeConfig, opts, err := node.buildRuntimeConfig()
+	if err != nil {
+		t.Fatalf("build runtime config: %v", err)
+	}
+	want := []netstackvtun.SourceRoute{
+		{Destination: tail4.Destination, Source: default4},
+		{Destination: tail6.Destination, Source: default6},
+		{Destination: netip.MustParsePrefix("0.0.0.0/0"), Source: default4},
+		{Destination: netip.MustParsePrefix("::/0"), Source: default6},
+	}
+	if !slices.Equal(runtimeConfig.sourceRoutes, want) {
+		t.Fatalf("runtime source routes = %#v, want %#v", runtimeConfig.sourceRoutes, want)
+	}
+	device, err := opts.Build()
+	if err != nil {
+		t.Fatalf("build VTun: %v", err)
+	}
+	t.Cleanup(func() { _ = device.Close() })
+	dnsConn, err := device.DialUDPAddrPort(
+		netip.AddrPort{}, netip.MustParseAddrPort("8.8.8.8:53"),
+	)
+	if err != nil {
+		t.Fatalf("dial DNS through inferred default source route: %v", err)
+	}
+	if err := dnsConn.Close(); err != nil {
+		t.Fatalf("close DNS connection: %v", err)
+	}
+}
+
+func TestVTunCompletesSourceRoutesThroughTunMiddleware(t *testing.T) {
+	tests := []struct {
+		name  string
+		class func(Runtime) pasta.NodeClass
+	}{
+		{
+			name: "TunFirewall",
+			class: func(runtime Runtime) pasta.NodeClass {
+				return TunFirewallClass{Runtime: runtime}
+			},
+		},
+		{
+			name: "LogTun",
+			class: func(runtime Runtime) pasta.NodeClass {
+				return DebugLogTunClass{Runtime: runtime}
+			},
+		},
+		{
+			name: "TunJoiner default input",
+			class: func(runtime Runtime) pasta.NodeClass {
+				return TunJoinerClass{Runtime: runtime}
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			w := pasta.NewWorkspace(logging.NewDebugLogFactory(1024))
+			t.Cleanup(w.Close)
+			runtime := vtunTestRuntime{ctx: context.Background(), sys: &sysnetdebug.System{}}
+			for _, class := range []pasta.NodeClass{
+				VTunClass{Runtime: runtime},
+				test.class(runtime),
+			} {
+				if err := w.AddNodeClass(class); err != nil {
+					t.Fatalf("AddNodeClass %s: %v", class.ClassName(), err)
+				}
+			}
+
+			vtunID, err := w.AddNodeByClass(NodeTypeVTun, "vtun")
+			if err != nil {
+				t.Fatalf("AddNodeByClass VTun: %v", err)
+			}
+			middlewareID, err := w.AddNodeByClass(test.class(runtime).ClassName(), "middleware")
+			if err != nil {
+				t.Fatalf("AddNodeByClass middleware: %v", err)
+			}
+			netReceiver := networktest.NewReceiver(4)
+			if _, err := w.AddNode(netReceiver, "test/NetworkReceiver", "network receiver"); err != nil {
+				t.Fatalf("AddNode network receiver: %v", err)
+			}
+			consumer := &tunPayloadReceiver{events: make(chan TunPayload, 4)}
+			consumerID, err := w.AddNode(consumer, "test/TunReceiver", "consumer")
+			if err != nil {
+				t.Fatalf("AddNode consumer: %v", err)
+			}
+
+			vtunSnapshot := testkit.MustNodeSnapshot(t, w, vtunID)
+			middlewareSnapshot := testkit.MustNodeSnapshot(t, w, middlewareID)
+			if _, _, err := w.AddLink(vtunSnapshot.LeftPorts[0], netReceiver.In); err != nil {
+				t.Fatalf("AddLink VTun network: %v", err)
+			}
+			_ = networktest.ReceivePayload(t, netReceiver.Events)
+			if _, _, err := w.AddLink(middlewareSnapshot.LeftPorts[0], vtunSnapshot.RightPorts[0]); err != nil {
+				t.Fatalf("AddLink VTun to middleware: %v", err)
+			}
+			outputLink, _, err := w.AddLink(consumer.in, middlewareSnapshot.RightPorts[0])
+			if err != nil {
+				t.Fatalf("AddLink middleware to consumer: %v", err)
+			}
+			_ = receiveTunPayload(t, consumer.events)
+
+			source4 := netip.MustParseAddr("100.82.132.84")
+			source6 := netip.MustParseAddr("fd7a:115c:a1e0::962f:8455")
+			specific4 := TunSourceRoute{
+				Destination: netip.MustParsePrefix("100.64.0.0/10"),
+				Source:      source4,
+			}
+			specific6 := TunSourceRoute{
+				Destination: netip.MustParsePrefix("fd7a:115c:a1e0::/48"),
+				Source:      source6,
+			}
+			w.EmitEvent(consumerID, outputLink, TunConfig{
+				Addrs:        []string{source4.String() + "/32", source6.String() + "/128"},
+				Routes:       []string{specific4.Destination.String(), specific6.Destination.String()},
+				SourceRoutes: []TunSourceRoute{specific4, specific6},
+			})
+
+			network := networktest.ReceivePayload(t, netReceiver.Events).Network
+			detached, ok := network.(*gonnect.DetachedNetwork)
+			if !ok {
+				t.Fatalf("network = %T, want *gonnect.DetachedNetwork", network)
+			}
+			device, ok := detached.GetWrapped().(*netstackvtun.VTun)
+			if !ok {
+				t.Fatalf("wrapped network = %T, want *vtun.VTun", detached.GetWrapped())
+			}
+			want := []netstackvtun.SourceRoute{
+				{Destination: specific4.Destination, Source: source4},
+				{Destination: specific6.Destination, Source: source6},
+				{Destination: netip.MustParsePrefix("0.0.0.0/0"), Source: source4},
+				{Destination: netip.MustParsePrefix("::/0"), Source: source6},
+			}
+			if got := device.SourceRoutes(); !slices.Equal(got, want) {
+				t.Fatalf("VTun source routes = %#v, want %#v", got, want)
+			}
+			for _, target := range []netip.AddrPort{
+				netip.MustParseAddrPort("8.8.8.8:53"),
+				netip.MustParseAddrPort("[2001:4860:4860::8888]:53"),
+			} {
+				conn, err := device.DialUDPAddrPort(netip.AddrPort{}, target)
+				if err != nil {
+					t.Fatalf("DialUDPAddrPort(%s): %v", target, err)
+				}
+				if err := conn.Close(); err != nil {
+					t.Fatalf("close UDP connection to %s: %v", target, err)
+				}
+			}
+		})
 	}
 }
 

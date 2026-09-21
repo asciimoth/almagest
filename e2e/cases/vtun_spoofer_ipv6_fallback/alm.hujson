@@ -1,0 +1,36 @@
+{
+	"nodes": {
+		"Fallback Client": {
+			"Class":  "almagest/HttpClient",
+			"Links":  ["Network -> [Dual Stack VTun] Network"],
+			"url":    "http://dual-stack-fallback.test:18080/",
+			"method": "GET",
+			"body":   "",
+		},
+		"Dual Stack VTun": {
+			"Class":          "almagest/VTun",
+			"Links":          ["Tun -> [Fallback Joiner] Default"],
+			"name":           "dual-stack-fallback-vtun",
+			"localAddrs":     "192.0.2.2\n2001:db8:feed::2",
+			"dnsServers":     "192.0.2.53",
+			"mtu":            1500,
+			"endpointCh":     1024,
+			"eventCh":        10,
+			"noLoopbackAddr": true,
+			"disableSACK":    false,
+		},
+		"Fallback Joiner": {
+			"Class": "almagest/TunJoiner",
+			"Links": ["Tun -> [Fallback Spoofer] Tun"],
+		},
+		"Fallback Spoofer": {
+			"Class":       "almagest/Spoofer",
+			"Links":       ["Network -> [Fallback OutNetwork] Network"],
+			"mtu":         1500,
+			"queueLength": 1024,
+		},
+		"Fallback OutNetwork": {
+			"Class": "almagest/OutNetwork",
+		},
+	},
+}

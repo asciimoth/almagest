@@ -1,0 +1,145 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+source /e2e/lib/common.sh
+source "$E2E_CONFIG_DIR/fixture.env"
+
+target_body="UDP reply-port change reached"
+target_log="$E2E_RUNTIME/target.log"
+dns_log="$E2E_RUNTIME/dns.log"
+dns_ready="$E2E_RUNTIME/dns.ready"
+target_pid=""
+dns_pid=""
+
+cleanup() {
+	stop_static_http_target "$target_pid"
+	if [[ -n "$dns_pid" ]]; then
+		kill "$dns_pid" 2>/dev/null || true
+		wait "$dns_pid" 2>/dev/null || true
+	fi
+	stop_daemon
+}
+
+menu_text() {
+	local node="$1"
+	local block="$2"
+	local field="$3"
+	cli graph menu --name "$node" | jq -er \
+		--arg block "$block" \
+		--arg field "$field" \
+		'
+		.blocks[]
+		| select(.id == $block)
+		| .items[]
+		| select(.id == $field)
+		| (.value // .text // "")
+		'
+}
+
+http_result_ready() {
+	local status
+	local err
+	local response
+	status="$(menu_text "UDP Rebind Client" result status)" || return 1
+	err="$(menu_text "UDP Rebind Client" result error)" || return 1
+	response="$(menu_text "UDP Rebind Client" result response)" || return 1
+	[[ "$status" == "Status: 200 OK" && -z "$err" && "$response" == "$target_body" ]]
+}
+
+trap cleanup EXIT
+
+target_pid="$(start_static_http_target "$fixture_host" 18080 "$target_body" "$target_log")"
+
+rm -f "$dns_log" "$dns_ready"
+python3 -u - "$dns_log" "$dns_ready" "$fixture_host" <<'PY' >"$E2E_RUNTIME/dns.stdout" 2>"$E2E_RUNTIME/dns.stderr" &
+import socket
+import struct
+import sys
+
+log_path = sys.argv[1]
+ready_path = sys.argv[2]
+listen_host = sys.argv[3]
+listen_port = 53
+answer = socket.inet_aton(listen_host)
+
+listener = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+listener.bind((listen_host, listen_port))
+reply = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+reply.bind((listen_host, 0))
+reply_port = reply.getsockname()[1]
+
+with open(log_path, "w", encoding="utf-8") as out:
+    out.write(f"listen={listen_port} reply={reply_port}\n")
+    out.flush()
+
+with open(ready_path, "x", encoding="utf-8"):
+    pass
+
+while True:
+    query, source = listener.recvfrom(65535)
+    if len(query) < 12:
+        continue
+    question_count = struct.unpack("!H", query[4:6])[0]
+    if question_count != 1:
+        continue
+    offset = 12
+    while offset < len(query) and query[offset] != 0:
+        offset += query[offset] + 1
+    question_end = offset + 5
+    if question_end > len(query):
+        continue
+    question = query[12:question_end]
+    response = (
+        query[:2]
+        + b"\x81\x80"
+        + b"\x00\x01\x00\x01\x00\x00\x00\x00"
+        + question
+        + b"\xc0\x0c\x00\x01\x00\x01\x00\x00\x00\x3c\x00\x04"
+        + answer
+    )
+    reply.sendto(response, source)
+    with open(log_path, "a", encoding="utf-8") as out:
+        out.write(f"query-from={source[0]}:{source[1]} reply-from={listen_host}:{reply_port}\n")
+        out.flush()
+PY
+dns_pid="$!"
+
+retry "$ALMAGEST_E2E_TIMEOUT" "UDP rebind DNS fixture" test -f "$dns_ready" \
+	|| fail "DNS fixture did not become ready"
+
+ports="$(sed -n '1s/^listen=\([0-9][0-9]*\) reply=\([0-9][0-9]*\)$/\1 \2/p' "$dns_log")"
+read -r listen_port reply_port <<<"$ports"
+[[ -n "${listen_port:-}" && -n "${reply_port:-}" && "$listen_port" != "$reply_port" ]] \
+	|| fail "DNS fixture did not use different request and response ports"
+
+start_daemon
+
+for node in \
+	"UDP Rebind Client" \
+	"UDP Rebind VTun" \
+	"UDP Rebind Joiner" \
+	"UDP Rebind Spoofer" \
+	"UDP Rebind OutNetwork"; do
+	wait_graph_node "$node" || fail "$node node missing"
+done
+
+vtun="$(node_id_by_name "UDP Rebind VTun")"
+joiner="$(node_id_by_name "UDP Rebind Joiner")"
+spoofer="$(node_id_by_name "UDP Rebind Spoofer")"
+wait_node_label "$vtun" udp-rebind-vtun \
+	|| fail "VTun did not become ready"
+wait_node_label "$joiner" "joined default" \
+	|| fail "TunJoiner did not attach the VTun as its default input"
+wait_node_label "$spoofer" forwarding \
+	|| fail "Spoofer did not start forwarding"
+
+cli graph click-menu-button --name "UDP Rebind Client" --block request --button send >/dev/null
+retry "$ALMAGEST_E2E_TIMEOUT" "HTTP request through different-port DNS reply" http_result_ready \
+	|| fail "HTTP request did not complete through the UDP reply-port change"
+
+[[ "$(wc -l <"$target_log")" == 1 ]] \
+	|| fail "HTTP target did not receive exactly one request"
+[[ "$(wc -l <"$dns_log")" -ge 2 ]] \
+	|| fail "DNS fixture did not receive a query"
+
+log "case passed"

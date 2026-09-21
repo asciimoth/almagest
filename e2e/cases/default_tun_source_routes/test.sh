@@ -87,6 +87,20 @@ main_routes_through_tun_are_absent() {
 		&& [[ "$(ip -j -6 route show table main dev "$tun_name" | jq 'length')" == "0" ]]
 }
 
+ipv6_tun_address_is_ready() {
+	local tun_name="$1"
+	local address="$2"
+	ip -j -details -6 addr show dev "$tun_name" | jq -e \
+		--arg address "$address" '
+		any(.[].addr_info[]?;
+			.family == "inet6"
+			and .local == $address
+			and (.nodad // false)
+			and ((.tentative // false) | not)
+			and ((.dadfailed // false) | not)
+		)' >/dev/null
+}
+
 vpn_source_route_exists() {
 	local family="$1"
 	local destination="$2"
@@ -365,6 +379,11 @@ for address in \
 		|| fail "DefaultTun did not receive address $address"
 done
 
+ipv6_tun_address_is_ready "$tun_name" "$default_v6_local" \
+	|| fail "default IPv6 TUN address is tentative or does not have NODAD"
+ipv6_tun_address_is_ready "$tun_name" "$overlay_v6_local" \
+	|| fail "overlay IPv6 TUN address is tentative or does not have NODAD"
+
 main_routes_through_tun_are_absent "$tun_name" \
 	|| fail "a DefaultTun route leaked into the main table"
 marked_route_uses_physical_network 203.0.113.2 \
@@ -400,6 +419,8 @@ retry "$ALMAGEST_E2E_TIMEOUT" "removed IPv4 source route" \
 retry "$ALMAGEST_E2E_TIMEOUT" "removed IPv6 source route" \
 	route_lookup_matches -6 "$overlay_v6_remote" "$tun_name" "$default_v6_local" \
 	|| fail "removed IPv6 source route remains active"
+ipv6_tun_address_is_ready "$tun_name" "$default_v6_local" \
+	|| fail "retained IPv6 TUN address is tentative or does not have NODAD"
 host_http_request "$default_v4_remote" 18101 /without-overlay \
 	"default IPv4 response" "$E2E_RUNTIME/without-overlay-v4-http.txt" \
 	|| fail "default IPv4 traffic stopped after overlay removal"
@@ -422,6 +443,10 @@ retry "$ALMAGEST_E2E_TIMEOUT" "reattached overlay IPv4 address" \
 retry "$ALMAGEST_E2E_TIMEOUT" "reattached overlay IPv6 address" \
 	effective_field_contains "$default_tun" tunAddrs "$overlay_v6_local/128" \
 	|| fail "reattached overlay IPv6 address is missing"
+ipv6_tun_address_is_ready "$tun_name" "$default_v6_local" \
+	|| fail "default IPv6 TUN address is tentative or does not have NODAD after reattachment"
+ipv6_tun_address_is_ready "$tun_name" "$overlay_v6_local" \
+	|| fail "reattached IPv6 TUN address is tentative or does not have NODAD"
 assert_complete_source_policy "$tun_name"
 assert_all_host_traffic reattached
 run_parallel_host_traffic reattached-parallel

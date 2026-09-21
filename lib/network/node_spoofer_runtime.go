@@ -2,14 +2,20 @@ package networknodes
 
 import (
 	"context"
-	"net"
+	"errors"
 	"time"
 
 	"github.com/asciimoth/gonnect"
 	netstackhelpers "github.com/asciimoth/gonnect-netstack/helpers"
 	netstackspoofer "github.com/asciimoth/gonnect-netstack/spoofer"
 	"github.com/asciimoth/gonnect/tun"
+	"golang.org/x/time/rate"
 	"gvisor.dev/gvisor/pkg/tcpip/stack"
+)
+
+const (
+	spooferForwardLogInterval = time.Second
+	spooferForwardLogBurst    = 4
 )
 
 type spooferRuntime struct {
@@ -31,13 +37,24 @@ func (n *spooferNode) rebuildStack() {
 	stackTun := tun.Detach(n.tun, nil, n.pool)
 	BindTunResource(n.W, n.ID, 0, stackTun)
 	network := n.networkValue
+	networkNode := n.networkNode
+	report := func(protocol string, ep stack.TransportEndpointID, err error) {
+		n.reportSpooferForwardError(ctx, protocol, ep, networkNode, network, err)
+	}
 
 	opts := &netstackspoofer.Opts{
-		OnTCPConn: func(c net.Conn, ep stack.TransportEndpointID) {
-			forwardSpooferTCP(ctx, n.WorkerSpawner, network, c, ep)
+		PrepareTCP: func(prepareCtx context.Context, ep stack.TransportEndpointID) (netstackspoofer.PreparedTCPHandler, error) {
+			return prepareSpooferTCP(prepareCtx, n.WorkerSpawner, network, ep, func(err error) {
+				report("tcp", ep, err)
+			})
+		},
+		OnTCPError: func(ep stack.TransportEndpointID, err error) {
+			report("tcp", ep, err)
 		},
 		OnUDPConn: func(c gonnect.PacketConn, ep stack.TransportEndpointID) {
-			forwardSpooferUDP(ctx, n.WorkerSpawner, network, c, ep)
+			forwardSpooferUDP(ctx, n.WorkerSpawner, network, c, ep, func(err error) {
+				report("udp", ep, err)
+			})
 		},
 		TCPSendBufferSize:    n.config.tcpSendBufferSize,
 		TCPReceiveBufferSize: n.config.tcpReceiveBufferSize,
@@ -59,7 +76,7 @@ func (n *spooferNode) rebuildStack() {
 		},
 	}
 	opts.WithTunEndpoint(stackTun, n.config.queueLength)
-	st, err := opts.Launch()
+	st, err := opts.LaunchContext(ctx)
 	if err != nil {
 		cancel()
 		if opts.Endpoint != nil {
@@ -82,6 +99,36 @@ func (n *spooferNode) rebuildStack() {
 		tun:      stackTun,
 	}
 	_ = n.updateLabel()
+}
+
+func (n *spooferNode) reportSpooferForwardError(
+	ctx context.Context,
+	protocol string,
+	ep stack.TransportEndpointID,
+	networkNode uint64,
+	network NetworkCloser,
+	err error,
+) {
+	if n == nil || n.Logger == nil || err == nil {
+		return
+	}
+	if ctx != nil && ctx.Err() != nil && errors.Is(err, context.Canceled) {
+		return
+	}
+	n.forwardLogOnce.Do(func() {
+		n.forwardLogLimiter = rate.NewLimiter(rate.Every(spooferForwardLogInterval), spooferForwardLogBurst)
+	})
+	if n.forwardLogLimiter == nil || !n.forwardLogLimiter.Allow() {
+		return
+	}
+	target, ok := spooferEndpointAddress(ep)
+	if !ok {
+		target = "unknown"
+	}
+	n.Logger.Warnf(
+		"Spoofer %s forwarding failed: target=%s family=%s networkNode=%d network=%T: %v",
+		protocol, target, spooferEndpointFamily(ep), networkNode, network, err,
+	)
 }
 
 func (n *spooferNode) stopStack() {

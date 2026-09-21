@@ -2,6 +2,7 @@ package networknodes
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/asciimoth/bufpool"
 	"github.com/asciimoth/configer/configer"
@@ -9,6 +10,7 @@ import (
 	"github.com/asciimoth/gonnect/tun"
 	"github.com/asciimoth/pasta/pasta"
 	"github.com/asciimoth/pasta/pasta/std"
+	"golang.org/x/time/rate"
 )
 
 const (
@@ -54,8 +56,12 @@ type spooferNode struct {
 
 	tun          tun.Tun
 	networkValue NetworkCloser
+	networkNode  uint64
 	runtime      *spooferRuntime
 	formError    string
+
+	forwardLogOnce    sync.Once
+	forwardLogLimiter *rate.Limiter
 }
 
 func (n *spooferNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
@@ -117,6 +123,7 @@ func (n *spooferNode) OnLinkRemoved(_ uint64, port uint64, _, _ string) error {
 		n.rebuildStack()
 	case n.network:
 		n.networkValue = nil
+		n.networkNode = 0
 		n.rebuildStack()
 	}
 	return nil
@@ -139,6 +146,7 @@ func (n *spooferNode) OnEvent(event pasta.Event, linkType string, _ []string, re
 			return nil
 		}
 		n.networkValue = next
+		n.networkNode = event.SenderNode
 		n.rebuildStack()
 	}
 	return nil

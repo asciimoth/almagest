@@ -3,18 +3,30 @@ package tunnodes_test
 import (
 	"context"
 	"fmt"
+	"net"
+	"net/netip"
 	"reflect"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	dnsnodes "github.com/asciimoth/almagest/lib/dns"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
+	"github.com/asciimoth/gonnect"
 	"github.com/asciimoth/pasta/pasta/std"
 )
 
 const (
 	vtunSpooferServerHost = "10.113.212.1"
 	vtunSpooferResponse   = "Response from VTun/Spoofer network"
+
+	vtunSpooferFallbackHost     = "dual-stack-fallback.test"
+	vtunSpooferFallbackDNS      = "192.0.2.53"
+	vtunSpooferFallbackIPv4     = "192.0.2.80"
+	vtunSpooferFallbackIPv6     = "2001:db8::80"
+	vtunSpooferFallbackResponse = "Response after IPv6 fallback"
 )
 
 type vtunSpooferE2EFixture struct {
@@ -27,6 +39,199 @@ type vtunSpooferE2EFixture struct {
 	client   uint64
 	response uint64
 	port     int
+}
+
+type vtunSpooferFallbackNetwork struct {
+	*gonnect.LoopbackNetwork
+
+	ipv6Started  chan struct{}
+	ipv6Canceled chan struct{}
+	startOnce    sync.Once
+	cancelOnce   sync.Once
+	ipv4Dials    atomic.Int64
+	ipv6Active   atomic.Int64
+}
+
+type vtunSpooferFallbackPacketConn struct {
+	gonnect.PacketConn
+}
+
+func newVTunSpooferFallbackNetwork() *vtunSpooferFallbackNetwork {
+	loopback := gonnect.NewLoopbackNetwork()
+	loopback.AllowAnyHost = true
+	return &vtunSpooferFallbackNetwork{
+		LoopbackNetwork: loopback,
+		ipv6Started:     make(chan struct{}),
+		ipv6Canceled:    make(chan struct{}),
+	}
+}
+
+func (n *vtunSpooferFallbackNetwork) Dial(
+	ctx context.Context,
+	network, address string,
+) (net.Conn, error) {
+	host, _, err := net.SplitHostPort(address)
+	if err == nil {
+		if addr, parseErr := netip.ParseAddr(host); parseErr == nil && addr.Is6() {
+			n.ipv6Active.Add(1)
+			defer n.ipv6Active.Add(-1)
+			n.startOnce.Do(func() { close(n.ipv6Started) })
+			<-ctx.Done()
+			n.cancelOnce.Do(func() { close(n.ipv6Canceled) })
+			return nil, ctx.Err()
+		}
+	}
+	n.ipv4Dials.Add(1)
+	return n.LoopbackNetwork.Dial(ctx, network, address)
+}
+
+func (n *vtunSpooferFallbackNetwork) ListenPacket(
+	ctx context.Context,
+	network, address string,
+) (gonnect.PacketConn, error) {
+	conn, err := n.LoopbackNetwork.ListenPacket(ctx, network, address)
+	if err != nil {
+		return nil, err
+	}
+	return &vtunSpooferFallbackPacketConn{PacketConn: conn}, nil
+}
+
+func (c *vtunSpooferFallbackPacketConn) ReadFrom(p []byte) (int, net.Addr, error) {
+	n, source, err := c.PacketConn.ReadFrom(p)
+	if err != nil || source == nil {
+		return n, source, err
+	}
+	host, port, splitErr := net.SplitHostPort(source.String())
+	if splitErr == nil && host == "127.0.0.1" && port == "53" {
+		// LoopbackNetwork maps all allowed IPv4 hosts to 127.0.0.1. Restore
+		// the logical DNS source that Spoofer validates for this fixture.
+		return n, &net.UDPAddr{IP: net.ParseIP(vtunSpooferFallbackDNS), Port: 53}, nil
+	}
+	return n, source, nil
+}
+
+func newVTunSpooferFallbackE2E(
+	t *testing.T,
+	output gonnect.Network,
+) *httpE2E {
+	t.Helper()
+	pool := newE2ETestDebugPool(t)
+	logFactory := NewDebugLogFactory(16384)
+	sys := newE2EDebugSystem()
+	sys.OutNetwork = output
+	engine, err := BuildEngine(
+		context.Background(), configer.NewMemory(nil), logFactory, sys,
+		nil, nil, nil, nil, nil, pool, true,
+	)
+	if err != nil {
+		t.Fatalf("BuildEngine: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := engine.Close(); err != nil {
+			t.Errorf("engine.Close: %v", err)
+		}
+	})
+	return newHTTPE2EFromNodeE2E(NewNodeE2EFromEngine(t, engine, logFactory, sys, nil))
+}
+
+func TestVTunSpooferE2EBlackholedIPv6FallsBackOnFirstRequest(t *testing.T) {
+	output := newVTunSpooferFallbackNetwork()
+	t.Cleanup(func() { _ = output.Close() })
+	e := newVTunSpooferFallbackE2E(t, output)
+
+	out := e.AddNode(NodeTypeOutNetwork, "controlled-out")
+	vtun := e.AddNode(NodeTypeVTun, "dual-stack-vtun")
+	joiner := e.AddNode(NodeTypeTunJoiner, "joiner")
+	spoofer := e.AddNode(NodeTypeSpoofer, "spoofer")
+	staticDNS := e.AddNode(dnsnodes.NodeTypeStaticDNS, "dual-stack-dns")
+	dnsServer := e.AddNode(dnsnodes.NodeTypeDNSServer, "dns-server")
+	response := e.addStringConstant("fallback-response", vtunSpooferFallbackResponse)
+	serverPort := httpTestPort()
+	server := e.addHTTPServerOnHost("ipv4-server", vtunSpooferFallbackIPv4, serverPort)
+	clientURL := fmt.Sprintf("http://%s:%d/", vtunSpooferFallbackHost, serverPort)
+	client := e.addHTTPClientToURL("fallback-client", clientURL)
+	e.SubscribeMenus(vtun, spoofer, staticDNS, dnsServer, response, server, client)
+	e.waitClientRequestField(client, "url", clientURL)
+
+	newDNSE2EFromNodeE2E(e.NodeE2E).applyStaticDNSRecords(staticDNS, fmt.Sprintf(
+		"%s A %s\n%s AAAA %s",
+		vtunSpooferFallbackHost, vtunSpooferFallbackIPv4,
+		vtunSpooferFallbackHost, vtunSpooferFallbackIPv6,
+	))
+	e.Engine.SendNodeFormularMsg(E2EWorkspace, dnsServer, formular.FormApplyMessage{
+		MessageBase: FormMessageBase(formular.MessageFormApply, dnsServer),
+		BlockID:     dnsnodes.DNSServerConfigBlockID,
+		Values: map[string]any{
+			dnsnodes.DNSServerNetworkField: "udp4",
+			dnsnodes.DNSServerHostField:    vtunSpooferFallbackDNS,
+			dnsnodes.DNSServerPortField:    53,
+		},
+	})
+	e.Engine.SendNodeFormularMsg(E2EWorkspace, vtun, formular.FormApplyMessage{
+		MessageBase: FormMessageBase(formular.MessageFormApply, vtun),
+		BlockID:     "config",
+		Values: map[string]any{
+			"name":           "dual-stack-vtun",
+			"localAddrs":     "192.0.2.2\n2001:db8::2",
+			"dnsServers":     vtunSpooferFallbackDNS,
+			"mtu":            1500,
+			"endpointCh":     64,
+			"eventCh":        8,
+			"noLoopbackAddr": true,
+			"disableSACK":    false,
+		},
+	})
+
+	e.MustAddTypedLinkByPortName(
+		std.TypeString, response, "right", "output", server, "left", "Response",
+	)
+	e.MustAddTypedLinkByPortName(
+		dnsnodes.TypeDNS, staticDNS, "left", "DNS", dnsServer, "right", "DNS",
+	)
+	e.connectByPortName(out, "left", "Network", dnsServer, "right", "Network")
+	e.connectByPortName(out, "left", "Network", server, "right", "Network")
+	spooferOutLink := e.connectByPortName(out, "left", "Network", spoofer, "right", "Network")
+	e.connectTunByPortName(joiner, "left", "Default", vtun, "right", "Tun")
+	e.connectTunByPortName(spoofer, "left", "Tun", joiner, "right", "Tun")
+	e.connectByPortName(vtun, "left", "Network", client, "right", "Network")
+
+	e.WaitNodeLabel(joiner, "joined default")
+	e.WaitNodeLabel(spoofer, "forwarding")
+	e.WaitNodeLabel(vtun, "dual-stack-vtun")
+	e.WaitNodeLabel(dnsServer, "listening "+net.JoinHostPort(vtunSpooferFallbackDNS, "53"))
+	e.waitServerListening(server, net.JoinHostPort(vtunSpooferFallbackIPv4, fmt.Sprint(serverPort)))
+	e.WaitClientReady(client)
+
+	started := time.Now()
+	e.SendClientRequest(client)
+	e.WaitClientResponse(client, "200 OK", vtunSpooferFallbackResponse)
+	elapsed := time.Since(started)
+	if elapsed < 100*time.Millisecond {
+		t.Fatalf("first request completed in %v, before the IPv6 fallback delay", elapsed)
+	}
+	if elapsed > 5*time.Second {
+		t.Fatalf("first request completed in %v, want fallback before 5s", elapsed)
+	}
+	select {
+	case <-output.ipv6Started:
+	default:
+		t.Fatal("first request did not start the controlled IPv6 attempt")
+	}
+	if got := output.ipv4Dials.Load(); got != 1 {
+		t.Fatalf("IPv4 dial count = %d, want one first-request fallback", got)
+	}
+	if got := output.ipv6Active.Load(); got != 1 {
+		t.Fatalf("active IPv6 preparations = %d, want one before Spoofer stop", got)
+	}
+
+	e.Engine.RemoveLink(E2EWorkspace, spooferOutLink)
+	e.WaitNodeLabel(spoofer, "waiting for network")
+	select {
+	case <-output.ipv6Canceled:
+	case <-time.After(time.Second):
+		t.Fatal("pending IPv6 preparation was not canceled after Spoofer stopped")
+	}
+	Eventually(t, func() bool { return output.ipv6Active.Load() == 0 }, "IPv6 preparation cleanup")
 }
 
 func TestVTunSpooferE2EDisconnectReconnectLinks(t *testing.T) {

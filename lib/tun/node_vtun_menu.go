@@ -38,9 +38,14 @@ func (n *vtunNode) effectiveBlock() formular.Block {
 	dnsServers, _ := n.effectiveDNSServers()
 	mtu, constraint := n.effectiveMTU()
 	mtuSource := constraint.Source + ": " + constraint.Reason
+	addressFamilies := readonlyStringListField(
+		"addressFamilies", "Address families", n.effectiveAddressFamilies(localAddrs),
+	)
+	addressFamilies.Help = "Address families enabled by the effective VTun addresses. This reports stack support, not verified Internet reachability."
 	return formular.Block{ID: "effective", Order: 0, Generation: 1, Items: []formular.Item{
 		readonlyTextField("name", "Name", n.config.name),
 		readonlyStringListField("localAddrs", "Local addrs", netipAddrsText(localAddrs)),
+		addressFamilies,
 		readonlyStringListField("dnsServers", "DNS servers", netipAddrsText(dnsServers)),
 		readonlyIntField("mtu", "MTU", mtu),
 		readonlyTextField("mtuSource", "MTU source", mtuSource),
@@ -49,6 +54,29 @@ func (n *vtunNode) effectiveBlock() formular.Block {
 		readonlyBoolField("noLoopbackAddr", "No loopback addrs", n.config.noLoopbackAddr),
 		readonlyBoolField("disableSACK", "Disable TCP SACK", n.config.disableSACK),
 	}}
+}
+
+func (n *vtunNode) effectiveAddressFamilies(localAddrs []netip.Addr) []string {
+	if n.vtun != nil {
+		localAddrs = n.vtun.LocalAddrs()
+	}
+	hasIPv4, hasIPv6 := false, false
+	for _, addr := range localAddrs {
+		hasIPv4 = hasIPv4 || addr.Is4()
+		hasIPv6 = hasIPv6 || addr.Is6()
+	}
+	if n.vtun == nil && !n.config.noLoopbackAddr {
+		hasIPv4 = true
+		hasIPv6 = true
+	}
+	families := make([]string, 0, 2)
+	if hasIPv4 {
+		families = append(families, "ipv4")
+	}
+	if hasIPv6 {
+		families = append(families, "ipv6")
+	}
+	return families
 }
 
 func (n *vtunNode) effectiveLocalAddrsForMenu() []netip.Addr {

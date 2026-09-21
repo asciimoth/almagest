@@ -1,0 +1,36 @@
+{
+	"nodes": {
+		"UDP Rebind Client": {
+			"Class":  "almagest/HttpClient",
+			"Links":  ["Network -> [UDP Rebind VTun] Network"],
+			"url":    "http://udp-rebind.test:18080/",
+			"method": "GET",
+			"body":   "",
+		},
+		"UDP Rebind VTun": {
+			"Class":          "almagest/VTun",
+			"Links":          ["Tun -> [UDP Rebind Joiner] Default"],
+			"name":           "udp-rebind-vtun",
+			"localAddrs":     "192.0.2.2",
+			"dnsServers":     "%E2E_UDP_REBIND_HOST%",
+			"mtu":            1500,
+			"endpointCh":     1024,
+			"eventCh":        10,
+			"noLoopbackAddr": true,
+			"disableSACK":    false,
+		},
+		"UDP Rebind Joiner": {
+			"Class": "almagest/TunJoiner",
+			"Links": ["Tun -> [UDP Rebind Spoofer] Tun"],
+		},
+		"UDP Rebind Spoofer": {
+			"Class":       "almagest/Spoofer",
+			"Links":       ["Network -> [UDP Rebind OutNetwork] Network"],
+			"mtu":         1500,
+			"queueLength": 1024,
+		},
+		"UDP Rebind OutNetwork": {
+			"Class": "almagest/OutNetwork",
+		},
+	},
+}
