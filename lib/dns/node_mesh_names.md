@@ -20,11 +20,18 @@ Mesh-specific names such as `.meshname`, `.meship`, `.pk.ygg`, and `.ygg` are
 handled by `gonnect/dns/meshnames`. Names outside those schemes are rejected
 unless `Fallback DNS` is explicitly linked.
 
+## Configuration
+
+The `Request timeout (ms)` menu field limits one DNS exchange with an
+authoritative mesh node. Set it to `0` to use the gonnect default. Saved config
+stores it in `requestTimeoutMS`.
+
 ## Lifecycle
 
 The node owns one `meshnames.Resolver` and one `dns.ResolverProvider` for the
-current Network and optional Fallback DNS inputs. Replacing or detaching either
-input closes previously emitted DNS wrappers, closes the old provider, and
-publishes a fresh provider when the required Network input is ready. Detaching
-the fallback rebuilds the resolver with a nil fallback so ordinary names cannot
-leak into an implicit direct or system resolver.
+current Network, optional Fallback DNS input, and timeout. Replacing or
+detaching an input, or changing the timeout, closes previously emitted DNS
+wrappers, closes the old provider, and publishes a fresh provider when the
+required Network input is ready. Detaching the fallback rebuilds the resolver
+with a nil fallback so ordinary names cannot leak into an implicit direct or
+system resolver.

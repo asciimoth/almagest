@@ -27,12 +27,17 @@ const (
 	DNSClientConfigBlockID = "config"
 	DNSClientServersField  = "servers"
 	DNSClientServerField   = "url"
+	// DNSClientRequestTimeoutMSField is the Formular and saved-config key for
+	// the DNS client request timeout in milliseconds.
+	DNSClientRequestTimeoutMSField = "requestTimeoutMS"
 )
 
 //go:embed node_dns_client.md
 var dnsClientClassLongDescription string
 
 // DNSClientFactory creates the transport client owned by a DNS client node.
+// It is retained for classes that do not need client options. Use
+// DNSClientOptionsFactory when a custom factory must receive the menu timeout.
 type DNSClientFactory func(
 	dial gonnect.Dial,
 	bootstrap dns.Interface,
@@ -41,22 +46,38 @@ type DNSClientFactory func(
 	servers ...string,
 ) dns.Interface
 
+// DNSClientOptionsFactory creates a DNS transport client with request options.
+// DNSClientClass prefers this factory when both factory fields are set.
+type DNSClientOptionsFactory func(
+	dial gonnect.Dial,
+	bootstrap dns.Interface,
+	spawner gonnect.Spawner,
+	options dns.ClientOptions,
+	tlsConfig *tls.Config,
+	servers ...string,
+) dns.Interface
+
 func defaultDNSClientFactory(
 	dial gonnect.Dial,
 	bootstrap dns.Interface,
 	spawner gonnect.Spawner,
+	options dns.ClientOptions,
 	tlsConfig *tls.Config,
 	servers ...string,
 ) dns.Interface {
-	client := dns.NewClient(dial, bootstrap, spawner, servers...)
+	client := dns.NewClientWithOptions(dial, bootstrap, spawner, options, servers...)
 	client.TLSConfig = nodekit.CloneTLSClientConfig(tlsConfig)
 	return client
 }
 
 // DNSClientClass builds DNS transport client nodes.
 type DNSClientClass struct {
-	Runtime   nodekit.Runtime
+	Runtime nodekit.Runtime
+	// NewClient is the legacy factory hook. A class that sets it does not
+	// receive DNS client options. NewClientWithOptions takes precedence.
 	NewClient DNSClientFactory
+	// NewClientWithOptions receives all gonnect DNS client options.
+	NewClientWithOptions DNSClientOptionsFactory
 }
 
 func (DNSClientClass) ClassName() string { return NodeTypeDNSClient }
@@ -76,7 +97,13 @@ func (DNSClientClass) DefaultNodeParams() pasta.NodeClassParams {
 func (c DNSClientClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
 	config := defaultDNSClientConfig()
 	config.read(cfg)
-	newClient := c.NewClient
+	newClient := c.NewClientWithOptions
+	if newClient == nil && c.NewClient != nil {
+		legacyFactory := c.NewClient
+		newClient = func(dial gonnect.Dial, bootstrap dns.Interface, spawner gonnect.Spawner, _ dns.ClientOptions, tlsConfig *tls.Config, servers ...string) dns.Interface {
+			return legacyFactory(dial, bootstrap, spawner, tlsConfig, servers...)
+		}
+	}
 	if newClient == nil {
 		newClient = defaultDNSClientFactory
 	}
@@ -84,8 +111,9 @@ func (c DNSClientClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState)
 }
 
 type dnsClientConfig struct {
-	servers       []string
-	tlsConfigName string
+	servers          []string
+	tlsConfigName    string
+	requestTimeoutMS int
 }
 
 func defaultDNSClientConfig() dnsClientConfig {
@@ -100,6 +128,7 @@ func (c *dnsClientConfig) read(cfg configer.Config) {
 		c.servers = servers
 	}
 	c.tlsConfigName = nodekit.ReadTLSConfigName(cfg)
+	c.requestTimeoutMS = configer.Int(cfg, configer.Path{DNSClientRequestTimeoutMSField}, 0)
 	c.normalize()
 }
 
@@ -109,6 +138,9 @@ func (c *dnsClientConfig) normalize() {
 }
 
 func (c dnsClientConfig) valid() error {
+	if err := validateDNSTimeoutMilliseconds(c.requestTimeoutMS); err != nil {
+		return err
+	}
 	for i, server := range c.servers {
 		if err := validateDNSClientServerURL(server); err != nil {
 			return fmt.Errorf("server %d: %w", i+1, err)
@@ -118,7 +150,11 @@ func (c dnsClientConfig) valid() error {
 }
 
 func (c dnsClientConfig) copy() dnsClientConfig {
-	return dnsClientConfig{servers: slices.Clone(c.servers), tlsConfigName: c.tlsConfigName}
+	return dnsClientConfig{
+		servers:          slices.Clone(c.servers),
+		tlsConfigName:    c.tlsConfigName,
+		requestTimeoutMS: c.requestTimeoutMS,
+	}
 }
 
 // dnsClientNode owns one gonnect/dns.Client for the current Network,
@@ -136,7 +172,7 @@ type dnsClientNode struct {
 	bootstrapLink uint64
 
 	config    dnsClientConfig
-	newClient DNSClientFactory
+	newClient DNSClientOptionsFactory
 
 	network      nodekit.NetworkCloser
 	bootstrapDNS dns.Interface
@@ -306,8 +342,9 @@ func (n *dnsClientNode) OnSave(cfg configer.Config) error {
 		return err
 	}
 	return configer.SetMap(cfg, map[string]any{
-		"servers":   slices.Clone(n.config.servers),
-		"tlsConfig": n.config.tlsConfigName,
+		"servers":                      slices.Clone(n.config.servers),
+		"tlsConfig":                    n.config.tlsConfigName,
+		DNSClientRequestTimeoutMSField: n.config.requestTimeoutMS,
 	})
 }
 
@@ -319,6 +356,9 @@ func (n *dnsClientNode) applyConfigForm(values map[string]any) error {
 	if value, ok := nodekit.TLSConfigValueFromAny(values[nodekit.TLSConfigFieldID]); ok {
 		next.tlsConfigName = value
 	}
+	if value, ok := formular.IntValue(values[DNSClientRequestTimeoutMSField]); ok {
+		next.requestTimeoutMS = value
+	}
 	next.normalize()
 	if err := next.valid(); err != nil {
 		n.formError = err.Error()
@@ -328,6 +368,7 @@ func (n *dnsClientNode) applyConfigForm(values map[string]any) error {
 	}
 	changed := !slices.Equal(n.config.servers, next.servers) ||
 		n.config.tlsConfigName != next.tlsConfigName ||
+		n.config.requestTimeoutMS != next.requestTimeoutMS ||
 		n.formError != ""
 	n.formError = ""
 	n.config = next
@@ -340,7 +381,13 @@ func (n *dnsClientNode) applyConfigForm(values map[string]any) error {
 }
 
 func (n *dnsClientNode) sendConfigFieldStatus(msg formular.FieldValidateMessage) {
-	nodekit.SendNodeFieldStatus(n.W, n.ID, msg.Field, validateDNSClientServerField(msg))
+	var err error
+	if msg.Field.FieldID == DNSClientRequestTimeoutMSField && len(msg.Field.ElementPath) == 0 {
+		err = validateDNSTimeoutField(msg.Value)
+	} else {
+		err = validateDNSClientServerField(msg)
+	}
+	nodekit.SendNodeFieldStatus(n.W, n.ID, msg.Field, err)
 }
 
 func (n *dnsClientNode) rebuildClient() {
@@ -350,7 +397,14 @@ func (n *dnsClientNode) rebuildClient() {
 	if n.formError != "" || n.tlsConfigErr != "" || len(n.config.servers) == 0 || !nodekit.NetworkIsReady(n.network) {
 		return
 	}
-	client := n.newClient(n.network.Dial, n.bootstrapDNS, n.dnsSpawner(), n.currentTLSConfig(), n.config.servers...)
+	client := n.newClient(
+		n.network.Dial,
+		n.bootstrapDNS,
+		n.dnsSpawner(),
+		dns.ClientOptions{RequestTimeout: dnsTimeoutDuration(n.config.requestTimeoutMS)},
+		n.currentTLSConfig(),
+		n.config.servers...,
+	)
 	n.client = client
 	BindDNSResource(n.W, n.ID, 0, client)
 	n.sendAll()
@@ -435,6 +489,13 @@ func (n *dnsClientNode) configBlock() formular.Block {
 	return formular.Block{ID: DNSClientConfigBlockID, Order: 10, Generation: 1, Form: true, Items: []formular.Item{
 		dnsClientServersFieldItem(DNSClientServersField, "DNS servers", n.config.servers, status...),
 		nodekit.TLSConfigSelectorItem(&n.Base, n.config.tlsConfigName, n.tlsConfigErr),
+		dnsTimeoutField(
+			DNSClientRequestTimeoutMSField,
+			"Request timeout (ms)",
+			n.config.requestTimeoutMS,
+			"Maximum time for one request, including bootstrap lookup, dial, TLS handshake, and network I/O.",
+			n.formError,
+		),
 	}}
 }
 

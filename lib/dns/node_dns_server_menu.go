@@ -48,6 +48,13 @@ func (n *dnsServerNode) configBlock() formular.Block {
 		}, status...),
 		formular.TextField(DNSServerHostField, "Host", n.config.host, append(status, formular.Placeholder(DefaultDNSServerHost))...),
 		formular.IntField(DNSServerPortField, "Port", n.config.port, status...),
+		dnsTimeoutField(
+			DNSServerRequestTimeoutMSField,
+			"Request timeout (ms)",
+			n.config.requestTimeoutMS,
+			"Maximum time to get one answer from the attached DNS resolver.",
+			n.formError,
+		),
 	}}
 }
 

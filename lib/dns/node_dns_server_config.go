@@ -23,12 +23,16 @@ const (
 	DNSServerNetworkField  = "network"
 	DNSServerHostField     = "host"
 	DNSServerPortField     = "port"
+	// DNSServerRequestTimeoutMSField is the Formular and saved-config key for
+	// the maximum upstream request time in milliseconds.
+	DNSServerRequestTimeoutMSField = "requestTimeoutMS"
 )
 
 type dnsServerConfig struct {
-	network string
-	host    string
-	port    int
+	network          string
+	host             string
+	port             int
+	requestTimeoutMS int
 }
 
 func defaultDNSServerConfig() dnsServerConfig {
@@ -44,6 +48,7 @@ func (c *dnsServerConfig) read(cfg configer.Config) error {
 		return nil
 	}
 	network := configer.String(cfg, configer.Path{DNSServerNetworkField}, c.network)
+	c.requestTimeoutMS = configer.Int(cfg, configer.Path{DNSServerRequestTimeoutMSField}, 0)
 	if err := validateDNSServerNetwork(network); err != nil {
 		c.network = strings.TrimSpace(network)
 		c.host = configer.String(cfg, configer.Path{DNSServerHostField}, c.host)
@@ -69,6 +74,9 @@ func (c *dnsServerConfig) normalize() {
 }
 
 func (c dnsServerConfig) valid() error {
+	if err := validateDNSTimeoutMilliseconds(c.requestTimeoutMS); err != nil {
+		return err
+	}
 	if err := validateDNSServerNetwork(c.network); err != nil {
 		return err
 	}
@@ -122,9 +130,10 @@ func (n *dnsServerNode) OnSave(cfg configer.Config) error {
 		return err
 	}
 	return configer.SetMap(cfg, map[string]any{
-		DNSServerNetworkField: n.config.network,
-		DNSServerHostField:    n.config.host,
-		DNSServerPortField:    n.config.port,
+		DNSServerNetworkField:          n.config.network,
+		DNSServerHostField:             n.config.host,
+		DNSServerPortField:             n.config.port,
+		DNSServerRequestTimeoutMSField: n.config.requestTimeoutMS,
 	})
 }
 
@@ -138,6 +147,9 @@ func (n *dnsServerNode) applyConfigForm(values map[string]any) error {
 	}
 	if value, ok := formular.IntValue(values[DNSServerPortField]); ok {
 		next.port = value
+	}
+	if value, ok := formular.IntValue(values[DNSServerRequestTimeoutMSField]); ok {
+		next.requestTimeoutMS = value
 	}
 	if err := validateDNSServerNetwork(next.network); err != nil {
 		n.formError = err.Error()
@@ -194,6 +206,8 @@ func validateDNSServerConfigField(msg formular.FieldValidateMessage) error {
 		if value <= 0 || value > 65535 {
 			return errors.New("port must be between 1 and 65535")
 		}
+	case DNSServerRequestTimeoutMSField:
+		return validateDNSTimeoutField(msg.Value)
 	}
 	return nil
 }

@@ -266,6 +266,48 @@ func TestDNSClientLiveConfigChangeClosesOldClient(t *testing.T) {
 	assertDNSAnswer(t, third, "live-config.test.", dns.TypeA, "192.0.2.60")
 }
 
+func TestDNSClientPassesConfiguredRequestTimeout(t *testing.T) {
+	tracker := &trackedDNSClientFactory{}
+	w := pasta.NewWorkspace(logging.NewDebugLogFactory(1024))
+	t.Cleanup(func() { w.Close() })
+	network := networknodes.NewMockLoopbackNetwork(true)
+	t.Cleanup(func() { _ = network.Close() })
+	for _, class := range []pasta.NodeClass{
+		dnsnodes.DNSClientClass{NewClientWithOptions: tracker.newClientWithOptions},
+		dnsClientNetworkClass{network: network},
+	} {
+		if err := w.AddNodeClass(class); err != nil {
+			t.Fatalf("AddNodeClass %s: %v", class.ClassName(), err)
+		}
+	}
+
+	clientID := addDNSClientNode(t, w, "client")
+	networkID := addDNSClientNetworkNode(t, w, "network")
+	client := testkit.MustNodeSnapshot(t, w, clientID)
+	networkNode := testkit.MustNodeSnapshot(t, w, networkID)
+	if _, _, err := w.AddLink(networkNode.LeftPorts[0], client.RightPorts[0]); err != nil {
+		t.Fatalf("AddLink network->client: %v", err)
+	}
+
+	w.SendNodeFormularMsg(clientID, formularApplyMessage(clientID, dnsnodes.DNSClientConfigBlockID, map[string]any{
+		dnsnodes.DNSClientServersField:          dnstest.DNSClientServerValues("udp://127.0.0.1:5353"),
+		dnsnodes.DNSClientRequestTimeoutMSField: 275,
+	}))
+	first := tracker.client(t, 0)
+	if first.requestTimeout != 275*time.Millisecond {
+		t.Fatalf("first request timeout = %v, want 275ms", first.requestTimeout)
+	}
+
+	w.SendNodeFormularMsg(clientID, formularApplyMessage(clientID, dnsnodes.DNSClientConfigBlockID, map[string]any{
+		dnsnodes.DNSClientServersField:          dnstest.DNSClientServerValues("udp://127.0.0.1:5353"),
+		dnsnodes.DNSClientRequestTimeoutMSField: 0,
+	}))
+	second := tracker.client(t, 1)
+	if second.requestTimeout != 0 {
+		t.Fatalf("second request timeout = %v, want zero for gonnect default", second.requestTimeout)
+	}
+}
+
 func TestDNSClientUsesSelectedTLSConfigAndHandlesRename(t *testing.T) {
 	tracker := &trackedDNSClientFactory{}
 	tlsStorage := testkit.NewTLSConfigStorage(map[string]string{
@@ -562,8 +604,30 @@ type trackedDNSClientFactory struct {
 
 type trackedDNSClient struct {
 	dns.Interface
-	tlsConfig *tls.Config
-	closes    atomic.Int32
+	tlsConfig      *tls.Config
+	requestTimeout time.Duration
+	closes         atomic.Int32
+}
+
+func (f *trackedDNSClientFactory) newClientWithOptions(
+	dial gonnect.Dial,
+	bootstrap dns.Interface,
+	spawner gonnect.Spawner,
+	options dns.ClientOptions,
+	tlsConfig *tls.Config,
+	servers ...string,
+) dns.Interface {
+	dnsClient := dns.NewClientWithOptions(dial, bootstrap, spawner, options, servers...)
+	dnsClient.TLSConfig = nodekit.CloneTLSClientConfig(tlsConfig)
+	client := &trackedDNSClient{
+		Interface:      dnsClient,
+		tlsConfig:      nodekit.CloneTLSClientConfig(tlsConfig),
+		requestTimeout: options.RequestTimeout,
+	}
+	f.mu.Lock()
+	f.clients = append(f.clients, client)
+	f.mu.Unlock()
+	return client
 }
 
 func (f *trackedDNSClientFactory) newClient(

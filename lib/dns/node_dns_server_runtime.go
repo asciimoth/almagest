@@ -14,8 +14,8 @@ import (
 	"github.com/asciimoth/almagest/lib/nodekit"
 )
 
-var dnsServerNewServer = func(conn net.PacketConn, upstream dns.Interface, spawner gonnect.Spawner) dnsServerRuntime {
-	return dns.NewServer(conn, upstream, spawner)
+var dnsServerNewServer = func(conn net.PacketConn, upstream dns.Interface, spawner gonnect.Spawner, options dns.PacketOptions) dnsServerRuntime {
+	return dns.NewServerWithOptions(conn, upstream, spawner, options)
 }
 
 type dnsServerRuntime interface {
@@ -206,7 +206,9 @@ func runDNSServerWorker(ctx context.Context, logger pasta.Logger, w *pasta.Works
 
 		errCh := make(chan error, 1)
 		reporting := dnsServerPacketConn{PacketConn: conn, errCh: errCh}
-		server := dnsServerNewServer(reporting, cfg.upstream, cfg.spawner)
+		server := dnsServerNewServer(reporting, cfg.upstream, cfg.spawner, dns.PacketOptions{
+			RequestTimeout: dnsTimeoutDuration(cfg.config.requestTimeoutMS),
+		})
 		logger.Debugf("listening on %s/%s", cfg.config.network, addr)
 		w.SendInbox(pasta.InboxMessage{ReceiverNode: node, Payload: dnsServerReady{id: id, server: server, addr: fmt.Sprintf("%s/%s", cfg.config.network, addr)}})
 

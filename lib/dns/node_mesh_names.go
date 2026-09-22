@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/asciimoth/configer/configer"
+	"github.com/asciimoth/formular"
 	"github.com/asciimoth/gonnect"
 	"github.com/asciimoth/gonnect/dns"
 	"github.com/asciimoth/gonnect/dns/meshnames"
@@ -19,6 +20,12 @@ const (
 	NodeTypeMeshNames = "almagest/MeshNames"
 
 	defaultMeshNamesTTL = time.Minute
+
+	// MeshNamesConfigBlockID is the Formular block ID for resolver options.
+	MeshNamesConfigBlockID = "config"
+	// MeshNamesRequestTimeoutMSField is the Formular and saved-config key for
+	// authoritative mesh DNS exchanges in milliseconds.
+	MeshNamesRequestTimeoutMSField = "requestTimeoutMS"
 )
 
 var (
@@ -41,8 +48,13 @@ func (MeshNamesClass) DefaultNodeParams() pasta.NodeClassParams {
 		DNSPort("right", "Fallback DNS"),
 	}}
 }
-func (c MeshNamesClass) NewNode(_ configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
-	return &meshNamesNode{Base: nodekit.Base{Runtime: c.Runtime}}, nil
+func (c MeshNamesClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
+	requestTimeoutMS := configer.Int(cfg, configer.Path{MeshNamesRequestTimeoutMSField}, 0)
+	return &meshNamesNode{
+		Base:             nodekit.Base{Runtime: c.Runtime},
+		requestTimeoutMS: requestTimeoutMS,
+		formError:        dnsTimeoutErrorText(requestTimeoutMS),
+	}, nil
 }
 
 // meshNamesNode adapts meshnames.Resolver to the almagest/dns graph type. The
@@ -65,6 +77,9 @@ type meshNamesNode struct {
 	resolver    *meshnames.Resolver
 	provider    dns.Interface
 	outputs     DNSOutputCache
+
+	requestTimeoutMS int
+	formError        string
 }
 
 func (n *meshNamesNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
@@ -75,6 +90,7 @@ func (n *meshNamesNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint6
 	if err := n.SetPrimary(TypeDNS); err != nil {
 		return err
 	}
+	n.sendMenuSnapshot()
 	return n.updateLabel()
 }
 
@@ -191,15 +207,61 @@ func (n *meshNamesNode) OnEvent(event pasta.Event, linkType string, _ []string, 
 	return nil
 }
 
+func (n *meshNamesNode) OnFormularMsg(message any) error {
+	switch msg := message.(type) {
+	case formular.FormApplyMessage:
+		if msg.MenuID != pasta.NodeMenuID(n.ID) || msg.BlockID != MeshNamesConfigBlockID {
+			return nil
+		}
+		return n.applyConfigForm(msg.Values)
+	case formular.FieldValidateMessage:
+		if msg.MenuID != pasta.NodeMenuID(n.ID) || msg.Field.BlockID != MeshNamesConfigBlockID || msg.Field.FieldID != MeshNamesRequestTimeoutMSField || len(msg.Field.ElementPath) > 0 {
+			return nil
+		}
+		nodekit.SendNodeFieldStatus(n.W, n.ID, msg.Field, validateDNSTimeoutField(msg.Value))
+	}
+	return nil
+}
+
+func (n *meshNamesNode) OnSave(cfg configer.Config) error {
+	if err := pasta.DeleteNodeOwnedConfigKeys(cfg); err != nil {
+		return err
+	}
+	return configer.SetMap(cfg, map[string]any{
+		MeshNamesRequestTimeoutMSField: n.requestTimeoutMS,
+	})
+}
+
+func (n *meshNamesNode) applyConfigForm(values map[string]any) error {
+	next := n.requestTimeoutMS
+	if value, ok := formular.IntValue(values[MeshNamesRequestTimeoutMSField]); ok {
+		next = value
+	}
+	if err := validateDNSTimeoutMilliseconds(next); err != nil {
+		n.formError = err.Error()
+		n.sendForcedMenuSnapshot()
+		return n.updateLabel()
+	}
+	changed := next != n.requestTimeoutMS || n.formError != ""
+	n.requestTimeoutMS = next
+	n.formError = ""
+	n.sendForcedMenuSnapshot()
+	if changed {
+		n.rebuildProvider()
+	}
+	return n.updateLabel()
+}
+
 func (n *meshNamesNode) rebuildProvider() {
 	n.outputs.CloseAll()
 	CloseDNS(n.provider)
 	n.provider = nil
 	n.resolver = nil
-	if !nodekit.NetworkIsReady(n.network) {
+	if n.formError != "" || !nodekit.NetworkIsReady(n.network) {
 		return
 	}
 	resolver := meshnames.NewResolver(n.network)
+	resolver.Timeout = dnsTimeoutDuration(n.requestTimeoutMS)
 	if DNSIsReady(n.fallbackDNS) {
 		resolver.Fallback = dns.NewResolver(n.fallbackDNS)
 	}
@@ -230,6 +292,8 @@ func (n *meshNamesNode) refreshLink(link uint64) {
 
 func (n *meshNamesNode) updateLabel() error {
 	switch {
+	case n.formError != "":
+		return n.SetLabel("invalid config")
 	case !nodekit.NetworkIsReady(n.network):
 		return n.SetLabel("waiting for network")
 	case DNSIsReady(n.fallbackDNS):
@@ -237,4 +301,24 @@ func (n *meshNamesNode) updateLabel() error {
 	default:
 		return n.SetLabel("resolving MeshNames")
 	}
+}
+
+func (n *meshNamesNode) sendMenuSnapshot() {
+	nodekit.SendNodeMenuSnapshot(n.W, n.ID, false, n.configBlock())
+}
+
+func (n *meshNamesNode) sendForcedMenuSnapshot() {
+	nodekit.SendNodeMenuSnapshot(n.W, n.ID, true, n.configBlock())
+}
+
+func (n *meshNamesNode) configBlock() formular.Block {
+	return formular.Block{ID: MeshNamesConfigBlockID, Order: 10, Generation: 1, Form: true, Items: []formular.Item{
+		dnsTimeoutField(
+			MeshNamesRequestTimeoutMSField,
+			"Request timeout (ms)",
+			n.requestTimeoutMS,
+			"Maximum time for one DNS exchange with an authoritative mesh node.",
+			n.formError,
+		),
+	}}
 }

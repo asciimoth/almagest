@@ -8,6 +8,7 @@ import (
 
 	"github.com/asciimoth/bufpool"
 	"github.com/asciimoth/configer/configer"
+	"github.com/asciimoth/formular"
 	"github.com/asciimoth/gonnect/dns"
 	"github.com/asciimoth/gonnect/tun"
 	"github.com/asciimoth/pasta/pasta"
@@ -21,6 +22,12 @@ const (
 	NodeTypeTun2Dns = "almagest/Tun2Dns"
 
 	defaultTun2DNSPacketSize = 1500
+
+	// Tun2DNSConfigBlockID is the Formular block ID for packet adapter options.
+	Tun2DNSConfigBlockID = "config"
+	// Tun2DNSRequestTimeoutMSField is the Formular and saved-config key for the
+	// forwarded DNS request timeout in milliseconds.
+	Tun2DNSRequestTimeoutMSField = "requestTimeoutMS"
 )
 
 // Tun2DNSClass builds TUN-to-DNS packet adapter nodes.
@@ -31,7 +38,7 @@ type Tun2DNSClass struct {
 func (Tun2DNSClass) ClassName() string        { return NodeTypeTun2Dns }
 func (Tun2DNSClass) ShortDescription() string { return "TUN to DNS" }
 func (Tun2DNSClass) LongDescription() string {
-	return "Adapts raw UDP DNS packets received from an almagest/tun endpoint into requests on an almagest/dns interface, then writes raw IP DNS responses back to the TUN."
+	return "Adapts raw UDP DNS packets received from an almagest/tun endpoint into requests on an almagest/dns interface, then writes raw IP DNS responses back to the TUN. The request timeout is configurable in milliseconds; 0 uses the gonnect default."
 }
 func (Tun2DNSClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: nodekit.TypeTun, InitialPorts: []pasta.Port{
@@ -39,9 +46,15 @@ func (Tun2DNSClass) DefaultNodeParams() pasta.NodeClassParams {
 		DNSPort("right", "DNS"),
 	}}
 }
-func (c Tun2DNSClass) NewNode(_ configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
+func (c Tun2DNSClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
 	base := nodekit.Base{Runtime: c.Runtime}
-	return &tun2DNSNode{Base: base, pool: base.Pool()}, nil
+	requestTimeoutMS := configer.Int(cfg, configer.Path{Tun2DNSRequestTimeoutMSField}, 0)
+	return &tun2DNSNode{
+		Base:             base,
+		pool:             base.Pool(),
+		requestTimeoutMS: requestTimeoutMS,
+		formError:        dnsTimeoutErrorText(requestTimeoutMS),
+	}, nil
 }
 
 // tun2DNSNode is a two-input adapter around gonnect/dns.IPPacketAdapter. The
@@ -68,6 +81,9 @@ type tun2DNSNode struct {
 	tunFailed  bool
 	lastErr    string
 	tunRetry   *time.Timer
+
+	requestTimeoutMS int
+	formError        string
 }
 
 const tun2DNSRetryDelay = 50 * time.Millisecond
@@ -84,6 +100,7 @@ func (n *tun2DNSNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64,
 	if err := n.SetPrimary(nodekit.TypeTun); err != nil {
 		return err
 	}
+	n.sendMenuSnapshot()
 	return n.updateLabel()
 }
 
@@ -163,6 +180,51 @@ func (n *tun2DNSNode) OnInbox(message pasta.InboxMessage) error {
 	return nil
 }
 
+func (n *tun2DNSNode) OnFormularMsg(message any) error {
+	switch msg := message.(type) {
+	case formular.FormApplyMessage:
+		if msg.MenuID != pasta.NodeMenuID(n.ID) || msg.BlockID != Tun2DNSConfigBlockID {
+			return nil
+		}
+		return n.applyConfigForm(msg.Values)
+	case formular.FieldValidateMessage:
+		if msg.MenuID != pasta.NodeMenuID(n.ID) || msg.Field.BlockID != Tun2DNSConfigBlockID || msg.Field.FieldID != Tun2DNSRequestTimeoutMSField || len(msg.Field.ElementPath) > 0 {
+			return nil
+		}
+		nodekit.SendNodeFieldStatus(n.W, n.ID, msg.Field, validateDNSTimeoutField(msg.Value))
+	}
+	return nil
+}
+
+func (n *tun2DNSNode) OnSave(cfg configer.Config) error {
+	if err := pasta.DeleteNodeOwnedConfigKeys(cfg); err != nil {
+		return err
+	}
+	return configer.SetMap(cfg, map[string]any{
+		Tun2DNSRequestTimeoutMSField: n.requestTimeoutMS,
+	})
+}
+
+func (n *tun2DNSNode) applyConfigForm(values map[string]any) error {
+	next := n.requestTimeoutMS
+	if value, ok := formular.IntValue(values[Tun2DNSRequestTimeoutMSField]); ok {
+		next = value
+	}
+	if err := validateDNSTimeoutMilliseconds(next); err != nil {
+		n.formError = err.Error()
+		n.sendForcedMenuSnapshot()
+		return n.updateLabel()
+	}
+	changed := next != n.requestTimeoutMS || n.formError != ""
+	n.requestTimeoutMS = next
+	n.formError = ""
+	n.sendForcedMenuSnapshot()
+	if changed {
+		n.rebuildAdapter()
+	}
+	return n.updateLabel()
+}
+
 func (n *tun2DNSNode) OnEvent(event pasta.Event, linkType string, _ []string, receiverPortDirection string) error {
 	if event.ReceiverPort == n.tunIn && receiverPortDirection == "left" && linkType == nodekit.TypeTun {
 		if std.IsRequest(event.Payload) {
@@ -204,7 +266,7 @@ func (n *tun2DNSNode) acceptTun(event pasta.Event) error {
 	n.generation++
 	gen = n.generation
 	start = true
-	if DNSIsReady(n.currentDNS) {
+	if n.formError == "" && DNSIsReady(n.currentDNS) {
 		n.adapter = n.newAdapterLocked(gen, next, n.currentDNS)
 	}
 	n.mu.Unlock()
@@ -234,7 +296,7 @@ func (n *tun2DNSNode) acceptDNS(event pasta.Event) error {
 	}
 	n.currentDNS = next
 	n.lastErr = ""
-	if nodekit.TunIsReady(n.currentTun) && !n.tunFailed {
+	if n.formError == "" && nodekit.TunIsReady(n.currentTun) && !n.tunFailed {
 		currentTun = n.currentTun
 		gen = n.generation
 		n.adapter = n.newAdapterLocked(gen, currentTun, next)
@@ -276,9 +338,25 @@ func (n *tun2DNSNode) detachRuntime(dropTun, dropDNS bool) {
 }
 
 func (n *tun2DNSNode) newAdapterLocked(gen uint64, t tun.Tun, upstream dns.Interface) *dns.IPPacketAdapter {
-	return dns.NewIPPacketAdapter(upstream, func(pkt []byte) {
-		n.writeResponsePacket(gen, t, pkt)
-	})
+	var adapter *dns.IPPacketAdapter
+	adapter = dns.NewIPPacketAdapterWithOptions(upstream, func(pkt []byte) {
+		n.writeResponsePacket(gen, t, adapter, pkt)
+	}, dns.PacketOptions{RequestTimeout: dnsTimeoutDuration(n.requestTimeoutMS)})
+	return adapter
+}
+
+// rebuildAdapter applies a timeout change without starting another TUN reader.
+// The current reader gets the replacement adapter on its next packet.
+func (n *tun2DNSNode) rebuildAdapter() {
+	var oldAdapter *dns.IPPacketAdapter
+	n.mu.Lock()
+	oldAdapter = n.adapter
+	n.adapter = nil
+	if n.formError == "" && nodekit.TunIsReady(n.currentTun) && !n.tunFailed && DNSIsReady(n.currentDNS) {
+		n.adapter = n.newAdapterLocked(n.generation, n.currentTun, n.currentDNS)
+	}
+	n.mu.Unlock()
+	closeIPPacketAdapter(oldAdapter)
 }
 
 func (n *tun2DNSNode) startTunPump(gen uint64, t tun.Tun) {
@@ -344,8 +422,8 @@ func (n *tun2DNSNode) adapterFor(gen uint64, t tun.Tun) *dns.IPPacketAdapter {
 	return n.adapter
 }
 
-func (n *tun2DNSNode) writeResponsePacket(gen uint64, t tun.Tun, pkt []byte) {
-	if n.adapterFor(gen, t) == nil {
+func (n *tun2DNSNode) writeResponsePacket(gen uint64, t tun.Tun, source *dns.IPPacketAdapter, pkt []byte) {
+	if n.adapterFor(gen, t) != source {
 		return
 	}
 	if err := writeRawTunPacket(t, n.pool, pkt); err != nil {
@@ -428,6 +506,8 @@ func (n *tun2DNSNode) updateLabel() error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	switch {
+	case n.formError != "":
+		return n.SetLabel("invalid config")
 	case n.tunFailed:
 		if n.lastErr != "" {
 			return n.SetLabel("TUN error")
@@ -440,6 +520,26 @@ func (n *tun2DNSNode) updateLabel() error {
 	default:
 		return n.SetLabel("adapting DNS")
 	}
+}
+
+func (n *tun2DNSNode) sendMenuSnapshot() {
+	nodekit.SendNodeMenuSnapshot(n.W, n.ID, false, n.configBlock())
+}
+
+func (n *tun2DNSNode) sendForcedMenuSnapshot() {
+	nodekit.SendNodeMenuSnapshot(n.W, n.ID, true, n.configBlock())
+}
+
+func (n *tun2DNSNode) configBlock() formular.Block {
+	return formular.Block{ID: Tun2DNSConfigBlockID, Order: 10, Generation: 1, Form: true, Items: []formular.Item{
+		dnsTimeoutField(
+			Tun2DNSRequestTimeoutMSField,
+			"Request timeout (ms)",
+			n.requestTimeoutMS,
+			"Maximum time to forward one DNS packet to the attached resolver.",
+			n.formError,
+		),
+	}}
 }
 
 func writeRawTunPacket(t tun.Tun, pool bufpool.Pool, pkt []byte) error {

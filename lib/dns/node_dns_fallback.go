@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/asciimoth/configer/configer"
+	"github.com/asciimoth/formular"
 	"github.com/asciimoth/gonnect"
 	"github.com/asciimoth/gonnect/dns"
 	"github.com/asciimoth/pasta/pasta"
@@ -18,14 +19,20 @@ const (
 	NodeTypeDnsFallback = "almagest/DnsFallback"
 
 	dnsFallbackMaxSlots = dns.FallbackSlots
+
+	// DNSFallbackConfigBlockID is the Formular block ID for fallback options.
+	DNSFallbackConfigBlockID = "config"
+	// DNSFallbackAttemptTimeoutMSField is the Formular and saved-config key for
+	// the per-upstream fallback attempt timeout in milliseconds.
+	DNSFallbackAttemptTimeoutMSField = "attemptTimeoutMS"
 )
 
 var (
 	//go:embed node_dns_fallback.md
 	dnsFallbackClassLongDescription string
 
-	dnsFallbackNewFallback = func(spawner gonnect.Spawner) *dns.Fallback {
-		return dns.NewFallback(spawner)
+	dnsFallbackNewFallback = func(options dns.FallbackOptions, spawner gonnect.Spawner) *dns.Fallback {
+		return dns.NewFallbackWithOptions(options, spawner)
 	}
 )
 
@@ -43,9 +50,11 @@ func (DNSFallbackClass) DefaultNodeParams() pasta.NodeClassParams {
 		DNSPort("right", nodekit.SlotPortName(1)),
 	}}
 }
-func (c DNSFallbackClass) NewNode(_ configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
+func (c DNSFallbackClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
+	attemptTimeoutMS := configer.Int(cfg, configer.Path{DNSFallbackAttemptTimeoutMSField}, 0)
 	return &dnsFallbackNode{
-		Base: nodekit.Base{Runtime: c.Runtime},
+		Base:             nodekit.Base{Runtime: c.Runtime},
+		attemptTimeoutMS: attemptTimeoutMS,
 		slots: nodekit.NewSlotPorts(
 			dnsFallbackMaxSlots,
 			"right",
@@ -55,6 +64,7 @@ func (c DNSFallbackClass) NewNode(_ configer.Config, _ ...*pasta.NodeClassState)
 		),
 		inputLinks: make(map[int]uint64),
 		upstreams:  make(map[int]dns.Interface),
+		formError:  dnsTimeoutErrorText(attemptTimeoutMS),
 	}, nil
 }
 
@@ -73,12 +83,15 @@ type dnsFallbackNode struct {
 	upstreams  map[int]dns.Interface
 	outputs    DNSOutputCache
 	ready      bool
+
+	attemptTimeoutMS int
+	formError        string
 }
 
 func (n *dnsFallbackNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, isPlaceholderReplacement, _, isRestored bool) error {
 	n.InitBaseNode(w, logger, id)
 	if n.fallback == nil {
-		n.fallback = dnsFallbackNewFallback(n.dnsSpawner())
+		n.fallback = n.newFallback()
 	}
 	if n.upstreams == nil {
 		n.upstreams = make(map[int]dns.Interface)
@@ -107,6 +120,7 @@ func (n *dnsFallbackNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uin
 	}); err != nil {
 		return err
 	}
+	n.sendMenuSnapshot()
 	return n.updateLabel()
 }
 
@@ -239,6 +253,55 @@ func (n *dnsFallbackNode) OnEvent(event pasta.Event, linkType string, _ []string
 	return n.updateLabel()
 }
 
+func (n *dnsFallbackNode) OnFormularMsg(message any) error {
+	switch msg := message.(type) {
+	case formular.FormApplyMessage:
+		if msg.MenuID != pasta.NodeMenuID(n.ID) || msg.BlockID != DNSFallbackConfigBlockID {
+			return nil
+		}
+		return n.applyConfigForm(msg.Values)
+	case formular.FieldValidateMessage:
+		if msg.MenuID != pasta.NodeMenuID(n.ID) || msg.Field.BlockID != DNSFallbackConfigBlockID || msg.Field.FieldID != DNSFallbackAttemptTimeoutMSField || len(msg.Field.ElementPath) > 0 {
+			return nil
+		}
+		n.sendTimeoutFieldStatus(msg)
+	}
+	return nil
+}
+
+func (n *dnsFallbackNode) OnSave(cfg configer.Config) error {
+	if err := pasta.DeleteNodeOwnedConfigKeys(cfg); err != nil {
+		return err
+	}
+	return configer.SetMap(cfg, map[string]any{
+		DNSFallbackAttemptTimeoutMSField: n.attemptTimeoutMS,
+	})
+}
+
+func (n *dnsFallbackNode) applyConfigForm(values map[string]any) error {
+	next := n.attemptTimeoutMS
+	if value, ok := formular.IntValue(values[DNSFallbackAttemptTimeoutMSField]); ok {
+		next = value
+	}
+	if err := validateDNSTimeoutMilliseconds(next); err != nil {
+		n.formError = err.Error()
+		n.sendForcedMenuSnapshot()
+		return n.updateLabel()
+	}
+	changed := next != n.attemptTimeoutMS || n.formError != ""
+	n.attemptTimeoutMS = next
+	n.formError = ""
+	n.sendForcedMenuSnapshot()
+	if changed {
+		n.rebuildFallback()
+	}
+	return n.updateLabel()
+}
+
+func (n *dnsFallbackNode) sendTimeoutFieldStatus(msg formular.FieldValidateMessage) {
+	nodekit.SendNodeFieldStatus(n.W, n.ID, msg.Field, validateDNSTimeoutField(msg.Value))
+}
+
 func (n *dnsFallbackNode) reviewInputPorts(opts nodekit.SlotPortReview) error {
 	desired := make(map[int]struct{}, len(n.inputLinks))
 	for slot := range n.inputLinks {
@@ -289,6 +352,33 @@ func (n *dnsFallbackNode) detachSlot(slot int) {
 	delete(n.upstreams, slot)
 }
 
+// rebuildFallback replaces only the fallback runtime. Attached DNS wrappers
+// stay owned by their input links and are attached to the replacement before
+// it is published to consumers.
+func (n *dnsFallbackNode) rebuildFallback() {
+	n.outputs.CloseAll()
+	old := n.fallback
+	n.fallback = n.newFallback()
+	for slot := 1; slot <= dnsFallbackMaxSlots; slot++ {
+		if upstream := n.upstreams[slot]; upstream != nil {
+			_ = n.fallback.Attach(slot, upstream)
+		}
+	}
+	BindDNSResource(n.W, n.ID, 0, n.fallback)
+	if old != nil {
+		_ = old.Close()
+	}
+	if n.ready {
+		n.sendAll()
+	}
+}
+
+func (n *dnsFallbackNode) newFallback() *dns.Fallback {
+	return dnsFallbackNewFallback(dns.FallbackOptions{
+		AttemptTimeout: dnsTimeoutDuration(n.attemptTimeoutMS),
+	}, n.dnsSpawner())
+}
+
 func (n *dnsFallbackNode) dnsSpawner() gonnect.Spawner {
 	if n.WorkerSpawner == nil {
 		return nil
@@ -297,6 +387,9 @@ func (n *dnsFallbackNode) dnsSpawner() gonnect.Spawner {
 }
 
 func (n *dnsFallbackNode) updateLabel() error {
+	if n.formError != "" {
+		return n.SetLabel("invalid config")
+	}
 	switch len(n.upstreams) {
 	case 0:
 		return n.SetLabel("waiting for DNS")
@@ -305,4 +398,24 @@ func (n *dnsFallbackNode) updateLabel() error {
 	default:
 		return n.SetLabel(fmt.Sprintf("fallback across %d DNS backends", len(n.upstreams)))
 	}
+}
+
+func (n *dnsFallbackNode) sendMenuSnapshot() {
+	nodekit.SendNodeMenuSnapshot(n.W, n.ID, false, n.configBlock())
+}
+
+func (n *dnsFallbackNode) sendForcedMenuSnapshot() {
+	nodekit.SendNodeMenuSnapshot(n.W, n.ID, true, n.configBlock())
+}
+
+func (n *dnsFallbackNode) configBlock() formular.Block {
+	return formular.Block{ID: DNSFallbackConfigBlockID, Order: 10, Generation: 1, Form: true, Items: []formular.Item{
+		dnsTimeoutField(
+			DNSFallbackAttemptTimeoutMSField,
+			"Attempt timeout (ms)",
+			n.attemptTimeoutMS,
+			"Maximum time to wait for one upstream before trying the next slot.",
+			n.formError,
+		),
+	}}
 }

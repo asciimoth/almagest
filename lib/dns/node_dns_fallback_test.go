@@ -3,7 +3,9 @@ package dnsnodes
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/asciimoth/almagest/lib/logging"
 	"github.com/asciimoth/almagest/lib/nodekit"
@@ -109,6 +111,42 @@ func TestDNSFallbackKeepsOutputStableAcrossInputChanges(t *testing.T) {
 	w.RemoveLink(outputLink)
 	if DNSIsReady(output) {
 		t.Fatal("fallback output remained ready after its output link was removed")
+	}
+}
+
+func TestDNSFallbackUsesConfiguredAttemptTimeout(t *testing.T) {
+	blocked := newBlockingDNS()
+	answer, err := NewStaticProvider("timeout.fallback.test A 192.0.2.45", 30)
+	if err != nil {
+		t.Fatalf("NewStaticProvider: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = blocked.Close()
+		_ = answer.Close()
+	})
+
+	n := &dnsFallbackNode{attemptTimeoutMS: 20}
+	fallback := n.newFallback()
+	t.Cleanup(func() { _ = fallback.Close() })
+	if err := fallback.Attach(1, blocked); err != nil {
+		t.Fatalf("Attach blocked upstream: %v", err)
+	}
+	if err := fallback.Attach(2, answer); err != nil {
+		t.Fatalf("Attach answer upstream: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	started := time.Now()
+	response, err := dns.Query(ctx, fallback, dnsTestQuery("timeout.fallback.test.", dns.TypeA))
+	if err != nil {
+		t.Fatalf("Query: %v", err)
+	}
+	if elapsed := time.Since(started); elapsed >= time.Second {
+		t.Fatalf("fallback query took %v, want configured timeout to permit failover", elapsed)
+	}
+	if got := FormatMessage(response); !strings.Contains(got, "192.0.2.45") {
+		t.Fatalf("fallback response = %q, want second-slot answer", got)
 	}
 }
 
