@@ -3,7 +3,6 @@ package tunnodes
 import (
 	"encoding/binary"
 	"net/netip"
-	"slices"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -28,20 +27,64 @@ type autoTunSplitterRouter struct {
 	table      atomic.Pointer[autoTunSplitterRouteTable]
 }
 
-// autoTunSplitterRouteTable is immutable after publication. Routes are ordered
-// by decreasing prefix length and then increasing slot number. Route first
-// limits candidates to the longest matching destination prefix. Within that
-// group, a matching associated source wins; otherwise, the first (lowest)
-// slot wins. This makes conflicting suggestions deterministic without letting
-// an interface address claim unrelated destinations.
+// autoTunSplitterRouteTable is immutable after publication. It groups prefixes
+// by address family and prefix length. Route checks prefix lengths from most to
+// least specific and does one exact lookup at each length. This avoids scanning
+// every configured prefix for each packet.
 type autoTunSplitterRouteTable struct {
-	routes []autoTunSplitterRoute
+	ipv4 []autoTunSplitterIPv4Level
+	ipv6 []autoTunSplitterIPv6Level
 }
 
-type autoTunSplitterRoute struct {
-	prefix  netip.Prefix
-	slot    int
-	sources []netip.Addr
+type autoTunSplitterIPv4Level struct {
+	bits   uint8
+	mask   uint32
+	prefix uint32
+	route  autoTunSplitterIPv4Route
+	routes map[uint32]autoTunSplitterIPv4Route
+}
+
+type autoTunSplitterIPv6Level struct {
+	bits   uint8
+	mask   autoTunSplitterIPv6Address
+	prefix autoTunSplitterIPv6Address
+	route  autoTunSplitterIPv6Route
+	routes map[autoTunSplitterIPv6Address]autoTunSplitterIPv6Route
+}
+
+type autoTunSplitterIPv4Route struct {
+	defaultSlot uint8
+	sources     []autoTunSplitterIPv4Source
+	sourceSlots map[uint32]uint8
+}
+
+type autoTunSplitterIPv6Route struct {
+	defaultSlot uint8
+	sources     []autoTunSplitterIPv6Source
+	sourceSlots map[autoTunSplitterIPv6Address]uint8
+}
+
+type autoTunSplitterIPv4Source struct {
+	address uint32
+	slot    uint8
+}
+
+type autoTunSplitterIPv6Source struct {
+	address autoTunSplitterIPv6Address
+	slot    uint8
+}
+
+type autoTunSplitterIPv6Address struct {
+	hi uint64
+	lo uint64
+}
+
+// autoTunSplitterRouteBuilder combines every slot claim for one normalized
+// prefix before the immutable, family-specific lookup tables are built.
+type autoTunSplitterRouteBuilder struct {
+	defaultSlot uint8
+	slots       uint16
+	sourceSlots map[netip.Addr]uint8
 }
 
 func newAutoTunSplitterRouter() *autoTunSplitterRouter {
@@ -70,38 +113,44 @@ func (r *autoTunSplitterRouter) Unlock() {
 // match use slot 1. Malformed or incomplete IP packets are dropped by
 // returning slot 0.
 func (r *autoTunSplitterRouter) Route(buf []byte, offset int, _ bool) int {
-	source, destination, ok := autoTunPacketAddresses(buf, offset)
-	if !ok {
+	if offset < 0 || offset >= len(buf) {
 		return 0
 	}
-	table := r.table.Load()
-	if table == nil {
-		return 1
+	packet := buf[offset:]
+	switch packet[0] >> 4 {
+	case 4:
+		if !validAutoTunIPv4Packet(packet) {
+			return 0
+		}
+		table := r.table.Load()
+		if table == nil {
+			return 1
+		}
+		return table.routeIPv4(
+			binary.BigEndian.Uint32(packet[12:16]),
+			binary.BigEndian.Uint32(packet[16:20]),
+		)
+	case 6:
+		if !validAutoTunIPv6Packet(packet) {
+			return 0
+		}
+		table := r.table.Load()
+		if table == nil {
+			return 1
+		}
+		return table.routeIPv6(
+			autoTunSplitterIPv6Address{
+				hi: binary.BigEndian.Uint64(packet[8:16]),
+				lo: binary.BigEndian.Uint64(packet[16:24]),
+			},
+			autoTunSplitterIPv6Address{
+				hi: binary.BigEndian.Uint64(packet[24:32]),
+				lo: binary.BigEndian.Uint64(packet[32:40]),
+			},
+		)
+	default:
+		return 0
 	}
-	matchedBits := -1
-	matchedSlot := 0
-	for _, route := range table.routes {
-		bits := route.prefix.Bits()
-		if matchedBits >= 0 && bits < matchedBits {
-			break
-		}
-		if !route.prefix.Contains(destination) {
-			continue
-		}
-		if matchedBits < 0 {
-			matchedBits = bits
-		}
-		if slices.Contains(route.sources, source) {
-			return route.slot
-		}
-		if matchedSlot == 0 || route.slot < matchedSlot {
-			matchedSlot = route.slot
-		}
-	}
-	if matchedSlot != 0 {
-		return matchedSlot
-	}
-	return 1
 }
 
 // SetConfig replaces the complete learned configuration for slot. An empty
@@ -143,8 +192,7 @@ func (r *autoTunSplitterRouter) Reset() {
 }
 
 func (r *autoTunSplitterRouter) rebuildLocked() {
-	table := &autoTunSplitterRouteTable{}
-	routeIndexes := make(map[autoTunSplitterRouteKey]int)
+	builders := make(map[netip.Prefix]*autoTunSplitterRouteBuilder)
 	for slot := 1; slot <= tunSplitterMaxSlots; slot++ {
 		if !r.configured[slot] {
 			continue
@@ -156,51 +204,269 @@ func (r *autoTunSplitterRouter) rebuildLocked() {
 		cfg := r.configs[slot].WithInferredSourceRoutes()
 		for _, value := range cfg.Routes {
 			if prefix, ok := autoTunConfigPrefix(value); ok {
-				addAutoTunSplitterRoute(table, routeIndexes, prefix, slot, netip.Addr{})
+				addAutoTunSplitterRoute(builders, prefix, slot, netip.Addr{})
 			}
 		}
 		for _, sourceRoute := range cfg.SourceRoutes {
 			if prefix, ok := normalizeAutoTunPrefix(sourceRoute.Destination); ok {
 				source := normalizeAutoTunSource(sourceRoute.Source, prefix)
-				addAutoTunSplitterRoute(table, routeIndexes, prefix, slot, source)
+				addAutoTunSplitterRoute(builders, prefix, slot, source)
 			}
 		}
 	}
-	sort.SliceStable(table.routes, func(i, j int) bool {
-		left, right := table.routes[i], table.routes[j]
-		if left.prefix.Bits() != right.prefix.Bits() {
-			return left.prefix.Bits() > right.prefix.Bits()
-		}
-		return left.slot < right.slot
-	})
-	r.table.Store(table)
-}
-
-type autoTunSplitterRouteKey struct {
-	prefix netip.Prefix
-	slot   int
+	r.table.Store(buildAutoTunSplitterRouteTable(builders))
 }
 
 func addAutoTunSplitterRoute(
-	table *autoTunSplitterRouteTable,
-	indexes map[autoTunSplitterRouteKey]int,
+	builders map[netip.Prefix]*autoTunSplitterRouteBuilder,
 	prefix netip.Prefix,
 	slot int,
 	source netip.Addr,
 ) {
-	key := autoTunSplitterRouteKey{prefix: prefix, slot: slot}
-	index, exists := indexes[key]
-	if !exists {
-		index = len(table.routes)
-		indexes[key] = index
-		table.routes = append(table.routes, autoTunSplitterRoute{
-			prefix: prefix,
-			slot:   slot,
+	builder := builders[prefix]
+	if builder == nil {
+		builder = &autoTunSplitterRouteBuilder{}
+		builders[prefix] = builder
+	}
+	slotValue := uint8(slot)
+	if builder.defaultSlot == 0 || slotValue < builder.defaultSlot {
+		builder.defaultSlot = slotValue
+	}
+	builder.slots |= uint16(1) << (slotValue - 1)
+	if !source.IsValid() {
+		return
+	}
+	if builder.sourceSlots == nil {
+		builder.sourceSlots = make(map[netip.Addr]uint8)
+	}
+	if current := builder.sourceSlots[source]; current == 0 || slotValue < current {
+		builder.sourceSlots[source] = slotValue
+	}
+}
+
+func buildAutoTunSplitterRouteTable(
+	builders map[netip.Prefix]*autoTunSplitterRouteBuilder,
+) *autoTunSplitterRouteTable {
+	ipv4 := make(map[int]map[uint32]autoTunSplitterIPv4Route)
+	ipv6 := make(map[int]map[autoTunSplitterIPv6Address]autoTunSplitterIPv6Route)
+	for prefix, builder := range builders {
+		bits := prefix.Bits()
+		if prefix.Addr().Is4() {
+			routes := ipv4[bits]
+			if routes == nil {
+				routes = make(map[uint32]autoTunSplitterIPv4Route)
+				ipv4[bits] = routes
+			}
+			addr := prefix.Addr().As4()
+			routes[binary.BigEndian.Uint32(addr[:])] = builder.ipv4Route()
+			continue
+		}
+		routes := ipv6[bits]
+		if routes == nil {
+			routes = make(map[autoTunSplitterIPv6Address]autoTunSplitterIPv6Route)
+			ipv6[bits] = routes
+		}
+		routes[autoTunSplitterIPv6AddressFromAddr(prefix.Addr())] = builder.ipv6Route()
+	}
+
+	table := &autoTunSplitterRouteTable{
+		ipv4: make([]autoTunSplitterIPv4Level, 0, len(ipv4)),
+		ipv6: make([]autoTunSplitterIPv6Level, 0, len(ipv6)),
+	}
+	for bits, routes := range ipv4 {
+		level := autoTunSplitterIPv4Level{
+			bits: uint8(bits),
+			mask: autoTunSplitterIPv4Mask(bits),
+		}
+		if len(routes) == 1 {
+			for prefix, route := range routes {
+				level.prefix = prefix
+				level.route = route
+			}
+		} else {
+			level.routes = routes
+		}
+		table.ipv4 = append(table.ipv4, level)
+	}
+	for bits, routes := range ipv6 {
+		level := autoTunSplitterIPv6Level{
+			bits: uint8(bits),
+			mask: autoTunSplitterIPv6Mask(bits),
+		}
+		if len(routes) == 1 {
+			for prefix, route := range routes {
+				level.prefix = prefix
+				level.route = route
+			}
+		} else {
+			level.routes = routes
+		}
+		table.ipv6 = append(table.ipv6, level)
+	}
+	sort.Slice(table.ipv4, func(i, j int) bool {
+		return table.ipv4[i].bits > table.ipv4[j].bits
+	})
+	sort.Slice(table.ipv6, func(i, j int) bool {
+		return table.ipv6[i].bits > table.ipv6[j].bits
+	})
+	return table
+}
+
+const autoTunSplitterLinearSourceLimit = 4
+
+func (b *autoTunSplitterRouteBuilder) ipv4Route() autoTunSplitterIPv4Route {
+	route := autoTunSplitterIPv4Route{defaultSlot: b.defaultSlot}
+	if !b.hasSlotTie() {
+		return route
+	}
+	if len(b.sourceSlots) > autoTunSplitterLinearSourceLimit {
+		route.sourceSlots = make(map[uint32]uint8, len(b.sourceSlots))
+		for source, slot := range b.sourceSlots {
+			addr := source.As4()
+			route.sourceSlots[binary.BigEndian.Uint32(addr[:])] = slot
+		}
+		return route
+	}
+	for source, slot := range b.sourceSlots {
+		addr := source.As4()
+		route.sources = append(route.sources, autoTunSplitterIPv4Source{
+			address: binary.BigEndian.Uint32(addr[:]),
+			slot:    slot,
 		})
 	}
-	if source.IsValid() && !slices.Contains(table.routes[index].sources, source) {
-		table.routes[index].sources = append(table.routes[index].sources, source)
+	sort.Slice(route.sources, func(i, j int) bool {
+		return route.sources[i].address < route.sources[j].address
+	})
+	return route
+}
+
+func (b *autoTunSplitterRouteBuilder) ipv6Route() autoTunSplitterIPv6Route {
+	route := autoTunSplitterIPv6Route{defaultSlot: b.defaultSlot}
+	if !b.hasSlotTie() {
+		return route
 	}
+	if len(b.sourceSlots) > autoTunSplitterLinearSourceLimit {
+		route.sourceSlots = make(map[autoTunSplitterIPv6Address]uint8, len(b.sourceSlots))
+		for source, slot := range b.sourceSlots {
+			route.sourceSlots[autoTunSplitterIPv6AddressFromAddr(source)] = slot
+		}
+		return route
+	}
+	for source, slot := range b.sourceSlots {
+		route.sources = append(route.sources, autoTunSplitterIPv6Source{
+			address: autoTunSplitterIPv6AddressFromAddr(source),
+			slot:    slot,
+		})
+	}
+	sort.Slice(route.sources, func(i, j int) bool {
+		left, right := route.sources[i].address, route.sources[j].address
+		return left.hi < right.hi || left.hi == right.hi && left.lo < right.lo
+	})
+	return route
+}
+
+func (b *autoTunSplitterRouteBuilder) hasSlotTie() bool {
+	return b.slots != 0 && b.slots&(b.slots-1) != 0
+}
+
+func (t *autoTunSplitterRouteTable) routeIPv4(source, destination uint32) int {
+	for i := range t.ipv4 {
+		level := &t.ipv4[i]
+		prefix := destination & level.mask
+		if level.routes == nil {
+			if prefix == level.prefix {
+				return level.route.selectSlot(source)
+			}
+			continue
+		}
+		if route, ok := level.routes[prefix]; ok {
+			return route.selectSlot(source)
+		}
+	}
+	return 1
+}
+
+func (t *autoTunSplitterRouteTable) routeIPv6(
+	source autoTunSplitterIPv6Address,
+	destination autoTunSplitterIPv6Address,
+) int {
+	for i := range t.ipv6 {
+		level := &t.ipv6[i]
+		prefix := destination.mask(level.mask)
+		if level.routes == nil {
+			if prefix == level.prefix {
+				return level.route.selectSlot(source)
+			}
+			continue
+		}
+		if route, ok := level.routes[prefix]; ok {
+			return route.selectSlot(source)
+		}
+	}
+	return 1
+}
+
+func (r autoTunSplitterIPv4Route) selectSlot(source uint32) int {
+	if r.sourceSlots != nil {
+		if slot := r.sourceSlots[source]; slot != 0 {
+			return int(slot)
+		}
+	} else {
+		for _, candidate := range r.sources {
+			if candidate.address == source {
+				return int(candidate.slot)
+			}
+		}
+	}
+	return int(r.defaultSlot)
+}
+
+func (r autoTunSplitterIPv6Route) selectSlot(source autoTunSplitterIPv6Address) int {
+	if r.sourceSlots != nil {
+		if slot := r.sourceSlots[source]; slot != 0 {
+			return int(slot)
+		}
+	} else {
+		for _, candidate := range r.sources {
+			if candidate.address == source {
+				return int(candidate.slot)
+			}
+		}
+	}
+	return int(r.defaultSlot)
+}
+
+func autoTunSplitterIPv4Mask(bits int) uint32 {
+	if bits == 0 {
+		return 0
+	}
+	return ^uint32(0) << (32 - bits)
+}
+
+func autoTunSplitterIPv6Mask(bits int) autoTunSplitterIPv6Address {
+	switch {
+	case bits == 0:
+		return autoTunSplitterIPv6Address{}
+	case bits <= 64:
+		return autoTunSplitterIPv6Address{hi: ^uint64(0) << (64 - bits)}
+	default:
+		return autoTunSplitterIPv6Address{
+			hi: ^uint64(0),
+			lo: ^uint64(0) << (128 - bits),
+		}
+	}
+}
+
+func autoTunSplitterIPv6AddressFromAddr(addr netip.Addr) autoTunSplitterIPv6Address {
+	value := addr.As16()
+	return autoTunSplitterIPv6Address{
+		hi: binary.BigEndian.Uint64(value[:8]),
+		lo: binary.BigEndian.Uint64(value[8:]),
+	}
+}
+
+func (a autoTunSplitterIPv6Address) mask(mask autoTunSplitterIPv6Address) autoTunSplitterIPv6Address {
+	return autoTunSplitterIPv6Address{hi: a.hi & mask.hi, lo: a.lo & mask.lo}
 }
 
 func normalizeAutoTunSource(source netip.Addr, destination netip.Prefix) netip.Addr {
@@ -239,42 +505,21 @@ func normalizeAutoTunPrefix(prefix netip.Prefix) (netip.Prefix, bool) {
 	return netip.PrefixFrom(addr, bits).Masked(), true
 }
 
-// autoTunPacketAddresses validates enough of the outer IP header to reject
-// truncated packets and returns normalized source and destination addresses.
-// Transport headers are intentionally not parsed because automatic routing
-// depends only on TunConfig address and prefix data.
-func autoTunPacketAddresses(buf []byte, offset int) (netip.Addr, netip.Addr, bool) {
-	if offset < 0 || offset >= len(buf) {
-		return netip.Addr{}, netip.Addr{}, false
+// Packet validation deliberately stops at the outer IP header. Automatic
+// routing depends only on its source and destination addresses.
+func validAutoTunIPv4Packet(packet []byte) bool {
+	if len(packet) < 20 {
+		return false
 	}
-	packet := buf[offset:]
-	switch packet[0] >> 4 {
-	case 4:
-		if len(packet) < 20 {
-			return netip.Addr{}, netip.Addr{}, false
-		}
-		headerLength := int(packet[0]&0x0f) * 4
-		totalLength := int(binary.BigEndian.Uint16(packet[2:4]))
-		if headerLength < 20 || totalLength < headerLength || totalLength > len(packet) {
-			return netip.Addr{}, netip.Addr{}, false
-		}
-		var source, destination [4]byte
-		copy(source[:], packet[12:16])
-		copy(destination[:], packet[16:20])
-		return netip.AddrFrom4(source), netip.AddrFrom4(destination), true
-	case 6:
-		if len(packet) < 40 {
-			return netip.Addr{}, netip.Addr{}, false
-		}
-		totalLength := 40 + int(binary.BigEndian.Uint16(packet[4:6]))
-		if totalLength > len(packet) {
-			return netip.Addr{}, netip.Addr{}, false
-		}
-		var source, destination [16]byte
-		copy(source[:], packet[8:24])
-		copy(destination[:], packet[24:40])
-		return netip.AddrFrom16(source), netip.AddrFrom16(destination), true
-	default:
-		return netip.Addr{}, netip.Addr{}, false
+	headerLength := int(packet[0]&0x0f) * 4
+	totalLength := int(binary.BigEndian.Uint16(packet[2:4]))
+	return headerLength >= 20 && totalLength >= headerLength && totalLength <= len(packet)
+}
+
+func validAutoTunIPv6Packet(packet []byte) bool {
+	if len(packet) < 40 {
+		return false
 	}
+	totalLength := 40 + int(binary.BigEndian.Uint16(packet[4:6]))
+	return totalLength <= len(packet)
 }

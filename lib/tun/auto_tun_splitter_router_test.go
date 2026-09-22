@@ -2,6 +2,7 @@ package tunnodes
 
 import (
 	"encoding/binary"
+	"fmt"
 	"net/netip"
 	"sync"
 	"testing"
@@ -236,6 +237,89 @@ func TestAutoTunSplitterRouterNormalizesPrefixesAndAssociatedSources(t *testing.
 				t.Fatalf("Route(%s -> %s) = %d, want %d", test.source, test.destination, got, test.want)
 			}
 		})
+	}
+}
+
+func TestAutoTunSplitterRouterRoutesManyEqualPrefixSources(t *testing.T) {
+	router := newAutoTunSplitterRouter()
+	for slot := 2; slot <= 8; slot++ {
+		router.SetConfig(slot, TunConfig{
+			Addrs: []string{
+				fmt.Sprintf("192.0.2.%d/32", slot),
+				fmt.Sprintf("2001:db8::%x/128", slot),
+			},
+			Routes: []string{"10.0.0.0/8", "fd00::/8"},
+		})
+	}
+
+	for slot := 2; slot <= 8; slot++ {
+		t.Run(fmt.Sprintf("slot %d", slot), func(t *testing.T) {
+			packets := [][]byte{
+				autoTunTestPacket(
+					netip.MustParseAddr(fmt.Sprintf("192.0.2.%d", slot)),
+					netip.MustParseAddr("10.1.2.3"),
+				),
+				autoTunTestPacket(
+					netip.MustParseAddr(fmt.Sprintf("2001:db8::%x", slot)),
+					netip.MustParseAddr("fd00::1"),
+				),
+			}
+			for _, packet := range packets {
+				if got := routeAutoTunPacket(router, packet, 0); got != slot {
+					t.Fatalf("Route for slot source = %d, want %d", got, slot)
+				}
+			}
+		})
+	}
+}
+
+func TestAutoTunSplitterRouterHandlesDefaultAndHostPrefixBounds(t *testing.T) {
+	router := newAutoTunSplitterRouter()
+	router.SetConfig(2, TunConfig{Routes: []string{"0.0.0.0/0", "::/0"}})
+	router.SetConfig(3, TunConfig{Routes: []string{"10.1.2.3/32", "2001:db8::3/128"}})
+
+	tests := []struct {
+		destination string
+		want        int
+	}{
+		{destination: "192.0.2.1", want: 2},
+		{destination: "10.1.2.3", want: 3},
+		{destination: "2001:db8::2", want: 2},
+		{destination: "2001:db8::3", want: 3},
+	}
+	for _, test := range tests {
+		destination := netip.MustParseAddr(test.destination)
+		source := netip.MustParseAddr("198.51.100.1")
+		if destination.Is6() {
+			source = netip.MustParseAddr("2001:db8:ffff::1")
+		}
+		packet := autoTunTestPacket(source, destination)
+		if got := routeAutoTunPacket(router, packet, 0); got != test.want {
+			t.Errorf("Route(destination %s) = %d, want %d", destination, got, test.want)
+		}
+	}
+}
+
+func TestAutoTunSplitterRouterRouteDoesNotAllocate(t *testing.T) {
+	router := newAutoTunSplitterRouter()
+	router.SetConfig(2, TunConfig{Routes: []string{"10.0.0.0/8"}})
+	router.SetConfig(3, TunConfig{Routes: []string{"10.1.0.0/16"}})
+	packet := autoTunTestPacket(
+		netip.MustParseAddr("192.0.2.1"),
+		netip.MustParseAddr("10.1.2.3"),
+	)
+
+	router.Lock()
+	defer router.Unlock()
+	var slot int
+	allocations := testing.AllocsPerRun(1000, func() {
+		slot = router.Route(packet, 0, false)
+	})
+	if slot != 3 {
+		t.Fatalf("Route() = %d, want 3", slot)
+	}
+	if allocations != 0 {
+		t.Fatalf("Route() allocations = %f, want 0", allocations)
 	}
 }
 
