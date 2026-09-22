@@ -9,6 +9,7 @@ import (
 // Classes returns standard TUN node classes supported by runtime.
 func Classes(runtime nodekit.Runtime) []pasta.NodeClass {
 	classes := []pasta.NodeClass{
+		AutoTunSplitterClass{Runtime: runtime},
 		DefaultTunClass{Runtime: runtime},
 		TunClass{Runtime: runtime},
 		TunConfigStripperClass{Runtime: runtime},

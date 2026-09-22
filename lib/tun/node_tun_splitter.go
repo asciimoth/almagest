@@ -21,6 +21,9 @@ import (
 const (
 	// NodeTypeTunSplitter is the node class name for a routing TUN splitter.
 	NodeTypeTunSplitter = "almagest/TunSplitter"
+	// NodeTypeAutoTunSplitter is the node class name for a TUN splitter that
+	// learns its routes from downstream TunConfig messages.
+	NodeTypeAutoTunSplitter = "almagest/AutoTunSplitter"
 
 	TunSplitterConfigBlockID            = "config"
 	TunSplitterRulesField               = "rules"
@@ -56,10 +59,42 @@ func (TunSplitterClass) DefaultNodeParams() pasta.NodeClassParams {
 	}}
 }
 func (c TunSplitterClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
-	pool := enginePool(c.Runtime)
+	return newTunSplitterNode(c.Runtime, cfg, false), nil
+}
+
+// AutoTunSplitterClass builds TUN splitters that learn packet routes from the
+// TunConfig messages sent by consumers of their slot ports.
+//
+// Each downstream interface address identifies the slot for packets with that
+// source address. Each downstream route or source-route destination identifies
+// the slot for packets sent to that prefix. Unmatched packets use slot 1.
+type AutoTunSplitterClass struct {
+	Runtime Runtime
+}
+
+func (AutoTunSplitterClass) ClassName() string { return NodeTypeAutoTunSplitter }
+func (AutoTunSplitterClass) ShortDescription() string {
+	return "Automatic TUN splitter"
+}
+func (AutoTunSplitterClass) LongDescription() string {
+	return "Splits one almagest/tun endpoint into gonnect/tun.Splitter frontend slots. It automatically learns source addresses and destination prefixes from each slot's TunConfig messages, uses the most specific destination prefix, and sends unmatched packets to slot 1. It also preserves each output's route-to-address association for upstream source selection."
+}
+func (AutoTunSplitterClass) DefaultNodeParams() pasta.NodeClassParams {
+	return pasta.NodeClassParams{PrimaryType: TypeTun, InitialPorts: []pasta.Port{
+		TunPort("left", "Tun"),
+		TunPort("right", slotPortName(1)),
+	}}
+}
+func (c AutoTunSplitterClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
+	return newTunSplitterNode(c.Runtime, cfg, true), nil
+}
+
+func newTunSplitterNode(runtime Runtime, cfg configer.Config, automatic bool) *tunSplitterNode {
+	pool := enginePool(runtime)
 	return &tunSplitterNode{
-		NodeBase:      NodeBase{Runtime: c.Runtime},
+		NodeBase:      NodeBase{Runtime: runtime},
 		pool:          pool,
+		automatic:     automatic,
 		rulesText:     configer.String(cfg, configer.Path{tunSplitterRulesField}, ""),
 		routingConfig: readTunSplitterRoutingConfig(cfg),
 		slots: newSlotPorts(
@@ -69,9 +104,10 @@ func (c TunSplitterClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassStat
 			slotPortName,
 			func(name string) (int, bool) { return slotPortFromName(name, tunSplitterMaxSlots) },
 		),
-		frontends:  map[uint64]tun.Tun{},
-		outputCfgs: TunConfigByLink{},
-	}, nil
+		frontends:     map[uint64]tun.Tun{},
+		outputCfgs:    TunConfigByLink{},
+		autoSlotLinks: map[int]uint64{},
+	}
 }
 
 // tunSplitterNode owns one gonnect/tun.Splitter. Its left-directed input
@@ -85,6 +121,11 @@ type tunSplitterNode struct {
 
 	pool bufpool.Pool
 
+	// automatic selects the immutable, TunConfig-derived routing strategy. The
+	// field is fixed when the node is constructed and is never changed while
+	// Gonnect workers can call the router.
+	automatic bool
+
 	in    uint64
 	slots slotPorts
 
@@ -93,8 +134,9 @@ type tunSplitterNode struct {
 	inputGen   uint64
 	inputRetry *time.Timer
 
-	splitter *tun.Splitter
-	router   routing.SplitRouter
+	splitter   *tun.Splitter
+	router     routing.SplitRouter
+	autoRouter *autoTunSplitterRouter
 
 	rulesText            string
 	routingConfig        tunSplitterRoutingConfig
@@ -104,6 +146,10 @@ type tunSplitterNode struct {
 	outputTuns TunOutputCache
 	frontends  map[uint64]tun.Tun
 	outputCfgs TunConfigByLink
+	// autoSlotLinks rejects delayed TunConfig events from a link that was
+	// removed or replaced on the same slot. Workspace callbacks serialize map
+	// access; packet workers access only autoRouter's synchronized snapshot.
+	autoSlotLinks map[int]uint64
 }
 
 func (n *tunSplitterNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, isPlaceholderReplacement, _, isRestored bool) error {
@@ -117,6 +163,9 @@ func (n *tunSplitterNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uin
 	}
 	if n.outputCfgs == nil {
 		n.outputCfgs = TunConfigByLink{}
+	}
+	if n.autoSlotLinks == nil {
+		n.autoSlotLinks = map[int]uint64{}
 	}
 	if n.slots.Max() == 0 {
 		n.slots = newSlotPorts(
@@ -133,16 +182,23 @@ func (n *tunSplitterNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uin
 		return err
 	}
 
-	compileConfig := n.routingConfig
-	if err := dnsnodes.ValidateOptionalCacheStorageName(compileConfig.dnsCacheStorageName); err != nil {
-		n.dnsCacheStorageError = err.Error()
-		compileConfig.dnsCacheStorageName = ""
-	}
-	router, err := n.compileRules(n.rulesText, compileConfig)
-	if err != nil {
-		n.formError = err.Error()
+	if n.automatic {
+		if n.autoRouter == nil {
+			n.autoRouter = newAutoTunSplitterRouter()
+		}
+		n.splitter.SetRouter(n.autoRouter)
 	} else {
-		n.setRouter(router)
+		compileConfig := n.routingConfig
+		if err := dnsnodes.ValidateOptionalCacheStorageName(compileConfig.dnsCacheStorageName); err != nil {
+			n.dnsCacheStorageError = err.Error()
+			compileConfig.dnsCacheStorageName = ""
+		}
+		router, err := n.compileRules(n.rulesText, compileConfig)
+		if err != nil {
+			n.formError = err.Error()
+		} else {
+			n.setRouter(router)
+		}
 	}
 	if err := n.reviewOutputPorts(slotPortReview{EnsureFree: true, PreserveExisting: isRestored || isPlaceholderReplacement}); err != nil {
 		return err
@@ -150,7 +206,9 @@ func (n *tunSplitterNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uin
 	if err := n.updateLabel(); err != nil {
 		return err
 	}
-	n.sendMenuSnapshot()
+	if !n.automatic {
+		n.sendMenuSnapshot()
+	}
 	return nil
 }
 
@@ -173,11 +231,15 @@ func (n *tunSplitterNode) OnStop() {
 		_ = n.router.Close()
 		n.router = nil
 	}
+	if n.autoRouter != nil {
+		n.autoRouter.Reset()
+	}
 	if n.splitter != nil {
 		_ = n.splitter.Close()
 	}
 	n.inputLink = 0
 	n.outputCfgs = TunConfigByLink{}
+	n.autoSlotLinks = map[int]uint64{}
 }
 
 func (n *tunSplitterNode) PreLinkAdd(port uint64, linkType, portDirection string) error {
@@ -207,6 +269,9 @@ func (n *tunSplitterNode) OnLinkAdd(link, port uint64, linkType, portDirection s
 		std.RequestLocked(n.W, n.ID, link)
 		n.sendMergedTunConfig()
 	case n.slots.Slot(port) != 0 && portDirection == "right":
+		if n.automatic {
+			n.setAutoSlotLink(n.slots.Slot(port), link)
+		}
 		n.sendOutputTunToLink(link, port)
 		if err := n.reviewOutputPorts(slotPortReview{EnsureFree: true}); err != nil {
 			return err
@@ -229,6 +294,9 @@ func (n *tunSplitterNode) OnLinkRemoved(link uint64, port uint64, linkType, port
 			}
 		}
 	case n.slots.Slot(port) != 0 && portDirection == "right":
+		if n.automatic {
+			n.removeAutoSlotLink(n.slots.Slot(port), link)
+		}
 		n.closeOutputTun(link)
 		n.outputCfgs.Delete(link)
 		if err := n.reviewOutputPorts(slotPortReview{EnsureFree: true}); err != nil {
@@ -253,6 +321,9 @@ func (n *tunSplitterNode) OnInbox(message pasta.InboxMessage) error {
 func (n *tunSplitterNode) OnPortRemoved(port uint64, direction string) error {
 	if direction != "right" {
 		return nil
+	}
+	if n.automatic {
+		n.removeAutoSlotLink(n.slots.Slot(port), 0)
 	}
 	n.slots.Remove(port)
 	return nil
@@ -284,12 +355,24 @@ func (n *tunSplitterNode) OnEvent(event pasta.Event, linkType string, _ []string
 	if !ok {
 		return nil
 	}
+	if n.automatic {
+		slot := n.slots.Slot(event.ReceiverPort)
+		if n.autoSlotLinks[slot] != event.Link {
+			// A delayed event from a detached link must not replace the route
+			// snapshot learned from the current consumer of this slot.
+			return nil
+		}
+		n.autoRouter.SetConfig(slot, cfg)
+	}
 	n.outputCfgs.Set(event.Link, cfg.WithoutDNS().WithInferredSourceRoutes())
 	n.sendMergedTunConfig()
 	return nil
 }
 
 func (n *tunSplitterNode) OnFormularMsg(message any) error {
+	if n.automatic {
+		return nil
+	}
 	switch msg := message.(type) {
 	case formular.FormApplyMessage:
 		if msg.MenuID != pasta.NodeMenuID(n.ID) || msg.BlockID != tunSplitterConfigBlockID {
@@ -315,6 +398,9 @@ func (n *tunSplitterNode) OnFormularMsg(message any) error {
 func (n *tunSplitterNode) OnSave(cfg configer.Config) error {
 	if err := pasta.DeleteNodeOwnedConfigKeys(cfg); err != nil {
 		return err
+	}
+	if n.automatic {
+		return nil
 	}
 	return configer.SetMap(cfg, map[string]any{
 		tunSplitterRulesField:               n.rulesText,
@@ -620,9 +706,38 @@ func (n *tunSplitterNode) stopInputRetry() {
 	n.inputRetry = nil
 }
 
+// setAutoSlotLink starts a new route-learning generation for slot. Clearing
+// the old entry before the new consumer receives its frontend prevents stale
+// addresses and routes from directing packets to the replacement link.
+func (n *tunSplitterNode) setAutoSlotLink(slot int, link uint64) {
+	if slot == 0 || link == 0 || n.autoRouter == nil {
+		return
+	}
+	n.autoSlotLinks[slot] = link
+	n.autoRouter.ClearConfig(slot)
+}
+
+// removeAutoSlotLink forgets learned routes only when link still owns slot.
+// A zero link is used when the port itself is removed and forces cleanup.
+func (n *tunSplitterNode) removeAutoSlotLink(slot int, link uint64) {
+	if slot == 0 || n.autoRouter == nil {
+		return
+	}
+	current := n.autoSlotLinks[slot]
+	if link != 0 && current != link {
+		return
+	}
+	delete(n.autoSlotLinks, slot)
+	n.autoRouter.ClearConfig(slot)
+}
+
 func (n *tunSplitterNode) reviewOutputPorts(opts slotPortReview) error {
 	desired := map[int]struct{}{}
-	if n.router != nil {
+	if n.automatic {
+		for slot := range n.autoSlotLinks {
+			desired[slot] = struct{}{}
+		}
+	} else if n.router != nil {
 		for _, slot := range n.router.MentionedSlots() {
 			if slot >= 1 && slot <= tunSplitterMaxSlots {
 				desired[slot] = struct{}{}

@@ -21,6 +21,7 @@ export ALMAGEST_E2E_TMP_FILE_STORAGE=0
 export ALMAGEST_E2E_FILE_STORAGE="/root/almagest-e2e-store/$E2E_CASE"
 
 capture_pid=""
+outer_splitter_name="AutoTunSplitter VPN"
 
 main_ip="$(ip -4 route get "$E2E_AMNESIA_IP" | awk '{for (i=1; i<=NF; i++) if ($i == "src") {print $(i+1); exit}}')"
 [[ -n "$main_ip" ]] || fail "main container has no Docker address"
@@ -210,7 +211,7 @@ graph_operational_once() {
 		'TailscaleCtrl|^up$'
 		'WireGuard Tailscale|^up$'
 		'DnsQuery tailnet|^(ready|NOERROR)$'
-		'TunSplitter VPN|^splitting$'
+		"$outer_splitter_name|^splitting$"
 		'TunJoiner applications|^joined default \+ 1 secondary$'
 		'VTun applications|^application-stack$'
 		'HttpClient Tailnet|^(ready|200 OK)$'
@@ -477,4 +478,30 @@ retry 20 "DNS cache remains visible after traffic checks" \
 	|| fail "DNS cache entry disappeared after the routing matrix"
 wait_graph_operational_stable
 
-log "case passed"
+# Restart with the original manual splitter graph. Check both routing slots:
+# normal DefaultTun traffic must use the VPN, and tailnet traffic must use the
+# WireGuard slot. This focused pass verifies that AutoTunSplitter is a drop-in
+# replacement without running the unrelated filter matrix a second time.
+stop_daemon
+cp "$E2E_RUNTIME/alm-manual-splitter.hujson" "$E2E_CONFIG_DIR/alm.hujson"
+outer_splitter_name="TunSplitter VPN"
+start_daemon
+trap cleanup EXIT
+# A managed Amnesia runtime creates a new client key after restart. Give the
+# replacement key to the fixture before Tailscale tries to use the VPN again.
+wait_node_label "$(node_id_by_name "Amnesia VPN")" up \
+	|| fail "restarted managed Amnesia node did not become ready"
+client_key="$(sed -n 's/.*local_public_key=\([^ ]*\).*/\1/p' "$E2E_DAEMON_LOG" | tail -1)"
+[[ -n "$client_key" && "$client_key" != none ]] \
+	|| fail "restarted managed Amnesia client key was not logged"
+printf '%s %s\n' "$main_ip" "$client_key" >/stack-shared/amnesia-client-peer
+wait_graph_operational_stable
+retry "$ALMAGEST_E2E_TIMEOUT" "manual splitter default slot through Amnesia" \
+	curl_direct_origin curl "$E2E_PUBLIC_IP" /manual-splitter \
+		"$E2E_RUNTIME/manual-splitter-default.txt" \
+	|| fail "manual TunSplitter default slot could not reach the public fixture"
+assert_contains "$E2E_RUNTIME/manual-splitter-default.txt" \
+	"source=$E2E_AMNESIA_INTERNET_IP"
+send_http_client "HttpClient Tailnet" "tailnet HttpServer SO response"
+
+log "case passed with automatic and manual outer splitters"

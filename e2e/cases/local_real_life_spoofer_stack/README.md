@@ -69,16 +69,21 @@ OutNetwork direct
        |    +-- Proxy Spoofer only -> NetworkRouter Spoofer only
        |    +-- Tailscale control traffic
        |    `-- Tailscale WireGuard UDP traffic
-       `-- default slot from TunSplitter transport
+       `-- default slot from the outer splitter
 
 DefaultTun
   `-- TunSplitter lH
        +-- UDP port 53 -> Tun2Dns default -> DnsCache vt
        +-- selected destination or application -> DROP
-       `-- VTun applications
+       `-- VTun applications -> outer splitter
             +-- ordinary destination -> Spoofer transport
             `-- 100.64.0.0/10 -> WireGuard Tailscale -> HttpServer SO
 ```
+
+The full traffic matrix uses `AutoTunSplitter transport`. It learns the
+tailnet route from the WireGuard TUN configuration. The test then restarts the
+same graph with the original `TunSplitter transport` and its manual subnet
+rules. A focused compatibility pass checks the normal and tailnet slots again.
 
 The main node and peer use Headscale's sequential addresses `100.64.0.2` and
 `100.64.0.1`. DERP is disabled. The test requires a `direct-udp` peer path and
@@ -92,7 +97,9 @@ The test checks:
 - direct and Spoofer-backed HTTP clients reach the origin;
 - DNS through VTun and Spoofer populates persistent cache storage;
 - Tailscale control, MagicDNS, direct UDP, and tailnet HTTP work through the
-  outer Spoofer transport;
+  outer Spoofer transport with the automatic splitter;
+- after a restart, normal and tailnet paths work with the original manual
+  splitter rules;
 - direct and Spoofer-backed SOCKS proxies enforce their destination rules;
 - HTTP and HTTPS interception reach the internal HTTP server;
 - DefaultTun sends normal traffic through the application graph;

@@ -134,10 +134,15 @@ DefaultTun
   `-- TunSplitter lH
        +-- UDP port 53 -> Tun2Dns default -> DnsCache vt
        +-- selected destination or application -> DROP
-       `-- application VTun
+       `-- application VTun -> outer splitter
             +-- normal destination -> Amnesia VPN
             `-- 100.64.0.0/10 -> WireGuard Tailscale -> HttpServer SO
 ```
+
+The full traffic matrix uses `AutoTunSplitter VPN`. It learns the tailnet
+route from the WireGuard TUN configuration. The test then restarts the same
+graph with the original `TunSplitter VPN` and its manual subnet rules. A
+focused compatibility pass checks the normal and tailnet slots again.
 
 The origin reports the main Internet-bridge address for direct traffic. It
 reports the Amnesia service's Internet-bridge address for VPN traffic because
@@ -249,7 +254,9 @@ The final graph-state check repeats after all live configuration changes.
 - Both the `/etc/hosts` target and DNS/cache target are blocked.
 - `blocked-fetch` is blocked by application identity.
 - Ordinary main-container traffic reaches both the simulated Internet and
-  `HttpServer SO` in the tailnet.
+  `HttpServer SO` in the tailnet with the automatic splitter.
+- After a restart, the same two paths work with the original manual splitter
+  rules.
 
 ## Live filter matrix
 

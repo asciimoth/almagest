@@ -97,6 +97,22 @@ sed -i \
 	-e "s/%EXAMPLE_IP%/$E2E_EXAMPLE_IP/g" \
 	"$E2E_CONFIG_DIR/alm.hujson"
 
+# Keep a second graph for the compatibility phase. The main phase uses the
+# automatic splitter from the checked-in graph. The second phase replaces only
+# that splitter with the original manual rules. Keep this copy outside the
+# configuration directory so almagestd cannot load it as an active config.
+manual_config="$E2E_RUNTIME/alm-manual-splitter.hujson"
+cp "$E2E_CONFIG_DIR/alm.hujson" "$manual_config"
+sed -i \
+	-e '/"AutoTunSplitter VPN": {/,/^[[:space:]]*},$/ {
+		s/"AutoTunSplitter VPN"/"TunSplitter VPN"/
+		s@"Class": "almagest/AutoTunSplitter"@"Class": "almagest/TunSplitter"@
+		/^[[:space:]]*],$/a\
+\t\t\t"rules": "SNET4 100.64.0.0/10\\nSNET6 fd7a:115c:a1e0::/48\\nOR\\nSLOT 2\\n\\nTRUE\\nSLOT 1",
+	}' \
+	-e 's/\[AutoTunSplitter VPN\]/[TunSplitter VPN]/g' \
+	"$manual_config"
+
 # Move ephemeral service credentials into environment-backed daemon secrets.
 # The Amnesia and Headscale containers create their values for this run. The
 # main Tailscale WireGuard key is also generated here. No private key from a

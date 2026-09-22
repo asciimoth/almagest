@@ -12,11 +12,21 @@ family. The most-specific destination prefix has priority. A default route is
 not implicit for an IP family that has source routes, so the policy must include
 `0.0.0.0/0` or `::/0` when that family needs a fallback.
 
-`TunSplitter` creates source routes before it merges output configs. For each
-plain route without an explicit source route, it uses the first valid address
-of the same IP family from that output config. This keeps addresses from one
-splitter slot associated with the routes from that slot. A consumer can send an
-explicit source route when it needs a different address for a route.
+`TunSplitter` and `AutoTunSplitter` create source routes before they merge
+output configs. For each plain route without an explicit source route, they use
+the first valid address of the same IP family from that output config. This
+keeps addresses from one splitter slot associated with the routes from that
+slot. A consumer can send an explicit source route when it needs a different
+address for a route.
+
+`AutoTunSplitter` also uses each slot's complete latest `TunConfig` as its
+packet-routing input. An exact packet source address selects the slot that
+advertised the address. Otherwise, the most-specific destination in `Routes`
+or `SourceRoutes` selects the slot. Invalid address and prefix suggestions are
+ignored, equal matches select the lower slot number, and unmatched packets use
+slot 1. A replacement config removes learned entries that it omits. Removing or
+replacing a slot link removes its learned entries before the next consumer can
+send a config.
 
 The `DNS` field is optional. It must contain one IPv4 or IPv6 address, such as
 `8.8.8.8`. An empty value means that there is no DNS suggestion. It does not
@@ -37,11 +47,11 @@ through. `TunFirewall` and `LogTun` follow this rule. `LogTun` also writes the
 complete `TunConfig` value to its debug log.
 
 Middleware with multiple TUN inputs or outputs drops the DNS suggestion because
-one address cannot describe a branched graph. `TunSplitter` follows this rule,
-but it preserves and creates source routes as described above. `TunJoiner` is
-the explicit exception: it sends the same downstream suggestion to its default
-and secondary inputs. `TunCopy` has two inputs and does not forward
-configuration suggestions.
+one address cannot describe a branched graph. `TunSplitter` and
+`AutoTunSplitter` follow this rule, but they preserve and create source routes
+as described above. `TunJoiner` is the explicit exception: it sends the same
+downstream suggestion to its default and secondary inputs. `TunCopy` has two
+inputs and does not forward configuration suggestions.
 
 Node behavior is as follows:
 

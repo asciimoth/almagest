@@ -17,6 +17,7 @@ export ALMAGEST_E2E_TMP_FILE_STORAGE=0
 export ALMAGEST_E2E_FILE_STORAGE="/root/almagest-e2e-store/$E2E_CASE"
 
 capture_pid=""
+outer_splitter_name="AutoTunSplitter transport"
 direct_source="$(ip -4 route get "$E2E_PUBLIC_IP" | awk '{for (i=1; i<=NF; i++) if ($i == "src") {print $(i+1); exit}}')"
 [[ -n "$direct_source" ]] || fail "main container has no direct fixture source address"
 
@@ -167,7 +168,7 @@ graph_operational_once() {
 		'TailscaleCtrl|^up$'
 		'WireGuard Tailscale|^up$'
 		'DnsQuery tailnet|^(ready|NOERROR)$'
-		'TunSplitter transport|^splitting$'
+		"$outer_splitter_name|^splitting$"
 		'TunJoiner applications|^joined default \+ 1 secondary$'
 		'VTun applications|^application-stack$'
 		'HttpClient Tailnet|^(ready|200 OK)$'
@@ -231,6 +232,7 @@ request_fails tailnet-before \
 	|| fail "tailnet service was reachable before daemon startup"
 
 start_daemon
+trap cleanup EXIT
 wait_graph_operational_stable
 wait_log_contains "almagest/LocalProxy" "socks listening on 127.0.0.1:1081" \
 	|| fail "direct SOCKS proxy did not listen"
@@ -373,4 +375,21 @@ retry 20 "nested Tailscale UDP was captured" \
 	|| fail "packet trace did not contain nested Tailscale WireGuard traffic"
 wait_graph_operational_stable
 
-log "case passed"
+# Restart with the original manual splitter graph. Check both routing slots:
+# normal DefaultTun traffic must use Spoofer, and tailnet traffic must use the
+# WireGuard slot. This focused pass verifies that AutoTunSplitter is a drop-in
+# replacement without running the unrelated filter matrix a second time.
+stop_daemon
+cp "$E2E_RUNTIME/alm-manual-splitter.hujson" "$E2E_CONFIG_DIR/alm.hujson"
+outer_splitter_name="TunSplitter transport"
+start_daemon
+trap cleanup EXIT
+wait_graph_operational_stable
+retry "$ALMAGEST_E2E_TIMEOUT" "manual splitter default slot through Spoofer" \
+	curl_origin curl "$E2E_PUBLIC_IP" /manual-splitter \
+		"$E2E_RUNTIME/manual-splitter-default.txt" \
+	|| fail "manual TunSplitter default slot could not reach the public fixture"
+assert_contains "$E2E_RUNTIME/manual-splitter-default.txt" "source=$direct_source"
+send_http_client "HttpClient Tailnet" "tailnet HttpServer SO response"
+
+log "case passed with automatic and manual outer splitters"

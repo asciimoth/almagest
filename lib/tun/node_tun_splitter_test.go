@@ -475,6 +475,7 @@ func newVTunTunSplitterTestWorkspace(t *testing.T) *pasta.Workspace {
 	runtime := &tunSplitterTestRuntime{sys: &sysnetdebug.System{}}
 	for _, class := range []pasta.NodeClass{
 		VTunClass{Runtime: runtime},
+		AutoTunSplitterClass{Runtime: runtime},
 		TunSplitterClass{Runtime: runtime},
 	} {
 		if err := w.AddNodeClass(class); err != nil {
@@ -679,8 +680,14 @@ func newTunSplitterTestWorkspaceWithDNSCacheManager(t *testing.T, manager storag
 	t.Helper()
 	w := pasta.NewWorkspace(logging.NewDebugLogFactory(1024))
 	t.Cleanup(func() { w.Close() })
-	if err := w.AddNodeClass(TunSplitterClass{Runtime: &tunSplitterTestRuntime{sys: &sysnetdebug.System{}, dns: manager}}); err != nil {
-		t.Fatalf("AddNodeClass TunSplitter: %v", err)
+	runtime := &tunSplitterTestRuntime{sys: &sysnetdebug.System{}, dns: manager}
+	for _, class := range []pasta.NodeClass{
+		AutoTunSplitterClass{Runtime: runtime},
+		TunSplitterClass{Runtime: runtime},
+	} {
+		if err := w.AddNodeClass(class); err != nil {
+			t.Fatalf("AddNodeClass %s: %v", class.ClassName(), err)
+		}
 	}
 	return w
 }

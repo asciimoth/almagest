@@ -80,17 +80,16 @@
 			"name": "peer.stack.test.",
 			"type": "A",
 		},
-		"TunSplitter transport": {
-			"Class": "almagest/TunSplitter",
+		"AutoTunSplitter transport": {
+			"Class": "almagest/AutoTunSplitter",
 			"Links": [
 				"slot 1 -> [TunJoiner transport] Default",
 				"slot 2 -> [WireGuard Tailscale] Tun",
 			],
-			"rules": "SNET4 100.64.0.0/10\nSNET6 fd7a:115c:a1e0::/48\nOR\nSLOT 2\n\nTRUE\nSLOT 1",
 		},
 		"TunJoiner applications": {
 			"Class": "almagest/TunJoiner",
-			"Links": ["Tun -> [TunSplitter transport] Tun"],
+			"Links": ["Tun -> [AutoTunSplitter transport] Tun"],
 		},
 		"VTun applications": {
 			"Class": "almagest/VTun",

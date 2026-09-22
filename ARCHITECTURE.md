@@ -88,8 +88,8 @@ Engine and workspace:
 - `lib/socks/`: SOCKS client/server and local proxy node classes.
 - `lib/tailscale/`: Tailscale control-plane integration for a shared WireGuard
   device, including MagicDNS and firewall object outputs.
-- `lib/tun/`: TUN, default TUN, VTun, TUN copy/join/split/config-stripper,
-  TUN firewall, and TUN debug-log node classes.
+- `lib/tun/`: TUN, default TUN, VTun, TUN copy/join/manual-split/
+  automatic-split/config-stripper, TUN firewall, and TUN debug-log node classes.
 - `lib/wireguard/`: WireGuard node classes.
 - `lib/debug/`: debug-only node classes.
 - `lib/logging/`: logger interfaces and debug logger implementation.

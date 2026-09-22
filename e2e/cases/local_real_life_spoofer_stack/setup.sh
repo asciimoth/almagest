@@ -74,6 +74,22 @@ sed -i \
 	-e "s/%EXAMPLE_IP%/$E2E_EXAMPLE_IP/g" \
 	"$E2E_CONFIG_DIR/alm.hujson"
 
+# Keep a second graph for the compatibility phase. The main phase uses the
+# automatic splitter from the checked-in graph. The second phase replaces only
+# that splitter with the original manual rules. Keep this copy outside the
+# configuration directory so almagestd cannot load it as an active config.
+manual_config="$E2E_RUNTIME/alm-manual-splitter.hujson"
+cp "$E2E_CONFIG_DIR/alm.hujson" "$manual_config"
+sed -i \
+	-e '/"AutoTunSplitter transport": {/,/^[[:space:]]*},$/ {
+		s/"AutoTunSplitter transport"/"TunSplitter transport"/
+		s@"Class": "almagest/AutoTunSplitter"@"Class": "almagest/TunSplitter"@
+		/^[[:space:]]*],$/a\
+\t\t\t"rules": "SNET4 100.64.0.0/10\\nSNET6 fd7a:115c:a1e0::/48\\nOR\\nSLOT 2\\n\\nTRUE\\nSLOT 1",
+	}' \
+	-e 's/\[AutoTunSplitter transport\]/[TunSplitter transport]/g' \
+	"$manual_config"
+
 {
 	printf 'export E2E_HEADSCALE_AUTH_KEY=%q\n' "$(cat /stack-shared/headscale-auth-key)"
 	printf 'export E2E_WIREGUARD_TAILSCALE_PRIVATE=%q\n' "$(wg genkey)"
