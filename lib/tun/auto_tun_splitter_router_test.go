@@ -29,6 +29,13 @@ func TestAutoTunSplitterRouterRoutesByLearnedAddressesAndPrefixes(t *testing.T) 
 			Source:      netip.MustParseAddr("192.0.2.3"),
 		}},
 	})
+	router.SetConfig(4, TunConfig{
+		Addrs:  []string{"192.0.2.4"},
+		Routes: []string{"198.51.100.0/24"},
+	})
+	router.SetConfig(5, TunConfig{
+		Addrs: []string{"203.0.113.5"},
+	})
 
 	tests := []struct {
 		name        string
@@ -37,10 +44,10 @@ func TestAutoTunSplitterRouterRoutesByLearnedAddressesAndPrefixes(t *testing.T) 
 		want        int
 	}{
 		{
-			name:        "exact IPv4 source",
+			name:        "more-specific IPv4 destination overrides source association",
 			source:      netip.MustParseAddr("100.64.0.2"),
 			destination: netip.MustParseAddr("100.80.0.1"),
-			want:        2,
+			want:        3,
 		},
 		{
 			name:        "address CIDR does not claim neighboring sources",
@@ -67,16 +74,28 @@ func TestAutoTunSplitterRouterRoutesByLearnedAddressesAndPrefixes(t *testing.T) 
 			want:        3,
 		},
 		{
-			name:        "source-route destination is learned",
+			name:        "unknown source uses lower slot for equal prefix",
 			source:      netip.MustParseAddr("10.0.0.1"),
 			destination: netip.MustParseAddr("198.51.100.7"),
 			want:        3,
 		},
 		{
-			name:        "exact IPv6 source",
+			name:        "associated source breaks equal prefix tie",
+			source:      netip.MustParseAddr("192.0.2.4"),
+			destination: netip.MustParseAddr("198.51.100.7"),
+			want:        4,
+		},
+		{
+			name:        "advertised IPv4 source does not claim unmatched destination",
+			source:      netip.MustParseAddr("100.64.0.2"),
+			destination: netip.MustParseAddr("8.8.8.8"),
+			want:        1,
+		},
+		{
+			name:        "advertised IPv6 source does not claim unmatched destination",
 			source:      netip.MustParseAddr("fd7a:115c:a1e0::2"),
 			destination: netip.MustParseAddr("2001:db8::1"),
-			want:        2,
+			want:        1,
 		},
 		{
 			name:        "longest IPv6 destination prefix",
@@ -85,8 +104,8 @@ func TestAutoTunSplitterRouterRoutesByLearnedAddressesAndPrefixes(t *testing.T) 
 			want:        3,
 		},
 		{
-			name:        "unmatched packet uses slot one",
-			source:      netip.MustParseAddr("10.0.0.1"),
+			name:        "address without route does not claim traffic",
+			source:      netip.MustParseAddr("203.0.113.5"),
 			destination: netip.MustParseAddr("192.0.2.99"),
 			want:        1,
 		},
@@ -119,7 +138,8 @@ func TestAutoTunSplitterRouterUpdatesAreCopiedAndDeterministic(t *testing.T) {
 		t.Fatalf("Route after caller mutation = %d, want copied slot 3 config", got)
 	}
 
-	// The lower slot wins both exact-address and equal-prefix conflicts.
+	// The lower slot wins when equal route claims have the same associated
+	// source address.
 	router.SetConfig(2, TunConfig{
 		Addrs:  []string{"192.0.2.2/32"},
 		Routes: []string{"10.0.0.0/8"},

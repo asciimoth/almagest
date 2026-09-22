@@ -242,6 +242,9 @@ retry "$ALMAGEST_E2E_TIMEOUT" "direct Tailscale peer path through Spoofer" \
 	tailscale_peer_direct \
 	|| fail "nested Tailscale did not select direct UDP"
 send_http_client "HttpClient Tailnet" "tailnet HttpServer SO response"
+send_http_client \
+	"HttpClient Application Public" \
+	"destination=$E2E_PUBLIC_IP source=$direct_source"
 
 send_dns_query "DnsQuery public"
 send_dns_query "DnsQuery intercepted"
@@ -391,5 +394,8 @@ retry "$ALMAGEST_E2E_TIMEOUT" "manual splitter default slot through Spoofer" \
 	|| fail "manual TunSplitter default slot could not reach the public fixture"
 assert_contains "$E2E_RUNTIME/manual-splitter-default.txt" "source=$direct_source"
 send_http_client "HttpClient Tailnet" "tailnet HttpServer SO response"
+send_http_client \
+	"HttpClient Application Public" \
+	"destination=$E2E_PUBLIC_IP source=$direct_source"
 
 log "case passed with automatic and manual outer splitters"

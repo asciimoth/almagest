@@ -98,6 +98,8 @@ The test checks:
 - DNS through VTun and Spoofer populates persistent cache storage;
 - Tailscale control, MagicDNS, direct UDP, and tailnet HTTP work through the
   outer Spoofer transport with the automatic splitter;
+- the application VTun reaches both a public destination through the empty
+  default branch and a tailnet destination through the learned branch;
 - after a restart, normal and tailnet paths work with the original manual
   splitter rules;
 - direct and Spoofer-backed SOCKS proxies enforce their destination rules;

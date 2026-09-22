@@ -3,6 +3,7 @@ package tunnodes
 import (
 	"encoding/binary"
 	"net/netip"
+	"slices"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -24,17 +25,19 @@ type autoTunSplitterRouter struct {
 	table      atomic.Pointer[autoTunSplitterRouteTable]
 }
 
-// autoTunSplitterRouteTable is immutable after publication. Address ties and
-// equal-length route ties select the lower slot number. This makes conflicting
-// downstream suggestions deterministic.
+// autoTunSplitterRouteTable is immutable after publication. The routes are
+// ordered by decreasing prefix length. Equal route claims use their associated
+// source addresses as tie-breakers, then select the lower slot number. This
+// makes conflicting downstream suggestions deterministic without letting an
+// interface address claim unrelated destinations.
 type autoTunSplitterRouteTable struct {
-	sourceSlots map[netip.Addr]int
-	routes      []autoTunSplitterRoute
+	routes []autoTunSplitterRoute
 }
 
 type autoTunSplitterRoute struct {
-	prefix netip.Prefix
-	slot   int
+	prefix  netip.Prefix
+	slot    int
+	sources []netip.Addr
 }
 
 func newAutoTunSplitterRouter() *autoTunSplitterRouter {
@@ -55,11 +58,13 @@ func (r *autoTunSplitterRouter) Unlock() {
 
 // Route returns the learned slot for one complete IPv4 or IPv6 packet.
 //
-// An exact packet source address has priority because an upstream userspace
-// stack selects that address from the source routes propagated by this node.
-// Otherwise, the longest destination-prefix match wins. Packets that do not
-// match learned data use slot 1. Malformed or incomplete IP packets are
-// dropped by returning slot 0.
+// The longest destination-prefix match wins. A source address can select
+// between slots that claim the same longest prefix, but it cannot select a
+// slot that does not claim the packet destination. This distinction matters
+// when an upstream userspace stack uses one branch address as its fallback
+// source for otherwise unmatched destinations. Packets without a destination
+// match use slot 1. Malformed or incomplete IP packets are dropped by
+// returning slot 0.
 func (r *autoTunSplitterRouter) Route(buf []byte, offset int, _ bool) int {
 	source, destination, ok := autoTunPacketAddresses(buf, offset)
 	if !ok {
@@ -69,13 +74,28 @@ func (r *autoTunSplitterRouter) Route(buf []byte, offset int, _ bool) int {
 	if table == nil {
 		return 1
 	}
-	if slot := table.sourceSlots[source]; slot != 0 {
-		return slot
-	}
+	matchedBits := -1
+	matchedSlot := 0
 	for _, route := range table.routes {
-		if route.prefix.Contains(destination) {
+		bits := route.prefix.Bits()
+		if matchedBits >= 0 && bits < matchedBits {
+			break
+		}
+		if !route.prefix.Contains(destination) {
+			continue
+		}
+		if matchedBits < 0 {
+			matchedBits = bits
+		}
+		if slices.Contains(route.sources, source) {
 			return route.slot
 		}
+		if matchedSlot == 0 || route.slot < matchedSlot {
+			matchedSlot = route.slot
+		}
+	}
+	if matchedSlot != 0 {
+		return matchedSlot
 	}
 	return 1
 }
@@ -116,37 +136,25 @@ func (r *autoTunSplitterRouter) Reset() {
 }
 
 func (r *autoTunSplitterRouter) rebuildLocked() {
-	table := &autoTunSplitterRouteTable{
-		sourceSlots: make(map[netip.Addr]int),
-	}
+	table := &autoTunSplitterRouteTable{}
+	routeIndexes := make(map[autoTunSplitterRouteKey]int)
 	for slot := 1; slot <= tunSplitterMaxSlots; slot++ {
 		if !r.configured[slot] {
 			continue
 		}
-		cfg := r.configs[slot]
-		for _, value := range cfg.Addrs {
-			addr, ok := autoTunConfigAddr(value)
-			if !ok {
-				continue
-			}
-			if _, exists := table.sourceSlots[addr]; !exists {
-				table.sourceSlots[addr] = slot
-			}
-		}
+		// Use the same inferred destination-to-source associations that this
+		// node propagates upstream. The packet router and the upstream source
+		// selector must therefore make compatible decisions.
+		cfg := r.configs[slot].WithInferredSourceRoutes()
 		for _, value := range cfg.Routes {
 			if prefix, ok := autoTunConfigPrefix(value); ok {
-				table.routes = append(table.routes, autoTunSplitterRoute{
-					prefix: prefix,
-					slot:   slot,
-				})
+				addAutoTunSplitterRoute(table, routeIndexes, prefix, slot, netip.Addr{})
 			}
 		}
 		for _, sourceRoute := range cfg.SourceRoutes {
 			if prefix, ok := normalizeAutoTunPrefix(sourceRoute.Destination); ok {
-				table.routes = append(table.routes, autoTunSplitterRoute{
-					prefix: prefix,
-					slot:   slot,
-				})
+				source := normalizeAutoTunSource(sourceRoute.Source, prefix)
+				addAutoTunSplitterRoute(table, routeIndexes, prefix, slot, source)
 			}
 		}
 	}
@@ -160,15 +168,42 @@ func (r *autoTunSplitterRouter) rebuildLocked() {
 	r.table.Store(table)
 }
 
-func autoTunConfigAddr(value string) (netip.Addr, bool) {
-	if prefix, err := netip.ParsePrefix(value); err == nil {
-		return prefix.Addr().Unmap(), true
+type autoTunSplitterRouteKey struct {
+	prefix netip.Prefix
+	slot   int
+}
+
+func addAutoTunSplitterRoute(
+	table *autoTunSplitterRouteTable,
+	indexes map[autoTunSplitterRouteKey]int,
+	prefix netip.Prefix,
+	slot int,
+	source netip.Addr,
+) {
+	key := autoTunSplitterRouteKey{prefix: prefix, slot: slot}
+	index, exists := indexes[key]
+	if !exists {
+		index = len(table.routes)
+		indexes[key] = index
+		table.routes = append(table.routes, autoTunSplitterRoute{
+			prefix: prefix,
+			slot:   slot,
+		})
 	}
-	addr, err := netip.ParseAddr(value)
-	if err != nil {
-		return netip.Addr{}, false
+	if source.IsValid() && !slices.Contains(table.routes[index].sources, source) {
+		table.routes[index].sources = append(table.routes[index].sources, source)
 	}
-	return addr.Unmap(), true
+}
+
+func normalizeAutoTunSource(source netip.Addr, destination netip.Prefix) netip.Addr {
+	if !source.IsValid() {
+		return netip.Addr{}
+	}
+	source = source.Unmap()
+	if source.Is4() != destination.Addr().Is4() {
+		return netip.Addr{}
+	}
+	return source
 }
 
 func autoTunConfigPrefix(value string) (netip.Prefix, bool) {

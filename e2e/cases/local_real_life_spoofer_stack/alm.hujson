@@ -110,6 +110,13 @@
 			"method": "GET",
 			"body": "",
 		},
+		"HttpClient Application Public": {
+			"Class": "almagest/HttpClient",
+			"Links": ["Network -> [VTun applications] Network"],
+			"url": "http://%PUBLIC_IP%/application-default-slot",
+			"method": "GET",
+			"body": "",
+		},
 		"HttpClient A": {
 			"Class": "almagest/HttpClient",
 			"Links": ["Network -> [OutNetwork direct] Network"],

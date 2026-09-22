@@ -20,13 +20,14 @@ slot. A consumer can send an explicit source route when it needs a different
 address for a route.
 
 `AutoTunSplitter` also uses each slot's complete latest `TunConfig` as its
-packet-routing input. An exact packet source address selects the slot that
-advertised the address. Otherwise, the most-specific destination in `Routes`
-or `SourceRoutes` selects the slot. Invalid address and prefix suggestions are
-ignored, equal matches select the lower slot number, and unmatched packets use
-slot 1. A replacement config removes learned entries that it omits. Removing or
-replacing a slot link removes its learned entries before the next consumer can
-send a config.
+packet-routing input. The most-specific destination in `Routes` or
+`SourceRoutes` selects the slot. If multiple slots claim the same most-specific
+prefix, the source associated with that route can select between those slots;
+otherwise, the lower slot number wins. An address does not make its slot own
+unrelated destinations. Invalid address and prefix suggestions are ignored,
+and unmatched packets use slot 1. A replacement config removes learned entries
+that it omits. Removing or replacing a slot link removes its learned entries
+before the next consumer can send a config.
 
 The `DNS` field is optional. It must contain one IPv4 or IPv6 address, such as
 `8.8.8.8`. An empty value means that there is no DNS suggestion. It does not

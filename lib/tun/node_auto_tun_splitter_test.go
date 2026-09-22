@@ -186,12 +186,13 @@ func TestAutoTunSplitterNodeRoutesPacketsAndForgetsDetachedConfig(t *testing.T) 
 		netip.MustParseAddr("192.0.2.1"),
 		netip.MustParseAddr("100.100.0.1"),
 	)
-	// A learned source address identifies its slot even when the destination
-	// would otherwise follow the default route.
+	// A branch address does not override the destination route. VTun can use a
+	// specific-branch address as its fallback source when the default branch
+	// does not advertise an address.
 	assertAutoTunPacketRoute(
 		t,
 		peer,
-		specificFrontend,
+		defaultFrontend,
 		netip.MustParseAddr("100.64.0.2"),
 		netip.MustParseAddr("203.0.113.2"),
 	)
@@ -224,6 +225,95 @@ func TestAutoTunSplitterNodeRoutesPacketsAndForgetsDetachedConfig(t *testing.T) 
 		netip.MustParseAddr("10.20.0.2"),
 		netip.MustParseAddr("198.19.0.1"),
 	)
+}
+
+func TestVTunAutoTunSplitterUsesEmptyDefaultSlotForUnmatchedDestinations(t *testing.T) {
+	w := newVTunTunSplitterTestWorkspace(t)
+	vtunID, err := w.AddNodeByClass(NodeTypeVTun, "vtun")
+	if err != nil {
+		t.Fatalf("AddNodeByClass VTun: %v", err)
+	}
+	splitterID, err := w.AddNodeByClass(NodeTypeAutoTunSplitter, "auto splitter")
+	if err != nil {
+		t.Fatalf("AddNodeByClass AutoTunSplitter: %v", err)
+	}
+	netReceiver := networktest.NewReceiver(4)
+	if _, err := w.AddNode(netReceiver, "test/NetworkReceiver", "network receiver"); err != nil {
+		t.Fatalf("AddNode network receiver: %v", err)
+	}
+	defaultConsumer := &tunPayloadReceiver{events: make(chan TunPayload, 4)}
+	if _, err := w.AddNode(defaultConsumer, "test/TunReceiver", "empty default consumer"); err != nil {
+		t.Fatalf("AddNode default consumer: %v", err)
+	}
+	tailnetConsumer := &tunPayloadReceiver{events: make(chan TunPayload, 4)}
+	tailnetConsumerID, err := w.AddNode(tailnetConsumer, "test/TunReceiver", "tailnet consumer")
+	if err != nil {
+		t.Fatalf("AddNode tailnet consumer: %v", err)
+	}
+
+	vtunSnapshot := testkit.MustNodeSnapshot(t, w, vtunID)
+	splitterSnapshot := testkit.MustNodeSnapshot(t, w, splitterID)
+	if _, _, err := w.AddLink(vtunSnapshot.LeftPorts[0], netReceiver.In); err != nil {
+		t.Fatalf("AddLink VTun network: %v", err)
+	}
+	_ = networktest.ReceivePayload(t, netReceiver.Events)
+	if _, _, err := w.AddLink(splitterSnapshot.LeftPorts[0], vtunSnapshot.RightPorts[0]); err != nil {
+		t.Fatalf("AddLink VTun->AutoTunSplitter: %v", err)
+	}
+	if _, _, err := w.AddLink(defaultConsumer.in, splitterSnapshot.RightPorts[0]); err != nil {
+		t.Fatalf("AddLink empty default consumer: %v", err)
+	}
+	splitterSnapshot = testkit.MustNodeSnapshot(t, w, splitterID)
+	tailnetLink, _, err := w.AddLink(tailnetConsumer.in, splitterSnapshot.RightPorts[1])
+	if err != nil {
+		t.Fatalf("AddLink tailnet consumer: %v", err)
+	}
+	defaultFrontend := receiveTunPayload(t, defaultConsumer.events).Tun
+	tailnetFrontend := receiveTunPayload(t, tailnetConsumer.events).Tun
+
+	// This is the reported topology: the Spoofer-backed default branch emits
+	// no TunConfig, while WireGuard supplies the only address and a specific
+	// tailnet route. VTun consequently uses the tailnet address as its fallback
+	// IPv4 source. That source must not make the tailnet slot own public traffic.
+	tailnetSource := netip.MustParseAddr("100.82.132.84")
+	w.EmitEvent(tailnetConsumerID, tailnetLink, TunConfig{
+		Addrs:  []string{tailnetSource.String() + "/32"},
+		Routes: []string{"100.64.0.0/10"},
+	})
+	network := networktest.ReceivePayload(t, netReceiver.Events).Network
+
+	tests := []struct {
+		name        string
+		destination netip.Addr
+		frontend    tun.Tun
+	}{
+		{
+			name:        "fallback DNS server uses default slot",
+			destination: netip.MustParseAddr("8.8.8.8"),
+			frontend:    defaultFrontend,
+		},
+		{
+			name:        "public address uses default slot",
+			destination: netip.MustParseAddr("203.0.113.1"),
+			frontend:    defaultFrontend,
+		},
+		{
+			name:        "tailnet address uses learned slot",
+			destination: netip.MustParseAddr("100.97.143.122"),
+			frontend:    tailnetFrontend,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			writeVTunUDPAndAssertPacket(
+				t,
+				network,
+				test.frontend,
+				test.destination,
+				tailnetSource,
+			)
+		})
+	}
 }
 
 func TestVTunAutoTunSplitterLearnsDualStackAndSourceRoutes(t *testing.T) {
