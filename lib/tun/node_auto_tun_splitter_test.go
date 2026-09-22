@@ -79,8 +79,21 @@ func TestAutoTunSplitterNodeRejectsConfigFromReplacedSlotLink(t *testing.T) {
 		t.Fatalf("AddLink old slot 2 consumer: %v", err)
 	}
 	w.EmitEvent(oldConsumerID, oldLink, TunConfig{Routes: []string{"192.0.2.0/24"}})
+	source := netip.MustParseAddr("10.0.0.1")
+	if got := routeAutoTunPacket(node.autoRouter, autoTunTestPacket(
+		source,
+		netip.MustParseAddr("192.0.2.9"),
+	), 0); got != 2 {
+		t.Fatalf("old prefix route before detach = slot %d, want 2", got)
+	}
 
 	w.RemoveLink(oldLink)
+	if got := routeAutoTunPacket(node.autoRouter, autoTunTestPacket(
+		source,
+		netip.MustParseAddr("192.0.2.9"),
+	), 0); got != 1 {
+		t.Fatalf("old prefix route after detach = slot %d, want fallback slot 1", got)
+	}
 	replacement := &tunPayloadReceiver{events: make(chan TunPayload, 2)}
 	replacementID, err := w.AddNode(replacement, "test/TunReceiver", "replacement consumer")
 	if err != nil {
@@ -91,6 +104,12 @@ func TestAutoTunSplitterNodeRejectsConfigFromReplacedSlotLink(t *testing.T) {
 	replacementLink, _, err := w.AddLink(replacement.in, slot2Port)
 	if err != nil {
 		t.Fatalf("AddLink replacement slot 2 consumer: %v", err)
+	}
+	if got := routeAutoTunPacket(node.autoRouter, autoTunTestPacket(
+		source,
+		netip.MustParseAddr("192.0.2.9"),
+	), 0); got != 1 {
+		t.Fatalf("old prefix route before replacement config = slot %d, want fallback slot 1", got)
 	}
 	w.EmitEvent(replacementID, replacementLink, TunConfig{Routes: []string{"198.51.100.0/24"}})
 
@@ -104,7 +123,6 @@ func TestAutoTunSplitterNodeRejectsConfigFromReplacedSlotLink(t *testing.T) {
 		t.Fatalf("OnEvent stale config: %v", err)
 	}
 
-	source := netip.MustParseAddr("10.0.0.1")
 	if got := routeAutoTunPacket(node.autoRouter, autoTunTestPacket(
 		source,
 		netip.MustParseAddr("198.51.100.9"),
@@ -117,6 +135,134 @@ func TestAutoTunSplitterNodeRejectsConfigFromReplacedSlotLink(t *testing.T) {
 	), 0); got != 1 {
 		t.Fatalf("stale prefix route = slot %d, want fallback slot 1", got)
 	}
+}
+
+func TestAutoTunSplitterNodeUsesOneSnapshotForRoutingAndUpstreamConfig(t *testing.T) {
+	w := newTunSplitterTestWorkspace(t)
+	runtime := &tunSplitterTestRuntime{sys: &sysnetdebug.System{}}
+	var node *tunSplitterNode
+	class := trackedAutoTunSplitterClass{
+		AutoTunSplitterClass: AutoTunSplitterClass{Runtime: runtime},
+		node:                 &node,
+	}
+	if err := w.AddNodeClass(class); err != nil {
+		t.Fatalf("AddNodeClass tracked AutoTunSplitter: %v", err)
+	}
+	splitter, err := w.AddNodeByClass(class.ClassName(), "auto splitter")
+	if err != nil {
+		t.Fatalf("AddNode AutoTunSplitter: %v", err)
+	}
+
+	provider := &tunConfigReceiverNode{configs: make(chan TunConfig, 8)}
+	if _, err := w.AddNode(provider, "test/TunConfigReceiver", "provider"); err != nil {
+		t.Fatalf("AddNode provider: %v", err)
+	}
+	defaultConsumer := &tunPayloadReceiver{events: make(chan TunPayload, 2)}
+	defaultConsumerID, err := w.AddNode(defaultConsumer, "test/TunReceiver", "default consumer")
+	if err != nil {
+		t.Fatalf("AddNode default consumer: %v", err)
+	}
+	specificConsumer := &tunPayloadReceiver{events: make(chan TunPayload, 2)}
+	specificConsumerID, err := w.AddNode(specificConsumer, "test/TunReceiver", "specific consumer")
+	if err != nil {
+		t.Fatalf("AddNode specific consumer: %v", err)
+	}
+
+	snapshot := testkit.MustNodeSnapshot(t, w, splitter)
+	if _, _, err := w.AddLink(snapshot.LeftPorts[0], provider.out); err != nil {
+		t.Fatalf("AddLink provider->splitter: %v", err)
+	}
+	discardTunConfig(t, provider.configs)
+	defaultLink, _, err := w.AddLink(defaultConsumer.in, snapshot.RightPorts[0])
+	if err != nil {
+		t.Fatalf("AddLink default consumer: %v", err)
+	}
+	snapshot = testkit.MustNodeSnapshot(t, w, splitter)
+	specificLink, _, err := w.AddLink(specificConsumer.in, snapshot.RightPorts[1])
+	if err != nil {
+		t.Fatalf("AddLink specific consumer: %v", err)
+	}
+
+	defaultConfig := TunConfig{
+		Addrs:  []string{"10.20.0.2/32"},
+		Routes: []string{"0.0.0.0/0"},
+		MTU:    1400,
+		DNS:    "8.8.8.8",
+	}
+	w.EmitEvent(defaultConsumerID, defaultLink, defaultConfig)
+	assertTunConfigReceived(t, provider.configs, defaultConfig.WithoutDNS().WithInferredSourceRoutes())
+
+	specificConfig := TunConfig{
+		Addrs:  []string{"100.64.0.2/32"},
+		Routes: []string{"100.64.0.0/10"},
+		MTU:    1280,
+		DNS:    "100.100.100.100",
+	}
+	w.EmitEvent(specificConsumerID, specificLink, specificConfig)
+	wantMerged := TunConfigByLink{
+		defaultLink:  defaultConfig.WithoutDNS().WithInferredSourceRoutes(),
+		specificLink: specificConfig.WithoutDNS().WithInferredSourceRoutes(),
+	}.Merge()
+	assertTunConfigReceived(t, provider.configs, wantMerged)
+
+	source := netip.MustParseAddr("192.0.2.1")
+	if got := routeAutoTunPacket(node.autoRouter, autoTunTestPacket(
+		source,
+		netip.MustParseAddr("100.100.0.1"),
+	), 0); got != 2 {
+		t.Fatalf("specific route = slot %d, want 2", got)
+	}
+
+	// One replacement event removes omitted route claims and replaces the
+	// corresponding upstream suggestion. It does not retain delta state.
+	replacement := TunConfig{
+		Addrs:  []string{"198.18.0.2/32"},
+		Routes: []string{"198.18.0.0/15"},
+		MTU:    1450,
+		DNS:    "192.0.2.53",
+	}
+	w.EmitEvent(specificConsumerID, specificLink, replacement)
+	wantMerged = TunConfigByLink{
+		defaultLink:  defaultConfig.WithoutDNS().WithInferredSourceRoutes(),
+		specificLink: replacement.WithoutDNS().WithInferredSourceRoutes(),
+	}.Merge()
+	assertTunConfigReceived(t, provider.configs, wantMerged)
+	if got := routeAutoTunPacket(node.autoRouter, autoTunTestPacket(
+		source,
+		netip.MustParseAddr("100.100.0.1"),
+	), 0); got != 1 {
+		t.Fatalf("omitted route after replacement = slot %d, want 1", got)
+	}
+	if got := routeAutoTunPacket(node.autoRouter, autoTunTestPacket(
+		source,
+		netip.MustParseAddr("198.19.0.1"),
+	), 0); got != 2 {
+		t.Fatalf("replacement route = slot %d, want 2", got)
+	}
+
+	w.RemoveLink(specificLink)
+	assertTunConfigReceived(t, provider.configs, defaultConfig.WithoutDNS().WithInferredSourceRoutes())
+	if got := routeAutoTunPacket(node.autoRouter, autoTunTestPacket(
+		source,
+		netip.MustParseAddr("198.19.0.1"),
+	), 0); got != 1 {
+		t.Fatalf("detached route = slot %d, want 1", got)
+	}
+}
+
+type trackedAutoTunSplitterClass struct {
+	AutoTunSplitterClass
+	node **tunSplitterNode
+}
+
+func (trackedAutoTunSplitterClass) ClassName() string {
+	return "test/TrackedAutoTunSplitter"
+}
+
+func (c trackedAutoTunSplitterClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
+	node := newTunSplitterNode(c.Runtime, cfg, true)
+	*c.node = node
+	return node, nil
 }
 
 func TestAutoTunSplitterNodeRoutesPacketsAndForgetsDetachedConfig(t *testing.T) {

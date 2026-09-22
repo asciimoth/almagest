@@ -10,13 +10,16 @@ import (
 )
 
 // autoTunSplitterRouter is the Gonnect split callback used by
-// AutoTunSplitter. It converts downstream TunConfig snapshots into one
-// immutable packet-routing table.
+// AutoTunSplitter. It converts the latest complete TunConfig snapshot from
+// each slot into one immutable packet-routing table. Config fields that do not
+// affect packet selection, such as MTU and DNS, stay out of the table.
 //
 // Gonnect calls Lock before each read batch and Unlock after it. A config
 // update takes the write lock, so all packets in one batch use the same table.
 // Route also reads the table through an atomic pointer. This keeps direct calls
-// safe and avoids mutable maps or slices in the packet path.
+// safe and avoids mutable maps or slices in the packet path. In particular,
+// the atomic pointer is a publication mechanism and the lock is a batch
+// consistency mechanism; a future implementation must preserve both effects.
 type autoTunSplitterRouter struct {
 	mu sync.RWMutex
 
@@ -25,11 +28,12 @@ type autoTunSplitterRouter struct {
 	table      atomic.Pointer[autoTunSplitterRouteTable]
 }
 
-// autoTunSplitterRouteTable is immutable after publication. The routes are
-// ordered by decreasing prefix length. Equal route claims use their associated
-// source addresses as tie-breakers, then select the lower slot number. This
-// makes conflicting downstream suggestions deterministic without letting an
-// interface address claim unrelated destinations.
+// autoTunSplitterRouteTable is immutable after publication. Routes are ordered
+// by decreasing prefix length and then increasing slot number. Route first
+// limits candidates to the longest matching destination prefix. Within that
+// group, a matching associated source wins; otherwise, the first (lowest)
+// slot wins. This makes conflicting suggestions deterministic without letting
+// an interface address claim unrelated destinations.
 type autoTunSplitterRouteTable struct {
 	routes []autoTunSplitterRoute
 }
@@ -100,8 +104,10 @@ func (r *autoTunSplitterRouter) Route(buf []byte, offset int, _ bool) int {
 	return 1
 }
 
-// SetConfig replaces the complete learned configuration for slot. The copy
-// prevents later caller mutations from changing a published route table.
+// SetConfig replaces the complete learned configuration for slot. An empty
+// config is still a configured snapshot and removes all former claims for the
+// slot. The copy prevents later caller mutations from changing either stored
+// input or a published route table.
 func (r *autoTunSplitterRouter) SetConfig(slot int, cfg TunConfig) {
 	if slot < 1 || slot > tunSplitterMaxSlots {
 		return
@@ -113,7 +119,8 @@ func (r *autoTunSplitterRouter) SetConfig(slot int, cfg TunConfig) {
 	r.mu.Unlock()
 }
 
-// ClearConfig removes all addresses and routes learned for slot.
+// ClearConfig removes all addresses and routes learned for slot. The node calls
+// it on link detach and before a replacement link can publish a new snapshot.
 func (r *autoTunSplitterRouter) ClearConfig(slot int) {
 	if slot < 1 || slot > tunSplitterMaxSlots {
 		return
@@ -144,7 +151,8 @@ func (r *autoTunSplitterRouter) rebuildLocked() {
 		}
 		// Use the same inferred destination-to-source associations that this
 		// node propagates upstream. The packet router and the upstream source
-		// selector must therefore make compatible decisions.
+		// selector must therefore make compatible decisions. Addrs do not add
+		// claims on their own; they only supply sources for Routes.
 		cfg := r.configs[slot].WithInferredSourceRoutes()
 		for _, value := range cfg.Routes {
 			if prefix, ok := autoTunConfigPrefix(value); ok {

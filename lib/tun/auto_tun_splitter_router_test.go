@@ -165,6 +165,80 @@ func TestAutoTunSplitterRouterUpdatesAreCopiedAndDeterministic(t *testing.T) {
 	}
 }
 
+func TestAutoTunSplitterRouterNormalizesPrefixesAndAssociatedSources(t *testing.T) {
+	router := newAutoTunSplitterRouter()
+	router.SetConfig(2, TunConfig{
+		SourceRoutes: []TunSourceRoute{{
+			Destination: netip.MustParsePrefix("::ffff:198.51.100.129/120"),
+			Source:      netip.MustParseAddr("::ffff:192.0.2.2"),
+		}},
+	})
+	router.SetConfig(3, TunConfig{
+		SourceRoutes: []TunSourceRoute{{
+			Destination: netip.MustParsePrefix("198.51.100.0/24"),
+			Source:      netip.MustParseAddr("192.0.2.3"),
+		}},
+	})
+	router.SetConfig(4, TunConfig{
+		Routes: []string{"10.1.2.3/8"},
+	})
+	router.SetConfig(5, TunConfig{
+		SourceRoutes: []TunSourceRoute{{
+			Destination: netip.MustParsePrefix("203.0.113.128/25"),
+			Source:      netip.MustParseAddr("2001:db8::5"),
+		}},
+	})
+
+	tests := []struct {
+		name        string
+		source      string
+		destination string
+		want        int
+	}{
+		{
+			name:        "mapped IPv4 prefix and source become native IPv4",
+			source:      "192.0.2.2",
+			destination: "198.51.100.200",
+			want:        2,
+		},
+		{
+			name:        "native source selects another equal prefix",
+			source:      "192.0.2.3",
+			destination: "198.51.100.200",
+			want:        3,
+		},
+		{
+			name:        "unknown source uses lower slot for normalized equal prefix",
+			source:      "192.0.2.99",
+			destination: "198.51.100.200",
+			want:        2,
+		},
+		{
+			name:        "non-network route address is masked",
+			source:      "192.0.2.99",
+			destination: "10.200.0.1",
+			want:        4,
+		},
+		{
+			name:        "wrong-family source is ignored but destination remains",
+			source:      "192.0.2.99",
+			destination: "203.0.113.200",
+			want:        5,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			packet := autoTunTestPacket(
+				netip.MustParseAddr(test.source),
+				netip.MustParseAddr(test.destination),
+			)
+			if got := routeAutoTunPacket(router, packet, 0); got != test.want {
+				t.Fatalf("Route(%s -> %s) = %d, want %d", test.source, test.destination, got, test.want)
+			}
+		})
+	}
+}
+
 func TestAutoTunSplitterRouterRejectsMalformedPacketsAndHonorsOffset(t *testing.T) {
 	router := newAutoTunSplitterRouter()
 	router.SetConfig(2, TunConfig{Routes: []string{"10.0.0.0/8"}})
@@ -181,6 +255,8 @@ func TestAutoTunSplitterRouterRejectsMalformedPacketsAndHonorsOffset(t *testing.
 	binary.BigEndian.PutUint16(badIPv4Length[2:4], uint16(len(valid)+1))
 	badIPv4Header := append([]byte(nil), valid...)
 	badIPv4Header[0] = 0x44
+	badIPv4TotalLength := append([]byte(nil), valid...)
+	binary.BigEndian.PutUint16(badIPv4TotalLength[2:4], 19)
 	validIPv6 := autoTunTestPacket(
 		netip.MustParseAddr("2001:db8::1"),
 		netip.MustParseAddr("2001:db8::2"),
@@ -199,6 +275,7 @@ func TestAutoTunSplitterRouterRejectsMalformedPacketsAndHonorsOffset(t *testing.
 		{name: "unknown version", packet: []byte{0x10}, offset: 0},
 		{name: "short IPv4", packet: valid[:19], offset: 0},
 		{name: "small IPv4 header", packet: badIPv4Header, offset: 0},
+		{name: "IPv4 total length smaller than header", packet: badIPv4TotalLength, offset: 0},
 		{name: "truncated IPv4 total length", packet: badIPv4Length, offset: 0},
 		{name: "short IPv6", packet: validIPv6[:39], offset: 0},
 		{name: "truncated IPv6 payload", packet: badIPv6Length, offset: 0},

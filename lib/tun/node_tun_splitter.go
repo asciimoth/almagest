@@ -65,9 +65,21 @@ func (c TunSplitterClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassStat
 // AutoTunSplitterClass builds TUN splitters that learn packet routes from the
 // TunConfig messages sent by consumers of their slot ports.
 //
-// Each downstream interface address identifies the slot for packets with that
-// source address. Each downstream route or source-route destination identifies
-// the slot for packets sent to that prefix. Unmatched packets use slot 1.
+// Each slot has one current config snapshot. A new TunConfig replaces that
+// complete snapshot; it is not a delta. Removing or replacing the slot link
+// clears the snapshot before the slot can learn from its next consumer.
+//
+// Routes and source-route destinations claim packets by destination prefix.
+// The longest prefix wins. For equal prefixes, an associated packet source
+// selects its slot. The lower slot number wins when the source does not resolve
+// the tie. Interface addresses provide source associations for plain routes,
+// but an address alone does not claim packet destinations. Valid unmatched
+// packets use slot 1, and malformed IP packets use slot 0 so Gonnect drops
+// them.
+//
+// Learning is independent from upstream config propagation. The node also
+// removes DNS, infers destination-to-source associations, merges every linked
+// slot config, and sends that result to its TUN provider.
 type AutoTunSplitterClass struct {
 	Runtime Runtime
 }
@@ -146,9 +158,11 @@ type tunSplitterNode struct {
 	outputTuns TunOutputCache
 	frontends  map[uint64]tun.Tun
 	outputCfgs TunConfigByLink
-	// autoSlotLinks rejects delayed TunConfig events from a link that was
-	// removed or replaced on the same slot. Workspace callbacks serialize map
-	// access; packet workers access only autoRouter's synchronized snapshot.
+	// autoSlotLinks is the route-learning generation for each slot. Link IDs are
+	// sufficient generation tokens because the workspace does not reuse a live
+	// link ID. The map rejects delayed TunConfig events from a removed or
+	// replaced link. Workspace callbacks serialize map access; packet workers
+	// access only autoRouter's synchronized snapshot.
 	autoSlotLinks map[int]uint64
 }
 
@@ -706,9 +720,10 @@ func (n *tunSplitterNode) stopInputRetry() {
 	n.inputRetry = nil
 }
 
-// setAutoSlotLink starts a new route-learning generation for slot. Clearing
-// the old entry before the new consumer receives its frontend prevents stale
-// addresses and routes from directing packets to the replacement link.
+// setAutoSlotLink starts a new route-learning generation for slot. It clears
+// the old snapshot synchronously, before the new consumer receives its
+// frontend. Thus, no packet can use a route learned from the previous link
+// while the new consumer has not sent its first config.
 func (n *tunSplitterNode) setAutoSlotLink(slot int, link uint64) {
 	if slot == 0 || link == 0 || n.autoRouter == nil {
 		return
@@ -718,7 +733,8 @@ func (n *tunSplitterNode) setAutoSlotLink(slot int, link uint64) {
 }
 
 // removeAutoSlotLink forgets learned routes only when link still owns slot.
-// A zero link is used when the port itself is removed and forces cleanup.
+// This identity check makes a delayed removal from an old link harmless. A
+// zero link is used when the port itself is removed and forces cleanup.
 func (n *tunSplitterNode) removeAutoSlotLink(slot int, link uint64) {
 	if slot == 0 || n.autoRouter == nil {
 		return
