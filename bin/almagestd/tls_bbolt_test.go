@@ -821,6 +821,143 @@ func TestProtectedConfigTLS(t *testing.T) {
 	}
 }
 
+func TestTLSNodeNameSyncRenamesAndDeletesRuntimeReferences(t *testing.T) {
+	manager, err := openKVManager(filepath.Join(t.TempDir(), "kv.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer manager.Close() //nolint:errcheck
+
+	engine, err := almagest.BuildEngine(
+		context.Background(), configer.NewMemory(nil), logging.NewDebugLogFactory(16), &sysnetdebug.System{},
+		nil, nil, nil, nil, []pasta.NodeClass{adminAPIBatchNodeClass{}}, nil, false,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer engine.Close() //nolint:errcheck
+	nodeID, err := engine.AddNode(almagest.MainWorkspace, "test/AdminAPIBatchNode", "alpha")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	syncID := (&AdminAPI{tls: manager}).startTLSNodeNameSync(engine, nil)
+	if syncID == 0 {
+		t.Fatal("TLS node name sync subscription failed")
+	}
+	defer engine.UnsubscribeNotifications(syncID)
+	addTLSNodeReferences(manager, "policy", "alpha")
+
+	engine.SetNodeName(almagest.MainWorkspace, nodeID, "beta")
+	assertTLSNodeReferences(t, manager, "policy", "beta", true)
+	assertTLSNodeReferences(t, manager, "policy", "alpha", false)
+
+	engine.RemoveNode(almagest.MainWorkspace, nodeID)
+	assertTLSNodeReferences(t, manager, "policy", "beta", false)
+}
+
+func TestTLSNodeNameSyncKeepsReplacementReferencesAfterDelayedRemoval(t *testing.T) {
+	manager, err := openKVManager(filepath.Join(t.TempDir(), "kv.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer manager.Close() //nolint:errcheck
+
+	engine, err := almagest.BuildEngine(
+		context.Background(), configer.NewMemory(nil), logging.NewDebugLogFactory(16), &sysnetdebug.System{},
+		nil, nil, nil, nil, []pasta.NodeClass{adminAPIBatchNodeClass{}}, nil, false,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer engine.Close() //nolint:errcheck
+	oldID, err := engine.AddNode(almagest.MainWorkspace, "test/AdminAPIBatchNode", "alpha")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	syncID := (&AdminAPI{tls: manager}).startTLSNodeNameSync(engine, nil)
+	if syncID == 0 {
+		t.Fatal("TLS node name sync subscription failed")
+	}
+	defer engine.UnsubscribeNotifications(syncID)
+	addTLSNodeReferences(manager, "policy", "alpha")
+
+	callbackEntered := make(chan struct{})
+	releaseCallback := make(chan struct{})
+	blockingID := engine.SubscribeNotifications(func(notification almagest.EngineNotification) {
+		if notification.Kind != almagest.NotificationWorkspace || notification.Workspace == nil ||
+			notification.Workspace.Kind != pasta.NotificationNodeUpdated || notification.Workspace.ID != oldID {
+			return
+		}
+		select {
+		case <-callbackEntered:
+			return
+		default:
+		}
+		close(callbackEntered)
+		<-releaseCallback
+	})
+	if blockingID == 0 {
+		t.Fatal("blocking notification subscription failed")
+	}
+	defer engine.UnsubscribeNotifications(blockingID)
+
+	mutationDone := make(chan struct{})
+	go func() {
+		engine.SetNodePosition(almagest.MainWorkspace, oldID, "10 20")
+		close(mutationDone)
+	}()
+	<-callbackEntered
+	engine.RemoveNode(almagest.MainWorkspace, oldID)
+	replacementID, err := engine.AddNode(almagest.MainWorkspace, "test/AdminAPIBatchNode", "alpha")
+	if err != nil {
+		close(releaseCallback)
+		<-mutationDone
+		t.Fatal(err)
+	}
+	if replacementID == oldID {
+		close(releaseCallback)
+		<-mutationDone
+		t.Fatal("replacement node reused the removed node ID")
+	}
+	addTLSNodeReferences(manager, "policy", "alpha")
+
+	close(releaseCallback)
+	<-mutationDone
+	assertTLSNodeReferences(t, manager, "policy", "alpha", true)
+
+	engine.RemoveNode(almagest.MainWorkspace, replacementID)
+	assertTLSNodeReferences(t, manager, "policy", "alpha", false)
+}
+
+func addTLSNodeReferences(manager *bboltKVManager, policy, node string) {
+	manager.trackTLSPolicyWatcher(policy, node)
+	manager.tlsMu.Lock()
+	manager.tlsCAWatchers[node] = struct{}{}
+	manager.tlsMu.Unlock()
+}
+
+func assertTLSNodeReferences(t *testing.T, manager *bboltKVManager, policy, node string, want bool) {
+	t.Helper()
+	policyFound := false
+	for _, watcher := range manager.tlsPolicyWatchers(policy) {
+		if watcher == node {
+			policyFound = true
+			break
+		}
+	}
+	manager.tlsMu.Lock()
+	_, caFound := manager.tlsCAWatchers[node]
+	manager.tlsMu.Unlock()
+	if policyFound != want || caFound != want {
+		t.Fatalf(
+			"TLS references for node %q = policy:%t local-CA:%t; want both %t",
+			node, policyFound, caFound, want,
+		)
+	}
+}
+
 func testTLSPolicy(cert string) api.TLSPolicySpec {
 	return api.TLSPolicySpec{
 		TrustAnchors: []api.TLSTrustAnchor{{

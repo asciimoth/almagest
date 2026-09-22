@@ -609,6 +609,12 @@ func (s *snapshotService) Restore(ctx context.Context, uuid string) (api.Snapsho
 	}
 	defer recovery.cleanup()
 
+	// Keep the previous graph visible while restore tears down and reconstructs
+	// runtime nodes. Publish always runs, including after a successful rollback,
+	// so subscribers receive one authoritative view of the state that remains.
+	notifications := s.engine.BeginNotificationTransaction()
+	defer notifications.Publish()
+
 	before := s.storageIndex()
 	if err := s.applyLoadedSnapshot(ctx, desired); err != nil {
 		if rollbackErr := s.applyLoadedSnapshot(ctx, recovery); rollbackErr != nil {

@@ -57,6 +57,11 @@ type WorkerNotification struct {
 
 	Snapshot map[uint64]WorkerSnapshot `json:"snapshot,omitempty"`
 	Worker   *WorkerSnapshot           `json:"worker,omitempty"`
+
+	// sequence orders lifecycle changes inside one worker tracker. Engine
+	// notification transactions use it to reject an old callback that reaches
+	// them after a newer full worker snapshot.
+	sequence uint64
 }
 
 // WorkerNotificationCallback receives worker lifecycle notifications.
@@ -103,8 +108,9 @@ type workerTracker struct {
 	mu sync.Mutex
 	wg sync.WaitGroup
 
-	nextWorkerID       uint64
-	nextSubscriptionID uint64
+	nextWorkerID         uint64
+	nextSubscriptionID   uint64
+	notificationSequence uint64
 
 	closed        bool
 	nodes         map[uint64]pasta.NodeSnapshot
@@ -358,12 +364,14 @@ func (t *workerTracker) subscribe(callback WorkerNotificationCallback) uint64 {
 	t.nextSubscriptionID = id + 1
 	t.subscriptions[id] = callback
 	snapshot := t.workerSnapshotsLocked()
+	sequence := t.notificationSequence
 	t.mu.Unlock()
 
 	callback(WorkerNotification{
 		SubscriptionID: id,
 		Kind:           WorkerNotificationSnapshot,
 		Snapshot:       snapshot,
+		sequence:       sequence,
 	})
 	return id
 }
@@ -382,11 +390,13 @@ func (t *workerTracker) requestFullSnapshot(id uint64) {
 		return
 	}
 	snapshot := t.workerSnapshotsLocked()
+	sequence := t.notificationSequence
 	t.mu.Unlock()
 	callback(WorkerNotification{
 		SubscriptionID: id,
 		Kind:           WorkerNotificationSnapshot,
 		Snapshot:       snapshot,
+		sequence:       sequence,
 	})
 }
 
@@ -443,6 +453,13 @@ func (t *workerTracker) loadNodeSnapshot(node uint64) (pasta.NodeSnapshot, bool)
 }
 
 func (t *workerTracker) deliveriesLocked(notification WorkerNotification) []workerNotificationDelivery {
+	t.notificationSequence++
+	if t.notificationSequence == 0 {
+		// Zero identifies notifications from code that does not use tracker
+		// ordering. Keep tracker-produced lifecycle events non-zero.
+		t.notificationSequence = 1
+	}
+	notification.sequence = t.notificationSequence
 	if len(t.subscriptions) == 0 {
 		return nil
 	}

@@ -159,22 +159,28 @@ Snapshot flow:
    internal recovery archive, removes the current graph, mirrors storage, and
    replaces all bbolt buckets in one transaction. It then reapplies protected
    and host-derived state and reconstructs the graph from the restored config.
-4. If restore fails, the daemon uses the recovery archive to restore the prior
+4. Engine subscribers keep their previous graph view during restore. After the
+   restored graph or rollback state is stable, the engine drains notifications
+   that were already queued and publishes one authoritative workspace snapshot.
+   It also publishes the matching full worker snapshot because worker state is
+   a separate engine notification type. A blocked client does not block the
+   restore request; its final publication continues after that callback returns.
+5. If restore fails, the daemon uses the recovery archive to restore the prior
    in-memory and persistent state. A later config-file write failure does not
    roll back a successful restore; the restored config stays active in memory.
-5. `snapshots.export` returns the stored ZIP and `snapshots.import` validates a
+6. `snapshots.export` returns the stored ZIP and `snapshots.import` validates a
    ZIP before publishing it without replacing an existing UUID. Import can
    preserve the archived display name or replace it with an optional name.
-6. Snapshot create, delete, import, rename, and restore operations exclude
+7. Snapshot create, delete, import, rename, and restore operations exclude
    concurrent admin API state operations. Listing and export remain read-only.
    The CLI uses `almagest-cli snapshots`; the panel provides the same archive
    and snapshot-store operations. Panel downloads use `<uuid>.zip` names.
-7. `almagestd --snapshot PATH` validates and restores an archive before it
+8. `almagestd --snapshot PATH` validates and restores an archive before it
    opens bbolt or builds the engine. `--snapshot -` reads the archive from
    stdin. Protected config and the snapshot-store subtree remain host-local.
    The daemon first copies the closed storage state and restores that copy if
    startup restore changes some files and then fails.
-8. A compressed archive can be at most 32 MiB. Its extracted storage entries
+9. A compressed archive can be at most 32 MiB. Its extracted storage entries
    can be at most 256 MiB in total. The manifest can be at most 64 KiB, the
    regular config can be at most 8 MiB, and a display name can be at most 256
    UTF-8 bytes. Stream and WebSocket transports also have a finite JSON message

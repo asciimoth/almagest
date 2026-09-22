@@ -89,6 +89,19 @@ type EngineNotification struct {
 
 type NotificationCallback func(EngineNotification)
 
+// EngineNotificationTransaction groups workspace and worker changes into one
+// observable engine-state replacement. Publish is idempotent. The outermost
+// active transaction schedules one full workspace snapshot and one full worker
+// snapshot, then resumes incremental notifications. Publication can finish
+// after Publish returns when an older notification callback is still running.
+//
+// A transaction changes notification delivery only. It does not lock the
+// workspace or make the caller's state mutations transactional. Callers must
+// use their own mutation lock and must always call Publish, usually with defer.
+type EngineNotificationTransaction interface {
+	Publish()
+}
+
 func BuildEngine(
 	ctx context.Context,
 	cfg configer.Config, // may be nil
@@ -112,19 +125,21 @@ func BuildEngine(
 	}
 
 	engine := &engine{
-		ctx:                   ctx,
-		ctxCancel:             cancel,
-		logf:                  logf,
-		logger:                logf.EngineLogger(),
-		pool:                  pool,
-		sys:                   sys,
-		kv:                    kv,
-		dns:                   dns,
-		secrets:               secrets,
-		tlsConfigs:            tlsConfigs,
-		mainWorkspace:         nil,
-		nextSubscriptionID:    100, // to avoid collision between our IDs and workspace ones
-		subscriptionIDMapping: make(map[uint64]subMap),
+		ctx:                     ctx,
+		ctxCancel:               cancel,
+		logf:                    logf,
+		logger:                  logf.EngineLogger(),
+		pool:                    pool,
+		sys:                     sys,
+		kv:                      kv,
+		dns:                     dns,
+		secrets:                 secrets,
+		tlsConfigs:              tlsConfigs,
+		mainWorkspace:           nil,
+		nextSubscriptionID:      100, // to avoid collision between our IDs and workspace ones
+		subscriptionIDMapping:   make(map[uint64]subMap),
+		notificationCallbacks:   make(map[uint64]NotificationCallback),
+		notificationWorkerFloor: make(map[uint64]uint64),
 	}
 	engine.workers = newWorkerTracker(func() *pasta.Workspace {
 		return engine.mainWorkspace
@@ -158,8 +173,9 @@ func BuildEngine(
 
 	engine.mainWorkspace = work
 	engine.configCommentPopups = initialConfigCommentPopups(nodesCfg, work.Snapshot())
-	_ = work.SubscribeNotifications(func(notification pasta.WorkspaceNotification) {
+	engine.workspaceObserverSubscription = work.SubscribeNotifications(func(notification pasta.WorkspaceNotification) {
 		engine.workers.observeWorkspaceNotification(notification)
+		engine.observeWorkspaceBarrier(0, notification)
 	})
 
 	return engine, nil
@@ -306,6 +322,12 @@ type Engine interface {
 	RequestFullSnapshot(subscriptionID uint64)
 	RequestFullSnapshotLocked(subscriptionID uint64)
 
+	// BeginNotificationTransaction suppresses incremental workspace and worker
+	// notifications until Publish is called. The outermost transaction schedules
+	// the complete resulting state before later incremental events are delivered.
+	// Publication does not block Publish while an older callback is still active.
+	BeginNotificationTransaction() EngineNotificationTransaction
+
 	// Currently only "main" workspace available
 	SubscribeNodeMenu(workspace string, node, subscriptionID uint64)
 	SubscribeNodeMenuLocked(workspace string, node, subscriptionID uint64)
@@ -364,6 +386,20 @@ type engine struct {
 	nextSubscriptionID uint64
 	// mapping from engine notification subscription IDs to internal
 	subscriptionIDMapping map[uint64]subMap
+
+	// notificationMu protects the publication transaction state. It is separate
+	// from mu because callbacks can re-enter normal engine methods.
+	notificationMu                sync.Mutex
+	notificationCallbacks         map[uint64]NotificationCallback
+	notificationWorkerFloor       map[uint64]uint64
+	notificationTransactionDepth  int
+	notificationFinishing         bool
+	notificationPublishing        bool
+	notificationRepublish         bool
+	notificationQueue             []engineNotificationDelivery
+	workspaceObserverSubscription uint64
+	workspaceBarrier              chan struct{}
+	workspaceBarrierPending       map[uint64]struct{}
 }
 
 func (e *engine) Lock() {
@@ -883,6 +919,7 @@ func (e *engine) SubscribeNotificationsLocked(callback NotificationCallback) uin
 
 	id := e.nextSubscriptionID
 	e.nextSubscriptionID += 1
+	e.addNotificationSubscriber(id, callback)
 
 	colormap := make(map[string]TypePalette)
 	maps.Copy(colormap, DefaultColorMap)
@@ -897,6 +934,11 @@ func (e *engine) SubscribeNotificationsLocked(callback NotificationCallback) uin
 
 	WorkspaceCallback := func(pn pasta.WorkspaceNotification) {
 		pn.SubscriptionID = id
+		if e.observeWorkspaceBarrier(id, pn) {
+			// Full snapshots requested by a publication barrier are internal.
+			// The transaction publishes one newer authoritative snapshot.
+			return
+		}
 
 		en := EngineNotification{
 			SubscriptionID: id,
@@ -904,18 +946,19 @@ func (e *engine) SubscribeNotificationsLocked(callback NotificationCallback) uin
 			WorkspaceID:    "main",
 			Workspace:      &pn,
 		}
-		callback(en)
+		e.publishEngineNotification(en)
 	}
 
 	wid := e.mainWorkspace.SubscribeNotifications(WorkspaceCallback)
 	if wid == 0 {
+		e.removeNotificationSubscriber(id)
 		e.mu.Lock()
 		return 0
 	}
 
 	workerCallback := func(worker WorkerNotification) {
 		worker.SubscriptionID = id
-		callback(EngineNotification{
+		e.publishEngineNotification(EngineNotification{
 			SubscriptionID: id,
 			Kind:           NotificationWorker,
 			WorkspaceID:    "main",
@@ -925,6 +968,7 @@ func (e *engine) SubscribeNotificationsLocked(callback NotificationCallback) uin
 	workerID := e.workers.subscribe(workerCallback)
 	if workerID == 0 {
 		_ = e.mainWorkspace.UnsubscribeNotifications(wid)
+		e.removeNotificationSubscriber(id)
 		e.mu.Lock()
 		return 0
 	}
@@ -943,6 +987,7 @@ func (e *engine) UnsubscribeNotifications(id uint64) {
 	if !ok {
 		return
 	}
+	e.removeNotificationSubscriber(id)
 
 	// TODO: Unsubscribe all workspaces here (when we'll have more than one)
 	_ = e.mainWorkspace.UnsubscribeNotifications(subMap.MainWorkspace)
@@ -954,6 +999,7 @@ func (e *engine) UnsubscribeNotificationsLocked(id uint64) {
 	if !ok {
 		return
 	}
+	e.removeNotificationSubscriber(id)
 
 	// TODO: Unsubscribe all workspaces here (when we'll have more than one)
 	_ = e.mainWorkspace.UnsubscribeNotificationsLocked(subMap.MainWorkspace)

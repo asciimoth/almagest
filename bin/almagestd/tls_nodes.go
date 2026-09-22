@@ -10,6 +10,7 @@ import (
 
 type tlsNodeNameSync struct {
 	manager *bboltKVManager
+	engine  almagest.Engine
 	logger  logging.Logger
 
 	mu    sync.Mutex
@@ -24,6 +25,7 @@ func (a *AdminAPI) startTLSNodeNameSync(engine almagest.Engine, logger logging.L
 	}
 	syncer := &tlsNodeNameSync{
 		manager: a.tls,
+		engine:  engine,
 		logger:  logger,
 		nodes:   map[uint64]string{},
 	}
@@ -42,32 +44,45 @@ func (s *tlsNodeNameSync) handle(notification almagest.EngineNotification) {
 		}
 	case pasta.NotificationNodeAdded:
 		if wn.Node != nil {
-			s.setNodeName(wn.ID, wn.Node.Name)
+			s.reconcileNode(wn.ID, wn.Node.Name)
 		}
 	case pasta.NotificationNodeUpdated:
 		if wn.Node != nil {
-			s.renameNode(wn.ID, wn.Node.Name)
+			s.reconcileNode(wn.ID, wn.Node.Name)
 		}
 	case pasta.NotificationNodeRemoved:
 		name := ""
 		if wn.Node != nil {
 			name = wn.Node.Name
 		}
-		s.deleteNode(wn.ID, name)
+		s.reconcileNode(wn.ID, name)
 	case pasta.NotificationNodesUpdated:
+		if wn.Snapshot != nil {
+			s.reconcileSnapshot(wn.Snapshot.Nodes)
+			return
+		}
 		for id, node := range wn.Nodes {
-			s.renameNode(id, node.Name)
+			s.reconcileNode(id, node.Name)
 		}
 	case pasta.NotificationNodesRemoved:
+		if wn.Snapshot != nil {
+			s.reconcileSnapshot(wn.Snapshot.Nodes)
+			return
+		}
 		for id, node := range wn.Nodes {
-			s.deleteNode(id, node.Name)
+			s.reconcileNode(id, node.Name)
 		}
 	case pasta.NotificationWorkspaceStopped:
-		s.reconcileSnapshot(nil)
+		s.clearReferences()
 	}
 }
 
 func (s *tlsNodeNameSync) reconcileSnapshot(nodes map[uint64]pasta.NodeSnapshot) {
+	// Another callback can delay delivery until the graph changes again. Use the
+	// live graph so an old snapshot cannot remove replacement-node watchers.
+	if current, ok := currentWorkspaceNodes(s.engine); ok {
+		nodes = current
+	}
 	next := make(map[uint64]string, len(nodes))
 	for id, node := range nodes {
 		next[id] = node.Name
@@ -81,7 +96,7 @@ func (s *tlsNodeNameSync) reconcileSnapshot(nodes map[uint64]pasta.NodeSnapshot)
 	for id, oldName := range old {
 		newName, ok := next[id]
 		if !ok {
-			s.deleteReferences(oldName)
+			s.deleteReferencesIfInactive(oldName)
 			continue
 		}
 		if oldName != newName {
@@ -90,10 +105,14 @@ func (s *tlsNodeNameSync) reconcileSnapshot(nodes map[uint64]pasta.NodeSnapshot)
 	}
 }
 
-func (s *tlsNodeNameSync) setNodeName(id uint64, name string) {
-	s.mu.Lock()
-	s.nodes[id] = name
-	s.mu.Unlock()
+func (s *tlsNodeNameSync) reconcileNode(id uint64, fallbackName string) {
+	// Resolve the ID again because add, update, and remove notifications can be
+	// older than the graph by the time this callback runs.
+	if name, ok := currentWorkspaceNodeName(s.engine, id); ok {
+		s.renameNode(id, name)
+		return
+	}
+	s.deleteNode(id, fallbackName)
 }
 
 func (s *tlsNodeNameSync) renameNode(id uint64, newName string) {
@@ -115,8 +134,26 @@ func (s *tlsNodeNameSync) deleteNode(id uint64, fallbackName string) {
 		name = fallbackName
 	}
 	if name != "" {
+		s.deleteReferencesIfInactive(name)
+	}
+}
+
+func (s *tlsNodeNameSync) clearReferences() {
+	s.mu.Lock()
+	old := s.nodes
+	s.nodes = map[uint64]string{}
+	s.mu.Unlock()
+	for _, name := range old {
 		s.deleteReferences(name)
 	}
+}
+
+func (s *tlsNodeNameSync) deleteReferencesIfInactive(name string) {
+	// A rebuilt node can register its watchers before the old removal arrives.
+	if workspaceNodeNameActive(s.engine, name) {
+		return
+	}
+	s.deleteReferences(name)
 }
 
 func (s *tlsNodeNameSync) renameReferences(oldName, newName string) {

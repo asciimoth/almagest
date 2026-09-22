@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -212,6 +213,273 @@ func TestSnapshotCreateListAndRestoreCompleteDaemonState(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(storagePath, snapshotDirectoryName, second.UUID+".zip")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("deleted snapshot archive still exists: %v", err)
+	}
+}
+
+func TestSnapshotRestorePublishesOneAuthoritativeEngineState(t *testing.T) {
+	tests := []struct {
+		name       string
+		failApply  bool
+		finalNode  string
+		restoreErr bool
+	}{
+		{name: "restored snapshot", finalNode: "saved-node"},
+		{name: "rolled back state", failApply: true, finalNode: "live-node", restoreErr: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			service, _, engine, _, _ := newSnapshotTestService(t, false)
+			ctx := context.Background()
+			snapshot, err := service.Create(ctx, "saved graph")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := service.autosaver.Update(`{
+				"nodes": {"live-node": {"Class": "test/AdminAPIBatchNode", "Pos": "live"}}
+			}`, ""); err != nil {
+				t.Fatal(err)
+			}
+			if test.failApply {
+				var fetchMu sync.Mutex
+				fetchCount := 0
+				service.tlsFetcher = tlspolicy.AuthorityFetcherFunc(func(context.Context) ([]tlspolicy.AuthorityCandidate, error) {
+					fetchMu.Lock()
+					defer fetchMu.Unlock()
+					fetchCount++
+					if fetchCount == 1 {
+						return nil, errors.New("injected restore failure")
+					}
+					return nil, nil
+				})
+			}
+
+			var notificationMu sync.Mutex
+			var notifications []almagest.EngineNotification
+			published := make(chan struct{})
+			var publishedOnce sync.Once
+			awaitPublication := false
+			subscription := engine.SubscribeNotifications(func(notification almagest.EngineNotification) {
+				if notification.Kind != almagest.NotificationWorkspace && notification.Kind != almagest.NotificationWorker {
+					return
+				}
+				notificationMu.Lock()
+				notifications = append(notifications, notification)
+				if awaitPublication && notification.Worker != nil &&
+					notification.Worker.Kind == almagest.WorkerNotificationSnapshot {
+					publishedOnce.Do(func() { close(published) })
+				}
+				notificationMu.Unlock()
+			})
+			if subscription == 0 {
+				t.Fatal("engine notification subscription failed")
+			}
+			t.Cleanup(func() { engine.UnsubscribeNotifications(subscription) })
+			notificationMu.Lock()
+			notifications = nil
+			awaitPublication = true
+			notificationMu.Unlock()
+
+			_, restoreErr := service.Restore(ctx, snapshot.UUID)
+			if (restoreErr != nil) != test.restoreErr {
+				t.Fatalf("Restore error = %v, want error=%t", restoreErr, test.restoreErr)
+			}
+			select {
+			case <-published:
+			case <-time.After(2 * time.Second):
+				t.Fatal("timed out waiting for final restore publication")
+			}
+
+			notificationMu.Lock()
+			got := append([]almagest.EngineNotification(nil), notifications...)
+			notificationMu.Unlock()
+			if len(got) != 2 {
+				t.Fatalf("restore notifications = %#v, want one workspace and one worker snapshot", got)
+			}
+			if got[0].Workspace == nil || got[0].Workspace.Kind != pasta.NotificationWorkspaceSnapshot ||
+				got[0].Workspace.Snapshot == nil {
+				t.Fatalf("workspace restore publication = %#v, want full snapshot", got[0])
+			}
+			if len(got[0].Workspace.Snapshot.Nodes) != 1 {
+				t.Fatalf("published nodes = %#v, want one final node", got[0].Workspace.Snapshot.Nodes)
+			}
+			for _, node := range got[0].Workspace.Snapshot.Nodes {
+				if node.Name != test.finalNode {
+					t.Fatalf("published final node = %q, want %q", node.Name, test.finalNode)
+				}
+			}
+			if got[1].Worker == nil || got[1].Worker.Kind != almagest.WorkerNotificationSnapshot {
+				t.Fatalf("worker restore publication = %#v, want full snapshot", got[1])
+			}
+		})
+	}
+}
+
+func TestSnapshotRestoreIgnoresDelayedNodeLifecycleNotifications(t *testing.T) {
+	tests := []struct {
+		name  string
+		queue func(almagest.Engine, uint64, uint64)
+	}{
+		{name: "node removal from restore"},
+		{
+			name: "node rename before restore",
+			queue: func(engine almagest.Engine, nodeID, _ uint64) {
+				engine.SetNodeName(almagest.MainWorkspace, nodeID, "temporary-name")
+			},
+		},
+		{
+			name: "batch removal before restore",
+			queue: func(engine almagest.Engine, nodeID, _ uint64) {
+				engine.RemoveNodes(almagest.MainWorkspace, []uint64{nodeID})
+			},
+		},
+		{
+			name: "renamed batch update before restore",
+			queue: func(engine almagest.Engine, nodeID, _ uint64) {
+				engine.SetNodeName(almagest.MainWorkspace, nodeID, "temporary-name")
+				engine.MoveNodes(almagest.MainWorkspace, map[uint64]string{nodeID: "20 30"})
+			},
+		},
+		{
+			name: "renamed full snapshot before restore",
+			queue: func(engine almagest.Engine, nodeID, syncID uint64) {
+				engine.SetNodeName(almagest.MainWorkspace, nodeID, "temporary-name")
+				engine.RequestFullSnapshot(syncID)
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			testSnapshotRestoreWithDelayedNodeNotifications(t, test.queue)
+		})
+	}
+}
+
+func testSnapshotRestoreWithDelayedNodeNotifications(
+	t *testing.T,
+	queue func(almagest.Engine, uint64, uint64),
+) {
+	t.Helper()
+	service, manager, engine, _, _ := newSnapshotTestService(t, false)
+	ctx := context.Background()
+	const storageID = "0000000000000000000000000000000000000000000000000000000000000000"
+
+	if _, err := service.autosaver.Update(`{
+		"nodes": {
+			"saved-node": {
+				"Class": "almagest/TailscaleCtrl",
+				"enabled": false,
+				"storageID": "`+storageID+`"
+			}
+		}
+	}`, ""); err != nil {
+		t.Fatal(err)
+	}
+	nodeID, ok := engine.NodeByName(almagest.MainWorkspace, "saved-node")
+	if !ok {
+		t.Fatal("TailscaleCtrl node is missing")
+	}
+
+	admin := &AdminAPI{kv: manager, secrets: manager}
+	syncID := admin.startSecretNodeNameSync(engine, nil)
+	if syncID == 0 {
+		t.Fatal("node name sync subscription failed")
+	}
+	t.Cleanup(func() { engine.UnsubscribeNotifications(syncID) })
+
+	storePath := []string{"nodes", "tailscale", storageID}
+	store := manager.DefaultStore().Subtree(storePath...).OwnedBy("saved-node")
+	if err := store.Update(ctx, func(tx storage.KVWriteTx) error {
+		return tx.Set("client_cache", storage.KValue{Data: []byte("saved cache"), Hidden: true})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.setSecretValue("saved-secret", "saved value"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.setSecretNodes("saved-secret", []string{"saved-node"}); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := service.Create(ctx, "owned state")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	callbackEntered := make(chan struct{})
+	releaseCallback := make(chan struct{})
+	blockingID := engine.SubscribeNotifications(func(notification almagest.EngineNotification) {
+		if notification.Kind != almagest.NotificationWorkspace || notification.Workspace == nil ||
+			notification.Workspace.Kind != pasta.NotificationNodeUpdated || notification.Workspace.ID != nodeID {
+			return
+		}
+		select {
+		case <-callbackEntered:
+			return
+		default:
+		}
+		close(callbackEntered)
+		<-releaseCallback
+	})
+	if blockingID == 0 {
+		t.Fatal("blocking notification subscription failed")
+	}
+	t.Cleanup(func() { engine.UnsubscribeNotifications(blockingID) })
+
+	mutationDone := make(chan struct{})
+	go func() {
+		engine.SetNodePosition(almagest.MainWorkspace, nodeID, "10 20")
+		close(mutationDone)
+	}()
+	<-callbackEntered
+	if queue != nil {
+		queue(engine, nodeID, syncID)
+	}
+
+	if _, err := service.Restore(ctx, snapshot.UUID); err != nil {
+		close(releaseCallback)
+		<-mutationDone
+		t.Fatal(err)
+	}
+
+	var restoredOwner *bboltKVOwner
+	manager.kvOwnerMu.RLock()
+	for owner := range manager.kvOwnerRefs {
+		if owner.name == "saved-node" && owner.active {
+			restoredOwner = owner
+			break
+		}
+	}
+	manager.kvOwnerMu.RUnlock()
+	if restoredOwner == nil {
+		close(releaseCallback)
+		<-mutationDone
+		t.Fatal("restored TailscaleCtrl owned store handle is missing")
+	}
+	restoredStore := &bboltKVStore{
+		manager:        manager,
+		path:           append([]string{kvDataBucketName}, storePath...),
+		protectedDepth: 1,
+		owner:          restoredOwner,
+		ownershipDepth: 1 + len(storePath),
+	}
+
+	close(releaseCallback)
+	<-mutationDone
+
+	if err := restoredStore.Update(ctx, func(tx storage.KVWriteTx) error {
+		value, found, err := tx.Get("client_cache")
+		if err != nil {
+			return err
+		}
+		if !found || string(value.Data) != "saved cache" {
+			t.Fatalf("restored Tailscale cache = %#v, found=%t; want saved cache", value, found)
+		}
+		return tx.Set("client_cache", storage.KValue{Data: []byte("updated cache"), Hidden: true})
+	}); err != nil {
+		t.Fatalf("write through restored Tailscale store: %v", err)
+	}
+	secret, err := manager.GetSecret("saved-secret", "saved-node")
+	if err != nil || secret.Value != "saved value" {
+		t.Fatalf("restored node secret = %#v, err=%v; want saved value", secret, err)
 	}
 }
 

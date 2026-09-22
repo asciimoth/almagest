@@ -12,6 +12,7 @@ type secretNodeNameSync struct {
 	secrets   *bboltKVManager
 	kv        *bboltKVManager
 	nodeNames *nodeNameIndex
+	engine    almagest.Engine
 	logger    logging.Logger
 
 	mu    sync.Mutex
@@ -31,6 +32,7 @@ func (a *AdminAPI) startSecretNodeNameSync(engine almagest.Engine, logger loggin
 		secrets:   a.secrets,
 		kv:        a.kv,
 		nodeNames: a.nodeNames,
+		engine:    engine,
 		logger:    logger,
 		nodes:     map[uint64]string{},
 	}
@@ -49,25 +51,25 @@ func (s *secretNodeNameSync) handle(notification almagest.EngineNotification) {
 		}
 	case pasta.NotificationNodeAdded:
 		if wn.Node != nil {
-			s.setNodeName(wn.ID, wn.Node.Name)
+			s.reconcileNode(wn.ID, wn.Node.Name)
 		}
 	case pasta.NotificationNodeUpdated:
 		if wn.Node != nil {
-			s.renameNode(wn.ID, wn.Node.Name)
+			s.reconcileNode(wn.ID, wn.Node.Name)
 		}
 	case pasta.NotificationNodeRemoved:
 		name := ""
 		if wn.Node != nil {
 			name = wn.Node.Name
 		}
-		s.deleteNode(wn.ID, name)
+		s.reconcileNode(wn.ID, name)
 	case pasta.NotificationNodesUpdated:
 		if wn.Snapshot != nil {
 			s.reconcileSnapshot(wn.Snapshot.Nodes)
 			return
 		}
 		for id, node := range wn.Nodes {
-			s.renameNode(id, node.Name)
+			s.reconcileNode(id, node.Name)
 		}
 	case pasta.NotificationNodesRemoved:
 		if wn.Snapshot != nil {
@@ -75,12 +77,17 @@ func (s *secretNodeNameSync) handle(notification almagest.EngineNotification) {
 			return
 		}
 		for id, node := range wn.Nodes {
-			s.deleteNode(id, node.Name)
+			s.reconcileNode(id, node.Name)
 		}
 	}
 }
 
 func (s *secretNodeNameSync) reconcileSnapshot(nodes map[uint64]pasta.NodeSnapshot) {
+	// Another callback can delay delivery until the graph changes again. Use the
+	// live graph so an old snapshot cannot remove state from a replacement node.
+	if current, ok := currentWorkspaceNodes(s.engine); ok {
+		nodes = current
+	}
 	next := make(map[uint64]string, len(nodes))
 	for id, node := range nodes {
 		next[id] = node.Name
@@ -95,7 +102,7 @@ func (s *secretNodeNameSync) reconcileSnapshot(nodes map[uint64]pasta.NodeSnapsh
 		newName, ok := next[id]
 		if !ok {
 			s.nodeNames.remember(oldName)
-			s.deleteReferences(oldName)
+			s.deleteReferencesIfInactive(oldName)
 			continue
 		}
 		if oldName != newName {
@@ -106,10 +113,14 @@ func (s *secretNodeNameSync) reconcileSnapshot(nodes map[uint64]pasta.NodeSnapsh
 	s.reconcileReferences(next)
 }
 
-func (s *secretNodeNameSync) setNodeName(id uint64, name string) {
-	s.mu.Lock()
-	s.nodes[id] = name
-	s.mu.Unlock()
+func (s *secretNodeNameSync) reconcileNode(id uint64, fallbackName string) {
+	// Resolve the ID again because add, update, and remove notifications can be
+	// older than the graph by the time this callback runs.
+	if name, ok := currentWorkspaceNodeName(s.engine, id); ok {
+		s.renameNode(id, name)
+		return
+	}
+	s.deleteNode(id, fallbackName)
 }
 
 func (s *secretNodeNameSync) renameNode(id uint64, newName string) {
@@ -133,8 +144,17 @@ func (s *secretNodeNameSync) deleteNode(id uint64, fallbackName string) {
 	}
 	if name != "" {
 		s.nodeNames.remember(name)
-		s.deleteReferences(name)
+		s.deleteReferencesIfInactive(name)
 	}
+}
+
+func (s *secretNodeNameSync) deleteReferencesIfInactive(name string) {
+	// Node IDs change during snapshot restore. A node with this name can already
+	// be live again when the removal for the old ID arrives.
+	if workspaceNodeNameActive(s.engine, name) {
+		return
+	}
+	s.deleteReferences(name)
 }
 
 func (s *secretNodeNameSync) renameReferences(oldName, newName string) {
@@ -181,4 +201,28 @@ func (s *secretNodeNameSync) reconcileReferences(nodes map[uint64]string) {
 			s.logger.Errf("failed to reconcile KV owners: %v", err)
 		}
 	}
+}
+
+func currentWorkspaceNodes(engine almagest.Engine) (map[uint64]pasta.NodeSnapshot, bool) {
+	if engine == nil {
+		return nil, false
+	}
+	snapshot, ok := engine.WorkspaceSnapshot(almagest.MainWorkspace)
+	return snapshot.Nodes, ok
+}
+
+func workspaceNodeNameActive(engine almagest.Engine, name string) bool {
+	if engine == nil || name == "" {
+		return false
+	}
+	_, ok := engine.NodeByName(almagest.MainWorkspace, name)
+	return ok
+}
+
+func currentWorkspaceNodeName(engine almagest.Engine, id uint64) (string, bool) {
+	if engine == nil {
+		return "", false
+	}
+	snapshot, ok := engine.NodeSnapshot(almagest.MainWorkspace, id)
+	return snapshot.Name, ok
 }
