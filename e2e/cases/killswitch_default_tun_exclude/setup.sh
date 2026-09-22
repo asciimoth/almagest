@@ -10,6 +10,10 @@ command -v mount >/dev/null
 command -v python3 >/dev/null
 test -c /dev/net/tun
 
+cp "$(command -v curl)" /usr/local/bin/excluded-curl
+cp "$(command -v python3)" /usr/local/bin/pmark-target
+chmod 0755 /usr/local/bin/excluded-curl /usr/local/bin/pmark-target
+
 router_ns="alm-e2e-ks-router"
 target_ns="alm-e2e-ks-target"
 root_if="almks0"

@@ -75,13 +75,18 @@ if ! grep -qE '(^|[[:space:]])amnesia\.stack\.test([[:space:]]|$)' /etc/hosts; t
 	printf '%s amnesia.stack.test\n' "$E2E_AMNESIA_IP" >>/etc/hosts
 fi
 
-# Give two curl copies stable process names. `direct-fetch` represents an
-# application excluded from DefaultTun. `blocked-fetch` represents an
-# application that TunSplitter must reject. Copies keep the test independent
-# of the distribution-specific path and name of wget or a browser.
-cp "$(command -v curl)" /usr/local/bin/direct-fetch
-cp "$(command -v curl)" /usr/local/bin/blocked-fetch
-chmod 0755 /usr/local/bin/direct-fetch /usr/local/bin/blocked-fetch
+# Give the test clients stable process names. `direct-fetch` waits until p-mark
+# applies the DefaultTun bypass mark, then starts `direct-fetch-curl`. Both names
+# match the exclusion rule, so the curl child keeps the inherited mark after
+# exec. `blocked-fetch` represents an application that TunSplitter must reject.
+curl_path="$(command -v curl)"
+cp "$(command -v python3)" /usr/local/bin/direct-fetch
+cp "$curl_path" /usr/local/bin/direct-fetch-curl
+cp "$curl_path" /usr/local/bin/blocked-fetch
+chmod 0755 \
+	/usr/local/bin/direct-fetch \
+	/usr/local/bin/direct-fetch-curl \
+	/usr/local/bin/blocked-fetch
 
 # Replace address tokens only in the temporary case copy. The checked-in graph
 # remains portable and concurrent runs can use different Docker subnets.

@@ -199,8 +199,13 @@ run_case() {
 	local case_image="${case_images[$case_index]}"
 	local case_runner="e2e/cases/$case_name/docker-run.sh"
 	local docker_run_args=()
+	local host_pid_namespace=0
+	if [[ -f "e2e/cases/$case_name/requires-host-pid" ]]; then
+		host_pid_namespace=1
+		docker_run_args+=(--pid host)
+	fi
 	if [[ "$coverage_enabled" == "1" ]]; then
-		docker_run_args=(
+		docker_run_args+=(
 			-e GOCOVERDIR=/e2e-coverage
 			-v "${case_coverage_dirs[$case_index]}:/e2e-coverage"
 		)
@@ -210,6 +215,7 @@ run_case() {
 			E2E_CASE_CIDFILE="${case_cidfiles[$case_index]}" \
 			E2E_CASE_COVERAGE_DIR="${case_coverage_dirs[$case_index]:-}" \
 			E2E_CASE_COVERAGE="$coverage_enabled" \
+			E2E_CASE_HOST_PID="$host_pid_namespace" \
 			"$case_runner" "$case_name"
 		return
 	fi

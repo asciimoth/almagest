@@ -13,7 +13,11 @@ type daemonRandomSeeds struct {
 }
 
 func newDaemonRandomSeeds() (daemonRandomSeeds, error) {
-	return readDaemonRandomSeeds(rand.Reader)
+	seeds, err := readDaemonRandomSeeds(rand.Reader)
+	if err != nil {
+		return daemonRandomSeeds{}, err
+	}
+	return overrideDaemonRandomSeeds(seeds)
 }
 
 func readDaemonRandomSeeds(random io.Reader) (daemonRandomSeeds, error) {

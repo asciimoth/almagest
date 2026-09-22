@@ -129,29 +129,13 @@ curl_excluded_origin_has_source() {
 	local path="$2"
 	local output="$3"
 	local source="$4"
-	local options="$E2E_RUNTIME/direct-fetch.options"
-	local pid status
 
-	rm -f "$options"
-	mkfifo "$options"
-	direct-fetch --config "$options" &
-	pid="$!"
-	# The workstation browser represented by direct-fetch is a long-lived
-	# process. Let p-mark classify its exec event before it creates a socket.
-	sleep 1
-	printf '%s\n' \
-		'fail' \
-		'silent' \
-		'show-error' \
-		'noproxy = "*"' \
-		'connect-timeout = 2' \
-		'max-time = 8' \
-		"url = \"http://$destination$path\"" \
-		"output = \"$output\"" >"$options"
-	status=0
-	wait "$pid" || status="$?"
-	rm -f "$options"
-	((status == 0)) && grep -F -- "source=$source" "$output" >/dev/null
+	E2E_SOCKET_MARK_TIMEOUT="$ALMAGEST_E2E_TIMEOUT" \
+		direct-fetch /e2e/lib/marked-curl.py \
+		--fail --silent --show-error --noproxy '*' \
+		--connect-timeout 2 --max-time 8 \
+		"http://$destination$path" --output "$output" \
+		&& grep -F -- "source=$source" "$output" >/dev/null
 }
 
 curl_socks() {
@@ -170,6 +154,25 @@ request_fails() {
 	local label="$1"
 	shift
 	if "$@" >"$E2E_RUNTIME/$label.stdout" 2>"$E2E_RUNTIME/$label.stderr"; then
+		return 1
+	fi
+	return 0
+}
+
+marked_request_fails() {
+	local label="$1"
+	shift
+	local status
+
+	if E2E_SOCKET_MARK_TIMEOUT="$ALMAGEST_E2E_TIMEOUT" \
+		direct-fetch /e2e/lib/marked-curl.py "$@" \
+		>"$E2E_RUNTIME/$label.stdout" 2>"$E2E_RUNTIME/$label.stderr"; then
+		return 1
+	else
+		status="$?"
+	fi
+	if ((status == 125)); then
+		cat "$E2E_RUNTIME/$label.stderr" >&2
 		return 1
 	fi
 	return 0
@@ -386,8 +389,8 @@ retry 20 "DefaultTun excluded application direct access" \
 	curl_excluded_origin_has_source "$E2E_PUBLIC_IP" /excluded \
 		"$E2E_RUNTIME/excluded.txt" "$direct_source" \
 	|| fail "excluded application did not retain direct access"
-request_fails headscale-excluded-direct \
-	direct-fetch -kfsS --connect-timeout 1 --max-time 3 "https://$E2E_HEADSCALE_IP:18090/health" \
+marked_request_fails headscale-excluded-direct \
+	-kfsS --connect-timeout 1 --max-time 3 "https://$E2E_HEADSCALE_IP:18090/health" \
 	|| fail "excluded direct application bypassed the Headscale source guard"
 
 dig +time=2 +tries=2 @198.51.100.53 intercept-dns.stack.test A \

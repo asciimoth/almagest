@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 	"sync"
 	"testing"
@@ -343,10 +344,47 @@ func TestCommandHelperProcess(t *testing.T) {
 	case "sleep":
 		time.Sleep(time.Second)
 		os.Exit(0)
+	case "spawn-delayed-write":
+		marker := helperCommandArg("spawn-delayed-write", 1)
+		child := exec.Command(
+			os.Args[0],
+			"-test.run=TestCommandHelperProcess",
+			"--",
+			"delayed-write",
+			marker,
+		)
+		child.Env = os.Environ()
+		child.Stdout = os.Stdout
+		child.Stderr = os.Stderr
+		if err := child.Start(); err != nil {
+			os.Exit(3)
+		}
+		if err := os.WriteFile(marker+".ready", []byte("ready"), 0o600); err != nil {
+			os.Exit(4)
+		}
+		time.Sleep(5 * time.Second)
+		os.Exit(0)
+	case "delayed-write":
+		marker := helperCommandArg("delayed-write", 1)
+		time.Sleep(time.Second)
+		if err := os.WriteFile(marker, []byte("survived"), 0o600); err != nil {
+			os.Exit(5)
+		}
+		os.Exit(0)
 	default:
 		_, _ = fmt.Fprintf(os.Stderr, "unknown helper mode %q\n", mode)
 		os.Exit(2)
 	}
+}
+
+func helperCommandArg(mode string, offset int) string {
+	for i, arg := range os.Args {
+		if arg == "--" && i+1+offset < len(os.Args) && os.Args[i+1] == mode {
+			return os.Args[i+1+offset]
+		}
+	}
+	os.Exit(6)
+	return ""
 }
 
 type recordingLogger struct {

@@ -51,9 +51,9 @@ ARG E2E_COVERPKG=github.com/asciimoth/almagest/bin/...,github.com/asciimoth/alma
 RUN --mount=type=cache,target=/go/pkg/mod \
 	--mount=type=cache,target=/root/.cache/go-build \
 	if [ "$E2E_COVERAGE" = "1" ]; then \
-		go build -C bin -cover -covermode=atomic -coverpkg="$E2E_COVERPKG" -o /usr/local/bin/almagestd ./almagestd; \
+		go build -C bin -tags=almagest_e2e -cover -covermode=atomic -coverpkg="$E2E_COVERPKG" -o /usr/local/bin/almagestd ./almagestd; \
 	else \
-		go build -C bin -o /usr/local/bin/almagestd ./almagestd; \
+		go build -C bin -tags=almagest_e2e -o /usr/local/bin/almagestd ./almagestd; \
 	fi
 
 FROM headscale/headscale:v0.29.3@sha256:0e7f1c6e4ce6c2a2a001103ecd3fa645a045adf30ac8a5234fe037b43000cd72 AS headscale

@@ -121,6 +121,28 @@ wait_api_log_contains_text() {
 		api_log_contains_text "$text"
 }
 
+api_log_command_duration_below() {
+	local text="$1"
+	local maximum_seconds="$2"
+	local message
+	message="$(cli log subscribe | jq -er --arg text "$text" \
+		'first(.entries[] | select(.source == "daemon" and (.message | contains($text))) | .message)')" \
+		|| return
+	python3 - "$message" "$maximum_seconds" <<'PY'
+import re
+import sys
+
+message = sys.argv[1]
+maximum = float(sys.argv[2])
+match = re.search(r"duration=([0-9.]+)(ns|us|µs|ms|s)\b", message)
+if match is None:
+    raise SystemExit(1)
+factors = {"ns": 1e-9, "us": 1e-6, "µs": 1e-6, "ms": 1e-3, "s": 1.0}
+duration = float(match.group(1)) * factors[match.group(2)]
+raise SystemExit(0 if duration < maximum else 1)
+PY
+}
+
 assert_api_log_not_contains_text() {
 	local text="$1"
 	if api_log_contains_text "$text"; then
@@ -179,6 +201,9 @@ wait_api_log_contains_text 'command "sysnet-linux.tun-created" finished: status=
 	|| fail "API log did not expose TunCreated command success"
 wait_api_log_contains_text 'command "sysnet-linux.killswitch-updated" finished: status=timeout' \
 	|| fail "API log did not expose KillswitchUpdated command timeout"
+api_log_command_duration_below \
+	'command "sysnet-linux.killswitch-updated" finished: status=timeout' 3 \
+	|| fail "KillswitchUpdated command did not return promptly after its one-second timeout"
 wait_api_log_contains_text 'command "sysnet-linux.default-tun-configured" finished: status=success' \
 	|| fail "API log did not expose DefaultTunConfigured command success"
 

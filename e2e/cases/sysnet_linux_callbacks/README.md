@@ -10,7 +10,8 @@ test verifies:
 - callback commands run from protected `System.Linux.Callbacks`;
 - text/template argv rendering works and empty rendered argv elements are
   dropped;
-- configured env, UID, GID, sync execution, and timeout behavior are applied;
+- configured env, UID, GID, sync execution, and timeout behavior are applied,
+  including prompt process-tree termination at the timeout;
 - daemon/API logs expose command names and result status without leaking command
   argv or stdout/stderr.
 

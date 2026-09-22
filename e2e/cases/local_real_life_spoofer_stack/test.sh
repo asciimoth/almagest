@@ -1,0 +1,376 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+: "${ALMAGEST_E2E_TIMEOUT:=120}"
+# shellcheck disable=SC1091
+source /e2e/lib/common.sh
+# shellcheck disable=SC1091
+source "$E2E_CONFIG_DIR/service-secrets.env"
+
+export E2E_HEADSCALE_AUTH_KEY
+export E2E_WIREGUARD_TAILSCALE_PRIVATE
+: "${E2E_HEADSCALE_IP:?}"
+: "${E2E_PUBLIC_IP:?}"
+: "${E2E_EXAMPLE_IP:?}"
+
+export ALMAGEST_E2E_TMP_FILE_STORAGE=0
+export ALMAGEST_E2E_FILE_STORAGE="/root/almagest-e2e-store/$E2E_CASE"
+
+capture_pid=""
+direct_source="$(ip -4 route get "$E2E_PUBLIC_IP" | awk '{for (i=1; i<=NF; i++) if ($i == "src") {print $(i+1); exit}}')"
+[[ -n "$direct_source" ]] || fail "main container has no direct fixture source address"
+
+direct_router_rules=$'ADDR_S intercept-hosts.stack.test\nADDR_S intercept-hosts.stack.test.\nOR\nADDR_S intercept-dns.stack.test\nOR\nADDR_S intercept-dns.stack.test.\nOR\nDROP\n\nTRUE\nSLOT 1'
+spoofer_router_rules=$'ADDR_S intercept-hosts.stack.test\nADDR_S intercept-hosts.stack.test.\nOR\nADDR_S intercept-dns.stack.test\nOR\nADDR_S intercept-dns.stack.test.\nOR\nPORT 443\nAND\nSLOT 1\n\nADDR_S intercept-hosts.stack.test\nADDR_S intercept-hosts.stack.test.\nOR\nADDR_S intercept-dns.stack.test\nOR\nADDR_S intercept-dns.stack.test.\nOR\nPORT 80\nAND\nSLOT 2\n\nTRUE\nSLOT 3'
+tun_filter_rules="ADDR_S $E2E_EXAMPLE_IP"$'\nADDR_S intercept-dns.stack.test\nOR\nADDR_S intercept-dns.stack.test.\nOR\nDROP\n\nRULE cmd blocked-fetch\nRULE comm blocked-fetch\nOR\nDROP\n\nPORT 53\nSLOT 2\n\nTRUE\nSLOT 1'
+tun_open_rules=$'PORT 53\nSLOT 2\n\nTRUE\nSLOT 1'
+
+cleanup() {
+	trap - EXIT
+	if [[ -n "$capture_pid" ]]; then
+		kill "$capture_pid" 2>/dev/null || true
+		wait "$capture_pid" 2>/dev/null || true
+	fi
+	stop_daemon
+	if [[ -x "$E2E_RUNTIME/cleanup-system.sh" ]]; then
+		"$E2E_RUNTIME/cleanup-system.sh"
+	fi
+}
+trap cleanup EXIT
+
+tcpdump -l -nn -tttt -i any \
+	'udp and (port 41641 or port 41642 or port 51820 or port 51821)' \
+	>"$E2E_RUNTIME/tailscale-packets.log" 2>&1 &
+capture_pid="$!"
+
+menu_field() {
+	local node="$1"
+	local block="$2"
+	local field="$3"
+	cli graph menu --name "$node" | jq -er \
+		--arg block "$block" --arg field "$field" '
+		.blocks[] | select(.id == $block)
+		| .items[] | select(.id == $field)
+		| (.value // .text // "")
+	'
+}
+
+http_client_has() {
+	local node="$1"
+	local text="$2"
+	[[ "$(menu_field "$node" result status)" == "Status: 200 OK" \
+		&& -z "$(menu_field "$node" result error)" \
+		&& "$(menu_field "$node" result response)" == *"$text"* ]]
+}
+
+send_http_client() {
+	local node="$1"
+	local text="$2"
+	cli graph click-menu-button --name "$node" --block request --button send >/dev/null
+	if retry "$ALMAGEST_E2E_TIMEOUT" "$node response containing $text" \
+		http_client_has "$node" "$text"; then
+		return 0
+	fi
+	cli graph menu --name "$node" >&2 || true
+	fail "$node did not return the expected response"
+}
+
+dns_query_noerror() {
+	local node="$1"
+	[[ "$(menu_field "$node" result status)" == "Status: NOERROR" \
+		&& -z "$(menu_field "$node" result error)" \
+		&& -n "$(menu_field "$node" result response)" ]]
+}
+
+send_dns_query() {
+	local node="$1"
+	cli graph click-menu-button --name "$node" --block request --button send >/dev/null
+	retry "$ALMAGEST_E2E_TIMEOUT" "$node NOERROR result" dns_query_noerror "$node" \
+		|| fail "$node did not complete with NOERROR"
+}
+
+apply_rules() {
+	local node="$1"
+	local rules="$2"
+	jq -n --arg rules "$rules" '{"config":{"rules":$rules}}' \
+		| cli graph apply-menu --name "$node" >/dev/null
+}
+
+curl_origin() {
+	local program="$1"
+	local destination="$2"
+	local path="$3"
+	local output="$4"
+	"$program" --fail --silent --show-error --noproxy '*' \
+		--connect-timeout 2 --max-time 8 \
+		"http://$destination$path" --output "$output"
+}
+
+curl_excluded_origin() {
+	local destination="$1"
+	local path="$2"
+	local output="$3"
+
+	E2E_SOCKET_MARK_TIMEOUT="$ALMAGEST_E2E_TIMEOUT" \
+		direct-fetch /e2e/lib/marked-curl.py \
+		--fail --silent --show-error --noproxy '*' \
+		--connect-timeout 2 --max-time 8 \
+		"http://$destination$path" --output "$output"
+}
+
+curl_socks() {
+	local mode="$1"
+	local port="$2"
+	local url="$3"
+	local output="$4"
+	shift 4
+	curl --fail --silent --show-error \
+		"--$mode" "127.0.0.1:$port" \
+		--connect-timeout 2 --max-time 8 \
+		"$@" "$url" --output "$output"
+}
+
+request_fails() {
+	local label="$1"
+	shift
+	! "$@" >"$E2E_RUNTIME/$label.stdout" 2>"$E2E_RUNTIME/$label.stderr"
+}
+
+assert_contains() {
+	local file="$1"
+	local text="$2"
+	if ! grep -F -- "$text" "$file" >/dev/null; then
+		sed -n '1,40p' "$file" >&2 || true
+		fail "$(basename "$file") does not contain: $text"
+	fi
+}
+
+node_label_matches() {
+	local name="$1"
+	local expression="$2"
+	local label
+	label="$(cli graph node --name "$name" | jq -er '.snapshot.label')" || return 1
+	[[ "$label" =~ $expression ]]
+}
+
+graph_operational_once() {
+	local spec name expression
+	local specs=(
+		'OutNetwork direct|^out$'
+		'Spoofer transport|^forwarding$'
+		'TunJoiner transport|^joined default \+ 1 secondary$'
+		'VTun transport|^spoofer-transport$'
+		'DnsClient transport|^1 DNS server$'
+		'DnsCache vt|^caching DNS$'
+		'DnsQuery public|^(ready|NOERROR)$'
+		'DnsQuery intercepted|^(ready|NOERROR)$'
+		'TailscaleCtrl|^up$'
+		'WireGuard Tailscale|^up$'
+		'DnsQuery tailnet|^(ready|NOERROR)$'
+		'TunSplitter transport|^splitting$'
+		'TunJoiner applications|^joined default \+ 1 secondary$'
+		'VTun applications|^application-stack$'
+		'HttpClient Tailnet|^(ready|200 OK)$'
+		'HttpClient A|^(ready|200 OK)$'
+		'HttpClient B|^(ready|200 OK)$'
+		'Proxy direct|^127\.0\.0\.1:1081$'
+		'NetworkRouter direct|^router$'
+		'Proxy Spoofer only|^127\.0\.0\.1:1082$'
+		'NetworkRouter Spoofer only|^router$'
+		'TlsMitm intercepted|^intercepting TLS$'
+		'TlsTerminator intercepted|^terminating TLS$'
+		'MockNetwork intercepted|^loopback$'
+		'HttpServer intercepted|^127\.0\.0\.1:80$'
+		'Tun2Dns default|^adapting DNS$'
+		'TunSplitter lH|^splitting$'
+		'DefaultTun|^ready$'
+	)
+	for spec in "${specs[@]}"; do
+		name="${spec%%|*}"
+		expression="${spec#*|}"
+		node_label_matches "$name" "$expression" || return 1
+	done
+}
+
+wait_graph_operational_stable() {
+	retry "$ALMAGEST_E2E_TIMEOUT" "all graph nodes operational" graph_operational_once \
+		|| {
+			cli graph map | jq -r '.nodes[] | [.name, .label] | @tsv' >&2 || true
+			cli graph menu --name TailscaleCtrl >&2 || true
+			fail "not all graph nodes became operational"
+		}
+	local deadline=$((SECONDS + 5))
+	while ((SECONDS <= deadline)); do
+		graph_operational_once \
+			|| fail "a graph node left its operational state during the stability window"
+		sleep 0.25
+	done
+}
+
+tailscale_peer_direct() {
+	[[ "$(menu_field TailscaleCtrl status peers)" == *"path=direct-udp"* ]]
+}
+
+cache_contains_name() {
+	local name="$1"
+	cli dns keys --cache default | jq -e --arg name "$name" \
+		'.exists and any(.keys[]?; .key | contains($name))' >/dev/null
+}
+
+# The physical fixtures are reachable, but the logical VTun address and the
+# tailnet are not present before the daemon starts.
+retry 20 "direct public fixture before daemon" \
+	curl_origin curl "$E2E_PUBLIC_IP" /before-daemon "$E2E_RUNTIME/before-daemon.txt" \
+	|| fail "public fixture was not directly reachable before daemon startup"
+assert_contains "$E2E_RUNTIME/before-daemon.txt" "source=$direct_source"
+request_fails logical-vtun-source-before \
+	curl_origin curl 192.0.2.2 /before-daemon "$E2E_RUNTIME/logical-vtun-source.txt" \
+	|| fail "logical VTun source address was unexpectedly reachable"
+request_fails tailnet-before \
+	curl_origin curl 100.64.0.1:18080 /before-daemon "$E2E_RUNTIME/tailnet-before.txt" \
+	|| fail "tailnet service was reachable before daemon startup"
+
+start_daemon
+wait_graph_operational_stable
+wait_log_contains "almagest/LocalProxy" "socks listening on 127.0.0.1:1081" \
+	|| fail "direct SOCKS proxy did not listen"
+wait_log_contains "almagest/LocalProxy" "socks listening on 127.0.0.1:1082" \
+	|| fail "Spoofer SOCKS proxy did not listen"
+retry "$ALMAGEST_E2E_TIMEOUT" "direct Tailscale peer path through Spoofer" \
+	tailscale_peer_direct \
+	|| fail "nested Tailscale did not select direct UDP"
+send_http_client "HttpClient Tailnet" "tailnet HttpServer SO response"
+
+send_dns_query "DnsQuery public"
+send_dns_query "DnsQuery intercepted"
+send_dns_query "DnsQuery tailnet"
+retry 20 "public DNS cache entry" cache_contains_name public.stack.test \
+	|| fail "public DNS query is not visible in cache storage"
+retry 20 "intercept DNS cache entry" cache_contains_name intercept-dns.stack.test \
+	|| fail "intercept DNS query is not visible in cache storage"
+
+# HttpClient B starts with the non-routable 192.0.2.2 VTun address. Reaching
+# the origin with the Docker source proves that Spoofer opened the host socket.
+send_http_client "HttpClient A" "destination=$E2E_PUBLIC_IP source=$direct_source"
+send_http_client "HttpClient B" "destination=$E2E_PUBLIC_IP source=$direct_source"
+
+cli tls builtin-ca | jq -er '.cert.pem' >"$E2E_RUNTIME/builtin-ca.pem"
+
+retry 20 "direct SOCKS public access" \
+	curl_socks socks5-hostname 1081 "http://$E2E_PUBLIC_IP/socks-direct" \
+		"$E2E_RUNTIME/socks-direct.txt" \
+	|| fail "direct SOCKS proxy could not reach the public fixture"
+request_fails direct-block \
+	curl_socks socks5-hostname 1081 http://intercept-dns.stack.test/direct-block \
+		"$E2E_RUNTIME/direct-block.txt" \
+	|| fail "direct SOCKS router did not block the DNS domain"
+
+retry 20 "Spoofer SOCKS public access" \
+	curl_socks socks5-hostname 1082 "http://$E2E_PUBLIC_IP/socks-spoofer" \
+		"$E2E_RUNTIME/socks-spoofer.txt" \
+	|| fail "Spoofer SOCKS proxy could not reach the public fixture"
+assert_contains "$E2E_RUNTIME/socks-spoofer.txt" "source=$direct_source"
+
+retry 20 "HTTP interception" \
+	curl_socks socks5-hostname 1082 http://intercept-dns.stack.test/http-intercept \
+		"$E2E_RUNTIME/http-intercept.txt" \
+	|| fail "Spoofer SOCKS router did not intercept HTTP"
+assert_contains "$E2E_RUNTIME/http-intercept.txt" "intercepted stack target"
+retry 20 "HTTPS interception" \
+	curl_socks socks5-hostname 1082 https://intercept-dns.stack.test/https-intercept \
+		"$E2E_RUNTIME/https-intercept.txt" \
+		--http1.1 --cacert "$E2E_RUNTIME/builtin-ca.pem" \
+	|| fail "Spoofer SOCKS router did not intercept HTTPS"
+assert_contains "$E2E_RUNTIME/https-intercept.txt" "intercepted stack target"
+
+# DefaultTun sends ordinary process traffic into the application VTun and
+# then through Spoofer. It also captures DNS and applies destination and
+# process rules before the transport.
+retry 20 "DefaultTun public access through Spoofer" \
+	curl_origin curl "$E2E_PUBLIC_IP" /default-tun "$E2E_RUNTIME/default-tun.txt" \
+	|| fail "DefaultTun traffic could not reach the public fixture"
+assert_contains "$E2E_RUNTIME/default-tun.txt" "source=$direct_source"
+
+retry 20 "DefaultTun excluded application direct access" \
+	curl_excluded_origin "$E2E_EXAMPLE_IP" /excluded "$E2E_RUNTIME/excluded.txt" \
+	|| fail "excluded application did not bypass the TunSplitter destination rule"
+assert_contains "$E2E_RUNTIME/excluded.txt" "source=$direct_source"
+
+dig +time=2 +tries=2 @198.51.100.53 intercept-dns.stack.test A \
+	>"$E2E_RUNTIME/intercepted-dns.txt"
+grep -F 'status: NOERROR' "$E2E_RUNTIME/intercepted-dns.txt" >/dev/null \
+	|| fail "DefaultTun did not intercept the UDP DNS query"
+grep -F "$E2E_EXAMPLE_IP" "$E2E_RUNTIME/intercepted-dns.txt" >/dev/null \
+	|| fail "intercepted DNS response did not contain the fixture address"
+
+request_fails tun-block-hosts \
+	curl_origin curl intercept-hosts.stack.test /blocked-hosts \
+		"$E2E_RUNTIME/tun-block-hosts.txt" \
+	|| fail "TunSplitter did not block the /etc/hosts destination"
+request_fails tun-block-dns \
+	curl_origin curl intercept-dns.stack.test /blocked-dns \
+		"$E2E_RUNTIME/tun-block-dns.txt" \
+	|| fail "TunSplitter did not block the DNS/cache destination"
+request_fails tun-block-app \
+	curl_origin blocked-fetch "$E2E_PUBLIC_IP" /blocked-app \
+		"$E2E_RUNTIME/tun-block-app.txt" \
+	|| fail "TunSplitter did not block the selected application"
+retry 30 "tailnet service from DefaultTun" \
+	curl_origin curl 100.64.0.1:18080 /default-tun-tailnet \
+		"$E2E_RUNTIME/default-tun-tailnet.txt" \
+	|| fail "DefaultTun traffic could not reach the tailnet service"
+assert_contains "$E2E_RUNTIME/default-tun-tailnet.txt" "tailnet HttpServer SO response"
+
+# Exercise live configuration on all three routing layers, then restore the
+# original workstation rules.
+apply_rules "NetworkRouter direct" $'TRUE\nSLOT 1'
+retry 20 "open direct router" \
+	curl_socks socks5-hostname 1081 http://intercept-dns.stack.test/direct-open \
+		"$E2E_RUNTIME/direct-open.txt" \
+	|| fail "disabled direct router filter still blocked the DNS domain"
+apply_rules "NetworkRouter direct" "$direct_router_rules"
+request_fails direct-restored \
+	curl_socks socks5-hostname 1081 http://intercept-dns.stack.test/direct-restored \
+		"$E2E_RUNTIME/direct-restored.txt" \
+	|| fail "restored direct router filter did not block the DNS domain"
+
+apply_rules "NetworkRouter Spoofer only" $'TRUE\nSLOT 3'
+retry 20 "open Spoofer router" \
+	curl_socks socks5-hostname 1082 http://intercept-dns.stack.test/spoofer-open \
+		"$E2E_RUNTIME/spoofer-open.txt" \
+	|| fail "disabled Spoofer router interception still captured the DNS domain"
+assert_contains "$E2E_RUNTIME/spoofer-open.txt" "source=$direct_source"
+apply_rules "NetworkRouter Spoofer only" "$spoofer_router_rules"
+retry 20 "restored Spoofer interception" \
+	curl_socks socks5-hostname 1082 http://intercept-dns.stack.test/spoofer-restored \
+		"$E2E_RUNTIME/spoofer-restored.txt" \
+	|| fail "restored Spoofer router filter did not intercept the DNS domain"
+assert_contains "$E2E_RUNTIME/spoofer-restored.txt" "intercepted stack target"
+
+apply_rules "TunSplitter lH" "$tun_open_rules"
+for domain in intercept-hosts.stack.test intercept-dns.stack.test; do
+	retry 20 "open TunSplitter access to $domain" \
+		curl_origin curl "$domain" /tun-open "$E2E_RUNTIME/tun-open-$domain.txt" \
+		|| fail "disabled TunSplitter destination filter still blocked $domain"
+done
+retry 20 "open TunSplitter application access" \
+	curl_origin blocked-fetch "$E2E_PUBLIC_IP" /app-open "$E2E_RUNTIME/app-open.txt" \
+	|| fail "disabled TunSplitter application filter still blocked blocked-fetch"
+apply_rules "TunSplitter lH" "$tun_filter_rules"
+request_fails tun-restored-destination \
+	curl_origin curl intercept-dns.stack.test /tun-restored \
+		"$E2E_RUNTIME/tun-restored.txt" \
+	|| fail "restored TunSplitter destination filter did not block the DNS domain"
+request_fails tun-restored-app \
+	curl_origin blocked-fetch "$E2E_PUBLIC_IP" /app-restored \
+		"$E2E_RUNTIME/app-restored.txt" \
+	|| fail "restored TunSplitter application filter did not block blocked-fetch"
+
+retry 20 "DNS cache remains visible" cache_contains_name intercept-dns.stack.test \
+	|| fail "DNS cache entry disappeared after the routing matrix"
+retry 20 "nested Tailscale UDP was captured" \
+	grep -Eq '(^|[.])5182[01]([ >]|$)' "$E2E_RUNTIME/tailscale-packets.log" \
+	|| fail "packet trace did not contain nested Tailscale WireGuard traffic"
+wait_graph_operational_stable
+
+log "case passed"

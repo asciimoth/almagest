@@ -12,8 +12,16 @@ target_log="/tmp/e2e-killswitch-default-tun-target.log"
 target_pid=""
 killswitch_pid=""
 killswitch_sock="$E2E_RUNTIME/killswitch.sock"
+pmark_churn_processes=40000
+pmark_liveness_churn_processes=2048
+pmark_exclude_mark=0x414c4d01
+pmark_target_pid=""
 
 cleanup() {
+	if [[ -n "$pmark_target_pid" ]]; then
+		kill "$pmark_target_pid" 2>/dev/null || true
+		wait "$pmark_target_pid" 2>/dev/null || true
+	fi
 	stop_static_http_target "$target_pid"
 	stop_daemon
 	stop_killswitch
@@ -25,7 +33,8 @@ cleanup() {
 curl_target() {
 	local path="$1"
 	local output="$2"
-	curl --fail --silent --show-error --connect-timeout 1 --max-time 3 \
+	local program="${3:-curl}"
+	"$program" --fail --silent --show-error --connect-timeout 1 --max-time 3 \
 		"http://$target$path" \
 		--output "$output"
 }
@@ -150,6 +159,122 @@ killswitch_tmp_mark_allowed() {
 	' >/dev/null
 }
 
+generate_untracked_process_exits() {
+	local count="$1"
+	python3 - "$count" <<'PY'
+import os
+import sys
+
+remaining = int(sys.argv[1])
+batch_size = 128
+
+while remaining:
+    children = []
+    for _ in range(min(batch_size, remaining)):
+        pid = os.fork()
+        if pid == 0:
+            os._exit(0)
+        children.append(pid)
+    for pid in children:
+        os.waitpid(pid, 0)
+    remaining -= len(children)
+PY
+}
+
+start_pmark_liveness_probe() {
+	local ready_file="$E2E_RUNTIME/pmark-liveness-ready"
+	local check_file="$E2E_RUNTIME/pmark-liveness-check"
+	rm -f "$ready_file" "$check_file"
+
+	E2E_EXPECTED_SOCKET_MARK="$pmark_exclude_mark" \
+		E2E_SOCKET_MARK_TIMEOUT=30 \
+		pmark-target - "$ready_file" "$check_file" <<'PY' &
+import os
+import pathlib
+import socket
+import sys
+import time
+
+expected = int(os.environ["E2E_EXPECTED_SOCKET_MARK"], 0)
+timeout = float(os.environ["E2E_SOCKET_MARK_TIMEOUT"])
+ready_file = pathlib.Path(sys.argv[1])
+check_file = pathlib.Path(sys.argv[2])
+deadline = time.monotonic() + timeout
+
+
+def socket_mark():
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        return probe.getsockopt(socket.SOL_SOCKET, socket.SO_MARK)
+
+
+observed = 0
+while time.monotonic() <= deadline:
+    observed = socket_mark()
+    if observed == expected:
+        break
+    time.sleep(0.02)
+else:
+    raise SystemExit(
+        f"initial pmark-target socket mark was {observed:#010x}; "
+        f"expected {expected:#010x}"
+    )
+
+ready_file.touch()
+while time.monotonic() <= deadline and not check_file.exists():
+    time.sleep(0.02)
+if not check_file.exists():
+    raise SystemExit("timed out waiting to recheck the pmark-target socket mark")
+
+observed = socket_mark()
+if observed != expected:
+    raise SystemExit(
+        f"pmark-target socket mark after churn was {observed:#010x}; "
+        f"expected {expected:#010x}"
+    )
+PY
+	pmark_target_pid="$!"
+	retry 30 "initial p-mark liveness probe mark" test -f "$ready_file" \
+		|| fail "p-mark did not initially mark the liveness probe"
+}
+
+finish_pmark_liveness_probe() {
+	local check_file="$E2E_RUNTIME/pmark-liveness-check"
+	touch "$check_file"
+	if ! wait "$pmark_target_pid"; then
+		pmark_target_pid=""
+		return 1
+	fi
+	pmark_target_pid=""
+}
+
+pmark_target_has_socket_mark() {
+	E2E_EXPECTED_SOCKET_MARK="$pmark_exclude_mark" \
+		E2E_SOCKET_MARK_TIMEOUT=30 \
+		pmark-target - <<'PY'
+import os
+import socket
+import sys
+import time
+
+expected = int(os.environ["E2E_EXPECTED_SOCKET_MARK"], 0)
+deadline = time.monotonic() + float(os.environ["E2E_SOCKET_MARK_TIMEOUT"])
+observed = 0
+
+while time.monotonic() <= deadline:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        observed = probe.getsockopt(socket.SOL_SOCKET, socket.SO_MARK)
+    if observed == expected:
+        raise SystemExit(0)
+    time.sleep(0.02)
+
+print(
+    f"pmark-target socket mark was {observed:#010x}; expected {expected:#010x}",
+    file=sys.stderr,
+)
+raise SystemExit(1)
+PY
+}
+
 target_pid="$(start_static_http_target_in_netns "$target_ns" "$target_host" "$target_port" "$target_body" "$target_log")"
 trap cleanup EXIT
 
@@ -182,11 +307,30 @@ retry "$ALMAGEST_E2E_TIMEOUT" "killswitch allows almagestd app mark" \
 	killswitch_tmp_mark_allowed "0xeb9f0001" \
 	|| fail_killswitch "almagestd app mark was not allowed in killswitch"
 retry "$ALMAGEST_E2E_TIMEOUT" "killswitch allows DefaultTun exclude mark" \
-	killswitch_tmp_mark_allowed "0x414c4d01" \
+	killswitch_tmp_mark_allowed "$pmark_exclude_mark" \
 	|| fail_killswitch "DefaultTun exclude mark was not allowed in killswitch"
 
+# p-mark tracepoints receive host-wide process exits. Versions before v0.3.0
+# inserted a tombstone for every unknown exit and exhausted the 32,768-entry
+# process map. Generate more than that limit, then require a new excluded
+# process to receive its mark through the cgroup socket hook.
+log "generating $pmark_churn_processes untracked process exits"
+generate_untracked_process_exits "$pmark_churn_processes"
+pmark_target_has_socket_mark \
+	|| fail "p-mark did not mark a matched process after untracked exit churn"
+
+# Keep a matched process alive while enough unrelated events trigger periodic
+# p-mark cleanup. The live process must not be replaced by a tombstone.
+start_pmark_liveness_probe
+log "generating $pmark_liveness_churn_processes exits while a marked process is alive"
+generate_untracked_process_exits "$pmark_liveness_churn_processes"
+pmark_target_has_socket_mark \
+	|| fail "p-mark did not process the post-churn liveness barrier"
+finish_pmark_liveness_probe \
+	|| fail "p-mark removed a live matched process during cleanup"
+
 retry "$ALMAGEST_E2E_TIMEOUT" "excluded curl direct route through killswitch" \
-	curl_target /excluded-direct /tmp/e2e-killswitch-excluded-direct.txt \
+	curl_target /excluded-direct /tmp/e2e-killswitch-excluded-direct.txt excluded-curl \
 	|| fail "DefaultTun exclude rule did not allow curl direct traffic"
 assert_body /tmp/e2e-killswitch-excluded-direct.txt "$target_body"
 

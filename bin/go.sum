@@ -18,8 +18,8 @@ github.com/asciimoth/gonnect-netstack v0.7.0 h1:+j07WXuKrp0FKFKkX/2WftSpjiGwkwAl
 github.com/asciimoth/gonnect-netstack v0.7.0/go.mod h1:7I0GE8SgtUW7E701+7OrtUr4UaK9PI/yq3y4jB8qhx8=
 github.com/asciimoth/ident v0.2.0 h1:G6qaTnkxTH+idV5YzJ7AvgC2nLQDE/aoV7rPCOtN07I=
 github.com/asciimoth/ident v0.2.0/go.mod h1:JNNFnfM7/hdcXVkFBBOAU/vpJM+0gucYaAYwB694bT0=
-github.com/asciimoth/p-mark v0.2.0 h1:ZmJQy+Te+fZBWwy5zFzbCzQiladixKCNMKtXS3rZzeU=
-github.com/asciimoth/p-mark v0.2.0/go.mod h1:uBcCKIk6x5hjb7rDnH4trBCAfHr/4xOWM8q+tydLJAw=
+github.com/asciimoth/p-mark v0.3.0 h1:M4m2uC0rilGflE2anGP7PLAbWFel98eb5mz/yYyTOGk=
+github.com/asciimoth/p-mark v0.3.0/go.mod h1:uBcCKIk6x5hjb7rDnH4trBCAfHr/4xOWM8q+tydLJAw=
 github.com/asciimoth/pasta/pasta v0.10.0 h1:wTwhhkQnkmcTXvRbXyPmoyIzp2q1LrgkGDzMa0gMPjI=
 github.com/asciimoth/pasta/pasta v0.10.0/go.mod h1:YnjJzTZ9XXWCn+0nxAY30YSjzJq32BxUD+CZ1HYfRsw=
 github.com/asciimoth/persist v0.2.0 h1:yqsu1+5pystESKm8yVVSdG15kqL3Tiwl2tEYtvjcBFE=
@@ -28,8 +28,8 @@ github.com/asciimoth/putback v0.3.0 h1:NKyX1K2yR/pHt9ov7BifA7qd8oMSOhsit4hMf694e
 github.com/asciimoth/putback v0.3.0/go.mod h1:K4u9GV2oQVToze+iKSA/e2V26lusyirYqBZuOZnw2YA=
 github.com/asciimoth/socksgo v0.4.16 h1:oHvZB+0EUb+GEt1jA9XTg7zv8c55+OxklBFQk5fmpOk=
 github.com/asciimoth/socksgo v0.4.16/go.mod h1:pPJNItWqQ4X2tpLquwJY3EijO1My+R30TVDef0NMff8=
-github.com/asciimoth/sysnet-linux v0.3.0 h1:z+yeKejoBHhfjmhFCwGpz28pXb9yjFFRF1cyMOK+HAU=
-github.com/asciimoth/sysnet-linux v0.3.0/go.mod h1:IDMGeT88idbrpSBUINtrWp+R/yqw6N8L6zlx4bJGoaM=
+github.com/asciimoth/sysnet-linux v0.4.0 h1:iOR5WHCvSBJTMNT8VOy1P+qExtlpzg7MOn56c3GOeg8=
+github.com/asciimoth/sysnet-linux v0.4.0/go.mod h1:spm1q79/96C9Djus1g3VGA4bPEeSHOwVhN7tIgroItE=
 github.com/asciimoth/tuntap v0.4.0 h1:NRWkGm39krOnktpXfESltS7IpD5WRrlSaDhxL4DG3iA=
 github.com/asciimoth/tuntap v0.4.0/go.mod h1:bUYzf3kfAKc0ztuTub1yVS7I5Puw/VKuMfRvaOGGJN4=
 github.com/asciimoth/wgo v0.7.7 h1:af3ahXyo3WTY57yQox38paGB9uhmqw0ymS7OnU4Ncz0=

@@ -39,7 +39,11 @@ type configAutosaver struct {
 	saveMu sync.Mutex
 	last   time.Time
 	change uint64
-	ch     chan struct{}
+	// These generations track idle autosave work separately from API revisions.
+	scheduled uint64
+	saved     uint64
+	stopping  bool
+	ch        chan struct{}
 }
 
 func newConfigAutosaver(
@@ -68,9 +72,14 @@ func (s *configAutosaver) Run(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
+			s.mu.Lock()
+			s.stopping = true
+			s.mu.Unlock()
 			if timer != nil {
 				timer.Stop()
 			}
+			// Do not discard a graph mutation that is still in the idle window.
+			s.flushPending()
 			return
 		case <-s.ch:
 			if timer == nil {
@@ -93,7 +102,11 @@ func (s *configAutosaver) Run(ctx context.Context) {
 			}
 			timerC = nil
 			timer = nil
-			s.save()
+			if !s.save() && s.hasPending() {
+				// Keep transient write failures pending without retrying in a tight loop.
+				timer = time.NewTimer(s.idle)
+				timerC = timer.C
+			}
 		}
 	}
 }
@@ -105,7 +118,13 @@ func (s *configAutosaver) Schedule() {
 	s.mu.Lock()
 	s.last = time.Now()
 	s.change++
+	s.scheduled++
+	stopping := s.stopping
 	s.mu.Unlock()
+	if stopping {
+		s.flushPending()
+		return
+	}
 	select {
 	case s.ch <- struct{}{}:
 	default:
@@ -122,32 +141,61 @@ func (s *configAutosaver) idleRemaining() time.Duration {
 	return remaining
 }
 
-func (s *configAutosaver) save() {
+func (s *configAutosaver) save() bool {
 	s.saveMu.Lock()
 	defer s.saveMu.Unlock()
+	target := s.scheduledGeneration()
 
 	if s.config == nil || s.config.Main == nil {
 		s.logger.Err("config save failed: config is not loaded")
-		return
+		return false
 	}
 	if s.engine == nil {
 		s.logger.Err("config save failed: engine is not available")
-		return
+		return false
 	}
 	if s.agent == nil {
 		s.logger.Err("config save failed: config writer is not available")
-		return
+		return false
 	}
 	data, err := s.currentConfigBytes()
 	if err != nil {
 		s.logger.Errf("config save failed: engine state export failed: %v", err)
-		return
+		return false
 	}
 	if err := s.agent.WriteConfig(data); err != nil {
 		s.logger.Errf("config save failed: disk write failed: %v", err)
-		return
+		return false
 	}
+	s.markSaved(target)
 	s.logger.Debug("config saved")
+	return true
+}
+
+func (s *configAutosaver) flushPending() {
+	for s.hasPending() {
+		if !s.save() {
+			return
+		}
+	}
+}
+
+func (s *configAutosaver) hasPending() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.scheduled != s.saved
+}
+
+func (s *configAutosaver) scheduledGeneration() uint64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.scheduled
+}
+
+func (s *configAutosaver) markSaved(generation uint64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.saved = generation
 }
 
 // Snapshot exports current live node state into the editable document before

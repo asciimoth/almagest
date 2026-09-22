@@ -3,6 +3,7 @@ set -euo pipefail
 
 : "${ALMAGEST_E2E_TIMEOUT:=45}"
 source /e2e/lib/common.sh
+export ALMAGEST_E2E_SYSTEM_RANDOM_SEED=30521
 
 peer_ns="alm-bypass-peer"
 physical_if="almbp0"
@@ -93,6 +94,15 @@ effective_field_contains() {
 	local field="$2"
 	local value="$3"
 	[[ "$(effective_field "$node" "$field")" == *"$value"* ]]
+}
+
+default_tun_has_collision_address_only() {
+	local tun_name="$1"
+	ip -j -4 addr show dev "$tun_name" | jq -e '
+		[.[].addr_info[]
+			| select(.family == "inet")
+			| "\(.local)/\(.prefixlen)"] == ["10.250.0.1/32"]
+	' >/dev/null
 }
 
 result_status() {
@@ -267,6 +277,9 @@ tun_name="$(<"$E2E_RUNTIME/default-tun-name.txt")"
 retry "$ALMAGEST_E2E_TIMEOUT" "effective DefaultTun address" \
 	effective_field_contains "$default_tun" tunAddrs "10.250.0.1/32" \
 	|| fail "WireGuard did not propagate its address to DefaultTun"
+retry "$ALMAGEST_E2E_TIMEOUT" "normalized fallback address collision" \
+	default_tun_has_collision_address_only "$tun_name" \
+	|| fail "DefaultTun did not keep only the explicit 10.250.0.1/32 address"
 retry "$ALMAGEST_E2E_TIMEOUT" "effective DefaultTun route" \
 	effective_field_contains "$default_tun" tunRoutes "0.0.0.0/0" \
 	|| fail "WireGuard did not propagate its default route to DefaultTun"
@@ -334,6 +347,9 @@ retry "$ALMAGEST_E2E_TIMEOUT" "recreated DefaultTun interface" \
 	default_tun_name >"$E2E_RUNTIME/rebuilt-default-tun-name.txt" \
 	|| fail "recreated DefaultTun interface was not created"
 tun_name="$(<"$E2E_RUNTIME/rebuilt-default-tun-name.txt")"
+retry "$ALMAGEST_E2E_TIMEOUT" "recreated normalized fallback collision" \
+	default_tun_has_collision_address_only "$tun_name" \
+	|| fail "recreated DefaultTun did not keep only the explicit address"
 assert_route_isolation "$tun_name"
 retry 90 "host HTTP after DefaultTun recreation" \
 	host_http_request /after-recreate "$E2E_RUNTIME/recreated-default-tun-http.txt" \

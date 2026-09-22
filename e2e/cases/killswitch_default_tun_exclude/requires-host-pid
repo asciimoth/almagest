@@ -1,0 +1,1 @@
+p-mark tracepoints use host TGIDs, so procfs must show the host PID namespace.

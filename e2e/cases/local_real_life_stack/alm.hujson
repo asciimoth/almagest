@@ -238,7 +238,7 @@
 			"mtu": 0,
 			"dnsIP": "",
 			"strict": false,
-			"exclude": [{"type": "comm", "rule": "^direct-fetch$"}],
+			"exclude": [{"type": "comm", "rule": "^(direct-fetch|direct-fetch-cu)$"}],
 			"include": [],
 		},
 	},

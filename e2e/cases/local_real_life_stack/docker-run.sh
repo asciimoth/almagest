@@ -112,6 +112,11 @@ if [[ "${E2E_CASE_COVERAGE:-0}" == "1" ]]; then
 	)
 fi
 
+pid_args=()
+if [[ "${E2E_CASE_HOST_PID:-0}" == "1" ]]; then
+	pid_args=(--pid host)
+fi
+
 docker network create \
 	--label io.almagest.e2e.case="$case_name" \
 	"$network_name" >/dev/null
@@ -173,7 +178,8 @@ wait_container_file "$headscale_name" /stack-shared/headscale-ready "Headscale s
 headscale_ip="$amnesia_ip"
 
 # The main case is privileged because DefaultTun changes only this container's
-# network namespace. No host network namespace is shared by any container.
+# network namespace. No host network namespace is shared by any container. A
+# host PID namespace is added only for p-mark identity matching.
 # shellcheck disable=SC2086
 docker create --name "$main_name" \
 	--cidfile "$E2E_CASE_CIDFILE" \
@@ -187,6 +193,7 @@ docker create --name "$main_name" \
 	-e "E2E_EXAMPLE_IP=$example_ip" \
 	-v "$volume_name:/stack-shared" \
 	${E2E_DOCKER_RUN_ARGS:-} \
+	"${pid_args[@]}" \
 	"${coverage_args[@]}" \
 	"$E2E_CASE_IMAGE" "$case_name" >/dev/null
 docker network connect "$internet_network_name" "$main_name"

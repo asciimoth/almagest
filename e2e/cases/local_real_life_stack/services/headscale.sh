@@ -1,17 +1,25 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-: "${E2E_AMNESIA_IP:?}"
 shared=/stack-shared
 runtime=/tmp/almagest-headscale-service
 headscale_dir="$runtime/headscale"
 peer_dir="$runtime/peer"
 mkdir -p "$headscale_dir" "$peer_dir"
-self_ip="$E2E_AMNESIA_IP"
+standalone=0
+if [[ "${E2E_HEADSCALE_STANDALONE:-0}" == "1" ]]; then
+	standalone=1
+	: "${E2E_PUBLIC_IP:?}"
+	: "${E2E_EXAMPLE_IP:?}"
+	self_ip="$(ip -4 route get "$E2E_PUBLIC_IP" | awk '{for (i=1; i<=NF; i++) if ($i == "src") {print $(i+1); exit}}')"
+else
+	: "${E2E_AMNESIA_IP:?}"
+	self_ip="$E2E_AMNESIA_IP"
+	# The original case shares the Amnesia service network namespace. The
+	# route is created by that service before this container starts.
+	ip route get 10.205.10.1 | grep -F 'dev awg-stack' >/dev/null
+fi
 [[ -n "$self_ip" ]]
-# This container shares the Amnesia service network namespace. The route is
-# created by that service before this container starts.
-ip route get 10.205.10.1 | grep -F 'dev awg-stack' >/dev/null
 printf '%s headscale.stack.test\n' "$self_ip" >>/etc/hosts
 mkdir -p "$shared/dns-hosts"
 printf '%s headscale.stack.test\n' "$self_ip" >"$shared/dns-hosts/headscale.hosts"
@@ -19,6 +27,7 @@ printf '%s headscale.stack.test\n' "$self_ip" >"$shared/dns-hosts/headscale.host
 headscale_pid=""
 peer_pid=""
 capture_pid=""
+dns_pid=""
 # shellcheck disable=SC2329 # Invoked through the EXIT trap.
 cleanup() {
 	local status="$?"
@@ -30,12 +39,12 @@ cleanup() {
 			tail -160 "$output" >&2 || true
 		done
 	fi
-	for pid in "$capture_pid" "$peer_pid" "$headscale_pid"; do
+	for pid in "$capture_pid" "$dns_pid" "$peer_pid" "$headscale_pid"; do
 		if [[ -n "$pid" ]]; then
 			kill "$pid" 2>/dev/null || true
 		fi
 	done
-	for pid in "$capture_pid" "$peer_pid" "$headscale_pid"; do
+	for pid in "$capture_pid" "$dns_pid" "$peer_pid" "$headscale_pid"; do
 		if [[ -n "$pid" ]]; then
 			wait "$pid" 2>/dev/null || true
 		fi
@@ -306,9 +315,26 @@ retry 30 node_label_is "Tailnet Firewall Peer" "filtering 4 rules" || {
 }
 retry 30 grep -F "listening on 0.0.0.0:18080" "$runtime/peer.log" >/dev/null
 
-# A main-container connection to Headscale must use the Amnesia exit. The peer
-# daemon is local to this container and remains allowed through loopback.
-nft -f - <<EOF
+# shellcheck disable=SC2329 # Invoked by retry through its command arguments.
+standalone_dns_ready() {
+	dig +time=1 +tries=1 @"$self_ip" public.stack.test A +short \
+		| grep -Fx "$E2E_PUBLIC_IP" >/dev/null
+}
+
+if ((standalone)); then
+	dnsmasq --no-daemon --keep-in-foreground --log-facility=- \
+		--port=53 --listen-address="$self_ip" --bind-interfaces \
+		--no-resolv --no-hosts --local-ttl=300 --hostsdir="$shared/dns-hosts" \
+		--address="/public.stack.test/$E2E_PUBLIC_IP" \
+		--address="/intercept-dns.stack.test/$E2E_EXAMPLE_IP" \
+		>"$runtime/dnsmasq.log" 2>&1 &
+	dns_pid="$!"
+	retry 30 standalone_dns_ready
+else
+	# A main-container connection to Headscale must use the Amnesia exit. The
+	# peer daemon is local to this container and remains allowed through
+	# loopback.
+	nft -f - <<EOF
 table inet headscale_guard {
 	chain input {
 		type filter hook input priority filter; policy accept;
@@ -318,8 +344,13 @@ table inet headscale_guard {
 	}
 }
 EOF
+fi
 
 touch "$shared/headscale-ready"
-wait -n "$headscale_pid" "$peer_pid"
-echo "Headscale or its Tailscale peer exited" >&2
+service_pids=("$headscale_pid" "$peer_pid")
+if [[ -n "$dns_pid" ]]; then
+	service_pids+=("$dns_pid")
+fi
+wait -n "${service_pids[@]}"
+echo "Headscale, its Tailscale peer, or DNS exited" >&2
 exit 1

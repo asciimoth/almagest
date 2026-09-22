@@ -12,6 +12,9 @@
 			"KillswitchPath": "%E2E_RUNTIME%/killswitch.sock",
 			"Pmark": {
 				"PinPath": "/sys/fs/bpf/almagest-e2e-killswitch-default-tun-exclude",
+				// Keep pre-fix unknown-process tombstones for the complete
+				// map-capacity regression. The fixed version creates none.
+				"TombTTL": 600000000000,
 			},
 			"KillswitchAllowExclude": true,
 		},

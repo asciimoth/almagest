@@ -21,7 +21,11 @@
 			"exclude": [
 				{
 					"type": "comm",
-					"rule": "curl",
+					"rule": "^excluded-curl$",
+				},
+				{
+					"type": "comm",
+					"rule": "^pmark-target$",
 				},
 			],
 			"include": [],

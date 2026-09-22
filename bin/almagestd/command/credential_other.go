@@ -7,7 +7,7 @@ import (
 	"os/exec"
 )
 
-func setCommandCredential(cmd *exec.Cmd, cfg resolvedCommand) error {
+func prepareCommand(cmd *exec.Cmd, cfg resolvedCommand) error {
 	_ = cmd
 	if cfg.UID == nil && cfg.GID == nil {
 		return nil

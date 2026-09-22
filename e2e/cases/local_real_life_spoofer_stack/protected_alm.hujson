@@ -1,0 +1,32 @@
+{
+	"Admin": {"Web": 0, "Unix": "%E2E_ADMIN_SOCK%"},
+	"System": {
+		"Linux": {
+			"Pmark": {
+				"PinPath": "/sys/fs/bpf/almagest-e2e-local-real-life-spoofer-stack",
+			},
+		},
+	},
+	"TLS": {
+		"Certificates": {
+			"headscale-root": {"File": "/stack-shared/headscale-root.pem"},
+		},
+		"Policies": {
+			"headscale-tls": {
+				"trust_anchors": [
+					{"cert": "headscale-root", "scope": {"any": true}},
+				],
+			},
+		},
+	},
+	"Secrets": {
+		"headscale-auth-key": {
+			"Env": "E2E_HEADSCALE_AUTH_KEY",
+			"Nodes": ["TailscaleCtrl"],
+		},
+		"wireguard-tailscale-private": {
+			"Env": "E2E_WIREGUARD_TAILSCALE_PRIVATE",
+			"Nodes": ["WireGuard Tailscale"],
+		},
+	},
+}
