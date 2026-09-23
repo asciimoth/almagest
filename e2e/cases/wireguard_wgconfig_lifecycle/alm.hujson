@@ -1,0 +1,88 @@
+{
+	"Logs": {
+		"Cache": {
+			"Debug": 1024,
+			"Info": 128,
+			"Warn": 128,
+			"Error": 128,
+			"Fatal": 32,
+		},
+	},
+	"nodes": {
+		"WireGuard Client": {
+			"Class": "almagest/WireGuard",
+			"Links": ["Network -> [Host Network] Network"],
+			"privateKeySecret": "wgconfig-client-private-key",
+			"listenPort": 51870,
+			"peers": [],
+		},
+		"Client Config": {
+			"Class": "almagest/WGConfig",
+			"Links": [
+				"WireGuard -> [WireGuard Client] WGCtrl",
+				"Network -> [Host Network] Network",
+			],
+			"peers": [{
+				"id": "server",
+				"publicKey": "IJ7Kp5Sm2Wiaj0J8/mfx5A/X79XmohmIhHjMpNJVZTQ=",
+				"endpoint": "127.0.0.1:51871",
+				"allowedIPs": "10.207.20.1/32",
+				"persistentKeepaliveInterval": 1,
+			}],
+		},
+		"VTun Client": {
+			"Class": "almagest/VTun",
+			"Links": ["Tun -> [WireGuard Client] Tun"],
+			"endpointCh": 1024,
+			"eventCh": 10,
+			"name": "wgconfig-client",
+			"localAddrs": "10.207.10.1/24",
+			"mtu": 1420,
+		},
+		"HTTP Client": {
+			"Class": "almagest/HttpClient",
+			"Links": ["Network -> [VTun Client] Network"],
+			"url": "http://10.207.20.1:18087/lifecycle",
+			"method": "GET",
+		},
+		"WireGuard Server": {
+			"Class": "almagest/WireGuard",
+			"Links": ["Network -> [Host Network] Network"],
+			"privateKeySecret": "wgconfig-server-private-key",
+			"listenPort": 51871,
+			"peers": [],
+		},
+		"Server Config": {
+			"Class": "almagest/WGConfig",
+			"Links": [
+				"WireGuard -> [WireGuard Server] WGCtrl",
+				"Network -> [Host Network] Network",
+			],
+			"peers": [{
+				"id": "client",
+				"publicKey": "iYAebIPersrzDnnuynpkwnxEFyJDMPfnr+WcwJkD+AY=",
+				"endpoint": "127.0.0.1:51870",
+				"allowedIPs": "10.207.10.1/32",
+				"persistentKeepaliveInterval": 1,
+			}],
+		},
+		"VTun Server": {
+			"Class": "almagest/VTun",
+			"Links": ["Tun -> [WireGuard Server] Tun"],
+			"endpointCh": 1024,
+			"eventCh": 10,
+			"name": "wgconfig-server",
+			"localAddrs": "10.207.20.1/24",
+			"mtu": 1420,
+		},
+		"HTTP Server": {
+			"Class": "almagest/HttpServer",
+			"Links": ["Network -> [VTun Server] Network"],
+			"host": "10.207.20.1",
+			"port": 18087,
+			"response": "wgconfig-lifecycle-response",
+		},
+		"Host Network": {"Class": "almagest/OutNetwork"},
+	},
+}
+

@@ -1,0 +1,17 @@
+{
+	"Admin": {
+		"Web": 0,
+		"Unix": "%E2E_ADMIN_SOCK%",
+	},
+	"Secrets": {
+		"wgconfig-client-private-key": {
+			"Value": "iMBBlzD6x+4ZVFtXGpVr4hwdh8iqvCzPIhy+kE6oh2I=",
+			"Nodes": ["WireGuard Client"],
+		},
+		"wgconfig-server-private-key": {
+			"Value": "MMXMEkWVwk/q4hkoW2S3HCXUGvsDHFellxv7Aw/HlFU=",
+			"Nodes": ["WireGuard Server"],
+		},
+	},
+}
+
