@@ -1,0 +1,59 @@
+{
+	"Admin": {
+		"Web":  0,
+		"Unix": "%E2E_ADMIN_SOCK%",
+	},
+	"CommandRunner": {
+		"Commands": {
+			"record-alpha": {
+				"Command": [
+					"/bin/sh",
+					"-c",
+					"printf 'alpha|%s|%s\\n' \"$1\" \"$2\" >> /tmp/almagest-e2e-command-node.log",
+					"record-alpha",
+					"${message}",
+					"${optional}",
+				],
+				"Sync":       true,
+				"Timeout":    2000000000,
+				"AllowNodes": true,
+				"Slots": {
+					"message": {
+						"MaxLength": 32,
+						"Pattern":   "[A-Za-z0-9_-]+",
+						"Required":  true,
+					},
+					"optional": {
+						"MaxLength": 32,
+						"Pattern":   "[A-Za-z0-9_-]+",
+						"AllowEmpty": true,
+					},
+				},
+			},
+			"record-beta": {
+				"Command": [
+					"/bin/sh",
+					"-c",
+					"printf 'beta|%s\\n' \"$1\" >> /tmp/almagest-e2e-command-node.log",
+					"record-beta",
+					"${other}",
+				],
+				"Sync":       true,
+				"Timeout":    2000000000,
+				"AllowNodes": true,
+				"Slots": {
+					"other": {
+						"MaxLength": 32,
+						"Pattern":   "[A-Za-z0-9_-]+",
+						"Required":  true,
+					},
+				},
+			},
+			"hidden-command": {
+				"Command": ["/bin/false"],
+				"Sync":    true,
+			},
+		},
+	},
+	"System": {"Type": "debug"},
+}

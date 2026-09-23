@@ -1,0 +1,26 @@
+{
+	"nodes": {
+		"Command Trigger": {
+			"Class": "pasta/Trigger",
+			"Links": ["Trigger -> [Command] Trigger"],
+		},
+		"Message": {
+			"Class": "pasta/StringConstant",
+			"Links": ["output -> [Command] slot message value"],
+			"value": "hello",
+		},
+		"Optional": {
+			"Class": "pasta/StringConstant",
+			"Links": ["output -> [Command] slot optional value"],
+			"value": "extra",
+		},
+		"Other": {
+			"Class": "pasta/StringConstant",
+			"value": "second",
+		},
+		"Command": {
+			"Class":   "almagest/Command",
+			"command": "record-alpha",
+		},
+	},
+}
