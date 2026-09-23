@@ -264,4 +264,44 @@ node_name_is "$server" "History Server Renamed" \
 	|| fail "position redo changed the server name"
 assert_http_success_once "$client" "original request after metadata history"
 
+# A batched deletion must record one history entry with all incident links.
+# Keeping the client alive while its network and server are absent also checks
+# that undo installs a current wrapper instead of reviving a closed one.
+cli graph delete-nodes --ids "$network,$server" >/dev/null
+retry "$ALMAGEST_E2E_TIMEOUT" "batched network removal" node_missing "$network" \
+	|| fail "batched deletion did not remove the original network"
+retry "$ALMAGEST_E2E_TIMEOUT" "batched server removal" node_missing "$server" \
+	|| fail "batched deletion did not remove the original server"
+assert_http_failure_once "$client" "request after batched runtime deletion"
+
+cli engine undo >/dev/null
+retry "$ALMAGEST_E2E_TIMEOUT" "batched network undo" node_exists "$network" \
+	|| fail "undo did not restore the batched network"
+retry "$ALMAGEST_E2E_TIMEOUT" "batched server undo" node_exists "$server" \
+	|| fail "undo did not restore the batched server"
+retry "$ALMAGEST_E2E_TIMEOUT" "client link after batched undo" \
+	link_exists_by_node_ids "$client" Network "$network" Network \
+	|| fail "batched undo did not restore the client link"
+retry "$ALMAGEST_E2E_TIMEOUT" "server link after batched undo" \
+	link_exists_by_node_ids "$server" Network "$network" Network \
+	|| fail "batched undo did not restore the server link"
+wait_node_label "$server" "127.0.0.1:8080" \
+	|| fail "batched undo did not restart the server"
+assert_http_success_once "$client" "first request after batched runtime undo"
+
+cli engine redo >/dev/null
+retry "$ALMAGEST_E2E_TIMEOUT" "batched network redo" node_missing "$network" \
+	|| fail "redo did not remove the batched network"
+retry "$ALMAGEST_E2E_TIMEOUT" "batched server redo" node_missing "$server" \
+	|| fail "redo did not remove the batched server"
+assert_http_failure_once "$client" "request after batched runtime redo"
+cli engine undo >/dev/null
+retry "$ALMAGEST_E2E_TIMEOUT" "second batched network undo" node_exists "$network" \
+	|| fail "second undo did not restore the batched network"
+retry "$ALMAGEST_E2E_TIMEOUT" "second batched server undo" node_exists "$server" \
+	|| fail "second undo did not restore the batched server"
+wait_node_label "$server" "127.0.0.1:8080" \
+	|| fail "second batched undo did not restart the server"
+assert_http_success_once "$client" "request after repeated batched history"
+
 log "case passed"

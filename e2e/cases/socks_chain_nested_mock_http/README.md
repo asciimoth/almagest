@@ -29,3 +29,13 @@ curl -g --socks5-hostname 127.0.0.1:1081 http://127.0.0.1:8080
 ```
 
 The response body is `Debug http server response`.
+
+The test also changes the live chain:
+
+- A malformed nested proxy URL closes the old output and reports an error; a
+  valid URL restores the first request.
+- Rapid proxy URL changes converge on the last value without a stale wrapper
+  replacing it.
+- Removing and restoring the immediate and next-level upstream links
+  propagates failure and recovery through the full chain.
+- The rebuilt chain works on its first request after daemon restart.

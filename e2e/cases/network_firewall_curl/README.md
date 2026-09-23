@@ -27,6 +27,17 @@ firewall.
    continues to block port `18102`.
 4. Clearing the menu rules allows both services again.
 
+The case also checks failure and lifecycle transitions:
+
+- An invalid linked object withdraws only that object's last policy, reports
+  an error, and accepts a later valid value.
+- An invalid menu edit preserves the last valid menu and object policies.
+- Removing and restoring the object link withdraws and reinstalls its current
+  contribution.
+- Removing and restoring the upstream network replaces the firewall wrapper;
+  its first requests after replacement succeed.
+- The final menu policy and restored links survive a daemon restart.
+
 All policy changes use the daemon admin API after startup. The graph and its
 network wrapper are not rebuilt by the test.
 

@@ -130,6 +130,25 @@ retry "$ALMAGEST_E2E_TIMEOUT" "object policy allows second service" \
 	|| fail "object policy blocked the unrelated second service"
 assert_body /tmp/e2e-network-firewall-second-object.txt "$second_body"
 
+# An invalid object replaces only that link's previous contribution. It must
+# report the invalid source without leaving the old block installed. A later
+# valid value on the same link must recover the policy.
+apply_object_policy "$object_policy" '{"exclude":"invalid"}'
+wait_node_label "$firewall" "invalid object config" \
+	|| fail "NetworkFirewall did not report the invalid object policy"
+retry "$ALMAGEST_E2E_TIMEOUT" "first service after invalid object policy" \
+	curl_through_firewall "$first_port" /invalid-object \
+	/tmp/e2e-network-firewall-first-invalid-object.txt \
+	|| fail "invalid object policy left its previous rule installed"
+assert_body /tmp/e2e-network-firewall-first-invalid-object.txt "$first_body"
+apply_object_policy "$object_policy" \
+	"{\"exclude\":[{\"network\":\"tcp\",\"ports\":[${first_port}]}]}"
+wait_node_label "$firewall" "filtering 1 rules" \
+	|| fail "NetworkFirewall did not recover from the invalid object policy"
+retry "$ALMAGEST_E2E_TIMEOUT" "restored object policy blocks first service" \
+	firewall_request_fails "$first_port" \
+	|| fail "restored object policy did not block the first service"
+
 # A menu rule adds a second block. The effective policy is the union of both
 # sources, so neither service is reachable through the firewall.
 apply_firewall_rules "$firewall" \
@@ -140,6 +159,22 @@ retry "$ALMAGEST_E2E_TIMEOUT" "merged policy still blocks first service" \
 retry "$ALMAGEST_E2E_TIMEOUT" "menu policy blocks second service" \
 	firewall_request_fails "$second_port" \
 	|| fail "menu policy did not block the second service"
+
+# A rejected menu edit must keep both last valid policies active. Restoring a
+# valid menu value clears the form error without replacing the object policy.
+apply_firewall_rules "$firewall" '{not valid firewall JSON'
+wait_node_label "$firewall" "invalid config" \
+	|| fail "NetworkFirewall did not report the invalid menu policy"
+retry "$ALMAGEST_E2E_TIMEOUT" "object rule survives invalid menu policy" \
+	firewall_request_fails "$first_port" \
+	|| fail "invalid menu policy removed the object rule"
+retry "$ALMAGEST_E2E_TIMEOUT" "menu rule survives invalid menu policy" \
+	firewall_request_fails "$second_port" \
+	|| fail "invalid menu policy replaced the last valid menu rule"
+apply_firewall_rules "$firewall" \
+	"{\"exclude\":[{\"network\":\"tcp\",\"ports\":[${second_port}]}]}"
+wait_node_label "$firewall" "filtering 1 rules" \
+	|| fail "NetworkFirewall did not recover from the invalid menu policy"
 
 # Remove only the object contribution. The first port is allowed again, while
 # the independent menu contribution continues to block the second port.
@@ -170,10 +205,75 @@ retry "$ALMAGEST_E2E_TIMEOUT" "second service after all rules clear" \
 assert_body /tmp/e2e-network-firewall-first-final.txt "$first_body"
 assert_body /tmp/e2e-network-firewall-second-final.txt "$second_body"
 
+# Link removal must withdraw a current object contribution. Reattaching the
+# same constant must request its latest value and reinstall that contribution.
+apply_object_policy "$object_policy" \
+	"{\"exclude\":[{\"network\":\"tcp\",\"ports\":[${first_port}]}]}"
+wait_node_label "$firewall" "filtering 1 rules" \
+	|| fail "NetworkFirewall did not reinstall the object rule"
+object_link="$(link_id_by_port_names \
+	"Firewall object policy" output "Network Firewall curl" Config)"
+cli graph delete-link --id "$object_link" >/dev/null
+wait_node_label "$firewall" "filtering 0 rules" \
+	|| fail "NetworkFirewall kept an object rule after its link was removed"
+retry "$ALMAGEST_E2E_TIMEOUT" "first service after object link removal" \
+	curl_through_firewall "$first_port" /object-detached \
+	/tmp/e2e-network-firewall-first-object-detached.txt \
+	|| fail "first service did not recover after object link removal"
+add_link_by_port_name "$firewall" left Config "$object_policy" right output >/dev/null
+wait_node_label "$firewall" "filtering 1 rules" \
+	|| fail "NetworkFirewall did not request the reattached object value"
+retry "$ALMAGEST_E2E_TIMEOUT" "reattached object policy blocks first service" \
+	firewall_request_fails "$first_port" \
+	|| fail "reattached object policy did not block the first service"
+apply_object_policy "$object_policy" "{}"
+wait_node_label "$firewall" "filtering 0 rules" \
+	|| fail "NetworkFirewall did not clear the reattached object rule"
+
+# Replacing the upstream network must close the old firewall wrapper. The
+# restored edge must provide a new wrapper that works on its first requests.
+out_network="$(node_id_by_name "Firewall OutNetwork")"
+upstream_link="$(link_id_by_port_names \
+	"Network Firewall curl" Network "Firewall OutNetwork" Network)"
+cli graph delete-link --id "$upstream_link" >/dev/null
+wait_node_label "$firewall" "waiting for network" \
+	|| fail "NetworkFirewall did not wait after upstream removal"
+retry "$ALMAGEST_E2E_TIMEOUT" "first service fails without firewall upstream" \
+	firewall_request_fails "$first_port" \
+	|| fail "old firewall wrapper stayed usable after upstream removal"
+add_link_by_port_name "$firewall" right Network "$out_network" left Network >/dev/null
+wait_node_label "$firewall" "filtering 0 rules" \
+	|| fail "NetworkFirewall did not attach its replacement upstream"
+retry "$ALMAGEST_E2E_TIMEOUT" "first service after upstream replacement" \
+	curl_through_firewall "$first_port" /upstream-restored \
+	/tmp/e2e-network-firewall-first-upstream-restored.txt \
+	|| fail "first request failed after firewall upstream replacement"
+retry "$ALMAGEST_E2E_TIMEOUT" "second service after upstream replacement" \
+	curl_through_firewall "$second_port" /upstream-restored \
+	/tmp/e2e-network-firewall-second-upstream-restored.txt \
+	|| fail "second request failed after firewall upstream replacement"
+
+# A final menu policy and all restored links must survive daemon restart.
+apply_firewall_rules "$firewall" \
+	"{\"exclude\":[{\"network\":\"tcp\",\"ports\":[${second_port}]}]}"
+wait_node_label "$firewall" "filtering 1 rules" \
+	|| fail "NetworkFirewall did not install the pre-restart policy"
+stop_daemon
+start_daemon
+firewall="$(node_id_by_name "Network Firewall curl")"
+wait_node_label "$firewall" "filtering 1 rules" \
+	|| fail "NetworkFirewall did not restore its saved policy"
+retry "$ALMAGEST_E2E_TIMEOUT" "first service after firewall restart" \
+	curl_through_firewall "$first_port" /restart-allowed \
+	/tmp/e2e-network-firewall-first-restart.txt \
+	|| fail "allowed service did not recover after daemon restart"
+retry "$ALMAGEST_E2E_TIMEOUT" "saved menu policy after firewall restart" \
+	firewall_request_fails "$second_port" \
+	|| fail "saved firewall policy did not survive daemon restart"
+
 grep -F "GET /restored" "$first_log" >/dev/null \
 	|| fail "first service did not record the restored request"
 grep -F "GET /restored" "$second_log" >/dev/null \
 	|| fail "second service did not record the restored request"
 
 log "case passed"
-
