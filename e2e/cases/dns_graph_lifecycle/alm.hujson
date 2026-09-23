@@ -1,0 +1,79 @@
+{
+	"nodes": {
+		"Empty DNS": {
+			"Class":   "almagest/StaticDns",
+			"records": "",
+			"ttl":     60,
+		},
+		"Primary DNS": {
+			"Class": "almagest/StaticDns",
+			"records": "fallback.lifecycle.test A 10.20.0.1\ncached.lifecycle.test A 10.20.0.11\nrouter-one.lifecycle.test A 10.20.0.21\nrouter-two.lifecycle.test A 10.20.0.22",
+			"ttl": 60,
+		},
+		"Secondary DNS": {
+			"Class": "almagest/StaticDns",
+			"records": "fallback.lifecycle.test A 10.20.0.2\ncached.lifecycle.test A 10.20.0.12\nuncached.lifecycle.test A 10.20.0.12\nrouter-one.lifecycle.test A 10.20.0.31\nrouter-two.lifecycle.test A 10.20.0.32",
+			"ttl": 60,
+		},
+		"Fallback DNS": {
+			"Class": "almagest/DnsFallback",
+			"Links": [
+				"slot 1 -> [Empty DNS] DNS",
+				"slot 2 -> [Primary DNS] DNS",
+				"slot 3 -> [Secondary DNS] DNS",
+			],
+			"attemptTimeoutMS": 0,
+		},
+		"DNS Cache": {
+			"Class":          "almagest/DnsCache",
+			"Links":          ["DNS -> [Fallback DNS] DNS"],
+			"storageName":    "dns-graph-lifecycle",
+			"reverseLookups": true,
+			"writeOnly":      false,
+		},
+		"DNS Router": {
+			"Class": "almagest/DnsRouter",
+			"Links": [
+				"slot 1 -> [Primary DNS] DNS",
+				"slot 2 -> [Secondary DNS] DNS",
+			],
+			"rules": "ADDR_S router-two.lifecycle.test.\nBACKEND slot 2\n\nTRUE\nBACKEND slot 1",
+		},
+		"Fallback Query": {
+			"Class": "almagest/DnsQuery",
+			"Links": ["DNS -> [Fallback DNS] DNS"],
+			"name":  "fallback.lifecycle.test.",
+			"type":  "A",
+		},
+		"Cached Query": {
+			"Class": "almagest/DnsQuery",
+			"Links": ["DNS -> [DNS Cache] DNS"],
+			"name":  "cached.lifecycle.test.",
+			"type":  "A",
+		},
+		"Uncached Query": {
+			"Class": "almagest/DnsQuery",
+			"Links": ["DNS -> [DNS Cache] DNS"],
+			"name":  "uncached.lifecycle.test.",
+			"type":  "A",
+		},
+		"Router One Query": {
+			"Class": "almagest/DnsQuery",
+			"Links": ["DNS -> [DNS Router] DNS"],
+			"name":  "router-one.lifecycle.test.",
+			"type":  "A",
+		},
+		"Router Two Query": {
+			"Class": "almagest/DnsQuery",
+			"Links": ["DNS -> [DNS Router] DNS"],
+			"name":  "router-two.lifecycle.test.",
+			"type":  "A",
+		},
+		"Invalid Type Query": {
+			"Class": "almagest/DnsQuery",
+			"Links": ["DNS -> [Fallback DNS] DNS"],
+			"name":  "fallback.lifecycle.test.",
+			"type":  "NOT-A-DNS-TYPE",
+		},
+	},
+}

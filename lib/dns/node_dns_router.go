@@ -199,6 +199,9 @@ func (n *dnsRouterNode) OnLinkRemoved(link, port uint64, linkType, portDirection
 		n.outputs.Close(link)
 	case n.slots.Slot(port) != 0 && portDirection == "right":
 		n.detachSlot(n.slots.Slot(port))
+		if err := n.reviewOutputPorts(nodekit.SlotPortReview{DefaultSlot: 1}); err != nil {
+			return err
+		}
 	}
 	return n.updateLabel()
 }

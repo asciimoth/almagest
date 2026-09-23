@@ -40,13 +40,71 @@ BACKEND slot 2`)
 
 	e.Engine.RemoveLink(E2EWorkspace, westLink)
 	e.WaitNodeLabel(router, "routing DNS")
+	e.assertDNSRouterPorts(router, []string{"slot 1", "slot 2"})
 	e.sendDNSRequest(client)
 	e.waitDNSFailure(client, "dns: no upstream attached")
 
 	e.MustAddTypedLinkByPortName(dnsnodes.TypeDNS, west, "left", "DNS", router, "right", "slot 2")
 	e.WaitNodeLabel(router, "routing 2 DNS backends")
+	e.assertDNSRouterPorts(router, []string{"slot 1", "slot 2"})
 	e.sendDNSRequest(client)
 	e.waitDNSResponse(client, "NOERROR", "10.101.0.2")
+}
+
+func TestDnsRouterRemovesObsoletePortsWithoutDisruptingLiveRoutesE2E(t *testing.T) {
+	e := newDNSE2E(t)
+	primary := e.AddNode(dnsnodes.NodeTypeStaticDNS, "primary")
+	secondary := e.AddNode(dnsnodes.NodeTypeStaticDNS, "secondary")
+	router := e.AddNode(dnsnodes.NodeTypeDnsRouter, "router")
+	client := e.AddNode(dnsnodes.NodeTypeDNSQuery, "client")
+	e.SubscribeMenus(primary, secondary, router, client)
+
+	e.applyStaticDNSRecords(primary, "live.router.test A 10.103.0.1")
+	e.applyStaticDNSRecords(secondary, "live.router.test A 10.103.0.2")
+	e.setDNSQueryRequest(client, "live.router.test.", "A")
+	e.applyDNSRouterRules(router, `ADDR_S live.router.test.
+BACKEND slot 2
+
+TRUE
+BACKEND slot 1`)
+
+	e.MustAddTypedLinkByPortName(dnsnodes.TypeDNS, primary, "left", "DNS", router, "right", "slot 1")
+	slot2Link := e.MustAddTypedLinkByPortName(dnsnodes.TypeDNS, secondary, "left", "DNS", router, "right", "slot 2")
+	e.MustAddTypedLinkByPortName(dnsnodes.TypeDNS, router, "left", "DNS", client, "right", "DNS")
+	e.WaitNodeLabel(router, "routing 2 DNS backends")
+	e.sendDNSRequest(client)
+	e.waitDNSResponse(client, "NOERROR", "10.103.0.2")
+
+	// Moving the route creates slot 3. The obsolete slot 2 must remain until
+	// its existing link is removed.
+	e.applyDNSRouterRules(router, `ADDR_S live.router.test.
+BACKEND slot 3
+
+TRUE
+BACKEND slot 1`)
+	e.assertDNSRouterPorts(router, []string{"slot 1", "slot 2", "slot 3"})
+	slot3Link := e.MustAddTypedLinkByPortName(dnsnodes.TypeDNS, secondary, "left", "DNS", router, "right", "slot 3")
+	e.WaitNodeLabel(router, "routing 3 DNS backends")
+	e.sendDNSRequest(client)
+	e.waitDNSResponse(client, "NOERROR", "10.103.0.2")
+
+	e.Engine.RemoveLink(E2EWorkspace, slot2Link)
+	e.assertDNSRouterPorts(router, []string{"slot 1", "slot 3"})
+	e.WaitNodeLabel(router, "routing 2 DNS backends")
+	e.sendDNSRequest(client)
+	e.waitDNSResponse(client, "NOERROR", "10.103.0.2")
+
+	// Removing the slot 3 rule keeps the linked port and routes through slot 1.
+	e.applyDNSRouterRules(router, "TRUE\nBACKEND slot 1")
+	e.assertDNSRouterPorts(router, []string{"slot 1", "slot 3"})
+	e.sendDNSRequest(client)
+	e.waitDNSResponse(client, "NOERROR", "10.103.0.1")
+
+	e.Engine.RemoveLink(E2EWorkspace, slot3Link)
+	e.assertDNSRouterPorts(router, []string{"slot 1"})
+	e.WaitNodeLabel(router, "routing DNS")
+	e.sendDNSRequest(client)
+	e.waitDNSResponse(client, "NOERROR", "10.103.0.1")
 }
 
 func TestDnsRouterWorksWithDnsCacheE2E(t *testing.T) {

@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/asciimoth/almagest/lib/logging"
+	"github.com/asciimoth/almagest/lib/nodekit"
 	"github.com/asciimoth/almagest/lib/testkit"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
@@ -110,6 +111,77 @@ func TestDNSRouterNodeEmitsStableRouterAndReviewsSlotPorts(t *testing.T) {
 	}
 }
 
+func TestDNSRouterNodeRemovesOnlyUnreferencedUnlinkedSlotPorts(t *testing.T) {
+	w := newDNSRouterTestWorkspace(t)
+	routerID, err := w.AddNodeByClass(NodeTypeDnsRouter, "router")
+	if err != nil {
+		t.Fatalf("AddNodeByClass DnsRouter: %v", err)
+	}
+	staticID, err := w.AddNodeByClass(NodeTypeStaticDNS, "static")
+	if err != nil {
+		t.Fatalf("AddNodeByClass StaticDns: %v", err)
+	}
+
+	applyDNSRouterRulesToWorkspace(t, w, routerID, `ADDR_S two.router.test.
+BACKEND slot 2
+
+ADDR_S four.router.test.
+BACKEND slot 4
+
+TRUE
+BACKEND slot 1`)
+	assertDNSRouterRightPorts(t, w, routerID, []string{"slot 1", "slot 2", "slot 4"})
+
+	staticOut := testkit.MustNodeSnapshot(t, w, staticID).LeftPorts[0]
+	slot2Port := dnsRouterRightPort(t, w, routerID, 2)
+	slot4Port := dnsRouterRightPort(t, w, routerID, 4)
+	slot2Link, linkType, err := w.AddLink(staticOut, slot2Port)
+	if err != nil {
+		t.Fatalf("AddLink static->slot 2: %v", err)
+	}
+	if linkType != TypeDNS {
+		t.Fatalf("slot 2 link type = %q, want %q", linkType, TypeDNS)
+	}
+	slot4Link, linkType, err := w.AddLink(staticOut, slot4Port)
+	if err != nil {
+		t.Fatalf("AddLink static->slot 4: %v", err)
+	}
+	if linkType != TypeDNS {
+		t.Fatalf("slot 4 link type = %q, want %q", linkType, TypeDNS)
+	}
+
+	// Rule edits keep old slots while links still use them and add newly
+	// referenced sparse slots in numeric order.
+	applyDNSRouterRulesToWorkspace(t, w, routerID, `ADDR_S three.router.test.
+BACKEND slot 3
+
+TRUE
+BACKEND slot 1`)
+	assertDNSRouterRightPorts(t, w, routerID, []string{"slot 1", "slot 2", "slot 3", "slot 4"})
+
+	// Removing one obsolete link removes only its port. Other linked and
+	// rule-owned sparse ports must stay available.
+	w.RemoveLink(slot2Link)
+	assertDNSRouterRightPorts(t, w, routerID, []string{"slot 1", "slot 3", "slot 4"})
+	if _, ok := w.PortSnapshot(slot2Port); ok {
+		t.Fatal("unreferenced and unlinked slot 2 port still exists")
+	}
+	if _, ok := w.PortSnapshot(slot4Port); !ok {
+		t.Fatal("linked slot 4 port was removed")
+	}
+
+	w.RemoveLink(slot4Link)
+	assertDNSRouterRightPorts(t, w, routerID, []string{"slot 1", "slot 3"})
+	if _, ok := w.PortSnapshot(slot4Port); ok {
+		t.Fatal("unreferenced and unlinked slot 4 port still exists")
+	}
+
+	// A referenced port stays visible without a link. Removing its rule then
+	// leaves only the router's default slot.
+	applyDNSRouterRulesToWorkspace(t, w, routerID, "TRUE\nBACKEND slot 1")
+	assertDNSRouterRightPorts(t, w, routerID, []string{"slot 1"})
+}
+
 func TestDNSRouterNodeValidationReportsStatus(t *testing.T) {
 	w := newDNSRouterTestWorkspace(t)
 	state := formular.NewMenuSnapshotState()
@@ -205,6 +277,19 @@ func assertDNSRouterRightPorts(t *testing.T, w *pasta.Workspace, node uint64, wa
 		got = append(got, ps.Name)
 	}
 	testkit.AssertStringSlice(t, got, want)
+}
+
+func dnsRouterRightPort(t *testing.T, w *pasta.Workspace, node uint64, slot int) uint64 {
+	t.Helper()
+	want := nodekit.SlotPortName(slot)
+	for _, port := range testkit.MustNodeSnapshot(t, w, node).RightPorts {
+		snapshot, ok := w.PortSnapshot(port)
+		if ok && snapshot.Name == want {
+			return port
+		}
+	}
+	t.Fatalf("DnsRouter port %q is missing", want)
+	return 0
 }
 
 func assertDNSRouterRulesStatus(t *testing.T, state *formular.MenuSnapshotState, node uint64, want string) {
