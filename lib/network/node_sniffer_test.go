@@ -123,6 +123,112 @@ func TestSnifferNodeWaitsForMentionedBackendSlot(t *testing.T) {
 	networktest.ReceivePayload(t, receiver.Events)
 }
 
+func TestSnifferNodeRemovesOnlyUnreferencedUnlinkedSlotPorts(t *testing.T) {
+	w := newSnifferTestWorkspace(t)
+	node, err := w.AddNodeByClass(NodeTypeSniffer, "sniffer")
+	if err != nil {
+		t.Fatalf("AddNodeByClass Sniffer: %v", err)
+	}
+	mock, err := w.AddNodeByClass(NodeTypeMockNetwork, "mock")
+	if err != nil {
+		t.Fatalf("AddNodeByClass MockNetwork: %v", err)
+	}
+
+	applySnifferRules(t, w, node, "SNIFF HTTP URL:/two\nSLOT 2\n\nTRUE\nSLOT 4")
+	assertSnifferRightPorts(t, w, node, []string{"slot 2", "slot 4"})
+
+	mockOut := testkit.MustNodeSnapshot(t, w, mock).LeftPorts[0]
+	slot2Port := snifferRightPort(t, w, node, slotPortName(2))
+	slot4Port := snifferRightPort(t, w, node, slotPortName(4))
+	slot2Link, linkType, err := w.AddLink(mockOut, slot2Port)
+	if err != nil {
+		t.Fatalf("AddLink mock->slot 2: %v", err)
+	}
+	if linkType != TypeNetwork {
+		t.Fatalf("slot 2 link type = %q, want %q", linkType, TypeNetwork)
+	}
+	slot4Link, linkType, err := w.AddLink(mockOut, slot4Port)
+	if err != nil {
+		t.Fatalf("AddLink mock->slot 4: %v", err)
+	}
+	if linkType != TypeNetwork {
+		t.Fatalf("slot 4 link type = %q, want %q", linkType, TypeNetwork)
+	}
+
+	// A rule change keeps obsolete ports while their links still use them.
+	applySnifferRules(t, w, node, "TRUE\nSLOT 3")
+	assertSnifferRightPorts(t, w, node, []string{"slot 2", "slot 3", "slot 4"})
+
+	// Each unlink removes only the obsolete port for that link.
+	w.RemoveLink(slot2Link)
+	assertSnifferRightPorts(t, w, node, []string{"slot 3", "slot 4"})
+	if _, ok := w.PortSnapshot(slot2Port); ok {
+		t.Fatal("unreferenced and unlinked slot 2 port still exists")
+	}
+	if _, ok := w.PortSnapshot(slot4Port); !ok {
+		t.Fatal("linked slot 4 port was removed")
+	}
+
+	w.RemoveLink(slot4Link)
+	assertSnifferRightPorts(t, w, node, []string{"slot 3"})
+	if _, ok := w.PortSnapshot(slot4Port); ok {
+		t.Fatal("unreferenced and unlinked slot 4 port still exists")
+	}
+
+	applySnifferRules(t, w, node, "")
+	assertSnifferRightPorts(t, w, node, []string{"slot 1"})
+}
+
+func TestSnifferNodeRebuildsOutputAfterObsoleteBackendDetach(t *testing.T) {
+	w := newSnifferTestWorkspace(t)
+	firstBackend, err := w.AddNodeByClass(NodeTypeMockNetwork, "first")
+	if err != nil {
+		t.Fatalf("AddNodeByClass first MockNetwork: %v", err)
+	}
+	secondBackend, err := w.AddNodeByClass(NodeTypeMockNetwork, "second")
+	if err != nil {
+		t.Fatalf("AddNodeByClass second MockNetwork: %v", err)
+	}
+	node, err := w.AddNodeByClass(NodeTypeSniffer, "sniffer")
+	if err != nil {
+		t.Fatalf("AddNodeByClass Sniffer: %v", err)
+	}
+	receiver := networktest.NewReceiver(4)
+	if _, err := w.AddNode(receiver, "test/NetworkReceiver", "receiver"); err != nil {
+		t.Fatalf("AddNode receiver: %v", err)
+	}
+
+	applySnifferRules(t, w, node, "TRUE\nSLOT 1")
+	firstOut := testkit.MustNodeSnapshot(t, w, firstBackend).LeftPorts[0]
+	firstLink, _, err := w.AddLink(firstOut, snifferRightPort(t, w, node, slotPortName(1)))
+	if err != nil {
+		t.Fatalf("AddLink first->slot 1: %v", err)
+	}
+	snifferOut := testkit.MustNodeSnapshot(t, w, node).LeftPorts[0]
+	if _, _, err := w.AddLink(snifferOut, receiver.In); err != nil {
+		t.Fatalf("AddLink sniffer->receiver: %v", err)
+	}
+	firstOutput := networktest.ReceivePayload(t, receiver.Events).Network
+
+	applySnifferRules(t, w, node, "TRUE\nSLOT 2")
+	secondOut := testkit.MustNodeSnapshot(t, w, secondBackend).LeftPorts[0]
+	if _, _, err := w.AddLink(secondOut, snifferRightPort(t, w, node, slotPortName(2))); err != nil {
+		t.Fatalf("AddLink second->slot 2: %v", err)
+	}
+	secondOutput := networktest.ReceivePayload(t, receiver.Events).Network
+	if SameNetworkInstance(firstOutput, secondOutput) {
+		t.Fatal("rule and backend replacement reused the first Sniffer output")
+	}
+
+	// Slot 1 is no longer referenced. Its detach closes the current wrapper,
+	// so the consumer must immediately receive a replacement that uses slot 2.
+	w.RemoveLink(firstLink)
+	thirdOutput := networktest.ReceivePayload(t, receiver.Events).Network
+	if SameNetworkInstance(secondOutput, thirdOutput) {
+		t.Fatal("obsolete backend detach reused the closed Sniffer output")
+	}
+}
+
 func TestSnifferNodeRefreshRebuildsClosedPayload(t *testing.T) {
 	w := newSnifferTestWorkspace(t)
 	mock, err := w.AddNodeByClass(NodeTypeMockNetwork, "mock")
@@ -206,6 +312,20 @@ func snifferRightPort(t *testing.T, w *pasta.Workspace, node uint64, name string
 	}
 	t.Fatalf("sniffer node %d has no right port %q", node, name)
 	return 0
+}
+
+func assertSnifferRightPorts(t *testing.T, w *pasta.Workspace, node uint64, want []string) {
+	t.Helper()
+	snapshot := testkit.MustNodeSnapshot(t, w, node)
+	got := make([]string, 0, len(snapshot.RightPorts))
+	for _, port := range snapshot.RightPorts {
+		portSnapshot, ok := w.PortSnapshot(port)
+		if !ok {
+			t.Fatalf("PortSnapshot(%d) missing", port)
+		}
+		got = append(got, portSnapshot.Name)
+	}
+	testkit.AssertStringSlice(t, got, want)
 }
 
 func newSnifferTestWorkspace(t *testing.T) *pasta.Workspace {

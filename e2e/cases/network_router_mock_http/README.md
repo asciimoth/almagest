@@ -18,3 +18,13 @@ the test does not depend on container DNS or host networking.
   `Server 2`.
 - Any other hostname through the same proxy uses the router default slot and
   returns `Server 3`.
+- Repeated live rule changes immediately switch the selected backends while
+  the existing proxy output stays usable.
+- Invalid rule text does not replace the last valid routing program.
+- Rules can add a dynamic slot. Linked obsolete ports stay available, then
+  disappear immediately when their last link is removed.
+- Only rule-owned slot ports return after a daemon restart.
+- Removing one active backend only breaks routes for that backend. Reattaching
+  it restores the first request.
+- Removing and restoring the proxy output link replaces its network wrapper.
+- Live rule and link changes persist across a daemon restart.

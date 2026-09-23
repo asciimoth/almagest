@@ -102,6 +102,28 @@ assert_curl_fails() {
 	fi
 }
 
+apply_sniffer_rules() {
+	local slot="$1"
+	local rules
+	printf -v rules 'DIAL\nTCP\nAND\nINTERCEPT\n\nSNIFF HTTP URL:/http-alpha\nROUTE %s DST:127.0.0.1:18081\n\nSNIFF HTTP URL:/http-beta\nROUTE %s DST:127.0.0.1:18082\n\nSNIFF TLS ALPN:http/1.1\nROUTE %s DST:127.0.0.1:18443\n\nTRUE\nDROP' \
+		"$slot" "$slot" "$slot"
+	jq -n --arg rules "$rules" '{"config":{"rules":$rules}}' \
+		| cli graph apply-menu --name "Sniffer 2002" >/dev/null
+}
+
+port_exists() {
+	local node="$1"
+	local direction="$2"
+	local name="$3"
+	local id
+	id="$(node_id_by_name "$node")" || return 1
+	node_port_id "$id" "$direction" "$name" >/dev/null
+}
+
+port_missing() {
+	! port_exists "$1" "$2" "$3"
+}
+
 http_alpha_pid="$(start_static_http_target 127.0.0.1 18081 "alpha body" "$E2E_RUNTIME/http-alpha.log")"
 http_beta_pid="$(start_static_http_target 127.0.0.1 18082 "beta body" "$E2E_RUNTIME/http-beta.log")"
 https_pid="$(start_static_https_target 127.0.0.1 18443 "tls body" "$E2E_RUNTIME/https.log" "$E2E_CONFIG_DIR/tls.crt" "$E2E_CONFIG_DIR/tls.key")"
@@ -123,6 +145,7 @@ wait_graph_node "Sniffer 2002" || fail "Sniffer node missing"
 wait_graph_node "OutNetwork 2003" || fail "OutNetwork node missing"
 
 sniffer_id="$(node_id_by_name "Sniffer 2002")"
+out_id="$(node_id_by_name "OutNetwork 2003")"
 wait_node_label "$sniffer_id" "sniffing 3 classifiers" \
 	|| fail "Sniffer did not become ready"
 wait_log_contains "almagest/LocalProxy" "socks listening on 127.0.0.1:1081" \
@@ -142,5 +165,50 @@ retry "$ALMAGEST_E2E_TIMEOUT" "HTTP beta access log" \
 retry "$ALMAGEST_E2E_TIMEOUT" "HTTPS ALPN access log" \
 	grep -F "GET /secure HTTP/1.1 alpn=http/1.1" "$E2E_RUNTIME/https.log" >/dev/null \
 	|| fail "HTTPS target did not record expected ALPN"
+
+# Repeatedly move all routes through sparse dynamic slots. The old slot must
+# remain while linked, then disappear as soon as its obsolete link is removed.
+current_slot=1
+current_link="$(link_id_by_port_names "Sniffer 2002" "slot 1" "OutNetwork 2003" Network)"
+for next_slot in 2 4 3; do
+	apply_sniffer_rules "$next_slot"
+	retry "$ALMAGEST_E2E_TIMEOUT" "Sniffer slot $next_slot port" \
+		port_exists "Sniffer 2002" right "slot $next_slot" \
+		|| fail "Sniffer did not create slot $next_slot"
+	port_exists "Sniffer 2002" right "slot $current_slot" \
+		|| fail "Sniffer removed linked obsolete slot $current_slot"
+	wait_node_label "$sniffer_id" "waiting for slot $next_slot" \
+		|| fail "Sniffer did not wait for slot $next_slot"
+
+	next_link="$(add_link_by_port_name "$sniffer_id" right "slot $next_slot" "$out_id" left Network)"
+	wait_node_label "$sniffer_id" "sniffing 3 classifiers" \
+		|| fail "Sniffer did not become ready on slot $next_slot"
+	assert_socks_body "http://service.test/http-alpha" "alpha body"
+	assert_socks_body "http://service.test/http-beta" "beta body"
+	assert_socks_https_body "https://tls-service.test/secure" "tls body"
+
+	cli graph delete-link --id "$current_link" >/dev/null
+	retry "$ALMAGEST_E2E_TIMEOUT" "unused Sniffer slot $current_slot removed immediately" \
+		port_missing "Sniffer 2002" right "slot $current_slot" \
+		|| fail "Sniffer kept unused slot $current_slot after unlink"
+	assert_socks_body "http://service.test/http-alpha" "alpha body"
+
+	current_slot="$next_slot"
+	current_link="$next_link"
+done
+
+# A slot that is still present in the rules must remain after detach. The
+# Sniffer must stop using its old backend and recover after the link returns.
+cli graph delete-link --id "$current_link" >/dev/null
+port_exists "Sniffer 2002" right "slot $current_slot" \
+	|| fail "Sniffer removed rule-owned slot $current_slot"
+wait_node_label "$sniffer_id" "waiting for slot $current_slot" \
+	|| fail "Sniffer did not report its detached active slot"
+assert_curl_fails "http://service.test/http-alpha"
+add_link_by_port_name "$sniffer_id" right "slot $current_slot" "$out_id" left Network >/dev/null
+wait_node_label "$sniffer_id" "sniffing 3 classifiers" \
+	|| fail "Sniffer did not recover after backend reattach"
+assert_socks_body "http://service.test/http-alpha" "alpha body"
+assert_socks_https_body "https://tls-service.test/secure" "tls body"
 
 log "case passed"

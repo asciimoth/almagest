@@ -207,6 +207,12 @@ func (n *snifferNode) OnLinkRemoved(link, port uint64, linkType, portDirection s
 	}
 	if slot := n.slots.Slot(port); slot != 0 && portDirection == "right" && linkType == TypeNetwork {
 		n.detachSlot(slot)
+		if err := n.reviewOutputPorts(slotPortReview{DefaultSlot: 1}); err != nil {
+			return err
+		}
+		if n.ready {
+			n.sendAll()
+		}
 		return n.updateLabel()
 	}
 	return nil

@@ -243,6 +243,7 @@ func (n *networkRouterNode) OnLinkRemoved(link, port uint64, linkType, portDirec
 	}
 	if slot := n.slots.Slot(port); slot != 0 && portDirection == "right" && linkType == TypeNetwork {
 		n.detachSlot(slot)
+		return n.reviewOutputPorts(slotPortReview{DefaultSlot: 1, ExtraOrder: []uint64{n.dnsIn}})
 	}
 	return nil
 }

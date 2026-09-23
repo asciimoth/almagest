@@ -292,7 +292,9 @@ func TestNetworkRouterNodeReviewsSlotPortsFromRulesAndLinks(t *testing.T) {
 	}
 	backend := testkit.MustNodeSnapshot(t, w, backendID)
 	router := testkit.MustNodeSnapshot(t, w, routerID)
-	if _, _, err := w.AddLink(backend.LeftPorts[0], router.RightPorts[0]); err != nil {
+	slot3Port := router.RightPorts[0]
+	slot3Link, _, err := w.AddLink(backend.LeftPorts[0], slot3Port)
+	if err != nil {
 		t.Fatalf("AddLink backend->router slot 3: %v", err)
 	}
 
@@ -302,6 +304,12 @@ func TestNetworkRouterNodeReviewsSlotPortsFromRulesAndLinks(t *testing.T) {
 		Values:      map[string]any{"rules": ""},
 	})
 	assertNetworkRouterRightPorts(t, w, routerID, []string{"slot 3", NetworkRouterDNSPortName})
+
+	w.RemoveLink(slot3Link)
+	assertNetworkRouterRightPorts(t, w, routerID, []string{"slot 1", NetworkRouterDNSPortName})
+	if _, ok := w.PortSnapshot(slot3Port); ok {
+		t.Fatal("unreferenced and unlinked slot 3 port still exists")
+	}
 }
 
 func TestNetworkRouterNodeValidationReportsStatus(t *testing.T) {

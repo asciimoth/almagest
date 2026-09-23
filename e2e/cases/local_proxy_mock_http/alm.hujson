@@ -12,10 +12,17 @@
 		"HttpServer 1001": {
 			"Class": "almagest/HttpServer",
 			"Pos": "{\"x\":240,\"y\":460}",
-			"Links": ["Network -> [LogNetwork 1004] Network"],
+			"Links": [
+				"Network -> [LogNetwork 1004] Network",
+			],
 			"host": "127.0.0.1",
 			"port": 8091,
 			"response": "",
+		},
+		"HTTP Response": {
+			"Class": "pasta/StringConstant",
+			"Links": ["output -> [HttpServer 1001] Response"],
+			"value": "Debug http server response",
 		},
 		"LocalProxy 1002": {
 			"Class": "almagest/LocalProxy",

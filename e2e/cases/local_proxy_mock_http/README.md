@@ -11,7 +11,7 @@ provided by Almagest nodes.
 
 ## Initial Daemon Config
 
-`alm.hujson` starts five nodes:
+`alm.hujson` starts six nodes:
 
 - `HttpServer 1001`: listens on `127.0.0.1:8091` through its network port.
 - `LocalProxy 1002`: listens as a SOCKS proxy on `127.0.0.1:1081`.
@@ -20,6 +20,7 @@ provided by Almagest nodes.
   network.
 - `LogNetwork 1005`: debug network logger between the local proxy and mock
   network.
+- `HTTP Response`: string input that drives live HTTP response changes.
 
 The harness starts the daemon with debug nodes enabled, debug logging, an
 isolated Unix admin API socket rendered into `protected_alm.hujson`, and the web
@@ -38,3 +39,12 @@ admin API disabled.
   `LocalProxy`, `HttpServer`, and both `LogNetwork` debug nodes.
 - A proxied request to an unused local port fails.
 - The daemon process log shows that the engine finished building.
+- Rapid port and response edits converge on the newest desired values, and an
+  intermediate listener is unavailable after convergence.
+- Detaching and restoring the server network starts a fresh listener whose
+  first response uses edits made while detached.
+- Replacing the debug logger's upstream wrapper also restores the server on
+  the first request.
+- Repeated response changes cannot let an old worker completion restore stale
+  content.
+- The final graph, port, and response work after a daemon restart.
