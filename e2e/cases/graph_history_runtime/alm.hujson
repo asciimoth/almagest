@@ -1,0 +1,23 @@
+{
+	"nodes": {
+		"History Network": {
+			"Class": "almagest/MockNetwork",
+			"allowAnyHost": true,
+		},
+		"History Server": {
+			"Class": "almagest/HttpServer",
+			"Links": ["Network -> [History Network] Network"],
+			"host": "127.0.0.1",
+			"port": 8080,
+			"response": "history-runtime-response",
+		},
+		"History Client": {
+			"Class": "almagest/HttpClient",
+			"Links": ["Network -> [History Network] Network"],
+			"url": "http://127.0.0.1:8080/history",
+			"method": "GET",
+			"body": "",
+		},
+	},
+}
+

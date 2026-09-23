@@ -1,0 +1,14 @@
+{
+	"nodes": {
+		"Public Network": {
+			"Class": "almagest/OutNetwork",
+		},
+		"Fetch Address": {
+			"Class": "almagest/FetchAddr",
+			"Links": ["Network -> [Public Network] Network"],
+			"provider": "ifconfig.co",
+			"tlsConfig": "fetch-address-test",
+		},
+	},
+}
+
