@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/asciimoth/almagest/lib/nodekit"
 	"github.com/asciimoth/bufpool"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
@@ -416,7 +417,7 @@ func (n *tunSplitterNode) OnSave(cfg configer.Config) error {
 	if n.automatic {
 		return nil
 	}
-	return configer.SetMap(cfg, map[string]any{
+	return nodekit.SetConfigMap(cfg, map[string]any{
 		tunSplitterRulesField:               n.rulesText,
 		"ruleCacheTTL":                      durationMilliseconds(n.routingConfig.ruleCacheTTL),
 		"ruleCacheMaxEntries":               n.routingConfig.ruleCacheMaxEntries,

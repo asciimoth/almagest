@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/asciimoth/almagest/lib/nodekit"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
 	"github.com/asciimoth/gonnect"
@@ -268,7 +269,7 @@ func (n *snifferNode) OnSave(cfg configer.Config) error {
 	if err := pasta.DeleteNodeOwnedConfigKeys(cfg); err != nil {
 		return err
 	}
-	return configer.SetMap(cfg, map[string]any{
+	return nodekit.SetConfigMap(cfg, map[string]any{
 		snifferRulesField:               n.rulesText,
 		snifferDNSCacheStorageNameField: n.dnsCacheStorageName,
 	})

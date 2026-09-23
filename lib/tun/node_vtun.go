@@ -3,6 +3,7 @@ package tunnodes
 import (
 	"net/netip"
 
+	"github.com/asciimoth/almagest/lib/nodekit"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
 	"github.com/asciimoth/gonnect"
@@ -209,7 +210,7 @@ func (n *vtunNode) OnSave(cfg configer.Config) error {
 	if err := pasta.DeleteNodeOwnedConfigKeys(cfg); err != nil {
 		return err
 	}
-	return configer.SetMap(cfg, map[string]any{
+	return nodekit.SetConfigMap(cfg, map[string]any{
 		"name":       n.config.name,
 		"localAddrs": n.config.localAddrs,
 		"dnsServers": n.config.dnsServers,

@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/asciimoth/almagest/lib/nodekit"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
 	"github.com/asciimoth/pasta/pasta"
@@ -102,7 +103,7 @@ func saveSocksServerConfig(cfg configer.Config, config socksServerConfig) error 
 	if err := pasta.DeleteNodeOwnedConfigKeys(cfg); err != nil {
 		return err
 	}
-	return configer.SetMap(cfg, map[string]any{
+	return nodekit.SetConfigMap(cfg, map[string]any{
 		"socksHost": config.socksHost,
 		"socksPort": config.socksPort,
 		"wsHost":    config.wsHost,

@@ -230,7 +230,7 @@ func (n *timeTriggerNode) OnSave(cfg configer.Config) error {
 	if err := pasta.DeleteNodeOwnedConfigKeys(cfg); err != nil {
 		return err
 	}
-	return configer.SetMap(cfg, map[string]any{
+	return nodekit.SetConfigMap(cfg, map[string]any{
 		"mode":        n.config.mode,
 		"interval":    n.config.interval,
 		"dailyTime":   n.config.dailyTime,

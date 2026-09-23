@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/asciimoth/almagest/lib/nodekit"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/pasta/pasta"
 	"github.com/asciimoth/pasta/pasta/std"
@@ -227,7 +228,7 @@ func saveUDPPingConfig(cfg configer.Config, value udpPingConfig) error {
 	if err := pasta.DeleteNodeOwnedConfigKeys(cfg); err != nil {
 		return err
 	}
-	return configer.SetMap(cfg, map[string]any{
+	return nodekit.SetConfigMap(cfg, map[string]any{
 		"network":     value.network,
 		"socket_mode": value.socketMode,
 		"local_host":  value.localHost,

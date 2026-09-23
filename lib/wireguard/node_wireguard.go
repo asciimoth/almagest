@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/asciimoth/almagest/lib/links"
+	"github.com/asciimoth/almagest/lib/nodekit"
 	conn "github.com/asciimoth/batchudp"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
@@ -547,7 +548,7 @@ func (n *wireGuardNode) OnSave(cfg configer.Config) error {
 	if err := pasta.DeleteNodeOwnedConfigKeys(cfg); err != nil {
 		return err
 	}
-	return configer.SetMap(cfg, map[string]any{
+	return nodekit.SetConfigMap(cfg, map[string]any{
 		"privateKeySecret":           n.config.privateKeySecret,
 		"listenPort":                 n.config.listenPort,
 		"batchSize":                  n.config.batchSize,

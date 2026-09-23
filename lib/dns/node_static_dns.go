@@ -206,7 +206,7 @@ func (n *staticDNSNode) OnSave(cfg configer.Config) error {
 	if err := pasta.DeleteNodeOwnedConfigKeys(cfg); err != nil {
 		return err
 	}
-	return configer.SetMap(cfg, map[string]any{
+	return nodekit.SetConfigMap(cfg, map[string]any{
 		"records": n.config.recordsText,
 		"ttl":     n.config.ttl,
 	})

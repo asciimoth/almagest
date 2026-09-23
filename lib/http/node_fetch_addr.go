@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"strings"
 
+	"github.com/asciimoth/almagest/lib/nodekit"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
 	"github.com/asciimoth/pasta/pasta"
@@ -263,7 +264,7 @@ func (n *fetchAddrNode) OnSave(cfg configer.Config) error {
 	if err := pasta.DeleteNodeOwnedConfigKeys(cfg); err != nil {
 		return err
 	}
-	return configer.SetMap(cfg, map[string]any{
+	return nodekit.SetConfigMap(cfg, map[string]any{
 		"provider":  n.provider,
 		"tlsConfig": n.tlsConfigName,
 	})

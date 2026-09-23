@@ -341,7 +341,7 @@ func (n *dnsClientNode) OnSave(cfg configer.Config) error {
 	if err := pasta.DeleteNodeOwnedConfigKeys(cfg); err != nil {
 		return err
 	}
-	return configer.SetMap(cfg, map[string]any{
+	return nodekit.SetConfigMap(cfg, map[string]any{
 		"servers":                      slices.Clone(n.config.servers),
 		"tlsConfig":                    n.config.tlsConfigName,
 		DNSClientRequestTimeoutMSField: n.config.requestTimeoutMS,

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net"
 
+	"github.com/asciimoth/almagest/lib/nodekit"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
 	"github.com/asciimoth/gonnect"
@@ -335,7 +336,7 @@ func (n *networkRouterNode) OnSave(cfg configer.Config) error {
 	if err := pasta.DeleteNodeOwnedConfigKeys(cfg); err != nil {
 		return err
 	}
-	return configer.SetMap(cfg, map[string]any{
+	return nodekit.SetConfigMap(cfg, map[string]any{
 		NetworkRouterRulesField:               n.rulesText,
 		NetworkRouterDNSCacheStorageNameField: n.dnsCacheStorageName,
 	})
