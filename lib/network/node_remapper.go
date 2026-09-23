@@ -140,7 +140,7 @@ func (n *remapperNode) OnLinkRemoved(link, port uint64, linkType, portDirection 
 	case port == n.out && portDirection == "left" && linkType == TypeNetwork:
 		n.outputs.Close(link)
 	case port == n.in && portDirection == "right" && linkType == TypeNetwork && link == n.networkID:
-		n.outputs.CloseAll()
+		n.outputs.InvalidateAllLocked(n.W, n.ID)
 		_ = closeNetwork(n.network)
 		n.network = nil
 		n.networkID = 0
@@ -160,7 +160,7 @@ func (n *remapperNode) OnEvent(event pasta.Event, linkType string, _ []string, r
 	if !changed {
 		return nil
 	}
-	n.outputs.CloseAll()
+	n.outputs.InvalidateAllLocked(n.W, n.ID)
 	n.network = next
 	n.sendAll()
 	return n.updateLabel()
@@ -200,7 +200,7 @@ func (n *remapperNode) applyConfigForm(values map[string]any) error {
 	n.rulesText = text
 	n.rules = rules
 	n.formError = ""
-	n.outputs.CloseAll()
+	n.outputs.InvalidateAllLocked(n.W, n.ID)
 	n.sendForcedMenuSnapshot()
 	n.sendAll()
 	return n.updateLabel()

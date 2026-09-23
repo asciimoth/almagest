@@ -104,7 +104,7 @@ func TestSnifferNodeWaitsForMentionedBackendSlot(t *testing.T) {
 		t.Fatalf("AddNodeByClass Sniffer: %v", err)
 	}
 	applySnifferRules(t, w, node, "TRUE\nSLOT 2")
-	receiver := networktest.NewReceiver(2)
+	receiver := networktest.NewReceiver(8)
 	if _, err := w.AddNode(receiver, "test/NetworkReceiver", "receiver"); err != nil {
 		t.Fatalf("AddNode receiver: %v", err)
 	}

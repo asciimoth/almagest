@@ -281,7 +281,7 @@ func (n *socksClientNode) setPasswordSecret(value string) {
 }
 
 func (n *socksClientNode) rebuildClient() {
-	n.outputs.CloseAll()
+	n.outputs.InvalidateAllLocked(n.W, n.ID)
 	n.refreshTLSConfig()
 	client, err := buildSocksGoClient(n.proxyURL, n.outNetwork, n.pool, n.currentTLSConfig(), n.tlsConfigErr)
 	if err != nil {

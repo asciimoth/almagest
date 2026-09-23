@@ -117,7 +117,7 @@ func (n *tunConfigStripperNode) OnLinkRemoved(link uint64, port uint64, linkType
 			_ = n.tun.Close()
 			n.tun = nil
 		}
-		n.outputTuns.CloseAll()
+		n.outputTuns.InvalidateAllLocked(n.W, n.ID)
 		n.outputTuns.Wait()
 	case port == n.out && portDirection == "right" && link == n.outputLink:
 		n.outputTuns.Close(link)
@@ -151,24 +151,20 @@ func (n *tunConfigStripperNode) OnEvent(event pasta.Event, linkType string, _ []
 		n.forwardEvent(n.outputLink, event.Payload)
 		return nil
 	}
-	payload, ok := event.Payload.(TunPayload)
-	if !ok {
+	if _, ok := event.Payload.(TunPayload); !ok {
 		n.forwardEvent(n.outputLink, event.Payload)
 		return nil
 	}
-	if payload.Tun == nil || event.Link != n.inputLink {
+	if event.Link != n.inputLink {
 		return nil
 	}
-	if SameTunInstance(n.tun, payload.Tun) {
+	next, changed := AcceptTunPayload(n.W, n.ID, event, n.inputLink, n.tun)
+	if !changed {
 		return nil
 	}
-	if n.tun != nil {
-		_ = n.tun.Close()
-	}
-	n.outputTuns.CloseAll()
+	n.outputTuns.InvalidateAllLocked(n.W, n.ID)
 	n.outputTuns.Wait()
-	BindTunResource(n.W, n.ID, event.Link, payload.Tun)
-	n.tun = payload.Tun
+	n.tun = next
 	n.sendTunToOutput()
 	return nil
 }

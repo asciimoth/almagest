@@ -197,6 +197,9 @@ func (n *tunCopyNode) OnInbox(message pasta.InboxMessage) error {
 func (n *tunCopyNode) attachA(link uint64, source tun.Tun) {
 	n.generationA++
 	n.detachA()
+	if source == nil {
+		return
+	}
 	n.currentA = source
 	n.attachedA = n.observeInput(n.tunA, link, n.generationA, source)
 	n.p2p.SetA(n.attachedA)
@@ -205,6 +208,9 @@ func (n *tunCopyNode) attachA(link uint64, source tun.Tun) {
 func (n *tunCopyNode) attachB(link uint64, source tun.Tun) {
 	n.generationB++
 	n.detachB()
+	if source == nil {
+		return
+	}
 	n.currentB = source
 	n.attachedB = n.observeInput(n.tunB, link, n.generationB, source)
 	n.p2p.SetB(n.attachedB)

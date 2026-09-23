@@ -34,6 +34,8 @@ import (
 //
 // The event payload implements std.ClosablePayload, so middleware nodes such as
 // std.SelectClass can close a previously-routed wrapper when switching paths.
+// A NetworkPayload with a nil Network explicitly makes the current value
+// unavailable while the graph link stays attached.
 // Peers that only implement gonnect.Network without io.Closer should wrap their
 // instance via gonnect.DetachNetwork before using it with this link type.
 // Left-directed pasta/network ports allow an arbitrary count of incoming links;
@@ -295,6 +297,25 @@ func (c *NetworkOutputCache) CloseAll() {
 	}
 }
 
+// InvalidateAllLocked closes all emitted wrappers and tells their consumers
+// that no Network value is currently available. The graph links stay attached
+// and can receive replacement values later.
+func (c *NetworkOutputCache) InvalidateAllLocked(w *pasta.Workspace, node uint64) {
+	if c == nil {
+		return
+	}
+	for link, entry := range c.entries {
+		delete(c.entries, link)
+		DetachDatagramMTUProvider(entry.output)
+		_ = CloseNetwork(entry.output)
+		if w != nil {
+			if _, ok := w.LinkSnapshotLocked(link); ok {
+				w.EmitEventLocked(node, link, NetworkPayload{})
+			}
+		}
+	}
+}
+
 // AcceptNetworkPayloadValue validates a network event and returns the accepted
 // network without binding it to a workspace resource.
 func AcceptNetworkPayloadValue(event pasta.Event, current NetworkCloser) (NetworkCloser, bool) {
@@ -302,7 +323,17 @@ func AcceptNetworkPayloadValue(event pasta.Event, current NetworkCloser) (Networ
 		return current, false
 	}
 	payload, ok := event.Payload.(NetworkPayload)
-	if !ok || !NetworkIsReady(payload.Network) {
+	if !ok {
+		return current, false
+	}
+	if payload.Network == nil {
+		if current == nil {
+			return nil, false
+		}
+		_ = CloseNetwork(current)
+		return nil, true
+	}
+	if !NetworkIsReady(payload.Network) {
 		return current, false
 	}
 	provider := payload.DatagramMTU
@@ -326,7 +357,17 @@ func AcceptNetworkPayloadUpdate(event pasta.Event, current NetworkPayload) (Netw
 		return current, false
 	}
 	next, ok := event.Payload.(NetworkPayload)
-	if !ok || !NetworkIsReady(next.Network) {
+	if !ok {
+		return current, false
+	}
+	if next.Network == nil {
+		if current.Network == nil {
+			return NetworkPayload{}, false
+		}
+		_ = CloseNetwork(current.Network)
+		return NetworkPayload{}, true
+	}
+	if !NetworkIsReady(next.Network) {
 		return current, false
 	}
 	if next.DatagramMTU == nil {

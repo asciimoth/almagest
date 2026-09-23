@@ -247,6 +247,13 @@ func (n *tunJoinerNode) attachDefaultTun(link uint64, t tun.Tun) error {
 	}
 	n.stopDefaultRetry()
 	n.defaultGen++
+	if t == nil {
+		if n.defaultTun != nil {
+			_ = n.joiner.Detach(n.defaultTun)
+		}
+		n.defaultTun = nil
+		return n.updateLabel()
+	}
 	generation := n.defaultGen
 	observed := newTunInputFailureObserver(t, func(err error) {
 		go n.W.SendInbox(pasta.InboxMessage{
@@ -275,6 +282,9 @@ func (n *tunJoinerNode) attachSecondaryTun(link uint64, t tun.Tun) error {
 	n.detachSecondaryTun(link)
 	n.stopSecondaryRetry(link)
 	n.secondaryGens[link]++
+	if t == nil {
+		return n.updateLabel()
+	}
 	generation := n.secondaryGens[link]
 	observed := newTunInputFailureObserver(t, func(err error) {
 		go n.W.SendInbox(pasta.InboxMessage{

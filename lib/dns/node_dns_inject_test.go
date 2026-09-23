@@ -7,6 +7,7 @@ import (
 	"net"
 	"sync"
 	"testing"
+	"time"
 
 	dnsnodes "github.com/asciimoth/almagest/lib/dns"
 	httpnodes "github.com/asciimoth/almagest/lib/http"
@@ -109,6 +110,7 @@ func TestDnsInjectLinksAttachDetachReattach(t *testing.T) {
 	assertNetworkDialResolved(t, first, capture, "reattach.test:8081", "192.0.2.20:8081")
 
 	w.RemoveLink(dnsLink)
+	assertDnsInjectUnavailablePayload(t, receiver.Events)
 	if links.NetworkIsReady(first) {
 		t.Fatal("network wrapper remained ready after DNS link removal")
 	}
@@ -126,6 +128,7 @@ func TestDnsInjectLinksAttachDetachReattach(t *testing.T) {
 	assertNodeLabel(t, w, injectID, "injecting DNS")
 
 	w.RemoveLink(networkLink)
+	assertDnsInjectUnavailablePayload(t, receiver.Events)
 	if links.NetworkIsReady(second) {
 		t.Fatal("network wrapper remained ready after backend link removal")
 	}
@@ -227,10 +230,27 @@ func assertNetworkDialResolved(t *testing.T, network links.NetworkCloser, captur
 func receiveReadyDnsInjectPayload(t *testing.T, events <-chan links.NetworkPayload) links.NetworkPayload {
 	t.Helper()
 	for {
-		payload := networktest.ReceivePayload(t, events)
-		if links.NetworkIsReady(payload.Network) {
-			return payload
+		select {
+		case payload := <-events:
+			if links.NetworkIsReady(payload.Network) {
+				return payload
+			}
+		case <-time.After(time.Second):
+			t.Fatal("timed out waiting for ready network payload")
+			return links.NetworkPayload{}
 		}
+	}
+}
+
+func assertDnsInjectUnavailablePayload(t *testing.T, events <-chan links.NetworkPayload) {
+	t.Helper()
+	select {
+	case payload := <-events:
+		if payload.Network != nil || payload.DatagramMTU != nil || payload.CapabilityRevision != 0 {
+			t.Fatalf("unavailable network payload = %+v, want zero payload", payload)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for unavailable network payload")
 	}
 }
 

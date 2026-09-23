@@ -108,7 +108,7 @@ func (n *debugLogTunNode) OnLinkRemoved(link uint64, port uint64, linkType, port
 			_ = n.tun.Close()
 		}
 		n.tun = nil
-		n.outputTuns.CloseAll()
+		n.outputTuns.InvalidateAllLocked(n.W, n.ID)
 		n.outputTuns.Wait()
 	}
 	return nil
@@ -144,7 +144,7 @@ func (n *debugLogTunNode) OnEvent(event pasta.Event, linkType string, _ []string
 	if n.tun != nil {
 		_ = n.tun.Close()
 	}
-	n.outputTuns.CloseAll()
+	n.outputTuns.InvalidateAllLocked(n.W, n.ID)
 	n.outputTuns.Wait()
 	n.tun = next
 	n.sendAll()

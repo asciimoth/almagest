@@ -114,7 +114,7 @@ func (n *dns2NetworkNode) OnLinkRemoved(link, port uint64, linkType, portDirecti
 	case port == n.dnsOut && portDirection == "left" && linkType == TypeDNS:
 		n.outputs.Close(link)
 	case port == n.networkIn && portDirection == "right" && linkType == nodekit.TypeNetwork && link == n.networkLink:
-		n.outputs.CloseAll()
+		n.outputs.InvalidateAllLocked(n.W, n.ID)
 		CloseDNS(n.provider)
 		n.provider = nil
 		_ = nodekit.CloseNetwork(n.network)
@@ -142,7 +142,7 @@ func (n *dns2NetworkNode) OnEvent(event pasta.Event, linkType string, _ []string
 }
 
 func (n *dns2NetworkNode) rebuildProvider() {
-	n.outputs.CloseAll()
+	n.outputs.InvalidateAllLocked(n.W, n.ID)
 	CloseDNS(n.provider)
 	n.provider = nil
 	if !nodekit.NetworkIsReady(n.network) {

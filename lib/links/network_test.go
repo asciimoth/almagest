@@ -2,6 +2,7 @@ package links
 
 import (
 	"testing"
+	"time"
 
 	"github.com/asciimoth/almagest/lib/logging"
 	"github.com/asciimoth/gonnect"
@@ -72,6 +73,55 @@ func TestAcceptNetworkPayloadReplacesStaleCurrentSameSource(t *testing.T) {
 	}
 }
 
+func TestAcceptNetworkPayloadUnavailableClosesCurrent(t *testing.T) {
+	base := gonnect.NewLoopbackNetwork()
+	current := &testNetworkWrapper{
+		NetworkCloser: gonnect.DetachNetwork(base, nil, nil),
+		wrapped:       base,
+		up:            true,
+	}
+
+	next, changed := AcceptNetworkPayloadValue(pasta.Event{Payload: NetworkPayload{}}, current)
+	if !changed {
+		t.Fatal("AcceptNetworkPayloadValue() changed = false, want true for unavailable payload")
+	}
+	if next != nil {
+		t.Fatalf("AcceptNetworkPayloadValue() next = %T, want nil", next)
+	}
+	if !current.closed {
+		t.Fatal("current network was not closed after unavailable payload")
+	}
+
+	next, changed = AcceptNetworkPayloadValue(pasta.Event{Payload: NetworkPayload{}}, nil)
+	if changed || next != nil {
+		t.Fatalf("repeated unavailable payload = (%T, %v), want (nil, false)", next, changed)
+	}
+}
+
+func TestAcceptNetworkPayloadUpdateUnavailableClearsCapability(t *testing.T) {
+	base := gonnect.NewLoopbackNetwork()
+	current := &testNetworkWrapper{
+		NetworkCloser: gonnect.DetachNetwork(base, nil, nil),
+		wrapped:       base,
+		up:            true,
+	}
+	provider := NewLayer3DatagramMTUProvider(1500, true, false, MTUConstraint{Source: "test"})
+
+	next, changed := AcceptNetworkPayloadUpdate(
+		pasta.Event{Payload: NetworkPayload{}},
+		NetworkPayload{Network: current, DatagramMTU: provider, CapabilityRevision: provider.Revision()},
+	)
+	if !changed {
+		t.Fatal("AcceptNetworkPayloadUpdate() changed = false, want true for unavailable payload")
+	}
+	if next.Network != nil || next.DatagramMTU != nil || next.CapabilityRevision != 0 {
+		t.Fatalf("AcceptNetworkPayloadUpdate() = %+v, want zero payload", next)
+	}
+	if !current.closed {
+		t.Fatal("current network was not closed after unavailable payload")
+	}
+}
+
 func TestAcceptNetworkPayloadUpdateAcceptsSameNetworkCapabilityRevision(t *testing.T) {
 	base := gonnect.NewLoopbackNetwork()
 	network := gonnect.DetachNetwork(base, nil, nil)
@@ -128,6 +178,48 @@ func TestNetworkOutputCacheReusesReadyWrapperAndReplacesClosedWrapper(t *testing
 	third := receiveOutNetPayload(t, receiver.events).Network
 	if SameNetworkInstance(first, third) {
 		t.Fatal("NetworkOutputCache reused closed wrapper, want replacement")
+	}
+	cache.CloseAll()
+}
+
+func TestNetworkOutputCacheInvalidateAllNotifiesAndRecovers(t *testing.T) {
+	w := pasta.NewWorkspace(logging.NewDebugLogFactory(1024))
+	defer w.Close()
+	providerID, out := addNetworkOutputCacheTestPort(t, w)
+	receiver := &networkPayloadReceiver{events: make(chan NetworkPayload, 3)}
+	_, err := w.AddNode(receiver, "test/NetworkReceiver", "receiver")
+	if err != nil {
+		t.Fatalf("AddNode receiver: %v", err)
+	}
+	link, _, err := w.AddLink(out, receiver.in)
+	if err != nil {
+		t.Fatalf("AddLink: %v", err)
+	}
+
+	source := gonnect.NewLoopbackNetwork()
+	var cache NetworkOutputCache
+	if !cache.Send(w, providerID, link, source) {
+		t.Fatal("NetworkOutputCache.Send() = false, want true")
+	}
+	first := receiveOutNetPayload(t, receiver.events).Network
+
+	w.Lock()
+	cache.InvalidateAllLocked(w, providerID)
+	w.Unlock()
+	unavailable := receiveAnyOutNetPayload(t, receiver.events)
+	if unavailable.Network != nil || unavailable.DatagramMTU != nil || unavailable.CapabilityRevision != 0 {
+		t.Fatalf("invalidated payload = %+v, want zero payload", unavailable)
+	}
+	if NetworkIsReady(first) {
+		t.Fatal("invalidated network wrapper is still ready")
+	}
+
+	if !cache.Send(w, providerID, link, source) {
+		t.Fatal("NetworkOutputCache.Send() recovery = false, want true")
+	}
+	replacement := receiveOutNetPayload(t, receiver.events).Network
+	if !NetworkIsReady(replacement) || SameNetworkInstance(first, replacement) {
+		t.Fatal("recovery did not emit a fresh ready network wrapper")
 	}
 	cache.CloseAll()
 }
@@ -445,6 +537,17 @@ func receiveOutNetPayload(t *testing.T, events <-chan NetworkPayload) NetworkPay
 		}
 		return payload
 	default:
+		t.Fatal("no network payload received")
+		return NetworkPayload{}
+	}
+}
+
+func receiveAnyOutNetPayload(t *testing.T, events <-chan NetworkPayload) NetworkPayload {
+	t.Helper()
+	select {
+	case payload := <-events:
+		return payload
+	case <-time.After(time.Second):
 		t.Fatal("no network payload received")
 		return NetworkPayload{}
 	}

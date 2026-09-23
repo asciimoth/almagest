@@ -146,7 +146,7 @@ func TestSocksClientNodeEmitsClientAfterOutNetworkUpdate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddNodeByClass SocksClient: %v", err)
 	}
-	receiver := networktest.NewReceiver(2)
+	receiver := networktest.NewReceiver(8)
 	if _, err := w.AddNode(receiver, "test/OutNetworkReceiver", "receiver"); err != nil {
 		t.Fatalf("AddNode receiver: %v", err)
 	}
@@ -206,7 +206,7 @@ func TestSocksClientNodeURLUpdateClosesOldWrapperAndEmitsNewClient(t *testing.T)
 	if err != nil {
 		t.Fatalf("AddNodeByClass SocksClient: %v", err)
 	}
-	receiver := networktest.NewReceiver(2)
+	receiver := networktest.NewReceiver(8)
 	if _, err := w.AddNode(receiver, "test/OutNetworkReceiver", "receiver"); err != nil {
 		t.Fatalf("AddNode receiver: %v", err)
 	}
@@ -264,6 +264,9 @@ func receiveSocksClientPayload(t *testing.T, events <-chan NetworkPayload, accep
 	for {
 		select {
 		case payload := <-events:
+			if payload.Network == nil {
+				continue
+			}
 			wrapper, ok := payload.Network.(*gonnect.DetachedNetwork)
 			if !ok {
 				t.Fatalf("payload.Network = %T, want *gonnect.DetachedNetwork", payload.Network)

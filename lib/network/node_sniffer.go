@@ -243,7 +243,7 @@ func (n *snifferNode) OnEvent(event pasta.Event, linkType string, _ []string, re
 	}
 	BindNetworkResource(n.W, n.ID, event.Link, next)
 	n.backends[slot] = next
-	n.outputs.CloseAll()
+	n.outputs.InvalidateAllLocked(n.W, n.ID)
 	if n.ready {
 		n.sendAll()
 	}
@@ -315,7 +315,7 @@ func (n *snifferNode) applyConfigForm(values map[string]any) error {
 	if err := n.reviewOutputPorts(slotPortReview{DefaultSlot: 1}); err != nil {
 		return err
 	}
-	n.outputs.CloseAll()
+	n.outputs.InvalidateAllLocked(n.W, n.ID)
 	n.sendForcedMenuSnapshot()
 	n.sendAll()
 	return n.updateLabel()
@@ -474,7 +474,7 @@ func (n *snifferNode) detachSlot(slot int) {
 	if old := n.backends[slot]; old != nil {
 		_ = closeNetwork(old)
 		delete(n.backends, slot)
-		n.outputs.CloseAll()
+		n.outputs.InvalidateAllLocked(n.W, n.ID)
 	}
 }
 
@@ -602,6 +602,23 @@ func (c *snifferOutputCache) CloseAll() {
 		delete(c.entries, link)
 		if entry.output != nil {
 			_ = entry.output.Close()
+		}
+	}
+}
+
+func (c *snifferOutputCache) InvalidateAllLocked(w *pasta.Workspace, node uint64) {
+	if c == nil {
+		return
+	}
+	for link, entry := range c.entries {
+		delete(c.entries, link)
+		if entry.output != nil {
+			_ = entry.output.Close()
+		}
+		if w != nil {
+			if _, ok := w.LinkSnapshotLocked(link); ok {
+				w.EmitEventLocked(node, link, NetworkPayload{})
+			}
 		}
 	}
 }

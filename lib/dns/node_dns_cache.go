@@ -313,7 +313,7 @@ func (n *dnsCacheNode) sendConfigFieldStatus(msg formular.FieldValidateMessage) 
 }
 
 func (n *dnsCacheNode) rebuildCache() {
-	n.outputs.CloseAll()
+	n.outputs.InvalidateAllLocked(n.W, n.ID)
 	CloseDNS(n.cache)
 	n.cache = nil
 	n.storageMissing = false

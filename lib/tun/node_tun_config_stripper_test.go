@@ -46,6 +46,21 @@ func TestTunConfigStripperForwardsUsableTunPayloadAndRequestsInput(t *testing.T)
 	if SameTunInstance(payload.Tun, base) {
 		t.Fatal("forwarded TunPayload reused the input Tun instance, want detached output wrapper")
 	}
+
+	w.EmitEvent(providerID, inputLink, TunPayload{})
+	receiveUnavailableTunPayload(t, consumer.events)
+
+	replacement, replacementPeer := tun.Pipe(1, 1400, 0, 0)
+	defer closeTestTun(replacement)
+	defer closeTestTun(replacementPeer)
+	w.EmitEvent(providerID, inputLink, TunPayload{Tun: replacement})
+	recovered := receiveTunPayload(t, consumer.events)
+	if SameTunInstance(payload.Tun, recovered.Tun) {
+		t.Fatal("recovery reused the invalidated output TUN wrapper")
+	}
+	if mtu, err := recovered.Tun.MTU(); err != nil || mtu != 1400 {
+		t.Fatalf("recovered TUN MTU() = %d, %v; want 1400, nil", mtu, err)
+	}
 }
 
 func TestTunConfigStripperDropsTunConfigFromOutput(t *testing.T) {
@@ -244,15 +259,41 @@ func (n *tunPayloadReceiver) OnEvent(event pasta.Event, linkType string, _ []str
 
 func receiveTunPayload(t *testing.T, events <-chan TunPayload) TunPayload {
 	t.Helper()
+	timer := time.NewTimer(time.Second)
+	defer timer.Stop()
+	var latest TunPayload
+	for {
+		select {
+		case payload := <-events:
+			latest = payload
+		drain:
+			for {
+				select {
+				case payload = <-events:
+					latest = payload
+				default:
+					break drain
+				}
+			}
+			if latest.Tun != nil {
+				return latest
+			}
+		case <-timer.C:
+			t.Fatal("timed out waiting for TUN payload")
+			return TunPayload{}
+		}
+	}
+}
+
+func receiveUnavailableTunPayload(t *testing.T, events <-chan TunPayload) {
+	t.Helper()
 	select {
 	case payload := <-events:
-		if payload.Tun == nil {
-			t.Fatal("payload.Tun = nil, want tun")
+		if payload.Tun != nil {
+			t.Fatalf("unavailable payload Tun = %T, want nil", payload.Tun)
 		}
-		return payload
 	case <-time.After(time.Second):
-		t.Fatal("timed out waiting for TUN payload")
-		return TunPayload{}
+		t.Fatal("timed out waiting for unavailable TUN payload")
 	}
 }
 

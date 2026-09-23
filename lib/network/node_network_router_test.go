@@ -22,6 +22,7 @@ import (
 	"github.com/asciimoth/gonnect/dns"
 	"github.com/asciimoth/gonnect/sysnet"
 	"github.com/asciimoth/pasta/pasta"
+	"github.com/asciimoth/pasta/pasta/std"
 )
 
 func TestNetworkRouterNodeEmitsSingleRouterInstance(t *testing.T) {
@@ -108,6 +109,47 @@ func TestNetworkRouterNodeInstallsDNSResolver(t *testing.T) {
 		t.Fatalf("LookupHost through router resolver: %v", err)
 	}
 	testkit.AssertStringSlice(t, hosts, []string{"192.0.2.10"})
+}
+
+func TestNetworkRouterBackendUnavailableAndRecoversOnSameLink(t *testing.T) {
+	w := newNetworkRouterTestWorkspace(t)
+
+	routerID, err := w.AddNodeByClass(NodeTypeNetworkRouter, "router")
+	if err != nil {
+		t.Fatalf("AddNodeByClass NetworkRouter: %v", err)
+	}
+	backendID, err := w.AddNodeByClass(NodeTypeMockNetwork, "backend")
+	if err != nil {
+		t.Fatalf("AddNodeByClass MockNetwork: %v", err)
+	}
+	receiver := networktest.NewReceiver(8)
+	if _, err := w.AddNode(receiver, "test/NetworkReceiver", "receiver"); err != nil {
+		t.Fatalf("AddNode receiver: %v", err)
+	}
+
+	router := testkit.MustNodeSnapshot(t, w, routerID)
+	backend := testkit.MustNodeSnapshot(t, w, backendID)
+	backendLink, _, err := w.AddLink(backend.LeftPorts[0], networkRouterRightPort(t, w, routerID, slotPortName(1)))
+	if err != nil {
+		t.Fatalf("AddLink backend->router: %v", err)
+	}
+	if _, _, err := w.AddLink(router.LeftPorts[0], receiver.In); err != nil {
+		t.Fatalf("AddLink router->receiver: %v", err)
+	}
+	routerRuntime := receiveNetworkRouterRuntime(t, receiver.Events)
+	assertNetworkRouterUp(t, routerRuntime, true)
+
+	w.EmitEvent(backendID, backendLink, NetworkPayload{})
+	if got := receiveNetworkRouterRuntime(t, receiver.Events); got != routerRuntime {
+		t.Fatalf("router output changed after backend became unavailable: got %p, want %p", got, routerRuntime)
+	}
+	assertNetworkRouterUp(t, routerRuntime, false)
+
+	std.Request(w, routerID, backendLink)
+	if got := receiveNetworkRouterRuntime(t, receiver.Events); got != routerRuntime {
+		t.Fatalf("router output changed after backend recovery: got %p, want %p", got, routerRuntime)
+	}
+	assertNetworkRouterUp(t, routerRuntime, true)
 }
 
 func TestNetworkRouterDNSLinksAttachDetachReattach(t *testing.T) {
@@ -605,6 +647,17 @@ func receiveNetworkRouterRuntime(t *testing.T, events <-chan NetworkPayload) *go
 		t.Fatalf("wrapped network = %T, want *gonnect.Router", wrapped.GetWrapped())
 	}
 	return router
+}
+
+func assertNetworkRouterUp(t *testing.T, router *gonnect.Router, want bool) {
+	t.Helper()
+	up, err := router.IsUp()
+	if err != nil {
+		t.Fatalf("router IsUp: %v", err)
+	}
+	if up != want {
+		t.Fatalf("router IsUp = %v, want %v", up, want)
+	}
 }
 
 func assertNetworkRouterLookupHost(t *testing.T, router *gonnect.Router, host, want string) {

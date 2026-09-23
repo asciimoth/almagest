@@ -118,7 +118,7 @@ func (n *tunFirewallNode) OnReady() error {
 }
 
 func (n *tunFirewallNode) OnStop() {
-	n.detachInputTun()
+	n.detachInputTun(false)
 	n.outputCfgs = TunConfigByLink{}
 	n.inLink = 0
 }
@@ -141,7 +141,7 @@ func (n *tunFirewallNode) PreLinkAdd(port uint64, linkType, portDirection string
 func (n *tunFirewallNode) OnLinkAdd(link, port uint64, linkType, portDirection string) error {
 	switch {
 	case port == n.in && portDirection == "left" && linkType == TypeTun:
-		n.detachInputTun()
+		n.detachInputTun(true)
 		n.inLink = link
 		std.RequestLocked(n.W, n.ID, link)
 		n.sendMergedTunConfigToLink(link)
@@ -156,7 +156,7 @@ func (n *tunFirewallNode) OnLinkAdd(link, port uint64, linkType, portDirection s
 func (n *tunFirewallNode) OnLinkRemoved(link uint64, port uint64, linkType, portDirection string) error {
 	switch {
 	case port == n.in && portDirection == "left" && linkType == TypeTun && link == n.inLink:
-		n.detachInputTun()
+		n.detachInputTun(true)
 		n.inLink = 0
 	case port == n.configIn && portDirection == "left" && linkType == std.TypeObject:
 		delete(n.objectConfigs, link)
@@ -187,7 +187,7 @@ func (n *tunFirewallNode) OnInbox(message pasta.InboxMessage) error {
 			tunDebugString(n.tun),
 		)
 	}
-	n.detachInputTun()
+	n.detachInputTun(true)
 	if err := n.updateLabel(); err != nil {
 		return err
 	}
@@ -237,7 +237,7 @@ type tunFirewallInputFailed struct {
 }
 
 func (n *tunFirewallNode) attachInputTun(link uint64, source gonnecttun.Tun) {
-	n.closeOutputs()
+	n.closeOutputs(true)
 	n.outputTuns.Wait()
 	n.inputGen++
 	if n.inputTun != nil {
@@ -266,9 +266,9 @@ func (n *tunFirewallNode) attachInputTun(link uint64, source gonnecttun.Tun) {
 	n.inputTun = attachment
 }
 
-func (n *tunFirewallNode) detachInputTun() {
+func (n *tunFirewallNode) detachInputTun(notify bool) {
 	n.inputGen++
-	n.closeOutputs()
+	n.closeOutputs(notify)
 	if n.inputTun != nil {
 		_ = n.inputTun.Close()
 	} else if n.tun != nil {
@@ -372,8 +372,12 @@ func (n *tunFirewallNode) sendToLink(link uint64, refresh bool) {
 	n.outputTuns.SendWrappedLocked(n.W, n.ID, link, n.inputTun, wrap, n.pool)
 }
 
-func (n *tunFirewallNode) closeOutputs() {
-	n.outputTuns.CloseAll()
+func (n *tunFirewallNode) closeOutputs(notify bool) {
+	if notify {
+		n.outputTuns.InvalidateAllLocked(n.W, n.ID)
+	} else {
+		n.outputTuns.CloseAll()
+	}
 	clear(n.firewalls)
 }
 

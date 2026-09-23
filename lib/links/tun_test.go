@@ -288,6 +288,38 @@ func TestAcceptTunPayloadReplacesStaleCurrentSameSource(t *testing.T) {
 	}
 }
 
+func TestAcceptTunPayloadUnavailableClosesCurrent(t *testing.T) {
+	w, node, _, _, rightPort := newTunTypeLinkedWorkspace(t)
+	link := onlyPortLink(t, w, rightPort)
+
+	base, peer := tun.Pipe(1, 1500, 0, 0)
+	defer closeTestTun(base)
+	defer closeTestTun(peer)
+	current := testTunWrapper{Tun: tun.Detach(base, nil, nil), wrapped: base}
+
+	next, changed := AcceptTunPayload(w, node, pasta.Event{
+		Link:    link,
+		Payload: TunPayload{},
+	}, link, current)
+	if !changed {
+		t.Fatal("AcceptTunPayload() changed = false, want true for unavailable payload")
+	}
+	if next != nil {
+		t.Fatalf("AcceptTunPayload() next = %T, want nil", next)
+	}
+	if _, err := current.MTU(); !errors.Is(err, os.ErrClosed) {
+		t.Fatalf("current MTU() error = %v, want os.ErrClosed", err)
+	}
+
+	next, changed = AcceptTunPayload(w, node, pasta.Event{
+		Link:    link,
+		Payload: TunPayload{},
+	}, link, nil)
+	if changed || next != nil {
+		t.Fatalf("repeated unavailable payload = (%T, %v), want (nil, false)", next, changed)
+	}
+}
+
 func TestTunOutputCacheReusesReadyWrapperAndReplacesClosedWrapper(t *testing.T) {
 	w, node, link, events := newTunOutputCacheTestLink(t)
 
@@ -321,6 +353,50 @@ func TestTunOutputCacheReusesReadyWrapperAndReplacesClosedWrapper(t *testing.T) 
 		t.Fatal("third Send() reused a closed wrapper, want replacement")
 	}
 
+	cache.CloseAll()
+	closeTestTun(base)
+	closeTestTun(peer)
+	cache.Wait()
+}
+
+func TestTunOutputCacheInvalidateAllNotifiesAndRecovers(t *testing.T) {
+	w, node, link, events := newTunOutputCacheTestLink(t)
+	defer w.Close()
+
+	base, peer := tun.Pipe(1, 1500, 0, 0)
+	defer closeTestTun(base)
+	defer closeTestTun(peer)
+	var cache TunOutputCache
+	if !cache.Send(w, node, link, base, nil) {
+		t.Fatal("Send() = false, want true")
+	}
+	first := receiveTunOutputCachePayload(t, events)
+
+	w.Lock()
+	cache.InvalidateAllLocked(w, node)
+	w.Unlock()
+	select {
+	case payload := <-events:
+		if payload.Tun != nil {
+			t.Fatalf("invalidated payload Tun = %T, want nil", payload.Tun)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("no unavailable TUN payload received")
+	}
+	if _, err := first.MTU(); !errors.Is(err, os.ErrClosed) {
+		t.Fatalf("invalidated TUN MTU() error = %v, want os.ErrClosed", err)
+	}
+
+	if !cache.Send(w, node, link, base, nil) {
+		t.Fatal("Send() recovery = false, want true")
+	}
+	replacement := receiveTunOutputCachePayload(t, events)
+	if SameTunInstance(first, replacement) {
+		t.Fatal("recovery reused invalidated TUN wrapper")
+	}
+	if mtu, err := replacement.MTU(); err != nil || mtu != 1500 {
+		t.Fatalf("replacement MTU() = %d, %v; want 1500, nil", mtu, err)
+	}
 	cache.CloseAll()
 	closeTestTun(base)
 	closeTestTun(peer)

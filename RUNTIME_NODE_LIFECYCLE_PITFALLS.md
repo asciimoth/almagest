@@ -334,6 +334,31 @@ still refer to the same source after its read or write worker stops. New child
 wrappers on that root do not repair the data path. A cache must include root
 health in its reuse decision and must replace a terminally failed root.
 
+### Notify Linked Consumers When A Value Becomes Unavailable
+
+Closing an emitted wrapper does not update the state of a consumer while its
+graph link stays attached. The consumer can keep a closed DNS, Network, or TUN
+value, keep a healthy label, or wait until a request deadline because no graph
+callback tells it to detach the value.
+
+When a provider invalidates outputs but keeps their graph links, it must emit
+the link type's explicit unavailable payload before it emits a later
+replacement. For DNS, Network, and TUN links, this is the matching payload with
+a nil runtime value. Consumers must close and clear their current value when
+they receive that payload. An unavailable payload received while the consumer
+already has no value is idempotent.
+
+Do not emit an unavailable payload for only a link removal: both endpoints
+already receive `OnLinkRemoved`. Do not emit it from node stop cleanup unless
+the node deliberately keeps its links active during that transition.
+
+Invariant:
+
+```text
+A provider must not close a published runtime value while its graph link stays
+attached without also telling the linked consumer that the value is unavailable.
+```
+
 ### Treat Runtime Geometry As Mutable State
 
 Values read when a worker starts can become stale while the resource identity
@@ -512,6 +537,8 @@ When adding or refactoring a runtime node, answer these before merging:
 - Are buffered lifecycle events drained before attaching resources to runtimes
   with their own event readers?
 - Can a same-source request or re-emit close wrappers still held downstream?
+- Can a provider close a published value while its graph link stays attached
+  without sending an unavailable payload?
 - Does config propagation rebuild live resources for equivalent effective
   options?
 - Does temporary provider unavailability differ from an explicit graph unlink?

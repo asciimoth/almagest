@@ -372,8 +372,8 @@ func TestVTunTunSplitterSelectsSourceAddressForComplexDestinationRoutes(t *testi
 	if err != nil {
 		t.Fatalf("AddLink tailnet consumer: %v", err)
 	}
-	defaultFrontend := receiveTunPayload(t, defaultConsumer.events).Tun
-	tailnetFrontend := receiveTunPayload(t, tailnetConsumer.events).Tun
+	_ = receiveTunPayload(t, defaultConsumer.events)
+	_ = receiveTunPayload(t, tailnetConsumer.events)
 
 	default4 := netip.MustParseAddr("10.20.0.2")
 	default6 := netip.MustParseAddr("2001:db8:ffff::2")
@@ -403,6 +403,8 @@ func TestVTunTunSplitterSelectsSourceAddressForComplexDestinationRoutes(t *testi
 	}
 	w.EmitEvent(tailnetConsumerID, tailnetLink, tailnetConfig)
 	network := networktest.ReceivePayload(t, netReceiver.Events).Network
+	defaultFrontend := receiveTunPayload(t, defaultConsumer.events).Tun
+	tailnetFrontend := receiveTunPayload(t, tailnetConsumer.events).Tun
 
 	tests := []struct {
 		name        string

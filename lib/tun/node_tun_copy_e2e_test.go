@@ -414,7 +414,7 @@ func (n *testTunProviderNode) OnInbox(message pasta.InboxMessage) error {
 	defer close(control.done)
 	n.paused = control.paused
 	if n.paused {
-		n.outputs.CloseAll()
+		n.outputs.InvalidateAllLocked(n.w, n.id)
 		n.closePipe()
 		n.outputs.Wait()
 		return nil

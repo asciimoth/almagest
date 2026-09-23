@@ -380,15 +380,25 @@ func assertSnifferHTTPGet(t *testing.T, network NetworkCloser, path, response st
 
 func receiveLatestOutNetPayload(t *testing.T, events <-chan NetworkPayload) NetworkPayload {
 	t.Helper()
-	payload := networktest.ReceivePayload(t, events)
+	var payload NetworkPayload
+	select {
+	case first := <-events:
+		if first.Network != nil {
+			payload = first
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for network payload")
+	}
 	for {
 		select {
 		case next := <-events:
-			if next.Network == nil {
-				t.Fatal("payload.Network = nil, want network")
+			if next.Network != nil {
+				payload = next
 			}
-			payload = next
 		default:
+			if payload.Network == nil {
+				t.Fatal("received only unavailable network payloads")
+			}
 			return payload
 		}
 	}

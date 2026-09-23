@@ -133,12 +133,12 @@ func (n *dnsInjectNode) OnLinkRemoved(link uint64, port uint64, linkType, portDi
 	case port == n.out && portDirection == "left" && linkType == nodekit.TypeNetwork:
 		n.outputs.Close(link)
 	case port == n.networkIn && portDirection == "right" && linkType == nodekit.TypeNetwork && link == n.networkLnk:
-		n.outputs.CloseAll()
+		n.outputs.InvalidateAllLocked(n.W, n.ID)
 		_ = nodekit.CloseNetwork(n.network)
 		n.network = nil
 		n.networkLnk = 0
 	case port == n.dnsIn && portDirection == "right" && linkType == TypeDNS && link == n.dnsLink:
-		n.outputs.CloseAll()
+		n.outputs.InvalidateAllLocked(n.W, n.ID)
 		CloseDNS(n.resolverDNS)
 		n.resolverDNS = nil
 		CloseDNS(n.dns)
@@ -162,7 +162,7 @@ func (n *dnsInjectNode) OnEvent(event pasta.Event, linkType string, _ []string, 
 		if !changed {
 			return nil
 		}
-		n.outputs.CloseAll()
+		n.outputs.InvalidateAllLocked(n.W, n.ID)
 		n.network = next
 		n.sendAll()
 		return n.updateLabel()
@@ -175,7 +175,7 @@ func (n *dnsInjectNode) OnEvent(event pasta.Event, linkType string, _ []string, 
 		if !changed {
 			return nil
 		}
-		n.outputs.CloseAll()
+		n.outputs.InvalidateAllLocked(n.W, n.ID)
 		CloseDNS(n.resolverDNS)
 		n.dns = next
 		n.resolverDNS = n.newResolverDNS(next)

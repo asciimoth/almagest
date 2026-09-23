@@ -265,8 +265,8 @@ func (n *tun2DNSNode) acceptTun(event pasta.Event) error {
 	n.stopTunRetryLocked()
 	n.generation++
 	gen = n.generation
-	start = true
-	if n.formError == "" && DNSIsReady(n.currentDNS) {
+	start = nodekit.TunIsReady(next)
+	if start && n.formError == "" && DNSIsReady(n.currentDNS) {
 		n.adapter = n.newAdapterLocked(gen, next, n.currentDNS)
 	}
 	n.mu.Unlock()

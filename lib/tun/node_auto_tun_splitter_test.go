@@ -414,8 +414,8 @@ func TestVTunAutoTunSplitterUsesEmptyDefaultSlotForUnmatchedDestinations(t *test
 	if err != nil {
 		t.Fatalf("AddLink tailnet consumer: %v", err)
 	}
-	defaultFrontend := receiveTunPayload(t, defaultConsumer.events).Tun
-	tailnetFrontend := receiveTunPayload(t, tailnetConsumer.events).Tun
+	_ = receiveTunPayload(t, defaultConsumer.events)
+	_ = receiveTunPayload(t, tailnetConsumer.events)
 
 	// This is the reported topology: the Spoofer-backed default branch emits
 	// no TunConfig, while WireGuard supplies the only address and a specific
@@ -427,6 +427,8 @@ func TestVTunAutoTunSplitterUsesEmptyDefaultSlotForUnmatchedDestinations(t *test
 		Routes: []string{"100.64.0.0/10"},
 	})
 	network := networktest.ReceivePayload(t, netReceiver.Events).Network
+	defaultFrontend := receiveTunPayload(t, defaultConsumer.events).Tun
+	tailnetFrontend := receiveTunPayload(t, tailnetConsumer.events).Tun
 
 	tests := []struct {
 		name        string
@@ -505,8 +507,8 @@ func TestVTunAutoTunSplitterLearnsDualStackAndSourceRoutes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddLink tailnet consumer: %v", err)
 	}
-	defaultFrontend := receiveTunPayload(t, defaultConsumer.events).Tun
-	tailnetFrontend := receiveTunPayload(t, tailnetConsumer.events).Tun
+	_ = receiveTunPayload(t, defaultConsumer.events)
+	_ = receiveTunPayload(t, tailnetConsumer.events)
 
 	default4 := netip.MustParseAddr("10.20.0.2")
 	default6 := netip.MustParseAddr("2001:db8:ffff::2")
@@ -536,6 +538,8 @@ func TestVTunAutoTunSplitterLearnsDualStackAndSourceRoutes(t *testing.T) {
 	}
 	w.EmitEvent(tailnetConsumerID, tailnetLink, tailnetConfig)
 	network := networktest.ReceivePayload(t, netReceiver.Events).Network
+	defaultFrontend := receiveTunPayload(t, defaultConsumer.events).Tun
+	tailnetFrontend := receiveTunPayload(t, tailnetConsumer.events).Tun
 
 	tests := []struct {
 		name        string

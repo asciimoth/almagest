@@ -26,9 +26,11 @@ import (
 // to the owning node and link.
 //
 // The event payload implements std.ClosablePayload so middleware nodes can
-// close previously-routed wrappers when switching paths. Left-directed
-// almagest/dns ports allow an arbitrary count of incoming links; right-directed
-// almagest/dns ports allow at most one outgoing link.
+// close previously-routed wrappers when switching paths. A DNSPayload with a
+// nil DNS value explicitly makes the current value unavailable while the graph
+// link stays attached. Left-directed almagest/dns ports allow an arbitrary
+// count of incoming links; right-directed almagest/dns ports allow at most one
+// outgoing link.
 const TypeDNS = links.TypeDNS
 
 var _ std.ClosablePayload = &DNSPayload{}
@@ -215,6 +217,24 @@ func (c *DNSOutputCache) CloseAll() {
 	}
 }
 
+// InvalidateAllLocked closes all emitted wrappers and tells their consumers
+// that no DNS value is currently available. The graph links stay attached and
+// can receive replacement values later.
+func (c *DNSOutputCache) InvalidateAllLocked(w *pasta.Workspace, node uint64) {
+	if c == nil {
+		return
+	}
+	for link, entry := range c.entries {
+		delete(c.entries, link)
+		CloseDNS(entry.output)
+		if w != nil {
+			if _, ok := w.LinkSnapshotLocked(link); ok {
+				w.EmitEventLocked(node, link, DNSPayload{})
+			}
+		}
+	}
+}
+
 // AcceptDNSPayloadValue validates a DNS event and returns the accepted DNS
 // interface without binding it to a workspace resource.
 func AcceptDNSPayloadValue(event pasta.Event, current dns.Interface) (dns.Interface, bool) {
@@ -222,7 +242,17 @@ func AcceptDNSPayloadValue(event pasta.Event, current dns.Interface) (dns.Interf
 		return current, false
 	}
 	payload, ok := event.Payload.(DNSPayload)
-	if !ok || !DNSIsReady(payload.DNS) {
+	if !ok {
+		return current, false
+	}
+	if payload.DNS == nil {
+		if current == nil {
+			return nil, false
+		}
+		CloseDNS(current)
+		return nil, true
+	}
+	if !DNSIsReady(payload.DNS) {
 		return current, false
 	}
 	if SameDNSInstance(current, payload.DNS) {

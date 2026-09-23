@@ -121,7 +121,7 @@ func (n *tlsWrapperNode) OnLinkRemoved(link, port uint64, linkType, portDirectio
 	case port == n.out && portDirection == "left" && linkType == TypeNetwork:
 		n.outputs.Close(link)
 	case port == n.in && portDirection == "right" && linkType == TypeNetwork && link == n.networkID:
-		n.outputs.CloseAll()
+		n.outputs.InvalidateAllLocked(n.W, n.ID)
 		_ = closeNetwork(n.network)
 		n.network = nil
 		n.networkID = 0
@@ -141,7 +141,7 @@ func (n *tlsWrapperNode) OnEvent(event pasta.Event, linkType string, _ []string,
 	if !changed {
 		return nil
 	}
-	n.outputs.CloseAll()
+	n.outputs.InvalidateAllLocked(n.W, n.ID)
 	n.network = next
 	n.sendAll()
 	return n.updateLabel()
@@ -162,7 +162,7 @@ func (n *tlsWrapperNode) OnInbox(message pasta.InboxMessage) error {
 		return nil
 	}
 	n.validateConfig()
-	n.outputs.CloseAll()
+	n.outputs.InvalidateAllLocked(n.W, n.ID)
 	n.sendMenuSnapshot(true)
 	n.sendAll()
 	return n.updateLabel()
@@ -216,7 +216,7 @@ func (n *tlsWrapperNode) applyConfigForm(values map[string]any) error {
 	n.config = next
 	n.refreshTLSConfig()
 	n.validateConfig()
-	n.outputs.CloseAll()
+	n.outputs.InvalidateAllLocked(n.W, n.ID)
 	n.sendMenuSnapshot(true)
 	n.sendAll()
 	return n.updateLabel()

@@ -35,6 +35,28 @@ func TestAcceptDNSPayloadReplacesReadySameSourceWrapper(t *testing.T) {
 	}
 }
 
+func TestAcceptDNSPayloadUnavailableClosesCurrent(t *testing.T) {
+	base := newStaticDNSProvider(staticDNSRecords{})
+	defer func() { _ = base.Close() }()
+	current := NewDetachedDNS(base)
+
+	next, changed := AcceptDNSPayloadValue(pasta.Event{Payload: DNSPayload{}}, current)
+	if !changed {
+		t.Fatal("AcceptDNSPayloadValue() changed = false, want true for unavailable payload")
+	}
+	if next != nil {
+		t.Fatalf("AcceptDNSPayloadValue() next = %T, want nil", next)
+	}
+	if DNSIsReady(current) {
+		t.Fatal("current DNS wrapper is still ready after unavailable payload")
+	}
+
+	next, changed = AcceptDNSPayloadValue(pasta.Event{Payload: DNSPayload{}}, nil)
+	if changed || next != nil {
+		t.Fatalf("repeated unavailable payload = (%T, %v), want (nil, false)", next, changed)
+	}
+}
+
 func TestDNSOutputCacheReusesReadyWrapperAndReplacesClosedWrapper(t *testing.T) {
 	w := pasta.NewWorkspace(logging.NewDebugLogFactory(1024))
 	defer w.Close()
@@ -73,6 +95,49 @@ func TestDNSOutputCacheReusesReadyWrapperAndReplacesClosedWrapper(t *testing.T) 
 	third := receiveDNSPayload(t, receiver.events).DNS
 	if SameDNSInstance(first, third) {
 		t.Fatal("DNSOutputCache reused closed wrapper, want replacement")
+	}
+	cache.CloseAll()
+}
+
+func TestDNSOutputCacheInvalidateAllNotifiesAndRecovers(t *testing.T) {
+	w := pasta.NewWorkspace(logging.NewDebugLogFactory(1024))
+	defer w.Close()
+	providerID, out := addDNSOutputCacheTestPort(t, w)
+	receiver := &dnsReceiverNode{events: make(chan DNSPayload, 3)}
+	_, err := w.AddNode(receiver, "test/DNSReceiver", "receiver")
+	if err != nil {
+		t.Fatalf("AddNode receiver: %v", err)
+	}
+	link, _, err := w.AddLink(out, receiver.in)
+	if err != nil {
+		t.Fatalf("AddLink: %v", err)
+	}
+
+	source := newStaticDNSProvider(staticDNSRecords{})
+	defer func() { _ = source.Close() }()
+	var cache DNSOutputCache
+	if !cache.Send(w, providerID, link, source) {
+		t.Fatal("DNSOutputCache.Send() = false, want true")
+	}
+	first := receiveDNSPayload(t, receiver.events).DNS
+
+	w.Lock()
+	cache.InvalidateAllLocked(w, providerID)
+	w.Unlock()
+	unavailable := receiveDNSPayload(t, receiver.events)
+	if unavailable.DNS != nil {
+		t.Fatalf("invalidated payload DNS = %T, want nil", unavailable.DNS)
+	}
+	if DNSIsReady(first) {
+		t.Fatal("invalidated DNS wrapper is still ready")
+	}
+
+	if !cache.Send(w, providerID, link, source) {
+		t.Fatal("DNSOutputCache.Send() recovery = false, want true")
+	}
+	replacement := receiveDNSPayload(t, receiver.events).DNS
+	if !DNSIsReady(replacement) || SameDNSInstance(first, replacement) {
+		t.Fatal("recovery did not emit a fresh ready DNS wrapper")
 	}
 	cache.CloseAll()
 }

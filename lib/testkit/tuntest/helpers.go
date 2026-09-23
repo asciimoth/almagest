@@ -4,6 +4,7 @@ import (
 	"errors"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/asciimoth/almagest/lib/links"
 	"github.com/asciimoth/gonnect/sysnet"
@@ -59,15 +60,29 @@ func (n *Receiver) OnEvent(event pasta.Event, linkType string, _ []string, recei
 // ReceivePayload returns one TUN payload or fails the test.
 func ReceivePayload(t *testing.T, events <-chan links.TunPayload) links.TunPayload {
 	t.Helper()
-	select {
-	case payload := <-events:
-		if payload.Tun == nil {
-			t.Fatal("payload.Tun = nil, want tun")
+	timer := time.NewTimer(time.Second)
+	defer timer.Stop()
+	var latest links.TunPayload
+	for {
+		select {
+		case payload := <-events:
+			latest = payload
+		drain:
+			for {
+				select {
+				case payload = <-events:
+					latest = payload
+				default:
+					break drain
+				}
+			}
+			if latest.Tun != nil {
+				return latest
+			}
+		case <-timer.C:
+			t.Fatal("timed out waiting for TUN payload")
+			return links.TunPayload{}
 		}
-		return payload
-	default:
-		t.Fatal("no tun payload received")
-		return links.TunPayload{}
 	}
 }
 

@@ -298,6 +298,12 @@ func (n *networkRouterNode) OnEvent(event pasta.Event, linkType string, _ []stri
 		return nil
 	}
 	n.detachSlot(slot)
+	if nextPayload.Network == nil {
+		if n.ready {
+			n.sendAll()
+		}
+		return nil
+	}
 	err := n.router.Attach(slot, nextPayload.Network)
 	BindNetworkResource(n.W, n.ID, event.Link, nextPayload.Network)
 	n.backends[slot] = nextPayload.Network

@@ -2,6 +2,7 @@ package networktest
 
 import (
 	"testing"
+	"time"
 
 	"github.com/asciimoth/almagest/lib/links"
 	"github.com/asciimoth/pasta/pasta"
@@ -56,15 +57,29 @@ func (n *Receiver) OnEvent(event pasta.Event, linkType string, _ []string, recei
 // ReceivePayload returns one network payload or fails the test.
 func ReceivePayload(t *testing.T, events <-chan links.NetworkPayload) links.NetworkPayload {
 	t.Helper()
-	select {
-	case payload := <-events:
-		if payload.Network == nil {
-			t.Fatal("payload.Network = nil, want network")
+	timer := time.NewTimer(time.Second)
+	defer timer.Stop()
+	var latest links.NetworkPayload
+	for {
+		select {
+		case payload := <-events:
+			latest = payload
+		drain:
+			for {
+				select {
+				case payload = <-events:
+					latest = payload
+				default:
+					break drain
+				}
+			}
+			if latest.Network != nil {
+				return latest
+			}
+		case <-timer.C:
+			t.Fatal("timed out waiting for network payload")
+			return links.NetworkPayload{}
 		}
-		return payload
-	default:
-		t.Fatal("no network payload received")
-		return links.NetworkPayload{}
 	}
 }
 

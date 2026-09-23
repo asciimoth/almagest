@@ -102,6 +102,7 @@ func TestDNSClientRebuildsOnNetworkAndBootstrapChanges(t *testing.T) {
 	assertDNSAnswer(t, third, "rebuild.test.", dns.TypeA, "192.0.2.56")
 
 	w.RemoveLink(networkLink)
+	receiveUnavailableDNSPayload(t, receiver.Events)
 	if dnsnodes.DNSIsReady(third) {
 		t.Fatal("third DNS wrapper remained ready after network detach")
 	}
@@ -483,6 +484,18 @@ func receiveReadyDNSPayload(t *testing.T, ch <-chan dnsnodes.DNSPayload) dnsnode
 			t.Fatal("timed out waiting for DNS payload")
 			return dnsnodes.DNSPayload{}
 		}
+	}
+}
+
+func receiveUnavailableDNSPayload(t *testing.T, ch <-chan dnsnodes.DNSPayload) {
+	t.Helper()
+	select {
+	case payload := <-ch:
+		if payload.DNS != nil {
+			t.Fatalf("unavailable payload DNS = %T, want nil", payload.DNS)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for unavailable DNS payload")
 	}
 }
 

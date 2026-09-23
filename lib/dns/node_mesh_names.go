@@ -159,7 +159,7 @@ func (n *meshNamesNode) OnLinkRemoved(link, port uint64, linkType, portDirection
 	case port == n.out && portDirection == "left" && linkType == TypeDNS:
 		n.outputs.Close(link)
 	case port == n.networkIn && portDirection == "right" && linkType == nodekit.TypeNetwork && link == n.networkLink:
-		n.outputs.CloseAll()
+		n.outputs.InvalidateAllLocked(n.W, n.ID)
 		CloseDNS(n.provider)
 		n.provider = nil
 		n.resolver = nil
@@ -253,7 +253,7 @@ func (n *meshNamesNode) applyConfigForm(values map[string]any) error {
 }
 
 func (n *meshNamesNode) rebuildProvider() {
-	n.outputs.CloseAll()
+	n.outputs.InvalidateAllLocked(n.W, n.ID)
 	CloseDNS(n.provider)
 	n.provider = nil
 	n.resolver = nil

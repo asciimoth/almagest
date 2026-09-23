@@ -98,7 +98,7 @@ func (n *debugLogNetworkNode) OnLinkRemoved(link, port uint64, linkType, portDir
 			_ = n.network.Close()
 		}
 		n.network = nil
-		n.outputs.CloseAll()
+		n.outputs.InvalidateAllLocked(n.W, n.ID)
 	}
 	return nil
 }
@@ -118,7 +118,7 @@ func (n *debugLogNetworkNode) OnEvent(event pasta.Event, linkType string, _ []st
 	if n.network != nil {
 		_ = n.network.Close()
 	}
-	n.outputs.CloseAll()
+	n.outputs.InvalidateAllLocked(n.W, n.ID)
 	n.network = next
 	n.sendAll()
 	return nil

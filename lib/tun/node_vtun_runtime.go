@@ -61,7 +61,7 @@ func (n *vtunNode) rebuildVTunActive() error {
 
 func (n *vtunNode) rebuildVTunWithActive(active bool) error {
 	if !active {
-		n.dropVTun()
+		n.dropVTun(true)
 		_ = n.updateLabel()
 		return nil
 	}
@@ -115,7 +115,7 @@ rebuild:
 		_ = n.updateLabel()
 		return err
 	}
-	n.dropVTun()
+	n.dropVTun(true)
 	n.formError = ""
 	n.vtun = vt
 	n.vtunRuntime = runtimeConfig
@@ -343,9 +343,14 @@ func (n *vtunNode) freeGeneratedAddrs() {
 	n.generatedAddrs = nil
 }
 
-func (n *vtunNode) dropVTun() {
-	n.outputNetworks.CloseAll()
-	n.outputTuns.CloseAll()
+func (n *vtunNode) dropVTun(notify bool) {
+	if notify {
+		n.outputNetworks.InvalidateAllLocked(n.W, n.ID)
+		n.outputTuns.InvalidateAllLocked(n.W, n.ID)
+	} else {
+		n.outputNetworks.CloseAll()
+		n.outputTuns.CloseAll()
+	}
 	links.DetachDatagramMTUProvider(n.vtunNetwork)
 	if n.vtun != nil {
 		_ = n.vtun.Close()

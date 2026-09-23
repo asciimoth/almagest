@@ -267,7 +267,7 @@ func (n *dnsClientNode) OnLinkRemoved(link, port uint64, linkType, portDirection
 	case port == n.out && portDirection == "left" && linkType == TypeDNS:
 		n.outputs.Close(link)
 	case port == n.networkIn && portDirection == "right" && linkType == nodekit.TypeNetwork && link == n.networkLink:
-		n.outputs.CloseAll()
+		n.outputs.InvalidateAllLocked(n.W, n.ID)
 		CloseDNS(n.client)
 		n.client = nil
 		_ = nodekit.CloseNetwork(n.network)
@@ -391,7 +391,7 @@ func (n *dnsClientNode) sendConfigFieldStatus(msg formular.FieldValidateMessage)
 }
 
 func (n *dnsClientNode) rebuildClient() {
-	n.outputs.CloseAll()
+	n.outputs.InvalidateAllLocked(n.W, n.ID)
 	CloseDNS(n.client)
 	n.client = nil
 	if n.formError != "" || n.tlsConfigErr != "" || len(n.config.servers) == 0 || !nodekit.NetworkIsReady(n.network) {

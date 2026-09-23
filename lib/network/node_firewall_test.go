@@ -53,9 +53,10 @@ func TestNetworkFirewallNodeMergesLiveObjectPoliciesAndReattaches(t *testing.T) 
 	assertFirewallBlocks(t, wrapped.GetConfig(), "udp", "127.0.0.1:53", true)
 
 	w.RemoveLink(inputLink)
+	assertUnavailableNetworkPayload(t, receiver.Events)
 	assertNodeLabel(t, w, firewall, "waiting for network")
 	inputLink = addFirewallTestLink(t, w, sourceSnapshot.LeftPorts[0], firewallSnapshot.RightPorts[0], TypeNetwork)
-	second := networktest.ReceivePayload(t, receiver.Events)
+	second := receiveLatestReadyNetworkPayload(t, receiver.Events)
 	if second.Network == first.Network {
 		t.Fatal("network input reattach reused the closed firewall wrapper")
 	}
@@ -63,13 +64,43 @@ func TestNetworkFirewallNodeMergesLiveObjectPoliciesAndReattaches(t *testing.T) 
 
 	w.RemoveLink(outputLink)
 	outputLink = addFirewallTestLink(t, w, firewallSnapshot.LeftPorts[0], receiver.In, TypeNetwork)
-	third := networktest.ReceivePayload(t, receiver.Events)
+	third := receiveLatestReadyNetworkPayload(t, receiver.Events)
 	if third.Network == second.Network {
 		t.Fatal("network output reattach reused the closed firewall wrapper")
 	}
 	_ = inputLink
 	_ = outputLink
 	_ = udpConfigLink
+}
+
+func assertUnavailableNetworkPayload(t *testing.T, events <-chan NetworkPayload) {
+	t.Helper()
+	select {
+	case payload := <-events:
+		if payload.Network != nil || payload.DatagramMTU != nil || payload.CapabilityRevision != 0 {
+			t.Fatalf("unavailable network payload = %+v, want zero payload", payload)
+		}
+	default:
+		t.Fatal("no unavailable network payload received")
+	}
+}
+
+func receiveLatestReadyNetworkPayload(t *testing.T, events <-chan NetworkPayload) NetworkPayload {
+	t.Helper()
+	var payload NetworkPayload
+	for {
+		select {
+		case next := <-events:
+			if next.Network != nil {
+				payload = next
+			}
+		default:
+			if payload.Network == nil {
+				t.Fatal("no ready network payload received")
+			}
+			return payload
+		}
+	}
 }
 
 func TestNetworkFirewallMenuSaveRestoreAndCopyPaste(t *testing.T) {

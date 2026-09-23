@@ -1,0 +1,137 @@
+{
+	"nodes": {
+		"DNS Transport Network": {
+			"Class": "almagest/MockNetwork",
+		},
+		"Application Network": {
+			"Class": "almagest/MockNetwork",
+		},
+		"Primary DNS": {
+			"Class": "almagest/StaticDns",
+			"records": "cached.stack.test A 192.0.2.10\nserver-gap.stack.test A 192.0.2.11\nprimary-only.stack.test A 192.0.2.12\nweb.stack.test A 127.0.0.1\nadapter.stack.test A 198.51.100.10",
+			"ttl": 60,
+		},
+		"Secondary DNS": {
+			"Class": "almagest/StaticDns",
+			"records": "cached.stack.test A 192.0.2.20\nsecondary.stack.test A 192.0.2.21\nclient-gap.stack.test A 192.0.2.22\ninvalid-config.stack.test A 192.0.2.23\nport-change.stack.test A 192.0.2.24\nrestart.stack.test A 192.0.2.25\nweb.stack.test A 127.0.0.1\nadapter.stack.test A 198.51.100.20\nadapter-switch.stack.test A 198.51.100.21",
+			"ttl": 60,
+		},
+		"DNS Log": {
+			"Class": "almagest/LogDNS",
+			"Links": ["DNS -> [Primary DNS] DNS"],
+		},
+		"DNS Server": {
+			"Class": "almagest/DnsServer",
+			"Links": [
+				"Network -> [DNS Transport Network] Network",
+				"DNS -> [DNS Log] DNS",
+			],
+			"network": "udp",
+			"host": "127.0.0.1",
+			"port": 5353,
+			"requestTimeoutMS": 500,
+		},
+		"DNS Client": {
+			"Class": "almagest/DnsClient",
+			"Links": ["Network -> [DNS Transport Network] Network"],
+			"servers": ["udp://127.0.0.1:5353"],
+			"requestTimeoutMS": 500,
+		},
+		"DNS Cache": {
+			"Class": "almagest/DnsCache",
+			"Links": ["DNS -> [DNS Client] DNS"],
+			"storageName": "dns-transport-stack-lifecycle",
+			"reverseLookups": true,
+			"writeOnly": false,
+		},
+		"DNS Inject": {
+			"Class": "almagest/DnsInject",
+			"Links": [
+				"Network -> [Application Network] Network",
+				"DNS -> [DNS Cache] DNS",
+			],
+		},
+		"DNS From Injected Network": {
+			"Class": "almagest/Dns2Network",
+			"Links": ["Network -> [DNS Inject] Network"],
+		},
+		"Cache Query": {
+			"Class": "almagest/DnsQuery",
+			"Links": ["DNS -> [DNS Cache] DNS"],
+			"name": "cached.stack.test.",
+			"type": "A",
+		},
+		"Server Gap Query": {
+			"Class": "almagest/DnsQuery",
+			"Links": ["DNS -> [DNS Cache] DNS"],
+			"name": "server-gap.stack.test.",
+			"type": "A",
+		},
+		"Secondary Query": {
+			"Class": "almagest/DnsQuery",
+			"Links": ["DNS -> [DNS Cache] DNS"],
+			"name": "secondary.stack.test.",
+			"type": "A",
+		},
+		"Client Gap Query": {
+			"Class": "almagest/DnsQuery",
+			"Links": ["DNS -> [DNS Client] DNS"],
+			"name": "client-gap.stack.test.",
+			"type": "A",
+		},
+		"Invalid Config Query": {
+			"Class": "almagest/DnsQuery",
+			"Links": ["DNS -> [DNS Client] DNS"],
+			"name": "invalid-config.stack.test.",
+			"type": "A",
+		},
+		"Port Change Query": {
+			"Class": "almagest/DnsQuery",
+			"Links": ["DNS -> [DNS Cache] DNS"],
+			"name": "port-change.stack.test.",
+			"type": "A",
+		},
+		"Restart Query": {
+			"Class": "almagest/DnsQuery",
+			"Links": ["DNS -> [DNS Cache] DNS"],
+			"name": "restart.stack.test.",
+			"type": "A",
+		},
+		"Adapter Query": {
+			"Class": "almagest/DnsQuery",
+			"Links": ["DNS -> [DNS From Injected Network] DNS"],
+			"name": "adapter.stack.test.",
+			"type": "A",
+		},
+		"Adapter After Switch Query": {
+			"Class": "almagest/DnsQuery",
+			"Links": ["DNS -> [DNS From Injected Network] DNS"],
+			"name": "adapter-switch.stack.test.",
+			"type": "A",
+		},
+		"HTTP Server": {
+			"Class": "almagest/HttpServer",
+			"Links": ["Network -> [Application Network] Network"],
+			"host": "127.0.0.1",
+			"port": 8080,
+			"response": "dns-transport-stack-ok",
+		},
+		"HTTP Client": {
+			"Class": "almagest/HttpClient",
+			"Links": ["Network -> [DNS Inject] Network"],
+			"url": "http://web.stack.test:8080/",
+			"method": "GET",
+			"body": "",
+		},
+		"Local Proxy": {
+			"Class": "almagest/LocalProxy",
+			"Links": ["proxy -> [DNS Inject] Network"],
+			"socksHost": "127.0.0.1",
+			"socksPort": 1184,
+			"wsHost": "",
+			"wsPort": 0,
+			"wsPath": "/socks",
+			"users": [],
+		},
+	},
+}

@@ -611,7 +611,7 @@ func (n *managedAmnesiaNode) scheduleReconcile(invalidate bool) {
 		n.runtimeError = ""
 		// A detached DNS output must not keep using the previous profile while
 		// this generation negotiates or activates its replacement.
-		n.dnsOutputs.CloseAll()
+		n.dnsOutputs.InvalidateAllLocked(n.W, n.ID)
 		n.dnsProvider = nil
 		if captchaCleared {
 			n.sendForcedMenuSnapshot()
@@ -674,14 +674,14 @@ func (n *managedAmnesiaNode) handleRuntimeResult(msg managedAmnesiaRuntimeResult
 		}
 		n.profileStatus = amnesiaProfileStatus{}
 		n.runtimeStats = wgdevice.RuntimeStats{}
-		n.dnsOutputs.CloseAll()
+		n.dnsOutputs.InvalidateAllLocked(n.W, n.ID)
 		n.dnsProvider = nil
 		n.sendTunConfig()
 	} else if msg.captcha != nil {
 		n.setCaptchaPrompt(msg.captcha)
 		n.profileStatus = amnesiaProfileStatus{}
 		n.runtimeStats = wgdevice.RuntimeStats{}
-		n.dnsOutputs.CloseAll()
+		n.dnsOutputs.InvalidateAllLocked(n.W, n.ID)
 		n.dnsProvider = nil
 		n.sendTunConfig()
 	} else if msg.waitingForTun || msg.waitingForNetwork {
@@ -713,7 +713,7 @@ func (n *managedAmnesiaNode) handleRuntimeResult(msg managedAmnesiaRuntimeResult
 		n.clearCaptchaPrompt()
 		n.profileStatus = amnesiaProfileStatus{}
 		n.runtimeStats = wgdevice.RuntimeStats{}
-		n.dnsOutputs.CloseAll()
+		n.dnsOutputs.InvalidateAllLocked(n.W, n.ID)
 		n.dnsProvider = nil
 		n.sendTunConfig()
 	}

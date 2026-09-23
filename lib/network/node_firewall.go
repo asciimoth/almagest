@@ -109,7 +109,8 @@ func (n *networkFirewallNode) OnReady() error {
 }
 
 func (n *networkFirewallNode) OnStop() {
-	n.closeOutputs()
+	n.outputs.CloseAll()
+	clear(n.firewalls)
 	_ = closeNetwork(n.network)
 	n.network = nil
 	n.inLink = 0
@@ -280,7 +281,7 @@ func (n *networkFirewallNode) sendToLink(link uint64, refresh bool) {
 }
 
 func (n *networkFirewallNode) closeOutputs() {
-	n.outputs.CloseAll()
+	n.outputs.InvalidateAllLocked(n.W, n.ID)
 	clear(n.firewalls)
 }
 

@@ -240,7 +240,7 @@ func (n *tunSplitterNode) OnReady() error {
 
 func (n *tunSplitterNode) OnStop() {
 	n.invalidateInput()
-	n.closeOutputTuns()
+	n.closeOutputTuns(false)
 	if n.router != nil {
 		_ = n.router.Close()
 		n.router = nil
@@ -534,6 +534,14 @@ func (n *tunSplitterNode) attachInputTun(link uint64, t tun.Tun) error {
 	}
 	n.stopInputRetry()
 	n.inputGen++
+	if t == nil {
+		n.inputTun = nil
+		if n.splitter != nil {
+			_ = n.splitter.Detach()
+		}
+		n.closeOutputTuns(true)
+		return n.updateLabel()
+	}
 	generation := n.inputGen
 	observed := newTunInputFailureObserver(t, func(err error) {
 		// SendInbox takes the workspace lock. The Splitter waits for its read
@@ -595,7 +603,7 @@ func (n *tunSplitterNode) handleInputFailed(msg tunSplitterInputFailed) error {
 	// A frontend read can fail while the Splitter changes from the input
 	// metadata to its detached defaults. Rebuild all frontends so no consumer
 	// keeps a pump that ended during this transition.
-	n.closeOutputTuns()
+	n.closeOutputTuns(true)
 	if err := n.updateLabel(); err != nil {
 		return err
 	}
@@ -746,8 +754,12 @@ func (n *tunSplitterNode) closeOutputTun(link uint64) {
 	n.outputTuns.Wait()
 }
 
-func (n *tunSplitterNode) closeOutputTuns() {
-	n.outputTuns.CloseAll()
+func (n *tunSplitterNode) closeOutputTuns(notify bool) {
+	if notify {
+		n.outputTuns.InvalidateAllLocked(n.W, n.ID)
+	} else {
+		n.outputTuns.CloseAll()
+	}
 	for link := range n.frontends {
 		frontend := n.frontends[link]
 		delete(n.frontends, link)

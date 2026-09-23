@@ -98,7 +98,7 @@ func (n *vtunNode) OnReady() error {
 }
 
 func (n *vtunNode) OnStop() {
-	n.dropVTun()
+	n.dropVTun(false)
 	n.freeGeneratedAddrs()
 }
 
@@ -153,7 +153,7 @@ func (n *vtunNode) OnLinkRemoved(link uint64, port uint64, _, _ string) error {
 		}
 	}
 	if !n.hasAnyLink() {
-		n.dropVTun()
+		n.dropVTun(true)
 		_ = n.updateLabel()
 	}
 	return nil

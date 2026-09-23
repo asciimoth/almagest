@@ -30,6 +30,8 @@ import (
 // Workspace resource tracking system, bound to the owning node and link. The
 // event payload implements std.ClosablePayload, so middleware nodes such as
 // std.SelectClass can close a previously-routed wrapper when switching paths.
+// A TunPayload with a nil Tun explicitly makes the current value unavailable
+// while the graph link stays attached.
 //
 // Repeated payload sends for the same link must be idempotent while the
 // underlying Tun source is unchanged. Providers should re-emit the existing
@@ -373,11 +375,18 @@ func AcceptTunPayloadValue(event pasta.Event, expectedLink uint64, current tun.T
 		return current, false
 	}
 	payload, ok := event.Payload.(TunPayload)
-	if !ok || payload.Tun == nil {
+	if !ok {
 		return current, false
 	}
 	if expectedLink != 0 && event.Link != expectedLink {
 		return current, false
+	}
+	if payload.Tun == nil {
+		if current == nil {
+			return nil, false
+		}
+		_ = CloseTun(current)
+		return nil, true
 	}
 	if !TunIsReady(payload.Tun) {
 		_ = payload.Tun.Close()
@@ -585,6 +594,33 @@ func (c *TunOutputCache) CloseAll() {
 		CloseTunForLaterWait(&c.waiting, state.root)
 	}
 	c.sources = nil
+}
+
+// InvalidateAllLocked closes all emitted wrappers and source roots, then tells
+// consumers that no TUN value is currently available. The graph links stay
+// attached and can receive replacement values later.
+func (c *TunOutputCache) InvalidateAllLocked(w *pasta.Workspace, node uint64) {
+	if c == nil {
+		return
+	}
+	links := make([]uint64, 0, len(c.entries))
+	for link, entry := range c.entries {
+		delete(c.entries, link)
+		CloseTunForLaterWait(&c.waiting, entry.output)
+		links = append(links, link)
+	}
+	for _, state := range c.sources {
+		CloseTunForLaterWait(&c.waiting, state.root)
+	}
+	c.sources = nil
+	if w == nil {
+		return
+	}
+	for _, link := range links {
+		if _, ok := w.LinkSnapshotLocked(link); ok {
+			w.EmitEventLocked(node, link, TunPayload{})
+		}
+	}
 }
 
 // Wait waits for detached wrappers closed by Close or CloseAll.

@@ -236,7 +236,14 @@ func (n *dnsFallbackNode) OnEvent(event pasta.Event, linkType string, _ []string
 		return nil
 	}
 	payload, ok := event.Payload.(DNSPayload)
-	if !ok || !DNSIsReady(payload.DNS) || SameDNSInstance(n.upstreams[slot], payload.DNS) {
+	if !ok || SameDNSInstance(n.upstreams[slot], payload.DNS) {
+		return nil
+	}
+	if payload.DNS == nil {
+		n.detachSlot(slot)
+		return n.updateLabel()
+	}
+	if !DNSIsReady(payload.DNS) {
 		return nil
 	}
 
@@ -356,7 +363,7 @@ func (n *dnsFallbackNode) detachSlot(slot int) {
 // stay owned by their input links and are attached to the replacement before
 // it is published to consumers.
 func (n *dnsFallbackNode) rebuildFallback() {
-	n.outputs.CloseAll()
+	n.outputs.InvalidateAllLocked(n.W, n.ID)
 	old := n.fallback
 	n.fallback = n.newFallback()
 	for slot := 1; slot <= dnsFallbackMaxSlots; slot++ {

@@ -115,7 +115,7 @@ func (n *tlsTerminatorNode) OnLinkRemoved(link, port uint64, linkType, portDirec
 	case port == n.out && portDirection == "left" && linkType == TypeNetwork:
 		n.outputs.Close(link)
 	case port == n.in && portDirection == "right" && linkType == TypeNetwork && link == n.networkID:
-		n.outputs.CloseAll()
+		n.outputs.InvalidateAllLocked(n.W, n.ID)
 		_ = closeNetwork(n.network)
 		n.network = nil
 		n.networkID = 0
@@ -135,7 +135,7 @@ func (n *tlsTerminatorNode) OnEvent(event pasta.Event, linkType string, _ []stri
 	if !changed {
 		return nil
 	}
-	n.outputs.CloseAll()
+	n.outputs.InvalidateAllLocked(n.W, n.ID)
 	n.network = next
 	n.sendAll()
 	return n.updateLabel()
@@ -147,7 +147,7 @@ func (n *tlsTerminatorNode) OnInbox(message pasta.InboxMessage) error {
 	}
 	n.refreshLocalCA()
 	n.validateConfig()
-	n.outputs.CloseAll()
+	n.outputs.InvalidateAllLocked(n.W, n.ID)
 	n.sendMenuSnapshot(true)
 	n.sendAll()
 	return n.updateLabel()
@@ -194,7 +194,7 @@ func (n *tlsTerminatorNode) applyConfigForm(values map[string]any) error {
 		destinationRemaps: formApplyString(values, fieldDestinationRemaps, n.config.destinationRemaps),
 	}
 	n.validateConfig()
-	n.outputs.CloseAll()
+	n.outputs.InvalidateAllLocked(n.W, n.ID)
 	n.sendMenuSnapshot(true)
 	n.sendAll()
 	return n.updateLabel()

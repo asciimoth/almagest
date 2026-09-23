@@ -232,7 +232,14 @@ func (n *dnsRouterNode) OnEvent(event pasta.Event, linkType string, _ []string, 
 		return nil
 	}
 	payload, ok := event.Payload.(DNSPayload)
-	if !ok || !DNSIsReady(payload.DNS) || SameDNSInstance(n.backends[slot], payload.DNS) {
+	if !ok || SameDNSInstance(n.backends[slot], payload.DNS) {
+		return nil
+	}
+	if payload.DNS == nil {
+		n.detachSlot(slot)
+		return n.updateLabel()
+	}
+	if !DNSIsReady(payload.DNS) {
 		return nil
 	}
 	n.detachSlot(slot)

@@ -105,7 +105,7 @@ func (n *debugLogDNSNode) OnLinkRemoved(link, port uint64, linkType, portDirecti
 	if port == n.in && portDirection == "right" && linkType == TypeDNS {
 		CloseDNS(n.upstream)
 		n.upstream = nil
-		n.outputs.CloseAll()
+		n.outputs.InvalidateAllLocked(n.W, n.ID)
 	}
 	return nil
 }
@@ -122,7 +122,7 @@ func (n *debugLogDNSNode) OnEvent(event pasta.Event, linkType string, _ []string
 	if !changed {
 		return nil
 	}
-	n.outputs.CloseAll()
+	n.outputs.InvalidateAllLocked(n.W, n.ID)
 	n.upstream = next
 	n.sendAll()
 	return nil

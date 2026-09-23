@@ -12,6 +12,7 @@ import (
 	"github.com/asciimoth/almagest/lib/testkit"
 	"github.com/asciimoth/gonnect/dns"
 	"github.com/asciimoth/pasta/pasta"
+	"github.com/asciimoth/pasta/pasta/std"
 )
 
 func TestDNSFallbackPortsGrowToLimitAndShrink(t *testing.T) {
@@ -92,8 +93,24 @@ func TestDNSFallbackKeepsOutputStableAcrossInputChanges(t *testing.T) {
 	assertSameDNSFallbackOutput(t, output, receiver.events)
 	assertDNSAnswer(t, output, "stable.fallback.test.", dns.TypeA, "192.0.2.44")
 
-	w.RemoveLink(answerLink)
+	w.EmitEvent(answerID, answerLink, DNSPayload{})
+	assertSameDNSFallbackOutput(t, output, receiver.events)
+	assertNodeLabel(t, w, fallbackID, "fallback DNS")
 	response, err := dns.Query(context.Background(), output, dnsTestQuery("stable.fallback.test.", dns.TypeA))
+	if err != nil {
+		t.Fatalf("query while slot 2 is unavailable: %v", err)
+	}
+	if response == nil || response.RCode != dns.RCodeNameError {
+		t.Fatalf("query while slot 2 is unavailable response = %#v, want NXDOMAIN", response)
+	}
+
+	std.Request(w, fallbackID, answerLink)
+	assertSameDNSFallbackOutput(t, output, receiver.events)
+	assertNodeLabel(t, w, fallbackID, "fallback across 2 DNS backends")
+	assertDNSAnswer(t, output, "stable.fallback.test.", dns.TypeA, "192.0.2.44")
+
+	w.RemoveLink(answerLink)
+	response, err = dns.Query(context.Background(), output, dnsTestQuery("stable.fallback.test.", dns.TypeA))
 	if err != nil {
 		t.Fatalf("query after slot 2 detach: %v", err)
 	}

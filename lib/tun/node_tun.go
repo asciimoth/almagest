@@ -128,7 +128,7 @@ func (n *tunNode) OnReady() error {
 }
 
 func (n *tunNode) OnStop() {
-	n.closeTun()
+	n.closeTun(false)
 	n.hasEffective = false
 	n.effectiveName = ""
 	n.portCfg = TunConfigByLink{}
@@ -325,7 +325,7 @@ func (n *tunNode) rebuildTun(opts sysnet.TunOpts, name string) error {
 		return err
 	}
 
-	n.closeTun()
+	n.closeTun(true)
 	nextTun, err := n.System().BuildTun(copyTunOpts(opts))
 	if err != nil {
 		n.formError = err.Error()
@@ -449,8 +449,12 @@ func (n *tunNode) refreshTunToLink(link uint64) {
 	n.outputTuns.RefreshLocked(n.W, n.ID, link, n.tun, enginePool(n.Runtime))
 }
 
-func (n *tunNode) closeTun() {
-	n.outputTuns.CloseAll()
+func (n *tunNode) closeTun(notify bool) {
+	if notify {
+		n.outputTuns.InvalidateAllLocked(n.W, n.ID)
+	} else {
+		n.outputTuns.CloseAll()
+	}
 	if n.tun != nil {
 		_ = n.tun.Close()
 	}

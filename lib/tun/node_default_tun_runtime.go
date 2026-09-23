@@ -113,7 +113,7 @@ func (n *defaultTunNode) rebuildDefaultTun(opts sysnet.DefaultTunOpts) error {
 		}
 		return nil
 	}
-	n.outputTuns.CloseAll()
+	n.outputTuns.InvalidateAllLocked(n.W, n.ID)
 	if previous != nil && !samePublicTun {
 		_ = previous.Close()
 	}
