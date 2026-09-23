@@ -1,0 +1,7 @@
+{
+	"nodes": {
+		"Node One": {"Class": "almagest/MockNetwork"},
+		"Node Two": {"Class": "almagest/MockNetwork"},
+	},
+}
+
