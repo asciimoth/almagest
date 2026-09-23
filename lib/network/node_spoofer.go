@@ -56,6 +56,7 @@ type spooferNode struct {
 	config spooferConfig
 
 	tun          tun.Tun
+	tunLink      uint64
 	networkValue NetworkCloser
 	networkNode  uint64
 	runtime      *spooferRuntime
@@ -86,7 +87,13 @@ func (n *spooferNode) OnReady() error {
 }
 
 func (n *spooferNode) OnStop() {
+	n.tunLink = 0
+	source := n.tun
+	n.tun = nil
 	n.stopStack()
+	if source != nil {
+		_ = source.Close()
+	}
 }
 
 func (n *spooferNode) PreLinkAdd(port uint64, linkType, portDirection string) error {
@@ -111,17 +118,28 @@ func (n *spooferNode) PreLinkAdd(port uint64, linkType, portDirection string) er
 
 func (n *spooferNode) OnLinkAdd(link, port uint64, _, _ string) error {
 	switch port {
-	case n.tunp, n.network:
+	case n.tunp:
+		n.tunLink = link
+		std.RequestLocked(n.W, n.ID, link)
+	case n.network:
 		std.RequestLocked(n.W, n.ID, link)
 	}
 	return nil
 }
 
-func (n *spooferNode) OnLinkRemoved(_ uint64, port uint64, _, _ string) error {
+func (n *spooferNode) OnLinkRemoved(link uint64, port uint64, _, _ string) error {
 	switch port {
 	case n.tunp:
+		if link != n.tunLink {
+			return nil
+		}
+		n.tunLink = 0
+		source := n.tun
 		n.tun = nil
 		n.rebuildStack()
+		if source != nil {
+			_ = source.Close()
+		}
 	case n.network:
 		n.networkValue = nil
 		n.networkNode = 0
@@ -132,7 +150,7 @@ func (n *spooferNode) OnLinkRemoved(_ uint64, port uint64, _, _ string) error {
 
 func (n *spooferNode) OnEvent(event pasta.Event, linkType string, _ []string, receiverPortDirection string) error {
 	if event.ReceiverPort == n.tunp && receiverPortDirection == "left" && linkType == TypeTun {
-		next, changed := AcceptTunPayload(n.W, n.ID, event, 0, n.tun)
+		next, changed := AcceptTunPayload(n.W, n.ID, event, n.tunLink, n.tun)
 		if !changed {
 			return nil
 		}
@@ -150,6 +168,31 @@ func (n *spooferNode) OnEvent(event pasta.Event, linkType string, _ []string, re
 		n.networkNode = event.SenderNode
 		n.rebuildStack()
 	}
+	return nil
+}
+
+func (n *spooferNode) OnInbox(message pasta.InboxMessage) error {
+	failed, ok := message.Payload.(spooferTunFailed)
+	if !ok || failed.runtime != n.runtime || failed.link != n.tunLink || n.tun == nil {
+		return nil
+	}
+	if n.Logger != nil {
+		n.Logger.Warnf(
+			"Spoofer TUN input failed; requesting a replacement: link=%d terminal=%t error=%v input={%s}",
+			failed.link,
+			tun.IsTunTermError(failed.err),
+			failed.err,
+			nodekit.TunDebugString(n.tun),
+		)
+	}
+	source := n.tun
+	n.tun = nil
+	n.stopStack()
+	_ = source.Close()
+	if err := n.updateLabel(); err != nil {
+		return err
+	}
+	std.RequestLocked(n.W, n.ID, failed.link)
 	return nil
 }
 

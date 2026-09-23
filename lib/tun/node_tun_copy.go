@@ -50,10 +50,21 @@ type tunCopyNode struct {
 	linkA uint64
 	linkB uint64
 
-	currentA tun.Tun
-	currentB tun.Tun
+	currentA    tun.Tun
+	currentB    tun.Tun
+	attachedA   *tunInputFailureObserver
+	attachedB   *tunInputFailureObserver
+	generationA uint64
+	generationB uint64
 
 	p2p *tun.Point2Point
+}
+
+type tunCopyInputFailed struct {
+	port       uint64
+	link       uint64
+	generation uint64
+	attachment *tunInputFailureObserver
 }
 
 func (n *tunCopyNode) OnInit(w *pasta.Workspace, _ pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
@@ -77,14 +88,10 @@ func (n *tunCopyNode) OnReady() error {
 }
 
 func (n *tunCopyNode) OnStop() {
-	if n.currentA != nil {
-		_ = n.currentA.Close()
-		n.currentA = nil
-	}
-	if n.currentB != nil {
-		_ = n.currentB.Close()
-		n.currentB = nil
-	}
+	n.generationA++
+	n.generationB++
+	n.detachA()
+	n.detachB()
 	if n.p2p != nil {
 		n.p2p.Stop()
 	}
@@ -123,15 +130,15 @@ func (n *tunCopyNode) OnLinkRemoved(link uint64, port uint64, linkType, portDire
 			return nil
 		}
 		n.linkA = 0
-		n.currentA = nil
-		n.p2p.SetA(nil)
+		n.generationA++
+		n.detachA()
 	case n.tunB:
 		if link != n.linkB {
 			return nil
 		}
 		n.linkB = 0
-		n.currentB = nil
-		n.p2p.SetB(nil)
+		n.generationB++
+		n.detachB()
 	default:
 		return nil
 	}
@@ -148,19 +155,104 @@ func (n *tunCopyNode) OnEvent(event pasta.Event, linkType string, _ []string, re
 		if !changed {
 			return nil
 		}
-		n.currentA = next
-		n.p2p.SetA(next)
+		n.attachA(event.Link, next)
 	case n.tunB:
 		next, changed := AcceptTunPayload(n.W, n.ID, event, n.linkB, n.currentB)
 		if !changed {
 			return nil
 		}
-		n.currentB = next
-		n.p2p.SetB(next)
+		n.attachB(event.Link, next)
 	default:
 		return nil
 	}
 	return n.updateLabel()
+}
+
+func (n *tunCopyNode) OnInbox(message pasta.InboxMessage) error {
+	failed, ok := message.Payload.(tunCopyInputFailed)
+	if !ok {
+		return nil
+	}
+	switch failed.port {
+	case n.tunA:
+		if failed.link != n.linkA || failed.generation != n.generationA || failed.attachment != n.attachedA {
+			return nil
+		}
+		n.generationA++
+		n.detachA()
+		std.RequestLocked(n.W, n.ID, failed.link)
+	case n.tunB:
+		if failed.link != n.linkB || failed.generation != n.generationB || failed.attachment != n.attachedB {
+			return nil
+		}
+		n.generationB++
+		n.detachB()
+		std.RequestLocked(n.W, n.ID, failed.link)
+	default:
+		return nil
+	}
+	return n.updateLabel()
+}
+
+func (n *tunCopyNode) attachA(link uint64, source tun.Tun) {
+	n.generationA++
+	n.detachA()
+	n.currentA = source
+	n.attachedA = n.observeInput(n.tunA, link, n.generationA, source)
+	n.p2p.SetA(n.attachedA)
+}
+
+func (n *tunCopyNode) attachB(link uint64, source tun.Tun) {
+	n.generationB++
+	n.detachB()
+	n.currentB = source
+	n.attachedB = n.observeInput(n.tunB, link, n.generationB, source)
+	n.p2p.SetB(n.attachedB)
+}
+
+func (n *tunCopyNode) observeInput(port, link, generation uint64, source tun.Tun) *tunInputFailureObserver {
+	var attachment *tunInputFailureObserver
+	attachment = newTunInputFailureObserver(source, func(error) {
+		// SendInbox takes the workspace lock. Point2Point can report while a
+		// graph callback already owns that lock, so dispatch the report
+		// separately.
+		go n.W.SendInbox(pasta.InboxMessage{
+			ReceiverNode: n.ID,
+			Payload: tunCopyInputFailed{
+				port:       port,
+				link:       link,
+				generation: generation,
+				attachment: attachment,
+			},
+		})
+	})
+	return attachment
+}
+
+func (n *tunCopyNode) detachA() {
+	if n.p2p != nil {
+		n.p2p.SetA(nil)
+	}
+	if n.attachedA != nil {
+		_ = n.attachedA.Close()
+	} else if n.currentA != nil {
+		_ = n.currentA.Close()
+	}
+	n.currentA = nil
+	n.attachedA = nil
+}
+
+func (n *tunCopyNode) detachB() {
+	if n.p2p != nil {
+		n.p2p.SetB(nil)
+	}
+	if n.attachedB != nil {
+		_ = n.attachedB.Close()
+	} else if n.currentB != nil {
+		_ = n.currentB.Close()
+	}
+	n.currentB = nil
+	n.attachedB = nil
 }
 
 func (n *tunCopyNode) updateLabel() error {

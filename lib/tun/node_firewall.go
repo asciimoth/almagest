@@ -75,6 +75,8 @@ type tunFirewallNode struct {
 	inLink   uint64
 
 	tun        gonnecttun.Tun
+	inputTun   *tunInputFailureObserver
+	inputGen   uint64
 	outputTuns TunOutputCache
 	outputCfgs TunConfigByLink
 
@@ -116,12 +118,7 @@ func (n *tunFirewallNode) OnReady() error {
 }
 
 func (n *tunFirewallNode) OnStop() {
-	n.closeOutputs()
-	if n.tun != nil {
-		_ = n.tun.Close()
-		n.tun = nil
-	}
-	n.outputTuns.Wait()
+	n.detachInputTun()
 	n.outputCfgs = TunConfigByLink{}
 	n.inLink = 0
 }
@@ -144,6 +141,7 @@ func (n *tunFirewallNode) PreLinkAdd(port uint64, linkType, portDirection string
 func (n *tunFirewallNode) OnLinkAdd(link, port uint64, linkType, portDirection string) error {
 	switch {
 	case port == n.in && portDirection == "left" && linkType == TypeTun:
+		n.detachInputTun()
 		n.inLink = link
 		std.RequestLocked(n.W, n.ID, link)
 		n.sendMergedTunConfigToLink(link)
@@ -158,12 +156,7 @@ func (n *tunFirewallNode) OnLinkAdd(link, port uint64, linkType, portDirection s
 func (n *tunFirewallNode) OnLinkRemoved(link uint64, port uint64, linkType, portDirection string) error {
 	switch {
 	case port == n.in && portDirection == "left" && linkType == TypeTun && link == n.inLink:
-		n.closeOutputs()
-		if n.tun != nil {
-			_ = n.tun.Close()
-			n.tun = nil
-		}
-		n.outputTuns.Wait()
+		n.detachInputTun()
 		n.inLink = 0
 	case port == n.configIn && portDirection == "left" && linkType == std.TypeObject:
 		delete(n.objectConfigs, link)
@@ -177,6 +170,29 @@ func (n *tunFirewallNode) OnLinkRemoved(link uint64, port uint64, linkType, port
 		n.sendMergedTunConfig()
 	}
 	return n.updateLabel()
+}
+
+func (n *tunFirewallNode) OnInbox(message pasta.InboxMessage) error {
+	failed, ok := message.Payload.(tunFirewallInputFailed)
+	if !ok || failed.link != n.inLink || failed.generation != n.inputGen || failed.attachment != n.inputTun {
+		return nil
+	}
+	if n.Logger != nil {
+		n.Logger.Warnf(
+			"TUN firewall input failed; requesting a replacement: link=%d generation=%d terminal=%t error=%v input={%s}",
+			failed.link,
+			failed.generation,
+			gonnecttun.IsTunTermError(failed.err),
+			failed.err,
+			tunDebugString(n.tun),
+		)
+	}
+	n.detachInputTun()
+	if err := n.updateLabel(); err != nil {
+		return err
+	}
+	std.RequestLocked(n.W, n.ID, failed.link)
+	return nil
 }
 
 func (n *tunFirewallNode) OnEvent(event pasta.Event, linkType string, _ []string, receiverPortDirection string) error {
@@ -208,11 +224,59 @@ func (n *tunFirewallNode) OnEvent(event pasta.Event, linkType string, _ []string
 	if !changed {
 		return nil
 	}
-	n.closeOutputs()
-	n.outputTuns.Wait()
-	n.tun = next
+	n.attachInputTun(event.Link, next)
 	n.sendAll()
 	return n.updateLabel()
+}
+
+type tunFirewallInputFailed struct {
+	link       uint64
+	generation uint64
+	attachment *tunInputFailureObserver
+	err        error
+}
+
+func (n *tunFirewallNode) attachInputTun(link uint64, source gonnecttun.Tun) {
+	n.closeOutputs()
+	n.outputTuns.Wait()
+	n.inputGen++
+	if n.inputTun != nil {
+		_ = n.inputTun.Close()
+	}
+	n.tun = source
+	if source == nil {
+		n.inputTun = nil
+		return
+	}
+	generation := n.inputGen
+	var attachment *tunInputFailureObserver
+	attachment = newTunInputFailureObserver(source, func(err error) {
+		// SendInbox takes the workspace lock. A detached output can report while
+		// a graph callback already owns that lock, so dispatch it separately.
+		go n.W.SendInbox(pasta.InboxMessage{
+			ReceiverNode: n.ID,
+			Payload: tunFirewallInputFailed{
+				link:       link,
+				generation: generation,
+				attachment: attachment,
+				err:        err,
+			},
+		})
+	})
+	n.inputTun = attachment
+}
+
+func (n *tunFirewallNode) detachInputTun() {
+	n.inputGen++
+	n.closeOutputs()
+	if n.inputTun != nil {
+		_ = n.inputTun.Close()
+	} else if n.tun != nil {
+		_ = n.tun.Close()
+	}
+	n.inputTun = nil
+	n.tun = nil
+	n.outputTuns.Wait()
 }
 
 func (n *tunFirewallNode) OnFormularMsg(message any) error {
@@ -292,7 +356,7 @@ func (n *tunFirewallNode) sendAll() {
 }
 
 func (n *tunFirewallNode) sendToLink(link uint64, refresh bool) {
-	if !TunIsReady(n.tun) {
+	if n.inputTun == nil || !TunIsReady(n.inputTun) {
 		return
 	}
 	wrap := func(output gonnecttun.Tun) gonnecttun.Tun {
@@ -302,10 +366,10 @@ func (n *tunFirewallNode) sendToLink(link uint64, refresh bool) {
 	}
 	if refresh {
 		delete(n.firewalls, link)
-		n.outputTuns.RefreshWrappedLocked(n.W, n.ID, link, n.tun, wrap, n.pool)
+		n.outputTuns.RefreshWrappedLocked(n.W, n.ID, link, n.inputTun, wrap, n.pool)
 		return
 	}
-	n.outputTuns.SendWrappedLocked(n.W, n.ID, link, n.tun, wrap, n.pool)
+	n.outputTuns.SendWrappedLocked(n.W, n.ID, link, n.inputTun, wrap, n.pool)
 }
 
 func (n *tunFirewallNode) closeOutputs() {
@@ -342,7 +406,7 @@ func (n *tunFirewallNode) updateLabel() error {
 		return n.SetLabel("invalid config")
 	case len(n.objectErrors) != 0:
 		return n.SetLabel("invalid object config")
-	case !TunIsReady(n.tun):
+	case n.inputTun == nil || !TunIsReady(n.inputTun):
 		return n.SetLabel("waiting for TUN")
 	default:
 		count := len(n.effective.Exclude) + len(n.effective.Include)

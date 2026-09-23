@@ -188,7 +188,8 @@ func (n *wireGuardNode) bringDeviceDownLocked() error {
 }
 
 func (n *wireGuardNode) currentTunActiveLocked() bool {
-	return n.currentTun != nil && n.currentTunGeneration == n.currentTunGenerationValue()
+	return n.currentTun != nil && !n.currentTunFailed && TunIsReady(n.currentTun) &&
+		n.currentTunGeneration == n.currentTunGenerationValue()
 }
 func (n *wireGuardNode) currentNetworkActiveLocked() bool {
 	// Generation match and presence are not enough: wrapper-preserving
@@ -206,7 +207,9 @@ func (n *wireGuardNode) detachStaleTunLocked() error {
 	// its transport and peer sessions alive while it waits for the replacement.
 	n.currentTun = nil
 	n.currentManagedTun = nil
+	n.currentTunObserver = nil
 	n.currentTunGeneration = 0
+	n.currentTunFailed = false
 	if err := n.dev.DetachTUN(); err != nil {
 		return fmt.Errorf("detach stale TUN: %w", err)
 	}
@@ -229,17 +232,23 @@ func (n *wireGuardNode) attachCurrentTun(tunGeneration uint64, t tun.Tun, batchS
 		_ = t.Close()
 		return false, false, nil
 	}
-	if SameTunInstance(n.currentTun, t) {
+	if SameTunInstance(n.currentTun, t) && !n.currentTunFailed && TunIsReady(n.currentTun) {
 		n.currentTunGeneration = tunGeneration
 		return n.configApplyNeededLocked(), true, nil
 	}
 	n.ensureDeviceLocked(batchSize)
 	drainWireGuardTunEvents(t)
+	var observedTun *links.TunFailureObserver
+	observedTun = links.NewTunFailureObserver(t, func(err error) {
+		go n.sendInternal(wireGuardTunFailureMessage{
+			attachment: observedTun, tunGeneration: tunGeneration, err: err,
+		})
+	})
 	// A running device already has its current config and transport. Replacing
 	// only its TUN must not reapply device config or refresh the UDP bind.
-	managedTunValue, err := n.newManagedTun(t)
+	managedTunValue, err := n.newManagedTun(observedTun)
 	if err != nil {
-		_ = t.Close()
+		_ = observedTun.Close()
 		return false, true, fmt.Errorf("prepare TUN event filter: %w", err)
 	}
 	if n.currentTun == nil {
@@ -248,12 +257,14 @@ func (n *wireGuardNode) attachCurrentTun(tunGeneration uint64, t tun.Tun, batchS
 		err = n.dev.ReplaceTUN(managedTunValue)
 	}
 	if err != nil {
-		_ = t.Close()
+		_ = observedTun.Close()
 		return false, true, fmt.Errorf("attach TUN: %w", err)
 	}
 	n.currentTun = t
 	n.currentManagedTun, _ = managedTunValue.(*wireGuardManagedTun)
+	n.currentTunObserver = observedTun
 	n.currentTunGeneration = tunGeneration
+	n.currentTunFailed = false
 	return n.configApplyNeededLocked(), true, nil
 }
 
@@ -382,7 +393,9 @@ func (n *wireGuardNode) detachCurrentTun(tunGeneration uint64) (bool, error, boo
 	}
 	n.currentTun = nil
 	n.currentManagedTun = nil
+	n.currentTunObserver = nil
 	n.currentTunGeneration = 0
+	n.currentTunFailed = false
 	if n.dev == nil {
 		return n.configApplyNeededLocked(), nil, true
 	}
@@ -429,7 +442,9 @@ func (n *wireGuardNode) stopRuntime() {
 	n.controllerSource.Store(nil)
 	n.currentTun = nil
 	n.currentManagedTun = nil
+	n.currentTunObserver = nil
 	n.currentTunGeneration = 0
+	n.currentTunFailed = false
 	n.currentNetwork = nil
 	n.currentNetworkGeneration = 0
 	n.currentBind = nil

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"maps"
 	"sync"
 
 	almagest "github.com/asciimoth/almagest/lib"
@@ -95,7 +96,10 @@ func (s *secretNodeNameSync) reconcileSnapshot(nodes map[uint64]pasta.NodeSnapsh
 
 	s.mu.Lock()
 	old := s.nodes
-	s.nodes = next
+	// Keep next private after the lock is released. Notification callbacks can
+	// concurrently update s.nodes, while the reconciliation below still reads
+	// next.
+	s.nodes = maps.Clone(next)
 	s.mu.Unlock()
 
 	for id, oldName := range old {

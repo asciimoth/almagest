@@ -27,6 +27,7 @@ type TunConfig = nodekit.TunConfig
 type TunSourceRoute = nodekit.TunSourceRoute
 type TunConfigByLink = nodekit.TunConfigByLink
 type TunOutputCache = nodekit.TunOutputCache
+type tunInputFailureObserver = nodekit.TunFailureObserver
 type WorkerSpawner = nodekit.WorkerSpawner
 type slotPorts = nodekit.SlotPorts
 type slotPortReview = nodekit.SlotPortReview
@@ -57,6 +58,14 @@ func AcceptTunPayload(w *pasta.Workspace, node uint64, event pasta.Event, expect
 
 func acceptTunPayload(event pasta.Event, expectedLink uint64, current tun.Tun) (tun.Tun, bool) {
 	return nodekit.AcceptTunPayloadValue(event, expectedLink, current)
+}
+
+func newTunInputFailureObserver(source tun.Tun, report func(error)) *tunInputFailureObserver {
+	return nodekit.NewTunFailureObserver(source, report)
+}
+
+func tunInputFailureObserverSource(t tun.Tun) tun.Tun {
+	return nodekit.TunFailureObserverSource(t)
 }
 
 func BindTunResource(w *pasta.Workspace, node, link uint64, t tun.Tun) {

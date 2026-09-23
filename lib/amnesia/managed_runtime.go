@@ -483,7 +483,7 @@ func (n *managedAmnesiaNode) activatePreparedRuntimeLocked(
 		return result, true
 	}
 
-	deviceTun, resolver, err := n.newRuntimeTunLocked(req.tun)
+	deviceTun, resolver, tunGeneration, err := n.newRuntimeTunLocked(req.tun, n.runtimeID)
 	if err != nil {
 		return n.failPreparedActivationLocked(req, result, err)
 	}
@@ -504,6 +504,8 @@ func (n *managedAmnesiaNode) activatePreparedRuntimeLocked(
 
 	n.runtimeDevice = dev
 	n.runtimeDNS = resolver
+	n.runtimeTunObserver = deviceTun
+	n.runtimeTunGeneration = tunGeneration
 	if err := wgoamnesia.ApplyProfile(dev, profile); err != nil {
 		n.logDebugf("Amnesia profile apply failed: generation=%d error=%v", req.generation, err)
 		return n.failPreparedActivationLocked(
@@ -561,10 +563,13 @@ func (n *managedAmnesiaNode) failPreparedActivationLocked(
 	return result, true
 }
 
-func (n *managedAmnesiaNode) newRuntimeTunLocked(source gtun.Tun) (gtun.Tun, dns.Interface, error) {
+func (n *managedAmnesiaNode) newRuntimeTunLocked(
+	source gtun.Tun,
+	runtimeID uint64,
+) (*nodekit.TunFailureObserver, dns.Interface, uint64, error) {
 	profile := n.runtimeConfig
 	if profile == nil {
-		return nil, nil, errors.New("create Amnesia TUN: negotiated profile is unavailable")
+		return nil, nil, 0, errors.New("create Amnesia TUN: negotiated profile is unavailable")
 	}
 	// The graph owns source. The device owns only a detached child, either
 	// directly or through TunnelDNS. Closing or replacing the device TUN does
@@ -578,14 +583,30 @@ func (n *managedAmnesiaNode) newRuntimeTunLocked(source gtun.Tun) (gtun.Tun, dns
 			AllowedIPs: profile.Peer.AllowedIPs,
 		})
 		if err != nil {
-			return nil, nil, formatRuntimeError("create tunnel DNS resolver", err)
+			return nil, nil, 0, formatRuntimeError("create tunnel DNS resolver", err)
 		}
 		deviceTun = tunnelResolver
 		resolver = tunnelResolver
 	} else {
 		deviceTun = gtun.Detach(source, nil, n.Pool())
 	}
-	return wireguardnodes.NewContentCeilingTun(deviceTun, n.runtimeProfile.mtu), resolver, nil
+	deviceTun = wireguardnodes.NewContentCeilingTun(deviceTun, n.runtimeProfile.mtu)
+	n.nextTunGeneration++
+	tunGeneration := n.nextTunGeneration
+	var observedTun *nodekit.TunFailureObserver
+	observedTun = nodekit.NewTunFailureObserver(deviceTun, func(err error) {
+		if n.W == nil || n.ID == 0 {
+			return
+		}
+		go n.W.SendInbox(pasta.InboxMessage{ReceiverNode: n.ID, Payload: managedAmnesiaTunFailure{
+			generation:    n.generation.Load(),
+			tunGeneration: tunGeneration,
+			runtimeID:     runtimeID,
+			observer:      observedTun,
+			err:           err,
+		}})
+	})
+	return observedTun, resolver, tunGeneration, nil
 }
 
 func (n *managedAmnesiaNode) replaceRuntimeTunLocked(
@@ -596,7 +617,7 @@ func (n *managedAmnesiaNode) replaceRuntimeTunLocked(
 	if dev == nil {
 		return n.activatePreparedRuntimeLocked(req, result)
 	}
-	deviceTun, resolver, err := n.newRuntimeTunLocked(req.tun)
+	deviceTun, resolver, tunGeneration, err := n.newRuntimeTunLocked(req.tun, n.runtimeID)
 	if err != nil {
 		return n.failPreparedActivationLocked(req, result, err)
 	}
@@ -611,6 +632,8 @@ func (n *managedAmnesiaNode) replaceRuntimeTunLocked(
 		return n.activatePreparedRuntimeLocked(req, result)
 	}
 	n.runtimeDNS = resolver
+	n.runtimeTunObserver = deviceTun
+	n.runtimeTunGeneration = tunGeneration
 	if err := dev.Up(); err != nil {
 		return n.failPreparedActivationLocked(
 			req, result, formatRuntimeError("start WireGuard device after TUN replacement", err),
@@ -722,6 +745,8 @@ func (n *managedAmnesiaNode) closeRuntimeDeviceLocked() {
 	n.runtimeDevice = nil
 	n.runtimeDNS = nil
 	n.runtimeTunSource = nil
+	n.runtimeTunObserver = nil
+	n.runtimeTunGeneration = 0
 }
 
 func managedAmnesiaMaterial(

@@ -40,6 +40,7 @@ func TestDebugLogTunE2EPassthroughDisconnectReconnect(t *testing.T) {
 	e.assertClientRequestWorksWithResponse(client, vtunSpooferResponse)
 
 	e.Engine.RemoveLink(e2etest.E2EWorkspace, logVTun)
+	e.WaitNodeLabel(spoofer, "waiting for tun")
 	logVTun = e.connectTunByPortName(logTun, "left", "in", vtun, "right", "Tun")
 	waitDebugLogTunReady(e, vtun, spoofer, server, port)
 	e.assertClientRequestWorksWithResponse(client, vtunSpooferResponse)

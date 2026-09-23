@@ -7,6 +7,7 @@ import (
 
 	"github.com/asciimoth/gonnect/tun"
 	"github.com/asciimoth/pasta/pasta"
+	"github.com/asciimoth/pasta/pasta/std"
 	wgdevice "github.com/asciimoth/wgo/device"
 
 	"github.com/asciimoth/almagest/lib/links"
@@ -22,6 +23,11 @@ type wireGuardReceiveErrorMessage struct {
 	bindOpenGeneration uint64
 	intentionalClose   bool
 	err                error
+}
+type wireGuardTunFailureMessage struct {
+	attachment    *links.TunFailureObserver
+	tunGeneration uint64
+	err           error
 }
 
 // wireGuardRuntimeResultMessage is the single completion path for async
@@ -428,6 +434,48 @@ func (n *wireGuardNode) handleReceiveError(msg wireGuardReceiveErrorMessage) {
 	n.failRuntime(fmt.Errorf("receive from bind: %w", msg.err), retry)
 	_ = n.updateLabel()
 	n.sendStatusBlock()
+}
+
+// handleTunFailure invalidates only the TUN attachment that reported the
+// terminal I/O failure. The graph link stays attached, so request a replacement
+// payload from its provider after the current wrapper becomes unusable.
+func (n *wireGuardNode) handleTunFailure(msg wireGuardTunFailureMessage) {
+	if msg.attachment == nil || msg.err == nil || msg.tunGeneration != n.currentTunGenerationValue() {
+		return
+	}
+	if !n.runtimeMu.TryLock() {
+		n.deferInternal(msg)
+		return
+	}
+	current := msg.attachment == n.currentTunObserver &&
+		msg.tunGeneration == n.currentTunGeneration &&
+		msg.tunGeneration == n.currentTunGenerationValue() &&
+		n.currentTun != nil && !n.currentTunFailed
+	if current {
+		n.currentTunFailed = true
+		n.runtimeReadyGeneration = 0
+	}
+	n.runtimeMu.Unlock()
+	if !current {
+		return
+	}
+
+	if n.Logger != nil {
+		n.Logger.Errf("WireGuard TUN input failed: %v", msg.err)
+	}
+	n.failWGCtrlInterfaceConfigAppliesForTunGeneration(
+		msg.tunGeneration,
+		fmt.Errorf("WireGuard TUN input failed: %w", msg.err),
+	)
+	n.tunPayloadReceived = false
+	n.desiredTun = nil
+	n.nextTunGeneration()
+	n.nextRuntimeGeneration()
+	_ = n.updateLabel()
+	n.sendStatusBlock()
+	if n.tunLink != 0 {
+		std.RequestLocked(n.W, n.ID, n.tunLink)
+	}
 }
 func (n *wireGuardNode) retryConfigToDevice(generation uint64) {
 	if !n.isCurrentConfigRetry(generation) {

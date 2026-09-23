@@ -2,6 +2,7 @@ package amnesianodes
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -278,6 +279,241 @@ func TestManagedAmnesiaDNSLinkAndCountryChangeLifecycle(t *testing.T) {
 	}
 }
 
+func TestManagedAmnesiaTerminalTunFailureRequestsReplacementAndKeepsRegistration(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		dnsServers []string
+	}{
+		{name: "detached TUN"},
+		{name: "tunnel DNS TUN", dnsServers: []string{"10.20.0.1"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			spawner := &managedAmnesiaLifecycleSpawner{}
+			secrets := &amnesiaTestSecrets{values: map[string]string{
+				"connection-secret": amnesiaTestActivationKey(t, "8f2c41d7a693b5e0"),
+			}}
+			runtime := managedAmnesiaLifecycleRuntime{
+				kv: managedAmnesiaKVManager{store: newAmnesiaMemoryKV()}, spawner: spawner,
+				secrets: secrets,
+			}
+			recorder := &managedAmnesiaClientRecorder{
+				t: t, peerKey: amnesiaTestPrivateKey(t).PublicKey(),
+				dnsByCountry: map[string][]string{"nl": test.dnsServers},
+			}
+			class := &recordingManagedAmnesiaClass{base: AmnesiaClass{
+				Runtime: runtime, NewClient: recorder.factory,
+			}}
+			w, err := pasta.WorkspaceFromConfig(
+				[]pasta.NodeClass{class}, managedAmnesiaEnabledLifecycleConfig("amnesia"),
+				logging.NewDebugLogFactory(512),
+			)
+			if err != nil {
+				t.Fatalf("build workspace: %v", err)
+			}
+			t.Cleanup(func() {
+				w.Close()
+				spawner.wait()
+			})
+			node := class.onlyNode(t)
+
+			tunProvider := &managedAmnesiaLinkPeer{}
+			tunProviderID, err := w.AddNode(tunProvider, "test/AmnesiaTunProvider", "tun provider")
+			if err != nil {
+				t.Fatalf("add TUN provider: %v", err)
+			}
+			tunPort, err := w.AddPort(pasta.Port{
+				Node: tunProviderID, Direction: "right", Name: "Tun", Types: []string{nodekit.TypeTun},
+			})
+			if err != nil {
+				t.Fatalf("add TUN provider port: %v", err)
+			}
+			networkProvider := &managedAmnesiaLinkPeer{}
+			networkProviderID, err := w.AddNode(networkProvider, "test/AmnesiaNetworkProvider", "network provider")
+			if err != nil {
+				t.Fatalf("add network provider: %v", err)
+			}
+			networkPort, err := w.AddPort(pasta.Port{
+				Node: networkProviderID, Direction: "left", Name: "Network", Types: []string{nodekit.TypeNetwork},
+			})
+			if err != nil {
+				t.Fatalf("add network provider port: %v", err)
+			}
+			tunLink, _, err := w.AddLink(tunPort, node.tunp)
+			if err != nil {
+				t.Fatalf("attach TUN link: %v", err)
+			}
+			networkLink, _, err := w.AddLink(networkPort, node.netp)
+			if err != nil {
+				t.Fatalf("attach network link: %v", err)
+			}
+			network := gonnect.DetachNetwork(gonnect.NewLoopbackNetwork(), nil, nil)
+			t.Cleanup(func() { _ = network.Close() })
+			w.EmitEvent(networkProviderID, networkLink, nodekit.NetworkPayload{Network: network})
+
+			firstTun, closeFirstTun := newManagedAmnesiaLifecycleTun(t)
+			w.EmitEvent(tunProviderID, tunLink, nodekit.TunPayload{Tun: firstTun})
+			waitManagedAmnesiaNodeLabel(t, w, node.ID, "up")
+			firstObserver, firstTunGeneration, runtimeID, runtimeClient := managedAmnesiaRuntimeIdentity(t, node)
+			if len(recorder.privateKeys) != 1 || firstObserver == nil || runtimeClient == nil {
+				t.Fatalf(
+					"initial runtime keys=%d observer=%p client=%v",
+					len(recorder.privateKeys), firstObserver, runtimeClient,
+				)
+			}
+			initialRequests := managedAmnesiaRequestCount(w, tunProvider)
+			generationBeforeReconcile := node.generation.Load()
+
+			// A reconcile can keep the same data-plane TUN. The observer must
+			// report a later failure against the then-current node generation.
+			w.Lock()
+			node.scheduleReconcile(true)
+			w.Unlock()
+			waitManagedAmnesiaNodeLabel(t, w, node.ID, "up")
+			reconciledObserver, reconciledTunGeneration, reconciledRuntimeID, reconciledClient :=
+				managedAmnesiaRuntimeIdentity(t, node)
+			if node.generation.Load() <= generationBeforeReconcile ||
+				reconciledObserver != firstObserver || reconciledTunGeneration != firstTunGeneration ||
+				reconciledRuntimeID != runtimeID || reconciledClient != runtimeClient {
+				t.Fatal("same-TUN reconcile replaced or invalidated the active attachment identity")
+			}
+
+			closeFirstTun()
+			waitManagedAmnesiaRequestAfterFailure(t, w, node, tunProvider, initialRequests)
+			assertManagedAmnesiaRegistrationKept(t, node, runtimeID, runtimeClient)
+
+			secondTun, closeSecondTun := newManagedAmnesiaLifecycleTun(t)
+			w.EmitEvent(tunProviderID, tunLink, nodekit.TunPayload{Tun: secondTun})
+			waitManagedAmnesiaNodeLabel(t, w, node.ID, "up")
+			secondObserver, secondTunGeneration, secondRuntimeID, secondClient := managedAmnesiaRuntimeIdentity(t, node)
+			if secondObserver == nil || secondObserver == firstObserver || secondRuntimeID != runtimeID ||
+				secondClient != runtimeClient || len(recorder.privateKeys) != 1 {
+				t.Fatalf(
+					"first recovery observer=%p->%p runtime=%d->%d client_same=%t keys=%d",
+					firstObserver, secondObserver, runtimeID, secondRuntimeID,
+					secondClient == runtimeClient, len(recorder.privateKeys),
+				)
+			}
+
+			// A delayed failure from the replaced observer must not invalidate the
+			// live replacement or request another payload.
+			requestsBeforeStale := managedAmnesiaRequestCount(w, tunProvider)
+			currentGeneration := node.generation.Load()
+			w.Lock()
+			node.handleTunFailure(managedAmnesiaTunFailure{
+				generation:    currentGeneration,
+				tunGeneration: firstTunGeneration,
+				runtimeID:     runtimeID,
+				observer:      firstObserver,
+				err:           errors.New("stale TUN attachment failure"),
+			})
+			node.handleTunFailure(managedAmnesiaTunFailure{
+				generation:    currentGeneration,
+				tunGeneration: secondTunGeneration,
+				runtimeID:     runtimeID + 1,
+				observer:      secondObserver,
+				err:           errors.New("stale Amnesia runtime failure"),
+			})
+			w.Unlock()
+			waitManagedAmnesiaNodeLabel(t, w, node.ID, "up")
+			if got := managedAmnesiaRequestCount(w, tunProvider); got != requestsBeforeStale {
+				t.Fatalf("stale failure request count = %d, want %d", got, requestsBeforeStale)
+			}
+
+			closeSecondTun()
+			waitManagedAmnesiaRequestAfterFailure(t, w, node, tunProvider, requestsBeforeStale)
+			assertManagedAmnesiaRegistrationKept(t, node, runtimeID, runtimeClient)
+			thirdTun, _ := newManagedAmnesiaLifecycleTun(t)
+			w.EmitEvent(tunProviderID, tunLink, nodekit.TunPayload{Tun: thirdTun})
+			waitManagedAmnesiaNodeLabel(t, w, node.ID, "up")
+			thirdObserver, _, thirdRuntimeID, thirdClient := managedAmnesiaRuntimeIdentity(t, node)
+			if thirdObserver == nil || thirdObserver == secondObserver || thirdRuntimeID != runtimeID ||
+				thirdClient != runtimeClient || len(recorder.privateKeys) != 1 {
+				t.Fatalf(
+					"second recovery observer=%p->%p runtime=%d->%d client_same=%t keys=%d",
+					secondObserver, thirdObserver, runtimeID, thirdRuntimeID,
+					thirdClient == runtimeClient, len(recorder.privateKeys),
+				)
+			}
+		})
+	}
+}
+
+func newManagedAmnesiaLifecycleTun(t *testing.T) (tun.Tun, func()) {
+	t.Helper()
+	source, peer := tun.Pipe(1, 1500, 0, 0)
+	detached := tun.Detach(source, nil, nil)
+	var once sync.Once
+	closeTun := func() {
+		once.Do(func() { _ = detached.Close() })
+	}
+	t.Cleanup(func() {
+		closeTun()
+		_ = source.Close()
+		_ = peer.Close()
+	})
+	return detached, closeTun
+}
+
+func managedAmnesiaRuntimeIdentity(
+	t *testing.T,
+	node *managedAmnesiaNode,
+) (*nodekit.TunFailureObserver, uint64, uint64, Client) {
+	t.Helper()
+	node.managedMu.Lock()
+	defer node.managedMu.Unlock()
+	return node.runtimeTunObserver, node.runtimeTunGeneration, node.runtimeID, node.runtimeClient
+}
+
+func assertManagedAmnesiaRegistrationKept(
+	t *testing.T,
+	node *managedAmnesiaNode,
+	runtimeID uint64,
+	client Client,
+) {
+	t.Helper()
+	waitManagedAmnesiaLifecycle(t, func() bool {
+		node.managedMu.Lock()
+		defer node.managedMu.Unlock()
+		return node.runtimeDevice == nil
+	}, "failed Amnesia data plane was not closed")
+	node.managedMu.Lock()
+	defer node.managedMu.Unlock()
+	if node.runtimeID != runtimeID || node.runtimeClient != client || node.runtimeConfig == nil {
+		t.Fatalf(
+			"TUN failure discarded registration: runtime=%d want=%d client_same=%t config=%p",
+			node.runtimeID, runtimeID, node.runtimeClient == client, node.runtimeConfig,
+		)
+	}
+}
+
+func waitManagedAmnesiaRequestAfterFailure(
+	t *testing.T,
+	w *pasta.Workspace,
+	node *managedAmnesiaNode,
+	provider *managedAmnesiaLinkPeer,
+	previous int,
+) {
+	t.Helper()
+	waitManagedAmnesiaLifecycle(t, func() bool {
+		snapshot, ok := w.NodeSnapshot(node.ID)
+		return ok && snapshot.Label != "up" && managedAmnesiaRequestCount(w, provider) > previous
+	}, "Amnesia did not leave up state and request a replacement TUN")
+}
+
+func waitManagedAmnesiaNodeLabel(t *testing.T, w *pasta.Workspace, node uint64, want string) {
+	t.Helper()
+	waitManagedAmnesiaLifecycle(t, func() bool {
+		snapshot, ok := w.NodeSnapshot(node)
+		return ok && snapshot.Label == want
+	}, "Amnesia did not reach state "+want)
+}
+
+func managedAmnesiaRequestCount(w *pasta.Workspace, provider *managedAmnesiaLinkPeer) int {
+	w.Lock()
+	defer w.Unlock()
+	return provider.requests
+}
+
 func TestManagedAmnesiaSaveRestorePreservesConfigAndInstallationUUID(t *testing.T) {
 	manager := managedAmnesiaKVManager{store: newAmnesiaMemoryKV()}
 	spawner := &managedAmnesiaLifecycleSpawner{}
@@ -350,6 +586,17 @@ func managedAmnesiaLifecycleConfig(name string) configer.Config {
 	})
 }
 
+func managedAmnesiaEnabledLifecycleConfig(name string) configer.Config {
+	return configer.NewMemory(map[string]any{
+		name: map[string]any{
+			"Class":                NodeTypeAmnesia,
+			fieldEnabled:           true,
+			fieldConnectionSecret:  "connection-secret",
+			fieldServerCountryCode: "nl",
+		},
+	})
+}
+
 type recordingManagedAmnesiaClass struct {
 	base  AmnesiaClass
 	nodes []*managedAmnesiaNode
@@ -386,10 +633,22 @@ func (c *recordingManagedAmnesiaClass) onlyNode(t *testing.T) *managedAmnesiaNod
 
 type managedAmnesiaLinkPeer struct {
 	pasta.BasicNode
-	_ byte
+	requests int
 }
 
 func (*managedAmnesiaLinkPeer) PreLinkAdd(uint64, string, string) error { return nil }
+
+func (p *managedAmnesiaLinkPeer) OnEvent(
+	event pasta.Event,
+	_ string,
+	_ []string,
+	_ string,
+) error {
+	if std.IsRequest(event.Payload) {
+		p.requests++
+	}
+	return nil
+}
 
 type managedAmnesiaDNSPeer struct {
 	pasta.BasicNode
@@ -449,6 +708,7 @@ func (m managedAmnesiaKVManager) PluginStore(name string) storage.KVStore {
 type managedAmnesiaLifecycleRuntime struct {
 	kv      storage.KVManager
 	spawner nodekit.WorkerSpawner
+	secrets storage.SecretsStorage
 }
 
 func (managedAmnesiaLifecycleRuntime) Context() context.Context { return context.Background() }
@@ -458,7 +718,7 @@ func (r managedAmnesiaLifecycleRuntime) KVManager() storage.KVManager {
 	return r.kv
 }
 func (managedAmnesiaLifecycleRuntime) DnsCacheManager() storage.DnsCacheManager { return nil }
-func (managedAmnesiaLifecycleRuntime) SecretsStorage() storage.SecretsStorage   { return nil }
+func (r managedAmnesiaLifecycleRuntime) SecretsStorage() storage.SecretsStorage { return r.secrets }
 func (managedAmnesiaLifecycleRuntime) TlsConfigStorage() storage.TlsConfigStorage {
 	return nil
 }

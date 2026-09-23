@@ -167,7 +167,7 @@ func (n *wireGuardNode) wgCtrlInterfaceConfigReadyLocked(generation uint64, netw
 	// cause adjacent TUN replacements.
 	return n.currentTunGeneration == n.currentTunGenerationValue() &&
 		n.currentTunGeneration >= generation &&
-		n.currentTun != nil && TunIsReady(n.currentTun) &&
+		n.currentTunActiveLocked() &&
 		// A desired network with no healthy current bind is a failed or
 		// incomplete transport, not the same condition as an intentionally
 		// absent network.

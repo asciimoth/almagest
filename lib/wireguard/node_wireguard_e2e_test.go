@@ -62,11 +62,29 @@ func TestWireGuardE2EVTunHTTPClientServer(t *testing.T) {
 	f.WaitNodeLabel(f.clientWG, "up")
 	f.assertWireGuardRequestWorks()
 
+	// Insert pass-through middleware, then exercise both a direct consumer
+	// detach and an indirect upstream failure while the WireGuard graph link
+	// remains attached.
 	f.Engine.RemoveLink(E2EWorkspace, f.clientWGTunLink)
 	f.WaitNodeLabel(f.clientWG, "waiting for TUN")
-	f.clientWGTunLink = f.connectTunByPortName(f.clientWG, "left", "Tun", f.clientVTun, "right", "Tun")
+	logTun := f.AddNode(NodeTypeDebugLogTun, "wireguard-client-log-tun")
+	upstreamTunLink := f.connectTunByPortName(logTun, "left", "in", f.clientVTun, "right", "Tun")
+	f.clientWGTunLink = f.connectTunByPortName(f.clientWG, "left", "Tun", logTun, "right", "Tun")
 	f.WaitNodeLabel(f.clientWG, "up")
 	f.assertWireGuardRequestWorks()
+
+	f.Engine.RemoveLink(E2EWorkspace, f.clientWGTunLink)
+	f.WaitNodeLabel(f.clientWG, "waiting for TUN")
+	f.clientWGTunLink = f.connectTunByPortName(f.clientWG, "left", "Tun", logTun, "right", "Tun")
+	f.WaitNodeLabel(f.clientWG, "up")
+	f.assertWireGuardRequestWorks()
+
+	f.Engine.RemoveLink(E2EWorkspace, upstreamTunLink)
+	f.WaitNodeLabel(f.clientWG, "waiting for TUN")
+	upstreamTunLink = f.connectTunByPortName(logTun, "left", "in", f.clientVTun, "right", "Tun")
+	f.WaitNodeLabel(f.clientWG, "up")
+	f.assertWireGuardRequestWorks()
+	_ = upstreamTunLink
 }
 
 func TestWireGuardE2EWGConfigUsesNamedUDPTransport(t *testing.T) {

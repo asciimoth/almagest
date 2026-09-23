@@ -5,6 +5,7 @@ import (
 
 	"github.com/asciimoth/gonnect"
 	gonnecttun "github.com/asciimoth/gonnect/tun"
+	"github.com/asciimoth/pasta/pasta"
 )
 
 func TestSpooferNodeStartsRebuildsAndStopsWithInputs(t *testing.T) {
@@ -46,6 +47,32 @@ func TestSpooferNodeStartsRebuildsAndStopsWithInputs(t *testing.T) {
 	node.rebuildStack()
 	if node.runtime != nil {
 		t.Fatal("Spoofer runtime after network detach != nil, want stopped")
+	}
+}
+
+func TestSpooferIgnoresStaleTunFailure(t *testing.T) {
+	source, peer := gonnecttun.Pipe(1, defaultSpooferMTU, 0, 0)
+	t.Cleanup(func() {
+		_ = source.Close()
+		_ = peer.Close()
+	})
+	current := &spooferRuntime{}
+	node := &spooferNode{
+		tun:     source,
+		tunLink: 23,
+		runtime: current,
+	}
+
+	for _, failed := range []spooferTunFailed{
+		{runtime: &spooferRuntime{}, link: 23, err: gonnecttun.ErrDetachedTunFailed},
+		{runtime: current, link: 24, err: gonnecttun.ErrDetachedTunFailed},
+	} {
+		if err := node.OnInbox(pasta.InboxMessage{Payload: failed}); err != nil {
+			t.Fatalf("OnInbox(%+v): %v", failed, err)
+		}
+		if node.tun != source || node.runtime != current {
+			t.Fatal("stale failure stopped the current Spoofer runtime")
+		}
 	}
 }
 

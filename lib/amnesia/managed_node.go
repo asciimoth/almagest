@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
@@ -130,6 +131,9 @@ type managedAmnesiaNode struct {
 	runtimeDNS           dns.Interface
 	runtimeHTTP          interface{ CloseIdleConnections() }
 	runtimeTunSource     tun.Tun
+	runtimeTunObserver   *nodekit.TunFailureObserver
+	runtimeTunGeneration uint64
+	nextTunGeneration    uint64
 	runtimeNetwork       nodekit.NetworkCloser
 	runtimeMaterial      [32]byte
 	runtimeProfile       amnesiaProfileStatus
@@ -210,6 +214,14 @@ type managedAmnesiaImportStarter func(
 type managedAmnesiaStats struct {
 	generation uint64
 	stats      wgdevice.RuntimeStats
+}
+
+type managedAmnesiaTunFailure struct {
+	generation    uint64
+	tunGeneration uint64
+	runtimeID     uint64
+	observer      *nodekit.TunFailureObserver
+	err           error
 }
 
 func (n *managedAmnesiaNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
@@ -368,6 +380,8 @@ func (n *managedAmnesiaNode) OnInbox(message pasta.InboxMessage) error {
 			n.runtimeStats = msg.stats
 			n.sendStatusBlock()
 		}
+	case managedAmnesiaTunFailure:
+		n.handleTunFailure(msg)
 	case managedAmnesiaMTUChanged:
 		n.handleManagedNetworkMTUChanged(msg)
 	case storage.SecretValueChanged:
@@ -376,6 +390,49 @@ func (n *managedAmnesiaNode) OnInbox(message pasta.InboxMessage) error {
 		n.handleTLSConfigChanged(msg)
 	}
 	return nil
+}
+
+// handleTunFailure handles a terminal failure from the exact data-plane TUN
+// that is still current. It keeps the negotiated service profile and requests
+// a replacement graph payload so recovery does not register a second key.
+func (n *managedAmnesiaNode) handleTunFailure(msg managedAmnesiaTunFailure) {
+	if msg.observer == nil || msg.err == nil || msg.generation != n.generation.Load() {
+		return
+	}
+	if !n.managedMu.TryLock() {
+		n.deferTunFailure(msg)
+		return
+	}
+	current := msg.generation == n.generation.Load() &&
+		msg.tunGeneration != 0 && msg.tunGeneration == n.runtimeTunGeneration &&
+		msg.runtimeID != 0 && msg.runtimeID == n.runtimeID &&
+		msg.observer == n.runtimeTunObserver && n.runtimeDevice != nil
+	n.managedMu.Unlock()
+	if !current {
+		return
+	}
+
+	n.logDebugf(
+		"Amnesia TUN input failed; requesting replacement: generation=%d runtime=%d error=%v",
+		msg.generation, msg.runtimeID, msg.err,
+	)
+	n.tun = nil
+	n.scheduleReconcile(true)
+	if n.tunLink != 0 {
+		std.RequestLocked(n.W, n.ID, n.tunLink)
+	}
+}
+
+func (n *managedAmnesiaNode) deferTunFailure(msg managedAmnesiaTunFailure) {
+	if n.W == nil || n.ID == 0 {
+		return
+	}
+	go func() {
+		timer := time.NewTimer(10 * time.Millisecond)
+		defer timer.Stop()
+		<-timer.C
+		n.W.SendInbox(pasta.InboxMessage{ReceiverNode: n.ID, Payload: msg})
+	}()
 }
 
 func (n *managedAmnesiaNode) OnFormularMsg(message any) error {

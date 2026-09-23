@@ -3,7 +3,6 @@ package tunnodes
 import (
 	"errors"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/asciimoth/almagest/lib/nodekit"
@@ -571,89 +570,6 @@ type tunSplitterInputFailed struct {
 type tunSplitterInputRetry struct {
 	link       uint64
 	generation uint64
-}
-
-type tunInputFailureObserver struct {
-	tun.Tun
-	reportFailureOnce sync.Once
-	eventsOnce        sync.Once
-	closeOnce         sync.Once
-	done              chan struct{}
-	events            chan tun.Event
-	report            func(error)
-}
-
-func newTunInputFailureObserver(t tun.Tun, report func(error)) *tunInputFailureObserver {
-	return &tunInputFailureObserver{
-		Tun:    t,
-		done:   make(chan struct{}),
-		report: report,
-	}
-}
-
-func tunInputFailureObserverSource(t tun.Tun) tun.Tun {
-	if observed, ok := t.(*tunInputFailureObserver); ok {
-		return observed.Tun
-	}
-	return t
-}
-
-func (t *tunInputFailureObserver) Read(bufs [][]byte, sizes []int, offset int) (int, error) {
-	count, err := t.Tun.Read(bufs, sizes, offset)
-	t.reportOnce(err)
-	return count, err
-}
-
-func (t *tunInputFailureObserver) Write(bufs [][]byte, offset int) (int, error) {
-	count, err := t.Tun.Write(bufs, offset)
-	t.reportOnce(err)
-	return count, err
-}
-
-func (t *tunInputFailureObserver) Events() <-chan tun.Event {
-	t.eventsOnce.Do(func() {
-		t.events = make(chan tun.Event, 8)
-		go t.forwardEvents()
-	})
-	return t.events
-}
-
-func (t *tunInputFailureObserver) Close() error {
-	t.closeOnce.Do(func() { close(t.done) })
-	return t.Tun.Close()
-}
-
-func (t *tunInputFailureObserver) forwardEvents() {
-	defer close(t.events)
-	events := t.Tun.Events()
-	for {
-		select {
-		case <-t.done:
-			return
-		case event, ok := <-events:
-			if !ok {
-				t.reportOnce(errors.New("TUN input event stream closed"))
-				return
-			}
-			if event == tun.EventDown {
-				_, err := t.MTU()
-				if errors.Is(err, tun.ErrDetachedTunFailed) {
-					t.reportOnce(err)
-				}
-			}
-			select {
-			case <-t.done:
-				return
-			case t.events <- event:
-			}
-		}
-	}
-}
-
-func (t *tunInputFailureObserver) reportOnce(err error) {
-	if err != nil && t.report != nil {
-		t.reportFailureOnce.Do(func() { t.report(err) })
-	}
 }
 
 func (n *tunSplitterNode) handleInputFailed(msg tunSplitterInputFailed) error {

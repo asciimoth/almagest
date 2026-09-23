@@ -111,6 +111,35 @@ func TestTunCopyE2ECopiesPacketsAfterAttachDetachReattach(t *testing.T) {
 	_ = linkA
 }
 
+func TestTunCopyE2EDetectsFailedInputsAndRecoversWithoutRelink(t *testing.T) {
+	e, providers := newTunCopyE2E(t)
+	copyNode := e.AddNode(NodeTypeTunCopy, "copy")
+	providerA := e.AddNode(testTunProviderNodeType, "provider-a")
+	providerB := e.AddNode(testTunProviderNodeType, "provider-b")
+
+	e.MustAddTypedLinkByPortName(TypeTun, copyNode, "left", "TunA", providerA, "right", "Tun")
+	e.MustAddTypedLinkByPortName(TypeTun, copyNode, "left", "TunB", providerB, "right", "Tun")
+	e.WaitNodeLabel(copyNode, "copying")
+
+	providers.pause(t, providerA)
+	e.WaitNodeLabel(copyNode, "waiting for TunA")
+	providers.resume(t, providerA)
+	e.WaitNodeLabel(copyNode, "copying")
+	peerA := providers.peer(t, providerA)
+	peerB := providers.peer(t, providerB)
+	assertTunPacketCopied(t, peerA, peerB, "a-to-b-after-failed-a")
+	assertTunPacketCopied(t, peerB, peerA, "b-to-a-after-failed-a")
+
+	providers.pause(t, providerB)
+	e.WaitNodeLabel(copyNode, "waiting for TunB")
+	providers.resume(t, providerB)
+	e.WaitNodeLabel(copyNode, "copying")
+	peerA = providers.peer(t, providerA)
+	peerB = providers.peer(t, providerB)
+	assertTunPacketCopied(t, peerA, peerB, "a-to-b-after-failed-b")
+	assertTunPacketCopied(t, peerB, peerA, "b-to-a-after-failed-b")
+}
+
 func TestTunCopyE2EClassHasTwoLeftTunPortsAndNoMenu(t *testing.T) {
 	e, _ := newTunCopyE2E(t)
 	copyNode := e.AddNode(NodeTypeTunCopy, "copy")
@@ -253,6 +282,44 @@ func (r *testTunProviderRegistry) peer(t *testing.T, id uint64) tun.Tun {
 	return peer
 }
 
+func (r *testTunProviderRegistry) pause(t *testing.T, id uint64) {
+	t.Helper()
+	r.control(t, id, true)
+}
+
+func (r *testTunProviderRegistry) resume(t *testing.T, id uint64) {
+	t.Helper()
+	r.control(t, id, false)
+}
+
+func (r *testTunProviderRegistry) control(t *testing.T, id uint64, paused bool) {
+	t.Helper()
+	r.mu.Lock()
+	node := r.nodes[id]
+	r.mu.Unlock()
+	if node == nil {
+		t.Fatalf("test tun provider %d missing", id)
+	}
+	done := make(chan struct{})
+	node.w.SendInbox(pasta.InboxMessage{
+		ReceiverNode: id,
+		Payload: testTunProviderControl{
+			paused: paused,
+			done:   done,
+		},
+	})
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatalf("test tun provider %d control timed out", id)
+	}
+}
+
+type testTunProviderControl struct {
+	paused bool
+	done   chan struct{}
+}
+
 type testTunProviderClass struct {
 	registry *testTunProviderRegistry
 }
@@ -280,6 +347,7 @@ type testTunProviderNode struct {
 	source  tun.Tun
 	peer    tun.Tun
 	outputs TunOutputCache
+	paused  bool
 }
 
 func (n *testTunProviderNode) OnInit(w *pasta.Workspace, _ pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
@@ -331,7 +399,27 @@ func (n *testTunProviderNode) OnEvent(event pasta.Event, linkType string, _ []st
 	if event.ReceiverPort != n.out || receiverPortDirection != "right" || linkType != TypeTun || !std.IsRequest(event.Payload) {
 		return nil
 	}
+	if n.paused {
+		return nil
+	}
 	n.sendTunToLink(event.Link)
+	return nil
+}
+
+func (n *testTunProviderNode) OnInbox(message pasta.InboxMessage) error {
+	control, ok := message.Payload.(testTunProviderControl)
+	if !ok {
+		return nil
+	}
+	defer close(control.done)
+	n.paused = control.paused
+	if n.paused {
+		n.outputs.CloseAll()
+		n.closePipe()
+		n.outputs.Wait()
+		return nil
+	}
+	n.sendAll()
 	return nil
 }
 
@@ -342,6 +430,9 @@ func (n *testTunProviderNode) sendAll() {
 }
 
 func (n *testTunProviderNode) sendTunToLink(link uint64) {
+	if n.paused {
+		return
+	}
 	n.ensurePipe()
 	n.outputs.SendLocked(n.w, n.id, link, n.source, nil)
 }

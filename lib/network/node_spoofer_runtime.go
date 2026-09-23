@@ -5,10 +5,12 @@ import (
 	"errors"
 	"time"
 
+	"github.com/asciimoth/almagest/lib/nodekit"
 	"github.com/asciimoth/gonnect"
 	netstackhelpers "github.com/asciimoth/gonnect-netstack/helpers"
 	netstackspoofer "github.com/asciimoth/gonnect-netstack/spoofer"
 	"github.com/asciimoth/gonnect/tun"
+	"github.com/asciimoth/pasta/pasta"
 	"golang.org/x/time/rate"
 	"gvisor.dev/gvisor/pkg/tcpip/stack"
 )
@@ -26,6 +28,12 @@ type spooferRuntime struct {
 	tun      tun.Tun
 }
 
+type spooferTunFailed struct {
+	runtime *spooferRuntime
+	link    uint64
+	err     error
+}
+
 func (n *spooferNode) rebuildStack() {
 	n.stopStack()
 	if n.tun == nil || n.networkValue == nil {
@@ -35,7 +43,22 @@ func (n *spooferNode) rebuildStack() {
 	ctx, cancel := context.WithCancel(n.Context())
 	// Nil spawner is intentional here; see the Gonnect spawner note in helpers.go.
 	stackTun := tun.Detach(n.tun, nil, n.pool)
-	BindTunResource(n.W, n.ID, 0, stackTun)
+	runtime := &spooferRuntime{ctx: ctx, cancel: cancel}
+	tunLink := n.tunLink
+	observedTun := nodekit.NewTunFailureObserver(stackTun, func(err error) {
+		// SendInbox takes the workspace lock. Netstack can report while a graph
+		// callback already owns that lock, so dispatch the report separately.
+		go n.W.SendInbox(pasta.InboxMessage{
+			ReceiverNode: n.ID,
+			Payload: spooferTunFailed{
+				runtime: runtime,
+				link:    tunLink,
+				err:     err,
+			},
+		})
+	})
+	runtime.tun = observedTun
+	BindTunResource(n.W, n.ID, 0, observedTun)
 	network := n.networkValue
 	networkNode := n.networkNode
 	report := func(protocol string, ep stack.TransportEndpointID, err error) {
@@ -75,7 +98,7 @@ func (n *spooferNode) rebuildStack() {
 			DisableSACK: n.config.disableSACK,
 		},
 	}
-	opts.WithTunEndpoint(stackTun, n.config.queueLength)
+	opts.WithTunEndpoint(observedTun, n.config.queueLength)
 	st, err := opts.LaunchContext(ctx)
 	if err != nil {
 		cancel()
@@ -83,7 +106,7 @@ func (n *spooferNode) rebuildStack() {
 			closeLinkEndpoint(opts.Endpoint)
 			waitLinkEndpoint(opts.Endpoint)
 		} else {
-			_ = stackTun.Close()
+			_ = observedTun.Close()
 		}
 		n.formError = err.Error()
 		n.sendForcedMenuSnapshot()
@@ -91,13 +114,9 @@ func (n *spooferNode) rebuildStack() {
 		return
 	}
 	n.formError = ""
-	n.runtime = &spooferRuntime{
-		ctx:      ctx,
-		cancel:   cancel,
-		stack:    st,
-		endpoint: opts.Endpoint,
-		tun:      stackTun,
-	}
+	runtime.stack = st
+	runtime.endpoint = opts.Endpoint
+	n.runtime = runtime
 	_ = n.updateLabel()
 }
 

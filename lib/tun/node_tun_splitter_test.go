@@ -193,11 +193,7 @@ func TestTunInputFailureObserverReportsTerminalFailureFromEvent(t *testing.T) {
 	base, peer := tun.Pipe(1, 1500, 0, 0)
 	root := tun.Detach(&failFirstTunRead{Tun: base}, nil, nil)
 	reported := make(chan error, 1)
-	observed := &tunInputFailureObserver{
-		Tun:    root,
-		done:   make(chan struct{}),
-		report: func(err error) { reported <- err },
-	}
+	observed := newTunInputFailureObserver(root, func(err error) { reported <- err })
 	t.Cleanup(func() {
 		_ = observed.Close()
 		_ = base.Close()

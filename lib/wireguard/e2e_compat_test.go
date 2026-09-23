@@ -42,6 +42,7 @@ const (
 	NodeTypeSocksClient = socksnodes.NodeTypeSocksClient
 
 	NodeTypeTunConfigStripper = tunnodes.NodeTypeTunConfigStripper
+	NodeTypeDebugLogTun       = tunnodes.NodeTypeDebugLogTun
 	NodeTypeVTun              = tunnodes.NodeTypeVTun
 	DefaultVTunDNSServer      = tunnodes.DefaultVTunDNSServer
 	NodeTypeWireGuard         = wireguardnodes.NodeTypeWireGuard

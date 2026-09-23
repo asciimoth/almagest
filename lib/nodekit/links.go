@@ -25,6 +25,7 @@ type TunConfig = links.TunConfig
 type TunSourceRoute = links.TunSourceRoute
 type TunConfigByLink = links.TunConfigByLink
 type TunOutputCache = links.TunOutputCache
+type TunFailureObserver = links.TunFailureObserver
 
 func NetworkPort(direction, name string) pasta.Port {
 	return links.NetworkPort(direction, name)
@@ -118,6 +119,14 @@ func AcceptTunPayload(w *pasta.Workspace, node uint64, event pasta.Event, expect
 // AcceptTunPayloadValue accepts a TUN payload without binding its resource.
 func AcceptTunPayloadValue(event pasta.Event, expectedLink uint64, current tun.Tun) (tun.Tun, bool) {
 	return links.AcceptTunPayloadValue(event, expectedLink, current)
+}
+
+func NewTunFailureObserver(source tun.Tun, report func(error)) *TunFailureObserver {
+	return links.NewTunFailureObserver(source, report)
+}
+
+func TunFailureObserverSource(t tun.Tun) tun.Tun {
+	return links.TunFailureObserverSource(t)
 }
 
 func CloseTun(t tun.Tun) error {

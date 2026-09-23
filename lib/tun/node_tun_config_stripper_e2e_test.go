@@ -26,6 +26,22 @@ func TestTunConfigStripperE2EVTunHTTPClientServer(t *testing.T) {
 	f.WaitNodeLabel(f.copy, "copying")
 }
 
+func TestTunConfigStripperE2EUpstreamDetachUpdatesTunCopyAndRecovers(t *testing.T) {
+	f := setupTunConfigStripperVTunHTTPE2E(t)
+
+	f.Engine.RemoveLink(E2EWorkspace, f.clientInputLink)
+	f.WaitNodeLabel(f.copy, "waiting for TunA")
+	f.clientInputLink = f.connectTunByPortName(f.clientStripper, "left", "Tun", f.vtunA, "right", "Tun")
+	f.WaitNodeLabel(f.copy, "copying")
+	f.assertClientRequestWorks(f.client)
+
+	f.Engine.RemoveLink(E2EWorkspace, f.serverInputLink)
+	f.WaitNodeLabel(f.copy, "waiting for TunB")
+	f.serverInputLink = f.connectTunByPortName(f.serverStripper, "left", "Tun", f.vtunB, "right", "Tun")
+	f.WaitNodeLabel(f.copy, "copying")
+	f.assertClientRequestWorks(f.client)
+}
+
 func TestTunConfigStripperE2EDropsTunConfigButPassesRequests(t *testing.T) {
 	e, recorders := newTunConfigStripperConfigE2E(t)
 	recorder := e.AddNode(testTunConfigRecorderNodeType, "recorder")
@@ -43,14 +59,16 @@ func TestTunConfigStripperE2EDropsTunConfigButPassesRequests(t *testing.T) {
 type tunConfigStripperVTunHTTPE2EFixture struct {
 	*httpE2E
 
-	copy           uint64
-	clientStripper uint64
-	serverStripper uint64
-	vtunA          uint64
-	vtunB          uint64
-	server         uint64
-	client         uint64
-	port           int
+	copy            uint64
+	clientStripper  uint64
+	serverStripper  uint64
+	vtunA           uint64
+	vtunB           uint64
+	server          uint64
+	client          uint64
+	clientInputLink uint64
+	serverInputLink uint64
+	port            int
 }
 
 func setupTunConfigStripperVTunHTTPE2E(t *testing.T) tunConfigStripperVTunHTTPE2EFixture {
@@ -69,9 +87,9 @@ func setupTunConfigStripperVTunHTTPE2E(t *testing.T) tunConfigStripperVTunHTTPE2
 
 	e.applyTunCopyVTunConfig(f.vtunA, "client-vtun", tunCopyE2EClientAddr+"/24")
 	e.applyTunCopyVTunConfig(f.vtunB, "server-vtun", tunCopyE2EServerAddr+"/24")
-	e.connectTunByPortName(f.clientStripper, "left", "Tun", f.vtunA, "right", "Tun")
+	f.clientInputLink = e.connectTunByPortName(f.clientStripper, "left", "Tun", f.vtunA, "right", "Tun")
 	e.connectTunByPortName(f.copy, "left", "TunA", f.clientStripper, "right", "Tun")
-	e.connectTunByPortName(f.serverStripper, "left", "Tun", f.vtunB, "right", "Tun")
+	f.serverInputLink = e.connectTunByPortName(f.serverStripper, "left", "Tun", f.vtunB, "right", "Tun")
 	e.connectTunByPortName(f.copy, "left", "TunB", f.serverStripper, "right", "Tun")
 	e.connectByPortName(f.vtunA, "left", "Network", f.client, "right", "Network")
 	e.connectByPortName(f.vtunB, "left", "Network", f.server, "right", "Network")

@@ -980,6 +980,86 @@ func TestWireGuardStateDoesNotReportUpWithClosedNetwork(t *testing.T) {
 	}
 }
 
+func TestWireGuardStateDoesNotReportUpWithClosedTun(t *testing.T) {
+	privateKey, _ := wireGuardTestKeyPair(t, 8)
+	baseTun, peerTun := tun.Pipe(4, 1500, 0, 0)
+	t.Cleanup(func() { _ = baseTun.Close() })
+	t.Cleanup(func() { _ = peerTun.Close() })
+	closedTun := tun.Detach(baseTun, nil, nil)
+	if err := closedTun.Close(); err != nil {
+		t.Fatalf("TUN Close() error = %v, want nil", err)
+	}
+	network := gonnect.DetachNetwork(gonnect.NewLoopbackNetwork(), nil, nil)
+	t.Cleanup(func() { _ = network.Close() })
+	n := &wireGuardNode{
+		config:                   defaultWireGuardConfig(),
+		currentTun:               closedTun,
+		currentTunGeneration:     1,
+		currentNetwork:           network,
+		currentNetworkGeneration: 1,
+		currentBind:              wireGuardTrackedBind{},
+		runtimeReadyGeneration:   1,
+	}
+	n.config.privateKey = privateKey
+	n.config.listenPort = 51820
+	n.tunGeneration.Store(1)
+	n.networkGeneration.Store(1)
+	n.runtimeGeneration.Store(1)
+
+	if got := n.stateText(); got != "waiting for TUN" {
+		t.Fatalf("stateText() = %q with closed TUN, want waiting for TUN", got)
+	}
+}
+
+func TestWireGuardTunFailureRejectsStaleAttachmentAndInvalidatesCurrentTun(t *testing.T) {
+	sourceTun, peerTun := tun.Pipe(4, 1500, 0, 0)
+	t.Cleanup(func() { _ = sourceTun.Close() })
+	t.Cleanup(func() { _ = peerTun.Close() })
+	current := links.NewTunFailureObserver(sourceTun, nil)
+	stale := links.NewTunFailureObserver(sourceTun, nil)
+	n := &wireGuardNode{
+		config:                   defaultWireGuardConfig(),
+		currentTun:               sourceTun,
+		currentTunObserver:       current,
+		currentTunGeneration:     3,
+		tunPayloadReceived:       true,
+		desiredTun:               sourceTun,
+		runtimeReadyGeneration:   7,
+		currentNetworkGeneration: 1,
+	}
+	n.tunGeneration.Store(3)
+	n.runtimeGeneration.Store(7)
+
+	n.handleTunFailure(wireGuardTunFailureMessage{
+		attachment: stale, tunGeneration: 3, err: errors.New("stale failure"),
+	})
+	if n.currentTunFailed || n.currentTunGenerationValue() != 3 || !n.tunPayloadReceived {
+		t.Fatal("stale TUN failure invalidated the current attachment")
+	}
+	n.handleTunFailure(wireGuardTunFailureMessage{
+		attachment: current, tunGeneration: 2, err: errors.New("old generation"),
+	})
+	if n.currentTunFailed || n.currentTunGenerationValue() != 3 || !n.tunPayloadReceived {
+		t.Fatal("old-generation TUN failure invalidated the current attachment")
+	}
+
+	n.handleTunFailure(wireGuardTunFailureMessage{
+		attachment: current, tunGeneration: 3, err: errors.New("current failure"),
+	})
+	if !n.currentTunFailed {
+		t.Fatal("current TUN failure did not mark the attachment failed")
+	}
+	if got := n.currentTunGenerationValue(); got != 4 {
+		t.Fatalf("desired TUN generation = %d after failure, want 4", got)
+	}
+	if got := n.currentRuntimeGeneration(); got != 8 {
+		t.Fatalf("runtime generation = %d after failure, want 8", got)
+	}
+	if n.tunPayloadReceived || n.desiredTun != nil || n.runtimeReadyGeneration != 0 {
+		t.Fatal("current TUN failure left the old payload or readiness active")
+	}
+}
+
 func TestWireGuardTryMarkRuntimeReadyRequiresActiveRuntime(t *testing.T) {
 	n := &wireGuardNode{}
 	n.runtimeGeneration.Store(1)

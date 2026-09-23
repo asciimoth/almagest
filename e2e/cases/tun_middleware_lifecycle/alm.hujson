@@ -1,0 +1,90 @@
+{
+	"nodes": {
+		"Lifecycle Client": {
+			"Class":  "almagest/HttpClient",
+			"Links":  ["Network -> [Client VTun] Network"],
+			"url":    "http://10.215.0.2:18140/lifecycle",
+			"method": "GET",
+			"body":   "",
+		},
+		"Client VTun": {
+			"Class":          "almagest/VTun",
+			"Links":          ["Tun -> [Client Stripper] Tun"],
+			"name":           "middleware-client",
+			"localAddrs":     "10.215.0.1/24",
+			"dnsServers":     "",
+			"mtu":            1500,
+			"endpointCh":     1024,
+			"eventCh":        10,
+			"noLoopbackAddr": false,
+			"disableSACK":    false,
+		},
+		"Client Stripper": {
+			"Class": "almagest/TunConfigStripper",
+			"Links": ["Tun -> [Client LogTun] in"],
+		},
+		"Client LogTun": {
+			"Class": "almagest/LogTun",
+			"Links": ["Tun -> [Client Firewall] Tun"],
+		},
+		"Client Firewall": {
+			"Class": "almagest/TunFirewall",
+			"Links": ["Tun -> [Lifecycle Copy] TunA"],
+		},
+		"Lifecycle Copy": {
+			"Class": "almagest/TunCopy",
+		},
+		"Server LogTun": {
+			"Class": "almagest/LogTun",
+			"Links": ["Tun -> [Lifecycle Copy] TunB"],
+		},
+		"Server Stripper": {
+			"Class": "almagest/TunConfigStripper",
+			"Links": ["Tun -> [Server LogTun] in"],
+		},
+		"Server VTun": {
+			"Class":          "almagest/VTun",
+			"Links":          ["Tun -> [Server Stripper] Tun"],
+			"name":           "middleware-server",
+			"localAddrs":     "10.215.0.2/24",
+			"dnsServers":     "",
+			"mtu":            1500,
+			"endpointCh":     1024,
+			"eventCh":        10,
+			"noLoopbackAddr": false,
+			"disableSACK":    false,
+		},
+		"Lifecycle Server": {
+			"Class":    "almagest/HttpServer",
+			"Links":    ["Network -> [Server VTun] Network"],
+			"host":     "10.215.0.2",
+			"port":     18140,
+			"response": "tun-middleware-lifecycle-response",
+		},
+		"Observer VTun": {
+			"Class":          "almagest/VTun",
+			"Links":          ["Tun -> [Observer LogTun] in"],
+			"name":           "middleware-observer",
+			"localAddrs":     "10.216.0.1/24",
+			"dnsServers":     "",
+			"mtu":            1500,
+			"endpointCh":     1024,
+			"eventCh":        10,
+			"noLoopbackAddr": false,
+			"disableSACK":    false,
+		},
+		"Observer LogTun": {
+			"Class": "almagest/LogTun",
+			"Links": ["Tun -> [Lifecycle Spoofer] Tun"],
+		},
+		"Lifecycle Spoofer": {
+			"Class":       "almagest/Spoofer",
+			"Links":       ["Network -> [Spoofer Mock] Network"],
+			"mtu":         1500,
+			"queueLength": 1024,
+		},
+		"Spoofer Mock": {
+			"Class": "almagest/MockNetwork",
+		},
+	},
+}

@@ -8,6 +8,7 @@ import (
 	"net/netip"
 	"os"
 	"reflect"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -885,6 +886,95 @@ func TestTunSourceAndComparisonHelpers(t *testing.T) {
 	}
 	if SameTunSource(first, peer) {
 		t.Fatal("SameTunSource(first, peer) = true, want false")
+	}
+}
+
+func TestTunFailureObserverReportsRuntimeFailureOnlyOnce(t *testing.T) {
+	source := newGrowingMTUTun(1500)
+	reports := make(chan error, 4)
+	observed := NewTunFailureObserver(source, func(err error) { reports <- err })
+
+	readDone := make(chan error, 1)
+	go func() {
+		buf := make([]byte, 1500)
+		_, err := observed.Read([][]byte{buf}, make([]int, 1), 0)
+		readDone <- err
+	}()
+	assertGrowingMTUReadCapacity(t, source, 1500)
+	if err := source.Close(); err != nil {
+		t.Fatalf("source Close(): %v", err)
+	}
+	if err := <-readDone; !errors.Is(err, os.ErrClosed) {
+		t.Fatalf("observed Read() error = %v, want os.ErrClosed", err)
+	}
+	select {
+	case err := <-reports:
+		if !errors.Is(err, os.ErrClosed) {
+			t.Fatalf("reported error = %v, want os.ErrClosed", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("observer did not report the read failure")
+	}
+
+	_, _ = observed.Write([][]byte{{0x45}}, 0)
+	select {
+	case err := <-reports:
+		t.Fatalf("observer reported a second failure: %v", err)
+	case <-time.After(20 * time.Millisecond):
+	}
+}
+
+func TestTunFailureObserverIntentionalCloseDoesNotReport(t *testing.T) {
+	source := newGrowingMTUTun(1500)
+	reported := make(chan error, 1)
+	observed := NewTunFailureObserver(source, func(err error) { reported <- err })
+
+	readDone := make(chan error, 1)
+	go func() {
+		buf := make([]byte, 1500)
+		_, err := observed.Read([][]byte{buf}, make([]int, 1), 0)
+		readDone <- err
+	}()
+	assertGrowingMTUReadCapacity(t, source, 1500)
+	if err := observed.Close(); err != nil {
+		t.Fatalf("observer Close(): %v", err)
+	}
+	if err := <-readDone; !errors.Is(err, os.ErrClosed) {
+		t.Fatalf("Read() after observer Close() error = %v, want os.ErrClosed", err)
+	}
+	select {
+	case err := <-reported:
+		t.Fatalf("intentional close reported as failure: %v", err)
+	case <-time.After(20 * time.Millisecond):
+	}
+}
+
+func TestTunFailureObserverReportsUnexpectedEventStreamClose(t *testing.T) {
+	source := newGrowingMTUTun(1500)
+	reported := make(chan error, 1)
+	observed := NewTunFailureObserver(source, func(err error) { reported <- err })
+	events := observed.Events()
+	if event := <-events; event != tun.EventUp {
+		t.Fatalf("first event = %v, want EventUp", event)
+	}
+	if err := source.Close(); err != nil {
+		t.Fatalf("source Close(): %v", err)
+	}
+	select {
+	case err := <-reported:
+		if err == nil || !strings.Contains(err.Error(), "event stream closed") {
+			t.Fatalf("reported error = %v, want event stream close", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("observer did not report the closed event stream")
+	}
+	select {
+	case _, ok := <-events:
+		if ok {
+			t.Fatal("observer event stream stayed open")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("observer event stream did not close")
 	}
 }
 

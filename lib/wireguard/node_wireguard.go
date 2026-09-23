@@ -130,7 +130,9 @@ type wireGuardNode struct {
 
 	currentTun               tun.Tun
 	currentManagedTun        *wireGuardManagedTun
+	currentTunObserver       *links.TunFailureObserver
 	currentTunGeneration     uint64
+	currentTunFailed         bool
 	currentNetwork           NetworkCloser
 	currentNetworkGeneration uint64
 	currentBind              conn.Bind
@@ -522,6 +524,8 @@ func (n *wireGuardNode) OnInbox(message pasta.InboxMessage) error {
 		n.retryConfigToDevice(msg.generation)
 	case wireGuardReceiveErrorMessage:
 		n.handleReceiveError(msg)
+	case wireGuardTunFailureMessage:
+		n.handleTunFailure(msg)
 	case wireGuardRuntimeResultMessage:
 		n.handleRuntimeResult(msg)
 	case wireGuardRuntimeAttachmentResultMessage:

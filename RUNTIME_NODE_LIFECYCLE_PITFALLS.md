@@ -953,6 +953,54 @@ Coverage:
 go -C lib test ./amnesia -run 'TestManagedAmnesiaRuntime(KeepsSuccessfulNegotiationAcrossStaleGeneration|KeepsPreparedProfileWhenTunGoesDownDuringReconcile|KeepsProfileAcrossCarrierReplacement|ReattachesTunAfterStaleActivation|KeepsProfileAfterStaleTunSetupFailure)' -race -count=1
 ```
 
+### WireGuard Kept A Closed TUN Logically Active
+
+Bug:
+
+- WireGuard treated a non-nil, generation-matched TUN as active.
+- An indirect upstream close could stop the device TUN while its graph link
+  remained attached.
+- The node could keep its previous `up` label and did not request a replacement
+  payload.
+
+Fix:
+
+- The installed TUN has a terminal I/O and event-stream observer.
+- Failure messages carry the exact observer and TUN generation.
+- A current failure invalidates readiness, fails affected controller waiters,
+  and requests a replacement from the still-linked provider.
+- Active-state and same-instance checks reject a closed or failed TUN.
+
+Coverage:
+
+```sh
+go -C lib test ./wireguard -run 'TestWireGuard(StateDoesNotReportUpWithClosedTun|TunFailureRejectsStaleAttachmentAndInvalidatesCurrentTun|E2EVTunHTTPClientServer)' -race -count=1
+```
+
+### Managed Amnesia Kept `up` After Its TUN Closed
+
+Bug:
+
+- Managed Amnesia marked its negotiated data plane ready but did not observe a
+  later terminal failure from the detached device TUN.
+- Closing a linked upstream TUN could leave the workspace label at `up` and no
+  replacement request was sent.
+
+Fix:
+
+- Both the plain detached-TUN and TunnelDNS device paths use the shared terminal
+  TUN observer.
+- Failure handling checks reconcile generation, durable runtime identity, and
+  exact observer identity.
+- A current failure closes only the replaceable data plane, requests a new TUN,
+  and keeps the registered profile and service key.
+
+Coverage:
+
+```sh
+go -C lib test ./amnesia -run TestManagedAmnesiaTerminalTunFailureRequestsReplacementAndKeepsRegistration -race -count=1
+```
+
 ### Tun2Dns Could Stop Without A Usable Replacement
 
 Bug:

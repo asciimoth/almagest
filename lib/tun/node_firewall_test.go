@@ -203,6 +203,38 @@ func TestTunFirewallForwardsAndForgetsDownstreamTunConfig(t *testing.T) {
 	_ = upstreamID
 }
 
+func TestTunFirewallIgnoresStaleInputFailure(t *testing.T) {
+	currentSource, currentPeer := gonnecttun.Pipe(1, 1500, 0, 0)
+	staleSource, stalePeer := gonnecttun.Pipe(1, 1500, 0, 0)
+	t.Cleanup(func() {
+		_ = currentSource.Close()
+		_ = currentPeer.Close()
+		_ = staleSource.Close()
+		_ = stalePeer.Close()
+	})
+	current := newTunInputFailureObserver(currentSource, nil)
+	stale := newTunInputFailureObserver(staleSource, nil)
+	node := &tunFirewallNode{
+		inLink:   41,
+		tun:      currentSource,
+		inputTun: current,
+		inputGen: 7,
+	}
+
+	for _, failed := range []tunFirewallInputFailed{
+		{link: 41, generation: 6, attachment: current, err: gonnecttun.ErrDetachedTunFailed},
+		{link: 41, generation: 7, attachment: stale, err: gonnecttun.ErrDetachedTunFailed},
+		{link: 42, generation: 7, attachment: current, err: gonnecttun.ErrDetachedTunFailed},
+	} {
+		if err := node.OnInbox(pasta.InboxMessage{Payload: failed}); err != nil {
+			t.Fatalf("OnInbox(%+v): %v", failed, err)
+		}
+		if node.tun != currentSource || node.inputTun != current || node.inputGen != 7 {
+			t.Fatal("stale failure changed the current firewall input")
+		}
+	}
+}
+
 func newTunFirewallTestWorkspace(t *testing.T, providers *testTunProviderRegistry) *pasta.Workspace {
 	t.Helper()
 	w := pasta.NewWorkspace(logging.NewDebugLogFactory(1024))
