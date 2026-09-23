@@ -1,0 +1,44 @@
+{
+	"Logs": {
+		"Cache": {
+			"Debug": 1024,
+			"Info": 128,
+			"Warn": 128,
+			"Error": 128,
+			"Fatal": 32,
+		},
+	},
+	"nodes": {
+		"UDP Network": {
+			"Class": "almagest/MockNetwork",
+			"allowAnyHost": true,
+		},
+		"UDP Log": {
+			"Class": "almagest/LogNetwork",
+			"Links": ["Network -> [UDP Network] Network"],
+		},
+		"UDP Server": {
+			"Class": "almagest/UDPPingServer",
+			"Links": ["Network -> [UDP Log] Network"],
+			"network": "udp4",
+			"socket_mode": "listen",
+			"local_host": "127.0.0.1",
+			"local_port": 19091,
+			"remote_host": "127.0.0.1",
+			"remote_port": 0,
+		},
+		"UDP Client": {
+			"Class": "almagest/UDPPingClient",
+			"Links": ["Network -> [UDP Log] Network"],
+			"network": "udp4",
+			"socket_mode": "dial",
+			"local_host": "127.0.0.1",
+			"local_port": 0,
+			"remote_host": "127.0.0.1",
+			"remote_port": 19091,
+			"payload": "initial-ping",
+			"timeout_ms": 500,
+		},
+	},
+}
+
