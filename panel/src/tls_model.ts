@@ -269,6 +269,8 @@ export function formatTLSCertcatMatch(match: TLSCertcatMatch): string {
       return "Private key was disclosed";
     case "interception_ca":
       return "Interception certificate authority";
+    case "government_ca":
+      return "Government certificate authority";
     case "state_interception_ca":
       return "State interception certificate authority";
     case "time_scoped_root_program_distrust":
@@ -313,6 +315,8 @@ export function describeTLSCertcatRecommendation(match: TLSCertcatMatch): string
       return "Use this certificate only for the listed DNS names or IP ranges.";
     case "only_use_for_explicit_cloudflare_origin_hosts":
       return "Use this certificate only for explicit Cloudflare origin hosts.";
+    case "only_use_for_russian_government_resources":
+      return "This certificate is related to the Russian government. Use it only to access Russian government resources.";
     case "apply_target_platform_distrust_cutoff":
       return "Follow the platform distrust date for this certificate.";
   }

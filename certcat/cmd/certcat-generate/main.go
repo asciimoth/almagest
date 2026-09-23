@@ -374,6 +374,7 @@ var kindConsts = map[string]string{
 var hazardClassConsts = map[string]string{
 	"chromium_certificate_blocklist":      "HazardClassChromiumCertificateBlocklist",
 	"chromium_spki_blocklist":             "HazardClassChromiumSPKIBlocklist",
+	"government_ca":                       "HazardClassGovernmentCA",
 	"interception_ca":                     "HazardClassInterceptionCA",
 	"malware_or_command_and_control_leaf": "HazardClassMalwareOrCommandAndControlLeaf",
 	"private_key_disclosure":              "HazardClassPrivateKeyDisclosure",
@@ -405,6 +406,7 @@ var recommendationConsts = map[string]string{
 	"deny_exact_match":                                    "RecommendationDenyExactMatch",
 	"deny_exact_spki":                                     "RecommendationDenyExactSPKI",
 	"only_use_for_explicit_cloudflare_origin_hosts":       "RecommendationOnlyUseForExplicitCloudflareOriginHosts",
+	"only_use_for_russian_government_resources":           "RecommendationOnlyUseForRussianGovernmentResources",
 	"trust_only_for_declared_scope":                       "RecommendationTrustOnlyForDeclaredScope",
 }
 

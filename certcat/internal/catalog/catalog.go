@@ -94,6 +94,8 @@ func WriteDocument(path string, doc Document) error {
 }
 
 func MergeDocuments(docs ...*Document) ([]Record, error) {
+	// Earlier documents have priority when scalar policy fields conflict. The
+	// generator passes the manual document before machine-generated documents.
 	var out []Record
 	keys := map[string]int{}
 	for _, doc := range docs {
@@ -183,12 +185,6 @@ func MachineSourcesValid(doc Document) error {
 }
 
 func mergeRecords(a, b Record) Record {
-	if actionRank(b.Action) > actionRank(a.Action) {
-		a.Action = b.Action
-	}
-	if severityRank(b.Severity) > severityRank(a.Severity) {
-		a.Severity = b.Severity
-	}
 	a.ID = firstNonEmpty(a.ID, b.ID)
 	a.Kind = chooseKind(a.Kind, b.Kind)
 	a.Name = firstNonEmpty(a.Name, b.Name)
@@ -353,40 +349,6 @@ func normalizeFingerprint(fingerprint string) string {
 			return -1
 		}
 	}, fingerprint))
-}
-
-func actionRank(action string) int {
-	switch action {
-	case "deny_even_if_locally_installed":
-		return 100
-	case "deny":
-		return 90
-	case "enforce_platform_cutoff":
-		return 80
-	case "follow_platform_policy_or_deny":
-		return 70
-	case "narrow_scope", "offer_scoped_service_anchor":
-		return 60
-	case "warn":
-		return 50
-	default:
-		return 0
-	}
-}
-
-func severityRank(severity string) int {
-	switch severity {
-	case "critical":
-		return 100
-	case "high":
-		return 80
-	case "warning":
-		return 60
-	case "info":
-		return 20
-	default:
-		return 0
-	}
 }
 
 func kindRank(kind string) int {

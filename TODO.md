@@ -58,8 +58,8 @@ DNS
 TLS
 - [X] Warnings for hazard certs
 - [ ] Server side configs management
-- [ ] Manually add ru gov certs to hazard certs list
-    - Make sure manual source have higher prior than parsed one
+- [X] Manually add ru gov certs to hazard certs list
+    - Manual sources have higher priority than parsed sources
 
 DPI
 - [X] Sniffer

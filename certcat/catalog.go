@@ -121,6 +121,7 @@ const (
 	HazardClassPrivateKeyDisclosure
 	HazardClassStateInterceptionCA
 	HazardClassTimeScopedRootProgramDistrust
+	HazardClassGovernmentCA
 )
 
 func (c HazardClass) String() string {
@@ -129,6 +130,8 @@ func (c HazardClass) String() string {
 		return "chromium_certificate_blocklist"
 	case HazardClassChromiumSPKIBlocklist:
 		return "chromium_spki_blocklist"
+	case HazardClassGovernmentCA:
+		return "government_ca"
 	case HazardClassInterceptionCA:
 		return "interception_ca"
 	case HazardClassMalwareOrCommandAndControlLeaf:
@@ -155,6 +158,7 @@ const (
 	RecommendationDenyExactSPKI
 	RecommendationOnlyUseForExplicitCloudflareOriginHosts
 	RecommendationTrustOnlyForDeclaredScope
+	RecommendationOnlyUseForRussianGovernmentResources
 )
 
 func (r Recommendation) String() string {
@@ -171,6 +175,8 @@ func (r Recommendation) String() string {
 		return "deny_exact_spki"
 	case RecommendationOnlyUseForExplicitCloudflareOriginHosts:
 		return "only_use_for_explicit_cloudflare_origin_hosts"
+	case RecommendationOnlyUseForRussianGovernmentResources:
+		return "only_use_for_russian_government_resources"
 	case RecommendationTrustOnlyForDeclaredScope:
 		return "trust_only_for_declared_scope"
 	default:

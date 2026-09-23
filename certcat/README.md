@@ -8,7 +8,8 @@ The module keeps two JSON inputs:
   must include sources with retrieval times.
 
 The generated Go file, `catalog_gen.go`, merges both inputs and de-duplicates
-records that repeat the same certificate SHA-256 or SPKI SHA-256.
+records that repeat the same certificate SHA-256 or SPKI SHA-256. Manual scalar
+policy fields take priority when a machine record matches the same certificate.
 
 ## Record Model
 

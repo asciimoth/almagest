@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   applyTLSChange,
+  describeTLSCertcatRecommendation,
   describeTLSCertcatScope,
   describeTLSScope,
   formatTLSCertcatBadge,
@@ -87,6 +88,10 @@ test("TLS certcat helpers summarize matches and scopes", () => {
   };
   assert.equal(formatTLSCertcatBadge(entry), "critical warning x2");
   assert.equal(formatTLSCertcatMatch(entry.certcat_matches[0]), "Use only for a narrow address scope");
+  assert.equal(formatTLSCertcatMatch({ hazard_class: "government_ca" }), "Government certificate authority");
+  assert.equal(describeTLSCertcatRecommendation({
+    recommendation: "only_use_for_russian_government_resources",
+  }), "This certificate is related to the Russian government. Use it only to access Russian government resources.");
   assert.equal(describeTLSCertcatScope({
     basis: "x509_name_constraints",
     permitted_dns_subtrees: ["example.test"],

@@ -627,6 +627,18 @@ var Records = []Record{
 		Severity:       SeverityHigh,
 		Recommendation: RecommendationDenyExactMatch,
 	},
+	// russian-trusted-sub-ca-2024: Russian Trusted Sub CA (2024)
+	// Sources:
+	// - russian-trusted-sub-ca-2024-file: file:certcat/data/hazard/russian_Trusted_Sub_CA_2024.cer Certificate supplied in the repository hazard data.
+	{
+		Fingerprint:    Fingerprint{0x21, 0x55, 0x78, 0x50, 0x36, 0xC9, 0x00, 0xDB, 0xB5, 0xF1, 0xBB, 0x2A, 0x15, 0x69, 0xC8, 0x0C, 0x55, 0x59, 0x5B, 0xD6, 0xBF, 0x94, 0x86, 0x7A, 0x29, 0xBB, 0xDD, 0xBC, 0x7D, 0x88, 0xA3, 0xF2},
+		MatchKind:      MatchKindCertificateSHA256,
+		Kind:           RecordKindHazardCertificate,
+		HazardClass:    HazardClassGovernmentCA,
+		Action:         ActionWarn,
+		Severity:       SeverityWarning,
+		Recommendation: RecommendationOnlyUseForRussianGovernmentResources,
+	},
 	// ccadb-nameconstraints-220040dda377c944429e8ce913b7d81b36de34ebf2dc218d2066393d94863439: Democritus University of Thrace TLS RSA SubCA R1
 	// Sources:
 	// - ccadb-mozilla-intermediate-report: https://ccadb.my.salesforce-sites.com/mozilla/MozillaIntermediateCertsCSVReport retrieved 2026-08-06T07:01:58Z
@@ -1587,6 +1599,18 @@ var Records = []Record{
 		Recommendation: RecommendationTrustOnlyForDeclaredScope,
 		Scope:          &recordScopes[24],
 	},
+	// russian-trusted-sub-ca-2022: Russian Trusted Sub CA (2022)
+	// Sources:
+	// - russian-trusted-sub-ca-file: file:certcat/data/hazard/russian_Trusted_Sub_CA.cer Certificate supplied in the repository hazard data.
+	{
+		Fingerprint:    Fingerprint{0xBB, 0xBD, 0xE2, 0x10, 0x3E, 0x79, 0x0B, 0x99, 0x9E, 0xC6, 0x2B, 0xD0, 0x3C, 0xF6, 0x25, 0xA5, 0xA2, 0xE7, 0xC3, 0x16, 0xE1, 0x0A, 0xFE, 0x6A, 0x49, 0x0E, 0xED, 0xEA, 0xD8, 0xB3, 0xFD, 0x9B},
+		MatchKind:      MatchKindCertificateSHA256,
+		Kind:           RecordKindHazardCertificate,
+		HazardClass:    HazardClassGovernmentCA,
+		Action:         ActionWarn,
+		Severity:       SeverityWarning,
+		Recommendation: RecommendationOnlyUseForRussianGovernmentResources,
+	},
 	// chromium-cert-block-be144b56fb1163c49c9a0e6b5a458df6b29f7e6449985960c178a4744624b7bc: Chromium certificate blocklist entry
 	// Sources:
 	// - chromium-certificate-blocklist: https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md retrieved 2026-08-06T07:01:58Z
@@ -1776,6 +1800,18 @@ var Records = []Record{
 		Action:         ActionDeny,
 		Severity:       SeverityHigh,
 		Recommendation: RecommendationDenyExactMatch,
+	},
+	// russian-trusted-root-ca: Russian Trusted Root CA
+	// Sources:
+	// - russian-trusted-root-ca-file: file:certcat/data/hazard/russian_Trusted_Root_CA.cer Certificate supplied in the repository hazard data.
+	{
+		Fingerprint:    Fingerprint{0xD2, 0x6D, 0x2D, 0x02, 0x31, 0xB7, 0xC3, 0x9F, 0x92, 0xCC, 0x73, 0x85, 0x12, 0xBA, 0x54, 0x10, 0x35, 0x19, 0xE4, 0x40, 0x5D, 0x68, 0xB5, 0xBD, 0x70, 0x3E, 0x97, 0x88, 0xCA, 0x8E, 0xCF, 0x31},
+		MatchKind:      MatchKindCertificateSHA256,
+		Kind:           RecordKindHazardCertificate,
+		HazardClass:    HazardClassGovernmentCA,
+		Action:         ActionWarn,
+		Severity:       SeverityWarning,
+		Recommendation: RecommendationOnlyUseForRussianGovernmentResources,
 	},
 	// cloudflare-origin-ca-rsa: Cloudflare Origin CA RSA
 	// Sources:

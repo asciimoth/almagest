@@ -2,7 +2,7 @@ package catalog
 
 import "testing"
 
-func TestMergeDocumentsDeduplicatesAndKeepsStricterPolicy(t *testing.T) {
+func TestMergeDocumentsDeduplicatesAndKeepsFirstPolicy(t *testing.T) {
 	manual := &Document{
 		FormatVersion: FormatVersion,
 		Entries: []Record{
@@ -49,6 +49,41 @@ func TestMergeDocumentsDeduplicatesAndKeepsStricterPolicy(t *testing.T) {
 	}
 	if len(records[0].Sources) != 2 {
 		t.Fatalf("sources = %#v", records[0].Sources)
+	}
+}
+
+func TestMergeDocumentsKeepsFirstDocumentPolicy(t *testing.T) {
+	manual := &Document{
+		FormatVersion: FormatVersion,
+		Entries: []Record{
+			{
+				ID:                "manual",
+				Kind:              "hazard_certificate",
+				CertificateSHA256: "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+				Action:            "warn",
+				Severity:          "warning",
+				Recommendation:    "manual_policy",
+			},
+		},
+	}
+	machine := &Document{
+		FormatVersion: FormatVersion,
+		Entries: []Record{
+			{
+				ID:                "machine",
+				Kind:              "hazard_certificate",
+				CertificateSHA256: "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+				Action:            "deny",
+				Severity:          "critical",
+			},
+		},
+	}
+	records, err := MergeDocuments(manual, machine)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if records[0].Action != "warn" || records[0].Severity != "warning" {
+		t.Fatalf("manual policy was overridden: %#v", records[0])
 	}
 }
 

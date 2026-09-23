@@ -202,6 +202,75 @@
       ]
     },
     {
+      "id": "russian-trusted-root-ca",
+      "kind": "hazard_certificate",
+      "name": "Russian Trusted Root CA",
+      "subject": "CN=Russian Trusted Root CA,O=The Ministry of Digital Development and Communications,C=RU",
+      "issuer": "CN=Russian Trusted Root CA,O=The Ministry of Digital Development and Communications,C=RU",
+      "serial_hex": "1000",
+      "not_before": "2022-03-01T21:04:15Z",
+      "not_after": "2032-02-27T21:04:15Z",
+      "certificate_sha256": "D26D2D0231B7C39F92CC738512BA54103519E4405D68B5BD703E9788CA8ECF31",
+      "spki_sha256": "02B8220C070728DB771D9AC59E54521C4EDDAD21A783BB26CFDF19C1DB0FAE37",
+      "hazard_class": "government_ca",
+      "action": "warn",
+      "severity": "warning",
+      "recommendation": "only_use_for_russian_government_resources",
+      "sources": [
+        {
+          "id": "russian-trusted-root-ca-file",
+          "url": "file:certcat/data/hazard/russian_Trusted_Root_CA.cer",
+          "note": "Certificate supplied in the repository hazard data."
+        }
+      ]
+    },
+    {
+      "id": "russian-trusted-sub-ca-2022",
+      "kind": "hazard_certificate",
+      "name": "Russian Trusted Sub CA (2022)",
+      "subject": "CN=Russian Trusted Sub CA,O=The Ministry of Digital Development and Communications,C=RU",
+      "issuer": "CN=Russian Trusted Root CA,O=The Ministry of Digital Development and Communications,C=RU",
+      "serial_hex": "1002",
+      "not_before": "2022-03-02T11:25:19Z",
+      "not_after": "2027-03-06T11:25:19Z",
+      "certificate_sha256": "BBBDE2103E790B999EC62BD03CF625A5A2E7C316E10AFE6A490EEDEAD8B3FD9B",
+      "spki_sha256": "0447AA4B18C48B9E8DB16E91809286DD27EFD6A50BA80D3084EB9E70BA8E1DCA",
+      "hazard_class": "government_ca",
+      "action": "warn",
+      "severity": "warning",
+      "recommendation": "only_use_for_russian_government_resources",
+      "sources": [
+        {
+          "id": "russian-trusted-sub-ca-file",
+          "url": "file:certcat/data/hazard/russian_Trusted_Sub_CA.cer",
+          "note": "Certificate supplied in the repository hazard data."
+        }
+      ]
+    },
+    {
+      "id": "russian-trusted-sub-ca-2024",
+      "kind": "hazard_certificate",
+      "name": "Russian Trusted Sub CA (2024)",
+      "subject": "CN=Russian Trusted Sub CA,O=The Ministry of Digital Development and Communications,C=RU",
+      "issuer": "CN=Russian Trusted Root CA,O=The Ministry of Digital Development and Communications,C=RU",
+      "serial_hex": "1005",
+      "not_before": "2024-07-15T12:50:41Z",
+      "not_after": "2029-07-19T12:50:41Z",
+      "certificate_sha256": "2155785036C900DBB5F1BB2A1569C80C55595BD6BF94867A29BBDDBC7D88A3F2",
+      "spki_sha256": "37B95AE1738DC4C69661144715669FDB9C93E7ADB3363422DEB61C0F3ACF65C1",
+      "hazard_class": "government_ca",
+      "action": "warn",
+      "severity": "warning",
+      "recommendation": "only_use_for_russian_government_resources",
+      "sources": [
+        {
+          "id": "russian-trusted-sub-ca-2024-file",
+          "url": "file:certcat/data/hazard/russian_Trusted_Sub_CA_2024.cer",
+          "note": "Certificate supplied in the repository hazard data."
+        }
+      ]
+    },
+    {
       "id": "entrust-chrome-2024-cutoff-a",
       "kind": "hazard_certificate",
       "name": "Entrust Chrome time-scoped distrust",
