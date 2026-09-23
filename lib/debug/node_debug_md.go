@@ -20,5 +20,13 @@ func (DebugMarkdownClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: "", InitialPorts: []pasta.Port{}}
 }
 func (DebugMarkdownClass) NewNode(configer.Config, ...*pasta.NodeClassState) (pasta.Node, error) {
-	return &pasta.BasicNode{}, nil
+	return &debugMarkdownNode{}, nil
+}
+
+// debugMarkdownNode has non-zero size because Pasta uses node pointer identity
+// to reject the same implementation instance from being added more than once.
+// Go permits pointers to distinct zero-size values to compare equal.
+type debugMarkdownNode struct {
+	pasta.BasicNode
+	_ byte
 }

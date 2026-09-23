@@ -1,0 +1,36 @@
+{
+	"Logs": {
+		"Cache": {
+			"Debug": 2048,
+			"Info": 256,
+			"Warn": 256,
+			"Error": 256,
+			"Fatal": 32,
+		},
+	},
+	"nodes": {
+		"Control Network": {
+			"Class": "almagest/MockNetwork",
+			"allowAnyHost": true,
+		},
+		"Control Server": {
+			"Class": "almagest/HttpServer",
+			"Links": ["Network -> [Control Network] Network"],
+			"host": "127.0.0.1",
+			"port": 18080,
+			"response": "control-plane-alive",
+		},
+		"Control Client": {
+			"Class": "almagest/HttpClient",
+			"Links": ["Network -> [Control Network] Network"],
+			"url": "http://127.0.0.1:18080/health",
+			"method": "GET",
+			"body": "",
+		},
+		"KV Writer": {"Class": "almagest/DebugKV"},
+		"KV Reader": {"Class": "almagest/DebugKV"},
+		"Worker Failure": {"Class": "almagest/ErrorsWorkers"},
+		"Callback Failure": {"Class": "almagest/ErrorsWorkers"},
+	},
+}
+
