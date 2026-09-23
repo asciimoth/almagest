@@ -1,0 +1,23 @@
+{
+	"Admin": {
+		"Web":  0,
+		"Unix": "%E2E_ADMIN_SOCK%",
+	},
+	"CommandRunner": {
+		"Commands": {
+			"record-interval": {
+				"Command": ["/bin/sh", "-c", "printf 'interval\\n' >> /tmp/almagest-e2e-time-trigger-interval.log"],
+				"Sync": true,
+				"Timeout": 2000000000,
+				"AllowNodes": true,
+			},
+			"record-ready": {
+				"Command": ["/bin/sh", "-c", "printf 'ready\\n' >> /tmp/almagest-e2e-time-trigger-ready.log"],
+				"Sync": true,
+				"Timeout": 2000000000,
+				"AllowNodes": true,
+			},
+		},
+	},
+	"System": {"Type": "debug"},
+}

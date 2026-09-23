@@ -1,0 +1,44 @@
+{
+	"nodes": {
+		"Proxy One": {
+			"Class":     "almagest/LocalProxy",
+			"Links":     ["proxy -> [Remapper] Network"],
+			"socksHost": "127.0.0.1",
+			"socksPort": 1181,
+		},
+		"Proxy Two": {
+			"Class":     "almagest/LocalProxy",
+			"Links":     ["proxy -> [Remapper] Network"],
+			"socksHost": "127.0.0.1",
+			"socksPort": 1182,
+		},
+		"Remapper": {
+			"Class": "almagest/Remapper",
+			"Links": ["Network -> [Mock A] Network"],
+			"rules": "DIAL\nADDR_S service.test\nAND\nPORT 80\nAND\nREMAP DST ADDR_PORT 127.0.0.1:8080",
+		},
+		"Mock A": {"Class": "almagest/MockNetwork"},
+		"Mock B": {"Class": "almagest/MockNetwork"},
+		"Server A": {
+			"Class":    "almagest/HttpServer",
+			"Links":    ["Network -> [Mock A] Network"],
+			"host":     "127.0.0.1",
+			"port":     8080,
+			"response": "provider-a-port-8080",
+		},
+		"Server A Alternate": {
+			"Class":    "almagest/HttpServer",
+			"Links":    ["Network -> [Mock A] Network"],
+			"host":     "127.0.0.1",
+			"port":     8081,
+			"response": "provider-a-port-8081",
+		},
+		"Server B": {
+			"Class":    "almagest/HttpServer",
+			"Links":    ["Network -> [Mock B] Network"],
+			"host":     "127.0.0.1",
+			"port":     8080,
+			"response": "provider-b-port-8080",
+		},
+	},
+}

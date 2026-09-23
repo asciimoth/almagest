@@ -1,0 +1,28 @@
+{
+	"nodes": {
+		"Interval Timer": {
+			"Class":       "almagest/TimeTrigger",
+			"Links":       ["Trigger -> [Interval Recorder] Trigger"],
+			"mode":        "interval",
+			"interval":    "80ms",
+			"dailyTime":   "00:00",
+			"emitOnReady": false,
+		},
+		"Interval Recorder": {
+			"Class":   "almagest/Command",
+			"command": "record-interval",
+		},
+		"Ready Timer": {
+			"Class":       "almagest/TimeTrigger",
+			"Links":       ["Trigger -> [Ready Recorder] Trigger"],
+			"mode":        "",
+			"interval":    "2m",
+			"dailyTime":   "00:00",
+			"emitOnReady": true,
+		},
+		"Ready Recorder": {
+			"Class":   "almagest/Command",
+			"command": "record-ready",
+		},
+	},
+}
