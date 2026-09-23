@@ -125,7 +125,7 @@ func (n *spooferNode) reportSpooferForwardError(
 	if !ok {
 		target = "unknown"
 	}
-	n.Logger.Warnf(
+	n.Logger.Debugf(
 		"Spoofer %s forwarding failed: target=%s family=%s networkNode=%d network=%T: %v",
 		protocol, target, spooferEndpointFamily(ep), networkNode, network, err,
 	)

@@ -256,6 +256,9 @@ func TestSpooferForwardDiagnosticsIncludeTargetFamilyAndNetwork(t *testing.T) {
 	if len(entries) != spooferForwardLogBurst {
 		t.Fatalf("diagnostic count = %d, want rate-limited burst %d", len(entries), spooferForwardLogBurst)
 	}
+	if entries[0].Level != logging.DebugLogLevelDebug {
+		t.Fatalf("diagnostic level = %q, want %q", entries[0].Level, logging.DebugLogLevelDebug)
+	}
 	message := entries[0].Message
 	for _, want := range []string{
 		"Spoofer tcp forwarding failed",
