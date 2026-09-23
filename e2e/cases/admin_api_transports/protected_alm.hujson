@@ -1,0 +1,8 @@
+{
+	"Admin": {
+		"Unix": "%E2E_ADMIN_SOCK%",
+		"UnixFilters": {"Usernames": ["root"]},
+		"WebFilters": {"UIDs": [0]},
+	},
+	"System": {"Type": "debug"},
+}
