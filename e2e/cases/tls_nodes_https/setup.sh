@@ -76,6 +76,7 @@ generate_server_cert() {
 }
 
 generate_ca "E2E TLS Origin Root" "$E2E_CONFIG_DIR/origin-ca.pem" "$E2E_CONFIG_DIR/origin-ca.key"
+generate_ca "E2E TLS Wrong Root" "$E2E_CONFIG_DIR/wrong-ca.pem" "$E2E_CONFIG_DIR/wrong-ca.key"
 generate_server_cert "origin.test" "$E2E_CONFIG_DIR/origin.pem" "$E2E_CONFIG_DIR/origin.key" origin.test
 generate_server_cert "wrapper-origin.test" "$E2E_CONFIG_DIR/wrapper-origin.pem" "$E2E_CONFIG_DIR/wrapper-origin.key" wrapper-origin.test
 
