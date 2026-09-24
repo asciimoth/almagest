@@ -14,6 +14,9 @@
   --red: #f38ba8;
   --mauve: #cba6f7;
   --teal: #94e2d5;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --focus-ring: color-mix(in srgb, var(--blue), transparent 55%);
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
@@ -40,33 +43,47 @@ body {
   bottom: 16px;
   z-index: 20;
   display: grid;
-  gap: 8px;
+  gap: 10px;
   width: min(420px, calc(100vw - 32px));
   pointer-events: none;
 }
 
 .notification {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 30px;
-  gap: 4px 10px;
+  grid-template-columns: 4px minmax(0, 1fr) 30px;
+  gap: 0 10px;
   align-items: start;
-  padding: 10px;
+  overflow: hidden;
+  padding: 10px 10px 10px 0;
   border: 1px solid var(--surface1);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: var(--mantle);
   box-shadow: 0 12px 30px color-mix(in srgb, black, transparent 60%);
   pointer-events: auto;
 }
 
-.notification strong {
+.notification::before {
+  width: 4px;
+  height: calc(100% + 20px);
+  margin-top: -10px;
+  background: var(--blue);
+  content: "";
+}
+
+.notification-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.notification-copy strong {
   min-width: 0;
   color: var(--text);
   font-size: 13px;
   line-height: 1.2;
 }
 
-.notification span {
-  grid-column: 1 / 2;
+.notification-copy span {
   min-width: 0;
   overflow-wrap: anywhere;
   color: var(--subtext);
@@ -75,12 +92,20 @@ body {
 }
 
 .notification button {
-  grid-column: 2 / 3;
-  grid-row: 1 / 3;
+  grid-column: 3;
+  grid-row: 1;
   width: 30px;
   min-height: 30px;
   padding: 0;
   color: var(--subtext);
+}
+
+.notification-success::before {
+  background: var(--green);
+}
+
+.notification-warning::before {
+  background: var(--yellow);
 }
 
 .notification-error {
@@ -88,25 +113,109 @@ body {
   background: color-mix(in srgb, var(--red), var(--mantle) 88%);
 }
 
+.notification-error::before {
+  background: var(--red);
+}
+
 button,
 input,
+select,
 textarea {
   font: inherit;
 }
 
 button {
+  min-height: 34px;
+  padding: 0 12px;
   border: 1px solid var(--surface1);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: var(--surface0);
   color: var(--text);
   cursor: pointer;
-  min-height: 34px;
+  font-weight: 600;
+  line-height: 1.2;
+  transition: border-color 120ms ease, background-color 120ms ease, color 120ms ease, opacity 120ms ease;
 }
 
-button:hover,
-button.active {
+button:hover:not(:disabled) {
   border-color: var(--blue);
   background: #394260;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[role="button"]:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+button.primary,
+form button[type="submit"] {
+  border-color: color-mix(in srgb, var(--blue), white 12%);
+  background: color-mix(in srgb, var(--blue), var(--surface0) 58%);
+  color: white;
+}
+
+button.primary:hover:not(:disabled),
+form button[type="submit"]:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--blue), white 32%);
+  background: color-mix(in srgb, var(--blue), var(--surface0) 42%);
+}
+
+button.danger {
+  border-color: color-mix(in srgb, var(--red), var(--surface0) 52%);
+  background: color-mix(in srgb, var(--red), var(--surface0) 86%);
+  color: color-mix(in srgb, var(--red), white 16%);
+}
+
+button.danger:hover:not(:disabled) {
+  border-color: var(--red);
+  background: color-mix(in srgb, var(--red), var(--surface0) 72%);
+}
+
+button.icon-button {
+  display: inline-grid;
+  width: 30px;
+  min-width: 30px;
+  min-height: 30px;
+  place-items: center;
+  padding: 0;
+  font-size: 18px;
+  line-height: 1;
+}
+
+input[type="text"],
+input[type="number"],
+input[type="file"],
+select,
+textarea {
+  border: 1px solid var(--surface1);
+  border-radius: var(--radius-md);
+  outline: none;
+  background: var(--mantle);
+  color: var(--text);
+}
+
+input[type="file"] {
+  padding: 4px;
+  color: var(--subtext);
+}
+
+input[type="file"]::file-selector-button {
+  min-height: 24px;
+  margin-right: 8px;
+  border: 1px solid var(--surface1);
+  border-radius: var(--radius-sm);
+  background: var(--surface0);
+  color: var(--text);
+  cursor: pointer;
 }
 
 .app-shell {
@@ -117,7 +226,7 @@ button.active {
 
 .app-header {
   display: grid;
-  grid-template-columns: minmax(170px, 1fr) auto auto;
+  grid-template-columns: minmax(170px, 1fr) auto;
   gap: 16px;
   align-items: center;
   padding: 12px 16px;
@@ -181,11 +290,65 @@ h1 {
 }
 
 .tabs button {
-  min-width: 78px;
+  min-width: 54px;
+  min-height: 32px;
+  padding: 0 10px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--subtext);
+  font-size: 13px;
+}
+
+.tabs {
+  gap: 2px;
+  border: 1px solid var(--surface0);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--crust), transparent 20%);
+  padding: 3px;
+}
+
+.tabs button:hover:not(:disabled) {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--surface0), transparent 28%);
+  color: var(--text);
+}
+
+.tabs button.active {
+  border-color: var(--surface1);
+  background: var(--surface0);
+  color: var(--text);
 }
 
 .actions button {
   padding: 0 12px;
+}
+
+.list-panel-shell {
+  display: grid;
+  gap: 12px;
+}
+
+.panel-header {
+  display: flex;
+  gap: 16px;
+  align-items: start;
+  justify-content: space-between;
+}
+
+.panel-header h2,
+.panel-header p {
+  margin: 0;
+}
+
+.panel-header h2 {
+  font-size: 16px;
+}
+
+.panel-header p {
+  margin-top: 2px;
+  color: var(--subtext);
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .panel {
@@ -223,6 +386,11 @@ h1 {
   gap: 16px;
   align-items: start;
   justify-content: space-between;
+}
+
+.snapshots-header button,
+.config-header button {
+  flex: 0 0 auto;
 }
 
 .snapshots-header h2,
@@ -296,7 +464,7 @@ h1 {
   gap: 8px 16px;
   align-items: center;
   border: 1px solid var(--surface0);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: var(--mantle);
   padding: 10px 12px;
 }
@@ -328,7 +496,7 @@ h1 {
 }
 
 .snapshot-row-actions .danger {
-  color: color-mix(in srgb, var(--red), var(--text) 20%);
+  color: color-mix(in srgb, var(--red), white 16%);
 }
 
 .snapshot-empty {
@@ -624,11 +792,26 @@ h1 {
 }
 
 .node-panel-tabs {
+  gap: 2px;
   margin-bottom: 12px;
+  border: 1px solid var(--surface0);
+  border-radius: 8px;
+  background: var(--crust);
+  padding: 3px;
 }
 
 .node-panel-tabs button {
   flex: 1;
+  min-height: 30px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--subtext);
+}
+
+.node-panel-tabs button.active {
+  border-color: var(--surface1);
+  background: var(--surface0);
+  color: var(--text);
 }
 
 .node-name-form {
@@ -998,37 +1181,12 @@ h1 {
 .kv-toolbar button,
 .kv-inline-form button,
 .kv-value-actions button,
-.kv-value-header button,
-.kv-notice button {
+.kv-value-header button {
   min-height: 26px;
   padding: 0 8px;
   font-size: 12px;
   line-height: 1;
   white-space: nowrap;
-}
-
-.kv-notice {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 26px;
-  gap: 8px;
-  align-items: center;
-  border-left: 3px solid var(--surface1);
-  border-bottom: 1px solid var(--surface0);
-  padding: 6px 0 6px 8px;
-}
-
-.kv-notice span {
-  min-width: 0;
-  overflow-wrap: anywhere;
-  font-size: 12px;
-}
-
-.kv-notice-info {
-  border-left-color: color-mix(in srgb, var(--green), var(--surface0) 42%);
-}
-
-.kv-notice-error {
-  border-left-color: color-mix(in srgb, var(--red), var(--surface0) 34%);
 }
 
 .sec-header {
@@ -1070,7 +1228,7 @@ h1 {
   min-height: 30px;
   min-width: 0;
   border: 1px solid transparent;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: transparent;
   padding: 1px 4px;
 }
@@ -1081,12 +1239,17 @@ h1 {
 
 .kv-row-clickable {
   cursor: pointer;
+  transition: border-color 120ms ease, background-color 120ms ease;
 }
 
-.kv-row:hover,
+.kv-row-clickable:hover,
 .kv-row:focus-within {
   border-color: color-mix(in srgb, var(--surface1), transparent 30%);
   background: color-mix(in srgb, var(--surface0), transparent 62%);
+}
+
+.kv-row-clickable:hover {
+  border-color: color-mix(in srgb, var(--blue), var(--surface0) 62%);
 }
 
 .kv-row-selected,
@@ -1180,7 +1343,7 @@ h1 {
   display: flex;
   gap: 6px;
   align-items: center;
-  justify-content: end;
+  justify-content: center;
   min-width: 0;
 }
 
@@ -1189,8 +1352,8 @@ h1 {
 }
 
 .kv-row-actions button {
-  border-color: transparent;
-  background: transparent;
+  border-color: color-mix(in srgb, var(--surface1), transparent 24%);
+  background: color-mix(in srgb, var(--surface0), transparent 30%);
   color: var(--subtext);
 }
 
@@ -1200,20 +1363,14 @@ h1 {
   color: var(--text);
 }
 
-@media (hover: hover) and (pointer: fine) {
-  .kv-row-actions {
-    opacity: 0.42;
-    transition: opacity 120ms ease;
-  }
-
-  .kv-row:hover .kv-row-actions,
-  .kv-row:focus-within .kv-row-actions {
-    opacity: 1;
-  }
-}
-
 .kv-row-actions .danger {
   color: color-mix(in srgb, var(--red), var(--text) 20%);
+}
+
+.kv-row-actions .danger:hover:not(:disabled) {
+  border-color: var(--red);
+  background: color-mix(in srgb, var(--red), var(--surface0) 78%);
+  color: color-mix(in srgb, var(--red), white 20%);
 }
 
 .kv-value-actions .danger {
@@ -1582,13 +1739,13 @@ h1 {
 .sec-form-actions {
   display: flex;
   gap: 6px;
-  justify-content: end;
+  justify-content: center;
 }
 
 .dns-record-form-actions {
   display: flex;
   gap: 6px;
-  justify-content: end;
+  justify-content: center;
 }
 
 .kv-inline-form input,
@@ -1652,7 +1809,7 @@ h1 {
 
 .kv-value-header {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 26px;
+  grid-template-columns: minmax(0, 1fr) 30px;
   gap: 8px;
   align-items: start;
   border-bottom: 1px solid var(--surface0);
@@ -1660,7 +1817,7 @@ h1 {
 }
 
 .kv-value-header button {
-  width: 26px;
+  width: 30px;
   padding: 0;
 }
 
@@ -2257,7 +2414,6 @@ h1 {
 
   .kv-row-actions {
     grid-column: 2 / -1;
-    justify-content: start;
   }
 
   .kv-node-body {
@@ -2273,12 +2429,6 @@ h1 {
   .kv-row-actions,
   .kv-value-actions {
     flex-wrap: wrap;
-    justify-content: start;
-  }
-
-  .sec-form-actions,
-  .dns-record-form-actions {
-    justify-content: start;
   }
 
   .dns-record {

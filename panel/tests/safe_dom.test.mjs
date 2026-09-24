@@ -13,7 +13,6 @@ import {
   createKVValuePreview,
   createLogItem,
   createNodeNameForm,
-  createNotificationToast,
   createSecretTitle,
   createSecretValuePreview,
   createTLSCertPreview,
@@ -26,6 +25,7 @@ import {
   safeCSSColor,
   updateWorkerAgeElements,
 } from "../public/build/safe_dom.js";
+import { createNotificationToast } from "../public/build/notification_center.js";
 
 const payload = `<img src=x onerror="globalThis.__xss = true"><script>globalThis.__xss = true</script>`;
 
@@ -90,7 +90,7 @@ test("node name, logs, and notifications keep payloads as text", () => {
       node_id: 7,
       node_class: `evil/${payload}`,
     }),
-    createNotificationToast(payload),
+    createNotificationToast(document, payload),
   );
 
   assertNoParsedPayload(root);

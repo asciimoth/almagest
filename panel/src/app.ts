@@ -48,7 +48,6 @@ import {
   createKVValuePreview,
   createLogItem,
   createNodeNameForm,
-  createNotificationToast,
   createSecretTitle,
   createSecretValuePreview,
   createTLSCertPreview,
@@ -217,6 +216,7 @@ import {
   type SubscribeLogsResponse,
   type TLSSubscribeResponse,
 } from "./response_model.js";
+import { NotificationCenter, type NotificationTone } from "./notification_center.js";
 
 const SECRET_NODE_AUTOCOMPLETE_LIMIT = 8;
 const TLS_CERT_OPENSSL_COMMAND = [
@@ -259,14 +259,6 @@ const { FormularMenu } = (await import(formularMenuURL.href)) as {
   FormularMenu: FormularMenuConstructor;
 };
 
-type KVNoticeLevel = "info" | "error";
-type KVNotice = {
-  level: KVNoticeLevel;
-  text: string;
-};
-type DNSNotice = KVNotice;
-type SecNotice = KVNotice;
-type TLSNotice = KVNotice;
 type ConfigChanges = {
   added?: string[];
   removed?: string[];
@@ -446,14 +438,12 @@ const frontendLogs: LogEntry[] = [];
 let secSubscriptionID = 0;
 let secSubscribePending = false;
 let secScrollTop = 0;
-let secNotice: SecNotice | null = null;
 let secOpenForm = false;
 let secValuePanel: SecValuePanelState | null = null;
 const secrets: SecretEntry[] = [];
 let dnsCacheSubscriptionID = 0;
 let dnsCacheSubscribePending = false;
 let dnsScrollTop = 0;
-let dnsNotice: DNSNotice | null = null;
 let dnsValuePanel: DNSValuePanelState | null = null;
 let dnsOpenForm: DNSOpenForm | null = null;
 let dnsValueSubscribePending = false;
@@ -466,7 +456,6 @@ let tlsSubscriptionID = 0;
 let tlsSubscribePending = false;
 let tlsReloadOSCertsPending = false;
 let tlsScrollTop = 0;
-let tlsNotice: TLSNotice | null = null;
 let tlsOpenForm: TLSOpenForm | null = null;
 let tlsValuePanel: TLSValuePanelState | null = null;
 let tlsSnapshot: TLSSnapshot = { certs: [], policies: [] };
@@ -474,7 +463,6 @@ const tlsExpandedCertGroups = new Set<string>([TLS_USER_CERT_GROUP_KEY]);
 let kvStoreSubscriptionID = 0;
 let kvStoreSubscribePending = false;
 let kvScrollTop = 0;
-let kvNotice: KVNotice | null = null;
 let kvOpenForm: KVOpenForm | null = null;
 let kvValuePanel: KVValuePanelState | null = null;
 let kvValueSubscribePending = false;
@@ -486,7 +474,6 @@ const kvEntrySubscribePending = new Set<string>();
 const kvPendingStoreSnapshots = new Map<number, KVStoresSnapshot>();
 const kvPendingEntrySnapshots = new Map<number, KVEntriesSnapshot>();
 const kvPendingValueSnapshots = new Map<number, KVValueSnapshot>();
-let nextToastID = 1;
 let liteGraphDrawGuardInstalled = false;
 let liteGraphWidgetSelectionGuardInstalled = false;
 let logStoreLimit = 0;
@@ -540,8 +527,22 @@ const el = {
   snapshotsReload: document.querySelector<HTMLButtonElement>("#snapshots-reload")!,
   snapshotsList: document.querySelector<HTMLOListElement>("#snapshots-list")!,
   snapshotsStatus: document.querySelector<HTMLElement>("#snapshots-status")!,
-  notifications: document.querySelector<HTMLElement>("#notifications"),
+  notifications: document.querySelector<HTMLElement>("#notifications")!,
 };
+
+const notifications = new NotificationCenter(el.notifications, window);
+
+function notify(tone: NotificationTone, title: string, message: string): void {
+  notifications.show(message, { tone, title });
+}
+
+function notifySuccess(message: string, title = "Done"): void {
+  notify("success", title, message);
+}
+
+function notifyError(message: string, title = "Action failed"): void {
+  notify("error", title, message);
+}
 
 function log(source: string, level: string, text: string): void {
   appendLog({
@@ -1762,18 +1763,29 @@ function renderNodePanel(id: number): void {
   el.sidekick.dataset.nodeClass = node.class;
   const tabs = document.createElement("div");
   tabs.className = "node-panel-tabs";
+  tabs.setAttribute("role", "tablist");
+  tabs.setAttribute("aria-label", "Node details");
   const menuTab = textElement("button", "Node menu");
   menuTab.className = "active";
   menuTab.dataset.nodeTab = "menu";
   menuTab.type = "button";
+  menuTab.id = "node-tab-menu";
+  menuTab.setAttribute("role", "tab");
+  menuTab.setAttribute("aria-selected", "true");
   const docsTab = textElement("button", "Description");
   docsTab.dataset.nodeTab = "docs";
   docsTab.type = "button";
+  docsTab.id = "node-tab-docs";
+  docsTab.setAttribute("role", "tab");
+  docsTab.setAttribute("aria-selected", "false");
+  docsTab.tabIndex = -1;
   tabs.append(menuTab, docsTab);
 
   const menuPanel = document.createElement("div");
   menuPanel.className = "node-panel-section";
   menuPanel.dataset.nodePanel = "menu";
+  menuPanel.setAttribute("role", "tabpanel");
+  menuPanel.setAttribute("aria-labelledby", menuTab.id);
   const menu = document.createElement("div");
   menu.id = "node-menu";
   const popups = document.createElement("div");
@@ -1783,6 +1795,9 @@ function renderNodePanel(id: number): void {
   const docsPanel = document.createElement("div");
   docsPanel.className = "node-panel-section hidden";
   docsPanel.dataset.nodePanel = "docs";
+  docsPanel.setAttribute("role", "tabpanel");
+  docsPanel.setAttribute("aria-labelledby", docsTab.id);
+  docsPanel.setAttribute("aria-hidden", "true");
   const descriptionPanel = document.createElement("div");
   descriptionPanel.className = "node-description";
   descriptionPanel.dataset.nodeDescription = "";
@@ -1801,6 +1816,7 @@ function renderNodePanel(id: number): void {
   });
   for (const tab of el.sidekick.querySelectorAll<HTMLButtonElement>("[data-node-tab]")) {
     tab.addEventListener("click", () => setNodePanelTab(tab.dataset.nodeTab ?? "menu"));
+    tab.addEventListener("keydown", moveNodePanelTabFocus);
   }
   const form = el.sidekick.querySelector<HTMLFormElement>("[data-node-name-form]");
   form?.addEventListener("submit", (event) => {
@@ -1863,8 +1879,9 @@ function renderNodePopups(nodeID: number, node: NodeSnapshot): void {
   if (popups.length) {
     const clear = document.createElement("button");
     clear.type = "button";
+    clear.className = "danger";
     clear.textContent = "Clear all";
-    clear.addEventListener("click", () => tryBackend("removeNodePopups", { id: nodeID }));
+    clear.addEventListener("click", () => void removeNodePopups(nodeID));
     header.append(clear);
   }
   root.append(header);
@@ -1892,19 +1909,62 @@ function renderPopupItem(nodeID: number, popup: NodePopup): HTMLElement {
   text.textContent = popup.text;
   const remove = document.createElement("button");
   remove.type = "button";
+  remove.className = "danger";
   remove.textContent = "Delete";
-  remove.addEventListener("click", () => tryBackend("removeNodePopup", { id: nodeID, popupId: popup.id }));
+  remove.addEventListener("click", () => void removeNodePopup(nodeID, popup.id));
   item.append(type, text, remove);
   return item;
 }
 
+async function removeNodePopup(nodeID: number, popupID: number): Promise<void> {
+  try {
+    await backend("removeNodePopup", { id: nodeID, popupId: popupID });
+    notifySuccess("Node popup deleted.", "Popup deleted");
+  } catch (error) {
+    notifyError(errorMessage(error), "Popup deletion failed");
+  }
+}
+
+async function removeNodePopups(nodeID: number): Promise<void> {
+  try {
+    await backend("removeNodePopups", { id: nodeID });
+    notifySuccess("All node popups deleted.", "Popups cleared");
+  } catch (error) {
+    notifyError(errorMessage(error), "Popup deletion failed");
+  }
+}
+
 function setNodePanelTab(name: string): void {
   for (const tab of el.sidekick.querySelectorAll<HTMLButtonElement>("[data-node-tab]")) {
-    tab.classList.toggle("active", tab.dataset.nodeTab === name);
+    const selected = tab.dataset.nodeTab === name;
+    tab.classList.toggle("active", selected);
+    tab.setAttribute("aria-selected", String(selected));
+    tab.tabIndex = selected ? 0 : -1;
   }
   for (const panel of el.sidekick.querySelectorAll<HTMLElement>("[data-node-panel]")) {
-    panel.classList.toggle("hidden", panel.dataset.nodePanel !== name);
+    const hidden = panel.dataset.nodePanel !== name;
+    panel.classList.toggle("hidden", hidden);
+    panel.setAttribute("aria-hidden", String(hidden));
   }
+}
+
+function moveNodePanelTabFocus(event: KeyboardEvent): void {
+  const current = event.currentTarget;
+  if (!(current instanceof HTMLButtonElement)) return;
+  const tabs = [...el.sidekick.querySelectorAll<HTMLButtonElement>("[data-node-tab]")];
+  const index = tabs.indexOf(current);
+  if (index < 0) return;
+  let nextIndex: number;
+  if (event.key === "Home") nextIndex = 0;
+  else if (event.key === "End") nextIndex = tabs.length - 1;
+  else if (event.key === "ArrowRight") nextIndex = (index + 1) % tabs.length;
+  else if (event.key === "ArrowLeft") nextIndex = (index - 1 + tabs.length) % tabs.length;
+  else return;
+  event.preventDefault();
+  const next = tabs[nextIndex];
+  if (!next) return;
+  setNodePanelTab(next.dataset.nodeTab ?? "menu");
+  next.focus();
 }
 
 function mountMenu(nodeID: number): void {
@@ -1995,7 +2055,7 @@ async function ensureSecSubscription(): Promise<void> {
   const response = await tryBackend("secSubscribe");
   secSubscribePending = false;
   if (!response) {
-    secNotice = { level: "error", text: "Secrets storage is unavailable." };
+    notifyError("Secrets storage is unavailable.", "Secrets unavailable");
     renderSec();
     return;
   }
@@ -2021,7 +2081,6 @@ function renderSec(): void {
   const tree = document.createElement("div");
   tree.className = "kv-tree-inner";
   tree.append(renderSecHeader());
-  if (secNotice) tree.append(renderSecNotice(secNotice));
   if (secOpenForm) tree.append(renderSecretCreateForm());
 
   const list = document.createElement("ol");
@@ -2054,28 +2113,13 @@ function renderSecHeader(): HTMLElement {
   return header;
 }
 
-function renderSecNotice(notice: SecNotice): HTMLElement {
-  const row = document.createElement("div");
-  row.className = `kv-notice kv-notice-${notice.level}`;
-  row.append(textElement("span", notice.text));
-  const close = textElement("button", "x");
-  close.type = "button";
-  close.title = "Dismiss";
-  close.setAttribute("aria-label", "Dismiss Sec message");
-  close.addEventListener("click", () => {
-    secNotice = null;
-    renderSec();
-  });
-  row.append(close);
-  return row;
-}
-
 function renderSecretRow(entry: SecretEntry): HTMLLIElement {
   const item = document.createElement("li");
   item.className = "kv-entry kv-entry-value sec-secret";
   item.classList.toggle("sec-secret-readonly", Boolean(entry.read_only));
   const row = document.createElement("div");
   row.className = "kv-row";
+  bindKVRowAction(row, `Open secret ${entry.key}`, () => openSecValuePanel(entry.key));
   row.append(createKVIndent());
   row.append(createSecretTitle(entry));
   row.append(renderSecretRowActions(entry));
@@ -2089,11 +2133,6 @@ function renderSecretRow(entry: SecretEntry): HTMLLIElement {
 function renderSecretRowActions(entry: SecretEntry): HTMLElement {
   const actions = document.createElement("div");
   actions.className = "kv-row-actions";
-  const show = textElement("button", "Open");
-  show.type = "button";
-  show.title = "Open secret";
-  show.addEventListener("click", () => openSecValuePanel(entry.key));
-  actions.append(show);
   if (!entry.read_only) {
     const remove = textElement("button", "Delete");
     remove.type = "button";
@@ -2265,12 +2304,12 @@ function wireSecretNodeAutocomplete(textarea: HTMLTextAreaElement, suggestions: 
 async function createSecret(key: string, nodesText: string, value: string): Promise<void> {
   const name = key.trim();
   if (!name) {
-    secNotice = { level: "error", text: "Secret key is required." };
+    notifyError("Secret key is required.", "Invalid secret");
     renderSec();
     return;
   }
   if (secretEntryByKey(name)) {
-    secNotice = { level: "error", text: "Secret already exists." };
+    notifyError("Secret already exists.", "Invalid secret");
     renderSec();
     return;
   }
@@ -2282,11 +2321,11 @@ async function createSecret(key: string, nodesText: string, value: string): Prom
       ? await backend("secSetNodes", { key: name, nodes })
       : valueEntry;
     upsertSecretEntry(entry);
-    secNotice = { level: "info", text: "Secret created." };
+    notifySuccess("Secret created.", "Secret saved");
     secOpenForm = false;
     openSecValuePanel(entry.key);
   } catch (error) {
-    secNotice = { level: "error", text: `secCreate: ${errorMessage(error)}` };
+    notifyError(errorMessage(error), "Secret creation failed");
     renderSec();
   }
 }
@@ -2326,7 +2365,7 @@ function renderSecValuePanel(): void {
   header.className = "kv-value-header";
   const title = document.createElement("div");
   title.append(textElement("h2", entry.key), textElement("p", formatSecretEntryMeta(entry)));
-  const close = textElement("button", "x");
+  const close = textElement("button", "×", "icon-button");
   close.type = "button";
   close.title = "Close";
   close.setAttribute("aria-label", "Close secret panel");
@@ -2498,12 +2537,12 @@ async function updateSecretNodes(key: string, nodesText: string): Promise<void> 
 async function renameSecret(key: string, nextKey: string): Promise<void> {
   const newKey = nextKey.trim();
   if (!newKey) {
-    secNotice = { level: "error", text: "Secret key is required." };
+    notifyError("Secret key is required.", "Invalid secret");
     renderSec();
     return;
   }
   if (newKey !== key && secretEntryByKey(newKey)) {
-    secNotice = { level: "error", text: "Secret already exists." };
+    notifyError("Secret already exists.", "Invalid secret");
     renderSec();
     return;
   }
@@ -2534,11 +2573,11 @@ async function runSecMutation<M extends SecMutationMethod>(
 ): Promise<BackendResultMap[M] | null> {
   try {
     const result = await backend(method, params);
-    secNotice = { level: "info", text: success };
+    notifySuccess(success, "Secret updated");
     renderSec();
     return result;
   } catch (error) {
-    secNotice = { level: "error", text: `${method}: ${errorMessage(error)}` };
+    notifyError(errorMessage(error), "Secret update failed");
     renderSec();
     return null;
   }
@@ -2566,7 +2605,7 @@ function validateSecretNodes(nodes: string[]): boolean {
   const known = new Set(workspaceSecretNodeNames());
   const unknown = nodes.filter((node) => !known.has(node));
   if (!unknown.length) return true;
-  secNotice = { level: "error", text: `Unknown node${unknown.length === 1 ? "" : "s"}: ${unknown.join(", ")}` };
+  notifyError(`Unknown node${unknown.length === 1 ? "" : "s"}: ${unknown.join(", ")}`, "Invalid node access");
   renderSec();
   return false;
 }
@@ -2591,11 +2630,10 @@ function removeSecretEntry(key: string): void {
 async function copySecretValue(entry: SecretEntry): Promise<void> {
   try {
     await navigator.clipboard.writeText(entry.value ?? "");
-    secNotice = { level: "info", text: "Secret value copied." };
+    notifySuccess("Secret value copied to the clipboard.", "Copied");
   } catch (error) {
-    secNotice = { level: "error", text: `Copy failed: ${errorMessage(error)}` };
+    notifyError(errorMessage(error), "Copy failed");
   }
-  renderSec();
 }
 
 function downloadSecretValue(entry: SecretEntry): void {
@@ -2610,11 +2648,10 @@ function downloadSecretValue(entry: SecretEntry): void {
     link.click();
     link.remove();
     window.setTimeout(() => URL.revokeObjectURL(url), 0);
-    secNotice = { level: "info", text: "Download started." };
+    notifySuccess("Secret download started.", "Download started");
   } catch (error) {
-    secNotice = { level: "error", text: `Download failed: ${errorMessage(error)}` };
+    notifyError(errorMessage(error), "Download failed");
   }
-  renderSec();
 }
 
 function rememberSecScrollState(): void {
@@ -2689,7 +2726,7 @@ async function ensureDNSCacheSubscription(): Promise<void> {
   const response = await tryBackend("dnsSubscribeCaches");
   dnsCacheSubscribePending = false;
   if (!response) {
-    dnsNotice = { level: "error", text: "DNS cache storage is unavailable." };
+    notifyError("DNS cache storage is unavailable.", "DNS unavailable");
     renderDNS();
     return;
   }
@@ -2723,7 +2760,6 @@ function renderDNS(): void {
   const tree = document.createElement("div");
   tree.className = "kv-tree-inner";
   tree.append(renderDNSHeader());
-  if (dnsNotice) tree.append(renderDNSNotice(dnsNotice));
 
   const list = document.createElement("ol");
   list.className = "kv-store-list";
@@ -2745,22 +2781,6 @@ function renderDNSHeader(): HTMLElement {
   header.className = "kv-header";
   header.append(textElement("h2", "DNS caches"));
   return header;
-}
-
-function renderDNSNotice(notice: DNSNotice): HTMLElement {
-  const row = document.createElement("div");
-  row.className = `kv-notice kv-notice-${notice.level}`;
-  row.append(textElement("span", notice.text));
-  const close = textElement("button", "x");
-  close.type = "button";
-  close.title = "Dismiss";
-  close.setAttribute("aria-label", "Dismiss DNS message");
-  close.addEventListener("click", () => {
-    dnsNotice = null;
-    renderDNS();
-  });
-  row.append(close);
-  return row;
 }
 
 function renderDNSCache(cache: DNSCacheInfo): HTMLLIElement {
@@ -2999,12 +3019,12 @@ function dnsRecordValuePlaceholder(type: string): string {
 
 async function setDNSRecord(cache: string, previousKey: string, record: DNSRecordInput): Promise<void> {
   if (!record.name) {
-    dnsNotice = { level: "error", text: "DNS record name is required." };
+    notifyError("DNS record name is required.", "Invalid DNS record");
     renderDNS();
     return;
   }
   if (!Number.isInteger(record.ttl) || record.ttl <= 0) {
-    dnsNotice = { level: "error", text: "DNS TTL must be greater than zero." };
+    notifyError("DNS TTL must be greater than zero.", "Invalid DNS record");
     renderDNS();
     return;
   }
@@ -3050,11 +3070,11 @@ async function runDNSMutation<M extends DNSMutationMethod>(
 ): Promise<BackendResultMap[M] | null> {
   try {
     const result = await backend(method, params);
-    dnsNotice = { level: "info", text: success };
+    notifySuccess(success, "DNS updated");
     renderDNS();
     return result;
   } catch (error) {
-    dnsNotice = { level: "error", text: `${method}: ${errorMessage(error)}` };
+    notifyError(errorMessage(error), "DNS update failed");
     renderDNS();
     return null;
   }
@@ -3091,7 +3111,7 @@ async function subscribeDNSKeys(nodeKey: string): Promise<void> {
   const response = await tryBackend("dnsSubscribeKeys", { cache: ref.cache });
   dnsKeySubscribePending.delete(nodeKey);
   if (!response) {
-    dnsNotice = { level: "error", text: `Failed to subscribe DNS cache ${ref.cache}.` };
+    notifyError(`Failed to subscribe to DNS cache ${ref.cache}.`, "DNS unavailable");
     renderDNS();
     return;
   }
@@ -3135,7 +3155,7 @@ async function subscribeDNSValuePanel(): Promise<void> {
   const response = await tryBackend("dnsSubscribeValue", target);
   dnsValueSubscribePending = false;
   if (!response) {
-    dnsNotice = { level: "error", text: "Failed to subscribe DNS value." };
+    notifyError("Failed to subscribe to the DNS value.", "DNS value unavailable");
     renderDNSValuePanel();
     return;
   }
@@ -3167,7 +3187,7 @@ function renderDNSValuePanel(): void {
   const heading = textElement("h2", formatDNSCacheKey(dnsValuePanel.key));
   heading.title = dnsValuePanel.key;
   title.append(heading, textElement("p", dnsValuePanel.cache));
-  const close = textElement("button", "x");
+  const close = textElement("button", "×", "icon-button");
   close.type = "button";
   close.title = "Close";
   close.setAttribute("aria-label", "Close DNS value panel");
@@ -3259,11 +3279,10 @@ function closeDNSValuePanel(): void {
 async function copyDNSValue(value: DNSValue): Promise<void> {
   try {
     await navigator.clipboard.writeText(value.json ?? "");
-    dnsNotice = { level: "info", text: "DNS value copied." };
+    notifySuccess("DNS value copied to the clipboard.", "Copied");
   } catch (error) {
-    dnsNotice = { level: "error", text: `Copy failed: ${errorMessage(error)}` };
+    notifyError(errorMessage(error), "Copy failed");
   }
-  renderDNS();
 }
 
 function downloadDNSValue(value: DNSValue): void {
@@ -3278,11 +3297,10 @@ function downloadDNSValue(value: DNSValue): void {
     link.click();
     link.remove();
     window.setTimeout(() => URL.revokeObjectURL(url), 0);
-    dnsNotice = { level: "info", text: "Download started." };
+    notifySuccess("DNS value download started.", "Download started");
   } catch (error) {
-    dnsNotice = { level: "error", text: `Download failed: ${errorMessage(error)}` };
+    notifyError(errorMessage(error), "Download failed");
   }
-  renderDNS();
 }
 
 function rememberDNSScrollState(): void {
@@ -3327,7 +3345,7 @@ async function ensureTLSSubscription(): Promise<void> {
   const response = await tryBackend("tlsSubscribe");
   tlsSubscribePending = false;
   if (!response) {
-    tlsNotice = { level: "error", text: "TLS config storage is unavailable." };
+    notifyError("TLS config storage is unavailable.", "TLS unavailable");
     renderTLS();
     return;
   }
@@ -3361,7 +3379,6 @@ function renderTLS(): void {
   const tree = document.createElement("div");
   tree.className = "kv-tree-inner";
   tree.append(renderTLSHeader());
-  if (tlsNotice) tree.append(renderTLSNotice(tlsNotice));
   tree.append(renderTLSBuiltinCABlock());
   if (tlsOpenForm) tree.append(tlsOpenForm.kind === "cert" ? renderTLSCertCreateForm() : renderTLSPolicyCreateForm());
 
@@ -3541,27 +3558,10 @@ function downloadTLSBuiltinCAPublic(info: TLSBuiltinCAInfo): void {
     link.click();
     link.remove();
     window.setTimeout(() => URL.revokeObjectURL(url), 0);
-    tlsNotice = { level: "info", text: "Download started." };
+    notifySuccess("Built-in CA download started.", "Download started");
   } catch (error) {
-    tlsNotice = { level: "error", text: `Download failed: ${errorMessage(error)}` };
+    notifyError(errorMessage(error), "Download failed");
   }
-  renderTLS();
-}
-
-function renderTLSNotice(notice: TLSNotice): HTMLElement {
-  const row = document.createElement("div");
-  row.className = `kv-notice kv-notice-${notice.level}`;
-  row.append(textElement("span", notice.text));
-  const close = textElement("button", "x");
-  close.type = "button";
-  close.title = "Dismiss";
-  close.setAttribute("aria-label", "Dismiss TLS message");
-  close.addEventListener("click", () => {
-    tlsNotice = null;
-    renderTLS();
-  });
-  row.append(close);
-  return row;
 }
 
 function renderTLSSection<T>(
@@ -3767,7 +3767,7 @@ function renderTLSCertForm(options: TLSCertFormOptions): HTMLFormElement {
       pem.focus();
     });
     reader.addEventListener("error", () => {
-      tlsNotice = { level: "error", text: `Certificate file read failed: ${reader.error?.message ?? "unknown error"}` };
+      notifyError(reader.error?.message ?? "Unknown file read error.", "Certificate file read failed");
       renderTLS();
     });
     reader.readAsText(file);
@@ -3837,7 +3837,7 @@ function renderTLSPolicyForm(options: TLSPolicyFormOptions): HTMLFormElement {
       try {
         parsed = parseTLSPolicySpec(spec.value);
       } catch (error) {
-        tlsNotice = { level: "error", text: errorMessage(error) };
+        notifyError(errorMessage(error), "Invalid TLS policy JSON");
         renderTLS();
         return;
       }
@@ -3862,7 +3862,7 @@ function renderTLSPolicyForm(options: TLSPolicyFormOptions): HTMLFormElement {
     try {
       parsed = mode === "json" ? parseTLSPolicySpec(spec.value) : gui.read();
     } catch (error) {
-      tlsNotice = { level: "error", text: errorMessage(error) };
+      notifyError(errorMessage(error), "Invalid TLS policy");
       renderTLS();
       return;
     }
@@ -4228,7 +4228,7 @@ function toggleTLSCertGroup(groupKey: string): void {
 async function createTLSCert(rawName: string, pem: string): Promise<void> {
   const name = rawName.trim();
   if (!isMutableTLSCertName(name)) {
-    tlsNotice = { level: "error", text: "Certificate name is required and must not start with os-ca:." };
+    notifyError("Certificate name is required and must not start with os-ca:.", "Invalid certificate");
     renderTLS();
     return;
   }
@@ -4242,7 +4242,7 @@ async function createTLSCert(rawName: string, pem: string): Promise<void> {
 async function createTLSPolicy(rawName: string, spec: TLSPolicySpec): Promise<void> {
   const name = rawName.trim();
   if (!isMutableTLSPolicyName(name)) {
-    tlsNotice = { level: "error", text: "Policy name is required and must not be default." };
+    notifyError("Policy name is required and must not be default.", "Invalid TLS policy");
     renderTLS();
     return;
   }
@@ -4267,14 +4267,13 @@ async function setTLSBuiltinCAOptions(options: TLSBuiltinCAOptions): Promise<voi
 async function reloadTLSOSCerts(): Promise<void> {
   if (tlsReloadOSCertsPending) return;
   tlsReloadOSCertsPending = true;
-  tlsNotice = null;
   renderTLS();
   try {
     const snapshot = await backend("tlsReloadOSCerts", {});
-    tlsNotice = { level: "info", text: "OS TLS certificates reloaded." };
+    notifySuccess("OS TLS certificates reloaded.", "Certificates reloaded");
     applyTLSSnapshotToState(snapshot);
   } catch (error) {
-    tlsNotice = { level: "error", text: `tlsReloadOSCerts: ${errorMessage(error)}` };
+    notifyError(errorMessage(error), "Certificate reload failed");
     renderTLS();
   } finally {
     tlsReloadOSCertsPending = false;
@@ -4318,7 +4317,7 @@ function renderTLSValuePanel(): void {
     ? formatTLSCertMeta(entry as TLSCertEntry)
     : formatTLSPolicyMeta(entry as TLSPolicyEntry);
   title.append(textElement("h2", entry.name), textElement("p", meta));
-  const close = textElement("button", "x");
+  const close = textElement("button", "×", "icon-button");
   close.type = "button";
   close.title = "Close";
   close.setAttribute("aria-label", "Close TLS config panel");
@@ -4422,12 +4421,12 @@ async function renameTLSEntry(kind: TLSItemKind, name: string, rawNewName: strin
   const newName = rawNewName.trim();
   const valid = kind === "cert" ? isMutableTLSCertName(newName) : isMutableTLSPolicyName(newName);
   if (!valid) {
-    tlsNotice = {
-      level: "error",
-      text: kind === "cert"
+    notifyError(
+      kind === "cert"
         ? "Certificate name is required and must not start with os-ca:."
         : "Policy name is required and must not be default.",
-    };
+      kind === "cert" ? "Invalid certificate" : "Invalid TLS policy",
+    );
     renderTLS();
     return;
   }
@@ -4467,11 +4466,11 @@ async function runTLSMutation<M extends TLSMutationMethod>(
 ): Promise<BackendResultMap[M] | null> {
   try {
     const result = await backend(method, params);
-    tlsNotice = { level: "info", text: success };
+    notifySuccess(success, "TLS config updated");
     renderTLS();
     return result;
   } catch (error) {
-    tlsNotice = { level: "error", text: `${method}: ${errorMessage(error)}` };
+    notifyError(errorMessage(error), "TLS config update failed");
     renderTLS();
     return null;
   }
@@ -4531,11 +4530,10 @@ function removeTLSPolicy(name: string): void {
 async function copyTLSEntry(entry: TLSCertEntry | TLSPolicyEntry): Promise<void> {
   try {
     await navigator.clipboard.writeText(tlsEntryText(entry));
-    tlsNotice = { level: "info", text: "TLS config copied." };
+    notifySuccess("TLS config copied to the clipboard.", "Copied");
   } catch (error) {
-    tlsNotice = { level: "error", text: `Copy failed: ${errorMessage(error)}` };
+    notifyError(errorMessage(error), "Copy failed");
   }
-  renderTLS();
 }
 
 function downloadTLSEntry(entry: TLSCertEntry | TLSPolicyEntry): void {
@@ -4552,11 +4550,10 @@ function downloadTLSEntry(entry: TLSCertEntry | TLSPolicyEntry): void {
     link.click();
     link.remove();
     window.setTimeout(() => URL.revokeObjectURL(url), 0);
-    tlsNotice = { level: "info", text: "Download started." };
+    notifySuccess("TLS config download started.", "Download started");
   } catch (error) {
-    tlsNotice = { level: "error", text: `Download failed: ${errorMessage(error)}` };
+    notifyError(errorMessage(error), "Download failed");
   }
-  renderTLS();
 }
 
 function tlsEntryText(entry: TLSCertEntry | TLSPolicyEntry): string {
@@ -4645,7 +4642,7 @@ async function ensureKVStoreSubscription(): Promise<void> {
   kvStoreSubscribePending = false;
   if (!response) {
     kvPendingStoreSnapshots.clear();
-    kvNotice = { level: "error", text: "KV storage is unavailable." };
+    notifyError("KV storage is unavailable.", "KV unavailable");
     renderKV();
     return;
   }
@@ -4676,7 +4673,6 @@ function renderKV(): void {
   const tree = document.createElement("div");
   tree.className = "kv-tree-inner";
   tree.append(renderKVHeader());
-  if (kvNotice) tree.append(renderKVNotice(kvNotice));
 
   const list = document.createElement("ol");
   list.className = "kv-store-list";
@@ -4698,22 +4694,6 @@ function renderKVHeader(): HTMLElement {
   header.className = "kv-header";
   header.append(textElement("h2", "KV stores"));
   return header;
-}
-
-function renderKVNotice(notice: KVNotice): HTMLElement {
-  const row = document.createElement("div");
-  row.className = `kv-notice kv-notice-${notice.level}`;
-  row.append(textElement("span", notice.text));
-  const close = textElement("button", "x");
-  close.type = "button";
-  close.title = "Dismiss";
-  close.setAttribute("aria-label", "Dismiss KV message");
-  close.addEventListener("click", () => {
-    kvNotice = null;
-    renderKV();
-  });
-  row.append(close);
-  return row;
 }
 
 function renderKVEmptyState(text: string): HTMLLIElement {
@@ -4849,9 +4829,9 @@ function createKVIndent(): HTMLElement {
 function renderKVBucketActions(store: KVStoreInfo, path: string[]): HTMLElement {
   const actions = document.createElement("div");
   actions.className = "kv-row-actions";
-  const drop = textElement("button", "Drop");
+  const drop = textElement("button", "Delete");
   drop.type = "button";
-  drop.title = "Drop subtree";
+  drop.title = "Delete subtree";
   drop.className = "danger";
   drop.addEventListener("click", () => dropKVSubtree(store, path));
   actions.append(drop);
@@ -4982,7 +4962,7 @@ function toggleKVNode(nodeKey: string): void {
 async function createKVSubtree(store: KVStoreInfo, path: string[], name: string): Promise<void> {
   const childName = name;
   if (!childName) {
-    kvNotice = { level: "error", text: "Subtree name is required." };
+    notifyError("Subtree name is required.", "Invalid subtree");
     renderKV();
     return;
   }
@@ -5002,7 +4982,7 @@ async function setKVValue(
 ): Promise<void> {
   const name = key;
   if (!name) {
-    kvNotice = { level: "error", text: "Key is required." };
+    notifyError("Key is required.", "Invalid value");
     renderKV();
     return;
   }
@@ -5028,12 +5008,12 @@ async function deleteKVValue(store: KVStoreInfo, path: string[], key: string): P
 
 async function dropKVSubtree(store: KVStoreInfo, path: string[]): Promise<void> {
   if (!path.length) return;
-  if (!window.confirm(`Drop subtree "${path[path.length - 1]}"?`)) return;
+  if (!window.confirm(`Delete subtree "${path[path.length - 1]}"?`)) return;
   const targetKey = kvNodeKey(store, path);
   if (kvValuePanel && sameKVStore(kvValuePanel.store, store) && pathHasPrefix(kvValuePanel.path, path)) {
     closeKVValuePanel();
   }
-  if (await runKVMutation("kvDrop", { store, path }, "Subtree dropped.")) {
+  if (await runKVMutation("kvDrop", { store, path }, "Subtree deleted.")) {
     for (const nodeKey of [...kvExpandedNodes]) {
       if (kvNodeDescendsFrom(nodeKey, targetKey)) kvExpandedNodes.delete(nodeKey);
     }
@@ -5048,11 +5028,11 @@ async function runKVMutation(
 ): Promise<boolean> {
   try {
     await backend(method, params);
-    kvNotice = { level: "info", text: success };
+    notifySuccess(success, "KV updated");
     renderKV();
     return true;
   } catch (error) {
-    kvNotice = { level: "error", text: `${method}: ${errorMessage(error)}` };
+    notifyError(errorMessage(error), "KV update failed");
     renderKV();
     return false;
   }
@@ -5084,7 +5064,7 @@ async function subscribeKVEntries(nodeKey: string): Promise<void> {
   kvEntrySubscribePending.delete(nodeKey);
   if (!response) {
     if (!kvEntrySubscribePending.size) kvPendingEntrySnapshots.clear();
-    kvNotice = { level: "error", text: `Failed to subscribe ${kvPathLabel(ref.store, ref.path)}.` };
+    notifyError(`Failed to subscribe to ${kvPathLabel(ref.store, ref.path)}.`, "KV unavailable");
     renderKV();
     return;
   }
@@ -5137,7 +5117,7 @@ async function subscribeKVValuePanel(): Promise<void> {
   kvValueSubscribePending = false;
   if (!response) {
     kvPendingValueSnapshots.clear();
-    kvNotice = { level: "error", text: "Failed to subscribe value." };
+    notifyError("Failed to subscribe to the value.", "KV value unavailable");
     renderKVValuePanel();
     return;
   }
@@ -5170,7 +5150,7 @@ function renderKVValuePanel(): void {
   header.className = "kv-value-header";
   const title = document.createElement("div");
   title.append(textElement("h2", kvValuePanel.key), textElement("p", kvPathLabel(kvValuePanel.store, kvValuePanel.path)));
-  const close = textElement("button", "x");
+  const close = textElement("button", "×", "icon-button");
   close.type = "button";
   close.title = "Close";
   close.setAttribute("aria-label", "Close value panel");
@@ -5246,11 +5226,10 @@ async function copyKVValue(value: KVValue): Promise<void> {
     } else {
       await copyBinaryKVValue(value);
     }
-    kvNotice = { level: "info", text: "Value copied." };
+    notifySuccess("Value copied to the clipboard.", "Copied");
   } catch (error) {
-    kvNotice = { level: "error", text: `Copy failed: ${errorMessage(error)}` };
+    notifyError(errorMessage(error), "Copy failed");
   }
-  renderKV();
 }
 
 // Browser binary clipboard support is uneven. Prefer real bytes when the
@@ -5279,11 +5258,10 @@ function downloadKVValue(value: KVValue): void {
     link.click();
     link.remove();
     window.setTimeout(() => URL.revokeObjectURL(url), 0);
-    kvNotice = { level: "info", text: "Download started." };
+    notifySuccess("Value download started.", "Download started");
   } catch (error) {
-    kvNotice = { level: "error", text: `Download failed: ${errorMessage(error)}` };
+    notifyError(errorMessage(error), "Download failed");
   }
-  renderKV();
 }
 
 function kvDownloadName(value: KVValue): string {
@@ -5443,7 +5421,7 @@ function updateWorkerAgeTimer(): void {
 
 function appendLog(entry: LogEntry): void {
   if (isConfigSaveFailure(entry)) {
-    notifyError(entry.message);
+    notifyError(entry.message, "Config save failed");
   }
   const panel = el.logsPanel;
   const previousHeight = panel.scrollHeight;
@@ -5493,6 +5471,7 @@ async function loadConfig(): Promise<void> {
       : `Loaded revision ${shortConfigRevision(next.revision)}.`;
   } catch (error) {
     el.configStatus.textContent = `Config load failed: ${errorMessage(error)}`;
+    notifyError(errorMessage(error), "Config load failed");
   } finally {
     configLoading = false;
     updateConfigControls();
@@ -5513,8 +5492,10 @@ async function applyConfig(): Promise<void> {
     configDraft = response.snapshot.text;
     el.configEditor.value = response.snapshot.text;
     el.configStatus.textContent = configChangeSummary(response.changes, response.snapshot.revision);
+    notifySuccess(el.configStatus.textContent, "Config applied");
   } catch (error) {
     el.configStatus.textContent = `Config apply failed: ${errorMessage(error)}`;
+    notifyError(errorMessage(error), "Config apply failed");
   } finally {
     configApplying = false;
     updateConfigControls();
@@ -5569,6 +5550,7 @@ async function loadSnapshots(): Promise<void> {
     el.snapshotsStatus.textContent = `${snapshotEntries.length} snapshot(s).`;
   } catch (error) {
     el.snapshotsStatus.textContent = `Snapshot load failed: ${errorMessage(error)}`;
+    notifyError(errorMessage(error), "Snapshot load failed");
   } finally {
     snapshotsLoading = false;
     updateSnapshotControls();
@@ -5586,8 +5568,10 @@ async function createSnapshot(): Promise<void> {
     snapshotEntries = upsertSnapshot(snapshotEntries, created);
     renderSnapshots();
     el.snapshotsStatus.textContent = `Created snapshot ${created.uuid}.`;
+    notifySuccess(el.snapshotsStatus.textContent, "Snapshot created");
   } catch (error) {
     el.snapshotsStatus.textContent = `Snapshot creation failed: ${errorMessage(error)}`;
+    notifyError(errorMessage(error), "Snapshot creation failed");
   } finally {
     snapshotMutationPending = false;
     updateSnapshotControls();
@@ -5613,8 +5597,10 @@ async function exportSnapshot(entry: SnapshotInfo): Promise<void> {
     link.remove();
     window.setTimeout(() => URL.revokeObjectURL(url), 0);
     el.snapshotsStatus.textContent = `Exported snapshot ${response.snapshot.uuid}.`;
+    notifySuccess(el.snapshotsStatus.textContent, "Snapshot exported");
   } catch (error) {
     el.snapshotsStatus.textContent = `Snapshot export failed: ${errorMessage(error)}`;
+    notifyError(errorMessage(error), "Snapshot export failed");
   } finally {
     snapshotMutationPending = false;
     updateSnapshotControls();
@@ -5628,10 +5614,12 @@ async function importSnapshot(): Promise<void> {
   const file = el.snapshotImportFile.files?.[0];
   if (!file) {
     el.snapshotsStatus.textContent = "Select a snapshot archive to import.";
+    notifyError(el.snapshotsStatus.textContent, "Snapshot archive required");
     return;
   }
   if (file.size > SNAPSHOT_ARCHIVE_MAX_BYTES) {
     el.snapshotsStatus.textContent = "Snapshot archive exceeds the 32 MiB limit.";
+    notifyError(el.snapshotsStatus.textContent, "Snapshot archive is too large");
     return;
   }
   snapshotMutationPending = true;
@@ -5647,8 +5635,10 @@ async function importSnapshot(): Promise<void> {
     snapshotEntries = upsertSnapshot(snapshotEntries, imported);
     renderSnapshots();
     el.snapshotsStatus.textContent = `Imported snapshot ${imported.uuid}.`;
+    notifySuccess(el.snapshotsStatus.textContent, "Snapshot imported");
   } catch (error) {
     el.snapshotsStatus.textContent = `Snapshot import failed: ${errorMessage(error)}`;
+    notifyError(errorMessage(error), "Snapshot import failed");
   } finally {
     snapshotMutationPending = false;
     updateSnapshotControls();
@@ -5692,8 +5682,10 @@ async function restoreSnapshot(entry: SnapshotInfo): Promise<void> {
         ? ` Config is active in memory; the config file write failed: ${response.config_write_error}`
         : " Config is active in memory only.";
     el.snapshotsStatus.textContent = `Restored snapshot ${response.snapshot.uuid}.${persistence}`;
+    notifySuccess(el.snapshotsStatus.textContent, "Snapshot restored");
   } catch (error) {
     el.snapshotsStatus.textContent = `Snapshot restore failed: ${errorMessage(error)}`;
+    notifyError(errorMessage(error), "Snapshot restore failed");
   } finally {
     snapshotMutationPending = false;
     updateSnapshotControls();
@@ -5711,8 +5703,10 @@ async function renameSnapshot(entry: SnapshotInfo): Promise<void> {
     snapshotEntries = upsertSnapshot(snapshotEntries, renamed);
     renderSnapshots();
     el.snapshotsStatus.textContent = `Renamed snapshot ${entry.uuid}.`;
+    notifySuccess(el.snapshotsStatus.textContent, "Snapshot renamed");
   } catch (error) {
     el.snapshotsStatus.textContent = `Snapshot rename failed: ${errorMessage(error)}`;
+    notifyError(errorMessage(error), "Snapshot rename failed");
   } finally {
     snapshotMutationPending = false;
     updateSnapshotControls();
@@ -5731,8 +5725,10 @@ async function deleteSnapshot(entry: SnapshotInfo): Promise<void> {
     snapshotEntries = removeSnapshotEntry(snapshotEntries, entry.uuid);
     renderSnapshots();
     el.snapshotsStatus.textContent = `Deleted snapshot ${entry.uuid}.`;
+    notifySuccess(el.snapshotsStatus.textContent, "Snapshot deleted");
   } catch (error) {
     el.snapshotsStatus.textContent = `Snapshot deletion failed: ${errorMessage(error)}`;
+    notifyError(errorMessage(error), "Snapshot deletion failed");
   } finally {
     snapshotMutationPending = false;
     updateSnapshotControls();
@@ -5761,20 +5757,6 @@ function updateSnapshotControls(): void {
   }
 }
 
-function notifyError(message: string): void {
-  const toast = createNotificationToast(message);
-  const id = nextToastID++;
-  toast.dataset.toastId = String(id);
-  const close = () => {
-    toast.remove();
-  };
-  toast.querySelector("button")?.addEventListener("click", close);
-  el.notifications?.append(toast);
-  window.setTimeout(() => {
-    if (toast.dataset.toastId === String(id)) close();
-  }, 12000);
-}
-
 function trimLogStore(): void {
   if (logStoreLimit <= 0 || frontendLogs.length <= logStoreLimit) return;
   frontendLogs.splice(0, frontendLogs.length - logStoreLimit);
@@ -5788,8 +5770,17 @@ function setTab(name: string): void {
   if (previousTab === "kv" && name !== "kv") deactivateKVPanel();
   activeTab = name;
   if (name !== "graph") graphShortcutsArmed = false;
-  for (const tab of el.tabs) tab.classList.toggle("active", tab.dataset.tab === name);
-  for (const panel of el.panels) panel.classList.toggle("hidden", panel.dataset.panel !== name);
+  for (const tab of el.tabs) {
+    const selected = tab.dataset.tab === name;
+    tab.classList.toggle("active", selected);
+    tab.setAttribute("aria-selected", String(selected));
+    tab.tabIndex = selected ? 0 : -1;
+  }
+  for (const panel of el.panels) {
+    const hidden = panel.dataset.panel !== name;
+    panel.classList.toggle("hidden", hidden);
+    panel.setAttribute("aria-hidden", String(hidden));
+  }
   if (name === "sec") activateSecPanel();
   if (name === "dns") activateDNSPanel();
   if (name === "tls") activateTLSPanel();
@@ -5800,6 +5791,24 @@ function setTab(name: string): void {
   if (name === "snapshots") void activateSnapshotsPanel();
   if (name === "graph") setTimeout(resizeGraphCanvas, 0);
   updateWorkerAgeTimer();
+}
+
+function moveTabFocus(event: KeyboardEvent): void {
+  const current = event.currentTarget;
+  if (!(current instanceof HTMLButtonElement)) return;
+  const index = el.tabs.indexOf(current);
+  if (index < 0) return;
+  let nextIndex: number;
+  if (event.key === "Home") nextIndex = 0;
+  else if (event.key === "End") nextIndex = el.tabs.length - 1;
+  else if (event.key === "ArrowRight") nextIndex = (index + 1) % el.tabs.length;
+  else if (event.key === "ArrowLeft") nextIndex = (index - 1 + el.tabs.length) % el.tabs.length;
+  else return;
+  event.preventDefault();
+  const next = el.tabs[nextIndex];
+  if (!next) return;
+  setTab(next.dataset.tab ?? "graph");
+  next.focus();
 }
 
 function graphKeydown(event: KeyboardEvent): void {
@@ -6003,7 +6012,10 @@ function visibleCanvasCenterPosition(): [number, number] {
 }
 
 function wireUI(): void {
-  for (const tab of el.tabs) tab.addEventListener("click", () => setTab(tab.dataset.tab ?? "graph"));
+  for (const tab of el.tabs) {
+    tab.addEventListener("click", () => setTab(tab.dataset.tab ?? "graph"));
+    tab.addEventListener("keydown", moveTabFocus);
+  }
   el.secPanel.addEventListener("scroll", rememberSecScrollState);
   el.dnsPanel.addEventListener("scroll", rememberDNSScrollState);
   el.tlsPanel.addEventListener("scroll", rememberTLSScrollState);
@@ -6108,5 +6120,6 @@ async function boot(): Promise<void> {
 
 boot().catch((error) => {
   el.status.textContent = `Panel failed: ${errorMessage(error)}`;
+  notifyError(errorMessage(error), "Panel startup failed");
   log("frontend", "error", errorMessage(error));
 });

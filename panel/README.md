@@ -6,6 +6,9 @@ files own data transforms and DOM builders. `npm run build` writes compiled
 modules to `public/build` and publishes the complete panel to the daemon static
 directory.
 
+Use `src/notification_center.ts` for transient action feedback. Do not add
+tab-specific copied, saved, or deleted message renderers.
+
 ## Data trust boundary
 
 Treat all daemon, node, plugin, config, storage, and clipboard data as

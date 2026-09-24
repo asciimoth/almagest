@@ -19,11 +19,16 @@ test("the panel has a restrictive content security policy", () => {
   assert.doesNotMatch(policy, /script-src[^;]*'unsafe-(?:inline|eval)'/);
 });
 
-test("Sec and TLS tabs are available in data-management order", () => {
+test("data-management tabs use clear labels and accessible tab semantics", () => {
   const dom = new JSDOM(html);
-  const tabs = [...dom.window.document.querySelectorAll("[data-tab]")].map((button) => button.textContent?.trim());
+  const tabElements = [...dom.window.document.querySelectorAll("[data-tab]")];
+  const tabs = tabElements.map((button) => button.textContent?.trim());
 
-  assert.deepEqual(tabs.slice(0, 5), ["Graph", "Sec", "DNS", "TLS", "KV"]);
+  assert.deepEqual(tabs.slice(0, 5), ["Graph", "Secrets", "DNS", "TLS", "KV"]);
+  assert.equal(tabs.includes("Processes"), true);
+  assert.equal(tabElements.every((tab) => tab.getAttribute("role") === "tab"), true);
+  assert.equal(tabElements.every((tab) => tab.hasAttribute("aria-controls")), true);
+  assert.equal(dom.window.document.querySelectorAll("[role='tabpanel']").length, tabElements.length);
   assert.equal(dom.window.document.querySelector("[data-panel='sec'] #sec-tree") !== null, true);
   assert.equal(dom.window.document.querySelector("[data-panel='sec'] #sec-value-panel") !== null, true);
   assert.equal(dom.window.document.querySelector("[data-panel='tls'] #tls-tree") !== null, true);

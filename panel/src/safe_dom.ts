@@ -189,16 +189,6 @@ export function createNodeNameForm(name: string): HTMLFormElement {
   return form;
 }
 
-export function createNotificationToast(message: string): HTMLDivElement {
-  const toast = document.createElement("div");
-  toast.className = "notification notification-error";
-  const dismiss = textElement("button", "x");
-  dismiss.type = "button";
-  dismiss.setAttribute("aria-label", "Dismiss notification");
-  toast.append(textElement("strong", "Config save failed"), textElement("span", message), dismiss);
-  return toast;
-}
-
 export function createKVStoreTitle(store: KVStoreInfo): HTMLElement {
   const title = document.createElement("span");
   title.className = "kv-store-title";
