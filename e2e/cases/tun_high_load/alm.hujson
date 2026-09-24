@@ -1,0 +1,120 @@
+{
+	"Logs": {
+		"Cache": {
+			"Debug": 8192,
+			"Info": 512,
+			"Warn": 256,
+			"Error": 256,
+			"Fatal": 32,
+		},
+	},
+	"nodes": {
+		"Load direct TUN": {
+			"Class": "almagest/Tun",
+			"Links": ["Tun -> [Load direct Spoofer] Tun"],
+			"name": "almload0",
+			"tunAddrs": "10.221.1.1/24",
+			"tunRoutes": "10.221.1.0/24",
+			"mtu": 1500,
+		},
+		"Load direct Spoofer": {
+			"Class": "almagest/Spoofer",
+			"Links": ["Network -> [Load direct network] Network"],
+			"mtu": 1500,
+			"queueLength": 4096,
+		},
+		"Load direct network": {
+			"Class": "almagest/MockNetwork",
+		},
+		"Load direct server": {
+			"Class": "almagest/HttpServer",
+			"Links": ["Network -> [Load direct network] Network"],
+			"host": "10.221.1.2",
+			"port": 18201,
+			"response": "direct-load-response",
+		},
+
+		"Load middleware TUN": {
+			"Class": "almagest/Tun",
+			"Links": ["Tun -> [Load config stripper] Tun"],
+			"name": "almload1",
+			"tunAddrs": "10.222.1.1/24",
+			"tunRoutes": "10.222.1.0/24",
+			"mtu": 1500,
+		},
+		"Load config stripper": {
+			"Class": "almagest/TunConfigStripper",
+			"Links": ["Tun -> [Load firewall] Tun"],
+		},
+		"Load firewall": {
+			"Class": "almagest/TunFirewall",
+			"Links": ["Tun -> [Load middleware Spoofer] Tun"],
+			"rules": {},
+		},
+		"Load middleware Spoofer": {
+			"Class": "almagest/Spoofer",
+			"Links": ["Network -> [Load middleware network] Network"],
+			"mtu": 1500,
+			"queueLength": 4096,
+		},
+		"Load middleware network": {
+			"Class": "almagest/MockNetwork",
+		},
+		"Load middleware server": {
+			"Class": "almagest/HttpServer",
+			"Links": ["Network -> [Load middleware network] Network"],
+			"host": "10.222.1.2",
+			"port": 18202,
+			"response": "middleware-load-response",
+		},
+
+		"Load split TUN": {
+			"Class": "almagest/Tun",
+			"Links": ["Tun -> [Load splitter] Tun"],
+			"name": "almload2",
+			"tunAddrs": "10.223.1.1/24",
+			"tunRoutes": "10.223.1.0/24",
+			"mtu": 1500,
+		},
+		"Load splitter": {
+			"Class": "almagest/TunSplitter",
+			"Links": [
+				"slot 1 -> [Load split Spoofer A] Tun",
+				"slot 2 -> [Load split Spoofer B] Tun",
+			],
+			"rules": "PORT 18203\nSLOT 1\n\nPORT 18204\nSLOT 2",
+		},
+		"Load split Spoofer A": {
+			"Class": "almagest/Spoofer",
+			"Links": ["Network -> [Load split network A] Network"],
+			"mtu": 1500,
+			"queueLength": 4096,
+		},
+		"Load split Spoofer B": {
+			"Class": "almagest/Spoofer",
+			"Links": ["Network -> [Load split network B] Network"],
+			"mtu": 1500,
+			"queueLength": 4096,
+		},
+		"Load split network A": {
+			"Class": "almagest/MockNetwork",
+		},
+		"Load split network B": {
+			"Class": "almagest/MockNetwork",
+		},
+		"Load split server A": {
+			"Class": "almagest/HttpServer",
+			"Links": ["Network -> [Load split network A] Network"],
+			"host": "10.223.1.2",
+			"port": 18203,
+			"response": "split-a-load-response",
+		},
+		"Load split server B": {
+			"Class": "almagest/HttpServer",
+			"Links": ["Network -> [Load split network B] Network"],
+			"host": "10.223.1.2",
+			"port": 18204,
+			"response": "split-b-load-response",
+		},
+	},
+}
