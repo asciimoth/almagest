@@ -116,7 +116,7 @@ func (a *AdminAPI) Run(
 			cancel()
 			return
 		}
-		mux.Handle("/", http.FileServer(http.FS(static)))
+		mux.Handle("/", gzipFileServer(static))
 		a.registerAPIHandlers(ctx, mux, engine, sys, logf)
 		if a.webPProf {
 			registerPProfHandlers(mux)

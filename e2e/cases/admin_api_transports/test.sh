@@ -63,7 +63,7 @@ jq -e '.surfaces.admin.methods | index("ping") != null' \
 	"$E2E_RUNTIME/hello-web.json" >/dev/null \
 	|| fail "web API discovery response is incomplete"
 
-curl --fail --silent --show-error "http://127.0.0.1:$web_port/" \
+curl --compressed --fail --silent --show-error "http://127.0.0.1:$web_port/" \
 	--output "$E2E_RUNTIME/admin-index.html"
 grep -F '<html' "$E2E_RUNTIME/admin-index.html" >/dev/null \
 	|| fail "web admin root did not serve the panel"

@@ -91,9 +91,9 @@ test("vendored Formular dialogs keep daemon text as text", () => {
 });
 
 test("published panel versions its application module", async () => {
-  const index = await (await import("node:fs/promises")).readFile(
-    new URL("../../bin/almagestd/static/index.html", import.meta.url),
-    "utf8",
+  const compressed = await (await import("node:fs/promises")).readFile(
+    new URL("../../bin/almagestd/static/index.html.gz", import.meta.url),
   );
+  const index = (await import("node:zlib")).gunzipSync(compressed).toString("utf8");
   assert.match(index, /\.\/public\/build\/app\.js\?v=[a-f0-9]{16}/);
 });

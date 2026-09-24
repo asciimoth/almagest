@@ -4,7 +4,10 @@ The panel is a TypeScript application that uses browser APIs without a UI
 framework. `src/app.ts` owns navigation and API coordination. The smaller model
 files own data transforms and DOM builders. `npm run build` writes compiled
 modules to `public/build` and publishes the complete panel to the daemon static
-directory.
+directory. The publication step minifies HTML, CSS, and JavaScript. It also
+excludes TypeScript declaration files because the daemon does not use them.
+The embedded tree contains only gzip-compressed assets; the daemon serves them
+with their original URLs and content types.
 
 Use `src/notification_center.ts` for transient action feedback. Do not add
 tab-specific copied, saved, or deleted message renderers.
