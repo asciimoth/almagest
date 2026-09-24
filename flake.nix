@@ -70,11 +70,15 @@
           };
         };
       };
+
+      testChromium = pkgs.writeShellScript "almagest-test-chromium" ''
+        exec ${pkgs.chromium}/bin/chromium --password-store=basic "$@"
+      '';
     in {
       devShells.default = pkgs.mkShell {
         inherit (checks.pre-commit-check) shellHook;
         PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1";
-        CHROME_BIN = "${pkgs.chromium}/bin/chromium";
+        CHROME_BIN = testChromium;
         buildInputs = with pkgs; [
           go
           golangci-lint
