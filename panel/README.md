@@ -29,6 +29,9 @@ untrusted. This rule applies even when the daemon listens only on localhost.
 - Keep `LiteGraph.allow_scripts` set to `false`. LiteGraph contains optional
   script-node code that the panel does not use. The Content Security Policy
   must also continue to omit `unsafe-eval`.
+- Vendor the LiteGraph core build. The full build registers optional built-in
+  nodes with `Function()` during startup and is not compatible with the panel's
+  Content Security Policy.
 
 The source-level XSS contract test scans every TypeScript source file. New
 source files are included automatically. Add a DOM test when a new renderer

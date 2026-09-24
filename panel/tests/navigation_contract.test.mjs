@@ -4,6 +4,7 @@ import { test } from "node:test";
 import { JSDOM } from "jsdom";
 
 const html = await readFile(new URL("../index.html", import.meta.url), "utf8");
+const litegraph = await readFile(new URL("../vendor/litegraph/litegraph.js", import.meta.url), "utf8");
 
 test("the panel has a restrictive content security policy", () => {
   const dom = new JSDOM(html);
@@ -17,6 +18,11 @@ test("the panel has a restrictive content security policy", () => {
   assert.match(policy, /script-src 'self'/);
   assert.match(policy, /worker-src 'none'/);
   assert.doesNotMatch(policy, /script-src[^;]*'unsafe-(?:inline|eval)'/);
+});
+
+test("the vendored LiteGraph build does not register eval-built nodes at startup", () => {
+  assert.match(litegraph, /global\.LGraphCanvas = LiteGraph\.LGraphCanvas/);
+  assert.doesNotMatch(litegraph, /LiteGraph\.wrapFunctionAsNode\s*\(/);
 });
 
 test("data-management tabs use clear labels and accessible tab semantics", () => {
