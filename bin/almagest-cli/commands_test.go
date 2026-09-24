@@ -15,13 +15,27 @@ import (
 )
 
 type fakeTransport struct {
-	reads  []api.Message
-	writes []api.Message
-	closed bool
+	reads    []api.Message
+	writes   []api.Message
+	closed   bool
+	readErr  error
+	writeErr error
+	closeErr error
 }
+
+type failingWriter struct{ err error }
+
+func (w failingWriter) Write([]byte) (int, error) { return 0, w.err }
+
+type failingReader struct{ err error }
+
+func (r failingReader) Read([]byte) (int, error) { return 0, r.err }
 
 func (t *fakeTransport) Read(context.Context) (api.Message, error) {
 	if len(t.reads) == 0 {
+		if t.readErr != nil {
+			return api.Message{}, t.readErr
+		}
 		return api.Message{}, io.EOF
 	}
 	msg := t.reads[0]
@@ -30,13 +44,193 @@ func (t *fakeTransport) Read(context.Context) (api.Message, error) {
 }
 
 func (t *fakeTransport) Write(_ context.Context, msg api.Message) error {
+	if t.writeErr != nil {
+		return t.writeErr
+	}
 	t.writes = append(t.writes, msg)
 	return nil
 }
 
 func (t *fakeTransport) Close() error {
 	t.closed = true
-	return nil
+	return t.closeErr
+}
+
+func TestClientRequestAndEventErrorPaths(t *testing.T) {
+	want := errors.New("transport failed")
+	if _, err := newClient(&fakeTransport{writeErr: want}).request(context.Background(), api.SurfaceAdmin, "ping", nil); !errors.Is(err, want) {
+		t.Fatalf("write error = %v, want %v", err, want)
+	}
+	if _, err := newClient(&fakeTransport{readErr: want}).request(context.Background(), api.SurfaceAdmin, "ping", nil); !errors.Is(err, want) {
+		t.Fatalf("read error = %v, want %v", err, want)
+	}
+	response := api.Message{Kind: api.MessageResponse, ID: "1"}
+	client := newClient(&fakeTransport{reads: []api.Message{
+		{Kind: api.MessageRequest, ID: "ignored"},
+		{Kind: api.MessageResponse, ID: "other"},
+		response,
+	}})
+	result, err := client.request(context.Background(), api.SurfaceAdmin, "ping", nil)
+	if err != nil || string(result) != "{}" {
+		t.Fatalf("empty response = %q, %v", result, err)
+	}
+	apiFailure := &api.Error{Code: api.ErrorConflict, Message: "busy"}
+	client = newClient(&fakeTransport{reads: []api.Message{{Kind: api.MessageResponse, ID: "1", Error: apiFailure}}})
+	if _, err := client.request(context.Background(), api.SurfaceAdmin, "ping", nil); err == nil || err.Error() != "conflict: busy" {
+		t.Fatalf("API error = %v", err)
+	}
+	client = newClient(&fakeTransport{readErr: want})
+	if _, err := client.nextEvent(context.Background()); !errors.Is(err, want) {
+		t.Fatalf("event read error = %v, want %v", err, want)
+	}
+	client = newClient(&fakeTransport{reads: []api.Message{
+		{Kind: api.MessageResponse, ID: "ignored"},
+		{Kind: api.MessageEvent, Method: "event"},
+	}})
+	if event, err := client.nextEvent(context.Background()); err != nil || event.Method != "event" {
+		t.Fatalf("event = %#v, %v", event, err)
+	}
+	if err := newClient(&fakeTransport{closeErr: want}).Close(); !errors.Is(err, want) {
+		t.Fatalf("close error = %v, want %v", err, want)
+	}
+}
+
+func TestCommandOutputErrors(t *testing.T) {
+	want := errors.New("output failed")
+	badJSON := api.Message{Kind: api.MessageResponse, ID: "1", Result: json.RawMessage(`{`)}
+	tests := []struct {
+		name string
+		args []string
+		msg  api.Message
+		out  io.Writer
+	}{
+		{name: "request invalid JSON", args: []string{"admin", "ping"}, msg: badJSON, out: io.Discard},
+		{name: "request write", args: []string{"admin", "ping"}, msg: mustResponse(t, "1", api.PingResponse{}), out: failingWriter{want}},
+		{name: "config get invalid JSON", args: []string{"config", "get"}, msg: badJSON, out: io.Discard},
+		{name: "config get write", args: []string{"config", "get"}, msg: mustResponse(t, "1", api.ConfigSnapshot{Text: "data"}), out: failingWriter{want}},
+		{name: "dns watch invalid JSON", args: []string{"dns", "watch-caches"}, msg: badJSON, out: io.Discard},
+		{name: "dns watch write", args: []string{"dns", "watch-caches"}, msg: mustResponse(t, "1", struct{}{}), out: failingWriter{want}},
+		{name: "kv watch invalid JSON", args: []string{"kv", "watch"}, msg: badJSON, out: io.Discard},
+		{name: "kv watch write", args: []string{"kv", "watch"}, msg: mustResponse(t, "1", struct{}{}), out: failingWriter{want}},
+		{name: "secrets watch invalid JSON", args: []string{"secrets", "watch"}, msg: badJSON, out: io.Discard},
+		{name: "secrets watch write", args: []string{"secrets", "watch"}, msg: mustResponse(t, "1", struct{}{}), out: failingWriter{want}},
+		{name: "tls watch invalid JSON", args: []string{"tls", "watch"}, msg: badJSON, out: io.Discard},
+		{name: "tls watch write", args: []string{"tls", "watch"}, msg: mustResponse(t, "1", struct{}{}), out: failingWriter{want}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			transport := &fakeTransport{reads: []api.Message{test.msg}}
+			err := run(context.Background(), test.args, nil, test.out, io.Discard, func(context.Context, endpoint) (apiTransport, error) {
+				return transport, nil
+			})
+			if err == nil {
+				t.Fatalf("run(%q) succeeded", test.args)
+			}
+		})
+	}
+	event := mustEvent(t, api.SurfaceLog, string(api.EventLogEntry), api.LogEntry{Message: "entry"})
+	if err := watchEvents(context.Background(), newClient(&fakeTransport{reads: []api.Message{event}}), failingWriter{want}, func(api.Message) bool { return true }); !errors.Is(err, want) {
+		t.Fatalf("watch output error = %v, want %v", err, want)
+	}
+}
+
+func TestCLIInputReaderBranches(t *testing.T) {
+	want := errors.New("read failed")
+	if _, err := readConfigInput("-", nil); err == nil {
+		t.Fatal("config stdin nil was accepted")
+	}
+	if _, err := readConfigInput("-", failingReader{want}); !errors.Is(err, want) {
+		t.Fatalf("config stdin error = %v", err)
+	}
+	configPath := t.TempDir() + "/config.hujson"
+	if err := os.WriteFile(configPath, []byte("config"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if data, err := readConfigInput(configPath, nil); err != nil || string(data) != "config" {
+		t.Fatalf("config file = %q, %v", data, err)
+	}
+	if _, err := readConfigInput(configPath+"-missing", nil); err == nil {
+		t.Fatal("missing config file was accepted")
+	}
+
+	if _, err := readJSONInput("", failingReader{want}); !errors.Is(err, want) {
+		t.Fatalf("JSON stdin error = %v", err)
+	}
+	if _, err := readJSONInput("{", nil); err == nil {
+		t.Fatal("invalid JSON was accepted")
+	}
+	if raw, err := readJSONInput("", strings.NewReader(`{"ok":true}`)); err != nil || string(raw) != `{"ok":true}` {
+		t.Fatalf("JSON stdin = %q, %v", raw, err)
+	}
+
+	if _, err := readTLSInput("value", "file", nil, "--value", "--file"); err == nil {
+		t.Fatal("two TLS inputs were accepted")
+	}
+	if got, err := readTLSInput("value", "", nil, "--value", "--file"); err != nil || got != "value" {
+		t.Fatalf("TLS direct input = %q, %v", got, err)
+	}
+	if _, err := readTLSInput("", "-", nil, "--value", "--file"); err == nil {
+		t.Fatal("TLS nil stdin was accepted")
+	}
+	if _, err := readTLSInput("", "-", failingReader{want}, "--value", "--file"); !errors.Is(err, want) {
+		t.Fatalf("TLS stdin error = %v", err)
+	}
+	tlsPath := t.TempDir() + "/input.pem"
+	if err := os.WriteFile(tlsPath, []byte("pem"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := readTLSInput("", tlsPath, nil, "--value", "--file"); err != nil || got != "pem" {
+		t.Fatalf("TLS file input = %q, %v", got, err)
+	}
+	if _, err := readTLSInput("", tlsPath+"-missing", nil, "--value", "--file"); err == nil {
+		t.Fatal("missing TLS file was accepted")
+	}
+	if _, err := readTLSInput("", "", nil, "--value", "--file"); err == nil {
+		t.Fatal("missing TLS input was accepted")
+	}
+}
+
+func TestSnapshotArchiveIOBranches(t *testing.T) {
+	want := errors.New("read failed")
+	if _, err := readSnapshotArchive("-", nil); err == nil {
+		t.Fatal("snapshot nil stdin was accepted")
+	}
+	if _, err := readSnapshotArchive("-", failingReader{want}); !errors.Is(err, want) {
+		t.Fatalf("snapshot stdin error = %v", err)
+	}
+	path := t.TempDir() + "/snapshot.zip"
+	if err := os.WriteFile(path, []byte("zip"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if archive, err := readSnapshotArchive(path, nil); err != nil || string(archive) != "zip" {
+		t.Fatalf("snapshot file = %q, %v", archive, err)
+	}
+	if _, err := readSnapshotArchive(path+"-missing", nil); err == nil {
+		t.Fatal("missing snapshot file was accepted")
+	}
+	if _, err := readBoundedSnapshotArchive(io.LimitReader(zeroReader{}, api.SnapshotArchiveMaxBytes+1)); err == nil {
+		t.Fatal("oversized snapshot archive was accepted")
+	}
+
+	uuid := "11111111-1111-4111-8111-111111111111"
+	if _, err := resolveSnapshotUUID("export", uuid, []string{uuid}); err == nil {
+		t.Fatal("duplicate snapshot UUID was accepted")
+	}
+	if _, err := resolveSnapshotUUID("export", "", []string{"one", "two"}); err == nil {
+		t.Fatal("two snapshot UUIDs were accepted")
+	}
+	if got, err := resolveSnapshotUUID("export", uuid, nil); err != nil || got != uuid {
+		t.Fatalf("flag snapshot UUID = %q, %v", got, err)
+	}
+}
+
+type zeroReader struct{}
+
+func (zeroReader) Read(buffer []byte) (int, error) {
+	for index := range buffer {
+		buffer[index] = 0
+	}
+	return len(buffer), nil
 }
 
 func TestRunPingPrintsPrettyResult(t *testing.T) {
@@ -1272,6 +1466,58 @@ func TestCommandValidationErrors(t *testing.T) {
 			})
 			if err == nil {
 				t.Fatalf("run(%q) succeeded", args)
+			}
+		})
+	}
+}
+
+func TestCommandFlagParseErrors(t *testing.T) {
+	commands := [][]string{
+		{"admin", "hello"}, {"admin", "ping"}, {"admin", "colormap"},
+		{"admin", "acquire-mutation"}, {"admin", "renew-mutation"}, {"admin", "release-mutation"},
+		{"engine", "watch"}, {"engine", "subscribe-notifications"},
+		{"engine", "unsubscribe-notifications"}, {"engine", "request-full-snapshot"},
+		{"engine", "subscribe-node-menu"}, {"engine", "unsubscribe-node-menu"},
+		{"engine", "workspace-snapshot"}, {"engine", "workers-snapshot"},
+		{"engine", "node-class-snapshot"}, {"engine", "node-class-long-description"},
+		{"engine", "remove-nodes-by-class"}, {"engine", "node-snapshot"},
+		{"engine", "replace-node-with-placeholder"}, {"engine", "remove-node"},
+		{"engine", "port-snapshot"}, {"engine", "link-snapshot"}, {"engine", "remove-link"},
+		{"engine", "remove-nodes"}, {"engine", "add-node"}, {"engine", "add-link"},
+		{"engine", "set-node-position"}, {"engine", "set-node-name"},
+		{"engine", "remove-node-popup"}, {"engine", "remove-node-popups"},
+		{"engine", "remove-node-popups-by-type"}, {"engine", "copy"}, {"engine", "paste"},
+		{"engine", "send-inbox"}, {"engine", "send-node-formular-msg"},
+		{"engine", "undo"}, {"engine", "redo"},
+		{"log", "subscribe"}, {"log", "unsubscribe"},
+		{"raw"},
+		{"config", "get"}, {"config", "snapshot"}, {"config", "apply"}, {"config", "update"},
+		{"dns", "caches"}, {"dns", "watch-caches"}, {"dns", "keys"}, {"dns", "watch-keys"},
+		{"dns", "get"}, {"dns", "watch-value"}, {"dns", "set"}, {"dns", "delete"},
+		{"dns", "drop"}, {"dns", "unsubscribe"},
+		{"kv", "stores"}, {"kv", "entries"}, {"kv", "get"}, {"kv", "set"},
+		{"kv", "ensure"}, {"kv", "delete"}, {"kv", "drop"}, {"kv", "subscribe"},
+		{"kv", "watch"}, {"kv", "unsubscribe"},
+		{"secrets", "list"}, {"secrets", "watch"}, {"secrets", "set"},
+		{"secrets", "set-nodes"}, {"secrets", "rename"}, {"secrets", "delete"},
+		{"secrets", "unsubscribe"},
+		{"snapshots", "create"}, {"snapshots", "list"}, {"snapshots", "export"},
+		{"snapshots", "import"}, {"snapshots", "rename"}, {"snapshots", "restore"},
+		{"snapshots", "delete"},
+		{"tls", "certs"}, {"tls", "policies"}, {"tls", "snapshot"}, {"tls", "watch"},
+		{"tls", "set-cert"}, {"tls", "rename-cert"}, {"tls", "delete-cert"},
+		{"tls", "set-policy"}, {"tls", "rename-policy"}, {"tls", "delete-policy"},
+		{"tls", "builtin-ca"}, {"tls", "reload-os"}, {"tls", "unsubscribe"},
+		{"workers", "tree"},
+	}
+	for _, command := range commands {
+		args := append(append([]string(nil), command...), "--definitely-unknown")
+		t.Run(strings.Join(command, "_"), func(t *testing.T) {
+			err := run(context.Background(), args, strings.NewReader(""), io.Discard, io.Discard, func(context.Context, endpoint) (apiTransport, error) {
+				return &fakeTransport{}, nil
+			})
+			if err == nil {
+				t.Fatalf("run(%q) accepted an unknown flag", args)
 			}
 		})
 	}

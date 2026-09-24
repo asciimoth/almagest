@@ -1,12 +1,18 @@
 package main
 
 import (
+	"crypto/tls"
+	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/asciimoth/almagest/bin/api"
 	"github.com/asciimoth/almagest/certcat"
+	"github.com/asciimoth/almagest/lib/storage"
 	"github.com/asciimoth/gonnect/tlspolicy"
+	"go.etcd.io/bbolt"
+	bberrors "go.etcd.io/bbolt/errors"
 )
 
 func TestTLSAPIConversionHelpers(t *testing.T) {
@@ -140,5 +146,99 @@ func TestCompileTLSPolicySpecBranches(t *testing.T) {
 	}, certs)
 	if err != nil || policy == nil {
 		t.Fatalf("valid compiled policy = %#v, %v", policy, err)
+	}
+}
+
+func TestTLSConfigCloneHelpers(t *testing.T) {
+	if got := tlsConfigValue(nil); got.Certificates != nil || got.ServerName != "" || got.MinVersion != 0 {
+		t.Fatalf("nil TLS config clone has nonzero fields")
+	}
+	original := &tls.Config{ //nolint:gosec // This test verifies copying, not protocol policy.
+		Certificates: []tls.Certificate{{
+			Certificate:                 [][]byte{{1, 2, 3}},
+			OCSPStaple:                  []byte{4, 5},
+			SignedCertificateTimestamps: [][]byte{{6, 7}},
+		}},
+		NextProtos:                     []string{"h2"},
+		CipherSuites:                   []uint16{tls.TLS_AES_128_GCM_SHA256},
+		CurvePreferences:               []tls.CurveID{tls.X25519},
+		EncryptedClientHelloConfigList: []byte{8, 9},
+	}
+	cloned := tlsConfigValue(original)
+	cloned.Certificates[0].Certificate[0][0] = 99
+	cloned.Certificates[0].OCSPStaple[0] = 99
+	cloned.Certificates[0].SignedCertificateTimestamps[0][0] = 99
+	cloned.NextProtos[0] = "changed"
+	cloned.CipherSuites[0] = 0
+	cloned.CurvePreferences[0] = 0
+	cloned.EncryptedClientHelloConfigList[0] = 99
+	if original.Certificates[0].Certificate[0][0] != 1 || original.Certificates[0].OCSPStaple[0] != 4 ||
+		original.Certificates[0].SignedCertificateTimestamps[0][0] != 6 || original.NextProtos[0] != "h2" ||
+		original.CipherSuites[0] == 0 || original.CurvePreferences[0] == 0 || original.EncryptedClientHelloConfigList[0] != 8 {
+		t.Fatal("TLS config clone aliases mutable input")
+	}
+	if cloneTLSCertificates(nil) != nil || cloneTLSByteSlices(nil) != nil {
+		t.Fatal("empty TLS clone must remain nil")
+	}
+}
+
+func TestMutableTLSBucketsAndErrorMapping(t *testing.T) {
+	db, err := bbolt.Open(filepath.Join(t.TempDir(), "raw.db"), 0o600, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close() //nolint:errcheck
+	if err := db.View(func(tx *bbolt.Tx) error {
+		certs, err := mutableTLSCertsBucket(tx, false)
+		if err != nil || certs != nil {
+			t.Fatalf("missing cert bucket = %v, %v", certs, err)
+		}
+		policies, err := mutableTLSPoliciesBucket(tx, false)
+		if err != nil || policies != nil {
+			t.Fatalf("missing policy bucket = %v, %v", policies, err)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Update(func(tx *bbolt.Tx) error {
+		certs, err := mutableTLSCertsBucket(tx, true)
+		if err != nil || certs == nil {
+			return err
+		}
+		policies, err := mutableTLSPoliciesBucket(tx, true)
+		if err != nil || policies == nil {
+			return err
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		input error
+		want  error
+	}{
+		{input: nil, want: nil},
+		{input: bberrors.ErrDatabaseNotOpen, want: storage.ErrTlsConfigNotFound},
+		{input: bberrors.ErrTxClosed, want: storage.ErrTlsConfigNotFound},
+		{input: bberrors.ErrBucketNameRequired, want: storage.ErrTlsConfigInvalidName},
+		{input: bberrors.ErrKeyRequired, want: storage.ErrTlsConfigInvalidName},
+		{input: bberrors.ErrKeyTooLarge, want: storage.ErrTlsConfigInvalidName},
+		{input: bberrors.ErrValueTooLarge, want: storage.ErrTlsConfigInvalidValue},
+		{input: bberrors.ErrIncompatibleValue, want: storage.ErrTlsConfigInvalidValue},
+		{input: errors.New("other"), want: nil},
+	}
+	for _, test := range tests {
+		got := mapBboltTLSError(test.input)
+		if test.input == nil && got != nil {
+			t.Fatalf("nil error mapped to %v", got)
+		}
+		if test.want != nil && !errors.Is(got, test.want) {
+			t.Fatalf("mapBboltTLSError(%v) = %v, want %v", test.input, got, test.want)
+		}
+		if test.want == nil && test.input != nil && got != test.input {
+			t.Fatalf("unknown error = %v, want identity", got)
+		}
 	}
 }

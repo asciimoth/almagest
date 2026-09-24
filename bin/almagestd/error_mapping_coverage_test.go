@@ -6,6 +6,7 @@ import (
 
 	"github.com/asciimoth/almagest/bin/api"
 	"github.com/asciimoth/almagest/lib/storage"
+	bberrors "go.etcd.io/bbolt/errors"
 )
 
 func TestStorageRequestErrorMappings(t *testing.T) {
@@ -63,5 +64,58 @@ func TestDaemonMiscellaneousHelpers(t *testing.T) {
 	logProjectVersionStatus(api.ProjectVersionStatus{Version: "test", Highlight: api.ProjectVersionHighlightWarn})
 	if got := (commandNodeClass{}).LongDescription(); got == "" {
 		t.Fatal("command node long description is empty")
+	}
+}
+
+func TestBboltStorageErrorMappings(t *testing.T) {
+	tests := []struct {
+		name  string
+		call  func(error) error
+		input error
+		want  error
+	}{
+		{name: "dns nil", call: mapBboltDNSError},
+		{name: "dns closed", call: mapBboltDNSError, input: bberrors.ErrDatabaseNotOpen, want: errDNSClosed},
+		{name: "dns tx closed", call: mapBboltDNSError, input: bberrors.ErrTxClosed, want: errDNSClosed},
+		{name: "dns bucket", call: mapBboltDNSError, input: bberrors.ErrBucketNameRequired, want: errDNSInvalidName},
+		{name: "dns key", call: mapBboltDNSError, input: bberrors.ErrKeyRequired, want: errDNSInvalidName},
+		{name: "dns key large", call: mapBboltDNSError, input: bberrors.ErrKeyTooLarge, want: errDNSInvalidName},
+		{name: "dns value", call: mapBboltDNSError, input: bberrors.ErrValueTooLarge, want: errDNSInvalidValue},
+		{name: "dns incompatible", call: mapBboltDNSError, input: bberrors.ErrIncompatibleValue, want: errDNSInvalidValue},
+		{name: "kv nil", call: mapBboltKVError},
+		{name: "kv closed", call: mapBboltKVError, input: bberrors.ErrDatabaseNotOpen, want: storage.ErrKVClosed},
+		{name: "kv tx closed", call: mapBboltKVError, input: bberrors.ErrTxClosed, want: storage.ErrKVClosed},
+		{name: "kv bucket", call: mapBboltKVError, input: bberrors.ErrBucketNameRequired, want: storage.ErrKVInvalidName},
+		{name: "kv key", call: mapBboltKVError, input: bberrors.ErrKeyRequired, want: storage.ErrKVInvalidName},
+		{name: "kv key large", call: mapBboltKVError, input: bberrors.ErrKeyTooLarge, want: storage.ErrKVInvalidName},
+		{name: "kv value", call: mapBboltKVError, input: bberrors.ErrValueTooLarge, want: storage.ErrKVInvalidValue},
+		{name: "kv incompatible", call: mapBboltKVError, input: bberrors.ErrIncompatibleValue, want: storage.ErrKVKindConflict},
+		{name: "secret nil", call: mapBboltSecretError},
+		{name: "secret closed", call: mapBboltSecretError, input: bberrors.ErrDatabaseNotOpen, want: storage.ErrSecretClosed},
+		{name: "secret tx closed", call: mapBboltSecretError, input: bberrors.ErrTxClosed, want: storage.ErrSecretClosed},
+		{name: "secret bucket", call: mapBboltSecretError, input: bberrors.ErrBucketNameRequired, want: storage.ErrSecretInvalidName},
+		{name: "secret key", call: mapBboltSecretError, input: bberrors.ErrKeyRequired, want: storage.ErrSecretInvalidName},
+		{name: "secret key large", call: mapBboltSecretError, input: bberrors.ErrKeyTooLarge, want: storage.ErrSecretInvalidName},
+		{name: "secret value", call: mapBboltSecretError, input: bberrors.ErrValueTooLarge, want: storage.ErrSecretInvalidValue},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got := test.call(test.input)
+			if test.want == nil {
+				if got != nil {
+					t.Fatalf("mapped nil = %v", got)
+				}
+				return
+			}
+			if !errors.Is(got, test.want) {
+				t.Fatalf("mapped error = %v, want %v", got, test.want)
+			}
+		})
+	}
+	other := errors.New("other")
+	for _, call := range []func(error) error{mapBboltDNSError, mapBboltKVError, mapBboltSecretError} {
+		if got := call(other); got != other {
+			t.Fatalf("unknown error = %v, want identity", got)
+		}
 	}
 }

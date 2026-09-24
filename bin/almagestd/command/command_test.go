@@ -143,6 +143,46 @@ func TestRegistryRejectsUnsafeDefinitions(t *testing.T) {
 	}
 }
 
+func TestAllowlistValidationEdges(t *testing.T) {
+	if (AllowedCommand{}).Configured() || !(AllowedCommand{Command: []string{"echo"}}).Configured() {
+		t.Fatal("Configured returned an incorrect value")
+	}
+	definitions := []struct {
+		name string
+		cfg  AllowedCommand
+	}{
+		{name: "", cfg: AllowedCommand{Command: []string{"echo"}}},
+		{name: strings.Repeat("x", maxCommandNameLen+1), cfg: AllowedCommand{Command: []string{"echo"}}},
+		{name: "bad/name", cfg: AllowedCommand{Command: []string{"echo"}}},
+		{name: "empty-argv", cfg: AllowedCommand{}},
+		{name: "empty-executable", cfg: AllowedCommand{Command: []string{" "}}},
+		{name: "negative-timeout", cfg: AllowedCommand{Command: []string{"echo"}, Timeout: -time.Second}},
+		{name: "bad-env-empty", cfg: AllowedCommand{Command: []string{"echo"}, Env: map[string]string{"": "x"}}},
+		{name: "bad-env-equals", cfg: AllowedCommand{Command: []string{"echo"}, Env: map[string]string{"A=B": "x"}}},
+		{name: "empty-slot", cfg: AllowedCommand{Command: []string{"echo", "${x}"}, Slots: map[string]Slot{"": {MaxLength: 1}}}},
+		{name: "long-slot", cfg: AllowedCommand{Command: []string{"echo", "${x}"}, Slots: map[string]Slot{strings.Repeat("x", maxSlotNameLen+1): {MaxLength: 1}}}},
+		{name: "bad-slot", cfg: AllowedCommand{Command: []string{"echo", "${x}"}, Slots: map[string]Slot{"1x": {MaxLength: 1}}}},
+		{name: "large-slot", cfg: AllowedCommand{Command: []string{"echo", "${x}"}, Slots: map[string]Slot{"x": {MaxLength: MaxSlotValueLength + 1}}}},
+		{name: "required-empty-slot", cfg: AllowedCommand{Command: []string{"echo", "${x}"}, Slots: map[string]Slot{"x": {MaxLength: 1, Required: true, AllowEmpty: true}}}},
+		{name: "bad-pattern", cfg: AllowedCommand{Command: []string{"echo", "${x}"}, Slots: map[string]Slot{"x": {MaxLength: 1, Pattern: "["}}}},
+		{name: "unterminated-placeholder", cfg: AllowedCommand{Command: []string{"echo", "${x"}}},
+	}
+	for _, test := range definitions {
+		t.Run(test.name, func(t *testing.T) {
+			if _, err := compileAllowedCommand(test.name, test.cfg); err == nil {
+				t.Fatal("invalid allowlist definition was accepted")
+			}
+		})
+	}
+	var registry *registry
+	if _, err := registry.resolve(Request{Name: "x"}); err == nil {
+		t.Fatal("nil registry accepted request")
+	}
+	if _, err := RenderSlotTemplates(map[string]string{"bad/name": "value"}, nil); err == nil {
+		t.Fatal("invalid template slot name was accepted")
+	}
+}
+
 func TestRegistryRejectsUnsafeRequests(t *testing.T) {
 	registry := newTestRegistry(t, Config{Commands: map[string]AllowedCommand{
 		"notify-dns": {

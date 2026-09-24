@@ -28,6 +28,19 @@ func TestHTTPClientScalarSetters(t *testing.T) {
 	}
 }
 
+func TestHTTPClientRefreshingSettersWithoutWorkspace(t *testing.T) {
+	node := &httpClientNode{url: DefaultHTTPClientURL, method: DefaultHTTPClientMethod}
+	node.setURL(DefaultHTTPClientURL)
+	node.setURL("https://example.test")
+	node.setMethod(DefaultHTTPClientMethod)
+	node.setMethod("post")
+	node.setBody("")
+	node.setBody("body")
+	if node.url != "https://example.test" || node.method != "POST" || node.body != "body" {
+		t.Fatalf("client values = %q, %q, %q", node.url, node.method, node.body)
+	}
+}
+
 func TestHTTPServerScalarSetters(t *testing.T) {
 	node := &httpServerNode{host: DefaultHTTPServerHost, port: DefaultHTTPServerPort}
 	if node.setHostNoRefresh("") {
@@ -44,5 +57,14 @@ func TestHTTPServerScalarSetters(t *testing.T) {
 	}
 	if parsePort("1234", 80) != 1234 || parsePort("invalid", 80) != 80 {
 		t.Fatal("parsePort returned an unexpected value")
+	}
+}
+
+func TestHTTPServerUnchangedRefreshingSettersWithoutWorkspace(t *testing.T) {
+	node := &httpServerNode{host: DefaultHTTPServerHost, port: DefaultHTTPServerPort}
+	node.setHost(DefaultHTTPServerHost)
+	node.setPortString("invalid")
+	if node.host != DefaultHTTPServerHost || node.port != DefaultHTTPServerPort {
+		t.Fatalf("server values = %q, %d", node.host, node.port)
 	}
 }

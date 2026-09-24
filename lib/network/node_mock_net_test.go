@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net"
+	"net/netip"
 	"syscall"
 	"testing"
 
@@ -11,6 +12,60 @@ import (
 	"github.com/asciimoth/formular"
 	"github.com/asciimoth/pasta/pasta"
 )
+
+func TestMockLoopbackUDPWriteAdapters(t *testing.T) {
+	network := NewMockLoopbackNetwork(true)
+	listener, err := network.ListenUDP(context.Background(), "udp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = listener.Close() }()
+	address, err := net.ResolveUDPAddr("udp4", listener.LocalAddr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	addressPort := netip.MustParseAddrPort(address.String())
+
+	if wrapped, ok := listener.(interface{ GetWrapped() any }); !ok || wrapped.GetWrapped() == nil {
+		t.Fatalf("ListenUDP result = %T, want wrapped connection", listener)
+	}
+	writes := []func() error{
+		func() error { _, err := listener.WriteTo([]byte("a"), address); return err },
+		func() error { _, err := listener.WriteToUDP([]byte("b"), address); return err },
+		func() error { _, err := listener.WriteToUDPAddrPort([]byte("c"), addressPort); return err },
+		func() error { _, _, err := listener.WriteMsgUDP([]byte("d"), nil, address); return err },
+		func() error { _, _, err := listener.WriteMsgUDPAddrPort([]byte("e"), nil, addressPort); return err },
+	}
+	for index, write := range writes {
+		if err := write(); err != nil {
+			t.Fatalf("write %d: %v", index, err)
+		}
+	}
+
+	connected, err := network.DialUDP(context.Background(), "udp4", "127.0.0.1:0", address.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = connected.Close() }()
+	if _, err := connected.Write([]byte("f")); err != nil {
+		t.Fatal(err)
+	}
+
+	packet := mockLoopbackPacketConn{PacketConn: connected}
+	if packet.GetWrapped() == nil {
+		t.Fatal("packet wrapper has no wrapped connection")
+	}
+	if _, err := packet.Write([]byte("g")); err != nil {
+		t.Fatal(err)
+	}
+	packet = mockLoopbackPacketConn{PacketConn: listener}
+	if _, err := packet.WriteTo([]byte("h"), address); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := packet.WriteToUDP([]byte("i"), address); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestMockLoopbackUDPNoRouteWriteIsHostUnreachable(t *testing.T) {
 	// Upstream SOCKS UDP handling keys transient no-route writes off syscall

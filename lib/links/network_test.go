@@ -98,6 +98,36 @@ func TestAcceptNetworkPayloadUnavailableClosesCurrent(t *testing.T) {
 	}
 }
 
+func TestNetworkPayloadAndEmitGuardBranches(t *testing.T) {
+	if err := (NetworkPayload{}).Close(); err != nil {
+		t.Fatalf("empty payload close: %v", err)
+	}
+	source := gonnect.NewLoopbackNetwork()
+	wrapper := gonnect.DetachNetwork(source, nil, nil)
+	if err := (NetworkPayload{Network: wrapper}).Close(); err != nil {
+		t.Fatal(err)
+	}
+	if got := EmitDetachedNetwork(nil, 1, 1, source); got != nil {
+		t.Fatalf("nil-workspace emit = %T", got)
+	}
+	w := pasta.NewWorkspace(logging.NewDebugLogFactory(8))
+	defer w.Close()
+	w.Lock()
+	if got := EmitDetachedNetwork(w, 1, 0, source); got != nil {
+		w.Unlock()
+		t.Fatalf("zero-link emit = %T", got)
+	}
+	if got := EmitDetachedNetwork(w, 1, 99, source); got != nil {
+		w.Unlock()
+		t.Fatalf("missing-link emit = %T", got)
+	}
+	w.Unlock()
+	var cache NetworkOutputCache
+	if cache.SendResolved(nil, 1, 1, source, nil) {
+		t.Fatal("SendResolved accepted nil workspace")
+	}
+}
+
 func TestAcceptNetworkPayloadUpdateUnavailableClearsCapability(t *testing.T) {
 	base := gonnect.NewLoopbackNetwork()
 	current := &testNetworkWrapper{

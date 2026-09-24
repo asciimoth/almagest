@@ -1,6 +1,7 @@
 package dnsnodes
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -55,6 +56,37 @@ func TestAcceptDNSPayloadUnavailableClosesCurrent(t *testing.T) {
 	if changed || next != nil {
 		t.Fatalf("repeated unavailable payload = (%T, %v), want (nil, false)", next, changed)
 	}
+}
+
+func TestDNSPayloadAndEmitGuardBranches(t *testing.T) {
+	if err := (DNSPayload{}).Close(); err != nil {
+		t.Fatalf("empty payload close: %v", err)
+	}
+	provider := newDNSProvider(func(context.Context, dns.Request) {})
+	if up, err := provider.IsUp(); err != nil || !up {
+		t.Fatalf("new provider state = %t, %v", up, err)
+	}
+	if err := (DNSPayload{DNS: provider}).Close(); err != nil {
+		t.Fatal(err)
+	}
+	if up, err := provider.IsUp(); err != nil || up {
+		t.Fatalf("closed provider state = %t, %v", up, err)
+	}
+	if got := EmitDetachedDNS(nil, 1, 1, provider); got != nil {
+		t.Fatalf("nil-workspace emit = %T", got)
+	}
+	w := pasta.NewWorkspace(logging.NewDebugLogFactory(8))
+	defer w.Close()
+	w.Lock()
+	if got := EmitDetachedDNS(w, 1, 0, provider); got != nil {
+		w.Unlock()
+		t.Fatalf("zero-link emit = %T", got)
+	}
+	if got := EmitDetachedDNS(w, 1, 99, provider); got != nil {
+		w.Unlock()
+		t.Fatalf("missing-link emit = %T", got)
+	}
+	w.Unlock()
 }
 
 func TestDNSOutputCacheReusesReadyWrapperAndReplacesClosedWrapper(t *testing.T) {
