@@ -163,6 +163,16 @@ system_dig_has_no_answer() {
 	return 0
 }
 
+system_ipv6_dig_resolves_to() {
+	local name="$1"
+	local want="$2"
+	local got
+	got="$(timeout 5 dig -6 +tries=1 +time=2 +short \
+		@2001:4860:4860::8888 "$name" A \
+		2>"$E2E_RUNTIME/ipv6-dig.err" | sed '/^$/d')" || return 1
+	[[ "$got" == "$want" ]]
+}
+
 delete_dns_input_link() {
 	local right_node="$1"
 	local left_node="$2"
@@ -244,6 +254,9 @@ wait_log_contains "almagest/LocalProxy" "connect example2.test:8080" \
 retry "$ALMAGEST_E2E_TIMEOUT" "system dig resolves through DefaultTun DNS" \
 	system_dig_resolves_to example2.test 11.11.11.11 \
 	|| fail "system dig did not resolve through the connected DefaultTun DNS path"
+retry "$ALMAGEST_E2E_TIMEOUT" "IPv6 DNS packet resolves through Tun2Dns" \
+	system_ipv6_dig_resolves_to example2.test 11.11.11.11 \
+	|| fail "IPv6 DNS packet did not resolve through Tun2Dns"
 
 delete_dns_input_link "DefaultTun BS" "MeshNames xP"
 delete_dns_input_link "Tun2Dns LN" "MeshNames xP"

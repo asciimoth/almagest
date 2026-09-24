@@ -6,6 +6,14 @@
 		"Application Network": {
 			"Class": "almagest/MockNetwork",
 		},
+		"DNS Server Network Log": {
+			"Class": "almagest/LogNetwork",
+			"Links": ["Network -> [DNS Transport Network] Network"],
+		},
+		"DNS Client Network Log": {
+			"Class": "almagest/LogNetwork",
+			"Links": ["Network -> [DNS Transport Network] Network"],
+		},
 		"Primary DNS": {
 			"Class": "almagest/StaticDns",
 			"records": "cached.stack.test A 192.0.2.10\nserver-gap.stack.test A 192.0.2.11\nprimary-only.stack.test A 192.0.2.12\nweb.stack.test A 127.0.0.1\nadapter.stack.test A 198.51.100.10",
@@ -23,7 +31,7 @@
 		"DNS Server": {
 			"Class": "almagest/DnsServer",
 			"Links": [
-				"Network -> [DNS Transport Network] Network",
+				"Network -> [DNS Server Network Log] Network",
 				"DNS -> [DNS Log] DNS",
 			],
 			"network": "udp",
@@ -33,7 +41,7 @@
 		},
 		"DNS Client": {
 			"Class": "almagest/DnsClient",
-			"Links": ["Network -> [DNS Transport Network] Network"],
+			"Links": ["Network -> [DNS Client Network Log] Network"],
 			"servers": ["udp://127.0.0.1:5353"],
 			"requestTimeoutMS": 500,
 		},

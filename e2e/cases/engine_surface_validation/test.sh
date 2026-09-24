@@ -143,10 +143,10 @@ exercise_menu() {
 		| $block.items[]
 		| if .kind == "array" then
 			. as $array | $array.templates[]?.items[]
-			| select(.autocomplete == true)
+		| select(.autocomplete.enabled == true)
 			| {block: $block.id, array: $array.id, field: .id}
 		  else
-			select(.autocomplete == true)
+			select(.autocomplete.enabled == true)
 			| {block: $block.id, array: null, field: .id}
 		  end
 	' "$menu")

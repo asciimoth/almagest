@@ -15,6 +15,8 @@ Assertions:
   sends, proving `DnsCache xP` served the repeat request.
 - `HttpClient xP` and an external `curl --socks5-hostname 127.0.0.1:1081`
   request both reach `HttpServer LN`.
+- External IPv4 and IPv6 DNS packets are intercepted and answered through
+  `DefaultTun`, `TunSplitter`, and `Tun2Dns`.
 - Removing the right-directed `DNS` links from `DefaultTun BS` and `Tun2Dns LN`
   makes system `dig` queries fail while the internal `DnsQuery` nodes still
   resolve through the graph.

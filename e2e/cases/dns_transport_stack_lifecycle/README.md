@@ -3,9 +3,10 @@
 This hermetic case runs a DNS request through a complete userspace stack:
 
 ```text
-StaticDns -> LogDNS -> DnsServer -> MockNetwork -> DnsClient -> DnsCache
-                                                               |
-MockNetwork -> DnsInject <--------------------------------------+
+StaticDns -> LogDNS -> DnsServer -> LogNetwork -> MockNetwork
+                                              -> LogNetwork -> DnsClient -> DnsCache
+                                                                            |
+MockNetwork -> DnsInject <---------------------------------------------------+
                   |       |
                   |       +-> Dns2Network -> DnsQuery
                   +-> HttpClient and LocalProxy -> HttpServer
@@ -18,6 +19,7 @@ privileged networking is required.
 Assertions cover these situations:
 
 - the first DNS, HTTP, and SOCKS requests work after nodes report ready;
+- independent packet logging wrappers observe both sides of the UDP transport;
 - two DNS consumers receive independent wrappers from one cache;
 - a repeated lookup is served by `DnsCache` without reaching `LogDNS` again;
 - removing the DNS server upstream keeps cached data usable but rejects a new
@@ -28,8 +30,8 @@ Assertions cover these situations:
   usable, while later valid edits recover their normal labels;
 - removing and restoring the DNS client network, the injector DNS input, and
   the injector network input invalidates old wrappers and restores traffic;
+- replacing the client logger upstream publishes a usable packet wrapper;
 - removing one injector output affects only that consumer;
 - a live DNS server port change fails through the old client destination and
   recovers after the client is updated; and
 - the edited stack and its runtime resources survive daemon restart.
-

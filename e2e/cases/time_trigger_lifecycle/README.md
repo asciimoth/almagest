@@ -2,7 +2,7 @@
 
 This hermetic case connects `TimeTrigger` nodes to protected command nodes. The
 commands append fixed markers to files, which makes trigger delivery visible
-without network access or clock-dependent daily scheduling.
+without network access.
 
 Assertions cover these situations:
 
@@ -10,6 +10,7 @@ Assertions cover these situations:
 - an invalid edit keeps the last valid schedule active;
 - disabling the timer stops its worker and further trigger delivery;
 - repeated interval changes converge on one current worker;
+- a second-precision daily schedule emits at the selected local time;
 - removing the output link stops delivery while the timer remains active;
 - restoring the link resumes delivery without rebuilding either node;
 - `emitOnReady` emits once for a disabled timer; and

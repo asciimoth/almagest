@@ -128,6 +128,16 @@ log_dns_request_count_is() {
 	[[ "$(log_dns_request_count "$name")" == "$expected" ]]
 }
 
+network_log_contains() {
+	local node="$1"
+	local text="$2"
+	cli log subscribe | jq -e --argjson node "$node" --arg text "$text" '
+		.entries[]
+		| select(.node_id == $node and .node_class == "almagest/LogNetwork")
+		| select(.message | contains($text))
+	' >/dev/null
+}
+
 apply_dns_server() {
 	local network="$1"
 	local port="$2"
@@ -150,6 +160,8 @@ start_daemon
 for node in \
 	"DNS Transport Network" \
 	"Application Network" \
+	"DNS Server Network Log" \
+	"DNS Client Network Log" \
 	"Primary DNS" \
 	"Secondary DNS" \
 	"DNS Log" \
@@ -175,6 +187,8 @@ done
 
 transport_network="$(node_id_by_name "DNS Transport Network")"
 application_network="$(node_id_by_name "Application Network")"
+server_network_log="$(node_id_by_name "DNS Server Network Log")"
+client_network_log="$(node_id_by_name "DNS Client Network Log")"
 secondary="$(node_id_by_name "Secondary DNS")"
 dns_log="$(node_id_by_name "DNS Log")"
 dns_server="$(node_id_by_name "DNS Server")"
@@ -203,6 +217,12 @@ wait_log_contains "almagest/LocalProxy" "socks listening on 127.0.0.1:1184" \
 # that request's result; it does not issue a replacement request.
 send_query_expect_answer_once "Cache Query" "192.0.2.10" \
 	"first DNS request through UDP transport"
+retry "$ALMAGEST_E2E_TIMEOUT" "server packet-network read log" \
+	network_log_contains "$server_network_log" "ReadFrom" \
+	|| fail "server LogNetwork did not observe an incoming DNS packet"
+retry "$ALMAGEST_E2E_TIMEOUT" "client packet-network write log" \
+	network_log_contains "$client_network_log" "Write" \
+	|| fail "client LogNetwork did not observe an outgoing DNS packet"
 send_query_expect_answer_once "Adapter Query" "198.51.100.10" \
 	"first request through DnsInject and Dns2Network"
 send_http_expect_success_once "first HTTP request through injected DNS"
@@ -267,7 +287,7 @@ wait_node_label "$dns_client" "1 DNS server" \
 
 # A removed transport input invalidates emitted client wrappers. Cached data is
 # still available, but a new lookup fails until a new network wrapper arrives.
-client_network_link="$(link_id_by_port_names "DNS Client" Network "DNS Transport Network" Network)"
+client_network_link="$(link_id_by_port_names "DNS Client" Network "DNS Client Network Log" Network)"
 cli graph delete-link --id "$client_network_link" >/dev/null
 wait_node_label "$dns_client" "waiting for network" \
 	|| fail "DNS Client did not notice its removed network"
@@ -283,13 +303,27 @@ send_query_expect_error_once "Restart Query" \
 cache_gap_elapsed=$((SECONDS - cache_gap_started))
 ((cache_gap_elapsed <= 3)) \
 	|| fail "DNS Cache miss took ${cache_gap_elapsed}s after its linked DNS Client became unavailable"
-add_link_by_port_name "$dns_client" right Network "$transport_network" left Network >/dev/null
+add_link_by_port_name "$dns_client" right Network "$client_network_log" left Network >/dev/null
 wait_node_label "$dns_client" "1 DNS server" \
 	|| fail "DNS Client did not accept its replacement network"
 wait_node_label "$dns_cache" "caching DNS" \
 	|| fail "DNS Cache did not accept the replacement DNS Client output"
 send_query_expect_answer_once "Client Gap Query" "192.0.2.22" \
 	"request after DNS Client network restore"
+
+# Replacing the logging node's upstream must invalidate the packet wrapper held
+# by the DNS client. The first request after relink must use the new wrapper.
+client_log_upstream="$(link_id_by_port_names "DNS Client Network Log" Network "DNS Transport Network" Network)"
+cli graph delete-link --id "$client_log_upstream" >/dev/null
+wait_node_label "$dns_client" "waiting for network" \
+	|| fail "DNS Client did not notice its logging upstream removal"
+send_query_expect_error_once "Client Gap Query" \
+	"request while the client network logger has no upstream"
+add_link_by_port_name "$client_network_log" right Network "$transport_network" left Network >/dev/null
+wait_node_label "$dns_client" "1 DNS server" \
+	|| fail "DNS Client did not accept the replacement logging wrapper"
+send_query_expect_answer_once "Client Gap Query" "192.0.2.22" \
+	"first request after replacing the client logging wrapper"
 
 # Removing injector inputs must close both its direct output and the wrapper
 # used by Dns2Network. Each restored input must publish a usable replacement.

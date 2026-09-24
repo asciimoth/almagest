@@ -67,6 +67,14 @@ apply_timer() {
 		| cli graph apply-menu --name "Interval Timer" >/dev/null
 }
 
+apply_daily_timer() {
+	local daily_time="$1"
+	jq -n \
+		--arg dailyTime "$daily_time" \
+		'{"config":{"mode":"daily","interval":"80ms","dailyTime":$dailyTime,"emitOnReady":false}}' \
+		| cli graph apply-menu --name "Interval Timer" >/dev/null
+}
+
 timer_worker_count() {
 	local node="$1"
 	cli engine workers-snapshot | jq -er --argjson node "$node" \
@@ -130,6 +138,20 @@ wait_timer_worker_count "$timer" 1
 before_reenabled="$(line_count "$interval_log")"
 wait_count_at_least "$interval_log" "$((before_reenabled + 2))" \
 	"triggers after timer re-enable"
+
+# Daily mode uses a separate parser and next-run calculation. Schedule far
+# enough ahead that the worker is active before the selected second arrives.
+daily_time="$(date --date='+10 seconds' +%H:%M:%S)"
+before_daily="$(line_count "$interval_log")"
+apply_daily_timer "$daily_time"
+wait_node_label "$timer" "daily $daily_time" \
+	|| fail "timer did not enter daily mode"
+wait_timer_worker_count "$timer" 1
+wait_count_at_least "$interval_log" "$((before_daily + 1))" \
+	"daily trigger"
+apply_timer interval 50ms false
+wait_node_label "$timer" "every 50ms" \
+	|| fail "timer did not return from daily mode"
 
 # The active timer remains a worker while detached, but cannot reach the
 # command node until the output link returns.

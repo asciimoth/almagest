@@ -66,6 +66,8 @@ builtin_fingerprint="$(cli tls builtin-ca | jq -er '.cert.fingerprint')"
 
 mkdir -p "$ALMAGEST_E2E_FILE_STORAGE/future-storage/nested"
 printf '%s\n' before-file >"$ALMAGEST_E2E_FILE_STORAGE/future-storage/nested/value.txt"
+ln -s nested/value.txt "$ALMAGEST_E2E_FILE_STORAGE/future-storage/value-link"
+ln -s value-link "$ALMAGEST_E2E_FILE_STORAGE/future-storage/value-link-chain"
 protected_checksum="$(sha256sum "$E2E_CONFIG_DIR/protected_alm.hujson" | cut -d ' ' -f 1)"
 
 cli snapshots create --name "complex daemon" >/tmp/snapshot-created.json
@@ -129,6 +131,10 @@ mutated_fingerprint="$(cli tls builtin-ca | jq -er '.cert.fingerprint')"
 [[ "$mutated_fingerprint" != "$builtin_fingerprint" ]] || fail "built-in CA did not mutate before restore"
 printf '%s\n' after-file >"$ALMAGEST_E2E_FILE_STORAGE/future-storage/nested/value.txt"
 printf '%s\n' remove-me >"$ALMAGEST_E2E_FILE_STORAGE/future-storage/remove-after-restore.txt"
+rm "$ALMAGEST_E2E_FILE_STORAGE/future-storage/value-link"
+ln -s nested "$ALMAGEST_E2E_FILE_STORAGE/future-storage/value-link"
+rm "$ALMAGEST_E2E_FILE_STORAGE/future-storage/value-link-chain"
+ln -s nested "$ALMAGEST_E2E_FILE_STORAGE/future-storage/value-link-chain"
 
 cli snapshots restore "$snapshot_uuid" >/tmp/snapshot-restored.json
 jq -e --arg uuid "$snapshot_uuid" '.snapshot.uuid == $uuid and .snapshot.name == "renamed daemon" and .config_written == true' \
@@ -161,6 +167,14 @@ cli dns keys --cache snapshot-cache | jq -e --arg key "$dns_key" '.exists and an
 	|| fail "built-in TLS CA files were not restored"
 [[ "$(<"$ALMAGEST_E2E_FILE_STORAGE/future-storage/nested/value.txt")" == "before-file" ]] \
 	|| fail "future file-storage content was not restored"
+[[ -L "$ALMAGEST_E2E_FILE_STORAGE/future-storage/value-link" \
+	&& "$(readlink "$ALMAGEST_E2E_FILE_STORAGE/future-storage/value-link")" == "nested/value.txt" \
+	&& "$(<"$ALMAGEST_E2E_FILE_STORAGE/future-storage/value-link")" == "before-file" ]] \
+	|| fail "file-storage symlink was not restored"
+[[ -L "$ALMAGEST_E2E_FILE_STORAGE/future-storage/value-link-chain" \
+	&& "$(readlink "$ALMAGEST_E2E_FILE_STORAGE/future-storage/value-link-chain")" == "value-link" \
+	&& "$(<"$ALMAGEST_E2E_FILE_STORAGE/future-storage/value-link-chain")" == "before-file" ]] \
+	|| fail "file-storage symlink chain was not restored"
 [[ ! -e "$ALMAGEST_E2E_FILE_STORAGE/future-storage/remove-after-restore.txt" ]] \
 	|| fail "file absent from snapshot survived restore"
 [[ "$(sha256sum "$E2E_CONFIG_DIR/protected_alm.hujson" | cut -d ' ' -f 1)" == "$protected_checksum" ]] \
