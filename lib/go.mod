@@ -3,17 +3,17 @@ module github.com/asciimoth/almagest/lib
 go 1.26.6
 
 require (
-	github.com/asciimoth/batchudp v0.3.16
+	github.com/asciimoth/batchudp v0.3.17
 	github.com/asciimoth/bufpool v0.3.0
 	github.com/asciimoth/configer/configer v0.3.1
 	github.com/asciimoth/configer/hujson v0.3.1
 	github.com/asciimoth/formular v0.3.5
-	github.com/asciimoth/gonnect v0.53.0
-	github.com/asciimoth/gonnect-netstack v0.7.1
+	github.com/asciimoth/gonnect v0.54.0
+	github.com/asciimoth/gonnect-netstack v0.7.2
 	github.com/asciimoth/pasta/pasta v0.10.0
-	github.com/asciimoth/socksgo v0.4.17
-	github.com/asciimoth/wgo v0.7.9
-	github.com/asciimoth/wgo-tailscale v0.3.10
+	github.com/asciimoth/socksgo v0.4.18
+	github.com/asciimoth/wgo v0.7.10
+	github.com/asciimoth/wgo-tailscale v0.3.11
 	github.com/coder/websocket v1.8.14
 	github.com/miekg/dns v1.1.72
 	golang.org/x/sys v0.46.0
@@ -25,7 +25,7 @@ require (
 	github.com/asciimoth/ident v0.2.0 // indirect
 	github.com/asciimoth/persist v0.2.0 // indirect
 	github.com/asciimoth/putback v0.3.0 // indirect
-	github.com/asciimoth/tuntap v0.4.1 // indirect
+	github.com/asciimoth/tuntap v0.4.2 // indirect
 	github.com/google/btree v1.1.2 // indirect
 	github.com/tailscale/hujson v0.0.0-20260302212456-ecc657c15afd // indirect
 	github.com/xtaci/smux v1.5.44 // indirect

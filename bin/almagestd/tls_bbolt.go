@@ -499,7 +499,6 @@ func (m *bboltKVManager) setTLSPolicy(name string, spec api.TLSPolicySpec) (tlsM
 	if _, ok := m.immutableTLSPolicy(name); ok {
 		return tlsMutationResult{}, storage.ErrTlsConfigReadOnly
 	}
-	spec = normalizeTLSPolicySpec(spec)
 	certs, err := m.tlsEffectiveCertMap()
 	if err != nil {
 		return tlsMutationResult{}, err
@@ -507,6 +506,7 @@ func (m *bboltKVManager) setTLSPolicy(name string, spec api.TLSPolicySpec) (tlsM
 	if _, err := compileTLSPolicySpec(spec, certs); err != nil {
 		return tlsMutationResult{}, fmt.Errorf("%w: %v", storage.ErrTlsConfigInvalidValue, err)
 	}
+	spec = normalizeTLSPolicySpec(spec)
 	_, existed, err := m.tlsEffectivePolicy(name)
 	if err != nil {
 		return tlsMutationResult{}, err
@@ -889,6 +889,9 @@ func tlsEffectiveCertFromRecord(name string, record tlsCertificateRecord, readOn
 }
 
 func compileTLSPolicySpec(spec api.TLSPolicySpec, certs map[string]tlsEffectiveCert) (*tlspolicy.ServerPolicy, error) {
+	if err := validateTLSPolicySpecScopes(spec); err != nil {
+		return nil, err
+	}
 	spec = tlsPolicySpecWithBuiltinCA(spec, certs)
 	compiled := tlspolicy.ServerPolicySpec{
 		TrustAnchors: make([]tlspolicy.ScopedAuthority, 0, len(spec.TrustAnchors)),
@@ -943,6 +946,25 @@ func compileTLSPolicySpec(spec api.TLSPolicySpec, certs map[string]tlsEffectiveC
 		})
 	}
 	return tlspolicy.CompileServerPolicy(compiled)
+}
+
+func validateTLSPolicySpecScopes(spec api.TLSPolicySpec) error {
+	for i, anchor := range spec.TrustAnchors {
+		if _, err := tlsScopeFromAPI(anchor.Scope); err != nil {
+			return fmt.Errorf("tls policy trust anchor %d scope: %w", i, err)
+		}
+	}
+	for i, constraint := range spec.Constraints {
+		if _, err := tlsScopeFromAPI(constraint.Scope); err != nil {
+			return fmt.Errorf("tls policy constraint %d scope: %w", i, err)
+		}
+	}
+	for i, pin := range spec.Pins {
+		if _, err := tlsScopeFromAPI(pin.Scope); err != nil {
+			return fmt.Errorf("tls policy pin %d scope: %w", i, err)
+		}
+	}
+	return nil
 }
 
 func tlsPolicySpecWithBuiltinCA(spec api.TLSPolicySpec, certs map[string]tlsEffectiveCert) api.TLSPolicySpec {
@@ -1764,6 +1786,9 @@ func decodeTLSCertificateRecord(data []byte) (tlsCertificateRecord, error) {
 }
 
 func encodeTLSPolicyRecord(record tlsPolicyRecord) ([]byte, error) {
+	if err := validateTLSPolicySpecScopes(record.Spec); err != nil {
+		return nil, fmt.Errorf("%w: %v", storage.ErrTlsConfigInvalidValue, err)
+	}
 	record.Spec = normalizeTLSPolicySpec(record.Spec)
 	return json.Marshal(record)
 }
@@ -1772,6 +1797,9 @@ func decodeTLSPolicyRecord(data []byte) (tlsPolicyRecord, error) {
 	var record tlsPolicyRecord
 	if err := json.Unmarshal(data, &record); err != nil {
 		return tlsPolicyRecord{}, fmt.Errorf("%w: decode tls policy: %v", storage.ErrTlsConfigInvalidValue, err)
+	}
+	if err := validateTLSPolicySpecScopes(record.Spec); err != nil {
+		return tlsPolicyRecord{}, fmt.Errorf("%w: %v", storage.ErrTlsConfigInvalidValue, err)
 	}
 	record.Spec = normalizeTLSPolicySpec(record.Spec)
 	return record, nil

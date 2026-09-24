@@ -22,7 +22,9 @@ sends its ACL-derived object to a `NetworkFirewall` node.
 
 - Both Tailscale and WireGuard nodes reach `up`.
 - The Tailscale menu reports a direct UDP peer path and the Headscale ACL.
-- `DnsQuery` resolves `beta.e2e.internal` through the Tailscale DNS port.
+- `DnsQuery` resolves Tailscale host records and extra A, AAAA, PTR, CNAME,
+  NS, MX, SRV, and TXT records through the Tailscale DNS port. IPv4 and IPv6
+  PTR checks each verify all names that share the queried address.
 - An HTTP client on daemon A resolves that same name through `DnsInject` and
   reaches an HTTP server behind daemon B's WireGuard tunnel.
 - Daemon B's `NetworkFirewall` accepts the controller's generated policy.

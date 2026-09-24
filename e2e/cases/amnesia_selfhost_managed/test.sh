@@ -15,12 +15,14 @@ upstream_pid=""
 gateway_pid=""
 proxy_pid=""
 http_pid=""
+dns_pid=""
+preconnect_pid=""
 gateway_count="$E2E_RUNTIME/gateway-requests.log"
 
 cleanup() {
 	trap - EXIT
 	stop_static_http_target "$http_pid"
-	for pid in "$proxy_pid" "$gateway_pid" "$upstream_pid"; do
+	for pid in "$preconnect_pid" "$dns_pid" "$proxy_pid" "$gateway_pid" "$upstream_pid"; do
 		if [[ -n "$pid" ]]; then
 			kill "$pid" 2>/dev/null || true
 			wait "$pid" 2>/dev/null || true
@@ -30,6 +32,53 @@ cleanup() {
 	stop_daemon
 }
 trap cleanup EXIT
+
+start_preconnect_responders() {
+	python3 -u - "$E2E_RUNTIME/preconnect.log" <<'PY' \
+		>"$E2E_RUNTIME/preconnect-server.log" 2>&1 &
+import socket
+import sys
+import threading
+
+log_path = sys.argv[1]
+
+def record(message):
+    with open(log_path, "a", encoding="utf-8") as output:
+        output.write(message + "\n")
+
+def tcp_server():
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+        listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        listener.bind(("127.0.0.1", 18501))
+        listener.listen()
+        record("tcp-ready")
+        while True:
+            connection, _ = listener.accept()
+            with connection:
+                if connection.recv(3) == b"\x01\x02\x03":
+                    record("tcp-payload")
+                    connection.sendall(b"\xaa\xbb")
+
+def udp_server():
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as listener:
+        listener.bind(("127.0.0.1", 18502))
+        record("udp-ready")
+        while True:
+            data, _ = listener.recvfrom(64)
+            if data == b"\x04\x05\x06":
+                record("udp-payload")
+
+threading.Thread(target=tcp_server, daemon=True).start()
+udp_server()
+PY
+	preconnect_pid="$!"
+	retry "$ALMAGEST_E2E_TIMEOUT" "Amnesia TCP pre-connect responder" \
+		grep -qF tcp-ready "$E2E_RUNTIME/preconnect.log" \
+		|| fail "TCP pre-connect responder did not start"
+	retry "$ALMAGEST_E2E_TIMEOUT" "Amnesia UDP pre-connect responder" \
+		grep -qF udp-ready "$E2E_RUNTIME/preconnect.log" \
+		|| fail "UDP pre-connect responder did not start"
+}
 
 uapi_set() {
 	local payload="$1"
@@ -82,6 +131,16 @@ disable_cookies=true
 replace_peers=true
 EOF
 )"
+}
+
+start_upstream_dns() {
+	dnsmasq --no-daemon --interface="$upstream_iface" --bind-dynamic \
+		--no-resolv --no-hosts --address=/managed.amnesia.e2e/10.205.20.99 \
+		>"$E2E_RUNTIME/upstream-dns.log" 2>&1 &
+	dns_pid="$!"
+	retry "$ALMAGEST_E2E_TIMEOUT" "managed Amnesia DNS server" \
+		nc -z -u 10.205.20.1 53 \
+		|| fail "managed Amnesia DNS server did not start"
 }
 
 set_server_peer() {
@@ -212,6 +271,19 @@ http_client_ready() {
 		&& "$(menu_field "$node" result response)" == "managed amnesia e2e" ]]
 }
 
+dns_query_ready() {
+	local node="$1"
+	[[ "$(menu_field "$node" result status)" == "Status: NOERROR" \
+		&& "$(menu_field "$node" result response)" == *"10.205.20.99"* ]]
+}
+
+assert_tunnel_dns_works() {
+	local node="$1"
+	cli graph click-menu-button --node "$node" --block request --button send >/dev/null
+	retry "$ALMAGEST_E2E_TIMEOUT" "DNS through managed AmneziaWG" dns_query_ready "$node" \
+		|| fail "DNS query did not use the managed Amnesia tunnel"
+}
+
 assert_tunnel_works() {
 	local client="$1"
 	# The managed client has an ephemeral UDP source port. Send client traffic
@@ -236,7 +308,9 @@ config_saves_greater_than() {
 }
 
 start_upstream
+start_upstream_dns
 start_gateway
+start_preconnect_responders
 http_pid="$(start_static_http_target 10.205.20.1 18085 "managed amnesia e2e" "$E2E_RUNTIME/upstream-http.log")"
 start_daemon
 trap cleanup EXIT
@@ -246,6 +320,7 @@ wait_graph_node "Amnesia Service" || fail "managed Amnesia node is missing"
 amnesia_node="$(node_id_by_name "Amnesia Service")"
 vtun_node="$(node_id_by_name "VTun Amnesia")"
 http_client="$(node_id_by_name "HTTP Client Amnesia")"
+dns_query="$(node_id_by_name "DNS Query Amnesia")"
 out_node="$(node_id_by_name "OutNetwork Amnesia")"
 
 cli tls set-cert --name amnesia-root --pem-file "$E2E_CONFIG_DIR/amnesia-root.pem" >/dev/null
@@ -258,6 +333,12 @@ cli secrets set --key amnesia-gateway-public --value "$(cat "$E2E_CONFIG_DIR/gat
 cli secrets set-nodes --key amnesia-gateway-public --node "Amnesia Service" >/dev/null
 
 wait_node_label "$amnesia_node" up || fail "managed Amnesia node did not import the service profile"
+grep -qF tcp-payload "$E2E_RUNTIME/preconnect.log" \
+	|| fail "managed Amnesia did not send the TCP pre-connect payload"
+grep -qF udp-payload "$E2E_RUNTIME/preconnect.log" \
+	|| fail "managed Amnesia did not send the UDP pre-connect payload"
+wait_log_contains "almagest/Amnesia" "Amnesia pre-connect sequence complete: actions=2" \
+	|| fail "managed Amnesia did not complete its pre-connect sequence"
 # The profile config replaces the initial VTun during startup. Device creation
 # must wait for that replacement and must use the registered profile key.
 [[ "$(connection_creations)" == "1" ]] \
@@ -278,14 +359,15 @@ assert_tunnel_works "$http_client"
 	|| fail "status did not report the selected server country"
 [[ "$(menu_field "$amnesia_node" status addresses)" == "10.205.10.1/32" ]] \
 	|| fail "status did not report the tunnel address"
-[[ "$(menu_field "$amnesia_node" status dns)" == "1.1.1.1" ]] \
+[[ "$(menu_field "$amnesia_node" status dns)" == "10.205.20.1" ]] \
 	|| fail "status did not report the DNS server"
 [[ -n "$(menu_field "$amnesia_node" status installationUUID)" ]] \
 	|| fail "status did not report the installation UUID"
 [[ "$(menu_field "$vtun_node" effective localAddrs)" == "10.205.10.1" ]] \
 	|| fail "Amnesia did not propagate its address to VTun"
-[[ "$(menu_field "$vtun_node" effective dnsServers)" == "1.1.1.1" ]] \
+[[ "$(menu_field "$vtun_node" effective dnsServers)" == "10.205.20.1" ]] \
 	|| fail "Amnesia did not propagate its DNS server to VTun"
+assert_tunnel_dns_works "$dns_query"
 for field in connectEvent reconnect latestHandshake peerPublicKey peers privateKey listenPort; do
 	if cli graph menu --node "$amnesia_node" | jq -e --arg field "$field" \
 		'.blocks[].items[] | select(.id == $field)' >/dev/null; then

@@ -37,6 +37,13 @@
 			"method": "GET",
 			"body": "",
 		},
+		"DNS Query Amnesia": {
+			"Class": "almagest/DnsQuery",
+			"Pos": "{\"x\":500,\"y\":420}",
+			"Links": ["DNS -> [Amnesia Service] DNS"],
+			"name": "managed.amnesia.e2e.",
+			"type": "A",
+		},
 		"OutNetwork Amnesia": {
 			"Class": "almagest/OutNetwork",
 			"Pos": "{\"x\":760,\"y\":180}",

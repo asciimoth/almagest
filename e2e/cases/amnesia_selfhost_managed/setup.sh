@@ -79,6 +79,23 @@ text = open(source, encoding="utf-8").read().strip().removeprefix("vpn://")
 text += "=" * (-len(text) % 4)
 framed = base64.urlsafe_b64decode(text)
 document = json.loads(zlib.decompress(framed[4:]))
+document["dns1"] = "10.205.20.1"
+document["send_payload"] = [
+    {
+        "endpoint": "127.0.0.1:18501",
+        "protocol": "tcp",
+        "timeout_ms": 2000,
+        "payload": "<b 0x010203>",
+        "expected_response": "<b 0xaabb>",
+    },
+    {
+        "endpoint": "127.0.0.1:18502",
+        "protocol": "udp",
+        "timeout_ms": 2000,
+        "payload": "<b 0x040506>",
+        "expected_response": "",
+    },
+]
 protocol = document["containers"][0]["awg"]
 protocol.pop("client_pub_key", None)
 # A random handshake trailer can grow to 65535 bytes. It cannot fit in the

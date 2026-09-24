@@ -10,7 +10,9 @@ The case verifies:
   modes.
 - Protected TLS certificates and policies from protected config are read-only.
 - Mutable certificates and policies can be set, renamed, deleted, and survive a
-  daemon restart.
+  daemon restart. Policy mutations publish the corresponding TLS watch events.
+- Policy rename rejects read-only and conflicting targets, accepts a same-name
+  no-op, and policy delete is idempotent.
 - Policy certificate references are rewritten after certificate rename/delete.
 - Built-in CA option updates regenerate the CA, autosave config, and survive a
   restart without regenerating again.

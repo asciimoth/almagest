@@ -65,7 +65,34 @@ dns:
     global: []
     split: {}
   search_domains: []
-  extra_records: []
+  extra_records:
+    - name: v4.magic.e2e.internal
+      type: A
+      value: 192.0.2.10
+    - name: v4-alt.magic.e2e.internal
+      type: A
+      value: 192.0.2.10
+    - name: v6.magic.e2e.internal
+      type: AAAA
+      value: 2001:db8::10
+    - name: v6-alt.magic.e2e.internal
+      type: AAAA
+      value: 2001:db8::10
+    - name: alias.magic.e2e.internal
+      type: CNAME
+      value: v4.magic.e2e.internal
+    - name: zone.magic.e2e.internal
+      type: NS
+      value: ns1.magic.e2e.internal
+    - name: mail.magic.e2e.internal
+      type: MX
+      value: 10 mx1.magic.e2e.internal
+    - name: _service._tcp.magic.e2e.internal
+      type: SRV
+      value: 10 20 8443 target.magic.e2e.internal
+    - name: text.magic.e2e.internal
+      type: TXT
+      value: tailscale magic text
 
 unix_socket: %E2E_RUNTIME%/headscale/headscale.sock
 unix_socket_permission: "0777"

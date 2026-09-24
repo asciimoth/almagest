@@ -9,6 +9,8 @@ The case verifies:
 - service import with a client-generated WireGuard key;
 - profile address and DNS propagation to VTun;
 - bidirectional traffic through the managed AmneziaWG tunnel;
+- DNS resolution through the managed AmneziaWG tunnel;
+- server-declared TCP and UDP pre-connect actions through the graph network;
 - a new client key after a secret change, network reattach, TLS recovery, and
   daemon restart;
 - installation UUID persistence across daemon restart;

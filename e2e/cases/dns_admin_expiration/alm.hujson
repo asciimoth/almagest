@@ -1,0 +1,16 @@
+{
+	"nodes": {
+		"DNS Cache": {
+			"Class":          "almagest/DnsCache",
+			"storageName":    "expiration-cache",
+			"reverseLookups": true,
+			"writeOnly":      false,
+		},
+		"Expiry Query": {
+			"Class": "almagest/DnsQuery",
+			"Links": ["DNS -> [DNS Cache] DNS"],
+			"name":  "value-expiry.test.",
+			"type":  "A",
+		},
+	},
+}

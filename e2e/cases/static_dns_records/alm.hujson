@@ -1,0 +1,21 @@
+{
+	"nodes": {
+		"Static DNS": {
+			"Class": "almagest/StaticDns",
+			"Links": ["Fallback -> [Fallback DNS] DNS"],
+			"records": "# supported records\naddress.records.test A 192.0.2.10\naddress.records.test A 192.0.2.11\nipv6.records.test AAAA 2001:db8::10\nalias.records.test CNAME target.records.test\nzone.records.test NS ns.records.test\n10.2.0.192.in-addr.arpa PTR ptr.records.test\nmail.records.test MX 20 mx.records.test\ntext.records.test TXT \"hello static dns\"\n_service._tcp.records.test SRV 10 5 8443 service.records.test",
+			"ttl": 90,
+		},
+		"Fallback DNS": {
+			"Class": "almagest/StaticDns",
+			"records": "fallback.records.test A 198.51.100.7",
+			"ttl": 30,
+		},
+		"DNS Query": {
+			"Class": "almagest/DnsQuery",
+			"Links": ["DNS -> [Static DNS] DNS"],
+			"name": "address.records.test",
+			"type": "A",
+		},
+	},
+}

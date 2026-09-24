@@ -65,10 +65,24 @@ expect_cli_failure "delete protected TLS cert" "conflict: tls config is read-onl
 	tls delete-cert --name protected-ca
 expect_cli_failure "replace protected TLS policy" "conflict: tls config is read-only" \
 	tls set-policy --name protected-policy --spec '{"trust_anchors":[]}'
+expect_cli_failure "rename protected TLS policy" "conflict: tls config is read-only" \
+	tls rename-policy --name protected-policy --new-name renamed-protected-policy
+expect_cli_failure "delete protected TLS policy" "conflict: tls config is read-only" \
+	tls delete-policy --name protected-policy
 expect_cli_failure "set reserved OS certificate name" "bad_request: invalid tls config name" \
 	tls set-cert --name os-ca:e2e --pem-file "$E2E_CONFIG_DIR/manual-ca.pem"
 expect_cli_failure "set policy with missing certificate" "bad_request: invalid tls config value: tls policy trust anchor [0-9]+ references unknown cert" \
 	tls set-policy --name broken-policy --spec '{"trust_anchors":[{"cert":"missing-ca","scope":{"any":true}}]}'
+
+tls_watch_file="$E2E_RUNTIME/tls-watch.jsonl"
+tls_watch_error="$E2E_RUNTIME/tls-watch.err"
+timeout --kill-after=2 60 \
+	almagest-cli --url "unix://$E2E_ADMIN_SOCK" tls watch \
+	>"$tls_watch_file" 2>"$tls_watch_error" &
+tls_watch_pid="$!"
+retry "$ALMAGEST_E2E_TIMEOUT" "TLS watch subscription" \
+	grep -F '"subscription_id"' "$tls_watch_file" >/dev/null \
+	|| fail "TLS watch did not subscribe"
 
 cli tls set-cert --name manual-ca --pem-file "$E2E_CONFIG_DIR/manual-ca.pem" >"$E2E_RUNTIME/manual-cert.json"
 assert_jq "$E2E_RUNTIME/manual-cert.json" "manual certificate was not saved as mutable" '
@@ -135,6 +149,45 @@ assert_jq "$E2E_RUNTIME/snapshot-deleted.json" "policy did not remove deleted ce
 	and ([ $p.spec.trust_anchors[]? | select(.cert == "renamed-ca") ] | length == 0)
 	and any($p.spec.trust_anchors[]; .cert == "builtin-ca:almagest")
 '
+
+expect_cli_failure "rename TLS policy onto an existing policy" "conflict: tls config name conflict" \
+	tls rename-policy --name manual-policy --new-name persist-policy
+cli tls rename-policy --name manual-policy --new-name manual-policy \
+	>"$E2E_RUNTIME/policy-noop-rename.json"
+assert_jq "$E2E_RUNTIME/policy-noop-rename.json" "same-name policy rename changed the policy" '
+	.name == "manual-policy" and .source == "mutable" and .valid == true
+'
+cli tls rename-policy --name manual-policy --new-name renamed-policy \
+	>"$E2E_RUNTIME/policy-renamed.json"
+assert_jq "$E2E_RUNTIME/policy-renamed.json" "renamed policy response was unexpected" '
+	.name == "renamed-policy" and .source == "mutable" and .valid == true
+'
+cli tls list >"$E2E_RUNTIME/snapshot-policy-renamed.json"
+assert_jq "$E2E_RUNTIME/snapshot-policy-renamed.json" "policy rename did not move the mutable policy" '
+	any(.policies[]; .name == "renamed-policy" and .source == "mutable")
+	and ([ .policies[] | select(.name == "manual-policy") ] | length) == 0
+'
+cli tls delete-policy --name renamed-policy >/dev/null
+cli tls delete-policy --name renamed-policy >/dev/null
+cli tls list >"$E2E_RUNTIME/snapshot-policy-deleted.json"
+assert_jq "$E2E_RUNTIME/snapshot-policy-deleted.json" "deleted policy was still present" '
+	([ .policies[] | select(.name == "renamed-policy") ] | length) == 0
+'
+
+retry "$ALMAGEST_E2E_TIMEOUT" "TLS policy mutation watch events" \
+	jq -s -e '
+		any(.[]; .method == "update" and .payload.change.kind == "policy"
+			and .payload.change.name == "manual-policy" and .payload.change.deleted != true)
+		and any(.[]; .method == "update" and .payload.change.kind == "policy"
+			and .payload.change.name == "manual-policy" and .payload.change.deleted == true)
+		and any(.[]; .method == "update" and .payload.change.kind == "policy"
+			and .payload.change.name == "renamed-policy" and .payload.change.deleted != true)
+		and any(.[]; .method == "update" and .payload.change.kind == "policy"
+			and .payload.change.name == "renamed-policy" and .payload.change.deleted == true)
+	' "$tls_watch_file" >/dev/null \
+	|| fail "TLS watch did not receive expected policy mutation events"
+kill "$tls_watch_pid" 2>/dev/null || true
+wait "$tls_watch_pid" 2>/dev/null || true
 
 initial_builtin_fingerprint="$(jq -er '.cert.fingerprint' "$E2E_RUNTIME/builtin-initial.json")"
 cli tls set-builtin-ca \

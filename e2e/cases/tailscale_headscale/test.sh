@@ -155,11 +155,42 @@ firewall_policy_is_present() {
 }
 
 dns_response_ready() {
+	local expected="$1"
 	local status error response
 	status="$(menu_field a "MagicDNS Query" result status)" || return 1
 	error="$(menu_field a "MagicDNS Query" result error)" || return 1
 	response="$(menu_field a "MagicDNS Query" result response)" || return 1
-	[[ "$status" == "Status: NOERROR" && -z "$error" && "$response" == *"100.64."* ]]
+	[[ "$status" == "Status: NOERROR" && -z "$error" && "$response" == *"$expected"* ]]
+}
+
+set_dns_query_field() {
+	local node="$1"
+	local field="$2"
+	local value="$3"
+	local message
+	message="$(jq -nc \
+		--arg menu "NODE${node}MENU" \
+		--arg field "$field" \
+		--arg value "$value" \
+		'{
+			type:"field.update",
+			menuId:$menu,
+			field:{blockId:"request",fieldId:$field},
+			value:$value
+		}')"
+	cli_a engine send-node-formular-msg --id "$node" --message "$message" >/dev/null
+}
+
+query_magic_dns() {
+	local node="$1"
+	local name="$2"
+	local type="$3"
+	local expected="$4"
+	set_dns_query_field "$node" name "$name"
+	set_dns_query_field "$node" type "$type"
+	cli_a graph click-menu-button --id "$node" --block request --button send >/dev/null
+	retry 30 "MagicDNS $name $type response" dns_response_ready "$expected" \
+		|| fail "Tailscale DNS port did not resolve $name $type"
 }
 
 http_response_ready() {
@@ -195,9 +226,23 @@ retry 30 "Tailscale ACL in node menu" tailscale_acl_is_present a "Tailscale A" \
 retry 30 "Tailscale firewall object" firewall_policy_is_present \
 	|| fail "NetworkFirewall did not receive the Tailscale policy object"
 
-cli_a graph click-menu-button --name "MagicDNS Query" --block request --button send >/dev/null
-retry 30 "MagicDNS beta response" dns_response_ready \
-	|| fail "Tailscale DNS port did not resolve beta.e2e.internal"
+magic_dns_query="$(node_id a "MagicDNS Query")"
+query_magic_dns "$magic_dns_query" beta.e2e.internal A "100.64."
+query_magic_dns "$magic_dns_query" v4.magic.e2e.internal A "192.0.2.10"
+query_magic_dns "$magic_dns_query" v4-alt.magic.e2e.internal A "192.0.2.10"
+query_magic_dns "$magic_dns_query" v6.magic.e2e.internal AAAA "2001:db8::10"
+query_magic_dns "$magic_dns_query" v6-alt.magic.e2e.internal AAAA "2001:db8::10"
+query_magic_dns "$magic_dns_query" 10.2.0.192.in-addr.arpa PTR "v4.magic.e2e.internal."
+query_magic_dns "$magic_dns_query" 10.2.0.192.in-addr.arpa PTR "v4-alt.magic.e2e.internal."
+ipv6_ptr="0.1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.8.b.d.0.1.0.0.2.ip6.arpa"
+query_magic_dns "$magic_dns_query" "$ipv6_ptr" PTR "v6.magic.e2e.internal."
+query_magic_dns "$magic_dns_query" "$ipv6_ptr" PTR "v6-alt.magic.e2e.internal."
+query_magic_dns "$magic_dns_query" alias.magic.e2e.internal CNAME "v4.magic.e2e.internal."
+query_magic_dns "$magic_dns_query" zone.magic.e2e.internal NS "ns1.magic.e2e.internal."
+query_magic_dns "$magic_dns_query" mail.magic.e2e.internal MX "10 mx1.magic.e2e.internal."
+query_magic_dns "$magic_dns_query" _service._tcp.magic.e2e.internal SRV \
+	"10 20 8443 target.magic.e2e.internal."
+query_magic_dns "$magic_dns_query" text.magic.e2e.internal TXT "tailscale magic text"
 
 cli_a graph click-menu-button --name "HTTP Client A" --block request --button send >/dev/null
 retry 60 "HTTP over Tailscale direct path" http_response_ready \

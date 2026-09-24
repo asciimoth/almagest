@@ -327,6 +327,9 @@ func (p *ProtectedConfig) ImmutableTLS() (immutableTLSData, error) {
 			if !validMutableTLSPolicyName(name) {
 				return immutableTLSData{}, fmt.Errorf("%w: invalid protected TLS policy name %q", storage.ErrTlsConfigInvalidName, name)
 			}
+			if err := validateTLSPolicySpecScopes(spec); err != nil {
+				return immutableTLSData{}, fmt.Errorf("%w: protected TLS policy %q: %v", storage.ErrTlsConfigInvalidValue, name, err)
+			}
 			out.Policies[name] = immutableTLSPolicy{
 				tlsPolicyRecord: tlsPolicyRecord{Spec: normalizeTLSPolicySpec(spec)},
 				source:          api.TLSSourceProtected,

@@ -1,0 +1,30 @@
+{
+	"Logs": {
+		"Cache": {
+			"Debug": 256,
+			"Info": 64,
+			"Warn": 64,
+			"Error": 64,
+			"Fatal": 16,
+		},
+	},
+	"nodes": {
+		"Standard Input Node": {
+			"Class": "almagest/Markdown",
+			"markdown": "started from stdin",
+		},
+	},
+	"Protected": {
+		"Admin": {
+			"UnixFilters": {"Usernames": ["root"]},
+		},
+		"System": {"Type": "debug"},
+		"Secrets": {
+			"stdin-protected": {
+				"Value": "stdin-protected-value",
+				"Nodes": ["Standard Input Node"],
+			},
+		},
+	},
+}
+

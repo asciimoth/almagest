@@ -1,0 +1,5 @@
+{
+	"Admin": {"Web": 0, "Unix": "/tmp/almagest-e2e.sock"},
+	"System": {"Debug": true},
+}
+

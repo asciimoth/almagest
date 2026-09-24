@@ -1,0 +1,8 @@
+{
+	"nodes": {
+		"Surface Node": {
+			"Class": "almagest/MockNetwork",
+		},
+	},
+}
+

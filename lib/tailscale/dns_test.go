@@ -5,8 +5,11 @@ import (
 	"errors"
 	"net"
 	"net/netip"
+	"slices"
 	"testing"
+	"time"
 
+	gdns "github.com/asciimoth/gonnect/dns"
 	wgotailscale "github.com/asciimoth/wgo-tailscale"
 )
 
@@ -71,6 +74,158 @@ func TestMagicDNSResolverTypedRecordsAndMisses(t *testing.T) {
 	var dnsErr *net.DNSError
 	if !errors.As(err, &dnsErr) || !dnsErr.IsNotFound {
 		t.Fatalf("MagicDNS miss error = %#v, want not-found DNS error", err)
+	}
+}
+
+func TestMagicDNSResolverLookupAddr(t *testing.T) {
+	resolver := &magicDNSResolver{}
+	resolver.SetView(wgotailscale.DNSView{Records: []wgotailscale.DNSRecord{
+		{Name: "zeta-v4.example.test", Type: "A", Value: "192.0.2.10"},
+		{Name: "alpha-v4.example.test.", Type: "A", Value: "192.0.2.10"},
+		{Name: "alpha-v4.example.test.", Type: "A", Value: "192.0.2.10"},
+		{Name: "v6.example.test", Type: "AAAA", Value: "2001:db8::10"},
+	}})
+
+	tests := []struct {
+		name      string
+		address   string
+		wantNames []string
+		wantFound bool
+	}{
+		{
+			name:      "IPv4",
+			address:   "192.0.2.10",
+			wantNames: []string{"alpha-v4.example.test.", "zeta-v4.example.test."},
+			wantFound: true,
+		},
+		{
+			name:      "trimmed IPv4",
+			address:   " 192.0.2.10 ",
+			wantNames: []string{"alpha-v4.example.test.", "zeta-v4.example.test."},
+			wantFound: true,
+		},
+		{
+			name:      "IPv4-mapped IPv6",
+			address:   "::ffff:192.0.2.10",
+			wantNames: []string{"alpha-v4.example.test.", "zeta-v4.example.test."},
+			wantFound: true,
+		},
+		{
+			name:      "IPv6",
+			address:   "2001:db8::10",
+			wantNames: []string{"v6.example.test."},
+			wantFound: true,
+		},
+		{name: "missing", address: "192.0.2.99"},
+		{name: "invalid", address: "10.2.0.192.in-addr.arpa"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			names, err := resolver.LookupAddr(context.Background(), tt.address)
+			if tt.wantFound {
+				if err != nil || !slices.Equal(names, tt.wantNames) {
+					t.Fatalf("LookupAddr(%q) = %v, %v; want %v, nil", tt.address, names, err, tt.wantNames)
+				}
+				return
+			}
+			if err == nil || len(names) != 0 {
+				t.Fatalf("LookupAddr(%q) = %v, %v; want an error", tt.address, names, err)
+			}
+		})
+	}
+
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := resolver.LookupAddr(canceled, "192.0.2.10"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("LookupAddr canceled error = %v, want context.Canceled", err)
+	}
+}
+
+func TestMagicDNSResolverProviderPTRQueries(t *testing.T) {
+	resolver := &magicDNSResolver{}
+	resolver.SetView(wgotailscale.DNSView{Records: []wgotailscale.DNSRecord{
+		{Name: "zeta-v4.example.test", Type: "A", Value: "192.0.2.10"},
+		{Name: "alpha-v4.example.test", Type: "A", Value: "192.0.2.10"},
+		{Name: "v6.example.test", Type: "AAAA", Value: "2001:db8::10"},
+	}})
+	provider := gdns.NewResolverProvider(resolver, 90*time.Second, nil)
+	t.Cleanup(func() {
+		if err := provider.Close(); err != nil {
+			t.Errorf("close resolver provider: %v", err)
+		}
+	})
+
+	tests := []struct {
+		name      string
+		question  string
+		wantCode  uint8
+		wantNames []string
+	}{
+		{
+			name:      "IPv4",
+			question:  "10.2.0.192.in-addr.arpa.",
+			wantCode:  gdns.RCodeSuccess,
+			wantNames: []string{"alpha-v4.example.test.", "zeta-v4.example.test."},
+		},
+		{
+			name: "IPv6",
+			question: "0.1.0.0.0.0.0.0.0.0.0.0.0.0.0.0." +
+				"0.0.0.0.0.0.0.0.8.b.d.0.1.0.0.2.ip6.arpa.",
+			wantCode:  gdns.RCodeSuccess,
+			wantNames: []string{"v6.example.test."},
+		},
+		{
+			name:     "missing IPv4",
+			question: "99.2.0.192.in-addr.arpa.",
+			wantCode: gdns.RCodeNameError,
+		},
+		{
+			name:     "malformed IPv4",
+			question: "10.2.192.in-addr.arpa.",
+			wantCode: gdns.RCodeFormatError,
+		},
+		{
+			name:     "malformed IPv6",
+			question: "1.0.ip6.arpa.",
+			wantCode: gdns.RCodeFormatError,
+		},
+		{
+			name:     "not a reverse name",
+			question: "host.example.test.",
+			wantCode: gdns.RCodeFormatError,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			request := &gdns.Message{
+				ID: gdns.NextID(),
+				Questions: []gdns.Question{{
+					Name:  tt.question,
+					Type:  gdns.TypePTR,
+					Class: gdns.ClassIN,
+				}},
+			}
+			response, err := gdns.Query(context.Background(), provider, request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if response.RCode != tt.wantCode {
+				t.Fatalf("PTR response code = %d, want %d", response.RCode, tt.wantCode)
+			}
+			gotNames := make([]string, 0, len(response.Answers))
+			for i, answer := range response.Answers {
+				if answer.Name != tt.question || answer.Type != gdns.TypePTR ||
+					answer.Class != gdns.ClassIN || answer.TTL != 90 {
+					t.Errorf("PTR answer %d metadata = %#v", i, answer)
+				}
+				gotNames = append(gotNames, string(answer.Data))
+			}
+			if !slices.Equal(gotNames, tt.wantNames) {
+				t.Errorf("PTR answer names = %q, want %q", gotNames, tt.wantNames)
+			}
+		})
 	}
 }
 

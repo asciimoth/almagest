@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -819,6 +820,20 @@ func TestProtectedConfigTLS(t *testing.T) {
 	if got := data.Policies["protected"].Spec.TrustAnchors; len(got) != 1 || got[0].Cert != "literal" {
 		t.Fatalf("protected policy = %#v, want literal trust anchor", data.Policies["protected"].Spec)
 	}
+
+	cfg.Protected.TLS.Policies["mixed-scope"] = api.TLSPolicySpec{
+		TrustAnchors: []api.TLSTrustAnchor{{
+			Cert: "literal",
+			Scope: api.TLSScope{
+				Any: true,
+				DNS: []api.TLSDNSRule{{Domain: "example.test"}},
+			},
+		}},
+	}
+	if _, err := cfg.Protected.ImmutableTLS(); !errors.Is(err, storage.ErrTlsConfigInvalidValue) ||
+		!strings.Contains(err.Error(), "any scope cannot include DNS or IP rules") {
+		t.Fatalf("ImmutableTLS() error = %v, want invalid mixed scope", err)
+	}
 }
 
 func TestTLSNodeNameSyncRenamesAndDeletesRuntimeReferences(t *testing.T) {
@@ -964,6 +979,57 @@ func testTLSPolicy(cert string) api.TLSPolicySpec {
 			Cert:  cert,
 			Scope: api.TLSScope{Any: true},
 		}},
+	}
+}
+
+func TestTLSStorageRejectsAnyScopeWithSpecificRules(t *testing.T) {
+	manager, err := openKVManager(filepath.Join(t.TempDir(), "kv.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer manager.Close() //nolint:errcheck
+
+	if _, err := manager.setTLSCert("ca", testTLSCAPEM(t, "mixed-scope-ca")); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := map[string]api.TLSPolicySpec{
+		"trust anchor DNS": {
+			TrustAnchors: []api.TLSTrustAnchor{{
+				Cert: "ca",
+				Scope: api.TLSScope{
+					Any: true,
+					DNS: []api.TLSDNSRule{{Domain: "example.test"}},
+				},
+			}},
+		},
+		"constraint IP": {
+			Constraints: []api.TLSAuthorityConstraint{{
+				Cert:  "ca",
+				Match: "certificate",
+				Scope: api.TLSScope{Any: true, IPPrefixes: []string{"192.0.2.0/24"}},
+			}},
+		},
+		"pin DNS": {
+			Pins: []api.TLSPin{{
+				Kind:        "certificate",
+				Fingerprint: strings.Repeat("00", 32),
+				Scope: api.TLSScope{
+					Any: true,
+					DNS: []api.TLSDNSRule{{Domain: "example.test"}},
+				},
+			}},
+		},
+	}
+
+	for name, spec := range tests {
+		t.Run(name, func(t *testing.T) {
+			_, err := manager.setTLSPolicy("mixed", spec)
+			if !errors.Is(err, storage.ErrTlsConfigInvalidValue) ||
+				!strings.Contains(err.Error(), "any scope cannot include DNS or IP rules") {
+				t.Fatalf("setTLSPolicy() error = %v, want invalid mixed scope", err)
+			}
+		})
 	}
 }
 
