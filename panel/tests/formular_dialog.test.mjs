@@ -48,6 +48,48 @@ test("vendored Formular renderer opens captcha dialogs", () => {
   }
 });
 
+test("vendored Formular dialogs keep daemon text as text", () => {
+  const dom = new JSDOM('<div id="node-menu"></div>', { url: "http://localhost/" });
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  const previousMutationObserver = globalThis.MutationObserver;
+  globalThis.document = dom.window.document;
+  globalThis.window = dom.window;
+  globalThis.MutationObserver = dom.window.MutationObserver;
+  const payload = '<img src=x onerror="globalThis.__xss = true"><script>globalThis.__xss = true</script>';
+
+  try {
+    const menu = new FormularMenu("node-menu", "NODE1MENU", () => {});
+    assert.equal(menu.feed({
+      type: "dialog.create",
+      menuId: "NODE1MENU",
+      menuGeneration: 1,
+      dialog: {
+        id: "untrusted-dialog",
+        kind: "selection",
+        title: payload,
+        text: payload,
+        options: [{ value: payload, label: payload }],
+        submitLabel: payload,
+        cancelLabel: payload,
+      },
+    }), true);
+
+    const dialog = dom.window.document.querySelector("dialog[data-dialog-id='untrusted-dialog']");
+    assert.ok(dialog);
+    assert.equal(dialog.querySelector("script,img,svg,iframe,math"), null);
+    assert.equal(dialog.querySelector("h2")?.textContent, payload);
+    assert.equal(dialog.querySelector("option")?.textContent, payload);
+    assert.equal(dialog.querySelector("option")?.value, payload);
+    assert.equal(globalThis.__xss, undefined);
+  } finally {
+    globalThis.document = previousDocument;
+    globalThis.window = previousWindow;
+    globalThis.MutationObserver = previousMutationObserver;
+    dom.window.close();
+  }
+});
+
 test("published panel versions its application module", async () => {
   const index = await (await import("node:fs/promises")).readFile(
     new URL("../../bin/almagestd/static/index.html", import.meta.url),

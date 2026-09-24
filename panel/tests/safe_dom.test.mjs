@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { test } from "node:test";
 import { JSDOM } from "jsdom";
 import {
@@ -21,7 +21,9 @@ import {
   createTLSPolicyPreview,
   createTLSPolicyTitle,
   createWorkerNodeBlock,
+  escapeHTMLText,
   renderNodeDescription,
+  safeCSSColor,
   updateWorkerAgeElements,
 } from "../public/build/safe_dom.js";
 
@@ -40,6 +42,21 @@ function assertNoParsedPayload(root) {
   assert.equal(root.querySelector("script,img,svg,iframe,math"), null);
   assert.equal(globalThis.__xss, undefined);
 }
+
+test("LiteGraph-bound text is escaped for its HTML parser", () => {
+  assert.equal(
+    escapeHTMLText(`<img src=x onerror='alert(1)' title="bad">&`),
+    "&lt;img src=x onerror=&#39;alert(1)&#39; title=&quot;bad&quot;&gt;&amp;",
+  );
+});
+
+test("daemon CSS values are restricted to colors", () => {
+  installDOM();
+  assert.equal(safeCSSColor("#89b4fa", "black"), "#89b4fa");
+  assert.equal(safeCSSColor("rgb(10, 20, 30)", "black"), "rgb(10, 20, 30)");
+  assert.equal(safeCSSColor("url(https://attacker.test/pixel)", "black"), "black");
+  assert.equal(safeCSSColor("red; background: url(https://attacker.test/pixel)", "black"), "black");
+});
 
 test("node-sourced class picker text is not parsed as HTML", () => {
   installDOM();
@@ -380,6 +397,22 @@ test("node descriptions allow safe markdown only", () => {
   assert.match(root.textContent ?? "", /<img src=x/);
 });
 
+test("node description links reject active and local URL schemes", () => {
+  installDOM();
+  const root = document.createElement("div");
+  renderNodeDescription(root, [
+    "[script](JaVaScRiPt:alert(1))",
+    "[data](data:text/html,<script>alert(1)</script>)",
+    "[local](file:///etc/passwd)",
+    "[web](https://example.test/path)",
+    "[mail](mailto:admin@example.test)",
+  ].join(" "));
+
+  const links = [...root.querySelectorAll("a")];
+  assert.deepEqual(links.map((link) => link.hasAttribute("href")), [false, false, false, true, true]);
+  assertNoParsedPayload(root);
+});
+
 test("node descriptions render multiline code blocks as text", () => {
   installDOM();
   const root = document.createElement("div");
@@ -409,10 +442,21 @@ test("node descriptions render multiline code blocks as text", () => {
   assert.equal(root.querySelectorAll("p code").length, 1);
 });
 
-test("panel source does not use HTML parser APIs for rendering", async () => {
-  const files = ["src/app.ts", "src/safe_dom.ts"];
+test("panel source does not use script execution or HTML parser sinks", async () => {
+  const files = (await readdir(new URL("../src/", import.meta.url)))
+    .filter((file) => file.endsWith(".ts"))
+    .map((file) => `src/${file}`);
   for (const file of files) {
     const source = await readFile(new URL(`../${file}`, import.meta.url), "utf8");
-    assert.doesNotMatch(source, /\b(?:innerHTML|outerHTML|insertAdjacentHTML)\b/, file);
+    assert.doesNotMatch(
+      source,
+      /\b(?:innerHTML|outerHTML|insertAdjacentHTML|DOMParser|srcdoc)\b|\bdocument\.write\s*\(|\beval\s*\(|\bnew\s+Function\b/,
+      file,
+    );
   }
+});
+
+test("panel startup disables LiteGraph script nodes", async () => {
+  const source = await readFile(new URL("../src/app.ts", import.meta.url), "utf8");
+  assert.match(source, /LiteGraph\.allow_scripts\s*=\s*false/);
 });

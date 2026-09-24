@@ -22,13 +22,13 @@ test("snapshots tab provides snapshot management controls", () => {
 });
 
 test("snapshots panel uses all snapshot API methods and confirms destructive actions", () => {
-  assert.match(app, /request\([^)]*"snapshots",\s*"create"/);
-  assert.match(app, /request\([^)]*"snapshots",\s*"list"/);
-  assert.match(app, /request\([^)]*"snapshots",\s*"export"/);
-  assert.match(app, /request\([^)]*"snapshots",\s*"import"/);
-  assert.match(app, /request\([^)]*"snapshots",\s*"restore"/);
+  assert.match(app, /requestDecoded\([^)]*"snapshots",\s*"create"/);
+  assert.match(app, /requestDecoded\([^)]*"snapshots",\s*"list"/);
+  assert.match(app, /requestDecoded\([^)]*"snapshots",\s*"export"/);
+  assert.match(app, /requestDecoded\([^)]*"snapshots",\s*"import"/);
+  assert.match(app, /requestDecoded\([^)]*"snapshots",\s*"restore"/);
   assert.match(app, /request\([^)]*"snapshots",\s*"delete"/);
-  assert.match(app, /request\([^)]*"snapshots",\s*"rename"/);
+  assert.match(app, /requestDecoded\([^)]*"snapshots",\s*"rename"/);
   assert.match(app, /window\.confirm\([^)]*Restore snapshot/);
   assert.match(app, /window\.confirm\([^)]*Delete snapshot/);
   assert.match(app, /window\.prompt\([^)]*Snapshot name/);

@@ -13,7 +13,10 @@ import {
   nodeClassByName,
   nodeMenuID,
   nodePositionMap,
+  parseEngineNotificationEvent,
   parsePosition,
+  parseTypePaletteMap,
+  parseWorkspaceSnapshotResponse,
   positionClipboardAt,
   selectedNodeIDs,
   isKeyboardShortcut,
@@ -21,15 +24,17 @@ import {
   trimPopupText,
   typeColor,
   type ID,
+  type EngineNotificationEvent,
   type LinkSnapshot,
   type NodeClassSnapshot,
   type NodePopup,
   type NodeSnapshot,
   type PortSnapshot,
+  type TypePalette,
   type WorkerSnapshot,
-  type WorkerNotification,
   type WorkspaceNotification,
   type WorkspaceSnapshot,
+  type WorkspaceSnapshotUpdate,
 } from "./pasta_model.js";
 import {
   createDNSCacheTitle,
@@ -51,9 +56,11 @@ import {
   createTLSPolicyPreview,
   createTLSPolicyTitle,
   createWorkerNodeBlock,
+  escapeHTMLText,
   formatKVValueMeta,
   formatSecretEntryMeta,
   renderNodeDescription,
+  safeCSSColor,
   shortClass,
   textElement,
   updateWorkerAgeElements,
@@ -75,7 +82,6 @@ import {
   sortDNSCaches,
   type DNSCacheChange,
   type DNSCacheInfo,
-  type DNSKeyChange,
   type DNSKeyInfo,
   type DNSKeysSnapshot,
   type DNSRecordInput,
@@ -148,6 +154,69 @@ import {
   type TLSSnapshot,
   type TLSTrustAnchor,
 } from "./tls_model.js";
+import { errorMessage, parseAPIMessage, type APIMessage, type Surface } from "./api_model.js";
+import {
+  parseDNSCacheEvent,
+  parseDNSKeyEvent,
+  parseDNSValueEvent,
+  parseKVEntriesEvent,
+  parseKVStoresEvent,
+  parseKVValueEvent,
+  parseKVValueSnapshot,
+  parseLogEntry,
+  parseProjectVersionStatus,
+  parseSecretsEvent,
+  parseTLSEvent,
+  type LogEntry,
+  type ProjectVersionStatus,
+} from "./event_model.js";
+import {
+  parseConfigSnapshot,
+  parseConfigUpdateResponse,
+  parseDNSSetResponse,
+  parseDNSSubscribeCachesResponse,
+  parseDNSSubscribeKeysResponse,
+  parseDNSSubscribeValueResponse,
+  parseDataResponse,
+  parseDescriptionResponse,
+  parseHelloResponse,
+  parseIDResponse,
+  parseIDsResponse,
+  parseKVSubscribeEntriesResponse,
+  parseKVSubscribeStoresResponse,
+  parseKVSubscribeValueResponse,
+  parseSecretEntryResponse,
+  parseSecretsSubscribeResponse,
+  parseSnapshotExportResponse,
+  parseSnapshotInfoResponse,
+  parseSnapshotRestoreResponse,
+  parseSnapshotsListResponse,
+  parseSubscribeLogsResponse,
+  parseSubscriptionIDResponse,
+  parseTLSBuiltinCAResponse,
+  parseTLSCertResponse,
+  parseTLSPolicyResponse,
+  parseTLSSnapshotResponse,
+  parseTLSSubscribeResponse,
+  type ConfigSnapshot,
+  type ConfigUpdateResponse,
+  type DNSCachesSnapshot,
+  type DNSSetResponse,
+  type DNSSubscribeCachesResponse,
+  type DNSSubscribeKeysResponse,
+  type DNSSubscribeValueResponse,
+  type HelloResponse,
+  type KVStoresSnapshot,
+  type KVSubscribeEntriesResponse,
+  type KVSubscribeStoresResponse,
+  type KVSubscribeValueResponse,
+  type SecretsSubscribeResponse,
+  type SnapshotExportResponse,
+  type SnapshotRestoreResponse,
+  type SnapshotsListResponse,
+  type SubscribeLogsResponse,
+  type TLSSubscribeResponse,
+} from "./response_model.js";
 
 const SECRET_NODE_AUTOCOMPLETE_LIMIT = 8;
 const TLS_CERT_OPENSSL_COMMAND = [
@@ -190,97 +259,6 @@ const { FormularMenu } = (await import(formularMenuURL.href)) as {
   FormularMenu: FormularMenuConstructor;
 };
 
-type LogEntry = {
-  at: string;
-  source: string;
-  level: string;
-  message: string;
-  node_id?: number;
-  node_class?: string;
-};
-type SubscribeLogsResponse = {
-  subscription_id: number;
-  cache_size: number;
-  entries: LogEntry[];
-};
-type DNSCachesSnapshot = {
-  caches?: DNSCacheInfo[];
-};
-type DNSSubscribeCachesResponse = {
-  subscription_id: number;
-  snapshot: DNSCachesSnapshot;
-};
-type DNSCachesEvent = {
-  subscription_id: number;
-  change: DNSCacheChange;
-};
-type DNSSubscribeKeysResponse = {
-  subscription_id: number;
-  snapshot: DNSKeysSnapshot;
-};
-type DNSKeysEvent = {
-  subscription_id: number;
-  cache: string;
-  change: DNSKeyChange;
-};
-type DNSSubscribeValueResponse = {
-  subscription_id: number;
-  snapshot: DNSValueSnapshot;
-};
-type DNSSetResponse = {
-  key: string;
-  snapshot: DNSValueSnapshot;
-};
-type DNSValueEvent = {
-  subscription_id: number;
-  cache: string;
-  key: string;
-  found: boolean;
-  value?: DNSValue;
-};
-type KVStoresSnapshot = {
-  stores: KVStoreInfo[];
-};
-type KVSubscribeStoresResponse = {
-  subscription_id: number;
-  snapshot: KVStoresSnapshot;
-};
-type KVStoresEvent = {
-  subscription_id: number;
-  snapshot: KVStoresSnapshot;
-};
-type KVSubscribeEntriesResponse = {
-  subscription_id: number;
-  snapshot: KVEntriesSnapshot;
-};
-type KVEntriesEvent = {
-  subscription_id: number;
-  snapshot: KVEntriesSnapshot;
-};
-type KVSubscribeValueResponse = {
-  subscription_id: number;
-  snapshot: KVValueSnapshot;
-};
-type KVValueEvent = {
-  subscription_id: number;
-  snapshot: KVValueSnapshot;
-};
-type SecretsSubscribeResponse = {
-  subscription_id: number;
-  snapshot: SecretsSnapshot;
-};
-type SecretsEvent = {
-  subscription_id: number;
-  change: SecretChange;
-};
-type TLSSubscribeResponse = {
-  subscription_id: number;
-  snapshot: TLSSnapshot;
-};
-type TLSEvent = {
-  subscription_id: number;
-  change: TLSChange;
-};
 type KVNoticeLevel = "info" | "error";
 type KVNotice = {
   level: KVNoticeLevel;
@@ -289,11 +267,6 @@ type KVNotice = {
 type DNSNotice = KVNotice;
 type SecNotice = KVNotice;
 type TLSNotice = KVNotice;
-type ConfigSnapshot = {
-  text: string;
-  revision: string;
-  read_only: boolean;
-};
 type ConfigChanges = {
   added?: string[];
   removed?: string[];
@@ -302,22 +275,6 @@ type ConfigChanges = {
   primary_types_updated?: string[];
   links_added?: string[];
   links_removed?: string[];
-};
-type ConfigUpdateResponse = {
-  snapshot: ConfigSnapshot;
-  changes: ConfigChanges;
-};
-type SnapshotsListResponse = {
-  snapshots: SnapshotInfo[];
-};
-type SnapshotExportResponse = {
-  snapshot: SnapshotInfo;
-  archive: string;
-};
-type SnapshotRestoreResponse = {
-  snapshot: SnapshotInfo;
-  config_written: boolean;
-  config_write_error?: string;
 };
 type DNSValuePanelState = {
   cache: string;
@@ -354,41 +311,6 @@ type TLSValuePanelState = {
   name: string;
   editing: "value" | "rename" | null;
 };
-type Surface = "admin" | "config" | "dns" | "engine" | "kv" | "log" | "secrets" | "snapshots" | "tls";
-type APIMessage = {
-  version: "v1";
-  kind: "request" | "response" | "event";
-  id?: string;
-  surface?: Surface;
-  method?: string;
-  payload?: unknown;
-  result?: unknown;
-  error?: { code: string; message: string; details?: unknown };
-};
-type TypePalette = { type?: string; text?: string; color?: string; textColor?: string };
-type EngineNotification = {
-  kind: "workspace" | "colormap" | "worker" | string;
-  workspace_id?: string;
-  workspace_notification?: WorkspaceNotification;
-  worker_notification?: WorkerNotification;
-  colormap?: Record<string, TypePalette>;
-};
-type EngineNotificationEvent = {
-  subscription_id: number;
-  notification: EngineNotification;
-};
-type ProjectVersionHighlight = "none" | "warn" | "critical";
-type ProjectVersionStatus = {
-  version: string;
-  highlight: ProjectVersionHighlight;
-  hover_message?: string;
-};
-type HelloResponse = {
-  version: string;
-  daemon?: string;
-  project_version_status: ProjectVersionStatus;
-  surfaces?: Record<string, unknown>;
-};
 type GraphViewportState = {
   scale: number;
   offset: [number, number];
@@ -399,10 +321,93 @@ type PendingNodePlacement = {
   id?: number;
 };
 
+type BackendResultMap = {
+  hello: HelloResponse;
+  colormap: Record<string, TypePalette>;
+  configSnapshot: ConfigSnapshot;
+  configUpdate: ConfigUpdateResponse;
+  snapshotsList: SnapshotsListResponse;
+  snapshotCreate: SnapshotInfo;
+  snapshotExport: SnapshotExportResponse;
+  snapshotImport: SnapshotInfo;
+  snapshotDelete: unknown;
+  snapshotRename: SnapshotInfo;
+  snapshotRestore: SnapshotRestoreResponse;
+  subscribeNotifications: { subscription_id: number };
+  subscribeLogs: SubscribeLogsResponse;
+  dnsSubscribeCaches: DNSSubscribeCachesResponse;
+  dnsSubscribeKeys: DNSSubscribeKeysResponse;
+  dnsSubscribeValue: DNSSubscribeValueResponse;
+  dnsUnsubscribe: unknown;
+  dnsSet: DNSSetResponse;
+  dnsDelete: unknown;
+  dnsDrop: unknown;
+  tlsSubscribe: TLSSubscribeResponse;
+  tlsUnsubscribe: unknown;
+  tlsBuiltinCA: TLSBuiltinCAInfo;
+  tlsSetBuiltinCA: TLSBuiltinCAInfo;
+  tlsReloadOSCerts: TLSSnapshot;
+  tlsSetCert: TLSCertEntry;
+  tlsRenameCert: TLSCertEntry;
+  tlsDeleteCert: unknown;
+  tlsSetPolicy: TLSPolicyEntry;
+  tlsRenamePolicy: TLSPolicyEntry;
+  tlsDeletePolicy: unknown;
+  secSubscribe: SecretsSubscribeResponse;
+  secUnsubscribe: unknown;
+  secSetValue: SecretEntry;
+  secSetNodes: SecretEntry;
+  secRename: SecretEntry;
+  secDelete: unknown;
+  kvSubscribeStores: KVSubscribeStoresResponse;
+  kvSubscribeEntries: KVSubscribeEntriesResponse;
+  kvSubscribeValue: KVSubscribeValueResponse;
+  kvUnsubscribe: unknown;
+  kvEnsure: unknown;
+  kvSet: KVValueSnapshot;
+  kvDelete: unknown;
+  kvDrop: unknown;
+  snapshot: WorkspaceSnapshotUpdate;
+  classDescription: string;
+  addNode: number;
+  addLink: number;
+  removeLink: unknown;
+  setNodePosition: unknown;
+  moveNodes: unknown;
+  setNodeName: boolean;
+  removeNodePopup: unknown;
+  removeNodePopups: unknown;
+  removeNodes: Record<string, never>;
+  triggerNode: unknown;
+  copy: string;
+  paste: number[];
+  undo: unknown;
+  redo: unknown;
+  subscribeNodeMenu: unknown;
+  unsubscribeNodeMenu: unknown;
+  formular: unknown;
+};
+
+type BackendMethod = keyof BackendResultMap;
+type SecMutationMethod = "secSetValue" | "secSetNodes" | "secRename" | "secDelete";
+type DNSMutationMethod = "dnsSet" | "dnsDelete" | "dnsDrop";
+type TLSMutationMethod =
+  | "tlsSetBuiltinCA"
+  | "tlsSetCert"
+  | "tlsRenameCert"
+  | "tlsDeleteCert"
+  | "tlsSetPolicy"
+  | "tlsRenamePolicy"
+  | "tlsDeletePolicy";
+type KVMutationMethod = "kvEnsure" | "kvSet" | "kvDelete" | "kvDrop";
+
 declare global {
   interface Window {
     __almagestPanel?: {
-      call<T>(method: string, params?: Record<string, unknown>): Promise<T | null>;
+      call<M extends BackendMethod>(
+        method: M,
+        params?: Record<string, unknown>,
+      ): Promise<BackendResultMap[M] | null>;
       snapshot(): WorkspaceSnapshot;
       selectNode(id: number): void;
       selectNodes(ids: number[]): void;
@@ -437,7 +442,6 @@ let pasteShortcutConsumed = false;
 let socket: WebSocket | null = null;
 let nextRequestID = 1;
 let notificationSubscriptionID = 0;
-let logSubscriptionID = 0;
 const frontendLogs: LogEntry[] = [];
 let secSubscriptionID = 0;
 let secSubscribePending = false;
@@ -567,7 +571,7 @@ function readGraphViewportState(): GraphViewportState | null {
     if (!isFiniteNumber(x) || !isFiniteNumber(y)) return null;
     return { scale: parsed.scale, offset: [x, y] };
   } catch (error) {
-    log("frontend", "warn", `graph viewport restore failed: ${(error as Error).message}`);
+    log("frontend", "warn", `graph viewport restore failed: ${errorMessage(error)}`);
     return null;
   }
 }
@@ -599,7 +603,7 @@ function saveGraphViewportState(): void {
   try {
     window.localStorage.setItem(GRAPH_VIEWPORT_STORAGE_KEY, JSON.stringify(state));
   } catch (error) {
-    log("frontend", "warn", `graph viewport save failed: ${(error as Error).message}`);
+    log("frontend", "warn", `graph viewport save failed: ${errorMessage(error)}`);
   }
 }
 
@@ -624,7 +628,11 @@ function connectAPI(): Promise<void> {
     socket = ws;
     ws.addEventListener("open", () => resolve(), { once: true });
     ws.addEventListener("error", () => reject(new Error("WebSocket connection failed")), { once: true });
-    ws.addEventListener("message", (event) => handleAPIMessage(JSON.parse(String(event.data)) as APIMessage));
+    ws.addEventListener("message", (event) => {
+      const message = parseAPIMessage(String(event.data));
+      if (message) handleAPIMessage(message);
+      else log("api", "warn", "ignored an invalid WebSocket message");
+    });
     ws.addEventListener("close", () => {
       el.status.textContent = "Admin API disconnected";
       el.status.style.color = "#ff0000";
@@ -636,16 +644,28 @@ function connectAPI(): Promise<void> {
   });
 }
 
-function request<T>(surface: Surface, method: string, payload: Record<string, unknown> = {}): Promise<T> {
+function request(surface: Surface, method: string, payload: Record<string, unknown> = {}): Promise<unknown> {
   if (!socket || socket.readyState !== WebSocket.OPEN) {
     return Promise.reject(new Error("Admin API is not connected"));
   }
   const id = String(nextRequestID++);
   const msg: APIMessage = { version: "v1", kind: "request", id, surface, method, payload };
-  return new Promise<T>((resolve, reject) => {
-    pendingRequests.set(id, { resolve: (value) => resolve(value as T), reject });
+  return new Promise<unknown>((resolve, reject) => {
+    pendingRequests.set(id, { resolve, reject });
     socket?.send(JSON.stringify(msg));
   });
+}
+
+async function requestDecoded<T>(
+  surface: Surface,
+  method: string,
+  payload: Record<string, unknown>,
+  parse: (input: unknown) => T | null,
+): Promise<T> {
+  const result = await request(surface, method, payload);
+  const parsed = parse(result);
+  if (parsed === null) throw new Error(`${surface} ${method} returned an invalid result`);
+  return parsed;
 }
 
 function handleAPIMessage(msg: APIMessage): void {
@@ -654,19 +674,23 @@ function handleAPIMessage(msg: APIMessage): void {
     if (!pending) return;
     pendingRequests.delete(msg.id);
     if (msg.error) pending.reject(new Error(`${msg.error.code}: ${msg.error.message}`));
-    else pending.resolve(msg.result ?? {});
+    else pending.resolve(msg.result);
     return;
   }
   if (msg.kind === "event" && msg.surface === "engine" && msg.method === "notification") {
-    handleEngineNotification(msg.payload as EngineNotificationEvent);
+    const event = parseEngineNotificationEvent(msg.payload);
+    if (event) handleEngineNotification(event);
+    else log("api", "warn", "ignored an invalid engine notification");
     return;
   }
   if (msg.kind === "event" && msg.surface === "admin" && msg.method === "project_version_status") {
-    applyProjectVersionStatus(msg.payload as ProjectVersionStatus);
+    const status = parseProjectVersionStatus(msg.payload);
+    if (status) applyProjectVersionStatus(status);
     return;
   }
   if (msg.kind === "event" && msg.surface === "log" && msg.method === "entry") {
-    appendLog(msg.payload as LogEntry);
+    const entry = parseLogEntry(msg.payload);
+    if (entry) appendLog(entry);
     return;
   }
   if (msg.kind === "event" && msg.surface === "kv" && msg.method) {
@@ -821,149 +845,255 @@ function applyTypePalette(colormap: Record<string, TypePalette>): void {
   installLiteGraphTypeColors();
 }
 
-async function backend<T>(method: string, params: Record<string, unknown> = {}): Promise<T> {
+function backend<M extends BackendMethod>(
+  method: M,
+  params?: Record<string, unknown>,
+): Promise<BackendResultMap[M]>;
+async function backend(method: BackendMethod, params: Record<string, unknown> = {}): Promise<unknown> {
   switch (method) {
     case "hello":
-      return request<T>("admin", "hello", { client_name: "almagest-panel", version: "v1" });
-    case "colormap":
-      return request<T>("admin", "colormap");
+      return requestDecoded(
+        "admin",
+        "hello",
+        { client_name: "almagest-panel", version: "v1" },
+        parseHelloResponse,
+      );
+    case "colormap": {
+      return requestDecoded("admin", "colormap", {}, parseTypePaletteMap);
+    }
     case "configSnapshot":
-      return request<T>("config", "snapshot");
+      return requestDecoded("config", "snapshot", {}, parseConfigSnapshot);
     case "configUpdate":
-      return request<T>("config", "update", { text: params.text, revision: params.revision });
+      return requestDecoded(
+        "config",
+        "update",
+        { text: params.text, revision: params.revision },
+        parseConfigUpdateResponse,
+      );
     case "snapshotsList":
-      return request<T>("snapshots", "list");
+      return requestDecoded("snapshots", "list", {}, parseSnapshotsListResponse);
     case "snapshotCreate":
-      return request<T>("snapshots", "create", { name: params.name });
+      return requestDecoded("snapshots", "create", { name: params.name }, parseSnapshotInfoResponse);
     case "snapshotExport":
-      return request<T>("snapshots", "export", { uuid: params.uuid });
+      return requestDecoded("snapshots", "export", { uuid: params.uuid }, parseSnapshotExportResponse);
     case "snapshotImport": {
       const payload: { archive: unknown; name?: string } = { archive: params.archive };
       if (typeof params.name === "string") payload.name = params.name;
-      return request<T>("snapshots", "import", payload);
+      return requestDecoded("snapshots", "import", payload, parseSnapshotInfoResponse);
     }
     case "snapshotDelete":
-      return request<T>("snapshots", "delete", { uuid: params.uuid });
+      return request("snapshots", "delete", { uuid: params.uuid });
     case "snapshotRename":
-      return request<T>("snapshots", "rename", { uuid: params.uuid, name: params.name });
+      return requestDecoded(
+        "snapshots",
+        "rename",
+        { uuid: params.uuid, name: params.name },
+        parseSnapshotInfoResponse,
+      );
     case "snapshotRestore":
-      return request<T>("snapshots", "restore", { uuid: params.uuid });
+      return requestDecoded(
+        "snapshots",
+        "restore",
+        { uuid: params.uuid },
+        parseSnapshotRestoreResponse,
+      );
     case "subscribeNotifications": {
-      const result = await request<{ subscription_id: number }>("engine", "subscribe_notifications", { workspace: "main" });
+      const result = await requestDecoded(
+        "engine",
+        "subscribe_notifications",
+        { workspace: "main" },
+        parseSubscriptionIDResponse,
+      );
       notificationSubscriptionID = result.subscription_id;
-      return result as T;
+      return result;
     }
     case "subscribeLogs": {
-      const result = await request<SubscribeLogsResponse>("log", "subscribe");
-      logSubscriptionID = result.subscription_id;
+      const result = await requestDecoded("log", "subscribe", {}, parseSubscribeLogsResponse);
       logStoreLimit = Math.max(result.cache_size * 2, result.entries.length);
       frontendLogs.splice(0, frontendLogs.length, ...result.entries);
       renderLogs();
-      return result as T;
+      return result;
     }
     case "dnsSubscribeCaches":
-      return request<T>("dns", "subscribe_caches");
+      return requestDecoded("dns", "subscribe_caches", {}, parseDNSSubscribeCachesResponse);
     case "dnsSubscribeKeys":
-      return request<T>("dns", "subscribe_keys", { cache: params.cache });
+      return requestDecoded(
+        "dns",
+        "subscribe_keys",
+        { cache: params.cache },
+        parseDNSSubscribeKeysResponse,
+      );
     case "dnsSubscribeValue":
-      return request<T>("dns", "subscribe_value", { cache: params.cache, key: params.key });
+      return requestDecoded(
+        "dns",
+        "subscribe_value",
+        { cache: params.cache, key: params.key },
+        parseDNSSubscribeValueResponse,
+      );
     case "dnsUnsubscribe":
-      return request<T>("dns", "unsubscribe", { subscription_id: params.subscriptionID });
+      return request("dns", "unsubscribe", { subscription_id: params.subscriptionID });
     case "dnsSet":
-      return request<T>("dns", "set", { cache: params.cache, key: params.key, record: params.record });
+      return requestDecoded(
+        "dns",
+        "set",
+        { cache: params.cache, key: params.key, record: params.record },
+        parseDNSSetResponse,
+      );
     case "dnsDelete":
-      return request<T>("dns", "delete", { cache: params.cache, key: params.key });
+      return request("dns", "delete", { cache: params.cache, key: params.key });
     case "dnsDrop":
-      return request<T>("dns", "drop", { cache: params.cache });
+      return request("dns", "drop", { cache: params.cache });
     case "tlsSubscribe":
-      return request<T>("tls", "subscribe");
+      return requestDecoded("tls", "subscribe", {}, parseTLSSubscribeResponse);
     case "tlsUnsubscribe":
-      return request<T>("tls", "unsubscribe", { subscription_id: params.subscriptionID });
+      return request("tls", "unsubscribe", { subscription_id: params.subscriptionID });
     case "tlsBuiltinCA":
-      return request<T>("tls", "builtin_ca");
+      return requestDecoded("tls", "builtin_ca", {}, parseTLSBuiltinCAResponse);
     case "tlsSetBuiltinCA":
-      return request<T>("tls", "set_builtin_ca_options", { options: params.options });
+      return requestDecoded(
+        "tls",
+        "set_builtin_ca_options",
+        { options: params.options },
+        parseTLSBuiltinCAResponse,
+      );
     case "tlsReloadOSCerts":
-      return request<T>("tls", "reload_os_certs");
+      return requestDecoded("tls", "reload_os_certs", {}, parseTLSSnapshotResponse);
     case "tlsSetCert":
-      return request<T>("tls", "set_cert", { name: params.name, pem: params.pem });
+      return requestDecoded(
+        "tls",
+        "set_cert",
+        { name: params.name, pem: params.pem },
+        parseTLSCertResponse,
+      );
     case "tlsRenameCert":
-      return request<T>("tls", "rename_cert", { name: params.name, new_name: params.newName });
+      return requestDecoded(
+        "tls",
+        "rename_cert",
+        { name: params.name, new_name: params.newName },
+        parseTLSCertResponse,
+      );
     case "tlsDeleteCert":
-      return request<T>("tls", "delete_cert", { name: params.name });
+      return request("tls", "delete_cert", { name: params.name });
     case "tlsSetPolicy":
-      return request<T>("tls", "set_policy", { name: params.name, spec: params.spec });
+      return requestDecoded(
+        "tls",
+        "set_policy",
+        { name: params.name, spec: params.spec },
+        parseTLSPolicyResponse,
+      );
     case "tlsRenamePolicy":
-      return request<T>("tls", "rename_policy", { name: params.name, new_name: params.newName });
+      return requestDecoded(
+        "tls",
+        "rename_policy",
+        { name: params.name, new_name: params.newName },
+        parseTLSPolicyResponse,
+      );
     case "tlsDeletePolicy":
-      return request<T>("tls", "delete_policy", { name: params.name });
+      return request("tls", "delete_policy", { name: params.name });
     case "secSubscribe":
-      return request<T>("secrets", "subscribe");
+      return requestDecoded("secrets", "subscribe", {}, parseSecretsSubscribeResponse);
     case "secUnsubscribe":
-      return request<T>("secrets", "unsubscribe", { subscription_id: params.subscriptionID });
+      return request("secrets", "unsubscribe", { subscription_id: params.subscriptionID });
     case "secSetValue":
-      return request<T>("secrets", "set_value", { key: params.key, value: params.value });
+      return requestDecoded(
+        "secrets",
+        "set_value",
+        { key: params.key, value: params.value },
+        parseSecretEntryResponse,
+      );
     case "secSetNodes":
-      return request<T>("secrets", "set_nodes", { key: params.key, nodes: params.nodes });
+      return requestDecoded(
+        "secrets",
+        "set_nodes",
+        { key: params.key, nodes: params.nodes },
+        parseSecretEntryResponse,
+      );
     case "secRename":
-      return request<T>("secrets", "rename", { key: params.key, new_key: params.newKey });
+      return requestDecoded(
+        "secrets",
+        "rename",
+        { key: params.key, new_key: params.newKey },
+        parseSecretEntryResponse,
+      );
     case "secDelete":
-      return request<T>("secrets", "delete", { key: params.key });
+      return request("secrets", "delete", { key: params.key });
     case "kvSubscribeStores":
-      return request<T>("kv", "subscribe_stores");
+      return requestDecoded("kv", "subscribe_stores", {}, parseKVSubscribeStoresResponse);
     case "kvSubscribeEntries":
-      return request<T>("kv", "subscribe_entries", { store: params.store, path: params.path });
+      return requestDecoded(
+        "kv",
+        "subscribe_entries",
+        { store: params.store, path: params.path },
+        parseKVSubscribeEntriesResponse,
+      );
     case "kvSubscribeValue":
-      return request<T>("kv", "subscribe_value", { store: params.store, path: params.path, key: params.key });
+      return requestDecoded(
+        "kv",
+        "subscribe_value",
+        { store: params.store, path: params.path, key: params.key },
+        parseKVSubscribeValueResponse,
+      );
     case "kvUnsubscribe":
-      return request<T>("kv", "unsubscribe", { subscription_id: params.subscriptionID });
+      return request("kv", "unsubscribe", { subscription_id: params.subscriptionID });
     case "kvEnsure":
-      return request<T>("kv", "ensure", { store: params.store, path: params.path });
+      return request("kv", "ensure", { store: params.store, path: params.path });
     case "kvSet":
-      return request<T>("kv", "set", { store: params.store, path: params.path, key: params.key, value: params.value });
+      return requestDecoded(
+        "kv",
+        "set",
+        { store: params.store, path: params.path, key: params.key, value: params.value },
+        parseKVValueSnapshot,
+      );
     case "kvDelete":
-      return request<T>("kv", "delete", { store: params.store, path: params.path, key: params.key });
+      return request("kv", "delete", { store: params.store, path: params.path, key: params.key });
     case "kvDrop":
-      return request<T>("kv", "drop", { store: params.store, path: params.path });
+      return request("kv", "drop", { store: params.store, path: params.path });
     case "snapshot": {
-      const result = await request<{ snapshot: WorkspaceSnapshot }>("engine", "workspace_snapshot", { workspace: "main" });
-      return result.snapshot as T;
+      const result = await request("engine", "workspace_snapshot", { workspace: "main" });
+      const parsed = parseWorkspaceSnapshotResponse(result);
+      if (!parsed) throw new Error("engine workspace_snapshot returned an invalid result");
+      return parsed;
     }
     case "classDescription": {
-      const result = await request<{ description: string }>("engine", "node_class_long_description", {
+      const result = await requestDecoded("engine", "node_class_long_description", {
         workspace: "main",
         class: params.class,
-      });
-      return result.description as T;
+      }, parseDescriptionResponse);
+      return result;
     }
     case "addNode": {
-      const result = await request<{ id: number }>("engine", "add_node", { workspace: "main", class: params.class });
+      const result = await requestDecoded(
+        "engine",
+        "add_node",
+        { workspace: "main", class: params.class },
+        parseIDResponse,
+      );
       if (typeof params.position === "string") {
-        await request("engine", "set_node_position", { workspace: "main", id: result.id, position: params.position });
+        await request("engine", "set_node_position", { workspace: "main", id: result, position: params.position });
       }
-      return result.id as T;
+      return result;
     }
     case "addLink": {
-      const result = await request<{ id: number }>("engine", "add_link", {
+      const result = await requestDecoded("engine", "add_link", {
         workspace: "main",
         port_a: params.from,
         port_b: params.to,
-      });
-      return result.id as T;
+      }, parseIDResponse);
+      return result;
     }
     case "removeLink":
-      return request<T>("engine", "remove_link", { workspace: "main", id: params.id });
+      return request("engine", "remove_link", { workspace: "main", id: params.id });
     case "setNodePosition":
-      return request<T>("engine", "set_node_position", { workspace: "main", id: params.id, position: params.position });
+      return request("engine", "set_node_position", { workspace: "main", id: params.id, position: params.position });
     case "moveNodes":
-      return request<T>("engine", "move_nodes", { workspace: "main", positions: params.positions });
+      return request("engine", "move_nodes", { workspace: "main", positions: params.positions });
     case "setNodeName":
       await request("engine", "set_node_name", { workspace: "main", id: params.id, name: params.name });
-      return true as T;
+      return true;
     case "removeNodePopup":
-      return request<T>("engine", "remove_node_popup", { workspace: "main", node: params.id, popup: params.popupId });
+      return request("engine", "remove_node_popup", { workspace: "main", node: params.id, popup: params.popupId });
     case "removeNodePopups":
-      return request<T>("engine", "remove_node_popups", { workspace: "main", node: params.id });
+      return request("engine", "remove_node_popups", { workspace: "main", node: params.id });
     case "removeNodes": {
       const ids = (params.ids as number[] | undefined) ?? [];
       if (ids.length === 1) {
@@ -971,35 +1101,45 @@ async function backend<T>(method: string, params: Record<string, unknown> = {}):
       } else if (ids.length > 1) {
         await request("engine", "remove_nodes", { workspace: "main", ids });
       }
-      return {} as T;
+      return {};
     }
     case "triggerNode":
-      return request<T>("engine", "trigger_node", { workspace: "main", id: params.id });
+      return request("engine", "trigger_node", { workspace: "main", id: params.id });
     case "copy": {
-      const result = await request<{ data: string }>("engine", "copy", { workspace: "main", ids: params.ids });
-      return result.data as T;
+      const result = await requestDecoded(
+        "engine",
+        "copy",
+        { workspace: "main", ids: params.ids },
+        parseDataResponse,
+      );
+      return result;
     }
     case "paste": {
-      const result = await request<{ ids: number[] }>("engine", "paste", { workspace: "main", data: params.data });
-      return result.ids as T;
+      const result = await requestDecoded(
+        "engine",
+        "paste",
+        { workspace: "main", data: params.data },
+        parseIDsResponse,
+      );
+      return result;
     }
     case "undo":
     case "redo":
-      return request<T>("engine", method, { workspace: "main" });
+      return request("engine", method, { workspace: "main" });
     case "subscribeNodeMenu":
-      return request<T>("engine", "subscribe_node_menu", {
+      return request("engine", "subscribe_node_menu", {
         workspace: "main",
         node: params.id,
         subscription_id: notificationSubscriptionID,
       });
     case "unsubscribeNodeMenu":
-      return request<T>("engine", "unsubscribe_node_menu", {
+      return request("engine", "unsubscribe_node_menu", {
         workspace: "main",
         node: params.id,
         subscription_id: notificationSubscriptionID,
       });
     case "formular":
-      return request<T>("engine", "send_node_formular_msg", {
+      return request("engine", "send_node_formular_msg", {
         workspace: "main",
         node: params.id,
         message: params.message,
@@ -1009,11 +1149,14 @@ async function backend<T>(method: string, params: Record<string, unknown> = {}):
   }
 }
 
-async function tryBackend<T>(method: string, params: Record<string, unknown> = {}): Promise<T | null> {
+async function tryBackend<M extends BackendMethod>(
+  method: M,
+  params: Record<string, unknown> = {},
+): Promise<BackendResultMap[M] | null> {
   try {
-    return await backend<T>(method, params);
+    return await backend(method, params);
   } catch (error) {
-    log("api", "warn", `${method}: ${(error as Error).message}`);
+    log("api", "warn", `${method}: ${errorMessage(error)}`);
     return null;
   }
 }
@@ -1060,6 +1203,10 @@ function registerLiteGraphNode(): void {
 }
 
 function initGraph(): void {
+  // Keep the vendored script-node feature disabled even if another caller has
+  // modified the mutable LiteGraph global before the panel starts. The CSP also
+  // omits unsafe-eval as a second enforcement layer.
+  LiteGraph.allow_scripts = false;
   installLiteGraphDrawGuard();
   installLiteGraphWidgetSelectionGuard();
   registerLiteGraphNode();
@@ -1176,10 +1323,12 @@ function installPastaPalette(): void {
     const normalized = query.trim().toLowerCase();
     return paletteClasses()
       .filter((cls) => paletteLabel(cls).toLowerCase().includes(normalized) || cls.class.toLowerCase().includes(normalized))
-      .map(paletteLabel);
+      .map((cls) => escapeHTMLText(paletteLabel(cls)));
   };
   canvas.onSearchBoxSelection = (label: string, event: MouseEvent) => {
-    const cls = paletteClasses().find((candidate) => paletteLabel(candidate) === label || candidate.class === label);
+    const cls = paletteClasses().find((candidate) => (
+      escapeHTMLText(paletteLabel(candidate)) === label || escapeHTMLText(candidate.class) === label
+    ));
     if (cls) addPastaNodeAt(cls.class, canvasPositionFromEvent(event));
   };
 }
@@ -1202,7 +1351,7 @@ function installLiteGraphTypeColors(): void {
 
 function showPastaAddNodeMenu(event: MouseEvent, parentMenu: unknown): void {
   const entries = paletteClasses().map((cls) => ({
-    content: paletteLabel(cls),
+    content: escapeHTMLText(paletteLabel(cls)),
     value: cls.class,
     callback: (entry: { value: string }) => {
       addPastaNodeAt(entry.value, canvasPositionFromEvent(event));
@@ -1483,7 +1632,7 @@ function currentSelectedNodeIDs(): number[] {
 
 function updateSidekick(): void {
   const ids = currentSelectedNodeIDs();
-  if (ids.length === 1) renderNodePanel(ids[0]);
+  if (ids.length === 1) renderNodePanel(ids[0]!);
   else renderClassPanel(ids.length);
 }
 
@@ -1514,8 +1663,8 @@ function renderClassPanel(selectedCount: number): void {
     button.draggable = true;
     button.setAttribute("aria-label", `Create ${shortClass(cls.class)} node`);
     if (primaryColor) {
-      button.style.setProperty("--class-primary-color", primaryColor.color);
-      button.style.setProperty("--class-primary-text-color", primaryColor.textColor);
+      button.style.setProperty("--class-primary-color", safeCSSColor(primaryColor.color, DEFAULT_NODE_TITLE_COLOR));
+      button.style.setProperty("--class-primary-text-color", safeCSSColor(primaryColor.textColor, DEFAULT_NODE_TEXT_COLOR));
     }
     button.append(...createClassButtonContent(cls, leftPorts, rightPorts));
     button.addEventListener("dragstart", (event) => {
@@ -1535,7 +1684,7 @@ function addPastaNodeAt(className: string, pos: [number, number]): void {
   const position = formatPosition(pos);
   const placement: PendingNodePlacement = { className, position };
   pendingNodePlacements.push(placement);
-  void tryBackend<number>("addNode", { class: className, position }).then((id) => {
+  void tryBackend("addNode", { class: className, position }).then((id) => {
     if (id === null) {
       forgetPendingNodePlacement(placement);
       return;
@@ -1640,7 +1789,7 @@ function renderNodePanel(id: number): void {
   renderNodeDescription(descriptionPanel, description);
   docsPanel.append(textElement("h2", shortClass(node.class)), descriptionPanel);
   el.sidekick.replaceChildren(createNodeNameForm(node.name), tabs, menuPanel, docsPanel);
-  void tryBackend<string>("classDescription", { class: node.class }).then((text) => {
+  void tryBackend("classDescription", { class: node.class }).then((text) => {
     const descriptionPanel = el.sidekick.querySelector<HTMLElement>("[data-node-description]");
     if (
       descriptionPanel &&
@@ -1697,7 +1846,7 @@ async function submitNodeName(id: number): Promise<void> {
     if (node) input.value = node.name;
     return;
   }
-  const renamed = await tryBackend<boolean>("setNodeName", { id, name });
+  const renamed = await tryBackend("setNodeName", { id, name });
   if (!renamed) {
     input.value = node.name;
   }
@@ -1801,14 +1950,14 @@ function feedMenu(notification: WorkspaceNotification): void {
     }
   } catch (error) {
     if (message.type !== "dialog.create") throw error;
-    const text = `The node menu could not open a dialog: ${(error as Error).message}`;
+    const text = `The node menu could not open a dialog: ${errorMessage(error)}`;
     log("frontend", "error", text);
     notifyError(text);
   }
 }
 
 async function requestSnapshot(): Promise<void> {
-  const next = await tryBackend<WorkspaceSnapshot>("snapshot");
+  const next = await tryBackend("snapshot");
   if (next) {
     snapshot = applyWorkspaceSnapshot(snapshot, next);
     renderGraph();
@@ -1819,7 +1968,8 @@ async function requestSnapshot(): Promise<void> {
 
 function handleSecEvent(method: string, payload: unknown): void {
   if (method !== "update") return;
-  const event = payload as SecretsEvent;
+  const event = parseSecretsEvent(payload);
+  if (!event) return;
   if (event.subscription_id !== secSubscriptionID) return;
   applySecretChangeToState(event.change);
   renderSec();
@@ -1842,7 +1992,7 @@ function deactivateSecPanel(): void {
 async function ensureSecSubscription(): Promise<void> {
   if (secSubscriptionID || secSubscribePending) return;
   secSubscribePending = true;
-  const response = await tryBackend<SecretsSubscribeResponse>("secSubscribe");
+  const response = await tryBackend("secSubscribe");
   secSubscribePending = false;
   if (!response) {
     secNotice = { level: "error", text: "Secrets storage is unavailable." };
@@ -2127,16 +2277,16 @@ async function createSecret(key: string, nodesText: string, value: string): Prom
   const nodes = parseSecretNodeText(nodesText);
   if (!validateSecretNodes(nodes)) return;
   try {
-    const valueEntry = await backend<SecretEntry>("secSetValue", { key: name, value });
+    const valueEntry = await backend("secSetValue", { key: name, value });
     const entry = nodes.length
-      ? await backend<SecretEntry>("secSetNodes", { key: name, nodes })
+      ? await backend("secSetNodes", { key: name, nodes })
       : valueEntry;
     upsertSecretEntry(entry);
     secNotice = { level: "info", text: "Secret created." };
     secOpenForm = false;
     openSecValuePanel(entry.key);
   } catch (error) {
-    secNotice = { level: "error", text: `secCreate: ${(error as Error).message}` };
+    secNotice = { level: "error", text: `secCreate: ${errorMessage(error)}` };
     renderSec();
   }
 }
@@ -2325,7 +2475,7 @@ function secEditActions(): HTMLElement {
 }
 
 async function updateSecretValue(key: string, value: string): Promise<void> {
-  const entry = await runSecMutation<SecretEntry>("secSetValue", { key, value }, "Secret value saved.");
+  const entry = await runSecMutation("secSetValue", { key, value }, "Secret value saved.");
   if (!entry) return;
   upsertSecretEntry(entry);
   if (secValuePanel) {
@@ -2338,7 +2488,7 @@ async function updateSecretValue(key: string, value: string): Promise<void> {
 async function updateSecretNodes(key: string, nodesText: string): Promise<void> {
   const nodes = parseSecretNodeText(nodesText);
   if (!validateSecretNodes(nodes)) return;
-  const entry = await runSecMutation<SecretEntry>("secSetNodes", { key, nodes }, "Secret nodes saved.");
+  const entry = await runSecMutation("secSetNodes", { key, nodes }, "Secret nodes saved.");
   if (!entry) return;
   upsertSecretEntry(entry);
   if (secValuePanel) secValuePanel.editing = null;
@@ -2357,7 +2507,7 @@ async function renameSecret(key: string, nextKey: string): Promise<void> {
     renderSec();
     return;
   }
-  const entry = await runSecMutation<SecretEntry>("secRename", { key, newKey }, "Secret renamed.");
+  const entry = await runSecMutation("secRename", { key, newKey }, "Secret renamed.");
   if (!entry) return;
   if (key !== entry.key) removeSecretEntry(key);
   upsertSecretEntry(entry);
@@ -2377,18 +2527,18 @@ async function deleteSecret(key: string): Promise<void> {
   }
 }
 
-async function runSecMutation<T = unknown>(
-  method: string,
+async function runSecMutation<M extends SecMutationMethod>(
+  method: M,
   params: Record<string, unknown>,
   success: string,
-): Promise<T | null> {
+): Promise<BackendResultMap[M] | null> {
   try {
-    const result = await backend<T>(method, params);
+    const result = await backend(method, params);
     secNotice = { level: "info", text: success };
     renderSec();
     return result;
   } catch (error) {
-    secNotice = { level: "error", text: `${method}: ${(error as Error).message}` };
+    secNotice = { level: "error", text: `${method}: ${errorMessage(error)}` };
     renderSec();
     return null;
   }
@@ -2443,7 +2593,7 @@ async function copySecretValue(entry: SecretEntry): Promise<void> {
     await navigator.clipboard.writeText(entry.value ?? "");
     secNotice = { level: "info", text: "Secret value copied." };
   } catch (error) {
-    secNotice = { level: "error", text: `Copy failed: ${(error as Error).message}` };
+    secNotice = { level: "error", text: `Copy failed: ${errorMessage(error)}` };
   }
   renderSec();
 }
@@ -2462,7 +2612,7 @@ function downloadSecretValue(entry: SecretEntry): void {
     window.setTimeout(() => URL.revokeObjectURL(url), 0);
     secNotice = { level: "info", text: "Download started." };
   } catch (error) {
-    secNotice = { level: "error", text: `Download failed: ${(error as Error).message}` };
+    secNotice = { level: "error", text: `Download failed: ${errorMessage(error)}` };
   }
   renderSec();
 }
@@ -2479,14 +2629,16 @@ function restoreSecScrollState(): void {
 
 function handleDNSEvent(method: string, payload: unknown): void {
   if (method === "caches_update") {
-    const event = payload as DNSCachesEvent;
+    const event = parseDNSCacheEvent(payload);
+    if (!event) return;
     if (event.subscription_id !== dnsCacheSubscriptionID) return;
     applyDNSCacheChangeToState(event.change);
     renderDNS();
     return;
   }
   if (method === "keys_update") {
-    const event = payload as DNSKeysEvent;
+    const event = parseDNSKeyEvent(payload);
+    if (!event) return;
     const nodeKey = dnsNodeKeyForKeySubscription(event.subscription_id);
     if (!nodeKey) return;
     const snapshot = dnsKeysByCache.get(nodeKey) ?? { exists: true, keys: [] };
@@ -2495,9 +2647,12 @@ function handleDNSEvent(method: string, payload: unknown): void {
     return;
   }
   if (method === "value_update") {
-    const event = payload as DNSValueEvent;
+    const event = parseDNSValueEvent(payload);
+    if (!event) return;
     if (!dnsValuePanel || event.subscription_id !== dnsValuePanel.subscriptionID) return;
-    dnsValuePanel.snapshot = { found: event.found, value: event.value };
+    dnsValuePanel.snapshot = event.value === undefined
+      ? { found: event.found }
+      : { found: event.found, value: event.value };
     renderDNSValuePanel();
   }
 }
@@ -2531,7 +2686,7 @@ function deactivateDNSPanel(): void {
 async function ensureDNSCacheSubscription(): Promise<void> {
   if (activeTab !== "dns" || dnsCacheSubscriptionID || dnsCacheSubscribePending) return;
   dnsCacheSubscribePending = true;
-  const response = await tryBackend<DNSSubscribeCachesResponse>("dnsSubscribeCaches");
+  const response = await tryBackend("dnsSubscribeCaches");
   dnsCacheSubscribePending = false;
   if (!response) {
     dnsNotice = { level: "error", text: "DNS cache storage is unavailable." };
@@ -2853,7 +3008,7 @@ async function setDNSRecord(cache: string, previousKey: string, record: DNSRecor
     renderDNS();
     return;
   }
-  const response = await runDNSMutation<DNSSetResponse>("dnsSet", {
+  const response = await runDNSMutation("dnsSet", {
     cache,
     key: previousKey,
     record,
@@ -2888,18 +3043,18 @@ async function dropDNSCache(cache: string): Promise<void> {
   }
 }
 
-async function runDNSMutation<T = unknown>(
-  method: string,
+async function runDNSMutation<M extends DNSMutationMethod>(
+  method: M,
   params: Record<string, unknown>,
   success: string,
-): Promise<T | null> {
+): Promise<BackendResultMap[M] | null> {
   try {
-    const result = await backend<T>(method, params);
+    const result = await backend(method, params);
     dnsNotice = { level: "info", text: success };
     renderDNS();
     return result;
   } catch (error) {
-    dnsNotice = { level: "error", text: `${method}: ${(error as Error).message}` };
+    dnsNotice = { level: "error", text: `${method}: ${errorMessage(error)}` };
     renderDNS();
     return null;
   }
@@ -2933,7 +3088,7 @@ async function subscribeDNSKeys(nodeKey: string): Promise<void> {
   const ref = parseDNSCacheNodeKey(nodeKey);
   if (!ref || dnsKeySubscribePending.has(nodeKey) || dnsKeySubscriptions.has(nodeKey)) return;
   dnsKeySubscribePending.add(nodeKey);
-  const response = await tryBackend<DNSSubscribeKeysResponse>("dnsSubscribeKeys", { cache: ref.cache });
+  const response = await tryBackend("dnsSubscribeKeys", { cache: ref.cache });
   dnsKeySubscribePending.delete(nodeKey);
   if (!response) {
     dnsNotice = { level: "error", text: `Failed to subscribe DNS cache ${ref.cache}.` };
@@ -2977,7 +3132,7 @@ async function subscribeDNSValuePanel(): Promise<void> {
     cache: dnsValuePanel.cache,
     key: dnsValuePanel.key,
   };
-  const response = await tryBackend<DNSSubscribeValueResponse>("dnsSubscribeValue", target);
+  const response = await tryBackend("dnsSubscribeValue", target);
   dnsValueSubscribePending = false;
   if (!response) {
     dnsNotice = { level: "error", text: "Failed to subscribe DNS value." };
@@ -3106,7 +3261,7 @@ async function copyDNSValue(value: DNSValue): Promise<void> {
     await navigator.clipboard.writeText(value.json ?? "");
     dnsNotice = { level: "info", text: "DNS value copied." };
   } catch (error) {
-    dnsNotice = { level: "error", text: `Copy failed: ${(error as Error).message}` };
+    dnsNotice = { level: "error", text: `Copy failed: ${errorMessage(error)}` };
   }
   renderDNS();
 }
@@ -3125,7 +3280,7 @@ function downloadDNSValue(value: DNSValue): void {
     window.setTimeout(() => URL.revokeObjectURL(url), 0);
     dnsNotice = { level: "info", text: "Download started." };
   } catch (error) {
-    dnsNotice = { level: "error", text: `Download failed: ${(error as Error).message}` };
+    dnsNotice = { level: "error", text: `Download failed: ${errorMessage(error)}` };
   }
   renderDNS();
 }
@@ -3142,7 +3297,8 @@ function restoreDNSScrollState(): void {
 
 function handleTLSEvent(method: string, payload: unknown): void {
   if (method !== "update") return;
-  const event = payload as TLSEvent;
+  const event = parseTLSEvent(payload);
+  if (!event) return;
   if (event.subscription_id !== tlsSubscriptionID) return;
   applyTLSChangeToState(event.change);
   renderTLS();
@@ -3168,7 +3324,7 @@ function deactivateTLSPanel(): void {
 async function ensureTLSSubscription(): Promise<void> {
   if (activeTab !== "tls" || tlsSubscriptionID || tlsSubscribePending) return;
   tlsSubscribePending = true;
-  const response = await tryBackend<TLSSubscribeResponse>("tlsSubscribe");
+  const response = await tryBackend("tlsSubscribe");
   tlsSubscribePending = false;
   if (!response) {
     tlsNotice = { level: "error", text: "TLS config storage is unavailable." };
@@ -3185,7 +3341,7 @@ async function ensureTLSSubscription(): Promise<void> {
 
 function applyTLSSnapshotToState(snapshot: TLSSnapshot): void {
   tlsSnapshot = {
-    builtin_ca: snapshot.builtin_ca,
+    ...(snapshot.builtin_ca === undefined ? {} : { builtin_ca: snapshot.builtin_ca }),
     certs: sortTLSCerts(snapshot.certs ?? []),
     policies: sortTLSPolicies(snapshot.policies ?? []),
   };
@@ -3387,7 +3543,7 @@ function downloadTLSBuiltinCAPublic(info: TLSBuiltinCAInfo): void {
     window.setTimeout(() => URL.revokeObjectURL(url), 0);
     tlsNotice = { level: "info", text: "Download started." };
   } catch (error) {
-    tlsNotice = { level: "error", text: `Download failed: ${(error as Error).message}` };
+    tlsNotice = { level: "error", text: `Download failed: ${errorMessage(error)}` };
   }
   renderTLS();
 }
@@ -3681,7 +3837,7 @@ function renderTLSPolicyForm(options: TLSPolicyFormOptions): HTMLFormElement {
       try {
         parsed = parseTLSPolicySpec(spec.value);
       } catch (error) {
-        tlsNotice = { level: "error", text: (error as Error).message };
+        tlsNotice = { level: "error", text: errorMessage(error) };
         renderTLS();
         return;
       }
@@ -3706,7 +3862,7 @@ function renderTLSPolicyForm(options: TLSPolicyFormOptions): HTMLFormElement {
     try {
       parsed = mode === "json" ? parseTLSPolicySpec(spec.value) : gui.read();
     } catch (error) {
-      tlsNotice = { level: "error", text: (error as Error).message };
+      tlsNotice = { level: "error", text: errorMessage(error) };
       renderTLS();
       return;
     }
@@ -4076,7 +4232,7 @@ async function createTLSCert(rawName: string, pem: string): Promise<void> {
     renderTLS();
     return;
   }
-  const entry = await runTLSMutation<TLSCertEntry>("tlsSetCert", { name, pem }, "TLS certificate saved.");
+  const entry = await runTLSMutation("tlsSetCert", { name, pem }, "TLS certificate saved.");
   if (!entry) return;
   upsertTLSCert(entry);
   tlsOpenForm = null;
@@ -4090,7 +4246,7 @@ async function createTLSPolicy(rawName: string, spec: TLSPolicySpec): Promise<vo
     renderTLS();
     return;
   }
-  const entry = await runTLSMutation<TLSPolicyEntry>("tlsSetPolicy", { name, spec }, "TLS policy saved.");
+  const entry = await runTLSMutation("tlsSetPolicy", { name, spec }, "TLS policy saved.");
   if (!entry) return;
   upsertTLSPolicy(entry);
   tlsOpenForm = null;
@@ -4098,7 +4254,7 @@ async function createTLSPolicy(rawName: string, spec: TLSPolicySpec): Promise<vo
 }
 
 async function setTLSBuiltinCAOptions(options: TLSBuiltinCAOptions): Promise<void> {
-  const info = await runTLSMutation<TLSBuiltinCAInfo>(
+  const info = await runTLSMutation(
     "tlsSetBuiltinCA",
     { options },
     "Built-in TLS CA updated.",
@@ -4114,11 +4270,11 @@ async function reloadTLSOSCerts(): Promise<void> {
   tlsNotice = null;
   renderTLS();
   try {
-    const snapshot = await backend<TLSSnapshot>("tlsReloadOSCerts", {});
+    const snapshot = await backend("tlsReloadOSCerts", {});
     tlsNotice = { level: "info", text: "OS TLS certificates reloaded." };
     applyTLSSnapshotToState(snapshot);
   } catch (error) {
-    tlsNotice = { level: "error", text: `tlsReloadOSCerts: ${(error as Error).message}` };
+    tlsNotice = { level: "error", text: `tlsReloadOSCerts: ${errorMessage(error)}` };
     renderTLS();
   } finally {
     tlsReloadOSCertsPending = false;
@@ -4247,7 +4403,7 @@ function setTLSEditor(editor: TLSValuePanelState["editing"]): void {
 }
 
 async function updateTLSCert(name: string, pem: string): Promise<void> {
-  const entry = await runTLSMutation<TLSCertEntry>("tlsSetCert", { name, pem }, "TLS certificate saved.");
+  const entry = await runTLSMutation("tlsSetCert", { name, pem }, "TLS certificate saved.");
   if (!entry) return;
   upsertTLSCert(entry);
   if (tlsValuePanel) tlsValuePanel.editing = null;
@@ -4255,7 +4411,7 @@ async function updateTLSCert(name: string, pem: string): Promise<void> {
 }
 
 async function updateTLSPolicy(name: string, spec: TLSPolicySpec): Promise<void> {
-  const entry = await runTLSMutation<TLSPolicyEntry>("tlsSetPolicy", { name, spec }, "TLS policy saved.");
+  const entry = await runTLSMutation("tlsSetPolicy", { name, spec }, "TLS policy saved.");
   if (!entry) return;
   upsertTLSPolicy(entry);
   if (tlsValuePanel) tlsValuePanel.editing = null;
@@ -4276,7 +4432,7 @@ async function renameTLSEntry(kind: TLSItemKind, name: string, rawNewName: strin
     return;
   }
   const method = kind === "cert" ? "tlsRenameCert" : "tlsRenamePolicy";
-  const entry = await runTLSMutation<TLSCertEntry | TLSPolicyEntry>(method, { name, newName }, "TLS config renamed.");
+  const entry = await runTLSMutation(method, { name, newName }, "TLS config renamed.");
   if (!entry) return;
   if (kind === "cert") {
     removeTLSCert(name);
@@ -4304,18 +4460,18 @@ async function deleteTLSEntry(kind: TLSItemKind, name: string): Promise<void> {
   }
 }
 
-async function runTLSMutation<T = unknown>(
-  method: string,
+async function runTLSMutation<M extends TLSMutationMethod>(
+  method: M,
   params: Record<string, unknown>,
   success: string,
-): Promise<T | null> {
+): Promise<BackendResultMap[M] | null> {
   try {
-    const result = await backend<T>(method, params);
+    const result = await backend(method, params);
     tlsNotice = { level: "info", text: success };
     renderTLS();
     return result;
   } catch (error) {
-    tlsNotice = { level: "error", text: `${method}: ${(error as Error).message}` };
+    tlsNotice = { level: "error", text: `${method}: ${errorMessage(error)}` };
     renderTLS();
     return null;
   }
@@ -4377,7 +4533,7 @@ async function copyTLSEntry(entry: TLSCertEntry | TLSPolicyEntry): Promise<void>
     await navigator.clipboard.writeText(tlsEntryText(entry));
     tlsNotice = { level: "info", text: "TLS config copied." };
   } catch (error) {
-    tlsNotice = { level: "error", text: `Copy failed: ${(error as Error).message}` };
+    tlsNotice = { level: "error", text: `Copy failed: ${errorMessage(error)}` };
   }
   renderTLS();
 }
@@ -4398,7 +4554,7 @@ function downloadTLSEntry(entry: TLSCertEntry | TLSPolicyEntry): void {
     window.setTimeout(() => URL.revokeObjectURL(url), 0);
     tlsNotice = { level: "info", text: "Download started." };
   } catch (error) {
-    tlsNotice = { level: "error", text: `Download failed: ${(error as Error).message}` };
+    tlsNotice = { level: "error", text: `Download failed: ${errorMessage(error)}` };
   }
   renderTLS();
 }
@@ -4420,7 +4576,8 @@ function restoreTLSScrollState(): void {
 
 function handleKVEvent(method: string, payload: unknown): void {
   if (method === "stores_update") {
-    const event = payload as KVStoresEvent;
+    const event = parseKVStoresEvent(payload);
+    if (!event) return;
     if (event.subscription_id !== kvStoreSubscriptionID) {
       if (kvStoreSubscribePending) kvPendingStoreSnapshots.set(event.subscription_id, event.snapshot);
       return;
@@ -4429,7 +4586,8 @@ function handleKVEvent(method: string, payload: unknown): void {
     return;
   }
   if (method === "entries_update") {
-    const event = payload as KVEntriesEvent;
+    const event = parseKVEntriesEvent(payload);
+    if (!event) return;
     const nodeKey = kvNodeKeyForEntrySubscription(event.subscription_id);
     if (!nodeKey) {
       if (kvEntrySubscribePending.size) kvPendingEntrySnapshots.set(event.subscription_id, event.snapshot);
@@ -4440,7 +4598,8 @@ function handleKVEvent(method: string, payload: unknown): void {
     return;
   }
   if (method === "value_update") {
-    const event = payload as KVValueEvent;
+    const event = parseKVValueEvent(payload);
+    if (!event) return;
     if (!kvValuePanel || event.subscription_id !== kvValuePanel.subscriptionID) {
       if (kvValueSubscribePending) kvPendingValueSnapshots.set(event.subscription_id, event.snapshot);
       return;
@@ -4482,7 +4641,7 @@ function deactivateKVPanel(): void {
 async function ensureKVStoreSubscription(): Promise<void> {
   if (activeTab !== "kv" || kvStoreSubscriptionID || kvStoreSubscribePending) return;
   kvStoreSubscribePending = true;
-  const response = await tryBackend<KVSubscribeStoresResponse>("kvSubscribeStores");
+  const response = await tryBackend("kvSubscribeStores");
   kvStoreSubscribePending = false;
   if (!response) {
     kvPendingStoreSnapshots.clear();
@@ -4882,14 +5041,18 @@ async function dropKVSubtree(store: KVStoreInfo, path: string[]): Promise<void> 
   }
 }
 
-async function runKVMutation(method: string, params: Record<string, unknown>, success: string): Promise<boolean> {
+async function runKVMutation(
+  method: KVMutationMethod,
+  params: Record<string, unknown>,
+  success: string,
+): Promise<boolean> {
   try {
     await backend(method, params);
     kvNotice = { level: "info", text: success };
     renderKV();
     return true;
   } catch (error) {
-    kvNotice = { level: "error", text: `${method}: ${(error as Error).message}` };
+    kvNotice = { level: "error", text: `${method}: ${errorMessage(error)}` };
     renderKV();
     return false;
   }
@@ -4914,7 +5077,7 @@ async function subscribeKVEntries(nodeKey: string): Promise<void> {
   const ref = parseKVNodeKey(nodeKey);
   if (!ref || kvEntrySubscribePending.has(nodeKey) || kvEntrySubscriptions.has(nodeKey)) return;
   kvEntrySubscribePending.add(nodeKey);
-  const response = await tryBackend<KVSubscribeEntriesResponse>("kvSubscribeEntries", {
+  const response = await tryBackend("kvSubscribeEntries", {
     store: ref.store,
     path: ref.path,
   });
@@ -4970,7 +5133,7 @@ async function subscribeKVValuePanel(): Promise<void> {
     path: [...kvValuePanel.path],
     key: kvValuePanel.key,
   };
-  const response = await tryBackend<KVSubscribeValueResponse>("kvSubscribeValue", target);
+  const response = await tryBackend("kvSubscribeValue", target);
   kvValueSubscribePending = false;
   if (!response) {
     kvPendingValueSnapshots.clear();
@@ -5085,7 +5248,7 @@ async function copyKVValue(value: KVValue): Promise<void> {
     }
     kvNotice = { level: "info", text: "Value copied." };
   } catch (error) {
-    kvNotice = { level: "error", text: `Copy failed: ${(error as Error).message}` };
+    kvNotice = { level: "error", text: `Copy failed: ${errorMessage(error)}` };
   }
   renderKV();
 }
@@ -5118,7 +5281,7 @@ function downloadKVValue(value: KVValue): void {
     window.setTimeout(() => URL.revokeObjectURL(url), 0);
     kvNotice = { level: "info", text: "Download started." };
   } catch (error) {
-    kvNotice = { level: "error", text: `Download failed: ${(error as Error).message}` };
+    kvNotice = { level: "error", text: `Download failed: ${errorMessage(error)}` };
   }
   renderKV();
 }
@@ -5212,17 +5375,16 @@ function workerNodeBlocks(): WorkerNodeBlock[] {
     .map(([nodeID, workers]) => {
       workers.sort((left, right) => left.id - right.id);
       const node = snapshot.nodes[String(nodeID)];
-      const fallback = workers[0];
+      const fallback = workers[0]!;
       const primaryType = node?.primary_type || nodeClassByName(snapshot, fallback.class)?.primary_type || "";
       const color = primaryType ? typeColor(primaryType) : null;
       return {
         nodeID,
-        node,
+        ...(node === undefined ? {} : { node }),
         fallbackClass: fallback.class,
         fallbackName: fallback.name,
         workers,
-        color: color?.color,
-        textColor: color?.textColor,
+        ...(color ? { color: color.color, textColor: color.textColor } : {}),
       };
     });
 }
@@ -5322,7 +5484,7 @@ async function loadConfig(): Promise<void> {
   el.configStatus.textContent = "Loading editable config.";
   updateConfigControls();
   try {
-    const next = await backend<ConfigSnapshot>("configSnapshot");
+    const next = await backend("configSnapshot");
     configSnapshot = next;
     configDraft = next.text;
     el.configEditor.value = next.text;
@@ -5330,7 +5492,7 @@ async function loadConfig(): Promise<void> {
       ? "This daemon started with a read-only config."
       : `Loaded revision ${shortConfigRevision(next.revision)}.`;
   } catch (error) {
-    el.configStatus.textContent = `Config load failed: ${(error as Error).message}`;
+    el.configStatus.textContent = `Config load failed: ${errorMessage(error)}`;
   } finally {
     configLoading = false;
     updateConfigControls();
@@ -5343,7 +5505,7 @@ async function applyConfig(): Promise<void> {
   el.configStatus.textContent = "Applying config.";
   updateConfigControls();
   try {
-    const response = await backend<ConfigUpdateResponse>("configUpdate", {
+    const response = await backend("configUpdate", {
       text: configDraft,
       revision: configSnapshot.revision,
     });
@@ -5352,7 +5514,7 @@ async function applyConfig(): Promise<void> {
     el.configEditor.value = response.snapshot.text;
     el.configStatus.textContent = configChangeSummary(response.changes, response.snapshot.revision);
   } catch (error) {
-    el.configStatus.textContent = `Config apply failed: ${(error as Error).message}`;
+    el.configStatus.textContent = `Config apply failed: ${errorMessage(error)}`;
   } finally {
     configApplying = false;
     updateConfigControls();
@@ -5401,12 +5563,12 @@ async function loadSnapshots(): Promise<void> {
   el.snapshotsStatus.textContent = "Loading snapshots.";
   updateSnapshotControls();
   try {
-    const response = await backend<SnapshotsListResponse>("snapshotsList");
+    const response = await backend("snapshotsList");
     snapshotEntries = response.snapshots ?? [];
     renderSnapshots();
     el.snapshotsStatus.textContent = `${snapshotEntries.length} snapshot(s).`;
   } catch (error) {
-    el.snapshotsStatus.textContent = `Snapshot load failed: ${(error as Error).message}`;
+    el.snapshotsStatus.textContent = `Snapshot load failed: ${errorMessage(error)}`;
   } finally {
     snapshotsLoading = false;
     updateSnapshotControls();
@@ -5419,13 +5581,13 @@ async function createSnapshot(): Promise<void> {
   el.snapshotsStatus.textContent = "Creating snapshot.";
   updateSnapshotControls();
   try {
-    const created = await backend<SnapshotInfo>("snapshotCreate", { name: el.snapshotName.value });
+    const created = await backend("snapshotCreate", { name: el.snapshotName.value });
     el.snapshotName.value = "";
     snapshotEntries = upsertSnapshot(snapshotEntries, created);
     renderSnapshots();
     el.snapshotsStatus.textContent = `Created snapshot ${created.uuid}.`;
   } catch (error) {
-    el.snapshotsStatus.textContent = `Snapshot creation failed: ${(error as Error).message}`;
+    el.snapshotsStatus.textContent = `Snapshot creation failed: ${errorMessage(error)}`;
   } finally {
     snapshotMutationPending = false;
     updateSnapshotControls();
@@ -5440,7 +5602,7 @@ async function exportSnapshot(entry: SnapshotInfo): Promise<void> {
   el.snapshotsStatus.textContent = `Exporting snapshot ${entry.uuid}.`;
   updateSnapshotControls();
   try {
-    const response = await backend<SnapshotExportResponse>("snapshotExport", { uuid: entry.uuid });
+    const response = await backend("snapshotExport", { uuid: entry.uuid });
     const blob = new Blob([bytesFromBase64(response.archive)], { type: "application/zip" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -5452,7 +5614,7 @@ async function exportSnapshot(entry: SnapshotInfo): Promise<void> {
     window.setTimeout(() => URL.revokeObjectURL(url), 0);
     el.snapshotsStatus.textContent = `Exported snapshot ${response.snapshot.uuid}.`;
   } catch (error) {
-    el.snapshotsStatus.textContent = `Snapshot export failed: ${(error as Error).message}`;
+    el.snapshotsStatus.textContent = `Snapshot export failed: ${errorMessage(error)}`;
   } finally {
     snapshotMutationPending = false;
     updateSnapshotControls();
@@ -5479,14 +5641,14 @@ async function importSnapshot(): Promise<void> {
     const archive = await fileAsBase64(file);
     const params: Record<string, unknown> = { archive };
     if (el.snapshotImportName.value !== "") params.name = el.snapshotImportName.value;
-    const imported = await backend<SnapshotInfo>("snapshotImport", params);
+    const imported = await backend("snapshotImport", params);
     el.snapshotImportFile.value = "";
     el.snapshotImportName.value = "";
     snapshotEntries = upsertSnapshot(snapshotEntries, imported);
     renderSnapshots();
     el.snapshotsStatus.textContent = `Imported snapshot ${imported.uuid}.`;
   } catch (error) {
-    el.snapshotsStatus.textContent = `Snapshot import failed: ${(error as Error).message}`;
+    el.snapshotsStatus.textContent = `Snapshot import failed: ${errorMessage(error)}`;
   } finally {
     snapshotMutationPending = false;
     updateSnapshotControls();
@@ -5521,7 +5683,7 @@ async function restoreSnapshot(entry: SnapshotInfo): Promise<void> {
   el.snapshotsStatus.textContent = `Restoring snapshot ${entry.uuid}.`;
   updateSnapshotControls();
   try {
-    const response = await backend<SnapshotRestoreResponse>("snapshotRestore", { uuid: entry.uuid });
+    const response = await backend("snapshotRestore", { uuid: entry.uuid });
     configSnapshot = null;
     configDraft = "";
     const persistence = response.config_written
@@ -5531,7 +5693,7 @@ async function restoreSnapshot(entry: SnapshotInfo): Promise<void> {
         : " Config is active in memory only.";
     el.snapshotsStatus.textContent = `Restored snapshot ${response.snapshot.uuid}.${persistence}`;
   } catch (error) {
-    el.snapshotsStatus.textContent = `Snapshot restore failed: ${(error as Error).message}`;
+    el.snapshotsStatus.textContent = `Snapshot restore failed: ${errorMessage(error)}`;
   } finally {
     snapshotMutationPending = false;
     updateSnapshotControls();
@@ -5545,12 +5707,12 @@ async function renameSnapshot(entry: SnapshotInfo): Promise<void> {
   el.snapshotsStatus.textContent = `Renaming snapshot ${entry.uuid}.`;
   updateSnapshotControls();
   try {
-    const renamed = await backend<SnapshotInfo>("snapshotRename", { uuid: entry.uuid, name });
+    const renamed = await backend("snapshotRename", { uuid: entry.uuid, name });
     snapshotEntries = upsertSnapshot(snapshotEntries, renamed);
     renderSnapshots();
     el.snapshotsStatus.textContent = `Renamed snapshot ${entry.uuid}.`;
   } catch (error) {
-    el.snapshotsStatus.textContent = `Snapshot rename failed: ${(error as Error).message}`;
+    el.snapshotsStatus.textContent = `Snapshot rename failed: ${errorMessage(error)}`;
   } finally {
     snapshotMutationPending = false;
     updateSnapshotControls();
@@ -5565,12 +5727,12 @@ async function deleteSnapshot(entry: SnapshotInfo): Promise<void> {
   el.snapshotsStatus.textContent = `Deleting snapshot ${entry.uuid}.`;
   updateSnapshotControls();
   try {
-    await backend<Record<string, never>>("snapshotDelete", { uuid: entry.uuid });
+    await backend("snapshotDelete", { uuid: entry.uuid });
     snapshotEntries = removeSnapshotEntry(snapshotEntries, entry.uuid);
     renderSnapshots();
     el.snapshotsStatus.textContent = `Deleted snapshot ${entry.uuid}.`;
   } catch (error) {
-    el.snapshotsStatus.textContent = `Snapshot deletion failed: ${(error as Error).message}`;
+    el.snapshotsStatus.textContent = `Snapshot deletion failed: ${errorMessage(error)}`;
   } finally {
     snapshotMutationPending = false;
     updateSnapshotControls();
@@ -5752,7 +5914,7 @@ async function copySelection(): Promise<void> {
     debugLog("copy selection skipped: no selected backend nodes");
     return;
   }
-  const data = await tryBackend<string>("copy", { ids });
+  const data = await tryBackend("copy", { ids });
   debugLog("backend copy returned", {
     hasData: Boolean(data),
     length: data?.length ?? 0,
@@ -5762,8 +5924,8 @@ async function copySelection(): Promise<void> {
   if (!data) return;
   localClipboard = data;
   void navigator.clipboard?.writeText(data).catch((error) => {
-    debugLog("system copy failed", { error: (error as Error).message });
-    log("clipboard", "warn", `system copy failed, using local clipboard: ${(error as Error).message}`);
+    debugLog("system copy failed", { error: errorMessage(error) });
+    log("clipboard", "warn", `system copy failed, using local clipboard: ${errorMessage(error)}`);
   });
 }
 
@@ -5794,7 +5956,7 @@ async function pasteSelection(data: string): Promise<void> {
     target,
     preview: positionedData.slice(0, 160),
   });
-  const pasted = await tryBackend<number[]>("paste", { data: positionedData }) ?? [];
+  const pasted = await tryBackend("paste", { data: positionedData }) ?? [];
   debugLog("backend paste returned", {
     pasted,
     snapshotNodesBeforeRefresh: Object.keys(snapshot.nodes).length,
@@ -5932,9 +6094,9 @@ async function boot(): Promise<void> {
   installTestHooks();
   el.status.textContent = "Connecting admin API";
   await connectAPI();
-  const hello = await backend<HelloResponse>("hello");
+  const hello = await backend("hello");
   applyProjectVersionStatus(hello.project_version_status);
-  const colormap = await backend<Record<string, TypePalette>>("colormap");
+  const colormap = await backend("colormap");
   applyTypePalette(colormap);
   await backend("subscribeLogs");
   await backend("subscribeNotifications");
@@ -5945,6 +6107,6 @@ async function boot(): Promise<void> {
 }
 
 boot().catch((error) => {
-  el.status.textContent = `Panel failed: ${(error as Error).message}`;
-  log("frontend", "error", (error as Error).message);
+  el.status.textContent = `Panel failed: ${errorMessage(error)}`;
+  log("frontend", "error", errorMessage(error));
 });

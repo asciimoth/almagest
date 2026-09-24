@@ -8,6 +8,10 @@ import {
   isPastaClipboard,
   nodeClassByName,
   nodePositionMap,
+  parseEngineNotificationEvent,
+  parseTypePaletteMap,
+  parseWorkspaceSnapshot,
+  parseWorkspaceSnapshotResponse,
   positionClipboardAt,
 } from "../public/build/pasta_model.js";
 
@@ -45,6 +49,82 @@ function worker(id, nodeID = 10) {
     orphan: false,
   };
 }
+
+function graphSnapshot(overrides = {}) {
+  return {
+    classes: [nodeClass("demo/server", "demo/net")],
+    nodes: { 10: node },
+    ports: {},
+    links: {},
+    ...overrides,
+  };
+}
+
+test("engine notification decoder validates nested graph data", () => {
+  const hostileText = '<img src=x onerror="globalThis.__xss = true">';
+  const event = parseEngineNotificationEvent({
+    subscription_id: 7,
+    notification: {
+      kind: "workspace",
+      workspace_id: "main",
+      workspace_notification: {
+        kind: "node_added",
+        id: 10,
+        node: { ...node, name: hostileText },
+      },
+    },
+  });
+
+  assert.equal(event?.notification.kind, "workspace");
+  assert.equal(event?.notification.workspace_notification.node.name, hostileText);
+  assert.equal(parseEngineNotificationEvent({
+    subscription_id: 7,
+    notification: {
+      kind: "workspace",
+      workspace_id: "main",
+      workspace_notification: {
+        kind: "node_added",
+        id: 10,
+        node: { ...node, popups: [{ id: 1, type: "<img>", text: hostileText }] },
+      },
+    },
+  }), null);
+});
+
+test("engine notification decoder accepts only complete known variants", () => {
+  assert.deepEqual(parseEngineNotificationEvent({
+    subscription_id: 1,
+    notification: { kind: "colormap", colormap: { "demo/net": { type: "#123456", text: "#ffffff" } } },
+  })?.notification, {
+    kind: "colormap",
+    colormap: { "demo/net": { type: "#123456", text: "#ffffff" } },
+  });
+  assert.equal(parseEngineNotificationEvent({
+    subscription_id: 1.5,
+    notification: { kind: "colormap", colormap: {} },
+  }), null);
+  assert.equal(parseEngineNotificationEvent({
+    subscription_id: 1,
+    notification: { kind: "future-notification" },
+  }), null);
+  assert.equal(parseEngineNotificationEvent({
+    subscription_id: 1,
+    notification: { kind: "worker", workspace_id: "main", worker_notification: { kind: "worker_spawned", id: 1 } },
+  }), null);
+  assert.equal(parseTypePaletteMap(JSON.parse('{"__proto__":{"type":"red"}}')), null);
+});
+
+test("workspace response decoder rejects unsafe IDs and malformed nested values", () => {
+  assert.deepEqual(parseWorkspaceSnapshot(graphSnapshot()), graphSnapshot());
+  assert.deepEqual(parseWorkspaceSnapshotResponse({ snapshot: graphSnapshot() }), graphSnapshot());
+  assert.equal(parseWorkspaceSnapshotResponse(graphSnapshot()), null);
+  assert.equal(parseWorkspaceSnapshot(graphSnapshot({
+    nodes: { [Number.MAX_SAFE_INTEGER + 1]: node },
+  })), null);
+  assert.equal(parseWorkspaceSnapshot(graphSnapshot({
+    ports: { 1: { direction: "sideways", node: 10, name: "bad", types: [], links: [] } },
+  })), null);
+});
 
 test("workspace snapshots preserve received class order", () => {
   const next = applyWorkspaceSnapshot(emptySnapshot(), {
@@ -222,6 +302,9 @@ test("clipboard helpers validate and place pasted nodes around target", () => {
 
   assert.equal(isPastaClipboard(data), true);
   assert.equal(isPastaClipboard("plain text"), false);
+  assert.equal(isPastaClipboard("null"), false);
+  assert.equal(isPastaClipboard(JSON.stringify({ version: 1, nodes: [null] })), false);
+  assert.equal(isPastaClipboard(JSON.stringify({ version: 1, nodes: [[]] })), false);
 
   const positioned = JSON.parse(positionClipboardAt(data, [200, 300]));
   assert.equal(positioned.nodes[0].position, JSON.stringify({ x: 180, y: 280 }));

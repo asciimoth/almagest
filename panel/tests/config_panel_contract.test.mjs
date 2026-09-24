@@ -18,7 +18,7 @@ test("config tab provides a HuJSON editor without a protected config field", () 
 });
 
 test("config editor uses revision-controlled snapshot and update methods", () => {
-  assert.match(app, /request\([^)]*"config",\s*"snapshot"/);
-  assert.match(app, /request\([^)]*"config",\s*"update"/);
+  assert.match(app, /requestDecoded\([^)]*"config",\s*"snapshot"/);
+  assert.match(app, /requestDecoded\([^)]*"config",\s*"update"/);
   assert.match(app, /revision:\s*configSnapshot\.revision/);
 });

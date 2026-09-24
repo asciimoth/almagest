@@ -162,11 +162,14 @@ export function applyTLSChange(snapshot: TLSSnapshot, change: TLSChange): TLSSna
     const certs = builtin?.cert
       ? sortTLSCerts([...(snapshot.certs ?? []).filter((cert) => cert.name !== builtin.cert.name), builtin.cert])
       : snapshot.certs;
-    return {
+    const next = {
       ...snapshot,
-      builtin_ca: builtin ?? snapshot.builtin_ca,
-      certs,
+      ...(builtin === undefined && snapshot.builtin_ca === undefined
+        ? {}
+        : { builtin_ca: builtin ?? snapshot.builtin_ca! }),
+      ...(certs === undefined ? {} : { certs }),
     };
+    return next;
   }
 
   if (!change.name) return snapshot;

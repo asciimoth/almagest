@@ -90,9 +90,9 @@ export function secretNodeTextTokenAt(text: string, cursor: number): SecretNodeT
     ? Math.max(0, Math.min(text.length, Math.trunc(cursor)))
     : text.length;
   let start = position;
-  while (start > 0 && !isSecretNodeTextDelimiter(text[start - 1])) start -= 1;
+  while (start > 0 && !isSecretNodeTextDelimiter(text[start - 1] ?? "")) start -= 1;
   let end = position;
-  while (end < text.length && !isSecretNodeTextDelimiter(text[end])) end += 1;
+  while (end < text.length && !isSecretNodeTextDelimiter(text[end] ?? "")) end += 1;
   return {
     start,
     end,

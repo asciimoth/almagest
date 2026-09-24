@@ -81,6 +81,31 @@ export function textElement<K extends keyof HTMLElementTagNameMap>(
   return node;
 }
 
+// LiteGraph parses menu labels as markup. Escape text before it crosses that
+// third-party boundary. Panel-owned rendering must continue to use DOM nodes
+// and textContent directly.
+export function escapeHTMLText(value: string): string {
+  return value.replace(/[&<>"']/g, (character) => {
+    switch (character) {
+      case "&": return "&amp;";
+      case "<": return "&lt;";
+      case ">": return "&gt;";
+      case "\"": return "&quot;";
+      default: return "&#39;";
+    }
+  });
+}
+
+// Colormap values come from the daemon and plugins. A custom property keeps
+// punctuation from escaping a declaration, but a non-color value can still
+// become active when it is substituted into a broad property such as
+// background. Accept only values that the browser parses as CSS colors.
+export function safeCSSColor(value: string, fallback: string): string {
+  const probe = document.createElement("span");
+  probe.style.color = value;
+  return probe.style.color ? value : fallback;
+}
+
 export function iconSeparator(): HTMLElement {
   const icon = document.createElement("i");
   icon.setAttribute("aria-hidden", "true");
@@ -135,7 +160,7 @@ function createClassPreviewPort(port: ClassPreviewPort, side: "left" | "right"):
   row.className = `class-preview-port class-preview-port-${side}`;
   const dot = document.createElement("span");
   dot.className = "class-preview-port-dot";
-  dot.style.setProperty("--class-preview-port-color", port.color);
+  dot.style.setProperty("--class-preview-port-color", safeCSSColor(port.color, "transparent"));
   const name = textElement("span", port.name, "class-preview-port-name");
   if (side === "left") row.append(dot, name);
   else row.append(name, dot);
@@ -370,8 +395,9 @@ function appendTLSStatusText(parent: HTMLElement, text: string): void {
   for (const match of text.matchAll(pattern)) {
     const index = match.index ?? 0;
     if (index > lastIndex) parent.append(document.createTextNode(text.slice(lastIndex, index)));
-    parent.append(textElement("span", match[1], `tls-cert-meta-status tls-cert-meta-status-${match[1]}`));
-    lastIndex = index + match[1].length;
+    const status = match[1] ?? "";
+    parent.append(textElement("span", status, `tls-cert-meta-status tls-cert-meta-status-${status}`));
+    lastIndex = index + status.length;
   }
   if (lastIndex < text.length) parent.append(document.createTextNode(text.slice(lastIndex)));
 }
@@ -603,8 +629,8 @@ export function createWorkerNodeBlock(block: WorkerNodeBlock, now: Date): HTMLEl
   item.dataset.nodeId = String(block.nodeID);
   item.classList.toggle("ps-node-block-primary", Boolean(block.color));
   if (block.color) {
-    item.style.setProperty("--ps-primary-color", block.color);
-    item.style.setProperty("--ps-primary-text-color", block.textColor ?? "#ffffff");
+    item.style.setProperty("--ps-primary-color", safeCSSColor(block.color, "#89b4fa"));
+    item.style.setProperty("--ps-primary-text-color", safeCSSColor(block.textColor ?? "#ffffff", "#ffffff"));
   }
 
   const node = block.node;
@@ -737,7 +763,7 @@ function renderMarkdownInline(input: string): DocumentFragment {
     if (!part) continue;
     const link = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
     if (link) {
-      root.append(renderMarkdownLink(link[1], link[2]));
+      root.append(renderMarkdownLink(link[1] ?? "", link[2] ?? ""));
       continue;
     }
     if (part.startsWith("**") && part.endsWith("**")) {

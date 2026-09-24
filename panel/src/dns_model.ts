@@ -131,7 +131,7 @@ export function dnsQuestionFromCacheKey(key: string): DNSDisplayRecord | null {
   const cls = parseDNSInteger(parts[2]);
   if (type === null || cls === null) return null;
   return {
-    name: parts[0],
+    name: parts[0] ?? "",
     type: dnsTypeName(type),
     class: dnsClassName(cls),
   };
@@ -215,7 +215,7 @@ function parseDNSCacheEntry(text: string): DNSCacheEntryJSON | null {
     const parsed = JSON.parse(text) as unknown;
     if (!isRecord(parsed)) return null;
     const message = isRecord(parsed.message) ? parseDNSMessage(parsed.message) : undefined;
-    return { message };
+    return message === undefined ? {} : { message };
   } catch {
     return null;
   }
@@ -248,11 +248,12 @@ function dnsResourceToDisplayRecord(rr: DNSResourceJSON): DNSDisplayRecord {
   const type = parseDNSInteger(rr.type);
   const cls = parseDNSInteger(rr.class);
   const data = typeof rr.data === "string" ? decodeBase64(rr.data) : null;
+  const ttl = parseDNSInteger(rr.ttl);
   return {
     name: stringValue(rr.name),
     type: type === null ? "TYPE ?" : dnsTypeName(type),
     class: cls === null ? "CLASS ?" : dnsClassName(cls),
-    ttl: parseDNSInteger(rr.ttl) ?? undefined,
+    ...(ttl === null ? {} : { ttl }),
     value: type === null || data === null ? "" : dnsResourceValue(type, data),
   };
 }
@@ -376,7 +377,7 @@ function bytesToText(data: number[]): string {
 }
 
 function uint16(data: number[], offset: number): number {
-  return data[offset] * 256 + data[offset + 1];
+  return (data[offset] ?? 0) * 256 + (data[offset + 1] ?? 0);
 }
 
 function parseDNSInteger(value: unknown): number | null {
