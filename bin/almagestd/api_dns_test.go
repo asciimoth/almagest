@@ -2,13 +2,269 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/asciimoth/almagest/bin/api"
 	gdns "github.com/asciimoth/gonnect/dns"
 )
+
+func TestDNSSnapshotAPIDispatch(t *testing.T) {
+	manager, err := openKVManager(filepath.Join(t.TempDir(), "kv.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer manager.Close() //nolint:errcheck
+	storage := manager.Storage("resolver").(*bboltDNSCacheStorage)
+	storage.Set("example", testDNSCacheMessage("example.test.", gdns.TypeA, []byte{192, 0, 2, 1}, 60), time.Now())
+	session := (&AdminAPI{dns: manager}).newAPISession(nil, nil, nil)
+
+	tests := []struct {
+		method  api.DNSMethod
+		payload any
+	}{
+		{api.MethodDNSCachesSnapshot, nil},
+		{api.MethodDNSKeysSnapshot, api.DNSKeysRequest{Cache: "resolver"}},
+		{api.MethodDNSValueSnapshot, api.DNSValueRequest{Cache: "resolver", Key: "example"}},
+	}
+	for n, tt := range tests {
+		resp, callErr := session.handleMessage(mustRequest(t, string(rune('1'+n)), api.SurfaceDNS, string(tt.method), tt.payload))
+		if callErr != nil || resp.Error != nil {
+			t.Fatalf("%s response = %#v, error = %v", tt.method, resp, callErr)
+		}
+	}
+
+	bad := []api.Message{
+		mustRequest(t, "cache", api.SurfaceDNS, string(api.MethodDNSKeysSnapshot), api.DNSKeysRequest{Cache: ""}),
+		mustRequest(t, "value", api.SurfaceDNS, string(api.MethodDNSValueSnapshot), api.DNSValueRequest{Cache: "resolver", Key: ""}),
+		mustRequest(t, "method", api.SurfaceDNS, "unknown", nil),
+		{Kind: api.MessageRequest, ID: "payload", Surface: api.SurfaceDNS, Method: string(api.MethodDNSKeysSnapshot), Payload: json.RawMessage(`{`)},
+	}
+	for _, req := range bad {
+		resp, callErr := session.handleMessage(req)
+		if callErr != nil || resp.Error == nil {
+			t.Fatalf("bad request %s response = %#v, error = %v", req.ID, resp, callErr)
+		}
+	}
+	unavailable := (&AdminAPI{}).newAPISession(nil, nil, nil)
+	resp, err := unavailable.handleMessage(mustRequest(t, "unavailable", api.SurfaceDNS, string(api.MethodDNSCachesSnapshot), nil))
+	if err != nil || resp.Error == nil || resp.Error.Code != api.ErrorUnavailable {
+		t.Fatalf("unavailable response = %#v, error = %v", resp, err)
+	}
+}
+
+func TestDNSRecordConversionsCoverSupportedTypes(t *testing.T) {
+	tests := []struct {
+		typ   string
+		value string
+	}{
+		{"A", "192.0.2.1"}, {"AAAA", "2001:db8::1"},
+		{"CNAME", "alias.example"}, {"NS", "ns.example."}, {"PTR", "ptr.example"},
+		{"TXT", "text value"}, {"MX", "10 mail.example"}, {"SRV", "1 2 443 service.example"},
+	}
+	for _, tt := range tests {
+		record, key, err := dnsStoredEntryFromAPI(api.DNSRecordInput{Name: "example.test", Type: tt.typ, Class: "IN", TTL: 60, Value: tt.value}, time.Unix(100, 0))
+		if err != nil || key == "" || record.msg == nil || len(record.msg.Answers) != 1 {
+			t.Errorf("%s conversion = %#v, %q, %v", tt.typ, record, key, err)
+		}
+	}
+	for _, typ := range []string{"A", "AAA", "CNAME", "NS", "PTR", "MX", "TXT", "SRV"} {
+		if _, err := dnsTypeFromAPI(typ); err != nil {
+			t.Errorf("dnsTypeFromAPI(%q): %v", typ, err)
+		}
+	}
+	for _, class := range []string{"", "IN", "CH", "HS", "255"} {
+		if _, err := dnsClassFromAPI(class); err != nil {
+			t.Errorf("dnsClassFromAPI(%q): %v", class, err)
+		}
+	}
+	if value, err := parseDNSUint16API("65535", "value"); err != nil || value != 65535 {
+		t.Fatalf("parseDNSUint16API = %d, %v", value, err)
+	}
+}
+
+func TestDNSRecordConversionsRejectInvalidValues(t *testing.T) {
+	tests := []struct {
+		typ   uint16
+		value string
+	}{
+		{gdns.TypeA, "2001:db8::1"}, {gdns.TypeAAAA, "192.0.2.1"},
+		{gdns.TypeCNAME, ""},
+		{gdns.TypeMX, "mail.example"}, {gdns.TypeMX, "bad mail.example"}, {gdns.TypeMX, "1 bad name"},
+		{gdns.TypeSRV, "1 2 3"}, {gdns.TypeSRV, "bad 2 3 host"},
+		{gdns.TypeSRV, "1 bad 3 host"}, {gdns.TypeSRV, "1 2 bad host"}, {gdns.TypeSRV, "1 2 3 bad name"},
+		{9999, "value"},
+	}
+	for _, tt := range tests {
+		if _, err := dnsRecordDataFromAPI(tt.typ, tt.value); err == nil {
+			t.Errorf("dnsRecordDataFromAPI(%d, %q) succeeded", tt.typ, tt.value)
+		}
+	}
+	for _, value := range []string{"unknown", "-1", "65536"} {
+		if _, err := dnsClassFromAPI(value); err == nil {
+			t.Errorf("dnsClassFromAPI(%q) succeeded", value)
+		}
+		if _, err := parseDNSUint16API(value, "value"); err == nil {
+			t.Errorf("parseDNSUint16API(%q) succeeded", value)
+		}
+	}
+	for _, record := range []api.DNSRecordInput{
+		{Name: "example", Type: "unknown", TTL: 1},
+		{Name: "example", Type: "A", Class: "bad", TTL: 1, Value: "192.0.2.1"},
+		{Name: "example", Type: "A", TTL: 0, Value: "192.0.2.1"},
+		{Name: "", Type: "A", TTL: 1, Value: "192.0.2.1"},
+	} {
+		if _, _, err := dnsStoredEntryFromAPI(record, time.Now()); err == nil {
+			t.Errorf("dnsStoredEntryFromAPI(%#v) succeeded", record)
+		}
+	}
+}
+
+func TestDNSRecordNameValidationBoundaries(t *testing.T) {
+	label63 := strings.Repeat("a", 63)
+	maxName := strings.Join([]string{label63, label63, label63, strings.Repeat("a", 61)}, ".") + "."
+	tooLongName := strings.Join([]string{label63, label63, label63, strings.Repeat("a", 62)}, ".") + "."
+
+	valid := []string{
+		".",
+		"example",
+		"example.test.",
+		"_sip._tcp.example.test.",
+		"*.example.test.",
+		"dash-label.example.",
+		label63 + ".example.",
+		maxName,
+	}
+	for _, name := range valid {
+		if !validDNSRecordName(name) {
+			t.Errorf("validDNSRecordName(%q) = false", name)
+		}
+	}
+
+	invalid := []string{
+		"",
+		"bad name",
+		"bad\tname",
+		"bad\nname",
+		"bad\rname",
+		"bad\x00name",
+		"bad\x7fname",
+		"bad\\name",
+		"münchen.example",
+		".example",
+		"example..test",
+		"example.test..",
+		strings.Repeat("a", 64) + ".example.",
+		tooLongName,
+	}
+	for _, name := range invalid {
+		if validDNSRecordName(name) {
+			t.Errorf("validDNSRecordName(%q) = true", name)
+		}
+	}
+
+	// Cache names and composite cache keys are identifiers, not DNS names.
+	// Their existing UTF-8 validation must remain independent.
+	if !validDNSName("cache with spaces") || !validDNSName("example.test.|1|1") {
+		t.Fatal("DNS cache identifier validation was made too restrictive")
+	}
+}
+
+func TestDNSRecordNameRegressionAcrossNameBearingRecords(t *testing.T) {
+	invalidNames := []string{
+		"bad name",
+		"bad..name",
+		"bad\\name",
+		"münchen.example",
+		strings.Repeat("a", 64) + ".example",
+	}
+	types := []struct {
+		name  string
+		typ   uint16
+		value func(string) string
+	}{
+		{"CNAME", gdns.TypeCNAME, func(name string) string { return name }},
+		{"NS", gdns.TypeNS, func(name string) string { return name }},
+		{"PTR", gdns.TypePTR, func(name string) string { return name }},
+		{"MX", gdns.TypeMX, func(name string) string { return "10 " + name }},
+		{"SRV", gdns.TypeSRV, func(name string) string { return "1 2 443 " + name }},
+	}
+	for _, recordType := range types {
+		t.Run(recordType.name, func(t *testing.T) {
+			for _, name := range invalidNames {
+				_, err := dnsRecordDataFromAPI(recordType.typ, recordType.value(name))
+				if err == nil {
+					t.Errorf("accepted invalid name %q", name)
+				}
+			}
+			if _, err := dnsRecordDataFromAPI(recordType.typ, recordType.value(".")); err != nil {
+				t.Errorf("rejected root name: %v", err)
+			}
+			if _, err := dnsRecordDataFromAPI(recordType.typ, recordType.value("_service.example.")); err != nil {
+				t.Errorf("rejected general DNS label: %v", err)
+			}
+		})
+	}
+}
+
+func TestDNSRecordOwnerNameRegression(t *testing.T) {
+	for _, name := range []string{
+		"bad name",
+		"bad..name",
+		"bad\\name",
+		"münchen.example",
+		strings.Repeat("a", 64) + ".example",
+	} {
+		record := api.DNSRecordInput{Name: name, Type: "A", TTL: 60, Value: "192.0.2.1"}
+		if _, _, err := dnsStoredEntryFromAPI(record, time.Now()); !errors.Is(err, errDNSInvalidName) {
+			t.Errorf("owner %q error = %v, want invalid name", name, err)
+		}
+	}
+	for _, name := range []string{".", "_service._tcp.example", "*.example"} {
+		record := api.DNSRecordInput{Name: name, Type: "A", TTL: 60, Value: "192.0.2.1"}
+		if _, _, err := dnsStoredEntryFromAPI(record, time.Now()); err != nil {
+			t.Errorf("owner %q error = %v", name, err)
+		}
+	}
+}
+
+func TestDNSSetAPIRejectsInvalidRecordNamesWithoutStorageMutation(t *testing.T) {
+	manager, err := openKVManager(filepath.Join(t.TempDir(), "kv.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer manager.Close() //nolint:errcheck
+	session := (&AdminAPI{dns: manager}).newAPISession(nil, nil, nil)
+
+	requests := []api.DNSRecordInput{
+		{Name: "bad owner", Type: "A", TTL: 60, Value: "192.0.2.1"},
+		{Name: "example.test", Type: "CNAME", TTL: 60, Value: "bad target"},
+		{Name: "example.test", Type: "MX", TTL: 60, Value: "10 bad..target"},
+		{Name: "example.test", Type: "SRV", TTL: 60, Value: "1 2 443 bad\\target"},
+	}
+	for i, record := range requests {
+		response, callErr := session.handleMessage(mustRequest(
+			t,
+			string(rune('1'+i)),
+			api.SurfaceDNS,
+			string(api.MethodDNSSet),
+			api.DNSSetRequest{Cache: "resolver", Record: record},
+		))
+		if callErr != nil || response.Error == nil || response.Error.Code != api.ErrorBadRequest {
+			t.Fatalf("record %#v response = %#v, err=%v", record, response, callErr)
+		}
+	}
+	snapshot, err := manager.dnsKeysSnapshot("resolver")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.Exists || len(snapshot.Keys) != 0 {
+		t.Fatalf("invalid records mutated storage: %#v", snapshot)
+	}
+}
 
 func TestDNSSubscriptionSendsIncrementalEvents(t *testing.T) {
 	manager, err := openKVManager(filepath.Join(t.TempDir(), "kv.db"))

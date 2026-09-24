@@ -389,6 +389,81 @@ func TestNodeNameSyncRenamesAndDeletesOwnedKVEntries(t *testing.T) {
 	}
 }
 
+func TestSecretsMutableErrorAndLifecycleBranches(t *testing.T) {
+	manager, err := openKVManager(filepath.Join(t.TempDir(), "kv.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	invalidUTF8 := string([]byte{0xff})
+	if _, err := manager.GetSecret("", "node"); !errors.Is(err, storage.ErrSecretAccessDenied) {
+		t.Fatalf("invalid get error = %v", err)
+	}
+	if _, err := manager.NewSecret(storage.Secret{}, ""); !errors.Is(err, storage.ErrSecretInvalidName) {
+		t.Fatalf("invalid new node error = %v", err)
+	}
+	if _, err := manager.NewSecret(storage.Secret{Value: invalidUTF8}, "node"); !errors.Is(err, storage.ErrSecretInvalidValue) {
+		t.Fatalf("invalid new value error = %v", err)
+	}
+	if _, err := manager.setSecretValue("", "value"); !errors.Is(err, storage.ErrSecretInvalidName) {
+		t.Fatalf("invalid set key error = %v", err)
+	}
+	if _, err := manager.setSecretValue("one", invalidUTF8); !errors.Is(err, storage.ErrSecretInvalidValue) {
+		t.Fatalf("invalid set value error = %v", err)
+	}
+	if _, err := manager.setSecretNodes("one", []string{""}); !errors.Is(err, storage.ErrSecretInvalidName) {
+		t.Fatalf("invalid nodes error = %v", err)
+	}
+	if _, err := manager.renameSecret("missing", "missing"); !errors.Is(err, errSecretNotFound) {
+		t.Fatalf("same missing rename error = %v", err)
+	}
+	if _, err := manager.renameSecret("missing", "new"); !errors.Is(err, errSecretNotFound) {
+		t.Fatalf("missing rename error = %v", err)
+	}
+	if _, err := manager.deleteSecret(""); !errors.Is(err, storage.ErrSecretInvalidName) {
+		t.Fatalf("invalid delete error = %v", err)
+	}
+	if _, err := manager.deleteSecret("missing"); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := manager.setSecretValue("one", "value"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.setSecretNodes("one", []string{"node-b", "node-a", "node-a"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.setSecretValue("two", "occupied"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.renameSecret("one", "two"); !errors.Is(err, storage.ErrSecretConflict) {
+		t.Fatalf("rename conflict error = %v", err)
+	}
+	result, err := manager.renameSecret("one", "renamed")
+	if err != nil || len(result.notifyNodes) != 2 {
+		t.Fatalf("rename result = %#v, err=%v", result, err)
+	}
+	if _, err := manager.renameSecret("renamed", "renamed"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.deleteSecret("renamed"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := manager.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.secretsSnapshot(); !errors.Is(err, storage.ErrSecretClosed) {
+		t.Fatalf("closed snapshot error = %v", err)
+	}
+	if _, err := manager.setSecretValue("closed", "value"); !errors.Is(err, storage.ErrSecretClosed) {
+		t.Fatalf("closed set error = %v", err)
+	}
+	if _, err := manager.deleteSecret("closed"); !errors.Is(err, storage.ErrSecretClosed) {
+		t.Fatalf("closed delete error = %v", err)
+	}
+}
+
 type secretInboxNodeClass struct {
 	inbox chan storage.SecretValueChanged
 }

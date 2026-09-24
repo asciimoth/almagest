@@ -33,6 +33,10 @@ type snapshotTestWriter struct {
 
 type repeatingZeroReader struct{}
 
+type snapshotErrorWriter struct{}
+
+func (snapshotErrorWriter) Write([]byte) (int, error) { return 0, errors.New("write failed") }
+
 func (repeatingZeroReader) Read(data []byte) (int, error) {
 	clear(data)
 	return len(data), nil
@@ -1028,6 +1032,153 @@ func TestValidateBboltDatabaseRejectsNonDatabase(t *testing.T) {
 	}
 	if err := validateBboltDatabase(path); err == nil {
 		t.Fatal("invalid bbolt database was accepted")
+	}
+}
+
+func TestSnapshotValidationHelperBranches(t *testing.T) {
+	for _, name := range []string{"", "/absolute", `back\\slash`, "../escape", "a/../b"} {
+		if _, err := cleanSnapshotEntryName(name); !errors.Is(err, errSnapshotInvalid) {
+			t.Errorf("cleanSnapshotEntryName(%q) error = %v", name, err)
+		}
+	}
+	if got, err := cleanSnapshotEntryName("dir/file"); err != nil || got != "dir/file" {
+		t.Fatalf("clean entry = %q, %v", got, err)
+	}
+
+	uuid, err := newSnapshotUUID(bytes.NewReader(make([]byte, 16)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := normalizeSnapshotUUID("  " + strings.ToUpper(uuid) + "  "); err != nil || got != uuid {
+		t.Fatalf("normalized UUID = %q, %v", got, err)
+	}
+	if _, err := newSnapshotUUID(strings.NewReader("short")); err == nil {
+		t.Fatal("short UUID randomness was accepted")
+	}
+	for _, value := range []string{"", "11111111-1111-1111-1111-11111111111z"} {
+		if _, err := normalizeSnapshotUUID(value); !errors.Is(err, errSnapshotInvalid) {
+			t.Errorf("normalizeSnapshotUUID(%q) error = %v", value, err)
+		}
+	}
+	if err := validateSnapshotName(string([]byte{0xff})); !errors.Is(err, errSnapshotInvalid) {
+		t.Fatalf("invalid UTF-8 name error = %v", err)
+	}
+	if err := validateSnapshotName(strings.Repeat("x", snapshotNameMaxBytes+1)); !errors.Is(err, errSnapshotTooLarge) {
+		t.Fatalf("long name error = %v", err)
+	}
+
+	temp := t.TempDir()
+	if err := validateSnapshotArchiveSize(filepath.Join(temp, "missing")); !errors.Is(err, errSnapshotNotFound) {
+		t.Fatalf("missing archive error = %v", err)
+	}
+	if err := validateSnapshotArchiveSize(temp); !errors.Is(err, errSnapshotInvalid) {
+		t.Fatalf("directory archive error = %v", err)
+	}
+	archive := filepath.Join(temp, "small.zip")
+	if err := os.WriteFile(archive, []byte("small"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateSnapshotArchiveSize(archive); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := copySnapshotArchive(snapshotErrorWriter{}, strings.NewReader("data")); err == nil {
+		t.Fatal("copy writer error was ignored")
+	}
+	if written, err := copySnapshotArchive(io.Discard, strings.NewReader("data")); err != nil || written != 4 {
+		t.Fatalf("copy = %d, %v", written, err)
+	}
+}
+
+func TestSnapshotAdminAPICreateAndList(t *testing.T) {
+	service, _, engine, _, _ := newSnapshotTestService(t, false)
+	session := (&AdminAPI{snapshots: service}).newAPISession(engine, nil, nil)
+	create := mustRequest(t, "create", api.SurfaceSnapshots, string(api.MethodSnapshotsCreate), api.SnapshotsCreateRequest{Name: "from API"})
+	response, err := session.handleMessage(create)
+	if err != nil || response.Error != nil {
+		t.Fatalf("create response = %#v, err=%v", response, err)
+	}
+	created, err := api.DecodePayload[api.SnapshotInfo](response.Result)
+	if err != nil || created.Name != "from API" {
+		t.Fatalf("created snapshot = %#v, err=%v", created, err)
+	}
+	list := mustRequest(t, "list", api.SurfaceSnapshots, string(api.MethodSnapshotsList), struct{}{})
+	response, err = session.handleMessage(list)
+	if err != nil || response.Error != nil {
+		t.Fatalf("list response = %#v, err=%v", response, err)
+	}
+	listed, err := api.DecodePayload[api.SnapshotsListResponse](response.Result)
+	if err != nil || len(listed.Snapshots) != 1 || listed.Snapshots[0].UUID != created.UUID {
+		t.Fatalf("listed snapshots = %#v, err=%v", listed, err)
+	}
+}
+
+func TestSnapshotMalformedArchiveBranches(t *testing.T) {
+	service, _, _, _, storagePath := newSnapshotTestService(t, false)
+	if err := os.MkdirAll(filepath.Join(storagePath, snapshotDirectoryName), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	validManifest := []byte(`{"version":1,"snapshot":{"uuid":"11111111-1111-4111-8111-111111111111","timestamp":1}}`)
+	tests := []struct {
+		name    string
+		entries []struct {
+			name string
+			data []byte
+		}
+	}{
+		{name: "empty"},
+		{name: "unsafe", entries: []struct {
+			name string
+			data []byte
+		}{{name: "../escape", data: nil}}},
+		{name: "unknown", entries: []struct {
+			name string
+			data []byte
+		}{{name: "unknown", data: nil}}},
+		{name: "invalid manifest JSON", entries: []struct {
+			name string
+			data []byte
+		}{{name: snapshotManifestName, data: []byte(`{`)}}},
+		{name: "unsupported version", entries: []struct {
+			name string
+			data []byte
+		}{{name: snapshotManifestName, data: []byte(`{"version":2,"snapshot":{"uuid":"11111111-1111-4111-8111-111111111111","timestamp":1}}`)}}},
+		{name: "duplicate", entries: []struct {
+			name string
+			data []byte
+		}{{name: snapshotManifestName, data: validManifest}, {name: snapshotManifestName, data: validManifest}}},
+		{name: "invalid config", entries: []struct {
+			name string
+			data []byte
+		}{{name: snapshotManifestName, data: validManifest}, {name: snapshotConfigName, data: []byte(`{`)}}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			path := filepath.Join(storagePath, snapshotDirectoryName, strings.ReplaceAll(test.name, " ", "-")+".zip")
+			file, err := os.Create(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			writer := zip.NewWriter(file)
+			for _, entry := range test.entries {
+				if err := writeZipBytes(writer, entry.name, entry.data, 0o600, time.Now()); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := writer.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err := file.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := service.loadArchive(context.Background(), path, ""); !errors.Is(err, errSnapshotInvalid) {
+				t.Fatalf("loadArchive error = %v", err)
+			}
+			if test.name != "unsafe" && test.name != "unknown" && test.name != "duplicate" && test.name != "invalid config" {
+				if _, err := readSnapshotManifest(path); !errors.Is(err, errSnapshotInvalid) {
+					t.Fatalf("readSnapshotManifest error = %v", err)
+				}
+			}
+		})
 	}
 }
 

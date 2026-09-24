@@ -4,7 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"net"
+	"net/http"
+	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -16,6 +20,55 @@ import (
 	sysnetdebug "github.com/asciimoth/gonnect/sysnet/debug"
 	"github.com/asciimoth/pasta/pasta"
 )
+
+func TestAdminAPIRunAndStopWebServer(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	admin := &AdminAPI{webListener: listener}
+	ctx, cancel := context.WithCancel(context.Background())
+	var wg sync.WaitGroup
+	admin.Run(ctx, cancel, &wg, nil, nil, nil)
+
+	resp, err := http.Get("http://" + listener.Addr().String() + "/") //nolint:gosec,noctx
+	if err != nil {
+		cancel()
+		wg.Wait()
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET / status = %s", resp.Status)
+	}
+	cancel()
+	wg.Wait()
+	admin.Stop()
+	admin.Stop()
+}
+
+func TestPrepareAdminAPIAndWebListeners(t *testing.T) {
+	prepared, err := PrepareAdminAPI(&Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	prepared.Stop()
+
+	listener, err := listenWebAdmin("127.0.0.1:0", AdminPeerFiltersConfig{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := listener.Close(); err != nil {
+		t.Fatal(err)
+	}
+	listener, err = listenWebAdmin("127.0.0.1:0", AdminPeerFiltersConfig{UIDs: []uint32{uint32(os.Getuid())}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := listener.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestEngineWorkspaceSnapshotAPIClassesAreSortedList(t *testing.T) {
 	engine, err := almagest.BuildEngine(
@@ -276,6 +329,70 @@ func TestKVSubscriptionObservesDirectStoreUpdate(t *testing.T) {
 	}
 }
 
+func TestKVAPIDispatchAllSnapshotAndMutationMethods(t *testing.T) {
+	manager, err := openKVManager(filepath.Join(t.TempDir(), "kv.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer manager.Close() //nolint:errcheck
+	session := (&AdminAPI{kv: manager}).newAPISession(nil, nil, func(api.Message) error { return nil })
+	defer session.close()
+
+	call := func(id string, method api.KVMethod, payload any) api.Message {
+		t.Helper()
+		resp, callErr := session.handleMessage(mustRequest(t, id, api.SurfaceKV, string(method), payload))
+		if callErr != nil || resp.Error != nil {
+			t.Fatalf("%s response = %#v, error = %v", method, resp, callErr)
+		}
+		return resp
+	}
+	call("1", api.MethodKVStoresSnapshot, nil)
+	call("2", api.MethodKVSubscribeStores, nil)
+	call("3", api.MethodKVEnsure, api.KVEntriesRequest{Path: []string{"nested"}})
+	call("4", api.MethodKVSet, api.KVSetRequest{Path: []string{"nested"}, Key: "text", Value: api.KVValue{Data: "hello", Encoding: "string", String: true}})
+	call("5", api.MethodKVSet, api.KVSetRequest{Path: []string{"nested"}, Key: "binary", Value: api.KVValue{Data: "AQID", Encoding: "base64"}})
+	call("6", api.MethodKVEntriesSnapshot, api.KVEntriesRequest{Path: []string{"nested"}})
+	call("7", api.MethodKVValueSnapshot, api.KVValueRequest{Path: []string{"nested"}, Key: "text"})
+	call("8", api.MethodKVDelete, api.KVValueRequest{Path: []string{"nested"}, Key: "text"})
+	call("9", api.MethodKVDrop, api.KVEntriesRequest{Path: []string{"nested"}})
+
+	plugin := api.KVStoreSelector{Kind: api.KVStorePlugin, Name: "plugin"}
+	call("10", api.MethodKVEnsure, api.KVEntriesRequest{Store: plugin, Path: []string{"data"}})
+	stores := call("11", api.MethodKVStoresSnapshot, nil)
+	decoded, err := api.DecodePayload[api.KVStoresSnapshot](stores.Result)
+	if err != nil || len(decoded.Stores) != 2 || decoded.Stores[1].Name != "plugin" {
+		t.Fatalf("stores snapshot = %#v, error = %v", decoded, err)
+	}
+}
+
+func TestKVAPIDispatchValidationErrors(t *testing.T) {
+	manager, err := openKVManager(filepath.Join(t.TempDir(), "kv.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer manager.Close() //nolint:errcheck
+	session := (&AdminAPI{kv: manager}).newAPISession(nil, nil, nil)
+	tests := []api.Message{
+		mustRequest(t, "path", api.SurfaceKV, string(api.MethodKVEnsure), api.KVEntriesRequest{Path: []string{""}}),
+		mustRequest(t, "key", api.SurfaceKV, string(api.MethodKVValueSnapshot), api.KVValueRequest{Key: ""}),
+		mustRequest(t, "encoding", api.SurfaceKV, string(api.MethodKVSet), api.KVSetRequest{Key: "key", Value: api.KVValue{Encoding: "unknown"}}),
+		mustRequest(t, "store", api.SurfaceKV, string(api.MethodKVEntriesSnapshot), api.KVEntriesRequest{Store: api.KVStoreSelector{Kind: "unknown"}}),
+		mustRequest(t, "method", api.SurfaceKV, "unknown", nil),
+		{Kind: api.MessageRequest, ID: "payload", Surface: api.SurfaceKV, Method: string(api.MethodKVDelete), Payload: json.RawMessage(`{`)},
+	}
+	for _, req := range tests {
+		resp, callErr := session.handleMessage(req)
+		if callErr != nil || resp.Error == nil {
+			t.Fatalf("request %s response = %#v, error = %v", req.ID, resp, callErr)
+		}
+	}
+	unavailable := (&AdminAPI{}).newAPISession(nil, nil, nil)
+	resp, err := unavailable.handleMessage(mustRequest(t, "unavailable", api.SurfaceKV, string(api.MethodKVStoresSnapshot), nil))
+	if err != nil || resp.Error == nil || resp.Error.Code != api.ErrorUnavailable {
+		t.Fatalf("unavailable response = %#v, error = %v", resp, err)
+	}
+}
+
 func TestEngineBatchNodeAPIDispatch(t *testing.T) {
 	engine, err := almagest.BuildEngine(
 		context.Background(),
@@ -349,6 +466,224 @@ func TestEngineBatchNodeAPIDispatch(t *testing.T) {
 	}
 	if _, ok := engine.NodeSnapshot(almagest.MainWorkspace, second); ok {
 		t.Fatal("second node still exists after remove_nodes dispatch")
+	}
+}
+
+func TestAdminAndLogAPIDispatch(t *testing.T) {
+	factory := NewLogFactory(LogCacheConfig{Info: 2})
+	factory.level = logLevelEnabled{info: true}
+	admin := &AdminAPI{projectVersionStatus: api.ProjectVersionStatus{Version: "test"}}
+	var events []api.Message
+	session := admin.newAPISession(nil, factory, func(msg api.Message) error {
+		events = append(events, msg)
+		return nil
+	})
+	defer session.close()
+
+	requests := []api.Message{
+		mustRequest(t, "1", api.SurfaceAdmin, string(api.MethodAdminHello), api.HelloRequest{ClientName: "test"}),
+		mustRequest(t, "2", api.SurfaceAdmin, string(api.MethodAdminPing), api.PingRequest{Nonce: "nonce"}),
+		mustRequest(t, "3", api.SurfaceAdmin, string(api.MethodAdminColorMap), nil),
+	}
+	for _, req := range requests {
+		resp, err := session.handleMessage(req)
+		if err != nil || resp.Error != nil {
+			t.Fatalf("%s response = %#v, error = %v", req.Method, resp, err)
+		}
+	}
+
+	acquire := mustRequest(t, "4", api.SurfaceAdmin, string(api.MethodAdminAcquireMutation), api.AcquireMutationRequest{Holder: "first", TTLMilliseconds: 1000})
+	resp, err := session.handleMessage(acquire)
+	if err != nil || resp.Error != nil {
+		t.Fatalf("acquire response = %#v, error = %v", resp, err)
+	}
+	lease, err := api.DecodePayload[api.AcquireMutationResponse](resp.Result)
+	if err != nil || !lease.Acquired || lease.Lease == nil {
+		t.Fatalf("acquire result = %#v, error = %v", lease, err)
+	}
+	resp, err = session.handleMessage(mustRequest(t, "5", api.SurfaceAdmin, string(api.MethodAdminAcquireMutation), api.AcquireMutationRequest{Holder: "second"}))
+	busy, decodeErr := api.DecodePayload[api.AcquireMutationResponse](resp.Result)
+	if err != nil || decodeErr != nil || busy.Acquired || busy.Active == nil {
+		t.Fatalf("busy acquire = %#v, response error = %v, decode error = %v", busy, err, decodeErr)
+	}
+	resp, err = session.handleMessage(mustRequest(t, "6", api.SurfaceAdmin, string(api.MethodAdminRenewMutation), api.RenewMutationRequest{LeaseID: lease.Lease.ID, TTLMilliseconds: 2000}))
+	if err != nil || resp.Error != nil {
+		t.Fatalf("renew response = %#v, error = %v", resp, err)
+	}
+	resp, err = session.handleMessage(mustRequest(t, "7", api.SurfaceAdmin, string(api.MethodAdminReleaseMutation), api.ReleaseMutationRequest{LeaseID: lease.Lease.ID}))
+	if err != nil || resp.Error != nil || admin.mutationLease != nil {
+		t.Fatalf("release response = %#v, error = %v, lease = %#v", resp, err, admin.mutationLease)
+	}
+	resp, err = session.handleMessage(mustRequest(t, "8", api.SurfaceAdmin, string(api.MethodAdminRenewMutation), api.RenewMutationRequest{LeaseID: "gone"}))
+	if err != nil || resp.Error == nil || resp.Error.Code != api.ErrorConflict {
+		t.Fatalf("missing renew response = %#v, error = %v", resp, err)
+	}
+
+	resp, err = session.handleMessage(mustRequest(t, "9", api.SurfaceLog, string(api.MethodLogSubscribe), nil))
+	if err != nil || resp.Error != nil {
+		t.Fatalf("log subscribe response = %#v, error = %v", resp, err)
+	}
+	sub, err := api.DecodePayload[api.SubscribeLogsResponse](resp.Result)
+	if err != nil || sub.SubscriptionID == 0 {
+		t.Fatalf("log subscription = %#v, error = %v", sub, err)
+	}
+	factory.DaemonLogger().Info("published")
+	if len(events) != 1 || events[0].Method != string(api.EventLogEntry) {
+		t.Fatalf("events = %#v", events)
+	}
+	resp, err = session.handleMessage(mustRequest(t, "10", api.SurfaceLog, string(api.MethodLogUnsubscribe), api.SubscriptionRequest{SubscriptionID: sub.SubscriptionID}))
+	if err != nil || resp.Error != nil || len(session.logSubscriptions) != 0 {
+		t.Fatalf("log unsubscribe response = %#v, error = %v", resp, err)
+	}
+}
+
+func TestEngineAPIDispatchCoreMethods(t *testing.T) {
+	engine, err := almagest.BuildEngine(
+		context.Background(), configer.NewMemory(nil), logging.NewDebugLogFactory(16), &sysnetdebug.System{},
+		nil, nil, nil, nil, []pasta.NodeClass{adminAPIBatchNodeClass{}}, nil, false,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = engine.Close() })
+	var events []api.Message
+	session := (&AdminAPI{}).newAPISession(engine, nil, func(msg api.Message) error {
+		events = append(events, msg)
+		return nil
+	})
+	defer session.close()
+
+	call := func(id, method string, payload any) api.Message {
+		t.Helper()
+		resp, callErr := session.handleMessage(mustRequest(t, id, api.SurfaceEngine, method, payload))
+		if callErr != nil || resp.Error != nil {
+			t.Fatalf("%s response = %#v, error = %v", method, resp, callErr)
+		}
+		return resp
+	}
+	add := call("1", string(api.MethodEngineAddNode), api.AddNodeRequest{Workspace: almagest.MainWorkspace, Class: "test/AdminAPIBatchNode", Name: "node"})
+	added, err := api.DecodePayload[api.AddNodeResponse](add.Result)
+	if err != nil || added.ID == 0 {
+		t.Fatalf("add response = %#v, error = %v", added, err)
+	}
+	nodeID := added.ID
+
+	subscribe := call("2", string(api.MethodEngineSubscribeNotifications), api.WorkspaceRequest{Workspace: almagest.MainWorkspace})
+	sub, err := api.DecodePayload[api.SubscribeNotificationsResponse](subscribe.Result)
+	if err != nil || sub.SubscriptionID == 0 {
+		t.Fatalf("subscribe response = %#v, error = %v", sub, err)
+	}
+	call("3", string(api.MethodEngineRequestFullSnapshot), api.SubscriptionRequest(sub))
+	call("4", string(api.MethodEngineSubscribeNodeMenu), api.NodeMenuSubscriptionRequest{Workspace: almagest.MainWorkspace, Node: nodeID, SubscriptionID: sub.SubscriptionID})
+	call("5", string(api.MethodEngineUnsubscribeNodeMenu), api.NodeMenuSubscriptionRequest{Workspace: almagest.MainWorkspace, Node: nodeID, SubscriptionID: sub.SubscriptionID})
+
+	call("6", string(api.MethodEngineWorkspaceSnapshot), api.WorkspaceRequest{Workspace: almagest.MainWorkspace})
+	call("7", string(api.MethodEngineWorkersSnapshot), api.WorkspaceRequest{Workspace: almagest.MainWorkspace})
+	call("8", string(api.MethodEngineNodeClassSnapshot), api.ClassRequest{Workspace: almagest.MainWorkspace, Class: "test/AdminAPIBatchNode"})
+	call("9", string(api.MethodEngineNodeClassLongDescription), api.ClassRequest{Workspace: almagest.MainWorkspace, Class: "test/AdminAPIBatchNode"})
+	call("10", string(api.MethodEngineNodeSnapshot), api.IDRequest{Workspace: almagest.MainWorkspace, ID: nodeID})
+	call("11", string(api.MethodEngineSetNodePosition), api.SetNodePositionRequest{Workspace: almagest.MainWorkspace, ID: nodeID, Position: "10 20"})
+	call("12", string(api.MethodEngineSetNodeName), api.SetNodeNameRequest{Workspace: almagest.MainWorkspace, ID: nodeID, Name: "renamed"})
+	call("13", string(api.MethodEngineRemoveNodePopup), api.NodePopupRequest{Workspace: almagest.MainWorkspace, Node: nodeID, Popup: 1})
+	call("14", string(api.MethodEngineRemoveNodePopups), api.NodePopupRequest{Workspace: almagest.MainWorkspace, Node: nodeID})
+	call("15", string(api.MethodEngineRemoveNodePopupsByType), api.NodePopupRequest{Workspace: almagest.MainWorkspace, Node: nodeID, Type: "notice"})
+	call("16", string(api.MethodEngineCopy), api.CopyRequest{Workspace: almagest.MainWorkspace, IDs: []uint64{nodeID}})
+	call("17", string(api.MethodEngineSendInbox), api.SendInboxRequest{Workspace: almagest.MainWorkspace, Node: nodeID, Payload: json.RawMessage(`{"ok":true}`)})
+	call("18", string(api.MethodEngineSendNodeFormularMessage), api.SendNodeFormularMessageRequest{Workspace: almagest.MainWorkspace, Node: nodeID, Message: json.RawMessage(`{"type":"button.press","menuId":"node:1","blockId":"b","buttonId":"x"}`)})
+	call("19", string(api.MethodEngineUndo), api.WorkspaceRequest{Workspace: almagest.MainWorkspace})
+	call("20", string(api.MethodEngineRedo), api.WorkspaceRequest{Workspace: almagest.MainWorkspace})
+	call("21", string(api.MethodEngineUnsubscribeNotifications), api.SubscriptionRequest(sub))
+	if len(session.engineSubscriptions) != 0 {
+		t.Fatalf("engine subscriptions = %#v, want empty", session.engineSubscriptions)
+	}
+}
+
+func TestAPIDispatchRejectsBadMessages(t *testing.T) {
+	session := (&AdminAPI{}).newAPISession(nil, nil, nil)
+	tests := []api.Message{
+		{Kind: api.MessageEvent, ID: "event"},
+		mustRequest(t, "surface", api.Surface("unknown"), "method", nil),
+		{Kind: api.MessageRequest, ID: "admin-payload", Surface: api.SurfaceAdmin, Method: string(api.MethodAdminPing), Payload: json.RawMessage(`{`)},
+		mustRequest(t, "admin-method", api.SurfaceAdmin, "unknown", nil),
+	}
+	for _, msg := range tests {
+		resp, err := session.handleMessage(msg)
+		if err != nil || resp.Error == nil {
+			t.Fatalf("message %#v response = %#v, error = %v", msg, resp, err)
+		}
+	}
+	resp, err := newRequestError("", api.ErrorBadRequest, "bad")
+	if err != nil || resp.ID != "0" {
+		t.Fatalf("newRequestError empty ID = %#v, %v", resp, err)
+	}
+	if mutationLeaseTTL(0) != 30*time.Second || mutationLeaseTTL(5) != 5*time.Millisecond {
+		t.Fatal("mutationLeaseTTL returned an incorrect value")
+	}
+}
+
+func TestAPISurfacesRejectMalformedPayloadsForEveryMethod(t *testing.T) {
+	bad := func(surface api.Surface, method string) api.Message {
+		return api.Message{Kind: api.MessageRequest, ID: method, Surface: surface, Method: method, Payload: json.RawMessage(`{`)}
+	}
+	engineSession := (&AdminAPI{}).newAPISession(nil, nil, nil)
+	for _, method := range api.EngineMethods() {
+		resp, err := engineSession.handleEngineMessage(bad(api.SurfaceEngine, method))
+		if err != nil || resp.Error == nil || resp.Error.Code != api.ErrorInvalidPayload {
+			t.Errorf("engine %s response = %#v, error = %v", method, resp, err)
+		}
+	}
+
+	manager, err := openKVManager(filepath.Join(t.TempDir(), "kv.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer manager.Close() //nolint:errcheck
+	send := func(api.Message) error { return nil }
+	session := (&AdminAPI{kv: manager, dns: manager, secrets: manager, tls: manager}).newAPISession(nil, nil, send)
+	defer session.close()
+
+	for _, method := range api.KVMethods() {
+		resp, callErr := session.handleKVMessage(bad(api.SurfaceKV, method))
+		if callErr != nil {
+			t.Errorf("kv %s error = %v", method, callErr)
+		} else if method != string(api.MethodKVStoresSnapshot) && method != string(api.MethodKVSubscribeStores) && resp.Error == nil {
+			t.Errorf("kv %s accepted malformed payload", method)
+		}
+	}
+	for _, method := range api.DNSMethods() {
+		resp, callErr := session.handleDNSMessage(bad(api.SurfaceDNS, method))
+		if callErr != nil {
+			t.Errorf("dns %s error = %v", method, callErr)
+		} else if method != string(api.MethodDNSCachesSnapshot) && method != string(api.MethodDNSSubscribeCaches) && resp.Error == nil {
+			t.Errorf("dns %s accepted malformed payload", method)
+		}
+	}
+	for _, method := range api.SecretsMethods() {
+		resp, callErr := session.handleSecretsMessage(bad(api.SurfaceSecrets, method))
+		if callErr != nil {
+			t.Errorf("secrets %s error = %v", method, callErr)
+		} else if method != string(api.MethodSecretsSnapshot) && method != string(api.MethodSecretsSubscribe) && resp.Error == nil {
+			t.Errorf("secrets %s accepted malformed payload", method)
+		}
+	}
+	for _, method := range api.TLSMethods() {
+		resp, callErr := session.handleTLSMessage(bad(api.SurfaceTLS, method))
+		if callErr != nil {
+			t.Errorf("tls %s error = %v", method, callErr)
+		} else if method != string(api.MethodTLSSnapshot) && method != string(api.MethodTLSSubscribe) && method != string(api.MethodTLSBuiltinCA) && method != string(api.MethodTLSReloadOSCerts) && resp.Error == nil {
+			t.Errorf("tls %s accepted malformed payload", method)
+		}
+	}
+
+	snapshotSession := (&AdminAPI{}).newAPISession(nil, nil, nil)
+	for _, method := range api.SnapshotsMethods() {
+		if method == string(api.MethodSnapshotsList) {
+			continue
+		}
+		resp, callErr := snapshotSession.handleSnapshotsMessage(bad(api.SurfaceSnapshots, method))
+		if callErr != nil || resp.Error == nil {
+			t.Errorf("snapshots %s response = %#v, error = %v", method, resp, callErr)
+		}
 	}
 }
 

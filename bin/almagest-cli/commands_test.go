@@ -1060,6 +1060,175 @@ func TestHelpDoesNotDial(t *testing.T) {
 	}
 }
 
+func TestCommandDispatchCoversRequestCommands(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{"admin hello", []string{"admin", "hello", "--client-name", "test", "--surfaces", "engine, kv"}},
+		{"admin colormap", []string{"admin", "colormap"}},
+		{"admin acquire", []string{"admin", "acquire-mutation", "--holder", "test", "--ttl-ms", "50"}},
+		{"admin renew", []string{"admin", "renew-mutation", "--lease-id", "lease", "--ttl-ms", "50"}},
+		{"admin release", []string{"admin", "release-mutation", "--lease-id", "lease"}},
+		{"engine subscribe", []string{"engine", "subscribe-notifications", "--workspace", "test"}},
+		{"engine unsubscribe", []string{"engine", "unsubscribe-notifications", "--subscription-id", "2"}},
+		{"engine full snapshot", []string{"engine", "request-full-snapshot", "--subscription-id", "2"}},
+		{"engine subscribe menu", []string{"engine", "subscribe-node-menu", "--id", "3", "--subscription-id", "2"}},
+		{"engine unsubscribe menu", []string{"engine", "unsubscribe-node-menu", "--node", "3", "--subscription-id", "2"}},
+		{"engine workspace", []string{"engine", "workspace-snapshot", "--workspace", "test"}},
+		{"engine workers", []string{"engine", "workers-snapshot"}},
+		{"engine class", []string{"engine", "node-class-snapshot", "--class", "test/Node"}},
+		{"engine class description", []string{"engine", "node-class-long-description", "--class", "test/Node"}},
+		{"engine remove class", []string{"engine", "remove-nodes-by-class", "--class", "test/Node"}},
+		{"engine node", []string{"engine", "node-snapshot", "--id", "3"}},
+		{"engine replace node", []string{"engine", "replace-node-with-placeholder", "--id", "3"}},
+		{"engine remove node", []string{"engine", "remove-node", "--id", "3"}},
+		{"engine port", []string{"engine", "port-snapshot", "--id", "4"}},
+		{"engine link", []string{"engine", "link-snapshot", "--id", "5"}},
+		{"engine remove link", []string{"engine", "remove-link", "--id", "5"}},
+		{"engine add node", []string{"engine", "add-node", "--class", "test/Node", "--name", "node"}},
+		{"engine add link", []string{"engine", "add-link", "--port-a", "4", "--port-b", "5"}},
+		{"engine popup", []string{"engine", "remove-node-popup", "--id", "3", "--popup", "9"}},
+		{"engine popups", []string{"engine", "remove-node-popups", "--id", "3"}},
+		{"engine popup type", []string{"engine", "remove-node-popups-by-type", "--id", "3", "--type", "notice"}},
+		{"engine copy", []string{"engine", "copy", "--ids", "3, 4"}},
+		{"engine paste", []string{"engine", "paste", "--data", "copy-data"}},
+		{"engine inbox", []string{"engine", "send-inbox", "--id", "3", "--payload", `{"ok":true}`}},
+		{"engine formular", []string{"engine", "send-node-formular-msg", "--id", "3", "--message", `{"type":"noop"}`}},
+		{"engine undo", []string{"engine", "undo"}},
+		{"engine redo", []string{"engine", "redo"}},
+		{"log subscribe", []string{"log", "subscribe"}},
+		{"log unsubscribe", []string{"log", "unsubscribe", "--subscription-id", "2"}},
+		{"kv stores", []string{"kv", "stores"}},
+		{"kv entries", []string{"kv", "entries", "--plugin", "plugin", "--path", "/a/b/"}},
+		{"kv get", []string{"kv", "get", "--key", "key"}},
+		{"kv ensure", []string{"kv", "ensure", "--path", "a"}},
+		{"kv delete", []string{"kv", "delete", "--key", "key"}},
+		{"kv drop", []string{"kv", "drop", "--path", "a"}},
+		{"kv unsubscribe", []string{"kv", "unsubscribe", "--subscription-id", "2"}},
+		{"graph delete link", []string{"graph", "delete-link", "--id", "5"}},
+		{"graph add link", []string{"graph", "add-link", "--port-a", "4", "--port-b", "5"}},
+		{"graph class description", []string{"graph", "class-description", "--class", "test/Node"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ft := &fakeTransport{reads: []api.Message{mustResponse(t, "1", map[string]any{"ok": true})}}
+			var stdout, stderr bytes.Buffer
+			err := run(context.Background(), tt.args, strings.NewReader(""), &stdout, &stderr, func(context.Context, endpoint) (apiTransport, error) {
+				return ft, nil
+			})
+			if err != nil {
+				t.Fatalf("run(%q) error = %v; stderr = %s", tt.args, err, stderr.String())
+			}
+			if len(ft.writes) != 1 {
+				t.Fatalf("run(%q) writes = %d, want 1", tt.args, len(ft.writes))
+			}
+		})
+	}
+}
+
+func TestSurfaceHelpAndUnknownCommands(t *testing.T) {
+	for _, surface := range []string{"admin", "config", "dns", "engine", "graph", "kv", "log", "secrets", "snapshots", "tls", "workers"} {
+		t.Run(surface, func(t *testing.T) {
+			ft := &fakeTransport{}
+			var stdout bytes.Buffer
+			err := run(context.Background(), []string{surface, "--help"}, nil, &stdout, io.Discard, func(context.Context, endpoint) (apiTransport, error) {
+				return ft, nil
+			})
+			if err != nil || stdout.Len() == 0 || !ft.closed {
+				t.Fatalf("help result: error=%v output=%q closed=%t", err, stdout.String(), ft.closed)
+			}
+		})
+	}
+
+	var dialed bool
+	err := run(context.Background(), []string{"unknown"}, nil, io.Discard, io.Discard, func(context.Context, endpoint) (apiTransport, error) {
+		dialed = true
+		return &fakeTransport{}, nil
+	})
+	if err == nil || !dialed {
+		t.Fatalf("unknown command error = %v, dialed = %t", err, dialed)
+	}
+}
+
+func TestCommandParsingValidation(t *testing.T) {
+	var stderr bytes.Buffer
+	if workspace, class, err := parseClass("class", []string{"--workspace", "w", "--class", "c"}, &stderr); err != nil || workspace != "w" || class != "c" {
+		t.Fatalf("parseClass() = %q, %q, %v", workspace, class, err)
+	}
+	if workspace, id, err := parseID("id", []string{"--workspace", "w", "--id", "9"}, &stderr); err != nil || workspace != "w" || id != 9 {
+		t.Fatalf("parseID() = %q, %d, %v", workspace, id, err)
+	}
+	if got := splitCSV(" a, ,b "); len(got) != 2 || got[0] != "a" || got[1] != "b" || splitCSV(" ") != nil {
+		t.Fatalf("splitCSV() = %#v", got)
+	}
+	if _, err := parseKVPath("a//b"); err == nil {
+		t.Fatal("parseKVPath accepted an empty segment")
+	}
+	if got, err := parseKVPath("///"); err != nil || got != nil {
+		t.Fatalf("parseKVPath root = %#v, %v", got, err)
+	}
+	if err := parseNoArgs("test", []string{"extra"}, &stderr); err == nil {
+		t.Fatal("parseNoArgs accepted a positional argument")
+	}
+}
+
+func TestCommandValidationErrors(t *testing.T) {
+	tests := [][]string{
+		{"admin", "renew-mutation"}, {"admin", "release-mutation"}, {"admin", "unknown"},
+		{"engine", "unsubscribe-notifications"}, {"engine", "request-full-snapshot"},
+		{"engine", "subscribe-node-menu", "--id", "1"}, {"engine", "node-class-snapshot"},
+		{"engine", "node-snapshot"}, {"engine", "port-snapshot"}, {"engine", "add-node"},
+		{"engine", "add-link", "--port-a", "1"}, {"engine", "set-node-position", "--id", "1"},
+		{"engine", "set-node-name", "--name", "old"}, {"engine", "remove-node-popup"},
+		{"engine", "remove-nodes"}, {"engine", "copy"}, {"engine", "send-inbox", "--id", "1", "--payload", "{"},
+		{"engine", "send-node-formular-msg", "--id", "1", "--message", "{"}, {"engine", "unknown"},
+		{"graph", "node"}, {"graph", "delete-node"}, {"graph", "delete-nodes"},
+		{"graph", "add-link", "--port-a", "1"}, {"graph", "delete-link"}, {"graph", "menu"},
+		{"graph", "apply-menu", "--id", "1", "--json", "{"},
+		{"graph", "click-menu-button", "--id", "1"}, {"graph", "class-description"}, {"graph", "unknown"},
+		{"kv", "get"}, {"kv", "set"}, {"kv", "delete"}, {"kv", "unsubscribe"},
+		{"kv", "entries", "--path", "a//b"}, {"kv", "unknown"},
+		{"log", "unsubscribe"}, {"log", "unknown"},
+		{"dns", "keys"}, {"dns", "get"}, {"dns", "set"}, {"dns", "delete"}, {"dns", "drop"}, {"dns", "unsubscribe"}, {"dns", "unknown"},
+		{"secrets", "set"}, {"secrets", "rename"}, {"secrets", "delete"}, {"secrets", "unsubscribe"}, {"secrets", "unknown"},
+		{"tls", "set-cert"}, {"tls", "rename-cert"}, {"tls", "delete-cert"}, {"tls", "set-policy"}, {"tls", "rename-policy"}, {"tls", "delete-policy"}, {"tls", "unsubscribe"}, {"tls", "unknown"},
+		{"snapshots", "create", "extra"}, {"snapshots", "delete"}, {"snapshots", "rename"}, {"snapshots", "restore"}, {"snapshots", "unknown"},
+		{"workers", "unknown"},
+	}
+	for _, args := range tests {
+		t.Run(strings.Join(args, "_"), func(t *testing.T) {
+			ft := &fakeTransport{}
+			err := run(context.Background(), args, strings.NewReader(""), io.Discard, io.Discard, func(context.Context, endpoint) (apiTransport, error) {
+				return ft, nil
+			})
+			if err == nil {
+				t.Fatalf("run(%q) succeeded", args)
+			}
+		})
+	}
+}
+
+func TestRunSetupErrors(t *testing.T) {
+	var dialed bool
+	if err := run(context.Background(), []string{"--url", "://bad", "admin", "ping"}, nil, io.Discard, io.Discard, func(context.Context, endpoint) (apiTransport, error) {
+		dialed = true
+		return nil, nil
+	}); err == nil || dialed {
+		t.Fatalf("invalid endpoint error = %v, dialed = %t", err, dialed)
+	}
+	want := errors.New("dial failed")
+	if err := run(context.Background(), []string{"admin", "ping"}, nil, io.Discard, io.Discard, func(context.Context, endpoint) (apiTransport, error) {
+		return nil, want
+	}); !errors.Is(err, want) {
+		t.Fatalf("dial error = %v, want %v", err, want)
+	}
+	if _, _, err := parseGlobal([]string{"--unknown"}, io.Discard); err == nil {
+		t.Fatal("parseGlobal accepted an unknown flag")
+	}
+}
+
 func mustEvent(t *testing.T, surface api.Surface, method string, payload any) api.Message {
 	t.Helper()
 	msg, err := api.NewEvent(surface, method, payload)

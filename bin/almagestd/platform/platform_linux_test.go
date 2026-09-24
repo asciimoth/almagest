@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	almargs "github.com/asciimoth/almagest/bin/almagestd/args"
 	cmdrunner "github.com/asciimoth/almagest/bin/almagestd/command"
 	"github.com/asciimoth/configer/hujson"
 )
@@ -326,6 +327,170 @@ func TestReadLinuxSystemConfigCallbacksRequireRunner(t *testing.T) {
 	_, err = readLinuxSystemConfig(cfg, nil)
 	if err == nil {
 		t.Fatal("readLinuxSystemConfig succeeded without callback runner")
+	}
+}
+
+func TestSafeFileLifecycle(t *testing.T) {
+	base := newSafePlatformTestDir(t)
+	dir := filepath.Join(base, "config", "nested")
+	path := filepath.Join(dir, "almagest.hujson")
+	initial := []byte("{value: 1}\n")
+
+	if err := MakeSureSafeFileExists(path, initial); err != nil {
+		t.Fatalf("MakeSureSafeFileExists: %v", err)
+	}
+	if err := MakeSureSafeFileExists(path, []byte("must not replace")); err != nil {
+		t.Fatalf("MakeSureSafeFileExists existing: %v", err)
+	}
+	got, err := ReadSafeFile(path)
+	if err != nil || string(got) != string(initial) {
+		t.Fatalf("ReadSafeFile = %q, %v", got, err)
+	}
+	f, err := OpenSafeFile(path)
+	if err != nil {
+		t.Fatalf("OpenSafeFile: %v", err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	isDir, err := IsDir(dir)
+	if err != nil || !isDir {
+		t.Fatalf("IsDir(%q) = %t, %v", dir, isDir, err)
+	}
+	isDir, err = IsDir(filepath.Join(base, "missing"))
+	if err != nil || isDir {
+		t.Fatalf("IsDir(missing) = %t, %v", isDir, err)
+	}
+
+	emptyDir := filepath.Join(base, "created", "deep")
+	if err := MakeSureDirExists(emptyDir); err != nil {
+		t.Fatalf("MakeSureDirExists: %v", err)
+	}
+	if err := checkPrivateDirPath(emptyDir); err != nil {
+		t.Fatalf("checkPrivateDirPath: %v", err)
+	}
+}
+
+func TestSafePathValidation(t *testing.T) {
+	badPaths := []string{"", "relative", "/a/../b"}
+	for _, path := range badPaths {
+		if _, err := splitAbsPath(path); err == nil {
+			t.Errorf("splitAbsPath(%q) succeeded", path)
+		}
+	}
+	if parts, err := splitAbsPath("/"); err != nil || parts != nil {
+		t.Fatalf("splitAbsPath(/) = %#v, %v", parts, err)
+	}
+	if parts, err := splitAbsPath("//etc///almagest"); err != nil || len(parts) != 2 || parts[0] != "etc" || parts[1] != "almagest" {
+		t.Fatalf("splitAbsPath cleaned = %#v, %v", parts, err)
+	}
+	for _, path := range []string{"/", "/tmp/"} {
+		if _, _, err := splitAbsFilePath(path); err == nil {
+			t.Errorf("splitAbsFilePath(%q) succeeded", path)
+		}
+	}
+	parents, base, err := splitAbsFilePath("/etc/almagest/config")
+	if err != nil || base != "config" || len(parents) != 2 {
+		t.Fatalf("splitAbsFilePath = %#v, %q, %v", parents, base, err)
+	}
+}
+
+func TestSafeFilesRejectSymlinksAndLooseModes(t *testing.T) {
+	base := newSafePlatformTestDir(t)
+	target := filepath.Join(base, "target")
+	if err := os.WriteFile(target, []byte("secret"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(base, "link")
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := OpenSafeFile(link); err == nil {
+		t.Fatal("OpenSafeFile accepted a symlink")
+	}
+
+	loose := filepath.Join(base, "loose")
+	if err := os.WriteFile(loose, []byte("public"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(loose, 0o666); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ReadSafeFile(loose); err == nil {
+		t.Fatal("ReadSafeFile accepted a group-writable file")
+	}
+
+	dirAsFile := filepath.Join(base, "directory")
+	if err := os.Mkdir(dirAsFile, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := OpenSafeFile(dirAsFile); err == nil {
+		t.Fatal("OpenSafeFile accepted a directory")
+	}
+	if err := MakeSureSafeFileExists(dirAsFile, nil); err == nil {
+		t.Fatal("MakeSureSafeFileExists accepted a directory")
+	}
+}
+
+func TestLinuxAgentReadsAndWritesUnsafeConfig(t *testing.T) {
+	base := t.TempDir()
+	configPath := filepath.Join(base, "alm.hujson")
+	protectedPath := filepath.Join(base, "protected.hujson")
+	if err := os.WriteFile(configPath, []byte("{value: 1}"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(protectedPath, []byte("{protected: true}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	agent := RunAgent(almargs.Args{Config: configPath, ProtectedConfig: protectedPath, UnsafeConfig: true}).(*agent)
+	if agent.ConfRO() || agent.ConfigFilePath() != configPath || agent.ProtectedConfigFilePath() != protectedPath {
+		t.Fatalf("agent paths/read-only = %q, %q, %t", agent.ConfigFilePath(), agent.ProtectedConfigFilePath(), agent.ConfRO())
+	}
+	config, protected, err := agent.ReadConfig()
+	if err != nil || string(config) != "{value: 1}" || string(protected) != "{protected: true}" {
+		t.Fatalf("ReadConfig = %q, %q, %v", config, protected, err)
+	}
+	if err := agent.WriteConfig([]byte("{value: 2}")); err != nil {
+		t.Fatal(err)
+	}
+	written, err := os.ReadFile(configPath)
+	if err != nil || string(written) != "{value: 2}" {
+		t.Fatalf("written config = %q, %v", written, err)
+	}
+}
+
+func TestLinuxAgentUsesConfigDirectoryAndDefaultProtectedPath(t *testing.T) {
+	base := t.TempDir()
+	configPath := filepath.Join(base, "alm.hujson")
+	protectedPath := filepath.Join(base, "protected_alm.hujson")
+	if err := os.WriteFile(configPath, []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(protectedPath, []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	agent := RunAgent(almargs.Args{Config: base, UnsafeConfig: true}).(*agent)
+	if agent.ConfigFilePath() != configPath || agent.ProtectedConfigFilePath() != protectedPath {
+		t.Fatalf("agent paths = %q, %q", agent.ConfigFilePath(), agent.ProtectedConfigFilePath())
+	}
+}
+
+func TestAgentReadAndWriteErrors(t *testing.T) {
+	a := &agent{UnsafeConfig: true, ConfigPath: filepath.Join(t.TempDir(), "missing"), ProtectedPath: "missing"}
+	if _, _, err := a.ReadConfig(); err == nil {
+		t.Fatal("ReadConfig missing config succeeded")
+	}
+	if err := a.WriteConfig([]byte("data")); err == nil {
+		t.Fatal("WriteConfig missing config succeeded")
+	}
+	path := filepath.Join(t.TempDir(), "config")
+	if err := os.WriteFile(path, []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	a.ConfigPath = path
+	a.ProtectedPath = filepath.Join(t.TempDir(), "missing")
+	if _, _, err := a.ReadConfig(); err == nil {
+		t.Fatal("ReadConfig missing protected config succeeded")
 	}
 }
 

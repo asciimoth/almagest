@@ -108,3 +108,29 @@ func TestDebugLogFactoryDoesNotBlockWhenEntriesChannelIsFull(t *testing.T) {
 		t.Fatalf("message = %q, want second", entries[0].Message)
 	}
 }
+
+func TestDebugLoggerRemainingMethodsAndNilBranches(t *testing.T) {
+	logf := NewDebugLogFactory(-1)
+	if logf.Entries() == nil {
+		t.Fatal("Entries returned nil")
+	}
+	logger := logf.NodeLogger(1, "test")
+	logger.Debugf("debug %d", 1)
+	logger.Info("info")
+	logger.Warn("warn")
+	logger.Warnf("warn %d", 2)
+	logger.Errf("error %d", 3)
+	logger.Fatal("fatal")
+	if entries := logf.Drain(); len(entries) != 1 || entries[0].Level != DebugLogLevelFatal {
+		t.Fatalf("entries = %#v", entries)
+	}
+
+	var nilFactory *DebugLogFactory
+	if nilFactory.Entries() != nil || nilFactory.Drain() != nil {
+		t.Fatal("nil factory returned entries")
+	}
+	nilFactory.record(DebugLogEntry{})
+	nilFactory.EngineLogger().Info("discarded")
+	var nilLogger *DebugLogger
+	nilLogger.Info("discarded")
+}

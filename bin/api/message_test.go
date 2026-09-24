@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"slices"
 	"testing"
 )
@@ -96,6 +97,53 @@ func TestValidateResponseNeedsResultOrError(t *testing.T) {
 	msg := Message{Version: Version, Kind: MessageResponse, ID: "1"}
 	if err := msg.Validate(); err == nil {
 		t.Fatal("expected validation error")
+	}
+}
+
+func TestMessageValidationAndMarshalErrorBranches(t *testing.T) {
+	tests := []struct {
+		name string
+		msg  Message
+		want error
+	}{
+		{"empty version", Message{}, nil},
+		{"request ID", Message{Version: Version, Kind: MessageRequest}, ErrEmptyMessageID},
+		{"request surface", Message{Version: Version, Kind: MessageRequest, ID: "1"}, ErrEmptySurface},
+		{"request method", Message{Version: Version, Kind: MessageRequest, ID: "1", Surface: SurfaceAdmin}, ErrEmptyMethod},
+		{"response ID", Message{Version: Version, Kind: MessageResponse, Result: json.RawMessage(`{}`)}, ErrEmptyMessageID},
+		{"event surface", Message{Version: Version, Kind: MessageEvent}, ErrEmptySurface},
+		{"event method", Message{Version: Version, Kind: MessageEvent, Surface: SurfaceAdmin}, ErrEmptyMethod},
+		{"unknown kind", Message{Version: Version, Kind: "unknown"}, nil},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := test.msg.Validate()
+			if err == nil || test.want != nil && !errors.Is(err, test.want) {
+				t.Fatalf("Validate error = %v", err)
+			}
+			if _, err := MarshalMessage(test.msg); err == nil {
+				t.Fatal("MarshalMessage accepted invalid message")
+			}
+		})
+	}
+	if _, err := DecodePayload[map[string]any](json.RawMessage(`{`)); err == nil {
+		t.Fatal("DecodePayload accepted invalid JSON")
+	}
+	if _, err := UnmarshalMessage([]byte(`{`)); err == nil {
+		t.Fatal("UnmarshalMessage accepted invalid JSON")
+	}
+	unsupported := make(chan int)
+	if _, err := NewRequest("1", SurfaceAdmin, "method", unsupported); err == nil {
+		t.Fatal("NewRequest accepted unsupported payload")
+	}
+	if _, err := NewResponse("1", unsupported); err == nil {
+		t.Fatal("NewResponse accepted unsupported payload")
+	}
+	if _, err := NewErrorResponse("1", ErrorInternal, "error", unsupported); err == nil {
+		t.Fatal("NewErrorResponse accepted unsupported details")
+	}
+	if _, err := NewEvent(SurfaceAdmin, "event", unsupported); err == nil {
+		t.Fatal("NewEvent accepted unsupported payload")
 	}
 }
 

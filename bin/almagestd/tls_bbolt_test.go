@@ -1033,6 +1033,89 @@ func TestTLSStorageRejectsAnyScopeWithSpecificRules(t *testing.T) {
 	}
 }
 
+func TestTLSMutableRenameAndDeleteBranches(t *testing.T) {
+	manager, err := openKVManager(filepath.Join(t.TempDir(), "kv.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer manager.Close() //nolint:errcheck
+
+	if _, err := manager.renameTLSCert("missing", "missing"); !errors.Is(err, errTLSCertNotFound) {
+		t.Fatalf("rename missing certificate error = %v", err)
+	}
+	if _, err := manager.renameTLSPolicy("missing", "missing"); !errors.Is(err, errTLSPolicyNotFound) {
+		t.Fatalf("rename missing policy error = %v", err)
+	}
+	if _, err := manager.deleteTLSCert(""); !errors.Is(err, storage.ErrTlsConfigInvalidName) {
+		t.Fatalf("delete invalid certificate error = %v", err)
+	}
+	if _, err := manager.deleteTLSPolicy(""); !errors.Is(err, storage.ErrTlsConfigInvalidName) {
+		t.Fatalf("delete invalid policy error = %v", err)
+	}
+
+	pemText := testTLSCAPEM(t, "mutable lifecycle")
+	if _, err := manager.setTLSCert("old-ca", pemText); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.setTLSCert("occupied", pemText); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.setTLSPolicy("policy", testTLSPolicy("old-ca")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.renameTLSCert("old-ca", "occupied"); !errors.Is(err, storage.ErrTlsConfigConflict) {
+		t.Fatalf("rename certificate conflict error = %v", err)
+	}
+	result, err := manager.renameTLSCert("old-ca", "new-ca")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.policyNotifications) != 1 {
+		t.Fatalf("rename notifications = %#v", result.policyNotifications)
+	}
+	if _, err := manager.renameTLSCert("new-ca", "new-ca"); err != nil {
+		t.Fatal(err)
+	}
+	policy, found, err := manager.tlsPolicyAPIEntry("policy")
+	if err != nil || !found || len(policy.Spec.TrustAnchors) != 1 || policy.Spec.TrustAnchors[0].Cert != "new-ca" {
+		t.Fatalf("renamed policy entry = %#v, found=%v, err=%v", policy, found, err)
+	}
+
+	if _, err := manager.setTLSPolicy("occupied-policy", testTLSPolicy("new-ca")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.renameTLSPolicy("policy", "occupied-policy"); !errors.Is(err, storage.ErrTlsConfigConflict) {
+		t.Fatalf("rename policy conflict error = %v", err)
+	}
+	if _, err := manager.renameTLSPolicy("policy", "renamed-policy"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.renameTLSPolicy("renamed-policy", "renamed-policy"); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err = manager.deleteTLSCert("new-ca")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.policyNotifications) != 2 {
+		t.Fatalf("delete notifications = %#v", result.policyNotifications)
+	}
+	policy, found, err = manager.tlsPolicyAPIEntry("renamed-policy")
+	if err != nil || !found || len(policy.Spec.TrustAnchors) != 0 {
+		t.Fatalf("policy after certificate delete = %#v, found=%v, err=%v", policy, found, err)
+	}
+	if _, err := manager.deleteTLSCert("new-ca"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.deleteTLSPolicy("renamed-policy"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.deleteTLSPolicy("renamed-policy"); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func testTLSCAPEM(t *testing.T, commonName string) string {
 	t.Helper()
 	certPEM, _ := testTLSCAKeyPairPEM(t, commonName, time.Now().Add(-time.Hour), time.Now().Add(24*time.Hour))

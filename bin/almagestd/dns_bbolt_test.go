@@ -215,6 +215,39 @@ func TestBboltDNSCacheStorageNamesAreSorted(t *testing.T) {
 	}
 }
 
+func TestBboltDNSMemoryEvictionAndGuardBranches(t *testing.T) {
+	storage := newBboltDNSCacheStorage(nil, "memory", false)
+	now := time.Now()
+	message := testDNSCacheMessage("example.test.", gdns.TypeA, []byte{192, 0, 2, 30}, 60)
+	for i := 0; i <= dnsMemoryCacheMaxEntries; i++ {
+		storage.memoryPut(string(rune(i+1)), message, now.Add(time.Hour), []byte{byte(i)})
+	}
+	if len(storage.entries) != dnsMemoryCacheMaxEntries {
+		t.Fatalf("memory entries = %d", len(storage.entries))
+	}
+	if _, ok := storage.entries[string(rune(1))]; ok {
+		t.Fatal("oldest memory entry was not evicted")
+	}
+	storage.memoryClear()
+	if len(storage.entries) != 0 {
+		t.Fatalf("cleared entries = %#v", storage.entries)
+	}
+	storage.memoryPut("ignored", nil, now, nil)
+	if len(storage.entries) != 0 {
+		t.Fatal("nil DNS message was cached")
+	}
+
+	var nilStorage *bboltDNSCacheStorage
+	if _, ok := nilStorage.Get("key", now); ok {
+		t.Fatal("nil storage returned a hit")
+	}
+	nilStorage.Set("key", message, now)
+	nilStorage.Delete("key")
+	invalid := newBboltDNSCacheStorage(nil, "invalid", true)
+	invalid.Set("key", message, now)
+	invalid.Delete("key")
+}
+
 func testDNSCacheMessage(name string, typ uint16, data []byte, ttl uint32) *gdns.Message {
 	return &gdns.Message{
 		ID:                 42,

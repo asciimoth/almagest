@@ -377,6 +377,33 @@ func TestCommandHelperProcess(t *testing.T) {
 	}
 }
 
+func TestRunnerLifecycleSubmitsSyncAndBackgroundCommands(t *testing.T) {
+	logger := &recordingLogger{}
+	syncCommand := helperCommand(t, "success")
+	syncCommand.Sync = true
+	runner := newTestRunner(t, logger, Config{Commands: map[string]AllowedCommand{
+		"sync":       syncCommand,
+		"background": helperCommand(t, "success"),
+	}})
+	runner.Start(nil) //nolint:staticcheck // Verify the documented nil-context fallback.
+	runner.Start(context.Background())
+	if !runner.Submit(Request{Name: "sync"}) || !runner.Submit(Request{Name: "background"}) {
+		t.Fatal("Submit returned false for a running runner")
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for len(logger.messages()) < 4 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	runner.Close()
+	runner.Close()
+	if runner.Submit(Request{Name: "sync"}) {
+		t.Fatal("Submit returned true after Close")
+	}
+	if len(logger.messages()) < 4 {
+		t.Fatalf("logs = %#v, want start and finish for both commands", logger.messages())
+	}
+}
+
 func helperCommandArg(mode string, offset int) string {
 	for i, arg := range os.Args {
 		if arg == "--" && i+1+offset < len(os.Args) && os.Args[i+1] == mode {

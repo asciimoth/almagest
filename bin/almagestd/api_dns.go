@@ -424,7 +424,7 @@ func dnsStoredEntryFromAPI(record api.DNSRecordInput, now time.Time) (dnsStoredC
 		return dnsStoredCacheEntry{}, "", errDNSInvalidName
 	}
 	name := dnsAbsName(nameText)
-	if !validDNSName(name) {
+	if !validDNSRecordName(name) {
 		return dnsStoredCacheEntry{}, "", errDNSInvalidName
 	}
 	data, err := dnsRecordDataFromAPI(typ, record.Value)
@@ -478,7 +478,7 @@ func dnsRecordDataFromAPI(typ uint16, value string) ([]byte, error) {
 			return nil, errDNSInvalidName
 		}
 		name := dnsAbsName(value)
-		if !validDNSName(name) {
+		if !validDNSRecordName(name) {
 			return nil, errDNSInvalidName
 		}
 		return []byte(name), nil
@@ -494,7 +494,7 @@ func dnsRecordDataFromAPI(typ uint16, value string) ([]byte, error) {
 			return nil, err
 		}
 		host := dnsAbsName(fields[1])
-		if !validDNSName(host) {
+		if !validDNSRecordName(host) {
 			return nil, errDNSInvalidName
 		}
 		data := make([]byte, 2, 2+len(host))
@@ -518,7 +518,7 @@ func dnsRecordDataFromAPI(typ uint16, value string) ([]byte, error) {
 			return nil, err
 		}
 		target := dnsAbsName(fields[3])
-		if !validDNSName(target) {
+		if !validDNSRecordName(target) {
 			return nil, errDNSInvalidName
 		}
 		data := make([]byte, 6, 6+len(target))
@@ -529,6 +529,42 @@ func dnsRecordDataFromAPI(typ uint16, value string) ([]byte, error) {
 	default:
 		return nil, fmt.Errorf("%w: unsupported DNS type", errDNSInvalidRecord)
 	}
+}
+
+// validDNSRecordName validates the unescaped text form accepted by the admin
+// API. It permits general DNS labels, including underscores and wildcard
+// labels. It rejects whitespace, control bytes, non-ASCII bytes, and
+// backslashes because this API does not implement presentation-format
+// escaping. The canonical trailing dot is included in the 254-byte text limit,
+// which maps to the DNS wire-format limit of 255 bytes after label lengths are
+// encoded.
+func validDNSRecordName(name string) bool {
+	if name == "" {
+		return false
+	}
+	name = dnsAbsName(name)
+	if name == "." {
+		return true
+	}
+	if len(name) > 254 {
+		return false
+	}
+	labelLength := 0
+	for i := range len(name) {
+		value := name[i]
+		if value == '.' {
+			if labelLength == 0 || labelLength > 63 {
+				return false
+			}
+			labelLength = 0
+			continue
+		}
+		if value <= ' ' || value >= 0x7f || value == '\\' {
+			return false
+		}
+		labelLength++
+	}
+	return labelLength == 0
 }
 
 func dnsTypeFromAPI(value string) (uint16, error) {
