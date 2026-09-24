@@ -42,6 +42,78 @@ func (repeatingZeroReader) Read(data []byte) (int, error) {
 	return len(data), nil
 }
 
+func TestSnapshotServiceUnavailableAndInputErrors(t *testing.T) {
+	var service *snapshotService
+	ctx := context.Background()
+	if _, err := service.Create(ctx, "name"); err == nil {
+		t.Fatal("nil Create succeeded")
+	}
+	if _, err := service.List(); err == nil {
+		t.Fatal("nil List succeeded")
+	}
+	if err := service.Delete("id"); err == nil {
+		t.Fatal("nil Delete succeeded")
+	}
+	if _, err := service.Export("id"); err == nil {
+		t.Fatal("nil Export succeeded")
+	}
+	if _, err := service.Import(ctx, strings.NewReader("archive"), nil); err == nil {
+		t.Fatal("nil Import succeeded")
+	}
+	if _, err := service.Rename("id", "name"); err == nil {
+		t.Fatal("nil Rename succeeded")
+	}
+	if _, err := service.Restore(ctx, "id"); err == nil {
+		t.Fatal("nil Restore succeeded")
+	}
+
+	empty := &snapshotService{}
+	if _, err := empty.List(); err == nil {
+		t.Fatal("empty List succeeded")
+	}
+	if err := empty.Delete("11111111-1111-4111-8111-111111111111"); err == nil {
+		t.Fatal("empty Delete succeeded")
+	}
+	if _, err := empty.Export("11111111-1111-4111-8111-111111111111"); err == nil {
+		t.Fatal("empty Export succeeded")
+	}
+	if _, err := empty.Import(ctx, nil, nil); err == nil {
+		t.Fatal("empty Import succeeded")
+	}
+	if _, err := empty.Rename("11111111-1111-4111-8111-111111111111", "name"); err == nil {
+		t.Fatal("empty Rename succeeded")
+	}
+	if _, err := empty.Restore(ctx, "11111111-1111-4111-8111-111111111111"); err == nil {
+		t.Fatal("empty Restore succeeded")
+	}
+
+	if _, _, err := restoreStartupSnapshot(ctx, "", "-", strings.NewReader("archive"), nil); err == nil {
+		t.Fatal("startup restore without storage succeeded")
+	}
+	if _, _, err := restoreStartupSnapshot(ctx, t.TempDir(), "-", nil, nil); err == nil {
+		t.Fatal("startup restore without stdin succeeded")
+	}
+	if _, _, err := restoreStartupSnapshot(ctx, t.TempDir(), filepath.Join(t.TempDir(), "missing.zip"), nil, nil); err == nil {
+		t.Fatal("startup restore of missing archive succeeded")
+	}
+}
+
+func TestSnapshotPathWithinStorageEdges(t *testing.T) {
+	root := t.TempDir()
+	inside := filepath.Join(root, "nested", "file")
+	if got, ok := pathWithinStorage(root, inside); !ok || got != filepath.Join("nested", "file") {
+		t.Fatalf("inside path = %q, %t", got, ok)
+	}
+	for _, path := range []string{"", root, filepath.Dir(root)} {
+		if got, ok := pathWithinStorage(root, path); ok || got != "" {
+			t.Fatalf("outside path %q = %q, %t", path, got, ok)
+		}
+	}
+	if got, ok := pathWithinStorage("", inside); ok || got != "" {
+		t.Fatalf("empty root = %q, %t", got, ok)
+	}
+}
+
 func (w *snapshotTestWriter) WriteConfig(data []byte) error {
 	w.writes = append(w.writes, bytes.Clone(data))
 	if w.err != nil {

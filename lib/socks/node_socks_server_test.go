@@ -232,6 +232,49 @@ func TestSocksServerConfigParsingAndValidationEdges(t *testing.T) {
 	}
 }
 
+func TestSocksServerConfigAlternateStorageShapes(t *testing.T) {
+	rawUsers := []any{
+		map[string]any{"id": "alice", "template": "user", "values": map[string]any{"username": " alice ", "password": "one"}},
+		"invalid",
+		map[string]any{"id": "ignored", "template": "other", "values": map[string]any{"username": "ignored"}},
+	}
+	users, ok := parseSocksServerUsers(rawUsers)
+	if !ok || len(users) != 1 || users[0].username != "alice" {
+		t.Fatalf("parsed []any users = %#v, %t", users, ok)
+	}
+
+	config := configer.NewMemory(map[string]any{
+		"users": []map[string]any{
+			{"username": " alice ", "password": "one"},
+			{"username": "   "},
+		},
+		"commands": map[string]any{"cmdConnect": false, "cmdBind": "invalid"},
+	})
+	users, ok = readSocksServerUsers(config)
+	if !ok || len(users) != 1 || users[0].id != "user-1" {
+		t.Fatalf("read []map users = %#v, %t", users, ok)
+	}
+	commands, ok := readSocksServerCommands(config)
+	if !ok || commands[protocol.CmdConnect] || !commands[protocol.CmdBind] {
+		t.Fatalf("read map[string]any commands = %#v, %t", commands, ok)
+	}
+	for _, raw := range []any{"invalid", []any{}} {
+		cfg := configer.NewMemory(map[string]any{"commands": raw})
+		if _, ok := readSocksServerCommands(cfg); ok {
+			t.Fatalf("accepted command config %#v", raw)
+		}
+	}
+	if normalizeSocksServerPath(" ") != "" || normalizeSocksServerPath("socket") != "/socket" || normalizeSocksServerPath(" /socket ") != "/socket" {
+		t.Fatal("normalizeSocksServerPath returned an unexpected value")
+	}
+	if hostOrDefault(" ") != DefaultSocksServerHost || hostOrDefault(" localhost ") != "localhost" {
+		t.Fatal("hostOrDefault returned an unexpected value")
+	}
+	if validPort(-1) != 0 || validPort(65536) != 0 || validPort(65535) != 65535 {
+		t.Fatal("validPort returned an unexpected value")
+	}
+}
+
 func TestSocksServerUserMenuOffersPasswordSecretSelector(t *testing.T) {
 	template := socksServerUserTemplate()
 	if len(template.Items) != 3 {

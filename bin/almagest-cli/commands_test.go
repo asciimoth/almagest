@@ -287,6 +287,73 @@ func TestRunKVSetSendsRequest(t *testing.T) {
 	}
 }
 
+func TestRunKVSnapshotAndMutationCommands(t *testing.T) {
+	tests := []struct {
+		name   string
+		args   []string
+		method api.KVMethod
+	}{
+		{name: "stores", args: []string{"kv", "stores"}, method: api.MethodKVStoresSnapshot},
+		{name: "entries", args: []string{"kv", "entries", "--path", "one/two"}, method: api.MethodKVEntriesSnapshot},
+		{name: "get", args: []string{"kv", "get", "--key", "key"}, method: api.MethodKVValueSnapshot},
+		{name: "ensure", args: []string{"kv", "ensure", "--path", "one"}, method: api.MethodKVEnsure},
+		{name: "delete", args: []string{"kv", "delete", "--key", "key"}, method: api.MethodKVDelete},
+		{name: "drop", args: []string{"kv", "drop", "--path", "one"}, method: api.MethodKVDrop},
+		{name: "unsubscribe", args: []string{"kv", "unsubscribe", "--subscription-id", "7"}, method: api.MethodKVUnsubscribe},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			transport := &fakeTransport{reads: []api.Message{mustResponse(t, "1", map[string]any{"ok": true})}}
+			var stdout, stderr bytes.Buffer
+			err := run(context.Background(), test.args, nil, &stdout, &stderr, func(context.Context, endpoint) (apiTransport, error) {
+				return transport, nil
+			})
+			if err != nil {
+				t.Fatalf("run failed: %v; stderr=%s", err, stderr.String())
+			}
+			if len(transport.writes) != 1 || transport.writes[0].Method != string(test.method) {
+				t.Fatalf("writes = %#v", transport.writes)
+			}
+		})
+	}
+}
+
+func TestSubscribeAndWatchKVPrintsSnapshotAndAcceptedEvents(t *testing.T) {
+	ignored, err := api.NewEvent(api.SurfaceDNS, string(api.EventDNSCachesUpdate), map[string]any{"ignored": true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	accepted, err := api.NewEvent(api.SurfaceKV, string(api.EventKVStoresUpdate), map[string]any{"updated": true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	transport := &fakeTransport{reads: []api.Message{
+		mustResponse(t, "1", map[string]any{"subscription_id": 9}), ignored, accepted,
+	}}
+	client := newClient(transport)
+	var stdout bytes.Buffer
+	err = subscribeAndWatchKV(context.Background(), client, api.MethodKVSubscribeStores, nil, &stdout, func(msg api.Message) bool {
+		return msg.Surface == api.SurfaceKV && msg.Method == string(api.EventKVStoresUpdate)
+	})
+	if !errors.Is(err, io.EOF) {
+		t.Fatalf("watch error = %v", err)
+	}
+	if !strings.Contains(stdout.String(), `"subscription_id": 9`) || !strings.Contains(stdout.String(), `"updated":true`) || strings.Contains(stdout.String(), "ignored") {
+		t.Fatalf("watch output = %q", stdout.String())
+	}
+	if err := client.Close(); err != nil || !transport.closed {
+		t.Fatalf("Close = %v, closed=%t", err, transport.closed)
+	}
+}
+
+func TestSubscribeAndWatchKVRejectsInvalidSnapshot(t *testing.T) {
+	response := api.Message{Kind: api.MessageResponse, ID: "1", Result: json.RawMessage(`{invalid`)}
+	client := newClient(&fakeTransport{reads: []api.Message{response}})
+	if err := subscribeAndWatchKV(context.Background(), client, api.MethodKVSubscribeStores, nil, io.Discard, func(api.Message) bool { return true }); err == nil {
+		t.Fatal("invalid snapshot succeeded")
+	}
+}
+
 func TestRunDNSSetSendsReadableRecordRequest(t *testing.T) {
 	ft := &fakeTransport{reads: []api.Message{mustResponse(t, "1", api.DNSSetResponse{
 		Key: "example.test.|28|1",

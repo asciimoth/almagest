@@ -46,6 +46,43 @@ func TestMagicDNSResolverUsesRecordsSearchDomainsAndCNAMEs(t *testing.T) {
 	}
 }
 
+func TestMagicDNSResolverStandardLookupAdapters(t *testing.T) {
+	resolver := &magicDNSResolver{}
+	resolver.SetView(wgotailscale.DNSView{Records: []wgotailscale.DNSRecord{
+		{Name: "host.example.test", Type: "A", Value: "192.0.2.10"},
+		{Name: "host.example.test", Type: "AAAA", Value: "2001:db8::10"},
+	}})
+
+	ips, err := resolver.LookupIP(context.Background(), "ip4", "host.example.test")
+	if err != nil || len(ips) != 1 || !ips[0].Equal(net.IPv4(192, 0, 2, 10)) {
+		t.Fatalf("LookupIP = %v, %v", ips, err)
+	}
+	addrs, err := resolver.LookupIPAddr(context.Background(), "host.example.test")
+	if err != nil || len(addrs) != 2 {
+		t.Fatalf("LookupIPAddr = %v, %v", addrs, err)
+	}
+	hosts, err := resolver.LookupHost(context.Background(), "host.example.test")
+	if err != nil || !slices.Equal(hosts, []string{"192.0.2.10", "2001:db8::10"}) {
+		t.Fatalf("LookupHost = %v, %v", hosts, err)
+	}
+	port, err := resolver.LookupPort(context.Background(), "tcp", "https")
+	if err != nil || port != 443 {
+		t.Fatalf("LookupPort = %d, %v", port, err)
+	}
+
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	for name, lookup := range map[string]func() error{
+		"IP":     func() error { _, err := resolver.LookupIP(canceled, "ip", "host.example.test"); return err },
+		"IPAddr": func() error { _, err := resolver.LookupIPAddr(canceled, "host.example.test"); return err },
+		"Host":   func() error { _, err := resolver.LookupHost(canceled, "host.example.test"); return err },
+	} {
+		if err := lookup(); !errors.Is(err, context.Canceled) {
+			t.Fatalf("Lookup%s canceled error = %v", name, err)
+		}
+	}
+}
+
 func TestMagicDNSResolverTypedRecordsAndMisses(t *testing.T) {
 	resolver := &magicDNSResolver{}
 	resolver.SetView(wgotailscale.DNSView{Records: []wgotailscale.DNSRecord{
