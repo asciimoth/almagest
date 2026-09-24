@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
 	"github.com/asciimoth/gonnect"
 	"github.com/asciimoth/pasta/pasta"
@@ -140,6 +141,94 @@ func TestParseSocksServerUsersKeepsAppliedRemoval(t *testing.T) {
 	}
 	if users[0] != (socksServerUser{id: "user-2", username: "bob", password: "fallback", passwordSecret: "bob-password"}) {
 		t.Fatalf("users[0] = %#v, want bob", users[0])
+	}
+}
+
+func TestSocksServerConfigParsingAndValidationEdges(t *testing.T) {
+	for _, config := range []socksServerConfig{
+		{socksPort: -1}, {socksPort: 65536}, {wsPort: -1}, {wsPort: 65536},
+		{socksHost: "127.0.0.1", socksPort: 1080, wsHost: "127.0.0.1", wsPort: 1080},
+	} {
+		if err := config.validate(); err == nil {
+			t.Fatalf("validate accepted %+v", config)
+		}
+	}
+	if err := (socksServerConfig{}).validate(); err != nil {
+		t.Fatalf("disabled config error = %v", err)
+	}
+	if (socksServerConfig{}).hasListener() || !(socksServerConfig{socksPort: 1}).hasListener() {
+		t.Fatal("hasListener returned an incorrect result")
+	}
+
+	current := defaultSocksServerConfig()
+	fields := []struct {
+		id    string
+		value any
+	}{
+		{id: "socksHost", value: " 127.0.0.1 "}, {id: "socksPort", value: 1081},
+		{id: "wsHost", value: " localhost "}, {id: "wsPort", value: 8080},
+		{id: "wsPath", value: " socket "},
+	}
+	for _, field := range fields {
+		next, ok := socksServerConfigWithFieldValue(current, formular.FieldValidateMessage{
+			Field: formular.FieldRef{FieldID: field.id}, Value: field.value,
+		})
+		if !ok {
+			t.Fatalf("field %q was not recognized", field.id)
+		}
+		current = next
+	}
+	if _, ok := socksServerConfigWithFieldValue(current, formular.FieldValidateMessage{Field: formular.FieldRef{FieldID: "unknown"}}); ok {
+		t.Fatal("unknown field was recognized")
+	}
+	if current.wsPath != "/socket" || current.socksHost != "127.0.0.1" || current.wsHost != "localhost" {
+		t.Fatalf("field values = %+v", current)
+	}
+	if got := socksServerConfigLabel(socksServerConfig{}); got != "disabled" {
+		t.Fatalf("disabled label = %q", got)
+	}
+	if got := socksServerConfigLabel(socksServerConfig{wsPort: 80}); got != "ws "+net.JoinHostPort(DefaultSocksServerHost, "80") {
+		t.Fatalf("WebSocket label = %q", got)
+	}
+
+	rawUsers := []formular.ArrayElementValue{
+		{ID: "same", Template: "user", Values: map[string]any{"username": " alice ", "password": "one"}},
+		{ID: "same", Template: "user", Values: map[string]any{"username": "bob", "passwordSecret": " secret "}},
+		{Template: "user", Values: map[string]any{"username": ""}},
+		{Template: "ignored", Values: map[string]any{"username": "ignored"}},
+	}
+	users, ok := parseSocksServerUsers(rawUsers)
+	if !ok || len(users) != 2 || users[0].id != "same" || users[1].id == "same" {
+		t.Fatalf("parsed users = %#v, %t", users, ok)
+	}
+	if _, ok := parseSocksServerUsers("invalid"); ok {
+		t.Fatal("invalid users value was accepted")
+	}
+
+	config := configer.NewMemory(map[string]any{
+		"users": []any{
+			map[string]any{"username": " alice ", "password": "one"},
+			"invalid",
+			map[string]any{"id": "bob", "username": "bob", "passwordSecret": " secret "},
+		},
+		"commands": map[string]bool{"cmdConnect": false},
+	})
+	users, ok = readSocksServerUsers(config)
+	if !ok || len(users) != 2 || users[0].id != "user-1" {
+		t.Fatalf("read users = %#v, %t", users, ok)
+	}
+	commands, ok := readSocksServerCommands(config)
+	if !ok || commands[protocol.CmdConnect] {
+		t.Fatalf("read commands = %#v, %t", commands, ok)
+	}
+	if got := socksAuthSummary(protocol.AuthInfo{Code: protocol.PassAuthCode, Info: map[string]any{"user": "alice"}}); got != "user:alice" {
+		t.Fatalf("user auth summary = %q", got)
+	}
+	if got := socksAuthSummary(protocol.AuthInfo{Code: protocol.PassAuthCode}); got != "userpass" {
+		t.Fatalf("generic auth summary = %q", got)
+	}
+	if got := socksAuthSummary(protocol.AuthInfo{Code: 99}); got != "99" {
+		t.Fatalf("unknown auth summary = %q", got)
 	}
 }
 

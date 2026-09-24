@@ -3,6 +3,7 @@ package almagest
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -16,6 +17,256 @@ import (
 	"github.com/asciimoth/almagest/lib/logging"
 	"github.com/asciimoth/almagest/lib/storage"
 )
+
+func TestEngineRejectsUnknownWorkspaceAcrossAPI(t *testing.T) {
+	engineAPI, err := BuildEngine(
+		context.Background(), configer.NewMemory(nil), logging.NewDebugLogFactory(1),
+		newEngineTestDebugSystem(), nil, nil, nil, nil,
+		[]pasta.NodeClass{engineBatchNodeClass{}}, nil, false,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = engineAPI.Close() })
+
+	const missing = "missing"
+	engineAPI.RemoveNode(missing, 1)
+	engineAPI.RemoveNodes(missing, []uint64{1})
+	engineAPI.RemoveNodesByClass(missing, "test/EngineBatchNode")
+	engineAPI.RemoveLink(missing, 1)
+	if _, ok := engineAPI.WorkspaceSnapshot(missing); ok {
+		t.Fatal("WorkspaceSnapshot accepted an unknown workspace")
+	}
+	if _, ok := engineAPI.NodeClassSnapshot(missing, "test/EngineBatchNode"); ok {
+		t.Fatal("NodeClassSnapshot accepted an unknown workspace")
+	}
+	if _, ok := engineAPI.NodeSnapshot(missing, 1); ok {
+		t.Fatal("NodeSnapshot accepted an unknown workspace")
+	}
+	if _, ok := engineAPI.PortSnapshot(missing, 1); ok {
+		t.Fatal("PortSnapshot accepted an unknown workspace")
+	}
+	if _, ok := engineAPI.LinkSnapshot(missing, 1); ok {
+		t.Fatal("LinkSnapshot accepted an unknown workspace")
+	}
+	if _, ok := engineAPI.NodeClassLongDescription(missing, "test/EngineBatchNode"); ok {
+		t.Fatal("NodeClassLongDescription accepted an unknown workspace")
+	}
+	if _, err := engineAPI.AddNode(missing, "test/EngineBatchNode", "node"); !errors.Is(err, ErrNoWorkspace) {
+		t.Fatalf("AddNode error = %v, want ErrNoWorkspace", err)
+	}
+	if err := engineAPI.ReplaceNodeWithPlaceholder(missing, 1); !errors.Is(err, ErrNoWorkspace) {
+		t.Fatalf("ReplaceNodeWithPlaceholder error = %v, want ErrNoWorkspace", err)
+	}
+	if _, _, err := engineAPI.AddLink(missing, 1, 2); !errors.Is(err, ErrNoWorkspace) {
+		t.Fatalf("AddLink error = %v, want ErrNoWorkspace", err)
+	}
+	if _, ok := engineAPI.NodeByName(missing, "node"); ok {
+		t.Fatal("NodeByName accepted an unknown workspace")
+	}
+	if engineAPI.PortsConnected(missing, 1, 2) || engineAPI.NodesConnected(missing, 1, 2) {
+		t.Fatal("connection query accepted an unknown workspace")
+	}
+	if _, _, ok := engineAPI.LinkByPorts(missing, 1, 2); ok {
+		t.Fatal("LinkByPorts accepted an unknown workspace")
+	}
+	if got := engineAPI.LinksByNodes(missing, 1, 2); len(got) != 0 {
+		t.Fatalf("LinksByNodes = %#v, want empty", got)
+	}
+	engineAPI.SetNodePosition(missing, 1, "1 2")
+	engineAPI.MoveNodes(missing, map[uint64]string{1: "1 2"})
+	engineAPI.SetNodeName(missing, 1, "node")
+	engineAPI.RemoveNodePopup(missing, 1, 1)
+	engineAPI.RemoveNodePopups(missing, 1)
+	engineAPI.RemoveNodePopupsByType(missing, 1, "test")
+	if got := engineAPI.Copy(missing, []uint64{1}); got != "" {
+		t.Fatalf("Copy = %q, want empty", got)
+	}
+	if got := engineAPI.Paste(missing, "{}"); len(got) != 0 {
+		t.Fatalf("Paste = %#v, want empty", got)
+	}
+	engineAPI.SendInbox(missing, pasta.InboxMessage{})
+	if err := engineAPI.Trigger(missing, 1); !errors.Is(err, ErrNoWorkspace) {
+		t.Fatalf("Trigger error = %v, want ErrNoWorkspace", err)
+	}
+	engineAPI.Undo(missing)
+	engineAPI.Redo(missing)
+	engineAPI.SendNodeFormularMsg(missing, 1, nil)
+
+	engineAPI.Lock()
+	defer engineAPI.Unlock()
+	_ = engineAPI.PoolLocked()
+	_ = engineAPI.AllocIPLocked()
+	_ = engineAPI.AllocSubnetLocked()
+	engineAPI.RemoveNodeLocked(missing, 1)
+	engineAPI.RemoveNodesLocked(missing, []uint64{1})
+	engineAPI.RemoveNodesByClassLocked(missing, "test/EngineBatchNode")
+	engineAPI.RemoveLinkLocked(missing, 1)
+	_, _ = engineAPI.WorkspaceSnapshotLocked(missing)
+	_, _ = engineAPI.NodeClassSnapshotLocked(missing, "test/EngineBatchNode")
+	_, _ = engineAPI.NodeSnapshotLocked(missing, 1)
+	_, _ = engineAPI.PortSnapshotLocked(missing, 1)
+	_, _ = engineAPI.LinkSnapshotLocked(missing, 1)
+	_, _ = engineAPI.NodeClassLongDescriptionLocked(missing, "test/EngineBatchNode")
+	_, _ = engineAPI.AddNodeLocked(missing, "test/EngineBatchNode", "node")
+	_ = engineAPI.ReplaceNodeWithPlaceholderLocked(missing, 1)
+	_, _, _ = engineAPI.AddLinkLocked(missing, 1, 2)
+	_, _ = engineAPI.NodeByNameLocked(missing, "node")
+	_ = engineAPI.PortsConnectedLocked(missing, 1, 2)
+	_ = engineAPI.NodesConnectedLocked(missing, 1, 2)
+	_, _, _ = engineAPI.LinkByPortsLocked(missing, 1, 2)
+	_ = engineAPI.LinksByNodesLocked(missing, 1, 2)
+	engineAPI.SetNodePositionLocked(missing, 1, "1 2")
+	engineAPI.MoveNodesLocked(missing, map[uint64]string{1: "1 2"})
+	engineAPI.SetNodeNameLocked(missing, 1, "node")
+	engineAPI.RemoveNodePopupLocked(missing, 1, 1)
+	engineAPI.RemoveNodePopupsLocked(missing, 1)
+	engineAPI.RemoveNodePopupsByTypeLocked(missing, 1, "test")
+	_ = engineAPI.CopyLocked(missing, []uint64{1})
+	_ = engineAPI.PasteLocked(missing, "{}")
+	engineAPI.SendInboxLocked(missing, pasta.InboxMessage{})
+	_ = engineAPI.TriggerLocked(missing, 1)
+	engineAPI.UndoLocked(missing)
+	engineAPI.RedoLocked(missing)
+	engineAPI.SendNodeFormularMsgLocked(missing, 1, nil)
+}
+
+func TestEngineLockedWorkspaceAPI(t *testing.T) {
+	engineAPI, err := BuildEngine(
+		context.Background(), configer.NewMemory(nil), logging.NewDebugLogFactory(1),
+		newEngineTestDebugSystem(), nil, nil, nil, nil,
+		[]pasta.NodeClass{engineBatchNodeClass{}}, nil, false,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = engineAPI.Close() })
+	implementation := engineAPI.(*engine)
+	implementation.mainWorkspace.Lock()
+	defer implementation.mainWorkspace.Unlock()
+
+	id, err := engineAPI.AddNodeLocked(MainWorkspace, "test/EngineBatchNode", "node")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := engineAPI.WorkspaceSnapshotLocked(MainWorkspace); !ok {
+		t.Fatal("WorkspaceSnapshotLocked did not find main")
+	}
+	if _, ok := engineAPI.NodeClassSnapshotLocked(MainWorkspace, "test/EngineBatchNode"); !ok {
+		t.Fatal("NodeClassSnapshotLocked did not find test class")
+	}
+	if description, ok := engineAPI.NodeClassLongDescriptionLocked(MainWorkspace, "test/EngineBatchNode"); !ok || description == "" {
+		t.Fatalf("NodeClassLongDescriptionLocked = %q, %t", description, ok)
+	}
+	_, ok := engineAPI.NodeSnapshotLocked(MainWorkspace, id)
+	if !ok {
+		t.Fatalf("NodeSnapshotLocked did not find node %d", id)
+	}
+	_, _ = engineAPI.PortSnapshotLocked(MainWorkspace, 0)
+	if got, ok := engineAPI.NodeByNameLocked(MainWorkspace, "node"); !ok || got != id {
+		t.Fatalf("NodeByNameLocked = %d, %t; want %d, true", got, ok, id)
+	}
+	engineAPI.SetNodePositionLocked(MainWorkspace, id, "1 2")
+	engineAPI.MoveNodesLocked(MainWorkspace, map[uint64]string{id: "3 4"})
+	engineAPI.SetNodeNameLocked(MainWorkspace, id, "renamed")
+	engineAPI.RemoveNodePopupLocked(MainWorkspace, id, 999)
+	engineAPI.RemoveNodePopupsLocked(MainWorkspace, id)
+	engineAPI.RemoveNodePopupsByTypeLocked(MainWorkspace, id, "test")
+	clipboard := engineAPI.CopyLocked(MainWorkspace, []uint64{id})
+	if clipboard == "" {
+		t.Fatal("CopyLocked returned empty clipboard")
+	}
+	pasted := engineAPI.PasteLocked(MainWorkspace, clipboard)
+	if len(pasted) != 1 {
+		t.Fatalf("PasteLocked returned %v", pasted)
+	}
+	_ = engineAPI.PortsConnectedLocked(MainWorkspace, 0, 0)
+	_ = engineAPI.NodesConnectedLocked(MainWorkspace, id, pasted[0])
+	_, _, _ = engineAPI.LinkByPortsLocked(MainWorkspace, 0, 0)
+	_ = engineAPI.LinksByNodesLocked(MainWorkspace, id, pasted[0])
+	_, _ = engineAPI.LinkSnapshotLocked(MainWorkspace, 0)
+	engineAPI.SendInboxLocked(MainWorkspace, pasta.InboxMessage{})
+	_ = engineAPI.TriggerLocked(MainWorkspace, id)
+	engineAPI.SendNodeFormularMsgLocked(MainWorkspace, id, nil)
+	if err := engineAPI.SaveConfigLocked(configer.NewMemory(nil)); err != nil {
+		t.Fatalf("SaveConfigLocked error = %v", err)
+	}
+	engineAPI.RemoveLinkLocked(MainWorkspace, 0)
+	engineAPI.RemoveNodesByClassLocked(MainWorkspace, "missing")
+	engineAPI.RemoveNodesLocked(MainWorkspace, pasted)
+	engineAPI.RemoveNodeLocked(MainWorkspace, id)
+}
+
+func TestEngineWorkerAndSubscriptionEdgeAPI(t *testing.T) {
+	engineAPI, err := BuildEngine(
+		context.Background(), configer.NewMemory(nil), logging.NewDebugLogFactory(1),
+		newEngineTestDebugSystem(), nil, nil, nil, nil, nil, nil, false,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = engineAPI.Close() })
+	if _, ok := engineAPI.WorkersSnapshot("missing"); ok {
+		t.Fatal("WorkersSnapshot accepted an unknown workspace")
+	}
+	if snapshot, ok := engineAPI.WorkersSnapshot(MainWorkspace); !ok || snapshot == nil {
+		t.Fatalf("WorkersSnapshot = %#v, %t", snapshot, ok)
+	}
+	if snapshot, ok := engineAPI.WorkersSnapshotLocked(MainWorkspace); !ok || snapshot == nil {
+		t.Fatalf("WorkersSnapshotLocked = %#v, %t", snapshot, ok)
+	}
+	workerID := engineAPI.SubscribeWorkerNotifications(func(WorkerNotification) {})
+	if workerID == 0 {
+		t.Fatal("SubscribeWorkerNotifications returned zero")
+	}
+	engineAPI.RequestWorkerSnapshot(workerID)
+	engineAPI.UnsubscribeWorkerNotificationsLocked(workerID)
+	workerID = engineAPI.SubscribeWorkerNotificationsLocked(func(WorkerNotification) {})
+	engineAPI.RequestWorkerSnapshotLocked(workerID)
+	engineAPI.UnsubscribeWorkerNotifications(workerID)
+	engineAPI.RequestWorkerSnapshot(999)
+	engineAPI.RequestFullSnapshot(999)
+	engineAPI.UnsubscribeNotifications(999)
+	engineAPI.SubscribeNodeMenu(MainWorkspace, 1, 999)
+	engineAPI.UnsubscribeNodeMenu(MainWorkspace, 1, 999)
+	engineAPI.SubscribeNodeMenu("missing", 1, 999)
+	engineAPI.UnsubscribeNodeMenu("missing", 1, 999)
+	engineAPI.Lock()
+	engineAPI.RequestFullSnapshotLocked(999)
+	engineAPI.UnsubscribeNotificationsLocked(999)
+	engineAPI.SubscribeNodeMenuLocked("missing", 1, 999)
+	engineAPI.SubscribeNodeMenuLocked(MainWorkspace, 1, 999)
+	engineAPI.UnsubscribeNodeMenuLocked("missing", 1, 999)
+	engineAPI.UnsubscribeNodeMenuLocked(MainWorkspace, 1, 999)
+	engineAPI.Unlock()
+}
+
+func TestBuiltInNodeClassMetadata(t *testing.T) {
+	classes := packageNodeClasses(&engine{}, true)
+	if len(classes) == 0 {
+		t.Fatal("packageNodeClasses returned no classes")
+	}
+	for _, class := range classes {
+		if class.ClassName() == "" {
+			t.Errorf("%T has an empty class name", class)
+		}
+		if class.ShortDescription() == "" {
+			t.Errorf("%T has an empty short description", class)
+		}
+		if class.LongDescription() == "" {
+			t.Errorf("%T has an empty long description", class)
+		}
+		_ = class.DefaultNodeParams()
+		factory, ok := class.(pasta.NodeClassFactory)
+		if !ok {
+			t.Errorf("%T does not implement NodeClassFactory", class)
+			continue
+		}
+		if node, err := factory.NewNode(nil); err != nil || node == nil {
+			t.Errorf("%T NewNode(nil) = %T, %v", class, node, err)
+		}
+	}
+}
 
 func newEngineTestDebugSystem() *sysnetdebug.System {
 	out := gonnect.NewLoopbackNetwork()

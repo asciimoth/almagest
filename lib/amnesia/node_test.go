@@ -9,6 +9,7 @@ import (
 	"github.com/asciimoth/pasta/pasta"
 
 	"github.com/asciimoth/almagest/lib/nodekit"
+	"github.com/asciimoth/almagest/lib/storage"
 	"github.com/asciimoth/almagest/lib/wireguard"
 )
 
@@ -162,6 +163,96 @@ func TestAmnesiaStorageIDSurvivesConfigRoundTripAndRename(t *testing.T) {
 	if restored.config.storageID != want {
 		t.Fatalf("restored storage ID = %q, want %q", restored.config.storageID, want)
 	}
+}
+
+func TestAmnesiaNodeValidationAndFormattingEdges(t *testing.T) {
+	node := &amnesiaNode{nodeName: "test"}
+	if err := node.validateConnectionSecret(""); err == nil {
+		t.Fatal("empty connection secret was accepted")
+	}
+	if err := node.validateConnectionSecret("connection"); err == nil {
+		t.Fatal("connection secret was accepted without storage")
+	}
+	if err := node.validateGatewayPublicKeySecret(""); err != nil {
+		t.Fatalf("empty gateway key secret error = %v", err)
+	}
+	if err := node.validateGatewayPublicKeySecret("gateway"); err == nil {
+		t.Fatal("gateway key secret was accepted without storage")
+	}
+	node.secrets = &amnesiaTestSecrets{values: map[string]string{
+		"invalid-connection": "not a profile",
+		"empty-gateway":      " ",
+		"gateway":            "public-key",
+	}}
+	if err := node.validateConnectionSecret("invalid-connection"); err == nil {
+		t.Fatal("invalid connection value was accepted")
+	}
+	if err := node.validateGatewayPublicKeySecret("empty-gateway"); err == nil {
+		t.Fatal("empty gateway key value was accepted")
+	}
+	if err := node.validateGatewayPublicKeySecret("gateway"); err != nil {
+		t.Fatalf("gateway key validation error = %v", err)
+	}
+	if got := node.currentNodeName(); got != "test" {
+		t.Fatalf("currentNodeName = %q", got)
+	}
+	if err := formatRuntimeError("prefix", nil); err != nil {
+		t.Fatalf("formatRuntimeError(nil) = %v", err)
+	}
+	if got := amnesiaSubmittedFields(map[string]any{
+		fieldEnabled: true, fieldConnectionSecret: "x", fieldServerCountryCode: "de",
+		fieldConnectEvent: true, nodekit.TLSConfigFieldID: "tls", fieldGatewayURL: "url",
+		fieldGatewayPublicKeySecret: "key", "unknown": true,
+	}); got != "enabled,connectionSecret,serverCountryCode,connectEvent,tlsConfig,gatewayURL,gatewayPublicKeySecret" {
+		t.Fatalf("amnesiaSubmittedFields = %q", got)
+	}
+	if description := (AmnesiaCtrlClass{}).LongDescription(); description == "" {
+		t.Fatal("Amnesia class has an empty long description")
+	}
+}
+
+func TestAmnesiaNodeConfigCommitBranches(t *testing.T) {
+	w := pasta.NewWorkspace(logging.NewDebugLogFactory(128))
+	t.Cleanup(w.Close)
+	class := AmnesiaCtrlClass{}
+	raw, err := class.NewNode(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	node := raw.(*amnesiaNode)
+	node.config.connectionSecret = "connection"
+	if _, err := w.AddNode(node, NodeTypeAmnesiaCtrl, "Amnesia"); err != nil {
+		t.Fatal(err)
+	}
+	if err := node.commitConfig(map[string]any{fieldServerCountryCode: "invalid"}); err != nil {
+		t.Fatal(err)
+	}
+	if node.formError == "" {
+		t.Fatal("invalid config did not set a form error")
+	}
+	if err := node.commitConfig(map[string]any{}); err != nil {
+		t.Fatal(err)
+	}
+	if node.formError != "" {
+		t.Fatalf("unchanged config form error = %q", node.formError)
+	}
+	if err := node.commitConfig(map[string]any{fieldEnabled: false}); err != nil {
+		t.Fatal(err)
+	}
+	if node.config.enabled {
+		t.Fatal("enabled config did not change")
+	}
+	menuID := pasta.NodeMenuID(node.ID)
+	_ = node.OnFormularMsg(formular.FormApplyMessage{MessageBase: formular.MessageBase{MenuID: "wrong"}, BlockID: "config"})
+	_ = node.OnFormularMsg(formular.FormApplyMessage{MessageBase: formular.MessageBase{MenuID: menuID}, BlockID: "wrong"})
+	_ = node.OnFormularMsg(formular.FormApplyMessage{MessageBase: formular.MessageBase{MenuID: menuID}, BlockID: "config", Values: map[string]any{fieldEnabled: false}})
+	_ = node.OnFormularMsg(formular.FieldValidateMessage{MessageBase: formular.MessageBase{MenuID: "wrong"}})
+	_ = node.OnFormularMsg(formular.ButtonPressMessage{MessageBase: formular.MessageBase{MenuID: "wrong"}})
+	_ = node.OnInbox(pasta.InboxMessage{Payload: "ignored"})
+	_ = node.OnInbox(pasta.InboxMessage{Payload: storage.SecretValueChanged{SecretNamePrev: "unrelated", SecretNameNew: "unrelated"}})
+	node.validateConfigField(formular.FieldValidateMessage{
+		Field: formular.FieldRef{FieldID: fieldGatewayPublicKeySecret}, Value: "",
+	})
 }
 
 func amnesiaMenuItem(block formular.Block, id string) (formular.Item, bool) {

@@ -13,6 +13,7 @@ import (
 
 	dnsnodes "github.com/asciimoth/almagest/lib/dns"
 	"github.com/asciimoth/almagest/lib/nodekit"
+	"github.com/asciimoth/almagest/lib/storage"
 	wireguardnodes "github.com/asciimoth/almagest/lib/wireguard"
 )
 
@@ -175,4 +176,69 @@ func TestInteractionMarkdownLinkOnlyAllowsHTTP(t *testing.T) {
 			t.Fatalf("unsafe link %q = %q, %t", raw, got, ok)
 		}
 	}
+}
+
+func TestTailscaleNodeSecretValidationEdges(t *testing.T) {
+	node := &tailscaleNode{nodeName: "test"}
+	if err := node.validateAuthKeySecret(""); err != nil {
+		t.Fatalf("empty optional secret error = %v", err)
+	}
+	if err := node.validateAuthKeySecret("auth"); err == nil {
+		t.Fatal("auth secret was accepted without storage")
+	}
+	if _, err := node.readAuthKey(tailscaleConfig{authKeySecret: "auth"}, "test"); err == nil {
+		t.Fatal("readAuthKey accepted unavailable storage")
+	}
+	if key, err := node.readAuthKey(tailscaleConfig{}, "test"); err != nil || key != "" {
+		t.Fatalf("empty readAuthKey = %q, %v", key, err)
+	}
+	if got := node.currentNodeName(); got != "test" {
+		t.Fatalf("currentNodeName = %q", got)
+	}
+	if description := (TailscaleCtrlClass{}).LongDescription(); description == "" {
+		t.Fatal("Tailscale class has an empty long description")
+	}
+}
+
+func TestTailscaleNodeConfigCommitBranches(t *testing.T) {
+	w := pasta.NewWorkspace(logging.NewDebugLogFactory(128))
+	t.Cleanup(w.Close)
+	class := TailscaleCtrlClass{}
+	raw, err := class.NewNode(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	node := raw.(*tailscaleNode)
+	if _, err := w.AddNode(node, NodeTypeTailscaleCtrl, "Tailscale"); err != nil {
+		t.Fatal(err)
+	}
+	if err := node.commitConfig(map[string]any{fieldControlURL: "ftp://invalid"}); err != nil {
+		t.Fatal(err)
+	}
+	if node.formError == "" {
+		t.Fatal("invalid config did not set a form error")
+	}
+	if err := node.commitConfig(map[string]any{}); err != nil {
+		t.Fatal(err)
+	}
+	if node.formError != "" {
+		t.Fatalf("unchanged config form error = %q", node.formError)
+	}
+	if err := node.commitConfig(map[string]any{fieldEnabled: false}); err != nil {
+		t.Fatal(err)
+	}
+	if node.config.enabled {
+		t.Fatal("enabled config did not change")
+	}
+	menuID := pasta.NodeMenuID(node.ID)
+	_ = node.OnFormularMsg(formular.FormApplyMessage{MessageBase: formular.MessageBase{MenuID: "wrong"}, BlockID: "config"})
+	_ = node.OnFormularMsg(formular.FormApplyMessage{MessageBase: formular.MessageBase{MenuID: menuID}, BlockID: "wrong"})
+	_ = node.OnFormularMsg(formular.FormApplyMessage{MessageBase: formular.MessageBase{MenuID: menuID}, BlockID: "config", Values: map[string]any{fieldEnabled: false}})
+	_ = node.OnFormularMsg(formular.FieldValidateMessage{MessageBase: formular.MessageBase{MenuID: "wrong"}})
+	_ = node.OnFormularMsg(formular.ButtonPressMessage{MessageBase: formular.MessageBase{MenuID: "wrong"}})
+	_ = node.OnInbox(pasta.InboxMessage{Payload: "ignored"})
+	_ = node.OnInbox(pasta.InboxMessage{Payload: storage.SecretValueChanged{SecretNamePrev: "unrelated", SecretNameNew: "unrelated"}})
+	node.validateConfigField(formular.FieldValidateMessage{
+		Field: formular.FieldRef{FieldID: fieldAuthKeySecret}, Value: "",
+	})
 }

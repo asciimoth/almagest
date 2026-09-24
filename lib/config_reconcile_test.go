@@ -327,6 +327,62 @@ func TestEngineReconcileConfigSynchronizesNodeCommentPopups(t *testing.T) {
 	assertPopups("Added config note")
 }
 
+func TestConfigReconcileParserAndPortEdges(t *testing.T) {
+	invalidRoots := []any{
+		[]any{},
+		map[string]any{"": map[string]any{"Class": "test/Class"}},
+		map[string]any{"node": "invalid"},
+		map[string]any{"node": map[string]any{}},
+		map[string]any{"node": map[string]any{"Class": 1}},
+		map[string]any{"node": map[string]any{"Class": "bad class"}},
+		map[string]any{"node": map[string]any{"Class": "test/Class", "Primary": 1}},
+		map[string]any{"node": map[string]any{"Class": "test/Class", "Primary": "bad type"}},
+		map[string]any{"node": map[string]any{"Class": "test/Class", "Pos": 1}},
+		map[string]any{"node": map[string]any{"Class": "test/Class", "Links": "invalid"}},
+		map[string]any{"node": map[string]any{"Class": "test/Class", "Links": []any{1}}},
+	}
+	for i, root := range invalidRoots {
+		if _, _, err := parseConfigReconcileNodes(configer.NewMemory(root)); err == nil {
+			t.Errorf("invalid root %d was accepted: %#v", i, root)
+		}
+	}
+	for _, raw := range []string{
+		"invalid", " -> [target] input", "output -> [] input", "output -> [target] ",
+		"bad\x00port -> [target] input", "output -> [target] bad\x00port",
+	} {
+		if _, err := parseConfigReconcileLink("source", raw); err == nil {
+			t.Errorf("invalid link %q was accepted", raw)
+		}
+	}
+	link, err := parseConfigReconcileLink("source", "output -> [target] input")
+	if err != nil || link.sourceNode != "source" || link.targetNode != "target" {
+		t.Fatalf("valid link = %+v, %v", link, err)
+	}
+
+	node := &configReconcileNode{
+		leftPorts:  map[string]struct{}{"input": {}, "extra": {}},
+		rightPorts: map[string]struct{}{"output": {}, "extra": {}},
+	}
+	class := configReconcileTestClass{}
+	ports := configReconcileInitialPorts(class, true, node)
+	if len(ports) != 6 {
+		t.Fatalf("initial ports = %#v, want two declared and four guessed ports", ports)
+	}
+	ports = configReconcileInitialPorts(class, false, node)
+	if len(ports) != 4 {
+		t.Fatalf("placeholder ports = %#v, want four guessed ports", ports)
+	}
+	if _, _, err := configReconcileLinkPorts(pasta.WorkspaceSnapshot{}, link); err == nil {
+		t.Fatal("missing link endpoint nodes were accepted")
+	}
+	owned := nodeOwnedConfig(map[string]any{
+		"Class": "test/Class", "Primary": "test/type", "Pos": "1 2", "Links": []any{}, "value": 1,
+	})
+	if len(owned) != 1 || owned["value"] != 1 {
+		t.Fatalf("nodeOwnedConfig = %#v", owned)
+	}
+}
+
 func mustParseReconcileConfig(t *testing.T, text string) *hujson.Config {
 	t.Helper()
 	cfg, err := hujson.Parse([]byte(text))
