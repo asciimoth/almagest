@@ -161,6 +161,7 @@ func TestProtectedConfigWebFilters(t *testing.T) {
 		"Admin": {
 			"Web": 8080,
 			"WebPProf": true,
+			"AllowCrossOrigin": true,
 			"WebFilters": {
 				"UIDs": [1000],
 				"GIDs": [1001],
@@ -176,6 +177,9 @@ func TestProtectedConfigWebFilters(t *testing.T) {
 	}
 	if !cfg.Protected.Admin.WebPProf {
 		t.Fatal("Admin.WebPProf = false, want true")
+	}
+	if !cfg.Protected.Admin.AllowCrossOrigin {
+		t.Fatal("Admin.AllowCrossOrigin = false, want true")
 	}
 	if got := cfg.Protected.Admin.WebFilters.UIDs; len(got) != 1 || got[0] != 1000 {
 		t.Fatalf("Admin.WebFilters.UIDs = %v, want [1000]", got)
@@ -381,10 +385,11 @@ func TestProtectedConfigMergeWebFilterArgs(t *testing.T) {
 
 	web := uint16(9090)
 	cfg.Protected.Merge(&args.Args{
-		WebAdmin:                &web,
-		WebAdminFilterUIDs:      []uint32{2000, 2001},
-		WebAdminFilterUsernames: []string{"bob", "carol"},
-		WebAdminPProf:           true,
+		WebAdmin:                 &web,
+		WebAdminFilterUIDs:       []uint32{2000, 2001},
+		WebAdminFilterUsernames:  []string{"bob", "carol"},
+		WebAdminPProf:            true,
+		WebAdminAllowCrossOrigin: true,
 	})
 
 	if got := cfg.Protected.Admin.Web; got != 9090 {
@@ -392,6 +397,9 @@ func TestProtectedConfigMergeWebFilterArgs(t *testing.T) {
 	}
 	if !cfg.Protected.Admin.WebPProf {
 		t.Fatal("Admin.WebPProf = false, want true")
+	}
+	if !cfg.Protected.Admin.AllowCrossOrigin {
+		t.Fatal("Admin.AllowCrossOrigin = false, want true")
 	}
 	if got := cfg.Protected.Admin.WebFilters.UIDs; len(got) != 2 || got[0] != 2000 || got[1] != 2001 {
 		t.Fatalf("Admin.WebFilters.UIDs = %v, want [2000 2001]", got)

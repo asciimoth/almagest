@@ -385,6 +385,9 @@ func (p *ProtectedConfig) Merge(args *args.Args) {
 	if args.WebAdminPProf {
 		p.Admin.WebPProf = true
 	}
+	if args.WebAdminAllowCrossOrigin {
+		p.Admin.AllowCrossOrigin = true
+	}
 	if args.UnixAdmin != nil {
 		p.Admin.Unix = *args.UnixAdmin
 	}
@@ -400,11 +403,12 @@ func (p *ProtectedConfig) Merge(args *args.Args) {
 }
 
 type AdminAPIConfig struct {
-	Web         uint16
-	WebFilters  AdminPeerFiltersConfig
-	WebPProf    bool
-	Unix        string
-	UnixFilters AdminPeerFiltersConfig
+	Web              uint16
+	WebFilters       AdminPeerFiltersConfig
+	WebPProf         bool
+	AllowCrossOrigin bool
+	Unix             string
+	UnixFilters      AdminPeerFiltersConfig
 }
 
 type AdminPeerFiltersConfig struct {

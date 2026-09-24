@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"net/http"
+	"net/url"
+	"strings"
 	"sync"
 
 	"github.com/asciimoth/almagest/bin/api"
@@ -34,8 +36,12 @@ func (a *AdminAPI) serveWebsocket(
 ) {
 	_ = sys
 
+	if !a.webAllowCrossOrigin && !webAdminSameOrigin(r) {
+		http.Error(w, "cross-origin web admin request denied", http.StatusForbidden)
+		return
+	}
 	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
-		OriginPatterns: []string{"localhost:*", "127.0.0.1:*", "[::1]:*"},
+		InsecureSkipVerify: a.webAllowCrossOrigin,
 	})
 	if err != nil {
 		golog.Debugf("WebSocket accept failed: %v", err)
@@ -95,6 +101,22 @@ func (a *AdminAPI) serveWebsocket(
 			return
 		}
 	}
+}
+
+func webAdminSameOrigin(r *http.Request) bool {
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		return true
+	}
+	u, err := url.Parse(origin)
+	if err != nil || u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" {
+		return false
+	}
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+	return strings.EqualFold(u.Scheme, scheme) && strings.EqualFold(u.Host, r.Host)
 }
 
 func (s *apiSession) sendProjectVersionStatus() error {

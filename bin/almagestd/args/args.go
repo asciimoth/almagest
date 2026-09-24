@@ -39,11 +39,12 @@ type Args struct {
 	LogCacheError *int `arg:"--log-cache-error,env:ALMAGEST_LOG_CACHE_ERROR" help:"daemon error log cache size"`
 	LogCacheFatal *int `arg:"--log-cache-fatal,env:ALMAGEST_LOG_CACHE_FATAL" help:"daemon fatal log cache size"`
 
-	WebAdmin                *uint16  `arg:"-w,--web,env:ALMAGEST_WEB_ADMIN" help:"port to run local web admin panel on"`
-	WebAdminFilterUIDs      []uint32 `arg:"--web-filter-uid,separate,env:ALMAGEST_WEB_ADMIN_FILTER_UIDS" help:"allowed web admin peer owner UID; repeat flag or comma-separate env values"`
-	WebAdminFilterGIDs      []uint32 `arg:"--web-filter-gid,separate,env:ALMAGEST_WEB_ADMIN_FILTER_GIDS" help:"allowed web admin peer owner GID; repeat flag or comma-separate env values"`
-	WebAdminFilterUsernames []string `arg:"--web-filter-user,separate,env:ALMAGEST_WEB_ADMIN_FILTER_USERS" help:"allowed web admin peer owner username; repeat flag or comma-separate env values"`
-	WebAdminPProf           bool     `arg:"--web-pprof,env:ALMAGEST_WEB_ADMIN_PPROF" help:"enable net/http/pprof handlers on the web admin listener under /debug/pprof/"`
+	WebAdmin                 *uint16  `arg:"-w,--web,env:ALMAGEST_WEB_ADMIN" help:"port to run local web admin panel on"`
+	WebAdminFilterUIDs       []uint32 `arg:"--web-filter-uid,separate,env:ALMAGEST_WEB_ADMIN_FILTER_UIDS" help:"allowed web admin peer owner UID; repeat flag or comma-separate env values"`
+	WebAdminFilterGIDs       []uint32 `arg:"--web-filter-gid,separate,env:ALMAGEST_WEB_ADMIN_FILTER_GIDS" help:"allowed web admin peer owner GID; repeat flag or comma-separate env values"`
+	WebAdminFilterUsernames  []string `arg:"--web-filter-user,separate,env:ALMAGEST_WEB_ADMIN_FILTER_USERS" help:"allowed web admin peer owner username; repeat flag or comma-separate env values"`
+	WebAdminPProf            bool     `arg:"--web-pprof,env:ALMAGEST_WEB_ADMIN_PPROF" help:"enable net/http/pprof handlers on the web admin listener under /debug/pprof/"`
+	WebAdminAllowCrossOrigin bool     `arg:"--web-allow-cross-origin,env:ALMAGEST_WEB_ADMIN_ALLOW_CROSS_ORIGIN" help:"allow any browser origin to use or embed the web admin; unsafe"`
 
 	UnixAdmin                *string  `arg:"--unix,env:ALMAGEST_UNIX_ADMIN" help:"unix socket path for local admin API; empty disables it"`
 	TmpUnixAdmin             bool     `arg:"--tmp-unix-admin,env:ALMAGEST_TMP_UNIX_ADMIN" help:"create the local admin API unix socket at a random temporary alm-sock-* path"`

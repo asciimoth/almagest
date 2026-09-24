@@ -68,14 +68,64 @@ func TestWebsocketAdminPingAndInvalidMessages(t *testing.T) {
 	}
 }
 
-func TestWebsocketRejectsDisallowedOrigin(t *testing.T) {
-	admin := &AdminAPI{}
-	request := httptest.NewRequest(http.MethodGet, "/api/ws", nil)
-	request.Header.Set("Origin", "https://example.invalid")
-	recorder := httptest.NewRecorder()
-	admin.serveWebsocket(context.Background(), recorder, request, nil, nil, nil)
-	if recorder.Code == http.StatusSwitchingProtocols {
-		t.Fatal("serveWebsocket accepted a disallowed origin")
+func TestWebsocketOriginPolicy(t *testing.T) {
+	for _, test := range []struct {
+		name             string
+		allowCrossOrigin bool
+		origin           func(string) string
+		wantAccepted     bool
+	}{
+		{
+			name:         "same origin",
+			origin:       func(serverURL string) string { return serverURL },
+			wantAccepted: true,
+		},
+		{
+			name:   "different loopback port",
+			origin: func(string) string { return "http://127.0.0.1:1" },
+		},
+		{
+			name: "different scheme",
+			origin: func(serverURL string) string {
+				return "https" + strings.TrimPrefix(serverURL, "http")
+			},
+		},
+		{
+			name:             "cross origin enabled",
+			allowCrossOrigin: true,
+			origin:           func(string) string { return "https://example.invalid" },
+			wantAccepted:     true,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			admin := &AdminAPI{webAllowCrossOrigin: test.allowCrossOrigin}
+			mux := http.NewServeMux()
+			admin.registerAPIHandlers(t.Context(), mux, nil, nil, nil)
+			server := httptest.NewServer(mux)
+			defer server.Close()
+
+			url := "ws" + strings.TrimPrefix(server.URL, "http") + "/api/ws"
+			conn, response, err := websocket.Dial(t.Context(), url, &websocket.DialOptions{
+				HTTPHeader: http.Header{"Origin": []string{test.origin(server.URL)}},
+			})
+			if response != nil && response.Body != nil {
+				defer func() { _ = response.Body.Close() }()
+			}
+			if test.wantAccepted {
+				if err != nil {
+					t.Fatalf("Dial() error = %v, want accepted origin", err)
+				}
+				defer conn.CloseNow() //nolint:errcheck
+				return
+			}
+			if err == nil {
+				conn.CloseNow() //nolint:errcheck
+				t.Fatal("Dial() accepted a cross-origin request")
+			}
+			if response == nil || response.StatusCode != http.StatusForbidden {
+				t.Fatalf("Dial() response = %#v, want HTTP 403", response)
+			}
+		})
 	}
 }
 

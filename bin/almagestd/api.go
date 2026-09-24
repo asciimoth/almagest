@@ -26,11 +26,12 @@ import (
 var webStatic embed.FS
 
 type AdminAPI struct {
-	webListener  net.Listener
-	webServer    *http.Server
-	webPProf     bool
-	unixListener net.Listener
-	unixPath     string
+	webListener         net.Listener
+	webServer           *http.Server
+	webPProf            bool
+	webAllowCrossOrigin bool
+	unixListener        net.Listener
+	unixPath            string
 
 	projectVersionStatus  api.ProjectVersionStatus
 	configAutosaver       *configAutosaver
@@ -123,7 +124,7 @@ func (a *AdminAPI) Run(
 		}
 
 		server := &http.Server{
-			Handler:           mux,
+			Handler:           webAdminOriginPolicy(mux, a.webAllowCrossOrigin),
 			ReadHeaderTimeout: 5 * time.Second,
 		}
 		a.webServer = server
@@ -798,6 +799,10 @@ func PrepareAdminAPI(cfg *Config) (*AdminAPI, error) {
 		}
 		api.webListener = listener
 		api.webPProf = cfg.Protected.Admin.WebPProf
+		api.webAllowCrossOrigin = cfg.Protected.Admin.AllowCrossOrigin
+		if api.webAllowCrossOrigin {
+			golog.Warn("Web admin cross-origin access is enabled; any website opened by the user can access the admin API")
+		}
 		if api.webPProf {
 			golog.Warn("Web admin pprof endpoint is enabled on /debug/pprof/")
 		}
@@ -811,6 +816,22 @@ func PrepareAdminAPI(cfg *Config) (*AdminAPI, error) {
 		api.unixPath = cfg.Protected.Admin.Unix
 	}
 	return &api, nil
+}
+
+func webAdminOriginPolicy(next http.Handler, allowCrossOrigin bool) http.Handler {
+	if allowCrossOrigin {
+		return next
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Security-Policy", "frame-ancestors 'none'")
+		w.Header().Set("Cross-Origin-Resource-Policy", "same-origin")
+		w.Header().Set("X-Frame-Options", "DENY")
+		if !webAdminSameOrigin(r) {
+			http.Error(w, "cross-origin web admin request denied", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func listenWebAdmin(address string, filters AdminPeerFiltersConfig) (net.Listener, error) {

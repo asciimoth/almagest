@@ -42,6 +42,11 @@
           "default": false,
           "description": "Enable Go net/http/pprof handlers on the web admin listener under /debug/pprof/. Requires Admin.Web to be non-zero. Command-line --web-pprof / ALMAGEST_WEB_ADMIN_PPROF can enable this value."
         },
+        "AllowCrossOrigin": {
+          "type": "boolean",
+          "default": false,
+          "description": "Allow any browser origin to connect to the web admin API and embed the admin panel. This is unsafe because the web admin API has no browser authentication. Command-line --web-allow-cross-origin / ALMAGEST_WEB_ADMIN_ALLOW_CROSS_ORIGIN can enable this value."
+        },
         "Unix": {
           "type": "string",
           "default": "/run/almagest/admin.sock",

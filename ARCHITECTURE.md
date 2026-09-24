@@ -267,6 +267,9 @@ Important flags and env:
   peer owner GIDs.
 - `--web-filter-user`, `ALMAGEST_WEB_ADMIN_FILTER_USERS`: allowed web admin
   peer owner usernames.
+- `--web-allow-cross-origin`, `ALMAGEST_WEB_ADMIN_ALLOW_CROSS_ORIGIN`: allow
+  any browser origin to access or embed the web admin. This is unsafe and is
+  disabled by default.
 - `--file-storage`, `ALMAGEST_FILE_STORAGE`: almagestd file storage directory.
 - `--tmp-file-storage`, `ALMAGEST_TMP_FILE_STORAGE`: create random temporary
   file storage prefixed with `alm-store-` and remove it on exit.
@@ -285,6 +288,14 @@ config currently includes read-only daemon settings such as `Admin.Web`,
 memory. When `--stdin` is used, the stdin config may include those protected
 settings under a top-level `Protected` key instead of using a separate protected
 config file.
+
+The web admin rejects requests with a different browser origin by default. It
+also sends browser headers that prevent other origins from embedding the panel
+or loading its resources. Origin-less clients, including `almagest-cli`, are
+not affected.
+Set protected `Admin.AllowCrossOrigin` or use `--web-allow-cross-origin` to
+disable these browser protections. This setting allows every origin and is not
+an authentication mechanism.
 
 System integration is selected from `Protected.System.Type`:
 

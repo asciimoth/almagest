@@ -51,6 +51,33 @@ func TestLogWorkersFlag(t *testing.T) {
 	}
 }
 
+func TestWebAdminAllowCrossOriginFlagAndEnvironment(t *testing.T) {
+	var fromFlag Args
+	parser, err := arg.NewParser(arg.Config{IgnoreEnv: true, Out: new(bytes.Buffer)}, &fromFlag)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := parser.Parse([]string{"--web-allow-cross-origin"}); err != nil {
+		t.Fatalf("Parse(--web-allow-cross-origin): %v", err)
+	}
+	if !fromFlag.WebAdminAllowCrossOrigin {
+		t.Fatal("WebAdminAllowCrossOrigin = false, want true from flag")
+	}
+
+	t.Setenv("ALMAGEST_WEB_ADMIN_ALLOW_CROSS_ORIGIN", "true")
+	var fromEnvironment Args
+	parser, err = arg.NewParser(arg.Config{Out: new(bytes.Buffer)}, &fromEnvironment)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := parser.Parse(nil); err != nil {
+		t.Fatalf("Parse with ALMAGEST_WEB_ADMIN_ALLOW_CROSS_ORIGIN: %v", err)
+	}
+	if !fromEnvironment.WebAdminAllowCrossOrigin {
+		t.Fatal("WebAdminAllowCrossOrigin = false, want true from environment")
+	}
+}
+
 func TestStartupSnapshotFlagsAndEnvironment(t *testing.T) {
 	for _, test := range []struct {
 		name string

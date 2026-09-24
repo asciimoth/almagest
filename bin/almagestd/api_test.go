@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"sync"
@@ -67,6 +68,61 @@ func TestPrepareAdminAPIAndWebListeners(t *testing.T) {
 	}
 	if err := listener.Close(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestWebAdminOriginPolicy(t *testing.T) {
+	for _, test := range []struct {
+		name        string
+		allow       bool
+		origin      string
+		wantHeaders bool
+		wantStatus  int
+	}{
+		{name: "protected", wantHeaders: true, wantStatus: http.StatusNoContent},
+		{
+			name:        "cross origin denied",
+			origin:      "https://example.invalid",
+			wantHeaders: true,
+			wantStatus:  http.StatusForbidden,
+		},
+		{
+			name:       "cross origin enabled",
+			allow:      true,
+			origin:     "https://example.invalid",
+			wantStatus: http.StatusNoContent,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusNoContent)
+			})
+			recorder := httptest.NewRecorder()
+			request := httptest.NewRequest(http.MethodGet, "/", nil)
+			if test.origin != "" {
+				request.Header.Set("Origin", test.origin)
+			}
+			webAdminOriginPolicy(next, test.allow).ServeHTTP(
+				recorder,
+				request,
+			)
+			if recorder.Code != test.wantStatus {
+				t.Errorf("status = %d, want %d", recorder.Code, test.wantStatus)
+			}
+			for name, value := range map[string]string{
+				"Content-Security-Policy":      "frame-ancestors 'none'",
+				"Cross-Origin-Resource-Policy": "same-origin",
+				"X-Frame-Options":              "DENY",
+			} {
+				got := recorder.Header().Get(name)
+				if test.wantHeaders && got != value {
+					t.Errorf("%s = %q, want %q", name, got, value)
+				}
+				if !test.wantHeaders && got != "" {
+					t.Errorf("%s = %q, want empty", name, got)
+				}
+			}
+		})
 	}
 }
 
