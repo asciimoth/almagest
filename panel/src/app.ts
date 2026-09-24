@@ -452,6 +452,7 @@ const dnsExpandedCaches = new Set<string>();
 const dnsKeysByCache = new Map<string, DNSKeysSnapshot>();
 const dnsKeySubscriptions = new Map<string, number>();
 const dnsKeySubscribePending = new Set<string>();
+const dnsKeySubscribeFailed = new Set<string>();
 let tlsSubscriptionID = 0;
 let tlsSubscribePending = false;
 let tlsReloadOSCertsPending = false;
@@ -471,6 +472,7 @@ const kvExpandedNodes = new Set<string>();
 const kvEntriesByNode = new Map<string, KVEntriesSnapshot>();
 const kvEntrySubscriptions = new Map<string, number>();
 const kvEntrySubscribePending = new Set<string>();
+const kvEntrySubscribeFailed = new Set<string>();
 const kvPendingStoreSnapshots = new Map<number, KVStoresSnapshot>();
 const kvPendingEntrySnapshots = new Map<number, KVEntriesSnapshot>();
 const kvPendingValueSnapshots = new Map<number, KVValueSnapshot>();
@@ -2698,6 +2700,7 @@ function handleDNSEvent(method: string, payload: unknown): void {
 // locally for quick return, but only hold backend subscriptions while the DNS
 // tab is active and while a cache row is visibly expanded.
 function activateDNSPanel(): void {
+  dnsKeySubscribeFailed.clear();
   renderDNS();
   restoreDNSScrollState();
   void ensureDNSCacheSubscription();
@@ -2718,6 +2721,7 @@ function deactivateDNSPanel(): void {
     void tryBackend("dnsUnsubscribe", { subscriptionID: id });
   }
   dnsKeySubscriptions.clear();
+  dnsKeySubscribeFailed.clear();
 }
 
 async function ensureDNSCacheSubscription(): Promise<void> {
@@ -2749,6 +2753,7 @@ function applyDNSCacheChangeToState(change: DNSCacheChange): void {
   const nodeKey = dnsCacheNodeKey(change.name);
   dnsExpandedCaches.delete(nodeKey);
   dnsKeysByCache.delete(nodeKey);
+  dnsKeySubscribeFailed.delete(nodeKey);
   const subscriptionID = dnsKeySubscriptions.get(nodeKey);
   if (subscriptionID) void tryBackend("dnsUnsubscribe", { subscriptionID });
   dnsKeySubscriptions.delete(nodeKey);
@@ -2814,7 +2819,9 @@ function renderDNSCacheBody(cache: string, nodeKey: string): HTMLElement {
   body.append(renderDNSCacheToolbar(cache));
   const snapshot = dnsKeysByCache.get(nodeKey);
   if (!snapshot) {
-    body.append(renderKVLoading());
+    body.append(dnsKeySubscribeFailed.has(nodeKey)
+      ? textElement("p", "DNS cache is unavailable.", "kv-subtree-missing")
+      : renderKVLoading());
     return body;
   }
   if (!snapshot.exists) {
@@ -3081,6 +3088,7 @@ async function runDNSMutation<M extends DNSMutationMethod>(
 }
 
 function toggleDNSCache(nodeKey: string): void {
+  dnsKeySubscribeFailed.delete(nodeKey);
   if (dnsExpandedCaches.has(nodeKey)) {
     dnsExpandedCaches.delete(nodeKey);
   } else {
@@ -3098,7 +3106,11 @@ function syncDNSKeySubscriptions(): void {
     void tryBackend("dnsUnsubscribe", { subscriptionID: id });
   }
   for (const nodeKey of desired) {
-    if (!dnsKeySubscriptions.has(nodeKey) && !dnsKeySubscribePending.has(nodeKey)) {
+    if (
+      !dnsKeySubscriptions.has(nodeKey) &&
+      !dnsKeySubscribePending.has(nodeKey) &&
+      !dnsKeySubscribeFailed.has(nodeKey)
+    ) {
       void subscribeDNSKeys(nodeKey);
     }
   }
@@ -3111,10 +3123,12 @@ async function subscribeDNSKeys(nodeKey: string): Promise<void> {
   const response = await tryBackend("dnsSubscribeKeys", { cache: ref.cache });
   dnsKeySubscribePending.delete(nodeKey);
   if (!response) {
+    dnsKeySubscribeFailed.add(nodeKey);
     notifyError(`Failed to subscribe to DNS cache ${ref.cache}.`, "DNS unavailable");
     renderDNS();
     return;
   }
+  dnsKeySubscribeFailed.delete(nodeKey);
   const desired = activeTab === "dns" && desiredDNSKeySubscriptionKeys(dnsCaches, dnsExpandedCaches).has(nodeKey);
   if (!desired) {
     if (response.subscription_id) void tryBackend("dnsUnsubscribe", { subscriptionID: response.subscription_id });
@@ -4610,6 +4624,7 @@ function handleKVEvent(method: string, payload: unknown): void {
 // snapshots stay in memory for quick return, but every live backend
 // subscription is released when the user leaves the KV tab.
 function activateKVPanel(): void {
+  kvEntrySubscribeFailed.clear();
   renderKV();
   restoreKVScrollState();
   void ensureKVStoreSubscription();
@@ -4630,6 +4645,7 @@ function deactivateKVPanel(): void {
     void tryBackend("kvUnsubscribe", { subscriptionID: id });
   }
   kvEntrySubscriptions.clear();
+  kvEntrySubscribeFailed.clear();
   kvPendingStoreSnapshots.clear();
   kvPendingEntrySnapshots.clear();
   kvPendingValueSnapshots.clear();
@@ -4729,7 +4745,9 @@ function renderKVNodeBody(store: KVStoreInfo, path: string[], nodeKey: string): 
   body.append(renderKVPathToolbar(store, path, nodeKey));
   const snapshot = kvEntriesByNode.get(nodeKey);
   if (!snapshot) {
-    body.append(renderKVLoading());
+    body.append(kvEntrySubscribeFailed.has(nodeKey)
+      ? textElement("p", "KV subtree is unavailable.", "kv-subtree-missing")
+      : renderKVLoading());
     return body;
   }
   if (!snapshot.exists) {
@@ -4951,6 +4969,7 @@ function closeKVForm(): void {
 }
 
 function toggleKVNode(nodeKey: string): void {
+  kvEntrySubscribeFailed.delete(nodeKey);
   if (kvExpandedNodes.has(nodeKey)) {
     kvExpandedNodes.delete(nodeKey);
   } else {
@@ -5047,7 +5066,11 @@ function syncKVEntrySubscriptions(): void {
     void tryBackend("kvUnsubscribe", { subscriptionID: id });
   }
   for (const nodeKey of desired) {
-    if (!kvEntrySubscriptions.has(nodeKey) && !kvEntrySubscribePending.has(nodeKey)) {
+    if (
+      !kvEntrySubscriptions.has(nodeKey) &&
+      !kvEntrySubscribePending.has(nodeKey) &&
+      !kvEntrySubscribeFailed.has(nodeKey)
+    ) {
       void subscribeKVEntries(nodeKey);
     }
   }
@@ -5063,11 +5086,13 @@ async function subscribeKVEntries(nodeKey: string): Promise<void> {
   });
   kvEntrySubscribePending.delete(nodeKey);
   if (!response) {
+    kvEntrySubscribeFailed.add(nodeKey);
     if (!kvEntrySubscribePending.size) kvPendingEntrySnapshots.clear();
     notifyError(`Failed to subscribe to ${kvPathLabel(ref.store, ref.path)}.`, "KV unavailable");
     renderKV();
     return;
   }
+  kvEntrySubscribeFailed.delete(nodeKey);
   const desired = activeTab === "kv" && desiredKVEntrySubscriptionKeys(kvStores, kvExpandedNodes, kvEntriesByNode).has(nodeKey);
   if (!desired) {
     kvPendingEntrySnapshots.delete(response.subscription_id);
