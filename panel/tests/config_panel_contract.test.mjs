@@ -11,6 +11,7 @@ test("config tab provides a HuJSON editor without a protected config field", () 
   const panel = dom.window.document.querySelector("[data-panel='config']");
 
   assert.notEqual(panel?.querySelector("#config-editor"), null);
+  assert.equal(panel?.querySelector("#config-highlight")?.getAttribute("aria-hidden"), "true");
   assert.notEqual(panel?.querySelector("#config-reload"), null);
   assert.notEqual(panel?.querySelector("#config-apply"), null);
   assert.match(panel?.textContent ?? "", /Protected daemon config is never available here/);

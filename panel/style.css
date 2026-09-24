@@ -540,21 +540,78 @@ h1 {
   flex: 0 0 auto;
 }
 
-#config-editor {
-  width: 100%;
+.config-editor-shell {
+  position: relative;
   min-width: 0;
   min-height: 0;
-  resize: none;
+}
+
+#config-highlight,
+#config-editor {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
   border: 1px solid var(--surface1);
   border-radius: 6px;
-  outline: none;
-  background: var(--mantle);
-  color: var(--text);
   padding: 12px;
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   font-size: 13px;
   line-height: 1.5;
   tab-size: 2;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  overflow: auto;
+}
+
+#config-highlight {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  margin: 0;
+  background: var(--mantle);
+  color: var(--text);
+  pointer-events: none;
+  scrollbar-color: transparent transparent;
+}
+
+#config-editor {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  resize: none;
+  outline: none;
+  background: transparent;
+  color: transparent;
+  caret-color: var(--text);
+}
+
+#config-editor::selection {
+  background: color-mix(in srgb, var(--blue), transparent 62%);
+}
+
+.hujson-comment {
+  color: var(--subtext);
+}
+
+.hujson-key {
+  color: var(--blue);
+}
+
+.hujson-string {
+  color: var(--green);
+}
+
+.hujson-number {
+  color: var(--yellow);
+}
+
+.hujson-keyword {
+  color: var(--mauve);
+}
+
+.hujson-punctuation {
+  color: var(--subtext);
 }
 
 #config-editor:focus {
@@ -562,8 +619,7 @@ h1 {
 }
 
 #config-editor:disabled {
-  color: var(--subtext);
-  opacity: 0.8;
+  cursor: default;
 }
 
 .graph-panel {

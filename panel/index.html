@@ -101,7 +101,10 @@
               <button id="config-apply" class="primary" type="button">Apply config</button>
             </div>
           </header>
-          <textarea id="config-editor" aria-label="Editable HuJSON config" autocomplete="off" autocapitalize="off" spellcheck="false"></textarea>
+          <div class="config-editor-shell">
+            <pre id="config-highlight" aria-hidden="true"></pre>
+            <textarea id="config-editor" aria-label="Editable HuJSON config" autocomplete="off" autocapitalize="off" spellcheck="false"></textarea>
+          </div>
           <footer class="config-footer">
             <span id="config-status">Open this tab to load the editable config.</span>
           </footer>

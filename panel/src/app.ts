@@ -217,6 +217,7 @@ import {
   type TLSSubscribeResponse,
 } from "./response_model.js";
 import { NotificationCenter, type NotificationTone } from "./notification_center.js";
+import { renderHuJSONHighlight } from "./hujson_highlight.js";
 
 const SECRET_NODE_AUTOCOMPLETE_LIMIT = 8;
 const TLS_CERT_OPENSSL_COMMAND = [
@@ -517,6 +518,7 @@ const el = {
   ps: document.querySelector<HTMLElement>("#ps-list")!,
   logsPanel: document.querySelector<HTMLElement>("[data-panel='logs']")!,
   logs: document.querySelector<HTMLElement>("#logs-list")!,
+  configHighlight: document.querySelector<HTMLElement>("#config-highlight")!,
   configEditor: document.querySelector<HTMLTextAreaElement>("#config-editor")!,
   configReload: document.querySelector<HTMLButtonElement>("#config-reload")!,
   configApply: document.querySelector<HTMLButtonElement>("#config-apply")!,
@@ -5491,6 +5493,9 @@ async function loadConfig(): Promise<void> {
     configSnapshot = next;
     configDraft = next.text;
     el.configEditor.value = next.text;
+    // Textareas normalize CRLF and bare CR to LF. Highlight the normalized
+    // value so every colored glyph stays aligned with the editable text.
+    renderHuJSONHighlight(el.configHighlight, el.configEditor.value);
     el.configStatus.textContent = next.read_only
       ? "This daemon started with a read-only config."
       : `Loaded revision ${shortConfigRevision(next.revision)}.`;
@@ -5516,6 +5521,7 @@ async function applyConfig(): Promise<void> {
     configSnapshot = response.snapshot;
     configDraft = response.snapshot.text;
     el.configEditor.value = response.snapshot.text;
+    renderHuJSONHighlight(el.configHighlight, el.configEditor.value);
     el.configStatus.textContent = configChangeSummary(response.changes, response.snapshot.revision);
     notifySuccess(el.configStatus.textContent, "Config applied");
   } catch (error) {
@@ -6047,10 +6053,15 @@ function wireUI(): void {
   el.kvPanel.addEventListener("scroll", rememberKVScrollState);
   el.configEditor.addEventListener("input", () => {
     configDraft = el.configEditor.value;
+    renderHuJSONHighlight(el.configHighlight, configDraft);
     updateConfigControls();
     el.configStatus.textContent = configDraft === configSnapshot?.text
       ? `Loaded revision ${shortConfigRevision(configSnapshot.revision)}.`
       : "Config has unapplied changes.";
+  });
+  el.configEditor.addEventListener("scroll", () => {
+    el.configHighlight.scrollTop = el.configEditor.scrollTop;
+    el.configHighlight.scrollLeft = el.configEditor.scrollLeft;
   });
   el.configReload.addEventListener("click", () => void loadConfig());
   el.configApply.addEventListener("click", () => void applyConfig());
