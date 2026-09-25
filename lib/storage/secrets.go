@@ -32,6 +32,24 @@ type SecretsStorage interface {
 	NewSecret(sec Secret, node string) (key string, err error)
 }
 
+// GeneratedSecretsStorage manages generated secrets until their selectors are
+// durable. Implementations must keep recovery metadata durable. They must
+// delete a key only when it is mutable and its allow list contains exactly
+// node. Deletion must be idempotent when the key does not exist.
+type GeneratedSecretsStorage interface {
+	SecretsStorage
+	// NewGeneratedSecret creates or returns the uncommitted secret identified by
+	// owner for this node. Owner is an opaque, stable identifier within a node.
+	NewGeneratedSecret(sec Secret, node, owner string) (key string, err error)
+	// RecoverGeneratedSecret returns an uncommitted generated secret. An empty
+	// key and nil error mean that no matching secret exists.
+	RecoverGeneratedSecret(owner, node string) (key string, sec Secret, err error)
+	// CommitGeneratedSecret removes crash-recovery metadata after the node
+	// configuration that contains key is durable.
+	CommitGeneratedSecret(key, node string) error
+	DeleteGeneratedSecret(key, node string) error
+}
+
 // SecretValueChanged is a pasta.InboxMessage payload sent to a node when a
 // secret it previously fetched changes, is deleted, or is renamed.
 //

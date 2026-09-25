@@ -1,0 +1,10 @@
+{
+	"Admin": {
+		"Web": 0,
+		"Unix": "%E2E_ADMIN_SOCK%",
+	},
+	// Empty protected executable fields make tor-driver discover Tor in PATH.
+	"Experimental": {
+		"TorDriver": {},
+	},
+}

@@ -6,12 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/asciimoth/almagest/lib/storage"
 	"slices"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/asciimoth/almagest/bin/api"
+	"github.com/asciimoth/almagest/lib/storage"
 	"github.com/asciimoth/pasta/pasta"
 	"github.com/kataras/golog"
 	"go.etcd.io/bbolt"
@@ -36,8 +36,9 @@ type secretChange struct {
 // secrets/<key> value. Values are UTF-8 strings because the public admin API and
 // lib.Secret both expose secrets as strings.
 type secretRecord struct {
-	Value string   `json:"value,omitempty"`
-	Nodes []string `json:"nodes,omitempty"`
+	Value          string   `json:"value,omitempty"`
+	Nodes          []string `json:"nodes,omitempty"`
+	GeneratedOwner string   `json:"generatedOwner,omitempty"`
 }
 
 // immutableSecret stores one protected-config or environment-backed entry.
@@ -111,6 +112,166 @@ func (m *bboltKVManager) NewSecret(sec storage.Secret, node string) (string, err
 		}
 	}
 	return "", fmt.Errorf("%w: could not generate an unused secret key", storage.ErrSecretConflict)
+}
+
+func (m *bboltKVManager) NewGeneratedSecret(sec storage.Secret, node, owner string) (string, error) {
+	if !validSecretNodeName(node) || !validGeneratedSecretOwner(owner) {
+		return "", storage.ErrSecretInvalidName
+	}
+	if !utf8.ValidString(sec.Value) {
+		return "", storage.ErrSecretInvalidValue
+	}
+	record := secretRecord{Value: sec.Value, Nodes: []string{node}, GeneratedOwner: owner}
+	for range 64 {
+		key, err := randomSecretKey()
+		if err != nil {
+			return "", err
+		}
+		if _, immutable := m.immutableSecret(key); immutable {
+			continue
+		}
+		selected := ""
+		created := false
+		err = mapBboltSecretError(m.db.Update(func(tx *bbolt.Tx) error {
+			bucket, bucketErr := tx.CreateBucketIfNotExists([]byte(secretsBucketName))
+			if bucketErr != nil {
+				return bucketErr
+			}
+			cursor := bucket.Cursor()
+			for existingKey, raw := cursor.First(); existingKey != nil; existingKey, raw = cursor.Next() {
+				existing, decodeErr := decodeSecretRecord(raw)
+				if decodeErr != nil {
+					return decodeErr
+				}
+				if existing.GeneratedOwner == owner && len(existing.Nodes) == 1 && existing.Nodes[0] == node {
+					selected = string(existingKey)
+					return nil
+				}
+			}
+			if bucket.Get([]byte(key)) != nil {
+				return nil
+			}
+			raw, encodeErr := encodeSecretRecord(record)
+			if encodeErr != nil {
+				return encodeErr
+			}
+			if putErr := bucket.Put([]byte(key), raw); putErr != nil {
+				return putErr
+			}
+			selected = key
+			created = true
+			return nil
+		}))
+		if err != nil {
+			return "", err
+		}
+		if selected == "" {
+			continue
+		}
+		if created {
+			m.notifySecretChange(secretChange{kind: secretChangeUpsert, key: selected})
+		}
+		return selected, nil
+	}
+	return "", fmt.Errorf("%w: could not generate an unused secret key", storage.ErrSecretConflict)
+}
+
+func (m *bboltKVManager) RecoverGeneratedSecret(owner, node string) (string, storage.Secret, error) {
+	if !validSecretNodeName(node) || !validGeneratedSecretOwner(owner) {
+		return "", storage.Secret{}, storage.ErrSecretInvalidName
+	}
+	var key string
+	var secret storage.Secret
+	err := mapBboltSecretError(m.db.View(func(tx *bbolt.Tx) error {
+		bucket := tx.Bucket([]byte(secretsBucketName))
+		if bucket == nil {
+			return nil
+		}
+		return bucket.ForEach(func(rawKey, raw []byte) error {
+			record, err := decodeSecretRecord(raw)
+			if err != nil {
+				return err
+			}
+			if record.GeneratedOwner == owner && len(record.Nodes) == 1 && record.Nodes[0] == node {
+				key = string(rawKey)
+				secret = storage.Secret{Value: record.Value}
+			}
+			return nil
+		})
+	}))
+	return key, secret, err
+}
+
+func (m *bboltKVManager) CommitGeneratedSecret(key, node string) error {
+	if !validSecretName(key) || !validSecretNodeName(node) {
+		return storage.ErrSecretInvalidName
+	}
+	return mapBboltSecretError(m.db.Update(func(tx *bbolt.Tx) error {
+		bucket := tx.Bucket([]byte(secretsBucketName))
+		if bucket == nil {
+			return storage.ErrSecretAccessDenied
+		}
+		raw := bucket.Get([]byte(key))
+		if raw == nil {
+			return storage.ErrSecretAccessDenied
+		}
+		record, err := decodeSecretRecord(raw)
+		if err != nil {
+			return err
+		}
+		if len(record.Nodes) != 1 || record.Nodes[0] != node {
+			return storage.ErrSecretAccessDenied
+		}
+		if record.GeneratedOwner == "" {
+			return nil
+		}
+		record.GeneratedOwner = ""
+		encoded, err := encodeSecretRecord(record)
+		if err != nil {
+			return err
+		}
+		return bucket.Put([]byte(key), encoded)
+	}))
+}
+
+func (m *bboltKVManager) DeleteGeneratedSecret(key, node string) error {
+	if !validSecretName(key) || !validSecretNodeName(node) {
+		return storage.ErrSecretInvalidName
+	}
+	if _, ok := m.immutableSecret(key); ok {
+		return storage.ErrSecretAccessDenied
+	}
+	deleted := false
+	err := mapBboltSecretError(m.db.Update(func(tx *bbolt.Tx) error {
+		bucket := tx.Bucket([]byte(secretsBucketName))
+		if bucket == nil {
+			return nil
+		}
+		raw := bucket.Get([]byte(key))
+		if raw == nil {
+			return nil
+		}
+		record, err := decodeSecretRecord(raw)
+		if err != nil {
+			return err
+		}
+		nodes := normalizeSecretNodes(record.Nodes)
+		if len(nodes) != 1 || nodes[0] != node {
+			return storage.ErrSecretAccessDenied
+		}
+		if err := bucket.Delete([]byte(key)); err != nil {
+			return err
+		}
+		deleted = true
+		return nil
+	}))
+	if err != nil {
+		return err
+	}
+	if deleted {
+		m.notifySecretChange(secretChange{kind: secretChangeDelete, key: key})
+	}
+	return nil
 }
 
 func (m *bboltKVManager) secretsSnapshot() (api.SecretsSnapshot, error) {
@@ -476,8 +637,9 @@ func (m *bboltKVManager) createMutableSecret(key string, record secretRecord) (b
 			return nil
 		}
 		raw, err := encodeSecretRecord(secretRecord{
-			Value: record.Value,
-			Nodes: normalizeSecretNodes(record.Nodes),
+			Value:          record.Value,
+			Nodes:          normalizeSecretNodes(record.Nodes),
+			GeneratedOwner: record.GeneratedOwner,
 		})
 		if err != nil {
 			return err
@@ -676,6 +838,9 @@ func encodeSecretRecord(record secretRecord) ([]byte, error) {
 	if !validSecretNodeNames(record.Nodes) {
 		return nil, storage.ErrSecretInvalidName
 	}
+	if record.GeneratedOwner != "" && !validGeneratedSecretOwner(record.GeneratedOwner) {
+		return nil, storage.ErrSecretInvalidName
+	}
 	record.Nodes = normalizeSecretNodes(record.Nodes)
 	return json.Marshal(record)
 }
@@ -691,8 +856,15 @@ func decodeSecretRecord(data []byte) (secretRecord, error) {
 	if !validSecretNodeNames(record.Nodes) {
 		return secretRecord{}, storage.ErrSecretInvalidName
 	}
+	if record.GeneratedOwner != "" && !validGeneratedSecretOwner(record.GeneratedOwner) {
+		return secretRecord{}, storage.ErrSecretInvalidName
+	}
 	record.Nodes = normalizeSecretNodes(record.Nodes)
 	return record, nil
+}
+
+func validGeneratedSecretOwner(owner string) bool {
+	return owner != "" && len(owner) <= 256 && utf8.ValidString(owner)
 }
 
 func secretEntryToAPI(entry secretEffectiveEntry) api.SecretEntry {

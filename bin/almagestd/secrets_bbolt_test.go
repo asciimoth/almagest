@@ -4,12 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/asciimoth/almagest/lib/logging"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/asciimoth/almagest/bin/api"
 	almagest "github.com/asciimoth/almagest/lib"
+	"github.com/asciimoth/almagest/lib/logging"
 	"github.com/asciimoth/almagest/lib/storage"
 	"github.com/asciimoth/configer/configer"
 	sysnetdebug "github.com/asciimoth/gonnect/sysnet/debug"
@@ -58,6 +59,9 @@ func TestSecretsStorageImmutableOverridesMutable(t *testing.T) {
 	if _, err := manager.GetSecret("shared", "mutable-node"); !errors.Is(err, storage.ErrSecretAccessDenied) {
 		t.Fatalf("GetSecret shadowed mutable node error = %v, want ErrSecretAccessDenied", err)
 	}
+	if err := manager.DeleteGeneratedSecret("shared", "protected-node"); !errors.Is(err, storage.ErrSecretAccessDenied) {
+		t.Fatalf("immutable generated-secret deletion error = %v, want ErrSecretAccessDenied", err)
+	}
 
 	snapshot, err := manager.secretsSnapshot()
 	if err != nil {
@@ -77,6 +81,136 @@ func TestSecretsStorageImmutableOverridesMutable(t *testing.T) {
 	}
 	if sec.Value != "generated" || sec.ReadOnly {
 		t.Fatalf("generated secret = %#v, want mutable value", sec)
+	}
+}
+
+func TestDeleteGeneratedSecretRequiresExclusiveNodeOwnership(t *testing.T) {
+	manager, err := openKVManager(filepath.Join(t.TempDir(), "kv.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer manager.Close() //nolint:errcheck
+
+	generated, err := manager.NewSecret(storage.Secret{Value: "private"}, "owner")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = manager.DeleteGeneratedSecret(generated, "other"); !errors.Is(err, storage.ErrSecretAccessDenied) {
+		t.Fatalf("wrong-owner deletion error = %v, want ErrSecretAccessDenied", err)
+	}
+	if _, err = manager.GetSecret(generated, "owner"); err != nil {
+		t.Fatalf("wrong-owner deletion removed secret: %v", err)
+	}
+
+	if _, err = manager.setSecretNodes(generated, []string{"owner", "other"}); err != nil {
+		t.Fatal(err)
+	}
+	if err = manager.DeleteGeneratedSecret(generated, "owner"); !errors.Is(err, storage.ErrSecretAccessDenied) {
+		t.Fatalf("shared-secret deletion error = %v, want ErrSecretAccessDenied", err)
+	}
+	if _, err = manager.GetSecret(generated, "owner"); err != nil {
+		t.Fatalf("shared-secret deletion removed secret: %v", err)
+	}
+
+	if _, err = manager.setSecretNodes(generated, []string{"owner"}); err != nil {
+		t.Fatal(err)
+	}
+	if err = manager.DeleteGeneratedSecret(generated, "owner"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = manager.GetSecret(generated, "owner"); !errors.Is(err, storage.ErrSecretAccessDenied) {
+		t.Fatalf("deleted secret access error = %v, want ErrSecretAccessDenied", err)
+	}
+	if err = manager.DeleteGeneratedSecret(generated, "owner"); err != nil {
+		t.Fatalf("repeated deletion error = %v, want nil", err)
+	}
+}
+
+func TestGeneratedSecretRecoverySurvivesDatabaseReopen(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "kv.db")
+	manager, err := openKVManager(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	key, err := manager.NewGeneratedSecret(storage.Secret{Value: "first"}, "tor-node", "xtor/service/test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	duplicate, err := manager.NewGeneratedSecret(storage.Secret{Value: "second"}, "tor-node", "xtor/service/test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if duplicate != key {
+		t.Fatalf("duplicate generated key = %q, want %q", duplicate, key)
+	}
+	if err := manager.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	manager, err = openKVManager(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer manager.Close() //nolint:errcheck
+	recoveredKey, recovered, err := manager.RecoverGeneratedSecret("xtor/service/test", "tor-node")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if recoveredKey != key || recovered.Value != "first" || recovered.ReadOnly {
+		t.Fatalf("recovered generated secret = %q %#v, want %q first mutable", recoveredKey, recovered, key)
+	}
+
+	if err := manager.CommitGeneratedSecret(key, "tor-node"); err != nil {
+		t.Fatal(err)
+	}
+	recoveredKey, _, err = manager.RecoverGeneratedSecret("xtor/service/test", "tor-node")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if recoveredKey != "" {
+		t.Fatalf("recovered committed key = %q, want empty", recoveredKey)
+	}
+	secret, err := manager.GetSecret(key, "tor-node")
+	if err != nil || secret.Value != "first" {
+		t.Fatalf("committed secret = %#v, %v", secret, err)
+	}
+}
+
+func TestGeneratedSecretRecoveryIsScopedAndValidated(t *testing.T) {
+	manager, err := openKVManager(filepath.Join(t.TempDir(), "kv.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer manager.Close() //nolint:errcheck
+
+	first, err := manager.NewGeneratedSecret(storage.Secret{Value: "one"}, "node-one", "shared-owner")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := manager.NewGeneratedSecret(storage.Secret{Value: "two"}, "node-two", "shared-owner")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first == second {
+		t.Fatalf("different nodes shared generated key %q", first)
+	}
+	if err := manager.CommitGeneratedSecret(first, "node-two"); !errors.Is(err, storage.ErrSecretAccessDenied) {
+		t.Fatalf("wrong-node commit error = %v, want ErrSecretAccessDenied", err)
+	}
+	if err := manager.DeleteGeneratedSecret(first, "node-one"); err != nil {
+		t.Fatal(err)
+	}
+	key, _, err := manager.RecoverGeneratedSecret("shared-owner", "node-one")
+	if err != nil || key != "" {
+		t.Fatalf("recovery after deletion = %q, %v", key, err)
+	}
+
+	if _, err := manager.NewGeneratedSecret(storage.Secret{Value: "bad"}, "node-one", ""); !errors.Is(err, storage.ErrSecretInvalidName) {
+		t.Fatalf("empty owner error = %v, want ErrSecretInvalidName", err)
+	}
+	if _, err := encodeSecretRecord(secretRecord{Value: "bad", Nodes: []string{"node-one"}, GeneratedOwner: strings.Repeat("x", 257)}); !errors.Is(err, storage.ErrSecretInvalidName) {
+		t.Fatalf("invalid encoded owner error = %v, want ErrSecretInvalidName", err)
 	}
 }
 

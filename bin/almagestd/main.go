@@ -217,6 +217,11 @@ func main() {
 	)
 	defer cancel()
 
+	nodeConfigAutosave := newNodeConfigAutosaveTrigger()
+	var nodeConfigChanged func(uint64) <-chan error
+	if !admin.configReadOnly {
+		nodeConfigChanged = nodeConfigAutosave.Notify
+	}
 	engineBuildStart := time.Now()
 	engine, err := almagest.BuildEngine(
 		ctx,
@@ -227,11 +232,12 @@ func main() {
 		kv,
 		kv,
 		kv,
-		daemonNodeClasses(conf.Protected.CommandRunner, commandRunner),
+		daemonNodeClasses(conf.Protected.CommandRunner, commandRunner, conf.Protected.Experimental),
 		globalBufPool,
 		args.DebugNodes,
 		almagest.WithWorkerEventLogging(args.LogWorkers),
 		almagest.WithNodeNameAvailableCallback(nodeNames.index.available),
+		almagest.WithNodeConfigChangeCallback(nodeConfigChanged),
 		almagest.WithRandomSeed(randomSeeds.workspace),
 	)
 	engineBuildElapsed := time.Since(engineBuildStart)
@@ -258,6 +264,11 @@ func main() {
 	wg.Go(func() {
 		admin.configAutosaver.Run(ctx)
 	})
+	if !admin.configReadOnly {
+		wg.Go(func() {
+			nodeConfigAutosave.Run(ctx, admin.configAutosaver)
+		})
+	}
 
 	// Launch admin api fully
 	admin.Run(ctx, cancel, &wg, engine, sys, logf)

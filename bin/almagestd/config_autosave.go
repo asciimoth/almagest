@@ -46,6 +46,104 @@ type configAutosaver struct {
 	ch        chan struct{}
 }
 
+type nodeConfigAutosaveTrigger struct {
+	mu      sync.Mutex
+	pending []chan error
+	stopped bool
+	changes chan struct{}
+}
+
+func newNodeConfigAutosaveTrigger() *nodeConfigAutosaveTrigger {
+	return &nodeConfigAutosaveTrigger{changes: make(chan struct{}, 1)}
+}
+
+func (t *nodeConfigAutosaveTrigger) Notify(uint64) <-chan error {
+	result := make(chan error, 1)
+	if t == nil {
+		result <- errors.New("node configuration persistence is unavailable")
+		close(result)
+		return result
+	}
+	t.mu.Lock()
+	if t.stopped {
+		t.mu.Unlock()
+		result <- errors.New("node configuration persistence is stopped")
+		close(result)
+		return result
+	}
+	t.pending = append(t.pending, result)
+	t.mu.Unlock()
+	select {
+	case t.changes <- struct{}{}:
+	default:
+	}
+	return result
+}
+
+func (t *nodeConfigAutosaveTrigger) Run(ctx context.Context, saver *configAutosaver) {
+	if t == nil || saver == nil {
+		return
+	}
+	for {
+		select {
+		case <-t.changes:
+			t.persistPending(ctx, saver)
+		case <-ctx.Done():
+			t.persistBatch(ctx, saver, t.stopAndTakePending())
+			return
+		}
+	}
+}
+
+func (t *nodeConfigAutosaveTrigger) takePending() []chan error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	pending := t.pending
+	t.pending = nil
+	return pending
+}
+
+func (t *nodeConfigAutosaveTrigger) persistPending(ctx context.Context, saver *configAutosaver) {
+	t.persistBatch(ctx, saver, t.takePending())
+}
+
+func (t *nodeConfigAutosaveTrigger) persistBatch(ctx context.Context, saver *configAutosaver, pending []chan error) {
+	if len(pending) == 0 {
+		return
+	}
+	var err error
+	for {
+		err = saver.persistNodeConfig()
+		if err == nil || ctx.Err() != nil {
+			break
+		}
+		timer := time.NewTimer(saver.idle)
+		select {
+		case <-timer.C:
+		case <-ctx.Done():
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+		}
+	}
+	for _, result := range pending {
+		result <- err
+		close(result)
+	}
+}
+
+func (t *nodeConfigAutosaveTrigger) stopAndTakePending() []chan error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.stopped = true
+	pending := t.pending
+	t.pending = nil
+	return pending
+}
+
 func newConfigAutosaver(
 	engine almagest.Engine,
 	config *Config,
@@ -142,34 +240,40 @@ func (s *configAutosaver) idleRemaining() time.Duration {
 }
 
 func (s *configAutosaver) save() bool {
+	return s.persistNodeConfig() == nil
+}
+
+func (s *configAutosaver) persistNodeConfig() error {
 	s.saveMu.Lock()
 	defer s.saveMu.Unlock()
 	target := s.scheduledGeneration()
 
 	if s.config == nil || s.config.Main == nil {
-		s.logger.Err("config save failed: config is not loaded")
-		return false
+		return s.logSaveError(errors.New("config is not loaded"))
 	}
 	if s.engine == nil {
-		s.logger.Err("config save failed: engine is not available")
-		return false
+		return s.logSaveError(errors.New("engine is not available"))
 	}
 	if s.agent == nil {
-		s.logger.Err("config save failed: config writer is not available")
-		return false
+		return s.logSaveError(errors.New("config writer is not available"))
 	}
 	data, err := s.currentConfigBytes()
 	if err != nil {
-		s.logger.Errf("config save failed: engine state export failed: %v", err)
-		return false
+		return s.logSaveError(fmt.Errorf("engine state export failed: %w", err))
 	}
 	if err := s.agent.WriteConfig(data); err != nil {
-		s.logger.Errf("config save failed: disk write failed: %v", err)
-		return false
+		return s.logSaveError(fmt.Errorf("disk write failed: %w", err))
 	}
 	s.markSaved(target)
 	s.logger.Debug("config saved")
-	return true
+	return nil
+}
+
+func (s *configAutosaver) logSaveError(err error) error {
+	if s != nil && s.logger != nil {
+		s.logger.Errf("config save failed: %v", err)
+	}
+	return err
 }
 
 func (s *configAutosaver) flushPending() {

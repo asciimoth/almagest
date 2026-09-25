@@ -100,6 +100,9 @@
 
           # for browser/e2e tests
           chromium
+
+          tor
+          obfs4
         ];
       };
     });

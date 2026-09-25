@@ -2,6 +2,7 @@ package almagest
 
 import (
 	"context"
+	"errors"
 
 	"github.com/asciimoth/gonnect/sysnet"
 	"github.com/asciimoth/pasta/pasta"
@@ -37,4 +38,18 @@ func (e *engine) ObserveNodeSnapshot(node uint64, snapshot pasta.NodeSnapshot) {
 		return
 	}
 	e.workers.observeNodeSnapshot(node, snapshot)
+}
+
+func (e *engine) NodeConfigChanged(node uint64) <-chan error {
+	if e == nil || node == 0 || e.nodeConfigChangeCallback == nil {
+		result := make(chan error, 1)
+		result <- errors.New("node configuration persistence is unavailable")
+		close(result)
+		return result
+	}
+	return e.nodeConfigChangeCallback(node)
+}
+
+func (e *engine) NodeConfigPersistenceAvailable() bool {
+	return e != nil && e.nodeConfigChangeCallback != nil
 }

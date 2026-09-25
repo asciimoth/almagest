@@ -2,6 +2,8 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck disable=SC1091 # The path is resolved from the repository root.
+source "$repo_root/e2e/lib/case_scheduler.sh"
 image="${E2E_IMAGE:-almagest-e2e:local}"
 coverage_enabled="${E2E_COVERAGE:-0}"
 coverage_dir="${E2E_COVERAGE_DIR:-$repo_root/e2e/coverage}"
@@ -227,15 +229,22 @@ run_case() {
 next_case=0
 failure_count=0
 failed_cases=()
+exclusive_case_running=0
 
 while ((next_case < ${#cases[@]} || ${#running_cases[@]} > 0)); do
 	while ((next_case < ${#cases[@]} && ${#running_cases[@]} < jobs)); do
 		case_name="${cases[$next_case]}"
+		if ! e2e_case_can_start "$repo_root/e2e/cases/$case_name" "${#running_cases[@]}" "$exclusive_case_running"; then
+			break
+		fi
 		case_logs[next_case]="$run_dir/$next_case.log"
 		case_cidfiles[next_case]="$run_dir/$next_case.cid"
 		echo "==> e2e: starting $case_name"
 		run_case "$next_case" >"${case_logs[$next_case]}" 2>&1 &
 		running_cases[$!]="$next_case"
+		if e2e_case_is_exclusive "$repo_root/e2e/cases/$case_name"; then
+			exclusive_case_running=1
+		fi
 		((next_case += 1))
 	done
 
@@ -248,6 +257,9 @@ while ((next_case < ${#cases[@]} || ${#running_cases[@]} > 0)); do
 	fi
 	completed_index="${running_cases[$completed_pid]}"
 	case_name="${cases[$completed_index]}"
+	if e2e_case_is_exclusive "$repo_root/e2e/cases/$case_name"; then
+		exclusive_case_running=0
+	fi
 	cat "${case_logs[$completed_index]}"
 	if ((case_status == 0)); then
 		echo "==> e2e: PASS $case_name"

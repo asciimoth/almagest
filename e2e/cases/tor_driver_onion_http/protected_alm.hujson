@@ -1,0 +1,16 @@
+{
+	"Admin": {
+		"Web": 0,
+		"Unix": "%E2E_ADMIN_SOCK%",
+	},
+	// Empty executable fields make tor-driver discover Tor in PATH. Dynamic
+	// onion services require the default dynamic sandbox mode.
+	"Experimental": {
+		"TorDriver": {
+			"StartupTimeout": "120s",
+			"CommandTimeout": "30s",
+			"DialTimeout": "30s",
+			"ShutdownTimeout": "15s",
+		},
+	},
+}

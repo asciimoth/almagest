@@ -185,6 +185,7 @@ func NewNodeE2E(t *testing.T) *NodeE2E {
 type e2eSecretRecord struct {
 	secret storage.Secret
 	nodes  map[string]struct{}
+	owner  string
 }
 
 type e2eSecretsStorage struct {
@@ -222,6 +223,17 @@ func (s *e2eSecretsStorage) GetSecret(key string, node string) (storage.Secret, 
 }
 
 func (s *e2eSecretsStorage) NewSecret(sec storage.Secret, node string) (string, error) {
+	return s.newSecret(sec, node, "")
+}
+
+func (s *e2eSecretsStorage) NewGeneratedSecret(sec storage.Secret, node, owner string) (string, error) {
+	if owner == "" {
+		return "", storage.ErrSecretInvalidName
+	}
+	return s.newSecret(sec, node, owner)
+}
+
+func (s *e2eSecretsStorage) newSecret(sec storage.Secret, node, owner string) (string, error) {
 	if s == nil {
 		return "", storage.ErrSecretClosed
 	}
@@ -230,6 +242,15 @@ func (s *e2eSecretsStorage) NewSecret(sec storage.Secret, node string) (string, 
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if owner != "" {
+		for key, record := range s.records {
+			if record.owner == owner && len(record.nodes) == 1 {
+				if _, ok := record.nodes[node]; ok {
+					return key, nil
+				}
+			}
+		}
+	}
 	for {
 		s.nextKey++
 		key := fmt.Sprintf("secret-%d", s.nextKey)
@@ -239,9 +260,51 @@ func (s *e2eSecretsStorage) NewSecret(sec storage.Secret, node string) (string, 
 		s.records[key] = e2eSecretRecord{
 			secret: storage.Secret{Value: sec.Value},
 			nodes:  map[string]struct{}{node: {}},
+			owner:  owner,
 		}
 		return key, nil
 	}
+}
+
+func (s *e2eSecretsStorage) RecoverGeneratedSecret(owner, node string) (string, storage.Secret, error) {
+	if s == nil {
+		return "", storage.Secret{}, storage.ErrSecretClosed
+	}
+	if owner == "" || pasta.ValidateNodeName(node) != nil {
+		return "", storage.Secret{}, storage.ErrSecretInvalidName
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for key, record := range s.records {
+		if record.owner != owner || len(record.nodes) != 1 {
+			continue
+		}
+		if _, ok := record.nodes[node]; ok {
+			return key, record.secret, nil
+		}
+	}
+	return "", storage.Secret{}, nil
+}
+
+func (s *e2eSecretsStorage) CommitGeneratedSecret(key, node string) error {
+	if s == nil {
+		return storage.ErrSecretClosed
+	}
+	if key == "" || pasta.ValidateNodeName(node) != nil {
+		return storage.ErrSecretInvalidName
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	record, ok := s.records[key]
+	if !ok || len(record.nodes) != 1 {
+		return storage.ErrSecretAccessDenied
+	}
+	if _, ok := record.nodes[node]; !ok {
+		return storage.ErrSecretAccessDenied
+	}
+	record.owner = ""
+	s.records[key] = record
+	return nil
 }
 
 func (s *e2eSecretsStorage) SetSecret(key string, sec storage.Secret, nodes ...string) {
@@ -279,6 +342,57 @@ func (s *e2eSecretsStorage) DeleteSecret(key string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	delete(s.records, key)
+}
+
+func (s *e2eSecretsStorage) DeleteGeneratedSecret(key, node string) error {
+	if s == nil {
+		return storage.ErrSecretClosed
+	}
+	if key == "" || pasta.ValidateNodeName(node) != nil {
+		return storage.ErrSecretInvalidName
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	record, ok := s.records[key]
+	if !ok {
+		return nil
+	}
+	if len(record.nodes) != 1 {
+		return storage.ErrSecretAccessDenied
+	}
+	if _, ok := record.nodes[node]; !ok {
+		return storage.ErrSecretAccessDenied
+	}
+	delete(s.records, key)
+	return nil
+}
+
+// SecretCount returns the number of stored secrets.
+func (s *e2eSecretsStorage) SecretCount() int {
+	if s == nil {
+		return 0
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.records)
+}
+
+// RenameNodeReferences changes one node name in all secret allow lists.
+// Tests use this to model the daemon's node-name synchronization.
+func (s *e2eSecretsStorage) RenameNodeReferences(oldName, newName string) {
+	if s == nil || pasta.ValidateNodeName(oldName) != nil || pasta.ValidateNodeName(newName) != nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for key, record := range s.records {
+		if _, ok := record.nodes[oldName]; !ok {
+			continue
+		}
+		delete(record.nodes, oldName)
+		record.nodes[newName] = struct{}{}
+		s.records[key] = record
+	}
 }
 
 // AddNode adds a node to the e2e workspace and fails the test on error.

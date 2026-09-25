@@ -1,0 +1,54 @@
+{
+	"Logs": {
+		"Cache": {
+			"Debug": 2048,
+			"Info": 512,
+			"Warn": 256,
+			"Error": 256,
+			"Fatal": 32,
+		},
+	},
+	"nodes": {
+		"Tor proxy": {
+			"Class": "almagest/LocalProxy",
+			"Pos": "{\"x\":220,\"y\":500}",
+			"Links": ["proxy -> [Experimental Tor] Network default"],
+			"socksHost": "127.0.0.1",
+			"socksPort": 1081,
+			"wsHost": "",
+			"wsPort": 0,
+			"wsPath": "/socks",
+			"users": [],
+			"commands": {
+				"cmdBind": true,
+				"cmdConnect": true,
+				"cmdGostMuxBind": true,
+				"cmdTorResolve": true,
+				"cmdTorResolvePtr": true,
+				"cmdUDPAssoc": true,
+			},
+		},
+		"Experimental Tor": {
+			"Class": "almagest/XTorDriver",
+			"Pos": "{\"x\":440,\"y\":500}",
+			"Links": ["out -> [Tor outbound] Network"],
+			"configuration": {
+				"enabled": true,
+				"driver": {
+					"forwardTorLogs": true,
+					"startupTimeout": "60s",
+				},
+				"networks": [
+					{
+						"name": "default",
+						"circuits": "connection",
+					},
+				],
+			},
+		},
+		"Tor outbound": {
+			"Class": "almagest/OutNetwork",
+			"Pos": "{\"x\":660,\"y\":500}",
+		},
+	},
+}

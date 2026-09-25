@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	cmdrunner "github.com/asciimoth/almagest/bin/almagestd/command"
+	experimentalnodes "github.com/asciimoth/almagest/lib/experimental"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
 	"github.com/asciimoth/pasta/pasta"
@@ -28,11 +29,17 @@ var (
 	errCommandNodeNotAllowed   = errors.New("command is not allowed for nodes")
 )
 
-// daemonNodeClasses returns node classes that depend on almagestd internals and
-// therefore cannot live in the reusable lib module.
-func daemonNodeClasses(cfg cmdrunner.Config, dispatcher cmdrunner.Dispatcher) []pasta.NodeClass {
+// daemonNodeClasses returns classes that almagestd must create explicitly.
+// These classes either depend on daemon internals or require protected host
+// configuration and opt-in registration.
+func daemonNodeClasses(cfg cmdrunner.Config, dispatcher cmdrunner.Dispatcher, experimental ...ProtectedExperimentalConfig) []pasta.NodeClass {
+	var host experimentalnodes.XTorDriverHostConfig
+	if len(experimental) > 0 {
+		host = experimental[0].TorDriver
+	}
 	return []pasta.NodeClass{
 		newCommandNodeClass(cfg, dispatcher),
+		experimentalnodes.XTorDriverClass{Host: host},
 	}
 }
 

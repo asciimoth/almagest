@@ -30,6 +30,8 @@ github.com/asciimoth/socksgo v0.4.18 h1:/Z3q7NkhKQIc4zoUVK8iqei0Z2z+AfFoSisXSzaE
 github.com/asciimoth/socksgo v0.4.18/go.mod h1:Hng1DU0JEnoQnS7c1Y6QhqmGhXFP124o6Bt+XpGn/XE=
 github.com/asciimoth/sysnet-linux v0.5.1 h1:DkPs6NBPNZSxKsW/yi25QV4xPRR6x1s6AvOmKS3aNrs=
 github.com/asciimoth/sysnet-linux v0.5.1/go.mod h1:w30LwBt1GZy3sMZJBqconx+kv4YwPSnZtFVQurFiHX0=
+github.com/asciimoth/tor-driver v0.1.0 h1:D2qU9zrgx4X5D8mN4gyBnwTpegRYkFaVTHjsLalB4WM=
+github.com/asciimoth/tor-driver v0.1.0/go.mod h1:LkzoJiupCg/vid3v8BzeDHT23HPuESf/Ti7J2fds9d8=
 github.com/asciimoth/tuntap v0.4.2 h1:ueJMuqXLoLsNTJM5CRja3o7qdY48FqnRXFQzx833Og4=
 github.com/asciimoth/tuntap v0.4.2/go.mod h1:pO4LOvcJBK1ZJA0PTk11GcLj+hh47b+t/VNIV2+RNuA=
 github.com/asciimoth/wgo v0.7.10 h1:q9kPapyonJs+WcoNBwVCIt/jjxZvq0EGuRGth2yFzvk=
@@ -40,6 +42,8 @@ github.com/cilium/ebpf v0.22.0 h1:v2ktp0roffpMOj2MMf3idtCQZOsAoC4BJbAJN+ke2bY=
 github.com/cilium/ebpf v0.22.0/go.mod h1:CDzZbe2hC5JjlDC+CY3KFCzlYwN4gbxppYM+Z10bQt4=
 github.com/coder/websocket v1.8.14 h1:9L0p0iKiNOibykf283eHkKUHHrpG7f65OE3BhhO7v9g=
 github.com/coder/websocket v1.8.14/go.mod h1:NX3SzP+inril6yawo5CQXx8+fk145lPDC6pumgx0mVg=
+github.com/cretz/bine v0.2.0 h1:8GiDRGlTgz+o8H9DSnsl+5MeBK4HsExxgl6WgzOCuZo=
+github.com/cretz/bine v0.2.0/go.mod h1:WU4o9QR9wWp8AVKtTM1XD5vUHkEqnf2vVSo6dBqbetI=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc h1:U9qPSI2PIWSS1VwoXQT9A3Wy9MM3WgvqSxFWenqJduM=
 github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=

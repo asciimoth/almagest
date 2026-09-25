@@ -15,6 +15,7 @@ import (
 
 	amnesianodes "github.com/asciimoth/almagest/lib/amnesia"
 	"github.com/asciimoth/almagest/lib/logging"
+	"github.com/asciimoth/almagest/lib/nodekit"
 	"github.com/asciimoth/almagest/lib/storage"
 )
 
@@ -34,9 +35,10 @@ const MainWorkspace = "main"
 type BuildEngineOption func(*buildEngineOptions)
 
 type buildEngineOptions struct {
-	logWorkerEvents   bool
-	nodeNameAvailable pasta.NodeNameAvailableCallback
-	randomSeed        *int64
+	logWorkerEvents          bool
+	nodeNameAvailable        pasta.NodeNameAvailableCallback
+	nodeConfigChangeCallback func(uint64) <-chan error
+	randomSeed               *int64
 }
 
 // WithWorkerEventLogging controls engine worker lifecycle logs.
@@ -51,6 +53,15 @@ func WithWorkerEventLogging(enabled bool) BuildEngineOption {
 func WithNodeNameAvailableCallback(callback pasta.NodeNameAvailableCallback) BuildEngineOption {
 	return func(options *buildEngineOptions) {
 		options.nodeNameAvailable = callback
+	}
+}
+
+// WithNodeConfigChangeCallback sets the callback for node configuration changes.
+// The returned channel must report the result after the changed configuration
+// is durable. It must send one error value and then close.
+func WithNodeConfigChangeCallback(callback func(node uint64) <-chan error) BuildEngineOption {
+	return func(options *buildEngineOptions) {
+		options.nodeConfigChangeCallback = callback
 	}
 }
 
@@ -125,21 +136,22 @@ func BuildEngine(
 	}
 
 	engine := &engine{
-		ctx:                     ctx,
-		ctxCancel:               cancel,
-		logf:                    logf,
-		logger:                  logf.EngineLogger(),
-		pool:                    pool,
-		sys:                     sys,
-		kv:                      kv,
-		dns:                     dns,
-		secrets:                 secrets,
-		tlsConfigs:              tlsConfigs,
-		mainWorkspace:           nil,
-		nextSubscriptionID:      100, // to avoid collision between our IDs and workspace ones
-		subscriptionIDMapping:   make(map[uint64]subMap),
-		notificationCallbacks:   make(map[uint64]NotificationCallback),
-		notificationWorkerFloor: make(map[uint64]uint64),
+		ctx:                      ctx,
+		ctxCancel:                cancel,
+		logf:                     logf,
+		logger:                   logf.EngineLogger(),
+		pool:                     pool,
+		sys:                      sys,
+		kv:                       kv,
+		dns:                      dns,
+		secrets:                  secrets,
+		tlsConfigs:               tlsConfigs,
+		mainWorkspace:            nil,
+		nextSubscriptionID:       100, // to avoid collision between our IDs and workspace ones
+		subscriptionIDMapping:    make(map[uint64]subMap),
+		notificationCallbacks:    make(map[uint64]NotificationCallback),
+		notificationWorkerFloor:  make(map[uint64]uint64),
+		nodeConfigChangeCallback: buildOptions.nodeConfigChangeCallback,
 	}
 	engine.workers = newWorkerTracker(func() *pasta.Workspace {
 		return engine.mainWorkspace
@@ -148,7 +160,12 @@ func BuildEngine(
 
 	classes := nodeClasses(engine, debug)
 	if len(extra) > 0 {
-		classes = append(classes, extra...)
+		for _, class := range extra {
+			if bound, ok := class.(nodekit.RuntimeNodeClass); ok {
+				class = bound.BindRuntime(engine)
+			}
+			classes = append(classes, class)
+		}
 	}
 
 	var nodesCfg configer.Config
@@ -400,6 +417,8 @@ type engine struct {
 	workspaceObserverSubscription uint64
 	workspaceBarrier              chan struct{}
 	workspaceBarrierPending       map[uint64]struct{}
+
+	nodeConfigChangeCallback func(uint64) <-chan error
 }
 
 func (e *engine) Lock() {
@@ -807,7 +826,8 @@ func (e *engine) Copy(workspace string, ids []uint64) string {
 		return ""
 	}
 
-	return amnesianodes.SanitizeClipboard(e.mainWorkspace.Copy(ids))
+	data := amnesianodes.SanitizeClipboard(e.mainWorkspace.Copy(ids))
+	return sanitizeXTorDriverClipboard(data)
 }
 
 func (e *engine) CopyLocked(workspace string, ids []uint64) string {
@@ -815,7 +835,8 @@ func (e *engine) CopyLocked(workspace string, ids []uint64) string {
 		return ""
 	}
 
-	return amnesianodes.SanitizeClipboard(e.mainWorkspace.CopyLocked(ids))
+	data := amnesianodes.SanitizeClipboard(e.mainWorkspace.CopyLocked(ids))
+	return sanitizeXTorDriverClipboard(data)
 }
 
 func (e *engine) Paste(workspace string, data string) []uint64 {

@@ -12,6 +12,7 @@ require (
 	github.com/asciimoth/gonnect-netstack v0.7.2
 	github.com/asciimoth/pasta/pasta v0.10.0
 	github.com/asciimoth/socksgo v0.4.18
+	github.com/asciimoth/tor-driver v0.1.0
 	github.com/asciimoth/wgo v0.7.10
 	github.com/asciimoth/wgo-tailscale v0.3.11
 	github.com/coder/websocket v1.8.14

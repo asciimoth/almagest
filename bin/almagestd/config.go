@@ -3,7 +3,6 @@ package main
 import (
 	"errors"
 	"fmt"
-	"github.com/asciimoth/almagest/lib/storage"
 	"os"
 	"strings"
 	"sync"
@@ -12,6 +11,8 @@ import (
 	"github.com/asciimoth/almagest/bin/almagestd/args"
 	cmdrunner "github.com/asciimoth/almagest/bin/almagestd/command"
 	"github.com/asciimoth/almagest/bin/api"
+	experimentalnodes "github.com/asciimoth/almagest/lib/experimental"
+	"github.com/asciimoth/almagest/lib/storage"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/configer/hujson"
 	"github.com/kataras/golog"
@@ -200,9 +201,17 @@ func ParseConfig(cfg, prt []byte) (*Config, error) {
 type ProtectedConfig struct {
 	Admin         AdminAPIConfig
 	CommandRunner cmdrunner.Config
+	Experimental  ProtectedExperimentalConfig
 	Secrets       map[string]ProtectedSecretConfig
 	System        configer.Config `json:"-"`
 	TLS           ProtectedTLSConfig
+}
+
+// ProtectedExperimentalConfig contains host-facing settings for experimental
+// nodes. These values are read once and are never exposed through editable
+// workspace configuration.
+type ProtectedExperimentalConfig struct {
+	TorDriver experimentalnodes.XTorDriverHostConfig
 }
 
 // ProtectedSecretConfig defines one immutable secret available to selected

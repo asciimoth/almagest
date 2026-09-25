@@ -43,6 +43,38 @@ type Runtime interface {
 	ObserveNodeSnapshot(node uint64, snapshot pasta.NodeSnapshot)
 }
 
+// NodeConfigChangeRuntime accepts notifications when a node changes durable
+// configuration outside a direct workspace mutation. The returned channel
+// reports when the host has made the changed configuration durable.
+type NodeConfigChangeRuntime interface {
+	NodeConfigChanged(node uint64) <-chan error
+}
+
+// NodeConfigPersistenceRuntime reports whether NodeConfigChanged can cause a
+// durable configuration save. Nodes that generate durable configuration must
+// check this capability before they create external state that refers to it.
+type NodeConfigPersistenceRuntime interface {
+	NodeConfigPersistenceAvailable() bool
+}
+
+// CanPersistNodeConfig reports whether runtime can save asynchronous node
+// configuration changes.
+func CanPersistNodeConfig(runtime Runtime) bool {
+	capability, ok := runtime.(NodeConfigPersistenceRuntime)
+	return ok && capability.NodeConfigPersistenceAvailable()
+}
+
+// RuntimeNodeClass is an explicitly supplied node class that needs engine
+// runtime services. BuildEngine binds only classes passed through its extra
+// class argument. Built-in class registration does not use this interface.
+//
+// This hook lets host-facing or experimental packages stay outside the
+// default class list while still using node workers, secrets, and other
+// library runtime services.
+type RuntimeNodeClass interface {
+	BindRuntime(Runtime) pasta.NodeClass
+}
+
 // NodeContext is the small part of Base used by shared node helpers.
 type NodeContext interface {
 	NodeRuntime() Runtime
@@ -140,6 +172,26 @@ func (b *Base) NodeID() uint64 {
 		return 0
 	}
 	return b.ID
+}
+
+// NotifyConfigChanged reports that this node changed durable configuration.
+// The returned channel reports the durable write result. An unavailable
+// persistence service returns a completed channel that contains an error.
+func (b *Base) NotifyConfigChanged() <-chan error {
+	if b == nil || b.ID == 0 {
+		return completedNodeConfigChange(errors.New("node configuration persistence is unavailable"))
+	}
+	if runtime, ok := b.Runtime.(NodeConfigChangeRuntime); ok {
+		return runtime.NodeConfigChanged(b.ID)
+	}
+	return completedNodeConfigChange(errors.New("node configuration persistence is unavailable"))
+}
+
+func completedNodeConfigChange(err error) <-chan error {
+	result := make(chan error, 1)
+	result <- err
+	close(result)
+	return result
 }
 
 // Context returns the engine context, or context.Background when unavailable.

@@ -1,0 +1,76 @@
+{
+	"Logs": {
+		"Cache": {
+			"Debug": 4096,
+			"Info": 1024,
+			"Warn": 512,
+			"Error": 512,
+			"Fatal": 32,
+		},
+	},
+	"nodes": {
+		"Onion HTTP server": {
+			"Class": "almagest/HttpServer",
+			"Pos": "{\"x\":180,\"y\":360}",
+			"Links": ["Network -> [Tor service] Onion Test service"],
+			"host": "127.0.0.1",
+			"port": 80,
+			"response": "Response through two Tor nodes",
+		},
+		"Tor service": {
+			"Class": "almagest/XTorDriver",
+			"Pos": "{\"x\":440,\"y\":360}",
+			"Links": ["out -> [Tor outbound] Network"],
+			"configuration": {
+				"enabled": true,
+				"driver": {},
+				"networks": [],
+				"services": [{
+					"name": "Test service",
+					"ports": [80],
+					// An empty selector must create and save a new secret.
+					"keySecret": "",
+				}],
+			},
+		},
+		"Onion HTTP client": {
+			"Class": "almagest/HttpClient",
+			"Pos": "{\"x\":180,\"y\":640}",
+			"Links": ["Network -> [Tor client] Network default"],
+			"url": "http://example.invalid/",
+			"method": "GET",
+			"body": "",
+		},
+		"Tor client": {
+			"Class": "almagest/XTorDriver",
+			"Pos": "{\"x\":440,\"y\":640}",
+			"Links": ["out -> [Tor outbound] Network"],
+			"configuration": {
+				"enabled": true,
+				"driver": {},
+				"networks": [{
+					"name": "default",
+					"circuits": "connection",
+				}],
+			},
+		},
+		"Tor outbound": {
+			"Class": "almagest/OutNetwork",
+			"Pos": "{\"x\":700,\"y\":500}",
+		},
+		"Onion service address": {
+			"Class": "pasta/StringConstant",
+			"Pos": "{\"x\":20,\"y\":440}",
+			"Links": ["output -> [Onion HTTP server] Host"],
+			// test.sh replaces this value after service publication.
+			"value": "127.0.0.1",
+		},
+		"Onion service URL": {
+			"Class": "pasta/StringConstant",
+			"Pos": "{\"x\":20,\"y\":720}",
+			"Links": ["output -> [Onion HTTP client] URL"],
+			// test.sh replaces this value after service publication.
+			"value": "http://example.invalid/",
+		},
+	},
+}

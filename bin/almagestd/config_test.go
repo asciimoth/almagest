@@ -256,6 +256,50 @@ func TestProtectedConfigSystemView(t *testing.T) {
 	}
 }
 
+func TestProtectedConfigExperimentalTorDriver(t *testing.T) {
+	cfg, err := ParseConfig([]byte(`{}`), []byte(`{
+		"Experimental": {
+			"TorDriver": {
+				"TorExecutable": "/opt/tor/bin/tor",
+				"Obfs4Executable": "/opt/tor/bin/lyrebird",
+				"TempRoot": "/run/almagest/tor",
+				"StateRoot": "/var/lib/almagest/tor",
+				"Sandbox": "dynamic",
+				"StartupTimeout": "31s",
+				"CommandTimeout": "11s",
+				"DialTimeout": "91s",
+				"ShutdownTimeout": "12s",
+				"MaxCircuitDirtiness": "11m",
+				"CircuitBuildTimeout": "45s",
+				"Identity": {"UID": 2001, "GID": 2002}
+			}
+		}
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	host := cfg.Protected.Experimental.TorDriver
+	if host.TorExecutable != "/opt/tor/bin/tor" || host.Obfs4Executable != "/opt/tor/bin/lyrebird" ||
+		host.TempRoot != "/run/almagest/tor" || host.StateRoot != "/var/lib/almagest/tor" || host.Sandbox != "dynamic" ||
+		host.StartupTimeout != "31s" || host.CommandTimeout != "11s" || host.DialTimeout != "91s" ||
+		host.ShutdownTimeout != "12s" || host.MaxCircuitDirtiness != "11m" || host.CircuitBuildTimeout != "45s" {
+		t.Fatalf("experimental Tor host config = %#v", host)
+	}
+	if host.Identity == nil || host.Identity.UID != 2001 || host.Identity.GID != 2002 {
+		t.Fatalf("experimental Tor identity = %#v", host.Identity)
+	}
+
+	defaults, err := ParseConfig([]byte(`{}`), []byte(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := defaults.Protected.Experimental.TorDriver; got.TorExecutable != "" || got.Obfs4Executable != "" || got.Sandbox != "" ||
+		got.StartupTimeout != "" || got.CommandTimeout != "" || got.DialTimeout != "" || got.ShutdownTimeout != "" ||
+		got.MaxCircuitDirtiness != "" || got.CircuitBuildTimeout != "" || got.Identity != nil {
+		t.Fatalf("default experimental Tor config = %#v, want PATH and automatic identity", got)
+	}
+}
+
 func TestProtectedConfigCommandRunner(t *testing.T) {
 	cfg, err := ParseConfig([]byte(`{}`), []byte(`{
 		"CommandRunner": {

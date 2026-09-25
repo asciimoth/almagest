@@ -22,6 +22,8 @@ github.com/asciimoth/putback v0.3.0 h1:NKyX1K2yR/pHt9ov7BifA7qd8oMSOhsit4hMf694e
 github.com/asciimoth/putback v0.3.0/go.mod h1:K4u9GV2oQVToze+iKSA/e2V26lusyirYqBZuOZnw2YA=
 github.com/asciimoth/socksgo v0.4.18 h1:/Z3q7NkhKQIc4zoUVK8iqei0Z2z+AfFoSisXSzaEX8M=
 github.com/asciimoth/socksgo v0.4.18/go.mod h1:Hng1DU0JEnoQnS7c1Y6QhqmGhXFP124o6Bt+XpGn/XE=
+github.com/asciimoth/tor-driver v0.1.0 h1:D2qU9zrgx4X5D8mN4gyBnwTpegRYkFaVTHjsLalB4WM=
+github.com/asciimoth/tor-driver v0.1.0/go.mod h1:LkzoJiupCg/vid3v8BzeDHT23HPuESf/Ti7J2fds9d8=
 github.com/asciimoth/tuntap v0.4.2 h1:ueJMuqXLoLsNTJM5CRja3o7qdY48FqnRXFQzx833Og4=
 github.com/asciimoth/tuntap v0.4.2/go.mod h1:pO4LOvcJBK1ZJA0PTk11GcLj+hh47b+t/VNIV2+RNuA=
 github.com/asciimoth/wgo v0.7.10 h1:q9kPapyonJs+WcoNBwVCIt/jjxZvq0EGuRGth2yFzvk=
@@ -30,6 +32,8 @@ github.com/asciimoth/wgo-tailscale v0.3.11 h1:ubFWTW3QVKCaFENr/SfQXcJR4mjadTZVlr
 github.com/asciimoth/wgo-tailscale v0.3.11/go.mod h1:Zw/pN/yRx0l7Fo/HLlA/ONK530dhIz0uGYyul6JkuVc=
 github.com/coder/websocket v1.8.14 h1:9L0p0iKiNOibykf283eHkKUHHrpG7f65OE3BhhO7v9g=
 github.com/coder/websocket v1.8.14/go.mod h1:NX3SzP+inril6yawo5CQXx8+fk145lPDC6pumgx0mVg=
+github.com/cretz/bine v0.2.0 h1:8GiDRGlTgz+o8H9DSnsl+5MeBK4HsExxgl6WgzOCuZo=
+github.com/cretz/bine v0.2.0/go.mod h1:WU4o9QR9wWp8AVKtTM1XD5vUHkEqnf2vVSo6dBqbetI=
 github.com/google/btree v1.1.2 h1:xf4v41cLI2Z6FxbKm+8Bu+m8ifhj15JuZ9sa0jZCMUU=
 github.com/google/btree v1.1.2/go.mod h1:qOPhT0dTNdNzV6Z/lhRX0YXUafgPLFUh+gZMl761Gm4=
 github.com/google/go-cmp v0.7.0 h1:wk8382ETsv4JYUZwIsn6YpYiWiBsYLSJiTsyBybVuN8=

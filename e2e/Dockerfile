@@ -63,6 +63,7 @@ FROM debian:bookworm-slim@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe6
 ARG E2E_SYSTEM_FLAVOR=direct
 ARG E2E_SOCKS_COMPAT=0
 ARG E2E_PACKET_ANALYZER=0
+ARG E2E_TOR_PRIVATE=0
 RUN rm -f /etc/apt/apt.conf.d/docker-clean \
 	&& printf 'Binary::apt::APT::Keep-Downloaded-Packages "true";\n' >/etc/apt/apt.conf.d/keep-cache
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
@@ -93,6 +94,10 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 	&& if [ "$E2E_PACKET_ANALYZER" = "1" ]; then \
 		DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends tcpdump tshark; \
 	fi \
+	&& if [ "$E2E_TOR_PRIVATE" = "1" ]; then \
+		DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+			git python3-cryptography python3-networkx python3-paramiko python3-rpyc python3-tomli-w python3-typeguard python3-typing-extensions python3-venv tor; \
+	fi \
 	&& case "$E2E_SYSTEM_FLAVOR" in \
 		direct) ;; \
 		debian-resolvconf) \
@@ -110,6 +115,19 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 		*) printf 'unknown E2E_SYSTEM_FLAVOR=%s\n' "$E2E_SYSTEM_FLAVOR" >&2; exit 2 ;; \
 	esac \
 	&& chmod 0755 /
+
+ARG CHUTNEY_COMMIT=6cc158868d722e652975cb4efd5b278d95ff2fbb
+RUN if [ "$E2E_TOR_PRIVATE" = "1" ]; then \
+		git init /opt/chutney \
+		&& git -C /opt/chutney remote add origin https://gitlab.torproject.org/tpo/core/chutney.git \
+		&& git -C /opt/chutney fetch --depth 1 origin "$CHUTNEY_COMMIT" \
+		&& git -C /opt/chutney checkout --detach FETCH_HEAD \
+		&& rm -rf /opt/chutney/.git \
+		&& python3 -m venv --system-site-packages /opt/chutney-venv \
+		&& /opt/chutney-venv/bin/pip install --no-cache-dir \
+			typeguard==4.4.4 typing_extensions==4.15.0 \
+		&& useradd --create-home --uid 1000 tor-test; \
+	fi
 
 COPY --from=build /usr/local/bin/almagestd /usr/local/bin/almagestd
 COPY --from=build /usr/local/bin/almagest-cli /usr/local/bin/almagest-cli

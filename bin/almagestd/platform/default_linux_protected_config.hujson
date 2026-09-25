@@ -1,5 +1,11 @@
 {
-  "Admin": {
-    "Unix": "/run/almagest/admin.sock",
-  },
+	"Admin": {
+		"Unix": "/run/almagest/admin.sock",
+	},
+	"Experimental": {
+		// XTorDriver finds tor and optional obfs4 transports in PATH and, when
+		// almagestd is root, starts them as the host nobody account. Sandbox and
+		// timeout values also use tor-driver defaults when they are omitted.
+		"TorDriver": {},
+	},
 }

@@ -330,3 +330,193 @@ func TestConfigAutosaverRetriesPendingChangeAfterWriteFailure(t *testing.T) {
 		t.Fatalf("successful config writes = %d, want 1", len(writes))
 	}
 }
+
+func TestNodeConfigAutosaveTriggerQueuesStartupAndRuntimeChanges(t *testing.T) {
+	conf, err := ParseConfig([]byte(`{"nodes": {}}`), []byte(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine, err := almagest.BuildEngine(
+		context.Background(), conf.Main, logging.NewDebugLogFactory(16), &sysnetdebug.System{},
+		nil, nil, nil, nil, nil, nil, false,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = engine.Close() })
+
+	writer := &configAutosaveTestWriter{notify: make(chan struct{}, 4)}
+	saver := newConfigAutosaver(engine, conf, writer, logging.NewDebugLogFactory(8).EngineLogger(), time.Millisecond)
+	trigger := newNodeConfigAutosaveTrigger()
+
+	// A node can finish asynchronous startup before the daemon starts the
+	// autosave workers. The buffered notification must survive that interval.
+	startupResult := trigger.Notify(41)
+	select {
+	case err := <-startupResult:
+		t.Fatalf("startup persistence completed before the worker started: %v", err)
+	default:
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() { defer wg.Done(); saver.Run(ctx) }()
+	go func() { defer wg.Done(); trigger.Run(ctx, saver) }()
+	defer func() {
+		cancel()
+		wg.Wait()
+	}()
+
+	select {
+	case <-writer.notify:
+	case <-time.After(time.Second):
+		t.Fatal("queued startup configuration change was not saved")
+	}
+	if err := waitNodeConfigPersistence(t, startupResult); err != nil {
+		t.Fatalf("startup persistence: %v", err)
+	}
+
+	runtimeResult := trigger.Notify(42)
+	select {
+	case <-writer.notify:
+	case <-time.After(time.Second):
+		t.Fatal("runtime configuration change was not saved")
+	}
+	if err := waitNodeConfigPersistence(t, runtimeResult); err != nil {
+		t.Fatalf("runtime persistence: %v", err)
+	}
+	if writes := writer.snapshot(); len(writes) != 2 {
+		t.Fatalf("config writes = %d, want 2", len(writes))
+	}
+}
+
+func TestNodeConfigAutosaveTriggerAcknowledgesOnlySuccessfulDurableWrite(t *testing.T) {
+	conf, err := ParseConfig([]byte(`{"nodes": {}}`), []byte(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine, err := almagest.BuildEngine(
+		context.Background(), conf.Main, logging.NewDebugLogFactory(16), &sysnetdebug.System{},
+		nil, nil, nil, nil, nil, nil, false,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = engine.Close() })
+
+	writer := &configAutosaveTestWriter{failWrites: 1, notify: make(chan struct{}, 4)}
+	saver := newConfigAutosaver(engine, conf, writer, logging.NewDebugLogFactory(8).EngineLogger(), time.Millisecond)
+	trigger := newNodeConfigAutosaveTrigger()
+	result := trigger.Notify(1)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		trigger.Run(ctx, saver)
+		close(done)
+	}()
+	t.Cleanup(func() { cancel(); <-done })
+
+	select {
+	case <-writer.notify:
+	case <-time.After(time.Second):
+		t.Fatal("first persistence attempt did not run")
+	}
+	select {
+	case err = <-result:
+		t.Fatalf("failed write was acknowledged: %v", err)
+	default:
+	}
+	select {
+	case <-writer.notify:
+	case <-time.After(time.Second):
+		t.Fatal("persistence retry did not run")
+	}
+	if err = waitNodeConfigPersistence(t, result); err != nil {
+		t.Fatalf("successful retry result: %v", err)
+	}
+	if got := writer.attemptCount(); got != 2 {
+		t.Fatalf("write attempts = %d, want 2", got)
+	}
+}
+
+func TestNodeConfigAutosaveTriggerBatchesQueuedAcknowledgements(t *testing.T) {
+	conf, err := ParseConfig([]byte(`{"nodes": {}}`), []byte(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine, err := almagest.BuildEngine(
+		context.Background(), conf.Main, logging.NewDebugLogFactory(16), &sysnetdebug.System{},
+		nil, nil, nil, nil, nil, nil, false,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = engine.Close() })
+
+	writer := &configAutosaveTestWriter{}
+	saver := newConfigAutosaver(engine, conf, writer, logging.NewDebugLogFactory(8).EngineLogger(), time.Millisecond)
+	trigger := newNodeConfigAutosaveTrigger()
+	first := trigger.Notify(1)
+	second := trigger.Notify(2)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { trigger.Run(ctx, saver); close(done) }()
+	defer func() { cancel(); <-done }()
+
+	if err = waitNodeConfigPersistence(t, first); err != nil {
+		t.Fatal(err)
+	}
+	if err = waitNodeConfigPersistence(t, second); err != nil {
+		t.Fatal(err)
+	}
+	if got := writer.attemptCount(); got != 1 {
+		t.Fatalf("write attempts = %d, want one batched write", got)
+	}
+}
+
+func TestNodeConfigAutosaveTriggerReturnsFinalShutdownFailure(t *testing.T) {
+	conf, err := ParseConfig([]byte(`{"nodes": {}}`), []byte(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine, err := almagest.BuildEngine(
+		context.Background(), conf.Main, logging.NewDebugLogFactory(16), &sysnetdebug.System{},
+		nil, nil, nil, nil, nil, nil, false,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = engine.Close() })
+
+	writer := &configAutosaveTestWriter{failWrites: 100, notify: make(chan struct{}, 2)}
+	saver := newConfigAutosaver(engine, conf, writer, logging.NewDebugLogFactory(8).EngineLogger(), time.Hour)
+	trigger := newNodeConfigAutosaveTrigger()
+	result := trigger.Notify(1)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { trigger.Run(ctx, saver); close(done) }()
+	select {
+	case <-writer.notify:
+	case <-time.After(time.Second):
+		t.Fatal("persistence attempt did not run")
+	}
+	cancel()
+	if err = waitNodeConfigPersistence(t, result); err == nil || !strings.Contains(err.Error(), "test config write failure") {
+		t.Fatalf("shutdown persistence result = %v, want write failure", err)
+	}
+	<-done
+	if err = waitNodeConfigPersistence(t, trigger.Notify(2)); err == nil || !strings.Contains(err.Error(), "stopped") {
+		t.Fatalf("post-shutdown persistence result = %v, want stopped error", err)
+	}
+}
+
+func waitNodeConfigPersistence(t *testing.T, result <-chan error) error {
+	t.Helper()
+	select {
+	case err := <-result:
+		return err
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for node configuration persistence")
+		return nil
+	}
+}
