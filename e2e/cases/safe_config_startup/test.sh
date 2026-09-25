@@ -23,6 +23,7 @@ start_safe_daemon() {
 		-c "$config_file" \
 		-l debug \
 		--debug-nodes \
+		--experimental \
 		--unix "$E2E_ADMIN_SOCK" \
 		--web 0 \
 		>"$E2E_DAEMON_LOG" 2>&1 &

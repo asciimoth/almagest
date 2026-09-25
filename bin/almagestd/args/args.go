@@ -52,5 +52,6 @@ type Args struct {
 	UnixAdminFilterGIDs      []uint32 `arg:"--unix-filter-gid,separate,env:ALMAGEST_UNIX_ADMIN_FILTER_GIDS" help:"allowed unix admin peer GID; repeat flag or comma-separate env values"`
 	UnixAdminFilterUsernames []string `arg:"--unix-filter-user,separate,env:ALMAGEST_UNIX_ADMIN_FILTER_USERS" help:"allowed unix admin peer username; repeat flag or comma-separate env values"`
 
-	DebugNodes bool `arg:"--debug-nodes" help:"enable debug node classes"`
+	DebugNodes   bool `arg:"--debug-nodes" help:"enable debug node classes"`
+	Experimental bool `arg:"--experimental" help:"enable experimental features and node classes"`
 }

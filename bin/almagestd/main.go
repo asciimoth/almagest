@@ -232,7 +232,7 @@ func main() {
 		kv,
 		kv,
 		kv,
-		daemonNodeClasses(conf.Protected.CommandRunner, commandRunner, conf.Protected.Experimental),
+		daemonNodeClasses(conf.Protected.CommandRunner, commandRunner, args.Experimental, conf.Protected.Experimental),
 		globalBufPool,
 		args.DebugNodes,
 		almagest.WithWorkerEventLogging(args.LogWorkers),

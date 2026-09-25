@@ -280,7 +280,7 @@ EOF
 
 peer_socket="$runtime/peer.sock"
 XDG_RUNTIME_DIR="$runtime" almagestd \
-	-c "$peer_dir" -l debug --debug-nodes --unsafe-config \
+	-c "$peer_dir" -l debug --debug-nodes --experimental --unsafe-config \
 	--tmp-file-storage --unix "$peer_socket" --web 0 \
 	>"$runtime/peer.log" 2>&1 &
 peer_pid="$!"

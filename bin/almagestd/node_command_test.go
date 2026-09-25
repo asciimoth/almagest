@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"github.com/asciimoth/almagest/lib/logging"
 	"reflect"
 	"sync"
 	"testing"
@@ -10,12 +9,31 @@ import (
 
 	cmdrunner "github.com/asciimoth/almagest/bin/almagestd/command"
 	almagest "github.com/asciimoth/almagest/lib"
+	experimentalnodes "github.com/asciimoth/almagest/lib/experimental"
+	"github.com/asciimoth/almagest/lib/logging"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
 	sysnetdebug "github.com/asciimoth/gonnect/sysnet/debug"
 	"github.com/asciimoth/pasta/pasta"
 	"github.com/asciimoth/pasta/pasta/std"
 )
+
+func TestDaemonNodeClassesRequireExperimentalOptIn(t *testing.T) {
+	host := experimentalnodes.XTorDriverHostConfig{TorExecutable: "/test/tor"}
+	disabled := daemonNodeClasses(cmdrunner.Config{}, nil, false, ProtectedExperimentalConfig{TorDriver: host})
+	if len(disabled) != 1 || disabled[0].ClassName() != NodeTypeProtectedCommand {
+		t.Fatalf("classes without experimental opt-in = %#v, want only %q", disabled, NodeTypeProtectedCommand)
+	}
+
+	enabled := daemonNodeClasses(cmdrunner.Config{}, nil, true, ProtectedExperimentalConfig{TorDriver: host})
+	if len(enabled) != 2 || enabled[1].ClassName() != experimentalnodes.NodeTypeXTorDriver {
+		t.Fatalf("classes with experimental opt-in = %#v, want command and XTorDriver", enabled)
+	}
+	torClass, ok := enabled[1].(experimentalnodes.XTorDriverClass)
+	if !ok || !reflect.DeepEqual(torClass.Host, host) {
+		t.Fatalf("XTorDriver class = %#v, want host config %#v", enabled[1], host)
+	}
+}
 
 func TestCommandNodeClassShapeAndMenuFiltersAllowNodes(t *testing.T) {
 	engine := buildCommandNodeTestEngine(t, configer.NewMemory(nil), cmdrunner.Config{Commands: map[string]cmdrunner.AllowedCommand{
@@ -270,7 +288,7 @@ func buildCommandNodeTestEngine(t *testing.T, cfg configer.Config, commandCfg cm
 		nil, nil,
 		nil,
 
-		daemonNodeClasses(commandCfg, dispatcher),
+		daemonNodeClasses(commandCfg, dispatcher, false, ProtectedExperimentalConfig{}),
 		nil,
 		true)
 

@@ -51,6 +51,23 @@ func TestLogWorkersFlag(t *testing.T) {
 	}
 }
 
+func TestExperimentalFlag(t *testing.T) {
+	var a Args
+	parser, err := arg.NewParser(arg.Config{IgnoreEnv: true, Out: new(bytes.Buffer)}, &a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.Experimental {
+		t.Fatal("Experimental = true before parsing --experimental")
+	}
+	if err := parser.Parse([]string{"--experimental"}); err != nil {
+		t.Fatalf("Parse(--experimental): %v", err)
+	}
+	if !a.Experimental {
+		t.Fatal("Experimental = false, want true")
+	}
+}
+
 func TestWebAdminAllowCrossOriginFlagAndEnvironment(t *testing.T) {
 	var fromFlag Args
 	parser, err := arg.NewParser(arg.Config{IgnoreEnv: true, Out: new(bytes.Buffer)}, &fromFlag)

@@ -32,15 +32,14 @@ var (
 // daemonNodeClasses returns classes that almagestd must create explicitly.
 // These classes either depend on daemon internals or require protected host
 // configuration and opt-in registration.
-func daemonNodeClasses(cfg cmdrunner.Config, dispatcher cmdrunner.Dispatcher, experimental ...ProtectedExperimentalConfig) []pasta.NodeClass {
-	var host experimentalnodes.XTorDriverHostConfig
-	if len(experimental) > 0 {
-		host = experimental[0].TorDriver
-	}
-	return []pasta.NodeClass{
+func daemonNodeClasses(cfg cmdrunner.Config, dispatcher cmdrunner.Dispatcher, enableExperimental bool, experimental ProtectedExperimentalConfig) []pasta.NodeClass {
+	classes := []pasta.NodeClass{
 		newCommandNodeClass(cfg, dispatcher),
-		experimentalnodes.XTorDriverClass{Host: host},
 	}
+	if enableExperimental {
+		classes = append(classes, experimentalnodes.XTorDriverClass{Host: experimental.TorDriver})
+	}
+	return classes
 }
 
 // commandNodeClass exposes a protected command-runner allowlist as a Pasta node

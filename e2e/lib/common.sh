@@ -86,6 +86,7 @@ start_daemon() {
 		-c "$E2E_CONFIG_DIR" \
 		-l debug \
 		--debug-nodes \
+		--experimental \
 		--unsafe-config \
 		"${storage_args[@]}" \
 		--log-cache-debug "$ALMAGEST_E2E_LOG_CACHE_DEBUG" \

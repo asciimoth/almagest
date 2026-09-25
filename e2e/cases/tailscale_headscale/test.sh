@@ -93,6 +93,7 @@ start_test_daemon() {
 	local output="${!log_var}"
 	: >"$output"
 	XDG_RUNTIME_DIR="$E2E_RUNTIME" almagestd \
+		--experimental \
 		-c "$config" \
 		-l debug \
 		--debug-nodes \
