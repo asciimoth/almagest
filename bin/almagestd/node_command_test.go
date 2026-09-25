@@ -33,6 +33,12 @@ func TestDaemonNodeClassesRequireExperimentalOptIn(t *testing.T) {
 	if !ok || !reflect.DeepEqual(torClass.Host, host) {
 		t.Fatalf("XTorDriver class = %#v, want host config %#v", enabled[1], host)
 	}
+	if got := daemonExperimentalNodeTypes(false); len(got) != 0 {
+		t.Fatalf("experimental API types without opt-in = %#v, want empty", got)
+	}
+	if got := daemonExperimentalNodeTypes(true); len(got) != 1 || !got[experimentalnodes.NodeTypeXTorDriver] {
+		t.Fatalf("experimental API types with opt-in = %#v, want XTorDriver", got)
+	}
 }
 
 func TestCommandNodeClassShapeAndMenuFiltersAllowNodes(t *testing.T) {

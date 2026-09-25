@@ -1008,7 +1008,7 @@ func TestRunEngineSetNodePositionResolvesName(t *testing.T) {
 			Nodes: map[uint64]pasta.NodeSnapshot{
 				42: {Name: "server", Class: "test/server"},
 			},
-		})}),
+		}, nil)}),
 		mustResponse(t, "2", struct{}{}),
 	}}
 	var stdout, stderr bytes.Buffer
@@ -1040,7 +1040,7 @@ func TestRunEngineSetNodeNameResolvesNameWithNewName(t *testing.T) {
 			Nodes: map[uint64]pasta.NodeSnapshot{
 				42: {Name: "server", Class: "test/server"},
 			},
-		})}),
+		}, nil)}),
 		mustResponse(t, "2", struct{}{}),
 	}}
 	var stdout, stderr bytes.Buffer

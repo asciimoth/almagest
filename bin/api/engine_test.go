@@ -25,7 +25,7 @@ func TestSortedNodeClassSnapshotsCanonicalOrder(t *testing.T) {
 		"alpha/Alpha":     {Class: "alpha/Alpha", PrimaryType: "alpha/value"},
 	}
 
-	got := classNames(SortedNodeClassSnapshots(classes))
+	got := classNames(SortedNodeClassSnapshots(classes, nil))
 	want := []string{
 		"almagest/Alpha",
 		"almagest/Zed",
@@ -50,7 +50,7 @@ func TestWorkspaceSnapshotClassesAreJSONList(t *testing.T) {
 			"almagest/Tun":   {Class: "almagest/Tun", PrimaryType: "almagest/tun"},
 			"example/NoType": {Class: "example/NoType"},
 		},
-	})
+	}, map[string]bool{"almagest/Tun": true})
 	data, err := json.Marshal(WorkspaceSnapshotResponse{Snapshot: snapshot})
 	if err != nil {
 		t.Fatal(err)
@@ -77,6 +77,9 @@ func TestWorkspaceSnapshotClassesAreJSONList(t *testing.T) {
 	if !slices.Equal(got, want) {
 		t.Fatalf("decoded classes = %v, want %v", got, want)
 	}
+	if !decoded.Snapshot.Classes[0].Experimental || decoded.Snapshot.Classes[1].Experimental {
+		t.Fatalf("decoded experimental flags = %#v, want only almagest/Tun experimental", decoded.Snapshot.Classes)
+	}
 }
 
 func TestEngineNotificationConvertsWorkspaceSnapshotClasses(t *testing.T) {
@@ -94,12 +97,32 @@ func TestEngineNotificationConvertsWorkspaceSnapshotClasses(t *testing.T) {
 		},
 	}
 
-	got := NewEngineNotification(notification)
+	got := NewEngineNotification(notification, map[string]bool{"almagest/Tun": true})
 	if got.Workspace == nil || got.Workspace.Snapshot == nil {
 		t.Fatalf("converted notification = %#v, want workspace snapshot", got)
 	}
 	if got := classNames(got.Workspace.Snapshot.Classes); !slices.Equal(got, []string{"almagest/Tun", "pasta/PopUp"}) {
 		t.Fatalf("notification snapshot classes = %v, want sorted list", got)
+	}
+	if !got.Workspace.Snapshot.Classes[0].Experimental {
+		t.Fatal("notification did not mark almagest/Tun experimental")
+	}
+}
+
+func TestEngineNotificationMarksAddedExperimentalClass(t *testing.T) {
+	nodeClass := pasta.NodeClassSnapshot{Class: "almagest/Experimental"}
+	got := NewEngineNotification(almagest.EngineNotification{
+		Kind:        almagest.NotificationWorkspace,
+		WorkspaceID: "main",
+		Workspace: &pasta.WorkspaceNotification{
+			Kind:      pasta.NotificationNodeClassAdded,
+			ClassName: nodeClass.Class,
+			NodeClass: &nodeClass,
+		},
+	}, map[string]bool{nodeClass.Class: true})
+
+	if got.Workspace == nil || got.Workspace.NodeClass == nil || !got.Workspace.NodeClass.Experimental {
+		t.Fatalf("converted notification = %#v, want experimental class metadata", got)
 	}
 }
 
@@ -118,7 +141,7 @@ func TestEngineNotificationPreservesCaptchaDialogOnWire(t *testing.T) {
 			ID:       1,
 			Formular: formular.DialogCreate(pasta.NodeMenuID(1), 1, dialog),
 		},
-	})
+	}, nil)
 
 	data, err := json.Marshal(notification)
 	if err != nil {
@@ -150,7 +173,7 @@ func TestEngineNotificationPreservesCaptchaDialogOnWire(t *testing.T) {
 	}
 }
 
-func classNames(classes []pasta.NodeClassSnapshot) []string {
+func classNames(classes []NodeClassSnapshot) []string {
 	out := make([]string, 0, len(classes))
 	for _, class := range classes {
 		out = append(out, class.Class)

@@ -27,7 +27,7 @@ func TestGraphMapPrintsCompactConfigLikeNodes(t *testing.T) {
 		Links: map[uint64]pasta.LinkSnapshot{
 			1: {Type: "any", RightPort: 100, RightPortNode: 10, LeftPort: 200, LeftPortNode: 20},
 		},
-	})})
+	}, nil)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +51,7 @@ func TestGraphMapPrintsCompactConfigLikeNodes(t *testing.T) {
 func TestGraphClassesPreservesAPIOrder(t *testing.T) {
 	ft := &fakeTransport{reads: []api.Message{
 		mustResponse(t, "1", api.WorkspaceSnapshotResponse{Snapshot: api.WorkspaceSnapshot{
-			Classes: []pasta.NodeClassSnapshot{
+			Classes: []api.NodeClassSnapshot{
 				{Class: "zeta/Late"},
 				{Class: "almagest/First"},
 				{Class: "pasta/Second"},
@@ -68,7 +68,7 @@ func TestGraphClassesPreservesAPIOrder(t *testing.T) {
 	}
 
 	var got struct {
-		Classes []pasta.NodeClassSnapshot `json:"classes"`
+		Classes []api.NodeClassSnapshot `json:"classes"`
 	}
 	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
 		t.Fatal(err)
@@ -85,7 +85,7 @@ func TestGraphNodeResolvesName(t *testing.T) {
 			Nodes: map[uint64]pasta.NodeSnapshot{
 				12: {Name: "server", Class: "test/server"},
 			},
-		})}),
+		}, nil)}),
 		mustResponse(t, "2", api.NodeSnapshotResponse{Snapshot: pasta.NodeSnapshot{Name: "server", Class: "test/server"}}),
 	}}
 	var stdout, stderr bytes.Buffer
@@ -108,7 +108,7 @@ func TestGraphNodeResolvesName(t *testing.T) {
 	}
 }
 
-func graphClassNames(classes []pasta.NodeClassSnapshot) []string {
+func graphClassNames(classes []api.NodeClassSnapshot) []string {
 	out := make([]string, 0, len(classes))
 	for _, class := range classes {
 		out = append(out, class.Class)

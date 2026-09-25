@@ -180,6 +180,7 @@ func main() {
 	admin.secrets = kv
 	admin.tls = kv
 	admin.tlsOSAuthorityFetcher = platform.OSAuthorityFetcher()
+	admin.experimentalNodeTypes = daemonExperimentalNodeTypes(args.Experimental)
 	defer admin.Stop()
 
 	logf := NewLogFactory(conf.LogCache().MergeArgs(&args))

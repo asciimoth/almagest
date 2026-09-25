@@ -42,6 +42,17 @@ func daemonNodeClasses(cfg cmdrunner.Config, dispatcher cmdrunner.Dispatcher, en
 	return classes
 }
 
+// daemonExperimentalNodeTypes returns the stability metadata for opt-in node
+// classes. Keep this list next to daemonNodeClasses so registration and API
+// classification change together.
+func daemonExperimentalNodeTypes(enableExperimental bool) map[string]bool {
+	types := make(map[string]bool)
+	if enableExperimental {
+		types[experimentalnodes.NodeTypeXTorDriver] = true
+	}
+	return types
+}
+
 // commandNodeClass exposes a protected command-runner allowlist as a Pasta node
 // class. It stores only command metadata needed for menu choices and port
 // reconciliation; the actual process execution path remains owned by

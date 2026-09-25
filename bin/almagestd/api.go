@@ -45,6 +45,8 @@ type AdminAPI struct {
 	tlsOSAuthorityFetcher tlspolicy.AuthorityFetcher
 	nodeNames             *nodeNameIndex
 	snapshots             *snapshotService
+	// experimentalNodeTypes marks opt-in classes in all node-class API payloads.
+	experimentalNodeTypes map[string]bool
 
 	// stateMu prevents snapshot mutations from overlapping admin API operations
 	// that read or mutate the graph and persistent storage.
@@ -354,7 +356,7 @@ func (s *apiSession) handleEngineMessage(msg api.Message) (api.Message, error) {
 		id := s.engine.SubscribeNotifications(func(notification almagest.EngineNotification) {
 			event, err := api.NewEvent(api.SurfaceEngine, string(api.EventEngineNotification), api.EngineNotificationEvent{
 				SubscriptionID: notification.SubscriptionID,
-				Notification:   api.NewEngineNotification(notification),
+				Notification:   api.NewEngineNotification(notification, s.admin.experimentalNodeTypes),
 			})
 			if err == nil {
 				_ = s.send(event)
@@ -408,7 +410,7 @@ func (s *apiSession) handleEngineMessage(msg api.Message) (api.Message, error) {
 		if !ok {
 			return newRequestError(msg.ID, api.ErrorNotFound, "workspace was not found")
 		}
-		return api.NewResponse(msg.ID, api.WorkspaceSnapshotResponse{Snapshot: api.NewWorkspaceSnapshot(snapshot)})
+		return api.NewResponse(msg.ID, api.WorkspaceSnapshotResponse{Snapshot: api.NewWorkspaceSnapshot(snapshot, s.admin.experimentalNodeTypes)})
 
 	case api.MethodEngineWorkersSnapshot:
 		req, err := decodePayload[api.WorkspaceRequest](msg)
@@ -434,7 +436,9 @@ func (s *apiSession) handleEngineMessage(msg api.Message) (api.Message, error) {
 		if !ok {
 			return newRequestError(msg.ID, api.ErrorNotFound, "node class was not found")
 		}
-		return api.NewResponse(msg.ID, api.NodeClassSnapshotResponse{Snapshot: snapshot})
+		return api.NewResponse(msg.ID, api.NodeClassSnapshotResponse{
+			Snapshot: api.NewNodeClassSnapshot(snapshot, s.admin.experimentalNodeTypes[snapshot.Class]),
+		})
 
 	case api.MethodEngineNodeSnapshot:
 		req, err := decodePayload[api.IDRequest](msg)

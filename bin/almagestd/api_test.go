@@ -152,7 +152,9 @@ func TestEngineWorkspaceSnapshotAPIClassesAreSortedList(t *testing.T) {
 			t.Errorf("engine.Close error = %v, want nil", err)
 		}
 	})
-	session := (&AdminAPI{}).newAPISession(engine, nil, nil)
+	session := (&AdminAPI{experimentalNodeTypes: map[string]bool{
+		"alpha/Beta": true,
+	}}).newAPISession(engine, nil, nil)
 	req := mustRequest(t, "1", api.SurfaceEngine, string(api.MethodEngineWorkspaceSnapshot), api.WorkspaceRequest{Workspace: almagest.MainWorkspace})
 
 	resp, err := session.handleMessage(req)
@@ -183,6 +185,11 @@ func TestEngineWorkspaceSnapshotAPIClassesAreSortedList(t *testing.T) {
 		if api.CompareNodeClassSnapshots(decoded.Snapshot.Classes[i-1], decoded.Snapshot.Classes[i]) > 0 {
 			t.Fatalf("classes are not sorted at indexes %d and %d: %#v then %#v",
 				i-1, i, decoded.Snapshot.Classes[i-1], decoded.Snapshot.Classes[i])
+		}
+	}
+	for _, class := range decoded.Snapshot.Classes {
+		if class.Experimental != (class.Class == "alpha/Beta") {
+			t.Fatalf("class %q experimental = %t, want %t", class.Class, class.Experimental, class.Class == "alpha/Beta")
 		}
 	}
 }

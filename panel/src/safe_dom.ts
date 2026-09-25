@@ -29,6 +29,8 @@ import {
   type TLSScope,
 } from "./tls_model.js";
 
+export const EXPERIMENTAL_NODE_WARNING = "This node type is experimental and may be removed or significantly changed.";
+
 export type ClassPreviewPort = {
   name: string;
   color: string;
@@ -119,8 +121,21 @@ export function createClassButtonContent(
 ): HTMLElement[] {
   const copy = document.createElement("div");
   copy.className = "class-button-copy";
-  copy.append(textElement("strong", shortClass(cls.class)), textElement("span", cls.short_description));
+  const title = textElement("strong", shortClass(cls.class));
+  if (cls.experimental) {
+    const warning = textElement("span", " ⚠", "class-experimental-sign");
+    warning.title = `Warning: ${EXPERIMENTAL_NODE_WARNING}`;
+    warning.setAttribute("aria-label", `Warning: ${EXPERIMENTAL_NODE_WARNING}`);
+    title.append(warning);
+  }
+  copy.append(title, textElement("span", cls.short_description));
   return [copy, createClassPreview(cls, leftPorts, rightPorts)];
+}
+
+export function createExperimentalNodeWarning(): HTMLElement {
+  const warning = textElement("div", `Warning: ${EXPERIMENTAL_NODE_WARNING}`, "experimental-node-warning");
+  warning.setAttribute("role", "status");
+  return warning;
 }
 
 function createClassPreview(

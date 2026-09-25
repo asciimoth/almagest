@@ -8,6 +8,7 @@ import {
   createDNSValuePreview,
   createClassButtonContent,
   createEmptyWorkerItem,
+  createExperimentalNodeWarning,
   createKVEntryTitle,
   createKVStoreTitle,
   createKVValuePreview,
@@ -67,6 +68,7 @@ test("node-sourced class picker text is not parsed as HTML", () => {
     long_description: "",
     primary_type: "",
     initial_ports: [],
+    experimental: true,
   }, [
     { name: payload, color: "#f00" },
   ], [
@@ -75,6 +77,23 @@ test("node-sourced class picker text is not parsed as HTML", () => {
 
   assertNoParsedPayload(root);
   assert.match(root.textContent ?? "", /<img src=x/);
+  assert.match(root.querySelector("strong")?.textContent ?? "", /⚠$/);
+  assert.equal(
+    root.querySelector(".class-experimental-sign")?.title,
+    "Warning: This node type is experimental and may be removed or significantly changed.",
+  );
+});
+
+test("experimental node warning explains the compatibility risk", () => {
+  installDOM();
+  const warning = createExperimentalNodeWarning();
+
+  assert.equal(warning.className, "experimental-node-warning");
+  assert.equal(warning.getAttribute("role"), "status");
+  assert.equal(
+    warning.textContent,
+    "Warning: This node type is experimental and may be removed or significantly changed.",
+  );
 });
 
 test("node name, logs, and notifications keep payloads as text", () => {

@@ -43,6 +43,7 @@ import {
   createClassButtonContent,
   createEmptyLogItem,
   createEmptyWorkerItem,
+  createExperimentalNodeWarning,
   createKVEntryTitle,
   createKVStoreTitle,
   createKVValuePreview,
@@ -56,6 +57,7 @@ import {
   createTLSPolicyTitle,
   createWorkerNodeBlock,
   escapeHTMLText,
+  EXPERIMENTAL_NODE_WARNING,
   formatKVValueMeta,
   formatSecretEntryMeta,
   renderNodeDescription,
@@ -1358,12 +1360,17 @@ function showPastaAddNodeMenu(event: MouseEvent, parentMenu: unknown): void {
   const entries = paletteClasses().map((cls) => ({
     content: escapeHTMLText(paletteLabel(cls)),
     value: cls.class,
+    ...(cls.experimental ? { className: "experimental-node-class" } : {}),
     callback: (entry: { value: string }) => {
       addPastaNodeAt(entry.value, canvasPositionFromEvent(event));
       return false;
     },
   }));
-  new LiteGraph.ContextMenu(entries, { event, parentMenu }, canvas.getCanvasWindow());
+  const menu = new LiteGraph.ContextMenu(entries, { event, parentMenu }, canvas.getCanvasWindow());
+  const menuRoot = menu.root as HTMLElement;
+  for (const entry of menuRoot.querySelectorAll<HTMLElement>(".experimental-node-class")) {
+    entry.title = `Warning: ${EXPERIMENTAL_NODE_WARNING}`;
+  }
 }
 
 function paletteClasses(): NodeClassSnapshot[] {
@@ -1371,7 +1378,7 @@ function paletteClasses(): NodeClassSnapshot[] {
 }
 
 function paletteLabel(cls: NodeClassSnapshot): string {
-  return shortClass(cls.class);
+  return `${shortClass(cls.class)}${cls.experimental ? " ⚠" : ""}`;
 }
 
 function previewPorts(cls: NodeClassSnapshot, side: "left" | "right"): ClassPreviewPort[] {
@@ -1794,6 +1801,7 @@ function renderNodePanel(id: number): void {
   menu.id = "node-menu";
   const popups = document.createElement("div");
   popups.id = "node-popups";
+  const nodeClass = nodeClassByName(snapshot, node.class);
   menuPanel.append(menu, popups);
 
   const docsPanel = document.createElement("div");
@@ -1807,7 +1815,9 @@ function renderNodePanel(id: number): void {
   descriptionPanel.dataset.nodeDescription = "";
   renderNodeDescription(descriptionPanel, description);
   docsPanel.append(textElement("h2", shortClass(node.class)), descriptionPanel);
-  el.sidekick.replaceChildren(createNodeNameForm(node.name), tabs, menuPanel, docsPanel);
+  const nodePanelHeader: HTMLElement[] = [createNodeNameForm(node.name), tabs];
+  if (nodeClass?.experimental) nodePanelHeader.push(createExperimentalNodeWarning());
+  el.sidekick.replaceChildren(...nodePanelHeader, menuPanel, docsPanel);
   void tryBackend("classDescription", { class: node.class }).then((text) => {
     const descriptionPanel = el.sidekick.querySelector<HTMLElement>("[data-node-description]");
     if (

@@ -8,6 +8,8 @@ export type NodeClassSnapshot = {
   unique: boolean;
   primary_type: string;
   initial_ports: Array<{ direction: string; name: string; types: string[] }>;
+  /** True when the daemon can remove or significantly change this node type. */
+  experimental: boolean;
 };
 
 export type NodePopup = {
@@ -422,6 +424,7 @@ function parseNodeClassSnapshot(input: unknown): NodeClassSnapshot | null {
     || typeof input.short_description !== "string"
     || typeof input.unique !== "boolean"
     || typeof input.primary_type !== "string"
+    || typeof input.experimental !== "boolean"
     || !Array.isArray(input.initial_ports)) return null;
   const initialPorts = parseArray(input.initial_ports, parseNodeClassPortSnapshot);
   return initialPorts ? {
@@ -430,6 +433,7 @@ function parseNodeClassSnapshot(input: unknown): NodeClassSnapshot | null {
     unique: input.unique,
     primary_type: input.primary_type,
     initial_ports: initialPorts,
+    experimental: input.experimental,
   } : null;
 }
 

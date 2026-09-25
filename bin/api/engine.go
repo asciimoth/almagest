@@ -246,7 +246,7 @@ type EngineNotification struct {
 
 // NewEngineNotification converts a library engine notification into the public
 // API shape used on the wire.
-func NewEngineNotification(notification almagest.EngineNotification) EngineNotification {
+func NewEngineNotification(notification almagest.EngineNotification, experimentalNodeTypes map[string]bool) EngineNotification {
 	out := EngineNotification{
 		Kind:        notification.Kind,
 		WorkspaceID: notification.WorkspaceID,
@@ -254,7 +254,7 @@ func NewEngineNotification(notification almagest.EngineNotification) EngineNotif
 		ColorMap:    notification.ColorMap,
 	}
 	if notification.Workspace != nil {
-		workspace := NewWorkspaceNotification(*notification.Workspace)
+		workspace := NewWorkspaceNotification(*notification.Workspace, experimentalNodeTypes)
 		out.Workspace = &workspace
 	}
 	return out
@@ -270,7 +270,7 @@ type WorkspaceNotification struct {
 	ClassName string `json:"class_name,omitempty"`
 
 	Snapshot  *WorkspaceSnapshot            `json:"snapshot,omitempty"`
-	NodeClass *pasta.NodeClassSnapshot      `json:"node_class,omitempty"`
+	NodeClass *NodeClassSnapshot            `json:"node_class,omitempty"`
 	Node      *pasta.NodeSnapshot           `json:"node,omitempty"`
 	Nodes     map[uint64]pasta.NodeSnapshot `json:"nodes,omitempty"`
 	Port      *pasta.PortSnapshot           `json:"port,omitempty"`
@@ -281,20 +281,23 @@ type WorkspaceNotification struct {
 // NewWorkspaceNotification converts a Pasta workspace notification into the
 // API shape, preserving single-entity notification payloads and sorting any
 // embedded full workspace snapshot.
-func NewWorkspaceNotification(notification pasta.WorkspaceNotification) WorkspaceNotification {
+func NewWorkspaceNotification(notification pasta.WorkspaceNotification, experimentalNodeTypes map[string]bool) WorkspaceNotification {
 	out := WorkspaceNotification{
 		Kind:      notification.Kind,
 		ID:        notification.ID,
 		ClassName: notification.ClassName,
-		NodeClass: notification.NodeClass,
 		Node:      notification.Node,
 		Nodes:     notification.Nodes,
 		Port:      notification.Port,
 		Link:      notification.Link,
 		Formular:  notification.Formular,
 	}
+	if notification.NodeClass != nil {
+		nodeClass := NewNodeClassSnapshot(*notification.NodeClass, experimentalNodeTypes[notification.NodeClass.Class])
+		out.NodeClass = &nodeClass
+	}
 	if notification.Snapshot != nil {
-		snapshot := NewWorkspaceSnapshot(*notification.Snapshot)
+		snapshot := NewWorkspaceSnapshot(*notification.Snapshot, experimentalNodeTypes)
 		out.Snapshot = &snapshot
 	}
 	return out
@@ -333,7 +336,7 @@ type WorkersSnapshotResponse struct {
 }
 
 type NodeClassSnapshotResponse struct {
-	Snapshot pasta.NodeClassSnapshot `json:"snapshot"`
+	Snapshot NodeClassSnapshot `json:"snapshot"`
 }
 
 type NodeSnapshotResponse struct {
@@ -357,7 +360,7 @@ type NodeClassLongDescriptionResponse struct {
 // map so clients can render node class palettes in a stable server-defined
 // order.
 type WorkspaceSnapshot struct {
-	Classes []pasta.NodeClassSnapshot     `json:"classes"`
+	Classes []NodeClassSnapshot           `json:"classes"`
 	Nodes   map[uint64]pasta.NodeSnapshot `json:"nodes"`
 	Ports   map[uint64]pasta.PortSnapshot `json:"ports"`
 	Links   map[uint64]pasta.LinkSnapshot `json:"links"`
@@ -365,9 +368,9 @@ type WorkspaceSnapshot struct {
 
 // NewWorkspaceSnapshot converts a Pasta workspace snapshot into the public API
 // snapshot shape, sorting node classes at the daemon boundary.
-func NewWorkspaceSnapshot(snapshot pasta.WorkspaceSnapshot) WorkspaceSnapshot {
+func NewWorkspaceSnapshot(snapshot pasta.WorkspaceSnapshot, experimentalNodeTypes map[string]bool) WorkspaceSnapshot {
 	return WorkspaceSnapshot{
-		Classes: SortedNodeClassSnapshots(snapshot.Classes),
+		Classes: SortedNodeClassSnapshots(snapshot.Classes, experimentalNodeTypes),
 		Nodes:   snapshot.Nodes,
 		Ports:   snapshot.Ports,
 		Links:   snapshot.Links,
@@ -377,13 +380,13 @@ func NewWorkspaceSnapshot(snapshot pasta.WorkspaceSnapshot) WorkspaceSnapshot {
 // SortedNodeClassSnapshots returns class snapshots in the canonical API order:
 // almagest namespace first, pasta second, other namespaces alphabetically, then
 // typed classes by primary type, untyped classes, and finally class name.
-func SortedNodeClassSnapshots(classes map[string]pasta.NodeClassSnapshot) []pasta.NodeClassSnapshot {
-	snapshots := make([]pasta.NodeClassSnapshot, 0, len(classes))
+func SortedNodeClassSnapshots(classes map[string]pasta.NodeClassSnapshot, experimentalNodeTypes map[string]bool) []NodeClassSnapshot {
+	snapshots := make([]NodeClassSnapshot, 0, len(classes))
 	for name, class := range classes {
 		if class.Class == "" {
 			class.Class = name
 		}
-		snapshots = append(snapshots, class)
+		snapshots = append(snapshots, NewNodeClassSnapshot(class, experimentalNodeTypes[class.Class]))
 	}
 	slices.SortFunc(snapshots, CompareNodeClassSnapshots)
 	return snapshots
@@ -391,7 +394,7 @@ func SortedNodeClassSnapshots(classes map[string]pasta.NodeClassSnapshot) []past
 
 // CompareNodeClassSnapshots compares node class snapshots using the canonical
 // daemon API order documented by SortedNodeClassSnapshots.
-func CompareNodeClassSnapshots(a, b pasta.NodeClassSnapshot) int {
+func CompareNodeClassSnapshots(a, b NodeClassSnapshot) int {
 	if c := cmp.Compare(nodeClassNamespaceRank(a.Class), nodeClassNamespaceRank(b.Class)); c != 0 {
 		return c
 	}
@@ -405,6 +408,31 @@ func CompareNodeClassSnapshots(a, b pasta.NodeClassSnapshot) int {
 		return c
 	}
 	return cmp.Compare(a.Class, b.Class)
+}
+
+// NodeClassSnapshot is the public daemon view of a Pasta node class.
+// Experimental is daemon-owned metadata because Pasta does not assign release
+// stability to node classes.
+type NodeClassSnapshot struct {
+	Class            string                        `json:"class"`
+	ShortDescription string                        `json:"short_description"`
+	Unique           bool                          `json:"unique"`
+	PrimaryType      string                        `json:"primary_type"`
+	InitialPorts     []pasta.NodeClassPortSnapshot `json:"initial_ports"`
+	Experimental     bool                          `json:"experimental"`
+}
+
+// NewNodeClassSnapshot adds daemon-owned stability metadata to a Pasta class
+// snapshot without changing the reusable library API.
+func NewNodeClassSnapshot(snapshot pasta.NodeClassSnapshot, experimental bool) NodeClassSnapshot {
+	return NodeClassSnapshot{
+		Class:            snapshot.Class,
+		ShortDescription: snapshot.ShortDescription,
+		Unique:           snapshot.Unique,
+		PrimaryType:      snapshot.PrimaryType,
+		InitialPorts:     snapshot.InitialPorts,
+		Experimental:     experimental,
+	}
 }
 
 func nodeClassNamespace(class string) string {

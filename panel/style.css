@@ -762,6 +762,12 @@ h1 {
   color: color-mix(in srgb, var(--class-primary-text-color), transparent 12%);
 }
 
+.class-button .class-experimental-sign,
+.class-button-primary .class-experimental-sign {
+  color: var(--yellow);
+  font-weight: 600;
+}
+
 .class-preview {
   display: inline-block;
   width: fit-content;
@@ -914,6 +920,18 @@ h1 {
 
 #node-menu {
   min-width: 0;
+}
+
+.experimental-node-warning {
+  margin-bottom: 10px;
+  border: 1px solid color-mix(in srgb, var(--yellow), transparent 45%);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--yellow), transparent 88%);
+  color: var(--yellow);
+  padding: 8px 10px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
 }
 
 #node-menu.formular-root {

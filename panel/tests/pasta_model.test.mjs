@@ -35,6 +35,7 @@ function nodeClass(name, primaryType = "") {
     unique: false,
     primary_type: primaryType,
     initial_ports: [],
+    experimental: false,
   };
 }
 
@@ -124,6 +125,16 @@ test("workspace response decoder rejects unsafe IDs and malformed nested values"
   assert.equal(parseWorkspaceSnapshot(graphSnapshot({
     ports: { 1: { direction: "sideways", node: 10, name: "bad", types: [], links: [] } },
   })), null);
+  const missingExperimental = nodeClass("demo/legacy");
+  delete missingExperimental.experimental;
+  assert.equal(parseWorkspaceSnapshot(graphSnapshot({ classes: [missingExperimental] })), null);
+});
+
+test("workspace decoder preserves experimental node type metadata", () => {
+  const experimental = { ...nodeClass("demo/unstable"), experimental: true };
+  const parsed = parseWorkspaceSnapshot(graphSnapshot({ classes: [experimental] }));
+
+  assert.equal(parsed?.classes[0].experimental, true);
 });
 
 test("workspace snapshots preserve received class order", () => {
