@@ -9,6 +9,7 @@ typos:
 
 test-go: certcat-ensure-generated
   ./scripts/test-go-coverage.sh
+  ./scripts/test-gonnect-netstack-regressions.sh
 
 certcat-test: certcat-ensure-generated
   ./scripts/test-go-coverage.sh certcat
