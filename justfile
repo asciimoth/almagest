@@ -23,9 +23,15 @@ test-e2e:
   ./e2e/lib/common_test.sh
   E2E_COVERAGE=1 ./e2e/run.sh
 
+test-e2e-light:
+  E2E_EXCLUDE_HEAVY=1 just test-e2e
+
 test: test-go test-js
 
 test-total: test test-e2e
+  ./scripts/coverage-report.sh
+
+test-total-light: test test-e2e-light
   ./scripts/coverage-report.sh
 
 coverage: test-total

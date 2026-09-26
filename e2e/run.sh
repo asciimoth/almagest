@@ -117,6 +117,9 @@ else
 	if [[ "${E2E_INCLUDE_PRIVILEGED:-}" != "1" && "${E2E_DOCKER_RUN_ARGS:-}" != *"--privileged"* ]]; then
 		case_find_args+=( '!' -exec test -e '{}/requires-privileged' ';' )
 	fi
+	if [[ "${E2E_EXCLUDE_HEAVY:-}" == "1" ]]; then
+		case_find_args+=( '!' -exec test -e '{}/heavy' ';' )
+	fi
 	mapfile -t cases < <(find "${case_find_args[@]}" -printf '%f\n' | sort)
 fi
 

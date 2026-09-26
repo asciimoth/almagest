@@ -11,6 +11,18 @@ Run all cases:
 just test-e2e
 ```
 
+Run all unit and e2e tests except cases marked as heavy:
+
+```sh
+just test-total-light
+```
+
+Run only the non-heavy e2e cases:
+
+```sh
+just test-e2e-light
+```
+
 The runner starts up to four cases in parallel. Set `E2E_JOBS` to change the
 limit. Use `E2E_JOBS=1` for sequential execution. Each case's output stays
 grouped, and the runner reports all case failures after the active cases
@@ -57,6 +69,8 @@ Each case lives in `e2e/cases/<case-name>/` and should include:
 - `requires-privileged`: optional marker for cases that need privileged Docker
   networking. Default all-case runs skip these unless `E2E_INCLUDE_PRIVILEGED=1`
   or `E2E_DOCKER_RUN_ARGS` contains `--privileged`.
+- `heavy`: optional marker for slow or resource-intensive cases. The
+  `just test-total-light` command skips these cases.
 - `docker-build-args`: optional list of `NAME=value` Docker build arguments,
   one per line. The runner builds a case-specific cached image when this file
   exists. Use this only when the case needs an incompatible system package
