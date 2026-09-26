@@ -20,6 +20,7 @@ test-js:
 
 test-e2e:
   ./e2e/lib/case_scheduler_test.sh
+  ./e2e/lib/common_test.sh
   E2E_COVERAGE=1 ./e2e/run.sh
 
 test: test-go test-js

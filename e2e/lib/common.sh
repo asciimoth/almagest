@@ -9,9 +9,10 @@ set -euo pipefail
 
 daemon_pid=""
 ALMAGEST_E2E_TIMEOUT="${ALMAGEST_E2E_TIMEOUT:-20}"
-# Bound shared CLI calls so admin/socket stalls fail the case with logs instead
-# of hanging the whole e2e run.
-ALMAGEST_E2E_CLI_TIMEOUT="${ALMAGEST_E2E_CLI_TIMEOUT:-5}"
+# Bound shared CLI calls so admin/socket stalls fail the case instead of
+# hanging the whole e2e run. Coverage builds can need more than five seconds
+# for valid config and storage operations when cases run in parallel.
+ALMAGEST_E2E_CLI_TIMEOUT="${ALMAGEST_E2E_CLI_TIMEOUT:-20}"
 ALMAGEST_E2E_LOG_CACHE_DEBUG="${ALMAGEST_E2E_LOG_CACHE_DEBUG:-16384}"
 ALMAGEST_E2E_LOG_CACHE_INFO="${ALMAGEST_E2E_LOG_CACHE_INFO:-4096}"
 ALMAGEST_E2E_LOG_CACHE_WARN="${ALMAGEST_E2E_LOG_CACHE_WARN:-4096}"
@@ -52,8 +53,18 @@ retry() {
 }
 
 cli() {
-	timeout --kill-after=2 "$ALMAGEST_E2E_CLI_TIMEOUT" \
-		almagest-cli --url "unix://$E2E_ADMIN_SOCK" "$@"
+	local status
+
+	if timeout --kill-after=2 "$ALMAGEST_E2E_CLI_TIMEOUT" \
+		almagest-cli --url "unix://$E2E_ADMIN_SOCK" "$@"; then
+		return 0
+	else
+		status=$?
+	fi
+	if ((status == 124)); then
+		log "CLI timed out after ${ALMAGEST_E2E_CLI_TIMEOUT}s: $*"
+	fi
+	return "$status"
 }
 
 start_daemon() {
