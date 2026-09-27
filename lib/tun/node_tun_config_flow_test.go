@@ -327,7 +327,7 @@ func newRecordingDefaultTunSystem() *recordingDefaultTunSystem {
 }
 
 func (s *recordingDefaultTunSystem) BuildDefaultTun(opts sysnet.DefaultTunOpts) (sysnet.DefaultTun, error) {
-	if err := s.VerifyDefaultTunOpts(opts); err != nil {
+	if err := s.CheckDefaultTunOpts(opts).Err(); err != nil {
 		return nil, err
 	}
 	dtun := newRecordingDefaultTun(opts.MTU)
@@ -341,6 +341,32 @@ func (s *recordingDefaultTunSystem) lastOpts() sysnet.DefaultTunOpts {
 		return sysnet.DefaultTunOpts{}
 	}
 	return s.buildOpts[len(s.buildOpts)-1].Copy()
+}
+
+func (s *recordingDefaultTunSystem) CapabilitiesForTun(t tun.Tun) (sysnet.TunCapabilityReport, error) {
+	found := false
+	for _, candidate := range s.tuns {
+		if candidate == t && candidate.closeCounter.Load() == 0 {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return sysnet.TunCapabilityReport{}, sysnet.ErrUnknownTun
+	}
+	report := s.Capabilities()
+	operations := make([]sysnet.OperationCapability, 0)
+	for _, operation := range report.Operations {
+		if operation.Key.Target == sysnet.TargetDefaultTun &&
+			operation.Key.Operation != sysnet.OpCreate &&
+			operation.Key.Operation != sysnet.OpCreateNamed {
+			operations = append(operations, operation)
+		}
+	}
+	return sysnet.TunCapabilityReport{
+		SystemRevision: report.Revision,
+		Operations:     operations,
+	}, nil
 }
 
 type recordingDefaultTun struct {
@@ -362,10 +388,11 @@ func newRecordingDefaultTun(mtu int) *recordingDefaultTun {
 	return &recordingDefaultTun{Tun: base, peer: peer, mtu: mtu}
 }
 
-func (t *recordingDefaultTun) SetDns(resolver dns.Interface) {
+func (t *recordingDefaultTun) SetDNS(resolver dns.Interface) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.resolver = resolver
+	return nil
 }
 
 func (t *recordingDefaultTun) MTU() (int, error) {

@@ -659,6 +659,11 @@
           "default": false,
           "description": "Report strict default TUN routing as unsupported."
         },
+        "DisableDefaultTunSourceRoutes": {
+          "type": "boolean",
+          "default": false,
+          "description": "Report default TUN source-route policies as unsupported."
+        },
         "DefaultTun": {
           "$ref": "#/$defs/debugDefaultTunConfig"
         }

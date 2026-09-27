@@ -5,6 +5,7 @@ import (
 	"os"
 	"slices"
 
+	"github.com/asciimoth/gonnect/dns"
 	"github.com/asciimoth/gonnect/sysnet"
 	"github.com/asciimoth/pasta/pasta"
 
@@ -15,9 +16,14 @@ func (n *defaultTunNode) configureDefaultTun() error {
 	opts := n.effectiveDefaultTunOpts()
 	if n.dtun != nil && n.hasEffective && defaultTunOptsEqual(opts, n.effective) {
 		_ = n.updateLabel()
+		if n.runtimeError != "" {
+			return n.applyDefaultTunDNS()
+		}
 		return nil
 	}
-	if n.dtun != nil && n.dynDefaultTun && n.hasEffective && defaultTunOptsDynamicallyCompatible(n.effective, opts) {
+	if n.dtun != nil && n.hasEffective &&
+		defaultTunOptsDynamicallyCompatible(n.effective, opts) &&
+		n.canApplyDynamicDefaultTunOpts(opts) {
 		if err := n.applyDynamicDefaultTunOpts(opts); err == nil {
 			n.effective = opts.Copy()
 			n.hasEffective = true
@@ -71,7 +77,7 @@ func (n *defaultTunNode) rebuildDefaultTun(opts sysnet.DefaultTunOpts) error {
 	n.effective = opts.Copy()
 	n.hasEffective = true
 	_ = n.W.AddNodeResourceLocked(n.ID, dtun)
-	n.applyDefaultTunDNS()
+	dnsErr := n.applyDefaultTunDNS()
 	_ = n.updateLabel()
 	n.sendEffectiveBlock()
 	n.refreshDefaultTunWarningsLocked()
@@ -111,7 +117,7 @@ func (n *defaultTunNode) rebuildDefaultTun(opts sysnet.DefaultTunOpts) error {
 			n.outputTuns.RebindSource(previous, dtun)
 			_ = previous.Close()
 		}
-		return nil
+		return dnsErr
 	}
 	n.outputTuns.InvalidateAllLocked(n.W, n.ID)
 	if previous != nil && !samePublicTun {
@@ -119,7 +125,7 @@ func (n *defaultTunNode) rebuildDefaultTun(opts sysnet.DefaultTunOpts) error {
 	}
 	n.outputTuns.Wait()
 	n.sendAll()
-	return nil
+	return dnsErr
 }
 
 type defaultTunSourceGeneration interface {
@@ -207,20 +213,61 @@ func (n *defaultTunNode) refreshDefaultTunWarningsLocked() {
 // DefaultTun DNS port. A missing or no-longer-ready provider deliberately
 // installs nil so sysnet's local DefaultTun DNS server drops requests instead
 // of silently falling back to the system OutDNS provider.
-func (n *defaultTunNode) applyDefaultTunDNS() {
+func (n *defaultTunNode) applyDefaultTunDNS() error {
 	if n.dtun == nil {
-		return
+		return nil
 	}
+	var resolver dns.Interface
 	if dnsnodes.DNSIsReady(n.dnsProvider) {
-		n.dtun.SetDns(n.dnsProvider)
-		return
+		resolver = n.dnsProvider
 	}
-	n.dtun.SetDns(nil)
+	if err := n.dtun.SetDNS(resolver); err != nil {
+		n.runtimeError = err.Error()
+		n.sendForcedMenuSnapshot()
+		_ = n.updateLabel()
+		if n.Logger != nil {
+			n.Logger.Errf("configure DefaultTun DNS failed: %v", err)
+		}
+		return err
+	}
+	n.runtimeError = ""
+	_ = n.updateLabel()
+	return nil
+}
+
+func (n *defaultTunNode) canApplyDynamicDefaultTunOpts(opts sysnet.DefaultTunOpts) bool {
+	if n.System() == nil || n.dtun == nil {
+		return false
+	}
+	fallbackFamily := defaultTunOptsFamily(n.effective)
+	if opts.Name != n.effective.Name {
+		if opts.Name == "" || !tunOperationAllowsAttempt(
+			n.System(), n.dtun, sysnet.TargetDefaultTun, sysnet.OpRename, sysnet.FamilyNone,
+		) {
+			return false
+		}
+	}
+	if !slices.Equal(n.effective.TunAddrs, opts.TunAddrs) {
+		family := optionAddressFamily(opts.TunAddrs, nil, fallbackFamily)
+		if !tunOperationAllowsAttempt(
+			n.System(), n.dtun, sysnet.TargetDefaultTun, sysnet.OpSetAddresses, family,
+		) {
+			return false
+		}
+	}
+	return n.effective.MTU == opts.MTU || tunOperationAllowsAttempt(
+		n.System(), n.dtun, sysnet.TargetDefaultTun, sysnet.OpSetMTU, sysnet.FamilyNone,
+	)
 }
 
 func (n *defaultTunNode) applyDynamicDefaultTunOpts(opts sysnet.DefaultTunOpts) error {
 	if n.System() == nil || n.dtun == nil {
 		return errors.New("no default tun")
+	}
+	if n.effective.Name != opts.Name {
+		if err := n.System().SetTunName(n.dtun, opts.Name); err != nil {
+			return err
+		}
 	}
 	if !slices.Equal(n.effective.TunAddrs, opts.TunAddrs) {
 		if err := n.System().SetTunAddrs(n.dtun, slices.Clone(opts.TunAddrs)); err != nil {
@@ -263,7 +310,7 @@ func (n *defaultTunNode) verifyDefaultTunOpts(opts sysnet.DefaultTunOpts) error 
 	if n.System() == nil {
 		return errors.New("no sysnet system")
 	}
-	return n.System().VerifyDefaultTunOpts(opts.Copy())
+	return validationErrorForAttempt(n.System().CheckDefaultTunOpts(opts.Copy()))
 }
 
 func (n *defaultTunNode) sendAll() {

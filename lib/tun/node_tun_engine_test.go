@@ -68,8 +68,8 @@ func TestTunConfigPersistsAcrossSaveRestoreAndCopyPaste(t *testing.T) {
 	if got := restoreSys.LastOpts(); !reflect.DeepEqual(got, tunPersistedOpts()) {
 		t.Fatalf("restored build opts = %#v, want %#v", got, tunPersistedOpts())
 	}
-	if got, want := restoreSys.SetNameCalls, []string{"persisted-tun"}; !reflect.DeepEqual(got, want) {
-		t.Fatalf("restored SetTunName calls = %#v, want %#v", got, want)
+	if got := restoreSys.SetNameCalls; len(got) != 0 {
+		t.Fatalf("restored SetTunName calls = %#v, want creation-time name", got)
 	}
 	_ = restored
 
@@ -120,6 +120,7 @@ func applyTunTestConfig(t *testing.T, engine almagest.Engine, node uint64, name 
 
 func tunPersistedOpts() sysnet.TunOpts {
 	return sysnet.TunOpts{
+		Name:      "persisted-tun",
 		TunAddrs:  []string{"10.100.0.2/32"},
 		TunRoutes: []string{"10.101.0.0/16"},
 		MTU:       1250,

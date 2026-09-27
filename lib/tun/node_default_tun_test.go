@@ -45,7 +45,7 @@ func newDefaultTunStopRecorder(mtu int) *defaultTunStopRecorder {
 	return &defaultTunStopRecorder{Tun: base, peer: peer, mtu: mtu}
 }
 
-func (t *defaultTunStopRecorder) SetDns(dns.Interface) {}
+func (t *defaultTunStopRecorder) SetDNS(dns.Interface) error { return nil }
 
 func (t *defaultTunStopRecorder) MTU() (int, error) {
 	return t.mtu, nil

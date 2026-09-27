@@ -19,6 +19,7 @@ func TestBuildDebugIntegrationOptions(t *testing.T) {
 				"DisableTunNames": true,
 				"DisableDefaultTunNames": true,
 				"DisableStrictMode": true,
+				"DisableDefaultTunSourceRoutes": true,
 				"DefaultTun": {
 					"Builder": "pipe"
 				}
@@ -36,10 +37,28 @@ func TestBuildDebugIntegrationOptions(t *testing.T) {
 	if !ok {
 		t.Fatalf("debug system = %T, want *sysnetdebug.System", system)
 	}
-	features := debugSystem.Features()
-	if features.Tun || features.DefaultTun || features.DynTun || features.DynDefaultTun ||
-		features.TunNames || features.DefaultTunNames || features.StrictMode {
-		t.Fatalf("features = %#v, want all debug features disabled", features)
+	report := debugSystem.Capabilities()
+	checks := []sysnet.OperationKey{
+		{Target: sysnet.TargetTun, Operation: sysnet.OpCreate, Family: sysnet.FamilyIPv4},
+		{Target: sysnet.TargetTun, Operation: sysnet.OpCreateNamed, Family: sysnet.FamilyIPv4},
+		{Target: sysnet.TargetTun, Operation: sysnet.OpSetMTU, Family: sysnet.FamilyNone},
+		{Target: sysnet.TargetDefaultTun, Operation: sysnet.OpCreate, Family: sysnet.FamilyIPv4},
+		{Target: sysnet.TargetDefaultTun, Operation: sysnet.OpCreateNamed, Family: sysnet.FamilyIPv4},
+		{Target: sysnet.TargetDefaultTun, Operation: sysnet.OpSetMTU, Family: sysnet.FamilyNone},
+		{Target: sysnet.TargetDefaultTun, Operation: sysnet.OpSourceRoutes, Family: sysnet.FamilyIPv4},
+	}
+	for _, key := range checks {
+		if capability := report.Operation(key); capability.State != sysnet.CapabilityUnsupported {
+			t.Fatalf("capability %+v = %#v, want unsupported", key, capability)
+		}
+	}
+	strict := report.DefaultTunProfile(sysnet.RoutingProfileKey{
+		Family: sysnet.FamilyIPv4,
+		Mode:   sysnet.RoutingFull,
+		Strict: true,
+	})
+	if strict.State != sysnet.CapabilityUnsupported {
+		t.Fatalf("strict routing capability = %#v, want unsupported", strict.Capability)
 	}
 	if !debugSystem.LocalNet().IsNative() {
 		t.Fatal("debug LocalNet IsNative = false, want native local network")

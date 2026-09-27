@@ -13,6 +13,7 @@ import (
 )
 
 type defaultTunConfig struct {
+	name      string
 	tunAddrs  string
 	tunRoutes string
 	mtu       int
@@ -30,6 +31,7 @@ func (c *defaultTunConfig) read(cfg configer.Config) {
 	if cfg == nil {
 		return
 	}
+	c.name = configer.String(cfg, configer.Path{"name"}, c.name)
 	c.tunAddrs = configer.String(cfg, configer.Path{"tunAddrs"}, c.tunAddrs)
 	c.tunRoutes = configer.String(cfg, configer.Path{"tunRoutes"}, c.tunRoutes)
 	c.mtu = configer.Int(cfg, configer.Path{"mtu"}, c.mtu)
@@ -41,6 +43,7 @@ func (c *defaultTunConfig) read(cfg configer.Config) {
 }
 
 func (c *defaultTunConfig) normalize() {
+	c.name = strings.TrimSpace(c.name)
 	c.tunAddrs = normalizeListText(c.tunAddrs)
 	c.tunRoutes = normalizeListText(c.tunRoutes)
 	c.dnsIP = strings.TrimSpace(c.dnsIP)
@@ -128,6 +131,7 @@ func mergeDefaultTunMTU(a, b int) int {
 
 func (c defaultTunConfig) defaultTunOpts() sysnet.DefaultTunOpts {
 	return sysnet.DefaultTunOpts{
+		Name:      c.name,
 		TunAddrs:  splitDefaultTunList(c.tunAddrs),
 		TunRoutes: splitDefaultTunList(c.tunRoutes),
 		MTU:       c.mtu,
@@ -149,6 +153,7 @@ func defaultTunOptsDynamicallyCompatible(a, b sysnet.DefaultTunOpts) bool {
 
 func defaultTunOptsEqual(a, b sysnet.DefaultTunOpts) bool {
 	return defaultTunOptsDynamicallyCompatible(a, b) &&
+		a.Name == b.Name &&
 		slices.Equal(a.TunAddrs, b.TunAddrs) &&
 		a.MTU == b.MTU
 }

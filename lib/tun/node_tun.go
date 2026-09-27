@@ -2,7 +2,6 @@ package tunnodes
 
 import (
 	"errors"
-	"fmt"
 	"slices"
 	"strings"
 
@@ -70,6 +69,7 @@ func (c *tunNodeConfig) normalize() {
 
 func (c tunNodeConfig) opts() sysnet.TunOpts {
 	return sysnet.TunOpts{
+		Name:      c.name,
 		TunAddrs:  splitDefaultTunList(c.tunAddrs),
 		TunRoutes: splitDefaultTunList(c.tunRoutes),
 		MTU:       c.mtu,
@@ -89,24 +89,16 @@ type tunNode struct {
 	config  tunNodeConfig
 	portCfg TunConfigByLink
 
-	dynTun        bool
-	tunNames      bool
-	effective     sysnet.TunOpts
-	effectiveName string
-	hasEffective  bool
-	tun           tun.Tun
-	outputTuns    TunOutputCache
-	formError     string
+	effective    sysnet.TunOpts
+	hasEffective bool
+	tun          tun.Tun
+	outputTuns   TunOutputCache
+	formError    string
 }
 
 func (n *tunNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
 	n.InitBaseNode(w, logger, id)
 	n.config.normalize()
-	if n.System() != nil {
-		features := n.System().Features()
-		n.dynTun = features.DynTun
-		n.tunNames = features.TunNames
-	}
 	if n.portCfg == nil {
 		n.portCfg = TunConfigByLink{}
 	}
@@ -130,7 +122,6 @@ func (n *tunNode) OnReady() error {
 func (n *tunNode) OnStop() {
 	n.closeTun(false)
 	n.hasEffective = false
-	n.effectiveName = ""
 	n.portCfg = TunConfigByLink{}
 }
 
@@ -270,23 +261,18 @@ func (n *tunNode) validateConfig(config tunNodeConfig) error {
 	if config.mtu < 0 {
 		return errors.New("MTU must not be negative")
 	}
-	if err := n.verifyTunOpts(config.opts()); err != nil {
-		return err
-	}
-	return n.verifyTunName(config.name)
+	return n.verifyTunOpts(config.opts())
 }
 
 func (n *tunNode) configureTun() error {
 	opts := n.effectiveTunOpts()
-	name := n.config.name
-	if n.tun != nil && n.hasEffective && tunOptsEqual(opts, n.effective) && name == n.effectiveName {
+	if n.tun != nil && n.hasEffective && tunOptsEqual(opts, n.effective) {
 		_ = n.updateLabel()
 		return nil
 	}
-	if n.tun != nil && n.dynTun && n.hasEffective {
-		if err := n.applyDynamicTunConfig(opts, name); err == nil {
+	if n.tun != nil && n.hasEffective && n.canApplyDynamicTunConfig(opts) {
+		if err := n.applyDynamicTunConfig(opts); err == nil {
 			n.effective = copyTunOpts(opts)
-			n.effectiveName = name
 			n.hasEffective = true
 			n.formError = ""
 			_ = n.updateLabel()
@@ -294,7 +280,7 @@ func (n *tunNode) configureTun() error {
 			return nil
 		}
 	}
-	if err := n.rebuildTun(opts, name); err != nil {
+	if err := n.rebuildTun(opts); err != nil {
 		n.logConfigureTunError(err)
 		return err
 	}
@@ -308,7 +294,7 @@ func (n *tunNode) logConfigureTunError(err error) {
 	n.Logger.Errf("configure TUN failed: %v", err)
 }
 
-func (n *tunNode) rebuildTun(opts sysnet.TunOpts, name string) error {
+func (n *tunNode) rebuildTun(opts sysnet.TunOpts) error {
 	if n.System() == nil {
 		return errors.New("no sysnet system")
 	}
@@ -318,13 +304,6 @@ func (n *tunNode) rebuildTun(opts sysnet.TunOpts, name string) error {
 		_ = n.updateLabel()
 		return err
 	}
-	if err := n.verifyTunName(name); err != nil {
-		n.formError = err.Error()
-		n.sendForcedMenuSnapshot()
-		_ = n.updateLabel()
-		return err
-	}
-
 	n.closeTun(true)
 	nextTun, err := n.System().BuildTun(copyTunOpts(opts))
 	if err != nil {
@@ -333,20 +312,9 @@ func (n *tunNode) rebuildTun(opts sysnet.TunOpts, name string) error {
 		_ = n.updateLabel()
 		return err
 	}
-	if name != "" {
-		if _, err := n.System().SetTunName(nextTun, name); err != nil {
-			_ = nextTun.Close()
-			n.formError = err.Error()
-			n.sendForcedMenuSnapshot()
-			_ = n.updateLabel()
-			return err
-		}
-	}
-
 	n.formError = ""
 	n.tun = nextTun
 	n.effective = copyTunOpts(opts)
-	n.effectiveName = name
 	n.hasEffective = true
 	_ = n.W.AddNodeResourceLocked(n.ID, nextTun)
 	_ = n.updateLabel()
@@ -355,21 +323,41 @@ func (n *tunNode) rebuildTun(opts sysnet.TunOpts, name string) error {
 	return nil
 }
 
-func (n *tunNode) applyDynamicTunConfig(opts sysnet.TunOpts, name string) error {
+func (n *tunNode) canApplyDynamicTunConfig(opts sysnet.TunOpts) bool {
+	if n.System() == nil || n.tun == nil {
+		return false
+	}
+	fallbackFamily := tunOptsFamily(n.effective)
+	if opts.Name != n.effective.Name {
+		if opts.Name == "" || !tunOperationAllowsAttempt(
+			n.System(), n.tun, sysnet.TargetTun, sysnet.OpRename, sysnet.FamilyNone,
+		) {
+			return false
+		}
+	}
+	if !slices.Equal(n.effective.TunAddrs, opts.TunAddrs) {
+		family := optionAddressFamily(opts.TunAddrs, nil, fallbackFamily)
+		if !tunOperationAllowsAttempt(n.System(), n.tun, sysnet.TargetTun, sysnet.OpSetAddresses, family) {
+			return false
+		}
+	}
+	if !slices.Equal(n.effective.TunRoutes, opts.TunRoutes) {
+		family := optionAddressFamily(nil, opts.TunRoutes, fallbackFamily)
+		if !tunOperationAllowsAttempt(n.System(), n.tun, sysnet.TargetTun, sysnet.OpSetRoutes, family) {
+			return false
+		}
+	}
+	return n.effective.MTU == opts.MTU || tunOperationAllowsAttempt(
+		n.System(), n.tun, sysnet.TargetTun, sysnet.OpSetMTU, sysnet.FamilyNone,
+	)
+}
+
+func (n *tunNode) applyDynamicTunConfig(opts sysnet.TunOpts) error {
 	if n.System() == nil || n.tun == nil {
 		return errors.New("no tun")
 	}
-	if name != n.effectiveName {
-		if err := n.verifyTunName(name); err != nil {
-			return err
-		}
-		if name == "" {
-			return sysnet.ErrNotSupported
-		}
-		if !n.tunNames {
-			return sysnet.ErrNotSupported
-		}
-		if _, err := n.System().SetTunName(n.tun, name); err != nil {
+	if opts.Name != n.effective.Name {
+		if err := n.System().SetTunName(n.tun, opts.Name); err != nil {
 			return err
 		}
 	}
@@ -404,28 +392,7 @@ func (n *tunNode) verifyTunOpts(opts sysnet.TunOpts) error {
 	if n.System() == nil {
 		return errors.New("no sysnet system")
 	}
-	return n.System().VerifyTunOpts(copyTunOpts(opts))
-}
-
-func (n *tunNode) verifyTunName(name string) error {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return nil
-	}
-	if n.System() == nil {
-		return errors.New("no sysnet system")
-	}
-	if !n.tunNames {
-		return errors.New("custom TUN names are not supported")
-	}
-	valid, free := n.System().TunNameVerify(name)
-	if !valid {
-		return fmt.Errorf("invalid TUN name %q", name)
-	}
-	if !free && name != n.effectiveName {
-		return fmt.Errorf("TUN name %q is already in use", name)
-	}
-	return nil
+	return validationErrorForAttempt(n.System().CheckTunOpts(copyTunOpts(opts)))
 }
 
 func (n *tunNode) sendAll() {
@@ -469,8 +436,8 @@ func (n *tunNode) updateLabel() error {
 	if n.tun == nil {
 		return n.SetLabel("idle")
 	}
-	if n.effectiveName != "" {
-		return n.SetLabel(n.effectiveName)
+	if n.effective.Name != "" {
+		return n.SetLabel(n.effective.Name)
 	}
 	return n.SetLabel("ready")
 }
@@ -493,13 +460,11 @@ func (n *tunNode) sendEffectiveBlock() {
 
 func (n *tunNode) effectiveBlock() formular.Block {
 	opts := n.effectiveTunOpts()
-	name := n.config.name
 	if n.hasEffective {
 		opts = copyTunOpts(n.effective)
-		name = n.effectiveName
 	}
 	return formular.Block{ID: "effective", Order: 0, Generation: 1, Items: []formular.Item{
-		readonlyTextField("name", "Name", name),
+		readonlyTextField("name", "Name", opts.Name),
 		readonlyStringListField("tunAddrs", "TUN addrs", opts.TunAddrs),
 		readonlyStringListField("tunRoutes", "TUN routes", opts.TunRoutes),
 		readonlyIntField("mtu", "MTU", opts.MTU),
@@ -508,8 +473,15 @@ func (n *tunNode) effectiveBlock() formular.Block {
 
 func (n *tunNode) configBlock() formular.Block {
 	statusErr := n.formError != ""
+	name := configTextField("name", "Name", n.config.name, statusErr, n.formError, false)
+	if n.System() != nil {
+		opts := n.effectiveTunOpts()
+		name = applyCapabilityToMenuItem(name, systemOperation(
+			n.System().Capabilities(), sysnet.TargetTun, sysnet.OpCreateNamed, tunOptsFamily(opts),
+		))
+	}
 	return formular.Block{ID: "config", Order: 10, Generation: 1, Form: true, Items: []formular.Item{
-		configTextField("name", "Name", n.config.name, statusErr, n.formError, false),
+		name,
 		defaultTunStringListField("tunAddrs", "TUN addrs", splitDefaultTunList(n.config.tunAddrs)),
 		defaultTunStringListField("tunRoutes", "TUN routes", splitDefaultTunList(n.config.tunRoutes)),
 		configIntField("mtu", "MTU", n.config.mtu, statusErr, n.formError),
@@ -518,6 +490,7 @@ func (n *tunNode) configBlock() formular.Block {
 
 func copyTunOpts(opts sysnet.TunOpts) sysnet.TunOpts {
 	return sysnet.TunOpts{
+		Name:      opts.Name,
 		TunAddrs:  slices.Clone(opts.TunAddrs),
 		TunRoutes: slices.Clone(opts.TunRoutes),
 		MTU:       opts.MTU,
@@ -525,7 +498,8 @@ func copyTunOpts(opts sysnet.TunOpts) sysnet.TunOpts {
 }
 
 func tunOptsEqual(a, b sysnet.TunOpts) bool {
-	return slices.Equal(a.TunAddrs, b.TunAddrs) &&
+	return a.Name == b.Name &&
+		slices.Equal(a.TunAddrs, b.TunAddrs) &&
 		slices.Equal(a.TunRoutes, b.TunRoutes) &&
 		a.MTU == b.MTU
 }

@@ -75,7 +75,7 @@ func TestDefaultTunDNSPortAttachesDetachesAndReattachesProvider(t *testing.T) {
 		t.Fatalf("DefaultTun DNS without link = %T, want nil", got)
 	}
 	if got := dtun.dnsSetCount(); got == 0 {
-		t.Fatal("DefaultTun did not call SetDns(nil) after initial build")
+		t.Fatal("DefaultTun did not call SetDNS(nil) after initial build")
 	}
 
 	out, err := w.AddNodeByClass(dnsnodes.NodeTypeOutDNS, "out")
@@ -678,15 +678,15 @@ func TestDefaultTunAppliesTunAddrsAndRoutesFromArrayFields(t *testing.T) {
 
 func TestDefaultTunRuleAutocompleteUsesSystemRules(t *testing.T) {
 	w, sys := newDefaultTunNodeTestWorkspace(t, false)
-	sys.Rules = []sysnet.RuleTypeInfo{
+	sys.Rules = []sysnet.RuleCapability{
 		{Type: "app", Description: "Application"},
 		{Type: "uid", Description: "User ID"},
 	}
-	sys.RuleCompletion = func(rule sysnet.Rule) []string {
+	sys.CompleteRuleHook = func(rule sysnet.Rule, _ sysnet.RuleContext) ([]string, error) {
 		if rule.Type == "app" && rule.Rule == "org.mozilla.f" {
-			return []string{"org.mozilla.firefox", "org.mozilla.fennec", "org.chromium.Chromium"}
+			return []string{"org.mozilla.firefox", "org.mozilla.fennec", "org.chromium.Chromium"}, nil
 		}
-		return nil
+		return nil, nil
 	}
 
 	var autocomplete []formular.AutocompleteHintsMessage
@@ -1155,14 +1155,21 @@ type recordingDefaultTunSystem struct {
 }
 
 func newRecordingDefaultTunSystem() *recordingDefaultTunSystem {
-	return &recordingDefaultTunSystem{System: &sysnetdebug.System{}}
+	rules := slicesClone(sysnetdebug.DefaultRules)
+	rules = append(rules, sysnet.RuleCapability{
+		Type:        "app",
+		Description: "Application",
+		ValueKind:   sysnet.RuleValueName,
+		SemanticsID: "almagest.test.app.v1",
+	})
+	return &recordingDefaultTunSystem{System: &sysnetdebug.System{Rules: rules}}
 }
 
 func (s *recordingDefaultTunSystem) BuildDefaultTun(opts sysnet.DefaultTunOpts) (sysnet.DefaultTun, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if err := s.VerifyDefaultTunOpts(opts); err != nil {
+	if err := s.CheckDefaultTunOpts(opts).Err(); err != nil {
 		return nil, err
 	}
 	if s.buildErr != nil {
@@ -1288,6 +1295,34 @@ func (s *recordingDefaultTunSystem) SetTunAddrs(t tun.Tun, addrs []string) error
 	}
 	s.setAddrsCalls = append(s.setAddrsCalls, slicesClone(addrs))
 	return nil
+}
+
+func (s *recordingDefaultTunSystem) CapabilitiesForTun(t tun.Tun) (sysnet.TunCapabilityReport, error) {
+	s.mu.RLock()
+	found := false
+	for _, candidate := range s.tuns {
+		if candidate == t && candidate.closeCount() == 0 {
+			found = true
+			break
+		}
+	}
+	s.mu.RUnlock()
+	if !found {
+		return sysnet.TunCapabilityReport{}, sysnet.ErrUnknownTun
+	}
+	report := s.Capabilities()
+	operations := make([]sysnet.OperationCapability, 0)
+	for _, operation := range report.Operations {
+		if operation.Key.Target == sysnet.TargetDefaultTun &&
+			operation.Key.Operation != sysnet.OpCreate &&
+			operation.Key.Operation != sysnet.OpCreateNamed {
+			operations = append(operations, operation)
+		}
+	}
+	return sysnet.TunCapabilityReport{
+		SystemRevision: report.Revision,
+		Operations:     operations,
+	}, nil
 }
 
 func (s *recordingDefaultTunSystem) buildCount() int {
@@ -1420,12 +1455,13 @@ func (t *recordingDefaultTun) BatchSize() int {
 	return source.BatchSize()
 }
 
-func (t *recordingDefaultTun) SetDns(resolver dns.Interface) {
+func (t *recordingDefaultTun) SetDNS(resolver dns.Interface) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
 	t.resolver = resolver
 	t.dnsSetCalls = append(t.dnsSetCalls, resolver)
+	return nil
 }
 
 func (t *recordingDefaultTun) MTU() (int, error) {

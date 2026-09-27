@@ -1,6 +1,7 @@
 package tunnodes
 
 import (
+	"github.com/asciimoth/gonnect/sysnet"
 	"github.com/asciimoth/pasta/pasta"
 
 	"github.com/asciimoth/almagest/lib/nodekit"
@@ -34,8 +35,12 @@ func filterSupportedClasses(runtime nodekit.Runtime, classes []pasta.NodeClass) 
 		return classes
 	}
 	sys := runtime.System()
-	defaultTunSupported := sys != nil && sys.Features().DefaultTun
-	tunSupported := sys != nil && sys.Features().Tun
+	var report sysnet.CapabilityReport
+	if sys != nil {
+		report = sys.Capabilities()
+	}
+	defaultTunSupported := sys != nil && systemCanCreate(report, sysnet.TargetDefaultTun)
+	tunSupported := sys != nil && systemCanCreate(report, sysnet.TargetTun)
 	out := classes[:0]
 	for _, class := range classes {
 		if class.ClassName() == NodeTypeDefaultTun && !defaultTunSupported {

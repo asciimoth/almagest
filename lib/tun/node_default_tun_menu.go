@@ -12,6 +12,9 @@ func (n *defaultTunNode) updateLabel() error {
 	if n.formError != "" {
 		return n.SetLabel("invalid config")
 	}
+	if n.runtimeError != "" {
+		return n.SetLabel("error")
+	}
 	if n.dtun == nil {
 		return n.SetLabel("idle")
 	}
@@ -40,6 +43,7 @@ func (n *defaultTunNode) effectiveBlock() formular.Block {
 		opts = n.effective.Copy()
 	}
 	return formular.Block{ID: "effective", Order: 0, Generation: 1, Items: []formular.Item{
+		readonlyTextField("name", "Name", opts.Name),
 		readonlyStringListField("tunAddrs", "TUN addrs", opts.TunAddrs),
 		readonlyStringListField("tunRoutes", "TUN routes", opts.TunRoutes),
 		readonlyIntField("mtu", "MTU", opts.MTU),
@@ -47,19 +51,47 @@ func (n *defaultTunNode) effectiveBlock() formular.Block {
 		readonlyBoolField("strict", "Strict routing", opts.Strict),
 		readonlyMultilineTextField("exclude", "Exclude", defaultTunRulesText(opts.Exclude)),
 		readonlyMultilineTextField("include", "Include", defaultTunRulesText(opts.Include)),
+		readonlyTextField("error", "Error", n.runtimeError),
 	}}
 }
 
 func (n *defaultTunNode) configBlock() formular.Block {
 	statusErr := n.formError != ""
+	name := configTextField("name", "Name", n.config.name, statusErr, n.formError, false)
+	strict := configCheckbox("strict", "Strict routing", n.config.strict)
+	exclude := defaultTunRulesField("exclude", "Exclude", n.config.exclude)
+	include := defaultTunRulesField("include", "Include", n.config.include)
+	if n.System() != nil {
+		report := n.System().Capabilities()
+		family := defaultTunOptsFamily(n.effectiveDefaultTunOpts())
+		name = applyCapabilityToMenuItem(name, systemOperation(
+			report, sysnet.TargetDefaultTun, sysnet.OpCreateNamed, family,
+		))
+		mode := sysnet.RoutingFull
+		if len(n.config.exclude) != 0 {
+			mode = sysnet.RoutingExclude
+		} else if len(n.config.include) != 0 {
+			mode = sysnet.RoutingInclude
+		}
+		strict = applyCapabilityToMenuItem(strict, report.DefaultTunProfile(sysnet.RoutingProfileKey{
+			Family: family, Mode: mode, Strict: true,
+		}).Capability)
+		exclude = applyCapabilityToMenuItem(exclude, report.DefaultTunProfile(sysnet.RoutingProfileKey{
+			Family: family, Mode: sysnet.RoutingExclude, Strict: n.config.strict,
+		}).Capability)
+		include = applyCapabilityToMenuItem(include, report.DefaultTunProfile(sysnet.RoutingProfileKey{
+			Family: family, Mode: sysnet.RoutingInclude, Strict: n.config.strict,
+		}).Capability)
+	}
 	return formular.Block{ID: "config", Order: 10, Generation: 1, Form: true, Items: []formular.Item{
+		name,
 		defaultTunStringListField("tunAddrs", "TUN addrs", splitDefaultTunList(n.config.tunAddrs)),
 		defaultTunStringListField("tunRoutes", "TUN routes", splitDefaultTunList(n.config.tunRoutes)),
 		configIntField("mtu", "MTU", n.config.mtu, statusErr, n.formError),
 		configTextField("dnsIP", "DNS IP", n.config.dnsIP, statusErr, n.formError, false),
-		configCheckbox("strict", "Strict routing", n.config.strict),
-		defaultTunRulesField("exclude", "Exclude", n.config.exclude),
-		defaultTunRulesField("include", "Include", n.config.include),
+		strict,
+		exclude,
+		include,
 	}}
 }
 
@@ -73,6 +105,10 @@ func (n *defaultTunNode) validateConfigField(msg formular.FieldValidateMessage) 
 	}
 	next := n.config
 	switch msg.Field.FieldID {
+	case "name":
+		if value, ok := formular.StringValue(msg.Value); ok {
+			next.name = value
+		}
 	case "mtu":
 		if value, ok := formular.IntValue(msg.Value); ok {
 			next.mtu = value
@@ -98,7 +134,8 @@ func (n *defaultTunNode) validateNestedConfigField(msg formular.FieldValidateMes
 		if ruleType == "" {
 			return nil
 		}
-		if !n.ruleTypeSupported(ruleType) {
+		arrayID, _, pathOK := defaultTunRuleFieldPath(msg.Field)
+		if pathOK && !n.ruleTypeSupported(arrayID, ruleType) {
 			return fmt.Errorf("unsupported rule type %q", ruleType)
 		}
 		if arrayID, elementID, ok := defaultTunRuleFieldPath(msg.Field); ok {
@@ -119,7 +156,13 @@ func (n *defaultTunNode) validateNestedConfigField(msg formular.FieldValidateMes
 		if !ok || ruleType == "" || n.System() == nil {
 			return nil
 		}
-		if n.System().RuleVerify(sysnet.Rule{Type: ruleType, Rule: ruleValue}) {
+		context, ok := n.ruleRoutingContext(arrayID)
+		if !ok {
+			return nil
+		}
+		if validationErrorForAttempt(n.System().CheckRule(
+			sysnet.Rule{Type: ruleType, Rule: ruleValue}, context,
+		)) == nil {
 			return nil
 		}
 		return fmt.Errorf("invalid %s rule", ruleType)

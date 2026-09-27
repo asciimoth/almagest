@@ -116,7 +116,7 @@ func NewRecordingSystem() *RecordingSystem {
 }
 
 func (s *RecordingSystem) BuildTun(opts sysnet.TunOpts) (tun.Tun, error) {
-	if err := s.VerifyTunOpts(opts); err != nil {
+	if err := s.CheckTunOpts(opts).Err(); err != nil {
 		return nil, err
 	}
 	if s.RequirePreviousClosedBeforeBuild && len(s.Tuns) > 0 && s.Tuns[len(s.Tuns)-1].CloseCount() == 0 {
@@ -162,17 +162,46 @@ func (s *RecordingSystem) SetTunRoutes(t tun.Tun, routes []string) error {
 	return nil
 }
 
-func (s *RecordingSystem) SetTunName(t tun.Tun, name string) ([]string, error) {
+func (s *RecordingSystem) SetTunName(t tun.Tun, name string) error {
 	rtun, ok := t.(*RecordingTun)
 	if !ok {
-		return nil, sysnet.ErrUnknownTun
+		return sysnet.ErrUnknownTun
 	}
-	if valid, free := s.TunNameVerify(name); !valid || (!free && name != rtun.NameValue) {
-		return nil, sysnet.ErrUnknownTun
+	if name == "" || (s.TunNameChecker != nil && !s.TunNameChecker(name)) {
+		return sysnet.ErrInvalidOptions
 	}
 	s.SetNameCalls = append(s.SetNameCalls, name)
 	rtun.NameValue = name
-	return []string{name}, nil
+	return nil
+}
+
+// CapabilitiesForTun returns the embedded debug catalog for a live recording
+// TUN. RecordingSystem builds its own TUN objects, so the embedded backend
+// cannot identify them itself.
+func (s *RecordingSystem) CapabilitiesForTun(t tun.Tun) (sysnet.TunCapabilityReport, error) {
+	found := false
+	for _, candidate := range s.Tuns {
+		if candidate == t && candidate.CloseCount() == 0 {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return sysnet.TunCapabilityReport{}, sysnet.ErrUnknownTun
+	}
+	report := s.Capabilities()
+	operations := make([]sysnet.OperationCapability, 0)
+	for _, operation := range report.Operations {
+		if operation.Key.Target == sysnet.TargetTun &&
+			operation.Key.Operation != sysnet.OpCreate &&
+			operation.Key.Operation != sysnet.OpCreateNamed {
+			operations = append(operations, operation)
+		}
+	}
+	return sysnet.TunCapabilityReport{
+		SystemRevision: report.Revision,
+		Operations:     operations,
+	}, nil
 }
 
 // BuildCount returns the count of BuildTun calls.
@@ -226,6 +255,7 @@ func (t *RecordingTun) CloseCount() int {
 // CopyTunOpts returns a deep copy of regular TUN options.
 func CopyTunOpts(opts sysnet.TunOpts) sysnet.TunOpts {
 	return sysnet.TunOpts{
+		Name:      opts.Name,
 		TunAddrs:  Clone(opts.TunAddrs),
 		TunRoutes: Clone(opts.TunRoutes),
 		MTU:       opts.MTU,

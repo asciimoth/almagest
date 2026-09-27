@@ -53,22 +53,19 @@ type defaultTunNode struct {
 	config  defaultTunConfig
 	portCfg TunConfigByLink
 
-	dynDefaultTun   bool
 	effective       sysnet.DefaultTunOpts
 	hasEffective    bool
 	dtun            sysnet.DefaultTun
 	outputTuns      TunOutputCache
 	warningPopupIDs []uint64
 	formError       string
+	runtimeError    string
 	ruleDraftType   map[string]string
 }
 
 func (n *defaultTunNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
 	n.InitBaseNode(w, logger, id)
 	n.config.normalize()
-	if n.System() != nil {
-		n.dynDefaultTun = n.System().Features().DynDefaultTun
-	}
 	if n.portCfg == nil {
 		n.portCfg = TunConfigByLink{}
 	}
@@ -93,7 +90,9 @@ func (n *defaultTunNode) OnReady() error {
 
 func (n *defaultTunNode) OnStop() {
 	if n.dtun != nil {
-		n.dtun.SetDns(nil)
+		if err := n.dtun.SetDNS(nil); err != nil && n.Logger != nil {
+			n.Logger.Errf("failed to stop DefaultTun DNS: %v", err)
+		}
 	}
 	dnsnodes.CloseDNS(n.dnsProvider)
 	n.dnsProvider = nil
@@ -167,7 +166,7 @@ func (n *defaultTunNode) OnLinkRemoved(link uint64, port uint64, linkType, portD
 		old := n.dnsProvider
 		n.dnsProvider = nil
 		n.dnsLink = 0
-		n.applyDefaultTunDNS()
+		_ = n.applyDefaultTunDNS()
 		dnsnodes.CloseDNS(old)
 	}
 	return nil
@@ -211,7 +210,7 @@ func (n *defaultTunNode) OnEvent(event pasta.Event, linkType string, _ []string,
 			return nil
 		}
 		n.dnsProvider = next
-		n.applyDefaultTunDNS()
+		_ = n.applyDefaultTunDNS()
 	}
 	return nil
 }
@@ -242,6 +241,7 @@ func (n *defaultTunNode) OnSave(cfg configer.Config) error {
 		return err
 	}
 	return nodekit.SetConfigMap(cfg, map[string]any{
+		"name":      n.config.name,
 		"tunAddrs":  n.config.tunAddrs,
 		"tunRoutes": n.config.tunRoutes,
 		"mtu":       n.config.mtu,
@@ -254,6 +254,9 @@ func (n *defaultTunNode) OnSave(cfg configer.Config) error {
 
 func (n *defaultTunNode) applyConfigForm(values map[string]any) error {
 	next := n.config
+	if value, ok := formular.StringValue(values["name"]); ok {
+		next.name = value
+	}
 	if value, ok := defaultTunStringListFromAny(values["tunAddrs"]); ok {
 		next.tunAddrs = value
 	}

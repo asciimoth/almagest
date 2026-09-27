@@ -37,14 +37,15 @@ const (
 )
 
 type debugSystemConfig struct {
-	DisableTun             bool
-	DisableDefaultTun      bool
-	DisableDynTun          bool
-	DisableDynDefaultTun   bool
-	DisableTunNames        bool
-	DisableDefaultTunNames bool
-	DisableStrictMode      bool
-	DefaultTun             debugDefaultTunConfig
+	DisableTun                    bool
+	DisableDefaultTun             bool
+	DisableDynTun                 bool
+	DisableDynDefaultTun          bool
+	DisableTunNames               bool
+	DisableDefaultTunNames        bool
+	DisableStrictMode             bool
+	DisableDefaultTunSourceRoutes bool
+	DefaultTun                    debugDefaultTunConfig
 }
 
 type debugDefaultTunConfig struct {
@@ -93,14 +94,15 @@ func BuildDebugIntegration(cfg *Config, randomSeed ...int64) (sysnet.System, err
 	debugCfg := readDebugSystemConfig(cfg)
 	localNetwork := gonnect.NativeConfig{}.Build()
 	system := &sysnetdebug.System{
-		DisableTun:             debugCfg.DisableTun,
-		DisableDefaultTun:      debugCfg.DisableDefaultTun,
-		DisableDynTun:          debugCfg.DisableDynTun,
-		DisableDynDefaultTun:   debugCfg.DisableDynDefaultTun,
-		DisableTunNames:        debugCfg.DisableTunNames,
-		DisableDefaultTunNames: debugCfg.DisableDefaultTunNames,
-		DisableStrictMode:      debugCfg.DisableStrictMode,
-		LocalNetwork:           localNetwork,
+		DisableTun:                    debugCfg.DisableTun,
+		DisableDefaultTun:             debugCfg.DisableDefaultTun,
+		DisableDynTun:                 debugCfg.DisableDynTun,
+		DisableDynDefaultTun:          debugCfg.DisableDynDefaultTun,
+		DisableTunNames:               debugCfg.DisableTunNames,
+		DisableDefaultTunNames:        debugCfg.DisableDefaultTunNames,
+		DisableStrictMode:             debugCfg.DisableStrictMode,
+		DisableDefaultTunSourceRoutes: debugCfg.DisableDefaultTunSourceRoutes,
+		LocalNetwork:                  localNetwork,
 	}
 	switch debugCfg.DefaultTun.Builder {
 	case "", debugDefaultTunBuilderVTunSocks:

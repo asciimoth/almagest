@@ -23,8 +23,11 @@ func (n *defaultTunNode) configAutocompleteHints(msg formular.AutocompleteReques
 	prefix := strings.TrimSpace(msg.Prefix)
 	switch msg.Field.FieldID {
 	case "type":
-		info := n.System().ListRules()
-		return defaultTunRuleTypeHints(info.TunRules, prefix)
+		arrayID, _, ok := defaultTunRuleFieldPath(msg.Field)
+		if !ok {
+			return nil
+		}
+		return defaultTunRuleTypeHints(n.routingRuleCapabilities(arrayID), prefix)
 	case "rule":
 		arrayID, elementID, ok := defaultTunRuleFieldPath(msg.Field)
 		if !ok {
@@ -34,13 +37,21 @@ func (n *defaultTunNode) configAutocompleteHints(msg formular.AutocompleteReques
 		if !ok || ruleType == "" {
 			return nil
 		}
-		return defaultTunPrefixHints(n.System().RuleCompl(sysnet.Rule{Type: ruleType, Rule: prefix}), prefix)
+		context, ok := n.ruleRoutingContext(arrayID)
+		if !ok {
+			return nil
+		}
+		values, err := n.System().CompleteRule(sysnet.Rule{Type: ruleType, Rule: prefix}, context)
+		if err != nil {
+			return nil
+		}
+		return defaultTunPrefixHints(values, prefix)
 	default:
 		return nil
 	}
 }
 
-func defaultTunRuleTypeHints(infos []sysnet.RuleTypeInfo, prefix string) []string {
+func defaultTunRuleTypeHints(infos []sysnet.RuleCapability, prefix string) []string {
 	hints := make([]string, 0, len(infos))
 	for _, info := range infos {
 		if strings.HasPrefix(info.Type, prefix) {
@@ -105,18 +116,48 @@ func defaultTunRuleDraftKey(arrayID, elementID string) string {
 	return arrayID + "/" + elementID
 }
 
-func (n *defaultTunNode) ruleTypeSupported(ruleType string) bool {
+func (n *defaultTunNode) ruleTypeSupported(arrayID, ruleType string) bool {
 	if n.System() == nil {
 		return true
 	}
-	info := n.System().ListRules()
-	if len(info.TunRules) == 0 {
-		return true
-	}
-	for _, rule := range info.TunRules {
+	for _, rule := range n.routingRuleCapabilities(arrayID) {
 		if rule.Type == ruleType {
 			return true
 		}
 	}
 	return false
+}
+
+func (n *defaultTunNode) ruleRoutingContext(arrayID string) (sysnet.RuleContext, bool) {
+	mode := sysnet.RoutingMode("")
+	switch arrayID {
+	case "exclude":
+		mode = sysnet.RoutingExclude
+	case "include":
+		mode = sysnet.RoutingInclude
+	default:
+		return sysnet.RuleContext{}, false
+	}
+	key := sysnet.RoutingProfileKey{
+		Family: defaultTunOptsFamily(n.effectiveDefaultTunOpts()),
+		Mode:   mode,
+		Strict: n.config.strict,
+	}
+	return sysnet.RuleContext{Routing: &key}, true
+}
+
+func (n *defaultTunNode) routingRuleCapabilities(arrayID string) []sysnet.RuleCapability {
+	if n.System() == nil {
+		return nil
+	}
+	context, ok := n.ruleRoutingContext(arrayID)
+	if !ok {
+		return nil
+	}
+	report := n.System().Capabilities()
+	profile := report.DefaultTunProfile(*context.Routing)
+	if !capabilityAllowsAttempt(profile.Capability) {
+		return nil
+	}
+	return availableRuleCapabilities(report, profile)
 }

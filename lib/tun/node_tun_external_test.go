@@ -77,6 +77,7 @@ func TestTunBuildsEmitsAndClosesPreviousBeforeRebuild(t *testing.T) {
 		t.Fatal("form rebuild reused emitted Tun source, want a new Tun")
 	}
 	wantFormOpts := sysnet.TunOpts{
+		Name:      "user-tun",
 		TunAddrs:  []string{"10.60.0.2/32", "fd00::60/128"},
 		TunRoutes: []string{"10.70.0.0/16"},
 		MTU:       1400,
@@ -84,8 +85,8 @@ func TestTunBuildsEmitsAndClosesPreviousBeforeRebuild(t *testing.T) {
 	if got := sys.LastOpts(); !reflect.DeepEqual(got, wantFormOpts) {
 		t.Fatalf("form build opts = %#v, want %#v", got, wantFormOpts)
 	}
-	if got, want := sys.SetNameCalls, []string{"user-tun"}; !reflect.DeepEqual(got, want) {
-		t.Fatalf("SetTunName calls = %#v, want %#v", got, want)
+	if got := sys.SetNameCalls; len(got) != 0 {
+		t.Fatalf("SetTunName calls = %#v, want creation-time name", got)
 	}
 
 	w.EmitEvent(receiverID, link, TunConfig{
@@ -258,7 +259,7 @@ func readTunUntilPacket(source tun.Tun, want []byte, maxReads int) <-chan error 
 
 func TestTunNameValidationUsesSystem(t *testing.T) {
 	w, sys := newTunNodeTestWorkspace(t, false)
-	sys.TunNameVerifyer = func(name string) bool {
+	sys.TunNameChecker = func(name string) bool {
 		return strings.HasPrefix(name, "ok")
 	}
 	node, err := w.AddNodeByClass(NodeTypeTun, "tun")
@@ -297,8 +298,8 @@ func TestTunNameValidationUsesSystem(t *testing.T) {
 	if got := sys.BuildCount(); got != 2 {
 		t.Fatalf("build count after valid name = %d, want 2", got)
 	}
-	if got, want := sys.SetNameCalls, []string{"ok-name"}; !reflect.DeepEqual(got, want) {
-		t.Fatalf("SetTunName calls = %#v, want %#v", got, want)
+	if got := sys.LastOpts().Name; got != "ok-name" {
+		t.Fatalf("creation-time name = %q, want %q", got, "ok-name")
 	}
 }
 
