@@ -13,6 +13,13 @@ build_attempts="${E2E_BUILD_ATTEMPTS:-10}"
 build_retry_delay="${E2E_BUILD_RETRY_DELAY:-1}"
 build_retry_max_delay="${E2E_BUILD_RETRY_MAX_DELAY:-60}"
 image_input_label="io.almagest.e2e.input-sha256"
+random_seed="${E2E_RANDOM_SEED:-}"
+
+if [[ -z "$random_seed" ]]; then
+	random_seed="$(od -An -N4 -tu4 /dev/urandom)"
+	random_seed="${random_seed//[[:space:]]/}"
+	random_seed=$((random_seed & 2147483647))
+fi
 
 cd "$repo_root"
 
@@ -36,6 +43,11 @@ if ((build_attempts == 0)); then
 	echo "E2E_BUILD_ATTEMPTS must be greater than zero" >&2
 	exit 2
 fi
+if [[ ! "$random_seed" =~ ^[0-9]+$ ]] || ((10#$random_seed > 2147483647)); then
+	echo "E2E_RANDOM_SEED must be an integer from 0 through 2147483647" >&2
+	exit 2
+fi
+random_seed=$((10#$random_seed))
 
 docker_build_with_retry() {
 	local attempt=1
@@ -127,6 +139,9 @@ if ((${#cases[@]} == 0)); then
 	echo "no e2e cases found" >&2
 	exit 1
 fi
+
+e2e_shuffle_cases "$random_seed" cases
+echo "==> e2e: random seed $random_seed"
 
 declare -A built_images=()
 case_images=()

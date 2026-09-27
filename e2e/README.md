@@ -26,7 +26,8 @@ just test-e2e-light
 The runner starts up to four cases in parallel. Set `E2E_JOBS` to change the
 limit. Use `E2E_JOBS=1` for sequential execution. Each case's output stays
 grouped, and the runner reports all case failures after the active cases
-finish.
+finish. The runner randomizes the case order and prints the seed. Set
+`E2E_RANDOM_SEED` to that value to reproduce the order from an earlier run.
 
 The `just test-e2e`, `just test-total`, and `just check` paths run the daemon
 with Go coverage instrumentation. This writes raw Go coverage data, a package

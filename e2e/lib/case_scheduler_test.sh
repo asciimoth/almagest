@@ -26,4 +26,25 @@ if e2e_case_can_start "$root/exclusive" 0 1; then
 	exit 1
 fi
 
+original=(alpha bravo charlie delta echo foxtrot golf hotel)
+first=("${original[@]}")
+repeated=("${original[@]}")
+second=("${original[@]}")
+e2e_shuffle_cases 12345 first
+e2e_shuffle_cases 12345 repeated
+e2e_shuffle_cases 54321 second
+
+if [[ "${first[*]}" != "${repeated[*]}" ]]; then
+	echo "same random seed produced different case orders" >&2
+	exit 1
+fi
+if [[ "${first[*]}" == "${second[*]}" ]]; then
+	echo "different random seeds produced the same case order" >&2
+	exit 1
+fi
+if [[ "$(printf '%s\n' "${first[@]}" | sort)" != "$(printf '%s\n' "${original[@]}" | sort)" ]]; then
+	echo "case shuffle changed the set of cases" >&2
+	exit 1
+fi
+
 echo "e2e case scheduler tests passed"
