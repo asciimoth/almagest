@@ -53,6 +53,29 @@ A node must not report that it is fully up until the runtime attachment that
 makes it usable is active for the current runtime generation.
 ```
 
+### Separate Message Delivery From Runtime Convergence
+
+Workspace inbox sends are queued. A sender can return while another goroutine
+is already draining workspace work and before the receiver callback runs. Even
+after the callback returns, the node can still have asynchronous runtime work
+in progress.
+
+Control-plane APIs that notify nodes must use an explicit inbox-delivery
+barrier before they acknowledge a mutation. Callers that require the data plane
+must then wait for the affected node's readiness state. Neither step replaces
+the other:
+
+- the delivery barrier proves that the node accepted the new desired state;
+- the node readiness state proves that its current runtime generation applied
+  that state.
+
+Invariant:
+
+```text
+A control-plane response is not a runtime-convergence barrier unless its API
+contract explicitly waits for both message delivery and node readiness.
+```
+
 ### Track Resource Identity And Open Generations
 
 Background routines can report after the resource they used has already been

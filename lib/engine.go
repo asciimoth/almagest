@@ -287,6 +287,10 @@ type PastaAPI interface {
 	// SendInbox schedules delivery of message to its receiver node.
 	SendInbox(workspace string, message pasta.InboxMessage)
 	SendInboxLocked(workspace string, message pasta.InboxMessage)
+	// SendInboxesAndWait queues a message batch and waits until all receiver
+	// callbacks have returned. It does not wait for asynchronous work that a
+	// receiver starts. Do not call it from a workspace callback.
+	SendInboxesAndWait(workspace string, messages []pasta.InboxMessage) bool
 	// Trigger invokes a node's explicit OnTrigger callback.
 	Trigger(workspace string, id uint64) error
 	TriggerLocked(workspace string, id uint64) error
@@ -869,6 +873,33 @@ func (e *engine) SendInboxLocked(workspace string, message pasta.InboxMessage) {
 	}
 
 	e.mainWorkspace.SendInboxLocked(message)
+}
+
+func (e *engine) SendInboxesAndWait(workspace string, messages []pasta.InboxMessage) bool {
+	if workspace != MainWorkspace || e.mainWorkspace == nil {
+		return false
+	}
+	if len(messages) == 0 {
+		return true
+	}
+
+	delivered := make(chan struct{})
+	e.mainWorkspace.Lock()
+	for _, message := range messages {
+		e.mainWorkspace.SendInboxLocked(message)
+	}
+	// The barrier is in the same FIFO pending-operation batch as the inbox
+	// messages. This also works when a different goroutine is already draining
+	// workspace work and SendInbox would otherwise return before delivery.
+	e.mainWorkspace.AddPendingOpLocked(func() { close(delivered) })
+	e.mainWorkspace.Unlock()
+
+	select {
+	case <-delivered:
+		return true
+	case <-e.ctx.Done():
+		return false
+	}
 }
 
 func (e *engine) Trigger(workspace string, id uint64) error {

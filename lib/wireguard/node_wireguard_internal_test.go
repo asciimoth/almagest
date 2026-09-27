@@ -732,6 +732,178 @@ func TestWireGuardNetworkAttachmentDoesNotOpenSocketsUntilTunAttached(t *testing
 	}, "wireguard remains active after config apply without a TUN")
 }
 
+// A secret mutation is accepted by the workspace before its asynchronous
+// device apply completes. The node label is the public convergence barrier:
+// callers must not treat the secret API response as proof that the data plane
+// already uses the new key.
+func TestWireGuardPresharedKeySecretRotationPublishesRuntimeConvergence(t *testing.T) {
+	w := pasta.NewWorkspace(wireGuardTestLogFactory{})
+	t.Cleanup(func() { w.Close() })
+	testPresharedKey := func(seed byte) string {
+		var key wgdevice.NoisePresharedKey
+		for i := range key {
+			key[i] = seed + byte(i)
+		}
+		return key.Base64()
+	}
+
+	secrets := newWireGuardTestSecretsStorage()
+	var wg *wireGuardNode
+	if err := w.AddNodeClass(captureWireGuardClass{node: &wg, secrets: secrets}); err != nil {
+		t.Fatalf("AddNodeClass WireGuard: %v", err)
+	}
+	provider := links.NewLayer3DatagramMTUProvider(
+		1500, true, false, links.MTUConstraint{Source: "rotation test carrier"},
+	)
+	network := &recordingWireGuardTestNetwork{Network: gonnect.NewLoopbackNetwork()}
+	if err := w.AddNodeClass(wireGuardTestNetworkSourceClass{network: network, provider: provider}); err != nil {
+		t.Fatalf("AddNodeClass NetworkSource: %v", err)
+	}
+	if err := w.AddNodeClass(wireGuardTestTunProviderClass{}); err != nil {
+		t.Fatalf("AddNodeClass TunProvider: %v", err)
+	}
+
+	wgID, err := w.AddNodeByClass("test/WireGuard", "wg")
+	if err != nil {
+		t.Fatalf("AddNodeByClass WireGuard: %v", err)
+	}
+	networkID, err := w.AddNodeByClass("test/WireGuardNetworkSource", "network")
+	if err != nil {
+		t.Fatalf("AddNodeByClass NetworkSource: %v", err)
+	}
+	tunID, err := w.AddNodeByClass(wireGuardTestTunProviderNodeType, "tun")
+	if err != nil {
+		t.Fatalf("AddNodeByClass TunProvider: %v", err)
+	}
+	if wg == nil {
+		t.Fatal("captured WireGuard node = nil")
+	}
+
+	wgSnapshot := testkit.MustNodeSnapshot(t, w, wgID)
+	networkSnapshot := testkit.MustNodeSnapshot(t, w, networkID)
+	tunSnapshot := testkit.MustNodeSnapshot(t, w, tunID)
+	if _, _, err := w.AddLink(networkSnapshot.LeftPorts[0], wgSnapshot.RightPorts[0]); err != nil {
+		t.Fatalf("AddLink network: %v", err)
+	}
+	if _, _, err := w.AddLink(wgSnapshot.LeftPorts[0], tunSnapshot.RightPorts[0]); err != nil {
+		t.Fatalf("AddLink tun: %v", err)
+	}
+
+	privateKey, _ := wireGuardTestKeyPair(t, 30)
+	privateKeySecret := wireGuardTestPrivateKeySecretForNode(t, secrets, "wg", privateKey)
+	_, peerPublicKeyText := wireGuardTestKeyPair(t, 31)
+	peerPublicKey, err := parseWireGuardPublicKey(peerPublicKeyText)
+	if err != nil {
+		t.Fatalf("parse peer public key: %v", err)
+	}
+	initialPresharedKey := testPresharedKey(40)
+	w.SendNodeFormularMsg(wgID, formular.FormApplyMessage{
+		MessageBase: formular.MessageBase{Type: formular.MessageFormApply, MenuID: pasta.NodeMenuID(wgID)},
+		BlockID:     "config",
+		Values: map[string]any{
+			"privateKeySecret": privateKeySecret,
+		},
+	})
+	w.SendNodeFormularMsg(wgID, formular.FormApplyMessage{
+		MessageBase: formular.MessageBase{Type: formular.MessageFormApply, MenuID: pasta.NodeMenuID(wgID)},
+		BlockID:     "peers",
+		Values: map[string]any{
+			"peers": wireGuardPeerValues([]wireGuardPeerConfig{{
+				id:                          "rotating-peer",
+				publicKey:                   peerPublicKeyText,
+				presharedKey:                initialPresharedKey,
+				endpoint:                    "127.0.0.1:51821",
+				allowedIPs:                  "10.77.0.2/32",
+				persistentKeepaliveInterval: 1,
+			}}),
+		},
+	})
+	eventually(t, func() bool {
+		snapshot, ok := w.NodeSnapshot(wgID)
+		if !ok || snapshot.Label != "up" {
+			return false
+		}
+		wg.runtimeMu.Lock()
+		defer wg.runtimeMu.Unlock()
+		if wg.dev == nil {
+			return false
+		}
+		spec, ok := wg.dev.PeerSpec(peerPublicKey)
+		want, err := parseWireGuardPresharedKey(initialPresharedKey)
+		return err == nil && ok && spec.PresharedKey == want
+	}, "initial preshared key applied")
+
+	w.Lock()
+	secretName := wg.config.peers[0].presharedKeySecret
+	w.Unlock()
+	if secretName == "" {
+		t.Fatal("legacy preshared key was not migrated to a secret")
+	}
+
+	currentKey := initialPresharedKey
+	for rotation := 0; rotation < 32; rotation++ {
+		nextKey := testPresharedKey(byte(41 + rotation%2))
+		secrets.SetSecret(secretName, Secret{Value: nextKey}, "wg")
+
+		// Keep the runtime apply pending so this test deterministically checks
+		// the state visible when the secret mutation handler returns.
+		wg.runtimeMu.Lock()
+		delivered := make(chan struct{})
+		w.Lock()
+		w.SendInboxLocked(pasta.InboxMessage{
+			ReceiverNode: wgID,
+			Payload: SecretValueChanged{
+				SecretNamePrev: secretName,
+				SecretNameNew:  secretName,
+			},
+		})
+		w.AddPendingOpLocked(func() { close(delivered) })
+		w.Unlock()
+		<-delivered
+		snapshot, ok := w.NodeSnapshot(wgID)
+		if !ok {
+			wg.runtimeMu.Unlock()
+			t.Fatal("WireGuard node disappeared during secret rotation")
+		}
+		if snapshot.Label == "up" {
+			wg.runtimeMu.Unlock()
+			t.Fatalf("rotation %d returned while node still reported up", rotation+1)
+		}
+		if wg.appliedConfigGeneration >= wg.currentConfigGeneration() {
+			wg.runtimeMu.Unlock()
+			t.Fatalf(
+				"rotation %d applied generation=%d, desired=%d; want pending apply",
+				rotation+1, wg.appliedConfigGeneration, wg.currentConfigGeneration(),
+			)
+		}
+		oldSpec, ok := wg.dev.PeerSpec(peerPublicKey)
+		oldKey, parseErr := parseWireGuardPresharedKey(currentKey)
+		wg.runtimeMu.Unlock()
+		if parseErr != nil || !ok || oldSpec.PresharedKey != oldKey {
+			t.Fatalf("rotation %d changed the device key before the pending apply", rotation+1)
+		}
+
+		want, err := parseWireGuardPresharedKey(nextKey)
+		if err != nil {
+			t.Fatalf("parse rotated preshared key %d: %v", rotation+1, err)
+		}
+		eventually(t, func() bool {
+			snapshot, ok := w.NodeSnapshot(wgID)
+			if !ok || snapshot.Label != "up" {
+				return false
+			}
+			wg.runtimeMu.Lock()
+			defer wg.runtimeMu.Unlock()
+			if wg.dev == nil || wg.appliedConfigGeneration != wg.currentConfigGeneration() {
+				return false
+			}
+			spec, ok := wg.dev.PeerSpec(peerPublicKey)
+			return ok && spec.PresharedKey == want
+		}, "preshared-key rotation %d converged", rotation+1)
+		currentKey = nextKey
+	}
+}
+
 func TestWireGuardLinkChangesDoNotDropPendingConfigApply(t *testing.T) {
 	w := pasta.NewWorkspace(wireGuardTestLogFactory{})
 	t.Cleanup(func() { w.Close() })

@@ -104,6 +104,11 @@ chmod 600 rotated-preshared.key
 psk_secret="$(peer_preshared_key_secret)"
 [[ -n "$psk_secret" ]] || fail "WireGuard did not migrate the initial preshared key to a secret"
 cli secrets set --key "$psk_secret" --value "$rotated_psk" >/dev/null
+# Secret mutations notify nodes synchronously, but WireGuard applies the new
+# device configuration on its runtime worker. Wait for that public convergence
+# barrier before the old-key peer can start another valid session.
+wait_node_label "$wg_node" up \
+	|| fail "WireGuard did not apply the rotated preshared key"
 # Remove the kernel peer's established session. Its next handshake still uses
 # the old key and must fail until the kernel configuration is updated.
 wg set "$kernel_if" peer "$ALMAGEST_PUBLIC" remove

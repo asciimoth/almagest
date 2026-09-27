@@ -197,6 +197,78 @@ func TestEngineLockedWorkspaceAPI(t *testing.T) {
 	engineAPI.RemoveNodeLocked(MainWorkspace, id)
 }
 
+func TestEngineSendInboxesAndWaitWaitsForConcurrentWorkspaceDelivery(t *testing.T) {
+	received := make(chan int, 2)
+	engineAPI, err := BuildEngine(
+		context.Background(), configer.NewMemory(nil), logging.NewDebugLogFactory(1),
+		newEngineTestDebugSystem(), nil, nil, nil, nil,
+		[]pasta.NodeClass{engineInboxNodeClass{received: received}}, nil, false,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = engineAPI.Close() })
+	node, err := engineAPI.AddNode(MainWorkspace, "test/EngineInboxNode", "inbox")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	implementation := engineAPI.(*engine)
+	workspaceBusy := make(chan struct{})
+	releaseWorkspace := make(chan struct{})
+	busyDone := make(chan struct{})
+	go func() {
+		implementation.mainWorkspace.AddPendingOp(func() {
+			close(workspaceBusy)
+			<-releaseWorkspace
+		})
+		close(busyDone)
+	}()
+	<-workspaceBusy
+
+	deliveryDone := make(chan bool, 1)
+	go func() {
+		deliveryDone <- engineAPI.SendInboxesAndWait(MainWorkspace, []pasta.InboxMessage{
+			{ReceiverNode: node, Payload: 1},
+			{ReceiverNode: node, Payload: 2},
+		})
+	}()
+	select {
+	case ok := <-deliveryDone:
+		t.Fatalf("SendInboxesAndWait returned %v before the workspace could deliver messages", ok)
+	case <-time.After(25 * time.Millisecond):
+	}
+	select {
+	case value := <-received:
+		t.Fatalf("node received %d while the workspace was blocked", value)
+	default:
+	}
+
+	close(releaseWorkspace)
+	assertNoDeadlock(t, busyDone, "blocked workspace operation")
+	select {
+	case ok := <-deliveryDone:
+		if !ok {
+			t.Fatal("SendInboxesAndWait returned false for the main workspace")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("SendInboxesAndWait did not return after inbox delivery")
+	}
+	for want := 1; want <= 2; want++ {
+		select {
+		case got := <-received:
+			if got != want {
+				t.Fatalf("inbox delivery order = %d, want %d", got, want)
+			}
+		default:
+			t.Fatalf("missing delivered inbox value %d", want)
+		}
+	}
+	if engineAPI.SendInboxesAndWait("missing", []pasta.InboxMessage{{ReceiverNode: node}}) {
+		t.Fatal("SendInboxesAndWait accepted an unknown workspace")
+	}
+}
+
 func TestEngineWorkerAndSubscriptionEdgeAPI(t *testing.T) {
 	engineAPI, err := BuildEngine(
 		context.Background(), configer.NewMemory(nil), logging.NewDebugLogFactory(1),
@@ -1168,6 +1240,36 @@ func (engineBatchNodeClass) NewNode(configer.Config, ...*pasta.NodeClassState) (
 type engineBatchNode struct {
 	pasta.BasicNode
 	_ byte
+}
+
+type engineInboxNodeClass struct {
+	received chan<- int
+}
+
+func (engineInboxNodeClass) ClassName() string { return "test/EngineInboxNode" }
+func (engineInboxNodeClass) ShortDescription() string {
+	return "Engine inbox node test"
+}
+func (engineInboxNodeClass) LongDescription() string {
+	return "Tests ordered inbox delivery barriers."
+}
+func (engineInboxNodeClass) DefaultNodeParams() pasta.NodeClassParams {
+	return pasta.NodeClassParams{}
+}
+func (c engineInboxNodeClass) NewNode(configer.Config, ...*pasta.NodeClassState) (pasta.Node, error) {
+	return &engineInboxNode{received: c.received}, nil
+}
+
+type engineInboxNode struct {
+	pasta.BasicNode
+	received chan<- int
+}
+
+func (n *engineInboxNode) OnInbox(message pasta.InboxMessage) error {
+	if value, ok := message.Payload.(int); ok {
+		n.received <- value
+	}
+	return nil
 }
 
 func assertNoDeadlock(t *testing.T, done <-chan struct{}, context string) {

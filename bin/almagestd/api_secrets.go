@@ -59,7 +59,9 @@ func (s *apiSession) handleSecretsMessage(msg api.Message) (api.Message, error) 
 		if err != nil {
 			return secretRequestError(msg.ID, err)
 		}
-		s.sendSecretMutationInbox(result)
+		if !s.sendSecretMutationInbox(result) {
+			return secretRequestError(msg.ID, errSecretEngineUnavailable)
+		}
 		entry, found, err := manager.secretAPIEntry(req.Key)
 		if err != nil {
 			return secretRequestError(msg.ID, err)
@@ -84,7 +86,9 @@ func (s *apiSession) handleSecretsMessage(msg api.Message) (api.Message, error) 
 		if err != nil {
 			return secretRequestError(msg.ID, err)
 		}
-		s.sendSecretMutationInbox(result)
+		if !s.sendSecretMutationInbox(result) {
+			return secretRequestError(msg.ID, errSecretEngineUnavailable)
+		}
 		entry, found, err := manager.secretAPIEntry(req.Key)
 		if err != nil {
 			return secretRequestError(msg.ID, err)
@@ -106,7 +110,9 @@ func (s *apiSession) handleSecretsMessage(msg api.Message) (api.Message, error) 
 		if err != nil {
 			return secretRequestError(msg.ID, err)
 		}
-		s.sendSecretMutationInbox(result)
+		if !s.sendSecretMutationInbox(result) {
+			return secretRequestError(msg.ID, errSecretEngineUnavailable)
+		}
 		entry, found, err := manager.secretAPIEntry(req.NewKey)
 		if err != nil {
 			return secretRequestError(msg.ID, err)
@@ -128,7 +134,9 @@ func (s *apiSession) handleSecretsMessage(msg api.Message) (api.Message, error) 
 		if err != nil {
 			return secretRequestError(msg.ID, err)
 		}
-		s.sendSecretMutationInbox(result)
+		if !s.sendSecretMutationInbox(result) {
+			return secretRequestError(msg.ID, errSecretEngineUnavailable)
+		}
 		return api.NewResponse(msg.ID, struct{}{})
 
 	default:
@@ -148,24 +156,26 @@ func (s *apiSession) validateSecretNodes(nodes []string) error {
 	return nil
 }
 
-func (s *apiSession) sendSecretMutationInbox(result secretMutationResult) {
+func (s *apiSession) sendSecretMutationInbox(result secretMutationResult) bool {
 	if len(result.notifyNodes) == 0 || s.engine == nil {
-		return
+		return true
 	}
 	payload := storage.SecretValueChanged{
 		SecretNamePrev: result.prevKey,
 		SecretNameNew:  result.newKey,
 	}
+	messages := make([]pasta.InboxMessage, 0, len(result.notifyNodes))
 	for _, node := range normalizeSecretNodes(result.notifyNodes) {
 		id, ok := s.engine.NodeByName("main", node)
 		if !ok {
 			continue
 		}
-		s.engine.SendInbox("main", pasta.InboxMessage{
+		messages = append(messages, pasta.InboxMessage{
 			ReceiverNode: id,
 			Payload:      payload,
 		})
 	}
+	return s.engine.SendInboxesAndWait("main", messages)
 }
 
 func (s *apiSession) addSecretsSubscription() uint64 {
