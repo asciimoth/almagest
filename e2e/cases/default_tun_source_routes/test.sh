@@ -2,7 +2,23 @@
 set -euo pipefail
 
 : "${ALMAGEST_E2E_TIMEOUT:=45}"
+: "${ALMAGEST_E2E_SOURCE_ROUTE_STRESS_ROUNDS:=4}"
+: "${ALMAGEST_E2E_UDP_TIMEOUT:=5}"
+: "${ALMAGEST_E2E_UDP_MINIMUM_ATTEMPTS:=4}"
 source /e2e/lib/common.sh
+
+for integer_setting in \
+	"ALMAGEST_E2E_SOURCE_ROUTE_STRESS_ROUNDS=$ALMAGEST_E2E_SOURCE_ROUTE_STRESS_ROUNDS" \
+	"ALMAGEST_E2E_UDP_MINIMUM_ATTEMPTS=$ALMAGEST_E2E_UDP_MINIMUM_ATTEMPTS"; do
+	setting_name="${integer_setting%%=*}"
+	value="${integer_setting#*=}"
+	if [[ ! "$value" =~ ^[0-9]+$ ]]; then
+		fail "$setting_name must be a non-negative integer"
+	fi
+done
+if ((ALMAGEST_E2E_UDP_MINIMUM_ATTEMPTS == 0)); then
+	fail "ALMAGEST_E2E_UDP_MINIMUM_ATTEMPTS must be greater than zero"
+fi
 
 peer_ns="alm-source-peer"
 physical_if="almsr0"
@@ -191,32 +207,57 @@ host_udp_request() {
 	local address="$1"
 	local port="$2"
 	local token="$3"
-	python3 -c '
-import socket
-import sys
-import time
+	python3 /e2e/lib/udp_echo_client.py \
+		"$address" "$port" "$token" \
+		--timeout "$ALMAGEST_E2E_UDP_TIMEOUT" \
+		--minimum-attempts "$ALMAGEST_E2E_UDP_MINIMUM_ATTEMPTS"
+}
 
-address = sys.argv[1]
-port = int(sys.argv[2])
-token = sys.argv[3].encode()
-family = socket.AF_INET6 if ":" in address else socket.AF_INET
-client = socket.socket(family, socket.SOCK_DGRAM)
-client.connect((address, port))
-deadline = time.monotonic() + 5
-while True:
-    remaining = deadline - time.monotonic()
-    if remaining <= 0:
-        raise SystemExit("UDP echo response timed out")
-    client.settimeout(min(0.25, remaining))
-    client.send(token)
-    try:
-        response = client.recv(65535)
-    except TimeoutError:
-        continue
-    if response != b"pong:" + token:
-        raise SystemExit(f"unexpected UDP response: {response!r}")
-    break
-' "$address" "$port" "$token"
+report_udp_diagnostics() {
+	local token="$1"
+	local log_file
+	log "UDP diagnostics for token $token"
+	for log_file in "$E2E_RUNTIME"/*-udp.log; do
+		[[ -f "$log_file" ]] || continue
+		log "$(basename "$log_file"): $(grep -Fxc "$token" "$log_file" || true) requests"
+	done
+	ip -s link show >&2 2>&1 || true
+	ip netns exec "$peer_ns" wg show all >&2 2>&1 || true
+}
+
+run_parallel_udp_traffic() {
+	local tag="$1"
+	local rounds="$2"
+	local pids=()
+	local tokens=()
+	local round
+	local token
+
+	for ((round = 1; round <= rounds; round++)); do
+		for token in \
+			"$tag-$round-default-v4" \
+			"$tag-$round-overlay-v4" \
+			"$tag-$round-default-v6" \
+			"$tag-$round-overlay-v6"; do
+			tokens+=("$token")
+		done
+		host_udp_request "$default_v4_remote" 19101 "${tokens[-4]}" &
+		pids+=("$!")
+		host_udp_request "$overlay_v4_remote" 19103 "${tokens[-3]}" &
+		pids+=("$!")
+		host_udp_request "$default_v6_remote" 19102 "${tokens[-2]}" &
+		pids+=("$!")
+		host_udp_request "$overlay_v6_remote" 19104 "${tokens[-1]}" &
+		pids+=("$!")
+	done
+
+	local index
+	for index in "${!pids[@]}"; do
+		if ! wait "${pids[$index]}"; then
+			report_udp_diagnostics "${tokens[$index]}"
+			fail "$tag parallel UDP request $((index + 1)) failed"
+		fi
+	done
 }
 
 assert_complete_source_policy() {
@@ -278,31 +319,44 @@ assert_all_host_traffic() {
 run_parallel_host_traffic() {
 	local tag="$1"
 	local pids=()
+	local labels=()
 	host_http_request "$default_v4_remote" 18101 "/$tag" \
 		"default IPv4 response" "$E2E_RUNTIME/$tag-default-v4-http.txt" &
 	pids+=("$!")
+	labels+=("default IPv4 HTTP")
 	host_http_request "$overlay_v4_remote" 18103 "/$tag" \
 		"overlay IPv4 response" "$E2E_RUNTIME/$tag-overlay-v4-http.txt" &
 	pids+=("$!")
+	labels+=("overlay IPv4 HTTP")
 	host_http_request "$default_v6_remote" 18102 "/$tag" \
 		"default IPv6 response" "$E2E_RUNTIME/$tag-default-v6-http.txt" &
 	pids+=("$!")
+	labels+=("default IPv6 HTTP")
 	host_http_request "$overlay_v6_remote" 18104 "/$tag" \
 		"overlay IPv6 response" "$E2E_RUNTIME/$tag-overlay-v6-http.txt" &
 	pids+=("$!")
+	labels+=("overlay IPv6 HTTP")
 	host_udp_request "$default_v4_remote" 19101 "$tag-default-v4" &
 	pids+=("$!")
+	labels+=("$tag-default-v4")
 	host_udp_request "$overlay_v4_remote" 19103 "$tag-overlay-v4" &
 	pids+=("$!")
+	labels+=("$tag-overlay-v4")
 	host_udp_request "$default_v6_remote" 19102 "$tag-default-v6" &
 	pids+=("$!")
+	labels+=("$tag-default-v6")
 	host_udp_request "$overlay_v6_remote" 19104 "$tag-overlay-v6" &
 	pids+=("$!")
+	labels+=("$tag-overlay-v6")
 
 	local index
 	for index in "${!pids[@]}"; do
-		wait "${pids[$index]}" \
-			|| fail "$tag parallel request $((index + 1)) failed"
+		if ! wait "${pids[$index]}"; then
+			if ((index >= 4)); then
+				report_udp_diagnostics "${labels[$index]}"
+			fi
+			fail "$tag parallel request $((index + 1)) (${labels[$index]}) failed"
+		fi
 	done
 }
 
@@ -400,6 +454,9 @@ retry "$ALMAGEST_E2E_TIMEOUT" "overlay WireGuard handshake" \
 	kernel_handshake_exists wgsr1 "$overlay_client_public" \
 	|| fail "overlay kernel peer did not report a handshake"
 run_parallel_host_traffic parallel
+if ((ALMAGEST_E2E_SOURCE_ROUTE_STRESS_ROUNDS > 0)); then
+	run_parallel_udp_traffic stress "$ALMAGEST_E2E_SOURCE_ROUTE_STRESS_ROUNDS"
+fi
 
 # Remove the more-specific branch. Its source address and preferred-source
 # routes must disappear while the default branch and native TUN stay usable.
@@ -450,6 +507,10 @@ ipv6_tun_address_is_ready "$tun_name" "$overlay_v6_local" \
 assert_complete_source_policy "$tun_name"
 assert_all_host_traffic reattached
 run_parallel_host_traffic reattached-parallel
+if ((ALMAGEST_E2E_SOURCE_ROUTE_STRESS_ROUNDS > 0)); then
+	run_parallel_udp_traffic \
+		reattached-stress "$ALMAGEST_E2E_SOURCE_ROUTE_STRESS_ROUNDS"
+fi
 [[ "$(default_tun_name)" == "$tun_name" ]] \
 	|| fail "source-route reattachment replaced the native TUN"
 
