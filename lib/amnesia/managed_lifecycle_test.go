@@ -3,6 +3,8 @@ package amnesianodes
 import (
 	"context"
 	"errors"
+	"net/netip"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -12,6 +14,7 @@ import (
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
 	"github.com/asciimoth/gonnect"
+	netstackvtun "github.com/asciimoth/gonnect-netstack/vtun"
 	"github.com/asciimoth/gonnect/dns"
 	"github.com/asciimoth/gonnect/sysnet"
 	"github.com/asciimoth/gonnect/tun"
@@ -23,6 +26,7 @@ import (
 	"github.com/asciimoth/almagest/lib/logging"
 	"github.com/asciimoth/almagest/lib/nodekit"
 	"github.com/asciimoth/almagest/lib/storage"
+	tunnodes "github.com/asciimoth/almagest/lib/tun"
 )
 
 func TestManagedAmnesiaLinksAttachDetachReattach(t *testing.T) {
@@ -162,6 +166,316 @@ func TestManagedAmnesiaLinksAttachDetachReattach(t *testing.T) {
 		return node.networkPayload.CapabilityRevision == secondMTU.Revision()
 	}, "reattached MTU provider update was not processed")
 	spawner.wait()
+}
+
+func TestManagedAmnesiaRecoveryRepublishesProfileTunConfig(t *testing.T) {
+	profile := amnesiaProfileStatus{
+		addresses:  []string{"10.205.10.1/32", "fd2b:12d:6d40:b125::1/128"},
+		allowedIPs: []string{"0.0.0.0/0", "::/0"},
+		dns:        []string{"10.205.20.53"},
+		mtu:        1280,
+	}
+	tests := []struct {
+		name       string
+		withdrawal managedAmnesiaRuntimeResult
+	}{
+		{name: "activation error", withdrawal: managedAmnesiaRuntimeResult{err: errors.New("activate data plane")}},
+		{name: "captcha", withdrawal: managedAmnesiaRuntimeResult{captcha: testAmnesiaCaptchaPrompt(t, 1, 1)}},
+		{name: "inactive result", withdrawal: managedAmnesiaRuntimeResult{}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			spawner := &managedAmnesiaLifecycleSpawner{}
+			runtime := managedAmnesiaLifecycleRuntime{
+				kv: managedAmnesiaKVManager{store: newAmnesiaMemoryKV()}, spawner: spawner,
+			}
+			class := &recordingManagedAmnesiaClass{base: AmnesiaClass{Runtime: runtime}}
+			w, err := pasta.WorkspaceFromConfig(
+				[]pasta.NodeClass{class}, managedAmnesiaLifecycleConfig("amnesia recovery"),
+				logging.NewDebugLogFactory(64),
+			)
+			if err != nil {
+				t.Fatalf("build workspace: %v", err)
+			}
+			spawner.wait()
+			t.Cleanup(func() {
+				w.Close()
+				spawner.wait()
+			})
+			node := class.onlyNode(t)
+			peer := &managedAmnesiaLinkPeer{}
+			peerID, err := w.AddNode(peer, "test/AmnesiaTunConfigPeer", "TUN config peer")
+			if err != nil {
+				t.Fatalf("add TUN peer: %v", err)
+			}
+			peerPort, err := w.AddPort(pasta.Port{
+				Node: peerID, Direction: "right", Name: "Tun", Types: []string{nodekit.TypeTun},
+			})
+			if err != nil {
+				t.Fatalf("add TUN peer port: %v", err)
+			}
+			if _, _, err := w.AddLink(peerPort, node.tunp); err != nil {
+				t.Fatalf("attach TUN peer: %v", err)
+			}
+			spawner.wait()
+
+			w.Lock()
+			node.runtimeReady = true
+			node.profileStatus = profile
+			node.sendTunConfig()
+			w.Unlock()
+			waitManagedAmnesiaTunConfig(t, w, peer, func(config nodekit.TunConfig) bool {
+				return managedAmnesiaTunConfigMatches(config, profile)
+			}, "profile config")
+
+			generation := node.generation.Load()
+			withdrawal := tt.withdrawal
+			withdrawal.generation = generation
+			w.Lock()
+			node.handleRuntimeResult(withdrawal)
+			w.Unlock()
+			waitManagedAmnesiaTunConfig(t, w, peer, nodekit.TunConfig.IsZero, "withdrawn config")
+
+			w.Lock()
+			node.handleRuntimeResult(managedAmnesiaRuntimeResult{
+				generation: generation,
+				ready:      true,
+				profile:    profile,
+			})
+			w.Unlock()
+			waitManagedAmnesiaTunConfig(t, w, peer, func(config nodekit.TunConfig) bool {
+				return managedAmnesiaTunConfigMatches(config, profile)
+			}, "recovered profile config")
+		})
+	}
+}
+
+func TestManagedAmnesiaRecoveryReconfiguresVTunThroughJoiner(t *testing.T) {
+	w, err := pasta.WorkspaceFromConfig(
+		[]pasta.NodeClass{
+			tunnodes.TunJoinerClass{},
+			tunnodes.VTunClass{},
+		},
+		configer.NewMemory(nil),
+		logging.NewDebugLogFactory(64),
+	)
+	if err != nil {
+		t.Fatalf("build workspace: %v", err)
+	}
+	t.Cleanup(w.Close)
+	joinerID, err := w.AddNodeByClass(tunnodes.NodeTypeTunJoiner, "joiner")
+	if err != nil {
+		t.Fatalf("add TUN joiner: %v", err)
+	}
+	vtunID, err := w.AddNodeByClass(tunnodes.NodeTypeVTun, "vtun")
+	if err != nil {
+		t.Fatalf("add VTun: %v", err)
+	}
+	joiner, ok := w.NodeSnapshot(joinerID)
+	if !ok {
+		t.Fatal("TUN joiner snapshot is unavailable")
+	}
+	vtun, ok := w.NodeSnapshot(vtunID)
+	if !ok {
+		t.Fatal("VTun snapshot is unavailable")
+	}
+	configSource := &managedAmnesiaLinkPeer{}
+	configSourceID, err := w.AddNode(configSource, "test/AmnesiaTunConfigSource", "Amnesia TUN config source")
+	if err != nil {
+		t.Fatalf("add TUN config source: %v", err)
+	}
+	configSourcePort, err := w.AddPort(pasta.Port{
+		Node: configSourceID, Direction: "left", Name: "Tun", Types: []string{nodekit.TypeTun},
+	})
+	if err != nil {
+		t.Fatalf("add TUN config source port: %v", err)
+	}
+	configLink, _, err := w.AddLink(configSourcePort, joiner.RightPorts[0])
+	if err != nil {
+		t.Fatalf("attach TUN config source to joiner: %v", err)
+	}
+	if _, _, err := w.AddLink(joiner.LeftPorts[1], vtun.RightPorts[0]); err != nil {
+		t.Fatalf("attach VTun to TUN joiner secondary: %v", err)
+	}
+	receiver := &managedAmnesiaNetworkPeer{}
+	receiverID, err := w.AddNode(receiver, "test/AmnesiaNetworkPeer", "network peer")
+	if err != nil {
+		t.Fatalf("add network peer: %v", err)
+	}
+	receiverPort, err := w.AddPort(pasta.Port{
+		Node: receiverID, Direction: "right", Name: "Network", Types: []string{nodekit.TypeNetwork},
+	})
+	if err != nil {
+		t.Fatalf("add network peer port: %v", err)
+	}
+	if _, _, err := w.AddLink(vtun.LeftPorts[0], receiverPort); err != nil {
+		t.Fatalf("attach VTun network peer: %v", err)
+	}
+
+	profile := amnesiaProfileStatus{
+		addresses:  []string{"10.205.10.1/32", "fd2b:12d:6d40:b125::1/128"},
+		allowedIPs: []string{"0.0.0.0/0", "::/0"},
+		dns:        []string{"10.205.20.53"},
+		mtu:        1280,
+	}
+	w.EmitEvent(configSourceID, configLink, nodekit.TunConfig{
+		Addrs:  slices.Clone(profile.addresses),
+		Routes: slices.Clone(profile.allowedIPs),
+		DNS:    firstAmnesiaDNS(profile.dns),
+		MTU:    profile.mtu,
+	})
+	configured := waitManagedAmnesiaVTunRuntime(t, w, receiver, profile)
+
+	w.EmitEvent(configSourceID, configLink, nodekit.TunConfig{})
+	withdrawn := waitManagedAmnesiaVTunRuntime(t, w, receiver, amnesiaProfileStatus{
+		dns: []string{tunnodes.DefaultVTunDNSServer},
+		mtu: tunnodes.DefaultVTunMTU,
+	})
+	if nodekit.SameNetworkInstance(configured, withdrawn) {
+		t.Fatal("TUN config withdrawal did not rebuild VTun")
+	}
+	if nodekit.NetworkIsReady(configured) {
+		t.Fatal("TUN config withdrawal left the configured network ready")
+	}
+
+	w.EmitEvent(configSourceID, configLink, nodekit.TunConfig{
+		Addrs:  slices.Clone(profile.addresses),
+		Routes: slices.Clone(profile.allowedIPs),
+		DNS:    firstAmnesiaDNS(profile.dns),
+		MTU:    profile.mtu,
+	})
+	recovered := waitManagedAmnesiaVTunRuntime(t, w, receiver, profile)
+	if nodekit.SameNetworkInstance(withdrawn, recovered) {
+		t.Fatal("runtime recovery did not rebuild the withdrawn VTun")
+	}
+	if nodekit.NetworkIsReady(withdrawn) {
+		t.Fatal("runtime recovery left the fallback network ready")
+	}
+}
+
+func managedAmnesiaTunConfigMatches(got nodekit.TunConfig, want amnesiaProfileStatus) bool {
+	return slices.Equal(got.Addrs, want.addresses) &&
+		slices.Equal(got.Routes, want.allowedIPs) &&
+		got.DNS == firstAmnesiaDNS(want.dns) && got.MTU == want.mtu
+}
+
+func waitManagedAmnesiaTunConfig(
+	t *testing.T,
+	w *pasta.Workspace,
+	peer *managedAmnesiaLinkPeer,
+	match func(nodekit.TunConfig) bool,
+	description string,
+) nodekit.TunConfig {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	for {
+		w.Lock()
+		var config nodekit.TunConfig
+		if len(peer.configs) > 0 {
+			config = peer.configs[len(peer.configs)-1].Clone()
+		}
+		w.Unlock()
+		if match(config) {
+			return config
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("latest TUN config = %#v, did not reach %s", config, description)
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+func assertManagedAmnesiaVTunRuntime(
+	t *testing.T,
+	network nodekit.NetworkCloser,
+	want amnesiaProfileStatus,
+) {
+	t.Helper()
+	vtun, ok := nodekit.NetworkSource(network).(*netstackvtun.VTun)
+	if !ok {
+		t.Fatalf("network source = %T, want *vtun.VTun", nodekit.NetworkSource(network))
+	}
+	wantAddrs := make([]netip.Addr, 0, len(want.addresses))
+	for _, prefix := range want.addresses {
+		parsed, err := netip.ParsePrefix(prefix)
+		if err != nil {
+			t.Fatalf("parse wanted address %q: %v", prefix, err)
+		}
+		wantAddrs = append(wantAddrs, parsed.Addr())
+	}
+	wantDNS := make([]netip.Addr, 0, len(want.dns))
+	for _, address := range want.dns {
+		wantDNS = append(wantDNS, netip.MustParseAddr(address))
+	}
+	actualAddrs := slices.DeleteFunc(vtun.LocalAddrs(), func(address netip.Addr) bool {
+		return address.IsLoopback()
+	})
+	actualMTU, mtuErr := vtun.MTU()
+	if (want.addresses != nil && !slices.Equal(actualAddrs, wantAddrs)) ||
+		!slices.Equal(vtun.GetDnsServers(), wantDNS) ||
+		mtuErr != nil || actualMTU != want.mtu {
+		t.Fatalf(
+			"VTun runtime addresses=%v DNS=%v MTU=%d error=%v, want addresses=%v DNS=%v MTU=%d",
+			actualAddrs, vtun.GetDnsServers(), actualMTU, mtuErr, wantAddrs, wantDNS, want.mtu,
+		)
+	}
+}
+
+func waitManagedAmnesiaVTunRuntime(
+	t *testing.T,
+	w *pasta.Workspace,
+	receiver *managedAmnesiaNetworkPeer,
+	want amnesiaProfileStatus,
+) nodekit.NetworkCloser {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	for {
+		w.Lock()
+		var network nodekit.NetworkCloser
+		if len(receiver.networks) > 0 {
+			network = receiver.networks[len(receiver.networks)-1]
+		}
+		w.Unlock()
+		if managedAmnesiaVTunRuntimeMatches(network, want) {
+			return network
+		}
+		if time.Now().After(deadline) {
+			assertManagedAmnesiaVTunRuntime(t, network, want)
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+func managedAmnesiaVTunRuntimeMatches(network nodekit.NetworkCloser, want amnesiaProfileStatus) bool {
+	if !nodekit.NetworkIsReady(network) {
+		return false
+	}
+	vtun, ok := nodekit.NetworkSource(network).(*netstackvtun.VTun)
+	if !ok {
+		return false
+	}
+	wantAddrs := make([]netip.Addr, 0, len(want.addresses))
+	for _, prefix := range want.addresses {
+		parsed, err := netip.ParsePrefix(prefix)
+		if err != nil {
+			return false
+		}
+		wantAddrs = append(wantAddrs, parsed.Addr())
+	}
+	wantDNS := make([]netip.Addr, 0, len(want.dns))
+	for _, address := range want.dns {
+		parsed, err := netip.ParseAddr(address)
+		if err != nil {
+			return false
+		}
+		wantDNS = append(wantDNS, parsed)
+	}
+	actualAddrs := slices.DeleteFunc(vtun.LocalAddrs(), func(address netip.Addr) bool {
+		return address.IsLoopback()
+	})
+	actualMTU, err := vtun.MTU()
+	return (want.addresses == nil || slices.Equal(actualAddrs, wantAddrs)) &&
+		slices.Equal(vtun.GetDnsServers(), wantDNS) && err == nil && actualMTU == want.mtu
 }
 
 func TestManagedAmnesiaDNSLinkAndCountryChangeLifecycle(t *testing.T) {
@@ -634,6 +948,27 @@ func (c *recordingManagedAmnesiaClass) onlyNode(t *testing.T) *managedAmnesiaNod
 type managedAmnesiaLinkPeer struct {
 	pasta.BasicNode
 	requests int
+	configs  []nodekit.TunConfig
+}
+
+type managedAmnesiaNetworkPeer struct {
+	pasta.BasicNode
+	networks []nodekit.NetworkCloser
+}
+
+func (*managedAmnesiaNetworkPeer) PreLinkAdd(uint64, string, string) error { return nil }
+
+func (p *managedAmnesiaNetworkPeer) OnEvent(
+	event pasta.Event,
+	_ string,
+	_ []string,
+	_ string,
+) error {
+	payload, ok := event.Payload.(nodekit.NetworkPayload)
+	if ok && payload.Network != nil {
+		p.networks = append(p.networks, payload.Network)
+	}
+	return nil
 }
 
 func (*managedAmnesiaLinkPeer) PreLinkAdd(uint64, string, string) error { return nil }
@@ -646,6 +981,9 @@ func (p *managedAmnesiaLinkPeer) OnEvent(
 ) error {
 	if std.IsRequest(event.Payload) {
 		p.requests++
+	}
+	if config, ok := event.Payload.(nodekit.TunConfig); ok {
+		p.configs = append(p.configs, config.Clone())
 	}
 	return nil
 }

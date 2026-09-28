@@ -708,6 +708,12 @@ func (n *managedAmnesiaNode) handleRuntimeResult(msg managedAmnesiaRuntimeResult
 		n.clearCaptchaPrompt()
 		n.runtimeReady = true
 		n.dnsProvider = msg.dns
+		// A previous activation error or interaction can withdraw the TUN
+		// configuration while the negotiated profile stays reusable. Publish the
+		// successful runtime's desired configuration again. Equivalent consumers
+		// ignore it, while a consumer that applied the withdrawal converges back
+		// to the profile addresses, routes, MTU, and DNS.
+		n.sendProfileTunConfig(msg.profile)
 		n.sendDNSAll()
 	} else {
 		n.clearCaptchaPrompt()
