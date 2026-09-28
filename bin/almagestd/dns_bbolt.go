@@ -37,9 +37,21 @@ const (
 )
 
 type dnsCacheChange struct {
-	kind  dnsCacheChangeKind
-	cache string
-	key   string
+	kind      dnsCacheChangeKind
+	cache     string
+	key       string
+	raw       []byte
+	expiresAt time.Time
+}
+
+func newDNSKeyUpsertChange(cache, key string, raw []byte, expiresAt time.Time) dnsCacheChange {
+	return dnsCacheChange{
+		kind:      dnsCacheChangeKeyUpsert,
+		cache:     cache,
+		key:       key,
+		raw:       append([]byte(nil), raw...),
+		expiresAt: expiresAt,
+	}
 }
 
 // bboltDNSCacheStorage stores one named DNS cache under the fixed
@@ -252,7 +264,7 @@ func (s *bboltDNSCacheStorage) Set(key string, msg *gdns.Message, now time.Time)
 	}
 	golog.Debugf("DNS cache storage: wrote entry cache=%q key=%q created_cache=%t", s.name, key, created)
 	s.memoryPut(key, msg, expires, raw)
-	changes := []dnsCacheChange{{kind: dnsCacheChangeKeyUpsert, cache: s.name, key: key}}
+	changes := []dnsCacheChange{newDNSKeyUpsertChange(s.name, key, raw, expires)}
 	if created {
 		changes = append([]dnsCacheChange{{kind: dnsCacheChangeCacheUpsert, cache: s.name}}, changes...)
 	}

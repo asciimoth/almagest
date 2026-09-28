@@ -417,6 +417,150 @@ func TestDNSSubscriptionSendsIncrementalEvents(t *testing.T) {
 	}
 }
 
+func TestDNSSubscriptionEventsDescribeTriggeringMutation(t *testing.T) {
+	manager, err := openKVManager(filepath.Join(t.TempDir(), "kv.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer manager.Close() //nolint:errcheck
+
+	var events []api.Message
+	session := (&AdminAPI{dns: manager}).newAPISession(nil, nil, func(msg api.Message) error {
+		if msg.Kind == api.MessageEvent && msg.Surface == api.SurfaceDNS {
+			events = append(events, msg)
+		}
+		return nil
+	})
+	defer session.close()
+
+	const (
+		cache = "resolver"
+		key   = "delayed.test.|16|1"
+	)
+	for id, request := range []api.Message{
+		mustRequest(t, "keys", api.SurfaceDNS, string(api.MethodDNSSubscribeKeys), api.DNSKeysRequest{Cache: cache}),
+		mustRequest(t, "value", api.SurfaceDNS, string(api.MethodDNSSubscribeValue), api.DNSValueRequest{Cache: cache, Key: key}),
+	} {
+		response, callErr := session.handleMessage(request)
+		if callErr != nil || response.Error != nil {
+			t.Fatalf("subscription %d response = %#v, error = %v", id, response, callErr)
+		}
+	}
+
+	original, originalKey, err := dnsStoredEntryFromAPI(api.DNSRecordInput{
+		Name: "delayed.test.", Type: "TXT", TTL: 1, Value: "original",
+	}, time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if originalKey != key {
+		t.Fatalf("original key = %q, want %q", originalKey, key)
+	}
+	originalRaw, err := marshalDNSCacheEntry(original)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantRaw := append([]byte(nil), originalRaw...)
+	upsert := newDNSKeyUpsertChange(cache, key, originalRaw, original.expires)
+	for i := range originalRaw {
+		originalRaw[i] = 'x'
+	}
+
+	replacement, replacementKey, err := dnsStoredEntryFromAPI(api.DNSRecordInput{
+		Name: "delayed.test.", Type: "TXT", TTL: 3600, Value: "replacement",
+	}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if replacementKey != key {
+		t.Fatalf("replacement key = %q, want %q", replacementKey, key)
+	}
+	replacementRaw, err := marshalDNSCacheEntry(replacement)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.putDNSCacheEntry(cache, key, replacementRaw); err != nil {
+		t.Fatal(err)
+	}
+
+	manager.notifyDNSChange(upsert)
+	keyEvent, valueEvent := decodeDNSMutationEvents(t, events)
+	wantExpiry := original.expires.UTC().Format(time.RFC3339Nano)
+	if keyEvent.Change.Deleted || keyEvent.Change.Entry == nil ||
+		keyEvent.Change.Entry.Key != key ||
+		keyEvent.Change.Entry.Size != len(wantRaw) ||
+		keyEvent.Change.Entry.ExpiresAt != wantExpiry {
+		t.Fatalf("delayed key upsert = %#v, want original committed metadata", keyEvent)
+	}
+	if !valueEvent.Found || valueEvent.Value == nil ||
+		valueEvent.Value.JSON != string(wantRaw) ||
+		valueEvent.Value.Size != len(wantRaw) ||
+		valueEvent.Value.ExpiresAt != wantExpiry {
+		t.Fatalf("delayed value upsert = %#v, want original committed value", valueEvent)
+	}
+
+	// A delete event must stay a delete even if the key was recreated before a
+	// delayed subscriber handles it.
+	events = nil
+	manager.notifyDNSChange(dnsCacheChange{kind: dnsCacheChangeKeyDelete, cache: cache, key: key})
+	keyEvent, valueEvent = decodeDNSMutationEvents(t, events)
+	if !keyEvent.Change.Deleted || keyEvent.Change.Entry != nil {
+		t.Fatalf("delayed key delete = %#v, want deleted key", keyEvent)
+	}
+	if valueEvent.Found || valueEvent.Value != nil {
+		t.Fatalf("delayed value delete = %#v, want missing value", valueEvent)
+	}
+
+	// This is the failure mode from the E2E test: the short-lived committed
+	// value is already absent when its delayed creation event is delivered.
+	deleted, err := manager.deleteDNSCacheEntry(cache, key, replacementRaw)
+	if err != nil || !deleted {
+		t.Fatalf("delete replacement = %v, %v", deleted, err)
+	}
+	events = nil
+	manager.notifyDNSChange(upsert)
+	keyEvent, valueEvent = decodeDNSMutationEvents(t, events)
+	if keyEvent.Change.Deleted || keyEvent.Change.Entry == nil {
+		t.Fatalf("expired key upsert = %#v, want creation event", keyEvent)
+	}
+	if !valueEvent.Found || valueEvent.Value == nil || valueEvent.Value.JSON != string(wantRaw) {
+		t.Fatalf("expired value upsert = %#v, want committed value", valueEvent)
+	}
+}
+
+func decodeDNSMutationEvents(t *testing.T, events []api.Message) (api.DNSKeysEvent, api.DNSValueEvent) {
+	t.Helper()
+	if len(events) != 2 {
+		t.Fatalf("DNS mutation events = %d, want key and value events: %#v", len(events), events)
+	}
+	var (
+		keyEvent   api.DNSKeysEvent
+		valueEvent api.DNSValueEvent
+		keyFound   bool
+		valueFound bool
+	)
+	for _, event := range events {
+		switch event.Method {
+		case string(api.EventDNSKeysUpdate):
+			if err := json.Unmarshal(event.Payload, &keyEvent); err != nil {
+				t.Fatal(err)
+			}
+			keyFound = true
+		case string(api.EventDNSValueUpdate):
+			if err := json.Unmarshal(event.Payload, &valueEvent); err != nil {
+				t.Fatal(err)
+			}
+			valueFound = true
+		default:
+			t.Fatalf("unexpected DNS event method %q", event.Method)
+		}
+	}
+	if !keyFound || !valueFound {
+		t.Fatalf("DNS mutation events missing key or value event: %#v", events)
+	}
+	return keyEvent, valueEvent
+}
+
 func TestDNSMutationMethodsUseReadableRecords(t *testing.T) {
 	manager, err := openKVManager(filepath.Join(t.TempDir(), "kv.db"))
 	if err != nil {

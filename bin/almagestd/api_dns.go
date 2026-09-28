@@ -233,25 +233,6 @@ func (m *bboltKVManager) dnsKeysSnapshot(cache string) (api.DNSKeysSnapshot, err
 	return snapshot, nil
 }
 
-func (m *bboltKVManager) dnsKeyInfo(cache, key string) (api.DNSKeyInfo, bool, error) {
-	if !validDNSName(cache) || !validDNSName(key) {
-		return api.DNSKeyInfo{}, false, errDNSInvalidName
-	}
-	raw, found, err := m.getDNSCacheEntryRaw(cache, key)
-	if err != nil || !found {
-		return api.DNSKeyInfo{}, false, err
-	}
-	entry, err := unmarshalDNSCacheEntry(raw)
-	if err != nil {
-		return api.DNSKeyInfo{}, false, err
-	}
-	if m.dnsCacheEntryExpired(entry.expires, time.Now()) {
-		m.deleteExpiredAPIEntries([]dnsExpiredAPIEntry{{cache: cache, key: key, raw: raw}})
-		return api.DNSKeyInfo{}, false, nil
-	}
-	return dnsKeyInfoFromRaw(key, raw, entry), true, nil
-}
-
 func (m *bboltKVManager) dnsValueSnapshot(cache, key string) (api.DNSValueSnapshot, error) {
 	if !validDNSName(cache) || !validDNSName(key) {
 		return api.DNSValueSnapshot{}, errDNSInvalidName
@@ -342,7 +323,7 @@ func (m *bboltKVManager) setDNSRecord(cache, previousKey string, record api.DNSR
 	if deletedPrevious {
 		changes = append(changes, dnsCacheChange{kind: dnsCacheChangeKeyDelete, cache: cache, key: previousKey})
 	}
-	changes = append(changes, dnsCacheChange{kind: dnsCacheChangeKeyUpsert, cache: cache, key: key})
+	changes = append(changes, newDNSKeyUpsertChange(cache, key, raw, entry.expires))
 	m.notifyDNSChange(changes...)
 	return key, nil
 }
@@ -721,10 +702,7 @@ func (s *apiSession) sendDNSSubscriptionChange(sub dnsSubscription, change dnsCa
 		}
 		switch change.kind {
 		case dnsCacheChangeKeyUpsert:
-			info, found, infoErr := s.admin.dns.dnsKeyInfo(change.cache, change.key)
-			if infoErr != nil || !found {
-				return infoErr
-			}
+			info := dnsKeyInfoFromRaw(change.key, change.raw, dnsStoredCacheEntry{expires: change.expiresAt})
 			event, err = api.NewEvent(api.SurfaceDNS, string(api.EventDNSKeysUpdate), api.DNSKeysEvent{
 				SubscriptionID: sub.id,
 				Cache:          sub.cache,
@@ -746,9 +724,11 @@ func (s *apiSession) sendDNSSubscriptionChange(sub dnsSubscription, change dnsCa
 		if change.kind != dnsCacheChangeKeyUpsert && change.kind != dnsCacheChangeKeyDelete {
 			return nil
 		}
-		snapshot, snapshotErr := s.admin.dns.dnsValueSnapshot(sub.cache, sub.key)
-		if snapshotErr != nil {
-			return snapshotErr
+		snapshot := api.DNSValueSnapshot{}
+		if change.kind == dnsCacheChangeKeyUpsert {
+			value := dnsValueFromRaw(change.raw, dnsStoredCacheEntry{expires: change.expiresAt})
+			snapshot.Found = true
+			snapshot.Value = &value
 		}
 		event, err = api.NewEvent(api.SurfaceDNS, string(api.EventDNSValueUpdate), api.DNSValueEvent{
 			SubscriptionID: sub.id,
