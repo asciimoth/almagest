@@ -173,7 +173,7 @@ func (n *spooferNode) OnEvent(event pasta.Event, linkType string, _ []string, re
 
 func (n *spooferNode) OnInbox(message pasta.InboxMessage) error {
 	failed, ok := message.Payload.(spooferTunFailed)
-	if !ok || failed.runtime != n.runtime || failed.link != n.tunLink || n.tun == nil {
+	if !ok || !tun.IsTunTermError(failed.err) || failed.runtime != n.runtime || failed.link != n.tunLink || n.tun == nil {
 		return nil
 	}
 	if n.Logger != nil {

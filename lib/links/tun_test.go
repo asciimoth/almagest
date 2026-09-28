@@ -1000,6 +1000,93 @@ func TestTunFailureObserverReportsRuntimeFailureOnlyOnce(t *testing.T) {
 	}
 }
 
+func TestTunFailureObserverIgnoresRecoverableReadAndWriteErrors(t *testing.T) {
+	recoverable := []struct {
+		name string
+		err  error
+	}{
+		{name: "short buffer", err: io.ErrShortBuffer},
+		{name: "wrapped short buffer", err: fmt.Errorf("read: %w", io.ErrShortBuffer)},
+		{name: "deadline", err: os.ErrDeadlineExceeded},
+		{name: "temporary", err: observerTemporaryError{}},
+		{name: "legacy too many segments", err: errors.New("device: too many segments")},
+		{name: "legacy need more buffers", err: errors.New("device: need more buffers")},
+	}
+
+	for _, operation := range []string{"read", "write"} {
+		for _, test := range recoverable {
+			t.Run(operation+"/"+test.name, func(t *testing.T) {
+				terminal := errors.New("terminal TUN failure")
+				source := &observerErrorTun{}
+				if operation == "read" {
+					source.readErrors = []error{test.err, terminal}
+				} else {
+					source.writeErrors = []error{test.err, terminal}
+				}
+				reported := make(chan error, 2)
+				observed := NewTunFailureObserver(source, func(err error) { reported <- err })
+
+				var err error
+				if operation == "read" {
+					_, err = observed.Read([][]byte{make([]byte, 1)}, make([]int, 1), 0)
+				} else {
+					_, err = observed.Write([][]byte{{0x45}}, 0)
+				}
+				if !errors.Is(err, test.err) {
+					t.Fatalf("first %s error = %v, want %v", operation, err, test.err)
+				}
+				select {
+				case err := <-reported:
+					t.Fatalf("observer reported recoverable %s error: %v", operation, err)
+				default:
+				}
+
+				if operation == "read" {
+					_, err = observed.Read([][]byte{make([]byte, 1)}, make([]int, 1), 0)
+				} else {
+					_, err = observed.Write([][]byte{{0x45}}, 0)
+				}
+				if !errors.Is(err, terminal) {
+					t.Fatalf("second %s error = %v, want terminal failure", operation, err)
+				}
+				select {
+				case err := <-reported:
+					if !errors.Is(err, terminal) {
+						t.Fatalf("reported %s error = %v, want terminal failure", operation, err)
+					}
+				default:
+					t.Fatalf("observer did not report terminal %s error", operation)
+				}
+			})
+		}
+	}
+}
+
+func TestTunFailureObserverPreservesPartialReadWithRecoverableError(t *testing.T) {
+	recoverable := observerTemporaryError{}
+	source := &observerErrorTun{
+		readErrors: []error{recoverable},
+		readPacket: []byte{0x45, 0, 0, 20},
+	}
+	reported := make(chan error, 1)
+	observed := NewTunFailureObserver(source, func(err error) { reported <- err })
+	buf := make([]byte, len(source.readPacket))
+	sizes := make([]int, 1)
+
+	count, err := observed.Read([][]byte{buf}, sizes, 0)
+	if !errors.Is(err, recoverable) {
+		t.Fatalf("Read() error = %v, want recoverable error", err)
+	}
+	if count != 1 || sizes[0] != len(source.readPacket) || !bytes.Equal(buf, source.readPacket) {
+		t.Fatalf("Read() = %d, size %d, packet %x; want 1, size %d, packet %x", count, sizes[0], buf, len(source.readPacket), source.readPacket)
+	}
+	select {
+	case err := <-reported:
+		t.Fatalf("observer reported recoverable partial-read error: %v", err)
+	default:
+	}
+}
+
 func TestTunFailureObserverIntentionalCloseDoesNotReport(t *testing.T) {
 	source := newGrowingMTUTun(1500)
 	reported := make(chan error, 1)
@@ -1083,6 +1170,40 @@ type failNextReadTun struct {
 type failOnceWriteTun struct {
 	tun.Tun
 	failed atomic.Bool
+}
+
+type observerTemporaryError struct{}
+
+func (observerTemporaryError) Error() string   { return "temporary TUN error" }
+func (observerTemporaryError) Temporary() bool { return true }
+
+type observerErrorTun struct {
+	tun.Tun
+	readErrors  []error
+	writeErrors []error
+	readPacket  []byte
+}
+
+func (t *observerErrorTun) Read(bufs [][]byte, sizes []int, offset int) (int, error) {
+	err := t.popReadError()
+	if len(t.readPacket) == 0 {
+		return 0, err
+	}
+	copy(bufs[0][offset:], t.readPacket)
+	sizes[0] = len(t.readPacket)
+	return 1, err
+}
+
+func (t *observerErrorTun) Write(bufs [][]byte, _ int) (int, error) {
+	err := t.writeErrors[0]
+	t.writeErrors = t.writeErrors[1:]
+	return len(bufs), err
+}
+
+func (t *observerErrorTun) popReadError() error {
+	err := t.readErrors[0]
+	t.readErrors = t.readErrors[1:]
+	return err
 }
 
 type growingMTUTun struct {

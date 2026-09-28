@@ -7,9 +7,10 @@ import (
 	"github.com/asciimoth/gonnect/tun"
 )
 
-// TunFailureObserver reports the first read, write, or terminal event-stream
+// TunFailureObserver reports the first terminal read, write, or event-stream
 // failure from a TUN. Closing the observer intentionally does not report a
-// failure.
+// failure. Recoverable I/O errors remain available to the caller but do not
+// mark the observed TUN as failed.
 type TunFailureObserver struct {
 	tun.Tun
 
@@ -106,7 +107,7 @@ func (t *TunFailureObserver) forwardEvents() {
 }
 
 func (t *TunFailureObserver) reportOnce(err error) {
-	if t == nil || err == nil || t.report == nil {
+	if t == nil || !tun.IsTunTermError(err) || t.report == nil {
 		return
 	}
 	select {

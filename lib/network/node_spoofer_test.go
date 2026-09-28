@@ -1,6 +1,7 @@
 package networknodes
 
 import (
+	"io"
 	"testing"
 
 	"github.com/asciimoth/gonnect"
@@ -66,6 +67,7 @@ func TestSpooferIgnoresStaleTunFailure(t *testing.T) {
 	for _, failed := range []spooferTunFailed{
 		{runtime: &spooferRuntime{}, link: 23, err: gonnecttun.ErrDetachedTunFailed},
 		{runtime: current, link: 24, err: gonnecttun.ErrDetachedTunFailed},
+		{runtime: current, link: 23, err: io.ErrShortBuffer},
 	} {
 		if err := node.OnInbox(pasta.InboxMessage{Payload: failed}); err != nil {
 			t.Fatalf("OnInbox(%+v): %v", failed, err)
