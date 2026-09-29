@@ -17,6 +17,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/asciimoth/almagest/bin/almagestd/args"
@@ -207,12 +208,54 @@ func (a *agent) ReadConfig() ([]byte, []byte, error) {
 }
 
 func (a *agent) WriteConfig(data []byte) error {
-	info, err := os.Stat(a.ConfigPath)
+	target, err := filepath.EvalSymlinks(a.ConfigPath)
 	if err != nil {
 		return err
 	}
+	info, err := os.Stat(target)
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("config path is not a regular file: %s", a.ConfigPath)
+	}
 
-	return os.WriteFile(a.ConfigPath, data, info.Mode().Perm())
+	temporary, err := os.CreateTemp(filepath.Dir(target), "."+filepath.Base(target)+".tmp-*")
+	if err != nil {
+		return fmt.Errorf("create temporary config file: %w", err)
+	}
+	temporaryPath := temporary.Name()
+	defer os.Remove(temporaryPath) //nolint:errcheck
+	closeTemporary := func() {
+		_ = temporary.Close()
+	}
+
+	if stat, ok := info.Sys().(*syscall.Stat_t); ok {
+		if err := temporary.Chown(int(stat.Uid), int(stat.Gid)); err != nil {
+			closeTemporary()
+			return fmt.Errorf("preserve config ownership: %w", err)
+		}
+	}
+	if err := temporary.Chmod(info.Mode().Perm()); err != nil {
+		closeTemporary()
+		return fmt.Errorf("preserve config permissions: %w", err)
+	}
+	if _, err := temporary.Write(data); err != nil {
+		closeTemporary()
+		return fmt.Errorf("write temporary config file: %w", err)
+	}
+	if err := temporary.Sync(); err != nil {
+		closeTemporary()
+		return fmt.Errorf("sync temporary config file: %w", err)
+	}
+	if err := temporary.Close(); err != nil {
+		return fmt.Errorf("close temporary config file: %w", err)
+	}
+	if err := os.Rename(temporaryPath, target); err != nil {
+		return fmt.Errorf("replace config file: %w", err)
+	}
+
+	return nil
 }
 
 func RunAgent(args args.Args) Agent {

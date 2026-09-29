@@ -3,10 +3,13 @@
 package platform
 
 import (
+	"bytes"
+	"fmt"
 	"net/netip"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	almargs "github.com/asciimoth/almagest/bin/almagestd/args"
@@ -456,6 +459,135 @@ func TestLinuxAgentReadsAndWritesUnsafeConfig(t *testing.T) {
 	written, err := os.ReadFile(configPath)
 	if err != nil || string(written) != "{value: 2}" {
 		t.Fatalf("written config = %q, %v", written, err)
+	}
+}
+
+func TestLinuxAgentWriteConfigReplacesFileAtomically(t *testing.T) {
+	base := t.TempDir()
+	configPath := filepath.Join(base, "alm.hujson")
+	if err := os.WriteFile(configPath, []byte("before"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.Stat(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	agent := &agent{ConfigPath: configPath}
+	if err := agent.WriteConfig([]byte("after")); err != nil {
+		t.Fatal(err)
+	}
+	after, err := os.Stat(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if os.SameFile(before, after) {
+		t.Fatal("WriteConfig updated the live inode instead of replacing it")
+	}
+	if after.Mode().Perm() != 0o640 {
+		t.Fatalf("config permissions = %o, want 640", after.Mode().Perm())
+	}
+	written, err := os.ReadFile(configPath)
+	if err != nil || string(written) != "after" {
+		t.Fatalf("written config = %q, %v", written, err)
+	}
+	matches, err := filepath.Glob(filepath.Join(base, ".alm.hujson.tmp-*"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(matches) != 0 {
+		t.Fatalf("temporary config files remain: %v", matches)
+	}
+}
+
+func TestLinuxAgentWriteConfigPreservesSymlink(t *testing.T) {
+	base := t.TempDir()
+	targetPath := filepath.Join(base, "stored.hujson")
+	configPath := filepath.Join(base, "alm.hujson")
+	if err := os.WriteFile(targetPath, []byte("before"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Base(targetPath), configPath); err != nil {
+		t.Fatal(err)
+	}
+
+	agent := &agent{ConfigPath: configPath}
+	if err := agent.WriteConfig([]byte("after")); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Lstat(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Fatal("WriteConfig replaced the configured symlink")
+	}
+	written, err := os.ReadFile(targetPath)
+	if err != nil || string(written) != "after" {
+		t.Fatalf("symlink target content = %q, %v", written, err)
+	}
+}
+
+func TestLinuxAgentWriteConfigNeverExposesPartialDocument(t *testing.T) {
+	base := t.TempDir()
+	configPath := filepath.Join(base, "alm.hujson")
+	first := []byte(`{"generation":"first","padding":"` + strings.Repeat("a", 512<<10) + `"}`)
+	second := []byte(`{"generation":"second","padding":"` + strings.Repeat("b", 512<<10) + `"}`)
+	if err := os.WriteFile(configPath, first, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	agent := &agent{ConfigPath: configPath}
+	const readerCount = 4
+	var ready sync.WaitGroup
+	var readers sync.WaitGroup
+	ready.Add(readerCount)
+	readers.Add(readerCount)
+	stop := make(chan struct{})
+	errs := make(chan error, 1)
+	for range readerCount {
+		go func() {
+			defer readers.Done()
+			ready.Done()
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				data, err := os.ReadFile(configPath)
+				if err == nil && (bytes.Equal(data, first) || bytes.Equal(data, second)) {
+					continue
+				}
+				if err == nil {
+					err = fmt.Errorf("read partial config with %d bytes", len(data))
+				}
+				select {
+				case errs <- err:
+				default:
+				}
+				return
+			}
+		}()
+	}
+	ready.Wait()
+	for index := range 64 {
+		data := first
+		if index%2 == 0 {
+			data = second
+		}
+		if err := agent.WriteConfig(data); err != nil {
+			close(stop)
+			readers.Wait()
+			t.Fatal(err)
+		}
+	}
+	close(stop)
+	readers.Wait()
+	select {
+	case err := <-errs:
+		t.Fatal(err)
+	default:
 	}
 }
 
