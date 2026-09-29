@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# shellcheck disable=SC1091 # The path is provided by the e2e image.
+source /e2e/lib/amnesia_peer_handoff.sh
+
 : "${E2E_PUBLIC_IP:?}"
 : "${E2E_EXAMPLE_IP:?}"
 shared=/stack-shared
@@ -289,11 +292,10 @@ pids+=("$!")
 (
 	last_key=""
 	while true; do
-		if [[ -s "$shared/amnesia-client-peer" ]]; then
-			read -r client_ip public_key <"$shared/amnesia-client-peer"
-			if [[ -n "$client_ip" && -n "$public_key" && "$public_key" != "$last_key" ]]; then
-				public_key_hex="$(printf '%s' "$public_key" | base64 -d | od -An -tx1 -v | tr -d ' \n')"
-				uapi_set "$(cat <<EOF
+		if record="$(amnesia_peer_record "$shared/amnesia-client-peer")"; then
+			read -r client_ip public_key public_key_hex <<<"$record"
+			if [[ "$public_key" != "$last_key" ]]; then
+				if ! uapi_set "$(cat <<EOF
 set=1
 replace_peers=true
 public_key=$public_key_hex
@@ -303,9 +305,13 @@ replace_allowed_ips=true
 allowed_ip=10.205.10.1/32
 persistent_keepalive_interval=1
 EOF
-)"
+)"; then
+					echo "failed to install Amnesia client peer; will retry" >&2
+					sleep 0.1
+					continue
+				fi
 				last_key="$public_key"
-				touch "$shared/amnesia-peer-ready"
+				amnesia_peer_acknowledge "$shared/amnesia-peer-ready" "$public_key"
 			fi
 		fi
 		sleep 0.1

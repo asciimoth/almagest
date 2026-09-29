@@ -21,6 +21,7 @@ test-js:
 test-e2e:
   ./e2e/lib/case_scheduler_test.sh
   ./e2e/lib/common_test.sh
+  ./e2e/lib/amnesia_peer_handoff_test.sh
   python3 ./e2e/lib/udp_echo_client_test.py
   E2E_COVERAGE=1 ./e2e/run.sh
 
