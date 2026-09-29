@@ -40,7 +40,13 @@ volume:
 2. An example HTTP origin supplies the destination used by filters.
 3. A combined service container runs a TLS Headscale server, authoritative
    dnsmasq fixture, and a second Almagest daemon as the tailnet peer.
-4. The main container runs the graph under test.
+4. The main container runs the graph under test. Its setup moves the Docker
+   interface into a router namespace and connects that router to the main
+   namespace through separate Ethernet and Wi-Fi veth links.
+
+The router translates stable test addresses to the Docker service addresses.
+Both physical links therefore reach the same destinations. The test can take
+either link down and replace the default route without changing graph config.
 
 The origin and Headscale service scripts are shared with
 `local_real_life_stack`. Standalone mode omits its Amnesia-only route and
@@ -109,7 +115,11 @@ The test checks:
 - UDP DNS interception, destination rules, and application rules work;
 - live rule removal and restoration work on both network routers and the TUN
   splitter;
-- DNS cache state and all node states remain valid after live changes.
+- DNS cache state and all node states remain valid after live changes;
+- the complete graph recovers across repeated ethernet, no-network, Wi-Fi,
+  no-network, and ethernet transitions;
+- direct OutNetwork, DefaultTun/Spoofer, DNS, and nested Tailscale traffic all
+  recover through the new physical route without restarting the daemon.
 
 ## Repetition
 

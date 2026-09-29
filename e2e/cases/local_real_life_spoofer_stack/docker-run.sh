@@ -122,11 +122,18 @@ example_ip="$(container_ip "$example_name")"
 gateway_ip="$(docker network inspect --format '{{(index .IPAM.Config 0).Gateway}}' "$network_name")"
 [[ -n "$public_ip" && -n "$example_ip" && -n "$gateway_ip" ]]
 
+# The main container uses stable service addresses on both simulated physical
+# networks. Its router namespace translates these addresses to the Docker
+# service addresses.
+virtual_public_ip="198.18.100.10"
+virtual_example_ip="198.18.100.11"
+virtual_headscale_ip="198.18.100.12"
+
 docker run --detach --name "$headscale_name" --network "$network_name" \
 	--cap-add NET_ADMIN \
 	-e E2E_HEADSCALE_STANDALONE=1 \
-	-e "E2E_PUBLIC_IP=$public_ip" \
-	-e "E2E_EXAMPLE_IP=$example_ip" \
+	-e "E2E_PUBLIC_IP=$virtual_public_ip" \
+	-e "E2E_EXAMPLE_IP=$virtual_example_ip" \
 	-v "$volume_name:/stack-shared" \
 	"${coverage_args[@]}" \
 	--entrypoint /e2e/cases/local_real_life_stack/services/headscale.sh \
@@ -143,9 +150,12 @@ docker create --name "$main_name" \
 	--network "$network_name" \
 	--privileged --device /dev/net/tun \
 	-e "E2E_INTERNET_GATEWAY_IP=$gateway_ip" \
-	-e "E2E_HEADSCALE_IP=$headscale_ip" \
-	-e "E2E_PUBLIC_IP=$public_ip" \
-	-e "E2E_EXAMPLE_IP=$example_ip" \
+	-e "E2E_BACKEND_HEADSCALE_IP=$headscale_ip" \
+	-e "E2E_BACKEND_PUBLIC_IP=$public_ip" \
+	-e "E2E_BACKEND_EXAMPLE_IP=$example_ip" \
+	-e "E2E_HEADSCALE_IP=$virtual_headscale_ip" \
+	-e "E2E_PUBLIC_IP=$virtual_public_ip" \
+	-e "E2E_EXAMPLE_IP=$virtual_example_ip" \
 	-v "$volume_name:/stack-shared" \
 	${E2E_DOCKER_RUN_ARGS:-} \
 	"${pid_args[@]}" \

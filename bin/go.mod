@@ -14,7 +14,7 @@ require (
 	github.com/asciimoth/gonnect-netstack v0.9.0
 	github.com/asciimoth/pasta/pasta v0.10.0
 	github.com/asciimoth/socksgo v0.4.19
-	github.com/asciimoth/sysnet-linux v0.7.0
+	github.com/asciimoth/sysnet-linux v0.8.0
 	github.com/coder/websocket v1.8.14
 	github.com/joho/godotenv v1.5.1
 	github.com/kataras/golog v0.1.15

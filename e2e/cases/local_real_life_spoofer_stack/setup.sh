@@ -7,6 +7,9 @@ set -euo pipefail
 : "${E2E_PUBLIC_IP:?}"
 : "${E2E_EXAMPLE_IP:?}"
 : "${E2E_INTERNET_GATEWAY_IP:?}"
+: "${E2E_BACKEND_HEADSCALE_IP:?}"
+: "${E2E_BACKEND_PUBLIC_IP:?}"
+: "${E2E_BACKEND_EXAMPLE_IP:?}"
 
 for command in curl dig ip jq openssl python3 wg wget; do
 	command -v "$command" >/dev/null
@@ -30,16 +33,80 @@ if ! awk '$2 == "/sys/fs/bpf" && $3 == "bpf" { found=1 } END { exit !found }' /p
 fi
 mkdir -p "$pin_path"
 
-# Remove the connected route for the fixture bridge. This makes normal
-# process traffic eligible for DefaultTun. Keep a route to the Docker gateway
-# so excluded processes and Spoofer's host sockets retain direct egress.
-internet_if="$(ip -4 route get "$E2E_PUBLIC_IP" | awk '{for (i=1; i<=NF; i++) if ($i == "dev") {print $(i+1); exit}}')"
-internet_prefix="$(ip -4 route show dev "$internet_if" proto kernel | awk 'NR == 1 {print $1}')"
-[[ -n "$internet_if" && -n "$internet_prefix" ]]
-ip route replace "$E2E_INTERNET_GATEWAY_IP/32" dev "$internet_if"
-ip route del "$internet_prefix" dev "$internet_if"
+# Move the Docker-facing interface into a router namespace. The main namespace
+# gets independent Ethernet and Wi-Fi links. Both links reach the same stable
+# destinations, as two real access networks reach the same Internet services.
+router_ns="alm-stack-router"
+backend_if="$(ip -4 route get "$E2E_BACKEND_PUBLIC_IP" | awk '{for (i=1; i<=NF; i++) if ($i == "dev") {print $(i+1); exit}}')"
+backend_cidr="$(ip -o -4 addr show dev "$backend_if" scope global | awk 'NR == 1 {print $4}')"
+backend_ip="${backend_cidr%/*}"
+backend_prefix="$(ip -4 route show dev "$backend_if" proto kernel | awk 'NR == 1 {print $1}')"
+[[ -n "$backend_if" && -n "$backend_cidr" && -n "$backend_ip" && -n "$backend_prefix" ]]
+
+ip netns del "$router_ns" 2>/dev/null || true
+ip netns add "$router_ns"
+ip link set "$backend_if" netns "$router_ns"
+ip -n "$router_ns" link set lo up
+ip -n "$router_ns" addr replace "$backend_cidr" dev "$backend_if"
+ip -n "$router_ns" link set "$backend_if" up
+ip -n "$router_ns" route replace "$backend_prefix" dev "$backend_if" src "$backend_ip"
+ip -n "$router_ns" route replace default via "$E2E_INTERNET_GATEWAY_IP" \
+	dev "$backend_if"
+
+ip link add almeth0 type veth peer name almeth1
+ip link set almeth1 netns "$router_ns"
+ip addr add 198.18.10.1/30 dev almeth0
+ip link set almeth0 up
+ip -n "$router_ns" addr add 198.18.10.2/30 dev almeth1
+ip -n "$router_ns" link set almeth1 up
+
+ip link add almwifi0 type veth peer name almwifi1
+ip link set almwifi1 netns "$router_ns"
+ip addr add 198.18.20.1/30 dev almwifi0
+ip link set almwifi0 up
+ip -n "$router_ns" addr add 198.18.20.2/30 dev almwifi1
+ip -n "$router_ns" link set almwifi1 up
+
+# Nested Tailscale peers can send WireGuard packets from a different source
+# port than the discovery flow. Give the main namespace a stable inbound
+# address and route it through the active physical link.
+ip addr add 198.18.30.1/32 dev lo
+ip -n "$router_ns" route add 198.18.30.1/32 via 198.18.10.1 dev almeth1
+
+ip netns exec "$router_ns" sysctl -qw net.ipv4.ip_forward=1
+ip netns exec "$router_ns" nft -f - <<EOF
+table ip migration_nat {
+	chain prerouting {
+		type nat hook prerouting priority -100; policy accept;
+		ip daddr $E2E_PUBLIC_IP dnat to $E2E_BACKEND_PUBLIC_IP
+		ip daddr $E2E_EXAMPLE_IP dnat to $E2E_BACKEND_EXAMPLE_IP
+		ip daddr $E2E_HEADSCALE_IP dnat to $E2E_BACKEND_HEADSCALE_IP
+		ip saddr $E2E_BACKEND_HEADSCALE_IP ip daddr $backend_ip dnat to 198.18.30.1
+	}
+
+	chain postrouting {
+		type nat hook postrouting priority 100; policy accept;
+		oifname "$backend_if" masquerade
+	}
+}
+EOF
+
 while ip route del default 2>/dev/null; do :; done
-ip route add default via "$E2E_INTERNET_GATEWAY_IP" dev "$internet_if"
+ip route add default via 198.18.10.2 dev almeth0
+ip link set almwifi0 down
+
+cat >"$E2E_CONFIG_DIR/migration-network.env" <<EOF
+export E2E_ETHERNET_IF=almeth0
+export E2E_ETHERNET_GATEWAY_IP=198.18.10.2
+export E2E_ETHERNET_CLIENT_IP=198.18.10.1
+export E2E_ETHERNET_ROUTER_IF=almeth1
+export E2E_WIFI_IF=almwifi0
+export E2E_WIFI_GATEWAY_IP=198.18.20.2
+export E2E_WIFI_CLIENT_IP=198.18.20.1
+export E2E_WIFI_ROUTER_IF=almwifi1
+export E2E_ROUTER_NS=$(printf '%q' "$router_ns")
+export E2E_PHYSICAL_EGRESS_IP=$(printf '%q' "$backend_ip")
+EOF
 
 for path in \
 	/stack-shared/headscale-auth-key \
@@ -99,6 +166,9 @@ chmod 0600 "$E2E_CONFIG_DIR/service-secrets.env"
 cat >"$E2E_RUNTIME/cleanup-system.sh" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
+ip netns del alm-stack-router 2>/dev/null || true
+ip link del almeth0 2>/dev/null || true
+ip link del almwifi0 2>/dev/null || true
 rm -rf /sys/fs/bpf/almagest-e2e-local-real-life-spoofer-stack 2>/dev/null || true
 if [[ -f /tmp/almagest-e2e/local_real_life_spoofer_stack/mounted-bpffs ]]; then
 	umount /sys/fs/bpf 2>/dev/null || true
