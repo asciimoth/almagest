@@ -28,8 +28,8 @@ github.com/asciimoth/tuntap v0.4.3 h1:MCpPk/KdvcE6bsXD8bwHMvH2LbzVeG4K+Efps1ASTZ
 github.com/asciimoth/tuntap v0.4.3/go.mod h1:ePE0O+Z6SoZDOzb9FjPmRjobxT7aVr3RiDAKyiWDCCk=
 github.com/asciimoth/wgo v0.7.14 h1:cbILlCYLJk6z48q8w+LATm4IRDqTGnhR2rgF0sNPoSk=
 github.com/asciimoth/wgo v0.7.14/go.mod h1:l65skEawm0cRBDwI8E4H+Apd72eUHsvjoYYObp5c1Mc=
-github.com/asciimoth/wgo-tailscale v0.3.14 h1:GxZFYHUIeyaCqJ0gbedQcS+9yjD0gc7smrn7fCdQMyY=
-github.com/asciimoth/wgo-tailscale v0.3.14/go.mod h1:BVXgrX5xpsdhCFY2Db1ZVSmkFofCUmneQxebNWvpxfI=
+github.com/asciimoth/wgo-tailscale v0.4.0 h1:29lSRW/udi/VPVTogpS+XKu6ZnYlopeMzBGRrTwG7nA=
+github.com/asciimoth/wgo-tailscale v0.4.0/go.mod h1:BVXgrX5xpsdhCFY2Db1ZVSmkFofCUmneQxebNWvpxfI=
 github.com/coder/websocket v1.8.14 h1:9L0p0iKiNOibykf283eHkKUHHrpG7f65OE3BhhO7v9g=
 github.com/coder/websocket v1.8.14/go.mod h1:NX3SzP+inril6yawo5CQXx8+fk145lPDC6pumgx0mVg=
 github.com/cretz/bine v0.2.0 h1:8GiDRGlTgz+o8H9DSnsl+5MeBK4HsExxgl6WgzOCuZo=

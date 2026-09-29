@@ -34,7 +34,7 @@ require (
 	github.com/asciimoth/tor-driver v0.1.1 // indirect
 	github.com/asciimoth/tuntap v0.4.3 // indirect
 	github.com/asciimoth/wgo v0.7.14 // indirect
-	github.com/asciimoth/wgo-tailscale v0.3.14 // indirect
+	github.com/asciimoth/wgo-tailscale v0.4.0 // indirect
 	github.com/cilium/ebpf v0.22.0 // indirect
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/google/btree v1.1.2 // indirect

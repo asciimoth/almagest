@@ -2,6 +2,7 @@
 set -euo pipefail
 
 : "${ALMAGEST_E2E_TIMEOUT:=120}"
+: "${ALMAGEST_TAILSCALE_RECOVERY_TIMEOUT:=240}"
 # shellcheck disable=SC1091
 source /e2e/lib/common.sh
 # shellcheck disable=SC1091
@@ -23,6 +24,8 @@ export ALMAGEST_E2E_FILE_STORAGE="/root/almagest-e2e-store/$E2E_CASE"
 capture_pid=""
 outer_splitter_name="AutoTunSplitter transport"
 direct_source="$E2E_PHYSICAL_EGRESS_IP"
+stale_direct_table="almagest_e2e_stale_direct"
+stale_direct_port=""
 
 direct_router_rules=$'ADDR_S intercept-hosts.stack.test\nADDR_S intercept-hosts.stack.test.\nOR\nADDR_S intercept-dns.stack.test\nOR\nADDR_S intercept-dns.stack.test.\nOR\nDROP\n\nTRUE\nSLOT 1'
 spoofer_router_rules=$'ADDR_S intercept-hosts.stack.test\nADDR_S intercept-hosts.stack.test.\nOR\nADDR_S intercept-dns.stack.test\nOR\nADDR_S intercept-dns.stack.test.\nOR\nPORT 443\nAND\nSLOT 1\n\nADDR_S intercept-hosts.stack.test\nADDR_S intercept-hosts.stack.test.\nOR\nADDR_S intercept-dns.stack.test\nOR\nADDR_S intercept-dns.stack.test.\nOR\nPORT 80\nAND\nSLOT 2\n\nTRUE\nSLOT 3'
@@ -31,6 +34,8 @@ tun_open_rules=$'PORT 53\nSLOT 2\n\nTRUE\nSLOT 1'
 
 cleanup() {
 	trap - EXIT
+	ip netns exec "$E2E_ROUTER_NS" \
+		nft delete table inet "$stale_direct_table" 2>/dev/null || true
 	if [[ -n "$capture_pid" ]]; then
 		kill "$capture_pid" 2>/dev/null || true
 		wait "$capture_pid" 2>/dev/null || true
@@ -86,7 +91,8 @@ wait_http_client_recovery() {
 	local node="$1"
 	local text="$2"
 	local description="$3"
-	if retry "$ALMAGEST_E2E_TIMEOUT" "$description" \
+	local timeout="${4:-$ALMAGEST_E2E_TIMEOUT}"
+	if retry "$timeout" "$description" \
 		http_client_attempt_succeeds "$node" "$text"; then
 		return 0
 	fi
@@ -261,18 +267,30 @@ graph_operational_once() {
 }
 
 wait_graph_operational_stable() {
-	retry "$ALMAGEST_E2E_TIMEOUT" "all graph nodes operational" graph_operational_once \
-		|| {
-			cli graph map | jq -r '.nodes[] | [.name, .label] | @tsv' >&2 || true
-			cli graph menu --name TailscaleCtrl >&2 || true
-			fail "not all graph nodes became operational"
-		}
-	local deadline=$((SECONDS + 5))
+	local deadline=$((SECONDS + ALMAGEST_E2E_TIMEOUT))
+	local stable_deadline
+	local stable
 	while ((SECONDS <= deadline)); do
-		graph_operational_once \
-			|| fail "a graph node left its operational state during the stability window"
-		sleep 0.25
+		if ! graph_operational_once; then
+			sleep 0.25
+			continue
+		fi
+		stable=1
+		stable_deadline=$((SECONDS + 5))
+		while ((SECONDS <= stable_deadline)); do
+			if ! graph_operational_once; then
+				stable=0
+				break
+			fi
+			sleep 0.25
+		done
+		if ((stable)); then
+			return 0
+		fi
 	done
+	cli graph map | jq -r '.nodes[] | [.name, .label] | @tsv' >&2 || true
+	cli graph menu --name TailscaleCtrl >&2 || true
+	fail "graph nodes did not remain operational for five seconds"
 }
 
 wait_migrated_full_stack() {
@@ -302,7 +320,8 @@ wait_migrated_full_stack() {
 		"$network public HttpClient"
 	wait_dns_query_recovery "DnsQuery public" "$network public DNS query"
 	wait_http_client_recovery "HttpClient Tailnet" \
-		"tailnet HttpServer SO response" "$network nested Tailscale HttpClient"
+		"tailnet HttpServer SO response" "$network nested Tailscale HttpClient" \
+		"$ALMAGEST_TAILSCALE_RECOVERY_TIMEOUT"
 	wait_graph_operational_stable
 }
 
@@ -335,6 +354,120 @@ run_out_network_migration_cycle() {
 
 tailscale_peer_direct() {
 	[[ "$(menu_field TailscaleCtrl status peers)" == *"path=direct-udp"* ]]
+}
+
+find_tailscale_wireguard_source_port() {
+	local first_line="$1"
+
+	# The authenticated DISCO ping and pong are 124 and 110 bytes in this
+	# topology. WireGuard uses the other packets sent to the peer's discovery
+	# port. The Spoofer gives its WireGuard and DISCO sockets different outer
+	# source ports, which lets the test break only the selected WireGuard path.
+	stale_direct_port="$(
+		tail -n "+$first_line" "$E2E_RUNTIME/tailscale-packets.log" \
+			| sed -nE \
+				's/.* Out IP [^ ]*\.([0-9]+) > [^ ]*\.41642: UDP, length ([0-9]+)$/\1 \2/p' \
+			| awk '$2 != 110 && $2 != 124 { print $1 }' \
+			| tail -n 1
+	)"
+	[[ "$stale_direct_port" =~ ^[0-9]+$ ]]
+}
+
+block_tailscale_wireguard_source_port() {
+	ip netns exec "$E2E_ROUTER_NS" \
+		nft delete table inet "$stale_direct_table" 2>/dev/null || true
+	ip netns exec "$E2E_ROUTER_NS" nft -f - <<EOF
+table inet $stale_direct_table {
+	chain forward {
+		type filter hook forward priority -50; policy accept;
+		udp sport $stale_direct_port udp dport 41642 counter drop
+	}
+}
+EOF
+}
+
+stale_direct_packets_were_dropped() {
+	ip netns exec "$E2E_ROUTER_NS" \
+		nft list chain inet "$stale_direct_table" forward \
+		| grep -Eq 'counter packets [1-9][0-9]* bytes [1-9][0-9]* drop'
+}
+
+disco_continued_since() {
+	local first_line="$1"
+	local packets
+	packets="$(tail -n "+$first_line" "$E2E_RUNTIME/tailscale-packets.log")"
+	grep -Eq ' Out IP .*\.41642: UDP, length 124$' <<<"$packets" \
+		&& grep -Eq ' In  IP .*\.41642 > .*: UDP, length 110$' <<<"$packets"
+}
+
+tailnet_origin_succeeds() {
+	local path="$1"
+	local output="$2"
+	curl_origin curl 100.64.0.1:18080 "$path" "$output" \
+		2>"$output.stderr"
+}
+
+verify_stale_tailscale_direct_path_recovery() {
+	local capture_line
+	local disco_line
+	local iteration
+
+	log "checking stale Tailscale direct-path recovery with live DISCO traffic"
+	capture_line=$(( $(wc -l <"$E2E_RUNTIME/tailscale-packets.log") + 1 ))
+	for iteration in 1 2 3; do
+		tailnet_origin_succeeds "/stale-direct-identify-$iteration" \
+			"$E2E_RUNTIME/stale-direct-identify-$iteration.txt" \
+			|| fail "tailnet traffic failed before stale direct-path injection"
+	done
+	retry 10 "outer WireGuard source port" \
+		find_tailscale_wireguard_source_port "$capture_line" \
+		|| fail "could not identify the outer WireGuard flow"
+
+	block_tailscale_wireguard_source_port
+	disco_line=$(( $(wc -l <"$E2E_RUNTIME/tailscale-packets.log") + 1 ))
+	request_fails stale-direct-before-recovery \
+		tailnet_origin_succeeds /stale-direct-before-recovery \
+		"$E2E_RUNTIME/stale-direct-before-recovery.txt" \
+		|| fail "tailnet traffic ignored the injected stale direct path"
+	retry 10 "blocked WireGuard packets" stale_direct_packets_were_dropped \
+		|| fail "the stale direct-path rule did not match WireGuard traffic"
+	tailscale_peer_direct \
+		|| fail "DISCO path disappeared when only WireGuard traffic was blocked"
+
+	# A real wgo peer remains connected until its 180-second reject interval
+	# expires. The v0.4 recovery worker must then move it from the stale default
+	# endpoint to the managed transport. Keep the fault active for this check.
+	retry 240 "tailnet traffic after stale direct-path recovery" \
+		tailnet_origin_succeeds /stale-direct-recovered \
+		"$E2E_RUNTIME/stale-direct-recovered.txt" \
+		|| fail "tailnet traffic did not recover from a stale direct path"
+	assert_contains "$E2E_RUNTIME/stale-direct-recovered.txt" \
+		"tailnet HttpServer SO response"
+	log "stale Tailscale direct path recovered while its old flow remained blocked"
+	retry 10 "continued DISCO traffic during WireGuard failure" \
+		disco_continued_since "$disco_line" \
+		|| fail "DISCO did not remain bidirectional during WireGuard failure"
+	tailscale_peer_direct \
+		|| fail "the recovered peer lost its direct DISCO path"
+
+	# Repeated data-plane requests verify that same-address DISCO refreshes do
+	# not put WireGuard back on the failed default endpoint.
+	for iteration in 1 2 3 4 5; do
+		tailnet_origin_succeeds "/stale-direct-stable-$iteration" \
+			"$E2E_RUNTIME/stale-direct-stable-$iteration.txt" \
+			|| fail "recovered tailnet path failed on request $iteration"
+		assert_contains "$E2E_RUNTIME/stale-direct-stable-$iteration.txt" \
+			"tailnet HttpServer SO response"
+	done
+	sleep 35
+	for iteration in 6 7 8 9 10; do
+		tailnet_origin_succeeds "/stale-direct-stable-$iteration" \
+			"$E2E_RUNTIME/stale-direct-stable-$iteration.txt" \
+			|| fail "DISCO refresh reset recovered path on request $iteration"
+	done
+	stale_direct_packets_were_dropped \
+		|| fail "the injected default-path fault stopped unexpectedly"
+	ip netns exec "$E2E_ROUTER_NS" nft delete table inet "$stale_direct_table"
 }
 
 cache_contains_name() {
@@ -502,6 +635,11 @@ retry 20 "nested Tailscale UDP was captured" \
 	grep -Eq '(^|[.])5182[01]([ >]|$)' "$E2E_RUNTIME/tailscale-packets.log" \
 	|| fail "packet trace did not contain nested Tailscale WireGuard traffic"
 wait_graph_operational_stable
+
+# Keep DISCO healthy while one selected WireGuard flow becomes unusable. This
+# is the deterministic regression for a direct path that previously remained
+# selected forever after its WireGuard handshake stopped progressing.
+verify_stale_tailscale_direct_path_recovery
 
 # Exercise host network migration only after the complete automatic-splitter
 # traffic matrix is healthy. Requests can fail during each transition, but all

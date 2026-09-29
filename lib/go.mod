@@ -14,7 +14,7 @@ require (
 	github.com/asciimoth/socksgo v0.4.19
 	github.com/asciimoth/tor-driver v0.1.1
 	github.com/asciimoth/wgo v0.7.14
-	github.com/asciimoth/wgo-tailscale v0.3.14
+	github.com/asciimoth/wgo-tailscale v0.4.0
 	github.com/coder/websocket v1.8.14
 	github.com/miekg/dns v1.1.72
 	golang.org/x/sys v0.46.0
