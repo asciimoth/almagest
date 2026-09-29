@@ -3,6 +3,9 @@ set -euo pipefail
 
 source /e2e/lib/common.sh
 
+default_route_url="http://198.51.100.1:18080/default-route-probe"
+default_route_body="ordinary default route"
+
 cleanup() {
 	stop_daemon
 	if [[ -x "$E2E_RUNTIME/cleanup-tun.sh" ]]; then
@@ -52,16 +55,17 @@ configure_tun() {
 		>/tmp/e2e-tun-routing-configure-tun.json
 }
 
-assert_example_blocked() {
+assert_default_route_blocked() {
 	retry "$ALMAGEST_E2E_TIMEOUT" "$1" \
-		curl_url_fails http://example.com/ \
-		|| fail "curl to example.com unexpectedly bypassed disconnected DefaultTun"
+		curl_url_fails "$default_route_url" \
+		|| fail "default-route probe unexpectedly bypassed disconnected DefaultTun"
 }
 
-assert_example_reachable() {
+assert_default_route_reachable() {
 	retry "$ALMAGEST_E2E_TIMEOUT" "$1" \
-		curl_url http://example.com/ /tmp/e2e-tun-routing-example.txt \
-		|| fail "curl to example.com did not recover after DefaultTun removal"
+		curl_url "$default_route_url" /tmp/e2e-tun-routing-default-route.txt \
+		|| fail "default-route probe did not recover after DefaultTun removal"
+	assert_body /tmp/e2e-tun-routing-default-route.txt "$default_route_body"
 }
 
 assert_server_1_reachable() {
@@ -130,7 +134,7 @@ wait_log_contains "almagest/HttpServer" "listening on 10.7.160.2:8080" \
 wait_log_contains "almagest/HttpServer" "listening on 10.210.148.2:8080" \
 	|| fail "Server 2 did not start listening"
 
-assert_example_blocked "example.com blocked by disconnected DefaultTun"
+assert_default_route_blocked "ordinary default route blocked by disconnected DefaultTun"
 assert_server_1_reachable "curl reaches Server 1 through initial tun1"
 assert_server_2_reachable "curl reaches Server 2 through initial tun2"
 
@@ -139,12 +143,12 @@ wait_node_label "$spoofer_one" "waiting for tun" \
 	|| fail "first Spoofer did not notice removed Tun"
 assert_server_1_blocked "Server 1 blocked after removing tun1"
 assert_server_2_reachable "Server 2 still reachable after removing tun1"
-assert_example_blocked "example.com still blocked after removing tun1"
+assert_default_route_blocked "ordinary default route still blocked after removing tun1"
 
 delete_node "$default_tun"
 assert_server_1_blocked "Server 1 still blocked after removing DefaultTun"
 assert_server_2_reachable "Server 2 unaffected after removing DefaultTun"
-assert_example_reachable "example.com restored after removing DefaultTun"
+assert_default_route_reachable "ordinary default route restored after removing DefaultTun"
 
 tun_one="$(add_node "almagest/Tun" "Tun dynamic 1")"
 configure_tun "$tun_one" tun1 "10.7.160.1/24" "10.7.160.0/24"
@@ -155,14 +159,14 @@ wait_node_label "$spoofer_one" forwarding \
 	|| fail "first Spoofer did not resume forwarding after re-added Tun"
 assert_server_1_reachable "Server 1 restored after re-adding tun1"
 assert_server_2_reachable "Server 2 still reachable after re-adding tun1"
-assert_example_reachable "example.com remains reachable after re-adding tun1"
+assert_default_route_reachable "ordinary default route remains reachable after re-adding tun1"
 
 delete_node "$tun_two"
 wait_node_label "$spoofer_two" "waiting for tun" \
 	|| fail "second Spoofer did not notice removed Tun"
 assert_server_1_reachable "Server 1 still reachable after removing tun2"
 assert_server_2_blocked "Server 2 blocked after removing tun2"
-assert_example_reachable "example.com remains reachable after removing tun2"
+assert_default_route_reachable "ordinary default route remains reachable after removing tun2"
 
 tun_two="$(add_node "almagest/Tun" "Tun dynamic 2")"
 configure_tun "$tun_two" tun2 "10.210.148.1/24" "10.210.148.0/24"
@@ -173,7 +177,7 @@ wait_node_label "$spoofer_two" forwarding \
 	|| fail "second Spoofer did not resume forwarding after re-added Tun"
 assert_server_1_reachable "Server 1 still reachable after re-adding tun2"
 assert_server_2_reachable "Server 2 restored after re-adding tun2"
-assert_example_reachable "example.com remains reachable after re-adding tun2"
+assert_default_route_reachable "ordinary default route remains reachable after re-adding tun2"
 
 default_tun="$(add_node "almagest/DefaultTun" "DefaultTun dynamic 1")"
 wait_node_label "$default_tun" ready || fail "re-added DefaultTun did not become ready"
@@ -181,12 +185,12 @@ add_link_by_port_name "$out_dns" left DNS "$default_tun" right DNS \
 	>/tmp/e2e-tun-routing-dynamic-1-link-dns.json
 assert_server_1_reachable "Server 1 unaffected after re-adding DefaultTun"
 assert_server_2_reachable "Server 2 unaffected after re-adding DefaultTun"
-assert_example_blocked "example.com blocked again after re-adding disconnected DefaultTun"
+assert_default_route_blocked "ordinary default route blocked again after re-adding disconnected DefaultTun"
 
 delete_node "$default_tun"
 assert_server_1_reachable "Server 1 unaffected after removing dynamic DefaultTun"
 assert_server_2_reachable "Server 2 unaffected after removing dynamic DefaultTun"
-assert_example_reachable "example.com restored after removing dynamic DefaultTun"
+assert_default_route_reachable "ordinary default route restored after removing dynamic DefaultTun"
 
 default_tun="$(add_node "almagest/DefaultTun" "DefaultTun dynamic 2")"
 wait_node_label "$default_tun" ready || fail "second re-added DefaultTun did not become ready"
@@ -194,7 +198,7 @@ add_link_by_port_name "$out_dns" left DNS "$default_tun" right DNS \
 	>/tmp/e2e-tun-routing-dynamic-2-link-dns.json
 assert_server_1_reachable "Server 1 unaffected after second DefaultTun re-add"
 assert_server_2_reachable "Server 2 unaffected after second DefaultTun re-add"
-assert_example_blocked "example.com blocked after second disconnected DefaultTun re-add"
+assert_default_route_blocked "ordinary default route blocked after second disconnected DefaultTun re-add"
 
 wait_log_contains "almagest/HttpServer" "GET /" \
 	|| fail "HTTP servers did not log GET requests"
