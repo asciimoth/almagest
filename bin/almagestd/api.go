@@ -15,7 +15,6 @@ import (
 	"github.com/asciimoth/almagest/bin/api"
 	almagest "github.com/asciimoth/almagest/lib"
 	"github.com/asciimoth/almagest/lib/typecolor"
-	"github.com/asciimoth/gonnect/protected"
 	"github.com/asciimoth/gonnect/sysnet"
 	"github.com/asciimoth/gonnect/tlspolicy"
 	"github.com/asciimoth/pasta/pasta"
@@ -837,9 +836,15 @@ func mutationLeaseTTL(milliseconds int64) time.Duration {
 }
 
 func PrepareAdminAPI(cfg *Config) (*AdminAPI, error) {
+	if err := validateWebAdminConfig(cfg.Protected.Admin); err != nil {
+		return nil, err
+	}
 	api := AdminAPI{config: cfg}
 	if cfg.Protected.Admin.Web != 0 {
-		golog.Warn("Web admin API is enabled; unix socket admin API is safer for local administration")
+		golog.Warn("Web admin API is enabled; the local stream admin API is safer for local administration")
+		if !cfg.Protected.Admin.WebFilters.Enabled() {
+			golog.Warn("Web admin API has no peer-owner filter; any local user can access it")
+		}
 		addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(int(cfg.Protected.Admin.Web)))
 		listener, err := listenWebAdmin(addr, cfg.Protected.Admin.WebFilters)
 		if err != nil {
@@ -891,12 +896,17 @@ func webAdminOriginPolicy(next http.Handler, allowCrossOrigin bool) http.Handler
 }
 
 func listenWebAdmin(address string, filters AdminPeerFiltersConfig) (net.Listener, error) {
-	if !filters.Enabled() {
-		return net.Listen("tcp", address)
+	listener, err := net.Listen("tcp", address)
+	if err != nil {
+		return nil, err
 	}
-	return protected.Listen("tcp", address, protected.Rules{
-		UIDs:      filters.UIDs,
-		GIDs:      filters.GIDs,
-		Usernames: filters.Usernames,
-	})
+	if !filters.Enabled() {
+		return listener, nil
+	}
+	protectedListener, err := newWebAdminProtectedListener(listener, filters)
+	if err != nil {
+		_ = listener.Close()
+		return nil, err
+	}
+	return protectedListener, nil
 }

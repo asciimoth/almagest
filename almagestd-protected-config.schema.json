@@ -121,7 +121,7 @@
           "minimum": 0,
           "maximum": 65535,
           "default": 0,
-          "description": "Local web admin port bound on 127.0.0.1. 0 disables the web admin listener. Command-line --web / ALMAGEST_WEB_ADMIN overrides this value."
+          "description": "Local web admin port bound on 127.0.0.1. 0 disables the web admin listener. If enabled without WebFilters, startup warns that any local user can connect. Command-line --web / ALMAGEST_WEB_ADMIN overrides this value."
         },
         "WebFilters": {
           "$ref": "#/$defs/adminPeerFiltersConfig"
@@ -564,7 +564,7 @@
     },
     "adminPeerFiltersConfig": {
       "type": "object",
-      "description": "Optional admin listener filters. When at least one rule is configured, the listener accepts only connections whose peer owner matches a UID, GID, or username rule. Web filters use gonnect/protected best-effort socket-owner lookup. Unix filters use OS peer credentials where implemented.",
+      "description": "Optional admin listener peer-owner filters. When at least one rule is configured, the listener accepts only connections whose peer owner matches a UID, GID, or username rule. Web filters use best-effort socket-owner lookup. Unix filters use OS peer credentials where implemented.",
       "properties": {
         "UIDs": {
           "type": "array",
@@ -573,7 +573,7 @@
             "minimum": 0,
             "maximum": 4294967295
           },
-          "description": "Allowed peer owner user IDs."
+          "description": "Allowed peer owner user IDs. This field is not supported for Windows web administration and causes startup to fail there."
         },
         "GIDs": {
           "type": "array",
@@ -582,7 +582,7 @@
             "minimum": 0,
             "maximum": 4294967295
           },
-          "description": "Allowed peer owner group IDs."
+          "description": "Allowed peer owner group IDs. This field is not supported for Windows web administration and causes startup to fail there."
         },
         "Usernames": {
           "type": "array",
@@ -590,7 +590,7 @@
             "type": "string",
             "minLength": 1
           },
-          "description": "Allowed peer owner usernames. Usernames are resolved by gonnect/protected when the listener is created and for each accepted connection."
+          "description": "Allowed peer owner usernames. On Windows web administration, each configured account is resolved to a SID when the listener is created and for each accepted connection; the client process-token SID must match. If no web filter is configured, startup warns that any local user can connect. This is a best-effort local-user limit, not strong authentication."
         }
       },
       "additionalProperties": false

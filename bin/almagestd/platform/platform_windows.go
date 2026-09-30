@@ -263,6 +263,9 @@ func ValidateArgs(arguments *args.Args) error {
 		len(arguments.UnixAdminFilterUsernames) != 0 {
 		return fmt.Errorf("unix admin flags are not supported on Windows")
 	}
+	if len(arguments.WebAdminFilterUIDs) != 0 || len(arguments.WebAdminFilterGIDs) != 0 {
+		return fmt.Errorf("web admin UID and GID filters are not supported on windows; use --web-filter-user")
+	}
 	return nil
 }
 

@@ -282,11 +282,11 @@
       "id": "windows-web-admin",
       "area": "daemon",
       "status": "unavailable",
-      "mapping": "authenticated panel, HTTP API, WebSocket, CLI web transport, and diagnostics",
+      "mapping": "owner-filtered panel, HTTP API, WebSocket, and diagnostics",
       "platforms": ["windows-server-2022-amd64", "windows-11-amd64", "windows-11-arm64"],
       "dependencies": [],
       "requiredSuites": ["windows-native-core", "windows-native-privileged", "windows-native-e2e"],
-      "notes": "Web administration stays disabled by default until Milestone 5 authentication is complete."
+      "notes": "Step 13 supplies an optional best-effort Windows client-process user SID filter and warns when web admin is enabled without it. It is not strong authentication. API tokens are outside the Windows backend scope. Qualification remains unavailable until the required native and E2E evidence exists."
     },
     {
       "id": "windows-console-and-scm-lifecycle",

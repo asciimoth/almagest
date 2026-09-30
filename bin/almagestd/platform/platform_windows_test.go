@@ -460,6 +460,20 @@ func TestWindowsRejectsUnixAdminFlags(t *testing.T) {
 	}
 }
 
+func TestWindowsRejectsWebAdminIDFilters(t *testing.T) {
+	for _, arguments := range []almargs.Args{
+		{WebAdminFilterUIDs: []uint32{1000}},
+		{WebAdminFilterGIDs: []uint32{1000}},
+	} {
+		if err := ValidateArgs(&arguments); err == nil {
+			t.Fatalf("ValidateArgs(%+v) succeeded", arguments)
+		}
+	}
+	if err := ValidateArgs(&almargs.Args{WebAdminFilterUsernames: []string{"alice"}}); err != nil {
+		t.Fatalf("ValidateArgs(username filter): %v", err)
+	}
+}
+
 func useWindowsKnownFolders(t *testing.T, programData, localData string) {
 	t.Helper()
 	old := windowsKnownFolderPath

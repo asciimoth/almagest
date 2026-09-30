@@ -7,7 +7,6 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -62,7 +61,7 @@ func TestPrepareAdminAPIAndWebListeners(t *testing.T) {
 	if err := listener.Close(); err != nil {
 		t.Fatal(err)
 	}
-	listener, err = listenWebAdmin("127.0.0.1:0", AdminPeerFiltersConfig{UIDs: []uint32{uint32(os.Getuid())}})
+	listener, err = listenWebAdmin("127.0.0.1:0", webAdminTestFilters(t))
 	if err != nil {
 		t.Fatal(err)
 	}

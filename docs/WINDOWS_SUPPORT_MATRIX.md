@@ -28,7 +28,7 @@ native arm64 Windows host.
 | Node operations | Address allocation; regular TUN creation and updates; non-strict full default routing; default-TUN rebuilds; OutNet; OutDNS; loopback LocalNet; managed DNS | A supported operation can be temporarily unavailable when Wintun, an underlay, permissions, or another required resource is absent | Adapter rename; include routing; strict routing; preferred-source routes; OutNet multicast and raw sockets |
 | Rules | `win-exe-tree` exclusions; best-effort `win-pid` and `win-exe-path` ownership matchers | `win-exe-tree` becomes unavailable when the split driver cannot be owned | Linux rule semantics on Windows |
 | Menus | Capability-driven class visibility, fields, rule choices, and validation | Fields report unavailable dependency and resource states | `win-exe-tree` value completion |
-| Daemon | None of the native Windows daemon functions are qualified yet | Native backend selection; Windows config, storage, ACLs, and snapshots; named-pipe and authenticated web administration; console/SCM and child-process lifecycle; Windows authority stores | Unix transports, credentials, and UID/GID access rules are not Windows alternatives |
+| Daemon | None of the native Windows daemon functions are qualified yet | Native backend selection; Windows config, storage, ACLs, and snapshots; named-pipe and owner-filtered web administration; console/SCM and child-process lifecycle; Windows authority stores | Unix transports, credentials, and UID/GID access rules are not Windows alternatives |
 
 The JSON matrix is the complete feature mapping. It names the applicable OS
 and architecture entries, dependencies, required suites, and the corresponding

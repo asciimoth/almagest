@@ -86,7 +86,9 @@ These are design choices to implement and verify, not existing behavior:
   config and storage arguments take precedence. Standard-user tests provide
   explicit user-owned config paths; they do not need to create machine config.
 - Use a local named pipe for default CLI administration. Keep web admin
-  disabled by default and require authenticated access when enabled.
+  disabled by default. Support an optional best-effort Windows client-user
+  allowlist and warn when web admin is enabled without it. Strong API-token
+  authentication is separate work.
 - Support console execution and Service Control Manager execution. Keep
   service registration outside the daemon.
 - Preserve backend capability distinctions: unsupported, currently
@@ -431,30 +433,42 @@ Tests: allowed/denied accounts, restricted UAC tokens, remote clients, endpoint
 collision and impersonation controls, user/service separation, reconnect,
 deadlines, subscriptions, large snapshots, and shutdown with connected clients.
 
-### Step 13: Add authenticated Windows web administration
+### Step 13: Add owner-filtered Windows web administration
 
-Keep web admin disabled by default. Select and document the authentication
-flow before enabling it: protected credentials or short-lived sessions issued
-through an authorized pipe are candidate designs. Cover the panel, CLI web
-transport, WebSocket upgrades, and optional diagnostic routes. Reject Unix
-UID/GID filter options on Windows; do not silently ignore them.
+Implementation: complete. See [Windows web administration](WINDOWS_WEB_ADMIN.md).
+Web admin stays disabled by default. An optional username filter resolves each
+configured account to a SID. For every accepted TCP connection, the daemon
+finds the client socket owner, opens the client process token, and compares its
+user SID with the configured SIDs. This protects the panel, WebSocket API, and
+optional diagnostic routes at the listener. Unknown, ambiguous, inaccessible,
+and changed owners fail closed when the filter is enabled. Without a filter,
+the listener starts and warns that any local user can access it. Unix UID and
+GID web filters are rejected on Windows.
+
+This check has the same best-effort and race-prone character as the Linux TCP
+owner filter. It is a useful local-user limit, but it is not a strong security
+or authentication boundary. An API token system will provide that boundary in
+a separate project. It is outside the Windows backend integration scope.
 
 Acceptance conditions:
 
-- Enabling the panel does not grant all local users control of an elevated
-  daemon. Loopback binding and origin checks are not sufficient authorization.
-- The selected flow defines credential issuance, storage, expiry, revocation,
-  and user/service identity boundaries.
-- Credentials are not exposed in URLs, logs, or snapshots. Cross-origin
-  relaxation cannot bypass authentication.
+- Web admin remains disabled by default. Enabling it without a username filter
+  produces an explicit warning that all local users can access it.
+- Account names are resolved to SIDs at listener creation and again for each
+  accepted connection. The process-token SID must match the original SID.
+- Owner lookup failure, ambiguity, process exit, or inaccessible process-token
+  data denies the connection.
+- No web credential is issued, stored, logged, placed in a URL, or included in
+  a snapshot. Cross-origin relaxation does not bypass the owner filter.
 
-Tests: unauthenticated/wrong-user requests, expired/revoked credentials,
-cross-origin and forged Host requests, WebSocket upgrades, panel operations,
-CLI authentication, pprof access, and invalid filter config.
+Tests: allowed and wrong-user requests, unknown and ambiguous owners, account
+remapping, cross-origin and forged Host requests, WebSocket upgrades, panel
+operations, pprof access, and invalid filter config.
 
-Milestone acceptance: CLI and panel access work with native Windows
-authorization. The web feature is incomplete until its authentication tests
-pass; leaving it disabled is not full completion of this milestone.
+Milestone acceptance: the CLI uses the native named-pipe authorization
+boundary. Panel, WebSocket API, and diagnostics use the documented best-effort
+Windows socket-owner filter. Strong API authentication remains separate from
+this backend milestone.
 
 ## Milestone 6: Complete process, service, and trust behavior
 
@@ -888,7 +902,7 @@ These choices remain implementation work with explicit completion points:
 | Service identity and privilege requirements | M1, step 2 | Document the supported identity and permissions for each operation. |
 | Trusted owners, config/storage ACLs, and accepted path forms | M4, step 10 | Define the policy and prove allowed/denied access with native tests. |
 | User/service pipe names, default client selection, and allowed SIDs | M5, step 12 | Define a deterministic endpoint and authorization policy. |
-| Web authentication and credential lifecycle | M5, step 13 | Implement and test one complete authenticated flow. |
+| Web client-owner user boundary | M5, step 13 | Support and test the optional best-effort Windows account allowlist and the unfiltered warning; keep API-token authentication outside this plan. |
 | Windows authority stores and fallback policy | M6, step 16 | Define identity-specific discovery and test reload/failure behavior. |
 | Resource budgets and settling windows | M8, step 22 | Set numeric criteria before collecting qualification evidence. |
 
