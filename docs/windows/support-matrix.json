@@ -1,0 +1,322 @@
+{
+  "schemaVersion": 1,
+  "dependencies": [
+    {
+      "id": "wintun",
+      "description": "An architecture-matched Wintun DLL in the trusted deployment location."
+    },
+    {
+      "id": "split-driver",
+      "description": "The compatible signed split-driver service, installed and started by deployment tooling."
+    },
+    {
+      "id": "elevated-network-identity",
+      "description": "A Windows identity that can change TUN, route, DNS, WFP, and driver state."
+    },
+    {
+      "id": "selected-underlay",
+      "description": "A usable family-specific Windows underlay selected by the backend."
+    }
+  ],
+  "platforms": [
+    {
+      "id": "windows-server-2022-amd64",
+      "os": "windows-server-2022",
+      "architecture": "amd64",
+      "status": "unavailable",
+      "reason": "Native Almagest qualification evidence is not yet available.",
+      "dependencies": ["wintun", "split-driver", "elevated-network-identity"],
+      "requiredSuites": ["windows-native-core", "windows-native-privileged", "windows-native-e2e"]
+    },
+    {
+      "id": "windows-11-amd64",
+      "os": "windows-11",
+      "architecture": "amd64",
+      "status": "unavailable",
+      "reason": "A separate native Windows 11 amd64 qualification run is required.",
+      "dependencies": ["wintun", "split-driver", "elevated-network-identity"],
+      "requiredSuites": ["windows-native-core", "windows-native-privileged", "windows-native-e2e"]
+    },
+    {
+      "id": "windows-11-arm64",
+      "os": "windows-11",
+      "architecture": "arm64",
+      "status": "unavailable",
+      "reason": "A native arm64 host qualification run is required; emulation does not qualify this entry.",
+      "dependencies": ["wintun", "split-driver", "elevated-network-identity"],
+      "requiredSuites": ["windows-native-core", "windows-native-privileged", "windows-native-e2e"]
+    }
+  ],
+  "features": [
+    {
+      "id": "system-address-allocation",
+      "area": "node-operation",
+      "status": "supported",
+      "mapping": "sysnet system allocate-ip and allocate-subnet for IPv4 and IPv6",
+      "platforms": ["windows-server-2022-amd64", "windows-11-amd64", "windows-11-arm64"],
+      "dependencies": [],
+      "requiredSuites": ["windows-native-core", "windows-native-e2e"],
+      "notes": "Allocation remains subject to live host conflicts."
+    },
+    {
+      "id": "regular-tun-create-and-update",
+      "area": "node-operation",
+      "status": "supported",
+      "mapping": "almagest/Tun; create, create-named, set/get addresses, set/get routes, and set MTU for IPv4, IPv6, and dual stack",
+      "platforms": ["windows-server-2022-amd64", "windows-11-amd64", "windows-11-arm64"],
+      "dependencies": ["wintun", "elevated-network-identity"],
+      "requiredSuites": ["windows-native-privileged", "windows-native-e2e"],
+      "notes": "The backend owns the adapter and only reconciles its owned state."
+    },
+    {
+      "id": "tun-adapter-rename",
+      "area": "node-operation",
+      "status": "unsupported",
+      "mapping": "sysnet tun/default-tun rename",
+      "platforms": ["windows-server-2022-amd64", "windows-11-amd64", "windows-11-arm64"],
+      "dependencies": [],
+      "requiredSuites": ["windows-native-core"],
+      "notes": "Requests must fail before mutation. Named creation is supported but later rename is not."
+    },
+    {
+      "id": "default-tun-full-routing",
+      "area": "node-operation",
+      "status": "supported",
+      "mapping": "almagest/DefaultTun; non-strict full routing for IPv4, IPv6, and dual stack",
+      "platforms": ["windows-server-2022-amd64", "windows-11-amd64", "windows-11-arm64"],
+      "dependencies": ["wintun", "elevated-network-identity", "selected-underlay"],
+      "requiredSuites": ["windows-native-privileged", "windows-native-e2e"],
+      "notes": "This is not a persistent kill switch. More-specific routes can take priority."
+    },
+    {
+      "id": "default-tun-reconfiguration",
+      "area": "node-operation",
+      "status": "supported",
+      "mapping": "almagest/DefaultTun rebuild on address, route, DNS-address, or MTU change; in-place SetDNS provider replacement",
+      "platforms": ["windows-server-2022-amd64", "windows-11-amd64", "windows-11-arm64"],
+      "dependencies": ["wintun", "elevated-network-identity"],
+      "requiredSuites": ["windows-native-privileged", "windows-native-e2e"],
+      "notes": "The backend reports default-TUN property mutation as unsupported; the node must rebuild instead."
+    },
+    {
+      "id": "default-tun-include-routing",
+      "area": "node-operation",
+      "status": "unsupported",
+      "mapping": "sysnet default-tun include routing profile",
+      "platforms": ["windows-server-2022-amd64", "windows-11-amd64", "windows-11-arm64"],
+      "dependencies": [],
+      "requiredSuites": ["windows-native-core", "windows-native-e2e"],
+      "notes": "Almagest must not translate include rules into exclusions."
+    },
+    {
+      "id": "default-tun-strict-routing",
+      "area": "node-operation",
+      "status": "unsupported",
+      "mapping": "sysnet strict full/include/exclude default-tun profiles",
+      "platforms": ["windows-server-2022-amd64", "windows-11-amd64", "windows-11-arm64"],
+      "dependencies": [],
+      "requiredSuites": ["windows-native-core", "windows-native-e2e"],
+      "notes": "The strict menu field must show the unsupported state."
+    },
+    {
+      "id": "default-tun-preferred-source-routes",
+      "area": "node-operation",
+      "status": "unsupported",
+      "mapping": "sysnet default-tun source-routes operation",
+      "platforms": ["windows-server-2022-amd64", "windows-11-amd64", "windows-11-arm64"],
+      "dependencies": [],
+      "requiredSuites": ["windows-native-core", "windows-native-e2e"],
+      "notes": "Graphs that require source routes must fail clearly."
+    },
+    {
+      "id": "outnet-unicast",
+      "area": "node-operation",
+      "status": "supported",
+      "mapping": "almagest/OutNet; IPv4/IPv6 TCP and UDP dial/listen, interfaces, and resolver operations",
+      "platforms": ["windows-server-2022-amd64", "windows-11-amd64", "windows-11-arm64"],
+      "dependencies": ["selected-underlay"],
+      "requiredSuites": ["windows-native-core", "windows-native-e2e"],
+      "notes": "Loss of the selected underlay makes the operation unavailable. There is no unrestricted fallback."
+    },
+    {
+      "id": "outnet-multicast-and-raw",
+      "area": "node-operation",
+      "status": "unsupported",
+      "mapping": "sysnet OutNet multicast and raw-socket operations",
+      "platforms": ["windows-server-2022-amd64", "windows-11-amd64", "windows-11-arm64"],
+      "dependencies": [],
+      "requiredSuites": ["windows-native-core", "windows-native-e2e"],
+      "notes": "Ambiguous generic wildcards and IPv4-mapped IPv6 addresses are also rejected."
+    },
+    {
+      "id": "outdns",
+      "area": "node-operation",
+      "status": "supported",
+      "mapping": "sysnet OutDNS UDP/TCP query operations through bound OutNet sockets",
+      "platforms": ["windows-server-2022-amd64", "windows-11-amd64", "windows-11-arm64"],
+      "dependencies": ["selected-underlay"],
+      "requiredSuites": ["windows-native-core", "windows-native-e2e"],
+      "notes": "No usable numeric upstream makes the operation unavailable."
+    },
+    {
+      "id": "localnet-loopback",
+      "area": "node-operation",
+      "status": "supported",
+      "mapping": "almagest/LocalNet; IPv4/IPv6 loopback TCP and UDP",
+      "platforms": ["windows-server-2022-amd64", "windows-11-amd64", "windows-11-arm64"],
+      "dependencies": [],
+      "requiredSuites": ["windows-native-core", "windows-native-e2e"],
+      "notes": "Resolution fails if any result is not loopback. Wildcard listeners bind explicitly to loopback."
+    },
+    {
+      "id": "managed-dns",
+      "area": "node-operation",
+      "status": "supported",
+      "mapping": "almagest/DefaultTun managed UDP/TCP DNS proxy, interface DNS configuration, and SetDNS",
+      "platforms": ["windows-server-2022-amd64", "windows-11-amd64", "windows-11-arm64"],
+      "dependencies": ["wintun", "elevated-network-identity"],
+      "requiredSuites": ["windows-native-privileged", "windows-native-e2e"],
+      "notes": "Managed adapter DNS is not system-wide DNS enforcement. SetDNS(nil) drops requests."
+    },
+    {
+      "id": "win-exe-tree-exclusion",
+      "area": "rule",
+      "status": "supported",
+      "mapping": "win-exe-tree in non-strict default-tun exclude rules",
+      "platforms": ["windows-server-2022-amd64", "windows-11-amd64", "windows-11-arm64"],
+      "dependencies": ["split-driver", "elevated-network-identity"],
+      "requiredSuites": ["windows-native-privileged", "windows-native-e2e"],
+      "notes": "The feature is unavailable when the split driver is missing, stopped, incompatible, or owned by another controller."
+    },
+    {
+      "id": "win-pid-matcher",
+      "area": "rule",
+      "status": "supported",
+      "mapping": "win-pid TCP/UDP ownership matcher for IPv4 and IPv6",
+      "platforms": ["windows-server-2022-amd64", "windows-11-amd64", "windows-11-arm64"],
+      "dependencies": [],
+      "requiredSuites": ["windows-native-core", "windows-native-e2e"],
+      "notes": "Matching is best effort. Unknown or ambiguous ownership is not a confirmed nonmatch."
+    },
+    {
+      "id": "win-exe-path-matcher",
+      "area": "rule",
+      "status": "supported",
+      "mapping": "win-exe-path TCP/UDP ownership matcher for IPv4 and IPv6",
+      "platforms": ["windows-server-2022-amd64", "windows-11-amd64", "windows-11-arm64"],
+      "dependencies": [],
+      "requiredSuites": ["windows-native-core", "windows-native-e2e"],
+      "notes": "Matching is best effort and is not a security boundary."
+    },
+    {
+      "id": "linux-process-rules",
+      "area": "rule",
+      "status": "unsupported",
+      "mapping": "Linux comm, exec, cmd, pid, user, uid, group, and gid semantics",
+      "platforms": ["windows-server-2022-amd64", "windows-11-amd64", "windows-11-arm64"],
+      "dependencies": [],
+      "requiredSuites": ["windows-native-core", "windows-native-e2e"],
+      "notes": "A saved Linux rule stays visible for repair and is not translated to a Windows rule."
+    },
+    {
+      "id": "capability-driven-node-classes",
+      "area": "menu",
+      "status": "supported",
+      "mapping": "almagest/Tun and almagest/DefaultTun class visibility from sysnet create capabilities",
+      "platforms": ["windows-server-2022-amd64", "windows-11-amd64", "windows-11-arm64"],
+      "dependencies": [],
+      "requiredSuites": ["windows-native-core", "windows-native-e2e"],
+      "notes": "Unknown permits a final backend check. Unavailable and unsupported do not."
+    },
+    {
+      "id": "capability-driven-tun-menu",
+      "area": "menu",
+      "status": "supported",
+      "mapping": "TUN name, strict, include, exclude, rule type, and validation menu states",
+      "platforms": ["windows-server-2022-amd64", "windows-11-amd64", "windows-11-arm64"],
+      "dependencies": [],
+      "requiredSuites": ["windows-native-core", "windows-native-e2e"],
+      "notes": "Unavailable and unsupported fields show a reason and cannot be applied."
+    },
+    {
+      "id": "win-exe-tree-completion",
+      "area": "menu",
+      "status": "unsupported",
+      "mapping": "autocomplete for win-exe-tree rule values",
+      "platforms": ["windows-server-2022-amd64", "windows-11-amd64", "windows-11-arm64"],
+      "dependencies": [],
+      "requiredSuites": ["windows-native-core"],
+      "notes": "Manual absolute local drive-letter paths remain supported."
+    },
+    {
+      "id": "native-backend-selection",
+      "area": "daemon",
+      "status": "unavailable",
+      "mapping": "almagestd native SystemIntegration selection on Windows",
+      "platforms": ["windows-server-2022-amd64", "windows-11-amd64", "windows-11-arm64"],
+      "dependencies": [],
+      "requiredSuites": ["windows-native-core", "windows-native-e2e"],
+      "notes": "Milestone 3 must replace the current fallback debug selection."
+    },
+    {
+      "id": "windows-config-storage-and-snapshots",
+      "area": "daemon",
+      "status": "unavailable",
+      "mapping": "ProgramData/LocalAppData config and storage, Windows ACL validation, durable writes, and snapshots",
+      "platforms": ["windows-server-2022-amd64", "windows-11-amd64", "windows-11-arm64"],
+      "dependencies": [],
+      "requiredSuites": ["windows-native-core", "windows-native-privileged", "windows-native-e2e"],
+      "notes": "Milestone 4 supplies the Windows permission and path model."
+    },
+    {
+      "id": "windows-local-admin-pipe",
+      "area": "daemon",
+      "status": "unavailable",
+      "mapping": "almagestd and almagest-cli local named-pipe administration",
+      "platforms": ["windows-server-2022-amd64", "windows-11-amd64", "windows-11-arm64"],
+      "dependencies": [],
+      "requiredSuites": ["windows-native-core", "windows-native-privileged", "windows-native-e2e"],
+      "notes": "Milestone 5 supplies transport ACLs and user/service endpoint separation."
+    },
+    {
+      "id": "windows-web-admin",
+      "area": "daemon",
+      "status": "unavailable",
+      "mapping": "authenticated panel, HTTP API, WebSocket, CLI web transport, and diagnostics",
+      "platforms": ["windows-server-2022-amd64", "windows-11-amd64", "windows-11-arm64"],
+      "dependencies": [],
+      "requiredSuites": ["windows-native-core", "windows-native-privileged", "windows-native-e2e"],
+      "notes": "Web administration stays disabled by default until Milestone 5 authentication is complete."
+    },
+    {
+      "id": "windows-console-and-scm-lifecycle",
+      "area": "daemon",
+      "status": "unavailable",
+      "mapping": "console execution, Service Control Manager execution, unified shutdown, and checked cleanup",
+      "platforms": ["windows-server-2022-amd64", "windows-11-amd64", "windows-11-arm64"],
+      "dependencies": [],
+      "requiredSuites": ["windows-native-core", "windows-native-privileged", "windows-native-e2e"],
+      "notes": "Service registration remains outside the daemon. Milestone 6 supplies SCM integration."
+    },
+    {
+      "id": "windows-child-process-lifecycle",
+      "area": "daemon",
+      "status": "unavailable",
+      "mapping": "command-node child and descendant cleanup with Windows process containment",
+      "platforms": ["windows-server-2022-amd64", "windows-11-amd64", "windows-11-arm64"],
+      "dependencies": [],
+      "requiredSuites": ["windows-native-core", "windows-native-e2e"],
+      "notes": "Milestone 6 supplies Job Object behavior and rejects Unix credentials."
+    },
+    {
+      "id": "windows-certificate-authorities",
+      "area": "daemon",
+      "status": "unavailable",
+      "mapping": "Windows machine/current-identity certificate authority discovery",
+      "platforms": ["windows-server-2022-amd64", "windows-11-amd64", "windows-11-arm64"],
+      "dependencies": [],
+      "requiredSuites": ["windows-native-core", "windows-native-privileged", "windows-native-e2e"],
+      "notes": "Milestone 6 supplies store enumeration without changing explicit trust selection."
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "platformId": "windows-server-2022-amd64",
+  "os": "windows-server-2022",
+  "architecture": "amd64",
+  "nativeExecution": false,
+  "suites": {
+    "windows-cross-build": {
+      "outcome": "passed",
+      "tests": {
+        "build::windows-amd64-all-modules-and-tests": "passed",
+        "build::windows-arm64-all-modules-and-tests": "passed"
+      }
+    }
+  }
+}

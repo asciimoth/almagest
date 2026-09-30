@@ -1,6 +1,7 @@
 # Windows backend integration plan
 
-Status: proposed implementation plan. No milestone is complete.
+Status: proposed implementation plan. Milestone 1, Step 1 is complete. No
+milestone is complete.
 
 ## Objective and scope
 
@@ -103,6 +104,10 @@ system-wide DNS enforcement.
 ## Milestone 1: Define support and deployment contracts
 
 ### Step 1: Record the support matrix and feature mapping
+
+Implementation: complete. See [the Windows support matrix](WINDOWS_SUPPORT_MATRIX.md),
+the [machine-readable feature mapping](windows/support-matrix.json), and the
+[required-test manifest](windows/test-manifest.json).
 
 Map Almagest node operations, rules, menus, and daemon functions to backend
 capabilities. Record required tests for each Windows/architecture entry.

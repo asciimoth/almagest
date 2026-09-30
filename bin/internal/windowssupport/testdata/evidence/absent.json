@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "platformId": "windows-server-2022-amd64",
+  "os": "windows-server-2022",
+  "architecture": "amd64",
+  "nativeExecution": true,
+  "suites": {
+    "windows-native-core": {
+      "outcome": "passed",
+      "tests": {}
+    }
+  }
+}

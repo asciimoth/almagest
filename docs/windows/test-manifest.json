@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "suites": [
+    {
+      "id": "contract-portable",
+      "execution": "portable",
+      "requiredTests": [
+        "github.com/asciimoth/almagest/bin/internal/windowssupport::TestCheckedInContracts",
+        "github.com/asciimoth/almagest/bin/internal/windowssupport::TestQualificationEvidenceFixtures"
+      ]
+    },
+    {
+      "id": "windows-cross-build",
+      "execution": "cross-build",
+      "requiredTests": [
+        "build::windows-amd64-all-modules-and-tests",
+        "build::windows-arm64-all-modules-and-tests"
+      ]
+    },
+    {
+      "id": "windows-native-core",
+      "execution": "native-windows",
+      "requiredTests": [
+        "native::execution-identity-standard-user",
+        "native::platform-and-architecture-match",
+        "native::backend-selection-and-capability-catalog",
+        "native::capability-dependent-node-classes-and-menus",
+        "native::unsupported-routing-and-linux-rules-rejected",
+        "native::outnet-outdns-localnet-ipv4-ipv6",
+        "native::config-storage-snapshots-standard-user",
+        "native::named-pipe-authorized-user",
+        "native::console-and-child-process-lifecycle",
+        "native::certificate-store-current-identity"
+      ]
+    },
+    {
+      "id": "windows-native-privileged",
+      "execution": "native-windows",
+      "requiredTests": [
+        "native::execution-identity-elevated",
+        "native::regular-tun-ipv4-ipv6-lifecycle",
+        "native::default-tun-routing-dns-and-rebuild",
+        "native::split-driver-exclusion-and-ownership",
+        "native::acl-denied-and-reparse-race-cases",
+        "native::named-pipe-denied-user-and-impersonation",
+        "native::scm-stop-shutdown-and-restart",
+        "native::certificate-store-machine-identity",
+        "native::exclusive-network-tests-serialized"
+      ]
+    },
+    {
+      "id": "windows-native-e2e",
+      "execution": "native-windows",
+      "requiredTests": [
+        "e2e::windows-real-life-stack",
+        "e2e::windows-ipv4-ipv6-leak-detection",
+        "e2e::windows-backend-failure-and-recovery",
+        "e2e::windows-admin-config-snapshot-persistence",
+        "e2e::windows-resource-baseline-restored"
+      ]
+    }
+  ]
+}
