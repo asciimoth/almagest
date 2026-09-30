@@ -47,7 +47,15 @@
             "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsDisabledMatchersFailBeforeBuild",
             "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsWintunDependencyRejectsMissingAndWrongArchitectureDLL",
             "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsWintunDependencyDoesNotSearchCurrentDirectory",
-            "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsRuntimeDependenciesRemainTrustedAfterChdir"
+            "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsRuntimeDependenciesRemainTrustedAfterChdir",
+            "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsDefaultConfigUsesProgramData",
+            "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsConfigDirectoryOverridesAndWrites",
+            "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsRelativeConfigPathsResolveBeforeChdir",
+            "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsStdinConfigIsReadOnlyAndSplitsProtected",
+            "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsSetupFSSelectsServiceAndUserKnownFolders",
+            "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsTemporaryStorageIsIdentityLocalAndRemoved",
+            "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsExplicitStorageOverridesKnownFolders",
+            "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsRejectsUnixAdminFlags"
           ]
         }
       ]

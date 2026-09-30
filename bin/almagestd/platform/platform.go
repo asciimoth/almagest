@@ -2,12 +2,15 @@ package platform
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"os"
 
 	"github.com/kataras/golog"
 	tailscalehujson "github.com/tailscale/hujson"
 )
+
+var ErrConfigReadOnly = errors.New("config source is read-only")
 
 type Agent interface {
 	// ConfRO reports whether config is read-only.

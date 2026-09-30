@@ -3,13 +3,17 @@
 package platform
 
 import (
+	"bytes"
 	"errors"
+	"fmt"
 	"net/netip"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	almargs "github.com/asciimoth/almagest/bin/almagestd/args"
 	"github.com/asciimoth/configer/hujson"
 	"github.com/asciimoth/gonnect/sysnet"
 	sysnetwindows "github.com/asciimoth/sysnet-windows"
@@ -17,6 +21,239 @@ import (
 	"golang.org/x/sys/windows/svc"
 	"golang.org/x/sys/windows/svc/mgr"
 )
+
+func TestWindowsDefaultConfigUsesProgramData(t *testing.T) {
+	programData := filepath.Join(t.TempDir(), "Machine Data ü")
+	useWindowsKnownFolders(t, programData, filepath.Join(t.TempDir(), "User Data"))
+
+	agent, err := newWindowsAgent(almargs.Args{})
+	if err != nil {
+		t.Fatalf("newWindowsAgent: %v", err)
+	}
+	wantConfig := filepath.Join(programData, windowsApplicationDirectory, "alm.hujson")
+	wantProtected := filepath.Join(programData, windowsApplicationDirectory, "protected_alm.hujson")
+	if agent.ConfigPath != wantConfig || agent.ProtectedPath != wantProtected {
+		t.Fatalf("config paths = %q, %q; want %q, %q", agent.ConfigPath, agent.ProtectedPath, wantConfig, wantProtected)
+	}
+	mainData, protectedData, err := agent.ReadConfig()
+	if err != nil {
+		t.Fatalf("ReadConfig: %v", err)
+	}
+	if string(mainData) != DefaultConfigText || string(protectedData) != DefaultProtectedConfigText {
+		t.Fatal("new default config files do not contain the embedded Windows defaults")
+	}
+}
+
+func TestWindowsConfigDirectoryOverridesAndWrites(t *testing.T) {
+	base := filepath.Join(t.TempDir(), "配置 with spaces")
+	if err := os.MkdirAll(base, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	protectedPath := filepath.Join(t.TempDir(), "separate protected", "host.hujson")
+	agent, err := newWindowsAgent(almargs.Args{Config: base, ProtectedConfig: protectedPath})
+	if err != nil {
+		t.Fatalf("newWindowsAgent: %v", err)
+	}
+	if want := filepath.Join(base, "alm.hujson"); agent.ConfigPath != want {
+		t.Fatalf("ConfigPath = %q, want %q", agent.ConfigPath, want)
+	}
+	if agent.ProtectedPath != protectedPath {
+		t.Fatalf("ProtectedPath = %q, want %q", agent.ProtectedPath, protectedPath)
+	}
+	updated := []byte("{\n  \"nodes\": {}\n}\n")
+	if err := agent.WriteConfig(updated); err != nil {
+		t.Fatalf("WriteConfig: %v", err)
+	}
+	got, err := os.ReadFile(agent.ConfigPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, updated) {
+		t.Fatalf("written config = %q, want %q", got, updated)
+	}
+	protected, err := os.ReadFile(protectedPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(protected) != DefaultProtectedConfigText {
+		t.Fatal("writing regular config changed the separate protected config")
+	}
+}
+
+func TestWindowsRelativeConfigPathsResolveBeforeChdir(t *testing.T) {
+	base := t.TempDir()
+	t.Chdir(base)
+	agent, err := newWindowsAgent(almargs.Args{
+		Config:          filepath.Join("config relative", "alm.hujson"),
+		ProtectedConfig: filepath.Join("protected relative", "host.hujson"),
+	})
+	if err != nil {
+		t.Fatalf("newWindowsAgent: %v", err)
+	}
+	if !filepath.IsAbs(agent.ConfigPath) || !filepath.IsAbs(agent.ProtectedPath) {
+		t.Fatalf("config paths are not absolute: %q, %q", agent.ConfigPath, agent.ProtectedPath)
+	}
+	originalConfigPath := agent.ConfigPath
+	other := t.TempDir()
+	t.Chdir(other)
+	if _, _, err := agent.ReadConfig(); err != nil {
+		t.Fatalf("ReadConfig after chdir: %v", err)
+	}
+	if agent.ConfigPath != originalConfigPath {
+		t.Fatalf("ConfigPath changed after chdir: %q", agent.ConfigPath)
+	}
+}
+
+func TestWindowsStdinConfigIsReadOnlyAndSplitsProtected(t *testing.T) {
+	input, err := os.CreateTemp(t.TempDir(), "stdin-*.hujson")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := input.WriteString(`{"nodes":{},"Protected":{"System":{"Type":"debug"}}}`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := input.Seek(0, 0); err != nil {
+		t.Fatal(err)
+	}
+	oldStdin := os.Stdin
+	os.Stdin = input
+	t.Cleanup(func() {
+		os.Stdin = oldStdin
+		_ = input.Close()
+	})
+
+	agent, err := newWindowsAgent(almargs.Args{StdInConfig: true})
+	if err != nil {
+		t.Fatalf("newWindowsAgent: %v", err)
+	}
+	mainData, protectedData, err := agent.ReadConfig()
+	if err != nil {
+		t.Fatalf("ReadConfig: %v", err)
+	}
+	if strings.Contains(string(mainData), "Protected") || !strings.Contains(string(protectedData), `"Type":"debug"`) {
+		t.Fatalf("stdin split returned main=%s protected=%s", mainData, protectedData)
+	}
+	if !agent.ConfRO() {
+		t.Fatal("stdin config is not read-only")
+	}
+	if err := agent.WriteConfig([]byte("{}")); !errors.Is(err, ErrConfigReadOnly) {
+		t.Fatalf("WriteConfig error = %v, want ErrConfigReadOnly", err)
+	}
+}
+
+func TestWindowsSetupFSSelectsServiceAndUserKnownFolders(t *testing.T) {
+	programData := filepath.Join(t.TempDir(), "Program Data")
+	localData := filepath.Join(t.TempDir(), "Local Data")
+	useWindowsKnownFolders(t, programData, localData)
+
+	for _, test := range []struct {
+		name       string
+		service    bool
+		wantParent string
+	}{
+		{name: "service", service: true, wantParent: programData},
+		{name: "interactive user", service: false, wantParent: localData},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			oldStatus := windowsServiceStatus
+			windowsServiceStatus = func() (bool, error) { return test.service, nil }
+			t.Cleanup(func() { windowsServiceStatus = oldStatus })
+			storage, cleanup, err := SetupFS("", false)
+			if err != nil {
+				t.Fatalf("SetupFS: %v", err)
+			}
+			if err := cleanup(); err != nil {
+				t.Fatalf("cleanup: %v", err)
+			}
+			want := filepath.Join(test.wantParent, windowsApplicationDirectory, "store")
+			if storage != want {
+				t.Fatalf("storage = %q, want %q", storage, want)
+			}
+		})
+	}
+}
+
+func TestWindowsTemporaryStorageIsIdentityLocalAndRemoved(t *testing.T) {
+	localData := filepath.Join(t.TempDir(), "Local Data ü")
+	useWindowsKnownFolders(t, filepath.Join(t.TempDir(), "Program Data"), localData)
+	ignored := filepath.Join(t.TempDir(), "ignored")
+	storage, cleanup, err := SetupFS(ignored, true)
+	if err != nil {
+		t.Fatalf("SetupFS: %v", err)
+	}
+	wantParent := filepath.Join(localData, windowsApplicationDirectory, "tmp")
+	if filepath.Dir(storage) != wantParent || !strings.HasPrefix(filepath.Base(storage), "alm-store-") {
+		t.Fatalf("temporary storage = %q, want generated child of %q", storage, wantParent)
+	}
+	if err := cleanup(); err != nil {
+		t.Fatalf("cleanup: %v", err)
+	}
+	if _, err := os.Stat(storage); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("temporary storage still exists after cleanup: %v", err)
+	}
+}
+
+func TestWindowsExplicitStorageOverridesKnownFolders(t *testing.T) {
+	oldKnownFolder := windowsKnownFolderPath
+	oldServiceStatus := windowsServiceStatus
+	windowsKnownFolderPath = func(*windows.KNOWNFOLDERID, uint32) (string, error) {
+		return "", errors.New("known folder must not be queried")
+	}
+	windowsServiceStatus = func() (bool, error) {
+		return false, errors.New("service state must not be queried")
+	}
+	t.Cleanup(func() {
+		windowsKnownFolderPath = oldKnownFolder
+		windowsServiceStatus = oldServiceStatus
+	})
+
+	want := filepath.Join(t.TempDir(), "explicit store")
+	storage, cleanup, err := SetupFS(want, false)
+	if err != nil {
+		t.Fatalf("SetupFS: %v", err)
+	}
+	if err := cleanup(); err != nil {
+		t.Fatalf("cleanup: %v", err)
+	}
+	if storage != want {
+		t.Fatalf("storage = %q, want %q", storage, want)
+	}
+}
+
+func TestWindowsRejectsUnixAdminFlags(t *testing.T) {
+	socket := `C:\ignored.sock`
+	cases := []almargs.Args{
+		{UnixAdmin: &socket},
+		{TmpUnixAdmin: true},
+		{UnixAdminFilterUIDs: []uint32{1000}},
+		{UnixAdminFilterGIDs: []uint32{1000}},
+		{UnixAdminFilterUsernames: []string{"alice"}},
+	}
+	for _, arguments := range cases {
+		if err := ValidateArgs(&arguments); err == nil {
+			t.Fatalf("ValidateArgs(%+v) succeeded", arguments)
+		}
+	}
+	if err := ValidateArgs(&almargs.Args{}); err != nil {
+		t.Fatalf("ValidateArgs(empty): %v", err)
+	}
+}
+
+func useWindowsKnownFolders(t *testing.T, programData, localData string) {
+	t.Helper()
+	old := windowsKnownFolderPath
+	windowsKnownFolderPath = func(id *windows.KNOWNFOLDERID, _ uint32) (string, error) {
+		switch id {
+		case windows.FOLDERID_ProgramData:
+			return programData, nil
+		case windows.FOLDERID_LocalAppData:
+			return localData, nil
+		default:
+			return "", fmt.Errorf("unexpected known-folder identifier")
+		}
+	}
+	t.Cleanup(func() { windowsKnownFolderPath = old })
+}
 
 func TestWindowsCapabilityCatalogPreservesUnsupportedPolicies(t *testing.T) {
 	system, err := sysnetwindows.New(sysnetwindows.SystemConfig{})

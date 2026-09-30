@@ -46,6 +46,10 @@ func main() {
 	if args.LogLevel != "" {
 		golog.SetLevel(args.LogLevel)
 	}
+	if err := platform.ValidateArgs(&args); err != nil {
+		fatal(err)
+		return
+	}
 	if err := resolveCLIPathArgs(&args); err != nil {
 		fatal(err)
 		return

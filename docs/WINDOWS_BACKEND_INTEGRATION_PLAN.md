@@ -316,6 +316,14 @@ system, with correct capabilities and no daemon-owned dependency provisioning.
 
 ### Step 9: Implement Windows paths and config behavior
 
+Implementation: complete. Windows resolves machine config through ProgramData,
+uses ProgramData storage for services and LocalAppData storage for interactive
+processes, and honors explicit absolute or pre-resolved relative overrides.
+File-backed config is writable; stdin config remains read-only and keeps its
+embedded `Protected` behavior. Temporary storage is identity-local and removed
+through the daemon's bounded cleanup lifecycle. Unix administration flags are
+rejected before filesystem setup.
+
 Implement the proposed known-folder defaults, overrides, config-directory
 arguments, stdin config, and source read-only behavior. Resolve explicit
 relative paths before changing the working directory.
