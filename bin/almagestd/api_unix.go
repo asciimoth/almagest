@@ -4,7 +4,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -13,7 +12,6 @@ import (
 
 	almagest "github.com/asciimoth/almagest/lib"
 	"github.com/asciimoth/gonnect/sysnet"
-	"github.com/kataras/golog"
 )
 
 const DefaultUnixAdminSocket = "/run/almagest/admin.sock"
@@ -26,22 +24,7 @@ func (a *AdminAPI) serveUnix(
 	sys sysnet.System,
 	logf *LogFactory,
 ) {
-	for {
-		conn, err := a.unixListener.Accept()
-		if err != nil {
-			if ctx.Err() != nil {
-				return
-			}
-			if !errors.Is(err, net.ErrClosed) {
-				golog.Errorf("Unix admin accept failed: %v", err)
-				cancel()
-			}
-			return
-		}
-		wg.Go(func() {
-			a.serveAPIStream(ctx, conn, engine, sys, logf)
-		})
-	}
+	a.serveStreamListener(ctx, cancel, wg, "Unix admin", a.unixListener, engine, sys, logf)
 }
 
 func listenUnixAdmin(address string, filters AdminPeerFiltersConfig) (net.Listener, error) {

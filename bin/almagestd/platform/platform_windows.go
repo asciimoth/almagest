@@ -253,7 +253,7 @@ func makeSureWindowsConfigFileExists(path string, initial []byte) error {
 }
 
 // ValidateArgs rejects Unix administration flags before startup changes any
-// filesystem state. Windows named-pipe administration is added in Step 12.
+// filesystem state.
 func ValidateArgs(arguments *args.Args) error {
 	if arguments == nil {
 		return nil

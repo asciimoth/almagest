@@ -778,7 +778,7 @@ Surfaces:
   raw      direct request for newly added or experimental methods
 
 Global flags:
-  -u, --url ENDPOINT   admin API endpoint URL
+  -u, --url ENDPOINT   admin API endpoint URL (unix://, pipe://user, pipe://machine, or web://)
   -h, --help           show help
 
 Run "almagest-cli <surface> --help" for command-specific help.

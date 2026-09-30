@@ -226,6 +226,23 @@ func TestProtectedConfigUnixFilters(t *testing.T) {
 	}
 }
 
+func TestProtectedConfigPipeAndMerge(t *testing.T) {
+	cfg, err := ParseConfig([]byte(`{}`), []byte(`{
+		"Admin": {"Pipe": "\\\\.\\pipe\\configured"}
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.Protected.Admin.Pipe; got != `\\.\pipe\configured` {
+		t.Fatalf("Admin.Pipe = %q", got)
+	}
+	override := `\\.\pipe\override`
+	cfg.Protected.Merge(&args.Args{PipeAdmin: &override})
+	if got := cfg.Protected.Admin.Pipe; got != override {
+		t.Fatalf("merged Admin.Pipe = %q, want %q", got, override)
+	}
+}
+
 func TestProtectedConfigSystemView(t *testing.T) {
 	cfg, err := ParseConfig([]byte(`{}`), []byte(`{
 		"System": {

@@ -276,7 +276,7 @@
       "platforms": ["windows-server-2022-amd64", "windows-11-amd64", "windows-11-arm64"],
       "dependencies": [],
       "requiredSuites": ["windows-native-core", "windows-native-privileged", "windows-native-e2e"],
-      "notes": "Milestone 5 supplies transport ACLs and user/service endpoint separation."
+      "notes": "Step 12 supplies the local transport, ACLs, client owner verification, and user/service endpoint separation. Qualification remains unavailable until the required native and E2E evidence exists."
     },
     {
       "id": "windows-web-admin",

@@ -38,3 +38,37 @@ func TestParseEndpointAdditionalValidation(t *testing.T) {
 		t.Fatalf("custom web endpoint = %#v, %v", ep, err)
 	}
 }
+
+func TestParseEndpointPipeTrustClasses(t *testing.T) {
+	for _, test := range []struct {
+		raw   string
+		trust pipeTrust
+		name  string
+	}{
+		{raw: "pipe://user", trust: pipeTrustUser},
+		{raw: "pipe://machine", trust: pipeTrustMachine},
+		{raw: "pipe://user/test-instance", trust: pipeTrustUser, name: "test-instance"},
+		{raw: "pipe://machine/test%20instance", trust: pipeTrustMachine, name: "test instance"},
+	} {
+		ep, err := parseEndpoint(test.raw)
+		if err != nil {
+			t.Fatalf("parseEndpoint(%q): %v", test.raw, err)
+		}
+		if ep.kind != endpointPipe || ep.pipeTrust != test.trust || ep.pipeName != test.name {
+			t.Fatalf("parseEndpoint(%q) = %#v", test.raw, ep)
+		}
+	}
+}
+
+func TestParseEndpointRejectsUnsafePipeNames(t *testing.T) {
+	for _, raw := range []string{
+		"pipe://other",
+		"pipe://user/../other",
+		"pipe://user/a%2Fb",
+		"pipe://machine/name?owner=user",
+	} {
+		if _, err := parseEndpoint(raw); err == nil {
+			t.Fatalf("parseEndpoint(%q) succeeded", raw)
+		}
+	}
+}

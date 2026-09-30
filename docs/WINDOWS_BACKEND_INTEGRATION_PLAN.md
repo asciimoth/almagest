@@ -404,6 +404,15 @@ snapshot cases.
 
 ### Step 12: Add a local named-pipe transport
 
+Implementation: complete. Windows services use the machine endpoint
+`\\.\pipe\almagest-admin`; interactive daemons use a SID-scoped endpoint.
+Pipe ACLs authorize the interactive identity or, for the supported Local
+System service, Local System and elevated administrators. The CLI uses
+`pipe://user[/NAME]` and `pipe://machine[/NAME]`, rejects remote pipe names,
+and verifies the expected pipe owner before it exchanges API messages.
+Explicit names provide isolated test endpoints without changing the trust
+class.
+
 Reuse the stream codec and API session implementation. Add daemon config and a
 CLI endpoint scheme. Use `\\.\pipe\almagest-admin` as the proposed machine
 default, with an explicit ACL and remote-client rejection. Define a separate

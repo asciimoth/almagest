@@ -29,6 +29,12 @@ func realDial(ctx context.Context, ep endpoint) (apiTransport, error) {
 			return nil, err
 		}
 		return &streamTransport{conn: conn, codec: api.NewReadWriteCodec(conn)}, nil
+	case endpointPipe:
+		conn, err := dialLocalPipe(ctx, ep) //nolint:staticcheck // The Windows implementation is not the Linux lint target.
+		if err != nil {                     //nolint:staticcheck // The Windows implementation can return a connection or an error.
+			return nil, err
+		}
+		return &streamTransport{conn: conn, codec: api.NewReadWriteCodec(conn)}, nil
 	case endpointWeb:
 		conn, _, err := websocket.Dial(ctx, ep.url, nil)
 		if err != nil {

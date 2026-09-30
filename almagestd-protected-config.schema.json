@@ -143,6 +143,10 @@
         },
         "UnixFilters": {
           "$ref": "#/$defs/adminPeerFiltersConfig"
+        },
+        "Pipe": {
+          "type": "string",
+          "description": "Local Windows named-pipe path for the stream admin API. Empty disables the pipe listener. The default is identity-scoped for an interactive daemon and \\\\.\\pipe\\almagest-admin for a Local System service. Command-line --pipe / ALMAGEST_PIPE_ADMIN overrides this value."
         }
       },
       "additionalProperties": false

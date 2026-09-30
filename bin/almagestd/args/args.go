@@ -51,6 +51,7 @@ type Args struct {
 	UnixAdminFilterUIDs      []uint32 `arg:"--unix-filter-uid,separate,env:ALMAGEST_UNIX_ADMIN_FILTER_UIDS" help:"allowed unix admin peer UID; repeat flag or comma-separate env values"`
 	UnixAdminFilterGIDs      []uint32 `arg:"--unix-filter-gid,separate,env:ALMAGEST_UNIX_ADMIN_FILTER_GIDS" help:"allowed unix admin peer GID; repeat flag or comma-separate env values"`
 	UnixAdminFilterUsernames []string `arg:"--unix-filter-user,separate,env:ALMAGEST_UNIX_ADMIN_FILTER_USERS" help:"allowed unix admin peer username; repeat flag or comma-separate env values"`
+	PipeAdmin                *string  `arg:"--pipe,env:ALMAGEST_PIPE_ADMIN" help:"Windows local admin named-pipe path; empty disables it"`
 
 	DebugNodes   bool `arg:"--debug-nodes" help:"enable debug node classes"`
 	Experimental bool `arg:"--experimental" help:"enable experimental features and node classes"`

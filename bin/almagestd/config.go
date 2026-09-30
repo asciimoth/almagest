@@ -409,6 +409,9 @@ func (p *ProtectedConfig) Merge(args *args.Args) {
 	if len(args.UnixAdminFilterUsernames) > 0 {
 		p.Admin.UnixFilters.Usernames = args.UnixAdminFilterUsernames
 	}
+	if args.PipeAdmin != nil {
+		p.Admin.Pipe = *args.PipeAdmin
+	}
 }
 
 type AdminAPIConfig struct {
@@ -418,6 +421,7 @@ type AdminAPIConfig struct {
 	AllowCrossOrigin bool
 	Unix             string
 	UnixFilters      AdminPeerFiltersConfig
+	Pipe             string
 }
 
 type AdminPeerFiltersConfig struct {

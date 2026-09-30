@@ -81,6 +81,11 @@ later graph changes. Do not apply the Linux privilege-drop model on Windows.
 Standard-user native suites use explicit user-owned config and storage paths
 and do not request network mutation.
 
+The supported Service Control Manager identity for the default machine admin
+pipe is Local System. Its pipe ACL also authorizes elevated administrators.
+Interactive standard-user daemon runs use a separate SID-scoped pipe and do
+not qualify the service deployment.
+
 ## Failure rules
 
 The daemon must preserve backend capability states and errors. It must not

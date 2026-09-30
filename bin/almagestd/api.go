@@ -32,6 +32,7 @@ type AdminAPI struct {
 	webAllowCrossOrigin bool
 	unixListener        net.Listener
 	unixPath            string
+	pipeListener        net.Listener
 
 	projectVersionStatus  api.ProjectVersionStatus
 	configAutosaver       *configAutosaver
@@ -74,6 +75,10 @@ func (a *AdminAPI) Stop() {
 	if a.unixListener != nil {
 		golog.Debug("Closing unix admin listener")
 		_ = a.unixListener.Close()
+	}
+	if a.pipeListener != nil {
+		golog.Debug("Closing Windows pipe admin listener")
+		_ = a.pipeListener.Close()
 	}
 	if a.unixPath != "" {
 		_ = cleanupUnixAdminSocket(a.unixPath)
@@ -157,6 +162,45 @@ func (a *AdminAPI) Run(
 		wg.Go(func() {
 			golog.Infof("Starting unix admin listener on %s", a.unixListener.Addr())
 			a.serveUnix(ctx, cancel, wg, engine, sys, logf)
+		})
+	}
+	if a.pipeListener != nil {
+		wg.Go(func() {
+			<-ctx.Done()
+			_ = a.pipeListener.Close()
+		})
+
+		wg.Go(func() {
+			golog.Infof("Starting Windows pipe admin listener on %s", a.pipeListener.Addr())
+			a.serveStreamListener(ctx, cancel, wg, "Windows pipe admin", a.pipeListener, engine, sys, logf)
+		})
+	}
+}
+
+func (a *AdminAPI) serveStreamListener(
+	ctx context.Context,
+	cancel context.CancelFunc,
+	wg *sync.WaitGroup,
+	label string,
+	listener net.Listener,
+	engine almagest.Engine,
+	sys sysnet.System,
+	logf *LogFactory,
+) {
+	for {
+		conn, err := listener.Accept()
+		if err != nil {
+			if ctx.Err() != nil {
+				return
+			}
+			if !errors.Is(err, net.ErrClosed) {
+				golog.Errorf("%s accept failed: %v", label, err)
+				cancel()
+			}
+			return
+		}
+		wg.Go(func() {
+			a.serveAPIStream(ctx, conn, engine, sys, logf)
 		})
 	}
 }
@@ -818,6 +862,14 @@ func PrepareAdminAPI(cfg *Config) (*AdminAPI, error) {
 		}
 		api.unixListener = listener
 		api.unixPath = cfg.Protected.Admin.Unix
+	}
+	if cfg.Protected.Admin.Pipe != "" {
+		listener, err := listenWindowsAdminPipe(cfg.Protected.Admin.Pipe) //nolint:staticcheck // The Windows implementation is not the Linux lint target.
+		if err != nil {                                                   //nolint:staticcheck // The Windows implementation can return a listener or an error.
+			api.Stop()
+			return nil, err
+		}
+		api.pipeListener = listener
 	}
 	return &api, nil
 }
