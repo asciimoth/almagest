@@ -1,6 +1,6 @@
 # Windows backend integration plan
 
-Status: proposed implementation plan. Milestones 1, 2, and 3 are complete.
+Status: proposed implementation plan. Milestones 1 through 4 are complete.
 
 ## Objective and scope
 
@@ -368,6 +368,17 @@ alternate streams, and replacement attempts between validation and use.
 
 ### Step 11: Port durable writes and snapshots
 
+Implementation: complete. Windows config, TLS CA, snapshot rename, and restored
+file writes now use same-volume replacement that preserves the destination
+DACL and keeps a recovery copy while `ReplaceFileW` runs. Config writes are
+serialized, synced before publication, and validated again after replacement.
+Snapshot imports reject case aliases, reserved device names, drive paths,
+alternate streams, and trailing-dot or trailing-space aliases on every host.
+Windows rejects symbolic-link archive entries before live state changes because
+ordinary users cannot be assumed to have symbolic-link creation privilege.
+Archive permission bits do not set Windows ACLs; new and replacement files
+inherit the private storage ACL, while existing destination DACLs are retained.
+
 Implement safe config replacement with the required ACLs. Audit bbolt,
 temporary files, TLS keys, snapshot extraction, restore, and rollback for
 Windows path and file-sharing behavior.
@@ -384,8 +395,10 @@ Tests: locked files, interrupted replacement, concurrent saves, persistence,
 rollback, case collisions, reserved device names, drive/UNC paths, alternate
 streams, reparse escapes, and symlink restore without required privileges.
 
-Milestone acceptance: config editing, storage, secrets, and snapshots pass
-native Windows tests under both permitted and denied identities.
+Milestone acceptance: complete. Config editing, storage, secrets, and snapshots
+use the private Windows ACL boundary. The native ordinary and privileged suites
+register durable replacement, denied replacement, path-alias, reparse, and
+snapshot cases.
 
 ## Milestone 5: Provide secure administration
 

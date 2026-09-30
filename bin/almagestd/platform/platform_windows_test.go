@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -78,6 +79,66 @@ func TestWindowsConfigDirectoryOverridesAndWrites(t *testing.T) {
 	if string(protected) != DefaultProtectedConfigText {
 		t.Fatal("writing regular config changed the separate protected config")
 	}
+}
+
+func TestWindowsConfigDurableWriteFailureAndConcurrency(t *testing.T) {
+	base := filepath.Join(t.TempDir(), "config")
+	agent, err := newWindowsAgent(almargs.Args{Config: base})
+	if err != nil {
+		t.Fatalf("newWindowsAgent: %v", err)
+	}
+	original, err := os.ReadFile(agent.ConfigPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	name, err := windows.UTF16PtrFromString(agent.ConfigPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handle, err := windows.CreateFile(name, windows.GENERIC_READ, windows.FILE_SHARE_READ, nil,
+		windows.OPEN_EXISTING, windows.FILE_ATTRIBUTE_NORMAL, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := agent.WriteConfig([]byte(`{"locked":true}`)); err == nil {
+		_ = windows.CloseHandle(handle)
+		t.Fatal("WriteConfig succeeded while the destination denied delete sharing")
+	}
+	if err := windows.CloseHandle(handle); err != nil {
+		t.Fatal(err)
+	}
+	if data, err := os.ReadFile(agent.ConfigPath); err != nil || !bytes.Equal(data, original) {
+		t.Fatalf("config after failed replacement = %q, err=%v", data, err)
+	}
+
+	payloads := make([][]byte, 16)
+	var wait sync.WaitGroup
+	errorsByWrite := make(chan error, len(payloads))
+	for i := range payloads {
+		payloads[i] = fmt.Appendf(nil, `{"save":%d}`, i)
+		wait.Add(1)
+		go func(data []byte) {
+			defer wait.Done()
+			errorsByWrite <- agent.WriteConfig(data)
+		}(payloads[i])
+	}
+	wait.Wait()
+	close(errorsByWrite)
+	for err := range errorsByWrite {
+		if err != nil {
+			t.Fatalf("concurrent WriteConfig: %v", err)
+		}
+	}
+	written, err := readPrivateWindowsFile(agent.ConfigPath)
+	if err != nil {
+		t.Fatalf("read final private config: %v", err)
+	}
+	for _, payload := range payloads {
+		if bytes.Equal(written, payload) {
+			return
+		}
+	}
+	t.Fatalf("final config is a partial or unknown write: %q", written)
 }
 
 func TestWindowsRelativeConfigPathsResolveBeforeChdir(t *testing.T) {

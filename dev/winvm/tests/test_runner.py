@@ -35,7 +35,7 @@ elif name == 'scp':
             sys.exit(1)
         with tarfile.open(sys.argv[-1], 'w') as archive:
             if os.environ.get('RUN_KIND') == 'native':
-                for suite, elevated in (('windows-m3-ordinary', False), ('windows-m3-privileged', True)):
+                for suite, elevated in (('windows-m4-ordinary', False), ('windows-m4-privileged', True)):
                     value = {'schemaVersion':1, 'platformId':'windows-server-2022-amd64',
                              'os':'windows-server-2022', 'architecture':'amd64',
                              'nativeExecution':True, 'suite':suite, 'outcome':'passed',

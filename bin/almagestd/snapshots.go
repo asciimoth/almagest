@@ -20,6 +20,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/asciimoth/almagest/bin/api"
+	"github.com/asciimoth/almagest/bin/internal/durablefile"
 	almagest "github.com/asciimoth/almagest/lib"
 	"github.com/asciimoth/almagest/lib/logging"
 	"github.com/asciimoth/configer/hujson"
@@ -573,7 +574,7 @@ func rewriteSnapshotName(path, expectedUUID, name string) (api.SnapshotInfo, err
 	if err := source.Close(); err != nil {
 		return api.SnapshotInfo{}, fmt.Errorf("close source snapshot archive: %w", err)
 	}
-	if err := os.Rename(temporaryPath, path); err != nil {
+	if err := durablefile.Replace(path, temporaryPath); err != nil {
 		return api.SnapshotInfo{}, fmt.Errorf("replace renamed snapshot archive: %w", err)
 	}
 	return manifest.Snapshot, nil
@@ -937,7 +938,7 @@ func (s *snapshotService) loadArchive(ctx context.Context, path, expectedUUID st
 		loaded.cleanup()
 		return nil, cause
 	}
-	seen := map[string]struct{}{}
+	seen := snapshotEntrySet{paths: map[string]string{}, entries: map[string]string{}}
 	var manifestFound, configFound bool
 	var extractedBytes uint64
 	for _, file := range reader.File {
@@ -948,10 +949,9 @@ func (s *snapshotService) loadArchive(ctx context.Context, path, expectedUUID st
 		if err != nil {
 			return fail(err)
 		}
-		if _, duplicate := seen[name]; duplicate {
-			return fail(fmt.Errorf("%w: duplicate archive entry %q", errSnapshotInvalid, name))
+		if err := seen.register(name); err != nil {
+			return fail(err)
 		}
-		seen[name] = struct{}{}
 		switch {
 		case name == snapshotManifestName:
 			data, err := readZipEntry(file, snapshotManifestMaxBytes)
@@ -1032,7 +1032,64 @@ func cleanSnapshotEntryName(name string) (string, error) {
 	if cleaned != name || cleaned == ".." || strings.HasPrefix(cleaned, "../") {
 		return "", fmt.Errorf("%w: unsafe archive entry %q", errSnapshotInvalid, name)
 	}
+	for _, component := range strings.Split(cleaned, "/") {
+		if err := validateSnapshotPathComponent(component); err != nil {
+			return "", fmt.Errorf("%w: unsafe archive entry %q: %v", errSnapshotInvalid, name, err)
+		}
+	}
 	return cleaned, nil
+}
+
+// snapshotEntryAlias uses Windows path identity on every host. This prevents
+// an archive accepted on Linux from selecting two destinations on Windows.
+func snapshotEntryAlias(name string) string {
+	return strings.ToLower(name)
+}
+
+type snapshotEntrySet struct {
+	paths   map[string]string
+	entries map[string]string
+}
+
+func (s snapshotEntrySet) register(name string) error {
+	parts := strings.Split(name, "/")
+	for i := range parts {
+		path := strings.Join(parts[:i+1], "/")
+		alias := snapshotEntryAlias(path)
+		previous, exists := s.paths[alias]
+		if exists && previous != path {
+			return fmt.Errorf("%w: archive paths %q and %q differ only by a Windows alias", errSnapshotInvalid, previous, path)
+		}
+		if !exists {
+			s.paths[alias] = path
+		}
+	}
+	alias := snapshotEntryAlias(name)
+	if previous, exists := s.entries[alias]; exists {
+		return fmt.Errorf("%w: duplicate archive entries %q and %q", errSnapshotInvalid, previous, name)
+	}
+	s.entries[alias] = name
+	return nil
+}
+
+func validateSnapshotPathComponent(component string) error {
+	if component == "" || strings.ContainsRune(component, ':') {
+		return errors.New("empty components and alternate streams are not permitted")
+	}
+	if strings.HasSuffix(component, ".") || strings.HasSuffix(component, " ") {
+		return errors.New("trailing dots and spaces are not permitted")
+	}
+	base := component
+	if dot := strings.IndexByte(base, '.'); dot >= 0 {
+		base = base[:dot]
+	}
+	switch strings.ToUpper(base) {
+	case "CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$",
+		"COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+		"LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9":
+		return errors.New("reserved Windows device names are not permitted")
+	}
+	return nil
 }
 
 func readZipEntry(file *zip.File, limit uint64) ([]byte, error) {
@@ -1071,6 +1128,9 @@ func extractSnapshotFile(file *zip.File, root, relative string) error {
 		return err
 	}
 	if mode&os.ModeSymlink != 0 {
+		if !snapshotSymlinkRestoreSupported() {
+			return fmt.Errorf("%w: symbolic-link entries are not supported on this platform", errSnapshotInvalid)
+		}
 		data, err := readZipEntry(file, snapshotExtractedMaxBytes)
 		if err != nil {
 			return err
@@ -1448,7 +1508,7 @@ func mirrorStorageEntry(
 			return err
 		}
 	}
-	return os.Rename(temporaryPath, destinationPath)
+	return durablefile.Replace(destinationPath, temporaryPath)
 }
 
 func (s *snapshotService) storageIndex() storageSnapshotIndex {

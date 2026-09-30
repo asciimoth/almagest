@@ -275,8 +275,8 @@ import sys
 import tarfile
 
 expected = {
-    "artifacts/windows-m3-ordinary/suite.json": ("windows-m3-ordinary", False),
-    "artifacts/windows-m3-privileged/suite.json": ("windows-m3-privileged", True),
+    "artifacts/windows-m4-ordinary/suite.json": ("windows-m4-ordinary", False),
+    "artifacts/windows-m4-privileged/suite.json": ("windows-m4-privileged", True),
 }
 with tarfile.open(sys.argv[1]) as archive:
     names = set(archive.getnames())
@@ -290,7 +290,7 @@ with tarfile.open(sys.argv[1]) as archive:
         assert value["os"] == "windows-server-2022" and value["architecture"] == "amd64"
         assert value["nativeExecution"] is True and value["outcome"] == "passed"
         assert value["suite"] == suite and value["identity"]["elevated"] is elevated
-        assert value["serialized"] is (suite == "windows-m3-privileged")
+        assert value["serialized"] is (suite == "windows-m4-privileged")
         assert value["cases"] and all(outcome == "passed" for outcome in value["cases"].values())
 PY
 }

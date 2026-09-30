@@ -8,9 +8,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/asciimoth/almagest/bin/almagestd/args"
 	cmdrunner "github.com/asciimoth/almagest/bin/almagestd/command"
+	"github.com/asciimoth/almagest/bin/internal/durablefile"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/gonnect/sysnet"
 	sysnetwindows "github.com/asciimoth/sysnet-windows"
@@ -97,6 +99,7 @@ type windowsAgent struct {
 
 	ConfigPath    string
 	ProtectedPath string
+	writeMu       sync.Mutex
 }
 
 func (a *windowsAgent) ConfRO() bool                    { return a.ReadOnly }
@@ -104,6 +107,8 @@ func (a *windowsAgent) ConfigFilePath() string          { return a.ConfigPath }
 func (a *windowsAgent) ProtectedConfigFilePath() string { return a.ProtectedPath }
 
 func (a *windowsAgent) WriteConfig(data []byte) error {
+	a.writeMu.Lock()
+	defer a.writeMu.Unlock()
 	if a.ReadOnly {
 		return ErrConfigReadOnly
 	}
@@ -143,8 +148,13 @@ func (a *windowsAgent) WriteConfig(data []byte) error {
 	if err := temporary.Close(); err != nil {
 		return fmt.Errorf("close temporary config file: %w", err)
 	}
-	if err := os.Rename(temporaryPath, a.ConfigPath); err != nil {
+	if err := durablefile.Replace(a.ConfigPath, temporaryPath); err != nil {
 		return fmt.Errorf("replace config file: %w", err)
+	}
+	if !a.UnsafeConfig {
+		if _, err := readPrivateWindowsFile(a.ConfigPath); err != nil {
+			return fmt.Errorf("validate replaced config file: %w", err)
+		}
 	}
 	return nil
 }

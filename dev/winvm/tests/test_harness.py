@@ -157,15 +157,15 @@ class HarnessTests(unittest.TestCase):
                 'cases': {'required': 'passed'},
             }).encode()
         with tarfile.open(archive, 'w') as tar:
-            for name, elevated in (('windows-m3-ordinary', False), ('windows-m3-privileged', True)):
+            for name, elevated in (('windows-m4-ordinary', False), ('windows-m4-privileged', True)):
                 data = suite(name, elevated)
                 entry = tarfile.TarInfo(f'artifacts/{name}/suite.json')
                 entry.size = len(data)
                 tar.addfile(entry, io.BytesIO(data))
         self.shell('validate_native_test_artifact "$ARTIFACT"')
         with tarfile.open(archive, 'w') as tar:
-            data = suite('windows-m3-ordinary', False)
-            entry = tarfile.TarInfo('artifacts/windows-m3-ordinary/suite.json')
+            data = suite('windows-m4-ordinary', False)
+            entry = tarfile.TarInfo('artifacts/windows-m4-ordinary/suite.json')
             entry.size = len(data)
             tar.addfile(entry, io.BytesIO(data))
         self.shell('validate_native_test_artifact "$ARTIFACT"', ok=False)

@@ -5,7 +5,7 @@
   "architecture": "amd64",
   "suites": [
     {
-      "id": "windows-m3-ordinary",
+      "id": "windows-m4-ordinary",
       "identity": "standard",
       "privilege": "ordinary",
       "serialized": false,
@@ -50,18 +50,23 @@
             "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsRuntimeDependenciesRemainTrustedAfterChdir",
             "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsDefaultConfigUsesProgramData",
             "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsConfigDirectoryOverridesAndWrites",
+            "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsConfigDurableWriteFailureAndConcurrency",
             "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsRelativeConfigPathsResolveBeforeChdir",
             "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsStdinConfigIsReadOnlyAndSplitsProtected",
             "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsSetupFSSelectsServiceAndUserKnownFolders",
             "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsTemporaryStorageIsIdentityLocalAndRemoved",
             "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsExplicitStorageOverridesKnownFolders",
-            "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsRejectsUnixAdminFlags"
+            "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsRejectsUnixAdminFlags",
+            "github.com/asciimoth/almagest/bin/almagestd::TestSnapshotImportRejectsWindowsPathAliases",
+            "github.com/asciimoth/almagest/bin/almagestd::TestWindowsSnapshotRejectsSymlinkEntryWithoutPrivilege",
+            "github.com/asciimoth/almagest/bin/internal/durablefile::TestWindowsReplaceExistingFileAndRejectLockedDestination",
+            "github.com/asciimoth/almagest/bin/internal/durablefile::TestWindowsReplaceRecoversInterruptedReplacement"
           ]
         }
       ]
     },
     {
-      "id": "windows-m3-privileged",
+      "id": "windows-m4-privileged",
       "identity": "elevated",
       "privilege": "privileged",
       "serialized": true,

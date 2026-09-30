@@ -25,6 +25,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/asciimoth/almagest/bin/api"
+	"github.com/asciimoth/almagest/bin/internal/durablefile"
 	"github.com/asciimoth/almagest/lib/storage"
 	"github.com/kataras/golog"
 )
@@ -323,10 +324,14 @@ func writeTLSBuiltinCAFile(path string, data []byte) error {
 		_ = tmp.Close()
 		return err
 	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return err
+	}
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	if err := os.Rename(tmpName, path); err != nil {
+	if err := durablefile.Replace(path, tmpName); err != nil {
 		return fmt.Errorf("replace builtin TLS CA file: %w", err)
 	}
 	return nil

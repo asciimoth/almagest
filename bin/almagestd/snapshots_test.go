@@ -697,6 +697,43 @@ func TestSnapshotImportRejectsSymlinkThatEscapesStorage(t *testing.T) {
 	}
 }
 
+func TestSnapshotImportRejectsWindowsPathAliases(t *testing.T) {
+	service, _, _, _, _ := newSnapshotTestService(t, false)
+	created, err := service.Create(context.Background(), "path aliases")
+	if err != nil {
+		t.Fatal(err)
+	}
+	exported, err := service.Export(created.UUID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := service.Delete(created.UUID); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name    string
+		entries []string
+	}{
+		{name: "case collision", entries: []string{snapshotFilesPrefix + "Alias.txt", snapshotFilesPrefix + "alias.txt"}},
+		{name: "reserved device", entries: []string{snapshotFilesPrefix + "nested/CON.txt"}},
+		{name: "alternate stream", entries: []string{snapshotFilesPrefix + "secret.txt:stream"}},
+		{name: "drive path", entries: []string{snapshotFilesPrefix + "C:/escape.txt"}},
+		{name: "trailing dot", entries: []string{snapshotFilesPrefix + "alias./value"}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			archive := exported.Archive
+			for _, entry := range test.entries {
+				archive = appendSnapshotArchiveEntry(t, archive, entry, []byte("value"), 0o600)
+			}
+			if _, err := service.Import(context.Background(), bytes.NewReader(archive), nil); !errors.Is(err, errSnapshotInvalid) {
+				t.Fatalf("Import error = %v, want invalid snapshot", err)
+			}
+		})
+	}
+}
+
 func TestSnapshotRestorePreservesSafeInternalSymlink(t *testing.T) {
 	service, _, _, _, storagePath := newSnapshotTestService(t, false)
 	targetPath := filepath.Join(storagePath, "linked", "target.txt")
