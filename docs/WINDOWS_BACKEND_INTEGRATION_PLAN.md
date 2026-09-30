@@ -474,6 +474,12 @@ this backend milestone.
 
 ### Step 14: Unify startup and shutdown ownership
 
+Implementation: complete. Console signals and Windows SCM stop/shutdown
+controls now cancel the same daemon context. One bounded cleanup owner flushes
+configuration, closes graph and native resources, and releases storage on both
+normal shutdown and partial startup failure. The SCM service name is
+`almagestd`; external tooling remains responsible for registration.
+
 Add console and Service Control Manager execution. Route stop/shutdown events
 through one lifecycle. Make each startup acquisition have explicit cleanup,
 including failure paths. Replace discarded close errors and accidental double

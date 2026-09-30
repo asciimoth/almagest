@@ -326,6 +326,12 @@ func RunAgent(args args.Args) Agent {
 	return agent
 }
 
+// PrepareAgent keeps the legacy Linux config preparation behavior while
+// providing the lifecycle entry point used by the daemon.
+func PrepareAgent(arguments args.Args) (Agent, error) {
+	return RunAgent(arguments), nil
+}
+
 func SystemIntegration(cfg configer.Config, runner cmdrunner.Dispatcher, randomSeed ...int64) (sysnet.System, error) {
 	config, err := readLinuxSystemConfig(cfg, runner)
 	if err != nil {

@@ -62,26 +62,35 @@ type mutationLease struct {
 	expiresAt time.Time
 }
 
-func (a *AdminAPI) Stop() {
+func (a *AdminAPI) Stop() error {
+	var result error
 	if a.webServer != nil {
 		golog.Debug("Closing web admin server")
-		_ = a.webServer.Close()
+		result = errors.Join(result, ignoreClosedNetworkError(a.webServer.Close()))
 	}
 	if a.webListener != nil {
 		golog.Debug("Closing web admin listener")
-		_ = a.webListener.Close()
+		result = errors.Join(result, ignoreClosedNetworkError(a.webListener.Close()))
 	}
 	if a.unixListener != nil {
 		golog.Debug("Closing unix admin listener")
-		_ = a.unixListener.Close()
+		result = errors.Join(result, ignoreClosedNetworkError(a.unixListener.Close()))
 	}
 	if a.pipeListener != nil {
 		golog.Debug("Closing Windows pipe admin listener")
-		_ = a.pipeListener.Close()
+		result = errors.Join(result, ignoreClosedNetworkError(a.pipeListener.Close()))
 	}
 	if a.unixPath != "" {
-		_ = cleanupUnixAdminSocket(a.unixPath)
+		result = errors.Join(result, cleanupUnixAdminSocket(a.unixPath))
 	}
+	return result
+}
+
+func ignoreClosedNetworkError(err error) error {
+	if errors.Is(err, net.ErrClosed) || errors.Is(err, http.ErrServerClosed) {
+		return nil
+	}
+	return err
 }
 
 func (a *AdminAPI) Run(
@@ -871,7 +880,7 @@ func PrepareAdminAPI(cfg *Config) (*AdminAPI, error) {
 	if cfg.Protected.Admin.Pipe != "" {
 		listener, err := listenWindowsAdminPipe(cfg.Protected.Admin.Pipe) //nolint:staticcheck // The Windows implementation is not the Linux lint target.
 		if err != nil {                                                   //nolint:staticcheck // The Windows implementation can return a listener or an error.
-			api.Stop()
+			_ = api.Stop()
 			return nil, err
 		}
 		api.pipeListener = listener

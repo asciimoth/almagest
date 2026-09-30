@@ -277,11 +277,16 @@ func (s *configAutosaver) logSaveError(err error) error {
 }
 
 func (s *configAutosaver) flushPending() {
+	_ = s.flushPendingError()
+}
+
+func (s *configAutosaver) flushPendingError() error {
 	for s.hasPending() {
-		if !s.save() {
-			return
+		if err := s.persistNodeConfig(); err != nil {
+			return err
 		}
 	}
+	return nil
 }
 
 func (s *configAutosaver) hasPending() bool {

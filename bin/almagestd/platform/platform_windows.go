@@ -185,11 +185,17 @@ func (a *windowsAgent) ReadConfig() ([]byte, []byte, error) {
 }
 
 func RunAgent(args args.Args) Agent {
-	agent, err := newWindowsAgent(args)
+	agent, err := PrepareAgent(args)
 	if err != nil {
 		golog.Fatal("Failed to prepare config files: ", err)
 	}
 	return agent
+}
+
+// PrepareAgent prepares Windows config ownership without terminating the
+// process. Service startup uses this form so the SCM receives the failure.
+func PrepareAgent(arguments args.Args) (Agent, error) {
+	return newWindowsAgent(arguments)
 }
 
 func newWindowsAgent(arguments args.Args) (*windowsAgent, error) {

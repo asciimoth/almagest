@@ -43,8 +43,12 @@ func TestAdminAPIRunAndStopWebServer(t *testing.T) {
 	}
 	cancel()
 	wg.Wait()
-	admin.Stop()
-	admin.Stop()
+	if err := admin.Stop(); err != nil {
+		t.Fatalf("Stop() error = %v", err)
+	}
+	if err := admin.Stop(); err != nil {
+		t.Fatalf("second Stop() error = %v", err)
+	}
 }
 
 func TestPrepareAdminAPIAndWebListeners(t *testing.T) {
@@ -52,7 +56,9 @@ func TestPrepareAdminAPIAndWebListeners(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	prepared.Stop()
+	if err := prepared.Stop(); err != nil {
+		t.Fatalf("Stop() error = %v", err)
+	}
 
 	listener, err := listenWebAdmin("127.0.0.1:0", AdminPeerFiltersConfig{})
 	if err != nil {

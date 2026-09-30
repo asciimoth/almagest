@@ -138,6 +138,10 @@ func RunAgent(args args.Args) Agent {
 	}
 }
 
+func PrepareAgent(arguments args.Args) (Agent, error) {
+	return RunAgent(arguments), nil
+}
+
 func SystemIntegration(cfg configer.Config, runner cmdrunner.Dispatcher, randomSeed ...int64) (sysnet.System, error) {
 	_ = runner
 	_ = randomSeed

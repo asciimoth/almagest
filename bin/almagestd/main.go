@@ -2,12 +2,11 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
-	"os/signal"
 	"path/filepath"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/alexflint/go-arg"
@@ -28,88 +27,87 @@ func main() {
 	// captures and admin API actions.
 	golog.SetTimeFormat("2006/01/02 15:04:05.000000")
 
-	fatal := func(v ...any) {
-		golog.Fatal(v...)
-	}
 	randomSeeds, err := newDaemonRandomSeeds()
 	if err != nil {
-		fatal(err)
+		golog.Fatal(err)
 		return
 	}
 
-	var args args.Args
-	if err = arg.Parse(&args); err != nil {
-		fatal(err)
+	var arguments args.Args
+	if err = arg.Parse(&arguments); err != nil {
+		golog.Fatal(err)
 		return
 	}
 
-	if args.LogLevel != "" {
-		golog.SetLevel(args.LogLevel)
+	if arguments.LogLevel != "" {
+		golog.SetLevel(arguments.LogLevel)
 	}
-	if err := platform.ValidateArgs(&args); err != nil {
-		fatal(err)
+	if err := platform.ValidateArgs(&arguments); err != nil {
+		golog.Fatal(err)
 		return
 	}
-	if err := resolveCLIPathArgs(&args); err != nil {
-		fatal(err)
+	if err := resolveCLIPathArgs(&arguments); err != nil {
+		golog.Fatal(err)
 		return
 	}
-	if err := resolveTmpUnixAdminArg(&args); err != nil {
-		fatal(err)
+	if err := resolveTmpUnixAdminArg(&arguments); err != nil {
+		golog.Fatal(err)
 		return
 	}
-	if args.StdInConfig && args.Snapshot == "-" {
-		fatal(fmt.Errorf("--stdin and --snapshot - cannot read from stdin together"))
+	if arguments.StdInConfig && arguments.Snapshot == "-" {
+		golog.Fatal(fmt.Errorf("--stdin and --snapshot - cannot read from stdin together"))
 		return
 	}
-	configureGlobalBufPool(args.NoPool)
+	configureGlobalBufPool(arguments.NoPool)
 	// Validate the native DLL search before changing to file storage. Keep the
 	// result until the selected integration is known, so explicit debug mode
 	// remains usable without Windows runtime dependencies.
 	_, runtimeDependencyErr := platform.ValidateRuntimeDependencies()
+	if err := platform.RunLifecycle(func(ctx context.Context, ready func()) error {
+		return runDaemon(ctx, ready, arguments, randomSeeds, runtimeDependencyErr)
+	}); err != nil {
+		golog.Fatal(err)
+	}
+}
 
-	agent := platform.RunAgent(args)
+func runDaemon(
+	parent context.Context,
+	ready func(),
+	arguments args.Args,
+	randomSeeds daemonRandomSeeds,
+	runtimeDependencyErr error,
+) (result error) {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	agent, err := platform.PrepareAgent(arguments)
+	if err != nil {
+		return fmt.Errorf("prepare config files: %w", err)
+	}
 
 	configData, protectedData, err := agent.ReadConfig()
 	if err != nil {
-		fatal(err)
-		return
+		return err
 	}
-	fsPath, fsCleanup, err := platform.SetupFS(args.FileStorage, args.TmpFileStorage)
+	fsPath, fsCleanup, err := platform.SetupFS(arguments.FileStorage, arguments.TmpFileStorage)
 	if err != nil {
-		fatal(err)
-		return
+		return err
 	}
-
-	var cleanupOnce sync.Once
-	cleanupFileStorage := func() {
-		cleanupOnce.Do(func() {
-			if err := fsCleanup(); err != nil {
-				golog.Warnf("File storage cleanup failed: %v", err)
-			}
-		})
+	lifecycle := &daemonLifecycle{
+		cancel:       cancel,
+		cleanupFiles: fsCleanup,
 	}
-	defer cleanupFileStorage()
+	defer func() { result = errors.Join(result, lifecycle.Close()) }()
 	var kv *bboltKVManager
-	fatal = func(v ...any) {
-		if kv != nil {
-			_ = kv.Close()
-		}
-		cleanupFileStorage()
-		golog.Fatal(v...)
-	}
 
 	if err := os.Chdir(fsPath); err != nil {
-		fatal(err)
-		return
+		return err
 	}
 	golog.Infof("Using file storage at %s", fsPath)
-	if args.Snapshot != "" {
+	if arguments.Snapshot != "" {
 		var info api.SnapshotInfo
-		configData, info, err = restoreStartupSnapshot(context.Background(), fsPath, args.Snapshot, os.Stdin, agent)
+		configData, info, err = restoreStartupSnapshot(ctx, fsPath, arguments.Snapshot, os.Stdin, agent)
 		if err != nil {
-			fatal("Load startup snapshot", err)
-			return
+			return fmt.Errorf("load startup snapshot: %w", err)
 		}
 		golog.Infof("Loaded startup snapshot %s", info.UUID)
 		if !agent.ConfRO() {
@@ -120,66 +118,57 @@ func main() {
 	}
 	conf, err := ParseConfig(configData, protectedData)
 	if err != nil {
-		fatal(err)
-		return
+		return err
 	}
-	conf.Protected.Merge(&args)
+	conf.Protected.Merge(&arguments)
 
 	immutableSecrets, err := conf.Protected.ImmutableSecrets()
 	if err != nil {
-		fatal(err)
-		return
+		return err
 	}
-	osTLSData, err := loadOSTLSData(context.Background(), platform.OSAuthorityFetcher())
+	osTLSData, err := loadOSTLSData(ctx, platform.OSAuthorityFetcher())
 	if err != nil {
-		fatal(err)
-		return
+		return err
 	}
 	protectedTLSData, err := conf.Protected.ImmutableTLS()
 	if err != nil {
-		fatal(err)
-		return
+		return err
 	}
 	builtinCAOptions, err := conf.TLSBuiltinCAOptions()
 	if err != nil {
-		fatal(err)
-		return
+		return err
 	}
 	builtinCA, err := conf.Protected.TLSBuiltinCA()
 	if err != nil {
-		fatal(err)
-		return
+		return err
 	}
 	if builtinCA == nil {
 		builtinCA, err = loadOrCreateTLSBuiltinCA(fsPath, builtinCAOptions, time.Now())
 		if err != nil {
-			fatal(err)
-			return
+			return err
 		}
 	}
 	kv, err = openKVManagerInStorage(fsPath, bboltKVManagerOptions{
-		DisableDNSCacheExpiration: args.NoDNSCacheExpiration,
+		DisableDNSCacheExpiration: arguments.NoDNSCacheExpiration,
 		ImmutableSecrets:          immutableSecrets,
 		ImmutableTLS:              mergeImmutableTLSData(osTLSData, protectedTLSData),
 		BuiltinCA:                 builtinCA,
 	})
 	if err != nil {
-		fatal(err)
-		return
+		return err
 	}
-	defer kv.Close() //nolint
+	lifecycle.closeStorage = kv.Close
 	golog.Infof("Using kv database at %s", filepath.Join(fsPath, kvDBFileName))
 	if err := kv.reconcileKVOwnerEntries(configuredNodeNameSet(conf.Main)); err != nil {
-		fatal("KV ownership cleanup", err)
-		return
+		return fmt.Errorf("KV ownership cleanup: %w", err)
 	}
 
 	// Prepare admin api here (start listener/create unix socket/etc)
 	admin, err := PrepareAdminAPI(conf)
 	if err != nil {
-		fatal(err)
-		return
+		return err
 	}
+	lifecycle.stopAdmin = admin.Stop
 	admin.configReadOnly = agent.ConfRO()
 	admin.fileStorage = fsPath
 	admin.projectVersionStatus = projectVersionStatus
@@ -188,43 +177,33 @@ func main() {
 	admin.secrets = kv
 	admin.tls = kv
 	admin.tlsOSAuthorityFetcher = platform.OSAuthorityFetcher()
-	admin.experimentalNodeTypes = daemonExperimentalNodeTypes(args.Experimental)
-	defer admin.Stop()
+	admin.experimentalNodeTypes = daemonExperimentalNodeTypes(arguments.Experimental)
 
-	logf := NewLogFactory(conf.LogCache().MergeArgs(&args))
+	logf := NewLogFactory(conf.LogCache().MergeArgs(&arguments))
 	logProjectVersionStatus(admin.projectVersionStatus)
 	daemonLogger := logf.DaemonLogger()
 	nodeNames, err := newDaemonNodeNameIndex(kv, conf.Main, daemonLogger)
 	if err != nil {
-		fatal("Node name index setup", err)
-		return
+		return fmt.Errorf("node name index setup: %w", err)
 	}
-	defer nodeNames.Close()
+	lifecycle.closeNodeNames = nodeNames.Close
 	admin.nodeNames = nodeNames.index
 
 	commandRunner, err := cmdrunner.NewRunner(daemonLogger, conf.Protected.CommandRunner)
 	if err != nil {
-		fatal(err)
-		return
+		return err
 	}
-	commandRunner.Start(context.Background())
-	defer commandRunner.Close()
+	commandRunner.Start(ctx)
+	lifecycle.closeRunner = commandRunner.Close
 
 	// Setup system integration here before privileges drop
 	sys, err := SystemIntegrationWithRuntimeDependencies(conf, commandRunner, runtimeDependencyErr, randomSeeds.system)
 	if err != nil {
-		fatal(err)
-		return
+		return err
 	}
-	defer sys.Close() //nolint
+	lifecycle.closeSystem = sys.Close
 
 	platform.DropPrivileges() // Currently just a stub
-
-	// TODO: Reload config on SIGHUP instead of stopping
-	ctx, cancel := signal.NotifyContext(
-		context.Background(), syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP,
-	)
-	defer cancel()
 
 	nodeConfigAutosave := newNodeConfigAutosaveTrigger()
 	var nodeConfigChanged func(uint64) <-chan error
@@ -241,10 +220,10 @@ func main() {
 		kv,
 		kv,
 		kv,
-		daemonNodeClasses(conf.Protected.CommandRunner, commandRunner, args.Experimental, conf.Protected.Experimental),
+		daemonNodeClasses(conf.Protected.CommandRunner, commandRunner, arguments.Experimental, conf.Protected.Experimental),
 		globalBufPool,
-		args.DebugNodes,
-		almagest.WithWorkerEventLogging(args.LogWorkers),
+		arguments.DebugNodes,
+		almagest.WithWorkerEventLogging(arguments.LogWorkers),
 		almagest.WithNodeNameAvailableCallback(nodeNames.index.available),
 		almagest.WithNodeConfigChangeCallback(nodeConfigChanged),
 		almagest.WithRandomSeed(randomSeeds.workspace),
@@ -252,13 +231,15 @@ func main() {
 	engineBuildElapsed := time.Since(engineBuildStart)
 	if err != nil {
 		daemonLogger.Debugf("engine build failed after %s: %v", engineBuildElapsed, err)
-		fatal("Engine setup", err)
+		return fmt.Errorf("engine setup: %w", err)
 	}
 	daemonLogger.Debugf("engine built in %s", engineBuildElapsed)
-	defer engine.Close() //nolint
+	lifecycle.closeEngine = engine.Close
 
 	var wg sync.WaitGroup
+	lifecycle.waitBackground = wg.Wait
 	admin.configAutosaver = newConfigAutosaver(engine, conf, agent, daemonLogger, conf.SaveIdle())
+	lifecycle.flushConfig = admin.configAutosaver.flushPendingError
 	admin.snapshots = newSnapshotService(
 		fsPath,
 		admin.configAutosaver,
@@ -281,11 +262,9 @@ func main() {
 
 	// Launch admin api fully
 	admin.Run(ctx, cancel, &wg, engine, sys, logf)
+	ready()
 
-	wg.Go(func() {
-		<-ctx.Done()
-		golog.Info("Stopping")
-	})
-
-	wg.Wait()
+	<-ctx.Done()
+	golog.Info("Stopping")
+	return nil
 }
