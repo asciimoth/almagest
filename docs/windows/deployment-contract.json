@@ -1,0 +1,79 @@
+{
+  "schemaVersion": 1,
+  "backend": {
+    "module": "github.com/asciimoth/sysnet-windows",
+    "version": "v0.1.1-0.20260930092946-a056c520f0fa",
+    "revision": "a056c520f0faf966f54dd90ef63b15d9aa7382ec",
+    "license": "GPL-3.0-only"
+  },
+  "wintun": {
+    "version": "0.14.1",
+    "archive": "wintun-0.14.1.zip",
+    "source": "https://www.wintun.net/builds/wintun-0.14.1.zip",
+    "sha256": "07c256185d6ee3652e09fa55c0b673e2624b565e02c4b9091c79ca7d2f24ef51",
+    "architectures": ["amd64", "arm64"],
+    "trustedLocations": ["application-directory", "System32"],
+    "license": "Official Wintun binary distribution license; Go bindings are MIT"
+  },
+  "splitDriver": {
+    "version": "1.3.0.0",
+    "upstreamRevision": "0a0eb97f67d1dbcb3d08bda66d3b24f465d95475",
+    "binariesRevision": "5b6f46cde692acb77ee74b37b9fd3f1678c45a52",
+    "serviceName": "mullvad-split-tunnel",
+    "serviceType": "kernel-driver",
+    "startType": "demand-start",
+    "binaryPath": "%SystemRoot%\\System32\\drivers\\mullvad-split-tunnel.sys",
+    "architectures": {
+      "amd64": {
+        "source": "x86_64-pc-windows-msvc",
+        "files": {
+          "mullvad-split-tunnel.sys": "10cf25bbcfe51fd663a1fec88a98e9b858f3a579589bb2ec496b66e4fdd1b201",
+          "mullvad-split-tunnel.inf": "3dd5905e5fb98d61a942a33e8c9a5ba07c3a2de1e4f319e1fec3e54df6591608",
+          "mullvad-split-tunnel.cat": "c599926a0327d7ae06b534f4cd039db30392e1897bb9d03e4fec3631744a4e6d"
+        }
+      },
+      "arm64": {
+        "source": "aarch64-pc-windows-msvc",
+        "files": {
+          "mullvad-split-tunnel.sys": "6af8b3bfe5aa095d5276187558c7c7d3a3e0c174b34406cd6c4b3f8e6ffa6534",
+          "mullvad-split-tunnel.inf": "0bfdb044e40535dabbeb3620b655c1563714b3a6f3231d3492c972c6e8dea6f1",
+          "mullvad-split-tunnel.cat": "c3d27636739ebaa7dde369d113347de83e3e2173b8a512bb8863d11b148de7ce"
+        }
+      }
+    },
+    "license": "GPL-3.0-or-later or MPL-2.0 for upstream driver; signed binary distribution terms also apply"
+  },
+  "provisioning": {
+    "owner": "external-deployment-tooling",
+    "daemonDownloads": false,
+    "daemonInstalls": false,
+    "daemonUpdates": false,
+    "daemonRegistersService": false,
+    "daemonStartsService": false,
+    "backendVerification": "Read service configuration, fixed path, SHA-256, file version, and Windows signature, then open the existing device only when exclusions are requested."
+  },
+  "privileges": [
+    {
+      "id": "read-only-and-userspace",
+      "operations": ["construct-system", "inspect-capabilities", "allocate-addresses", "outnet", "outdns", "localnet", "ownership-matchers"],
+      "minimumIdentity": "standard-user",
+      "elevationRequired": false
+    },
+    {
+      "id": "native-network-mutation",
+      "operations": ["create-or-delete-wintun-adapter", "change-addresses-routes-or-mtu", "configure-or-restore-dns", "create-or-delete-wfp-state", "open-and-control-split-driver"],
+      "minimumIdentity": "elevated-service-or-administrator",
+      "elevationRequired": true
+    },
+    {
+      "id": "dependency-provisioning",
+      "operations": ["place-wintun-dll", "install-or-update-split-driver", "register-or-start-split-driver-service"],
+      "minimumIdentity": "external-elevated-deployment-tooling",
+      "elevationRequired": true
+    }
+  ],
+  "degradation": {
+    "missingSplitDriverAffects": ["win-exe-tree-exclusions"],
+    "mustRemainAvailable": ["regular-tun", "default-routing-without-exclusions", "outnet", "outdns", "localnet", "win-pid-matcher", "win-exe-path-matcher"]
+  }
+}

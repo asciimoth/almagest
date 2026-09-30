@@ -17,7 +17,7 @@ require (
 	github.com/asciimoth/wgo-tailscale v0.4.0
 	github.com/coder/websocket v1.8.14
 	github.com/miekg/dns v1.1.72
-	golang.org/x/sys v0.46.0
+	golang.org/x/sys v0.47.0
 	golang.org/x/time v0.12.0
 	gvisor.dev/gvisor v0.0.0-20260325202830-7644cf3a343c
 )

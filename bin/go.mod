@@ -21,7 +21,17 @@ require (
 	github.com/tailscale/hujson v0.0.0-20260302212456-ecc657c15afd
 	go.etcd.io/bbolt v1.5.0
 	golang.org/x/crypto/x509roots/fallback v0.0.0-20260723152544-d701c51f7e4e
-	golang.org/x/sys v0.46.0
+	golang.org/x/sys v0.47.0
+)
+
+require (
+	github.com/BurntSushi/toml v1.6.0 // indirect
+	github.com/asciimoth/mullvad-split-tunnel-go v0.0.0-20260926123106-f5db35e093d7 // indirect
+	github.com/tailscale/wf v0.0.0-20240214030419-6fbb0a674ee6 // indirect
+	go4.org/netipx v0.0.0-20220725152314-7e7bdc8411bf // indirect
+	golang.org/x/exp/typeparams v0.0.0-20260209203927-2842357ff358 // indirect
+	golang.zx2c4.com/wireguard/windows v1.1.1 // indirect
+	honnef.co/go/tools v0.7.0 // indirect
 )
 
 require (
@@ -31,6 +41,7 @@ require (
 	github.com/asciimoth/p-mark v0.4.0 // indirect
 	github.com/asciimoth/persist v0.2.0 // indirect
 	github.com/asciimoth/putback v0.3.0 // indirect
+	github.com/asciimoth/sysnet-windows v0.1.1-0.20260930092946-a056c520f0fa
 	github.com/asciimoth/tor-driver v0.1.1 // indirect
 	github.com/asciimoth/tuntap v0.4.3 // indirect
 	github.com/asciimoth/wgo v0.7.14 // indirect
@@ -48,7 +59,7 @@ require (
 	github.com/xtaci/smux v1.5.44 // indirect
 	golang.org/x/crypto v0.53.0 // indirect
 	golang.org/x/exp v0.0.0-20231110203233-9a3e6036ecaa // indirect
-	golang.org/x/mod v0.37.0 // indirect
+	golang.org/x/mod v0.37.0
 	golang.org/x/net v0.56.0 // indirect
 	golang.org/x/sync v0.21.0 // indirect
 	golang.org/x/text v0.39.0 // indirect

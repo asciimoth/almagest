@@ -1,7 +1,6 @@
 # Windows backend integration plan
 
-Status: proposed implementation plan. Milestone 1, Step 1 is complete. No
-milestone is complete.
+Status: proposed implementation plan. Milestone 1 is complete.
 
 ## Objective and scope
 
@@ -123,6 +122,10 @@ Tests: validate the required-test manifest and capability mapping. Include
 negative manifest fixtures for absent, skipped, and wrong-platform evidence.
 
 ### Step 2: Define dependency and privilege boundaries
+
+Implementation: complete. See the
+[Windows deployment contract](WINDOWS_DEPLOYMENT_CONTRACT.md) and its
+[machine-readable form](windows/deployment-contract.json).
 
 Pin a released version or immutable module revision in `bin/go.mod`. Record
 the matching Wintun and split-driver inputs, licenses, service requirements,

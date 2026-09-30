@@ -46,4 +46,6 @@ The `windows-cross-build` suite checks portability only. Its execution type is
 list. A cross-build or emulated application run cannot qualify native support.
 
 Required dependencies are deployment inputs, not daemon provisioning tasks.
-Step 2 will pin their exact versions and privilege boundaries.
+Their exact versions, trusted locations, service contract, licenses, and
+privilege boundaries are in the
+[Windows deployment contract](WINDOWS_DEPLOYMENT_CONTRACT.md).

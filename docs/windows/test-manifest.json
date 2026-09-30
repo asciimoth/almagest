@@ -6,7 +6,11 @@
       "execution": "portable",
       "requiredTests": [
         "github.com/asciimoth/almagest/bin/internal/windowssupport::TestCheckedInContracts",
-        "github.com/asciimoth/almagest/bin/internal/windowssupport::TestQualificationEvidenceFixtures"
+        "github.com/asciimoth/almagest/bin/internal/windowssupport::TestQualificationEvidenceFixtures",
+        "github.com/asciimoth/almagest/bin/internal/windowssupport::TestCheckedInDeploymentContract",
+        "github.com/asciimoth/almagest/bin/internal/windowssupport::TestDeploymentContractRejectsBoundaryViolations",
+        "github.com/asciimoth/almagest/bin/internal/windowssupport::TestWindowsBackendDependencyBoundary",
+        "github.com/asciimoth/almagest/bin/internal/windowssupport::TestLibraryImportBoundary"
       ]
     },
     {
@@ -23,6 +27,8 @@
       "requiredTests": [
         "native::execution-identity-standard-user",
         "native::platform-and-architecture-match",
+        "native::dependency-probes-are-read-only",
+        "native::missing-split-driver-preserves-ordinary-networking",
         "native::backend-selection-and-capability-catalog",
         "native::capability-dependent-node-classes-and-menus",
         "native::unsupported-routing-and-linux-rules-rejected",
@@ -38,6 +44,10 @@
       "execution": "native-windows",
       "requiredTests": [
         "native::execution-identity-elevated",
+        "native::pinned-wintun-load-location-and-version",
+        "native::pinned-split-driver-service-and-signature",
+        "native::network-mutation-privilege-boundaries",
+        "native::daemon-has-no-dependency-provisioning-path",
         "native::regular-tun-ipv4-ipv6-lifecycle",
         "native::default-tun-routing-dns-and-rebuild",
         "native::split-driver-exclusion-and-ownership",
