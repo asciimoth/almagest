@@ -177,6 +177,11 @@ build tags only to tests of OS-specific behavior; do not hide shared failures.
 
 ### Step 4: Adapt the QEMU/KVM harness
 
+Implementation: harness and host-only tests added. See the
+[VM harness guide](../dev/winvm/README.md). Native provisioning and smoke-run
+acceptance remain pending execution with the locked media. Step 5 test-suite
+execution is not included in the Step 4 smoke command.
+
 Reuse the sibling approach: locked inputs, unattended provisioning, QEMU Guest
 Agent, verified SSH, stable readiness tokens, cache locks, and per-run overlays.
 Package tracked changes and eligible untracked files. Regenerate ignored build

@@ -30,7 +30,7 @@ test-e2e-light:
 
 test: test-go test-js
 
-test-total: test test-e2e
+test-total: test-winvm-harness test test-e2e
   ./scripts/coverage-report.sh
 
 test-total-light: test test-e2e-light
@@ -65,7 +65,7 @@ repair-go-work:
 certcat-tidy:
 	go -C certcat mod tidy
 
-lint: certcat-lint
+lint: test-winvm-harness certcat-lint
   golangci-lint run ./lib/... ./bin/...
 
 shellcheck:
@@ -116,6 +116,22 @@ build-windows:
 
 build-windows-arch arch:
   ./scripts/build-windows.sh {{arch}}
+
+test-winvm-harness:
+  python3 -m unittest discover -s dev/winvm/tests -p 'test_*.py'
+  shellcheck dev/winvm/*.sh
+
+winvm-doctor:
+  ./dev/winvm/doctor.sh
+
+winvm-image:
+  ./dev/winvm/build-image.sh
+
+winvm-smoke:
+  ./dev/winvm/run.sh smoke
+
+winvm-shell run:
+  ./dev/winvm/run.sh --shell {{quote(run)}}
 
 build: certcat-generate build-web
 	go build -o ./almagestd ./bin/almagestd/

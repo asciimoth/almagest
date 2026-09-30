@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "windows": {
+    "version": "Windows Server 2022 Standard Evaluation Server Core amd64 (20348.587)",
+    "environment": "WINVM_WINDOWS_ISO",
+    "sha256": "3e4fa6d8507b554856fc9ca6079cc402df11a8b79344871669f0251535255325"
+  },
+  "virtio": {
+    "version": "virtio-win-0.1.285",
+    "environment": "WINVM_VIRTIO_ISO",
+    "source": "https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/archive-virtio/virtio-win-0.1.285-1/virtio-win-0.1.285.iso",
+    "sha256": "e14cf2b94492c3e925f0070ba7fdfedeb2048c91eea9c5a5afb30232a3976331"
+  },
+  "go": {
+    "version": "1.26.6",
+    "file": "go1.26.6.windows-amd64.zip",
+    "source": "https://go.dev/dl/go1.26.6.windows-amd64.zip",
+    "sha256": "5b6c5b556525810463b5c897b50dc7a82d6a3dc0bfaf55d990a7e9f31d6b2318"
+  },
+  "openssh": {
+    "version": "9.8.3.0p2-Preview",
+    "file": "OpenSSH-Win64.zip",
+    "source": "https://github.com/PowerShell/Win32-OpenSSH/releases/download/v9.8.3.0p2-Preview/OpenSSH-Win64.zip",
+    "sha256": "0ca131f3a78f404dc819a6336606caec0db1663a692ccc3af1e90232706ada54"
+  }
+}

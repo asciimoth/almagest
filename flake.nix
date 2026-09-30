@@ -90,6 +90,8 @@
           shellcheck
 
           just
+          python3
+          jq
 
           nodejs_24
           pnpm
@@ -103,6 +105,10 @@
 
           tor
           obfs4
+        ] ++ pkgs.lib.optionals (system == "x86_64-linux") [
+          pkgs.qemu
+          pkgs.xorriso
+          pkgs.OVMF
         ];
       };
     });

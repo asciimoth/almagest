@@ -38,6 +38,7 @@ go.work.sum
 /.envrc
 /.pre-commit-config.yaml
 /.direnv
+/dev/winvm/env
 
 /local
 
