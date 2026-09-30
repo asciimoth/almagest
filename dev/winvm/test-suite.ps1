@@ -40,6 +40,14 @@ foreach ($case in $suite.cases) {
     $moduleDir = Join-Path $SourceDir $case.module
     Push-Location $moduleDir
     try {
+        $startedServices = @()
+        $serviceNames = if ($case.PSObject.Properties['startServices']) { @($case.startServices) } else { @() }
+        foreach ($serviceName in $serviceNames) {
+            $service = Get-Service -Name $serviceName
+            if ($service.Status -ne 'Stopped') { throw "Required service is not initially stopped: $serviceName" }
+            Start-Service -Name $serviceName
+            $startedServices += $serviceName
+        }
         # Exclusive privileged cases use this same loop. The manifest also
         # requires that the privileged suite is serialized.
         $testArguments = @('test', '-json', '-count=1', '-p=1', '-parallel=1') + @($case.arguments)
@@ -47,6 +55,9 @@ foreach ($case in $suite.cases) {
             Out-File -FilePath $eventPath -Encoding utf8
         $processResults[$case.id] = $LASTEXITCODE
     } finally {
+        foreach ($serviceName in $startedServices) {
+            Stop-Service -Name $serviceName -Force -ErrorAction Continue
+        }
         Pop-Location
     }
 }

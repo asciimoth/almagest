@@ -74,7 +74,34 @@
       testChromium = pkgs.writeShellScript "almagest-test-chromium" ''
         exec ${pkgs.chromium}/bin/chromium --password-store=basic "$@"
       '';
+
+      driverRevision = "5b6f46cde692acb77ee74b37b9fd3f1678c45a52";
+      fetchDriverFile = architecture: file: hash: pkgs.fetchurl {
+        url = "https://raw.githubusercontent.com/mullvad/mullvadvpn-app-binaries/${driverRevision}/${architecture}-pc-windows-msvc/split-tunnel/${file}";
+        inherit hash;
+      };
+      windowsTestDrivers = pkgs.runCommand "almagest-split-driver-1.3.0.0" {} ''
+        install -Dm0444 ${fetchDriverFile "x86_64" "mullvad-split-tunnel.sys" "sha256-EM8lu8/lH9Zjof7IipjpuFjzpXlYm7LsSWtm5P3RsgE="} $out/amd64/mullvad-split-tunnel.sys
+        install -Dm0444 ${fetchDriverFile "x86_64" "mullvad-split-tunnel.inf" "sha256-PdWQXl+5jWGpQqM+jJpboHw6LeHk8xnh/sPlTfZZFgg="} $out/amd64/mullvad-split-tunnel.inf
+        install -Dm0444 ${fetchDriverFile "x86_64" "mullvad-split-tunnel.cat" "sha256-xZmSagMn164GtTT0zQOdswOS4Yl7udA+T+w2MXRKTm0="} $out/amd64/mullvad-split-tunnel.cat
+        install -Dm0444 ${fetchDriverFile "aarch64" "mullvad-split-tunnel.sys" "sha256-avizv+WqCV1Sdhh1WMfH06PgwXSzRAbNbEs/jm/6ZTQ="} $out/arm64/mullvad-split-tunnel.sys
+        install -Dm0444 ${fetchDriverFile "aarch64" "mullvad-split-tunnel.inf" "sha256-C/2wROQFNdq76zYgtlXBVjcUs6bzIx00kslyxujepvE="} $out/arm64/mullvad-split-tunnel.inf
+        install -Dm0444 ${fetchDriverFile "aarch64" "mullvad-split-tunnel.cat" "sha256-w9J2NnOeuqfd42nREzR96D4+IXO4pRK7iGPRGxSN584="} $out/arm64/mullvad-split-tunnel.cat
+      '';
+      wintunArchive = pkgs.fetchurl {
+        url = "https://www.wintun.net/builds/wintun-0.14.1.zip";
+        hash = "sha256-B8JWGF1u42UuCfpVwLZz4mJLVl4CxLkJHHnKfS8k71E=";
+      };
+      windowsTestWintun = pkgs.runCommand "almagest-wintun-0.14.1" {nativeBuildInputs = [pkgs.unzip];} ''
+        unzip -q ${wintunArchive} -d unpacked
+        install -Dm0444 unpacked/wintun/bin/amd64/wintun.dll $out/amd64/wintun.dll
+        install -Dm0444 unpacked/wintun/bin/arm64/wintun.dll $out/arm64/wintun.dll
+      '';
     in {
+      packages = {
+        windows-test-drivers = windowsTestDrivers;
+        windows-test-wintun = windowsTestWintun;
+      };
       devShells.default = pkgs.mkShell {
         inherit (checks.pre-commit-check) shellHook;
         PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1";

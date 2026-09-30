@@ -69,6 +69,22 @@ func TestPrivilegedExecutionMustBeSerialized(t *testing.T) {
 	}
 }
 
+func TestExecutionServicesRequirePrivilegedGoCase(t *testing.T) {
+	manifest := testExecutionManifest()
+	manifest.Suites[0].Cases[1].StartServices = []string{"fixture"}
+	if err := ValidateExecutionManifest(manifest); err == nil || !strings.Contains(err.Error(), "outside the privileged suite") {
+		t.Fatalf("ordinary service start error = %v", err)
+	}
+	manifest = testExecutionManifest()
+	manifest.Suites[1].Cases = append(manifest.Suites[1].Cases, ExecutionCase{
+		ID: "service", Kind: "go", Module: "bin", Arguments: []string{"./fixture"},
+		EventFile: "service.jsonl", StartServices: []string{"fixture", "fixture"},
+	})
+	if err := ValidateExecutionManifest(manifest); err == nil || !strings.Contains(err.Error(), "duplicate") {
+		t.Fatalf("duplicate service error = %v", err)
+	}
+}
+
 func testExecutionManifest() ExecutionManifest {
 	return ExecutionManifest{SchemaVersion: 1, PlatformID: "server", OS: "windows-server-2022", Architecture: "amd64", Suites: []ExecutionSuite{
 		{ID: "ordinary", Identity: "standard", Privilege: "ordinary", Cases: []ExecutionCase{{ID: "identity", Kind: "identity"}, {ID: "go", Kind: "go", Module: "bin", Arguments: []string{"./..."}, EventFile: "go.jsonl"}}},

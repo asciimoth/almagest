@@ -1,7 +1,9 @@
 package main
 
 import (
+	"errors"
 	"net"
+	"strings"
 	"testing"
 
 	"github.com/asciimoth/gonnect/sysnet"
@@ -89,6 +91,42 @@ func TestSystemIntegrationUsesProtectedSystemType(t *testing.T) {
 	}
 	if _, ok := system.(*sysnetdebug.System); !ok {
 		t.Fatalf("system = %T, want *sysnetdebug.System", system)
+	}
+}
+
+func TestDebugSystemIntegrationDoesNotRequireNativeDependencies(t *testing.T) {
+	cfg, err := ParseConfig([]byte(`{}`), []byte(`{
+		"System": {"Type": "debug", "Debug": {"DefaultTun": {"Builder": "pipe"}}}
+	}`))
+	if err != nil {
+		t.Fatalf("ParseConfig: %v", err)
+	}
+	want := errors.New("native dependency unavailable")
+	system, err := SystemIntegrationWithRuntimeDependencies(cfg, nil, want)
+	if err != nil {
+		t.Fatalf("SystemIntegrationWithRuntimeDependencies: %v", err)
+	}
+	if _, ok := system.(*sysnetdebug.System); !ok {
+		t.Fatalf("system = %T, want *sysnetdebug.System", system)
+	}
+}
+
+func TestNativeSystemIntegrationPreservesBeforeChdirDependencyError(t *testing.T) {
+	cfg, err := ParseConfig([]byte(`{}`), []byte(`{"System":{"Type":"native"}}`))
+	if err != nil {
+		t.Fatalf("ParseConfig: %v", err)
+	}
+	want := errors.New("wintun.dll is absent")
+	system, err := SystemIntegrationWithRuntimeDependencies(cfg, nil, want)
+	if system != nil {
+		_ = system.Close()
+		t.Fatalf("system = %T, want nil", system)
+	}
+	if !errors.Is(err, want) {
+		t.Fatalf("error = %v, want wrapped dependency error", err)
+	}
+	if !strings.Contains(err.Error(), "before changing directory") {
+		t.Fatalf("error = %q, want dependency validation phase", err)
 	}
 }
 

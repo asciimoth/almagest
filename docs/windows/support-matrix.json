@@ -256,7 +256,7 @@
       "platforms": ["windows-server-2022-amd64", "windows-11-amd64", "windows-11-arm64"],
       "dependencies": [],
       "requiredSuites": ["windows-native-core", "windows-native-e2e"],
-      "notes": "Milestone 3 must replace the current fallback debug selection."
+      "notes": "Windows now selects the native backend. Qualification remains unavailable until all required native core and E2E evidence exists."
     },
     {
       "id": "windows-config-storage-and-snapshots",

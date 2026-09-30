@@ -5,7 +5,7 @@
   "architecture": "amd64",
   "suites": [
     {
-      "id": "windows-m2-ordinary",
+      "id": "windows-m3-ordinary",
       "identity": "standard",
       "privilege": "ordinary",
       "serialized": false,
@@ -44,13 +44,16 @@
             "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsNativeSystemSelection",
             "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsCapabilityCatalogPreservesUnsupportedPolicies",
             "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsSplitCapabilityRemainsUnknownUntilExclusionAttempt",
-            "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsDisabledMatchersFailBeforeBuild"
+            "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsDisabledMatchersFailBeforeBuild",
+            "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsWintunDependencyRejectsMissingAndWrongArchitectureDLL",
+            "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsWintunDependencyDoesNotSearchCurrentDirectory",
+            "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsRuntimeDependenciesRemainTrustedAfterChdir"
           ]
         }
       ]
     },
     {
-      "id": "windows-m2-privileged",
+      "id": "windows-m3-privileged",
       "identity": "elevated",
       "privilege": "privileged",
       "serialized": true,
@@ -65,6 +68,37 @@
           "eventFile": "m3-stable-guid-collision.jsonl",
           "requiredTests": [
             "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsStableGUIDRejectsConcurrentTunRequests"
+          ]
+        },
+        {
+          "id": "m3::ordinary-tun-split-independence",
+          "kind": "go",
+          "module": "bin",
+          "arguments": ["./almagestd/platform", "-run", "^TestWindowsOrdinaryTunsDoNotStartSplitDriver$"],
+          "eventFile": "m3-ordinary-tun-split-independence.jsonl",
+          "requiredTests": [
+            "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsOrdinaryTunsDoNotStartSplitDriver"
+          ]
+        },
+        {
+          "id": "m3::split-driver-exclusive-ownership",
+          "kind": "go",
+          "module": "bin",
+          "startServices": ["mullvad-split-tunnel"],
+          "arguments": ["-tags=winintegration", "github.com/asciimoth/sysnet-windows/integration", "-run", "^TestC01C03R37R40NativeSplitAcquisition$"],
+          "eventFile": "m3-split-driver-exclusive-ownership.jsonl",
+          "requiredTests": [
+            "github.com/asciimoth/sysnet-windows/integration::TestC01C03R37R40NativeSplitAcquisition"
+          ]
+        },
+        {
+          "id": "m3::split-driver-rejection-does-not-provision",
+          "kind": "go",
+          "module": "bin",
+          "arguments": ["./almagestd/platform", "-run", "^TestWindowsSplitDependencyRejectionDoesNotProvisionService$"],
+          "eventFile": "m3-split-driver-rejection.jsonl",
+          "requiredTests": [
+            "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsSplitDependencyRejectionDoesNotProvisionService"
           ]
         }
       ]

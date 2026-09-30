@@ -127,7 +127,23 @@ base_key() {
             sha256_file "$input"
         done
         printf '%s\n' "$(locked_value .windows.sha256)" "$(locked_value .virtio.sha256)"
+		locked_value '.driver.files | to_entries | sort_by(.key)[] | .value'
+		printf '%s\n' "$(locked_value .wintun.archiveSha256)"
     } | sha256sum | awk '{print $1}'
+}
+
+prepare_native_dependencies() {
+	local output file
+	require_command nix
+	output=$(nix build --no-link --print-out-paths "$repo_root#windows-test-drivers")
+	winvm_driver_dir="$output/amd64"
+	for file in mullvad-split-tunnel.sys mullvad-split-tunnel.inf mullvad-split-tunnel.cat; do
+		verify_hash "split driver $file" "$winvm_driver_dir/$file" "$(locked_value ".driver.files[\"$file\"]")"
+	done
+	output=$(nix build --no-link --print-out-paths "$repo_root#windows-test-wintun")
+	winvm_wintun_dir="$output"
+	[[ -s $winvm_wintun_dir/amd64/wintun.dll ]] || die 'amd64 Wintun DLL is absent'
+	[[ -s $winvm_wintun_dir/arm64/wintun.dll ]] || die 'arm64 Wintun DLL is absent'
 }
 allocate_locked_port() {
     local min max port fd attempt
@@ -259,8 +275,8 @@ import sys
 import tarfile
 
 expected = {
-    "artifacts/windows-m2-ordinary/suite.json": ("windows-m2-ordinary", False),
-    "artifacts/windows-m2-privileged/suite.json": ("windows-m2-privileged", True),
+    "artifacts/windows-m3-ordinary/suite.json": ("windows-m3-ordinary", False),
+    "artifacts/windows-m3-privileged/suite.json": ("windows-m3-privileged", True),
 }
 with tarfile.open(sys.argv[1]) as archive:
     names = set(archive.getnames())
@@ -274,7 +290,7 @@ with tarfile.open(sys.argv[1]) as archive:
         assert value["os"] == "windows-server-2022" and value["architecture"] == "amd64"
         assert value["nativeExecution"] is True and value["outcome"] == "passed"
         assert value["suite"] == suite and value["identity"]["elevated"] is elevated
-        assert value["serialized"] is (suite == "windows-m2-privileged")
+        assert value["serialized"] is (suite == "windows-m3-privileged")
         assert value["cases"] and all(outcome == "passed" for outcome in value["cases"].values())
 PY
 }

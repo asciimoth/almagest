@@ -12,9 +12,9 @@ paths, source packaging, guest toolchain, dependency provisioning, SSH key
 verification, and run/test orchestration.
 The Windows, VirtIO, and OpenSSH locks use
 the integration plan's reference inputs. Go is locked to 1.26.6; its hash is
-from the Go download manifest. No sibling checkout is needed. This baseline
-does not install Wintun or the split driver. Later privileged suites must
-provision the deployment contract's locked dependencies in disposable guests.
+from the Go download manifest. No sibling checkout is needed. Image
+provisioning installs the locked Wintun DLL and compatible split-driver service
+as external test inputs. The daemon does not provision them.
 Do not run privileged networking tests on a normal workstation or shared host.
 
 ## Host setup
@@ -88,7 +88,8 @@ The smoke run verifies transport, standard-user identity, OS, architecture,
 toolchain, and artifact retrieval. It records `testExecution: not-run`:
 **this is not the Windows test-suite gate or a support qualification.**
 
-`just winvm-test` runs the active native gate from `test-suites.json`. The
+`just winvm-test` runs the active Milestone 3 native gate from
+`test-suites.json`. The
 ordinary suite runs all tests in `certcat`, `lib`, and `bin` through the
 standard `winvm` SSH account. The privileged suite runs as SYSTEM through the
 private QEMU Guest Agent. It is serial and uses `go test -p=1 -parallel=1` for
@@ -101,8 +102,9 @@ passing process result, complete package events, and every test explicitly
 listed by the case. A missing test, skip, failure, corrupt event, timeout, wrong
 identity, missing suite artifact, or artifact retrieval failure fails the run.
 The host independently requires passing ordinary and privileged artifacts.
-These Milestone 2 artifacts prove the portable baseline only. They do not
-qualify the later native backend suites in `docs/windows/test-manifest.json`.
+The active gate covers the portable baseline, native backend selection,
+trusted Wintun loading, and read-only split-driver dependency handling. It does
+not qualify later milestones in `docs/windows/test-manifest.json`.
 The host-only harness tests run through both `just lint` and `just test-total`
 without starting a VM.
 

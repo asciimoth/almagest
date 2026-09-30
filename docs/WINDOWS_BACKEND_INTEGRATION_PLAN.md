@@ -1,6 +1,6 @@
 # Windows backend integration plan
 
-Status: proposed implementation plan. Milestones 1 and 2 are complete.
+Status: proposed implementation plan. Milestones 1, 2, and 3 are complete.
 
 ## Objective and scope
 
@@ -285,6 +285,15 @@ joined primary/rollback errors. Verify DNS warnings through node status.
 
 ### Step 8: Validate runtime dependencies without provisioning them
 
+Implementation: complete. The daemon validates Wintun from an absolute trusted
+application-directory or System32 path before and after it changes to file
+storage, checks the loaded path and pinned version, and preserves actionable
+loader errors. Explicit debug integration does not require native inputs. The
+disposable native-test image provisions the locked DLL and split-driver inputs
+outside the daemon. Native cases cover hostile and invalid DLLs, stopped,
+absent, incompatible, and exclusively owned split drivers, and verify that
+rejection does not provision or start the split service.
+
 Verify trusted DLL lookup before and after the daemon changes directory.
 Report actionable dependency errors. Inspect the dependency's actual Wintun
 loading behavior and address any upstream change required for safe lookup.
@@ -300,8 +309,8 @@ Tests: missing DLL, wrong architecture, hostile lookup location, absent/stopped
 or incompatible split service, and a controller already holding the driver.
 Check that rejection does not install, start, reset, or replace the service.
 
-Milestone acceptance: Windows selects and configures the native system, with
-correct capabilities and no daemon-owned dependency provisioning.
+Milestone acceptance: complete. Windows selects and configures the native
+system, with correct capabilities and no daemon-owned dependency provisioning.
 
 ## Milestone 4: Implement config, storage, and access controls
 

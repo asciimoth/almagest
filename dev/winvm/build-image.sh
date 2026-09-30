@@ -6,6 +6,7 @@ script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 source "$script_dir/common.sh"
 "$script_dir/doctor.sh"
 download_packages
+prepare_native_dependencies
 ensure_ssh_key
 key=$(base_key)
 image_dir="$winvm_cache_dir/images/$key"
@@ -60,10 +61,19 @@ sed -i -e "s|@@WINDOWS_IMAGE_NAME@@|$(jq -r .windowsImageName "$config_file")|g"
 unset password
 sed -i \
     -e "s|@@GO_FILE@@|$(locked_value .go.file)|g" -e "s|@@GO_VERSION@@|$(locked_value .go.version)|g" \
-    -e "s|@@OPENSSH_FILE@@|$(locked_value .openssh.file)|g" "$work/provision.ps1"
+    -e "s|@@OPENSSH_FILE@@|$(locked_value .openssh.file)|g" -e "s|@@WINTUN_VERSION@@|$(locked_value .wintun.version)|g" \
+    -e "s|@@DRIVER_SERVICE@@|$(locked_value .driver.serviceName)|g" -e "s|@@DRIVER_VERSION@@|$(locked_value .driver.version)|g" \
+    -e "s|@@UPSTREAM_COMMIT@@|$(locked_value .driver.upstreamCommit)|g" \
+    -e "s|@@DRIVER_SYS_SHA256@@|$(locked_value '.driver.files["mullvad-split-tunnel.sys"]')|g" \
+    -e "s|@@DRIVER_INF_SHA256@@|$(locked_value '.driver.files["mullvad-split-tunnel.inf"]')|g" \
+    -e "s|@@DRIVER_CAT_SHA256@@|$(locked_value '.driver.files["mullvad-split-tunnel.cat"]')|g" "$work/provision.ps1"
 cp "$(package_path go)" "$(package_path openssh)" "$work/"
+mkdir "$work/driver" "$work/wintun"
+cp "$winvm_driver_dir"/* "$work/driver/"
+cp "$winvm_wintun_dir/amd64/wintun.dll" "$work/wintun/wintun-amd64.dll"
+cp "$winvm_wintun_dir/arm64/wintun.dll" "$work/wintun/wintun-arm64.dll"
 printf 'Creating the Windows provisioning ISO...\n'
-xorriso -as mkisofs -quiet -J -R -V WINVM_PROVISION -o "$work/provision.iso" "$work/Autounattend.xml" "$work/provision.ps1" "$work/authorized_key.pub" "$work/$(locked_value .go.file)" "$work/$(locked_value .openssh.file)"
+xorriso -as mkisofs -quiet -J -R -V WINVM_PROVISION -o "$work/provision.iso" "$work/Autounattend.xml" "$work/provision.ps1" "$work/authorized_key.pub" "$work/$(locked_value .go.file)" "$work/$(locked_value .openssh.file)" "$work/driver" "$work/wintun"
 qemu-img create -q -f qcow2 "$work/base.qcow2" "$(jq -r .machine.diskGiB "$config_file")G"
 cp "$(find_ovmf vars)" "$work/OVMF_VARS.fd"
 chmod 0600 "$work/OVMF_VARS.fd"

@@ -39,6 +39,7 @@ type ExecutionCase struct {
 	Arguments     []string `json:"arguments,omitempty"`
 	EventFile     string   `json:"eventFile,omitempty"`
 	RequiredTests []string `json:"requiredTests,omitempty"`
+	StartServices []string `json:"startServices,omitempty"`
 }
 
 // ExecutionIdentity records the token and native platform used by a suite.
@@ -120,7 +121,15 @@ func ValidateExecutionManifest(manifest ExecutionManifest) error {
 				if len(testCase.Arguments) == 0 {
 					return fmt.Errorf("go case %q has no arguments", testCase.ID)
 				}
-			} else if testCase.Module != "" || testCase.EventFile != "" || len(testCase.Arguments) != 0 || len(testCase.RequiredTests) != 0 {
+				if len(testCase.StartServices) != 0 {
+					if suite.Privilege != "privileged" {
+						return fmt.Errorf("go case %q starts services outside the privileged suite", testCase.ID)
+					}
+					if err := uniqueNonempty(testCase.StartServices, "service in "+testCase.ID); err != nil {
+						return err
+					}
+				}
+			} else if testCase.Module != "" || testCase.EventFile != "" || len(testCase.Arguments) != 0 || len(testCase.RequiredTests) != 0 || len(testCase.StartServices) != 0 {
 				return fmt.Errorf("non-Go case %q has Go test fields", testCase.ID)
 			}
 		}

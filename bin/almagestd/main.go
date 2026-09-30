@@ -59,6 +59,10 @@ func main() {
 		return
 	}
 	configureGlobalBufPool(args.NoPool)
+	// Validate the native DLL search before changing to file storage. Keep the
+	// result until the selected integration is known, so explicit debug mode
+	// remains usable without Windows runtime dependencies.
+	_, runtimeDependencyErr := platform.ValidateRuntimeDependencies()
 
 	agent := platform.RunAgent(args)
 
@@ -203,7 +207,7 @@ func main() {
 	defer commandRunner.Close()
 
 	// Setup system integration here before privileges drop
-	sys, err := SystemIntegration(conf, commandRunner, randomSeeds.system)
+	sys, err := SystemIntegrationWithRuntimeDependencies(conf, commandRunner, runtimeDependencyErr, randomSeeds.system)
 	if err != nil {
 		fatal(err)
 		return

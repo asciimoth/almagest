@@ -78,7 +78,7 @@ if [[ $mode != --shell ]]; then
         suite=harness-smoke
         test_execution=not-run
     else
-        suite=windows-milestone-2
+        suite=windows-milestone-3
         test_execution=native
     fi
     jq -n --arg key "$key" --arg suite "$suite" --arg execution "$test_execution" '{schemaVersion:1,baseImageKey:$key,suite:$suite,status:"running",testExecution:$execution}' >"$run_dir/run.json"

@@ -59,6 +59,28 @@ type debugDefaultTunConfig struct {
 }
 
 func SystemIntegration(cfg *Config, runner cmdrunner.Dispatcher, randomSeed ...int64) (sysnet.System, error) {
+	return systemIntegration(cfg, runner, nil, randomSeed...)
+}
+
+// SystemIntegrationWithRuntimeDependencies validates the native dependency
+// search on both sides of the daemon's working-directory change. The early
+// result prevents a new DLL in file storage from repairing or influencing the
+// trusted lookup. Explicit debug integration has no native dependencies.
+func SystemIntegrationWithRuntimeDependencies(
+	cfg *Config,
+	runner cmdrunner.Dispatcher,
+	beforeChdirErr error,
+	randomSeed ...int64,
+) (sysnet.System, error) {
+	return systemIntegration(cfg, runner, &beforeChdirErr, randomSeed...)
+}
+
+func systemIntegration(
+	cfg *Config,
+	runner cmdrunner.Dispatcher,
+	beforeChdirErr *error,
+	randomSeed ...int64,
+) (sysnet.System, error) {
 	view := cfg.systemConfig()
 	if view != nil {
 		typ, err := view.Get(configer.Path{"Type"})
@@ -74,6 +96,14 @@ func SystemIntegration(cfg *Config, runner cmdrunner.Dispatcher, randomSeed ...i
 					return nil, ErrSysType
 				}
 			}
+		}
+	}
+	if beforeChdirErr != nil {
+		if *beforeChdirErr != nil {
+			return nil, fmt.Errorf("validate native runtime dependencies before changing directory: %w", *beforeChdirErr)
+		}
+		if _, err := platform.ValidateRuntimeDependencies(); err != nil {
+			return nil, fmt.Errorf("validate native runtime dependencies after changing directory: %w", err)
 		}
 	}
 	system, err := platform.SystemIntegration(view, runner, randomSeed...)
