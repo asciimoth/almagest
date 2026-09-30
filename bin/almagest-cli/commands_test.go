@@ -245,9 +245,9 @@ func TestRunPingPrintsPrettyResult(t *testing.T) {
 	ft := &fakeTransport{reads: []api.Message{event, resp}}
 
 	var stdout, stderr bytes.Buffer
-	err = run(context.Background(), []string{"--url", "unix://tmp/admin.sock", "admin", "ping", "--nonce", "abc"}, nil, &stdout, &stderr, func(_ context.Context, ep endpoint) (apiTransport, error) {
-		if ep.path != "/tmp/admin.sock" {
-			t.Fatalf("endpoint path = %q", ep.path)
+	err = run(context.Background(), []string{"--url", "web://127.0.0.1:8090", "admin", "ping", "--nonce", "abc"}, nil, &stdout, &stderr, func(_ context.Context, ep endpoint) (apiTransport, error) {
+		if ep.url != "ws://127.0.0.1:8090/api/ws" {
+			t.Fatalf("endpoint URL = %q", ep.url)
 		}
 		return ft, nil
 	})

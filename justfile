@@ -111,6 +111,12 @@ clean: certcat-clean
 build-web:
   cd panel && npm ci && npm run build
 
+build-windows:
+  ./scripts/build-windows.sh amd64 arm64
+
+build-windows-arch arch:
+  ./scripts/build-windows.sh {{arch}}
+
 build: certcat-generate build-web
 	go build -o ./almagestd ./bin/almagestd/
 

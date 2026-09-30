@@ -151,6 +151,8 @@ requirements, and initial required-test manifest are recorded and validated.
 
 ### Step 3: Adapt builds to Almagest's workspace
 
+Implementation: complete. See [Windows cross-builds](WINDOWS_BUILD.md).
+
 Add `build-windows` for amd64 and arm64. Build the daemon, CLI, all three Go
 modules, and test binaries, including Windows-only and integration packages.
 Discover packages with the target OS, architecture, and build tags.
