@@ -220,6 +220,166 @@ func TestWindowsExplicitStorageOverridesKnownFolders(t *testing.T) {
 	}
 }
 
+func TestWindowsPrivateStateRejectsUnsafeDACLs(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		sddl     string
+		nullDACL bool
+	}{
+		{name: "unrelated full access", sddl: "D:P(A;;GA;;;WD)"},
+		{name: "null DACL", nullDACL: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "private.hujson")
+			if err := os.WriteFile(path, []byte("{}"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if test.nullDACL {
+				setWindowsTestNullDACL(t, path)
+			} else {
+				setWindowsTestDACL(t, path, test.sddl)
+			}
+			if _, err := readPrivateWindowsFile(path); err == nil {
+				t.Fatal("readPrivateWindowsFile accepted an unsafe DACL")
+			}
+		})
+	}
+}
+
+func TestWindowsStorageACLProtectsGeneratedState(t *testing.T) {
+	storage := filepath.Join(t.TempDir(), "private-store")
+	storage, cleanup, err := SetupFS(storage, false)
+	if err != nil {
+		t.Fatalf("SetupFS: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := cleanup(); err != nil {
+			t.Errorf("cleanup: %v", err)
+		}
+	})
+	directory := filepath.Join(storage, "generated-secrets")
+	if err := os.Mkdir(directory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := checkWindowsDirectory(directory, windowsPathPrivateDirectory); err != nil {
+		t.Fatalf("generated directory did not inherit the private ACL: %v", err)
+	}
+	secret := filepath.Join(directory, "secret.bin")
+	if err := os.WriteFile(secret, []byte("secret"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readPrivateWindowsFile(secret); err != nil {
+		t.Fatalf("generated file did not inherit the private ACL: %v", err)
+	}
+}
+
+func TestWindowsPrivateStateRejectsWritableParentAndHardLink(t *testing.T) {
+	t.Run("writable parent", func(t *testing.T) {
+		parent := filepath.Join(t.TempDir(), "replaceable")
+		if err := os.Mkdir(parent, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		setWindowsTestDACL(t, parent, "D:P(A;;GA;;;WD)")
+		if err := createPrivateWindowsFile(filepath.Join(parent, "config.hujson"), []byte("{}")); err == nil {
+			t.Fatal("createPrivateWindowsFile accepted an untrusted writable parent")
+		}
+	})
+
+	t.Run("hard link", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "private.hujson")
+		if err := createPrivateWindowsFile(path, []byte("secret")); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Link(path, filepath.Join(filepath.Dir(path), "alias.hujson")); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := readPrivateWindowsFile(path); err == nil {
+			t.Fatal("readPrivateWindowsFile accepted a hard-linked private file")
+		}
+	})
+}
+
+func TestWindowsPrivateStateRejectsReparsePointsAndStreams(t *testing.T) {
+	if _, err := validateWindowsPath(`C:\private\config.hujson:secret`); err == nil {
+		t.Fatal("validateWindowsPath accepted an alternate data stream")
+	}
+	if _, err := validateWindowsPath(`C:\private\..\config.hujson`); err == nil {
+		t.Fatal("validateWindowsPath accepted parent traversal")
+	}
+	if _, err := validateWindowsPath(`\\server\share\config.hujson`); err == nil {
+		t.Fatal("validateWindowsPath accepted a UNC path")
+	}
+
+	target := filepath.Join(t.TempDir(), "target.hujson")
+	if err := createPrivateWindowsFile(target, []byte("secret")); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(filepath.Dir(target), "link.hujson")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("create Windows symlink: %v", err)
+	}
+	if _, err := readPrivateWindowsFile(link); err == nil {
+		t.Fatal("readPrivateWindowsFile followed a reparse point")
+	}
+}
+
+func TestWindowsUnsafeConfigDoesNotBypassStorageACL(t *testing.T) {
+	configDir := t.TempDir()
+	configPath := filepath.Join(configDir, "unsafe.hujson")
+	protectedPath := filepath.Join(configDir, "unsafe-protected.hujson")
+	if err := os.WriteFile(configPath, []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(protectedPath, []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	setWindowsTestDACL(t, configPath, "D:P(A;;GA;;;WD)")
+	agent, err := newWindowsAgent(almargs.Args{
+		Config: configPath, ProtectedConfig: protectedPath, UnsafeConfig: true,
+	})
+	if err != nil {
+		t.Fatalf("newWindowsAgent with --unsafe-config: %v", err)
+	}
+	if _, _, err := agent.ReadConfig(); err != nil {
+		t.Fatalf("unsafe ReadConfig: %v", err)
+	}
+
+	storage := filepath.Join(t.TempDir(), "unsafe-store")
+	if err := os.Mkdir(storage, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	setWindowsTestDACL(t, storage, "D:P(A;;GA;;;WD)")
+	if _, _, err := SetupFS(storage, false); err == nil {
+		t.Fatal("SetupFS accepted unsafe storage because config was unsafe")
+	}
+}
+
+func setWindowsTestDACL(t *testing.T, path, sddl string) {
+	t.Helper()
+	descriptor, err := windows.SecurityDescriptorFromString(sddl)
+	if err != nil {
+		t.Fatalf("SecurityDescriptorFromString: %v", err)
+	}
+	dacl, _, err := descriptor.DACL()
+	if err != nil && !errors.Is(err, windows.ERROR_OBJECT_NOT_FOUND) {
+		t.Fatalf("DACL: %v", err)
+	}
+	if err := windows.SetNamedSecurityInfo(path, windows.SE_FILE_OBJECT,
+		windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION,
+		nil, nil, dacl, nil); err != nil {
+		t.Fatalf("SetNamedSecurityInfo: %v", err)
+	}
+}
+
+func setWindowsTestNullDACL(t *testing.T, path string) {
+	t.Helper()
+	if err := windows.SetNamedSecurityInfo(path, windows.SE_FILE_OBJECT,
+		windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION,
+		nil, nil, nil, nil); err != nil {
+		t.Fatalf("SetNamedSecurityInfo null DACL: %v", err)
+	}
+}
+
 func TestWindowsRejectsUnixAdminFlags(t *testing.T) {
 	socket := `C:\ignored.sock`
 	cases := []almargs.Args{

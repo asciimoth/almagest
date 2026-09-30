@@ -342,6 +342,14 @@ unsupported Unix-only flags.
 
 ### Step 10: Add Windows ACL and path validation
 
+Implementation: complete. Windows config files are created with protected
+ACLs for the current identity, Local System, and Administrators. Storage and
+temporary directories use the same ACL with inheritable access for generated
+private state. Safe config reads validate owner, DACL, file type, link count,
+and reparse status on an open handle. Parent checks reject untrusted
+replacement rights. Safe state also rejects traversal, UNC/device paths, and
+alternate data streams. `--unsafe-config` affects config checks only.
+
 Define trusted owners and explicit access for config, protected config,
 storage, generated secrets, and temporary directories. Use SIDs and Windows
 ACLs, not Unix mode bits. Check inherited permissions and parent replacement

@@ -108,6 +108,20 @@
           "requiredTests": [
             "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsSplitDependencyRejectionDoesNotProvisionService"
           ]
+        },
+        {
+          "id": "m4::acl-and-path-validation",
+          "kind": "go",
+          "module": "bin",
+          "arguments": ["./almagestd/platform", "-run", "^TestWindows(PrivateStateRejects|StorageACLProtectsGeneratedState|UnsafeConfigDoesNotBypassStorageACL)"],
+          "eventFile": "m4-acl-and-path-validation.jsonl",
+          "requiredTests": [
+            "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsPrivateStateRejectsUnsafeDACLs",
+            "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsPrivateStateRejectsWritableParentAndHardLink",
+            "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsPrivateStateRejectsReparsePointsAndStreams",
+            "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsStorageACLProtectsGeneratedState",
+            "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsUnsafeConfigDoesNotBypassStorageACL"
+          ]
         }
       ]
     }

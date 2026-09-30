@@ -45,11 +45,15 @@ func SetupFS(storagePath string, tmp bool) (fs string, cleanup FSCleanup, err er
 			return "", nil, fmt.Errorf("resolve LocalAppData for temporary storage: %w", folderErr)
 		}
 		parent := filepath.Join(localData, windowsApplicationDirectory, "tmp")
-		if err := os.MkdirAll(parent, 0o700); err != nil {
+		if err := makeSurePrivateWindowsDirExists(parent); err != nil {
 			return "", nil, fmt.Errorf("temporary file storage parent: %w", err)
 		}
 		fs, err = os.MkdirTemp(parent, "alm-store-")
 		if err != nil {
+			return "", nil, fmt.Errorf("temporary file storage setup: %w", err)
+		}
+		if err := checkWindowsDirectory(fs, windowsPathPrivateDirectory); err != nil {
+			_ = os.RemoveAll(fs)
 			return "", nil, fmt.Errorf("temporary file storage setup: %w", err)
 		}
 		temporaryPath := fs
@@ -76,7 +80,7 @@ func SetupFS(storagePath string, tmp bool) (fs string, cleanup FSCleanup, err er
 	if err != nil {
 		return "", nil, fmt.Errorf("file storage path %q: %w", storagePath, err)
 	}
-	if err := os.MkdirAll(fs, 0o700); err != nil {
+	if err := makeSurePrivateWindowsDirExists(fs); err != nil {
 		return "", nil, fmt.Errorf("file storage setup: %w", err)
 	}
 	return fs, cleanup, nil
@@ -87,8 +91,9 @@ func TmpAdminUnixSocketPath() (string, error) {
 }
 
 type windowsAgent struct {
-	StdInConfig bool
-	ReadOnly    bool
+	StdInConfig  bool
+	ReadOnly     bool
+	UnsafeConfig bool
 
 	ConfigPath    string
 	ProtectedPath string
@@ -102,14 +107,26 @@ func (a *windowsAgent) WriteConfig(data []byte) error {
 	if a.ReadOnly {
 		return ErrConfigReadOnly
 	}
-	info, err := os.Stat(a.ConfigPath)
-	if err != nil {
+	var err error
+	if a.UnsafeConfig {
+		info, statErr := os.Stat(a.ConfigPath)
+		if statErr != nil {
+			return statErr
+		}
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("config path is not a regular file: %s", a.ConfigPath)
+		}
+	} else if _, err := readPrivateWindowsFile(a.ConfigPath); err != nil {
 		return err
 	}
-	if !info.Mode().IsRegular() {
-		return fmt.Errorf("config path is not a regular file: %s", a.ConfigPath)
+	var temporary *os.File
+	if a.UnsafeConfig {
+		temporary, err = os.CreateTemp(filepath.Dir(a.ConfigPath), "."+filepath.Base(a.ConfigPath)+".tmp-*")
+	} else {
+		temporary, err = createPrivateWindowsTempFile(
+			filepath.Dir(a.ConfigPath), "."+filepath.Base(a.ConfigPath)+".tmp-",
+		)
 	}
-	temporary, err := os.CreateTemp(filepath.Dir(a.ConfigPath), "."+filepath.Base(a.ConfigPath)+".tmp-*")
 	if err != nil {
 		return fmt.Errorf("create temporary config file: %w", err)
 	}
@@ -142,11 +159,15 @@ func (a *windowsAgent) ReadConfig() ([]byte, []byte, error) {
 		mainData, protectedData := splitEmbeddedProtectedConfig(configData, []byte(DefaultProtectedConfigText))
 		return mainData, protectedData, nil
 	}
-	configData, err := os.ReadFile(a.ConfigPath)
+	readFile := readPrivateWindowsFile
+	if a.UnsafeConfig {
+		readFile = os.ReadFile
+	}
+	configData, err := readFile(a.ConfigPath)
 	if err != nil {
 		return nil, nil, fmt.Errorf("config read: %s: %w", a.ConfigPath, err)
 	}
-	protectedData, err := os.ReadFile(a.ProtectedPath)
+	protectedData, err := readFile(a.ProtectedPath)
 	if err != nil {
 		return nil, nil, fmt.Errorf("protected config read: %s: %w", a.ProtectedPath, err)
 	}
@@ -162,7 +183,11 @@ func RunAgent(args args.Args) Agent {
 }
 
 func newWindowsAgent(arguments args.Args) (*windowsAgent, error) {
-	agent := &windowsAgent{StdInConfig: arguments.StdInConfig, ReadOnly: arguments.StdInConfig}
+	agent := &windowsAgent{
+		StdInConfig:  arguments.StdInConfig,
+		ReadOnly:     arguments.StdInConfig,
+		UnsafeConfig: arguments.UnsafeConfig,
+	}
 	if arguments.StdInConfig {
 		return agent, nil
 	}
@@ -194,11 +219,13 @@ func newWindowsAgent(arguments args.Args) (*windowsAgent, error) {
 			return nil, fmt.Errorf("protected config path %q: %w", protectedPath, err)
 		}
 	}
-	if err := makeSureWindowsConfigFileExists(configPath, []byte(DefaultConfigText)); err != nil {
-		return nil, fmt.Errorf("config file %s: %w", configPath, err)
-	}
-	if err := makeSureWindowsConfigFileExists(protectedPath, []byte(DefaultProtectedConfigText)); err != nil {
-		return nil, fmt.Errorf("protected config file %s: %w", protectedPath, err)
+	if !arguments.UnsafeConfig {
+		if err := makeSureWindowsConfigFileExists(configPath, []byte(DefaultConfigText)); err != nil {
+			return nil, fmt.Errorf("config file %s: %w", configPath, err)
+		}
+		if err := makeSureWindowsConfigFileExists(protectedPath, []byte(DefaultProtectedConfigText)); err != nil {
+			return nil, fmt.Errorf("protected config file %s: %w", protectedPath, err)
+		}
 	}
 	agent.ConfigPath = configPath
 	agent.ProtectedPath = protectedPath
@@ -206,31 +233,13 @@ func newWindowsAgent(arguments args.Args) (*windowsAgent, error) {
 }
 
 func makeSureWindowsConfigFileExists(path string, initial []byte) error {
-	if info, err := os.Stat(path); err == nil {
-		if !info.Mode().IsRegular() {
-			return fmt.Errorf("not a regular file")
-		}
+	if _, err := readPrivateWindowsFile(path); err == nil {
 		return nil
-	} else if !errors.Is(err, os.ErrNotExist) {
+	} else if !errors.Is(err, os.ErrNotExist) && !errors.Is(err, windows.ERROR_FILE_NOT_FOUND) &&
+		!errors.Is(err, windows.ERROR_PATH_NOT_FOUND) {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return err
-	}
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
-	if err != nil {
-		return err
-	}
-	if _, err := file.Write(initial); err != nil {
-		_ = file.Close()
-		_ = os.Remove(path)
-		return err
-	}
-	if err := file.Close(); err != nil {
-		_ = os.Remove(path)
-		return err
-	}
-	return nil
+	return createPrivateWindowsFile(path, initial)
 }
 
 // ValidateArgs rejects Unix administration flags before startup changes any
