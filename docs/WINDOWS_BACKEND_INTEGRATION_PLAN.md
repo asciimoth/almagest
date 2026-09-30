@@ -259,6 +259,14 @@ TUN requests. Verify updates to the correct module and checksums.
 
 ### Step 7: Preserve capabilities, warnings, and errors
 
+Implementation: complete. Almagest uses the shared sysnet capability and
+validation reports for class selection, menus, and preflight checks. Unknown
+capabilities remain advisory, while unavailable and unsupported capabilities
+block the operation. Windows contract tests cover unsupported routing,
+multicast, Linux rules, deferred split-driver ownership, disabled matchers, and
+error identity preservation. DefaultTun publishes backend DNS-scope warnings
+as node warning popups.
+
 Use existing capability and option-validation paths. Preserve the split
 driver's unknown state until its deferred ownership check runs. Make missing
 features and dependency failures visible in node status and menus.

@@ -113,6 +113,64 @@ func TestSysnetDebugUnknownNamedCapabilityKeepsExplicitAttemptEditable(t *testin
 	}
 }
 
+func TestValidationErrorForAttemptPreservesBlockingErrorIdentities(t *testing.T) {
+	invalidCause := errors.New("invalid native option")
+	primaryCause := errors.New("dependency operation failed")
+	rollbackCause := errors.New("dependency rollback failed")
+	report := sysnet.ValidationReport{Issues: []sysnet.ValidationIssue{
+		{
+			Path:   "Tun.Create",
+			State:  sysnet.CapabilityUnknown,
+			Reason: sysnet.ReasonProbeNotRun,
+		},
+		{
+			Path:  "Tun.Name",
+			State: sysnet.CapabilityUnknown,
+			Err:   errors.Join(sysnet.ErrInvalidOptions, invalidCause),
+		},
+		{
+			Path:   "Tun.Create",
+			State:  sysnet.CapabilityUnavailable,
+			Reason: sysnet.ReasonMissingDependency,
+			Err:    errors.Join(primaryCause, rollbackCause),
+		},
+	}}
+
+	err := validationErrorForAttempt(report)
+	for _, target := range []error{
+		sysnet.ErrInvalidOptions,
+		invalidCause,
+		sysnet.ErrUnavailable,
+		primaryCause,
+		rollbackCause,
+	} {
+		if !errors.Is(err, target) {
+			t.Fatalf("validation error %v does not preserve %v", err, target)
+		}
+	}
+	if errors.Is(err, sysnet.ErrCapabilityUnknown) {
+		t.Fatalf("advisory unknown capability blocked the attempt: %v", err)
+	}
+}
+
+func TestValidationErrorForAttemptAllowsOnlyAdvisoryUnknownIssues(t *testing.T) {
+	report := sysnet.ValidationReport{Issues: []sysnet.ValidationIssue{
+		{
+			Path:   "DefaultTun.Profile",
+			State:  sysnet.CapabilityUnknown,
+			Reason: sysnet.ReasonProbeNotRun,
+		},
+		{
+			Path:   "DefaultTun.Rule",
+			State:  sysnet.CapabilityUnknown,
+			Reason: sysnet.ReasonProbeFailed,
+		},
+	}}
+	if err := validationErrorForAttempt(report); err != nil {
+		t.Fatalf("advisory unknown capability error = %v, want nil", err)
+	}
+}
+
 func TestSysnetDebugRuleMenusUseExactRoutingContext(t *testing.T) {
 	system := &sysnetdebug.System{Rules: []sysnet.RuleCapability{
 		{Type: "include-only", Description: "Include rule", ValueKind: sysnet.RuleValueName, SemanticsID: "test.include.v1"},

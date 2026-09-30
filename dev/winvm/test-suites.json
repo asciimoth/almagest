@@ -12,7 +12,22 @@
       "cases": [
         {"id": "m2::execution-identity-standard-user", "kind": "identity"},
         {"id": "m2::portable-certcat", "kind": "go", "module": "certcat", "arguments": ["./..."], "eventFile": "certcat.jsonl"},
-        {"id": "m2::portable-lib", "kind": "go", "module": "lib", "arguments": ["./..."], "eventFile": "lib.jsonl"},
+        {
+          "id": "m2::portable-lib",
+          "kind": "go",
+          "module": "lib",
+          "arguments": ["./..."],
+          "eventFile": "lib.jsonl",
+          "requiredTests": [
+            "github.com/asciimoth/almagest/lib/tun::TestSysnetDebugCapabilityStatesGateTunClasses",
+            "github.com/asciimoth/almagest/lib/tun::TestSysnetDebugMenusReflectUnavailableCapabilities",
+            "github.com/asciimoth/almagest/lib/tun::TestValidationErrorForAttemptPreservesBlockingErrorIdentities",
+            "github.com/asciimoth/almagest/lib/tun::TestValidationErrorForAttemptAllowsOnlyAdvisoryUnknownIssues",
+            "github.com/asciimoth/almagest/lib/tun::TestSysnetDebugUnknownPreflightBuildsTun",
+            "github.com/asciimoth/almagest/lib/tun::TestSysnetDebugUnavailablePreflightPreservesLiveTun",
+            "github.com/asciimoth/almagest/lib/tun::TestDefaultTunWarningsShowWarningPopup"
+          ]
+        },
         {
           "id": "m2::portable-bin",
           "kind": "go",
@@ -26,7 +41,10 @@
             "github.com/asciimoth/almagest/bin/almagestd/platform::TestReadWindowsSystemConfigRejectsInvalidDurationAndRecovery",
             "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsSystemConfigRejectsInvalidGUID",
             "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsDefaultConfigExample",
-            "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsNativeSystemSelection"
+            "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsNativeSystemSelection",
+            "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsCapabilityCatalogPreservesUnsupportedPolicies",
+            "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsSplitCapabilityRemainsUnknownUntilExclusionAttempt",
+            "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsDisabledMatchersFailBeforeBuild"
           ]
         }
       ]
