@@ -1,0 +1,16 @@
+{
+	"System": {
+		"Type": "native",
+		"Windows": {
+			"AdapterNamePrefix": "alm",
+			// This selects a preferred interface. The backend can use another
+			// usable interface when the preference is unavailable.
+			"UnderlaySelector": "",
+			"OperationTimeout": "30s",
+			"Recovery": "inspect",
+		},
+	},
+	"Experimental": {
+		"TorDriver": {},
+	},
+}

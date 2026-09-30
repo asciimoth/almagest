@@ -13,7 +13,22 @@
         {"id": "m2::execution-identity-standard-user", "kind": "identity"},
         {"id": "m2::portable-certcat", "kind": "go", "module": "certcat", "arguments": ["./..."], "eventFile": "certcat.jsonl"},
         {"id": "m2::portable-lib", "kind": "go", "module": "lib", "arguments": ["./..."], "eventFile": "lib.jsonl"},
-        {"id": "m2::portable-bin", "kind": "go", "module": "bin", "arguments": ["./..."], "eventFile": "bin.jsonl"}
+        {
+          "id": "m2::portable-bin",
+          "kind": "go",
+          "module": "bin",
+          "arguments": ["./..."],
+          "eventFile": "bin.jsonl",
+          "requiredTests": [
+            "github.com/asciimoth/almagest/bin/almagestd::TestSystemIntegrationUsesProtectedSystemType",
+            "github.com/asciimoth/almagest/bin/almagestd/platform::TestReadWindowsSystemConfigDefaults",
+            "github.com/asciimoth/almagest/bin/almagestd/platform::TestReadWindowsSystemConfigExplicitFields",
+            "github.com/asciimoth/almagest/bin/almagestd/platform::TestReadWindowsSystemConfigRejectsInvalidDurationAndRecovery",
+            "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsSystemConfigRejectsInvalidGUID",
+            "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsDefaultConfigExample",
+            "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsNativeSystemSelection"
+          ]
+        }
       ]
     },
     {
@@ -23,7 +38,17 @@
       "serialized": true,
       "cases": [
         {"id": "m2::execution-identity-elevated", "kind": "identity"},
-        {"id": "m2::exclusive-cases-serialized", "kind": "serialization"}
+        {"id": "m2::exclusive-cases-serialized", "kind": "serialization"},
+        {
+          "id": "m3::stable-guid-collision",
+          "kind": "go",
+          "module": "bin",
+          "arguments": ["./almagestd/platform", "-run", "^TestWindowsStableGUIDRejectsConcurrentTunRequests$"],
+          "eventFile": "m3-stable-guid-collision.jsonl",
+          "requiredTests": [
+            "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsStableGUIDRejectsConcurrentTunRequests"
+          ]
+        }
       ]
     }
   ]

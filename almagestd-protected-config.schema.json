@@ -616,6 +616,9 @@
         },
         "Linux": {
           "$ref": "#/$defs/linuxSystemConfig"
+        },
+        "Windows": {
+          "$ref": "#/$defs/windowsSystemConfig"
         }
       },
       "additionalProperties": true
@@ -719,6 +722,70 @@
         }
       },
       "additionalProperties": true
+    },
+    "windowsSystemConfig": {
+      "type": "object",
+      "description": "Options for the native sysnet-windows integration. These options are read from protected System.Windows when System.Type is native or omitted on Windows. The daemon injects the backend logger; it cannot be set in configuration.",
+      "properties": {
+        "AdapterNamePrefix": {
+          "type": "string",
+          "default": "alm",
+          "description": "Prefix for automatically generated Wintun adapter names. Empty uses the sysnet-windows default."
+        },
+        "StableGUID": {
+          "type": "string",
+          "pattern": "^$|^\\{?[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}\\}?$",
+          "default": "",
+          "description": "Optional stable Wintun adapter GUID. A stable GUID can identify only one live adapter, so concurrent TUN requests that use it can fail with a collision."
+        },
+        "UnderlaySelector": {
+          "type": "string",
+          "default": "",
+          "description": "Preferred outbound interface name or GUID. This is a preference, not a hard restriction; the backend can select another usable interface."
+        },
+        "Features": {
+          "$ref": "#/$defs/windowsFeatureConfig"
+        },
+        "OperationTimeout": {
+          "type": "string",
+          "default": "30s",
+          "minLength": 1,
+          "description": "Timeout for backend operations in Go duration syntax. Omit this field to use the backend default."
+        },
+        "Recovery": {
+          "type": "string",
+          "enum": [
+            "inspect",
+            "owned"
+          ],
+          "default": "inspect",
+          "description": "inspect reports abandoned state without changing it. owned permits cleanup only after the backend proves ownership."
+        }
+      },
+      "additionalProperties": false
+    },
+    "windowsFeatureConfig": {
+      "type": "object",
+      "description": "Windows backend feature switches. The zero value enables both address families, executable exclusions, and ownership matchers.",
+      "properties": {
+        "DisableIPv4": {
+          "type": "boolean",
+          "default": false
+        },
+        "DisableIPv6": {
+          "type": "boolean",
+          "default": false
+        },
+        "DisableExclusions": {
+          "type": "boolean",
+          "default": false
+        },
+        "DisableMatchers": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "additionalProperties": false
     },
     "linuxSystemConfig": {
       "type": "object",

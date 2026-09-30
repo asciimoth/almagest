@@ -234,6 +234,13 @@ artifact failures reliably. Native backend integration is not claimed.
 
 ### Step 6: Add Windows selection and protected config
 
+Implementation: complete. Windows now selects the pinned sysnet-windows
+backend, maps protected `System.Windows` fields into its typed configuration,
+and provides Windows-specific embedded defaults. The schemas document the
+feature switches, duration and recovery formats, stable GUID behavior, and
+preferred-underlay fallback semantics. The native suite registers the stable
+GUID collision case as an elevated serialized test.
+
 Add Windows platform files and exclude Windows from fallback build tags. Map
 `Protected.System.Windows` into `SystemConfig`: adapter prefix, optional GUID,
 underlay preference, feature switches, timeout, recovery policy, and logger.

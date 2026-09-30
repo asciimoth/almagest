@@ -13,7 +13,7 @@
     },
     "Protected": {
       "$ref": "almagestd-protected-config.schema.json",
-      "description": "Optional protected configuration object accepted when almagestd reads the config from --stdin. File-based configs should keep these settings in the separate protected config file."
+      "description": "Optional protected configuration object, including native Linux or Windows system settings, accepted when almagestd reads the config from --stdin. File-based configs should keep these settings in the separate protected config file."
     },
     "nodes": {
       "$ref": "#/$defs/engineNodesConfig"
