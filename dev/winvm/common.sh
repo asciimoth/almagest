@@ -251,3 +251,30 @@ wait_ready() {
 validate_smoke_artifact() {
     tar -xOf "$1" artifacts/smoke.json | python3 -c 'import json,sys; v=json.loads(sys.stdin.buffer.read().decode("utf-8-sig")); assert v["outcome"]=="passed" and v["suite"]=="harness-smoke" and v["testExecution"]=="not-run"'
 }
+
+validate_native_test_artifact() {
+    python3 - "$1" <<'PY'
+import json
+import sys
+import tarfile
+
+expected = {
+    "artifacts/windows-m2-ordinary/suite.json": ("windows-m2-ordinary", False),
+    "artifacts/windows-m2-privileged/suite.json": ("windows-m2-privileged", True),
+}
+with tarfile.open(sys.argv[1]) as archive:
+    names = set(archive.getnames())
+    missing = set(expected) - names
+    if missing:
+        raise RuntimeError("native suite artifacts are absent: " + ", ".join(sorted(missing)))
+    for name, (suite, elevated) in expected.items():
+        value = json.loads(archive.extractfile(name).read().decode("utf-8-sig"))
+        assert value["schemaVersion"] == 1
+        assert value["platformId"] == "windows-server-2022-amd64"
+        assert value["os"] == "windows-server-2022" and value["architecture"] == "amd64"
+        assert value["nativeExecution"] is True and value["outcome"] == "passed"
+        assert value["suite"] == suite and value["identity"]["elevated"] is elevated
+        assert value["serialized"] is (suite == "windows-m2-privileged")
+        assert value["cases"] and all(outcome == "passed" for outcome in value["cases"].values())
+PY
+}

@@ -144,6 +144,32 @@ class HarnessTests(unittest.TestCase):
                 tar.addfile(entry, io.BytesIO(data))
             self.shell('validate_smoke_artifact "$ARTIFACT"', ok=outcome == 'passed')
 
+    def test_native_artifacts_require_both_identities(self):
+        archive = self.path / 'native.tar'
+        self.env['ARTIFACT'] = str(archive)
+        def suite(name, elevated):
+            return json.dumps({
+                'schemaVersion': 1, 'platformId': 'windows-server-2022-amd64',
+                'os': 'windows-server-2022', 'architecture': 'amd64',
+                'nativeExecution': True, 'suite': name,
+                'identity': {'elevated': elevated},
+                'serialized': name.endswith('privileged'), 'outcome': 'passed',
+                'cases': {'required': 'passed'},
+            }).encode()
+        with tarfile.open(archive, 'w') as tar:
+            for name, elevated in (('windows-m2-ordinary', False), ('windows-m2-privileged', True)):
+                data = suite(name, elevated)
+                entry = tarfile.TarInfo(f'artifacts/{name}/suite.json')
+                entry.size = len(data)
+                tar.addfile(entry, io.BytesIO(data))
+        self.shell('validate_native_test_artifact "$ARTIFACT"')
+        with tarfile.open(archive, 'w') as tar:
+            data = suite('windows-m2-ordinary', False)
+            entry = tarfile.TarInfo('artifacts/windows-m2-ordinary/suite.json')
+            entry.size = len(data)
+            tar.addfile(entry, io.BytesIO(data))
+        self.shell('validate_native_test_artifact "$ARTIFACT"', ok=False)
+
 
 if __name__ == '__main__':
     unittest.main()

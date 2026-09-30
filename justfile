@@ -130,6 +130,9 @@ winvm-image:
 winvm-smoke:
   ./dev/winvm/run.sh smoke
 
+winvm-test:
+  ./dev/winvm/run.sh test
+
 winvm-shell run:
   ./dev/winvm/run.sh --shell {{quote(run)}}
 

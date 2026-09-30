@@ -33,10 +33,22 @@ elif name == 'scp':
     if sys.argv[-1].endswith('guest-artifacts.tar'):
         if mode == 'artifacts':
             sys.exit(1)
-        data = json.dumps({'suite':'harness-smoke','outcome':'passed','testExecution':'not-run'}).encode()
         with tarfile.open(sys.argv[-1], 'w') as archive:
-            entry = tarfile.TarInfo('artifacts/smoke.json'); entry.size = len(data)
-            archive.addfile(entry, io.BytesIO(data))
+            if os.environ.get('RUN_KIND') == 'native':
+                for suite, elevated in (('windows-m2-ordinary', False), ('windows-m2-privileged', True)):
+                    value = {'schemaVersion':1, 'platformId':'windows-server-2022-amd64',
+                             'os':'windows-server-2022', 'architecture':'amd64',
+                             'nativeExecution':True, 'suite':suite, 'outcome':'passed',
+                             'identity':{'elevated':elevated},
+                             'serialized':suite.endswith('privileged'),
+                             'cases':{'required':'passed'}}
+                    data = json.dumps(value).encode()
+                    entry = tarfile.TarInfo(f'artifacts/{suite}/suite.json'); entry.size = len(data)
+                    archive.addfile(entry, io.BytesIO(data))
+            else:
+                data = json.dumps({'suite':'harness-smoke','outcome':'passed','testExecution':'not-run'}).encode()
+                entry = tarfile.TarInfo('artifacts/smoke.json'); entry.size = len(data)
+                archive.addfile(entry, io.BytesIO(data))
 elif name == 'package-worktree.py':
     pathlib.Path(sys.argv[1]).write_bytes(b'source fixture')
 elif name == 'stage.sh':
@@ -48,7 +60,7 @@ elif name == 'stage.sh':
 
 class RunnerTests(unittest.TestCase):
     def test_success_and_failure_paths(self):
-        for mode in ('success', 'boot', 'transfer', 'artifacts', 'shutdown'):
+        for mode in ('success', 'native', 'boot', 'transfer', 'artifacts', 'shutdown'):
             with self.subTest(mode=mode), tempfile.TemporaryDirectory() as temp:
                 root = Path(temp)
                 scripts = root / 'dev/winvm'
@@ -85,18 +97,21 @@ stop_and_reap_pid() { kill -TERM "$1" 2>/dev/null || true; wait "$1" 2>/dev/null
                     path.write_text(FAKE)
                     path.chmod(0o755)
                 env = dict(os.environ, FIXTURE=temp, FAIL_STAGE=mode,
+                           RUN_KIND='native' if mode == 'native' else 'smoke',
                            WINVM_CACHE_DIR=str(root / 'cache'), WINVM_ENV_FILE=str(root / 'no-env'),
                            PATH=str(fakebin) + ':' + os.environ['PATH'])
-                result = subprocess.run([scripts / 'run.sh'], env=env, capture_output=True,
+                command = [scripts / 'run.sh'] + (['test'] if mode == 'native' else [])
+                result = subprocess.run(command, env=env, capture_output=True,
                                         text=True, timeout=15)
                 runs = list((root / 'artifacts/winvm').glob('run-*'))
                 self.assertEqual(len(runs), 1, result.stderr)
                 record = json.loads((runs[0] / 'run.json').read_text())
                 staging = runs[0] / 'staging.log'
                 diagnostic = result.stderr + (staging.read_text() if staging.exists() else '')
-                self.assertEqual(record['status'], 'passed' if mode == 'success' else 'failed', diagnostic)
-                self.assertEqual(result.returncode == 0, mode == 'success', result.stderr)
-                if mode != 'success':
+                passed = mode in ('success', 'native')
+                self.assertEqual(record['status'], 'passed' if passed else 'failed', diagnostic)
+                self.assertEqual(result.returncode == 0, passed, result.stderr)
+                if not passed:
                     self.assertIn('Recovery: just winvm-shell', result.stderr)
                     self.assertEqual(record['stage'], mode)
                     self.assertTrue((runs[0] / 'diagnostics.log').exists() or mode == 'shutdown')

@@ -35,6 +35,23 @@ func TestCheckedInDeploymentContract(t *testing.T) {
 	}
 }
 
+func TestCheckedInExecutionManifest(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join(repositoryRoot(), "dev", "winvm", "test-suites.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := DecodeExecutionManifest(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateExecutionManifest(manifest); err != nil {
+		t.Fatalf("ValidateExecutionManifest: %v", err)
+	}
+	if manifest.PlatformID != "windows-server-2022-amd64" || manifest.OS != "windows-server-2022" || manifest.Architecture != "amd64" {
+		t.Fatalf("execution platform = %s %s/%s", manifest.PlatformID, manifest.OS, manifest.Architecture)
+	}
+}
+
 func TestDeploymentContractRejectsBoundaryViolations(t *testing.T) {
 	tests := []struct {
 		name     string

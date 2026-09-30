@@ -9,8 +9,7 @@ The image, QGA client, and lifecycle helpers are adapted from
 `asciimoth/sysnet-windows/dev/winvm` at revision
 `a056c520f0faf966f54dd90ef63b15d9aa7382ec`. This adaptation changes the project
 paths, source packaging, guest toolchain, dependency provisioning, SSH key
-verification, and run/test orchestration. The upstream harness uses GPL-3.0;
-its license is retained in [COPYING](COPYING) for this derived harness.
+verification, and run/test orchestration.
 The Windows, VirtIO, and OpenSSH locks use
 the integration plan's reference inputs. Go is locked to 1.26.6; its hash is
 from the Go download manifest. No sibling checkout is needed. This baseline
@@ -41,6 +40,7 @@ just test-winvm-harness
 just winvm-doctor
 just winvm-image
 just winvm-smoke
+just winvm-test
 ```
 
 `doctor.sh --validate` checks configuration without VM prerequisites.
@@ -87,8 +87,24 @@ ignored workspace and assets are not used or changed.
 The smoke run verifies transport, standard-user identity, OS, architecture,
 toolchain, and artifact retrieval. It records `testExecution: not-run`:
 **this is not the Windows test-suite gate or a support qualification.**
-Step 5 adds ordinary and privileged test-suite execution. The host-only harness
-tests run through both `just lint` and `just test-total` without starting a VM.
+
+`just winvm-test` runs the active native gate from `test-suites.json`. The
+ordinary suite runs all tests in `certcat`, `lib`, and `bin` through the
+standard `winvm` SSH account. The privileged suite runs as SYSTEM through the
+private QEMU Guest Agent. It is serial and uses `go test -p=1 -parallel=1` for
+each Go case, so later ACL, service, driver, and global-network cases can use
+the same gate without overlap. Add such cases only when their implementation
+milestone makes them mandatory.
+
+Each Go command writes `go test -json` events. The guest validator requires a
+passing process result, complete package events, and every test explicitly
+listed by the case. A missing test, skip, failure, corrupt event, timeout, wrong
+identity, missing suite artifact, or artifact retrieval failure fails the run.
+The host independently requires passing ordinary and privileged artifacts.
+These Milestone 2 artifacts prove the portable baseline only. They do not
+qualify the later native backend suites in `docs/windows/test-manifest.json`.
+The host-only harness tests run through both `just lint` and `just test-total`
+without starting a VM.
 
 ## Failure and recovery
 

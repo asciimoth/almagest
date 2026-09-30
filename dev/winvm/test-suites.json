@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "platformId": "windows-server-2022-amd64",
+  "os": "windows-server-2022",
+  "architecture": "amd64",
+  "suites": [
+    {
+      "id": "windows-m2-ordinary",
+      "identity": "standard",
+      "privilege": "ordinary",
+      "serialized": false,
+      "cases": [
+        {"id": "m2::execution-identity-standard-user", "kind": "identity"},
+        {"id": "m2::portable-certcat", "kind": "go", "module": "certcat", "arguments": ["./..."], "eventFile": "certcat.jsonl"},
+        {"id": "m2::portable-lib", "kind": "go", "module": "lib", "arguments": ["./..."], "eventFile": "lib.jsonl"},
+        {"id": "m2::portable-bin", "kind": "go", "module": "bin", "arguments": ["./..."], "eventFile": "bin.jsonl"}
+      ]
+    },
+    {
+      "id": "windows-m2-privileged",
+      "identity": "elevated",
+      "privilege": "privileged",
+      "serialized": true,
+      "cases": [
+        {"id": "m2::execution-identity-elevated", "kind": "identity"},
+        {"id": "m2::exclusive-cases-serialized", "kind": "serialization"}
+      ]
+    }
+  ]
+}

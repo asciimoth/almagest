@@ -1,6 +1,6 @@
 # Windows backend integration plan
 
-Status: proposed implementation plan. Milestone 1 is complete.
+Status: proposed implementation plan. Milestones 1 and 2 are complete.
 
 ## Objective and scope
 
@@ -177,10 +177,10 @@ build tags only to tests of OS-specific behavior; do not hide shared failures.
 
 ### Step 4: Adapt the QEMU/KVM harness
 
-Implementation: harness and host-only tests added. See the
-[VM harness guide](../dev/winvm/README.md). Native provisioning and smoke-run
-acceptance remain pending execution with the locked media. Step 5 test-suite
-execution is not included in the Step 4 smoke command.
+Implementation: complete. See the [VM harness guide](../dev/winvm/README.md).
+The smoke command remains separate from the native test gate and records that
+tests were not run. Each use of the harness must still produce evidence from
+the locked media; checked-in harness code is not native execution evidence.
 
 Reuse the sibling approach: locked inputs, unattended provisioning, QEMU Guest
 Agent, verified SSH, stable readiness tokens, cache locks, and per-run overlays.
@@ -205,6 +205,12 @@ failure, and bounded guest shutdown. Test harness logic without starting a VM.
 
 ### Step 5: Separate ordinary and privileged test execution
 
+Implementation: complete. See the [VM harness guide](../dev/winvm/README.md)
+and the [active execution manifest](../dev/winvm/test-suites.json). The active
+Milestone 2 gate runs portable Go tests as the standard account and verifies a
+separate serialized SYSTEM suite. Later milestones add their native cases to
+the privileged or ordinary boundary when those cases become mandatory.
+
 Run ordinary tests as a standard account. Run native networking, ACL, service,
 and driver cases with the required privileges. Serialize tests that share
 global networking resources. Use structured Go test events and required cases.
@@ -220,8 +226,9 @@ Acceptance conditions:
 Tests: missing/skipped test fixtures, corrupt events, incorrect identity,
 failed artifact collection, and serial execution of exclusive-driver cases.
 
-Milestone acceptance: current portable behavior builds and runs on Windows;
-the harness reports failures reliably. Native integration is not yet claimed.
+Milestone acceptance: complete. Current portable behavior has a native Windows
+build and execution gate, and the harness reports identity, event, timeout, and
+artifact failures reliably. Native backend integration is not claimed.
 
 ## Milestone 3: Connect the native backend
 

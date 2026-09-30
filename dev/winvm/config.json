@@ -9,7 +9,7 @@
     "type": "q35,accel=kvm",
     "bootTimeoutSeconds": 1200,
     "installTimeoutSeconds": 5400,
-    "testTimeoutSeconds": 1800,
+    "testTimeoutSeconds": 3600,
     "shutdownTimeoutSeconds": 90
   },
   "ssh": {

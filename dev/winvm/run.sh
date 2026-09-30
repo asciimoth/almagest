@@ -6,7 +6,7 @@ script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 # shellcheck source=dev/winvm/common.sh
 source "$script_dir/common.sh"
 mode=${1:-smoke}
-[[ $mode == smoke || $mode == --shell ]] || die 'usage: run.sh [smoke | --shell RUN]'
+[[ $mode == smoke || $mode == test || $mode == --shell ]] || die 'usage: run.sh [smoke | test | --shell RUN]'
 for command in qemu-system-x86_64 qemu-img ssh scp jq python3 timeout flock git tar; do require_command "$command"; done
 require_kvm
 ensure_cache_dir
@@ -74,7 +74,14 @@ trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 if [[ $mode != --shell ]]; then
-    jq -n --arg key "$key" '{schemaVersion:1,baseImageKey:$key,suite:"harness-smoke",status:"running",testExecution:"not-run"}' >"$run_dir/run.json"
+    if [[ $mode == smoke ]]; then
+        suite=harness-smoke
+        test_execution=not-run
+    else
+        suite=windows-milestone-2
+        test_execution=native
+    fi
+    jq -n --arg key "$key" --arg suite "$suite" --arg execution "$test_execution" '{schemaVersion:1,baseImageKey:$key,suite:$suite,status:"running",testExecution:$execution}' >"$run_dir/run.json"
     cp "$image_dir/manifest.json" "$run_dir/image-manifest.json"
     qemu-img create -q -f qcow2 -F qcow2 -b "$image_dir/base.qcow2" "$overlay"
     cp "$image_dir/OVMF_VARS.fd" "$vars"
@@ -117,10 +124,22 @@ timeout 30 ssh "${ssh_opts[@]}" "$target" "powershell.exe -NoProfile -Command \"
 timeout 120 scp "${scp_opts[@]}" "$run_dir/payload.tar" "$target:$remote/payload.tar"
 payload_hash=$(sha256_file "$run_dir/payload.tar")
 timeout 120 ssh "${ssh_opts[@]}" "$target" "powershell.exe -NoProfile -Command \"if ((Get-FileHash '$remote/payload.tar').Hash -ne '$payload_hash') { exit 1 }; tar.exe -xf '$remote/payload.tar' -C '$remote/source'; exit \$LASTEXITCODE\""
-stage=smoke
-timeout "$(jq -r .machine.testTimeoutSeconds "$config_file")" ssh "${ssh_opts[@]}" "$target" "powershell.exe -NoProfile -ExecutionPolicy Bypass -File $remote/source/dev/winvm/smoke.ps1 -ArtifactDir $remote/artifacts" >"$run_dir/console.log" 2>&1
+test_timeout=$(jq -r .machine.testTimeoutSeconds "$config_file")
+if [[ $mode == smoke ]]; then
+    stage=smoke
+    timeout "$test_timeout" ssh "${ssh_opts[@]}" "$target" "powershell.exe -NoProfile -ExecutionPolicy Bypass -File $remote/source/dev/winvm/smoke.ps1 -ArtifactDir $remote/artifacts" >"$run_dir/console.log" 2>&1
+else
+    stage=ordinary-tests
+    timeout "$test_timeout" ssh "${ssh_opts[@]}" "$target" "powershell.exe -NoProfile -ExecutionPolicy Bypass -File $remote/source/dev/winvm/test-suite.ps1 -Mode ordinary -SourceDir $remote/source -ArtifactDir $remote/artifacts" >"$run_dir/ordinary-tests.log" 2>&1
+    stage=privileged-tests
+    timeout "$test_timeout" "$script_dir/tools/qga.py" --socket "$qga" --timeout "$test_timeout" exec powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$remote/source/dev/winvm/test-suite.ps1" -Mode privileged -SourceDir "$remote/source" -ArtifactDir "$remote/artifacts" >"$run_dir/privileged-tests.log" 2>&1
+fi
 stage=artifacts
 timeout 30 ssh "${ssh_opts[@]}" "$target" "tar.exe -cf $remote/artifacts.tar -C $remote artifacts"
 timeout 60 scp "${scp_opts[@]}" "$target:$remote/artifacts.tar" "$run_dir/guest-artifacts.tar"
-validate_smoke_artifact "$run_dir/guest-artifacts.tar"
+if [[ $mode == smoke ]]; then
+    validate_smoke_artifact "$run_dir/guest-artifacts.tar"
+else
+    validate_native_test_artifact "$run_dir/guest-artifacts.tar"
+fi
 stage=shutdown
