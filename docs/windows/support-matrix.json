@@ -316,7 +316,7 @@
       "platforms": ["windows-server-2022-amd64", "windows-11-amd64", "windows-11-arm64"],
       "dependencies": [],
       "requiredSuites": ["windows-native-core", "windows-native-privileged", "windows-native-e2e"],
-      "notes": "Milestone 6 supplies store enumeration without changing explicit trust selection."
+      "notes": "Step 16 enumerates public certificates from the daemon identity's CurrentUser\\Root and LocalMachine\\Root stores without changing explicit trust selection. Native identity suites verify discovery, reload, cleanup, and source deduplication. Qualification remains unavailable until all required native and E2E evidence exists."
     }
   ]
 }

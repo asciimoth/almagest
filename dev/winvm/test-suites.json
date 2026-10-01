@@ -44,6 +44,9 @@
             "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsConsoleLifecycleCancelsRun",
             "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsServiceHandlerStopsForSCMControls",
             "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsServiceHandlerDoesNotReportRunningAfterStartupFailure",
+            "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsCertificateStoreCurrentIdentityDiscovery",
+            "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsCertificateStoreCancellationFailureAndFallback",
+            "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsCertificateStoreRejectsMalformedCatalogEntry",
             "github.com/asciimoth/almagest/bin/almagestd/command::TestWindowsRunnerTimeoutKillsChildAndGrandchild",
             "github.com/asciimoth/almagest/bin/almagestd/command::TestWindowsRunnerShutdownKillsChildAndGrandchild",
             "github.com/asciimoth/almagest/bin/almagestd/command::TestWindowsRunnerImmediateCancellationDoesNotLaunch",
@@ -94,6 +97,16 @@
           "eventFile": "m6-xtor-restricted-token.jsonl",
           "requiredTests": [
             "github.com/asciimoth/almagest/lib/experimental::TestWindowsXTorElevatedParentDropsAdministratorPrivileges"
+          ]
+        },
+        {
+          "id": "m6::certificate-store-machine-identity",
+          "kind": "go",
+          "module": "bin",
+          "arguments": ["./almagestd/platform", "-run", "^TestWindowsCertificateStoreMachineIdentityAndDuplicates$"],
+          "eventFile": "m6-certificate-store-machine-identity.jsonl",
+          "requiredTests": [
+            "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsCertificateStoreMachineIdentityAndDuplicates"
           ]
         },
         {

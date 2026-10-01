@@ -678,6 +678,40 @@ func TestTLSReloadOSCertsAPIUpdatesSnapshotAndEvents(t *testing.T) {
 	}
 }
 
+func TestTLSReloadOSCertsFailurePreservesCatalog(t *testing.T) {
+	osPEM := testTLSCAPEM(t, "existing-os-root")
+	manager, err := openKVManagerWithOptions(filepath.Join(t.TempDir(), "kv.db"), bboltKVManagerOptions{
+		ImmutableTLS: immutableTLSData{Certs: map[string]immutableTLSCert{
+			"os-ca:existing": {
+				tlsCertificateRecord: tlsCertificateRecord{PEM: osPEM},
+				source:               api.TLSSourceOS,
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer manager.Close() //nolint:errcheck
+
+	admin := &AdminAPI{
+		tls: manager,
+		tlsOSAuthorityFetcher: tlspolicy.AuthorityFetcherFunc(func(context.Context) ([]tlspolicy.AuthorityCandidate, error) {
+			return nil, errors.New("certificate store access denied")
+		}),
+	}
+	if _, _, err := admin.reloadTLSOSCerts(context.Background()); err == nil || !strings.Contains(err.Error(), "certificate store access denied") {
+		t.Fatalf("reload error = %v, want observable store failure", err)
+	}
+	snapshot, err := manager.tlsSnapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cert := findTLSCertEntry(snapshot.Certs, "os-ca:existing")
+	if cert == nil || cert.PEM != osPEM || cert.Source != api.TLSSourceOS {
+		t.Fatalf("catalog after failed reload = %#v, want existing OS certificate", snapshot.Certs)
+	}
+}
+
 func TestTLSOSDataReloadDiffsAndNotifiesPolicies(t *testing.T) {
 	removedPEM := testTLSCAPEM(t, "removed")
 	changedOldPEM := testTLSCAPEM(t, "changed-old")

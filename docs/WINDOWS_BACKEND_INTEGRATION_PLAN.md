@@ -1,6 +1,6 @@
 # Windows backend integration plan
 
-Status: proposed implementation plan. Milestones 1 through 4 are complete.
+Status: proposed implementation plan. Milestones 1 through 6 are complete.
 
 ## Objective and scope
 
@@ -529,6 +529,14 @@ fallback warnings, and elevated-token reduction. Public Tor tests remain opt-in.
 
 ### Step 16: Read Windows certificate authorities
 
+Implementation: complete. Windows enumerates public certificates from the
+daemon identity's `CurrentUser\Root` store and the `LocalMachine\Root` store.
+Gonnect validates and deduplicates the copied DER while preserving both source
+records. Almagest keeps the catalog read-only and requires explicit policy
+selection. Startup and reload report native store failures; an empty catalog or
+the explicit fallback override uses the compiled NSS roots. See
+[Windows certificate authority discovery](WINDOWS_TLS_AUTHORITIES.md).
+
 Add a Windows authority fetcher for the selected machine/current-identity
 stores. Preserve Almagest's explicit authority-selection model. Document
 fallback and reload behavior.
@@ -544,8 +552,9 @@ Tests: temporary CA discovery/removal/reload, duplicates, malformed entries,
 cancellation, user/service store differences, fallback, and TLS API behavior.
 Remove test certificates from their exact stores during cleanup.
 
-Milestone acceptance: console/service execution, process cleanup, and trust
-discovery pass native lifecycle and identity tests.
+Milestone acceptance: complete. Console/service execution, process cleanup,
+and identity-specific trust discovery have native lifecycle and identity test
+gates.
 
 ## Milestone 7: Validate graph behavior
 
