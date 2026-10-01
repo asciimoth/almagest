@@ -4,8 +4,10 @@ import json
 import os
 from pathlib import Path
 import shutil
+import signal
 import subprocess
 import tempfile
+import time
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -27,6 +29,9 @@ elif name == 'qga.py':
     if 'shutdown' in sys.argv and (root / 'pid').exists():
         os.kill(int((root / 'pid').read_text()), signal.SIGTERM)
 elif name == 'ssh':
+    if mode == 'interrupt':
+        (root / 'ssh-started').touch()
+        time.sleep(120)
     if mode == 'transfer' and 'New-Item' in sys.argv[-1]:
         sys.exit(1)
 elif name == 'scp':
@@ -64,7 +69,7 @@ elif name == 'stage.sh':
 
 class RunnerTests(unittest.TestCase):
     def test_success_and_failure_paths(self):
-        for mode in ('success', 'native', 'boot', 'transfer', 'artifacts', 'shutdown'):
+        for mode in ('success', 'native', 'boot', 'transfer', 'artifacts', 'shutdown', 'interrupt'):
             with self.subTest(mode=mode), tempfile.TemporaryDirectory() as temp:
                 root = Path(temp)
                 scripts = root / 'dev/winvm'
@@ -106,8 +111,35 @@ stop_and_reap_pid() { kill -TERM "$1" 2>/dev/null || true; wait "$1" 2>/dev/null
                            WINVM_CACHE_DIR=str(root / 'cache'), WINVM_ENV_FILE=str(root / 'no-env'),
                            PATH=str(fakebin) + ':' + os.environ['PATH'])
                 command = [scripts / 'run.sh'] + (['test'] if mode == 'native' else [])
-                result = subprocess.run(command, env=env, capture_output=True,
-                                        text=True, timeout=15)
+                if mode == 'interrupt':
+                    process = subprocess.Popen(command, env=env, stdout=subprocess.PIPE,
+                                               stderr=subprocess.PIPE, text=True,
+                                               start_new_session=True)
+                    for _ in range(500):
+                        if (root / 'ssh-started').exists():
+                            break
+                        time.sleep(0.01)
+                    self.assertTrue((root / 'ssh-started').exists(),
+                                    'foreground guest transport did not start')
+                    qemu_pid = int((root / 'pid').read_text())
+                    os.killpg(process.pid, signal.SIGINT)
+                    try:
+                        stdout, stderr = process.communicate(timeout=20)
+                    except subprocess.TimeoutExpired:
+                        process_state = subprocess.run(
+                            ['ps', '-o', 'pid,ppid,pgid,stat,args', '--forest',
+                             '-g', str(process.pid)], capture_output=True, text=True,
+                            check=False).stdout
+                        os.killpg(process.pid, signal.SIGKILL)
+                        process.communicate()
+                        self.fail('interrupted runner did not stop:\n' + process_state)
+                    result = subprocess.CompletedProcess(command, process.returncode,
+                                                         stdout, stderr)
+                    with self.assertRaises(ProcessLookupError):
+                        os.kill(qemu_pid, 0)
+                else:
+                    result = subprocess.run(command, env=env, capture_output=True,
+                                            text=True, timeout=15)
                 runs = list((root / 'artifacts/winvm').glob('run-*'))
                 self.assertEqual(len(runs), 1, result.stderr)
                 record = json.loads((runs[0] / 'run.json').read_text())
@@ -118,7 +150,9 @@ stop_and_reap_pid() { kill -TERM "$1" 2>/dev/null || true; wait "$1" 2>/dev/null
                 self.assertEqual(result.returncode == 0, passed, result.stderr)
                 if not passed:
                     self.assertIn('Recovery: just winvm-shell', result.stderr)
-                    self.assertEqual(record['stage'], mode)
-                    self.assertTrue((runs[0] / 'diagnostics.log').exists() or mode == 'shutdown')
+                    expected_stage = 'boot' if mode == 'interrupt' else mode
+                    self.assertEqual(record['stage'], expected_stage)
+                    self.assertTrue((runs[0] / 'diagnostics.log').exists() or
+                                    mode in ('shutdown', 'interrupt'))
                 self.assertTrue((runs[0] / 'overlay.qcow2').exists())
                 self.assertTrue((runs[0] / 'OVMF_VARS.fd').exists())

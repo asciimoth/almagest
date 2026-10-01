@@ -31,16 +31,19 @@ sockets=$(make_socket_dir)
 qga="$sockets/qga.sock"
 qmp="$sockets/qmp.sock"
 pid=''
+interrupted=0
 cleanup() {
     status=$?
     trap - EXIT INT TERM
     stopped=1
     if [[ -n $pid ]]; then
-        if ((status != 0)); then
+        if ((status != 0 && interrupted == 0)); then
             timeout 20 "$script_dir/tools/qga.py" --socket "$qga" --timeout 15 exec powershell.exe -NoProfile -Command 'Get-Content C:\winvm\provision.log -Tail 100 -ErrorAction SilentlyContinue; Get-Service' >"$work/diagnostics.log" 2>&1 || true
         fi
         "$script_dir/tools/qga.py" --socket "$qga" --timeout 5 shutdown >/dev/null 2>&1 || true
-        if ! stop_and_reap_pid "$pid" 20 10 10; then
+        grace=20
+        ((interrupted)) && grace=5
+        if ! stop_and_reap_pid "$pid" "$grace" 10 10; then
             record_qemu_orphan "$pid"
             stopped=0
             status=1
@@ -51,8 +54,8 @@ cleanup() {
     exit "$status"
 }
 trap cleanup EXIT
-trap 'exit 130' INT
-trap 'exit 143' TERM
+trap 'interrupted=1; exit 130' INT
+trap 'interrupted=1; exit 143' TERM
 cp "$script_dir/Autounattend.xml" "$work/Autounattend.xml"
 cp "$script_dir/provision.ps1" "$work/provision.ps1"
 cp "$ssh_key.pub" "$work/authorized_key.pub"
@@ -142,7 +145,7 @@ jq -e . "$work/guest.json" >/dev/null
 ssh-keygen -l -f "$work/host-key.pub" >/dev/null
 read -r key_type key_data _ <"$work/host-key.pub"
 printf '[127.0.0.1]:%s %s %s\n' "$port" "$key_type" "$key_data" >"$work/known_hosts"
-timeout 30 ssh -i "$ssh_key" -p "$port" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$work/known_hosts" -o ConnectTimeout=5 winvm@127.0.0.1 'whoami' >"$work/ssh-identity.log"
+timeout --foreground 30 ssh -i "$ssh_key" -p "$port" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$work/known_hosts" -o ConnectTimeout=5 winvm@127.0.0.1 'whoami' >"$work/ssh-identity.log"
 "$script_dir/tools/qga.py" --socket "$qga" --timeout 10 shutdown || true
 wait_for_pid "$pid" "$(jq -r .machine.shutdownTimeoutSeconds "$config_file")" || die 'provisioned guest did not stop'
 wait "$pid" || true

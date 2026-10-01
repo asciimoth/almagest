@@ -200,6 +200,18 @@ case_finished_ms=()
 case_durations_ms=()
 case_privileges=()
 
+terminate_process_tree() {
+	local child
+	local pid="$1"
+
+	while IFS= read -r child; do
+		child="${child//[[:space:]]/}"
+		[[ -n "$child" ]] || continue
+		terminate_process_tree "$child"
+	done < <(ps -o pid= --ppid "$pid" 2>/dev/null)
+	kill -TERM "$pid" 2>/dev/null || true
+}
+
 cleanup() {
 	local exit_status="$?"
 	local cidfile
@@ -207,12 +219,22 @@ cleanup() {
 	local pid
 
 	trap - EXIT INT TERM
+	# Remove containers before waiting for their runner processes. A runner can be
+	# blocked in `docker run` until its container stops.
+	for cidfile in "$run_dir"/*.cid; do
+		[[ -f "$cidfile" ]] || continue
+		container_id="$(<"$cidfile")"
+		[[ -n "$container_id" ]] || continue
+		docker rm --force "$container_id" >/dev/null 2>&1 || true
+	done
 	for pid in "${!running_cases[@]}"; do
-		kill "$pid" 2>/dev/null || true
+		terminate_process_tree "$pid"
 	done
 	for pid in "${!running_cases[@]}"; do
 		wait "$pid" 2>/dev/null || true
 	done
+	# A container can appear after the first pass if Ctrl+C arrived between
+	# `docker run` starting and its cidfile being written.
 	for cidfile in "$run_dir"/*.cid; do
 		[[ -f "$cidfile" ]] || continue
 		container_id="$(<"$cidfile")"

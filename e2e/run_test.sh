@@ -5,6 +5,8 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 docker() {
 	local case_name
+	local cidfile=""
+	local previous=""
 
 	case "${1:-}" in
 		image)
@@ -15,6 +17,21 @@ docker() {
 			;;
 		run)
 			case_name="${!#}"
+			if [[ -n "${E2E_INTERRUPT_TEST_STATE:-}" ]]; then
+				for argument in "$@"; do
+					if [[ "$previous" == "--cidfile" ]]; then
+						cidfile="$argument"
+						break
+					fi
+					previous="$argument"
+				done
+				printf 'interrupt-test-container\n' >"$cidfile"
+				touch "$E2E_INTERRUPT_TEST_STATE/started"
+				while [[ ! -e "$E2E_INTERRUPT_TEST_STATE/removed" ]]; do
+					sleep 0.01
+				done
+				return 0
+			fi
 			if [[ "$case_name" == "admin_api_transports" ]]; then
 				sleep 0.03
 				echo "passing case output"
@@ -28,6 +45,13 @@ docker() {
 			sleep 0.03
 			echo "failing case output"
 			return 7
+			;;
+		rm)
+			if [[ -n "${E2E_INTERRUPT_TEST_STATE:-}" ]]; then
+				touch "$E2E_INTERRUPT_TEST_STATE/removed"
+				return 0
+			fi
+			return 2
 			;;
 		*)
 			echo "unexpected docker command: $*" >&2
@@ -105,6 +129,35 @@ fi
 if ((exclusive_start <= admin_pass || exclusive_start <= config_pass)); then
 	echo "exclusive case started before the regular cases finished" >&2
 	printf '%s\n' "$scheduling_output" >&2
+	exit 1
+fi
+
+interrupt_state="$(mktemp -d "${TMPDIR:-/tmp}/almagest-e2e-interrupt-test.XXXXXX")"
+trap 'rm -rf "$interrupt_state"' EXIT
+(
+	cd "$repo_root"
+	E2E_INTERRUPT_TEST_STATE="$interrupt_state" E2E_JOBS=1 E2E_RANDOM_SEED=1 \
+		./e2e/run.sh admin_api_transports
+) >"$interrupt_state/output" 2>&1 &
+harness_pid=$!
+for _ in {1..500}; do
+	[[ -e "$interrupt_state/started" ]] && break
+	sleep 0.01
+done
+if [[ ! -e "$interrupt_state/started" ]]; then
+	echo "interrupted harness did not start its container" >&2
+	exit 1
+fi
+kill -TERM "$harness_pid"
+interrupt_status=0
+wait "$harness_pid" || interrupt_status=$?
+if ((interrupt_status != 130)); then
+	printf 'interrupted harness exited with %d\n' "$interrupt_status" >&2
+	cat "$interrupt_state/output" >&2
+	exit 1
+fi
+if [[ ! -e "$interrupt_state/removed" ]]; then
+	echo "interrupted harness did not remove its container" >&2
 	exit 1
 fi
 

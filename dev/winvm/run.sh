@@ -36,10 +36,12 @@ sockets=$(make_socket_dir)
 qga="$sockets/qga.sock"
 qmp="$sockets/qmp.sock"
 pid=''
+privileged_pid=''
+interrupted=0
 stage=setup
 progress() { printf '==> Windows VM: %s\n' "$1"; }
 stream_qga_progress() {
-    local command_pid=$1 guest_dir=$2 local_file=$3 shown=0 status guest_file
+    local command_pid=$1 guest_dir=$2 local_file=$3 shown=0 status=0 guest_file
     : >"$local_file"
     while true; do
         printf -v guest_file '%s/%03d.txt' "$guest_dir" "$shown"
@@ -54,36 +56,47 @@ stream_qga_progress() {
         kill -0 "$command_pid" 2>/dev/null || break
         sleep 2
     done
-    if wait "$command_pid"; then
-        return 0
-    else
-        status=$?
-        return "$status"
-    fi
+    wait "$command_pid" || status=$?
+    privileged_pid=''
+    return "$status"
 }
 cleanup() {
     status=$?
     trap - EXIT INT TERM
+    if [[ -n $privileged_pid ]]; then
+        kill "$privileged_pid" 2>/dev/null || true
+        wait "$privileged_pid" 2>/dev/null || true
+    fi
     if [[ -n $pid ]]; then
-        if ((status != 0)); then
+        if ((status != 0 && interrupted == 0)); then
             timeout 20 "$script_dir/tools/qga.py" --socket "$qga" --timeout 15 exec powershell.exe -NoProfile -Command 'Get-Process; Get-Service; Get-Content C:\winvm\provision.log -Tail 100 -ErrorAction SilentlyContinue' >"$run_dir/diagnostics.log" 2>&1 || true
         fi
         "$script_dir/tools/qga.py" --socket "$qga" --timeout 5 shutdown >>"$run_dir/agent.log" 2>&1 || true
-        if ! wait_for_pid "$pid" "$(jq -r .machine.shutdownTimeoutSeconds "$config_file")"; then
-            status=1
-            stage=shutdown
-        fi
-        if ! stop_and_reap_pid "$pid" 0 10 10; then
-            record_qemu_orphan "$pid"
-            status=1
-            stage=shutdown
+        if ((interrupted)); then
+            if ! stop_and_reap_pid "$pid" 5 5 5; then
+                record_qemu_orphan "$pid"
+                status=1
+                stage=shutdown
+            else
+                remove_socket_dir "$sockets"
+            fi
         else
-            remove_socket_dir "$sockets"
+            if ! wait_for_pid "$pid" "$(jq -r .machine.shutdownTimeoutSeconds "$config_file")"; then
+                status=1
+                stage=shutdown
+            fi
+            if ! stop_and_reap_pid "$pid" 0 10 10; then
+                record_qemu_orphan "$pid"
+                status=1
+                stage=shutdown
+            else
+                remove_socket_dir "$sockets"
+            fi
         fi
     else
         remove_socket_dir "$sockets"
     fi
-    if [[ $mode != --shell ]]; then
+    if [[ $mode != --shell && -f $run_dir/run.json ]]; then
         jq --arg stage "$stage" --argjson code "$status" '.stage=$stage | .exitStatus=$code | .status=(if $code==0 then "passed" else "failed" end)' "$run_dir/run.json" >"$run_dir/run.json.new"
         mv "$run_dir/run.json.new" "$run_dir/run.json"
     fi
@@ -95,8 +108,8 @@ cleanup() {
     exit "$status"
 }
 trap cleanup EXIT
-trap 'exit 130' INT
-trap 'exit 143' TERM
+trap 'interrupted=1; exit 130' INT
+trap 'interrupted=1; exit 143' TERM
 if [[ $mode != --shell ]]; then
     progress 'preparing isolated test payload'
     if [[ $mode == smoke ]]; then
@@ -140,7 +153,7 @@ target=winvm@127.0.0.1
 stage=boot
 progress 'starting guest and waiting for readiness'
 wait_ready "$pid" "$(jq -r .machine.bootTimeoutSeconds "$config_file")" "$qga" "$run_dir/agent.log"
-timeout 30 ssh "${ssh_opts[@]}" "$target" whoami >"$run_dir/ssh-identity.log"
+timeout --foreground 30 ssh "${ssh_opts[@]}" "$target" whoami >"$run_dir/ssh-identity.log"
 if [[ $mode == --shell ]]; then
     ssh "${ssh_opts[@]}" -t "$target" powershell.exe
     exit
@@ -148,29 +161,29 @@ fi
 remote="C:/winvm/runs/${run_dir##*/}"
 stage=transfer
 progress 'transferring test payload'
-timeout 30 ssh "${ssh_opts[@]}" "$target" "powershell.exe -NoProfile -Command \"New-Item -ItemType Directory -Force '$remote/source','$remote/artifacts' | Out-Null\""
-timeout 120 scp "${scp_opts[@]}" "$run_dir/payload.tar" "$target:$remote/payload.tar"
+timeout --foreground 30 ssh "${ssh_opts[@]}" "$target" "powershell.exe -NoProfile -Command \"New-Item -ItemType Directory -Force '$remote/source','$remote/artifacts' | Out-Null\""
+timeout --foreground 120 scp "${scp_opts[@]}" "$run_dir/payload.tar" "$target:$remote/payload.tar"
 payload_hash=$(sha256_file "$run_dir/payload.tar")
-timeout 120 ssh "${ssh_opts[@]}" "$target" "powershell.exe -NoProfile -Command \"if ((Get-FileHash '$remote/payload.tar').Hash -ne '$payload_hash') { exit 1 }; tar.exe -xf '$remote/payload.tar' -C '$remote/source'; exit \$LASTEXITCODE\""
+timeout --foreground 120 ssh "${ssh_opts[@]}" "$target" "powershell.exe -NoProfile -Command \"if ((Get-FileHash '$remote/payload.tar').Hash -ne '$payload_hash') { exit 1 }; tar.exe -xf '$remote/payload.tar' -C '$remote/source'; exit \$LASTEXITCODE\""
 test_timeout=$(jq -r .machine.testTimeoutSeconds "$config_file")
 if [[ $mode == smoke ]]; then
     stage=smoke
     progress 'running smoke checks'
-    timeout "$test_timeout" ssh "${ssh_opts[@]}" "$target" "powershell.exe -NoProfile -ExecutionPolicy Bypass -File $remote/source/dev/winvm/smoke.ps1 -ArtifactDir $remote/artifacts" >"$run_dir/console.log" 2>&1
+    timeout --foreground "$test_timeout" ssh "${ssh_opts[@]}" "$target" "powershell.exe -NoProfile -ExecutionPolicy Bypass -File $remote/source/dev/winvm/smoke.ps1 -ArtifactDir $remote/artifacts" >"$run_dir/console.log" 2>&1
 else
     stage=ordinary-tests
     progress 'running ordinary-user tests'
-    timeout "$test_timeout" ssh "${ssh_opts[@]}" "$target" "powershell.exe -NoProfile -ExecutionPolicy Bypass -File $remote/source/dev/winvm/test-suite.ps1 -Mode ordinary -SourceDir $remote/source -ArtifactDir $remote/artifacts" 2>&1 | tee "$run_dir/ordinary-tests.log"
+    timeout --foreground "$test_timeout" ssh "${ssh_opts[@]}" "$target" "powershell.exe -NoProfile -ExecutionPolicy Bypass -File $remote/source/dev/winvm/test-suite.ps1 -Mode ordinary -SourceDir $remote/source -ArtifactDir $remote/artifacts" 2>&1 | tee "$run_dir/ordinary-tests.log"
     stage=privileged-tests
     progress 'running privileged tests'
-    timeout "$test_timeout" "$script_dir/tools/qga.py" --socket "$qga" --timeout "$test_timeout" exec powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$remote/source/dev/winvm/test-suite.ps1" -Mode privileged -SourceDir "$remote/source" -ArtifactDir "$remote/artifacts" >"$run_dir/privileged-tests.log" 2>&1 &
+    timeout --foreground "$test_timeout" "$script_dir/tools/qga.py" --socket "$qga" --timeout "$test_timeout" exec powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$remote/source/dev/winvm/test-suite.ps1" -Mode privileged -SourceDir "$remote/source" -ArtifactDir "$remote/artifacts" >"$run_dir/privileged-tests.log" 2>&1 &
     privileged_pid=$!
     stream_qga_progress "$privileged_pid" "$remote/artifacts/windows-m4-privileged/progress" "$run_dir/privileged-progress.log"
 fi
 stage=artifacts
 progress 'collecting and validating artifacts'
-timeout 30 ssh "${ssh_opts[@]}" "$target" "tar.exe -cf $remote/artifacts.tar -C $remote artifacts"
-timeout 60 scp "${scp_opts[@]}" "$target:$remote/artifacts.tar" "$run_dir/guest-artifacts.tar"
+timeout --foreground 30 ssh "${ssh_opts[@]}" "$target" "tar.exe -cf $remote/artifacts.tar -C $remote artifacts"
+timeout --foreground 60 scp "${scp_opts[@]}" "$target:$remote/artifacts.tar" "$run_dir/guest-artifacts.tar"
 if [[ $mode == smoke ]]; then
     validate_smoke_artifact "$run_dir/guest-artifacts.tar"
 else
