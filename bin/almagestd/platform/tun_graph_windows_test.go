@@ -138,6 +138,12 @@ func (n *windowsTunReceiverNode) OnInit(_ *pasta.Workspace, _ pasta.Logger, _ ui
 	n.in = restored.LeftPorts[0]
 	return nil
 }
+func (n *windowsTunReceiverNode) PreLinkAdd(port uint64, linkType, direction string) error {
+	if port != n.in || direction != "left" || linkType != links.TypeTun {
+		return pasta.LinkTypeErr(linkType)
+	}
+	return nil
+}
 func (n *windowsTunReceiverNode) OnEvent(event pasta.Event, linkType string, _ []string, direction string) error {
 	if event.ReceiverPort == n.in && direction == "left" && linkType == links.TypeTun {
 		if payload, ok := event.Payload.(links.TunPayload); ok {

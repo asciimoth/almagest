@@ -583,6 +583,14 @@ unchanged config, rapid rewiring, cancellation, stale handles, and recovery.
 
 ### Step 18: Test OutNet, LocalNet, and DNS through graphs
 
+Implementation: complete. Native serialized graph cases keep DefaultTun active
+while they exercise IPv4/IPv6 TCP and UDP through OutNetwork, a wildcard
+LocalProxy listener through LocalNet, and a WireGuard transport over OutNet.
+The managed DNS case covers UDP and TCP queries, live provider replacement,
+detach (`SetDNS(nil)`), reattach, and the non-exclusive DNS warning. A graph
+source-route case verifies that Windows rejects the requirement and reports the
+`DefaultTun.SourceRoutes` error instead of discarding it.
+
 Cover outbound traffic, local proxies, and WireGuard over OutNet while a default
 TUN is active. Audit wildcard socket requests and source-route propagation.
 

@@ -154,6 +154,36 @@
           ]
         },
         {
+          "id": "m7::outnet-localnet-wireguard-graph",
+          "kind": "go",
+          "module": "bin",
+          "arguments": ["./almagestd/platform", "-run", "^TestWindowsGraphOutNetLocalNetAndWireGuardWithDefaultTun$"],
+          "eventFile": "m7-outnet-localnet-wireguard-graph.jsonl",
+          "requiredTests": [
+            "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsGraphOutNetLocalNetAndWireGuardWithDefaultTun"
+          ]
+        },
+        {
+          "id": "m7::default-tun-dns-graph",
+          "kind": "go",
+          "module": "bin",
+          "arguments": ["./almagestd/platform", "-run", "^TestWindowsGraphDefaultTunDNSProviderLifecycle$"],
+          "eventFile": "m7-default-tun-dns-graph.jsonl",
+          "requiredTests": [
+            "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsGraphDefaultTunDNSProviderLifecycle"
+          ]
+        },
+        {
+          "id": "m7::unsupported-source-routes-graph",
+          "kind": "go",
+          "module": "bin",
+          "arguments": ["./almagestd/platform", "-run", "^TestWindowsGraphRejectsUnsupportedDefaultTunSourceRoutes$"],
+          "eventFile": "m7-unsupported-source-routes-graph.jsonl",
+          "requiredTests": [
+            "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsGraphRejectsUnsupportedDefaultTunSourceRoutes"
+          ]
+        },
+        {
           "id": "m3::split-driver-exclusive-ownership",
           "kind": "go",
           "module": "bin",
