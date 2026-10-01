@@ -116,13 +116,30 @@ class HarnessTests(unittest.TestCase):
 
     def test_native_runner_keeps_go_stderr_out_of_json_events(self):
         runner = (ROOT / 'test-suite.ps1').read_text()
-        self.assertIn('$ErrorActionPreference = \'Continue\'', runner)
-        self.assertIn('2> $stderrPath', runner)
+        self.assertIn('RedirectStandardOutput = $eventPath', runner)
+        self.assertIn('RedirectStandardError = $stderrPath', runner)
         self.assertNotIn('& go @testArguments 2>&1', runner)
-        self.assertIn('$processExitCode = $LASTEXITCODE', runner)
+        self.assertIn('$process.WaitForExit($remainingMilliseconds)', runner)
+        self.assertIn('$processHandle = $process.Handle', runner)
+        self.assertIn('& taskkill.exe /PID $process.Id /T /F', runner)
+        self.assertIn('Write-CaseState $statePath', runner)
+        self.assertIn('goPackageTimeoutSeconds', runner)
         self.assertIn('$env:SYSNET_WINDOWS_WINTUN_DLL = $wintunDLL', runner)
         self.assertIn("Write-TestProgress 'RUN '", runner)
         self.assertIn("'PASS' } else { 'FAIL'", runner)
+
+    def test_interrupt_diagnostics_are_extensive(self):
+        runner = (ROOT / 'run.sh').read_text()
+        collector = (ROOT / 'collect-diagnostics.ps1').read_text()
+        self.assertIn('reason=ctrl-c', runner)
+        self.assertIn('query-cpus-fast', runner)
+        self.assertIn('collect-diagnostics.ps1', runner)
+        self.assertIn('setsid "${qemu[@]}"', runner)
+        self.assertIn('Win32_Process', collector)
+        self.assertIn('go-processes.txt', collector)
+        self.assertIn('system.evtx', collector)
+        self.assertIn('active-test-tails.txt', collector)
+        self.assertIn('StartsWith($diagnosticRoot', collector)
 
     def test_port_contention_and_concurrent_locks(self):
         sock = socket.socket()

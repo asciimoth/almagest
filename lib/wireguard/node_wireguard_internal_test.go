@@ -619,6 +619,116 @@ func TestWireGuardPeersFromObjectRejectsMissingOrInvalidPeers(t *testing.T) {
 	}
 }
 
+func TestWireGuardControllerWaitsForCurrentDeviceConfig(t *testing.T) {
+	for _, attachmentCompletion := range []bool{false, true} {
+		t.Run(fmt.Sprintf("attachment_completion=%t", attachmentCompletion), func(t *testing.T) {
+			testWireGuardControllerWaitsForCurrentDeviceConfig(t, attachmentCompletion)
+		})
+	}
+}
+
+func testWireGuardControllerWaitsForCurrentDeviceConfig(t *testing.T, attachmentCompletion bool) {
+	t.Helper()
+	w := pasta.NewWorkspace(wireGuardTestLogFactory{})
+	t.Cleanup(w.Close)
+	secrets := newWireGuardTestSecretsStorage()
+	var wg *wireGuardNode
+	if err := w.AddNodeClass(captureWireGuardClass{node: &wg, secrets: secrets}); err != nil {
+		t.Fatal(err)
+	}
+	id, err := w.AddNodeByClass("test/WireGuard", "wg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, func() bool { return wg.controllerSource.Load() != nil }, "initial device configuration")
+	snapshot := testkit.MustNodeSnapshot(t, w, id)
+	existingEvents := make(chan WGCtrlAPI, 8)
+	existing := addWGCtrlTestNode(t, w, "right", existingEvents)
+	existingLink, _, err := w.AddLink(snapshot.LeftPorts[2], existing.port)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var oldAPI WGCtrlAPI
+	select {
+	case oldAPI = <-existingEvents:
+	case <-time.After(5 * time.Second):
+		t.Fatal("initial controller was not published")
+	}
+	privateKey, publicKey := wireGuardTestKeyPair(t, 113)
+	secret := wireGuardTestPrivateKeySecretForNode(t, secrets, "wg", privateKey)
+	wg.runtimeMu.Lock()
+	locked := true
+	t.Cleanup(func() {
+		if locked {
+			wg.runtimeMu.Unlock()
+		}
+	})
+	w.SendNodeFormularMsg(id, formular.FormApplyMessage{
+		MessageBase: formular.MessageBase{Type: formular.MessageFormApply, MenuID: pasta.NodeMenuID(id)},
+		BlockID:     "config", Values: map[string]any{"privateKeySecret": secret},
+	})
+	eventually(t, func() bool {
+		w.Lock()
+		defer w.Unlock()
+		return wg.config.privateKey == privateKey
+	}, "new desired key accepted while device update is blocked")
+	if wg.dev.PrivateKey().PublicKey().Base64() == publicKey {
+		t.Fatal("test did not hold the old device identity")
+	}
+	events := make(chan WGCtrlAPI, 8)
+	consumer := addWGCtrlTestNode(t, w, "right", events)
+	link, _, err := w.AddLink(snapshot.LeftPorts[2], consumer.port)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.Lock()
+	_, published := wg.wgctrlPayloads[link]
+	wg.refreshWGCtrlToLink(link)
+	_, refreshed := wg.wgctrlPayloads[link]
+	wg.refreshWGCtrlToLink(existingLink)
+	_, cached := wg.wgctrlPayloads[existingLink]
+	w.Unlock()
+	if published || refreshed || cached {
+		t.Fatal("controller published the old device identity while the requested key was pending")
+	}
+	if attachmentCompletion {
+		w.Lock()
+	}
+	wg.runtimeMu.Unlock()
+	locked = false
+	if attachmentCompletion {
+		// Hold workspace delivery until config is installed, then make its
+		// completion stale as a concurrent attachment change would do.
+		func() {
+			defer w.Unlock()
+			eventually(t, func() bool {
+				return wg.appliedConfigGeneration.Load() == wg.currentConfigGeneration()
+			}, "device config applied before attachment completion")
+			wg.nextRuntimeGeneration()
+			wg.handleRuntimeAttachmentResult(wireGuardRuntimeAttachmentResultMessage{})
+		}()
+	}
+	select {
+	case api := <-events:
+		if got := api.PrivateKey().PublicKey().Base64(); got != publicKey {
+			t.Fatalf("first controller identity = %s, want %s", got, publicKey)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("controller was not published after the current config completed")
+	}
+	select {
+	case api := <-existingEvents:
+		if SameWGCtrlInstance(api, oldAPI) {
+			t.Fatal("pending refresh reused the cached controller")
+		}
+		if got := api.PrivateKey().PublicKey().Base64(); got != publicKey {
+			t.Fatalf("refreshed controller identity = %s, want %s", got, publicKey)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("pending controller refresh was lost")
+	}
+}
+
 func TestWireGuardNetworkAttachmentDoesNotOpenSocketsUntilTunAttached(t *testing.T) {
 	w := pasta.NewWorkspace(wireGuardTestLogFactory{})
 	t.Cleanup(func() { w.Close() })
@@ -869,11 +979,11 @@ func TestWireGuardPresharedKeySecretRotationPublishesRuntimeConvergence(t *testi
 			wg.runtimeMu.Unlock()
 			t.Fatalf("rotation %d returned while node still reported up", rotation+1)
 		}
-		if wg.appliedConfigGeneration >= wg.currentConfigGeneration() {
+		if wg.appliedConfigGeneration.Load() >= wg.currentConfigGeneration() {
 			wg.runtimeMu.Unlock()
 			t.Fatalf(
 				"rotation %d applied generation=%d, desired=%d; want pending apply",
-				rotation+1, wg.appliedConfigGeneration, wg.currentConfigGeneration(),
+				rotation+1, wg.appliedConfigGeneration.Load(), wg.currentConfigGeneration(),
 			)
 		}
 		oldSpec, ok := wg.dev.PeerSpec(peerPublicKey)
@@ -894,7 +1004,7 @@ func TestWireGuardPresharedKeySecretRotationPublishesRuntimeConvergence(t *testi
 			}
 			wg.runtimeMu.Lock()
 			defer wg.runtimeMu.Unlock()
-			if wg.dev == nil || wg.appliedConfigGeneration != wg.currentConfigGeneration() {
+			if wg.dev == nil || wg.appliedConfigGeneration.Load() != wg.currentConfigGeneration() {
 				return false
 			}
 			spec, ok := wg.dev.PeerSpec(peerPublicKey)
@@ -961,7 +1071,7 @@ func TestWireGuardLinkChangesDoNotDropPendingConfigApply(t *testing.T) {
 	eventually(t, func() bool {
 		wg.runtimeMu.Lock()
 		defer wg.runtimeMu.Unlock()
-		return wg.appliedConfigGeneration == wg.currentConfigGeneration()
+		return wg.appliedConfigGeneration.Load() == wg.currentConfigGeneration()
 	}, "link removal reschedules invalidated config without an attachment")
 }
 
@@ -1029,7 +1139,7 @@ func TestWireGuardTunReplacementAppliesSkippedCurrentConfig(t *testing.T) {
 	n.runtimeMu.Lock()
 	n.currentBind = wireGuardTrackedBind{}
 	n.runtimeDeviceUp = true
-	n.appliedConfigGeneration = 1
+	n.appliedConfigGeneration.Store(1)
 	n.runtimeMu.Unlock()
 
 	// A config apply can become stale before it takes runtimeMu when its TunConfig
@@ -1054,11 +1164,11 @@ func TestWireGuardBindRecoveryAppliesSkippedCurrentConfigWithoutTun(t *testing.T
 		currentNetwork:           network,
 		currentNetworkGeneration: 1,
 		currentBindFailed:        true,
-		appliedConfigGeneration:  1,
 	}
 	t.Cleanup(n.stopRuntime)
 	n.networkGeneration.Store(1)
 	n.configGeneration.Store(2)
+	n.appliedConfigGeneration.Store(1)
 
 	needsConfig, attached, retry, err := n.attachCurrentNetworkBind(1, n.config.batchSize)
 	if err != nil || !attached || retry {

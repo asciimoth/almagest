@@ -85,8 +85,21 @@ func TestExecutionServicesRequirePrivilegedGoCase(t *testing.T) {
 	}
 }
 
+func TestExecutionManifestRequiresBoundedCaseTimeouts(t *testing.T) {
+	manifest := testExecutionManifest()
+	manifest.CaseTimeoutSeconds = 0
+	if err := ValidateExecutionManifest(manifest); err == nil || !strings.Contains(err.Error(), "case timeout") {
+		t.Fatalf("case timeout error = %v", err)
+	}
+	manifest = testExecutionManifest()
+	manifest.Suites[0].Cases[1].TimeoutSeconds = 3601
+	if err := ValidateExecutionManifest(manifest); err == nil || !strings.Contains(err.Error(), "invalid timeout") {
+		t.Fatalf("case override error = %v", err)
+	}
+}
+
 func testExecutionManifest() ExecutionManifest {
-	return ExecutionManifest{SchemaVersion: 1, PlatformID: "server", OS: "windows-server-2022", Architecture: "amd64", Suites: []ExecutionSuite{
+	return ExecutionManifest{SchemaVersion: 1, PlatformID: "server", OS: "windows-server-2022", Architecture: "amd64", CaseTimeoutSeconds: 900, GoPackageTimeoutSeconds: 600, ProgressIntervalSeconds: 30, Suites: []ExecutionSuite{
 		{ID: "ordinary", Identity: "standard", Privilege: "ordinary", Cases: []ExecutionCase{{ID: "identity", Kind: "identity"}, {ID: "go", Kind: "go", Module: "bin", Arguments: []string{"./..."}, EventFile: "go.jsonl"}}},
 		{ID: "privileged", Identity: "elevated", Privilege: "privileged", Serialized: true, Cases: []ExecutionCase{{ID: "elevated", Kind: "identity"}, {ID: "serial", Kind: "serialization"}}},
 	}}

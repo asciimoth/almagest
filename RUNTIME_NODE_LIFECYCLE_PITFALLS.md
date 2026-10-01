@@ -719,6 +719,28 @@ Related implementation:
 - `lib/wireguard/node_wireguard_runtime.go`
 - `lib/wireguard/node_wireguard_device.go`
 
+### WireGuard Published A Controller Before Applying Its Requested Key
+
+Bug:
+
+- The menu showed the desired public key before the async device config job
+  applied it. A new WGCtrl link could receive the device with its previous key.
+- Amnesia validated its profile against that old key and reported a mismatch.
+  Later broadcasts reused the same API, so they did not restart reconciliation.
+
+Fix:
+
+- Controller publication checks the applied config generation against the
+  desired generation without taking the runtime lock in workspace callbacks.
+- Both config completion and attachment completion retry publication. An
+  attachment can invalidate a config completion after the config was installed.
+- A refresh request received during config apply discards the cached API, so
+  the later broadcast still creates the fresh API requested by middleware.
+
+Coverage: `TestWireGuardControllerWaitsForCurrentDeviceConfig` blocks device
+updates and checks initial publication, cached refresh, and publication after
+an attachment makes the config completion stale.
+
 ### WireGuard TUN Events Changed Device State Outside The Node
 
 Bug:

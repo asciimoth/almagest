@@ -105,7 +105,13 @@ The host independently requires passing ordinary and privileged artifacts.
 Each Go command also writes an atomic coverage profile. After validation, the
 host combines and publishes these profiles in `coverage/winvm`. The final
 coverage report includes that profile when it is present.
-The host prints `RUN`, `PASS`, and `FAIL` progress for each manifest Go case.
+The execution manifest sets a Go package timeout, a hard deadline for each Go
+case, and a progress interval. The package timeout lets Go emit its timeout
+stack dump. The hard deadline also covers package loading and compilation. A
+case can override the default hard deadline with `timeoutSeconds`. The host
+prints `RUN`, `WAIT`, `TIMEOUT`, `PASS`, and `FAIL` progress. Each heartbeat
+also records the active Go process tree and guest memory and disk state under
+the suite's `diagnostics` directory.
 The active gate covers the portable baseline, native backend selection,
 trusted Wintun loading, and read-only split-driver dependency handling. It does
 not qualify later milestones in `docs/windows/test-manifest.json`.
@@ -119,12 +125,18 @@ and WinVM prerequisites.
 ## Failure and recovery
 
 Runs retain disk, firmware, serial and QEMU logs, console output, source and
-payload hashes, image identity, and `run.json`. Failed guest runs also attempt
-bounded QGA diagnostics. Missing, invalid, or failed guest artifacts fail the
-run. The guest must shut down within the configured limit; otherwise the run
-fails and the host sends TERM, then KILL, with separate limits. A process that
-survives KILL is recorded and blocks subsequent runs until that exact process
-has stopped. There is no unbounded process wait.
+payload hashes, image identity, and `run.json`. Failed guest runs attempt
+bounded QMP and QGA diagnostics. This also happens after Ctrl+C: QEMU ignores
+the terminal SIGINT until the runner records hypervisor state, guest processes,
+resource and network state, recent Windows events, exported event logs, active
+test tails, and partial guest artifacts. The report is in `diagnostics.log` and
+the detailed files are in `guest-artifacts.tar` under `artifacts/diagnostics`.
+Collection is best effort because a failed guest or transport can be
+unresponsive. Missing, invalid, or failed guest artifacts fail the run. The
+guest must shut down within the configured limit; otherwise the run fails and
+the host sends TERM, then KILL, with separate limits. A process that survives
+KILL is recorded and blocks subsequent runs until that exact process has
+stopped. There is no unbounded process wait.
 
 The failure message prints this recovery command:
 

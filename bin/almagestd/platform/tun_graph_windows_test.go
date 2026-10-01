@@ -4,7 +4,8 @@ package platform
 
 import (
 	"context"
-	"reflect"
+	"net"
+	"slices"
 	"testing"
 	"time"
 
@@ -22,7 +23,7 @@ import (
 )
 
 func TestWindowsGraphRegularTunLifecycle(t *testing.T) {
-	engine, system, receiver := newWindowsTunGraphEngine(t)
+	engine, _, receiver := newWindowsTunGraphEngine(t)
 	node, err := engine.AddNode(almagest.MainWorkspace, tunnodes.NodeTypeTun, "native tun")
 	if err != nil {
 		t.Fatalf("AddNode Tun: %v", err)
@@ -43,17 +44,17 @@ func TestWindowsGraphRegularTunLifecycle(t *testing.T) {
 		"tunRoutes": "198.19.230.0/24",
 		"mtu":       1380,
 	})
-	waitWindowsTunAddrs(t, system, source, []string{"198.18.230.1/32"})
+	waitWindowsTunAddrs(t, source, []string{"198.18.230.1/32"})
 	applyWindowsTunGraphForm(t, engine, node, map[string]any{
 		"tunAddrs":  "198.18.230.1/32",
 		"tunRoutes": "198.19.230.0/24",
 		"mtu":       1380,
 	})
-	waitWindowsTunAddrs(t, system, source, []string{"198.18.230.1/32"})
+	waitWindowsTunAddrs(t, source, []string{"198.18.230.1/32"})
 }
 
 func TestWindowsGraphDefaultTunRebuildLifecycle(t *testing.T) {
-	engine, system, receiver := newWindowsTunGraphEngine(t)
+	engine, _, receiver := newWindowsTunGraphEngine(t)
 	node, err := engine.AddNode(almagest.MainWorkspace, tunnodes.NodeTypeDefaultTun, "native default tun")
 	if err != nil {
 		t.Fatalf("AddNode DefaultTun: %v", err)
@@ -70,7 +71,7 @@ func TestWindowsGraphDefaultTunRebuildLifecycle(t *testing.T) {
 		"mtu":      1370,
 		"dnsIP":    "198.18.231.1",
 	})
-	replacement := receiveWindowsTunPayload(t, receiver.events)
+	replacement := receiveWindowsTunPayloadAfter(t, receiver.events, first.Tun)
 	replacementSource, ok := nodekit.TunSource(replacement.Tun).(tun.Tun)
 	if !ok {
 		t.Fatalf("DefaultTun source = %T, want tun.Tun", nodekit.TunSource(replacement.Tun))
@@ -78,7 +79,7 @@ func TestWindowsGraphDefaultTunRebuildLifecycle(t *testing.T) {
 	if nodekit.SameTunInstance(first.Tun, replacement.Tun) {
 		t.Fatal("DefaultTun address, DNS-address, and MTU change reused the retired output")
 	}
-	waitWindowsTunAddrs(t, system, replacementSource, []string{"198.18.231.1/32"})
+	waitWindowsTunAddrs(t, replacementSource, []string{"198.18.231.1/32"})
 	if updown, ok := first.Tun.(interface{ IsUp() (bool, error) }); ok {
 		if up, _ := updown.IsUp(); up {
 			t.Fatal("retired DefaultTun output still reports up")
@@ -170,12 +171,17 @@ func linkWindowsTunGraphNodes(t *testing.T, engine almagest.Engine, provider, re
 
 func receiveWindowsTunPayload(t *testing.T, events <-chan links.TunPayload) links.TunPayload {
 	t.Helper()
+	return receiveWindowsTunPayloadAfter(t, events, nil)
+}
+
+func receiveWindowsTunPayloadAfter(t *testing.T, events <-chan links.TunPayload, previous tun.Tun) links.TunPayload {
+	t.Helper()
 	timer := time.NewTimer(15 * time.Second)
 	defer timer.Stop()
 	for {
 		select {
 		case payload := <-events:
-			if payload.Tun != nil {
+			if payload.Tun != nil && !nodekit.SameTunInstance(previous, payload.Tun) && nodekit.TunIsReady(payload.Tun) {
 				return payload
 			}
 		case <-timer.C:
@@ -193,15 +199,38 @@ func applyWindowsTunGraphForm(t *testing.T, engine almagest.Engine, node uint64,
 	})
 }
 
-func waitWindowsTunAddrs(t *testing.T, system sysnet.System, source tun.Tun, want []string) {
+func waitWindowsTunAddrs(t *testing.T, source tun.Tun, want []string) {
 	t.Helper()
+	// Graph payloads are detached wrappers, not backend-owned handles. Inspect
+	// the actual OS interface; DefaultTun also rejects generic GetTunAddrs.
+	name, err := source.Name()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
 	deadline := time.Now().Add(15 * time.Second)
 	for time.Now().Before(deadline) {
-		if got, err := system.GetTunAddrs(source); err == nil && reflect.DeepEqual(got, want) {
-			return
+		var iface *net.Interface
+		iface, err = net.InterfaceByName(name)
+		if err == nil {
+			var addrs []net.Addr
+			addrs, err = iface.Addrs()
+			got = nil
+			for _, addr := range addrs {
+				got = append(got, addr.String())
+			}
+			// Windows can also assign link-local addresses to the adapter.
+			if err == nil {
+				found := true
+				for _, addr := range want {
+					found = found && slices.Contains(got, addr)
+				}
+				if found {
+					return
+				}
+			}
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	got, err := system.GetTunAddrs(source)
 	t.Fatalf("TUN addresses = %#v, %v; want %#v, nil", got, err, want)
 }

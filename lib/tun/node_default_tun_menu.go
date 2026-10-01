@@ -61,6 +61,12 @@ func (n *defaultTunNode) configBlock() formular.Block {
 	strict := configCheckbox("strict", "Strict routing", n.config.strict)
 	exclude := defaultTunRulesField("exclude", "Exclude", n.config.exclude)
 	include := defaultTunRulesField("include", "Include", n.config.include)
+	if statusErr {
+		exclude.Status = formular.StatusError
+		exclude.StatusText = n.formError
+		include.Status = formular.StatusError
+		include.StatusText = n.formError
+	}
 	if n.System() != nil {
 		report := n.System().Capabilities()
 		family := defaultTunOptsFamily(n.effectiveDefaultTunOpts())

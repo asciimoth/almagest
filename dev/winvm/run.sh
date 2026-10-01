@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Remote paths are deliberately expanded on the host.
-# shellcheck disable=SC2029,SC2054
+# shellcheck disable=SC2016,SC2029,SC2054
 set -euo pipefail
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 # shellcheck source=dev/winvm/common.sh
 source "$script_dir/common.sh"
 mode=${1:-smoke}
 [[ $mode == smoke || $mode == test || $mode == --shell || $mode == --prepare ]] || die 'usage: run.sh [smoke | test | --shell RUN | --prepare DIRECTORY]'
-for command in qemu-system-x86_64 qemu-img ssh scp jq python3 timeout flock git tar; do require_command "$command"; done
+for command in qemu-system-x86_64 qemu-img ssh scp jq python3 timeout flock git tar setsid; do require_command "$command"; done
 require_kvm
 ensure_cache_dir
 artifact_root="$repo_root/artifacts/winvm"
@@ -56,6 +56,7 @@ qmp="$sockets/qmp.sock"
 pid=''
 privileged_pid=''
 interrupted=0
+interrupt_reason=''
 stage=setup
 progress() { printf '==> Windows VM: %s\n' "$1"; }
 stream_qga_progress() {
@@ -78,6 +79,44 @@ stream_qga_progress() {
     privileged_pid=''
     return "$status"
 }
+collect_failure_diagnostics() {
+    local reason=${interrupt_reason:-failure} artifact_tmp
+    {
+        printf 'captured_at_utc=%s\nreason=%s\nstage=%s\nqemu_pid=%s\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$reason" "$stage" "$pid"
+        printf '\n===== QMP status =====\n'
+        timeout --foreground 10 "$script_dir/tools/qga.py" --socket "$qmp" --timeout 5 qmp query-status || true
+        printf '\n===== QMP virtual CPUs =====\n'
+        timeout --foreground 10 "$script_dir/tools/qga.py" --socket "$qmp" --timeout 5 qmp query-cpus-fast || true
+        printf '\n===== QMP block statistics =====\n'
+        timeout --foreground 10 "$script_dir/tools/qga.py" --socket "$qmp" --timeout 5 qmp query-blockstats || true
+        if [[ -n ${remote:-} ]]; then
+            printf '\n===== guest diagnostic collector =====\n'
+            timeout --foreground 60 "$script_dir/tools/qga.py" --socket "$qga" --timeout 55 exec \
+                powershell.exe -NoProfile -ExecutionPolicy Bypass \
+                -File "$remote/source/dev/winvm/collect-diagnostics.ps1" \
+                -OutputDir "$remote/artifacts/diagnostics" -Reason "$reason" -Stage "$stage" || true
+        fi
+        printf '\n===== guest fallback state =====\n'
+        timeout --foreground 25 "$script_dir/tools/qga.py" --socket "$qga" --timeout 20 exec \
+            powershell.exe -NoProfile -Command \
+            'Get-Date -Format o; Get-CimInstance Win32_OperatingSystem | Format-List LastBootUpTime,LocalDateTime,FreePhysicalMemory,TotalVisibleMemorySize,NumberOfProcesses; Get-CimInstance Win32_LogicalDisk | Format-Table DeviceID,FileSystem,Size,FreeSpace; Get-CimInstance Win32_Process | Sort-Object ProcessId | Format-List ProcessId,ParentProcessId,Name,CreationDate,KernelModeTime,UserModeTime,WorkingSetSize,ThreadCount,HandleCount,ExecutablePath,CommandLine; Get-Service | Sort-Object Name | Format-Table Name,Status,StartType' || true
+        if [[ -n ${remote:-} ]]; then
+            printf '\n===== stop diagnosed guest commands =====\n'
+            timeout --foreground 20 "$script_dir/tools/qga.py" --socket "$qga" --timeout 15 exec \
+                powershell.exe -NoProfile -Command \
+                '$self=$PID; Get-CimInstance Win32_Process | Where-Object { $_.ProcessId -ne $self -and ($_.CommandLine -like "*test-suite.ps1*" -or $_.CommandLine -like "*collect-diagnostics.ps1*") } | ForEach-Object { taskkill.exe /PID $_.ProcessId /T /F }; exit 0' || true
+        fi
+    } >"$run_dir/diagnostics.log" 2>&1
+    # Preserve partial event streams, stderr, heartbeat snapshots, and the
+    # detailed guest report even when a test or the host runner is interrupted.
+    if [[ -n ${remote:-} ]]; then
+        artifact_tmp="$run_dir/guest-artifacts.failure.tar"
+        timeout --foreground 30 ssh "${ssh_opts[@]}" "$target" "tar.exe -cf $remote/artifacts.tar -C $remote artifacts" >>"$run_dir/diagnostics.log" 2>&1 &&
+            timeout --foreground 60 scp "${scp_opts[@]}" "$target:$remote/artifacts.tar" "$artifact_tmp" >>"$run_dir/diagnostics.log" 2>&1 &&
+            mv "$artifact_tmp" "$run_dir/guest-artifacts.tar" || true
+    fi
+}
 cleanup() {
     status=$?
     trap - EXIT INT TERM
@@ -86,14 +125,7 @@ cleanup() {
         wait "$privileged_pid" 2>/dev/null || true
     fi
     if [[ -n $pid ]]; then
-        if ((status != 0 && interrupted == 0)); then
-            timeout 20 "$script_dir/tools/qga.py" --socket "$qga" --timeout 15 exec powershell.exe -NoProfile -Command 'Get-Process; Get-Service; Get-Content C:\winvm\provision.log -Tail 100 -ErrorAction SilentlyContinue' >"$run_dir/diagnostics.log" 2>&1 || true
-            # Test failures can occur before the normal artifact collection step.
-            if [[ -n ${remote:-} && ! -f $run_dir/guest-artifacts.tar ]]; then
-                timeout --foreground 30 ssh "${ssh_opts[@]}" "$target" "tar.exe -cf $remote/artifacts.tar -C $remote artifacts" >>"$run_dir/diagnostics.log" 2>&1 &&
-                    timeout --foreground 60 scp "${scp_opts[@]}" "$target:$remote/artifacts.tar" "$run_dir/guest-artifacts.tar" >>"$run_dir/diagnostics.log" 2>&1 || true
-            fi
-        fi
+        ((status == 0)) || collect_failure_diagnostics
         "$script_dir/tools/qga.py" --socket "$qga" --timeout 5 shutdown >>"$run_dir/agent.log" 2>&1 || true
         if ((interrupted)); then
             if ! stop_and_reap_pid "$pid" 5 5 5; then
@@ -131,8 +163,8 @@ cleanup() {
     exit "$status"
 }
 trap cleanup EXIT
-trap 'interrupted=1; exit 130' INT
-trap 'interrupted=1; exit 143' TERM
+trap 'interrupted=1; interrupt_reason=ctrl-c; exit 130' INT
+trap 'interrupted=1; interrupt_reason=sigterm; exit 143' TERM
 if [[ $mode != --shell ]]; then
     progress 'preparing isolated test payload'
     if [[ $mode == smoke ]]; then
@@ -173,7 +205,9 @@ qemu=(qemu-system-x86_64 -name almagest-winvm -machine "$(jq -r .machine.type "$
     -device e1000e,netdev=net0 -netdev "user,id=net0,hostfwd=tcp:127.0.0.1:$port-:22"
     -device virtio-serial-pci -chardev "socket,path=$qga,server=on,wait=off,id=qga0" -device virtserialport,chardev=qga0,name=org.qemu.guest_agent.0 -qmp "unix:$qmp,server=on,wait=off")
 printf '%q ' "${qemu[@]}" >"$run_dir/qemu-command.log"
-"${qemu[@]}" >"$run_dir/qemu.log" 2>&1 &
+# Put QEMU in a separate session so terminal signals reach the runner but not
+# the VM. The EXIT trap must collect guest state before it shuts QEMU down.
+setsid "${qemu[@]}" >"$run_dir/qemu.log" 2>&1 &
 pid=$!
 ssh_opts=(-i "$(ssh_private_key)" -p "$port" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$run_dir/known_hosts" -o ConnectTimeout=5)
 ssh_opts+=(-o LogLevel=ERROR -o WarnWeakCrypto=no)

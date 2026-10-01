@@ -608,6 +608,14 @@ underlay change/loss, no upstream, DNS port conflict, provider detach,
 
 ### Step 19: Test Windows rules and menus
 
+Implementation: complete. DefaultTun exposes only capability-valid Windows
+routing choices, validates local executable paths through the backend, and
+keeps rejected Linux rules visible and saved for repair without replacing the
+last valid runtime. TunSplitter applies `win-pid` and `win-exe-path` through its
+`RULE` graph program and likewise preserves rejected desired programs while its
+last valid router stays active. Native cases cover executable-tree application,
+best-effort ownership matchers, menu states, path handling, and persistence.
+
 Cover `win-exe-tree` exclusions and `win-pid`/`win-exe-path` matchers through
 config, forms, autocomplete, graph processing, and persistence.
 
@@ -621,8 +629,9 @@ Tests: path normalization/case handling, invalid path forms, descendants,
 pre-existing IPC targets, inaccessible processes, ambiguous UDP ownership,
 capability-dependent menus, and config save/reload.
 
-Milestone acceptance: representative Almagest graphs pass backend contract
-tests. Direct sysnet-windows tests alone do not satisfy this milestone.
+Milestone acceptance: complete. Representative Almagest graphs pass backend
+contract tests for TUN lifecycle, OutNet, LocalNet, DNS, Windows rules, menus,
+and persistence. Direct sysnet-windows tests are supporting evidence only.
 
 ## Milestone 8: Prove packet paths and resource recovery
 

@@ -107,13 +107,17 @@ func windowsFetchAuthoritiesFromStore(ctx context.Context, spec windowsAuthority
 }
 
 func openWindowsAuthorityStore(location uint32, readOnly bool) (windows.Handle, error) {
-	name, err := windows.UTF16PtrFromString(windowsRootStoreName)
+	return openWindowsNamedAuthorityStore(windowsRootStoreName, location, readOnly)
+}
+
+func openWindowsNamedAuthorityStore(storeName string, location uint32, readOnly bool) (windows.Handle, error) {
+	name, err := windows.UTF16PtrFromString(storeName)
 	if err != nil {
 		return 0, err
 	}
-	flags := location | windows.CERT_STORE_OPEN_EXISTING_FLAG
+	flags := location
 	if readOnly {
-		flags |= windows.CERT_STORE_READONLY_FLAG
+		flags |= windows.CERT_STORE_READONLY_FLAG | windows.CERT_STORE_OPEN_EXISTING_FLAG
 	}
 	return windows.CertOpenStore(
 		windows.CERT_STORE_PROV_SYSTEM,

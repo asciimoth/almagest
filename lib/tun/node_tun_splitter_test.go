@@ -594,6 +594,59 @@ func TestTunSplitterNodeValidationReportsStatus(t *testing.T) {
 	assertTunSplitterRulesStatus(t, state, splitter, formular.StatusOK)
 }
 
+func TestTunSplitterUnsupportedRuleRemainsVisibleAndSaved(t *testing.T) {
+	system := &rejectingMatcherSystem{System: &sysnetdebug.System{}}
+	w := pasta.NewWorkspace(logging.NewDebugLogFactory(1024))
+	t.Cleanup(w.Close)
+	if err := w.AddNodeClass(TunSplitterClass{Runtime: &tunSplitterTestRuntime{sys: system}}); err != nil {
+		t.Fatalf("AddNodeClass TunSplitter: %v", err)
+	}
+	state := formular.NewMenuSnapshotState()
+	sub := w.SubscribeNotifications(func(notification pasta.WorkspaceNotification) {
+		if notification.Kind == pasta.NotificationNodeMenu {
+			state.Apply(notification.Formular)
+		}
+	})
+	if sub == 0 {
+		t.Fatal("Subscribe returned 0")
+	}
+	defer w.UnsubscribeNotifications(sub)
+
+	splitter, err := w.AddNodeByClass(NodeTypeTunSplitter, "splitter")
+	if err != nil {
+		t.Fatalf("AddNodeByClass TunSplitter: %v", err)
+	}
+	w.SubscribeNodeMenu(splitter, sub)
+	const desired = "RULE win-pid 42\nSLOT 2\nTRUE\nSLOT 1\n"
+	w.SendNodeFormularMsg(splitter, formular.FormApplyMessage{
+		MessageBase: testkit.FormMessageBase(formular.MessageFormApply, splitter),
+		BlockID:     tunSplitterConfigBlockID,
+		Values:      map[string]any{tunSplitterRulesField: desired},
+	})
+	assertTunSplitterRulesStatus(t, state, splitter, formular.StatusError)
+	assertTunSplitterConfigFieldValue(t, state, splitter, tunSplitterRulesField, desired)
+
+	cfg := configer.NewMemory(nil)
+	if err := w.SaveConfig(cfg); err != nil {
+		t.Fatalf("SaveConfig: %v", err)
+	}
+	got, err := cfg.Get(configer.Path{"splitter", tunSplitterRulesField})
+	if err != nil || got != desired {
+		t.Fatalf("saved unsupported rules = %#v, %v; want %q, nil", got, err, desired)
+	}
+}
+
+type rejectingMatcherSystem struct {
+	*sysnetdebug.System
+}
+
+func (s *rejectingMatcherSystem) BuildMatcher(rule sysnet.Rule) (sysnet.Matcher, error) {
+	if rule.Type == "win-pid" {
+		return nil, fmt.Errorf("win-pid is not supported on this system: %w", sysnet.ErrNotSupported)
+	}
+	return s.System.BuildMatcher(rule)
+}
+
 func TestTunSplitterNodeMenuAppliesAndSavesRoutingCacheConfig(t *testing.T) {
 	manager := newMemoryDNSCacheManager()
 	manager.Storage("shared")

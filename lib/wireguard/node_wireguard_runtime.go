@@ -156,7 +156,7 @@ func (n *wireGuardNode) scheduleConfigApply(config wireGuardConfig, runtimeGener
 		// prevents a hot attachment replacement from applying the same config
 		// again, while a skipped stale job remains detectable.
 		if configGeneration == n.currentConfigGeneration() {
-			n.appliedConfigGeneration = configGeneration
+			n.appliedConfigGeneration.Store(configGeneration)
 		}
 		return n.shouldRunDeviceLocked(), nil, true
 	})
@@ -743,6 +743,10 @@ func (n *wireGuardNode) handleRuntimeAttachmentResult(msg wireGuardRuntimeAttach
 	// every current attachment transition, including transitions that cannot
 	// make the complete WireGuard runtime ready.
 	n.checkPendingWGCtrlInterfaceConfigApplies()
+	// An attachment can invalidate the config job's runtime completion after
+	// it installed the current config. Publish here too; publication checks
+	// config convergence independently of data-plane readiness.
+	n.sendWGCtrl()
 	if !ready {
 		_ = n.updateLabel()
 		n.sendStatusBlock()

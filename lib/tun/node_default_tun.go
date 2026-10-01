@@ -283,6 +283,12 @@ func (n *defaultTunNode) applyConfigForm(values map[string]any) error {
 	}
 	next.normalize()
 	if err := n.validateConfig(next); err != nil {
+		// Keep rejected desired values in the form and saved config so an
+		// unsupported platform-specific rule remains visible for repair. The
+		// effective runtime stays unchanged until the complete desired config
+		// passes validation.
+		n.config = next
+		n.ruleDraftType = nil
 		n.formError = err.Error()
 		n.sendForcedMenuSnapshot()
 		_ = n.updateLabel()

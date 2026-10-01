@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	almagest "github.com/asciimoth/almagest/lib"
 	dnsnodes "github.com/asciimoth/almagest/lib/dns"
 	"github.com/asciimoth/almagest/lib/testkit"
 	"github.com/asciimoth/almagest/lib/testkit/tuntest"
@@ -1030,6 +1031,116 @@ func TestDefaultTunConfigPersistsAcrossSaveRestoreAndCopyPaste(t *testing.T) {
 	}
 	if got := sys.lastOpts(); !reflect.DeepEqual(got, defaultTunPersistedOpts()) {
 		t.Fatalf("pasted build opts = %#v, want %#v", got, defaultTunPersistedOpts())
+	}
+}
+
+func TestDefaultTunUnsupportedRuleRemainsVisibleAcrossSaveRestore(t *testing.T) {
+	newWindowsRuleSystem := func() *recordingDefaultTunSystem {
+		system := newRecordingDefaultTunSystem()
+		system.Rules = []sysnet.RuleCapability{{
+			Type:        "win-exe-tree",
+			Description: "Windows executable tree",
+			ValueKind:   sysnet.RuleValuePath,
+			SemanticsID: "windows.executable-tree.v1",
+		}}
+		system.CheckRuleHook = func(rule sysnet.Rule, _ sysnet.RuleContext) sysnet.ValidationReport {
+			if rule.Type != "uid" {
+				return sysnet.ValidationReport{}
+			}
+			return sysnet.ValidationReport{Issues: []sysnet.ValidationIssue{{
+				Path:   "Type",
+				State:  sysnet.CapabilityUnsupported,
+				Reason: sysnet.ReasonNotImplemented,
+				Detail: "Linux uid rules are not supported on Windows",
+			}}}
+		}
+		return system
+	}
+
+	system := newWindowsRuleSystem()
+	engine := newDefaultTunTestEngine(t, system, nil)
+	node, err := engine.AddNode(E2EWorkspace, NodeTypeDefaultTun, "default tun")
+	if err != nil {
+		t.Fatalf("AddNode DefaultTun: %v", err)
+	}
+	menuState := formular.NewMenuSnapshotState()
+	subscription := engine.SubscribeNotifications(func(notification almagest.EngineNotification) {
+		if notification.Kind == almagest.NotificationWorkspace && notification.Workspace != nil &&
+			notification.Workspace.Kind == pasta.NotificationNodeMenu {
+			menuState.Apply(notification.Workspace.Formular)
+		}
+	})
+	if subscription == 0 {
+		t.Fatal("SubscribeNotifications returned 0")
+	}
+	defer engine.UnsubscribeNotifications(subscription)
+	engine.SubscribeNodeMenu(E2EWorkspace, node, subscription)
+	engine.SendNodeFormularMsg(E2EWorkspace, node, formular.FormApplyMessage{
+		MessageBase: formular.MessageBase{Type: formular.MessageFormApply, MenuID: pasta.NodeMenuID(node)},
+		BlockID:     "config",
+		Values: map[string]any{
+			"exclude": []formular.ArrayElementValue{{
+				Template: "rule",
+				Values:   map[string]any{"type": "uid", "rule": "1000"},
+			}},
+		},
+	})
+	if got := system.buildCount(); got != 1 {
+		t.Fatalf("build count after unsupported rule = %d, want unchanged 1", got)
+	}
+	if snapshot, ok := engine.NodeSnapshot(E2EWorkspace, node); !ok || snapshot.Label != "invalid config" {
+		t.Fatalf("DefaultTun snapshot after unsupported rule = %#v, want invalid config", snapshot)
+	}
+	menu, ok := menuState.Snapshot(pasta.NodeMenuID(node))
+	if !ok {
+		t.Fatal("DefaultTun menu snapshot missing after unsupported rule")
+	}
+	exclude, ok := testkit.FindItem(testkit.MustFindBlock(t, menu, "config"), "exclude")
+	if !ok || exclude.Field == nil || exclude.Field.Status != formular.StatusError || len(exclude.Field.Elements) != 1 {
+		t.Fatalf("exclude menu field = %#v, want one visible rule and an error", exclude)
+	}
+	var savedType, savedRule any
+	for _, item := range exclude.Field.Elements[0].Items {
+		if item.Field == nil {
+			continue
+		}
+		switch item.ID {
+		case "type":
+			savedType = item.Field.Value
+		case "rule":
+			savedRule = item.Field.Value
+		}
+	}
+	if savedType != "uid" || savedRule != "1000" || !strings.Contains(exclude.Field.StatusText, "not supported") {
+		t.Fatalf("visible unsupported rule = %v %v, status %q", savedType, savedRule, exclude.Field.StatusText)
+	}
+
+	cfg := configer.NewMemory(nil)
+	if err := engine.SaveConfig(cfg); err != nil {
+		t.Fatalf("SaveConfig: %v", err)
+	}
+	raw, err := cfg.Get(configer.Path{"nodes", "default tun", "exclude"})
+	if err != nil {
+		t.Fatalf("read saved exclude rules: %v", err)
+	}
+	want := []any{map[string]any{"type": "uid", "rule": "1000"}}
+	if !reflect.DeepEqual(raw, want) {
+		t.Fatalf("saved unsupported rules = %#v, want %#v", raw, want)
+	}
+
+	restoredSystem := newWindowsRuleSystem()
+	restored := newDefaultTunTestEngine(t, restoredSystem, cfg)
+	restoredNode := testkit.NodeIDByName(t, restored, E2EWorkspace, "default tun")
+	if snapshot, ok := restored.NodeSnapshot(E2EWorkspace, restoredNode); !ok || snapshot.Label != "invalid config" {
+		t.Fatalf("restored DefaultTun snapshot = %#v, want invalid config", snapshot)
+	}
+	restoredCfg := configer.NewMemory(nil)
+	if err := restored.SaveConfig(restoredCfg); err != nil {
+		t.Fatalf("save restored config: %v", err)
+	}
+	raw, err = restoredCfg.Get(configer.Path{"nodes", "default tun", "exclude"})
+	if err != nil || !reflect.DeepEqual(raw, want) {
+		t.Fatalf("restored unsupported rules = %#v, %v; want %#v, nil", raw, err, want)
 	}
 }
 

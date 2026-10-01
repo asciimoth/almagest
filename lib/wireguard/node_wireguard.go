@@ -179,12 +179,14 @@ type wireGuardNode struct {
 	runtimeMu         sync.Mutex
 	runtimeGeneration atomic.Uint64
 	// configGeneration identifies the latest desired device configuration.
-	// appliedConfigGeneration is runtime-owned and records the latest desired
-	// configuration that was applied successfully. Attachment events can
+	// appliedConfigGeneration records the latest desired configuration that
+	// was applied successfully. Attachment events can
 	// invalidate runtime work without changing the desired configuration, so a
 	// separate generation is required to detect a skipped config apply.
-	configGeneration        atomic.Uint64
-	appliedConfigGeneration uint64
+	configGeneration atomic.Uint64
+	// Atomic so controller publication can check convergence without taking
+	// runtimeMu from a workspace callback.
+	appliedConfigGeneration atomic.Uint64
 	// runtimeFailureGeneration prevents a successful async completion that was
 	// scheduled before a newer runtime failure from clearing that failure or
 	// cancelling its retry.

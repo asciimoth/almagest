@@ -449,6 +449,10 @@ func (n *tunSplitterNode) applyConfigForm(values map[string]any) error {
 	}
 	router, err := n.compileRules(text, config)
 	if err != nil {
+		// Preserve rejected desired rules for repair and persistence. Keep the
+		// current router active until the complete desired program compiles.
+		n.rulesText = text
+		n.routingConfig = config
 		n.formError = err.Error()
 		n.sendConfigBlock()
 		return nil

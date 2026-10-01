@@ -11,6 +11,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"errors"
+	"fmt"
 	"math/big"
 	"strings"
 	"testing"
@@ -18,9 +19,16 @@ import (
 
 	"github.com/asciimoth/gonnect/tlspolicy"
 	"golang.org/x/sys/windows"
+	"golang.org/x/sys/windows/registry"
 )
 
 func TestWindowsCertificateStoreCurrentIdentityDiscovery(t *testing.T) {
+	// Read the real Root stores before redirecting mutation tests to isolated
+	// stores. This still checks production permissions and provider selection.
+	if _, err := windowsFetchAuthorities(context.Background(), windowsAuthorityStores); err != nil {
+		t.Fatalf("read native Root stores: %v", err)
+	}
+	isolateWindowsAuthorityStores(t)
 	der := windowsAuthorityTestCertificate(t, "Almagest current identity")
 	remove := addWindowsAuthorityTestCertificate(t, windows.CERT_SYSTEM_STORE_CURRENT_USER, der)
 
@@ -39,6 +47,10 @@ func TestWindowsCertificateStoreCurrentIdentityDiscovery(t *testing.T) {
 }
 
 func TestWindowsCertificateStoreMachineIdentityAndDuplicates(t *testing.T) {
+	if !windows.GetCurrentProcessToken().IsElevated() {
+		t.Skip("machine certificate store writes require an elevated test identity")
+	}
+	isolateWindowsAuthorityStores(t)
 	der := windowsAuthorityTestCertificate(t, "Almagest machine identity")
 	removeUser := addWindowsAuthorityTestCertificate(t, windows.CERT_SYSTEM_STORE_CURRENT_USER, der)
 	defer removeUser()
@@ -135,7 +147,7 @@ func windowsAuthorityTestCertificate(t *testing.T, commonName string) []byte {
 
 func addWindowsAuthorityTestCertificate(t *testing.T, location uint32, der []byte) func() {
 	t.Helper()
-	store, err := openWindowsAuthorityStore(location, false)
+	store, err := windowsOpenAuthorityStore(location, false)
 	if err != nil {
 		t.Fatalf("open test certificate store: %v", err)
 	}
@@ -170,6 +182,68 @@ func addWindowsAuthorityTestCertificate(t *testing.T, location uint32, der []byt
 	}
 	t.Cleanup(remove)
 	return remove
+}
+
+// Exercise native store enumeration without adding trust anchors to the OS or
+// requiring the protected CurrentUser Root store's interactive confirmation.
+func isolateWindowsAuthorityStores(t *testing.T) {
+	t.Helper()
+	name := fmt.Sprintf("AlmagestTest-%d", time.Now().UnixNano())
+	originalOpen := windowsOpenAuthorityStore
+	originalStores := windowsAuthorityStores
+	locations := []uint32{windows.CERT_SYSTEM_STORE_CURRENT_USER}
+	windowsAuthorityStores = append([]windowsAuthorityStore(nil), originalStores[:1]...)
+	if windows.GetCurrentProcessToken().IsElevated() {
+		locations = append(locations, windows.CERT_SYSTEM_STORE_LOCAL_MACHINE)
+		windowsAuthorityStores = append(windowsAuthorityStores, originalStores[1])
+	}
+	t.Cleanup(func() {
+		windowsOpenAuthorityStore = originalOpen
+		windowsAuthorityStores = originalStores
+		for _, location := range locations {
+			root := registry.CURRENT_USER
+			if location == windows.CERT_SYSTEM_STORE_LOCAL_MACHINE {
+				root = registry.LOCAL_MACHINE
+			}
+			deleteWindowsAuthorityTestKey(t, root, `Software\Microsoft\SystemCertificates\`+name)
+		}
+	})
+	windowsOpenAuthorityStore = func(location uint32, readOnly bool) (windows.Handle, error) {
+		return openWindowsNamedAuthorityStore(name, location, readOnly)
+	}
+	for _, location := range locations {
+		store, err := windowsOpenAuthorityStore(location, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := windows.CertCloseStore(store, 0); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func deleteWindowsAuthorityTestKey(t *testing.T, root registry.Key, path string) {
+	t.Helper()
+	key, err := registry.OpenKey(root, path, registry.ENUMERATE_SUB_KEYS)
+	if errors.Is(err, registry.ErrNotExist) {
+		return
+	}
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	names, err := key.ReadSubKeyNames(-1)
+	_ = key.Close()
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	for _, name := range names {
+		deleteWindowsAuthorityTestKey(t, root, path+`\`+name)
+	}
+	if err := registry.DeleteKey(root, path); err != nil {
+		t.Error(err)
+	}
 }
 
 func assertWindowsAuthorityCandidate(t *testing.T, candidates []tlspolicy.AuthorityCandidate, der []byte, source string) {

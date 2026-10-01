@@ -37,6 +37,19 @@ const windowsGraphDNSAddress = "198.18.232.1"
 func TestWindowsGraphOutNetLocalNetAndWireGuardWithDefaultTun(t *testing.T) {
 	engine, system, networkReceiver, _ := newWindowsNetworkGraphEngine(t)
 	defaultTun := addWindowsGraphNode(t, engine, tunnodes.NodeTypeDefaultTun, "default tun")
+	// The native network uses Go's resolver. Windows does not supply localhost
+	// entries in its default hosts file, and an unlinked DefaultTun drops DNS.
+	// Supply both loopback answers through the graph's managed DNS provider.
+	applyWindowsGraphForm(engine, defaultTun, "config", map[string]any{
+		"tunAddrs": windowsGraphDNSAddress + "/32",
+		"dnsIP":    windowsGraphDNSAddress,
+	})
+	static := addWindowsGraphNode(t, engine, dnsnodes.NodeTypeStaticDNS, "local dns")
+	applyWindowsGraphForm(engine, static, "config", map[string]any{
+		"records": "localhost A 127.0.0.1\nlocalhost AAAA ::1", "ttl": 60,
+	})
+	linkWindowsGraphPorts(t, engine, static, "left", "DNS", defaultTun, "right", "DNS")
+	waitWindowsGraphDNSAnswer(t, "udp", "localhost.", netip.MustParseAddr("127.0.0.1"))
 	out := addWindowsGraphNode(t, engine, "almagest/OutNetwork", "out")
 	receiver := addWindowsGraphNode(t, engine, networkReceiver.ClassName(), "network receiver")
 	linkWindowsGraphPorts(t, engine, out, "left", "Network", receiver, "right", "Network")
@@ -70,7 +83,9 @@ func TestWindowsGraphOutNetLocalNetAndWireGuardWithDefaultTun(t *testing.T) {
 	})
 	linkWindowsGraphPorts(t, engine, out, "left", "Network", proxy, "right", "proxy")
 	waitWindowsGraphTCPConnect(t, system.LocalNet(), "tcp4", fmt.Sprintf("127.0.0.1:%d", proxyPort))
-	if ips, err := system.LocalNet().LookupIP(ctx, "ip", "localhost"); err != nil {
+	lookupCtx, lookupCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer lookupCancel()
+	if ips, err := system.LocalNet().LookupIP(lookupCtx, "ip", "localhost"); err != nil {
 		t.Fatalf("LocalNet localhost lookup: %v", err)
 	} else {
 		var hasIPv4, hasIPv6 bool
@@ -163,6 +178,31 @@ func TestWindowsGraphRejectsUnsupportedDefaultTunSourceRoutes(t *testing.T) {
 	t.Fatal("missing clear unsupported DefaultTun.SourceRoutes graph error")
 }
 
+func windowsGraphListenerAddress(t *testing.T, network gonnect.Network, address string) string {
+	t.Helper()
+	endpoint, err := netip.ParseAddrPort(address)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if endpoint.Addr().IsUnspecified() {
+		// OutNet sockets are bound to the selected underlay interface. A
+		// loopback destination cannot be reached through that binding. LocalNet
+		// exposes only loopback addresses through this same API.
+		addrs, addrErr := network.InterfaceAddrs()
+		if addrErr != nil {
+			t.Fatal(addrErr)
+		}
+		for _, addr := range addrs {
+			prefix, parseErr := netip.ParsePrefix(addr.String())
+			if parseErr == nil && prefix.Addr().Is4() == endpoint.Addr().Is4() && !prefix.Addr().IsUnspecified() {
+				return netip.AddrPortFrom(prefix.Addr(), endpoint.Port()).String()
+			}
+		}
+		t.Fatalf("no network interface address for listener %s: %v", address, addrs)
+	}
+	return endpoint.String()
+}
+
 func testWindowsGraphTCP(t *testing.T, name string, network gonnect.Network, family, wildcard string) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -185,7 +225,7 @@ func testWindowsGraphTCP(t *testing.T, name string, network gonnect.Network, fam
 		}
 		accepted <- acceptErr
 	}()
-	conn, err := network.DialTCP(ctx, family, wildcard, listener.Addr().String())
+	conn, err := network.DialTCP(ctx, family, wildcard, windowsGraphListenerAddress(t, network, listener.Addr().String()))
 	if err != nil {
 		t.Fatalf("%s DialTCP(%s): %v", name, family, err)
 	}
@@ -207,7 +247,7 @@ func testWindowsGraphUDP(t *testing.T, name string, network gonnect.Network, fam
 		t.Fatalf("%s ListenUDP(%s): %v", name, family, err)
 	}
 	defer server.Close() //nolint:errcheck
-	client, err := network.DialUDP(ctx, family, wildcard, server.LocalAddr().String())
+	client, err := network.DialUDP(ctx, family, wildcard, windowsGraphListenerAddress(t, network, server.LocalAddr().String()))
 	if err != nil {
 		t.Fatalf("%s DialUDP(%s): %v", name, family, err)
 	}

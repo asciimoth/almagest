@@ -26,6 +26,12 @@ elif name == 'qemu-system-x86_64':
     (root / 'pid').write_text(str(os.getpid()))
     time.sleep(120)
 elif name == 'qga.py':
+    if mode == 'interrupt' and 'exec' in sys.argv and (root / 'pid').exists():
+        try:
+            os.kill(int((root / 'pid').read_text()), 0)
+            (root / 'diagnostics-before-shutdown').touch()
+        except ProcessLookupError:
+            pass
     if 'shutdown' in sys.argv and (root / 'pid').exists():
         os.kill(int((root / 'pid').read_text()), signal.SIGTERM)
 elif name == 'ssh':
@@ -152,6 +158,8 @@ stop_and_reap_pid() { kill -TERM "$1" 2>/dev/null || true; wait "$1" 2>/dev/null
                         self.fail('interrupted runner did not stop:\n' + process_state)
                     result = subprocess.CompletedProcess(command, process.returncode,
                                                          stdout, stderr)
+                    self.assertTrue((root / 'diagnostics-before-shutdown').exists(),
+                                    'Ctrl+C stopped QEMU before guest diagnostics')
                     with self.assertRaises(ProcessLookupError):
                         os.kill(qemu_pid, 0)
                 else:
@@ -174,6 +182,9 @@ stop_and_reap_pid() { kill -TERM "$1" 2>/dev/null || true; wait "$1" 2>/dev/null
                         self.assertIn('running privileged tests', result.stdout)
                     self.assertEqual(record['stage'], expected_stage)
                     self.assertTrue((runs[0] / 'diagnostics.log').exists() or
-                                    mode in ('shutdown', 'interrupt'))
+                                    mode == 'shutdown')
+                    if mode == 'interrupt':
+                        self.assertIn('reason=ctrl-c',
+                                      (runs[0] / 'diagnostics.log').read_text())
                 self.assertTrue((runs[0] / 'overlay.qcow2').exists())
                 self.assertTrue((runs[0] / 'OVMF_VARS.fd').exists())

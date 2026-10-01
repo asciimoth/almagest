@@ -26,3 +26,9 @@ If both selected stores are empty, Almagest uses its compiled NSS fallback
 catalog. Set `ALMAGEST_TLS_FORCE_FALLBACK_ROOTS` to a nonempty value to skip
 Windows store access and use that fallback explicitly. The fallback is also a
 candidate catalog: it does not create implicit trust.
+
+Native Windows tests read the real Root stores without changing them. Tests
+for certificate additions, removals, and duplicate sources use unique named
+stores through the same native store provider and enumeration code. Cleanup
+removes those stores. This permits unattended execution without a Root trust
+confirmation dialog. Machine-store mutation runs only in the elevated suite.

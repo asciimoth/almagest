@@ -30,7 +30,7 @@ case ${1:-check} in
     check) ;;
     *) die "unknown option: $1" ;;
 esac
-for command in qemu-system-x86_64 qemu-img xorriso ssh scp ssh-keygen jq python3 curl sha256sum flock git tar timeout node npm go nix; do require_command "$command"; done
+for command in qemu-system-x86_64 qemu-img xorriso ssh scp ssh-keygen jq python3 curl sha256sum flock git tar timeout setsid node npm go nix; do require_command "$command"; done
 validate
 [[ $(uname -s) == Linux ]] || die 'the VM harness needs Linux'
 require_kvm

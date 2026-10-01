@@ -25,6 +25,12 @@ func (n *wireGuardNode) sendWGCtrl() {
 // replaced, which lets closable middleware request a fresh controller after it
 // changes its active path.
 func (n *wireGuardNode) sendWGCtrlToLink(link uint64) {
+	// The menu already reflects desired config, but the device can still have
+	// its previous key. Do not let a new controller validate against that key.
+	// Successful config completion calls sendWGCtrl again.
+	if n.appliedConfigGeneration.Load() != n.currentConfigGeneration() {
+		return
+	}
 	if payload, ok := n.wgctrlPayloads[link]; ok && WGCtrlIsReady(payload.API) {
 		_ = EmitWGCtrlPayload(n.W, n.ID, link, payload)
 		return
@@ -49,6 +55,12 @@ func (n *wireGuardNode) sendWGCtrlToLink(link uint64) {
 // middleware owns that operation, and the graph resource remains an idempotent
 // fallback for link or node teardown.
 func (n *wireGuardNode) refreshWGCtrlToLink(link uint64) {
+	if n.appliedConfigGeneration.Load() != n.currentConfigGeneration() {
+		// Preserve the request for a fresh API when config completion later
+		// broadcasts. Middleware can still be closing the cached API.
+		delete(n.wgctrlPayloads, link)
+		return
+	}
 	source := n.controllerSource.Load()
 	if !WGCtrlIsReady(source) {
 		return

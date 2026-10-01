@@ -142,7 +142,7 @@ func (n *wireGuardNode) hasActiveTransportLocked() bool {
 }
 
 func (n *wireGuardNode) configApplyNeededLocked() bool {
-	return n.appliedConfigGeneration != n.currentConfigGeneration() ||
+	return n.appliedConfigGeneration.Load() != n.currentConfigGeneration() ||
 		n.currentNetworkActiveLocked() && (n.currentBind == nil || n.currentBindFailed) ||
 		n.currentTunActiveLocked() && n.hasActiveTransportLocked() && !n.runtimeDeviceUp
 }
@@ -452,7 +452,7 @@ func (n *wireGuardNode) stopRuntime() {
 	n.currentBindOpen = nil
 	n.currentBindFailed = false
 	n.runtimeDeviceUp = false
-	n.appliedConfigGeneration = 0
+	n.appliedConfigGeneration.Store(0)
 	n.runtimeStats = wgdevice.RuntimeStats{}
 	n.runtimeOwnedPeerKeys = nil
 	n.runtimeListenPort = 0

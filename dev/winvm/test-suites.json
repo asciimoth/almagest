@@ -3,6 +3,9 @@
   "platformId": "windows-server-2022-amd64",
   "os": "windows-server-2022",
   "architecture": "amd64",
+  "caseTimeoutSeconds": 900,
+  "goPackageTimeoutSeconds": 600,
+  "progressIntervalSeconds": 30,
   "suites": [
     {
       "id": "windows-m4-ordinary",
@@ -23,6 +26,9 @@
             "github.com/asciimoth/almagest/lib/tun::TestSysnetDebugMenusReflectUnavailableCapabilities",
             "github.com/asciimoth/almagest/lib/tun::TestValidationErrorForAttemptPreservesBlockingErrorIdentities",
             "github.com/asciimoth/almagest/lib/tun::TestValidationErrorForAttemptAllowsOnlyAdvisoryUnknownIssues",
+            "github.com/asciimoth/almagest/lib/tun::TestSysnetDebugRuleMenusUseExactRoutingContext",
+            "github.com/asciimoth/almagest/lib/tun::TestDefaultTunUnsupportedRuleRemainsVisibleAcrossSaveRestore",
+            "github.com/asciimoth/almagest/lib/tun::TestTunSplitterUnsupportedRuleRemainsVisibleAndSaved",
             "github.com/asciimoth/almagest/lib/tun::TestSysnetDebugUnknownPreflightBuildsTun",
             "github.com/asciimoth/almagest/lib/tun::TestSysnetDebugUnavailablePreflightPreservesLiveTun",
             "github.com/asciimoth/almagest/lib/tun::TestDefaultTunWarningsShowWarningPopup",
@@ -51,6 +57,7 @@
             "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsCertificateStoreCurrentIdentityDiscovery",
             "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsCertificateStoreCancellationFailureAndFallback",
             "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsCertificateStoreRejectsMalformedCatalogEntry",
+            "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsGraphOwnershipMatchersAndPersistence",
             "github.com/asciimoth/almagest/bin/almagestd/command::TestWindowsRunnerTimeoutKillsChildAndGrandchild",
             "github.com/asciimoth/almagest/bin/almagestd/command::TestWindowsRunnerShutdownKillsChildAndGrandchild",
             "github.com/asciimoth/almagest/bin/almagestd/command::TestWindowsRunnerImmediateCancellationDoesNotLaunch",
@@ -181,6 +188,17 @@
           "eventFile": "m7-unsupported-source-routes-graph.jsonl",
           "requiredTests": [
             "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsGraphRejectsUnsupportedDefaultTunSourceRoutes"
+          ]
+        },
+        {
+          "id": "m7::windows-rule-menus-and-persistence",
+          "kind": "go",
+          "module": "bin",
+          "startServices": ["mullvad-split-tunnel"],
+          "arguments": ["./almagestd/platform", "-run", "^TestWindowsGraphDefaultTunRuleMenusAndPersistence$"],
+          "eventFile": "m7-windows-rule-menus-and-persistence.jsonl",
+          "requiredTests": [
+            "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsGraphDefaultTunRuleMenusAndPersistence"
           ]
         },
         {
