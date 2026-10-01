@@ -840,9 +840,10 @@ Keep Linux Docker E2E coverage. Add explicit Windows commands:
 Acceptance conditions:
 
 - `just lint` checks Windows-only code through the target environment.
-- `just test-total` runs the existing host suite plus required Windows baseline
-  and integration gates on configured VM hosts. Native Windows dispatch uses
-  the Windows runner rather than attempting Linux Docker cases.
+- `just test-total` runs the existing host suite. On configured VM hosts,
+  `RUN_WINVM_TESTS=1` adds the required Windows baseline and integration gates.
+  Native Windows dispatch uses the Windows runner rather than attempting Linux
+  Docker cases.
 - A documented host-only command remains available without KVM/media, but its
   result cannot stand for the full Windows gate. Full requested gates fail on
   missing prerequisites; they do not silently skip them.

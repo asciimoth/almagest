@@ -14,6 +14,7 @@ build_retry_delay="${E2E_BUILD_RETRY_DELAY:-1}"
 build_retry_max_delay="${E2E_BUILD_RETRY_MAX_DELAY:-60}"
 image_input_label="io.almagest.e2e.input-sha256"
 random_seed="${E2E_RANDOM_SEED:-}"
+slowest_count=5
 
 if [[ -z "$random_seed" ]]; then
 	random_seed="$(od -An -N4 -tu4 /dev/urandom)"
@@ -48,6 +49,7 @@ if [[ ! "$random_seed" =~ ^[0-9]+$ ]] || ((10#$random_seed > 2147483647)); then
 	exit 2
 fi
 random_seed=$((10#$random_seed))
+suite_started_ms="$(e2e_now_ms)"
 
 docker_build_with_retry() {
 	local attempt=1
@@ -126,7 +128,7 @@ if (($# > 0)); then
 	cases=("$@")
 else
 	case_find_args=(e2e/cases -mindepth 1 -maxdepth 1 -type d)
-	if [[ "${E2E_INCLUDE_PRIVILEGED:-}" != "1" && "${E2E_DOCKER_RUN_ARGS:-}" != *"--privileged"* ]]; then
+	if [[ "${E2E_INCLUDE_PRIVILEGED:-}" != "1" ]]; then
 		case_find_args+=( '!' -exec test -e '{}/requires-privileged' ';' )
 	fi
 	if [[ "${E2E_EXCLUDE_HEAVY:-}" == "1" ]]; then
@@ -186,6 +188,10 @@ run_dir="$(mktemp -d "${TMPDIR:-/tmp}/almagest-e2e-run.XXXXXX")"
 declare -A running_cases=()
 case_logs=()
 case_cidfiles=()
+case_started_ms=()
+case_finished_ms=()
+case_durations_ms=()
+case_privileges=()
 
 cleanup() {
 	local exit_status="$?"
@@ -258,8 +264,16 @@ while ((next_case < ${#cases[@]} || ${#running_cases[@]} > 0)); do
 		fi
 		case_logs[next_case]="$run_dir/$next_case.log"
 		case_cidfiles[next_case]="$run_dir/$next_case.cid"
-		echo "==> e2e: starting $case_name"
-		run_case "$next_case" >"${case_logs[$next_case]}" 2>&1 &
+		case_finished_ms[next_case]="$run_dir/$next_case.finished-ms"
+		case_privileges[next_case]="$(e2e_case_privilege "$repo_root/e2e/cases/$case_name")"
+		case_started_ms[next_case]="$(e2e_now_ms)"
+		echo "==> e2e: starting $case_name [${case_privileges[$next_case]}]"
+		(
+			case_status=0
+			run_case "$next_case" || case_status=$?
+			e2e_now_ms >"${case_finished_ms[$next_case]}"
+			exit "$case_status"
+		) >"${case_logs[$next_case]}" 2>&1 &
 		running_cases[$!]="$next_case"
 		if e2e_case_is_exclusive "$repo_root/e2e/cases/$case_name"; then
 			exclusive_case_running=1
@@ -279,11 +293,15 @@ while ((next_case < ${#cases[@]} || ${#running_cases[@]} > 0)); do
 	if e2e_case_is_exclusive "$repo_root/e2e/cases/$case_name"; then
 		exclusive_case_running=0
 	fi
-	cat "${case_logs[$completed_index]}"
+	completed_ms="$(<"${case_finished_ms[$completed_index]}")"
+	case_duration_ms=$((completed_ms - case_started_ms[completed_index]))
+	case_durations_ms[completed_index]="$case_duration_ms"
+	case_duration="$(e2e_format_duration "$case_duration_ms")"
 	if ((case_status == 0)); then
-		echo "==> e2e: PASS $case_name"
+		echo "==> e2e: PASS $case_name ($case_duration)"
 	else
-		echo "==> e2e: FAIL $case_name (exit $case_status)" >&2
+		cat "${case_logs[$completed_index]}" >&2
+		echo "==> e2e: FAIL $case_name (exit $case_status, $case_duration)" >&2
 		failed_cases+=("$case_name")
 		((failure_count += 1))
 	fi
@@ -292,13 +310,31 @@ done
 
 if ((failure_count > 0)); then
 	echo "e2e failed: ${failed_cases[*]}" >&2
-	exit 1
-fi
-
-if [[ "$coverage_enabled" == "1" ]]; then
+elif [[ "$coverage_enabled" == "1" ]]; then
 	input_dirs="$(IFS=,; printf '%s' "${coverage_inputs[*]}")"
 	go tool covdata percent -i="$input_dirs" | tee "$coverage_dir/summary.txt"
 	go tool covdata textfmt -i="$input_dirs" -o "$coverage_dir/coverage.out"
 	go tool cover -func="$coverage_dir/coverage.out" >"$coverage_dir/functions.txt"
 	tail -1 "$coverage_dir/functions.txt" | tee "$coverage_dir/total.txt"
+fi
+
+suite_duration_ms=$(($(e2e_now_ms) - suite_started_ms))
+echo "==> e2e: completed ${#cases[@]} cases in $(e2e_format_duration "$suite_duration_ms")"
+report_count="$slowest_count"
+if ((report_count > ${#cases[@]})); then
+	report_count="${#cases[@]}"
+fi
+echo "==> e2e: slowest $report_count cases"
+while IFS=$'\t' read -r case_duration_ms case_index; do
+	case_name="${cases[$case_index]}"
+	printf '    %s [%s] %s\n' \
+		"$case_name" "${case_privileges[$case_index]}" "$(e2e_format_duration "$case_duration_ms")"
+done < <(
+	for case_index in "${!cases[@]}"; do
+		printf '%d\t%d\n' "${case_durations_ms[$case_index]}" "$case_index"
+	done | sort -rn -k1,1 | sed -n "1,${report_count}p"
+)
+
+if ((failure_count > 0)); then
+	exit 1
 fi

@@ -40,6 +40,34 @@ if [[ "${privileged_args[*]}" != "--privileged --device /dev/net/tun" ]]; then
 	echo "privileged case did not receive the required Docker arguments" >&2
 	exit 1
 fi
+if [[ "$(e2e_case_privilege "$root/normal")" != "regular" ]]; then
+	echo "normal case did not report regular status" >&2
+	exit 1
+fi
+if [[ "$(e2e_case_privilege "$root/privileged")" != "privileged" ]]; then
+	echo "privileged case did not report privileged status" >&2
+	exit 1
+fi
+
+if [[ "$(e2e_format_duration 1234)" != "1.234s" ]]; then
+	echo "sub-minute duration was formatted incorrectly" >&2
+	exit 1
+fi
+if [[ "$(e2e_format_duration 62345)" != "1m 02.345s" ]]; then
+	echo "minute duration was formatted incorrectly" >&2
+	exit 1
+fi
+if [[ "$(e2e_format_duration 3723456)" != "1h 02m 03.456s" ]]; then
+	echo "hour duration was formatted incorrectly" >&2
+	exit 1
+fi
+
+start_ms="$(e2e_now_ms)"
+end_ms="$(e2e_now_ms)"
+if ((end_ms < start_ms)); then
+	echo "millisecond clock moved backwards" >&2
+	exit 1
+fi
 
 original=(alpha bravo charlie delta echo foxtrot golf hotel)
 first=("${original[@]}")

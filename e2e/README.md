@@ -17,10 +17,21 @@ Run the regular and privileged cases:
 just test-e2e-all
 ```
 
-The full project gate also runs all E2E cases:
+The full project gate runs regular E2E cases by default:
 
 ```sh
 just test-total
+```
+
+Set `E2E_INCLUDE_PRIVILEGED=1` to include privileged Docker cases in
+`just test-e2e`, `just test-total`, and `just check`. Set
+`RUN_WINVM_TESTS=1` to include the native Windows VM gate in `just test-total`
+and `just check`. Both groups are disabled by default. A developer `.env` file
+can enable them on a machine that has the required Docker and VM setup.
+
+```sh
+E2E_INCLUDE_PRIVILEGED=1
+RUN_WINVM_TESTS=1
 ```
 
 Run all unit and e2e tests except cases marked as heavy:
@@ -36,9 +47,12 @@ just test-e2e-light
 ```
 
 The runner starts up to four cases in parallel. Set `E2E_JOBS` to change the
-limit. Use `E2E_JOBS=1` for sequential execution. Each case's output stays
-grouped, and the runner reports all case failures after the active cases
-finish. The runner randomizes the case order and prints the seed. Set
+limit. Use `E2E_JOBS=1` for sequential execution. The runner shows each case's
+regular or privileged status when it starts. It discards output from passing
+cases and shows the grouped output from failed cases. Completion lines include
+each case's run time. The final summary includes the full suite run time and
+the five slowest cases. The runner reports all case failures after the active
+cases finish. It randomizes the case order and prints the seed. Set
 `E2E_RANDOM_SEED` to that value to reproduce the order from an earlier run.
 
 The `just test-e2e`, `just test-total`, and `just check` paths run the daemon
@@ -82,8 +96,8 @@ Each case lives in `e2e/cases/<case-name>/` and should include:
 - `requires-privileged`: optional marker for cases that need privileged Docker
   networking. Regular runs skip these cases. Set `E2E_INCLUDE_PRIVILEGED=1`
   to include them; the runner gives only marked cases `--privileged` and access
-  to `/dev/net/tun`. Setting `E2E_DOCKER_RUN_ARGS` to include `--privileged`
-  includes the marked cases and applies those arguments to all cases.
+  to `/dev/net/tun`. `E2E_DOCKER_RUN_ARGS` applies additional arguments to all
+  selected cases but does not change which cases the runner selects.
 - `heavy`: optional marker for slow or resource-intensive cases. The
   `just test-total-light` command skips these cases.
 - `docker-build-args`: optional list of `NAME=value` Docker build arguments,

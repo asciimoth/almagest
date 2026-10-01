@@ -20,6 +20,7 @@ test-js:
 
 test-e2e:
   ./e2e/lib/case_scheduler_test.sh
+  ./e2e/run_test.sh
   ./e2e/lib/common_test.sh
   ./e2e/lib/amnesia_peer_handoff_test.sh
   python3 ./e2e/lib/udp_echo_client_test.py
@@ -27,6 +28,7 @@ test-e2e:
 
 test-e2e-all:
   ./e2e/lib/case_scheduler_test.sh
+  ./e2e/run_test.sh
   ./e2e/lib/common_test.sh
   ./e2e/lib/amnesia_peer_handoff_test.sh
   python3 ./e2e/lib/udp_echo_client_test.py
@@ -37,7 +39,12 @@ test-e2e-light:
 
 test: test-go test-js
 
-test-total: test-winvm-harness test test-e2e-all winvm-test
+test-total: test-winvm-harness test test-e2e
+  @if [[ "${RUN_WINVM_TESTS:-0}" == "1" ]]; then \
+    just winvm-test; \
+  else \
+    printf 'Skipping native Windows VM tests; set RUN_WINVM_TESTS=1 to enable them.\n'; \
+  fi
   ./scripts/coverage-report.sh
 
 test-total-light: test test-e2e-light

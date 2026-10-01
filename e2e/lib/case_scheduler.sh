@@ -5,6 +5,39 @@ e2e_case_is_exclusive() {
 	[[ -f "$case_dir/exclusive" ]]
 }
 
+e2e_case_privilege() {
+	local case_dir="${1:?case directory is required}"
+
+	if [[ -f "$case_dir/requires-privileged" ]]; then
+		printf 'privileged\n'
+	else
+		printf 'regular\n'
+	fi
+}
+
+e2e_now_ms() {
+	local seconds="${EPOCHREALTIME%.*}"
+	local fraction="${EPOCHREALTIME#*.}000"
+
+	printf '%d\n' "$((10#$seconds * 1000 + 10#${fraction:0:3}))"
+}
+
+e2e_format_duration() {
+	local milliseconds="${1:?duration in milliseconds is required}"
+	local hours=$((milliseconds / 3600000))
+	local minutes=$(((milliseconds % 3600000) / 60000))
+	local seconds=$(((milliseconds % 60000) / 1000))
+	local remainder=$((milliseconds % 1000))
+
+	if ((hours > 0)); then
+		printf '%dh %02dm %02d.%03ds\n' "$hours" "$minutes" "$seconds" "$remainder"
+	elif ((minutes > 0)); then
+		printf '%dm %02d.%03ds\n' "$minutes" "$seconds" "$remainder"
+	else
+		printf '%d.%03ds\n' "$seconds" "$remainder"
+	fi
+}
+
 e2e_case_can_start() {
 	local case_dir="${1:?case directory is required}"
 	local running="${2:?running case count is required}"
