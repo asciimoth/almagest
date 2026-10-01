@@ -25,9 +25,11 @@ just test-total
 
 Set `E2E_INCLUDE_PRIVILEGED=1` to include privileged Docker cases in
 `just test-e2e`, `just test-total`, and `just check`. Set
-`RUN_WINVM_TESTS=1` to include the native Windows VM gate in `just test-total`
-and `just check`. Both groups are disabled by default. A developer `.env` file
-can enable them on a machine that has the required Docker and VM setup.
+`RUN_WINVM_TESTS=1` to include the native Windows VM gate in `just test-e2e`,
+`just test-e2e-all`, and `just test-e2e-light`. This also includes the gate in
+`just test-total`, `just test-total-light`, and `just check`. Both groups are
+disabled by default. A developer `.env` file can enable them on a machine that
+has the required Docker and VM setup.
 
 ```sh
 E2E_INCLUDE_PRIVILEGED=1
@@ -46,13 +48,17 @@ Run only the non-heavy e2e cases:
 just test-e2e-light
 ```
 
-The runner starts up to four cases in parallel. Set `E2E_JOBS` to change the
-limit. Use `E2E_JOBS=1` for sequential execution. The runner shows each case's
-regular or privileged status when it starts. It discards output from passing
-cases and shows the grouped output from failed cases. Completion lines include
-each case's run time. The final summary includes the full suite run time and
-the 15 slowest cases. The runner reports all case failures after the active
-cases finish. It randomizes the case order and prints the seed. Set
+When `RUN_WINVM_TESTS=1`, the native Windows VM gate and the Docker e2e suite
+run in parallel and write to the same command output. The aggregate waits for
+both gates before it creates the coverage report.
+
+The Docker runner starts up to four cases in parallel. Set `E2E_JOBS` to change
+the limit. Use `E2E_JOBS=1` for sequential execution. The runner shows each
+case's regular or privileged status when it starts. It discards output from
+passing cases and shows the grouped output from failed cases. Completion lines
+include each case's run time. The final summary includes the full suite run
+time and the 15 slowest cases. The runner reports all case failures after the
+active cases finish. It randomizes the case order and prints the seed. Set
 `E2E_RANDOM_SEED` to that value to reproduce the order from an earlier run.
 The scheduler keeps the randomized relative order of runnable cases. If an
 exclusive case cannot start, later regular cases can use the available job

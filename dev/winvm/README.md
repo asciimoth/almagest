@@ -111,8 +111,10 @@ trusted Wintun loading, and read-only split-driver dependency handling. It does
 not qualify later milestones in `docs/windows/test-manifest.json`.
 The host-only harness tests run through `just lint` without starting a VM.
 `just test-total` always runs the harness. Set `RUN_WINVM_TESTS=1` to also run
-the native `just winvm-test` gate. When enabled, the native gate requires the
-configured KVM host, locked media, and WinVM prerequisites.
+the native `just winvm-test` gate. Aggregate e2e recipes run the native gate in
+parallel with the Docker e2e suite and join both before coverage reporting.
+When enabled, the native gate requires the configured KVM host, locked media,
+and WinVM prerequisites.
 
 ## Failure and recovery
 

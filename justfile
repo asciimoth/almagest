@@ -18,7 +18,11 @@ test-js:
   cd panel && npm ci && npm test
 
 
-test-e2e:
+[parallel]
+test-e2e: test-e2e-docker test-winvm-enabled
+
+[private]
+test-e2e-docker:
   ./e2e/lib/case_scheduler_test.sh
   ./e2e/run_test.sh
   ./e2e/lib/common_test.sh
@@ -26,7 +30,11 @@ test-e2e:
   python3 ./e2e/lib/udp_echo_client_test.py
   E2E_COVERAGE=1 ./e2e/run.sh
 
-test-e2e-all:
+[parallel]
+test-e2e-all: test-e2e-docker-all test-winvm-enabled
+
+[private]
+test-e2e-docker-all:
   ./e2e/lib/case_scheduler_test.sh
   ./e2e/run_test.sh
   ./e2e/lib/common_test.sh
@@ -40,11 +48,6 @@ test-e2e-light:
 test: test-go test-js
 
 test-total: test-winvm-harness test test-e2e
-  @if [[ "${RUN_WINVM_TESTS:-0}" == "1" ]]; then \
-    just winvm-test; \
-  else \
-    printf 'Skipping native Windows VM tests; set RUN_WINVM_TESTS=1 to enable them.\n'; \
-  fi
   ./scripts/coverage-report.sh
 
 test-total-light: test test-e2e-light
@@ -146,6 +149,14 @@ winvm-smoke:
 
 winvm-test:
   ./dev/winvm/run.sh test
+
+[private]
+test-winvm-enabled:
+  @if [[ "${RUN_WINVM_TESTS:-0}" == "1" ]]; then \
+    just winvm-test; \
+  else \
+    printf 'Skipping native Windows VM tests; set RUN_WINVM_TESTS=1 to enable them.\n'; \
+  fi
 
 winvm-shell run:
   ./dev/winvm/run.sh --shell {{quote(run)}}
