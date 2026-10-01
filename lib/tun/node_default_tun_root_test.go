@@ -564,6 +564,51 @@ func TestDefaultTunRebuildKeepsStablePublicWrapperAfterSourceReplacement(t *test
 	}
 }
 
+func TestDefaultTunFailedBuildAfterRetirementInvalidatesAttachmentAndRecovers(t *testing.T) {
+	w, sys := newDefaultTunNodeTestWorkspace(t, false)
+	node, err := w.AddNodeByClass(NodeTypeDefaultTun, "default tun")
+	if err != nil {
+		t.Fatalf("AddNodeByClass DefaultTun: %v", err)
+	}
+	receiver := tuntest.NewReceiver(4)
+	if _, err := w.AddNode(receiver, "test/TunReceiver", "receiver"); err != nil {
+		t.Fatalf("AddNode receiver: %v", err)
+	}
+	snapshot := testkit.MustNodeSnapshot(t, w, node)
+	if _, _, err := w.AddLink(receiver.In, snapshot.RightPorts[0]); err != nil {
+		t.Fatalf("AddLink tun: %v", err)
+	}
+	first := tuntest.ReceivePayload(t, receiver.Events).Tun
+
+	sys.buildErr = errors.New("replacement failed after retirement")
+	sys.retireBeforeBuildError = true
+	forceDefaultTunRebuild(t, w, node, "198.18.210.0/24")
+	if TunIsReady(first) {
+		t.Fatal("retired DefaultTun output stayed ready after failed build")
+	}
+	if got := testkit.MustNodeSnapshot(t, w, node).Label; got != "error" {
+		t.Fatalf("DefaultTun label after failed retired build = %q, want error", got)
+	}
+	select {
+	case payload := <-receiver.Events:
+		if payload.Tun != nil {
+			t.Fatalf("failed retired build emitted a live TUN: %#v", payload)
+		}
+	default:
+	}
+
+	sys.buildErr = nil
+	sys.retireBeforeBuildError = false
+	forceDefaultTunRebuild(t, w, node, "198.18.210.0/24")
+	replacement := tuntest.ReceivePayload(t, receiver.Events).Tun
+	if !TunIsReady(replacement) {
+		t.Fatal("replacement DefaultTun is not ready")
+	}
+	if got := testkit.MustNodeSnapshot(t, w, node).Label; got != "ready" {
+		t.Fatalf("DefaultTun label after recovery = %q, want ready", got)
+	}
+}
+
 func TestDefaultTunMenuUsesArrayFieldsAndReportsValidationStatus(t *testing.T) {
 	w, _ := newDefaultTunNodeTestWorkspace(t, false)
 	state := formular.NewMenuSnapshotState()
@@ -1144,6 +1189,7 @@ type recordingDefaultTunSystem struct {
 	setMTUCalls            []int
 	setAddrsCalls          [][]string
 	buildErr               error
+	retireBeforeBuildError bool
 	defaultTunWarningsHook func(sysnet.DefaultTun) []sysnet.Warning
 	reuseNativeDevice      bool
 	nativeFile             *os.File
@@ -1173,6 +1219,14 @@ func (s *recordingDefaultTunSystem) BuildDefaultTun(opts sysnet.DefaultTunOpts) 
 		return nil, err
 	}
 	if s.buildErr != nil {
+		if s.retireBeforeBuildError && len(s.tuns) > 0 {
+			previous := s.tuns[len(s.tuns)-1]
+			previous.sourceGeneration.Add(1)
+			previous.closeUnderlying = false
+			source, peer := previous.packetSource()
+			_ = source.Close()
+			_ = peer.Close()
+		}
 		return nil, s.buildErr
 	}
 	dtun := newRecordingDefaultTun(opts.MTU)

@@ -560,6 +560,13 @@ gates.
 
 ### Step 17: Test regular and default TUN lifecycle
 
+Implementation: complete. Regular and default TUN graph providers now ignore
+late configuration from detached links, distinguish runtime build failures from
+invalid configuration, invalidate retired outputs, and recover from a later
+equivalent apply. DefaultTun detects a backend that retires its stable native
+source before a failed replacement. Native Windows graph tests exercise the
+production backend for regular in-place updates and DefaultTun rebuilds.
+
 Exercise creation, config propagation, rewiring, replacement, and close through
 Almagest graph operations. Follow the runtime lifecycle requirements.
 

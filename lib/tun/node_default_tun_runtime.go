@@ -14,7 +14,7 @@ import (
 
 func (n *defaultTunNode) configureDefaultTun() error {
 	opts := n.effectiveDefaultTunOpts()
-	if n.dtun != nil && n.hasEffective && defaultTunOptsEqual(opts, n.effective) {
+	if n.dtun != nil && TunIsReady(n.dtun) && n.hasEffective && defaultTunOptsEqual(opts, n.effective) {
 		_ = n.updateLabel()
 		if n.runtimeError != "" {
 			return n.applyDefaultTunDNS()
@@ -67,7 +67,18 @@ func (n *defaultTunNode) rebuildDefaultTun(opts sysnet.DefaultTunOpts) error {
 	previousSource := captureDefaultTunSource(previous)
 	dtun, err := n.System().BuildDefaultTun(opts.Copy())
 	if err != nil {
-		n.formError = err.Error()
+		// A backend can retire a stable public wrapper before a replacement
+		// build fails. Do not keep publishing that stale attachment.
+		if previous == nil || !TunIsReady(previous) || !defaultTunSourceUnchanged(previousSource, previous) {
+			n.outputTuns.InvalidateAllLocked(n.W, n.ID)
+			if previous != nil {
+				_ = previous.Close()
+			}
+			n.outputTuns.Wait()
+			n.dtun = nil
+			n.hasEffective = false
+		}
+		n.runtimeError = err.Error()
 		n.sendForcedMenuSnapshot()
 		_ = n.updateLabel()
 		return err
@@ -76,13 +87,14 @@ func (n *defaultTunNode) rebuildDefaultTun(opts sysnet.DefaultTunOpts) error {
 	n.dtun = dtun
 	n.effective = opts.Copy()
 	n.hasEffective = true
+	n.runtimeError = ""
 	_ = n.W.AddNodeResourceLocked(n.ID, dtun)
+	nativeUnchanged := defaultTunSourceUnchanged(previousSource, dtun)
+	samePublicTun := SameTunInstance(previous, dtun)
 	dnsErr := n.applyDefaultTunDNS()
 	_ = n.updateLabel()
 	n.sendEffectiveBlock()
 	n.refreshDefaultTunWarningsLocked()
-	nativeUnchanged := defaultTunSourceUnchanged(previousSource, dtun)
-	samePublicTun := SameTunInstance(previous, dtun)
 	if previous == nil && n.Logger != nil {
 		mtu, mtuErr := dtun.MTU()
 		n.Logger.Infof(
@@ -314,21 +326,21 @@ func (n *defaultTunNode) verifyDefaultTunOpts(opts sysnet.DefaultTunOpts) error 
 }
 
 func (n *defaultTunNode) sendAll() {
-	if n.dtun == nil {
+	if n.dtun == nil || !TunIsReady(n.dtun) {
 		return
 	}
 	n.ForEachPortLink(n.tunp, n.sendTunToLink)
 }
 
 func (n *defaultTunNode) sendTunToLink(link uint64) {
-	if n.dtun == nil {
+	if n.dtun == nil || !TunIsReady(n.dtun) {
 		return
 	}
 	n.outputTuns.SendLocked(n.W, n.ID, link, n.dtun, enginePool(n.Runtime))
 }
 
 func (n *defaultTunNode) refreshTunToLink(link uint64) {
-	if n.dtun == nil {
+	if n.dtun == nil || !TunIsReady(n.dtun) {
 		return
 	}
 	// Reuse a ready detached wrapper. Replacing one that is blocked in a

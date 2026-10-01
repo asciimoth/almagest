@@ -68,6 +68,14 @@ func tunInputFailureObserverSource(t tun.Tun) tun.Tun {
 	return nodekit.TunFailureObserverSource(t)
 }
 
+func tunEventIsCurrent(w *pasta.Workspace, event pasta.Event, port uint64) bool {
+	if w == nil || event.Link == 0 || event.ReceiverPort != port {
+		return false
+	}
+	link, ok := w.LinkSnapshotLocked(event.Link)
+	return ok && link.Type == TypeTun && link.RightPort == port
+}
+
 func BindTunResource(w *pasta.Workspace, node, link uint64, t tun.Tun) {
 	nodekit.BindTunResource(w, node, link, t)
 }

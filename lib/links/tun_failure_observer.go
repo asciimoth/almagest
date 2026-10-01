@@ -20,6 +20,8 @@ type TunFailureObserver struct {
 	done              chan struct{}
 	events            chan tun.Event
 	report            func(error)
+	failureMu         sync.RWMutex
+	failure           error
 }
 
 // NewTunFailureObserver wraps source and calls report for its first runtime
@@ -79,6 +81,26 @@ func (t *TunFailureObserver) Close() error {
 	return t.Tun.Close()
 }
 
+// IsUp reports whether the observed attachment has had a terminal failure. It
+// also preserves lifecycle state reported by the wrapped TUN.
+func (t *TunFailureObserver) IsUp() (bool, error) {
+	if t == nil {
+		return false, nil
+	}
+	t.failureMu.RLock()
+	err := t.failure
+	t.failureMu.RUnlock()
+	if err != nil {
+		return false, err
+	}
+	if updown, ok := t.Tun.(interface {
+		IsUp() (bool, error)
+	}); ok {
+		return updown.IsUp()
+	}
+	return true, nil
+}
+
 func (t *TunFailureObserver) forwardEvents() {
 	defer close(t.events)
 	events := t.Tun.Events()
@@ -107,7 +129,7 @@ func (t *TunFailureObserver) forwardEvents() {
 }
 
 func (t *TunFailureObserver) reportOnce(err error) {
-	if t == nil || !tun.IsTunTermError(err) || t.report == nil {
+	if t == nil || !tun.IsTunTermError(err) {
 		return
 	}
 	select {
@@ -115,5 +137,12 @@ func (t *TunFailureObserver) reportOnce(err error) {
 		return
 	default:
 	}
-	t.reportFailureOnce.Do(func() { t.report(err) })
+	t.reportFailureOnce.Do(func() {
+		t.failureMu.Lock()
+		t.failure = err
+		t.failureMu.Unlock()
+		if t.report != nil {
+			t.report(err)
+		}
+	})
 }

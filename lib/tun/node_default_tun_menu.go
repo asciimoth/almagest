@@ -15,7 +15,7 @@ func (n *defaultTunNode) updateLabel() error {
 	if n.runtimeError != "" {
 		return n.SetLabel("error")
 	}
-	if n.dtun == nil {
+	if n.dtun == nil || !TunIsReady(n.dtun) {
 		return n.SetLabel("idle")
 	}
 	return n.SetLabel("ready")

@@ -26,6 +26,10 @@
             "github.com/asciimoth/almagest/lib/tun::TestSysnetDebugUnknownPreflightBuildsTun",
             "github.com/asciimoth/almagest/lib/tun::TestSysnetDebugUnavailablePreflightPreservesLiveTun",
             "github.com/asciimoth/almagest/lib/tun::TestDefaultTunWarningsShowWarningPopup",
+            "github.com/asciimoth/almagest/lib/tun::TestTunRapidRewireIgnoresStaleConfigCompletion",
+            "github.com/asciimoth/almagest/lib/tun::TestTunFailedReplacementRetiresOldAttachmentAndRecovers",
+            "github.com/asciimoth/almagest/lib/tun::TestDefaultTunFailedBuildAfterRetirementInvalidatesAttachmentAndRecovers",
+            "github.com/asciimoth/almagest/lib/links::TestTunFailureObserverDoesNotReturnUpAfterTerminalFailure",
             "github.com/asciimoth/almagest/lib/experimental::TestXTorDriverWindowsBestEffortWarnsWithoutContainment"
           ]
         },
@@ -127,6 +131,26 @@
           "eventFile": "m3-ordinary-tun-split-independence.jsonl",
           "requiredTests": [
             "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsOrdinaryTunsDoNotStartSplitDriver"
+          ]
+        },
+        {
+          "id": "m7::regular-tun-graph-lifecycle",
+          "kind": "go",
+          "module": "bin",
+          "arguments": ["./almagestd/platform", "-run", "^TestWindowsGraphRegularTunLifecycle$"],
+          "eventFile": "m7-regular-tun-graph-lifecycle.jsonl",
+          "requiredTests": [
+            "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsGraphRegularTunLifecycle"
+          ]
+        },
+        {
+          "id": "m7::default-tun-graph-lifecycle",
+          "kind": "go",
+          "module": "bin",
+          "arguments": ["./almagestd/platform", "-run", "^TestWindowsGraphDefaultTunRebuildLifecycle$"],
+          "eventFile": "m7-default-tun-graph-lifecycle.jsonl",
+          "requiredTests": [
+            "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsGraphDefaultTunRebuildLifecycle"
           ]
         },
         {

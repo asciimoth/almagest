@@ -540,6 +540,33 @@ func TestTunOutputCacheReplacesSourcePumpAfterReadFailure(t *testing.T) {
 	}
 }
 
+func TestTunFailureObserverDoesNotReturnUpAfterTerminalFailure(t *testing.T) {
+	base, peer := tun.Pipe(1, 1500, 0, 0)
+	source := &failNextReadTun{Tun: base, readStarted: make(chan struct{})}
+	reported := make(chan error, 1)
+	observed := NewTunFailureObserver(source, func(err error) { reported <- err })
+	t.Cleanup(func() {
+		_ = observed.Close()
+		_ = peer.Close()
+	})
+
+	if up, err := observed.IsUp(); err != nil || !up {
+		t.Fatalf("IsUp before failure = %v, %v; want true, nil", up, err)
+	}
+	source.failNext.Store(true)
+	if _, err := observed.Read([][]byte{make([]byte, 64)}, []int{0}, 0); err == nil {
+		t.Fatal("Read error = nil, want injected terminal failure")
+	}
+	select {
+	case <-reported:
+	case <-time.After(time.Second):
+		t.Fatal("terminal failure was not reported")
+	}
+	if up, err := observed.IsUp(); err == nil || up {
+		t.Fatalf("IsUp after failure = %v, %v; want false, error", up, err)
+	}
+}
+
 func TestTunOutputCacheReplacesSourcePumpAfterWriteFailure(t *testing.T) {
 	w, node, link, events := newTunOutputCacheTestLink(t)
 

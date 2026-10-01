@@ -94,6 +94,7 @@ type tunNode struct {
 	tun          tun.Tun
 	outputTuns   TunOutputCache
 	formError    string
+	runtimeError string
 }
 
 func (n *tunNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
@@ -157,6 +158,9 @@ func (n *tunNode) OnLinkRemoved(link uint64, port uint64, _, _ string) error {
 
 func (n *tunNode) OnEvent(event pasta.Event, linkType string, _ []string, receiverPortDirection string) error {
 	if event.ReceiverPort != n.tunp || receiverPortDirection != "right" || linkType != TypeTun {
+		return nil
+	}
+	if !tunEventIsCurrent(n.W, event, n.tunp) {
 		return nil
 	}
 	if std.IsRequest(event.Payload) {
@@ -266,7 +270,7 @@ func (n *tunNode) validateConfig(config tunNodeConfig) error {
 
 func (n *tunNode) configureTun() error {
 	opts := n.effectiveTunOpts()
-	if n.tun != nil && n.hasEffective && tunOptsEqual(opts, n.effective) {
+	if n.tun != nil && TunIsReady(n.tun) && n.hasEffective && tunOptsEqual(opts, n.effective) {
 		_ = n.updateLabel()
 		return nil
 	}
@@ -307,7 +311,7 @@ func (n *tunNode) rebuildTun(opts sysnet.TunOpts) error {
 	n.closeTun(true)
 	nextTun, err := n.System().BuildTun(copyTunOpts(opts))
 	if err != nil {
-		n.formError = err.Error()
+		n.runtimeError = err.Error()
 		n.sendForcedMenuSnapshot()
 		_ = n.updateLabel()
 		return err
@@ -316,6 +320,7 @@ func (n *tunNode) rebuildTun(opts sysnet.TunOpts) error {
 	n.tun = nextTun
 	n.effective = copyTunOpts(opts)
 	n.hasEffective = true
+	n.runtimeError = ""
 	_ = n.W.AddNodeResourceLocked(n.ID, nextTun)
 	_ = n.updateLabel()
 	n.sendEffectiveBlock()
@@ -396,21 +401,21 @@ func (n *tunNode) verifyTunOpts(opts sysnet.TunOpts) error {
 }
 
 func (n *tunNode) sendAll() {
-	if n.tun == nil {
+	if n.tun == nil || !TunIsReady(n.tun) {
 		return
 	}
 	n.ForEachPortLink(n.tunp, n.sendTunToLink)
 }
 
 func (n *tunNode) sendTunToLink(link uint64) {
-	if n.tun == nil {
+	if n.tun == nil || !TunIsReady(n.tun) {
 		return
 	}
 	n.outputTuns.SendLocked(n.W, n.ID, link, n.tun, enginePool(n.Runtime))
 }
 
 func (n *tunNode) refreshTunToLink(link uint64) {
-	if n.tun == nil {
+	if n.tun == nil || !TunIsReady(n.tun) {
 		return
 	}
 	n.outputTuns.RefreshLocked(n.W, n.ID, link, n.tun, enginePool(n.Runtime))
@@ -433,7 +438,10 @@ func (n *tunNode) updateLabel() error {
 	if n.formError != "" {
 		return n.SetLabel("invalid config")
 	}
-	if n.tun == nil {
+	if n.runtimeError != "" {
+		return n.SetLabel("error")
+	}
+	if n.tun == nil || !TunIsReady(n.tun) {
 		return n.SetLabel("idle")
 	}
 	if n.effective.Name != "" {
@@ -468,6 +476,7 @@ func (n *tunNode) effectiveBlock() formular.Block {
 		readonlyStringListField("tunAddrs", "TUN addrs", opts.TunAddrs),
 		readonlyStringListField("tunRoutes", "TUN routes", opts.TunRoutes),
 		readonlyIntField("mtu", "MTU", opts.MTU),
+		readonlyTextField("error", "Error", n.runtimeError),
 	}}
 }
 

@@ -184,6 +184,65 @@ func TestTunDynamicConfigUsesSettersWhenAvailable(t *testing.T) {
 	}
 }
 
+func TestTunFailedReplacementRetiresOldAttachmentAndRecovers(t *testing.T) {
+	w, sys := newTunNodeTestWorkspace(t, false)
+	node, err := w.AddNodeByClass(NodeTypeTun, "tun")
+	if err != nil {
+		t.Fatalf("AddNodeByClass Tun: %v", err)
+	}
+	receiver := tuntest.NewReceiver(4)
+	if _, err := w.AddNode(receiver, "test/TunReceiver", "receiver"); err != nil {
+		t.Fatalf("AddNode receiver: %v", err)
+	}
+	snapshot := testkit.MustNodeSnapshot(t, w, node)
+	if _, _, err := w.AddLink(receiver.In, snapshot.RightPorts[0]); err != nil {
+		t.Fatalf("AddLink tun: %v", err)
+	}
+	first := tuntest.ReceivePayload(t, receiver.Events).Tun
+	firstSource := sys.Tuns[0]
+
+	sys.BuildErr = errors.New("replacement unavailable")
+	applyTunNodeForm(t, w, node, "replacement", "10.210.0.2/32")
+	if got := firstSource.CloseCount(); got != 1 {
+		t.Fatalf("old Tun close count after failed replacement = %d, want 1", got)
+	}
+	if TunIsReady(first) {
+		t.Fatal("old emitted Tun stayed ready after failed replacement")
+	}
+	if got := testkit.MustNodeSnapshot(t, w, node).Label; got != "error" {
+		t.Fatalf("Tun label after failed replacement = %q, want error", got)
+	}
+	select {
+	case payload := <-receiver.Events:
+		if payload.Tun != nil {
+			t.Fatalf("failed replacement emitted a live TUN: %#v", payload)
+		}
+	default:
+	}
+
+	sys.BuildErr = nil
+	applyTunNodeForm(t, w, node, "replacement", "10.210.0.2/32")
+	replacement := tuntest.ReceivePayload(t, receiver.Events).Tun
+	if !TunIsReady(replacement) {
+		t.Fatal("replacement Tun is not ready")
+	}
+	if got := testkit.MustNodeSnapshot(t, w, node).Label; got != "replacement" {
+		t.Fatalf("Tun label after recovery = %q, want replacement", got)
+	}
+}
+
+func applyTunNodeForm(t *testing.T, w *pasta.Workspace, node uint64, name, addr string) {
+	t.Helper()
+	w.SendNodeFormularMsg(node, formular.FormApplyMessage{
+		MessageBase: formular.MessageBase{Type: formular.MessageFormApply, MenuID: pasta.NodeMenuID(node)},
+		BlockID:     "config",
+		Values: map[string]any{
+			"name":     name,
+			"tunAddrs": addr,
+		},
+	})
+}
+
 func TestTunNodeDynamicMTUGrowthKeepsTrafficOnSameSource(t *testing.T) {
 	w, sys := newTunNodeTestWorkspace(t, true)
 	node, err := w.AddNodeByClass(NodeTypeTun, "tun")

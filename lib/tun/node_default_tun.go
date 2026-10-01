@@ -174,6 +174,9 @@ func (n *defaultTunNode) OnLinkRemoved(link uint64, port uint64, linkType, portD
 
 func (n *defaultTunNode) OnEvent(event pasta.Event, linkType string, _ []string, receiverPortDirection string) error {
 	if event.ReceiverPort == n.tunp && receiverPortDirection == "right" && linkType == TypeTun {
+		if !tunEventIsCurrent(n.W, event, n.tunp) {
+			return nil
+		}
 		if std.IsRequest(event.Payload) {
 			n.refreshTunToLink(event.Link)
 			return nil
