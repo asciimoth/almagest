@@ -13,3 +13,7 @@ The case verifies:
 - every engine API method rejects a payload of the wrong JSON type; and
 - placeholder, popup, copy/paste, movement, history, and node-menu operations
   leave the daemon responsive and the workspace consistent.
+
+After covering every left and right port, the case samples 100 additional
+compatible link pairs by default. Set `ALMAGEST_E2E_LINK_MATRIX_ATTEMPTS` to a
+different non-negative integer for a larger or smaller stress matrix.

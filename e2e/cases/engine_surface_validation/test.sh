@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+: "${ALMAGEST_E2E_LINK_MATRIX_ATTEMPTS:=100}"
 source /e2e/lib/common.sh
+
+if [[ ! "$ALMAGEST_E2E_LINK_MATRIX_ATTEMPTS" =~ ^[0-9]+$ ]]; then
+	fail "ALMAGEST_E2E_LINK_MATRIX_ATTEMPTS must be a non-negative integer"
+fi
 
 raw_engine() {
 	local method="$1"
@@ -301,7 +306,7 @@ done <"$E2E_RUNTIME/link-candidates-by-left.tsv"
 # case even if more classes are added later.
 link_matrix_attempts=0
 while IFS=$'\t' read -r right_port left_port right_node left_node; do
-	(( link_matrix_attempts >= 400 )) && break
+	(( link_matrix_attempts >= ALMAGEST_E2E_LINK_MATRIX_ATTEMPTS )) && break
 	exercise_link_pair "$right_port" "$left_port" "$right_node" "$left_node" || true
 	((link_matrix_attempts += 1))
 done <"$E2E_RUNTIME/link-candidates.tsv"

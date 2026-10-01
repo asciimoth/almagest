@@ -116,10 +116,20 @@ The test checks:
 - live rule removal and restoration work on both network routers and the TUN
   splitter;
 - DNS cache state and all node states remain valid after live changes;
-- the complete graph recovers across repeated ethernet, no-network, Wi-Fi,
-  no-network, and ethernet transitions;
+- the complete graph recovers across an ethernet, no-network, Wi-Fi,
+  no-network, and ethernet transition sequence;
 - direct OutNetwork, DefaultTun/Spoofer, DNS, and nested Tailscale traffic all
   recover through the new physical route without restarting the daemon.
+
+The case uses an E2E-only 20-second WireGuard peer reject timer for both
+Tailscale nodes. Production builds keep the standard 180-second timer. This
+keeps the stale-direct-path recovery scenario equivalent without adding three
+idle minutes to every run.
+
+The case runs one complete physical-network migration cycle by default. The
+dedicated `out_network_migration` case supplies repeated migration stress for
+the suite. Set `ALMAGEST_E2E_MIGRATION_CYCLES` to a larger positive integer to
+stress the complete Spoofer stack separately.
 
 ## Repetition
 

@@ -126,6 +126,7 @@ func (n *tailscaleNode) reconcile(req tailscaleRuntimeRequest) (tailscaleRuntime
 		TLSConfig:                         req.tlsConfig,
 		Cache:                             n.cache.callbacks(),
 	}
+	options = applyTailscaleE2EOptions(options)
 	client, err := n.newClient(newTailscaleNetwork(req.network), req.controller, options)
 	if err != nil {
 		result.err = fmt.Errorf("create Tailscale client: %w", err)

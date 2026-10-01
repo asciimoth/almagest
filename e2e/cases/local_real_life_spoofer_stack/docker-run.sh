@@ -132,6 +132,7 @@ virtual_headscale_ip="198.18.100.12"
 docker run --detach --name "$headscale_name" --network "$network_name" \
 	--cap-add NET_ADMIN \
 	-e E2E_HEADSCALE_STANDALONE=1 \
+	-e ALMAGEST_TAILSCALE_E2E_REJECT_AFTER_SECONDS=20 \
 	-e "E2E_PUBLIC_IP=$virtual_public_ip" \
 	-e "E2E_EXAMPLE_IP=$virtual_example_ip" \
 	-v "$volume_name:/stack-shared" \
@@ -156,6 +157,7 @@ docker create --name "$main_name" \
 	-e "E2E_HEADSCALE_IP=$virtual_headscale_ip" \
 	-e "E2E_PUBLIC_IP=$virtual_public_ip" \
 	-e "E2E_EXAMPLE_IP=$virtual_example_ip" \
+	-e ALMAGEST_TAILSCALE_E2E_REJECT_AFTER_SECONDS=20 \
 	-v "$volume_name:/stack-shared" \
 	${E2E_DOCKER_RUN_ARGS:-} \
 	"${pid_args[@]}" \
