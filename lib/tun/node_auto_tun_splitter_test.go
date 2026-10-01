@@ -520,6 +520,11 @@ func TestVTunAutoTunSplitterLearnsDualStackAndSourceRoutes(t *testing.T) {
 		Routes: []string{"0.0.0.0/0", "::/0"},
 	})
 	_ = networktest.ReceivePayload(t, netReceiver.Events)
+	// Consume the replacement frontends from this VTun rebuild before the
+	// tailnet config causes the next rebuild. Otherwise, a slow test run can
+	// select this generation after the next rebuild has already closed it.
+	_ = receiveTunPayload(t, defaultConsumer.events)
+	_ = receiveTunPayload(t, tailnetConsumer.events)
 	tailnetConfig := TunConfig{
 		Addrs: []string{
 			carrier4.String() + "/32",

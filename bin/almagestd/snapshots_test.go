@@ -735,6 +735,9 @@ func TestSnapshotImportRejectsWindowsPathAliases(t *testing.T) {
 }
 
 func TestSnapshotRestorePreservesSafeInternalSymlink(t *testing.T) {
+	if !snapshotSymlinkRestoreSupported() {
+		t.Skip("snapshot symlink restoration is not supported on this platform")
+	}
 	service, _, _, _, storagePath := newSnapshotTestService(t, false)
 	targetPath := filepath.Join(storagePath, "linked", "target.txt")
 	if err := os.MkdirAll(filepath.Dir(targetPath), 0o700); err != nil {
@@ -1105,6 +1108,9 @@ func TestSnapshotAdminAPIExportsAndImportsArchive(t *testing.T) {
 }
 
 func TestSnapshotExtractionRejectsSymlinkParent(t *testing.T) {
+	if !snapshotSymlinkRestoreSupported() {
+		t.Skip("snapshot symlink restoration is not supported on this platform")
+	}
 	outside := t.TempDir()
 	stage := t.TempDir()
 	var data bytes.Buffer

@@ -2,6 +2,7 @@ package command
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -384,6 +385,23 @@ func TestCommandHelperProcess(t *testing.T) {
 	case "sleep":
 		time.Sleep(time.Second)
 		os.Exit(0)
+	case "write-marker":
+		marker := helperCommandArg("write-marker", 1)
+		if err := os.WriteFile(marker, []byte("started"), 0o600); err != nil {
+			os.Exit(5)
+		}
+		os.Exit(0)
+	case "record-invocation":
+		marker := helperCommandArg("record-invocation", 1)
+		args := helperCommandArgs("record-invocation", 2)
+		data, err := json.Marshal(struct {
+			Args []string `json:"args"`
+			Env  string   `json:"env"`
+		}{Args: args, Env: os.Getenv("ALMAGEST_TEST_VALUE")})
+		if err != nil || os.WriteFile(marker, data, 0o600) != nil {
+			os.Exit(5)
+		}
+		os.Exit(0)
 	case "spawn-delayed-write":
 		marker := helperCommandArg("spawn-delayed-write", 1)
 		child := exec.Command(
@@ -452,6 +470,16 @@ func helperCommandArg(mode string, offset int) string {
 	}
 	os.Exit(6)
 	return ""
+}
+
+func helperCommandArgs(mode string, offset int) []string {
+	for i, arg := range os.Args {
+		if arg == "--" && i+1+offset <= len(os.Args) && os.Args[i+1] == mode {
+			return os.Args[i+1+offset:]
+		}
+	}
+	os.Exit(6)
+	return nil
 }
 
 type recordingLogger struct {

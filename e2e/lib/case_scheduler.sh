@@ -19,6 +19,16 @@ e2e_case_can_start() {
 	return 0
 }
 
+e2e_add_case_privileges() {
+	local case_dir="${1:?case directory is required}"
+	local args_name="${2:?argument array name is required}"
+	local -n args_ref="$args_name"
+
+	if [[ -f "$case_dir/requires-privileged" ]]; then
+		args_ref+=(--privileged --device /dev/net/tun)
+	fi
+}
+
 e2e_shuffle_cases() {
 	local seed="${1:?random seed is required}"
 	local cases_name="${2:?case array name is required}"

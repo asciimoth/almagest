@@ -6,11 +6,25 @@ if (-not $Install) {
     $source = (Get-Volume -FileSystemLabel WINVM_PROVISION).DriveLetter + ':'
     $staging = Join-Path $root 'provision'; New-Item -ItemType Directory -Force -Path $staging | Out-Null
     Copy-Item (Join-Path $source '*') $staging -Recurse -Force
-    $command = "& '$staging\provision.ps1' -Install *> '$root\provision.log'"
-    $action = New-ScheduledTaskAction powershell.exe "-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command `"$command`""
+    @'
+$ErrorActionPreference = 'Stop'
+$root = 'C:\winvm'
+$failure = Join-Path $root 'provision.failed'
+Remove-Item $failure -Force -ErrorAction SilentlyContinue
+try {
+    & 'C:\winvm\provision\provision.ps1' -Install *> (Join-Path $root 'provision.log')
+} catch {
+    $_ | Format-List * -Force | Out-String | Add-Content (Join-Path $root 'provision.log')
+    [IO.File]::WriteAllText($failure, $_.Exception.Message)
+    exit 1
+}
+'@ | Set-Content (Join-Path $staging 'run-provision.ps1') -Encoding ascii
+    $action = New-ScheduledTaskAction powershell.exe "-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$staging\run-provision.ps1`""
     $trigger = New-ScheduledTaskTrigger -AtStartup; $trigger.Delay = 'PT1M'
     Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -User SYSTEM -RunLevel Highest -Force | Out-Null
-    Start-ScheduledTask -TaskName $taskName
+    # The specialize command has WillReboot=Always. Do not start the task in
+    # this boot because setup can terminate it at any point. The startup
+    # trigger runs it once after the required reboot.
     exit 0
 }
 $media = Join-Path $root 'provision'
@@ -67,16 +81,25 @@ if (-not (Get-NetFirewallRule -Name winvm-sshd -ErrorAction SilentlyContinue)) {
 }
 
 $wintunSource = Join-Path $media 'wintun\wintun-amd64.dll'
+$wintunArm64Source = Join-Path $media 'wintun\wintun-arm64.dll'
+if (-not (Test-Path -LiteralPath $wintunSource -PathType Leaf)) {
+    # xorriso places explicitly supplied directory contents at the ISO root.
+    $wintunSource = Join-Path $media 'wintun-amd64.dll'
+    $wintunArm64Source = Join-Path $media 'wintun-arm64.dll'
+}
 $wintunDestination = Join-Path $env:SystemRoot 'System32\wintun.dll'
 if (-not (Test-Path -LiteralPath $wintunSource -PathType Leaf)) { throw 'Provisioned Wintun DLL is absent' }
 Copy-Item $wintunSource $wintunDestination -Force
 $dependencyFixtures = Join-Path $root dependencies
 New-Item -ItemType Directory -Force -Path $dependencyFixtures | Out-Null
-Copy-Item (Join-Path $media 'wintun\wintun-arm64.dll') (Join-Path $dependencyFixtures 'wintun-arm64.dll') -Force
+Copy-Item $wintunArm64Source (Join-Path $dependencyFixtures 'wintun-arm64.dll') -Force
 $wintunVersion = (Get-Item $wintunDestination).VersionInfo.FileVersionRaw.ToString().TrimEnd('.0')
 if ($wintunVersion -ne '@@WINTUN_VERSION@@') { throw "Wintun version is $wintunVersion" }
 
 $driverSource = Join-Path $media driver
+if (-not (Test-Path -LiteralPath $driverSource -PathType Container)) {
+    $driverSource = $media
+}
 $driverStore = Join-Path $root driver
 New-Item -ItemType Directory -Force -Path $driverStore | Out-Null
 @('mullvad-split-tunnel.sys', 'mullvad-split-tunnel.inf', 'mullvad-split-tunnel.cat') |

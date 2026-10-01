@@ -25,12 +25,19 @@ test-e2e:
   python3 ./e2e/lib/udp_echo_client_test.py
   E2E_COVERAGE=1 ./e2e/run.sh
 
+test-e2e-all:
+  ./e2e/lib/case_scheduler_test.sh
+  ./e2e/lib/common_test.sh
+  ./e2e/lib/amnesia_peer_handoff_test.sh
+  python3 ./e2e/lib/udp_echo_client_test.py
+  E2E_COVERAGE=1 E2E_INCLUDE_PRIVILEGED=1 ./e2e/run.sh
+
 test-e2e-light:
   E2E_EXCLUDE_HEAVY=1 just test-e2e
 
 test: test-go test-js
 
-test-total: test-winvm-harness test test-e2e
+test-total: test-winvm-harness test test-e2e-all winvm-test
   ./scripts/coverage-report.sh
 
 test-total-light: test test-e2e-light

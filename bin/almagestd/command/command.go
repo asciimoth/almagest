@@ -173,19 +173,17 @@ func (r *Runner) runCommand(ctx context.Context, cfg resolvedCommand) {
 		return
 	}
 
-	cmd := exec.CommandContext(ctx, cfg.Command[0], cfg.Command[1:]...)
-	cmd.Env = env
-	// Keep Stdout and Stderr nil. os/exec connects nil streams directly to the
-	// null device. An io.Discard writer would use pipes that a descendant can
-	// keep open after the command process is killed.
-	if err := prepareCommand(cmd, cfg); err != nil {
+	if err := validateProcessConfig(cfg); err != nil {
 		r.logErr("command %s skipped: %v", label, err)
 		return
 	}
 
 	start := time.Now()
 	r.logInfo("command %s started", label)
-	err = cmd.Run()
+	// Keep Stdout and Stderr nil. os/exec connects nil streams directly to the
+	// null device. An io.Discard writer would use pipes that a descendant can
+	// keep open after the command process is killed.
+	err = executeCommand(ctx, cfg, env)
 	elapsed := time.Since(start)
 	if err == nil {
 		r.logInfo("command %s finished: status=success duration=%s", label, elapsed)

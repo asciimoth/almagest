@@ -291,7 +291,7 @@ func TestWindowsPrivateStateRejectsUnsafeDACLs(t *testing.T) {
 		{name: "null DACL", nullDACL: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			path := filepath.Join(t.TempDir(), "private.hujson")
+			path := filepath.Join(windowsPrivateTestTempDir(t), "private.hujson")
 			if err := os.WriteFile(path, []byte("{}"), 0o600); err != nil {
 				t.Fatal(err)
 			}
@@ -308,7 +308,7 @@ func TestWindowsPrivateStateRejectsUnsafeDACLs(t *testing.T) {
 }
 
 func TestWindowsStorageACLProtectsGeneratedState(t *testing.T) {
-	storage := filepath.Join(t.TempDir(), "private-store")
+	storage := filepath.Join(windowsPrivateTestTempDir(t), "private-store")
 	storage, cleanup, err := SetupFS(storage, false)
 	if err != nil {
 		t.Fatalf("SetupFS: %v", err)
@@ -336,7 +336,7 @@ func TestWindowsStorageACLProtectsGeneratedState(t *testing.T) {
 
 func TestWindowsPrivateStateRejectsWritableParentAndHardLink(t *testing.T) {
 	t.Run("writable parent", func(t *testing.T) {
-		parent := filepath.Join(t.TempDir(), "replaceable")
+		parent := filepath.Join(windowsPrivateTestTempDir(t), "replaceable")
 		if err := os.Mkdir(parent, 0o700); err != nil {
 			t.Fatal(err)
 		}
@@ -347,7 +347,7 @@ func TestWindowsPrivateStateRejectsWritableParentAndHardLink(t *testing.T) {
 	})
 
 	t.Run("hard link", func(t *testing.T) {
-		path := filepath.Join(t.TempDir(), "private.hujson")
+		path := filepath.Join(windowsPrivateTestTempDir(t), "private.hujson")
 		if err := createPrivateWindowsFile(path, []byte("secret")); err != nil {
 			t.Fatal(err)
 		}
@@ -371,7 +371,7 @@ func TestWindowsPrivateStateRejectsReparsePointsAndStreams(t *testing.T) {
 		t.Fatal("validateWindowsPath accepted a UNC path")
 	}
 
-	target := filepath.Join(t.TempDir(), "target.hujson")
+	target := filepath.Join(windowsPrivateTestTempDir(t), "target.hujson")
 	if err := createPrivateWindowsFile(target, []byte("secret")); err != nil {
 		t.Fatal(err)
 	}
@@ -385,7 +385,7 @@ func TestWindowsPrivateStateRejectsReparsePointsAndStreams(t *testing.T) {
 }
 
 func TestWindowsUnsafeConfigDoesNotBypassStorageACL(t *testing.T) {
-	configDir := t.TempDir()
+	configDir := windowsPrivateTestTempDir(t)
 	configPath := filepath.Join(configDir, "unsafe.hujson")
 	protectedPath := filepath.Join(configDir, "unsafe-protected.hujson")
 	if err := os.WriteFile(configPath, []byte("{}"), 0o600); err != nil {
@@ -405,7 +405,7 @@ func TestWindowsUnsafeConfigDoesNotBypassStorageACL(t *testing.T) {
 		t.Fatalf("unsafe ReadConfig: %v", err)
 	}
 
-	storage := filepath.Join(t.TempDir(), "unsafe-store")
+	storage := filepath.Join(windowsPrivateTestTempDir(t), "unsafe-store")
 	if err := os.Mkdir(storage, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -413,6 +413,37 @@ func TestWindowsUnsafeConfigDoesNotBypassStorageACL(t *testing.T) {
 	if _, _, err := SetupFS(storage, false); err == nil {
 		t.Fatal("SetupFS accepted unsafe storage because config was unsafe")
 	}
+}
+
+func windowsPrivateTestTempDir(t *testing.T) string {
+	t.Helper()
+	user, err := currentWindowsUserSID()
+	if err != nil {
+		t.Fatalf("get current Windows identity: %v", err)
+	}
+	if !user.IsWellKnown(windows.WinLocalSystemSid) {
+		return t.TempDir()
+	}
+	programData, err := windows.KnownFolderPath(windows.FOLDERID_ProgramData, windows.KF_FLAG_DEFAULT)
+	if err != nil {
+		t.Fatalf("resolve ProgramData for test temporary directory: %v", err)
+	}
+	path, err := os.MkdirTemp(programData, "almagest-test-")
+	if err != nil {
+		t.Fatalf("reserve test temporary directory: %v", err)
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatalf("remove test temporary directory reservation: %v", err)
+	}
+	if err := makeSurePrivateWindowsDirExists(path); err != nil {
+		t.Fatalf("create private test temporary directory: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := os.RemoveAll(path); err != nil {
+			t.Errorf("remove private test temporary directory: %v", err)
+		}
+	})
+	return path
 }
 
 func setWindowsTestDACL(t *testing.T, path, sddl string) {
@@ -793,12 +824,12 @@ func TestWindowsSplitDependencyRejectionDoesNotProvisionService(t *testing.T) {
 
 	t.Run("incompatible", func(t *testing.T) {
 		incompatible := original
-		incompatible.BinaryPathName = `C:\Windows\System32\drivers\incompatible-almagest-fixture.sys`
-		if err := service.UpdateConfig(incompatible); err != nil {
+		incompatible.BinaryPathName = `\SystemRoot\System32\drivers\incompatible-almagest-fixture.sys`
+		if err := setWindowsTestServiceBinaryPath(service, incompatible.BinaryPathName); err != nil {
 			t.Fatalf("set incompatible service config: %v", err)
 		}
 		t.Cleanup(func() {
-			if err := service.UpdateConfig(original); err != nil {
+			if err := setWindowsTestServiceBinaryPath(service, original.BinaryPathName); err != nil {
 				t.Errorf("restore service config: %v", err)
 			}
 		})
@@ -847,4 +878,24 @@ func TestWindowsSplitDependencyRejectionDoesNotProvisionService(t *testing.T) {
 		_ = candidate.Close()
 		t.Fatal("backend recreated the absent split-driver service")
 	}
+}
+
+func setWindowsTestServiceBinaryPath(service *mgr.Service, path string) error {
+	binaryPath, err := windows.UTF16PtrFromString(path)
+	if err != nil {
+		return err
+	}
+	return windows.ChangeServiceConfig(
+		service.Handle,
+		windows.SERVICE_NO_CHANGE,
+		windows.SERVICE_NO_CHANGE,
+		windows.SERVICE_NO_CHANGE,
+		binaryPath,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+	)
 }

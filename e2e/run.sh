@@ -220,6 +220,7 @@ run_case() {
 	local case_runner="e2e/cases/$case_name/docker-run.sh"
 	local docker_run_args=()
 	local host_pid_namespace=0
+	e2e_add_case_privileges "e2e/cases/$case_name" docker_run_args
 	if [[ -f "e2e/cases/$case_name/requires-host-pid" ]]; then
 		host_pid_namespace=1
 		docker_run_args+=(--pid host)

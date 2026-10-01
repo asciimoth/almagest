@@ -393,8 +393,8 @@ func TestAmnesiaInterfaceConfigFlowsThroughWireGuardToTun(t *testing.T) {
 	amnesia := e.AddNode(amnesianodes.NodeTypeAmnesiaCtrl, "amnesia")
 	vtun := e.AddNode(NodeTypeVTun, "vtun")
 	network := e.AddNode(NodeTypeMockNetwork, "network")
-	e.SubscribeMenus(amnesia, vtun)
-	privateKey, _ := wireGuardTestKeyPair(t, 93)
+	e.SubscribeMenus(wg, amnesia, vtun)
+	privateKey, publicKey := wireGuardTestKeyPair(t, 93)
 	_, peerPublicKey := wireGuardTestKeyPair(t, 94)
 	applyWireGuardConfigWithOwnedIPs(t, e.Engine, wg, privateKey, 0, "10.93.0.2/32", nil)
 
@@ -420,6 +420,7 @@ AllowedIPs = 0.0.0.0/0
 
 	e.MustAddTypedLinkByPortName(TypeTun, wg, "left", "Tun", vtun, "right", "Tun")
 	e.MustAddTypedLinkByPortName(TypeNetwork, network, "left", "Network", wg, "right", "Network")
+	assertWireGuardPublicKey(t, e, wg, publicKey)
 	ctrlLink := e.MustAddTypedLinkByPortName(TypeWGCtrl, wg, "left", "WGCtrl", amnesia, "right", "WireGuard")
 	waitAmnesiaUp(t, e, amnesia)
 	waitVTunEffectiveLocalAddrs(t, e, vtun, "10.93.0.2\n10.94.0.2")
@@ -504,6 +505,8 @@ PersistentKeepalive = 1
 	e.connectTunByPortName(serverWG, "left", "Tun", serverVTun, "right", "Tun")
 	e.connectByPortName(mock, "left", "Network", clientWG, "right", "Network")
 	e.connectByPortName(mock, "left", "Network", serverWG, "right", "Network")
+	assertWireGuardPublicKey(t, e.NodeE2E, clientWG, clientPublic)
+	assertWireGuardPublicKey(t, e.NodeE2E, serverWG, serverPublic)
 	e.MustAddTypedLinkByPortName(TypeWGCtrl, clientWG, "left", "WGCtrl", amnesia, "right", "WireGuard")
 	e.connectByPortName(clientVTun, "left", "Network", client, "right", "Network")
 	e.connectByPortName(serverVTun, "left", "Network", server, "right", "Network")

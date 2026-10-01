@@ -50,14 +50,33 @@ type xTorSystem interface {
 type xTorSystemFactory func(tor.Config) (xTorSystem, tor.Config, error)
 type xTorStartFactory func(context.Context, tor.Config, tor.Dependencies) (xTorDriverBackend, error)
 
-type directXTorSystem struct{ *direct.BestEffortSystem }
+type directXTorSystem struct {
+	*direct.BestEffortSystem
+	processes   tor.Processes
+	warningOnce sync.Once
+}
 
 func newDirectXTorSystem(cfg tor.Config) (xTorSystem, tor.Config, error) {
 	system, resolved, err := direct.NewBestEffortSystem(cfg)
 	if err != nil {
 		return nil, cfg, err
 	}
-	return directXTorSystem{BestEffortSystem: system}, resolved, nil
+	processes, err := newXTorProcessPolicy(system)
+	if err != nil {
+		return nil, cfg, errors.Join(err, system.Close())
+	}
+	return &directXTorSystem{BestEffortSystem: system, processes: processes}, resolved, nil
+}
+
+func (s *directXTorSystem) Dependencies(local, outbound gonnect.Network, logger tor.Logger) tor.Dependencies {
+	deps := s.BestEffortSystem.Dependencies(local, outbound, logger)
+	deps.Processes = s.processes
+	if report := s.Report(); logger != nil && report.ContainmentError != nil {
+		s.warningOnce.Do(func() {
+			logger.Warnf("XTorDriver strict network isolation is unavailable; Tor can access the host network directly: %v", report.ContainmentError)
+		})
+	}
+	return deps
 }
 
 type realXTorDriver struct{ driver *tor.Driver }

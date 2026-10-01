@@ -142,9 +142,12 @@ func checkWindowsACL(handle windows.Handle, label string, kind windowsPathKind) 
 	}
 
 	const fileDeleteChild windows.ACCESS_MASK = 0x00000040
-	parentDangerous := windows.ACCESS_MASK(windows.FILE_WRITE_DATA | windows.FILE_APPEND_DATA |
-		windows.DELETE | windows.WRITE_DAC | windows.WRITE_OWNER | windows.GENERIC_WRITE | windows.GENERIC_ALL)
-	parentDangerous |= fileDeleteChild
+	// Creating a sibling in a directory does not permit replacement of a
+	// protected existing child. ProgramData grants that limited access to
+	// Users. Reject only rights that let an untrusted identity delete the
+	// checked path or change the security boundary around it.
+	parentDangerous := windows.ACCESS_MASK(fileDeleteChild | windows.DELETE | windows.WRITE_DAC |
+		windows.WRITE_OWNER | windows.GENERIC_ALL)
 	privateChildren := kind != windowsPathPrivateDirectory
 	for i := uint16(0); i < dacl.AceCount; i++ {
 		var ace *windows.ACCESS_ALLOWED_ACE

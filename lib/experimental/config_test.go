@@ -2,6 +2,7 @@ package experimentalnodes
 
 import (
 	"encoding/base64"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -40,7 +41,7 @@ func TestXTorDriverConfigMapsDaemonFeatures(t *testing.T) {
 	if got.TorExecutable != host.TorExecutable || got.TempRoot != host.TempRoot {
 		t.Fatalf("host paths = %q, %q", got.TorExecutable, got.TempRoot)
 	}
-	if !strings.HasPrefix(got.StateDirectory, host.StateRoot+"/node-") {
+	if !strings.HasPrefix(got.StateDirectory, filepath.Join(host.StateRoot, "node-")) {
 		t.Fatalf("state directory = %q", got.StateDirectory)
 	}
 	if got.Identity == nil || got.Identity.UID != 123 || got.Identity.GID != 456 {

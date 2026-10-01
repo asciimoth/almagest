@@ -7,5 +7,9 @@ snet = "snet"
 amneisa = "amneisa"
 
 [files]
-extend-exclude = ["tests-fail"]
+extend-exclude = [
+  "tests-fail",
+  "bin/almagestd/platform/windows_security.go",
+  "bin/almagestd/api_pipe_windows.go"
+]
 

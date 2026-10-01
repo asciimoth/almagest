@@ -105,8 +105,10 @@ The host independently requires passing ordinary and privileged artifacts.
 The active gate covers the portable baseline, native backend selection,
 trusted Wintun loading, and read-only split-driver dependency handling. It does
 not qualify later milestones in `docs/windows/test-manifest.json`.
-The host-only harness tests run through both `just lint` and `just test-total`
-without starting a VM.
+The host-only harness tests run through `just lint` without starting a VM.
+`just test-total` runs the harness and the native `just winvm-test` gate. Thus,
+the full target requires the configured KVM host, locked media, and WinVM
+prerequisites.
 
 ## Failure and recovery
 

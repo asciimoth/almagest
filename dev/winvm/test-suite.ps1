@@ -19,6 +19,13 @@ if ($elevated -ne $wantElevated) { throw "The $Mode suite has an incorrect execu
 if ([Environment]::OSVersion.Version.Build -ne 20348 -or $env:PROCESSOR_ARCHITECTURE -ne 'AMD64') {
     throw 'The native suite requires Windows Server 2022/amd64'
 }
+if ($Mode -eq 'privileged') {
+    $wintunDLL = Join-Path $env:SystemRoot 'System32\wintun.dll'
+    if (-not (Test-Path -LiteralPath $wintunDLL -PathType Leaf)) {
+        throw 'The provisioned Wintun DLL is absent'
+    }
+    $env:SYSNET_WINDOWS_WINTUN_DLL = $wintunDLL
+}
 
 $suiteDir = Join-Path $ArtifactDir $suite.id
 $eventDir = Join-Path $suiteDir 'events'
@@ -51,9 +58,21 @@ foreach ($case in $suite.cases) {
         # Exclusive privileged cases use this same loop. The manifest also
         # requires that the privileged suite is serialized.
         $testArguments = @('test', '-json', '-count=1', '-p=1', '-parallel=1') + @($case.arguments)
-        & go @testArguments 2>&1 |
-            Out-File -FilePath $eventPath -Encoding utf8
-        $processResults[$case.id] = $LASTEXITCODE
+        $stderrPath = "$eventPath.stderr.log"
+        $savedErrorActionPreference = $ErrorActionPreference
+        try {
+            # Go writes module-download progress to stderr. Windows PowerShell
+            # converts merged native stderr into terminating error records when
+            # ErrorActionPreference is Stop. Keep stderr separate so that the
+            # evidence file contains only the go test JSON event stream.
+            $ErrorActionPreference = 'Continue'
+            & go @testArguments 2> $stderrPath |
+                Out-File -FilePath $eventPath -Encoding utf8
+            $processExitCode = $LASTEXITCODE
+        } finally {
+            $ErrorActionPreference = $savedErrorActionPreference
+        }
+        $processResults[$case.id] = $processExitCode
     } finally {
         foreach ($serviceName in $startedServices) {
             Stop-Service -Name $serviceName -Force -ErrorAction Continue

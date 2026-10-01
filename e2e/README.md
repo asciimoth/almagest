@@ -5,10 +5,22 @@ drives it through the admin API with `almagest-cli`. These tests are intended
 for behavior that depends on process startup, daemon config files, installed
 programs, Linux networking, daemon logs, or command-line tools.
 
-Run all cases:
+Run the regular cases:
 
 ```sh
 just test-e2e
+```
+
+Run the regular and privileged cases:
+
+```sh
+just test-e2e-all
+```
+
+The full project gate also runs all E2E cases:
+
+```sh
+just test-total
 ```
 
 Run all unit and e2e tests except cases marked as heavy:
@@ -68,8 +80,10 @@ Each case lives in `e2e/cases/<case-name>/` and should include:
   `cli` for admin API actions and assertions, and use ordinary commands such as
   `curl`, `ip`, or `jq` for external checks.
 - `requires-privileged`: optional marker for cases that need privileged Docker
-  networking. Default all-case runs skip these unless `E2E_INCLUDE_PRIVILEGED=1`
-  or `E2E_DOCKER_RUN_ARGS` contains `--privileged`.
+  networking. Regular runs skip these cases. Set `E2E_INCLUDE_PRIVILEGED=1`
+  to include them; the runner gives only marked cases `--privileged` and access
+  to `/dev/net/tun`. Setting `E2E_DOCKER_RUN_ARGS` to include `--privileged`
+  includes the marked cases and applies those arguments to all cases.
 - `heavy`: optional marker for slow or resource-intensive cases. The
   `just test-total-light` command skips these cases.
 - `docker-build-args`: optional list of `NAME=value` Docker build arguments,

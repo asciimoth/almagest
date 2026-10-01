@@ -25,7 +25,8 @@
             "github.com/asciimoth/almagest/lib/tun::TestValidationErrorForAttemptAllowsOnlyAdvisoryUnknownIssues",
             "github.com/asciimoth/almagest/lib/tun::TestSysnetDebugUnknownPreflightBuildsTun",
             "github.com/asciimoth/almagest/lib/tun::TestSysnetDebugUnavailablePreflightPreservesLiveTun",
-            "github.com/asciimoth/almagest/lib/tun::TestDefaultTunWarningsShowWarningPopup"
+            "github.com/asciimoth/almagest/lib/tun::TestDefaultTunWarningsShowWarningPopup",
+            "github.com/asciimoth/almagest/lib/experimental::TestXTorDriverWindowsBestEffortWarnsWithoutContainment"
           ]
         },
         {
@@ -43,6 +44,11 @@
             "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsConsoleLifecycleCancelsRun",
             "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsServiceHandlerStopsForSCMControls",
             "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsServiceHandlerDoesNotReportRunningAfterStartupFailure",
+            "github.com/asciimoth/almagest/bin/almagestd/command::TestWindowsRunnerTimeoutKillsChildAndGrandchild",
+            "github.com/asciimoth/almagest/bin/almagestd/command::TestWindowsRunnerShutdownKillsChildAndGrandchild",
+            "github.com/asciimoth/almagest/bin/almagestd/command::TestWindowsRunnerImmediateCancellationDoesNotLaunch",
+            "github.com/asciimoth/almagest/bin/almagestd/command::TestWindowsRunnerPreservesArgumentsPathAndEnvironment",
+            "github.com/asciimoth/almagest/bin/almagestd/command::TestWindowsRunnerRejectsUnixCredentialsBeforeLaunch",
             "github.com/asciimoth/almagest/bin/almagestd/platform::TestReadWindowsSystemConfigDefaults",
             "github.com/asciimoth/almagest/bin/almagestd/platform::TestReadWindowsSystemConfigExplicitFields",
             "github.com/asciimoth/almagest/bin/almagestd/platform::TestReadWindowsSystemConfigRejectsInvalidDurationAndRecovery",
@@ -80,6 +86,16 @@
       "cases": [
         {"id": "m2::execution-identity-elevated", "kind": "identity"},
         {"id": "m2::exclusive-cases-serialized", "kind": "serialization"},
+        {
+          "id": "m6::xtor-restricted-token",
+          "kind": "go",
+          "module": "lib",
+          "arguments": ["./experimental", "-run", "^TestWindowsXTorElevatedParentDropsAdministratorPrivileges$"],
+          "eventFile": "m6-xtor-restricted-token.jsonl",
+          "requiredTests": [
+            "github.com/asciimoth/almagest/lib/experimental::TestWindowsXTorElevatedParentDropsAdministratorPrivileges"
+          ]
+        },
         {
           "id": "m3::stable-guid-collision",
           "kind": "go",

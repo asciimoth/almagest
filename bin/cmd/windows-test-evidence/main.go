@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -60,6 +61,9 @@ func decodeFile(path string, target any) error {
 	if err != nil {
 		return err
 	}
+	// Windows PowerShell 5 writes a UTF-8 byte-order mark when Set-Content
+	// uses -Encoding utf8. Accept that native evidence format.
+	data = bytes.TrimPrefix(data, []byte{0xef, 0xbb, 0xbf})
 	if err := json.Unmarshal(data, target); err != nil {
 		return fmt.Errorf("decode %s: %w", path, err)
 	}

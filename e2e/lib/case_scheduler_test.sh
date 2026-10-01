@@ -6,8 +6,9 @@ source "$(dirname "${BASH_SOURCE[0]}")/case_scheduler.sh"
 
 root="$(mktemp -d)"
 trap 'rm -rf "$root"' EXIT
-mkdir -p "$root/normal" "$root/exclusive"
+mkdir -p "$root/normal" "$root/exclusive" "$root/privileged"
 touch "$root/exclusive/exclusive"
+touch "$root/privileged/requires-privileged"
 
 e2e_case_can_start "$root/normal" 0 0
 e2e_case_can_start "$root/normal" 3 0
@@ -23,6 +24,20 @@ if e2e_case_can_start "$root/normal" 0 1; then
 fi
 if e2e_case_can_start "$root/exclusive" 0 1; then
 	echo "second exclusive case started while an exclusive case was running" >&2
+	exit 1
+fi
+
+normal_args=()
+e2e_add_case_privileges "$root/normal" normal_args
+if ((${#normal_args[@]} != 0)); then
+	echo "normal case received privileged Docker arguments" >&2
+	exit 1
+fi
+
+privileged_args=()
+e2e_add_case_privileges "$root/privileged" privileged_args
+if [[ "${privileged_args[*]}" != "--privileged --device /dev/net/tun" ]]; then
+	echo "privileged case did not receive the required Docker arguments" >&2
 	exit 1
 fi
 

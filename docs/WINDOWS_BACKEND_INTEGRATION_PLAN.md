@@ -500,6 +500,18 @@ but before a usable engine exists.
 
 ### Step 15: Implement Windows child-process lifecycle
 
+Implementation: complete. Protected commands start suspended, enter a
+kill-on-close Job Object, and only then resume. Timeout, daemon cancellation,
+normal command completion, and startup failure close the complete owned process
+tree. Windows rejects protected UID/GID settings before process creation and
+keeps executable and argument boundaries in `os/exec`. The pinned tor-driver
+version has Job Object cleanup for its ordinary Windows launcher, but strict
+Windows network containment is unavailable. Almagest uses tor-driver's
+best-effort network policy and logs a warning when it falls back to the ordinary
+network adapter. When Almagest has an elevated Windows token, Tor and managed
+transport processes start with a verified restricted token that has no enabled
+Administrators membership. Failure to create that token stops process startup.
+
 Add process-tree cleanup, using Job Objects where suitable. Preserve command
 allowlists and argument boundaries. Reject Unix credentials before launch.
 Check experimental Tor behavior against the pinned tor-driver version.
@@ -508,12 +520,12 @@ Acceptance conditions:
 
 - Timeout and daemon shutdown leave no owned child processes.
 - Children cannot escape tracking during startup before cancellation is set.
-- Unsupported Tor containment returns an explicit error without selecting a
-  weaker execution mode.
+- Unsupported Tor network containment selects the best-effort mode and logs a
+  warning. An elevated parent never passes administrator privileges to Tor.
 
 Tests: child/grandchild termination, immediate cancellation, argument quoting,
-paths with spaces, environment handling, denied credentials, and Tor
-containment rejection without firewall changes. Public Tor tests remain opt-in.
+paths with spaces, environment handling, denied credentials, Tor containment
+fallback warnings, and elevated-token reduction. Public Tor tests remain opt-in.
 
 ### Step 16: Read Windows certificate authorities
 

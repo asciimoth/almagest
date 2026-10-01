@@ -103,6 +103,25 @@ class HarnessTests(unittest.TestCase):
         self.shell('ready_token() { n=$(<"$COUNTER"); n=$((n+1)); echo "$n" >"$COUNTER"; if ((n==1)); then echo boot-A; else echo boot-B; fi; }; sleep() { :; }; wait_ready $$ 3 none /dev/null')
         self.assertEqual(counter.read_text().strip(), '3')
 
+    def test_provisioning_starts_only_after_setup_reboot_and_reports_failure(self):
+        provision = (ROOT / 'provision.ps1').read_text()
+        builder = (ROOT / 'build-image.sh').read_text()
+        self.assertIn("New-ScheduledTaskTrigger -AtStartup", provision)
+        self.assertNotIn("Start-ScheduledTask -TaskName $taskName", provision)
+        self.assertIn("provision.failed", provision)
+        self.assertIn("provision.failed", builder)
+        self.assertIn("Windows provisioning failed", builder)
+        self.assertIn("Join-Path $media 'wintun-amd64.dll'", provision)
+        self.assertIn("$driverSource = $media", provision)
+
+    def test_native_runner_keeps_go_stderr_out_of_json_events(self):
+        runner = (ROOT / 'test-suite.ps1').read_text()
+        self.assertIn('$ErrorActionPreference = \'Continue\'', runner)
+        self.assertIn('2> $stderrPath', runner)
+        self.assertNotIn('& go @testArguments 2>&1', runner)
+        self.assertIn('$processExitCode = $LASTEXITCODE', runner)
+        self.assertIn('$env:SYSNET_WINDOWS_WINTUN_DLL = $wintunDLL', runner)
+
     def test_port_contention_and_concurrent_locks(self):
         sock = socket.socket()
         self.addCleanup(sock.close)

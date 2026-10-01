@@ -117,6 +117,8 @@ printf 'Windows Setup is writing the system disk. Waiting for guest provisioning
 while ((SECONDS < deadline)); do
     kill -0 "$pid" || die 'QEMU exited during installation'
     if "$script_dir/tools/qga.py" --socket "$qga" --timeout 5 ping >/dev/null 2>&1; then
+        failure=$("$script_dir/tools/qga.py" --socket "$qga" --timeout 10 exec powershell.exe -NoProfile -Command 'if(Test-Path C:\winvm\provision.failed){Get-Content -Raw C:\winvm\provision.failed}' 2>/dev/null || true)
+        [[ -z $failure ]] || die "Windows provisioning failed: $failure"
         token=$(ready_token "$qga" 2>/dev/null || true)
         [[ -n $token ]] && break
     fi

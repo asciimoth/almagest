@@ -3,13 +3,18 @@
 package command
 
 import (
+	"context"
 	"errors"
 	"os"
 	"os/exec"
 	"syscall"
 )
 
-func prepareCommand(cmd *exec.Cmd, cfg resolvedCommand) error {
+func validateProcessConfig(resolvedCommand) error { return nil }
+
+func executeCommand(ctx context.Context, cfg resolvedCommand, env []string) error {
+	cmd := exec.CommandContext(ctx, cfg.Command[0], cfg.Command[1:]...)
+	cmd.Env = env
 	// Use a separate process group so cancellation stops descendants that the
 	// configured command starts, not only the direct command process.
 	attrs := &syscall.SysProcAttr{Setpgid: true}
@@ -43,5 +48,5 @@ func prepareCommand(cmd *exec.Cmd, cfg resolvedCommand) error {
 		}
 		return err
 	}
-	return nil
+	return cmd.Run()
 }

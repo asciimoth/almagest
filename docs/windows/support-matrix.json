@@ -306,7 +306,7 @@
       "platforms": ["windows-server-2022-amd64", "windows-11-amd64", "windows-11-arm64"],
       "dependencies": [],
       "requiredSuites": ["windows-native-core", "windows-native-e2e"],
-      "notes": "Milestone 6 supplies Job Object behavior and rejects Unix credentials."
+      "notes": "Step 15 supplies suspended-start, kill-on-close Job Object behavior for protected commands and rejects Unix credentials before launch. XTorDriver warns and uses best-effort networking when strict containment is unavailable. Elevated Windows parents launch Tor and managed transports with a verified restricted token that has no enabled Administrators membership. Qualification remains unavailable until the required native and E2E evidence exists."
     },
     {
       "id": "windows-certificate-authorities",
