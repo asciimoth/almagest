@@ -6,7 +6,7 @@ script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 # shellcheck source=dev/winvm/common.sh
 source "$script_dir/common.sh"
 mode=${1:-smoke}
-[[ $mode == smoke || $mode == test || $mode == --shell ]] || die 'usage: run.sh [smoke | test | --shell RUN]'
+[[ $mode == smoke || $mode == test || $mode == --shell || $mode == --prepare ]] || die 'usage: run.sh [smoke | test | --shell RUN | --prepare DIRECTORY]'
 for command in qemu-system-x86_64 qemu-img ssh scp jq python3 timeout flock git tar; do require_command "$command"; done
 require_kvm
 ensure_cache_dir
@@ -20,14 +20,32 @@ if [[ $mode == --shell ]]; then
     [[ $run_dir == "$artifact_root"/run-* ]] || die 'run is outside artifact root'
     key=$(jq -er .baseImageKey "$run_dir/run.json")
 else
-    key=$(base_key)
-    run_dir=$(mktemp -d "$artifact_root/run-XXXXXXXX")
+    if [[ -n ${WINVM_PREPARED_DIR:-} ]]; then
+        key=$(<"$WINVM_PREPARED_DIR/base-key")
+    else
+        key=$(base_key)
+    fi
+    if [[ $mode == --prepare ]]; then
+        run_dir=$(realpath -e "${2:?prepared directory required}")
+    elif [[ -n ${WINVM_RUN_DIR:-} ]]; then
+        run_dir=$(realpath -e "$WINVM_RUN_DIR")
+        [[ $run_dir == "$artifact_root"/run-* && ! -e $run_dir/run.json ]] || die 'invalid or used WINVM_RUN_DIR'
+    else
+        run_dir=$(mktemp -d "$artifact_root/run-XXXXXXXX")
+    fi
 fi
 [[ $key =~ ^[0-9a-f]{64}$ ]] || die 'invalid base image key'
 image_dir="$winvm_cache_dir/images/$key"
 exec 8>"$winvm_cache_dir/locks/image-$key.lock"
 flock -s 8
 cached_image_valid "$image_dir" "$key" || die 'base image is absent or invalid; run just winvm-image'
+if [[ $mode == --prepare ]]; then
+    python3 "$script_dir/package-worktree.py" "$run_dir/source.tar" >"$run_dir/source.sha256"
+    "$script_dir/stage.sh" "$run_dir" >"$run_dir/staging.log" 2>&1
+    sha256sum "$run_dir/payload.tar" >"$run_dir/payload.sha256"
+    printf '%s\n' "$key" >"$run_dir/base-key"
+    exit
+fi
 exec 5>"$run_dir/run.lock"
 flock -n 5 || die 'this run is active'
 overlay="$run_dir/overlay.qcow2"
@@ -70,6 +88,11 @@ cleanup() {
     if [[ -n $pid ]]; then
         if ((status != 0 && interrupted == 0)); then
             timeout 20 "$script_dir/tools/qga.py" --socket "$qga" --timeout 15 exec powershell.exe -NoProfile -Command 'Get-Process; Get-Service; Get-Content C:\winvm\provision.log -Tail 100 -ErrorAction SilentlyContinue' >"$run_dir/diagnostics.log" 2>&1 || true
+            # Test failures can occur before the normal artifact collection step.
+            if [[ -n ${remote:-} && ! -f $run_dir/guest-artifacts.tar ]]; then
+                timeout --foreground 30 ssh "${ssh_opts[@]}" "$target" "tar.exe -cf $remote/artifacts.tar -C $remote artifacts" >>"$run_dir/diagnostics.log" 2>&1 &&
+                    timeout --foreground 60 scp "${scp_opts[@]}" "$target:$remote/artifacts.tar" "$run_dir/guest-artifacts.tar" >>"$run_dir/diagnostics.log" 2>&1 || true
+            fi
         fi
         "$script_dir/tools/qga.py" --socket "$qga" --timeout 5 shutdown >>"$run_dir/agent.log" 2>&1 || true
         if ((interrupted)); then
@@ -125,8 +148,14 @@ if [[ $mode != --shell ]]; then
     cp "$image_dir/OVMF_VARS.fd" "$vars"
     chmod 0600 "$vars"
     stage=package
-    python3 "$script_dir/package-worktree.py" "$run_dir/source.tar" >"$run_dir/source.sha256"
-    "$script_dir/stage.sh" "$run_dir" >"$run_dir/staging.log" 2>&1
+    if [[ -n ${WINVM_PREPARED_DIR:-} ]]; then
+        for prepared_file in source.tar source.sha256 payload.tar generated.sha256; do
+            ln "$WINVM_PREPARED_DIR/$prepared_file" "$run_dir/$prepared_file"
+        done
+    else
+        python3 "$script_dir/package-worktree.py" "$run_dir/source.tar" >"$run_dir/source.sha256"
+        "$script_dir/stage.sh" "$run_dir" >"$run_dir/staging.log" 2>&1
+    fi
     sha256sum "$run_dir/payload.tar" >"$run_dir/payload.sha256"
     jq --arg source "$(sha256_file "$run_dir/source.tar")" --arg payload "$(sha256_file "$run_dir/payload.tar")" --arg generated "$(sha256_file "$run_dir/generated.sha256")" '.sourceArchiveSHA256=$source | .payloadSHA256=$payload | .generatedManifestSHA256=$generated' "$run_dir/run.json" >"$run_dir/run.json.new"
     mv "$run_dir/run.json.new" "$run_dir/run.json"
@@ -171,14 +200,15 @@ if [[ $mode == smoke ]]; then
     progress 'running smoke checks'
     timeout --foreground "$test_timeout" ssh "${ssh_opts[@]}" "$target" "powershell.exe -NoProfile -ExecutionPolicy Bypass -File $remote/source/dev/winvm/smoke.ps1 -ArtifactDir $remote/artifacts" >"$run_dir/console.log" 2>&1
 else
+    tests_status=0
     stage=ordinary-tests
     progress 'running ordinary-user tests'
-    timeout --foreground "$test_timeout" ssh "${ssh_opts[@]}" "$target" "powershell.exe -NoProfile -ExecutionPolicy Bypass -File $remote/source/dev/winvm/test-suite.ps1 -Mode ordinary -SourceDir $remote/source -ArtifactDir $remote/artifacts" 2>&1 | tee "$run_dir/ordinary-tests.log"
+    timeout --foreground "$test_timeout" ssh "${ssh_opts[@]}" "$target" "powershell.exe -NoProfile -ExecutionPolicy Bypass -File $remote/source/dev/winvm/test-suite.ps1 -Mode ordinary -SourceDir $remote/source -ArtifactDir $remote/artifacts" 2>&1 | tee "$run_dir/ordinary-tests.log" || tests_status=$?
     stage=privileged-tests
     progress 'running privileged tests'
     timeout --foreground "$test_timeout" "$script_dir/tools/qga.py" --socket "$qga" --timeout "$test_timeout" exec powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$remote/source/dev/winvm/test-suite.ps1" -Mode privileged -SourceDir "$remote/source" -ArtifactDir "$remote/artifacts" >"$run_dir/privileged-tests.log" 2>&1 &
     privileged_pid=$!
-    stream_qga_progress "$privileged_pid" "$remote/artifacts/windows-m4-privileged/progress" "$run_dir/privileged-progress.log"
+    stream_qga_progress "$privileged_pid" "$remote/artifacts/windows-m4-privileged/progress" "$run_dir/privileged-progress.log" || tests_status=$?
 fi
 stage=artifacts
 progress 'collecting and validating artifacts'
@@ -187,6 +217,10 @@ timeout --foreground 60 scp "${scp_opts[@]}" "$target:$remote/artifacts.tar" "$r
 if [[ $mode == smoke ]]; then
     validate_smoke_artifact "$run_dir/guest-artifacts.tar"
 else
+    if ((tests_status != 0)); then
+        stage=tests
+        exit "$tests_status"
+    fi
     validate_native_test_artifact "$run_dir/guest-artifacts.tar"
     python3 "$script_dir/combine-coverage.py" "$run_dir/guest-artifacts.tar" "$repo_root/coverage/winvm"
 fi

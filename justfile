@@ -11,6 +11,13 @@ test-go: certcat-ensure-generated
   ./scripts/test-go-coverage.sh
   ./scripts/test-gonnect-netstack-regressions.sh
 
+# Run until Ctrl+C; keep failure logs under artifacts/test-cycles/.
+test-cycles:
+  @python3 ./scripts/test-cycles.py
+
+test-cycles-harness:
+  python3 -m unittest discover -s scripts/tests -p 'test_*.py'
+
 certcat-test: certcat-ensure-generated
   ./scripts/test-go-coverage.sh certcat
 
@@ -47,7 +54,7 @@ test-e2e-light:
 
 test: test-go test-js
 
-test-total: test-winvm-harness test test-e2e
+test-total: test-cycles-harness test-winvm-harness test test-e2e
   ./scripts/coverage-report.sh
 
 test-total-light: test test-e2e-light

@@ -6,6 +6,7 @@ case_name="${1:?case name is required}"
 : "${E2E_CASE_CIDFILE:?}"
 
 run_id="${case_name//[^a-zA-Z0-9]/-}-$$-$RANDOM"
+resource_label="io.almagest.e2e.run=${E2E_RUN_ID:-$run_id}"
 network_name="almagest-$run_id"
 container_name="almagest-$run_id"
 
@@ -29,12 +30,12 @@ fi
 
 # An internal Docker network gives the container a normal network namespace
 # but no route to the public Internet. Chutney supplies all Tor relays locally.
-docker network create --internal \
+docker network create --internal --label "$resource_label" \
 	--label io.almagest.e2e.case="$case_name" \
 	"$network_name" >/dev/null
 
 # shellcheck disable=SC2086
-docker run --rm --name "$container_name" \
+docker run --rm --label "$resource_label" --name "$container_name" \
 	--cidfile "$E2E_CASE_CIDFILE" \
 	--network "$network_name" \
 	--user root \

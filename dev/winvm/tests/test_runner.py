@@ -29,6 +29,9 @@ elif name == 'qga.py':
     if 'shutdown' in sys.argv and (root / 'pid').exists():
         os.kill(int((root / 'pid').read_text()), signal.SIGTERM)
 elif name == 'ssh':
+    if mode == 'native-failure' and '-Mode ordinary' in sys.argv[-1]:
+        print('[ordinary] FAIL fixture-case')
+        sys.exit(1)
     if mode == 'interrupt':
         (root / 'ssh-started').touch()
         time.sleep(120)
@@ -69,7 +72,7 @@ elif name == 'stage.sh':
 
 class RunnerTests(unittest.TestCase):
     def test_success_and_failure_paths(self):
-        for mode in ('success', 'native', 'boot', 'transfer', 'artifacts', 'shutdown', 'interrupt'):
+        for mode in ('success', 'native', 'native-failure', 'prepared', 'boot', 'transfer', 'artifacts', 'shutdown', 'interrupt'):
             with self.subTest(mode=mode), tempfile.TemporaryDirectory() as temp:
                 root = Path(temp)
                 scripts = root / 'dev/winvm'
@@ -107,10 +110,24 @@ stop_and_reap_pid() { kill -TERM "$1" 2>/dev/null || true; wait "$1" 2>/dev/null
                     path.write_text(FAKE)
                     path.chmod(0o755)
                 env = dict(os.environ, FIXTURE=temp, FAIL_STAGE=mode,
-                           RUN_KIND='native' if mode == 'native' else 'smoke',
+                           RUN_KIND='native' if mode in ('native', 'native-failure', 'prepared') else 'smoke',
                            WINVM_CACHE_DIR=str(root / 'cache'), WINVM_ENV_FILE=str(root / 'no-env'),
                            PATH=str(fakebin) + ':' + os.environ['PATH'])
-                command = [scripts / 'run.sh'] + (['test'] if mode == 'native' else [])
+                command = [scripts / 'run.sh'] + (['test'] if mode in ('native', 'native-failure', 'prepared') else [])
+                if mode == 'prepared':
+                    prepared = root / 'prepared'
+                    prepared.mkdir()
+                    result = subprocess.run([scripts / 'run.sh', '--prepare', prepared],
+                                            env=env, capture_output=True, text=True, timeout=15)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertFalse((root / 'pid').exists(), 'preparation must not boot QEMU')
+                    # A prepared loop must not invoke either generator again.
+                    (scripts / 'stage.sh').unlink()
+                    (scripts / 'package-worktree.py').unlink()
+                    env['WINVM_PREPARED_DIR'] = str(prepared)
+                    run = root / 'artifacts/winvm/run-prepared'
+                    run.mkdir()
+                    env['WINVM_RUN_DIR'] = str(run)
                 if mode == 'interrupt':
                     process = subprocess.Popen(command, env=env, stdout=subprocess.PIPE,
                                                stderr=subprocess.PIPE, text=True,
@@ -145,12 +162,16 @@ stop_and_reap_pid() { kill -TERM "$1" 2>/dev/null || true; wait "$1" 2>/dev/null
                 record = json.loads((runs[0] / 'run.json').read_text())
                 staging = runs[0] / 'staging.log'
                 diagnostic = result.stderr + (staging.read_text() if staging.exists() else '')
-                passed = mode in ('success', 'native')
+                passed = mode in ('success', 'native', 'prepared')
                 self.assertEqual(record['status'], 'passed' if passed else 'failed', diagnostic)
                 self.assertEqual(result.returncode == 0, passed, result.stderr)
                 if not passed:
                     self.assertIn('Recovery: just winvm-shell', result.stderr)
                     expected_stage = 'boot' if mode == 'interrupt' else mode
+                    if mode == 'native-failure':
+                        expected_stage = 'tests'
+                        self.assertTrue((runs[0] / 'guest-artifacts.tar').exists())
+                        self.assertIn('running privileged tests', result.stdout)
                     self.assertEqual(record['stage'], expected_stage)
                     self.assertTrue((runs[0] / 'diagnostics.log').exists() or
                                     mode in ('shutdown', 'interrupt'))

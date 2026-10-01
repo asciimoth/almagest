@@ -118,8 +118,10 @@ Each case lives in `e2e/cases/<case-name>/` and should include:
   variant, such as one of the mutually exclusive resolvconf implementations.
 - `docker-run.sh`: optional executable case runner for a multi-container
   topology. The harness passes the case name as its only argument and provides
-  `E2E_CASE_IMAGE`, `E2E_CASE_CIDFILE`, `E2E_CASE_COVERAGE`, and
-  `E2E_CASE_COVERAGE_DIR`. The script must remove its service containers,
+  `E2E_CASE_IMAGE`, `E2E_CASE_CIDFILE`, `E2E_CASE_COVERAGE`,
+  `E2E_CASE_COVERAGE_DIR`, and `E2E_RUN_ID`. Label every container, network,
+  and volume with `io.almagest.e2e.run=$E2E_RUN_ID` so the scheduler can remove
+  resources after interrupted cleanup. The script must remove its service containers,
   network, and volumes on every exit. Use the main container CID file supplied
   by the harness so an interrupted suite can still remove that container.
 

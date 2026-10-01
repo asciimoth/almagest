@@ -6,6 +6,7 @@ case_name="${1:?case name is required}"
 : "${E2E_CASE_CIDFILE:?}"
 
 run_id="${case_name//[^a-zA-Z0-9]/-}-$$-$RANDOM"
+resource_label="io.almagest.e2e.run=${E2E_RUN_ID:-$run_id}"
 network_name="almagest-$run_id"
 volume_name="almagest-$run_id"
 headscale_name="almagest-headscale-$run_id"
@@ -100,19 +101,19 @@ if [[ "${E2E_CASE_HOST_PID:-0}" == "1" ]]; then
 	pid_args=(--pid host)
 fi
 
-docker network create --label io.almagest.e2e.case="$case_name" \
+docker network create --label "$resource_label" --label io.almagest.e2e.case="$case_name" \
 	"$network_name" >/dev/null
-docker volume create --label io.almagest.e2e.case="$case_name" \
+docker volume create --label "$resource_label" --label io.almagest.e2e.case="$case_name" \
 	"$volume_name" >/dev/null
 
-docker run --detach --name "$public_name" --network "$network_name" \
+docker run --label "$resource_label" --detach --name "$public_name" --network "$network_name" \
 	-e E2E_ORIGIN_NAME=public \
 	--entrypoint /e2e/cases/local_real_life_stack/services/origin.sh \
 	"$E2E_CASE_IMAGE" >/dev/null
 wait_container_file "$public_name" /tmp/origin-ready "public origin"
 public_ip="$(container_ip "$public_name")"
 
-docker run --detach --name "$example_name" --network "$network_name" \
+docker run --label "$resource_label" --detach --name "$example_name" --network "$network_name" \
 	-e E2E_ORIGIN_NAME=example \
 	--entrypoint /e2e/cases/local_real_life_stack/services/origin.sh \
 	"$E2E_CASE_IMAGE" >/dev/null
@@ -129,7 +130,7 @@ virtual_public_ip="198.18.100.10"
 virtual_example_ip="198.18.100.11"
 virtual_headscale_ip="198.18.100.12"
 
-docker run --detach --name "$headscale_name" --network "$network_name" \
+docker run --label "$resource_label" --detach --name "$headscale_name" --network "$network_name" \
 	--cap-add NET_ADMIN \
 	-e E2E_HEADSCALE_STANDALONE=1 \
 	-e ALMAGEST_TAILSCALE_E2E_REJECT_AFTER_SECONDS=20 \
@@ -146,7 +147,7 @@ headscale_ip="$(container_ip "$headscale_name")"
 # The main container keeps a private network namespace. A host PID namespace
 # is added only when the case marker requests it for p-mark identity matching.
 # shellcheck disable=SC2086
-docker create --name "$main_name" \
+docker create --label "$resource_label" --name "$main_name" \
 	--cidfile "$E2E_CASE_CIDFILE" \
 	--network "$network_name" \
 	--privileged --device /dev/net/tun \

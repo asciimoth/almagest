@@ -15,6 +15,12 @@ build_retry_max_delay="${E2E_BUILD_RETRY_MAX_DELAY:-60}"
 image_input_label="io.almagest.e2e.input-sha256"
 random_seed="${E2E_RANDOM_SEED:-}"
 slowest_count=15
+prepare_only=0
+skip_build=0
+case "${1:-}" in
+	--prepare-only) prepare_only=1; shift ;;
+	--skip-build) skip_build=1; shift ;;
+esac
 
 if [[ -z "$random_seed" ]]; then
 	random_seed="$(od -An -N4 -tu4 /dev/urandom)"
@@ -113,10 +119,12 @@ image_matches_inputs() {
 build_args=()
 coverage_inputs=()
 if [[ "$coverage_enabled" == "1" ]]; then
-	mkdir -p "$coverage_dir"
-	rm -rf "$coverage_dir/raw"
-	rm -f "$coverage_dir/coverage.out" "$coverage_dir/functions.txt" "$coverage_dir/summary.txt" "$coverage_dir/total.txt"
-	mkdir -p "$coverage_dir/raw"
+	if ((prepare_only == 0)); then
+		mkdir -p "$coverage_dir"
+		rm -rf "$coverage_dir/raw"
+		rm -f "$coverage_dir/coverage.out" "$coverage_dir/functions.txt" "$coverage_dir/summary.txt" "$coverage_dir/total.txt"
+		mkdir -p "$coverage_dir/raw"
+	fi
 	build_args=(
 		--build-arg E2E_COVERAGE=1
 		--build-arg "E2E_COVERPKG=$coverpkg"
@@ -155,7 +163,10 @@ echo "==> e2e: ${#cases[@]} cases, $jobs jobs, $exclusive_count exclusive"
 declare -A built_images=()
 case_images=()
 case_coverage_dirs=()
-source_input_hash="$(hash_image_inputs)"
+source_input_hash=""
+if ((skip_build == 0)); then
+	source_input_hash="$(hash_image_inputs)"
+fi
 
 for case_index in "${!cases[@]}"; do
 	case_name="${cases[$case_index]}"
@@ -169,7 +180,7 @@ for case_index in "${!cases[@]}"; do
 			case_build_args+=(--build-arg "$build_arg")
 		done <"e2e/cases/$case_name/docker-build-args"
 	fi
-	if [[ -z "${built_images[$case_image]:-}" ]]; then
+	if ((skip_build == 0)) && [[ -z "${built_images[$case_image]:-}" ]]; then
 		case_input_hash="$({
 			printf '%s\0' "$source_input_hash"
 			printf '%s\0' "${case_build_args[@]}"
@@ -184,14 +195,20 @@ for case_index in "${!cases[@]}"; do
 		built_images[$case_image]=1
 	fi
 	case_images[case_index]="$case_image"
-	if [[ "$coverage_enabled" == "1" ]]; then
+	if [[ "$coverage_enabled" == "1" ]] && ((prepare_only == 0)); then
 		case_coverage_dirs[case_index]="$coverage_dir/raw/$case_name"
 		mkdir -p "${case_coverage_dirs[case_index]}"
 		coverage_inputs+=("${case_coverage_dirs[case_index]}")
 	fi
 done
 
+if ((prepare_only)); then
+	exit 0
+fi
+
 run_dir="$(mktemp -d "${TMPDIR:-/tmp}/almagest-e2e-run.XXXXXX")"
+resource_label="io.almagest.e2e.run=${run_dir##*/}"
+echo "==> e2e: resource label $resource_label"
 declare -A running_cases=()
 case_logs=()
 case_cidfiles=()
@@ -217,6 +234,8 @@ cleanup() {
 	local cidfile
 	local container_id
 	local pid
+	local resource
+	local resources=()
 
 	trap - EXIT INT TERM
 	# Remove containers before waiting for their runner processes. A runner can be
@@ -241,6 +260,31 @@ cleanup() {
 		[[ -n "$container_id" ]] || continue
 		docker rm --force "$container_id" >/dev/null 2>&1 || true
 	done
+	# Custom cases create helper containers, networks, and volumes. Their EXIT
+	# traps can be interrupted while the process tree stops. Sweep only resources
+	# labelled for this invocation, after all case processes have been reaped.
+	mapfile -t resources < <(docker ps -aq --filter "label=$resource_label")
+	for resource in "${resources[@]}"; do
+		if [[ -n "${E2E_LOG_DIR:-}" ]]; then
+			mkdir -p "$E2E_LOG_DIR"
+			docker logs --tail 300 "$resource" >"$E2E_LOG_DIR/helper-$resource.log" 2>&1 || true
+		fi
+		docker rm --force "$resource" >/dev/null 2>&1 || true
+	done
+	mapfile -t resources < <(docker network ls -q --filter "label=$resource_label")
+	if ((${#resources[@]})); then
+		docker network rm "${resources[@]}" >/dev/null 2>&1 || true
+	fi
+	mapfile -t resources < <(docker volume ls -q --filter "label=$resource_label")
+	if ((${#resources[@]})); then
+		docker volume rm "${resources[@]}" >/dev/null 2>&1 || true
+	fi
+	if [[ -n "${E2E_LOG_DIR:-}" ]]; then
+		mkdir -p "$E2E_LOG_DIR"
+		for case_index in "${!case_logs[@]}"; do
+			cp "${case_logs[$case_index]}" "$E2E_LOG_DIR/${cases[$case_index]}.log" || true
+		done
+	fi
 	rm -rf "$run_dir"
 	exit "$exit_status"
 }
@@ -253,7 +297,7 @@ run_case() {
 	local case_name="${cases[$case_index]}"
 	local case_image="${case_images[$case_index]}"
 	local case_runner="e2e/cases/$case_name/docker-run.sh"
-	local docker_run_args=()
+	local docker_run_args=(--label "$resource_label")
 	local host_pid_namespace=0
 	e2e_add_case_privileges "e2e/cases/$case_name" docker_run_args
 	if [[ -f "e2e/cases/$case_name/requires-host-pid" ]]; then
@@ -267,7 +311,8 @@ run_case() {
 		)
 	fi
 	if [[ -x "$case_runner" ]]; then
-		E2E_CASE_IMAGE="$case_image" \
+		E2E_RUN_ID="${run_dir##*/}" \
+			E2E_CASE_IMAGE="$case_image" \
 			E2E_CASE_CIDFILE="${case_cidfiles[$case_index]}" \
 			E2E_CASE_COVERAGE_DIR="${case_coverage_dirs[$case_index]:-}" \
 			E2E_CASE_COVERAGE="$coverage_enabled" \
