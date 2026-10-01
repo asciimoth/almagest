@@ -16,4 +16,6 @@ The case verifies:
 
 After covering every left and right port, the case samples 100 additional
 compatible link pairs by default. Set `ALMAGEST_E2E_LINK_MATRIX_ATTEMPTS` to a
-different non-negative integer for a larger or smaller stress matrix.
+different non-negative integer for a larger or smaller stress matrix. Menu
+checks run four at a time by default. Set `ALMAGEST_E2E_MENU_JOBS` to a
+different positive integer to tune this for the test host.

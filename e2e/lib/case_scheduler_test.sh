@@ -6,7 +6,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/case_scheduler.sh"
 
 root="$(mktemp -d)"
 trap 'rm -rf "$root"' EXIT
-mkdir -p "$root/normal" "$root/exclusive" "$root/privileged"
+mkdir -p "$root/normal" "$root/normal-later" "$root/exclusive" "$root/privileged"
 touch "$root/exclusive/exclusive"
 touch "$root/privileged/requires-privileged"
 
@@ -24,6 +24,28 @@ if e2e_case_can_start "$root/normal" 0 1; then
 fi
 if e2e_case_can_start "$root/exclusive" 0 1; then
 	echo "second exclusive case started while an exclusive case was running" >&2
+	exit 1
+fi
+
+# shellcheck disable=SC2034 # The scheduler reads both arrays through namerefs.
+scheduled_cases=(normal exclusive normal-later)
+# shellcheck disable=SC2034 # The scheduler reads both arrays through namerefs.
+pending_cases=(0 1 2)
+unset 'pending_cases[0]'
+startable_index="$(e2e_find_startable_case \
+	"$root" scheduled_cases pending_cases 1 0)"
+if [[ "$startable_index" != "2" ]]; then
+	echo "exclusive case blocked a later normal case" >&2
+	exit 1
+fi
+startable_index="$(e2e_find_startable_case \
+	"$root" scheduled_cases pending_cases 0 0)"
+if [[ "$startable_index" != "1" ]]; then
+	echo "scheduler did not retain shuffled order when all cases could start" >&2
+	exit 1
+fi
+if e2e_find_startable_case "$root" scheduled_cases pending_cases 1 1 >/dev/null; then
+	echo "scheduler selected a case while an exclusive case was running" >&2
 	exit 1
 fi
 

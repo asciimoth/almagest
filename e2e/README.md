@@ -51,9 +51,12 @@ limit. Use `E2E_JOBS=1` for sequential execution. The runner shows each case's
 regular or privileged status when it starts. It discards output from passing
 cases and shows the grouped output from failed cases. Completion lines include
 each case's run time. The final summary includes the full suite run time and
-the five slowest cases. The runner reports all case failures after the active
+the 15 slowest cases. The runner reports all case failures after the active
 cases finish. It randomizes the case order and prints the seed. Set
 `E2E_RANDOM_SEED` to that value to reproduce the order from an earlier run.
+The scheduler keeps the randomized relative order of runnable cases. If an
+exclusive case cannot start, later regular cases can use the available job
+slots. Exclusive cases run alone after the active regular cases finish.
 
 The `just test-e2e`, `just test-total`, and `just check` paths run the daemon
 with Go coverage instrumentation. This writes raw Go coverage data, a package
@@ -100,6 +103,9 @@ Each case lives in `e2e/cases/<case-name>/` and should include:
   selected cases but does not change which cases the runner selects.
 - `heavy`: optional marker for slow or resource-intensive cases. The
   `just test-total-light` command skips these cases.
+- `exclusive`: optional marker for resource-intensive cases that must run
+  without other E2E cases. A blocked exclusive case does not prevent later
+  regular cases from using available job slots.
 - `docker-build-args`: optional list of `NAME=value` Docker build arguments,
   one per line. The runner builds a case-specific cached image when this file
   exists. Use this only when the case needs an incompatible system package

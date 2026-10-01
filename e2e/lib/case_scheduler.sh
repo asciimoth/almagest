@@ -52,6 +52,28 @@ e2e_case_can_start() {
 	return 0
 }
 
+e2e_find_startable_case() {
+	local cases_root="${1:?cases root is required}"
+	local cases_name="${2:?case array name is required}"
+	local pending_name="${3:?pending array name is required}"
+	local running="${4:?running case count is required}"
+	local exclusive_running="${5:?exclusive state is required}"
+	local pending_index
+	local case_index
+	local -n cases_ref="$cases_name"
+	local -n pending_ref="$pending_name"
+
+	for pending_index in "${!pending_ref[@]}"; do
+		case_index="${pending_ref[$pending_index]}"
+		if e2e_case_can_start \
+			"$cases_root/${cases_ref[$case_index]}" "$running" "$exclusive_running"; then
+			printf '%s\n' "$pending_index"
+			return 0
+		fi
+	done
+	return 1
+}
+
 e2e_add_case_privileges() {
 	local case_dir="${1:?case directory is required}"
 	local args_name="${2:?argument array name is required}"

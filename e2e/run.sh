@@ -14,7 +14,7 @@ build_retry_delay="${E2E_BUILD_RETRY_DELAY:-1}"
 build_retry_max_delay="${E2E_BUILD_RETRY_MAX_DELAY:-60}"
 image_input_label="io.almagest.e2e.input-sha256"
 random_seed="${E2E_RANDOM_SEED:-}"
-slowest_count=5
+slowest_count=15
 
 if [[ -z "$random_seed" ]]; then
 	random_seed="$(od -An -N4 -tu4 /dev/urandom)"
@@ -144,6 +144,13 @@ fi
 
 e2e_shuffle_cases "$random_seed" cases
 echo "==> e2e: random seed $random_seed"
+exclusive_count=0
+for case_name in "${cases[@]}"; do
+	if e2e_case_is_exclusive "$repo_root/e2e/cases/$case_name"; then
+		((exclusive_count += 1))
+	fi
+done
+echo "==> e2e: ${#cases[@]} cases, $jobs jobs, $exclusive_count exclusive"
 
 declare -A built_images=()
 case_images=()
@@ -251,35 +258,42 @@ run_case() {
 		${E2E_DOCKER_RUN_ARGS:-} "${docker_run_args[@]}" "$case_image" "$case_name"
 }
 
-next_case=0
+pending_cases=("${!cases[@]}")
 failure_count=0
 failed_cases=()
 exclusive_case_running=0
 
-while ((next_case < ${#cases[@]} || ${#running_cases[@]} > 0)); do
-	while ((next_case < ${#cases[@]} && ${#running_cases[@]} < jobs)); do
-		case_name="${cases[$next_case]}"
-		if ! e2e_case_can_start "$repo_root/e2e/cases/$case_name" "${#running_cases[@]}" "$exclusive_case_running"; then
+while ((${#pending_cases[@]} > 0 || ${#running_cases[@]} > 0)); do
+	while ((${#pending_cases[@]} > 0 && ${#running_cases[@]} < jobs)); do
+		if ! pending_index="$(e2e_find_startable_case \
+			"$repo_root/e2e/cases" cases pending_cases \
+			"${#running_cases[@]}" "$exclusive_case_running")"; then
 			break
 		fi
-		case_logs[next_case]="$run_dir/$next_case.log"
-		case_cidfiles[next_case]="$run_dir/$next_case.cid"
-		case_finished_ms[next_case]="$run_dir/$next_case.finished-ms"
-		case_privileges[next_case]="$(e2e_case_privilege "$repo_root/e2e/cases/$case_name")"
-		case_started_ms[next_case]="$(e2e_now_ms)"
-		echo "==> e2e: starting $case_name [${case_privileges[$next_case]}]"
+		case_index="${pending_cases[$pending_index]}"
+		case_name="${cases[$case_index]}"
+		case_logs[case_index]="$run_dir/$case_index.log"
+		case_cidfiles[case_index]="$run_dir/$case_index.cid"
+		case_finished_ms[case_index]="$run_dir/$case_index.finished-ms"
+		case_privileges[case_index]="$(e2e_case_privilege "$repo_root/e2e/cases/$case_name")"
+		case_started_ms[case_index]="$(e2e_now_ms)"
+		echo "==> e2e: starting $case_name [${case_privileges[$case_index]}]"
 		(
 			case_status=0
-			run_case "$next_case" || case_status=$?
-			e2e_now_ms >"${case_finished_ms[$next_case]}"
+			run_case "$case_index" || case_status=$?
+			e2e_now_ms >"${case_finished_ms[$case_index]}"
 			exit "$case_status"
-		) >"${case_logs[$next_case]}" 2>&1 &
-		running_cases[$!]="$next_case"
+		) >"${case_logs[$case_index]}" 2>&1 &
+		running_cases[$!]="$case_index"
 		if e2e_case_is_exclusive "$repo_root/e2e/cases/$case_name"; then
 			exclusive_case_running=1
 		fi
-		((next_case += 1))
+		unset 'pending_cases[pending_index]'
 	done
+	if ((${#running_cases[@]} == 0)); then
+		echo "e2e scheduler could not start a pending case" >&2
+		exit 2
+	fi
 
 	completed_pid=""
 	case_status=0

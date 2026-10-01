@@ -2,10 +2,14 @@
 set -euo pipefail
 
 : "${ALMAGEST_E2E_LINK_MATRIX_ATTEMPTS:=100}"
+: "${ALMAGEST_E2E_MENU_JOBS:=4}"
 source /e2e/lib/common.sh
 
 if [[ ! "$ALMAGEST_E2E_LINK_MATRIX_ATTEMPTS" =~ ^[0-9]+$ ]]; then
 	fail "ALMAGEST_E2E_LINK_MATRIX_ATTEMPTS must be a non-negative integer"
+fi
+if [[ ! "$ALMAGEST_E2E_MENU_JOBS" =~ ^[1-9][0-9]*$ ]]; then
+	fail "ALMAGEST_E2E_MENU_JOBS must be a positive integer"
 fi
 
 raw_engine() {
@@ -207,6 +211,7 @@ mapfile -t classes < <(jq -r '.classes[].class' "$E2E_RUNTIME/classes.json")
 (( ${#classes[@]} > 20 )) || fail "too few node classes were registered"
 
 node_ids=()
+node_classes=()
 index=0
 for class in "${classes[@]}"; do
 	cli engine node-class-snapshot --class "$class" | jq -e --arg class "$class" \
@@ -226,14 +231,40 @@ for class in "${classes[@]}"; do
 	fi
 	node="$(jq -er '.id' "$E2E_RUNTIME/add-${index}.json")"
 	node_ids+=("$node")
+	node_classes+=("$class")
 	cli engine node-snapshot --id "$node" | jq -e --arg class "$class" \
 		'.snapshot.class == $class' >/dev/null \
 		|| fail "$class returned an invalid node snapshot"
-	exercise_menu "$class" "$node"
 	((index += 1))
 done
 
 (( ${#node_ids[@]} > 20 )) || fail "too few node classes could be instantiated"
+
+# Menu checks operate on independent, unlinked nodes. Run a small batch at a
+# time because each check makes many request/response round trips.
+menu_pids=()
+menu_batch_failed=0
+wait_menu_batch() {
+	local pid
+	for pid in "${menu_pids[@]}"; do
+		if ! wait "$pid"; then
+			menu_batch_failed=1
+		fi
+	done
+	menu_pids=()
+}
+for node_index in "${!node_ids[@]}"; do
+	(
+		trap - EXIT
+		exercise_menu "${node_classes[$node_index]}" "${node_ids[$node_index]}"
+	) &
+	menu_pids+=("$!")
+	if (( ${#menu_pids[@]} >= ALMAGEST_E2E_MENU_JOBS )); then
+		wait_menu_batch
+	fi
+done
+wait_menu_batch
+(( menu_batch_failed == 0 )) || fail "one or more node menu checks failed"
 
 # Attach and detach compatible default ports across the live class instances.
 # One pass gives every right port a provider. The second pass gives every left
@@ -265,8 +296,6 @@ link_surface_count=0
 exercise_link_pair() {
 	local right_port="$1"
 	local left_port="$2"
-	local right_node="$3"
-	local left_node="$4"
 	local output="$E2E_RUNTIME/link-attempt.json"
 	local link
 	if ! cli graph add-link --port-a "$right_port" --port-b "$left_port" \
@@ -274,13 +303,6 @@ exercise_link_pair() {
 		return 1
 	fi
 	link="$(jq -er '.id' "$output")" || return 1
-	raw_engine trigger_node \
-		"{\"workspace\":\"main\",\"id\":$right_node}" >/dev/null 2>&1 || true
-	raw_engine trigger_node \
-		"{\"workspace\":\"main\",\"id\":$left_node}" >/dev/null 2>&1 || true
-	raw_engine send_inbox \
-		"{\"workspace\":\"main\",\"id\":$right_node,\"payload\":{\"kind\":\"surface-link\"}}" \
-		>/dev/null 2>&1 || true
 	sleep 0.02
 	cli graph delete-link --id "$link" >/dev/null 2>&1 || true
 	linked_right[$right_port]=1
@@ -323,6 +345,8 @@ cli engine remove-node-popup --id "$disposable" --popup 999 >/dev/null
 cli engine remove-node-popups-by-type --id "$disposable" --type warning >/dev/null
 cli engine remove-node-popups --id "$disposable" >/dev/null
 cli engine send-inbox --id "$disposable" --payload '{"kind":"ignored-e2e-message"}' >/dev/null
+raw_engine trigger_node \
+	"{\"workspace\":\"main\",\"id\":$disposable}" >/dev/null 2>&1 || true
 
 copy_data="$(cli engine copy --ids "$disposable" | jq -er '.data')"
 [[ -n "$copy_data" ]] || fail "copy returned an empty clipboard"

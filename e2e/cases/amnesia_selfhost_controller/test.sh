@@ -197,11 +197,13 @@ http_client_ready() {
 
 assert_tunnel_works() {
 	local client="$1"
-	retry "$ALMAGEST_E2E_TIMEOUT" "server-to-client AmneziaWG ping" server_ping_works \
-		|| fail "server could not ping the Almagest tunnel"
+	# Client traffic starts the handshake immediately. A server-first ping can
+	# otherwise wait for the peer's next persistent keepalive after each rebuild.
 	cli graph click-menu-button --node "$client" --block request --button send >/dev/null
 	retry "$ALMAGEST_E2E_TIMEOUT" "client-to-server AmneziaWG HTTP" http_client_ready "$client" \
 		|| fail "Almagest HTTP client could not use the AmneziaWG tunnel"
+	retry "$ALMAGEST_E2E_TIMEOUT" "server-to-client AmneziaWG ping" server_ping_works \
+		|| fail "server could not ping the Almagest tunnel"
 }
 
 apply_amnesia_config() {
