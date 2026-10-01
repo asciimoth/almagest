@@ -102,6 +102,10 @@ passing process result, complete package events, and every test explicitly
 listed by the case. A missing test, skip, failure, corrupt event, timeout, wrong
 identity, missing suite artifact, or artifact retrieval failure fails the run.
 The host independently requires passing ordinary and privileged artifacts.
+Each Go command also writes an atomic coverage profile. After validation, the
+host combines and publishes these profiles in `coverage/winvm`. The final
+coverage report includes that profile when it is present.
+The host prints `RUN`, `PASS`, and `FAIL` progress for each manifest Go case.
 The active gate covers the portable baseline, native backend selection,
 trusted Wintun loading, and read-only split-driver dependency handling. It does
 not qualify later milestones in `docs/windows/test-manifest.json`.

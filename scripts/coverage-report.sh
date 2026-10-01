@@ -4,6 +4,7 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 regular_dir="${GO_COVERAGE_DIR:-$repo_root/coverage/regular}"
 e2e_dir="${E2E_COVERAGE_DIR:-$repo_root/e2e/coverage}"
+winvm_dir="${WINVM_COVERAGE_DIR:-$repo_root/coverage/winvm}"
 total_dir="${TOTAL_COVERAGE_DIR:-$repo_root/coverage/total}"
 work_dir="$(mktemp -d "${TMPDIR:-/tmp}/almagest-total-coverage.XXXXXX")"
 trap 'rm -rf "$work_dir"' EXIT
@@ -87,9 +88,11 @@ combine_profiles() {
 	' "$@" >"$output"
 }
 
-combine_profiles "$combined_profile" \
-	"$regular_dir/coverage.out" \
-	"$e2e_dir/coverage.out"
+profiles=("$regular_dir/coverage.out" "$e2e_dir/coverage.out")
+if [[ -f "$winvm_dir/coverage.out" ]]; then
+	profiles+=("$winvm_dir/coverage.out")
+fi
+combine_profiles "$combined_profile" "${profiles[@]}"
 go tool cover -func="$combined_profile" >"$functions_report"
 tail -1 "$functions_report" | tee "$summary_report" "$total_report"
 
@@ -100,12 +103,19 @@ publish_file "$total_report" "$total_dir/total.txt"
 
 regular_percent="$(percent_from_total "$regular_dir/total.txt")"
 e2e_percent="$(percent_from_total "$e2e_dir/total.txt")"
+winvm_percent="$(percent_from_total "$winvm_dir/total.txt")"
 total_percent="$(percent_from_total "$total_dir/total.txt")"
 
 echo "==> final coverage report"
 echo "regular go tests: $regular_percent statements"
 echo "docker e2e tests: $e2e_percent statements"
+if [[ -f "$winvm_dir/coverage.out" ]]; then
+	echo "Windows VM tests: $winvm_percent statements"
+fi
 echo "total: $total_percent statements"
 echo "regular go profile: $(display_path "$regular_dir/coverage.out")"
 echo "docker e2e profile: $(display_path "$e2e_dir/coverage.out")"
+if [[ -f "$winvm_dir/coverage.out" ]]; then
+	echo "Windows VM profile: $(display_path "$winvm_dir/coverage.out")"
+fi
 echo "total profile: $(display_path "$total_dir/coverage.out")"

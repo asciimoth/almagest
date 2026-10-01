@@ -29,7 +29,18 @@ if ($Mode -eq 'privileged') {
 
 $suiteDir = Join-Path $ArtifactDir $suite.id
 $eventDir = Join-Path $suiteDir 'events'
-New-Item -ItemType Directory -Force $eventDir | Out-Null
+$coverageDir = Join-Path $suiteDir 'coverage'
+New-Item -ItemType Directory -Force $eventDir,$coverageDir | Out-Null
+$progressDir = Join-Path $suiteDir 'progress'
+New-Item -ItemType Directory -Force $progressDir | Out-Null
+$progressIndex = 0
+function Write-TestProgress([string]$Status, [string]$CaseID) {
+    $line = "[$Mode] $Status $CaseID"
+    $path = Join-Path $progressDir ("{0:D3}.txt" -f $script:progressIndex)
+    $line | Set-Content -LiteralPath $path -Encoding ascii
+    $script:progressIndex++
+    Write-Output $line
+}
 $identityPath = Join-Path $suiteDir 'identity.json'
 @{
     name=$windowsIdentity.Name
@@ -44,7 +55,9 @@ $processResults = @{}
 foreach ($case in $suite.cases) {
     if ($case.kind -ne 'go') { continue }
     $eventPath = Join-Path $eventDir $case.eventFile
+    $coveragePath = Join-Path $coverageDir "$($case.eventFile).coverage.out"
     $moduleDir = Join-Path $SourceDir $case.module
+    Write-TestProgress 'RUN ' $case.id
     Push-Location $moduleDir
     try {
         $startedServices = @()
@@ -57,7 +70,10 @@ foreach ($case in $suite.cases) {
         }
         # Exclusive privileged cases use this same loop. The manifest also
         # requires that the privileged suite is serialized.
-        $testArguments = @('test', '-json', '-count=1', '-p=1', '-parallel=1') + @($case.arguments)
+        $testArguments = @(
+            'test', '-json', '-count=1', '-p=1', '-parallel=1',
+            '-covermode=atomic', "-coverprofile=$coveragePath"
+        ) + @($case.arguments)
         $stderrPath = "$eventPath.stderr.log"
         $savedErrorActionPreference = $ErrorActionPreference
         try {
@@ -72,7 +88,11 @@ foreach ($case in $suite.cases) {
         } finally {
             $ErrorActionPreference = $savedErrorActionPreference
         }
+        if (-not (Test-Path -LiteralPath $coveragePath -PathType Leaf)) {
+            throw "The $($case.id) coverage profile is absent"
+        }
         $processResults[$case.id] = $processExitCode
+        Write-TestProgress $(if ($processExitCode -eq 0) { 'PASS' } else { 'FAIL' }) $case.id
     } finally {
         foreach ($serviceName in $startedServices) {
             Stop-Service -Name $serviceName -Force -ErrorAction Continue

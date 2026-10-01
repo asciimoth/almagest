@@ -45,6 +45,10 @@ elif name == 'scp':
                     data = json.dumps(value).encode()
                     entry = tarfile.TarInfo(f'artifacts/{suite}/suite.json'); entry.size = len(data)
                     archive.addfile(entry, io.BytesIO(data))
+                    coverage = b'mode: atomic\ngithub.com/asciimoth/almagest/lib/example.go:1.1,2.2 1 1\n'
+                    entry = tarfile.TarInfo(f'artifacts/{suite}/coverage/example.coverage.out')
+                    entry.size = len(coverage)
+                    archive.addfile(entry, io.BytesIO(coverage))
             else:
                 data = json.dumps({'suite':'harness-smoke','outcome':'passed','testExecution':'not-run'}).encode()
                 entry = tarfile.TarInfo('artifacts/smoke.json'); entry.size = len(data)
@@ -66,6 +70,7 @@ class RunnerTests(unittest.TestCase):
                 scripts = root / 'dev/winvm'
                 (scripts / 'tools').mkdir(parents=True)
                 shutil.copy2(ROOT / 'run.sh', scripts / 'run.sh')
+                shutil.copy2(ROOT / 'combine-coverage.py', scripts / 'combine-coverage.py')
                 common = (ROOT / 'common.sh').read_text()
                 common += '''
 require_kvm() { :; }

@@ -121,6 +121,8 @@ class HarnessTests(unittest.TestCase):
         self.assertNotIn('& go @testArguments 2>&1', runner)
         self.assertIn('$processExitCode = $LASTEXITCODE', runner)
         self.assertIn('$env:SYSNET_WINDOWS_WINTUN_DLL = $wintunDLL', runner)
+        self.assertIn("Write-TestProgress 'RUN '", runner)
+        self.assertIn("'PASS' } else { 'FAIL'", runner)
 
     def test_port_contention_and_concurrent_locks(self):
         sock = socket.socket()
@@ -188,6 +190,40 @@ class HarnessTests(unittest.TestCase):
             entry.size = len(data)
             tar.addfile(entry, io.BytesIO(data))
         self.shell('validate_native_test_artifact "$ARTIFACT"', ok=False)
+
+    def test_native_coverage_profiles_are_combined(self):
+        archive = self.path / 'native-coverage.tar'
+        output = self.path / 'coverage'
+        self.env.update(ARTIFACT=str(archive), OUTPUT=str(output))
+        profiles = {
+            'artifacts/ordinary/coverage/lib.out': (
+                'mode: atomic\n'
+                'github.com/asciimoth/almagest/lib/example.go:1.1,2.2 2 1\n'
+                'github.com/asciimoth/almagest/lib/example.go:3.1,4.2 1 0\n'
+            ),
+            'artifacts/privileged/coverage/lib.out': (
+                'mode: atomic\n'
+                'github.com/asciimoth/almagest/lib/example.go:1.1,2.2 2 3\n'
+                'github.com/asciimoth/sysnet-windows/integration/example.go:1.1,2.2 5 1\n'
+            ),
+        }
+        with tarfile.open(archive, 'w') as tar:
+            for name, value in profiles.items():
+                data = value.encode()
+                entry = tarfile.TarInfo(name)
+                entry.size = len(data)
+                tar.addfile(entry, io.BytesIO(data))
+        subprocess.run(
+            ['python3', ROOT / 'combine-coverage.py', archive, output], check=True,
+            text=True, capture_output=True,
+        )
+        self.assertEqual(
+            (output / 'coverage.out').read_text(),
+            'mode: atomic\n'
+            'github.com/asciimoth/almagest/lib/example.go:1.1,2.2 2 4\n'
+            'github.com/asciimoth/almagest/lib/example.go:3.1,4.2 1 0\n',
+        )
+        self.assertIn('66.7%', (output / 'total.txt').read_text())
 
 
 if __name__ == '__main__':

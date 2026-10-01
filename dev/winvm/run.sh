@@ -37,6 +37,30 @@ qga="$sockets/qga.sock"
 qmp="$sockets/qmp.sock"
 pid=''
 stage=setup
+progress() { printf '==> Windows VM: %s\n' "$1"; }
+stream_qga_progress() {
+    local command_pid=$1 guest_dir=$2 local_file=$3 shown=0 status guest_file
+    : >"$local_file"
+    while true; do
+        printf -v guest_file '%s/%03d.txt' "$guest_dir" "$shown"
+        if "$script_dir/tools/qga.py" --socket "$qga" --timeout 5 read "$guest_file" >"$local_file.event" 2>>"$run_dir/agent.log" && [[ -s $local_file.event ]]; then
+            tee -a "$local_file" <"$local_file.event"
+            rm -f "$local_file.event"
+            shown=$((shown + 1))
+            continue
+        else
+            rm -f "$local_file.event"
+        fi
+        kill -0 "$command_pid" 2>/dev/null || break
+        sleep 2
+    done
+    if wait "$command_pid"; then
+        return 0
+    else
+        status=$?
+        return "$status"
+    fi
+}
 cleanup() {
     status=$?
     trap - EXIT INT TERM
@@ -74,6 +98,7 @@ trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 if [[ $mode != --shell ]]; then
+    progress 'preparing isolated test payload'
     if [[ $mode == smoke ]]; then
         suite=harness-smoke
         test_execution=not-run
@@ -109,9 +134,11 @@ printf '%q ' "${qemu[@]}" >"$run_dir/qemu-command.log"
 "${qemu[@]}" >"$run_dir/qemu.log" 2>&1 &
 pid=$!
 ssh_opts=(-i "$(ssh_private_key)" -p "$port" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$run_dir/known_hosts" -o ConnectTimeout=5)
-scp_opts=(-i "$(ssh_private_key)" -P "$port" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$run_dir/known_hosts" -o ConnectTimeout=5)
+ssh_opts+=(-o LogLevel=ERROR -o WarnWeakCrypto=no)
+scp_opts=(-q -i "$(ssh_private_key)" -P "$port" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$run_dir/known_hosts" -o ConnectTimeout=5 -o LogLevel=ERROR -o WarnWeakCrypto=no)
 target=winvm@127.0.0.1
 stage=boot
+progress 'starting guest and waiting for readiness'
 wait_ready "$pid" "$(jq -r .machine.bootTimeoutSeconds "$config_file")" "$qga" "$run_dir/agent.log"
 timeout 30 ssh "${ssh_opts[@]}" "$target" whoami >"$run_dir/ssh-identity.log"
 if [[ $mode == --shell ]]; then
@@ -120,6 +147,7 @@ if [[ $mode == --shell ]]; then
 fi
 remote="C:/winvm/runs/${run_dir##*/}"
 stage=transfer
+progress 'transferring test payload'
 timeout 30 ssh "${ssh_opts[@]}" "$target" "powershell.exe -NoProfile -Command \"New-Item -ItemType Directory -Force '$remote/source','$remote/artifacts' | Out-Null\""
 timeout 120 scp "${scp_opts[@]}" "$run_dir/payload.tar" "$target:$remote/payload.tar"
 payload_hash=$(sha256_file "$run_dir/payload.tar")
@@ -127,19 +155,27 @@ timeout 120 ssh "${ssh_opts[@]}" "$target" "powershell.exe -NoProfile -Command \
 test_timeout=$(jq -r .machine.testTimeoutSeconds "$config_file")
 if [[ $mode == smoke ]]; then
     stage=smoke
+    progress 'running smoke checks'
     timeout "$test_timeout" ssh "${ssh_opts[@]}" "$target" "powershell.exe -NoProfile -ExecutionPolicy Bypass -File $remote/source/dev/winvm/smoke.ps1 -ArtifactDir $remote/artifacts" >"$run_dir/console.log" 2>&1
 else
     stage=ordinary-tests
-    timeout "$test_timeout" ssh "${ssh_opts[@]}" "$target" "powershell.exe -NoProfile -ExecutionPolicy Bypass -File $remote/source/dev/winvm/test-suite.ps1 -Mode ordinary -SourceDir $remote/source -ArtifactDir $remote/artifacts" >"$run_dir/ordinary-tests.log" 2>&1
+    progress 'running ordinary-user tests'
+    timeout "$test_timeout" ssh "${ssh_opts[@]}" "$target" "powershell.exe -NoProfile -ExecutionPolicy Bypass -File $remote/source/dev/winvm/test-suite.ps1 -Mode ordinary -SourceDir $remote/source -ArtifactDir $remote/artifacts" 2>&1 | tee "$run_dir/ordinary-tests.log"
     stage=privileged-tests
-    timeout "$test_timeout" "$script_dir/tools/qga.py" --socket "$qga" --timeout "$test_timeout" exec powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$remote/source/dev/winvm/test-suite.ps1" -Mode privileged -SourceDir "$remote/source" -ArtifactDir "$remote/artifacts" >"$run_dir/privileged-tests.log" 2>&1
+    progress 'running privileged tests'
+    timeout "$test_timeout" "$script_dir/tools/qga.py" --socket "$qga" --timeout "$test_timeout" exec powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$remote/source/dev/winvm/test-suite.ps1" -Mode privileged -SourceDir "$remote/source" -ArtifactDir "$remote/artifacts" >"$run_dir/privileged-tests.log" 2>&1 &
+    privileged_pid=$!
+    stream_qga_progress "$privileged_pid" "$remote/artifacts/windows-m4-privileged/progress" "$run_dir/privileged-progress.log"
 fi
 stage=artifacts
+progress 'collecting and validating artifacts'
 timeout 30 ssh "${ssh_opts[@]}" "$target" "tar.exe -cf $remote/artifacts.tar -C $remote artifacts"
 timeout 60 scp "${scp_opts[@]}" "$target:$remote/artifacts.tar" "$run_dir/guest-artifacts.tar"
 if [[ $mode == smoke ]]; then
     validate_smoke_artifact "$run_dir/guest-artifacts.tar"
 else
     validate_native_test_artifact "$run_dir/guest-artifacts.tar"
+    python3 "$script_dir/combine-coverage.py" "$run_dir/guest-artifacts.tar" "$repo_root/coverage/winvm"
 fi
 stage=shutdown
+progress 'shutting down guest'
