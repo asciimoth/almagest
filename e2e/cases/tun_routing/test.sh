@@ -24,7 +24,10 @@ curl_url() {
 
 curl_url_fails() {
 	local url="$1"
-	if curl_url "$url" /tmp/e2e-tun-routing-unexpected-body.txt \
+	if curl --fail --silent --show-error --noproxy '*' \
+		--connect-timeout 1 --max-time 1 \
+		"$url" \
+		--output /tmp/e2e-tun-routing-unexpected-body.txt \
 		>/tmp/e2e-tun-routing-unexpected-stdout.txt \
 		2>/tmp/e2e-tun-routing-expected-failure.txt; then
 		return 1

@@ -328,6 +328,7 @@ start_static_http_target() {
 	python3 -u - "$host" "$port" "$body" "$access_log" "$ready_file" <<'PY' >/dev/null 2>"$access_log.stderr" &
 import http.server
 import socket
+import socketserver
 import sys
 
 host = sys.argv[1]
@@ -353,6 +354,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
 class Server(http.server.ThreadingHTTPServer):
     address_family = socket.AF_INET6 if ":" in host else socket.AF_INET
+
+    def server_bind(self):
+        # HTTPServer does an unused reverse lookup that can block isolated fixtures.
+        socketserver.TCPServer.server_bind(self)
+        self.server_name = host
+        self.server_port = self.server_address[1]
 
 
 server = Server((host, port), Handler)
@@ -378,6 +385,7 @@ start_static_http_target_in_netns() {
 	ip netns exec "$netns" python3 -u -c '
 import http.server
 import socket
+import socketserver
 import sys
 
 host = sys.argv[1]
@@ -403,6 +411,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
 class Server(http.server.ThreadingHTTPServer):
     address_family = socket.AF_INET6 if ":" in host else socket.AF_INET
+
+    def server_bind(self):
+        # HTTPServer does an unused reverse lookup that can block isolated fixtures.
+        socketserver.TCPServer.server_bind(self)
+        self.server_name = host
+        self.server_port = self.server_address[1]
 
 
 server = Server((host, port), Handler)

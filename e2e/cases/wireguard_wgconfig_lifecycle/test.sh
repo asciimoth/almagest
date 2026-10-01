@@ -23,8 +23,10 @@ wgconfig_status_is() {
 	local node="$1"
 	local state="$2"
 	local runtime_peers="$3"
-	[[ "$(menu_value "$node" status state)" == "$state" \
-		&& "$(menu_value "$node" status runtimePeers)" == "$runtime_peers" ]]
+	local menu
+	menu="$(cli graph menu --id "$node")" || return 1
+	[[ "$(jq -er '.blocks[] | select(.id == "status") | .items[] | select(.id == "state") | (.value // .text // "")' <<<"$menu")" == "$state" \
+		&& "$(jq -er '.blocks[] | select(.id == "status") | .items[] | select(.id == "runtimePeers") | (.value // .text // "")' <<<"$menu")" == "$runtime_peers" ]]
 }
 
 wait_wgconfig_status() {
@@ -53,12 +55,13 @@ http_request_count() {
 http_success_after_count() {
 	local node="$1"
 	local previous_count="$2"
-	local current_count
+	local current_count menu
 	current_count="$(http_request_count)"
+	menu="$(cli graph menu --id "$node")" || return 1
 	[[ "$current_count" -gt "$previous_count" \
-		&& "$(menu_value "$node" result status)" == "Status: 200 OK" \
-		&& -z "$(menu_value "$node" result error)" \
-		&& "$(menu_value "$node" result response)" == "wgconfig-lifecycle-response" ]]
+		&& "$(jq -er '.blocks[] | select(.id == "result") | .items[] | select(.id == "status") | (.value // .text // "")' <<<"$menu")" == "Status: 200 OK" \
+		&& -z "$(jq -er '.blocks[] | select(.id == "result") | .items[] | select(.id == "error") | (.value // .text // "")' <<<"$menu")" \
+		&& "$(jq -er '.blocks[] | select(.id == "result") | .items[] | select(.id == "response") | (.value // .text // "")' <<<"$menu")" == "wgconfig-lifecycle-response" ]]
 }
 
 assert_http_success_once() {

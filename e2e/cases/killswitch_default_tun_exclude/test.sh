@@ -41,7 +41,9 @@ curl_target() {
 
 curl_target_fails() {
 	local path="$1"
-	if curl_target "$path" /tmp/e2e-killswitch-unexpected-curl-body.txt \
+	if curl --fail --silent --show-error --connect-timeout 1 --max-time 1 \
+		"http://$target$path" \
+		--output /tmp/e2e-killswitch-unexpected-curl-body.txt \
 		>/tmp/e2e-killswitch-unexpected-curl-stdout.txt \
 		2>/tmp/e2e-killswitch-expected-curl-failure.txt; then
 		return 1
@@ -61,8 +63,8 @@ port = int(sys.argv[2])
 path = sys.argv[3]
 output = sys.argv[4]
 
-with socket.create_connection((host, port), timeout=3) as conn:
-    conn.settimeout(3)
+with socket.create_connection((host, port), timeout=1) as conn:
+    conn.settimeout(1)
     conn.sendall(
         f"GET {path} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\n\r\n".encode()
     )

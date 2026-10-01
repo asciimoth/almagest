@@ -46,7 +46,9 @@ curl_target() {
 curl_target_fails() {
 	local target="$1"
 	local path="$2"
-	if curl_target "$target" "$path" /tmp/e2e-default-tun-unexpected-body.txt \
+	if curl --fail --silent --show-error --connect-timeout 1 --max-time 1 \
+		"http://$target$path" \
+		--output /tmp/e2e-default-tun-unexpected-body.txt \
 		>/tmp/e2e-default-tun-unexpected-stdout.txt \
 		2>/tmp/e2e-default-tun-expected-failure.txt; then
 		return 1

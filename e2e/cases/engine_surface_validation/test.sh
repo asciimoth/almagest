@@ -2,7 +2,7 @@
 set -euo pipefail
 
 : "${ALMAGEST_E2E_LINK_MATRIX_ATTEMPTS:=100}"
-: "${ALMAGEST_E2E_MENU_JOBS:=4}"
+: "${ALMAGEST_E2E_MENU_JOBS:=8}"
 source /e2e/lib/common.sh
 
 if [[ ! "$ALMAGEST_E2E_LINK_MATRIX_ATTEMPTS" =~ ^[0-9]+$ ]]; then

@@ -286,34 +286,51 @@ assert_complete_source_policy() {
 
 assert_all_host_traffic() {
 	local tag="$1"
+	local pids=()
+	local labels=()
+
 	retry 90 "$tag default IPv4 HTTP" \
 		host_http_request "$default_v4_remote" 18101 "/$tag" \
-		"default IPv4 response" "$E2E_RUNTIME/$tag-default-v4-http.txt" \
-		|| fail "$tag default IPv4 HTTP failed"
+		"default IPv4 response" "$E2E_RUNTIME/$tag-default-v4-http.txt" &
+	pids+=("$!")
+	labels+=("default IPv4 HTTP")
 	retry 90 "$tag overlay IPv4 HTTP" \
 		host_http_request "$overlay_v4_remote" 18103 "/$tag" \
-		"overlay IPv4 response" "$E2E_RUNTIME/$tag-overlay-v4-http.txt" \
-		|| fail "$tag overlay IPv4 HTTP failed"
+		"overlay IPv4 response" "$E2E_RUNTIME/$tag-overlay-v4-http.txt" &
+	pids+=("$!")
+	labels+=("overlay IPv4 HTTP")
 	retry 90 "$tag default IPv6 HTTP" \
 		host_http_request "$default_v6_remote" 18102 "/$tag" \
-		"default IPv6 response" "$E2E_RUNTIME/$tag-default-v6-http.txt" \
-		|| fail "$tag default IPv6 HTTP failed"
+		"default IPv6 response" "$E2E_RUNTIME/$tag-default-v6-http.txt" &
+	pids+=("$!")
+	labels+=("default IPv6 HTTP")
 	retry 90 "$tag overlay IPv6 HTTP" \
 		host_http_request "$overlay_v6_remote" 18104 "/$tag" \
-		"overlay IPv6 response" "$E2E_RUNTIME/$tag-overlay-v6-http.txt" \
-		|| fail "$tag overlay IPv6 HTTP failed"
+		"overlay IPv6 response" "$E2E_RUNTIME/$tag-overlay-v6-http.txt" &
+	pids+=("$!")
+	labels+=("overlay IPv6 HTTP")
 	retry 90 "$tag default IPv4 UDP" \
-		host_udp_request "$default_v4_remote" 19101 "$tag-default-v4" \
-		|| fail "$tag default IPv4 UDP failed"
+		host_udp_request "$default_v4_remote" 19101 "$tag-default-v4" &
+	pids+=("$!")
+	labels+=("default IPv4 UDP")
 	retry 90 "$tag overlay IPv4 UDP" \
-		host_udp_request "$overlay_v4_remote" 19103 "$tag-overlay-v4" \
-		|| fail "$tag overlay IPv4 UDP failed"
+		host_udp_request "$overlay_v4_remote" 19103 "$tag-overlay-v4" &
+	pids+=("$!")
+	labels+=("overlay IPv4 UDP")
 	retry 90 "$tag default IPv6 UDP" \
-		host_udp_request "$default_v6_remote" 19102 "$tag-default-v6" \
-		|| fail "$tag default IPv6 UDP failed"
+		host_udp_request "$default_v6_remote" 19102 "$tag-default-v6" &
+	pids+=("$!")
+	labels+=("default IPv6 UDP")
 	retry 90 "$tag overlay IPv6 UDP" \
-		host_udp_request "$overlay_v6_remote" 19104 "$tag-overlay-v6" \
-		|| fail "$tag overlay IPv6 UDP failed"
+		host_udp_request "$overlay_v6_remote" 19104 "$tag-overlay-v6" &
+	pids+=("$!")
+	labels+=("overlay IPv6 UDP")
+
+	local index
+	for index in "${!pids[@]}"; do
+		wait "${pids[$index]}" \
+			|| fail "$tag ${labels[$index]} failed"
+	done
 }
 
 run_parallel_host_traffic() {
