@@ -84,7 +84,7 @@ lint: test-winvm-harness certcat-lint lint-windows
   cd lib && golangci-lint run ./...
   cd bin && golangci-lint run ./...
 
-lint-windows:
+lint-windows: build-web
   ./scripts/lint-windows.sh
 
 shellcheck:

@@ -139,8 +139,7 @@ func TestUDPPingE2ESocksClientBehindProxyUDPAssoc(t *testing.T) {
 	f.e.MustAddTypedLinkByPortName(TypeNetwork, f.clientProxy, "left", "Network", client, "right", "Network")
 
 	waitUDPPingServerLog(f.e, server, "listening on")
-	sendUDPPing(f.e, client)
-	waitUDPPingClientResponse(f.e, client, "ok", "pong:"+payload)
+	assertUDPPingClientResponseEventually(f.e, client, "pong:"+payload)
 }
 
 func TestUDPPingE2ESocksClientBehindProxyGostUDPTun(t *testing.T) {
@@ -157,8 +156,7 @@ func TestUDPPingE2ESocksClientBehindProxyGostUDPTun(t *testing.T) {
 	f.e.MustAddTypedLinkByPortName(TypeNetwork, f.clientProxy, "left", "Network", client, "right", "Network")
 
 	waitUDPPingServerLog(f.e, server, "listening on")
-	sendUDPPing(f.e, client)
-	waitUDPPingClientResponse(f.e, client, "ok", "pong:"+payload)
+	assertUDPPingClientResponseEventually(f.e, client, "pong:"+payload)
 }
 
 func TestUDPPingE2ESocksServerBehindProxyGostUDPTun(t *testing.T) {
@@ -175,8 +173,7 @@ func TestUDPPingE2ESocksServerBehindProxyGostUDPTun(t *testing.T) {
 	f.e.MustAddTypedLinkByPortName(TypeNetwork, f.target, "left", "Network", client, "right", "Network")
 
 	waitUDPPingServerLog(f.e, server, "listening on")
-	sendUDPPing(f.e, client)
-	waitUDPPingClientResponse(f.e, client, "ok", "pong:"+payload)
+	assertUDPPingClientResponseEventually(f.e, client, "pong:"+payload)
 }
 
 func TestUDPPingE2ESocksBothBehindProxyGostUDPTun(t *testing.T) {
@@ -195,8 +192,7 @@ func TestUDPPingE2ESocksBothBehindProxyGostUDPTun(t *testing.T) {
 	f.e.MustAddTypedLinkByPortName(TypeNetwork, clientProxy, "left", "Network", client, "right", "Network")
 
 	waitUDPPingServerLog(f.e, server, "listening on")
-	sendUDPPing(f.e, client)
-	waitUDPPingClientResponse(f.e, client, "ok", "pong:"+payload)
+	assertUDPPingClientResponseEventually(f.e, client, "pong:"+payload)
 }
 
 func TestUDPPingE2EClientReportsMissingNetwork(t *testing.T) {
