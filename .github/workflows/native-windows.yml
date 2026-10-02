@@ -1,0 +1,17 @@
+name: native Windows checks
+
+on:
+  workflow_dispatch:
+
+jobs:
+  windows-standard:
+    runs-on: [self-hosted, windows-server-2022, x64, standard-user]
+    steps:
+      - uses: actions/checkout@v4
+      - run: just test-windows-vm
+
+  windows-privileged:
+    runs-on: [self-hosted, windows-server-2022, x64, elevated]
+    steps:
+      - uses: actions/checkout@v4
+      - run: just test-windows-e2e

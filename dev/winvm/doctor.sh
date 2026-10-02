@@ -34,7 +34,7 @@ esac
 for command in qemu-system-x86_64 qemu-img xorriso ssh scp ssh-keygen jq python3 curl sha256sum flock git tar timeout setsid node npm go nix; do require_command "$command"; done
 validate
 [[ $(uname -s) == Linux ]] || die 'the VM harness needs Linux'
-require_kvm
+require_kvm /dev/kvm
 find_ovmf code >/dev/null || die 'OVMF code firmware is absent'
 find_ovmf vars >/dev/null || die 'OVMF variable firmware is absent'
 for section in windows virtio; do verify_hash "$section ISO" "$(input_path "$section")" "$(locked_value ".${section}.sha256")"; done

@@ -8,7 +8,7 @@ source "$script_dir/common.sh"
 mode=${1:-smoke}
 [[ $mode == smoke || $mode == test || $mode == ordinary || $mode == privileged || $mode == resource || $mode == --shell || $mode == --prepare ]] || die 'usage: run.sh [smoke | test | ordinary | privileged | resource | --shell RUN | --prepare DIRECTORY]'
 for command in qemu-system-x86_64 qemu-img ssh scp jq python3 timeout flock git tar setsid; do require_command "$command"; done
-require_kvm
+require_kvm /dev/kvm
 ensure_cache_dir
 artifact_root="$repo_root/artifacts/winvm"
 mkdir -p "$artifact_root" "$winvm_cache_dir/locks"

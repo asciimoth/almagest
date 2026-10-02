@@ -4,12 +4,6 @@ on:
   pull_request:
   push:
   workflow_dispatch:
-    inputs:
-      run_native_windows:
-        description: Run configured native Windows runners
-        required: false
-        default: false
-        type: boolean
 
 jobs:
   lint:
@@ -48,17 +42,3 @@ jobs:
         with:
           node-version: 24
       - run: just build-windows
-
-  windows-standard:
-    if: github.event_name == 'workflow_dispatch' && inputs.run_native_windows
-    runs-on: [self-hosted, windows-server-2022, x64, standard-user]
-    steps:
-      - uses: actions/checkout@v4
-      - run: just test-windows-vm
-
-  windows-privileged:
-    if: github.event_name == 'workflow_dispatch' && inputs.run_native_windows
-    runs-on: [self-hosted, windows-server-2022, x64, elevated]
-    steps:
-      - uses: actions/checkout@v4
-      - run: just test-windows-e2e

@@ -319,7 +319,7 @@ func queryWindowsGraphDNS(network, name string, want netip.Addr) error {
 	_ = conn.SetDeadline(time.Now().Add(500 * time.Millisecond))
 	if network == "tcp" {
 		framed := make([]byte, 2+len(wire))
-		binary.BigEndian.PutUint16(framed, uint16(len(wire))) //nolint:gosec -- DNS TCP frames are 16-bit.
+		binary.BigEndian.PutUint16(framed, uint16(len(wire))) //nolint:gosec // DNS TCP frames are 16-bit.
 		copy(framed[2:], wire)
 		if _, err = conn.Write(framed); err != nil {
 			return err
