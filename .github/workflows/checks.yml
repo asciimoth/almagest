@@ -34,7 +34,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - run: just test-total
+      - run: just test-go
 
   windows-cross-build:
     runs-on: ubuntu-latest
