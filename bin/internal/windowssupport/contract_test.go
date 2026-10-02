@@ -196,6 +196,7 @@ func TestQualificationEvidenceAcceptsAllRequiredNativeTests(t *testing.T) {
 		OS:              platform.OS,
 		Architecture:    platform.Architecture,
 		NativeExecution: true,
+		Identity:        testQualificationIdentity(platform),
 		Suites:          make(map[string]SuiteEvidence, len(platform.RequiredSuites)),
 	}
 	suites := make(map[string]TestSuite, len(manifest.Suites))
@@ -207,10 +208,70 @@ func TestQualificationEvidenceAcceptsAllRequiredNativeTests(t *testing.T) {
 		for _, testID := range suites[suiteID].RequiredTests {
 			tests[testID] = "passed"
 		}
-		evidence.Suites[suiteID] = SuiteEvidence{Outcome: "passed", Tests: tests}
+		suite := SuiteEvidence{Outcome: "passed", Tests: tests, Identity: evidence.Identity}
+		if suiteID == "windows-native-packet-flow" || suiteID == "windows-native-resource" {
+			suite.NonInstrumented = true
+		} else {
+			suite.CoverageSHA256 = strings.Repeat("e", 64)
+		}
+		evidence.Suites[suiteID] = suite
 	}
 	if err := ValidateQualificationEvidence(matrix, manifest, evidence); err != nil {
 		t.Fatalf("ValidateQualificationEvidence: %v", err)
+	}
+}
+
+func TestQualificationEvidenceRejectsIdentityMismatchAndMissingCoverage(t *testing.T) {
+	matrix, manifest := loadCheckedInContracts(t)
+	platform := matrix.Platforms[0]
+	evidence := completeQualificationEvidence(platform, manifest)
+	suite := evidence.Suites[platform.RequiredSuites[0]]
+	suite.Identity.SourceArchiveSHA256 = strings.Repeat("f", 64)
+	evidence.Suites[platform.RequiredSuites[0]] = suite
+	if err := ValidateQualificationEvidence(matrix, manifest, evidence); err == nil || !strings.Contains(err.Error(), "identity does not match") {
+		t.Fatalf("identity mismatch error = %v", err)
+	}
+
+	evidence = completeQualificationEvidence(platform, manifest)
+	suite = evidence.Suites[platform.RequiredSuites[0]]
+	suite.CoverageSHA256 = ""
+	evidence.Suites[platform.RequiredSuites[0]] = suite
+	if err := ValidateQualificationEvidence(matrix, manifest, evidence); err == nil || !strings.Contains(err.Error(), "coverage artifact") {
+		t.Fatalf("missing coverage error = %v", err)
+	}
+}
+
+func completeQualificationEvidence(platform Platform, manifest TestManifest) QualificationEvidence {
+	identity := testQualificationIdentity(platform)
+	evidence := QualificationEvidence{SchemaVersion: 1, PlatformID: platform.ID, OS: platform.OS,
+		Architecture: platform.Architecture, NativeExecution: true, Identity: identity,
+		Suites: make(map[string]SuiteEvidence, len(platform.RequiredSuites))}
+	index := make(map[string]TestSuite, len(manifest.Suites))
+	for _, suite := range manifest.Suites {
+		index[suite.ID] = suite
+	}
+	for _, suiteID := range platform.RequiredSuites {
+		tests := make(map[string]string, len(index[suiteID].RequiredTests))
+		for _, testID := range index[suiteID].RequiredTests {
+			tests[testID] = "passed"
+		}
+		suite := SuiteEvidence{Outcome: "passed", Tests: tests, Identity: identity, CoverageSHA256: strings.Repeat("e", 64)}
+		if suiteID == "windows-native-packet-flow" || suiteID == "windows-native-resource" {
+			suite.CoverageSHA256 = ""
+			suite.NonInstrumented = true
+		}
+		evidence.Suites[suiteID] = suite
+	}
+	return evidence
+}
+
+func testQualificationIdentity(platform Platform) QualificationIdentity {
+	return QualificationIdentity{
+		SourceRevision: "revision", SourceArchiveSHA256: strings.Repeat("a", 64),
+		GeneratedInputsSHA256: strings.Repeat("b", 64), OS: platform.OS,
+		Architecture: platform.Architecture, GoVersion: "go1.26.6",
+		WintunDLLSHA256: strings.Repeat("c", 64), SplitDriverSHA256: strings.Repeat("d", 64),
+		Binaries: map[string]string{"almagestd.exe": strings.Repeat("1", 64), "almagest-cli.exe": strings.Repeat("2", 64)},
 	}
 }
 

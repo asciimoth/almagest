@@ -883,6 +883,16 @@ also pass with normal Windows Firewall policy enabled.
 
 ### Step 23: Connect checks to project commands and CI
 
+Implementation: complete. The project commands now expose separate Windows
+cross-build, host-doctor, image, standard-user, elevated integration, packet
+flow, resource, and qualification gates. `just lint` checks both Windows
+architectures. `just test-total` keeps Linux Docker E2E coverage and adds the
+standard-user and elevated VM gates only when `RUN_WINVM_TESTS=1`. Native
+Windows dispatch uses the PowerShell suite runner. Qualification rejects
+mixed source, generated-input, platform, toolchain, DLL, driver, or executable
+identities and requires separate coverage or an explicit non-instrumented
+record. See the [VM harness guide](../dev/winvm/README.md#project-and-ci-gates).
+
 Extend `just lint` and `just test-total` with the relevant platform checks.
 Keep Linux Docker E2E coverage. Add explicit Windows commands:
 

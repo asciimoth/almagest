@@ -156,13 +156,31 @@ type QualificationEvidence struct {
 	OS              string                   `json:"os"`
 	Architecture    string                   `json:"architecture"`
 	NativeExecution bool                     `json:"nativeExecution"`
+	Identity        QualificationIdentity    `json:"identity"`
 	Suites          map[string]SuiteEvidence `json:"suites"`
 }
 
 // SuiteEvidence records the suite outcome and each required test outcome.
 type SuiteEvidence struct {
-	Outcome string            `json:"outcome"`
-	Tests   map[string]string `json:"tests"`
+	Outcome         string                `json:"outcome"`
+	Tests           map[string]string     `json:"tests"`
+	Identity        QualificationIdentity `json:"identity"`
+	CoverageSHA256  string                `json:"coverageSHA256,omitempty"`
+	NonInstrumented bool                  `json:"nonInstrumented,omitempty"`
+}
+
+// QualificationIdentity binds every suite to the same source, generated
+// inputs, native dependencies, toolchain, and executable images.
+type QualificationIdentity struct {
+	SourceRevision        string            `json:"sourceRevision"`
+	SourceArchiveSHA256   string            `json:"sourceArchiveSHA256"`
+	GeneratedInputsSHA256 string            `json:"generatedInputsSHA256"`
+	OS                    string            `json:"os"`
+	Architecture          string            `json:"architecture"`
+	GoVersion             string            `json:"goVersion"`
+	WintunDLLSHA256       string            `json:"wintunDLLSHA256"`
+	SplitDriverSHA256     string            `json:"splitDriverSHA256"`
+	Binaries              map[string]string `json:"binaries"`
 }
 
 // DecodeSupportMatrix decodes a matrix and rejects unknown fields.
@@ -558,6 +576,67 @@ func ValidateQualificationEvidence(matrix SupportMatrix, manifest TestManifest, 
 				return fmt.Errorf("required test %q in suite %q outcome is %q, want passed", testID, suiteID, outcome)
 			}
 		}
+		if err := validateQualificationIdentity(actual.Identity, evidence.Identity, platform); err != nil {
+			return fmt.Errorf("required suite %q identity: %w", suiteID, err)
+		}
+		if suiteID == "windows-native-packet-flow" || suiteID == "windows-native-resource" {
+			if !actual.NonInstrumented {
+				return fmt.Errorf("required suite %q must record non-instrumented execution", suiteID)
+			}
+		} else if actual.NonInstrumented || !validSHA256(actual.CoverageSHA256) {
+			return fmt.Errorf("required suite %q has no valid coverage artifact", suiteID)
+		}
+	}
+	return validateQualificationIdentity(evidence.Identity, evidence.Identity, platform)
+}
+
+func validateQualificationIdentity(actual, expected QualificationIdentity, platform Platform) error {
+	if actual.OS != platform.OS || actual.Architecture != platform.Architecture {
+		return fmt.Errorf("platform is %s/%s, want %s/%s", actual.OS, actual.Architecture, platform.OS, platform.Architecture)
+	}
+	if actual.SourceRevision == "" || actual.GoVersion == "" {
+		return errors.New("source revision and Go toolchain must be recorded")
+	}
+	for name, value := range map[string]string{
+		"source archive":   actual.SourceArchiveSHA256,
+		"generated inputs": actual.GeneratedInputsSHA256,
+		"Wintun DLL":       actual.WintunDLLSHA256,
+		"split driver":     actual.SplitDriverSHA256,
+	} {
+		if !validSHA256(value) {
+			return fmt.Errorf("%s SHA-256 is missing or invalid", name)
+		}
+	}
+	for _, name := range []string{"almagestd.exe", "almagest-cli.exe"} {
+		if !validSHA256(actual.Binaries[name]) {
+			return fmt.Errorf("binary identity %q is missing or invalid", name)
+		}
+	}
+	if !qualificationIdentitiesEqual(actual, expected) {
+		return errors.New("source, build-input, toolchain, driver, DLL, or binary identity does not match the evidence set")
 	}
 	return nil
+}
+
+func qualificationIdentitiesEqual(left, right QualificationIdentity) bool {
+	return left.SourceRevision == right.SourceRevision &&
+		left.SourceArchiveSHA256 == right.SourceArchiveSHA256 &&
+		left.GeneratedInputsSHA256 == right.GeneratedInputsSHA256 &&
+		left.OS == right.OS && left.Architecture == right.Architecture &&
+		left.GoVersion == right.GoVersion && left.WintunDLLSHA256 == right.WintunDLLSHA256 &&
+		left.SplitDriverSHA256 == right.SplitDriverSHA256 &&
+		left.Binaries["almagestd.exe"] == right.Binaries["almagestd.exe"] &&
+		left.Binaries["almagest-cli.exe"] == right.Binaries["almagest-cli.exe"]
+}
+
+func validSHA256(value string) bool {
+	if len(value) != 64 {
+		return false
+	}
+	for _, character := range value {
+		if !strings.ContainsRune("0123456789abcdef", character) {
+			return false
+		}
+	}
+	return true
 }

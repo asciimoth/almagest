@@ -357,6 +357,10 @@ class Supervisor:
             phases = ("smoke",)
         elif self.args.mode == "resource":
             phases = ("resource",)
+        elif self.args.mode == "ordinary":
+            phases = ("ordinary",)
+        elif self.args.mode == "privileged":
+            phases = ("privileged",)
         else:
             phases = ("ordinary", "privileged")
         for phase in phases:
@@ -400,11 +404,13 @@ class Supervisor:
                 validation.append("--allow-diagnostic")
         else:
             validator = "validate_smoke_artifact" if self.args.mode == "smoke" else "validate_native_test_artifact"
-            validation = ["bash", "-c", 'source "$1/common.sh"; "$2" "$3"', "validate",
+            validation = ["bash", "-c", 'source "$1/common.sh"; shift; "$@"', "validate",
                           str(ROOT), validator, str(self.directory / "guest-artifacts.tar")]
+            if self.args.mode in ("ordinary", "privileged"):
+                validation.append(self.args.mode)
         if self.command(validation, 15, log="validation.log"):
             raise Failure("artifact-validation")
-        if self.args.mode == "test":
+        if self.args.mode in ("test", "ordinary", "privileged"):
             if self.command(["python3", str(ROOT / "combine-coverage.py"),
                              str(self.directory / "guest-artifacts.tar"), str(ROOT.parents[1] / "coverage/winvm")], 30,
                             log="validation.log"):

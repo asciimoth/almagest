@@ -28,6 +28,9 @@ elif name == 'qemu-system-x86_64':
     (root / 'boots').write_text(str(count + 1))
     time.sleep(120)
 elif name == 'qga.py':
+    if any(arg.replace('\\', '/').endswith('/test-suite.ps1') for arg in sys.argv):
+        (root / 'test-started').touch()
+        with (root / 'test-launches').open('a') as out: out.write('privileged\n')
     if mode in ('freeze', 'lost-transport') and 'cmd.exe' in sys.argv and (root / 'boots').read_text() == '1':
         sys.exit(1)
     if mode == 'stuck-diagnostics' and any('collect-diagnostics.ps1' in arg for arg in sys.argv):
@@ -98,7 +101,10 @@ elif name == 'ssh':
                     entry = tarfile.TarInfo(prefix + filename); entry.size = len(data)
                     archive.addfile(entry, io.BytesIO(data))
             elif os.environ.get('RUN_KIND') == 'native':
-                for suite, elevated in (('windows-m4-ordinary', False), ('windows-m4-privileged', True)):
+                suites = (('windows-m4-ordinary', False), ('windows-m4-privileged', True))
+                if os.environ.get('RUN_MODE') == 'ordinary': suites = suites[:1]
+                if os.environ.get('RUN_MODE') == 'privileged': suites = suites[1:]
+                for suite, elevated in suites:
                     value = {'schemaVersion':1, 'platformId':'windows-server-2022-amd64',
                              'os':'windows-server-2022', 'architecture':'amd64',
                              'nativeExecution':True, 'suite':suite, 'outcome':'passed',
@@ -127,7 +133,7 @@ elif name == 'stage.sh':
 
 class RunnerTests(unittest.TestCase):
     def test_success_and_failure_paths(self):
-        for mode in ('success', 'native', 'resource', 'native-failure', 'prepared', 'boot', 'transfer', 'artifacts', 'shutdown', 'interrupt',
+        for mode in ('success', 'native', 'ordinary', 'privileged', 'resource', 'native-failure', 'prepared', 'boot', 'transfer', 'artifacts', 'shutdown', 'interrupt',
                      'freeze', 'lost-transport', 'healthy-silent', 'guest-timeout', 'stuck-diagnostics', 'interrupt-tests'):
             with self.subTest(mode=mode), tempfile.TemporaryDirectory() as temp:
                 root = Path(temp)
@@ -174,14 +180,14 @@ stop_and_reap_pid() { kill -TERM "$1" 2>/dev/null || true; wait "$1" 2>/dev/null
                         scripts / 'tools/qga.py', scripts / 'stage.sh', scripts / 'package-worktree.py']:
                     path.write_text(FAKE)
                     path.chmod(0o755)
-                native = mode in ('native', 'native-failure', 'prepared', 'freeze', 'lost-transport', 'healthy-silent',
+                native = mode in ('native', 'ordinary', 'privileged', 'native-failure', 'prepared', 'freeze', 'lost-transport', 'healthy-silent',
                                   'guest-timeout', 'stuck-diagnostics', 'interrupt-tests')
                 run_kind = 'resource' if mode == 'resource' else 'native' if native else 'smoke'
                 env = dict(os.environ, FIXTURE=temp, FAIL_STAGE=mode,
-                           RUN_KIND=run_kind,
+                           RUN_KIND=run_kind, RUN_MODE=mode,
                            WINVM_CACHE_DIR=str(root / 'cache'), WINVM_ENV_FILE=str(root / 'no-env'),
                            PATH=str(fakebin) + ':' + os.environ['PATH'])
-                command = [scripts / 'run.sh'] + (['resource'] if mode == 'resource' else ['test'] if native else [])
+                command = [scripts / 'run.sh'] + (['resource'] if mode == 'resource' else [mode] if mode in ('ordinary', 'privileged') else ['test'] if native else [])
                 if mode == 'prepared':
                     prepared = root / 'prepared'
                     prepared.mkdir()
@@ -234,9 +240,11 @@ stop_and_reap_pid() { kill -TERM "$1" 2>/dev/null || true; wait "$1" 2>/dev/null
                 record = json.loads((runs[0] / 'run.json').read_text())
                 staging = runs[0] / 'staging.log'
                 diagnostic = result.stderr + (staging.read_text() if staging.exists() else '')
-                passed = mode in ('success', 'native', 'resource', 'prepared')
+                passed = mode in ('success', 'native', 'ordinary', 'privileged', 'resource', 'prepared')
                 self.assertEqual(record['status'], 'passed' if passed else 'failed', diagnostic)
                 self.assertEqual(result.returncode == 0, passed, result.stderr)
+                if mode in ('ordinary', 'privileged'):
+                    self.assertEqual((root / 'test-launches').read_text(), mode + '\n')
                 if not passed:
                     self.assertIn('Recovery: just winvm-shell', result.stderr)
                     expected_stage = 'boot' if mode == 'interrupt' else mode
@@ -250,7 +258,8 @@ stop_and_reap_pid() { kill -TERM "$1" 2>/dev/null || true; wait "$1" 2>/dev/null
                         self.assertTrue((runs[0] / 'guest-artifacts.tar').exists(), result.stdout)
                         self.assertEqual(record['recoveryAttempted'], mode in ('freeze', 'lost-transport'))
                         self.assertEqual(int((root / 'boots').read_text()), 2 if mode in ('freeze', 'lost-transport') else 1)
-                        self.assertEqual((root / 'test-launches').read_text(), 'ordinary\n',
+                        expected_launches = 'ordinary\nprivileged\n' if mode == 'guest-timeout' else 'ordinary\n'
+                        self.assertEqual((root / 'test-launches').read_text(), expected_launches,
                                          'recovery must not retry tests')
                     if mode in ('freeze', 'lost-transport'):
                         self.assertEqual(record['failureKind'], 'guest-unresponsive')

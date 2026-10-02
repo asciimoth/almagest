@@ -41,6 +41,8 @@ just winvm-doctor
 just winvm-image
 just winvm-smoke
 just winvm-test
+just test-windows-vm
+just test-windows-e2e
 just test-windows-resource
 ```
 
@@ -201,10 +203,54 @@ The suite record alone is not resource qualification evidence. Windows Firewall
 remains enabled during this gate.
 The host-only harness tests run through `just lint` without starting a VM.
 `just test-total` always runs the harness. Set `RUN_WINVM_TESTS=1` to also run
-the native `just winvm-test` gate. Aggregate e2e recipes run the native gate in
-parallel with the Docker e2e suite and join both before coverage reporting.
+the combined standard-user and elevated `just winvm-test` gate.
+Aggregate e2e recipes keep the Docker e2e suite on Linux and join the enabled
+VM gates before coverage reporting.
 When enabled, the native gate requires the configured KVM host, locked media,
 and WinVM prerequisites.
+
+## Project and CI gates
+
+`just lint` runs the host linters, the host-only VM harness tests, and
+`golangci-lint` for Windows amd64 and arm64 with the Windows integration build
+tags. It does not start a VM. `just test-total` is the documented host-only
+aggregate when `RUN_WINVM_TESTS` is unset. It cannot qualify Windows support.
+Set `RUN_WINVM_TESTS=1` only on a configured Linux KVM host. This runs the
+combined standard-user and elevated `just winvm-test` gate and preserves one
+combined Windows coverage profile. A missing image, locked input, driver, or
+other prerequisite then fails the requested gate.
+
+On a native Windows runner, `just test-windows-vm` invokes the PowerShell suite
+runner for the standard account and `just test-windows-e2e` invokes it for the
+elevated account. The platform E2E dispatcher does not try to run the Linux
+Docker cases on Windows. CI uses separate runner identities for these jobs.
+
+Validate retained flow evidence with:
+
+```console
+just test-windows-flow /absolute/path/to/flow-evidence
+```
+
+The directory must contain `packet-flow-observations.jsonl`, `tunnel.pcap`, and
+`underlay.pcap`. The command writes `packet-flow-evidence.json`. It validates
+existing captures; it does not create them or replace the isolated two-guest
+capture run.
+
+After the native, flow, and resource runs are complete, validate one support
+entry with:
+
+```console
+just qualify-windows windows-server-2022-amd64 /absolute/path/to/qualification.json
+```
+
+The strict JSON record uses the suite and test IDs in
+`docs/windows/test-manifest.json`. Each required suite records the same source
+revision, source archive, generated-input manifest, OS, architecture, Go
+toolchain, Wintun DLL, split driver, daemon binary, and CLI binary identities.
+Core, privileged, and daemon E2E suites require individual coverage hashes.
+Packet-flow and resource suites must set `nonInstrumented` to `true`. A stale,
+missing, skipped, wrong-platform, mixed-identity, or shortened diagnostic
+result fails qualification.
 
 ## Failure and recovery
 

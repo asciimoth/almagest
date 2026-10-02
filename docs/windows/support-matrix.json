@@ -26,7 +26,7 @@
       "status": "unavailable",
       "reason": "Native Almagest qualification evidence is not yet available.",
       "dependencies": ["wintun", "split-driver", "elevated-network-identity"],
-      "requiredSuites": ["windows-native-core", "windows-native-privileged", "windows-native-e2e"]
+      "requiredSuites": ["windows-native-core", "windows-native-privileged", "windows-native-e2e", "windows-native-packet-flow", "windows-native-resource"]
     },
     {
       "id": "windows-11-amd64",
@@ -35,7 +35,7 @@
       "status": "unavailable",
       "reason": "A separate native Windows 11 amd64 qualification run is required.",
       "dependencies": ["wintun", "split-driver", "elevated-network-identity"],
-      "requiredSuites": ["windows-native-core", "windows-native-privileged", "windows-native-e2e"]
+      "requiredSuites": ["windows-native-core", "windows-native-privileged", "windows-native-e2e", "windows-native-packet-flow", "windows-native-resource"]
     },
     {
       "id": "windows-11-arm64",
@@ -44,7 +44,7 @@
       "status": "unavailable",
       "reason": "A native arm64 host qualification run is required; emulation does not qualify this entry.",
       "dependencies": ["wintun", "split-driver", "elevated-network-identity"],
-      "requiredSuites": ["windows-native-core", "windows-native-privileged", "windows-native-e2e"]
+      "requiredSuites": ["windows-native-core", "windows-native-privileged", "windows-native-e2e", "windows-native-packet-flow", "windows-native-resource"]
     }
   ],
   "features": [

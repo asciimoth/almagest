@@ -30,24 +30,14 @@ test-e2e: test-e2e-docker test-winvm-enabled
 
 [private]
 test-e2e-docker:
-  ./e2e/lib/case_scheduler_test.sh
-  ./e2e/run_test.sh
-  ./e2e/lib/common_test.sh
-  ./e2e/lib/amnesia_peer_handoff_test.sh
-  python3 ./e2e/lib/udp_echo_client_test.py
-  E2E_COVERAGE=1 ./e2e/run.sh
+  ./scripts/test-e2e-platform.sh
 
 [parallel]
 test-e2e-all: test-e2e-docker-all test-winvm-enabled
 
 [private]
 test-e2e-docker-all:
-  ./e2e/lib/case_scheduler_test.sh
-  ./e2e/run_test.sh
-  ./e2e/lib/common_test.sh
-  ./e2e/lib/amnesia_peer_handoff_test.sh
-  python3 ./e2e/lib/udp_echo_client_test.py
-  E2E_COVERAGE=1 E2E_INCLUDE_PRIVILEGED=1 ./e2e/run.sh
+  E2E_INCLUDE_PRIVILEGED=1 ./scripts/test-e2e-platform.sh
 
 test-e2e-light:
   E2E_EXCLUDE_HEAVY=1 just test-e2e
@@ -89,8 +79,11 @@ repair-go-work:
 certcat-tidy:
 	go -C certcat mod tidy
 
-lint: test-winvm-harness certcat-lint
+lint: test-winvm-harness certcat-lint lint-windows
   golangci-lint run ./lib/... ./bin/...
+
+lint-windows:
+  ./scripts/lint-windows.sh
 
 shellcheck:
   git ls-files -z '*.sh' | xargs -0 shellcheck
@@ -145,7 +138,7 @@ build-windows-arch arch:
 
 test-winvm-harness:
   python3 -m unittest discover -s dev/winvm/tests -p 'test_*.py'
-  shellcheck dev/winvm/*.sh
+  shellcheck dev/winvm/*.sh scripts/lint-windows.sh scripts/test-e2e-platform.sh scripts/test-windows.sh scripts/test-windows-flow.sh
 
 winvm-doctor:
   ./dev/winvm/doctor.sh
@@ -158,6 +151,20 @@ winvm-smoke:
 
 winvm-test:
   ./dev/winvm/run.sh test
+
+# Run the standard-user native Windows build and test gate. On a non-Windows
+# host, use the locked disposable VM.
+test-windows-vm:
+  ./scripts/test-windows.sh ordinary
+
+# Run serialized elevated backend and daemon integration tests. On a
+# non-Windows host, use the locked disposable VM.
+test-windows-e2e:
+  ./scripts/test-windows.sh privileged
+
+# Validate a retained isolated-flow evidence directory.
+test-windows-flow evidence='':
+  ./scripts/test-windows-flow.sh {{quote(evidence)}}
 
 # Run the fixed 30-minute resource and recovery qualification gate.
 # ALMAGEST_WINDOWS_SOAK_DURATION shortens a diagnostic run only.
@@ -175,6 +182,9 @@ test-winvm-enabled:
   else \
     printf 'Skipping native Windows VM tests; set RUN_WINVM_TESTS=1 to enable them.\n'; \
   fi
+
+qualify-windows entry evidence:
+  go run ./bin/cmd/windows-qualify -entry {{quote(entry)}} -evidence {{quote(evidence)}}
 
 winvm-shell run:
   ./dev/winvm/run.sh --shell {{quote(run)}}

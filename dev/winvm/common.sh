@@ -269,15 +269,25 @@ validate_smoke_artifact() {
 }
 
 validate_native_test_artifact() {
-    python3 - "$1" <<'PY'
+    python3 - "$@" <<'PY'
 import json
 import sys
 import tarfile
 
-expected = {
+all_expected = {
     "artifacts/windows-m4-ordinary/suite.json": ("windows-m4-ordinary", False),
     "artifacts/windows-m4-privileged/suite.json": ("windows-m4-privileged", True),
 }
+mode = sys.argv[2] if len(sys.argv) > 2 else "test"
+if mode == "ordinary":
+    expected = {next(iter(all_expected.items()))[0]: next(iter(all_expected.items()))[1]}
+elif mode == "privileged":
+    name = "artifacts/windows-m4-privileged/suite.json"
+    expected = {name: all_expected[name]}
+elif mode == "test":
+    expected = all_expected
+else:
+    raise RuntimeError("unknown native artifact mode: " + mode)
 with tarfile.open(sys.argv[1]) as archive:
     names = set(archive.getnames())
     missing = set(expected) - names

@@ -201,12 +201,16 @@ class HarnessTests(unittest.TestCase):
                 entry.size = len(data)
                 tar.addfile(entry, io.BytesIO(data))
         self.shell('validate_native_test_artifact "$ARTIFACT"')
+        self.shell('validate_native_test_artifact "$ARTIFACT" ordinary')
+        self.shell('validate_native_test_artifact "$ARTIFACT" privileged')
         with tarfile.open(archive, 'w') as tar:
             data = suite('windows-m4-ordinary', False)
             entry = tarfile.TarInfo('artifacts/windows-m4-ordinary/suite.json')
             entry.size = len(data)
             tar.addfile(entry, io.BytesIO(data))
         self.shell('validate_native_test_artifact "$ARTIFACT"', ok=False)
+        self.shell('validate_native_test_artifact "$ARTIFACT" ordinary')
+        self.shell('validate_native_test_artifact "$ARTIFACT" privileged', ok=False)
 
     def test_native_coverage_profiles_are_combined(self):
         archive = self.path / 'native-coverage.tar'

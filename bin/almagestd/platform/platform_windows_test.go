@@ -597,11 +597,11 @@ func TestWindowsSplitCapabilityRemainsUnknownUntilExclusionAttempt(t *testing.T)
 		if binding.Type != "win-exe-tree" {
 			continue
 		}
-		if binding.Capability.State != sysnet.CapabilityUnknown {
+		if binding.State != sysnet.CapabilityUnknown {
 			t.Fatalf("win-exe-tree binding capability = %+v, want unknown", binding.Capability)
 		}
 		if !hasCapabilityReason(binding.Capability, sysnet.ReasonProbeNotRun) {
-			t.Fatalf("win-exe-tree binding reasons = %v, want probe_not_run", binding.Capability.Reasons)
+			t.Fatalf("win-exe-tree binding reasons = %v, want probe_not_run", binding.Reasons)
 		}
 		return
 	}
@@ -713,12 +713,20 @@ func TestWindowsOrdinaryTunsDoNotStartSplitDriver(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: connect service manager: %v", phase, err)
 		}
-		defer manager.Disconnect()
+		t.Cleanup(func() {
+			if err := manager.Disconnect(); err != nil {
+				t.Errorf("%s: disconnect service manager: %v", phase, err)
+			}
+		})
 		service, err := manager.OpenService("mullvad-split-tunnel")
 		if err != nil {
 			t.Fatalf("%s: open split-driver service: %v", phase, err)
 		}
-		defer service.Close()
+		t.Cleanup(func() {
+			if err := service.Close(); err != nil {
+				t.Errorf("%s: close split-driver service: %v", phase, err)
+			}
+		})
 		status, err := service.Query()
 		if err != nil {
 			t.Fatalf("%s: query split-driver service: %v", phase, err)
