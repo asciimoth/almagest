@@ -1,6 +1,7 @@
 # Windows backend integration plan
 
-Status: proposed implementation plan. Milestones 1 through 6 are complete.
+Status: proposed implementation plan. Milestones 1 through 7 and Step 20 are
+complete.
 
 ## Objective and scope
 
@@ -636,6 +637,15 @@ and persistence. Direct sysnet-windows tests are supporting evidence only.
 ## Milestone 8: Prove packet paths and resource recovery
 
 ### Step 20: Add daemon-level native integration cases
+
+Implementation: complete for the daemon-level gate. The Windows VM now builds
+and starts the production daemon and CLI as the intended standard and elevated
+identities. Black-box cases cover named-pipe administration, live config,
+subscriptions, snapshots, TLS, a local SOCKS/HTTP path, startup and dependency
+failures, restart persistence, and graceful native adapter cleanup. The
+elevated case inventories owned adapter, route, and DNS state before and after
+each daemon run. Isolated multi-link packet capture and long resource recovery
+remain Steps 21 and 22 and are not claimed by this step.
 
 Port applicable Linux E2E scenarios using real Windows daemon/CLI binaries.
 Cover startup, config editing, snapshots, TLS, subscriptions, local proxies,

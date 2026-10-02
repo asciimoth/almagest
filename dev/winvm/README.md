@@ -88,7 +88,7 @@ The smoke run verifies transport, standard-user identity, OS, architecture,
 toolchain, and artifact retrieval. It records `testExecution: not-run`:
 **this is not the Windows test-suite gate or a support qualification.**
 
-`just winvm-test` runs the active Milestone 3 native gate from
+`just winvm-test` runs the active native gate through Step 20 from
 `test-suites.json`. The
 ordinary suite runs all tests in `certcat`, `lib`, and `bin` through the
 standard `winvm` SSH account. The privileged suite runs as SYSTEM through the
@@ -112,9 +112,14 @@ case can override the default hard deadline with `timeoutSeconds`. The host
 prints `RUN`, `WAIT`, `TIMEOUT`, `PASS`, and `FAIL` progress. Each heartbeat
 also records the active Go process tree and guest memory and disk state under
 the suite's `diagnostics` directory.
-The active gate covers the portable baseline, native backend selection,
-trusted Wintun loading, and read-only split-driver dependency handling. It does
-not qualify later milestones in `docs/windows/test-manifest.json`.
+The active gate also builds and starts the production daemon and CLI. Its
+standard-user daemon cases cover named-pipe administration, live config,
+subscriptions, snapshots, TLS, restart persistence, startup failures, and a
+local SOCKS/HTTP data path. Its elevated daemon case creates a native adapter,
+records its adapter, route, and DNS state, stops the daemon gracefully, and
+requires the owned state baseline after the first run and after restart.
+These daemon cases do not replace the separate packet-capture and soak gates
+from Steps 21 and 22.
 The host-only harness tests run through `just lint` without starting a VM.
 `just test-total` always runs the harness. Set `RUN_WINVM_TESTS=1` to also run
 the native `just winvm-test` gate. Aggregate e2e recipes run the native gate in

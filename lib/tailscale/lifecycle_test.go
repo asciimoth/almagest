@@ -22,6 +22,7 @@ import (
 	"github.com/asciimoth/almagest/lib/logging"
 	"github.com/asciimoth/almagest/lib/nodekit"
 	"github.com/asciimoth/almagest/lib/storage"
+	"github.com/asciimoth/almagest/lib/testkit"
 	wireguardnodes "github.com/asciimoth/almagest/lib/wireguard"
 )
 
@@ -207,6 +208,9 @@ func TestTailscaleDNSAndFirewallOutputLinksDetachAndReattach(t *testing.T) {
 	if err != nil {
 		t.Fatalf("attach firewall output: %v", err)
 	}
+	testkit.Eventually(t, func() bool {
+		return dnsConsumer.count() == 1 && objectConsumer.count() == 1
+	}, "initial Tailscale DNS and firewall output delivery")
 	firstDNS := dnsConsumer.latest(t)
 	if !dnsnodes.DNSIsReady(firstDNS) || objectConsumer.count() != 1 || objectConsumer.latest(t).JSONString() != "{}" {
 		t.Fatalf("first outputs = DNS ready %t, objects %d", dnsnodes.DNSIsReady(firstDNS), objectConsumer.count())
@@ -225,6 +229,9 @@ func TestTailscaleDNSAndFirewallOutputLinksDetachAndReattach(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reattach firewall output: %v", err)
 	}
+	testkit.Eventually(t, func() bool {
+		return dnsConsumer.count() == 2 && objectConsumer.count() == 2
+	}, "reattached Tailscale DNS and firewall output delivery")
 	secondDNS := dnsConsumer.latest(t)
 	if secondDNSLink == firstDNSLink || secondObjectLink == firstObjectLink ||
 		dnsnodes.SameDNSInstance(firstDNS, secondDNS) || !dnsnodes.DNSIsReady(secondDNS) {
@@ -272,6 +279,7 @@ func (*tailscaleLinkPeer) PreLinkAdd(uint64, string, string) error { return nil 
 
 type tailscaleDNSConsumer struct {
 	pasta.BasicNode
+	mu       sync.Mutex
 	received []dns.Interface
 }
 
@@ -279,13 +287,22 @@ func (*tailscaleDNSConsumer) PreLinkAdd(uint64, string, string) error { return n
 func (c *tailscaleDNSConsumer) OnEvent(event pasta.Event, linkType string, _ []string, direction string) error {
 	if linkType == dnsnodes.TypeDNS && direction == "right" {
 		if payload, ok := event.Payload.(dnsnodes.DNSPayload); ok && payload.DNS != nil {
+			c.mu.Lock()
 			c.received = append(c.received, payload.DNS)
+			c.mu.Unlock()
 		}
 	}
 	return nil
 }
+func (c *tailscaleDNSConsumer) count() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return len(c.received)
+}
 func (c *tailscaleDNSConsumer) latest(t *testing.T) dns.Interface {
 	t.Helper()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if len(c.received) == 0 {
 		t.Fatal("DNS consumer received no value")
 	}
@@ -294,6 +311,7 @@ func (c *tailscaleDNSConsumer) latest(t *testing.T) dns.Interface {
 
 type tailscaleObjectConsumer struct {
 	pasta.BasicNode
+	mu       sync.Mutex
 	received []std.Object
 }
 
@@ -301,14 +319,22 @@ func (*tailscaleObjectConsumer) PreLinkAdd(uint64, string, string) error { retur
 func (c *tailscaleObjectConsumer) OnEvent(event pasta.Event, linkType string, _ []string, direction string) error {
 	if linkType == std.TypeObject && direction == "left" {
 		if object, ok := std.ObjectFromPayload(event.Payload); ok {
+			c.mu.Lock()
 			c.received = append(c.received, object)
+			c.mu.Unlock()
 		}
 	}
 	return nil
 }
-func (c *tailscaleObjectConsumer) count() int { return len(c.received) }
+func (c *tailscaleObjectConsumer) count() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return len(c.received)
+}
 func (c *tailscaleObjectConsumer) latest(t *testing.T) std.Object {
 	t.Helper()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if len(c.received) == 0 {
 		t.Fatal("object consumer received no value")
 	}

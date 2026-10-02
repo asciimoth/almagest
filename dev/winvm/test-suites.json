@@ -89,6 +89,17 @@
             "github.com/asciimoth/almagest/bin/internal/durablefile::TestWindowsReplaceExistingFileAndRejectLockedDestination",
             "github.com/asciimoth/almagest/bin/internal/durablefile::TestWindowsReplaceRecoversInterruptedReplacement"
           ]
+        },
+        {
+          "id": "m8::daemon-admin-config-snapshot-persistence",
+          "kind": "go",
+          "module": "bin",
+          "arguments": ["-tags=winintegration", "./integration", "-run", "^TestWindowsDaemonNative(AdminWorkflow|StartupFailures)$"],
+          "eventFile": "m8-daemon-admin-config-snapshot-persistence.jsonl",
+          "requiredTests": [
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsDaemonNativeAdminWorkflow",
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsDaemonNativeStartupFailures"
+          ]
         }
       ]
     },
@@ -199,6 +210,16 @@
           "eventFile": "m7-windows-rule-menus-and-persistence.jsonl",
           "requiredTests": [
             "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsGraphDefaultTunRuleMenusAndPersistence"
+          ]
+        },
+        {
+          "id": "m8::daemon-native-resource-baseline",
+          "kind": "go",
+          "module": "bin",
+          "arguments": ["-tags=winintegration", "./integration", "-run", "^TestWindowsDaemonNativeResourceBaselineRestored$"],
+          "eventFile": "m8-daemon-native-resource-baseline.jsonl",
+          "requiredTests": [
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsDaemonNativeResourceBaselineRestored"
           ]
         },
         {
