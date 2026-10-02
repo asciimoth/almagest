@@ -11,6 +11,7 @@
     "bootTimeoutSeconds": 1200,
     "installTimeoutSeconds": 5400,
     "testTimeoutSeconds": 3600,
+    "resourceTimeoutSeconds": 4500,
     "healthTimeoutSeconds": 120,
     "healthIntervalSeconds": 15,
     "artifactIntervalSeconds": 60,

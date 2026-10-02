@@ -41,6 +41,7 @@ just winvm-doctor
 just winvm-image
 just winvm-smoke
 just winvm-test
+just test-windows-resource
 ```
 
 `doctor.sh --validate` checks configuration without VM prerequisites.
@@ -163,6 +164,41 @@ derived report before it parses new input. Keep the two PCAP files, observation
 log, generated report, guest network inventories, graph snapshot, and daemon
 log together. Host-only negative fixtures run as part of
 `just test-winvm-harness` and `just lint`.
+
+## Resource and recovery qualification
+
+`just test-windows-resource` runs the privileged Milestone 8 resource gate in
+one disposable Server 2022 guest. The gate starts with 10 warm-up lifecycle
+cycles. It then runs four measured batches of 25 lifecycle cycles, 100
+cancellation cycles, and a 30-minute UDP transfer and TUN reconfiguration soak.
+It also runs 25 production-daemon graph attach/detach cycles and a forced daemon
+termination followed by production-path restart and cleanup.
+
+The gate waits 10 seconds after cleanup and compares complete stable adapter,
+address, route, and DNS snapshots. It records handle, goroutine, and private-byte
+samples after warm-up and after each measured batch. The limits are fixed at no
+more than 8 additional handles, 4 additional goroutines, and 64 MiB additional
+private memory between the first and last measured samples. The independent
+host validator checks the snapshots, samples, workload, limits, required cases,
+and recovery declarations in the retrieved archive.
+
+Set `ALMAGEST_WINDOWS_SOAK_DURATION=2m` only to investigate the gate. The
+result is marked `qualifying: false`; the validator permits it as a diagnostic
+artifact but does not accept it as release qualification. A full qualification
+does not set this variable.
+
+Busy close, failed reset, external DNS edits, adapter identity reuse, zombie
+driver state, and changed driver identity use deterministic fault injection.
+Their evidence names the retained owned or foreign state and the required
+recovery. Almagest does not claim a persistent cross-process split/WFP recovery
+journal. If split cleanup is uncertain, stop Almagest and the split-driver
+service, preserve the logs and WFP ownership data, remove only independently
+verified Almagest-owned objects, and then restart the provisioned service.
+
+Keep `resources-before.json`, `resources-after.json`,
+`process-resources.json`, the four JSONL event logs, and `suite.json` together.
+The suite record alone is not resource qualification evidence. Windows Firewall
+remains enabled during this gate.
 The host-only harness tests run through `just lint` without starting a VM.
 `just test-total` always runs the harness. Set `RUN_WINVM_TESTS=1` to also run
 the native `just winvm-test` gate. Aggregate e2e recipes run the native gate in

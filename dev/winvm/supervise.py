@@ -349,19 +349,35 @@ class Supervisor:
         if code:
             raise Failure("transfer", code)
         self.transferred = True
-        self.deadline = time.monotonic() + self.config["testTimeoutSeconds"]
+        test_timeout = (self.config["resourceTimeoutSeconds"]
+                        if self.args.mode == "resource" else self.config["testTimeoutSeconds"])
+        self.deadline = time.monotonic() + test_timeout
         tests_status = 0
-        phases = ("smoke",) if self.args.mode == "smoke" else ("ordinary", "privileged")
+        if self.args.mode == "smoke":
+            phases = ("smoke",)
+        elif self.args.mode == "resource":
+            phases = ("resource",)
+        else:
+            phases = ("ordinary", "privileged")
         for phase in phases:
             self.stage = phase if phase == "smoke" else phase + "-tests"
             self.note(f"running {phase} tests")
-            script = "smoke.ps1" if phase == "smoke" else "test-suite.ps1"
+            if phase == "smoke":
+                script = "smoke.ps1"
+            elif phase == "resource":
+                script = "resource-suite.ps1"
+            else:
+                script = "test-suite.ps1"
             args = ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
                     f"{self.remote}/source/dev/winvm/{script}", "-ArtifactDir", f"{self.remote}/artifacts"]
-            if phase != "smoke":
+            if phase in ("ordinary", "privileged"):
                 args += ["-Mode", phase, "-SourceDir", f"{self.remote}/source"]
-            command = self.qga("exec", *args, seconds=self.config["testTimeoutSeconds"]) if phase == "privileged" else self.ssh + [" ".join(args)]
-            code = self.command(command, self.config["testTimeoutSeconds"],
+            elif phase == "resource":
+                args += ["-SourceDir", f"{self.remote}/source"]
+                if self.args.soak_duration:
+                    args += ["-SoakDuration", self.args.soak_duration]
+            command = self.qga("exec", *args, seconds=test_timeout) if phase in ("privileged", "resource") else self.ssh + [" ".join(args)]
+            code = self.command(command, test_timeout,
                                 log=phase + "-tests.log", watch=True)
             if code == 124:
                 raise Failure("host-test-timeout", 124)
@@ -377,9 +393,16 @@ class Supervisor:
         self.stage = "artifacts"
         if not self.harvest(final=True):
             raise Failure("artifacts")
-        validator = "validate_smoke_artifact" if self.args.mode == "smoke" else "validate_native_test_artifact"
-        if self.command(["bash", "-c", 'source "$1/common.sh"; "$2" "$3"', "validate",
-                         str(ROOT), validator, str(self.directory / "guest-artifacts.tar")], 15, log="validation.log"):
+        if self.args.mode == "resource":
+            validation = ["python3", str(ROOT / "tools/resource-evidence.py"),
+                          str(self.directory / "guest-artifacts.tar")]
+            if self.args.soak_duration:
+                validation.append("--allow-diagnostic")
+        else:
+            validator = "validate_smoke_artifact" if self.args.mode == "smoke" else "validate_native_test_artifact"
+            validation = ["bash", "-c", 'source "$1/common.sh"; "$2" "$3"', "validate",
+                          str(ROOT), validator, str(self.directory / "guest-artifacts.tar")]
+        if self.command(validation, 15, log="validation.log"):
             raise Failure("artifact-validation")
         if self.args.mode == "test":
             if self.command(["python3", str(ROOT / "combine-coverage.py"),
@@ -484,6 +507,7 @@ def main():
     parser.add_argument("--port", required=True)
     parser.add_argument("--key", required=True)
     parser.add_argument("--cache-dir", required=True)
+    parser.add_argument("--soak-duration")
     parser.add_argument("qemu", nargs=argparse.REMAINDER)
     args = parser.parse_args()
     if args.qemu[:1] == ["--"]:

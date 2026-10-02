@@ -159,6 +159,11 @@ winvm-smoke:
 winvm-test:
   ./dev/winvm/run.sh test
 
+# Run the fixed 30-minute resource and recovery qualification gate.
+# ALMAGEST_WINDOWS_SOAK_DURATION shortens a diagnostic run only.
+test-windows-resource:
+  ./dev/winvm/run.sh resource
+
 # Validate captures made by an isolated two-link Windows run.
 winvm-validate-flow observations tunnel underlay output:
   python3 ./dev/winvm/tools/flow-pcap.py --observations {{quote(observations)}} --tunnel {{quote(tunnel)}} --underlay {{quote(underlay)}} --output {{quote(output)}}

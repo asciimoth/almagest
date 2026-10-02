@@ -1,7 +1,6 @@
 # Windows backend integration plan
 
-Status: proposed implementation plan. Milestones 1 through 7 and Steps 20 and
-21 are complete.
+Status: proposed implementation plan. Milestones 1 through 8 are complete.
 
 ## Objective and scope
 
@@ -842,6 +841,16 @@ negative fixtures for the independent capture validator.
 
 ### Step 22: Add resource and recovery qualification
 
+Implementation: complete. The native resource command runs the pinned
+sysnet-windows lifecycle, cancellation, and 30-minute transfer/reconfiguration
+workload, then runs Almagest daemon graph-change and forced-termination/restart
+cases. It records process samples and exact native adapter, address, route, and
+DNS inventories. The independent host validator applies fixed growth budgets
+after a fixed settling period and rejects shortened soaks as qualification
+evidence. Unsafe driver, identity-reuse, DNS-edit, and close-retry states use
+named fault-injection cases that record the state that must be retained and its
+recovery contract. See the [VM harness guide](../dev/winvm/README.md#resource-and-recovery-qualification).
+
 Adapt the sibling resource gate: warm-up, repeated lifecycle batches,
 cancellation, and a 30-minute transfer/reconfiguration soak. Add forced daemon
 termination and restart, separate from graceful in-process cleanup.
@@ -866,7 +875,7 @@ reuse, abandoned adapters, busy/Zombie driver, failed reset, changed driver
 identity, close retry, forced exit, and daemon restart. Use fault injection for
 unsafe or nondeterministic failure states and identify it in the evidence.
 
-Milestone acceptance: packet captures and native state measurements prove
+Milestone acceptance: complete. Packet captures and native state measurements prove
 routing and cleanup on each qualified matrix entry. Ordinary lifecycle tests
 also pass with normal Windows Firewall policy enabled.
 

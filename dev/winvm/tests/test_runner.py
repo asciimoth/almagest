@@ -67,7 +67,37 @@ elif name == 'ssh':
         if mode == 'artifacts':
             sys.exit(1)
         with tarfile.open(fileobj=sys.stdout.buffer, mode='w|') as archive:
-            if os.environ.get('RUN_KIND') == 'native':
+            if os.environ.get('RUN_KIND') == 'resource':
+                prefix = 'artifacts/windows-m8-resource/'
+                native = {'schemaVersion':1, 'adapters':[], 'addresses':[], 'routes':[], 'dns':[]}
+                report = {'warmupCycles':10, 'batchCount':4, 'cyclesPerBatch':25,
+                          'samples':[{'handles':20+i, 'goroutines':5, 'privateBytes':1000000}
+                                     for i in range(5)]}
+                cases = {name:'passed' for name in (
+                    'backend-lifecycle-cancellation-soak', 'daemon-graph-and-forced-restart',
+                    'fault-injection-recovery-contracts', 'fault-injection-split-recovery-contracts')}
+                faults = [{'case':name, 'method':'fault-injection', 'retained':'owned state',
+                           'recovery':'explicit retry'} for name in (
+                    'dns-external-edit', 'adapter-name-reuse', 'busy-close-and-failed-reset',
+                    'zombie-or-changed-driver')]
+                suite = {'schemaVersion':1, 'suite':'windows-m8-resource', 'outcome':'passed',
+                         'platformId':'windows-server-2022-amd64', 'qualifying':True,
+                         'workload':{'warmupCycles':10, 'batchCount':4, 'cyclesPerBatch':25,
+                                     'cancellationCycles':100, 'soakDuration':'30m',
+                                     'diagnosticOverride':False},
+                         'settlingSeconds':10,
+                         'budgets':{'maximumHandleGrowth':8, 'maximumGoroutineGrowth':4,
+                                    'maximumPrivateByteGrowth':67108864},
+                         'cases':cases, 'failureInjection':faults,
+                         'recoveryJournal':{'persistentCrossProcessSplitJournal':False,
+                                            'manualRecovery':'preserve evidence'}}
+                for filename, value in (('suite.json', suite), ('resources-before.json', native),
+                                        ('resources-after.json', native),
+                                        ('process-resources.json', report)):
+                    data = json.dumps(value).encode()
+                    entry = tarfile.TarInfo(prefix + filename); entry.size = len(data)
+                    archive.addfile(entry, io.BytesIO(data))
+            elif os.environ.get('RUN_KIND') == 'native':
                 for suite, elevated in (('windows-m4-ordinary', False), ('windows-m4-privileged', True)):
                     value = {'schemaVersion':1, 'platformId':'windows-server-2022-amd64',
                              'os':'windows-server-2022', 'architecture':'amd64',
@@ -97,7 +127,7 @@ elif name == 'stage.sh':
 
 class RunnerTests(unittest.TestCase):
     def test_success_and_failure_paths(self):
-        for mode in ('success', 'native', 'native-failure', 'prepared', 'boot', 'transfer', 'artifacts', 'shutdown', 'interrupt',
+        for mode in ('success', 'native', 'resource', 'native-failure', 'prepared', 'boot', 'transfer', 'artifacts', 'shutdown', 'interrupt',
                      'freeze', 'lost-transport', 'healthy-silent', 'guest-timeout', 'stuck-diagnostics', 'interrupt-tests'):
             with self.subTest(mode=mode), tempfile.TemporaryDirectory() as temp:
                 root = Path(temp)
@@ -106,6 +136,7 @@ class RunnerTests(unittest.TestCase):
                 shutil.copy2(ROOT / 'run.sh', scripts / 'run.sh')
                 shutil.copy2(ROOT / 'combine-coverage.py', scripts / 'combine-coverage.py')
                 shutil.copy2(ROOT / 'supervise.py', scripts / 'supervise.py')
+                shutil.copy2(ROOT / 'tools/resource-evidence.py', scripts / 'tools/resource-evidence.py')
                 common = (ROOT / 'common.sh').read_text()
                 common += '''
 require_kvm() { :; }
@@ -145,11 +176,12 @@ stop_and_reap_pid() { kill -TERM "$1" 2>/dev/null || true; wait "$1" 2>/dev/null
                     path.chmod(0o755)
                 native = mode in ('native', 'native-failure', 'prepared', 'freeze', 'lost-transport', 'healthy-silent',
                                   'guest-timeout', 'stuck-diagnostics', 'interrupt-tests')
+                run_kind = 'resource' if mode == 'resource' else 'native' if native else 'smoke'
                 env = dict(os.environ, FIXTURE=temp, FAIL_STAGE=mode,
-                           RUN_KIND='native' if native else 'smoke',
+                           RUN_KIND=run_kind,
                            WINVM_CACHE_DIR=str(root / 'cache'), WINVM_ENV_FILE=str(root / 'no-env'),
                            PATH=str(fakebin) + ':' + os.environ['PATH'])
-                command = [scripts / 'run.sh'] + (['test'] if native else [])
+                command = [scripts / 'run.sh'] + (['resource'] if mode == 'resource' else ['test'] if native else [])
                 if mode == 'prepared':
                     prepared = root / 'prepared'
                     prepared.mkdir()
@@ -202,7 +234,7 @@ stop_and_reap_pid() { kill -TERM "$1" 2>/dev/null || true; wait "$1" 2>/dev/null
                 record = json.loads((runs[0] / 'run.json').read_text())
                 staging = runs[0] / 'staging.log'
                 diagnostic = result.stderr + (staging.read_text() if staging.exists() else '')
-                passed = mode in ('success', 'native', 'prepared')
+                passed = mode in ('success', 'native', 'resource', 'prepared')
                 self.assertEqual(record['status'], 'passed' if passed else 'failed', diagnostic)
                 self.assertEqual(result.returncode == 0, passed, result.stderr)
                 if not passed:

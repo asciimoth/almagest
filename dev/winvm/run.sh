@@ -6,7 +6,7 @@ script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 # shellcheck source=dev/winvm/common.sh
 source "$script_dir/common.sh"
 mode=${1:-smoke}
-[[ $mode == smoke || $mode == test || $mode == --shell || $mode == --prepare ]] || die 'usage: run.sh [smoke | test | --shell RUN | --prepare DIRECTORY]'
+[[ $mode == smoke || $mode == test || $mode == resource || $mode == --shell || $mode == --prepare ]] || die 'usage: run.sh [smoke | test | resource | --shell RUN | --prepare DIRECTORY]'
 for command in qemu-system-x86_64 qemu-img ssh scp jq python3 timeout flock git tar setsid; do require_command "$command"; done
 require_kvm
 ensure_cache_dir
@@ -73,9 +73,12 @@ if [[ $mode != --shell ]]; then
     if [[ $mode == smoke ]]; then
         suite=harness-smoke
         test_execution=not-run
-    else
+    elif [[ $mode == test ]]; then
         suite=windows-milestone-3
         test_execution=native
+    else
+        suite=windows-milestone-8-resource
+        test_execution=native-resource
     fi
     jq -n --arg key "$key" --arg suite "$suite" --arg execution "$test_execution" '{schemaVersion:1,baseImageKey:$key,suite:$suite,status:"running",testExecution:$execution}' >"$run_dir/run.json"
     cp "$image_dir/manifest.json" "$run_dir/image-manifest.json"
@@ -110,6 +113,11 @@ qemu=(qemu-system-x86_64 -name almagest-winvm -machine "$(jq -r .machine.type "$
 printf '%q ' "${qemu[@]}" >"$run_dir/qemu-command.log"
 # The supervisor owns and reaps QEMU directly. Lock descriptors stay in the
 # supervisor, but are not inherited by QEMU or guest transport processes.
+soak_args=()
+if [[ -n ${ALMAGEST_WINDOWS_SOAK_DURATION:-} ]]; then
+    soak_args=(--soak-duration "$ALMAGEST_WINDOWS_SOAK_DURATION")
+fi
 exec python3 "$script_dir/supervise.py" --mode="$mode" --run-dir "$run_dir" \
     --sockets "$sockets" --port "$port" --key "$(ssh_private_key)" \
-    --cache-dir "$winvm_cache_dir" -- "${qemu[@]}"
+    --cache-dir "$winvm_cache_dir" "${soak_args[@]}" \
+    -- "${qemu[@]}"

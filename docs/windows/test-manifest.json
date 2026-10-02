@@ -83,6 +83,23 @@
         "packet-flow::shared-resolver-not-application-attributed",
         "packet-flow::raw-captures-and-positive-controls-present"
       ]
+    },
+    {
+      "id": "windows-native-resource",
+      "execution": "native-windows",
+      "requiredTests": [
+        "resource::backend-lifecycle-batches",
+        "resource::backend-cancellation-cycles",
+        "resource::backend-30-minute-transfer-reconfiguration-soak",
+        "resource::daemon-repeated-graph-changes",
+        "resource::daemon-forced-termination-and-restart",
+        "resource::dns-external-edit-fault-injection",
+        "resource::adapter-identity-reuse-fault-injection",
+        "resource::busy-zombie-changed-driver-fault-injection",
+        "resource::close-retry-fault-injection",
+        "resource::fixed-growth-budgets-and-settling-window",
+        "resource::native-state-baseline-restored"
+      ]
     }
   ]
 }

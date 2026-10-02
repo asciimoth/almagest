@@ -178,6 +178,63 @@ func TestWindowsDaemonNativeResourceBaselineRestored(t *testing.T) {
 	})
 }
 
+func TestWindowsDaemonNativeRepeatedGraphChanges(t *testing.T) {
+	if !windows.GetCurrentProcessToken().IsElevated() {
+		t.Skip("native adapter inventory requires an elevated test identity")
+	}
+	root := newPrivateWindowsTestDir(t)
+	prefix := fmt.Sprintf("almcycle%d", os.Getpid())
+	pipe := fmt.Sprintf("almagest-cycle-%d", os.Getpid())
+	before := ownedNetworkState(t, prefix)
+	daemon := newWindowsDaemon(t, root, pipe, `{}`, nativeProtectedConfig(pipe, prefix))
+	daemon.start()
+	defer daemon.stop()
+
+	emptyPath := filepath.Join(root, "empty.hujson")
+	tunPath := filepath.Join(root, "tun.hujson")
+	writePrivateWindowsFile(t, emptyPath, []byte(`{}`))
+	writePrivateWindowsFile(t, tunPath, []byte(`{"nodes":{"Native Tun":{"Class":"almagest/Tun","tunAddrs":"198.18.238.1/32","tunRoutes":"198.19.238.0/24","mtu":1380}}}`))
+	for cycle := range 25 {
+		daemon.cliJSON("config", "apply", tunPath)
+		waitFor(t, fmt.Sprintf("native adapter creation in cycle %d", cycle), func() bool {
+			return len(ownedNetworkState(t, prefix)) != 0
+		})
+		daemon.cliJSON("config", "apply", emptyPath)
+		waitFor(t, fmt.Sprintf("native cleanup in cycle %d", cycle), func() bool {
+			return slices.Equal(ownedNetworkState(t, prefix), before)
+		})
+	}
+}
+
+func TestWindowsDaemonNativeForcedTerminationAndRestart(t *testing.T) {
+	if !windows.GetCurrentProcessToken().IsElevated() {
+		t.Skip("native adapter inventory requires an elevated test identity")
+	}
+	root := newPrivateWindowsTestDir(t)
+	prefix := fmt.Sprintf("almcrash%d", os.Getpid())
+	pipe := fmt.Sprintf("almagest-crash-%d", os.Getpid())
+	before := ownedNetworkState(t, prefix)
+	config := `{"nodes":{"Native Tun":{"Class":"almagest/Tun","tunAddrs":"198.18.237.1/32","tunRoutes":"198.19.237.0/24","mtu":1380}}}`
+	daemon := newWindowsDaemon(t, root, pipe, config, nativeProtectedConfig(pipe, prefix))
+	daemon.start()
+	waitFor(t, "native adapter before forced termination", func() bool {
+		return len(ownedNetworkState(t, prefix)) != 0
+	})
+	daemon.kill()
+
+	// The next production startup performs the backend's documented abandoned
+	// Wintun scan. Almagest does not claim a persistent split/WFP journal.
+	daemon.start()
+	waitFor(t, "native adapter after forced termination recovery", func() bool {
+		return len(ownedNetworkState(t, prefix)) != 0
+	})
+	daemon.cliJSON("admin", "ping", "--nonce", "forced-restart")
+	daemon.stop()
+	waitFor(t, "native cleanup after forced termination recovery", func() bool {
+		return slices.Equal(ownedNetworkState(t, prefix), before)
+	})
+}
+
 func TestWindowsDaemonNativeStartupFailures(t *testing.T) {
 	root := newPrivateWindowsTestDir(t)
 	pipe := fmt.Sprintf("almagest-failure-%d", os.Getpid())
@@ -277,6 +334,25 @@ func (d *windowsDaemon) stop() {
 	d.command = nil
 	if err := d.log.Close(); err != nil {
 		d.t.Errorf("close daemon log: %v", err)
+	}
+	d.log = nil
+}
+
+func (d *windowsDaemon) kill() {
+	d.t.Helper()
+	if d.command == nil {
+		return
+	}
+	command := d.command
+	if err := command.Process.Kill(); err != nil {
+		d.t.Fatalf("force production daemon termination: %v", err)
+	}
+	if err := waitCommand(command, integrationTimeout); err == nil {
+		d.t.Fatal("force-terminated production daemon exited successfully")
+	}
+	d.command = nil
+	if err := d.log.Close(); err != nil {
+		d.t.Errorf("close force-terminated daemon log: %v", err)
 	}
 	d.log = nil
 }
