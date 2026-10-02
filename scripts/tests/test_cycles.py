@@ -41,6 +41,14 @@ class CycleTests(unittest.TestCase):
                   dict(Action="fail", Package="pkg")]
         self.assertEqual(MODULE.go_failures(map(json.dumps, events)), {"pkg/TestStuck"})
 
+    def test_vm_watchdog_failure_is_named_even_after_recovery(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "run.json").write_text(json.dumps(dict(
+                status="failed", failureKind="guest-unresponsive", recoveryOutcome="collected")))
+            self.assertEqual(MODULE.failure_names("winvm", root, root),
+                             ["winvm/guest-unresponsive (infrastructure failure)"])
+
     def test_failure_then_success_and_interruption(self):
         with tempfile.TemporaryDirectory() as temp, redirect_stdout(io.StringIO()):
             runner = MODULE.Runner(Path(temp), {})
@@ -160,6 +168,63 @@ wait "$child"
             with patch.object(runner, "command", return_value=1):
                 runner.iteration("winvm")
             self.assertTrue((runner.session / "winvm/loop-000002/vm-artifacts").is_dir())
+
+    def test_vm_supervisor_owns_interrupt_and_log_collection(self):
+        with tempfile.TemporaryDirectory() as temp, redirect_stdout(io.StringIO()):
+            root = Path(temp)
+            scripts = root / "dev/winvm"
+            scripts.mkdir(parents=True)
+            script = scripts / "run.sh"
+            script.write_text("""#!/usr/bin/env bash
+# A collector in the supervisor group must not receive the parent's signal.
+bash -c 'trap "touch collector-killed; exit 1" TERM
+touch ready
+sleep 1
+touch guest-artifacts.tar' &
+collector=$!
+trap 'wait "$collector"; touch supervisor-cleaned; exit 143' TERM
+wait "$collector"
+""")
+            script.chmod(0o755)
+            runner = MODULE.Runner(root, os.environ)
+            worker = threading.Thread(target=lambda: runner.command(
+                ["./dev/winvm/run.sh", "test"], root / "command.log"))
+            worker.start()
+            deadline = time.monotonic() + 5
+            while not (root / "ready").exists() and time.monotonic() < deadline:
+                time.sleep(0.01)
+            runner.signal(signal.SIGINT, None)
+            worker.join(timeout=5)
+            self.assertFalse(worker.is_alive())
+            self.assertTrue((root / "guest-artifacts.tar").exists())
+            self.assertTrue((root / "supervisor-cleaned").exists())
+            self.assertFalse((root / "collector-killed").exists())
+
+    def test_vm_fallback_kills_exact_process_but_not_reused_pid(self):
+        with tempfile.TemporaryDirectory() as temp, redirect_stdout(io.StringIO()):
+            root = Path(temp)
+            run = root / "artifacts/winvm/run-stuck"
+            run.mkdir(parents=True)
+            (run / "run.json").write_text('{"status":"running"}')
+            runner = MODULE.Runner(root, os.environ)
+            vm = subprocess.Popen(["sleep", "120"], start_new_session=True)
+            try:
+                start = Path(f"/proc/{vm.pid}/stat").read_text().rsplit(")", 1)[1].split()[19]
+                state = run / "supervisor-state.json"
+                state.write_text(json.dumps(dict(qemuPid=vm.pid, qemuStartTime=str(int(start) + 1))))
+                runner.stop_vm_after_supervisor_timeout(str(run))
+                self.assertIsNone(vm.poll(), "fallback must not signal a reused PID")
+                state.write_text(json.dumps(dict(qemuPid=vm.pid, qemuStartTime=start)))
+                runner.stop_vm_after_supervisor_timeout(str(run))
+                self.assertEqual(vm.wait(timeout=3), -signal.SIGKILL)
+                self.assertTrue((run / "supervisor-timeout.log").exists())
+                record = json.loads((run / "run.json").read_text())
+                self.assertEqual(record["failureKind"], "supervisor-cleanup-timeout")
+                self.assertFalse(record["finalArtifactsCollected"])
+            finally:
+                if vm.poll() is None:
+                    vm.kill()
+                    vm.wait(timeout=3)
 
 
 if __name__ == "__main__":

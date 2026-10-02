@@ -8,6 +8,16 @@ Set-StrictMode -Version Latest
 
 New-Item -ItemType Directory -Force $OutputDir | Out-Null
 
+# Small crash dumps are copied before slower CIM/event queries. The full kernel
+# dump stays on the retained VM disk; it can be hundreds of MiB or more.
+$dumpDir = Join-Path $OutputDir 'minidumps'
+New-Item -ItemType Directory -Force $dumpDir | Out-Null
+Get-ChildItem -LiteralPath (Join-Path $env:SystemRoot 'Minidump') -Filter '*.dmp' -ErrorAction SilentlyContinue |
+    Copy-Item -Destination $dumpDir -Force -ErrorAction Continue
+Get-Item -LiteralPath (Join-Path $env:SystemRoot 'MEMORY.DMP') -ErrorAction SilentlyContinue |
+    Select-Object FullName,Length,CreationTimeUtc,LastWriteTimeUtc |
+    Format-List | Out-File (Join-Path $OutputDir 'kernel-dump.txt') -Encoding utf8
+
 function Capture-Text([string]$Name, [scriptblock]$Action) {
     $path = Join-Path $OutputDir $Name
     try {

@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import platform
 import re
+import select
 import shlex
 import shutil
 import signal
@@ -87,8 +88,10 @@ def failure_names(kind, directory, vm_dir=None):
                     if match:
                         names.add(match[1])
     if kind == "winvm" and vm_dir:
-        archive = vm_dir / "guest-artifacts.tar"
-        if archive.exists():
+        for filename in ("guest-artifacts.tar", "guest-artifacts.snapshot.tar"):
+            archive = vm_dir / filename
+            if not archive.exists():
+                continue
             try:
                 with tarfile.open(archive) as bundle:
                     for member in bundle:
@@ -98,13 +101,20 @@ def failure_names(kind, directory, vm_dir=None):
             except (OSError, tarfile.TarError):
                 pass  # The command log still records an artifact collection failure.
         if not names:
-            for filename in ("ordinary-tests.log", "privileged-progress.log"):
+            for filename in ("ordinary-tests.log", "privileged-tests.log", "privileged-progress.log"):
                 path = vm_dir / filename
                 if path.exists():
                     for line in path.read_text(errors="replace").splitlines():
                         match = re.search(r"\bFAIL\s+(\S+)", line)
                         if match:
                             names.add(match[1] + " (suite case)")
+        if not names and (vm_dir / "run.json").exists():
+            try:
+                reason = json.loads((vm_dir / "run.json").read_text()).get("failureKind")
+                if reason:
+                    names.add(f"winvm/{reason} (infrastructure failure)")
+            except (OSError, ValueError):
+                pass
     return sorted(names)
 
 
@@ -161,18 +171,29 @@ class Runner:
                 output.write((str(error) + "\n").encode())
                 return 127
             deadline = None
+            vm_supervisor = argv[:2] in (["./dev/winvm/run.sh", "test"],
+                                         ["./dev/winvm/run.sh", "smoke"])
+            cleanup_seconds = 60
+            if vm_supervisor:
+                config = self.root / "dev/winvm/config.json"
+                machine = json.loads(config.read_text())["machine"] if config.exists() else {}
+                # The supervisor owns QEMU, diagnostics, and one evidence-only
+                # recovery boot. Do not kill it halfway through that budget.
+                cleanup_seconds = machine.get("cleanupTimeoutSeconds", 300) + 15
             while process.poll() is None:
                 if self.stop.is_set() and deadline is None:
-                    if argv[:2] == ["./e2e/run.sh", "--skip-build"]:
+                    if vm_supervisor or argv[:2] == ["./e2e/run.sh", "--skip-build"]:
                         # The scheduler removes containers, then signals and
                         # waits for case runners. A group signal here would
                         # race their network cleanup with that second signal.
                         process.terminate()
                     else:
                         self.kill_group(process, signal.SIGTERM)
-                    deadline = time.monotonic() + 60
+                    deadline = time.monotonic() + cleanup_seconds
                 if deadline is not None and time.monotonic() >= deadline:
                     self.kill_group(process, signal.SIGKILL)
+                    if vm_supervisor:
+                        self.stop_vm_after_supervisor_timeout((env or self.env).get("WINVM_RUN_DIR"))
                     self.errors.append(f"Cleanup timed out: {shlex.join(argv)}; inspect {log}")
                     break
                 time.sleep(0.1)
@@ -181,6 +202,55 @@ class Runner:
                 # Reap any children that outlived their shell's cleanup handler.
                 self.kill_group(process, signal.SIGKILL)
             return status
+
+    def stop_vm_after_supervisor_timeout(self, directory):
+        """Last resort if the supervisor itself hangs; never signal a reused PID."""
+        if not directory:
+            return
+        run = Path(directory).resolve()
+        parent = (self.root / "artifacts/winvm").resolve()
+        if run.parent != parent or not run.name.startswith("run-"):
+            self.errors.append("Refused VM fallback outside the artifact root")
+            return
+        try:
+            state = json.loads((run / "supervisor-state.json").read_text())
+            pid = int(state["qemuPid"])
+            stat_path = Path(f"/proc/{pid}/stat")
+            stat = stat_path.read_text().rsplit(")", 1)[1].split()
+            if stat[19] != str(state["qemuStartTime"]):
+                raise ValueError("QEMU PID was reused")
+            # pidfd pins the checked process across the final signal. Recheck
+            # after opening it so PID reuse cannot target another process.
+            fd = os.pidfd_open(pid)
+            try:
+                again = stat_path.read_text().rsplit(")", 1)[1].split()
+                if again[19] != stat[19]:
+                    raise ValueError("QEMU PID changed during fallback")
+                (run / "supervisor-timeout.log").write_text(
+                    "Supervisor cleanup exceeded its host budget. QEMU SIGKILL requested; "
+                    "retained disk and last host archive may contain incomplete logs.\n" +
+                    Path(f"/proc/{pid}/status").read_text())
+                signal.pidfd_send_signal(fd, signal.SIGKILL)
+                exited = select.poll()
+                exited.register(fd, select.POLLIN)
+                if not exited.poll(3000):
+                    marker = Path(state["orphanMarker"])
+                    if marker.name != "qemu-orphan" or marker.parent.name != "locks":
+                        raise ValueError("invalid QEMU orphan marker path")
+                    marker.write_text(f"{pid} {stat[19]}\n")
+                    self.errors.append(f"QEMU {pid} survived SIGKILL; subsequent VM runs are blocked")
+            finally:
+                os.close(fd)
+        except (OSError, ValueError, KeyError) as error:
+            self.errors.append(f"VM fallback: {error}; inspect {run}")
+        path = run / "run.json"
+        if path.exists():
+            record = json.loads(path.read_text())
+            record.update(status="failed", failureKind="supervisor-cleanup-timeout",
+                          exitStatus=124, finalArtifactsCollected=False)
+            temporary = path.with_suffix(".json.new")
+            temporary.write_text(json.dumps(record, indent=2) + "\n")
+            temporary.replace(path)
 
     @staticmethod
     def kill_group(process, number):

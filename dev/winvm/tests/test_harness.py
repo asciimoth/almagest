@@ -129,12 +129,12 @@ class HarnessTests(unittest.TestCase):
         self.assertIn("'PASS' } else { 'FAIL'", runner)
 
     def test_interrupt_diagnostics_are_extensive(self):
-        runner = (ROOT / 'run.sh').read_text()
+        runner = (ROOT / 'supervise.py').read_text()
         collector = (ROOT / 'collect-diagnostics.ps1').read_text()
-        self.assertIn('reason=ctrl-c', runner)
+        self.assertIn('ctrl-c', runner)
         self.assertIn('query-cpus-fast', runner)
         self.assertIn('collect-diagnostics.ps1', runner)
-        self.assertIn('setsid "${qemu[@]}"', runner)
+        self.assertIn('start_new_session=True', runner)
         self.assertIn('Win32_Process', collector)
         self.assertIn('go-processes.txt', collector)
         self.assertIn('system.evtx', collector)

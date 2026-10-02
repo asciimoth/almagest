@@ -24,18 +24,38 @@ if name == 'qemu-img':
         print(json.dumps({'full-backing-filename': str(root / 'cache/images' / ('a'*64) / 'base.qcow2')}))
 elif name == 'qemu-system-x86_64':
     (root / 'pid').write_text(str(os.getpid()))
+    count = int((root / 'boots').read_text()) if (root / 'boots').exists() else 0
+    (root / 'boots').write_text(str(count + 1))
     time.sleep(120)
 elif name == 'qga.py':
+    if mode in ('freeze', 'lost-transport') and 'cmd.exe' in sys.argv and (root / 'boots').read_text() == '1':
+        sys.exit(1)
+    if mode == 'stuck-diagnostics' and any('collect-diagnostics.ps1' in arg for arg in sys.argv):
+        time.sleep(120)
+    if 'C:\\winvm\\ready' in sys.argv[-1]:
+        if mode == 'boot': sys.exit(1)
+        print('ready-token')
     if mode == 'interrupt' and 'exec' in sys.argv and (root / 'pid').exists():
         try:
             os.kill(int((root / 'pid').read_text()), 0)
             (root / 'diagnostics-before-shutdown').touch()
         except ProcessLookupError:
             pass
-    if 'shutdown' in sys.argv and (root / 'pid').exists():
+    if 'shutdown' in sys.argv and mode != 'shutdown' and (root / 'pid').exists():
         os.kill(int((root / 'pid').read_text()), signal.SIGTERM)
 elif name == 'ssh':
-    if mode == 'native-failure' and '-Mode ordinary' in sys.argv[-1]:
+    if 'test-suite.ps1' in sys.argv[-1]:
+        (root / 'test-started').touch()
+        with (root / 'test-launches').open('a') as out: out.write('ordinary\n')
+    if mode in ('freeze', 'lost-transport') and 'cmd.exe /c exit 0' in sys.argv[-1] and (root / 'boots').read_text() == '1':
+        sys.exit(1)
+    if mode == 'lost-transport' and '-Mode ordinary' in sys.argv[-1]:
+        sys.exit(255)
+    if mode in ('freeze', 'healthy-silent', 'interrupt-tests') and '-Mode ordinary' in sys.argv[-1]:
+        print('test output before interruption', flush=True)
+        time.sleep(120)
+    if mode in ('native-failure', 'guest-timeout', 'stuck-diagnostics') and '-Mode ordinary' in sys.argv[-1]:
+        if mode == 'guest-timeout': print('panic: test timed out after 1s')
         print('[ordinary] FAIL fixture-case')
         sys.exit(1)
     if mode == 'interrupt':
@@ -43,11 +63,10 @@ elif name == 'ssh':
         time.sleep(120)
     if mode == 'transfer' and 'New-Item' in sys.argv[-1]:
         sys.exit(1)
-elif name == 'scp':
-    if sys.argv[-1].endswith('guest-artifacts.tar'):
+    if 'tar.exe -cf -' in sys.argv[-1]:
         if mode == 'artifacts':
             sys.exit(1)
-        with tarfile.open(sys.argv[-1], 'w') as archive:
+        with tarfile.open(fileobj=sys.stdout.buffer, mode='w|') as archive:
             if os.environ.get('RUN_KIND') == 'native':
                 for suite, elevated in (('windows-m4-ordinary', False), ('windows-m4-privileged', True)):
                     value = {'schemaVersion':1, 'platformId':'windows-server-2022-amd64',
@@ -78,13 +97,15 @@ elif name == 'stage.sh':
 
 class RunnerTests(unittest.TestCase):
     def test_success_and_failure_paths(self):
-        for mode in ('success', 'native', 'native-failure', 'prepared', 'boot', 'transfer', 'artifacts', 'shutdown', 'interrupt'):
+        for mode in ('success', 'native', 'native-failure', 'prepared', 'boot', 'transfer', 'artifacts', 'shutdown', 'interrupt',
+                     'freeze', 'lost-transport', 'healthy-silent', 'guest-timeout', 'stuck-diagnostics', 'interrupt-tests'):
             with self.subTest(mode=mode), tempfile.TemporaryDirectory() as temp:
                 root = Path(temp)
                 scripts = root / 'dev/winvm'
                 (scripts / 'tools').mkdir(parents=True)
                 shutil.copy2(ROOT / 'run.sh', scripts / 'run.sh')
                 shutil.copy2(ROOT / 'combine-coverage.py', scripts / 'combine-coverage.py')
+                shutil.copy2(ROOT / 'supervise.py', scripts / 'supervise.py')
                 common = (ROOT / 'common.sh').read_text()
                 common += '''
 require_kvm() { :; }
@@ -102,7 +123,14 @@ wait_for_pid() { [[ $FAIL_STAGE != shutdown ]]; }
 stop_and_reap_pid() { kill -TERM "$1" 2>/dev/null || true; wait "$1" 2>/dev/null || true; }
 '''
                 (scripts / 'common.sh').write_text(common)
-                shutil.copy2(ROOT / 'config.json', scripts / 'config.json')
+                config = json.loads((ROOT / 'config.json').read_text())
+                config['machine'].update(bootTimeoutSeconds=1 if mode == 'boot' else 5,
+                                         recoveryBootTimeoutSeconds=2, shutdownTimeoutSeconds=0.1,
+                                         cleanupTimeoutSeconds=5,
+                                         testTimeoutSeconds=1 if mode == 'healthy-silent' else 10,
+                                         healthTimeoutSeconds=0.3, healthIntervalSeconds=0.1,
+                                         artifactIntervalSeconds=0.2)
+                (scripts / 'config.json').write_text(json.dumps(config))
                 (root / 'firmware').touch()
                 image = root / 'cache/images' / ('a' * 64)
                 image.mkdir(parents=True)
@@ -115,11 +143,13 @@ stop_and_reap_pid() { kill -TERM "$1" 2>/dev/null || true; wait "$1" 2>/dev/null
                         scripts / 'tools/qga.py', scripts / 'stage.sh', scripts / 'package-worktree.py']:
                     path.write_text(FAKE)
                     path.chmod(0o755)
+                native = mode in ('native', 'native-failure', 'prepared', 'freeze', 'lost-transport', 'healthy-silent',
+                                  'guest-timeout', 'stuck-diagnostics', 'interrupt-tests')
                 env = dict(os.environ, FIXTURE=temp, FAIL_STAGE=mode,
-                           RUN_KIND='native' if mode in ('native', 'native-failure', 'prepared') else 'smoke',
+                           RUN_KIND='native' if native else 'smoke',
                            WINVM_CACHE_DIR=str(root / 'cache'), WINVM_ENV_FILE=str(root / 'no-env'),
                            PATH=str(fakebin) + ':' + os.environ['PATH'])
-                command = [scripts / 'run.sh'] + (['test'] if mode in ('native', 'native-failure', 'prepared') else [])
+                command = [scripts / 'run.sh'] + (['test'] if native else [])
                 if mode == 'prepared':
                     prepared = root / 'prepared'
                     prepared.mkdir()
@@ -134,15 +164,16 @@ stop_and_reap_pid() { kill -TERM "$1" 2>/dev/null || true; wait "$1" 2>/dev/null
                     run = root / 'artifacts/winvm/run-prepared'
                     run.mkdir()
                     env['WINVM_RUN_DIR'] = str(run)
-                if mode == 'interrupt':
+                if mode in ('interrupt', 'interrupt-tests'):
                     process = subprocess.Popen(command, env=env, stdout=subprocess.PIPE,
                                                stderr=subprocess.PIPE, text=True,
                                                start_new_session=True)
+                    ready_marker = root / ('test-started' if mode == 'interrupt-tests' else 'ssh-started')
                     for _ in range(500):
-                        if (root / 'ssh-started').exists():
+                        if ready_marker.exists():
                             break
                         time.sleep(0.01)
-                    self.assertTrue((root / 'ssh-started').exists(),
+                    self.assertTrue(ready_marker.exists(),
                                     'foreground guest transport did not start')
                     qemu_pid = int((root / 'pid').read_text())
                     os.killpg(process.pid, signal.SIGINT)
@@ -158,8 +189,9 @@ stop_and_reap_pid() { kill -TERM "$1" 2>/dev/null || true; wait "$1" 2>/dev/null
                         self.fail('interrupted runner did not stop:\n' + process_state)
                     result = subprocess.CompletedProcess(command, process.returncode,
                                                          stdout, stderr)
-                    self.assertTrue((root / 'diagnostics-before-shutdown').exists(),
-                                    'Ctrl+C stopped QEMU before guest diagnostics')
+                    if mode == 'interrupt':
+                        self.assertTrue((root / 'diagnostics-before-shutdown').exists(),
+                                        'Ctrl+C stopped QEMU before guest diagnostics')
                     with self.assertRaises(ProcessLookupError):
                         os.kill(qemu_pid, 0)
                 else:
@@ -176,15 +208,36 @@ stop_and_reap_pid() { kill -TERM "$1" 2>/dev/null || true; wait "$1" 2>/dev/null
                 if not passed:
                     self.assertIn('Recovery: just winvm-shell', result.stderr)
                     expected_stage = 'boot' if mode == 'interrupt' else mode
-                    if mode == 'native-failure':
+                    if mode in ('native-failure', 'guest-timeout', 'stuck-diagnostics'):
                         expected_stage = 'tests'
                         self.assertTrue((runs[0] / 'guest-artifacts.tar').exists())
                         self.assertIn('running privileged tests', result.stdout)
+                    if mode in ('freeze', 'lost-transport', 'healthy-silent', 'interrupt-tests'):
+                        expected_stage = 'ordinary-tests'
+                    if mode in ('freeze', 'lost-transport', 'healthy-silent', 'guest-timeout', 'interrupt-tests'):
+                        self.assertTrue((runs[0] / 'guest-artifacts.tar').exists(), result.stdout)
+                        self.assertEqual(record['recoveryAttempted'], mode in ('freeze', 'lost-transport'))
+                        self.assertEqual(int((root / 'boots').read_text()), 2 if mode in ('freeze', 'lost-transport') else 1)
+                        self.assertEqual((root / 'test-launches').read_text(), 'ordinary\n',
+                                         'recovery must not retry tests')
+                    if mode in ('freeze', 'lost-transport'):
+                        self.assertEqual(record['failureKind'], 'guest-unresponsive')
+                        self.assertTrue(record['finalArtifactsCollected'])
+                        self.assertNotIn('running privileged tests', result.stdout)
+                    if mode == 'healthy-silent':
+                        self.assertEqual(record['failureKind'], 'host-test-timeout')
+                        self.assertNotIn('running privileged tests', result.stdout)
+                    if mode == 'guest-timeout':
+                        self.assertEqual(record['failureKind'], 'tests')
+                        self.assertIn('panic: test timed out', (runs[0] / 'ordinary-tests.log').read_text())
                     self.assertEqual(record['stage'], expected_stage)
                     self.assertTrue((runs[0] / 'diagnostics.log').exists() or
                                     mode == 'shutdown')
-                    if mode == 'interrupt':
+                    if mode in ('interrupt', 'interrupt-tests'):
                         self.assertIn('reason=ctrl-c',
                                       (runs[0] / 'diagnostics.log').read_text())
+                pid = int((root / 'pid').read_text())
+                with self.assertRaises(ProcessLookupError):
+                    os.kill(pid, 0)
                 self.assertTrue((runs[0] / 'overlay.qcow2').exists())
                 self.assertTrue((runs[0] / 'OVMF_VARS.fd').exists())

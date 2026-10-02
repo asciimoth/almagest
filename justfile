@@ -100,9 +100,11 @@ certcat-lint: certcat-ensure-generated
 
 fmt: certcat-fmt
   golangci-lint fmt ./lib/... ./bin/...
+  git ls-files -z -- 'lib/*.go' 'lib/**/*.go' 'bin/*.go' 'bin/**/*.go' | xargs -0 -r gofmt -w
 
 certcat-fmt: certcat-ensure-generated
   golangci-lint fmt ./certcat/...
+  git ls-files -z -- 'certcat/*.go' 'certcat/**/*.go' | xargs -0 -r gofmt -w
 
 certcat-fetch:
 	@if [ -f certcat/data/machine.json ]; then \

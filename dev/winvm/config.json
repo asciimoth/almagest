@@ -7,9 +7,15 @@
     "memoryMiB": 8192,
     "diskGiB": 80,
     "type": "q35,accel=kvm",
+    "cpu": "host,cet-ss=off,cet-ibt=off",
     "bootTimeoutSeconds": 1200,
     "installTimeoutSeconds": 5400,
     "testTimeoutSeconds": 3600,
+    "healthTimeoutSeconds": 120,
+    "healthIntervalSeconds": 15,
+    "artifactIntervalSeconds": 60,
+    "cleanupTimeoutSeconds": 300,
+    "recoveryBootTimeoutSeconds": 120,
     "shutdownTimeoutSeconds": 90
   },
   "ssh": {

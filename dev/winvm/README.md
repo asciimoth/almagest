@@ -62,6 +62,14 @@ runs and image creation to limit memory use. Per-image and per-run locks also
 protect recovery runs. Port contention fails before a run can claim success.
 Readiness requires two matching provisioning-token and Windows-boot-time
 observations. Provisioning, guest commands, transfers, and shutdown have limits.
+Both image creation and test runs use `host,cet-ss=off,cet-ibt=off`.
+This mitigates Windows CET/shadow-stack failures with QEMU 11 and Linux 7.
+See the [upstream Windows CET mitigation](https://lore.proxmox.com/pve-devel/20260515155810.229819-1-f.ebner@proxmox.com/).
+The investigated Server 2022 guest stalled in kernel TLB-flush code and later
+crashed in a shadow-stack write. Re-enable CET only after validation on a fixed
+host stack, not merely after increasing a timeout.
+The CPU setting is part of the image cache key. An older cached image is not
+silently reused after this change.
 
 `source.tar` contains current tracked files and eligible untracked files, with
 tracked deletions omitted. Clean and dirty trees use the same policy.
@@ -130,18 +138,59 @@ and WinVM prerequisites.
 ## Failure and recovery
 
 Runs retain disk, firmware, serial and QEMU logs, console output, source and
-payload hashes, image identity, and `run.json`. Failed guest runs attempt
-bounded QMP and QGA diagnostics. This also happens after Ctrl+C: QEMU ignores
-the terminal SIGINT until the runner records hypervisor state, guest processes,
-resource and network state, recent Windows events, exported event logs, active
-test tails, and partial guest artifacts. The report is in `diagnostics.log` and
-the detailed files are in `guest-artifacts.tar` under `artifacts/diagnostics`.
-Collection is best effort because a failed guest or transport can be
-unresponsive. Missing, invalid, or failed guest artifacts fail the run. The
-guest must shut down within the configured limit; otherwise the run fails and
-the host sends TERM, then KILL, with separate limits. A process that survives
-KILL is recorded and blocks subsequent runs until that exact process has
-stopped. There is no unbounded process wait.
+payload hashes, image identity, and `run.json`. The host supervisor owns QEMU
+directly. It checks guest command execution independently of test output.
+Silence from a test does not mean that Windows is frozen.
+
+The limits in `config.json` have separate meanings:
+
+- `testTimeoutSeconds` is one shared deadline for ordinary and privileged
+  tests. A host test timeout does not start another phase with a new budget.
+- `healthIntervalSeconds` sets the guest health check interval (15 seconds).
+  `healthTimeoutSeconds` limits consecutive failed checks (120 seconds).
+  SSH is checked first; QGA command execution is the fallback.
+- `artifactIntervalSeconds` sets periodic host artifact copies (60 seconds).
+  A failed or incomplete copy does not replace the last valid archive.
+  If Windows locks an active log, the other readable files are retained in
+  `guest-artifacts.snapshot.tar`, explicitly marked as a partial snapshot.
+- `cleanupTimeoutSeconds` bounds diagnostics, shutdown and recovery together
+  (300 seconds). Mandatory TERM/KILL/reap has a final six-second reserve.
+- `recoveryBootTimeoutSeconds` bounds the one evidence-only restart (120 seconds).
+
+A normal Go timeout remains a failed test. A host test deadline remains a
+failed run even if the final guest artifact claims success. An unresponsive
+guest is reported separately as `guest-unresponsive`. Recovery never reruns
+tests or converts a failed attempt into a pass. `test-cycles` records that
+failure, then starts its next independent iteration with a fresh VM.
+
+Failure and Ctrl+C collect bounded QMP state, CPU registers, a screen image,
+guest process and network state, Windows events, small crash dumps, active
+test tails, and partial test artifacts. The supervisor stops only this run's
+guest test launchers before final collection. It then stops and reaps QEMU.
+If the guest froze or final artifact export failed, it boots the retained disk
+once to export the logs. No test command runs during this recovery boot.
+Original and recovery QEMU, serial and diagnostic logs have separate names.
+The last pre-recovery archive is also retained.
+
+`supervisor.log` records host decisions. `collection.json` records each archive
+attempt and whether the final copy succeeded. `run.json` records the failure
+kind and recovery result. `diagnostics.log` and `recovery-diagnostics.log`
+contain host diagnostics; guest reports are inside `guest-artifacts.tar`.
+The full kernel dump, if present, stays on the retained disk. Memory dumps
+can contain sensitive guest data.
+
+`test-cycles` sends its stop signal to the supervisor, not its collectors. It
+allows the configured cleanup budget plus 15 seconds before its last-resort
+kill. Further Ctrl+C signals do not cancel collection. No guest response is
+required to enforce the host deadlines or terminate QEMU.
+
+Collection is best effort: a guest that cannot boot or read its disk cannot
+export all logs. In that case the host keeps existing copies, partial archive,
+disk and firmware, and explicitly reports incomplete collection. It does not
+claim that missing logs were recovered. A process that survives KILL is
+recorded and blocks subsequent runs until that exact process has stopped.
+There is no unbounded process wait. Host power loss or SIGKILL of the supervisor
+cannot provide the same collection guarantee as a handled Ctrl+C/SIGTERM.
 
 The failure message prints this recovery command:
 
