@@ -1,7 +1,7 @@
 # Windows backend integration plan
 
-Status: proposed implementation plan. Milestones 1 through 7 and Step 20 are
-complete.
+Status: proposed implementation plan. Milestones 1 through 7 and Steps 20 and
+21 are complete.
 
 ## Objective and scope
 
@@ -814,6 +814,14 @@ make the case easier to pass. Shared fixture or harness failure is an error,
 not a product skip.
 
 ### Step 21: Add isolated packet-flow tests
+
+Implementation: complete. The reusable two-link guest configuration is in
+[`flow-network.ps1`](../dev/winvm/flow-network.ps1). The independent capture
+validator is in [`flow-pcap.py`](../dev/winvm/tools/flow-pcap.py), with negative
+fixtures in [`test_flow_pcap.py`](../dev/winvm/tests/test_flow_pcap.py). Native
+runs retain their raw observation log and both PCAP files; validation creates a
+derived JSON report and never replaces the raw evidence. See the
+[VM harness guide](../dev/winvm/README.md#isolated-packet-flow-evidence).
 
 Adapt the sibling two-guest/two-link topology. Run Almagest graphs and capture
 the underlay and tunnel links independently. Keep management traffic separate

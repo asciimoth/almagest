@@ -159,6 +159,10 @@ winvm-smoke:
 winvm-test:
   ./dev/winvm/run.sh test
 
+# Validate captures made by an isolated two-link Windows run.
+winvm-validate-flow observations tunnel underlay output:
+  python3 ./dev/winvm/tools/flow-pcap.py --observations {{quote(observations)}} --tunnel {{quote(tunnel)}} --underlay {{quote(underlay)}} --output {{quote(output)}}
+
 [private]
 test-winvm-enabled:
   @if [[ "${RUN_WINVM_TESTS:-0}" == "1" ]]; then \

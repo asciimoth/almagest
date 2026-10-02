@@ -70,6 +70,19 @@
         "e2e::windows-admin-config-snapshot-persistence",
         "e2e::windows-resource-baseline-restored"
       ]
+    },
+    {
+      "id": "windows-native-packet-flow",
+      "execution": "native-windows",
+      "requiredTests": [
+        "packet-flow::ipv4-ipv6-dual-included-excluded-descendant-ipc",
+        "packet-flow::tcp-udp-independent-link-markers",
+        "packet-flow::nested-wireguard-transport",
+        "packet-flow::underlay-failure-fails-closed-and-reconnects",
+        "packet-flow::application-owned-dns",
+        "packet-flow::shared-resolver-not-application-attributed",
+        "packet-flow::raw-captures-and-positive-controls-present"
+      ]
     }
   ]
 }

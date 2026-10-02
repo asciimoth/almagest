@@ -128,6 +128,41 @@ records its adapter, route, and DNS state, stops the daemon gracefully, and
 requires the owned state baseline after the first run and after restart.
 These daemon cases do not replace the separate packet-capture and soak gates
 from Steps 21 and 22.
+
+## Isolated packet-flow evidence
+
+Step 21 uses two disposable Server 2022 guests. Each guest has its management
+adapter plus two test adapters. The test adapters use separate QEMU stream
+links named `tunnel` and `underlay`. QEMU capture filters write one PCAP for
+each link. Management traffic is not present in either capture. Run
+`flow-network.ps1 -Role Client` and `flow-network.ps1 -Role Endpoint` in the
+applicable guests before the Almagest graph starts. Limit a firewall relaxation
+to the endpoint guest and restore it before another case uses that guest.
+
+The graph runner writes one JSON object per probe to
+`packet-flow-observations.jsonl`. Each token is unique ASCII text carried by
+its TCP or UDP probe. Each assertion immediately follows a positive control
+that proves capture visibility. The required cases are included, excluded,
+descendant, pre-existing IPC target, nested WireGuard, application-owned DNS,
+shared Windows resolver DNS, underlay failure, and reconnect. The matrix covers
+IPv4-only, IPv6-only, and dual-stack profiles. Underlay-failure observations
+use `none`; a token on either test link is an unrestricted fallback. Shared
+resolver observations use `attribution: "shared-resolver"` because the Windows
+resolver process cannot prove requesting-application ownership.
+
+Validate evidence independently on the host:
+
+```console
+just winvm-validate-flow packet-flow-observations.jsonl tunnel.pcap underlay.pcap packet-flow-evidence.json
+```
+
+The validator fails for an absent profile, case, marker, control, capture,
+incorrect-link marker, fallback marker, duplicate or overlapping token, or an
+application attribution claim for shared resolver traffic. It removes a stale
+derived report before it parses new input. Keep the two PCAP files, observation
+log, generated report, guest network inventories, graph snapshot, and daemon
+log together. Host-only negative fixtures run as part of
+`just test-winvm-harness` and `just lint`.
 The host-only harness tests run through `just lint` without starting a VM.
 `just test-total` always runs the harness. Set `RUN_WINVM_TESTS=1` to also run
 the native `just winvm-test` gate. Aggregate e2e recipes run the native gate in
