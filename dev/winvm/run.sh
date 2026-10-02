@@ -6,12 +6,19 @@ script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 # shellcheck source=dev/winvm/common.sh
 source "$script_dir/common.sh"
 mode=${1:-smoke}
-[[ $mode == smoke || $mode == test || $mode == ordinary || $mode == privileged || $mode == resource || $mode == --shell || $mode == --prepare ]] || die 'usage: run.sh [smoke | test | ordinary | privileged | resource | --shell RUN | --prepare DIRECTORY]'
+[[ $mode == smoke || $mode == test || $mode == ordinary || $mode == privileged || $mode == resource || $mode == manual || $mode == --shell || $mode == --prepare ]] || die 'usage: run.sh [smoke | test | ordinary | privileged | resource | manual | --shell RUN | --prepare DIRECTORY]'
 for command in qemu-system-x86_64 qemu-img ssh scp jq python3 timeout flock git tar setsid; do require_command "$command"; done
 require_kvm /dev/kvm
 ensure_cache_dir
 artifact_root="$repo_root/artifacts/winvm"
 mkdir -p "$artifact_root" "$winvm_cache_dir/locks"
+state_dir=''
+if [[ $mode == manual ]]; then
+    state_dir=${WINVM_STATE_DIR:-$repo_root/local/winvm}
+    mkdir -p -- "$state_dir"
+    chmod 0700 "$state_dir"
+    state_dir=$(realpath -e "$state_dir")
+fi
 exec 6>"$winvm_cache_dir/locks/vm-run.lock"
 flock -w 1800 6 || die 'another VM held the host lock for 30 minutes'
 reject_live_qemu_orphan
@@ -73,6 +80,9 @@ if [[ $mode != --shell ]]; then
     if [[ $mode == smoke ]]; then
         suite=harness-smoke
         test_execution=not-run
+    elif [[ $mode == manual ]]; then
+        suite=windows-manual-daemon
+        test_execution=manual
     elif [[ $mode == test || $mode == ordinary || $mode == privileged ]]; then
         suite=windows-milestone-3
         test_execution=native
@@ -92,7 +102,7 @@ if [[ $mode != --shell ]]; then
         done
     else
         python3 "$script_dir/package-worktree.py" "$run_dir/source.tar" >"$run_dir/source.sha256"
-        "$script_dir/stage.sh" "$run_dir" >"$run_dir/staging.log" 2>&1
+        "$script_dir/stage.sh" "$run_dir" "$mode" >"$run_dir/staging.log" 2>&1
     fi
     sha256sum "$run_dir/payload.tar" >"$run_dir/payload.sha256"
     jq --arg source "$(sha256_file "$run_dir/source.tar")" --arg payload "$(sha256_file "$run_dir/payload.tar")" --arg generated "$(sha256_file "$run_dir/generated.sha256")" '.sourceArchiveSHA256=$source | .payloadSHA256=$payload | .generatedManifestSHA256=$generated' "$run_dir/run.json" >"$run_dir/run.json.new"
@@ -104,7 +114,21 @@ allocate_locked_port
 port=$winvm_ssh_port
 read -r key_type key_data _ <"$image_dir/host-key.pub"
 printf '[127.0.0.1]:%s %s %s\n' "$port" "$key_type" "$key_data" >"$run_dir/known_hosts"
-qemu=(qemu-system-x86_64 -name almagest-winvm -machine "$(jq -r .machine.type "$config_file")" -cpu "$(jq -r .machine.cpu "$config_file")" -smp "$(jq -r .machine.cpus "$config_file")" -m "$(jq -r .machine.memoryMiB "$config_file")" -display none
+if [[ $mode == manual ]]; then
+    display=(-display "${WINVM_DISPLAY:-gtk,window-close=off}" -device qemu-xhci -device usb-tablet)
+    web_port=${WINVM_WEB_PORT:-8090}
+    [[ $web_port =~ ^[0-9]+$ && $web_port -ge 1 && $web_port -le 65535 ]] || die 'WINVM_WEB_PORT must be from 1 through 65535'
+    python3 - "$web_port" <<'PY' || die "host web port $web_port is unavailable"
+import socket, sys
+s = socket.socket()
+s.bind(("127.0.0.1", int(sys.argv[1])))
+s.close()
+PY
+else
+    display=(-display none)
+    web_port=0
+fi
+qemu=(qemu-system-x86_64 -name almagest-winvm -machine "$(jq -r .machine.type "$config_file")" -cpu "$(jq -r .machine.cpu "$config_file")" -smp "$(jq -r .machine.cpus "$config_file")" -m "$(jq -r .machine.memoryMiB "$config_file")" "${display[@]}"
     -chardev "file,id=serial0,path=$run_dir/serial.log" -serial chardev:serial0
     -drive "if=pflash,format=raw,readonly=on,file=$(find_ovmf code)" -drive "if=pflash,format=raw,file=$vars"
     -device ich9-ahci,id=sata -drive "if=none,id=osdisk,format=qcow2,file=$overlay" -device ide-hd,drive=osdisk,bus=sata.0
@@ -119,5 +143,5 @@ if [[ -n ${ALMAGEST_WINDOWS_SOAK_DURATION:-} ]]; then
 fi
 exec python3 "$script_dir/supervise.py" --mode="$mode" --run-dir "$run_dir" \
     --sockets "$sockets" --port "$port" --key "$(ssh_private_key)" \
-    --cache-dir "$winvm_cache_dir" "${soak_args[@]}" \
+    --cache-dir "$winvm_cache_dir" --web-port "$web_port" --state-dir "$state_dir" "${soak_args[@]}" \
     -- "${qemu[@]}"

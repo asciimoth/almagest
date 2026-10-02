@@ -192,6 +192,11 @@ qualify-windows entry evidence:
 winvm-shell run:
   ./dev/winvm/run.sh --shell {{quote(run)}}
 
+# Run an elevated daemon in a visible Windows VM and open its web panel on the
+# host. Stop the VM with Ctrl+C or by closing its QEMU window.
+daemon-winvm web_port='8090':
+  WINVM_WEB_PORT={{quote(web_port)}} ./dev/winvm/run.sh manual
+
 build: certcat-generate build-web
 	go build -o ./almagestd ./bin/almagestd/
 

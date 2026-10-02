@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
-run_dir=${1:?usage: stage.sh RUN_DIRECTORY}
+run_dir=${1:?usage: stage.sh RUN_DIRECTORY [MODE]}
+mode=${2:-test}
 mkdir "$run_dir/source"
 tar -xf "$run_dir/source.tar" -C "$run_dir/source"
 cd "$run_dir/source"
@@ -11,6 +12,10 @@ go work init ./certcat ./lib ./bin
 go work edit -go=1.26.6
 go -C certcat run ./cmd/certcat-generate -manual data/manual.json -machine data/machine.json -out catalog_gen.go
 (cd panel && npm ci && npm run build)
+if [[ $mode == manual ]]; then
+    GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go -C bin build \
+        -o ../dev/winvm/almagestd.exe ./almagestd
+fi
 {
     go version
     node --version

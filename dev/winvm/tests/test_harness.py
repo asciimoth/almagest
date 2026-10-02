@@ -128,6 +128,24 @@ class HarnessTests(unittest.TestCase):
         self.assertIn("Write-TestProgress 'RUN '", runner)
         self.assertIn("'PASS' } else { 'FAIL'", runner)
 
+    def test_manual_daemon_is_elevated_and_keeps_web_local(self):
+        runner = (ROOT / 'supervise.py').read_text()
+        launcher = (ROOT / 'manual-daemon.ps1').read_text()
+        shell = (ROOT / 'run.sh').read_text()
+        self.assertIn('self.qga("exec", *arguments', runner)
+        self.assertIn('127.0.0.1:{self.args.web_port}:127.0.0.1:8090', runner)
+        self.assertIn('Invoke-CimMethod -ClassName Win32_Process', launcher)
+        self.assertIn('GOOS=windows GOARCH=amd64 CGO_ENABLED=0',
+                      (ROOT / 'stage.sh').read_text())
+        self.assertIn("'-w', [string]$WebPort", launcher)
+        self.assertIn("'--file-storage', $storage", launcher)
+        self.assertNotIn("'--tmp-file-storage'", launcher)
+        self.assertIn('display=(-display "${WINVM_DISPLAY:-gtk,window-close=off}"', shell)
+        self.assertIn('enabling automatic login for the standard winvm account', runner)
+        self.assertIn('self.upload_manual_state()', runner)
+        self.assertIn('self.export_manual_state()', runner)
+        self.assertIn('local/winvm', shell)
+
     def test_interrupt_diagnostics_are_extensive(self):
         runner = (ROOT / 'supervise.py').read_text()
         collector = (ROOT / 'collect-diagnostics.ps1').read_text()

@@ -9,13 +9,17 @@ import datetime
 import json
 import os
 from pathlib import Path
+from pathlib import PurePosixPath
 import shlex
 import shutil
 import signal
 import subprocess
 import sys
 import tarfile
+import tempfile
 import time
+import urllib.error
+import urllib.request
 
 ROOT = Path(__file__).resolve().parent
 
@@ -57,6 +61,8 @@ class Supervisor:
             raise ValueError("unsafe VM socket directory")
         self.remote = "C:/winvm/runs/" + self.directory.name
         self.qemu = None
+        self.tunnel = None
+        self.manual_state_uploaded = False
         self.stop_signal = None
         self.cleaning = False
         self.stage = "boot"
@@ -318,10 +324,189 @@ class Supervisor:
         self.note(f"QEMU reaped; exit={self.qemu.returncode}; graceful={clean}")
         return clean
 
+    def stop_tunnel(self):
+        if self.tunnel is None or self.tunnel.poll() is not None:
+            return
+        kill_group(self.tunnel, signal.SIGTERM)
+        try:
+            self.tunnel.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            kill_group(self.tunnel, signal.SIGKILL)
+            self.tunnel.wait(timeout=3)
+
+    def enable_manual_login(self):
+        self.stage = "manual-login"
+        self.note("enabling automatic login for the standard winvm account")
+        script = ("$ErrorActionPreference='Stop'; "
+                  "$password='AlmagestManual1!'; "
+                  "& net.exe user winvm $password | Out-Null; if($LASTEXITCODE){exit $LASTEXITCODE}; "
+                  "$key='HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon'; "
+                  "Set-ItemProperty $key AutoAdminLogon '1'; "
+                  "Set-ItemProperty $key DefaultUserName 'winvm'; "
+                  "Set-ItemProperty $key DefaultPassword $password; "
+                  "Set-ItemProperty $key DefaultDomainName $env:COMPUTERNAME")
+        if self.command(self.qga("exec", "powershell.exe", "-NoProfile", "-Command", script,
+                                 seconds=20), 25, log="manual-login.log"):
+            raise Failure("manual-login")
+        disable_sconfig = 'powershell.exe -NoProfile -Command "Set-SConfig -AutoLaunch $false"'
+        if self.command(self.ssh + [disable_sconfig], 20, log="manual-login.log"):
+            raise Failure("manual-login-shell")
+        self.note("restarting Windows to enter the interactive console")
+        self.command(self.qga("shutdown", "--mode", "reboot", seconds=5), 8,
+                     log="manual-login.log")
+        # The QGA socket can reconnect before SSH after this fast local reboot.
+        # The normal readiness probe requires two matching post-boot identities.
+        time.sleep(2)
+        self.ready(self.config["bootTimeoutSeconds"])
+
+    def manual_scp(self):
+        command = ["scp", "-q", *self.ssh[1:-1]]
+        command[command.index("-p")] = "-P"
+        return command
+
+    def upload_manual_state(self):
+        state = Path(self.args.state_dir)
+        state.mkdir(parents=True, exist_ok=True)
+        state.chmod(0o700)
+        for name in ("config", "store", "logs"):
+            path = state / name
+            path.mkdir(exist_ok=True)
+            path.chmod(0o700)
+        for name in ("alm.hujson", "protected_alm.hujson"):
+            path = state / "config" / name
+            if not path.exists():
+                path.write_text("{}\n")
+                path.chmod(0o600)
+        for path in state.rglob("*"):
+            if path.is_symlink():
+                raise Failure("manual-state-symlink")
+
+        descriptor, archive_name = tempfile.mkstemp(prefix=".winvm-upload-", suffix=".tar",
+                                                     dir=state.parent)
+        os.close(descriptor)
+        archive = Path(archive_name)
+        try:
+            with tarfile.open(archive, "w") as output:
+                for name in ("config", "store", "logs"):
+                    output.add(state / name, arcname=name)
+            create = (f'powershell.exe -NoProfile -Command "New-Item -ItemType Directory '
+                      f'-Force \'{self.remote}/manual\' | Out-Null"')
+            if self.command(self.ssh + [create], 20, log="manual-state.log"):
+                raise Failure("manual-state-directory")
+            destination = f"{self.ssh[-1]}:{self.remote}/manual/state-import.tar"
+            if self.command(self.manual_scp() + [str(archive), destination], 60,
+                            log="manual-state.log"):
+                raise Failure("manual-state-upload")
+            self.manual_state_uploaded = True
+        finally:
+            archive.unlink(missing_ok=True)
+
+    def export_manual_state(self):
+        self.note("saving daemon config, storage, and logs to the host")
+        script = f"{self.remote}/source/dev/winvm/manual-daemon.ps1"
+        arguments = ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script,
+                     "-Mode", "Export", "-SourceDir", f"{self.remote}/source",
+                     "-RunDir", self.remote, "-WebPort", "8090"]
+        if self.command(self.qga("exec", *arguments, seconds=30), 40,
+                        log="manual-state.log"):
+            raise Failure("manual-state-export")
+
+        state = Path(self.args.state_dir)
+        descriptor, archive_name = tempfile.mkstemp(prefix=".winvm-download-", suffix=".tar",
+                                                     dir=state.parent)
+        os.close(descriptor)
+        archive = Path(archive_name)
+        temporary = Path(tempfile.mkdtemp(prefix=".winvm-state-", dir=state.parent))
+        backup = state.with_name(f".{state.name}.backup-{os.getpid()}")
+        try:
+            source = f"{self.ssh[-1]}:{self.remote}/manual/state-export.tar"
+            if self.command(self.manual_scp() + [source, str(archive)], 60,
+                            log="manual-state.log"):
+                raise Failure("manual-state-download")
+            with tarfile.open(archive) as incoming:
+                for member in incoming.getmembers():
+                    path = PurePosixPath(member.name)
+                    if path.is_absolute() or ".." in path.parts or not (member.isfile() or member.isdir()):
+                        raise Failure("manual-state-archive")
+                incoming.extractall(temporary, filter="data")
+            for path in temporary.rglob("*"):
+                path.chmod(0o700 if path.is_dir() else 0o600)
+            temporary.chmod(0o700)
+            if backup.exists():
+                shutil.rmtree(backup)
+            state.rename(backup)
+            try:
+                temporary.rename(state)
+            except Exception:
+                backup.rename(state)
+                raise
+            shutil.rmtree(backup)
+        finally:
+            archive.unlink(missing_ok=True)
+            if temporary.exists():
+                shutil.rmtree(temporary)
+    def run_manual_daemon(self):
+        self.stage = "manual-daemon"
+        script = f"{self.remote}/source/dev/winvm/manual-daemon.ps1"
+        arguments = ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script,
+                     "-Mode", "Start", "-SourceDir", f"{self.remote}/source",
+                     "-RunDir", self.remote, "-WebPort", "8090"]
+        self.note("starting almagestd as SYSTEM")
+        if self.command(self.qga("exec", *arguments, seconds=30), 40,
+                        log="manual-daemon-launch.log"):
+            raise Failure("manual-daemon-start")
+
+        forwarding = f"127.0.0.1:{self.args.web_port}:127.0.0.1:8090"
+        tunnel_command = self.ssh[:-1] + ["-N", "-o", "ExitOnForwardFailure=yes",
+                                         "-L", forwarding, self.ssh[-1]]
+        tunnel_log = (self.directory / "manual-tunnel.log").open("ab")
+        self.tunnel = subprocess.Popen(tunnel_command, stdin=subprocess.DEVNULL,
+                                       stdout=tunnel_log, stderr=tunnel_log,
+                                       start_new_session=True)
+        url = f"http://127.0.0.1:{self.args.web_port}/"
+        ready_by = time.monotonic() + 120
+        while time.monotonic() < ready_by:
+            self.check()
+            if self.qemu.poll() is not None:
+                raise Failure("qemu-exited")
+            if self.tunnel.poll() is not None:
+                raise Failure("manual-tunnel")
+            try:
+                with urllib.request.urlopen(url, timeout=2) as response:
+                    if response.status == 200:
+                        break
+            except (OSError, urllib.error.URLError):
+                time.sleep(1)
+        else:
+            raise Failure("manual-web-readiness", 124)
+
+        self.note(f"web panel ready at {url}")
+        if os.environ.get("WINVM_OPEN_BROWSER", "1") != "0":
+            opener = shutil.which("xdg-open")
+            if opener:
+                subprocess.Popen([opener, url], stdin=subprocess.DEVNULL,
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                 start_new_session=True)
+            else:
+                self.note("xdg-open is unavailable; open the web panel URL manually")
+        self.note("manual session active; press Ctrl+C to save state and stop")
+        while self.stop_signal is None and self.qemu.poll() is None:
+            if self.tunnel.poll() is not None:
+                raise Failure("manual-tunnel")
+            time.sleep(0.2)
+        if self.stop_signal is not None:
+            self.note("manual session stopped by user")
+            self.stop_signal = None
+        else:
+            self.note("QEMU window closed by user")
+        return 0
+
     def execute(self):
         self.start_vm()
         self.note("waiting for guest readiness")
         self.ready(self.config["bootTimeoutSeconds"])
+        if self.args.mode == "manual":
+            self.enable_manual_login()
         if self.args.mode == "--shell":
             process = subprocess.Popen(self.ssh[:-1] + ["-t", self.ssh[-1], "powershell.exe"])
             try:
@@ -349,6 +534,10 @@ class Supervisor:
         if code:
             raise Failure("transfer", code)
         self.transferred = True
+        if self.args.mode == "manual":
+            self.deadline = float("inf")
+            self.upload_manual_state()
+            return self.run_manual_daemon()
         test_timeout = (self.config["resourceTimeoutSeconds"]
                         if self.args.mode == "resource" else self.config["testTimeoutSeconds"])
         self.deadline = time.monotonic() + test_timeout
@@ -423,21 +612,25 @@ class Supervisor:
         # boot. Mandatory TERM/KILL/reap has a separate final six-second reserve.
         self.deadline = time.monotonic() + self.config["cleanupTimeoutSeconds"]
         try:
+            if (self.args.mode == "manual" and self.manual_state_uploaded and
+                    self.qemu is not None and self.qemu.poll() is None):
+                self.export_manual_state()
             if failure:
                 self.note(f"failed: {failure.kind}; collecting evidence (bounded cleanup)")
-                if self.transferred:
+                if self.transferred and self.args.mode != "manual":
                     # Preserve test output before a diagnostic command can hang.
                     self.harvest(final=False, seconds=15)
                     self.quiesce()
                 self.diagnostics(failure.kind)
-                collected = self.harvest(final=True) if self.transferred else False
+                collected = (self.harvest(final=True)
+                             if self.transferred and self.args.mode != "manual" else False)
             else:
                 collected = self.collection["finalCollected"]
             clean_stop = self.stop_vm(graceful=failure is None)
             if not clean_stop and failure is None:
                 failure = Failure("shutdown")
                 self.stage = "shutdown"
-            if self.transferred and (not collected or (failure and failure.kind == "guest-unresponsive")):
+            if self.args.mode != "manual" and self.transferred and (not collected or (failure and failure.kind == "guest-unresponsive")):
                 self.recovery = True
                 self.collection["recoveryAttempted"] = True
                 self.collection["recoveryOutcome"] = "incomplete"
@@ -458,6 +651,7 @@ class Supervisor:
             if failure is None:
                 failure = Failure("cleanup")
         finally:
+            self.stop_tunnel()
             try:
                 self.stop_vm()
             except (Failure, OSError) as error:
@@ -513,6 +707,8 @@ def main():
     parser.add_argument("--port", required=True)
     parser.add_argument("--key", required=True)
     parser.add_argument("--cache-dir", required=True)
+    parser.add_argument("--web-port", type=int, default=0)
+    parser.add_argument("--state-dir", default="")
     parser.add_argument("--soak-duration")
     parser.add_argument("qemu", nargs=argparse.REMAINDER)
     args = parser.parse_args()
