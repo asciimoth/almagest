@@ -7,7 +7,7 @@ check: tidy typos fmt lint shellcheck vet vulncheck test-total
 typos:
   typos
 
-test-go: certcat-ensure-generated
+test-go: certcat-ensure-generated build-web
   ./scripts/test-go-coverage.sh
   ./scripts/test-gonnect-netstack-regressions.sh
 
@@ -21,22 +21,22 @@ test-cycles-harness:
 certcat-test: certcat-ensure-generated
   ./scripts/test-go-coverage.sh certcat
 
-test-js:
-  cd panel && npm ci && npm test
+test-js: build-web
+  cd panel && node --test tests/*.mjs
 
 
 [parallel]
 test-e2e: test-e2e-docker test-winvm-enabled
 
 [private]
-test-e2e-docker:
+test-e2e-docker: repair-go-work build-web
   ./scripts/test-e2e-platform.sh
 
 [parallel]
 test-e2e-all: test-e2e-docker-all test-winvm-enabled
 
 [private]
-test-e2e-docker-all:
+test-e2e-docker-all: repair-go-work build-web
   E2E_INCLUDE_PRIVILEGED=1 ./scripts/test-e2e-platform.sh
 
 test-e2e-light:
@@ -75,12 +75,14 @@ tidy: repair-go-work
 repair-go-work:
 	@if [ ! -f go.work ]; then go work init; fi
 	go work use ./lib ./bin ./certcat
+	go work edit -go=1.26.6
 
 certcat-tidy:
 	go -C certcat mod tidy
 
 lint: test-winvm-harness certcat-lint lint-windows
-  golangci-lint run ./lib/... ./bin/...
+  cd lib && golangci-lint run ./...
+  cd bin && golangci-lint run ./...
 
 lint-windows:
   ./scripts/lint-windows.sh
@@ -89,14 +91,15 @@ shellcheck:
   git ls-files -z '*.sh' | xargs -0 shellcheck
 
 certcat-lint: certcat-ensure-generated
-  golangci-lint run ./certcat/...
+  cd certcat && golangci-lint run ./...
 
 fmt: certcat-fmt
-  golangci-lint fmt ./lib/... ./bin/...
+  cd lib && golangci-lint fmt ./...
+  cd bin && golangci-lint fmt ./...
   git ls-files -z -- 'lib/*.go' 'lib/**/*.go' 'bin/*.go' 'bin/**/*.go' | xargs -0 -r gofmt -w
 
 certcat-fmt: certcat-ensure-generated
-  golangci-lint fmt ./certcat/...
+  cd certcat && golangci-lint fmt ./...
   git ls-files -z -- 'certcat/*.go' 'certcat/**/*.go' | xargs -0 -r gofmt -w
 
 certcat-fetch:

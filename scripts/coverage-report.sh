@@ -93,7 +93,7 @@ if [[ -f "$winvm_dir/coverage.out" ]]; then
 	profiles+=("$winvm_dir/coverage.out")
 fi
 combine_profiles "$combined_profile" "${profiles[@]}"
-go tool cover -func="$combined_profile" >"$functions_report"
+"$repo_root/scripts/go-cover-functions.sh" "$combined_profile" "$functions_report"
 tail -1 "$functions_report" | tee "$summary_report" "$total_report"
 
 publish_file "$combined_profile" "$total_dir/coverage.out"

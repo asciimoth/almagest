@@ -90,7 +90,7 @@ docker_build_with_retry() {
 hash_image_inputs() {
 	local path
 	{
-		find .dockerignore go.work go.work.sum bin certcat lib e2e \
+		find .dockerignore go.work bin certcat lib e2e \
 			-path e2e/coverage -prune -o \
 			\( -type f -o -type l \) -print0 \
 			| sort -z \
@@ -395,7 +395,7 @@ elif [[ "$coverage_enabled" == "1" ]]; then
 	input_dirs="$(IFS=,; printf '%s' "${coverage_inputs[*]}")"
 	go tool covdata percent -i="$input_dirs" | tee "$coverage_dir/summary.txt"
 	go tool covdata textfmt -i="$input_dirs" -o "$coverage_dir/coverage.out"
-	go tool cover -func="$coverage_dir/coverage.out" >"$coverage_dir/functions.txt"
+	"$repo_root/scripts/go-cover-functions.sh" "$coverage_dir/coverage.out" "$coverage_dir/functions.txt"
 	tail -1 "$coverage_dir/functions.txt" | tee "$coverage_dir/total.txt"
 fi
 

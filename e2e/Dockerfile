@@ -30,7 +30,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 	&& go build -C "/tmp/amneziawg-go-$AMNEZIAWG_GO_COMMIT" -o /usr/local/bin/amneziawg-go . \
 	&& printf '%s\n' "$AMNEZIAWG_GO_COMMIT" >/usr/local/share/amneziawg-go.commit
 
-COPY go.work go.work.sum ./
+COPY go.work ./
 COPY bin/go.mod bin/go.sum bin/
 COPY certcat/go.mod certcat/
 COPY lib/go.mod lib/go.sum lib/
