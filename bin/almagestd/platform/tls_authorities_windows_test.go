@@ -83,6 +83,53 @@ func TestWindowsCertificateStoreMachineIdentityAndDuplicates(t *testing.T) {
 	t.Fatal("test certificate is absent from deduplicated catalog")
 }
 
+func TestWindowsCertificateStoreMergesFallbackWithWindowsPriority(t *testing.T) {
+	t.Setenv(forceFallbackAuthoritiesEnv, "")
+	isolateWindowsAuthorityStores(t)
+	fallback, err := fallbackAuthorityCandidates(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fallback) == 0 {
+		t.Fatal("fallback authority catalog is empty")
+	}
+	der := fallback[0].DER
+	remove := addWindowsAuthorityTestCertificate(t, windows.CERT_SYSTEM_STORE_CURRENT_USER, der)
+	defer remove()
+
+	candidates, err := OSAuthorityFetcher().FetchAuthorities(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(candidates) <= len(fallback) {
+		t.Fatalf("merged candidates len = %d, want more than %d fallback candidates", len(candidates), len(fallback))
+	}
+	if !bytes.Equal(candidates[0].DER, der) || candidates[0].Source.Name != `windows:CurrentUser\Root` {
+		t.Fatalf("first merged candidate source = %q, want Windows duplicate first", candidates[0].Source.Name)
+	}
+
+	catalog, err := tlspolicy.NewAuthorityCatalog(candidates)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, record := range catalog.Records() {
+		encoded, marshalErr := record.Authority.MarshalBinary()
+		if marshalErr != nil {
+			t.Fatal(marshalErr)
+		}
+		if !bytes.Equal(encoded, der) {
+			continue
+		}
+		if len(record.Sources) != 2 ||
+			record.Sources[0].Name != `windows:CurrentUser\Root` ||
+			record.Sources[1].Name != "fallback:nss" {
+			t.Fatalf("certificate sources = %#v, want Windows then fallback", record.Sources)
+		}
+		return
+	}
+	t.Fatal("duplicate fallback certificate is absent from merged catalog")
+}
+
 func TestWindowsCertificateStoreCancellationFailureAndFallback(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

@@ -29,8 +29,11 @@ var windowsAuthorityStores = []windowsAuthorityStore{
 var windowsOpenAuthorityStore = openWindowsAuthorityStore
 
 // OSAuthorityFetcher returns public certificate candidates from the Root
-// stores for the daemon's current Windows identity and the local machine. The
-// candidates remain untrusted until an Almagest TLS policy selects them.
+// stores for the daemon's current Windows identity and the local machine,
+// followed by the embedded fallback roots. Windows sources come first so that
+// duplicate certificates retain local-source priority in the authority
+// catalog. The candidates remain untrusted until an Almagest TLS policy
+// selects them.
 func OSAuthorityFetcher() tlspolicy.AuthorityFetcher {
 	return tlspolicy.AuthorityFetcherFunc(func(ctx context.Context) ([]tlspolicy.AuthorityCandidate, error) {
 		if forceFallbackAuthorities() {
@@ -40,10 +43,11 @@ func OSAuthorityFetcher() tlspolicy.AuthorityFetcher {
 		if err != nil {
 			return nil, err
 		}
-		if len(candidates) == 0 {
-			return fallbackAuthorityCandidates(ctx)
+		fallback, err := fallbackAuthorityCandidates(ctx)
+		if err != nil {
+			return nil, err
 		}
-		return candidates, nil
+		return append(candidates, fallback...), nil
 	})
 }
 
