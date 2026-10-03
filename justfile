@@ -9,6 +9,7 @@ typos:
 
 test-go: certcat-ensure-generated build-web
   ./scripts/test-go-coverage.sh
+  ./scripts/test-gonnect-regressions.sh
   ./scripts/test-gonnect-netstack-regressions.sh
 
 # Run until Ctrl+C; keep failure logs under artifacts/test-cycles/.

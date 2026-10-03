@@ -639,7 +639,9 @@ func TestEngineNotificationTransactionRejectsDelayedWorkerEvent(t *testing.T) {
 	var mu sync.Mutex
 	var workers []WorkerNotificationKind
 	published := make(chan struct{})
+	spawned := make(chan struct{})
 	var publishedOnce sync.Once
+	var spawnedOnce sync.Once
 	awaitPublication := false
 	subscription := engineAPI.SubscribeNotifications(func(notification EngineNotification) {
 		if notification.Worker == nil {
@@ -649,6 +651,9 @@ func TestEngineNotificationTransactionRejectsDelayedWorkerEvent(t *testing.T) {
 		workers = append(workers, notification.Worker.Kind)
 		if awaitPublication && notification.Worker.Kind == WorkerNotificationSnapshot {
 			publishedOnce.Do(func() { close(published) })
+		}
+		if awaitPublication && notification.Worker.Kind == WorkerNotificationSpawned {
+			spawnedOnce.Do(func() { close(spawned) })
 		}
 		mu.Unlock()
 	})
@@ -686,6 +691,7 @@ func TestEngineNotificationTransactionRejectsDelayedWorkerEvent(t *testing.T) {
 			sequence: 11,
 		},
 	})
+	assertNoDeadlock(t, spawned, "queued worker notification publication")
 
 	mu.Lock()
 	got := append([]WorkerNotificationKind(nil), workers...)

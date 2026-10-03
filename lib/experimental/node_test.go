@@ -1229,6 +1229,17 @@ func TestXTorDriverLatchedFailureWithdrawsOutputsUntilReattach(t *testing.T) {
 	driver.events <- tor.OutboundEvent{Generation: state.Generation, Latched: true}
 	waitXTorUnavailablePayload(t, receiver.Events)
 	eventuallyXTor(t, func() bool { return test.nodeLabel(torNode) == "error" }, "latched failure becomes an error")
+	// Model readiness that completed before the failure but reached the node
+	// after the failure event.
+	for revision := uint64(0); revision < 4; revision++ {
+		test.e.Engine.SendInbox(almagest.MainWorkspace, pasta.InboxMessage{
+			ReceiverNode: torNode,
+			Payload: xTorOutboundResult{
+				runtimeID: 1, outboundRevision: revision,
+				state: tor.OutboundState{Available: true}, ready: true,
+			},
+		})
+	}
 	driver.events <- tor.BootstrapEvent{Progress: 100, Severity: tor.EventNotice}
 	time.Sleep(25 * time.Millisecond)
 	if got := test.nodeLabel(torNode); got != "error" {
@@ -1242,6 +1253,32 @@ func TestXTorDriverLatchedFailureWithdrawsOutputsUntilReattach(t *testing.T) {
 	if payload := networktest.ReceivePayload(t, receiver.Events); payload.Network == nil {
 		t.Fatal("reattach did not republish Tor output")
 	}
+}
+
+func TestXTorDriverOutboundReplacementDoesNotCancelControlWait(t *testing.T) {
+	test := newXTorTestEngine(t)
+	test.factory.blockReadiness = true
+	torNode := test.e.AddNode(NodeTypeXTorDriver, "tor-wait-replacement")
+	driver := test.factory.waitDriver(t, 0)
+	out := test.e.AddNode("almagest/MockNetwork", "wait-out")
+	link := test.e.MustAddTypedLinkByPortName(links.TypeNetwork, out, "left", "Network", torNode, "right", xTorOutboundPortName)
+	eventuallyXTor(t, func() bool { return driver.waitReadyCalls.Load() > 0 }, "outbound readiness wait starts")
+
+	test.e.Engine.RemoveLink(almagest.MainWorkspace, link)
+	eventuallyXTor(t, func() bool {
+		calls := driver.setOutboundCalls()
+		return len(calls) >= 2 && calls[len(calls)-1] == nil
+	}, "outbound detach is applied while readiness remains blocked")
+	if got := driver.waitReadyCanceled.Load(); got != 0 {
+		t.Fatalf("readiness waits canceled during detach = %d, want 0", got)
+	}
+	test.e.MustAddTypedLinkByPortName(links.TypeNetwork, out, "left", "Network", torNode, "right", xTorOutboundPortName)
+	eventuallyXTor(t, func() bool { return len(driver.setOutboundCalls()) >= 3 }, "replacement is applied while the old readiness wait remains active")
+	if got := driver.waitReadyCanceled.Load(); got != 0 {
+		t.Fatalf("readiness waits canceled during replacement = %d, want 0", got)
+	}
+	driver.markReady()
+	eventuallyXTor(t, func() bool { return test.nodeLabel(torNode) == "up" }, "replacement becomes ready")
 }
 
 func TestXTorDriverTerminalFailureRejectsQueuedReadiness(t *testing.T) {
@@ -1523,6 +1560,7 @@ type fakeXTorDriver struct {
 	newServiceError     error
 	addClientAuthError  error
 	waitReadyCalls      atomic.Int32
+	waitReadyCanceled   atomic.Int32
 }
 
 func newFakeXTorDriver(config tor.Config, deps tor.Dependencies, ready bool) *fakeXTorDriver {
@@ -1551,6 +1589,7 @@ func (d *fakeXTorDriver) WaitReady(ctx context.Context) error {
 	case <-d.done:
 		return tor.ErrClosed
 	case <-ctx.Done():
+		d.waitReadyCanceled.Add(1)
 		return ctx.Err()
 	}
 }

@@ -487,6 +487,7 @@ func replaceDefaultTunNativeDevice(
 			MTU:    1300,
 		})
 	}
+	waitForDefaultTunBuildsStable(t, sys)
 	previousBuilds := sys.buildCount()
 	wantBuild := sys.scheduleNativeReplacement()
 	if wantBuild != previousBuilds+1 {
@@ -498,8 +499,29 @@ func replaceDefaultTunNativeDevice(
 		MTU:    1300,
 	})
 	Eventually(t, func() bool {
-		return sys.buildCount() == previousBuilds+1
+		return sys.buildCount() >= wantBuild
 	}, "DefaultTun native device replacement")
+}
+
+func waitForDefaultTunBuildsStable(t *testing.T, sys *recordingDefaultTunSystem) {
+	t.Helper()
+	deadline := time.NewTimer(10 * time.Second)
+	defer deadline.Stop()
+	stable := time.NewTimer(100 * time.Millisecond)
+	defer stable.Stop()
+	count := sys.buildCount()
+	for {
+		select {
+		case <-stable.C:
+			if sys.buildCount() == count {
+				return
+			}
+			count = sys.buildCount()
+			stable.Reset(100 * time.Millisecond)
+		case <-deadline.C:
+			t.Fatal("DefaultTun builds did not become stable")
+		}
+	}
 }
 
 type rejectConcurrentReadTun struct {

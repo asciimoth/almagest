@@ -352,6 +352,14 @@ func (e *HTTPOps) WaitServerLog(server uint64, wantPart string) {
 	}, "server log containing %q", wantPart)
 }
 
+// WaitServerLogCountAbove waits until a new matching server log is present.
+func (e *HTTPOps) WaitServerLogCountAbove(server uint64, wantPart string, previous int) {
+	e.t().Helper()
+	testkit.Eventually(e.t(), func() bool {
+		return e.ServerLogCount(server, wantPart) > previous
+	}, "server log count for %q above %d", wantPart, previous)
+}
+
 // WaitSocksLog waits until SOCKS logs contain text.
 func (e *HTTPOps) WaitSocksLog(socks uint64, wantPart string) {
 	e.t().Helper()
@@ -367,6 +375,14 @@ func (e *HTTPOps) WaitSocksLog(socks uint64, wantPart string) {
 		}
 		return false
 	}, "socks log containing %q", wantPart)
+}
+
+// WaitSocksLogCountAbove waits until a new matching SOCKS log is present.
+func (e *HTTPOps) WaitSocksLogCountAbove(socks uint64, wantPart string, previous int) {
+	e.t().Helper()
+	testkit.Eventually(e.t(), func() bool {
+		return e.SocksLogCount(socks, wantPart) > previous
+	}, "socks log count for %q above %d", wantPart, previous)
 }
 
 // AssertServerLog fails unless server logs contain text.

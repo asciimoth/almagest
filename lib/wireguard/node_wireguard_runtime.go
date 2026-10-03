@@ -428,7 +428,7 @@ func (n *wireGuardNode) handleReceiveError(msg wireGuardReceiveErrorMessage) {
 		n.nextRuntimeGenerationLocked()
 	}
 	n.runtimeMu.Unlock()
-	if !current || intentionalClose {
+	if !current || intentionalClose || !retry {
 		return
 	}
 	n.failRuntime(fmt.Errorf("receive from bind: %w", msg.err), retry)

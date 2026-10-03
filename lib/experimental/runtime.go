@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -32,8 +31,6 @@ type xTorRuntime struct {
 
 	outboundWake     chan struct{}
 	outboundRevision uint64
-	outboundWaitMu   sync.Mutex
-	outboundWait     context.CancelFunc
 }
 
 func (r *xTorRuntime) close() error {
@@ -41,7 +38,6 @@ func (r *xTorRuntime) close() error {
 		return nil
 	}
 	r.cancel()
-	r.cancelOutboundWait()
 	for _, unsubscribe := range r.unsubs {
 		if unsubscribe != nil {
 			unsubscribe()
@@ -64,31 +60,6 @@ func (r *xTorRuntime) signalOutbound() {
 	select {
 	case r.outboundWake <- struct{}{}:
 	default:
-	}
-}
-
-func (r *xTorRuntime) setOutboundWait(cancel context.CancelFunc) {
-	r.outboundWaitMu.Lock()
-	r.outboundWait = cancel
-	r.outboundWaitMu.Unlock()
-}
-
-func (r *xTorRuntime) clearOutboundWait() {
-	r.outboundWaitMu.Lock()
-	r.outboundWait = nil
-	r.outboundWaitMu.Unlock()
-}
-
-func (r *xTorRuntime) cancelOutboundWait() {
-	if r == nil {
-		return
-	}
-	r.outboundWaitMu.Lock()
-	cancel := r.outboundWait
-	r.outboundWait = nil
-	r.outboundWaitMu.Unlock()
-	if cancel != nil {
-		cancel()
 	}
 }
 
@@ -156,6 +127,8 @@ func (n *xTorDriverNode) scheduleRebuild(_ string) {
 	n.ready = false
 	n.pending = true
 	n.terminal = false
+	n.outboundLatched = false
+	n.latchedRevision = 0
 	n.clearRuntimeError()
 	n.bootstrap = tor.BootstrapEvent{}
 	n.services = make(map[string]xTorServiceStatus)
@@ -454,6 +427,8 @@ func (n *xTorDriverNode) spawnRuntimeWatchers(runtime *xTorRuntime, activate <-c
 }
 
 func (n *xTorDriverNode) watchRuntimeOutbound(runtime *xTorRuntime) {
+	var waitResult chan error
+reconcileLoop:
 	for {
 		network, revision := n.currentOutboundState()
 		var err error
@@ -469,17 +444,29 @@ func (n *xTorDriverNode) watchRuntimeOutbound(runtime *xTorRuntime) {
 		}
 		ready := false
 		if err == nil && network != nil {
-			waitCtx, cancel := context.WithCancel(runtime.ctx)
-			runtime.setOutboundWait(cancel)
 			if n.currentOutboundRevision() != revision {
-				cancel()
-				runtime.clearOutboundWait()
 				continue
 			}
-			err = runtime.driver.WaitReady(waitCtx)
-			cancel()
-			runtime.clearOutboundWait()
-			ready = err == nil
+			if waitResult == nil {
+				waitResult = make(chan error, 1)
+				result := waitResult
+				go func() { result <- runtime.driver.WaitReady(runtime.ctx) }()
+			}
+		waitLoop:
+			for {
+				select {
+				case err = <-waitResult:
+					waitResult = nil
+					ready = err == nil
+					break waitLoop
+				case <-runtime.outboundWake:
+					if n.currentOutboundRevision() != revision {
+						continue reconcileLoop
+					}
+				case <-runtime.ctx.Done():
+					return
+				}
+			}
 		}
 		if runtime.ctx.Err() != nil {
 			return
@@ -562,7 +549,6 @@ func (n *xTorDriverNode) applyOutbound(network nodekit.NetworkCloser) {
 	if runtime == nil || runtime.driver == nil {
 		return
 	}
-	runtime.cancelOutboundWait()
 	runtime.signalOutbound()
 }
 
@@ -870,7 +856,8 @@ func (n *xTorDriverNode) handleDriverEvent(message xTorDriverEvent) {
 		}
 		n.outboundState = state
 		if event.Latched && !state.Available {
-			runtime.cancelOutboundWait()
+			n.outboundLatched = true
+			n.latchedRevision = n.currentOutboundRevision()
 			n.setRuntimeError("Tor outbound network is latched after a runtime failure; reconnect the input or restart the node", false)
 			n.ready = false
 			n.outputs.InvalidateAllLocked(n.W, n.ID)
@@ -918,6 +905,9 @@ func (n *xTorDriverNode) handleOutboundResult(result xTorOutboundResult) {
 	if result.outboundRevision != n.currentOutboundRevision() {
 		return
 	}
+	if n.outboundLatched && result.outboundRevision == n.latchedRevision {
+		return
+	}
 	n.outboundState = result.state
 	if result.err != nil {
 		n.setRuntimeError("update Tor outbound network: "+result.err.Error(), true)
@@ -925,6 +915,8 @@ func (n *xTorDriverNode) handleOutboundResult(result xTorOutboundResult) {
 		n.clearRuntimeError()
 	}
 	if result.err == nil && result.ready {
+		n.outboundLatched = false
+		n.latchedRevision = 0
 		n.ready = true
 		n.sendAllOutputs()
 	} else {

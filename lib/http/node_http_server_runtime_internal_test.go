@@ -50,8 +50,8 @@ func TestHTTPServerRestartWaitsForPreviousWorker(t *testing.T) {
 	n.response = "new response"
 	n.restartWorker()
 
-	if got := spawner.Count(); got != 1 {
-		t.Fatalf("workers started before previous worker stopped = %d, want 1", got)
+	if got := spawner.Count("http server"); got != 0 {
+		t.Fatalf("replacement workers started before previous worker stopped = %d, want 0", got)
 	}
 	if n.worker != old || !n.workerStopping {
 		t.Fatal("previous worker was not retained while stopping")
@@ -66,8 +66,8 @@ func TestHTTPServerRestartWaitsForPreviousWorker(t *testing.T) {
 	if err := n.OnInbox(pasta.InboxMessage{Payload: httpServerStart{previous: old}}); err != nil {
 		t.Fatalf("OnInbox: %v", err)
 	}
-	if got := spawner.Count(); got != 2 {
-		t.Fatalf("workers after previous worker stopped = %d, want 2", got)
+	if got := spawner.Count("http server"); got != 1 {
+		t.Fatalf("replacement HTTP server workers = %d, want 1", got)
 	}
 	if n.worker == nil || n.worker == old || n.workerStopping {
 		t.Fatal("current worker did not start after the previous worker stopped")
@@ -78,20 +78,29 @@ func TestHTTPServerRestartWaitsForPreviousWorker(t *testing.T) {
 type httpServerTestSpawner struct {
 	mu      sync.Mutex
 	workers int
+	names   map[string]int
 }
 
-func (s *httpServerTestSpawner) Spawn(worker func(), _ string) (uint64, error) {
+func (s *httpServerTestSpawner) Spawn(worker func(), name string) (uint64, error) {
 	s.mu.Lock()
 	s.workers++
+	if s.names == nil {
+		s.names = make(map[string]int)
+	}
+	s.names[name]++
 	id := uint64(s.workers)
 	s.mu.Unlock()
 	go worker()
 	return id, nil
 }
 
-func (s *httpServerTestSpawner) SpawnWg(worker func(), waitgroup *sync.WaitGroup, _ string) (uint64, error) {
+func (s *httpServerTestSpawner) SpawnWg(worker func(), waitgroup *sync.WaitGroup, name string) (uint64, error) {
 	s.mu.Lock()
 	s.workers++
+	if s.names == nil {
+		s.names = make(map[string]int)
+	}
+	s.names[name]++
 	id := uint64(s.workers)
 	s.mu.Unlock()
 	waitgroup.Add(1)
@@ -102,8 +111,8 @@ func (s *httpServerTestSpawner) SpawnWg(worker func(), waitgroup *sync.WaitGroup
 	return id, nil
 }
 
-func (s *httpServerTestSpawner) Count() int {
+func (s *httpServerTestSpawner) Count(name string) int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.workers
+	return s.names[name]
 }

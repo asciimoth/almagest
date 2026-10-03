@@ -222,6 +222,38 @@ func TestHTTPServerThroughSocksClientE2E(t *testing.T) {
 	_ = httpServerSocksLink
 }
 
+func TestHTTPServerThroughSocksClientRecoversFromRepeatedSocksListenerRestarts(t *testing.T) {
+	e := newHTTPE2E(t)
+	socksPort := httpTestPort()
+	httpPort := httpTestPort()
+	httpServer, httpClient, socksServer := e.setupHTTPServerThroughSocksClient(
+		fmt.Sprintf("socks5://127.0.0.1:%d", socksPort),
+		httpPort,
+	)
+	e.assertClientRequestWorks(httpClient)
+
+	const rounds = 10
+	listenLog := fmt.Sprintf("socks listening on 127.0.0.1:%d", socksPort)
+	serverListenLog := fmt.Sprintf("listening on 127.0.0.1:%d", httpPort)
+	for round := range rounds {
+		t.Logf("SOCKS listener restart round %d/%d", round+1, rounds)
+		restartsBefore := e.SocksLogCount(socksServer, "worker restarting")
+		e.applySocksServerCommands(socksServer, socksPort, map[protocol.Cmd]bool{
+			protocol.CmdBind: false,
+		})
+		e.waitSocksLogCountAbove(socksServer, "worker restarting", restartsBefore)
+
+		listensBefore := e.SocksLogCount(socksServer, listenLog)
+		serverListensBefore := e.serverLogCount(httpServer, serverListenLog)
+		e.applySocksServerCommands(socksServer, socksPort, map[protocol.Cmd]bool{
+			protocol.CmdBind: true,
+		})
+		e.waitSocksLogCountAbove(socksServer, listenLog, listensBefore)
+		e.waitServerLogCountAbove(httpServer, serverListenLog, serverListensBefore)
+		e.assertClientRequestWorks(httpClient)
+	}
+}
+
 func TestHTTPServerThroughPlainSocksBindDoesNotStopBeforeFirstAccept(t *testing.T) {
 	e := newHTTPE2E(t)
 	httpServer, _, socksServer := e.setupHTTPServerThroughSocksClient(
@@ -281,8 +313,10 @@ func TestHTTPClientServerE2EMockNetwork(t *testing.T) {
 	e.connectByPortName(mock, "left", "Network", client, "right", "Network")
 
 	e.waitServerListening(server, fmt.Sprintf("127.0.0.1:%d", port))
-	e.sendClientRequest(client)
-	e.waitClientResponse(client, "200 OK", "Debug http server response")
+	// Link creation can return while another goroutine drains workspace work.
+	// Retry until the mock network payload has reached the client instead of
+	// letting the first button press overtake that payload.
+	e.assertClientRequestWorks(client)
 	e.assertServerLog(server, "GET /")
 }
 
@@ -365,6 +399,14 @@ func (e *httpE2E) waitServerLog(server uint64, wantPart string) {
 
 func (e *httpE2E) waitSocksLog(socks uint64, wantPart string) {
 	e.WaitSocksLog(socks, wantPart)
+}
+
+func (e *httpE2E) waitSocksLogCountAbove(socks uint64, wantPart string, previous int) {
+	e.WaitSocksLogCountAbove(socks, wantPart, previous)
+}
+
+func (e *httpE2E) waitServerLogCountAbove(server uint64, wantPart string, previous int) {
+	e.WaitServerLogCountAbove(server, wantPart, previous)
 }
 
 func (e *httpE2E) assertServerLog(server uint64, wantPart string) {

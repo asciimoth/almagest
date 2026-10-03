@@ -35,6 +35,9 @@
             "github.com/asciimoth/almagest/lib/tun::TestTunRapidRewireIgnoresStaleConfigCompletion",
             "github.com/asciimoth/almagest/lib/tun::TestTunFailedReplacementRetiresOldAttachmentAndRecovers",
             "github.com/asciimoth/almagest/lib/tun::TestDefaultTunFailedBuildAfterRetirementInvalidatesAttachmentAndRecovers",
+            "github.com/asciimoth/almagest/lib/http::TestHTTPServerThroughSocksClientE2E",
+            "github.com/asciimoth/almagest/lib/http::TestHTTPServerThroughSocksClientRecoversFromRepeatedSocksListenerRestarts",
+            "github.com/asciimoth/almagest/lib/http::TestHTTPServerThroughPlainSocksBindDoesNotStopBeforeFirstAccept",
             "github.com/asciimoth/almagest/lib/links::TestTunFailureObserverDoesNotReturnUpAfterTerminalFailure",
             "github.com/asciimoth/almagest/lib/experimental::TestXTorDriverWindowsBestEffortWarnsWithoutContainment"
           ]
@@ -88,6 +91,38 @@
             "github.com/asciimoth/almagest/bin/almagestd::TestWindowsSnapshotRejectsSymlinkEntryWithoutPrivilege",
             "github.com/asciimoth/almagest/bin/internal/durablefile::TestWindowsReplaceExistingFileAndRejectLockedDestination",
             "github.com/asciimoth/almagest/bin/internal/durablefile::TestWindowsReplaceRecoversInterruptedReplacement"
+          ]
+        },
+        {
+          "id": "m2::http-mock-network-link-convergence",
+          "kind": "go",
+          "module": "lib",
+          "arguments": [
+            "./http",
+            "-run",
+            "^TestHTTPClientServerE2EMockNetwork$",
+            "-count=20"
+          ],
+          "eventFile": "http-mock-network-link-convergence.jsonl",
+          "requiredTests": [
+            "github.com/asciimoth/almagest/lib/http::TestHTTPClientServerE2EMockNetwork"
+          ]
+        },
+        {
+          "id": "m2::gonnect-loopback-listener-close-race",
+          "kind": "go",
+          "module": "lib",
+          "arguments": [
+            "./http",
+            "-run",
+            "^TestHTTPServerThrough(SocksClientE2E|SocksClientRecoversFromRepeatedSocksListenerRestarts|PlainSocksBindDoesNotStopBeforeFirstAccept)$",
+            "-count=3"
+          ],
+          "eventFile": "gonnect-loopback-listener-close-race.jsonl",
+          "requiredTests": [
+            "github.com/asciimoth/almagest/lib/http::TestHTTPServerThroughSocksClientE2E",
+            "github.com/asciimoth/almagest/lib/http::TestHTTPServerThroughSocksClientRecoversFromRepeatedSocksListenerRestarts",
+            "github.com/asciimoth/almagest/lib/http::TestHTTPServerThroughPlainSocksBindDoesNotStopBeforeFirstAccept"
           ]
         },
         {

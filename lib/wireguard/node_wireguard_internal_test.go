@@ -1815,6 +1815,21 @@ func TestWireGuardIntentionalClosedReceiveErrorIsIgnored(t *testing.T) {
 	}
 }
 
+func TestWireGuardReceiveErrorAfterDesiredNetworkRemovalIsIgnored(t *testing.T) {
+	dev := wgdevice.NewDevice(nil, nil, wgdevice.NopLogger{}, nil, wgdevice.DeviceOptions{})
+	t.Cleanup(dev.Close)
+	n := &wireGuardNode{dev: dev, currentBind: wireGuardTrackedBind{}}
+
+	n.handleReceiveError(wireGuardReceiveErrorMessage{dev: dev, err: net.ErrClosed})
+
+	if n.runtimeError != "" {
+		t.Fatalf("runtimeError = %q after desired network removal, want empty", n.runtimeError)
+	}
+	if n.currentBindFailed {
+		t.Fatal("receive error after desired network removal marked the bind failed")
+	}
+}
+
 func TestWireGuardUnexpectedReceiveErrorFromOldOpenIsIgnored(t *testing.T) {
 	dev := wgdevice.NewDevice(nil, nil, wgdevice.NopLogger{}, nil, wgdevice.DeviceOptions{})
 	t.Cleanup(dev.Close)

@@ -3,6 +3,7 @@ package dnse2etest
 import (
 	"strings"
 	"testing"
+	"time"
 
 	dnsnodes "github.com/asciimoth/almagest/lib/dns"
 	"github.com/asciimoth/almagest/lib/testkit"
@@ -112,18 +113,33 @@ func (e *DNSOps) SendRequest(client uint64) {
 // WaitResponse waits for a DNS query response status and content.
 func (e *DNSOps) WaitResponse(client uint64, status string, wantParts ...string) {
 	e.t().Helper()
-	testkit.Eventually(e.t(), func() bool {
-		if e.QueryStatus(client) != "Status: "+status || e.QueryResultField(client, "error") != "" {
-			return false
-		}
-		resp := e.QueryResultField(client, "response")
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		gotStatus := e.QueryStatus(client)
+		gotError := e.QueryResultField(client, "error")
+		response := e.QueryResultField(client, "response")
+		matches := gotStatus == "Status: "+status && gotError == ""
 		for _, want := range wantParts {
-			if !strings.Contains(resp, want) {
-				return false
-			}
+			matches = matches && strings.Contains(response, want)
 		}
-		return true
-	}, "DNS response %s containing %v", status, wantParts)
+		if matches {
+			break
+		}
+		// Link delivery can replace the query's detached resolver immediately
+		// after a button press. A DNS query is safe to repeat after that
+		// replacement, and a failure assertion uses WaitFailure instead.
+		if gotStatus == "Status: ready" ||
+			gotStatus == "Status: fail" && strings.Contains(gotError, "dns is not ready") {
+			e.SendRequest(client)
+		}
+		if time.Now().After(deadline) {
+			e.t().Fatalf(
+				"timed out waiting for DNS response %s containing %v; got status=%q error=%q response=%q",
+				status, wantParts, gotStatus, gotError, response,
+			)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 	e.AssertNodeLabel(client, status)
 }
 

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	dnsnodes "github.com/asciimoth/almagest/lib/dns"
+	httpnodes "github.com/asciimoth/almagest/lib/http"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
 	"github.com/asciimoth/gonnect"
@@ -193,13 +194,29 @@ func TestVTunSpooferE2EBlackholedIPv6FallsBackOnFirstRequest(t *testing.T) {
 	spooferOutLink := e.connectByPortName(out, "left", "Network", spoofer, "right", "Network")
 	e.connectTunByPortName(joiner, "left", "Default", vtun, "right", "Tun")
 	e.connectTunByPortName(spoofer, "left", "Tun", joiner, "right", "Tun")
-	e.connectByPortName(vtun, "left", "Network", client, "right", "Network")
+	clientNetworkLink := e.connectByPortName(vtun, "left", "Network", client, "right", "Network")
 
 	e.WaitNodeLabel(joiner, "joined default")
 	e.WaitNodeLabel(spoofer, "forwarding")
 	e.WaitNodeLabel(vtun, "dual-stack-vtun")
 	e.WaitNodeLabel(dnsServer, "listening "+net.JoinHostPort(vtunSpooferFallbackDNS, "53"))
 	e.waitServerListening(server, net.JoinHostPort(vtunSpooferFallbackIPv4, fmt.Sprint(serverPort)))
+	// Make the client input transition observable. Its initial ready state does
+	// not prove that the queued VTun payload has arrived.
+	e.Engine.RemoveLink(E2EWorkspace, clientNetworkLink)
+	e.LogFactory.Drain()
+	e.connectByPortName(vtun, "left", "Network", client, "right", "Network")
+	workerStarts := 0
+	Eventually(t, func() bool {
+		for _, entry := range e.LogFactory.Drain() {
+			if entry.Source.NodeID == client &&
+				entry.Source.NodeClass == httpnodes.NodeTypeHTTPClient &&
+				entry.Message == "worker started" {
+				workerStarts++
+			}
+		}
+		return workerStarts >= 2
+	}, "HTTP client receives the initial and requested VTun payloads")
 	e.WaitClientReady(client)
 
 	started := time.Now()

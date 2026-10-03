@@ -124,6 +124,8 @@ type xTorDriverNode struct {
 	outLink          uint64
 	outNetwork       nodekit.NetworkCloser
 	outboundRevision uint64
+	outboundLatched  bool
+	latchedRevision  uint64
 	attachMu         sync.Mutex
 
 	outputPorts map[string]uint64
