@@ -17,6 +17,7 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -33,17 +34,33 @@ const integrationTimeout = 45 * time.Second
 const commandMarkerEnvironment = "ALMAGEST_WINDOWS_DAEMON_COMMAND_MARKER"
 
 type windowsDaemon struct {
-	t         *testing.T
-	root      string
-	daemon    string
-	cli       string
-	pipe      string
-	endpoint  string
-	config    string
-	protected string
-	storage   string
-	command   *exec.Cmd
-	log       *os.File
+	t          *testing.T
+	root       string
+	daemon     string
+	cli        string
+	pipe       string
+	endpoint   string
+	config     string
+	protected  string
+	storage    string
+	command    *exec.Cmd
+	log        *os.File
+	temporary  bool
+	batchPorts map[int]int
+}
+
+var (
+	windowsBinaryBuildOnce sync.Once
+	windowsBinaryBuildDir  string
+	windowsBinaryBuildErr  error
+)
+
+func TestMain(m *testing.M) {
+	code := m.Run()
+	if windowsBinaryBuildDir != "" {
+		_ = os.RemoveAll(windowsBinaryBuildDir)
+	}
+	os.Exit(code)
 }
 
 func TestWindowsDaemonNativeAdminWorkflow(t *testing.T) {
@@ -416,10 +433,17 @@ func newWindowsDaemon(t *testing.T, root, pipe, config, protected string) *windo
 }
 
 func (d *windowsDaemon) commandForStart() *exec.Cmd {
-	command := exec.Command(d.daemon,
+	arguments := []string{
 		"--config", d.config, "--protected", d.protected,
-		"--file-storage", d.storage, "--pipe", `\\.\pipe\`+d.pipe,
-		"--web", "0", "--debug-nodes", "--lvl", "debug")
+		"--pipe", `\\.\pipe\` + d.pipe,
+		"--web", "0", "--debug-nodes", "--lvl", "debug",
+	}
+	if d.temporary {
+		arguments = append(arguments, "--tmp-file-storage")
+	} else {
+		arguments = append(arguments, "--file-storage", d.storage)
+	}
+	command := exec.Command(d.daemon, arguments...)
 	command.SysProcAttr = &syscall.SysProcAttr{CreationFlags: windows.CREATE_NEW_PROCESS_GROUP}
 	return command
 }
@@ -594,21 +618,34 @@ func startWindowsDaemonService(t *testing.T, daemon *windowsDaemon) func() {
 
 func buildWindowsBinaries(t *testing.T, target string) (string, string) {
 	t.Helper()
-	_, file, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("cannot find integration test source")
-	}
-	binRoot := filepath.Dir(filepath.Dir(file))
-	daemon := filepath.Join(target, "almagestd.exe")
-	cli := filepath.Join(target, "almagest-cli.exe")
-	for output, pkg := range map[string]string{daemon: "./almagestd", cli: "./almagest-cli"} {
-		command := exec.Command("go", "build", "-o", output, pkg)
-		command.Dir = binRoot
-		if data, err := command.CombinedOutput(); err != nil {
-			t.Fatalf("build production binary %s: %v\n%s", pkg, err, data)
+	_ = target
+	windowsBinaryBuildOnce.Do(func() {
+		_, file, _, ok := runtime.Caller(0)
+		if !ok {
+			windowsBinaryBuildErr = errors.New("cannot find integration test source")
+			return
 		}
+		binRoot := filepath.Dir(filepath.Dir(file))
+		windowsBinaryBuildDir, windowsBinaryBuildErr = os.MkdirTemp("", "almagest-winvm-bin-")
+		if windowsBinaryBuildErr != nil {
+			return
+		}
+		for output, pkg := range map[string]string{
+			filepath.Join(windowsBinaryBuildDir, "almagestd.exe"):    "./almagestd",
+			filepath.Join(windowsBinaryBuildDir, "almagest-cli.exe"): "./almagest-cli",
+		} {
+			command := exec.Command("go", "build", "-o", output, pkg)
+			command.Dir = binRoot
+			if data, err := command.CombinedOutput(); err != nil {
+				windowsBinaryBuildErr = fmt.Errorf("build production binary %s: %w\n%s", pkg, err, data)
+				return
+			}
+		}
+	})
+	if windowsBinaryBuildErr != nil {
+		t.Fatal(windowsBinaryBuildErr)
 	}
-	return daemon, cli
+	return filepath.Join(windowsBinaryBuildDir, "almagestd.exe"), filepath.Join(windowsBinaryBuildDir, "almagest-cli.exe")
 }
 
 func nativeProtectedConfig(pipe, prefix string) string {

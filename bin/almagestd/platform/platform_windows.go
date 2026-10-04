@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/asciimoth/almagest/bin/almagestd/args"
@@ -59,7 +60,7 @@ func SetupFS(storagePath string, tmp bool) (fs string, cleanup FSCleanup, err er
 			return "", nil, fmt.Errorf("temporary file storage setup: %w", err)
 		}
 		temporaryPath := fs
-		return fs, func() error { return os.RemoveAll(temporaryPath) }, nil
+		return fs, func() error { return cleanupWindowsTemporaryStorage(temporaryPath) }, nil
 	}
 	if storagePath == "" {
 		isService, serviceErr := windowsServiceStatus()
@@ -86,6 +87,23 @@ func SetupFS(storagePath string, tmp bool) (fs string, cleanup FSCleanup, err er
 		return "", nil, fmt.Errorf("file storage setup: %w", err)
 	}
 	return fs, cleanup, nil
+}
+
+func cleanupWindowsTemporaryStorage(storage string) error {
+	workingDirectory, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("get current directory before temporary storage cleanup: %w", err)
+	}
+	relative, err := filepath.Rel(storage, workingDirectory)
+	if err != nil {
+		return fmt.Errorf("compare current directory with temporary storage: %w", err)
+	}
+	if relative == "." || (relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))) {
+		if err := os.Chdir(filepath.Dir(storage)); err != nil {
+			return fmt.Errorf("leave temporary storage before cleanup: %w", err)
+		}
+	}
+	return os.RemoveAll(storage)
 }
 
 func TmpAdminUnixSocketPath() (string, error) {

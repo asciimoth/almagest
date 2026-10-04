@@ -1,14 +1,67 @@
 package main
 
 import (
+	"context"
 	"errors"
+	"io"
 	"net"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/asciimoth/gonnect/sysnet"
 	sysnetdebug "github.com/asciimoth/gonnect/sysnet/debug"
 )
+
+func TestBuildDebugIntegrationNativeOutNetworkReachesLocalNetwork(t *testing.T) {
+	cfg, err := ParseConfig([]byte(`{}`), []byte(`{
+		"System": {"Type": "debug", "Debug": {"NativeOutNetwork": true}}
+	}`))
+	if err != nil {
+		t.Fatalf("ParseConfig: %v", err)
+	}
+	system, err := BuildDebugIntegration(cfg)
+	if err != nil {
+		t.Fatalf("BuildDebugIntegration: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := system.Close(); err != nil {
+			t.Errorf("system close: %v", err)
+		}
+	})
+	if !system.OutNet().IsNative() {
+		t.Fatal("debug OutNet IsNative = false with NativeOutNetwork enabled")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	listener, err := system.LocalNet().Listen(ctx, "tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("LocalNet listen: %v", err)
+	}
+	defer listener.Close() //nolint:errcheck
+	accepted := make(chan error, 1)
+	go func() {
+		connection, acceptErr := listener.Accept()
+		if acceptErr == nil {
+			_, acceptErr = connection.Write([]byte("ok"))
+			_ = connection.Close()
+		}
+		accepted <- acceptErr
+	}()
+	connection, err := system.OutNet().Dial(ctx, "tcp4", listener.Addr().String())
+	if err != nil {
+		t.Fatalf("OutNet dial to LocalNet listener: %v", err)
+	}
+	response, err := io.ReadAll(connection)
+	_ = connection.Close()
+	if err != nil || string(response) != "ok" {
+		t.Fatalf("OutNet response = %q, %v; want ok", response, err)
+	}
+	if err := <-accepted; err != nil {
+		t.Fatalf("LocalNet accept: %v", err)
+	}
+}
 
 func TestBuildDebugIntegrationOptions(t *testing.T) {
 	cfg, err := ParseConfig([]byte(`{}`), []byte(`{
@@ -64,6 +117,9 @@ func TestBuildDebugIntegrationOptions(t *testing.T) {
 	}
 	if !debugSystem.LocalNet().IsNative() {
 		t.Fatal("debug LocalNet IsNative = false, want native local network")
+	}
+	if debugSystem.OutNet().IsNative() {
+		t.Fatal("debug OutNet IsNative = true without NativeOutNetwork")
 	}
 	if debugSystem.DefaultTunBuilder != nil {
 		t.Fatal("pipe debug DefaultTun builder configured custom builder")

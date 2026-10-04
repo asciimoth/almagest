@@ -254,6 +254,31 @@ func TestWindowsTemporaryStorageIsIdentityLocalAndRemoved(t *testing.T) {
 	}
 }
 
+func TestWindowsTemporaryStorageCleanupLeavesStorageWorkingDirectory(t *testing.T) {
+	localData := filepath.Join(t.TempDir(), "Local Data")
+	useWindowsKnownFolders(t, filepath.Join(t.TempDir(), "Program Data"), localData)
+	storage, cleanup, err := SetupFS("", true)
+	if err != nil {
+		t.Fatalf("SetupFS: %v", err)
+	}
+	nested := filepath.Join(storage, "nested")
+	if err := os.Mkdir(nested, 0o700); err != nil {
+		t.Fatalf("create nested storage directory: %v", err)
+	}
+	t.Chdir(nested)
+
+	if err := cleanup(); err != nil {
+		t.Fatalf("cleanup while storage is the working directory: %v", err)
+	}
+	if _, err := os.Stat(storage); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("temporary storage still exists after cleanup: %v", err)
+	}
+	wantWorkingDirectory := filepath.Dir(storage)
+	if workingDirectory, err := os.Getwd(); err != nil || workingDirectory != wantWorkingDirectory {
+		t.Fatalf("working directory after cleanup = %q, %v; want %q", workingDirectory, err, wantWorkingDirectory)
+	}
+}
+
 func TestWindowsExplicitStorageOverridesKnownFolders(t *testing.T) {
 	oldKnownFolder := windowsKnownFolderPath
 	oldServiceStatus := windowsServiceStatus

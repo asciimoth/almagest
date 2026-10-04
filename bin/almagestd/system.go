@@ -37,6 +37,7 @@ const (
 )
 
 type debugSystemConfig struct {
+	NativeOutNetwork              bool
 	DisableTun                    bool
 	DisableDefaultTun             bool
 	DisableDynTun                 bool
@@ -133,6 +134,9 @@ func BuildDebugIntegration(cfg *Config, randomSeed ...int64) (sysnet.System, err
 		DisableStrictMode:             debugCfg.DisableStrictMode,
 		DisableDefaultTunSourceRoutes: debugCfg.DisableDefaultTunSourceRoutes,
 		LocalNetwork:                  localNetwork,
+	}
+	if debugCfg.NativeOutNetwork {
+		system.OutNetwork = gonnect.NativeConfig{}.Build()
 	}
 	switch debugCfg.DefaultTun.Builder {
 	case "", debugDefaultTunBuilderVTunSocks:

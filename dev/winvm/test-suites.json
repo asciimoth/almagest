@@ -139,6 +139,37 @@
           ]
         },
         {
+          "id": "batch1::portable-hermetic-e2e",
+          "kind": "go",
+          "module": "bin",
+          "arguments": ["-tags=winintegration", "./integration", "-run", "^TestWindowsBatch1"],
+          "eventFile": "batch1-portable-hermetic-e2e.jsonl",
+          "requiredTests": [
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch1AdminStorageSurfaceValidation",
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch1AdminSubscriptionTrees",
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch1ConfigEditingAPI",
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch1DNSAdminExpiration",
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch1EngineSurfaceValidation",
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch1LibControlPlaneLifecycle",
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch1SnapshotsValidation",
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch1StorageAdminAPI",
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch1DNSGraphLifecycle",
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch1DNSTransportStackLifecycle",
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch1GraphHistoryRuntime",
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch1NetworkRemapperLifecycle",
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch1NetworkRouterMockHTTP",
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch1SelectMockSwitchHTTP",
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch1StaticDNSRecords",
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch1TunMiddlewareLifecycle",
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch1UDPLifecycle",
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch1WireGuardWGConfigLifecycle",
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch1LocalNestedWireGuard",
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch1LocalProxyMockHTTP",
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch1SocksChainNestedMockHTTP",
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch1WireGuardSocksLocal"
+          ]
+        },
+        {
           "id": "m8::daemon-user-named-pipe-cli-access",
           "kind": "go",
           "module": "bin",

@@ -631,6 +631,11 @@
       "type": "object",
       "description": "Options for the daemon debug sysnet integration. These options are read only when System.Type is debug.",
       "properties": {
+        "NativeOutNetwork": {
+          "type": "boolean",
+          "default": false,
+          "description": "Use the native operating-system network for OutNetwork nodes. This permits debug graphs to reach native LocalNet listeners without enabling native system integration."
+        },
         "DisableTun": {
           "type": "boolean",
           "default": false,
