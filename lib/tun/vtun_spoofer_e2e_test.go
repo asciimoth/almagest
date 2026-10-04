@@ -202,7 +202,10 @@ func TestVTunSpooferE2EBlackholedIPv6FallsBackOnFirstRequest(t *testing.T) {
 	e.WaitNodeLabel(dnsServer, "listening "+net.JoinHostPort(vtunSpooferFallbackDNS, "53"))
 	e.waitServerListening(server, net.JoinHostPort(vtunSpooferFallbackIPv4, fmt.Sprint(serverPort)))
 	// Make the client input transition observable. Its initial ready state does
-	// not prove that the queued VTun payload has arrived.
+	// not prove that a fresh VTun payload arrived after reconnection. The
+	// provider can emit an initial value and a requested value, but the initial
+	// wrapper can already be closed when the consumer handles it. Only the
+	// final fresh value must restart the client worker.
 	e.Engine.RemoveLink(E2EWorkspace, clientNetworkLink)
 	e.LogFactory.Drain()
 	e.connectByPortName(vtun, "left", "Network", client, "right", "Network")
@@ -215,8 +218,8 @@ func TestVTunSpooferE2EBlackholedIPv6FallsBackOnFirstRequest(t *testing.T) {
 				workerStarts++
 			}
 		}
-		return workerStarts >= 2
-	}, "HTTP client receives the initial and requested VTun payloads")
+		return workerStarts >= 1
+	}, "HTTP client receives a fresh VTun payload")
 	e.WaitClientReady(client)
 
 	started := time.Now()

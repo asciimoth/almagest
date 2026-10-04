@@ -38,8 +38,22 @@ type udpPingClientResult struct {
 }
 
 func runUDPPingServerWorker(ctx context.Context, logger pasta.Logger, w *pasta.Workspace, node uint64, stop <-chan struct{}, cfg udpPingConfig, netw NetworkCloser) {
-	conn, err := openUDPConn(ctx, netw, cfg)
+	openCtx, cancelOpen := context.WithCancel(ctx)
+	defer cancelOpen()
+	go func() {
+		select {
+		case <-stop:
+			cancelOpen()
+		case <-openCtx.Done():
+		}
+	}()
+
+	conn, err := openUDPConn(openCtx, netw, cfg)
 	if err != nil {
+		if stopped(stop) || openCtx.Err() != nil {
+			logger.Debug("udp server stopped while opening")
+			return
+		}
 		logger.Debugf("udp server open failed: %v", err)
 		sendUDPPingLog(w, node, formular.LogError, "open failed: "+err.Error())
 		return
