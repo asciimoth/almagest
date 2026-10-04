@@ -38,7 +38,9 @@
             "github.com/asciimoth/almagest/lib/http::TestHTTPServerThroughSocksClientE2E",
             "github.com/asciimoth/almagest/lib/http::TestHTTPServerThroughSocksClientRecoversFromRepeatedSocksListenerRestarts",
             "github.com/asciimoth/almagest/lib/http::TestHTTPServerThroughPlainSocksBindDoesNotStopBeforeFirstAccept",
+            "github.com/asciimoth/almagest/lib/socks::TestSocksgoEmptyDefaultHostPreservesWildcardFamily",
             "github.com/asciimoth/almagest/lib/links::TestTunFailureObserverDoesNotReturnUpAfterTerminalFailure",
+            "github.com/asciimoth/almagest/lib/wireguard::TestWireGuardE2EOverSocksSymmetricGost",
             "github.com/asciimoth/almagest/lib/experimental::TestXTorDriverWindowsBestEffortWarnsWithoutContainment"
           ]
         },
@@ -210,10 +212,26 @@
           "id": "m7::outnet-localnet-wireguard-graph",
           "kind": "go",
           "module": "bin",
-          "arguments": ["./almagestd/platform", "-run", "^TestWindowsGraphOutNetLocalNetAndWireGuardWithDefaultTun$"],
+          "arguments": ["./almagestd/platform", "-run", "^TestWindows(Graph(OutNetLocalNetAndWireGuardWithDefaultTun|WireGuardSymmetricGostOverOutNetLoopback)|OutNetFixedWildcardUDPThroughSocksRelayAPI)$"],
           "eventFile": "m7-outnet-localnet-wireguard-graph.jsonl",
           "requiredTests": [
-            "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsGraphOutNetLocalNetAndWireGuardWithDefaultTun"
+            "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsGraphOutNetLocalNetAndWireGuardWithDefaultTun",
+            "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsGraphWireGuardSymmetricGostOverOutNetLoopback",
+            "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsOutNetFixedWildcardUDPThroughSocksRelayAPI"
+          ]
+        },
+        {
+          "id": "m7::sysnet-outnet-loopback-regressions",
+          "kind": "go",
+          "module": "bin",
+          "arguments": ["-tags=winintegration", "github.com/asciimoth/sysnet-windows/integration", "-run", "^TestNativeOutNet(WildcardUDPExchangesWithLoopback|WildcardUDPPortContract|DirectUDPLoopback|WildcardUDPExternalUsesSelectedUnderlay|ListenPacketUDPContract)$"],
+          "eventFile": "m7-sysnet-outnet-loopback-regressions.jsonl",
+          "requiredTests": [
+            "github.com/asciimoth/sysnet-windows/integration::TestNativeOutNetWildcardUDPExchangesWithLoopback",
+            "github.com/asciimoth/sysnet-windows/integration::TestNativeOutNetWildcardUDPPortContract",
+            "github.com/asciimoth/sysnet-windows/integration::TestNativeOutNetDirectUDPLoopback",
+            "github.com/asciimoth/sysnet-windows/integration::TestNativeOutNetWildcardUDPExternalUsesSelectedUnderlay",
+            "github.com/asciimoth/sysnet-windows/integration::TestNativeOutNetListenPacketUDPContract"
           ]
         },
         {

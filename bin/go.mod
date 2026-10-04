@@ -13,8 +13,9 @@ require (
 	github.com/asciimoth/gonnect v0.56.0
 	github.com/asciimoth/gonnect-netstack v0.9.1
 	github.com/asciimoth/pasta/pasta v0.10.0
-	github.com/asciimoth/socksgo v0.4.20
+	github.com/asciimoth/socksgo v0.5.0
 	github.com/asciimoth/sysnet-linux v0.8.1
+	github.com/asciimoth/sysnet-windows v0.4.0
 	github.com/coder/websocket v1.8.14
 	github.com/joho/godotenv v1.5.1
 	github.com/kataras/golog v0.1.15
@@ -27,7 +28,7 @@ require (
 
 require (
 	github.com/BurntSushi/toml v1.6.0 // indirect
-	github.com/asciimoth/mullvad-split-tunnel-go v0.0.0-20260926123106-f5db35e093d7 // indirect
+	github.com/asciimoth/mullvad-split-tunnel-go v0.1.0 // indirect
 	github.com/tailscale/wf v0.0.0-20240214030419-6fbb0a674ee6 // indirect
 	go4.org/netipx v0.0.0-20220725152314-7e7bdc8411bf // indirect
 	golang.org/x/exp/typeparams v0.0.0-20260209203927-2842357ff358 // indirect
@@ -42,10 +43,9 @@ require (
 	github.com/asciimoth/p-mark v0.4.0 // indirect
 	github.com/asciimoth/persist v0.2.0 // indirect
 	github.com/asciimoth/putback v0.3.0 // indirect
-	github.com/asciimoth/sysnet-windows v0.1.1-0.20260930092946-a056c520f0fa
 	github.com/asciimoth/tor-driver v0.1.2 // indirect
 	github.com/asciimoth/tuntap v0.4.4 // indirect
-	github.com/asciimoth/wgo v0.7.15 // indirect
+	github.com/asciimoth/wgo v0.7.15
 	github.com/asciimoth/wgo-tailscale v0.4.1 // indirect
 	github.com/cilium/ebpf v0.22.0 // indirect
 	github.com/godbus/dbus/v5 v5.2.2 // indirect

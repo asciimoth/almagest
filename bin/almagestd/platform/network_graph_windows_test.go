@@ -15,9 +15,12 @@ import (
 	"time"
 
 	almagest "github.com/asciimoth/almagest/lib"
+	debugnodes "github.com/asciimoth/almagest/lib/debug"
 	dnsnodes "github.com/asciimoth/almagest/lib/dns"
+	httpnodes "github.com/asciimoth/almagest/lib/http"
 	"github.com/asciimoth/almagest/lib/links"
 	"github.com/asciimoth/almagest/lib/logging"
+	networknodes "github.com/asciimoth/almagest/lib/network"
 	"github.com/asciimoth/almagest/lib/nodekit"
 	socksnodes "github.com/asciimoth/almagest/lib/socks"
 	"github.com/asciimoth/almagest/lib/storage"
@@ -29,6 +32,8 @@ import (
 	"github.com/asciimoth/gonnect/dns"
 	"github.com/asciimoth/gonnect/sysnet"
 	"github.com/asciimoth/pasta/pasta"
+	"github.com/asciimoth/socksgo/protocol"
+	wgdevice "github.com/asciimoth/wgo/device"
 	"golang.org/x/sys/windows"
 )
 
@@ -65,6 +70,7 @@ func TestWindowsGraphOutNetLocalNetAndWireGuardWithDefaultTun(t *testing.T) {
 	} {
 		testWindowsGraphTCP(t, "OutNet", network, family.tcp, family.wildcard)
 		testWindowsGraphUDP(t, "OutNet", network, family.udp, family.wildcard)
+		testWindowsGraphWildcardUDPLoopback(t, network, family.udp, family.wildcard)
 		testWindowsGraphTCP(t, "LocalNet", system.LocalNet(), family.tcp, family.wildcard)
 		testWindowsGraphUDP(t, "LocalNet", system.LocalNet(), family.udp, family.wildcard)
 	}
@@ -113,6 +119,191 @@ func TestWindowsGraphOutNetLocalNetAndWireGuardWithDefaultTun(t *testing.T) {
 	waitWindowsGraphNodeLabel(t, engine, wg, "up")
 	if snapshot, ok := engine.NodeSnapshot(almagest.MainWorkspace, defaultTun); !ok || snapshot.Label != "ready" {
 		t.Fatalf("DefaultTun state while WireGuard uses OutNet = %#v, want ready", snapshot)
+	}
+}
+
+func TestWindowsGraphWireGuardSymmetricGostOverOutNetLoopback(t *testing.T) {
+	engine, _, _, logf := newWindowsDebugNetworkGraphEngine(t)
+	menus := newWindowsGraphMenuRecorder(t, engine)
+	const (
+		clientAddress = "10.198.10.1"
+		serverAddress = "10.198.20.1"
+		httpPort      = 28080
+		udpPort       = 26120
+		udpPayload    = "nested-wireguard-udp-ping"
+	)
+	socksPort := reserveWindowsLoopbackPort(t)
+	clientWireGuardPort := reserveWindowsLoopbackUDPPort(t)
+	serverWireGuardPort := reserveWindowsLoopbackUDPPort(t)
+	for serverWireGuardPort == clientWireGuardPort {
+		serverWireGuardPort = reserveWindowsLoopbackUDPPort(t)
+	}
+
+	mock := addWindowsGraphNode(t, engine, networknodes.NodeTypeMockNetwork, "SOCKS transport")
+	out := addWindowsGraphNode(t, engine, networknodes.NodeTypeOutNetwork, "SOCKS proxy OutNet")
+	socksServer := addWindowsGraphNode(t, engine, socksnodes.NodeTypeSocksServer, "SOCKS server")
+	clientSocks := addWindowsGraphNode(t, engine, socksnodes.NodeTypeSocksClient, "client SOCKS")
+	serverSocks := addWindowsGraphNode(t, engine, socksnodes.NodeTypeSocksClient, "server SOCKS")
+	clientWireGuard := addWindowsGraphNode(t, engine, wireguardnodes.NodeTypeWireGuard, "client WireGuard")
+	serverWireGuard := addWindowsGraphNode(t, engine, wireguardnodes.NodeTypeWireGuard, "server WireGuard")
+	clientVTun := addWindowsGraphNode(t, engine, tunnodes.NodeTypeVTun, "client VTun")
+	serverVTun := addWindowsGraphNode(t, engine, tunnodes.NodeTypeVTun, "server VTun")
+	httpServer := addWindowsGraphNode(t, engine, httpnodes.NodeTypeHTTPServer, "HTTP server")
+	httpClient := addWindowsGraphNode(t, engine, httpnodes.NodeTypeHTTPClient, "HTTP client")
+	udpServer := addWindowsGraphNode(t, engine, debugnodes.NodeTypeUDPPingServer, "UDP ping server")
+	udpClient := addWindowsGraphNode(t, engine, debugnodes.NodeTypeUDPPingClient, "UDP ping client")
+	for _, node := range []uint64{socksServer, clientWireGuard, serverWireGuard, httpServer, httpClient, udpServer, udpClient} {
+		engine.SubscribeNodeMenu(almagest.MainWorkspace, node, menus.subscription)
+	}
+
+	applyWindowsGraphForm(engine, socksServer, "config", map[string]any{
+		"socksHost": "127.0.0.1", "socksPort": socksPort,
+		"wsHost": "", "wsPort": 0, "wsPath": "/socks", "cmdGostUDPTun": true,
+	})
+	proxyURL := fmt.Sprintf("socks5://127.0.0.1:%d?gost", socksPort)
+	for _, node := range []uint64{clientSocks, serverSocks} {
+		engine.SendNodeFormularMsg(almagest.MainWorkspace, node, formular.FieldUpdateMessage{
+			MessageBase: formular.MessageBase{Type: formular.MessageFieldUpdate, MenuID: pasta.NodeMenuID(node)},
+			Field:       formular.FieldRef{BlockID: "config", FieldID: "proxyURL"},
+			Value:       proxyURL,
+		})
+	}
+	applyWindowsGraphVTun(engine, clientVTun, "windows-socks-client-vtun", "")
+	applyWindowsGraphVTun(engine, serverVTun, "windows-socks-server-vtun", "")
+	clientSecret, clientPublic := windowsGraphWireGuardKey(t, engine, clientWireGuard)
+	serverSecret, serverPublic := windowsGraphWireGuardKey(t, engine, serverWireGuard)
+	applyWindowsGraphWireGuard(engine, clientWireGuard, clientSecret, clientWireGuardPort, clientAddress+"/24", []formular.ArrayElementValue{{
+		ID: "server", Template: "peer", Values: map[string]any{
+			"publicKey": serverPublic, "endpoint": fmt.Sprintf("127.0.0.1:%d", serverWireGuardPort),
+			"allowedIPs": serverAddress + "/32", "persistentKeepaliveInterval": 1,
+		},
+	}})
+	applyWindowsGraphWireGuard(engine, serverWireGuard, serverSecret, serverWireGuardPort, serverAddress+"/24", []formular.ArrayElementValue{{
+		ID: "client", Template: "peer", Values: map[string]any{
+			"publicKey": clientPublic, "endpoint": fmt.Sprintf("127.0.0.1:%d", clientWireGuardPort),
+			"allowedIPs": clientAddress + "/32", "persistentKeepaliveInterval": 1,
+		},
+	}})
+	applyWindowsGraphForm(engine, httpServer, "listen", map[string]any{"host": serverAddress, "port": httpPort})
+	engine.SendNodeFormularMsg(almagest.MainWorkspace, httpClient, formular.FieldUpdateMessage{
+		MessageBase: formular.MessageBase{Type: formular.MessageFieldUpdate, MenuID: pasta.NodeMenuID(httpClient)},
+		Field:       formular.FieldRef{BlockID: "request", FieldID: "url"},
+		Value:       fmt.Sprintf("http://%s:%d/", serverAddress, httpPort),
+	})
+	applyWindowsGraphForm(engine, udpServer, "config", map[string]any{
+		"network": "udp4", "socket_mode": "listen",
+		"local_host": serverAddress, "local_port": udpPort,
+		"remote_host": clientAddress, "remote_port": 0,
+	})
+	applyWindowsGraphForm(engine, udpClient, "config", map[string]any{
+		"network": "udp4", "socket_mode": "dial",
+		"local_host": clientAddress, "local_port": 0,
+		"remote_host": serverAddress, "remote_port": udpPort,
+		"payload": udpPayload, "timeout_ms": 1000,
+	})
+
+	// Keep the SOCKS control path on the mock network. Only proxy operations
+	// use OutNet. This is the route that exercises wildcard UDP writes to the
+	// loopback WireGuard endpoints.
+	linkWindowsGraphPorts(t, engine, mock, "left", "Network", clientSocks, "right", "out")
+	linkWindowsGraphPorts(t, engine, mock, "left", "Network", serverSocks, "right", "out")
+	linkWindowsGraphPorts(t, engine, mock, "left", "Network", socksServer, "right", "listen")
+	linkWindowsGraphPorts(t, engine, out, "left", "Network", socksServer, "right", "proxy")
+	linkWindowsGraphPorts(t, engine, clientSocks, "left", "Network", clientWireGuard, "right", "Network")
+	linkWindowsGraphPorts(t, engine, serverSocks, "left", "Network", serverWireGuard, "right", "Network")
+	linkWindowsGraphPorts(t, engine, clientVTun, "right", "Tun", clientWireGuard, "left", "Tun")
+	linkWindowsGraphPorts(t, engine, serverVTun, "right", "Tun", serverWireGuard, "left", "Tun")
+	linkWindowsGraphPorts(t, engine, clientVTun, "left", "Network", httpClient, "right", "Network")
+	linkWindowsGraphPorts(t, engine, serverVTun, "left", "Network", httpServer, "right", "Network")
+	linkWindowsGraphPorts(t, engine, clientVTun, "left", "Network", udpClient, "right", "Network")
+	linkWindowsGraphPorts(t, engine, serverVTun, "left", "Network", udpServer, "right", "Network")
+
+	waitWindowsGraphMenuLog(t, menus, socksServer, "socks listening on "+net.JoinHostPort("127.0.0.1", fmt.Sprint(socksPort)))
+	waitWindowsGraphMenuLog(t, menus, httpServer, "listening on "+net.JoinHostPort(serverAddress, fmt.Sprint(httpPort)))
+	waitWindowsGraphNodeLabel(t, engine, clientWireGuard, "up")
+	waitWindowsGraphNodeLabel(t, engine, serverWireGuard, "up")
+	waitWindowsGraphNodeLabel(t, engine, clientVTun, "windows-socks-client-vtun")
+	waitWindowsGraphNodeLabel(t, engine, serverVTun, "windows-socks-server-vtun")
+	waitWindowsGraphHTTPResponse(t, engine, menus, logf, httpClient, clientWireGuard, serverWireGuard, "Debug http server response")
+	waitWindowsGraphMenuLog(t, menus, udpServer, "listening on "+net.JoinHostPort(serverAddress, fmt.Sprint(udpPort)))
+	waitWindowsGraphUDPPingResponse(t, engine, menus, udpClient, "pong:"+udpPayload)
+
+	// A successful request proves the tunnel transported data. Keep it active
+	// briefly and reject the former steady retry signatures as well.
+	time.Sleep(500 * time.Millisecond)
+	for _, entry := range logf.Drain() {
+		message := strings.ToLower(entry.Message)
+		fromTunnel := entry.Source.NodeClass == wireguardnodes.NodeTypeWireGuard ||
+			entry.Source.NodeClass == socksnodes.NodeTypeSocksServer
+		if fromTunnel && (strings.Contains(message, "invalid argument") ||
+			strings.Contains(message, "only one usage") || strings.Contains(message, "eof")) {
+			t.Fatalf("unexpected WireGuard-over-SOCKS retry log from %s: %s", entry.Source.NodeClass, entry.Message)
+		}
+	}
+}
+
+func TestWindowsOutNetFixedWildcardUDPThroughSocksRelayAPI(t *testing.T) {
+	_, system, _, _ := newWindowsNetworkGraphEngine(t)
+	t.Run("raw OutNet", func(t *testing.T) {
+		testWindowsOutNetFixedWildcardUDPPair(t, system.OutNet(), system.OutNet())
+	})
+	t.Run("detached OutNet", func(t *testing.T) {
+		leftNetwork := gonnect.DetachNetwork(system.OutNet(), nil, nil)
+		rightNetwork := gonnect.DetachNetwork(system.OutNet(), nil, nil)
+		t.Cleanup(func() {
+			_ = leftNetwork.Close()
+			_ = rightNetwork.Close()
+		})
+		testWindowsOutNetFixedWildcardUDPPair(t, leftNetwork, rightNetwork)
+	})
+}
+
+func testWindowsOutNetFixedWildcardUDPPair(t *testing.T, leftNetwork, rightNetwork gonnect.Network) {
+	t.Helper()
+	leftPort := reserveWindowsWildcardUDPPort(t, "udp4", "0.0.0.0:0")
+	rightPort := reserveWindowsWildcardUDPPort(t, "udp4", "0.0.0.0:0")
+	for rightPort == leftPort {
+		rightPort = reserveWindowsWildcardUDPPort(t, "udp4", "0.0.0.0:0")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	left, err := leftNetwork.ListenPacket(ctx, "udp4", net.JoinHostPort("0.0.0.0", fmt.Sprint(leftPort)))
+	if err != nil {
+		t.Fatalf("left fixed wildcard ListenPacket: %v", err)
+	}
+	defer left.Close() //nolint:errcheck
+	right, err := rightNetwork.ListenPacket(ctx, "udp4", net.JoinHostPort("0.0.0.0", fmt.Sprint(rightPort)))
+	if err != nil {
+		t.Fatalf("right fixed wildcard ListenPacket: %v", err)
+	}
+	defer right.Close() //nolint:errcheck
+
+	for _, exchange := range []struct {
+		name        string
+		sender      gonnect.PacketConn
+		receiver    gonnect.PacketConn
+		destination int
+	}{
+		{name: "left to right", sender: left, receiver: right, destination: rightPort},
+		{name: "right to left", sender: right, receiver: left, destination: leftPort},
+	} {
+		t.Run(exchange.name, func(t *testing.T) {
+			payload := []byte(exchange.name)
+			destination := protocol.AddrFromHostPort(
+				net.JoinHostPort("127.0.0.1", fmt.Sprint(exchange.destination)), "udp4",
+			)
+			if err := protocol.WriteToAddrUDP(exchange.sender, destination, payload); err != nil {
+				t.Fatalf("SOCKS relay WriteToAddrUDP: %v", err)
+			}
+			if err := exchange.receiver.SetReadDeadline(time.Now().Add(10 * time.Second)); err != nil {
+				t.Fatal(err)
+			}
+			buffer := make([]byte, 64)
+			n, source, err := exchange.receiver.ReadFrom(buffer)
+			if err != nil || string(buffer[:n]) != string(payload) {
+				t.Fatalf("fixed wildcard read = %q from %v, %v", buffer[:n], source, err)
+			}
+		})
 	}
 }
 
@@ -262,6 +453,230 @@ func testWindowsGraphUDP(t *testing.T, name string, network gonnect.Network, fam
 	}
 }
 
+func testWindowsGraphWildcardUDPLoopback(t *testing.T, network gonnect.Network, family, wildcard string) {
+	t.Helper()
+	loopback := netip.MustParseAddr("127.0.0.1")
+	if family == "udp6" {
+		loopback = netip.IPv6Loopback()
+	}
+	requestedAddress, err := net.ResolveUDPAddr(family, wildcard)
+	if err != nil {
+		t.Fatalf("resolve wildcard UDP address %q: %v", wildcard, err)
+	}
+	reservation, err := net.ListenUDP(family, requestedAddress)
+	if err != nil {
+		t.Fatalf("reserve wildcard UDP port(%s): %v", family, err)
+	}
+	requestedPort := reservation.LocalAddr().(*net.UDPAddr).Port
+	if err = reservation.Close(); err != nil {
+		t.Fatalf("release wildcard UDP port(%s): %v", family, err)
+	}
+	requestedAddress.Port = requestedPort
+	receiver, err := net.ListenUDP(family, net.UDPAddrFromAddrPort(netip.AddrPortFrom(loopback, 0)))
+	if err != nil {
+		t.Fatalf("native loopback ListenUDP(%s): %v", family, err)
+	}
+	defer receiver.Close() //nolint:errcheck
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	connection, err := network.ListenUDP(ctx, family, requestedAddress.String())
+	if err != nil {
+		t.Fatalf("OutNet wildcard ListenUDP(%s, %s): %v", family, requestedAddress, err)
+	}
+	defer connection.Close() //nolint:errcheck
+	logicalPort := connection.LocalAddr().(*net.UDPAddr).Port
+	if logicalPort != requestedPort {
+		t.Fatalf("OutNet wildcard listen port(%s) = %d, want requested port %d", family, logicalPort, requestedPort)
+	}
+	destination := receiver.LocalAddr().(*net.UDPAddr).AddrPort()
+	if _, err = connection.WriteToUDPAddrPort([]byte("loop"), destination); err != nil {
+		t.Fatalf("OutNet wildcard loopback write(%s): %v", family, err)
+	}
+	_ = receiver.SetReadDeadline(time.Now().Add(10 * time.Second))
+	buffer := make([]byte, 8)
+	n, source, err := receiver.ReadFromUDPAddrPort(buffer)
+	if err != nil || string(buffer[:n]) != "loop" {
+		t.Fatalf("native loopback read(%s) = %q from %s, %v", family, buffer[:n], source, err)
+	}
+	if int(source.Port()) != logicalPort {
+		t.Fatalf("OutNet loopback source port(%s) = %d, want logical port %d", family, source.Port(), logicalPort)
+	}
+	if _, err = receiver.WriteToUDPAddrPort([]byte("reply"), source); err != nil {
+		t.Fatalf("native loopback reply(%s): %v", family, err)
+	}
+	_ = connection.SetReadDeadline(time.Now().Add(10 * time.Second))
+	n, replySource, err := connection.ReadFromUDPAddrPort(buffer)
+	if err != nil || string(buffer[:n]) != "reply" || replySource != destination {
+		t.Fatalf("OutNet loopback reply read(%s) = %q from %s, %v; want source %s", family, buffer[:n], replySource, err, destination)
+	}
+}
+
+func applyWindowsGraphVTun(engine almagest.Engine, node uint64, name, localAddress string) {
+	applyWindowsGraphForm(engine, node, "config", map[string]any{
+		"name": name, "localAddrs": localAddress, "dnsServers": "", "mtu": 1500,
+		"endpointCh": 1024, "eventCh": 10, "noLoopbackAddr": false, "disableSACK": false,
+	})
+}
+
+func windowsGraphWireGuardKey(t *testing.T, engine almagest.Engine, node uint64) (string, string) {
+	t.Helper()
+	privateKey, err := wgdevice.GeneratePrivateKey()
+	if err != nil {
+		t.Fatalf("generate WireGuard key: %v", err)
+	}
+	snapshot, ok := engine.NodeSnapshot(almagest.MainWorkspace, node)
+	if !ok {
+		t.Fatalf("WireGuard node %d snapshot missing", node)
+	}
+	secret, err := engine.SecretsStorage().NewSecret(storage.Secret{Value: privateKey.Base64()}, snapshot.Name)
+	if err != nil {
+		t.Fatalf("store WireGuard private key: %v", err)
+	}
+	return secret, privateKey.PublicKey().Base64()
+}
+
+func applyWindowsGraphWireGuard(engine almagest.Engine, node uint64, privateKeySecret string, listenPort int, ownedIPs string, peers []formular.ArrayElementValue) {
+	applyWindowsGraphForm(engine, node, "config", map[string]any{
+		"privateKeySecret": privateKeySecret, "listenPort": listenPort, "ownedIPs": ownedIPs,
+	})
+	applyWindowsGraphForm(engine, node, "peers", map[string]any{"peers": peers})
+}
+
+func waitWindowsGraphHTTPResponse(t *testing.T, engine almagest.Engine, menus *windowsGraphMenuRecorder, logf *logging.DebugLogFactory, client, clientWireGuard, serverWireGuard uint64, want string) {
+	t.Helper()
+	deadline := time.Now().Add(45 * time.Second)
+	var status, response, requestError string
+	for time.Now().Before(deadline) {
+		status, response, requestError, _ = menus.httpClientResult(client)
+		snapshot, _ := engine.NodeSnapshot(almagest.MainWorkspace, client)
+		if status == "Status: 200 OK" && response == want && requestError == "" && snapshot.Label == "200 OK" {
+			return
+		}
+		if status != "Status: running..." {
+			engine.SendNodeFormularMsg(almagest.MainWorkspace, client, formular.ButtonPressMessage{
+				MessageBase: formular.MessageBase{Type: formular.MessageButtonPress, MenuID: pasta.NodeMenuID(client)},
+				BlockID:     "request", ButtonID: "send",
+			})
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	for _, entry := range logf.Drain() {
+		if entry.Source.NodeClass == wireguardnodes.NodeTypeWireGuard || entry.Source.NodeClass == socksnodes.NodeTypeSocksServer {
+			t.Logf("%s[%d] %s: %s", entry.Source.NodeClass, entry.Source.NodeID, entry.Level, entry.Message)
+		}
+	}
+	t.Fatalf(
+		"HTTP request through WireGuard over SOCKS failed: status=%q response=%q error=%q clientWG=%v serverWG=%v",
+		status, response, requestError, menus.blockValues(clientWireGuard, "status"), menus.blockValues(serverWireGuard, "status"),
+	)
+}
+
+func waitWindowsGraphUDPPingResponse(t *testing.T, engine almagest.Engine, menus *windowsGraphMenuRecorder, client uint64, want string) {
+	t.Helper()
+	deadline := time.Now().Add(45 * time.Second)
+	var status, response, requestError string
+	for time.Now().Before(deadline) {
+		result := menus.blockValues(client, "result")
+		status, _ = result["statusText"].(string)
+		response, _ = result["response"].(string)
+		requestError, _ = result["error"].(string)
+		snapshot, _ := engine.NodeSnapshot(almagest.MainWorkspace, client)
+		if status == "Status: ok" && response == want && requestError == "" && snapshot.Label == "ok" {
+			return
+		}
+		if status != "Status: running..." {
+			engine.SendNodeFormularMsg(almagest.MainWorkspace, client, formular.ButtonPressMessage{
+				MessageBase: formular.MessageBase{Type: formular.MessageButtonPress, MenuID: pasta.NodeMenuID(client)},
+				BlockID:     "config", ButtonID: "send",
+			})
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatalf("UDP ping through WireGuard over SOCKS failed: status=%q response=%q error=%q", status, response, requestError)
+}
+
+func waitWindowsGraphMenuLog(t *testing.T, menus *windowsGraphMenuRecorder, node uint64, want string) {
+	t.Helper()
+	deadline := time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) {
+		if menus.logContains(node, want) {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("node %d log did not contain %q", node, want)
+}
+
+func (r *windowsGraphMenuRecorder) httpClientResult(node uint64) (string, string, string, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	menu, ok := r.state.Snapshot(pasta.NodeMenuID(node))
+	if !ok {
+		return "", "", "", false
+	}
+	var status, response, requestError string
+	for _, block := range menu.Blocks {
+		if block.ID != "result" {
+			continue
+		}
+		for _, item := range block.Items {
+			switch item.ID {
+			case "status":
+				status = item.Text
+			case "response":
+				response, _ = formular.StringValue(item.Value)
+			case "error":
+				requestError, _ = formular.StringValue(item.Value)
+			}
+		}
+		return status, response, requestError, true
+	}
+	return "", "", "", false
+}
+
+func (r *windowsGraphMenuRecorder) logContains(node uint64, want string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	menu, ok := r.state.Snapshot(pasta.NodeMenuID(node))
+	if !ok {
+		return false
+	}
+	for _, block := range menu.Blocks {
+		for _, item := range block.Items {
+			for _, line := range item.Logs {
+				if strings.Contains(line.Text, want) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+func (r *windowsGraphMenuRecorder) blockValues(node uint64, blockID string) map[string]any {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	values := map[string]any{}
+	menu, ok := r.state.Snapshot(pasta.NodeMenuID(node))
+	if !ok {
+		return values
+	}
+	for _, block := range menu.Blocks {
+		if block.ID != blockID {
+			continue
+		}
+		for _, item := range block.Items {
+			if item.Field != nil {
+				values[item.ID] = item.Value
+			}
+			if item.Text != "" {
+				values[item.ID+"Text"] = item.Text
+			}
+		}
+	}
+	return values
+}
+
 func waitWindowsGraphTCPConnect(t *testing.T, network gonnect.Network, family, address string) {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
@@ -286,6 +701,34 @@ func reserveWindowsLoopbackPort(t *testing.T) int {
 	}
 	port := listener.Addr().(*net.TCPAddr).Port
 	_ = listener.Close()
+	return port
+}
+
+func reserveWindowsLoopbackUDPPort(t *testing.T) int {
+	t.Helper()
+	listener, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	if err != nil {
+		t.Fatalf("reserve loopback UDP port: %v", err)
+	}
+	port := listener.LocalAddr().(*net.UDPAddr).Port
+	_ = listener.Close()
+	return port
+}
+
+func reserveWindowsWildcardUDPPort(t *testing.T, network, address string) int {
+	t.Helper()
+	resolved, err := net.ResolveUDPAddr(network, address)
+	if err != nil {
+		t.Fatalf("resolve wildcard UDP address: %v", err)
+	}
+	listener, err := net.ListenUDP(network, resolved)
+	if err != nil {
+		t.Fatalf("reserve wildcard UDP port: %v", err)
+	}
+	port := listener.LocalAddr().(*net.UDPAddr).Port
+	if err = listener.Close(); err != nil {
+		t.Fatalf("release wildcard UDP port: %v", err)
+	}
 	return port
 }
 
@@ -439,6 +882,14 @@ func (n *windowsTunConfigSenderNode) OnLinkAdd(link, port uint64, _, _ string) e
 }
 
 func newWindowsNetworkGraphEngine(t *testing.T, extra ...pasta.NodeClass) (almagest.Engine, sysnet.System, *windowsNetworkReceiverClass, *logging.DebugLogFactory) {
+	return newWindowsNetworkGraphEngineWithDebug(t, false, extra...)
+}
+
+func newWindowsDebugNetworkGraphEngine(t *testing.T, extra ...pasta.NodeClass) (almagest.Engine, sysnet.System, *windowsNetworkReceiverClass, *logging.DebugLogFactory) {
+	return newWindowsNetworkGraphEngineWithDebug(t, true, extra...)
+}
+
+func newWindowsNetworkGraphEngineWithDebug(t *testing.T, debug bool, extra ...pasta.NodeClass) (almagest.Engine, sysnet.System, *windowsNetworkReceiverClass, *logging.DebugLogFactory) {
 	t.Helper()
 	if !windows.GetCurrentProcessToken().IsElevated() {
 		t.Skip("native Windows network graph tests require an elevated identity")
@@ -453,7 +904,7 @@ func newWindowsNetworkGraphEngine(t *testing.T, extra ...pasta.NodeClass) (almag
 	engine, err := almagest.BuildEngine(
 		context.Background(), configer.NewMemory(nil), logf, system,
 		nil, nil, &windowsGraphSecrets{values: map[string]storage.Secret{}}, nil,
-		classes, nil, false,
+		classes, nil, debug,
 	)
 	if err != nil {
 		_ = system.Close()

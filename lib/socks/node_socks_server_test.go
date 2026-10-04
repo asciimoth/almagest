@@ -19,6 +19,33 @@ import (
 	"github.com/asciimoth/almagest/lib/testkit"
 )
 
+func TestSocksgoEmptyDefaultHostPreservesWildcardFamily(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name, network, address, want string
+	}{
+		{name: "UDP IPv4", network: "udp4", address: "0.0.0.0:25120", want: "0.0.0.0:25120"},
+		{name: "UDP IPv6", network: "udp6", address: "[::]:25120", want: "[::]:25120"},
+		{name: "TCP IPv4", network: "tcp4", address: "0.0.0.0:25120", want: "0.0.0.0:25120"},
+		{name: "TCP IPv6", network: "tcp6", address: "[::]:25120", want: "[::]:25120"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			before := protocol.AddrFromHostPort(test.address, test.network)
+			after := before.WithDefaultHost("")
+			if after.Type != before.Type {
+				t.Fatalf("address type = %v, want preserved type %v", after.Type, before.Type)
+			}
+			if got := after.Network(); got != test.network {
+				t.Fatalf("network = %q, want %q", got, test.network)
+			}
+			if got := after.ToHostPort(); got != test.want {
+				t.Fatalf("address = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
 func TestBuildSocksGoServerRoutesClientAndProxyNetworks(t *testing.T) {
 	listenCalls := make([]string, 0, 1)
 	proxyCalls := make([]string, 0, 5)

@@ -704,8 +704,7 @@ func setupWireGuardSymmetricOverSocksE2E(t *testing.T) wireGuardE2EFixture {
 	serverPrivate, serverPublic := wireGuardTestKeyPair(t, 73)
 
 	f.mock = e.AddNode(NodeTypeMockNetwork, names.mock)
-	clientOut := e.AddNode(NodeTypeOutNetwork, "symmetric-socks-client-out")
-	listenOut := e.AddNode(NodeTypeOutNetwork, "symmetric-socks-listen-out")
+	proxyOut := e.AddNode(NodeTypeOutNetwork, "symmetric-socks-proxy-out")
 	socksURL := fmt.Sprintf("socks5://127.0.0.1:%d?gost", socksPort)
 	url := e.addStringConstant("symmetric-socks-url", socksURL)
 	clientSocks := e.AddNode(NodeTypeSocksClient, "wireguard-client-socks")
@@ -741,8 +740,8 @@ func setupWireGuardSymmetricOverSocksE2E(t *testing.T) wireGuardE2EFixture {
 	e.MustAddTypedLinkByPortName(std.TypeString, url, "right", "output", serverSocks, "left", "Proxy URL")
 	f.clientWGTunLink = e.connectTunByPortName(f.clientWG, "left", "Tun", f.clientVTun, "right", "Tun")
 	e.connectTunByPortName(f.serverWG, "left", "Tun", f.serverVTun, "right", "Tun")
-	e.connectByPortName(clientOut, "left", "Network", clientSocks, "right", "out")
-	e.connectByPortName(clientOut, "left", "Network", serverSocks, "right", "out")
+	e.connectByPortName(f.mock, "left", "Network", clientSocks, "right", "out")
+	e.connectByPortName(f.mock, "left", "Network", serverSocks, "right", "out")
 	e.WaitNodeLabel(clientSocks, socksURL)
 	e.WaitNodeLabel(serverSocks, socksURL)
 	f.clientWGNetLink = e.connectByPortName(clientSocks, "left", "Network", f.clientWG, "right", "Network")
@@ -750,8 +749,8 @@ func setupWireGuardSymmetricOverSocksE2E(t *testing.T) wireGuardE2EFixture {
 	e.connectByPortName(f.clientVTun, "left", "Network", f.client, "right", "Network")
 	e.connectByPortName(f.serverVTun, "left", "Network", f.server, "right", "Network")
 
-	e.connectByPortName(f.mock, "left", "Network", socksServer, "right", "proxy")
-	e.connectByPortName(listenOut, "left", "Network", socksServer, "right", "listen")
+	e.connectByPortName(proxyOut, "left", "Network", socksServer, "right", "proxy")
+	e.connectByPortName(f.mock, "left", "Network", socksServer, "right", "listen")
 	e.waitSocksLog(socksServer, fmt.Sprintf("socks listening on 127.0.0.1:%d", socksPort))
 
 	e.waitWireGuardUp(f.clientWG)

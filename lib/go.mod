@@ -11,7 +11,7 @@ require (
 	github.com/asciimoth/gonnect v0.56.0
 	github.com/asciimoth/gonnect-netstack v0.9.1
 	github.com/asciimoth/pasta/pasta v0.10.0
-	github.com/asciimoth/socksgo v0.4.20
+	github.com/asciimoth/socksgo v0.5.0
 	github.com/asciimoth/tor-driver v0.1.2
 	github.com/asciimoth/wgo v0.7.15
 	github.com/asciimoth/wgo-tailscale v0.4.1
