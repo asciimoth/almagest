@@ -60,7 +60,11 @@ AllowUsers winvm
 AuthorizedKeysFile C:/ProgramData/ssh/winvm_authorized_keys
 Subsystem sftp sftp-server.exe
 '@ | Set-Content C:\ProgramData\ssh\sshd_config -Encoding ascii
-$password = ConvertTo-SecureString ([guid]::NewGuid().ToString() + 'aA!') -AsPlainText -Force
+$password = [Security.SecureString]::new()
+foreach ($character in ([guid]::NewGuid().ToString() + 'aA!').ToCharArray()) {
+    $password.AppendChar($character)
+}
+$password.MakeReadOnly()
 if (-not (Get-LocalUser winvm -ErrorAction SilentlyContinue)) {
     New-LocalUser winvm -Password $password -AccountNeverExpires -PasswordNeverExpires | Out-Null
 }

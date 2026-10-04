@@ -22,7 +22,8 @@ Do not run privileged networking tests on a normal workstation or shared host.
 Use an x86_64 Linux host with writable `/dev/kvm`, 8 GiB of available memory,
 and at least 90 GiB of free cache storage. Install QEMU, OVMF, xorriso, OpenSSH
 client tools, Python 3, jq, curl, Git, tar, flock, coreutils, Go 1.26.6 or newer,
-Node.js, and npm. The Nix development shell supplies the VM packages on
+Node.js, npm, ShellCheck, Ruff, PowerShell 7, and PSScriptAnalyzer. The Nix
+development shell supplies the lint and VM packages on
 x86_64 Linux. It also sets `MULLVAD_SPLIT_TUNNEL_DRIVER_DIR` and
 `SYSNET_WINDOWS_WINTUN_DIR` to the pinned runtime dependency trees. The winvm
 tools use these paths directly. Set `WINVM_OVMF_CODE` and `WINVM_OVMF_VARS` if
@@ -193,7 +194,9 @@ application attribution claim for shared resolver traffic. It removes a stale
 derived report before it parses new input. Keep the two PCAP files, observation
 log, generated report, guest network inventories, graph snapshot, and daemon
 log together. Host-only negative fixtures run as part of
-`just test-winvm-harness` and `just lint`.
+`just test-winvm-harness` runs the host-only harness tests. `just lint-winvm`
+runs ShellCheck, Ruff correctness checks, and PSScriptAnalyzer. `just lint` runs
+both gates.
 
 ## Resource and recovery qualification
 

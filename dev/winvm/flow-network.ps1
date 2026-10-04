@@ -9,7 +9,10 @@ function Get-FlowAdapter([string]$MacAddress) {
     return $adapter[0]
 }
 
-function Reset-FlowAdapter($Adapter, [bool]$WeakHost) {
+function Reset-FlowAdapter {
+    [CmdletBinding(SupportsShouldProcess)]
+    param($Adapter, [bool]$WeakHost)
+    if (-not $PSCmdlet.ShouldProcess($Adapter.Name, 'Reset flow adapter')) { return }
     $state = if ($WeakHost) { 'Enabled' } else { 'Disabled' }
     foreach ($family in 'IPv4','IPv6') {
         Set-NetIPInterface -InterfaceIndex $Adapter.ifIndex -AddressFamily $family `

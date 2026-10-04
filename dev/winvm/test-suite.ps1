@@ -130,6 +130,7 @@ foreach ($case in $suite.cases) {
             # Windows PowerShell can lose ExitCode after process exit unless a
             # native process handle is opened while the process is still live.
             $processHandle = $process.Handle
+            $null = $processHandle
             Write-CaseState $statePath 'started' $process.Id
             $deadline = $started.AddSeconds($hardTimeoutSeconds)
             while (-not $process.HasExited) {

@@ -23,6 +23,29 @@
         inherit system;
       };
 
+      psScriptAnalyzer = pkgs.stdenvNoCC.mkDerivation {
+        pname = "PSScriptAnalyzer";
+        version = "1.25.0";
+        src = pkgs.fetchurl {
+          url = "https://github.com/PowerShell/PSScriptAnalyzer/releases/download/1.25.0/PSScriptAnalyzer.1.25.0.nupkg";
+          hash = "sha256-FOY0yCjrmO+59AspGLqQ8TntXszfZjoqdHc22ZaZXWA=";
+        };
+        nativeBuildInputs = [pkgs.unzip];
+        dontUnpack = true;
+        installPhase = ''
+          runHook preInstall
+          mkdir -p "$out/share/powershell/Modules/PSScriptAnalyzer"
+          unzip -q "$src" -d "$out/share/powershell/Modules/PSScriptAnalyzer"
+          runHook postInstall
+        '';
+      };
+
+      winvmLintHook = pkgs.writeShellScript "winvm-lint-hook" ''
+        export PATH=${pkgs.lib.makeBinPath [pkgs.just pkgs.powershell pkgs.ruff pkgs.shellcheck]}:$PATH
+        export PSSCRIPTANALYZER_PATH=${psScriptAnalyzer}/share/powershell/Modules/PSScriptAnalyzer/PSScriptAnalyzer.psd1
+        just lint-winvm
+      '';
+
       checks = {
         pre-commit-check = pre-commit-hooks.lib.${system}.run {
           src = ./.;
@@ -65,6 +88,14 @@
               entry = let script = pkgs.writeShellScript "govulncheckhook" ''
                 just vulncheck
               ''; in builtins.toString script;
+              stages = [ "pre-commit" ];
+            };
+            winvm-lint = {
+              enable = true;
+              description = "Lint the Windows VM harness";
+              entry = builtins.toString winvmLintHook;
+              files = "^(flake\\.nix$|justfile$|dev/winvm/|scripts/(lint-windows|test-e2e-platform|test-windows|test-windows-flow)\\.sh$)";
+              pass_filenames = false;
               stages = [ "pre-commit" ];
             };
           };
@@ -116,6 +147,7 @@
         CHROME_BIN = testChromium;
         MULLVAD_SPLIT_TUNNEL_DRIVER_DIR = windowsSplitTunnelDrivers;
         SYSNET_WINDOWS_WINTUN_DIR = windowsWintun;
+        PSSCRIPTANALYZER_PATH = "${psScriptAnalyzer}/share/powershell/Modules/PSScriptAnalyzer/PSScriptAnalyzer.psd1";
         WINVM_OVMF_CODE = pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux "${pkgs.OVMF.fd}/FV/OVMF_CODE.fd";
         WINVM_OVMF_VARS = pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux "${pkgs.OVMF.fd}/FV/OVMF_VARS.fd";
         buildInputs = with pkgs; [
@@ -127,6 +159,8 @@
           typos
           commitizen
           shellcheck
+          powershell
+          ruff
 
           just
           python3

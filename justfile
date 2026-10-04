@@ -81,7 +81,7 @@ repair-go-work:
 certcat-tidy:
 	go -C certcat mod tidy
 
-lint: test-winvm-harness certcat-lint lint-windows
+lint: test-winvm-harness certcat-lint lint-windows lint-winvm
   cd lib && golangci-lint run ./...
   cd bin && golangci-lint run ./...
 
@@ -142,7 +142,11 @@ build-windows-arch arch:
 
 test-winvm-harness:
   python3 -m unittest discover -s dev/winvm/tests -p 'test_*.py'
+
+lint-winvm:
   shellcheck dev/winvm/*.sh scripts/lint-windows.sh scripts/test-e2e-platform.sh scripts/test-windows.sh scripts/test-windows-flow.sh
+  ruff check --select E4,E9,F dev/winvm
+  pwsh -NoLogo -NoProfile -NonInteractive -Command '& { Import-Module $env:PSSCRIPTANALYZER_PATH; $issues = @(Invoke-ScriptAnalyzer -Path ./dev/winvm -Recurse -Severity Warning,Error); $issues | Format-Table -AutoSize; if ($issues.Count) { exit 1 } }'
 
 winvm-doctor:
   ./dev/winvm/doctor.sh
