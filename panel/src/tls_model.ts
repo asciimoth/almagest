@@ -26,8 +26,17 @@ export type TLSBuiltinCAOptions = {
   key_bits?: number;
 };
 
+export type TLSCRLInfo = {
+  pem: string;
+  number: string;
+  issuer: string;
+  this_update: string;
+  next_update: string;
+};
+
 export type TLSBuiltinCAInfo = {
   cert: TLSCertEntry;
+  crl: TLSCRLInfo;
   options: TLSBuiltinCAOptions;
   immutable?: boolean;
   regeneration_disabled?: boolean;

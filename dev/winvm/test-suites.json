@@ -169,6 +169,16 @@
           ]
         },
         {
+          "id": "m8::daemon-machine-trusted-ca-interception",
+          "kind": "go",
+          "module": "bin",
+          "arguments": ["-tags=winintegration", "./integration", "-run", "^TestWindowsDaemonMachineTrustedBuiltinCAInterceptsTLS$"],
+          "eventFile": "m8-daemon-machine-trusted-ca-interception.jsonl",
+          "requiredTests": [
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsDaemonMachineTrustedBuiltinCAInterceptsTLS"
+          ]
+        },
+        {
           "id": "m3::stable-guid-collision",
           "kind": "go",
           "module": "bin",

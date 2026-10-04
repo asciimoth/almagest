@@ -71,7 +71,12 @@ password is `AlmagestManual1!`; automatic login and this password do not modify
 the locked base image. Windows Server Core has no desktop browser, so the panel
 is available through the Linux host. Run `curl.exe` and other console tools in
 the visible Windows session when you need to probe graph services from inside
-the guest.
+the guest. The manual run installs its matching CLI at
+`C:\winvm\bin\almagest-cli.exe`. The comments in
+`local/winvm/config/alm.hujson` show how to export the built-in TLS CA and CRL,
+add them to the machine Windows certificate stores from an elevated terminal,
+test intercepted HTTPS with `curl.exe` without certificate flags, and remove
+both objects after the test.
 
 Manual daemon state is synchronized with the gitignored `local/winvm/`
 directory. It contains `config/`, `store/`, and `logs/`. The state is restored

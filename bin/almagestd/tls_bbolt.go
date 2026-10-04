@@ -833,6 +833,7 @@ func (m *bboltKVManager) tlsBuiltinCAAPIInfo(certs map[string]tlsEffectiveCert) 
 	}
 	info := &api.TLSBuiltinCAInfo{
 		Cert:    tlsCertEntryToAPI(cert),
+		CRL:     tlsBuiltinCRLToAPI(ca),
 		Options: ca.options,
 	}
 	if ca.immutable {
@@ -841,6 +842,20 @@ func (m *bboltKVManager) tlsBuiltinCAAPIInfo(certs map[string]tlsEffectiveCert) 
 		info.RegenerationDisabledBy = "protected_config"
 	}
 	return info
+}
+
+func tlsBuiltinCRLToAPI(ca *tlsBuiltinCA) api.TLSCRLInfo {
+	if ca == nil || ca.revocationList == nil {
+		return api.TLSCRLInfo{}
+	}
+	crl := ca.revocationList
+	return api.TLSCRLInfo{
+		PEM:        ca.crlPEM,
+		Number:     crl.Number.Text(10),
+		Issuer:     crl.Issuer.String(),
+		ThisUpdate: crl.ThisUpdate.UTC().Format(time.RFC3339Nano),
+		NextUpdate: crl.NextUpdate.UTC().Format(time.RFC3339Nano),
+	}
 }
 
 func (m *bboltKVManager) currentTLSBuiltinCA() *tlsBuiltinCA {

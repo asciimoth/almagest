@@ -56,12 +56,14 @@ var (
 )
 
 type tlsBuiltinCA struct {
-	certPEM       string
-	privateKeyPEM string
-	signer        crypto.Signer
-	certificate   *x509.Certificate
-	options       api.TLSBuiltinCAOptions
-	immutable     bool
+	certPEM        string
+	crlPEM         string
+	privateKeyPEM  string
+	signer         crypto.Signer
+	certificate    *x509.Certificate
+	revocationList *x509.RevocationList
+	options        api.TLSBuiltinCAOptions
+	immutable      bool
 }
 
 type tlsBuiltinCAState struct {
@@ -380,13 +382,45 @@ func generateTLSBuiltinCA(options api.TLSBuiltinCAOptions, now time.Time) (*tlsB
 	if err != nil {
 		return nil, fmt.Errorf("parse generated builtin TLS CA certificate: %w", err)
 	}
-	return &tlsBuiltinCA{
+	ca := &tlsBuiltinCA{
 		certPEM:       tlsPEMFromDER(der),
 		privateKeyPEM: privateKeyPEM,
 		signer:        signer,
 		certificate:   cert,
 		options:       options,
-	}, nil
+	}
+	if err := generateTLSBuiltinCACRL(ca); err != nil {
+		return nil, err
+	}
+	return ca, nil
+}
+
+func generateTLSBuiltinCACRL(ca *tlsBuiltinCA) error {
+	if ca == nil || ca.certificate == nil || ca.signer == nil {
+		return fmt.Errorf("%w: cannot generate CRL without a CA certificate and private key", errTLSBuiltinCAInvalid)
+	}
+	if ca.certificate.KeyUsage&x509.KeyUsageCRLSign == 0 {
+		return fmt.Errorf("%w: certificate cannot sign certificate revocation lists", errTLSBuiltinCAInvalid)
+	}
+	template := &x509.RevocationList{
+		Number:     big.NewInt(1),
+		ThisUpdate: ca.certificate.NotBefore.UTC(),
+		NextUpdate: ca.certificate.NotAfter.UTC(),
+	}
+	der, err := x509.CreateRevocationList(rand.Reader, template, ca.certificate, ca.signer)
+	if err != nil {
+		return fmt.Errorf("generate builtin TLS CA CRL: %w", err)
+	}
+	crl, err := x509.ParseRevocationList(der)
+	if err != nil {
+		return fmt.Errorf("parse generated builtin TLS CA CRL: %w", err)
+	}
+	if err := crl.CheckSignatureFrom(ca.certificate); err != nil {
+		return fmt.Errorf("verify generated builtin TLS CA CRL: %w", err)
+	}
+	ca.crlPEM = string(pem.EncodeToMemory(&pem.Block{Type: "X509 CRL", Bytes: der}))
+	ca.revocationList = crl
+	return nil
 }
 
 func generateTLSBuiltinCAKey(options api.TLSBuiltinCAOptions) (crypto.Signer, string, error) {
@@ -483,14 +517,18 @@ func parseTLSBuiltinCAFiles(certPEM, keyPEM string, immutable bool) (*tlsBuiltin
 	if !tlsBuiltinCAPublicKeysEqual(cert.PublicKey, signer.Public()) {
 		return nil, fmt.Errorf("%w: certificate public key does not match private key", errTLSBuiltinCAInvalid)
 	}
-	return &tlsBuiltinCA{
+	ca := &tlsBuiltinCA{
 		certPEM:       certPEM,
 		privateKeyPEM: keyPEM,
 		signer:        signer,
 		certificate:   cert,
 		options:       deriveTLSBuiltinCAOptions(cert, signer),
 		immutable:     immutable,
-	}, nil
+	}
+	if err := generateTLSBuiltinCACRL(ca); err != nil {
+		return nil, err
+	}
+	return ca, nil
 }
 
 func splitTLSBuiltinCACombinedPEM(pemText string) (string, string, error) {

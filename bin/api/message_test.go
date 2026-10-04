@@ -382,6 +382,7 @@ func TestTLSMethodsAndSurfaceAreAdvertised(t *testing.T) {
 		string(MethodTLSSubscribe):     false,
 		string(MethodTLSUnsubscribe):   false,
 		string(MethodTLSBuiltinCA):     false,
+		string(MethodTLSBuiltinCRL):    false,
 		string(MethodTLSSetBuiltinCA):  false,
 		string(MethodTLSReloadOSCerts): false,
 		string(MethodTLSSetCert):       false,

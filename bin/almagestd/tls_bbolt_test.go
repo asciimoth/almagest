@@ -192,6 +192,21 @@ func TestTLSBuiltinCAGenerationAndPolicyInjection(t *testing.T) {
 		t.Fatalf("builtin CA certificate subject=%q not_after=%s, want Almagest no-expiration fallback",
 			ca.certificate.Subject.CommonName, ca.certificate.NotAfter)
 	}
+	if ca.revocationList == nil || ca.crlPEM == "" {
+		t.Fatal("builtin CA CRL was not generated")
+	}
+	if ca.revocationList.Number.Cmp(big.NewInt(1)) != 0 || len(ca.revocationList.RevokedCertificateEntries) != 0 {
+		t.Fatalf("builtin CA CRL = %#v, want empty CRL number 1", ca.revocationList)
+	}
+	if !ca.revocationList.ThisUpdate.Equal(ca.certificate.NotBefore) ||
+		!ca.revocationList.NextUpdate.Equal(ca.certificate.NotAfter) {
+		t.Fatalf("builtin CA CRL validity = %s..%s, want certificate validity %s..%s",
+			ca.revocationList.ThisUpdate, ca.revocationList.NextUpdate,
+			ca.certificate.NotBefore, ca.certificate.NotAfter)
+	}
+	if err := ca.revocationList.CheckSignatureFrom(ca.certificate); err != nil {
+		t.Fatalf("verify builtin CA CRL: %v", err)
+	}
 	for _, name := range []string{tlsBuiltinCACertFile, tlsBuiltinCAKeyFile, tlsBuiltinCAStateFile} {
 		if _, err := os.Stat(filepath.Join(storageDir, tlsBuiltinCADirName, name)); err != nil {
 			t.Fatalf("stored builtin CA file %s: %v", name, err)
@@ -217,6 +232,9 @@ func TestTLSBuiltinCAGenerationAndPolicyInjection(t *testing.T) {
 		!snapshot.BuiltinCA.Cert.ReadOnly ||
 		snapshot.BuiltinCA.Cert.Source != api.TLSSourceBuiltin {
 		t.Fatalf("builtin CA entry = %#v, want read-only builtin cert", snapshot.BuiltinCA.Cert)
+	}
+	if snapshot.BuiltinCA.CRL.PEM == "" || snapshot.BuiltinCA.CRL.Number != "1" {
+		t.Fatalf("builtin CA CRL API info = %#v, want generated CRL", snapshot.BuiltinCA.CRL)
 	}
 	rawInfo, err := json.Marshal(snapshot.BuiltinCA)
 	if err != nil {
@@ -605,6 +623,18 @@ func TestTLSBuiltinCAAPIRegeneratesAndNotifiesPoliciesAndLocalCAUsers(t *testing
 	}
 	if info.Options.Issuer != "Changed" || info.Options.Curve != "P384" {
 		t.Fatalf("builtin CA response options = %#v, want Changed P384", info.Options)
+	}
+	if info.CRL.PEM == "" || info.CRL.Issuer != "CN=Changed" {
+		t.Fatalf("builtin CA response CRL = %#v, want CRL issued by Changed", info.CRL)
+	}
+	crlReq := mustRequest(t, "3", api.SurfaceTLS, string(api.MethodTLSBuiltinCRL), nil)
+	crlResp, err := session.handleMessage(crlReq)
+	if err != nil || crlResp.Error != nil {
+		t.Fatalf("builtin CRL response = %#v, err %v", crlResp, err)
+	}
+	crlInfo, err := api.DecodePayload[api.TLSCRLInfo](crlResp.Result)
+	if err != nil || crlInfo.PEM != info.CRL.PEM {
+		t.Fatalf("builtin CRL API info = %#v, err %v", crlInfo, err)
 	}
 	if got := configer.String(cfg.Main, configer.Path{"Config", "TLS", "BuiltinCA", "Issuer"}, ""); got != "Changed" {
 		t.Fatalf("config issuer = %q, want Changed", got)
@@ -1192,7 +1222,7 @@ func testTLSCAKeyPairPEM(t *testing.T, commonName string, notBefore, notAfter ti
 		},
 		NotBefore:             notBefore,
 		NotAfter:              notAfter,
-		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageDigitalSignature,
+		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign | x509.KeyUsageDigitalSignature,
 		BasicConstraintsValid: true,
 		IsCA:                  true,
 	}

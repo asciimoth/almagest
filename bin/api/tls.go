@@ -7,6 +7,7 @@ const (
 	MethodTLSSubscribe     TLSMethod = "subscribe"
 	MethodTLSUnsubscribe   TLSMethod = "unsubscribe"
 	MethodTLSBuiltinCA     TLSMethod = "builtin_ca"
+	MethodTLSBuiltinCRL    TLSMethod = "builtin_crl"
 	MethodTLSSetBuiltinCA  TLSMethod = "set_builtin_ca_options"
 	MethodTLSReloadOSCerts TLSMethod = "reload_os_certs"
 	MethodTLSSetCert       TLSMethod = "set_cert"
@@ -26,6 +27,7 @@ func TLSMethods() []string {
 		string(MethodTLSSubscribe),
 		string(MethodTLSUnsubscribe),
 		string(MethodTLSBuiltinCA),
+		string(MethodTLSBuiltinCRL),
 		string(MethodTLSSetBuiltinCA),
 		string(MethodTLSReloadOSCerts),
 		string(MethodTLSSetCert),
@@ -91,10 +93,22 @@ type TLSBuiltinCAOptions struct {
 
 type TLSBuiltinCAInfo struct {
 	Cert                   TLSCertEntry        `json:"cert"`
+	CRL                    TLSCRLInfo          `json:"crl"`
 	Options                TLSBuiltinCAOptions `json:"options"`
 	Immutable              bool                `json:"immutable,omitempty"`
 	RegenerationDisabled   bool                `json:"regeneration_disabled,omitempty"`
 	RegenerationDisabledBy string              `json:"regeneration_disabled_by,omitempty"`
+}
+
+// TLSCRLInfo is the public certificate revocation list issued by the built-in
+// CA. The list is empty because generated interception certificates are
+// short-lived and are not individually revoked.
+type TLSCRLInfo struct {
+	PEM        string `json:"pem"`
+	Number     string `json:"number"`
+	Issuer     string `json:"issuer"`
+	ThisUpdate string `json:"this_update"`
+	NextUpdate string `json:"next_update"`
 }
 
 type TLSDNSRule struct {

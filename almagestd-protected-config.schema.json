@@ -300,7 +300,7 @@
     },
     "protectedTLSBuiltinCA": {
       "type": "object",
-      "description": "One immutable built-in CA keypair. Set PEM for literal protected-config value or File to read a local PEM file once at daemon startup. The PEM input must contain exactly one CERTIFICATE block and one private-key block. When set, mutable built-in CA generation options are ignored and regeneration is disabled.",
+      "description": "One immutable built-in CA keypair. Set PEM for literal protected-config value or File to read a local PEM file once at daemon startup. The PEM input must contain exactly one CERTIFICATE block and one private-key block. The certificate key usage must permit certificate and CRL signing. When set, mutable built-in CA generation options are ignored and regeneration is disabled.",
       "properties": {
         "PEM": {
           "type": "string",

@@ -22,6 +22,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/asciimoth/almagest/bin/api"
 	"golang.org/x/sys/windows"
 )
 
@@ -145,6 +146,94 @@ func TestWindowsDaemonCommandHelper(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+}
+
+func TestWindowsDaemonMachineTrustedBuiltinCAInterceptsTLS(t *testing.T) {
+	if !windows.GetCurrentProcessToken().IsElevated() {
+		t.Fatal("machine trusted-root installation requires an elevated test identity")
+	}
+	root := newPrivateWindowsTestDir(t)
+	httpPort := reserveTCPPort(t)
+	socksPort := reserveTCPPort(t)
+	pipe := fmt.Sprintf("almagest-tls-trust-%d", os.Getpid())
+	config := fmt.Sprintf(`{
+	"nodes":{
+		"Fixture Network":{"Class":"almagest/MockNetwork","allowAnyHost":true},
+		"Fixture HTTP":{"Class":"almagest/HttpServer","Links":["Network -> [Fixture Network] Network"],"host":"127.0.0.1","port":%d,"response":"windows-trusted-ca-mitm"},
+		"Fixture Terminator":{"Class":"almagest/TlsTerminator","Links":["Network -> [Fixture Network] Network"],"useSNIHostname":false,"serverAlpn":"http/1.1"},
+		"Fixture MITM":{"Class":"almagest/TlsMitm","Links":["Network -> [Fixture Terminator] Network"],"filterMode":"off"},
+		"Fixture SOCKS":{"Class":"almagest/LocalProxy","Links":["proxy -> [Fixture MITM] Network"],"socksHost":"127.0.0.1","socksPort":%d}
+	}}
+`, httpPort, socksPort)
+	daemon := newWindowsDaemon(t, root, pipe, config, nativeProtectedConfig(pipe, "alm-tls-trust"))
+	daemon.start()
+	defer daemon.stop()
+
+	info := api.TLSBuiltinCAInfo{}
+	decodeJSON(t, daemon.cliJSON("tls", "builtin-ca"), &info)
+	if info.Cert.PEM == "" || info.Cert.SerialNumber == "" || info.CRL.PEM == "" {
+		t.Fatalf("TLS built-in CA has incomplete certificate metadata: %#v", info.Cert)
+	}
+	caPath := filepath.Join(root, "almagest-builtin-ca.pem")
+	crlPath := filepath.Join(root, "almagest-builtin-ca.crl.pem")
+	writePrivateWindowsFile(t, caPath, []byte(info.Cert.PEM))
+	writePrivateWindowsFile(t, crlPath, []byte(info.CRL.PEM))
+
+	curlVersion, err := exec.Command("curl.exe", "--version").CombinedOutput()
+	if err != nil {
+		t.Fatalf("inspect Windows curl.exe: %v\n%s", err, curlVersion)
+	}
+	if !bytes.Contains(bytes.ToLower(curlVersion), []byte("schannel")) {
+		t.Fatalf("Windows curl.exe does not use Schannel: %s", curlVersion)
+	}
+
+	url := fmt.Sprintf("https://tls-mitm.local:%d/intercepted", httpPort)
+	curl := func() ([]byte, error) {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		return exec.CommandContext(ctx, "curl.exe",
+			"--fail", "--silent", "--show-error", "--http1.1",
+			"--connect-timeout", "3", "--max-time", "10",
+			"--socks5-hostname", fmt.Sprintf("127.0.0.1:%d", socksPort),
+			url,
+		).CombinedOutput()
+	}
+
+	if output, curlErr := curl(); curlErr == nil {
+		t.Fatalf("curl.exe trusted the generated interception CA before installation: %s", output)
+	} else {
+		t.Logf("curl.exe before CA installation failed as expected: %v: %s", curlErr, output)
+	}
+	install := exec.Command("certutil.exe", "-f", "-addstore", "Root", caPath)
+	if output, installErr := install.CombinedOutput(); installErr != nil {
+		t.Fatalf("install built-in CA in machine Root store: %v\n%s", installErr, output)
+	}
+	installCRL := exec.Command("certutil.exe", "-f", "-addstore", "CA", crlPath)
+	if output, installErr := installCRL.CombinedOutput(); installErr != nil {
+		t.Fatalf("install built-in CA revocation list in machine CA store: %v\n%s", installErr, output)
+	}
+	t.Cleanup(func() {
+		removeCRL := exec.Command("certutil.exe", "-f", "-delstore", "CA", info.Options.Issuer)
+		if output, removeErr := removeCRL.CombinedOutput(); removeErr != nil {
+			t.Errorf("remove built-in CA revocation list from machine CA store: %v\n%s", removeErr, output)
+		}
+		remove := exec.Command("certutil.exe", "-f", "-delstore", "Root", info.Cert.SerialNumber)
+		if output, removeErr := remove.CombinedOutput(); removeErr != nil {
+			t.Errorf("remove built-in CA from machine Root store: %v\n%s", removeErr, output)
+		}
+	})
+
+	deadline := time.Now().Add(integrationTimeout)
+	var lastOutput []byte
+	var lastErr error
+	for time.Now().Before(deadline) {
+		lastOutput, lastErr = curl()
+		if lastErr == nil && string(lastOutput) == "windows-trusted-ca-mitm" {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatalf("trusted curl.exe request through TLS interception: %v: %s\ndaemon log:\n%s", lastErr, lastOutput, daemon.readLog())
 }
 
 func TestWindowsDaemonNativeResourceBaselineRestored(t *testing.T) {

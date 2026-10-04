@@ -25,6 +25,8 @@ func runTLS(ctx context.Context, c *client, args []string, stdin io.Reader, stdo
 		return subscribeAndWatchTLS(ctx, c, stdout)
 	case "builtin-ca":
 		return parseNoArgsAndRequest(ctx, c, args[1:], api.SurfaceTLS, string(api.MethodTLSBuiltinCA), nil, stdout, stderr)
+	case "builtin-crl":
+		return exportTLSBuiltinCRL(ctx, c, args[1:], stdout, stderr)
 	case "set-builtin-ca":
 		req, err := parseTLSSetBuiltinCARequest(args[0], args[1:], stderr)
 		if err != nil {
@@ -82,6 +84,36 @@ func runTLS(ctx context.Context, c *client, args []string, stdin io.Reader, stdo
 	default:
 		return fmt.Errorf("unknown tls command %q", args[0])
 	}
+}
+
+func exportTLSBuiltinCRL(ctx context.Context, c *client, args []string, stdout, stderr io.Writer) error {
+	fs := commandFlagSet("tls builtin-crl", stderr)
+	out := fs.String("out", "-", "output CRL PEM path; use - for stdout")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	raw, err := c.request(ctx, api.SurfaceTLS, string(api.MethodTLSBuiltinCRL), nil)
+	if err != nil {
+		return err
+	}
+	var info api.TLSCRLInfo
+	if err := json.Unmarshal(raw, &info); err != nil {
+		return fmt.Errorf("decode built-in CA CRL: %w", err)
+	}
+	if info.PEM == "" {
+		return fmt.Errorf("built-in CA CRL is empty")
+	}
+	if *out == "-" {
+		_, err = io.WriteString(stdout, info.PEM)
+		return err
+	}
+	if *out == "" {
+		return fmt.Errorf("--out cannot be empty")
+	}
+	if err := os.WriteFile(*out, []byte(info.PEM), 0o644); err != nil {
+		return fmt.Errorf("write built-in CA CRL: %w", err)
+	}
+	return nil
 }
 
 // parseTLSNameRequest builds the name-only payload shared by TLS deletes.
@@ -236,6 +268,7 @@ func printTLSHelp(w io.Writer) {
 Snapshot commands:
   list             list effective TLS certificates and policies
   builtin-ca       show built-in TLS CA certificate and options
+  builtin-crl      write built-in CA CRL PEM to stdout or --out PATH
 
 Subscription commands:
   watch            subscribe and print TLS snapshots and updates
@@ -269,5 +302,8 @@ Built-in CA flags for set-builtin-ca:
   --key-algorithm ALG    ecdsa, ed25519, or rsa
   --curve CURVE          ECDSA curve: P256, P384, or P521
   --key-bits BITS        RSA key size in bits
+
+Built-in CRL flags for builtin-crl:
+  --out PATH             output CRL PEM path; use - for stdout (default -)
 `)
 }

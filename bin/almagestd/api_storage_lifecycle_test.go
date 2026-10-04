@@ -59,6 +59,10 @@ func TestSecretsAndTLSAPISnapshotUnsubscribeAndDelete(t *testing.T) {
 	if err != nil || response.Error == nil || response.Error.Code != api.ErrorNotFound {
 		t.Fatalf("missing built-in CA response = %#v, err=%v", response, err)
 	}
+	response, err = session.handleMessage(mustRequest(t, "builtin-crl", api.SurfaceTLS, string(api.MethodTLSBuiltinCRL), nil))
+	if err != nil || response.Error == nil || response.Error.Code != api.ErrorNotFound {
+		t.Fatalf("missing built-in CRL response = %#v, err=%v", response, err)
+	}
 	pemText := testTLSCAPEM(t, "API lifecycle")
 	response, err = session.handleMessage(mustRequest(t, "set-cert", api.SurfaceTLS, string(api.MethodTLSSetCert), api.TLSSetCertRequest{Name: "api-ca", PEM: pemText}))
 	if err != nil || response.Error != nil {

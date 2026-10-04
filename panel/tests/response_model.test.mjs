@@ -8,6 +8,7 @@ import {
   parseSecretsSubscribeResponse,
   parseSnapshotExportResponse,
   parseSubscribeLogsResponse,
+  parseTLSBuiltinCAResponse,
   parseTLSSubscribeResponse,
 } from "../public/build/response_model.js";
 
@@ -31,6 +32,11 @@ test("response decoders preserve untrusted text only after shape validation", ()
     subscription_id: 3,
     snapshot: { secrets: [{ key: payload, value: payload, nodes: [payload] }] },
   })?.snapshot.secrets?.[0]?.value, payload);
+  assert.equal(parseTLSBuiltinCAResponse({
+    cert: { name: "builtin-ca:almagest", pem: payload },
+    crl: { pem: payload, number: "1", issuer: payload, this_update: "now", next_update: "later" },
+    options: { issuer: payload },
+  })?.crl.pem, payload);
 });
 
 test("response decoders reject malformed nested storage and TLS values", () => {
@@ -52,6 +58,7 @@ test("response decoders reject malformed nested storage and TLS values", () => {
         policies: [{ name: "policy", valid: true, spec: { trust_anchors: [{ cert: "ca", scope: { dns: {} } }] } }],
       },
     }),
+    parseTLSBuiltinCAResponse({ cert: { name: "builtin-ca:almagest" }, options: {} }),
   ];
   assert.deepEqual(invalid, Array(invalid.length).fill(null));
 });

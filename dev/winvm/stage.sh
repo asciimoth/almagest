@@ -15,6 +15,8 @@ go -C certcat run ./cmd/certcat-generate -manual data/manual.json -machine data/
 if [[ $mode == manual ]]; then
     GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go -C bin build \
         -o ../dev/winvm/almagestd.exe ./almagestd
+    GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go -C bin build \
+        -o ../dev/winvm/almagest-cli.exe ./almagest-cli
 fi
 {
     go version

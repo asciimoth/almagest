@@ -10,6 +10,9 @@ Set-StrictMode -Version Latest
 $manualDir = Join-Path $RunDir 'manual'
 $configDir = Join-Path $manualDir 'config'
 $binary = Join-Path $SourceDir 'dev\winvm\almagestd.exe'
+$cliSource = Join-Path $SourceDir 'dev\winvm\almagest-cli.exe'
+$toolDir = 'C:\winvm\bin'
+$cli = Join-Path $toolDir 'almagest-cli.exe'
 $stdout = Join-Path $manualDir 'almagestd.stdout.log'
 $stderr = Join-Path $manualDir 'almagestd.stderr.log'
 $pidPath = Join-Path $manualDir 'almagestd.pid'
@@ -66,6 +69,15 @@ if (-not (Test-Path (Join-Path $configDir 'protected_alm.hujson'))) {
 if (-not (Test-Path -LiteralPath $binary -PathType Leaf)) {
     throw "staged almagestd binary is absent: $binary"
 }
+if (-not (Test-Path -LiteralPath $cliSource -PathType Leaf)) {
+    throw "staged almagest-cli binary is absent: $cliSource"
+}
+New-Item -ItemType Directory -Force $toolDir | Out-Null
+& icacls.exe $toolDir /inheritance:r /grant:r 'winvm:(OI)(CI)RX' 'SYSTEM:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "cannot protect manual tool directory: $toolDir" }
+Copy-Item $cliSource $cli -Force
+& icacls.exe $cli /inheritance:r /grant:r 'winvm:RX' 'SYSTEM:F' '*S-1-5-32-544:F' | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "cannot protect manual CLI: $cli" }
 
 $arguments = @(
     '-c', $configDir,

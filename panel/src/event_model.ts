@@ -358,10 +358,20 @@ function parseTLSChange(input: unknown): TLSChange | null {
 function isTLSBuiltinCAInfo(input: unknown): input is TLSBuiltinCAInfo {
   return isRecord(input)
     && isTLSCertEntry(input.cert)
+    && isTLSCRLInfo(input.crl)
     && isTLSBuiltinCAOptions(input.options)
     && isOptionalBoolean(input.immutable)
     && isOptionalBoolean(input.regeneration_disabled)
     && isOptionalString(input.regeneration_disabled_by);
+}
+
+function isTLSCRLInfo(input: unknown): boolean {
+  return isRecord(input)
+    && isString(input.pem)
+    && isString(input.number)
+    && isString(input.issuer)
+    && isString(input.this_update)
+    && isString(input.next_update);
 }
 
 function isTLSBuiltinCAOptions(input: unknown): input is TLSBuiltinCAInfo["options"] {

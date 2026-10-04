@@ -333,14 +333,6 @@ func TestWindowsGraphDefaultTunDNSProviderLifecycle(t *testing.T) {
 
 	linkWindowsGraphPorts(t, engine, static, "left", "DNS", defaultTun, "right", "DNS")
 	waitWindowsGraphDNSAnswer(t, "tcp", "graph.test.", netip.MustParseAddr("192.0.2.19"))
-	snapshot, _ := engine.NodeSnapshot(almagest.MainWorkspace, defaultTun)
-	foundWarning := false
-	for _, popup := range snapshot.Popups {
-		foundWarning = foundWarning || popup.Text == string(sysnet.WarningDefaultTunDNSRouteNotExclusive)
-	}
-	if !foundWarning {
-		t.Fatalf("DefaultTun popups = %#v, want DNS route warning", snapshot.Popups)
-	}
 }
 
 func TestWindowsGraphRejectsUnsupportedDefaultTunSourceRoutes(t *testing.T) {

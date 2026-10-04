@@ -169,6 +169,10 @@ class HarnessTests(unittest.TestCase):
         self.assertIn('Invoke-CimMethod -ClassName Win32_Process', launcher)
         self.assertIn('GOOS=windows GOARCH=amd64 CGO_ENABLED=0',
                       (ROOT / 'stage.sh').read_text())
+        self.assertIn('almagest-cli.exe ./almagest-cli',
+                      (ROOT / 'stage.sh').read_text())
+        self.assertIn("$toolDir = 'C:\\winvm\\bin'", launcher)
+        self.assertIn("'winvm:(OI)(CI)RX'", launcher)
         self.assertIn("'-w', [string]$WebPort", launcher)
         self.assertIn("'--file-storage', $storage", launcher)
         self.assertNotIn("'--tmp-file-storage'", launcher)

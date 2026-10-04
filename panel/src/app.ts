@@ -3465,6 +3465,13 @@ function renderTLSBuiltinCABlock(): HTMLElement {
     download.addEventListener("click", () => downloadTLSBuiltinCAPublic(info));
     actions.append(download);
   }
+  if (info?.crl.pem) {
+    const download = textElement("button", "Download CRL");
+    download.type = "button";
+    download.title = "Download built-in CA certificate revocation list";
+    download.addEventListener("click", () => downloadTLSBuiltinCRL(info));
+    actions.append(download);
+  }
   header.append(actions);
   section.append(header);
 
@@ -3474,6 +3481,11 @@ function renderTLSBuiltinCABlock(): HTMLElement {
   }
 
   section.append(renderTLSBuiltinCAFacts(info));
+  section.append(textElement(
+    "p",
+    "On Windows, install the CA in the machine Root store and the CRL in the machine CA store.",
+    "sec-form-hint",
+  ));
   if (info.immutable || info.regeneration_disabled) {
     section.append(textElement("p", "Protected config", "sec-form-hint"));
   } else {
@@ -3500,6 +3512,8 @@ function renderTLSBuiltinCAFacts(info: TLSBuiltinCAInfo): HTMLElement {
     ["Crypto", crypto],
     ["Fingerprint", info.cert.fingerprint],
     ["SPKI", info.cert.spki_fingerprint],
+    ["CRL number", info.crl.number],
+    ["CRL next update", info.crl.next_update],
   ] as Array<[string, string | undefined]>) {
     if (!value) continue;
     facts.append(textElement("dt", label), textElement("dd", value));
@@ -3572,19 +3586,35 @@ function renderTLSBuiltinCAForm(info: TLSBuiltinCAInfo): HTMLFormElement {
   return form;
 }
 
+function downloadTLSBuiltinCRL(info: TLSBuiltinCAInfo): void {
+  downloadTLSBlob(
+    info.crl.pem,
+    `${safeFilenamePart(info.cert.name) || "almagest-builtin-ca"}.crl.pem`,
+    "Built-in CA CRL download started.",
+  );
+}
+
 function downloadTLSBuiltinCAPublic(info: TLSBuiltinCAInfo): void {
+  downloadTLSBlob(
+    info.cert.pem ?? "",
+    `${safeFilenamePart(info.cert.name) || "almagest-builtin-ca"}.pem`,
+    "Built-in CA download started.",
+  );
+}
+
+function downloadTLSBlob(contents: string, filename: string, successMessage: string): void {
   try {
-    const blob = new Blob([info.cert.pem ?? ""], { type: "application/x-pem-file;charset=utf-8" });
+    const blob = new Blob([contents], { type: "application/x-pem-file;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `${safeFilenamePart(info.cert.name) || "almagest-builtin-ca"}.pem`;
+    link.download = filename;
     link.rel = "noopener";
     document.body.append(link);
     link.click();
     link.remove();
     window.setTimeout(() => URL.revokeObjectURL(url), 0);
-    notifySuccess("Built-in CA download started.", "Download started");
+    notifySuccess(successMessage, "Download started");
   } catch (error) {
     notifyError(errorMessage(error), "Download failed");
   }

@@ -56,6 +56,16 @@ func (s *apiSession) handleTLSMessage(msg api.Message) (api.Message, error) {
 		}
 		return api.NewResponse(msg.ID, snapshot.BuiltinCA)
 
+	case api.MethodTLSBuiltinCRL:
+		snapshot, err := manager.tlsSnapshot()
+		if err != nil {
+			return tlsRequestError(msg.ID, err)
+		}
+		if snapshot.BuiltinCA == nil || snapshot.BuiltinCA.CRL.PEM == "" {
+			return tlsRequestError(msg.ID, errTLSCertNotFound)
+		}
+		return api.NewResponse(msg.ID, snapshot.BuiltinCA.CRL)
+
 	case api.MethodTLSSetBuiltinCA:
 		req, err := decodePayload[api.TLSSetBuiltinCARequest](msg)
 		if err != nil {

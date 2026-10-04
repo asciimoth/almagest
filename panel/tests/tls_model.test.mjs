@@ -50,6 +50,7 @@ test("TLS changes upsert, delete, and keep deterministic order", () => {
     kind: "builtin_ca",
     builtin_ca: {
       cert: { name: "builtin-ca:almagest", fingerprint: "abc" },
+      crl: { pem: "crl", number: "1", issuer: "CN=Almagest", this_update: "now", next_update: "later" },
       options: { issuer: "Almagest", key_algorithm: "ecdsa", curve: "P256" },
     },
   });

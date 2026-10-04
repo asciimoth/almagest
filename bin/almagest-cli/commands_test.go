@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -926,6 +927,7 @@ func TestRunTLSPolicyCommandsSendRequests(t *testing.T) {
 func TestRunTLSBuiltinCAAndReloadCommandsSendRequests(t *testing.T) {
 	ft := &fakeTransport{reads: []api.Message{
 		mustResponse(t, "1", api.TLSBuiltinCAInfo{Options: api.TLSBuiltinCAOptions{Issuer: "Almagest"}}),
+		mustResponse(t, "1", api.TLSCRLInfo{PEM: "-----BEGIN X509 CRL-----\nCRL\n-----END X509 CRL-----\n"}),
 		mustResponse(t, "1", api.TLSBuiltinCAInfo{Options: api.TLSBuiltinCAOptions{Issuer: "Changed", KeyAlgorithm: "rsa", KeyBits: 4096}}),
 		mustResponse(t, "1", api.TLSSnapshot{Certs: []api.TLSCertEntry{{Name: "os-ca:system", Source: api.TLSSourceOS}}}),
 	}}
@@ -936,6 +938,12 @@ func TestRunTLSBuiltinCAAndReloadCommandsSendRequests(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("builtin-ca failed: %v\nstderr: %s", err, stderr.String())
+	}
+	err = run(context.Background(), []string{"tls", "builtin-crl"}, nil, &stdout, &stderr, func(context.Context, endpoint) (apiTransport, error) {
+		return ft, nil
+	})
+	if err != nil {
+		t.Fatalf("builtin-crl failed: %v\nstderr: %s", err, stderr.String())
 	}
 	err = run(context.Background(), []string{
 		"tls", "set-builtin-ca",
@@ -955,16 +963,19 @@ func TestRunTLSBuiltinCAAndReloadCommandsSendRequests(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reload-os-certs failed: %v\nstderr: %s", err, stderr.String())
 	}
-	if len(ft.writes) != 3 {
-		t.Fatalf("writes = %d, want builtin, set builtin, and reload", len(ft.writes))
+	if len(ft.writes) != 4 {
+		t.Fatalf("writes = %d, want builtin CA, builtin CRL, set builtin, and reload", len(ft.writes))
 	}
 	if ft.writes[0].Surface != api.SurfaceTLS || ft.writes[0].Method != string(api.MethodTLSBuiltinCA) {
 		t.Fatalf("builtin-ca request = %#v", ft.writes[0])
 	}
-	if ft.writes[1].Surface != api.SurfaceTLS || ft.writes[1].Method != string(api.MethodTLSSetBuiltinCA) {
-		t.Fatalf("set-builtin-ca request = %#v", ft.writes[1])
+	if ft.writes[1].Surface != api.SurfaceTLS || ft.writes[1].Method != string(api.MethodTLSBuiltinCRL) {
+		t.Fatalf("builtin-crl request = %#v", ft.writes[1])
 	}
-	setReq, err := api.DecodePayload[api.TLSSetBuiltinCARequest](ft.writes[1].Payload)
+	if ft.writes[2].Surface != api.SurfaceTLS || ft.writes[2].Method != string(api.MethodTLSSetBuiltinCA) {
+		t.Fatalf("set-builtin-ca request = %#v", ft.writes[2])
+	}
+	setReq, err := api.DecodePayload[api.TLSSetBuiltinCARequest](ft.writes[2].Payload)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -972,8 +983,33 @@ func TestRunTLSBuiltinCAAndReloadCommandsSendRequests(t *testing.T) {
 		setReq.Options.KeyAlgorithm != "rsa" || setReq.Options.KeyBits != 4096 {
 		t.Fatalf("set-builtin-ca payload = %#v, want configured RSA options", setReq)
 	}
-	if ft.writes[2].Surface != api.SurfaceTLS || ft.writes[2].Method != string(api.MethodTLSReloadOSCerts) {
-		t.Fatalf("reload-os-certs request = %#v", ft.writes[2])
+	if ft.writes[3].Surface != api.SurfaceTLS || ft.writes[3].Method != string(api.MethodTLSReloadOSCerts) {
+		t.Fatalf("reload-os-certs request = %#v", ft.writes[3])
+	}
+}
+
+func TestRunTLSBuiltinCRLWritesOutputFile(t *testing.T) {
+	const crlPEM = "-----BEGIN X509 CRL-----\nCRL\n-----END X509 CRL-----\n"
+	ft := &fakeTransport{reads: []api.Message{
+		mustResponse(t, "1", api.TLSCRLInfo{PEM: crlPEM}),
+	}}
+	out := filepath.Join(t.TempDir(), "almagest.crl.pem")
+	var stdout, stderr bytes.Buffer
+	err := run(context.Background(), []string{"tls", "builtin-crl", "--out", out}, nil, &stdout, &stderr, func(context.Context, endpoint) (apiTransport, error) {
+		return ft, nil
+	})
+	if err != nil {
+		t.Fatalf("builtin-crl --out failed: %v\nstderr: %s", err, stderr.String())
+	}
+	data, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != crlPEM || stdout.Len() != 0 {
+		t.Fatalf("CRL file = %q, stdout = %q", data, stdout.String())
+	}
+	if len(ft.writes) != 1 || ft.writes[0].Method != string(api.MethodTLSBuiltinCRL) {
+		t.Fatalf("builtin-crl request = %#v", ft.writes)
 	}
 }
 
@@ -1507,7 +1543,7 @@ func TestCommandFlagParseErrors(t *testing.T) {
 		{"tls", "certs"}, {"tls", "policies"}, {"tls", "snapshot"}, {"tls", "watch"},
 		{"tls", "set-cert"}, {"tls", "rename-cert"}, {"tls", "delete-cert"},
 		{"tls", "set-policy"}, {"tls", "rename-policy"}, {"tls", "delete-policy"},
-		{"tls", "builtin-ca"}, {"tls", "reload-os"}, {"tls", "unsubscribe"},
+		{"tls", "builtin-ca"}, {"tls", "builtin-crl"}, {"tls", "reload-os"}, {"tls", "unsubscribe"},
 		{"workers", "tree"},
 	}
 	for _, command := range commands {
