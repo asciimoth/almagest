@@ -137,6 +137,16 @@
             "github.com/asciimoth/almagest/bin/integration::TestWindowsDaemonNativeAdminWorkflow",
             "github.com/asciimoth/almagest/bin/integration::TestWindowsDaemonNativeStartupFailures"
           ]
+        },
+        {
+          "id": "m8::daemon-user-named-pipe-cli-access",
+          "kind": "go",
+          "module": "bin",
+          "arguments": ["-tags=winintegration", "./integration", "-run", "^TestWindowsDaemonNamedPipeCLIUserAccess$"],
+          "eventFile": "m8-daemon-user-named-pipe-cli-access.jsonl",
+          "requiredTests": [
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsDaemonNamedPipeCLIUserAccess"
+          ]
         }
       ]
     },
@@ -283,6 +293,16 @@
           "eventFile": "m8-daemon-native-resource-baseline.jsonl",
           "requiredTests": [
             "github.com/asciimoth/almagest/bin/integration::TestWindowsDaemonNativeResourceBaselineRestored"
+          ]
+        },
+        {
+          "id": "m8::daemon-machine-named-pipe-cli-access",
+          "kind": "go",
+          "module": "bin",
+          "arguments": ["-tags=winintegration", "./integration", "-run", "^TestWindowsDaemonNamedPipeCLIMachineAccess$"],
+          "eventFile": "m8-daemon-machine-named-pipe-cli-access.jsonl",
+          "requiredTests": [
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsDaemonNamedPipeCLIMachineAccess"
           ]
         },
         {

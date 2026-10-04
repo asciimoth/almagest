@@ -24,6 +24,8 @@ import (
 
 	"github.com/asciimoth/almagest/bin/api"
 	"golang.org/x/sys/windows"
+	"golang.org/x/sys/windows/svc"
+	"golang.org/x/sys/windows/svc/mgr"
 )
 
 const integrationTimeout = 45 * time.Second
@@ -127,6 +129,54 @@ func TestWindowsDaemonNativeAdminWorkflow(t *testing.T) {
 	if output := daemon.cliJSON("config", "get"); !bytes.Contains(output, []byte("Fixture SOCKS")) {
 		t.Fatalf("restored config did not persist across restart: %s", output)
 	}
+}
+
+func TestWindowsDaemonNamedPipeCLIUserAccess(t *testing.T) {
+	if isLocalSystem(t) {
+		t.Fatal("user named-pipe test requires the standard winvm identity")
+	}
+	root := newPrivateWindowsTestDir(t)
+	pipe := fmt.Sprintf("almagest-user-pipe-%d", os.Getpid())
+	daemon := newWindowsDaemon(t, root, pipe, `{}`, nativeProtectedConfig(pipe, "alm-user-pipe"))
+	daemon.start()
+	defer daemon.stop()
+
+	response := daemon.cliJSON("admin", "ping", "--nonce", "user-pipe")
+	if !bytes.Contains(response, []byte("user-pipe")) {
+		t.Fatalf("user pipe ping did not return its nonce: %s", response)
+	}
+	assertWindowsAdminPipeACL(t, pipe, false)
+
+	// The same pipe name must not become trusted when the caller selects the
+	// machine trust class. The CLI verifies the server owner after connecting.
+	ctx, cancel := context.WithTimeout(context.Background(), integrationTimeout)
+	defer cancel()
+	command := exec.CommandContext(ctx, daemon.cli, "--url", "pipe://machine/"+pipe,
+		"admin", "ping", "--nonce", "wrong-trust-class")
+	output, err := command.CombinedOutput()
+	if err == nil {
+		t.Fatalf("machine endpoint accepted the user-owned daemon pipe: %s", output)
+	}
+}
+
+func TestWindowsDaemonNamedPipeCLIMachineAccess(t *testing.T) {
+	if !isLocalSystem(t) {
+		t.Fatal("machine named-pipe test requires the Local System identity")
+	}
+	root := newPrivateWindowsTestDir(t)
+	pipe := fmt.Sprintf("almagest-machine-pipe-%d", os.Getpid())
+	daemon := newWindowsDaemon(t, root, pipe, `{}`, nativeProtectedConfig(pipe, "alm-machine-pipe"))
+	stopService := startWindowsDaemonService(t, daemon)
+	defer stopService()
+	waitFor(t, "production daemon service named pipe", func() bool {
+		return daemon.cliCommand("admin", "ping", "--nonce", "ready").Run() == nil
+	})
+
+	response := daemon.cliJSON("admin", "ping", "--nonce", "machine-pipe")
+	if !bytes.Contains(response, []byte("machine-pipe")) {
+		t.Fatalf("machine pipe ping did not return its nonce: %s", response)
+	}
+	assertWindowsAdminPipeACL(t, pipe, true)
 }
 
 func TestWindowsDaemonCommandHelper(t *testing.T) {
@@ -467,11 +517,79 @@ func (d *windowsDaemon) cliJSON(arguments ...string) []byte {
 }
 
 func (d *windowsDaemon) readLog() string {
-	if d.log != nil {
-		_ = d.log.Sync()
+	if d.log == nil {
+		return ""
 	}
+	_ = d.log.Sync()
 	data, _ := os.ReadFile(d.log.Name())
 	return string(data)
+}
+
+func startWindowsDaemonService(t *testing.T, daemon *windowsDaemon) func() {
+	t.Helper()
+	manager, err := mgr.Connect()
+	if err != nil {
+		t.Fatalf("connect to Windows service manager: %v", err)
+	}
+	if existing, openErr := manager.OpenService("almagestd"); openErr == nil {
+		_ = existing.Close()
+		_ = manager.Disconnect()
+		t.Fatal("almagestd service already exists")
+	} else if !errors.Is(openErr, windows.ERROR_SERVICE_DOES_NOT_EXIST) {
+		_ = manager.Disconnect()
+		t.Fatalf("check for an existing almagestd service: %v", openErr)
+	}
+	arguments := []string{
+		"--config", daemon.config, "--protected", daemon.protected,
+		"--file-storage", daemon.storage, "--pipe", `\\.\pipe\` + daemon.pipe,
+		"--web", "0", "--debug-nodes", "--lvl", "debug",
+	}
+	service, err := manager.CreateService("almagestd", daemon.daemon, mgr.Config{
+		DisplayName: "Almagest winvm named-pipe test",
+		StartType:   mgr.StartManual,
+	}, arguments...)
+	if err != nil {
+		_ = manager.Disconnect()
+		t.Fatalf("create production daemon service: %v", err)
+	}
+	if err = service.Start(); err != nil {
+		_ = service.Delete()
+		_ = service.Close()
+		_ = manager.Disconnect()
+		t.Fatalf("start production daemon service: %v", err)
+	}
+
+	return func() {
+		status, queryErr := service.Query()
+		if queryErr == nil && status.State != svc.Stopped {
+			if _, err := service.Control(svc.Stop); err != nil {
+				t.Errorf("stop production daemon service: %v", err)
+			} else {
+				deadline := time.Now().Add(integrationTimeout)
+				for time.Now().Before(deadline) {
+					status, queryErr = service.Query()
+					if queryErr != nil || status.State == svc.Stopped {
+						break
+					}
+					time.Sleep(50 * time.Millisecond)
+				}
+				if queryErr != nil || status.State != svc.Stopped {
+					t.Errorf("production daemon service did not stop: status=%v error=%v", status.State, queryErr)
+				}
+			}
+		} else if queryErr != nil {
+			t.Errorf("query production daemon service: %v", queryErr)
+		}
+		if err := service.Delete(); err != nil {
+			t.Errorf("delete production daemon service: %v", err)
+		}
+		if err := service.Close(); err != nil {
+			t.Errorf("close production daemon service: %v", err)
+		}
+		if err := manager.Disconnect(); err != nil {
+			t.Errorf("disconnect from Windows service manager: %v", err)
+		}
+	}
 }
 
 func buildWindowsBinaries(t *testing.T, target string) (string, string) {
@@ -700,6 +818,84 @@ func privateSecurityAttributes(t *testing.T, directory bool) *windows.SecurityAt
 		t.Fatal(err)
 	}
 	return &windows.SecurityAttributes{Length: uint32(unsafe.Sizeof(windows.SecurityAttributes{})), SecurityDescriptor: descriptor}
+}
+
+func assertWindowsAdminPipeACL(t *testing.T, pipe string, machine bool) {
+	t.Helper()
+	path, err := windows.UTF16PtrFromString(`\\.\pipe\` + pipe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handle, err := windows.CreateFile(path, windows.GENERIC_READ|windows.GENERIC_WRITE|windows.READ_CONTROL,
+		0, nil, windows.OPEN_EXISTING, 0, 0)
+	if err != nil {
+		t.Fatalf("open production daemon pipe for ACL inspection: %v", err)
+	}
+	defer windows.CloseHandle(handle) //nolint:errcheck
+
+	descriptor, err := windows.GetSecurityInfo(handle, windows.SE_KERNEL_OBJECT,
+		windows.OWNER_SECURITY_INFORMATION|windows.DACL_SECURITY_INFORMATION)
+	if err != nil {
+		t.Fatalf("read production daemon pipe ACL: %v", err)
+	}
+	owner, _, err := descriptor.Owner()
+	if err != nil {
+		t.Fatalf("read production daemon pipe owner: %v", err)
+	}
+	user, err := windows.GetCurrentProcessToken().GetTokenUser()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !owner.Equals(user.User.Sid) {
+		t.Fatalf("production daemon pipe owner = %s; want %s", owner, user.User.Sid)
+	}
+	control, _, err := descriptor.Control()
+	if err != nil {
+		t.Fatalf("read production daemon pipe ACL control: %v", err)
+	}
+	if control&windows.SE_DACL_PROTECTED == 0 {
+		t.Fatal("production daemon pipe DACL inherits access rules")
+	}
+	dacl, _, err := descriptor.DACL()
+	if err != nil || dacl == nil {
+		t.Fatalf("read production daemon pipe DACL: %v", err)
+	}
+
+	want := map[string]bool{"S-1-5-18": false}
+	if machine {
+		want["S-1-5-32-544"] = false
+	} else {
+		want[user.User.Sid.String()] = false
+	}
+	if int(dacl.AceCount) != len(want) {
+		t.Fatalf("production daemon pipe has %d access rules; want %d: %s",
+			dacl.AceCount, len(want), descriptor.String())
+	}
+	// Windows expands the SDDL generic-all mask to FILE_ALL_ACCESS when it
+	// creates a named-pipe object.
+	const fileAllAccess windows.ACCESS_MASK = 0x1f01ff
+	for i := uint16(0); i < dacl.AceCount; i++ {
+		var ace *windows.ACCESS_ALLOWED_ACE
+		if err := windows.GetAce(dacl, uint32(i), &ace); err != nil {
+			t.Fatalf("read production daemon pipe access rule %d: %v", i, err)
+		}
+		if ace.Header.AceType != windows.ACCESS_ALLOWED_ACE_TYPE || ace.Mask != fileAllAccess {
+			t.Fatalf("production daemon pipe access rule %d is not a full-access allow rule: %s",
+				i, descriptor.String())
+		}
+		sid := (*windows.SID)(unsafe.Pointer(&ace.SidStart))
+		seen, ok := want[sid.String()]
+		if !ok || seen {
+			t.Fatalf("production daemon pipe has unexpected access rule for %s: %s",
+				sid, descriptor.String())
+		}
+		want[sid.String()] = true
+	}
+	for sid, seen := range want {
+		if !seen {
+			t.Fatalf("production daemon pipe has no access rule for %s: %s", sid, descriptor.String())
+		}
+	}
 }
 
 func ownedNetworkState(t *testing.T, prefix string) []string {

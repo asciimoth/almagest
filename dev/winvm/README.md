@@ -158,12 +158,14 @@ case can override the default hard deadline with `timeoutSeconds`. The host
 prints `RUN`, `WAIT`, `TIMEOUT`, `PASS`, and `FAIL` progress. Each heartbeat
 also records the active Go process tree and guest memory and disk state under
 the suite's `diagnostics` directory.
-The active gate also builds and starts the production daemon and CLI. Its
-standard-user daemon cases cover named-pipe administration, live config,
-subscriptions, snapshots, TLS, restart persistence, startup failures, and a
-local SOCKS/HTTP data path. Its elevated daemon case creates a native adapter,
-records its adapter, route, and DNS state, stops the daemon gracefully, and
-requires the owned state baseline after the first run and after restart.
+The active gate also builds and starts the production daemon and CLI. Focused
+named-pipe cases send CLI pings through standard-user and Local System daemon
+pipes, verify their protected access rules, and require the user pipe to reject
+the CLI machine trust class. The other standard-user daemon cases cover live
+config, subscriptions, snapshots, TLS, restart persistence, startup failures,
+and a local SOCKS/HTTP data path. An elevated daemon case creates a native
+adapter, records its adapter, route, and DNS state, stops the daemon gracefully,
+and requires the owned state baseline after the first run and after restart.
 These daemon cases do not replace the separate packet-capture and soak gates
 from Steps 21 and 22.
 
