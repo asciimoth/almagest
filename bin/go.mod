@@ -15,7 +15,7 @@ require (
 	github.com/asciimoth/pasta/pasta v0.10.0
 	github.com/asciimoth/socksgo v0.5.0
 	github.com/asciimoth/sysnet-linux v0.8.1
-	github.com/asciimoth/sysnet-windows v0.4.0
+	github.com/asciimoth/sysnet-windows v0.5.0
 	github.com/coder/websocket v1.8.14
 	github.com/joho/godotenv v1.5.1
 	github.com/kataras/golog v0.1.15

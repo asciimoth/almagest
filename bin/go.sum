@@ -34,8 +34,8 @@ github.com/asciimoth/socksgo v0.5.0 h1:YJaSUmXol+Z6rhUEtwqhiHMqzSwm6eJZPD5LBDwyj
 github.com/asciimoth/socksgo v0.5.0/go.mod h1:Jatp5TOpkCdF/ZtXh9xiQVSvZBGCaCCNoJSoenGLiBc=
 github.com/asciimoth/sysnet-linux v0.8.1 h1:Uk6zItY9kHhB8QcjZOerQR/5+Q/abhMsJfORLlUdfB8=
 github.com/asciimoth/sysnet-linux v0.8.1/go.mod h1:RXyaRMjnGD0FBN+L6NfUgn0QGkxbUx7oeLwTTAOeAgs=
-github.com/asciimoth/sysnet-windows v0.4.0 h1:rw8eyibaWeAVJrK/uOU2UIiUXgWeZOtRL5x8ZrUtTUc=
-github.com/asciimoth/sysnet-windows v0.4.0/go.mod h1:6eoZeSAfKH0ZJe0huP5Myjil+7mVjM39wZ8y9RGeyCg=
+github.com/asciimoth/sysnet-windows v0.5.0 h1:9eFHqEgU/I0y03Op2zIwmZt1nnCrF9QxKGnYmyii8X8=
+github.com/asciimoth/sysnet-windows v0.5.0/go.mod h1:6eoZeSAfKH0ZJe0huP5Myjil+7mVjM39wZ8y9RGeyCg=
 github.com/asciimoth/tor-driver v0.1.2 h1:vsPYD81PjK5+1est8N/1ioURoBnl2r9r+oPWpGAygo8=
 github.com/asciimoth/tor-driver v0.1.2/go.mod h1:W9osFuxuRe8bMuKl8zmknVxeJO7veDMGAlK9wTwAsaU=
 github.com/asciimoth/tuntap v0.4.4 h1:VQAj5lGXWNx0/o3aNo+VHumgiNXFG+6TbFKt7ftvwvQ=

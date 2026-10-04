@@ -6,8 +6,8 @@ privilege boundaries. The machine-readable source is
 
 ## Pinned inputs
 
-Almagest pins `github.com/asciimoth/sysnet-windows` at version `v0.4.0`,
-revision `8d753dcf30f82f47073d3c7a5caa30264d3b23da`. The backend is in the `bin`
+Almagest pins `github.com/asciimoth/sysnet-windows` at version `v0.5.0`,
+revision `3c7646f43514802134df2327b266a808c3f8a9b0`. The backend is in the `bin`
 module only. The `lib` module must not import it or any daemon package. Fresh
 builds use the module proxy or the origin repository. They do not use the
 sibling development checkout.

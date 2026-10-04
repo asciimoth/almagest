@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "backend": {
     "module": "github.com/asciimoth/sysnet-windows",
-    "version": "v0.4.0",
-    "revision": "8d753dcf30f82f47073d3c7a5caa30264d3b23da",
+    "version": "v0.5.0",
+    "revision": "3c7646f43514802134df2327b266a808c3f8a9b0",
     "license": "GPL-3.0-only"
   },
   "wintun": {

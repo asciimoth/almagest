@@ -16,7 +16,7 @@ const contractSchemaVersion = 1
 
 const (
 	windowsBackendModule  = "github.com/asciimoth/sysnet-windows"
-	windowsBackendVersion = "v0.4.0"
+	windowsBackendVersion = "v0.5.0"
 )
 
 var validStatuses = []string{"supported", "unavailable", "unsupported"}
@@ -218,7 +218,7 @@ func ValidateDeploymentContract(contract DeploymentContract) error {
 	if contract.Backend.Module != windowsBackendModule || contract.Backend.Version != windowsBackendVersion {
 		return fmt.Errorf("backend module must be %s at %s", windowsBackendModule, windowsBackendVersion)
 	}
-	if contract.Backend.Revision != "8d753dcf30f82f47073d3c7a5caa30264d3b23da" || contract.Backend.License == "" {
+	if contract.Backend.Revision != "3c7646f43514802134df2327b266a808c3f8a9b0" || contract.Backend.License == "" {
 		return errors.New("backend revision and license must match the inspected dependency")
 	}
 	if contract.Wintun.Version != "0.14.1" || contract.Wintun.Archive != "wintun-0.14.1.zip" || contract.Wintun.SHA256 != "07c256185d6ee3652e09fa55c0b673e2624b565e02c4b9091c79ca7d2f24ef51" {
