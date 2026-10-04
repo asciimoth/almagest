@@ -62,15 +62,16 @@ missing prerequisites fail; they are not skips.
 
 `just daemon-winvm` opens a visible QEMU console, builds and runs `almagestd`
 as Windows `SYSTEM`, forwards the daemon's loopback web panel to
-`http://127.0.0.1:8090/`, and opens that URL with `xdg-open`. Use
-`just daemon-winvm 9090` to select a different host port. Set
-`WINVM_OPEN_BROWSER=0` to suppress browser launch or `WINVM_DISPLAY` to select
-another QEMU display backend. The manual overlay automatically signs in to the
-standard `winvm` account and opens the Server Core command environment. Its
+`http://127.0.0.1:8091/`. Use `just daemon-winvm 9090` to select a different
+host port. Set `WINVM_OPEN_BROWSER=1` to open the panel with `xdg-open`, or set
+`WINVM_DISPLAY` to select another QEMU display backend. The manual overlay
+automatically signs in to the standard `winvm` account and opens the Server
+Core command environment. Its
 password is `AlmagestManual1!`; automatic login and this password do not modify
 the locked base image. Windows Server Core has no desktop browser, so the panel
-opens on the Linux host. Run `curl.exe` and other console tools in the visible
-Windows session when you need to probe graph services from inside the guest.
+is available through the Linux host. Run `curl.exe` and other console tools in
+the visible Windows session when you need to probe graph services from inside
+the guest.
 
 Manual daemon state is synchronized with the gitignored `local/winvm/`
 directory. It contains `config/`, `store/`, and `logs/`. The state is restored
