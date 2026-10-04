@@ -6,7 +6,7 @@ source "$script_dir/common.sh"
 validate() {
     jq -e '.machine | .cpu=="host,cet-ss=off,cet-ibt=off" and .healthTimeoutSeconds>0 and .healthIntervalSeconds>0 and .healthIntervalSeconds<.healthTimeoutSeconds and .artifactIntervalSeconds>0 and .cleanupTimeoutSeconds>=240 and .recoveryBootTimeoutSeconds>0 and .recoveryBootTimeoutSeconds<.cleanupTimeoutSeconds' "$config_file" >/dev/null || die 'invalid watchdog or CPU config'
     jq -e '.schemaVersion==1 and .architecture=="amd64" and .machine.cpus>=2 and .machine.memoryMiB>=4096 and .machine.diskGiB>=40 and .machine.bootTimeoutSeconds>0 and .machine.installTimeoutSeconds>0 and .machine.testTimeoutSeconds>0 and .machine.shutdownTimeoutSeconds>0 and .machine.type=="q35,accel=kvm" and .ssh.user=="winvm" and .ssh.portMinimum>=1024 and .ssh.portMaximum>=.ssh.portMinimum and .ssh.portMaximum<=65535 and .artifacts.directory=="artifacts/winvm"' "$config_file" >/dev/null || die 'invalid config.json'
-    jq -e '.schemaVersion==1 and .go.version=="1.26.6" and .wintun.version=="0.14.1" and .driver.version=="1.3.0.0" and ([.windows.sha256,.virtio.sha256,.go.sha256,.openssh.sha256,.wintun.archiveSha256,.driver.files[]]|all(test("^[0-9a-f]{64}$")))' "$lock_file" >/dev/null || die 'invalid image-lock.json'
+    jq -e '.schemaVersion==1 and .go.version=="1.26.6" and .wintun.version=="0.14.1" and .driver.version=="1.3.0.0" and ([.windows.sha256,.virtio.sha256,.go.sha256,.openssh.sha256,.wintun.archiveSha256,.wintun.files[],.driver.files[]]|all(test("^[0-9a-f]{64}$")))' "$lock_file" >/dev/null || die 'invalid image-lock.json'
 }
 case ${1:-check} in
     --validate)
@@ -31,12 +31,13 @@ case ${1:-check} in
     check) ;;
     *) die "unknown option: $1" ;;
 esac
-for command in qemu-system-x86_64 qemu-img xorriso ssh scp ssh-keygen jq python3 curl sha256sum flock git tar timeout setsid node npm go nix; do require_command "$command"; done
+for command in qemu-system-x86_64 qemu-img xorriso ssh scp ssh-keygen jq python3 curl sha256sum flock git tar timeout setsid node npm go; do require_command "$command"; done
 validate
 [[ $(uname -s) == Linux ]] || die 'the VM harness needs Linux'
 require_kvm /dev/kvm
 find_ovmf code >/dev/null || die 'OVMF code firmware is absent'
 find_ovmf vars >/dev/null || die 'OVMF variable firmware is absent'
+prepare_native_dependencies
 for section in windows virtio; do verify_hash "$section ISO" "$(input_path "$section")" "$(locked_value ".${section}.sha256")"; done
 for section in go openssh; do
     path=$(package_path "$section")

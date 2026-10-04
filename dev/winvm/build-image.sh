@@ -94,7 +94,7 @@ while [[ ! -S $qmp && $SECONDS -lt $deadline ]]; do
     sleep .1
 done
 [[ -S $qmp ]] || die 'QMP readiness timeout'
-# Firmware and optical-media timing varies across cold boots. Send a harmless
+# Firmware and optical-media timing varies across cold boots. Send the Return
 # key until setup starts writing to the disk, then stop immediately. This avoids
 # both a fixed early window and stray input after Windows Setup has started.
 disk_size_before_boot=$(stat -c %s "$work/base.qcow2")
@@ -102,7 +102,7 @@ setup_started=0
 for _ in {1..60}; do
     kill -0 "$pid" || die 'QEMU exited during the installation boot window'
     "$script_dir/tools/qga.py" --socket "$qmp" --timeout 3 qmp send-key \
-        --arguments '{"keys":[{"type":"qcode","data":"spc"}]}' >/dev/null
+        --arguments '{"keys":[{"type":"qcode","data":"ret"}]}' >/dev/null
     sleep 1
     disk_size=$(stat -c %s "$work/base.qcow2")
     if ((disk_size >= disk_size_before_boot + 16 * 1024 * 1024)); then

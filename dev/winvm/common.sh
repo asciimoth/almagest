@@ -127,23 +127,23 @@ base_key() {
             sha256_file "$input"
         done
         printf '%s\n' "$(locked_value .windows.sha256)" "$(locked_value .virtio.sha256)"
-		locked_value '.driver.files | to_entries | sort_by(.key)[] | .value'
-		printf '%s\n' "$(locked_value .wintun.archiveSha256)"
+        locked_value '.driver.files | to_entries | sort_by(.key)[] | .value'
+        locked_value '.wintun.files | to_entries | sort_by(.key)[] | .value'
     } | sha256sum | awk '{print $1}'
 }
 
 prepare_native_dependencies() {
-	local output file
-	require_command nix
-	output=$(nix build --no-link --print-out-paths "$repo_root#windows-test-drivers")
-	winvm_driver_dir="$output/amd64"
-	for file in mullvad-split-tunnel.sys mullvad-split-tunnel.inf mullvad-split-tunnel.cat; do
-		verify_hash "split driver $file" "$winvm_driver_dir/$file" "$(locked_value ".driver.files[\"$file\"]")"
-	done
-	output=$(nix build --no-link --print-out-paths "$repo_root#windows-test-wintun")
-	winvm_wintun_dir="$output"
-	[[ -s $winvm_wintun_dir/amd64/wintun.dll ]] || die 'amd64 Wintun DLL is absent'
-	[[ -s $winvm_wintun_dir/arm64/wintun.dll ]] || die 'arm64 Wintun DLL is absent'
+    local driver_root=${MULLVAD_SPLIT_TUNNEL_DRIVER_DIR:-} file architecture
+    winvm_wintun_dir=${SYSNET_WINDOWS_WINTUN_DIR:-}
+    [[ $driver_root = /* && -d $driver_root ]] || die 'MULLVAD_SPLIT_TUNNEL_DRIVER_DIR must identify the pinned driver tree; enter nix develop'
+    [[ $winvm_wintun_dir = /* && -d $winvm_wintun_dir ]] || die 'SYSNET_WINDOWS_WINTUN_DIR must identify the pinned Wintun tree; enter nix develop'
+    winvm_driver_dir="$driver_root/amd64"
+    for file in mullvad-split-tunnel.sys mullvad-split-tunnel.inf mullvad-split-tunnel.cat; do
+        verify_hash "split driver $file" "$winvm_driver_dir/$file" "$(locked_value ".driver.files[\"$file\"]")"
+    done
+    for architecture in amd64 arm64; do
+        verify_hash "$architecture Wintun DLL" "$winvm_wintun_dir/$architecture/wintun.dll" "$(locked_value ".wintun.files[\"$architecture/wintun.dll\"]")"
+    done
 }
 allocate_locked_port() {
     local min max port fd attempt

@@ -46,6 +46,38 @@ class HarnessTests(unittest.TestCase):
         self.shell('verify_hash absent /no-such-winvm-media ' + '0' * 64, ok=False)
         self.shell('verify_hash wrong "$config_file" ' + '0' * 64, ok=False)
 
+    def test_native_dependencies_come_from_development_environment(self):
+        driver = self.path / 'driver'
+        wintun = self.path / 'wintun'
+        driver_files = {}
+        wintun_files = {}
+        for name in ('mullvad-split-tunnel.sys', 'mullvad-split-tunnel.inf',
+                     'mullvad-split-tunnel.cat'):
+            path = driver / 'amd64' / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(name.encode())
+            driver_files[name] = hashlib.sha256(path.read_bytes()).hexdigest()
+        for architecture in ('amd64', 'arm64'):
+            path = wintun / architecture / 'wintun.dll'
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(architecture.encode())
+            wintun_files[f'{architecture}/wintun.dll'] = hashlib.sha256(
+                path.read_bytes()).hexdigest()
+        lock = self.path / 'image-lock.json'
+        lock.write_text(json.dumps({'driver': {'files': driver_files},
+                                    'wintun': {'files': wintun_files}}))
+        self.env['TEST_LOCK'] = str(lock)
+        self.env['MULLVAD_SPLIT_TUNNEL_DRIVER_DIR'] = str(driver)
+        self.env['SYSNET_WINDOWS_WINTUN_DIR'] = str(wintun)
+        result = self.shell(
+            'lock_file=$TEST_LOCK; prepare_native_dependencies; '
+            'printf "%s\n%s\n" "$winvm_driver_dir" "$winvm_wintun_dir"')
+        self.assertEqual(result.stdout.splitlines(),
+                         [str(driver / 'amd64'), str(wintun)])
+        del self.env['SYSNET_WINDOWS_WINTUN_DIR']
+        result = self.shell('lock_file=$TEST_LOCK; prepare_native_dependencies', ok=False)
+        self.assertIn('SYSNET_WINDOWS_WINTUN_DIR', result.stderr)
+
     def test_archive_clean_dirty_and_exclusions(self):
         repo = self.path / 'repo'
         repo.mkdir()

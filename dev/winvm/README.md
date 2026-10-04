@@ -23,8 +23,16 @@ Use an x86_64 Linux host with writable `/dev/kvm`, 8 GiB of available memory,
 and at least 90 GiB of free cache storage. Install QEMU, OVMF, xorriso, OpenSSH
 client tools, Python 3, jq, curl, Git, tar, flock, coreutils, Go 1.26.6 or newer,
 Node.js, and npm. The Nix development shell supplies the VM packages on
-x86_64 Linux. Set `WINVM_OVMF_CODE` and `WINVM_OVMF_VARS` if firmware is not in
-one of the paths listed in `common.sh`. Use a matching firmware pair.
+x86_64 Linux. It also sets `MULLVAD_SPLIT_TUNNEL_DRIVER_DIR` and
+`SYSNET_WINDOWS_WINTUN_DIR` to the pinned runtime dependency trees. The winvm
+tools use these paths directly. Set `WINVM_OVMF_CODE` and `WINVM_OVMF_VARS` if
+firmware is not in one of the paths listed in `common.sh`. Use a matching
+firmware pair.
+
+For packaging or use outside the development shell, build the combined runtime
+dependency tree with `nix build .#windows-runtime-dependencies`. The separate
+`windows-split-tunnel-drivers` and `windows-wintun` outputs have the same
+architecture-specific layout.
 
 Copy `env.example` to `env` and set absolute paths to the Windows and VirtIO
 ISOs. Supply legally obtained media with the exact hashes in `image-lock.json`.

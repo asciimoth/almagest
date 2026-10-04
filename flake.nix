@@ -80,7 +80,7 @@
         url = "https://raw.githubusercontent.com/mullvad/mullvadvpn-app-binaries/${driverRevision}/${architecture}-pc-windows-msvc/split-tunnel/${file}";
         inherit hash;
       };
-      windowsTestDrivers = pkgs.runCommand "almagest-split-driver-1.3.0.0" {} ''
+      windowsSplitTunnelDrivers = pkgs.runCommand "almagest-split-driver-1.3.0.0" {} ''
         install -Dm0444 ${fetchDriverFile "x86_64" "mullvad-split-tunnel.sys" "sha256-EM8lu8/lH9Zjof7IipjpuFjzpXlYm7LsSWtm5P3RsgE="} $out/amd64/mullvad-split-tunnel.sys
         install -Dm0444 ${fetchDriverFile "x86_64" "mullvad-split-tunnel.inf" "sha256-PdWQXl+5jWGpQqM+jJpboHw6LeHk8xnh/sPlTfZZFgg="} $out/amd64/mullvad-split-tunnel.inf
         install -Dm0444 ${fetchDriverFile "x86_64" "mullvad-split-tunnel.cat" "sha256-xZmSagMn164GtTT0zQOdswOS4Yl7udA+T+w2MXRKTm0="} $out/amd64/mullvad-split-tunnel.cat
@@ -92,20 +92,32 @@
         url = "https://www.wintun.net/builds/wintun-0.14.1.zip";
         hash = "sha256-B8JWGF1u42UuCfpVwLZz4mJLVl4CxLkJHHnKfS8k71E=";
       };
-      windowsTestWintun = pkgs.runCommand "almagest-wintun-0.14.1" {nativeBuildInputs = [pkgs.unzip];} ''
+      windowsWintun = pkgs.runCommand "almagest-wintun-0.14.1" {nativeBuildInputs = [pkgs.unzip];} ''
         unzip -q ${wintunArchive} -d unpacked
         install -Dm0444 unpacked/wintun/bin/amd64/wintun.dll $out/amd64/wintun.dll
         install -Dm0444 unpacked/wintun/bin/arm64/wintun.dll $out/arm64/wintun.dll
       '';
     in {
       packages = {
-        windows-test-drivers = windowsTestDrivers;
-        windows-test-wintun = windowsTestWintun;
+        windows-split-tunnel-drivers = windowsSplitTunnelDrivers;
+        windows-wintun = windowsWintun;
+        windows-runtime-dependencies = pkgs.symlinkJoin {
+          name = "almagest-windows-runtime-dependencies";
+          paths = [windowsSplitTunnelDrivers windowsWintun];
+        };
+
+        # Keep the old test-oriented output names for existing commands.
+        windows-test-drivers = windowsSplitTunnelDrivers;
+        windows-test-wintun = windowsWintun;
       };
       devShells.default = pkgs.mkShell {
         inherit (checks.pre-commit-check) shellHook;
         PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1";
         CHROME_BIN = testChromium;
+        MULLVAD_SPLIT_TUNNEL_DRIVER_DIR = windowsSplitTunnelDrivers;
+        SYSNET_WINDOWS_WINTUN_DIR = windowsWintun;
+        WINVM_OVMF_CODE = pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux "${pkgs.OVMF.fd}/FV/OVMF_CODE.fd";
+        WINVM_OVMF_VARS = pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux "${pkgs.OVMF.fd}/FV/OVMF_VARS.fd";
         buildInputs = with pkgs; [
           go
           golangci-lint
