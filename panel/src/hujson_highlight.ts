@@ -108,6 +108,7 @@ export function renderHuJSONHighlight(container: HTMLElement, source: string): v
   }
 
   container.replaceChildren(fragment);
+  container.classList.toggle("hujson-trailing-newline", /[\r\n]$/.test(source));
 }
 
 function appendToken(tokens: HuJSONToken[], kind: HuJSONTokenKind, text: string): void {

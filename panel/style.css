@@ -575,6 +575,10 @@ h1 {
   scrollbar-color: transparent transparent;
 }
 
+#config-highlight.hujson-trailing-newline::after {
+  content: " ";
+}
+
 #config-editor {
   position: absolute;
   inset: 0;

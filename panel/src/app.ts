@@ -493,6 +493,7 @@ let configSnapshot: ConfigSnapshot | null = null;
 let configDraft = "";
 let configLoading = false;
 let configApplying = false;
+let configScrollSyncFrame = 0;
 let snapshotsLoading = false;
 let snapshotMutationPending = false;
 let snapshotEntries: SnapshotInfo[] = [];
@@ -5515,7 +5516,22 @@ function isConfigSaveFailure(entry: LogEntry): boolean {
   return entry.source === "daemon" && entry.level === "error" && entry.message.startsWith("config save failed:");
 }
 
+function syncConfigEditorScroll(): void {
+  el.configHighlight.scrollTop = el.configEditor.scrollTop;
+  el.configHighlight.scrollLeft = el.configEditor.scrollLeft;
+}
+
+function checkpointConfigEditorScroll(): void {
+  syncConfigEditorScroll();
+  if (configScrollSyncFrame) window.cancelAnimationFrame(configScrollSyncFrame);
+  configScrollSyncFrame = window.requestAnimationFrame(() => {
+    configScrollSyncFrame = 0;
+    syncConfigEditorScroll();
+  });
+}
+
 async function activateConfigPanel(): Promise<void> {
+  checkpointConfigEditorScroll();
   if (configLoading) {
     updateConfigControls();
     return;
@@ -5539,6 +5555,7 @@ async function loadConfig(preserveDraft = false): Promise<void> {
       // Textareas normalize CRLF and bare CR to LF. Highlight the normalized
       // value so every colored glyph stays aligned with the editable text.
       renderHuJSONHighlight(el.configHighlight, el.configEditor.value);
+      checkpointConfigEditorScroll();
     }
     if (keepDraft) {
       el.configStatus.textContent = `Loaded revision ${shortConfigRevision(next.revision)}. Unsaved changes are preserved.`;
@@ -5570,6 +5587,7 @@ async function applyConfig(): Promise<void> {
     configDraft = response.snapshot.text;
     el.configEditor.value = response.snapshot.text;
     renderHuJSONHighlight(el.configHighlight, el.configEditor.value);
+    checkpointConfigEditorScroll();
     el.configStatus.textContent = configChangeSummary(response.changes, response.snapshot.revision);
     notifySuccess(el.configStatus.textContent, "Config applied");
   } catch (error) {
@@ -6102,15 +6120,17 @@ function wireUI(): void {
   el.configEditor.addEventListener("input", () => {
     configDraft = el.configEditor.value;
     renderHuJSONHighlight(el.configHighlight, configDraft);
+    checkpointConfigEditorScroll();
     updateConfigControls();
     el.configStatus.textContent = configDraft === configSnapshot?.text
       ? `Loaded revision ${shortConfigRevision(configSnapshot.revision)}.`
       : "Config has unapplied changes.";
   });
-  el.configEditor.addEventListener("scroll", () => {
-    el.configHighlight.scrollTop = el.configEditor.scrollTop;
-    el.configHighlight.scrollLeft = el.configEditor.scrollLeft;
-  });
+  el.configEditor.addEventListener("scroll", syncConfigEditorScroll);
+  el.configEditor.addEventListener("focus", checkpointConfigEditorScroll);
+  el.configEditor.addEventListener("keyup", checkpointConfigEditorScroll);
+  el.configEditor.addEventListener("pointerup", checkpointConfigEditorScroll);
+  window.addEventListener("resize", checkpointConfigEditorScroll);
   el.configReload.addEventListener("click", () => void loadConfig());
   el.configApply.addEventListener("click", () => void applyConfig());
   el.snapshotCreate.addEventListener("click", () => void createSnapshot());

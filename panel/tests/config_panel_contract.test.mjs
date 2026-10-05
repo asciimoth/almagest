@@ -30,3 +30,12 @@ test("config tab accepts changed server text even when an unsaved draft exists",
   assert.match(app, /const keepDraft = preserveDraft && configSnapshot !== null && next\.text === configSnapshot\.text/);
   assert.match(app, /if \(!keepDraft\)\s*\{\s*configDraft = next\.text/);
 });
+
+test("config highlight scroll is resynchronized after editor layout and caret changes", () => {
+  assert.match(app, /function checkpointConfigEditorScroll\(\)/);
+  assert.match(app, /requestAnimationFrame\([^]*syncConfigEditorScroll\(\)/);
+  assert.match(app, /function activateConfigPanel\(\)[^{]*\{\s*checkpointConfigEditorScroll\(\)/);
+  assert.match(app, /addEventListener\("input",[^]*renderHuJSONHighlight\([^]*checkpointConfigEditorScroll\(\)/);
+  assert.match(app, /addEventListener\("keyup", checkpointConfigEditorScroll\)/);
+  assert.match(app, /addEventListener\("pointerup", checkpointConfigEditorScroll\)/);
+});

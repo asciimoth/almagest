@@ -81,3 +81,16 @@ test("renderer keeps arbitrary config text out of the HTML parser", () => {
     true,
   );
 });
+
+test("renderer preserves the textarea line after a trailing newline", () => {
+  const dom = new JSDOM("<!doctype html><pre id='highlight'></pre>");
+  const highlight = dom.window.document.querySelector("#highlight");
+
+  renderHuJSONHighlight(highlight, "first\nsecond\n");
+  assert.equal(highlight.classList.contains("hujson-trailing-newline"), true);
+  assert.equal(highlight.textContent, "first\nsecond\n");
+
+  renderHuJSONHighlight(highlight, "first\nsecond");
+  assert.equal(highlight.classList.contains("hujson-trailing-newline"), false);
+  assert.equal(highlight.textContent, "first\nsecond");
+});
