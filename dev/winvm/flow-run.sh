@@ -83,9 +83,19 @@ cp "$image_dir/OVMF_VARS.fd" "$client_vars"
 cp "$image_dir/OVMF_VARS.fd" "$endpoint_vars"
 chmod 0600 "$client_vars" "$endpoint_vars"
 
-allocate_locked_port
+allocate_flow_port() {
+    local diagnostics="$run_dir/port-probe.log"
+    if allocate_locked_port 2>"$diagnostics"; then
+        rm -f "$diagnostics"
+        return
+    fi
+    cat "$diagnostics" >&2
+    return 1
+}
+
+allocate_flow_port
 client_port=$winvm_ssh_port
-allocate_locked_port
+allocate_flow_port
 endpoint_port=$winvm_ssh_port
 read -r key_type key_data _ <"$image_dir/host-key.pub"
 printf '[127.0.0.1]:%s %s %s\n' "$client_port" "$key_type" "$key_data" >"$run_dir/client-known-hosts"
@@ -133,10 +143,10 @@ printf '%q ' "${client_qemu[@]}" >"$run_dir/client-qemu-command.log"
 client_pid=$!
 
 ssh_key=$(ssh_private_key)
-client_ssh=(-i "$ssh_key" -p "$client_port" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$run_dir/client-known-hosts" -o ConnectTimeout=5)
-endpoint_ssh=(-i "$ssh_key" -p "$endpoint_port" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$run_dir/endpoint-known-hosts" -o ConnectTimeout=5)
-client_scp=(-i "$ssh_key" -P "$client_port" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$run_dir/client-known-hosts")
-endpoint_scp=(-i "$ssh_key" -P "$endpoint_port" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$run_dir/endpoint-known-hosts")
+client_ssh=(-i "$ssh_key" -p "$client_port" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$run_dir/client-known-hosts" -o ConnectTimeout=5 -o LogLevel=ERROR -o WarnWeakCrypto=no)
+endpoint_ssh=(-i "$ssh_key" -p "$endpoint_port" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$run_dir/endpoint-known-hosts" -o ConnectTimeout=5 -o LogLevel=ERROR -o WarnWeakCrypto=no)
+client_scp=(-i "$ssh_key" -P "$client_port" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$run_dir/client-known-hosts" -o LogLevel=ERROR -o WarnWeakCrypto=no)
+endpoint_scp=(-i "$ssh_key" -P "$endpoint_port" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$run_dir/endpoint-known-hosts" -o LogLevel=ERROR -o WarnWeakCrypto=no)
 
 wait_guest() {
     local pid=$1 qga=$2 port=$3 known_hosts=$4 label=$5
@@ -180,7 +190,7 @@ stage=network
 
 stage='test'
 flow_command="\$ErrorActionPreference='Stop'; \$env:SYSNET_WINDOWS_WINTUN_DLL='C:\Windows\System32\wintun.dll'; Start-Service mullvad-split-tunnel; & '$endpoint_remote\sysnetflow.exe' -scenario outnet -output '$endpoint_remote\outnet.jsonl'; if(\$LASTEXITCODE){exit \$LASTEXITCODE}; & '$endpoint_remote\sysnetflow.exe' -scenario split -output '$endpoint_remote\split.jsonl'; \$code=\$LASTEXITCODE; Stop-Service mullvad-split-tunnel -Force; exit \$code"
-timeout --foreground 1800 "$script_dir/tools/qga.py" --socket "$client_sockets/qga.sock" --timeout 1800 exec powershell.exe -NoLogo -NoProfile -NonInteractive -Command "$flow_command" >"$run_dir/flow-console.log"
+timeout --foreground 1800 "$script_dir/tools/qga.py" --socket "$client_sockets/qga.sock" --timeout 1800 exec powershell.exe -NoLogo -NoProfile -NonInteractive -Command "$flow_command" >"$run_dir/flow-console.log" 2>&1
 
 stage=evidence
 "$script_dir/tools/qga.py" --socket "$client_sockets/qga.sock" --timeout 30 read "$endpoint_remote\outnet.jsonl" --limit 8388608 >"$run_dir/outnet-observations.jsonl"

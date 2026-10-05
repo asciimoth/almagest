@@ -110,7 +110,16 @@ if [[ $mode != --shell ]]; then
 fi
 actual=$(qemu-img info --output=json "$overlay" | jq -r '."full-backing-filename" // ."backing-filename"')
 [[ $(realpath -e "$actual") == "$(realpath -e "$image_dir/base.qcow2")" ]] || die 'overlay backing file mismatch'
-allocate_locked_port
+allocate_run_port() {
+    local diagnostics="$run_dir/port-probe.log"
+    if allocate_locked_port 2>"$diagnostics"; then
+        rm -f "$diagnostics"
+        return
+    fi
+    cat "$diagnostics" >&2
+    return 1
+}
+allocate_run_port
 port=$winvm_ssh_port
 read -r key_type key_data _ <"$image_dir/host-key.pub"
 printf '[127.0.0.1]:%s %s %s\n' "$port" "$key_type" "$key_data" >"$run_dir/known_hosts"
