@@ -172,7 +172,8 @@ class Runner:
                 return 127
             deadline = None
             vm_supervisor = argv[:2] in (["./dev/winvm/run.sh", "test"],
-                                         ["./dev/winvm/run.sh", "smoke"])
+                                         ["./dev/winvm/run.sh", "smoke"]) or \
+                argv[:1] == ["./dev/winvm/flow-run.sh"]
             cleanup_seconds = 60
             if vm_supervisor:
                 config = self.root / "dev/winvm/config.json"
@@ -308,6 +309,7 @@ class Runner:
         directory.mkdir(parents=True)
         env = self.env.copy()
         vm_dir = None
+        flow_dir = None
         if kind == "go":
             commands = go_commands()
             # Inherited GOFLAGS must not override the explicit test settings.
@@ -321,10 +323,14 @@ class Runner:
             parent = self.root / "artifacts/winvm"
             parent.mkdir(parents=True, exist_ok=True)
             vm_dir = Path(tempfile.mkdtemp(prefix="run-", dir=parent))
+            flow_dir = Path(tempfile.mkdtemp(prefix="run-flow-", dir=parent))
             (directory / "vm-artifacts").symlink_to(vm_dir, target_is_directory=True)
+            (directory / "flow-artifacts").symlink_to(flow_dir, target_is_directory=True)
             env["WINVM_RUN_DIR"] = str(vm_dir)
+            env["WINVM_FLOW_RUN_DIR"] = str(flow_dir)
             env["WINVM_PREPARED_DIR"] = str(self.session / "winvm-prepared")
-            commands = [["./dev/winvm/run.sh", "test"]]
+            commands = [["./dev/winvm/run.sh", "test"],
+                        ["./dev/winvm/flow-run.sh"]]
         started = time.monotonic()
         self.say(f"{kind}: loop {index} starting (completed={stats['completed']}, failed={stats['failed']})")
         statuses = []
@@ -350,7 +356,8 @@ class Runner:
                         commands=commands, exit_codes=statuses, failed_tests=names,
                         environment={key: env[key] for key in (
                             "E2E_RANDOM_SEED", "E2E_LOG_DIR", "E2E_COVERAGE_DIR",
-                            "WINVM_RUN_DIR", "WINVM_PREPARED_DIR") if key in env},
+                            "WINVM_RUN_DIR", "WINVM_FLOW_RUN_DIR",
+                            "WINVM_PREPARED_DIR") if key in env},
                         artifacts=str(directory) if failed or interrupted else None)
         with self.lock:
             with (self.session / "loops.jsonl").open("a") as output:
@@ -361,6 +368,8 @@ class Runner:
             shutil.rmtree(directory)
             if vm_dir:
                 shutil.rmtree(vm_dir)
+            if flow_dir:
+                shutil.rmtree(flow_dir)
         self.say(f"{kind}: loop {index} {result} ({elapsed:.1f}s; completed={stats['completed']}, failed={stats['failed']})")
 
     def report(self):

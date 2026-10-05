@@ -887,8 +887,8 @@ Implementation: complete. The project commands now expose separate Windows
 cross-build, host-doctor, image, standard-user, elevated integration, packet
 flow, resource, and qualification gates. `just lint` checks both Windows
 architectures. `just test-total` keeps Linux Docker E2E coverage and adds the
-standard-user and elevated VM gates only when `RUN_WINVM_TESTS=1`. Native
-Windows dispatch uses the PowerShell suite runner. Qualification rejects
+standard-user, elevated, and packet-flow VM gates when `RUN_WINVM_TESTS=1`.
+Native Windows dispatch uses the PowerShell suite runner. Qualification rejects
 mixed source, generated-input, platform, toolchain, DLL, driver, or executable
 identities and requires separate coverage or an explicit non-instrumented
 record. See the [VM harness guide](../dev/winvm/README.md#project-and-ci-gates).
@@ -911,11 +911,11 @@ Acceptance conditions:
 
 - `just lint` checks Windows-only code through the target environment.
 - `just test-total` runs the existing host suite. On configured VM hosts,
-  `RUN_WINVM_TESTS=1` adds the required Windows baseline and integration gates.
-  Native Windows dispatch uses the Windows runner rather than attempting Linux
-  Docker cases.
-- A documented host-only command remains available without KVM/media, but its
-  result cannot stand for the full Windows gate. Full requested gates fail on
+  `RUN_WINVM_TESTS=1` adds the required Windows baseline, integration, and
+  packet-flow gates. Native Windows dispatch uses the Windows runner rather
+  than attempting Linux Docker cases.
+- A documented host-only command remains available without KVM or media, but
+  its result cannot stand for the full Windows gate. Enabled gates fail on
   missing prerequisites; they do not silently skip them.
 - Qualification additionally requires flow/resource suites and matching source,
   build-input, OS, architecture, toolchain, and driver/DLL identities.

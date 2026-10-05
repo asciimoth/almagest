@@ -6,6 +6,7 @@ import io
 import json
 import os
 from pathlib import Path
+import re
 import socket
 import subprocess
 import tarfile
@@ -170,6 +171,44 @@ class HarnessTests(unittest.TestCase):
         self.assertIn('flow-pcap.py', flow)
         self.assertIn('-scenario outnet', flow)
         self.assertIn('-scenario split', flow)
+        self.assertIn('check: tidy typos fmt lint shellcheck vet vulncheck test-total', recipe)
+        self.assertIn('test-total: test-cycles-harness test-winvm-harness test test-e2e', recipe)
+        self.assertIn('test-e2e: test-e2e-docker test-winvm-enabled', recipe)
+        self.assertIn('RUN_WINVM_TESTS', recipe)
+
+    def test_regular_manifest_covers_windows_go_and_integration_tests(self):
+        manifest = json.loads((ROOT / 'test-suites.json').read_text())
+        ordinary = next(suite for suite in manifest['suites']
+                        if suite['id'] == 'windows-m4-ordinary')
+        full_modules = {case.get('module') for case in ordinary['cases']
+                        if case.get('kind') == 'go' and case.get('arguments') == ['./...']}
+        self.assertEqual(full_modules, {'certcat', 'lib', 'bin'})
+
+        required = {
+            test.rsplit('::', 1)[-1]
+            for suite in manifest['suites']
+            for case in suite['cases']
+            for test in case.get('requiredTests', [])
+            if '/bin/integration::' in test
+        }
+        integration = ROOT.parents[1] / 'bin/integration'
+        declared = set()
+        for path in integration.glob('*_windows_test.go'):
+            source = path.read_text()
+            if 'winintegration' not in source.split('\n', 1)[0]:
+                continue
+            declared.update(re.findall(r'^func (Test\w+)\(t \*testing\.T\)',
+                                       source, re.MULTILINE))
+
+        # These subprocess entry points are invoked by other tests. The two
+        # resource cases belong only to the fixed qualification suite.
+        non_regular = {
+            'TestWindowsDaemonCommandHelper',
+            'TestWindowsBatch2CommandHelper',
+            'TestWindowsDaemonNativeRepeatedGraphChanges',
+            'TestWindowsDaemonNativeForcedTerminationAndRestart',
+        }
+        self.assertEqual(declared - non_regular, required)
 
     def test_manual_daemon_is_elevated_and_keeps_web_local(self):
         runner = (ROOT / 'supervise.py').read_text()

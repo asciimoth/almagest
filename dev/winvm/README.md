@@ -243,10 +243,9 @@ remains enabled during this gate.
 The host-only harness tests run through `just lint` without starting a VM.
 `just test-total` always runs the harness. Set `RUN_WINVM_TESTS=1` to also run
 the combined standard-user, elevated, and packet-flow `just winvm-test` gate.
-Aggregate e2e recipes keep the Docker e2e suite on Linux and join the enabled
-VM gates before coverage reporting.
-When enabled, the native gate requires the configured KVM host, locked media,
-and WinVM prerequisites.
+Aggregate E2E recipes keep the Docker E2E suite on Linux and join the enabled
+VM gates before coverage reporting. When enabled, the native gate requires the
+configured KVM host, locked media, and WinVM prerequisites.
 
 ## Project and CI gates
 
@@ -254,10 +253,10 @@ and WinVM prerequisites.
 `golangci-lint` for Windows amd64 and arm64 with the Windows integration build
 tags. It does not start a VM. `just test-total` is the documented host-only
 aggregate when `RUN_WINVM_TESTS` is unset. It cannot qualify Windows support.
-Set `RUN_WINVM_TESTS=1` only on a configured Linux KVM host. This runs the
-combined standard-user, elevated, and packet-flow `just winvm-test` gate and
-preserves one combined Windows coverage profile. A missing image, locked input,
-driver, or other prerequisite then fails the requested gate.
+Set `RUN_WINVM_TESTS=1` only on a configured Linux KVM host. This makes both
+`just check` and `just test-cycles` run the combined standard-user, elevated,
+and packet-flow gate. A missing image, locked input, driver, or other
+prerequisite then fails the requested gate.
 
 On a native Windows runner, `just test-windows-vm` invokes the PowerShell suite
 runner for the standard account and `just test-windows-e2e` invokes it for the

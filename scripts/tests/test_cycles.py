@@ -21,6 +21,15 @@ SPEC.loader.exec_module(MODULE)
 
 
 class CycleTests(unittest.TestCase):
+    def test_winvm_toggle_defaults_off_and_enables_complete_loop(self):
+        with tempfile.TemporaryDirectory() as temp:
+            disabled = MODULE.Runner(Path(temp), {})
+            self.assertEqual(disabled.env['RUN_WINVM_TESTS'], '0')
+            self.assertNotIn('winvm', disabled.enabled)
+        with tempfile.TemporaryDirectory() as temp:
+            enabled = MODULE.Runner(Path(temp), {'RUN_WINVM_TESTS': '1'})
+            self.assertIn('winvm', enabled.enabled)
+
     def test_go_leaf_and_package_failures(self):
         events = [dict(Action="fail", Package="pkg", Test=test)
                   for test in ("TestParent", "TestParent/child")]
@@ -168,6 +177,25 @@ wait "$child"
             with patch.object(runner, "command", return_value=1):
                 runner.iteration("winvm")
             self.assertTrue((runner.session / "winvm/loop-000002/vm-artifacts").is_dir())
+            self.assertTrue((runner.session / "winvm/loop-000002/flow-artifacts").is_dir())
+
+    def test_vm_iteration_runs_native_and_packet_flow_gates(self):
+        with tempfile.TemporaryDirectory() as temp, redirect_stdout(io.StringIO()):
+            runner = MODULE.Runner(Path(temp), {"RUN_WINVM_TESTS": "1"})
+            calls = []
+
+            def command(argv, _log, env=None):
+                calls.append((argv, env))
+                return 1
+
+            runner.command = command
+            runner.iteration("winvm")
+            self.assertEqual([call[0] for call in calls], [
+                ["./dev/winvm/run.sh", "test"],
+                ["./dev/winvm/flow-run.sh"],
+            ])
+            self.assertIn("WINVM_RUN_DIR", calls[0][1])
+            self.assertIn("WINVM_FLOW_RUN_DIR", calls[0][1])
 
     def test_vm_supervisor_owns_interrupt_and_log_collection(self):
         with tempfile.TemporaryDirectory() as temp, redirect_stdout(io.StringIO()):

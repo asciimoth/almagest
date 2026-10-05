@@ -23,7 +23,12 @@ exec 8>"$winvm_cache_dir/locks/image-$key.lock"
 flock -s 8
 cached_image_valid "$image_dir" "$key" || die 'base image is absent or invalid; run just winvm-image'
 
-run_dir=$(mktemp -d "$artifact_root/run-flow-XXXXXXXX")
+if [[ -n ${WINVM_FLOW_RUN_DIR:-} ]]; then
+    run_dir=$(realpath -e "$WINVM_FLOW_RUN_DIR")
+    [[ $run_dir == "$artifact_root"/run-flow-* && ! -e $run_dir/run.json ]] || die 'invalid or used WINVM_FLOW_RUN_DIR'
+else
+    run_dir=$(mktemp -d "$artifact_root/run-flow-XXXXXXXX")
+fi
 client_overlay="$run_dir/client-overlay.qcow2"
 endpoint_overlay="$run_dir/endpoint-overlay.qcow2"
 client_vars="$run_dir/client-OVMF_VARS.fd"
