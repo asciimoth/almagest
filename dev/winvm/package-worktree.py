@@ -32,7 +32,8 @@ def eligible(name):
     if name not in PUBLIC_CERTIFICATES and path.suffix.lower() in {'.iso', '.qcow2', '.vhd', '.vhdx', '.vmdk', '.img',
                                '.fd', '.sock', '.pem', '.key', '.pfx', '.p12'}:
         return False
-    if parts[-1] in {'id_rsa', 'id_ed25519', 'go.work', 'go.work.sum', '.envrc'}:
+    if parts[-1] in {'id_rsa', 'id_ed25519', 'go.work', 'go.work.sum', '.envrc',
+                     '.secretsignore'}:
         return False
     return not (name.startswith(('bin/almagestd/static/', 'panel/public/', 'panel/vendor/'))
                 or name == 'certcat/catalog_gen.go')

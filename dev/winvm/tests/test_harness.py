@@ -81,7 +81,8 @@ class HarnessTests(unittest.TestCase):
         git('config', 'user.name', 'test')
         for name in ('source.go', 'deleted.go', 'dev/winvm/env', 'media.iso',
                      'secrets/password', 'test.key', 'artifacts/disk.qcow2',
-                     'bin/almagestd/static/index.html', '.env.local'):
+                     'bin/almagestd/static/index.html', '.env.local',
+                     '.secretsignore'):
             p = repo / name
             p.parent.mkdir(parents=True, exist_ok=True)
             p.write_text('initial')

@@ -2,4 +2,5 @@ e2e/coverage/
 coverage/
 artifacts/
 .env
+.secretsignore
 local/
