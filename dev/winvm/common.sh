@@ -160,7 +160,13 @@ allocate_locked_port() {
         exec {fd}>"$winvm_cache_dir/locks/ports/$port.lock"
         if flock -n "$fd" && python3 - "$port" <<'PY'
 import socket, sys
-s = socket.socket(); s.bind(("127.0.0.1", int(sys.argv[1]))); s.close()
+s = socket.socket()
+try:
+    s.bind(("127.0.0.1", int(sys.argv[1])))
+except OSError:
+    sys.exit(1)
+finally:
+    s.close()
 PY
         then
             # Callers read these globals, and the descriptor keeps the lock.

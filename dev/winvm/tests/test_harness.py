@@ -249,7 +249,9 @@ class HarnessTests(unittest.TestCase):
         config = self.path / 'config.json'
         config.write_text(json.dumps({'ssh': {'portMinimum': port, 'portMaximum': port}}))
         self.env['TEST_CONFIG'] = str(config)
-        self.shell('config_file=$TEST_CONFIG; allocate_locked_port', ok=False)
+        result = self.shell('config_file=$TEST_CONFIG; allocate_locked_port', ok=False)
+        self.assertNotIn('Traceback', result.stderr)
+        self.assertIn('no free locked SSH port is available', result.stderr)
         sock.close()
         self.shell('config_file=$TEST_CONFIG; allocate_locked_port; (allocate_locked_port)', ok=False)
 
