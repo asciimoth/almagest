@@ -357,6 +357,10 @@ type Engine interface {
 
 	SendNodeFormularMsg(workspace string, node uint64, message any)
 	SendNodeFormularMsgLocked(workspace string, node uint64, message any)
+	// SendNodeFormularMsgAndWait queues a form message and waits until the node
+	// callback returns. It does not wait for asynchronous work that the callback
+	// starts. Do not call it from a workspace callback.
+	SendNodeFormularMsgAndWait(workspace string, node uint64, message any) bool
 
 	WorkersSnapshot(workspace string) (map[uint64]WorkerSnapshot, bool)
 	WorkersSnapshotLocked(workspace string) (map[uint64]WorkerSnapshot, bool)
@@ -1173,6 +1177,28 @@ func (e *engine) SendNodeFormularMsgLocked(workspace string, node uint64, messag
 	}
 
 	e.mainWorkspace.SendNodeFormularMsgLocked(node, message)
+}
+
+func (e *engine) SendNodeFormularMsgAndWait(workspace string, node uint64, message any) bool {
+	if workspace != MainWorkspace || e.mainWorkspace == nil {
+		return false
+	}
+
+	delivered := make(chan struct{})
+	e.mainWorkspace.Lock()
+	e.mainWorkspace.SendNodeFormularMsgLocked(node, message)
+	// Keep the barrier in the same FIFO pending-operation batch as the form
+	// message. SendNodeFormularMsg can otherwise return while another goroutine
+	// is already draining workspace work.
+	e.mainWorkspace.AddPendingOpLocked(func() { close(delivered) })
+	e.mainWorkspace.Unlock()
+
+	select {
+	case <-delivered:
+		return true
+	case <-e.ctx.Done():
+		return false
+	}
 }
 
 func (e *engine) WorkersSnapshot(workspace string) (map[uint64]WorkerSnapshot, bool) {

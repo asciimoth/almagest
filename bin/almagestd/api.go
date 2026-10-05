@@ -705,7 +705,9 @@ func (s *apiSession) handleEngineMessage(msg api.Message) (api.Message, error) {
 		if err != nil {
 			return newRequestError(msg.ID, api.ErrorInvalidPayload, err.Error())
 		}
-		s.engine.SendNodeFormularMsg(req.Workspace, req.Node, message)
+		// Preserve the send API's no-op success response for an unavailable
+		// workspace, but do not acknowledge a valid send before node delivery.
+		_ = s.engine.SendNodeFormularMsgAndWait(req.Workspace, req.Node, message)
 		return api.NewResponse(msg.ID, struct{}{})
 
 	default:

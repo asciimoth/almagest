@@ -170,6 +170,39 @@
           ]
         },
         {
+          "id": "batch2::windows-fixture-e2e",
+          "kind": "go",
+          "module": "bin",
+          "arguments": [
+            "-tags=winintegration",
+            "./integration",
+            "-run",
+            "^TestWindowsBatch2(AdminAPITransports|CommandNodeLifecycle|DaemonStartupValidation|DNSClientRealDNS|FetchAddrLifecycle|LocalProxyMockIsolation|LocalProxyOutHTTP|NetworkFirewallCurl|SafeConfigStartup|SnapshotArchiveValidation|SnapshotsRestore|SnifferCurlHTTPTLS|SocksServerSecretCurl|StdinConfigStartup|TimeTriggerLifecycle|TLSAdminCLI|TLSNodesHTTPS|TLSProtectedBuiltinCA|VTunSpooferUDPRebind)$"
+          ],
+          "eventFile": "batch2-windows-fixture-e2e.jsonl",
+          "requiredTests": [
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch2AdminAPITransports",
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch2CommandNodeLifecycle",
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch2DaemonStartupValidation",
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch2DNSClientRealDNS",
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch2FetchAddrLifecycle",
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch2LocalProxyMockIsolation",
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch2LocalProxyOutHTTP",
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch2NetworkFirewallCurl",
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch2SafeConfigStartup",
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch2SnapshotArchiveValidation",
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch2SnapshotsRestore",
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch2SnifferCurlHTTPTLS",
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch2SocksServerSecretCurl",
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch2StdinConfigStartup",
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch2TimeTriggerLifecycle",
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch2TLSAdminCLI",
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch2TLSNodesHTTPS",
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch2TLSProtectedBuiltinCA",
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch2VTunSpooferUDPRebind"
+          ]
+        },
+        {
           "id": "m8::daemon-user-named-pipe-cli-access",
           "kind": "go",
           "module": "bin",
@@ -217,6 +250,21 @@
           "eventFile": "m8-daemon-machine-trusted-ca-interception.jsonl",
           "requiredTests": [
             "github.com/asciimoth/almagest/bin/integration::TestWindowsDaemonMachineTrustedBuiltinCAInterceptsTLS"
+          ]
+        },
+        {
+          "id": "batch2::windows-certificate-store-reload",
+          "kind": "go",
+          "module": "bin",
+          "arguments": [
+            "-tags=winintegration",
+            "./integration",
+            "-run",
+            "^TestWindowsBatch2TLSOSReloadPrivileged$"
+          ],
+          "eventFile": "batch2-windows-certificate-store-reload.jsonl",
+          "requiredTests": [
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch2TLSOSReloadPrivileged"
           ]
         },
         {

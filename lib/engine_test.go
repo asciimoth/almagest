@@ -269,6 +269,69 @@ func TestEngineSendInboxesAndWaitWaitsForConcurrentWorkspaceDelivery(t *testing.
 	}
 }
 
+func TestEngineSendNodeFormularMsgAndWaitWaitsForConcurrentWorkspaceDelivery(t *testing.T) {
+	received := make(chan any, 1)
+	engineAPI, err := BuildEngine(
+		context.Background(), configer.NewMemory(nil), logging.NewDebugLogFactory(1),
+		newEngineTestDebugSystem(), nil, nil, nil, nil,
+		[]pasta.NodeClass{engineInboxNodeClass{formularReceived: received}}, nil, false,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = engineAPI.Close() })
+	node, err := engineAPI.AddNode(MainWorkspace, "test/EngineInboxNode", "formular")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	implementation := engineAPI.(*engine)
+	workspaceBusy := make(chan struct{})
+	releaseWorkspace := make(chan struct{})
+	busyDone := make(chan struct{})
+	go func() {
+		implementation.mainWorkspace.AddPendingOp(func() {
+			close(workspaceBusy)
+			<-releaseWorkspace
+		})
+		close(busyDone)
+	}()
+	<-workspaceBusy
+
+	deliveryDone := make(chan bool, 1)
+	want := "form value"
+	go func() {
+		deliveryDone <- engineAPI.SendNodeFormularMsgAndWait(MainWorkspace, node, want)
+	}()
+	select {
+	case ok := <-deliveryDone:
+		t.Fatalf("SendNodeFormularMsgAndWait returned %v before delivery", ok)
+	case <-time.After(25 * time.Millisecond):
+	}
+
+	close(releaseWorkspace)
+	assertNoDeadlock(t, busyDone, "blocked workspace operation")
+	select {
+	case ok := <-deliveryDone:
+		if !ok {
+			t.Fatal("SendNodeFormularMsgAndWait returned false for the main workspace")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("SendNodeFormularMsgAndWait did not return after delivery")
+	}
+	select {
+	case got := <-received:
+		if got != want {
+			t.Fatalf("form message = %#v, want %#v", got, want)
+		}
+	default:
+		t.Fatal("form message was not delivered")
+	}
+	if engineAPI.SendNodeFormularMsgAndWait("missing", node, nil) {
+		t.Fatal("SendNodeFormularMsgAndWait accepted an unknown workspace")
+	}
+}
+
 func TestEngineWorkerAndSubscriptionEdgeAPI(t *testing.T) {
 	engineAPI, err := BuildEngine(
 		context.Background(), configer.NewMemory(nil), logging.NewDebugLogFactory(1),
@@ -1249,7 +1312,8 @@ type engineBatchNode struct {
 }
 
 type engineInboxNodeClass struct {
-	received chan<- int
+	received         chan<- int
+	formularReceived chan<- any
 }
 
 func (engineInboxNodeClass) ClassName() string { return "test/EngineInboxNode" }
@@ -1263,12 +1327,20 @@ func (engineInboxNodeClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{}
 }
 func (c engineInboxNodeClass) NewNode(configer.Config, ...*pasta.NodeClassState) (pasta.Node, error) {
-	return &engineInboxNode{received: c.received}, nil
+	return &engineInboxNode{received: c.received, formularReceived: c.formularReceived}, nil
 }
 
 type engineInboxNode struct {
 	pasta.BasicNode
-	received chan<- int
+	received         chan<- int
+	formularReceived chan<- any
+}
+
+func (n *engineInboxNode) OnFormularMsg(message any) error {
+	if n.formularReceived != nil {
+		n.formularReceived <- message
+	}
+	return nil
 }
 
 func (n *engineInboxNode) OnInbox(message pasta.InboxMessage) error {

@@ -34,19 +34,22 @@ const integrationTimeout = 45 * time.Second
 const commandMarkerEnvironment = "ALMAGEST_WINDOWS_DAEMON_COMMAND_MARKER"
 
 type windowsDaemon struct {
-	t          *testing.T
-	root       string
-	daemon     string
-	cli        string
-	pipe       string
-	endpoint   string
-	config     string
-	protected  string
-	storage    string
-	command    *exec.Cmd
-	log        *os.File
-	temporary  bool
-	batchPorts map[int]int
+	t           *testing.T
+	root        string
+	daemon      string
+	cli         string
+	pipe        string
+	endpoint    string
+	config      string
+	protected   string
+	storage     string
+	command     *exec.Cmd
+	log         *os.File
+	temporary   bool
+	batchPorts  map[int]int
+	extraArgs   []string
+	environment []string
+	stdin       io.Reader
 }
 
 var (
@@ -402,16 +405,6 @@ func TestWindowsDaemonNativeStartupFailures(t *testing.T) {
 	if err := waitCommand(command, integrationTimeout); err == nil {
 		t.Fatal("daemon accepted malformed startup config")
 	}
-
-	writePrivateWindowsFile(t, daemon.config, []byte(`{}`))
-	command = daemon.commandForStart()
-	command.Env = append(os.Environ(), `SYSNET_WINDOWS_WINTUN_DLL=C:\definitely-absent\wintun.dll`)
-	if err := command.Start(); err != nil {
-		t.Fatal(err)
-	}
-	if err := waitCommand(command, integrationTimeout); err == nil {
-		t.Fatal("daemon accepted an absent explicitly selected Wintun DLL")
-	}
 }
 
 func newWindowsDaemon(t *testing.T, root, pipe, config, protected string) *windowsDaemon {
@@ -443,9 +436,30 @@ func (d *windowsDaemon) commandForStart() *exec.Cmd {
 	} else {
 		arguments = append(arguments, "--file-storage", d.storage)
 	}
+	arguments = append(arguments, d.extraArgs...)
 	command := exec.Command(d.daemon, arguments...)
+	if len(d.environment) != 0 {
+		command.Env = windowsTestEnvironment(os.Environ(), d.environment...)
+	}
+	command.Stdin = d.stdin
 	command.SysProcAttr = &syscall.SysProcAttr{CreationFlags: windows.CREATE_NEW_PROCESS_GROUP}
 	return command
+}
+
+func windowsTestEnvironment(base []string, overrides ...string) []string {
+	keys := make(map[string]struct{}, len(overrides))
+	for _, value := range overrides {
+		key, _, _ := strings.Cut(value, "=")
+		keys[strings.ToUpper(key)] = struct{}{}
+	}
+	result := make([]string, 0, len(base)+len(overrides))
+	for _, value := range base {
+		key, _, _ := strings.Cut(value, "=")
+		if _, overridden := keys[strings.ToUpper(key)]; !overridden {
+			result = append(result, value)
+		}
+	}
+	return append(result, overrides...)
 }
 
 func (d *windowsDaemon) start() {
