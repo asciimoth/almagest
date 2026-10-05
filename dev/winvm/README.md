@@ -10,9 +10,9 @@ The image, QGA client, and lifecycle helpers are adapted from
 `a056c520f0faf966f54dd90ef63b15d9aa7382ec`. This adaptation changes the project
 paths, source packaging, guest toolchain, dependency provisioning, SSH key
 verification, and run/test orchestration.
-The Windows, VirtIO, and OpenSSH locks use
-the integration plan's reference inputs. Go is locked to 1.26.6; its hash is
-from the Go download manifest. No sibling checkout is needed. Image
+The Windows, VirtIO, and OpenSSH inputs are locked in this harness. Go is
+locked to 1.26.6; its hash is from the Go download manifest. No sibling
+checkout is needed. Image
 provisioning installs the locked Wintun DLL and compatible split-driver service
 as external test inputs. The daemon does not provision them.
 Do not run privileged networking tests on a normal workstation or shared host.

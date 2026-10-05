@@ -310,8 +310,33 @@ System integration is selected from `Protected.System.Type`:
 - `debug`: `sysnetdebug.System{}`.
 - `native` or empty: `platform.SystemIntegration`.
 
-Use debug integration for local runnable experiments. Native platform
-integration is currently a placeholder.
+Use debug integration for local runnable experiments. On Windows, native
+integration uses `sysnet-windows`. Other platforms currently use the
+platform implementation selected by their build tags.
+
+### Windows integration
+
+Windows host integration stays in `bin/` and is selected with build tags:
+
+- `platform_windows.go` owns known-folder paths, private file handling, and
+  construction of the native `sysnet-windows` system.
+- `runtime_dependencies_windows.go` loads Wintun only from the executable
+  directory or `System32`. Provisioning tools, not the daemon, install Wintun
+  and the split-tunnel driver service.
+- `api_pipe_windows.go` creates the SID-scoped interactive administration pipe
+  or the Local System service pipe. The CLI verifies the expected pipe owner.
+- `api_web_filter_windows.go` implements the optional best-effort username/SID
+  filter for the loopback web listener. It is not authentication.
+- `tls_authorities_windows.go` reads public certificates from the current
+  process identity and machine Root stores. TLS policies must explicitly select
+  catalog entries before they become trust anchors or constraints.
+- `command/process_windows.go` and `platform/lifecycle_windows.go` own Job
+  Object cleanup and console/Service Control Manager lifecycle handling.
+
+`contracts/windows/support-matrix.json` is the feature and platform support
+contract. `contracts/windows/test-manifest.json` defines the evidence required
+to qualify each claim. The reusable graph and node code remains in `lib/` and
+does not import the Windows backend.
 
 Before loading config, almagestd resolves path-valued CLI args to absolute
 paths. After config parsing and before daemon resources are started or

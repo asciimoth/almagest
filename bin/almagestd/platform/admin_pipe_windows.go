@@ -6,6 +6,9 @@ import (
 	"golang.org/x/sys/windows"
 )
 
+// DefaultWindowsMachineAdminPipe is the administration endpoint for a daemon
+// that runs as a Local System service. Its listener permits Local System and
+// elevated administrators; clients verify that Local System owns the pipe.
 const DefaultWindowsMachineAdminPipe = `\\.\pipe\almagest-admin`
 
 // DefaultWindowsUserAdminPipe separates interactive daemon state by Windows
