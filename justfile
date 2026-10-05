@@ -159,6 +159,7 @@ winvm-smoke:
 
 winvm-test:
   ./dev/winvm/run.sh test
+  ./dev/winvm/flow-run.sh
 
 # Run the standard-user native Windows build and test gate. On a non-Windows
 # host, use the locked disposable VM.

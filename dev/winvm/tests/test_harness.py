@@ -160,6 +160,17 @@ class HarnessTests(unittest.TestCase):
         self.assertIn("Write-TestProgress 'RUN '", runner)
         self.assertIn("'PASS' } else { 'FAIL'", runner)
 
+    def test_regular_winvm_gate_requires_isolated_packet_flow(self):
+        justfile = ROOT.parents[1] / 'justfile'
+        recipe = justfile.read_text()
+        flow = (ROOT / 'flow-run.sh').read_text()
+        self.assertIn('./dev/winvm/run.sh test\n  ./dev/winvm/flow-run.sh', recipe)
+        self.assertIn('filter-dump,id=tunnel-capture', flow)
+        self.assertIn('filter-dump,id=underlay-capture', flow)
+        self.assertIn('flow-pcap.py', flow)
+        self.assertIn('-scenario outnet', flow)
+        self.assertIn('-scenario split', flow)
+
     def test_manual_daemon_is_elevated_and_keeps_web_local(self):
         runner = (ROOT / 'supervise.py').read_text()
         launcher = (ROOT / 'manual-daemon.ps1').read_text()

@@ -134,8 +134,8 @@ The smoke run verifies transport, standard-user identity, OS, architecture,
 toolchain, and artifact retrieval. It records `testExecution: not-run`:
 **this is not the Windows test-suite gate or a support qualification.**
 
-`just winvm-test` runs the active native gate through Step 20 from
-`test-suites.json`. The
+`just winvm-test` runs the active native gate from `test-suites.json`, then the
+isolated two-guest packet-flow gate. The
 ordinary suite runs all tests in `certcat`, `lib`, and `bin` through the
 standard `winvm` SSH account. The privileged suite runs as SYSTEM through the
 private QEMU Guest Agent. It is serial and uses `go test -p=1 -parallel=1` for
@@ -242,7 +242,7 @@ The suite record alone is not resource qualification evidence. Windows Firewall
 remains enabled during this gate.
 The host-only harness tests run through `just lint` without starting a VM.
 `just test-total` always runs the harness. Set `RUN_WINVM_TESTS=1` to also run
-the combined standard-user and elevated `just winvm-test` gate.
+the combined standard-user, elevated, and packet-flow `just winvm-test` gate.
 Aggregate e2e recipes keep the Docker e2e suite on Linux and join the enabled
 VM gates before coverage reporting.
 When enabled, the native gate requires the configured KVM host, locked media,
@@ -255,9 +255,9 @@ and WinVM prerequisites.
 tags. It does not start a VM. `just test-total` is the documented host-only
 aggregate when `RUN_WINVM_TESTS` is unset. It cannot qualify Windows support.
 Set `RUN_WINVM_TESTS=1` only on a configured Linux KVM host. This runs the
-combined standard-user and elevated `just winvm-test` gate and preserves one
-combined Windows coverage profile. A missing image, locked input, driver, or
-other prerequisite then fails the requested gate.
+combined standard-user, elevated, and packet-flow `just winvm-test` gate and
+preserves one combined Windows coverage profile. A missing image, locked input,
+driver, or other prerequisite then fails the requested gate.
 
 On a native Windows runner, `just test-windows-vm` invokes the PowerShell suite
 runner for the standard account and `just test-windows-e2e` invokes it for the

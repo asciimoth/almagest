@@ -268,6 +268,47 @@
           ]
         },
         {
+          "id": "batch3::privileged-native-networking",
+          "kind": "go",
+          "module": "bin",
+          "timeoutSeconds": 1800,
+          "arguments": [
+            "-tags=winintegration",
+            "./integration",
+            "-run",
+            "^TestWindowsBatch3(DefaultTun|OutNetwork|Tun(Firewall|HighLoad|Routing|Select)|VTun)"
+          ],
+          "eventFile": "batch3-privileged-native-networking.jsonl",
+          "requiredTests": [
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch3DefaultTunDNSProvider",
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch3DefaultTunNestedWireGuardBypass",
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch3DefaultTunRouting",
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch3DefaultTunZeroPrefixRoutes",
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch3OutNetworkMigration",
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch3TunFirewallCurl",
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch3TunHighLoad",
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch3TunRouting",
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch3TunSelectMockHTTP",
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch3VTunSpooferIPv6Fallback"
+          ]
+        },
+        {
+          "id": "batch3::split-process-routing",
+          "kind": "go",
+          "module": "bin",
+          "startServices": ["mullvad-split-tunnel"],
+          "arguments": [
+            "-tags=winintegration",
+            "./integration",
+            "-run",
+            "^TestWindowsBatch3TunSplitterProcessRouting$"
+          ],
+          "eventFile": "batch3-split-process-routing.jsonl",
+          "requiredTests": [
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch3TunSplitterProcessRouting"
+          ]
+        },
+        {
           "id": "m3::stable-guid-collision",
           "kind": "go",
           "module": "bin",

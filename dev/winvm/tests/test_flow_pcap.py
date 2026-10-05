@@ -82,6 +82,45 @@ class FlowPcapTests(unittest.TestCase):
         self.assertTrue(evidence)
         self.assertTrue(all(item["packetPathValid"] for item in evidence))
 
+    def test_backend_public_and_underlay_lifecycle_matrix_passes(self):
+        values, tunnel, underlay = [], bytearray(), bytearray()
+        sequence = 0
+        for case, path in FLOW.BACKEND_PUBLIC_CASES.items():
+            for profile, networks in FLOW.PROFILES.items():
+                if case == "E05-explicit-application-dns-underlay":
+                    networks = {network for network in networks if network.startswith("udp")}
+                elif case == "E06-shared-windows-dns-client":
+                    networks = ({"ip4"} if profile == "ipv4" else {"ip6"}
+                                if profile == "ipv6" else {"ip4", "ip6"})
+                for network in sorted(networks):
+                    sequence += 1
+                    control = f"BACKEND_CONTROL_{sequence:04d}"
+                    token = f"BACKEND_ASSERT_{sequence:04d}"
+                    control_path = "underlay" if path == "tunnel" else "tunnel"
+                    values.append({"case": f"CTRL-{sequence}", "token": control,
+                                   "expectedPath": control_path,
+                                   "positiveControl": True, "phase": "public-api"})
+                    assertion = {"case": case, "token": token, "expectedPath": path,
+                                 "profile": profile, "network": network,
+                                 "controlToken": control, "phase": "public-api"}
+                    if case == "E04-pre-existing-ipc-target-tunnel":
+                        assertion.update(preExistingTarget=True,
+                                         requestingRole="excluded")
+                    if case == "E06-shared-windows-dns-client":
+                        assertion["limitation"] = "shared resolver attribution"
+                    values.append(assertion)
+                    (tunnel if control_path == "tunnel" else underlay).extend(control.encode())
+                    (tunnel if path == "tunnel" else underlay).extend(token.encode())
+        for case in sorted(FLOW.BACKEND_REQUIRED_CASES):
+            token = "BACKEND_" + case.replace("-", "_")
+            path = "underlay" if case == "N24-underlay-recovery" else "none"
+            values.append({"case": case, "token": token, "expectedPath": path})
+            if path == "underlay":
+                underlay.extend(token.encode())
+        result, evidence = self.run_validator(values, bytes(tunnel), bytes(underlay))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(all(item["packetPathValid"] for item in evidence))
+
     def test_missing_wrong_and_both_link_markers_fail(self):
         values, tunnel, underlay = self.observations()
         assertion = next(item for item in values if item.get("expectedPath") == "tunnel"
