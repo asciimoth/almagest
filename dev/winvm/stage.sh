@@ -9,7 +9,7 @@ cd "$run_dir/source"
 export GOWORK="$PWD/go.work"
 unset GOFLAGS
 go work init ./certcat ./lib ./bin
-go work edit -go=1.26.6
+go work edit -go="$(awk '$1 == "go" { print $2; exit }' bin/go.mod)"
 go -C certcat run ./cmd/certcat-generate -manual data/manual.json -machine data/machine.json -out catalog_gen.go
 (cd panel && npm ci && npm run build)
 if [[ $mode == manual ]]; then

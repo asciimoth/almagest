@@ -2,9 +2,10 @@
 
 set -euo pipefail
 
-readonly minimum_go_version=1.26.6
 source_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 readonly source_root
+minimum_go_version="$(awk '$1 == "go" { print $2; exit }' "${source_root}/bin/go.mod")"
+readonly minimum_go_version
 readonly artifact_root="${WINDOWS_BUILD_DIR:-${source_root}/artifacts/windows}"
 readonly modules=(certcat lib bin)
 readonly tag_sets=(default almagest_e2e)

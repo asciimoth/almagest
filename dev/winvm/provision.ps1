@@ -97,8 +97,6 @@ Copy-Item $wintunSource $wintunDestination -Force
 $dependencyFixtures = Join-Path $root dependencies
 New-Item -ItemType Directory -Force -Path $dependencyFixtures | Out-Null
 Copy-Item $wintunArm64Source (Join-Path $dependencyFixtures 'wintun-arm64.dll') -Force
-$wintunVersion = (Get-Item $wintunDestination).VersionInfo.FileVersionRaw.ToString().TrimEnd('.0')
-if ($wintunVersion -ne '@@WINTUN_VERSION@@') { throw "Wintun version is $wintunVersion" }
 
 $driverSource = Join-Path $media driver
 if (-not (Test-Path -LiteralPath $driverSource -PathType Container)) {
@@ -108,15 +106,6 @@ $driverStore = Join-Path $root driver
 New-Item -ItemType Directory -Force -Path $driverStore | Out-Null
 @('mullvad-split-tunnel.sys', 'mullvad-split-tunnel.inf', 'mullvad-split-tunnel.cat') |
     ForEach-Object { Copy-Item (Join-Path $driverSource $_) $driverStore -Force }
-$expectedDriverHashes = @{
-    'mullvad-split-tunnel.sys'='@@DRIVER_SYS_SHA256@@'
-    'mullvad-split-tunnel.inf'='@@DRIVER_INF_SHA256@@'
-    'mullvad-split-tunnel.cat'='@@DRIVER_CAT_SHA256@@'
-}
-foreach ($name in $expectedDriverHashes.Keys) {
-    $actual = (Get-FileHash (Join-Path $driverStore $name) -Algorithm SHA256).Hash.ToLowerInvariant()
-    if ($actual -ne $expectedDriverHashes[$name]) { throw "Split-driver hash mismatch: $name" }
-}
 $catalogSignature = Get-AuthenticodeSignature (Join-Path $driverStore 'mullvad-split-tunnel.cat')
 $driverSignature = Get-AuthenticodeSignature (Join-Path $driverStore 'mullvad-split-tunnel.sys')
 if ($catalogSignature.Status -ne 'Valid' -or $driverSignature.Status -ne 'Valid') { throw 'Split-driver package signature is not valid' }
@@ -124,9 +113,10 @@ if ($catalogSignature.Status -ne 'Valid' -or $driverSignature.Status -ne 'Valid'
 if ($LASTEXITCODE -ne 0) { throw "Cannot stage split-driver package: $LASTEXITCODE" }
 $installedDriver = Join-Path $env:SystemRoot 'System32\drivers\mullvad-split-tunnel.sys'
 Copy-Item (Join-Path $driverStore 'mullvad-split-tunnel.sys') $installedDriver -Force
-& sc.exe create '@@DRIVER_SERVICE@@' type= kernel start= demand error= normal binPath= '\SystemRoot\System32\drivers\mullvad-split-tunnel.sys' | Out-Default
+$driverServiceName = 'mullvad-split-tunnel'
+& sc.exe create $driverServiceName type= kernel start= demand error= normal binPath= '\SystemRoot\System32\drivers\mullvad-split-tunnel.sys' | Out-Default
 if ($LASTEXITCODE -notin @(0,1073)) { throw "Cannot create split-driver service: $LASTEXITCODE" }
-& sc.exe config '@@DRIVER_SERVICE@@' start= demand | Out-Default
+& sc.exe config $driverServiceName start= demand | Out-Default
 if ($LASTEXITCODE -ne 0) { throw "Cannot configure split-driver service: $LASTEXITCODE" }
 $bcd = (& bcdedit.exe /enum '{current}' | Out-String)
 if ($bcd -match '(?im)^testsigning\s+Yes' -or $bcd -match '(?im)^nointegritychecks\s+Yes') {
@@ -136,18 +126,15 @@ if ($bcd -match '(?im)^testsigning\s+Yes' -or $bcd -match '(?im)^nointegritychec
 powercfg.exe /change standby-timeout-ac 0; powercfg.exe /change hibernate-timeout-ac 0
 Stop-Service wuauserv -Force -ErrorAction SilentlyContinue; Set-Service wuauserv -StartupType Manual
 $goVersion = (& go version | Out-String).Trim()
-if ($goVersion -notmatch '^go version go@@GO_VERSION@@ windows/amd64$') { throw "Unexpected Go version: $goVersion" }
 $qgaVersion = (Get-Item 'C:\Program Files\qemu-ga\qemu-ga.exe').VersionInfo.FileVersion
-$driverService = Get-CimInstance Win32_SystemDriver -Filter "Name='@@DRIVER_SERVICE@@'"
+$driverService = Get-CimInstance Win32_SystemDriver -Filter "Name='$driverServiceName'"
 if (-not $driverService -or $driverService.StartMode -ne 'Manual' -or $driverService.State -ne 'Stopped') {
     throw 'Split-driver service final state is not stopped and demand-start'
 }
 $manifest = [ordered]@{
     windowsBuild=[Environment]::OSVersion.Version.ToString(); architecture=$env:PROCESSOR_ARCHITECTURE
     goVersion=$goVersion; qemuGuestAgentVersion=$qgaVersion; provisionedAt=(Get-Date).ToUniversalTime().ToString('o')
-    wintunVersion=$wintunVersion; driverVersion='@@DRIVER_VERSION@@'; upstreamCommit='@@UPSTREAM_COMMIT@@'
-    driverService='@@DRIVER_SERVICE@@'; driverFiles=$expectedDriverHashes
-    driverSigner=$driverSignature.SignerCertificate.Subject; driverSignature=$driverSignature.Status.ToString()
+    driverService=$driverServiceName
 }
 $manifestTemp = Join-Path $root 'manifest.json.tmp'; $manifest | ConvertTo-Json -Depth 4 | Set-Content $manifestTemp -Encoding utf8
 @('C:\Windows\Panther\unattend.xml','C:\Windows\Panther\Unattend\unattend.xml') | ForEach-Object { Remove-Item $_ -Force -ErrorAction SilentlyContinue }

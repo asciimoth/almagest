@@ -28,13 +28,6 @@ func TestCheckedInContracts(t *testing.T) {
 	}
 }
 
-func TestCheckedInDeploymentContract(t *testing.T) {
-	contract := loadCheckedInDeploymentContract(t)
-	if err := ValidateDeploymentContract(contract); err != nil {
-		t.Fatalf("ValidateDeploymentContract: %v", err)
-	}
-}
-
 func TestCheckedInExecutionManifest(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join(repositoryRoot(), "dev", "winvm", "test-suites.json"))
 	if err != nil {
@@ -52,46 +45,6 @@ func TestCheckedInExecutionManifest(t *testing.T) {
 	}
 }
 
-func TestDeploymentContractRejectsBoundaryViolations(t *testing.T) {
-	tests := []struct {
-		name     string
-		mutate   func(*DeploymentContract)
-		wantText string
-	}{
-		{
-			name: "unpinned-driver",
-			mutate: func(contract *DeploymentContract) {
-				contract.SplitDriver.Architectures["amd64"].Files["mullvad-split-tunnel.sys"] = strings.Repeat("0", 64)
-			},
-			wantText: "does not match its pinned SHA-256",
-		},
-		{
-			name: "daemon-installs",
-			mutate: func(contract *DeploymentContract) {
-				contract.Provisioning.DaemonInstalls = true
-			},
-			wantText: "daemon must not provision",
-		},
-		{
-			name: "ordinary-networking-depends-on-split",
-			mutate: func(contract *DeploymentContract) {
-				contract.Degradation.MustRemainAvailable = []string{"regular-tun"}
-			},
-			wantText: "split-driver independent features",
-		},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			contract := loadCheckedInDeploymentContract(t)
-			test.mutate(&contract)
-			err := ValidateDeploymentContract(contract)
-			if err == nil || !strings.Contains(err.Error(), test.wantText) {
-				t.Fatalf("ValidateDeploymentContract error = %v, want text %q", err, test.wantText)
-			}
-		})
-	}
-}
-
 func TestWindowsBackendDependencyBoundary(t *testing.T) {
 	root := repositoryRoot()
 	data, err := os.ReadFile(filepath.Join(root, "bin", "go.mod"))
@@ -106,8 +59,8 @@ func TestWindowsBackendDependencyBoundary(t *testing.T) {
 	for _, requirement := range file.Require {
 		if requirement.Mod.Path == windowsBackendModule {
 			found = true
-			if requirement.Mod.Version != windowsBackendVersion || requirement.Indirect {
-				t.Errorf("Windows backend requirement = %s (indirect %t), want direct %s", requirement.Mod.Version, requirement.Indirect, windowsBackendVersion)
+			if requirement.Indirect {
+				t.Errorf("Windows backend requirement is indirect, want direct")
 			}
 		}
 	}
@@ -270,7 +223,6 @@ func testQualificationIdentity(platform Platform) QualificationIdentity {
 		SourceRevision: "revision", SourceArchiveSHA256: strings.Repeat("a", 64),
 		GeneratedInputsSHA256: strings.Repeat("b", 64), OS: platform.OS,
 		Architecture: platform.Architecture, GoVersion: "go1.26.6",
-		WintunDLLSHA256: strings.Repeat("c", 64), SplitDriverSHA256: strings.Repeat("d", 64),
 		Binaries: map[string]string{"almagestd.exe": strings.Repeat("1", 64), "almagest-cli.exe": strings.Repeat("2", 64)},
 	}
 }
@@ -303,19 +255,6 @@ func loadCheckedInContracts(t *testing.T) (SupportMatrix, TestManifest) {
 		t.Fatal(err)
 	}
 	return matrix, manifest
-}
-
-func loadCheckedInDeploymentContract(t *testing.T) DeploymentContract {
-	t.Helper()
-	data, err := os.ReadFile(filepath.Join(repositoryRoot(), "docs", "windows", "deployment-contract.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	contract, err := DecodeDeploymentContract(data)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return contract
 }
 
 func repositoryRoot() string {

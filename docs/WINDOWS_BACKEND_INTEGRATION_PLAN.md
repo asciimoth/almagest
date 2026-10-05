@@ -126,8 +126,7 @@ negative manifest fixtures for absent, skipped, and wrong-platform evidence.
 ### Step 2: Define dependency and privilege boundaries
 
 Implementation: complete. See the
-[Windows deployment contract](WINDOWS_DEPLOYMENT_CONTRACT.md) and its
-[machine-readable form](windows/deployment-contract.json).
+[Windows deployment contract](WINDOWS_DEPLOYMENT_CONTRACT.md).
 
 Pin a released version or immutable module revision in `bin/go.mod`. Record
 the matching Wintun and split-driver inputs, licenses, service requirements,
@@ -142,12 +141,12 @@ Acceptance conditions:
   verifies the service and opens its device.
 - Missing split-driver support affects exclusions, not ordinary networking.
 
-Tests: dependency/import checks and deployment-contract fixtures. Register
-native dependency and privilege cases in the manifest for M3 and M4; those
-later execution gates do not block this contract milestone.
+Tests: dependency and import checks. Register native dependency and privilege
+cases in the manifest for M3 and M4; those later execution gates do not block
+this contract milestone.
 
 Milestone acceptance: the support matrix, deployment contract, privilege
-requirements, and initial required-test manifest are recorded and validated.
+requirements, and initial required-test manifest are recorded.
 
 ## Milestone 2: Add Windows builds and disposable VM tests
 
@@ -165,8 +164,7 @@ Acceptance conditions:
   or pre-existing assets. Keep the existing in-repository module replacements.
 - The pipeline creates a workspace, certificate catalog output, and embedded
   panel assets without committing generated files.
-- The guest toolchain meets Almagest's `go 1.26.6` requirement. Do not copy the
-  sibling harness's Go 1.25.14 lock unchanged.
+- The guest toolchain meets the version requirement in `bin/go.mod`.
 - Test compilation is recorded separately from test execution.
 
 Tests: fresh-checkout amd64/arm64 builds; missing generated inputs; target-only
@@ -236,7 +234,7 @@ artifact failures reliably. Native backend integration is not claimed.
 
 ### Step 6: Add Windows selection and protected config
 
-Implementation: complete. Windows now selects the pinned sysnet-windows
+Implementation: complete. Windows now selects the sysnet-windows
 backend, maps protected `System.Windows` fields into its typed configuration,
 and provides Windows-specific embedded defaults. The schemas document the
 feature switches, duration and recovery formats, stable GUID behavior, and
@@ -289,9 +287,9 @@ joined primary/rollback errors. Verify DNS warnings through node status.
 
 Implementation: complete. The daemon validates Wintun from an absolute trusted
 application-directory or System32 path before and after it changes to file
-storage, checks the loaded path and pinned version, and preserves actionable
-loader errors. Explicit debug integration does not require native inputs. The
-disposable native-test image provisions the locked DLL and split-driver inputs
+storage, checks the loaded path, and preserves actionable loader errors.
+Explicit debug integration does not require native inputs. The disposable
+native-test image provisions the flake DLL and split-driver inputs
 outside the daemon. Native cases cover hostile and invalid DLLs, stopped,
 absent, incompatible, and exclusively owned split drivers, and verify that
 rejection does not provision or start the split service.
@@ -889,9 +887,9 @@ flow, resource, and qualification gates. `just lint` checks both Windows
 architectures. `just test-total` keeps Linux Docker E2E coverage and adds the
 standard-user, elevated, and packet-flow VM gates when `RUN_WINVM_TESTS=1`.
 Native Windows dispatch uses the PowerShell suite runner. Qualification rejects
-mixed source, generated-input, platform, toolchain, DLL, driver, or executable
-identities and requires separate coverage or an explicit non-instrumented
-record. See the [VM harness guide](../dev/winvm/README.md#project-and-ci-gates).
+mixed source, generated-input, platform, toolchain, or executable identities
+and requires separate coverage or an explicit non-instrumented record. See the
+[VM harness guide](../dev/winvm/README.md#project-and-ci-gates).
 
 Extend `just lint` and `just test-total` with the relevant platform checks.
 Keep Linux Docker E2E coverage. Add explicit Windows commands:
@@ -918,7 +916,7 @@ Acceptance conditions:
   its result cannot stand for the full Windows gate. Enabled gates fail on
   missing prerequisites; they do not silently skip them.
 - Qualification additionally requires flow/resource suites and matching source,
-  build-input, OS, architecture, toolchain, and driver/DLL identities.
+  build-input, OS, architecture, toolchain, and executable identities.
 - Keep per-platform unit and instrumented-daemon coverage. A merged percentage
   cannot mask untested Windows code. Record any non-instrumented flow cases.
 

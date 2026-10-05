@@ -14,10 +14,7 @@ import (
 
 const contractSchemaVersion = 1
 
-const (
-	windowsBackendModule  = "github.com/asciimoth/sysnet-windows"
-	windowsBackendVersion = "v0.5.0"
-)
+const windowsBackendModule = "github.com/asciimoth/sysnet-windows"
 
 var validStatuses = []string{"supported", "unavailable", "unsupported"}
 
@@ -74,81 +71,6 @@ type TestSuite struct {
 	RequiredTests []string `json:"requiredTests"`
 }
 
-// DeploymentContract records immutable native inputs, the boundary between
-// deployment and the daemon, and the identity needed for each operation.
-type DeploymentContract struct {
-	SchemaVersion int                  `json:"schemaVersion"`
-	Backend       ModuleDependency     `json:"backend"`
-	Wintun        WintunInput          `json:"wintun"`
-	SplitDriver   SplitDriverInput     `json:"splitDriver"`
-	Provisioning  ProvisioningBoundary `json:"provisioning"`
-	Privileges    []PrivilegeBoundary  `json:"privileges"`
-	Degradation   DegradationContract  `json:"degradation"`
-}
-
-// ModuleDependency identifies the exact Windows backend source.
-type ModuleDependency struct {
-	Module   string `json:"module"`
-	Version  string `json:"version"`
-	Revision string `json:"revision"`
-	License  string `json:"license"`
-}
-
-// WintunInput identifies the deployable Wintun archive and DLL load boundary.
-type WintunInput struct {
-	Version          string   `json:"version"`
-	Archive          string   `json:"archive"`
-	Source           string   `json:"source"`
-	SHA256           string   `json:"sha256"`
-	Architectures    []string `json:"architectures"`
-	TrustedLocations []string `json:"trustedLocations"`
-	License          string   `json:"license"`
-}
-
-// SplitDriverInput identifies the compatible signed split-driver deployment.
-type SplitDriverInput struct {
-	Version          string                     `json:"version"`
-	UpstreamRevision string                     `json:"upstreamRevision"`
-	BinariesRevision string                     `json:"binariesRevision"`
-	ServiceName      string                     `json:"serviceName"`
-	ServiceType      string                     `json:"serviceType"`
-	StartType        string                     `json:"startType"`
-	BinaryPath       string                     `json:"binaryPath"`
-	Architectures    map[string]DriverArtifacts `json:"architectures"`
-	License          string                     `json:"license"`
-}
-
-// DriverArtifacts records package hashes for one architecture.
-type DriverArtifacts struct {
-	Source string            `json:"source"`
-	Files  map[string]string `json:"files"`
-}
-
-// ProvisioningBoundary makes daemon-owned deployment actions explicit.
-type ProvisioningBoundary struct {
-	Owner               string `json:"owner"`
-	DaemonDownloads     bool   `json:"daemonDownloads"`
-	DaemonInstalls      bool   `json:"daemonInstalls"`
-	DaemonUpdates       bool   `json:"daemonUpdates"`
-	DaemonRegisters     bool   `json:"daemonRegistersService"`
-	DaemonStarts        bool   `json:"daemonStartsService"`
-	BackendVerification string `json:"backendVerification"`
-}
-
-// PrivilegeBoundary identifies the minimum identity for an operation group.
-type PrivilegeBoundary struct {
-	ID                string   `json:"id"`
-	Operations        []string `json:"operations"`
-	MinimumIdentity   string   `json:"minimumIdentity"`
-	ElevationRequired bool     `json:"elevationRequired"`
-}
-
-// DegradationContract records the required behavior when split support is absent.
-type DegradationContract struct {
-	MissingSplitDriverAffects []string `json:"missingSplitDriverAffects"`
-	MustRemainAvailable       []string `json:"mustRemainAvailable"`
-}
-
 // QualificationEvidence is the result for one native platform execution.
 type QualificationEvidence struct {
 	SchemaVersion   int                      `json:"schemaVersion"`
@@ -178,8 +100,6 @@ type QualificationIdentity struct {
 	OS                    string            `json:"os"`
 	Architecture          string            `json:"architecture"`
 	GoVersion             string            `json:"goVersion"`
-	WintunDLLSHA256       string            `json:"wintunDLLSHA256"`
-	SplitDriverSHA256     string            `json:"splitDriverSHA256"`
 	Binaries              map[string]string `json:"binaries"`
 }
 
@@ -199,118 +119,6 @@ func DecodeTestManifest(data []byte) (TestManifest, error) {
 		return TestManifest{}, fmt.Errorf("decode test manifest: %w", err)
 	}
 	return manifest, nil
-}
-
-// DecodeDeploymentContract decodes a deployment contract and rejects unknown fields.
-func DecodeDeploymentContract(data []byte) (DeploymentContract, error) {
-	var contract DeploymentContract
-	if err := decodeStrict(data, &contract); err != nil {
-		return DeploymentContract{}, fmt.Errorf("decode deployment contract: %w", err)
-	}
-	return contract, nil
-}
-
-// ValidateDeploymentContract checks immutable inputs and security boundaries.
-func ValidateDeploymentContract(contract DeploymentContract) error {
-	if contract.SchemaVersion != contractSchemaVersion {
-		return fmt.Errorf("deployment contract schema version %d, want %d", contract.SchemaVersion, contractSchemaVersion)
-	}
-	if contract.Backend.Module != windowsBackendModule || contract.Backend.Version != windowsBackendVersion {
-		return fmt.Errorf("backend module must be %s at %s", windowsBackendModule, windowsBackendVersion)
-	}
-	if contract.Backend.Revision != "3c7646f43514802134df2327b266a808c3f8a9b0" || contract.Backend.License == "" {
-		return errors.New("backend revision and license must match the inspected dependency")
-	}
-	if contract.Wintun.Version != "0.14.1" || contract.Wintun.Archive != "wintun-0.14.1.zip" || contract.Wintun.SHA256 != "07c256185d6ee3652e09fa55c0b673e2624b565e02c4b9091c79ca7d2f24ef51" {
-		return errors.New("wintun version, archive, and SHA-256 must match the inspected dependency")
-	}
-	if err := exactStrings(contract.Wintun.Architectures, []string{"amd64", "arm64"}, "Wintun architectures"); err != nil {
-		return err
-	}
-	if err := exactStrings(contract.Wintun.TrustedLocations, []string{"application-directory", "System32"}, "Wintun trusted locations"); err != nil {
-		return err
-	}
-	if contract.Wintun.Source == "" || contract.Wintun.License == "" {
-		return errors.New("wintun source and license must not be empty")
-	}
-	if contract.SplitDriver.Version != "1.3.0.0" || contract.SplitDriver.ServiceName != "mullvad-split-tunnel" || contract.SplitDriver.ServiceType != "kernel-driver" || contract.SplitDriver.StartType != "demand-start" {
-		return errors.New("split-driver service identity does not match the inspected dependency")
-	}
-	if contract.SplitDriver.UpstreamRevision != "0a0eb97f67d1dbcb3d08bda66d3b24f465d95475" || contract.SplitDriver.BinariesRevision != "5b6f46cde692acb77ee74b37b9fd3f1678c45a52" {
-		return errors.New("split-driver revisions do not match the inspected dependency")
-	}
-	if contract.SplitDriver.BinaryPath != `%SystemRoot%\System32\drivers\mullvad-split-tunnel.sys` || contract.SplitDriver.License == "" {
-		return errors.New("split-driver path and license must match the deployment contract")
-	}
-	if err := validateDriverArtifacts(contract.SplitDriver.Architectures); err != nil {
-		return err
-	}
-	boundary := contract.Provisioning
-	if boundary.Owner != "external-deployment-tooling" || boundary.DaemonDownloads || boundary.DaemonInstalls || boundary.DaemonUpdates || boundary.DaemonRegisters || boundary.DaemonStarts {
-		return errors.New("daemon must not provision or manage dependency installation")
-	}
-	if boundary.BackendVerification == "" {
-		return errors.New("backend verification contract must not be empty")
-	}
-	if err := validatePrivileges(contract.Privileges); err != nil {
-		return err
-	}
-	if err := exactStrings(contract.Degradation.MissingSplitDriverAffects, []string{"win-exe-tree-exclusions"}, "split-driver affected features"); err != nil {
-		return err
-	}
-	return exactStrings(contract.Degradation.MustRemainAvailable, []string{"regular-tun", "default-routing-without-exclusions", "outnet", "outdns", "localnet", "win-pid-matcher", "win-exe-path-matcher"}, "split-driver independent features")
-}
-
-func validateDriverArtifacts(values map[string]DriverArtifacts) error {
-	want := map[string]DriverArtifacts{
-		"amd64": {Source: "x86_64-pc-windows-msvc", Files: map[string]string{
-			"mullvad-split-tunnel.sys": "10cf25bbcfe51fd663a1fec88a98e9b858f3a579589bb2ec496b66e4fdd1b201",
-			"mullvad-split-tunnel.inf": "3dd5905e5fb98d61a942a33e8c9a5ba07c3a2de1e4f319e1fec3e54df6591608",
-			"mullvad-split-tunnel.cat": "c599926a0327d7ae06b534f4cd039db30392e1897bb9d03e4fec3631744a4e6d",
-		}},
-		"arm64": {Source: "aarch64-pc-windows-msvc", Files: map[string]string{
-			"mullvad-split-tunnel.sys": "6af8b3bfe5aa095d5276187558c7c7d3a3e0c174b34406cd6c4b3f8e6ffa6534",
-			"mullvad-split-tunnel.inf": "0bfdb044e40535dabbeb3620b655c1563714b3a6f3231d3492c972c6e8dea6f1",
-			"mullvad-split-tunnel.cat": "c3d27636739ebaa7dde369d113347de83e3e2173b8a512bb8863d11b148de7ce",
-		}},
-	}
-	if len(values) != 2 {
-		return errors.New("split-driver artifacts must contain amd64 and arm64")
-	}
-	for _, architecture := range []string{"amd64", "arm64"} {
-		artifacts, exists := values[architecture]
-		if !exists || artifacts.Source != want[architecture].Source || len(artifacts.Files) != 3 {
-			return fmt.Errorf("split-driver artifacts for %s are incomplete", architecture)
-		}
-		for _, name := range []string{"mullvad-split-tunnel.sys", "mullvad-split-tunnel.inf", "mullvad-split-tunnel.cat"} {
-			if artifacts.Files[name] != want[architecture].Files[name] {
-				return fmt.Errorf("split-driver artifact %s/%s does not match its pinned SHA-256", architecture, name)
-			}
-		}
-	}
-	return nil
-}
-
-func validatePrivileges(values []PrivilegeBoundary) error {
-	want := map[string]bool{"read-only-and-userspace": false, "native-network-mutation": true, "dependency-provisioning": true}
-	if len(values) != len(want) {
-		return errors.New("privilege contract must define all operation groups")
-	}
-	for _, value := range values {
-		elevated, exists := want[value.ID]
-		if !exists || len(value.Operations) == 0 || value.MinimumIdentity == "" || value.ElevationRequired != elevated {
-			return fmt.Errorf("invalid privilege boundary %q", value.ID)
-		}
-		delete(want, value.ID)
-	}
-	return nil
-}
-
-func exactStrings(got, want []string, label string) error {
-	if !slices.Equal(got, want) {
-		return fmt.Errorf("%s = %v, want %v", label, got, want)
-	}
-	return nil
 }
 
 // DecodeQualificationEvidence decodes evidence and rejects unknown fields.
@@ -600,8 +408,6 @@ func validateQualificationIdentity(actual, expected QualificationIdentity, platf
 	for name, value := range map[string]string{
 		"source archive":   actual.SourceArchiveSHA256,
 		"generated inputs": actual.GeneratedInputsSHA256,
-		"Wintun DLL":       actual.WintunDLLSHA256,
-		"split driver":     actual.SplitDriverSHA256,
 	} {
 		if !validSHA256(value) {
 			return fmt.Errorf("%s SHA-256 is missing or invalid", name)
@@ -623,8 +429,7 @@ func qualificationIdentitiesEqual(left, right QualificationIdentity) bool {
 		left.SourceArchiveSHA256 == right.SourceArchiveSHA256 &&
 		left.GeneratedInputsSHA256 == right.GeneratedInputsSHA256 &&
 		left.OS == right.OS && left.Architecture == right.Architecture &&
-		left.GoVersion == right.GoVersion && left.WintunDLLSHA256 == right.WintunDLLSHA256 &&
-		left.SplitDriverSHA256 == right.SplitDriverSHA256 &&
+		left.GoVersion == right.GoVersion &&
 		left.Binaries["almagestd.exe"] == right.Binaries["almagestd.exe"] &&
 		left.Binaries["almagest-cli.exe"] == right.Binaries["almagest-cli.exe"]
 }

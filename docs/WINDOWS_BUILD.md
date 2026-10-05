@@ -1,7 +1,7 @@
 # Windows cross-builds
 
-Use Go 1.26.6 or a newer patch release in the Go 1.26 series or later. Node.js
-and npm are also required because the daemon embeds the admin panel.
+Use the Go version required by `bin/go.mod` or a newer compatible release.
+Node.js and npm are also required because the daemon embeds the admin panel.
 
 Build both supported Windows architectures:
 

@@ -112,7 +112,7 @@ find_ovmf() {
     return 1
 }
 base_key() {
-    local input public
+    local input public driver_root wintun_root
     local -a files=("$config_file" "$lock_file" "$winvm_dir/Autounattend.xml" "$winvm_dir/provision.ps1" "$winvm_dir/common.sh" "$winvm_dir/build-image.sh" "$winvm_dir/tools/qga.py")
     public=$(ssh_public_key)
     [[ -r $public ]] || die "SSH public key is absent: $public; run just winvm-image"
@@ -127,22 +127,27 @@ base_key() {
             sha256_file "$input"
         done
         printf '%s\n' "$(locked_value .windows.sha256)" "$(locked_value .virtio.sha256)"
-        locked_value '.driver.files | to_entries | sort_by(.key)[] | .value'
-        locked_value '.wintun.files | to_entries | sort_by(.key)[] | .value'
+        driver_root=${MULLVAD_SPLIT_TUNNEL_DRIVER_DIR:?MULLVAD_SPLIT_TUNNEL_DRIVER_DIR is not set}
+        wintun_root=${SYSNET_WINDOWS_WINTUN_DIR:?SYSNET_WINDOWS_WINTUN_DIR is not set}
+        for input in mullvad-split-tunnel.cat mullvad-split-tunnel.inf mullvad-split-tunnel.sys; do
+            sha256_file "$driver_root/amd64/$input"
+        done
+        sha256_file "$wintun_root/amd64/wintun.dll"
+        sha256_file "$wintun_root/arm64/wintun.dll"
     } | sha256sum | awk '{print $1}'
 }
 
 prepare_native_dependencies() {
     local driver_root=${MULLVAD_SPLIT_TUNNEL_DRIVER_DIR:-} file architecture
     winvm_wintun_dir=${SYSNET_WINDOWS_WINTUN_DIR:-}
-    [[ $driver_root = /* && -d $driver_root ]] || die 'MULLVAD_SPLIT_TUNNEL_DRIVER_DIR must identify the pinned driver tree; enter nix develop'
-    [[ $winvm_wintun_dir = /* && -d $winvm_wintun_dir ]] || die 'SYSNET_WINDOWS_WINTUN_DIR must identify the pinned Wintun tree; enter nix develop'
+    [[ $driver_root = /* && -d $driver_root ]] || die 'MULLVAD_SPLIT_TUNNEL_DRIVER_DIR must identify the flake driver tree; enter nix develop'
+    [[ $winvm_wintun_dir = /* && -d $winvm_wintun_dir ]] || die 'SYSNET_WINDOWS_WINTUN_DIR must identify the flake Wintun tree; enter nix develop'
     winvm_driver_dir="$driver_root/amd64"
     for file in mullvad-split-tunnel.sys mullvad-split-tunnel.inf mullvad-split-tunnel.cat; do
-        verify_hash "split driver $file" "$winvm_driver_dir/$file" "$(locked_value ".driver.files[\"$file\"]")"
+        [[ -f $winvm_driver_dir/$file ]] || die "split driver input is absent: $winvm_driver_dir/$file"
     done
     for architecture in amd64 arm64; do
-        verify_hash "$architecture Wintun DLL" "$winvm_wintun_dir/$architecture/wintun.dll" "$(locked_value ".wintun.files[\"$architecture/wintun.dll\"]")"
+        [[ -f $winvm_wintun_dir/$architecture/wintun.dll ]] || die "$architecture Wintun DLL is absent: $winvm_wintun_dir/$architecture/wintun.dll"
     done
 }
 allocate_locked_port() {

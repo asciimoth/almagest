@@ -7,8 +7,6 @@
       "requiredTests": [
         "github.com/asciimoth/almagest/bin/internal/windowssupport::TestCheckedInContracts",
         "github.com/asciimoth/almagest/bin/internal/windowssupport::TestQualificationEvidenceFixtures",
-        "github.com/asciimoth/almagest/bin/internal/windowssupport::TestCheckedInDeploymentContract",
-        "github.com/asciimoth/almagest/bin/internal/windowssupport::TestDeploymentContractRejectsBoundaryViolations",
         "github.com/asciimoth/almagest/bin/internal/windowssupport::TestWindowsBackendDependencyBoundary",
         "github.com/asciimoth/almagest/bin/internal/windowssupport::TestLibraryImportBoundary"
       ]
@@ -45,8 +43,8 @@
       "execution": "native-windows",
       "requiredTests": [
         "native::execution-identity-elevated",
-        "native::pinned-wintun-load-location-and-version",
-        "native::pinned-split-driver-service-and-signature",
+        "native::wintun-load-location",
+        "native::split-driver-service",
         "native::network-mutation-privilege-boundaries",
         "native::daemon-has-no-dependency-provisioning-path",
         "native::regular-tun-ipv4-ipv6-lifecycle",

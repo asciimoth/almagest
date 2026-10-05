@@ -63,13 +63,8 @@ password=$(python3 -c 'import secrets; print(secrets.token_hex(24)+"aA!")')
 sed -i -e "s|@@WINDOWS_IMAGE_NAME@@|$(jq -r .windowsImageName "$config_file")|g" -e "s|@@ADMIN_PASSWORD@@|$password|g" "$work/Autounattend.xml"
 unset password
 sed -i \
-    -e "s|@@GO_FILE@@|$(locked_value .go.file)|g" -e "s|@@GO_VERSION@@|$(locked_value .go.version)|g" \
-    -e "s|@@OPENSSH_FILE@@|$(locked_value .openssh.file)|g" -e "s|@@WINTUN_VERSION@@|$(locked_value .wintun.version)|g" \
-    -e "s|@@DRIVER_SERVICE@@|$(locked_value .driver.serviceName)|g" -e "s|@@DRIVER_VERSION@@|$(locked_value .driver.version)|g" \
-    -e "s|@@UPSTREAM_COMMIT@@|$(locked_value .driver.upstreamCommit)|g" \
-    -e "s|@@DRIVER_SYS_SHA256@@|$(locked_value '.driver.files["mullvad-split-tunnel.sys"]')|g" \
-    -e "s|@@DRIVER_INF_SHA256@@|$(locked_value '.driver.files["mullvad-split-tunnel.inf"]')|g" \
-    -e "s|@@DRIVER_CAT_SHA256@@|$(locked_value '.driver.files["mullvad-split-tunnel.cat"]')|g" "$work/provision.ps1"
+    -e "s|@@GO_FILE@@|$(locked_value .go.file)|g" \
+    -e "s|@@OPENSSH_FILE@@|$(locked_value .openssh.file)|g" "$work/provision.ps1"
 cp "$(package_path go)" "$(package_path openssh)" "$work/"
 mkdir "$work/driver" "$work/wintun"
 cp "$winvm_driver_dir"/* "$work/driver/"

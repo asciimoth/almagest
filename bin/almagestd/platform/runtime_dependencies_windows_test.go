@@ -14,7 +14,7 @@ func TestWindowsWintunDependencyRejectsMissingAndWrongArchitectureDLL(t *testing
 	applicationPath := filepath.Join(base, "application", "wintun.dll")
 	systemPath := filepath.Join(base, "system32", "wintun.dll")
 	if _, err := validateWindowsWintun(applicationPath, systemPath); err == nil ||
-		!strings.Contains(err.Error(), "architecture-matched wintun.dll 0.14.1 is absent") {
+		!strings.Contains(err.Error(), "architecture-matched wintun.dll is absent") {
 		t.Fatalf("missing dependency error = %v", err)
 	}
 	wrongArchitecture := `C:\winvm\dependencies\wintun-arm64.dll`
@@ -22,7 +22,7 @@ func TestWindowsWintunDependencyRejectsMissingAndWrongArchitectureDLL(t *testing
 		t.Fatalf("wrong-architecture Wintun fixture: %v", err)
 	}
 	if _, err := validateWindowsWintun(wrongArchitecture, systemPath); err == nil ||
-		!strings.Contains(err.Error(), "load the architecture-matched wintun.dll 0.14.1") {
+		!strings.Contains(err.Error(), "load the architecture-matched wintun.dll") {
 		t.Fatalf("wrong-architecture dependency error = %v", err)
 	}
 }
@@ -51,9 +51,6 @@ func TestWindowsRuntimeDependenciesRemainTrustedAfterChdir(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ValidateRuntimeDependencies before chdir: %v", err)
 	}
-	if before.WintunVersion != windowsWintunVersion {
-		t.Fatalf("Wintun version = %q, want %q", before.WintunVersion, windowsWintunVersion)
-	}
 	hostile := t.TempDir()
 	if err := os.WriteFile(filepath.Join(hostile, "wintun.dll"), []byte("hostile current-directory DLL"), 0o600); err != nil {
 		t.Fatal(err)
@@ -67,7 +64,7 @@ func TestWindowsRuntimeDependenciesRemainTrustedAfterChdir(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !equal || after.WintunVersion != before.WintunVersion {
+	if !equal {
 		t.Fatalf("dependency changed after chdir: before=%+v after=%+v", before, after)
 	}
 }

@@ -8,7 +8,7 @@ if ($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator))
     throw 'The smoke command must use the standard SSH account'
 }
 $version = (& go version | Out-String).Trim()
-if ($LASTEXITCODE -ne 0 -or $version -ne 'go version go1.26.6 windows/amd64') {
+if ($LASTEXITCODE -ne 0 -or $version -notmatch '^go version go[^ ]+ windows/amd64$') {
     throw "Unexpected guest toolchain: $version"
 }
 if ([Environment]::OSVersion.Version.Build -ne 20348 -or $env:PROCESSOR_ARCHITECTURE -ne 'AMD64') {

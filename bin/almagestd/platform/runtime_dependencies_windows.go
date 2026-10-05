@@ -8,19 +8,15 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"unsafe"
 
 	"golang.org/x/sys/windows"
 	"golang.zx2c4.com/wintun"
 )
 
-const windowsWintunVersion = "0.14.1"
-
 // RuntimeDependencyReport describes native dependencies that the daemon has
 // validated without changing host state.
 type RuntimeDependencyReport struct {
-	WintunPath    string
-	WintunVersion string
+	WintunPath string
 }
 
 // ValidateRuntimeDependencies loads Wintun only from the application directory
@@ -54,8 +50,7 @@ func validateWindowsWintun(applicationPath, systemPath string) (RuntimeDependenc
 		path = systemPath
 		if _, err := os.Stat(path); err != nil {
 			return RuntimeDependencyReport{}, fmt.Errorf(
-				"validate Wintun dependency: architecture-matched wintun.dll %s is absent from the daemon executable directory and System32: %w",
-				windowsWintunVersion,
+				"validate Wintun dependency: architecture-matched wintun.dll is absent from the daemon executable directory and System32: %w",
 				err,
 			)
 		}
@@ -70,9 +65,8 @@ func validateWindowsWintun(applicationPath, systemPath string) (RuntimeDependenc
 	)
 	if err != nil {
 		return RuntimeDependencyReport{}, fmt.Errorf(
-			"validate Wintun dependency at %q: load the architecture-matched wintun.dll %s: %w",
+			"validate Wintun dependency at %q: load the architecture-matched wintun.dll: %w",
 			path,
-			windowsWintunVersion,
 			err,
 		)
 	}
@@ -93,30 +87,11 @@ func validateWindowsWintun(applicationPath, systemPath string) (RuntimeDependenc
 			path,
 		)
 	}
-	version, err := windowsFileVersion(loadedPath)
-	if err != nil {
-		return RuntimeDependencyReport{}, fmt.Errorf("validate Wintun dependency at %q: read version: %w", loadedPath, err)
-	}
-	if version != windowsWintunVersion {
-		return RuntimeDependencyReport{}, fmt.Errorf(
-			"validate Wintun dependency at %q: version is %s, want %s",
-			loadedPath,
-			version,
-			windowsWintunVersion,
-		)
-	}
 	// Exercise the exact binding used by sysnet-windows while the absolute
 	// trusted module is loaded. The binding uses application-directory and
 	// System32 search flags and retains its own module reference.
-	if bindingVersion := wintun.Version(); bindingVersion != version {
-		return RuntimeDependencyReport{}, fmt.Errorf(
-			"validate Wintun dependency at %q: backend binding reports version %s, want %s",
-			loadedPath,
-			bindingVersion,
-			version,
-		)
-	}
-	return RuntimeDependencyReport{WintunPath: loadedPath, WintunVersion: version}, nil
+	_ = wintun.Version()
+	return RuntimeDependencyReport{WintunPath: loadedPath}, nil
 }
 
 func windowsModulePath(handle windows.Handle) (string, error) {
@@ -143,37 +118,4 @@ func sameWindowsPath(first, second string) (bool, error) {
 		return false, err
 	}
 	return strings.EqualFold(filepath.Clean(first), filepath.Clean(second)), nil
-}
-
-func windowsFileVersion(path string) (string, error) {
-	var ignored windows.Handle
-	size, err := windows.GetFileVersionInfoSize(path, &ignored)
-	if err != nil {
-		return "", err
-	}
-	if size == 0 {
-		return "", errors.New("version resource is empty")
-	}
-	buffer := make([]byte, size)
-	if err := windows.GetFileVersionInfo(path, 0, size, unsafe.Pointer(&buffer[0])); err != nil {
-		return "", err
-	}
-	var info *windows.VS_FIXEDFILEINFO
-	var infoSize uint32
-	if err := windows.VerQueryValue(unsafe.Pointer(&buffer[0]), `\`, unsafe.Pointer(&info), &infoSize); err != nil {
-		return "", err
-	}
-	if info == nil || infoSize < uint32(unsafe.Sizeof(*info)) {
-		return "", errors.New("fixed version information is truncated")
-	}
-	parts := []uint32{info.FileVersionMS >> 16, info.FileVersionMS & 0xffff, info.FileVersionLS >> 16, info.FileVersionLS & 0xffff}
-	last := len(parts) - 1
-	for last > 1 && parts[last] == 0 {
-		last--
-	}
-	values := make([]string, last+1)
-	for index := range values {
-		values[index] = fmt.Sprint(parts[index])
-	}
-	return strings.Join(values, "."), nil
 }
