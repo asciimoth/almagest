@@ -78,8 +78,7 @@ func TestUDPPingE2EIPv4IPv6SocketModes(t *testing.T) {
 			e.MustAddTypedLinkByPortName(TypeNetwork, out, "left", "Network", client, "right", "Network")
 
 			waitUDPPingServerLog(e, server, "listening on")
-			sendUDPPing(e, client)
-			waitUDPPingClientResponse(e, client, "ok", "pong:"+payload)
+			assertUDPPingClientResponseEventually(e, client, "pong:"+payload)
 			e.AssertNodeLabel(client, "ok")
 			e.AssertDebugLog(NodeTypeUDPPingClient, "complete: pong:"+payload)
 			e.AssertDebugLog(NodeTypeUDPPingServer, "udp pong")
