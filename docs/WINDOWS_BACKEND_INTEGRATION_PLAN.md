@@ -107,8 +107,8 @@ system-wide DNS enforcement.
 ### Step 1: Record the support matrix and feature mapping
 
 Implementation: complete. See [the Windows support matrix](WINDOWS_SUPPORT_MATRIX.md),
-the [machine-readable feature mapping](windows/support-matrix.json), and the
-[required-test manifest](windows/test-manifest.json).
+the [machine-readable feature mapping](../contracts/windows/support-matrix.json),
+and the [required-test manifest](../contracts/windows/test-manifest.json).
 
 Map Almagest node operations, rules, menus, and daemon functions to backend
 capabilities. Record required tests for each Windows/architecture entry.

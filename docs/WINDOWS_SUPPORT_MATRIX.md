@@ -2,8 +2,9 @@
 
 This document records the Step 1 support contract from
 `WINDOWS_BACKEND_INTEGRATION_PLAN.md`. The machine-readable sources are
-[`windows/support-matrix.json`](windows/support-matrix.json) and
-[`windows/test-manifest.json`](windows/test-manifest.json).
+[`contracts/windows/support-matrix.json`](../contracts/windows/support-matrix.json)
+and
+[`contracts/windows/test-manifest.json`](../contracts/windows/test-manifest.json).
 
 ## Status meaning
 

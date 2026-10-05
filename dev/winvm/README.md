@@ -282,9 +282,9 @@ just qualify-windows windows-server-2022-amd64 /absolute/path/to/qualification.j
 ```
 
 The strict JSON record uses the suite and test IDs in
-`docs/windows/test-manifest.json`. Each required suite records the same source
-revision, source archive, generated-input manifest, OS, architecture, Go
-toolchain, Wintun DLL, split driver, daemon binary, and CLI binary identities.
+`contracts/windows/test-manifest.json`. Each required suite records the same
+source revision, source archive, generated-input manifest, OS, architecture,
+Go toolchain, Wintun DLL, split driver, daemon binary, and CLI binary identities.
 Core, privileged, and daemon E2E suites require individual coverage hashes.
 Packet-flow and resource suites must set `nonInstrumented` to `true`. A stale,
 missing, skipped, wrong-platform, mixed-identity, or shortened diagnostic

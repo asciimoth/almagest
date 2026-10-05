@@ -18,8 +18,8 @@ func main() {
 		fail("usage: windows-qualify -entry ENTRY -evidence EVIDENCE")
 	}
 
-	matrix := readMatrix(filepath.Join("docs", "windows", "support-matrix.json"))
-	manifest := readManifest(filepath.Join("docs", "windows", "test-manifest.json"))
+	matrix := readMatrix(filepath.Join("contracts", "windows", "support-matrix.json"))
+	manifest := readManifest(filepath.Join("contracts", "windows", "test-manifest.json"))
 	data, err := os.ReadFile(*evidencePath)
 	if err != nil {
 		fail("read evidence: %v", err)

@@ -238,11 +238,11 @@ func TestContractsRejectCrossBuildAsRequiredNativeSuite(t *testing.T) {
 func loadCheckedInContracts(t *testing.T) (SupportMatrix, TestManifest) {
 	t.Helper()
 	root := repositoryRoot()
-	matrixData, err := os.ReadFile(filepath.Join(root, "docs", "windows", "support-matrix.json"))
+	matrixData, err := os.ReadFile(filepath.Join(root, "contracts", "windows", "support-matrix.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	manifestData, err := os.ReadFile(filepath.Join(root, "docs", "windows", "test-manifest.json"))
+	manifestData, err := os.ReadFile(filepath.Join(root, "contracts", "windows", "test-manifest.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
