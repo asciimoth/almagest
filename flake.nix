@@ -165,6 +165,10 @@
           just
           python3
           jq
+          git
+          curl
+          openssh
+          util-linux
 
           nodejs_24
           pnpm
