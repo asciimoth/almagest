@@ -5516,29 +5516,37 @@ function isConfigSaveFailure(entry: LogEntry): boolean {
 }
 
 async function activateConfigPanel(): Promise<void> {
-  if (configSnapshot || configLoading) {
+  if (configLoading) {
     updateConfigControls();
     return;
   }
-  await loadConfig();
+  const preserveDraft = configSnapshot !== null && configDraft !== configSnapshot.text;
+  await loadConfig(preserveDraft);
 }
 
-async function loadConfig(): Promise<void> {
+async function loadConfig(preserveDraft = false): Promise<void> {
   if (configLoading || configApplying) return;
   configLoading = true;
   el.configStatus.textContent = "Loading editable config.";
   updateConfigControls();
   try {
     const next = await backend("configSnapshot");
+    const keepDraft = preserveDraft && configSnapshot !== null && next.text === configSnapshot.text;
     configSnapshot = next;
-    configDraft = next.text;
-    el.configEditor.value = next.text;
-    // Textareas normalize CRLF and bare CR to LF. Highlight the normalized
-    // value so every colored glyph stays aligned with the editable text.
-    renderHuJSONHighlight(el.configHighlight, el.configEditor.value);
-    el.configStatus.textContent = next.read_only
-      ? "This daemon started with a read-only config."
-      : `Loaded revision ${shortConfigRevision(next.revision)}.`;
+    if (!keepDraft) {
+      configDraft = next.text;
+      el.configEditor.value = next.text;
+      // Textareas normalize CRLF and bare CR to LF. Highlight the normalized
+      // value so every colored glyph stays aligned with the editable text.
+      renderHuJSONHighlight(el.configHighlight, el.configEditor.value);
+    }
+    if (keepDraft) {
+      el.configStatus.textContent = `Loaded revision ${shortConfigRevision(next.revision)}. Unsaved changes are preserved.`;
+    } else {
+      el.configStatus.textContent = next.read_only
+        ? "This daemon started with a read-only config."
+        : `Loaded revision ${shortConfigRevision(next.revision)}.`;
+    }
   } catch (error) {
     el.configStatus.textContent = `Config load failed: ${errorMessage(error)}`;
     notifyError(errorMessage(error), "Config load failed");

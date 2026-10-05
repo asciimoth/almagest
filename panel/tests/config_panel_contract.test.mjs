@@ -23,3 +23,10 @@ test("config editor uses revision-controlled snapshot and update methods", () =>
   assert.match(app, /requestDecoded\([^)]*"config",\s*"update"/);
   assert.match(app, /revision:\s*configSnapshot\.revision/);
 });
+
+test("config tab accepts changed server text even when an unsaved draft exists", () => {
+  assert.match(app, /const preserveDraft = configSnapshot !== null && configDraft !== configSnapshot\.text/);
+  assert.match(app, /await loadConfig\(preserveDraft\)/);
+  assert.match(app, /const keepDraft = preserveDraft && configSnapshot !== null && next\.text === configSnapshot\.text/);
+  assert.match(app, /if \(!keepDraft\)\s*\{\s*configDraft = next\.text/);
+});
