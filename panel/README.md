@@ -69,7 +69,7 @@ whole-project checks:
 
 ```sh
 just lint
-just test-total
+just test-check
 ```
 
 Do not edit `public/build` or `bin/almagestd/static` by hand. They are generated

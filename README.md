@@ -116,7 +116,7 @@ Docker selection and scheduling follow `E2E_JOBS`, `E2E_INCLUDE_PRIVILEGED`,
 for this runner; set `E2E_COVERAGE=1` to enable it. When `RUN_WINVM_TESTS=1`,
 each Windows loop runs the ordinary and privileged native suites and the
 isolated packet-flow suite. JavaScript and harness unit tests remain in
-`just test-total`.
+`just check`.
 
 Each loop reports only its start, finish, duration, and completed/failed loop
 counts. Test failures do not stop the loops. All Go modules run even if an

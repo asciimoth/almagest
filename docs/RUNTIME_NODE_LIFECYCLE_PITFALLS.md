@@ -680,7 +680,7 @@ replacement.
 
 The final acceptance gate on 2026-09-12 was six consecutive clean runs of
 `scripts/capture-default-tun-flake.sh` on the affected host and 40 consecutive
-clean runs of `just test-total`. The incident is resolved. See
+clean runs of `just check`. The incident is resolved. See
 [DEFAULT_TUN_HOST_NETWORK_FAILURE.md](DEFAULT_TUN_HOST_NETWORK_FAILURE.md) for
 the full evidence, dependency versions, test list, and return-of-failure guide.
 
@@ -1126,8 +1126,7 @@ go -C lib test ./http -run TestHTTPServerRestartWaitsForPreviousWorker -race -co
 After changes that affect runtime lifecycle, run the project-level checks:
 
 ```sh
-just lint
-just test-total
+just check
 ```
 
 For changes touching startup readiness, also consider a no-retry first-request

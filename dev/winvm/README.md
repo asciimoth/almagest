@@ -241,7 +241,7 @@ Keep `resources-before.json`, `resources-after.json`,
 The suite record alone is not resource qualification evidence. Windows Firewall
 remains enabled during this gate.
 The host-only harness tests run through `just lint` without starting a VM.
-`just test-total` always runs the harness. Set `RUN_WINVM_TESTS=1` to also run
+`just check` always runs the harness. Set `RUN_WINVM_TESTS=1` to also run
 the combined standard-user, elevated, and packet-flow `just winvm-test` gate.
 Aggregate E2E recipes keep the Docker E2E suite on Linux and join the enabled
 VM gates before coverage reporting. When enabled, the native gate requires the
@@ -251,7 +251,7 @@ configured KVM host, locked media, and WinVM prerequisites.
 
 `just lint` runs the host linters, the host-only VM harness tests, and
 `golangci-lint` for Windows amd64 and arm64 with the Windows integration build
-tags. It does not start a VM. `just test-total` is the documented host-only
+tags. It does not start a VM. `just check` is the documented host-only
 aggregate when `RUN_WINVM_TESTS` is unset. It cannot qualify Windows support.
 Set `RUN_WINVM_TESTS=1` only on a configured Linux KVM host. This makes both
 `just check` and `just test-cycles` run the combined standard-user, elevated,

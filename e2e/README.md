@@ -20,11 +20,11 @@ just test-e2e-all
 The full project gate runs regular E2E cases by default:
 
 ```sh
-just test-total
+just test-check
 ```
 
 Set `E2E_INCLUDE_PRIVILEGED=1` to include privileged Docker cases in
-`just test-e2e`, `just test-total`, and `just check`. Set
+`just test-e2e`, `just test-check`, and `just check`. Set
 `RUN_WINVM_TESTS=1` to include the native Windows VM gate in `just test-e2e`,
 `just test-e2e-all`, and `just test-e2e-light`. This also includes the gate in
 `just test-total`, `just test-total-light`, and `just check`. Both groups are
