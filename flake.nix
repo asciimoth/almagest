@@ -46,6 +46,39 @@
         just lint-winvm
       '';
 
+      goHookFiles = "(^|/)(.*\\.go|go\\.(mod|sum))$|^flake\\..*$";
+
+      gofmtHook = pkgs.writeShellScript "gofmt-hook" ''
+        if printf '%s\n' "$@" | ${pkgs.gnugrep}/bin/grep -q '^flake\.'; then
+          ${pkgs.git}/bin/git ls-files -z -- '*.go' \
+            | ${pkgs.findutils}/bin/xargs -0 -r ${pkgs.go}/bin/gofmt -w
+          exit
+        fi
+
+        for file in "$@"; do
+          if [[ "$file" == *.go ]]; then
+            ${pkgs.go}/bin/gofmt -w "$file"
+          fi
+        done
+      '';
+
+      goDirectoryHook = name: command: pkgs.writeShellScript name ''
+        if printf '%s\n' "$@" | ${pkgs.gnugrep}/bin/grep -q '^flake\.'; then
+          for dir in lib bin certcat; do
+            (cd "$dir" && ${command})
+          done
+          exit
+        fi
+
+        printf '%s\n' "$@" \
+          | ${pkgs.findutils}/bin/xargs -n1 ${pkgs.coreutils}/bin/dirname \
+          | ${pkgs.coreutils}/bin/sort -u \
+          | while read -r dir; do (cd "$dir" && ${command}); done
+      '';
+
+      golangciLintHook = goDirectoryHook "golangci-lint-hook" "${pkgs.golangci-lint}/bin/golangci-lint run ./...";
+      govetHook = goDirectoryHook "govet-hook" "${pkgs.go}/bin/go vet ./...";
+
       checks = {
         pre-commit-check = pre-commit-hooks.lib.${system}.run {
           src = ./.;
@@ -60,13 +93,26 @@
               ''; in builtins.toString script;
               stages = [ "commit-msg" ];
             };
-            govet.enable = true;
-            gofmt.enable = true;
-            golangci-lint.enable = true;
+            govet = {
+              enable = true;
+              entry = builtins.toString govetHook;
+              files = goHookFiles;
+            };
+            gofmt = {
+              enable = true;
+              entry = builtins.toString gofmtHook;
+              files = goHookFiles;
+            };
+            golangci-lint = {
+              enable = true;
+              entry = builtins.toString golangciLintHook;
+              files = goHookFiles;
+            };
             ripsecrets.enable = true;
             gotidy = {
               enable = true;
               description = "Makes sure go.mod matches the source code";
+              files = goHookFiles;
               pass_filenames = false;
               entry = let script = pkgs.writeShellScript "gotidyhook" ''
                 just tidy
@@ -76,6 +122,7 @@
             golangtest = {
               enable = true;
               description = "go test ./... --race";
+              files = goHookFiles;
               pass_filenames = false;
               entry = let script = pkgs.writeShellScript "gotesthook" ''
                 just test-go
@@ -85,6 +132,7 @@
             govulncheck = {
               enable = true;
               description = "Run govulncheck";
+              files = goHookFiles;
               pass_filenames = false;
               entry = let script = pkgs.writeShellScript "govulncheckhook" ''
                 just vulncheck
@@ -95,7 +143,7 @@
               enable = true;
               description = "Lint the Windows VM harness";
               entry = builtins.toString winvmLintHook;
-              files = "^(flake\\.nix$|justfile$|dev/winvm/|scripts/(lint-windows|test-e2e-platform|test-windows|test-windows-flow)\\.sh$)";
+              files = "^(flake\\..*$|justfile$|dev/winvm/|scripts/(lint-windows|test-e2e-platform|test-windows|test-windows-flow)\\.sh$)";
               pass_filenames = false;
               stages = [ "pre-commit" ];
             };
