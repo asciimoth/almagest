@@ -427,6 +427,7 @@ func newWindowsDaemon(t *testing.T, root, pipe, config, protected string) *windo
 
 func (d *windowsDaemon) commandForStart() *exec.Cmd {
 	arguments := []string{
+		"--no-isolation",
 		"--config", d.config, "--protected", d.protected,
 		"--pipe", `\\.\pipe\` + d.pipe,
 		"--web", "0", "--debug-nodes", "--lvl", "debug",
@@ -578,6 +579,7 @@ func startWindowsDaemonService(t *testing.T, daemon *windowsDaemon) func() {
 		t.Fatalf("check for an existing almagestd service: %v", openErr)
 	}
 	arguments := []string{
+		"--no-isolation",
 		"--config", daemon.config, "--protected", daemon.protected,
 		"--file-storage", daemon.storage, "--pipe", `\\.\pipe\` + daemon.pipe,
 		"--web", "0", "--debug-nodes", "--lvl", "debug",

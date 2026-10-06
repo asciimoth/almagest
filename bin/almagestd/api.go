@@ -34,6 +34,7 @@ type AdminAPI struct {
 	pipeListener        net.Listener
 
 	projectVersionStatus  api.ProjectVersionStatus
+	executionMode         string
 	configAutosaver       *configAutosaver
 	config                *Config
 	configReadOnly        bool
@@ -320,6 +321,7 @@ func (s *apiSession) handleAdminMessage(msg api.Message) (api.Message, error) {
 		}
 		return api.NewResponse(msg.ID, api.HelloResponse{
 			Version:              api.Version,
+			ExecutionMode:        s.admin.executionMode,
 			ProjectVersionStatus: s.admin.projectVersionStatus,
 			Surfaces: map[string]any{
 				string(api.SurfaceAdmin): map[string]any{

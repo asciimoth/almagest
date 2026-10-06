@@ -68,6 +68,20 @@ func TestExperimentalFlag(t *testing.T) {
 	}
 }
 
+func TestNoIsolationFlag(t *testing.T) {
+	var a Args
+	parser, err := arg.NewParser(arg.Config{IgnoreEnv: true, Out: new(bytes.Buffer)}, &a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := parser.Parse([]string{"--no-isolation"}); err != nil {
+		t.Fatalf("Parse(--no-isolation): %v", err)
+	}
+	if !a.NoIsolation {
+		t.Fatal("NoIsolation = false, want true")
+	}
+}
+
 func TestWebAdminAllowCrossOriginFlagAndEnvironment(t *testing.T) {
 	var fromFlag Args
 	parser, err := arg.NewParser(arg.Config{IgnoreEnv: true, Out: new(bytes.Buffer)}, &fromFlag)

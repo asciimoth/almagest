@@ -17,6 +17,7 @@ const payload = '<img src=x onerror="globalThis.__xss = true">';
 test("response decoders preserve untrusted text only after shape validation", () => {
   assert.equal(parseHelloResponse({
     version: payload,
+    execution_mode: "direct",
     project_version_status: { version: payload, highlight: "warn", hover_message: payload },
   })?.project_version_status.hover_message, payload);
   assert.equal(parseSubscribeLogsResponse({

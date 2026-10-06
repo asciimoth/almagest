@@ -59,6 +59,7 @@ start_daemon_a() {
 	log "starting daemon a"
 	XDG_RUNTIME_DIR="$E2E_RUNTIME" almagestd \
 		--experimental \
+		--no-isolation \
 		-c "$E2E_CONFIG_DIR/daemon-a" \
 		-l debug \
 		--debug-nodes \
@@ -86,6 +87,7 @@ start_daemon_b() {
 	log "starting daemon b"
 	XDG_RUNTIME_DIR="$E2E_RUNTIME" almagestd \
 		--experimental \
+		--no-isolation \
 		-c "$E2E_CONFIG_DIR/daemon-b" \
 		-l debug \
 		--debug-nodes \

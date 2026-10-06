@@ -540,7 +540,10 @@ func TestEngineBatchNodeAPIDispatch(t *testing.T) {
 func TestAdminAndLogAPIDispatch(t *testing.T) {
 	factory := NewLogFactory(LogCacheConfig{Info: 2})
 	factory.level = logLevelEnabled{info: true}
-	admin := &AdminAPI{projectVersionStatus: api.ProjectVersionStatus{Version: "test"}}
+	admin := &AdminAPI{
+		projectVersionStatus: api.ProjectVersionStatus{Version: "test"},
+		executionMode:        string(executionModeDirect),
+	}
 	var events []api.Message
 	session := admin.newAPISession(nil, factory, func(msg api.Message) error {
 		events = append(events, msg)
@@ -557,6 +560,15 @@ func TestAdminAndLogAPIDispatch(t *testing.T) {
 		resp, err := session.handleMessage(req)
 		if err != nil || resp.Error != nil {
 			t.Fatalf("%s response = %#v, error = %v", req.Method, resp, err)
+		}
+		if req.Method == string(api.MethodAdminHello) {
+			hello, decodeErr := api.DecodePayload[api.HelloResponse](resp.Result)
+			if decodeErr != nil {
+				t.Fatal(decodeErr)
+			}
+			if hello.ExecutionMode != string(executionModeDirect) {
+				t.Fatalf("hello execution mode = %q, want %q", hello.ExecutionMode, executionModeDirect)
+			}
 		}
 	}
 

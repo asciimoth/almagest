@@ -173,6 +173,7 @@ failure_log="$E2E_RUNTIME/startup-rollback.log"
 failure_socket="$E2E_RUNTIME/startup-rollback.sock"
 XDG_RUNTIME_DIR="$E2E_RUNTIME" almagestd \
 	--experimental \
+	--no-isolation \
 	-c "$ALMAGEST_E2E_FILE_STORAGE/config/alm.hujson" \
 	-p "$ALMAGEST_E2E_FILE_STORAGE/config/protected_alm.hujson" \
 	--unsafe-config \

@@ -25,9 +25,9 @@ Almagest is a Go userspace network stack built around a Pasta node graph.
 - `lib/wireguard/` owns WireGuard nodes.
 - `lib/debug/` owns debug-only helper nodes.
 - `lib/experimental/` owns opt-in classes that cross current abstraction
-  boundaries. Their class names start with `X`, and `almagestd --experimental`
-  passes them to the engine explicitly instead of adding them to the built-in
-  class list.
+  boundaries. Their class names start with `X`, and
+  `almagestd --experimental --no-isolation` passes them to the engine explicitly
+  instead of adding them to the built-in class list.
 - `lib/logging/` owns reusable logging interfaces and the in-memory debug
   logger.
 - `lib/storage/` owns daemon-provided storage interfaces and error contracts,
@@ -266,8 +266,10 @@ Important flags and env:
 - `-p, --protected`, `ALMAGEST_PROTECTED_CONF`: protected config path.
 - `-l, --lvl`, `ALMAGEST_LOG_LVL`: logging level.
 - `--log-workers`: log engine worker lifecycle events.
+- `--no-isolation`: run the direct single-process daemon. This flag is required
+  while production isolation is not implemented.
 - `--experimental`: enable experimental features and node classes. They are
-  disabled by default.
+  disabled by default and require `--no-isolation`.
 - `-w, --web`, `ALMAGEST_WEB_ADMIN`: localhost web admin port.
 - `--web-filter-uid`, `ALMAGEST_WEB_ADMIN_FILTER_UIDS`: allowed web admin
   peer owner UIDs.

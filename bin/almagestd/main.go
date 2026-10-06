@@ -21,20 +21,26 @@ import (
 )
 
 func main() {
-	gonnect.UnfuckGoDns()
 	// TUN and graph startup events can occur many times in one second. Keep
 	// enough timestamp precision to correlate the daemon log with host network
 	// captures and admin API actions.
 	golog.SetTimeFormat("2006/01/02 15:04:05.000000")
 
-	randomSeeds, err := newDaemonRandomSeeds()
+	var arguments args.Args
+	if err := arg.Parse(&arguments); err != nil {
+		golog.Fatal(err)
+		return
+	}
+	mode, err := selectExecutionMode(arguments)
 	if err != nil {
 		golog.Fatal(err)
 		return
 	}
+	golog.Infof("Execution mode: %s (no sandbox)", mode)
 
-	var arguments args.Args
-	if err = arg.Parse(&arguments); err != nil {
+	gonnect.UnfuckGoDns()
+	randomSeeds, err := newDaemonRandomSeeds()
+	if err != nil {
 		golog.Fatal(err)
 		return
 	}
@@ -64,7 +70,7 @@ func main() {
 	// remains usable without Windows runtime dependencies.
 	_, runtimeDependencyErr := platform.ValidateRuntimeDependencies()
 	if err := platform.RunLifecycle(func(ctx context.Context, ready func()) error {
-		return runDaemon(ctx, ready, arguments, randomSeeds, runtimeDependencyErr)
+		return runDaemon(ctx, ready, arguments, mode, randomSeeds, runtimeDependencyErr)
 	}); err != nil {
 		golog.Fatal(err)
 	}
@@ -74,6 +80,7 @@ func runDaemon(
 	parent context.Context,
 	ready func(),
 	arguments args.Args,
+	mode executionMode,
 	randomSeeds daemonRandomSeeds,
 	runtimeDependencyErr error,
 ) (result error) {
@@ -172,6 +179,7 @@ func runDaemon(
 	admin.configReadOnly = agent.ConfRO()
 	admin.fileStorage = fsPath
 	admin.projectVersionStatus = projectVersionStatus
+	admin.executionMode = string(mode)
 	admin.kv = kv
 	admin.dns = kv
 	admin.secrets = kv

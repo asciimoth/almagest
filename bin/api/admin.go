@@ -33,6 +33,7 @@ type HelloRequest struct {
 type HelloResponse struct {
 	Version              string               `json:"version"`
 	Daemon               string               `json:"daemon,omitempty"`
+	ExecutionMode        string               `json:"execution_mode"`
 	ProjectVersionStatus ProjectVersionStatus `json:"project_version_status"`
 	Surfaces             map[string]any       `json:"surfaces,omitempty"`
 }

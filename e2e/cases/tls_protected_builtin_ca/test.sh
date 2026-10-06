@@ -72,6 +72,7 @@ for name in missing-key missing-cert duplicate-cert duplicate-key unsupported-bl
 	log_file="$E2E_RUNTIME/$name.log"
 	XDG_RUNTIME_DIR="$E2E_RUNTIME" almagestd \
 		--experimental \
+		--no-isolation \
 		-c "$E2E_CONFIG_DIR/alm.hujson" \
 		-p "$E2E_CONFIG_DIR/protected_alm.hujson" \
 		--unsafe-config --tmp-file-storage --web 0 -l debug \

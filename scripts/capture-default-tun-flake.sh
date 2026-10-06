@@ -1118,7 +1118,7 @@ start_daemon() {
 		exec "$@"
 	' capture-almagestd "$pid_file" "$daemon_binary" \
 		-c "$config_dir" --file-storage "$file_storage" --unix "$admin_socket" \
-		-l debug -w "$web_admin_port" --web-pprof --debug-nodes --experimental \
+		-l debug -w "$web_admin_port" --web-pprof --debug-nodes --experimental --no-isolation \
 		--unsafe-config --no-dns-cache-expiration >"$output_dir/daemon.log" 2>&1 &
 	daemon_launcher_pid="$!"
 
@@ -1153,7 +1153,7 @@ start_seed_daemon() {
 		exec "$@"
 	' capture-seed-almagestd "$pid_file" "$daemon_binary" \
 		-c "$config_dir" --file-storage "$file_storage" --unix "$admin_socket" \
-		-l error --debug-nodes --experimental --unsafe-config --no-dns-cache-expiration \
+		-l error --debug-nodes --experimental --no-isolation --unsafe-config --no-dns-cache-expiration \
 		>"$output_dir/daemon.log" 2>&1 &
 	daemon_launcher_pid="$!"
 

@@ -119,6 +119,7 @@ start_daemon_named() {
 	log "starting daemon $name"
 	XDG_RUNTIME_DIR="$E2E_RUNTIME" almagestd \
 		--experimental \
+		--no-isolation \
 		-c "$E2E_CONFIG_DIR/daemon-$name" \
 		-l debug \
 		--debug-nodes \

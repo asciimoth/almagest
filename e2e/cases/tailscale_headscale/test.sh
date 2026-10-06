@@ -94,6 +94,7 @@ start_test_daemon() {
 	: >"$output"
 	XDG_RUNTIME_DIR="$E2E_RUNTIME" almagestd \
 		--experimental \
+		--no-isolation \
 		-c "$config" \
 		-l debug \
 		--debug-nodes \

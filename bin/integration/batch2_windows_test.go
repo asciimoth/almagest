@@ -320,7 +320,7 @@ func TestWindowsBatch2SafeConfigStartup(t *testing.T) {
 	storage := filepath.Join(root, "storage")
 	pipe := batch2Pipe("safe-config")
 	daemon, cli := buildWindowsBinaries(t, root)
-	command := exec.Command(daemon, "--config", configPath, "--file-storage", storage, "--pipe", `\\.\pipe\`+pipe, "--web", "0", "--debug-nodes")
+	command := exec.Command(daemon, "--no-isolation", "--config", configPath, "--file-storage", storage, "--pipe", `\\.\pipe\`+pipe, "--web", "0", "--debug-nodes")
 	command.SysProcAttr = &syscall.SysProcAttr{CreationFlags: windows.CREATE_NEW_PROCESS_GROUP}
 	log := &bytes.Buffer{}
 	command.Stdout, command.Stderr = log, log
@@ -491,7 +491,7 @@ func TestWindowsBatch2StdinConfigStartup(t *testing.T) {
 	pipe := batch2Pipe("stdin")
 	daemon, cli := buildWindowsBinaries(t, root)
 	stdin := fmt.Sprintf(`{"Protected":{"Admin":{"Pipe":%q},"System":{"Type":"debug"},"Secrets":{"stdin-secret":{"Value":"protected"}}},"nodes":{"Standard Input Node":{"Class":"pasta/StringConstant","value":"stdin"}}}`, `\\.\pipe\`+pipe)
-	command := exec.Command(daemon, "--stdin", "--tmp-file-storage", "--web", "0", "--debug-nodes")
+	command := exec.Command(daemon, "--no-isolation", "--stdin", "--tmp-file-storage", "--web", "0", "--debug-nodes")
 	command.Stdin = strings.NewReader(stdin)
 	command.SysProcAttr = &syscall.SysProcAttr{CreationFlags: windows.CREATE_NEW_PROCESS_GROUP}
 	log := &bytes.Buffer{}
@@ -1352,7 +1352,7 @@ func expectBatch2StartupFailure(t *testing.T, daemon string, stdin io.Reader, en
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	command := exec.CommandContext(ctx, daemon, arguments...)
+	command := exec.CommandContext(ctx, daemon, append([]string{"--no-isolation"}, arguments...)...)
 	command.Stdin = stdin
 	if len(environment) != 0 {
 		command.Env = windowsTestEnvironment(os.Environ(), environment...)

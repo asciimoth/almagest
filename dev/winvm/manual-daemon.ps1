@@ -85,6 +85,7 @@ $arguments = @(
     '-w', [string]$WebPort,
     '--debug-nodes',
     '--experimental',
+    '--no-isolation',
     '--unsafe-config',
     '--file-storage', $storage,
     '--no-dns-cache-expiration'

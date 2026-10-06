@@ -210,10 +210,10 @@ build: certcat-generate build-web
 	go build -o ./almagestd ./bin/almagestd/
 
 daemon: build
-  ./almagestd -c ./local -l debug -w 8090 --debug-nodes --experimental --unsafe-config --tmp-unix-admin --no-dns-cache-expiration
+  ./almagestd --no-isolation -c ./local -l debug -w 8090 --debug-nodes --experimental --unsafe-config --tmp-unix-admin --no-dns-cache-expiration
 
 daemon-sudo: build
-  sudo ./almagestd -c ./local -l debug -w 8090 --debug-nodes --experimental --unsafe-config --no-dns-cache-expiration
+  sudo ./almagestd --no-isolation -c ./local -l debug -w 8090 --debug-nodes --experimental --unsafe-config --no-dns-cache-expiration
 
 capture-default-tun-flake:
   ./scripts/capture-default-tun-flake.sh

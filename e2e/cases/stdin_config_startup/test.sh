@@ -40,6 +40,7 @@ XDG_RUNTIME_DIR="$E2E_RUNTIME" almagestd \
 	--stdin \
 	--debug-nodes \
 	--experimental \
+	--no-isolation \
 	--tmp-file-storage \
 	--tmp-unix-admin \
 	--no-pool \

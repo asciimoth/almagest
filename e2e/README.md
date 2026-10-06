@@ -135,6 +135,7 @@ Use `start_daemon` from `common.sh`. It always starts `almagestd` with:
 
 - `--debug-nodes`
 - `--experimental`
+- `--no-isolation`
 - debug logging
 - `--unsafe-config`
 - an isolated Unix admin API socket from `protected_alm.hujson`

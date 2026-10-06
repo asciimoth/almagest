@@ -25,6 +25,7 @@ import type { TLSBuiltinCAInfo, TLSCertEntry, TLSPolicyEntry, TLSSnapshot } from
 export type HelloResponse = {
   version: string;
   daemon?: string;
+  execution_mode: "direct";
   project_version_status: ProjectVersionStatus;
   surfaces?: Record<string, unknown>;
 };
@@ -100,12 +101,14 @@ type SubscriptionResponse<T> = {
 };
 
 export function parseHelloResponse(input: unknown): HelloResponse | null {
-  if (!isRecord(input) || typeof input.version !== "string" || !isOptionalString(input.daemon)) return null;
+  if (!isRecord(input) || typeof input.version !== "string" || !isOptionalString(input.daemon)
+    || input.execution_mode !== "direct") return null;
   const status = parseProjectVersionStatus(input.project_version_status);
   if (!status || (input.surfaces !== undefined && !isRecord(input.surfaces))) return null;
   return {
     version: input.version,
     ...(input.daemon === undefined ? {} : { daemon: input.daemon }),
+    execution_mode: input.execution_mode,
     project_version_status: status,
     ...(input.surfaces === undefined ? {} : { surfaces: { ...input.surfaces } }),
   };

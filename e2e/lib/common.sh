@@ -94,6 +94,7 @@ start_daemon() {
 		snapshot_args=(--snapshot "$ALMAGEST_E2E_STARTUP_SNAPSHOT")
 	fi
 	XDG_RUNTIME_DIR="$E2E_RUNTIME" almagestd \
+		--no-isolation \
 		-c "$E2E_CONFIG_DIR" \
 		-l debug \
 		--debug-nodes \
