@@ -1612,6 +1612,32 @@ func (m *bboltKVManager) deleteTLSPolicyNodeReferences(name string) error {
 	return nil
 }
 
+func (m *bboltKVManager) reconcileTLSPolicyNodeReferences(active map[string]struct{}) error {
+	for name := range active {
+		if !validSecretNodeName(name) {
+			return storage.ErrTlsConfigInvalidName
+		}
+	}
+	m.tlsMu.Lock()
+	defer m.tlsMu.Unlock()
+	for policy, nodes := range m.tlsWatchers {
+		for node := range nodes {
+			if _, ok := active[node]; !ok {
+				delete(nodes, node)
+			}
+		}
+		if len(nodes) == 0 {
+			delete(m.tlsWatchers, policy)
+		}
+	}
+	for node := range m.tlsCAWatchers {
+		if _, ok := active[node]; !ok {
+			delete(m.tlsCAWatchers, node)
+		}
+	}
+	return nil
+}
+
 func tlsPolicyWatchersLocked(nodes map[string]struct{}) []string {
 	if len(nodes) == 0 {
 		return nil

@@ -1,7 +1,8 @@
 param(
     [Parameter(Mandatory=$true)][ValidateSet('ordinary','privileged')][string]$Mode,
     [Parameter(Mandatory=$true)][string]$SourceDir,
-    [Parameter(Mandatory=$true)][string]$ArtifactDir
+    [Parameter(Mandatory=$true)][string]$ArtifactDir,
+    [switch]$ContinueAfterFailure
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
@@ -165,6 +166,11 @@ foreach ($case in $suite.cases) {
         Write-TestProgress $(if ($processExitCode -eq 0) { 'PASS' } else { 'FAIL' }) $case.id
         if (-not (Test-Path -LiteralPath $coveragePath -PathType Leaf)) {
             throw "The $($case.id) coverage profile is absent"
+        }
+        if ($processExitCode -ne 0 -and -not $ContinueAfterFailure) {
+            $processPath = Join-Path $suiteDir 'processes.json'
+            @{cases=$processResults} | ConvertTo-Json -Depth 5 | Set-Content $processPath -Encoding utf8
+            throw "The $($case.id) test case failed; stopping the $Mode suite"
         }
     } finally {
         foreach ($serviceName in $startedServices) {

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/asciimoth/configer/configer"
+	"github.com/asciimoth/formular"
 	"github.com/asciimoth/gonnect"
 	"github.com/asciimoth/gonnect/dns"
 	sysnetdebug "github.com/asciimoth/gonnect/sysnet/debug"
@@ -195,6 +196,101 @@ func TestEngineLockedWorkspaceAPI(t *testing.T) {
 	engineAPI.RemoveNodesByClassLocked(MainWorkspace, "missing")
 	engineAPI.RemoveNodesLocked(MainWorkspace, pasted)
 	engineAPI.RemoveNodeLocked(MainWorkspace, id)
+}
+
+func TestEngineRemoveNodesByClassIsOneBatchMutation(t *testing.T) {
+	engineAPI, err := BuildEngine(
+		context.Background(), configer.NewMemory(nil), logging.NewDebugLogFactory(1),
+		newEngineTestDebugSystem(), nil, nil, nil, nil,
+		[]pasta.NodeClass{engineBatchNodeClass{}}, nil, false,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = engineAPI.Close() })
+
+	ids := make([]uint64, 2)
+	for i := range ids {
+		ids[i], err = engineAPI.AddNode(MainWorkspace, "test/EngineBatchNode", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	var notificationMu sync.Mutex
+	var notifications []pasta.WorkspaceNotification
+	notificationReady := make(chan struct{}, 16)
+	subscription := engineAPI.SubscribeNotifications(func(notification EngineNotification) {
+		if notification.Workspace != nil {
+			notificationMu.Lock()
+			notifications = append(notifications, *notification.Workspace)
+			notificationMu.Unlock()
+			select {
+			case notificationReady <- struct{}{}:
+			default:
+			}
+		}
+	})
+	if subscription == 0 {
+		t.Fatal("SubscribeNotifications returned 0")
+	}
+	t.Cleanup(func() { engineAPI.UnsubscribeNotifications(subscription) })
+	takeNotifications := func() []pasta.WorkspaceNotification {
+		t.Helper()
+		notificationMu.Lock()
+		defer notificationMu.Unlock()
+		result := append([]pasta.WorkspaceNotification(nil), notifications...)
+		notifications = nil
+		return result
+	}
+	waitNotification := func() []pasta.WorkspaceNotification {
+		t.Helper()
+		select {
+		case <-notificationReady:
+		case <-time.After(time.Second):
+			t.Fatal("timed out waiting for workspace notification")
+		}
+		return takeNotifications()
+	}
+	for len(notificationReady) > 0 {
+		<-notificationReady
+	}
+	_ = takeNotifications()
+
+	engineAPI.RemoveNodesByClass(MainWorkspace, "test/EngineBatchNode")
+	removedNotifications := waitNotification()
+	if len(removedNotifications) != 1 || removedNotifications[0].Kind != pasta.NotificationNodesRemoved {
+		t.Fatalf("removal notifications = %#v, want one nodes_removed notification", removedNotifications)
+	}
+	if len(removedNotifications[0].Nodes) != len(ids) {
+		t.Fatalf("removed nodes = %#v, want IDs %v", removedNotifications[0].Nodes, ids)
+	}
+	for _, id := range ids {
+		if _, ok := removedNotifications[0].Nodes[id]; !ok {
+			t.Fatalf("removed nodes do not contain %d: %#v", id, removedNotifications[0].Nodes)
+		}
+	}
+
+	engineAPI.Undo(MainWorkspace)
+	undoNotifications := waitNotification()
+	if len(undoNotifications) != 1 || undoNotifications[0].Kind != pasta.NotificationWorkspaceSnapshot {
+		t.Fatalf("undo notifications = %#v, want one workspace snapshot", undoNotifications)
+	}
+	for _, id := range ids {
+		if _, ok := engineAPI.NodeSnapshot(MainWorkspace, id); !ok {
+			t.Fatalf("batch undo did not restore node %d", id)
+		}
+	}
+	engineAPI.Redo(MainWorkspace)
+	redoNotifications := waitNotification()
+	if len(redoNotifications) != 1 || redoNotifications[0].Kind != pasta.NotificationWorkspaceSnapshot {
+		t.Fatalf("redo notifications = %#v, want one workspace snapshot", redoNotifications)
+	}
+	for _, id := range ids {
+		if _, ok := engineAPI.NodeSnapshot(MainWorkspace, id); ok {
+			t.Fatalf("batch redo did not remove node %d", id)
+		}
+	}
 }
 
 func TestEngineSendInboxesAndWaitWaitsForConcurrentWorkspaceDelivery(t *testing.T) {
@@ -562,6 +658,61 @@ func TestEngineNotificationTransactionInitializesNewSubscriberAtomically(t *test
 	}
 	if notifications[2].Worker == nil || notifications[2].Worker.Kind != WorkerNotificationSnapshot {
 		t.Fatalf("worker publication = %#v, want full snapshot", notifications[2])
+	}
+}
+
+func TestEngineMenuSubscriptionDuringTransactionFinisherGetsForcedSnapshot(t *testing.T) {
+	engineAPI, err := BuildEngine(
+		context.Background(),
+		configer.NewMemory(nil),
+		logging.NewDebugLogFactory(1),
+		newEngineTestDebugSystem(),
+		nil,
+		nil,
+		nil,
+		nil,
+		[]pasta.NodeClass{engineMenuNodeClass{}},
+		nil,
+		false,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = engineAPI.Close() })
+	node, err := engineAPI.AddNode(MainWorkspace, engineMenuNodeClass{}.ClassName(), "menu")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	menu := make(chan EngineNotification, 1)
+	subscription := engineAPI.SubscribeNotifications(func(notification EngineNotification) {
+		if notification.Workspace != nil && notification.Workspace.Kind == pasta.NotificationNodeMenu {
+			menu <- notification
+		}
+	})
+	if subscription == 0 {
+		t.Fatal("SubscribeNotifications returned 0")
+	}
+	t.Cleanup(func() { engineAPI.UnsubscribeNotifications(subscription) })
+
+	engineImpl := engineAPI.(*engine)
+	engineImpl.notificationMu.Lock()
+	engineImpl.notificationFinishing = true
+	engineImpl.notificationMu.Unlock()
+	defer func() {
+		engineImpl.notificationMu.Lock()
+		engineImpl.notificationFinishing = false
+		engineImpl.notificationMu.Unlock()
+	}()
+
+	engineAPI.SubscribeNodeMenu(MainWorkspace, node, subscription)
+	select {
+	case notification := <-menu:
+		if notification.Workspace.ID != node || notification.Workspace.Formular == nil {
+			t.Fatalf("menu notification = %#v", notification)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("menu snapshot was dropped while transaction publication was finishing")
 	}
 }
 
@@ -1309,6 +1460,36 @@ func (engineBatchNodeClass) NewNode(configer.Config, ...*pasta.NodeClassState) (
 type engineBatchNode struct {
 	pasta.BasicNode
 	_ byte
+}
+
+type engineMenuNodeClass struct{}
+
+func (engineMenuNodeClass) ClassName() string { return "test/EngineMenuNode" }
+func (engineMenuNodeClass) ShortDescription() string {
+	return "Engine menu notification test"
+}
+func (engineMenuNodeClass) LongDescription() string {
+	return "Tests engine menu delivery during notification transactions."
+}
+func (engineMenuNodeClass) DefaultNodeParams() pasta.NodeClassParams {
+	return pasta.NodeClassParams{}
+}
+func (engineMenuNodeClass) NewNode(configer.Config, ...*pasta.NodeClassState) (pasta.Node, error) {
+	return &engineMenuNode{}, nil
+}
+
+type engineMenuNode struct{ pasta.BasicNode }
+
+func (*engineMenuNode) OnInit(
+	w *pasta.Workspace,
+	_ pasta.Logger,
+	id uint64,
+	_ string,
+	_ *pasta.NodeInitData,
+	_, _, _, _ bool,
+) error {
+	w.SendNodeMenuMsgLocked(id, formular.MenuSnapshot(pasta.NodeMenuID(id), 1))
+	return nil
 }
 
 type engineInboxNodeClass struct {

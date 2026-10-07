@@ -327,30 +327,22 @@ cli kv get --plugin control-plugin --path nested/binary --key blob | \
 	|| fail "binary KV value did not survive daemon restart"
 assert_http_success_once "$client" "first control request after restart"
 
-# Class-wide removal must record each removed node for history with stable IDs.
+# Class-wide removal is one batch mutation with stable IDs.
 cli engine remove-nodes-by-class --class almagest/DebugKV >/dev/null
 retry "$ALMAGEST_E2E_TIMEOUT" "KV writer batch removal" node_missing "$writer" \
 	|| fail "KV writer survived class-wide removal"
 retry "$ALMAGEST_E2E_TIMEOUT" "KV reader batch removal" node_missing "$reader" \
 	|| fail "KV reader survived class-wide removal"
 cli engine undo >/dev/null
-retry "$ALMAGEST_E2E_TIMEOUT" "first class-wide removal undo" \
-	class_node_count_is almagest/DebugKV 1 \
-	|| fail "first undo did not restore exactly one KV node"
-cli engine undo >/dev/null
-retry "$ALMAGEST_E2E_TIMEOUT" "second class-wide removal undo" \
+retry "$ALMAGEST_E2E_TIMEOUT" "class-wide removal undo" \
 	class_node_count_is almagest/DebugKV 2 \
-	|| fail "second undo did not restore both KV nodes"
+	|| fail "undo did not restore both KV nodes"
 node_exists "$writer" || fail "undo did not restore the KV writer ID"
 node_exists "$reader" || fail "undo did not restore the KV reader ID"
 cli engine redo >/dev/null
-retry "$ALMAGEST_E2E_TIMEOUT" "first class-wide removal redo" \
-	class_node_count_is almagest/DebugKV 1 \
-	|| fail "first redo did not remove exactly one KV node"
-cli engine redo >/dev/null
-retry "$ALMAGEST_E2E_TIMEOUT" "second class-wide removal redo" \
+retry "$ALMAGEST_E2E_TIMEOUT" "class-wide removal redo" \
 	class_node_count_is almagest/DebugKV 0 \
-	|| fail "second redo did not remove both KV nodes"
+	|| fail "redo did not remove both KV nodes"
 assert_http_success_once "$client" "control request after class history"
 
 # Markdown is intentionally stateless, but each node still needs a distinct

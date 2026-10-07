@@ -26,15 +26,15 @@ test-js: build-web
   cd panel && node --test tests/*.mjs
 
 
-[parallel]
-test-e2e: test-e2e-docker test-winvm-enabled
+test-e2e:
+  ./scripts/test-e2e-fail-fast.sh
 
 [private]
 test-e2e-docker: repair-go-work build-web
   ./scripts/test-e2e-platform.sh
 
-[parallel]
-test-e2e-all: test-e2e-docker-all test-winvm-enabled
+test-e2e-all:
+  ./scripts/test-e2e-fail-fast.sh test-e2e-docker-all test-winvm-enabled
 
 [private]
 test-e2e-docker-all: repair-go-work build-web

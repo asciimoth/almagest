@@ -152,10 +152,17 @@ class HarnessTests(unittest.TestCase):
         self.assertIn('$env:SYSNET_WINDOWS_WINTUN_DLL = $wintunDLL', runner)
         self.assertIn("Write-TestProgress 'RUN '", runner)
         self.assertIn("'PASS' } else { 'FAIL'", runner)
+        self.assertIn('[switch]$ContinueAfterFailure', runner)
+        self.assertIn('$processExitCode -ne 0 -and -not $ContinueAfterFailure', runner)
+
+        supervisor = (ROOT / 'supervise.py').read_text()
+        self.assertIn('os.environ.get("WINVM_FAIL_FAST", "1")', supervisor)
+        self.assertIn('args.append("-ContinueAfterFailure")', supervisor)
 
     def test_regular_winvm_gate_requires_isolated_packet_flow(self):
         justfile = ROOT.parents[1] / 'justfile'
         recipe = justfile.read_text()
+        supervisor = (ROOT.parents[1] / 'scripts/test-e2e-fail-fast.sh').read_text()
         flow = (ROOT / 'flow-run.sh').read_text()
         runner = (ROOT / 'run.sh').read_text()
         self.assertIn('./dev/winvm/run.sh test\n  ./dev/winvm/flow-run.sh', recipe)
@@ -170,7 +177,9 @@ class HarnessTests(unittest.TestCase):
         self.assertIn('>"$run_dir/flow-console.log" 2>&1', flow)
         self.assertIn('check: tidy typos fmt lint shellcheck vet vulncheck test-total', recipe)
         self.assertIn('test-total: test-cycles-harness test-winvm-harness test test-e2e', recipe)
-        self.assertIn('test-e2e: test-e2e-docker test-winvm-enabled', recipe)
+        self.assertIn('test-e2e:\n  ./scripts/test-e2e-fail-fast.sh', recipe)
+        self.assertIn('docker_recipe="${1:-test-e2e-docker}"', supervisor)
+        self.assertIn('windows_recipe="${2:-test-winvm-enabled}"', supervisor)
         self.assertIn('RUN_WINVM_TESTS', recipe)
 
     def test_regular_manifest_covers_windows_go_and_integration_tests(self):

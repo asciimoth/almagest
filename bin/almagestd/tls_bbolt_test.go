@@ -1010,6 +1010,22 @@ func TestTLSNodeNameSyncKeepsReplacementReferencesAfterDelayedRemoval(t *testing
 	assertTLSNodeReferences(t, manager, "policy", "alpha", false)
 }
 
+func TestReconcileTLSPolicyNodeReferencesRemovesOnlyInactiveNodes(t *testing.T) {
+	manager, err := openKVManager(filepath.Join(t.TempDir(), "kv.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer manager.Close() //nolint:errcheck
+
+	addTLSNodeReferences(manager, "policy", "active")
+	addTLSNodeReferences(manager, "policy", "removed")
+	if err := manager.reconcileTLSPolicyNodeReferences(map[string]struct{}{"active": {}}); err != nil {
+		t.Fatal(err)
+	}
+	assertTLSNodeReferences(t, manager, "policy", "active", true)
+	assertTLSNodeReferences(t, manager, "policy", "removed", false)
+}
+
 func addTLSNodeReferences(manager *bboltKVManager, policy, node string) {
 	manager.trackTLSPolicyWatcher(policy, node)
 	manager.tlsMu.Lock()

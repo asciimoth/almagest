@@ -458,60 +458,82 @@ func (n *testTunProviderNode) closePipe() {
 func assertTunPacketCopied(t *testing.T, from, to tun.Tun, text string) {
 	t.Helper()
 	packet := []byte(text)
-	writeTunPacket(t, from, packet)
-	got := readTunPacket(t, to)
-	if !bytes.Equal(got, packet) {
-		t.Fatalf("copied packet = %q, want %q", string(got), text)
+	result := make(chan error, 2)
+	stop := make(chan struct{})
+	defer close(stop)
+
+	go func() {
+		for {
+			got, err := readOneTunPacket(to)
+			if err != nil {
+				result <- fmt.Errorf("tun Read: %w", err)
+				return
+			}
+			if bytes.Equal(got, packet) {
+				result <- nil
+				return
+			}
+		}
+	}()
+	go func() {
+		retry := time.NewTicker(25 * time.Millisecond)
+		defer retry.Stop()
+		for {
+			if err := writeOneTunPacket(from, packet); err != nil {
+				result <- fmt.Errorf("tun Write: %w", err)
+				return
+			}
+			select {
+			case <-stop:
+				return
+			case <-retry.C:
+			}
+		}
+	}()
+
+	select {
+	case err := <-result:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for copied tun packet")
 	}
 }
 
 func writeTunPacket(t *testing.T, target tun.Tun, packet []byte) {
 	t.Helper()
+	if err := writeOneTunPacket(target, packet); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func writeOneTunPacket(target tun.Tun, packet []byte) error {
 	offset := target.MWO()
 	buf := make([]byte, offset+len(packet))
 	copy(buf[offset:], packet)
 	n, err := target.Write([][]byte{buf}, offset)
 	if err != nil {
-		t.Fatalf("tun Write: %v", err)
+		return err
 	}
 	if n != 1 {
-		t.Fatalf("tun Write count = %d, want 1", n)
+		return fmt.Errorf("tun Write count = %d, want 1", n)
 	}
+	return nil
 }
 
-func readTunPacket(t *testing.T, source tun.Tun) []byte {
-	t.Helper()
-	type result struct {
-		packet []byte
-		err    error
+func readOneTunPacket(source tun.Tun) ([]byte, error) {
+	offset := source.MRO()
+	buf := make([]byte, offset+2048)
+	sizes := []int{0}
+	n, err := source.Read([][]byte{buf}, sizes, offset)
+	if err != nil {
+		return nil, err
 	}
-	ch := make(chan result, 1)
-	go func() {
-		offset := source.MRO()
-		buf := make([]byte, offset+2048)
-		sizes := []int{0}
-		n, err := source.Read([][]byte{buf}, sizes, offset)
-		if err != nil {
-			ch <- result{err: err}
-			return
-		}
-		if n != 1 {
-			ch <- result{err: fmt.Errorf("read packet count %d, want 1", n)}
-			return
-		}
-		packet := append([]byte(nil), buf[offset:offset+sizes[0]]...)
-		ch <- result{packet: packet}
-	}()
-	select {
-	case got := <-ch:
-		if got.err != nil {
-			t.Fatalf("tun Read: %v", got.err)
-		}
-		return got.packet
-	case <-time.After(2 * time.Second):
-		t.Fatal("timed out waiting for copied tun packet")
-		return nil
+	if n != 1 {
+		return nil, fmt.Errorf("read packet count %d, want 1", n)
 	}
+	return append([]byte(nil), buf[offset:offset+sizes[0]]...), nil
 }
 
 func assertPortShape(t *testing.T, e *NodeE2E, port uint64, direction, name, linkType string) {

@@ -9,6 +9,8 @@ coverage_enabled="${E2E_COVERAGE:-0}"
 coverage_dir="${E2E_COVERAGE_DIR:-$repo_root/e2e/coverage}"
 coverpkg="${E2E_COVERPKG:-github.com/asciimoth/almagest/bin/...,github.com/asciimoth/almagest/lib/...,github.com/asciimoth/almagest/certcat/...}"
 jobs="${E2E_JOBS:-4}"
+fail_fast="${E2E_FAIL_FAST:-1}"
+failure_log_root="${E2E_FAILURE_LOG_ROOT:-$repo_root/artifacts/e2e}"
 build_attempts="${E2E_BUILD_ATTEMPTS:-10}"
 build_retry_delay="${E2E_BUILD_RETRY_DELAY:-1}"
 build_retry_max_delay="${E2E_BUILD_RETRY_MAX_DELAY:-60}"
@@ -44,6 +46,10 @@ for integer_setting in \
 done
 if ((jobs == 0)); then
 	echo "E2E_JOBS must be greater than zero" >&2
+	exit 2
+fi
+if [[ "$fail_fast" != "0" && "$fail_fast" != "1" ]]; then
+	echo "E2E_FAIL_FAST must be 0 or 1" >&2
 	exit 2
 fi
 if ((build_attempts == 0)); then
@@ -236,8 +242,14 @@ cleanup() {
 	local pid
 	local resource
 	local resources=()
+	local retained_log_dir="${E2E_LOG_DIR:-}"
 
 	trap - EXIT INT TERM
+	if ((exit_status != 0)) && [[ -z "$retained_log_dir" ]]; then
+		mkdir -p "$failure_log_root"
+		retained_log_dir="$(mktemp -d "$failure_log_root/run-XXXXXXXX")"
+		echo "==> e2e: failure logs: $retained_log_dir" >&2
+	fi
 	# Remove containers before waiting for their runner processes. A runner can be
 	# blocked in `docker run` until its container stops.
 	for cidfile in "$run_dir"/*.cid; do
@@ -265,9 +277,9 @@ cleanup() {
 	# labelled for this invocation, after all case processes have been reaped.
 	mapfile -t resources < <(docker ps -aq --filter "label=$resource_label")
 	for resource in "${resources[@]}"; do
-		if [[ -n "${E2E_LOG_DIR:-}" ]]; then
-			mkdir -p "$E2E_LOG_DIR"
-			docker logs --tail 300 "$resource" >"$E2E_LOG_DIR/helper-$resource.log" 2>&1 || true
+		if [[ -n "$retained_log_dir" ]]; then
+			mkdir -p "$retained_log_dir"
+			docker logs --tail 300 "$resource" >"$retained_log_dir/helper-$resource.log" 2>&1 || true
 		fi
 		docker rm --force "$resource" >/dev/null 2>&1 || true
 	done
@@ -279,10 +291,10 @@ cleanup() {
 	if ((${#resources[@]})); then
 		docker volume rm "${resources[@]}" >/dev/null 2>&1 || true
 	fi
-	if [[ -n "${E2E_LOG_DIR:-}" ]]; then
-		mkdir -p "$E2E_LOG_DIR"
+	if [[ -n "$retained_log_dir" ]]; then
+		mkdir -p "$retained_log_dir"
 		for case_index in "${!case_logs[@]}"; do
-			cp "${case_logs[$case_index]}" "$E2E_LOG_DIR/${cases[$case_index]}.log" || true
+			cp "${case_logs[$case_index]}" "$retained_log_dir/${cases[$case_index]}.log" || true
 		done
 	fi
 	rm -rf "$run_dir"
@@ -385,6 +397,10 @@ while ((${#pending_cases[@]} > 0 || ${#running_cases[@]} > 0)); do
 		echo "==> e2e: FAIL $case_name (exit $case_status, $case_duration)" >&2
 		failed_cases+=("$case_name")
 		((failure_count += 1))
+		if ((fail_fast)); then
+			echo "e2e failed fast: ${failed_cases[*]}" >&2
+			exit 1
+		fi
 	fi
 	unset 'running_cases[$completed_pid]'
 done

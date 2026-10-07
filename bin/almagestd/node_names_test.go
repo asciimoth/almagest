@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"slices"
 	"testing"
@@ -13,6 +14,70 @@ import (
 	sysnetdebug "github.com/asciimoth/gonnect/sysnet/debug"
 	"github.com/asciimoth/pasta/pasta"
 )
+
+type nodeReferenceStoreRecorder struct {
+	secretDeletes    int
+	secretReconciles int
+	kvDeletes        int
+	kvReconciles     int
+	tlsDeletes       int
+	tlsReconciles    int
+}
+
+func (*nodeReferenceStoreRecorder) renameSecretNodeReferences(string, string) error { return nil }
+func (r *nodeReferenceStoreRecorder) deleteSecretNodeReferences(string) error {
+	r.secretDeletes++
+	return nil
+}
+func (r *nodeReferenceStoreRecorder) reconcileSecretNodeReferences(map[string]struct{}) error {
+	r.secretReconciles++
+	return nil
+}
+func (*nodeReferenceStoreRecorder) renameKVOwnerReferences(string, string) error { return nil }
+func (r *nodeReferenceStoreRecorder) deleteKVOwnerEntries(string) error {
+	r.kvDeletes++
+	return nil
+}
+func (r *nodeReferenceStoreRecorder) reconcileKVOwnerEntries(map[string]struct{}) error {
+	r.kvReconciles++
+	return nil
+}
+func (*nodeReferenceStoreRecorder) renameTLSPolicyNodeReferences(string, string) error { return nil }
+func (r *nodeReferenceStoreRecorder) deleteTLSPolicyNodeReferences(string) error {
+	r.tlsDeletes++
+	return nil
+}
+func (r *nodeReferenceStoreRecorder) reconcileTLSPolicyNodeReferences(map[string]struct{}) error {
+	r.tlsReconciles++
+	return nil
+}
+
+func TestBatchNodeNameSnapshotUsesOneReconciliationPerStore(t *testing.T) {
+	const nodeCount = 48
+	old := make(map[uint64]string, nodeCount)
+	for id := uint64(1); id <= nodeCount; id++ {
+		old[id] = fmt.Sprintf("node-%d", id)
+	}
+	recorder := &nodeReferenceStoreRecorder{}
+	secretSync := &secretNodeNameSync{
+		secrets:   recorder,
+		kv:        recorder,
+		nodeNames: newNodeNameIndex(nodeCount),
+		nodes:     old,
+	}
+	secretSync.reconcileSnapshot(map[uint64]pasta.NodeSnapshot{})
+	tlsSync := &tlsNodeNameSync{manager: recorder, nodes: old}
+	tlsSync.reconcileSnapshot(map[uint64]pasta.NodeSnapshot{})
+
+	if recorder.secretDeletes != 0 || recorder.kvDeletes != 0 || recorder.tlsDeletes != 0 {
+		t.Fatalf("per-node deletes: secret=%d KV=%d TLS=%d, want zero",
+			recorder.secretDeletes, recorder.kvDeletes, recorder.tlsDeletes)
+	}
+	if recorder.secretReconciles != 1 || recorder.kvReconciles != 1 || recorder.tlsReconciles != 1 {
+		t.Fatalf("batch reconciliations: secret=%d KV=%d TLS=%d, want one each",
+			recorder.secretReconciles, recorder.kvReconciles, recorder.tlsReconciles)
+	}
+}
 
 func TestNodeNameIndexKeepsSecretNamesAndRecentOrder(t *testing.T) {
 	index := newNodeNameIndex(2)

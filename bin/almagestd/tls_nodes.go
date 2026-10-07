@@ -10,12 +10,18 @@ import (
 )
 
 type tlsNodeNameSync struct {
-	manager *bboltKVManager
+	manager tlsNodeReferenceStore
 	engine  almagest.Engine
 	logger  logging.Logger
 
 	mu    sync.Mutex
 	nodes map[uint64]string
+}
+
+type tlsNodeReferenceStore interface {
+	renameTLSPolicyNodeReferences(oldName, newName string) error
+	deleteTLSPolicyNodeReferences(name string) error
+	reconcileTLSPolicyNodeReferences(active map[string]struct{}) error
 }
 
 // startTLSNodeNameSync keeps TLS policy watcher names in step with workspace
@@ -100,12 +106,21 @@ func (s *tlsNodeNameSync) reconcileSnapshot(nodes map[uint64]pasta.NodeSnapshot)
 	for id, oldName := range old {
 		newName, ok := next[id]
 		if !ok {
-			s.deleteReferencesIfInactive(oldName)
 			continue
 		}
 		if oldName != newName {
 			s.renameReferences(oldName, newName)
 		}
+	}
+	active := make(map[string]struct{}, len(next))
+	for _, name := range next {
+		active[name] = struct{}{}
+	}
+	if s.manager == nil {
+		return
+	}
+	if err := s.manager.reconcileTLSPolicyNodeReferences(active); err != nil && s.logger != nil {
+		s.logger.Errf("failed to reconcile TLS policy node references: %v", err)
 	}
 }
 

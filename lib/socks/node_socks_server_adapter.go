@@ -63,8 +63,7 @@ func serveSocksListener(ctx context.Context, logger pasta.Logger, server *socksg
 		}
 		logger.Debugf("socks client connected from %s", conn.RemoteAddr())
 		if _, err := spawner.Spawn(func() {
-			prepareSocksHandshakeDeadline(server, conn)
-			err := server.Accept(ctx, conn, false)
+			err := acceptSocksConnection(ctx, server, conn)
 			if err != nil {
 				logger.Debugf("socks client %s closed: %v", conn.RemoteAddr(), err)
 			} else {
@@ -75,6 +74,17 @@ func serveSocksListener(ctx context.Context, logger pasta.Logger, server *socksg
 			_ = conn.Close()
 		}
 	}
+}
+
+// acceptSocksConnection makes context cancellation interrupt blocking socket
+// reads in socksgo.Server.Accept. The library accepts a context, but a client
+// that is between protocol messages can otherwise remain blocked until its
+// handshake deadline expires after this worker has stopped.
+func acceptSocksConnection(ctx context.Context, server *socksgo.Server, conn net.Conn) error {
+	stopClose := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	defer stopClose()
+	prepareSocksHandshakeDeadline(server, conn)
+	return server.Accept(ctx, conn, false)
 }
 
 func prepareSocksHandshakeDeadline(server *socksgo.Server, conn net.Conn) {

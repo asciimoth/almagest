@@ -25,6 +25,8 @@ DEFAULTS = {
     "E2E_JOBS": "4", "E2E_INCLUDE_PRIVILEGED": "0",
     "E2E_EXCLUDE_HEAVY": "0", "E2E_COVERAGE": "0",
     "E2E_IMAGE": "almagest-e2e:local", "E2E_REBUILD": "0",
+    "E2E_FAIL_FAST": "0",
+    "WINVM_FAIL_FAST": "0",
     "RUN_WINVM_TESTS": "0",
 }
 GO_FLAGS = ["-count=1", "-p=1", "-parallel=1", "-json"]
@@ -315,6 +317,7 @@ class Runner:
             # Inherited GOFLAGS must not override the explicit test settings.
         elif kind == "e2e":
             commands = [["./e2e/run.sh", "--skip-build"]]
+            env["E2E_FAIL_FAST"] = "0"
             env["E2E_LOG_DIR"] = str(directory / "cases")
             env["E2E_COVERAGE_DIR"] = str(directory / "coverage")
             if not env.get("E2E_RANDOM_SEED"):
@@ -329,6 +332,7 @@ class Runner:
             env["WINVM_RUN_DIR"] = str(vm_dir)
             env["WINVM_FLOW_RUN_DIR"] = str(flow_dir)
             env["WINVM_PREPARED_DIR"] = str(self.session / "winvm-prepared")
+            env["WINVM_FAIL_FAST"] = "0"
             commands = [["./dev/winvm/run.sh", "test"],
                         ["./dev/winvm/flow-run.sh"]]
         started = time.monotonic()
@@ -357,7 +361,7 @@ class Runner:
                         environment={key: env[key] for key in (
                             "E2E_RANDOM_SEED", "E2E_LOG_DIR", "E2E_COVERAGE_DIR",
                             "WINVM_RUN_DIR", "WINVM_FLOW_RUN_DIR",
-                            "WINVM_PREPARED_DIR") if key in env},
+                            "WINVM_PREPARED_DIR", "WINVM_FAIL_FAST") if key in env},
                         artifacts=str(directory) if failed or interrupted else None)
         with self.lock:
             with (self.session / "loops.jsonl").open("a") as output:

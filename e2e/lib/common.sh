@@ -8,6 +8,7 @@ set -euo pipefail
 : "${E2E_DAEMON_LOG:?}"
 
 daemon_pid=""
+daemon_log_reported=0
 ALMAGEST_E2E_TIMEOUT="${ALMAGEST_E2E_TIMEOUT:-20}"
 # Bound shared CLI calls so admin/socket stalls fail the case instead of
 # hanging the whole e2e run. Coverage builds can need more than five seconds
@@ -33,8 +34,21 @@ fail() {
 	if [[ -f "$E2E_DAEMON_LOG" ]]; then
 		log "daemon log follows"
 		tail -200 "$E2E_DAEMON_LOG" >&2 || true
+		daemon_log_reported=1
 	fi
 	exit 1
+}
+
+cleanup_daemon() {
+	local status="$?"
+
+	trap - EXIT
+	if ((status != 0 && daemon_log_reported == 0)) && [[ -f "$E2E_DAEMON_LOG" ]]; then
+		log "daemon log follows after unexpected case exit"
+		tail -200 "$E2E_DAEMON_LOG" >&2 || true
+	fi
+	stop_daemon
+	exit "$status"
 }
 
 retry() {
@@ -111,7 +125,7 @@ start_daemon() {
 		"${web_args[@]}" \
 		>"$E2E_DAEMON_LOG" 2>&1 &
 	daemon_pid="$!"
-	trap stop_daemon EXIT
+	trap cleanup_daemon EXIT
 	retry "$ALMAGEST_E2E_TIMEOUT" "admin API socket" test -S "$E2E_ADMIN_SOCK" \
 		|| fail "admin API socket was not created"
 	retry "$ALMAGEST_E2E_TIMEOUT" "admin API ping" \

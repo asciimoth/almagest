@@ -197,6 +197,34 @@ wait "$child"
             self.assertIn("WINVM_RUN_DIR", calls[0][1])
             self.assertIn("WINVM_FLOW_RUN_DIR", calls[0][1])
 
+    def test_e2e_cycles_disable_fail_fast_even_when_environment_enables_it(self):
+        with tempfile.TemporaryDirectory() as temp, redirect_stdout(io.StringIO()):
+            runner = MODULE.Runner(Path(temp), {"E2E_FAIL_FAST": "1"})
+            environments = []
+
+            def command(_argv, _log, env=None):
+                environments.append(env)
+                return 1
+
+            runner.command = command
+            runner.iteration("e2e")
+            self.assertEqual(environments[0]["E2E_FAIL_FAST"], "0")
+
+    def test_winvm_cycles_disable_fail_fast_even_when_environment_enables_it(self):
+        with tempfile.TemporaryDirectory() as temp, redirect_stdout(io.StringIO()):
+            runner = MODULE.Runner(Path(temp), {
+                "RUN_WINVM_TESTS": "1", "WINVM_FAIL_FAST": "1",
+            })
+            environments = []
+
+            def command(_argv, _log, env=None):
+                environments.append(env)
+                return 1
+
+            runner.command = command
+            runner.iteration("winvm")
+            self.assertEqual(environments[0]["WINVM_FAIL_FAST"], "0")
+
     def test_vm_supervisor_owns_interrupt_and_log_collection(self):
         with tempfile.TemporaryDirectory() as temp, redirect_stdout(io.StringIO()):
             root = Path(temp)

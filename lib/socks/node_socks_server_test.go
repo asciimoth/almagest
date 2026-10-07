@@ -119,6 +119,32 @@ func TestPrepareSocksHandshakeDeadlineSetsInitialDeadline(t *testing.T) {
 	}
 }
 
+func TestAcceptSocksConnectionCancellationClosesBlockedHandshake(t *testing.T) {
+	serverConn, clientConn := net.Pipe()
+	defer func() {
+		if err := clientConn.Close(); err != nil {
+			t.Errorf("close client connection: %v", err)
+		}
+	}()
+	ctx, cancel := context.WithCancel(context.Background())
+	result := make(chan error, 1)
+	go func() {
+		result <- acceptSocksConnection(ctx, &socksgo.Server{
+			HandshakeTimeout: time.Minute,
+		}, serverConn)
+	}()
+
+	cancel()
+	select {
+	case err := <-result:
+		if err == nil {
+			t.Fatal("cancelled SOCKS handshake returned nil error")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("cancelled SOCKS handshake remained blocked")
+	}
+}
+
 func TestSocksServerAuthAllowsDuplicateUsernamePasswords(t *testing.T) {
 	auth := socksServerAuth([]socksServerUser{
 		{username: "alice", password: "one"},

@@ -565,6 +565,8 @@ class Supervisor:
                     f"{self.remote}/source/dev/winvm/{script}", "-ArtifactDir", f"{self.remote}/artifacts"]
             if phase in ("ordinary", "privileged"):
                 args += ["-Mode", phase, "-SourceDir", f"{self.remote}/source"]
+                if os.environ.get("WINVM_FAIL_FAST", "1") == "0":
+                    args.append("-ContinueAfterFailure")
             elif phase == "resource":
                 args += ["-SourceDir", f"{self.remote}/source"]
                 if self.args.soak_duration:
@@ -580,6 +582,9 @@ class Supervisor:
                 raise Failure("guest-transport" if self.guest_healthy() else "guest-unresponsive", 255)
             if code:
                 tests_status = code
+                if os.environ.get("WINVM_FAIL_FAST", "1") != "0":
+                    self.stage = "tests"
+                    raise Failure("tests", code)
         if tests_status:
             self.stage = "tests"
             raise Failure("tests", tests_status)

@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,6 +11,8 @@ import (
 	"github.com/alexflint/go-arg"
 	"github.com/asciimoth/almagest/bin/almagestd/args"
 	cmdrunner "github.com/asciimoth/almagest/bin/almagestd/command"
+	"github.com/asciimoth/almagest/bin/almagestd/daemonservices"
+	"github.com/asciimoth/almagest/bin/almagestd/internal/daemonruntime"
 	"github.com/asciimoth/almagest/bin/almagestd/platform"
 	"github.com/asciimoth/almagest/bin/api"
 	almagest "github.com/asciimoth/almagest/lib"
@@ -26,66 +27,70 @@ func main() {
 	// captures and admin API actions.
 	golog.SetTimeFormat("2006/01/02 15:04:05.000000")
 
-	var arguments args.Args
-	if err := arg.Parse(&arguments); err != nil {
-		golog.Fatal(err)
-		return
-	}
-	mode, err := selectExecutionMode(arguments)
+	arguments, mode, err := parseDaemonArgs()
 	if err != nil {
 		golog.Fatal(err)
 		return
 	}
+	if err := runDaemonApplication(arguments, mode); err != nil {
+		golog.Fatal(err)
+	}
+}
+
+func parseDaemonArgs() (args.Args, executionMode, error) {
+	var arguments args.Args
+	if err := arg.Parse(&arguments); err != nil {
+		return args.Args{}, "", err
+	}
+	mode, err := selectExecutionMode(arguments)
+	return arguments, mode, err
+}
+
+func runDaemonApplication(arguments args.Args, mode executionMode) error {
 	golog.Infof("Execution mode: %s (no sandbox)", mode)
 
 	gonnect.UnfuckGoDns()
 	randomSeeds, err := newDaemonRandomSeeds()
 	if err != nil {
-		golog.Fatal(err)
-		return
+		return err
 	}
 
 	if arguments.LogLevel != "" {
 		golog.SetLevel(arguments.LogLevel)
 	}
 	if err := platform.ValidateArgs(&arguments); err != nil {
-		golog.Fatal(err)
-		return
+		return err
 	}
 	if err := resolveCLIPathArgs(&arguments); err != nil {
-		golog.Fatal(err)
-		return
+		return err
 	}
 	if err := resolveTmpUnixAdminArg(&arguments); err != nil {
-		golog.Fatal(err)
-		return
+		return err
 	}
 	if arguments.StdInConfig && arguments.Snapshot == "-" {
-		golog.Fatal(fmt.Errorf("--stdin and --snapshot - cannot read from stdin together"))
-		return
+		return fmt.Errorf("--stdin and --snapshot - cannot read from stdin together")
 	}
 	configureGlobalBufPool(arguments.NoPool)
 	// Validate the native DLL search before changing to file storage. Keep the
 	// result until the selected integration is known, so explicit debug mode
 	// remains usable without Windows runtime dependencies.
 	_, runtimeDependencyErr := platform.ValidateRuntimeDependencies()
-	if err := platform.RunLifecycle(func(ctx context.Context, ready func()) error {
-		return runDaemon(ctx, ready, arguments, mode, randomSeeds, runtimeDependencyErr)
-	}); err != nil {
-		golog.Fatal(err)
-	}
+	return platform.RunLifecycle(func(ctx context.Context, ready func()) error {
+		return daemonruntime.Run(ctx, func(ctx context.Context, application *daemonruntime.Application) error {
+			return runDaemon(ctx, application, ready, arguments, mode, randomSeeds, runtimeDependencyErr)
+		})
+	})
 }
 
 func runDaemon(
-	parent context.Context,
+	ctx context.Context,
+	application *daemonruntime.Application,
 	ready func(),
 	arguments args.Args,
 	mode executionMode,
 	randomSeeds daemonRandomSeeds,
 	runtimeDependencyErr error,
-) (result error) {
-	ctx, cancel := context.WithCancel(parent)
-	defer cancel()
+) error {
 	agent, err := platform.PrepareAgent(arguments)
 	if err != nil {
 		return fmt.Errorf("prepare config files: %w", err)
@@ -99,11 +104,7 @@ func runDaemon(
 	if err != nil {
 		return err
 	}
-	lifecycle := &daemonLifecycle{
-		cancel:       cancel,
-		cleanupFiles: fsCleanup,
-	}
-	defer func() { result = errors.Join(result, lifecycle.Close()) }()
+	application.OwnFiles(fsCleanup)
 	var kv *bboltKVManager
 
 	if err := os.Chdir(fsPath); err != nil {
@@ -164,7 +165,7 @@ func runDaemon(
 	if err != nil {
 		return err
 	}
-	lifecycle.closeStorage = kv.Close
+	application.OwnStorage(kv.Close)
 	golog.Infof("Using kv database at %s", filepath.Join(fsPath, kvDBFileName))
 	if err := kv.reconcileKVOwnerEntries(configuredNodeNameSet(conf.Main)); err != nil {
 		return fmt.Errorf("KV ownership cleanup: %w", err)
@@ -175,7 +176,7 @@ func runDaemon(
 	if err != nil {
 		return err
 	}
-	lifecycle.stopAdmin = admin.Stop
+	application.OwnAdmin(admin.Stop)
 	admin.configReadOnly = agent.ConfRO()
 	admin.fileStorage = fsPath
 	admin.projectVersionStatus = projectVersionStatus
@@ -194,7 +195,7 @@ func runDaemon(
 	if err != nil {
 		return fmt.Errorf("node name index setup: %w", err)
 	}
-	lifecycle.closeNodeNames = nodeNames.Close
+	application.OwnNodeNames(nodeNames.Close)
 	admin.nodeNames = nodeNames.index
 
 	commandRunner, err := cmdrunner.NewRunner(daemonLogger, conf.Protected.CommandRunner)
@@ -202,14 +203,16 @@ func runDaemon(
 		return err
 	}
 	commandRunner.Start(ctx)
-	lifecycle.closeRunner = commandRunner.Close
+	application.OwnCommands(commandRunner.Close)
+	var allowedCommands daemonservices.AllowedCommands = commandRunner
 
 	// Setup system integration here before privileges drop
-	sys, err := SystemIntegrationWithRuntimeDependencies(conf, commandRunner, runtimeDependencyErr, randomSeeds.system)
+	sys, err := SystemIntegrationWithRuntimeDependencies(conf, allowedCommands, runtimeDependencyErr, randomSeeds.system)
 	if err != nil {
 		return err
 	}
-	lifecycle.closeSystem = sys.Close
+	var hostNetwork daemonservices.HostNetwork = sys
+	application.OwnHostNetwork(hostNetwork.Close)
 
 	platform.DropPrivileges() // Currently just a stub
 
@@ -223,12 +226,12 @@ func runDaemon(
 		ctx,
 		conf.Main,
 		logf,
-		sys,
+		hostNetwork,
 		kv,
 		kv,
 		kv,
 		kv,
-		daemonNodeClasses(conf.Protected.CommandRunner, commandRunner, arguments.Experimental, conf.Protected.Experimental),
+		daemonNodeClasses(conf.Protected.CommandRunner, allowedCommands, arguments.Experimental, conf.Protected.Experimental),
 		globalBufPool,
 		arguments.DebugNodes,
 		almagest.WithWorkerEventLogging(arguments.LogWorkers),
@@ -242,12 +245,12 @@ func runDaemon(
 		return fmt.Errorf("engine setup: %w", err)
 	}
 	daemonLogger.Debugf("engine built in %s", engineBuildElapsed)
-	lifecycle.closeEngine = engine.Close
+	application.OwnEngine(engine.Close)
 
 	var wg sync.WaitGroup
-	lifecycle.waitBackground = wg.Wait
+	application.OwnBackground(wg.Wait)
 	admin.configAutosaver = newConfigAutosaver(engine, conf, agent, daemonLogger, conf.SaveIdle())
-	lifecycle.flushConfig = admin.configAutosaver.flushPendingError
+	application.OwnConfigFlush(admin.configAutosaver.flushPendingError)
 	admin.snapshots = newSnapshotService(
 		fsPath,
 		admin.configAutosaver,
@@ -269,7 +272,7 @@ func runDaemon(
 	}
 
 	// Launch admin api fully
-	admin.Run(ctx, cancel, &wg, engine, sys, logf)
+	admin.Run(ctx, application.Cancel, &wg, engine, hostNetwork, logf)
 	ready()
 
 	<-ctx.Done()

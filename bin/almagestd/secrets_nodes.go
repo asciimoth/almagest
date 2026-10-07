@@ -10,14 +10,26 @@ import (
 )
 
 type secretNodeNameSync struct {
-	secrets   *bboltKVManager
-	kv        *bboltKVManager
+	secrets   secretNodeReferenceStore
+	kv        kvOwnerReferenceStore
 	nodeNames *nodeNameIndex
 	engine    almagest.Engine
 	logger    logging.Logger
 
 	mu    sync.Mutex
 	nodes map[uint64]string
+}
+
+type secretNodeReferenceStore interface {
+	renameSecretNodeReferences(oldName, newName string) error
+	deleteSecretNodeReferences(name string) error
+	reconcileSecretNodeReferences(active map[string]struct{}) error
+}
+
+type kvOwnerReferenceStore interface {
+	renameKVOwnerReferences(oldName, newName string) error
+	deleteKVOwnerEntries(name string) error
+	reconcileKVOwnerEntries(active map[string]struct{}) error
 }
 
 // startSecretNodeNameSync keeps all persisted node-name references keyed by
@@ -30,12 +42,16 @@ func (a *AdminAPI) startSecretNodeNameSync(engine almagest.Engine, logger loggin
 		return 0
 	}
 	syncer := &secretNodeNameSync{
-		secrets:   a.secrets,
-		kv:        a.kv,
 		nodeNames: a.nodeNames,
 		engine:    engine,
 		logger:    logger,
 		nodes:     map[uint64]string{},
+	}
+	if a.secrets != nil {
+		syncer.secrets = a.secrets
+	}
+	if a.kv != nil {
+		syncer.kv = a.kv
 	}
 	return engine.SubscribeNotifications(syncer.handle)
 }
@@ -106,7 +122,6 @@ func (s *secretNodeNameSync) reconcileSnapshot(nodes map[uint64]pasta.NodeSnapsh
 		newName, ok := next[id]
 		if !ok {
 			s.nodeNames.remember(oldName)
-			s.deleteReferencesIfInactive(oldName)
 			continue
 		}
 		if oldName != newName {

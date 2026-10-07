@@ -21,8 +21,8 @@ networking or an external service.
 - A panic in a node callback also replaces only that node with an error
   placeholder. The daemon and an unrelated HTTP data plane stay usable.
 - Restart reconstructs both failed node implementations and retains KV data.
-- Class-wide removal deletes both KV nodes. Successive undo and redo operations
-  restore and remove each recorded node with its original ID.
+- Class-wide removal deletes both KV nodes as one batch. One undo and redo
+  restore and remove both recorded nodes with their original IDs.
 - Many stateless `Markdown` nodes can coexist. Copy/paste, batched undo and redo,
   and daemon restart reconstruct all instances with distinct live records.
   Batch history also preserves the original node IDs.

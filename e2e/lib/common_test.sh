@@ -45,4 +45,19 @@ grep -F '[common-test] CLI timed out after 20s: config snapshot' \
 	exit 1
 }
 
+printf '%s\n' 'unexpected-exit-daemon-detail' >"$E2E_DAEMON_LOG"
+if (trap cleanup_daemon EXIT; false) 2>"$root/unexpected-exit-error"; then
+	echo "unexpected-exit cleanup changed the failure status" >&2
+	exit 1
+fi
+grep -F 'daemon log follows after unexpected case exit' \
+	"$root/unexpected-exit-error" >/dev/null || {
+	echo "unexpected-exit cleanup did not identify the daemon log" >&2
+	exit 1
+}
+grep -F 'unexpected-exit-daemon-detail' "$root/unexpected-exit-error" >/dev/null || {
+	echo "unexpected-exit cleanup did not print the daemon log" >&2
+	exit 1
+}
+
 echo "e2e common helper tests passed"

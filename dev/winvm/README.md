@@ -246,6 +246,9 @@ the combined standard-user, elevated, and packet-flow `just winvm-test` gate.
 Aggregate E2E recipes keep the Docker E2E suite on Linux and join the enabled
 VM gates before coverage reporting. When enabled, the native gate requires the
 configured KVM host, locked media, and WinVM prerequisites.
+The regular native gate stops its case loop and later privilege phases after
+the first failure. `just test-cycles` selects collect-all mode for its repeated
+diagnostic runs.
 
 ## Project and CI gates
 

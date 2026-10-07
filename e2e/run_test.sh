@@ -2,6 +2,8 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+test_state="$(mktemp -d "${TMPDIR:-/tmp}/almagest-e2e-run-test.XXXXXX")"
+trap 'rm -rf "$test_state"' EXIT
 
 docker() {
 	local case_name
@@ -93,7 +95,8 @@ export -f docker
 output=""
 if output="$(
 	cd "$repo_root"
-	E2E_JOBS=2 E2E_RANDOM_SEED=1 \
+	E2E_FAILURE_LOG_ROOT="$test_state/failure-logs" \
+		E2E_FAIL_FAST=0 E2E_JOBS=2 E2E_RANDOM_SEED=1 \
 		./e2e/run.sh admin_api_transports amnesia_selfhost_controller 2>&1
 )"; then
 	echo "mixed passing and failing harness run succeeded" >&2
@@ -117,6 +120,12 @@ assert_contains "failing case output"
 assert_contains "FAIL amnesia_selfhost_controller (exit 7, "
 assert_contains "completed 2 cases in "
 assert_contains "slowest 2 cases"
+failure_log="$(find "$test_state/failure-logs" -type f \
+	-name amnesia_selfhost_controller.log -print -quit)"
+if [[ -z "$failure_log" ]] || ! grep -q 'failing case output' "$failure_log"; then
+	echo "harness did not retain the failed case log" >&2
+	exit 1
+fi
 
 if [[ "$output" == *"passing case output"* ]]; then
 	echo "harness showed output from a passing case" >&2
@@ -128,6 +137,31 @@ if [[ ! "$output" =~ PASS\ admin_api_transports\ \([0-9]+\.[0-9]{3}s\) ]]; then
 fi
 if [[ ! "$output" =~ FAIL\ amnesia_selfhost_controller\ \(exit\ 7,\ [0-9]+\.[0-9]{3}s\) ]]; then
 	echo "failing case did not include a millisecond duration" >&2
+	exit 1
+fi
+
+fail_fast_output=""
+if fail_fast_output="$(
+	cd "$repo_root"
+	E2E_FAILURE_LOG_ROOT="$test_state/failure-logs" E2E_JOBS=1 E2E_RANDOM_SEED=0 \
+		./e2e/run.sh amnesia_selfhost_controller admin_api_transports 2>&1
+)"; then
+	echo "fail-fast harness run succeeded" >&2
+	exit 1
+fi
+if [[ "$fail_fast_output" != *"FAIL amnesia_selfhost_controller (exit 7, "* ]]; then
+	echo "fail-fast harness did not report the failed case" >&2
+	printf '%s\n' "$fail_fast_output" >&2
+	exit 1
+fi
+if [[ "$fail_fast_output" == *"starting admin_api_transports"* ]]; then
+	echo "fail-fast harness started a case after the first failure" >&2
+	printf '%s\n' "$fail_fast_output" >&2
+	exit 1
+fi
+if [[ "$fail_fast_output" != *"e2e failed fast: amnesia_selfhost_controller"* ]]; then
+	echo "fail-fast harness did not report its stopping case" >&2
+	printf '%s\n' "$fail_fast_output" >&2
 	exit 1
 fi
 
@@ -161,8 +195,8 @@ if ((exclusive_start <= admin_pass || exclusive_start <= config_pass)); then
 	exit 1
 fi
 
-interrupt_state="$(mktemp -d "${TMPDIR:-/tmp}/almagest-e2e-interrupt-test.XXXXXX")"
-trap 'rm -rf "$interrupt_state"' EXIT
+interrupt_state="$test_state/interrupt"
+mkdir -p "$interrupt_state"
 (
 	cd "$repo_root"
 	E2E_INTERRUPT_TEST_STATE="$interrupt_state" E2E_JOBS=1 E2E_RANDOM_SEED=1 \

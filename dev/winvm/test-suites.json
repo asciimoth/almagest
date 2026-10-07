@@ -53,9 +53,9 @@
           "requiredTests": [
             "github.com/asciimoth/almagest/bin/almagestd::TestSystemIntegrationUsesProtectedSystemType",
             "github.com/asciimoth/almagest/bin/almagestd::TestDaemonLifecycleClosesOwnedResourcesOnceInOrder",
-            "github.com/asciimoth/almagest/bin/almagestd::TestDaemonLifecycleRetainsCloseFailureAfterRecovery",
-            "github.com/asciimoth/almagest/bin/almagestd::TestDaemonLifecycleClosesSystemAfterPartialStartup",
-            "github.com/asciimoth/almagest/bin/almagestd::TestDaemonLifecycleBoundsCleanupStep",
+            "github.com/asciimoth/almagest/bin/almagestd/internal/daemonruntime::TestApplicationRetainsEngineCloseFailureAfterRecovery",
+            "github.com/asciimoth/almagest/bin/almagestd/internal/daemonruntime::TestApplicationClosesNetworkAfterPartialConstruction",
+            "github.com/asciimoth/almagest/bin/almagestd/internal/daemonruntime::TestApplicationBoundsCleanupStep",
             "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsConsoleLifecycleCancelsRun",
             "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsServiceHandlerStopsForSCMControls",
             "github.com/asciimoth/almagest/bin/almagestd/platform::TestWindowsServiceHandlerDoesNotReportRunningAfterStartupFailure",

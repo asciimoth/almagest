@@ -1,6 +1,8 @@
 package windowssupport
 
 import (
+	"fmt"
+	"go/ast"
 	"go/parser"
 	"go/token"
 	"os"
@@ -43,6 +45,79 @@ func TestCheckedInExecutionManifest(t *testing.T) {
 	if manifest.PlatformID != "windows-server-2022-amd64" || manifest.OS != "windows-server-2022" || manifest.Architecture != "amd64" {
 		t.Fatalf("execution platform = %s %s/%s", manifest.PlatformID, manifest.OS, manifest.Architecture)
 	}
+}
+
+func TestCheckedInExecutionManifestRequiredTestsExist(t *testing.T) {
+	root := repositoryRoot()
+	data, err := os.ReadFile(filepath.Join(root, "dev", "winvm", "test-suites.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := DecodeExecutionManifest(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tests, err := repositoryGoTests(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, suite := range manifest.Suites {
+		for _, testCase := range suite.Cases {
+			for _, required := range testCase.RequiredTests {
+				if !strings.HasPrefix(required, "github.com/asciimoth/almagest/") {
+					continue
+				}
+				if _, exists := tests[required]; !exists {
+					t.Errorf("suite %q case %q requires missing Go test %q", suite.ID, testCase.ID, required)
+				}
+			}
+		}
+	}
+}
+
+func repositoryGoTests(root string) (map[string]struct{}, error) {
+	modules := map[string]string{
+		"bin":     "github.com/asciimoth/almagest/bin",
+		"certcat": "github.com/asciimoth/almagest/certcat",
+		"lib":     "github.com/asciimoth/almagest/lib",
+	}
+	tests := make(map[string]struct{})
+	for module, modulePath := range modules {
+		moduleRoot := filepath.Join(root, module)
+		err := filepath.WalkDir(moduleRoot, func(path string, entry os.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			if entry.IsDir() || !strings.HasSuffix(entry.Name(), "_test.go") {
+				return nil
+			}
+			file, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.SkipObjectResolution)
+			if err != nil {
+				return err
+			}
+			relative, err := filepath.Rel(moduleRoot, filepath.Dir(path))
+			if err != nil {
+				return err
+			}
+			packagePath := modulePath
+			if relative != "." {
+				packagePath += "/" + filepath.ToSlash(relative)
+			}
+			for _, declaration := range file.Decls {
+				function, ok := declaration.(*ast.FuncDecl)
+				if !ok || function.Recv != nil || !strings.HasPrefix(function.Name.Name, "Test") {
+					continue
+				}
+				tests[fmt.Sprintf("%s::%s", packagePath, function.Name.Name)] = struct{}{}
+			}
+			return nil
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
+	return tests, nil
 }
 
 func TestWindowsBackendDependencyBoundary(t *testing.T) {

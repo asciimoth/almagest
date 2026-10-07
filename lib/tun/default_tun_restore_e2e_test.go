@@ -1,6 +1,7 @@
 package tunnodes_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"errors"
@@ -36,7 +37,7 @@ func TestDefaultTunRestoreMinimalPathTransfersAfterNativeDeviceReplacement(t *te
 	replaceDefaultTunNativeDevice(t, sinks, sys, sink)
 	output := sinks.tun(t, sink)
 
-	assertTunPacketTransferred(
+	assertTunPacketEventuallyTransferred(
 		t,
 		sys.lastPeer(),
 		output,
@@ -63,7 +64,7 @@ func TestDefaultTunRestoreComplexJoinedSplitPathTransfersAfterNativeDeviceReplac
 	replaceDefaultTunNativeDevice(t, sinks, sys, hostSink)
 	output := sinks.tun(t, hostSink)
 
-	assertTunPacketTransferred(
+	assertTunPacketEventuallyTransferred(
 		t,
 		sys.lastPeer(),
 		output,
@@ -174,7 +175,7 @@ func TestDefaultTunRestoreGeneratedGraphDepthsTransferAfterNativeDeviceReplaceme
 			output := sinks.tun(t, sink)
 			peer := sys.lastPeer()
 
-			assertTunPacketTransferred(
+			assertTunPacketEventuallyTransferred(
 				t,
 				peer,
 				output,
@@ -501,6 +502,53 @@ func replaceDefaultTunNativeDevice(
 	Eventually(t, func() bool {
 		return sys.buildCount() >= wantBuild
 	}, "DefaultTun native device replacement")
+}
+
+// assertTunPacketEventuallyTransferred treats native construction as the start
+// of convergence, not as a graph-wide barrier. Joiners keep a stable output and
+// do not publish another sink payload when an upstream generation changes.
+func assertTunPacketEventuallyTransferred(t *testing.T, from, to tun.Tun, packet []byte) {
+	t.Helper()
+	type result struct {
+		packet []byte
+		err    error
+	}
+	resultCh := make(chan result, 1)
+	go func() {
+		offset := to.MRO()
+		buf := make([]byte, offset+max(2048, len(packet)))
+		sizes := []int{0}
+		n, err := to.Read([][]byte{buf}, sizes, offset)
+		if err == nil && n != 1 {
+			err = fmt.Errorf("read packet count %d, want 1", n)
+		}
+		if err != nil {
+			resultCh <- result{err: err}
+			return
+		}
+		resultCh <- result{packet: append([]byte(nil), buf[offset:offset+sizes[0]]...)}
+	}()
+
+	deadline := time.NewTimer(10 * time.Second)
+	defer deadline.Stop()
+	retry := time.NewTicker(10 * time.Millisecond)
+	defer retry.Stop()
+	for {
+		writeTunPacket(t, from, packet)
+		select {
+		case got := <-resultCh:
+			if got.err != nil {
+				t.Fatalf("tun Read: %v", got.err)
+			}
+			if !bytes.Equal(got.packet, packet) {
+				t.Fatalf("transferred packet = %v, want %v", got.packet, packet)
+			}
+			return
+		case <-deadline.C:
+			t.Fatal("timed out waiting for transferred tun packet after replacement")
+		case <-retry.C:
+		}
+	}
 }
 
 func waitForDefaultTunBuildsStable(t *testing.T, sys *recordingDefaultTunSystem) {

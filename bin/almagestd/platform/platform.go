@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 
+	"github.com/asciimoth/almagest/bin/almagestd/daemonservices"
 	"github.com/kataras/golog"
 	tailscalehujson "github.com/tailscale/hujson"
 )
@@ -13,14 +14,7 @@ import (
 var ErrConfigReadOnly = errors.New("config source is read-only")
 
 type Agent interface {
-	// ConfRO reports whether config is read-only.
-	ConfRO() bool
-
-	// ReadConfig reads config and protected config
-	ReadConfig() (cfg, prt []byte, err error)
-
-	// WriteConfig writes cfg to config file.
-	WriteConfig(cfg []byte) error
+	daemonservices.ConfigStore
 }
 
 // FSCleanup releases resources owned by a file storage setup.

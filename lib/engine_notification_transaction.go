@@ -356,6 +356,20 @@ func (e *engine) publishEngineNotification(notification EngineNotification) {
 		e.notificationMu.Unlock()
 		return
 	}
+	// Node-menu messages are not represented by the authoritative workspace
+	// snapshot published at the end of a transaction. In particular,
+	// SubscribeNodeMenu can synchronously emit its cached forced snapshot after
+	// Undo or Redo has returned but while the asynchronous publication barrier
+	// is still finishing. Dropping that message leaves the subscriber waiting
+	// forever because no later workspace snapshot can replace it.
+	if notification.Workspace != nil && notification.Workspace.Kind == pasta.NotificationNodeMenu {
+		callback := e.notificationCallbacks[notification.SubscriptionID]
+		e.notificationMu.Unlock()
+		if callback != nil {
+			callback(notification)
+		}
+		return
+	}
 	if e.notificationTransactionDepth != 0 || (e.notificationFinishing && !e.notificationPublishing) {
 		e.notificationMu.Unlock()
 		return

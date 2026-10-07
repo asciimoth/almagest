@@ -251,15 +251,14 @@ stop_and_reap_pid() { kill -TERM "$1" 2>/dev/null || true; wait "$1" 2>/dev/null
                     if mode in ('native-failure', 'guest-timeout', 'stuck-diagnostics'):
                         expected_stage = 'tests'
                         self.assertTrue((runs[0] / 'guest-artifacts.tar').exists())
-                        self.assertIn('running privileged tests', result.stdout)
+                        self.assertNotIn('running privileged tests', result.stdout)
                     if mode in ('freeze', 'lost-transport', 'healthy-silent', 'interrupt-tests'):
                         expected_stage = 'ordinary-tests'
                     if mode in ('freeze', 'lost-transport', 'healthy-silent', 'guest-timeout', 'interrupt-tests'):
                         self.assertTrue((runs[0] / 'guest-artifacts.tar').exists(), result.stdout)
                         self.assertEqual(record['recoveryAttempted'], mode in ('freeze', 'lost-transport'))
                         self.assertEqual(int((root / 'boots').read_text()), 2 if mode in ('freeze', 'lost-transport') else 1)
-                        expected_launches = 'ordinary\nprivileged\n' if mode == 'guest-timeout' else 'ordinary\n'
-                        self.assertEqual((root / 'test-launches').read_text(), expected_launches,
+                        self.assertEqual((root / 'test-launches').read_text(), 'ordinary\n',
                                          'recovery must not retry tests')
                     if mode in ('freeze', 'lost-transport'):
                         self.assertEqual(record['failureKind'], 'guest-unresponsive')

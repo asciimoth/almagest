@@ -206,7 +206,7 @@ type PastaAPI interface {
 	// mutation. Missing, duplicate, and invalid node IDs are ignored.
 	RemoveNodes(workspace string, ids []uint64)
 	RemoveNodesLocked(workspace string, ids []uint64)
-	// RemoveNodesByClass removes all nodes with class.
+	// RemoveNodesByClass removes all nodes with class as one workspace mutation.
 	RemoveNodesByClass(workspace string, class string)
 	RemoveNodesByClassLocked(workspace string, class string)
 	// RemoveLink removes a link by it's id
@@ -525,14 +525,27 @@ func (e *engine) RemoveNodesByClass(workspace string, class string) {
 	if workspace != "main" {
 		return
 	}
-	_ = e.mainWorkspace.RemoveNodesByClass(class)
+	if err := pasta.ValidateClassName(class); err != nil {
+		return
+	}
+	e.mainWorkspace.Lock()
+	defer e.mainWorkspace.Unlock()
+	e.removeNodesByClassLocked(class)
 }
 
 func (e *engine) RemoveNodesByClassLocked(workspace string, class string) {
 	if workspace != "main" {
 		return
 	}
-	_ = e.mainWorkspace.RemoveNodesByClassLocked(class)
+	e.removeNodesByClassLocked(class)
+}
+
+func (e *engine) removeNodesByClassLocked(class string) {
+	ids, err := e.mainWorkspace.NodesByClassLocked(class)
+	if err != nil {
+		return
+	}
+	_ = e.mainWorkspace.RemoveNodesLocked(ids)
 }
 
 func (e *engine) RemoveLink(workspace string, id uint64) {
@@ -927,6 +940,8 @@ func (e *engine) Undo(workspace string) {
 		return
 	}
 
+	notifications := e.BeginNotificationTransaction()
+	defer notifications.Publish()
 	e.mainWorkspace.Undo()
 }
 
@@ -935,6 +950,8 @@ func (e *engine) UndoLocked(workspace string) {
 		return
 	}
 
+	notifications := e.BeginNotificationTransaction()
+	defer notifications.Publish()
 	e.mainWorkspace.UndoLocked()
 }
 
@@ -943,6 +960,8 @@ func (e *engine) Redo(workspace string) {
 		return
 	}
 
+	notifications := e.BeginNotificationTransaction()
+	defer notifications.Publish()
 	e.mainWorkspace.Redo()
 }
 
@@ -951,6 +970,8 @@ func (e *engine) RedoLocked(workspace string) {
 		return
 	}
 
+	notifications := e.BeginNotificationTransaction()
+	defer notifications.Publish()
 	e.mainWorkspace.RedoLocked()
 }
 
