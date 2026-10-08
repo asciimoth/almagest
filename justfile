@@ -2,7 +2,8 @@ set shell := ["bash", "-euo", "pipefail", "-c"]
 set dotenv-load := true
 
 
-check: tidy typos fmt lint shellcheck vet vulncheck test-total
+check *selectors: tidy typos fmt lint shellcheck vet vulncheck
+  @just test-total {{quote(selectors)}}
 
 typos:
   typos
@@ -45,7 +46,15 @@ test-e2e-light:
 
 test: test-go test-js
 
-test-total: test-cycles-harness test-winvm-harness test test-e2e
+test-total *selectors:
+  @if [[ -n {{quote(selectors)}} ]]; then \
+    python3 ./scripts/test-selected.py {{quote(selectors)}}; \
+  else \
+    just test-total-all; \
+  fi
+
+[private]
+test-total-all: test-cycles-harness test-winvm-harness test test-e2e
   ./scripts/coverage-report.sh
 
 test-total-light: test test-e2e-light

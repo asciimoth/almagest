@@ -154,10 +154,16 @@ class HarnessTests(unittest.TestCase):
         self.assertIn("'PASS' } else { 'FAIL'", runner)
         self.assertIn('[switch]$ContinueAfterFailure', runner)
         self.assertIn('$processExitCode -ne 0 -and -not $ContinueAfterFailure', runner)
+        self.assertIn("[string]$CaseIDs = ''", runner)
+        self.assertIn("@($CaseIDs -split '~')", runner)
+        self.assertIn("$_.kind -ne 'go' -or $_.id -in $CaseID", runner)
+        self.assertIn('$validationManifestPath', runner)
 
         supervisor = (ROOT / 'supervise.py').read_text()
         self.assertIn('os.environ.get("WINVM_FAIL_FAST", "1")', supervisor)
         self.assertIn('args.append("-ContinueAfterFailure")', supervisor)
+        self.assertIn('os.environ.get("WINVM_TEST_CASES", "")', supervisor)
+        self.assertIn('args += ["-CaseIDs", selected_cases.replace(",", "~")]', supervisor)
 
     def test_regular_winvm_gate_requires_isolated_packet_flow(self):
         justfile = ROOT.parents[1] / 'justfile'
@@ -175,8 +181,9 @@ class HarnessTests(unittest.TestCase):
         self.assertEqual(runner.count('allocate_run_port'), 2)
         self.assertEqual(flow.count('WarnWeakCrypto=no'), 4)
         self.assertIn('>"$run_dir/flow-console.log" 2>&1', flow)
-        self.assertIn('check: tidy typos fmt lint shellcheck vet vulncheck test-total', recipe)
-        self.assertIn('test-total: test-cycles-harness test-winvm-harness test test-e2e', recipe)
+        self.assertIn('check *selectors: tidy typos fmt lint shellcheck vet vulncheck', recipe)
+        self.assertIn('just test-total {{quote(selectors)}}', recipe)
+        self.assertIn('test-total-all: test-cycles-harness test-winvm-harness test test-e2e', recipe)
         self.assertIn('test-winvm-harness:\n  @if [[ "${RUN_WINVM_TESTS:-0}" == "1" ]]', recipe)
         self.assertIn('lint-winvm:\n  @if [[ "${RUN_WINVM_TESTS:-0}" == "1" ]]', recipe)
         self.assertIn("shellcheck:\n  @if [[ \"${RUN_WINVM_TESTS:-0}\" == \"1\" ]]", recipe)

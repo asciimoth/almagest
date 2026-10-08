@@ -567,6 +567,9 @@ class Supervisor:
                 args += ["-Mode", phase, "-SourceDir", f"{self.remote}/source"]
                 if os.environ.get("WINVM_FAIL_FAST", "1") == "0":
                     args.append("-ContinueAfterFailure")
+                selected_cases = os.environ.get("WINVM_TEST_CASES", "")
+                if selected_cases:
+                    args += ["-CaseIDs", selected_cases.replace(",", "~")]
             elif phase == "resource":
                 args += ["-SourceDir", f"{self.remote}/source"]
                 if self.args.soak_duration:
@@ -605,8 +608,10 @@ class Supervisor:
         if self.command(validation, 15, log="validation.log"):
             raise Failure("artifact-validation")
         if self.args.mode in ("test", "ordinary", "privileged"):
+            coverage_dir = os.environ.get(
+                "WINVM_COVERAGE_DIR", str(ROOT.parents[1] / "coverage/winvm"))
             if self.command(["python3", str(ROOT / "combine-coverage.py"),
-                             str(self.directory / "guest-artifacts.tar"), str(ROOT.parents[1] / "coverage/winvm")], 30,
+                             str(self.directory / "guest-artifacts.tar"), coverage_dir], 30,
                             log="validation.log"):
                 raise Failure("coverage")
         return 0

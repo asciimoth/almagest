@@ -2,15 +2,31 @@ param(
     [Parameter(Mandatory=$true)][ValidateSet('ordinary','privileged')][string]$Mode,
     [Parameter(Mandatory=$true)][string]$SourceDir,
     [Parameter(Mandatory=$true)][string]$ArtifactDir,
-    [switch]$ContinueAfterFailure
+    [switch]$ContinueAfterFailure,
+    [string]$CaseIDs = ''
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+$CaseID = if ($CaseIDs) { @($CaseIDs -split '~') } else { @() }
 
 $manifestPath = Join-Path $SourceDir 'dev\winvm\test-suites.json'
 $manifest = Get-Content -Raw $manifestPath | ConvertFrom-Json
 $suite = $manifest.suites | Where-Object privilege -eq $Mode
 if (@($suite).Count -ne 1) { throw "The $Mode suite is absent or duplicated" }
+if ($CaseID.Count -gt 0) {
+    $allGoCaseIDs = @($manifest.suites | ForEach-Object cases |
+        Where-Object kind -eq 'go' | ForEach-Object id)
+    foreach ($selectedID in $CaseID) {
+        if ($selectedID -notin $allGoCaseIDs) {
+            throw "The selected WinVM Go case does not exist: $selectedID"
+        }
+    }
+    $suiteCases = @($suite.cases | Where-Object {
+        $_.kind -ne 'go' -or $_.id -in $CaseID
+    })
+} else {
+    $suiteCases = @($suite.cases)
+}
 $caseTimeoutSeconds = [int]$manifest.caseTimeoutSeconds
 $goPackageTimeoutSeconds = [int]$manifest.goPackageTimeoutSeconds
 $progressIntervalSeconds = [int]$manifest.progressIntervalSeconds
@@ -86,7 +102,7 @@ $identityPath = Join-Path $suiteDir 'identity.json'
 } | ConvertTo-Json | Set-Content $identityPath -Encoding utf8
 
 $processResults = @{}
-foreach ($case in $suite.cases) {
+foreach ($case in $suiteCases) {
     if ($case.kind -ne 'go') { continue }
     $eventPath = Join-Path $eventDir $case.eventFile
     $coveragePath = Join-Path $coverageDir "$($case.eventFile).coverage.out"
@@ -186,5 +202,18 @@ $tool = Join-Path $suiteDir 'windows-test-evidence.exe'
 & go -C (Join-Path $SourceDir 'bin') build -o $tool ./cmd/windows-test-evidence
 if ($LASTEXITCODE -ne 0) { throw 'Cannot build the native evidence validator' }
 $suiteArtifact = Join-Path $suiteDir 'suite.json'
-& $tool -manifest $manifestPath -suite $suite.id -identity $identityPath -processes $processPath -events $eventDir -out $suiteArtifact
+$validationManifestPath = $manifestPath
+if ($CaseID.Count -gt 0) {
+    $validationManifest = Get-Content -Raw $manifestPath | ConvertFrom-Json
+    foreach ($validationSuite in $validationManifest.suites) {
+        $validationSuite.cases = @($validationSuite.cases | Where-Object {
+            $_.kind -ne 'go' -or $_.id -in $CaseID
+        })
+    }
+    $validationManifestPath = Join-Path $suiteDir 'selected-test-suites.json'
+    $validationJSON = $validationManifest | ConvertTo-Json -Depth 20
+    $utf8WithoutBOM = New-Object Text.UTF8Encoding $false
+    [IO.File]::WriteAllText($validationManifestPath, $validationJSON, $utf8WithoutBOM)
+}
+& $tool -manifest $validationManifestPath -suite $suite.id -identity $identityPath -processes $processPath -events $eventDir -out $suiteArtifact
 if ($LASTEXITCODE -ne 0) { throw "The $Mode suite did not pass validation" }

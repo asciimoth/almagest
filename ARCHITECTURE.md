@@ -67,6 +67,48 @@ transports.
 
 `bin/` imports `lib` through `bin/go.mod`. Keep daemon-only dependencies there.
 
+## Test Harness
+
+`just check` runs the static checks, lints, and the complete test gate.
+`just test-total` runs the complete test gate without the static checks. With no
+arguments, both commands keep the normal full-test workflow.
+
+For a change with local scope, pass one or more exact test selectors. Use the
+narrow set of tests that the change adds, changes, or can affect:
+
+```sh
+just check go:lib/http:TestHTTPClientServerE2EMockNetwork e2e:static_dns_records
+just test-total winvm:m8::daemon-user-named-pipe-cli-access winvm:m6::xtor-restricted-token
+just test-total js:panel/tests/api_model.test.mjs
+just test-total python:scripts.tests.test_cycles.CycleTests.test_go_leaf_and_package_failures
+```
+
+The selector forms are:
+
+- `go:MODULE[/PACKAGE]:TEST` for one exact Go test or subtest in `certcat`,
+  `lib`, or `bin`.
+- `e2e:CASE` for one directory name under `e2e/cases/`.
+- `winvm:CASE-ID` for one Go case ID in `dev/winvm/test-suites.json`.
+- `js:panel/tests/FILE.mjs` for one panel test file.
+- `python:DOTTED-UNITTEST` for one unittest under `scripts/tests/` or
+  `dev/winvm/tests/`.
+
+The harness validates selector syntax and referenced packages, cases, and files
+before preparation starts. It also fails if an exact selected Go test does not
+run. Selected Go tests still repair the Go workspace, generate the certificate
+catalog, and build the panel assets. Selected Docker E2E cases still build or
+reuse their required image. Selected WinVM cases build or reuse the base image
+and stage the test payload. Multiple WinVM selectors use one VM invocation;
+the harness runs only the required privilege phase when all selected cases use
+the same phase. A selected run does not add unselected test suites or produce
+the full aggregate coverage report.
+
+When selectors are passed to `just check`, its lint and static-check
+dependencies still run in full. Use the complete `just check` without
+selectors for significant changes that affect the whole project or large
+parts of it. The narrow gate is for feedback on changes with local scope; it
+does not replace the complete project gate when the affected area is broad.
+
 ## Key Files
 Engine and workspace:
 - `lib/engine.go`: `BuildEngine`, workspace API forwarding, notifications,
