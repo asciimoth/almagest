@@ -19,7 +19,6 @@ type ExecutionManifest struct {
 	PlatformID              string           `json:"platformId"`
 	OS                      string           `json:"os"`
 	Architecture            string           `json:"architecture"`
-	CaseTimeoutSeconds      int              `json:"caseTimeoutSeconds"`
 	GoPackageTimeoutSeconds int              `json:"goPackageTimeoutSeconds"`
 	ProgressIntervalSeconds int              `json:"progressIntervalSeconds"`
 	Suites                  []ExecutionSuite `json:"suites"`
@@ -36,14 +35,13 @@ type ExecutionSuite struct {
 
 // ExecutionCase is one required result in a native suite.
 type ExecutionCase struct {
-	ID             string   `json:"id"`
-	Kind           string   `json:"kind"`
-	Module         string   `json:"module,omitempty"`
-	Arguments      []string `json:"arguments,omitempty"`
-	EventFile      string   `json:"eventFile,omitempty"`
-	RequiredTests  []string `json:"requiredTests,omitempty"`
-	StartServices  []string `json:"startServices,omitempty"`
-	TimeoutSeconds int      `json:"timeoutSeconds,omitempty"`
+	ID            string   `json:"id"`
+	Kind          string   `json:"kind"`
+	Module        string   `json:"module,omitempty"`
+	Arguments     []string `json:"arguments,omitempty"`
+	EventFile     string   `json:"eventFile,omitempty"`
+	RequiredTests []string `json:"requiredTests,omitempty"`
+	StartServices []string `json:"startServices,omitempty"`
 }
 
 // ExecutionIdentity records the token and native platform used by a suite.
@@ -94,14 +92,11 @@ func ValidateExecutionManifest(manifest ExecutionManifest) error {
 	if manifest.PlatformID == "" || manifest.OS == "" || manifest.Architecture == "" {
 		return errors.New("execution platform fields must not be empty")
 	}
-	if manifest.CaseTimeoutSeconds <= 0 || manifest.CaseTimeoutSeconds > 3600 {
-		return errors.New("execution case timeout must be between 1 and 3600 seconds")
+	if manifest.GoPackageTimeoutSeconds <= 0 || manifest.GoPackageTimeoutSeconds > 3600 {
+		return errors.New("go package timeout must be between 1 and 3600 seconds")
 	}
-	if manifest.GoPackageTimeoutSeconds <= 0 || manifest.GoPackageTimeoutSeconds >= manifest.CaseTimeoutSeconds {
-		return errors.New("go package timeout must be positive and less than the case timeout")
-	}
-	if manifest.ProgressIntervalSeconds <= 0 || manifest.ProgressIntervalSeconds >= manifest.CaseTimeoutSeconds {
-		return errors.New("progress interval must be positive and less than the case timeout")
+	if manifest.ProgressIntervalSeconds <= 0 || manifest.ProgressIntervalSeconds >= manifest.GoPackageTimeoutSeconds {
+		return errors.New("progress interval must be positive and less than the go package timeout")
 	}
 	if len(manifest.Suites) != 2 {
 		return errors.New("execution manifest must contain ordinary and privileged suites")
@@ -134,9 +129,6 @@ func ValidateExecutionManifest(manifest ExecutionManifest) error {
 				if len(testCase.Arguments) == 0 {
 					return fmt.Errorf("go case %q has no arguments", testCase.ID)
 				}
-				if testCase.TimeoutSeconds < 0 || testCase.TimeoutSeconds > 3600 {
-					return fmt.Errorf("go case %q has an invalid timeout", testCase.ID)
-				}
 				if len(testCase.StartServices) != 0 {
 					if suite.Privilege != "privileged" {
 						return fmt.Errorf("go case %q starts services outside the privileged suite", testCase.ID)
@@ -145,7 +137,7 @@ func ValidateExecutionManifest(manifest ExecutionManifest) error {
 						return err
 					}
 				}
-			} else if testCase.Module != "" || testCase.EventFile != "" || len(testCase.Arguments) != 0 || len(testCase.RequiredTests) != 0 || len(testCase.StartServices) != 0 || testCase.TimeoutSeconds != 0 {
+			} else if testCase.Module != "" || testCase.EventFile != "" || len(testCase.Arguments) != 0 || len(testCase.RequiredTests) != 0 || len(testCase.StartServices) != 0 {
 				return fmt.Errorf("non-Go case %q has Go test fields", testCase.ID)
 			}
 		}

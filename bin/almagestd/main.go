@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sync"
@@ -111,10 +112,18 @@ func runDaemon(
 	}
 	golog.Infof("Using file storage at %s", fsPath)
 	if arguments.Snapshot != "" {
+		snapshotInput, openErr := openStartupSnapshotInput(arguments.Snapshot, os.Stdin)
+		if openErr != nil {
+			return fmt.Errorf("load startup snapshot: %w", openErr)
+		}
 		var info api.SnapshotInfo
-		configData, info, err = restoreStartupSnapshot(ctx, fsPath, arguments.Snapshot, os.Stdin, configBootstrap)
+		configData, info, err = restoreStartupSnapshot(ctx, fsPath, snapshotInput, configBootstrap)
+		closeErr := snapshotInput.Close()
 		if err != nil {
 			return fmt.Errorf("load startup snapshot: %w", err)
+		}
+		if closeErr != nil {
+			return fmt.Errorf("load startup snapshot: close archive: %w", closeErr)
 		}
 		golog.Infof("Loaded startup snapshot %s", info.UUID)
 		if configBootstrap.Persistence != nil {
@@ -286,4 +295,21 @@ func runDaemon(
 	<-ctx.Done()
 	golog.Info("Stopping")
 	return nil
+}
+
+// openStartupSnapshotInput resolves the operator-selected archive before the
+// runtime parses it. The restore coordinator receives only the archive bytes;
+// it cannot select or open another host path.
+func openStartupSnapshotInput(path string, stdin io.Reader) (io.ReadCloser, error) {
+	if path == "-" {
+		if stdin == nil {
+			return nil, fmt.Errorf("snapshot archive path - requires stdin")
+		}
+		return io.NopCloser(stdin), nil
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("open startup snapshot archive %s: %w", path, err)
+	}
+	return file, nil
 }

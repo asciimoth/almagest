@@ -35,7 +35,21 @@ type repeatingZeroReader struct{}
 
 type snapshotErrorWriter struct{}
 
+type startupSnapshotTrackingReader struct {
+	reader io.Reader
+	closed bool
+}
+
 func (snapshotErrorWriter) Write([]byte) (int, error) { return 0, errors.New("write failed") }
+
+func (r *startupSnapshotTrackingReader) Read(data []byte) (int, error) {
+	return r.reader.Read(data)
+}
+
+func (r *startupSnapshotTrackingReader) Close() error {
+	r.closed = true
+	return nil
+}
 
 func (repeatingZeroReader) Read(data []byte) (int, error) {
 	clear(data)
@@ -87,14 +101,24 @@ func TestSnapshotServiceUnavailableAndInputErrors(t *testing.T) {
 		t.Fatal("empty Restore succeeded")
 	}
 
-	if _, _, err := restoreStartupSnapshot(ctx, "", "-", strings.NewReader("archive"), nil); err == nil {
+	if _, _, err := restoreStartupSnapshot(ctx, "", strings.NewReader("archive"), nil); err == nil {
 		t.Fatal("startup restore without storage succeeded")
 	}
-	if _, _, err := restoreStartupSnapshot(ctx, t.TempDir(), "-", nil, nil); err == nil {
+	if _, _, err := restoreStartupSnapshot(ctx, t.TempDir(), nil, nil); err == nil {
 		t.Fatal("startup restore without stdin succeeded")
 	}
-	if _, _, err := restoreStartupSnapshot(ctx, t.TempDir(), filepath.Join(t.TempDir(), "missing.zip"), nil, nil); err == nil {
+	if _, err := openStartupSnapshotInput("-", nil); err == nil {
+		t.Fatal("startup snapshot stdin input without stdin succeeded")
+	}
+	if _, err := openStartupSnapshotInput(filepath.Join(t.TempDir(), "missing.zip"), nil); err == nil {
 		t.Fatal("startup restore of missing archive succeeded")
+	}
+	input := &startupSnapshotTrackingReader{reader: strings.NewReader("not a zip archive")}
+	if _, _, err := restoreStartupSnapshot(ctx, t.TempDir(), input, nil); err == nil {
+		t.Fatal("invalid startup snapshot succeeded")
+	}
+	if input.closed {
+		t.Fatal("runtime closed launcher-owned startup snapshot input")
 	}
 }
 
@@ -845,7 +869,7 @@ func TestRestoreStartupSnapshotLoadsConfigDatabaseAndFilesFromStdin(t *testing.T
 	locator := &snapshotTestWriter{configPath: configPath, protectedPath: protectedPath}
 	archive := filterSnapshotArchivePrefix(t, exported.Archive, snapshotFilesPrefix+"config")
 	configData, info, err := restoreStartupSnapshot(
-		context.Background(), destination, "-", bytes.NewReader(archive), locator,
+		context.Background(), destination, bytes.NewReader(archive), locator,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -920,7 +944,7 @@ func TestRestoreStartupSnapshotRollsBackPartialStorageChanges(t *testing.T) {
 
 	locator := &snapshotTestWriter{configPath: configPath, protectedPath: protectedPath}
 	if _, _, err := restoreStartupSnapshot(
-		context.Background(), destination, "-", bytes.NewReader(archive), locator,
+		context.Background(), destination, bytes.NewReader(archive), locator,
 	); err == nil || !strings.Contains(err.Error(), "would replace a directory") {
 		t.Fatalf("startup restore error = %v, want config directory conflict", err)
 	}

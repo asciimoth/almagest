@@ -102,9 +102,10 @@ class Supervisor:
             raise Failure("cleanup-timeout" if self.cleaning else "host-test-timeout", 124)
 
     def command(self, argv, seconds, log="transport.log", output=None, watch=False):
-        """Bound every host child and its descendants, including during cleanup."""
+        """Run a host child, with an optional deadline, and always reap it."""
         self.check()
-        end = min(self.deadline, time.monotonic() + seconds)
+        command_end = float("inf") if seconds is None else time.monotonic() + seconds
+        end = min(self.deadline, command_end)
         with (self.directory / log).open("ab") as errors:
             started = time.monotonic()
             errors.write((f"\n[host {datetime.datetime.now(datetime.timezone.utc).isoformat()}] $ " +
@@ -168,7 +169,7 @@ class Supervisor:
     def qga(self, *arguments, seconds=5, qmp=False):
         return [str(ROOT / "tools/qga.py"), "--socket",
                 str(self.sockets / ("qmp.sock" if qmp else "qga.sock")),
-                "--timeout", str(seconds), *arguments]
+                "--timeout", str(0 if seconds is None else seconds), *arguments]
 
     def guest_healthy(self):
         if self.command(self.ssh + ["cmd.exe /c exit 0"], 8, log="health.log") == 0:
@@ -538,9 +539,9 @@ class Supervisor:
             self.deadline = float("inf")
             self.upload_manual_state()
             return self.run_manual_daemon()
-        test_timeout = (self.config["resourceTimeoutSeconds"]
-                        if self.args.mode == "resource" else self.config["testTimeoutSeconds"])
-        self.deadline = time.monotonic() + test_timeout
+        test_timeout = self.config["resourceTimeoutSeconds"] if self.args.mode == "resource" else None
+        self.deadline = (time.monotonic() + test_timeout
+                         if test_timeout is not None else float("inf"))
         tests_status = 0
         if self.args.mode == "smoke":
             phases = ("smoke",)
@@ -577,7 +578,7 @@ class Supervisor:
             command = self.qga("exec", *args, seconds=test_timeout) if phase in ("privileged", "resource") else self.ssh + [" ".join(args)]
             code = self.command(command, test_timeout,
                                 log=phase + "-tests.log", watch=True)
-            if code == 124:
+            if code == 124 and test_timeout is not None:
                 raise Failure("host-test-timeout", 124)
             if phase != "privileged" and code == 255:
                 # SSH can notice a frozen guest before the health window ends.

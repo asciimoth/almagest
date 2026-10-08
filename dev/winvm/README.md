@@ -151,13 +151,13 @@ The host independently requires passing ordinary and privileged artifacts.
 Each Go command also writes an atomic coverage profile. After validation, the
 host combines and publishes these profiles in `coverage/winvm`. The final
 coverage report includes that profile when it is present.
-The execution manifest sets a Go package timeout, a hard deadline for each Go
-case, and a progress interval. The package timeout lets Go emit its timeout
-stack dump. The hard deadline also covers package loading and compilation. A
-case can override the default hard deadline with `timeoutSeconds`. The host
-prints `RUN`, `WAIT`, `TIMEOUT`, `PASS`, and `FAIL` progress. Each heartbeat
-also records the active Go process tree and guest memory and disk state under
-the suite's `diagnostics` directory.
+The execution manifest sets a Go package timeout and a progress interval. The
+package timeout starts after compilation when a package test binary runs. It
+lets Go emit its timeout stack dump for a stalled test. Package loading,
+dependency download, and compilation have no deadline because their duration
+depends on the guest cache and host contention. The host prints `RUN`, `WAIT`,
+`PASS`, and `FAIL` progress. Each heartbeat also records the active Go process
+tree and guest memory and disk state under the suite's `diagnostics` directory.
 The active gate also builds and starts the production daemon and CLI. Focused
 named-pipe cases send CLI pings through standard-user and Local System daemon
 pipes, verify their protected access rules, and require the user pipe to reject
@@ -303,8 +303,10 @@ Silence from a test does not mean that Windows is frozen.
 
 The limits in `config.json` have separate meanings:
 
-- `testTimeoutSeconds` is one shared deadline for ordinary and privileged
-  tests. A host test timeout does not start another phase with a new budget.
+- Ordinary and privileged test phases have no host deadline. Compilation can
+  take as long as required. Each Go package test binary still uses the package
+  timeout from `test-suites.json` after compilation. The resource qualification
+  phase keeps its fixed `resourceTimeoutSeconds` duration.
 - `healthIntervalSeconds` sets the guest health check interval (15 seconds).
   `healthTimeoutSeconds` limits consecutive failed checks (120 seconds).
   SSH is checked first; QGA command execution is the fallback.
@@ -316,11 +318,10 @@ The limits in `config.json` have separate meanings:
   (300 seconds). Mandatory TERM/KILL/reap has a final six-second reserve.
 - `recoveryBootTimeoutSeconds` bounds the one evidence-only restart (120 seconds).
 
-A normal Go timeout remains a failed test. A host test deadline remains a
-failed run even if the final guest artifact claims success. An unresponsive
-guest is reported separately as `guest-unresponsive`. Recovery never reruns
-tests or converts a failed attempt into a pass. `test-cycles` records that
-failure, then starts its next independent iteration with a fresh VM.
+A normal Go timeout remains a failed test. An unresponsive guest is reported
+separately as `guest-unresponsive`. Recovery never reruns tests or converts a
+failed attempt into a pass. `test-cycles` records that failure, then starts its
+next independent iteration with a fresh VM.
 
 Failure and Ctrl+C collect bounded QMP state, CPU registers, a screen image,
 guest process and network state, Windows events, small crash dumps, active

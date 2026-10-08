@@ -13,7 +13,7 @@ CLIENT = Path(__file__).resolve().parents[1] / 'tools/qga.py'
 
 
 class AgentTests(unittest.TestCase):
-    def run_client(self, mode, arguments):
+    def run_client(self, mode, arguments, timeout='.5'):
         with tempfile.TemporaryDirectory() as temp:
             path = str(Path(temp) / 'agent.sock')
             server = socket.socket(socket.AF_UNIX)
@@ -55,7 +55,7 @@ class AgentTests(unittest.TestCase):
             thread = threading.Thread(target=serve, daemon=True)
             thread.start()
             try:
-                return subprocess.run([str(CLIENT), '--socket', path, '--timeout', '.5',
+                return subprocess.run([str(CLIENT), '--socket', path, '--timeout', timeout,
                                        *arguments], capture_output=True, timeout=3)
             finally:
                 stop.set()
@@ -68,6 +68,9 @@ class AgentTests(unittest.TestCase):
 
     def test_guest_exit_status(self):
         self.assertEqual(self.run_client('exit', ['exec', 'cmd.exe']).returncode, 7)
+
+    def test_zero_timeout_allows_unbounded_guest_exec(self):
+        self.assertEqual(self.run_client('exit', ['exec', 'cmd.exe'], timeout='0').returncode, 7)
 
     def test_timeout(self):
         result = self.run_client('timeout', ['exec', 'cmd.exe'])

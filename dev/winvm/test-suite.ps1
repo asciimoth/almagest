@@ -28,13 +28,11 @@ if ($CaseID.Count -gt 0) {
 } else {
     $suiteCases = @($suite.cases)
 }
-$caseTimeoutSeconds = [int]$manifest.caseTimeoutSeconds
 $goPackageTimeoutSeconds = [int]$manifest.goPackageTimeoutSeconds
 $progressIntervalSeconds = [int]$manifest.progressIntervalSeconds
-if ($caseTimeoutSeconds -le 0 -or $goPackageTimeoutSeconds -le 0 -or
-    $goPackageTimeoutSeconds -ge $caseTimeoutSeconds -or
-    $progressIntervalSeconds -le 0 -or $progressIntervalSeconds -ge $caseTimeoutSeconds) {
-    throw 'The test timeout and progress interval settings are invalid'
+if ($goPackageTimeoutSeconds -le 0 -or $progressIntervalSeconds -le 0 -or
+    $progressIntervalSeconds -ge $goPackageTimeoutSeconds) {
+    throw 'The package timeout and progress interval settings are invalid'
 }
 
 $windowsIdentity = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -114,9 +112,7 @@ foreach ($case in $suiteCases) {
     $coveragePath = Join-Path $coverageDir "$($case.eventFile).coverage.out"
     $statePath = Join-Path $diagnosticDir "$($case.eventFile).state.log"
     $moduleDir = Join-Path $SourceDir $case.module
-    $hardTimeoutSeconds = if ($case.PSObject.Properties['timeoutSeconds']) { [int]$case.timeoutSeconds } else { $caseTimeoutSeconds }
-    if ($hardTimeoutSeconds -le 0) { throw "The $($case.id) timeout is invalid" }
-    Write-TestProgress 'RUN ' "$caseProgress (hard-timeout=${hardTimeoutSeconds}s go-timeout=${goPackageTimeoutSeconds}s)"
+    Write-TestProgress 'RUN ' "$caseProgress (package-timeout=${goPackageTimeoutSeconds}s; compilation has no deadline)"
     Push-Location $moduleDir
     try {
         $startedServices = @()
@@ -136,10 +132,9 @@ foreach ($case in $suiteCases) {
         ) + @($case.arguments)
         $stderrPath = "$eventPath.stderr.log"
         $started = [DateTime]::UtcNow
-        $timedOut = $false
         try {
             # Start-Process keeps native stderr separate and gives the harness a
-            # process handle for a deadline that also covers loading and build.
+            # process handle for progress reporting and reliable exit status.
             $startParameters = @{
                 FilePath = (Get-Command go).Source
                 ArgumentList = $testArguments
@@ -155,31 +150,18 @@ foreach ($case in $suiteCases) {
             $processHandle = $process.Handle
             $null = $processHandle
             Write-CaseState $statePath 'started' $process.Id
-            $deadline = $started.AddSeconds($hardTimeoutSeconds)
             while (-not $process.HasExited) {
-                $remainingMilliseconds = [int][Math]::Max(1, [Math]::Min(
-                    $progressIntervalSeconds * 1000,
-                    ($deadline - [DateTime]::UtcNow).TotalMilliseconds))
-                if ($process.WaitForExit($remainingMilliseconds)) { break }
+                if ($process.WaitForExit($progressIntervalSeconds * 1000)) { break }
                 $elapsed = [int]([DateTime]::UtcNow - $started).TotalSeconds
                 Write-TestProgress 'WAIT' "$caseProgress elapsed=${elapsed}s pid=$($process.Id)"
                 Write-CaseState $statePath "heartbeat elapsed=${elapsed}s" $process.Id
-                if ([DateTime]::UtcNow -ge $deadline) {
-                    $timedOut = $true
-                    Write-TestProgress 'TIMEOUT' "$caseProgress after ${hardTimeoutSeconds}s pid=$($process.Id)"
-                    Write-CaseState $statePath "hard timeout after ${hardTimeoutSeconds}s" $process.Id
-                    & taskkill.exe /PID $process.Id /T /F 2>&1 |
-                        Add-Content -LiteralPath $statePath -Encoding utf8
-                    $process.WaitForExit()
-                    break
-                }
             }
             # Complete redirected stream handling before validation reads files.
             $process.WaitForExit()
             $process.Refresh()
-            $processExitCode = if ($timedOut) { 124 } else { $process.ExitCode }
+            $processExitCode = $process.ExitCode
             $elapsed = [int]([DateTime]::UtcNow - $started).TotalSeconds
-            Write-CaseState $statePath "finished elapsed=${elapsed}s exit=$processExitCode timed-out=$timedOut" $process.Id
+            Write-CaseState $statePath "finished elapsed=${elapsed}s exit=$processExitCode" $process.Id
         } catch {
             "launcher-error=$($_ | Out-String)" | Add-Content -LiteralPath $statePath -Encoding utf8
             throw

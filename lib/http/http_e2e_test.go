@@ -226,7 +226,7 @@ func TestHTTPServerThroughSocksClientRecoversFromRepeatedSocksListenerRestarts(t
 	e := newHTTPE2E(t)
 	socksPort := httpTestPort()
 	httpPort := httpTestPort()
-	httpServer, httpClient, socksServer := e.setupHTTPServerThroughSocksClient(
+	_, httpClient, socksServer := e.setupHTTPServerThroughSocksClient(
 		fmt.Sprintf("socks5://127.0.0.1:%d", socksPort),
 		httpPort,
 	)
@@ -234,7 +234,6 @@ func TestHTTPServerThroughSocksClientRecoversFromRepeatedSocksListenerRestarts(t
 
 	const rounds = 10
 	listenLog := fmt.Sprintf("socks listening on 127.0.0.1:%d", socksPort)
-	serverListenLog := fmt.Sprintf("listening on 127.0.0.1:%d", httpPort)
 	for round := range rounds {
 		t.Logf("SOCKS listener restart round %d/%d", round+1, rounds)
 		restartsBefore := e.SocksLogCount(socksServer, "worker restarting")
@@ -244,12 +243,13 @@ func TestHTTPServerThroughSocksClientRecoversFromRepeatedSocksListenerRestarts(t
 		e.waitSocksLogCountAbove(socksServer, "worker restarting", restartsBefore)
 
 		listensBefore := e.SocksLogCount(socksServer, listenLog)
-		serverListensBefore := e.serverLogCount(httpServer, serverListenLog)
 		e.applySocksServerCommands(socksServer, socksPort, map[protocol.Cmd]bool{
 			protocol.CmdBind: true,
 		})
 		e.waitSocksLogCountAbove(socksServer, listenLog, listensBefore)
-		e.waitServerLogCountAbove(httpServer, serverListenLog, serverListensBefore)
+		// The server log is capped. Counting identical "listening" entries
+		// stops detecting restarts when a new entry evicts an old match. A
+		// successful fresh request proves that the BIND listener recovered.
 		e.assertClientRequestWorks(httpClient)
 	}
 }
@@ -403,10 +403,6 @@ func (e *httpE2E) waitSocksLog(socks uint64, wantPart string) {
 
 func (e *httpE2E) waitSocksLogCountAbove(socks uint64, wantPart string, previous int) {
 	e.WaitSocksLogCountAbove(socks, wantPart, previous)
-}
-
-func (e *httpE2E) waitServerLogCountAbove(server uint64, wantPart string, previous int) {
-	e.WaitServerLogCountAbove(server, wantPart, previous)
 }
 
 func (e *httpE2E) assertServerLog(server uint64, wantPart string) {

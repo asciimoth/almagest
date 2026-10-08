@@ -75,6 +75,7 @@ type snapshotService struct {
 	readOnly    bool
 	logger      logging.Logger
 	tlsFetcher  tlspolicy.AuthorityFetcher
+	restore     *snapshotRestoreCoordinator
 
 	mu     sync.Mutex
 	now    func() time.Time
@@ -138,6 +139,7 @@ func newSnapshotService(
 		service.addDynamicExclusion(configLocator.ConfigFilePath())
 		service.addDynamicExclusion(configLocator.ProtectedConfigFilePath())
 	}
+	service.restore = newSnapshotRestoreCoordinator(service)
 	return service
 }
 
@@ -175,8 +177,7 @@ func pathWithinStorage(root, path string) (string, bool) {
 func restoreStartupSnapshot(
 	ctx context.Context,
 	storagePath string,
-	archivePath string,
-	stdin io.Reader,
+	archive io.Reader,
 	locator any,
 ) ([]byte, api.SnapshotInfo, error) {
 	if storagePath == "" {
@@ -187,20 +188,9 @@ func restoreStartupSnapshot(
 		return nil, api.SnapshotInfo{}, fmt.Errorf("create snapshots directory: %w", err)
 	}
 
-	var source io.ReadCloser
-	if archivePath == "-" {
-		if stdin == nil {
-			return nil, api.SnapshotInfo{}, fmt.Errorf("snapshot archive path - requires stdin")
-		}
-		source = io.NopCloser(stdin)
-	} else {
-		file, err := os.Open(archivePath)
-		if err != nil {
-			return nil, api.SnapshotInfo{}, fmt.Errorf("open startup snapshot archive %s: %w", archivePath, err)
-		}
-		source = file
+	if archive == nil {
+		return nil, api.SnapshotInfo{}, fmt.Errorf("startup snapshot archive is unavailable")
 	}
-	defer source.Close() //nolint:errcheck
 
 	temporary, err := os.CreateTemp(directory, ".startup-*.tmp")
 	if err != nil {
@@ -208,15 +198,10 @@ func restoreStartupSnapshot(
 	}
 	temporaryPath := temporary.Name()
 	defer removeFileIfPresent(temporaryPath)
-	_, copyErr := copySnapshotArchive(temporary, source)
-	closeSourceErr := source.Close()
+	_, copyErr := copySnapshotArchive(temporary, archive)
 	if copyErr != nil {
 		_ = temporary.Close()
 		return nil, api.SnapshotInfo{}, fmt.Errorf("read startup snapshot archive: %w", copyErr)
-	}
-	if closeSourceErr != nil {
-		_ = temporary.Close()
-		return nil, api.SnapshotInfo{}, fmt.Errorf("close startup snapshot archive: %w", closeSourceErr)
 	}
 	if err := temporary.Sync(); err != nil {
 		_ = temporary.Close()
@@ -582,60 +567,10 @@ func rewriteSnapshotName(path, expectedUUID, name string) (api.SnapshotInfo, err
 // the snapshot config. Failure triggers a best-effort rollback from an internal
 // archive captured immediately before the restore.
 func (s *snapshotService) Restore(ctx context.Context, uuid string) (api.SnapshotsRestoreResponse, error) {
-	if s == nil {
+	if s == nil || s.restore == nil {
 		return api.SnapshotsRestoreResponse{}, fmt.Errorf("snapshot service is not ready")
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if err := s.ready(); err != nil {
-		return api.SnapshotsRestoreResponse{}, err
-	}
-	uuid, err := normalizeSnapshotUUID(uuid)
-	if err != nil {
-		return api.SnapshotsRestoreResponse{}, err
-	}
-	desired, err := s.loadArchive(ctx, filepath.Join(s.storagePath, snapshotDirectoryName, uuid+".zip"), uuid)
-	if err != nil {
-		return api.SnapshotsRestoreResponse{}, err
-	}
-	defer desired.cleanup()
-
-	s.autosaver.saveMu.Lock()
-	defer s.autosaver.saveMu.Unlock()
-	recovery, err := s.captureRecoveryArchive(ctx)
-	if err != nil {
-		return api.SnapshotsRestoreResponse{}, fmt.Errorf("capture pre-restore state: %w", err)
-	}
-	defer recovery.cleanup()
-
-	// Keep the previous graph visible while restore tears down and reconstructs
-	// runtime nodes. Publish always runs, including after a successful rollback,
-	// so subscribers receive one authoritative view of the state that remains.
-	notifications := s.engine.BeginNotificationTransaction()
-	defer notifications.Publish()
-
-	before := s.storageIndex()
-	if err := s.applyLoadedSnapshot(ctx, desired); err != nil {
-		if rollbackErr := s.applyLoadedSnapshot(ctx, recovery); rollbackErr != nil {
-			return api.SnapshotsRestoreResponse{}, fmt.Errorf("restore snapshot: %w; rollback failed: %v", err, rollbackErr)
-		}
-		return api.SnapshotsRestoreResponse{}, fmt.Errorf("restore snapshot: %w", err)
-	}
-	after := s.storageIndex()
-	s.notifyStorageReset(before, after)
-
-	response := api.SnapshotsRestoreResponse{Snapshot: desired.info}
-	if !s.readOnly && s.autosaver.persistence != nil {
-		if err := s.autosaver.replaceConfigLocked(desired.configData); err != nil {
-			response.ConfigWriteError = err.Error()
-			if s.logger != nil {
-				s.logger.Errf("snapshot restore config write failed; restored config remains active in memory: %v", err)
-			}
-		} else {
-			response.ConfigWritten = true
-		}
-	}
-	return response, nil
+	return s.restore.Restore(ctx, uuid)
 }
 
 func (s *snapshotService) ready() error {

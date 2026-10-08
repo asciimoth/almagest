@@ -54,7 +54,7 @@ elif name == 'ssh':
         sys.exit(1)
     if mode == 'lost-transport' and '-Mode ordinary' in sys.argv[-1]:
         sys.exit(255)
-    if mode in ('freeze', 'healthy-silent', 'interrupt-tests') and '-Mode ordinary' in sys.argv[-1]:
+    if mode in ('freeze', 'interrupt-tests') and '-Mode ordinary' in sys.argv[-1]:
         print('test output before interruption', flush=True)
         time.sleep(120)
     if mode in ('native-failure', 'guest-timeout', 'stuck-diagnostics') and '-Mode ordinary' in sys.argv[-1]:
@@ -134,7 +134,7 @@ elif name == 'stage.sh':
 class RunnerTests(unittest.TestCase):
     def test_success_and_failure_paths(self):
         for mode in ('success', 'native', 'ordinary', 'privileged', 'resource', 'native-failure', 'prepared', 'boot', 'transfer', 'artifacts', 'shutdown', 'interrupt',
-                     'freeze', 'lost-transport', 'healthy-silent', 'guest-timeout', 'stuck-diagnostics', 'interrupt-tests'):
+                     'freeze', 'lost-transport', 'guest-timeout', 'stuck-diagnostics', 'interrupt-tests'):
             with self.subTest(mode=mode), tempfile.TemporaryDirectory() as temp:
                 root = Path(temp)
                 scripts = root / 'dev/winvm'
@@ -164,7 +164,6 @@ stop_and_reap_pid() { kill -TERM "$1" 2>/dev/null || true; wait "$1" 2>/dev/null
                 config['machine'].update(bootTimeoutSeconds=1 if mode == 'boot' else 5,
                                          recoveryBootTimeoutSeconds=2, shutdownTimeoutSeconds=0.1,
                                          cleanupTimeoutSeconds=5,
-                                         testTimeoutSeconds=1 if mode == 'healthy-silent' else 10,
                                          healthTimeoutSeconds=0.3, healthIntervalSeconds=0.1,
                                          artifactIntervalSeconds=0.2)
                 (scripts / 'config.json').write_text(json.dumps(config))
@@ -180,7 +179,7 @@ stop_and_reap_pid() { kill -TERM "$1" 2>/dev/null || true; wait "$1" 2>/dev/null
                         scripts / 'tools/qga.py', scripts / 'stage.sh', scripts / 'package-worktree.py']:
                     path.write_text(FAKE)
                     path.chmod(0o755)
-                native = mode in ('native', 'ordinary', 'privileged', 'native-failure', 'prepared', 'freeze', 'lost-transport', 'healthy-silent',
+                native = mode in ('native', 'ordinary', 'privileged', 'native-failure', 'prepared', 'freeze', 'lost-transport',
                                   'guest-timeout', 'stuck-diagnostics', 'interrupt-tests')
                 run_kind = 'resource' if mode == 'resource' else 'native' if native else 'smoke'
                 env = dict(os.environ, FIXTURE=temp, FAIL_STAGE=mode,
@@ -252,9 +251,9 @@ stop_and_reap_pid() { kill -TERM "$1" 2>/dev/null || true; wait "$1" 2>/dev/null
                         expected_stage = 'tests'
                         self.assertTrue((runs[0] / 'guest-artifacts.tar').exists())
                         self.assertNotIn('running privileged tests', result.stdout)
-                    if mode in ('freeze', 'lost-transport', 'healthy-silent', 'interrupt-tests'):
+                    if mode in ('freeze', 'lost-transport', 'interrupt-tests'):
                         expected_stage = 'ordinary-tests'
-                    if mode in ('freeze', 'lost-transport', 'healthy-silent', 'guest-timeout', 'interrupt-tests'):
+                    if mode in ('freeze', 'lost-transport', 'guest-timeout', 'interrupt-tests'):
                         self.assertTrue((runs[0] / 'guest-artifacts.tar').exists(), result.stdout)
                         self.assertEqual(record['recoveryAttempted'], mode in ('freeze', 'lost-transport'))
                         self.assertEqual(int((root / 'boots').read_text()), 2 if mode in ('freeze', 'lost-transport') else 1)
@@ -263,9 +262,6 @@ stop_and_reap_pid() { kill -TERM "$1" 2>/dev/null || true; wait "$1" 2>/dev/null
                     if mode in ('freeze', 'lost-transport'):
                         self.assertEqual(record['failureKind'], 'guest-unresponsive')
                         self.assertTrue(record['finalArtifactsCollected'])
-                        self.assertNotIn('running privileged tests', result.stdout)
-                    if mode == 'healthy-silent':
-                        self.assertEqual(record['failureKind'], 'host-test-timeout')
                         self.assertNotIn('running privileged tests', result.stdout)
                     if mode == 'guest-timeout':
                         self.assertEqual(record['failureKind'], 'tests')

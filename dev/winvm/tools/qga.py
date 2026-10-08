@@ -63,8 +63,9 @@ def request(path, timeout, command, arguments=None):
 
 
 def guest_exec(path, timeout, executable, arguments):
-    deadline = time.monotonic() + timeout
-    result = request(path, timeout, "guest-exec", {
+    deadline = float("inf") if timeout <= 0 else time.monotonic() + timeout
+    request_timeout = 10 if timeout <= 0 else timeout
+    result = request(path, request_timeout, "guest-exec", {
         "path": executable, "arg": arguments, "capture-output": True,
     })
     while time.monotonic() < deadline:

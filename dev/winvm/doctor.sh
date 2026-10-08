@@ -5,7 +5,7 @@ script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 source "$script_dir/common.sh"
 validate() {
     jq -e '.machine | .cpu=="host,cet-ss=off,cet-ibt=off" and .healthTimeoutSeconds>0 and .healthIntervalSeconds>0 and .healthIntervalSeconds<.healthTimeoutSeconds and .artifactIntervalSeconds>0 and .cleanupTimeoutSeconds>=240 and .recoveryBootTimeoutSeconds>0 and .recoveryBootTimeoutSeconds<.cleanupTimeoutSeconds' "$config_file" >/dev/null || die 'invalid watchdog or CPU config'
-    jq -e '.schemaVersion==1 and .architecture=="amd64" and .machine.cpus>=2 and .machine.memoryMiB>=4096 and .machine.diskGiB>=40 and .machine.bootTimeoutSeconds>0 and .machine.installTimeoutSeconds>0 and .machine.testTimeoutSeconds>0 and .machine.shutdownTimeoutSeconds>0 and .machine.type=="q35,accel=kvm" and .ssh.user=="winvm" and .ssh.portMinimum>=1024 and .ssh.portMaximum>=.ssh.portMinimum and .ssh.portMaximum<=65535 and .artifacts.directory=="artifacts/winvm"' "$config_file" >/dev/null || die 'invalid config.json'
+    jq -e '.schemaVersion==1 and .architecture=="amd64" and .machine.cpus>=2 and .machine.memoryMiB>=4096 and .machine.diskGiB>=40 and .machine.bootTimeoutSeconds>0 and .machine.installTimeoutSeconds>0 and .machine.resourceTimeoutSeconds>0 and .machine.shutdownTimeoutSeconds>0 and .machine.type=="q35,accel=kvm" and .ssh.user=="winvm" and .ssh.portMinimum>=1024 and .ssh.portMaximum>=.ssh.portMinimum and .ssh.portMaximum<=65535 and .artifacts.directory=="artifacts/winvm"' "$config_file" >/dev/null || die 'invalid config.json'
     jq -e '.schemaVersion==1 and ([.windows.sha256,.virtio.sha256,.go.sha256,.openssh.sha256]|all(test("^[0-9a-f]{64}$")))' "$lock_file" >/dev/null || die 'invalid image-lock.json'
 }
 case ${1:-check} in

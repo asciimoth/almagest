@@ -49,9 +49,9 @@ type AdminAPI struct {
 	// experimentalNodeTypes marks opt-in classes in all node-class API payloads.
 	experimentalNodeTypes map[string]bool
 
-	// stateMu prevents snapshot mutations from overlapping admin API operations
+	// mutations prevents a snapshot mutation from overlapping admin operations
 	// that read or mutate the graph and persistent storage.
-	stateMu sync.RWMutex
+	mutations runtimeMutationCoordinator
 
 	leaseMu       sync.Mutex
 	mutationLease *mutationLease
@@ -280,13 +280,10 @@ func (s *apiSession) handleMessage(msg api.Message) (api.Message, error) {
 		)
 	}
 
-	if msg.Surface == api.SurfaceSnapshots && api.IsSnapshotsMutation(msg.Method) {
-		s.admin.stateMu.Lock()
-		defer s.admin.stateMu.Unlock()
-	} else {
-		s.admin.stateMu.RLock()
-		defer s.admin.stateMu.RUnlock()
-	}
+	releaseMutation := s.admin.mutations.Acquire(
+		msg.Surface == api.SurfaceSnapshots && api.IsSnapshotsMutation(msg.Method),
+	)
+	defer releaseMutation()
 
 	switch msg.Surface {
 	case api.SurfaceAdmin:

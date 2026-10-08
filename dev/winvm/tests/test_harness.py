@@ -144,9 +144,11 @@ class HarnessTests(unittest.TestCase):
         self.assertIn('RedirectStandardOutput = $eventPath', runner)
         self.assertIn('RedirectStandardError = $stderrPath', runner)
         self.assertNotIn('& go @testArguments 2>&1', runner)
-        self.assertIn('$process.WaitForExit($remainingMilliseconds)', runner)
+        self.assertIn('$process.WaitForExit($progressIntervalSeconds * 1000)', runner)
         self.assertIn('$processHandle = $process.Handle', runner)
-        self.assertIn('& taskkill.exe /PID $process.Id /T /F', runner)
+        self.assertNotIn('taskkill.exe', runner)
+        self.assertNotIn('hardTimeoutSeconds', runner)
+        self.assertIn('compilation has no deadline', runner)
         self.assertIn('Write-CaseState $statePath', runner)
         self.assertIn('goPackageTimeoutSeconds', runner)
         self.assertIn('$env:SYSNET_WINDOWS_WINTUN_DLL = $wintunDLL', runner)
@@ -163,7 +165,17 @@ class HarnessTests(unittest.TestCase):
         self.assertIn("$_.kind -ne 'go' -or $_.id -in $CaseID", runner)
         self.assertIn('$validationManifestPath', runner)
 
+        manifest = json.loads((ROOT / 'test-suites.json').read_text())
+        self.assertNotIn('caseTimeoutSeconds', manifest)
+        for suite in manifest['suites']:
+            for case in suite['cases']:
+                self.assertNotIn('timeoutSeconds', case)
+
         supervisor = (ROOT / 'supervise.py').read_text()
+        config = json.loads((ROOT / 'config.json').read_text())['machine']
+        self.assertNotIn('testTimeoutSeconds', config)
+        self.assertIn('if test_timeout is not None else float("inf")', supervisor)
+        self.assertIn('str(0 if seconds is None else seconds)', supervisor)
         self.assertIn('os.environ.get("WINVM_FAIL_FAST", "1")', supervisor)
         self.assertIn('args.append("-ContinueAfterFailure")', supervisor)
         self.assertIn('os.environ.get("WINVM_TEST_CASES", "")', supervisor)
