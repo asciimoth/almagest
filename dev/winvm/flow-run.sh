@@ -13,6 +13,8 @@ require_kvm /dev/kvm
 ensure_cache_dir
 artifact_root="$repo_root/artifacts/winvm"
 mkdir -p "$artifact_root" "$winvm_cache_dir/locks"
+progress() { printf '==> WinVM flow: %s\n' "$1"; }
+progress 'waiting for the VM host lock'
 exec 6>"$winvm_cache_dir/locks/vm-run.lock"
 flock -w 1800 6 || die 'another VM held the host lock for 30 minutes'
 reject_live_qemu_orphan
@@ -29,6 +31,7 @@ if [[ -n ${WINVM_FLOW_RUN_DIR:-} ]]; then
 else
     run_dir=$(mktemp -d "$artifact_root/run-flow-XXXXXXXX")
 fi
+progress "preparing two isolated guests; artifacts: $run_dir"
 client_overlay="$run_dir/client-overlay.qcow2"
 endpoint_overlay="$run_dir/endpoint-overlay.qcow2"
 client_vars="$run_dir/client-OVMF_VARS.fd"
@@ -37,6 +40,7 @@ client_sockets=$(make_socket_dir)
 endpoint_sockets=$(make_socket_dir)
 client_pid=''
 endpoint_pid=''
+progress_pid=''
 stage=setup
 
 stop_guest() {
@@ -55,6 +59,10 @@ stop_guest() {
 cleanup() {
     local exit_status=$?
     trap - EXIT INT TERM
+    if [[ -n $progress_pid ]]; then
+        kill "$progress_pid" 2>/dev/null || true
+        wait "$progress_pid" 2>/dev/null || true
+    fi
     stop_guest "$client_pid" "$client_sockets/qga.sock" "$client_sockets/qmp.sock" client || exit_status=1
     stop_guest "$endpoint_pid" "$endpoint_sockets/qga.sock" "$endpoint_sockets/qmp.sock" endpoint || exit_status=1
     remove_socket_dir "$client_sockets"
@@ -130,6 +138,7 @@ client_qemu=(qemu-system-x86_64 -name almagest-flow-client -machine "$machine" -
     -device virtserialport,chardev=qga0,name=org.qemu.guest_agent.0 -qmp "unix:$client_sockets/qmp.sock,server=on,wait=off")
 
 printf '%q ' "${endpoint_qemu[@]}" >"$run_dir/endpoint-qemu-command.log"
+progress 'starting the endpoint guest'
 "${endpoint_qemu[@]}" >>"$run_dir/endpoint-qemu.log" 2>&1 &
 endpoint_pid=$!
 for _ in {1..100}; do
@@ -139,6 +148,7 @@ for _ in {1..100}; do
 done
 [[ -S $tunnel_socket && -S $underlay_socket ]] || die 'endpoint link sockets were not created'
 printf '%q ' "${client_qemu[@]}" >"$run_dir/client-qemu-command.log"
+progress 'starting the client guest'
 "${client_qemu[@]}" >>"$run_dir/client-qemu.log" 2>&1 &
 client_pid=$!
 
@@ -164,10 +174,13 @@ wait_guest() {
     die "$label readiness timeout"
 }
 stage=boot
+progress 'waiting for the client guest'
 wait_guest "$client_pid" "$client_sockets/qga.sock" "$client_port" "$run_dir/client-known-hosts" client
+progress 'waiting for the endpoint guest'
 wait_guest "$endpoint_pid" "$endpoint_sockets/qga.sock" "$endpoint_port" "$run_dir/endpoint-known-hosts" endpoint
 
 stage=build
+progress 'building packet-flow test programs'
 GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go -C "$repo_root/bin" build -o "$run_dir/flowecho.exe" github.com/asciimoth/sysnet-windows/cmd/flowecho
 GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go -C "$repo_root/bin" build -o "$run_dir/tunnelpeer.exe" github.com/asciimoth/sysnet-windows/cmd/tunnelpeer
 GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go -C "$repo_root/bin" build -o "$run_dir/sysnetflow.exe" github.com/asciimoth/sysnet-windows/cmd/sysnetflow
@@ -175,12 +188,14 @@ GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go -C "$repo_root/bin" build -o "$run_di
 remote="C:/winvm/flow-$BASHPID"
 endpoint_remote=${remote//\//\\}
 stage=transfer
+progress 'transferring packet-flow test programs'
 ssh "${client_ssh[@]}" winvm@127.0.0.1 "powershell.exe -NoProfile -Command \"New-Item -ItemType Directory -Force '$remote'|Out-Null\""
 ssh "${endpoint_ssh[@]}" winvm@127.0.0.1 "powershell.exe -NoProfile -Command \"New-Item -ItemType Directory -Force '$remote'|Out-Null\""
 scp "${client_scp[@]}" "$run_dir/sysnetflow.exe" "$script_dir/flow-network.ps1" "winvm@127.0.0.1:$remote/" >/dev/null
 scp "${endpoint_scp[@]}" "$run_dir/flowecho.exe" "$run_dir/tunnelpeer.exe" "$script_dir/flow-network.ps1" "winvm@127.0.0.1:$remote/" >/dev/null
 
 stage=network
+progress 'configuring the isolated tunnel and underlay networks'
 "$script_dir/tools/qga.py" --socket "$endpoint_sockets/qga.sock" --timeout 60 exec powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$endpoint_remote\flow-network.ps1" -Role Endpoint >"$run_dir/endpoint-network.json"
 "$script_dir/tools/qga.py" --socket "$client_sockets/qga.sock" --timeout 60 exec powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$endpoint_remote\flow-network.ps1" -Role Client >"$run_dir/client-network.json"
 "$script_dir/tools/qga.py" --socket "$endpoint_sockets/qga.sock" --timeout 30 exec powershell.exe -NoProfile -Command \
@@ -189,10 +204,24 @@ stage=network
     "Set-NetFirewallProfile -All -Enabled False; \$t=@(Get-NetAdapter|Where-Object MacAddress -eq '52-54-00-12-34-10'); \$u=@(Get-NetAdapter|Where-Object MacAddress -eq '52-54-00-12-34-11'); if (\$t.Count -ne 1 -or \$u.Count -ne 1) { throw 'flow adapters missing' }; Get-NetRoute -InterfaceIndex \$t[0].ifIndex|Where-Object DestinationPrefix -In '203.0.113.1/32','2001:db8:ffff::1/128'|Remove-NetRoute -Confirm:\$false; New-NetRoute -InterfaceIndex \$u[0].ifIndex -AddressFamily IPv4 -DestinationPrefix '0.0.0.0/0' -NextHop '198.18.1.1' -RouteMetric 5000|Out-Null; New-NetRoute -InterfaceIndex \$u[0].ifIndex -AddressFamily IPv6 -DestinationPrefix '::/0' -NextHop 'fd00:18:1::1' -RouteMetric 5000|Out-Null" >"$run_dir/client-transition.json"
 
 stage='test'
+progress 'running outnet and split packet-flow scenarios (timeout: 30 minutes)'
 flow_command="\$ErrorActionPreference='Stop'; \$env:SYSNET_WINDOWS_WINTUN_DLL='C:\Windows\System32\wintun.dll'; Start-Service mullvad-split-tunnel; & '$endpoint_remote\sysnetflow.exe' -scenario outnet -output '$endpoint_remote\outnet.jsonl'; if(\$LASTEXITCODE){exit \$LASTEXITCODE}; & '$endpoint_remote\sysnetflow.exe' -scenario split -output '$endpoint_remote\split.jsonl'; \$code=\$LASTEXITCODE; Stop-Service mullvad-split-tunnel -Force; exit \$code"
-timeout --foreground 1800 "$script_dir/tools/qga.py" --socket "$client_sockets/qga.sock" --timeout 1800 exec powershell.exe -NoLogo -NoProfile -NonInteractive -Command "$flow_command" >"$run_dir/flow-console.log" 2>&1
+test_started=$SECONDS
+(
+    while sleep 60; do
+        printf '==> WinVM flow: packet-flow scenarios still running; elapsed=%ss\n' "$((SECONDS - test_started))"
+    done
+) &
+progress_pid=$!
+flow_status=0
+timeout --foreground 1800 "$script_dir/tools/qga.py" --socket "$client_sockets/qga.sock" --timeout 1800 exec powershell.exe -NoLogo -NoProfile -NonInteractive -Command "$flow_command" >"$run_dir/flow-console.log" 2>&1 || flow_status=$?
+kill "$progress_pid" 2>/dev/null || true
+wait "$progress_pid" 2>/dev/null || true
+progress_pid=''
+((flow_status == 0)) || exit "$flow_status"
 
 stage=evidence
+progress 'collecting observations and validating packet captures'
 "$script_dir/tools/qga.py" --socket "$client_sockets/qga.sock" --timeout 30 read "$endpoint_remote\outnet.jsonl" --limit 8388608 >"$run_dir/outnet-observations.jsonl"
 "$script_dir/tools/qga.py" --socket "$client_sockets/qga.sock" --timeout 30 read "$endpoint_remote\split.jsonl" --limit 8388608 >"$run_dir/split-observations.jsonl"
 python3 - "$run_dir/outnet-observations.jsonl" "$run_dir/split-observations.jsonl" "$run_dir/packet-flow-observations.jsonl" <<'PY'

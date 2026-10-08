@@ -67,6 +67,9 @@ function Write-TestProgress([string]$Status, [string]$CaseID) {
     $script:progressIndex++
     Write-Output $line
 }
+$caseCount = @($suiteCases | Where-Object kind -eq 'go').Count
+$caseIndex = 0
+Write-TestProgress 'SUITE' "$($suite.id): $caseCount Go cases"
 function Write-CaseState([string]$Path, [string]$Reason, [int]$RootProcessID) {
     $now = (Get-Date).ToUniversalTime().ToString('o')
     "`r`n=== $now $Reason root-pid=$RootProcessID ===" | Add-Content -LiteralPath $Path -Encoding utf8
@@ -104,13 +107,15 @@ $identityPath = Join-Path $suiteDir 'identity.json'
 $processResults = @{}
 foreach ($case in $suiteCases) {
     if ($case.kind -ne 'go') { continue }
+    $caseIndex++
+    $caseProgress = "[$caseIndex/$caseCount] $($case.id)"
     $eventPath = Join-Path $eventDir $case.eventFile
     $coveragePath = Join-Path $coverageDir "$($case.eventFile).coverage.out"
     $statePath = Join-Path $diagnosticDir "$($case.eventFile).state.log"
     $moduleDir = Join-Path $SourceDir $case.module
     $hardTimeoutSeconds = if ($case.PSObject.Properties['timeoutSeconds']) { [int]$case.timeoutSeconds } else { $caseTimeoutSeconds }
     if ($hardTimeoutSeconds -le 0) { throw "The $($case.id) timeout is invalid" }
-    Write-TestProgress 'RUN ' "$($case.id) (hard-timeout=${hardTimeoutSeconds}s go-timeout=${goPackageTimeoutSeconds}s)"
+    Write-TestProgress 'RUN ' "$caseProgress (hard-timeout=${hardTimeoutSeconds}s go-timeout=${goPackageTimeoutSeconds}s)"
     Push-Location $moduleDir
     try {
         $startedServices = @()
@@ -156,11 +161,11 @@ foreach ($case in $suiteCases) {
                     ($deadline - [DateTime]::UtcNow).TotalMilliseconds))
                 if ($process.WaitForExit($remainingMilliseconds)) { break }
                 $elapsed = [int]([DateTime]::UtcNow - $started).TotalSeconds
-                Write-TestProgress 'WAIT' "$($case.id) elapsed=${elapsed}s pid=$($process.Id)"
+                Write-TestProgress 'WAIT' "$caseProgress elapsed=${elapsed}s pid=$($process.Id)"
                 Write-CaseState $statePath "heartbeat elapsed=${elapsed}s" $process.Id
                 if ([DateTime]::UtcNow -ge $deadline) {
                     $timedOut = $true
-                    Write-TestProgress 'TIMEOUT' "$($case.id) after ${hardTimeoutSeconds}s pid=$($process.Id)"
+                    Write-TestProgress 'TIMEOUT' "$caseProgress after ${hardTimeoutSeconds}s pid=$($process.Id)"
                     Write-CaseState $statePath "hard timeout after ${hardTimeoutSeconds}s" $process.Id
                     & taskkill.exe /PID $process.Id /T /F 2>&1 |
                         Add-Content -LiteralPath $statePath -Encoding utf8
@@ -179,7 +184,7 @@ foreach ($case in $suiteCases) {
             throw
         }
         $processResults[$case.id] = $processExitCode
-        Write-TestProgress $(if ($processExitCode -eq 0) { 'PASS' } else { 'FAIL' }) $case.id
+        Write-TestProgress $(if ($processExitCode -eq 0) { 'PASS' } else { 'FAIL' }) "$caseProgress elapsed=${elapsed}s"
         if (-not (Test-Path -LiteralPath $coveragePath -PathType Leaf)) {
             throw "The $($case.id) coverage profile is absent"
         }
@@ -195,6 +200,7 @@ foreach ($case in $suiteCases) {
         Pop-Location
     }
 }
+Write-TestProgress 'VALIDATE' "$($suite.id): validating $caseCount Go cases"
 $processPath = Join-Path $suiteDir 'processes.json'
 @{cases=$processResults} | ConvertTo-Json -Depth 5 | Set-Content $processPath -Encoding utf8
 
