@@ -3,7 +3,8 @@
 Status: proposed implementation plan. This document does not implement isolation.
 Progress: checkpoints 1 through 7 are complete. Checkpoint 8 implementation and
 platform acceptance are complete; its controlled same-host performance
-comparison remains open.
+comparison remains open. Checkpoint 9 implementation is complete; its numeric
+budgets become approved when the checkpoint change is accepted.
 It follows the [isolation architecture](DAEMON_ISOLATION_ARCHITECTURE.md).
 Its sequence takes precedence over the outline in architecture section 10.3:
 first establish the complete direct-mode composition, then run the isolation
@@ -246,6 +247,14 @@ Acceptance:
   direct-mode budget; do not hide it by reducing the baseline's functionality.
 
 ## 9. Define policy, contracts, and performance budgets
+
+Status: implementation complete. Numeric performance budgets become approved
+when the checkpoint change is accepted by the project maintainer; data-channel
+selection remains open.
+
+Contract review: [daemon isolation control contract](DAEMON_ISOLATION_CONTROL_CONTRACT.md).
+Numeric budgets and comparison rules:
+[daemon isolation performance budgets](DAEMON_ISOLATION_PERFORMANCE_BUDGETS.md).
 
 Work:
 
