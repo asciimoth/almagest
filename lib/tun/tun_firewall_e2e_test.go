@@ -62,6 +62,7 @@ func TestTunFirewallE2EVTunCopyHTTPAndUDP(t *testing.T) {
 	// has a short deterministic timeout, while HTTP proves unrelated traffic
 	// remains available through the same wrapper.
 	e.ApplyStdConstantValue(udpConfig, fmt.Sprintf(`{"exclude":[{"network":"udp","ports":[%d]}]}`, udpPort))
+	e.WaitNodeLabel(firewall, "filtering 1 rules")
 	sendTunFirewallUDPE2E(t, e.NodeE2E, udpClient)
 	waitTunFirewallUDPFailureE2E(t, e.NodeE2E, udpClient)
 	e.assertClientRequestWorks(httpClient)
@@ -69,20 +70,25 @@ func TestTunFirewallE2EVTunCopyHTTPAndUDP(t *testing.T) {
 	// Object detach removes its rule. Reattach restores the producer's latest
 	// value, and another value update clears it again.
 	e.Engine.RemoveLink(E2EWorkspace, udpConfigLink)
+	e.WaitNodeLabel(firewall, "filtering 0 rules")
 	assertTunFirewallUDPWorksE2E(t, e.NodeE2E, udpClient)
 	udpConfigLink = e.MustAddTypedLinkByPortName(std.TypeObject, udpConfig, "right", "output", firewall, "left", "Config")
+	e.WaitNodeLabel(firewall, "filtering 1 rules")
 	sendTunFirewallUDPE2E(t, e.NodeE2E, udpClient)
 	waitTunFirewallUDPFailureE2E(t, e.NodeE2E, udpClient)
 	e.ApplyStdConstantValue(udpConfig, `{}`)
+	e.WaitNodeLabel(firewall, "filtering 0 rules")
 	assertTunFirewallUDPWorksE2E(t, e.NodeE2E, udpClient)
 
 	// Menu input follows the same atomic update path and can filter UDP without
 	// interrupting the TCP flow.
 	applyTunFirewallMenuE2E(t, e.NodeE2E, firewall, fmt.Sprintf(`{"exclude":[{"network":"udp","ports":[%d]}]}`, udpPort))
+	e.WaitNodeLabel(firewall, "filtering 1 rules")
 	sendTunFirewallUDPE2E(t, e.NodeE2E, udpClient)
 	waitTunFirewallUDPFailureE2E(t, e.NodeE2E, udpClient)
 	e.assertClientRequestWorks(httpClient)
 	applyTunFirewallMenuE2E(t, e.NodeE2E, firewall, `{}`)
+	e.WaitNodeLabel(firewall, "filtering 0 rules")
 	assertTunFirewallUDPWorksE2E(t, e.NodeE2E, udpClient)
 
 	// Removing a middleware input closes the wrapper while the firewall link

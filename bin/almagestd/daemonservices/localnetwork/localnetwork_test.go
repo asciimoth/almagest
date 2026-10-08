@@ -38,6 +38,21 @@ func TestBuildDebugReturnsOriginalNativeNetworks(t *testing.T) {
 	if !system.LocalNet().IsNative() {
 		t.Fatal("LocalNet IsNative = false, want true")
 	}
+	debugSystem := system.(*sysnetdebug.System)
+	if system.OutNet() != debugSystem.OutNetwork {
+		t.Fatal("OutNet was wrapped in direct mode")
+	}
+	if system.LocalNet() != debugSystem.LocalNetwork {
+		t.Fatal("LocalNet was wrapped in direct mode")
+	}
+	allocations := testing.AllocsPerRun(1000, func() {
+		if !system.OutNet().IsNative() || !system.LocalNet().IsNative() {
+			panic("native network status changed")
+		}
+	})
+	if allocations != 0 {
+		t.Fatalf("direct native network lookup allocations = %f, want 0", allocations)
+	}
 }
 
 func TestBuildRejectsUnknownSystemType(t *testing.T) {

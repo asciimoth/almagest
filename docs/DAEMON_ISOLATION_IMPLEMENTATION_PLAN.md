@@ -1,8 +1,9 @@
 # Daemon isolation implementation plan
 
 Status: proposed implementation plan. This document does not implement isolation.
-Progress: checkpoints 1 through 6 are complete. Checkpoint 7 implementation is
-complete; its Windows VM acceptance run remains open.
+Progress: checkpoints 1 through 7 are complete. Checkpoint 8 implementation and
+platform acceptance are complete; its controlled same-host performance
+comparison remains open.
 It follows the [isolation architecture](DAEMON_ISOLATION_ARCHITECTURE.md).
 Its sequence takes precedence over the outline in architecture section 10.3:
 first establish the complete direct-mode composition, then run the isolation
@@ -201,7 +202,7 @@ Acceptance:
 
 ## 7. Separate local logging ownership
 
-Status: implementation complete; Windows VM acceptance remains open.
+Status: complete.
 
 Work:
 
@@ -219,6 +220,9 @@ Acceptance:
   in tests does not invoke the receiver's fatal-exit behavior.
 
 ## 8. Qualify the complete direct-mode refactor
+
+Status: implementation and platform acceptance complete; controlled performance
+acceptance remains open.
 
 Work:
 
