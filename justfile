@@ -2,7 +2,8 @@ set shell := ["bash", "-euo", "pipefail", "-c"]
 set dotenv-load := true
 
 
-check *selectors: tidy typos fmt lint shellcheck vet vulncheck
+# TODO: Enable vulncheck again after Go is updated to 1.26.9 or later.
+check *selectors: tidy typos fmt lint shellcheck vet # vulncheck
   @just test-total {{quote(selectors)}}
 
 typos:

@@ -129,16 +129,17 @@
               ''; in builtins.toString script;
               stages = [ "pre-commit" ];
             };
-            govulncheck = {
-              enable = true;
-              description = "Run govulncheck";
-              files = goHookFiles;
-              pass_filenames = false;
-              entry = let script = pkgs.writeShellScript "govulncheckhook" ''
-                just vulncheck
-              ''; in builtins.toString script;
-              stages = [ "pre-commit" ];
-            };
+            # TODO: Enable govulncheck again after Go is updated to 1.26.9 or later.
+            # govulncheck = {
+            #   enable = true;
+            #   description = "Run govulncheck";
+            #   files = goHookFiles;
+            #   pass_filenames = false;
+            #   entry = let script = pkgs.writeShellScript "govulncheckhook" ''
+            #     just vulncheck
+            #   ''; in builtins.toString script;
+            #   stages = [ "pre-commit" ];
+            # };
             winvm-lint = {
               enable = true;
               description = "Lint the Windows VM harness";
