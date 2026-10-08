@@ -187,18 +187,19 @@ func TestDefaultTunRestoreGeneratedGraphDepthsTransferAfterNativeDeviceReplaceme
 					443,
 				),
 			)
-			assertTunPacketTransferred(
-				t,
-				peer,
-				output,
-				testIPv6TransportPacket(
-					[16]byte{0x20, 0x01, 0x0d, 0xb8, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
-					[16]byte{0x20, 0x01, 0x0d, 0xb8, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
-					testIPProtocolUDP,
-					41002,
-					51820,
-				),
+			ipv6Packet := testIPv6TransportPacket(
+				[16]byte{0x20, 0x01, 0x0d, 0xb8, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
+				[16]byte{0x20, 0x01, 0x0d, 0xb8, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
+				testIPProtocolUDP,
+				41002,
+				51820,
 			)
+			// The convergence helper can enqueue more than one copy of its IPv4
+			// probe before the first copy reaches a deep graph. Ignore those
+			// probes while the next assertion waits for the IPv6 packet.
+			result := readUntilTunPacketAsync(output, ipv6Packet, 100)
+			writeTunPacket(t, peer, ipv6Packet)
+			assertMatchedTunPacketResult(t, result, "deep graph IPv6 transfer")
 		})
 	}
 }

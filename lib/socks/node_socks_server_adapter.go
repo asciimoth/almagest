@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/asciimoth/gonnect"
@@ -50,7 +51,15 @@ func listenSocksUDPAssoc(ctx context.Context, network gonnect.Network, ctrl net.
 	return network.ListenPacket(ctx, "udp", net.JoinHostPort(host, "0"))
 }
 
-func serveSocksListener(ctx context.Context, logger pasta.Logger, server *socksgo.Server, ln net.Listener, errs chan<- error, spawner WorkerSpawner) {
+func serveSocksListener(
+	ctx context.Context,
+	logger pasta.Logger,
+	server *socksgo.Server,
+	ln net.Listener,
+	errs chan<- error,
+	spawner WorkerSpawner,
+	workers *sync.WaitGroup,
+) {
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
@@ -62,14 +71,14 @@ func serveSocksListener(ctx context.Context, logger pasta.Logger, server *socksg
 			return
 		}
 		logger.Debugf("socks client connected from %s", conn.RemoteAddr())
-		if _, err := spawner.Spawn(func() {
+		if _, err := spawner.SpawnWg(func() {
 			err := acceptSocksConnection(ctx, server, conn)
 			if err != nil {
 				logger.Debugf("socks client %s closed: %v", conn.RemoteAddr(), err)
 			} else {
 				logger.Debugf("socks client %s closed", conn.RemoteAddr())
 			}
-		}, "socks client"); err != nil {
+		}, workers, "socks client"); err != nil {
 			logger.Debugf("failed to spawn socks client worker: %v", err)
 			_ = conn.Close()
 		}

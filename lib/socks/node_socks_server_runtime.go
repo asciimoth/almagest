@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/asciimoth/bufpool"
@@ -223,7 +224,19 @@ func runSocksServerWorker(ctx context.Context, logger pasta.Logger, w *pasta.Wor
 
 func runSocksServerOnce(ctx context.Context, logger pasta.Logger, w *pasta.Workspace, node uint64, stop <-chan struct{}, cfg socksServerWorkerConfig, spawner WorkerSpawner) error {
 	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	var workers sync.WaitGroup
+	closers := make([]func(), 0, 2)
+	defer func() {
+		// A worker generation is not stopped until its listener and accepted
+		// client workers have observed cancellation. Otherwise a replacement
+		// listener can publish readiness while an old SOCKS BIND control
+		// connection is still open.
+		cancel()
+		for _, closeFn := range closers {
+			closeFn()
+		}
+		workers.Wait()
+	}()
 	go func() {
 		select {
 		case <-stop:
@@ -243,7 +256,6 @@ func runSocksServerOnce(ctx context.Context, logger pasta.Logger, w *pasta.Works
 	server := buildSocksGoServer(logger, cfg)
 	errs := make(chan error, 2)
 	started := 0
-	closers := make([]func(), 0, 2)
 
 	if cfg.config.socksPort > 0 {
 		addr := net.JoinHostPort(hostOrDefault(cfg.config.socksHost), strconv.Itoa(cfg.config.socksPort))
@@ -255,12 +267,9 @@ func runSocksServerOnce(ctx context.Context, logger pasta.Logger, w *pasta.Works
 		started++
 		logger.Debugf("socks listening on %s", addr)
 		sendSocksServerLog(w, node, formular.LogInfo, "socks listening on "+addr)
-		if _, err := spawner.Spawn(func() {
-			serveSocksListener(ctx, logger, server, ln, errs, spawner)
-		}, "socks listener"); err != nil {
-			for _, closeFn := range closers {
-				closeFn()
-			}
+		if _, err := spawner.SpawnWg(func() {
+			serveSocksListener(ctx, logger, server, ln, errs, spawner, &workers)
+		}, &workers, "socks listener"); err != nil {
 			return err
 		}
 	}
@@ -285,15 +294,12 @@ func runSocksServerOnce(ctx context.Context, logger pasta.Logger, w *pasta.Works
 		started++
 		logger.Debugf("socks+ws listening on %s%s", addr, cfg.config.wsPath)
 		sendSocksServerLog(w, node, formular.LogInfo, "socks+ws listening on "+addr+cfg.config.wsPath)
-		if _, err := spawner.Spawn(func() {
+		if _, err := spawner.SpawnWg(func() {
 			err := httpServer.Serve(ln)
 			if err != nil && !errors.Is(err, http.ErrServerClosed) {
 				errs <- err
 			}
-		}, "socks websocket server"); err != nil {
-			for _, closeFn := range closers {
-				closeFn()
-			}
+		}, &workers, "socks websocket server"); err != nil {
 			return err
 		}
 	}
@@ -304,20 +310,11 @@ func runSocksServerOnce(ctx context.Context, logger pasta.Logger, w *pasta.Works
 
 	select {
 	case <-stop:
-		for _, closeFn := range closers {
-			closeFn()
-		}
 		logger.Debug("socks worker stopped")
 		return nil
 	case <-ctx.Done():
-		for _, closeFn := range closers {
-			closeFn()
-		}
 		return ctx.Err()
 	case err := <-errs:
-		for _, closeFn := range closers {
-			closeFn()
-		}
 		return err
 	}
 }

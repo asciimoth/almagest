@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 	"net/netip"
+	"sync"
 	"testing"
 	"time"
 
@@ -143,6 +144,102 @@ func TestAcceptSocksConnectionCancellationClosesBlockedHandshake(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("cancelled SOCKS handshake remained blocked")
 	}
+}
+
+func TestRunSocksServerOnceWaitsForAcceptedClientsBeforeReturning(t *testing.T) {
+	base := gonnect.NewLoopbackNetwork()
+	listenNetwork := gonnect.DetachNetwork(base, nil, nil)
+	proxyNetwork := gonnect.DetachNetwork(base, nil, nil)
+	defer closeTestNetwork(listenNetwork)
+	defer closeTestNetwork(proxyNetwork)
+
+	spawner := &generationWaitSpawner{
+		listenerStarted: make(chan struct{}),
+		clientStarted:   make(chan struct{}),
+		releaseClient:   make(chan struct{}),
+	}
+	defer spawner.release()
+	stop := make(chan struct{})
+	result := make(chan error, 1)
+	cfg := socksServerWorkerConfig{
+		config:        defaultSocksServerConfig(),
+		listenNetwork: listenNetwork,
+		proxyNetwork:  proxyNetwork,
+	}
+	cfg.config.socksHost = "127.0.0.1"
+	cfg.config.socksPort = 25120
+	go func() {
+		result <- runSocksServerOnce(
+			context.Background(),
+			logging.NewDebugLogger(nil, logging.DebugLogSource{Name: "test"}),
+			pasta.NewWorkspace(newTestLogFactory()),
+			1,
+			stop,
+			cfg,
+			spawner,
+		)
+	}()
+
+	<-spawner.listenerStarted
+	conn, err := base.Dial(context.Background(), "tcp", "127.0.0.1:25120")
+	if err != nil {
+		t.Fatalf("dial SOCKS listener: %v", err)
+	}
+	defer func() { _ = conn.Close() }()
+	<-spawner.clientStarted
+
+	close(stop)
+	select {
+	case err := <-result:
+		t.Fatalf("server generation returned before accepted client stopped: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	spawner.release()
+	select {
+	case err := <-result:
+		if err != nil {
+			t.Fatalf("runSocksServerOnce error = %v, want nil", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("server generation did not return after accepted client stopped")
+	}
+}
+
+type generationWaitSpawner struct {
+	listenerStarted chan struct{}
+	clientStarted   chan struct{}
+	releaseClient   chan struct{}
+	listenerOnce    sync.Once
+	clientOnce      sync.Once
+	releaseOnce     sync.Once
+}
+
+func (s *generationWaitSpawner) release() {
+	s.releaseOnce.Do(func() { close(s.releaseClient) })
+}
+
+func (s *generationWaitSpawner) Spawn(worker func(), name string) (uint64, error) {
+	go worker()
+	return 1, nil
+}
+
+func (s *generationWaitSpawner) SpawnWg(worker func(), wg *sync.WaitGroup, name string) (uint64, error) {
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if name == "socks listener" {
+			s.listenerOnce.Do(func() { close(s.listenerStarted) })
+		}
+		if name == "socks client" {
+			s.clientOnce.Do(func() { close(s.clientStarted) })
+		}
+		worker()
+		if name == "socks client" {
+			<-s.releaseClient
+		}
+	}()
+	return 1, nil
 }
 
 func TestSocksServerAuthAllowsDuplicateUsernamePasswords(t *testing.T) {
