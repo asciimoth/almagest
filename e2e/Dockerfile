@@ -60,10 +60,6 @@ FROM headscale/headscale:v0.29.3@sha256:0e7f1c6e4ce6c2a2a001103ecd3fa645a045adf3
 
 FROM debian:bookworm-slim@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe64d6990e4b07ea4171
 
-ARG E2E_SYSTEM_FLAVOR=direct
-ARG E2E_SOCKS_COMPAT=0
-ARG E2E_PACKET_ANALYZER=0
-ARG E2E_TOR_PRIVATE=0
 RUN rm -f /etc/apt/apt.conf.d/docker-clean \
 	&& printf 'Binary::apt::APT::Keep-Downloaded-Packages "true";\n' >/etc/apt/apt.conf.d/keep-cache
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
@@ -87,7 +83,22 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 		socat \
 		util-linux \
 		wireguard-tools \
-		wget \
+		wget
+
+# Keep the common runtime packages independent of case-specific build arguments.
+# Variant images can then reuse the expensive package installation above.
+ARG E2E_SYSTEM_FLAVOR=direct
+ARG E2E_SOCKS_COMPAT=0
+ARG E2E_PACKET_ANALYZER=0
+ARG E2E_TOR_PRIVATE=0
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+	--mount=type=cache,target=/var/lib/apt,sharing=locked \
+	if [ "$E2E_SYSTEM_FLAVOR" != "direct" ] \
+		|| [ "$E2E_SOCKS_COMPAT" = "1" ] \
+		|| [ "$E2E_PACKET_ANALYZER" = "1" ] \
+		|| [ "$E2E_TOR_PRIVATE" = "1" ]; then \
+		apt-get update; \
+	fi \
 	&& if [ "$E2E_SOCKS_COMPAT" = "1" ]; then \
 		DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends tor; \
 	fi \
@@ -138,7 +149,7 @@ COPY --from=build /usr/local/bin/amneziawg-go /usr/local/bin/amneziawg-go
 COPY --from=build /usr/local/bin/amnesia-e2e-tool /usr/local/bin/amnesia-e2e-tool
 COPY --from=build /usr/local/share/amneziawg-go.commit /usr/local/share/amneziawg-go.commit
 COPY --from=headscale /ko-app/headscale /usr/local/bin/headscale
-COPY e2e /e2e
+COPY --link e2e /e2e
 
 WORKDIR /e2e
 ENTRYPOINT ["/e2e/run-case.sh"]

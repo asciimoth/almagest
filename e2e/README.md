@@ -79,7 +79,8 @@ The runner labels each image with a hash of its source files and build
 arguments. Later runs reuse the image without contacting an image registry when
 these inputs did not change. Set `E2E_REBUILD=1` to force a Docker build. The
 Dockerfile pins its base images by digest; update the tag and digest together
-when you update a base image.
+when you update a base image. Case-specific images reuse the common runtime
+package layer. Keep packages that all cases need in that common layer.
 
 Run selected cases:
 
