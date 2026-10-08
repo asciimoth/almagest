@@ -282,6 +282,11 @@ Acceptance:
 
 ## 10. Experiment: Linux restrictions and native resource access
 
+Status: implementation and Linux amd64 qualification complete. The experiment
+found native route-monitor and DNS-provider integration gaps that must be
+resolved before a production Linux broker profile is qualified. See the
+[Linux experiment report](DAEMON_ISOLATION_LINUX_EXPERIMENT.md).
+
 Work:
 
 - Build a development-only launcher/harness with actual UID and capability

@@ -44,6 +44,11 @@ qualify-direct:
   RUN_WINVM_TESTS=1 E2E_INCLUDE_PRIVILEGED=1 just check
   go -C lib test ./tun -run '^$' -bench '^BenchmarkAutoTunSplitterRouter$' -benchmem -benchtime=500ms -count=3
 
+# Run the checkpoint 10 restriction and native-capability experiment only in a
+# disposable Docker container. Optional argument selects the evidence directory.
+linux-isolation-experiment evidence='':
+  ./dev/linux-isolation/run.sh {{quote(evidence)}}
+
 [private]
 test-e2e-docker-all: repair-go-work build-web
   E2E_INCLUDE_PRIVILEGED=1 ./scripts/test-e2e-platform.sh
