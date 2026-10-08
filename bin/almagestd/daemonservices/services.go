@@ -4,6 +4,10 @@
 package daemonservices
 
 import (
+	"crypto/sha256"
+	"errors"
+	"fmt"
+
 	"github.com/asciimoth/almagest/bin/almagestd/command"
 	"github.com/asciimoth/gonnect/sysnet"
 )
@@ -23,16 +27,47 @@ type ConfigSource interface {
 	ConfRO() bool
 }
 
-// ConfigPersistence writes the regular configuration to its fixed startup
-// target. The target is selected before this service is constructed.
-type ConfigPersistence interface {
-	WriteConfig(config []byte) error
+var (
+	ErrConfigRevisionConflict = errors.New("config persistence revision conflict")
+	ErrConfigOperationUnknown = errors.New("config persistence operation is unknown")
+)
+
+// ConfigDocument is the opaque regular config and its content revision.
+type ConfigDocument struct {
+	Data     []byte
+	Revision string
 }
 
-// ConfigStore combines startup reads and regular-config persistence.
-type ConfigStore interface {
-	ConfigSource
-	ConfigPersistence
+// ConfigOperationResult is a retained result of one replace operation.
+// Error is empty only when the replacement committed.
+type ConfigOperationResult struct {
+	OperationID string
+	Revision    string
+	Error       string
+}
+
+// Err converts an operation result to the error seen by the runtime.
+func (r ConfigOperationResult) Err() error {
+	if r.Error == "" {
+		return nil
+	}
+	if r.Error == ErrConfigRevisionConflict.Error() {
+		return ErrConfigRevisionConflict
+	}
+	return errors.New(r.Error)
+}
+
+// ConfigRevision returns the content revision used by config persistence.
+func ConfigRevision(data []byte) string {
+	return fmt.Sprintf("%x", sha256.Sum256(data))
+}
+
+// ConfigPersistence reads and replaces one regular-config target selected at
+// startup. No method accepts a path or protected-config selector.
+type ConfigPersistence interface {
+	ReadCurrent() (ConfigDocument, error)
+	Replace(expectedRevision, operationID string, config []byte) ConfigOperationResult
+	GetResult(operationID string) (ConfigOperationResult, error)
 }
 
 // AllowedCommands dispatches requests from the protected startup allowlist.

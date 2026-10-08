@@ -1345,7 +1345,10 @@ func newSnapshotTestService(t *testing.T, readOnly bool) (*snapshotService, *bbo
 	}
 	t.Cleanup(func() { _ = engine.Close() })
 	writer := &snapshotTestWriter{configPath: configPath, protectedPath: protectedPath}
-	autosaver := newConfigAutosaver(engine, config, writer, logging.NewDebugLogFactory(32).EngineLogger(), time.Millisecond)
+	autosaver := newConfigAutosaver(
+		engine, config, newTestConfigPersistence(t, config, writer),
+		logging.NewDebugLogFactory(32).EngineLogger(), time.Millisecond,
+	)
 	service := newSnapshotService(
 		storagePath, autosaver, engine, manager, config, writer, readOnly,
 		logging.NewDebugLogFactory(32).EngineLogger(),

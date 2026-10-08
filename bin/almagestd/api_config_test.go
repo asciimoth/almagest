@@ -47,7 +47,7 @@ func TestConfigAPIExposesOnlyEditableTextAndAppliesRevisionControlledUpdate(t *t
 	t.Cleanup(func() { _ = engine.Close() })
 
 	writer := &configAPITestWriter{}
-	autosaver := newConfigAutosaver(engine, conf, writer, logging.NewDebugLogFactory(8).EngineLogger(), 0)
+	autosaver := newConfigAutosaver(engine, conf, newTestConfigPersistence(t, conf, writer), logging.NewDebugLogFactory(8).EngineLogger(), 0)
 	admin := &AdminAPI{config: conf, configAutosaver: autosaver}
 	session := admin.newAPISession(engine, nil, nil)
 
@@ -146,7 +146,7 @@ func TestConfigAPIUpdateRemovesDanglingLinksAndSynchronizesNodeComments(t *testi
 	t.Cleanup(func() { _ = engine.Close() })
 
 	writer := &configAPITestWriter{}
-	autosaver := newConfigAutosaver(engine, conf, writer, logging.NewDebugLogFactory(8).EngineLogger(), 0)
+	autosaver := newConfigAutosaver(engine, conf, newTestConfigPersistence(t, conf, writer), logging.NewDebugLogFactory(8).EngineLogger(), 0)
 	session := (&AdminAPI{config: conf, configAutosaver: autosaver}).newAPISession(engine, nil, nil)
 	before, err := autosaver.Snapshot(false)
 	if err != nil {
@@ -249,7 +249,7 @@ func TestConfigAPIRejectsProtectedContentAndReadOnlyUpdates(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = engine.Close() })
 	writer := &configAPITestWriter{}
-	autosaver := newConfigAutosaver(engine, conf, writer, logging.NewDebugLogFactory(8).EngineLogger(), 0)
+	autosaver := newConfigAutosaver(engine, conf, newTestConfigPersistence(t, conf, writer), logging.NewDebugLogFactory(8).EngineLogger(), 0)
 	admin := &AdminAPI{config: conf, configAutosaver: autosaver}
 	session := admin.newAPISession(engine, nil, nil)
 
@@ -330,7 +330,7 @@ func TestConfigAPIWriteFailureRollsBackGraphAndDocument(t *testing.T) {
 	t.Cleanup(func() { _ = engine.Close() })
 
 	writer := &configAPITestWriter{failWrites: 1}
-	autosaver := newConfigAutosaver(engine, conf, writer, logging.NewDebugLogFactory(8).EngineLogger(), 0)
+	autosaver := newConfigAutosaver(engine, conf, newTestConfigPersistence(t, conf, writer), logging.NewDebugLogFactory(8).EngineLogger(), 0)
 	session := (&AdminAPI{config: conf, configAutosaver: autosaver}).newAPISession(engine, nil, nil)
 	snapshot, err := autosaver.Snapshot(false)
 	if err != nil {
@@ -358,9 +358,8 @@ func TestConfigAPIWriteFailureRollsBackGraphAndDocument(t *testing.T) {
 	if !bytes.Contains(current, []byte("original marker")) || bytes.Contains(current, []byte("temporary")) {
 		t.Fatalf("current config after rollback = %s", current)
 	}
-	if len(writer.writes) != 2 || !bytes.Contains(writer.writes[0], []byte("temporary")) ||
-		!bytes.Contains(writer.writes[1], []byte("original marker")) {
-		t.Fatalf("write attempts after rollback = %q", writer.writes)
+	if len(writer.writes) != 1 || !bytes.Contains(writer.writes[0], []byte("temporary")) {
+		t.Fatalf("write attempts after rollback = %q, want one compare-and-replace", writer.writes)
 	}
 }
 

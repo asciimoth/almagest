@@ -4,6 +4,7 @@ package platform
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"net/netip"
 	"os"
@@ -14,6 +15,7 @@ import (
 
 	almargs "github.com/asciimoth/almagest/bin/almagestd/args"
 	cmdrunner "github.com/asciimoth/almagest/bin/almagestd/command"
+	"github.com/asciimoth/almagest/bin/almagestd/daemonservices"
 	"github.com/asciimoth/configer/hujson"
 )
 
@@ -445,7 +447,7 @@ func TestLinuxAgentReadsAndWritesUnsafeConfig(t *testing.T) {
 	if err := os.WriteFile(protectedPath, []byte("{protected: true}"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	agent := RunAgent(almargs.Args{Config: configPath, ProtectedConfig: protectedPath, UnsafeConfig: true}).(*agent)
+	agent := RunAgent(almargs.Args{Config: configPath, ProtectedConfig: protectedPath, UnsafeConfig: true})
 	if agent.ConfRO() || agent.ConfigFilePath() != configPath || agent.ProtectedConfigFilePath() != protectedPath {
 		t.Fatalf("agent paths/read-only = %q, %q, %t", agent.ConfigFilePath(), agent.ProtectedConfigFilePath(), agent.ConfRO())
 	}
@@ -459,6 +461,54 @@ func TestLinuxAgentReadsAndWritesUnsafeConfig(t *testing.T) {
 	written, err := os.ReadFile(configPath)
 	if err != nil || string(written) != "{value: 2}" {
 		t.Fatalf("written config = %q, %v", written, err)
+	}
+}
+
+func TestPrepareConfigSeparatesInputsAndUsesFixedTargetCompareReplace(t *testing.T) {
+	base := t.TempDir()
+	configPath := filepath.Join(base, "alm.hujson")
+	protectedPath := filepath.Join(base, "protected.hujson")
+	if err := os.WriteFile(configPath, []byte("{value: 1}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	protected := []byte("{secret: true}")
+	if err := os.WriteFile(protectedPath, protected, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	bootstrap, err := PrepareConfig(almargs.Args{
+		Config: configPath, ProtectedConfig: protectedPath, UnsafeConfig: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(bootstrap.Regular) != "{value: 1}" || string(bootstrap.Protected) != string(protected) {
+		t.Fatalf("bootstrap inputs = %q, %q", bootstrap.Regular, bootstrap.Protected)
+	}
+	if bootstrap.Persistence == nil {
+		t.Fatal("writable config has no persistence service")
+	}
+	current, err := bootstrap.Persistence.ReadCurrent()
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := bootstrap.Persistence.Replace(current.Revision, "replace-1", []byte("{value: 2}"))
+	if err := result.Err(); err != nil {
+		t.Fatal(err)
+	}
+
+	// An external edit changes the file revision. The runtime cannot overwrite
+	// it by sending the old revision or select another target in the request.
+	if err := os.WriteFile(configPath, []byte("{external: true}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	conflict := bootstrap.Persistence.Replace(result.Revision, "replace-2", []byte("{value: 3}"))
+	if !errors.Is(conflict.Err(), daemonservices.ErrConfigRevisionConflict) {
+		t.Fatalf("external edit result = %#v", conflict)
+	}
+	writtenProtected, err := os.ReadFile(protectedPath)
+	if err != nil || !bytes.Equal(writtenProtected, protected) {
+		t.Fatalf("protected config changed: %q, %v", writtenProtected, err)
 	}
 }
 
@@ -601,7 +651,7 @@ func TestLinuxAgentUsesConfigDirectoryAndDefaultProtectedPath(t *testing.T) {
 	if err := os.WriteFile(protectedPath, []byte("{}"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	agent := RunAgent(almargs.Args{Config: base, UnsafeConfig: true}).(*agent)
+	agent := RunAgent(almargs.Args{Config: base, UnsafeConfig: true})
 	if agent.ConfigFilePath() != configPath || agent.ProtectedConfigFilePath() != protectedPath {
 		t.Fatalf("agent paths = %q, %q", agent.ConfigFilePath(), agent.ProtectedConfigFilePath())
 	}

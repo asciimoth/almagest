@@ -41,10 +41,6 @@ const DefaultConfig = "/etc/almagest/alm.hujson"
 const linuxDefaultUserMark uint32 = 0x414c4d01
 const linuxFallbackFileStorage = "/var/lib/almagest/store"
 
-var (
-	_ Agent = &agent{}
-)
-
 // SetupFS prepares almagestd file storage and returns its absolute path.
 //
 // Persistent storage uses storagePath when it is not empty. Otherwise it uses a
@@ -207,6 +203,14 @@ func (a *agent) ReadConfig() ([]byte, []byte, error) {
 	return configData, protectedData, nil
 }
 
+func (a *agent) ReadRegularConfig() ([]byte, error) {
+	readfile := ReadSafeFile
+	if a.UnsafeConfig {
+		readfile = os.ReadFile
+	}
+	return readfile(a.ConfigPath)
+}
+
 func (a *agent) WriteConfig(data []byte) error {
 	target, err := filepath.EvalSymlinks(a.ConfigPath)
 	if err != nil {
@@ -258,7 +262,7 @@ func (a *agent) WriteConfig(data []byte) error {
 	return nil
 }
 
-func RunAgent(args args.Args) Agent {
+func RunAgent(args args.Args) *agent {
 	agent := &agent{
 		StdInConfig:  args.StdInConfig,
 		UnsafeConfig: args.UnsafeConfig,
@@ -326,9 +330,9 @@ func RunAgent(args args.Args) Agent {
 	return agent
 }
 
-// PrepareAgent keeps the legacy Linux config preparation behavior while
+// prepareAgent keeps the legacy Linux config preparation behavior while
 // providing the lifecycle entry point used by the daemon.
-func PrepareAgent(arguments args.Args) (Agent, error) {
+func prepareAgent(arguments args.Args) (*agent, error) {
 	return RunAgent(arguments), nil
 }
 

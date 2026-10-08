@@ -22,10 +22,6 @@ var DefaultConfigText string
 //go:embed default_protected_config.hujson
 var DefaultProtectedConfigText string
 
-var (
-	_ Agent = &agent{}
-)
-
 // SetupFS prepares stub file storage for unsupported platforms.
 //
 // A caller-provided persistent path is created and checked as a private
@@ -127,18 +123,23 @@ func (a *agent) ReadConfig() (cfg, prt []byte, err error) {
 	return []byte(DefaultConfigText), []byte(DefaultProtectedConfigText), nil
 }
 
+func (a *agent) ReadRegularConfig() ([]byte, error) {
+	config, _, err := a.ReadConfig()
+	return config, err
+}
+
 func (a *agent) WriteConfig(cfg []byte) error {
 	return nil
 }
 
-func RunAgent(args args.Args) Agent {
+func RunAgent(args args.Args) *agent {
 	golog.Warn("No system agent for this latform; Using stub one.")
 	return &agent{
 		StdInConfig: args.StdInConfig,
 	}
 }
 
-func PrepareAgent(arguments args.Args) (Agent, error) {
+func prepareAgent(arguments args.Args) (*agent, error) {
 	return RunAgent(arguments), nil
 }
 

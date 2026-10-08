@@ -6,15 +6,47 @@ import (
 	"io"
 	"os"
 
+	"github.com/asciimoth/almagest/bin/almagestd/args"
 	"github.com/asciimoth/almagest/bin/almagestd/daemonservices"
+	"github.com/asciimoth/almagest/bin/almagestd/daemonservices/localconfig"
 	"github.com/kataras/golog"
 	tailscalehujson "github.com/tailscale/hujson"
 )
 
 var ErrConfigReadOnly = errors.New("config source is read-only")
 
-type Agent interface {
-	daemonservices.ConfigStore
+// ConfigBootstrap contains startup-only config inputs and the optional local
+// persistence service. Runtime code receives the values, not the source.
+type ConfigBootstrap struct {
+	Regular       []byte
+	Protected     []byte
+	Persistence   daemonservices.ConfigPersistence
+	RegularPath   string
+	ProtectedPath string
+}
+
+func (c ConfigBootstrap) ConfigFilePath() string          { return c.RegularPath }
+func (c ConfigBootstrap) ProtectedConfigFilePath() string { return c.ProtectedPath }
+
+// PrepareConfig reads trusted bootstrap inputs and binds regular-config
+// persistence to the startup-selected target. Read-only sources have no
+// persistence service.
+func PrepareConfig(arguments args.Args) (ConfigBootstrap, error) {
+	agent, err := prepareAgent(arguments)
+	if err != nil {
+		return ConfigBootstrap{}, err
+	}
+	regular, protected, err := agent.ReadConfig()
+	if err != nil {
+		return ConfigBootstrap{}, err
+	}
+	bootstrap := ConfigBootstrap{Regular: regular, Protected: protected}
+	bootstrap.RegularPath = agent.ConfigFilePath()
+	bootstrap.ProtectedPath = agent.ProtectedConfigFilePath()
+	if !agent.ConfRO() {
+		bootstrap.Persistence = localconfig.New(agent.ReadRegularConfig, agent.WriteConfig)
+	}
+	return bootstrap, nil
 }
 
 // FSCleanup releases resources owned by a file storage setup.

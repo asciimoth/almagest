@@ -92,15 +92,13 @@ func runDaemon(
 	randomSeeds daemonRandomSeeds,
 	runtimeDependencyErr error,
 ) error {
-	agent, err := platform.PrepareAgent(arguments)
+	configBootstrap, err := platform.PrepareConfig(arguments)
 	if err != nil {
 		return fmt.Errorf("prepare config files: %w", err)
 	}
-
-	configData, protectedData, err := agent.ReadConfig()
-	if err != nil {
-		return err
-	}
+	configData := configBootstrap.Regular
+	protectedData := configBootstrap.Protected
+	persistenceRevision := daemonservices.ConfigRevision(configData)
 	fsPath, fsCleanup, err := platform.SetupFS(arguments.FileStorage, arguments.TmpFileStorage)
 	if err != nil {
 		return err
@@ -114,14 +112,17 @@ func runDaemon(
 	golog.Infof("Using file storage at %s", fsPath)
 	if arguments.Snapshot != "" {
 		var info api.SnapshotInfo
-		configData, info, err = restoreStartupSnapshot(ctx, fsPath, arguments.Snapshot, os.Stdin, agent)
+		configData, info, err = restoreStartupSnapshot(ctx, fsPath, arguments.Snapshot, os.Stdin, configBootstrap)
 		if err != nil {
 			return fmt.Errorf("load startup snapshot: %w", err)
 		}
 		golog.Infof("Loaded startup snapshot %s", info.UUID)
-		if !agent.ConfRO() {
-			if err := agent.WriteConfig(configData); err != nil {
+		if configBootstrap.Persistence != nil {
+			result := configBootstrap.Persistence.Replace(persistenceRevision, "startup-snapshot", configData)
+			if err := result.Err(); err != nil {
 				golog.Warnf("Startup snapshot config is active but could not be written: %v", err)
+			} else {
+				persistenceRevision = result.Revision
 			}
 		}
 	}
@@ -178,7 +179,7 @@ func runDaemon(
 		return err
 	}
 	application.OwnAdmin(admin.Stop)
-	admin.configReadOnly = agent.ConfRO()
+	admin.configReadOnly = configBootstrap.Persistence == nil
 	admin.fileStorage = fsPath
 	admin.projectVersionStatus = projectVersionStatus
 	admin.executionMode = string(mode)
@@ -254,7 +255,9 @@ func runDaemon(
 
 	var wg sync.WaitGroup
 	application.OwnBackground(wg.Wait)
-	admin.configAutosaver = newConfigAutosaver(engine, conf, agent, daemonLogger, conf.SaveIdle())
+	admin.configAutosaver = newConfigAutosaver(
+		engine, conf, configBootstrap.Persistence, daemonLogger, conf.SaveIdle(), persistenceRevision,
+	)
 	application.OwnConfigFlush(admin.configAutosaver.flushPendingError)
 	admin.snapshots = newSnapshotService(
 		fsPath,
@@ -262,7 +265,7 @@ func runDaemon(
 		engine,
 		kv,
 		conf,
-		agent,
+		configBootstrap,
 		admin.configReadOnly,
 		daemonLogger,
 		admin.tlsOSAuthorityFetcher,

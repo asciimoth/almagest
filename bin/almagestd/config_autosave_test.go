@@ -54,7 +54,7 @@ func TestConfigAutosaverBuiltInNodeSnapshotsAreDeterministic(t *testing.T) {
 
 	writer := &configAutosaveTestWriter{}
 	autosaver := newConfigAutosaver(
-		engine, conf, writer, logging.NewDebugLogFactory(8).EngineLogger(), 0,
+		engine, conf, newTestConfigPersistence(t, conf, writer), logging.NewDebugLogFactory(8).EngineLogger(), 0,
 	)
 	first, err := autosaver.Snapshot(false)
 	if err != nil {
@@ -185,7 +185,7 @@ func TestConfigAutosaverFlushesPendingGraphChangeOnShutdown(t *testing.T) {
 
 	writer := &configAutosaveTestWriter{}
 	autosaver := newConfigAutosaver(
-		engine, conf, writer, logging.NewDebugLogFactory(8).EngineLogger(), time.Hour,
+		engine, conf, newTestConfigPersistence(t, conf, writer), logging.NewDebugLogFactory(8).EngineLogger(), time.Hour,
 	)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
@@ -226,7 +226,7 @@ func TestConfigAutosaverDoesNotWriteCleanConfigOnShutdown(t *testing.T) {
 
 	writer := &configAutosaveTestWriter{}
 	autosaver := newConfigAutosaver(
-		engine, conf, writer, logging.NewDebugLogFactory(8).EngineLogger(), time.Hour,
+		engine, conf, newTestConfigPersistence(t, conf, writer), logging.NewDebugLogFactory(8).EngineLogger(), time.Hour,
 	)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -258,7 +258,7 @@ func TestConfigAutosaverPersistsChangeScheduledAfterRunStops(t *testing.T) {
 
 	writer := &configAutosaveTestWriter{}
 	autosaver := newConfigAutosaver(
-		engine, conf, writer, logging.NewDebugLogFactory(8).EngineLogger(), time.Hour,
+		engine, conf, newTestConfigPersistence(t, conf, writer), logging.NewDebugLogFactory(8).EngineLogger(), time.Hour,
 	)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -301,7 +301,7 @@ func TestConfigAutosaverRetriesPendingChangeAfterWriteFailure(t *testing.T) {
 		notify:     make(chan struct{}, 2),
 	}
 	autosaver := newConfigAutosaver(
-		engine, conf, writer, logging.NewDebugLogFactory(8).EngineLogger(), time.Millisecond,
+		engine, conf, newTestConfigPersistence(t, conf, writer), logging.NewDebugLogFactory(8).EngineLogger(), time.Millisecond,
 	)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
@@ -346,7 +346,7 @@ func TestNodeConfigAutosaveTriggerQueuesStartupAndRuntimeChanges(t *testing.T) {
 	t.Cleanup(func() { _ = engine.Close() })
 
 	writer := &configAutosaveTestWriter{notify: make(chan struct{}, 4)}
-	saver := newConfigAutosaver(engine, conf, writer, logging.NewDebugLogFactory(8).EngineLogger(), time.Millisecond)
+	saver := newConfigAutosaver(engine, conf, newTestConfigPersistence(t, conf, writer), logging.NewDebugLogFactory(8).EngineLogger(), time.Millisecond)
 	trigger := newNodeConfigAutosaveTrigger()
 
 	// A node can finish asynchronous startup before the daemon starts the
@@ -405,7 +405,7 @@ func TestNodeConfigAutosaveTriggerAcknowledgesOnlySuccessfulDurableWrite(t *test
 	t.Cleanup(func() { _ = engine.Close() })
 
 	writer := &configAutosaveTestWriter{failWrites: 1, notify: make(chan struct{}, 4)}
-	saver := newConfigAutosaver(engine, conf, writer, logging.NewDebugLogFactory(8).EngineLogger(), time.Millisecond)
+	saver := newConfigAutosaver(engine, conf, newTestConfigPersistence(t, conf, writer), logging.NewDebugLogFactory(8).EngineLogger(), time.Millisecond)
 	trigger := newNodeConfigAutosaveTrigger()
 	result := trigger.Notify(1)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -454,7 +454,7 @@ func TestNodeConfigAutosaveTriggerBatchesQueuedAcknowledgements(t *testing.T) {
 	t.Cleanup(func() { _ = engine.Close() })
 
 	writer := &configAutosaveTestWriter{}
-	saver := newConfigAutosaver(engine, conf, writer, logging.NewDebugLogFactory(8).EngineLogger(), time.Millisecond)
+	saver := newConfigAutosaver(engine, conf, newTestConfigPersistence(t, conf, writer), logging.NewDebugLogFactory(8).EngineLogger(), time.Millisecond)
 	trigger := newNodeConfigAutosaveTrigger()
 	first := trigger.Notify(1)
 	second := trigger.Notify(2)
@@ -489,7 +489,7 @@ func TestNodeConfigAutosaveTriggerReturnsFinalShutdownFailure(t *testing.T) {
 	t.Cleanup(func() { _ = engine.Close() })
 
 	writer := &configAutosaveTestWriter{failWrites: 100, notify: make(chan struct{}, 2)}
-	saver := newConfigAutosaver(engine, conf, writer, logging.NewDebugLogFactory(8).EngineLogger(), time.Hour)
+	saver := newConfigAutosaver(engine, conf, newTestConfigPersistence(t, conf, writer), logging.NewDebugLogFactory(8).EngineLogger(), time.Hour)
 	trigger := newNodeConfigAutosaveTrigger()
 	result := trigger.Notify(1)
 	ctx, cancel := context.WithCancel(context.Background())

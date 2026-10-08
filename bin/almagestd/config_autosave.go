@@ -6,8 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
+	"github.com/asciimoth/almagest/bin/almagestd/daemonservices"
 	"github.com/asciimoth/almagest/bin/api"
 	almagest "github.com/asciimoth/almagest/lib"
 	"github.com/asciimoth/almagest/lib/logging"
@@ -24,16 +26,15 @@ var (
 	errConfigProtectedContent = errors.New("editable config must not contain Protected")
 )
 
-type configWriter interface {
-	WriteConfig(d []byte) error
-}
-
 type configAutosaver struct {
-	engine almagest.Engine
-	config *Config
-	agent  configWriter
-	logger logging.Logger
-	idle   time.Duration
+	engine      almagest.Engine
+	config      *Config
+	persistence daemonservices.ConfigPersistence
+	logger      logging.Logger
+	idle        time.Duration
+
+	persistenceRevision string
+	operationSequence   atomic.Uint64
 
 	mu     sync.Mutex
 	saveMu sync.Mutex
@@ -147,21 +148,30 @@ func (t *nodeConfigAutosaveTrigger) stopAndTakePending() []chan error {
 func newConfigAutosaver(
 	engine almagest.Engine,
 	config *Config,
-	agent configWriter,
+	persistence daemonservices.ConfigPersistence,
 	logger logging.Logger,
 	idle time.Duration,
+	persistenceRevision ...string,
 ) *configAutosaver {
 	if idle <= 0 {
 		idle = defaultConfigAutosaveIdle
 	}
-	return &configAutosaver{
-		engine: engine,
-		config: config,
-		agent:  agent,
-		logger: logger,
-		idle:   idle,
-		ch:     make(chan struct{}, 1),
+	saver := &configAutosaver{
+		engine:      engine,
+		config:      config,
+		persistence: persistence,
+		logger:      logger,
+		idle:        idle,
+		ch:          make(chan struct{}, 1),
 	}
+	if len(persistenceRevision) > 0 {
+		saver.persistenceRevision = persistenceRevision[0]
+	} else if config != nil {
+		if data, err := config.MainToBytes(); err == nil {
+			saver.persistenceRevision = daemonservices.ConfigRevision(data)
+		}
+	}
+	return saver
 }
 
 func (s *configAutosaver) Run(ctx context.Context) {
@@ -254,14 +264,14 @@ func (s *configAutosaver) persistNodeConfig() error {
 	if s.engine == nil {
 		return s.logSaveError(errors.New("engine is not available"))
 	}
-	if s.agent == nil {
+	if s.persistence == nil {
 		return s.logSaveError(errors.New("config writer is not available"))
 	}
 	data, err := s.currentConfigBytes()
 	if err != nil {
 		return s.logSaveError(fmt.Errorf("engine state export failed: %w", err))
 	}
-	if err := s.agent.WriteConfig(data); err != nil {
+	if err := s.replaceConfigLocked(data); err != nil {
 		return s.logSaveError(fmt.Errorf("disk write failed: %w", err))
 	}
 	s.markSaved(target)
@@ -381,18 +391,14 @@ func (s *configAutosaver) Update(text, revision string) (api.ConfigUpdateRespons
 	if err != nil {
 		return api.ConfigUpdateResponse{}, s.rollbackConfigReconcile(previous, err)
 	}
-	if s.agent == nil {
+	if s.persistence == nil {
 		return api.ConfigUpdateResponse{}, s.rollbackConfigReconcile(
 			previous,
 			errors.New("config writer is not available"),
 		)
 	}
-	if err := s.agent.WriteConfig(data); err != nil {
-		applyErr := s.rollbackConfigReconcile(previous, fmt.Errorf("write config: %w", err))
-		if restoreErr := s.agent.WriteConfig(storedData); restoreErr != nil {
-			return api.ConfigUpdateResponse{}, fmt.Errorf("%w; restore previous config file: %v", applyErr, restoreErr)
-		}
-		return api.ConfigUpdateResponse{}, applyErr
+	if err := s.replaceConfigLocked(data); err != nil {
+		return api.ConfigUpdateResponse{}, s.rollbackConfigReconcile(previous, fmt.Errorf("write config: %w", err))
 	}
 	s.config.mu.Lock()
 	s.config.Main = next
@@ -402,6 +408,21 @@ func (s *configAutosaver) Update(text, revision string) (api.ConfigUpdateRespons
 		Snapshot: newConfigSnapshot(data, false, s.changeRevision()),
 		Changes:  changes,
 	}, nil
+}
+
+// replaceConfigLocked performs one fixed-target compare-and-replace. The
+// caller holds saveMu, which serializes autosave, API updates, and restores.
+func (s *configAutosaver) replaceConfigLocked(data []byte) error {
+	if s == nil || s.persistence == nil {
+		return errors.New("config writer is not available")
+	}
+	operationID := fmt.Sprintf("direct-%d", s.operationSequence.Add(1))
+	result := s.persistence.Replace(s.persistenceRevision, operationID, data)
+	if err := result.Err(); err != nil {
+		return err
+	}
+	s.persistenceRevision = result.Revision
+	return nil
 }
 
 // rollbackConfigReconcile restores the live graph after an update fails. The

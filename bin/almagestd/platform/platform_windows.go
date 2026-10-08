@@ -28,8 +28,6 @@ var DefaultConfigText string
 //go:embed default_windows_protected_config.hujson
 var DefaultProtectedConfigText string
 
-var _ Agent = &windowsAgent{}
-
 const windowsApplicationDirectory = "Almagest"
 
 var (
@@ -202,17 +200,24 @@ func (a *windowsAgent) ReadConfig() ([]byte, []byte, error) {
 	return configData, protectedData, nil
 }
 
-func RunAgent(args args.Args) Agent {
-	agent, err := PrepareAgent(args)
+func (a *windowsAgent) ReadRegularConfig() ([]byte, error) {
+	if a.UnsafeConfig {
+		return os.ReadFile(a.ConfigPath)
+	}
+	return readPrivateWindowsFile(a.ConfigPath)
+}
+
+func RunAgent(args args.Args) *windowsAgent {
+	agent, err := prepareAgent(args)
 	if err != nil {
 		golog.Fatal("Failed to prepare config files: ", err)
 	}
 	return agent
 }
 
-// PrepareAgent prepares Windows config ownership without terminating the
+// prepareAgent prepares Windows config ownership without terminating the
 // process. Service startup uses this form so the SCM receives the failure.
-func PrepareAgent(arguments args.Args) (Agent, error) {
+func prepareAgent(arguments args.Args) (*windowsAgent, error) {
 	return newWindowsAgent(arguments)
 }
 

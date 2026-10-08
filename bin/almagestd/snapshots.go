@@ -72,7 +72,6 @@ type snapshotService struct {
 	engine      almagest.Engine
 	manager     *bboltKVManager
 	config      *Config
-	agent       configWriter
 	readOnly    bool
 	logger      logging.Logger
 	tlsFetcher  tlspolicy.AuthorityFetcher
@@ -117,7 +116,7 @@ func newSnapshotService(
 	engine almagest.Engine,
 	manager *bboltKVManager,
 	config *Config,
-	agent configWriter,
+	configLocator snapshotConfigFileLocator,
 	readOnly bool,
 	logger logging.Logger,
 	tlsFetcher tlspolicy.AuthorityFetcher,
@@ -128,7 +127,6 @@ func newSnapshotService(
 		engine:            engine,
 		manager:           manager,
 		config:            config,
-		agent:             agent,
 		readOnly:          readOnly,
 		logger:            logger,
 		tlsFetcher:        tlsFetcher,
@@ -136,9 +134,9 @@ func newSnapshotService(
 		random:            rand.Reader,
 		dynamicExclusions: map[string]struct{}{},
 	}
-	if locator, ok := agent.(snapshotConfigFileLocator); ok {
-		service.addDynamicExclusion(locator.ConfigFilePath())
-		service.addDynamicExclusion(locator.ProtectedConfigFilePath())
+	if configLocator != nil {
+		service.addDynamicExclusion(configLocator.ConfigFilePath())
+		service.addDynamicExclusion(configLocator.ProtectedConfigFilePath())
 	}
 	return service
 }
@@ -627,8 +625,8 @@ func (s *snapshotService) Restore(ctx context.Context, uuid string) (api.Snapsho
 	s.notifyStorageReset(before, after)
 
 	response := api.SnapshotsRestoreResponse{Snapshot: desired.info}
-	if !s.readOnly && s.agent != nil {
-		if err := s.agent.WriteConfig(desired.configData); err != nil {
+	if !s.readOnly && s.autosaver.persistence != nil {
+		if err := s.autosaver.replaceConfigLocked(desired.configData); err != nil {
 			response.ConfigWriteError = err.Error()
 			if s.logger != nil {
 				s.logger.Errf("snapshot restore config write failed; restored config remains active in memory: %v", err)
