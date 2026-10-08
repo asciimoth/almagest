@@ -12,6 +12,7 @@ import (
 	"github.com/asciimoth/almagest/bin/almagestd/args"
 	cmdrunner "github.com/asciimoth/almagest/bin/almagestd/command"
 	"github.com/asciimoth/almagest/bin/almagestd/daemonservices"
+	"github.com/asciimoth/almagest/bin/almagestd/daemonservices/localnetwork"
 	"github.com/asciimoth/almagest/bin/almagestd/internal/daemonruntime"
 	"github.com/asciimoth/almagest/bin/almagestd/platform"
 	"github.com/asciimoth/almagest/bin/api"
@@ -207,11 +208,15 @@ func runDaemon(
 	var allowedCommands daemonservices.AllowedCommands = commandRunner
 
 	// Setup system integration here before privileges drop
-	sys, err := SystemIntegrationWithRuntimeDependencies(conf, allowedCommands, runtimeDependencyErr, randomSeeds.system)
+	hostNetwork, err := localnetwork.BuildWithRuntimeDependencies(
+		conf.Protected.System,
+		allowedCommands,
+		runtimeDependencyErr,
+		randomSeeds.system,
+	)
 	if err != nil {
 		return err
 	}
-	var hostNetwork daemonservices.HostNetwork = sys
 	application.OwnHostNetwork(hostNetwork.Close)
 
 	platform.DropPrivileges() // Currently just a stub

@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/asciimoth/almagest/bin/almagestd/daemonservices/localnetwork"
 	"github.com/asciimoth/gonnect/sysnet"
 	sysnetdebug "github.com/asciimoth/gonnect/sysnet/debug"
 )
@@ -20,9 +21,9 @@ func TestBuildDebugIntegrationNativeOutNetworkReachesLocalNetwork(t *testing.T) 
 	if err != nil {
 		t.Fatalf("ParseConfig: %v", err)
 	}
-	system, err := BuildDebugIntegration(cfg)
+	system, err := localnetwork.BuildDebug(cfg.Protected.System)
 	if err != nil {
-		t.Fatalf("BuildDebugIntegration: %v", err)
+		t.Fatalf("BuildDebug: %v", err)
 	}
 	t.Cleanup(func() {
 		if err := system.Close(); err != nil {
@@ -84,9 +85,9 @@ func TestBuildDebugIntegrationOptions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseConfig: %v", err)
 	}
-	system, err := BuildDebugIntegration(cfg)
+	system, err := localnetwork.BuildDebug(cfg.Protected.System)
 	if err != nil {
-		t.Fatalf("BuildDebugIntegration: %v", err)
+		t.Fatalf("BuildDebug: %v", err)
 	}
 	debugSystem, ok := system.(*sysnetdebug.System)
 	if !ok {
@@ -141,12 +142,48 @@ func TestSystemIntegrationUsesProtectedSystemType(t *testing.T) {
 		t.Fatalf("ParseConfig: %v", err)
 	}
 
-	system, err := SystemIntegration(cfg, nil)
+	system, err := localnetwork.Build(cfg.Protected.System, nil)
 	if err != nil {
-		t.Fatalf("SystemIntegration: %v", err)
+		t.Fatalf("localnetwork.Build: %v", err)
 	}
 	if _, ok := system.(*sysnetdebug.System); !ok {
 		t.Fatalf("system = %T, want *sysnetdebug.System", system)
+	}
+}
+
+func TestLocalNetworkRejectsUnknownSystemType(t *testing.T) {
+	cfg, err := ParseConfig([]byte(`{}`), []byte(`{
+		"System": {"Type": "unknown"}
+	}`))
+	if err != nil {
+		t.Fatalf("ParseConfig: %v", err)
+	}
+
+	system, err := localnetwork.Build(cfg.Protected.System, nil)
+	if system != nil {
+		_ = system.Close()
+		t.Fatalf("system = %T, want nil", system)
+	}
+	if !errors.Is(err, localnetwork.ErrSystemType) {
+		t.Fatalf("error = %v, want ErrSystemType", err)
+	}
+}
+
+func TestLocalNetworkRejectsUnknownDebugDefaultTunBuilder(t *testing.T) {
+	cfg, err := ParseConfig([]byte(`{}`), []byte(`{
+		"System": {"Debug": {"DefaultTun": {"Builder": "unknown"}}}
+	}`))
+	if err != nil {
+		t.Fatalf("ParseConfig: %v", err)
+	}
+
+	system, err := localnetwork.BuildDebug(cfg.Protected.System)
+	if system != nil {
+		_ = system.Close()
+		t.Fatalf("system = %T, want nil", system)
+	}
+	if err == nil || !strings.Contains(err.Error(), "unknown") {
+		t.Fatalf("error = %v, want unknown builder error", err)
 	}
 }
 
@@ -158,9 +195,9 @@ func TestDebugSystemIntegrationDoesNotRequireNativeDependencies(t *testing.T) {
 		t.Fatalf("ParseConfig: %v", err)
 	}
 	want := errors.New("native dependency unavailable")
-	system, err := SystemIntegrationWithRuntimeDependencies(cfg, nil, want)
+	system, err := localnetwork.BuildWithRuntimeDependencies(cfg.Protected.System, nil, want)
 	if err != nil {
-		t.Fatalf("SystemIntegrationWithRuntimeDependencies: %v", err)
+		t.Fatalf("BuildWithRuntimeDependencies: %v", err)
 	}
 	if _, ok := system.(*sysnetdebug.System); !ok {
 		t.Fatalf("system = %T, want *sysnetdebug.System", system)
@@ -173,7 +210,7 @@ func TestNativeSystemIntegrationPreservesBeforeChdirDependencyError(t *testing.T
 		t.Fatalf("ParseConfig: %v", err)
 	}
 	want := errors.New("wintun.dll is absent")
-	system, err := SystemIntegrationWithRuntimeDependencies(cfg, nil, want)
+	system, err := localnetwork.BuildWithRuntimeDependencies(cfg.Protected.System, nil, want)
 	if system != nil {
 		_ = system.Close()
 		t.Fatalf("system = %T, want nil", system)
@@ -217,12 +254,12 @@ func firstDebugIntegrationSubnet(t *testing.T, seed *int64) *net.IPNet {
 	}
 	var system sysnet.System
 	if seed == nil {
-		system, err = BuildDebugIntegration(cfg)
+		system, err = localnetwork.BuildDebug(cfg.Protected.System)
 	} else {
-		system, err = BuildDebugIntegration(cfg, *seed)
+		system, err = localnetwork.BuildDebug(cfg.Protected.System, *seed)
 	}
 	if err != nil {
-		t.Fatalf("BuildDebugIntegration: %v", err)
+		t.Fatalf("BuildDebug: %v", err)
 	}
 	t.Cleanup(func() {
 		if err := system.Close(); err != nil {
@@ -250,9 +287,9 @@ func TestBuildDebugIntegrationVTunSocksDefaultTunBuilder(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseConfig: %v", err)
 	}
-	system, err := BuildDebugIntegration(cfg)
+	system, err := localnetwork.BuildDebug(cfg.Protected.System)
 	if err != nil {
-		t.Fatalf("BuildDebugIntegration: %v", err)
+		t.Fatalf("BuildDebug: %v", err)
 	}
 	debugSystem := system.(*sysnetdebug.System)
 	if debugSystem.DefaultTunBuilder == nil {
@@ -285,11 +322,18 @@ func TestDebugIntegrationIgnoresMainSystemConfig(t *testing.T) {
 		t.Fatalf("ParseConfig: %v", err)
 	}
 
-	got := readDebugSystemConfig(cfg)
-	if got.DisableTun {
-		t.Fatal("readDebugSystemConfig used main System config; want protected-only config")
+	system, err := localnetwork.BuildDebug(cfg.Protected.System)
+	if err != nil {
+		t.Fatalf("BuildDebug: %v", err)
 	}
-	if got.DefaultTun.Builder != debugDefaultTunBuilderVTunSocks {
-		t.Fatalf("DefaultTun.Builder = %q, want protected default %q", got.DefaultTun.Builder, debugDefaultTunBuilderVTunSocks)
+	debugSystem := system.(*sysnetdebug.System)
+	if capability := debugSystem.Capabilities().Operation(sysnet.OperationKey{
+		Target: sysnet.TargetTun, Operation: sysnet.OpCreate, Family: sysnet.FamilyIPv4,
+	}); capability.State == sysnet.CapabilityUnsupported {
+		t.Fatal("BuildDebug used regular System config; want protected-only defaults")
 	}
+	if debugSystem.DefaultTunBuilder == nil {
+		t.Fatal("protected default DefaultTun builder is nil")
+	}
+	_ = system.Close()
 }

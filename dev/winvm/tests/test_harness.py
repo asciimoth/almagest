@@ -158,6 +158,7 @@ class HarnessTests(unittest.TestCase):
         self.assertIn('[switch]$ContinueAfterFailure', runner)
         self.assertIn('$processExitCode -ne 0 -and -not $ContinueAfterFailure', runner)
         self.assertIn("[string]$CaseIDs = ''", runner)
+        self.assertIn('$CaseID = @()\nif ($CaseIDs)', runner)
         self.assertIn("@($CaseIDs -split '~')", runner)
         self.assertIn("$_.kind -ne 'go' -or $_.id -in $CaseID", runner)
         self.assertIn('$validationManifestPath', runner)

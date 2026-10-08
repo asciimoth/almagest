@@ -8,8 +8,9 @@ import (
 	"github.com/asciimoth/gonnect/sysnet"
 )
 
-// HostNetwork is the existing host-network service contract. Keep the full
-// sysnet surface available in direct mode so native fast paths stay intact.
+// HostNetwork is the local host-network service contract. Direct mode keeps
+// the full sysnet surface and returns backend networks and TUNs unchanged so
+// native fast paths stay intact. This local contract is not an IPC schema.
 type HostNetwork interface {
 	sysnet.System
 }

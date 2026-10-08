@@ -162,7 +162,9 @@ Daemon:
 - `bin/almagestd/main.go`: startup sequence and shutdown context.
 - `bin/almagestd/cli_paths.go`: CLI config path resolution.
 - `bin/almagestd/config.go`: HuJSON parsing and config structs.
-- `bin/almagestd/system.go`: debug/native system integration selection.
+- `bin/almagestd/daemonservices/localnetwork/`: direct debug/native host-network
+  service selection and construction. It returns the original sysnet data-path
+  objects without an IPC or proxy wrapper.
 - `bin/almagestd/api.go`: localhost admin API listener and surface dispatch.
 - `bin/almagestd/api_config.go`: editable HuJSON config API. It never exposes
   protected config and uses revision tokens for conflict detection.

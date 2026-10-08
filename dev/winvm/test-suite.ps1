@@ -7,7 +7,8 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
-$CaseID = if ($CaseIDs) { @($CaseIDs -split '~') } else { @() }
+$CaseID = @()
+if ($CaseIDs) { $CaseID = @($CaseIDs -split '~') }
 
 $manifestPath = Join-Path $SourceDir 'dev\winvm\test-suites.json'
 $manifest = Get-Content -Raw $manifestPath | ConvertFrom-Json
