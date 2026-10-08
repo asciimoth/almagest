@@ -21,6 +21,56 @@ SPEC.loader.exec_module(MODULE)
 
 
 class CycleTests(unittest.TestCase):
+    def test_timeouts_default_off_and_require_positive_finite_seconds(self):
+        with tempfile.TemporaryDirectory() as temp:
+            runner = MODULE.Runner(Path(temp), {})
+            self.assertEqual(runner.timeouts, {
+                "TEST_CYCLES_TIMEOUT": None,
+                "TEST_CYCLES_SOFT_TIMEOUT": None,
+            })
+        for value in ("0", "-1", "invalid", "nan", "inf"):
+            with self.subTest(value=value), tempfile.TemporaryDirectory() as temp:
+                with self.assertRaisesRegex(ValueError, "positive number of seconds"):
+                    MODULE.Runner(Path(temp), {"TEST_CYCLES_TIMEOUT": value})
+
+    def test_hard_timeout_requests_the_normal_stop_path(self):
+        with tempfile.TemporaryDirectory() as temp:
+            runner = MODULE.Runner(Path(temp), {"TEST_CYCLES_TIMEOUT": "0.02"})
+            watcher = threading.Thread(target=runner.watch_timeouts,
+                                       args=(time.monotonic(),))
+            watcher.start()
+            watcher.join(timeout=1)
+            self.assertFalse(watcher.is_alive())
+            self.assertTrue(runner.stop.is_set())
+            self.assertEqual(runner.reason, "TEST_CYCLES_TIMEOUT reached")
+
+    def test_soft_timeout_waits_for_a_failure(self):
+        with tempfile.TemporaryDirectory() as temp:
+            runner = MODULE.Runner(Path(temp), {"TEST_CYCLES_SOFT_TIMEOUT": "0.02"})
+            watcher = threading.Thread(target=runner.watch_timeouts,
+                                       args=(time.monotonic(),))
+            watcher.start()
+            self.assertTrue(runner.soft_timeout_reached.wait(timeout=1))
+            self.assertFalse(runner.stop.is_set())
+            runner.note_failure()
+            watcher.join(timeout=1)
+            self.assertFalse(watcher.is_alive())
+            self.assertEqual(runner.reason,
+                             "TEST_CYCLES_SOFT_TIMEOUT reached after a failure")
+
+    def test_soft_timeout_stops_at_deadline_after_an_earlier_failure(self):
+        with tempfile.TemporaryDirectory() as temp:
+            runner = MODULE.Runner(Path(temp), {"TEST_CYCLES_SOFT_TIMEOUT": "0.02"})
+            runner.note_failure()
+            self.assertFalse(runner.stop.is_set())
+            watcher = threading.Thread(target=runner.watch_timeouts,
+                                       args=(time.monotonic(),))
+            watcher.start()
+            watcher.join(timeout=1)
+            self.assertFalse(watcher.is_alive())
+            self.assertEqual(runner.reason,
+                             "TEST_CYCLES_SOFT_TIMEOUT reached after a failure")
+
     def test_winvm_toggle_defaults_off_and_enables_complete_loop(self):
         with tempfile.TemporaryDirectory() as temp:
             disabled = MODULE.Runner(Path(temp), {})

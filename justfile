@@ -12,7 +12,7 @@ test-go: certcat-ensure-generated build-web
   ./scripts/test-gonnect-regressions.sh
   ./scripts/test-gonnect-netstack-regressions.sh
 
-# Run until Ctrl+C; keep failure logs under artifacts/test-cycles/.
+# Run until stopped or an optional timeout expires; keep failure logs under artifacts/test-cycles/.
 test-cycles:
   @python3 ./scripts/test-cycles.py
 

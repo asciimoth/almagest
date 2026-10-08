@@ -100,6 +100,17 @@ Docker E2E, and optional Windows VM loops. Stop with Ctrl+C, SIGTERM, or SIGHUP.
 E2E_JOBS=4 E2E_INCLUDE_PRIVILEGED=1 RUN_WINVM_TESTS=1 just test-cycles
 ```
 
+`TEST_CYCLES_TIMEOUT` sets a hard session timeout in seconds.
+`TEST_CYCLES_SOFT_TIMEOUT` sets a soft session timeout in seconds. At the soft
+timeout, the command stops if any test type has failed. If no test has failed,
+the command continues until the first failure and then stops. Both timeouts are
+disabled when their environment variables are unset or empty. They accept
+positive decimal values and include preparation time. For example:
+
+```sh
+TEST_CYCLES_TIMEOUT=21600 TEST_CYCLES_SOFT_TIMEOUT=3600 just test-cycles
+```
+
 Preparation runs once before any loop starts. It generates the certificate
 catalog and web assets, prepares all selected Docker images, and, when enabled,
 builds or reuses the Windows base image and stages one Windows test payload.
@@ -130,10 +141,11 @@ to its retained disk and logs under `artifacts/winvm/`, which supports
 Retained failures can use substantial disk space; no failure evidence is
 automatically removed.
 
-On stop, the command signals active process groups and waits for the Docker and
-VM cleanup handlers. Docker resources have a per-run label so the scheduler can
-also remove helpers left by interrupted case cleanup. Interrupted loops are
-separate from completed or failed loops. It prints and saves `report.txt` with
+On stop, including a hard or soft timeout, the command signals active process
+groups and waits for the Docker and VM cleanup handlers. Docker resources have
+a per-run label so the scheduler can also remove helpers left by interrupted
+case cleanup. Interrupted loops are separate from completed or failed loops. It
+prints and saves `report.txt` with
 the source revision, worktree state,
 flags, per-type counts, failure names, average successful-loop times, and evidence
 paths. Copy this report to a troubleshooting agent. `loops.jsonl` contains every

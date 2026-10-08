@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Run independent Go, Docker, and Windows VM test loops until signalled."""
+"""Run independent Go, Docker, and Windows VM test loops until stopped."""
 
 import argparse
 import collections
 import datetime
 import json
+import math
 import os
 from pathlib import Path
 import platform
@@ -30,6 +31,20 @@ DEFAULTS = {
     "RUN_WINVM_TESTS": "0",
 }
 GO_FLAGS = ["-count=1", "-p=1", "-parallel=1", "-json"]
+TIMEOUT_KEYS = ("TEST_CYCLES_TIMEOUT", "TEST_CYCLES_SOFT_TIMEOUT")
+
+
+def optional_seconds(env, key):
+    value = env.get(key)
+    if value is None or not value.strip():
+        return None
+    try:
+        seconds = float(value)
+    except ValueError as error:
+        raise ValueError(f"{key} must be a positive number of seconds") from error
+    if not math.isfinite(seconds) or not seconds > 0:
+        raise ValueError(f"{key} must be a positive number of seconds")
+    return seconds
 
 
 def go_commands():
@@ -128,6 +143,10 @@ class Runner:
             if not self.env.get(key):
                 self.env[key] = value
         self.stop = threading.Event()
+        self.failure_detected = threading.Event()
+        self.soft_timeout_reached = threading.Event()
+        self.timeout_wake = threading.Event()
+        self.state_lock = threading.Lock()
         self.lock = threading.Lock()
         self.reason = "running"
         self.errors = []
@@ -142,6 +161,10 @@ class Runner:
         if self.env["RUN_WINVM_TESTS"] == "1":
             self.enabled.append("winvm")
         self.flags = {key: self.env[key] for key in DEFAULTS}
+        self.timeouts = {key: optional_seconds(self.env, key) for key in TIMEOUT_KEYS}
+        for key in TIMEOUT_KEYS:
+            if self.timeouts[key] is not None:
+                self.flags[key] = self.env[key]
         for key in ("E2E_RANDOM_SEED", "E2E_BUILD_ATTEMPTS", "E2E_BUILD_RETRY_DELAY",
                     "E2E_BUILD_RETRY_MAX_DELAY", "E2E_COVERPKG", "GOFLAGS",
                     "GOMAXPROCS", "WINVM_ENV_FILE", "WINVM_CACHE_DIR"):
@@ -155,8 +178,42 @@ class Runner:
             print(message, flush=True)
 
     def signal(self, number, _frame):
-        self.reason = signal.Signals(number).name
-        self.stop.set()
+        self.request_stop(signal.Signals(number).name)
+
+    def request_stop(self, reason):
+        with self.state_lock:
+            if self.reason == "running":
+                self.reason = reason
+            self.stop.set()
+            self.timeout_wake.set()
+
+    def note_failure(self):
+        self.failure_detected.set()
+        self.timeout_wake.set()
+        if self.soft_timeout_reached.is_set():
+            self.request_stop("TEST_CYCLES_SOFT_TIMEOUT reached after a failure")
+
+    def watch_timeouts(self, started):
+        hard = self.timeouts["TEST_CYCLES_TIMEOUT"]
+        soft = self.timeouts["TEST_CYCLES_SOFT_TIMEOUT"]
+        hard_deadline = started + hard if hard is not None else None
+        soft_deadline = started + soft if soft is not None else None
+        while not self.stop.is_set():
+            now = time.monotonic()
+            if hard_deadline is not None and now >= hard_deadline:
+                self.request_stop("TEST_CYCLES_TIMEOUT reached")
+                return
+            if soft_deadline is not None and now >= soft_deadline:
+                self.soft_timeout_reached.set()
+                if self.failure_detected.is_set():
+                    self.request_stop("TEST_CYCLES_SOFT_TIMEOUT reached after a failure")
+                    return
+                soft_deadline = None
+            deadlines = [deadline for deadline in (hard_deadline, soft_deadline)
+                         if deadline is not None]
+            wait = max(0, min(deadlines) - now) if deadlines else None
+            self.timeout_wake.wait(wait)
+            self.timeout_wake.clear()
 
     def command(self, argv, log, env=None):
         """Give each command a process group so stop reaches all its children."""
@@ -300,8 +357,7 @@ class Runner:
             details = traceback.format_exc()
             (self.session / f"{kind}-runner-error.log").write_text(details)
             self.errors.append(f"{kind} runner error; see {kind}-runner-error.log")
-            self.reason = "runner error"
-            self.stop.set()
+            self.request_stop("runner error")
 
     def iteration(self, kind):
         stats = self.stats[kind]
@@ -342,6 +398,8 @@ class Runner:
             if self.stop.is_set():
                 break
             statuses.append(self.command(argv, directory / f"command-{number}.log", env))
+            if statuses[-1] != 0 and not self.stop.is_set():
+                self.note_failure()
         elapsed = time.monotonic() - started
         interrupted = self.stop.is_set()
         failed = any(status != 0 for status in statuses)
@@ -415,9 +473,15 @@ class Runner:
 
     def run(self):
         threads = []
+        timeout_thread = None
         self.say("Flags: " + shlex.join(f"{k}={v}" for k, v in self.flags.items()))
         self.say("winvm tests: " + ("enabled" if "winvm" in self.enabled else "disabled"))
         try:
+            if any(timeout is not None for timeout in self.timeouts.values()):
+                timeout_thread = threading.Thread(
+                    target=self.watch_timeouts, args=(time.monotonic(),),
+                    name="test-cycles-timeout")
+                timeout_thread.start()
             if self.prepare():
                 for kind in self.enabled:
                     thread = threading.Thread(target=self.loop, args=(kind,))
@@ -427,11 +491,14 @@ class Runner:
                     thread.join()
         except Exception:
             self.errors.append(traceback.format_exc())
-            self.reason = "runner error"
+            self.request_stop("runner error")
         finally:
             self.stop.set()
+            self.timeout_wake.set()
             for thread in threads:
                 thread.join()
+            if timeout_thread:
+                timeout_thread.join()
             self.report()
         return 1 if self.errors else 0
 
@@ -442,7 +509,10 @@ def main():
         epilog="Use just test-cycles to load .env. Logs: artifacts/test-cycles/. "
                "Set RUN_WINVM_TESTS=1 to enable Windows VM tests.")
     parser.parse_args()
-    runner = Runner()
+    try:
+        runner = Runner()
+    except ValueError as error:
+        parser.error(str(error))
     for number in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
         signal.signal(number, runner.signal)
     return runner.run()
