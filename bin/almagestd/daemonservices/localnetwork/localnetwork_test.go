@@ -75,7 +75,7 @@ func TestBuildDebugIgnoresNativeDependencyFailure(t *testing.T) {
 		},
 	})
 	want := errors.New("native dependency unavailable")
-	system, err := BuildWithRuntimeDependencies(config, nil, want)
+	system, err := BuildWithRuntimeDependencies(config, nil, nil, want)
 	if err != nil {
 		t.Fatalf("BuildWithRuntimeDependencies: %v", err)
 	}

@@ -13,6 +13,7 @@ import (
 	"github.com/asciimoth/almagest/bin/almagestd/args"
 	cmdrunner "github.com/asciimoth/almagest/bin/almagestd/command"
 	"github.com/asciimoth/almagest/bin/almagestd/daemonservices"
+	"github.com/asciimoth/almagest/bin/almagestd/daemonservices/localconfig"
 	"github.com/asciimoth/almagest/bin/almagestd/daemonservices/localnetwork"
 	"github.com/asciimoth/almagest/bin/almagestd/internal/daemonruntime"
 	"github.com/asciimoth/almagest/bin/almagestd/platform"
@@ -200,8 +201,10 @@ func runDaemon(
 	admin.experimentalNodeTypes = daemonExperimentalNodeTypes(arguments.Experimental)
 
 	logf := NewLogFactory(conf.LogCache().MergeArgs(&arguments))
+	application.OwnLogging(logf.Close)
+	configBootstrap.Persistence = localconfig.WithLogger(configBootstrap.Persistence, logf.ConfigLogger())
 	logProjectVersionStatus(admin.projectVersionStatus)
-	daemonLogger := logf.DaemonLogger()
+	daemonLogger := logf.RuntimeLogger()
 	nodeNames, err := newDaemonNodeNameIndex(kv, conf.Main, daemonLogger)
 	if err != nil {
 		return fmt.Errorf("node name index setup: %w", err)
@@ -209,7 +212,7 @@ func runDaemon(
 	application.OwnNodeNames(nodeNames.Close)
 	admin.nodeNames = nodeNames.index
 
-	commandRunner, err := cmdrunner.NewRunner(daemonLogger, conf.Protected.CommandRunner)
+	commandRunner, err := cmdrunner.NewRunner(logf.CommandLogger(), conf.Protected.CommandRunner)
 	if err != nil {
 		return err
 	}
@@ -222,6 +225,7 @@ func runDaemon(
 	hostNetwork, err := localnetwork.BuildWithRuntimeDependencies(
 		conf.Protected.System,
 		backendCallbacks,
+		logf.NetworkLogger(),
 		runtimeDependencyErr,
 		randomSeeds.system,
 	)

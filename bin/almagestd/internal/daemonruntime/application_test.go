@@ -25,6 +25,7 @@ func TestApplicationClosesOwnedServicesOnceInOrder(t *testing.T) {
 	a.OwnNodeNames(record("names"))
 	a.OwnStorage(recordErr("storage"))
 	a.OwnFiles(recordErr("files"))
+	a.OwnLogging(recordErr("logging"))
 	if err := a.Close(); err != nil {
 		t.Fatalf("Close() error = %v", err)
 	}
@@ -34,7 +35,7 @@ func TestApplicationClosesOwnedServicesOnceInOrder(t *testing.T) {
 	mu.Lock()
 	got := strings.Join(calls, ",")
 	mu.Unlock()
-	const want = "cancel,admin,wait,engine,flush,commands,names,storage,files"
+	const want = "cancel,admin,wait,engine,flush,commands,names,storage,files,logging"
 	if got != want {
 		t.Fatalf("cleanup order = %q, want %q", got, want)
 	}

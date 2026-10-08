@@ -766,7 +766,12 @@ func reserveTCPPort(t *testing.T) int {
 
 func waitFor(t *testing.T, description string, ready func() bool) {
 	t.Helper()
-	deadline := time.Now().Add(integrationTimeout)
+	waitForTimeout(t, integrationTimeout, description, ready)
+}
+
+func waitForTimeout(t *testing.T, timeout time.Duration, description string, ready func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		if ready() {
 			return

@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/asciimoth/almagest/bin/api"
@@ -45,11 +46,25 @@ func newLogLevelEnabled(level golog.Level) logLevelEnabled {
 }
 
 type LogFactory struct {
-	level logLevelEnabled
-	mu    sync.RWMutex
-	next  uint64
-	subs  map[uint64]func(api.LogEntry)
-	cache map[string]*logRing
+	level   logLevelEnabled
+	mu      sync.RWMutex
+	next    uint64
+	subs    map[uint64]*logSubscriber
+	cache   map[string]*logRing
+	closed  bool
+	dropped atomic.Uint64
+}
+
+const logSubscriberQueueSize = 64
+
+// logSubscriber isolates a logging caller from one slow admin subscriber.
+// Stopping a subscriber never waits for its callback. A callback can be
+// blocked in an operating-system write that the log service does not own.
+type logSubscriber struct {
+	callback func(api.LogEntry)
+	entries  chan api.LogEntry
+	done     chan struct{}
+	once     sync.Once
 }
 
 type logSource struct {
@@ -74,7 +89,7 @@ func NewLogFactory(cfg LogCacheConfig) *LogFactory {
 	}
 	return &LogFactory{
 		level: newLogLevelEnabled(golog.Default.Level),
-		subs:  map[uint64]func(api.LogEntry){},
+		subs:  map[uint64]*logSubscriber{},
 		cache: cache,
 	}
 }
@@ -89,11 +104,42 @@ func (l *LogFactory) EngineLogger() logging.Logger {
 }
 
 func (l *LogFactory) DaemonLogger() logging.Logger {
+	return l.RuntimeLogger()
+}
+
+// RuntimeLogger returns the local logger for daemon runtime orchestration.
+func (l *LogFactory) RuntimeLogger() logging.Logger {
 	return &Logger{
 		prefix: "[daemon]",
 		level:  l.level,
 		logf:   l,
 		source: logSource{name: "daemon"},
+	}
+}
+
+// NetworkLogger returns the local logger for host-network control.
+func (l *LogFactory) NetworkLogger() logging.Logger {
+	return l.roleLogger("network", "network")
+}
+
+// ConfigLogger returns the local logger for fixed-target config persistence.
+func (l *LogFactory) ConfigLogger() logging.Logger {
+	return l.roleLogger("config", "config")
+}
+
+// CommandLogger returns the local logger for allowed commands and callbacks.
+func (l *LogFactory) CommandLogger() logging.Logger {
+	// Command records historically use the daemon source in the admin API.
+	// Keep that contract while the operator output gets a command role label.
+	return l.roleLogger("command", "daemon")
+}
+
+func (l *LogFactory) roleLogger(role, source string) logging.Logger {
+	return &Logger{
+		prefix: "[" + role + "]",
+		level:  l.level,
+		logf:   l,
+		source: logSource{name: source},
 	}
 }
 
@@ -285,24 +331,51 @@ func (l *LogFactory) append(entry api.LogEntry) {
 	if ring := l.cache[entry.Level]; ring != nil {
 		ring.append(entry)
 	}
-	callbacks := make([]func(api.LogEntry), 0, len(l.subs))
-	for _, callback := range l.subs {
-		callbacks = append(callbacks, callback)
+	if l.closed {
+		l.mu.Unlock()
+		return
+	}
+	for _, subscriber := range l.subs {
+		select {
+		case subscriber.entries <- entry:
+		default:
+			l.dropped.Add(1)
+		}
 	}
 	l.mu.Unlock()
-
-	for _, callback := range callbacks {
-		callback(entry)
-	}
 }
 
 func (l *LogFactory) Subscribe(callback func(api.LogEntry)) (uint64, []api.LogEntry) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	if l.closed || callback == nil {
+		return 0, l.snapshotLocked()
+	}
 	l.next++
 	id := l.next
-	l.subs[id] = callback
+	subscriber := &logSubscriber{
+		callback: callback,
+		entries:  make(chan api.LogEntry, logSubscriberQueueSize),
+		done:     make(chan struct{}),
+	}
+	l.subs[id] = subscriber
+	go subscriber.run()
 	return id, l.snapshotLocked()
+}
+
+func (s *logSubscriber) run() {
+	for {
+		select {
+		case <-s.done:
+			return
+		case entry := <-s.entries:
+			s.callback(entry)
+		}
+	}
+}
+
+func (s *logSubscriber) stop() {
+	s.once.Do(func() { close(s.done) })
 }
 
 func (l *LogFactory) TotalCacheSize() int {
@@ -320,8 +393,47 @@ func (l *LogFactory) TotalCacheSize() int {
 
 func (l *LogFactory) Unsubscribe(id uint64) {
 	l.mu.Lock()
-	defer l.mu.Unlock()
+	subscriber := l.subs[id]
 	delete(l.subs, id)
+	l.mu.Unlock()
+	if subscriber != nil {
+		subscriber.stop()
+	}
+}
+
+// DroppedSubscriberEntries reports records discarded because a subscriber's
+// bounded delivery queue was full.
+func (l *LogFactory) DroppedSubscriberEntries() uint64 {
+	return l.dropped.Load()
+}
+
+// Close stops log delivery. It does not wait for callbacks that are blocked in
+// subscriber-owned I/O, so log shutdown cannot hold application shutdown open.
+func (l *LogFactory) Close() error {
+	l.mu.Lock()
+	if l.closed {
+		l.mu.Unlock()
+		return nil
+	}
+	l.closed = true
+	subscribers := make([]*logSubscriber, 0, len(l.subs))
+	for id, subscriber := range l.subs {
+		subscribers = append(subscribers, subscriber)
+		delete(l.subs, id)
+	}
+	l.mu.Unlock()
+	for _, subscriber := range subscribers {
+		subscriber.stop()
+	}
+	return nil
+}
+
+// DeliverDisplayEntry puts an already-shaped diagnostic record in the local
+// admin cache and subscriptions. It does not write to operator output and does
+// not interpret a fatal severity as a lifecycle instruction.
+func (l *LogFactory) DeliverDisplayEntry(entry api.LogEntry) {
+	entry.Message = strings.TrimSpace(sanitizeLogMessage(entry.Message))
+	l.append(entry)
 }
 
 func (l *LogFactory) snapshotLocked() []api.LogEntry {

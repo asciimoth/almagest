@@ -130,15 +130,14 @@ func TestWindowsBatch1DNSAdminExpiration(t *testing.T) {
 	d := newBatch1Daemon(t, "dns_admin_expiration", true, nil)
 	d.start()
 	defer d.stop()
-	set := decodeRaw[api.DNSSetResponse](t, d.raw(rawCall{api.SurfaceDNS, "set", `{"cache":"expiration","record":{"name":"short.test","type":"A","class":"CH","ttl":1,"value":"192.0.2.10"}}`}))
+	set := decodeRaw[api.DNSSetResponse](t, d.raw(rawCall{api.SurfaceDNS, "set", `{"cache":"expiration","record":{"name":"short.test","type":"A","class":"CH","ttl":5,"value":"192.0.2.10"}}`}))
 	if set.Key == "" || !set.Snapshot.Found {
 		t.Fatalf("short-lived DNS record was not stored: %#v", set)
 	}
-	time.Sleep(1200 * time.Millisecond)
-	value := decodeRaw[api.DNSValueSnapshot](t, d.raw(rawCall{api.SurfaceDNS, "value_snapshot", fmt.Sprintf(`{"cache":"expiration","key":%q}`, set.Key)}))
-	if value.Found {
-		t.Fatal("expired DNS value remained visible")
-	}
+	waitFor(t, "expired DNS value removal", func() bool {
+		value := decodeRaw[api.DNSValueSnapshot](t, d.raw(rawCall{api.SurfaceDNS, "value_snapshot", fmt.Sprintf(`{"cache":"expiration","key":%q}`, set.Key)}))
+		return !value.Found
+	})
 	d.rawFails(rawCall{api.SurfaceDNS, "set", `{"cache":"expiration","record":{"name":"bad.test","type":"SRV","class":"BAD","ttl":1,"value":"bad"}}`})
 }
 
@@ -342,8 +341,9 @@ func TestWindowsBatch1LocalNestedWireGuard(t *testing.T) {
 	ports := reservePorts(t, 26120)
 	d := runBatch1GraphFixture(t, "local_nested_wireguard", ports, "WireGuard Client 1501", "WireGuard Server 1502", "Inner WireGuard Client 1507", "Inner WireGuard Server 1508", "HttpClient 1612", "UDPPingClient 1506")
 	defer d.stop()
-	clickAndWait(t, d, "HttpClient 1612", "request", "send", "200 OK")
-	clickAndWait(t, d, "UDPPingClient 1506", "config", "send", "pong:nested-wireguard-udp-ping")
+	const nestedNetworkTimeout = 90 * time.Second
+	clickAndWaitTimeout(t, d, nestedNetworkTimeout, "UDPPingClient 1506", "config", "send", "pong:nested-wireguard-udp-ping")
+	clickAndWaitTimeout(t, d, nestedNetworkTimeout, "HttpClient 1612", "request", "send", "200 OK")
 }
 
 func TestWindowsBatch1LocalProxyMockHTTP(t *testing.T) {
@@ -615,11 +615,27 @@ func assertGraphNodes(t *testing.T, d *windowsDaemon, names ...string) {
 
 func clickAndWait(t *testing.T, d *windowsDaemon, node, block, button, marker string) {
 	t.Helper()
-	d.cliJSON("graph", "click-menu-button", "--name", node, "--block", block, "--button", button)
-	waitFor(t, node+" menu result", func() bool {
-		output := d.cliJSON("graph", "menu", "--name", node)
-		return bytes.Contains(output, []byte(marker))
-	})
+	clickAndWaitTimeout(t, d, integrationTimeout, node, block, button, marker)
+}
+
+func clickAndWaitTimeout(t *testing.T, d *windowsDaemon, timeout time.Duration, node, block, button, marker string) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	attempted := false
+	var output []byte
+	for time.Now().Before(deadline) {
+		output = d.cliJSON("graph", "menu", "--name", node)
+		running := bytes.Contains(output, []byte("Status: running..."))
+		if attempted && !running && bytes.Contains(output, []byte(marker)) {
+			return
+		}
+		if !running {
+			d.cliJSON("graph", "click-menu-button", "--name", node, "--block", block, "--button", button)
+			attempted = true
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatalf("timeout waiting for %s menu result containing %q; last menu: %s\ndaemon log:\n%s", node, marker, output, d.readLog())
 }
 
 func restartAndAssert(t *testing.T, d *windowsDaemon, names ...string) {

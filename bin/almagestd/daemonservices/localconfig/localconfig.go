@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/asciimoth/almagest/bin/almagestd/daemonservices"
+	"github.com/asciimoth/almagest/lib/logging"
 )
 
 const retainedResults = 128
@@ -32,11 +33,51 @@ type Persistence struct {
 	order   []string
 }
 
+type loggingPersistence struct {
+	daemonservices.ConfigPersistence
+	logger logging.Logger
+}
+
 // New constructs persistence for one fixed target.
 func New(read func() ([]byte, error), replace func([]byte) error) *Persistence {
 	return &Persistence{
 		read: read, replace: replace, results: make(map[string]receipt),
 	}
+}
+
+// WithLogger gives the local config-persistence role its own logger. The
+// wrapper keeps the fixed-target contract and does not expose config contents.
+func WithLogger(persistence daemonservices.ConfigPersistence, logger logging.Logger) daemonservices.ConfigPersistence {
+	if persistence == nil || logger == nil {
+		return persistence
+	}
+	return &loggingPersistence{ConfigPersistence: persistence, logger: logger}
+}
+
+func (p *loggingPersistence) ReadCurrent() (daemonservices.ConfigDocument, error) {
+	document, err := p.ConfigPersistence.ReadCurrent()
+	if err != nil {
+		p.logger.Warnf("read current config failed: %v", err)
+	}
+	return document, err
+}
+
+func (p *loggingPersistence) Replace(expectedRevision, operationID string, data []byte) daemonservices.ConfigOperationResult {
+	result := p.ConfigPersistence.Replace(expectedRevision, operationID, data)
+	if err := result.Err(); err != nil {
+		p.logger.Warnf("config replace failed: %v", err)
+	} else {
+		p.logger.Debug("config replace committed")
+	}
+	return result
+}
+
+func (p *loggingPersistence) GetResult(operationID string) (daemonservices.ConfigOperationResult, error) {
+	result, err := p.ConfigPersistence.GetResult(operationID)
+	if err != nil {
+		p.logger.Warnf("config result lookup failed: %v", err)
+	}
+	return result, err
 }
 
 func (p *Persistence) ReadCurrent() (daemonservices.ConfigDocument, error) {

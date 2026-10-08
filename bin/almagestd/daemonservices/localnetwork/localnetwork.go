@@ -17,6 +17,7 @@ import (
 
 	"github.com/asciimoth/almagest/bin/almagestd/daemonservices"
 	"github.com/asciimoth/almagest/bin/almagestd/platform"
+	"github.com/asciimoth/almagest/lib/logging"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/gonnect"
 	netstackhelpers "github.com/asciimoth/gonnect-netstack/helpers"
@@ -66,7 +67,7 @@ func Build(
 	commands daemonservices.BackendCallbackDispatcher,
 	randomSeed ...int64,
 ) (daemonservices.HostNetwork, error) {
-	return build(cfg, commands, nil, randomSeed...)
+	return build(cfg, commands, nil, nil, randomSeed...)
 }
 
 // BuildWithRuntimeDependencies validates the native dependency
@@ -76,15 +77,17 @@ func Build(
 func BuildWithRuntimeDependencies(
 	cfg configer.Config,
 	commands daemonservices.BackendCallbackDispatcher,
+	logger logging.Logger,
 	beforeChdirErr error,
 	randomSeed ...int64,
 ) (daemonservices.HostNetwork, error) {
-	return build(cfg, commands, &beforeChdirErr, randomSeed...)
+	return build(cfg, commands, logger, &beforeChdirErr, randomSeed...)
 }
 
 func build(
 	cfg configer.Config,
 	commands daemonservices.BackendCallbackDispatcher,
+	logger logging.Logger,
 	beforeChdirErr *error,
 	randomSeed ...int64,
 ) (daemonservices.HostNetwork, error) {
@@ -95,8 +98,8 @@ func build(
 			if typ, ok := typ.(string); ok {
 				switch typ {
 				case "debug":
-					golog.Warn("Using debug system integration")
-					return BuildDebug(cfg, randomSeed...)
+					logWarn(logger, "Using debug system integration")
+					return buildDebug(cfg, logger, randomSeed...)
 				case "native":
 					// noop
 				default:
@@ -122,6 +125,10 @@ func build(
 
 // BuildDebug constructs the direct debug host-network service.
 func BuildDebug(cfg configer.Config, randomSeed ...int64) (daemonservices.HostNetwork, error) {
+	return buildDebug(cfg, nil, randomSeed...)
+}
+
+func buildDebug(cfg configer.Config, logger logging.Logger, randomSeed ...int64) (daemonservices.HostNetwork, error) {
 	debugCfg := readDebugSystemConfig(cfg)
 	localNetwork := gonnect.NativeConfig{}.Build()
 	system := &sysnetdebug.System{
@@ -141,7 +148,7 @@ func BuildDebug(cfg configer.Config, randomSeed ...int64) (daemonservices.HostNe
 	switch debugCfg.DefaultTun.Builder {
 	case "", debugDefaultTunBuilderVTunSocks:
 		system.DefaultTunBuilder = func(opts sysnet.DefaultTunOpts) (tun.Tun, error) {
-			return buildDebugDefaultVTunSocks(debugCfg.DefaultTun, localNetwork, opts)
+			return buildDebugDefaultVTunSocks(debugCfg.DefaultTun, localNetwork, opts, logger)
 		}
 	case debugDefaultTunBuilderPipe:
 	default:
@@ -224,7 +231,12 @@ func readDebugSystemConfig(cfg configer.Config) debugSystemConfig {
 	return out
 }
 
-func buildDebugDefaultVTunSocks(cfg debugDefaultTunConfig, local gonnect.Network, opts sysnet.DefaultTunOpts) (tun.Tun, error) {
+func buildDebugDefaultVTunSocks(
+	cfg debugDefaultTunConfig,
+	local gonnect.Network,
+	opts sysnet.DefaultTunOpts,
+	logger logging.Logger,
+) (tun.Tun, error) {
 	localAddrs, err := debugDefaultTunAddrs(opts.TunAddrs)
 	if err != nil {
 		return nil, err
@@ -255,13 +267,14 @@ func buildDebugDefaultVTunSocks(cfg debugDefaultTunConfig, local gonnect.Network
 		_ = vt.Close()
 		return nil, err
 	}
-	golog.Infof("debug DefaultTun SOCKS proxy listening on %s", listener.Addr())
+	logInfof(logger, "debug DefaultTun SOCKS proxy listening on %s", listener.Addr())
 
 	ctx, cancel := context.WithCancel(context.Background())
 	dtun := &debugDefaultVTunSocks{
 		Tun:      vt,
 		cancel:   cancel,
 		listener: listener,
+		logger:   logger,
 	}
 	server := &socksgo.Server{
 		Handlers:       debugDefaultTunSocksHandlers(),
@@ -309,6 +322,7 @@ type debugDefaultVTunSocks struct {
 	once     sync.Once
 	cancel   context.CancelFunc
 	listener net.Listener
+	logger   logging.Logger
 }
 
 func (t *debugDefaultVTunSocks) serve(ctx context.Context, server *socksgo.Server) {
@@ -318,16 +332,48 @@ func (t *debugDefaultVTunSocks) serve(ctx context.Context, server *socksgo.Serve
 			select {
 			case <-ctx.Done():
 			default:
-				golog.Warnf("debug DefaultTun SOCKS proxy stopped: %v", err)
+				logWarnf(t.logger, "debug DefaultTun SOCKS proxy stopped: %v", err)
 			}
 			return
 		}
 		go func() {
 			if err := server.Accept(ctx, conn, false); err != nil {
-				golog.Debugf("debug DefaultTun SOCKS client closed: %v", err)
+				logDebugf(t.logger, "debug DefaultTun SOCKS client closed: %v", err)
 			}
 		}()
 	}
+}
+
+func logWarn(logger logging.Logger, message string) {
+	if logger != nil {
+		logger.Warn(message)
+		return
+	}
+	golog.Warn(message)
+}
+
+func logInfof(logger logging.Logger, format string, args ...any) {
+	if logger != nil {
+		logger.Infof(format, args...)
+		return
+	}
+	golog.Infof(format, args...)
+}
+
+func logWarnf(logger logging.Logger, format string, args ...any) {
+	if logger != nil {
+		logger.Warnf(format, args...)
+		return
+	}
+	golog.Warnf(format, args...)
+}
+
+func logDebugf(logger logging.Logger, format string, args ...any) {
+	if logger != nil {
+		logger.Debugf(format, args...)
+		return
+	}
+	golog.Debugf(format, args...)
 }
 
 func (t *debugDefaultVTunSocks) Close() error {

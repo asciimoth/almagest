@@ -195,7 +195,7 @@ func TestDebugSystemIntegrationDoesNotRequireNativeDependencies(t *testing.T) {
 		t.Fatalf("ParseConfig: %v", err)
 	}
 	want := errors.New("native dependency unavailable")
-	system, err := localnetwork.BuildWithRuntimeDependencies(cfg.Protected.System, nil, want)
+	system, err := localnetwork.BuildWithRuntimeDependencies(cfg.Protected.System, nil, nil, want)
 	if err != nil {
 		t.Fatalf("BuildWithRuntimeDependencies: %v", err)
 	}
@@ -210,7 +210,7 @@ func TestNativeSystemIntegrationPreservesBeforeChdirDependencyError(t *testing.T
 		t.Fatalf("ParseConfig: %v", err)
 	}
 	want := errors.New("wintun.dll is absent")
-	system, err := localnetwork.BuildWithRuntimeDependencies(cfg.Protected.System, nil, want)
+	system, err := localnetwork.BuildWithRuntimeDependencies(cfg.Protected.System, nil, nil, want)
 	if system != nil {
 		_ = system.Close()
 		t.Fatalf("system = %T, want nil", system)

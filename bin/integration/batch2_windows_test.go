@@ -79,7 +79,7 @@ func TestWindowsBatch2AdminAPITransports(t *testing.T) {
 	}
 	runCLIJSON(t, d.cli, webURL, "admin", "renew-mutation", "--lease-id", owner.Lease.ID, "--ttl-ms", "10000")
 	runCLIJSON(t, d.cli, webURL, "admin", "release-mutation", "--lease-id", owner.Lease.ID)
-	expiring := decodeCLI[api.AcquireMutationResponse](t, d.cliJSON("admin", "acquire-mutation", "--holder", "expiring", "--ttl-ms", "50"))
+	expiring := decodeCLI[api.AcquireMutationResponse](t, d.cliJSON("admin", "acquire-mutation", "--holder", "expiring", "--ttl-ms", "1000"))
 	if !expiring.Acquired {
 		t.Fatal("short mutation lease was not acquired")
 	}

@@ -29,6 +29,7 @@ type Application struct {
 	closeNodeNames func()
 	closeStorage   func() error
 	cleanupFiles   func() error
+	closeLogging   func() error
 	timeout        time.Duration
 }
 
@@ -67,6 +68,7 @@ func (a *Application) OwnCommands(close func())          { a.closeCommands = clo
 func (a *Application) OwnNodeNames(close func())         { a.closeNodeNames = close }
 func (a *Application) OwnStorage(close func() error)     { a.closeStorage = close }
 func (a *Application) OwnFiles(cleanup func() error)     { a.cleanupFiles = cleanup }
+func (a *Application) OwnLogging(close func() error)     { a.closeLogging = close }
 
 // Close stops and releases the complete or partially constructed application.
 func (a *Application) Close() error {
@@ -114,6 +116,7 @@ func (a *Application) close() error {
 	}
 	result = errors.Join(result, a.runStep(timeout, "close storage", a.closeStorage))
 	result = errors.Join(result, a.runStep(timeout, "clean up file storage", a.cleanupFiles))
+	result = errors.Join(result, a.runStep(timeout, "close logging", a.closeLogging))
 	return result
 }
 

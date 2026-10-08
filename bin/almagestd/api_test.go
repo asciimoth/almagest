@@ -544,9 +544,9 @@ func TestAdminAndLogAPIDispatch(t *testing.T) {
 		projectVersionStatus: api.ProjectVersionStatus{Version: "test"},
 		executionMode:        string(executionModeDirect),
 	}
-	var events []api.Message
+	events := make(chan api.Message, 1)
 	session := admin.newAPISession(nil, factory, func(msg api.Message) error {
-		events = append(events, msg)
+		events <- msg
 		return nil
 	})
 	defer session.close()
@@ -608,8 +608,13 @@ func TestAdminAndLogAPIDispatch(t *testing.T) {
 		t.Fatalf("log subscription = %#v, error = %v", sub, err)
 	}
 	factory.DaemonLogger().Info("published")
-	if len(events) != 1 || events[0].Method != string(api.EventLogEntry) {
-		t.Fatalf("events = %#v", events)
+	select {
+	case event := <-events:
+		if event.Method != string(api.EventLogEntry) {
+			t.Fatalf("event = %#v", event)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("log event was not delivered")
 	}
 	resp, err = session.handleMessage(mustRequest(t, "10", api.SurfaceLog, string(api.MethodLogUnsubscribe), api.SubscriptionRequest{SubscriptionID: sub.SubscriptionID}))
 	if err != nil || resp.Error != nil || len(session.logSubscriptions) != 0 {

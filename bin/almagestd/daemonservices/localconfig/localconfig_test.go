@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/asciimoth/almagest/bin/almagestd/daemonservices"
+	"github.com/asciimoth/almagest/lib/logging"
 )
 
 func TestPersistenceCompareReplaceAndReceipts(t *testing.T) {
@@ -42,6 +43,24 @@ func TestPersistenceCompareReplaceAndReceipts(t *testing.T) {
 	}
 	if _, err := persistence.GetResult("missing"); !errors.Is(err, daemonservices.ErrConfigOperationUnknown) {
 		t.Fatalf("missing GetResult error = %v", err)
+	}
+}
+
+func TestWithLoggerPreservesPersistenceResults(t *testing.T) {
+	current := []byte("before")
+	logger := logging.NewDebugLogFactory(8)
+	persistence := WithLogger(New(
+		func() ([]byte, error) { return bytes.Clone(current), nil },
+		func(data []byte) error { current = bytes.Clone(data); return nil },
+	), logger.EngineLogger())
+
+	result := persistence.Replace(daemonservices.ConfigRevision(current), "operation-1", []byte("after"))
+	if err := result.Err(); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := persistence.GetResult("operation-1")
+	if err != nil || stored != result {
+		t.Fatalf("GetResult = %#v, %v", stored, err)
 	}
 }
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"testing"
+	"time"
 
 	"github.com/asciimoth/almagest/bin/api"
 	"github.com/kataras/golog"
@@ -43,8 +44,8 @@ func TestLogFactoryCachesOrdersAndPublishesEntries(t *testing.T) {
 	factory := NewLogFactory(LogCacheConfig{Debug: 2, Info: 1, Warn: 1, Error: 1, Fatal: 1})
 	factory.level = logLevelEnabled{debug: true, info: true, warn: true, err: true, fatal: true}
 
-	var published []api.LogEntry
-	id, initial := factory.Subscribe(func(entry api.LogEntry) { published = append(published, entry) })
+	published := make(chan api.LogEntry, 8)
+	id, initial := factory.Subscribe(func(entry api.LogEntry) { published <- entry })
 	if id == 0 || len(initial) != 0 {
 		t.Fatalf("Subscribe() = %d, %#v", id, initial)
 	}
@@ -62,10 +63,16 @@ func TestLogFactoryCachesOrdersAndPublishesEntries(t *testing.T) {
 	node.Err("error")
 	node.Errf("%s", "new error")
 
-	if len(published) != 8 {
-		t.Fatalf("published entries = %d, want 8", len(published))
+	var received []api.LogEntry
+	for len(received) < 8 {
+		select {
+		case entry := <-published:
+			received = append(received, entry)
+		case <-time.After(time.Second):
+			t.Fatalf("published entries = %d, want 8", len(received))
+		}
 	}
-	last := published[len(published)-1]
+	last := received[len(received)-1]
 	if last.Source != "node" || last.NodeID != 42 || last.NodeClass != "test/Node" || last.Message != "new error" {
 		t.Fatalf("last entry = %#v", last)
 	}
@@ -81,10 +88,99 @@ func TestLogFactoryCachesOrdersAndPublishesEntries(t *testing.T) {
 		t.Fatalf("retained debug entries = %#v, want first and second", snapshot[:2])
 	}
 	factory.Unsubscribe(id)
-	before := len(published)
 	engine.Debug("after unsubscribe")
-	if len(published) != before {
+	select {
+	case <-published:
 		t.Fatal("unsubscribed callback received an entry")
+	case <-time.After(20 * time.Millisecond):
+	}
+}
+
+func TestLogFactorySlowSubscriberDoesNotBlockAndCountsDrops(t *testing.T) {
+	factory := NewLogFactory(LogCacheConfig{Info: 1})
+	started := make(chan struct{})
+	release := make(chan struct{})
+	factory.Subscribe(func(api.LogEntry) {
+		select {
+		case <-started:
+		default:
+			close(started)
+		}
+		<-release
+	})
+	factory.DeliverDisplayEntry(api.LogEntry{Level: "info", Message: "first"})
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("subscriber did not start")
+	}
+
+	done := make(chan struct{})
+	go func() {
+		for range 1024 {
+			factory.DeliverDisplayEntry(api.LogEntry{Level: "info", Message: "overload"})
+		}
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("slow subscriber blocked logging")
+	}
+	if factory.DroppedSubscriberEntries() == 0 {
+		t.Fatal("overload did not increment the subscriber drop count")
+	}
+
+	closed := make(chan struct{})
+	go func() {
+		_ = factory.Close()
+		close(closed)
+	}()
+	select {
+	case <-closed:
+	case <-time.After(time.Second):
+		t.Fatal("blocked subscriber held logging shutdown open")
+	}
+	close(release)
+}
+
+func TestDeliverFatalDisplayEntryDoesNotControlLifecycle(t *testing.T) {
+	factory := NewLogFactory(LogCacheConfig{Fatal: 1})
+	delivered := make(chan api.LogEntry, 1)
+	factory.Subscribe(func(entry api.LogEntry) { delivered <- entry })
+	factory.DeliverDisplayEntry(api.LogEntry{
+		At: "remote-time", Level: "fatal", Source: "network", Message: "fatal\nrecord",
+	})
+	select {
+	case entry := <-delivered:
+		if entry.Level != "fatal" || entry.Message != "fatalrecord" {
+			t.Fatalf("delivered entry = %#v", entry)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("fatal display entry was not delivered")
+	}
+}
+
+func TestRoleLoggersPreserveAdminSources(t *testing.T) {
+	factory := NewLogFactory(LogCacheConfig{Info: 4})
+	factory.level = logLevelEnabled{info: true}
+	delivered := make(chan api.LogEntry, 4)
+	factory.Subscribe(func(entry api.LogEntry) { delivered <- entry })
+
+	factory.RuntimeLogger().Info("runtime")
+	factory.CommandLogger().Info("command")
+	factory.NetworkLogger().Info("network")
+	factory.ConfigLogger().Info("config")
+	want := []string{"daemon", "daemon", "network", "config"}
+	for i, source := range want {
+		select {
+		case entry := <-delivered:
+			if entry.Source != source {
+				t.Fatalf("entry %d source = %q, want %q", i, entry.Source, source)
+			}
+		case <-time.After(time.Second):
+			t.Fatalf("entry %d was not delivered", i)
+		}
 	}
 }
 
