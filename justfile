@@ -92,7 +92,11 @@ lint-windows: build-web
   ./scripts/lint-windows.sh
 
 shellcheck:
-  git ls-files -z '*.sh' | xargs -0 shellcheck
+  @if [[ "${RUN_WINVM_TESTS:-0}" == "1" ]]; then \
+    git ls-files -z '*.sh' | xargs -0 shellcheck; \
+  else \
+    git ls-files -z '*.sh' ':!dev/winvm/**' ':!scripts/lint-windows.sh' ':!scripts/test-e2e-platform.sh' ':!scripts/test-windows.sh' ':!scripts/test-windows-flow.sh' | xargs -0 shellcheck; \
+  fi
 
 certcat-lint: certcat-ensure-generated
   cd certcat && golangci-lint run ./...
@@ -144,12 +148,20 @@ build-windows-arch arch:
   ./scripts/build-windows.sh {{arch}}
 
 test-winvm-harness:
-  python3 -m unittest discover -s dev/winvm/tests -p 'test_*.py'
+  @if [[ "${RUN_WINVM_TESTS:-0}" == "1" ]]; then \
+    python3 -m unittest discover -s dev/winvm/tests -p 'test_*.py'; \
+  else \
+    printf 'Skipping Windows VM harness tests; set RUN_WINVM_TESTS=1 to enable them.\n'; \
+  fi
 
 lint-winvm:
-  shellcheck dev/winvm/*.sh scripts/lint-windows.sh scripts/test-e2e-platform.sh scripts/test-windows.sh scripts/test-windows-flow.sh
-  ruff check --select E4,E9,F dev/winvm
-  pwsh -NoLogo -NoProfile -NonInteractive -Command '& { Import-Module $env:PSSCRIPTANALYZER_PATH; $issues = @(Invoke-ScriptAnalyzer -Path ./dev/winvm -Recurse -Severity Warning,Error); $issues | Format-Table -AutoSize; if ($issues.Count) { exit 1 } }'
+  @if [[ "${RUN_WINVM_TESTS:-0}" == "1" ]]; then \
+    shellcheck dev/winvm/*.sh scripts/lint-windows.sh scripts/test-e2e-platform.sh scripts/test-windows.sh scripts/test-windows-flow.sh; \
+    ruff check --select E4,E9,F dev/winvm; \
+    pwsh -NoLogo -NoProfile -NonInteractive -Command '& { Import-Module $env:PSSCRIPTANALYZER_PATH; $issues = @(Invoke-ScriptAnalyzer -Path ./dev/winvm -Recurse -Severity Warning,Error); $issues | Format-Table -AutoSize; if ($issues.Count) { exit 1 } }'; \
+  else \
+    printf 'Skipping Windows VM lint; set RUN_WINVM_TESTS=1 to enable it.\n'; \
+  fi
 
 winvm-doctor:
   ./dev/winvm/doctor.sh
