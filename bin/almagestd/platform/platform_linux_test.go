@@ -684,7 +684,7 @@ type recordedCommandRequest struct {
 	cmdrunner.Request
 }
 
-func (d *recordingDispatcher) Submit(req cmdrunner.Request) bool {
+func (d *recordingDispatcher) SubmitBackendCallback(req cmdrunner.Request) bool {
 	d.requests = append(d.requests, recordedCommandRequest{Request: req})
 	return true
 }

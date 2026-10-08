@@ -8,6 +8,7 @@ import (
 	"time"
 
 	cmdrunner "github.com/asciimoth/almagest/bin/almagestd/command"
+	"github.com/asciimoth/almagest/bin/almagestd/daemonservices"
 	almagest "github.com/asciimoth/almagest/lib"
 	experimentalnodes "github.com/asciimoth/almagest/lib/experimental"
 	"github.com/asciimoth/almagest/lib/logging"
@@ -234,7 +235,7 @@ type recordingCommandDispatcher struct {
 	records []cmdrunner.Request
 }
 
-func (d *recordingCommandDispatcher) Submit(req cmdrunner.Request) bool {
+func (d *recordingCommandDispatcher) SubmitNodeCommand(req cmdrunner.Request) bool {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.records = append(d.records, cloneCommandRequest(req))
@@ -280,7 +281,7 @@ func cloneCommandRequest(req cmdrunner.Request) cmdrunner.Request {
 	return out
 }
 
-func buildCommandNodeTestEngine(t *testing.T, cfg configer.Config, commandCfg cmdrunner.Config, dispatcher cmdrunner.Dispatcher) almagest.Engine {
+func buildCommandNodeTestEngine(t *testing.T, cfg configer.Config, commandCfg cmdrunner.Config, dispatcher daemonservices.NodeCommandDispatcher) almagest.Engine {
 	t.Helper()
 	if dispatcher == nil {
 		dispatcher = &recordingCommandDispatcher{accept: true}

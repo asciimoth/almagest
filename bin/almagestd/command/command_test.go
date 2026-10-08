@@ -295,6 +295,29 @@ func TestRunnerRejectsDisallowedCommandRequest(t *testing.T) {
 	}
 }
 
+func TestRunnerKeepsNodeAndBackendCallbackAuthorityDistinct(t *testing.T) {
+	logger := &recordingLogger{}
+	nodeCommand := helperCommand(t, "success")
+	nodeCommand.AllowNodes = true
+	runner := newTestRunner(t, logger, Config{Commands: map[string]AllowedCommand{
+		"node-command":  nodeCommand,
+		"callback-only": helperCommand(t, "success"),
+	}})
+
+	runner.handle(request{req: Request{Name: "node-command"}, source: requestSourceNode})
+	runner.handle(request{req: Request{Name: "callback-only"}, source: requestSourceNode})
+	runner.handle(request{req: Request{Name: "callback-only"}, source: requestSourceBackendCallback})
+	runner.handle(request{req: Request{Name: "callback-only"}, source: requestSourceLegacy})
+
+	logs := strings.Join(logger.messages(), "\n")
+	if !strings.Contains(logs, `command "callback-only" is not allowed for nodes`) {
+		t.Fatalf("logs do not contain node authority rejection:\n%s", logs)
+	}
+	if got := strings.Count(logs, "status=success"); got != 3 {
+		t.Fatalf("successful commands = %d, want 3:\n%s", got, logs)
+	}
+}
+
 func TestRunnerLogsExitStatus(t *testing.T) {
 	logger := &recordingLogger{}
 	runner := newTestRunner(t, logger, Config{Commands: map[string]AllowedCommand{
@@ -439,14 +462,18 @@ func TestRunnerLifecycleSubmitsSyncAndBackgroundCommands(t *testing.T) {
 	logger := &recordingLogger{}
 	syncCommand := helperCommand(t, "success")
 	syncCommand.Sync = true
+	syncCommand.AllowNodes = true
+	backgroundCommand := helperCommand(t, "success")
+	backgroundCommand.Sync = false
 	runner := newTestRunner(t, logger, Config{Commands: map[string]AllowedCommand{
 		"sync":       syncCommand,
-		"background": helperCommand(t, "success"),
+		"background": backgroundCommand,
 	}})
 	runner.Start(nil) //nolint:staticcheck // Verify the documented nil-context fallback.
 	runner.Start(context.Background())
-	if !runner.Submit(Request{Name: "sync"}) || !runner.Submit(Request{Name: "background"}) {
-		t.Fatal("Submit returned false for a running runner")
+	if !runner.SubmitNodeCommand(Request{Name: "sync"}) ||
+		!runner.SubmitBackendCallback(Request{Name: "background"}) {
+		t.Fatal("source-specific submit returned false for a running runner")
 	}
 	deadline := time.Now().Add(2 * time.Second)
 	for len(logger.messages()) < 4 && time.Now().Before(deadline) {
@@ -454,11 +481,22 @@ func TestRunnerLifecycleSubmitsSyncAndBackgroundCommands(t *testing.T) {
 	}
 	runner.Close()
 	runner.Close()
-	if runner.Submit(Request{Name: "sync"}) {
-		t.Fatal("Submit returned true after Close")
+	if runner.Submit(Request{Name: "sync"}) || runner.SubmitNodeCommand(Request{Name: "sync"}) ||
+		runner.SubmitBackendCallback(Request{Name: "background"}) {
+		t.Fatal("a submit method returned true after Close")
 	}
 	if len(logger.messages()) < 4 {
 		t.Fatalf("logs = %#v, want start and finish for both commands", logger.messages())
+	}
+}
+
+func TestRunnerCloseBeforeStartPreventsAllDispatchSources(t *testing.T) {
+	runner := newTestRunner(t, nil, Config{})
+	runner.Close()
+	runner.Start(context.Background())
+	request := Request{Name: "missing"}
+	if runner.Submit(request) || runner.SubmitNodeCommand(request) || runner.SubmitBackendCallback(request) {
+		t.Fatal("closed runner accepted a command")
 	}
 }
 

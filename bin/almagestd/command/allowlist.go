@@ -99,14 +99,15 @@ type registry struct {
 }
 
 type compiledCommand struct {
-	name    string
-	command []string
-	env     map[string]string
-	uid     *uint32
-	gid     *uint32
-	sync    bool
-	timeout time.Duration
-	slots   map[string]compiledSlot
+	name       string
+	command    []string
+	env        map[string]string
+	uid        *uint32
+	gid        *uint32
+	sync       bool
+	timeout    time.Duration
+	slots      map[string]compiledSlot
+	allowNodes bool
 }
 
 type compiledSlot struct {
@@ -186,14 +187,15 @@ func compileAllowedCommand(name string, cfg AllowedCommand) (compiledCommand, er
 	}
 
 	return compiledCommand{
-		name:    name,
-		command: slices.Clone(cfg.Command),
-		env:     cloneStringMap(cfg.Env),
-		uid:     cloneUint32Ptr(cfg.UID),
-		gid:     cloneUint32Ptr(cfg.GID),
-		sync:    cfg.Sync,
-		timeout: cfg.Timeout,
-		slots:   slots,
+		name:       name,
+		command:    slices.Clone(cfg.Command),
+		env:        cloneStringMap(cfg.Env),
+		uid:        cloneUint32Ptr(cfg.UID),
+		gid:        cloneUint32Ptr(cfg.GID),
+		sync:       cfg.Sync,
+		timeout:    cfg.Timeout,
+		slots:      slots,
+		allowNodes: cfg.AllowNodes,
 	}, nil
 }
 
@@ -258,12 +260,19 @@ func validateSlotName(name string) error {
 }
 
 func (r *registry) resolve(req Request) (resolvedCommand, error) {
+	return r.resolveFor(req, requestSourceLegacy)
+}
+
+func (r *registry) resolveFor(req Request, source requestSource) (resolvedCommand, error) {
 	if r == nil {
 		return resolvedCommand{}, errors.New("command registry is not initialized")
 	}
 	compiled, ok := r.commands[req.Name]
 	if !ok {
 		return resolvedCommand{}, fmt.Errorf("command %q is not allowed", req.Name)
+	}
+	if source == requestSourceNode && !compiled.allowNodes {
+		return resolvedCommand{}, fmt.Errorf("command %q is not allowed for nodes", req.Name)
 	}
 	slots, err := compiled.validateSlots(req.Slots)
 	if err != nil {

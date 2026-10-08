@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	cmdrunner "github.com/asciimoth/almagest/bin/almagestd/command"
+	"github.com/asciimoth/almagest/bin/almagestd/daemonservices"
 	"github.com/asciimoth/gonnect/sysnet"
 	gtun "github.com/asciimoth/gonnect/tun"
 	sysnetlinux "github.com/asciimoth/sysnet-linux"
@@ -64,7 +65,7 @@ func (c linuxCallbacksConfig) configured() bool {
 		c.KillswitchUpdated.configured()
 }
 
-func (c linuxCallbacksConfig) sysnetCallbacks(runner cmdrunner.Dispatcher) sysnetlinux.Callbacks {
+func (c linuxCallbacksConfig) sysnetCallbacks(runner daemonservices.BackendCallbackDispatcher) sysnetlinux.Callbacks {
 	var callbacks sysnetlinux.Callbacks
 	if c.TunCreated.configured() {
 		callbacks.TunCreated = func(t gtun.Tun) {
@@ -187,7 +188,7 @@ func tunCallbackValues(callback string, t gtun.Tun) map[string]any {
 }
 
 func submitLinuxCallbackCommand(
-	runner cmdrunner.Dispatcher,
+	runner daemonservices.BackendCallbackDispatcher,
 	name string,
 	config linuxCallbackCommand,
 	values map[string]any,
@@ -206,7 +207,7 @@ func submitLinuxCallbackCommand(
 		Label: name,
 		Slots: slots,
 	}
-	if !runner.Submit(req) {
+	if !runner.SubmitBackendCallback(req) {
 		golog.Warnf("sysnet-linux callback command %s dropped: command runner is stopped", name)
 	}
 }

@@ -42,10 +42,20 @@ type Logger interface {
 	Errf(format string, args ...any)
 }
 
-// Dispatcher accepts allowlist command requests for asynchronous execution.
+// Dispatcher accepts legacy direct-mode allowlist command requests for
+// asynchronous execution. New callers must use the source-specific daemon
+// service contracts so node and backend callback authority stay distinct.
 type Dispatcher interface {
 	Submit(req Request) bool
 }
+
+type requestSource uint8
+
+const (
+	requestSourceLegacy requestSource = iota
+	requestSourceNode
+	requestSourceBackendCallback
+)
 
 // Runner executes protected allowlist commands received through its queue.
 type Runner struct {
@@ -64,7 +74,8 @@ type Runner struct {
 }
 
 type request struct {
-	req Request
+	req    Request
+	source requestSource
 }
 
 // NewRunner creates a command runner from protected startup config. Call Start
@@ -88,6 +99,9 @@ func (r *Runner) Start(ctx context.Context) {
 		ctx = context.Background()
 	}
 	r.startOnce.Do(func() {
+		if r.closed.Load() {
+			return
+		}
 		r.ctx, r.cancel = context.WithCancel(ctx)
 		r.started.Store(true)
 		r.wg.Go(r.loop)
@@ -108,11 +122,27 @@ func (r *Runner) Close() {
 // Submit queues an allowlist command request for execution. It
 // returns false when the runner is not running or has already stopped.
 func (r *Runner) Submit(req Request) bool {
+	return r.submit(req, requestSourceLegacy)
+}
+
+// SubmitNodeCommand queues a command-node request. AllowNodes is checked by
+// the runner when it resolves the request, not only by the node catalog.
+func (r *Runner) SubmitNodeCommand(req Request) bool {
+	return r.submit(req, requestSourceNode)
+}
+
+// SubmitBackendCallback queues a trusted backend callback request. Backend
+// callbacks use protected callback configuration and do not require AllowNodes.
+func (r *Runner) SubmitBackendCallback(req Request) bool {
+	return r.submit(req, requestSourceBackendCallback)
+}
+
+func (r *Runner) submit(req Request, source requestSource) bool {
 	if !r.started.Load() || r.closed.Load() {
 		return false
 	}
 	select {
-	case r.queue <- request{req: req}:
+	case r.queue <- request{req: req, source: source}:
 		return true
 	case <-r.ctx.Done():
 		return false
@@ -131,7 +161,7 @@ func (r *Runner) loop() {
 }
 
 func (r *Runner) handle(req request) {
-	cmd, err := r.registry.resolve(req.req)
+	cmd, err := r.registry.resolveFor(req.req, req.source)
 	if err != nil {
 		r.logErr("command %s skipped: %v", requestLabel(req.req), err)
 		return

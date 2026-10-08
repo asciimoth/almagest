@@ -1,6 +1,7 @@
 # Daemon isolation implementation plan
 
 Status: proposed implementation plan. This document does not implement isolation.
+Progress: checkpoints 1 through 6 are complete.
 It follows the [isolation architecture](DAEMON_ISOLATION_ARCHITECTURE.md).
 Its sequence takes precedence over the outline in architecture section 10.3:
 first establish the complete direct-mode composition, then run the isolation
@@ -61,6 +62,8 @@ production checkpoint is the complete direct daemon; isolated work is additive.
 
 ## 1. Add the explicit direct execution mode
 
+Status: completed.
+
 Work:
 
 - Add `--no-isolation` and select the execution mode once, before host changes
@@ -85,6 +88,8 @@ Acceptance:
 
 ## 2. Extract runtime construction and local service contracts
 
+Status: completed.
+
 Work:
 
 - Separate argument handling and application construction from the body of
@@ -106,6 +111,8 @@ Acceptance:
   translation, transport queues, or a simulated session.
 
 ## 3. Separate local host-network control from runtime code
+
+Status: completed.
 
 Work:
 
@@ -131,6 +138,8 @@ Acceptance:
 
 ## 4. Separate local config persistence from orchestration
 
+Status: completed.
+
 Work:
 
 - Split `platform.Agent` responsibilities into bootstrap inputs and fixed-target
@@ -152,6 +161,8 @@ Acceptance:
 
 ## 5. Extract the snapshot and restore coordinator
 
+Status: completed.
+
 Work:
 
 - Keep archive parsing, bbolt operations, storage copies, graph replacement,
@@ -171,6 +182,8 @@ Acceptance:
 - No archive, database, or general storage operation moves into host-control code.
 
 ## 6. Separate local command dispatch
+
+Status: completed.
 
 Work:
 

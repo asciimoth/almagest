@@ -215,12 +215,13 @@ func runDaemon(
 	}
 	commandRunner.Start(ctx)
 	application.OwnCommands(commandRunner.Close)
-	var allowedCommands daemonservices.AllowedCommands = commandRunner
+	var nodeCommands daemonservices.NodeCommandDispatcher = commandRunner
+	var backendCallbacks daemonservices.BackendCallbackDispatcher = commandRunner
 
 	// Setup system integration here before privileges drop
 	hostNetwork, err := localnetwork.BuildWithRuntimeDependencies(
 		conf.Protected.System,
-		allowedCommands,
+		backendCallbacks,
 		runtimeDependencyErr,
 		randomSeeds.system,
 	)
@@ -246,7 +247,7 @@ func runDaemon(
 		kv,
 		kv,
 		kv,
-		daemonNodeClasses(conf.Protected.CommandRunner, allowedCommands, arguments.Experimental, conf.Protected.Experimental),
+		daemonNodeClasses(conf.Protected.CommandRunner, nodeCommands, arguments.Experimental, conf.Protected.Experimental),
 		globalBufPool,
 		arguments.DebugNodes,
 		almagest.WithWorkerEventLogging(arguments.LogWorkers),

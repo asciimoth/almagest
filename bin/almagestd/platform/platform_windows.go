@@ -12,7 +12,7 @@ import (
 	"sync"
 
 	"github.com/asciimoth/almagest/bin/almagestd/args"
-	cmdrunner "github.com/asciimoth/almagest/bin/almagestd/command"
+	"github.com/asciimoth/almagest/bin/almagestd/daemonservices"
 	"github.com/asciimoth/almagest/bin/internal/durablefile"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/gonnect/sysnet"
@@ -298,7 +298,7 @@ func ValidateArgs(arguments *args.Args) error {
 	return nil
 }
 
-func SystemIntegration(cfg configer.Config, runner cmdrunner.Dispatcher, randomSeed ...int64) (sysnet.System, error) {
+func SystemIntegration(cfg configer.Config, runner daemonservices.BackendCallbackDispatcher, randomSeed ...int64) (sysnet.System, error) {
 	_ = runner
 	_ = randomSeed
 	config, err := readWindowsSystemConfig(cfg)

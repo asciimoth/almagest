@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	cmdrunner "github.com/asciimoth/almagest/bin/almagestd/command"
+	"github.com/asciimoth/almagest/bin/almagestd/daemonservices"
 	experimentalnodes "github.com/asciimoth/almagest/lib/experimental"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
@@ -32,7 +33,7 @@ var (
 // daemonNodeClasses returns classes that almagestd must create explicitly.
 // These classes either depend on daemon internals or require protected host
 // configuration and opt-in registration.
-func daemonNodeClasses(cfg cmdrunner.Config, dispatcher cmdrunner.Dispatcher, enableExperimental bool, experimental ProtectedExperimentalConfig) []pasta.NodeClass {
+func daemonNodeClasses(cfg cmdrunner.Config, dispatcher daemonservices.NodeCommandDispatcher, enableExperimental bool, experimental ProtectedExperimentalConfig) []pasta.NodeClass {
 	classes := []pasta.NodeClass{
 		newCommandNodeClass(cfg, dispatcher),
 	}
@@ -59,10 +60,10 @@ func daemonExperimentalNodeTypes(enableExperimental bool) map[string]bool {
 // command.Runner.
 type commandNodeClass struct {
 	catalog    commandNodeCatalog
-	dispatcher cmdrunner.Dispatcher
+	dispatcher daemonservices.NodeCommandDispatcher
 }
 
-func newCommandNodeClass(cfg cmdrunner.Config, dispatcher cmdrunner.Dispatcher) commandNodeClass {
+func newCommandNodeClass(cfg cmdrunner.Config, dispatcher daemonservices.NodeCommandDispatcher) commandNodeClass {
 	return commandNodeClass{
 		catalog:    newCommandNodeCatalog(cfg),
 		dispatcher: dispatcher,
@@ -181,7 +182,7 @@ type commandNode struct {
 	pasta.BasicNode
 
 	catalog    commandNodeCatalog
-	dispatcher cmdrunner.Dispatcher
+	dispatcher daemonservices.NodeCommandDispatcher
 
 	w      *pasta.Workspace
 	logger pasta.Logger
@@ -412,7 +413,7 @@ func (n *commandNode) submitCommand() {
 		Name:  def.name,
 		Slots: n.snapshotSlots(def),
 	}
-	if !n.dispatcher.Submit(req) {
+	if !n.dispatcher.SubmitNodeCommand(req) {
 		n.logWarn("command node trigger dropped: command runner is stopped")
 	}
 }

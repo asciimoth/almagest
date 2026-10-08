@@ -17,7 +17,7 @@ type callbackTestDispatcher struct {
 	accept   bool
 }
 
-func (d *callbackTestDispatcher) Submit(req cmdrunner.Request) bool {
+func (d *callbackTestDispatcher) SubmitBackendCallback(req cmdrunner.Request) bool {
 	d.requests = append(d.requests, req)
 	return d.accept
 }

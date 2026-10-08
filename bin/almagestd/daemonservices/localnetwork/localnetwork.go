@@ -63,7 +63,7 @@ type debugDefaultTunConfig struct {
 // Build constructs a direct host-network service.
 func Build(
 	cfg configer.Config,
-	commands daemonservices.AllowedCommands,
+	commands daemonservices.BackendCallbackDispatcher,
 	randomSeed ...int64,
 ) (daemonservices.HostNetwork, error) {
 	return build(cfg, commands, nil, randomSeed...)
@@ -75,7 +75,7 @@ func Build(
 // trusted lookup. Explicit debug integration has no native dependencies.
 func BuildWithRuntimeDependencies(
 	cfg configer.Config,
-	commands daemonservices.AllowedCommands,
+	commands daemonservices.BackendCallbackDispatcher,
 	beforeChdirErr error,
 	randomSeed ...int64,
 ) (daemonservices.HostNetwork, error) {
@@ -84,7 +84,7 @@ func BuildWithRuntimeDependencies(
 
 func build(
 	cfg configer.Config,
-	commands daemonservices.AllowedCommands,
+	commands daemonservices.BackendCallbackDispatcher,
 	beforeChdirErr *error,
 	randomSeed ...int64,
 ) (daemonservices.HostNetwork, error) {

@@ -21,7 +21,7 @@ import (
 	"time"
 
 	"github.com/asciimoth/almagest/bin/almagestd/args"
-	cmdrunner "github.com/asciimoth/almagest/bin/almagestd/command"
+	"github.com/asciimoth/almagest/bin/almagestd/daemonservices"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/gonnect/sysnet"
 	sysnetlinux "github.com/asciimoth/sysnet-linux"
@@ -336,7 +336,7 @@ func prepareAgent(arguments args.Args) (*agent, error) {
 	return RunAgent(arguments), nil
 }
 
-func SystemIntegration(cfg configer.Config, runner cmdrunner.Dispatcher, randomSeed ...int64) (sysnet.System, error) {
+func SystemIntegration(cfg configer.Config, runner daemonservices.BackendCallbackDispatcher, randomSeed ...int64) (sysnet.System, error) {
 	config, err := readLinuxSystemConfig(cfg, runner)
 	if err != nil {
 		return nil, err
@@ -383,7 +383,7 @@ type linuxUint32 uint32
 
 func readLinuxSystemConfig(
 	cfg configer.Config,
-	runner cmdrunner.Dispatcher,
+	runner daemonservices.BackendCallbackDispatcher,
 ) (sysnetlinux.SystemConfig, error) {
 	config := defaultLinuxSystemConfig()
 	fileConfig := linuxSystemConfigFile{
