@@ -67,8 +67,11 @@ type Handler func(context.Context, protocol.Operation, json.RawMessage) (any, er
 
 // Event is a coalescible resource-state notification, not an RPC completion.
 type Event struct {
-	Resource protocol.ResourceRef `json:"resource"`
-	Revision uint64               `json:"revision"`
+	Resource   protocol.ResourceRef `json:"resource"`
+	Revision   uint64               `json:"revision"`
+	Up         bool                 `json:"up,omitempty"`
+	Closed     bool                 `json:"closed,omitempty"`
+	MTUChanged bool                 `json:"mtuChanged,omitempty"`
 }
 
 func (e Event) valid(session protocol.Session) bool {

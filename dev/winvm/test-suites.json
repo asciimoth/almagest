@@ -14,17 +14,44 @@
       "cases": [
         {"id": "m2::execution-identity-standard-user", "kind": "identity"},
         {
+          "id": "m15::network-resource-ownership",
+          "kind": "go",
+          "module": "bin",
+          "arguments": ["./internal/isolation/network", "-run", "^(TestNetworkOwnership|TestNetworkControl|TestNetworkBounds)$", "-count=1"],
+          "eventFile": "isolation-network.jsonl",
+          "requiredTests": [
+            "github.com/asciimoth/almagest/bin/internal/isolation/network::TestNetworkOwnership",
+            "github.com/asciimoth/almagest/bin/internal/isolation/network::TestNetworkControl",
+            "github.com/asciimoth/almagest/bin/internal/isolation/network::TestNetworkBounds"
+          ]
+        },
+        {
           "id": "m14::private-control-transport",
           "kind": "go",
           "module": "bin",
-          "arguments": ["./internal/isolation/transport", "-count=1"],
+          "arguments": ["./internal/isolation/protocol", "./internal/isolation/transport", "-count=1"],
           "eventFile": "isolation-transport.jsonl",
           "requiredTests": [
             "github.com/asciimoth/almagest/bin/internal/isolation/transport::TestWindowsPrivateControl",
             "github.com/asciimoth/almagest/bin/internal/isolation/transport::TestWindowsPipeDeadlineAndHandleAccess",
             "github.com/asciimoth/almagest/bin/internal/isolation/transport::TestWindowsPipeRejectsOtherProcess",
             "github.com/asciimoth/almagest/bin/internal/isolation/transport::TestControlCallsAndCancellation",
-            "github.com/asciimoth/almagest/bin/internal/isolation/transport::TestControlIndependentLanes"
+            "github.com/asciimoth/almagest/bin/internal/isolation/transport::TestControlIndependentLanes",
+            "github.com/asciimoth/almagest/bin/internal/isolation/protocol::TestIdentityEncoding",
+            "github.com/asciimoth/almagest/bin/internal/isolation/protocol::TestSessionAndRequestValidation",
+            "github.com/asciimoth/almagest/bin/internal/isolation/protocol::TestCapabilityAndOutcomeValidation",
+            "github.com/asciimoth/almagest/bin/internal/isolation/protocol::TestDiagnosticValidation",
+            "github.com/asciimoth/almagest/bin/internal/isolation/transport::TestRequestDispatch",
+            "github.com/asciimoth/almagest/bin/internal/isolation/transport::TestJSONBoundaries",
+            "github.com/asciimoth/almagest/bin/internal/isolation/transport::TestFrameIOFailures",
+            "github.com/asciimoth/almagest/bin/internal/isolation/transport::TestControlReceiveValidation",
+            "github.com/asciimoth/almagest/bin/internal/isolation/transport::TestControlQueueAndSequenceBounds",
+            "github.com/asciimoth/almagest/bin/internal/isolation/transport::TestControlCallLifecycle",
+            "github.com/asciimoth/almagest/bin/internal/isolation/transport::TestControlEventValidation",
+            "github.com/asciimoth/almagest/bin/internal/isolation/transport::TestControlErrorMapping",
+            "github.com/asciimoth/almagest/bin/internal/isolation/transport::TestNegotiationContract",
+            "github.com/asciimoth/almagest/bin/internal/isolation/transport::TestConfigAssemblyTransitions",
+            "github.com/asciimoth/almagest/bin/internal/isolation/transport::TestControlConfigBounds"
           ]
         },
         {"id": "m2::portable-certcat", "kind": "go", "module": "certcat", "arguments": ["./..."], "eventFile": "certcat.jsonl"},
@@ -235,6 +262,14 @@
       "cases": [
         {"id": "m2::execution-identity-elevated", "kind": "identity"},
         {"id": "m2::exclusive-cases-serialized", "kind": "serialization"},
+        {
+          "id": "m15::native-tun-control",
+          "kind": "go",
+          "module": "bin",
+          "arguments": ["./internal/isolation/network", "-run", "^TestWindowsNetworkTun$", "-count=1"],
+          "eventFile": "isolation-native-tun.jsonl",
+          "requiredTests": ["github.com/asciimoth/almagest/bin/internal/isolation/network::TestWindowsNetworkTun"]
+        },
         {
           "id": "m6::xtor-restricted-token",
           "kind": "go",

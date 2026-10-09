@@ -437,6 +437,11 @@ Acceptance:
 
 ## 15. Implement network resource ownership and TUN control
 
+Status: implemented in `bin/internal/isolation/network`. See the
+[ownership, native TUN control, and verification notes](DAEMON_ISOLATION_NETWORK_CONTROL.md).
+This is an additive broker component; production startup and packet relays
+remain later checkpoints.
+
 Work:
 
 - Add the N registry with session/type/generation checks and owned-resource

@@ -10,6 +10,8 @@ are in `bin/internal/isolation/policy`. The checkpoint 14 transport is in
 `bin/internal/isolation/transport`; see its
 [implementation contract](DAEMON_ISOLATION_CONTROL_TRANSPORT.md). These packages
 are not connected to daemon startup and do not enable isolated production mode.
+Checkpoint 15 implements the TUN owner in `bin/internal/isolation/network`;
+see its [ownership and result contract](DAEMON_ISOLATION_NETWORK_CONTROL.md).
 
 ## Authority and identity
 
@@ -144,3 +146,34 @@ privileged cases, all 9 ordinary and 20 privileged Windows VM cases, and all
 116 Windows packet-flow observations. Combined statement coverage was 86.0%.
 Windows evidence is in `artifacts/winvm/run-9COTVRpO` and
 `artifacts/winvm/run-flow-bSTXrb7r`. No test failed in the final run.
+
+### Protocol and transport regression tests
+
+The expanded package tests check every request type and its mutation rule,
+identity encoding, session and diagnostic validation, exact JSON and frame
+limits, truncated frames, short writes, handshake mismatches, closed error
+codes, request and event sequences, reserved reply capacity, late replies,
+and config-transfer ordering, replay, reset, and fixed deadlines. Linux tests
+also check credential mismatches and descriptor cleanup when later ancillary
+metadata is invalid.
+
+Run checks in disposable Docker containers or the Windows VM, not in the host
+network namespace. Inside the Docker checkout, use:
+
+```sh
+go test -race -cover -timeout 90s ./bin/internal/isolation/protocol ./bin/internal/isolation/transport
+go test ./bin/internal/isolation/protocol -run '^$' -fuzz '^FuzzOpaqueIdentity$' -fuzztime=30s -parallel=2
+go test ./bin/internal/isolation/protocol -run '^$' -fuzz '^FuzzRequestMetadata$' -fuzztime=30s -parallel=2
+go test ./bin/internal/isolation/transport -run '^$' -fuzz '^FuzzStrictJSONRoundTrip$' -fuzztime=30s -parallel=2
+go test ./bin/internal/isolation/transport -run '^$' -fuzz '^FuzzConfigRoundTrip$' -fuzztime=30s -parallel=2
+```
+
+These fuzz tests check parser results against independent validity rules, stable
+canonical frames, exact config reassembly, and transfer-ID replay rejection.
+The existing `FuzzControlIdentity`, `FuzzControlDecode`, `FuzzControlFrame`,
+`FuzzConfigAssembly`, and Linux `FuzzAncillary` targets remain available.
+The Linux ancestor-credential test needs `CAP_SYS_ADMIN` and a namespace-capable
+seccomp profile inside Docker; other portable tests need neither.
+
+`just test-total winvm:m14::private-control-transport` runs both complete packages
+in the Windows VM, including the fuzz seed cases and Windows endpoint tests.

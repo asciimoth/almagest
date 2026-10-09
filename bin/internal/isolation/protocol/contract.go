@@ -141,8 +141,10 @@ type CapabilitySnapshot struct {
 
 type OperationCapability struct {
 	Operation Operation
-	Target    string
-	Family    string
+	// NativeOperation preserves exact backend scopes such as create_named.
+	NativeOperation string
+	Target          string
+	Family          string
 	Capability
 }
 
@@ -232,6 +234,7 @@ type NetworkControl interface {
 	Handshake(context.Context, HandshakeRequest) (HandshakeResult, error)
 	Capabilities(context.Context, ReadRequest) (CapabilitySnapshot, error)
 	Status(context.Context, ReadRequest) (StatusResult, error)
+	GetResult(context.Context, OperationResultRequest) (ResourceResult, error)
 	CheckTun(context.Context, CheckTunRequest) (ValidationResult, error)
 	CheckDefaultTun(context.Context, CheckDefaultTunRequest) (ValidationResult, error)
 	CheckRule(context.Context, CheckRuleRequest) (ValidationResult, error)
@@ -302,6 +305,9 @@ type CheckDefaultTunRequest struct {
 	Options TunOptions
 	Strict  bool
 	Rules   []Rule
+	// RuleMode is empty/full, include, or exclude. Rules require a mode.
+	RuleMode string
+	DNSIP    netip.Addr
 }
 
 type Rule struct {
@@ -343,11 +349,13 @@ type ReserveAddressRequest struct {
 }
 
 type CreateTunRequest struct {
-	Meta    RequestMeta
-	Default bool
-	Options TunOptions
-	Strict  bool
-	Rules   []Rule
+	Meta     RequestMeta
+	Default  bool
+	Options  TunOptions
+	Strict   bool
+	Rules    []Rule
+	RuleMode string
+	DNSIP    netip.Addr
 }
 
 type TunUpdateKind string
@@ -468,11 +476,17 @@ type ResourceResult struct {
 }
 
 type ResourceState struct {
-	Name      string
-	MTU       uint32
-	Addresses []netip.Prefix
-	Routes    []netip.Prefix
-	Warnings  []string
+	Capabilities       []OperationCapability
+	CapabilityRevision uint64
+	Revision           uint64
+	Up                 bool
+	Closed             bool
+	RecoveryRequired   bool
+	Name               string
+	MTU                uint32
+	Addresses          []netip.Prefix
+	Routes             []netip.Prefix
+	Warnings           []string
 }
 
 type Outcome string
@@ -491,6 +505,8 @@ type MutationResult struct {
 	Outcome     Outcome
 	Code        string
 	Detail      string
+	// CurrentResource carries the new generation after a committed update.
+	CurrentResource ResourceRef
 }
 
 // ConfigWriter owns one bootstrap-selected regular-config target. No request
