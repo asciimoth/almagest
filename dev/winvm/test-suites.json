@@ -14,6 +14,24 @@
       "cases": [
         {"id": "m2::execution-identity-standard-user", "kind": "identity"},
         {
+          "id": "m25::windows-role-profiles-caller",
+          "kind": "go",
+          "module": "bin",
+          "arguments": ["./internal/isolation/windowsprofile", "-count=1"],
+          "eventFile": "windows-role-profiles.jsonl",
+          "requiredTests": [
+            "github.com/asciimoth/almagest/bin/internal/isolation/windowsprofile::TestPlans",
+            "github.com/asciimoth/almagest/bin/internal/isolation/windowsprofile::TestPathValidation",
+            "github.com/asciimoth/almagest/bin/internal/isolation/windowsprofile::TestNativeRoles",
+            "github.com/asciimoth/almagest/bin/internal/isolation/windowsprofile::TestNativeLaunchRejections",
+            "github.com/asciimoth/almagest/bin/internal/isolation/windowsprofile::TestNativeCloseAndCancellation",
+            "github.com/asciimoth/almagest/bin/internal/isolation/windowsprofile::TestNativeSuspendedFailureAndInheritance",
+            "github.com/asciimoth/almagest/bin/internal/isolation/windowsprofile::TestNativeObjectRejections",
+            "github.com/asciimoth/almagest/bin/internal/isolation/windowsprofile::FuzzPlan",
+            "github.com/asciimoth/almagest/bin/internal/isolation/windowsprofile::FuzzPath"
+          ]
+        },
+        {
           "id": "m23::trusted-bootstrap-storage",
           "kind": "go",
           "module": "bin",
@@ -434,6 +452,24 @@
       "cases": [
         {"id": "m2::execution-identity-elevated", "kind": "identity"},
         {"id": "m2::exclusive-cases-serialized", "kind": "serialization"},
+        {
+          "id": "m25::windows-role-profiles-service",
+          "kind": "go",
+          "module": "bin",
+          "arguments": ["./internal/isolation/windowsprofile", "-count=1"],
+          "eventFile": "windows-role-profiles.jsonl",
+          "requiredTests": [
+            "github.com/asciimoth/almagest/bin/internal/isolation/windowsprofile::TestPlans",
+            "github.com/asciimoth/almagest/bin/internal/isolation/windowsprofile::TestPathValidation",
+            "github.com/asciimoth/almagest/bin/internal/isolation/windowsprofile::TestNativeRoles",
+            "github.com/asciimoth/almagest/bin/internal/isolation/windowsprofile::TestNativeLaunchRejections",
+            "github.com/asciimoth/almagest/bin/internal/isolation/windowsprofile::TestNativeCloseAndCancellation",
+            "github.com/asciimoth/almagest/bin/internal/isolation/windowsprofile::TestNativeSuspendedFailureAndInheritance",
+            "github.com/asciimoth/almagest/bin/internal/isolation/windowsprofile::TestNativeObjectRejections",
+            "github.com/asciimoth/almagest/bin/internal/isolation/windowsprofile::FuzzPlan",
+            "github.com/asciimoth/almagest/bin/internal/isolation/windowsprofile::FuzzPath"
+          ]
+        },
         {
           "id": "m16::native-tun-relay",
           "kind": "go",

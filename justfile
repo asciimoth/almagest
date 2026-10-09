@@ -58,6 +58,10 @@ linux-isolation-profiles evidence='':
 windows-isolation-experiment:
   ./dev/winvm/run.sh isolation
 
+# Check Windows role restrictions in both identities in the disposable VM.
+windows-isolation-profiles:
+  just test-total winvm:m25::windows-role-profiles-caller winvm:m25::windows-role-profiles-service
+
 # Run the checkpoint 12 Linux data-path stage in a disposable Docker
 # container. Optional argument selects the evidence directory.
 data-path-experiment evidence='':

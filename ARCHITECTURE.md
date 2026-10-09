@@ -176,6 +176,10 @@ Daemon:
   Linux role restrictions, held-descriptor launch contracts, and final Go
   thread synchronization. These components do not enable isolated daemon
   startup; see `docs/DAEMON_ISOLATION_LINUX_PROFILES.md` for qualification limits.
+- `bin/internal/isolation/windowsprofile/`: suspended Windows role launches,
+  restricted tokens, distinct AppContainers, held trusted paths, exact pipe
+  inheritance, mitigations, and bounded jobs. See
+  `docs/DAEMON_ISOLATION_WINDOWS_PROFILES.md` for qualification limits.
 
 Platform and CLI:
 - `bin/almagestd/platform/`: build-tagged defaults and platform operations.
