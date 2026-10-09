@@ -404,6 +404,14 @@ do not replace it with per-packet R-to-N matching calls.
 
 ### 4.3 Data channels
 
+Checkpoint 13 result: [data-path security decision](DAEMON_ISOLATION_DATA_PATH_DECISION.md).
+The [version 1 relay contract](DAEMON_ISOLATION_DATA_CHANNEL_CONTRACT.md) is
+frozen for all Linux and Windows resource types. By explicit maintainer
+direction, implementation can proceed with conservative relays while the
+production security and performance gates remain open. This decision supersedes
+the candidate-selection sequence below; native handles and shared memory remain
+excluded from version 1.
+
 Use separate control and data channels. Protocol parsing, encryption, HTTP,
 SOCKS, WireGuard, Tailscale, and DNS remain in R. Depending on the experiment
 result, N relays bounded bytes/packets or configures a native handle used directly

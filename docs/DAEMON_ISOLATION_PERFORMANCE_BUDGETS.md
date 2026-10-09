@@ -6,8 +6,11 @@ these values before data-path selection. A later change to a limit needs a
 reviewed update with measurements; a failed candidate does not justify changing
 the budget after results are known.
 
-These are selection gates for checkpoints 10 through 13, not claims about the
-current implementation. The production data-channel choice remains open.
+These are qualification gates, not claims about the current implementation.
+By explicit maintainer direction at checkpoint 13, conservative broker relays
+are selected and their design is frozen before full performance qualification.
+The values below remain unchanged and must pass before production enablement;
+see the [selection decision](DAEMON_ISOLATION_DATA_PATH_DECISION.md).
 
 ## Acceptance budgets
 
@@ -95,4 +98,3 @@ that exceeds the allowed authority is rejected.
 Repeat selection measurements after material changes to framing, buffer
 ownership, IPC primitive, native backend, Go runtime, Wintun, TUN queueing, or
 process restrictions.
-

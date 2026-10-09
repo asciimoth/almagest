@@ -63,6 +63,10 @@ data-path-experiment evidence='':
 windows-data-path-experiment:
   ./dev/winvm/run.sh data-path
 
+# Audit checkpoint 13 handle authority only in disposable Docker namespaces.
+data-path-security-experiment evidence='':
+  bash ./dev/data-path/security.sh {{quote(evidence)}}
+
 [private]
 test-e2e-docker-all: repair-go-work build-web
   E2E_INCLUDE_PRIVILEGED=1 ./scripts/test-e2e-platform.sh

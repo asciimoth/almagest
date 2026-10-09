@@ -200,5 +200,8 @@ The final evidence review must add the same-host original-direct and current
 native fast paths and must not contain an isolation transport. A different
 machine or a skipped native TUN/Wintun stage is not acceptance evidence.
 
-This checkpoint records measurements only. Data-path selection and the hostile
-handle-authority decision remain checkpoint 13 work.
+This checkpoint records measurements only. The
+[checkpoint 13 security decision](DAEMON_ISOLATION_DATA_PATH_DECISION.md) adds
+hostile-handle evidence and selects conservative broker relays for version 1.
+The design is frozen by maintainer direction; these preliminary timings do not
+qualify the selected implementation or change the performance budgets.

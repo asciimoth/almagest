@@ -6,6 +6,9 @@ gost = "gost"
 snet = "snet"
 amneisa = "amneisa"
 
+[default.extend-identifiers]
+msg_controllen = "msg_controllen"
+
 [files]
 extend-exclude = [
   "tests-fail",
@@ -14,4 +17,3 @@ extend-exclude = [
   "dev/linux-isolation",
   "bin/integration"
 ]
-

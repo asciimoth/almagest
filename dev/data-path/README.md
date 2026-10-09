@@ -30,3 +30,25 @@ Windows half with `just windows-data-path-experiment`.
 Results are stored below `artifacts/data-path/`, which is ignored by git. See
 [`DAEMON_ISOLATION_DATA_PATH_EXPERIMENT.md`](../../docs/DAEMON_ISOLATION_DATA_PATH_EXPERIMENT.md)
 for scope and open qualification work.
+
+## Hostile-client review
+
+Run the checkpoint 13 authority audit only in Docker:
+
+```sh
+just data-path-security-experiment
+```
+
+It uses the checkpoint 10 restricted launcher and real container-owned sockets,
+TUN, shared memory, and notifications. The C probe checks authority after N
+closes its network handles, UDP destination override, shared-memory modification
+and truncation, notification saturation, and resource lifetime through R exit.
+The runner has a 90-second limit and requires every evidence field. A successful
+run means the rejection observations were reproduced, not that isolation is
+qualified. Do not execute `security-probe` on the host.
+
+See the [checkpoint 13 decision](../../docs/DAEMON_ISOLATION_DATA_PATH_DECISION.md)
+for the per-OS/resource matrix, Windows transfer evidence, rejected candidates,
+and open performance gate. The conservative relay
+[contract](../../docs/DAEMON_ISOLATION_DATA_CHANNEL_CONTRACT.md) is frozen for
+implementation. Production qualification remains pending.

@@ -6,6 +6,9 @@ platform acceptance are complete; its controlled same-host performance
 comparison remains open. Checkpoint 9 implementation is complete; its numeric
 budgets become approved when the checkpoint change is accepted.
 It follows the [isolation architecture](DAEMON_ISOLATION_ARCHITECTURE.md).
+Checkpoint 13 design is frozen as broker-owned relays for all Linux/Windows
+resources. By explicit maintainer direction, performance qualification follows
+the design freeze and remains required before production enablement.
 Its sequence takes precedence over the outline in architecture section 10.3:
 first establish the complete direct-mode composition, then run the isolation
 experiments, and only then select the isolated data paths.
@@ -249,8 +252,8 @@ Acceptance:
 ## 9. Define policy, contracts, and performance budgets
 
 Status: implementation complete. Numeric performance budgets become approved
-when the checkpoint change is accepted by the project maintainer; data-channel
-selection remains open.
+when the checkpoint change is accepted by the project maintainer. Data-channel
+selection is recorded separately in checkpoint 13.
 
 Contract review: [daemon isolation control contract](DAEMON_ISOLATION_CONTROL_CONTRACT.md).
 Numeric budgets and comparison rules:
@@ -369,6 +372,16 @@ Acceptance:
 
 ## 13. Select and freeze data paths after a security review
 
+Status: design selection and contract freeze complete. The maintainer requested
+conservative choices for every resource on 2026-10-09 so implementation can
+continue. Select broker-owned relays on Linux and Windows; exclude direct native
+handles and shared memory from version 1. See the
+[per-resource decision and evidence](DAEMON_ISOLATION_DATA_PATH_DECISION.md) and
+[frozen data-channel contract](DAEMON_ISOLATION_DATA_CHANNEL_CONTRACT.md).
+The explicit sequencing change moves the remaining functional, hostile-runtime,
+and performance qualification to the implementation and release gates below;
+it does not approve different numeric budgets or claim production readiness.
+
 Work:
 
 - Audit each direct handle for all authority it grants: socket options,
@@ -387,9 +400,12 @@ Acceptance:
   A faster candidate that grants undeclared host authority is rejected.
 - Every selected path has an enforceable revocation/lifetime contract. If only
   process termination revokes a handle, document and test the required action.
-- All selected paths meet the agreed budgets. If no safe path meets them, leave
-  the profile incomplete and revise the design or obtain explicit budget
-  approval; do not weaken isolation or quietly reset the comparison baseline.
+- Per the maintainer's sequencing decision, freeze the conservative relay
+  design now and verify the implementation against the agreed budgets before
+  production enablement in checkpoints 30 through 32. Both OS profiles remain
+  unqualified until then. If limits still fail, revise the implementation or
+  obtain explicit numeric budget approval; do not weaken isolation or reset
+  the comparison baseline.
 
 ## 14. Implement bounded control transports
 

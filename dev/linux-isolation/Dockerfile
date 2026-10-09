@@ -41,6 +41,8 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 	&& CGO_ENABLED=0 go build -C bin -trimpath -o /experiment/tun-probe ./cmd/linux-isolation-tun-probe \
 	&& gcc -D_FORTIFY_SOURCE=3 -O2 -Wall -Wextra -Werror -o /experiment/launcher \
 		/experiment-src/launcher.c $(pkg-config --cflags --libs libseccomp) \
-	&& shellcheck /experiment-src/run.sh /data-path-src/run.sh
+	&& gcc -static -D_FORTIFY_SOURCE=3 -O2 -Wall -Wextra -Werror \
+		-o /experiment/security-probe /data-path-src/security.c \
+	&& shellcheck /experiment-src/run.sh /data-path-src/run.sh /data-path-src/security.sh
 
 ENTRYPOINT []
