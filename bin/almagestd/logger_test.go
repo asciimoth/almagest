@@ -150,10 +150,13 @@ func TestDeliverFatalDisplayEntryDoesNotControlLifecycle(t *testing.T) {
 	factory.Subscribe(func(entry api.LogEntry) { delivered <- entry })
 	factory.DeliverDisplayEntry(api.LogEntry{
 		At: "remote-time", Level: "fatal", Source: "network", Message: "fatal\nrecord",
+		Role: "network_broker", LaunchID: "launch", ProcessInstance: "broker-1",
+		Sequence: 7, DroppedBefore: 2, SessionID: "session", OperationID: "operation",
 	})
 	select {
 	case entry := <-delivered:
-		if entry.Level != "fatal" || entry.Message != "fatalrecord" {
+		if entry.Level != "fatal" || entry.Message != "fatalrecord" || entry.Role != "network_broker" ||
+			entry.ProcessInstance != "broker-1" || entry.Sequence != 7 || entry.DroppedBefore != 2 || entry.OperationID != "operation" {
 			t.Fatalf("delivered entry = %#v", entry)
 		}
 	case <-time.After(time.Second):

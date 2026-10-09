@@ -3,6 +3,8 @@ package protocol
 import (
 	"fmt"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
 // Valid reports whether o is a defined version 1 operation.
@@ -127,7 +129,10 @@ func (r MutationResult) Validate() error {
 }
 
 func (r DiagnosticRecord) Validate() error {
-	if r.Sequence == 0 || r.ProcessInstance == "" || r.LaunchID == "" {
+	if r.Timestamp.IsZero() || r.Sequence == 0 || !r.SessionID.Valid() ||
+		len(r.ProcessInstance) == 0 || len(r.ProcessInstance) > MaxDiagnosticSourceBytes ||
+		len(r.LaunchID) == 0 || len(r.LaunchID) > MaxDiagnosticSourceBytes ||
+		!diagnosticSafe(r.ProcessInstance) || !diagnosticSafe(r.LaunchID) {
 		return fmt.Errorf("%w: diagnostic identity or sequence is empty", ErrInvalidContract)
 	}
 	switch r.Role {
@@ -136,16 +141,39 @@ func (r DiagnosticRecord) Validate() error {
 		return fmt.Errorf("%w: diagnostic role %q", ErrInvalidContract, r.Role)
 	}
 	switch r.Severity {
-	case SeverityDebug, SeverityInfo, SeverityWarn, SeverityError:
+	case SeverityDebug, SeverityInfo, SeverityWarn, SeverityError, SeverityFatal:
 	default:
 		return fmt.Errorf("%w: diagnostic severity %q", ErrInvalidContract, r.Severity)
 	}
 	if len(r.Source) == 0 || len(r.Source) > MaxDiagnosticSourceBytes ||
-		len(r.Message) > MaxDiagnosticMessageBytes || strings.ContainsAny(r.Source, "\r\n") {
+		len(r.Message) > MaxDiagnosticMessageBytes || !diagnosticSafe(r.Source) || !diagnosticSafe(r.Message) {
 		return fmt.Errorf("%w: diagnostic source or message limit", ErrInvalidContract)
 	}
-	if len(r.OperationID) > MaxOperationIDBytes {
+	if len(r.OperationID) > MaxOperationIDBytes || !diagnosticSafe(r.OperationID) ||
+		len(r.Decision) > MaxDiagnosticSourceBytes || !diagnosticSafe(r.Decision) {
 		return fmt.Errorf("%w: diagnostic operation ID length", ErrInvalidContract)
 	}
+	if r.ResourceID.Valid() != (r.ResourceGeneration != 0) || r.Operation != "" && !r.Operation.Valid() {
+		return fmt.Errorf("%w: diagnostic correlation", ErrInvalidContract)
+	}
+	if r.Outcome != "" {
+		switch r.Outcome {
+		case OutcomeRejected, OutcomeCommitted, OutcomeCompensated, OutcomeUncertain:
+		default:
+			return fmt.Errorf("%w: diagnostic outcome", ErrInvalidContract)
+		}
+	}
 	return nil
+}
+
+func diagnosticSafe(value string) bool {
+	if !utf8.ValidString(value) || strings.ContainsAny(value, "\r\n") {
+		return false
+	}
+	for _, r := range value {
+		if unicode.IsControl(r) || unicode.In(r, unicode.Cf, unicode.Zl, unicode.Zp) {
+			return false
+		}
+	}
+	return true
 }

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/asciimoth/almagest/bin/internal/isolation/protocol"
 )
@@ -121,9 +122,10 @@ func TestCapabilityAndOutcomeValidation(t *testing.T) {
 }
 
 func TestDiagnosticValidation(t *testing.T) {
-	base := protocol.DiagnosticRecord{Sequence: 1, ProcessInstance: "process", LaunchID: "launch", Role: protocol.RoleRuntime, Severity: protocol.SeverityInfo, Source: "test"}
+	session := testSession(t)
+	base := protocol.DiagnosticRecord{Timestamp: time.Unix(1, 0), Sequence: 1, ProcessInstance: "process", LaunchID: "launch", SessionID: session.ID, Role: protocol.RoleRuntime, Severity: protocol.SeverityInfo, Source: "test"}
 	for _, role := range []protocol.Role{protocol.RoleRuntime, protocol.RoleNetworkBroker, protocol.RoleConfigWriter, protocol.RoleCommandHelper} {
-		for _, severity := range []protocol.Severity{protocol.SeverityDebug, protocol.SeverityInfo, protocol.SeverityWarn, protocol.SeverityError} {
+		for _, severity := range []protocol.Severity{protocol.SeverityDebug, protocol.SeverityInfo, protocol.SeverityWarn, protocol.SeverityError, protocol.SeverityFatal} {
 			r := base
 			r.Role, r.Severity = role, severity
 			r.Source = strings.Repeat("s", protocol.MaxDiagnosticSourceBytes)
@@ -135,8 +137,11 @@ func TestDiagnosticValidation(t *testing.T) {
 		}
 	}
 	for name, edit := range map[string]func(*protocol.DiagnosticRecord){
+		"timestamp":    func(r *protocol.DiagnosticRecord) { r.Timestamp = time.Time{} },
 		"sequence":     func(r *protocol.DiagnosticRecord) { r.Sequence = 0 },
+		"session":      func(r *protocol.DiagnosticRecord) { r.SessionID = protocol.SessionID{} },
 		"process":      func(r *protocol.DiagnosticRecord) { r.ProcessInstance = "" },
+		"process ANSI": func(r *protocol.DiagnosticRecord) { r.ProcessInstance = "bad\x1b" },
 		"launch":       func(r *protocol.DiagnosticRecord) { r.LaunchID = "" },
 		"role":         func(r *protocol.DiagnosticRecord) { r.Role = "future" },
 		"severity":     func(r *protocol.DiagnosticRecord) { r.Severity = "future" },
@@ -144,14 +149,19 @@ func TestDiagnosticValidation(t *testing.T) {
 		"source limit": func(r *protocol.DiagnosticRecord) {
 			r.Source = strings.Repeat("s", protocol.MaxDiagnosticSourceBytes+1)
 		},
-		"source LF": func(r *protocol.DiagnosticRecord) { r.Source = "a\nb" },
-		"source CR": func(r *protocol.DiagnosticRecord) { r.Source = "a\rb" },
+		"source LF":    func(r *protocol.DiagnosticRecord) { r.Source = "a\nb" },
+		"source CR":    func(r *protocol.DiagnosticRecord) { r.Source = "a\rb" },
+		"message ANSI": func(r *protocol.DiagnosticRecord) { r.Message = "a\x1bb" },
 		"message limit": func(r *protocol.DiagnosticRecord) {
 			r.Message = strings.Repeat("m", protocol.MaxDiagnosticMessageBytes+1)
 		},
 		"operation limit": func(r *protocol.DiagnosticRecord) {
 			r.OperationID = strings.Repeat("o", protocol.MaxOperationIDBytes+1)
 		},
+		"operation ANSI":              func(r *protocol.DiagnosticRecord) { r.OperationID = "a\x1bb" },
+		"unknown operation":           func(r *protocol.DiagnosticRecord) { r.Operation = "future" },
+		"unknown outcome":             func(r *protocol.DiagnosticRecord) { r.Outcome = "future" },
+		"generation without resource": func(r *protocol.DiagnosticRecord) { r.ResourceGeneration = 1 },
 	} {
 		t.Run(name, func(t *testing.T) {
 			r := base

@@ -606,6 +606,14 @@ Acceptance:
 
 ## 21. Implement cross-process logging
 
+Status: component implementation is complete in
+`bin/internal/isolation/diagnostics`. Portable component tests and fuzzing pass.
+The Windows ordinary-user package case is
+`winvm:m21::cross-process-logging`. Production isolated startup remains
+disabled.
+
+See the [cross-process logging implementation and verification notes](DAEMON_ISOLATION_LOGGING.md).
+
 Work:
 
 - Keep node/runtime logs and their cache in R. Add separate bounded diagnostic

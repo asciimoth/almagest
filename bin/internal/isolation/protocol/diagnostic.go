@@ -9,6 +9,7 @@ const (
 	SeverityInfo  Severity = "info"
 	SeverityWarn  Severity = "warn"
 	SeverityError Severity = "error"
+	SeverityFatal Severity = "fatal"
 )
 
 // DiagnosticRecord is bounded diagnostic data, never an acknowledgement or
@@ -20,6 +21,7 @@ type DiagnosticRecord struct {
 	LaunchID           string
 	ProcessInstance    string
 	Sequence           uint64
+	DroppedBefore      uint64
 	Severity           Severity
 	Source             string
 	Message            string

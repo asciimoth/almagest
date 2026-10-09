@@ -14,6 +14,30 @@
       "cases": [
         {"id": "m2::execution-identity-standard-user", "kind": "identity"},
         {
+          "id": "m21::cross-process-logging",
+          "kind": "go",
+          "module": "bin",
+          "arguments": ["./internal/isolation/diagnostics", "./internal/isolation/protocol", "-count=1"],
+          "eventFile": "isolation-diagnostics.jsonl",
+          "requiredTests": [
+            "github.com/asciimoth/almagest/bin/internal/isolation/diagnostics::TestEmitterKeepsOperatorOutputIndependentFromStoppedRuntime",
+            "github.com/asciimoth/almagest/bin/internal/isolation/diagnostics::TestChildOperatorCollectorAssignsOrigin",
+            "github.com/asciimoth/almagest/bin/internal/isolation/diagnostics::TestEmitterPriorityBoundsDropsAndVisibleRecovery",
+            "github.com/asciimoth/almagest/bin/internal/isolation/diagnostics::TestEmitterBoundedFlushWithBlockedSink",
+            "github.com/asciimoth/almagest/bin/internal/isolation/diagnostics::TestEmitterCountsWriteFailuresAsDrops",
+            "github.com/asciimoth/almagest/bin/internal/isolation/diagnostics::TestLoggerFiltersBeforeFormattingAndFatalIsData",
+            "github.com/asciimoth/almagest/bin/internal/isolation/diagnostics::TestSanitizeRedactAndCapturePanic",
+            "github.com/asciimoth/almagest/bin/internal/isolation/diagnostics::TestCollectorAssignsTrustedOriginTracksGapsAndAdaptsDisplay",
+            "github.com/asciimoth/almagest/bin/internal/isolation/diagnostics::TestFrameRoundTripStrictLimitsAndForgedOrigin",
+            "github.com/asciimoth/almagest/bin/internal/isolation/diagnostics::TestStreamCollectorPeerFailureAndTextSafety",
+            "github.com/asciimoth/almagest/bin/internal/isolation/diagnostics::TestCollectorCancellationInterruptsIdleRead",
+            "github.com/asciimoth/almagest/bin/internal/isolation/diagnostics::TestInvalidConfigurationAndCorrelation",
+            "github.com/asciimoth/almagest/bin/internal/isolation/diagnostics::FuzzDiagnosticFrame",
+            "github.com/asciimoth/almagest/bin/internal/isolation/diagnostics::FuzzSanitizeAndRedact",
+            "github.com/asciimoth/almagest/bin/internal/isolation/protocol::TestDiagnosticValidation"
+          ]
+        },
+        {
           "id": "m20::restricted-command-helper",
           "kind": "go",
           "module": "bin",
