@@ -79,7 +79,7 @@ func TestWindowsTargetReplaceAndUnsafeNames(t *testing.T) {
 	}
 }
 
-func TestWindowsTargetRejectsHardLinkAndSymlink(t *testing.T) {
+func TestWindowsTargetRejectsHardLink(t *testing.T) {
 	directory := windowsPrivateTestDirectory(t)
 	path := filepath.Join(directory, "config")
 	if err := os.WriteFile(path, []byte("old"), 0o600); err != nil {
@@ -91,7 +91,9 @@ func TestWindowsTargetRejectsHardLinkAndSymlink(t *testing.T) {
 	if _, err := New(testSession(), path); err == nil {
 		t.Fatal("accepted hard-linked target")
 	}
+}
 
+func TestWindowsTargetRejectsSymlink(t *testing.T) {
 	target := filepath.Join(windowsPrivateTestDirectory(t), "target")
 	if err := os.WriteFile(target, []byte("outside"), 0o600); err != nil {
 		t.Fatal(err)

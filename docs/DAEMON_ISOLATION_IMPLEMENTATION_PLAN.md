@@ -576,6 +576,14 @@ Acceptance:
 
 ## 20. Implement restricted command and callback helpers
 
+Status: component implementation is complete in
+`bin/internal/isolation/commandhelper`. Linux component tests and fuzzing pass.
+The Windows tests pass in the ordinary-user profile through
+`winvm:m20::restricted-command-helper`. Production isolated startup remains
+disabled.
+
+See the [restricted command-helper implementation and verification notes](DAEMON_ISOLATION_COMMAND_HELPER.md).
+
 Work:
 
 - Implement known command IDs, bounded slots, fixed executable/environment/cwd,

@@ -43,6 +43,12 @@ docker() {
 			return 0
 			;;
 		run)
+			if [[ "$*" == *"--entrypoint /usr/bin/chown"* ]]; then
+				if [[ -n "${E2E_OWNERSHIP_TEST_STATE:-}" ]]; then
+					touch "$E2E_OWNERSHIP_TEST_STATE/ownership-restored"
+				fi
+				return 0
+			fi
 			case_name="${!#}"
 			if [[ -n "${E2E_INTERRUPT_TEST_STATE:-}" ]]; then
 				for argument in "$@"; do
@@ -235,6 +241,18 @@ if [[ ! -f "$interrupt_state/coverage/raw/keep" ]]; then
 fi
 if ! grep -qx build "$interrupt_state/prepare-commands" || grep -qx run "$interrupt_state/prepare-commands"; then
 	echo "prepare-only must build without running tests" >&2
+	exit 1
+fi
+
+if E2E_OWNERSHIP_TEST_STATE="$interrupt_state" E2E_COVERAGE=1 \
+	E2E_COVERAGE_DIR="$interrupt_state/owned-coverage" \
+	./e2e/run.sh --skip-build amnesia_selfhost_controller \
+	>"$interrupt_state/ownership-output" 2>&1; then
+	echo "ownership test case unexpectedly passed" >&2
+	exit 1
+fi
+if [[ ! -f "$interrupt_state/ownership-restored" ]]; then
+	echo "coverage ownership was not restored after a container run" >&2
 	exit 1
 fi
 E2E_TEST_COMMANDS="$interrupt_state/loop-commands" E2E_LOG_DIR="$interrupt_state/logs" \

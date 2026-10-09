@@ -235,6 +235,23 @@ terminate_process_tree() {
 	kill -TERM "$pid" 2>/dev/null || true
 }
 
+normalize_coverage_ownership() {
+	local owner
+	local ownership_image
+
+	if [[ "$coverage_enabled" != "1" || ! -d "$coverage_dir" || ${#case_images[@]} -eq 0 ]]; then
+		return
+	fi
+	owner="$(id -u):$(id -g)"
+	ownership_image="${case_images[0]}"
+	if ! docker run --rm --network none --user root \
+		--entrypoint /usr/bin/chown \
+		-v "$coverage_dir:/e2e-coverage" \
+		"$ownership_image" -R "$owner" /e2e-coverage >/dev/null; then
+		echo "warning: could not restore e2e coverage ownership to $owner" >&2
+	fi
+}
+
 cleanup() {
 	local exit_status="$?"
 	local cidfile
@@ -291,6 +308,7 @@ cleanup() {
 	if ((${#resources[@]})); then
 		docker volume rm "${resources[@]}" >/dev/null 2>&1 || true
 	fi
+	normalize_coverage_ownership
 	if [[ -n "$retained_log_dir" ]]; then
 		mkdir -p "$retained_log_dir"
 		for case_index in "${!case_logs[@]}"; do

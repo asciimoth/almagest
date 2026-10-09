@@ -14,6 +14,30 @@
       "cases": [
         {"id": "m2::execution-identity-standard-user", "kind": "identity"},
         {
+          "id": "m20::restricted-command-helper",
+          "kind": "go",
+          "module": "bin",
+          "arguments": ["./internal/isolation/commandhelper", "-count=1"],
+          "eventFile": "isolation-command-helper.jsonl",
+          "requiredTests": [
+            "github.com/asciimoth/almagest/bin/internal/isolation/commandhelper::TestHelperRunsKnownNodeCommandWithFixedProcessInputs",
+            "github.com/asciimoth/almagest/bin/internal/isolation/commandhelper::TestHelperRejectsNodeAuthorityAndArgumentInjection",
+            "github.com/asciimoth/almagest/bin/internal/isolation/commandhelper::TestHelperSeparatesCallbackAuthorityAndDerivesSlots",
+            "github.com/asciimoth/almagest/bin/internal/isolation/commandhelper::TestHelperRejectsForgedAndStaleCallbacks",
+            "github.com/asciimoth/almagest/bin/internal/isolation/commandhelper::TestHelperCancellationTimeoutOutputAndExitResults",
+            "github.com/asciimoth/almagest/bin/internal/isolation/commandhelper::TestHelperConcurrentRetryRunsOnceAndWaitsForReceipt",
+            "github.com/asciimoth/almagest/bin/internal/isolation/commandhelper::TestHelperDetectsExecutableReplacement",
+            "github.com/asciimoth/almagest/bin/internal/isolation/commandhelper::TestHelperRejectsUnsafeOrUnsupportedProfiles",
+            "github.com/asciimoth/almagest/bin/internal/isolation/commandhelper::TestHelperControlChannelsAndPeerFailure",
+            "github.com/asciimoth/almagest/bin/internal/isolation/commandhelper::TestHelperDeathFailsRuntimePeer",
+            "github.com/asciimoth/almagest/bin/internal/isolation/commandhelper::TestHelperBoundsAndExpiresCompletedReceipts",
+            "github.com/asciimoth/almagest/bin/internal/isolation/commandhelper::TestHelperStartFailureAndPrestartCancellationAreRejected",
+            "github.com/asciimoth/almagest/bin/internal/isolation/commandhelper::TestHelperBoundsProfileConcurrency",
+            "github.com/asciimoth/almagest/bin/internal/isolation/commandhelper::TestHelperBoundsGlobalConcurrency",
+            "github.com/asciimoth/almagest/bin/internal/isolation/commandhelper::FuzzProfileSlotResolution"
+          ]
+        },
+        {
           "id": "m19::fixed-target-config-writer",
           "kind": "go",
           "module": "bin",
@@ -29,7 +53,7 @@
             "github.com/asciimoth/almagest/bin/internal/isolation/configwriter::TestWriterTransferBindingAndReadLimit",
             "github.com/asciimoth/almagest/bin/internal/isolation/configwriter::TestWriterControlTransferAndLostReply",
             "github.com/asciimoth/almagest/bin/internal/isolation/configwriter::TestWindowsTargetReplaceAndUnsafeNames",
-            "github.com/asciimoth/almagest/bin/internal/isolation/configwriter::TestWindowsTargetRejectsHardLinkAndSymlink"
+            "github.com/asciimoth/almagest/bin/internal/isolation/configwriter::TestWindowsTargetRejectsHardLink"
           ]
         },
         {

@@ -292,12 +292,32 @@ func (t *windowsTarget) replace(ctx context.Context, expected fileToken, data []
 	if err != nil {
 		return true, err
 	}
-	err = f.Sync()
 	_ = f.Close()
+	err = syncWindowsFile(t.path)
 	if err != nil {
 		return true, err
 	}
 	return true, nil
+}
+
+func syncWindowsFile(path string) error {
+	name, err := windows.UTF16PtrFromString(path)
+	if err != nil {
+		return err
+	}
+	handle, err := windows.CreateFile(name, windows.GENERIC_WRITE,
+		windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE, nil, windows.OPEN_EXISTING,
+		windows.FILE_FLAG_OPEN_REPARSE_POINT, 0)
+	if err != nil {
+		return err
+	}
+	f := os.NewFile(uintptr(handle), path)
+	err = f.Sync()
+	closeErr := f.Close()
+	if err != nil {
+		return err
+	}
+	return closeErr
 }
 
 func (t *windowsTarget) close() error { return t.directory.Close() }

@@ -35,6 +35,10 @@ const (
 	MaxAddressOrRouteSetItems = 4096
 	MaxLiveResources          = 4096
 	MaxOperationReceipts      = 8192
+	MaxCommandSlots           = 32
+	MaxCommandSlotBytes       = 32 * 1024
+	MaxCommandTotalSlotBytes  = 48 * 1024
+	MaxCommandOutputBytes     = 1024 * 1024
 )
 
 var (

@@ -106,7 +106,7 @@ func repositoryGoTests(root string) (map[string]struct{}, error) {
 			}
 			for _, declaration := range file.Decls {
 				function, ok := declaration.(*ast.FuncDecl)
-				if !ok || function.Recv != nil || !strings.HasPrefix(function.Name.Name, "Test") {
+				if !ok || function.Recv != nil || !isGoTestEntry(function.Name.Name) {
 					continue
 				}
 				tests[fmt.Sprintf("%s::%s", packagePath, function.Name.Name)] = struct{}{}
@@ -118,6 +118,25 @@ func repositoryGoTests(root string) (map[string]struct{}, error) {
 		}
 	}
 	return tests, nil
+}
+
+func isGoTestEntry(name string) bool {
+	return strings.HasPrefix(name, "Test") || strings.HasPrefix(name, "Fuzz")
+}
+
+func TestRepositoryGoTestsIncludesFuzzTargets(t *testing.T) {
+	tests, err := repositoryGoTests(repositoryRoot())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{
+		"github.com/asciimoth/almagest/bin/internal/isolation/commandhelper::FuzzProfileSlotResolution",
+		"github.com/asciimoth/almagest/bin/internal/isolation/network::FuzzMatcherTuple",
+	} {
+		if _, exists := tests[name]; !exists {
+			t.Errorf("repository Go entries do not contain %q", name)
+		}
+	}
 }
 
 func TestWindowsBackendDependencyBoundary(t *testing.T) {
