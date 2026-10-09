@@ -12,6 +12,7 @@ import (
 
 	"github.com/asciimoth/almagest/bin/internal/isolation/policy"
 	"github.com/asciimoth/almagest/bin/internal/isolation/protocol"
+	gdns "github.com/asciimoth/gonnect/dns"
 	"github.com/asciimoth/gonnect/tun"
 )
 
@@ -20,9 +21,17 @@ type fakeBackend struct {
 	devices  []*fakeTun
 	checkErr error
 	create   func(context.Context, protocol.CreateTunRequest) (OwnedTun, error)
+	dnsCalls int
+	dnsErr   error
+	dnsOn    bool
+	dnsHook  func(context.Context, OwnedTun, OwnedDNSEndpoint, bool) error
+	caps     *protocol.CapabilitySnapshot
 }
 
-func (*fakeBackend) Capabilities(context.Context) (protocol.CapabilitySnapshot, error) {
+func (f *fakeBackend) Capabilities(context.Context) (protocol.CapabilitySnapshot, error) {
+	if f.caps != nil {
+		return *f.caps, nil
+	}
 	return protocol.CapabilitySnapshot{SchemaVersion: 1, Revision: 1, Operations: []protocol.OperationCapability{{Operation: protocol.OperationCreateTun, Capability: protocol.Capability{State: protocol.CapabilityUnknown, AttemptAllowed: true}}}}, nil
 }
 func (f *fakeBackend) Check(context.Context, protocol.CreateTunRequest) (protocol.ValidationResult, error) {
@@ -40,6 +49,25 @@ func (f *fakeBackend) Create(ctx context.Context, req protocol.CreateTunRequest)
 	f.mu.Unlock()
 	return device, nil
 }
+func (f *fakeBackend) ConfigureDNS(ctx context.Context, owned OwnedTun, endpoint OwnedDNSEndpoint, enabled bool) error {
+	f.mu.Lock()
+	f.dnsCalls++
+	err, hook := f.dnsErr, f.dnsHook
+	f.mu.Unlock()
+	if hook != nil {
+		return hook(ctx, owned, endpoint, enabled)
+	}
+	if err != nil {
+		return err
+	}
+	if enabled && (endpoint == nil || endpoint.Resolver() == nil) {
+		return protocol.ErrInvalidContract
+	}
+	f.mu.Lock()
+	f.dnsOn = enabled
+	f.mu.Unlock()
+	return nil
+}
 func (f *fakeBackend) count() int { f.mu.Lock(); defer f.mu.Unlock(); return len(f.devices) }
 func (f *fakeBackend) last() *fakeTun {
 	f.mu.Lock()
@@ -55,6 +83,17 @@ type fakeTun struct {
 	closes, updates     atomic.Int32
 	closeErr, updateErr error
 }
+
+type fakeDNSEndpoint struct {
+	*fakeTun
+	resolver gdns.Interface
+}
+
+func newFakeDNSEndpoint() *fakeDNSEndpoint {
+	return &fakeDNSEndpoint{fakeTun: newFakeTun(), resolver: gdns.NewClient(nil, nil, nil)}
+}
+
+func (f *fakeDNSEndpoint) Resolver() gdns.Interface { return f.resolver }
 
 func newFakeTun() *fakeTun {
 	return &fakeTun{state: protocol.ResourceState{Name: "owned", MTU: 1420, Warnings: []string{"native_warning"}}, events: make(chan tun.Event, 8)}

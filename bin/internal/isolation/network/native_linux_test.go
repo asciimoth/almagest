@@ -159,6 +159,15 @@ func TestLinuxDefaultTunControl(t *testing.T) {
 	if err != nil || second.Resource.ID == first.Resource.ID {
 		t.Fatalf("replacement %+v: %v", second, err)
 	}
+	endpoint, _ := registerDNS(t, b)
+	attached, err := b.ConfigureDNS(context.Background(), protocol.ConfigureDNSRequest{Meta: meta(b, "dns-on"), Tun: second.Resource, Enabled: true, Endpoint: endpoint})
+	if err != nil || attached.Outcome != protocol.OutcomeCommitted {
+		t.Fatalf("DNS attach %+v: %v", attached, err)
+	}
+	detached, err := b.ConfigureDNS(context.Background(), protocol.ConfigureDNSRequest{Meta: meta(b, "dns-off"), Tun: attached.CurrentResource})
+	if err != nil || detached.Outcome != protocol.OutcomeCommitted {
+		t.Fatalf("DNS detach %+v: %v", detached, err)
+	}
 	if err := b.Shutdown(context.Background()); err != nil {
 		t.Fatal(err)
 	}

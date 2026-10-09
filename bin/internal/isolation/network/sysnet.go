@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/asciimoth/almagest/bin/internal/isolation/protocol"
+	gdns "github.com/asciimoth/gonnect/dns"
 	"github.com/asciimoth/gonnect/sysnet"
 	"github.com/asciimoth/gonnect/tun"
 )
@@ -40,6 +41,37 @@ func NewSystemBackend(system sysnet.System, capture CaptureIdentity) (*SystemBac
 		return nil, protocol.ErrInvalidContract
 	}
 	return &SystemBackend{system: system, capture: capture}, nil
+}
+
+func (s *SystemBackend) ConfigureDNS(ctx context.Context, owned OwnedTun, endpoint OwnedDNSEndpoint, enabled bool) error {
+	if err := ctx.Err(); err != nil {
+		return &NoEffectsError{Err: err}
+	}
+	t, ok := owned.(*systemTun)
+	if !ok || !t.defaultTun || t.backend != s {
+		return &NoEffectsError{Err: protocol.ErrResourceType}
+	}
+	if err := t.Verify(ctx); err != nil {
+		return &NoEffectsError{Err: err}
+	}
+	device, ok := t.device.(sysnet.DefaultTun)
+	if !ok {
+		return &NoEffectsError{Err: protocol.ErrCapabilityUnsupported}
+	}
+	var resolver gdns.Interface
+	if enabled {
+		if endpoint == nil || endpoint.Resolver() == nil {
+			return &NoEffectsError{Err: protocol.ErrInvalidContract}
+		}
+		resolver = endpoint.Resolver()
+	}
+	if err := device.SetDNS(resolver); err != nil {
+		return nativeError(err)
+	}
+	if err := ctx.Err(); err != nil {
+		return errors.Join(protocol.ErrRecoveryRequired, err)
+	}
+	return nil
 }
 
 func prefixes(values []netip.Prefix) []string {
@@ -433,6 +465,7 @@ func (s *SystemBackend) Capabilities(ctx context.Context) (protocol.CapabilitySn
 		resolverCapability = protocol.Capability{State: protocol.CapabilityUnknown, AttemptAllowed: true}
 	}
 	out.Operations = append(out.Operations, protocol.OperationCapability{Operation: protocol.OperationResolverSnapshot, Target: "out_dns", Capability: resolverCapability})
+	out.Operations = append(out.Operations, protocol.OperationCapability{Operation: protocol.OperationConfigureDNS, Target: "default_tun", Capability: protocol.Capability{State: protocol.CapabilityUnknown, AttemptAllowed: true}})
 	for _, profile := range r.DefaultTunProfiles {
 		p := protocol.DefaultTunProfile{Family: string(profile.Key.Family), Mode: string(profile.Key.Mode), Strict: profile.Key.Strict, Capability: capability(profile.Capability)}
 		for _, rule := range profile.Rules {

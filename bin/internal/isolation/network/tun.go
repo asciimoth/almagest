@@ -65,6 +65,16 @@ func (b *Broker) validateOptions(req protocol.CreateTunRequest) error {
 			}
 		}
 	}
+	if p := b.policy.NetworkRestrictions; p != nil {
+		if req.Strict && p.AllowStrictMode != nil && !*p.AllowStrictMode {
+			return protocol.ErrPolicyDenied
+		}
+		for _, rule := range req.Rules {
+			if slices.Contains(p.DeniedRuleTypes, rule.Type) {
+				return protocol.ErrPolicyDenied
+			}
+		}
+	}
 	return nil
 }
 
@@ -332,6 +342,41 @@ func (b *Broker) closeNative(ctx context.Context, r *resource) error {
 		}
 	}
 	b.mu.Unlock()
+	if r.ref.Type == protocol.ResourceDNS {
+		if r.native == nil {
+			return protocol.ErrRecoveryRequired
+		}
+		if err := r.native.Verify(ctx); err != nil {
+			return errors.Join(protocol.ErrRecoveryRequired, err)
+		}
+		backend, ok := b.backend.(DNSBackend)
+		if !ok {
+			return protocol.ErrRecoveryRequired
+		}
+		b.mu.Lock()
+		var owners []*resource
+		for _, candidate := range b.resources {
+			if candidate.dns == r.ref && !candidate.state.Closed {
+				owners = append(owners, candidate)
+			}
+		}
+		b.mu.Unlock()
+		for _, owner := range owners {
+			if err := backend.ConfigureDNS(ctx, owner.native, nil, false); err != nil {
+				return errors.Join(protocol.ErrRecoveryRequired, err)
+			}
+			b.mu.Lock()
+			owner.dns = protocol.ResourceRef{}
+			if owner.ref.Generation == math.MaxUint64 {
+				b.recovery = true
+				b.mu.Unlock()
+				return protocol.ErrLimitExceeded
+			}
+			owner.ref.Generation++
+			b.eventLocked(owner, false)
+			b.mu.Unlock()
+		}
+	}
 	for _, child := range children {
 		if err := b.closeNative(ctx, child); err != nil {
 			return err
@@ -340,8 +385,10 @@ func (b *Broker) closeNative(ctx context.Context, r *resource) error {
 	if r.native == nil {
 		return protocol.ErrRecoveryRequired
 	}
-	if err := r.native.Verify(ctx); err != nil {
-		return errors.Join(protocol.ErrRecoveryRequired, err)
+	if r.ref.Type != protocol.ResourceDNS {
+		if err := r.native.Verify(ctx); err != nil {
+			return errors.Join(protocol.ErrRecoveryRequired, err)
+		}
 	}
 	if err := r.native.Close(ctx); err != nil {
 		return errors.Join(protocol.ErrRecoveryRequired, err)
@@ -357,6 +404,7 @@ func (b *Broker) closeNative(ctx context.Context, r *resource) error {
 	r.state.RecoveryRequired = false
 	r.native = nil
 	r.options = protocol.CreateTunRequest{}
+	r.dns = protocol.ResourceRef{}
 	r.stop = nil
 	b.eventLocked(r, false)
 	b.mu.Unlock()

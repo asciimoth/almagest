@@ -6,8 +6,24 @@ import (
 	"context"
 
 	"github.com/asciimoth/almagest/bin/internal/isolation/protocol"
+	gdns "github.com/asciimoth/gonnect/dns"
 	"github.com/asciimoth/gonnect/tun"
 )
+
+// OwnedDNSEndpoint is a bootstrap-created, bounded relay to R. Resolver is
+// consumed only by the selected native backend. It does not expose a host DNS
+// provider, file, command, D-Bus connection, WFP object, or driver handle.
+// Implementations must keep DNS packet parsing and application resolution in R.
+type OwnedDNSEndpoint interface {
+	OwnedTun
+	Resolver() gdns.Interface
+}
+
+// DNSBackend applies the selected backend's managed host-DNS operation to one
+// owned default TUN. Provider selection and native arguments remain in N.
+type DNSBackend interface {
+	ConfigureDNS(context.Context, OwnedTun, OwnedDNSEndpoint, bool) error
+}
 
 // Backend belongs exclusively to one Broker. Check is read-only and Create
 // must reject name collisions, never open an existing device by name. On a

@@ -57,11 +57,13 @@ type Limits struct {
 // isolated bootstrap is implemented and reviewed.
 type NetworkRestrictions struct {
 	DeniedOperations  []protocol.Operation
+	DeniedRuleTypes   []string
 	MaxTuns           uint32
 	MaxSockets        uint32
 	MaxListeners      uint32
 	AllowDefaultRoute *bool
 	AllowHostDNS      *bool
+	AllowStrictMode   *bool
 }
 
 // CommandAuthority is derived from protected command settings. Node commands
@@ -125,6 +127,9 @@ func (p Policy) Validate() error {
 			}
 			seen[operation] = struct{}{}
 		}
+		if err := validateUniqueNames("denied network rule type", p.NetworkRestrictions.DeniedRuleTypes); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -167,6 +172,8 @@ func (p Policy) Digest() ([32]byte, error) {
 		copyRestrictions := *normalized.NetworkRestrictions
 		copyRestrictions.DeniedOperations = slices.Clone(copyRestrictions.DeniedOperations)
 		slices.Sort(copyRestrictions.DeniedOperations)
+		copyRestrictions.DeniedRuleTypes = slices.Clone(copyRestrictions.DeniedRuleTypes)
+		slices.Sort(copyRestrictions.DeniedRuleTypes)
 		normalized.NetworkRestrictions = &copyRestrictions
 	}
 	data, err := json.Marshal(normalized)

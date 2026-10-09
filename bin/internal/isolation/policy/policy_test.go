@@ -62,4 +62,25 @@ func TestPolicyDigestIsOrderIndependent(t *testing.T) {
 	if digestA != digestB {
 		t.Fatal("equivalent normalized policies have different digests")
 	}
+	a.NetworkRestrictions = &policy.NetworkRestrictions{DeniedRuleTypes: []string{"uid", "app"}}
+	b.NetworkRestrictions = &policy.NetworkRestrictions{DeniedRuleTypes: []string{"app", "uid"}}
+	digestA, err = a.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	digestB, err = b.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if digestA != digestB {
+		t.Fatal("equivalent rule restrictions have different digests")
+	}
+}
+
+func TestPolicyRejectsDuplicateDeniedRuleTypes(t *testing.T) {
+	p := policy.Default(policy.LaunchAuthority{Backend: "linux", CredentialClass: "service"}, policy.CommandAuthority{})
+	p.NetworkRestrictions = &policy.NetworkRestrictions{DeniedRuleTypes: []string{"uid", "uid"}}
+	if err := p.Validate(); !errors.Is(err, policy.ErrInvalidPolicy) {
+		t.Fatalf("duplicate rule type = %v", err)
+	}
 }

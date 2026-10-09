@@ -4,11 +4,39 @@ import (
 	"context"
 	"errors"
 	"net/netip"
+	"os"
 	"testing"
 
 	"github.com/asciimoth/almagest/bin/internal/isolation/protocol"
+	gdns "github.com/asciimoth/gonnect/dns"
 	"github.com/asciimoth/gonnect/sysnet"
+	"github.com/asciimoth/gonnect/tun"
 )
+
+type dnsDefaultTun struct {
+	resolver gdns.Interface
+	err      error
+}
+
+func (*dnsDefaultTun) Read([][]byte, []int, int) (int, error) { return 0, nil }
+func (*dnsDefaultTun) Write([][]byte, int) (int, error)       { return 0, nil }
+func (*dnsDefaultTun) Close() error                           { return nil }
+func (*dnsDefaultTun) MTU() (int, error)                      { return 1400, nil }
+func (*dnsDefaultTun) Name() (string, error)                  { return "dns-test", nil }
+func (*dnsDefaultTun) Events() <-chan tun.Event               { return nil }
+func (*dnsDefaultTun) File() *os.File                         { return nil }
+func (*dnsDefaultTun) BatchSize() int                         { return 1 }
+func (*dnsDefaultTun) MWO() int                               { return 0 }
+func (*dnsDefaultTun) MRO() int                               { return 0 }
+func (*dnsDefaultTun) IsNative() bool                         { return false }
+func (d *dnsDefaultTun) SetDNS(resolver gdns.Interface) error {
+	d.resolver = resolver
+	return d.err
+}
+
+type validIdentity struct{}
+
+func (validIdentity) Verify(context.Context) error { return nil }
 
 type validationSystem struct {
 	sysnet.System
@@ -71,5 +99,32 @@ func TestSystemBackendContract(t *testing.T) {
 		if got.AttemptAllowed != (state == sysnet.CapabilityUnknown || state == sysnet.CapabilityAvailable) || len(got.Reasons) != 1 || len(got.Limitations) != 1 {
 			t.Fatal(got)
 		}
+	}
+}
+
+func TestSystemBackendManagedDNS(t *testing.T) {
+	system := &validationSystem{}
+	backend := &SystemBackend{system: system}
+	device := &dnsDefaultTun{}
+	owned := &systemTun{backend: backend, device: device, identity: validIdentity{}, defaultTun: true}
+	endpoint := newFakeDNSEndpoint()
+	if err := backend.ConfigureDNS(context.Background(), owned, endpoint, true); err != nil || device.resolver != endpoint.Resolver() {
+		t.Fatalf("attach resolver=%p want=%p err=%v", device.resolver, endpoint.Resolver(), err)
+	}
+	if err := backend.ConfigureDNS(context.Background(), owned, nil, false); err != nil || device.resolver != nil {
+		t.Fatalf("detach resolver=%p err=%v", device.resolver, err)
+	}
+	device.err = sysnet.ErrUnavailable
+	if err := backend.ConfigureDNS(context.Background(), owned, endpoint, true); !errors.Is(err, protocol.ErrCapabilityUnavailable) {
+		t.Fatalf("provider error = %v", err)
+	}
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	device.err = nil
+	if err := backend.ConfigureDNS(canceled, owned, endpoint, true); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled = %v", err)
+	}
+	if err := backend.ConfigureDNS(context.Background(), newFakeTun(), endpoint, true); !errors.Is(err, protocol.ErrResourceType) {
+		t.Fatalf("foreign tun = %v", err)
 	}
 }

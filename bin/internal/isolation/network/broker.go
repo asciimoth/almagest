@@ -24,6 +24,7 @@ type resource struct {
 	state   protocol.ResourceState
 	options protocol.CreateTunRequest
 	stop    context.CancelFunc
+	dns     protocol.ResourceRef
 }
 
 type receipt struct {
@@ -110,7 +111,7 @@ func (b *Broker) lookup(ref protocol.ResourceRef) (*resource, error) {
 	if ref.SessionID != b.session.ID {
 		return nil, protocol.ErrForeignResource
 	}
-	if ref.Type != protocol.ResourceTun && ref.Type != protocol.ResourceDefaultTun && ref.Type != protocol.ResourceSocket && ref.Type != protocol.ResourceListener {
+	if ref.Type != protocol.ResourceTun && ref.Type != protocol.ResourceDefaultTun && ref.Type != protocol.ResourceSocket && ref.Type != protocol.ResourceListener && ref.Type != protocol.ResourceDNS {
 		return nil, protocol.ErrResourceType
 	}
 	if !ref.ID.Valid() {

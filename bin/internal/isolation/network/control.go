@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 
 	"github.com/asciimoth/almagest/bin/internal/isolation/protocol"
 	"github.com/asciimoth/almagest/bin/internal/isolation/transport"
@@ -91,8 +92,12 @@ func (b *Broker) Capabilities(ctx context.Context, req protocol.ReadRequest) (pr
 			}
 		}
 		denyDefault := !b.policy.AllowsNetwork(protocol.OperationCreateDefaultTun)
+		denyDNS := !b.policy.AllowsNetwork(protocol.OperationConfigureDNS)
 		if p := b.policy.NetworkRestrictions; p != nil && p.AllowDefaultRoute != nil && !*p.AllowDefaultRoute {
 			denyDefault = true
+		}
+		if p := b.policy.NetworkRestrictions; p != nil && p.AllowHostDNS != nil && !*p.AllowHostDNS {
+			denyDNS = true
 		}
 		if denyDefault {
 			for i := range snapshot.DefaultTunProfiles {
@@ -104,6 +109,34 @@ func (b *Broker) Capabilities(ctx context.Context, req protocol.ReadRequest) (pr
 			for i := range snapshot.Operations {
 				entry := &snapshot.Operations[i]
 				if entry.Operation == protocol.OperationCreateDefaultTun {
+					entry.State = protocol.CapabilityUnavailable
+					entry.AttemptAllowed = false
+					entry.Reasons = append(entry.Reasons, "policy_denied")
+				}
+			}
+		}
+		if p := b.policy.NetworkRestrictions; p != nil {
+			for i := range snapshot.DefaultTunProfiles {
+				profile := &snapshot.DefaultTunProfiles[i]
+				if profile.Strict && p.AllowStrictMode != nil && !*p.AllowStrictMode {
+					profile.Capability.State = protocol.CapabilityUnavailable
+					profile.Capability.AttemptAllowed = false
+					profile.Capability.Reasons = append(profile.Capability.Reasons, "policy_denied")
+				}
+				for j := range profile.Rules {
+					rule := &profile.Rules[j]
+					if slices.Contains(p.DeniedRuleTypes, rule.Type) {
+						rule.Capability.State = protocol.CapabilityUnavailable
+						rule.Capability.AttemptAllowed = false
+						rule.Capability.Reasons = append(rule.Capability.Reasons, "policy_denied")
+					}
+				}
+			}
+		}
+		if denyDNS {
+			for i := range snapshot.Operations {
+				entry := &snapshot.Operations[i]
+				if entry.Operation == protocol.OperationConfigureDNS {
 					entry.State = protocol.CapabilityUnavailable
 					entry.AttemptAllowed = false
 					entry.Reasons = append(entry.Reasons, "policy_denied")
@@ -231,6 +264,13 @@ func (b *Broker) Handle(ctx context.Context, op protocol.Operation, body json.Ra
 			return nil, protocol.ErrInvalidContract
 		}
 		result, err := b.CreateTun(ctx, req)
+		return mutationReply(result, err)
+	case protocol.OperationConfigureDNS:
+		var req protocol.ConfigureDNSRequest
+		if err := transport.Decode(body, &req); err != nil {
+			return nil, err
+		}
+		result, err := b.ConfigureDNS(ctx, req)
 		return mutationReply(result, err)
 	case protocol.OperationSetTunMTU, protocol.OperationSetTunAddresses, protocol.OperationSetTunRoutes, protocol.OperationSetTunName:
 		var req protocol.UpdateTunRequest

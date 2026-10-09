@@ -491,6 +491,13 @@ Acceptance:
 
 ## 17. Implement host routes, firewall, and DNS control
 
+Status: component implementation is complete in
+`bin/internal/isolation/network`. Linux direct-DNS and Windows managed-DNS
+native component checks pass.
+See the [host-control implementation and verification notes](DAEMON_ISOLATION_HOST_CONTROL.md).
+Production isolated startup remains disabled; complete Linux provider,
+restricted-role, and daemon-profile qualification remain later gates.
+
 Work:
 
 - Add typed route, firewall, strict-mode, and host DNS changes with ownership
