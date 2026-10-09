@@ -18,6 +18,7 @@ import (
 const operationTimeout = 5 * time.Second
 
 type resource struct {
+	matcher *matcherResource
 	closing bool
 	ref     protocol.ResourceRef
 	native  OwnedTun
@@ -37,6 +38,7 @@ type receipt struct {
 // Broker owns one authenticated session and one native mutation lane. The
 // launcher must call Shutdown on peer loss, even if the peer cannot read a reply.
 type Broker struct {
+	matchSlots       chan struct{}
 	offers           map[protocol.ResourceID]*acceptOffer
 	data             *relay.Mux
 	dataReady        bool
@@ -79,7 +81,8 @@ func New(session protocol.Session, p policy.Policy, backend Backend) (*Broker, e
 		return nil, err
 	}
 	return &Broker{session: session, policy: owned, backend: backend, gate: make(chan struct{}, 1), epoch: 1,
-		resources: make(map[protocol.ResourceID]*resource), receipts: make(map[string]*receipt),
+		matchSlots: make(chan struct{}, min(int(owned.Limits.MaxConcurrentRequests), 64)),
+		resources:  make(map[protocol.ResourceID]*resource), receipts: make(map[string]*receipt),
 		events: make(chan transport.Event, protocol.MaxConcurrentRequests), stopped: make(chan struct{}), timeout: operationTimeout}, nil
 }
 
@@ -111,7 +114,7 @@ func (b *Broker) lookup(ref protocol.ResourceRef) (*resource, error) {
 	if ref.SessionID != b.session.ID {
 		return nil, protocol.ErrForeignResource
 	}
-	if ref.Type != protocol.ResourceTun && ref.Type != protocol.ResourceDefaultTun && ref.Type != protocol.ResourceSocket && ref.Type != protocol.ResourceListener && ref.Type != protocol.ResourceDNS {
+	if ref.Type != protocol.ResourceTun && ref.Type != protocol.ResourceDefaultTun && ref.Type != protocol.ResourceSocket && ref.Type != protocol.ResourceListener && ref.Type != protocol.ResourceDNS && ref.Type != protocol.ResourceMatcher {
 		return nil, protocol.ErrResourceType
 	}
 	if !ref.ID.Valid() {

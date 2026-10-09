@@ -92,6 +92,22 @@ func (b *Broker) Capabilities(ctx context.Context, req protocol.ReadRequest) (pr
 			}
 		}
 		denyDefault := !b.policy.AllowsNetwork(protocol.OperationCreateDefaultTun)
+		denyMatchers := !b.policy.AllowsNetwork(protocol.OperationCreateMatcher) || !b.policy.AllowsNetwork(protocol.OperationMatch)
+		for i := range snapshot.Rules {
+			rule := &snapshot.Rules[i]
+			denied := denyMatchers
+			if b.matcherRuleDenied(rule.Type) {
+				denied = true
+			}
+			if denied {
+				for j := range rule.Matchers {
+					entry := &rule.Matchers[j].Capability
+					entry.State = protocol.CapabilityUnavailable
+					entry.AttemptAllowed = false
+					entry.Reasons = append(entry.Reasons, "policy_denied")
+				}
+			}
+		}
 		denyDNS := !b.policy.AllowsNetwork(protocol.OperationConfigureDNS)
 		if p := b.policy.NetworkRestrictions; p != nil && p.AllowDefaultRoute != nil && !*p.AllowDefaultRoute {
 			denyDefault = true
@@ -172,6 +188,9 @@ func (b *Broker) check(ctx context.Context, meta protocol.RequestMeta, op protoc
 }
 
 func (b *Broker) GetResourceState(ctx context.Context, req protocol.ResourceRequest) (protocol.ResourceState, error) {
+	if req.Resource.Type == protocol.ResourceMatcher {
+		return protocol.ResourceState{}, protocol.ErrResourceType
+	}
 	return read(ctx, b, req.Meta, protocol.OperationGetTunState, func(ctx context.Context) (protocol.ResourceState, error) {
 		b.mu.Lock()
 		r, err := b.lookup(req.Resource)
@@ -203,7 +222,7 @@ func (b *Broker) GetResourceState(ctx context.Context, req protocol.ResourceRequ
 	})
 }
 
-// Handle is the closed checkpoint-15 dispatch table for transport.New. Later
+// Handle is the closed checkpoint-18 dispatch table for transport.New. Later
 // checkpoint operations fail explicitly; they never fall back to native calls
 // in the runtime. Mutation replies contain receipts even when the operation
 // fails; errors from native work do not discard the recorded outcome.
@@ -265,6 +284,19 @@ func (b *Broker) Handle(ctx context.Context, op protocol.Operation, body json.Ra
 		}
 		result, err := b.CreateTun(ctx, req)
 		return mutationReply(result, err)
+	case protocol.OperationCreateMatcher:
+		var req protocol.CreateMatcherRequest
+		if err := transport.Decode(body, &req); err != nil {
+			return nil, err
+		}
+		result, err := b.CreateMatcher(ctx, req)
+		return mutationReply(result, err)
+	case protocol.OperationMatch:
+		var req protocol.MatchRequest
+		if err := transport.Decode(body, &req); err != nil {
+			return nil, err
+		}
+		return b.Match(ctx, req)
 	case protocol.OperationConfigureDNS:
 		var req protocol.ConfigureDNSRequest
 		if err := transport.Decode(body, &req); err != nil {

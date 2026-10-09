@@ -79,7 +79,9 @@ The typed contract now includes default rule mode (`full`, `include`, or
 `exclude`), DNS address selection, exact native capability operation names, and
 per-TUN capability revisions. No protected-config schema changes are needed.
 Socket and data-channel dispatch are described in the checkpoint 16 record.
-Matcher and standalone host-effect dispatch remain unsupported here.
+Matcher dispatch is implemented by checkpoint 18; see
+[five-tuple matchers](DAEMON_ISOLATION_MATCHERS.md). Host-effect dispatch is
+described in [host control](DAEMON_ISOLATION_HOST_CONTROL.md).
 
 ## Verification
 

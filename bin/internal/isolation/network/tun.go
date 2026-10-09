@@ -342,6 +342,9 @@ func (b *Broker) closeNative(ctx context.Context, r *resource) error {
 		}
 	}
 	b.mu.Unlock()
+	if r.ref.Type == protocol.ResourceMatcher {
+		return b.closeMatcher(ctx, r)
+	}
 	if r.ref.Type == protocol.ResourceDNS {
 		if r.native == nil {
 			return protocol.ErrRecoveryRequired

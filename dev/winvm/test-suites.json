@@ -14,6 +14,31 @@
       "cases": [
         {"id": "m2::execution-identity-standard-user", "kind": "identity"},
         {
+          "id": "m18::five-tuple-matchers",
+          "kind": "go",
+          "module": "bin",
+          "arguments": ["./internal/isolation/network", "./internal/isolation/transport", "-run", "^(TestWindowsMatcherParity|TestMatcher.*|FuzzMatcher.*)$", "-count=1"],
+          "eventFile": "isolation-matchers.jsonl",
+          "requiredTests": [
+            "github.com/asciimoth/almagest/bin/internal/isolation/network::TestWindowsMatcherParity",
+            "github.com/asciimoth/almagest/bin/internal/isolation/network::TestMatcherOwnershipAndFreshness",
+            "github.com/asciimoth/almagest/bin/internal/isolation/network::TestMatcherErrorCategories",
+            "github.com/asciimoth/almagest/bin/internal/isolation/network::TestMatcherCancellationAndOverload",
+            "github.com/asciimoth/almagest/bin/internal/isolation/network::TestMatcherLateCompletion",
+            "github.com/asciimoth/almagest/bin/internal/isolation/network::TestMatcherCreateFailures",
+            "github.com/asciimoth/almagest/bin/internal/isolation/network::TestMatcherWireAndRuleReplacement",
+            "github.com/asciimoth/almagest/bin/internal/isolation/network::TestMatcherDeadline",
+            "github.com/asciimoth/almagest/bin/internal/isolation/network::TestMatcherBackendChangesAreNotCached",
+            "github.com/asciimoth/almagest/bin/internal/isolation/network::TestMatcherCanceledCreation",
+            "github.com/asciimoth/almagest/bin/internal/isolation/network::TestMatcherWireOverload",
+            "github.com/asciimoth/almagest/bin/internal/isolation/network::TestMatcherPolicyCapabilities",
+            "github.com/asciimoth/almagest/bin/internal/isolation/network::TestMatcherCloseWaitsForNativeLookup",
+            "github.com/asciimoth/almagest/bin/internal/isolation/network::FuzzMatcherTuple",
+            "github.com/asciimoth/almagest/bin/internal/isolation/network::FuzzMatcherRule",
+            "github.com/asciimoth/almagest/bin/internal/isolation/transport::TestMatcherReservesControlCapacity"
+          ]
+        },
+        {
           "id": "m16::socket-relays",
           "kind": "go",
           "module": "bin",

@@ -520,6 +520,11 @@ Acceptance:
 
 ## 18. Implement five-tuple matchers
 
+Component implementation and evidence:
+[Five-tuple matchers](DAEMON_ISOLATION_MATCHERS.md). Rule updates use immutable
+matcher replacement through the frozen create/close API. Production performance
+and hostile-runtime qualification remain gates in sections 30 and 31.
+
 Work:
 
 - Add matcher creation, rule updates, bounded read-only tuple matching, and close

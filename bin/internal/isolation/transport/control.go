@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/asciimoth/almagest/bin/internal/isolation/protocol"
+	"github.com/asciimoth/gonnect/sockowner"
 )
 
 // WireError sends only a closed code, never native error strings or paths.
@@ -20,6 +21,7 @@ type WireError struct {
 }
 
 var errorCodes = map[string]error{
+	"no_owner": sockowner.ErrNoOwner, "ambiguous_owner": sockowner.ErrAUW, "ambiguous_exact_owner": sockowner.ErrAEx,
 	"invalid": protocol.ErrInvalidContract, "version": protocol.ErrUnsupportedVersion,
 	"operation": protocol.ErrUnsupportedOperation, "unsupported": protocol.ErrCapabilityUnsupported,
 	"unavailable": protocol.ErrCapabilityUnavailable, "denied": protocol.ErrPolicyDenied,
@@ -268,7 +270,7 @@ func (p *Peer) callMode(ctx context.Context, kind string, op protocol.Operation,
 		p.mu.Unlock()
 		return err
 	}
-	if len(p.pending) >= protocol.MaxConcurrentRequests || (op == protocol.OperationChannel && dataCall(body) && len(p.pending) >= 96) || p.next == ^uint64(0) {
+	if len(p.pending) >= protocol.MaxConcurrentRequests || (bulkCall(op, body) && len(p.pending) >= 96) || p.next == ^uint64(0) {
 		p.mu.Unlock()
 		return protocol.ErrLimitExceeded
 	}
@@ -399,9 +401,9 @@ func (p *Peer) receive(m message) error {
 			return protocol.ErrLimitExceeded
 		}
 		p.received = m.ID
-		// Data operations leave worker capacity for status, deadlines, and close.
-		// Reject excess data work before starting a native worker.
-		if m.Operation == protocol.OperationChannel && dataCall(m.Body) && len(p.active) >= 96 {
+		// Data and matcher operations leave capacity for status and close.
+		// Reject excess work before starting a native worker.
+		if bulkCall(m.Operation, m.Body) && len(p.active) >= 96 {
 			p.mu.Unlock()
 			return p.queue(message{Kind: "reply", ID: m.ID, Error: wireError(protocol.ErrLimitExceeded)}, true)
 		}
@@ -478,6 +480,10 @@ func (p *Peer) handle(ctx context.Context, m message) {
 	if err := p.queue(reply, true); err != nil {
 		p.fail(err)
 	}
+}
+
+func bulkCall(op protocol.Operation, body []byte) bool {
+	return op == protocol.OperationMatch || (op == protocol.OperationChannel && dataCall(body))
 }
 
 func dataCall(body []byte) bool {

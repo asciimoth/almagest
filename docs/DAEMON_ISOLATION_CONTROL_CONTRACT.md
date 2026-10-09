@@ -12,6 +12,8 @@ are in `bin/internal/isolation/policy`. The checkpoint 14 transport is in
 are not connected to daemon startup and do not enable isolated production mode.
 Checkpoint 15 implements the TUN owner in `bin/internal/isolation/network`;
 see its [ownership and result contract](DAEMON_ISOLATION_NETWORK_CONTROL.md).
+Checkpoint 18 implements [five-tuple matchers](DAEMON_ISOLATION_MATCHERS.md)
+over the same control transport.
 
 ## Authority and identity
 
