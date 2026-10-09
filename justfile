@@ -49,6 +49,10 @@ qualify-direct:
 linux-isolation-experiment evidence='':
   ./dev/linux-isolation/run.sh {{quote(evidence)}}
 
+# Check the Linux role profiles only inside disposable, bounded containers.
+linux-isolation-profiles evidence='':
+  bash ./dev/linux-profiles/run.sh {{quote(evidence)}}
+
 # Run checkpoint 11 with caller-derived and service-derived AppContainers in
 # the locked disposable Windows VM.
 windows-isolation-experiment:

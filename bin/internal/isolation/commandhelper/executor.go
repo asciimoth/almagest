@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"os/exec"
+	"strings"
 	"sync"
 )
 
@@ -73,6 +74,9 @@ func (l *ProcessLauncher) Run(ctx context.Context, execution Execution) Executio
 	cmd := exec.CommandContext(commandContext, execution.Executable, execution.Arguments...)
 	cmd.Env = append([]string(nil), execution.Environment...)
 	cmd.Dir = execution.WorkingDirectory
+	// An EOF pipe has the same input semantics as /dev/null and also works in
+	// a role filesystem that deliberately has no host device directory.
+	cmd.Stdin = strings.NewReader("")
 	cmd.WaitDelay = commandWaitDelay
 	configureCommand(cmd)
 	output := &boundedOutput{remaining: execution.OutputLimit, cancel: cancel}

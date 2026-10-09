@@ -172,6 +172,10 @@ Daemon:
   file-storage restore, graph rebuild, and rollback.
 - `bin/almagestd/snapshot_bbolt.go`: consistent bbolt copies and transactional
   replacement of live database buckets.
+- `bin/native/linux-role/` and `bin/internal/isolation/linuxprofile/`: native
+  Linux role restrictions, held-descriptor launch contracts, and final Go
+  thread synchronization. These components do not enable isolated daemon
+  startup; see `docs/DAEMON_ISOLATION_LINUX_PROFILES.md` for qualification limits.
 
 Platform and CLI:
 - `bin/almagestd/platform/`: build-tagged defaults and platform operations.

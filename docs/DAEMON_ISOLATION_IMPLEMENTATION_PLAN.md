@@ -701,6 +701,14 @@ Acceptance:
 
 ## 24. Implement the Linux production profiles
 
+Status: Linux amd64 restriction components and their Docker qualification
+harness are implemented in `bin/native/linux-role` and
+`bin/internal/isolation/linuxprofile`. Complete profile acceptance remains open
+for native backend/helper compatibility and deployment resource provisioning.
+Production isolated startup remains disabled.
+
+See the [Linux role profile implementation and qualification notes](DAEMON_ISOLATION_LINUX_PROFILES.md).
+
 Work:
 
 - Apply the qualified profile from section 10 before untrusted initialization:
