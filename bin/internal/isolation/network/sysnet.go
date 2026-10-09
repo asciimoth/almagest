@@ -29,9 +29,10 @@ type CaptureIdentity func(context.Context, tun.Tun) (NativeIdentity, error)
 // lack of an identity guard is not permission to use name-only ownership.
 // Production bootstrap must supply the qualified platform guard and backend.
 type SystemBackend struct {
-	system       sysnet.System
-	capture      CaptureIdentity
-	defaultOwned *systemTun
+	resolverSource ResolverSnapshotSource
+	system         sysnet.System
+	capture        CaptureIdentity
+	defaultOwned   *systemTun
 }
 
 func NewSystemBackend(system sysnet.System, capture CaptureIdentity) (*SystemBackend, error) {
@@ -71,6 +72,10 @@ func nativeOptions(req protocol.CreateTunRequest) (sysnet.TunOpts, sysnet.Defaul
 }
 
 func nativeError(err error) error {
+	var unknown net.UnknownNetworkError
+	if errors.As(err, &unknown) {
+		return errors.Join(protocol.ErrCapabilityUnsupported, err)
+	}
 	switch {
 	case errors.Is(err, sysnet.ErrNotSupported):
 		return errors.Join(protocol.ErrCapabilityUnsupported, err)
@@ -179,11 +184,15 @@ func (s *SystemBackend) Create(ctx context.Context, req protocol.CreateTunReques
 }
 
 type systemTun struct {
-	backend    *SystemBackend
-	device     tun.Tun
-	identity   NativeIdentity
-	defaultTun bool
-	expected   *protocol.ResourceState
+	reserveData      func(int) (func(), error)
+	releaseData      func()
+	pendingPackets   [][]byte
+	pendingReadError error
+	backend          *SystemBackend
+	device           tun.Tun
+	identity         NativeIdentity
+	defaultTun       bool
+	expected         *protocol.ResourceState
 }
 
 func (t *systemTun) Verify(ctx context.Context) error {
@@ -374,6 +383,10 @@ func capability(c sysnet.Capability) protocol.Capability {
 
 func operation(key sysnet.OperationKey) protocol.Operation {
 	switch key.Operation {
+	case sysnet.OpDialTCP, sysnet.OpDialUDP, sysnet.OpPacketDialUDP, sysnet.OpListenTCP, sysnet.OpListenUDP, sysnet.OpListenPacketUDP, sysnet.OpMulticastUDP:
+		return protocol.OperationOpenSocket
+	case sysnet.OpInterfaces:
+		return protocol.OperationListInterfaces
 	case sysnet.OpCreate, sysnet.OpCreateNamed:
 		if key.Target == sysnet.TargetDefaultTun {
 			return protocol.OperationCreateDefaultTun
@@ -415,6 +428,11 @@ func (s *SystemBackend) Capabilities(ctx context.Context) (protocol.CapabilitySn
 	}
 	r := s.system.Capabilities()
 	out := protocol.CapabilitySnapshot{SchemaVersion: r.SchemaVersion, Revision: r.Revision, Operations: operations(r.Operations)}
+	resolverCapability := protocol.Capability{State: protocol.CapabilityUnsupported, Reasons: []string{"upstream_snapshot_unavailable"}}
+	if s.resolverSource != nil {
+		resolverCapability = protocol.Capability{State: protocol.CapabilityUnknown, AttemptAllowed: true}
+	}
+	out.Operations = append(out.Operations, protocol.OperationCapability{Operation: protocol.OperationResolverSnapshot, Target: "out_dns", Capability: resolverCapability})
 	for _, profile := range r.DefaultTunProfiles {
 		p := protocol.DefaultTunProfile{Family: string(profile.Key.Family), Mode: string(profile.Key.Mode), Strict: profile.Key.Strict, Capability: capability(profile.Capability)}
 		for _, rule := range profile.Rules {

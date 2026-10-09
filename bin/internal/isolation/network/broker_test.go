@@ -370,7 +370,7 @@ func TestNetworkOwnership(t *testing.T) {
 			t.Fatal(err)
 		}
 		_, err = b.Handle(context.Background(), protocol.OperationOpenSocket, body)
-		if !errors.Is(err, protocol.ErrUnsupportedOperation) {
+		if !errors.Is(err, protocol.ErrInvalidContract) {
 			t.Fatal(err)
 		}
 	})

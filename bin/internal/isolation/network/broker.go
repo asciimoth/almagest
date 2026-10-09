@@ -11,12 +11,14 @@ import (
 
 	"github.com/asciimoth/almagest/bin/internal/isolation/policy"
 	"github.com/asciimoth/almagest/bin/internal/isolation/protocol"
+	"github.com/asciimoth/almagest/bin/internal/isolation/relay"
 	"github.com/asciimoth/almagest/bin/internal/isolation/transport"
 )
 
 const operationTimeout = 5 * time.Second
 
 type resource struct {
+	closing bool
 	ref     protocol.ResourceRef
 	native  OwnedTun
 	state   protocol.ResourceState
@@ -34,6 +36,10 @@ type receipt struct {
 // Broker owns one authenticated session and one native mutation lane. The
 // launcher must call Shutdown on peer loss, even if the peer cannot read a reply.
 type Broker struct {
+	offers           map[protocol.ResourceID]*acceptOffer
+	data             *relay.Mux
+	dataReady        bool
+	channels         map[protocol.ResourceID]*channelState
 	session          protocol.Session
 	policy           policy.Policy
 	backend          Backend
@@ -104,7 +110,7 @@ func (b *Broker) lookup(ref protocol.ResourceRef) (*resource, error) {
 	if ref.SessionID != b.session.ID {
 		return nil, protocol.ErrForeignResource
 	}
-	if ref.Type != protocol.ResourceTun && ref.Type != protocol.ResourceDefaultTun {
+	if ref.Type != protocol.ResourceTun && ref.Type != protocol.ResourceDefaultTun && ref.Type != protocol.ResourceSocket && ref.Type != protocol.ResourceListener {
 		return nil, protocol.ErrResourceType
 	}
 	if !ref.ID.Valid() {

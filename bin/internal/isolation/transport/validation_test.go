@@ -23,7 +23,7 @@ func TestRequestDispatch(t *testing.T) {
 	}{
 		{protocol.OperationCapabilities, &protocol.ReadRequest{}, false},
 		{protocol.OperationStatus, &protocol.ReadRequest{}, false},
-		{protocol.OperationListInterfaces, &protocol.ReadRequest{}, false},
+		{protocol.OperationListInterfaces, &protocol.InterfaceRequest{}, false},
 		{protocol.OperationResolverSnapshot, &protocol.ReadRequest{}, false},
 		{protocol.OperationCheckTun, &protocol.CheckTunRequest{}, false},
 		{protocol.OperationCheckDefaultTun, &protocol.CheckDefaultTunRequest{}, false},
@@ -39,6 +39,7 @@ func TestRequestDispatch(t *testing.T) {
 		{protocol.OperationSetTunName, &protocol.UpdateTunRequest{}, true},
 		{protocol.OperationConfigureDNS, &protocol.ConfigureDNSRequest{}, true},
 		{protocol.OperationOpenSocket, &protocol.OpenSocketRequest{}, true},
+		{protocol.OperationChannel, &protocol.ChannelRequest{}, false},
 		{protocol.OperationCreateMatcher, &protocol.CreateMatcherRequest{}, true},
 		{protocol.OperationMatch, &protocol.MatchRequest{}, false},
 		{protocol.OperationGetTunState, &protocol.ResourceRequest{}, false},

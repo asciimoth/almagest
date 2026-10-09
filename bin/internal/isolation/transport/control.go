@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
+	"os"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/asciimoth/almagest/bin/internal/isolation/protocol"
@@ -25,6 +28,11 @@ var errorCodes = map[string]error{
 	"epoch": protocol.ErrStaleGraphEpoch, "conflict": protocol.ErrOperationConflict,
 	"unknown": protocol.ErrOperationUnknown, "recovery": protocol.ErrRecoveryRequired,
 	"canceled": context.Canceled, "deadline": context.DeadlineExceeded,
+	"refused": syscall.ECONNREFUSED, "address_in_use": syscall.EADDRINUSE,
+	"unreachable": syscall.ENETUNREACH, "host_unreachable": syscall.EHOSTUNREACH,
+	"permission": os.ErrPermission, "short_buffer": io.ErrShortBuffer,
+	"short_write": io.ErrShortWrite, "reset": syscall.ECONNRESET,
+	"eof": io.EOF, "closed": net.ErrClosed, "timeout": os.ErrDeadlineExceeded,
 	"internal": errors.New("isolation owner failed"),
 }
 
@@ -235,7 +243,18 @@ func (p *Peer) Call(ctx context.Context, op protocol.Operation, request, result 
 	return p.call(ctx, "request", op, request, result)
 }
 
+// CallSettled sends cancellation but retains the operation until its terminal
+// result or peer loss. Data adapters use it to release late-frame capacity.
+func (p *Peer) CallSettled(ctx context.Context, op protocol.Operation, request, result any) error {
+	if !op.Valid() || op == protocol.OperationHandshake {
+		return protocol.ErrUnsupportedOperation
+	}
+	return p.callMode(ctx, "request", op, request, result, true)
+}
 func (p *Peer) call(ctx context.Context, kind string, op protocol.Operation, request, result any) error {
+	return p.callMode(ctx, kind, op, request, result, false)
+}
+func (p *Peer) callMode(ctx context.Context, kind string, op protocol.Operation, request, result any, settled bool) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -249,7 +268,7 @@ func (p *Peer) call(ctx context.Context, kind string, op protocol.Operation, req
 		p.mu.Unlock()
 		return err
 	}
-	if len(p.pending) >= protocol.MaxConcurrentRequests || p.next == ^uint64(0) {
+	if len(p.pending) >= protocol.MaxConcurrentRequests || (op == protocol.OperationChannel && dataCall(body) && len(p.pending) >= 96) || p.next == ^uint64(0) {
 		p.mu.Unlock()
 		return protocol.ErrLimitExceeded
 	}
@@ -286,6 +305,17 @@ func (p *Peer) call(ctx context.Context, kind string, op protocol.Operation, req
 	case <-ctx.Done():
 		if err := p.queue(message{Kind: "cancel", ID: id}, true); err != nil {
 			p.fail(err)
+		}
+		if settled {
+			select {
+			case m := <-ch:
+				if m.Error != nil {
+					return m.Error
+				}
+				return Decode(m.Body, result)
+			case <-p.ctx.Done():
+				return p.Err()
+			}
 		}
 		return ctx.Err()
 	case <-p.ctx.Done():
@@ -369,6 +399,12 @@ func (p *Peer) receive(m message) error {
 			return protocol.ErrLimitExceeded
 		}
 		p.received = m.ID
+		// Data operations leave worker capacity for status, deadlines, and close.
+		// Reject excess data work before starting a native worker.
+		if m.Operation == protocol.OperationChannel && dataCall(m.Body) && len(p.active) >= 96 {
+			p.mu.Unlock()
+			return p.queue(message{Kind: "reply", ID: m.ID, Error: wireError(protocol.ErrLimitExceeded)}, true)
+		}
 		ctx, cancel := context.WithCancel(p.ctx)
 		p.active[m.ID] = cancel
 		p.mu.Unlock()
@@ -442,4 +478,35 @@ func (p *Peer) handle(ctx context.Context, m message) {
 	if err := p.queue(reply, true); err != nil {
 		p.fail(err)
 	}
+}
+
+func dataCall(body []byte) bool {
+	var q protocol.ChannelRequest
+	if err := Decode(body, &q); err != nil {
+		return true
+	}
+	switch q.Kind {
+	case protocol.ChannelRead, protocol.ChannelPrepareWrite, protocol.ChannelWrite, protocol.ChannelAccept:
+		return true
+	default:
+		return false
+	}
+}
+
+// ErrorCode and ErrorFromCode share the closed error set with data results.
+// Native strings, paths, and endpoint details never cross the boundary.
+func ErrorCode(err error) string {
+	if err == nil {
+		return ""
+	}
+	return wireError(err).Code
+}
+func ErrorFromCode(code string) error {
+	if code == "" {
+		return nil
+	}
+	if errorCodes[code] == nil {
+		return protocol.ErrInvalidContract
+	}
+	return &WireError{Code: code}
 }

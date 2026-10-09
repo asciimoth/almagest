@@ -17,6 +17,10 @@ type readResult[T any] struct {
 // Serve owns the authenticated lanes until peer loss, then revokes and cleans
 // the session. Bootstrap is responsible for platform endpoint authentication.
 func (b *Broker) Serve(ctx context.Context, lanes transport.Lanes) error {
+	if err := b.AttachData(ctx, lanes.Data); err != nil {
+		lanes.Close()
+		return err
+	}
 	peer, err := transport.New(ctx, lanes, b.session, b.Handle)
 	if err != nil {
 		return errors.Join(err, b.Shutdown(context.Background()))
@@ -24,6 +28,8 @@ func (b *Broker) Serve(ctx context.Context, lanes transport.Lanes) error {
 	defer func() { _ = peer.Close() }()
 	for {
 		select {
+		case <-b.data.Done():
+			return errors.Join(b.data.Err(), b.Shutdown(context.Background()))
 		case <-b.stopped:
 			return b.Shutdown(context.Background())
 		case <-peer.Done():
@@ -170,6 +176,31 @@ func (b *Broker) GetResourceState(ctx context.Context, req protocol.ResourceRequ
 // fails; errors from native work do not discard the recorded outcome.
 func (b *Broker) Handle(ctx context.Context, op protocol.Operation, body json.RawMessage) (any, error) {
 	switch op {
+	case protocol.OperationChannel:
+		var req protocol.ChannelRequest
+		if err := transport.Decode(body, &req); err != nil {
+			return nil, err
+		}
+		return b.Channel(ctx, req)
+	case protocol.OperationOpenSocket:
+		var req protocol.OpenSocketRequest
+		if err := transport.Decode(body, &req); err != nil {
+			return nil, err
+		}
+		result, err := b.OpenSocket(ctx, req)
+		return mutationReply(result, err)
+	case protocol.OperationListInterfaces:
+		var req protocol.InterfaceRequest
+		if err := transport.Decode(body, &req); err != nil {
+			return nil, err
+		}
+		return b.ListNetworkInterfaces(ctx, req)
+	case protocol.OperationResolverSnapshot:
+		var req protocol.ReadRequest
+		if err := transport.Decode(body, &req); err != nil {
+			return nil, err
+		}
+		return b.ResolverSnapshot(ctx, req)
 	case protocol.OperationCapabilities, protocol.OperationStatus:
 		var req protocol.ReadRequest
 		if err := transport.Decode(body, &req); err != nil {
@@ -245,7 +276,7 @@ func mutationReply[T any](result T, err error) (any, error) {
 	// its body. No native error strings cross the channel.
 	code := ""
 	if err != nil {
-		code = "internal"
+		code = transport.ErrorCode(err)
 		for _, entry := range []struct {
 			code string
 			err  error
@@ -277,4 +308,15 @@ func mutationReply[T any](result T, err error) (any, error) {
 	default:
 		return nil, protocol.ErrInvalidContract
 	}
+}
+
+func (b *Broker) boundSnapshot(value any) error {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return err
+	}
+	if len(data) > int(b.policy.Limits.MaxControlFrameBytes)/2 {
+		return protocol.ErrLimitExceeded
+	}
+	return nil
 }

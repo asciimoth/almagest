@@ -93,3 +93,29 @@ func TestWindowsNetworkTun(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestWindowsTunRelay(t *testing.T) {
+	if !windows.GetCurrentProcessToken().IsElevated() {
+		t.Skip("requires privileged Windows VM")
+	}
+	host, err := os.Hostname()
+	if err != nil || !strings.EqualFold(host, "ALM-WINVM") {
+		t.Skip("requires ALM-WINVM")
+	}
+	system, err := sysnetwindows.New(sysnetwindows.SystemConfig{AdapterNamePrefix: "alm-m16"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := system.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	backend, err := NewSystemBackend(system, CaptureNativeIdentity)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := testBroker(t)
+	b.backend = backend
+	exerciseTunRelay(t, b)
+}

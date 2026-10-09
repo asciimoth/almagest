@@ -14,6 +14,34 @@
       "cases": [
         {"id": "m2::execution-identity-standard-user", "kind": "identity"},
         {
+          "id": "m16::socket-relays",
+          "kind": "go",
+          "module": "bin",
+          "arguments": ["./internal/isolation/network", "./internal/isolation/relay", "./internal/isolation/runtime", "-run", "^(TestSocketRelay|TestPacketRelay|TestSocketAuthority|TestSocketCancellationAndOffers|TestSocketControlUnderLoad|TestSocketResolverAndInterfaces|TestSocketUnknownInterfaceMTU|TestSocketValidation|TestSocketEndpointConversion|TestDataFrame|TestDataCredits|TestDataReservationLimit|TestDataFrameValidationMatrix|TestDataMuxValidationAndAccounting|TestDataMuxRejectsFutureGeneration|TestParseEndpoint|TestRuntimeErrorAndDeadlineConversion|TestTunAdapterStateAndEvents|TestTunAdapterRejectsInvalidState)$", "-count=1"],
+          "eventFile": "isolation-socket-relays.jsonl",
+          "requiredTests": [
+            "github.com/asciimoth/almagest/bin/internal/isolation/network::TestSocketRelay",
+            "github.com/asciimoth/almagest/bin/internal/isolation/network::TestPacketRelay",
+            "github.com/asciimoth/almagest/bin/internal/isolation/network::TestSocketAuthority",
+            "github.com/asciimoth/almagest/bin/internal/isolation/network::TestSocketCancellationAndOffers",
+            "github.com/asciimoth/almagest/bin/internal/isolation/network::TestSocketControlUnderLoad",
+            "github.com/asciimoth/almagest/bin/internal/isolation/network::TestSocketResolverAndInterfaces",
+            "github.com/asciimoth/almagest/bin/internal/isolation/network::TestSocketUnknownInterfaceMTU",
+            "github.com/asciimoth/almagest/bin/internal/isolation/network::TestSocketValidation",
+            "github.com/asciimoth/almagest/bin/internal/isolation/network::TestSocketEndpointConversion",
+            "github.com/asciimoth/almagest/bin/internal/isolation/relay::TestDataFrame",
+            "github.com/asciimoth/almagest/bin/internal/isolation/relay::TestDataCredits",
+            "github.com/asciimoth/almagest/bin/internal/isolation/relay::TestDataReservationLimit",
+            "github.com/asciimoth/almagest/bin/internal/isolation/relay::TestDataFrameValidationMatrix",
+            "github.com/asciimoth/almagest/bin/internal/isolation/relay::TestDataMuxValidationAndAccounting",
+            "github.com/asciimoth/almagest/bin/internal/isolation/relay::TestDataMuxRejectsFutureGeneration",
+            "github.com/asciimoth/almagest/bin/internal/isolation/runtime::TestParseEndpoint",
+            "github.com/asciimoth/almagest/bin/internal/isolation/runtime::TestRuntimeErrorAndDeadlineConversion",
+            "github.com/asciimoth/almagest/bin/internal/isolation/runtime::TestTunAdapterStateAndEvents",
+            "github.com/asciimoth/almagest/bin/internal/isolation/runtime::TestTunAdapterRejectsInvalidState"
+          ]
+        },
+        {
           "id": "m15::network-resource-ownership",
           "kind": "go",
           "module": "bin",
@@ -262,6 +290,14 @@
       "cases": [
         {"id": "m2::execution-identity-elevated", "kind": "identity"},
         {"id": "m2::exclusive-cases-serialized", "kind": "serialization"},
+        {
+          "id": "m16::native-tun-relay",
+          "kind": "go",
+          "module": "bin",
+          "arguments": ["./internal/isolation/network", "-run", "^TestWindowsTunRelay$", "-count=1"],
+          "eventFile": "isolation-native-tun-relay.jsonl",
+          "requiredTests": ["github.com/asciimoth/almagest/bin/internal/isolation/network::TestWindowsTunRelay"]
+        },
         {
           "id": "m15::native-tun-control",
           "kind": "go",

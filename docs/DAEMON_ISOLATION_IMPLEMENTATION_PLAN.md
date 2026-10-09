@@ -464,6 +464,11 @@ Acceptance:
 
 ## 16. Implement socket control and the selected data channels
 
+Status: component implementation added in `bin/internal/isolation/network`,
+`relay`, and `runtime`. The complete parity and performance acceptance conditions
+remain open. See the [socket and data relay implementation and evidence](DAEMON_ISOLATION_SOCKET_DATA.md).
+Production isolated startup remains disabled.
+
 Work:
 
 - Add outbound networks, LocalNet, TCP/UDP dial/listen/accept, resolver access,

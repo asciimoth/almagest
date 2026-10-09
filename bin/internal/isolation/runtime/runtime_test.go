@@ -1,0 +1,166 @@
+package runtime
+
+import (
+	"context"
+	"errors"
+	"io"
+	"net"
+	"net/netip"
+	"os"
+	"testing"
+	"time"
+
+	"github.com/asciimoth/almagest/bin/internal/isolation/protocol"
+	"github.com/asciimoth/almagest/bin/internal/isolation/transport"
+	"github.com/asciimoth/gonnect/tun"
+)
+
+func TestParseEndpoint(t *testing.T) {
+	tests := []struct {
+		name, input, network string
+		want                 netip.AddrPort
+		valid                bool
+	}{
+		{"empty", "", "tcp4", netip.AddrPort{}, true},
+		{"ipv4", "192.0.2.1:443", "tcp4", netip.MustParseAddrPort("192.0.2.1:443"), true},
+		{"ipv6", "[2001:db8::1]:53", "udp6", netip.MustParseAddrPort("[2001:db8::1]:53"), true},
+		{"wildcard4", ":80", "tcp4", netip.MustParseAddrPort("0.0.0.0:80"), true},
+		{"wildcard6", ":80", "tcp6", netip.MustParseAddrPort("[::]:80"), true},
+		{"missing_port", "192.0.2.1", "tcp4", netip.AddrPort{}, false},
+		{"name", "example.test:80", "tcp4", netip.AddrPort{}, false},
+		{"large_port", "192.0.2.1:65536", "tcp4", netip.AddrPort{}, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := parseEndpoint(tc.input, tc.network)
+			if (err == nil) != tc.valid || err == nil && got != tc.want {
+				t.Fatalf("got %v, %v; want %v, valid=%v", got, err, tc.want, tc.valid)
+			}
+		})
+	}
+}
+
+func TestRuntimeErrorAndDeadlineConversion(t *testing.T) {
+	for code, want := range map[string]error{
+		"":              nil,
+		"eof":           io.EOF,
+		"closed":        net.ErrClosed,
+		"deadline":      os.ErrDeadlineExceeded,
+		"canceled":      context.Canceled,
+		"short_buffer":  io.ErrShortBuffer,
+		"short_write":   io.ErrShortWrite,
+		"unsupported":   protocol.ErrCapabilityUnsupported,
+		"invalid":       protocol.ErrInvalidContract,
+		"permission":    os.ErrPermission,
+		"made_up_error": protocol.ErrInvalidContract,
+	} {
+		got := decodeError(code)
+		if want == nil {
+			if got != nil {
+				t.Fatalf("%q: got %v", code, got)
+			}
+		} else if !errors.Is(got, want) {
+			t.Fatalf("%q: got %v, want %v", code, got, want)
+		}
+	}
+	if remaining(time.Time{}) != nil {
+		t.Fatal("zero deadline produced a duration")
+	}
+	if got := remaining(time.Now().Add(-time.Second)); got == nil || *got != 0 {
+		t.Fatalf("expired deadline = %v", got)
+	}
+	if got := remaining(time.Now().Add(time.Second)); got == nil || *got <= 0 || *got > int64(time.Second) {
+		t.Fatalf("future deadline = %v", got)
+	}
+}
+
+func TestTunAdapterStateAndEvents(t *testing.T) {
+	session := protocol.Session{ID: protocol.SessionID{1}, Epoch: 1, Version: protocol.Version}
+	client := &Client{session: session, tuns: make(map[protocol.ResourceID]*Tun)}
+	client.epoch.Store(1)
+	ref := protocol.ResourceRef{ID: protocol.ResourceID{2}, SessionID: session.ID, Type: protocol.ResourceTun, Generation: 1, GraphEpoch: 1}
+	adapter, err := client.Tun(ref, protocol.ResourceState{Name: "relay0", MTU: 1400, Revision: 1, Up: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer adapter.finish()
+	if adapter.IsNative() || adapter.File() != nil || adapter.BatchSize() != 1 || adapter.MWO() != 0 || adapter.MRO() != 0 {
+		t.Fatal("adapter exposed native or unexpected batch properties")
+	}
+	if name, _ := adapter.Name(); name != "relay0" {
+		t.Fatalf("name = %q", name)
+	}
+	if mtu, _ := adapter.MTU(); mtu != 1400 {
+		t.Fatalf("mtu = %d", mtu)
+	}
+	if event := <-adapter.Events(); event != tun.EventUp {
+		t.Fatalf("initial event = %v", event)
+	}
+
+	adapter.event(transport.Event{Resource: ref, Revision: 1, Up: false})
+	select {
+	case event := <-adapter.Events():
+		t.Fatalf("stale event delivered: %v", event)
+	default:
+	}
+	adapter.event(transport.Event{Resource: ref, Revision: 2, MTUChanged: true})
+	if event := <-adapter.Events(); event != tun.EventDown|tun.EventMTUUpdate {
+		t.Fatalf("state event = %v", event)
+	}
+	if count, err := adapter.Read(nil, nil, 0); count != 0 || !errors.Is(err, io.ErrShortBuffer) {
+		t.Fatalf("invalid read = %d, %v", count, err)
+	}
+	if count, err := adapter.Write([][]byte{{1}}, 1); count != 0 || !errors.Is(err, io.ErrShortBuffer) {
+		t.Fatalf("invalid write = %d, %v", count, err)
+	}
+
+	replacement := ref
+	replacement.Generation = 2
+	newAdapter, err := client.Tun(replacement, protocol.ResourceState{Name: "relay0", MTU: 1400, Revision: 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer newAdapter.finish()
+	if _, open := <-adapter.Events(); open {
+		t.Fatal("replacement did not terminate old adapter")
+	}
+	if _, err = client.Tun(ref, protocol.ResourceState{MTU: 1400}); !errors.Is(err, protocol.ErrOperationConflict) {
+		t.Fatalf("old generation accepted: %v", err)
+	}
+}
+
+func TestTunAdapterRejectsInvalidState(t *testing.T) {
+	session := protocol.Session{ID: protocol.SessionID{1}, Epoch: 1, Version: protocol.Version}
+	client := &Client{session: session, tuns: make(map[protocol.ResourceID]*Tun)}
+	client.epoch.Store(1)
+	base := protocol.ResourceRef{ID: protocol.ResourceID{2}, SessionID: session.ID, Type: protocol.ResourceTun, Generation: 1, GraphEpoch: 1}
+	for _, tc := range []struct {
+		name  string
+		ref   protocol.ResourceRef
+		state protocol.ResourceState
+		want  error
+	}{
+		{"type", func() protocol.ResourceRef { r := base; r.Type = protocol.ResourceSocket; return r }(), protocol.ResourceState{MTU: 1400}, protocol.ErrResourceType},
+		{"foreign", func() protocol.ResourceRef { r := base; r.SessionID[0]++; return r }(), protocol.ResourceState{MTU: 1400}, protocol.ErrForeignResource},
+		{"zero_mtu", base, protocol.ResourceState{}, protocol.ErrCapabilityUnsupported},
+		{"large_mtu", base, protocol.ResourceState{MTU: protocol.MaxPacketRecord + 1}, protocol.ErrCapabilityUnsupported},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := client.Tun(tc.ref, tc.state); !errors.Is(err, tc.want) {
+				t.Fatalf("got %v, want %v", err, tc.want)
+			}
+		})
+	}
+}
+
+func FuzzParseEndpoint(f *testing.F) {
+	for _, seed := range []string{"", ":0", "127.0.0.1:80", "[::1]:443", "example.test:53", "[fe80::1%test0]:1"} {
+		f.Add(seed, "udp6")
+	}
+	f.Fuzz(func(t *testing.T, input, network string) {
+		endpoint, err := parseEndpoint(input, network)
+		if err == nil && input != "" && !endpoint.IsValid() {
+			t.Fatalf("successful parse produced invalid endpoint: %q", input)
+		}
+	})
+}

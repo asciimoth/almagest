@@ -11,8 +11,10 @@ import (
 // protocol type; no arbitrary method, syscall or native payload is forwarded.
 func requestType(op protocol.Operation) (any, bool) {
 	switch op {
-	case protocol.OperationCapabilities, protocol.OperationStatus, protocol.OperationListInterfaces, protocol.OperationResolverSnapshot:
+	case protocol.OperationCapabilities, protocol.OperationStatus, protocol.OperationResolverSnapshot:
 		return new(protocol.ReadRequest), false
+	case protocol.OperationListInterfaces:
+		return new(protocol.InterfaceRequest), false
 	case protocol.OperationCheckTun:
 		return new(protocol.CheckTunRequest), false
 	case protocol.OperationCheckDefaultTun:
@@ -29,6 +31,8 @@ func requestType(op protocol.Operation) (any, bool) {
 		return new(protocol.UpdateTunRequest), true
 	case protocol.OperationConfigureDNS:
 		return new(protocol.ConfigureDNSRequest), true
+	case protocol.OperationChannel:
+		return new(protocol.ChannelRequest), false
 	case protocol.OperationOpenSocket:
 		return new(protocol.OpenSocketRequest), true
 	case protocol.OperationCreateMatcher:

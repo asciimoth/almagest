@@ -115,16 +115,20 @@ func (b *Broker) CreateTun(ctx context.Context, req protocol.CreateTunRequest) (
 			return rejected(req.Meta.OperationID, protocol.ErrRecoveryRequired), protocol.ErrRecoveryRequired
 		}
 		var previous *resource
-		live := 0
+		live, tunCount := 0, 0
 		for _, r := range b.resources {
 			if r.state.Closed {
 				continue
 			}
 			live++
+			if r.ref.Type == protocol.ResourceTun || r.ref.Type == protocol.ResourceDefaultTun {
+				tunCount++
+			}
 			if req.Default && r.ref.Type == protocol.ResourceDefaultTun {
 				previous = r
 			}
 		}
+		recorded := len(b.resources)
 		b.mu.Unlock()
 		if previous != nil && reflect.DeepEqual(previous.options, canonical(req)) {
 			if err := previous.native.Verify(ctx); err != nil {
@@ -134,12 +138,17 @@ func (b *Broker) CreateTun(ctx context.Context, req protocol.CreateTunRequest) (
 		}
 		limit := b.policy.Limits.MaxLiveResources
 		if p := b.policy.NetworkRestrictions; p != nil && p.MaxTuns > 0 && p.MaxTuns < limit {
-			limit = p.MaxTuns
+			if previous != nil {
+				tunCount--
+			}
+			if tunCount >= int(p.MaxTuns) {
+				return rejected(req.Meta.OperationID, protocol.ErrLimitExceeded), protocol.ErrLimitExceeded
+			}
 		}
 		if previous != nil {
 			live--
 		}
-		if live >= int(limit) {
+		if live >= int(limit) || recorded >= protocol.MaxOperationReceipts {
 			return rejected(req.Meta.OperationID, protocol.ErrLimitExceeded), protocol.ErrLimitExceeded
 		}
 		if err := ctx.Err(); err != nil {
@@ -311,7 +320,23 @@ func (b *Broker) closeNative(ctx context.Context, r *resource) error {
 		r.stop()
 	}
 	r.state.Up = false
+	r.closing = true
+	var children []*resource
+	for id, offer := range b.offers {
+		if id == r.ref.ID || offer.parent == r.ref.ID {
+			offer.timer.Stop()
+			delete(b.offers, id)
+			if id != r.ref.ID {
+				children = append(children, b.resources[id])
+			}
+		}
+	}
 	b.mu.Unlock()
+	for _, child := range children {
+		if err := b.closeNative(ctx, child); err != nil {
+			return err
+		}
+	}
 	if r.native == nil {
 		return protocol.ErrRecoveryRequired
 	}
@@ -320,6 +345,12 @@ func (b *Broker) closeNative(ctx context.Context, r *resource) error {
 	}
 	if err := r.native.Close(ctx); err != nil {
 		return errors.Join(protocol.ErrRecoveryRequired, err)
+	}
+	if err := b.waitData(ctx, r.ref.ID); err != nil {
+		return err
+	}
+	if t, ok := r.native.(*systemTun); ok {
+		t.clearPackets()
 	}
 	b.mu.Lock()
 	r.state.Closed = true
@@ -348,6 +379,9 @@ func updateOperation(kind protocol.TunUpdateKind) protocol.Operation {
 }
 
 func (b *Broker) UpdateTun(ctx context.Context, req protocol.UpdateTunRequest) (protocol.MutationResult, error) {
+	if req.Resource.Type != protocol.ResourceTun && req.Resource.Type != protocol.ResourceDefaultTun {
+		return protocol.MutationResult{}, protocol.ErrResourceType
+	}
 	input := req
 	input.Meta.RequestID = 0
 	result, err := b.mutate(ctx, req.Meta, updateOperation(req.Kind), input, func(ctx context.Context) (protocol.ResourceResult, error) {
@@ -534,6 +568,9 @@ func (b *Broker) cleanup(ctx context.Context) error {
 // seconds. A hung backend leaves recovery visible, with its objects retained.
 func (b *Broker) Shutdown(ctx context.Context) error {
 	b.mu.Lock()
+	if b.data != nil {
+		_ = b.data.Close()
+	}
 	b.closed = true
 	b.stopOnce.Do(func() { close(b.stopped) })
 	if b.cancel != nil {

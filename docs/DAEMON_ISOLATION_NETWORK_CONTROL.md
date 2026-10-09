@@ -1,8 +1,9 @@
 # Network resource ownership and TUN control
 
 Checkpoint 15 adds `bin/internal/isolation/network`. The direct daemon does
-not import it. Production role startup, packet relays, host recovery journals,
+not import it. Production role startup and host recovery journals,
 and the default isolation switch remain later checkpoints.
+Checkpoint 16 adds [socket control and packet/stream relays](DAEMON_ISOLATION_SOCKET_DATA.md).
 
 The broker owns one bootstrap session and one native operation lane. The
 launcher supplies immutable policy and an exclusively owned backend.
@@ -77,7 +78,8 @@ Canceled watchers cannot publish an old source as the current TUN.
 The typed contract now includes default rule mode (`full`, `include`, or
 `exclude`), DNS address selection, exact native capability operation names, and
 per-TUN capability revisions. No protected-config schema changes are needed.
-Socket, matcher, and standalone host-effect dispatch remain unsupported here.
+Socket and data-channel dispatch are described in the checkpoint 16 record.
+Matcher and standalone host-effect dispatch remain unsupported here.
 
 ## Verification
 

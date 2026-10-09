@@ -215,6 +215,7 @@ const (
 	OperationGetTunState        Operation = "get_tun_state"
 	OperationConfigureDNS       Operation = "configure_dns"
 	OperationOpenSocket         Operation = "open_socket"
+	OperationChannel            Operation = "data_channel"
 	OperationListInterfaces     Operation = "list_interfaces"
 	OperationResolverSnapshot   Operation = "resolver_snapshot"
 	OperationCreateMatcher      Operation = "create_matcher"
@@ -413,6 +414,14 @@ type SocketOptions struct {
 	WriteBuffer uint32
 	KeepAlive   time.Duration
 	NoDelay     bool
+	Multicast   MulticastOptions
+}
+
+type MulticastOptions struct {
+	ReuseAddr    bool
+	ReusePort    bool
+	RecvAnyIf    bool
+	ControlFlags uint32
 }
 
 type OpenSocketRequest struct {
@@ -420,13 +429,20 @@ type OpenSocketRequest struct {
 	Options SocketOptions
 }
 
+type InterfaceRequest struct {
+	Meta    RequestMeta
+	Purpose NetworkPurpose
+}
+
 type Interface struct {
-	Index     uint32
-	Name      string
-	MTU       uint32
-	Flags     uint32
-	Addresses []netip.Prefix
-	Multicast []netip.Addr
+	ID              string
+	HardwareAddress []byte
+	Index           uint32
+	Name            string
+	MTU             int64
+	Flags           uint32
+	Addresses       []netip.Prefix
+	Multicast       []netip.Addr
 }
 
 type InterfaceSnapshot struct{ Interfaces []Interface }
@@ -476,6 +492,8 @@ type ResourceResult struct {
 }
 
 type ResourceState struct {
+	Local              netip.AddrPort
+	Remote             netip.AddrPort
 	Capabilities       []OperationCapability
 	CapabilityRevision uint64
 	Revision           uint64
