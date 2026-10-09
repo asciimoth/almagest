@@ -1855,7 +1855,7 @@ func probeWinsockDuplicate(targetPID uint32) error {
 	if int32(r1) == 0 {
 		return nil
 	}
-	if callErr != nil && !errors.Is(callErr, windows.ERROR_SUCCESS) {
+	if !errors.Is(callErr, windows.ERROR_SUCCESS) {
 		return callErr
 	}
 	return errors.New("WSADuplicateSocketW rejected the target")
