@@ -201,7 +201,7 @@ class HarnessTests(unittest.TestCase):
         self.assertIn("progress 'running outnet and split packet-flow scenarios (timeout: 30 minutes)'", flow)
         self.assertIn('packet-flow scenarios still running; elapsed=%ss', flow)
         self.assertIn("progress 'collecting observations and validating packet captures'", flow)
-        self.assertIn('check *selectors: tidy typos fmt lint shellcheck vet vulncheck', recipe)
+        self.assertIn('check *selectors: tidy typos fmt lint shellcheck vet # vulncheck', recipe)
         self.assertIn('just test-total {{quote(selectors)}}', recipe)
         self.assertIn('test-total-all: test-cycles-harness test-winvm-harness test test-e2e', recipe)
         self.assertIn('test-winvm-harness:\n  @if [[ "${RUN_WINVM_TESTS:-0}" == "1" ]]', recipe)

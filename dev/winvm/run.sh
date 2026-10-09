@@ -6,7 +6,7 @@ script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 # shellcheck source=dev/winvm/common.sh
 source "$script_dir/common.sh"
 mode=${1:-smoke}
-[[ $mode == smoke || $mode == test || $mode == ordinary || $mode == privileged || $mode == resource || $mode == manual || $mode == --shell || $mode == --prepare ]] || die 'usage: run.sh [smoke | test | ordinary | privileged | resource | manual | --shell RUN | --prepare DIRECTORY]'
+[[ $mode == smoke || $mode == test || $mode == ordinary || $mode == privileged || $mode == resource || $mode == isolation || $mode == manual || $mode == --shell || $mode == --prepare ]] || die 'usage: run.sh [smoke | test | ordinary | privileged | resource | isolation | manual | --shell RUN | --prepare DIRECTORY]'
 for command in qemu-system-x86_64 qemu-img ssh scp jq python3 timeout flock git tar setsid; do require_command "$command"; done
 require_kvm /dev/kvm
 ensure_cache_dir
@@ -86,6 +86,9 @@ if [[ $mode != --shell ]]; then
     elif [[ $mode == test || $mode == ordinary || $mode == privileged ]]; then
         suite=windows-milestone-3
         test_execution=native
+    elif [[ $mode == isolation ]]; then
+        suite=windows-isolation-experiment
+        test_execution=isolation-experiment
     else
         suite=windows-milestone-8-resource
         test_execution=native-resource

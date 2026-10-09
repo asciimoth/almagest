@@ -308,6 +308,11 @@ Acceptance:
 
 ## 11. Experiment: Windows restrictions and native resource access
 
+Status: implementation and Windows Server 2022/amd64 qualification complete.
+Direct Winsock and Wintun data-handle candidates remain unapproved for
+checkpoints 12 and 13. See the
+[Windows experiment report](DAEMON_ISOLATION_WINDOWS_EXPERIMENT.md).
+
 Work:
 
 - Test restricted tokens, AppContainer, integrity levels, exact inherited

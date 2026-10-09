@@ -49,6 +49,11 @@ qualify-direct:
 linux-isolation-experiment evidence='':
   ./dev/linux-isolation/run.sh {{quote(evidence)}}
 
+# Run checkpoint 11 with caller-derived and service-derived AppContainers in
+# the locked disposable Windows VM.
+windows-isolation-experiment:
+  ./dev/winvm/run.sh isolation
+
 [private]
 test-e2e-docker-all: repair-go-work build-web
   E2E_INCLUDE_PRIVILEGED=1 ./scripts/test-e2e-platform.sh
