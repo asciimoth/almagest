@@ -49,10 +49,10 @@ func read[T any](ctx context.Context, b *Broker, meta protocol.RequestMeta, op p
 		return zero, err
 	}
 	bounded, cancel := context.WithTimeout(ctx, b.timeout)
+	defer cancel()
 	select {
 	case b.gate <- struct{}{}:
 	case <-bounded.Done():
-		cancel()
 		return zero, bounded.Err()
 	}
 	b.mu.Lock()
@@ -60,12 +60,11 @@ func read[T any](ctx context.Context, b *Broker, meta protocol.RequestMeta, op p
 	b.mu.Unlock()
 	if err != nil {
 		<-b.gate
-		cancel()
 		return zero, err
 	}
 	done := make(chan readResult[T], 1)
 	go func() {
-		defer func() { <-b.gate; cancel() }()
+		defer func() { <-b.gate }()
 		value, err := fn(bounded)
 		done <- readResult[T]{value, err}
 	}()
