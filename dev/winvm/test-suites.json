@@ -14,6 +14,25 @@
       "cases": [
         {"id": "m2::execution-identity-standard-user", "kind": "identity"},
         {
+          "id": "m19::fixed-target-config-writer",
+          "kind": "go",
+          "module": "bin",
+          "arguments": ["./internal/isolation/configwriter", "-count=1"],
+          "eventFile": "isolation-config-writer.jsonl",
+          "requiredTests": [
+            "github.com/asciimoth/almagest/bin/internal/isolation/configwriter::TestWriterCompareReplaceReceiptsAndOpaqueBytes",
+            "github.com/asciimoth/almagest/bin/internal/isolation/configwriter::TestWriterConflictsLimitsAndAuthorization",
+            "github.com/asciimoth/almagest/bin/internal/isolation/configwriter::TestWriterFailureAndCancellationReceipts",
+            "github.com/asciimoth/almagest/bin/internal/isolation/configwriter::TestWriterConcurrentCompareReplace",
+            "github.com/asciimoth/almagest/bin/internal/isolation/configwriter::TestWriterBoundsReceiptRetention",
+            "github.com/asciimoth/almagest/bin/internal/isolation/configwriter::TestWriterHandleRejectsUnboundDataAndUnknownOperation",
+            "github.com/asciimoth/almagest/bin/internal/isolation/configwriter::TestWriterTransferBindingAndReadLimit",
+            "github.com/asciimoth/almagest/bin/internal/isolation/configwriter::TestWriterControlTransferAndLostReply",
+            "github.com/asciimoth/almagest/bin/internal/isolation/configwriter::TestWindowsTargetReplaceAndUnsafeNames",
+            "github.com/asciimoth/almagest/bin/internal/isolation/configwriter::TestWindowsTargetRejectsHardLinkAndSymlink"
+          ]
+        },
+        {
           "id": "m18::five-tuple-matchers",
           "kind": "go",
           "module": "bin",

@@ -546,6 +546,14 @@ Acceptance:
 
 ## 19. Implement the fixed-target config writer
 
+Status: component implementation is complete in
+`bin/internal/isolation/configwriter`. Linux component tests pass. The Windows
+tests and ordinary-user profile are registered as
+`winvm:m19::fixed-target-config-writer`; Windows VM execution remains required
+for platform acceptance. Production isolated startup remains disabled.
+
+See the [config-writer implementation and verification notes](DAEMON_ISOLATION_CONFIG_WRITER.md).
+
 Work:
 
 - Add `ReadCurrent`, `Replace(expectedRevision, operationID, bytes)`, and

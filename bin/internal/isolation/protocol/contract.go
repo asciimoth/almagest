@@ -9,7 +9,9 @@ package protocol
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
+	"fmt"
 	"net/netip"
 	"time"
 )
@@ -540,12 +542,18 @@ type ReadConfigRequest struct{ Meta RequestMeta }
 type ConfigDocument struct {
 	Data     []byte
 	Revision string
+	// Transfer identifies Data sent on the config-transfer lane. It is set in
+	// wire replies. Data is used only by direct component calls.
+	Transfer uint64
 }
 
 type ReplaceConfigRequest struct {
 	Meta             RequestMeta
 	ExpectedRevision string
-	Data             []byte
+	// Transfer identifies opaque bytes sent on the config-transfer lane. It is
+	// required on the wire. Data is used only by direct component calls.
+	Transfer uint64
+	Data     []byte
 }
 
 type OperationResultRequest struct {
@@ -556,6 +564,12 @@ type OperationResultRequest struct {
 type ConfigResult struct {
 	MutationResult
 	Revision string
+}
+
+// ConfigRevision returns the content revision used by the config-writer
+// contract. Config bytes stay opaque to the writer.
+func ConfigRevision(data []byte) string {
+	return fmt.Sprintf("%x", sha256.Sum256(data))
 }
 
 // CommandControl keeps runtime node commands separate from N-originated
