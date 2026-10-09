@@ -1,7 +1,10 @@
 param(
     [Parameter(Mandatory=$true)][ValidateSet('caller','service')][string]$Profile,
     [Parameter(Mandatory=$true)][string]$SourceDir,
-    [Parameter(Mandatory=$true)][string]$ArtifactDir
+    [Parameter(Mandatory=$true)][string]$ArtifactDir,
+    [switch]$DataPath,
+    [ValidateRange(1,1000000)][int]$DataPathRuns = 7,
+    [ValidateRange(1,1000000)][int]$DataPathSamples = 200
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
@@ -31,16 +34,30 @@ $secret = 'C:\winvm\isolation-host-secret.txt'
 & icacls.exe $secret /inheritance:r /grant:r '*S-1-5-18:(F)' | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'Cannot protect the host-only probe file' }
 
-$result = Join-Path $profileDir 'result.json'
 try {
-    & $probe -profile $Profile -storage $storageDir -output $result
-    if ($LASTEXITCODE -ne 0) { throw "The $Profile restricted probe failed" }
-    $record = Get-Content -Raw $result | ConvertFrom-Json
-    if ($record.schemaVersion -ne 1 -or $record.profile -ne $Profile) {
-        throw 'The isolation result identity is invalid'
+    if ($DataPath) {
+        $env:ALMAGEST_DATA_PATH_RUNS = $DataPathRuns
+        $env:ALMAGEST_DATA_PATH_SAMPLES = $DataPathSamples
     }
-    $failed = @($record.checks.PSObject.Properties | Where-Object { -not $_.Value.ok })
-    if ($failed.Count) { throw "Failed restricted checks: $($failed.Name -join ', ')" }
+    $logModes = if ($DataPath) { @('disabled','normal','overloaded') } else { @('normal') }
+    foreach ($logMode in $logModes) {
+        $resultName = if ($logMode -eq 'normal') { 'result.json' } else { "result-$logMode.json" }
+        $result = Join-Path $profileDir $resultName
+        $env:ALMAGEST_LOG_LOAD = $logMode
+        $probeArgs = @('-profile',$Profile,'-storage',$storageDir,'-output',$result)
+        if ($DataPath) { $probeArgs += '-data-path=true' }
+        & $probe @probeArgs
+        if ($LASTEXITCODE -ne 0) { throw "The $Profile $logMode restricted probe failed" }
+        $record = Get-Content -Raw $result | ConvertFrom-Json
+        if ($record.schemaVersion -ne 1 -or $record.profile -ne $Profile) {
+            throw 'The isolation result identity is invalid'
+        }
+        if ($DataPath -and ($record.dataPath.schemaVersion -ne 1 -or $record.dataPath.runs -lt 7 -or $record.dataPath.logMode -ne $logMode)) {
+            throw 'The data-path result is absent or incomplete'
+        }
+        $failed = @($record.checks.PSObject.Properties | Where-Object { -not $_.Value.ok })
+        if ($failed.Count) { throw "Failed restricted checks: $($failed.Name -join ', ')" }
+    }
     @{
         schemaVersion=1
         profile=$Profile

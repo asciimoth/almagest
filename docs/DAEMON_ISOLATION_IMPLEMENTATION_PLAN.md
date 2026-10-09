@@ -334,6 +334,10 @@ Acceptance:
 
 ## 12. Experiment: data paths and five-tuple lookup cost
 
+Status: harness implemented and preliminary Docker/WinVM timing recorded;
+same-host direct-mode comparison and acceptance evidence are pending. See the
+[data-path experiment record](DAEMON_ISOLATION_DATA_PATH_EXPERIMENT.md).
+
 Work:
 
 - Compare the original direct baseline, refactored `--no-isolation`, batched and

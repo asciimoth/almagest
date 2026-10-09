@@ -547,7 +547,7 @@ class Supervisor:
             phases = ("smoke",)
         elif self.args.mode == "resource":
             phases = ("resource",)
-        elif self.args.mode == "isolation":
+        elif self.args.mode in ("isolation", "data-path"):
             phases = ("isolation-service", "isolation-caller")
         elif self.args.mode == "ordinary":
             phases = ("ordinary",)
@@ -571,6 +571,10 @@ class Supervisor:
             if phase.startswith("isolation-"):
                 args += ["-Profile", phase.removeprefix("isolation-"),
                          "-SourceDir", f"{self.remote}/source"]
+                if self.args.mode == "data-path":
+                    args.append("-DataPath")
+                    args += ["-DataPathRuns", os.environ.get("ALMAGEST_DATA_PATH_RUNS", "7"),
+                             "-DataPathSamples", os.environ.get("ALMAGEST_DATA_PATH_SAMPLES", "200")]
             elif phase in ("ordinary", "privileged"):
                 args += ["-Mode", phase, "-SourceDir", f"{self.remote}/source"]
                 if os.environ.get("WINVM_FAIL_FAST", "1") == "0":
@@ -607,9 +611,11 @@ class Supervisor:
                           str(self.directory / "guest-artifacts.tar")]
             if self.args.soak_duration:
                 validation.append("--allow-diagnostic")
-        elif self.args.mode == "isolation":
+        elif self.args.mode in ("isolation", "data-path"):
             validation = ["python3", str(ROOT / "tools/isolation-evidence.py"),
                           str(self.directory / "guest-artifacts.tar")]
+            if self.args.mode == "data-path":
+                validation.append("--require-data-path")
         else:
             validator = "validate_smoke_artifact" if self.args.mode == "smoke" else "validate_native_test_artifact"
             validation = ["bash", "-c", 'source "$1/common.sh"; shift; "$@"', "validate",
@@ -618,6 +624,12 @@ class Supervisor:
                 validation.append(self.args.mode)
         if self.command(validation, 15, log="validation.log"):
             raise Failure("artifact-validation")
+        if self.args.mode == "data-path":
+            analysis = ["python3", str(ROOT.parent / "data-path/analyze.py"), "windows",
+                        str(self.directory / "guest-artifacts.tar"), "--output",
+                        str(self.directory / "analysis-windows.json")]
+            if self.command(analysis, 30, log="validation.log"):
+                raise Failure("data-path-analysis")
         if self.args.mode in ("test", "ordinary", "privileged"):
             coverage_dir = os.environ.get(
                 "WINVM_COVERAGE_DIR", str(ROOT.parents[1] / "coverage/winvm"))

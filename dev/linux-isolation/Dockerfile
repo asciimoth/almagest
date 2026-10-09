@@ -17,7 +17,9 @@ COPY go.work ./
 COPY bin/go.mod bin/go.sum bin/
 COPY certcat/go.mod certcat/
 COPY lib/go.mod lib/go.sum lib/
-RUN --mount=type=cache,target=/go/pkg/mod go mod download
+# Keep the module source in the image. The experiment runner executes race and
+# vet checks with networking disabled before it starts any workload.
+RUN go mod download
 
 COPY bin bin
 COPY certcat certcat
@@ -26,13 +28,19 @@ COPY examples examples
 COPY lib lib
 COPY dev/winvm dev/winvm
 COPY dev/linux-isolation /experiment-src
+COPY dev/data-path /data-path-src
 
 RUN --mount=type=cache,target=/go/pkg/mod \
 	--mount=type=cache,target=/root/.cache/go-build \
 	CGO_ENABLED=0 go build -C bin -trimpath -o /experiment/runtime-probe ./cmd/linux-isolation-probe \
 	&& CGO_ENABLED=0 go build -C bin -trimpath -o /experiment/feature-probe ./cmd/linux-isolation-feature-probe \
+	&& CGO_ENABLED=0 go build -C bin -trimpath -o /experiment/data-path-probe ./cmd/linux-isolation-data-path-probe \
+	&& CGO_ENABLED=0 go build -C bin -trimpath -o /experiment/matcher-broker ./cmd/linux-isolation-matcher-broker \
+	&& CGO_ENABLED=0 go build -C bin -trimpath -o /experiment/matcher-probe ./cmd/linux-isolation-matcher-probe \
+	&& CGO_ENABLED=0 go build -C bin -trimpath -o /experiment/tun-broker ./cmd/linux-isolation-tun-broker \
+	&& CGO_ENABLED=0 go build -C bin -trimpath -o /experiment/tun-probe ./cmd/linux-isolation-tun-probe \
 	&& gcc -D_FORTIFY_SOURCE=3 -O2 -Wall -Wextra -Werror -o /experiment/launcher \
 		/experiment-src/launcher.c $(pkg-config --cflags --libs libseccomp) \
-	&& shellcheck /experiment-src/run.sh
+	&& shellcheck /experiment-src/run.sh /data-path-src/run.sh
 
 ENTRYPOINT []

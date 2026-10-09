@@ -41,6 +41,46 @@ class IsolationEvidenceTests(unittest.TestCase):
     def test_accepts_both_profiles(self):
         EVIDENCE.validate(self.fixture())
 
+    def test_requires_data_path_candidates_when_requested(self):
+        def add_data_path(values):
+            for profile in ("caller", "service"):
+                values[f"windows-isolation-{profile}/result.json"]["dataPath"] = {
+                    "schemaVersion": 1,
+                    "runs": 7,
+                    "logMode": "normal",
+                    "matcherMalformedRejected": True,
+                    "matcherFreshTupleAccepted": True,
+                    "matcherNoObservationLease": True,
+                    "controlResponseP99NS": 100,
+                    "saturatedDataCompleted": True,
+                    "measurements": [
+                        {"candidate": "in-process-native", "droppedPackets": 0},
+                        {"candidate": "broker-relay", "droppedPackets": 0},
+                        {"candidate": "shared-memory-relay", "droppedPackets": 0},
+                        {"candidate": "in-process-native-matcher",
+                         "droppedPackets": 0},
+                        {"candidate": "bounded-matcher-rpc",
+                         "droppedPackets": 0},
+                    ],
+                }
+                if profile == "service":
+                    values[f"windows-isolation-{profile}/result.json"]["dataPath"]["measurements"] += [
+                        {"candidate": "broker-relay", "transport": "tun",
+                         "family": "ipv4", "workload": "plain",
+                         "droppedPackets": 0},
+                        {"candidate": "broker-relay", "transport": "tun",
+                         "family": "ipv6", "workload": "wireguard-shaped",
+                         "droppedPackets": 0},
+                    ]
+                for log_mode in ("disabled", "overloaded"):
+                    extra = copy.deepcopy(values[f"windows-isolation-{profile}/result.json"])
+                    extra["dataPath"]["logMode"] = log_mode
+                    values[f"windows-isolation-{profile}/result-{log_mode}.json"] = extra
+
+        EVIDENCE.validate(self.fixture(add_data_path), require_data_path=True)
+        with self.assertRaises(ValueError):
+            EVIDENCE.validate(self.fixture(), require_data_path=True)
+
     def test_rejects_failed_or_missing_checks_and_wrong_authority(self):
         mutations = [
             lambda values: values["windows-isolation-caller/result.json"]["checks"]

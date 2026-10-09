@@ -54,6 +54,15 @@ linux-isolation-experiment evidence='':
 windows-isolation-experiment:
   ./dev/winvm/run.sh isolation
 
+# Run the checkpoint 12 Linux data-path stage in a disposable Docker
+# container. Optional argument selects the evidence directory.
+data-path-experiment evidence='':
+  ./dev/data-path/run.sh {{quote(evidence)}}
+
+# Run the checkpoint 12 Windows relay stage in the locked disposable VM.
+windows-data-path-experiment:
+  ./dev/winvm/run.sh data-path
+
 [private]
 test-e2e-docker-all: repair-go-work build-web
   E2E_INCLUDE_PRIVILEGED=1 ./scripts/test-e2e-platform.sh
