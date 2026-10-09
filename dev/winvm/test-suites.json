@@ -14,6 +14,30 @@
       "cases": [
         {"id": "m2::execution-identity-standard-user", "kind": "identity"},
         {
+          "id": "m22::privileged-admin-listener-gate",
+          "kind": "go",
+          "module": "bin",
+          "arguments": ["./internal/isolation/admingate", "-count=1"],
+          "eventFile": "isolation-admin-gate.jsonl",
+          "requiredTests": [
+            "github.com/asciimoth/almagest/bin/internal/isolation/admingate::TestGateRelaysOpaqueStreamsByFixedEndpoint",
+            "github.com/asciimoth/almagest/bin/internal/isolation/admingate::TestGateKeepsHTTPAndOriginParsingInRuntime",
+            "github.com/asciimoth/almagest/bin/internal/isolation/admingate::TestSlowConnectionDoesNotBlockAnotherAdminStream",
+            "github.com/asciimoth/almagest/bin/internal/isolation/admingate::TestGateBoundsUnclaimedConnections",
+            "github.com/asciimoth/almagest/bin/internal/isolation/admingate::TestGatePeerFailureAndShutdownWakeBlockedWork",
+            "github.com/asciimoth/almagest/bin/internal/isolation/admingate::TestGateRejectsIdentityAndEndpointContracts",
+            "github.com/asciimoth/almagest/bin/internal/isolation/admingate::TestRuntimeRejectsMalformedAndRuntimeOpenedStreams",
+            "github.com/asciimoth/almagest/bin/internal/isolation/admingate::TestListenerConfigRejectsAuthorityExpansion",
+            "github.com/asciimoth/almagest/bin/internal/isolation/admingate::TestListenAllRollsBackEarlierEndpoints",
+            "github.com/asciimoth/almagest/bin/internal/isolation/admingate::TestWindowsPublicPipeRelaysAndRejectsCollision",
+            "github.com/asciimoth/almagest/bin/internal/isolation/admingate::TestWindowsPipeImpersonationAlwaysReverts",
+            "github.com/asciimoth/almagest/bin/internal/isolation/admingate::TestWindowsTCPPeerGateFailsClosed",
+            "github.com/asciimoth/almagest/bin/internal/isolation/admingate::TestWindowsListenerValidation",
+            "github.com/asciimoth/almagest/bin/internal/isolation/admingate::FuzzAdminGateHeaders",
+            "github.com/asciimoth/almagest/bin/internal/isolation/admingate::FuzzListenerConfig"
+          ]
+        },
+        {
           "id": "m21::cross-process-logging",
           "kind": "go",
           "module": "bin",

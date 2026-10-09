@@ -639,6 +639,14 @@ Acceptance:
 
 ## 22. Implement the privileged admin listener gate
 
+Status: component implementation is complete in
+`bin/internal/isolation/admingate`. Portable component tests and fuzzing pass.
+The Windows ordinary-user package case is
+`winvm:m22::privileged-admin-listener-gate`. Production isolated startup
+remains disabled.
+
+See the [privileged admin listener gate implementation and verification notes](DAEMON_ISOLATION_ADMIN_GATE.md).
+
 Work:
 
 - Keep HTTP, WebSocket, stream parsing, authorization above the transport,

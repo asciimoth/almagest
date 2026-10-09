@@ -57,7 +57,7 @@ require (
 	github.com/miekg/dns v1.1.72 // indirect
 	github.com/vishvananda/netlink v1.3.1
 	github.com/vishvananda/netns v0.0.5 // indirect
-	github.com/xtaci/smux v1.5.44 // indirect
+	github.com/xtaci/smux v1.5.44
 	golang.org/x/crypto v0.53.0 // indirect
 	golang.org/x/exp v0.0.0-20231110203233-9a3e6036ecaa // indirect
 	golang.org/x/mod v0.37.0
