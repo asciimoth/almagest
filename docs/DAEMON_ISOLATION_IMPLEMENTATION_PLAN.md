@@ -666,6 +666,14 @@ Acceptance:
 
 ## 23. Implement trusted bootstrap and storage preparation
 
+Status: component implementation is complete in
+`bin/internal/isolation/bootstrap` and `bin/internal/isolation/roleentry`.
+Portable component tests and fuzzing pass. The Windows ordinary-user package
+case is `winvm:m23::trusted-bootstrap-storage`. Production isolated startup and
+platform restriction profiles remain disabled.
+
+See the [trusted bootstrap and storage preparation implementation and verification notes](DAEMON_ISOLATION_BOOTSTRAP_STORAGE.md).
+
 Work:
 
 - Build minimal role entry points so privileged Go package initialization cannot

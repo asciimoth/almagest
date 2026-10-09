@@ -41,6 +41,16 @@ const (
 	MaxCommandOutputBytes     = 1024 * 1024
 )
 
+// Valid reports whether the role is assigned by trusted bootstrap.
+func (r Role) Valid() bool {
+	switch r {
+	case RoleRuntime, RoleNetworkBroker, RoleConfigWriter, RoleCommandHelper:
+		return true
+	default:
+		return false
+	}
+}
+
 var (
 	ErrInvalidContract       = errors.New("invalid isolation control contract")
 	ErrUnsupportedVersion    = errors.New("unsupported isolation protocol version")

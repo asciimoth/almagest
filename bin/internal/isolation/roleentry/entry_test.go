@@ -1,0 +1,50 @@
+package roleentry
+
+import (
+	"errors"
+	"os"
+	"strconv"
+	"testing"
+
+	"github.com/asciimoth/almagest/bin/internal/isolation/protocol"
+)
+
+func TestRoleEntryRequiresInheritedChannelAndFixedRole(t *testing.T) {
+	getenv := func(string) string { return "" }
+	for _, role := range []protocol.Role{"", protocol.RoleRuntime, "forged"} {
+		if _, err := OpenBootstrap(role, nil, getenv); !errors.Is(err, ErrStandaloneRole) {
+			t.Errorf("role %q error = %v", role, err)
+		}
+	}
+	if _, err := OpenBootstrap(protocol.RoleNetworkBroker, []string{"--role", "network"}, getenv); !errors.Is(err, ErrStandaloneRole) {
+		t.Fatalf("role flag error = %v", err)
+	}
+	file, err := os.CreateTemp(t.TempDir(), "not-a-channel")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close() //nolint:errcheck
+	if _, err := OpenBootstrap(protocol.RoleConfigWriter, nil, func(string) string { return strconv.FormatUint(uint64(file.Fd()), 10) }); !errors.Is(err, ErrStandaloneRole) {
+		t.Fatalf("regular file descriptor error = %v", err)
+	}
+}
+
+func TestRoleEntryAcceptsInheritedPipeOnly(t *testing.T) {
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer writer.Close() //nolint:errcheck
+	channel, err := OpenBootstrap(protocol.RoleNetworkBroker, nil, func(name string) string {
+		if name != BootstrapFDEnvironment {
+			t.Fatalf("environment lookup = %q", name)
+		}
+		return strconv.FormatUint(uint64(reader.Fd()), 10)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := channel.Close(); err != nil {
+		t.Fatal(err)
+	}
+}

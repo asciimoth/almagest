@@ -20,7 +20,6 @@ import (
 	"github.com/asciimoth/almagest/bin/api"
 	almagest "github.com/asciimoth/almagest/lib"
 	"github.com/asciimoth/gonnect"
-	_ "github.com/joho/godotenv/autoload"
 	"github.com/kataras/golog"
 )
 

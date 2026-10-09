@@ -17,7 +17,6 @@ require (
 	github.com/asciimoth/sysnet-linux v0.8.1
 	github.com/asciimoth/sysnet-windows v0.5.0
 	github.com/coder/websocket v1.8.14
-	github.com/joho/godotenv v1.5.1
 	github.com/kataras/golog v0.1.15
 	github.com/tailscale/hujson v0.0.0-20260302212456-ecc657c15afd
 	go.etcd.io/bbolt v1.5.0
