@@ -105,8 +105,10 @@ before package initialization.
   AppContainer access. Bootstrap must grant R only its reviewed runtime files
   and private storage.
 - Anonymous inherited pipes prove exact private IPC access for this
-  experiment. The production connected-pipe transport, framing, peer checks,
-  and cancellation belong to checkpoint 14.
+  checkpoint 11 result. Checkpoint 14 now implements the connected-pipe
+  transport, framing, peer binding, and cancellation. Its
+  [separate evidence](DAEMON_ISOLATION_CONTROL_TRANSPORT.md) includes new caller
+  and service runs with an inherited duplex connected pipe.
 - The one-process job intentionally prevents child creation. A future runtime
   that needs a reviewed helper must use a separate launcher-owned role and not
   relax R's job.

@@ -13,6 +13,20 @@
       "serialized": false,
       "cases": [
         {"id": "m2::execution-identity-standard-user", "kind": "identity"},
+        {
+          "id": "m14::private-control-transport",
+          "kind": "go",
+          "module": "bin",
+          "arguments": ["./internal/isolation/transport", "-count=1"],
+          "eventFile": "isolation-transport.jsonl",
+          "requiredTests": [
+            "github.com/asciimoth/almagest/bin/internal/isolation/transport::TestWindowsPrivateControl",
+            "github.com/asciimoth/almagest/bin/internal/isolation/transport::TestWindowsPipeDeadlineAndHandleAccess",
+            "github.com/asciimoth/almagest/bin/internal/isolation/transport::TestWindowsPipeRejectsOtherProcess",
+            "github.com/asciimoth/almagest/bin/internal/isolation/transport::TestControlCallsAndCancellation",
+            "github.com/asciimoth/almagest/bin/internal/isolation/transport::TestControlIndependentLanes"
+          ]
+        },
         {"id": "m2::portable-certcat", "kind": "go", "module": "certcat", "arguments": ["./..."], "eventFile": "certcat.jsonl"},
         {
           "id": "m2::portable-lib",

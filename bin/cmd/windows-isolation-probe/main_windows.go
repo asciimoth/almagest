@@ -21,6 +21,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/asciimoth/almagest/bin/internal/isolation/transport"
 	"github.com/asciimoth/gonnect/sockowner"
 	"github.com/asciimoth/gonnect/sysnet"
 	gtun "github.com/asciimoth/gonnect/tun"
@@ -29,6 +30,7 @@ import (
 )
 
 const (
+	resultPipeChallenge            = "almagest-control-v1"
 	securityCapabilitiesAttribute  = 0x00020009
 	jobObjectLimitActiveProcess    = 0x00000008
 	jobObjectUILimitHandles        = 0x00000001
@@ -207,17 +209,17 @@ func runLauncher(profile, output, storage string, dataPath bool) error {
 		return fmt.Errorf("grant storage access: %w", err)
 	}
 
-	var readPipe, writePipe windows.Handle
-	sa := windows.SecurityAttributes{Length: uint32(unsafe.Sizeof(windows.SecurityAttributes{})), InheritHandle: 1}
-	if err = windows.CreatePipe(&readPipe, &writePipe, &sa, 0); err != nil {
-		return fmt.Errorf("create private result pipe: %w", err)
+	resultRead, resultWrite, err := transport.PipePair()
+	if err != nil {
+		return fmt.Errorf("create private connected result pipe: %w", err)
 	}
-	defer func() { _ = windows.CloseHandle(readPipe) }()
-	defer func() {
-		if writePipe != 0 {
-			_ = windows.CloseHandle(writePipe)
-		}
-	}()
+	defer func() { _ = resultRead.Close() }()
+	defer func() { _ = resultWrite.Close() }()
+	readPipe, writePipe := windows.Handle(resultRead.Fd()), windows.Handle(resultWrite.Fd())
+	sa := windows.SecurityAttributes{Length: uint32(unsafe.Sizeof(windows.SecurityAttributes{})), InheritHandle: 1}
+	if err = windows.SetHandleInformation(writePipe, windows.HANDLE_FLAG_INHERIT, windows.HANDLE_FLAG_INHERIT); err != nil {
+		return fmt.Errorf("set exact result pipe inheritance: %w", err)
+	}
 	var requestRead, requestWrite, responseRead, responseWrite windows.Handle
 	var controlRequestRead, controlRequestWrite, controlResponseRead, controlResponseWrite windows.Handle
 	var mapping, sharedRequest, sharedResponse windows.Handle
@@ -385,8 +387,16 @@ func runLauncher(profile, output, storage string, dataPath bool) error {
 		_ = windows.TerminateJobObject(job, 1)
 		return fmt.Errorf("resume restricted child: %w", err)
 	}
-	_ = windows.CloseHandle(writePipe)
-	writePipe = 0
+	_ = resultWrite.Close()
+	if err = resultRead.SetWriteDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		return err
+	}
+	if _, err = io.WriteString(resultRead, resultPipeChallenge); err != nil {
+		return fmt.Errorf("write duplex pipe challenge: %w", err)
+	}
+	if err = resultRead.SetWriteDeadline(time.Time{}); err != nil {
+		return err
+	}
 	_ = windows.CloseHandle(logWrite)
 	logWrite = 0
 	var brokerDone, controlDone chan error
@@ -407,7 +417,7 @@ func runLauncher(profile, output, storage string, dataPath bool) error {
 		go func() { controlDone <- serveWindowsControl(controlRequestRead, controlResponseWrite) }()
 	}
 
-	pipeFile := os.NewFile(uintptr(readPipe), "isolation-result")
+	pipeFile := resultRead
 	logFile := os.NewFile(uintptr(logRead), "isolation-log")
 	logDone := make(chan []byte, 1)
 	go func() {
@@ -461,7 +471,7 @@ func runLauncher(profile, output, storage string, dataPath bool) error {
 	result.Checks["unlisted_handle_denied"] = denied(duplicateErr)
 	result.Notes = append(result.Notes,
 		"The profile has no AppContainer network capabilities.",
-		"The exact inherited handle is an anonymous-pipe endpoint; the sentinel handle is inheritable but absent from the handle list.")
+		"The exact inherited handle is a connected overlapped byte-pipe endpoint; the sentinel handle is inheritable but absent from the handle list.")
 	data, err := json.MarshalIndent(result, "", "  ")
 	if err != nil {
 		return err
@@ -480,6 +490,17 @@ func runChild(profile, storage string, pipeHandle windows.Handle, parentPID uint
 		os.Exit(3)
 	}
 	defer func() { _ = f.Close() }()
+	challenge := make([]byte, len(resultPipeChallenge))
+	challengeErr := f.SetReadDeadline(time.Now().Add(5 * time.Second))
+	if challengeErr == nil {
+		_, challengeErr = io.ReadFull(f, challenge)
+	}
+	if challengeErr == nil && string(challenge) != resultPipeChallenge {
+		challengeErr = errors.New("invalid duplex pipe challenge")
+	}
+	if err := f.SetReadDeadline(time.Time{}); challengeErr == nil {
+		challengeErr = err
+	}
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			r.Checks["child_panic"] = check{Detail: fmt.Sprint(recovered)}
@@ -500,7 +521,7 @@ func runChild(profile, storage string, pipeHandle windows.Handle, parentPID uint
 	r.Checks["native_network_denied"] = denied(probeNetwork())
 	r.Checks["wintun_open_denied"] = denied(probeWintunOpen())
 	r.Checks["winsock_duplicate_target_denied"] = denied(probeWinsockDuplicate(parentPID))
-	r.Checks["ipc_write"] = boolCheck(pipeHandle != 0, "exact inherited pipe handle is present")
+	r.Checks["ipc_write"] = allowed(challengeErr)
 
 	if err := json.NewEncoder(f).Encode(r); err != nil {
 		fmt.Fprintln(os.Stderr, "encode restricted child result:", err)

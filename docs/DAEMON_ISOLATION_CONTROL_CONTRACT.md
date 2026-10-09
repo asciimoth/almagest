@@ -6,8 +6,10 @@ broker-owned relays and froze the separate
 Its implementation and production qualification are later checkpoints.
 
 The Go definitions are in `bin/internal/isolation/protocol`. Policy definitions
-are in `bin/internal/isolation/policy`. They are not connected to daemon startup
-and do not add an IPC transport, process, or isolated production mode.
+are in `bin/internal/isolation/policy`. The checkpoint 14 transport is in
+`bin/internal/isolation/transport`; see its
+[implementation contract](DAEMON_ISOLATION_CONTROL_TRANSPORT.md). These packages
+are not connected to daemon startup and do not enable isolated production mode.
 
 ## Authority and identity
 

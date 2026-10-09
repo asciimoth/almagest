@@ -1078,8 +1078,9 @@ use a separated layout for isolated mode.
 
 ### 7.4 Linux IPC and admin listeners
 
-Create anonymous `AF_UNIX` socket pairs in bootstrap. Use `SOCK_SEQPACKET` for
-bounded control records and dedicated stream/data pairs as appropriate. They
+Create anonymous `AF_UNIX` socket pairs in bootstrap. The checkpoint 13 decision
+selects `SOCK_STREAM` with bounded length-prefixed control records and separate
+data and diagnostic pairs. Checkpoint 14 implements these transports. They
 have no filesystem or abstract listener address for unrelated clients. Inherit
 only the endpoint needed by each child; set close-on-exec on all others and close
 bootstrap copies. Bind channels to role and epoch, not to a claimed PID.

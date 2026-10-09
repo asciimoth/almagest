@@ -409,6 +409,10 @@ Acceptance:
 
 ## 14. Implement bounded control transports
 
+Status: implemented in `bin/internal/isolation/transport`. See the
+[wire limits, endpoint binding, and verification](DAEMON_ISOLATION_CONTROL_TRANSPORT.md).
+This does not enable production role startup or isolated daemon mode.
+
 Work:
 
 - Implement version negotiation, typed errors, bounded decoding, request IDs,
