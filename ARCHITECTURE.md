@@ -180,6 +180,9 @@ Daemon:
   restricted tokens, distinct AppContainers, held trusted paths, exact pipe
   inheritance, mitigations, and bounded jobs. See
   `docs/DAEMON_ISOLATION_WINDOWS_PROFILES.md` for qualification limits.
+- `bin/internal/isolation/supervision/`: bounded lifecycle coordination for an
+  already-started isolated process set and the broker-private, identity-driven
+  host recovery journal. It does not launch roles or enable isolated startup.
 
 Platform and CLI:
 - `bin/almagestd/platform/`: build-tagged defaults and platform operations.

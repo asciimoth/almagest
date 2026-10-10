@@ -763,6 +763,13 @@ Acceptance:
 
 ## 26. Implement supervision and host recovery
 
+Status: the bounded supervisor and durable identity-driven recovery journal are
+implemented in `bin/internal/isolation/supervision`. Production isolated startup
+remains disabled. Final Linux/Windows native reconciler and complete-composition
+qualification remain in checkpoints 30 through 32.
+
+See the [supervision and host recovery contract](DAEMON_ISOLATION_SUPERVISION.md).
+
 Work:
 
 - Make bootstrap become N after setup, with no general later process launcher.
