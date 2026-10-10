@@ -38,8 +38,9 @@ type Request struct {
 	Pipes      []windows.Handle
 }
 
-// Process owns a non-breakaway, one-process job. Close kills the role, including
-// a hung role. Wait is cancellable and concurrent with Close.
+// Process owns a non-breakaway job. R, C and H allow one process; trusted N
+// allows a bounded helper set. Close kills the role, including hung processes.
+// Wait is cancellable and concurrent with Close.
 type Process struct {
 	mu           sync.Mutex
 	process, job windows.Handle
@@ -121,19 +122,8 @@ func launch(ctx context.Context, r Request, beforeResume func(windows.Handle) er
 		return nil, fmt.Errorf("%w: invalid launch bounds", ErrUnavailable)
 	}
 	if r.Plan.Role == Network {
-		elevated, e := tokenElevated(windows.GetCurrentProcessToken())
-		if e != nil {
-			return nil, e
-		}
-		if r.Identity != nil || elevated {
-			return nil, fmt.Errorf("%w: service N requires a qualified service identity", ErrUnavailable)
-		}
-		user, e := windows.GetCurrentProcessToken().GetTokenUser()
-		if e != nil {
-			return nil, e
-		}
-		if user.User.Sid.IsWellKnown(windows.WinLocalSystemSid) || user.User.Sid.IsWellKnown(windows.WinLocalServiceSid) || user.User.Sid.IsWellKnown(windows.WinNetworkServiceSid) {
-			return nil, fmt.Errorf("%w: system N not qualified", ErrUnavailable)
+		if r.Identity != nil {
+			return nil, fmt.Errorf("%w: trusted N must use the launch identity", ErrUnavailable)
 		}
 	} else if r.Identity == nil || r.Identity.sid == nil || r.Identity.role != r.Plan.Role {
 		return nil, fmt.Errorf("%w: missing or foreign role identity", ErrUnavailable)
@@ -194,17 +184,20 @@ func launch(ctx context.Context, r Request, beforeResume func(windows.Handle) er
 		return nil, err
 	}
 	defer func() { _ = source.Close() }()
-	administrators, err := windows.CreateWellKnownSid(windows.WinBuiltinAdministratorsSid)
-	if err != nil {
-		return nil, err
+	token := source
+	if r.Plan.Role != Network {
+		administrators, e := windows.CreateWellKnownSid(windows.WinBuiltinAdministratorsSid)
+		if e != nil {
+			return nil, e
+		}
+		denyAdmin := windows.SIDAndAttributes{Sid: administrators}
+		token = 0
+		ok, _, callErr := createRestrictedToken.Call(uintptr(source), 1, 1, uintptr(unsafe.Pointer(&denyAdmin)), 0, 0, 0, 0, uintptr(unsafe.Pointer(&token)))
+		if ok == 0 {
+			return nil, fmt.Errorf("%w: restricted token: %v", ErrUnavailable, callErr)
+		}
+		defer func() { _ = token.Close() }()
 	}
-	denyAdmin := windows.SIDAndAttributes{Sid: administrators}
-	var token windows.Token
-	ok, _, callErr := createRestrictedToken.Call(uintptr(source), 1, 1, uintptr(unsafe.Pointer(&denyAdmin)), 0, 0, 0, 0, uintptr(unsafe.Pointer(&token)))
-	if ok == 0 {
-		return nil, fmt.Errorf("%w: restricted token: %v", ErrUnavailable, callErr)
-	}
-	defer func() { _ = token.Close() }()
 	args := append([]string{r.Executable}, r.Arguments...)
 	command := windows.ComposeCommandLine(args)
 	if len(command) > 16000 || strings.ContainsRune(command, 0) {
@@ -238,7 +231,12 @@ func launch(ctx context.Context, r Request, beforeResume func(windows.Handle) er
 	si := windows.StartupInfoEx{StartupInfo: windows.StartupInfo{Cb: uint32(unsafe.Sizeof(windows.StartupInfoEx{}))}, ProcThreadAttributeList: attrs.List()}
 	var pi windows.ProcessInformation
 	flags := uint32(windows.CREATE_SUSPENDED | windows.CREATE_NO_WINDOW | windows.CREATE_UNICODE_ENVIRONMENT | windows.EXTENDED_STARTUPINFO_PRESENT)
-	if err = windows.CreateProcessAsUser(token, app, cmd, nil, nil, true, flags, &env[0], cwd, &si.StartupInfo, &pi); err != nil {
+	if r.Plan.Role == Network {
+		err = windows.CreateProcess(app, cmd, nil, nil, true, flags, &env[0], cwd, &si.StartupInfo, &pi)
+	} else {
+		err = windows.CreateProcessAsUser(token, app, cmd, nil, nil, true, flags, &env[0], cwd, &si.StartupInfo, &pi)
+	}
+	if err != nil {
 		return nil, fmt.Errorf("%w: create suspended role: %v", ErrUnavailable, err)
 	}
 	defer func() {
@@ -251,7 +249,12 @@ func launch(ctx context.Context, r Request, beforeResume func(windows.Handle) er
 	if err = windows.AssignProcessToJobObject(job, pi.Process); err != nil {
 		return nil, err
 	}
-	if err = verifyProcess(pi.Process, sid); err != nil {
+	if r.Plan.Role == Network {
+		err = verifyNetworkProcess(pi.Process, source)
+	} else {
+		err = verifyRestrictedProcess(pi.Process, sid)
+	}
+	if err != nil {
 		return nil, fmt.Errorf("%w: suspended child: %v", ErrUnavailable, err)
 	}
 	if beforeResume != nil {
@@ -310,7 +313,7 @@ func newJob(p Plan) (windows.Handle, error) {
 	fail := func(err error) (windows.Handle, error) { _ = windows.CloseHandle(job); return 0, err }
 	limits := windows.JOBOBJECT_EXTENDED_LIMIT_INFORMATION{}
 	limits.BasicLimitInformation.LimitFlags = windows.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | windows.JOB_OBJECT_LIMIT_ACTIVE_PROCESS | windows.JOB_OBJECT_LIMIT_PROCESS_MEMORY
-	limits.BasicLimitInformation.ActiveProcessLimit = 1
+	limits.BasicLimitInformation.ActiveProcessLimit = p.processLimit()
 	limits.ProcessMemoryLimit = uintptr(p.MemoryBytes)
 	if _, err = windows.SetInformationJobObject(job, windows.JobObjectExtendedLimitInformation, uintptr(unsafe.Pointer(&limits)), uint32(unsafe.Sizeof(limits))); err != nil {
 		return fail(err)
@@ -339,7 +342,7 @@ func tokenInfo(token windows.Token, class uint32) ([]byte, error) {
 	return data, err
 }
 
-func verifyProcess(process windows.Handle, sid *windows.SID) error {
+func verifyRestrictedProcess(process windows.Handle, sid *windows.SID) error {
 	var token windows.Token
 	if err := windows.OpenProcessToken(process, windows.TOKEN_QUERY, &token); err != nil {
 		return err
@@ -407,6 +410,160 @@ func verifyProcess(process windows.Handle, sid *windows.SID) error {
 			return fmt.Errorf("integrity is above Low")
 		}
 	}
+	return verifyMitigations(process)
+}
+
+func verifyNetworkProcess(process windows.Handle, source windows.Token) error {
+	var token windows.Token
+	if err := windows.OpenProcessToken(process, windows.TOKEN_QUERY, &token); err != nil {
+		return err
+	}
+	defer func() { _ = token.Close() }()
+	for _, class := range []uint32{
+		windows.TokenUser,
+		windows.TokenGroups,
+		windows.TokenPrivileges,
+		windows.TokenOwner,
+		windows.TokenPrimaryGroup,
+		windows.TokenRestrictedSids,
+		windows.TokenIntegrityLevel,
+		30, // TokenCapabilities
+	} {
+		if err := equalTokenInformation(source, token, class); err != nil {
+			return err
+		}
+	}
+	for _, class := range []uint32{
+		windows.TokenType,
+		windows.TokenSessionId,
+		windows.TokenSandBoxInert,
+		windows.TokenElevationType,
+		windows.TokenElevation,
+		windows.TokenHasRestrictions,
+		windows.TokenVirtualizationAllowed,
+		windows.TokenVirtualizationEnabled,
+		windows.TokenUIAccess,
+		29, // TokenIsAppContainer
+	} {
+		want, err := tokenDWORD(source, class)
+		if err != nil {
+			return fmt.Errorf("source token class %d: %w", class, err)
+		}
+		got, err := tokenDWORD(token, class)
+		if err != nil {
+			return fmt.Errorf("child token class %d: %w", class, err)
+		}
+		if got != want {
+			return fmt.Errorf("network token class %d changed", class)
+		}
+	}
+	if err := equalTokenAuthentication(source, token); err != nil {
+		return err
+	}
+	return verifyMitigations(process)
+}
+
+func equalTokenAuthentication(source, child windows.Token) error {
+	type tokenStatistics struct {
+		TokenID, AuthenticationID windows.LUID
+		ExpirationTime            int64
+		TokenType, Impersonation  uint32
+		DynamicCharged            uint32
+		DynamicAvailable          uint32
+		GroupCount                uint32
+		PrivilegeCount            uint32
+		ModifiedID                windows.LUID
+	}
+	want, err := tokenInfo(source, windows.TokenStatistics)
+	if err != nil {
+		return fmt.Errorf("source token statistics: %w", err)
+	}
+	got, err := tokenInfo(child, windows.TokenStatistics)
+	if err != nil {
+		return fmt.Errorf("child token statistics: %w", err)
+	}
+	a := (*tokenStatistics)(unsafe.Pointer(&want[0]))
+	b := (*tokenStatistics)(unsafe.Pointer(&got[0]))
+	if a.AuthenticationID != b.AuthenticationID {
+		return fmt.Errorf("network authentication identity changed")
+	}
+	return nil
+}
+
+func equalTokenInformation(source, child windows.Token, class uint32) error {
+	want, err := tokenInfo(source, class)
+	if err != nil {
+		return fmt.Errorf("source token class %d: %w", class, err)
+	}
+	got, err := tokenInfo(child, class)
+	if err != nil {
+		return fmt.Errorf("child token class %d: %w", class, err)
+	}
+	// Variable token information contains process-local pointers. Compare the
+	// stable semantic forms for those classes instead of their raw storage.
+	switch class {
+	case windows.TokenUser:
+		wantSID := (*windows.Tokenuser)(unsafe.Pointer(&want[0])).User.Sid
+		gotSID := (*windows.Tokenuser)(unsafe.Pointer(&got[0])).User.Sid
+		if wantSID == nil || gotSID == nil || !wantSID.Equals(gotSID) {
+			return fmt.Errorf("network token user changed")
+		}
+	case windows.TokenGroups, windows.TokenRestrictedSids, 30: // TokenCapabilities
+		if !equalTokenGroups(want, got) {
+			return fmt.Errorf("network token groups changed for class %d", class)
+		}
+	case windows.TokenPrivileges:
+		if !equalTokenPrivileges(want, got) {
+			return fmt.Errorf("network token privileges changed")
+		}
+	case windows.TokenIntegrityLevel:
+		wantLabel := (*windows.Tokenmandatorylabel)(unsafe.Pointer(&want[0])).Label.Sid
+		gotLabel := (*windows.Tokenmandatorylabel)(unsafe.Pointer(&got[0])).Label.Sid
+		if wantLabel == nil || gotLabel == nil || !wantLabel.Equals(gotLabel) {
+			return fmt.Errorf("network token integrity changed")
+		}
+	case windows.TokenOwner:
+		type tokenOwner struct{ SID *windows.SID }
+		wantSID := (*tokenOwner)(unsafe.Pointer(&want[0])).SID
+		gotSID := (*tokenOwner)(unsafe.Pointer(&got[0])).SID
+		if wantSID == nil || gotSID == nil || !wantSID.Equals(gotSID) {
+			return fmt.Errorf("network token owner changed")
+		}
+	case windows.TokenPrimaryGroup:
+		wantSID := (*windows.Tokenprimarygroup)(unsafe.Pointer(&want[0])).PrimaryGroup
+		gotSID := (*windows.Tokenprimarygroup)(unsafe.Pointer(&got[0])).PrimaryGroup
+		if wantSID == nil || gotSID == nil || !wantSID.Equals(gotSID) {
+			return fmt.Errorf("network token primary group changed")
+		}
+	default:
+		if !slices.Equal(want, got) {
+			return fmt.Errorf("network token class %d changed", class)
+		}
+	}
+	return nil
+}
+
+func equalTokenGroups(first, second []byte) bool {
+	a := (*windows.Tokengroups)(unsafe.Pointer(&first[0])).AllGroups()
+	b := (*windows.Tokengroups)(unsafe.Pointer(&second[0])).AllGroups()
+	if len(a) != len(b) {
+		return false
+	}
+	for n := range a {
+		if a[n].Attributes != b[n].Attributes || a[n].Sid == nil || b[n].Sid == nil || !a[n].Sid.Equals(b[n].Sid) {
+			return false
+		}
+	}
+	return true
+}
+
+func equalTokenPrivileges(first, second []byte) bool {
+	a := (*windows.Tokenprivileges)(unsafe.Pointer(&first[0])).AllPrivileges()
+	b := (*windows.Tokenprivileges)(unsafe.Pointer(&second[0])).AllPrivileges()
+	return slices.Equal(a, b)
+}
+
+func verifyMitigations(process windows.Handle) error {
 	for _, policy := range []struct{ class, mask uint32 }{{3, 1}, {10, 7}} { // strict handles, image loading
 		var flags uint32
 		ok, _, e := getMitigation.Call(uintptr(process), uintptr(policy.class), uintptr(unsafe.Pointer(&flags)), 4)

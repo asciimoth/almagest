@@ -43,6 +43,7 @@ if ($elevated -ne $wantElevated) { throw "The $Mode suite has an incorrect execu
 if ([Environment]::OSVersion.Version.Build -ne 20348 -or $env:PROCESSOR_ARCHITECTURE -ne 'AMD64') {
     throw 'The native suite requires Windows Server 2022/amd64'
 }
+$env:ALMAGEST_WINVM_NATIVE = '1'
 if ($Mode -eq 'privileged') {
     $wintunDLL = Join-Path $env:SystemRoot 'System32\wintun.dll'
     if (-not (Test-Path -LiteralPath $wintunDLL -PathType Leaf)) {

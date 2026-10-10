@@ -8,8 +8,16 @@ import (
 
 func TestPlans(t *testing.T) {
 	for _, role := range []Role{Runtime, Network, Writer, Command} {
-		if err := DefaultPlan(role).Validate(); err != nil {
+		plan := DefaultPlan(role)
+		if err := plan.Validate(); err != nil {
 			t.Fatal(err)
+		}
+		wantProcesses := uint32(1)
+		if role == Network {
+			wantProcesses = networkProcessLimit
+		}
+		if plan.processLimit() != wantProcesses {
+			t.Fatalf("%s process limit = %d, want %d", role, plan.processLimit(), wantProcesses)
 		}
 		for _, memory := range []uint64{64 << 20, 1 << 40} {
 			for _, cpu := range []uint32{1, 100} {
@@ -25,8 +33,8 @@ func TestPlans(t *testing.T) {
 		}
 	}
 	for mask := 0; mask < 8; mask++ {
-		if (CheckFeatures(mask&1 != 0, mask&2 != 0, mask&4 != 0) == nil) != (mask == 0) {
-			t.Fatal(mask)
+		if err := CheckFeatures(mask&1 != 0, mask&2 != 0, mask&4 != 0); err != nil {
+			t.Fatalf("trusted backend feature mask %d: %v", mask, err)
 		}
 	}
 	for _, platform := range []struct {
@@ -54,6 +62,34 @@ func TestPathValidation(t *testing.T) {
 		if !errors.Is(validatePath(path), ErrUnavailable) {
 			t.Fatalf("accepted %q", path)
 		}
+	}
+}
+
+func TestDeploymentPlan(t *testing.T) {
+	valid := DeploymentPlan{
+		Instance: "main-1",
+		Runtime:  RolePath{Executable: `C:\trusted\runtime.exe`, Storage: `C:\data\runtime`},
+		Writer:   RolePath{Executable: `C:\trusted\writer.exe`, Storage: `C:\data\writer`},
+		Command:  RolePath{Executable: `C:\trusted\command.exe`, Storage: `C:\data\command`},
+	}
+	if err := valid.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	for name, change := range map[string]func(*DeploymentPlan){
+		"empty-instance":        func(p *DeploymentPlan) { p.Instance = "" },
+		"invalid-instance":      func(p *DeploymentPlan) { p.Instance = "Main" },
+		"missing-executable":    func(p *DeploymentPlan) { p.Writer.Executable = "" },
+		"equal-storage":         func(p *DeploymentPlan) { p.Writer.Storage = p.Runtime.Storage },
+		"nested-storage":        func(p *DeploymentPlan) { p.Writer.Storage = p.Runtime.Storage + `\writer` },
+		"executable-in-storage": func(p *DeploymentPlan) { p.Command.Executable = p.Command.Storage + `\command.exe` },
+	} {
+		t.Run(name, func(t *testing.T) {
+			plan := valid
+			change(&plan)
+			if !errors.Is(plan.Validate(), ErrUnavailable) {
+				t.Fatalf("accepted %+v", plan)
+			}
+		})
 	}
 }
 
@@ -88,6 +124,21 @@ func FuzzPath(f *testing.F) {
 				t.Fatal("unsafe path accepted")
 			}
 		} else if !errors.Is(err, ErrUnavailable) {
+			t.Fatal(err)
+		}
+	})
+}
+
+func FuzzDeploymentPlan(f *testing.F) {
+	f.Add("main", `C:\trusted\r.exe`, `C:\data\r`, `C:\trusted\c.exe`, `C:\data\c`, `C:\trusted\h.exe`, `C:\data\h`)
+	f.Fuzz(func(t *testing.T, instance, runtimeExecutable, runtimeStorage, writerExecutable, writerStorage, commandExecutable, commandStorage string) {
+		plan := DeploymentPlan{
+			Instance: instance,
+			Runtime:  RolePath{Executable: runtimeExecutable, Storage: runtimeStorage},
+			Writer:   RolePath{Executable: writerExecutable, Storage: writerStorage},
+			Command:  RolePath{Executable: commandExecutable, Storage: commandStorage},
+		}
+		if err := plan.Validate(); err != nil && !errors.Is(err, ErrUnavailable) {
 			t.Fatal(err)
 		}
 	})

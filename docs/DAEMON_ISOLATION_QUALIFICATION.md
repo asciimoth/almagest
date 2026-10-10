@@ -107,10 +107,12 @@ upstream DNS and p-mark fixtures provide additional component coverage; they
 are not complete direct/isolated daemon parity evidence. See the
 [Linux component reference](DAEMON_ISOLATION_LINUX_PROFILES.md).
 
-Deployment identities, storage quotas, full daemon assembly, and integrated
-recovery/hostile-runtime/performance evidence remain required. Windows still
-needs trusted service N and complete native backend/deployment acceptance.
-Missing results fail qualification; they are not successful skips.
+Storage quotas, full daemon assembly, and integrated
+recovery/hostile-runtime/performance evidence remain required. Windows has
+trusted caller/service N, persistent deployment identities, and final-token
+native component evidence for Windows Server 2022/amd64, but does not yet have
+the complete-daemon evidence required by this manifest. Missing results fail
+qualification; they are not successful skips.
 
 Production isolated startup remains disabled. Checkpoint 32 must not enable
 a profile before complete evidence passes this gate. Direct mode remains

@@ -19,7 +19,8 @@ Backend hardening is defense in depth and must preserve supported features.
 Separate DNS/process helpers and upstream API refactors are not prerequisites.
 This revision does not relax any R, C, or node-command helper restriction.
 Linux implements trusted N preparation and restricted R/C/H components.
-Windows still needs the trusted N replacement for its restricted-N prototype.
+Windows implements trusted caller/service N, restricted R/C/H components, and
+persistent AppContainer provisioning for Windows Server 2022/amd64.
 
 By default, preserve all supported sysnet operations available with the daemon's
 launch credentials and existing protected backend settings. Additional policy

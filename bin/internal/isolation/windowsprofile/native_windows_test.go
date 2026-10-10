@@ -21,7 +21,10 @@ import (
 	"unsafe"
 
 	"github.com/asciimoth/almagest/bin/internal/isolation/transport"
+	gdns "github.com/asciimoth/gonnect/dns"
 	"github.com/asciimoth/gonnect/sockowner"
+	"github.com/asciimoth/gonnect/sysnet"
+	sysnetwindows "github.com/asciimoth/sysnet-windows"
 	"golang.org/x/sys/windows"
 )
 
@@ -29,6 +32,15 @@ type probeInput struct {
 	Secret, Foreign, Address, DLL string
 	Parent                        uint32
 	Hang                          bool
+	Backend                       bool
+	Driver                        bool
+}
+
+func requireWinVM(t *testing.T) {
+	t.Helper()
+	if os.Getenv("ALMAGEST_WINVM_NATIVE") != "1" {
+		t.Skip("native Windows profile tests run only in the locked disposable VM")
+	}
 }
 
 func init() {
@@ -72,6 +84,11 @@ func init() {
 			failures = append(failures, failure)
 		}
 	}
+	if input.Backend {
+		if failure := probeNativeBackend(input); failure != "" {
+			failures = append(failures, failure)
+		}
+	}
 	if os.Getenv("PATH") != "" || os.Getenv("PROFILE_PARENT_SECRET") != "" {
 		failures = append(failures, "inherited environment")
 	}
@@ -80,6 +97,104 @@ func init() {
 	}
 	_ = pipe.Close()
 	os.Exit(0)
+}
+
+func probeNativeBackend(in probeInput) string {
+	stagePath := filepath.Join(os.Getenv("ALMAGEST_STORAGE"), "native-backend-stage.txt")
+	stage := func(value string) { _ = os.WriteFile(stagePath, []byte(value), 0600) }
+	stage("start")
+	if Role(os.Getenv("ALMAGEST_ROLE")) != Network {
+		return "native backend requested outside N"
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	system, err := sysnetwindows.New(sysnetwindows.SystemConfig{
+		AdapterNamePrefix: fmt.Sprintf("alm-profile-%d", os.Getpid()),
+		OperationTimeout:  30 * time.Second,
+	})
+	if err != nil {
+		return "N backend construction: " + err.Error()
+	}
+	stage("constructed")
+	connection, err := system.LocalNet().Dial(ctx, "tcp4", in.Address)
+	if err != nil {
+		return "N backend Winsock: " + err.Error()
+	}
+	stage("winsock")
+	local := connection.LocalAddr().(*net.TCPAddr)
+	remote := connection.RemoteAddr().(*net.TCPAddr)
+	matcher, err := system.BuildMatcher(sysnet.Rule{Type: "win-pid", Rule: strconv.Itoa(os.Getpid())})
+	if err != nil {
+		_ = connection.Close()
+		return "N backend matcher: " + err.Error()
+	}
+	matched, matchErr := matcher.Match(sockowner.FlowTuple{Proto: "tcp", LocalIP: local.IP, LocalPort: uint16(local.Port), RemoteIP: remote.IP, RemotePort: uint16(remote.Port)})
+	closeMatcherErr := matcher.Close()
+	closeConnectionErr := connection.Close()
+	if matchErr != nil || !matched || closeMatcherErr != nil || closeConnectionErr != nil {
+		return fmt.Sprintf("N backend owner match: matched=%v match=%v close-matcher=%v close-connection=%v", matched, matchErr, closeMatcherErr, closeConnectionErr)
+	}
+	stage("matcher")
+	dnsCtx, dnsCancel := context.WithTimeout(ctx, 5*time.Second)
+	addresses, err := gdns.NewResolver(system.OutDNS()).LookupIP(dnsCtx, "ip4", "example.com.")
+	dnsCancel()
+	if err != nil || len(addresses) == 0 {
+		return fmt.Sprintf("N backend DNS: %v %v", addresses, err)
+	}
+	stage("dns")
+	tunCapability := system.Capabilities().Operation(sysnet.OperationKey{Target: sysnet.TargetTun, Operation: sysnet.OpCreate, Family: sysnet.FamilyIPv4})
+	device, buildTunErr := system.BuildTun(sysnet.TunOpts{TunAddrs: []string{"198.18.238.1/32"}})
+	if !windows.GetCurrentProcessToken().IsElevated() {
+		if buildTunErr == nil {
+			if err := device.Close(); err != nil {
+				return "ordinary N regular TUN close: " + err.Error()
+			}
+		} else if !errors.Is(buildTunErr, windows.ERROR_ACCESS_DENIED) {
+			return "ordinary N regular TUN failed for an unrelated reason: " + buildTunErr.Error()
+		}
+		stage("ordinary-tun-result")
+		stage("complete")
+		return ""
+	}
+	if tunCapability.State == sysnet.CapabilityAvailable {
+		if buildTunErr != nil {
+			return "N available regular TUN: " + buildTunErr.Error()
+		}
+		if addresses, getErr := system.GetTunAddrs(device); getErr != nil || len(addresses) != 1 || addresses[0] != "198.18.238.1/32" {
+			_ = device.Close()
+			return fmt.Sprintf("N regular TUN addresses: %v %v", addresses, getErr)
+		}
+		if err := device.Close(); err != nil {
+			return "N regular TUN close: " + err.Error()
+		}
+		stage("regular-tun")
+	} else if buildTunErr == nil {
+		_ = device.Close()
+		return fmt.Sprintf("N regular TUN succeeded with %v capability", tunCapability.State)
+	}
+	executable, err := os.Executable()
+	if err != nil {
+		return "service N executable path: " + err.Error()
+	}
+	defaultDevice, err := system.BuildDefaultTun(sysnet.DefaultTunOpts{
+		TunAddrs: []string{"198.18.239.1/32"}, DnsIP: "198.18.239.1",
+		Exclude: []sysnet.Rule{{Type: "win-exe-tree", Rule: executable}},
+	})
+	if err != nil {
+		return "service N split default TUN: " + err.Error()
+	}
+	stage("split-default-tun")
+	if err := defaultDevice.SetDNS(system.OutDNS()); err != nil {
+		_ = defaultDevice.Close()
+		return "service N managed DNS: " + err.Error()
+	}
+	stage("managed-dns")
+	if err := defaultDevice.Close(); err != nil {
+		return "service N split default TUN close: " + err.Error()
+	}
+	stage("native-resources-closed")
+	stage("complete")
+	return ""
 }
 
 func probeThread(in probeInput) string {
@@ -92,7 +207,11 @@ func probeThread(in probeInput) string {
 		}
 		sid = *(**windows.SID)(unsafe.Pointer(&data[0]))
 	}
-	if err := verifyProcess(windows.CurrentProcess(), sid); err != nil {
+	if role != Network {
+		if err := verifyRestrictedProcess(windows.CurrentProcess(), sid); err != nil {
+			return err.Error()
+		}
+	} else if err := verifyMitigations(windows.CurrentProcess()); err != nil {
 		return err.Error()
 	}
 	if role != Network {
@@ -124,6 +243,17 @@ func probeThread(in probeInput) string {
 		}
 		if !errors.Is(err, windows.ERROR_ACCESS_DENIED) {
 			return "driver service denial: " + err.Error()
+		}
+		if in.Driver {
+			path, _ := windows.UTF16PtrFromString(`\\.\MULLVADSPLITTUNNEL`)
+			driver, openErr := windows.CreateFile(path, windows.GENERIC_READ|windows.GENERIC_WRITE, 0, nil, windows.OPEN_EXISTING, windows.FILE_FLAG_OVERLAPPED, 0)
+			if openErr == nil {
+				_ = windows.CloseHandle(driver)
+				return "opened split-driver control device"
+			}
+			if !errors.Is(openErr, windows.ERROR_ACCESS_DENIED) {
+				return "split-driver denial: " + openErr.Error()
+			}
 		}
 	}
 	connection, err := net.DialTimeout("tcp4", in.Address, 2*time.Second)
@@ -185,6 +315,18 @@ func probeThread(in probeInput) string {
 		si := windows.StartupInfo{Cb: uint32(unsafe.Sizeof(windows.StartupInfo{}))}
 		var pi windows.ProcessInformation
 		err := windows.CreateProcess(app, cmd, nil, nil, false, windows.CREATE_NO_WINDOW|extra, nil, nil, &si, &pi)
+		if role == Network && extra == 0 {
+			if err != nil {
+				return "N backend helper creation: " + err.Error()
+			}
+			if status, waitErr := windows.WaitForSingleObject(pi.Process, 5000); waitErr != nil || status != windows.WAIT_OBJECT_0 {
+				_ = windows.TerminateProcess(pi.Process, 1)
+				closeHandles([]windows.Handle{pi.Process, pi.Thread})
+				return fmt.Sprintf("N backend helper wait: %d %v", status, waitErr)
+			}
+			closeHandles([]windows.Handle{pi.Process, pi.Thread})
+			continue
+		}
 		if err == nil {
 			_ = windows.TerminateProcess(pi.Process, 1)
 			closeHandles([]windows.Handle{pi.Process, pi.Thread})
@@ -271,6 +413,7 @@ func identity(t *testing.T, role Role, root, exe string) (*Identity, string) {
 }
 
 func TestNativeRoles(t *testing.T) {
+	requireWinVM(t)
 	if err := CheckPlatform(windows.RtlGetVersion().BuildNumber, runtime.GOARCH); err != nil {
 		t.Fatal(err)
 	}
@@ -337,27 +480,26 @@ func TestNativeRoles(t *testing.T) {
 			controlConnection(t, listener.Addr().String())
 			request := Request{Plan: DefaultPlan(role), Identity: i, Executable: exe, Storage: storage, Pipes: []windows.Handle{windows.Handle(client.Fd())}}
 			p, err := Launch(context.Background(), request)
-			if role == Network && windows.GetCurrentProcessToken().IsElevated() {
-				if !errors.Is(err, ErrUnavailable) || p != nil {
-					t.Fatalf("accepted service N: %v", err)
-				}
-				return
-			}
 			if err != nil {
 				t.Fatal(err)
 			}
 			defer func() { _ = p.Close() }()
 			checkJob(t, p, request.Plan)
 			_ = client.Close()
-			if err := server.SetDeadline(time.Now().Add(20 * time.Second)); err != nil {
+			deadline := 20 * time.Second
+			if role == Network {
+				deadline = 120 * time.Second
+			}
+			if err := server.SetDeadline(time.Now().Add(deadline)); err != nil {
 				t.Fatal(err)
 			}
-			if err := json.NewEncoder(server).Encode(probeInput{Secret: secret, Foreign: foreign, Address: listener.Addr().String(), DLL: dll, Parent: uint32(os.Getpid())}); err != nil {
+			if err := json.NewEncoder(server).Encode(probeInput{Secret: secret, Foreign: foreign, Address: listener.Addr().String(), DLL: dll, Parent: uint32(os.Getpid()), Backend: role == Network, Driver: windows.GetCurrentProcessToken().IsElevated()}); err != nil {
 				t.Fatal(err)
 			}
 			var failures []string
 			if err := json.NewDecoder(server).Decode(&failures); err != nil {
-				t.Fatal(err)
+				stage, stageErr := os.ReadFile(filepath.Join(storage, "native-backend-stage.txt"))
+				t.Fatalf("decode role result: %v; native backend stage %q (%v)", err, stage, stageErr)
 			}
 			if len(failures) != 0 {
 				t.Fatal(failures)
@@ -365,7 +507,7 @@ func TestNativeRoles(t *testing.T) {
 			controlConnection(t, listener.Addr().String())
 			want := int32(2)
 			if role == Network {
-				want += 8
+				want += 9
 			}
 			if accepted.Load() != want {
 				t.Fatalf("accepted %d connections, want %d", accepted.Load(), want)
@@ -405,7 +547,7 @@ func checkJob(t *testing.T, p *Process, plan Plan) {
 		t.Fatal(err)
 	}
 	expected := uint32(windows.JOB_OBJECT_LIMIT_ACTIVE_PROCESS | windows.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | windows.JOB_OBJECT_LIMIT_PROCESS_MEMORY)
-	if limits.BasicLimitInformation.LimitFlags != expected || limits.BasicLimitInformation.ActiveProcessLimit != 1 || uint64(limits.ProcessMemoryLimit) != plan.MemoryBytes {
+	if limits.BasicLimitInformation.LimitFlags != expected || limits.BasicLimitInformation.ActiveProcessLimit != plan.processLimit() || uint64(limits.ProcessMemoryLimit) != plan.MemoryBytes {
 		t.Fatalf("incorrect job limits: %+v", limits)
 	}
 	var cpu struct{ Flags, Rate uint32 }
@@ -418,6 +560,7 @@ func checkJob(t *testing.T, p *Process, plan Plan) {
 }
 
 func TestNativeLaunchRejections(t *testing.T) {
+	requireWinVM(t)
 	root, exe := fixture(t)
 	i, storage := identity(t, Runtime, root, exe)
 	a, b, err := transport.PipePair()
@@ -471,6 +614,7 @@ func TestNativeLaunchRejections(t *testing.T) {
 }
 
 func TestNativeCloseAndCancellation(t *testing.T) {
+	requireWinVM(t)
 	root, exe := fixture(t)
 	i, storage := identity(t, Runtime, root, exe)
 	a, b, err := transport.PipePair()
@@ -510,6 +654,7 @@ func TestNativeCloseAndCancellation(t *testing.T) {
 }
 
 func TestNativeSuspendedFailureAndInheritance(t *testing.T) {
+	requireWinVM(t)
 	root, exe := fixture(t)
 	i, storage := identity(t, Runtime, root, exe)
 	a, b, err := transport.PipePair()
@@ -563,6 +708,7 @@ func TestNativeSuspendedFailureAndInheritance(t *testing.T) {
 }
 
 func TestNativeObjectRejections(t *testing.T) {
+	requireWinVM(t)
 	root, exe := fixture(t)
 	for _, value := range []struct {
 		role Role
@@ -659,5 +805,93 @@ func TestNativeObjectRejections(t *testing.T) {
 	}
 	if err := i.GrantExecutable(exe); !errors.Is(err, ErrUnavailable) {
 		t.Fatal(err)
+	}
+}
+
+func TestNativePersistentDeployment(t *testing.T) {
+	requireWinVM(t)
+	root, exe := fixture(t)
+	brokenInstance := fmt.Sprintf("deployment-failure-%d-%d", os.Getpid(), time.Now().UnixNano())
+	broken := DeploymentPlan{
+		Instance: brokenInstance,
+		Runtime:  RolePath{Executable: exe, Storage: filepath.Join(root, "failed-runtime")},
+		Writer:   RolePath{Executable: exe, Storage: filepath.Join(root, "failed-writer")},
+		Command:  RolePath{Executable: filepath.Join(root, "missing-command.exe"), Storage: filepath.Join(root, "failed-command")},
+	}
+	if deployment, err := ProvisionDeployment(broken); err == nil || deployment != nil {
+		if deployment != nil {
+			_ = deployment.Remove()
+		}
+		t.Fatal("provisioned deployment with missing executable")
+	}
+	for _, path := range []string{broken.Runtime.Storage, broken.Writer.Storage, broken.Command.Storage} {
+		if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("rollback retained %s: %v", path, err)
+		}
+	}
+	broken.Command.Executable = exe
+	retry, err := ProvisionDeployment(broken)
+	if err != nil {
+		t.Fatalf("provision after rollback: %v", err)
+	}
+	if err := retry.Remove(); err != nil {
+		t.Fatalf("remove rollback retry: %v", err)
+	}
+
+	instance := fmt.Sprintf("deployment-%d-%d", os.Getpid(), time.Now().UnixNano())
+	plan := DeploymentPlan{
+		Instance: instance,
+		Runtime:  RolePath{Executable: exe, Storage: filepath.Join(root, "deployed-runtime")},
+		Writer:   RolePath{Executable: exe, Storage: filepath.Join(root, "deployed-writer")},
+		Command:  RolePath{Executable: exe, Storage: filepath.Join(root, "deployed-command")},
+	}
+	installed, err := ProvisionDeployment(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	removed := false
+	t.Cleanup(func() {
+		if !removed {
+			_ = installed.Remove()
+		}
+	})
+	for _, role := range []Role{Runtime, Writer, Command} {
+		if installed.Identity(role) == nil {
+			t.Fatalf("missing %s identity", role)
+		}
+	}
+	runtimeIdentity := installed.Identity(Runtime)
+	if err := runtimeIdentity.revokePath(plan.Runtime.Executable, false); err != nil {
+		t.Fatalf("revoke runtime executable grant: %v", err)
+	}
+	if err := checkExecutableGrant(plan.Runtime.Executable, runtimeIdentity.sid); !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("missing executable grant check = %v", err)
+	}
+	if err := runtimeIdentity.GrantExecutable(plan.Runtime.Executable); err != nil {
+		t.Fatalf("restore runtime executable grant: %v", err)
+	}
+	if duplicate, err := ProvisionDeployment(plan); err == nil || duplicate != nil {
+		if duplicate != nil {
+			_ = duplicate.Remove()
+		}
+		t.Fatal("adopted an existing deployment")
+	}
+	if err := installed.Close(); err != nil {
+		t.Fatal(err)
+	}
+	opened, err := OpenDeployment(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	installed = opened
+	if err := opened.Remove(); err != nil {
+		t.Fatal(err)
+	}
+	removed = true
+	if reopened, err := OpenDeployment(plan); err == nil || reopened != nil {
+		if reopened != nil {
+			_ = reopened.Close()
+		}
+		t.Fatal("opened a removed deployment")
 	}
 }

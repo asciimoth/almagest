@@ -21,13 +21,85 @@ const (
 
 var ErrUnavailable = errors.New("windows isolation profile unavailable; use explicit --no-isolation")
 
-// Plan selects only restrictions that the launcher implements. Service N,
-// driver loading, and native helpers need separate deployment qualification.
-// Command is a single fixed executable, with no children or network access.
+// Plan selects only restrictions that the launcher implements. Network is the
+// trusted native backend. It retains its launch token and can start a bounded
+// number of backend-selected helpers. The other roles use separate
+// AppContainers and cannot start child processes or use native networking.
 type Plan struct {
 	Role        Role
 	MemoryBytes uint64
 	CPUPercent  uint32
+}
+
+// DeploymentPlan fixes the persistent AppContainer names, executables and
+// private directories installed for R, C and H. N uses the service or caller
+// identity and is not part of this AppContainer layout.
+type DeploymentPlan struct {
+	Instance string
+	Runtime  RolePath
+	Writer   RolePath
+	Command  RolePath
+}
+
+type RolePath struct {
+	Executable string
+	Storage    string
+}
+
+func (p DeploymentPlan) Validate() error {
+	if err := validateInstance(p.Instance); err != nil {
+		return err
+	}
+	paths := []string{
+		p.Runtime.Executable, p.Runtime.Storage,
+		p.Writer.Executable, p.Writer.Storage,
+		p.Command.Executable, p.Command.Storage,
+	}
+	for _, path := range paths {
+		if err := validatePath(path); err != nil {
+			return err
+		}
+	}
+	stores := []string{p.Runtime.Storage, p.Writer.Storage, p.Command.Storage}
+	for n, first := range stores {
+		for _, second := range stores[n+1:] {
+			if strings.EqualFold(first, second) || pathContains(first, second) || pathContains(second, first) {
+				return fmt.Errorf("%w: role storage paths overlap", ErrUnavailable)
+			}
+		}
+		for _, executable := range []string{p.Runtime.Executable, p.Writer.Executable, p.Command.Executable} {
+			if pathContains(first, executable) {
+				return fmt.Errorf("%w: trusted executable is inside role storage", ErrUnavailable)
+			}
+		}
+	}
+	return nil
+}
+
+func validateInstance(instance string) error {
+	if len(instance) < 1 || len(instance) > 64 {
+		return fmt.Errorf("%w: invalid instance name", ErrUnavailable)
+	}
+	for _, c := range instance {
+		if (c < 'a' || c > 'z') && (c < '0' || c > '9') && c != '-' {
+			return fmt.Errorf("%w: invalid instance name", ErrUnavailable)
+		}
+	}
+	return nil
+}
+
+func pathContains(parent, child string) bool {
+	parent = strings.TrimRight(parent, `\`)
+	return len(child) > len(parent) && strings.EqualFold(child[:len(parent)], parent) && child[len(parent)] == '\\'
+}
+
+const networkProcessLimit = 16
+
+func (p Plan) processLimit() uint32 {
+	if p.Role == Network {
+		return networkProcessLimit
+	}
+	return 1
 }
 
 func DefaultPlan(role Role) Plan {
@@ -53,12 +125,13 @@ func CheckPlatform(build uint32, arch string) error {
 	return nil
 }
 
-// CheckFeatures is separate from native capability discovery. An unsupported
-// isolated profile must not be reported as an unavailable native feature.
+// CheckFeatures is separate from native capability discovery. N can use
+// service authority and already-provisioned backend drivers or helpers. This
+// check does not install a driver, attach to another service, or add authority.
 func CheckFeatures(serviceNetwork, driverLoading, nativeHelper bool) error {
-	if serviceNetwork || driverLoading || nativeHelper {
-		return fmt.Errorf("%w: service N, driver loading and native helpers need separate qualification", ErrUnavailable)
-	}
+	_ = serviceNetwork
+	_ = driverLoading
+	_ = nativeHelper
 	return nil
 }
 

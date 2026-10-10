@@ -27,8 +27,10 @@
             "github.com/asciimoth/almagest/bin/internal/isolation/windowsprofile::TestNativeCloseAndCancellation",
             "github.com/asciimoth/almagest/bin/internal/isolation/windowsprofile::TestNativeSuspendedFailureAndInheritance",
             "github.com/asciimoth/almagest/bin/internal/isolation/windowsprofile::TestNativeObjectRejections",
+            "github.com/asciimoth/almagest/bin/internal/isolation/windowsprofile::TestNativePersistentDeployment",
             "github.com/asciimoth/almagest/bin/internal/isolation/windowsprofile::FuzzPlan",
-            "github.com/asciimoth/almagest/bin/internal/isolation/windowsprofile::FuzzPath"
+            "github.com/asciimoth/almagest/bin/internal/isolation/windowsprofile::FuzzPath",
+            "github.com/asciimoth/almagest/bin/internal/isolation/windowsprofile::FuzzDeploymentPlan"
           ]
         },
         {
@@ -456,6 +458,7 @@
           "id": "m25::windows-role-profiles-service",
           "kind": "go",
           "module": "bin",
+          "startServices": ["mullvad-split-tunnel"],
           "arguments": ["./internal/isolation/windowsprofile", "-count=1"],
           "eventFile": "windows-role-profiles.jsonl",
           "requiredTests": [
@@ -466,8 +469,10 @@
             "github.com/asciimoth/almagest/bin/internal/isolation/windowsprofile::TestNativeCloseAndCancellation",
             "github.com/asciimoth/almagest/bin/internal/isolation/windowsprofile::TestNativeSuspendedFailureAndInheritance",
             "github.com/asciimoth/almagest/bin/internal/isolation/windowsprofile::TestNativeObjectRejections",
+            "github.com/asciimoth/almagest/bin/internal/isolation/windowsprofile::TestNativePersistentDeployment",
             "github.com/asciimoth/almagest/bin/internal/isolation/windowsprofile::FuzzPlan",
-            "github.com/asciimoth/almagest/bin/internal/isolation/windowsprofile::FuzzPath"
+            "github.com/asciimoth/almagest/bin/internal/isolation/windowsprofile::FuzzPath",
+            "github.com/asciimoth/almagest/bin/internal/isolation/windowsprofile::FuzzDeploymentPlan"
           ]
         },
         {

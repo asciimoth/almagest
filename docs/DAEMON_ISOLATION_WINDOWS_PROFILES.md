@@ -1,7 +1,9 @@
 # Windows role profiles
 
-Checkpoint 25 adds `bin/internal/isolation/windowsprofile`. The package provides
-role launch restrictions. It does not enable isolated daemon startup. The
+Checkpoint 25 is complete for the Windows Server 2022 build 20348/amd64 profile
+components in `bin/internal/isolation/windowsprofile`. The package provides
+role launch restrictions, a trusted caller/service N launch, and persistent
+R/C/H identity provisioning. It does not enable isolated daemon startup. The
 direct daemon and the public admin pipe are unchanged.
 
 ## Revised production target
@@ -13,12 +15,14 @@ matching, native services, and the installed split driver. Backend DNS parsing
 and native control may remain together. Extra DNS/driver helpers and a reduced
 service token are not production prerequisites.
 
-The component below still rejects elevated/service N and strips caller N's
-token. Those are prototype limitations to replace, not security requirements
-for the trusted backend. Do not relax R's token, job, network, child-process,
-or handle restrictions, or C/node-command H restrictions, to fix N. Trusted DLL
-paths, private IPC ACLs, typed ownership checks, no runtime-selected programs,
-and no automatic elevation remain mandatory. Full acceptance is still open.
+N retains the exact caller or service credential. The launcher verifies the
+child's authentication identity, user, groups, privileges, owner, primary
+group, integrity, session, elevation, restrictions, virtualization, UI access,
+and AppContainer state before resume. It does not request elevation or attach
+to another service. R's token, job, network, child-process, and handle
+restrictions and C/node-command H restrictions are unchanged. Trusted paths,
+private IPC, typed ownership checks, and no runtime-selected programs remain
+mandatory.
 
 ## Existing component launch boundary
 
@@ -40,21 +44,19 @@ and removed privileges. Only the traversal
 privilege can remain. Restrictions apply before Go package initialization and
 to all threads.
 
-N currently supports the ordinary caller profile. It retains the caller's
-identity with maximum privileges removed and runs outside AppContainer so it
-can use native sockets. Elevated and LocalSystem N launches fail in this
-prototype. The replacement service N path must preserve the service identity,
-private IPC ACLs, and native backend access under its launch token. This is an
-implementation gap, not a requirement to reduce that token or a change to
-the native backend's capabilities. Driver installation and loading, native
-helpers, and elevation are not available through this launcher.
+N runs outside AppContainer with its unchanged launch credential. Its job
+allows at most 16 processes so trusted backend-selected helpers can run while
+breakaway remains denied. R, C, and H remain one-process jobs. Driver
+installation and updates remain explicit deployment operations; the launcher
+does not install a driver, request elevation, or provide a generic helper API.
 
-Every role in this component has a separate job with one active process, kill-on-close, no
-breakaway, UI restrictions, a process memory ceiling, and a CPU hard cap. The
-defaults are 512 MiB and 25 percent CPU. All setup and token checks must succeed
-before the first thread resumes. A failure terminates the suspended process.
-`Wait` supports cancellation; `Close` kills the job and releases its handles.
-Only trusted bootstrap retains process and job handles.
+Every role in this component has a separate kill-on-close, no-breakaway job
+with UI restrictions, a process memory ceiling, and a CPU hard cap. R, C, and H
+allow one active process; N allows 16. The defaults are 512 MiB and 25 percent
+CPU. All setup and token checks must succeed before the first thread resumes. A
+failure terminates the suspended process. `Wait` supports cancellation;
+`Close` kills the job and releases its handles. Only trusted bootstrap retains
+process and job handles.
 
 Creation applies DEP, SEHOP, strict handle checking, remote-image and Low-image
 denial, and System32 preference. Strict-handle and image policies are read back
@@ -65,13 +67,17 @@ fails launch; the launcher never removes a flag and retries.
 
 ## Objects and provisioning
 
-`NewIdentity` creates a new, role-specific AppContainer. An existing profile is
-not adopted. `ProvisionDirectory` creates a new directory with a protected
-DACL, an exact role grant, and an inheritable Low integrity label. It does not
-edit an existing tree. Use separate directories for R's data, C's fixed config
-target, and H's private data. `GrantExecutable` is an explicit provisioning
-operation that adds read/execute access for that identity to a trusted binary.
-Deployment must remove obsolete identity ACEs when it removes a profile.
+`NewIdentity` creates a temporary, role-specific AppContainer and never adopts
+an existing profile. `ProvisionDeployment` creates persistent, distinct R/C/H
+profiles, new role directories with protected DACLs and Low integrity labels,
+and exact read/execute grants on their trusted executables. It rolls back new
+profiles and directories on failure. `OpenDeployment` derives the expected
+SIDs, requires the registered profile directories, and revalidates every
+executable and storage ACL, including the exact role read/execute grant.
+Partial provisioning reports rollback failures instead of hiding residual
+profiles or ACLs. `Remove` explicitly removes profiles but never deletes
+application or config data; it revokes the obsolete role SID from the storage
+and executable DACLs before profile deletion.
 
 The launcher opens each path component, including the volume root, without
 write/delete sharing and retains those handles until resume. It checks owners,
@@ -104,27 +110,26 @@ just test-total winvm:m25::windows-role-profiles-caller winvm:m25::windows-role-
 just windows-isolation-profiles
 ```
 
-The native tests cover R/C/H and caller N, eight simultaneous locked worker
-threads, private and foreign storage, broker process access, Low DLL loading,
-direct Winsock denial, caller-N TCP/UDP, local name resolution and socket-owner
-lookup, driver-service creation denial, normal and breakaway
-child creation, effective job limits, inherited-handle exclusion, startup fault
-cleanup, invalid handle types, unsafe ACLs, hard links, path replacement,
-cancellation, junctions, peer closure, and repeated shutdown. A reachable native
-listener before and after each probe, plus accepted-connection counts, checks
-that AppContainer loopback timeouts are actual denials. The job process limit
-can report `ERROR_NOT_ENOUGH_QUOTA`; breakaway must report access denied.
-Service N rejection is an
-expected denial, not successful service-N qualification.
+The native tests cover R/C/H and caller/service N, eight simultaneous locked
+worker threads, private and foreign storage, broker process access, Low DLL
+loading, direct Winsock denial, N TCP/UDP, native outbound DNS, local name
+resolution, owner matching, backend-selected helper execution, regular Wintun,
+split default Wintun, WFP policy, managed DNS, effective job limits,
+inherited-handle exclusion, startup fault cleanup, invalid handle types, unsafe
+ACLs, hard links, path replacement, cancellation, junctions, peer closure,
+repeated shutdown, and persistent deployment reopen/removal. With the
+provisioned split driver active, R/C/H must also fail to open its control
+device. A reachable native listener before and after each probe, plus
+accepted-connection counts, checks that AppContainer loopback timeouts are
+actual denials. R/C/H child creation and N breakaway must report access denied.
 
 The platform gate accepts only Windows Server 2022 build 20348 on amd64.
-Cross-compilation does not qualify Windows 11 or arm64. Full profile acceptance
-remains open for service N, final-token TUN/DNS/owner-matcher/backend tests,
-deployment identity/ACL provisioning, and complete R/C/H integration. H here
-is one fixed executable with no children or native network access; profiles
-that need those rights require separate qualification. C's fixed-target
-transaction behavior remains in `configwriter`. The default-mode switch stays
-blocked until those conditions and the later complete-daemon gates pass.
+Cross-compilation does not qualify Windows 11 or arm64. H here is one fixed
+executable with no children or native network access; profiles that need those
+rights require separate qualification. C's fixed-target transaction behavior
+remains in `configwriter`. Complete role composition, recovery, hostile-runtime
+evidence, performance, packaging, and the default-mode switch remain later
+checkpoints.
 
 ## Test record
 
@@ -148,6 +153,26 @@ configuration was changed.
   VM shut down gracefully without recovery. This qualifies the tested component
   restrictions, not the remaining service-N/backend/deployment composition.
 
-This record applies to the tested restriction components, including expected
-service-N rejection. It does not qualify the revised trusted-N design. No new
-native Windows run was performed during the Linux cleanup.
+The revised trusted-N gate passed in `artifacts/winvm/run-8BLTPqH7` on Windows
+Server 2022 build 20348/amd64. Both registered cases ran without skips as
+`ALM-WINVM\winvm` and `NT AUTHORITY\SYSTEM`, produced 82.3 percent package
+statement coverage, passed evidence validation, and shut the VM down
+gracefully. The caller profile preserved its native Wintun permission denial
+without losing socket, DNS, matcher, or helper features. The service profile
+created and closed regular and split-default Wintun resources, WFP policy, and
+managed DNS under its unchanged final token. Persistent deployment
+provision/open/remove also passed under both authorities, including executable
+grant readback, rollback, and reprovision after a partial provisioning failure.
+
+Three 10-second portable fuzz campaigns passed before the native gate:
+`FuzzPlan` completed 895,303 executions, `FuzzPath` completed 921,082, and
+`FuzzDeploymentPlan` completed 889,396. Windows amd64 and arm64 lint and test
+cross-builds passed. Failed VM iterations are retained separately; they found
+invalid fixed-size token queries, a wrong AppContainer folder input, an
+incorrect OutNet loopback probe, an ordinary-user Wintun permission assumption,
+and an aggregate backend-close delay after all native resources were already
+closed. The accepted probe uses explicit resource cleanup and the role job as
+the final process shutdown bound.
+
+This record qualifies the checkpoint-25 components, not a complete isolated
+daemon. Production isolation remains disabled.

@@ -793,11 +793,12 @@ Acceptance:
 
 ## 25. Implement the Windows production profiles
 
-Status: Windows role restriction components are implemented in
-`bin/internal/isolation/windowsprofile`. Caller and service-derived AppContainer
-tests pass in the Windows Server 2022/amd64 VM gate. Complete profile
-acceptance remains open for service N, final-token native backend compatibility,
-and deployment provisioning. Production isolated startup remains disabled.
+Status: complete for the Windows Server 2022/amd64 production profile
+components. `bin/internal/isolation/windowsprofile` implements restricted
+R/C/H roles, trusted caller/service N, and persistent AppContainer deployment
+provisioning. Both launch identities pass final-token native backend tests in
+the locked Windows VM. Production isolated startup remains disabled until the
+later composition, qualification, performance, and rollout checkpoints pass.
 
 See the [Windows role profile implementation and qualification notes](DAEMON_ISOLATION_WINDOWS_PROFILES.md).
 
