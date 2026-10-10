@@ -132,7 +132,7 @@ func (m *bboltKVManager) NewGeneratedSecret(sec storage.Secret, node, owner stri
 		}
 		selected := ""
 		created := false
-		err = mapBboltSecretError(m.db.Update(func(tx *bbolt.Tx) error {
+		err = mapBboltSecretError(m.updateBackground(func(tx *bbolt.Tx) error {
 			bucket, bucketErr := tx.CreateBucketIfNotExists([]byte(secretsBucketName))
 			if bucketErr != nil {
 				return bucketErr
@@ -206,7 +206,7 @@ func (m *bboltKVManager) CommitGeneratedSecret(key, node string) error {
 	if !validSecretName(key) || !validSecretNodeName(node) {
 		return storage.ErrSecretInvalidName
 	}
-	return mapBboltSecretError(m.db.Update(func(tx *bbolt.Tx) error {
+	return mapBboltSecretError(m.updateBackground(func(tx *bbolt.Tx) error {
 		bucket := tx.Bucket([]byte(secretsBucketName))
 		if bucket == nil {
 			return storage.ErrSecretAccessDenied
@@ -242,7 +242,7 @@ func (m *bboltKVManager) DeleteGeneratedSecret(key, node string) error {
 		return storage.ErrSecretAccessDenied
 	}
 	deleted := false
-	err := mapBboltSecretError(m.db.Update(func(tx *bbolt.Tx) error {
+	err := mapBboltSecretError(m.updateBackground(func(tx *bbolt.Tx) error {
 		bucket := tx.Bucket([]byte(secretsBucketName))
 		if bucket == nil {
 			return nil
@@ -381,7 +381,7 @@ func (m *bboltKVManager) setSecretValue(key, value string) (secretMutationResult
 	}
 	golog.Debugf("secrets storage: writing mutable secret value key=%q", key)
 	var notifyNodes []string
-	err := mapBboltSecretError(m.db.Update(func(tx *bbolt.Tx) error {
+	err := mapBboltSecretError(m.updateBackground(func(tx *bbolt.Tx) error {
 		bucket, err := tx.CreateBucketIfNotExists([]byte(secretsBucketName))
 		if err != nil {
 			return err
@@ -419,7 +419,7 @@ func (m *bboltKVManager) setSecretNodes(key string, nodes []string) (secretMutat
 	nodes = normalizeSecretNodes(nodes)
 	golog.Debugf("secrets storage: writing mutable secret nodes key=%q nodes=%q", key, nodes)
 	var oldNodes []string
-	err := mapBboltSecretError(m.db.Update(func(tx *bbolt.Tx) error {
+	err := mapBboltSecretError(m.updateBackground(func(tx *bbolt.Tx) error {
 		bucket, err := tx.CreateBucketIfNotExists([]byte(secretsBucketName))
 		if err != nil {
 			return err
@@ -475,7 +475,7 @@ func (m *bboltKVManager) renameSecret(key, newKey string) (secretMutationResult,
 		return secretMutationResult{}, storage.ErrSecretConflict
 	}
 	var notifyNodes []string
-	err := mapBboltSecretError(m.db.Update(func(tx *bbolt.Tx) error {
+	err := mapBboltSecretError(m.updateBackground(func(tx *bbolt.Tx) error {
 		bucket := tx.Bucket([]byte(secretsBucketName))
 		if bucket == nil {
 			return errSecretNotFound
@@ -517,7 +517,7 @@ func (m *bboltKVManager) deleteSecret(key string) (secretMutationResult, error) 
 	golog.Debugf("secrets storage: deleting mutable secret key=%q", key)
 	var notifyNodes []string
 	deleted := false
-	err := mapBboltSecretError(m.db.Update(func(tx *bbolt.Tx) error {
+	err := mapBboltSecretError(m.updateBackground(func(tx *bbolt.Tx) error {
 		bucket := tx.Bucket([]byte(secretsBucketName))
 		if bucket == nil {
 			return nil
@@ -628,7 +628,7 @@ func (m *bboltKVManager) createMutableSecret(key string, record secretRecord) (b
 		return false, nil
 	}
 	created := false
-	err := mapBboltSecretError(m.db.Update(func(tx *bbolt.Tx) error {
+	err := mapBboltSecretError(m.updateBackground(func(tx *bbolt.Tx) error {
 		bucket, err := tx.CreateBucketIfNotExists([]byte(secretsBucketName))
 		if err != nil {
 			return err
@@ -699,7 +699,7 @@ func (m *bboltKVManager) updateMutableSecretNodes(
 	update func([]string) ([]string, bool),
 	changed map[string]struct{},
 ) error {
-	return mapBboltSecretError(m.db.Update(func(tx *bbolt.Tx) error {
+	return mapBboltSecretError(m.updateBackground(func(tx *bbolt.Tx) error {
 		bucket := tx.Bucket([]byte(secretsBucketName))
 		if bucket == nil {
 			return nil

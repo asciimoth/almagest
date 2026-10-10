@@ -62,7 +62,10 @@ func TestPersistenceEndToEnd(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = remote.Close() })
-	persistence, err := New(remote, testSession(), 1, time.Second)
+	// This test verifies the complete transport path, not deadline behavior.
+	// Use the production default so race and aggregate coverage load cannot turn
+	// slow compilation or scheduling into an in-flight cleanup race.
+	persistence, err := New(remote, testSession(), 1, 0)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -37,10 +37,15 @@ const (
 	// The JSON API keeps an archive and its base64 representation in memory.
 	// Keep compressed archives small enough for that transport, and separately
 	// bound extracted data so a highly compressed ZIP cannot exhaust storage.
-	snapshotExtractedMaxBytes uint64 = 256 << 20
-	snapshotManifestMaxBytes  uint64 = 64 << 10
-	snapshotConfigMaxBytes    uint64 = 8 << 20
-	snapshotNameMaxBytes             = 256
+	snapshotExtractedMaxBytes     uint64 = 256 << 20
+	snapshotManifestMaxBytes      uint64 = 64 << 10
+	snapshotConfigMaxBytes        uint64 = 8 << 20
+	snapshotNameMaxBytes                 = 256
+	snapshotEntryMaxCount                = 4096
+	snapshotEntryNameMaxBytes            = 4096
+	snapshotPathComponentMaxBytes        = 255
+	snapshotPathMaxDepth                 = 32
+	snapshotPathWorkMaxBytes             = 1 << 20
 )
 
 // snapshotExcludedStoragePaths is the explicit list of file-storage-relative
@@ -255,6 +260,11 @@ func (s *snapshotService) Create(ctx context.Context, name string) (api.Snapshot
 
 	s.autosaver.saveMu.Lock()
 	defer s.autosaver.saveMu.Unlock()
+	resumeWriters, err := s.manager.writeBarrier.quiesce(ctx)
+	if err != nil {
+		return api.SnapshotInfo{}, fmt.Errorf("wait for storage writers: %w", err)
+	}
+	defer resumeWriters()
 	configData, err := s.autosaver.currentConfigBytes()
 	if err != nil {
 		return api.SnapshotInfo{}, fmt.Errorf("export snapshot config: %w", err)
@@ -581,6 +591,11 @@ func (s *snapshotService) ready() error {
 }
 
 func (s *snapshotService) captureRecoveryArchive(ctx context.Context) (*loadedSnapshot, error) {
+	resumeWriters, err := s.manager.writeBarrier.quiesce(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("wait for storage writers: %w", err)
+	}
+	defer resumeWriters()
 	configData, err := s.autosaver.currentConfigBytes()
 	if err != nil {
 		return nil, err
@@ -674,6 +689,10 @@ func (s *snapshotService) writeArchive(ctx context.Context, archivePath string, 
 
 func (s *snapshotService) writeStorageFiles(ctx context.Context, zw *zip.Writer, databasePath string) error {
 	var storedBytes uint64
+	entries := snapshotEntrySet{
+		paths: map[string]string{}, entries: map[string]string{},
+		count: 2, pathBytes: len(snapshotManifestName) + len(snapshotConfigName),
+	}
 	return filepath.WalkDir(s.storagePath, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -707,7 +726,14 @@ func (s *snapshotService) writeStorageFiles(ctx context.Context, zw *zip.Writer,
 		if err := reserveSnapshotStorageBytes(archiveSourcePath, &storedBytes); err != nil {
 			return err
 		}
-		return writeZipFile(zw, snapshotFilesPrefix+filepath.ToSlash(relative), archiveSourcePath)
+		archiveName := snapshotFilesPrefix + filepath.ToSlash(relative)
+		if _, err := cleanSnapshotEntryName(archiveName); err != nil {
+			return err
+		}
+		if err := entries.register(archiveName); err != nil {
+			return err
+		}
+		return writeZipFile(zw, archiveName, archiveSourcePath)
 	})
 }
 
@@ -824,8 +850,17 @@ func readSnapshotManifest(path string) (snapshotManifest, error) {
 		return snapshotManifest{}, fmt.Errorf("%w: open archive %s: %v", errSnapshotInvalid, filepath.Base(path), err)
 	}
 	defer reader.Close() //nolint:errcheck
+	seen := snapshotEntrySet{paths: map[string]string{}, entries: map[string]string{}}
+	var result *snapshotManifest
 	for _, file := range reader.File {
-		if file.Name != snapshotManifestName {
+		name, err := cleanSnapshotEntryName(file.Name)
+		if err != nil {
+			return snapshotManifest{}, err
+		}
+		if err := seen.register(name); err != nil {
+			return snapshotManifest{}, err
+		}
+		if name != snapshotManifestName {
 			continue
 		}
 		data, err := readZipEntry(file, snapshotManifestMaxBytes)
@@ -845,9 +880,12 @@ func readSnapshotManifest(path string) (snapshotManifest, error) {
 		if err := validateSnapshotName(manifest.Snapshot.Name); err != nil {
 			return snapshotManifest{}, err
 		}
-		return manifest, nil
+		result = &manifest
 	}
-	return snapshotManifest{}, fmt.Errorf("%w: manifest is missing", errSnapshotInvalid)
+	if result == nil {
+		return snapshotManifest{}, fmt.Errorf("%w: manifest is missing", errSnapshotInvalid)
+	}
+	return *result, nil
 }
 
 func (s *snapshotService) loadArchive(ctx context.Context, path, expectedUUID string) (*loadedSnapshot, error) {
@@ -913,10 +951,6 @@ func (s *snapshotService) loadArchive(ctx context.Context, path, expectedUUID st
 			if err != nil {
 				return fail(err)
 			}
-			data, err = configOnlyBytes(data)
-			if err != nil {
-				return fail(fmt.Errorf("%w: parse config: %v", errSnapshotInvalid, err))
-			}
 			config, err := parseEditableConfig(data)
 			if err != nil {
 				return fail(fmt.Errorf("%w: parse config: %v", errSnapshotInvalid, err))
@@ -958,6 +992,9 @@ func (s *snapshotService) loadArchive(ctx context.Context, path, expectedUUID st
 
 func cleanSnapshotEntryName(name string) (string, error) {
 	name = strings.TrimSuffix(name, "/")
+	if len(name) > snapshotEntryNameMaxBytes {
+		return "", fmt.Errorf("%w: archive entry name exceeds %d bytes", errSnapshotTooLarge, snapshotEntryNameMaxBytes)
+	}
 	if name == "" || strings.Contains(name, "\\") || strings.HasPrefix(name, "/") {
 		return "", fmt.Errorf("%w: unsafe archive entry %q", errSnapshotInvalid, name)
 	}
@@ -965,7 +1002,14 @@ func cleanSnapshotEntryName(name string) (string, error) {
 	if cleaned != name || cleaned == ".." || strings.HasPrefix(cleaned, "../") {
 		return "", fmt.Errorf("%w: unsafe archive entry %q", errSnapshotInvalid, name)
 	}
-	for _, component := range strings.Split(cleaned, "/") {
+	components := strings.Split(cleaned, "/")
+	if len(components) > snapshotPathMaxDepth {
+		return "", fmt.Errorf("%w: archive entry %q exceeds nesting limit %d", errSnapshotTooLarge, name, snapshotPathMaxDepth)
+	}
+	for _, component := range components {
+		if len(component) > snapshotPathComponentMaxBytes {
+			return "", fmt.Errorf("%w: archive entry %q has a component longer than %d bytes", errSnapshotTooLarge, name, snapshotPathComponentMaxBytes)
+		}
 		if err := validateSnapshotPathComponent(component); err != nil {
 			return "", fmt.Errorf("%w: unsafe archive entry %q: %v", errSnapshotInvalid, name, err)
 		}
@@ -980,11 +1024,21 @@ func snapshotEntryAlias(name string) string {
 }
 
 type snapshotEntrySet struct {
-	paths   map[string]string
-	entries map[string]string
+	paths     map[string]string
+	entries   map[string]string
+	count     int
+	pathBytes int
 }
 
-func (s snapshotEntrySet) register(name string) error {
+func (s *snapshotEntrySet) register(name string) error {
+	s.count++
+	s.pathBytes += len(name)
+	if s.count > snapshotEntryMaxCount {
+		return fmt.Errorf("%w: archive has more than %d entries", errSnapshotTooLarge, snapshotEntryMaxCount)
+	}
+	if s.pathBytes > snapshotPathWorkMaxBytes {
+		return fmt.Errorf("%w: archive entry names exceed %d bytes of work", errSnapshotTooLarge, snapshotPathWorkMaxBytes)
+	}
 	parts := strings.Split(name, "/")
 	for i := range parts {
 		path := strings.Join(parts[:i+1], "/")
@@ -1041,10 +1095,14 @@ func readZipEntry(file *zip.File, limit uint64) ([]byte, error) {
 	if readErr != nil {
 		return nil, readErr
 	}
+	if uint64(len(data)) != file.UncompressedSize64 {
+		return nil, fmt.Errorf("%w: archive entry %q size does not match its header", errSnapshotInvalid, file.Name)
+	}
 	return data, closeErr
 }
 
 func extractSnapshotFile(file *zip.File, root, relative string) error {
+	limit := file.UncompressedSize64
 	relative = filepath.FromSlash(relative)
 	destination := filepath.Join(root, relative)
 	if _, ok := pathWithinStorage(root, destination); !ok {
@@ -1082,11 +1140,14 @@ func extractSnapshotFile(file *zip.File, root, relative string) error {
 		_ = reader.Close()
 		return err
 	}
-	_, copyErr := io.Copy(destinationFile, reader)
+	written, copyErr := io.Copy(destinationFile, io.LimitReader(reader, int64(limit)+1))
 	closeDestinationErr := destinationFile.Close()
 	closeReaderErr := reader.Close()
 	if copyErr != nil {
 		return copyErr
+	}
+	if uint64(written) != limit {
+		return fmt.Errorf("%w: archive entry %q size does not match its header", errSnapshotInvalid, file.Name)
 	}
 	if closeDestinationErr != nil {
 		return closeDestinationErr

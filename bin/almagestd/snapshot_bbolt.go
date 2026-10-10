@@ -34,7 +34,7 @@ func (m *bboltKVManager) replaceBboltDatabase(path string) error {
 	defer source.Close() //nolint:errcheck
 
 	err = source.View(func(sourceTx *bbolt.Tx) error {
-		return m.db.Update(func(destinationTx *bbolt.Tx) error {
+		return m.updateBackground(func(destinationTx *bbolt.Tx) error {
 			var names [][]byte
 			if err := destinationTx.ForEach(func(name []byte, _ *bbolt.Bucket) error {
 				names = append(names, append([]byte(nil), name...))

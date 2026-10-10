@@ -362,7 +362,7 @@ func (m *bboltKVManager) setTLSCert(name, pemText string) (tlsMutationResult, er
 	if err != nil {
 		return tlsMutationResult{}, err
 	}
-	err = mapBboltTLSError(m.db.Update(func(tx *bbolt.Tx) error {
+	err = mapBboltTLSError(m.updateBackground(func(tx *bbolt.Tx) error {
 		bucket, err := mutableTLSCertsBucket(tx, true)
 		if err != nil {
 			return err
@@ -409,7 +409,7 @@ func (m *bboltKVManager) renameTLSCert(name, newName string) (tlsMutationResult,
 	}
 
 	changedPolicies := map[string]struct{}{}
-	err := mapBboltTLSError(m.db.Update(func(tx *bbolt.Tx) error {
+	err := mapBboltTLSError(m.updateBackground(func(tx *bbolt.Tx) error {
 		bucket, err := mutableTLSCertsBucket(tx, false)
 		if err != nil || bucket == nil {
 			if err != nil {
@@ -461,7 +461,7 @@ func (m *bboltKVManager) deleteTLSCert(name string) (tlsMutationResult, error) {
 
 	deleted := false
 	changedPolicies := map[string]struct{}{}
-	err := mapBboltTLSError(m.db.Update(func(tx *bbolt.Tx) error {
+	err := mapBboltTLSError(m.updateBackground(func(tx *bbolt.Tx) error {
 		bucket, err := mutableTLSCertsBucket(tx, false)
 		if err != nil || bucket == nil {
 			return err
@@ -516,7 +516,7 @@ func (m *bboltKVManager) setTLSPolicy(name string, spec api.TLSPolicySpec) (tlsM
 	if err != nil {
 		return tlsMutationResult{}, err
 	}
-	err = mapBboltTLSError(m.db.Update(func(tx *bbolt.Tx) error {
+	err = mapBboltTLSError(m.updateBackground(func(tx *bbolt.Tx) error {
 		bucket, err := mutableTLSPoliciesBucket(tx, true)
 		if err != nil {
 			return err
@@ -558,7 +558,7 @@ func (m *bboltKVManager) renameTLSPolicy(name, newName string) (tlsMutationResul
 		return tlsMutationResult{}, storage.ErrTlsConfigConflict
 	}
 
-	err := mapBboltTLSError(m.db.Update(func(tx *bbolt.Tx) error {
+	err := mapBboltTLSError(m.updateBackground(func(tx *bbolt.Tx) error {
 		bucket, err := mutableTLSPoliciesBucket(tx, false)
 		if err != nil || bucket == nil {
 			if err != nil {
@@ -607,7 +607,7 @@ func (m *bboltKVManager) deleteTLSPolicy(name string) (tlsMutationResult, error)
 	golog.Debugf("TLS storage: deleting mutable policy name=%q", name)
 
 	deleted := false
-	err := mapBboltTLSError(m.db.Update(func(tx *bbolt.Tx) error {
+	err := mapBboltTLSError(m.updateBackground(func(tx *bbolt.Tx) error {
 		bucket, err := mutableTLSPoliciesBucket(tx, false)
 		if err != nil || bucket == nil {
 			return err

@@ -821,6 +821,14 @@ Acceptance:
 
 ## 28. Integrate snapshot creation and startup restore
 
+Status: implemented in the runtime-owned daemon snapshot coordinator. Snapshot
+creation now quiesces live bbolt writers, startup restore remains before live
+database and graph construction, and archive validation has explicit structural
+and work bounds. Production isolated startup remains disabled until checkpoint
+32.
+
+See the [isolated snapshot creation and startup restore notes](DAEMON_ISOLATION_SNAPSHOTS.md).
+
 Work:
 
 - Coordinate actual storage writers for consistent creation; an admin mutex

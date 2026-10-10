@@ -43,7 +43,8 @@ var (
 )
 
 type bboltKVManager struct {
-	db *bbolt.DB
+	db           *bbolt.DB
+	writeBarrier *storageWriteBarrier
 
 	disableDNSCacheExpiration bool
 
@@ -156,6 +157,7 @@ func openKVManagerWithOptions(path string, options bboltKVManagerOptions) (*bbol
 	}
 	manager := &bboltKVManager{
 		db:                        db,
+		writeBarrier:              newStorageWriteBarrier(),
 		disableDNSCacheExpiration: options.DisableDNSCacheExpiration,
 		changeSubs:                map[uint64]func(){},
 		kvOwnerRefs:               map[*bboltKVOwner]struct{}{},
@@ -196,7 +198,7 @@ func bboltDatabaseExists(path string) (bool, error) {
 }
 
 func (m *bboltKVManager) initRootBuckets() error {
-	return mapBboltKVError(m.db.Update(func(tx *bbolt.Tx) error {
+	return mapBboltKVError(m.update(context.Background(), func(tx *bbolt.Tx) error {
 		if _, err := tx.CreateBucketIfNotExists([]byte(kvDataBucketName)); err != nil {
 			return err
 		}
@@ -231,6 +233,28 @@ func (m *bboltKVManager) Close() error {
 		return nil
 	}
 	return mapBboltKVError(m.db.Close())
+}
+
+// update coordinates every live database writer with snapshot creation. bbolt
+// still owns transaction consistency; the barrier also prevents a sequence of
+// node writes from straddling the file-storage copy in one snapshot.
+func (m *bboltKVManager) update(ctx context.Context, fn func(*bbolt.Tx) error) error {
+	if m == nil || m.db == nil {
+		return bberrors.ErrDatabaseNotOpen
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	release, err := m.writeBarrier.beginWrite(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
+	return m.db.Update(fn)
+}
+
+func (m *bboltKVManager) updateBackground(fn func(*bbolt.Tx) error) error {
+	return m.update(context.Background(), fn)
 }
 
 func (m *bboltKVManager) DefaultStore() storage.KVStore {
@@ -353,7 +377,7 @@ func (s *bboltKVStore) Update(ctx context.Context, fn func(storage.KVWriteTx) er
 		owner = s.owner.name
 	}
 	golog.Debugf("KV storage: write access path=%q", s.path)
-	err := mapBboltKVError(s.manager.db.Update(func(tx *bbolt.Tx) error {
+	err := mapBboltKVError(s.manager.update(ctx, func(tx *bbolt.Tx) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}

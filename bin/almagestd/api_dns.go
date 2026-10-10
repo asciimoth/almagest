@@ -286,7 +286,7 @@ func (m *bboltKVManager) setDNSRecord(cache, previousKey string, record api.DNSR
 	}
 	created := false
 	deletedPrevious := false
-	err = mapBboltDNSError(m.db.Update(func(tx *bbolt.Tx) error {
+	err = mapBboltDNSError(m.updateBackground(func(tx *bbolt.Tx) error {
 		root, err := tx.CreateBucketIfNotExists([]byte(dnsRootBucketName))
 		if err != nil {
 			return err
@@ -352,7 +352,7 @@ func (m *bboltKVManager) dropDNSCache(cache string) error {
 	}
 	var keys []string
 	dropped := false
-	err := mapBboltDNSError(m.db.Update(func(tx *bbolt.Tx) error {
+	err := mapBboltDNSError(m.updateBackground(func(tx *bbolt.Tx) error {
 		root := tx.Bucket([]byte(dnsRootBucketName))
 		if root == nil {
 			return nil

@@ -233,7 +233,7 @@ func (m *bboltKVManager) renameKVOwnerReferences(oldName, newName string) error 
 		}
 	}
 	changed := false
-	err := mapBboltKVError(m.db.Update(func(tx *bbolt.Tx) error {
+	err := mapBboltKVError(m.updateBackground(func(tx *bbolt.Tx) error {
 		bucket := tx.Bucket([]byte(kvOwnersBucketName))
 		if bucket == nil {
 			return nil
@@ -281,7 +281,7 @@ func (m *bboltKVManager) deleteKVOwnerEntries(name string) error {
 		}
 	}
 	changed := false
-	err := mapBboltKVError(m.db.Update(func(tx *bbolt.Tx) error {
+	err := mapBboltKVError(m.updateBackground(func(tx *bbolt.Tx) error {
 		var err error
 		changed, err = deleteInactiveKVOwnership(tx, func(owner string) bool { return owner == name })
 		return err
@@ -316,7 +316,7 @@ func (m *bboltKVManager) reconcileKVOwnerEntries(active map[string]struct{}) err
 		}
 	}
 	changed := false
-	err := mapBboltKVError(m.db.Update(func(tx *bbolt.Tx) error {
+	err := mapBboltKVError(m.updateBackground(func(tx *bbolt.Tx) error {
 		var err error
 		changed, err = deleteInactiveKVOwnership(tx, func(owner string) bool {
 			_, ok := active[owner]

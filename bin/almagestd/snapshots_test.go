@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"os"
@@ -1017,6 +1018,135 @@ func TestSnapshotArchiveSizeLimits(t *testing.T) {
 	})
 	if _, err := service.Import(context.Background(), bytes.NewReader(archive), nil); !errors.Is(err, errSnapshotTooLarge) {
 		t.Fatalf("extracted size error = %v, want snapshot too large", err)
+	}
+}
+
+func TestSnapshotArchiveStructuralWorkLimits(t *testing.T) {
+	tests := []struct {
+		name  string
+		entry string
+	}{
+		{name: "entry name", entry: strings.Repeat("x", snapshotEntryNameMaxBytes+1)},
+		{name: "component", entry: snapshotFilesPrefix + strings.Repeat("x", snapshotPathComponentMaxBytes+1)},
+		{name: "nesting", entry: strings.Repeat("a/", snapshotPathMaxDepth) + "value"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if _, err := cleanSnapshotEntryName(test.entry); !errors.Is(err, errSnapshotTooLarge) {
+				t.Fatalf("cleanSnapshotEntryName error = %v, want size limit", err)
+			}
+		})
+	}
+
+	entries := snapshotEntrySet{paths: map[string]string{}, entries: map[string]string{}}
+	for index := range snapshotEntryMaxCount {
+		if err := entries.register(fmt.Sprintf("files/%d", index)); err != nil {
+			t.Fatalf("register entry %d: %v", index, err)
+		}
+	}
+	if err := entries.register("files/overflow"); !errors.Is(err, errSnapshotTooLarge) {
+		t.Fatalf("entry-count error = %v, want size limit", err)
+	}
+}
+
+func TestSnapshotImportRejectsProtectedConfig(t *testing.T) {
+	service, _, _, _, _ := newSnapshotTestService(t, false)
+	created, err := service.Create(context.Background(), "protected rejection")
+	if err != nil {
+		t.Fatal(err)
+	}
+	exported, err := service.Export(created.UUID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	archive := rewriteSnapshotArchive(t, exported.Archive, func(writer *zip.Writer, file *zip.File) error {
+		if file.Name == snapshotConfigName {
+			return writeZipBytes(writer, snapshotConfigName, []byte(`{"nodes":{},"Protected":{"System":{"Type":"native"}}}`), 0o600, time.Now())
+		}
+		return writer.Copy(file)
+	})
+	if _, err := service.Import(context.Background(), bytes.NewReader(archive), nil); !errors.Is(err, errSnapshotInvalid) {
+		t.Fatalf("Import error = %v, want invalid protected config", err)
+	}
+}
+
+func TestSnapshotCreateWaitsForLiveStorageWriter(t *testing.T) {
+	service, manager, _, _, storagePath := newSnapshotTestService(t, false)
+	writerStarted := make(chan struct{})
+	finishWriter := make(chan struct{})
+	writerDone := make(chan error, 1)
+	go func() {
+		writerDone <- manager.DefaultStore().Update(context.Background(), func(tx storage.KVWriteTx) error {
+			close(writerStarted)
+			<-finishWriter
+			return tx.Set("coherent", storage.KValue{Data: []byte("committed")})
+		})
+	}()
+	<-writerStarted
+
+	created := make(chan api.SnapshotInfo, 1)
+	createErr := make(chan error, 1)
+	go func() {
+		info, err := service.Create(context.Background(), "writer barrier")
+		created <- info
+		createErr <- err
+	}()
+	select {
+	case err := <-createErr:
+		t.Fatalf("Create completed before writer: %v", err)
+	case <-time.After(20 * time.Millisecond):
+	}
+	close(finishWriter)
+	if err := <-writerDone; err != nil {
+		t.Fatal(err)
+	}
+	info := <-created
+	if err := <-createErr; err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := service.loadArchive(context.Background(), filepath.Join(storagePath, snapshotDirectoryName, info.UUID+".zip"), info.UUID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loaded.cleanup()
+	database, err := bbolt.Open(filepath.Join(loaded.filesPath, kvDBFileName), 0o600, &bbolt.Options{ReadOnly: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close() //nolint:errcheck
+	if err := database.View(func(tx *bbolt.Tx) error {
+		bucket := tx.Bucket([]byte(kvDataBucketName))
+		if bucket == nil {
+			return errors.New("default bucket is missing")
+		}
+		stored := bucket.Get([]byte("coherent"))
+		if len(stored) == 0 {
+			return errors.New("snapshot missed the completed writer")
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSnapshotCreateCancellationWhileWriterIsActive(t *testing.T) {
+	service, manager, _, _, _ := newSnapshotTestService(t, false)
+	endWriter, err := manager.writeBarrier.beginWrite(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+	if _, err := service.Create(ctx, "canceled"); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Create error = %v, want deadline", err)
+	}
+	endWriter()
+	listed, err := service.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(listed) != 0 {
+		t.Fatalf("canceled Create published snapshots: %#v", listed)
 	}
 }
 

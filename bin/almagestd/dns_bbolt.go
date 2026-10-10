@@ -362,7 +362,7 @@ func (m *bboltKVManager) ensureDNSCacheBucket(name string) (bool, error) {
 		return false, errDNSInvalidName
 	}
 	created := false
-	err := m.db.Update(func(tx *bbolt.Tx) error {
+	err := m.updateBackground(func(tx *bbolt.Tx) error {
 		root, err := tx.CreateBucketIfNotExists([]byte(dnsRootBucketName))
 		if err != nil {
 			return err
@@ -384,7 +384,7 @@ func (m *bboltKVManager) putDNSCacheEntry(cache, key string, raw []byte) (bool, 
 		return false, errDNSInvalidName
 	}
 	created := false
-	err := m.db.Update(func(tx *bbolt.Tx) error {
+	err := m.updateBackground(func(tx *bbolt.Tx) error {
 		root, err := tx.CreateBucketIfNotExists([]byte(dnsRootBucketName))
 		if err != nil {
 			return err
@@ -430,7 +430,7 @@ func (m *bboltKVManager) deleteDNSCacheEntry(cache, key string, expected []byte)
 		return false, errDNSInvalidName
 	}
 	deleted := false
-	err := m.db.Update(func(tx *bbolt.Tx) error {
+	err := m.updateBackground(func(tx *bbolt.Tx) error {
 		bucket := dnsCacheBucket(tx, cache)
 		if bucket == nil {
 			return nil
@@ -458,7 +458,7 @@ func (m *bboltKVManager) cleanupExpiredDNS(now time.Time) error {
 	if m.disableDNSCacheExpiration {
 		return nil
 	}
-	return mapBboltDNSError(m.db.Update(func(tx *bbolt.Tx) error {
+	return mapBboltDNSError(m.updateBackground(func(tx *bbolt.Tx) error {
 		root := tx.Bucket([]byte(dnsRootBucketName))
 		if root == nil {
 			return nil
