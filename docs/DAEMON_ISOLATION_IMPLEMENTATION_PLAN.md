@@ -881,6 +881,13 @@ Acceptance:
 
 ## 30. Qualify feature parity and the hostile-runtime boundary
 
+Status: the fail-closed qualification manifest and development-only evidence
+entry point are implemented. No Linux or Windows profile is qualified yet.
+The known native backend and deployment gaps from checkpoints 24 and 25 remain
+release blockers, so production isolated startup remains disabled.
+
+See the [complete-profile qualification gate](DAEMON_ISOLATION_QUALIFICATION.md).
+
 Work:
 
 - Assemble complete isolated profiles behind the explicit development entry

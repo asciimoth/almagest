@@ -183,6 +183,9 @@ Daemon:
 - `bin/internal/isolation/supervision/`: bounded lifecycle coordination for an
   already-started isolated process set and the broker-private, identity-driven
   host recovery journal. It does not launch roles or enable isolated startup.
+- `bin/internal/isolation/qualification/`: strict complete-profile parity and
+  hostile-runtime evidence validation. Its development-only command cannot
+  enable an unqualified production profile.
 
 Platform and CLI:
 - `bin/almagestd/platform/`: build-tagged defaults and platform operations.

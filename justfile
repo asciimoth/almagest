@@ -62,6 +62,11 @@ windows-isolation-experiment:
 windows-isolation-profiles:
   just test-total winvm:m25::windows-role-profiles-caller winvm:m25::windows-role-profiles-service
 
+# Validate one complete checkpoint 30 record. Native evidence must be produced
+# only by the disposable Docker or Windows VM qualification runner.
+qualify-isolation evidence:
+  go run ./bin/cmd/isolation-qualify -evidence {{quote(evidence)}}
+
 # Run the checkpoint 12 Linux data-path stage in a disposable Docker
 # container. Optional argument selects the evidence directory.
 data-path-experiment evidence='':
