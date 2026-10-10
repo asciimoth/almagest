@@ -64,7 +64,8 @@ func (b *storageWriteBarrier) quiesce(ctx context.Context) (func(), error) {
 			b.snapshotWaiters--
 			b.snapshotActive = true
 			b.mu.Unlock()
-			return b.resume, nil
+			var once sync.Once
+			return func() { once.Do(b.resume) }, nil
 		}
 		changed := b.changed
 		b.mu.Unlock()
@@ -85,6 +86,12 @@ func (b *storageWriteBarrier) resume() {
 	b.snapshotActive = false
 	b.broadcastLocked()
 	b.mu.Unlock()
+}
+
+func (b *storageWriteBarrier) snapshotInProgress() bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.snapshotActive
 }
 
 func (b *storageWriteBarrier) broadcastLocked() {

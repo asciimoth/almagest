@@ -594,7 +594,7 @@ func TestSnapshotRestoreKeepsConfigInMemoryWhenWriteFailsOrIsReadOnly(t *testing
 		{name: "stdin config", readOnly: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			service, _, engine, writer, _ := newSnapshotTestService(t, test.readOnly)
+			service, _, engine, writer, storagePath := newSnapshotTestService(t, test.readOnly)
 			info, err := service.Create(context.Background(), "saved")
 			if err != nil {
 				t.Fatal(err)
@@ -618,6 +618,22 @@ func TestSnapshotRestoreKeepsConfigInMemoryWhenWriteFailsOrIsReadOnly(t *testing
 			}
 			if test.readOnly && response.ConfigWriteError != "" {
 				t.Fatalf("read-only restore response = %#v, want no attempted write", response)
+			}
+			journalPath, recoveryPath := restoreStatePaths(storagePath)
+			if test.writeErr != nil {
+				journal, err := readRestoreJournal(storagePath)
+				if err != nil || journal.State != restoreStateCommitted {
+					t.Fatalf("config-write failure journal = %#v, err=%v", journal, err)
+				}
+				if _, err := os.Stat(recoveryPath); !errors.Is(err, os.ErrNotExist) {
+					t.Fatalf("committed recovery copy remains: %v", err)
+				}
+			} else {
+				for _, path := range []string{journalPath, recoveryPath} {
+					if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+						t.Fatalf("read-only restore state %s remains: %v", path, err)
+					}
+				}
 			}
 		})
 	}

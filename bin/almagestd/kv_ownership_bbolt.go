@@ -302,6 +302,17 @@ func (m *bboltKVManager) deleteKVOwnerEntries(name string) error {
 // Almagestd calls it once against loaded config before it starts nodes and from
 // workspace snapshots to repair missed incremental notifications.
 func (m *bboltKVManager) reconcileKVOwnerEntries(active map[string]struct{}) error {
+	return m.reconcileKVOwnerEntriesWithUpdate(active, m.updateBackground)
+}
+
+func (m *bboltKVManager) reconcileKVOwnerEntriesDuringSnapshot(active map[string]struct{}) error {
+	return m.reconcileKVOwnerEntriesWithUpdate(active, m.updateDuringSnapshot)
+}
+
+func (m *bboltKVManager) reconcileKVOwnerEntriesWithUpdate(
+	active map[string]struct{},
+	updateDB func(func(*bbolt.Tx) error) error,
+) error {
 	for owner := range active {
 		if !validKVOwner(owner) {
 			return storage.ErrKVInvalidOwner
@@ -316,7 +327,7 @@ func (m *bboltKVManager) reconcileKVOwnerEntries(active map[string]struct{}) err
 		}
 	}
 	changed := false
-	err := mapBboltKVError(m.updateBackground(func(tx *bbolt.Tx) error {
+	err := mapBboltKVError(updateDB(func(tx *bbolt.Tx) error {
 		var err error
 		changed, err = deleteInactiveKVOwnership(tx, func(owner string) bool {
 			_, ok := active[owner]

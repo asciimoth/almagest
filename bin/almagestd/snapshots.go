@@ -72,15 +72,16 @@ type snapshotConfigFileLocator interface {
 }
 
 type snapshotService struct {
-	storagePath string
-	autosaver   *configAutosaver
-	engine      almagest.Engine
-	manager     *bboltKVManager
-	config      *Config
-	readOnly    bool
-	logger      logging.Logger
-	tlsFetcher  tlspolicy.AuthorityFetcher
-	restore     *snapshotRestoreCoordinator
+	storagePath     string
+	autosaver       *configAutosaver
+	engine          almagest.Engine
+	manager         *bboltKVManager
+	config          *Config
+	readOnly        bool
+	logger          logging.Logger
+	tlsFetcher      tlspolicy.AuthorityFetcher
+	restore         *snapshotRestoreCoordinator
+	requireRecovery func(error)
 
 	mu     sync.Mutex
 	now    func() time.Time
@@ -590,41 +591,68 @@ func (s *snapshotService) ready() error {
 	return nil
 }
 
-func (s *snapshotService) captureRecoveryArchive(ctx context.Context) (*loadedSnapshot, error) {
-	resumeWriters, err := s.manager.writeBarrier.quiesce(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("wait for storage writers: %w", err)
-	}
-	defer resumeWriters()
+func (s *snapshotService) prepareRestoreRecovery(
+	ctx context.Context,
+	desired *loadedSnapshot,
+) (*loadedSnapshot, restoreJournal, error) {
 	configData, err := s.autosaver.currentConfigBytes()
 	if err != nil {
-		return nil, err
+		return nil, restoreJournal{}, err
 	}
 	configData, err = configOnlyBytes(configData)
 	if err != nil {
-		return nil, err
+		return nil, restoreJournal{}, err
 	}
 	directory := filepath.Join(s.storagePath, snapshotDirectoryName)
 	if err := os.MkdirAll(directory, 0o700); err != nil {
-		return nil, err
+		return nil, restoreJournal{}, err
 	}
-	file, err := os.CreateTemp(directory, ".rollback-*.tmp")
+	file, err := os.CreateTemp(directory, ".restore-recovery-*.tmp")
 	if err != nil {
-		return nil, err
+		return nil, restoreJournal{}, err
 	}
 	path := file.Name()
 	if err := file.Close(); err != nil {
 		removeFileIfPresent(path)
-		return nil, err
+		return nil, restoreJournal{}, err
 	}
+	defer removeFileIfPresent(path)
 	info := api.SnapshotInfo{UUID: "00000000-0000-4000-8000-000000000000", Timestamp: s.now().UnixNano()}
 	if err := s.writeArchive(ctx, path, info, configData); err != nil {
-		removeFileIfPresent(path)
-		return nil, err
+		return nil, restoreJournal{}, err
 	}
-	loaded, err := s.loadArchive(ctx, path, info.UUID)
-	removeFileIfPresent(path)
-	return loaded, err
+	if err := validateSnapshotArchiveSize(path); err != nil {
+		return nil, restoreJournal{}, err
+	}
+	digest, err := fileSHA256(path)
+	if err != nil {
+		return nil, restoreJournal{}, err
+	}
+	journalPath, recoveryPath := restoreStatePaths(s.storagePath)
+	if err := durablefile.Replace(recoveryPath, path); err != nil {
+		return nil, restoreJournal{}, err
+	}
+	if err := syncSnapshotDirectory(directory); err != nil {
+		return nil, restoreJournal{}, err
+	}
+	loaded, err := s.loadArchive(ctx, recoveryPath, info.UUID)
+	if err != nil {
+		return nil, restoreJournal{}, err
+	}
+	journal := restoreJournal{
+		Version:              restoreJournalVersion,
+		State:                restoreStatePrepared,
+		SnapshotUUID:         desired.info.UUID,
+		RecoverySHA256:       digest,
+		RestoredConfigSHA256: configSHA256(desired.configData),
+	}
+	if err := writeRestoreJournal(s.storagePath, journal); err != nil {
+		loaded.cleanup()
+		removeFileIfPresent(recoveryPath)
+		removeFileIfPresent(journalPath)
+		return nil, restoreJournal{}, err
+	}
+	return loaded, journal, nil
 }
 
 func (s *snapshotService) writeArchive(ctx context.Context, archivePath string, info api.SnapshotInfo, configData []byte) error {
@@ -1230,16 +1258,9 @@ func validateStorageSymlink(root, path string, service *snapshotService) error {
 	return nil
 }
 
-func (s *snapshotService) applyLoadedSnapshot(ctx context.Context, loaded *loadedSnapshot) error {
+func (s *snapshotService) applyLoadedSnapshotData(ctx context.Context, loaded *loadedSnapshot) error {
 	if err := ctx.Err(); err != nil {
 		return err
-	}
-	empty, err := parseEditableConfig([]byte(`{"nodes":{}}`))
-	if err != nil {
-		return err
-	}
-	if _, err := s.engine.ReconcileConfig(empty); err != nil {
-		return fmt.Errorf("stop current engine graph: %w", err)
 	}
 	if err := s.restoreStorageFiles(loaded.filesPath); err != nil {
 		return err
@@ -1254,14 +1275,11 @@ func (s *snapshotService) applyLoadedSnapshot(ctx context.Context, loaded *loade
 	s.config.Main = loaded.config
 	s.config.mu.Unlock()
 	s.autosaver.noteRestoredConfig()
-	if _, err := s.engine.ReconcileConfig(loaded.config); err != nil {
-		return fmt.Errorf("rebuild engine graph: %w", err)
-	}
 	activeNames := configuredNodeNameSet(loaded.config)
-	if err := s.manager.reconcileSecretNodeReferences(activeNames); err != nil {
+	if err := s.manager.reconcileSecretNodeReferencesDuringSnapshot(activeNames); err != nil {
 		return fmt.Errorf("reconcile restored secret references: %w", err)
 	}
-	if err := s.manager.reconcileKVOwnerEntries(activeNames); err != nil {
+	if err := s.manager.reconcileKVOwnerEntriesDuringSnapshot(activeNames); err != nil {
 		return fmt.Errorf("reconcile restored KV ownership: %w", err)
 	}
 	return nil

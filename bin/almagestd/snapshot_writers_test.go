@@ -23,7 +23,7 @@ func TestAllBboltWritesUseStorageBarrier(t *testing.T) {
 			t.Fatal(err)
 		}
 		if entry.Name() == "kv_bbolt.go" {
-			data = []byte(strings.Replace(string(data), "return m.db.Update(fn)", "", 1))
+			data = []byte(strings.ReplaceAll(string(data), "return m.db.Update(fn)", ""))
 		}
 		if strings.Contains(string(data), ".db.Update(") {
 			t.Errorf("%s bypasses the snapshot storage-writer barrier", entry.Name())

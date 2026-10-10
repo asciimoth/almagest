@@ -852,6 +852,13 @@ Acceptance:
 
 ## 29. Integrate live restore, rollback, and crash recovery
 
+Status: implemented in the runtime-owned live-restore coordinator. Restore now
+uses graph-epoch drains, a durable three-stage application journal, startup
+crash recovery, and an explicit recovery-required mutation gate. Production
+isolated startup remains disabled until checkpoint 32.
+
+See the [snapshot and live-restore isolation notes](DAEMON_ISOLATION_SNAPSHOTS.md#live-restore-transaction).
+
 Work:
 
 - Extend the local coordinator with graph-epoch invalidation and N drain before

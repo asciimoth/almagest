@@ -556,7 +556,7 @@ func (m *bboltKVManager) renameSecretNodeReferences(oldName, newName string) err
 		return storage.ErrSecretInvalidName
 	}
 	changed := map[string]struct{}{}
-	if err := m.updateMutableSecretNodes(func(nodes []string) ([]string, bool) {
+	if err := m.updateMutableSecretNodes(m.updateBackground, func(nodes []string) ([]string, bool) {
 		return renameSecretNode(nodes, oldName, newName)
 	}, changed); err != nil {
 		return err
@@ -575,7 +575,7 @@ func (m *bboltKVManager) deleteSecretNodeReferences(name string) error {
 		return storage.ErrSecretInvalidName
 	}
 	changed := map[string]struct{}{}
-	if err := m.updateMutableSecretNodes(func(nodes []string) ([]string, bool) {
+	if err := m.updateMutableSecretNodes(m.updateBackground, func(nodes []string) ([]string, bool) {
 		return deleteSecretNode(nodes, name)
 	}, changed); err != nil {
 		return err
@@ -591,6 +591,17 @@ func (m *bboltKVManager) deleteSecretNodeReferences(name string) error {
 // the current workspace. This repairs stale allow-list entries after startup or
 // a missed incremental notification.
 func (m *bboltKVManager) reconcileSecretNodeReferences(active map[string]struct{}) error {
+	return m.reconcileSecretNodeReferencesWithUpdate(active, m.updateBackground)
+}
+
+func (m *bboltKVManager) reconcileSecretNodeReferencesDuringSnapshot(active map[string]struct{}) error {
+	return m.reconcileSecretNodeReferencesWithUpdate(active, m.updateDuringSnapshot)
+}
+
+func (m *bboltKVManager) reconcileSecretNodeReferencesWithUpdate(
+	active map[string]struct{},
+	updateDB func(func(*bbolt.Tx) error) error,
+) error {
 	for name := range active {
 		if !validSecretNodeName(name) {
 			return storage.ErrSecretInvalidName
@@ -609,7 +620,7 @@ func (m *bboltKVManager) reconcileSecretNodeReferences(active map[string]struct{
 		}
 		return normalizeSecretNodes(next), true
 	}
-	if err := m.updateMutableSecretNodes(removeInactive, changed); err != nil {
+	if err := m.updateMutableSecretNodes(updateDB, removeInactive, changed); err != nil {
 		return err
 	}
 	m.updateImmutableSecretNodes(removeInactive, changed)
@@ -696,10 +707,11 @@ func (m *bboltKVManager) secretEffectiveEntry(key string) (secretEffectiveEntry,
 }
 
 func (m *bboltKVManager) updateMutableSecretNodes(
+	updateDB func(func(*bbolt.Tx) error) error,
 	update func([]string) ([]string, bool),
 	changed map[string]struct{},
 ) error {
-	return mapBboltSecretError(m.updateBackground(func(tx *bbolt.Tx) error {
+	return mapBboltSecretError(updateDB(func(tx *bbolt.Tx) error {
 		bucket := tx.Bucket([]byte(secretsBucketName))
 		if bucket == nil {
 			return nil

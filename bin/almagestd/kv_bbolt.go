@@ -257,6 +257,18 @@ func (m *bboltKVManager) updateBackground(fn func(*bbolt.Tx) error) error {
 	return m.update(context.Background(), fn)
 }
 
+// updateDuringSnapshot is the only bbolt writer that bypasses beginWrite. The
+// restore coordinator must already hold the exclusive writer barrier.
+func (m *bboltKVManager) updateDuringSnapshot(fn func(*bbolt.Tx) error) error {
+	if m == nil || m.db == nil {
+		return bberrors.ErrDatabaseNotOpen
+	}
+	if !m.writeBarrier.snapshotInProgress() {
+		return errors.New("snapshot database update requires the exclusive writer barrier")
+	}
+	return m.db.Update(fn)
+}
+
 func (m *bboltKVManager) DefaultStore() storage.KVStore {
 	golog.Debug("KV storage: accessing default store")
 	return &bboltKVStore{

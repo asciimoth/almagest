@@ -520,7 +520,7 @@ func (c *Client) openResource(ctx context.Context, op protocol.Operation, reques
 func (c *Client) ReleaseGraphEpoch(ctx context.Context) error {
 	epoch := c.epoch.Load()
 	var result protocol.MutationResult
-	err := c.peer.Call(ctx, protocol.OperationReleaseGraphEpoch, protocol.ReleaseGraphEpochRequest{Meta: c.meta(true), GraphEpoch: epoch}, &result)
+	err := c.peer.CallSettled(ctx, protocol.OperationReleaseGraphEpoch, protocol.ReleaseGraphEpochRequest{Meta: c.meta(true), GraphEpoch: epoch}, &result)
 	if err != nil {
 		return err
 	}

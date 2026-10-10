@@ -280,9 +280,13 @@ func (s *apiSession) handleMessage(msg api.Message) (api.Message, error) {
 		)
 	}
 
-	releaseMutation := s.admin.mutations.Acquire(
-		msg.Surface == api.SurfaceSnapshots && api.IsSnapshotsMutation(msg.Method),
+	isMutation := api.RequiresMutationLease(msg.Surface, msg.Method)
+	releaseMutation, err := s.admin.mutations.Acquire(
+		msg.Surface == api.SurfaceSnapshots && api.IsSnapshotsMutation(msg.Method), isMutation,
 	)
+	if err != nil {
+		return newRequestError(msg.ID, api.ErrorUnavailable, err.Error())
+	}
 	defer releaseMutation()
 
 	switch msg.Surface {

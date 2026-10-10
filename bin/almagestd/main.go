@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -111,6 +112,20 @@ func runDaemon(
 		return err
 	}
 	golog.Infof("Using file storage at %s", fsPath)
+	interrupted, err := recoverInterruptedRestore(ctx, fsPath, configData, configBootstrap)
+	if err != nil {
+		return fmt.Errorf("recover interrupted live restore: %w", err)
+	}
+	if interrupted.RolledBack {
+		configData = interrupted.ConfigData
+		golog.Warn("Recovered application state from an interrupted live restore")
+	}
+	if interrupted.UnresolvedConfigWrite {
+		golog.Warn("A committed live restore has an unresolved regular-config write; restored storage was kept")
+		if arguments.Snapshot != "" {
+			return fmt.Errorf("%w: resolve the committed live-restore config before applying a startup snapshot", errRestoreRecoveryRequired)
+		}
+	}
 	if arguments.Snapshot != "" {
 		snapshotInput, openErr := openStartupSnapshotInput(arguments.Snapshot, os.Stdin)
 		if openErr != nil {
@@ -192,6 +207,9 @@ func runDaemon(
 	admin.fileStorage = fsPath
 	admin.projectVersionStatus = projectVersionStatus
 	admin.executionMode = string(mode)
+	if interrupted.UnresolvedConfigWrite {
+		admin.mutations.setInitialRecoveryRequired(errors.New("committed snapshot restore has an unresolved regular-config write"))
+	}
 	admin.kv = kv
 	admin.dns = kv
 	admin.secrets = kv
@@ -283,6 +301,8 @@ func runDaemon(
 		daemonLogger,
 		admin.tlsOSAuthorityFetcher,
 	)
+	admin.snapshots.restore.setEpochReleaser(hostNetwork)
+	admin.snapshots.requireRecovery = admin.mutations.requireRecovery
 	wg.Go(func() {
 		admin.configAutosaver.Run(ctx)
 	})
