@@ -22,6 +22,8 @@ import (
 	"github.com/asciimoth/almagest/bin/internal/isolation/configwriter"
 	"github.com/asciimoth/almagest/bin/internal/isolation/linuxprofile"
 	"github.com/asciimoth/almagest/bin/internal/isolation/protocol"
+	"github.com/asciimoth/gonnect/sysnet"
+	linuxsysnet "github.com/asciimoth/sysnet-linux"
 	"github.com/vishvananda/netlink"
 	bolt "go.etcd.io/bbolt"
 	"golang.org/x/sys/unix"
@@ -295,6 +297,17 @@ func tunPacket() error {
 }
 
 func main() {
+	if probeMode == "native-system" {
+		if err := linuxprofile.Seal(linuxprofile.Network); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		if err := nativeSystem(); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 	if probeMode == "x32" {
 		_, _, _ = unix.RawSyscall(unix.SYS_GETPID|0x40000000, 0, 0, 0)
 		fmt.Fprintln(os.Stderr, "alternate syscall ABI was not killed")
@@ -410,4 +423,36 @@ func main() {
 			os.Exit(1)
 		}
 	}
+}
+
+// nativeSystem runs the actual daemon backend after the final N restrictions.
+// Primitive netlink/TUN success alone does not exercise constructor probes,
+// route monitoring, native TUN ioctls or the backend's cleanup paths.
+func nativeSystem() error {
+	system, err := linuxsysnet.New(linuxsysnet.SystemConfig{
+		Features: linuxsysnet.FeatureConfig{Tun: true, DefaultTun: true, DynTun: true, DynDefaultTun: true, Routing: true, TunNames: true},
+		DNS:      linuxsysnet.DNSConfig{Mode: linuxsysnet.DNSModeDisabled},
+		Logf:     func(format string, args ...any) { fmt.Fprintf(os.Stderr, format+"\n", args...) },
+	})
+	if err != nil {
+		return err
+	}
+	defer func() { _ = system.Close() }()
+	if os.Getenv("ALMAGEST_TUN_PRESENT") == "1" {
+		device, err := system.BuildTun(sysnet.TunOpts{Name: "profile-real", MTU: 1400, TunAddrs: []string{"198.18.1.1/30"}})
+		if err != nil {
+			return fmt.Errorf("restricted backend regular TUN: %w", err)
+		}
+		if err := device.Close(); err != nil {
+			return fmt.Errorf("restricted backend regular TUN cleanup: %w", err)
+		}
+		device, err = system.BuildDefaultTun(sysnet.DefaultTunOpts{MTU: 1400, TunAddrs: []string{"198.18.2.1/32"}})
+		if err != nil {
+			return fmt.Errorf("restricted backend default TUN: %w", err)
+		}
+		if err := device.Close(); err != nil {
+			return fmt.Errorf("restricted backend default TUN cleanup: %w", err)
+		}
+	}
+	return json.NewEncoder(os.Stdout).Encode(system.Capabilities())
 }

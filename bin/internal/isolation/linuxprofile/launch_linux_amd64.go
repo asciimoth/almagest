@@ -7,14 +7,15 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"syscall"
 )
 
 // Inputs are held objects opened and trust-checked by bootstrap. The launcher
 // independently verifies object types, ownership, ELF format, and limits.
 // Launcher and Executable must be root-owned static ELF files. Each role needs
 // a distinct identity, private directory and independently limited cgroup.
-// Bootstrap must put the launcher in that cgroup BEFORE it starts; this API
-// never writes a cgroup or obtains missing authority.
+// The launcher enters this already provisioned cgroup atomically at process
+// creation. This API never writes cgroup limits or obtains missing authority.
 type Inputs struct {
 	Launcher    *os.File
 	Control     *os.File
@@ -47,6 +48,10 @@ func CommandContext(ctx context.Context, p Plan, in Inputs) (*exec.Cmd, error) {
 	cmd := exec.CommandContext(ctx, "/proc/self/fd/8", args...)
 	cmd.Env = []string{}
 	cmd.Dir = "/"
+	// CLONE_INTO_CGROUP puts the first child instruction under the role's
+	// resource limits. Moving the bootstrap process or attaching a running child
+	// would either affect another role or leave an unrestricted startup window.
+	cmd.SysProcAttr = &syscall.SysProcAttr{UseCgroupFD: true, CgroupFD: int(in.Cgroup.Fd())}
 	cmd.ExtraFiles = []*os.File{in.Control, in.Executable, in.Directory, in.Cgroup, in.Command, in.Launcher, in.Data, in.Diagnostics, in.Admin}
 	if in.Tun != nil {
 		cmd.ExtraFiles[4] = in.Tun

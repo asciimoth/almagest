@@ -51,7 +51,10 @@ static void apply_seccomp(const struct plan *p) {
 			if (seccomp_rule_add(f, SCMP_ACT_ALLOW, SCMP_SYS(socket), 1, SCMP_A0(SCMP_CMP_EQ, domains[i])) < 0) fail("network socket domain rule");
 		}
 		if (p->tun) {
-			const unsigned long ioctls[] = {TUNSETIFF, TUNGETIFF, TUNGETFEATURES, TUNSETOFFLOAD, TUNSETVNETHDRSZ, TUNGETVNETHDRSZ, TUNSETQUEUE};
+			/* tuntap uses these three network-interface operations during native
+			 * construction and MTU reads. Generic device ioctls remain denied. */
+			const unsigned long ioctls[] = {TUNSETIFF, TUNGETIFF, TUNGETFEATURES, TUNSETOFFLOAD, TUNSETVNETHDRSZ, TUNGETVNETHDRSZ, TUNSETQUEUE,
+				SIOCGIFINDEX, SIOCGIFMTU, SIOCSIFMTU};
 			for (size_t i = 0; i < sizeof(ioctls) / sizeof(ioctls[0]); i++) {
 				if (seccomp_rule_add(f, SCMP_ACT_ALLOW, SCMP_SYS(ioctl), 1, SCMP_A1(SCMP_CMP_EQ, ioctls[i])) < 0) fail("TUN ioctl rule");
 			}

@@ -11,6 +11,7 @@
 #include <linux/magic.h>
 #include <linux/mount.h>
 #include <linux/if_tun.h>
+#include <linux/sockios.h>
 #include <linux/securebits.h>
 #include <poll.h>
 #include <sched.h>

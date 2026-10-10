@@ -29,7 +29,7 @@ docker run "${args[@]}" --security-opt "seccomp=$script_dir/no-landlock.json" \
     -test.v >"$output_dir/missing-landlock.log" 2>&1
 docker run "${args[@]}" --security-opt seccomp=unconfined --cap-add NET_ADMIN --device /dev/net/tun \
     -e ALMAGEST_PROFILE_TEST_NATIVE=1 -e ALMAGEST_PROFILE_TUN=1 "$image" \
-    /qualification/profile.test -test.run '^TestNativeRoles/network$' -test.v \
+    /qualification/profile.test -test.run '^TestNative(Roles|SystemBackend)$' -test.v \
     -test.timeout=30s >"$output_dir/tun.log" 2>&1
 docker run "${args[@]}" --security-opt seccomp=unconfined -e ALMAGEST_PROFILE_TEST_NATIVE=1 "$image" \
     /qualification/profile.test -test.run '^$' -test.fuzz '^FuzzNativeArguments$' \

@@ -146,6 +146,25 @@ func TestNativeRoles(t *testing.T) {
 	}
 }
 
+func TestNativeSystemBackend(t *testing.T) {
+	nativeEnvironment(t)
+	if os.Getenv("ALMAGEST_PROFILE_TUN") != "1" {
+		t.Skip("the backend acceptance case requires the dedicated TUN container")
+	}
+	output, err := launchNative(t, Network, func(cmd *exec.Cmd) {
+		file, err := os.Open("/qualification/native-system-probe")
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = file.Close() })
+		cmd.ExtraFiles[1] = file
+	})
+	if err != nil {
+		t.Fatalf("restricted native backend: %v\n%s", err, output)
+	}
+	t.Logf("%s", output)
+}
+
 func TestNativeRejectsUnsafeInputs(t *testing.T) {
 	cases := map[string]func(*exec.Cmd){
 		"missing-channel":      func(c *exec.Cmd) { c.ExtraFiles[0] = nil },
@@ -306,6 +325,9 @@ func TestHeldLaunchContract(t *testing.T) {
 	}
 	if cmd.Path != "/proc/self/fd/8" || cmd.Dir != "/" || len(cmd.Env) != 0 || len(cmd.ExtraFiles) != 9 || cmd.ExtraFiles[5] != f {
 		t.Fatalf("unexpected command: %+v", cmd)
+	}
+	if cmd.SysProcAttr == nil || !cmd.SysProcAttr.UseCgroupFD || cmd.SysProcAttr.CgroupFD != int(f.Fd()) {
+		t.Fatal("role launch does not atomically enter the held cgroup")
 	}
 	for _, missing := range []func(*Inputs){func(i *Inputs) { i.Launcher = nil }, func(i *Inputs) { i.Control = nil },
 		func(i *Inputs) { i.Executable = nil }, func(i *Inputs) { i.Directory = nil }, func(i *Inputs) { i.Cgroup = nil },

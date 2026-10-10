@@ -35,7 +35,10 @@ unknown roles, unbounded limits, and capability expansion. There is no path,
 library search, or arbitrary environment field in its argument contract.
 
 The Go adapter enters the held launcher through `/proc/self/fd/8`. It supplies
-an empty environment and a fixed working directory. The native launcher checks
+an empty environment and a fixed working directory. `CLONE_INTO_CGROUP` places
+the process in the supplied, already limited cgroup before its first instruction.
+An unavailable or unauthorized cgroup launch fails; the adapter does not move a
+running process or retry without placement. The native launcher checks
 stdout and stderr as pipes or connected Unix streams. It replaces stdin with
 an EOF pipe. `close_range` removes all other descriptors before role exec,
 including descriptors above the new hard descriptor limit. Bootstrap must
@@ -95,6 +98,8 @@ N can create IPv4, IPv6, Unix and netlink sockets in the launch network context.
 Missing `NET_ADMIN` does not prevent ordinary TCP/UDP operations. An optional
 held character device is accepted only for Linux TUN major 10, minor 200. N
 gets that exact device at `/dev/net/tun`, plus the reviewed TUN ioctl set.
+The native TUN library can also query the interface index and MTU and set the MTU
+through the exact `SIOCGIFINDEX`, `SIOCGIFMTU` and `SIOCSIFMTU` ioctls.
 Persistent TUN creation, device ownership changes and generic ioctls remain
 denied. The qualification creates a nonpersistent TUN, sets its MTU, link state
 and address through netlink, then receives a real UDP packet through the TUN.
@@ -188,3 +193,18 @@ composition rather than being relabeled as missing native launch authority.
 No host route, DNS, firewall or TUN state was changed. These results qualify
 the listed restriction components and primitives; the release blockers above
 remain open.
+
+## Production backend acceptance work
+
+`TestNativeSystemBackend` runs the real sysnet-linux constructor, regular TUN,
+and default TUN after the final N filter. It runs in the dedicated TUN container;
+the ordinary profile runs cannot substitute for this acceptance case. The
+qualification runner now includes it and must fail until the backend works.
+
+The initial run with sysnet-linux v0.8.1 found missing interface ioctls. With the
+exact ioctls above, regular TUN creation and cleanup pass. Default TUN still
+fails: the route monitor opens `/proc/self/ns/net`, which the profile does not
+expose. This needs a backend constructor for monitoring the fixed current
+network namespace without opening proc or calling `setns`. Neither broader
+filesystem access nor namespace-entry authority is an acceptable fix. This
+failed acceptance case does not complete checkpoint 24.
