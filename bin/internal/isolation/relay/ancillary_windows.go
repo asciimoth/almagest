@@ -11,6 +11,9 @@ func ParseAncillary(raw []byte, outbound bool) (*protocol.PacketMetadata, error)
 	return &protocol.PacketMetadata{}, nil
 }
 func MarshalAncillary(meta *protocol.PacketMetadata, ipv6, outbound bool) ([]byte, error) {
+	if meta != nil && meta.DNS != nil {
+		return nil, protocol.ErrInvalidContract
+	}
 	if meta != nil && (meta.Source != nil && outbound || meta.Destination != nil && !outbound || meta.InterfaceIndex != nil || meta.HopLimit != nil || meta.TrafficClass != nil) {
 		return nil, protocol.ErrCapabilityUnsupported
 	}

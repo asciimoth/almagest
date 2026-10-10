@@ -7,6 +7,7 @@ import (
 
 	"github.com/asciimoth/almagest/bin/internal/isolation/protocol"
 	"github.com/asciimoth/gonnect"
+	gdns "github.com/asciimoth/gonnect/dns"
 )
 
 func numeric(ep netip.AddrPort) string {
@@ -19,6 +20,13 @@ func numeric(ep netip.AddrPort) string {
 func (s *SystemBackend) OpenSocket(ctx context.Context, o protocol.SocketOptions) (OwnedTun, error) {
 	if err := validateSocket(o); err != nil {
 		return nil, &NoEffectsError{err}
+	}
+	if o.Kind == protocol.SocketResolver {
+		provider := s.system.OutDNS()
+		if provider == nil {
+			return nil, &NoEffectsError{protocol.ErrCapabilityUnavailable}
+		}
+		return newResolverSocket(provider), nil
 	}
 	network := s.system.OutNet()
 	if o.Purpose == protocol.NetworkLocal {
@@ -197,6 +205,8 @@ func socketError(err error) string {
 		return ""
 	}
 	switch {
+	case errors.Is(err, gdns.ErrNoUpstream):
+		return "dns_no_upstream"
 	case errors.Is(err, context.Canceled):
 		return "canceled"
 	case errors.Is(err, context.DeadlineExceeded):

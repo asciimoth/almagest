@@ -34,7 +34,10 @@ func (c *Client) Tun(ref protocol.ResourceRef, state protocol.ResourceState) (*T
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if previous := c.tuns[ref.ID]; previous != nil {
-		if previous.ref.Generation >= ref.Generation {
+		if previous.ref.Generation == ref.Generation {
+			return previous, nil
+		}
+		if previous.ref.Generation > ref.Generation {
 			return nil, protocol.ErrOperationConflict
 		}
 		previous.finish()
@@ -102,7 +105,9 @@ func (t *Tun) Close() error {
 	err := t.Conn.Close()
 	t.finish()
 	t.client.mu.Lock()
-	delete(t.client.tuns, t.ref.ID)
+	if t.client.tuns[t.ref.ID] == t {
+		delete(t.client.tuns, t.ref.ID)
+	}
 	t.client.mu.Unlock()
 	return err
 }

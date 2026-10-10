@@ -1,15 +1,25 @@
 # Daemon isolation architecture
 
-Status: proposed design. No isolation described here is implemented by this
-document. The source review used Almagest commit
+Status: target architecture with partially implemented components. See the
+[implementation plan](DAEMON_ISOLATION_IMPLEMENTATION_PLAN.md) for current
+checkpoint status. Production isolated startup is not enabled.
+The original source review used Almagest commit
 `a29839e5e703ab3fdc45d819af19917f0181cf24` and the dependency versions in
 [`bin/go.mod`](../bin/go.mod). External sources were checked on 2026-10-06.
 
 Run the engine, nodes, admin protocol, config reconciliation, database, and
-snapshot code in a restricted process. Give host operations to small brokers
-which enforce policy independently of that process. Use separate network and
-config-write brokers because their access requirements differ. Add other
-helpers only for a specific protected feature.
+snapshot code in a restricted process. Put the trusted native sysnet backend
+behind a broker which validates requests independently of that process. Keep
+the config writer separate. The objective is to contain unsafe node code, not
+to sandbox the native backend as if it were node code.
+
+Design revision, 2026-10-10: N may run the existing Linux or Windows backend,
+including its DNS processing, process inspection, BPF, and native integration.
+Backend hardening is defense in depth and must preserve supported features.
+Separate DNS/process helpers and upstream API refactors are not prerequisites.
+This revision does not relax any R, C, or node-command helper restriction.
+Linux implements trusted N preparation and restricted R/C/H components.
+Windows still needs the trusted N replacement for its restricted-N prototype.
 
 By default, preserve all supported sysnet operations available with the daemon's
 launch credentials and existing protected backend settings. Additional policy
@@ -34,16 +44,18 @@ isolation worker, broker process or internal IPC transport is started. Section
 | Role | Code and state owned | Authority after startup |
 | --- | --- | --- |
 | Runtime, R | Engine and all nodes; admin HTTP, WebSocket and stream protocols; HuJSON and ZIP parsing; config reconciliation; bbolt, DNS cache, secrets and TLS stores; snapshot operations; node logs | Read and write private application storage; use supported sysnet operations through brokers and any approved direct data handles; no direct host administration |
-| Network broker, N | Host network resource registry; native resource creation/configuration; selected socket/TUN relays; route, DNS and firewall control; policy checks; small admin listener gate; lifecycle supervision | Only host network and peer-inspection access required by the selected protected features |
+| Network broker, N | Trusted native sysnet backend, including backend DNS and process filtering; resource registry; socket/TUN relays; policy checks; small admin listener gate; lifecycle supervision | Available launch authority needed for full backend operation; no generic host-operation API for R |
 | Config writer, C | One startup-selected regular config target; write revision and request receipt | Read and atomically replace that target; no network, graph, database, ZIP, command, or protected-config access |
-| Optional helpers, H | A fixed command profile, DNS provider integration, or process-rule backend that needs additional access | Only access required by that profile; separate from R and C |
+| Optional helpers, H | A fixed node-command profile; optional backend helper when useful | Node-command helpers remain restricted; backend-owned integrations may instead run in N |
 
 The initial launcher is trusted bootstrap code. It reads protected settings,
 opens trusted inputs, starts the required children, and installs restrictions.
-It then becomes N. It does not remain a general root process launcher. After
-startup, N cannot launch arbitrary children or accept a new process role. A
-complete daemon restart goes through the service manager or local operator.
-An optional command helper is the only role with a later execution function.
+It then becomes N. It does not expose a general root process launcher. N may
+run installed backend utilities, such as resolvconf, using backend-selected
+executables and validated arguments. R cannot select those programs, scripts,
+environments, or new process roles. Node-requested commands still use the
+separate restricted H contract. A complete daemon restart goes through the
+service manager or local operator.
 
 C is absent when the config is read-only. If a regular config is inside R's
 private storage and needs no special permissions, R can write it directly with
@@ -87,7 +99,9 @@ authority. The attacker must not be able to gain new privileges, modify unrelate
 host files, execute arbitrary
 host commands, load drivers, change protected policy, or operate on foreign
 network resources. The kernel, installed binaries, protected policy, service
-configuration, and host administrator remain trusted.
+configuration, native backend and its dependencies, and host administrator
+remain trusted. No node implementation, plugin, graph callback, or runtime
+package initializer may execute in N, including during startup.
 
 This does not isolate one node from another inside R. A compromised R can read
 its database, steal secrets available to it, corrupt snapshots, impersonate
@@ -104,11 +118,13 @@ also permit data exfiltration and access to reachable services. Optional policy
 can restrict default routes, DNS, local/LAN/link-local/Internet destinations or
 listening endpoints; it is not required to enable them.
 
-Compromise of N remains serious: operating systems cannot generally limit all
-network-administration rights to interfaces with a particular name. Reduce
-N's code and permissions, but do not claim its resource registry is an OS
-boundary against compromise of N itself. Kernel or driver exploits are also
-outside the guarantee, though syscall and device restrictions reduce exposure.
+Compromise of N is outside the node-isolation guarantee. Backend DNS parsing,
+native libraries, installed backend utilities, and process-filtering code are
+part of the trusted computing base. N may retain broad host authority, so a
+defect in that code can compromise the host. The registry protects against
+hostile R requests, not arbitrary code execution in N. Kernel and driver
+exploits are also outside the guarantee. Reduce unnecessary backend exposure
+where practical, but do not trade away feature parity to claim a smaller N.
 
 ### 1.3 Why not two unrestricted halves
 
@@ -138,7 +154,7 @@ with R initially. Keep protocol parsing out of the privileged listener gate.
 | [`config.go`](../bin/almagestd/config.go) reads protected secrets from environment and TLS material from files | Resolve exact inputs at bootstrap. Give R only the data it needs, without a file-read API |
 | [`experimental/tor_backend.go`](../lib/experimental/tor_backend.go) constructs a direct host integration | Leave it unchanged for now; require `--experimental --no-isolation` |
 
-The reviewed interfaces are Gonnect `v0.56.0`, sysnet-linux `v0.8.1`, and
+The current reviewed interfaces are Gonnect `v0.56.0`, sysnet-linux `v0.10.1`, and
 sysnet-windows `v0.5.0`. They already carry capability reports, validation,
 warnings, resource lifecycle, and network abstractions. They are suitable
 adapter contracts, but are not a wire format or security policy.
@@ -157,12 +173,12 @@ where applicable. Do not force native status to false merely to share an
 interface with an IPC implementation. A virtual network or a wrapper whose
 behavior must not be bypassed still reports its correct native status.
 
-The native dependencies also combine privileged control with data processing.
-For example, Linux DNS providers parse and forward DNS, and some run
-`resolvconf`; Windows provides a managed DNS proxy. Separate DNS protocol work
-into R and retain only host DNS configuration in N or a dedicated H. Wrapping
-an unchanged native `System` wholesale is a migration prototype, not the final
-small privileged surface.
+Native dependencies combine host control with backend data processing. Linux
+DNS providers parse and forward DNS and may run resolvconf; Windows provides a
+managed DNS proxy. These implementations may remain in N unchanged. A native
+`System` behind the validated, session-owned broker API is a valid production
+design. It is not permission to export every backend method through generic
+RPC. Application DNS nodes and their resolver logic remain in R.
 
 ## 3. Protected policy and permitted effects
 
@@ -328,13 +344,14 @@ userspace TUN/network stack. Such a listener remains in R and has no separate
 host bind privilege requirement. Preserve listeners on those networks, including
 low port numbers, independently of native host listener availability.
 
-DNS parsing and lookup methods run in R over broker-provided UDP/TCP channels.
-N publishes a bounded snapshot of numeric upstream servers and relevant host
-network changes. Preserve `OutDNS` bypass behavior and prevent recursion through
-the managed default TUN. A fixed hosts-file reader may supply sanitized records;
-it does not accept a path from R. `DefaultTun.SetDNS` connects R's resolver to
-the owned DNS data endpoint and asks N to apply the host setting. Passing a Go
-resolver object over RPC is not possible.
+Application DNS nodes run in R. Backend `OutDNS`, provider detection, DNS proxy
+processing, hosts lookup, and original-upstream tracking may run in N. Preserve
+split DNS, dynamic upstream changes, bypass behavior, and loop prevention; a
+flat numeric-server snapshot is not a required replacement for the provider.
+Expose bounded resolver requests/results or DNS data channels, never arbitrary
+host paths or D-Bus methods. `DefaultTun.SetDNS` connects an owned backend
+endpoint to R's resolver through bounded IPC; it never moves the node resolver
+or its code into N. A Go resolver object cannot cross the process boundary.
 
 ### 4.2 Five-tuple matching and lookup cost
 
@@ -413,7 +430,8 @@ the candidate-selection sequence below; native handles and shared memory remain
 excluded from version 1.
 
 Use separate control and data channels. Protocol parsing, encryption, HTTP,
-SOCKS, WireGuard, Tailscale, and DNS remain in R. Depending on the experiment
+SOCKS, WireGuard, Tailscale, and application DNS nodes remain in R. Backend DNS
+services may remain in N as described in section 4.1. Depending on the experiment
 result, N relays bounded bytes/packets or configures a native handle used directly
 by R. The baseline does not parse every packet to build a flow-authorization
 table. Any header inspection introduced for a measured matcher optimization must
@@ -1003,17 +1021,19 @@ but the binary must still enforce role boundaries when started manually.
 
 ### 7.2 Network broker and optional Linux helpers
 
-N keeps available `CAP_NET_ADMIN` when its enabled backend features need it, and
-available `CAP_NET_BIND_SERVICE` for supported low-port listeners, including
-listeners created after startup. An empty initial graph is not a reason to drop
-rights needed for later sysnet calls. Missing capabilities are not fatal by
-themselves, and a non-root UID may still have useful capabilities. Drop UID/GID
-change, mount, module-load, arbitrary file-bypass and process-debug rights after
-bootstrap.
-Use a dedicated broker identity where native APIs permit it. Remove unneeded
-capabilities from every thread and the bounding set. Deny further exec and
-namespace creation. A host-network capability still has broad host scope; the
-typed protocol and ownership registry remain essential.
+N is trusted host code, not another R sandbox. It may keep the launch identity,
+host network/PID/mount context, and existing capabilities needed by the selected
+backend. A root launch may keep root N; an ordinary-user launch stays ordinary.
+Do not apply R's private PID namespace, minimal root, or syscall deny list to N
+when they prevent backend operation. Do not add authority missing at launch.
+
+This includes available `CAP_NET_ADMIN` and `CAP_NET_BIND_SERVICE`, BPF/perf
+rights, process-inspection rights, and `CAP_SYS_ADMIN` when a supported native
+operation actually needs it. Record retained authority and its purpose. Remove
+rights shown to be unnecessary, not rights needed by features created after an
+initially empty graph. `no_new_privs` and additional filesystem/syscall limits
+may be used for N when native compatibility is verified; R still requires its
+full profile. Broad N authority never grants R a raw syscall or helper API.
 
 `SO_MARK` must be set by N from protected purpose-to-mark mappings. R never
 supplies a mark or an existing socket to mark. N creates, marks and binds the
@@ -1027,35 +1047,34 @@ changes.
 
 The current Linux backend includes nftables/connmark, policy routing, p-mark
 with BPF pins under `/sys/fs/bpf/almagest`, and process ownership/rule lookup.
-BPF loading/tracing can need additional capabilities such as `CAP_BPF` and
-`CAP_PERFMON`, depending on kernel and program type. Do not retain
-`CAP_SYS_ADMIN` in N as a compatibility shortcut. Preload fixed programs and
-drop loader rights where possible; otherwise place process-rule work in a
-separate H with restricted map/control operations when the enabled backend
-feature needs it. Default backend features must not need another isolation-only
-opt-in. Dynamic program loading from R is prohibited. Test each supported
-kernel and report unavailable features when launch authority is insufficient.
-An inability to preserve an otherwise supported feature is an isolation-profile
-compatibility gap; do not silently disable it to qualify the profile.
+BPF loading, tracing, process traversal, and existing-socket mark updates may
+run directly in N with the installed p-mark implementation. Permit its required
+procfs, bpffs, cgroup, kernel metadata, and native calls, including inspection
+through pidfds where needed. Keep backend-owned programs and pins under trusted
+selection and ownership. R cannot supply BPF programs, pin paths, map handles,
+raw marks, or arbitrary process/descriptor operations. A separate loader or
+process helper is optional, not a production prerequisite. Test each supported
+kernel and report unavailable features when launch authority is insufficient;
+an isolated-only loss still blocks qualification.
 
 Host DNS needs separate attention: sysnet-linux can use systemd-resolved,
 NetworkManager, resolvconf helpers, or direct `/etc/resolv.conf` replacement.
 Preserve backend mode selection and automatic detection unless optional policy
-restricts them. A D-Bus channel stays in N or a DNS helper and exposes only fixed
-service methods for owned interfaces. It is
-never passed to R. Restrict the helper's bus policy where deployment permits.
-Legacy command-based modes use fixed absolute binaries and a specific H
-profile. Direct-file mode uses a separate fixed-target writer with typed DNS
-addresses, generated content and ownership-aware restoration. Do not grant N
-general `/etc` writes or mix DNS writes with C's regular-config byte API.
+restricts them. The existing provider may run in N, including DNS parsing,
+D-Bus access, resolver-file updates, and installed resolvconf utilities. Allow
+the host filesystem and service access it requires. No separate DNS writer or
+provider split is required. Keep provider paths, utility selection, and bus
+methods internal to the trusted backend; never pass bus/file/control handles
+to R. Preserve ownership-aware restoration and keep DNS operations separate
+from C's regular-config byte API. Backend utility execution does not authorize
+node commands, runtime-supplied scripts, or runtime-selected executable paths.
 
-N needs only a small filesystem view: validated read-only network/account data
-required by enabled rules, owned device endpoints, and its private journal.
-It must not mount R's storage or the regular/protected config directories after
-bootstrap. Apply its own mount, Landlock and seccomp profiles. Restrictions must
-allow actual native backend threads and APIs; discover requirements with tracing
-and tests, then review the allowlist rather than blindly permitting every
-observed syscall.
+N may retain its normal host filesystem view. It must not treat R's writable
+storage or regular config as code, launch policy, native-library search paths,
+or backend executable locations. Keep its recovery journal protected from R.
+N never parses snapshots, runs nodes, or evaluates application callbacks.
+Mount, Landlock, and syscall hardening for N are optional improvements with
+feature-parity tests; they are not a reason to refactor upstream libraries.
 
 ### 7.3 Config writer and safe file operations
 
@@ -1113,9 +1132,10 @@ changed through regular config.
 
 ### 7.5 Availability and fallback
 
-At startup probe every required restriction and report the enforced profile.
-A missing required namespace, seccomp or filesystem boundary is a startup
-failure, not a warning followed by unrestricted execution. Landlock may be
+At startup probe every required restriction and report the enforced profile,
+separately identifying R's sandbox and N's retained backend authority. A missing
+required R namespace, seccomp or filesystem boundary is a startup failure, not
+a warning followed by unrestricted node execution. Landlock for R may be
 optional only in a separately specified profile whose required mount and
 syscall boundaries provide the stated guarantee; report that difference.
 Do not remove random restrictions until startup happens to succeed.
@@ -1198,12 +1218,13 @@ and other operations remain available. The following LocalSystem requirements
 apply only when running as the machine service.
 
 The current machine admin pipe expects a LocalSystem service. Preserve that
-public identity in N initially, with service SID restrictions, private object
-DACLs, a reduced token and the smallest qualified privilege set. Prefer a
-dedicated service identity if Wintun, network configuration and existing client
-identity checks can support it. This requires deployment and CLI compatibility
-work; a standard-user token with a few enabled privileges is not automatically
-authorized for all native networking APIs.
+public identity in N initially, with private object/channel DACLs. N may retain
+the service's launch token and the rights needed by the native backend; it does
+not need R's AppContainer, low integrity, maximum-privilege removal, or a
+restricted-token substitute. A dedicated service identity and token reduction
+are optional hardening only after compatibility is proved. A standard-user
+token with a few enabled privileges is not automatically authorized for all
+native networking APIs.
 
 N owns Wintun adapters and sessions, IP Helper route/address changes, per-adapter
 DNS, WFP objects, underlay selection, and the optional split-driver controller.
@@ -1211,8 +1232,8 @@ R receives resource IDs and the data access selected by the section 4.4
 experiment. Do not transfer a split-driver control handle into R. Treat Wintun
 session/ring access as a distinct direct-I/O candidate: enumerate its usable
 operations and shared-state risks and reject it if R could exercise control
-outside the configured adapter data path. Apply distinct profiles to optional
-driver control if it requires broader access than ordinary network management.
+outside the configured adapter data path. Backend driver control may stay in N;
+a separate driver-control helper is not required.
 
 Driver installation, updates and service creation belong to provisioning, not
 an admin request or snapshot. Restrict native DLL lookup to validated absolute
@@ -1222,13 +1243,14 @@ Validate owner/ACLs of those directories and files. Never search R's storage,
 current directory or runtime-controlled `PATH`. Runtime and C must not load the
 native network backend as a side effect of startup.
 
-Restrict N's writable filesystem to its private recovery journal and required
-OS endpoints. A privileged Windows network broker cannot generally be placed
-in the same AppContainer as R; it remains trusted host code. Remove unneeded
-privileges, including debug, backup/restore, ownership and impersonation rights
-unless a specific verified operation requires them. Keep a private service
-desktop and deny child creation after bootstrap. Optional H uses a separate job
-and fixed token/profile.
+N may use the normal filesystem, registry, services, and native DNS proxy
+required by sysnet-windows under its launch authority. Retain process-query or
+other privileges when a verified backend feature needs them. Keep trusted DLL
+lookup and private IPC ACLs mandatory. Do not apply R's child-process prohibition
+to backend-selected utility execution; R still cannot request arbitrary child
+creation. Node-command H retains its separate job and fixed token/profile.
+There is no requirement to split backend DNS or move native services to extra
+helpers. Compromise of this trusted backend is outside the R containment claim.
 
 Preserve sysnet-windows' actual capability limits: strict routing, include-only
 application routing, preferred-source routes and adapter rename are unsupported
@@ -1461,10 +1483,10 @@ on `bin`.
    disallowed effects, limits, stale generations and uncertain results without
    privileged integration.
 3. Extract runtime orchestration, fixed-target config persistence and command
-   dispatch. Separate backend DNS processing and native control. Preserve config
-   revision, autosave and snapshot behavior through the new contracts. Build the
-   direct `--no-isolation` composition alongside the broker composition and
-   verify its native fast paths and absence of internal IPC. Implement local
+   dispatch. Keep application DNS in R and allow native backend DNS in N.
+   Preserve config revision, autosave and snapshot behavior through the new
+   contracts. Build the direct `--no-isolation` composition alongside the broker
+   composition and verify its native fast paths and absence of internal IPC. Implement local
    logging, broker diagnostic streams and independent operator output from
    section 4.8 with the same two-mode composition.
 4. Implement Linux launch and profiles, then Windows launch and profiles. A
@@ -1532,7 +1554,8 @@ broker observation entry or lease is absent. Compare result/error semantics
 with the native backend and record the lookup/packet-path performance measures
 from section 4.2. A cache optimization requires separate freshness tests.
 
-The principal implementation uncertainties are native backend separation,
-per-kernel BPF requirements, Go-compatible syscall profiles, and Windows
-AppContainer/pipe/driver combinations. Resolve these with small prototypes and
-denial tests. None permits an automatic reduction of the required boundary.
+The principal implementation uncertainties are native adapter completeness,
+per-kernel BPF requirements, Go-compatible runtime syscall profiles, and Windows
+AppContainer/pipe/driver combinations. Preserve the native backend in trusted N
+where practical. Resolve remaining gaps with small prototypes and denial tests;
+none permits a reduction of R's required boundary.

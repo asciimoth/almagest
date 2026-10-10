@@ -63,12 +63,12 @@ graph epoch, and expected resource generation where a resource exists.
 | `CheckRule`, `CompleteRule` | N: `CheckRule`, `CompleteRule` with a fixed rule context | Completion returns at most 128 typed rules. It is not a process or file browser. |
 | `AllocIP`, `AllocSubnet` | N: `ReserveAddress` with kind and address family; `CloseResource` releases it | Returns an allocation ID and observed value. Canceled allocation is reconciled by operation receipt. Pure virtual pools stay in R. |
 | `OutNet`, `LocalNet` | N: `OpenSocket` with purpose, fixed socket kind, typed endpoints, and named options | Returns a socket/listener ID for the frozen relay contract. Backend-specific local-network scope is preserved. |
-| `OutDNS` | R parses DNS; N: `ResolverSnapshot` and outbound numeric `OpenSocket` | Bounded numeric server snapshot. No resolver object or host path crosses the contract. |
+| `OutDNS` | `OpenSocket` kind `resolver`, purpose `outbound`, then bounded DNS packets on the data lane to N's native provider | No address or socket options are accepted. Preserve split/dynamic DNS and bypass semantics. The Linux provider matrix is qualified; other platforms require their native qualification. No resolver object or host path crosses the contract. |
 | `BuildMatcher`, `Matcher.Match`, `Matcher.Close` | N: `CreateMatcher`, `Match`, `CloseResource` | `Match` accepts one bounded protocol/local/remote five-tuple and returns match and quality only. Cancellation or overload is an error, not a nonmatch. |
 | `BuildTun`, `BuildDefaultTun` | N: `CreateTun` with regular/default kind and typed options | Returns an owned ID and observed state for packet relay. Partial native setup is compensated or marked uncertain. |
 | TUN warnings | N: `GetTunState` operation represented by resource state/status reads | Bounded warnings; diagnostics are not operation completion. |
 | TUN MTU, address, route, and name getters/setters | N: `UpdateTun` with one closed update kind; `GetTunState` | Complete replacement sets avoid unsafe read-add-write where practical. Generation conflict rejects before mutation. |
-| Default-TUN DNS host effect | N: `ConfigureDNS` with owned default-TUN and endpoint references | N verifies both IDs and applies or removes host configuration. DNS packets stay in R. Partial replacement follows the uncertain-result rule. |
+| Default-TUN DNS host effect | N: `ConfigureDNS` with owned default-TUN and endpoint references | N verifies both IDs and applies or removes host configuration. Backend DNS processing may stay in N; application resolver code stays in R. Partial replacement follows the uncertain-result rule. |
 | Network interfaces and addresses | N: `ListInterfaces` typed snapshot | At most 4,096 entries. It is not netlink, ioctl, or registry access. |
 
 The complete Gonnect call mapping is:
@@ -81,8 +81,9 @@ The complete Gonnect call mapping is:
 - `Interfaces`, `InterfaceAddrs`, `InterfaceMulticastAddrs`,
   `InterfacesByIndex`, and `InterfacesByName` use one bounded
   `ListInterfaces` snapshot. R performs index/name selection on that snapshot.
-- Resolver lookup methods stay in R. R sends DNS messages through numeric
-  sockets from `ResolverSnapshot`; it does not ask N to parse hostnames.
+- Resolver lookup methods stay in R. `OutDNS` relays DNS messages to the trusted
+  native provider in N; it does not select host paths or upstream addresses.
+  The explicit `SnapshotDNS` adapter remains for snapshot-based integrations.
 - `IsNative` is false for the selected relay. Version 1 transfers no native
   handles. The direct-mode backend retains its original value.
 

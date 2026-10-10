@@ -115,6 +115,77 @@ func TestFeatureParityRequiresEveryExactResult(t *testing.T) {
 	}
 }
 
+func TestLinuxRequiresProcessFilteringParity(t *testing.T) {
+	linux, ok := ProfileManifest("linux-amd64-v1")
+	if !ok {
+		t.Fatal("Linux manifest missing")
+	}
+	windows, ok := ProfileManifest("windows-server-2022-amd64-v1")
+	if !ok {
+		t.Fatal("Windows manifest missing")
+	}
+	for _, feature := range []string{
+		"ebpf_process_filtering", "process_rule_kernel_and_userspace_matching",
+		"process_rule_existing_socket_marks", "process_rule_fork_exec_exit",
+		"process_owner_lookup", "dns_provider_selection",
+	} {
+		if !slices.Contains(linux.Features, feature) {
+			t.Errorf("Linux feature %s is not required", feature)
+		}
+		if slices.Contains(windows.Features, feature) {
+			t.Errorf("Linux feature %s leaked into Windows manifest", feature)
+		}
+	}
+	for _, check := range []string{"process_backend_authority", "process_backend_runtime_request_denial", "process_backend_cleanup"} {
+		evidence := validEvidence(t, linux.Profile)
+		index := slices.IndexFunc(evidence.NativeChecks, func(c CheckResult) bool { return c.ID == check })
+		if index < 0 {
+			t.Fatalf("missing native check %s", check)
+		}
+		evidence.NativeChecks[index].Passed = false
+		if err := Validate(evidence); !errors.Is(err, ErrUnqualified) {
+			t.Errorf("failed %s accepted: %v", check, err)
+		}
+		evidence.NativeChecks = slices.Delete(evidence.NativeChecks, index, index+1)
+		if err := Validate(evidence); !errors.Is(err, ErrUnqualified) {
+			t.Errorf("missing %s accepted: %v", check, err)
+		}
+	}
+}
+
+func TestTrustedBackendKeepsRuntimeBoundary(t *testing.T) {
+	for _, profile := range Profiles() {
+		t.Run(profile, func(t *testing.T) {
+			manifest, _ := ProfileManifest(profile)
+			for _, id := range []string{
+				"arbitrary_runtime_code", "all_runtime_threads_restricted",
+				"unexpected_inherited_handles", "host_file_access", "host_native_socket_access",
+				"broker_process_or_token_access", "arbitrary_command_execution", "callback_origin_forgery",
+				"backend_node_code_absent", "backend_generic_host_api_denied",
+			} {
+				if !slices.Contains(manifest.BoundaryChecks, id) {
+					t.Fatalf("missing runtime boundary check %s", id)
+				}
+				evidence := validEvidence(t, profile)
+				index := slices.IndexFunc(evidence.BoundaryChecks, func(c CheckResult) bool { return c.ID == id })
+				evidence.BoundaryChecks[index].Passed = false
+				if err := Validate(evidence); !errors.Is(err, ErrUnqualified) {
+					t.Errorf("failed %s accepted: %v", id, err)
+				}
+				evidence.BoundaryChecks = slices.Delete(evidence.BoundaryChecks, index, index+1)
+				if err := Validate(evidence); !errors.Is(err, ErrUnqualified) {
+					t.Errorf("missing %s accepted: %v", id, err)
+				}
+			}
+			for _, id := range manifest.NativeChecks {
+				if strings.HasPrefix(id, "process_helper_") {
+					t.Errorf("mandatory process helper remains: %s", id)
+				}
+			}
+		})
+	}
+}
+
 func TestEverySecurityObservationIsMandatory(t *testing.T) {
 	base := validEvidence(t, "windows-server-2022-amd64-v1")
 	groups := []struct {

@@ -15,7 +15,7 @@ import (
 // A failure is fatal to role startup. Command keeps exec for its one mounted
 // command; its trusted dispatcher must enforce the protected argv contract.
 func Seal(role Role) error {
-	if role != Runtime && role != Network && role != Writer && role != Command {
+	if role != Runtime && role != Writer && role != Command {
 		return ErrUnavailable
 	}
 	// exec resets dumpability even when bootstrap disabled it.

@@ -106,8 +106,10 @@ external changes, and ownership-safe cleanup.
 builds a synthetic underlay inside that same container. Its fixture also needs
 `CAP_SYS_ADMIN` and an unconfined Docker seccomp profile for the existing
 sysnet-linux route-monitor namespace setup. It uses the container's own direct
-DNS provider. This does not approve retaining `CAP_SYS_ADMIN` in a production
-broker; the checkpoint 10 restriction gap remains open.
+DNS provider. This is component evidence, not a complete production profile.
+Under the revised design, N may retain existing launch capabilities required
+by its backend, including `CAP_SYS_ADMIN` where needed. None reach R. The v0.10.1
+current-namespace monitor remains useful where that capability is absent.
 
 The Windows selectors are:
 

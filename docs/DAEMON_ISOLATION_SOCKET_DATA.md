@@ -28,16 +28,53 @@ unclaimed children and preserves claimed children. Epoch release removes both.
 
 Interface snapshots include the requested network purpose, interface identity,
 name, MTU, flags, hardware address, and numeric unicast/multicast addresses.
-Runtime selection by name or index uses that snapshot. DNS parsing and lookup
-stay in R: `OutDNS` builds the existing Gonnect DNS client over relayed numeric
-sockets. A missing resolver returns an error and does not read host resolver
-files or create a native socket.
+Runtime selection by name or index uses that snapshot.
 
-Trusted integration supplies `SetResolverSnapshotSource` before service startup.
-The current sysnet provider interfaces do not expose all upstream/split-DNS
-state. An absent source is reported as unsupported. Provider-specific snapshot
-integration and split-DNS parity remain required; using an arbitrary public
-resolver would not preserve the native backend's behavior.
+`OutDNS` uses an `OpenSocket` request with kind `resolver` and purpose `outbound`.
+All address, transport, multicast, and native socket-option fields must be empty.
+This creates a session-owned packet channel to the existing native `OutDNS()`
+provider, not a host socket selected by R. The same data lane carries complete
+DNS packets, up to 65,535 bytes. DNS payloads never enter control JSON. N may
+parse DNS as part of the trusted backend; application DNS nodes stay in R.
+
+R uses at most four persistent channels per returned resolver, or fewer when
+the protected socket quota is smaller. Each channel
+has at most one active query and one pending response. Pending response capacity
+is reserved against the existing 8 MiB session data budget before native work.
+Native provider allocations remain subject to N's process/cgroup limits.
+Queries have a five-second ceiling and honor shorter request deadlines,
+cancellation, and channel close. A closed channel cannot publish a late reply
+or close the shared native provider. Closing the resolver or runtime client
+stops its workers. DNS work uses data-worker slots, not the native mutation
+gate, so a stalled query does not stop control operations.
+
+The relay preserves native provider selection, split-name routing, dynamic
+upstreams, response flags, and records instead of reconstructing them from a
+flat list. It has no arbitrary upstream or public-resolver fallback. The
+`dns_no_upstream` completion code preserves the native no-upstream error without
+exposing native error text. The Linux sysnet v0.10.1 provider matrix qualifies
+all supported Linux provider modes. Windows provider qualification remains a
+later platform gate; packet-level parity tests alone do not qualify a provider.
+
+`ResolverSnapshot` and the explicit `SnapshotDNS` adapter remain available for
+trusted integrations that supply `SetResolverSnapshotSource`. A missing snapshot
+source is unsupported. Normal `OutDNS` no longer requires that source or reads
+resolver files in R.
+
+Managed default-TUN DNS uses the reverse direction. Bootstrap creates one
+`ApplicationDNSEndpoint` in N and registers its opaque `ResourceDNS` reference.
+R's `ServeDNS` adapter runs four bounded application-resolver workers. N queues
+at most 64 complete questions, assigns a nonzero correlation value, and accepts
+only an exact correlated response with the original DNS ID. Socket and TUN
+resources reject this DNS metadata. Resolver errors become `SERVFAIL`; close,
+deadline, malformed response, peer loss, and endpoint detachment wake pending
+work. The native provider and managed DNS server remain in N, while node
+resolver callbacks execute only in R.
+
+The Linux native composition test attaches this endpoint to a default TUN,
+queries N's managed DNS listener, receives R's application response, and checks
+cleanup. This qualifies the reverse path without moving provider logic or node
+callbacks across the trust boundary.
 
 ## Data and completion
 
@@ -87,6 +124,7 @@ batch size is one. They validate caller offsets and packet sizes and retain
 partial write counts. Native batch buffers, native header offsets, and native
 handles stay in N. Events carry the existing revision and generation checks;
 a newer generation terminates the old adapter instead of reviving it.
+Closing that old adapter cannot remove its replacement from the client registry.
 
 Linux integration can select `network.RelayTUNFactory` in the broker's
 `sysnet-linux.Config`. It creates a fresh, exclusive TUN without GSO. This avoids

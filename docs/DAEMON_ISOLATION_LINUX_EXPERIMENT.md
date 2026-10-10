@@ -85,20 +85,21 @@ This matrix confirms that missing TUN or BPF authority does not remove ordinary
 socket support. A route-netlink socket opening is not proof that route mutation
 is authorized.
 
-## Compatibility gaps and helper requirements
+## Compatibility observations and revised follow-up
 
 - The current `sysnet-linux` route monitor enters another network namespace
   while it creates a netlink socket. It failed without `CAP_SYS_ADMIN` in every
-  partial-capability profile. `CAP_SYS_ADMIN` must not be retained as a
-  workaround. The backend must avoid this namespace entry when N already uses
-  the host network namespace, or route monitoring must move to a narrowly
-  reviewed helper. Until then, the full Linux native broker profile is not
-  qualified.
+  partial-capability profile. This is historical evidence for the reviewed
+  version. The v0.10.1 current-namespace monitor removes that requirement for
+  this path. The revised trusted-N design also permits retaining existing
+  launch capabilities needed by other native operations, without granting
+  them to R. A separate route-monitor helper is not required.
 - The container had neither the system D-Bus socket nor a `resolvconf` helper.
-  The root feature profiles detected direct `/etc/resolv.conf` control, but N
-  must not receive general `/etc` write access. Production DNS control needs
-  the fixed-method D-Bus/helper or fixed-target DNS writer described by the
-  architecture. This container does not qualify those host-specific providers.
+  The root feature profiles detected direct `/etc/resolv.conf` control. The
+  revised design permits native providers and their required host access in N,
+  including DNS processing and backend-selected utility execution. Separate
+  DNS helpers are optional. This historical container did not qualify providers
+  it did not contain; checkpoint 24 now supplies the native provider matrix.
 - The runtime seccomp clone rule is Linux amd64 and Go-version specific. Other
   architectures and material Go runtime changes require a new traced and
   reviewed allowlist. There is no permissive fallback.
@@ -106,7 +107,7 @@ is authorized.
   kernel can be supported only by a separately reviewed equivalent profile.
 - This run qualifies the privileged bootstrap profile. It does not qualify an
   unprivileged launcher on hosts without delegated namespace or cgroup support.
-- Cgroup limits, a dedicated installed account, broker filesystem restrictions,
+- Cgroup limits, runtime identity provisioning, the trusted-backend launch path,
   and the production role launcher remain later implementation work. This
   experiment does not claim that isolated daemon mode exists.
 

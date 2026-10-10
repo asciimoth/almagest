@@ -272,7 +272,9 @@ func (c *Client) ResolverSnapshot(ctx context.Context) (protocol.ResolverSnapsho
 	return snapshot, err
 }
 
-func (c *Client) OutDNS(ctx context.Context) (gdns.Interface, error) {
+// SnapshotDNS retains the explicit numeric-upstream adapter for callers that
+// need a snapshot. OutDNS uses the native provider instead.
+func (c *Client) SnapshotDNS(ctx context.Context) (gdns.Interface, error) {
 	snapshot, err := c.ResolverSnapshot(ctx)
 	if err != nil {
 		return nil, err

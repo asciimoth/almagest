@@ -1,8 +1,9 @@
 # Daemon host-network method inventory
 
 This inventory records the direct-mode surface at daemon isolation checkpoint
-3. It covers Gonnect `v0.56.0`, sysnet-linux `v0.8.1`, and sysnet-windows
-`v0.5.0`. Direct mode selects one implementation in
+3. Its original review covered Gonnect `v0.56.0`, sysnet-linux `v0.8.1`, and
+sysnet-windows `v0.5.0`. The current Linux dependency is v0.10.1; checkpoint 24
+tests its constructor and preserved interface surface. Direct mode selects one implementation in
 `bin/almagestd/daemonservices/localnetwork` and passes the original objects to
 the runtime. It does not use serialization, resource IDs, or data-path wrappers.
 

@@ -57,8 +57,16 @@ func BindSocket(f *os.File, peer LinuxPeer) (Stream, error) {
 	if err != nil || typ != unix.SOCK_STREAM {
 		return nil, protocol.ErrInvalidContract
 	}
-	if err := unix.SetsockoptInt(int(f.Fd()), unix.SOL_SOCKET, unix.SO_PASSCRED, 1); err != nil {
+	// Bootstrap already enables PASSCRED before launch. R cannot setsockopt;
+	// do not repeat a mutation merely to bind an already configured endpoint.
+	credentials, err := unix.GetsockoptInt(int(f.Fd()), unix.SOL_SOCKET, unix.SO_PASSCRED)
+	if err != nil {
 		return nil, err
+	}
+	if credentials == 0 {
+		if err := unix.SetsockoptInt(int(f.Fd()), unix.SOL_SOCKET, unix.SO_PASSCRED, 1); err != nil {
+			return nil, err
+		}
 	}
 	c, err := net.FileConn(f)
 	if err != nil {

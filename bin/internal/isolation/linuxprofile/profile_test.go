@@ -8,7 +8,7 @@ import (
 )
 
 func TestPlans(t *testing.T) {
-	for _, role := range []Role{Runtime, Network, Writer, Command} {
+	for _, role := range []Role{Runtime, Writer, Command} {
 		p := Plan{Role: role, UID: 65534, GID: 65534, Limits: DefaultLimits()}
 		args, err := p.Arguments()
 		if err != nil || len(args) != 10 || args[0] != "v1" || args[1] != string(role) {
@@ -19,8 +19,8 @@ func TestPlans(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		p.Capabilities = NetworkCapabilities
-		if (p.Validate() == nil) != (role == Network) {
+		p.Capabilities = 1 << 12
+		if p.Validate() == nil {
 			t.Fatalf("capabilities accepted for %s", role)
 		}
 	}
@@ -30,6 +30,7 @@ func TestInvalidPlans(t *testing.T) {
 	base := Plan{Role: Runtime, UID: 65534, GID: 65534, Limits: DefaultLimits()}
 	cases := map[string]func(*Plan){
 		"role":            func(p *Plan) { p.Role = "other" },
+		"backend":         func(p *Plan) { p.Role = Network },
 		"root-uid":        func(p *Plan) { p.UID = 0 },
 		"root-gid":        func(p *Plan) { p.GID = 0 },
 		"invalid-uid":     func(p *Plan) { p.UID = ^uint32(0) },
@@ -59,18 +60,9 @@ func TestInvalidPlans(t *testing.T) {
 	}
 }
 
-func TestFeatureGapsFailClosed(t *testing.T) {
-	for mask := 0; mask < 16; mask++ {
-		err := CheckFeatures(mask&1 != 0, mask&2 != 0, mask&4 != 0, mask&8 != 0)
-		if (err == nil) != (mask == 0) {
-			t.Fatalf("mask %d: %v", mask, err)
-		}
-	}
-}
-
 func FuzzPlan(f *testing.F) {
 	f.Add("runtime", uint32(65534), uint32(65534), uint64(0), uint64(1024), uint64(256<<20), uint64(512<<20), uint64(128), uint64(100000))
-	f.Add("network", uint32(1), uint32(1), NetworkCapabilities, uint64(32), uint64(1<<20), uint64(32<<20), uint64(8), uint64(1000))
+	f.Add("network", uint32(1), uint32(1), uint64(1<<12), uint64(32), uint64(1<<20), uint64(32<<20), uint64(8), uint64(1000))
 	f.Fuzz(func(t *testing.T, role string, uid, gid uint32, caps, fds, file, memory, tasks, cpu uint64) {
 		p := Plan{Role: Role(role), UID: uid, GID: gid, Capabilities: caps, Limits: Limits{fds, file, memory, tasks, cpu}}
 		args, err := p.Arguments()
@@ -80,7 +72,7 @@ func FuzzPlan(f *testing.F) {
 			}
 			return
 		}
-		if uid == 0 || gid == 0 || caps&^NetworkCapabilities != 0 || role != string(Network) && caps != 0 {
+		if uid == 0 || gid == 0 || caps != 0 || role == string(Network) {
 			t.Fatal("authority expansion")
 		}
 		again, err := p.Arguments()

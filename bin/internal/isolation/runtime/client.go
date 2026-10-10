@@ -87,6 +87,8 @@ func (c *Client) channel(ctx context.Context, q protocol.ChannelRequest) (protoc
 }
 func decodeError(code string) error {
 	switch code {
+	case "dns_no_upstream":
+		return gdns.ErrNoUpstream
 	case "":
 		return nil
 	case "eof":

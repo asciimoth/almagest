@@ -21,6 +21,7 @@ relays. Linux and Windows use the same resource semantics:
 | TCP listener | N accepts and offers bounded child connection references; each claimed child uses the TCP relay. |
 | Connected UDP | Packet relay; N applies the native connected-socket semantics and checks any explicit destination against protected policy on every send. |
 | Unconnected/multicast UDP | Packet relay; N checks each destination and typed ancillary field on every send. |
+| Application DNS endpoint | Correlated packet relay; N sends validated DNS questions to R and accepts only the matching DNS response. |
 | Five-tuple matcher | One bounded control RPC per lookup; no observation token, lease, client cache, or per-packet routing RPC. |
 
 There is no direct native handle, shared mapping, ring, generic socket option,
@@ -161,14 +162,22 @@ work and wakes both halves. EOF and failure are distinct typed results.
 
 Packet metadata contains exactly `source` and `destination` (numeric address
 and port, or null where inapplicable), `interfaceIndex` (uint32 or null),
-`hopLimit` and `trafficClass` (0..255 or null), `originalLength` (uint32), and
-`truncated` (boolean). Numeric addresses include a scope identifier where the
-native IPv6 API requires one. Unknown fields and raw native cmsg bytes are
-rejected. For outbound records, original length equals payload length and
+`hopLimit` and `trafficClass` (0..255 or null), `originalLength` (uint32),
+`truncated` (boolean), and `dns` (null or a nonzero uint64 correlation object).
+The DNS member is valid only for an owned `ResourceDNS`; socket and TUN paths
+reject it. Numeric addresses include a scope identifier where the native IPv6
+API requires one. Unknown fields and raw native cmsg bytes are rejected. For
+outbound records, original length equals payload length and
 truncated is false; N validates source/interface and destination authority.
 For TUN, endpoint/interface/hop fields are null: the payload is one complete
 IP packet, without parsing protocol bodies in N. Outbound TUN truncation is
 invalid. Zero-length UDP is valid; zero-length TUN is invalid.
+
+An application-DNS question and response each contain one complete DNS packet.
+R must echo the opaque correlation value. N also requires a response message
+with the original DNS ID. At most 64 questions are pending. Invalid, stale,
+spoofed, or mismatched responses fail the request and never reach the native
+DNS server. Application resolver errors become bounded DNS `SERVFAIL` replies.
 
 N translates supported ancillary fields to/from native API values and preserves
 sender/destination, packet boundaries, truncation, and partial-batch outcomes.

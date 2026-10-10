@@ -465,6 +465,7 @@ func (s *SystemBackend) Capabilities(ctx context.Context) (protocol.CapabilitySn
 		resolverCapability = protocol.Capability{State: protocol.CapabilityUnknown, AttemptAllowed: true}
 	}
 	out.Operations = append(out.Operations, protocol.OperationCapability{Operation: protocol.OperationResolverSnapshot, Target: "out_dns", Capability: resolverCapability})
+	out.Operations = append(out.Operations, protocol.OperationCapability{Operation: protocol.OperationOpenSocket, Target: "out_dns", Capability: protocol.Capability{State: protocol.CapabilityUnknown, AttemptAllowed: true}})
 	out.Operations = append(out.Operations, protocol.OperationCapability{Operation: protocol.OperationConfigureDNS, Target: "default_tun", Capability: protocol.Capability{State: protocol.CapabilityUnknown, AttemptAllowed: true}})
 	for _, profile := range r.DefaultTunProfiles {
 		p := protocol.DefaultTunProfile{Family: string(profile.Key.Family), Mode: string(profile.Key.Mode), Strict: profile.Key.Strict, Capability: capability(profile.Capability)}

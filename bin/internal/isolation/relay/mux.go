@@ -83,7 +83,7 @@ func (m *Mux) state(ref protocol.ResourceRef) (*sequence, error) {
 		return nil, protocol.ErrInvalidContract
 	}
 	switch ref.Type {
-	case protocol.ResourceSocket, protocol.ResourceTun, protocol.ResourceDefaultTun:
+	case protocol.ResourceSocket, protocol.ResourceTun, protocol.ResourceDefaultTun, protocol.ResourceDNS:
 	default:
 		return nil, protocol.ErrResourceType
 	}
@@ -243,7 +243,7 @@ func (m *Mux) deliver(f Frame) error {
 	}
 	if slot.ref.Type == protocol.ResourceTun || slot.ref.Type == protocol.ResourceDefaultTun {
 		p := rec.Packet
-		if p == nil || rec.Length == 0 || p.Source != nil || p.Destination != nil || p.InterfaceIndex != nil || p.HopLimit != nil || p.TrafficClass != nil {
+		if p == nil || rec.Length == 0 || p.Source != nil || p.Destination != nil || p.InterfaceIndex != nil || p.HopLimit != nil || p.TrafficClass != nil || p.DNS != nil {
 			return protocol.ErrInvalidContract
 		}
 	}

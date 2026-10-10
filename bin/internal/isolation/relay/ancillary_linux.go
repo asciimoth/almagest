@@ -106,6 +106,9 @@ func MarshalAncillary(meta *protocol.PacketMetadata, ipv6, outbound bool) ([]byt
 	if meta == nil {
 		return nil, nil
 	}
+	if meta.DNS != nil {
+		return nil, protocol.ErrInvalidContract
+	}
 	var out []byte
 	endpoint := meta.Destination
 	if outbound {

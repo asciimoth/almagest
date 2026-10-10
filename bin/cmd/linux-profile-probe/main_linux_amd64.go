@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"os"
 	"runtime"
 	"strconv"
@@ -22,9 +21,6 @@ import (
 	"github.com/asciimoth/almagest/bin/internal/isolation/configwriter"
 	"github.com/asciimoth/almagest/bin/internal/isolation/linuxprofile"
 	"github.com/asciimoth/almagest/bin/internal/isolation/protocol"
-	"github.com/asciimoth/gonnect/sysnet"
-	linuxsysnet "github.com/asciimoth/sysnet-linux"
-	"github.com/vishvananda/netlink"
 	bolt "go.etcd.io/bbolt"
 	"golang.org/x/sys/unix"
 )
@@ -89,9 +85,6 @@ func denied(err error) bool {
 func threadChecks(index int, role linuxprofile.Role) {
 	prefix := fmt.Sprintf("thread-%d-", index)
 	for _, path := range []string{"/blocked", "/proc/self/status", "/sys/kernel", "/run/dbus/system_bus_socket", "/etc/passwd", "/dev/net/tun", "/oldroot/etc/passwd"} {
-		if path == "/dev/net/tun" && role == linuxprofile.Network && os.Getenv("ALMAGEST_TUN_PRESENT") == "1" {
-			continue
-		}
 		f, err := os.Open(path)
 		if f != nil {
 			_ = f.Close()
@@ -114,9 +107,7 @@ func threadChecks(index int, role linuxprofile.Role) {
 		if fd >= 0 {
 			_ = unix.Close(fd)
 		}
-		if role != linuxprofile.Network || domain == unix.AF_PACKET {
-			check(prefix+fmt.Sprintf("socket-%d", domain), errors.Is(err, unix.EPERM), err)
-		}
+		check(prefix+fmt.Sprintf("socket-%d", domain), errors.Is(err, unix.EPERM), err)
 	}
 	h := unix.CapUserHeader{Version: unix.LINUX_CAPABILITY_VERSION_3}
 	d := [2]unix.CapUserData{}
@@ -126,7 +117,7 @@ func threadChecks(index int, role linuxprofile.Role) {
 	check(prefix+"capabilities", err == nil && actual == want &&
 		d[0].Effective == d[0].Permitted && d[1].Effective == d[1].Permitted &&
 		d[0].Inheritable == d[0].Permitted && d[1].Inheritable == d[1].Permitted &&
-		actual&^linuxprofile.NetworkCapabilities == 0 && (role == linuxprofile.Network || actual == 0), err)
+		actual == 0, err)
 	for cap := uintptr(0); cap < 41; cap++ {
 		v, _, e := unix.RawSyscall(unix.SYS_PRCTL, unix.PR_CAPBSET_READ, cap, 0)
 		check(prefix+fmt.Sprintf("bounding-%d", cap), e == 0 && v == uintptr((want>>cap)&1), e)
@@ -174,135 +165,9 @@ func database() error {
 	})
 }
 
-func sockets() error {
-	listener, err := net.Listen("tcp4", "127.0.0.1:0")
-	if err != nil {
-		return err
-	}
-	defer listener.Close() //nolint:errcheck
-	done := make(chan error, 1)
-	go func() {
-		c, err := listener.Accept()
-		if err != nil {
-			done <- err
-			return
-		}
-		defer c.Close() //nolint:errcheck
-		_ = c.SetDeadline(time.Now().Add(2 * time.Second))
-		b := make([]byte, 4)
-		_, err = io.ReadFull(c, b)
-		if err == nil {
-			_, err = c.Write(b)
-		}
-		done <- err
-	}()
-	c, err := net.DialTimeout("tcp4", listener.Addr().String(), 2*time.Second)
-	if err != nil {
-		return err
-	}
-	defer c.Close() //nolint:errcheck
-	_ = c.SetDeadline(time.Now().Add(2 * time.Second))
-	if _, err = c.Write([]byte("test")); err != nil {
-		return err
-	}
-	b := make([]byte, 4)
-	if _, err = io.ReadFull(c, b); err != nil {
-		return err
-	}
-	if string(b) != "test" {
-		return errors.New("TCP content mismatch")
-	}
-	if err := <-done; err != nil {
-		return err
-	}
-	u, err := net.ListenPacket("udp4", "127.0.0.1:0")
-	if err != nil {
-		return err
-	}
-	defer u.Close() //nolint:errcheck
-	_ = u.SetDeadline(time.Now().Add(2 * time.Second))
-	if _, err = u.WriteTo([]byte("test"), u.LocalAddr()); err != nil {
-		return err
-	}
-	_, _, err = u.ReadFrom(b)
-	return err
-}
-
-func tunPacket() error {
-	fd, err := unix.Open("/dev/net/tun", unix.O_RDWR|unix.O_NONBLOCK|unix.O_CLOEXEC, 0)
-	if err != nil {
-		return err
-	}
-	f := os.NewFile(uintptr(fd), "tun")
-	defer f.Close() //nolint:errcheck
-	req, err := unix.NewIfreq("profile0")
-	if err != nil {
-		return err
-	}
-	req.SetUint16(unix.IFF_TUN | unix.IFF_NO_PI)
-	if err := unix.IoctlIfreq(fd, unix.TUNSETIFF, req); err != nil {
-		return err
-	}
-	link, err := netlink.LinkByName("profile0")
-	if err != nil {
-		return err
-	}
-	if err := netlink.LinkSetMTU(link, 1400); err != nil {
-		return err
-	}
-	if err := netlink.LinkSetUp(link); err != nil {
-		return err
-	}
-	addr, err := netlink.ParseAddr("198.18.0.1/30")
-	if err != nil {
-		return err
-	}
-	if err := netlink.AddrAdd(link, addr); err != nil {
-		return err
-	}
-	c, err := net.DialTimeout("udp4", "198.18.0.2:5353", time.Second)
-	if err != nil {
-		return err
-	}
-	defer c.Close() //nolint:errcheck
-	if _, err = c.Write([]byte("profile-tun")); err != nil {
-		return err
-	}
-	buf := make([]byte, 1500)
-	deadline := time.Now().Add(2 * time.Second)
-	for {
-		if !time.Now().Before(deadline) {
-			return errors.New("TUN packet timed out")
-		}
-		ready, err := unix.Poll([]unix.PollFd{{Fd: int32(fd), Events: unix.POLLIN}}, 2000)
-		if err != nil {
-			return err
-		}
-		if ready == 0 {
-			return errors.New("TUN packet timed out")
-		}
-		n, err := unix.Read(fd, buf)
-		if err != nil {
-			return err
-		}
-		if n >= 39 && buf[0]>>4 == 4 && buf[9] == 17 && string(buf[n-11:n]) == "profile-tun" {
-			break
-		}
-	}
-	// Persistence remains prohibited even with NET_ADMIN.
-	if err := unix.IoctlSetInt(fd, unix.TUNSETPERSIST, 1); !errors.Is(err, unix.EPERM) {
-		return fmt.Errorf("persistent TUN accepted: %v", err)
-	}
-	return nil
-}
-
 func main() {
-	if probeMode == "native-system" {
-		if err := linuxprofile.Seal(linuxprofile.Network); err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
-		}
-		if err := nativeSystem(); err != nil {
+	if probeMode == "runtime-client" {
+		if err := runtimeClient(); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
@@ -400,13 +265,6 @@ func main() {
 	case linuxprofile.Writer:
 		err = writer()
 		check("config-writer-after-seal", err == nil, err)
-	case linuxprofile.Network:
-		err = sockets()
-		check("native-sockets-after-seal", err == nil, err)
-		if os.Getenv("ALMAGEST_TUN_PRESENT") == "1" {
-			err = tunPacket()
-			check("native-tun-after-seal", err == nil, err)
-		}
 	case linuxprofile.Command:
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		result := commandhelper.NewProcessLauncher("fixed").Run(ctx, commandhelper.Execution{Sandbox: "fixed", Executable: "/command", WorkingDirectory: "/state", OutputLimit: 1024})
@@ -423,36 +281,4 @@ func main() {
 			os.Exit(1)
 		}
 	}
-}
-
-// nativeSystem runs the actual daemon backend after the final N restrictions.
-// Primitive netlink/TUN success alone does not exercise constructor probes,
-// route monitoring, native TUN ioctls or the backend's cleanup paths.
-func nativeSystem() error {
-	system, err := linuxsysnet.New(linuxsysnet.SystemConfig{
-		Features: linuxsysnet.FeatureConfig{Tun: true, DefaultTun: true, DynTun: true, DynDefaultTun: true, Routing: true, TunNames: true},
-		DNS:      linuxsysnet.DNSConfig{Mode: linuxsysnet.DNSModeDisabled},
-		Logf:     func(format string, args ...any) { fmt.Fprintf(os.Stderr, format+"\n", args...) },
-	})
-	if err != nil {
-		return err
-	}
-	defer func() { _ = system.Close() }()
-	if os.Getenv("ALMAGEST_TUN_PRESENT") == "1" {
-		device, err := system.BuildTun(sysnet.TunOpts{Name: "profile-real", MTU: 1400, TunAddrs: []string{"198.18.1.1/30"}})
-		if err != nil {
-			return fmt.Errorf("restricted backend regular TUN: %w", err)
-		}
-		if err := device.Close(); err != nil {
-			return fmt.Errorf("restricted backend regular TUN cleanup: %w", err)
-		}
-		device, err = system.BuildDefaultTun(sysnet.DefaultTunOpts{MTU: 1400, TunAddrs: []string{"198.18.2.1/32"}})
-		if err != nil {
-			return fmt.Errorf("restricted backend default TUN: %w", err)
-		}
-		if err := device.Close(); err != nil {
-			return fmt.Errorf("restricted backend default TUN cleanup: %w", err)
-		}
-	}
-	return json.NewEncoder(os.Stdout).Encode(system.Capabilities())
 }

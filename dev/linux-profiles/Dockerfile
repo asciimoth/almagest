@@ -13,7 +13,7 @@ COPY certcat certcat
 COPY dev/linux-profiles dev/linux-profiles
 RUN --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 go build -C bin -trimpath -o /qualification/probe ./cmd/linux-profile-probe \
-    && CGO_ENABLED=0 go build -C bin -trimpath -ldflags '-X main.probeMode=native-system' -o /qualification/native-system-probe ./cmd/linux-profile-probe \
+    && CGO_ENABLED=0 go build -C bin -trimpath -ldflags '-X main.probeMode=runtime-client' -o /qualification/runtime-client-probe ./cmd/linux-profile-probe \
     && CGO_ENABLED=0 go build -C bin -trimpath -ldflags '-X main.probeMode=tsync-failure' -o /qualification/tsync-probe ./cmd/linux-profile-probe \
     && CGO_ENABLED=0 go build -C bin -trimpath -ldflags '-X main.probeMode=x32' -o /qualification/x32-probe ./cmd/linux-profile-probe \
     && gcc -static -O2 -D_FORTIFY_SOURCE=3 -Wall -Wextra -Werror -o /qualification/launcher bin/native/linux-role/launcher.c $(pkg-config --cflags --libs libseccomp) \

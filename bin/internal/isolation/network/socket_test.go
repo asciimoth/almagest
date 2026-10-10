@@ -544,7 +544,7 @@ func TestSocketResolverAndInterfaces(t *testing.T) {
 	backend.sockets.SetResolverSnapshotSource(func(context.Context) (protocol.ResolverSnapshot, error) {
 		return protocol.ResolverSnapshot{Revision: 1, Servers: []netip.AddrPort{endpoint(native.LocalAddr())}}, nil
 	})
-	dns, err := c.OutDNS(ctx)
+	dns, err := c.SnapshotDNS(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}

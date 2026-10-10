@@ -80,7 +80,7 @@ func (t *systemTun) ReadData(p []byte) (int, *protocol.PacketMetadata, error) {
 	return n, meta, err
 }
 func (t *systemTun) WriteData(p []byte, meta *protocol.PacketMetadata) (int, error) {
-	if meta == nil || len(p) == 0 || meta.Source != nil || meta.Destination != nil || meta.InterfaceIndex != nil || meta.HopLimit != nil || meta.TrafficClass != nil {
+	if meta == nil || len(p) == 0 || meta.Source != nil || meta.Destination != nil || meta.InterfaceIndex != nil || meta.HopLimit != nil || meta.TrafficClass != nil || meta.DNS != nil {
 		return 0, protocol.ErrInvalidContract
 	}
 	_, mtu, err := t.interfaceState(context.Background())

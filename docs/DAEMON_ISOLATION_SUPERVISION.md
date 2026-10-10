@@ -20,8 +20,10 @@ publishing readiness. Application and node readiness remain separate: R must
 send its role-ready result only after its application initialization succeeds.
 
 Each supervisor is single-use. A service restart constructs a complete new
-process set and supervisor with a new protocol session. N never keeps general
-process-launch authority or replaces one role in place.
+process set and supervisor with a new protocol session. The supervisor has no
+general launch API and does not replace one role in place. N may execute
+backend-selected native utilities under the revised trusted-backend design;
+this does not expose process launch or role replacement to R.
 
 ## Failure and bounded shutdown
 

@@ -23,7 +23,6 @@ type Inputs struct {
 	Directory   *os.File
 	Cgroup      *os.File
 	Command     *os.File // required only for the fixed-command helper
-	Tun         *os.File // optional /dev/net/tun, only for N
 	Data        *os.File // optional separate N/R data lane
 	Diagnostics *os.File // optional separate logging lane
 	Admin       *os.File // optional separate N/R admin lane
@@ -39,7 +38,7 @@ func CommandContext(ctx context.Context, p Plan, in Inputs) (*exec.Cmd, error) {
 		return nil, err
 	}
 	if ctx == nil || in.Launcher == nil || in.Control == nil || in.Executable == nil || in.Directory == nil || in.Cgroup == nil ||
-		(p.Role == Command) != (in.Command != nil) || in.Tun != nil && p.Role != Network ||
+		(p.Role == Command) != (in.Command != nil) ||
 		(p.Role == Writer || p.Role == Command) && (in.Data != nil || in.Admin != nil) {
 		return nil, fmt.Errorf("%w: incomplete inherited objects", ErrUnavailable)
 	}
@@ -53,8 +52,5 @@ func CommandContext(ctx context.Context, p Plan, in Inputs) (*exec.Cmd, error) {
 	// would either affect another role or leave an unrestricted startup window.
 	cmd.SysProcAttr = &syscall.SysProcAttr{UseCgroupFD: true, CgroupFD: int(in.Cgroup.Fd())}
 	cmd.ExtraFiles = []*os.File{in.Control, in.Executable, in.Directory, in.Cgroup, in.Command, in.Launcher, in.Data, in.Diagnostics, in.Admin}
-	if in.Tun != nil {
-		cmd.ExtraFiles[4] = in.Tun
-	}
 	return cmd, nil
 }

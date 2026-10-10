@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"math"
 	"net"
 	"net/netip"
 	"os"
@@ -121,8 +122,17 @@ func TestTunAdapterStateAndEvents(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer newAdapter.finish()
+	if equivalent, err := client.Tun(replacement, protocol.ResourceState{Name: "relay0", MTU: 1400, Revision: 3}); err != nil || equivalent != newAdapter {
+		t.Fatalf("equivalent generation = %p, %v; want existing %p", equivalent, err, newAdapter)
+	}
 	if _, open := <-adapter.Events(); open {
 		t.Fatal("replacement did not terminate old adapter")
+	}
+	if err := adapter.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if client.tuns[ref.ID] != newAdapter {
+		t.Fatal("closing the stale adapter removed its replacement")
 	}
 	if _, err = client.Tun(ref, protocol.ResourceState{MTU: 1400}); !errors.Is(err, protocol.ErrOperationConflict) {
 		t.Fatalf("old generation accepted: %v", err)
@@ -150,6 +160,53 @@ func TestTunAdapterRejectsInvalidState(t *testing.T) {
 				t.Fatalf("got %v, want %v", err, tc.want)
 			}
 		})
+	}
+}
+
+func TestConfigureDNSRejectsInvalidReferences(t *testing.T) {
+	session := protocol.Session{ID: protocol.SessionID{1}, Epoch: 1, Version: protocol.Version}
+	client := &Client{session: session}
+	client.epoch.Store(1)
+	defaultRef := protocol.ResourceRef{ID: protocol.ResourceID{2}, SessionID: session.ID, Type: protocol.ResourceDefaultTun, Generation: 1, GraphEpoch: 1}
+	device := &Tun{Conn: &Conn{client: client, ref: defaultRef}}
+	dns := protocol.ResourceRef{ID: protocol.ResourceID{3}, SessionID: session.ID, Type: protocol.ResourceDNS, Generation: 1, GraphEpoch: 1}
+
+	if _, err := client.ConfigureDNS(context.Background(), nil, dns, true); !errors.Is(err, protocol.ErrInvalidContract) {
+		t.Fatalf("nil TUN: %v", err)
+	}
+	regularRef := defaultRef
+	regularRef.Type = protocol.ResourceTun
+	regular := &Tun{Conn: &Conn{client: client, ref: regularRef}}
+	if _, err := client.ConfigureDNS(context.Background(), regular, dns, true); !errors.Is(err, protocol.ErrResourceType) {
+		t.Fatalf("regular TUN: %v", err)
+	}
+	foreign := dns
+	foreign.SessionID[0]++
+	if _, err := client.ConfigureDNS(context.Background(), device, foreign, true); !errors.Is(err, protocol.ErrForeignResource) {
+		t.Fatalf("foreign DNS endpoint: %v", err)
+	}
+	if _, err := client.ConfigureDNS(context.Background(), device, dns, false); !errors.Is(err, protocol.ErrInvalidContract) {
+		t.Fatalf("endpoint on detach: %v", err)
+	}
+	zeroGeneration := defaultRef
+	zeroGeneration.Generation = 0
+	if _, err := client.ConfigureDNS(context.Background(), &Tun{Conn: &Conn{client: client, ref: zeroGeneration}}, dns, true); !errors.Is(err, protocol.ErrInvalidContract) {
+		t.Fatalf("zero TUN generation: %v", err)
+	}
+	exhausted := defaultRef
+	exhausted.Generation = math.MaxUint64
+	if _, err := client.ConfigureDNS(context.Background(), &Tun{Conn: &Conn{client: client, ref: exhausted}}, dns, true); !errors.Is(err, protocol.ErrLimitExceeded) {
+		t.Fatalf("exhausted TUN generation: %v", err)
+	}
+	zeroDNS := dns
+	zeroDNS.Generation = 0
+	if _, err := client.ConfigureDNS(context.Background(), device, zeroDNS, true); !errors.Is(err, protocol.ErrStaleGeneration) {
+		t.Fatalf("zero DNS generation: %v", err)
+	}
+	newDNS := dns
+	newDNS.Generation = 2
+	if _, err := client.ConfigureDNS(context.Background(), device, newDNS, true); !errors.Is(err, protocol.ErrStaleGeneration) {
+		t.Fatalf("changed DNS generation: %v", err)
 	}
 }
 

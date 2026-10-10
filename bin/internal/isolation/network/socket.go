@@ -22,6 +22,12 @@ type SocketBackend interface {
 }
 
 func validateSocket(o protocol.SocketOptions) error {
+	if o.Kind == protocol.SocketResolver {
+		if o != (protocol.SocketOptions{Purpose: protocol.NetworkOutbound, Kind: protocol.SocketResolver}) {
+			return protocol.ErrInvalidContract
+		}
+		return nil
+	}
 	if o.Purpose != protocol.NetworkOutbound && o.Purpose != protocol.NetworkLocal {
 		return protocol.ErrInvalidContract
 	}
@@ -104,6 +110,15 @@ func (b *Broker) OpenSocket(ctx context.Context, req protocol.OpenSocketRequest)
 		b.resources[id] = r
 		b.mu.Unlock()
 		native, err := backend.OpenSocket(ctx, req.Options)
+		if resolver, ok := native.(*resolverSocket); ok {
+			b.mu.Lock()
+			if b.data != nil && b.dataReady {
+				resolver.reserve = b.data.HoldOutbound
+			} else {
+				err = protocol.ErrCapabilityUnavailable
+			}
+			b.mu.Unlock()
+		}
 		b.mu.Lock()
 		r.native = native
 		b.mu.Unlock()

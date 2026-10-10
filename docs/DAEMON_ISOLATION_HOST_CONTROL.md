@@ -38,7 +38,18 @@ default-TUN reference, an enable flag, and an opaque `ResourceDNS` endpoint.
 Trusted bootstrap registers that endpoint from the bounded R/N DNS relay; R
 cannot register a provider or select a native DNS mechanism. The endpoint
 provides the application resolver only. Provider selection and host DNS changes
-stay in N. DNS packet processing and application resolution stay in R.
+stay in N. Application resolver/node code stays in R. The native provider and
+managed DNS proxy may parse and forward DNS in trusted N. A bounded relay to
+R's resolver does not require moving or executing that resolver's code in N.
+`ApplicationDNSEndpoint` and runtime `ServeDNS` implement this path over the
+authenticated packet lane with bounded concurrency and correlation checks.
+
+The revised production design reuses native providers and their host access.
+It does not require a separate DNS writer, D-Bus helper, or upstream provider
+split. The generic file/command/native-operation prohibitions apply to the API
+offered to R, not to trusted provider internals. The checkpoint-24 Linux matrix
+qualifies split DNS, dynamic upstream changes, and bypass behavior. Equivalent
+Windows provider parity remains a later platform requirement.
 
 Enable and disable are retained mutations. They use operation receipts, update
 the default-TUN generation, and report rejected, committed, or uncertain
@@ -89,9 +100,9 @@ go test ./bin/internal/isolation/network -run '^$' -fuzz '^FuzzHostControlValida
 
 Native Linux route, firewall, DNS, and strict-mode checks must run only in the
 documented disposable Docker network namespace. Windows native checks must run
-only in the disposable Windows VM. Final restricted-role crash persistence and
-the complete platform capability matrix remain checkpoint 24, 25, 30, and 31
-qualification work.
+only in the disposable Windows VM. Linux profile qualification is complete in
+checkpoint 24. Final restricted-role crash persistence, Windows qualification,
+and complete daemon composition remain checkpoint 25, 30, and 31 work.
 
 Verified on 2026-10-09:
 

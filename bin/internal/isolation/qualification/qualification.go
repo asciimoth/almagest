@@ -98,6 +98,7 @@ var commonBoundaryChecks = []string{
 	"broker_exhaustion", "all_runtime_threads_restricted", "unexpected_inherited_handles",
 	"host_file_access", "host_native_socket_access", "broker_process_or_token_access",
 	"callback_origin_forgery", "malicious_regular_config_restart", "control_progress_under_overload",
+	"backend_node_code_absent", "backend_generic_host_api_denied",
 }
 
 var commonRestrictionChecks = []string{
@@ -108,9 +109,14 @@ var manifests = map[string]Manifest{
 	"linux-amd64-v1": {
 		Profile:  "linux-amd64-v1",
 		Platform: Platform{OS: "linux", Architecture: "amd64"},
-		Features: commonFeatures, BoundaryChecks: commonBoundaryChecks,
+		Features: append(slices.Clone(commonFeatures),
+			"ebpf_process_filtering", "process_rule_kernel_and_userspace_matching",
+			"process_rule_existing_socket_marks", "process_rule_fork_exec_exit",
+			"process_owner_lookup", "dns_provider_selection"),
+		BoundaryChecks:    commonBoundaryChecks,
 		RestrictionChecks: commonRestrictionChecks,
-		NativeChecks:      []string{"low_high_ephemeral_wildcard_bind", "ipv4_ipv6", "tun_packet_flow", "route_firewall_dns_cleanup", "matcher_lifecycle", "namespace_and_capability_state"},
+		NativeChecks: []string{"low_high_ephemeral_wildcard_bind", "ipv4_ipv6", "tun_packet_flow", "route_firewall_dns_cleanup", "matcher_lifecycle", "namespace_and_capability_state",
+			"process_backend_authority", "process_backend_runtime_request_denial", "process_backend_cleanup"},
 	},
 	"windows-server-2022-amd64-v1": {
 		Profile:  "windows-server-2022-amd64-v1",

@@ -1,6 +1,7 @@
 # Daemon isolation implementation plan
 
-Status: proposed implementation plan. This document does not implement isolation.
+Status: implementation tracking plan. Component completion does not enable
+production isolation; complete-daemon qualification remains open.
 Progress: checkpoints 1 through 7 are complete. Checkpoint 8 implementation and
 platform acceptance are complete; its controlled same-host performance
 comparison remains open. Checkpoint 9 implementation is complete; its numeric
@@ -15,6 +16,17 @@ experiments, and only then select the isolated data paths.
 
 Role names follow the architecture: R is the runtime, N is the network broker,
 C is the optional config writer, and H is an optional restricted helper.
+
+Design revision, 2026-10-10: isolate node/application code in R; treat the
+native sysnet backend in N as trusted host code. Preserve R's full Linux or
+Windows sandbox, C's fixed-target boundary, and node-command H restrictions.
+N may retain launch authority and native DNS/process integration. Separate
+DNS/BPF helpers and upstream API changes are no longer prerequisites. Earlier
+restricted-N experiments remain historical evidence, not release requirements.
+Checkpoint 24 implements and qualifies the revised Linux profile components.
+Checkpoint 25 remains open for the equivalent Windows work. Completing a
+platform profile does not enable production isolation; composition,
+supervision, recovery, rollout, and default-mode gates remain later checkpoints.
 
 ## Delivery rules
 
@@ -125,9 +137,9 @@ Work:
 - Extract native system construction and host control from daemon orchestration.
   Make an inventory of every used sysnet, Gonnect, TUN, resolver, and matcher
   method, including optional methods and native fast-path consumers.
-- Separate DNS packet processing from host DNS configuration. Put packet parsing
-  and forwarding in runtime-owned code; keep host changes in the local network
-  service. Make necessary dependency changes as separately tested changes.
+- Keep application DNS nodes in runtime-owned code. The local network service
+  may own the existing backend DNS provider and proxy, including packet
+  processing. Do not require dependency refactors solely to split backend DNS.
 - Preserve the direct backend's socket/TUN access, batching, errors, deadlines,
   capability reports, and truthful `IsNative()` values. Avoid a per-packet
   execution-mode branch.
@@ -297,16 +309,18 @@ Work:
   filesystem view. Test all Go threads and runtime operations.
 - Check Landlock ABI and thread-wide enforcement options; do not assume locking
   one Go thread restricts the others. Test any allowed equivalent profile.
-- Probe TUN, socket, BPF, DNS-provider, and partial-privilege behavior after the
-  restrictions. Identify helper requirements without broadening privileges.
+- Probe TUN, socket, BPF, DNS-provider, and partial-privilege behavior in N's
+  selected launch environment. Keep backend access separate from R's sandbox;
+  identify actual native requirements without adding missing launch authority.
 
 Acceptance:
 
 - Record supported kernel/profile combinations and explicit failure reasons.
   Ordinary Go execution works; forbidden host files, process creation, raw
   sockets, token/descriptor theft, and host administration from R fail.
-- Retained rights match the selected backend features. No experiment silently
-  adds `CAP_SYS_ADMIN`, elevation, or unrestricted execution to make it pass.
+- Record retained backend rights, including existing `CAP_SYS_ADMIN` when a
+  native operation needs it. No experiment elevates the caller, grants those
+  rights to R, or silently bypasses R's required restrictions.
 - Results are reproducible. The production direct daemon is unchanged.
 
 ## 11. Experiment: Windows restrictions and native resource access
@@ -495,16 +509,18 @@ Status: component implementation is complete in
 `bin/internal/isolation/network`. Linux direct-DNS and Windows managed-DNS
 native component checks pass.
 See the [host-control implementation and verification notes](DAEMON_ISOLATION_HOST_CONTROL.md).
-Production isolated startup remains disabled; complete Linux provider,
-restricted-role, and daemon-profile qualification remain later gates.
+Production isolated startup remains disabled. Checkpoint 24 now qualifies the
+Linux provider and restricted-role profile; complete daemon qualification
+remains a later gate.
 
 Work:
 
 - Add typed route, firewall, strict-mode, and host DNS changes with ownership
-  records, apply results, and safe cleanup. Keep DNS packet parsing in R.
-- Implement Linux provider-specific paths for resolved, NetworkManager, fixed
-  resolvconf execution, or a fixed DNS-file writer as needed. Do not provide
-  arbitrary D-Bus calls, file writes, or executable selection.
+  records, apply results, and safe cleanup. Keep application DNS nodes in R;
+  backend DNS parsing and forwarding may stay in N.
+- Reuse the native Linux providers for resolved, NetworkManager, resolvconf,
+  and direct-file DNS in N. Extra helpers are optional. Do not expose arbitrary
+  D-Bus calls, file writes, or executable selection to R.
 - Preserve Windows WFP, split-driver, managed-DNS, underlay, and global-feature
   constraints. Do not expose driver installation or raw driver requests to R.
 
@@ -590,9 +606,11 @@ Work:
   and protected execution profiles. Enforce `AllowNodes` inside H.
 - Use a distinct N-to-H callback channel. Derive callback slots from N's actual
   committed event, not an event name or node identity claimed by R.
-- Give DNS/BPF helpers only their selected fixed functions. Reject shell or
-  interpreter profiles that cannot meet the initial isolated restrictions.
-  Preserve legacy configured commands in direct mode.
+- Keep node-command H restricted. Reject node-command shell or interpreter
+  profiles that cannot meet those restrictions. Backend-owned DNS utilities
+  and BPF operations may run in N; they are not node-command execution paths.
+  R cannot select their programs or supply scripts. Preserve legacy configured
+  commands in direct mode.
 
 Acceptance:
 
@@ -701,32 +719,74 @@ Acceptance:
 
 ## 24. Implement the Linux production profiles
 
-Status: Linux amd64 restriction components and their Docker qualification
-harness are implemented in `bin/native/linux-role` and
-`bin/internal/isolation/linuxprofile`. Complete profile acceptance remains open
-for native backend/helper compatibility and deployment resource provisioning.
-Production isolated startup remains disabled.
+Status: complete for the Linux amd64 production profile components and their
+component-level platform tests. Full combined feature acceptance remains in
+checkpoint 30. R/C/H restrictions are implemented in
+`bin/native/linux-role` and `bin/internal/isolation/linuxprofile`.
+`linuxprofile.PrepareBackend` prepares trusted bootstrap as N in place without
+changing its launch credentials or host namespaces. `ProvisionCgroups` creates
+separate bounded role cgroups below a delegated instance and gives N a higher
+CPU weight. Production isolation stays disabled until the later composition,
+supervision, deployment, and default-mode checkpoints. The obsolete restricted-N
+launcher path is removed; `network` now identifies only its cgroup.
+
+The dedicated trusted-backend Docker case now compares direct and prepared
+native backend behavior for direct-provider DNS, default TUN, routing, cleanup,
+and userspace process-owner matching. A separate Docker matrix qualifies all
+sysnet-linux v0.10.1 DNS modes, including no-upstream fallbacks, split DNS, and
+dynamic resolved interface selection. The released p-mark v0.5.0 networkless
+guest suite qualifies tracepoint and cgroup programs, authoritative kernel
+rules, userspace reconciliation of existing sockets, and process-map churn.
+sysnet-linux v0.10.1 contains the corresponding consumer E2E checks for
+automatic construction, routing, user marks, repeated fork/exec/exit socket
+probes, and teardown, so no downstream source patch is required.
+The provider matrix and guest run upstream fixtures, not PrepareBackend or a
+complete isolated daemon. A combined case runs the real broker against restricted R
+for TCP/UDP, owner matching, regular/default TUN, and peer-loss cleanup. It
+found and removed a redundant channel socket-option write without weakening
+R's syscall rules. Bootstrap identity selection and persistent storage quotas
+are deployment inputs for later daemon assembly; they do not restrict N or
+change this profile boundary.
+Runtime OutDNS now forwards bounded DNS packets to the existing native provider,
+without requiring an upstream snapshot. The restricted-runtime Docker case
+checks this path before and during a default TUN. Application-resolver attachment
+now has a bounded correlated relay. The native composition test attaches it to
+the default TUN, sends a real DNS query through N's managed listener, executes
+the application resolver in R, and validates the reply and cleanup.
 
 See the [Linux role profile implementation and qualification notes](DAEMON_ISOLATION_LINUX_PROFILES.md).
 
 Work:
 
-- Apply the qualified profile from section 10 before untrusted initialization:
+- Apply the qualified R profile from section 10 before untrusted initialization:
   namespaces, minimal mounts, runtime identity, capability/securebits drop,
   `no_new_privs`, thread-wide syscall/filesystem restrictions, and resource limits.
-- Keep N in the host network context with only available rights needed by its
-  selected features. Restrict C and H independently. Do not use unsafe Go work
-  after fork in a multithreaded process.
-- Qualify optional BPF loading, DNS helpers, and supported rootless profiles.
-  Ensure setup-only authority is dropped when no longer needed.
+- Keep N in the host context with its available launch identity and rights
+  needed by the native backend. Do not force N through R's private PID/mount
+  view or network-only capability mask. Permit native DNS providers, installed
+  backend utilities, BPF loading, process inspection, and existing-socket marks
+  in N. No mandatory DNS/p-mark refactor or helper split is required.
+- Restrict C and node-command H independently. Keep node code, application
+  callbacks, config/archive parsing, and runtime-selected programs out of N.
+  Do not use unsafe Go work after fork in a multithreaded process.
+- Qualify full backend behavior and supported rootless profiles. Drop only
+  authority not needed after setup; never add authority missing at launch.
+  Optional N hardening must not remove features available in direct mode.
 
 Acceptance:
 
 - Adversarial code in every R thread cannot access host proc/sys/run services,
   create host-native sockets outside approved handles, execute children, mount,
   trace other roles, or obtain broker descriptors.
-- All implemented features work under final restrictions, not only before the
-  sandbox is installed. Capabilities are measured after setup.
+- All implemented features work with R fully restricted and N in its final
+  launch environment. Measure retained credentials/capabilities after setup.
+  Compare DNS provider selection, eBPF kernel/userspace rules, process lifecycle,
+  existing-socket marks, owner matching, routing, TUN and ordinary sockets with
+  direct mode under equal launch authority. Disabled features are not parity.
+- Hostile R cannot use N's retained authority through generic path, executable,
+  BPF, D-Bus, process-handle, or raw native-operation requests. Session ownership,
+  validation, bounds, callback provenance, cleanup, and private IPC remain
+  mandatory. Backend-internal DNS parsing is allowed; node code in N is not.
 - Missing required restrictions stop isolated startup with no downgrade. An
   unsupported rootless profile offers explicit `--no-isolation`, without
   elevation; direct mode remains unaffected.
@@ -744,10 +804,15 @@ See the [Windows role profile implementation and qualification notes](DAEMON_ISO
 Work:
 
 - Apply the qualified restricted-token/AppContainer profile, integrity/ACL
-  layout, exact handle list, mitigations, and job before resuming each role.
-- Limit N's token/service identity to required native operations. Keep protected
-  executable/DLL locations and explicit driver-loading rules. Never give R the
-  split-driver control handle.
+  layout, exact handle list, mitigations, and job to R before node initialization.
+  Keep C and node-command H in their separate restricted profiles.
+- Let trusted N retain the caller or service token needed by sysnet-windows.
+  Do not require R's AppContainer, maximum-privilege removal, or ordinary-user
+  identity for service N. Backend DNS, process inspection, WFP and driver control
+  may remain in N. No automatic elevation or service attachment is permitted.
+- Keep protected executable/DLL locations, private IPC ACLs, and explicit
+  driver-provisioning rules. Never give R token, process, or driver-control
+  handles. Do not require extra DNS/driver helpers solely to restrict N.
 - Apply separate C/H identities and target ACLs. Preserve the qualified public
   admin pipe separately from private broker channels.
 
@@ -882,9 +947,9 @@ Acceptance:
 ## 30. Qualify feature parity and the hostile-runtime boundary
 
 Status: the fail-closed qualification manifest and development-only evidence
-entry point are implemented. No Linux or Windows profile is qualified yet.
-The known native backend and deployment gaps from checkpoints 24 and 25 remain
-release blockers, so production isolated startup remains disabled.
+entry point are implemented. The Linux profile components from checkpoint 24
+are qualified; the Windows profile and complete daemon composition remain open.
+Production isolated startup remains disabled.
 
 See the [complete-profile qualification gate](DAEMON_ISOLATION_QUALIFICATION.md).
 

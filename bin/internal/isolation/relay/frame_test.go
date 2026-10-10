@@ -20,7 +20,7 @@ func (*memoryStream) Close() error                     { return nil }
 func (*memoryStream) SetReadDeadline(time.Time) error  { return nil }
 func (*memoryStream) SetWriteDeadline(time.Time) error { return nil }
 func fixture() Frame {
-	return Frame{Metadata: protocol.DataMetadata{Version: 1, Session: "01000000000000000000000000000000", SessionEpoch: 1, Resource: "02000000000000000000000000000000", Generation: 1, GraphEpoch: 1, Sequence: 1, Records: []protocol.DataRecord{{Request: 1, Length: 3}}}, Payload: []byte("abc")}
+	return Frame{Metadata: protocol.DataMetadata{Version: protocol.DataVersion, Session: "01000000000000000000000000000000", SessionEpoch: 1, Resource: "02000000000000000000000000000000", Generation: 1, GraphEpoch: 1, Sequence: 1, Records: []protocol.DataRecord{{Request: 1, Length: 3}}}, Payload: []byte("abc")}
 }
 func TestDataFrame(t *testing.T) {
 	f := fixture()

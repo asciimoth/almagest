@@ -86,6 +86,9 @@ func (s *nativeSocket) WriteData(p []byte, meta *protocol.PacketMetadata) (int, 
 	if meta == nil {
 		return 0, protocol.ErrCapabilityUnsupported
 	}
+	if meta.DNS != nil {
+		return 0, protocol.ErrInvalidContract
+	}
 	if s.multicast != nil {
 		if meta.Source != nil || meta.HopLimit != nil || meta.TrafficClass != nil {
 			return 0, protocol.ErrCapabilityUnsupported

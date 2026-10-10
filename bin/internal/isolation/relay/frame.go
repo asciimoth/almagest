@@ -1,4 +1,4 @@
-// Package relay implements the version 1 byte and packet channel. It has no
+// Package relay implements the versioned byte and packet channel. It has no
 // native network constructor and does not participate in direct mode.
 package relay
 
@@ -47,6 +47,9 @@ func (f Frame) Validate() error {
 			}
 		} else {
 			if r.Length > protocol.MaxPacketRecord || r.Packet.OriginalLength < r.Length || r.Packet.Truncated != (r.Packet.OriginalLength > r.Length) {
+				return protocol.ErrInvalidContract
+			}
+			if r.Packet.DNS != nil && r.Packet.DNS.Correlation == 0 {
 				return protocol.ErrInvalidContract
 			}
 			if r.Packet.Source != nil && !r.Packet.Source.IsValid() || r.Packet.Destination != nil && !r.Packet.Destination.IsValid() {

@@ -417,6 +417,9 @@ const (
 	SocketListenUDP    SocketKind = "listen_udp"
 	SocketPacketUDP    SocketKind = "packet_udp"
 	SocketMulticastUDP SocketKind = "multicast_udp"
+	// SocketResolver is a packet channel to the backend's OutDNS provider.
+	// It accepts no address, transport selector, or native socket options.
+	SocketResolver SocketKind = "resolver"
 )
 
 type SocketOptions struct {

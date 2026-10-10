@@ -13,7 +13,8 @@ import (
 // OwnedDNSEndpoint is a bootstrap-created, bounded relay to R. Resolver is
 // consumed only by the selected native backend. It does not expose a host DNS
 // provider, file, command, D-Bus connection, WFP object, or driver handle.
-// Implementations must keep DNS packet parsing and application resolution in R.
+// Application resolution stays in R. Native backend DNS parsing may run in N;
+// this relay does not grant R general host DNS control.
 type OwnedDNSEndpoint interface {
 	OwnedTun
 	Resolver() gdns.Interface

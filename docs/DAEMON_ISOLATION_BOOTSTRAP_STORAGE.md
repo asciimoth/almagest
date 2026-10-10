@@ -16,6 +16,14 @@ and 25 have not installed production restriction profiles. A dependency test
 keeps the daemon runtime, nodes, panel, ZIP, bbolt, Configer, and native sysnet
 backends out of these privileged role binaries.
 
+This describes the current entry stubs, not the final backend dependency rule.
+Under the revised trusted-backend design, N must load its native sysnet backend
+without loading node or daemon-runtime code. C must still exclude that backend.
+The final dependency tests must distinguish these roles. On Linux, trusted
+bootstrap can become N in place through `linuxprofile.PrepareBackend`; it must
+start restricted children before that preparation and accept requests only
+after preparation succeeds. Production composition is not connected yet.
+
 `LaunchSpec` fixes an absolute executable, trusted native libraries, a trusted
 working directory, one assigned role, and a complete environment. It does not
 search `PATH`. It rejects duplicate variables and loader variables such as

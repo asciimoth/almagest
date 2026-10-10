@@ -49,9 +49,19 @@ qualify-direct:
 linux-isolation-experiment evidence='':
   ./dev/linux-isolation/run.sh {{quote(evidence)}}
 
-# Check the Linux role profiles only inside disposable, bounded containers.
+# Check Linux profiles in disposable containers and a networkless VM.
 linux-isolation-profiles evidence='':
   bash ./dev/linux-profiles/run.sh {{quote(evidence)}}
+
+# Check the Linux p-mark/eBPF lifecycle inside a disposable VM. The runner uses
+# KVM when available and otherwise uses QEMU TCG. The
+# guest has no network device and cannot change host network or process state.
+linux-isolation-pmark-guest evidence='':
+  bash ./dev/linux-profiles/run-pmark-guest.sh {{quote(evidence)}}
+
+# Check every sysnet-linux v0.10.1 DNS provider in disposable Docker networks.
+linux-isolation-dns-matrix evidence='':
+  bash ./dev/linux-profiles/run-dns-matrix.sh {{quote(evidence)}}
 
 # Run checkpoint 11 with caller-derived and service-derived AppContainers in
 # the locked disposable Windows VM.

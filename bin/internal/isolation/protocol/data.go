@@ -23,6 +23,13 @@ type PacketMetadata struct {
 	TrafficClass   *uint8          `json:"trafficClass"`
 	OriginalLength uint32          `json:"originalLength"`
 	Truncated      bool            `json:"truncated"`
+	// DNS is present only on a ResourceDNS application-resolver relay. Native
+	// socket ancillary data and TUN packets must not use it.
+	DNS *DNSMetadata `json:"dns"`
+}
+
+type DNSMetadata struct {
+	Correlation uint64 `json:"correlation"`
 }
 
 type DataRecord struct {

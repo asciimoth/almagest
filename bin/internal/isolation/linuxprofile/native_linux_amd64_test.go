@@ -32,9 +32,6 @@ func launchNative(t *testing.T, role Role, change func(*exec.Cmd)) ([]byte, erro
 	t.Helper()
 	nativeEnvironment(t)
 	p := Plan{Role: role, UID: 65534, GID: 65534, Limits: DefaultLimits()}
-	if role == Network {
-		p.Capabilities = NetworkCapabilities
-	}
 	state := t.TempDir()
 	if err := os.Chmod(state, 0700); err != nil {
 		t.Fatal(err)
@@ -75,15 +72,12 @@ func launchNative(t *testing.T, role Role, change func(*exec.Cmd)) ([]byte, erro
 		return reader
 	}
 	in.Diagnostics = lane()
-	if role == Runtime || role == Network {
+	if role == Runtime {
 		in.Data = lane()
 		in.Admin = lane()
 	}
 	if role == Command {
 		in.Command = open("/qualification/command")
-	}
-	if role == Network && os.Getenv("ALMAGEST_PROFILE_TUN") == "1" {
-		in.Tun = open("/dev/net/tun")
 	}
 	cmd, err := CommandContext(ctx, p, in)
 	if err != nil {
@@ -112,7 +106,7 @@ func launchNative(t *testing.T, role Role, change func(*exec.Cmd)) ([]byte, erro
 }
 
 func TestNativeRoles(t *testing.T) {
-	for _, role := range []Role{Runtime, Network, Writer, Command} {
+	for _, role := range []Role{Runtime, Writer, Command} {
 		t.Run(string(role), func(t *testing.T) {
 			output, err := launchNative(t, role, nil)
 			if err != nil {
@@ -146,25 +140,6 @@ func TestNativeRoles(t *testing.T) {
 	}
 }
 
-func TestNativeSystemBackend(t *testing.T) {
-	nativeEnvironment(t)
-	if os.Getenv("ALMAGEST_PROFILE_TUN") != "1" {
-		t.Skip("the backend acceptance case requires the dedicated TUN container")
-	}
-	output, err := launchNative(t, Network, func(cmd *exec.Cmd) {
-		file, err := os.Open("/qualification/native-system-probe")
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() { _ = file.Close() })
-		cmd.ExtraFiles[1] = file
-	})
-	if err != nil {
-		t.Fatalf("restricted native backend: %v\n%s", err, output)
-	}
-	t.Logf("%s", output)
-}
-
 func TestNativeRejectsUnsafeInputs(t *testing.T) {
 	cases := map[string]func(*exec.Cmd){
 		"missing-channel":      func(c *exec.Cmd) { c.ExtraFiles[0] = nil },
@@ -175,6 +150,7 @@ func TestNativeRejectsUnsafeInputs(t *testing.T) {
 		"file-storage":         func(c *exec.Cmd) { c.ExtraFiles[2] = c.ExtraFiles[1] },
 		"root-uid":             func(c *exec.Cmd) { c.Args[3] = "0" },
 		"unknown-role":         func(c *exec.Cmd) { c.Args[2] = "dns-unrestricted" },
+		"backend-role":         func(c *exec.Cmd) { c.Args[2] = "network" },
 		"overflow":             func(c *exec.Cmd) { c.Args[3] = "18446744073709551616" },
 		"signed":               func(c *exec.Cmd) { c.Args[3] = "+65534" },
 		"cap-expansion":        func(c *exec.Cmd) { c.Args[5] = "2097152" },
@@ -247,7 +223,7 @@ func TestNativeRequiredRestrictions(t *testing.T) {
 	if os.Getenv("ALMAGEST_PROFILE_EXPECT_UNAVAILABLE") != "1" {
 		t.Skip("requires deliberately missing restrictions")
 	}
-	for _, role := range []Role{Runtime, Network, Writer, Command} {
+	for _, role := range []Role{Runtime, Writer, Command} {
 		t.Run(string(role), func(t *testing.T) {
 			output, err := launchNative(t, role, nil)
 			if err == nil || !bytes.Contains(output, []byte("--no-isolation")) || bytes.Contains(output, []byte(`"Checks"`)) {
@@ -286,7 +262,7 @@ func FuzzNativeArguments(f *testing.F) {
 
 func TestSealFilter(t *testing.T) {
 	// Inspect BPF without restricting the test runner or any host process.
-	for _, role := range []Role{Runtime, Network, Writer, Command} {
+	for _, role := range []Role{Runtime, Writer, Command} {
 		f := sealFilter(role)
 		for _, tc := range []struct{ arch, call, want uint32 }{
 			{unix.AUDIT_ARCH_I386, unix.SYS_READ, unix.SECCOMP_RET_KILL_PROCESS},
@@ -304,6 +280,9 @@ func TestSealFilter(t *testing.T) {
 		if evaluateFilter(t, f, unix.AUDIT_ARCH_X86_64, unix.SYS_EXECVE) != want {
 			t.Fatal("exec policy")
 		}
+	}
+	if err := Seal(Network); err == nil {
+		t.Fatal("trusted backend accepted by restricted seal")
 	}
 	if err := Seal("unknown"); err == nil {
 		t.Fatal("unknown role")
@@ -331,7 +310,7 @@ func TestHeldLaunchContract(t *testing.T) {
 	}
 	for _, missing := range []func(*Inputs){func(i *Inputs) { i.Launcher = nil }, func(i *Inputs) { i.Control = nil },
 		func(i *Inputs) { i.Executable = nil }, func(i *Inputs) { i.Directory = nil }, func(i *Inputs) { i.Cgroup = nil },
-		func(i *Inputs) { i.Command = f }, func(i *Inputs) { i.Tun = f }} {
+		func(i *Inputs) { i.Command = f }} {
 		bad := in
 		missing(&bad)
 		if _, err := CommandContext(context.Background(), p, bad); err == nil {

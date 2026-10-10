@@ -10,8 +10,6 @@
 #include <linux/landlock.h>
 #include <linux/magic.h>
 #include <linux/mount.h>
-#include <linux/if_tun.h>
-#include <linux/sockios.h>
 #include <linux/securebits.h>
 #include <poll.h>
 #include <sched.h>
@@ -29,7 +27,6 @@
 #include <sys/stat.h>
 #include <sys/statfs.h>
 #include <sys/syscall.h>
-#include <sys/sysmacros.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -43,13 +40,12 @@
 #define LANDLOCK_ACCESS_FS_TRUNCATE (1ULL << 14)
 #endif
 
-enum role { RUNTIME, NETWORK, WRITER, COMMAND };
+enum role { RUNTIME, WRITER, COMMAND };
 struct plan {
 	enum role role;
 	uid_t uid;
 	gid_t gid;
 	uint64_t caps, descriptors, file_bytes, memory_bytes, tasks, cpu;
-	bool tun;
 	unsigned channels;
 };
 
@@ -78,7 +74,6 @@ static struct plan parse(int argc, char **argv) {
 	require(argc == 11 && strcmp(argv[1], "v1") == 0, "launcher ABI v1");
 	struct plan p = {0};
 	if (strcmp(argv[2], "runtime") == 0) p.role = RUNTIME;
-	else if (strcmp(argv[2], "network") == 0) p.role = NETWORK;
 	else if (strcmp(argv[2], "writer") == 0) p.role = WRITER;
 	else if (strcmp(argv[2], "command") == 0) p.role = COMMAND;
 	else require(false, "closed role selection");
@@ -88,8 +83,7 @@ static struct plan parse(int argc, char **argv) {
 	p.caps = number(argv[5]); p.descriptors = number(argv[6]);
 	p.file_bytes = number(argv[7]); p.memory_bytes = number(argv[8]);
 	p.tasks = number(argv[9]); p.cpu = number(argv[10]);
-	uint64_t allowed = (1ULL << CAP_NET_ADMIN) | (1ULL << CAP_NET_BIND_SERVICE);
-	require((p.caps & ~allowed) == 0 && (p.role == NETWORK || p.caps == 0), "role capabilities");
+	require(p.caps == 0, "role capabilities must be zero");
 	require(p.descriptors >= 32 && p.descriptors <= 65536 && p.file_bytes >= (1ULL << 20) &&
 		p.file_bytes <= (1ULL << 40) && p.memory_bytes >= (32ULL << 20) && p.memory_bytes <= (1ULL << 40) &&
 		p.tasks >= 8 && p.tasks <= 4096 && p.cpu >= 1000 && p.cpu <= 6400000, "resource ceilings");
@@ -168,7 +162,7 @@ static void check_descriptors(struct plan *p) {
 	}
 	for (int fd = 9; fd <= 11; fd++) {
 		if (fcntl(fd, F_GETFD) == -1) { require(errno == EBADF, "inspect optional channel"); continue; }
-		require(fd == 10 || p->role == RUNTIME || p->role == NETWORK, "role channel selection");
+		require(fd == 10 || p->role == RUNTIME, "role channel selection");
 		int domain = 0, type = 0; socklen_t length = sizeof(int);
 		if (getsockopt(fd, SOL_SOCKET, SO_DOMAIN, &domain, &length) == -1 ||
 			getsockopt(fd, SOL_SOCKET, SO_TYPE, &type, &length) == -1) fail("optional channel type");
@@ -179,13 +173,6 @@ static void check_descriptors(struct plan *p) {
 	}
 	check_executable(4);
 	if (p->role == COMMAND) check_executable(7);
-	if (p->role == NETWORK && fcntl(7, F_GETFD) != -1) {
-		struct stat device;
-		if (fstat(7, &device) == -1) fail("inspect TUN input");
-		require(S_ISCHR(device.st_mode) && major(device.st_rdev) == 10 && minor(device.st_rdev) == 200,
-			"only the Linux TUN device can be mounted");
-		p->tun = true;
-	}
 	struct stat st;
 	if (fstat(5, &st) == -1) fail("inspect role storage");
 	require(S_ISDIR(st.st_mode) && st.st_uid == p->uid && st.st_gid == p->gid &&
@@ -222,14 +209,8 @@ static void filesystem(const struct plan *p) {
 	 * check_mnt; resolving a pathname again would reintroduce a path race. */
 	int state_mount = (int)syscall(SYS_open_tree, 5, "", AT_EMPTY_PATH | OPEN_TREE_CLONE | OPEN_TREE_CLOEXEC);
 	if (state_mount == -1) fail("clone held role directory");
-	int tun_mount = -1;
-	if (p->tun) {
-		tun_mount = (int)syscall(SYS_open_tree, 7, "", AT_EMPTY_PATH | OPEN_TREE_CLONE | OPEN_TREE_CLOEXEC);
-		if (tun_mount == -1) fail("clone held TUN device");
-	}
 	/* unshare precedes propagation changes: never alter the parent mount tree. */
-	int flags = CLONE_NEWNS | CLONE_NEWIPC | CLONE_NEWUTS;
-	if (p->role != NETWORK) flags |= CLONE_NEWNET;
+	int flags = CLONE_NEWNS | CLONE_NEWIPC | CLONE_NEWUTS | CLONE_NEWNET;
 	if (unshare(flags) == -1) fail("create role namespaces");
 	if (mount(NULL, "/", NULL, MS_REC | MS_PRIVATE, NULL) == -1) fail("private mount propagation");
 	if (sethostname("almagest-role", 13) == -1) fail("private hostname");
@@ -244,14 +225,6 @@ static void filesystem(const struct plan *p) {
 	if (syscall(SYS_move_mount, state_mount, "", AT_FDCWD, "state", MOVE_MOUNT_F_EMPTY_PATH) == -1) fail("mount held role directory");
 	if (close(state_mount) == -1) fail("close detached mount");
 	if (mount(NULL, "state", NULL, MS_BIND | MS_REMOUNT | MS_NOSUID | MS_NODEV | MS_NOEXEC, NULL) == -1) fail("restrict role directory");
-	if (p->tun) {
-		make_dir("dev", 0755); make_dir("dev/net", 0755);
-		int placeholder = open("dev/net/tun", O_CREAT | O_EXCL | O_WRONLY | O_CLOEXEC, 0600);
-		if (placeholder == -1 || close(placeholder) == -1 ||
-			syscall(SYS_move_mount, tun_mount, "", AT_FDCWD, "dev/net/tun", MOVE_MOUNT_F_EMPTY_PATH) == -1 ||
-			close(tun_mount) == -1) fail("mount fixed TUN endpoint");
-		if (mount(NULL, "dev/net/tun", NULL, MS_BIND | MS_REMOUNT | MS_NOSUID | MS_NOEXEC, NULL) == -1) fail("restrict TUN mount");
-	}
 	copy_executable(4, "role");
 	if (p->role == COMMAND) copy_executable(7, "command");
 	/* A readable sentinel verifies Landlock separately from namespace hiding. */
@@ -261,39 +234,19 @@ static void filesystem(const struct plan *p) {
 		umount2("/oldroot", MNT_DETACH) == -1 || rmdir("/oldroot") == -1) fail("detach host filesystem");
 }
 
-static uint64_t drop_identity(const struct plan *p) {
+static void drop_identity(const struct plan *p) {
 	struct __user_cap_header_struct header = {.version = _LINUX_CAPABILITY_VERSION_3};
 	struct __user_cap_data_struct data[2] = {{0}};
-	if (syscall(SYS_capget, &header, data) == -1) fail("read launch capabilities");
-	uint64_t available = ((uint64_t)data[1].permitted << 32) | data[0].permitted;
-	uint64_t keep = available & p->caps;
 	for (int cap = 0; cap < 64; cap++) {
-		if (!(keep & (1ULL << cap)) && prctl(PR_CAPBSET_DROP, cap, 0, 0, 0) == -1 && errno != EINVAL) fail("drop capability bounding set");
+		if (prctl(PR_CAPBSET_DROP, cap, 0, 0, 0) == -1 && errno != EINVAL) fail("drop capability bounding set");
 	}
 	unsigned bits = SECBIT_NOROOT | SECBIT_NOROOT_LOCKED | SECBIT_NO_SETUID_FIXUP |
-		SECBIT_NO_SETUID_FIXUP_LOCKED | SECBIT_KEEP_CAPS_LOCKED;
-	/* Ambient bits carry only N's reviewed network rights through the one exec.
-	 * The final bounding set prevents any later ambient privilege expansion. */
-	if (!keep) bits |= SECBIT_NO_CAP_AMBIENT_RAISE | SECBIT_NO_CAP_AMBIENT_RAISE_LOCKED;
+		SECBIT_NO_SETUID_FIXUP_LOCKED | SECBIT_KEEP_CAPS_LOCKED |
+		SECBIT_NO_CAP_AMBIENT_RAISE | SECBIT_NO_CAP_AMBIENT_RAISE_LOCKED;
 	if (prctl(PR_SET_SECUREBITS, bits, 0, 0, 0) == -1 || setgroups(0, NULL) == -1 ||
 		setresgid(p->gid, p->gid, p->gid) == -1 || setresuid(p->uid, p->uid, p->uid) == -1) fail("drop role identity");
-	uint64_t setup = keep ? keep | (1ULL << CAP_SETPCAP) : 0;
-	for (unsigned i = 0; i < 2; i++) {
-		data[i].effective = data[i].permitted = (uint32_t)(setup >> (i * 32));
-		data[i].inheritable = (uint32_t)(keep >> (i * 32));
-	}
 	if (syscall(SYS_capset, &header, data) == -1 || prctl(PR_CAP_AMBIENT, PR_CAP_AMBIENT_CLEAR_ALL, 0, 0, 0) == -1) fail("drop capability sets");
-	for (int cap = 0; cap < 64; cap++) {
-		if ((keep & (1ULL << cap)) && prctl(PR_CAP_AMBIENT, PR_CAP_AMBIENT_RAISE, cap, 0, 0) == -1) fail("retain available network capability");
-	}
-	if (keep) {
-		bits |= SECBIT_NO_CAP_AMBIENT_RAISE | SECBIT_NO_CAP_AMBIENT_RAISE_LOCKED;
-		if (prctl(PR_SET_SECUREBITS, bits, 0, 0, 0) == -1) fail("lock ambient capability changes");
-		for (unsigned i = 0; i < 2; i++) data[i].effective = data[i].permitted = (uint32_t)(keep >> (i * 32));
-		if (syscall(SYS_capset, &header, data) == -1) fail("drop final setup capability");
-	}
 	if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) == -1 || prctl(PR_SET_DUMPABLE, 0, 0, 0, 0) == -1) fail("lock process privileges");
-	return keep;
 }
 
 static void landlock_rule(int ruleset, const char *path, uint64_t rights) {
@@ -314,11 +267,9 @@ static int landlock(const struct plan *p) {
 	landlock_rule(fd, "/", LANDLOCK_ACCESS_FS_READ_DIR);
 	landlock_rule(fd, "/role", LANDLOCK_ACCESS_FS_READ_FILE | LANDLOCK_ACCESS_FS_EXECUTE);
 	if (p->role == COMMAND) landlock_rule(fd, "/command", LANDLOCK_ACCESS_FS_READ_FILE | LANDLOCK_ACCESS_FS_EXECUTE);
-	if (p->tun) landlock_rule(fd, "/dev/net/tun", LANDLOCK_ACCESS_FS_READ_FILE | LANDLOCK_ACCESS_FS_WRITE_FILE);
 	uint64_t writable = LANDLOCK_ACCESS_FS_READ_FILE | LANDLOCK_ACCESS_FS_WRITE_FILE | LANDLOCK_ACCESS_FS_READ_DIR |
 		LANDLOCK_ACCESS_FS_REMOVE_DIR | LANDLOCK_ACCESS_FS_REMOVE_FILE | LANDLOCK_ACCESS_FS_MAKE_DIR |
 		LANDLOCK_ACCESS_FS_MAKE_REG | LANDLOCK_ACCESS_FS_MAKE_SYM | LANDLOCK_ACCESS_FS_REFER | LANDLOCK_ACCESS_FS_TRUNCATE;
-	if (p->role == NETWORK) writable |= LANDLOCK_ACCESS_FS_MAKE_SOCK;
 	landlock_rule(fd, "/state", writable); landlock_rule(fd, "/tmp", writable);
 	if (syscall(SYS_landlock_restrict_self, fd, 0) == -1 || close(fd) == -1) fail("apply Landlock");
 	return abi;
@@ -347,7 +298,7 @@ static void run(const struct plan *p, int setup, int parent_pidfd) {
 	limit_resource(RLIMIT_CORE, 0); limit_resource(RLIMIT_NOFILE, p->descriptors);
 	limit_resource(RLIMIT_FSIZE, p->file_bytes); limit_resource(RLIMIT_MEMLOCK, 0);
 	umask(0077);
-	uint64_t retained = drop_identity(p);
+	drop_identity(p);
 	/* Credential changes clear PDEATHSIG. Reapply it after the final drop. */
 	if (prctl(PR_SET_PDEATHSIG, SIGKILL) == -1) fail("bind final role lifetime");
 	/* A held parent pidfd closes the credential-change race even though the
@@ -363,12 +314,11 @@ static void run(const struct plan *p, int setup, int parent_pidfd) {
 	}
 	if (chdir("/state") == -1) fail("fixed role working directory");
 	int abi = landlock(p);
-	char role[64], abi_env[64], caps[64];
-	const char *names[] = {"runtime", "network", "writer", "command"};
+	char role[64], abi_env[64];
+	const char *names[] = {"runtime", "writer", "command"};
 	snprintf(role, sizeof(role), "ALMAGEST_LINUX_ROLE=%s", names[p->role]);
 	snprintf(abi_env, sizeof(abi_env), "ALMAGEST_LANDLOCK_ABI=%d", abi);
-	snprintf(caps, sizeof(caps), "ALMAGEST_RETAINED_CAPS=%llu", (unsigned long long)retained);
-	char *environment[] = {role, abi_env, caps, p->tun ? "ALMAGEST_TUN_PRESENT=1" : "ALMAGEST_TUN_PRESENT=0",
+	char *environment[] = {role, abi_env, "ALMAGEST_RETAINED_CAPS=0",
 		p->channels & 1 ? "ALMAGEST_DATA_FD=9" : "ALMAGEST_DATA_FD=0",
 		p->channels & 2 ? "ALMAGEST_DIAGNOSTICS_FD=10" : "ALMAGEST_DIAGNOSTICS_FD=0",
 		p->channels & 4 ? "ALMAGEST_ADMIN_FD=11" : "ALMAGEST_ADMIN_FD=0",
@@ -392,8 +342,8 @@ int main(int argc, char **argv) {
 	if (!mkdtemp(root) || chdir(root) == -1) fail("unique role root");
 	int setup[2];
 	if (pipe2(setup, O_CLOEXEC) == -1) fail("setup completion pipe");
-	/* Set PID namespace only for children. N retains the host network context,
-	 * but no role can see host PIDs or /proc. Native process matching is gated. */
+	/* Set the PID namespace only for restricted children. Trusted N stays in
+	 * bootstrap and does not use this launcher. */
 	pid_t child = fork();
 	if (child == -1) fail("start role namespace");
 	if (child == 0) {
@@ -411,8 +361,7 @@ int main(int argc, char **argv) {
 	if (rmdir(root) == -1) fail("remove empty role mount point");
 	/* The waiting launcher has no channels or writable authority after setup. */
 	if (syscall(SYS_close_range, 3, ~0U, 0) == -1) fail("close parent descriptors");
-	struct plan waiting = p; waiting.caps = 0;
-	(void)drop_identity(&waiting);
+	drop_identity(&p);
 	int status;
 	while (waitpid(child, &status, 0) == -1) { if (errno != EINTR) fail("wait for role"); }
 	if (WIFSIGNALED(status)) fprintf(stderr, "restricted role terminated by signal %d\n", WTERMSIG(status));

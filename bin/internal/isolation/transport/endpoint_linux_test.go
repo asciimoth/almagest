@@ -22,6 +22,35 @@ func localLinuxPeer() LinuxPeer {
 	return LinuxPeer{PID: int32(os.Getpid()), UID: uint32(os.Getuid()), GID: uint32(os.Getgid())}
 }
 
+func TestLinuxBindEnablesCredentials(t *testing.T) {
+	for _, enabled := range []int{0, 1} {
+		fds, err := unix.Socketpair(unix.AF_UNIX, unix.SOCK_STREAM|unix.SOCK_CLOEXEC, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		a, b := os.NewFile(uintptr(fds[0]), "receiver"), os.NewFile(uintptr(fds[1]), "sender")
+		t.Cleanup(func() { _ = a.Close(); _ = b.Close() })
+		if err := unix.SetsockoptInt(fds[0], unix.SOL_SOCKET, unix.SO_PASSCRED, enabled); err != nil {
+			t.Fatal(err)
+		}
+		stream, err := BindSocket(a, localLinuxPeer())
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = stream.Close() })
+		if err := stream.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := b.Write([]byte("credential-checked")); err != nil {
+			t.Fatal(err)
+		}
+		data := make([]byte, len("credential-checked"))
+		if _, err := io.ReadFull(stream, data); err != nil || string(data) != "credential-checked" {
+			t.Fatalf("PASSCRED initially %d: %q, %v", enabled, data, err)
+		}
+	}
+}
+
 func linuxLanes(t *testing.T) (Lanes, Lanes) {
 	t.Helper()
 	var left, right [3]Stream

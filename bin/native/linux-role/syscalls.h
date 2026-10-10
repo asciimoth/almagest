@@ -43,23 +43,6 @@ static void apply_seccomp(const struct plan *p) {
 	}
 	if (seccomp_rule_add(f, SCMP_ACT_ALLOW, SCMP_SYS(prctl), 2,
 		SCMP_A0(SCMP_CMP_EQ, PR_SET_DUMPABLE), SCMP_A1(SCMP_CMP_EQ, 0)) < 0) fail("disable dumpability rule");
-	if (p->role == NETWORK) {
-		const int calls[] = {SCMP_SYS(bind), SCMP_SYS(connect), SCMP_SYS(listen), SCMP_SYS(accept4), SCMP_SYS(setsockopt)};
-		for (size_t i = 0; i < sizeof(calls) / sizeof(calls[0]); i++) allow_call(f, calls[i]);
-		const int domains[] = {AF_UNIX, AF_INET, AF_INET6, AF_NETLINK};
-		for (size_t i = 0; i < sizeof(domains) / sizeof(domains[0]); i++) {
-			if (seccomp_rule_add(f, SCMP_ACT_ALLOW, SCMP_SYS(socket), 1, SCMP_A0(SCMP_CMP_EQ, domains[i])) < 0) fail("network socket domain rule");
-		}
-		if (p->tun) {
-			/* tuntap uses these three network-interface operations during native
-			 * construction and MTU reads. Generic device ioctls remain denied. */
-			const unsigned long ioctls[] = {TUNSETIFF, TUNGETIFF, TUNGETFEATURES, TUNSETOFFLOAD, TUNSETVNETHDRSZ, TUNGETVNETHDRSZ, TUNSETQUEUE,
-				SIOCGIFINDEX, SIOCGIFMTU, SIOCSIFMTU};
-			for (size_t i = 0; i < sizeof(ioctls) / sizeof(ioctls[0]); i++) {
-				if (seccomp_rule_add(f, SCMP_ACT_ALLOW, SCMP_SYS(ioctl), 1, SCMP_A1(SCMP_CMP_EQ, ioctls[i])) < 0) fail("TUN ioctl rule");
-			}
-		}
-	}
 	if (p->role == COMMAND) {
 		/* Go os/exec fallback: CLONE_VM|CLONE_VFORK|SIGCHLD. A fixed static
 		 * command is the only additional executable in the filesystem. */

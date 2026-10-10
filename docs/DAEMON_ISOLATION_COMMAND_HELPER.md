@@ -40,9 +40,11 @@ or sandbox ID.
 Shell and interpreter executables are rejected. Unsupported sandbox IDs fail
 helper construction with an instruction to change the protected profile or
 use explicit direct mode. There is no generic DNS, BPF, script, file, D-Bus,
-driver, or native-operation request. A later selected DNS or BPF helper must
-add a reviewed typed function and launcher profile; it cannot use this command
-surface as an arbitrary escape hatch.
+driver, or native-operation request. These restrictions on node-command H are
+unchanged by the trusted-backend design. Backend DNS utilities and BPF operations
+may run inside N without this helper; R cannot select their executables or send
+scripts, raw BPF, or generic host requests. An optional separate backend helper
+must have its own reviewed contract, not an escape through node-command H.
 
 The executable and working-directory identity are captured at construction and
 checked before each launch. Executable content is also checked by SHA-256. The

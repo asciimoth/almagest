@@ -14,7 +14,7 @@ require (
 	github.com/asciimoth/gonnect-netstack v0.9.1
 	github.com/asciimoth/pasta/pasta v0.10.0
 	github.com/asciimoth/socksgo v0.5.0
-	github.com/asciimoth/sysnet-linux v0.8.1
+	github.com/asciimoth/sysnet-linux v0.10.1
 	github.com/asciimoth/sysnet-windows v0.5.0
 	github.com/coder/websocket v1.8.14
 	github.com/kataras/golog v0.1.15
@@ -39,7 +39,7 @@ require (
 	github.com/alexflint/go-scalar v1.2.0 // indirect
 	github.com/asciimoth/batchudp v0.3.19 // indirect
 	github.com/asciimoth/ident v0.2.0 // indirect
-	github.com/asciimoth/p-mark v0.4.0 // indirect
+	github.com/asciimoth/p-mark v0.5.0 // indirect
 	github.com/asciimoth/persist v0.2.0 // indirect
 	github.com/asciimoth/putback v0.3.0 // indirect
 	github.com/asciimoth/tor-driver v0.1.2 // indirect

@@ -12,14 +12,10 @@ type Role string
 
 const (
 	Runtime Role = "runtime"
-	Network Role = "network"
+	Network Role = "network" // Trusted backend cgroup only; never a launcher role.
 	Writer  Role = "writer"
 	Command Role = "command"
 )
-
-// Native capabilities retained by N. Setup, BPF and tracing capabilities are
-// never retained. Missing launch capabilities are not added.
-const NetworkCapabilities uint64 = 1<<10 | 1<<12 // NET_BIND_SERVICE, NET_ADMIN
 
 var ErrUnavailable = errors.New("linux isolation profile unavailable; use explicit --no-isolation")
 
@@ -45,21 +41,24 @@ func DefaultLimits() Limits {
 type Plan struct {
 	Role         Role
 	UID, GID     uint32
-	Capabilities uint64
+	Capabilities uint64 // Reserved launcher ABI field; must be zero.
 	Limits       Limits
 }
 
 func (p Plan) Validate() error {
-	if p.Role != Runtime && p.Role != Network && p.Role != Writer && p.Role != Command {
+	if p.Role != Runtime && p.Role != Writer && p.Role != Command {
 		return fmt.Errorf("%w: unknown role", ErrUnavailable)
 	}
 	if p.UID == 0 || p.GID == 0 || p.UID == ^uint32(0) || p.GID == ^uint32(0) {
 		return fmt.Errorf("%w: provision separate non-root role identities", ErrUnavailable)
 	}
-	if p.Capabilities&^NetworkCapabilities != 0 || p.Role != Network && p.Capabilities != 0 {
+	if p.Capabilities != 0 {
 		return fmt.Errorf("%w: capability expansion", ErrUnavailable)
 	}
-	l := p.Limits
+	return p.Limits.validate()
+}
+
+func (l Limits) validate() error {
 	if l.Descriptors < 32 || l.Descriptors > 65536 || l.FileBytes < 1<<20 || l.FileBytes > 1<<40 ||
 		l.MemoryBytes < 32<<20 || l.MemoryBytes > 1<<40 || l.Tasks < 8 || l.Tasks > 4096 ||
 		l.CPUQuota < 1000 || l.CPUQuota > 6400000 {
@@ -80,13 +79,4 @@ func (p Plan) Arguments() ([]string, error) {
 		args = append(args, strconv.FormatUint(n, 10))
 	}
 	return args, nil
-}
-
-// CheckFeatures rejects known profile gaps rather than reporting them as native
-// backend unavailability. Ordinary sockets do not depend on TUN/BPF authority.
-func CheckFeatures(rootless, bpf, hostDNS, processInspection bool) error {
-	if rootless || bpf || hostDNS || processInspection {
-		return fmt.Errorf("%w: rootless, BPF, host DNS and process inspection need separate qualification", ErrUnavailable)
-	}
-	return nil
 }

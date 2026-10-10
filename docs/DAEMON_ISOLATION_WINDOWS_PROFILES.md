@@ -4,7 +4,23 @@ Checkpoint 25 adds `bin/internal/isolation/windowsprofile`. The package provides
 role launch restrictions. It does not enable isolated daemon startup. The
 direct daemon and the public admin pipe are unchanged.
 
-## Launch boundary
+## Revised production target
+
+The 2026-10-10 architecture revision keeps R in its full AppContainer profile
+and treats sysnet-windows in N as trusted host code. N may retain the caller's
+or service's launch token and the access required for Wintun, DNS, WFP, owner
+matching, native services, and the installed split driver. Backend DNS parsing
+and native control may remain together. Extra DNS/driver helpers and a reduced
+service token are not production prerequisites.
+
+The component below still rejects elevated/service N and strips caller N's
+token. Those are prototype limitations to replace, not security requirements
+for the trusted backend. Do not relax R's token, job, network, child-process,
+or handle restrictions, or C/node-command H restrictions, to fix N. Trusted DLL
+paths, private IPC ACLs, typed ownership checks, no runtime-selected programs,
+and no automatic elevation remain mandatory. Full acceptance is still open.
+
+## Existing component launch boundary
 
 Trusted bootstrap supplies a fixed executable, role, storage directory, bounded
 arguments, and one to four private pipes. There is no inherited environment,
@@ -26,13 +42,14 @@ to all threads.
 
 N currently supports the ordinary caller profile. It retains the caller's
 identity with maximum privileges removed and runs outside AppContainer so it
-can use native sockets. Elevated and LocalSystem N launches fail. A service N
-profile needs a separately provisioned and qualified service SID and native
-backend access matrix. This is an isolation-profile limitation, not a change to
+can use native sockets. Elevated and LocalSystem N launches fail in this
+prototype. The replacement service N path must preserve the service identity,
+private IPC ACLs, and native backend access under its launch token. This is an
+implementation gap, not a requirement to reduce that token or a change to
 the native backend's capabilities. Driver installation and loading, native
 helpers, and elevation are not available through this launcher.
 
-Every role has a separate job with one active process, kill-on-close, no
+Every role in this component has a separate job with one active process, kill-on-close, no
 breakaway, UI restrictions, a process memory ceiling, and a CPU hard cap. The
 defaults are 512 MiB and 25 percent CPU. All setup and token checks must succeed
 before the first thread resumes. A failure terminates the suspended process.
@@ -119,9 +136,7 @@ configuration was changed.
   formatting, lint, secret scan, shellcheck and vet steps, including Windows
   amd64/arm64 lint. The optional VM suites run separately below.
 - Docker: all 41 Windows VM harness unit tests passed. Docker logs are retained
-  in `artifacts/windows-profiles/checkpoint25/`. Initial container setup attempts
-  lacked `jq` or a writable lint cache; reruns used the full toolchain and an
-  explicit writable cache.
+  in `artifacts/windows-profiles/checkpoint25/`.
 - Docker, Go 1.26.6: the portable package passed with the race detector and
   100 percent statement coverage. Two 30-second fuzz campaigns passed:
   `FuzzPlan` executed 2,798,156 inputs and `FuzzPath` executed 2,804,958 inputs.
@@ -133,18 +148,6 @@ configuration was changed.
   VM shut down gracefully without recovery. This qualifies the tested component
   restrictions, not the remaining service-N/backend/deployment composition.
 
-The final VM run used base image key
-`1b48a0a0ded885792a9f53779043ddc61ecc4a02c22ec9415df1a235bccc2326`
-and source archive SHA-256
-`815fa1179aa2796144a7dd5477023dcf02bf624fb7e96c44619ad09e832560f1`,
-from revision `238b4ab8880b0d8a9e6e6ff5636243d9b2633db2` plus this checkpoint's
-working changes. The archived profile source matches the final profile package.
-
-Earlier VM runs are retained at `artifacts/winvm/run-njuXFHOj`,
-`artifacts/winvm/run-DpIGSMYH`, and `artifacts/winvm/run-QEbZAm1t`. They identified
-the TrustedInstaller-owned volume root, required AppContainer environment
-values, fixed-size token-query rules, distinct restricted-token indicators,
-and the need to disable the administrator group as well as remove privileges.
-The tests also establish Windows' native loopback-timeout and process-quota
-errors using successful control operations. Those earlier failed runs are not
-qualification evidence.
+This record applies to the tested restriction components, including expected
+service-N rejection. It does not qualify the revised trusted-N design. No new
+native Windows run was performed during the Linux cleanup.

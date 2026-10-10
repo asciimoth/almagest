@@ -26,6 +26,19 @@ completion and matching, commands and callbacks, both admin protocols, config
 transactions, startup and live snapshot operations, logging, crash recovery,
 partial native capability, and direct-mode process/transport absence.
 
+Linux also requires explicit results for eBPF process filtering, kernel and
+userspace process rules, marks on existing sockets, fork/exec/exit changes,
+process-owner lookup, and DNS provider selection. A socket-only matcher test
+cannot cover these results. Native checks must record the process backend's
+retained authority, denial of arbitrary process operations requested by R, and
+cleanup. A separate process helper or reduced N token is not required. These
+requirements do not apply Linux-specific mechanisms to the Windows manifest.
+
+Compare every feature with direct mode under equal launch authority. Do not
+disable process rules, eBPF, or a selected DNS provider to make the isolated
+profile pass. An actual native limitation must be observed in both modes;
+an isolation restriction or missing adapter is not a native limitation.
+
 Optional policy tests are a separate group. They cover default-route denial,
 host-DNS denial, command denial, and resource limits. They cannot replace an
 unrestricted parity result.
@@ -38,6 +51,20 @@ host handles, foreign resources, arbitrary commands, broker exhaustion, host
 files and sockets, broker process or token access, malicious persisted config,
 all-thread restrictions, inherited handles, and control progress during
 overload.
+
+Both manifests also require proof that backend roles execute no node code and
+offer no generic host-operation API to R. The native backend is trusted code:
+backend DNS parsing, process inspection, and backend-selected utility execution
+are allowed in N under existing launch authority. These checks do not weaken
+R's all-thread, filesystem, network, process, or inherited-handle restrictions.
+Compromise of N itself is outside this node-containment claim.
+
+The revised manifest replaces mandatory process-helper checks with
+`process_backend_authority`, `process_backend_runtime_request_denial`, and
+`process_backend_cleanup`. Both platforms add `backend_node_code_absent` and
+`backend_generic_host_api_denied`. Earlier component evidence cannot satisfy
+these by renaming results; producers must measure the actual revised launch
+path. No production profile was qualified under the earlier manifest.
 
 Qualification also requires at least eight tested runtime threads, no
 unexpected inherited handle, experimental classes absent, and a 30-minute
@@ -73,31 +100,22 @@ probes on the host.
 
 ## Current qualification state
 
-No profile is qualified by this change. Linux still needs the complete
-default-TUN backend, process matching and host-DNS helper under the final
-profile, plus deployment identities and cgroups. Windows still needs the
-service network role, final-token TUN/DNS/matcher checks, and deployment
-provisioning. These are profile failures, not skipped results. The evidence
-command will reject a record that omits them.
+No complete daemon profile has passed the frozen manifest. Linux implements
+trusted N preparation, restricted R/C/H, bounded role cgroup provisioning,
+native backend comparison, and a restricted-runtime composition test. Separate
+upstream DNS and p-mark fixtures provide additional component coverage; they
+are not complete direct/isolated daemon parity evidence. See the
+[Linux component reference](DAEMON_ISOLATION_LINUX_PROFILES.md).
 
-Production startup continues to require explicit `--no-isolation`. A later
-change must add the platform evidence and pass this gate before checkpoint 32
-can make that profile available.
+Deployment identities, storage quotas, full daemon assembly, and integrated
+recovery/hostile-runtime/performance evidence remain required. Windows still
+needs trusted service N and complete native backend/deployment acceptance.
+Missing results fail qualification; they are not successful skips.
 
-## Checkpoint 30 gate results, 2026-10-10
+Production isolated startup remains disabled. Checkpoint 32 must not enable
+a profile before complete evidence passes this gate. Direct mode remains
+available through `--no-isolation`, which experimental classes also require.
 
-- The race-enabled package suite passed with 93.1 percent statement coverage.
-  The focused `just check` passed formatting, spelling, secret scanning, panel
-  generation, Linux and Windows amd64/arm64 lint, vet, harness tests, and the
-  selected race-enabled qualification test.
-- Two fuzz campaigns ran in a read-only, network-disabled Go 1.26.6 container.
-  The structured evidence campaign completed 1,021,137 executions in 15
-  seconds. The raw JSON campaign completed 352,471 executions in 16 seconds.
-- The first raw JSON fuzz run used a 4 MiB parser ceiling and had poor progress
-  on large mutations. The final gate uses a 256 KiB ceiling and repeats the
-  campaign successfully. This is a qualification record, not a daemon config
-  or snapshot limit.
-- No native network operation ran on the host. No Windows VM test ran because
-  there is no complete Windows profile to qualify. Linux and Windows remain
-  unavailable for isolated production startup; this is an explicit failed
-  qualification state, not a skipped passing result.
+The validator has race-enabled tests and structured/raw JSON fuzz targets.
+Passing those tests proves validator behavior, not acceptance of a platform.
+Native producers run only in disposable Docker environments or a locked VM.
