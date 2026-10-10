@@ -30,6 +30,18 @@ type ConfigSource interface {
 var (
 	ErrConfigRevisionConflict = errors.New("config persistence revision conflict")
 	ErrConfigOperationUnknown = errors.New("config persistence operation is unknown")
+	ErrConfigRecoveryRequired = errors.New("config persistence operation requires recovery")
+)
+
+// ConfigOperationOutcome states what the fixed-target writer proved about a
+// replace operation. An uncertain result must not be retried with a new
+// operation ID or treated as proof that the old bytes remain on disk.
+type ConfigOperationOutcome string
+
+const (
+	ConfigOutcomeRejected  ConfigOperationOutcome = "rejected"
+	ConfigOutcomeCommitted ConfigOperationOutcome = "committed"
+	ConfigOutcomeUncertain ConfigOperationOutcome = "uncertain"
 )
 
 // ConfigDocument is the opaque regular config and its content revision.
@@ -43,15 +55,23 @@ type ConfigDocument struct {
 type ConfigOperationResult struct {
 	OperationID string
 	Revision    string
+	Outcome     ConfigOperationOutcome
+	Code        string
 	Error       string
 }
 
 // Err converts an operation result to the error seen by the runtime.
 func (r ConfigOperationResult) Err() error {
+	if r.Outcome == ConfigOutcomeUncertain {
+		if r.Error == "" {
+			return ErrConfigRecoveryRequired
+		}
+		return fmt.Errorf("%w: %s", ErrConfigRecoveryRequired, r.Error)
+	}
 	if r.Error == "" {
 		return nil
 	}
-	if r.Error == ErrConfigRevisionConflict.Error() {
+	if r.Code == "conflict" || r.Error == ErrConfigRevisionConflict.Error() {
 		return ErrConfigRevisionConflict
 	}
 	return errors.New(r.Error)

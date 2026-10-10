@@ -105,7 +105,7 @@ func (p *Persistence) Replace(expectedRevision, operationID string, data []byte)
 
 	contentRevision := daemonservices.ConfigRevision(data)
 	if operationID == "" {
-		return daemonservices.ConfigOperationResult{Error: "config persistence operation ID is empty"}
+		return daemonservices.ConfigOperationResult{Outcome: daemonservices.ConfigOutcomeRejected, Error: "config persistence operation ID is empty"}
 	}
 	if previous, ok := p.results[operationID]; ok {
 		if previous.expected == expectedRevision && previous.content == contentRevision {
@@ -114,6 +114,7 @@ func (p *Persistence) Replace(expectedRevision, operationID string, data []byte)
 		return daemonservices.ConfigOperationResult{
 			OperationID: operationID,
 			Revision:    previous.result.Revision,
+			Outcome:     daemonservices.ConfigOutcomeRejected,
 			Error:       "config persistence operation ID was reused with different input",
 		}
 	}
@@ -121,19 +122,21 @@ func (p *Persistence) Replace(expectedRevision, operationID string, data []byte)
 	current, err := p.readCurrent()
 	if err != nil {
 		return p.retain(expectedRevision, contentRevision, daemonservices.ConfigOperationResult{
-			OperationID: operationID, Error: fmt.Sprintf("read current config: %v", err),
+			OperationID: operationID, Outcome: daemonservices.ConfigOutcomeRejected, Error: fmt.Sprintf("read current config: %v", err),
 		})
 	}
 	if current.Revision != expectedRevision {
 		return p.retain(expectedRevision, contentRevision, daemonservices.ConfigOperationResult{
 			OperationID: operationID,
 			Revision:    current.Revision,
+			Outcome:     daemonservices.ConfigOutcomeRejected,
+			Code:        "conflict",
 			Error:       daemonservices.ErrConfigRevisionConflict.Error(),
 		})
 	}
 	if p.replace == nil {
 		return p.retain(expectedRevision, contentRevision, daemonservices.ConfigOperationResult{
-			OperationID: operationID, Revision: current.Revision, Error: "config persistence is read-only",
+			OperationID: operationID, Revision: current.Revision, Outcome: daemonservices.ConfigOutcomeRejected, Error: "config persistence is read-only",
 		})
 	}
 	if err := p.replace(bytes.Clone(data)); err != nil {
@@ -143,7 +146,7 @@ func (p *Persistence) Replace(expectedRevision, operationID string, data []byte)
 		after, readErr := p.readCurrent()
 		if readErr == nil && current.Revision != contentRevision && after.Revision == contentRevision {
 			return p.retain(expectedRevision, contentRevision, daemonservices.ConfigOperationResult{
-				OperationID: operationID, Revision: contentRevision,
+				OperationID: operationID, Revision: contentRevision, Outcome: daemonservices.ConfigOutcomeCommitted,
 			})
 		}
 		revision := current.Revision
@@ -151,11 +154,11 @@ func (p *Persistence) Replace(expectedRevision, operationID string, data []byte)
 			revision = after.Revision
 		}
 		return p.retain(expectedRevision, contentRevision, daemonservices.ConfigOperationResult{
-			OperationID: operationID, Revision: revision, Error: err.Error(),
+			OperationID: operationID, Revision: revision, Outcome: daemonservices.ConfigOutcomeRejected, Error: err.Error(),
 		})
 	}
 	return p.retain(expectedRevision, contentRevision, daemonservices.ConfigOperationResult{
-		OperationID: operationID, Revision: contentRevision,
+		OperationID: operationID, Revision: contentRevision, Outcome: daemonservices.ConfigOutcomeCommitted,
 	})
 }
 

@@ -794,6 +794,12 @@ Acceptance:
 
 ## 27. Integrate cross-process config transactions
 
+Status: implemented as the runtime-side isolated config persistence adapter in
+`bin/internal/isolation/configpersistence`. The production isolated composition
+remains disabled until checkpoint 32.
+
+See the [fixed-target isolation config writer integration notes](DAEMON_ISOLATION_CONFIG_WRITER.md#checkpoint-27-runtime-integration).
+
 Work:
 
 - Connect the section 4 coordinator to C. Keep one runtime mutation gate,

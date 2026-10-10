@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"reflect"
@@ -9,11 +10,96 @@ import (
 	"testing"
 	"time"
 
+	"github.com/asciimoth/almagest/bin/almagestd/daemonservices/localconfig"
 	almagest "github.com/asciimoth/almagest/lib"
 	"github.com/asciimoth/almagest/lib/logging"
 	sysnetdebug "github.com/asciimoth/gonnect/sysnet/debug"
 	"github.com/asciimoth/pasta/pasta"
 )
+
+func TestConfigAutosaverSerializesConcurrentRevisionUpdates(t *testing.T) {
+	conf, err := ParseConfig([]byte(`{"nodes": {}}`), []byte(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine, err := almagest.BuildEngine(
+		context.Background(), conf.Main, logging.NewDebugLogFactory(32), &sysnetdebug.System{},
+		nil, nil, nil, nil, []pasta.NodeClass{adminAPIBatchNodeClass{}}, nil, false,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = engine.Close() })
+	current, err := conf.MainToBytes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var targetMu sync.Mutex
+	target := bytes.Clone(current)
+	persistence := localconfig.New(
+		func() ([]byte, error) {
+			targetMu.Lock()
+			defer targetMu.Unlock()
+			return bytes.Clone(target), nil
+		},
+		func(data []byte) error {
+			targetMu.Lock()
+			defer targetMu.Unlock()
+			target = bytes.Clone(data)
+			return nil
+		},
+	)
+	saver := newConfigAutosaver(engine, conf, persistence, logging.NewDebugLogFactory(8).EngineLogger(), time.Second)
+	snapshot, err := saver.Snapshot(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	texts := []string{
+		`{"nodes":{"first":{"Class":"test/AdminAPIBatchNode"}}}`,
+		`{"nodes":{"second":{"Class":"test/AdminAPIBatchNode"}}}`,
+	}
+	errorsFound := make(chan error, len(texts))
+	var group sync.WaitGroup
+	for _, text := range texts {
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			_, updateErr := saver.Update(text, snapshot.Revision)
+			errorsFound <- updateErr
+		}()
+	}
+	group.Wait()
+	close(errorsFound)
+	successes, conflicts := 0, 0
+	for updateErr := range errorsFound {
+		switch {
+		case updateErr == nil:
+			successes++
+		case errors.Is(updateErr, errConfigRevisionConflict):
+			conflicts++
+		default:
+			t.Fatalf("Update() error = %v", updateErr)
+		}
+	}
+	if successes != 1 || conflicts != 1 {
+		t.Fatalf("updates = %d successful, %d conflicts", successes, conflicts)
+	}
+	_, first := engine.NodeByName(almagest.MainWorkspace, "first")
+	_, second := engine.NodeByName(almagest.MainWorkspace, "second")
+	if first == second {
+		t.Fatalf("active graph = first %v, second %v; want one committed node", first, second)
+	}
+	stored, err := conf.MainToBytes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	targetMu.Lock()
+	defer targetMu.Unlock()
+	if !bytes.Equal(stored, target) {
+		t.Fatalf("published config and fixed target differ:\npublished: %s\ntarget: %s", stored, target)
+	}
+}
 
 func TestConfigAutosaverBuiltInNodeSnapshotsAreDeterministic(t *testing.T) {
 	conf, err := ParseConfig([]byte(`{

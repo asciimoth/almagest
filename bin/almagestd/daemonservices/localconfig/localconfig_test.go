@@ -29,7 +29,7 @@ func TestPersistenceCompareReplaceAndReceipts(t *testing.T) {
 	if err := result.Err(); err != nil {
 		t.Fatal(err)
 	}
-	if result.Revision != daemonservices.ConfigRevision([]byte("after")) || writes != 1 {
+	if result.Outcome != daemonservices.ConfigOutcomeCommitted || result.Revision != daemonservices.ConfigRevision([]byte("after")) || writes != 1 {
 		t.Fatalf("result = %#v, writes = %d", result, writes)
 	}
 
@@ -73,7 +73,7 @@ func TestPersistenceRejectsStaleRevisionAndOperationReuse(t *testing.T) {
 	)
 
 	result := persistence.Replace(daemonservices.ConfigRevision([]byte("old")), "operation-1", []byte("candidate"))
-	if !errors.Is(result.Err(), daemonservices.ErrConfigRevisionConflict) || writes != 0 {
+	if result.Outcome != daemonservices.ConfigOutcomeRejected || result.Code != "conflict" || !errors.Is(result.Err(), daemonservices.ErrConfigRevisionConflict) || writes != 0 {
 		t.Fatalf("stale replace = %#v, writes = %d", result, writes)
 	}
 	reused := persistence.Replace(result.Revision, "operation-1", []byte("different"))
@@ -91,7 +91,7 @@ func TestPersistenceRetainsWriteFailure(t *testing.T) {
 	)
 	revision := daemonservices.ConfigRevision(current)
 	result := persistence.Replace(revision, "operation-1", []byte("after"))
-	if result.Err() == nil || result.Error != "disk full" || attempts != 1 {
+	if result.Outcome != daemonservices.ConfigOutcomeRejected || result.Err() == nil || result.Error != "disk full" || attempts != 1 {
 		t.Fatalf("failed replace = %#v, attempts = %d", result, attempts)
 	}
 	retried := persistence.Replace(revision, "operation-1", []byte("after"))
@@ -113,7 +113,7 @@ func TestPersistenceRecognizesConfirmedCommitAfterReplaceError(t *testing.T) {
 	if err := result.Err(); err != nil {
 		t.Fatalf("confirmed commit reported failure: %v", err)
 	}
-	if result.Revision != daemonservices.ConfigRevision([]byte("after")) {
+	if result.Outcome != daemonservices.ConfigOutcomeCommitted || result.Revision != daemonservices.ConfigRevision([]byte("after")) {
 		t.Fatalf("confirmed revision = %q", result.Revision)
 	}
 }

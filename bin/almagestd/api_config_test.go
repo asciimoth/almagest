@@ -235,6 +235,73 @@ type configAPIReconcileNode struct {
 
 func (*configAPIReconcileNode) PreLinkAdd(uint64, string, string) error { return nil }
 
+type configAPIFailingNodeClass struct{}
+
+func (configAPIFailingNodeClass) ClassName() string        { return "test/ConfigAPIFailingNode" }
+func (configAPIFailingNodeClass) ShortDescription() string { return "Config API failure test" }
+func (configAPIFailingNodeClass) LongDescription() string {
+	return "Tests runtime reconciliation failure."
+}
+func (configAPIFailingNodeClass) DefaultNodeParams() pasta.NodeClassParams {
+	return pasta.NodeClassParams{}
+}
+func (configAPIFailingNodeClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
+	return &configAPIFailingNode{fail: configer.Bool(cfg, configer.Path{"fail"}, false)}, nil
+}
+
+type configAPIFailingNode struct {
+	pasta.BasicNode
+	fail bool
+}
+
+func (n *configAPIFailingNode) OnInit(*pasta.Workspace, pasta.Logger, uint64, string, *pasta.NodeInitData, bool, bool, bool, bool) error {
+	if n.fail {
+		return errors.New("test runtime initialization failure")
+	}
+	return nil
+}
+
+func TestConfigAPIRuntimeFailureRollsBackPartialReconcile(t *testing.T) {
+	conf, err := ParseConfig([]byte(`{"nodes":{"original":{"Class":"test/ConfigAPIFailingNode"}}}`), []byte(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine, err := almagest.BuildEngine(
+		context.Background(), conf.Main, logging.NewDebugLogFactory(16), &sysnetdebug.System{},
+		nil, nil, nil, nil, []pasta.NodeClass{configAPIFailingNodeClass{}}, nil, false,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = engine.Close() })
+	writer := &configAPITestWriter{}
+	autosaver := newConfigAutosaver(engine, conf, newTestConfigPersistence(t, conf, writer), logging.NewDebugLogFactory(8).EngineLogger(), 0)
+	snapshot, err := autosaver.Snapshot(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = autosaver.Update(
+		`{"nodes":{"failing":{"Class":"test/ConfigAPIFailingNode","fail":true}}}`,
+		snapshot.Revision,
+	)
+	if err == nil || !strings.Contains(err.Error(), "test runtime initialization failure") {
+		t.Fatalf("Update() error = %v", err)
+	}
+	if _, ok := engine.NodeByName(almagest.MainWorkspace, "original"); !ok {
+		t.Fatal("rollback did not restore the original runtime node")
+	}
+	if _, ok := engine.NodeByName(almagest.MainWorkspace, "failing"); ok {
+		t.Fatal("failed runtime node remained after rollback")
+	}
+	if len(writer.writes) != 0 {
+		t.Fatalf("runtime failure wrote %d config candidates", len(writer.writes))
+	}
+	stored, err := conf.MainToBytes()
+	if err != nil || !bytes.Contains(stored, []byte(`"original"`)) {
+		t.Fatalf("published config = %s, %v", stored, err)
+	}
+}
+
 func TestConfigAPIRejectsProtectedContentAndReadOnlyUpdates(t *testing.T) {
 	conf, err := ParseConfig([]byte(`{"nodes":{}}`), []byte(`{}`))
 	if err != nil {

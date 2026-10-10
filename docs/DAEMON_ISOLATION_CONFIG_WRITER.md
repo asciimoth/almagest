@@ -94,3 +94,56 @@ just test-total winvm:m19::fixed-target-config-writer
 
 The Windows selector is required platform evidence. A cross-compiled test
 binary is only a build check and does not replace the VM run.
+
+## Checkpoint 27 runtime integration
+
+`bin/internal/isolation/configpersistence` connects R's existing
+`daemonservices.ConfigPersistence` contract to C. It does not enable isolated
+daemon startup. Direct mode continues to use `daemonservices/localconfig` and
+does not create a transport, transfer buffer, or C process.
+
+R sends opaque config bytes once on the bounded config-transfer lane and then
+sends one revision-checked replace request. If the replace reply is lost, R
+queries the retained operation receipt with the same operation ID. It never
+replays the replacement. An unavailable or expired receipt produces an
+explicit recovery-required result. A rejected transfer before the replace
+request is not reported as uncertain because C has no mutation request to
+apply.
+
+The daemon service result now identifies `committed`, `rejected`, and
+`uncertain` outcomes. The config coordinator publishes `Config.Main` and the
+new admin revision only after a committed result. On rejection or uncertainty,
+it reconciles the prior graph and keeps the prior published document. It never
+writes the old bytes as rollback, so it cannot overwrite a newer external file
+or a commit whose reply was lost. The error identifies recovery as required
+when C cannot prove the result. This remains a coordinated transaction, not an
+atomic transaction across the graph, host effects, and filesystem.
+
+The existing runtime mutation lock serializes autosave, admin updates, and
+snapshot config replacement. A new concurrency test confirms that two admin
+updates with the same revision produce one commit and one conflict, and that
+the active graph, published document, and fixed target agree. A separate
+integration test runs an admin update and a later autosave through a real C
+writer and authenticated transport. Existing update tests continue to cover
+selective reconciliation, equivalent updates, graph rollback, autosave retry,
+shutdown flush, and revision conflicts. A runtime-initialization failure test
+also removes an active node before the candidate fails, then confirms that
+rollback restores the old graph and does not send a config replacement.
+
+Portable adapter tests use a real writer and authenticated transport. They also
+cover transfer failure, malformed read transfer identity, lost replace replies,
+temporarily unknown receipts, C death, recovery-required results, concurrent
+call serialization, stale revisions, and receipt lookup. The result conversion
+fuzz target checks arbitrary outcomes, codes, revisions, and operation IDs.
+
+Focused verification on Linux (amd64, Go 1.26.7) on 2026-10-10:
+
+```sh
+go -C bin test -race -cover ./internal/isolation/configpersistence ./internal/isolation/configwriter ./almagestd/daemonservices/localconfig
+go -C bin test ./internal/isolation/configpersistence -run '^$' -fuzz '^FuzzConvertConfigResult$' -fuzztime=10s -parallel=2
+```
+
+The adapter coverage was 82.4 percent, the writer coverage was 78.5 percent,
+and the direct local persistence coverage was 76.6 percent. The fuzz run
+completed 386,450 executions. These component results do not replace the full
+project gate or the later Linux and Windows complete-composition gates.

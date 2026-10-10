@@ -416,7 +416,7 @@ func (s *configAutosaver) replaceConfigLocked(data []byte) error {
 	if s == nil || s.persistence == nil {
 		return errors.New("config writer is not available")
 	}
-	operationID := fmt.Sprintf("direct-%d", s.operationSequence.Add(1))
+	operationID := fmt.Sprintf("config-%d", s.operationSequence.Add(1))
 	result := s.persistence.Replace(s.persistenceRevision, operationID, data)
 	if err := result.Err(); err != nil {
 		return err
