@@ -12,6 +12,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/asciimoth/almagest/bin/internal/isolation/protocol"
+	"github.com/asciimoth/almagest/bin/internal/isolation/supervision"
 	"github.com/asciimoth/gonnect/tun"
 )
 
@@ -181,8 +182,17 @@ func (b *Broker) CreateTun(ctx context.Context, req protocol.CreateTunRequest) (
 			kind = protocol.ResourceDefaultTun
 		}
 		r := &resource{ref: protocol.ResourceRef{ID: id, SessionID: b.session.ID, Type: kind, Generation: 1, GraphEpoch: req.Meta.GraphEpoch}, options: canonical(req)}
+		if b.journal != nil {
+			r.journal = "resource-" + id.String()
+			if err := b.journal.Put(supervision.Effect{ID: r.journal, SessionID: b.session.ID, ResourceType: kind, State: supervision.EffectPending}); err != nil {
+				return rejected(req.Meta.OperationID, err), err
+			}
+		}
 		if previous != nil {
 			if err := b.closeNative(ctx, previous); err != nil {
+				if journalErr := b.resolveJournal(r); journalErr != nil {
+					err = errors.Join(err, journalErr)
+				}
 				return b.failed(previous, req.Meta.OperationID, err)
 			}
 		}
@@ -193,6 +203,9 @@ func (b *Broker) CreateTun(ctx context.Context, req protocol.CreateTunRequest) (
 		r.native = native
 		var noEffects *NoEffectsError
 		if native == nil && errors.As(createErr, &noEffects) {
+			if err := b.resolveJournal(r); err != nil {
+				return b.failed(r, req.Meta.OperationID, err)
+			}
 			b.mu.Lock()
 			r.state.Closed = true
 			b.mu.Unlock()
@@ -214,6 +227,9 @@ func (b *Broker) CreateTun(ctx context.Context, req protocol.CreateTunRequest) (
 				cause = errors.Join(cause, closeErr)
 			}
 			return b.failed(r, req.Meta.OperationID, cause)
+		}
+		if err := b.ownJournal(r); err != nil {
+			return b.failed(r, req.Meta.OperationID, err)
 		}
 		if err := native.Verify(ctx); err != nil {
 			return b.failed(r, req.Meta.OperationID, err)
@@ -272,6 +288,9 @@ func (b *Broker) result(r *resource, outcome protocol.Outcome) protocol.Resource
 }
 
 func (b *Broker) failed(r *resource, id string, err error) (protocol.ResourceResult, error) {
+	if journalErr := b.uncertainJournal(r); journalErr != nil {
+		err = errors.Join(err, journalErr)
+	}
 	b.mu.Lock()
 	b.recovery = true
 	r.state.RecoveryRequired = true
@@ -285,6 +304,41 @@ func (b *Broker) failed(r *resource, id string, err error) (protocol.ResourceRes
 	result.OperationID = id
 	result.Code = "recovery"
 	return result, errors.Join(protocol.ErrRecoveryRequired, err)
+}
+
+type recoverableNative interface{ RecoveryIdentity() string }
+
+func (b *Broker) ownJournal(r *resource) error {
+	if b.journal == nil || r.journal == "" {
+		return nil
+	}
+	identity, ok := r.native.(recoverableNative)
+	if !ok || identity.RecoveryIdentity() == "" {
+		return supervision.ErrRecoveryUncertain
+	}
+	return b.journal.Put(supervision.Effect{ID: r.journal, SessionID: b.session.ID, ResourceType: r.ref.Type,
+		Identity: identity.RecoveryIdentity(), State: supervision.EffectOwned})
+}
+
+func (b *Broker) uncertainJournal(r *resource) error {
+	if b.journal == nil || r == nil || r.journal == "" {
+		return nil
+	}
+	identity, ok := r.native.(recoverableNative)
+	if !ok || identity.RecoveryIdentity() == "" {
+		// Keep the pending record. It explicitly requires inspection and must not
+		// be converted into a name-based ownership claim.
+		return nil
+	}
+	return b.journal.Put(supervision.Effect{ID: r.journal, SessionID: b.session.ID, ResourceType: r.ref.Type,
+		Identity: identity.RecoveryIdentity(), State: supervision.EffectUncertain})
+}
+
+func (b *Broker) resolveJournal(r *resource) error {
+	if b.journal == nil || r == nil || r.journal == "" {
+		return nil
+	}
+	return b.journal.Resolve(r.journal)
 }
 
 func (b *Broker) watch(ctx context.Context, r *resource, events <-chan tun.Event) {
@@ -394,6 +448,9 @@ func (b *Broker) closeNative(ctx context.Context, r *resource) error {
 		}
 	}
 	if err := r.native.Close(ctx); err != nil {
+		return errors.Join(protocol.ErrRecoveryRequired, err)
+	}
+	if err := b.resolveJournal(r); err != nil {
 		return errors.Join(protocol.ErrRecoveryRequired, err)
 	}
 	if err := b.waitData(ctx, r.ref.ID); err != nil {

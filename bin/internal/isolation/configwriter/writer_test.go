@@ -250,13 +250,11 @@ func TestWriterControlTransferAndLostReply(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = w.Close() })
 	a, z := net.Pipe()
-	b, y := net.Pipe()
-	c, x := net.Pipe()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	done := make(chan error, 1)
-	go func() { done <- w.Serve(ctx, transport.Lanes{Control: z, Data: y, Diagnostic: x}) }()
-	peer, err := transport.New(ctx, transport.Lanes{Control: a, Data: b, Diagnostic: c}, testSession(), nil)
+	go func() { done <- w.Serve(ctx, transport.Lanes{Control: z}) }()
+	peer, err := transport.NewControl(ctx, a, testSession(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}

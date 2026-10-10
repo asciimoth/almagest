@@ -127,9 +127,12 @@ The platform gate accepts only Windows Server 2022 build 20348 on amd64.
 Cross-compilation does not qualify Windows 11 or arm64. H here is one fixed
 executable with no children or native network access; profiles that need those
 rights require separate qualification. C's fixed-target transaction behavior
-remains in `configwriter`. Complete role composition, recovery, hostile-runtime
-evidence, performance, packaging, and the default-mode switch remain later
-checkpoints.
+uses the common restricted C entry point and control-only bootstrap contract.
+Native TUN tests use the durable broker journal and require successful cleanup
+to remove every record. Restart inspection uses the recorded adapter LUID/GUID;
+a still-present adapter is not deleted without a driver-owned removal handle.
+Complete runtime/admin composition, hostile-runtime evidence, performance,
+packaging, and the default-mode switch remain later checkpoints.
 
 ## Test record
 
@@ -176,3 +179,10 @@ the final process shutdown bound.
 
 This record qualifies the checkpoint-25 components, not a complete isolated
 daemon. Production isolation remains disabled.
+
+The 2026-10-10 completion run passed all 19 ordinary VM cases and the trusted
+service-profile case. Focused privileged reruns passed native relay and journal
+cleanup in `artifacts/winvm/run-3OaCqwK5` and native TUN control and journal
+cleanup in `artifacts/winvm/run-45eP27KL`. Both VMs shut down gracefully. The
+Docker E2E run passed all 77 cases. These results cover the deferred component
+work; they do not qualify complete daemon composition.

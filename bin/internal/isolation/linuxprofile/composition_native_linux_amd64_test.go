@@ -11,6 +11,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -20,6 +21,7 @@ import (
 	"github.com/asciimoth/almagest/bin/internal/isolation/network"
 	"github.com/asciimoth/almagest/bin/internal/isolation/policy"
 	"github.com/asciimoth/almagest/bin/internal/isolation/protocol"
+	"github.com/asciimoth/almagest/bin/internal/isolation/supervision"
 	"github.com/asciimoth/almagest/bin/internal/isolation/transport"
 	gdns "github.com/asciimoth/gonnect/dns"
 	linuxsysnet "github.com/asciimoth/sysnet-linux"
@@ -192,7 +194,11 @@ func TestNativeTrustedComposition(t *testing.T) {
 		t.Fatal(err)
 	}
 	session := protocol.Session{ID: id, Epoch: 1, Version: protocol.Version, PolicyDigest: digest}
-	broker, err := network.New(session, p, backend)
+	journal, err := supervision.OpenJournal(filepath.Join(t.TempDir(), "native-recovery.json"), 64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	broker, err := network.NewWithJournal(session, p, backend, journal)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -263,6 +269,9 @@ func TestNativeTrustedComposition(t *testing.T) {
 	}
 	if finalLinks := linkNames(); !slices.Equal(originalLinks, finalLinks) {
 		t.Fatalf("runtime leaked interfaces: before=%v after=%v", originalLinks, finalLinks)
+	}
+	if records := journal.Snapshot(); len(records) != 0 {
+		t.Fatalf("broker cleanup retained recovery records: %#v", records)
 	}
 	finalDNS, err := os.ReadFile("/etc/resolv.conf")
 	if err != nil || string(finalDNS) != resolverFixture {

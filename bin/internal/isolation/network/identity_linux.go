@@ -5,6 +5,7 @@ package network
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 
 	"github.com/asciimoth/almagest/bin/internal/isolation/protocol"
@@ -15,6 +16,7 @@ import (
 type linuxIdentity struct {
 	device tun.Tun
 	index  int
+	netns  unix.Stat_t
 }
 
 // CaptureNativeIdentity pins the backend-owned TUN file and its interface
@@ -22,12 +24,19 @@ type linuxIdentity struct {
 // with the old name is insufficient. The caller retains the file exclusively.
 func CaptureNativeIdentity(ctx context.Context, device tun.Tun) (NativeIdentity, error) {
 	id := &linuxIdentity{device: device}
+	if err := unix.Stat("/proc/self/ns/net", &id.netns); err != nil {
+		return nil, err
+	}
 	index, err := id.current(ctx)
 	if err != nil {
 		return nil, err
 	}
 	id.index = index
 	return id, nil
+}
+
+func (id *linuxIdentity) RecoveryIdentity() string {
+	return fmt.Sprintf("linux-netns-v1:%x:%x:%d", uint64(id.netns.Dev), id.netns.Ino, id.index)
 }
 
 func (id *linuxIdentity) current(ctx context.Context) (int, error) {

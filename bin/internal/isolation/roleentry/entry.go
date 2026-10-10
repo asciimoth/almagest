@@ -6,11 +6,11 @@ package roleentry
 import (
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"strconv"
 
 	"github.com/asciimoth/almagest/bin/internal/isolation/protocol"
+	"github.com/asciimoth/almagest/bin/internal/isolation/transport"
 )
 
 const BootstrapFDEnvironment = "ALMAGEST_BOOTSTRAP_FD"
@@ -19,7 +19,7 @@ var ErrStandaloneRole = errors.New("isolated role requires an inherited bootstra
 
 // OpenBootstrap accepts only an inherited non-file descriptor selected by the
 // trusted launcher. A role flag or a named endpoint is not sufficient.
-func OpenBootstrap(role protocol.Role, arguments []string, getenv func(string) string) (io.ReadWriteCloser, error) {
+func OpenBootstrap(role protocol.Role, arguments []string, getenv func(string) string) (transport.Stream, error) {
 	if !role.Valid() || role == protocol.RoleRuntime || getenv == nil || len(arguments) != 0 {
 		return nil, fmt.Errorf("%w: invalid role entry", ErrStandaloneRole)
 	}
@@ -41,5 +41,5 @@ func OpenBootstrap(role protocol.Role, arguments []string, getenv func(string) s
 		_ = file.Close()
 		return nil, fmt.Errorf("%w: bootstrap descriptor has an unsafe type", ErrStandaloneRole)
 	}
-	return file, nil
+	return bindBootstrapStream(file)
 }

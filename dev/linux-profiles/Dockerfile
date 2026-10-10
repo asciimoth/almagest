@@ -13,6 +13,7 @@ COPY certcat certcat
 COPY dev/linux-profiles dev/linux-profiles
 RUN --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 go build -C bin -trimpath -o /qualification/probe ./cmd/linux-profile-probe \
+    && CGO_ENABLED=0 go build -C bin -trimpath -o /qualification/config-writer-role ./cmd/almagest-config-writer-role \
     && CGO_ENABLED=0 go build -C bin -trimpath -ldflags '-X main.probeMode=runtime-client' -o /qualification/runtime-client-probe ./cmd/linux-profile-probe \
     && CGO_ENABLED=0 go build -C bin -trimpath -ldflags '-X main.probeMode=tsync-failure' -o /qualification/tsync-probe ./cmd/linux-profile-probe \
     && CGO_ENABLED=0 go build -C bin -trimpath -ldflags '-X main.probeMode=x32' -o /qualification/x32-probe ./cmd/linux-profile-probe \

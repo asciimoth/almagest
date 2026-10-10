@@ -5,6 +5,7 @@ package network
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"unsafe"
 
@@ -17,6 +18,10 @@ type windowsIdentity struct {
 	device tun.Tun
 	luid   uint64
 	guid   string
+}
+
+func (id *windowsIdentity) RecoveryIdentity() string {
+	return fmt.Sprintf("windows-adapter-v1:%016x:%s", id.luid, id.guid)
 }
 
 // CaptureNativeIdentity retains the Windows LUID and adapter GUID. The

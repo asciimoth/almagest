@@ -127,11 +127,26 @@ type queued struct {
 // The lanes must already be bound to the expected final process. Each endpoint
 // is owned by Peer even if negotiation fails. Context bounds the session life.
 func New(ctx context.Context, lanes Lanes, session protocol.Session, handler Handler) (*Peer, error) {
+	if lanes.Data == nil || lanes.Diagnostic == nil {
+		lanes.Close()
+		return nil, protocol.ErrInvalidContract
+	}
+	return newPeer(ctx, lanes, session, handler)
+}
+
+// NewControl constructs a peer for C/H channels which carry typed control and
+// bounded config chunks only. It does not invent unused data or diagnostic
+// streams, and it owns the supplied control endpoint.
+func NewControl(ctx context.Context, control Stream, session protocol.Session, handler Handler) (*Peer, error) {
+	return newPeer(ctx, Lanes{Control: control}, session, handler)
+}
+
+func newPeer(ctx context.Context, lanes Lanes, session protocol.Session, handler Handler) (*Peer, error) {
 	if err := session.Validate(); err != nil {
 		lanes.Close()
 		return nil, err
 	}
-	if lanes.Control == nil || lanes.Data == nil || lanes.Diagnostic == nil {
+	if lanes.Control == nil {
 		lanes.Close()
 		return nil, protocol.ErrInvalidContract
 	}

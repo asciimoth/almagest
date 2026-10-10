@@ -3,6 +3,7 @@ package roleentry
 import (
 	"errors"
 	"os"
+	"runtime"
 	"strconv"
 	"testing"
 
@@ -30,6 +31,9 @@ func TestRoleEntryRequiresInheritedChannelAndFixedRole(t *testing.T) {
 }
 
 func TestRoleEntryAcceptsInheritedPipeOnly(t *testing.T) {
+	if runtime.GOOS == "linux" {
+		t.Skip("Linux requires an inherited Unix socket")
+	}
 	reader, writer, err := os.Pipe()
 	if err != nil {
 		t.Fatal(err)

@@ -58,7 +58,11 @@
             "github.com/asciimoth/almagest/bin/internal/isolation/bootstrap::FuzzStorageLayoutValidation",
             "github.com/asciimoth/almagest/bin/internal/isolation/bootstrap::FuzzLaunchEnvironmentValidation",
             "github.com/asciimoth/almagest/bin/internal/isolation/roleentry::TestRoleEntryRequiresInheritedChannelAndFixedRole",
-            "github.com/asciimoth/almagest/bin/internal/isolation/roleentry::TestRoleEntryAcceptsInheritedPipeOnly"
+            "github.com/asciimoth/almagest/bin/internal/isolation/roleentry::TestRoleEntryAcceptsInheritedPipeOnly",
+            "github.com/asciimoth/almagest/bin/internal/isolation/roleentry::TestBootstrapReadinessExchange",
+            "github.com/asciimoth/almagest/bin/internal/isolation/roleentry::TestBootstrapRejectsAuthorityExpansion",
+            "github.com/asciimoth/almagest/bin/internal/isolation/roleentry::TestBootstrapRejectsMalformedFrameAndFalseReadiness",
+            "github.com/asciimoth/almagest/bin/internal/isolation/roleentry::TestBootstrapSilenceHonorsCancellation"
           ]
         },
         {
@@ -487,9 +491,12 @@
           "id": "m15::native-tun-control",
           "kind": "go",
           "module": "bin",
-          "arguments": ["./internal/isolation/network", "-run", "^TestWindowsNetworkTun$", "-count=1"],
+          "arguments": ["./internal/isolation/network", "./internal/isolation/supervision", "-run", "^(TestWindowsNetworkTun|TestWindowsNativeReconcilerFailsClosed)$", "-count=1"],
           "eventFile": "isolation-native-tun.jsonl",
-          "requiredTests": ["github.com/asciimoth/almagest/bin/internal/isolation/network::TestWindowsNetworkTun"]
+          "requiredTests": [
+            "github.com/asciimoth/almagest/bin/internal/isolation/network::TestWindowsNetworkTun",
+            "github.com/asciimoth/almagest/bin/internal/isolation/supervision::TestWindowsNativeReconcilerFailsClosed"
+          ]
         },
         {
           "id": "m6::xtor-restricted-token",

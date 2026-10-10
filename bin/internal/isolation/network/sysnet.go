@@ -21,6 +21,11 @@ import (
 // check because sysnet.System does not export a portable native identity.
 type NativeIdentity interface{ Verify(context.Context) error }
 
+// recoveryIdentity is implemented by platform identities which can be safely
+// compared after N restarts. The token is written only to broker-private
+// storage and is never sent to R.
+type recoveryIdentity interface{ RecoveryIdentity() string }
+
 // CaptureIdentity is launcher-supplied code, never a runtime callback. It must
 // not adopt another device when the original disappears. The backend must also
 // perform identity-safe native updates/cleanup (see OwnedTun).
@@ -225,6 +230,13 @@ type systemTun struct {
 	identity         NativeIdentity
 	defaultTun       bool
 	expected         *protocol.ResourceState
+}
+
+func (t *systemTun) RecoveryIdentity() string {
+	if identity, ok := t.identity.(recoveryIdentity); ok {
+		return identity.RecoveryIdentity()
+	}
+	return ""
 }
 
 func (t *systemTun) Verify(ctx context.Context) error {

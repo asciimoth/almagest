@@ -51,13 +51,11 @@ func TestPersistenceEndToEnd(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = writer.Close() })
 	a, z := net.Pipe()
-	b, y := net.Pipe()
-	c, x := net.Pipe()
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	done := make(chan error, 1)
-	go func() { done <- writer.Serve(ctx, transport.Lanes{Control: z, Data: y, Diagnostic: x}) }()
-	remote, err := transport.New(ctx, transport.Lanes{Control: a, Data: b, Diagnostic: c}, testSession(), nil)
+	go func() { done <- writer.Serve(ctx, transport.Lanes{Control: z}) }()
+	remote, err := transport.NewControl(ctx, a, testSession(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +74,13 @@ func TestPersistenceEndToEnd(t *testing.T) {
 	}
 	result := persistence.Replace(document.Revision, "operation-1", []byte("after"))
 	if err := result.Err(); err != nil || result.Outcome != daemonservices.ConfigOutcomeCommitted {
-		t.Fatalf("Replace() = %+v, %v", result, err)
+		_, writerErr := writer.GetResult(context.Background(), protocol.OperationResultRequest{
+			Meta: protocol.RequestMeta{
+				RequestID: 2, SessionID: testSession().ID, SessionEpoch: testSession().Epoch, GraphEpoch: 1,
+			},
+			OperationID: "operation-1",
+		})
+		t.Fatalf("Replace() = %+v, %v; writer receipt error = %v", result, err, writerErr)
 	}
 	receipt, err := persistence.GetResult("operation-1")
 	if err != nil || receipt != result {

@@ -380,7 +380,11 @@ func (h *Helper) serve(ctx context.Context, lanes transport.Lanes, source reques
 	}
 	*active = true
 	h.serveMu.Unlock()
-	peer, err := transport.New(ctx, lanes, h.session, handler)
+	if lanes.Data != nil || lanes.Diagnostic != nil {
+		lanes.Close()
+		return protocol.ErrInvalidContract
+	}
+	peer, err := transport.NewControl(ctx, lanes.Control, h.session, handler)
 	if err != nil {
 		return err
 	}

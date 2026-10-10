@@ -42,7 +42,7 @@ docker run "${args[@]}" --security-opt "seccomp=$script_dir/no-landlock.json" \
     -test.v >"$output_dir/missing-landlock.log" 2>&1
 docker run "${args[@]}" --security-opt seccomp=unconfined --cap-add KILL --cap-add NET_ADMIN --cap-add NET_BIND_SERVICE --device /dev/net/tun \
     -e ALMAGEST_PROFILE_TEST_NATIVE=1 -e ALMAGEST_PROFILE_TRUSTED_SYSTEM=1 "$image" \
-    /qualification/profile.test -test.run '^TestNativeTrusted(System|Composition)$' -test.v \
+    /qualification/profile.test -test.run '^TestNativeTrusted(System|Composition|ConfigWriter)$' -test.v \
     -test.timeout=90s >"$output_dir/trusted-system.log" 2>&1
 docker run "${args[@]}" --security-opt seccomp=unconfined -e ALMAGEST_PROFILE_TEST_NATIVE=1 "$image" \
     /qualification/profile.test -test.run '^$' -test.fuzz '^FuzzNativeArguments$' \

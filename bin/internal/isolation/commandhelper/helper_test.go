@@ -411,7 +411,7 @@ func TestHelperControlChannelsAndPeerFailure(t *testing.T) {
 	defer cancel()
 	served := make(chan error, 1)
 	go func() { served <- helper.ServeRuntime(ctx, server) }()
-	peer, err := transport.New(ctx, client, helperSession(), nil)
+	peer, err := transport.NewControl(ctx, client.Control, helperSession(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -437,7 +437,7 @@ func TestHelperDeathFailsRuntimePeer(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go func() { _ = helper.ServeRuntime(ctx, server) }()
-	peer, err := transport.New(ctx, client, helperSession(), nil)
+	peer, err := transport.NewControl(ctx, client.Control, helperSession(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -511,9 +511,7 @@ func TestHelperStartFailureAndPrestartCancellationAreRejected(t *testing.T) {
 
 func pipeLanes() (transport.Lanes, transport.Lanes) {
 	leftControl, rightControl := net.Pipe()
-	leftData, rightData := net.Pipe()
-	leftDiagnostic, rightDiagnostic := net.Pipe()
-	return transport.Lanes{Control: leftControl, Data: leftData, Diagnostic: leftDiagnostic}, transport.Lanes{Control: rightControl, Data: rightData, Diagnostic: rightDiagnostic}
+	return transport.Lanes{Control: leftControl}, transport.Lanes{Control: rightControl}
 }
 
 func TestHelperBoundsProfileConcurrency(t *testing.T) {

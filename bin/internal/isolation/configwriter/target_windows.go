@@ -197,11 +197,28 @@ func windowsSecurityHash(handle windows.Handle) ([32]byte, error) {
 	if err != nil || dacl == nil {
 		return zero, fmt.Errorf("config object has no bounded DACL")
 	}
+	// Do not hash the complete self-relative security descriptor. Windows can
+	// rebuild an equivalent descriptor with different offsets and padding when
+	// ReplaceFileW preserves the destination security. Hash the effective owner,
+	// DACL protection state, and ordered ACE bytes instead.
+	control, _, err := descriptor.Control()
+	if err != nil {
+		return zero, err
+	}
+	h := sha256.New()
+	_, _ = io.WriteString(h, owner.String())
+	_, _ = h.Write([]byte{0})
+	if control&windows.SE_DACL_PROTECTED != 0 {
+		_, _ = h.Write([]byte{1})
+	} else {
+		_, _ = h.Write([]byte{0})
+	}
 	for i := uint16(0); i < dacl.AceCount; i++ {
 		var ace *windows.ACCESS_ALLOWED_ACE
 		if err := windows.GetAce(dacl, uint32(i), &ace); err != nil {
 			return zero, err
 		}
+		_, _ = h.Write(unsafe.Slice((*byte)(unsafe.Pointer(ace)), int(ace.Header.AceSize)))
 		if ace.Header.AceType != windows.ACCESS_ALLOWED_ACE_TYPE || ace.Header.AceFlags&windows.INHERIT_ONLY_ACE != 0 {
 			continue
 		}
@@ -210,8 +227,9 @@ func windowsSecurityHash(handle windows.Handle) ([32]byte, error) {
 			return zero, fmt.Errorf("config object grants access to an untrusted SID")
 		}
 	}
-	data := unsafe.Slice((*byte)(unsafe.Pointer(descriptor)), descriptor.Length())
-	return sha256.Sum256(data), nil
+	var fingerprint [32]byte
+	copy(fingerprint[:], h.Sum(nil))
+	return fingerprint, nil
 }
 
 func windowsToken(info windows.ByHandleFileInformation) fileToken {

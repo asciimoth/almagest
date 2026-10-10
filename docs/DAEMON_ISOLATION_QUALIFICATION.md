@@ -107,6 +107,13 @@ upstream DNS and p-mark fixtures provide additional component coverage; they
 are not complete direct/isolated daemon parity evidence. See the
 [Linux component reference](DAEMON_ISOLATION_LINUX_PROFILES.md).
 
+The native broker path now records durable ownership before a TUN mutation and
+requires cleanup to resolve the record. Platform identity inspectors run before
+readiness and after revocation. The restricted C executable also has a bounded
+readiness exchange and a real Linux fixed-target transaction test. These close
+component and recovery gaps, but they do not synthesize complete-profile
+evidence.
+
 Storage quotas, full daemon assembly, and integrated
 recovery/hostile-runtime/performance evidence remain required. Windows has
 trusted caller/service N, persistent deployment identities, and final-token

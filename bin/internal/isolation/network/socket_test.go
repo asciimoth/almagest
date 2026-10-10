@@ -444,7 +444,10 @@ func exerciseTunRelay(t *testing.T, b *Broker) {
 	buffer := make([]byte, 1600)
 	sizes := make([]int, 1)
 	matched := false
-	for range 16 {
+	// A newly created Windows adapter can emit a burst of neighbour-discovery
+	// packets before it delivers the probe. Keep the scan bounded, but allow the
+	// native startup burst to drain.
+	for range 256 {
 		count, readErr := device.Read([][]byte{buffer}, sizes, 7)
 		if readErr != nil || count != 1 {
 			t.Fatalf("TUN read %d %v", count, readErr)

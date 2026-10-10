@@ -1,7 +1,8 @@
 # Fixed-target isolation config writer
 
-Checkpoint 19 is implemented in `bin/internal/isolation/configwriter`. It is a
-component only. It is not connected to daemon startup and does not enable an
+Checkpoint 19 is implemented in `bin/internal/isolation/configwriter`.
+`bin/cmd/almagest-config-writer-role` is the restricted C process entry point.
+It is not connected to production daemon startup and does not enable an
 isolated production mode.
 
 ## Contract
@@ -147,3 +148,20 @@ The adapter coverage was 82.4 percent, the writer coverage was 78.5 percent,
 and the direct local persistence coverage was 76.6 percent. The fuzz run
 completed 386,450 executions. These component results do not replace the full
 project gate or the later Linux and Windows complete-composition gates.
+
+The C process uses the dedicated control-only transport constructor. It cannot
+receive a network data lane or admin lane. After the platform restriction is
+installed, it reads one bounded trusted bootstrap record, validates one target
+file name below its held directory, opens the fixed target, and publishes
+readiness. The Linux profile Docker gate launches the real static C executable
+and performs a read and durable replacement through `configpersistence`.
+Duplicate fields, path separators, alternate-stream syntax, false readiness,
+peer loss, and malformed target names are rejected. Bootstrap validation has a
+fuzz target.
+
+Windows metadata validation fingerprints the owner, DACL protection state, and
+ordered ACE bytes. It does not hash the non-semantic offsets and padding of a
+self-relative security descriptor because `ReplaceFileW` can rebuild that
+layout while it preserves the same security. The portable Windows persistence
+and daemon coordinator tests verify that a durable replacement remains
+committed after this rebuild.

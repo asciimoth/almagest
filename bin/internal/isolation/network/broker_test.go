@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -12,6 +14,7 @@ import (
 
 	"github.com/asciimoth/almagest/bin/internal/isolation/policy"
 	"github.com/asciimoth/almagest/bin/internal/isolation/protocol"
+	"github.com/asciimoth/almagest/bin/internal/isolation/supervision"
 	gdns "github.com/asciimoth/gonnect/dns"
 	"github.com/asciimoth/gonnect/tun"
 )
@@ -104,6 +107,7 @@ func (f *fakeTun) Verify(context.Context) error {
 	}
 	return nil
 }
+func (*fakeTun) RecoveryIdentity() string { return "fake-native-v1:42" }
 func (f *fakeTun) State(context.Context) (protocol.ResourceState, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -413,4 +417,105 @@ func TestNetworkOwnership(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
+}
+
+func TestNetworkBrokerJournalsNativeTunLifetime(t *testing.T) {
+	p := policy.Default(policy.LaunchAuthority{Backend: "fake", CredentialClass: "test"}, policy.CommandAuthority{})
+	digest, err := p.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := protocol.NewSessionID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	journal, err := supervision.OpenJournal(filepath.Join(t.TempDir(), "recovery.json"), 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := NewWithJournal(protocol.Session{ID: id, Epoch: 1, Version: protocol.Version, PolicyDigest: digest}, p, &fakeBackend{}, journal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := b.CreateTun(context.Background(), protocol.CreateTunRequest{Meta: meta(b, "create-journaled"), Options: protocol.TunOptions{MTU: 1420}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	records := journal.Snapshot()
+	if len(records) != 1 || records[0].State != supervision.EffectOwned || records[0].Identity != "fake-native-v1:42" || records[0].ResourceType != protocol.ResourceTun {
+		t.Fatalf("journal after create = %#v", records)
+	}
+	_, err = b.CloseResource(context.Background(), protocol.ResourceRequest{Meta: meta(b, "close-journaled"), Resource: result.Resource})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if records = journal.Snapshot(); len(records) != 0 {
+		t.Fatalf("journal after close = %#v", records)
+	}
+}
+
+func TestNetworkBrokerLeavesDurableUncertainIdentityOnCleanupFailure(t *testing.T) {
+	p := policy.Default(policy.LaunchAuthority{Backend: "fake", CredentialClass: "test"}, policy.CommandAuthority{})
+	digest, err := p.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := protocol.NewSessionID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	journal, err := supervision.OpenJournal(filepath.Join(t.TempDir(), "recovery.json"), 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	backend := &fakeBackend{}
+	b, err := NewWithJournal(protocol.Session{ID: id, Epoch: 1, Version: protocol.Version, PolicyDigest: digest}, p, backend, journal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := b.CreateTun(context.Background(), protocol.CreateTunRequest{Meta: meta(b, "create-uncertain"), Options: protocol.TunOptions{MTU: 1420}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	backend.last().closeErr = errors.New("native close failed")
+	_, err = b.CloseResource(context.Background(), protocol.ResourceRequest{Meta: meta(b, "close-uncertain"), Resource: result.Resource})
+	if !errors.Is(err, protocol.ErrRecoveryRequired) {
+		t.Fatalf("close error = %v", err)
+	}
+	records := journal.Snapshot()
+	if len(records) != 1 || records[0].State != supervision.EffectUncertain || records[0].Identity != "fake-native-v1:42" {
+		t.Fatalf("journal after failed close = %#v", records)
+	}
+}
+
+func TestNetworkBrokerDoesNotMutateWhenPendingJournalWriteFails(t *testing.T) {
+	p := policy.Default(policy.LaunchAuthority{Backend: "fake", CredentialClass: "test"}, policy.CommandAuthority{})
+	digest, err := p.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := protocol.NewSessionID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	directory := t.TempDir()
+	journal, err := supervision.OpenJournal(filepath.Join(directory, "recovery.json"), 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	backend := &fakeBackend{}
+	b, err := NewWithJournal(protocol.Session{ID: id, Epoch: 1, Version: protocol.Version, PolicyDigest: digest}, p, backend, journal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(directory, directory+"-unavailable"); err != nil {
+		t.Fatal(err)
+	}
+	_, err = b.CreateTun(context.Background(), protocol.CreateTunRequest{Meta: meta(b, "journal-failure"), Options: protocol.TunOptions{MTU: 1420}})
+	if err == nil {
+		t.Fatal("create succeeded without a durable pending record")
+	}
+	if backend.count() != 0 {
+		t.Fatalf("native create calls = %d", backend.count())
+	}
 }

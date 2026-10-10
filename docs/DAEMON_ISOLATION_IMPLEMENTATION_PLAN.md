@@ -23,8 +23,8 @@ Windows sandbox, C's fixed-target boundary, and node-command H restrictions.
 N may retain launch authority and native DNS/process integration. Separate
 DNS/BPF helpers and upstream API changes are no longer prerequisites. Earlier
 restricted-N experiments remain historical evidence, not release requirements.
-Checkpoint 24 implements and qualifies the revised Linux profile components.
-Checkpoint 25 remains open for the equivalent Windows work. Completing a
+Checkpoints 24 and 25 implement and qualify the revised Linux and Windows
+profile components. Completing a
 platform profile does not enable production isolation; composition,
 supervision, recovery, rollout, and default-mode gates remain later checkpoints.
 
@@ -753,6 +753,11 @@ checks this path before and during a default TUN. Application-resolver attachmen
 now has a bounded correlated relay. The native composition test attaches it to
 the default TUN, sends a real DNS query through N's managed listener, executes
 the application resolver in R, and validates the reply and cleanup.
+Native TUN creation now writes a broker-private pending recovery record before
+the host mutation, promotes it only after a stable platform identity is known,
+and removes it only after native cleanup. The restricted C role performs a
+bounded bootstrap/readiness exchange and runs the fixed-target writer over its
+control-only channel. The Linux Docker composition executes that real role.
 
 See the [Linux role profile implementation and qualification notes](DAEMON_ISOLATION_LINUX_PROFILES.md).
 
@@ -799,6 +804,10 @@ R/C/H roles, trusted caller/service N, and persistent AppContainer deployment
 provisioning. Both launch identities pass final-token native backend tests in
 the locked Windows VM. Production isolated startup remains disabled until the
 later composition, qualification, performance, and rollout checkpoints pass.
+The common C entry point and durable native-resource journal are used by this
+profile. Native network cleanup must leave no journal record. Restart
+reconciliation inspects the recorded LUID/GUID and never removes an adapter
+from a generic or name-only claim.
 
 See the [Windows role profile implementation and qualification notes](DAEMON_ISOLATION_WINDOWS_PROFILES.md).
 
@@ -829,10 +838,11 @@ Acceptance:
 
 ## 26. Implement supervision and host recovery
 
-Status: the bounded supervisor and durable identity-driven recovery journal are
-implemented in `bin/internal/isolation/supervision`. Production isolated startup
-remains disabled. Final Linux/Windows native reconciler and complete-composition
-qualification remain in checkpoints 30 through 32.
+Status: the bounded supervisor, durable identity-driven recovery journal,
+Linux/Windows native identity inspectors, and broker integration are
+implemented in `bin/internal/isolation/supervision` and
+`bin/internal/isolation/network`. Production isolated startup remains disabled.
+Complete-composition qualification remains in checkpoints 30 through 32.
 
 See the [supervision and host recovery contract](DAEMON_ISOLATION_SUPERVISION.md).
 
@@ -861,8 +871,10 @@ Acceptance:
 ## 27. Integrate cross-process config transactions
 
 Status: implemented as the runtime-side isolated config persistence adapter in
-`bin/internal/isolation/configpersistence`. The production isolated composition
-remains disabled until checkpoint 32.
+`bin/internal/isolation/configpersistence` and the restricted C role in
+`bin/cmd/almagest-config-writer-role`. C accepts one trusted target name below
+its held directory and uses a control-only authenticated channel. The production
+isolated composition remains disabled until checkpoint 32.
 
 See the [fixed-target isolation config writer integration notes](DAEMON_ISOLATION_CONFIG_WRITER.md#checkpoint-27-runtime-integration).
 
@@ -949,7 +961,8 @@ Acceptance:
 
 Status: the fail-closed qualification manifest and development-only evidence
 entry point are implemented. The Linux profile components from checkpoint 24
-are qualified; the Windows profile and complete daemon composition remain open.
+and Windows profile components from checkpoint 25 are qualified. Complete
+daemon composition and its full evidence record remain open.
 Production isolated startup remains disabled.
 
 See the [complete-profile qualification gate](DAEMON_ISOLATION_QUALIFICATION.md).

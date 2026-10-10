@@ -317,7 +317,12 @@ func (w *Writer) Serve(ctx context.Context, lanes transport.Lanes) error {
 	w.serving = true
 	w.ready = make(chan struct{})
 	w.serveMu.Unlock()
-	peer, err := transport.New(ctx, lanes, w.session, w.Handle)
+	// The config writer profile must not receive network data or admin lanes.
+	if lanes.Data != nil || lanes.Diagnostic != nil {
+		lanes.Close()
+		return protocol.ErrInvalidContract
+	}
+	peer, err := transport.NewControl(ctx, lanes.Control, w.session, w.Handle)
 	if err != nil {
 		w.serveMu.Lock()
 		w.serving = false

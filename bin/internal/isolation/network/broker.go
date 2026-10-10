@@ -12,6 +12,7 @@ import (
 	"github.com/asciimoth/almagest/bin/internal/isolation/policy"
 	"github.com/asciimoth/almagest/bin/internal/isolation/protocol"
 	"github.com/asciimoth/almagest/bin/internal/isolation/relay"
+	"github.com/asciimoth/almagest/bin/internal/isolation/supervision"
 	"github.com/asciimoth/almagest/bin/internal/isolation/transport"
 )
 
@@ -26,6 +27,7 @@ type resource struct {
 	options protocol.CreateTunRequest
 	stop    context.CancelFunc
 	dns     protocol.ResourceRef
+	journal string
 }
 
 type receipt struct {
@@ -46,6 +48,7 @@ type Broker struct {
 	session          protocol.Session
 	policy           policy.Policy
 	backend          Backend
+	journal          *supervision.Journal
 	gate             chan struct{}
 	mu               sync.Mutex
 	epoch            uint64
@@ -61,6 +64,14 @@ type Broker struct {
 }
 
 func New(session protocol.Session, p policy.Policy, backend Backend) (*Broker, error) {
+	return NewWithJournal(session, p, backend, nil)
+}
+
+// NewWithJournal constructs a broker which records durable native TUN
+// ownership before it mutates the host. A production isolated composition must
+// supply a broker-private journal. A nil journal is retained for component
+// tests and cannot be used as complete-profile evidence.
+func NewWithJournal(session protocol.Session, p policy.Policy, backend Backend, journal *supervision.Journal) (*Broker, error) {
 	if err := session.Validate(); err != nil {
 		return nil, err
 	}
@@ -80,7 +91,7 @@ func New(session protocol.Session, p policy.Policy, backend Backend) (*Broker, e
 	if err := json.Unmarshal(data, &owned); err != nil {
 		return nil, err
 	}
-	return &Broker{session: session, policy: owned, backend: backend, gate: make(chan struct{}, 1), epoch: 1,
+	return &Broker{session: session, policy: owned, backend: backend, journal: journal, gate: make(chan struct{}, 1), epoch: 1,
 		matchSlots: make(chan struct{}, min(int(owned.Limits.MaxConcurrentRequests), 64)),
 		resources:  make(map[protocol.ResourceID]*resource), receipts: make(map[string]*receipt),
 		events: make(chan transport.Event, protocol.MaxConcurrentRequests), stopped: make(chan struct{}), timeout: operationTimeout}, nil

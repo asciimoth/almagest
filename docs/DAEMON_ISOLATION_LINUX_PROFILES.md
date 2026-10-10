@@ -118,6 +118,7 @@ Dynamic commands or additional resources require a separately reviewed profile.
 | Cgroup provisioner | Separate bounded role domains and safe cleanup in a disposable private cgroup namespace |
 | TrustedSystem | Equal-authority direct/prepared comparison: direct DNS, OutDNS, regular/default TUN, routes, bypass marks, MTU rebuild, owner matching, cleanup |
 | TrustedComposition | Fully restricted R with real N: TCP/UDP, owner matching, TUN, bounded OutDNS and reverse application-DNS relays, session-loss cleanup |
+| Restricted C composition | Real static C entry point, post-launch all-thread seal, bounded readiness exchange, control-only config transfer, fixed-target read/replace, and peer-loss exit |
 | Upstream DNS matrix | All ten sysnet-linux v0.10.1 provider cases, including fallback and dynamic provider behavior |
 | p-mark guest | Released p-mark v0.5.0 guest cases for lifecycle, sockets, exact kernel policy, 64 immediate-exec probes, and churn |
 | Race and fuzz tests | Profile plans, native arguments, backend cgroup values, DNS packets and application responses, plus broker/runtime/transport suites |
@@ -169,8 +170,13 @@ The direct/prepared native comparison and restricted-runtime composition also
 passed with v0.10.1 under `artifacts/linux-profiles/v0101-native/`. Focused
 `just check`, including Windows cross-lint and the affected race tests, passed.
 
-Remaining release gates include complete bootstrap/service assembly, deployment
-identities and storage quotas, supervision/recovery integration, the full
+Native network composition now uses the durable broker journal and requires it
+to be empty after peer-loss cleanup. The Linux native reconciler resolves an
+absent TUN after restart and deliberately leaves a still-present interface for
+inspection because an interface index can be reused.
+
+Remaining release gates include complete runtime/admin service assembly,
+deployment identities and storage quotas, the full
 feature/hostile-runtime/performance manifest, and other platform/build targets.
 All supported backend features, including eBPF process filtering, remain
 required. Direct mode has no isolation launcher or internal IPC overhead.

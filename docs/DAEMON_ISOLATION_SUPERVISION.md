@@ -116,6 +116,13 @@ That platform qualification remains part of checkpoints 30 through 32.
   `artifacts/winvm/run-flow-dXmQQpPG` and
   `artifacts/winvm/run-flow-CGeBxa3v`. This package is not imported by the flow
   programs, but the failed gate remains recorded rather than counted as a pass.
-- No checkpoint-specific test changed host networking. Native process and
-  recovery qualification remains open for the later Docker and Windows VM
-  complete-composition gates.
+- Native TUN creation is now journaled before the host mutation. It is promoted
+  to an owned platform identity after creation and resolved only after native
+  cleanup. Linux records the network namespace and interface index. Windows
+  records the adapter LUID and GUID.
+- `BrokerHost` runs identity reconciliation before readiness and after runtime
+  revocation. An absent object is resolved. A still-present object remains
+  visible for operator inspection because a generic reconciler cannot safely
+  delete it from a reusable name or index.
+- Complete-daemon process and recovery qualification remains open for the later
+  Docker and Windows VM complete-composition gates.

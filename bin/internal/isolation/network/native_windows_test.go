@@ -8,10 +8,12 @@ import (
 	"net"
 	"net/netip"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/asciimoth/almagest/bin/internal/isolation/protocol"
+	"github.com/asciimoth/almagest/bin/internal/isolation/supervision"
 	sysnetwindows "github.com/asciimoth/sysnet-windows"
 	"golang.org/x/sys/windows"
 )
@@ -42,6 +44,10 @@ func TestWindowsNetworkTun(t *testing.T) {
 	}
 	b, _ := testBroker(t)
 	b.backend = backend
+	b.journal, err = supervision.OpenJournal(filepath.Join(t.TempDir(), "native-recovery.json"), 64)
+	if err != nil {
+		t.Fatal(err)
+	}
 	ctx := context.Background()
 	interfaces, err := net.Interfaces()
 	if err != nil {
@@ -101,6 +107,9 @@ func TestWindowsNetworkTun(t *testing.T) {
 	if err := b.Shutdown(ctx); err != nil {
 		t.Fatal(err)
 	}
+	if records := b.journal.Snapshot(); len(records) != 0 {
+		t.Fatalf("broker cleanup retained recovery records: %#v", records)
+	}
 }
 
 func TestWindowsTunRelay(t *testing.T) {
@@ -126,5 +135,12 @@ func TestWindowsTunRelay(t *testing.T) {
 	}
 	b, _ := testBroker(t)
 	b.backend = backend
+	b.journal, err = supervision.OpenJournal(filepath.Join(t.TempDir(), "relay-recovery.json"), 64)
+	if err != nil {
+		t.Fatal(err)
+	}
 	exerciseTunRelay(t, b)
+	if records := b.journal.Snapshot(); len(records) != 0 {
+		t.Fatalf("relay cleanup retained recovery records: %#v", records)
+	}
 }

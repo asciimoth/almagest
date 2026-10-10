@@ -48,12 +48,10 @@ func TestConfigCoordinatorUsesIsolatedTransactionsForUpdateAndAutosave(t *testin
 	}
 	t.Cleanup(func() { _ = writer.Close() })
 	a, z := net.Pipe()
-	b, y := net.Pipe()
-	c, x := net.Pipe()
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
-	go func() { _ = writer.Serve(ctx, transport.Lanes{Control: z, Data: y, Diagnostic: x}) }()
-	remote, err := transport.New(ctx, transport.Lanes{Control: a, Data: b, Diagnostic: c}, session, nil)
+	go func() { _ = writer.Serve(ctx, transport.Lanes{Control: z}) }()
+	remote, err := transport.NewControl(ctx, a, session, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
