@@ -19,15 +19,16 @@ import (
 const operationTimeout = 5 * time.Second
 
 type resource struct {
-	matcher *matcherResource
-	closing bool
-	ref     protocol.ResourceRef
-	native  OwnedTun
-	state   protocol.ResourceState
-	options protocol.CreateTunRequest
-	stop    context.CancelFunc
-	dns     protocol.ResourceRef
-	journal string
+	allocation OwnedAllocation
+	matcher    *matcherResource
+	closing    bool
+	ref        protocol.ResourceRef
+	native     OwnedTun
+	state      protocol.ResourceState
+	options    protocol.CreateTunRequest
+	stop       context.CancelFunc
+	dns        protocol.ResourceRef
+	journal    string
 }
 
 type receipt struct {
@@ -125,7 +126,7 @@ func (b *Broker) lookup(ref protocol.ResourceRef) (*resource, error) {
 	if ref.SessionID != b.session.ID {
 		return nil, protocol.ErrForeignResource
 	}
-	if ref.Type != protocol.ResourceTun && ref.Type != protocol.ResourceDefaultTun && ref.Type != protocol.ResourceSocket && ref.Type != protocol.ResourceListener && ref.Type != protocol.ResourceDNS && ref.Type != protocol.ResourceMatcher {
+	if ref.Type != protocol.ResourceAllocation && ref.Type != protocol.ResourceTun && ref.Type != protocol.ResourceDefaultTun && ref.Type != protocol.ResourceSocket && ref.Type != protocol.ResourceListener && ref.Type != protocol.ResourceDNS && ref.Type != protocol.ResourceMatcher {
 		return nil, protocol.ErrResourceType
 	}
 	if !ref.ID.Valid() {

@@ -138,3 +138,74 @@ the qualification work of checkpoints 16, 24, 25, 30, and 31.
   `artifacts/winvm/run-HsUuanhM` on Windows Server 2022 amd64.
 - These are focused checkpoint checks, not a new full-project or complete
   isolated-daemon qualification run. No host network settings were changed.
+
+
+## Address allocator integration
+
+N dispatches typed IP and subnet reservations to the native system allocator.
+An exact reservation and an allocation each own one native reserve count.
+The result contains an opaque resource reference, its graph epoch, and the
+observed address or subnet. Allocation requests select IPv4 or IPv6; subnet
+allocation also selects a prefix length. Native pool exhaustion returns a
+normal empty allocation through the runtime adapter.
+
+R cannot call the native allocator's `FreeAll` methods. Its `FreeAllIP` and
+`FreeAllSubnets` methods release only references held by that adapter. Each
+adapter belongs to one graph epoch. A stale adapter cannot reserve addresses
+or release a replacement graph's reservations. Release, epoch change, peer
+loss, and shutdown free the exact owned counts. Receipt replay cannot add an
+extra count. Canceled or malformed results are compensated; unproved cleanup
+blocks new work. This in-memory allocator state needs no durable host journal.
+
+The native allocator interfaces do not return errors from explicit reserve or
+free calls. The runtime adapter exposes `Err` and stops new allocations after
+a failed required reservation or an uncertain release. A rejected optional
+allocation for one family does not disable another family. A malformed
+successful reply closes the runtime session so N can revoke all its resources.
+
+Tests cover reference counts, foreign reservations, receipt replay and
+conflicts, forged identity, stale graphs, cancellation, partial effects,
+cleanup failure, pool exhaustion, bounds, peer loss, malformed replies, and a
+blocked backend with responsive control reads. Native Linux and Windows tests
+compare the same allocator backend through direct and wire calls. Fuzz targets
+cover typed request/result validation and native prefix conversion.
+
+Use `TestLinuxAllocationParity` inside Docker; it needs no network capability.
+Use `just test-total winvm:m30::allocator-parity` for native Windows execution.
+These component checks do not establish complete-daemon qualification.
+
+## Runtime system integration
+
+The runtime client implements the complete `sysnet.System` interface used by
+`almagest.BuildEngine`. Capability reports retain the native system revision,
+operation keys, rule profiles, routing profiles, ownership fields, states,
+reasons, and limitations. The broker adds only its internal resolver-snapshot
+and application-DNS operations; the runtime omits those internal entries from
+the public native report. Per-TUN state includes both system and instance
+capability revisions.
+
+One public runtime TUN object remains stable while N advances its generation
+after an update or replaces the native default TUN. Reads, writes, events,
+state reads, and later updates always select the current generation. Mutations
+are serialized per device. This also makes additive address and route updates
+atomic with respect to other runtime updates. A closed or foreign adapter is
+reported as an unknown TUN. `File` always returns nil, `IsNative` is false, and
+the runtime receives no platform handle.
+
+`SetDNS` creates a typed, graph-owned application-DNS endpoint and serves the
+node's resolver on the bounded data lane. The create request carries no host
+selector. A successful default-TUN generation change installs the new endpoint
+before the old endpoint closes. Detach, replacement, peer loss, graph release,
+and system close release it. `OutDNS` remains the native provider in N and is
+opened lazily for each caller, so closing one node's provider does not affect
+later nodes.
+
+Portable tests cover capability conversion, stable generations, every TUN
+setter and getter, concurrent additive updates, replacement, application DNS,
+receipt replay, foreign sessions, malformed values, cleanup, and construction
+of a real engine. The system-option fuzz target exercises regular/default TUN
+parsing and the check/build paths. Native Linux and Windows tests compare the
+wire report with the direct backend report. The trusted Linux composition runs
+only in Docker with no host network and checks final TUN, DNS, and recovery
+journal cleanup. Use the locked Windows VM selector
+`just test-total winvm:m30::runtime-system-parity` for Windows parity.

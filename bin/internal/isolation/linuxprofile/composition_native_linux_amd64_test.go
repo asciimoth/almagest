@@ -203,11 +203,6 @@ func TestNativeTrustedComposition(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = broker.Shutdown(context.Background()) })
-	applicationDNS := network.NewApplicationDNSEndpoint()
-	applicationDNSRef, err := broker.RegisterDNSEndpoint(ctx, 1, applicationDNS)
-	if err != nil {
-		t.Fatal(err)
-	}
 	echo, err := net.ListenPacket("udp4", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -230,9 +225,6 @@ func TestNativeTrustedComposition(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := binary.Write(&bootstrap, binary.LittleEndian, uint16(echo.LocalAddr().(*net.UDPAddr).Port)); err != nil {
-		t.Fatal(err)
-	}
-	if err := binary.Write(&bootstrap, binary.LittleEndian, applicationDNSRef.ID); err != nil {
 		t.Fatal(err)
 	}
 	if err := streams[0].SetWriteDeadline(time.Now().Add(5 * time.Second)); err != nil {

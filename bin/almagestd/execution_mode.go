@@ -9,7 +9,10 @@ import (
 
 type executionMode string
 
-const executionModeDirect executionMode = "direct"
+const (
+	executionModeDirect               executionMode = "direct"
+	executionModeIsolationDevelopment executionMode = "isolation-development"
+)
 
 func selectExecutionMode(arguments args.Args) (executionMode, error) {
 	if arguments.Experimental && !arguments.NoIsolation {

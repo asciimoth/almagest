@@ -27,6 +27,7 @@ func (o Operation) Valid() bool {
 		OperationSetTunRoutes,
 		OperationSetTunName,
 		OperationGetTunState,
+		OperationCreateDNSEndpoint,
 		OperationConfigureDNS,
 		OperationOpenSocket,
 		OperationChannel,

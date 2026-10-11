@@ -145,3 +145,54 @@ retained evidence is in `artifacts/winvm/run-Yv6sGGnc`. A final portable
 regression and fuzz seed also cover padded Windows rule names in denied policy.
 The final rule-fuzz run completed another 45,911 executions with two workers
 and a 10-second budget after that policy check was added.
+
+## Rule validation and completion integration
+
+The checkpoint 30 audit found that `check_rule` and `complete_rule` were in
+protocol version 1 but absent from the broker dispatch table. They now call the
+same native `sysnet.System` methods as direct mode. The runtime client provides
+`CheckRule` and `CompleteRule`; neither method runs native process inspection
+in R.
+
+A typed context replaces the unused string field. It selects exactly one
+matcher family/transport or routing family/mode/strictness. IPv4, IPv6, and
+dual-family routing retain their distinct native capability contexts. This is
+an internal contract correction before production isolation is enabled. An
+older string-shaped request fails decoding; it is not treated as a default
+context.
+
+Validation returns the native capability revision and structured issue paths,
+reason identifiers, states, and closed error categories. Native diagnostic
+text stays in N. Unknown capability remains different from unsupported,
+unavailable, and invalid input. Completion also has a distinct
+`capability_unknown` wire error; `unknown` still means an unknown operation
+receipt. Completion returns at most 128 suggestions and observes the protected
+string and encoded-reply limits.
+
+Both operations check session identity, graph epoch, exact context, denied rule
+types, and protected operation restrictions before native work. Routing
+contexts also observe default-route and strict-mode restrictions. Effective
+rule capabilities report denied validation and completion operations. Native
+work uses the bounded read lane. Cancellation before dispatch does not call the
+backend. Cancellation, session revocation, or an epoch change prevents delivery
+of a late result. A stuck backend retains the one native worker slot.
+
+New tests cover those conditions, malformed frames and replies, failed native
+operations, peer loss, and native validation-category preservation. The Linux
+and Windows comparisons use each native backend's advertised rule inventory,
+all four IPv4/IPv6 matcher contexts, and all eighteen routing contexts. These
+are component comparisons through the production wire adapters; they do not
+claim that a complete restricted daemon has passed checkpoint 30.
+
+Run the native Windows comparison through the disposable VM:
+
+```sh
+just test-total winvm:m30::rule-control-parity
+```
+
+Run the new fuzz targets inside Docker:
+
+```sh
+go test ./bin/internal/isolation/network -run '^$' -fuzz '^FuzzRuleContext$' -fuzztime=30s -parallel=2
+go test ./bin/internal/isolation/runtime -run '^$' -fuzz '^FuzzRuleValidationReply$' -fuzztime=30s -parallel=2
+```

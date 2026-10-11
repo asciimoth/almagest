@@ -959,10 +959,24 @@ Acceptance:
 
 ## 30. Qualify feature parity and the hostile-runtime boundary
 
-Status: the fail-closed qualification manifest and development-only evidence
-entry point are implemented. The Linux profile components from checkpoint 24
-and Windows profile components from checkpoint 25 are qualified. Complete
-daemon composition and its full evidence record remain open.
+Status: the fail-closed qualification manifest, development-only role entry
+points, and restricted daemon composition are implemented. The Linux profile
+now starts the real daemon engine in R with an authenticated `sysnet.System`
+adapter and an N-owned admin listener. The retained daemon run executes a
+command node through H, updates config, and performs a live snapshot restore.
+Native C and H tests also use their final restrictions and fixed authority.
+Loss of N stops R and H. The Linux profile
+components from checkpoint 24 and Windows profile components from checkpoint
+25 are qualified.
+The integration audit added the missing typed rule validation/completion
+operations and native parity tests, and fixed stale read completion after
+cancellation or revocation. Typed IP/subnet allocation now reaches the native
+allocator with graph-owned reserve counts, bounded cleanup, and native Linux
+and Windows parity tests. The runtime network client now implements the complete
+`sysnet.System` surface, including stable TUN identities, application DNS, and
+native capability fidelity. The release evidence gate remains fail closed:
+component or development-composition results cannot be relabeled as a complete
+platform record.
 Production isolated startup remains disabled.
 
 See the [complete-profile qualification gate](DAEMON_ISOLATION_QUALIFICATION.md).

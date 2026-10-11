@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"os"
+	"slices"
 	"sync"
 
 	"github.com/asciimoth/almagest/bin/internal/isolation/protocol"
@@ -175,7 +176,76 @@ func (c *Client) CreateTun(ctx context.Context, req protocol.CreateTunRequest) (
 		return nil, err
 	}
 	if result.Outcome != protocol.OutcomeCommitted {
+		if result.Code != "" {
+			return nil, decodeError(result.Code)
+		}
 		return nil, protocol.ErrRecoveryRequired
 	}
 	return c.Tun(result.Resource, result.State)
+}
+
+func (c *Client) tunState(ctx context.Context, device *Tun) (protocol.ResourceState, error) {
+	if device == nil {
+		return protocol.ResourceState{}, protocol.ErrInvalidContract
+	}
+	meta := c.meta(false)
+	meta.GraphEpoch = device.ref.GraphEpoch
+	var state protocol.ResourceState
+	err := c.peer.Call(ctx, protocol.OperationGetTunState, protocol.ResourceRequest{Meta: meta, Resource: device.ref}, &state)
+	if err != nil {
+		return protocol.ResourceState{}, err
+	}
+	state.Capabilities = slices.Clone(state.Capabilities)
+	state.Addresses = slices.Clone(state.Addresses)
+	state.Routes = slices.Clone(state.Routes)
+	state.Warnings = slices.Clone(state.Warnings)
+	return state, nil
+}
+
+func (c *Client) updateTun(ctx context.Context, device *Tun, req protocol.UpdateTunRequest) (*Tun, error) {
+	if device == nil {
+		return nil, protocol.ErrInvalidContract
+	}
+	req.Meta = c.meta(true)
+	req.Meta.GraphEpoch = device.ref.GraphEpoch
+	req.Resource = device.ref
+	var result protocol.MutationResult
+	if err := c.peer.CallSettled(ctx, updateOperation(req.Kind), req, &result); err != nil {
+		return nil, err
+	}
+	if result.Outcome != protocol.OutcomeCommitted {
+		if result.Code != "" {
+			return nil, decodeError(result.Code)
+		}
+		return nil, protocol.ErrRecoveryRequired
+	}
+	if result.CurrentResource.ID != device.ref.ID || result.CurrentResource.SessionID != device.ref.SessionID ||
+		result.CurrentResource.Type != device.ref.Type || result.CurrentResource.GraphEpoch != device.ref.GraphEpoch ||
+		result.CurrentResource.Generation < device.ref.Generation || result.CurrentResource.Generation > device.ref.Generation+1 {
+		_ = c.Close()
+		return nil, protocol.ErrInvalidContract
+	}
+	if result.CurrentResource == device.ref {
+		return device, nil
+	}
+	state, err := c.tunState(ctx, &Tun{Conn: &Conn{client: c, ref: result.CurrentResource}})
+	if err != nil {
+		return nil, err
+	}
+	return c.Tun(result.CurrentResource, state)
+}
+
+func updateOperation(kind protocol.TunUpdateKind) protocol.Operation {
+	switch kind {
+	case protocol.TunUpdateMTU:
+		return protocol.OperationSetTunMTU
+	case protocol.TunUpdateAddresses:
+		return protocol.OperationSetTunAddresses
+	case protocol.TunUpdateRoutes:
+		return protocol.OperationSetTunRoutes
+	case protocol.TunUpdateName:
+		return protocol.OperationSetTunName
+	default:
+		return ""
+	}
 }

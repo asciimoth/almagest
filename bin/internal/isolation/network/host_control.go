@@ -8,10 +8,47 @@ import (
 	"github.com/asciimoth/almagest/bin/internal/isolation/protocol"
 )
 
+// CreateDNSEndpoint creates a graph-owned relay on N. The request has no
+// parameters other than its authority metadata, so R cannot select a host
+// provider or native DNS mechanism.
+func (b *Broker) CreateDNSEndpoint(ctx context.Context, req protocol.CreateDNSEndpointRequest) (protocol.ResourceResult, error) {
+	input := req
+	input.Meta.RequestID = 0
+	return b.mutate(ctx, req.Meta, protocol.OperationCreateDNSEndpoint, input, func(ctx context.Context) (protocol.ResourceResult, error) {
+		b.mu.Lock()
+		limited := len(b.resources) >= int(b.policy.Limits.MaxLiveResources)
+		b.mu.Unlock()
+		if limited {
+			return rejected(req.Meta.OperationID, protocol.ErrLimitExceeded), protocol.ErrLimitExceeded
+		}
+		if err := ctx.Err(); err != nil {
+			return rejected(req.Meta.OperationID, err), err
+		}
+		endpoint := NewApplicationDNSEndpoint()
+		ref, err := b.registerDNSEndpoint(ctx, req.Meta.GraphEpoch, endpoint)
+		if err != nil {
+			_ = endpoint.Close(context.Background())
+			return rejected(req.Meta.OperationID, err), err
+		}
+		b.mu.Lock()
+		r := b.resources[ref.ID]
+		b.mu.Unlock()
+		if r == nil {
+			_ = endpoint.Close(context.Background())
+			return rejected(req.Meta.OperationID, protocol.ErrRecoveryRequired), protocol.ErrRecoveryRequired
+		}
+		return b.result(r, protocol.OutcomeCommitted), nil
+	})
+}
+
 // RegisterDNSEndpoint records a bootstrap-created DNS relay. This is not a
 // runtime RPC: isolated bootstrap creates the bounded relay and gives its
 // opaque reference to R. Thus R cannot select a provider or native mechanism.
 func (b *Broker) RegisterDNSEndpoint(ctx context.Context, graphEpoch uint64, endpoint OwnedDNSEndpoint) (protocol.ResourceRef, error) {
+	return b.registerDNSEndpoint(ctx, graphEpoch, endpoint)
+}
+
+func (b *Broker) registerDNSEndpoint(ctx context.Context, graphEpoch uint64, endpoint OwnedDNSEndpoint) (protocol.ResourceRef, error) {
 	if endpoint == nil || endpoint.Resolver() == nil || graphEpoch == 0 {
 		return protocol.ResourceRef{}, protocol.ErrInvalidContract
 	}

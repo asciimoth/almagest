@@ -83,3 +83,15 @@ func TestLinuxMatcherSharedBind(t *testing.T) {
 		_ = second.Close()
 	}
 }
+
+func TestLinuxRuleParity(t *testing.T) {
+	if _, err := os.Stat("/.dockerenv"); err != nil {
+		t.Skip("native matcher checks require Docker")
+	}
+	s, err := linuxsysnet.New(linuxsysnet.SystemConfig{Features: linuxsysnet.FeatureConfig{MatcherRules: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	nativeRuleParity(t, s)
+}

@@ -235,7 +235,7 @@ func main() {
 	b := make([]byte, len("profile-channel"))
 	_, err = io.ReadFull(file, b)
 	check("inherited-channel", err == nil && string(b) == "profile-channel", err)
-	for _, name := range []string{"ALMAGEST_DATA_FD", "ALMAGEST_DIAGNOSTICS_FD", "ALMAGEST_ADMIN_FD"} {
+	for _, name := range []string{"ALMAGEST_DATA_FD", "ALMAGEST_DIAGNOSTICS_FD", "ALMAGEST_ADMIN_FD", "ALMAGEST_CONFIG_FD", "ALMAGEST_COMMAND_FD", "ALMAGEST_CALLBACK_FD"} {
 		fd, _ := strconv.Atoi(os.Getenv(name))
 		if fd == 0 {
 			continue

@@ -26,6 +26,9 @@ type Inputs struct {
 	Data        *os.File // optional separate N/R data lane
 	Diagnostics *os.File // optional separate logging lane
 	Admin       *os.File // optional separate N/R admin lane
+	Config      *os.File // optional fixed R/C control lane
+	Commands    *os.File // optional fixed R/H control lane
+	Callbacks   *os.File // optional fixed N/H callback lane
 }
 
 // CommandContext prepares a launch through a held executable descriptor, with
@@ -39,7 +42,8 @@ func CommandContext(ctx context.Context, p Plan, in Inputs) (*exec.Cmd, error) {
 	}
 	if ctx == nil || in.Launcher == nil || in.Control == nil || in.Executable == nil || in.Directory == nil || in.Cgroup == nil ||
 		(p.Role == Command) != (in.Command != nil) ||
-		(p.Role == Writer || p.Role == Command) && (in.Data != nil || in.Admin != nil) {
+		(p.Role == Writer || p.Role == Command) && (in.Data != nil || in.Admin != nil || in.Config != nil || in.Commands != nil) ||
+		p.Role != Command && in.Callbacks != nil {
 		return nil, fmt.Errorf("%w: incomplete inherited objects", ErrUnavailable)
 	}
 	// Descriptor 8 is used only to enter the native launcher. It is closed by
@@ -51,6 +55,6 @@ func CommandContext(ctx context.Context, p Plan, in Inputs) (*exec.Cmd, error) {
 	// resource limits. Moving the bootstrap process or attaching a running child
 	// would either affect another role or leave an unrestricted startup window.
 	cmd.SysProcAttr = &syscall.SysProcAttr{UseCgroupFD: true, CgroupFD: int(in.Cgroup.Fd())}
-	cmd.ExtraFiles = []*os.File{in.Control, in.Executable, in.Directory, in.Cgroup, in.Command, in.Launcher, in.Data, in.Diagnostics, in.Admin}
+	cmd.ExtraFiles = []*os.File{in.Control, in.Executable, in.Directory, in.Cgroup, in.Command, in.Launcher, in.Data, in.Diagnostics, in.Admin, in.Config, in.Commands, in.Callbacks}
 	return cmd, nil
 }

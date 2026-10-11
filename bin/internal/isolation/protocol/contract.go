@@ -55,9 +55,11 @@ var (
 	ErrInvalidContract       = errors.New("invalid isolation control contract")
 	ErrUnsupportedVersion    = errors.New("unsupported isolation protocol version")
 	ErrUnsupportedOperation  = errors.New("unsupported isolation operation")
+	ErrCapabilityUnknown     = errors.New("isolation capability availability is unknown")
 	ErrCapabilityUnsupported = errors.New("isolation capability is unsupported")
 	ErrCapabilityUnavailable = errors.New("isolation capability is unavailable")
 	ErrPolicyDenied          = errors.New("isolation policy denied operation")
+	ErrAllocationExhausted   = errors.New("isolation address allocation is exhausted")
 	ErrLimitExceeded         = errors.New("isolation control limit exceeded")
 	ErrForeignResource       = errors.New("isolation resource belongs to another session")
 	ErrResourceType          = errors.New("isolation resource has the wrong type")
@@ -229,6 +231,7 @@ const (
 	OperationSetTunRoutes       Operation = "set_tun_routes"
 	OperationSetTunName         Operation = "set_tun_name"
 	OperationGetTunState        Operation = "get_tun_state"
+	OperationCreateDNSEndpoint  Operation = "create_dns_endpoint"
 	OperationConfigureDNS       Operation = "configure_dns"
 	OperationOpenSocket         Operation = "open_socket"
 	OperationChannel            Operation = "data_channel"
@@ -258,6 +261,7 @@ type NetworkControl interface {
 	CompleteRule(context.Context, CompleteRuleRequest) (RuleCompletionResult, error)
 	ReserveAddress(context.Context, ReserveAddressRequest) (ResourceResult, error)
 	CreateTun(context.Context, CreateTunRequest) (ResourceResult, error)
+	CreateDNSEndpoint(context.Context, CreateDNSEndpointRequest) (ResourceResult, error)
 	UpdateTun(context.Context, UpdateTunRequest) (MutationResult, error)
 	ConfigureDNS(context.Context, ConfigureDNSRequest) (MutationResult, error)
 	OpenSocket(context.Context, OpenSocketRequest) (ResourceResult, error)
@@ -332,22 +336,50 @@ type Rule struct {
 	Value string
 }
 
+// RuleContext selects one exact native rule use. No process query or native
+// control selector can be carried in this value.
+type RuleContext struct {
+	Routing *RoutingContext
+	Matcher *MatcherContext
+}
+
+type RoutingContext struct {
+	Family string
+	Mode   string
+	Strict bool
+}
+
+type MatcherContext struct {
+	Family   string
+	Protocol string
+}
+
 type CheckRuleRequest struct {
 	Meta    RequestMeta
-	Context string
+	Context RuleContext
 	Rule    Rule
 }
 
 type CompleteRuleRequest struct {
 	Meta    RequestMeta
-	Context string
+	Context RuleContext
 	Rule    Rule
 	Limit   uint16
 }
 
+type ValidationIssue struct {
+	Path   string
+	Reason string
+	State  CapabilityState
+	// Code is a closed error category. Native error text stays in N.
+	Code string
+}
+
 type ValidationResult struct {
-	Normalized bool
-	Warnings   []string
+	CapabilityRevision uint64
+	Issues             []ValidationIssue
+	Normalized         bool
+	Warnings           []string
 }
 
 type RuleCompletionResult struct{ Rules []Rule }
@@ -359,10 +391,25 @@ const (
 	AddressSubnet AddressKind = "subnet"
 )
 
+// ReserveAddressRequest either selects an exact address/subnet to reserve or
+// asks the native allocator to select one. Reserve=false accepts no address.
+// PrefixLength is used only when allocating a subnet; zero is a valid /0.
 type ReserveAddressRequest struct {
-	Meta   RequestMeta
-	Kind   AddressKind
-	Family string
+	Meta         RequestMeta
+	Kind         AddressKind
+	Family       string
+	Reserve      bool
+	Address      netip.Addr
+	Subnet       netip.Prefix
+	PrefixLength uint8
+}
+
+type AllocationState struct {
+	Kind    AddressKind
+	Address netip.Addr
+	// Subnet is the allocated IP's parent, or the allocated/reserved subnet.
+	// Explicit IP reservations do not select or expose a parent pool.
+	Subnet netip.Prefix
 }
 
 type CreateTunRequest struct {
@@ -400,6 +447,10 @@ type ConfigureDNSRequest struct {
 	Enabled  bool
 	Endpoint ResourceRef
 }
+
+// CreateDNSEndpointRequest creates one bounded application-DNS relay for the
+// current graph. It carries no provider, address, path, or native selector.
+type CreateDNSEndpointRequest struct{ Meta RequestMeta }
 
 type NetworkPurpose string
 
@@ -511,19 +562,21 @@ type ResourceResult struct {
 }
 
 type ResourceState struct {
-	Local              netip.AddrPort
-	Remote             netip.AddrPort
-	Capabilities       []OperationCapability
-	CapabilityRevision uint64
-	Revision           uint64
-	Up                 bool
-	Closed             bool
-	RecoveryRequired   bool
-	Name               string
-	MTU                uint32
-	Addresses          []netip.Prefix
-	Routes             []netip.Prefix
-	Warnings           []string
+	Allocation               AllocationState
+	Local                    netip.AddrPort
+	Remote                   netip.AddrPort
+	Capabilities             []OperationCapability
+	SystemCapabilityRevision uint64
+	CapabilityRevision       uint64
+	Revision                 uint64
+	Up                       bool
+	Closed                   bool
+	RecoveryRequired         bool
+	Name                     string
+	MTU                      uint32
+	Addresses                []netip.Prefix
+	Routes                   []netip.Prefix
+	Warnings                 []string
 }
 
 type Outcome string

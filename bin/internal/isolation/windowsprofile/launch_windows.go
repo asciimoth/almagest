@@ -118,7 +118,14 @@ func launch(ctx context.Context, r Request, beforeResume func(windows.Handle) er
 	if err = ctx.Err(); err != nil {
 		return nil, err
 	}
-	if len(r.Pipes) < 1 || len(r.Pipes) > 4 || len(r.Arguments) > 32 {
+	maxPipes := 6
+	switch r.Plan.Role {
+	case Writer:
+		maxPipes = 1
+	case Command:
+		maxPipes = 2
+	}
+	if len(r.Pipes) < 1 || len(r.Pipes) > maxPipes || len(r.Arguments) > 32 {
 		return nil, fmt.Errorf("%w: invalid launch bounds", ErrUnavailable)
 	}
 	if r.Plan.Role == Network {
@@ -226,6 +233,23 @@ func launch(ctx context.Context, r Request, beforeResume func(windows.Handle) er
 		envValues = append(envValues, "ALMAGEST_PIPE_"+strconv.Itoa(n)+"="+strconv.FormatUint(uint64(pipe), 10))
 	}
 	envValues = append(envValues, "ALMAGEST_BOOTSTRAP_FD="+strconv.FormatUint(uint64(pipes[0]), 10))
+	switch r.Plan.Role {
+	case Runtime:
+		names := []string{"ALMAGEST_DATA_FD", "ALMAGEST_DIAGNOSTICS_FD", "ALMAGEST_ADMIN_FD", "ALMAGEST_CONFIG_FD", "ALMAGEST_COMMAND_FD"}
+		for index, name := range names {
+			value := uint64(0)
+			if index+1 < len(pipes) {
+				value = uint64(pipes[index+1])
+			}
+			envValues = append(envValues, name+"="+strconv.FormatUint(value, 10))
+		}
+	case Command:
+		value := uint64(0)
+		if len(pipes) > 1 {
+			value = uint64(pipes[1])
+		}
+		envValues = append(envValues, "ALMAGEST_CALLBACK_FD="+strconv.FormatUint(value, 10))
+	}
 	slices.SortFunc(envValues, func(a, b string) int { return strings.Compare(strings.ToUpper(a), strings.ToUpper(b)) })
 	env := utf16.Encode([]rune(strings.Join(envValues, "\x00") + "\x00\x00"))
 	si := windows.StartupInfoEx{StartupInfo: windows.StartupInfo{Cb: uint32(unsafe.Sizeof(windows.StartupInfoEx{}))}, ProcThreadAttributeList: attrs.List()}

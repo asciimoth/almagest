@@ -21,15 +21,16 @@ import (
 )
 
 type Client struct {
-	opens    chan struct{}
-	emptyDNS gdns.Interface
-	peer     *transport.Peer
-	data     *relay.Mux
-	session  protocol.Session
-	next     atomic.Uint64
-	epoch    atomic.Uint64
-	mu       sync.Mutex
-	tuns     map[protocol.ResourceID]*Tun
+	allocator *Allocator
+	opens     chan struct{}
+	emptyDNS  gdns.Interface
+	peer      *transport.Peer
+	data      *relay.Mux
+	session   protocol.Session
+	next      atomic.Uint64
+	epoch     atomic.Uint64
+	mu        sync.Mutex
+	tuns      map[protocol.ResourceID]*Tun
 }
 
 func New(ctx context.Context, lanes transport.Lanes, session protocol.Session) (*Client, error) {
@@ -68,6 +69,9 @@ func (c *Client) Close() error {
 	_ = c.data.Close()
 	return c.peer.Close()
 }
+
+func (c *Client) Done() <-chan struct{} { return c.peer.Done() }
+func (c *Client) Err() error            { return c.peer.Err() }
 func (c *Client) meta(mutation bool) protocol.RequestMeta {
 	m := protocol.RequestMeta{GraphEpoch: c.epoch.Load()}
 	if mutation {
@@ -119,10 +123,12 @@ func remaining(t time.Time) *int64 {
 	return &n
 }
 func (c *Client) closeResource(ref protocol.ResourceRef) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 	var result protocol.MutationResult
 	m := c.meta(true)
 	m.GraphEpoch = ref.GraphEpoch
-	err := c.peer.Call(context.Background(), protocol.OperationCloseResource, protocol.ResourceRequest{Meta: m, Resource: ref}, &result)
+	err := c.peer.Call(ctx, protocol.OperationCloseResource, protocol.ResourceRequest{Meta: m, Resource: ref}, &result)
 	if err != nil {
 		return err
 	}

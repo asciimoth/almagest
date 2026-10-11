@@ -31,6 +31,8 @@ func requestType(op protocol.Operation) (any, bool) {
 		return new(protocol.UpdateTunRequest), true
 	case protocol.OperationConfigureDNS:
 		return new(protocol.ConfigureDNSRequest), true
+	case protocol.OperationCreateDNSEndpoint:
+		return new(protocol.CreateDNSEndpointRequest), true
 	case protocol.OperationChannel:
 		return new(protocol.ChannelRequest), false
 	case protocol.OperationOpenSocket:

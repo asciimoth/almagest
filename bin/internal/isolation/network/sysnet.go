@@ -114,12 +114,14 @@ func nativeError(err error) error {
 		return errors.Join(protocol.ErrCapabilityUnsupported, err)
 	}
 	switch {
+	case errors.Is(err, sysnet.ErrInvalidOptions):
+		return errors.Join(protocol.ErrInvalidContract, err)
+	case errors.Is(err, sysnet.ErrCapabilityUnknown):
+		return errors.Join(protocol.ErrCapabilityUnknown, err)
 	case errors.Is(err, sysnet.ErrNotSupported):
 		return errors.Join(protocol.ErrCapabilityUnsupported, err)
 	case errors.Is(err, sysnet.ErrUnavailable):
 		return errors.Join(protocol.ErrCapabilityUnavailable, err)
-	case errors.Is(err, sysnet.ErrInvalidOptions):
-		return errors.Join(protocol.ErrInvalidContract, err)
 	default:
 		return err
 	}
@@ -338,6 +340,7 @@ func (t *systemTun) readState(ctx context.Context) (protocol.ResourceState, erro
 		return state, nativeError(err)
 	}
 	state.Capabilities = operations(report.Operations)
+	state.SystemCapabilityRevision = report.SystemRevision
 	state.CapabilityRevision = report.InstanceRevision
 	return state, nil
 }
@@ -427,6 +430,10 @@ func capability(c sysnet.Capability) protocol.Capability {
 
 func operation(key sysnet.OperationKey) protocol.Operation {
 	switch key.Operation {
+	case sysnet.OpAllocateIP:
+		return protocol.OperationReserveIP
+	case sysnet.OpAllocateSubnet:
+		return protocol.OperationReserveSubnet
 	case sysnet.OpDialTCP, sysnet.OpDialUDP, sysnet.OpPacketDialUDP, sysnet.OpListenTCP, sysnet.OpListenUDP, sysnet.OpListenPacketUDP, sysnet.OpMulticastUDP:
 		return protocol.OperationOpenSocket
 	case sysnet.OpInterfaces:
@@ -450,6 +457,10 @@ func operation(key sysnet.OperationKey) protocol.Operation {
 		return protocol.OperationGetTunState
 	case sysnet.OpReconfigureInPlace, sysnet.OpSourceRoutes:
 		return protocol.OperationCreateDefaultTun
+	case sysnet.OpDNSProvider, sysnet.OpResolve, sysnet.OpQueryUDP, sysnet.OpQueryTCP:
+		return protocol.OperationOpenSocket
+	case sysnet.OpDNSConfigure, sysnet.OpDNSPort53Exclusive, sysnet.OpDNSSystemExclusive:
+		return protocol.OperationConfigureDNS
 	}
 	return ""
 }
@@ -477,8 +488,6 @@ func (s *SystemBackend) Capabilities(ctx context.Context) (protocol.CapabilitySn
 		resolverCapability = protocol.Capability{State: protocol.CapabilityUnknown, AttemptAllowed: true}
 	}
 	out.Operations = append(out.Operations, protocol.OperationCapability{Operation: protocol.OperationResolverSnapshot, Target: "out_dns", Capability: resolverCapability})
-	out.Operations = append(out.Operations, protocol.OperationCapability{Operation: protocol.OperationOpenSocket, Target: "out_dns", Capability: protocol.Capability{State: protocol.CapabilityUnknown, AttemptAllowed: true}})
-	out.Operations = append(out.Operations, protocol.OperationCapability{Operation: protocol.OperationConfigureDNS, Target: "default_tun", Capability: protocol.Capability{State: protocol.CapabilityUnknown, AttemptAllowed: true}})
 	for _, profile := range r.DefaultTunProfiles {
 		p := protocol.DefaultTunProfile{Family: string(profile.Key.Family), Mode: string(profile.Key.Mode), Strict: profile.Key.Strict, Capability: capability(profile.Capability)}
 		for _, rule := range profile.Rules {
@@ -492,6 +501,13 @@ func (s *SystemBackend) Capabilities(ctx context.Context) (protocol.CapabilitySn
 			converted.Matchers = append(converted.Matchers, protocol.MatcherCapability{Family: string(matcher.Key.Family), Protocol: string(matcher.Key.Transport), Quality: string(matcher.Quality), Capability: capability(matcher.Capability)})
 		}
 		out.Rules = append(out.Rules, converted)
+	}
+	for _, owner := range r.Ownership {
+		converted := protocol.OwnershipCapability{Family: string(owner.Key.Family), Protocol: string(owner.Key.Transport), Quality: string(owner.Quality), Capability: capability(owner.Capability)}
+		for _, field := range owner.Fields {
+			converted.Fields = append(converted.Fields, protocol.OwnerFieldCapability{Field: string(field.Field), Capability: capability(field.Capability)})
+		}
+		out.Ownership = append(out.Ownership, converted)
 	}
 	return out, nil
 }

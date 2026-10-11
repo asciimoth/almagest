@@ -38,6 +38,7 @@ func TestRequestDispatch(t *testing.T) {
 		{protocol.OperationSetTunRoutes, &protocol.UpdateTunRequest{}, true},
 		{protocol.OperationSetTunName, &protocol.UpdateTunRequest{}, true},
 		{protocol.OperationConfigureDNS, &protocol.ConfigureDNSRequest{}, true},
+		{protocol.OperationCreateDNSEndpoint, &protocol.CreateDNSEndpointRequest{}, true},
 		{protocol.OperationOpenSocket, &protocol.OpenSocketRequest{}, true},
 		{protocol.OperationChannel, &protocol.ChannelRequest{}, false},
 		{protocol.OperationCreateMatcher, &protocol.CreateMatcherRequest{}, true},

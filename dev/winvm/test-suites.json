@@ -157,6 +157,52 @@
           ]
         },
         {
+          "id": "m30::allocator-parity",
+          "kind": "go",
+          "module": "bin",
+          "arguments": ["./internal/isolation/network", "./internal/isolation/runtime", "./internal/isolation/protocol", "-run", "^(TestWindowsAllocationParity|TestAllocation.*|TestAllocator.*|FuzzAllocation.*|FuzzAllocator.*)$", "-count=1"],
+          "eventFile": "isolation-allocator.jsonl",
+          "requiredTests": [
+            "github.com/asciimoth/almagest/bin/internal/isolation/network::TestWindowsAllocationParity",
+            "github.com/asciimoth/almagest/bin/internal/isolation/network::TestAllocationOwnershipReceiptsAndCleanup",
+            "github.com/asciimoth/almagest/bin/internal/isolation/network::TestAllocationRuntimeNativeAllocatorParity",
+            "github.com/asciimoth/almagest/bin/internal/isolation/network::TestAllocationRuntimeEpochAndPeerLoss",
+            "github.com/asciimoth/almagest/bin/internal/isolation/network::TestAllocationFailuresAndLateCompletion",
+            "github.com/asciimoth/almagest/bin/internal/isolation/runtime::TestAllocatorRejectsMalformedReceipts",
+            "github.com/asciimoth/almagest/bin/internal/isolation/protocol::TestAllocationRequestContract"
+          ]
+        },
+        {
+          "id": "m30::rule-control-parity",
+          "kind": "go",
+          "module": "bin",
+          "arguments": ["./internal/isolation/network", "./internal/isolation/runtime", "-run", "^(TestWindowsRuleParity|TestRule.*|FuzzRule.*)$", "-count=1"],
+          "eventFile": "isolation-rule-control.jsonl",
+          "requiredTests": [
+            "github.com/asciimoth/almagest/bin/internal/isolation/network::TestWindowsRuleParity",
+            "github.com/asciimoth/almagest/bin/internal/isolation/network::TestRuleControlDispatchAndContext",
+            "github.com/asciimoth/almagest/bin/internal/isolation/network::TestRuleControlRejectsAuthorityAndMalformedInput",
+            "github.com/asciimoth/almagest/bin/internal/isolation/network::TestRuleControlRestrictionsAndBounds",
+            "github.com/asciimoth/almagest/bin/internal/isolation/network::TestRuleControlFailureCancellationAndRevocation",
+            "github.com/asciimoth/almagest/bin/internal/isolation/network::TestRuleRuntimeWireParityAndPeerLoss"
+          ]
+        },
+        {
+          "id": "m30::runtime-system-parity",
+          "kind": "go",
+          "module": "bin",
+          "arguments": ["./internal/isolation/network", "./internal/isolation/runtime", "./internal/isolation/protocol", "./internal/isolation/transport", "-run", "^(TestWindowsSystemCapabilityParity|TestRuntimeSystem.*|TestCreateDNSEndpoint.*|TestRequestDispatch|FuzzSystemTunOptions)$", "-count=1"],
+          "eventFile": "isolation-runtime-system.jsonl",
+          "requiredTests": [
+            "github.com/asciimoth/almagest/bin/internal/isolation/network::TestWindowsSystemCapabilityParity",
+            "github.com/asciimoth/almagest/bin/internal/isolation/network::TestRuntimeSystemTunParityAndStableGenerations",
+            "github.com/asciimoth/almagest/bin/internal/isolation/network::TestRuntimeSystemDefaultTunReplacementAndApplicationDNS",
+            "github.com/asciimoth/almagest/bin/internal/isolation/network::TestRuntimeSystemSerializesAdditiveUpdates",
+            "github.com/asciimoth/almagest/bin/internal/isolation/network::TestCreateDNSEndpointReceiptsAuthorityAndCleanup",
+            "github.com/asciimoth/almagest/bin/internal/isolation/transport::TestRequestDispatch"
+          ]
+        },
+        {
           "id": "m18::five-tuple-matchers",
           "kind": "go",
           "module": "bin",

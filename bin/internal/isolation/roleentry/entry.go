@@ -15,6 +15,18 @@ import (
 
 const BootstrapFDEnvironment = "ALMAGEST_BOOTSTRAP_FD"
 
+type Lane string
+
+const (
+	LaneBootstrap   Lane = BootstrapFDEnvironment
+	LaneData        Lane = "ALMAGEST_DATA_FD"
+	LaneDiagnostics Lane = "ALMAGEST_DIAGNOSTICS_FD"
+	LaneAdmin       Lane = "ALMAGEST_ADMIN_FD"
+	LaneConfig      Lane = "ALMAGEST_CONFIG_FD"
+	LaneCommand     Lane = "ALMAGEST_COMMAND_FD"
+	LaneCallback    Lane = "ALMAGEST_CALLBACK_FD"
+)
+
 var ErrStandaloneRole = errors.New("isolated role requires an inherited bootstrap channel")
 
 // OpenBootstrap accepts only an inherited non-file descriptor selected by the
@@ -23,7 +35,16 @@ func OpenBootstrap(role protocol.Role, arguments []string, getenv func(string) s
 	if !role.Valid() || role == protocol.RoleRuntime || getenv == nil || len(arguments) != 0 {
 		return nil, fmt.Errorf("%w: invalid role entry", ErrStandaloneRole)
 	}
-	value := getenv(BootstrapFDEnvironment)
+	return OpenLane(LaneBootstrap, getenv)
+}
+
+// OpenLane opens one fixed inherited role channel. The role executable selects
+// the lane in code; no command-line value can select a descriptor or handle.
+func OpenLane(lane Lane, getenv func(string) string) (transport.Stream, error) {
+	if getenv == nil || !lane.Valid() {
+		return nil, fmt.Errorf("%w: invalid role lane", ErrStandaloneRole)
+	}
+	value := getenv(string(lane))
 	fd, err := strconv.ParseUint(value, 10, 32)
 	if err != nil || fd <= 2 {
 		return nil, fmt.Errorf("%w: missing bootstrap descriptor", ErrStandaloneRole)
@@ -42,4 +63,13 @@ func OpenBootstrap(role protocol.Role, arguments []string, getenv func(string) s
 		return nil, fmt.Errorf("%w: bootstrap descriptor has an unsafe type", ErrStandaloneRole)
 	}
 	return bindBootstrapStream(file)
+}
+
+func (l Lane) Valid() bool {
+	switch l {
+	case LaneBootstrap, LaneData, LaneDiagnostics, LaneAdmin, LaneConfig, LaneCommand, LaneCallback:
+		return true
+	default:
+		return false
+	}
 }

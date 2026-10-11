@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"net/netip"
 	"os"
 	"sync"
 	"time"
@@ -54,7 +53,6 @@ func runtimeClient() error {
 	defer diagnostic.Close() //nolint:errcheck
 	var session protocol.Session
 	var port uint16
-	var dnsID protocol.ResourceID
 	if err := control.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
 		return err
 	}
@@ -64,31 +62,17 @@ func runtimeClient() error {
 	if err := binary.Read(control, binary.LittleEndian, &port); err != nil {
 		return err
 	}
-	if err := binary.Read(control, binary.LittleEndian, &dnsID); err != nil {
-		return fmt.Errorf("bootstrap DNS endpoint: %w", err)
-	}
-	if !dnsID.Valid() {
-		return errors.New("bootstrap DNS endpoint is invalid")
-	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	c, err := client.New(ctx, transport.Lanes{Control: control, Data: data, Diagnostic: diagnostic}, session)
 	if err != nil {
 		return fmt.Errorf("runtime transport: %w", err)
 	}
-	defer c.Close() //nolint:errcheck
+	system := c.System()
+	defer system.Close() //nolint:errcheck
 	applicationDNS := newRuntimeDNS([4]byte{203, 0, 113, 77})
 	defer applicationDNS.Close() //nolint:errcheck
-	dnsRef := protocol.ResourceRef{ID: dnsID, SessionID: session.ID, Type: protocol.ResourceDNS, Generation: 1, GraphEpoch: 1}
-	dnsService, err := c.ServeDNS(dnsRef, applicationDNS)
-	if err != nil {
-		return fmt.Errorf("application DNS service: %w", err)
-	}
-	defer dnsService.Close() //nolint:errcheck
-	resolver, err := c.OutDNS(ctx)
-	if err != nil {
-		return fmt.Errorf("native OutDNS relay: %w", err)
-	}
+	resolver := system.OutDNS()
 	defer resolver.Close() //nolint:errcheck
 	checkDNS := func() error {
 		addresses, err := gdns.NewResolver(resolver).LookupIP(ctx, "ip4", "native.example.")
@@ -100,7 +84,7 @@ func runtimeClient() error {
 	if err := checkDNS(); err != nil {
 		return err
 	}
-	network := c.Network(protocol.NetworkOutbound, nil)
+	network := system.OutNet()
 	connection, err := network.DialUDP(ctx, "udp4", "", fmt.Sprintf("127.0.0.1:%d", port))
 	if err != nil {
 		return fmt.Errorf("broker UDP: %w", err)
@@ -117,7 +101,7 @@ func runtimeClient() error {
 	if err != nil || string(buffer[:n]) != "restricted-runtime" {
 		return fmt.Errorf("broker UDP echo: %q, %w", buffer[:n], err)
 	}
-	device, err := c.CreateTun(ctx, protocol.CreateTunRequest{Options: protocol.TunOptions{Name: "composed-tun", MTU: 1400, Addresses: []netip.Prefix{netip.MustParsePrefix("198.18.4.1/30")}}})
+	device, err := system.BuildTun(sysnet.TunOpts{Name: "composed-tun", MTU: 1400, TunAddrs: []string{"198.18.4.1/30"}})
 	if err != nil {
 		return fmt.Errorf("broker TUN: %w", err)
 	}
@@ -127,7 +111,7 @@ func runtimeClient() error {
 	if err := device.Close(); err != nil {
 		return fmt.Errorf("broker TUN close: %w", err)
 	}
-	listener, err := c.Network(protocol.NetworkLocal, nil).ListenTCP(ctx, "tcp4", "127.0.0.1:0")
+	listener, err := system.LocalNet().ListenTCP(ctx, "tcp4", "127.0.0.1:0")
 	if err != nil {
 		return fmt.Errorf("broker TCP listen: %w", err)
 	}
@@ -142,7 +126,7 @@ func runtimeClient() error {
 		return fmt.Errorf("broker TCP accept: %w", err)
 	}
 	defer accepted.Close() //nolint:errcheck
-	matcher, err := c.BuildMatcher(sysnet.Rule{Type: "uid", Rule: "0"})
+	matcher, err := system.BuildMatcher(sysnet.Rule{Type: "uid", Rule: "0"})
 	if err != nil {
 		return fmt.Errorf("broker owner matcher: %w", err)
 	}
@@ -163,20 +147,19 @@ func runtimeClient() error {
 	if err != nil || string(buffer[:n]) != "tcp" {
 		return fmt.Errorf("broker TCP data: %q, %w", buffer[:n], err)
 	}
-	def, err := c.CreateTun(ctx, protocol.CreateTunRequest{Default: true, DNSIP: netip.MustParseAddr("198.18.5.1"), Options: protocol.TunOptions{MTU: 1400, Addresses: []netip.Prefix{netip.MustParsePrefix("198.18.5.1/32")}}})
+	def, err := system.BuildDefaultTun(sysnet.DefaultTunOpts{DnsIP: "198.18.5.1", MTU: 1400, TunAddrs: []string{"198.18.5.1/32"}})
 	if err != nil {
 		return fmt.Errorf("broker default TUN: %w", err)
 	}
 	if def.File() != nil || def.IsNative() {
 		return errors.New("runtime obtained native default TUN access")
 	}
-	staleDef := def
-	def, err = c.ConfigureDNS(ctx, def, dnsRef, true)
-	if err != nil {
+	stableDef := def
+	if err = def.SetDNS(applicationDNS); err != nil {
 		return fmt.Errorf("attach application DNS: %w", err)
 	}
-	if def == staleDef || def.File() != nil || def.IsNative() {
-		return errors.New("DNS mutation did not replace the restricted TUN adapter")
+	if def != stableDef || def.File() != nil || def.IsNative() {
+		return errors.New("DNS mutation changed the stable restricted TUN adapter")
 	}
 	managedDNS := gdns.NewClient(network.Dial, nil, nil, "udp://198.18.5.1:53")
 	addresses, err := gdns.NewResolver(managedDNS).LookupIP(ctx, "ip4", "application.example.")
@@ -187,9 +170,8 @@ func runtimeClient() error {
 	if err := checkDNS(); err != nil {
 		return err
 	}
-	// ConfigureDNS replaced the stale adapter with the current generation.
-	// Deliberately leave the owned default TUN live. Closing the client must make
-	// N remove it and restore DNS without a per-resource close request.
+	// Deliberately leave the owned default TUN live. Closing the complete system
+	// must make N remove it and restore DNS.
 	// A broker channel does not permit direct native sockets after useful I/O.
 	if socket, err := net.ListenPacket("udp4", "127.0.0.1:0"); err == nil {
 		_ = socket.Close()

@@ -399,6 +399,9 @@ func (b *Broker) closeNative(ctx context.Context, r *resource) error {
 	if r.ref.Type == protocol.ResourceMatcher {
 		return b.closeMatcher(ctx, r)
 	}
+	if r.ref.Type == protocol.ResourceAllocation {
+		return b.closeAllocation(ctx, r)
+	}
 	if r.ref.Type == protocol.ResourceDNS {
 		if r.native == nil {
 			return protocol.ErrRecoveryRequired
@@ -609,9 +612,13 @@ func canUpdate(report protocol.CapabilitySnapshot, kind protocol.TunUpdateKind) 
 }
 
 func (b *Broker) CloseResource(ctx context.Context, req protocol.ResourceRequest) (protocol.MutationResult, error) {
+	return b.closeResource(ctx, req, protocol.OperationCloseResource)
+}
+
+func (b *Broker) closeResource(ctx context.Context, req protocol.ResourceRequest, op protocol.Operation) (protocol.MutationResult, error) {
 	input := req
 	input.Meta.RequestID = 0
-	result, err := b.mutate(ctx, req.Meta, protocol.OperationCloseResource, input, func(ctx context.Context) (protocol.ResourceResult, error) {
+	result, err := b.mutate(ctx, req.Meta, op, input, func(ctx context.Context) (protocol.ResourceResult, error) {
 		b.mu.Lock()
 		r, err := b.lookup(req.Resource)
 		b.mu.Unlock()

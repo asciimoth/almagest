@@ -75,9 +75,12 @@ func launchNative(t *testing.T, role Role, change func(*exec.Cmd)) ([]byte, erro
 	if role == Runtime {
 		in.Data = lane()
 		in.Admin = lane()
+		in.Config = lane()
+		in.Commands = lane()
 	}
 	if role == Command {
 		in.Command = open("/qualification/command")
+		in.Callbacks = lane()
 	}
 	cmd, err := CommandContext(ctx, p, in)
 	if err != nil {
@@ -159,6 +162,8 @@ func TestNativeRejectsUnsafeInputs(t *testing.T) {
 		"unmet-cpu":            func(c *exec.Cmd) { c.Args[10] = "1000" },
 		"extra-argument":       func(c *exec.Cmd) { c.Args = append(c.Args, "/escape") },
 		"file-data-channel":    func(c *exec.Cmd) { c.ExtraFiles[6] = c.ExtraFiles[1] },
+		"file-config-channel":  func(c *exec.Cmd) { c.ExtraFiles[9] = c.ExtraFiles[1] },
+		"file-command-channel": func(c *exec.Cmd) { c.ExtraFiles[10] = c.ExtraFiles[1] },
 	}
 	for name, change := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -302,7 +307,7 @@ func TestHeldLaunchContract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cmd.Path != "/proc/self/fd/8" || cmd.Dir != "/" || len(cmd.Env) != 0 || len(cmd.ExtraFiles) != 9 || cmd.ExtraFiles[5] != f {
+	if cmd.Path != "/proc/self/fd/8" || cmd.Dir != "/" || len(cmd.Env) != 0 || len(cmd.ExtraFiles) != 12 || cmd.ExtraFiles[5] != f {
 		t.Fatalf("unexpected command: %+v", cmd)
 	}
 	if cmd.SysProcAttr == nil || !cmd.SysProcAttr.UseCgroupFD || cmd.SysProcAttr.CgroupFD != int(f.Fd()) {
@@ -331,6 +336,22 @@ func TestHeldLaunchContract(t *testing.T) {
 	p.Role = "invalid"
 	if _, err := CommandContext(context.Background(), p, in); err == nil {
 		t.Fatal("unknown profile")
+	}
+	for _, role := range []Role{Writer, Command} {
+		bad := in
+		bad.Config = f
+		bad.Command = nil
+		if role == Command {
+			bad.Command = f
+		}
+		if _, err := CommandContext(context.Background(), Plan{Role: role, UID: 65534, GID: 65534, Limits: DefaultLimits()}, bad); err == nil {
+			t.Fatalf("%s accepted a runtime-only config channel", role)
+		}
+	}
+	bad := in
+	bad.Callbacks = f
+	if _, err := CommandContext(context.Background(), Plan{Role: Runtime, UID: 65534, GID: 65534, Limits: DefaultLimits()}, bad); err == nil {
+		t.Fatal("runtime accepted a command-helper callback channel")
 	}
 }
 

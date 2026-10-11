@@ -55,6 +55,10 @@ func read[T any](ctx context.Context, b *Broker, meta protocol.RequestMeta, op p
 	case <-bounded.Done():
 		return zero, bounded.Err()
 	}
+	if err := bounded.Err(); err != nil {
+		<-b.gate
+		return zero, err
+	}
 	b.mu.Lock()
 	err := b.current(meta)
 	b.mu.Unlock()
@@ -70,6 +74,16 @@ func read[T any](ctx context.Context, b *Broker, meta protocol.RequestMeta, op p
 	}()
 	select {
 	case result := <-done:
+		// A canceled or revoked read must not publish a late native result.
+		if err := bounded.Err(); err != nil {
+			return zero, err
+		}
+		b.mu.Lock()
+		err := b.current(meta)
+		b.mu.Unlock()
+		if err != nil {
+			return zero, err
+		}
 		return result.value, result.err
 	case <-bounded.Done():
 		return zero, bounded.Err()
@@ -97,6 +111,16 @@ func (b *Broker) Capabilities(ctx context.Context, req protocol.ReadRequest) (pr
 			denied := denyMatchers
 			if b.matcherRuleDenied(rule.Type) {
 				denied = true
+			}
+			if b.matcherRuleDenied(rule.Type) || !b.policy.AllowsNetwork(protocol.OperationCheckRule) {
+				rule.Validation.State = protocol.CapabilityUnavailable
+				rule.Validation.AttemptAllowed = false
+				rule.Validation.Reasons = append(rule.Validation.Reasons, "policy_denied")
+			}
+			if b.matcherRuleDenied(rule.Type) || !b.policy.AllowsNetwork(protocol.OperationCompleteRule) {
+				rule.Completion.State = protocol.CapabilityUnavailable
+				rule.Completion.AttemptAllowed = false
+				rule.Completion.Reasons = append(rule.Completion.Reasons, "policy_denied")
 			}
 			if denied {
 				for j := range rule.Matchers {
@@ -162,7 +186,7 @@ func (b *Broker) Capabilities(ctx context.Context, req protocol.ReadRequest) (pr
 		if err != nil {
 			return protocol.CapabilitySnapshot{}, err
 		}
-		if len(data) > int(b.policy.Limits.MaxControlFrameBytes)/2 {
+		if len(data) > snapshotPayloadLimit(b.policy.Limits.MaxControlFrameBytes) {
 			return protocol.CapabilitySnapshot{}, protocol.ErrLimitExceeded
 		}
 		return snapshot, nil
@@ -187,7 +211,7 @@ func (b *Broker) check(ctx context.Context, meta protocol.RequestMeta, op protoc
 }
 
 func (b *Broker) GetResourceState(ctx context.Context, req protocol.ResourceRequest) (protocol.ResourceState, error) {
-	if req.Resource.Type == protocol.ResourceMatcher {
+	if req.Resource.Type == protocol.ResourceMatcher || req.Resource.Type == protocol.ResourceAllocation {
 		return protocol.ResourceState{}, protocol.ErrResourceType
 	}
 	return read(ctx, b, req.Meta, protocol.OperationGetTunState, func(ctx context.Context) (protocol.ResourceState, error) {
@@ -273,6 +297,35 @@ func (b *Broker) Handle(ctx context.Context, op protocol.Operation, body json.Ra
 			return nil, err
 		}
 		return b.CheckDefaultTun(ctx, req)
+	case protocol.OperationCheckRule:
+		var req protocol.CheckRuleRequest
+		if err := transport.Decode(body, &req); err != nil {
+			return nil, err
+		}
+		return b.CheckRule(ctx, req)
+	case protocol.OperationCompleteRule:
+		var req protocol.CompleteRuleRequest
+		if err := transport.Decode(body, &req); err != nil {
+			return nil, err
+		}
+		return b.CompleteRule(ctx, req)
+	case protocol.OperationReserveIP, protocol.OperationReserveSubnet:
+		var req protocol.ReserveAddressRequest
+		if err := transport.Decode(body, &req); err != nil {
+			return nil, err
+		}
+		if allocationOperation(req.Kind) != op {
+			return nil, protocol.ErrInvalidContract
+		}
+		result, err := b.ReserveAddress(ctx, req)
+		return mutationReply(result, err)
+	case protocol.OperationReleaseAllocation:
+		var req protocol.ResourceRequest
+		if err := transport.Decode(body, &req); err != nil {
+			return nil, err
+		}
+		result, err := b.ReleaseAllocation(ctx, req)
+		return mutationReply(result, err)
 	case protocol.OperationCreateTun, protocol.OperationCreateDefaultTun:
 		var req protocol.CreateTunRequest
 		if err := transport.Decode(body, &req); err != nil {
@@ -302,6 +355,13 @@ func (b *Broker) Handle(ctx context.Context, op protocol.Operation, body json.Ra
 			return nil, err
 		}
 		result, err := b.ConfigureDNS(ctx, req)
+		return mutationReply(result, err)
+	case protocol.OperationCreateDNSEndpoint:
+		var req protocol.CreateDNSEndpointRequest
+		if err := transport.Decode(body, &req); err != nil {
+			return nil, err
+		}
+		result, err := b.CreateDNSEndpoint(ctx, req)
 		return mutationReply(result, err)
 	case protocol.OperationSetTunMTU, protocol.OperationSetTunAddresses, protocol.OperationSetTunRoutes, protocol.OperationSetTunName:
 		var req protocol.UpdateTunRequest
@@ -386,8 +446,18 @@ func (b *Broker) boundSnapshot(value any) error {
 	if err != nil {
 		return err
 	}
-	if len(data) > int(b.policy.Limits.MaxControlFrameBytes)/2 {
+	if len(data) > snapshotPayloadLimit(b.policy.Limits.MaxControlFrameBytes) {
 		return protocol.ErrLimitExceeded
 	}
 	return nil
+}
+
+func snapshotPayloadLimit(frameBytes uint32) int {
+	// Control replies encode the snapshot as raw JSON inside a small fixed
+	// envelope. Keep 4 KiB for that envelope and future fixed metadata without
+	// discarding complete native capability reports that exceed half a frame.
+	if frameBytes <= 4096 {
+		return int(frameBytes) / 2
+	}
+	return int(frameBytes) - 4096
 }

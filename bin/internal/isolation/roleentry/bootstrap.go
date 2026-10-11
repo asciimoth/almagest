@@ -29,6 +29,14 @@ type Ready struct {
 	RestrictionsApplied bool          `json:"restrictions_applied"`
 }
 
+func (r Ready) Validate(value Bootstrap) error {
+	if r.Version != protocol.Version || r.Role != value.Role || r.PolicyDigest != value.Session.PolicyDigest || !r.RestrictionsApplied {
+		return fmt.Errorf("%w: invalid role readiness version=%d role=%q restrictions=%t", protocol.ErrInvalidContract,
+			r.Version, r.Role, r.RestrictionsApplied)
+	}
+	return nil
+}
+
 func (b Bootstrap) Validate(expected protocol.Role) error {
 	if b.Version != protocol.Version || b.Role != expected || b.Session.Version != protocol.Version || b.Session.Validate() != nil {
 		return protocol.ErrInvalidContract
@@ -81,9 +89,8 @@ func SendBootstrap(ctx context.Context, stream transport.Stream, value Bootstrap
 	if err := transport.ReadFrameDeadline(stream, &ready, deadline); err != nil {
 		return Ready{}, err
 	}
-	if ready.Version != protocol.Version || ready.Role != value.Role || ready.PolicyDigest != value.Session.PolicyDigest || !ready.RestrictionsApplied {
-		return Ready{}, fmt.Errorf("%w: invalid role readiness version=%d role=%q restrictions=%t", protocol.ErrInvalidContract,
-			ready.Version, ready.Role, ready.RestrictionsApplied)
+	if err := ready.Validate(value); err != nil {
+		return Ready{}, err
 	}
 	return ready, nil
 }

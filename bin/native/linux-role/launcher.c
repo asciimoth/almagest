@@ -160,9 +160,9 @@ static void check_descriptors(struct plan *p) {
 		if (getpeername(fd, (struct sockaddr *)&peer, &length) == -1) fail("connected channel required");
 		require(domain == AF_UNIX && type == SOCK_STREAM, "Unix stream channel required");
 	}
-	for (int fd = 9; fd <= 11; fd++) {
+	for (int fd = 9; fd <= 14; fd++) {
 		if (fcntl(fd, F_GETFD) == -1) { require(errno == EBADF, "inspect optional channel"); continue; }
-		require(fd == 10 || p->role == RUNTIME, "role channel selection");
+		require(fd == 10 || p->role == RUNTIME || (fd == 14 && p->role == COMMAND), "role channel selection");
 		int domain = 0, type = 0; socklen_t length = sizeof(int);
 		if (getsockopt(fd, SOL_SOCKET, SO_DOMAIN, &domain, &length) == -1 ||
 			getsockopt(fd, SOL_SOCKET, SO_TYPE, &type, &length) == -1) fail("optional channel type");
@@ -306,8 +306,8 @@ static void run(const struct plan *p, int setup, int parent_pidfd) {
 	struct pollfd parent = {.fd = parent_pidfd, .events = POLLIN};
 	require(poll(&parent, 1, 0) == 0, "launcher parent must still be alive");
 	/* close_range handles descriptors above the current soft limit as well. */
-	if (syscall(SYS_close_range, 4, 8, 0) == -1 || syscall(SYS_close_range, 12, ~0U, 0) == -1) fail("close all setup descriptors");
-	for (int fd = 9; fd <= 11; fd++) {
+	if (syscall(SYS_close_range, 4, 8, 0) == -1 || syscall(SYS_close_range, 15, ~0U, 0) == -1) fail("close all setup descriptors");
+	for (int fd = 9; fd <= 14; fd++) {
 		if (p->channels & (1U << (fd - 9))) {
 			if (fcntl(fd, F_SETFD, 0) == -1) fail("inherit verified role channel");
 		} else close(fd);
@@ -322,6 +322,9 @@ static void run(const struct plan *p, int setup, int parent_pidfd) {
 		p->channels & 1 ? "ALMAGEST_DATA_FD=9" : "ALMAGEST_DATA_FD=0",
 		p->channels & 2 ? "ALMAGEST_DIAGNOSTICS_FD=10" : "ALMAGEST_DIAGNOSTICS_FD=0",
 		p->channels & 4 ? "ALMAGEST_ADMIN_FD=11" : "ALMAGEST_ADMIN_FD=0",
+		p->channels & 8 ? "ALMAGEST_CONFIG_FD=12" : "ALMAGEST_CONFIG_FD=0",
+		p->channels & 16 ? "ALMAGEST_COMMAND_FD=13" : "ALMAGEST_COMMAND_FD=0",
+		p->channels & 32 ? "ALMAGEST_CALLBACK_FD=14" : "ALMAGEST_CALLBACK_FD=0",
 		"ALMAGEST_BOOTSTRAP_FD=3", "GOMAXPROCS=2", "GODEBUG=netdns=go", NULL};
 	char *arguments[] = {"/role", NULL};
 	apply_seccomp(p);

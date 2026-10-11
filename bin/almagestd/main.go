@@ -29,6 +29,12 @@ func main() {
 	// enough timestamp precision to correlate the daemon log with host network
 	// captures and admin API actions.
 	golog.SetTimeFormat("2006/01/02 15:04:05.000000")
+	if isolatedRuntimeRole() {
+		if err := runIsolatedRuntimeRole(); err != nil {
+			golog.Fatal(err)
+		}
+		return
+	}
 
 	arguments, mode, err := parseDaemonArgs()
 	if err != nil {
@@ -80,9 +86,47 @@ func runDaemonApplication(arguments args.Args, mode executionMode) error {
 	_, runtimeDependencyErr := platform.ValidateRuntimeDependencies()
 	return platform.RunLifecycle(func(ctx context.Context, ready func()) error {
 		return daemonruntime.Run(ctx, func(ctx context.Context, application *daemonruntime.Application) error {
-			return runDaemon(ctx, application, ready, arguments, mode, randomSeeds, runtimeDependencyErr)
+			return runDaemon(ctx, application, ready, arguments, mode, randomSeeds, runtimeDependencyErr, directDaemonIntegrations())
 		})
 	})
+}
+
+type daemonIntegrations struct {
+	prepareConfig   func(args.Args) (platform.ConfigBootstrap, error)
+	enterStorage    func(string) error
+	loadOSAuthority func(context.Context) (immutableTLSData, error)
+	prepareAdmin    func(*Config) (*AdminAPI, error)
+	buildCommands   func(context.Context, *LogFactory, *Config) (daemonservices.NodeCommandDispatcher, daemonservices.BackendCallbackDispatcher, func(), error)
+	buildNetwork    func(*Config, daemonservices.BackendCallbackDispatcher, *LogFactory, error, int64) (daemonservices.HostNetwork, error)
+}
+
+func directDaemonIntegrations() daemonIntegrations {
+	return daemonIntegrations{
+		prepareConfig: platform.PrepareConfig,
+		enterStorage:  os.Chdir,
+		loadOSAuthority: func(ctx context.Context) (immutableTLSData, error) {
+			return loadOSTLSData(ctx, platform.OSAuthorityFetcher())
+		},
+		prepareAdmin: PrepareAdminAPI,
+		buildCommands: func(ctx context.Context, logf *LogFactory, conf *Config) (daemonservices.NodeCommandDispatcher, daemonservices.BackendCallbackDispatcher, func(), error) {
+			runner, err := cmdrunner.NewRunner(logf.CommandLogger(), conf.Protected.CommandRunner)
+			if err != nil {
+				return nil, nil, nil, err
+			}
+			runner.Start(ctx)
+			return runner, runner, runner.Close, nil
+		},
+		buildNetwork: func(conf *Config, callbacks daemonservices.BackendCallbackDispatcher, logf *LogFactory, dependencyErr error, seed int64) (daemonservices.HostNetwork, error) {
+			return localnetwork.BuildWithRuntimeDependencies(conf.Protected.System, callbacks, logf.NetworkLogger(), dependencyErr, seed)
+		},
+	}
+}
+
+func (i daemonIntegrations) validate() error {
+	if i.prepareConfig == nil || i.enterStorage == nil || i.loadOSAuthority == nil || i.prepareAdmin == nil || i.buildCommands == nil || i.buildNetwork == nil {
+		return errors.New("incomplete daemon integration")
+	}
+	return nil
 }
 
 func runDaemon(
@@ -93,8 +137,12 @@ func runDaemon(
 	mode executionMode,
 	randomSeeds daemonRandomSeeds,
 	runtimeDependencyErr error,
+	integrations daemonIntegrations,
 ) error {
-	configBootstrap, err := platform.PrepareConfig(arguments)
+	if err := integrations.validate(); err != nil {
+		return err
+	}
+	configBootstrap, err := integrations.prepareConfig(arguments)
 	if err != nil {
 		return fmt.Errorf("prepare config files: %w", err)
 	}
@@ -108,7 +156,7 @@ func runDaemon(
 	application.OwnFiles(fsCleanup)
 	var kv *bboltKVManager
 
-	if err := os.Chdir(fsPath); err != nil {
+	if err := integrations.enterStorage(fsPath); err != nil {
 		return err
 	}
 	golog.Infof("Using file storage at %s", fsPath)
@@ -160,7 +208,7 @@ func runDaemon(
 	if err != nil {
 		return err
 	}
-	osTLSData, err := loadOSTLSData(ctx, platform.OSAuthorityFetcher())
+	osTLSData, err := integrations.loadOSAuthority(ctx)
 	if err != nil {
 		return err
 	}
@@ -198,7 +246,7 @@ func runDaemon(
 	}
 
 	// Prepare admin api here (start listener/create unix socket/etc)
-	admin, err := PrepareAdminAPI(conf)
+	admin, err := integrations.prepareAdmin(conf)
 	if err != nil {
 		return err
 	}
@@ -229,23 +277,14 @@ func runDaemon(
 	application.OwnNodeNames(nodeNames.Close)
 	admin.nodeNames = nodeNames.index
 
-	commandRunner, err := cmdrunner.NewRunner(logf.CommandLogger(), conf.Protected.CommandRunner)
+	nodeCommands, backendCallbacks, closeCommands, err := integrations.buildCommands(ctx, logf, conf)
 	if err != nil {
 		return err
 	}
-	commandRunner.Start(ctx)
-	application.OwnCommands(commandRunner.Close)
-	var nodeCommands daemonservices.NodeCommandDispatcher = commandRunner
-	var backendCallbacks daemonservices.BackendCallbackDispatcher = commandRunner
+	application.OwnCommands(closeCommands)
 
 	// Setup system integration here before privileges drop
-	hostNetwork, err := localnetwork.BuildWithRuntimeDependencies(
-		conf.Protected.System,
-		backendCallbacks,
-		logf.NetworkLogger(),
-		runtimeDependencyErr,
-		randomSeeds.system,
-	)
+	hostNetwork, err := integrations.buildNetwork(conf, backendCallbacks, logf, runtimeDependencyErr, randomSeeds.system)
 	if err != nil {
 		return err
 	}

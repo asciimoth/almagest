@@ -36,6 +36,32 @@ type DNSService struct {
 	closeErr   error
 }
 
+func (c *Client) createDNSEndpoint(ctx context.Context, upstream gdns.Interface) (*DNSService, protocol.ResourceRef, error) {
+	if upstream == nil {
+		return nil, protocol.ResourceRef{}, protocol.ErrInvalidContract
+	}
+	result, err := c.openResource(ctx, protocol.OperationCreateDNSEndpoint, protocol.CreateDNSEndpointRequest{Meta: c.meta(true)})
+	if err != nil {
+		return nil, protocol.ResourceRef{}, err
+	}
+	if result.Outcome != protocol.OutcomeCommitted {
+		if result.Code != "" {
+			return nil, protocol.ResourceRef{}, decodeError(result.Code)
+		}
+		return nil, protocol.ResourceRef{}, protocol.ErrRecoveryRequired
+	}
+	if err := result.Resource.Validate(c.session, protocol.ResourceDNS, c.epoch.Load(), 1); err != nil {
+		_ = c.Close()
+		return nil, protocol.ResourceRef{}, err
+	}
+	service, err := c.ServeDNS(result.Resource, upstream)
+	if err != nil {
+		_ = c.closeResource(result.Resource)
+		return nil, protocol.ResourceRef{}, err
+	}
+	return service, result.Resource, nil
+}
+
 func (c *Client) ServeDNS(ref protocol.ResourceRef, upstream gdns.Interface) (*DNSService, error) {
 	if upstream == nil || ref.Type != protocol.ResourceDNS {
 		return nil, protocol.ErrInvalidContract
