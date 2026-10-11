@@ -217,6 +217,7 @@ const (
 	OperationHandshake          Operation = "handshake"
 	OperationCapabilities       Operation = "capabilities"
 	OperationStatus             Operation = "status"
+	OperationRuntimeReady       Operation = "runtime_ready"
 	OperationCheckTun           Operation = "check_tun"
 	OperationCheckDefaultTun    Operation = "check_default_tun"
 	OperationCheckRule          Operation = "check_rule"
@@ -254,6 +255,7 @@ type NetworkControl interface {
 	Handshake(context.Context, HandshakeRequest) (HandshakeResult, error)
 	Capabilities(context.Context, ReadRequest) (CapabilitySnapshot, error)
 	Status(context.Context, ReadRequest) (StatusResult, error)
+	MarkRuntimeReady(context.Context, ReadRequest) (RuntimeReadyResult, error)
 	GetResult(context.Context, OperationResultRequest) (ResourceResult, error)
 	CheckTun(context.Context, CheckTunRequest) (ValidationResult, error)
 	CheckDefaultTun(context.Context, CheckDefaultTunRequest) (ValidationResult, error)
@@ -296,9 +298,17 @@ type Limits struct {
 type ReadRequest struct{ Meta RequestMeta }
 
 type StatusResult struct {
+	RuntimeReady     bool
 	RecoveryRequired bool
 	LiveResources    uint32
 	Warnings         []string
+}
+
+// RuntimeReadyResult acknowledges application startup in this session. This
+// is a lifecycle observation, not proof of platform restrictions or authority.
+type RuntimeReadyResult struct {
+	Session Session
+	Ready   bool
 }
 
 // TunOptions contains normalized, typed control values only. Backend-specific
@@ -661,6 +671,9 @@ type CallbackRequest struct {
 	CallbackID string
 	Resource   ResourceRef
 	Event      string
+	// Slots are accepted only for callbacks whose protected H profile lists
+	// ForwardSlots. They are rendered by trusted N, never supplied by R.
+	Slots map[string]string
 }
 
 type CommandResult struct {

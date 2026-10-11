@@ -1,9 +1,8 @@
 # Bounded isolation control transport
 
-Checkpoint 14 is implemented in `bin/internal/isolation/transport`. This is
-transport infrastructure. Production role startup, host resource owners, and
-the default isolation switch remain later checkpoints. The direct daemon does
-not import this package or create its channels.
+Checkpoint 14 is implemented in `bin/internal/isolation/transport`. The Linux
+production profile uses it for its private N/R/C/H lanes. The direct daemon
+does not import this package or create its channels.
 
 ## Wire format and limits
 

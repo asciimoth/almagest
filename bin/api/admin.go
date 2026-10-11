@@ -36,6 +36,17 @@ type HelloResponse struct {
 	ExecutionMode        string               `json:"execution_mode"`
 	ProjectVersionStatus ProjectVersionStatus `json:"project_version_status"`
 	Surfaces             map[string]any       `json:"surfaces,omitempty"`
+	Isolation            *IsolationStatus     `json:"isolation,omitempty"`
+}
+
+// IsolationStatus exposes only non-secret, effective process guarantees. An
+// isolated listener is published after all listed roles and recovery are ready.
+type IsolationStatus struct {
+	ProtocolVersion uint32              `json:"protocol_version"`
+	Restrictions    map[string][]string `json:"restrictions"`
+	Roles           map[string]string   `json:"roles"`
+	Capabilities    map[string]bool     `json:"capabilities"`
+	RecoveryState   string              `json:"recovery_state"`
 }
 
 type ProjectVersionHighlight string

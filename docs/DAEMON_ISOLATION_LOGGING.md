@@ -1,8 +1,12 @@
 # Bounded cross-process logging
 
-Checkpoint 21 is implemented in `bin/internal/isolation/diagnostics`. This is
-an isolated-mode component. It is not connected to daemon startup, and direct
-mode does not create logging IPC or a collector process.
+Checkpoint 21 is implemented in `bin/internal/isolation/diagnostics`. The
+released Linux composition keeps application/admin logging in R and forwards
+role stdout/stderr through N-owned pipes into a bounded nonblocking output
+queue. Thus, a blocked operator sink cannot stop R/C/H. The structured
+diagnostic component remains available for integrations that need typed
+cross-process records; production does not add a separate collector process.
+Direct mode does not create logging IPC.
 
 ## Identity and records
 

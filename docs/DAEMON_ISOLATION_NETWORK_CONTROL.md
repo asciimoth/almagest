@@ -1,8 +1,8 @@
 # Network resource ownership and TUN control
 
-Checkpoint 15 adds `bin/internal/isolation/network`. The direct daemon does
-not import it. Production role startup and host recovery journals,
-and the default isolation switch remain later checkpoints.
+Checkpoint 15 adds `bin/internal/isolation/network`. The Linux production
+profile uses it with a durable recovery journal. The direct daemon does not
+import it.
 Checkpoint 16 adds [socket control and packet/stream relays](DAEMON_ISOLATION_SOCKET_DATA.md).
 
 The broker owns one bootstrap session and one native operation lane. The

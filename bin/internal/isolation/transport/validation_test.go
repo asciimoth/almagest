@@ -23,6 +23,7 @@ func TestRequestDispatch(t *testing.T) {
 	}{
 		{protocol.OperationCapabilities, &protocol.ReadRequest{}, false},
 		{protocol.OperationStatus, &protocol.ReadRequest{}, false},
+		{protocol.OperationRuntimeReady, &protocol.ReadRequest{}, false},
 		{protocol.OperationListInterfaces, &protocol.InterfaceRequest{}, false},
 		{protocol.OperationResolverSnapshot, &protocol.ReadRequest{}, false},
 		{protocol.OperationCheckTun, &protocol.CheckTunRequest{}, false},
@@ -174,6 +175,35 @@ func FuzzPreparedReadRequestIdentity(f *testing.F) {
 			if _, err := validateRequest(protocol.OperationStatus, body, 7, testSession(), false); err != nil {
 				t.Fatalf("receiver rejected prepared request: %v", err)
 			}
+		}
+	})
+}
+
+func FuzzRuntimeReadyRequest(f *testing.F) {
+	body, err := json.Marshal(protocol.ReadRequest{Meta: protocol.RequestMeta{
+		RequestID: 7, SessionID: testSession().ID, SessionEpoch: testSession().Epoch, GraphEpoch: 1,
+	}})
+	if err != nil {
+		f.Fatal(err)
+	}
+	f.Add(body)
+	f.Add([]byte(`{"Meta":{},"Path":"/host"}`))
+	f.Add([]byte(`{"Meta":{},"Meta":{}}`))
+	f.Fuzz(func(t *testing.T, body []byte) {
+		normalized, err := validateRequest(protocol.OperationRuntimeReady, body, 7, testSession(), false)
+		if err != nil {
+			return
+		}
+		var req protocol.ReadRequest
+		if err := Decode(normalized, &req); err != nil {
+			t.Fatal(err)
+		}
+		if err := req.Meta.Validate(testSession(), false); err != nil || req.Meta.RequestID != 7 {
+			t.Fatalf("accepted invalid identity: %+v, %v", req.Meta, err)
+		}
+		again, err := validateRequest(protocol.OperationRuntimeReady, normalized, 7, testSession(), false)
+		if err != nil || !bytes.Equal(again, normalized) {
+			t.Fatalf("unstable readiness request: %s, %v", again, err)
 		}
 	})
 }

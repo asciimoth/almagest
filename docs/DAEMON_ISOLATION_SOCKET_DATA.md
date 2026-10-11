@@ -3,7 +3,7 @@
 Checkpoint 16 adds socket ownership to `bin/internal/isolation/network`, a
 bounded data lane in `bin/internal/isolation/relay`, and runtime adapters in
 `bin/internal/isolation/runtime`. These components are not imported by the
-direct daemon. Production isolation remains disabled.
+direct daemon. The packaged Linux isolated composition uses them.
 
 The implementation is available for component integration. Checkpoint acceptance
 depends on the complete functional method/platform matrix. Performance is

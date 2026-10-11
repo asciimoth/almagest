@@ -2,7 +2,8 @@ param(
     [Parameter(Mandatory=$true)][ValidateSet('Start','Export')][string]$Mode,
     [Parameter(Mandatory=$true)][string]$SourceDir,
     [Parameter(Mandatory=$true)][string]$RunDir,
-    [Parameter(Mandatory=$true)][int]$WebPort
+    [Parameter(Mandatory=$true)][int]$WebPort,
+    [string]$DaemonOptions = ''
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
@@ -84,12 +85,20 @@ $arguments = @(
     '-l', 'debug',
     '-w', [string]$WebPort,
     '--debug-nodes',
-    '--experimental',
     '--no-isolation',
     '--unsafe-config',
     '--file-storage', $storage,
     '--no-dns-cache-expiration'
 )
+$daemonOptions = @($DaemonOptions -split '\s+' | Where-Object { $_ })
+foreach ($option in $daemonOptions) {
+    if ($option -notin @('--no-isolation', '--experimental')) {
+        throw "unsupported manual daemon option: $option"
+    }
+    if ($option -eq '--experimental') {
+        $arguments += $option
+    }
+}
 $commandLine = "cmd.exe /d /c $binary $($arguments -join ' ') 1>>$stdout 2>>$stderr"
 $result = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
     CommandLine = $commandLine

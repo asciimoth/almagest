@@ -251,6 +251,12 @@ func (b *Broker) GetResourceState(ctx context.Context, req protocol.ResourceRequ
 // fails; errors from native work do not discard the recorded outcome.
 func (b *Broker) Handle(ctx context.Context, op protocol.Operation, body json.RawMessage) (any, error) {
 	switch op {
+	case protocol.OperationRuntimeReady:
+		var req protocol.ReadRequest
+		if err := transport.Decode(body, &req); err != nil {
+			return nil, err
+		}
+		return b.MarkRuntimeReady(ctx, req)
 	case protocol.OperationChannel:
 		var req protocol.ChannelRequest
 		if err := transport.Decode(body, &req); err != nil {

@@ -42,6 +42,7 @@ type ExecutionCase struct {
 	EventFile     string   `json:"eventFile,omitempty"`
 	RequiredTests []string `json:"requiredTests,omitempty"`
 	StartServices []string `json:"startServices,omitempty"`
+	Coverage      *bool    `json:"coverage,omitempty"`
 }
 
 // ExecutionIdentity records the token and native platform used by a suite.
@@ -129,6 +130,9 @@ func ValidateExecutionManifest(manifest ExecutionManifest) error {
 				if len(testCase.Arguments) == 0 {
 					return fmt.Errorf("go case %q has no arguments", testCase.ID)
 				}
+				if testCase.Coverage != nil && !*testCase.Coverage && !slices.Contains(testCase.Arguments, "-fuzz") {
+					return fmt.Errorf("go case %q disables coverage without fuzzing", testCase.ID)
+				}
 				if len(testCase.StartServices) != 0 {
 					if suite.Privilege != "privileged" {
 						return fmt.Errorf("go case %q starts services outside the privileged suite", testCase.ID)
@@ -137,7 +141,7 @@ func ValidateExecutionManifest(manifest ExecutionManifest) error {
 						return err
 					}
 				}
-			} else if testCase.Module != "" || testCase.EventFile != "" || len(testCase.Arguments) != 0 || len(testCase.RequiredTests) != 0 || len(testCase.StartServices) != 0 {
+			} else if testCase.Module != "" || testCase.EventFile != "" || len(testCase.Arguments) != 0 || len(testCase.RequiredTests) != 0 || len(testCase.StartServices) != 0 || testCase.Coverage != nil {
 				return fmt.Errorf("non-Go case %q has Go test fields", testCase.ID)
 			}
 		}

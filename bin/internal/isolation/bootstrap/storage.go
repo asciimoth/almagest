@@ -1,6 +1,7 @@
 package bootstrap
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,7 +20,7 @@ var (
 	ErrMigrationIncomplete = errors.New("storage migration is incomplete")
 )
 
-const migrationVersion = 1
+const migrationVersion = 2
 
 // StorageLayout separates runtime-writable application data from the broker's
 // trusted recovery journal. Backup and State are operator-controlled siblings;
@@ -35,7 +36,7 @@ type StorageLayout struct {
 // Validate checks path relationships and trusted parents. It never creates,
 // changes ownership, or follows a link.
 func (l StorageLayout) Validate() error {
-	paths := []string{l.Legacy, l.Runtime, l.Broker, l.Backup, l.State}
+	paths := []string{l.Legacy, l.Runtime, l.Broker, l.Backup, l.State, l.Runtime + ".migrating", l.State + ".tmp"}
 	for _, path := range paths {
 		if !fixedAbsolutePath(path) {
 			return fmt.Errorf("%w: paths must be absolute, clean, and contain no parent traversal: %q", ErrUnsafeLayout, path)
@@ -97,9 +98,12 @@ const (
 )
 
 type migrationRecord struct {
-	Version int            `json:"version"`
-	Layout  StorageLayout  `json:"layout"`
-	Phase   migrationPhase `json:"phase"`
+	Version         int            `json:"version"`
+	Layout          StorageLayout  `json:"layout"`
+	Phase           migrationPhase `json:"phase"`
+	LegacyIdentity  string         `json:"legacy_identity"`
+	RuntimeIdentity string         `json:"runtime_identity,omitempty"`
+	BrokerIdentity  string         `json:"broker_identity,omitempty"`
 }
 
 // Migrator performs a stopped-daemon migration. The zero value is ready.
@@ -123,14 +127,18 @@ func (m Migrator) Migrate(layout StorageLayout) (err error) {
 	if err := validateLegacyTree(layout.Legacy); err != nil {
 		return err
 	}
-	for _, path := range []string{layout.Runtime, layout.Broker, layout.Backup} {
+	for _, path := range []string{layout.Runtime, layout.Broker, layout.Backup, layout.Runtime + ".migrating", layout.State + ".tmp"} {
 		if _, statErr := os.Lstat(path); statErr == nil {
 			return fmt.Errorf("%w: destination already exists: %s", ErrUnsafeLayout, path)
 		} else if !errors.Is(statErr, os.ErrNotExist) {
 			return statErr
 		}
 	}
-	record := migrationRecord{Version: migrationVersion, Layout: layout, Phase: phaseStarted}
+	legacyIdentity, err := migrationDirectoryIdentity(layout.Legacy)
+	if err != nil {
+		return err
+	}
+	record := migrationRecord{Version: migrationVersion, Layout: layout, Phase: phaseStarted, LegacyIdentity: legacyIdentity}
 	if err := writeMigrationRecord(record); err != nil {
 		return err
 	}
@@ -161,7 +169,14 @@ func (m Migrator) Migrate(layout StorageLayout) (err error) {
 	} else if !errors.Is(statErr, os.ErrNotExist) {
 		return statErr
 	}
-	if err = copyStorageTree(layout.Backup, staging); err != nil {
+	if err = copyStorageTree(layout.Backup, staging, func() error {
+		record.RuntimeIdentity, err = migrationDirectoryIdentity(staging)
+		if err != nil {
+			return err
+		}
+		// Retain the identity before copying data or renaming this directory.
+		return writeMigrationRecord(record)
+	}); err != nil {
 		return fmt.Errorf("copy runtime storage: %w", err)
 	}
 	if err = os.Rename(staging, layout.Runtime); err != nil {
@@ -177,6 +192,10 @@ func (m Migrator) Migrate(layout StorageLayout) (err error) {
 	}
 	if err = os.Mkdir(layout.Broker, 0o700); err != nil {
 		return fmt.Errorf("create broker journal directory: %w", err)
+	}
+	record.BrokerIdentity, err = migrationDirectoryIdentity(layout.Broker)
+	if err != nil {
+		return err
 	}
 	record.Phase = phaseBrokerCreated
 	if err = writeMigrationRecord(record); err != nil {
@@ -194,9 +213,8 @@ func (m Migrator) Migrate(layout StorageLayout) (err error) {
 		return err
 	}
 	rollback = false
-	if err = os.Remove(layout.State); err != nil {
-		return fmt.Errorf("remove completed migration record: %w", err)
-	}
+	// Keep the completed receipt. A later rollback must prove which directory
+	// objects this migration created, not infer ownership from their names.
 	return nil
 }
 
@@ -210,6 +228,9 @@ func (m Migrator) afterPhase(phase migrationPhase) error {
 // Recover handles a durable interrupted phase. Completed migrations are kept;
 // incomplete migrations are rolled back to the legacy layout.
 func (Migrator) Recover(layout StorageLayout) error {
+	if err := layout.Validate(); err != nil {
+		return err
+	}
 	record, err := readMigrationRecord(layout.State)
 	if err != nil {
 		return err
@@ -218,7 +239,14 @@ func (Migrator) Recover(layout StorageLayout) error {
 		return fmt.Errorf("%w: migration record names a different layout", ErrUnsafeLayout)
 	}
 	if record.Phase == phaseComplete {
-		return os.Remove(layout.State)
+		identity, err := migrationDirectoryIdentity(layout.Backup)
+		if err != nil || identity != record.LegacyIdentity {
+			return fmt.Errorf("%w: completed migration backup is unproved", ErrMigrationIncomplete)
+		}
+		if _, err := os.Lstat(layout.Legacy); !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("%w: completed migration legacy path is occupied or unreadable", ErrMigrationIncomplete)
+		}
+		return validateMigrationOutputs(record, true)
 	}
 	return rollbackRecord(record)
 }
@@ -229,13 +257,34 @@ func (Migrator) Rollback(layout StorageLayout) error {
 	if err := layout.Validate(); err != nil {
 		return err
 	}
-	record := migrationRecord{Version: migrationVersion, Layout: layout, Phase: phaseComplete}
-	if stored, err := readMigrationRecord(layout.State); err == nil {
-		record = stored
-	} else if !errors.Is(err, os.ErrNotExist) {
+	record, err := readMigrationRecord(layout.State)
+	if err != nil {
 		return err
 	}
+	if record.Layout != layout {
+		return fmt.Errorf("%w: migration record names a different layout", ErrUnsafeLayout)
+	}
 	return rollbackRecord(record)
+}
+
+func validateMigrationOutputs(record migrationRecord, complete bool) error {
+	for _, entry := range []struct{ path, identity string }{
+		{record.Layout.Runtime + ".migrating", record.RuntimeIdentity},
+		{record.Layout.Runtime, record.RuntimeIdentity},
+		{record.Layout.Broker, record.BrokerIdentity},
+	} {
+		actual, err := migrationDirectoryIdentity(entry.path)
+		if errors.Is(err, os.ErrNotExist) && (!complete || entry.path == record.Layout.Runtime+".migrating") {
+			continue
+		}
+		if err != nil || entry.identity == "" || actual != entry.identity {
+			return fmt.Errorf("%w: migration output identity is unproved: %s", ErrMigrationIncomplete, entry.path)
+		}
+		if complete && entry.path == record.Layout.Runtime+".migrating" {
+			return fmt.Errorf("%w: completed migration retains staging data", ErrMigrationIncomplete)
+		}
+	}
+	return nil
 }
 
 func rollbackRecord(record migrationRecord) error {
@@ -245,6 +294,49 @@ func rollbackRecord(record migrationRecord) error {
 	layout := record.Layout
 	if err := layout.Validate(); err != nil {
 		return err
+	}
+	// Check the recovery source before removing any output. A missing backup
+	// or an occupied legacy path is not proof that output removal is safe.
+	backup, backupErr := os.Lstat(layout.Backup)
+	legacy, legacyErr := os.Lstat(layout.Legacy)
+	if backupErr != nil && !errors.Is(backupErr, os.ErrNotExist) {
+		return backupErr
+	}
+	if legacyErr != nil && !errors.Is(legacyErr, os.ErrNotExist) {
+		return legacyErr
+	}
+	if backupErr == nil {
+		if !backup.IsDir() || backup.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("%w: backup is not a directory", ErrUnsafeLayout)
+		}
+		if legacyErr == nil {
+			return fmt.Errorf("%w: both legacy and backup exist", ErrUnsafeLayout)
+		}
+		identity, err := migrationDirectoryIdentity(layout.Backup)
+		if err != nil || record.LegacyIdentity == "" || identity != record.LegacyIdentity {
+			return fmt.Errorf("%w: backup identity changed", ErrMigrationIncomplete)
+		}
+	} else if legacyErr != nil || !legacy.IsDir() || legacy.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("%w: migration backup is missing", ErrMigrationIncomplete)
+	} else {
+		// Also permits retry after rollback restored Legacy but failed to
+		// remove its receipt. The original object must still be present.
+		identity, err := migrationDirectoryIdentity(layout.Legacy)
+		if err != nil || record.LegacyIdentity == "" || identity != record.LegacyIdentity {
+			return fmt.Errorf("%w: legacy identity changed", ErrMigrationIncomplete)
+		}
+	}
+	if err := validateMigrationOutputs(record, false); err != nil {
+		return err
+	}
+	// Broker data can contain the only evidence of host effects which survived
+	// a daemon failure. Storage rollback has no authority to resolve them.
+	entries, err := os.ReadDir(layout.Broker)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	if len(entries) != 0 {
+		return fmt.Errorf("%w: broker state must be recovered and preserved before storage rollback", ErrMigrationIncomplete)
 	}
 	var joined error
 	for _, path := range []string{layout.Runtime + ".migrating", layout.Runtime, layout.Broker} {
@@ -308,7 +400,7 @@ func validateLegacyTree(root string) error {
 	})
 }
 
-func copyStorageTree(source, destination string) error {
+func copyStorageTree(source, destination string, created func() error) error {
 	if err := os.Mkdir(destination, 0o700); err != nil {
 		return err
 	}
@@ -318,6 +410,9 @@ func copyStorageTree(source, destination string) error {
 			_ = os.RemoveAll(destination)
 		}
 	}()
+	if err := created(); err != nil {
+		return err
+	}
 	err := filepath.WalkDir(source, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -425,14 +520,65 @@ func readMigrationRecord(path string) (migrationRecord, error) {
 	if err != nil {
 		return migrationRecord{}, err
 	}
+	return decodeMigrationRecord(data)
+}
+
+func decodeMigrationRecord(data []byte) (migrationRecord, error) {
+	if len(data) > 16*1024 {
+		return migrationRecord{}, ErrInputTooLarge
+	}
+	if err := rejectDuplicateJSONMembers(data); err != nil {
+		return migrationRecord{}, fmt.Errorf("%w: invalid migration record: %v", ErrUnsafeLayout, err)
+	}
+	// encoding/json accepts case-insensitive struct fields. A durable authority
+	// record must not accept two spellings of the same field.
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return migrationRecord{}, fmt.Errorf("%w: invalid migration record: %v", ErrUnsafeLayout, err)
+	}
+	for name := range fields {
+		switch name {
+		case "version", "layout", "phase", "legacy_identity", "runtime_identity", "broker_identity":
+		default:
+			return migrationRecord{}, fmt.Errorf("%w: unknown migration field %q", ErrUnsafeLayout, name)
+		}
+	}
+	var paths map[string]json.RawMessage
+	if err := json.Unmarshal(fields["layout"], &paths); err != nil {
+		return migrationRecord{}, fmt.Errorf("%w: invalid migration layout: %v", ErrUnsafeLayout, err)
+	}
+	for name := range paths {
+		switch name {
+		case "Legacy", "Runtime", "Broker", "Backup", "State":
+		default:
+			return migrationRecord{}, fmt.Errorf("%w: unknown migration path %q", ErrUnsafeLayout, name)
+		}
+	}
 	var record migrationRecord
-	decoder := json.NewDecoder(strings.NewReader(string(data)))
+	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&record); err != nil {
 		return migrationRecord{}, fmt.Errorf("%w: invalid migration record: %v", ErrUnsafeLayout, err)
 	}
 	if record.Version != migrationVersion {
 		return migrationRecord{}, fmt.Errorf("%w: migration record version %d", ErrUnsafeLayout, record.Version)
+	}
+	if err := decoder.Decode(new(any)); err != io.EOF {
+		return migrationRecord{}, fmt.Errorf("%w: trailing migration record data", ErrUnsafeLayout)
+	}
+	switch record.Phase {
+	case phaseStarted, phaseBackupCreated, phaseRuntimeInstalled, phaseBrokerCreated, phaseComplete:
+	default:
+		return migrationRecord{}, fmt.Errorf("%w: unknown migration phase %q", ErrUnsafeLayout, record.Phase)
+	}
+	if record.LegacyIdentity == "" || len(record.LegacyIdentity) > 128 || len(record.RuntimeIdentity) > 128 || len(record.BrokerIdentity) > 128 {
+		return migrationRecord{}, fmt.Errorf("%w: missing or oversized migration identity", ErrUnsafeLayout)
+	}
+	if (record.Phase == phaseRuntimeInstalled || record.Phase == phaseBrokerCreated || record.Phase == phaseComplete) && record.RuntimeIdentity == "" {
+		return migrationRecord{}, fmt.Errorf("%w: missing runtime identity", ErrUnsafeLayout)
+	}
+	if (record.Phase == phaseBrokerCreated || record.Phase == phaseComplete) && record.BrokerIdentity == "" {
+		return migrationRecord{}, fmt.Errorf("%w: missing broker identity", ErrUnsafeLayout)
 	}
 	return record, nil
 }

@@ -14,6 +14,75 @@
       "cases": [
         {"id": "m2::execution-identity-standard-user", "kind": "identity"},
         {
+          "id": "m32::supervised-service",
+          "kind": "go",
+          "module": "bin",
+          "arguments": ["./internal/isolation/network", "./internal/isolation/supervision", "-run", "^(TestService.*|TestRecoveryRejectsLateNativeCompletion)$", "-count=1"],
+          "eventFile": "isolation-supervised-service.jsonl",
+          "requiredTests": [
+            "github.com/asciimoth/almagest/bin/internal/isolation/network::TestServiceRecoversBeforeRPCAndRequiresApplicationReadiness",
+            "github.com/asciimoth/almagest/bin/internal/isolation/network::TestServiceUnresolvedRecoveryNeverServes",
+            "github.com/asciimoth/almagest/bin/internal/isolation/network::TestServiceRejectsIncompleteOrReusedComposition",
+            "github.com/asciimoth/almagest/bin/internal/isolation/network::TestServiceLateRecoveryCannotStartServer",
+            "github.com/asciimoth/almagest/bin/internal/isolation/supervision::TestRecoveryRejectsLateNativeCompletion"
+          ]
+        },
+        {
+          "id": "m32::application-readiness",
+          "kind": "go",
+          "module": "bin",
+          "arguments": ["./internal/isolation/supervision", "./internal/isolation/network", "./internal/isolation/runtime", "./internal/isolation/transport", "-run", "^(TestSupervisorApplicationReadinessBarrier|TestSupervisorApplicationReadinessFailure|TestSupervisorRequiresApplicationReadinessSignal|TestStartedProcessNativeLifecycle|TestStartedProcessWaitsForExit|TestStartedProcessHungGracefulRequest|TestStartedProcessRejectsMissingOwnership|TestRuntimeApplicationReady|TestRuntimeApplicationReadyRejectsInvalidState|TestRuntimeApplicationReadyRejectsExtraFields|TestApplicationReadyReply|TestApplicationReadyCanceled|TestRequestDispatch|FuzzRuntimeReadyRequest)$", "-count=1"],
+          "eventFile": "isolation-application-readiness.jsonl",
+          "requiredTests": [
+            "github.com/asciimoth/almagest/bin/internal/isolation/supervision::TestSupervisorApplicationReadinessBarrier",
+            "github.com/asciimoth/almagest/bin/internal/isolation/supervision::TestSupervisorApplicationReadinessFailure",
+            "github.com/asciimoth/almagest/bin/internal/isolation/supervision::TestSupervisorRequiresApplicationReadinessSignal",
+            "github.com/asciimoth/almagest/bin/internal/isolation/supervision::TestStartedProcessNativeLifecycle",
+            "github.com/asciimoth/almagest/bin/internal/isolation/supervision::TestStartedProcessWaitsForExit",
+            "github.com/asciimoth/almagest/bin/internal/isolation/supervision::TestStartedProcessHungGracefulRequest",
+            "github.com/asciimoth/almagest/bin/internal/isolation/supervision::TestStartedProcessRejectsMissingOwnership",
+            "github.com/asciimoth/almagest/bin/internal/isolation/network::TestRuntimeApplicationReady",
+            "github.com/asciimoth/almagest/bin/internal/isolation/network::TestRuntimeApplicationReadyRejectsInvalidState",
+            "github.com/asciimoth/almagest/bin/internal/isolation/network::TestRuntimeApplicationReadyRejectsExtraFields",
+            "github.com/asciimoth/almagest/bin/internal/isolation/runtime::TestApplicationReadyReply",
+            "github.com/asciimoth/almagest/bin/internal/isolation/runtime::TestApplicationReadyCanceled",
+            "github.com/asciimoth/almagest/bin/internal/isolation/transport::TestRequestDispatch",
+            "github.com/asciimoth/almagest/bin/internal/isolation/transport::FuzzRuntimeReadyRequest"
+          ]
+        },
+        {
+          "id": "m32::windows-production-boundaries",
+          "kind": "go",
+          "module": "bin",
+          "arguments": ["./almagestd", "./internal/isolation/bootstrap", "./internal/isolation/launchconfig", "./internal/isolation/networkrole", "./internal/isolation/windowsprofile", "./internal/nativebackend", "-run", "^(TestUnsupportedDefaultIsolationFailsWithDirectModeGuidance|TestEnterIsolatedRuntimeStorageWindowsUsesSelectedDirectory|TestPrepareRuntimeStorageWindows.*|TestWindowsSystemStrictSelection|FuzzWindowsSystem|TestWindowsLaunchRejectsInvalidAuthorityBeforeExecution|TestRequestLanesRejectsAuthorityShifts|FuzzRequestLanes|TestParseWindowsFileConfig.*|FuzzWindowsFileConfig)$", "-count=1"],
+          "eventFile": "isolation-windows-production-boundaries.jsonl",
+          "requiredTests": [
+            "github.com/asciimoth/almagest/bin/almagestd::TestUnsupportedDefaultIsolationFailsWithDirectModeGuidance",
+            "github.com/asciimoth/almagest/bin/almagestd::TestEnterIsolatedRuntimeStorageWindowsUsesSelectedDirectory",
+            "github.com/asciimoth/almagest/bin/internal/isolation/bootstrap::TestPrepareRuntimeStorageWindowsFixedInputs",
+            "github.com/asciimoth/almagest/bin/internal/isolation/bootstrap::TestPrepareRuntimeStorageWindowsRejectsInvalidInputs",
+            "github.com/asciimoth/almagest/bin/internal/isolation/launchconfig::TestWindowsSystemStrictSelection",
+            "github.com/asciimoth/almagest/bin/internal/isolation/launchconfig::FuzzWindowsSystem",
+            "github.com/asciimoth/almagest/bin/internal/isolation/networkrole::TestWindowsLaunchRejectsInvalidAuthorityBeforeExecution",
+            "github.com/asciimoth/almagest/bin/internal/isolation/windowsprofile::TestRequestLanesRejectsAuthorityShifts",
+            "github.com/asciimoth/almagest/bin/internal/isolation/windowsprofile::FuzzRequestLanes",
+            "github.com/asciimoth/almagest/bin/internal/nativebackend::TestParseWindowsFileConfigMatchesDefaultsAndOverrides",
+            "github.com/asciimoth/almagest/bin/internal/nativebackend::TestParseWindowsFileConfigRejectsInvalidScalars",
+            "github.com/asciimoth/almagest/bin/internal/nativebackend::FuzzWindowsFileConfig"
+          ]
+        },
+        {
+          "id": "m32::windows-lane-fuzz",
+          "kind": "go",
+          "module": "bin",
+          "coverage": false,
+          "arguments": ["./internal/isolation/windowsprofile", "-run", "^$", "-fuzz", "^FuzzRequestLanes$", "-fuzztime=20s", "-parallel=2"],
+          "eventFile": "isolation-windows-lane-fuzz.jsonl",
+          "requiredTests": [
+            "github.com/asciimoth/almagest/bin/internal/isolation/windowsprofile::FuzzRequestLanes"
+          ]
+        },
+        {
           "id": "m25::windows-role-profiles-caller",
           "kind": "go",
           "module": "bin",
@@ -25,12 +94,16 @@
             "github.com/asciimoth/almagest/bin/internal/isolation/windowsprofile::TestNativeRoles",
             "github.com/asciimoth/almagest/bin/internal/isolation/windowsprofile::TestNativeLaunchRejections",
             "github.com/asciimoth/almagest/bin/internal/isolation/windowsprofile::TestNativeCloseAndCancellation",
+            "github.com/asciimoth/almagest/bin/internal/isolation/windowsprofile::TestNativeSupervisedLifecycle",
+            "github.com/asciimoth/almagest/bin/internal/isolation/windowsprofile::TestSuperviseRejectsUnlaunchedRole",
             "github.com/asciimoth/almagest/bin/internal/isolation/windowsprofile::TestNativeSuspendedFailureAndInheritance",
             "github.com/asciimoth/almagest/bin/internal/isolation/windowsprofile::TestNativeObjectRejections",
             "github.com/asciimoth/almagest/bin/internal/isolation/windowsprofile::TestNativePersistentDeployment",
+            "github.com/asciimoth/almagest/bin/internal/isolation/windowsprofile::TestRequestLanesRejectsAuthorityShifts",
             "github.com/asciimoth/almagest/bin/internal/isolation/windowsprofile::FuzzPlan",
             "github.com/asciimoth/almagest/bin/internal/isolation/windowsprofile::FuzzPath",
-            "github.com/asciimoth/almagest/bin/internal/isolation/windowsprofile::FuzzDeploymentPlan"
+            "github.com/asciimoth/almagest/bin/internal/isolation/windowsprofile::FuzzDeploymentPlan",
+            "github.com/asciimoth/almagest/bin/internal/isolation/windowsprofile::FuzzRequestLanes"
           ]
         },
         {
@@ -48,21 +121,37 @@
             "github.com/asciimoth/almagest/bin/internal/isolation/bootstrap::TestStorageMigrationRollbackRestoresLegacy",
             "github.com/asciimoth/almagest/bin/internal/isolation/bootstrap::TestStorageMigrationFailureRollsBackBeforeReturning",
             "github.com/asciimoth/almagest/bin/internal/isolation/bootstrap::TestStorageMigrationRecoversInterruptedRecords",
+            "github.com/asciimoth/almagest/bin/internal/isolation/bootstrap::TestStorageMigrationRejectsDifferentRecordedLayout",
+            "github.com/asciimoth/almagest/bin/internal/isolation/bootstrap::TestStorageRollbackChecksBackupBeforeRemovingOutputs",
+            "github.com/asciimoth/almagest/bin/internal/isolation/bootstrap::TestStorageRollbackRequiresReceiptAndOriginalDirectories",
+            "github.com/asciimoth/almagest/bin/internal/isolation/bootstrap::TestStorageRecoveryRejectsUnrecordedOutput",
+            "github.com/asciimoth/almagest/bin/internal/isolation/bootstrap::TestStorageRecoveryFindsRecordedStagingAfterInterruptedRename",
+            "github.com/asciimoth/almagest/bin/internal/isolation/bootstrap::TestStorageMigrationProcessCrash",
+            "github.com/asciimoth/almagest/bin/internal/isolation/bootstrap::TestStorageRollbackPreservesBrokerRecoveryState",
+            "github.com/asciimoth/almagest/bin/internal/isolation/bootstrap::TestMigrationRecordRejectsAmbiguousAndUnknownInput",
             "github.com/asciimoth/almagest/bin/internal/isolation/bootstrap::TestStorageLayoutRejectsPathAttacksAndUnsupportedTrees",
             "github.com/asciimoth/almagest/bin/internal/isolation/bootstrap::TestStorageMigrationRejectsHardLinkedFilesAndRollsBack",
             "github.com/asciimoth/almagest/bin/internal/isolation/bootstrap::TestPrivilegedRoleDependencyBoundary",
             "github.com/asciimoth/almagest/bin/internal/isolation/bootstrap::TestWindowsTrustedInputsRejectReplacementAliasesAndUnsafeNames",
             "github.com/asciimoth/almagest/bin/internal/isolation/bootstrap::TestWindowsStorageLayoutRejectsReparseParent",
+            "github.com/asciimoth/almagest/bin/internal/isolation/bootstrap::TestPrepareRuntimeStorageWindowsFixedInputs",
+            "github.com/asciimoth/almagest/bin/internal/isolation/bootstrap::TestPrepareRuntimeStorageWindowsRejectsInvalidInputs",
             "github.com/asciimoth/almagest/bin/internal/isolation/bootstrap::FuzzCombinedProtectedSplit",
             "github.com/asciimoth/almagest/bin/internal/isolation/bootstrap::FuzzResolveProtectedDoesNotPanic",
             "github.com/asciimoth/almagest/bin/internal/isolation/bootstrap::FuzzStorageLayoutValidation",
             "github.com/asciimoth/almagest/bin/internal/isolation/bootstrap::FuzzLaunchEnvironmentValidation",
+            "github.com/asciimoth/almagest/bin/internal/isolation/bootstrap::FuzzMigrationRecord",
             "github.com/asciimoth/almagest/bin/internal/isolation/roleentry::TestRoleEntryRequiresInheritedChannelAndFixedRole",
             "github.com/asciimoth/almagest/bin/internal/isolation/roleentry::TestRoleEntryAcceptsInheritedPipeOnly",
             "github.com/asciimoth/almagest/bin/internal/isolation/roleentry::TestBootstrapReadinessExchange",
             "github.com/asciimoth/almagest/bin/internal/isolation/roleentry::TestBootstrapRejectsAuthorityExpansion",
             "github.com/asciimoth/almagest/bin/internal/isolation/roleentry::TestBootstrapRejectsMalformedFrameAndFalseReadiness",
-            "github.com/asciimoth/almagest/bin/internal/isolation/roleentry::TestBootstrapSilenceHonorsCancellation"
+            "github.com/asciimoth/almagest/bin/internal/isolation/roleentry::TestBootstrapSilenceHonorsCancellation",
+            "github.com/asciimoth/almagest/bin/internal/isolation/roleentry::TestRuntimeBootstrapRoundTrip",
+            "github.com/asciimoth/almagest/bin/internal/isolation/roleentry::TestRuntimeInputRejectsInvalidAuthority",
+            "github.com/asciimoth/almagest/bin/internal/isolation/roleentry::TestProductionRuntimeInputRequiresCompleteBoundedStatus",
+            "github.com/asciimoth/almagest/bin/internal/isolation/roleentry::FuzzRuntimeInput",
+            "github.com/asciimoth/almagest/bin/internal/isolation/roleentry::FuzzRuntimeIsolationStatus"
           ]
         },
         {
@@ -73,6 +162,7 @@
           "eventFile": "isolation-admin-gate.jsonl",
           "requiredTests": [
             "github.com/asciimoth/almagest/bin/internal/isolation/admingate::TestGateRelaysOpaqueStreamsByFixedEndpoint",
+            "github.com/asciimoth/almagest/bin/internal/isolation/admingate::TestPreparedBrokerPublishesOnlyAfterStart",
             "github.com/asciimoth/almagest/bin/internal/isolation/admingate::TestGateKeepsHTTPAndOriginParsingInRuntime",
             "github.com/asciimoth/almagest/bin/internal/isolation/admingate::TestSlowConnectionDoesNotBlockAnotherAdminStream",
             "github.com/asciimoth/almagest/bin/internal/isolation/admingate::TestGateBoundsUnclaimedConnections",
@@ -520,6 +610,8 @@
             "github.com/asciimoth/almagest/bin/internal/isolation/windowsprofile::TestNativeRoles",
             "github.com/asciimoth/almagest/bin/internal/isolation/windowsprofile::TestNativeLaunchRejections",
             "github.com/asciimoth/almagest/bin/internal/isolation/windowsprofile::TestNativeCloseAndCancellation",
+            "github.com/asciimoth/almagest/bin/internal/isolation/windowsprofile::TestNativeSupervisedLifecycle",
+            "github.com/asciimoth/almagest/bin/internal/isolation/windowsprofile::TestSuperviseRejectsUnlaunchedRole",
             "github.com/asciimoth/almagest/bin/internal/isolation/windowsprofile::TestNativeSuspendedFailureAndInheritance",
             "github.com/asciimoth/almagest/bin/internal/isolation/windowsprofile::TestNativeObjectRejections",
             "github.com/asciimoth/almagest/bin/internal/isolation/windowsprofile::TestNativePersistentDeployment",

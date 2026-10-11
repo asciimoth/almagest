@@ -3,6 +3,9 @@ set -euo pipefail
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 # shellcheck source=dev/winvm/common.sh
 source "$script_dir/common.sh"
+# shellcheck source=dev/winvm/storage-space.sh
+# shellcheck disable=SC1091 # Also checked directly; it can be untracked in a working tree.
+source "$script_dir/storage-space.sh"
 validate() {
     jq -e '.machine | .cpu=="host,cet-ss=off,cet-ibt=off" and .healthTimeoutSeconds>0 and .healthIntervalSeconds>0 and .healthIntervalSeconds<.healthTimeoutSeconds and .artifactIntervalSeconds>0 and .cleanupTimeoutSeconds>=240 and .recoveryBootTimeoutSeconds>0 and .recoveryBootTimeoutSeconds<.cleanupTimeoutSeconds' "$config_file" >/dev/null || die 'invalid watchdog or CPU config'
     jq -e '.schemaVersion==1 and .architecture=="amd64" and .machine.cpus>=2 and .machine.memoryMiB>=4096 and .machine.diskGiB>=40 and .machine.bootTimeoutSeconds>0 and .machine.installTimeoutSeconds>0 and .machine.resourceTimeoutSeconds>0 and .machine.shutdownTimeoutSeconds>0 and .machine.type=="q35,accel=kvm" and .ssh.user=="winvm" and .ssh.portMinimum>=1024 and .ssh.portMaximum>=.ssh.portMinimum and .ssh.portMaximum<=65535 and .artifacts.directory=="artifacts/winvm"' "$config_file" >/dev/null || die 'invalid config.json'
@@ -47,8 +50,6 @@ available=$(awk '/^MemAvailable:/ {print int($2/1024)}' /proc/meminfo)
 required=$(jq -r .machine.memoryMiB "$config_file")
 ((available >= required)) || die "VM needs $required MiB available memory"
 ensure_cache_dir
-free=$(df -Pk "$winvm_cache_dir" | awk 'NR==2{print $4}')
-disk=$(jq -r .machine.diskGiB "$config_file")
-((free >= (disk + 10) * 1024 * 1024)) || die "VM cache needs $((disk + 10)) GiB free"
+check_vm_storage_space
 allocate_locked_port
 printf 'Windows VM host checks passed. Locked port %s is available.\n' "$winvm_ssh_port"

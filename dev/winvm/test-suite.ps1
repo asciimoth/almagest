@@ -112,6 +112,10 @@ foreach ($case in $suiteCases) {
     $eventPath = Join-Path $eventDir $case.eventFile
     $coveragePath = Join-Path $coverageDir "$($case.eventFile).coverage.out"
     $statePath = Join-Path $diagnosticDir "$($case.eventFile).state.log"
+    $collectCoverage = $true
+    if ($null -ne $case.PSObject.Properties['coverage']) {
+        $collectCoverage = [bool]$case.coverage
+    }
     $moduleDir = Join-Path $SourceDir $case.module
     Write-TestProgress 'RUN ' "$caseProgress (package-timeout=${goPackageTimeoutSeconds}s; compilation has no deadline)"
     Push-Location $moduleDir
@@ -128,9 +132,12 @@ foreach ($case in $suiteCases) {
         # requires that the privileged suite is serialized.
         $testArguments = @(
             'test', '-json', '-count=1', '-p=1', '-parallel=1',
-            "-timeout=${goPackageTimeoutSeconds}s", '-covermode=atomic',
-            "-coverprofile=$coveragePath"
-        ) + @($case.arguments)
+            "-timeout=${goPackageTimeoutSeconds}s"
+        )
+        if ($collectCoverage) {
+            $testArguments += @('-covermode=atomic', "-coverprofile=$coveragePath")
+        }
+        $testArguments += @($case.arguments)
         $stderrPath = "$eventPath.stderr.log"
         $started = [DateTime]::UtcNow
         try {
@@ -169,7 +176,7 @@ foreach ($case in $suiteCases) {
         }
         $processResults[$case.id] = $processExitCode
         Write-TestProgress $(if ($processExitCode -eq 0) { 'PASS' } else { 'FAIL' }) "$caseProgress elapsed=${elapsed}s"
-        if (-not (Test-Path -LiteralPath $coveragePath -PathType Leaf)) {
+        if ($collectCoverage -and -not (Test-Path -LiteralPath $coveragePath -PathType Leaf)) {
             throw "The $($case.id) coverage profile is absent"
         }
         if ($processExitCode -ne 0 -and -not $ContinueAfterFailure) {

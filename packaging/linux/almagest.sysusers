@@ -1,0 +1,3 @@
+u almagest-runtime - "Almagest isolated runtime" /nonexistent /usr/sbin/nologin
+u almagest-writer - "Almagest isolated config writer" /nonexistent /usr/sbin/nologin
+u almagest-command - "Almagest isolated command helper" /nonexistent /usr/sbin/nologin

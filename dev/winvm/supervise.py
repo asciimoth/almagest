@@ -451,7 +451,8 @@ class Supervisor:
         script = f"{self.remote}/source/dev/winvm/manual-daemon.ps1"
         arguments = ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script,
                      "-Mode", "Start", "-SourceDir", f"{self.remote}/source",
-                     "-RunDir", self.remote, "-WebPort", "8090"]
+                     "-RunDir", self.remote, "-WebPort", "8090", "-DaemonOptions",
+                     os.environ.get("WINVM_DAEMON_OPTIONS", "")]
         self.note("starting almagestd as SYSTEM")
         if self.command(self.qga("exec", *arguments, seconds=30), 40,
                         log="manual-daemon-launch.log"):

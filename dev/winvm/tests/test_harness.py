@@ -5,13 +5,13 @@ import importlib.util
 import io
 import json
 import os
-from pathlib import Path
 import re
 import socket
 import subprocess
 import tarfile
 import tempfile
 import unittest
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('package', ROOT / 'package-worktree.py')
@@ -30,7 +30,7 @@ class HarnessTests(unittest.TestCase):
     def shell(self, command, ok=True):
         result = subprocess.run(['bash', '-c', 'source "$1/common.sh"; ' + command,
                                  'test', str(ROOT)], env=self.env, text=True,
-                                capture_output=True, timeout=15)
+                                capture_output=True, timeout=15, check=False)
         if ok:
             self.assertEqual(result.returncode, 0, result.stderr)
         else:
@@ -40,6 +40,49 @@ class HarnessTests(unittest.TestCase):
     def test_lock_valid(self):
         subprocess.run([ROOT / 'doctor.sh', '--validate'], env=self.env, check=True,
                        stdout=subprocess.DEVNULL)
+
+    def test_storage_space_distinguishes_cached_and_cold_images(self):
+        public = self.path / 'public.key'
+        public.write_text('test public key')
+        self.env['TEST_VM_PUBLIC_KEY'] = str(public)
+        prefix = '''
+source "$winvm_dir/storage-space.sh"
+ssh_public_key() { printf '%s\\n' "$TEST_VM_PUBLIC_KEY"; }
+base_key() { printf 'known-key\\n'; }
+df() { printf 'Filesystem 1024-blocks Used Available Capacity Mounted\\n'; printf 'test 200000000 1 %s 1%% /test\\n' "$TEST_VM_FREE_KIB"; }
+'''
+        for cached, free_gib, succeeds, diagnostic in (
+            (True, 10, True, '10 GiB'),
+            (True, 9, False, 'VM test artifacts needs 10 GiB'),
+            (False, 89, False, 'VM image build cache needs 90 GiB'),
+            (False, 90, True, ''),
+        ):
+            with self.subTest(cached=cached, free_gib=free_gib):
+                self.env['TEST_VM_FREE_KIB'] = str(free_gib * 1024 * 1024)
+                script = prefix + f'cached_image_valid() {{ return {0 if cached else 1}; }}\ncheck_vm_storage_space'
+                result = self.shell(script, ok=succeeds)
+                self.assertIn(diagnostic, result.stdout + result.stderr)
+
+    def test_cached_space_check_uses_artifact_filesystem(self):
+        self.shell('''
+source "$winvm_dir/storage-space.sh"
+ssh_public_key() { printf '%s\\n' "$config_file"; }
+base_key() { printf 'known-key\\n'; }
+cached_image_valid() { return 0; }
+require_vm_space() {
+    [[ $1 == "$repo_root/artifacts" || $1 == "$repo_root" ]] || exit 23
+    [[ $2 == 10 ]] || exit 24
+}
+check_vm_storage_space
+''')
+
+    def test_storage_space_rejects_unreadable_measurement(self):
+        result = self.shell('''
+source "$winvm_dir/storage-space.sh"
+df() { printf 'invalid disk report\\n'; }
+require_vm_space "$winvm_cache_dir" 10 test
+''', ok=False)
+        self.assertIn('cannot measure free space', result.stderr)
 
     def test_absent_media_and_wrong_hash(self):
         self.shell('require_kvm /no-such-kvm-device', ok=False)
@@ -104,7 +147,7 @@ class HarnessTests(unittest.TestCase):
         record = json.loads(second.with_suffix('.json').read_text())
         self.assertTrue(record['dirty'])
         self.assertEqual(record['sha256'], hashlib.sha256(second.read_bytes()).hexdigest())
-        certificate = repo / sorted(package.PUBLIC_CERTIFICATES)[0]
+        certificate = repo / min(package.PUBLIC_CERTIFICATES)
         certificate.parent.mkdir(parents=True)
         certificate.write_text('-----BEGIN CERTIFICATE-----\npublic fixture')
         package.package(repo, second)
@@ -164,12 +207,19 @@ class HarnessTests(unittest.TestCase):
         self.assertIn("@($CaseIDs -split '~')", runner)
         self.assertIn("$_.kind -ne 'go' -or $_.id -in $CaseID", runner)
         self.assertIn('$validationManifestPath', runner)
+        self.assertIn('$collectCoverage = $true', runner)
+        self.assertIn('if ($collectCoverage)', runner)
+        self.assertIn('if ($collectCoverage -and -not (Test-Path', runner)
 
         manifest = json.loads((ROOT / 'test-suites.json').read_text())
         self.assertNotIn('caseTimeoutSeconds', manifest)
+        no_coverage = []
         for suite in manifest['suites']:
             for case in suite['cases']:
                 self.assertNotIn('timeoutSeconds', case)
+                if case.get('coverage') is False:
+                    no_coverage.append(case['id'])
+        self.assertEqual(no_coverage, ['m32::windows-lane-fuzz'])
 
         supervisor = (ROOT / 'supervise.py').read_text()
         config = json.loads((ROOT / 'config.json').read_text())['machine']
@@ -265,6 +315,8 @@ class HarnessTests(unittest.TestCase):
         self.assertIn("'-w', [string]$WebPort", launcher)
         self.assertIn("'--file-storage', $storage", launcher)
         self.assertNotIn("'--tmp-file-storage'", launcher)
+        self.assertIn("[string]$DaemonOptions = ''", launcher)
+        self.assertIn('os.environ.get("WINVM_DAEMON_OPTIONS", "")', runner)
         self.assertIn('display=(-display "${WINVM_DISPLAY:-gtk,window-close=off}"', shell)
         self.assertIn('enabling automatic login for the standard winvm account', runner)
         self.assertIn('self.upload_manual_state()', runner)

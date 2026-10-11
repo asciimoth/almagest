@@ -206,6 +206,17 @@ build-web:
 build-windows:
   ./scripts/build-windows.sh amd64 arm64
 
+# Build the complete Linux/amd64 isolated service payload. Packaging must
+# install this set atomically in one root-owned directory.
+build-isolation-linux output='build/isolation-linux': build-web
+  mkdir -p {{quote(output)}}
+  CGO_ENABLED=0 go build -C bin -trimpath -o ../{{quote(output)}}/almagestd ./almagestd
+  CGO_ENABLED=0 go build -C bin -trimpath -o ../{{quote(output)}}/almagest-network-role ./cmd/almagest-network-role
+  CGO_ENABLED=0 go build -C bin -trimpath -o ../{{quote(output)}}/almagest-config-writer-role ./cmd/almagest-config-writer-role
+  CGO_ENABLED=0 go build -C bin -trimpath -o ../{{quote(output)}}/almagest-command-role ./cmd/almagest-command-role
+  CGO_ENABLED=0 go build -C bin -trimpath -o ../{{quote(output)}}/almagest-isolation-storage ./cmd/almagest-isolation-storage
+  gcc -static -O2 -D_FORTIFY_SOURCE=3 -Wall -Wextra -Werror -o {{quote(output)}}/almagest-linux-role-launcher bin/native/linux-role/launcher.c $$(pkg-config --cflags --libs libseccomp)
+
 build-windows-arch arch:
   ./scripts/build-windows.sh {{arch}}
 
@@ -275,19 +286,29 @@ qualify-windows entry evidence:
 winvm-shell run:
   ./dev/winvm/run.sh --shell {{quote(run)}}
 
-# Run an elevated daemon in a visible Windows VM. Stop the VM with Ctrl+C or by
-# closing its QEMU window.
-daemon-winvm web_port='8091':
-  WINVM_WEB_PORT={{quote(web_port)}} WINVM_OPEN_BROWSER="${WINVM_OPEN_BROWSER:-0}" ./dev/winvm/run.sh manual
+# Run an elevated daemon in a visible Windows VM. Windows production isolation
+# is not available yet, so this recipe stays in explicit direct mode. Pass
+# --experimental to enable experimental nodes. Set WINVM_WEB_PORT to override
+# the host port. Stop the VM with Ctrl+C or by closing its QEMU window.
+daemon-winvm *flags:
+  @options={{quote(flags)}}; \
+  for option in $options; do \
+    case "$option" in --no-isolation|--experimental) ;; *) printf 'unsupported daemon-winvm flag: %s\n' "$option" >&2; exit 2;; esac; \
+  done; \
+  WINVM_WEB_PORT="${WINVM_WEB_PORT:-8091}" WINVM_DAEMON_OPTIONS="$options" WINVM_OPEN_BROWSER="${WINVM_OPEN_BROWSER:-0}" ./dev/winvm/run.sh manual
 
 build: certcat-generate build-web
 	go build -o ./almagestd ./bin/almagestd/
 
-daemon: build
-  ./almagestd --no-isolation -c ./local -l debug -w 8090 --debug-nodes --experimental --unsafe-config --tmp-unix-admin --no-dns-cache-expiration
+# Run the daemon in isolated mode. Pass --no-isolation for direct development;
+# pass both --no-isolation and --experimental to enable experimental nodes.
+daemon *flags: build-isolation-linux
+  ./scripts/run-daemon.sh {{quote(flags)}}
 
-daemon-sudo: build
-  sudo ./almagestd --no-isolation -c ./local -l debug -w 8090 --debug-nodes --experimental --unsafe-config --no-dns-cache-expiration
+# Run the daemon as root in isolated mode with local config. The runner stages
+# role-owned state and copies mutable config back after the daemon stops.
+daemon-sudo *flags: build-isolation-linux
+  ./scripts/run-daemon.sh --sudo {{quote(flags)}}
 
 capture-default-tun-flake:
   ./scripts/capture-default-tun-flake.sh

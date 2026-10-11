@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"github.com/asciimoth/almagest/bin/almagestd/daemonservices"
 	"github.com/asciimoth/almagest/bin/almagestd/internal/daemonruntime"
 	"github.com/asciimoth/almagest/bin/almagestd/platform"
+	"github.com/asciimoth/almagest/bin/api"
 	"github.com/asciimoth/almagest/bin/internal/isolation/admingate"
 	"github.com/asciimoth/almagest/bin/internal/isolation/commandruntime"
 	"github.com/asciimoth/almagest/bin/internal/isolation/configpersistence"
@@ -149,7 +151,9 @@ func runIsolatedRuntimeRole() error {
 	arguments := args.Args{
 		FileStorage: storage, LogLevel: input.Options.LogLevel, LogWorkers: input.Options.LogWorkers,
 		NoPool: input.Options.NoPool, NoDNSCacheExpiration: input.Options.NoDNSCacheExpiration,
-		DebugNodes: input.Options.DebugNodes,
+		DebugNodes: input.Options.DebugNodes, LogCacheDebug: input.Options.LogCacheDebug,
+		LogCacheInfo: input.Options.LogCacheInfo, LogCacheWarn: input.Options.LogCacheWarn,
+		LogCacheError: input.Options.LogCacheError, LogCacheFatal: input.Options.LogCacheFatal,
 	}
 	if input.StartupSnapshot {
 		arguments.Snapshot = filepath.Join(storage, roleentry.RuntimeSnapshotFile)
@@ -159,20 +163,16 @@ func runIsolatedRuntimeRole() error {
 		return err
 	}
 	integrations := daemonIntegrations{
+		parseConfig: ParseIsolatedConfig,
 		prepareConfig: func(args.Args) (platform.ConfigBootstrap, error) {
 			return platform.ConfigBootstrap{Regular: regular, Protected: protected, Persistence: persistence}, nil
 		},
 		enterStorage: func(path string) error {
-			// The native launcher enters this fixed directory before it applies
-			// the final syscall filter. R cannot inspect or change its cwd later.
-			if filepath.Clean(path) != "/state" {
-				return fmt.Errorf("invalid isolated runtime storage: %s", path)
-			}
-			return nil
+			return enterIsolatedRuntimeStorage(storage, path)
 		},
 		loadOSAuthority: func(context.Context) (immutableTLSData, error) { return immutableTLSData{}, nil },
 		prepareAdmin: func(conf *Config) (*AdminAPI, error) {
-			return isolatedAdminAPI(conf, adminRuntime, input.AdminEndpoints)
+			return isolatedAdminAPI(conf, adminRuntime, input.AdminEndpoints, input.Isolation)
 		},
 		buildCommands: func(context.Context, *LogFactory, *Config) (daemonservices.NodeCommandDispatcher, daemonservices.BackendCallbackDispatcher, func(), error) {
 			if commands == nil {
@@ -183,9 +183,21 @@ func runIsolatedRuntimeRole() error {
 		buildNetwork: func(*Config, daemonservices.BackendCallbackDispatcher, *LogFactory, error, int64) (daemonservices.HostNetwork, error) {
 			return system, nil
 		},
+		dropPrivileges: func() {}, // Native launcher already installed R's final identity and restrictions.
+	}
+	mode := executionModeIsolationDevelopment
+	if input.Production {
+		mode = executionModeIsolation
 	}
 	return daemonruntime.Run(ctx, func(ctx context.Context, application *daemonruntime.Application) error {
-		return runDaemon(ctx, application, func() {}, arguments, executionModeIsolationDevelopment, randomSeeds, nil, integrations)
+		var readyErr error
+		err := runDaemon(ctx, application, func() {
+			readyErr = networkClient.MarkReady(ctx)
+			if readyErr != nil {
+				application.Cancel()
+			}
+		}, arguments, mode, randomSeeds, nil, integrations)
+		return errors.Join(err, readyErr)
 	})
 }
 
@@ -212,8 +224,12 @@ func readRuntimeConfig(storage string) ([]byte, []byte, error) {
 	return regular, protected, nil
 }
 
-func isolatedAdminAPI(conf *Config, runtime *admingate.Runtime, endpoints []roleentry.RuntimeAdminEndpoint) (*AdminAPI, error) {
+func isolatedAdminAPI(conf *Config, runtime *admingate.Runtime, endpoints []roleentry.RuntimeAdminEndpoint, status roleentry.RuntimeIsolationStatus) (*AdminAPI, error) {
 	admin := &AdminAPI{config: conf}
+	if status.ProtocolVersion != 0 {
+		admin.isolationStatus = &api.IsolationStatus{ProtocolVersion: status.ProtocolVersion, Restrictions: status.Restrictions,
+			Roles: status.Roles, Capabilities: status.Capabilities, RecoveryState: status.RecoveryState}
+	}
 	if len(endpoints) == 0 {
 		return admin, nil
 	}

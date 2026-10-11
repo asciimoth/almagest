@@ -108,7 +108,25 @@ func (h *Helper) RunCallback(ctx context.Context, req protocol.CallbackRequest) 
 	if !ok {
 		return h.reject(sourceCallback, req.Meta.OperationID, input, "denied", protocol.ErrPolicyDenied)
 	}
-	if req.Event != callback.Event || req.Resource.SessionID != h.session.ID || req.Resource.Type != callback.ResourceType || req.Resource.GraphEpoch != req.Meta.GraphEpoch || !req.Resource.ID.Valid() || req.Resource.Generation == 0 {
+	if req.Event != callback.Event {
+		return h.reject(sourceCallback, req.Meta.OperationID, input, "invalid", protocol.ErrInvalidContract)
+	}
+	if len(callback.ForwardSlots) != 0 {
+		if req.Resource != (protocol.ResourceRef{}) || len(req.Slots) > len(callback.ForwardSlots) {
+			return h.reject(sourceCallback, req.Meta.OperationID, input, "invalid", protocol.ErrInvalidContract)
+		}
+		allowed := make(map[string]bool, len(callback.ForwardSlots))
+		for _, name := range callback.ForwardSlots {
+			allowed[name] = true
+		}
+		for name := range req.Slots {
+			if !allowed[name] {
+				return h.reject(sourceCallback, req.Meta.OperationID, input, "invalid", protocol.ErrInvalidContract)
+			}
+		}
+		return h.run(ctx, sourceCallback, req.Meta.OperationID, input, h.config.profiles[callback.Profile], req.Slots)
+	}
+	if len(req.Slots) != 0 || req.Resource.SessionID != h.session.ID || req.Resource.Type != callback.ResourceType || req.Resource.GraphEpoch != req.Meta.GraphEpoch || !req.Resource.ID.Valid() || req.Resource.Generation == 0 {
 		return h.reject(sourceCallback, req.Meta.OperationID, input, "invalid", protocol.ErrInvalidContract)
 	}
 	slots := make(map[string]string, len(callback.Slots))
@@ -430,6 +448,7 @@ func hashCallbackRequest(request protocol.CallbackRequest) [32]byte {
 	binary.BigEndian.PutUint64(values[:8], request.Resource.Generation)
 	binary.BigEndian.PutUint64(values[8:], request.Resource.GraphEpoch)
 	_, _ = h.Write(values[:])
+	writeSlots(h, request.Slots)
 	var out [32]byte
 	copy(out[:], h.Sum(nil))
 	return out

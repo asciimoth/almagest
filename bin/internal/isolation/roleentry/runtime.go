@@ -21,6 +21,11 @@ type RuntimeOptions struct {
 	NoPool               bool
 	NoDNSCacheExpiration bool
 	DebugNodes           bool
+	LogCacheDebug        *int
+	LogCacheInfo         *int
+	LogCacheWarn         *int
+	LogCacheError        *int
+	LogCacheFatal        *int
 }
 
 type RuntimeAdminEndpoint struct {
@@ -28,15 +33,25 @@ type RuntimeAdminEndpoint struct {
 	Kind string
 }
 
+type RuntimeIsolationStatus struct {
+	ProtocolVersion uint32
+	Restrictions    map[string][]string
+	Roles           map[string]string
+	Capabilities    map[string]bool
+	RecoveryState   string
+}
+
 // RuntimeInput identifies only fixed files inside R's private storage and its
 // already-open service lanes. It contains no host path, executable, policy, or
 // native resource selector.
 type RuntimeInput struct {
 	Version         uint32
+	Production      bool
 	ConfigWritable  bool
 	StartupSnapshot bool
 	AdminEndpoints  []RuntimeAdminEndpoint
 	Options         RuntimeOptions
+	Isolation       RuntimeIsolationStatus
 }
 
 func (i RuntimeInput) Validate() error {
@@ -53,7 +68,42 @@ func (i RuntimeInput) Validate() error {
 		}
 		seen[endpoint.ID] = struct{}{}
 	}
+	statusPresent := i.Isolation.ProtocolVersion != 0 || i.Isolation.RecoveryState != "" || len(i.Isolation.Roles) != 0 || len(i.Isolation.Restrictions) != 0 || len(i.Isolation.Capabilities) != 0
+	if i.Production && (i.Isolation.ProtocolVersion != protocol.Version || i.Isolation.RecoveryState != "complete" ||
+		i.Isolation.Roles["network"] != "ready" || i.Isolation.Roles["runtime"] != "ready" ||
+		len(i.Isolation.Restrictions["network"]) == 0 || len(i.Isolation.Restrictions["runtime"]) == 0) {
+		return protocol.ErrInvalidContract
+	}
+	if statusPresent {
+		if i.Isolation.ProtocolVersion != protocol.Version || len(i.Isolation.Roles) > 16 || len(i.Isolation.Restrictions) > 16 || len(i.Isolation.Capabilities) > 32 || !boundedStatusString(i.Isolation.RecoveryState) {
+			return protocol.ErrInvalidContract
+		}
+		for role, state := range i.Isolation.Roles {
+			if !boundedStatusString(role) || !boundedStatusString(state) {
+				return protocol.ErrInvalidContract
+			}
+		}
+		for role, restrictions := range i.Isolation.Restrictions {
+			if !boundedStatusString(role) || len(restrictions) == 0 || len(restrictions) > 16 {
+				return protocol.ErrInvalidContract
+			}
+			for _, restriction := range restrictions {
+				if !boundedStatusString(restriction) {
+					return protocol.ErrInvalidContract
+				}
+			}
+		}
+		for capability := range i.Isolation.Capabilities {
+			if !boundedStatusString(capability) {
+				return protocol.ErrInvalidContract
+			}
+		}
+	}
 	return nil
+}
+
+func boundedStatusString(value string) bool {
+	return value != "" && len(value) <= 64 && utf8.ValidString(value)
 }
 
 func ReceiveRuntimeBootstrap(ctx context.Context, stream transport.Stream) (Bootstrap, RuntimeInput, error) {

@@ -55,3 +55,16 @@ func openMigrationSource(path string) (*os.File, error) {
 	}
 	return os.NewFile(uintptr(fd), path), nil
 }
+
+func migrationDirectoryIdentity(path string) (string, error) {
+	fd, err := unix.Open(path, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return "", err
+	}
+	defer unix.Close(fd) //nolint:errcheck
+	var stat unix.Stat_t
+	if err := unix.Fstat(fd, &stat); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("linux:%x:%x", stat.Dev, stat.Ino), nil
+}

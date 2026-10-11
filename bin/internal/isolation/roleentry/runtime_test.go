@@ -2,6 +2,7 @@ package roleentry
 
 import (
 	"context"
+	"errors"
 	"net"
 	"testing"
 	"time"
@@ -69,6 +70,50 @@ func TestRuntimeInputRejectsInvalidAuthority(t *testing.T) {
 	}
 }
 
+func TestProductionRuntimeInputRequiresCompleteBoundedStatus(t *testing.T) {
+	validInput := func() RuntimeInput {
+		return RuntimeInput{Version: protocol.Version, Production: true, Isolation: RuntimeIsolationStatus{
+			ProtocolVersion: protocol.Version,
+			Restrictions:    map[string][]string{"network": {"trusted"}, "runtime": {"landlock", "seccomp"}},
+			Roles:           map[string]string{"network": "ready", "runtime": "ready"},
+			Capabilities:    map[string]bool{"commands": true},
+			RecoveryState:   "complete",
+		}}
+	}
+	valid := validInput()
+	if err := valid.Validate(); err != nil {
+		t.Fatalf("valid production input = %v", err)
+	}
+	for name, change := range map[string]func(*RuntimeInput){
+		"missing protocol":  func(i *RuntimeInput) { i.Isolation.ProtocolVersion = 0 },
+		"future protocol":   func(i *RuntimeInput) { i.Isolation.ProtocolVersion++ },
+		"incomplete":        func(i *RuntimeInput) { i.Isolation.RecoveryState = "recovering" },
+		"missing roles":     func(i *RuntimeInput) { i.Isolation.Roles = nil },
+		"missing limits":    func(i *RuntimeInput) { i.Isolation.Restrictions = nil },
+		"network not ready": func(i *RuntimeInput) { i.Isolation.Roles["network"] = "starting" },
+		"runtime not ready": func(i *RuntimeInput) { i.Isolation.Roles["runtime"] = "starting" },
+		"no network limits": func(i *RuntimeInput) { i.Isolation.Restrictions["network"] = nil },
+		"empty role":        func(i *RuntimeInput) { i.Isolation.Roles = map[string]string{"": "ready"} },
+		"empty role state":  func(i *RuntimeInput) { i.Isolation.Roles = map[string]string{"runtime": ""} },
+		"empty restriction": func(i *RuntimeInput) { i.Isolation.Restrictions = map[string][]string{"runtime": {""}} },
+		"empty capability":  func(i *RuntimeInput) { i.Isolation.Capabilities = map[string]bool{"": true} },
+		"long recovery":     func(i *RuntimeInput) { i.Isolation.RecoveryState = string(make([]byte, 65)) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			input := validInput()
+			change(&input)
+			if err := input.Validate(); !errors.Is(err, protocol.ErrInvalidContract) {
+				t.Fatalf("Validate() = %v", err)
+			}
+		})
+	}
+
+	partial := RuntimeInput{Version: protocol.Version, Isolation: RuntimeIsolationStatus{RecoveryState: "complete"}}
+	if err := partial.Validate(); !errors.Is(err, protocol.ErrInvalidContract) {
+		t.Fatalf("partial optional status = %v", err)
+	}
+}
+
 func FuzzRuntimeInput(f *testing.F) {
 	f.Add(uint32(protocol.Version), uint16(1), "web", "info")
 	f.Add(uint32(0), uint16(0), "native", string([]byte{0xff}))
@@ -78,6 +123,25 @@ func FuzzRuntimeInput(f *testing.F) {
 		valid := version == protocol.Version && id != 0 && (kind == "web" || kind == "unix" || kind == "pipe") && len(level) <= 16 && utf8.ValidString(level)
 		if valid != (err == nil) {
 			t.Fatalf("Validate(%+v)=%v", input, err)
+		}
+	})
+}
+
+func FuzzRuntimeIsolationStatus(f *testing.F) {
+	f.Add("runtime", "ready", "landlock", "commands", "complete", true)
+	f.Add("", "", string([]byte{0xff}), "", "recovering", false)
+	f.Fuzz(func(t *testing.T, role, state, restriction, capability, recovery string, enabled bool) {
+		input := RuntimeInput{Version: protocol.Version, Isolation: RuntimeIsolationStatus{
+			ProtocolVersion: protocol.Version,
+			Restrictions:    map[string][]string{role: {restriction}},
+			Roles:           map[string]string{role: state},
+			Capabilities:    map[string]bool{capability: enabled},
+			RecoveryState:   recovery,
+		}}
+		err := input.Validate()
+		valid := boundedStatusString(role) && boundedStatusString(state) && boundedStatusString(restriction) && boundedStatusString(capability) && boundedStatusString(recovery)
+		if valid != (err == nil) {
+			t.Fatalf("Validate(%+v) = %v", input.Isolation, err)
 		}
 	})
 }

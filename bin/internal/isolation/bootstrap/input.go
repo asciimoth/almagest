@@ -16,8 +16,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/asciimoth/almagest/bin/api"
 	"github.com/asciimoth/almagest/bin/internal/isolation/protocol"
+	"github.com/asciimoth/almagest/bin/internal/snapshotlimits"
 	tailscalehujson "github.com/tailscale/hujson"
 )
 
@@ -225,16 +225,108 @@ type RuntimeProtected struct {
 	Certificates map[string]string
 	Policies     map[string]json.RawMessage
 	BuiltinCA    string
+	Admin        *RuntimeAdmin
+}
+
+// RuntimeAdmin contains HTTP behavior enforced inside R. Listener addresses
+// and peer-owner filters remain trusted N authority and are never included.
+type RuntimeAdmin struct {
+	WebPProf         bool
+	AllowCrossOrigin bool
+}
+
+// RuntimeDocument returns the narrow protected document delivered to R. Every
+// environment and file selector has already been resolved by trusted bootstrap;
+// the result contains only literal values and R-owned behavior. Admin listener
+// authority, command, system, experimental, and unknown protected fields never
+// cross this boundary.
+func (r RuntimeProtected) RuntimeDocument() ([]byte, error) {
+	type literal struct {
+		Value          *string  `json:"Value,omitempty"`
+		Nodes          []string `json:"Nodes,omitempty"`
+		ResolvedSource string   `json:"ResolvedSource"`
+	}
+	type pem struct {
+		PEM *string `json:"PEM,omitempty"`
+	}
+	document := struct {
+		Admin   *RuntimeAdmin      `json:"Admin,omitempty"`
+		Secrets map[string]literal `json:"Secrets,omitempty"`
+		TLS     struct {
+			Certificates map[string]pem             `json:"Certificates,omitempty"`
+			Policies     map[string]json.RawMessage `json:"Policies,omitempty"`
+			BuiltinCA    pem                        `json:"BuiltinCA,omitempty"`
+		} `json:"TLS,omitempty"`
+	}{Admin: r.Admin, Secrets: make(map[string]literal, len(r.Secrets))}
+	total := 0
+	for name, secret := range r.Secrets {
+		if secret.Source != "protected" && secret.Source != "environment" {
+			return nil, fmt.Errorf("%w: secret %q has invalid resolved source", ErrInvalidInput, name)
+		}
+		if err := addImmutableSize(&total, len(secret.Value)); err != nil {
+			return nil, err
+		}
+		value := secret.Value
+		document.Secrets[name] = literal{Value: &value, Nodes: append([]string(nil), secret.Nodes...), ResolvedSource: secret.Source}
+	}
+	if len(r.Certificates) != 0 {
+		document.TLS.Certificates = make(map[string]pem, len(r.Certificates))
+	}
+	for name, value := range r.Certificates {
+		if err := addImmutableSize(&total, len(value)); err != nil {
+			return nil, err
+		}
+		value := value
+		document.TLS.Certificates[name] = pem{PEM: &value}
+	}
+	if len(r.Policies) != 0 {
+		document.TLS.Policies = make(map[string]json.RawMessage, len(r.Policies))
+	}
+	for name, value := range r.Policies {
+		if !json.Valid(value) {
+			return nil, fmt.Errorf("%w: TLS policy %q is invalid JSON", ErrInvalidInput, name)
+		}
+		document.TLS.Policies[name] = bytes.Clone(value)
+	}
+	if r.BuiltinCA != "" {
+		if err := addImmutableSize(&total, len(r.BuiltinCA)); err != nil {
+			return nil, err
+		}
+		value := r.BuiltinCA
+		document.TLS.BuiltinCA = pem{PEM: &value}
+	}
+	data, err := json.Marshal(document)
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > MaxProtectedInputBytes {
+		return nil, ErrInputTooLarge
+	}
+	return data, nil
 }
 
 // ResolvedProtected retains the original protected bytes in trusted bootstrap
 // and provides a digest for session binding.
 type ResolvedProtected struct {
-	Runtime RuntimeProtected
-	Digest  [32]byte
+	Runtime   RuntimeProtected
+	Authority ProtectedAuthority
+	Digest    [32]byte
+}
+
+// ProtectedAuthority contains the protected sections consumed only by trusted
+// bootstrap and brokers. Values are standardized JSON copied from the original
+// protected document. They are never included in RuntimeDocument.
+type ProtectedAuthority struct {
+	Admin         json.RawMessage
+	CommandRunner json.RawMessage
+	System        json.RawMessage
 }
 
 type protectedDocument struct {
+	Admin struct {
+		WebPProf         bool `json:"WebPProf"`
+		AllowCrossOrigin bool `json:"AllowCrossOrigin"`
+	} `json:"Admin"`
 	Secrets map[string]struct {
 		Value *string  `json:"Value"`
 		Env   string   `json:"Env"`
@@ -274,7 +366,12 @@ func ResolveProtected(data []byte, loader FileLoader, lookupEnv func(string) (st
 	if err := json.Unmarshal(standardBytes, &root); err != nil {
 		return ResolvedProtected{}, fmt.Errorf("%w: protected config: %v", ErrInvalidInput, err)
 	}
-	narrow, err := json.Marshal(map[string]json.RawMessage{"Secrets": root["Secrets"], "TLS": root["TLS"]})
+	authority := ProtectedAuthority{
+		Admin:         bytes.Clone(root["Admin"]),
+		CommandRunner: bytes.Clone(root["CommandRunner"]),
+		System:        bytes.Clone(root["System"]),
+	}
+	narrow, err := json.Marshal(map[string]json.RawMessage{"Admin": root["Admin"], "Secrets": root["Secrets"], "TLS": root["TLS"]})
 	if err != nil {
 		return ResolvedProtected{}, err
 	}
@@ -283,6 +380,9 @@ func ResolveProtected(data []byte, loader FileLoader, lookupEnv func(string) (st
 	}
 
 	runtime := RuntimeProtected{}
+	if document.Admin.WebPProf || document.Admin.AllowCrossOrigin {
+		runtime.Admin = &RuntimeAdmin{WebPProf: document.Admin.WebPProf, AllowCrossOrigin: document.Admin.AllowCrossOrigin}
+	}
 	total := 0
 	if len(document.Secrets) > 0 {
 		runtime.Secrets = make(map[string]Secret, len(document.Secrets))
@@ -339,7 +439,7 @@ func ResolveProtected(data []byte, loader FileLoader, lookupEnv func(string) (st
 		}
 		runtime.BuiltinCA = pem
 	}
-	return ResolvedProtected{Runtime: runtime, Digest: sha256.Sum256(standardBytes)}, nil
+	return ResolvedProtected{Runtime: runtime, Authority: authority, Digest: sha256.Sum256(standardBytes)}, nil
 }
 
 func resolvePEM(name string, inline *string, path string, loader FileLoader) (string, error) {
@@ -407,7 +507,7 @@ func (NativeLoader) ReadTrusted(path string, limit int64) ([]byte, error) {
 }
 
 func (NativeLoader) ReadUntrusted(path string, limit int64) ([]byte, error) {
-	file, err := os.Open(path)
+	file, err := openUntrustedFile(path)
 	if err != nil {
 		return nil, err
 	}
@@ -429,7 +529,7 @@ func OpenSnapshot(path string, stdin io.Reader) (io.ReadCloser, error) {
 		if stdin == nil {
 			return nil, fmt.Errorf("%w: snapshot stdin is nil", ErrInvalidInput)
 		}
-		return &boundedReadCloser{reader: io.LimitReader(stdin, api.SnapshotArchiveMaxBytes+1), remaining: api.SnapshotArchiveMaxBytes}, nil
+		return &boundedReadCloser{reader: io.LimitReader(stdin, snapshotlimits.ArchiveBytes+1), remaining: snapshotlimits.ArchiveBytes}, nil
 	}
 	file, err := os.Open(path)
 	if err != nil {
@@ -440,12 +540,12 @@ func OpenSnapshot(path string, stdin io.Reader) (io.ReadCloser, error) {
 		_ = file.Close()
 		return nil, err
 	}
-	if !info.Mode().IsRegular() || info.Size() > api.SnapshotArchiveMaxBytes {
+	if !info.Mode().IsRegular() || info.Size() > snapshotlimits.ArchiveBytes {
 		_ = file.Close()
-		return nil, fmt.Errorf("%w: snapshot must be a regular file of at most %d bytes", ErrInvalidInput, api.SnapshotArchiveMaxBytes)
+		return nil, fmt.Errorf("%w: snapshot must be a regular file of at most %d bytes", ErrInvalidInput, snapshotlimits.ArchiveBytes)
 	}
 	return &boundedReadCloser{
-		reader: io.LimitReader(file, api.SnapshotArchiveMaxBytes+1), remaining: api.SnapshotArchiveMaxBytes, closer: file,
+		reader: io.LimitReader(file, snapshotlimits.ArchiveBytes+1), remaining: snapshotlimits.ArchiveBytes, closer: file,
 	}, nil
 }
 

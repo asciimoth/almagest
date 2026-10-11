@@ -29,8 +29,38 @@ docker run --rm --network none --memory 512m --memory-swap 512m --pids-limit 128
 # never joins the host PID namespace and does not touch host network state.
 docker run --rm --network none --memory 512m --memory-swap 512m --pids-limit 128 --cpus 1 \
     --privileged --cgroupns private -e ALMAGEST_PROFILE_CGROUP_PROVISION=1 "$image" \
-    /qualification/profile.test -test.run '^TestNativeProvisionRoleCgroups$' -test.v \
+    /qualification/profile.test -test.run '^TestNativeProvision(Role|Service)Cgroups$' -test.v \
     -test.timeout=30s >"$output_dir/cgroup-provision.log" 2>&1
+docker run --rm --network none --memory 3g --memory-swap 3g --pids-limit 1024 --cpus 4 \
+    --privileged --cgroupns private -e ALMAGEST_PROFILE_PRODUCTION=1 "$image" \
+    /qualification/profile.test -test.run '^TestNativeProductionEntry$' -test.v \
+    -test.timeout=90s >"$output_dir/production-entry.log" 2>&1
+docker run --rm --network none --cap-drop ALL --cap-add CHOWN --cap-add DAC_OVERRIDE --cap-add FOWNER "$image" sh -ec '
+    mkdir -p /var/lib/almagest/store /etc/almagest
+    printf "%s\n" legacy > /var/lib/almagest/store/value
+    printf "%s\n" "{\"nodes\":{}}" > /etc/almagest/alm.hujson
+    chmod 700 /var/lib/almagest/store /etc/almagest
+    chmod 600 /var/lib/almagest/store/value /etc/almagest/alm.hujson
+    /qualification/almagest-isolation-storage prepare
+    test "$(stat -c %a:%U /var/lib/almagest/runtime)" = 700:almagest-runtime
+    test "$(stat -c %a:%U /var/lib/almagest/config)" = 700:almagest-writer
+    test "$(stat -c %a:%U /var/lib/almagest/helper)" = 700:almagest-command
+    test "$(stat -c %a:%U /var/lib/almagest/broker)" = 700:root
+    test -f /var/lib/almagest/store.pre-isolation/value
+    test -f /var/lib/almagest/runtime/value
+    test -f /var/lib/almagest/config/alm.hujson
+    /qualification/almagest-isolation-storage recover
+' >"$output_dir/storage-deployment.log" 2>&1
+docker run --rm --network none --cap-drop ALL --cap-add CHOWN --cap-add DAC_OVERRIDE --cap-add FOWNER "$image" sh -ec '
+    /qualification/almagest-isolation-storage prepare
+    /qualification/almagest-isolation-storage prepare
+    test "$(stat -c %a:%U /var/lib/almagest/runtime)" = 700:almagest-runtime
+    test "$(stat -c %a:%U /var/lib/almagest/config)" = 700:almagest-writer
+    test "$(stat -c %a:%U /var/lib/almagest/helper)" = 700:almagest-command
+    test "$(stat -c %a:%U /var/lib/almagest/broker)" = 700:root
+    test "$(stat -c %a:%U /var/lib/almagest/config/alm.hujson)" = 600:almagest-writer
+    test "$(stat -c %a:%U /etc/almagest/protected_alm.hujson)" = 600:root
+' >"$output_dir/storage-fresh-install.log" 2>&1
 docker run --rm --network none --memory 512m --memory-swap 512m --pids-limit 128 --cpus 1 \
     --cap-drop ALL --cap-add CHOWN --cap-add SETUID --cap-add SETGID --cap-add SETPCAP \
     --security-opt seccomp=unconfined -e ALMAGEST_PROFILE_TEST_NATIVE=1 \
@@ -40,9 +70,9 @@ docker run "${args[@]}" --security-opt "seccomp=$script_dir/no-landlock.json" \
     -e ALMAGEST_PROFILE_TEST_NATIVE=1 -e ALMAGEST_PROFILE_EXPECT_UNAVAILABLE=1 \
     "$image" /qualification/profile.test -test.run '^TestNativeRequiredRestrictions$' \
     -test.v >"$output_dir/missing-landlock.log" 2>&1
-docker run "${args[@]}" --security-opt seccomp=unconfined --cap-add KILL --cap-add NET_ADMIN --cap-add NET_BIND_SERVICE --device /dev/net/tun \
+docker run "${args[@]}" --security-opt seccomp=unconfined --cap-add DAC_OVERRIDE --cap-add KILL --cap-add NET_ADMIN --cap-add NET_BIND_SERVICE --device /dev/net/tun \
     -e ALMAGEST_PROFILE_TEST_NATIVE=1 -e ALMAGEST_PROFILE_TRUSTED_SYSTEM=1 "$image" \
-    /qualification/profile.test -test.run '^(TestNativeTrusted(System|Composition|ConfigWriter|CommandHelper)|TestNativeCompleteDaemon)$' -test.v \
+    /qualification/profile.test -test.run '^(TestNativeTrusted(System|Composition|ConfigWriter|CommandHelper)|TestNativeCompleteDaemon|TestNativeNetworkRoleAssembly)$' -test.v \
     -test.timeout=90s >"$output_dir/trusted-system.log" 2>&1
 docker run "${args[@]}" --security-opt seccomp=unconfined -e ALMAGEST_PROFILE_TEST_NATIVE=1 "$image" \
     /qualification/profile.test -test.run '^$' -test.fuzz '^FuzzNativeArguments$' \

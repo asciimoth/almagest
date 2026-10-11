@@ -16,7 +16,7 @@ func TestSelectExecutionMode(t *testing.T) {
 	}{
 		{name: "direct", arguments: args.Args{NoIsolation: true}, want: executionModeDirect},
 		{name: "direct experimental", arguments: args.Args{NoIsolation: true, Experimental: true}, want: executionModeDirect},
-		{name: "isolation unavailable", wantError: "isolation is not implemented yet"},
+		{name: "isolation default", want: executionModeIsolation},
 		{
 			name:      "experimental needs explicit direct mode",
 			arguments: args.Args{Experimental: true},

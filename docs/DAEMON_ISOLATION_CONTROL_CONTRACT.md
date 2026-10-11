@@ -1,15 +1,16 @@
 # Daemon isolation control contract
 
-Status: checkpoint 9 control contract, version 1. Checkpoint 13 selected
+Status: production control contract, version 1. Checkpoint 13 selected
 broker-owned relays and froze the separate
 [version 1 data-channel contract](DAEMON_ISOLATION_DATA_CHANNEL_CONTRACT.md).
-Its implementation and production qualification are later checkpoints.
+Its implementation is used by the packaged Linux amd64 profile.
 
 The Go definitions are in `bin/internal/isolation/protocol`. Policy definitions
 are in `bin/internal/isolation/policy`. The checkpoint 14 transport is in
 `bin/internal/isolation/transport`; see its
 [implementation contract](DAEMON_ISOLATION_CONTROL_TRANSPORT.md). These packages
-are not connected to daemon startup and do not enable isolated production mode.
+connect the Linux N/R/C/H production composition. Direct mode does not create
+this transport.
 Checkpoint 15 implements the TUN owner in `bin/internal/isolation/network`;
 see its [ownership and result contract](DAEMON_ISOLATION_NETWORK_CONTROL.md).
 Checkpoint 18 implements [five-tuple matchers](DAEMON_ISOLATION_MATCHERS.md)
@@ -23,6 +24,15 @@ Each request has a request ID, session ID and epoch, and graph epoch. Each
 mutation also has an operation ID. Request IDs correlate one exchange. Operation
 IDs identify side effects and retained receipts across a canceled request or lost
 reply.
+
+`runtime_ready` is an idempotent startup notification with a `ReadRequest`
+body and no operation ID. It reports that R has initialized its engine and
+admin API; it grants no authority and does not prove platform restrictions.
+N requires the current session/graph, negotiated data lane, allowed operation,
+and no recovery-required state. The reply contains the complete session and a
+ready flag. R fails startup on a missing or invalid acknowledgement. N's
+supervisor separately requires the trusted restriction proofs and observes
+process exits. See [supervision](DAEMON_ISOLATION_SUPERVISION.md).
 
 N generates opaque 128-bit resource IDs. A resource reference binds the ID to
 its session, resource type, graph epoch, and generation. Authorization occurs

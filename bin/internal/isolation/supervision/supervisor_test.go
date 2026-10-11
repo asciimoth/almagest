@@ -66,7 +66,9 @@ func (d fakeDegraded) RoleFailed(role protocol.Role, _ error) { d.events <- role
 func testOptions() Options {
 	var digest [32]byte
 	digest[0] = 1
-	return Options{StartupTimeout: 200 * time.Millisecond, ShutdownTimeout: 30 * time.Millisecond, RecoveryTimeout: 30 * time.Millisecond, PolicyDigest: digest}
+	application := make(chan struct{})
+	close(application)
+	return Options{StartupTimeout: 200 * time.Millisecond, ShutdownTimeout: 30 * time.Millisecond, RecoveryTimeout: 30 * time.Millisecond, PolicyDigest: digest, ApplicationReady: application}
 }
 
 func ready(role protocol.Role) ReadyResult {
@@ -340,5 +342,93 @@ func TestSupervisorRejectsInvalidRoleSets(t *testing.T) {
 	broker := newFakeProcess(protocol.RoleNetworkBroker)
 	if _, err := New(host, nil, testOptions(), runtimeRole, broker); !errors.Is(err, ErrInvalidComposition) {
 		t.Fatalf("child N error = %v", err)
+	}
+}
+
+func TestSupervisorRejectsReadyFromExitedRole(t *testing.T) {
+	for attempt := 0; attempt < 100; attempt++ {
+		process := newFakeProcess(protocol.RoleRuntime)
+		process.ready <- ready(protocol.RoleRuntime)
+		process.done <- errors.New("exited before startup")
+		supervisor, err := New(&fakeHost{}, nil, testOptions(), process)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := supervisor.Run(context.Background()); !errors.Is(err, ErrStartupFailed) {
+			t.Fatalf("startup accepted an exited role: %v", err)
+		}
+		select {
+		case <-supervisor.Ready():
+			t.Fatal("published readiness for an exited role")
+		default:
+		}
+	}
+}
+
+func TestStopRoleKillsAfterGracefulStopError(t *testing.T) {
+	process := newFakeProcess(protocol.RoleRuntime)
+	failure := errors.New("graceful stop failed")
+	process.stop = func(context.Context) error { return failure }
+	killed := make(chan struct{})
+	process.kill = func() error { close(killed); return nil }
+	if err := stopRole(context.Background(), process, time.Second); !errors.Is(err, failure) {
+		t.Fatalf("stop error lost: %v", err)
+	}
+	select {
+	case <-killed:
+	default:
+		t.Fatal("failed stop did not kill the role")
+	}
+}
+
+func TestStopRoleBoundsHungKill(t *testing.T) {
+	process := newFakeProcess(protocol.RoleRuntime)
+	failure := errors.New("graceful stop failed")
+	process.stop = func(context.Context) error { return failure }
+	release := make(chan struct{})
+	defer close(release)
+	process.kill = func() error { <-release; return nil }
+	started := time.Now()
+	err := stopRole(context.Background(), process, 10*time.Millisecond)
+	if !errors.Is(err, failure) || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("stop error = %v", err)
+	}
+	if time.Since(started) > time.Second {
+		t.Fatal("kill wait was not bounded")
+	}
+}
+
+func TestSupervisorRejectsNilContextWithoutStarting(t *testing.T) {
+	host := &fakeHost{}
+	supervisor, err := New(host, nil, testOptions(), newFakeProcess(protocol.RoleRuntime))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := supervisor.Run(nil); !errors.Is(err, ErrInvalidComposition) { //nolint:staticcheck // Deliberate invalid input.
+		t.Fatalf("nil context error = %v", err)
+	}
+	if host.recover != 0 || host.revoke != 0 || supervisor.started {
+		t.Fatal("invalid context started supervision")
+	}
+}
+
+func TestSupervisorStatusAfterCleanShutdown(t *testing.T) {
+	process := newFakeProcess(protocol.RoleRuntime)
+	supervisor, err := New(&fakeHost{}, nil, testOptions(), process)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := runSupervisor(t, supervisor, ctx)
+	process.ready <- ready(protocol.RoleRuntime)
+	waitReady(t, supervisor)
+	cancel()
+	if err := <-done; !errors.Is(err, context.Canceled) {
+		t.Fatalf("shutdown error = %v", err)
+	}
+	status := supervisor.Status()
+	if status.Ready || status.RecoveryRequired || len(status.Roles) != 1 || status.Roles[0].Ready || status.Roles[0].Alive || status.Roles[0].Failed {
+		t.Fatalf("clean shutdown status = %+v", status)
 	}
 }

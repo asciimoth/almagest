@@ -11,32 +11,88 @@ import (
 
 func TestPrivilegedRoleDependencyBoundary(t *testing.T) {
 	moduleRoot := filepath.Clean(filepath.Join(packageDirectory(t), "..", "..", ".."))
-	command := exec.Command("go", "list", "-deps", "-f", "{{.ImportPath}}", //nolint:gosec // Fixed tool and package list.
-		"./cmd/almagest-network-role", "./cmd/almagest-config-writer-role")
-	command.Dir = moduleRoot
-	output, err := command.Output()
-	if err != nil {
-		t.Fatalf("list role dependencies: %v", err)
+	// Check build-tag-selected imports even when the suite runs on another OS.
+	for _, target := range []struct{ os, arch string }{{"linux", "amd64"}, {"windows", "amd64"}, {"windows", "arm64"}} {
+		t.Run(target.os+"/"+target.arch, func(t *testing.T) {
+			checkRoleDependencies(t, moduleRoot, target.os, target.arch)
+		})
 	}
+}
+
+func checkRoleDependencies(t *testing.T, moduleRoot, targetOS, targetArch string) {
+	t.Helper()
+	entries := []struct {
+		path   string
+		native bool
+	}{
+		{"./cmd/almagest-network-role", true},
+		{"./cmd/almagest-config-writer-role", false},
+		{"./internal/isolation/bootstrap", false},
+	}
+	if targetOS == "linux" {
+		entries = append(entries, struct {
+			path   string
+			native bool
+		}{"./internal/nativebackend", true})
+		entries = append(entries, struct {
+			path   string
+			native bool
+		}{"./internal/isolation/networkrole", true})
+	}
+	for _, entry := range entries {
+		t.Run(entry.path, func(t *testing.T) {
+			command := exec.Command("go", "list", "-deps", "-f", "{{.ImportPath}}", entry.path) //nolint:gosec // Closed package list.
+			command.Dir = moduleRoot
+			command.Env = append(os.Environ(), "GOOS="+targetOS, "GOARCH="+targetArch, "CGO_ENABLED=0")
+			output, err := command.CombinedOutput()
+			if err != nil {
+				t.Fatalf("list role dependencies: %v\n%s", err, output)
+			}
+			scanner := bufio.NewScanner(strings.NewReader(string(output)))
+			for scanner.Scan() {
+				if dependency := scanner.Text(); forbiddenRoleDependency(dependency, entry.native) {
+					t.Errorf("privileged role imports forbidden dependency %s", dependency)
+				}
+			}
+			if err := scanner.Err(); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func forbiddenRoleDependency(dependency string, native bool) bool {
 	forbidden := []string{
 		"github.com/asciimoth/almagest/lib",
 		"github.com/asciimoth/almagest/bin/almagestd",
 		"go.etcd.io/bbolt",
 		"archive/zip",
 		"github.com/asciimoth/configer",
-		"github.com/asciimoth/sysnet-",
 	}
-	scanner := bufio.NewScanner(strings.NewReader(string(output)))
-	for scanner.Scan() {
-		dependency := scanner.Text()
-		for _, prefix := range forbidden {
-			if dependency == prefix || strings.HasPrefix(dependency, prefix+"/") {
-				t.Errorf("privileged role imports forbidden dependency %s", dependency)
-			}
+	for _, prefix := range forbidden {
+		if dependency == prefix || strings.HasPrefix(dependency, prefix+"/") {
+			return true
 		}
 	}
-	if err := scanner.Err(); err != nil {
-		t.Fatal(err)
+	return !native && strings.HasPrefix(dependency, "github.com/asciimoth/sysnet-")
+}
+
+func TestRoleDependencyClassification(t *testing.T) {
+	for _, native := range []bool{false, true} {
+		for _, dependency := range []string{"github.com/asciimoth/almagest/lib", "github.com/asciimoth/almagest/lib/nodes", "archive/zip", "go.etcd.io/bbolt"} {
+			if !forbiddenRoleDependency(dependency, native) {
+				t.Errorf("accepted runtime dependency %s", dependency)
+			}
+		}
+		for _, dependency := range []string{"github.com/asciimoth/sysnet-linux", "github.com/asciimoth/sysnet-linux/routing", "github.com/asciimoth/sysnet-windows"} {
+			if forbiddenRoleDependency(dependency, native) == !native {
+				continue
+			}
+			t.Errorf("incorrect native dependency classification: %s native=%v", dependency, native)
+		}
+		if forbiddenRoleDependency("github.com/asciimoth/almagest/bin/internal/snapshotlimits", native) {
+			t.Fatal("rejected dependency-free snapshot limits")
+		}
 	}
 }
 

@@ -98,6 +98,23 @@ func TestExecutionManifestRequiresBoundedPackageTimeout(t *testing.T) {
 	}
 }
 
+func TestExecutionManifestAllowsNoCoverageOnlyForFuzzing(t *testing.T) {
+	no := false
+	manifest := testExecutionManifest()
+	manifest.Suites[0].Cases[1].Coverage = &no
+	if err := ValidateExecutionManifest(manifest); err == nil || !strings.Contains(err.Error(), "without fuzzing") {
+		t.Fatalf("ordinary no-coverage error = %v", err)
+	}
+	manifest.Suites[0].Cases[1].Arguments = []string{"./fixture", "-fuzz", "^FuzzFixture$"}
+	if err := ValidateExecutionManifest(manifest); err != nil {
+		t.Fatalf("fuzz no-coverage manifest: %v", err)
+	}
+	manifest.Suites[0].Cases[0].Coverage = &no
+	if err := ValidateExecutionManifest(manifest); err == nil || !strings.Contains(err.Error(), "Go test fields") {
+		t.Fatalf("identity coverage error = %v", err)
+	}
+}
+
 func TestExecutionManifestRejectsRemovedCompilationDeadlineFields(t *testing.T) {
 	encoded, err := json.Marshal(testExecutionManifest())
 	if err != nil {

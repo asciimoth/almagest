@@ -1,59 +1,8 @@
+// Package args keeps the daemon's historical import path. The command-line
+// contract lives outside the runtime tree so minimal trusted bootstrap can use
+// it without importing node or daemon code.
 package args
 
-type Args struct {
-	// If StdInConfig==true, config should be loaded from stdin. Protected
-	// config should be loaded from the stdin config's top-level Protected key
-	// when present, otherwise protected defaults should be used.
-	// Else Config and ProtectedConfig path should be used to load HuJSON configs.
-	// If Config is a directory, it should be treated as "{Config}/alm.hujson".
-	// If Config is not set, platform defaults should be used.
-	// If ProtectedConfig is not set, it should be treated as a "protected_alm.hujson"
-	// in same dir where main config placed.
-	// If any of config files is not present, defaults should be used.
-	StdInConfig     bool   `arg:"--stdin" help:"read config from stdin"`
-	Config          string `arg:"-c,--config,env:ALMAGEST_CONF" help:"config path"`
-	ProtectedConfig string `arg:"-p,--protected,env:ALMAGEST_PROTECTED_CONF" help:"protected config path"`
-	UnsafeConfig    bool   `arg:"--unsafe-config" help:"do not check config file permissions"`
-	// TODO: Read Only Config toggle
-	// Snapshot is an archive path loaded before the engine starts. A value of
-	// "-" reads the archive from stdin. It cannot be combined with --stdin,
-	// because one input stream cannot contain both config and an archive.
-	Snapshot string `arg:"--snapshot,env:ALMAGEST_SNAPSHOT" help:"load startup state from snapshot archive path; use - for stdin"`
+import "github.com/asciimoth/almagest/bin/internal/daemonargs"
 
-	FileStorage    string `arg:"--file-storage,env:ALMAGEST_FILE_STORAGE" help:"file storage directory"`
-	TmpFileStorage bool   `arg:"--tmp-file-storage,env:ALMAGEST_TMP_FILE_STORAGE" help:"use temporary file storage and remove it on exit"`
-
-	LogLevel   string `arg:"-l,--lvl,env:ALMAGEST_LOG_LVL" help:"logging level debug|info|warn|error|fatal"`
-	LogWorkers bool   `arg:"--log-workers" help:"log engine worker lifecycle events"`
-
-	NoPool bool `arg:"--no-pool" help:"disable daemon global buffer pool"`
-
-	// NoDNSCacheExpiration keeps daemon DNS cache entries readable after their
-	// DNS TTL-derived expiration time. Entries still store expiration metadata
-	// so the admin API can show when an answer would normally expire.
-	NoDNSCacheExpiration bool `arg:"--no-dns-cache-expiration,env:ALMAGEST_NO_DNS_CACHE_EXPIRATION" help:"disable DNS cache entry expiration"`
-
-	LogCacheDebug *int `arg:"--log-cache-debug,env:ALMAGEST_LOG_CACHE_DEBUG" help:"daemon debug log cache size"`
-	LogCacheInfo  *int `arg:"--log-cache-info,env:ALMAGEST_LOG_CACHE_INFO" help:"daemon info log cache size"`
-	LogCacheWarn  *int `arg:"--log-cache-warn,env:ALMAGEST_LOG_CACHE_WARN" help:"daemon warn log cache size"`
-	LogCacheError *int `arg:"--log-cache-error,env:ALMAGEST_LOG_CACHE_ERROR" help:"daemon error log cache size"`
-	LogCacheFatal *int `arg:"--log-cache-fatal,env:ALMAGEST_LOG_CACHE_FATAL" help:"daemon fatal log cache size"`
-
-	WebAdmin                 *uint16  `arg:"-w,--web,env:ALMAGEST_WEB_ADMIN" help:"port to run local web admin panel on"`
-	WebAdminFilterUIDs       []uint32 `arg:"--web-filter-uid,separate,env:ALMAGEST_WEB_ADMIN_FILTER_UIDS" help:"allowed web admin peer owner UID; repeat flag or comma-separate env values"`
-	WebAdminFilterGIDs       []uint32 `arg:"--web-filter-gid,separate,env:ALMAGEST_WEB_ADMIN_FILTER_GIDS" help:"allowed web admin peer owner GID; repeat flag or comma-separate env values"`
-	WebAdminFilterUsernames  []string `arg:"--web-filter-user,separate,env:ALMAGEST_WEB_ADMIN_FILTER_USERS" help:"allowed web admin peer owner username; repeat flag or comma-separate env values"`
-	WebAdminPProf            bool     `arg:"--web-pprof,env:ALMAGEST_WEB_ADMIN_PPROF" help:"enable net/http/pprof handlers on the web admin listener under /debug/pprof/"`
-	WebAdminAllowCrossOrigin bool     `arg:"--web-allow-cross-origin,env:ALMAGEST_WEB_ADMIN_ALLOW_CROSS_ORIGIN" help:"allow any browser origin to use or embed the web admin; unsafe"`
-
-	UnixAdmin                *string  `arg:"--unix,env:ALMAGEST_UNIX_ADMIN" help:"unix socket path for local admin API; empty disables it"`
-	TmpUnixAdmin             bool     `arg:"--tmp-unix-admin,env:ALMAGEST_TMP_UNIX_ADMIN" help:"create the local admin API unix socket at a random temporary alm-sock-* path"`
-	UnixAdminFilterUIDs      []uint32 `arg:"--unix-filter-uid,separate,env:ALMAGEST_UNIX_ADMIN_FILTER_UIDS" help:"allowed unix admin peer UID; repeat flag or comma-separate env values"`
-	UnixAdminFilterGIDs      []uint32 `arg:"--unix-filter-gid,separate,env:ALMAGEST_UNIX_ADMIN_FILTER_GIDS" help:"allowed unix admin peer GID; repeat flag or comma-separate env values"`
-	UnixAdminFilterUsernames []string `arg:"--unix-filter-user,separate,env:ALMAGEST_UNIX_ADMIN_FILTER_USERS" help:"allowed unix admin peer username; repeat flag or comma-separate env values"`
-	PipeAdmin                *string  `arg:"--pipe,env:ALMAGEST_PIPE_ADMIN" help:"Windows local admin named-pipe path; empty disables it"`
-
-	DebugNodes   bool `arg:"--debug-nodes" help:"enable debug node classes"`
-	Experimental bool `arg:"--experimental" help:"enable experimental features and node classes; requires --no-isolation"`
-	NoIsolation  bool `arg:"--no-isolation" help:"run all daemon components directly in one process without a sandbox"`
-}
+type Args = daemonargs.Args

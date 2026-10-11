@@ -40,6 +40,23 @@ test("response decoders preserve untrusted text only after shape validation", ()
   })?.crl.pem, payload);
 });
 
+test("hello decoder accepts isolated status and rejects mode/status mismatch", () => {
+  const isolated = parseHelloResponse({
+    version: "1",
+    execution_mode: "isolation",
+    project_version_status: { version: "1", highlight: "none" },
+    isolation: {
+      protocol_version: 1,
+      restrictions: { runtime: ["seccomp", "landlock"] },
+      roles: { network: "ready", runtime: "ready" },
+      capabilities: { native_network: true },
+      recovery_state: "complete",
+    },
+  });
+  assert.equal(isolated?.isolation?.roles.runtime, "ready");
+  assert.equal(parseHelloResponse({ ...isolated, execution_mode: "direct" }), null);
+});
+
 test("response decoders reject malformed nested storage and TLS values", () => {
   const invalid = [
     parseHelloResponse({ version: "v1", project_version_status: { version: "v1", highlight: "script" } }),

@@ -1,7 +1,8 @@
 # Privileged admin listener gate
 
-Checkpoint 22 is implemented in `bin/internal/isolation/admingate`. This is an
-isolated-mode component. It is not connected to daemon startup. Direct mode
+Checkpoint 22 is implemented in `bin/internal/isolation/admingate`. The Linux
+production composition uses it and publishes listeners only after recovery,
+role restriction proofs, and application readiness. Direct mode
 continues to create local listeners and passes them directly to its existing
 HTTP and admin stream handlers.
 
@@ -98,9 +99,9 @@ pipe stream, fail-closed TCP owner checks, invalid paths, and guaranteed
 impersonation revert tests. It does not change routes, firewall, DNS, or TUN
 state and does not require elevation.
 
-Complete-daemon integration, bootstrap-created lane delivery, sandbox startup,
-and service-profile qualification remain later checkpoints. Current
-complete-daemon performance is accepted.
+Bootstrap-created lane delivery and complete-daemon integration are active in
+the Linux production profile. Windows service-profile integration remains
+unreleased. Current complete-daemon performance is accepted.
 
 ### Checkpoint 22 results, 2026-10-10
 
@@ -119,9 +120,9 @@ complete-daemon performance is accepted.
   contract only for the two exact anonymous/impersonation-level query errors.
   Other query failures still reject the connection. The final VM run verified
   the corrected behavior through a real pipe.
-- The production daemon does not import the isolation admin gate, and direct
-  mode creates no admin relay. No route, firewall, DNS, or TUN state changed in
-  these checks.
+- The direct daemon does not import the isolation admin gate and creates no
+  admin relay. The later Linux production N composition uses the gate. No
+  route, firewall, DNS, or TUN state changed in these checkpoint-22 checks.
 - Focused `just check` passed. It included formatting, spelling, secret
   scanning, panel generation, Linux and Windows amd64/arm64 lint, vet, harness
   tests, and the selected race-enabled relay test.

@@ -83,6 +83,7 @@ type Callback struct {
 	Event        string
 	ResourceType protocol.ResourceType
 	Slots        map[string]CallbackField
+	ForwardSlots []string
 }
 
 // CallbackField selects one trusted callback value for a protected slot.
@@ -161,11 +162,21 @@ func compileConfig(cfg Config, launcher Launcher) (*compiledConfig, error) {
 		if err := validateID("callback event", callback.Event); err != nil {
 			return nil, fmt.Errorf("callback %q: %w", id, err)
 		}
-		if !callbackResourceType(callback.ResourceType) {
+		if len(callback.ForwardSlots) == 0 && !callbackResourceType(callback.ResourceType) || len(callback.ForwardSlots) != 0 && callback.ResourceType != "" {
 			return nil, fmt.Errorf("callback %q: invalid resource type %q", id, callback.ResourceType)
 		}
 		if len(callback.Slots) > maxCallbackBindings {
 			return nil, fmt.Errorf("callback %q: too many slot bindings", id)
+		}
+		if len(callback.ForwardSlots) > maxCallbackBindings || len(callback.Slots) != 0 && len(callback.ForwardSlots) != 0 {
+			return nil, fmt.Errorf("callback %q: invalid forwarded slot bindings", id)
+		}
+		seenForward := make(map[string]bool, len(callback.ForwardSlots))
+		for _, slot := range callback.ForwardSlots {
+			if profile.slots[slot].limit.MaxLength == 0 || seenForward[slot] {
+				return nil, fmt.Errorf("callback %q: unknown or duplicate forwarded slot %q", id, slot)
+			}
+			seenForward[slot] = true
 		}
 		for slot, field := range callback.Slots {
 			if profile.slots[slot].limit.MaxLength == 0 {
@@ -177,13 +188,15 @@ func compileConfig(cfg Config, launcher Launcher) (*compiledConfig, error) {
 		}
 		for slot, value := range profile.slots {
 			if value.limit.Required {
-				if _, ok := callback.Slots[slot]; !ok {
+				_, typed := callback.Slots[slot]
+				if !typed && !seenForward[slot] {
 					return nil, fmt.Errorf("callback %q: required slot %q has no binding", id, slot)
 				}
 			}
 		}
 		copyCallback := callback
 		copyCallback.Slots = cloneCallbackFields(callback.Slots)
+		copyCallback.ForwardSlots = slices.Clone(callback.ForwardSlots)
 		out.callbacks[id] = copyCallback
 	}
 	return out, nil
@@ -193,11 +206,8 @@ func compileProfile(profile Profile, launcher Launcher) (*compiledProfile, error
 	if err := validateID("sandbox", profile.Sandbox); err != nil {
 		return nil, err
 	}
-	if !filepath.IsAbs(profile.Executable) || filepath.Clean(profile.Executable) != profile.Executable {
-		return nil, errors.New("executable must be an absolute canonical path")
-	}
-	if isInterpreter(profile.Executable) {
-		return nil, errors.New("shell and interpreter executables are not supported in isolated mode; change the profile or use explicit --no-isolation")
+	if err := ValidateExecutablePath(profile.Executable); err != nil {
+		return nil, err
 	}
 	if profile.WorkingDirectory == "" || !filepath.IsAbs(profile.WorkingDirectory) || filepath.Clean(profile.WorkingDirectory) != profile.WorkingDirectory {
 		return nil, errors.New("working directory must be an absolute canonical path")
@@ -278,6 +288,20 @@ func compileProfile(profile Profile, launcher Launcher) (*compiledProfile, error
 		return nil, fmt.Errorf("unsupported protected execution profile: %w; change the profile or use explicit --no-isolation", err)
 	}
 	return &compiledProfile{profile: profile, slots: slots, executable: executable, directory: directory, semaphore: make(chan struct{}, profile.MaxConcurrent)}, nil
+}
+
+// ValidateExecutablePath applies the isolated executable-name policy without
+// opening the path. Trusted bootstrap uses it before a host executable is
+// copied into H's fixed /command location; H validates /command again after
+// its filesystem restrictions are installed.
+func ValidateExecutablePath(path string) error {
+	if !filepath.IsAbs(path) || filepath.Clean(path) != path {
+		return errors.New("executable must be an absolute canonical path")
+	}
+	if isInterpreter(path) {
+		return errors.New("shell and interpreter executables are not supported in isolated mode; change the profile or use explicit --no-isolation")
+	}
+	return nil
 }
 
 func inspectFile(path string, directory bool) (fileIdentity, error) {

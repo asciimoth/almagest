@@ -41,7 +41,12 @@ func main() {
 		golog.Fatal(err)
 		return
 	}
-	if err := runDaemonApplication(arguments, mode); err != nil {
+	if mode == executionModeIsolation {
+		err = runIsolatedNetworkRole()
+	} else {
+		err = runDaemonApplication(arguments, mode)
+	}
+	if err != nil {
 		golog.Fatal(err)
 	}
 }
@@ -92,16 +97,19 @@ func runDaemonApplication(arguments args.Args, mode executionMode) error {
 }
 
 type daemonIntegrations struct {
+	parseConfig     func([]byte, []byte) (*Config, error)
 	prepareConfig   func(args.Args) (platform.ConfigBootstrap, error)
 	enterStorage    func(string) error
 	loadOSAuthority func(context.Context) (immutableTLSData, error)
 	prepareAdmin    func(*Config) (*AdminAPI, error)
 	buildCommands   func(context.Context, *LogFactory, *Config) (daemonservices.NodeCommandDispatcher, daemonservices.BackendCallbackDispatcher, func(), error)
 	buildNetwork    func(*Config, daemonservices.BackendCallbackDispatcher, *LogFactory, error, int64) (daemonservices.HostNetwork, error)
+	dropPrivileges  func()
 }
 
 func directDaemonIntegrations() daemonIntegrations {
 	return daemonIntegrations{
+		parseConfig:   ParseConfig,
 		prepareConfig: platform.PrepareConfig,
 		enterStorage:  os.Chdir,
 		loadOSAuthority: func(ctx context.Context) (immutableTLSData, error) {
@@ -119,11 +127,12 @@ func directDaemonIntegrations() daemonIntegrations {
 		buildNetwork: func(conf *Config, callbacks daemonservices.BackendCallbackDispatcher, logf *LogFactory, dependencyErr error, seed int64) (daemonservices.HostNetwork, error) {
 			return localnetwork.BuildWithRuntimeDependencies(conf.Protected.System, callbacks, logf.NetworkLogger(), dependencyErr, seed)
 		},
+		dropPrivileges: platform.DropPrivileges,
 	}
 }
 
 func (i daemonIntegrations) validate() error {
-	if i.prepareConfig == nil || i.enterStorage == nil || i.loadOSAuthority == nil || i.prepareAdmin == nil || i.buildCommands == nil || i.buildNetwork == nil {
+	if i.parseConfig == nil || i.prepareConfig == nil || i.enterStorage == nil || i.loadOSAuthority == nil || i.prepareAdmin == nil || i.buildCommands == nil || i.buildNetwork == nil {
 		return errors.New("incomplete daemon integration")
 	}
 	return nil
@@ -198,7 +207,7 @@ func runDaemon(
 			}
 		}
 	}
-	conf, err := ParseConfig(configData, protectedData)
+	conf, err := integrations.parseConfig(configData, protectedData)
 	if err != nil {
 		return err
 	}
@@ -290,7 +299,9 @@ func runDaemon(
 	}
 	application.OwnHostNetwork(hostNetwork.Close)
 
-	platform.DropPrivileges() // Currently just a stub
+	if integrations.dropPrivileges != nil {
+		integrations.dropPrivileges()
+	}
 
 	nodeConfigAutosave := newNodeConfigAutosaveTrigger()
 	var nodeConfigChanged func(uint64) <-chan error

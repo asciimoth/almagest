@@ -1,9 +1,9 @@
 # Isolated snapshots and live restore
 
 Checkpoints 28 and 29 are implemented in the runtime-owned `almagestd`
-snapshot coordinator. These changes do not enable the production isolated
-composition. Direct mode keeps the same snapshot API and archive version. The
-future isolated runtime uses the same coordinator and graph-epoch contract.
+snapshot coordinator. The Linux isolated runtime uses the same coordinator and
+graph-epoch contract as direct mode. Direct mode keeps the same snapshot API
+and archive version.
 
 ## Ownership boundary
 

@@ -184,3 +184,36 @@ func openTrustedFile(path string) (*os.File, error) {
 	}
 	return os.NewFile(uintptr(handle), clean), nil
 }
+
+func openUntrustedFile(path string) (*os.File, error) {
+	clean, err := validateWindowsTrustedPath(path)
+	if err != nil {
+		return nil, err
+	}
+	volume := filepath.VolumeName(clean)
+	current := volume + `\`
+	parts := strings.FieldsFunc(strings.TrimPrefix(clean, current), windowsPathSeparator)
+	for index, part := range parts {
+		current = filepath.Join(current, part)
+		handle, err := openWindowsTrustedPath(current, index < len(parts)-1)
+		if err != nil {
+			return nil, err
+		}
+		var info windows.ByHandleFileInformation
+		infoErr := windows.GetFileInformationByHandle(handle, &info)
+		if index < len(parts)-1 {
+			_ = windows.CloseHandle(handle)
+		}
+		if infoErr != nil || info.FileAttributes&windows.FILE_ATTRIBUTE_REPARSE_POINT != 0 ||
+			(index < len(parts)-1) != (info.FileAttributes&windows.FILE_ATTRIBUTE_DIRECTORY != 0) {
+			if index == len(parts)-1 {
+				_ = windows.CloseHandle(handle)
+			}
+			return nil, fmt.Errorf("%w: untrusted input has an unsafe type", ErrUnsafeInput)
+		}
+		if index == len(parts)-1 {
+			return os.NewFile(uintptr(handle), clean), nil
+		}
+	}
+	return nil, fmt.Errorf("%w: untrusted input is not a file", ErrInvalidInput)
+}

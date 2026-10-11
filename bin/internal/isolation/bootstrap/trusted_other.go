@@ -43,6 +43,22 @@ func openTrustedFile(path string) (*os.File, error) {
 	return file, nil
 }
 
+func openUntrustedFile(path string) (*os.File, error) {
+	if path == "" || !filepath.IsAbs(path) || filepath.Clean(path) != path || containsParentReference(path) {
+		return nil, fmt.Errorf("%w: untrusted input path must be absolute and clean", ErrInvalidInput)
+	}
+	current := filepath.VolumeName(path) + string(filepath.Separator)
+	parts := strings.FieldsFunc(strings.TrimPrefix(path, current), func(r rune) bool { return r == '/' || r == '\\' })
+	for _, part := range parts {
+		current = filepath.Join(current, part)
+		info, err := os.Lstat(current)
+		if err != nil || info.Mode()&os.ModeSymlink != 0 {
+			return nil, fmt.Errorf("%w: untrusted input contains a link", ErrUnsafeInput)
+		}
+	}
+	return os.Open(path)
+}
+
 func containsParentReference(path string) bool {
 	for _, part := range strings.FieldsFunc(path, func(r rune) bool { return r == '/' || r == '\\' }) {
 		if part == ".." {

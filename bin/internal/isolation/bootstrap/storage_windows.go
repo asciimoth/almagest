@@ -33,3 +33,23 @@ func openMigrationSource(path string) (*os.File, error) {
 	}
 	return os.NewFile(uintptr(handle), clean), nil
 }
+
+func migrationDirectoryIdentity(path string) (string, error) {
+	clean, err := validateWindowsTrustedPath(path)
+	if err != nil {
+		return "", err
+	}
+	handle, err := openWindowsTrustedPath(clean, true)
+	if err != nil {
+		return "", err
+	}
+	defer windows.CloseHandle(handle) //nolint:errcheck
+	var info windows.ByHandleFileInformation
+	if err := windows.GetFileInformationByHandle(handle, &info); err != nil {
+		return "", err
+	}
+	if info.FileAttributes&windows.FILE_ATTRIBUTE_DIRECTORY == 0 || info.FileAttributes&windows.FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+		return "", ErrUnsafeLayout
+	}
+	return fmt.Sprintf("windows:%x:%x:%x", info.VolumeSerialNumber, info.FileIndexHigh, info.FileIndexLow), nil
+}

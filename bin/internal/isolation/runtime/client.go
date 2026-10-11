@@ -345,6 +345,22 @@ func (c *Client) Status(ctx context.Context) (protocol.StatusResult, error) {
 	return result, err
 }
 
+// MarkReady must be called after application initialization, not after the
+// restriction or data-channel handshake. Loss of the acknowledgement fails
+// startup; retry is safe and never adds native authority.
+func (c *Client) MarkReady(ctx context.Context) error {
+	bounded, cancel := context.WithTimeout(ctx, systemOperationTimeout)
+	defer cancel()
+	var result protocol.RuntimeReadyResult
+	if err := c.peer.Call(bounded, protocol.OperationRuntimeReady, protocol.ReadRequest{Meta: c.meta(false)}, &result); err != nil {
+		return err
+	}
+	if !result.Ready || result.Session != c.session {
+		return protocol.ErrInvalidContract
+	}
+	return nil
+}
+
 type ioResult struct {
 	accepted protocol.ChannelResult
 	payload  []byte
@@ -495,18 +511,26 @@ func (c *Client) openResource(ctx context.Context, op protocol.Operation, reques
 		err    error
 	}
 	done := make(chan completion, 1)
-	accepted := make(chan struct{})
+	// The caller decides whether it accepted the terminal result. Do not race a
+	// closed accepted channel against ctx.Done: the caller cancels many bounded
+	// contexts immediately after a successful return, and a random select could
+	// then close a resource which it had already returned as owned.
+	type completionDecision uint8
+	const (
+		completionAccepted completionDecision = iota + 1
+		completionAbandoned
+		completionPeerLost
+	)
+	decision := make(chan completionDecision, 1)
 	go func() {
 		defer func() { <-c.opens }()
 		var result protocol.ResourceResult
 		err := c.peer.CallSettled(ctx, op, request, &result)
 		done <- completion{result, err}
-		select {
-		case <-accepted:
+		switch <-decision {
+		case completionAccepted, completionPeerLost:
 			return
-		case <-c.peer.Done():
-			return
-		case <-ctx.Done():
+		case completionAbandoned:
 			if result.Outcome == protocol.OutcomeCommitted && result.Resource.ID.Valid() {
 				if closeErr := c.closeResource(result.Resource); closeErr != nil {
 					_ = c.Close()
@@ -516,11 +540,13 @@ func (c *Client) openResource(ctx context.Context, op protocol.Operation, reques
 	}()
 	select {
 	case value := <-done:
-		close(accepted)
+		decision <- completionAccepted
 		return value.result, value.err
 	case <-ctx.Done():
+		decision <- completionAbandoned
 		return protocol.ResourceResult{}, ctx.Err()
 	case <-c.peer.Done():
+		decision <- completionPeerLost
 		return protocol.ResourceResult{}, c.peer.Err()
 	}
 }

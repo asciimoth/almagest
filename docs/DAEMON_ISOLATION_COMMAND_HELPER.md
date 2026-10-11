@@ -1,9 +1,9 @@
 # Restricted isolation command helper
 
-Checkpoint 20 is implemented in `bin/internal/isolation/commandhelper`. It is a
-component only. It is not connected to daemon startup and does not enable an
-isolated production mode. Direct mode continues to use the existing command
-runner and its legacy configured commands.
+Checkpoint 20 is implemented in `bin/internal/isolation/commandhelper`. The
+Linux production composition starts H when protected settings select the
+qualified fixed-executable profile. Direct mode continues to use the existing
+command runner and its legacy configured commands.
 
 ## Authority and channels
 
@@ -27,6 +27,13 @@ still responsible for creating the callback only from its committed native
 resource state.
 
 ## Fixed process profile
+
+The released Linux profile accepts one startup-held static executable shared by
+all configured command IDs. It rejects multiple executables, interpreters, and
+per-command UID/GID selection with explicit `--no-isolation` guidance. This is
+a closed profile limit; it is not a silent fallback. Callback and node-command
+IDs can use different fixed argument, environment, timeout, slot, and authority
+settings for that executable.
 
 Each protected profile has one absolute canonical executable, argument
 templates, exact environment, absolute working directory, sandbox ID, timeout,

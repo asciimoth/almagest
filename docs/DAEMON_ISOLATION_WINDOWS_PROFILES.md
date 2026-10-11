@@ -3,8 +3,10 @@
 Checkpoint 25 is complete for the Windows Server 2022 build 20348/amd64 profile
 components in `bin/internal/isolation/windowsprofile`. The package provides
 role launch restrictions, a trusted caller/service N launch, and persistent
-R/C/H identity provisioning. It does not enable isolated daemon startup. The
-direct daemon and the public admin pipe are unchanged.
+R/C/H identity provisioning. `networkrole.RunWindows` now provides a
+fail-closed R/C assembly boundary, fixed pipe-lane mapping, native backend
+ownership, recovery supervision, and readiness-gated admin publication. It
+does not enable isolated daemon startup. The direct daemon is unchanged.
 
 ## Revised production target
 
@@ -57,6 +59,16 @@ CPU. All setup and token checks must succeed before the first thread resumes. A
 failure terminates the suspended process. `Wait` supports cancellation;
 `Close` kills the job and releases its handles. Only trusted bootstrap retains
 process and job handles.
+
+`Kill` terminates the job without releasing the process handle, so native exit
+can still be observed. `Supervise` connects a launched R/C/H role to the shared
+supervisor and fixes the role from its launch record. It refuses a second
+adapter and never accepts N as a supervised child. Before starting the waiter,
+it duplicates a non-inheritable handle with only synchronization and limited
+query access. That held handle survives a concurrent native `Close`; the
+adapter reports exit only after the native wait completes. A failed wait is
+reported as observation loss, not as proof that the process stopped. Trusted
+bootstrap closes the remaining native handles after supervision finishes.
 
 Creation applies DEP, SEHOP, strict handle checking, remote-image and Low-image
 denial, and System32 preference. Strict-handle and image policies are read back
@@ -131,8 +143,10 @@ uses the common restricted C entry point and control-only bootstrap contract.
 Native TUN tests use the durable broker journal and require successful cleanup
 to remove every record. Restart inspection uses the recorded adapter LUID/GUID;
 a still-present adapter is not deleted without a driver-owned removal handle.
-Complete runtime/admin composition, hostile-runtime evidence,
-packaging, and the default-mode switch remain later checkpoints.
+Complete Windows runtime/admin daemon composition, restricted command-helper
+semantics, hostile-runtime evidence, packaging, and the default-mode switch
+remain unavailable. Windows default startup therefore fails with explicit
+`--no-isolation` guidance.
 
 ## Test record
 

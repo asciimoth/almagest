@@ -44,9 +44,13 @@ type Broker struct {
 	ctx       context.Context
 	cancel    context.CancelFunc
 	session   *smux.Session
+	ids       []uint16
 	endpoints []Endpoint
 	active    chan struct{}
 	closeOnce sync.Once
+	startMu   sync.Mutex
+	started   bool
+	closed    bool
 	wg        sync.WaitGroup
 }
 
@@ -68,6 +72,30 @@ func NewBroker(ctx context.Context, stream transport.Stream, session protocol.Se
 		_ = stream.Close()
 		return nil, err
 	}
+	ids := make([]uint16, len(endpoints))
+	for i := range endpoints {
+		ids[i] = endpoints[i].ID
+	}
+	b, err := NewPreparedBroker(ctx, stream, session, ids)
+	if err != nil {
+		return nil, err
+	}
+	if err = b.Start(endpoints); err != nil {
+		_ = b.Close()
+		b.Wait()
+		return nil, err
+	}
+	return b, nil
+}
+
+// NewPreparedBroker authenticates the private relay before public listeners
+// exist. Start publishes the fixed listeners after application recovery is
+// complete. The stream is consumed even when setup fails.
+func NewPreparedBroker(ctx context.Context, stream transport.Stream, session protocol.Session, endpointIDs []uint16) (*Broker, error) {
+	if err := validateEndpointIDs(endpointIDs); err != nil {
+		_ = stream.Close()
+		return nil, err
+	}
 	if err := exchangeHello(stream, session); err != nil {
 		_ = stream.Close()
 		return nil, err
@@ -78,11 +106,8 @@ func NewBroker(ctx context.Context, stream transport.Stream, session protocol.Se
 		return nil, err
 	}
 	bctx, cancel := context.WithCancel(ctx)
-	b := &Broker{ctx: bctx, cancel: cancel, session: mux, endpoints: append([]Endpoint(nil), endpoints...), active: make(chan struct{}, MaxConnections)}
+	b := &Broker{ctx: bctx, cancel: cancel, session: mux, ids: append([]uint16(nil), endpointIDs...), active: make(chan struct{}, MaxConnections)}
 	b.wg.Go(b.rejectRuntimeStreams)
-	for _, endpoint := range b.endpoints {
-		b.wg.Go(func() { b.accept(endpoint) })
-	}
 	b.wg.Go(func() {
 		select {
 		case <-bctx.Done():
@@ -91,6 +116,33 @@ func NewBroker(ctx context.Context, stream transport.Stream, session protocol.Se
 		_ = b.Close()
 	})
 	return b, nil
+}
+
+// Start atomically attaches the authenticated broker to its protected public
+// listeners. It can be called only once and only with the prepared IDs.
+func (b *Broker) Start(endpoints []Endpoint) error {
+	if b == nil {
+		return protocol.ErrInvalidContract
+	}
+	if err := validateEndpoints(endpoints); err != nil {
+		return err
+	}
+	b.startMu.Lock()
+	defer b.startMu.Unlock()
+	if b.started || b.closed || b.ctx.Err() != nil || len(endpoints) != len(b.ids) {
+		return protocol.ErrInvalidContract
+	}
+	for i := range endpoints {
+		if endpoints[i].ID != b.ids[i] {
+			return protocol.ErrInvalidContract
+		}
+	}
+	b.endpoints = append([]Endpoint(nil), endpoints...)
+	b.started = true
+	for _, endpoint := range b.endpoints {
+		b.wg.Go(func() { b.accept(endpoint) })
+	}
+	return nil
 }
 
 // NewRuntime authenticates the broker lane and creates the fixed set of relay
@@ -307,8 +359,12 @@ func (b *Broker) rejectRuntimeStreams() {
 
 func (b *Broker) Close() error {
 	b.closeOnce.Do(func() {
+		b.startMu.Lock()
+		b.closed = true
+		endpoints := append([]Endpoint(nil), b.endpoints...)
+		b.startMu.Unlock()
 		b.cancel()
-		for _, endpoint := range b.endpoints {
+		for _, endpoint := range endpoints {
 			_ = endpoint.Listener.Close()
 		}
 		_ = b.session.Close()

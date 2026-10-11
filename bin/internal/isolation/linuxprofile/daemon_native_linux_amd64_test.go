@@ -5,15 +5,13 @@ package linuxprofile_test
 import (
 	"bytes"
 	"context"
-	"fmt"
+	"errors"
 	"io"
 	"net"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -21,7 +19,6 @@ import (
 	"github.com/asciimoth/almagest/bin/api"
 	"github.com/asciimoth/almagest/bin/internal/isolation/admingate"
 	"github.com/asciimoth/almagest/bin/internal/isolation/commandhelper"
-	"github.com/asciimoth/almagest/bin/internal/isolation/configwriter"
 	"github.com/asciimoth/almagest/bin/internal/isolation/linuxprofile"
 	"github.com/asciimoth/almagest/bin/internal/isolation/network"
 	"github.com/asciimoth/almagest/bin/internal/isolation/policy"
@@ -29,6 +26,7 @@ import (
 	"github.com/asciimoth/almagest/bin/internal/isolation/roleentry"
 	"github.com/asciimoth/almagest/bin/internal/isolation/supervision"
 	"github.com/asciimoth/almagest/bin/internal/isolation/transport"
+	"github.com/asciimoth/almagest/bin/internal/nativebackend"
 	linuxsysnet "github.com/asciimoth/sysnet-linux"
 	"github.com/asciimoth/sysnet-linux/routing"
 	"github.com/coder/websocket"
@@ -125,17 +123,13 @@ func TestNativeCompleteDaemon(t *testing.T) {
 		}
 		t.Cleanup(func() { _ = parents[index].Close(); _ = children[index].Close() })
 	}
-	command, err := linuxprofile.CommandContext(ctx, linuxprofile.Plan{Role: linuxprofile.Runtime, UID: 65534, GID: 65534, Limits: linuxprofile.DefaultLimits()}, linuxprofile.Inputs{
+	var output bytes.Buffer
+	runtimeProcess, err := linuxprofile.Start(ctx, linuxprofile.Plan{Role: linuxprofile.Runtime, UID: 65534, GID: 65534, Limits: linuxprofile.DefaultLimits()}, linuxprofile.Inputs{
 		Launcher: open("/qualification/launcher"), Executable: open("/qualification/almagestd"),
 		Directory: stateFile, Cgroup: open("/sys/fs/cgroup"), Control: children[0],
 		Data: children[1], Diagnostics: children[2], Admin: children[3], Config: children[4], Commands: children[5],
-	})
+	}, &output, &output)
 	if err != nil {
-		t.Fatal(err)
-	}
-	var output bytes.Buffer
-	command.Stdout, command.Stderr = &output, &output
-	if err := command.Start(); err != nil {
 		t.Fatal(err)
 	}
 	for _, child := range children {
@@ -143,10 +137,10 @@ func TestNativeCompleteDaemon(t *testing.T) {
 	}
 	finished := make(chan struct{})
 	var waitErr error
-	go func() { waitErr = command.Wait(); close(finished) }()
+	go func() { waitErr = runtimeProcess.Wait(context.Background()); close(finished) }()
 	t.Cleanup(func() {
 		cancel()
-		_ = command.Process.Kill()
+		_ = runtimeProcess.Kill()
 		select {
 		case <-finished:
 		case <-time.After(5 * time.Second):
@@ -154,10 +148,13 @@ func TestNativeCompleteDaemon(t *testing.T) {
 		}
 	})
 
-	childPID := completeDaemonChildPID(t, command.Process.Pid, finished, &waitErr, &output)
+	runtimePeer, err := runtimeProcess.Peer(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
 	streams := make([]transport.Stream, len(parents))
 	for index, parent := range parents {
-		stream, bindErr := transport.BindSocket(parent, transport.LinuxPeer{PID: int32(childPID), UID: 65534, GID: 65534})
+		stream, bindErr := transport.BindSocket(parent, runtimePeer)
 		if bindErr != nil {
 			t.Fatal(bindErr)
 		}
@@ -175,9 +172,10 @@ func TestNativeCompleteDaemon(t *testing.T) {
 	}
 	session := protocol.Session{ID: id, Epoch: 1, Version: protocol.Version, PolicyDigest: digest}
 	input := roleentry.RuntimeInput{Version: protocol.Version, ConfigWritable: true, AdminEndpoints: []roleentry.RuntimeAdminEndpoint{{ID: 1, Kind: "web"}}}
-	if _, err := roleentry.SendRuntimeBootstrap(ctx, streams[0], roleentry.Bootstrap{
+	runtimeProof, err := roleentry.SendRuntimeBootstrap(ctx, streams[0], roleentry.Bootstrap{
 		Version: protocol.Version, Role: protocol.RoleRuntime, Session: session,
-	}, input); err != nil {
+	}, input)
+	if err != nil {
 		t.Fatalf("runtime bootstrap: %v; output=%s", err, output.Bytes())
 	}
 
@@ -191,40 +189,39 @@ func TestNativeCompleteDaemon(t *testing.T) {
 		t.Fatal(err)
 	}
 	helperStateFile := open(helperState)
-	if err := os.Chown(helperState, 65534, 65534); err != nil {
+	if err := os.Chown(helperState, 65532, 65532); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
 		_ = os.Chown(helperState, 0, 0)
 		_ = os.Chmod(helperState, 0o700)
 	})
-	helperCommand, err := linuxprofile.CommandContext(ctx, linuxprofile.Plan{Role: linuxprofile.Command, UID: 65534, GID: 65534, Limits: linuxprofile.DefaultLimits()}, linuxprofile.Inputs{
+	var helperOutput bytes.Buffer
+	helperProcess, err := linuxprofile.Start(ctx, linuxprofile.Plan{Role: linuxprofile.Command, UID: 65532, GID: 65532, Limits: linuxprofile.DefaultLimits()}, linuxprofile.Inputs{
 		Launcher: open("/qualification/launcher"), Control: helperChild,
 		Executable: open("/qualification/command-role"), Directory: helperStateFile, Cgroup: open("/sys/fs/cgroup"),
 		Command: open("/qualification/command"),
-	})
+	}, &helperOutput, &helperOutput)
 	if err != nil {
-		t.Fatal(err)
-	}
-	var helperOutput bytes.Buffer
-	helperCommand.Stdout, helperCommand.Stderr = &helperOutput, &helperOutput
-	if err := helperCommand.Start(); err != nil {
 		t.Fatal(err)
 	}
 	_ = helperChild.Close()
 	helperFinished := make(chan struct{})
 	var helperWaitErr error
-	go func() { helperWaitErr = helperCommand.Wait(); close(helperFinished) }()
+	go func() { helperWaitErr = helperProcess.Wait(context.Background()); close(helperFinished) }()
 	t.Cleanup(func() {
-		_ = helperCommand.Process.Kill()
+		_ = helperProcess.Kill()
 		select {
 		case <-helperFinished:
 		case <-time.After(5 * time.Second):
 			t.Errorf("command helper did not exit; output=%s", helperOutput.Bytes())
 		}
 	})
-	helperPID := completeDaemonChildPID(t, helperCommand.Process.Pid, helperFinished, &helperWaitErr, &helperOutput)
-	helperStream, err := transport.BindSocket(helperParent, transport.LinuxPeer{PID: int32(helperPID), UID: 65534, GID: 65534})
+	helperPeer, err := helperProcess.Peer(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	helperStream, err := transport.BindSocket(helperParent, helperPeer)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -265,7 +262,78 @@ func TestNativeCompleteDaemon(t *testing.T) {
 		}()
 	}
 
-	system, err := linuxsysnet.New(linuxsysnet.SystemConfig{RoutingMonitorNamespace: routing.CurrentNamespace, Logf: t.Logf})
+	writerState := t.TempDir()
+	if err := os.Chmod(writerState, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	configTarget := filepath.Join(writerState, "config.hujson")
+	if err := os.WriteFile(configTarget, regularConfig, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	writerStateFile := open(writerState)
+	t.Cleanup(func() { _ = os.Chown(writerState, 0, 0); _ = os.Chmod(writerState, 0o700) })
+	// Transfer the file first: N has CHOWN, not a DAC bypass for C's directory.
+	for _, path := range []string{configTarget, writerState} {
+		if err := os.Chown(path, 65533, 65533); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writerParent, writerChild, err := transport.SocketPair()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = writerParent.Close(); _ = writerChild.Close() })
+	var writerOutput bytes.Buffer
+	writerProcess, err := linuxprofile.Start(ctx, linuxprofile.Plan{Role: linuxprofile.Writer, UID: 65533, GID: 65533, Limits: linuxprofile.DefaultLimits()}, linuxprofile.Inputs{
+		Launcher: open("/qualification/launcher"), Control: writerChild,
+		Executable: open("/qualification/config-writer-role"), Directory: writerStateFile, Cgroup: open("/sys/fs/cgroup"),
+	}, &writerOutput, &writerOutput)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = writerChild.Close()
+	writerDone := make(chan struct{})
+	var writerWaitErr error
+	go func() { writerWaitErr = writerProcess.Wait(context.Background()); close(writerDone) }()
+	t.Cleanup(func() {
+		_ = writerProcess.Kill()
+		select {
+		case <-writerDone:
+		case <-time.After(5 * time.Second):
+			t.Errorf("config writer did not exit; output=%s", writerOutput.Bytes())
+		}
+	})
+	writerPeer, err := writerProcess.Peer(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writerStream, err := transport.BindSocket(writerParent, writerPeer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writerProof, err := roleentry.SendBootstrap(ctx, writerStream, roleentry.Bootstrap{
+		Version: protocol.Version, Role: protocol.RoleConfigWriter, Session: session, Target: "config.hujson",
+	})
+	if err != nil {
+		t.Fatalf("config writer bootstrap: %v; output=%s", err, writerOutput.Bytes())
+	}
+	var closeWriterBridge sync.Once
+	stopWriterBridge := func() {
+		closeWriterBridge.Do(func() { _ = streams[4].Close(); _ = writerStream.Close() })
+	}
+	t.Cleanup(stopWriterBridge)
+	for _, direction := range [][2]transport.Stream{{streams[4], writerStream}, {writerStream, streams[4]}} {
+		destination, source := direction[0], direction[1]
+		go func() { _, _ = io.Copy(destination, source); stopWriterBridge() }()
+	}
+
+	settings, err := nativebackend.ParseLinuxFileConfig([]byte(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	nativeConfig := settings.Native(t.Logf)
+	nativeConfig.RoutingMonitorNamespace = routing.CurrentNamespace
+	system, err := linuxsysnet.New(nativeConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -282,9 +350,38 @@ func TestNativeCompleteDaemon(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	adapt := func(proof roleentry.Ready, stream transport.Stream, launched *linuxprofile.Process) *supervision.StartedProcess {
+		ack := make(chan supervision.ReadyResult, 1)
+		ack <- supervision.ReadyResult{Role: proof.Role, Version: proof.Version, PolicyDigest: proof.PolicyDigest, RestrictionsApplied: proof.RestrictionsApplied}
+		process, err := launched.Supervise(ack, func(context.Context) error {
+			_ = stream.Close()
+			return nil // The adapter still requires the native exit observation.
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return process
+	}
+	writerAck := make(chan supervision.ReadyResult, 1)
+	writerAck <- supervision.ReadyResult{Role: writerProof.Role, Version: writerProof.Version, PolicyDigest: writerProof.PolicyDigest, RestrictionsApplied: writerProof.RestrictionsApplied}
+	writerSupervised, err := writerProcess.Supervise(writerAck, func(context.Context) error { return writerStream.Close() })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := writerProcess.Supervise(writerAck, func(context.Context) error { return nil }); err == nil {
+		t.Fatal("duplicate writer supervision accepted")
+	}
+	service, err := network.NewService(broker, transport.Lanes{Control: streams[0], Data: streams[1], Diagnostic: streams[2]},
+		supervision.NativeReconciler{}, time.Second,
+		supervision.Options{StartupTimeout: 10 * time.Second, ShutdownTimeout: 5 * time.Second, RecoveryTimeout: 5 * time.Second}, nil,
+		adapt(runtimeProof, streams[0], runtimeProcess), adapt(ready, helperStream, helperProcess),
+		writerSupervised)
+	if err != nil {
+		t.Fatal(err)
+	}
 	served := make(chan error, 1)
 	go func() {
-		served <- broker.Serve(ctx, transport.Lanes{Control: streams[0], Data: streams[1], Diagnostic: streams[2]})
+		served <- service.Run(ctx)
 	}()
 
 	public, err := net.Listen("tcp4", "127.0.0.1:0")
@@ -296,17 +393,13 @@ func TestNativeCompleteDaemon(t *testing.T) {
 		t.Fatalf("admin broker: %v; output=%s", err, output.Bytes())
 	}
 	t.Cleanup(func() { _ = admin.Close(); admin.Wait() })
-	configTarget := filepath.Join(t.TempDir(), "config.hujson")
-	if err := os.WriteFile(configTarget, regularConfig, 0o600); err != nil {
-		t.Fatal(err)
+	select {
+	case <-service.Ready():
+	case <-finished:
+		t.Fatalf("daemon exited before application readiness: %v; output=%s", waitErr, output.Bytes())
+	case <-time.After(10 * time.Second):
+		t.Fatalf("daemon did not report application readiness; output=%s", output.Bytes())
 	}
-	writer, err := configwriter.New(session, configTarget)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = writer.Close() })
-	writerDone := make(chan error, 1)
-	go func() { writerDone <- writer.Serve(ctx, transport.Lanes{Control: streams[4]}) }()
 
 	url := "http://" + public.Addr().String() + "/"
 	client := &http.Client{Timeout: time.Second}
@@ -419,7 +512,7 @@ func TestNativeCompleteDaemon(t *testing.T) {
 	if err := os.Chmod(helperState, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Chown(helperState, 65534, 65534); err != nil {
+	if err := os.Chown(helperState, 65532, 65532); err != nil {
 		t.Fatal(err)
 	}
 	configReply := call("qualification-config", api.SurfaceConfig, string(api.MethodConfigSnapshot), struct{}{})
@@ -431,10 +524,6 @@ func TestNativeCompleteDaemon(t *testing.T) {
 	call("qualification-config-update", api.SurfaceConfig, string(api.MethodConfigUpdate), api.ConfigUpdateRequest{
 		Text: updatedText, Revision: configSnapshot.Revision,
 	})
-	written, err := os.ReadFile(configTarget)
-	if err != nil || !bytes.Contains(written, []byte("IdleMilliseconds")) {
-		t.Fatalf("isolated config target=%q err=%v", written, err)
-	}
 	createReply := call("qualification-snapshot-create", api.SurfaceSnapshots, string(api.MethodSnapshotsCreate), api.SnapshotsCreateRequest{Name: "qualification"})
 	created, err := api.DecodePayload[api.SnapshotInfo](createReply.Result)
 	if err != nil || created.UUID == "" {
@@ -466,16 +555,33 @@ func TestNativeCompleteDaemon(t *testing.T) {
 		t.Fatalf("command helper survived runtime loss; output=%s", helperOutput.Bytes())
 	}
 	select {
-	case <-served:
+	case err := <-served:
+		if !errors.Is(err, supervision.ErrRuntimeLost) {
+			t.Fatalf("supervised broker loss: %v", err)
+		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("network broker did not stop")
 	}
 	select {
 	case <-writerDone:
+		if writerWaitErr == nil || ctx.Err() != nil {
+			t.Fatalf("writer exit=%v context=%v output=%s", writerWaitErr, ctx.Err(), writerOutput.Bytes())
+		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("config writer did not stop")
 	}
-	t.Log("real daemon engine, relayed admin, restricted command helper, config transaction, and live snapshot restore passed; trusted-network loss stopped R and H")
+	// Inspect C's private output only after it has exited. Do not weaken its
+	// directory ownership while it is serving runtime transactions.
+	for _, path := range []string{writerState, configTarget} {
+		if err := os.Chown(path, 0, 0); err != nil {
+			t.Fatal(err)
+		}
+	}
+	written, err := os.ReadFile(configTarget)
+	if err != nil || !bytes.Contains(written, []byte("IdleMilliseconds")) {
+		t.Fatalf("isolated config target=%q err=%v", written, err)
+	}
+	t.Log("real daemon engine, relayed admin, restricted C/H, config transaction, and live snapshot restore passed; supervised trusted-network loss stopped R, C, and H")
 }
 
 func nativeCompleteDaemonEnvironment(t *testing.T) {
@@ -486,28 +592,4 @@ func nativeCompleteDaemonEnvironment(t *testing.T) {
 	if _, err := os.Stat("/.dockerenv"); err != nil {
 		t.Fatal("Docker required")
 	}
-}
-
-func completeDaemonChildPID(t *testing.T, launcherPID int, finished <-chan struct{}, waitErr *error, output *bytes.Buffer) int64 {
-	t.Helper()
-	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); {
-		data, err := os.ReadFile(fmt.Sprintf("/proc/%d/task/%d/children", launcherPID, launcherPID))
-		if err == nil {
-			fields := strings.Fields(string(data))
-			if len(fields) == 1 {
-				pid, parseErr := strconv.ParseInt(fields[0], 10, 32)
-				if parseErr == nil && pid > 0 {
-					return pid
-				}
-			}
-		}
-		select {
-		case <-finished:
-			t.Fatalf("runtime exited before identity binding: %v; output=%s", *waitErr, output.Bytes())
-		default:
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	t.Fatalf("launcher child identity unavailable; output=%s", output.Bytes())
-	return 0
 }

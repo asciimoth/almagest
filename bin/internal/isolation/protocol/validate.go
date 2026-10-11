@@ -13,6 +13,7 @@ func (o Operation) Valid() bool {
 	case OperationHandshake,
 		OperationCapabilities,
 		OperationStatus,
+		OperationRuntimeReady,
 		OperationCheckTun,
 		OperationCheckDefaultTun,
 		OperationCheckRule,

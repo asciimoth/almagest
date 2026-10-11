@@ -91,6 +91,34 @@ func TestAllocatorKeepsRejectedFamiliesIndependent(t *testing.T) {
 	}
 }
 
+func TestOpenResourceAcceptedCompletionSurvivesCallerCancellation(t *testing.T) {
+	var releases atomic.Int32
+	c := allocationTestClient(t, func(_ context.Context, op protocol.Operation, body json.RawMessage) (any, error) {
+		if op == protocol.OperationReleaseAllocation {
+			var req protocol.ResourceRequest
+			if err := transport.Decode(body, &req); err != nil {
+				return nil, err
+			}
+			releases.Add(1)
+			return protocol.MutationResult{OperationID: req.Meta.OperationID, Outcome: protocol.OutcomeCommitted, CurrentResource: req.Resource}, nil
+		}
+		return allocationReply(body), nil
+	})
+	for index := range 200 {
+		ctx, cancel := context.WithCancel(context.Background())
+		request := protocol.ReserveAddressRequest{Meta: c.meta(true), Kind: protocol.AddressIP, Family: "ipv4"}
+		result, err := c.openResource(ctx, protocol.OperationReserveIP, request)
+		cancel()
+		if err != nil || result.Outcome != protocol.OutcomeCommitted {
+			t.Fatalf("completion %d = %+v, %v", index, result, err)
+		}
+	}
+	time.Sleep(20 * time.Millisecond)
+	if got := releases.Load(); got != 0 {
+		t.Fatalf("caller cancellation released %d accepted resources", got)
+	}
+}
+
 func TestAllocatorFailedReleaseRetainsOwnership(t *testing.T) {
 	var releases atomic.Int32
 	c := allocationTestClient(t, func(_ context.Context, op protocol.Operation, body json.RawMessage) (any, error) {

@@ -20,7 +20,13 @@ Do not run privileged networking tests on a normal workstation or shared host.
 ## Host setup
 
 Use an x86_64 Linux host with writable `/dev/kvm`, 8 GiB of available memory,
-and at least 90 GiB of free cache storage. Install QEMU, OVMF, xorriso, OpenSSH
+and at least 90 GiB of free cache storage for a fresh base-image build. Reusing
+a valid cached base instead requires 10 GiB of free test-artifact space. The
+80 GiB guest disk is a virtual capacity: qcow2 files grow with written blocks.
+The 10 GiB check is starting headroom, not a maximum run size. Long runs and
+retained overlays can require more space. Test artifacts live under the
+repository, which can use a different filesystem from the image cache.
+Install QEMU, OVMF, xorriso, OpenSSH
 client tools, Python 3, jq, curl, Git, tar, flock, coreutils, Go 1.26.6 or newer,
 Node.js, npm, ShellCheck, Ruff, PowerShell 7, and PSScriptAnalyzer. The Nix
 development shell supplies the lint and VM packages on
@@ -63,9 +69,11 @@ missing prerequisites fail; they are not skips.
 
 `just daemon-winvm` opens a visible QEMU console, builds and runs `almagestd`
 as Windows `SYSTEM`, forwards the daemon's loopback web panel to
-`http://127.0.0.1:8091/`. Use `just daemon-winvm 9090` to select a different
-host port. Set `WINVM_OPEN_BROWSER=1` to open the panel with `xdg-open`, or set
-`WINVM_DISPLAY` to select another QEMU display backend. The manual overlay
+`http://127.0.0.1:8091/`. Windows production isolation is not available, so
+this launcher uses explicit direct mode. Experimental nodes are off by default;
+use `just daemon-winvm --experimental` to enable them. Set `WINVM_WEB_PORT=9090`
+to select a different host port. Set `WINVM_OPEN_BROWSER=1` to open the panel
+with `xdg-open`, or set `WINVM_DISPLAY` to select another QEMU display backend. The manual overlay
 automatically signs in to the standard `winvm` account and opens the Server
 Core command environment. Its
 password is `AlmagestManual1!`; automatic login and this password do not modify

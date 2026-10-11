@@ -35,6 +35,7 @@ type AdminAPI struct {
 
 	projectVersionStatus  api.ProjectVersionStatus
 	executionMode         string
+	isolationStatus       *api.IsolationStatus
 	configAutosaver       *configAutosaver
 	config                *Config
 	configReadOnly        bool
@@ -324,6 +325,7 @@ func (s *apiSession) handleAdminMessage(msg api.Message) (api.Message, error) {
 			Version:              api.Version,
 			ExecutionMode:        s.admin.executionMode,
 			ProjectVersionStatus: s.admin.projectVersionStatus,
+			Isolation:            s.admin.isolationStatus,
 			Surfaces: map[string]any{
 				string(api.SurfaceAdmin): map[string]any{
 					"methods": api.AdminMethods(),

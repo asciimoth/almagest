@@ -3,8 +3,8 @@
 Checkpoint 18 implements `CreateMatcher`, `Match`, and matcher
 `CloseResource` in `bin/internal/isolation/network`. The runtime adapter in
 `bin/internal/isolation/runtime` implements `sysnet.Matcher` and provides
-`BuildMatcher` and a cancellable `MatchContext`. Direct mode is unchanged.
-This component does not enable isolated daemon startup.
+`BuildMatcher` and a cancellable `MatchContext`. The Linux production profile
+uses this path. Direct mode is unchanged.
 
 ## Ownership and rule updates
 

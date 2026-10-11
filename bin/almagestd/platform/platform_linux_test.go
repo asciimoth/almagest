@@ -9,6 +9,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -16,6 +17,7 @@ import (
 	almargs "github.com/asciimoth/almagest/bin/almagestd/args"
 	cmdrunner "github.com/asciimoth/almagest/bin/almagestd/command"
 	"github.com/asciimoth/almagest/bin/almagestd/daemonservices"
+	"github.com/asciimoth/almagest/bin/internal/nativebackend"
 	"github.com/asciimoth/configer/hujson"
 )
 
@@ -139,6 +141,27 @@ func TestSetupFSLinuxRejectsLooseStorageDirectory(t *testing.T) {
 
 	if _, _, err := SetupFS(loose, false); err == nil {
 		t.Fatal("SetupFS succeeded for storage directory with loose permissions")
+	}
+}
+
+func TestReadLinuxSystemConfigMatchesBrokerParser(t *testing.T) {
+	for _, document := range []string{`{}`, `{"UserMark":"0x1234","AppBypassMask":0,"DNS":{"FallbackServers":["::1"]},"Pmark":{"PinPath":"/run/bpf"},"KillswitchAllowExclude":false}`} {
+		cfg, err := hujson.Parse([]byte(`{"Linux":` + document + `}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		direct, err := readLinuxSystemConfig(cfg, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		broker, err := nativebackend.ParseLinuxFileConfig([]byte(document))
+		if err != nil {
+			t.Fatal(err)
+		}
+		direct.Logf = nil
+		if !reflect.DeepEqual(direct, broker.Native(nil)) {
+			t.Fatalf("direct and broker settings differ for %s", document)
+		}
 	}
 }
 

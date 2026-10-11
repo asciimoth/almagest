@@ -9,6 +9,10 @@ import (
 	"strings"
 )
 
+func migrationDirectoryIdentity(string) (string, error) {
+	return "", fmt.Errorf("%w: migration identity is unsupported on this platform", ErrUnsafeLayout)
+}
+
 func validateStorageParent(path string) error {
 	current := filepath.VolumeName(path) + string(filepath.Separator)
 	for _, part := range strings.FieldsFunc(strings.TrimPrefix(path, current), func(r rune) bool { return r == '/' || r == '\\' }) {

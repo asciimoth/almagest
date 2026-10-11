@@ -1,28 +1,58 @@
 # Trusted bootstrap and storage preparation
 
 Checkpoint 23 is implemented in `bin/internal/isolation/bootstrap` and
-`bin/internal/isolation/roleentry`. These are isolated-mode components. They are
-not connected to daemon startup. Direct mode continues to use its local config
-and storage implementations and does not migrate storage or start a role
-process.
+`bin/internal/isolation/roleentry`. The packaged Linux production entry uses
+these components. Direct mode continues to use its local config and storage
+implementations and does not migrate storage or start a role process.
 
 ## Process and input boundary
 
-The network-broker and config-writer commands have minimal entry packages. They
-import only the role-entry and versioned protocol packages. They reject command
-line role selection, regular files, terminals, and missing inherited bootstrap
-channels. The commands stop with an unavailable message because checkpoints 24
-and 25 have not installed production restriction profiles. A dependency test
-keeps the daemon runtime, nodes, panel, ZIP, bbolt, Configer, and native sysnet
-backends out of these privileged role binaries.
+The role commands reject command-line role selection, regular files, terminals,
+and missing inherited bootstrap channels. C has a restricted fixed-target
+service entry. The Linux production N entry performs the complete trusted
+bootstrap and fails closed if the installed profile is incomplete. Dependency tests
+keep the daemon runtime, library node code, ZIP, bbolt, and Configer out of N,
+C, and the trusted bootstrap package. Only N may import native sysnet backends;
+C and the input bootstrap package must exclude them.
+The dependency checks cover Linux amd64 and Windows amd64/arm64 imports,
+including build-tag-selected code, without executing foreign-platform binaries.
+Snapshot transfer limits are shared through the dependency-free
+`internal/snapshotlimits` package, so
+bootstrap does not import the full daemon API or engine for a size constant.
 
-This describes the current entry stubs, not the final backend dependency rule.
-Under the revised trusted-backend design, N must load its native sysnet backend
-without loading node or daemon-runtime code. C must still exclude that backend.
-The final dependency tests must distinguish these roles. On Linux, trusted
-bootstrap can become N in place through `linuxprofile.PrepareBackend`; it must
+Linux native settings now live in `bin/internal/nativebackend`, separate from
+the daemon platform package and Configer. Direct startup and the isolated
+native composition use the same defaults and scalar conversions. Trusted
+bootstrap can decode the selected `System.Linux` JSON object without importing
+runtime code. This parser does not read files, construct a backend, or install
+executable callbacks. Callback settings remain data until trusted code binds
+them. The production N entry consumes this parser.
+
+Under the revised trusted-backend design, N loads its native sysnet backend
+without loading node or daemon-runtime code. On Linux, trusted
+bootstrap becomes N in place through `linuxprofile.PrepareBackend`; it must
 start restricted children before that preparation and accept requests only
-after preparation succeeds. Production composition is not connected yet.
+after preparation succeeds. `networkrole.RunLinux` now assembles this lifecycle
+from trusted, held bootstrap inputs. `RunLinuxProduction` and the production
+command entry connect input preparation, role cgroups, callbacks, the journal,
+and admin gates.
+
+The Linux assembly creates its own private lanes, starts R/C/H under distinct
+identities, obtains restriction acknowledgements, prepares N in place, and
+starts the journaled broker and fixed admin listeners. It publishes readiness
+only after runtime application readiness. Failure cleanup closes lanes, kills
+remaining wrappers, and confirms wrapper and pinned namespace-child exit.
+Uncertain cleanup is reported, not treated as success. An already-closed lane
+is only a repeated stop request; it does not replace native exit observation.
+Once a role starts, the supervisor owns its lifetime. Parent cancellation
+requests graceful stop before forced termination; it does not let `os/exec`
+kill R concurrently with that stop request.
+
+The caller must supply trust-checked executables, private storage, and
+separately provisioned role cgroups. Production bootstrap prepares runtime
+inputs and native callback bindings before it starts request service. Windows
+has a native assembly boundary and fixed storage materializer, but it remains
+disabled until complete Windows daemon qualification and packaging exist.
 
 `LaunchSpec` fixes an absolute executable, trusted native libraries, a trusted
 working directory, one assigned role, and a complete environment. It does not
@@ -58,6 +88,17 @@ protected-document digest binds later role sessions without making R a policy
 source. PEM and policy semantic validation stays in R; bootstrap only resolves
 the trusted sources.
 
+`PrepareRuntimeStorage` materializes the regular bytes, resolved protected
+document, and optional opaque snapshot under three fixed reserved names in R's
+held private directory. It stages each file with `openat`, `O_EXCL`, and
+`O_NOFOLLOW`, sets mode `0600`, flushes it, transfers it to R's final identity,
+and installs it with `renameat`. It does not traverse or replace other runtime
+data. A missing snapshot removes only the fixed stale snapshot name. Bootstrap
+must have directory-write authority while it performs this step. For the
+capability-limited Linux qualification profile, this requires
+`CAP_DAC_OVERRIDE`; file ownership transfer separately requires `CAP_CHOWN`.
+Mode is set before ownership transfer so `CAP_FOWNER` is not required.
+
 Startup snapshots remain untrusted. Bootstrap opens only the exact
 operator-selected file or stdin and gives R a read-only, 32 MiB bounded byte
 stream. It does not import or call ZIP, HuJSON config, bbolt, or snapshot restore
@@ -81,13 +122,37 @@ Migration is an explicit stopped-daemon operation. It performs these phases:
 3. Copy regular files through no-follow, single-link handles into a private
    staging tree. Sync each file and atomically install the runtime tree.
 4. Create an empty private broker directory as a sibling, never below R's
-   storage, and complete the durable record.
+   storage, and retain the completed durable record for later rollback.
 
-An ordinary error rolls the completed phases back before it returns. A later
-`Recover` rolls an interrupted incomplete record back, or finishes a record
-that reached the complete phase. An explicit `Rollback` removes only validated
-migration outputs and restores the preserved backup. The code never recursively
-changes ownership and never adopts an existing file or directory.
+An ordinary error rolls the completed phases back when their ownership can be
+proved. A later `Recover` rolls an interrupted incomplete record back, or
+validates and keeps a record that reached the complete phase. An explicit
+`Rollback` requires that record, removes only identity-matching migration
+outputs, and restores the preserved backup. The code never recursively changes
+ownership and never adopts an existing file or directory.
+
+The version 2 record binds the exact five-path layout and native directory
+identities: device/inode on Linux, and volume/file index on Windows. It records
+the runtime staging identity before copying data or installing the runtime
+directory. Keep the completed record with the backup until rollback is no
+longer needed. A missing record, changed directory, missing backup, occupied
+legacy path, or directory created before its identity could be recorded stops
+recovery without removing outputs. Stop all roles before migration or rollback;
+the trusted parent directories must not be changed during the operation.
+Rollback restores the migration-time backup, so preserve any later application
+data separately before requesting it.
+Rollback also refuses a nonempty broker directory. Resolve host recovery first
+and preserve the broker records outside the migration layout before rollback.
+The storage migrator cannot decide whether native host effects are safe to
+remove and must not discard their only recovery evidence.
+
+Version 1 records have no directory ownership evidence and are rejected. They
+were used only by the development component, not a released isolated daemon.
+An operator must inspect such a layout and preserve its data; changing the
+record version does not create valid ownership evidence. Derived staging and
+temporary-record paths must be unoccupied and cannot overlap any layout path.
+Record decoding rejects unknown phases, duplicate or case-alias fields,
+trailing values, and data above 16 KiB.
 
 ## Verification
 
@@ -108,14 +173,15 @@ The focused commands are:
 go test -race -cover ./internal/isolation/bootstrap ./internal/isolation/roleentry
 go test ./internal/isolation/bootstrap -run '^$' -fuzz '^FuzzCombinedProtectedSplit$' -fuzztime=30s
 go test ./internal/isolation/bootstrap -run '^$' -fuzz '^FuzzResolveProtectedDoesNotPanic$' -fuzztime=30s
+go test ./internal/isolation/bootstrap -run '^$' -fuzz '^FuzzRuntimeProtectedDocument$' -fuzztime=30s
 go test ./internal/isolation/bootstrap -run '^$' -fuzz '^FuzzStorageLayoutValidation$' -fuzztime=30s
 go test ./internal/isolation/bootstrap -run '^$' -fuzz '^FuzzLaunchEnvironmentValidation$' -fuzztime=30s
 just test-total winvm:m23::trusted-bootstrap-storage
 ```
 
-Complete child launch, protected-policy distribution to every broker,
-Linux/Windows sandbox installation, and production storage-path selection
-remain later checkpoints.
+Complete Linux child launch, protected-policy distribution, sandbox
+installation, and production storage selection are connected at checkpoint 32.
+The equivalent Windows rollout remains unavailable.
 
 ### Checkpoint 23 results, 2026-10-10
 

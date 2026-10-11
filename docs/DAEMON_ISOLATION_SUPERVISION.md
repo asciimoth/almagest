@@ -13,11 +13,51 @@ N. The supervisor accepts only already-started process handles. It has no start,
 restart, executable, argument, or environment API. It rejects N as a child,
 duplicate roles, and a process set without R.
 
+`StartedProcess` adapts an already-started platform process. Trusted bootstrap
+supplies the fixed wait, graceful-stop, and process-set kill callbacks. The
+adapter owns exactly one exit wait and has no launch API. A successful stop
+request does not count as process exit: `Stop` waits for the exit observer.
+Concurrent stop calls share one graceful request, with bounded caller waits
+even if that request hangs. Shutdown after an observed exit does not signal a
+possibly reused native process identifier.
+
+Native waiters which can fail without observing exit use `NewObservedProcess`.
+They report both the exit-confirmation fact and the error. Observation loss
+triggers supervision failure but does not let `Stop` report a clean exit. The
+Windows role adapter pins an observation-only process handle before starting
+its waiter and kills the complete native job without discarding exit proof.
+
 Startup first reconciles the broker-private journal. It then waits for an
 explicit ready result from every configured child. A child exit, closed ready
 channel, reconciliation failure, cancellation, or timeout fails startup without
 publishing readiness. Application and node readiness remain separate: R must
 send its role-ready result only after its application initialization succeeds.
+
+R's transport handshake and restriction acknowledgement do not report
+application readiness. After the engine and admin API start, R sends the typed
+`runtime_ready` request on its authenticated N control lane. N checks the
+session and graph epoch, data-lane negotiation, policy, and recovery state.
+It records an idempotent startup fact without a native operation or receipt.
+R requires an acknowledgement for the same complete session; an error cancels
+startup. N exposes `ApplicationReady` for the process adapter and reports
+`RuntimeReady` in status until shutdown. The channel records a past event, not
+continued health: the supervisor must also observe process exit.
+`Options.ApplicationReady` is mandatory and must use N's authenticated signal.
+The supervisor requires both that signal and every role's restriction proof
+before it reports service readiness. R's role status remains not ready until
+both runtime signals arrive. Startup timeout, cancellation, or a role exit
+still stops the process set while application readiness is pending. The
+production process adapter and launch composition remain to be connected.
+
+`network.Service` connects the journaled broker, native reconciler, authenticated
+lanes, and started process set. Its constructor binds the policy digest and
+application-ready signal to that broker, rejects a missing journal or lane,
+and refuses broker reuse. `Run` starts RPC handling only after successful
+journal recovery. A late recovery completion cannot start a server after its
+deadline or shutdown. Server termination cancels supervision and stops the
+process set. The Linux real-daemon test uses this connection for restricted R,
+C, and H under distinct identities. This does not replace
+the remaining production launcher or complete-profile qualification.
 
 Each supervisor is single-use. A service restart constructs a complete new
 process set and supervisor with a new protocol session. The supervisor has no
@@ -38,10 +78,13 @@ later runtime-loss handling.
 
 Shutdown stops R first so it cannot submit new operations, revokes native
 session resources, and then stops H and C. Each stop has a fixed deadline. A
-hung role is killed after the deadline. An ignored context can retain at most
-one stop goroutine per configured role; role count and observation queues are
-fixed. Any failed kill, timeout, or unproved revocation sets recovery-required
-status. The service manager, not N, restarts the complete process set.
+hung role or failed graceful stop triggers a kill attempt, which also has a
+fixed deadline. An ignored context can retain at most one stop goroutine and
+one kill goroutine per configured role; role count and observation queues are
+fixed. Any failed stop, kill, timeout, or unproved revocation sets
+recovery-required status. The service manager, not N, restarts the complete
+process set. Role observers stop when supervision returns, including startup
+failure. An already-observed exit takes precedence over buffered readiness.
 
 Status reports only ready/alive/failed facts for each role. It does not expose
 child error text, protected policy, paths, identities, or journal contents.
@@ -71,6 +114,8 @@ live native identity:
 - An owned effect is cleaned and inspected again before resolution.
 - A foreign, replaced, or unknown effect is not changed and remains visible.
 - An inspection, cleanup, persistence, or deadline failure remains uncertain.
+- A native result returned after cancellation cannot authorize cleanup or
+  resolve a journal record, including the final inspection after cleanup.
 - An effect marked `retain_on_failure`, such as a protected strict traffic
   block, remains installed until a policy-specific operation explicitly proves
   that removal is safe.

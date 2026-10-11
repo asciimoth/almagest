@@ -331,6 +331,9 @@ func (j *Journal) Recover(ctx context.Context, reconciler Reconciler, perEffect 
 		}
 		bounded, cancel := context.WithTimeout(ctx, perEffect)
 		state, err := reconciler.Inspect(bounded, effect)
+		if err == nil {
+			err = bounded.Err()
+		}
 		if err == nil && state == IdentityAbsent {
 			err = j.Resolve(effect.ID)
 			if err == nil {
@@ -339,7 +342,13 @@ func (j *Journal) Recover(ctx context.Context, reconciler Reconciler, perEffect 
 		} else if err == nil && state == IdentityOwned && !effect.RetainOnFailure {
 			err = reconciler.Cleanup(bounded, effect)
 			if err == nil {
+				err = bounded.Err()
+			}
+			if err == nil {
 				state, err = reconciler.Inspect(bounded, effect)
+				if err == nil {
+					err = bounded.Err()
+				}
 				if err == nil && state == IdentityAbsent {
 					err = j.Resolve(effect.ID)
 					if err == nil {

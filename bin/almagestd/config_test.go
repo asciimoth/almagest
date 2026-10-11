@@ -2,11 +2,13 @@ package main
 
 import (
 	"errors"
-	"github.com/asciimoth/almagest/lib/storage"
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/asciimoth/almagest/bin/almagestd/args"
+	"github.com/asciimoth/almagest/bin/api"
+	"github.com/asciimoth/almagest/lib/storage"
 )
 
 func TestConfigSaveIdleDefault(t *testing.T) {
@@ -412,6 +414,34 @@ func TestProtectedConfigSecrets(t *testing.T) {
 	}
 	if got := secrets["from-env"].Nodes; len(got) != 1 || got[0] != "client" {
 		t.Fatalf("env secret nodes = %v, want normalized [client]", got)
+	}
+}
+
+func TestIsolatedResolvedSecretSources(t *testing.T) {
+	protected := []byte(`{"Secrets":{"from-env":{"Value":"resolved","ResolvedSource":"environment"},"inline":{"Value":"literal","ResolvedSource":"protected"}}}`)
+	if _, err := ParseConfig([]byte(`{}`), protected); err == nil {
+		t.Fatal("direct config accepted bootstrap-only resolved source")
+	}
+	cfg, err := ParseIsolatedConfig([]byte(`{}`), protected)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secrets, err := cfg.Protected.ImmutableSecrets()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if secrets["from-env"].source != api.SecretSourceEnv || secrets["inline"].source != api.SecretSourceProtected {
+		t.Fatalf("resolved sources = %#v", secrets)
+	}
+	for _, invalid := range []string{"file", "env"} {
+		text := []byte(fmt.Sprintf(`{"Secrets":{"x":{"Value":"v","ResolvedSource":%q}}}`, invalid))
+		cfg, err := ParseIsolatedConfig([]byte(`{}`), text)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := cfg.Protected.ImmutableSecrets(); err == nil {
+			t.Fatalf("accepted resolved source %q", invalid)
+		}
 	}
 }
 

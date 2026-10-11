@@ -172,6 +172,17 @@ func tlsBuiltinCAConfigFromAPI(options api.TLSBuiltinCAOptions) tlsBuiltinCAConf
 }
 
 func ParseConfig(cfg, prt []byte) (*Config, error) {
+	return parseConfig(cfg, prt, false)
+}
+
+// ParseIsolatedConfig accepts bootstrap's internal resolved-source marker.
+// Direct protected config must not set it because only trusted bootstrap can
+// attest that an environment selector was resolved before R started.
+func ParseIsolatedConfig(cfg, prt []byte) (*Config, error) {
+	return parseConfig(cfg, prt, true)
+}
+
+func parseConfig(cfg, prt []byte, isolated bool) (*Config, error) {
 	config, err := hujson.Parse(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("config parsing: %w", err)
@@ -188,6 +199,11 @@ func ParseConfig(cfg, prt []byte) (*Config, error) {
 	err = configer.Unmarshal(protectedCfg, &protected)
 	if err != nil {
 		return nil, fmt.Errorf("protected config unmarshaling: %w", err)
+	}
+	for name, secret := range protected.Secrets {
+		if secret.ResolvedSource != "" && !isolated {
+			return nil, fmt.Errorf("protected secret %q uses reserved ResolvedSource", name)
+		}
 	}
 
 	return &Config{
@@ -219,9 +235,10 @@ type ProtectedExperimentalConfig struct {
 // variable whose value is read once at daemon startup. Exactly one of Value or
 // Env may be set.
 type ProtectedSecretConfig struct {
-	Value *string  `json:"Value"`
-	Env   string   `json:"Env"`
-	Nodes []string `json:"Nodes"`
+	Value          *string  `json:"Value"`
+	Env            string   `json:"Env"`
+	Nodes          []string `json:"Nodes"`
+	ResolvedSource string   `json:"ResolvedSource,omitempty"`
 }
 
 type ProtectedTLSConfig struct {
@@ -255,6 +272,9 @@ func (p *ProtectedConfig) ImmutableSecrets() (map[string]immutableSecret, error)
 		if !validSecretName(key) {
 			return nil, fmt.Errorf("%w: invalid protected secret key %q", storage.ErrSecretInvalidName, key)
 		}
+		if cfg.ResolvedSource != "" && (cfg.Value == nil || cfg.Env != "" || cfg.ResolvedSource != "protected" && cfg.ResolvedSource != "environment") {
+			return nil, fmt.Errorf("%w: protected secret %q has invalid resolved source", storage.ErrSecretInvalidValue, key)
+		}
 		if cfg.Value != nil && cfg.Env != "" {
 			return nil, fmt.Errorf("%w: protected secret %q sets both Value and Env", storage.ErrSecretInvalidValue, key)
 		}
@@ -279,6 +299,9 @@ func (p *ProtectedConfig) ImmutableSecrets() (map[string]immutableSecret, error)
 				return nil, fmt.Errorf("%w: environment variable %q for protected secret %q is not set", storage.ErrSecretInvalidValue, cfg.Env, key)
 			}
 			value = envValue
+			source = api.SecretSourceEnv
+		}
+		if cfg.ResolvedSource == "environment" {
 			source = api.SecretSourceEnv
 		}
 		out[key] = immutableSecret{

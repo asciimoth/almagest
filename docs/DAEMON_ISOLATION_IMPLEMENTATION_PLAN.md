@@ -1,8 +1,9 @@
 # Daemon isolation implementation plan
 
-Status: implementation tracking plan. Component completion does not enable
-production isolation; complete-daemon qualification remains open.
-Progress: checkpoints 1 through 9 are complete. The project maintainer accepted
+Status: checkpoints 1 through 32 are implemented for the packaged Linux amd64
+profile. Windows Server 2022 amd64 remains a fail-closed component profile and
+is not enabled by default.
+The project maintainer accepted
 the current direct and isolated performance state on 2026-10-11. Performance
 measurements are diagnostic and do not block later checkpoints.
 It follows the [isolation architecture](DAEMON_ISOLATION_ARCHITECTURE.md).
@@ -23,9 +24,7 @@ N may retain launch authority and native DNS/process integration. Separate
 DNS/BPF helpers and upstream API changes are no longer prerequisites. Earlier
 restricted-N experiments remain historical evidence, not release requirements.
 Checkpoints 24 and 25 implement and qualify the revised Linux and Windows
-profile components. Completing a
-platform profile does not enable production isolation; composition,
-supervision, recovery, rollout, and default-mode gates remain later checkpoints.
+profile components. Checkpoint 32 connects and packages the Linux profile.
 
 ## Delivery rules
 
@@ -734,8 +733,8 @@ The provider matrix and guest run upstream fixtures, not PrepareBackend or a
 complete isolated daemon. A combined case runs the real broker against restricted R
 for TCP/UDP, owner matching, regular/default TUN, and peer-loss cleanup. It
 found and removed a redundant channel socket-option write without weakening
-R's syscall rules. Bootstrap identity selection and persistent storage quotas
-are deployment inputs for later daemon assembly; they do not restrict N or
+R's syscall rules. Bootstrap identity selection remains a deployment input
+for later daemon assembly; it does not restrict N or
 change this profile boundary.
 Runtime OutDNS now forwards bounded DNS packets to the existing native provider,
 without requiring an upstream snapshot. The restricted-runtime Docker case
@@ -955,7 +954,8 @@ now starts the real daemon engine in R with an authenticated `sysnet.System`
 adapter and an N-owned admin listener. The retained daemon run executes a
 command node through H, updates config, and performs a live snapshot restore.
 Native C and H tests also use their final restrictions and fixed authority.
-Loss of N stops R and H. The Linux profile
+Loss of N stops R, C, and H. The Linux real-daemon case now uses separate
+restricted C and H executables and distinct R/C/H identities. The Linux profile
 components from checkpoint 24 and Windows profile components from checkpoint
 25 are qualified.
 The integration audit added the missing typed rule validation/completion
@@ -1030,6 +1030,34 @@ Acceptance:
 - Functional or security failures still block release; slow execution does not.
 
 ## 32. Package and enable isolation by default
+
+Status: complete for the packaged Linux amd64 profile. `almagestd` selects
+isolation by default and replaces itself with the minimal trusted N binary
+before regular config is parsed. `--no-isolation` keeps the supported direct
+single-process composition. Unsupported targets and incomplete installations
+fail with explicit `--no-isolation` guidance; there is no fallback.
+
+The production entry loads protected authority, materializes fixed R inputs,
+provisions separate role cgroups, starts restricted R and optional C/H, binds
+trusted callbacks, recovers the native journal, and publishes N-owned admin
+listeners only after restriction and application readiness. It reports mode,
+protocol, role health, restrictions, capabilities, and recovery state through
+the existing hello response. Storage tooling covers fresh installation,
+idempotent preparation, migration, recovery, and rollback. The systemd,
+sysusers, tmpfiles, build, deployment, and operator-recovery files are in
+`packaging/linux`.
+
+Windows Server 2022 amd64 keeps its qualified component profiles and native
+assembly boundary, including explicit lane maps and fixed runtime input
+materialization. It is not a released default profile because complete Windows
+daemon composition, H semantics, packaging, and release qualification are not
+complete. This is an unsupported platform result, not an automatic direct-mode
+downgrade.
+
+Scope update, 2026-10-11: quota implementation is excluded from this plan and
+remaining release work at the maintainer's request. In particular, persistent
+storage quotas are not an acceptance or qualification gate. Existing bounded
+protocol, process, and resource safety limits remain in place.
 
 Work:
 

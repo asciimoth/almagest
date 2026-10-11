@@ -174,6 +174,86 @@ func TestNativeProvisionRoleCgroups(t *testing.T) {
 	t.Log("separate backend and runtime cgroups provisioned; child entered atomically and backend moved after launch")
 }
 
+func TestNativeProvisionServiceCgroups(t *testing.T) {
+	if os.Getenv("ALMAGEST_PROFILE_CGROUP_PROVISION") != "1" {
+		t.Skip("requires a disposable private cgroup namespace")
+	}
+	// Docker's private cgroup namespace root is a controller-owning domain,
+	// not the delegated leaf that a service manager gives one service. Enter a
+	// child leaf first so this test exercises the production contract.
+	root, err := os.Open("/sys/fs/cgroup")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close() //nolint:errcheck
+	outerName := "almagest-service-outer-" + strconv.Itoa(os.Getpid())
+	if err := unix.Mkdirat(int(root.Fd()), outerName, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	outer, err := openCgroupAt(root, outerName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer outer.Close() //nolint:errcheck
+	serviceName := "almagest-service-test-" + strconv.Itoa(os.Getpid())
+	if err := unix.Mkdirat(int(root.Fd()), serviceName, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	serviceLeaf, err := openCgroupAt(root, serviceName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer serviceLeaf.Close() //nolint:errcheck
+	if err := writeCgroupFile(outer, "cgroup.procs", strconv.Itoa(os.Getpid())+"\n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeCgroupFile(root, "cgroup.subtree_control", "+cpu +memory +pids\n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeCgroupFile(serviceLeaf, "cgroup.procs", strconv.Itoa(os.Getpid())+"\n"); err != nil {
+		t.Fatal(err)
+	}
+	limits := DefaultLimits()
+	limits.MemoryBytes = 64 << 20
+	limits.Tasks = 16
+	limits.CPUQuota = 25000
+	service, err := ProvisionServiceCgroups(CgroupPlan{Backend: limits, Runtime: limits})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer service.Close() //nolint:errcheck
+	if service.Roles() == nil {
+		t.Fatal("service did not retain role cgroups")
+	}
+	data, err := os.ReadFile("/proc/self/cgroup")
+	if err != nil || !strings.Contains(string(data), "/almagest-bootstrap-") {
+		t.Fatalf("bootstrap membership = %q: %v", data, err)
+	}
+	state, err := os.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close() //nolint:errcheck
+	if err := state.Chmod(0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.Roles().EnterBackend(state, limits); err != nil {
+		t.Fatal(err)
+	}
+	data, err = os.ReadFile("/proc/self/cgroup")
+	if err != nil || !strings.Contains(string(data), "/almagest-instance-") || !strings.Contains(string(data), "/network") {
+		t.Fatalf("network membership = %q: %v", data, err)
+	}
+	if err := service.RestoreAndRemove(); err != nil {
+		t.Fatal(err)
+	}
+	data, err = os.ReadFile("/proc/self/cgroup")
+	if err != nil || strings.Contains(string(data), "/almagest-bootstrap-") || strings.Contains(string(data), "/almagest-instance-") {
+		t.Fatalf("service membership was not restored = %q: %v", data, err)
+	}
+	t.Log("service subtree provisioned separate role cgroups and removed every owned group")
+}
+
 func openCgroupAt(parent *os.File, name string) (*os.File, error) {
 	fd, err := unix.Openat(int(parent.Fd()), name, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
 	if err != nil {

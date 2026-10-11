@@ -324,8 +324,9 @@ Important flags and env:
 - `-p, --protected`, `ALMAGEST_PROTECTED_CONF`: protected config path.
 - `-l, --lvl`, `ALMAGEST_LOG_LVL`: logging level.
 - `--log-workers`: log engine worker lifecycle events.
-- `--no-isolation`: run the direct single-process daemon. This flag is required
-  while production isolation is not implemented.
+- `--no-isolation`: run the direct single-process daemon. Packaged Linux amd64
+  uses isolation by default. Unsupported profiles fail with guidance to select
+  this flag explicitly; they never downgrade automatically.
 - `--experimental`: enable experimental features and node classes. They are
   disabled by default and require `--no-isolation`.
 - `-w, --web`, `ALMAGEST_WEB_ADMIN`: localhost web admin port.

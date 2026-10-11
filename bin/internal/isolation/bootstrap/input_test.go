@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"io"
 	"os"
@@ -117,6 +118,8 @@ func TestResolveProtectedFreezesExactSecretAndTLSInputs(t *testing.T) {
 	}}
 	data := []byte(`{
 		"Admin": {"Web": 1},
+		"CommandRunner": {"Commands":{"notify":{"Command":["/bin/notify"]}}},
+		"System": {"Type":"native","Linux":{"DNS":{"Mode":"direct"}}},
 		"Secrets": {
 			"inline": {"Value":"literal", "Nodes":["one"]},
 			"from-env": {"Env":"TOKEN", "Nodes":["two"]}
@@ -140,6 +143,17 @@ func TestResolveProtectedFreezesExactSecretAndTLSInputs(t *testing.T) {
 		resolved.Runtime.Secrets["from-env"].Source != "environment" ||
 		resolved.Runtime.Certificates["file"] != "certificate-file" || resolved.Runtime.BuiltinCA != "built-in-keypair" {
 		t.Fatalf("resolved protected inputs = %#v", resolved)
+	}
+	for name, section := range map[string]json.RawMessage{
+		"admin": resolved.Authority.Admin, "commands": resolved.Authority.CommandRunner, "system": resolved.Authority.System,
+	} {
+		if len(section) == 0 || !json.Valid(section) {
+			t.Fatalf("%s authority = %s", name, section)
+		}
+	}
+	if !bytes.Contains(resolved.Authority.Admin, []byte(`"Web"`)) || !bytes.Contains(resolved.Authority.Admin, []byte(`1`)) ||
+		!bytes.Contains(resolved.Authority.CommandRunner, []byte(`/bin/notify`)) || !bytes.Contains(resolved.Authority.System, []byte(`"direct"`)) {
+		t.Fatalf("protected authority = %#v", resolved.Authority)
 	}
 	if strings.Contains(strings.Join(loader.trustedReads, " "), "TOKEN") {
 		t.Fatalf("environment selector reached file loader: %#v", loader.trustedReads)
@@ -175,6 +189,72 @@ func TestResolveProtectedRejectsAmbiguousMissingAndOversizedInputs(t *testing.T)
 	if !errors.Is(err, ErrInputTooLarge) {
 		t.Fatalf("oversized immutable input error = %v", err)
 	}
+}
+
+func TestRuntimeProtectedDocumentContainsOnlyResolvedValues(t *testing.T) {
+	resolved, err := ResolveProtected([]byte(`{
+		"Secrets":{"env":{"Env":"TOKEN","Nodes":["node"]},"inline":{"Value":"literal"}},
+		"TLS":{"Certificates":{"file":{"File":"/trusted/ca.pem"}},"Policies":{"p":{"Mode":"strict"}},"BuiltinCA":{"File":"/trusted/key.pem"}},
+		"Admin":{"Unix":"/host/admin.sock","WebPProf":true,"AllowCrossOrigin":true},"System":{"Linux":{"Pmark":{"PinPath":"/sys/fs/bpf/host"}}},"Unknown":{"Path":"/host"}
+	}`), &memoryLoader{trusted: map[string][]byte{"/trusted/ca.pem": []byte("certificate"), "/trusted/key.pem": []byte("keypair")}}, func(name string) (string, bool) { return "secret", name == "TOKEN" })
+	if err != nil {
+		t.Fatal(err)
+	}
+	document, err := resolved.Runtime.RuntimeDocument()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var root map[string]json.RawMessage
+	if err := json.Unmarshal(document, &root); err != nil {
+		t.Fatal(err)
+	}
+	if len(root) != 3 || root["Admin"] == nil || root["Secrets"] == nil || root["TLS"] == nil {
+		t.Fatalf("runtime root = %s", document)
+	}
+	for _, forbidden := range []string{"TOKEN", "/trusted/", "/host/admin.sock", "System", "Unknown", `"Unix"`, `"WebFilters"`, `"Env"`, `"File"`} {
+		if bytes.Contains(document, []byte(forbidden)) {
+			t.Fatalf("runtime document exposes %q: %s", forbidden, document)
+		}
+	}
+	for _, want := range []string{"secret", "literal", "certificate", "keypair", "strict", "node", "WebPProf", "AllowCrossOrigin"} {
+		if !bytes.Contains(document, []byte(want)) {
+			t.Fatalf("runtime document lost %q: %s", want, document)
+		}
+	}
+}
+
+func TestRuntimeProtectedDocumentRejectsInvalidInternalValues(t *testing.T) {
+	for name, value := range map[string]RuntimeProtected{
+		"source":           {Secrets: map[string]Secret{"x": {Value: "v", Source: "file"}}},
+		"policy":           {Policies: map[string]json.RawMessage{"x": []byte(`{`)}},
+		"secret size":      {Secrets: map[string]Secret{"x": {Value: strings.Repeat("x", MaxImmutableItemBytes+1), Source: "protected"}}},
+		"certificate size": {Certificates: map[string]string{"x": strings.Repeat("x", MaxImmutableItemBytes+1)}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := value.RuntimeDocument(); err == nil {
+				t.Fatal("invalid runtime input accepted")
+			}
+		})
+	}
+}
+
+func FuzzRuntimeProtectedDocument(f *testing.F) {
+	f.Add("name", "value", "protected", `{"Mode":"strict"}`)
+	f.Add("", "", "environment", `null`)
+	f.Fuzz(func(t *testing.T, name, value, source, policy string) {
+		runtime := RuntimeProtected{Secrets: map[string]Secret{name: {Value: value, Source: source}}, Policies: map[string]json.RawMessage{name: []byte(policy)}}
+		document, err := runtime.RuntimeDocument()
+		if err != nil {
+			return
+		}
+		if !json.Valid(document) || bytes.Contains(document, []byte(`"Env"`)) || bytes.Contains(document, []byte(`"File"`)) {
+			t.Fatalf("unsafe runtime document: %s", document)
+		}
+		var root map[string]json.RawMessage
+		if err := json.Unmarshal(document, &root); err != nil || len(root) > 3 || root["System"] != nil || root["CommandRunner"] != nil {
+			t.Fatalf("expanded runtime authority: %s", document)
+		}
+	})
 }
 
 func TestOpenSnapshotIsOpaqueBoundedAndOwnsFile(t *testing.T) {

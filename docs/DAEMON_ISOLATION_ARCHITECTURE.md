@@ -1,8 +1,14 @@
 # Daemon isolation architecture
 
-Status: target architecture with partially implemented components. See the
-[implementation plan](DAEMON_ISOLATION_IMPLEMENTATION_PLAN.md) for current
-checkpoint status. Production isolated startup is not enabled.
+Status: implemented production architecture for the packaged Linux amd64
+profile. Isolation is the default there; `--no-isolation` selects the direct
+composition. Other targets fail closed with explicit direct-mode guidance.
+Windows Server 2022 amd64 has qualified native components and a fail-closed
+assembly boundary, but it is not a released default profile.
+Scope update, 2026-10-11: new quota implementation is excluded from the release
+plan and remaining work. Quota references below describe the broader design,
+not additional release requirements. Existing protocol, process, and resource
+safety limits remain in place; this change does not remove them.
 The original source review used Almagest commit
 `a29839e5e703ab3fdc45d819af19917f0181cf24` and the dependency versions in
 [`bin/go.mod`](../bin/go.mod). External sources were checked on 2026-10-06.
@@ -18,7 +24,7 @@ including its DNS processing, process inspection, BPF, and native integration.
 Backend hardening is defense in depth and must preserve supported features.
 Separate DNS/process helpers and upstream API refactors are not prerequisites.
 This revision does not relax any R, C, or node-command helper restriction.
-Linux implements trusted N preparation and restricted R/C/H components.
+Linux implements packaged trusted N startup and restricted R/C/H composition.
 Windows implements trusted caller/service N, restricted R/C/H components, and
 persistent AppContainer provisioning for Windows Server 2022/amd64.
 
@@ -1005,7 +1011,8 @@ bootstrap-only calls after exec, before input is released. Qualification must
 test the actual Go version, build mode and CPU architecture.
 
 Use separate cgroups for R and brokers, with memory, CPU and task limits and
-reserved broker capacity. Add descriptor, core-dump and storage quotas. Disable
+reserved broker capacity. Retain descriptor and core-dump safety limits.
+Persistent storage quotas are outside the requested release scope. Disable
 dumpability where appropriate. A systemd unit can add service-wide restrictions,
 but the binary must still enforce role boundaries when started manually.
 

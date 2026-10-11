@@ -1,0 +1,2 @@
+d /var/lib/almagest 0755 root root -
+d /run/almagest 0755 root root -

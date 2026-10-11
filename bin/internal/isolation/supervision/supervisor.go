@@ -25,6 +25,7 @@ type Process interface {
 	Role() protocol.Role
 	Ready() <-chan ReadyResult
 	Done() <-chan error
+	// Stop returns nil only after the process has exited.
 	Stop(context.Context) error
 	Kill() error
 }
@@ -56,10 +57,13 @@ type Options struct {
 	ShutdownTimeout time.Duration
 	RecoveryTimeout time.Duration
 	PolicyDigest    [32]byte
+	// ApplicationReady must be N's authenticated runtime startup signal. It
+	// closes after engine/admin initialization, not after restriction setup.
+	ApplicationReady <-chan struct{}
 }
 
 func (o Options) validate() error {
-	if o.StartupTimeout <= 0 || o.ShutdownTimeout <= 0 || o.RecoveryTimeout <= 0 {
+	if o.StartupTimeout <= 0 || o.ShutdownTimeout <= 0 || o.RecoveryTimeout <= 0 || o.ApplicationReady == nil {
 		return ErrInvalidComposition
 	}
 	var zero [32]byte
@@ -161,6 +165,11 @@ type roleEvent struct {
 // Run reconciles trusted host state, waits for every role, publishes readiness,
 // and supervises until shutdown or R loss. It can be called only once.
 func (s *Supervisor) Run(ctx context.Context) error {
+	if ctx == nil {
+		return ErrInvalidComposition
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	s.mu.Lock()
 	if s.started || s.stopping {
 		s.mu.Unlock()
@@ -180,11 +189,30 @@ func (s *Supervisor) Run(ctx context.Context) error {
 	}
 	startup, cancelStartup := context.WithTimeout(ctx, s.options.StartupTimeout)
 	pending := len(s.roles)
-	for pending > 0 {
+	applicationSignal := s.options.ApplicationReady
+	applicationReady, runtimeRestricted := false, false
+	for pending > 0 || !applicationReady {
 		select {
+		case _, open := <-applicationSignal:
+			if open {
+				cancelStartup()
+				return errors.Join(ErrStartupFailed, protocol.ErrInvalidContract, s.shutdown(context.Background()))
+			}
+			applicationReady = true
+			applicationSignal = nil
+			if runtimeRestricted {
+				s.markReady(protocol.RoleRuntime)
+			}
 		case event := <-events:
 			if event.ready && event.err == nil && s.validReadiness(event.role, event.proof) {
-				s.markReady(event.role)
+				if event.role == protocol.RoleRuntime {
+					runtimeRestricted = true
+					if applicationReady {
+						s.markReady(event.role)
+					}
+				} else {
+					s.markReady(event.role)
+				}
 				pending--
 				continue
 			}
@@ -198,6 +226,10 @@ func (s *Supervisor) Run(ctx context.Context) error {
 			cancelStartup()
 			return errors.Join(ErrStartupFailed, startup.Err(), s.shutdown(context.Background()))
 		}
+	}
+	if err := startup.Err(); err != nil {
+		cancelStartup()
+		return errors.Join(ErrStartupFailed, err, s.shutdown(context.Background()))
 	}
 	cancelStartup()
 	s.mu.Lock()
@@ -232,8 +264,31 @@ func (s *Supervisor) validReadiness(role protocol.Role, result ReadyResult) bool
 }
 
 func observeRole(ctx context.Context, role protocol.Role, process Process, events chan<- roleEvent) {
+	// A ready message can remain buffered after a child exits. Never prefer
+	// that message over an exit which is already observable.
+	exit := func(err error) {
+		if err == nil {
+			err = errors.New("role exited")
+		}
+		select {
+		case events <- roleEvent{role: role, err: err}:
+		case <-ctx.Done():
+		}
+	}
+	select {
+	case err := <-process.Done():
+		exit(err)
+		return
+	default:
+	}
 	select {
 	case result, ok := <-process.Ready():
+		select {
+		case err := <-process.Done():
+			exit(err)
+			return
+		default:
+		}
 		if !ok && result.Err == nil {
 			result.Err = ErrStartupFailed
 		}
@@ -283,6 +338,7 @@ func (s *Supervisor) markFailed(role protocol.Role, err error) {
 	defer s.mu.Unlock()
 	if state := s.roles[role]; state != nil {
 		state.alive = false
+		state.ready = false
 		state.err = err
 	}
 }
@@ -347,6 +403,15 @@ func (s *Supervisor) shutdown(parent context.Context) error {
 	for index, state := range states {
 		if err := stopRole(parent, state.process, s.options.ShutdownTimeout); err != nil {
 			joined = errors.Join(joined, fmt.Errorf("stop %s: %w", state.process.Role(), err))
+			s.mu.Lock()
+			state.ready = false
+			state.err = errors.Join(state.err, err)
+			s.mu.Unlock()
+		} else {
+			s.mu.Lock()
+			state.ready = false
+			state.alive = false
+			s.mu.Unlock()
 		}
 		if index == 0 {
 			joined = errors.Join(joined, s.revoke())
@@ -366,8 +431,26 @@ func stopRole(parent context.Context, process Process, timeout time.Duration) er
 	go func() { stopped <- process.Stop(ctx) }()
 	select {
 	case err := <-stopped:
-		return err
+		if err == nil {
+			return nil
+		}
+		return errors.Join(err, killRole(process, timeout))
 	case <-ctx.Done():
-		return errors.Join(ctx.Err(), process.Kill())
+		return errors.Join(ctx.Err(), killRole(process, timeout))
+	}
+}
+
+// Kill must also be bounded: an OS wrapper or process implementation can fail
+// to return. A failed graceful stop does not prove that the child has exited.
+func killRole(process Process, timeout time.Duration) error {
+	killed := make(chan error, 1)
+	go func() { killed <- process.Kill() }()
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case err := <-killed:
+		return err
+	case <-timer.C:
+		return context.DeadlineExceeded
 	}
 }

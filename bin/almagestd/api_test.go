@@ -542,7 +542,9 @@ func TestAdminAndLogAPIDispatch(t *testing.T) {
 	factory.level = logLevelEnabled{info: true}
 	admin := &AdminAPI{
 		projectVersionStatus: api.ProjectVersionStatus{Version: "test"},
-		executionMode:        string(executionModeDirect),
+		executionMode:        string(executionModeIsolation),
+		isolationStatus: &api.IsolationStatus{ProtocolVersion: 1, RecoveryState: "complete",
+			Restrictions: map[string][]string{"runtime": {"landlock"}}, Roles: map[string]string{"runtime": "ready"}, Capabilities: map[string]bool{"commands": true}},
 	}
 	events := make(chan api.Message, 1)
 	session := admin.newAPISession(nil, factory, func(msg api.Message) error {
@@ -566,8 +568,11 @@ func TestAdminAndLogAPIDispatch(t *testing.T) {
 			if decodeErr != nil {
 				t.Fatal(decodeErr)
 			}
-			if hello.ExecutionMode != string(executionModeDirect) {
-				t.Fatalf("hello execution mode = %q, want %q", hello.ExecutionMode, executionModeDirect)
+			if hello.ExecutionMode != string(executionModeIsolation) {
+				t.Fatalf("hello execution mode = %q, want %q", hello.ExecutionMode, executionModeIsolation)
+			}
+			if hello.Isolation == nil || hello.Isolation.ProtocolVersion != 1 || hello.Isolation.RecoveryState != "complete" || hello.Isolation.Roles["runtime"] != "ready" || !hello.Isolation.Capabilities["commands"] {
+				t.Fatalf("hello isolation status = %#v", hello.Isolation)
 			}
 		}
 	}

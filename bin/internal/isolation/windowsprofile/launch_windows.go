@@ -16,6 +16,7 @@ import (
 	"unicode/utf16"
 	"unsafe"
 
+	"github.com/asciimoth/almagest/bin/internal/isolation/roleentry"
 	"golang.org/x/sys/windows"
 )
 
@@ -36,6 +37,11 @@ type Request struct {
 	Storage    string
 	Arguments  []string
 	Pipes      []windows.Handle
+	// Lanes maps each connected pipe to one fixed role environment name. Nil
+	// keeps the version-1 positional mapping for compatibility with installed
+	// component launchers. Production composition supplies an explicit map so
+	// an absent optional lane cannot shift a later handle into more authority.
+	Lanes []roleentry.Lane
 }
 
 // Process owns a non-breakaway job. R, C and H allow one process; trusted N
@@ -45,9 +51,22 @@ type Process struct {
 	mu           sync.Mutex
 	process, job windows.Handle
 	pid          uint32
+	role         Role
+	supervised   bool
 }
 
 func (p *Process) PID() uint32 { return p.pid }
+
+// Kill terminates the complete job without discarding the process handle.
+// Callers can still observe native exit with Wait before releasing handles.
+func (p *Process) Kill() error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.job == 0 {
+		return fmt.Errorf("role process closed")
+	}
+	return windows.TerminateJobObject(p.job, 1)
+}
 
 func (p *Process) Close() error {
 	p.mu.Lock()
@@ -127,6 +146,10 @@ func launch(ctx context.Context, r Request, beforeResume func(windows.Handle) er
 	}
 	if len(r.Pipes) < 1 || len(r.Pipes) > maxPipes || len(r.Arguments) > 32 {
 		return nil, fmt.Errorf("%w: invalid launch bounds", ErrUnavailable)
+	}
+	lanes, err := requestLanes(r)
+	if err != nil {
+		return nil, err
 	}
 	if r.Plan.Role == Network {
 		if r.Identity != nil {
@@ -232,23 +255,14 @@ func launch(ctx context.Context, r Request, beforeResume func(windows.Handle) er
 	for n, pipe := range pipes {
 		envValues = append(envValues, "ALMAGEST_PIPE_"+strconv.Itoa(n)+"="+strconv.FormatUint(uint64(pipe), 10))
 	}
-	envValues = append(envValues, "ALMAGEST_BOOTSTRAP_FD="+strconv.FormatUint(uint64(pipes[0]), 10))
-	switch r.Plan.Role {
-	case Runtime:
-		names := []string{"ALMAGEST_DATA_FD", "ALMAGEST_DIAGNOSTICS_FD", "ALMAGEST_ADMIN_FD", "ALMAGEST_CONFIG_FD", "ALMAGEST_COMMAND_FD"}
-		for index, name := range names {
-			value := uint64(0)
-			if index+1 < len(pipes) {
-				value = uint64(pipes[index+1])
-			}
-			envValues = append(envValues, name+"="+strconv.FormatUint(value, 10))
-		}
-	case Command:
-		value := uint64(0)
-		if len(pipes) > 1 {
-			value = uint64(pipes[1])
-		}
-		envValues = append(envValues, "ALMAGEST_CALLBACK_FD="+strconv.FormatUint(value, 10))
+	handles := make(map[roleentry.Lane]windows.Handle, len(lanes))
+	for index, lane := range lanes {
+		handles[lane] = pipes[index]
+	}
+	for _, lane := range []roleentry.Lane{roleentry.LaneBootstrap, roleentry.LaneData, roleentry.LaneDiagnostics,
+		roleentry.LaneAdmin, roleentry.LaneConfig, roleentry.LaneCommand, roleentry.LaneCallback} {
+		value := uint64(handles[lane])
+		envValues = append(envValues, string(lane)+"="+strconv.FormatUint(value, 10))
 	}
 	slices.SortFunc(envValues, func(a, b string) int { return strings.Compare(strings.ToUpper(a), strings.ToUpper(b)) })
 	env := utf16.Encode([]rune(strings.Join(envValues, "\x00") + "\x00\x00"))
@@ -295,7 +309,45 @@ func launch(ctx context.Context, r Request, beforeResume func(windows.Handle) er
 	runtime.KeepAlive(caps)
 	runtime.KeepAlive(pipes)
 	started = true
-	return &Process{process: pi.Process, job: job, pid: pi.ProcessId}, nil
+	return &Process{process: pi.Process, job: job, pid: pi.ProcessId, role: r.Plan.Role}, nil
+}
+
+func requestLanes(r Request) ([]roleentry.Lane, error) {
+	lanes := r.Lanes
+	explicit := len(lanes) != 0
+	if len(lanes) == 0 {
+		lanes = []roleentry.Lane{roleentry.LaneBootstrap}
+		switch r.Plan.Role {
+		case Runtime:
+			legacy := []roleentry.Lane{roleentry.LaneData, roleentry.LaneDiagnostics, roleentry.LaneAdmin, roleentry.LaneConfig, roleentry.LaneCommand}
+			lanes = append(lanes, legacy[:len(r.Pipes)-1]...)
+		case Command:
+			if len(r.Pipes) == 2 {
+				lanes = append(lanes, roleentry.LaneCallback)
+			}
+		}
+	}
+	if len(lanes) != len(r.Pipes) || len(lanes) == 0 || lanes[0] != roleentry.LaneBootstrap {
+		return nil, fmt.Errorf("%w: invalid role lane mapping", ErrUnavailable)
+	}
+	seen := make(map[roleentry.Lane]bool, len(lanes))
+	for _, lane := range lanes {
+		allowed := lane == roleentry.LaneBootstrap
+		switch r.Plan.Role {
+		case Runtime:
+			allowed = allowed || lane == roleentry.LaneData || lane == roleentry.LaneDiagnostics || lane == roleentry.LaneAdmin || lane == roleentry.LaneConfig || lane == roleentry.LaneCommand
+		case Command:
+			allowed = allowed || lane == roleentry.LaneCallback
+		}
+		if !allowed || seen[lane] {
+			return nil, fmt.Errorf("%w: invalid role lane mapping", ErrUnavailable)
+		}
+		seen[lane] = true
+	}
+	if explicit && r.Plan.Role == Runtime && (!seen[roleentry.LaneData] || !seen[roleentry.LaneDiagnostics]) {
+		return nil, fmt.Errorf("%w: runtime data lanes are required", ErrUnavailable)
+	}
+	return append([]roleentry.Lane(nil), lanes...), nil
 }
 
 func duplicatePipes(input []windows.Handle) ([]windows.Handle, error) {

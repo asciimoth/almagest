@@ -25,9 +25,18 @@ import type { TLSBuiltinCAInfo, TLSCertEntry, TLSPolicyEntry, TLSSnapshot } from
 export type HelloResponse = {
   version: string;
   daemon?: string;
-  execution_mode: "direct";
+  execution_mode: "direct" | "isolation" | "isolation-development";
+  isolation?: IsolationStatus;
   project_version_status: ProjectVersionStatus;
   surfaces?: Record<string, unknown>;
+};
+
+export type IsolationStatus = {
+  protocol_version: number;
+  restrictions: Record<string, string[]>;
+  roles: Record<string, string>;
+  capabilities: Record<string, boolean>;
+  recovery_state: string;
 };
 
 export type SubscribeLogsResponse = {
@@ -102,16 +111,47 @@ type SubscriptionResponse<T> = {
 
 export function parseHelloResponse(input: unknown): HelloResponse | null {
   if (!isRecord(input) || typeof input.version !== "string" || !isOptionalString(input.daemon)
-    || input.execution_mode !== "direct") return null;
+    || !isExecutionMode(input.execution_mode)) return null;
   const status = parseProjectVersionStatus(input.project_version_status);
-  if (!status || (input.surfaces !== undefined && !isRecord(input.surfaces))) return null;
+  const isolation = input.isolation === undefined ? undefined : parseIsolationStatus(input.isolation);
+  if (!status || (input.surfaces !== undefined && !isRecord(input.surfaces))
+    || (input.isolation !== undefined && !isolation)
+    || (input.execution_mode === "direct") !== (isolation === undefined)) return null;
   return {
     version: input.version,
     ...(input.daemon === undefined ? {} : { daemon: input.daemon }),
     execution_mode: input.execution_mode,
     project_version_status: status,
+    ...(isolation ? { isolation } : {}),
     ...(input.surfaces === undefined ? {} : { surfaces: { ...input.surfaces } }),
   };
+}
+
+function isExecutionMode(input: unknown): input is HelloResponse["execution_mode"] {
+  return input === "direct" || input === "isolation" || input === "isolation-development";
+}
+
+function parseIsolationStatus(input: unknown): IsolationStatus | null {
+  if (!isRecord(input) || !Number.isSafeInteger(input.protocol_version) || Number(input.protocol_version) <= 0
+    || !isRecord(input.restrictions) || !isRecord(input.roles) || !isRecord(input.capabilities)
+    || typeof input.recovery_state !== "string" || input.recovery_state.length === 0) return null;
+  const restrictions: Record<string, string[]> = {};
+  for (const [role, values] of Object.entries(input.restrictions)) {
+    if (!Array.isArray(values) || !values.every((value) => typeof value === "string")) return null;
+    restrictions[role] = [...values];
+  }
+  const roles: Record<string, string> = {};
+  for (const [role, value] of Object.entries(input.roles)) {
+    if (typeof value !== "string") return null;
+    roles[role] = value;
+  }
+  const capabilities: Record<string, boolean> = {};
+  for (const [name, value] of Object.entries(input.capabilities)) {
+    if (typeof value !== "boolean") return null;
+    capabilities[name] = value;
+  }
+  return { protocol_version: Number(input.protocol_version), restrictions, roles, capabilities,
+    recovery_state: input.recovery_state };
 }
 
 export function parseSubscribeLogsResponse(input: unknown): SubscribeLogsResponse | null {

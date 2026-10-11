@@ -2,8 +2,8 @@
 
 Checkpoint 19 is implemented in `bin/internal/isolation/configwriter`.
 `bin/cmd/almagest-config-writer-role` is the restricted C process entry point.
-It is not connected to production daemon startup and does not enable an
-isolated production mode.
+The packaged Linux production composition starts it when regular config is
+writable. Read-only configurations omit C.
 
 ## Contract
 
@@ -112,8 +112,8 @@ invariants.
 ## Checkpoint 27 runtime integration
 
 `bin/internal/isolation/configpersistence` connects R's existing
-`daemonservices.ConfigPersistence` contract to C. It does not enable isolated
-daemon startup. Direct mode continues to use `daemonservices/localconfig` and
+`daemonservices.ConfigPersistence` contract to C. The Linux production
+composition uses this path. Direct mode continues to use `daemonservices/localconfig` and
 does not create a transport, transfer buffer, or C process.
 
 R sends opaque config bytes once on the bounded config-transfer lane and then

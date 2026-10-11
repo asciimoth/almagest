@@ -1,10 +1,10 @@
 # Complete isolation profile qualification
 
-Checkpoint 30 adds the strict complete-profile evidence gate in
+Checkpoint 30 adds the strict complete-profile evidence validator in
 `bin/internal/isolation/qualification` and the development-only
-`isolation-qualify` command. It does not enable isolated daemon startup. A
-profile stays unavailable until one evidence record passes all checks. Direct
-mode is unchanged.
+`isolation-qualify` command. Checkpoint 32 supplies the packaged Linux rollout
+gate and enables that profile. A new platform profile stays unavailable until
+its complete native evidence and rollout gate pass. Direct mode is unchanged.
 
 ## Evidence boundary
 
@@ -101,12 +101,11 @@ probes on the host.
 
 ## Current qualification state
 
-No complete daemon profile has passed the frozen manifest. Linux implements
-trusted N preparation, restricted R/C/H, bounded role cgroup provisioning,
-native backend comparison, a restricted-runtime composition test, and a real
-daemon-engine composition with an N-owned web listener. Separate
-upstream DNS and p-mark fixtures provide additional component coverage; they
-are not complete direct/isolated daemon parity evidence. See the
+The packaged Linux amd64 rollout gate passes. It covers the real default entry,
+restricted R/C/H composition, separate production role cgroups, application
+readiness, admin publication, storage fresh-install and migration flows,
+failure rollback, native backend behavior, DNS providers, and p-mark lifecycle.
+The direct composition remains in the full project gate. See the
 [Linux component reference](DAEMON_ISOLATION_LINUX_PROFILES.md).
 
 The native broker path now records durable ownership before a TUN mutation and
@@ -116,16 +115,17 @@ readiness exchange and a real Linux fixed-target transaction test. These close
 component and recovery gaps, but they do not synthesize complete-profile
 evidence.
 
-Storage quotas and integrated recovery/hostile-runtime evidence remain
-required. Performance evidence is diagnostic only. Windows has
+Quota implementation is excluded from release scope at the maintainer's request;
+persistent storage quotas are not a qualification gate. Existing safety limits
+remain in place. Performance evidence is diagnostic only. Windows has
 trusted caller/service N, persistent deployment identities, and final-token
 native component evidence for Windows Server 2022/amd64, but does not yet have
 the complete-daemon evidence required by this manifest. Missing results fail
 qualification; they are not successful skips.
 
-Production isolated startup remains disabled. Checkpoint 32 must not enable
-a profile before complete evidence passes this gate. Direct mode remains
+Production isolated startup is enabled only for Linux amd64. Direct mode remains
 available through `--no-isolation`, which experimental classes also require.
+All other platforms fail closed before untrusted execution.
 
 The validator has race-enabled tests and structured/raw JSON fuzz targets.
 Passing those tests proves validator behavior, not acceptance of a platform.
@@ -306,3 +306,218 @@ with its relayed web admin. `runtime-race-final.log` and
 detector. `runtime-bootstrap-fuzz.log` records 2,425,136 inputs in a 30-second,
 two-worker `FuzzRuntimeInput` campaign. These development results do not replace
 the required recovery and Windows release evidence.
+
+## Checkpoint 32 rollout safety audit, 2026-10-11
+
+The rollout audit found storage rollback and supervision defects before the
+production launch path was enabled. The storage fixes retain version 2
+migration receipts, bind native directory identities, reject a different
+recorded layout, reserve derived staging paths, and validate the backup and
+all outputs before removing anything. Rollback refuses nonempty broker storage
+so it cannot discard unresolved host-recovery records. Unknown, duplicate,
+case-alias, oversized, and trailing migration-record input is rejected.
+
+Supervisor fixes give an already-reported exit precedence over buffered
+readiness, cancel role observers when supervision returns, attempt a kill after
+a failed graceful stop, bound the kill wait, and report successfully stopped
+roles as no longer alive or ready.
+
+Docker verification passed three race-enabled runs of the complete bootstrap
+and supervision packages. Statement coverage was 78.1% and 85.3%, respectively.
+Tests terminate a child process without cleanup at each migration phase and
+then recover from the saved record. Replacement-directory, missing-receipt,
+foreign-layout, occupied-staging, broker-journal preservation, readiness, and
+failed or hung shutdown regressions are included. An earlier concurrent run
+hit the existing one-second assertion in `TestRecoveryTimeoutRetainsRecord`;
+the three subsequent package runs passed without changing that timeout.
+
+Two 30-second, two-worker Docker fuzz campaigns passed: `FuzzMigrationRecord`
+completed 1,206,256 inputs and `FuzzStorageLayoutValidation` completed 786,607.
+These are bounded smoke campaigns, not proof of complete platform containment.
+The focused repository check passed for the migration and supervision tests;
+Windows amd64/arm64 lint passed. The Windows harness lint was also rerun with
+its required PowerShell module environment after an initial missing-module
+diagnostic in the check container.
+
+The native Windows selector `winvm:m23::trusted-bootstrap-storage` passed in
+`artifacts/winvm/run-CdFogoTy`, including the new migration tests and fuzz
+seeds. The first attempt stopped before VM startup at the old unconditional
+90 GiB space check. Six overlays from completed successful runs were removed;
+their logs and source archives were retained. The space check now reserves
+90 GiB for a fresh 80 GiB image build, but requires only 10 GiB of starting
+headroom on the artifact filesystem when it can reuse a verified cached base.
+This reserve is not a guarantee that an arbitrarily long run will fit.
+Logs are under `artifacts/isolation-qualification/rollout-audit/`.
+
+The runtime now sends a separate application-ready request after engine/admin
+startup. Race-enabled network, runtime-client, and transport package tests
+passed. The readiness decoder fuzz campaign completed 328,880 inputs in
+30 seconds with two workers. Docker's native `TestNativeCompleteDaemon` passed
+with the new application-ready barrier, config transactions, live snapshot
+restore, the restricted command helper, and R/H shutdown after N loss. These
+results do not establish a production supervisor/launcher composition. All
+46 Windows-harness Python tests, shell checks, and Python lint also passed
+after the space-check change.
+
+Supervisor startup now requires N's application-ready signal in addition to
+the configured role restriction proofs. Three race-enabled supervision package
+runs passed with both signal orders, missing/invalid signals, startup exit,
+timeout, and cancellation. The started-process adapter also passed three
+race-enabled package runs, including actual child exit, failed graceful stop,
+forced termination, concurrent stops, and a hung graceful request in Docker.
+The focused `just check` passed for all 13 new or affected readiness/lifecycle
+tests, including the normal repository static checks and Windows amd64/arm64
+lint. Its log is `application-readiness-check-verified.log` in the audit
+artifact directory. The earlier attempts and their lint diagnostics remain
+recorded separately.
+The new ordinary-user Windows VM case `m32::application-readiness` passed all
+14 required observations, including the decoder fuzz seeds and real child
+process shutdown. Its retained run is `artifacts/winvm/run-ZGtx25uz`; the VM
+shut down cleanly. This is lifecycle/protocol evidence, not a complete Windows
+isolated-daemon profile qualification.
+
+The supervised broker service now performs journal recovery before accepting
+runtime RPCs and binds readiness to the broker's actual session. The real Linux
+daemon test passed three runs using that service with restricted R and H,
+config updates, live snapshot restore, and process-set shutdown after broker
+loss. C remains inside the trusted test harness in this case. This is not a
+complete production launch qualification.
+
+The network and supervision packages passed three race-enabled runs after
+late native recovery results were rejected before cleanup or journal
+resolution. The service tests then passed 30 race-enabled repetitions. An
+earlier repository check found a test cleanup race: the temporary journal was
+removed before late recovery finished its persistence work. The corrected
+test joins the complete recovery callback before cleanup. Logs are retained
+under the same rollout audit directory.
+The focused `just check` passed for all five service/recovery tests, including
+the normal repository static checks and Linux/Windows lint. The ordinary-user
+Windows case `m32::supervised-service` passed all five required observations in
+`artifacts/winvm/run-DWDZ07Os` and shut down cleanly. Its payload preceded the
+test-only cleanup synchronization fix; the production service and recovery
+code was unchanged. Final Linux repeat and repository-check evidence uses the
+corrected test.
+
+The next Linux composition run moved C out of the test harness into the
+restricted config-writer executable. R, C, and H use distinct identities.
+Three native Docker runs passed config transactions, live snapshot restore,
+application readiness, and process-set shutdown after broker loss. The
+persisted config was checked after C stopped. The passing log is
+`three-role-native-verified.log` in the rollout audit directory. Two earlier
+setup attempts failed on private-directory mode and ownership-change order;
+their logs remain separate from the passing result. N is still the test
+harness, not the production network-role entry point.
+
+Windows process supervision now waits on a pinned, non-inheritable observation
+handle. Native Close cannot invalidate that wait. All R/C/H cases passed for
+both Kill and Close, including duplicate adapter rejection and a stop deadline
+while the child remains alive. The ordinary and privileged profile suites each
+passed 13 required observations in `artifacts/winvm/run-0311iOOQ`; the VM shut
+down cleanly. An observation error does not count as confirmed process exit.
+Three race-enabled network and supervision package runs and the focused
+repository check passed (`windows-adapter-race.log` and
+`windows-adapter-check.log`).
+
+Bootstrap no longer imports the daemon API and runtime engine through a shared
+snapshot-size constant. The constant now lives in a dependency-free package;
+its value has not changed. Full API and bootstrap race tests passed in
+`bootstrap-api-race.log`. The focused `just check` passed dependency-boundary,
+opaque snapshot input, and uncertain-exit tests, plus the normal static checks
+and Linux/Windows lint (`role-launch-check.log`).
+The dependency guard then passed for Linux amd64 and Windows amd64/arm64
+build-selected imports in Docker, without executing foreign-platform binaries.
+The focused `just check` also passed after this extension
+(`cross-platform-dependencies.log` and `cross-platform-dependencies-check.log`).
+
+The Linux owned-launch object then replaced test-only process adapters for
+R, C, and H. Three real-daemon Docker runs passed with native child credential
+binding, config transactions, live restore, and shutdown after N loss
+(`owned-launch-all-build.log` and `owned-launch-all-native.log`). N is still
+the test harness. Linux profile and supervision packages passed three
+race-enabled runs (`owned-launch-race.log`). The PID decoder fuzz campaign
+passed 279,234 inputs in 30 seconds (`owned-launch-fuzz.log`). Cancellation and
+already-exited peer checks passed 30 race-enabled repetitions
+(`owned-launch-cancellation.log`). All logs are in the rollout audit directory.
+Review then added a pidfd for the namespace child: wrapper exit alone is not
+proof that the restricted child exited. Supervision now joins both exits and
+reports either observation failure without waiting for the other process.
+The final code passed three native Docker runs
+(`pinned-launch-build-verified.log`, `pinned-launch-native-verified.log`) and
+three race-enabled Linux profile/supervision package runs
+(`pinned-launch-race-verified.log`). Tests cover a live child after wrapper
+exit and either observation failing before the other process exits.
+The focused `just check` passed (`owned-launch-check-final.log`); the earlier
+attempt found only missing lint explanations on intentional nil-context tests.
+The full isolation package race suite also passed before the pidfd refinement
+(`owned-launch-all-packages.log`), not as final whole-feature qualification.
+
+Linux native settings were then separated from the daemon platform package
+into `internal/nativebackend`. Direct mode and the native isolated composition
+share defaults, DNS address parsing, numeric/hex marks, and process-mark
+settings. Explicit comparison tests cover direct and broker decoding; callback
+settings remain data until trusted code binds executable callbacks. No config
+schema changed. The dependency guard now checks the shared native package for
+forbidden runtime imports on Linux.
+
+Three native real-daemon Docker runs passed with the shared settings
+(`native-settings-build.log`, `native-settings-native.log`). Full platform,
+direct-network, native-settings, and bootstrap race suites passed
+(`native-settings-packages.log`), as did three focused race repetitions
+(`native-settings-race.log`). The parser fuzz campaign passed 981,970 inputs
+in 30 seconds (`native-settings-fuzz.log`). The focused `just check` passed all
+five selected tests and the normal static checks (`native-settings-check.log`).
+These logs are in the rollout audit directory. The later production N entry
+uses the same parser.
+
+The Linux `networkrole.RunLinux` assembly now owns R/C/H launch and private
+lanes, restriction handshakes, N preparation, journaled supervision, and fixed
+admin listeners. Native tests passed five repetitions of each of five cases:
+normal startup, an operator file output sink, backend preparation failure,
+helper bootstrap failure, and admin-listener failure. Both successful cases
+perform a real admin config transaction and verify C's persisted JSON after
+shutdown. Every case joins wrapper and pinned namespace-child exit. The final
+run uses supervisor-owned graceful shutdown, not automatic `exec` cancellation.
+Its logs are `network-assembly-graceful-build.log` and
+`network-assembly-graceful-native.log` in the rollout audit directory.
+
+Earlier runs identified a test-directory ownership cleanup error, a repeated
+lane-close error wrongly reported as failed shutdown, and an overly strict
+test comparison of formatted config bytes. Their logs remain separate from
+the passing results. Role stdout/stderr now always use parent-owned pipes,
+including when N's sink is a regular file; role code does not inherit that host
+file descriptor. The full isolation package race suite passed after these
+changes (`network-assembly-graceful-packages.log`). Three repeated focused
+package runs also passed during assembly development.
+The final focused `just check` passed validation, rollback exit-proof, and
+dependency-boundary tests with the normal repository static checks
+(`network-assembly-check-verified.log`). Earlier check logs retain a test-style
+warning and a type-check failure while test imports were being edited; the
+passing check used the stable final code. The Linux profile runner now includes
+`TestNativeNetworkRoleAssembly`; its updated shell script passed ShellCheck in
+Docker.
+
+The development fixture can use one bounded container cgroup. The production
+gate separately provisions and checks the N/R/C/H cgroups. Production input
+preparation, the minimal N command entry, callback binding, the real daemon,
+and deployment storage flows are connected in the Linux runner. Windows
+complete-daemon composition and packaging remain unqualified and disabled.
+
+### Resolved runtime input materialization, 2026-10-11
+
+Trusted bootstrap now emits only resolved secret/TLS values for R and installs
+the regular config, protected document, and optional opaque startup archive
+under fixed names in R's held private directory. Tests cover selector removal,
+source-category preservation, bounds, invalid internal markers, stale snapshot
+removal, persistent-data preservation, metadata, and reserved-name attacks.
+The protected-document fuzz campaign completed 819,105 executions in 31 seconds
+with two workers in a network-disabled Go 1.26.6 container.
+
+The first capability-limited native run found that the writer changed file
+ownership before mode. A bootstrap with `CAP_CHOWN` but without `CAP_FOWNER`
+could not then apply mode `0600`. The writer now sets and flushes the mode before
+the final ownership transfer. With the directory-write capability scoped to
+trusted bootstrap, the five-cycle native assembly run passed all 25 normal,
+file-output, backend-failure, helper-failure, and admin-failure cases. Evidence
+is in `runtime-input-fuzz.log` and `runtime-input-native-fixed.log` in the
+rollout audit directory. This closes runtime input materialization only; it is
+not production-entry or complete-profile evidence.

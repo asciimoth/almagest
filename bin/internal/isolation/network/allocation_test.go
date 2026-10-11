@@ -377,11 +377,19 @@ func TestAllocationRuntimeConcurrentReservations(t *testing.T) {
 	wg.Wait()
 	close(ips)
 	seen := map[string]bool{}
+	var allocated []string
 	for ip := range ips {
 		if ip == nil || seen[ip.String()] {
-			t.Fatalf("duplicate or missing address %v: %v", ip, a.Err())
+			b.mu.Lock()
+			var brokerAddresses []string
+			for _, resource := range b.resources {
+				brokerAddresses = append(brokerAddresses, resource.state.Allocation.Address.String())
+			}
+			b.mu.Unlock()
+			t.Fatalf("duplicate or missing address %v after %v; broker=%v: %v", ip, allocated, brokerAddresses, a.Err())
 		}
 		seen[ip.String()] = true
+		allocated = append(allocated, ip.String())
 	}
 	a.FreeAllIP()
 }

@@ -3,6 +3,7 @@ package bootstrap
 import (
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
@@ -21,6 +22,13 @@ type LaunchSpec struct {
 	WorkingDirectory string
 	Environment      []string
 	LibraryPaths     []string
+}
+
+// OpenTrustedFile opens and returns the same held regular-file object used by
+// trusted launch validation. The caller owns the descriptor. Role launch must
+// use this descriptor instead of resolving the path again.
+func OpenTrustedFile(path string) (*os.File, error) {
+	return openTrustedFile(path)
 }
 
 // Validate checks the stable part of a role launch before any child starts.

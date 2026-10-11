@@ -59,6 +59,9 @@ type Broker struct {
 	events           chan transport.Event
 	stopped          chan struct{}
 	stopOnce         sync.Once
+	applicationReady chan struct{}
+	applicationUp    bool
+	serviceAssigned  bool
 	cancel           context.CancelFunc
 	// timeout is fixed in production; tests shorten it for stalled backends.
 	timeout time.Duration
@@ -95,7 +98,7 @@ func NewWithJournal(session protocol.Session, p policy.Policy, backend Backend, 
 	return &Broker{session: session, policy: owned, backend: backend, journal: journal, gate: make(chan struct{}, 1), epoch: 1,
 		matchSlots: make(chan struct{}, min(int(owned.Limits.MaxConcurrentRequests), 64)),
 		resources:  make(map[protocol.ResourceID]*resource), receipts: make(map[string]*receipt),
-		events: make(chan transport.Event, protocol.MaxConcurrentRequests), stopped: make(chan struct{}), timeout: operationTimeout}, nil
+		events: make(chan transport.Event, protocol.MaxConcurrentRequests), stopped: make(chan struct{}), applicationReady: make(chan struct{}), timeout: operationTimeout}, nil
 }
 
 func (b *Broker) authorize(meta protocol.RequestMeta, mutation bool, op protocol.Operation) error {
@@ -323,7 +326,43 @@ func (b *Broker) Status(ctx context.Context, req protocol.ReadRequest) (protocol
 			live++
 		}
 	}
-	return protocol.StatusResult{RecoveryRequired: b.recovery, LiveResources: live}, nil
+	return protocol.StatusResult{RuntimeReady: b.applicationUp && !b.closed, RecoveryRequired: b.recovery, LiveResources: live}, nil
+}
+
+// ApplicationReady closes after R reports successful engine/admin startup.
+// Bootstrap's restriction acknowledgement is separate. Supervisors must also
+// observe process exit; a closed channel does not prove continued health.
+func (b *Broker) ApplicationReady() <-chan struct{} { return b.applicationReady }
+
+// MarkRuntimeReady records a single idempotent session fact. It accepts no
+// paths, resource selectors, policy, or platform restriction claims. It does
+// not call the backend or allocate an operation receipt.
+func (b *Broker) MarkRuntimeReady(ctx context.Context, req protocol.ReadRequest) (protocol.RuntimeReadyResult, error) {
+	if ctx == nil {
+		return protocol.RuntimeReadyResult{}, protocol.ErrInvalidContract
+	}
+	if err := ctx.Err(); err != nil {
+		return protocol.RuntimeReadyResult{}, err
+	}
+	if err := b.authorize(req.Meta, false, protocol.OperationRuntimeReady); err != nil {
+		return protocol.RuntimeReadyResult{}, err
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if err := b.current(req.Meta); err != nil {
+		return protocol.RuntimeReadyResult{}, err
+	}
+	if !b.dataReady {
+		return protocol.RuntimeReadyResult{}, protocol.ErrInvalidContract
+	}
+	if b.recovery {
+		return protocol.RuntimeReadyResult{}, protocol.ErrRecoveryRequired
+	}
+	if !b.applicationUp {
+		b.applicationUp = true
+		close(b.applicationReady)
+	}
+	return protocol.RuntimeReadyResult{Session: b.session, Ready: true}, nil
 }
 
 // Events has bounded capacity. A slow consumer causes recovery-required state

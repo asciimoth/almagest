@@ -173,6 +173,27 @@ func TestHelperSeparatesCallbackAuthorityAndDerivesSlots(t *testing.T) {
 	}
 }
 
+func TestHelperAcceptsOnlyProtectedForwardedCallbackSlots(t *testing.T) {
+	launcher := &fakeLauncher{}
+	config := baseConfig(t)
+	config.Callbacks["forwarded"] = Callback{Profile: "notify", Event: "forwarded", ForwardSlots: []string{"name", "generation"}}
+	helper, err := New(helperSession(), config, launcher)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := protocol.CallbackRequest{Meta: helperMeta("forwarded"), CallbackID: "forwarded", Event: "forwarded",
+		Slots: map[string]string{"name": "dns", "generation": "7"}}
+	result, err := helper.RunCallback(context.Background(), request)
+	if err != nil || result.Outcome != protocol.OutcomeCommitted || len(launcher.calls()) != 1 {
+		t.Fatalf("forwarded callback = %+v, %v calls=%#v", result, err, launcher.calls())
+	}
+	request.Meta.OperationID = "extra"
+	request.Slots["argv"] = "--help"
+	if result, err := helper.RunCallback(context.Background(), request); err == nil || result.Outcome != protocol.OutcomeRejected || len(launcher.calls()) != 1 {
+		t.Fatalf("extra forwarded slot = %+v, %v", result, err)
+	}
+}
+
 func TestHelperRejectsForgedAndStaleCallbacks(t *testing.T) {
 	helper := newTestHelper(t, &fakeLauncher{})
 	valid := protocol.CallbackRequest{Meta: helperMeta("callback"), CallbackID: "tun-ready", Event: "tun-ready", Resource: protocol.ResourceRef{

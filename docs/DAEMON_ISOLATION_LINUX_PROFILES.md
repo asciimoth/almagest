@@ -1,9 +1,10 @@
 # Linux role restriction profiles
 
-Checkpoint 24 implements Linux amd64 profile components. The shipping daemon
-still uses direct mode; complete isolated daemon assembly and qualification
-remain later gates. See the [implementation plan](DAEMON_ISOLATION_IMPLEMENTATION_PLAN.md)
-and [qualification contract](DAEMON_ISOLATION_QUALIFICATION.md).
+Checkpoint 24 implements Linux amd64 restrictions. Checkpoint 32 connects and
+packages them. The shipping Linux amd64 daemon uses isolation by default;
+`--no-isolation` selects direct mode. See the
+[implementation plan](DAEMON_ISOLATION_IMPLEMENTATION_PLAN.md) and
+[qualification contract](DAEMON_ISOLATION_QUALIFICATION.md).
 
 ## Trust boundary
 
@@ -40,8 +41,8 @@ Restricted children enter their held cgroups with `CLONE_INTO_CGROUP`.
 Bootstrap enters the network cgroup after child launch, then prepares N.
 Cleanup removes only empty cgroups that still match the held device/inode.
 
-Separate identities and persistent storage quotas remain deployment inputs.
-A per-file size limit is not a disk quota.
+Separate identities remain deployment inputs. Persistent storage quotas are
+outside the requested release scope. A per-file size limit is not a disk quota.
 
 ## Restricted launcher: R, C, and H only
 
@@ -75,6 +76,21 @@ empty environment and fixed cwd. Cgroup placement occurs before its first
 instruction, with no retry outside the cgroup. The launcher validates output
 streams, installs an EOF stdin pipe, and closes unrelated descriptors,
 including those above the new limit. Bootstrap closes its child-channel copies.
+
+`linuxprofile.Start` owns the launch command and its single exit waiter. Its
+`Peer` method selects the wrapper's one namespace child within a bounded wait
+and pins its lifetime with a pidfd. The connected transport must still check
+message credentials. A procfs PID is
+not proof that restrictions are installed. `Process.Supervise` derives the role
+from the validated launch plan and permits only one supervisor. It requires
+both wrapper and namespace-child exit before a clean stop. A native wait
+failure reports role loss without claiming exit. The caller still
+owns input files and must close its child-channel copies after launch.
+`Start` forwards stdout and stderr through parent-owned pipes even when the
+selected output sink is a file or terminal. A restricted role never inherits
+the sink's host descriptor. Startup rollback can use `WaitStopped` to require
+both wrapper and pinned namespace-child exit without treating nonzero exit
+status alone as uncertain cleanup.
 
 Restriction order:
 
@@ -118,15 +134,16 @@ Dynamic commands or additional resources require a separately reviewed profile.
 | Cgroup provisioner | Separate bounded role domains and safe cleanup in a disposable private cgroup namespace |
 | TrustedSystem | Equal-authority direct/prepared comparison: direct DNS, OutDNS, regular/default TUN, routes, bypass marks, MTU rebuild, owner matching, cleanup |
 | TrustedComposition | Fully restricted R with real N: TCP/UDP, owner matching, TUN, bounded OutDNS and reverse application-DNS relays, session-loss cleanup |
+| Production entry | Actual `almagestd` to minimal N re-exec, protected input loading, separate role cgroups, R application readiness, N-owned admin status, clean stop, and service restart |
+| Deployment storage | Fresh and repeated preparation, legacy migration, recovery, rollback protection, ownership, modes, and fixed protected defaults |
 | Restricted C composition | Real static C entry point, post-launch all-thread seal, bounded readiness exchange, control-only config transfer, fixed-target read/replace, and peer-loss exit |
 | Upstream DNS matrix | All ten sysnet-linux v0.10.1 provider cases, including fallback and dynamic provider behavior |
 | p-mark guest | Released p-mark v0.5.0 guest cases for lifecycle, sockets, exact kernel policy, 64 immediate-exec probes, and churn |
 | Race and fuzz tests | Profile plans, native arguments, backend cgroup values, DNS packets and application responses, plus broker/runtime/transport suites |
 
-The DNS matrix and p-mark guest run upstream integration fixtures. They do not
-run PrepareBackend or the complete restricted daemon. TrustedComposition uses
-one bounded fixture cgroup, not the final per-role deployment. These groups
-provide complementary component evidence, not a complete production manifest.
+The DNS matrix and p-mark guest run upstream integration fixtures. The
+production-entry case separately runs the complete installed composition with
+its final per-role cgroups. These groups provide complementary evidence.
 
 The p-mark probe runs in the guest's initial PID namespace as a child of init.
 Kernel tracepoint TGIDs therefore match its procfs view. A private container
@@ -175,9 +192,9 @@ to be empty after peer-loss cleanup. The Linux native reconciler resolves an
 absent TUN after restart and deliberately leaves a still-present interface for
 inspection because an interface index can be reused.
 
-Remaining release gates include complete runtime/admin service assembly,
-deployment identities and storage quotas, the full
-feature/hostile-runtime manifest and other platform/build targets. Performance
-is accepted and is not a profile gate.
-All supported backend features, including eBPF process filtering, remain
-required. Direct mode has no isolation launcher or internal IPC overhead.
+The Linux runtime/admin service assembly, deployment identities, storage flow,
+status reporting, and default switch are complete. Other platform/build targets
+remain unavailable until separately qualified. Performance is accepted and is
+not a profile gate. All supported backend features, including eBPF process
+filtering, remain required. Direct mode has no isolation launcher or internal
+IPC overhead.

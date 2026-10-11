@@ -128,6 +128,55 @@ func TestGateRelaysOpaqueStreamsByFixedEndpoint(t *testing.T) {
 	}
 }
 
+func TestPreparedBrokerPublishesOnlyAfterStart(t *testing.T) {
+	left, right := net.Pipe()
+	session := testSession(t)
+	type result struct {
+		broker *Broker
+		err    error
+	}
+	created := make(chan result, 1)
+	go func() {
+		broker, err := NewPreparedBroker(context.Background(), left, session, []uint16{1})
+		created <- result{broker: broker, err: err}
+	}()
+	runtime, err := NewRuntime(context.Background(), right, session, []uint16{1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := <-created
+	if got.err != nil {
+		t.Fatal(got.err)
+	}
+	t.Cleanup(func() {
+		_ = got.broker.Close()
+		_ = runtime.Close()
+		got.broker.Wait()
+		runtime.Wait()
+	})
+	if err = got.broker.Start([]Endpoint{{ID: 2, Listener: newChannelListener()}}); !errors.Is(err, protocol.ErrInvalidContract) {
+		t.Fatalf("Start with changed endpoint ID = %v", err)
+	}
+	public := newChannelListener()
+	if err = got.broker.Start([]Endpoint{{ID: 1, Listener: public}}); err != nil {
+		t.Fatal(err)
+	}
+	if err = got.broker.Start([]Endpoint{{ID: 1, Listener: newChannelListener()}}); !errors.Is(err, protocol.ErrInvalidContract) {
+		t.Fatalf("second Start = %v", err)
+	}
+	external := public.connect(t)
+	relayed, err := runtime.Listener(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	accepted, err := relayed.Accept()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = external.Close()
+	_ = accepted.Close()
+}
+
 func TestGateKeepsHTTPAndOriginParsingInRuntime(t *testing.T) {
 	public := newChannelListener()
 	_, runtime := newGatePair(t, []Endpoint{{ID: 1, Listener: public}}, []uint16{1})

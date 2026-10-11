@@ -50,6 +50,36 @@ func openTrustedFile(path string) (*os.File, error) {
 	return os.NewFile(uintptr(fileFD), path), nil
 }
 
+func openUntrustedFile(path string) (*os.File, error) {
+	if path == "" || !filepath.IsAbs(path) || filepath.Clean(path) != path || containsParentReference(path) {
+		return nil, fmt.Errorf("%w: untrusted input path must be absolute and clean", ErrInvalidInput)
+	}
+	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
+	fd, err := unix.Open("/", unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return nil, err
+	}
+	for _, part := range parts[:len(parts)-1] {
+		next, openErr := unix.Openat(fd, part, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+		_ = unix.Close(fd)
+		if openErr != nil {
+			return nil, fmt.Errorf("%w: untrusted input parent: %v", ErrUnsafeInput, openErr)
+		}
+		fd = next
+	}
+	fileFD, err := unix.Openat(fd, parts[len(parts)-1], unix.O_RDONLY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+	_ = unix.Close(fd)
+	if err != nil {
+		return nil, err
+	}
+	var stat unix.Stat_t
+	if err := unix.Fstat(fileFD, &stat); err != nil || stat.Mode&unix.S_IFMT != unix.S_IFREG {
+		_ = unix.Close(fileFD)
+		return nil, fmt.Errorf("%w: untrusted input is not a regular file", ErrInvalidInput)
+	}
+	return os.NewFile(uintptr(fileFD), path), nil
+}
+
 func checkTrustedFD(fd int, kind uint32, label string) error {
 	var stat unix.Stat_t
 	if err := unix.Fstat(fd, &stat); err != nil {
@@ -59,6 +89,49 @@ func checkTrustedFD(fd int, kind uint32, label string) error {
 		return fmt.Errorf("%w: %s has unsafe type, owner, or permissions", ErrUnsafeInput, label)
 	}
 	return nil
+}
+
+// OpenPrivateDirectory opens a launch-selected role directory without
+// following links. Every parent must be trusted and non-replaceable. The final
+// directory must be mode 0700 and owned by the supplied final identity.
+func OpenPrivateDirectory(path string, uid, gid uint32) (*os.File, error) {
+	if path == "" || !filepath.IsAbs(path) || filepath.Clean(path) != path || containsParentReference(path) {
+		return nil, fmt.Errorf("%w: private directory path must be absolute and clean: %q", ErrUnsafeInput, path)
+	}
+	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
+	if len(parts) == 0 || parts[0] == "" {
+		return nil, fmt.Errorf("%w: root is not a private role directory", ErrUnsafeInput)
+	}
+	fd, err := unix.Open("/", unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return nil, err
+	}
+	current := "/"
+	for index, part := range parts {
+		next, openErr := unix.Openat(fd, part, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+		_ = unix.Close(fd)
+		if openErr != nil {
+			return nil, fmt.Errorf("%w: open private directory %s: %v", ErrUnsafeInput, filepath.Join(current, part), openErr)
+		}
+		fd = next
+		current = filepath.Join(current, part)
+		if index < len(parts)-1 {
+			if checkErr := checkTrustedFD(fd, unix.S_IFDIR, current); checkErr != nil {
+				_ = unix.Close(fd)
+				return nil, checkErr
+			}
+		}
+	}
+	var stat unix.Stat_t
+	if err := unix.Fstat(fd, &stat); err != nil {
+		_ = unix.Close(fd)
+		return nil, err
+	}
+	if stat.Mode&unix.S_IFMT != unix.S_IFDIR || stat.Mode&0o7777 != 0o700 || stat.Uid != uid || stat.Gid != gid {
+		_ = unix.Close(fd)
+		return nil, fmt.Errorf("%w: private directory must be mode 0700 and owned by uid %d gid %d", ErrUnsafeInput, uid, gid)
+	}
+	return os.NewFile(uintptr(fd), path), nil
 }
 
 func containsParentReference(path string) bool {

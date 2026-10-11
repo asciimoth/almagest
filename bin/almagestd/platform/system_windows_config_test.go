@@ -89,8 +89,8 @@ func TestReadWindowsSystemConfigExplicitFields(t *testing.T) {
 	if !got.Features.DisableIPv4 || !got.Features.DisableIPv6 || !got.Features.DisableExclusions || !got.Features.DisableMatchers {
 		t.Fatalf("Features = %#v, want all disabled", got.Features)
 	}
-	if _, ok := got.Logger.(windowsLogger); !ok {
-		t.Fatalf("Logger type = %T, want windowsLogger", got.Logger)
+	if got.Logger == nil {
+		t.Fatal("Logger = nil, want trusted daemon logger")
 	}
 }
 
