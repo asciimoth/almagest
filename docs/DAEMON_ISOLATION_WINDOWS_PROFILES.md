@@ -131,7 +131,7 @@ uses the common restricted C entry point and control-only bootstrap contract.
 Native TUN tests use the durable broker journal and require successful cleanup
 to remove every record. Restart inspection uses the recorded adapter LUID/GUID;
 a still-present adapter is not deleted without a driver-owned removal handle.
-Complete runtime/admin composition, hostile-runtime evidence, performance,
+Complete runtime/admin composition, hostile-runtime evidence,
 packaging, and the default-mode switch remain later checkpoints.
 
 ## Test record

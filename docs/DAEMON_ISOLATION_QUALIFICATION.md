@@ -67,8 +67,9 @@ these by renaming results; producers must measure the actual revised launch
 path. No production profile was qualified under the earlier manifest.
 
 Qualification also requires at least eight tested runtime threads, no
-unexpected inherited handle, experimental classes absent, and a 30-minute
-overload run. Platform manifests add native TUN flow, IPv4/IPv6 listeners,
+unexpected inherited handle, and experimental classes absent. The overload
+boundary check must show control progress, but it has no performance target or
+minimum duration. Platform manifests add native TUN flow, IPv4/IPv6 listeners,
 route/firewall/DNS cleanup, matcher lifecycle, and final restriction checks.
 The Windows manifest also requires the service network role and native flow
 qualification. Cross-compilation is not native evidence.
@@ -115,8 +116,8 @@ readiness exchange and a real Linux fixed-target transaction test. These close
 component and recovery gaps, but they do not synthesize complete-profile
 evidence.
 
-Storage quotas and integrated recovery/hostile-runtime/performance evidence
-remain required. Windows has
+Storage quotas and integrated recovery/hostile-runtime evidence remain
+required. Performance evidence is diagnostic only. Windows has
 trusted caller/service N, persistent deployment identities, and final-token
 native component evidence for Windows Server 2022/amd64, but does not yet have
 the complete-daemon evidence required by this manifest. Missing results fail
@@ -129,6 +130,16 @@ available through `--no-isolation`, which experimental classes also require.
 The validator has race-enabled tests and structured/raw JSON fuzz targets.
 Passing those tests proves validator behavior, not acceptance of a platform.
 Native producers run only in disposable Docker environments or a locked VM.
+
+The qualification package now also has a concurrent `Recorder` for an actual
+producer. It accepts only IDs from the selected closed manifest, rejects
+duplicates, keeps failed observations, orders snapshots by the manifest, and
+does not change caller-owned launch data. A snapshot must still pass `Validate`;
+the recorder cannot turn an incomplete or failed run into evidence. Race tests
+cover concurrent observation delivery and independent snapshots. A two-worker,
+30-second ID fuzz run completed 1,971,549 inputs. This supplies the evidence
+assembly boundary, but the platform runners still must measure and submit all
+observations from complete daemon runs.
 
 ## Checkpoint 30 integration audit, 2026-10-11
 
@@ -146,21 +157,60 @@ qualification remains separate and fail closed.
 
 The following qualification gaps still prevent a release evidence record:
 
-- `isolation-qualify` validates supplied evidence; it does not launch a daemon
-  composition or produce that evidence.
+- `isolation-qualify` validates supplied evidence. The package can assemble
+  measured observations with `Recorder`, but no platform runner yet launches
+  the full matrix and supplies every required observation.
 - The development composition runs the real daemon engine and relayed web
   admin in R. One retained run executes a command node through H, performs a
   config transaction and live snapshot restore, then verifies that loss of N
   stops R and H. Separate C and H tests also exercise their final native
   restrictions.
-- No complete-composition evidence covers the required 30-minute overload,
-  arbitrary-code boundary, restart/recovery, all launch credential classes,
-  and Windows resource/flow matrix.
+- No complete-composition evidence covers the arbitrary-code boundary,
+  restart/recovery, and all launch credential classes. The isolated Windows
+  packet-flow and resource gates provide component evidence, not a complete
+  profile record.
 
 These are isolation integration gaps, not native-backend limitations. The
 closed qualification manifests and production startup gate remain unchanged.
 A complete record must come from actual complete-daemon runs; component results
 must not be renamed or copied into passing manifest entries.
+
+### Windows matrix and resource audit, 2026-10-11
+
+The full native Windows matrix passed 22 ordinary-user and 23 privileged cases
+in `artifacts/winvm/run-cGhplHPT`. Its source archive SHA-256 is
+`3092184910006d70fbf959534a5742683805ce14e82bad49c90133e5f0db9336`.
+The first packet-flow attempt then found that a 30-second guest-command limit
+was too short for route setup after the full matrix. The harness now gives the
+bounded service and route commands 120 seconds. All 42 harness tests pass. The
+isolated rerun in `artifacts/winvm/run-flow-XIuWFowU` passed and validated 116
+packet observations.
+
+The corrected resource runner now handles native Go stderr by its exit code and
+accepts valid package-level JSON events that have no `Test` member. In
+`artifacts/winvm/run-VrYT8eIb`, source archive SHA-256
+`4c28b42587f56cbebbf8e1908c34f2e15e836906726b635d5f1fe40e2e4e66e5`,
+the 30-minute native transfer soak passed in 1800.40 seconds, crash recovery
+passed, daemon graph/restart passed, and both fault-injection groups passed.
+Process handles grew from 483 to 496 after warm-up. This measured growth of 13
+is accepted as the current Windows backend baseline.
+
+The earlier full run in
+`artifacts/winvm/run-PWwIrI63`, source archive SHA-256
+`f855f2575a49bb067a88f70a7958624fb7c1a96c89d72aff87b727aec69f848d`,
+grew from 489 to 508 handles. In both runs, goroutines stayed at 2 and handle
+growth stopped after batch 2. The upstream dependency's trend check passes.
+By maintainer direction, resource growth is now recorded without a pass/fail
+threshold. Cleanup of native adapters, addresses, routes, and DNS state remains
+mandatory.
+
+The updated evidence schema passed a shortened qualifying run in
+`artifacts/winvm/run-izzlrWMD`, source archive SHA-256
+`d5d3dcf819550ef6166e7807ec27bad9d65be376d2356b1147221db9e638b5c0`.
+All four resource cases and the independent host validator passed. The run
+recorded growth of 9 handles, 0 goroutines, and 2,265,088 private bytes. Soak
+duration is recorded but does not affect qualification. The earlier
+full-duration run remains useful stability evidence.
 
 ### Audit verification results
 
@@ -193,8 +243,7 @@ probes ran inside disposable containers or the locked Windows VM.
 Command output is in `artifacts/isolation-qualification/rule-control/`:
 `check.log`, `docker-tests.log`, `final-race.log`, `repeated-control.log`,
 `linux-ordinary.log`, and `winvm.log`. No complete qualification JSON was
-produced. The full daemon matrix, service-token composition, privileged
-resource/flow qualification, and 30-minute overload acceptance remain open.
+produced. The full daemon matrix and service-token composition remain open.
 
 
 ### Allocator verification results
@@ -256,4 +305,4 @@ with its relayed web admin. `runtime-race-final.log` and
 `role-assembly-race-final.log` cover the affected packages with the race
 detector. `runtime-bootstrap-fuzz.log` records 2,425,136 inputs in a 30-second,
 two-worker `FuzzRuntimeInput` campaign. These development results do not replace
-the required overload, recovery, and Windows release evidence.
+the required recovery and Windows release evidence.

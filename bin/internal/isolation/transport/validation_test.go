@@ -67,9 +67,28 @@ func TestRequestDispatch(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			prepared, preparedMutation, err := prepareRequest(tc.op, tc.request)
+			if err != nil || preparedMutation != tc.mutation {
+				t.Fatalf("prepare pointer: %T, %v, %v", prepared, preparedMutation, err)
+			}
+			preparedBody, err := marshalPreparedRequest(prepared, preparedMutation, 3, testSession())
+			if err != nil {
+				t.Fatal(err)
+			}
 			normalized, err := validateRequest(tc.op, body, 3, testSession(), true)
 			if err != nil {
 				t.Fatal(err)
+			}
+			if !bytes.Equal(preparedBody, normalized) {
+				t.Fatalf("prepared body differs: %s != %s", preparedBody, normalized)
+			}
+			unchanged, err := json.Marshal(tc.request)
+			if err != nil || !bytes.Equal(unchanged, body) {
+				t.Fatalf("prepare changed caller request: %s, %v", unchanged, err)
+			}
+			valuePrepared, valueMutation, err := prepareRequest(tc.op, reflect.ValueOf(tc.request).Elem().Interface())
+			if err != nil || valueMutation != tc.mutation || reflect.TypeOf(valuePrepared) != reflect.TypeOf(tc.request) {
+				t.Fatalf("prepare value: %T, %v, %v", valuePrepared, valueMutation, err)
 			}
 			if err := Decode(normalized, got); err != nil {
 				t.Fatal(err)
@@ -111,6 +130,52 @@ func TestRequestDispatch(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+}
+
+func TestPrepareRequestRejectsOpenOrMismatchedTypes(t *testing.T) {
+	type readAlias protocol.ReadRequest
+	for _, value := range []any{
+		nil,
+		(*protocol.ReadRequest)(nil),
+		map[string]any{"Meta": protocol.RequestMeta{GraphEpoch: 1}},
+		struct{ Meta protocol.RequestMeta }{Meta: protocol.RequestMeta{GraphEpoch: 1}},
+		readAlias{Meta: protocol.RequestMeta{GraphEpoch: 1}},
+		&readAlias{Meta: protocol.RequestMeta{GraphEpoch: 1}},
+		protocol.MatchRequest{},
+	} {
+		if _, _, err := prepareRequest(protocol.OperationStatus, value); !errors.Is(err, protocol.ErrInvalidContract) {
+			t.Fatalf("%T: %v", value, err)
+		}
+	}
+	if _, _, err := prepareRequest("native_ioctl", protocol.ReadRequest{}); !errors.Is(err, protocol.ErrUnsupportedOperation) {
+		t.Fatal(err)
+	}
+}
+
+func FuzzPreparedReadRequestIdentity(f *testing.F) {
+	f.Add(uint64(1), "")
+	f.Add(uint64(^uint32(0)), "unexpected")
+	f.Fuzz(func(t *testing.T, graphEpoch uint64, operationID string) {
+		request := protocol.ReadRequest{Meta: protocol.RequestMeta{GraphEpoch: graphEpoch, OperationID: operationID}}
+		before := request
+		prepared, mutation, err := prepareRequest(protocol.OperationStatus, request)
+		if err != nil || mutation {
+			t.Fatalf("prepare: %v, %v", mutation, err)
+		}
+		body, err := marshalPreparedRequest(prepared, mutation, 7, testSession())
+		wantValid := graphEpoch != 0 && operationID == ""
+		if (err == nil) != wantValid {
+			t.Fatalf("marshal validity=%v: %v", wantValid, err)
+		}
+		if request != before {
+			t.Fatal("caller request changed")
+		}
+		if err == nil {
+			if _, err := validateRequest(protocol.OperationStatus, body, 7, testSession(), false); err != nil {
+				t.Fatalf("receiver rejected prepared request: %v", err)
+			}
+		}
+	})
 }
 
 func TestJSONBoundaries(t *testing.T) {

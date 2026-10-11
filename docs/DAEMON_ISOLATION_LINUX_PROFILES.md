@@ -177,6 +177,7 @@ inspection because an interface index can be reused.
 
 Remaining release gates include complete runtime/admin service assembly,
 deployment identities and storage quotas, the full
-feature/hostile-runtime/performance manifest, and other platform/build targets.
+feature/hostile-runtime manifest and other platform/build targets. Performance
+is accepted and is not a profile gate.
 All supported backend features, including eBPF process filtering, remain
 required. Direct mode has no isolation launcher or internal IPC overhead.

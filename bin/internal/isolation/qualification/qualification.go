@@ -17,7 +17,6 @@ import (
 const (
 	SchemaVersion    = 1
 	MaxEvidenceBytes = 256 << 10
-	MinimumSoakSecs  = 30 * 60
 )
 
 var ErrUnqualified = errors.New("isolation profile is not qualified")
@@ -172,17 +171,8 @@ func Validate(e Evidence) error {
 	if !ok || e.SchemaVersion != SchemaVersion {
 		return fmt.Errorf("%w: unknown schema or profile", ErrUnqualified)
 	}
-	if e.Platform.OS != manifest.Platform.OS || e.Platform.Architecture != manifest.Platform.Architecture ||
-		manifest.Platform.Release != "" && e.Platform.Release != manifest.Platform.Release {
-		return fmt.Errorf("%w: platform does not match profile", ErrUnqualified)
-	}
-	if !validToken(e.SourceRevision, 128) || !validToken(e.DirectLaunch.CredentialClass, 128) ||
-		e.DirectLaunch.CredentialClass != e.IsolatedLaunch.CredentialClass ||
-		!validDigest(e.DirectLaunch.ProtectedDigest) || e.DirectLaunch.ProtectedDigest != e.IsolatedLaunch.ProtectedDigest {
-		return fmt.Errorf("%w: launch authority differs between modes", ErrUnqualified)
-	}
-	if len(e.DirectLaunch.Restrictions) != 0 || len(e.IsolatedLaunch.Restrictions) != 0 {
-		return fmt.Errorf("%w: baseline parity includes optional restrictions", ErrUnqualified)
+	if err := validateHeader(e, manifest); err != nil {
+		return err
 	}
 	if err := validateFeatures(manifest.Features, e.Features); err != nil {
 		return err
@@ -196,8 +186,24 @@ func Validate(e Evidence) error {
 	if err := validateChecks("native", manifest.NativeChecks, e.NativeChecks); err != nil {
 		return err
 	}
-	if e.RuntimeThreadCount < 8 || e.OverloadSeconds < MinimumSoakSecs || !e.ExperimentalAbsent || e.UnexpectedHandles != 0 {
+	if e.RuntimeThreadCount < 8 || !e.ExperimentalAbsent || e.UnexpectedHandles != 0 {
 		return fmt.Errorf("%w: hostile-runtime qualification is incomplete", ErrUnqualified)
+	}
+	return nil
+}
+
+func validateHeader(e Evidence, manifest Manifest) error {
+	if e.Platform.OS != manifest.Platform.OS || e.Platform.Architecture != manifest.Platform.Architecture ||
+		manifest.Platform.Release != "" && e.Platform.Release != manifest.Platform.Release {
+		return fmt.Errorf("%w: platform does not match profile", ErrUnqualified)
+	}
+	if !validToken(e.SourceRevision, 128) || !validToken(e.DirectLaunch.CredentialClass, 128) ||
+		e.DirectLaunch.CredentialClass != e.IsolatedLaunch.CredentialClass ||
+		!validDigest(e.DirectLaunch.ProtectedDigest) || e.DirectLaunch.ProtectedDigest != e.IsolatedLaunch.ProtectedDigest {
+		return fmt.Errorf("%w: launch authority differs between modes", ErrUnqualified)
+	}
+	if len(e.DirectLaunch.Restrictions) != 0 || len(e.IsolatedLaunch.Restrictions) != 0 {
+		return fmt.Errorf("%w: baseline parity includes optional restrictions", ErrUnqualified)
 	}
 	return nil
 }

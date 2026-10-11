@@ -19,7 +19,7 @@ func validEvidence(t *testing.T, profile string) Evidence {
 		SchemaVersion: SchemaVersion, Profile: profile, Platform: manifest.Platform,
 		SourceRevision: "0123456789abcdef", DirectLaunch: Launch{CredentialClass: "ordinary", ProtectedDigest: digest},
 		IsolatedLaunch: Launch{CredentialClass: "ordinary", ProtectedDigest: digest}, RuntimeThreadCount: 8,
-		OverloadSeconds: MinimumSoakSecs, ExperimentalAbsent: true,
+		ExperimentalAbsent: true,
 	}
 	for _, id := range manifest.Features {
 		evidence.Features = append(evidence.Features, FeatureResult{ID: id, Direct: ModeResult{Outcome: OutcomePass}, Isolated: ModeResult{Outcome: OutcomePass}})
@@ -231,7 +231,6 @@ func TestLaunchAndHostileRuntimeConditionsFailClosed(t *testing.T) {
 		"bad_digest":             func(e *Evidence) { e.DirectLaunch.ProtectedDigest = strings.Repeat("G", 64) },
 		"baseline_restriction":   func(e *Evidence) { e.IsolatedLaunch.Restrictions = []string{"deny_dns"} },
 		"too_few_threads":        func(e *Evidence) { e.RuntimeThreadCount = 7 },
-		"short_overload":         func(e *Evidence) { e.OverloadSeconds = MinimumSoakSecs - 1 },
 		"experimental_available": func(e *Evidence) { e.ExperimentalAbsent = false },
 		"inherited_handle":       func(e *Evidence) { e.UnexpectedHandles = 1 },
 	}
@@ -300,7 +299,7 @@ func FuzzEvidenceDecoder(f *testing.F) {
 }
 
 func FuzzEvidenceValidation(f *testing.F) {
-	f.Add(uint8(0), uint8(0), uint8(0), "ordinary", strings.Repeat("a", 64), uint32(8), uint32(MinimumSoakSecs), true)
+	f.Add(uint8(0), uint8(0), uint8(0), "ordinary", strings.Repeat("a", 64), uint32(8), uint32(0), true)
 	f.Add(uint8(1), uint8(20), uint8(10), "elevated", "bad", uint32(0), uint32(0), false)
 	f.Fuzz(func(t *testing.T, profileIndex, featureIndex, checkIndex uint8, credential, digest string, threads, soak uint32, passed bool) {
 		profiles := Profiles()
@@ -322,7 +321,7 @@ func validEvidenceForFuzz(profile string) Evidence {
 	digest := strings.Repeat("a", 64)
 	e := Evidence{SchemaVersion: SchemaVersion, Profile: profile, Platform: manifest.Platform, SourceRevision: "a",
 		DirectLaunch: Launch{CredentialClass: "ordinary", ProtectedDigest: digest}, IsolatedLaunch: Launch{CredentialClass: "ordinary", ProtectedDigest: digest},
-		RuntimeThreadCount: 8, OverloadSeconds: MinimumSoakSecs, ExperimentalAbsent: true}
+		RuntimeThreadCount: 8, ExperimentalAbsent: true}
 	for _, id := range manifest.Features {
 		e.Features = append(e.Features, FeatureResult{ID: id, Direct: ModeResult{Outcome: OutcomePass}, Isolated: ModeResult{Outcome: OutcomePass}})
 	}

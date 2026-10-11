@@ -65,8 +65,7 @@ bytes.
 Windows Wintun records a timed-out reply as packet loss and continues the
 measurement. It discards a late reply whose payload belongs to another batch
 item. Each Windows record includes `droppedPackets`; useful-rate calculations
-exclude dropped packets. A warm workload with a nonzero drop count fails the
-zero-loss condition.
+exclude dropped packets. Packet loss is recorded as diagnostic data.
 
 ## Evidence layout and validation
 
@@ -88,7 +87,7 @@ native fallback.
 
 Each environment record includes the source revision, dirty state, container
 or VM identity, OS, Go version, and run parameters. Raw evidence is ignored by
-git. The preliminary retained artifact paths and budget summary follow.
+git. The preliminary retained artifact paths and measurement summary follow.
 
 ## Preliminary results, 2026-10-09
 
@@ -99,9 +98,9 @@ was `powersave`; no CPU affinity was set. The source revision was
 
 The Linux Docker run used Linux 7.2.8, seven runs, and 200 samples per run. Its
 retained directory is `artifacts/data-path/20261009T084713Z-121174`. Analysis
-contains 732 profile-and-logging-mode comparisons. Added median latency passed
-all applicable limits, control p99 was 43,032 ns and passed, but 240 p99,
-248 useful-rate, and 420 CPU comparisons failed their provisional budgets.
+contains 732 profile-and-logging-mode comparisons. Against the former
+provisional targets, 240 p99, 248 useful-rate, and 420 CPU comparisons were
+outside the target values. Control p99 was 43,032 ns.
 CPU could not be compared for 312 records. No packet loss was recorded.
 
 The Windows Server 2022 build 20348 VM used four virtual CPUs, 8 GiB of memory,
@@ -109,12 +108,11 @@ Go 1.26.6, and Wintun driver 0.14. The full archive is
 `artifacts/winvm/run-9r0vIA0p/guest-artifacts.tar`; its analysis is
 `artifacts/winvm/run-9r0vIA0p/analysis-windows.json`. The service phase took
 494 seconds and the caller phase took 117 seconds. Analysis contains 1,104
-profile-and-logging-mode comparisons. Added median latency passed all
-applicable limits and the worst control p99 was 823,300 ns, but 154 p99,
-695 useful-rate, and 468 CPU comparisons failed. CPU could not be compared for
-577 records. Wintun lost 81 of the attempted packets, including 67 in warm
-runs; 58 warm candidate/workload comparisons therefore failed the zero-loss
-condition. Socket and matcher paths recorded no loss.
+profile-and-logging-mode comparisons. The worst control p99 was 823,300 ns.
+Against the former provisional targets, 154 p99, 695 useful-rate, and 468 CPU
+comparisons were outside the target values. CPU could not be compared for 577
+records. Wintun lost 81 of the attempted packets, including 67 in warm runs.
+Socket and matcher paths recorded no loss.
 
 The original Windows run metadata says `artifact-validation` failed because
 the validator treated a present zero-nanosecond control sample as absent. The
@@ -124,8 +122,8 @@ No measurement was rerun or changed for this correction.
 
 ## Preliminary interpretation
 
-The isolation transports are functional, but the current evidence does not
-qualify a production data path against the section 9 budgets.
+The isolation transports are functional. The measurements below are accepted
+as the current baseline and do not qualify or disqualify a production path.
 
 Batching is necessary for high packet rates. For TCP and UDP, an unbatched
 relay lost approximately 40–65 percent of useful rate on Linux and 45–90
@@ -134,35 +132,28 @@ one-packet native rate. This rate improvement does not make the batch latency
 equal to single-packet latency; the result represents amortized IPC work.
 
 The shared-memory candidate was usually faster and used less CPU than the
-ordinary broker relay. The difference was not sufficient to remove the main
-budget failures. Shared memory is therefore a possible optimization, not a
-qualified selection.
+ordinary broker relay. Shared memory remains a possible later optimization,
+not the selected version 1 mechanism.
 
 Linux TCP and UDP relay latency was small. Typical added p99 was 13–36
-microseconds and passed the provisional latency budget. The same paths still
-failed many rate and CPU comparisons. Their measured CPU cost was commonly two
-to five times the in-process baseline. Windows TCP and UDP typically added
-0.6–1.0 ms at p99, but some tails exceeded the 2 ms budget.
+microseconds. Their measured CPU cost was commonly two to five times the
+in-process baseline. Windows TCP and UDP typically added 0.6–1.0 ms at p99,
+with some larger tails.
 
 One bounded matcher RPC added a median p99 of approximately 169 microseconds
-on Linux and 585 microseconds on Windows. These values passed the latency
-limits. Linux matcher rate was approximately 14 percent below native at the
-median and failed the 10 percent rate limit in half of the comparisons. The
+on Linux and 585 microseconds on Windows. Linux matcher rate was approximately
+14 percent below native at the median in half of the comparisons. The
 Windows rate result is not dependable because several native matcher intervals
 were below the clock resolution.
 
-TUN and Wintun are the principal blockers. Linux relay TUN added approximately
-2.4 ms p99 for one packet and 17–18 ms for a batch of 16, above the 0.5 ms
-limit. Windows Wintun added approximately 0.7 ms p99 for one packet and
-2.1–2.5 ms for a batch, so the single-packet median was within the 1 ms limit
-but the batched median was not. Windows Wintun also lost 81 packets. Loss under
-this below-saturation workload is a qualification failure even when useful
-rate and latency pass.
+Linux relay TUN added approximately 2.4 ms p99 for one packet and 17–18 ms for
+a batch of 16. Windows Wintun added approximately 0.7 ms p99 for one packet and
+2.1–2.5 ms for a batch. Windows Wintun also lost 81 packets. These results are
+accepted as the current implementation baseline and can guide later work.
 
-Direct handles had the lowest IPC latency, but they did not consistently meet
-the rate or CPU budgets. They also remain subject to the checkpoint 13
-authority and revocation review. Performance alone cannot approve a direct
-handle.
+Direct handles had the lowest IPC latency. They remain rejected by the
+checkpoint 13 authority and revocation review. Performance alone cannot approve
+a direct handle.
 
 Two measurement limitations affect interpretation:
 
@@ -184,24 +175,15 @@ bulk traffic, but keep an independent bounded control channel and a low-latency
 single-record path. Do not select a production data path until checkpoint 13
 also completes its security and revocation review.
 
-## Qualification conditions still open
+## Optional future measurements
 
-Checkpoint 12 acceptance remains open. The retained runs use only 200 samples
-per case and do not provide 60 seconds of steady state per acceptance workload.
-They also do not yet cover two explicit warm-up runs, the supported maximum
-packet size beyond 1,500 bytes, queue-count variation, many-flow variation,
-both traffic directions as separate records, retransmits, jitter, wakeups,
-syscalls, or queue depth. An acceptance run must record these items. A result
-within one percent of a budget needs 15 measured repetitions.
+Checkpoint 12 performance acceptance is complete. Future optimization work can
+add longer steady-state runs, more packet sizes, queue and flow variation,
+retransmits, jitter, wakeups, syscalls, queue depth, and same-host direct-mode
+comparisons. None of these measurements is required for isolation qualification.
 
-The final evidence review must add the same-host original-direct and current
-`--no-isolation` comparison. The original source revision is
-`765792710fc25ed4b242934aa68bf7973aa5fd3f`; the current direct path must retain
-native fast paths and must not contain an isolation transport. A different
-machine or a skipped native TUN/Wintun stage is not acceptance evidence.
-
-This checkpoint records measurements only. The
+This checkpoint records accepted diagnostic measurements only. The
 [checkpoint 13 security decision](DAEMON_ISOLATION_DATA_PATH_DECISION.md) adds
 hostile-handle evidence and selects conservative broker relays for version 1.
-The design is frozen by maintainer direction; these preliminary timings do not
-qualify the selected implementation or change the performance budgets.
+The design is frozen by maintainer direction; these timings are not release
+gates.

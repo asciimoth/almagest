@@ -18,11 +18,12 @@ class ResourceEvidenceTests(unittest.TestCase):
     def fixture(self, mutate=None, diagnostic=False):
         suite = {
             "schemaVersion": 1, "suite": "windows-m8-resource", "outcome": "passed",
-            "platformId": "windows-server-2022-amd64", "qualifying": not diagnostic,
+            "platformId": "windows-server-2022-amd64", "qualifying": True,
             "workload": {"warmupCycles": 10, "batchCount": 4, "cyclesPerBatch": 25,
                          "cancellationCycles": 100, "soakDuration": "2m" if diagnostic else "30m",
                          "diagnosticOverride": diagnostic},
-            "settlingSeconds": 10, "budgets": RESOURCE.EXPECTED_BUDGETS,
+            "settlingSeconds": 10,
+            "resourceGrowth": {"handles": 4, "goroutines": 0, "privateBytes": 0},
             "cases": {name: "passed" for name in RESOURCE.EXPECTED_CASES},
             "failureInjection": [{"case": name, "method": "fault-injection",
                                   "retained": "owned state", "recovery": "explicit retry"}
@@ -52,7 +53,7 @@ class ResourceEvidenceTests(unittest.TestCase):
     def test_accepts_fixed_qualification_contract(self):
         RESOURCE.validate(self.fixture())
 
-    def test_rejects_leak_growth_and_missing_fault_evidence(self):
+    def test_rejects_native_leak_mismatched_growth_and_missing_fault_evidence(self):
         mutations = [
             lambda value: value["resources-after.json"]["adapters"].append({"name": "leak"}),
             lambda value: value["process-resources.json"]["samples"][-1].update(handles=40),
@@ -62,10 +63,18 @@ class ResourceEvidenceTests(unittest.TestCase):
             with self.subTest(mutate=mutate), self.assertRaises(ValueError):
                 RESOURCE.validate(self.fixture(mutate))
 
-    def test_diagnostic_soak_is_visible_but_not_qualifying(self):
+    def test_accepts_current_backend_resource_growth(self):
+        def current_backend(values):
+            values["process-resources.json"]["samples"][-1].update(
+                handles=120, goroutines=17, privateBytes=90000000)
+            values["suite.json"]["resourceGrowth"] = {
+                "handles": 100, "goroutines": 12, "privateBytes": 89000000}
+
+        RESOURCE.validate(self.fixture(current_backend))
+
+    def test_shortened_soak_is_visible_and_qualifying(self):
         artifact = self.fixture(diagnostic=True)
-        with self.assertRaises(ValueError):
-            RESOURCE.validate(artifact)
+        RESOURCE.validate(artifact)
         RESOURCE.validate(artifact, allow_diagnostic=True)
 
 

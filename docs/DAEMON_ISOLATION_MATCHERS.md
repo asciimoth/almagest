@@ -107,11 +107,10 @@ separate-process scheduling, full packet forwarding, or combined process CPU.
 
 An initial Linux run on 2026-10-09 measured native median/p99 of 224/375 us and
 RPC median/p99 of 517/877 us. Added median was 293 us and added p99 was 502 us.
-The median exceeds the section 9 Linux interactive budget of 250 us; the p99
-is below its 1 ms limit. This short component sample is not qualification.
-Do not infer a complete-daemon budget pass from it or change the frozen budgets.
-Full packet-path, process reuse/exec, sustained overload, and final restricted
-profile measurements remain required in checkpoints 30 and 31.
+These figures are accepted as the current component baseline. Full packet-path,
+process reuse/exec, overload correctness, and final restricted-profile behavior
+remain functional and security work in checkpoint 30; no timing threshold
+applies.
 
 Seven further Linux runs, without the race detector, gave these component
 results on Linux 7.2.8 amd64 and an AMD Ryzen 5 5600H, using the local
@@ -145,6 +144,20 @@ retained evidence is in `artifacts/winvm/run-Yv6sGGnc`. A final portable
 regression and fuzz seed also cover padded Windows rule names in denied policy.
 The final rule-fuzz run completed another 45,911 executions with two workers
 and a 10-second budget after that policy check was added.
+
+On 2026-10-11, the outgoing control path stopped encoding each typed request,
+strictly decoding the same bytes, and encoding it again. It now copies only an
+exact closed-protocol type, adds trusted transport metadata to that copy, and
+encodes it once. Incoming data still uses the full strict decoder. The caller's
+request is not changed. Exact-type, metadata, alias, map, nil, duplicate, and
+receiver-validation tests cover the change. A two-worker, 30-second fuzz run
+completed 1,272,007 inputs.
+
+Seven Docker component runs after this change measured added medians of 253,
+247, 248, 245, 247, 254, and 239 us. Six runs were at or below the 250 us
+former Linux target. Added p99 was 445–627 us. Sequential lookup-rate loss was
+53.9–55.8 percent. These results are accepted as diagnostic baselines and do not
+block checkpoint 18 or checkpoint 31.
 
 ## Rule validation and completion integration
 

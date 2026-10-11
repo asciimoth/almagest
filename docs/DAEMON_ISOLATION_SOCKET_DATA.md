@@ -6,8 +6,8 @@ bounded data lane in `bin/internal/isolation/relay`, and runtime adapters in
 direct daemon. Production isolation remains disabled.
 
 The implementation is available for component integration. Checkpoint acceptance
-remains open until the complete method/platform matrix and the unchanged
-performance budgets pass. The tests below are not a complete restricted-role
+depends on the complete functional method/platform matrix. Performance is
+accepted and is not a gate. The tests below are not a complete restricted-role
 or complete-daemon qualification.
 
 ## Ownership and API
@@ -177,13 +177,18 @@ mapping, endpoint parsing, and TUN event/generation transitions. Structured
 fuzzing exercises data metadata and numeric endpoint parsing in addition to the
 raw frame parser.
 
+A deterministic gated-stream test now holds one resource in the writer, queues
+a second resource, and then immediately submits more work for the first. It
+proves that the global FIFO sends the queued peer before later work from the
+hot resource. The test passed 100 consecutive runs with the race detector.
+This closes the component-level send-fairness assertion.
+
 The portable broker/client tests use separate in-process stream endpoints.
 Checkpoint 14 covers private endpoint authentication; final cross-process
 restrictions, all supported multicast/native option combinations, complete
-userspace-stack parity, and sustained saturation/fairness still need the
-platform qualification runs. One-record credits and JSON control costs also
-need performance work; the current microbenchmark cannot establish a budget
-pass.
+userspace-stack parity, and functional fairness still need the platform
+qualification runs. One-record credits and JSON control costs are accepted as
+the current baseline and can be optimized later.
 
 On Linux amd64, Go 1.26.6, AMD Ryzen 5 5600H, five-second fuzz runs completed
 435,319 raw-frame executions, 358,438 structured-metadata executions, and
@@ -192,7 +197,7 @@ microbenchmarks measured 20.7–21.3 us/op, 56.4–58.0 MB/s, about 9,040 B/op, 
 210 allocations per operation. These are codec measurements in Docker, not
 native traffic
 throughput, cross-process latency, or a comparison with either direct baseline.
-The performance acceptance condition remains open.
+No performance acceptance condition applies.
 
 Verified on 2026-10-09:
 

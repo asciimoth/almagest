@@ -62,6 +62,50 @@ func requestType(op protocol.Operation) (any, bool) {
 	}
 }
 
+// prepareRequest copies an exact closed-protocol request before trusted
+// transport metadata is added. The copy prevents Call from changing the
+// caller's metadata. Incoming JSON still passes through Decode; this path
+// accepts no maps, aliases, or other open shapes.
+func prepareRequest(op protocol.Operation, value any) (any, bool, error) {
+	request, mutation := requestType(op)
+	if request == nil {
+		return nil, false, protocol.ErrUnsupportedOperation
+	}
+	want := reflect.TypeOf(request)
+	got := reflect.ValueOf(value)
+	if !got.IsValid() {
+		return nil, false, protocol.ErrInvalidContract
+	}
+	destination := reflect.ValueOf(request).Elem()
+	switch got.Type() {
+	case want:
+		if got.IsNil() {
+			return nil, false, protocol.ErrInvalidContract
+		}
+		destination.Set(got.Elem())
+	case want.Elem():
+		destination.Set(got)
+	default:
+		return nil, false, protocol.ErrInvalidContract
+	}
+	return request, mutation, nil
+}
+
+func marshalPreparedRequest(request any, mutation bool, id uint64, session protocol.Session) ([]byte, error) {
+	field := reflect.ValueOf(request).Elem().FieldByName("Meta")
+	meta := field.Interface().(protocol.RequestMeta)
+	meta.RequestID, meta.SessionID, meta.SessionEpoch = id, session.ID, session.Epoch
+	if err := meta.Validate(session, mutation); err != nil {
+		return nil, err
+	}
+	field.Set(reflect.ValueOf(meta))
+	body, err := json.Marshal(request)
+	if err != nil {
+		return nil, protocol.ErrInvalidContract
+	}
+	return body, nil
+}
+
 func validateRequest(op protocol.Operation, body []byte, id uint64, session protocol.Session, outgoing bool) ([]byte, error) {
 	request, mutation := requestType(op)
 	if request == nil {

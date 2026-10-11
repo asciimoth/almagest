@@ -3,7 +3,7 @@
 Status: frozen version 1 design for checkpoints 14 through 18. The
 [checkpoint 13 decision](DAEMON_ISOLATION_DATA_PATH_DECISION.md) records the
 security evidence and the maintainer's decision to proceed with conservative
-relays before performance qualification. This file specifies the implementation
+relays. This file specifies the implementation
 target. The [checkpoint 16 component implementation](DAEMON_ISOLATION_SOCKET_DATA.md)
 records its checks and remaining qualification; this is not a qualified
 production transport.
@@ -225,9 +225,8 @@ implements matcher RPCs. Tests must cover both directions, native metadata,
 half-close, stale state, saturation, fairness, malicious framing, and role death
 before these pieces enter the production composition.
 
-The checkpoint 12 performance failures remain open. Repeat measurements for this
-contract, including the selected stream transports and immediate-first-record
-batching. Checkpoints 30/31 qualify the complete OS profiles against unchanged
-functional, hostile-runtime, and numeric performance requirements before the
-checkpoint 32 default switch. Later optimizations must preserve version 1
+Checkpoint 12 measurements are diagnostic baselines. Checkpoint 30 qualifies
+the complete OS profiles against functional and hostile-runtime requirements
+before the checkpoint 32 default switch. Checkpoint 31 records the accepted
+current performance state. Later optimizations must preserve version 1
 semantics or receive a reviewed version change with fresh security evidence.

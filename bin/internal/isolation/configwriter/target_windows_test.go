@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 
@@ -93,16 +94,51 @@ func TestWindowsTargetRejectsHardLink(t *testing.T) {
 	}
 }
 
-func TestWindowsTargetRejectsSymlink(t *testing.T) {
-	target := filepath.Join(windowsPrivateTestDirectory(t), "target")
+func TestWindowsTargetRejectsReparsePoint(t *testing.T) {
+	root := windowsPrivateTestDirectory(t)
+	targetDirectory := windowsPrivateTestDirectory(t)
+	target := filepath.Join(targetDirectory, "config")
 	if err := os.WriteFile(target, []byte("outside"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	link := filepath.Join(windowsPrivateTestDirectory(t), "config")
-	if err := os.Symlink(target, link); err != nil {
-		t.Skipf("symlink privilege is unavailable: %v", err)
+	junction := filepath.Join(root, "junction")
+	system, err := windows.GetSystemDirectory()
+	if err != nil {
+		t.Fatal(err)
 	}
-	if _, err := New(testSession(), link); err == nil {
-		t.Fatal("accepted reparse-point target")
+	if output, err := exec.Command(filepath.Join(system, "cmd.exe"), "/d", "/c", "mklink", "/J", junction, targetDirectory).CombinedOutput(); err != nil { //nolint:gosec // Fixed native test command and temporary paths.
+		t.Fatalf("create test junction: %v: %s", err, output)
+	}
+	if _, err := New(testSession(), filepath.Join(junction, "config")); err == nil {
+		t.Fatal("accepted target below a reparse-point parent")
+	}
+}
+
+func TestWindowsTargetPinsParentAgainstRedirection(t *testing.T) {
+	root := windowsPrivateTestDirectory(t)
+	approved := filepath.Join(root, "approved")
+	if err := os.Mkdir(approved, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(approved, "config")
+	if err := os.WriteFile(target, []byte("old"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	w, err := New(testSession(), target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close() //nolint:errcheck
+
+	// New holds the approved parent without delete sharing. An attacker cannot
+	// rename it and put a junction at the pathname used by later replacements.
+	if err := os.Rename(approved, filepath.Join(root, "moved")); err == nil {
+		t.Fatal("renamed the held fixed-target parent")
+	}
+	result, err := w.Replace(context.Background(), protocol.ReplaceConfigRequest{
+		Meta: testMeta("pinned-parent"), ExpectedRevision: protocol.ConfigRevision([]byte("old")), Data: []byte("new"),
+	})
+	if err != nil || result.Outcome != protocol.OutcomeCommitted {
+		t.Fatalf("replace through pinned parent = %+v, %v", result, err)
 	}
 }

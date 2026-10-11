@@ -277,7 +277,17 @@ func (p *Peer) callMode(ctx context.Context, kind string, op protocol.Operation,
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	body, err := json.Marshal(request)
+	var (
+		body     []byte
+		prepared any
+		mutation bool
+		err      error
+	)
+	if kind == "request" {
+		prepared, mutation, err = prepareRequest(op, request)
+	} else {
+		body, err = json.Marshal(request)
+	}
 	if err != nil {
 		return protocol.ErrInvalidContract
 	}
@@ -287,13 +297,24 @@ func (p *Peer) callMode(ctx context.Context, kind string, op protocol.Operation,
 		p.mu.Unlock()
 		return err
 	}
-	if len(p.pending) >= protocol.MaxConcurrentRequests || (bulkCall(op, body) && len(p.pending) >= 96) || p.next == ^uint64(0) {
+	bulk := op == protocol.OperationMatch
+	if op == protocol.OperationChannel {
+		if q, ok := prepared.(*protocol.ChannelRequest); ok {
+			switch q.Kind {
+			case protocol.ChannelRead, protocol.ChannelPrepareWrite, protocol.ChannelWrite, protocol.ChannelAccept:
+				bulk = true
+			}
+		} else {
+			bulk = dataCall(body)
+		}
+	}
+	if len(p.pending) >= protocol.MaxConcurrentRequests || (bulk && len(p.pending) >= 96) || p.next == ^uint64(0) {
 		p.mu.Unlock()
 		return protocol.ErrLimitExceeded
 	}
 	id := p.next + 1
 	if kind == "request" {
-		body, err = validateRequest(op, body, id, p.session, true)
+		body, err = marshalPreparedRequest(prepared, mutation, id, p.session)
 		if err != nil {
 			p.mu.Unlock()
 			return err

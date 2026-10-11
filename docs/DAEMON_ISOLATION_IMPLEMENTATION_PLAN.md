@@ -2,14 +2,13 @@
 
 Status: implementation tracking plan. Component completion does not enable
 production isolation; complete-daemon qualification remains open.
-Progress: checkpoints 1 through 7 are complete. Checkpoint 8 implementation and
-platform acceptance are complete; its controlled same-host performance
-comparison remains open. Checkpoint 9 implementation is complete; its numeric
-budgets become approved when the checkpoint change is accepted.
+Progress: checkpoints 1 through 9 are complete. The project maintainer accepted
+the current direct and isolated performance state on 2026-10-11. Performance
+measurements are diagnostic and do not block later checkpoints.
 It follows the [isolation architecture](DAEMON_ISOLATION_ARCHITECTURE.md).
 Checkpoint 13 design is frozen as broker-owned relays for all Linux/Windows
-resources. By explicit maintainer direction, performance qualification follows
-the design freeze and remains required before production enablement.
+resources. By explicit maintainer direction, later performance work is optional
+optimization after isolation is complete and working.
 Its sequence takes precedence over the outline in architecture section 10.3:
 first establish the complete direct-mode composition, then run the isolation
 experiments, and only then select the isolated data paths.
@@ -71,8 +70,8 @@ the shipping daemon; it blocks the dependent isolated feature or profile.
 - Preserve the `lib`/`bin` dependency boundary. Read
   [runtime lifecycle pitfalls](RUNTIME_NODE_LIFECYCLE_PITFALLS.md) before any
   runtime node refactor. Keep both config schemas in sync when fields change.
-- Record the change, commands run, environment, failures, performance evidence
-  where applicable, and remaining limitations. An unavailable test host leaves
+- Record the change, commands run, environment, failures, and remaining
+  limitations. An unavailable test host leaves
   the relevant acceptance condition open; it does not justify a silent skip.
 
 These rules apply after every section below. Until section 32, the working
@@ -237,8 +236,9 @@ Acceptance:
 
 ## 8. Qualify the complete direct-mode refactor
 
-Status: implementation and platform acceptance complete; controlled performance
-acceptance remains open.
+Status: complete. Implementation, platform acceptance, and controlled same-host
+library hot-path comparison are complete. Current native I/O performance is
+accepted and is not a release gate.
 
 Work:
 
@@ -246,8 +246,7 @@ Work:
   independent of process launch and wire protocol packages.
 - Run the full direct-mode test matrix against the baseline from section 1.
 - Instrument child creation, private listeners, transport construction, native
-  path use, and allocations. Compare direct-mode performance with the original
-  implementation before accepting the refactor.
+  path use, and allocations. Retain measurements as an optimization baseline.
 
 Acceptance:
 
@@ -257,19 +256,18 @@ Acceptance:
 - Startup, graph changes, matching, config writes, restore, and shutdown create
   no internal IPC or daemon role subprocess. The mode needs no sandbox account,
   AppContainer, namespace, or privileged storage migration.
-- Native fast paths remain active. Added IPC/serialization allocations are zero.
-  Any other measured regression is explained and meets an explicitly recorded
-  direct-mode budget; do not hide it by reducing the baseline's functionality.
+- Native fast paths remain active. Direct mode adds no internal role process or
+  IPC path. Performance measurements do not affect acceptance.
 
-## 9. Define policy, contracts, and performance budgets
+## 9. Define policy and contracts
 
-Status: implementation complete. Numeric performance budgets become approved
-when the checkpoint change is accepted by the project maintainer. Data-channel
-selection is recorded separately in checkpoint 13.
+Status: complete. The project maintainer accepted the current performance state
+on 2026-10-11 and removed numeric performance gates. Data-channel selection is
+recorded separately in checkpoint 13.
 
 Contract review: [daemon isolation control contract](DAEMON_ISOLATION_CONTROL_CONTRACT.md).
-Numeric budgets and comparison rules:
-[daemon isolation performance budgets](DAEMON_ISOLATION_PERFORMANCE_BUDGETS.md).
+Performance policy:
+[daemon isolation performance policy](DAEMON_ISOLATION_PERFORMANCE_BUDGETS.md).
 
 Work:
 
@@ -282,9 +280,8 @@ Work:
 - Specify fixed config targets, node versus callback command authority, and
   diagnostic records. Prohibit generic syscall, path, argv, ioctl, registry,
   driver, and arbitrary native-control requests.
-- Define numeric performance budgets and test environments before selecting a
-  data path. Cover throughput, latency tails, CPU, memory, and direct-mode
-  regression. Record who approves the budgets; this plan does not assume values.
+- Record available measurements as diagnostic baselines. Do not make throughput,
+  latency, CPU, memory, or resource-counter values qualification gates.
 
 Acceptance:
 
@@ -293,7 +290,7 @@ Acceptance:
 - Fake services test forged IDs, foreign ownership, stale generations, conflicts,
   cancellation, and lost replies without elevated privileges.
 - Control contracts are versioned. Data-channel candidates remain open until
-  section 13. Budgets, workloads, and comparison rules are recorded and approved.
+  section 13. Current performance is accepted without numeric thresholds.
 
 ## 10. Experiment: Linux restrictions and native resource access
 
@@ -351,38 +348,26 @@ Acceptance:
 
 ## 12. Experiment: data paths and five-tuple lookup cost
 
-Status: harness implemented and preliminary Docker/WinVM timing recorded;
-same-host direct-mode comparison and acceptance evidence are pending. See the
+Status: complete. The harness and Docker/WinVM measurements are retained as
+diagnostic baselines; no performance acceptance evidence is required. See the
 [data-path experiment record](DAEMON_ISOLATION_DATA_PATH_EXPERIMENT.md).
 
-Work:
+Historical experiment scope:
 
-- Compare the original direct baseline, refactored `--no-isolation`, batched and
-  unbatched broker relays, shared-memory rings, and eligible direct handles.
-  Use the real restrictions from sections 10 and 11, not unrestricted children.
-- Test real Linux TUN and Windows Wintun, TCP connections/listeners, connected
-  and unconnected UDP, IPv4/IPv6, both directions, and supported queue counts.
-- Use packet sizes 64, 256, 512, 1200, 1500, and the supported maximum. Include
-  single/many flows, interactive low-rate traffic, saturated small packets,
-  WireGuard, and matchers enabled/disabled. Repeat warm and cold runs.
-- Measure goodput, packets per second, loss/retransmits, latency p50/p95/p99,
-  jitter, per-role CPU, context switches, wakeups, syscalls, IPC messages,
-  copies, allocations, memory, queue depth, and control responsiveness.
-- Measure one bounded matcher RPC, overload, and optional bounded batching or
-  coalescing. Do not require observation leases or introduce a client cache by
-  default. Keep backend routing enforcement off the per-packet RPC path.
-- Include normal logging, disabled debug logs, and overloaded logging.
+- The harness compared direct, relay, shared-memory, direct-handle, TUN,
+  Wintun, socket, matcher, address-family, packet-size, and logging variants.
+- It recorded rate, loss, latency, CPU, scheduling, syscall, IPC, allocation,
+  memory, queue, and control-response observations.
+- These measurements are optional inputs to later optimization. They do not
+  need to be repeated for isolation implementation or qualification.
 
 Acceptance:
 
-- Publish commands, machines/VM settings, source versions, raw results, repeated
-  run variation, and a comparison against the budgets from section 9.
-- Candidate results cover semantics as well as speed: deadlines, cancellation,
+- Candidate results cover functional semantics: deadlines, cancellation,
   close, packet boundaries, UDP ancillary data, backpressure, and fairness.
 - Lookup results retain native tuple/error/freshness behavior. A valid tuple
   does not fail because no broker observation or lease exists.
-- Tests show no hidden native fallback, and neither direct baseline is made
-  slower or less capable to improve the isolated comparison.
+- Tests show no hidden native fallback.
 
 ## 13. Select and freeze data paths after a security review
 
@@ -392,9 +377,9 @@ continue. Select broker-owned relays on Linux and Windows; exclude direct native
 handles and shared memory from version 1. See the
 [per-resource decision and evidence](DAEMON_ISOLATION_DATA_PATH_DECISION.md) and
 [frozen data-channel contract](DAEMON_ISOLATION_DATA_CHANNEL_CONTRACT.md).
-The explicit sequencing change moves the remaining functional, hostile-runtime,
-and performance qualification to the implementation and release gates below;
-it does not approve different numeric budgets or claim production readiness.
+The explicit sequencing change moves the remaining functional and
+hostile-runtime qualification to the implementation and release gates below.
+Current performance is accepted and does not affect production readiness.
 
 Work:
 
@@ -410,16 +395,13 @@ Work:
 
 Acceptance:
 
-- Each decision cites functional, performance, and hostile-client evidence.
+- Each decision cites functional and hostile-client evidence.
   A faster candidate that grants undeclared host authority is rejected.
 - Every selected path has an enforceable revocation/lifetime contract. If only
   process termination revokes a handle, document and test the required action.
-- Per the maintainer's sequencing decision, freeze the conservative relay
-  design now and verify the implementation against the agreed budgets before
-  production enablement in checkpoints 30 through 32. Both OS profiles remain
-  unqualified until then. If limits still fail, revise the implementation or
-  obtain explicit numeric budget approval; do not weaken isolation or reset
-  the comparison baseline.
+- Freeze the conservative relay design now. Functional and security
+  qualification remains required in checkpoints 30 through 32. Performance
+  results do not block either OS profile.
 
 ## 14. Implement bounded control transports
 
@@ -479,9 +461,12 @@ Acceptance:
 ## 16. Implement socket control and the selected data channels
 
 Status: component implementation added in `bin/internal/isolation/network`,
-`relay`, and `runtime`. The complete parity and performance acceptance conditions
-remain open. See the [socket and data relay implementation and evidence](DAEMON_ISOLATION_SOCKET_DATA.md).
+`relay`, and `runtime`. Complete functional parity remains open. See the
+[socket and data relay implementation and evidence](DAEMON_ISOLATION_SOCKET_DATA.md).
 Production isolated startup remains disabled.
+
+The component gate includes a deterministic saturated-resource FIFO test. It
+proves that later work from a hot resource cannot overtake a queued peer.
 
 Work:
 
@@ -500,8 +485,8 @@ Acceptance:
   supported, half-close, deadlines, close, and cancellation coverage.
 - Packet and stream behavior matches direct mode. Unsupported operations return
   explicit errors and never create native resources in R as fallback.
-- Selected paths meet the experiment budgets in component tests. Control calls
-  and shutdown still progress under saturated traffic and blocked readers.
+- Control calls and shutdown still progress without deadlock under saturated
+  traffic and blocked readers. No latency or throughput threshold applies.
 
 ## 17. Implement host routes, firewall, and DNS control
 
@@ -538,8 +523,12 @@ Acceptance:
 
 Component implementation and evidence:
 [Five-tuple matchers](DAEMON_ISOLATION_MATCHERS.md). Rule updates use immutable
-matcher replacement through the frozen create/close API. Production performance
-and hostile-runtime qualification remain gates in sections 30 and 31.
+matcher replacement through the frozen create/close API. Hostile-runtime
+qualification remains a gate in section 30.
+The outgoing typed control path now uses one JSON encoding instead of an
+encode/decode/encode cycle. Short Linux component runs improved, but the
+sequential lookup rate remains below the direct path. That result is accepted
+and retained only as an optimization baseline.
 
 Work:
 
@@ -558,15 +547,16 @@ Acceptance:
   exit/exec, rule replacement, cancellation, and overload.
 - Valid lookups succeed without a previously observed packet. Resource limits
   bound hostile lookup traffic without changing the normal authorization model.
-- Record matcher latency and packet-path impact against section 9 budgets.
+- Record matcher latency and packet-path impact when useful for later
+  optimization. No numeric result blocks acceptance.
 
 ## 19. Implement the fixed-target config writer
 
-Status: component implementation is complete in
-`bin/internal/isolation/configwriter`. Linux component tests pass. The Windows
-tests and ordinary-user profile are registered as
-`winvm:m19::fixed-target-config-writer`; Windows VM execution remains required
-for platform acceptance. Production isolated startup remains disabled.
+Status: complete for the fixed-target writer component on Linux and Windows.
+The Windows ordinary-user profile passed
+`winvm:m19::fixed-target-config-writer` without skips on 2026-10-11, including
+hard-link, junction, post-open parent-redirection, receipt, failure, and fuzz
+checks. Production isolated startup remains disabled.
 
 See the [config-writer implementation and verification notes](DAEMON_ISOLATION_CONFIG_WRITER.md).
 
@@ -803,7 +793,7 @@ components. `bin/internal/isolation/windowsprofile` implements restricted
 R/C/H roles, trusted caller/service N, and persistent AppContainer deployment
 provisioning. Both launch identities pass final-token native backend tests in
 the locked Windows VM. Production isolated startup remains disabled until the
-later composition, qualification, performance, and rollout checkpoints pass.
+later composition, security qualification, and rollout checkpoints pass.
 The common C entry point and durable native-resource journal are used by this
 profile. Native network cleanup must leave no journal record. Restart
 reconciliation inspects the recorded LUID/GUID and never removes an adapter
@@ -979,6 +969,21 @@ component or development-composition results cannot be relabeled as a complete
 platform record.
 Production isolated startup remains disabled.
 
+The qualification package now provides a closed-manifest concurrent recorder
+for actual producer observations. It rejects unknown and duplicate IDs, retains
+failures, and emits manifest-ordered snapshots for validation. Platform runners
+do not yet supply a complete record, so this closes only the evidence-assembly
+code gap.
+
+The 2026-10-11 native Windows audit passed all 22 ordinary-user cases, all 23
+privileged cases, and the isolated two-guest packet-flow gate with 116 validated
+observations. The corrected resource runner also completed its 30-minute soak,
+crash recovery, daemon graph/restart, and fault-injection cases. Handle growth
+was 13 after warm-up, and an earlier run measured 19. The maintainer accepts
+the current backend result. The runner now records these deltas without using
+them as qualification limits. See the
+[qualification audit](DAEMON_ISOLATION_QUALIFICATION.md#windows-matrix-and-resource-audit-2026-10-11).
+
 See the [complete-profile qualification gate](DAEMON_ISOLATION_QUALIFICATION.md).
 
 Work:
@@ -1003,25 +1008,26 @@ Acceptance:
 - No required Linux/Windows test is skipped in the release evidence. Unqualified
   profiles remain unavailable rather than receiving a weaker isolation claim.
 
-## 31. Qualify complete-daemon performance
+## 31. Record the accepted complete-daemon performance baseline
+
+Status: complete by maintainer direction on 2026-10-11. Current performance is
+accepted. This checkpoint cannot block isolation completion, release, or the
+default switch.
 
 Work:
 
-- Repeat section 12 with the complete daemon, final restrictions, real admin
-  and node workloads, normal/overloaded logging, config operations, and restore.
-- Compare with both retained direct baselines. Include long-running resource
-  use, graph churn, contention, and control responsiveness under saturation.
-- Investigate differences from the component harness. Keep any optimization a
-  separately tested change with the same authority and freshness requirements.
+- Keep existing measurements as diagnostic baselines.
+- Add new measurements only when they help a later optimization.
+- Keep every optimization subject to the same functional, authority, freshness,
+  and cleanup requirements.
 
 Acceptance:
 
-- Results meet the section 9 budgets for every qualified platform/resource path.
-  Explain material differences from harness measurements and record raw data.
-- Direct mode still has no daemon process split, internal IPC, serialization, or
-  native-fast-path regression. Matcher overhead/freshness remain within contract.
-- Failed budgets block the default switch. A new budget or path decision needs
-  explicit review and new evidence, not an undocumented acceptance exception.
+- No numeric performance, resource-growth, duration, hardware, or comparison
+  requirement applies.
+- Direct mode still has no daemon process split or internal isolation IPC. This
+  is an execution-mode invariant, not a performance target.
+- Functional or security failures still block release; slow execution does not.
 
 ## 32. Package and enable isolation by default
 
@@ -1059,8 +1065,6 @@ local environment:
 - The feature/method inventory and direct-mode compatibility results.
 - Versioned control/data contracts and per-OS/resource data-path decisions.
 - Supported platform profiles, enforced privileges, and denial-test results.
-- Approved budgets, reproducible experiment commands, raw measurements, and
-  complete-daemon comparisons.
 - Fault-injection, fuzz, integration/E2E, and recovery results, with actual suite
   execution and explicit environment requirements.
 - Deployment, migration, limitations, and operator recovery documentation.

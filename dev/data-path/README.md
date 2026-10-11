@@ -18,8 +18,8 @@ channel. Each relay sample includes a native loopback round trip in the broker.
 
 The default smoke-sized run uses seven interleaved runs and 200 samples for
 each packet size. Set `ALMAGEST_DATA_PATH_SAMPLES` to increase the sample count.
-This stage is useful for implementation validation, but Docker results do not
-replace the physical-host acceptance runs specified in the performance budget.
+This stage is optional diagnostic and optimization evidence. No physical-host
+performance acceptance run is required.
 
 The command runs disabled, normal, and overloaded logging stages. It includes
 native TCP, connected and unconnected UDP, native TUN, shared memory, eligible
@@ -49,6 +49,6 @@ qualified. Do not execute `security-probe` on the host.
 
 See the [checkpoint 13 decision](../../docs/DAEMON_ISOLATION_DATA_PATH_DECISION.md)
 for the per-OS/resource matrix, Windows transfer evidence, rejected candidates,
-and open performance gate. The conservative relay
+and accepted performance baseline. The conservative relay
 [contract](../../docs/DAEMON_ISOLATION_DATA_CHANNEL_CONTRACT.md) is frozen for
 implementation. Production qualification remains pending.

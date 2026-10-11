@@ -153,7 +153,10 @@
             "github.com/asciimoth/almagest/bin/internal/isolation/configwriter::TestWriterTransferBindingAndReadLimit",
             "github.com/asciimoth/almagest/bin/internal/isolation/configwriter::TestWriterControlTransferAndLostReply",
             "github.com/asciimoth/almagest/bin/internal/isolation/configwriter::TestWindowsTargetReplaceAndUnsafeNames",
-            "github.com/asciimoth/almagest/bin/internal/isolation/configwriter::TestWindowsTargetRejectsHardLink"
+            "github.com/asciimoth/almagest/bin/internal/isolation/configwriter::TestWindowsTargetRejectsHardLink",
+            "github.com/asciimoth/almagest/bin/internal/isolation/configwriter::TestWindowsTargetRejectsReparsePoint",
+            "github.com/asciimoth/almagest/bin/internal/isolation/configwriter::TestWindowsTargetPinsParentAgainstRedirection",
+            "github.com/asciimoth/almagest/bin/internal/isolation/configwriter::FuzzWriterReceipts"
           ]
         },
         {

@@ -99,8 +99,8 @@ impersonation revert tests. It does not change routes, firewall, DNS, or TUN
 state and does not require elevation.
 
 Complete-daemon integration, bootstrap-created lane delivery, sandbox startup,
-service-profile qualification, and complete-daemon performance remain later
-checkpoints.
+and service-profile qualification remain later checkpoints. Current
+complete-daemon performance is accepted.
 
 ### Checkpoint 22 results, 2026-10-10
 

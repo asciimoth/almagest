@@ -89,8 +89,7 @@ elif name == 'ssh':
                                      'cancellationCycles':100, 'soakDuration':'30m',
                                      'diagnosticOverride':False},
                          'settlingSeconds':10,
-                         'budgets':{'maximumHandleGrowth':8, 'maximumGoroutineGrowth':4,
-                                    'maximumPrivateByteGrowth':67108864},
+                         'resourceGrowth':{'handles':4, 'goroutines':0, 'privateBytes':0},
                          'cases':cases, 'failureInjection':faults,
                          'recoveryJournal':{'persistentCrossProcessSplitJournal':False,
                                             'manualRecovery':'preserve evidence'}}

@@ -196,11 +196,12 @@ scp "${endpoint_scp[@]}" "$run_dir/flowecho.exe" "$run_dir/tunnelpeer.exe" "$scr
 
 stage=network
 progress 'configuring the isolated tunnel and underlay networks'
+network_command_timeout=120
 "$script_dir/tools/qga.py" --socket "$endpoint_sockets/qga.sock" --timeout 60 exec powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$endpoint_remote\flow-network.ps1" -Role Endpoint >"$run_dir/endpoint-network.json"
 "$script_dir/tools/qga.py" --socket "$client_sockets/qga.sock" --timeout 60 exec powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$endpoint_remote\flow-network.ps1" -Role Client >"$run_dir/client-network.json"
-"$script_dir/tools/qga.py" --socket "$endpoint_sockets/qga.sock" --timeout 30 exec powershell.exe -NoProfile -Command \
+"$script_dir/tools/qga.py" --socket "$endpoint_sockets/qga.sock" --timeout "$network_command_timeout" exec powershell.exe -NoProfile -Command \
     "Set-NetFirewallProfile -All -Enabled False; \$echo=New-ScheduledTaskAction -Execute '$endpoint_remote\flowecho.exe'; Register-ScheduledTask -TaskName AlmagestFlowEcho -Action \$echo -User SYSTEM -RunLevel Highest -Force|Out-Null; Start-ScheduledTask AlmagestFlowEcho; \$peer=New-ScheduledTaskAction -Execute '$endpoint_remote\tunnelpeer.exe' -Argument '-listen 198.18.0.1:51900'; Register-ScheduledTask -TaskName AlmagestTunnelPeer -Action \$peer -User SYSTEM -RunLevel Highest -Force|Out-Null; Start-ScheduledTask AlmagestTunnelPeer; Start-Sleep 3" >"$run_dir/endpoint-services.json"
-"$script_dir/tools/qga.py" --socket "$client_sockets/qga.sock" --timeout 30 exec powershell.exe -NoProfile -Command \
+"$script_dir/tools/qga.py" --socket "$client_sockets/qga.sock" --timeout "$network_command_timeout" exec powershell.exe -NoProfile -Command \
     "Set-NetFirewallProfile -All -Enabled False; \$t=@(Get-NetAdapter|Where-Object MacAddress -eq '52-54-00-12-34-10'); \$u=@(Get-NetAdapter|Where-Object MacAddress -eq '52-54-00-12-34-11'); if (\$t.Count -ne 1 -or \$u.Count -ne 1) { throw 'flow adapters missing' }; Get-NetRoute -InterfaceIndex \$t[0].ifIndex|Where-Object DestinationPrefix -In '203.0.113.1/32','2001:db8:ffff::1/128'|Remove-NetRoute -Confirm:\$false; New-NetRoute -InterfaceIndex \$u[0].ifIndex -AddressFamily IPv4 -DestinationPrefix '0.0.0.0/0' -NextHop '198.18.1.1' -RouteMetric 5000|Out-Null; New-NetRoute -InterfaceIndex \$u[0].ifIndex -AddressFamily IPv6 -DestinationPrefix '::/0' -NextHop 'fd00:18:1::1' -RouteMetric 5000|Out-Null" >"$run_dir/client-transition.json"
 
 stage='test'

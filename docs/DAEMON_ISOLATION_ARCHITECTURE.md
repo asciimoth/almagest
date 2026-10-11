@@ -36,7 +36,7 @@ in `bin/`.
 The process split below applies to isolated mode. With `--no-isolation`, all
 daemon roles run in the original process and use direct interface calls. No
 isolation worker, broker process or internal IPC transport is started. Section
-10.1 defines this execution mode and its performance requirements.
+10.1 defines this execution mode. Performance is diagnostic, not a requirement.
 
 ## 1. Process split
 
@@ -403,7 +403,7 @@ block device management. Report overload and timeouts as errors. Preserve
 supported matcher behavior under normal load; do not impose a quota which
 makes packet-path matching unusable.
 
-Benchmark against the in-process backend before qualification. Measure added
+Measurements against the in-process backend can guide later optimization. Record
 median and tail latency, lookups/second, packets/second, CPU, IPC bytes and cache
 miss behavior for TCP, UDP and short-lived flows, including concurrent nodes.
 One synchronous RPC per packet can be expensive; this design does not claim
@@ -426,7 +426,7 @@ Checkpoint 13 result: [data-path security decision](DAEMON_ISOLATION_DATA_PATH_D
 The [version 1 relay contract](DAEMON_ISOLATION_DATA_CHANNEL_CONTRACT.md) is
 frozen for all Linux and Windows resource types. By explicit maintainer
 direction, implementation can proceed with conservative relays while the
-production security and performance gates remain open. This decision supersedes
+production security gates remain open. This decision supersedes
 the candidate-selection sequence below; native handles and shared memory remain
 excluded from version 1.
 
@@ -498,14 +498,13 @@ handle, rely on destruction or deconfiguration of the owned native resource and
 state the residual window. Do not advertise synchronous close completion until
 both sides have acknowledged closure or native teardown makes further I/O fail.
 
-The production choice must pass both the security tests and the performance
-budget below. Relay is the safe functional reference, not an assumed final
-architecture. Direct I/O is not accepted only because it benchmarks faster, and
-relay is not accepted only because it is easier to reason about.
+The production choice must pass the security tests. Relay is the safe functional
+reference. Performance results can guide later optimization but cannot accept
+or reject an authority boundary.
 
-### 4.4 Data-path performance experiment
+### 4.4 Optional data-path performance measurements
 
-Build a minimal isolated R/N harness which uses the real IPC primitive, process
+The existing minimal isolated R/N harness uses the real IPC primitive, process
 restrictions, buffer pool and native backend I/O planned for production. Avoid a
 microbenchmark which measures only pipe or shared-memory bandwidth. Exercise a
 complete path between the native resource and R, in both directions, including
@@ -545,24 +544,14 @@ Measure cold start and steady state, with and without five-tuple matchers, and
 with representative encryption such as WireGuard so the relative IPC cost is
 not hidden or exaggerated by a synthetic no-work loop. Repeat long enough to
 observe garbage collection, cache effects and queue oscillation. Pinning CPUs
-may be used as a diagnostic run, but the acceptance run must also use the normal
-scheduler. Record hardware, OS, Go version, power mode and benchmark settings so
-results can be reproduced.
+and normal-scheduler runs are both optional diagnostics. Record the environment
+when results need to be reproduced.
 
-Set performance budgets before choosing the production path. Budgets must cover
-maximum acceptable loss of goodput and packets per second, added p99 latency,
-CPU cost, and control-plane delay. Establish separate budgets for interactive
-and bulk traffic and for Linux and Windows. If no relay design meets them, direct
-handles or another design must be evaluated before implementation proceeds.
-Do not weaken isolation silently to meet a budget; record the chosen authority
-tradeoff and unsupported combinations.
-
-Give `--no-isolation` a separate regression budget against the original direct
-path. Verify that the refactor introduces no serialization, transport copies,
-broker relay, synthetic RPC queues or per-packet transport allocations in this
-mode. Measure CPU, allocations, throughput and tail latency with native outbound
-I/O enabled. Do not disable native fast paths in this baseline to make isolation
-overhead appear smaller.
+Do not define performance pass/fail budgets for isolation qualification. Current
+Linux and Windows results are accepted. Keep `--no-isolation` free of isolation
+role processes, IPC, broker relays, and synthetic RPC queues as execution-mode
+invariants. CPU, allocation, throughput, latency, and resource-counter results
+are optional optimization baselines.
 
 The experiment result is an architecture decision record linked from this
 document. It identifies the selected path for each platform/resource type,
@@ -1478,8 +1467,8 @@ on `bin`.
 1. Freeze the control/policy contracts and build the section 4.4 Linux and
    Windows data-path harnesses. Prototype broker relay, shared-memory relay and
    eligible direct handles with real restrictions and native resources. Run the
-   security tests and performance matrix, set budgets, record the decision for
-   each resource type, and only then freeze the data-channel contract.
+   security tests, record the decision for each resource type, and then freeze
+   the data-channel contract. Performance measurements are optional.
 2. Create fake brokers around the selected contracts. Test forged IDs,
    disallowed effects, limits, stale generations and uncertain results without
    privileged integration.
@@ -1517,18 +1506,15 @@ sink, debug flood, malformed/oversized record, forged process label, terminal
 control sequence and child panic. Verify bounded memory, source attribution,
 visible drop counters, no forwarding loops and continued network-control progress.
 Check startup errors and bounded final flushing, and prove that a remote fatal
-record cannot terminate its collector. Include normal and overloaded logging in
-data-path performance measurements; direct mode must create no logging IPC.
+record cannot terminate its collector. Direct mode must create no logging IPC.
 
 Use `just check` for repository validation during
 implementation, plus privileged Linux tests and the supported Windows VM matrix.
 Include admin CLI/panel, low-port listeners, IPv4/IPv6, UDP metadata, native
 underlay changes, DNS bypass, commands, snapshot rollback and experimental flag
-combinations. Measure the selected data-path performance before approving a
-design that grants more access. Treat the section 4.4 experiment and decision
-record as an implementation gate, not optional post-implementation tuning. Fail
-the complete-profile performance qualification if it exceeds the recorded
-budgets or differs materially from the harness without an explained cause.
+combinations. Do not grant more access for performance. Section 4.4 measurements
+are optional post-implementation optimization data and are not an
+implementation or qualification gate.
 
 Compare isolated and in-process behavior using the same backend settings and
 launch authority: elevated/system, ordinary user, and partial network rights.
@@ -1544,16 +1530,16 @@ daemon startup, graph changes, config updates, snapshots and shutdown launch no
 daemon role subprocess and create no internal IPC channel. Exclude only explicitly
 configured external programs from that assertion. Check that the native outbound
 network retains its backend `IsNative()` value and that native consumers actually
-use the corresponding fast paths. Run the section 4.4 direct-mode regression
-comparison; successful functional tests alone do not establish low overhead.
+use the corresponding fast paths. Direct-mode performance comparisons are
+optional diagnostic work.
 
 Matcher parity tests must include `MatchConn` endpoint reversal, queued TUN
 traffic, IPv4/IPv6, UDP wildcard/shared binds, missing and ambiguous owners,
 short-lived connections, PID/port reuse, process exit/exec, rule replacement,
 close/cancellation and overload. Valid tuple requests must not fail because a
 broker observation entry or lease is absent. Compare result/error semantics
-with the native backend and record the lookup/packet-path performance measures
-from section 4.2. A cache optimization requires separate freshness tests.
+with the native backend. Lookup and packet-path measurements are optional. A
+cache optimization requires separate freshness tests.
 
 The principal implementation uncertainties are native adapter completeness,
 per-kernel BPF requirements, Go-compatible runtime syscall profiles, and Windows

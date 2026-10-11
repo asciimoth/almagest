@@ -96,6 +96,19 @@ just test-total winvm:m19::fixed-target-config-writer
 The Windows selector is required platform evidence. A cross-compiled test
 binary is only a build check and does not replace the VM run.
 
+The final checkpoint 19 Windows run passed without skips on 2026-10-11 as the
+ordinary VM user. It created a real NTFS junction without symlink privilege,
+rejected a target below that reparse-point parent, and proved that the held
+parent cannot be renamed and replaced after writer startup. The selector also
+requires the hard-link checks and all portable receipt seeds. The retained run
+is `artifacts/winvm/run-tIM0MI2L`; its source archive SHA-256 is
+`a6ef6e7909f200a7287795e4abe3cecac1ffcd4f7e060d6112b91f91d549eee4`.
+
+The portable race-enabled writer suite passed with 78.1 percent statement
+coverage. A separate 30-second, two-worker `FuzzWriterReceipts` campaign
+completed 1,607,081 executions and preserved the receipt and content
+invariants.
+
 ## Checkpoint 27 runtime integration
 
 `bin/internal/isolation/configpersistence` connects R's existing

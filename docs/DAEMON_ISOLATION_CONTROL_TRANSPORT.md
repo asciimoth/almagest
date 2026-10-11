@@ -121,7 +121,7 @@ The Windows package selector is
 `just windows-isolation-experiment` checks the connected pipe in the restricted
 caller and service AppContainers. Only the tested Windows Server 2022 amd64
 profile is qualified by those runs. Other OS profiles and complete-daemon
-performance remain subject to checkpoints 24, 25, 30, and 31.
+security remain subject to checkpoints 24, 25, and 30.
 
 ### Checkpoint 14 results, 2026-10-09
 

@@ -9,20 +9,18 @@ contract remains version 1. The direct daemon continues to require
 `--no-isolation` until the production isolation gates pass.
 
 On 2026-10-09 the maintainer explicitly requested a conservative choice for
-every open decision and a frozen design so implementation can continue. This
-changes the original checkpoint order: design freeze precedes full performance
-qualification. It does not claim that the selected relays meet the
-[performance budgets](DAEMON_ISOLATION_PERFORMANCE_BUDGETS.md), approve new
-numeric limits, or qualify an isolated OS profile. Functional, hostile-client,
-and performance qualification remain mandatory before production enablement.
+every open decision and a frozen design so implementation can continue. Current
+performance is accepted under the
+[performance policy](DAEMON_ISOLATION_PERFORMANCE_BUDGETS.md). Functional and
+hostile-client qualification remain mandatory before production enablement.
 
 ## Evidence used
 
 - **F12/P12:** The [checkpoint 12 report](DAEMON_ISOLATION_DATA_PATH_EXPERIMENT.md)
   records functional packet exchange, timing, limits, and artifact paths for
-  Linux and Windows. Its short runs fail several rate, CPU, and TUN tail limits.
-  Windows Wintun also loses packets below saturation. The required duration,
-  complete workload matrix, and original/current direct comparison are absent.
+  Linux and Windows. Its short runs show rate, CPU, TUN-tail, and Wintun-loss
+  costs that are accepted as diagnostic baselines. The complete workload matrix
+  and original/current direct comparison are optional future measurements.
   TCP listener transfer/accept is not a measured checkpoint 12 workload.
 - **L13:** `just data-path-security-experiment` runs
   [`dev/data-path/security.c`](../dev/data-path/security.c) through the existing
@@ -56,16 +54,16 @@ remain in R and are outside this matrix.
 
 | OS/resource | Direct-handle decision | Frozen selection and remaining qualification | Evidence |
 | --- | --- | --- | --- |
-| Linux TUN | Reject current grant: device survives N closing its copy; device-wide teardown under hostile I/O is unqualified. | Bounded packet relay; resolve TUN latency, CPU, equivalent-baseline, MTU/queue, and revocation gaps. | F12/P12, L13, S13 |
-| Linux TCP connection | Reject: R can duplicate and retain the socket after broker close. | Ordered byte relay; prove stream order, half-close, deadlines, cancellation, bounded close, and rate/CPU budgets. | F12/P12, L13 |
+| Linux TUN | Reject current grant: device survives N closing its copy; device-wide teardown under hostile I/O is unqualified. | Bounded packet relay; resolve MTU/queue and revocation gaps. | F12/P12, L13, S13 |
+| Linux TCP connection | Reject: R can duplicate and retain the socket after broker close. | Ordered byte relay; prove stream order, half-close, deadlines, cancellation, and bounded close. | F12/P12, L13 |
 | Linux TCP listener | Reject current profile: accept is denied, while the inherited listener still retains the port. | N accepts; relay accepted streams with bounded pending accepts. Add listener measurements and hostile accept/close races. | L13, S13; F12/P12 has no listener result |
-| Linux connected UDP | Reject: send-to overrides the configured peer even when reconnect is denied. | Packet relay; N validates every destination and preserves packet metadata. Rate/CPU and complete semantics remain open. | F12/P12, L13 |
+| Linux connected UDP | Reject: send-to overrides the configured peer even when reconnect is denied. | Packet relay; N validates every destination and preserves packet metadata. Complete semantics remain open. | F12/P12, L13 |
 | Linux unconnected UDP | Reject: R retains send-to authority after N closes its copy. | Packet relay with per-send validation and bounded queues. | F12/P12, L13 |
-| Windows Wintun | Reject: current API has no supported transferable session/ring contract. | N-owned Wintun with packet relay. Fix service-profile loss and tails; caller-profile Wintun remains unavailable without native launch authority. | W11/W12, F12/P12, S13 |
-| Windows TCP connection | Reject version 1 transfer: authority and lifetime are not qualified. | Ordered byte relay; qualify stream semantics, hostile retention/close, and rate/CPU limits. | W11/W12, F12/P12, S13 |
+| Windows Wintun | Reject: current API has no supported transferable session/ring contract. | N-owned Wintun with packet relay. Caller-profile Wintun remains unavailable without native launch authority. | W11/W12, F12/P12, S13 |
+| Windows TCP connection | Reject version 1 transfer: authority and lifetime are not qualified. | Ordered byte relay; qualify stream semantics and hostile retention/close. | W11/W12, F12/P12, S13 |
 | Windows TCP listener | Reject: transfer, accept, and revocation are unqualified. | N accepts; relay accepted streams. Add listener measurements and hostile tests. | W11/W12, S13; F12/P12 has no listener result |
 | Windows connected UDP | Reject version 1 transfer: destination override and socket-control scope are unqualified. | Packet relay; qualify per-send policy, packet metadata, deadlines, close, rate, and CPU. | W11/W12, F12/P12, S13 |
-| Windows unconnected UDP | Reject: no safe direct grant is qualified. | Packet relay with per-send validation, then functional and performance qualification. | W11/W12, F12/P12, S13 |
+| Windows unconnected UDP | Reject: no safe direct grant is qualified. | Packet relay with per-send validation, then functional qualification. | W11/W12, F12/P12, S13 |
 
 Linux uses private Unix stream socketpairs. Windows uses private connected
 byte-mode named pipes with overlapped I/O. Both use separate control, data, and
@@ -155,8 +153,8 @@ Before another shared-memory candidate is eligible, it must:
 The selected relay keeps all native resources in N, where typed operations can
 be validated and resources revoked independently of R's cooperation. The
 checkpoint 12 benchmark is not the version 1 implementation: it lacks full
-framing, ownership, cancellation, metadata, and hostile-peer tests. Its budget
-failures remain recorded. Implement the frozen contract, then qualify it; do not
+framing, ownership, cancellation, metadata, and hostile-peer tests. Its
+performance results remain diagnostic. Implement the frozen contract, then qualify it; do not
 promote the benchmark loop into production.
 
 ## Frozen lifetime contract
@@ -213,10 +211,8 @@ the change affects development experiments and design documents only.
 
 Checkpoints 14 through 18 can proceed against the frozen relay contract. Before
 production enablement, pass the native functional and hostile-runtime gates in
-checkpoint 30 and the unchanged performance gates in checkpoint 31, including
-the missing checkpoint 12 measurements. Use the original/current direct
-baselines. Any numeric budget change needs explicit maintainer approval with
-measurements. Repeat this review after material changes to restrictions,
+checkpoint 30. Checkpoint 31 records the accepted current performance state and
+cannot block release. Repeat this security review after material changes to restrictions,
 OS/provider, Go runtime, Wintun, native backend, IPC framing, memory ownership,
 or TUN queueing. Both production OS profiles remain unqualified until those
 gates pass; this does not reopen the version 1 design choice.

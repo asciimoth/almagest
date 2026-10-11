@@ -1,7 +1,8 @@
 # Direct mode refactor qualification
 
 Status: implementation and platform matrix complete. The privileged Linux and
-Windows VM matrices passed. The controlled performance comparison remains open.
+Windows VM matrices passed. The controlled same-host hot-path comparison is
+complete. Current native I/O performance is accepted.
 
 This record qualifies the direct composition after daemon isolation checkpoints
 2 through 7. The comparison baseline is
@@ -74,12 +75,20 @@ The section 1 baseline used different hardware, so its absolute latency is not
 a controlled before-and-after comparison. No serialization or IPC package is
 present in the direct service composition. A same-host comparison with the
 original source revision, including native I/O CPU, throughput, and tail
-latency, is still required before final acceptance.
+latency, is optional future optimization work.
 
-## Remaining acceptance work
+On 2026-10-11, the retained benchmark was run ten times for both the original
+revision and the current dirty worktree on the same AMD Ryzen 5 5600H host with
+Go 1.26.8. Original/current mean times in table order were 6.212/5.936,
+16.232/16.363, 10.845/11.045, 28.837/28.812, and 13.355/13.146 ns/op. Every
+sample reported zero bytes and zero allocations per operation. Raw output and
+environment data are in `artifacts/direct-refactor-20261011/`. Thus, the
+controlled library hot path has no observed regression. This does not measure
+native I/O CPU, throughput, memory, or tail latency.
 
-- Repeat the performance baseline and this revision on the same host and record
-  CPU, throughput, latency, memory, and allocation results.
+There is no remaining performance acceptance work. Future native I/O CPU,
+throughput, memory, and tail-latency measurements are optional optimization
+baselines.
 
 ## Qualification runs
 

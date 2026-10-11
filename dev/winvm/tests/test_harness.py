@@ -198,6 +198,8 @@ class HarnessTests(unittest.TestCase):
         self.assertEqual(flow.count('WarnWeakCrypto=no'), 4)
         self.assertIn('>"$run_dir/flow-console.log" 2>&1', flow)
         self.assertIn("progress 'waiting for the client guest'", flow)
+        self.assertIn('network_command_timeout=120', flow)
+        self.assertEqual(flow.count('--timeout "$network_command_timeout"'), 2)
         self.assertIn("progress 'running outnet and split packet-flow scenarios (timeout: 30 minutes)'", flow)
         self.assertIn('packet-flow scenarios still running; elapsed=%ss', flow)
         self.assertIn("progress 'collecting observations and validating packet captures'", flow)
@@ -281,6 +283,14 @@ class HarnessTests(unittest.TestCase):
         self.assertIn('system.evtx', collector)
         self.assertIn('active-test-tails.txt', collector)
         self.assertIn('StartsWith($diagnosticRoot', collector)
+
+    def test_resource_suite_uses_native_exit_code(self):
+        suite = (ROOT / 'resource-suite.ps1').read_text()
+        self.assertIn("$ErrorActionPreference = 'Continue'", suite)
+        self.assertIn('$goExitCode = $LASTEXITCODE', suite)
+        self.assertIn('$ErrorActionPreference = $savedErrorActionPreference', suite)
+        self.assertIn('if ($goExitCode -ne 0)', suite)
+        self.assertIn("$_.PSObject.Properties['Test']", suite)
 
     def test_port_contention_and_concurrent_locks(self):
         sock = socket.socket()
