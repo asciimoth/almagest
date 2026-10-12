@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -306,11 +305,7 @@ func (r *windowsResources) supervise(process *windowsprofile.Process, proof role
 }
 
 func (r *windowsResources) bridge(left, right transport.Stream) {
-	var once sync.Once
-	closeBoth := func() { once.Do(func() { _ = left.Close(); _ = right.Close() }) }
-	for _, direction := range [][2]transport.Stream{{left, right}, {right, left}} {
-		r.bridges.Go(func() { _, _ = io.Copy(direction[0], direction[1]); closeBoth() })
-	}
+	bridgeStreams(&r.bridges, left, right)
 }
 
 func (r *windowsResources) close() error {

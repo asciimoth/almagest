@@ -18,7 +18,7 @@ func TestLinuxProductionSelectsFixedSiblingRolesAndSeparatedStorage(t *testing.T
 		"almagest-command": {Uid: "103", Gid: "203"},
 	}
 	production, err := linuxProduction(daemonargs.Args{Config: "/srv/config/alm.hujson", ProtectedConfig: "/etc/almagest/protected.hujson", FileStorage: "/srv/runtime"},
-		func() (string, error) { return "/opt/almagest/almagest-network-role", nil }, func(name string) (*user.User, error) { return ids[name], nil }, "")
+		func() (string, error) { return "/opt/almagest/almagest-network-role", nil }, func(name string) (*user.User, error) { return ids[name], nil }, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,7 +38,7 @@ func TestLinuxProductionRejectsMissingOrRootAccounts(t *testing.T) {
 		"invalid": func(string) (*user.User, error) { return &user.User{Uid: "x", Gid: "1"}, nil },
 	} {
 		t.Run(name, func(t *testing.T) {
-			if _, err := linuxProduction(daemonargs.Args{}, func() (string, error) { return "/opt/network", nil }, lookup, ""); err == nil {
+			if _, err := linuxProduction(daemonargs.Args{}, func() (string, error) { return "/opt/network", nil }, lookup, "", ""); err == nil {
 				t.Fatal("invalid account accepted")
 			}
 		})
@@ -46,15 +46,10 @@ func TestLinuxProductionRejectsMissingOrRootAccounts(t *testing.T) {
 }
 
 func TestLinuxProductionUsesSeparatedDevelopmentState(t *testing.T) {
-	ids := map[string]*user.User{
-		"almagest-runtime": {Uid: "101", Gid: "201"},
-		"almagest-writer":  {Uid: "102", Gid: "202"},
-		"almagest-command": {Uid: "103", Gid: "203"},
-	}
 	root := "/var/lib/almagest/dev-1000"
 	production, err := linuxProduction(daemonargs.Args{},
 		func() (string, error) { return "/run/almagest-dev/almagest-network-role", nil },
-		func(name string) (*user.User, error) { return ids[name], nil }, root)
+		nil, root, "100000:200000,100001:200001,100002:200002")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +58,9 @@ func TestLinuxProductionUsesSeparatedDevelopmentState(t *testing.T) {
 		production.Paths.RuntimeDirectory != filepath.Join(root, "runtime") ||
 		production.Paths.HelperDirectory != filepath.Join(root, "helper") ||
 		production.Paths.BrokerDirectory != filepath.Join(root, "broker") ||
-		production.Paths.Layout.Legacy != filepath.Join(root, "legacy-store") {
+		production.Paths.Layout.Legacy != filepath.Join(root, "legacy-store") ||
+		production.Identities.Runtime.UID != 100000 || production.Identities.Writer.GID != 200001 ||
+		production.Identities.Helper.UID != 100002 {
 		t.Fatalf("development launch = %#v", production)
 	}
 }
@@ -71,12 +68,21 @@ func TestLinuxProductionUsesSeparatedDevelopmentState(t *testing.T) {
 func TestLinuxProductionRejectsInvalidDevelopmentRoot(t *testing.T) {
 	lookup := func(string) (*user.User, error) { return &user.User{Uid: "101", Gid: "201"}, nil }
 	for _, root := range []string{"relative", "/var/lib/../tmp/dev"} {
-		if _, err := linuxProduction(daemonargs.Args{}, func() (string, error) { return "/opt/network", nil }, lookup, root); err == nil {
+		if _, err := linuxProduction(daemonargs.Args{}, func() (string, error) { return "/opt/network", nil }, lookup, root, "100:100,101:101,102:102"); err == nil {
 			t.Fatalf("development root %q accepted", root)
 		}
 	}
-	if _, err := linuxProduction(daemonargs.Args{Config: "/tmp/config"}, func() (string, error) { return "/opt/network", nil }, lookup, "/var/lib/almagest/dev-1"); err == nil {
+	if _, err := linuxProduction(daemonargs.Args{Config: "/tmp/config"}, func() (string, error) { return "/opt/network", nil }, lookup, "/var/lib/almagest/dev-1", "100:100,101:101,102:102"); err == nil {
 		t.Fatal("development root accepted an explicit config path")
+	}
+}
+
+func TestLinuxProductionRejectsInvalidDevelopmentIdentities(t *testing.T) {
+	for _, identities := range []string{"", "1:1,2:2", "0:1,2:2,3:3", "1:1,1:2,3:3", "1:1,2:1,3:3", "x:1,2:2,3:3"} {
+		if _, err := linuxProduction(daemonargs.Args{}, func() (string, error) { return "/opt/network", nil }, nil,
+			"/var/lib/almagest/dev-1", identities); err == nil {
+			t.Fatalf("development identities %q accepted", identities)
+		}
 	}
 }
 

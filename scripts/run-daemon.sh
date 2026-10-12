@@ -4,13 +4,16 @@ set -euo pipefail
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
 payload="$repo_root/build/isolation-linux"
 elevated=0
-direct=0
 experimental=0
 
 if [[ ${1:-} == --sudo ]]; then
     elevated=1
     shift
 fi
+
+# The ordinary recipe is a local development command. Only daemon-sudo uses
+# isolation by default because it can create the required privileged runtime.
+direct=$((1 - elevated))
 
 # just passes its variadic recipe parameter as one quoted string. Only these
 # two exact, whitespace-free daemon flags are accepted here.
@@ -39,15 +42,18 @@ if [[ $direct == 1 ]]; then
         arguments+=(--tmp-unix-admin)
     fi
 else
-    # The elevated runner supplies a role-owned copy of local config. The
-    # ordinary runner uses the provisioned system config and storage.
+    # The elevated isolated runner supplies a role-owned copy of local config.
     arguments=("${common[@]}")
 fi
 if [[ $experimental == 1 ]]; then
     arguments+=(--experimental)
 fi
 
-executable="$payload/almagestd"
+if [[ $direct == 1 && $elevated != 1 ]]; then
+    executable="$repo_root/almagestd"
+else
+    executable="$payload/almagestd"
+fi
 command=("$executable" "${arguments[@]}")
 if [[ $elevated == 1 ]]; then
     if [[ $direct == 1 ]]; then
@@ -55,10 +61,14 @@ if [[ $elevated == 1 ]]; then
     else
         # A root daemon must not trust executables below a user-owned checkout.
         # Stage the complete sibling payload below a root-owned runtime path.
-        # Persistent development data has separate role ownership below /var.
+        # Persistent development data uses identities from the caller's
+        # subordinate UID/GID ranges, so development does not require the
+        # package-managed Almagest accounts.
         caller_uid=$UID
         caller_gid=$(id -g)
-        state="/var/lib/almagest/dev-${caller_uid}"
+        caller_name=$(id -un)
+        development_identities='1:1,2:2,3:3'
+        state="/var/lib/almagest/dev-${caller_uid}-PRINT"
         stage="/run/almagest-dev-${caller_uid}-PRINT"
         if [[ ${ALMAGEST_DAEMON_PRINT_COMMAND:-0} != 1 ]]; then
             exec 9>"$repo_root/local/.daemon-sudo.lock"
@@ -66,18 +76,30 @@ if [[ $elevated == 1 ]]; then
                 printf 'another daemon-sudo instance owns the local development config\n' >&2
                 exit 1
             fi
-            for account in almagest-runtime almagest-writer almagest-command; do
-                if ! id "$account" >/dev/null 2>&1; then
-                    printf 'required isolation account %s is absent; install packaging/linux/almagest.sysusers\n' "$account" >&2
+            subordinate_start() {
+                local database=$1 kind=$2
+                local start
+                start=$(awk -F: -v name="$caller_name" -v uid="$caller_uid" '
+                    ($1 == name || $1 == uid) && $2 ~ /^[0-9]+$/ && $3 ~ /^[0-9]+$/ && $3 >= 3 {
+                        print $2
+                        exit
+                    }
+                ' "$database")
+                if [[ -z $start || $start -eq 0 || $start -gt 4294967292 ]]; then
+                    printf 'daemon-sudo requires at least three subordinate %s IDs for %s in %s\n' \
+                        "$kind" "$caller_name" "$database" >&2
                     exit 1
                 fi
-            done
-            runtime_uid=$(id -u almagest-runtime)
-            runtime_gid=$(id -g almagest-runtime)
-            writer_uid=$(id -u almagest-writer)
-            writer_gid=$(id -g almagest-writer)
-            command_uid=$(id -u almagest-command)
-            command_gid=$(id -g almagest-command)
+                printf '%s\n' "$start"
+            }
+            runtime_uid=$(subordinate_start /etc/subuid UIDs)
+            runtime_gid=$(subordinate_start /etc/subgid GIDs)
+            writer_uid=$((runtime_uid + 1))
+            writer_gid=$((runtime_gid + 1))
+            command_uid=$((runtime_uid + 2))
+            command_gid=$((runtime_gid + 2))
+            development_identities="${runtime_uid}:${runtime_gid},${writer_uid}:${writer_gid},${command_uid}:${command_gid}"
+            state="/var/lib/almagest/dev-${caller_uid}-${runtime_uid}-${runtime_gid}"
             stage=$(sudo mktemp -d "/run/almagest-dev-${caller_uid}-XXXXXXXX")
             sudo chmod 0755 -- "$stage"
             sudo install -o root -g root -m 0755 -- \
@@ -100,7 +122,8 @@ if [[ $elevated == 1 ]]; then
                 "$repo_root/local/protected_alm.hujson" "$state/protected/protected_alm.hujson"
         fi
         command=(sudo -- systemd-run --scope --quiet --property=Delegate=yes \
-            --setenv="ALMAGEST_ISOLATION_DEVELOPMENT_ROOT=$state" -- \
+            --setenv="ALMAGEST_ISOLATION_DEVELOPMENT_ROOT=$state" \
+            --setenv="ALMAGEST_ISOLATION_DEVELOPMENT_IDENTITIES=$development_identities" -- \
             "$stage/almagestd" "${arguments[@]}" --unix "$stage/admin.sock")
     fi
 fi

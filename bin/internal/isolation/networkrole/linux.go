@@ -472,11 +472,7 @@ func (r *linuxResources) supervise(process *linuxprofile.Process, proof roleentr
 }
 
 func (r *linuxResources) bridge(a, b transport.Stream) {
-	var once sync.Once
-	closeBoth := func() { once.Do(func() { _ = a.Close(); _ = b.Close() }) }
-	for _, direction := range [][2]transport.Stream{{a, b}, {b, a}} {
-		r.bridges.Go(func() { _, _ = io.Copy(direction[0], direction[1]); closeBoth() })
-	}
+	bridgeStreams(&r.bridges, a, b)
 }
 
 func (r *linuxResources) close() error {

@@ -140,7 +140,12 @@ func (n *Network) ListenPacket(ctx context.Context, network, address string) (go
 }
 func (n *Network) ListenUDPConfig(ctx context.Context, lc *gonnect.ListenConfig, network, address string) (gonnect.UDPConn, error) {
 	if lc != nil && lc.Control != nil {
-		return nil, protocol.ErrCapabilityUnsupported
+		// The broker owns the native socket, so the isolated runtime cannot
+		// receive syscall.RawConn access. Virtual gonnect networks can call the
+		// control hook with nil to let callers apply only portable setup.
+		if err := lc.Control(network, address, nil); err != nil {
+			return nil, err
+		}
 	}
 	return n.ListenUDP(ctx, network, address)
 }

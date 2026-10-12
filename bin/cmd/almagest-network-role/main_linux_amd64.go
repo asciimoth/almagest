@@ -28,6 +28,7 @@ const (
 	defaultHelperPath    = "/var/lib/almagest/helper"
 	defaultBrokerPath    = "/var/lib/almagest/broker"
 	developmentRootEnv   = "ALMAGEST_ISOLATION_DEVELOPMENT_ROOT"
+	developmentIDsEnv    = "ALMAGEST_ISOLATION_DEVELOPMENT_IDENTITIES"
 )
 
 func runNetworkRole() error {
@@ -45,7 +46,7 @@ func runNetworkRole() error {
 	if developmentRoot != "" && os.Geteuid() != 0 {
 		return errors.New("isolated development root requires a root network role")
 	}
-	production, err := linuxProduction(arguments, currentExecutable, user.Lookup, developmentRoot)
+	production, err := linuxProduction(arguments, currentExecutable, user.Lookup, developmentRoot, os.Getenv(developmentIDsEnv))
 	if err != nil {
 		return err
 	}
@@ -71,8 +72,8 @@ func currentExecutable() (string, error) {
 	return filepath.Clean(path), nil
 }
 
-func linuxProduction(arguments daemonargs.Args, executable func() (string, error), lookup func(string) (*user.User, error), developmentRoot string) (networkrole.LinuxProduction, error) {
-	if executable == nil || lookup == nil {
+func linuxProduction(arguments daemonargs.Args, executable func() (string, error), lookup func(string) (*user.User, error), developmentRoot, developmentIDs string) (networkrole.LinuxProduction, error) {
+	if executable == nil || developmentRoot == "" && lookup == nil {
 		return networkrole.LinuxProduction{}, errors.New("missing Linux bootstrap dependency")
 	}
 	self, err := executable()
@@ -111,21 +112,31 @@ func linuxProduction(arguments daemonargs.Args, executable func() (string, error
 		return networkrole.LinuxProduction{}, err
 	}
 	identities := networkrole.LinuxProductionIdentities{}
-	for name, output := range map[string]*networkrole.LinuxIdentity{
-		"almagest-runtime": &identities.Runtime,
-		"almagest-writer":  &identities.Writer,
-		"almagest-command": &identities.Helper,
-	} {
-		account, lookupErr := lookup(name)
-		if lookupErr != nil {
-			return networkrole.LinuxProduction{}, fmt.Errorf("required isolation account %s: %w; install the system profile or use explicit --no-isolation", name, lookupErr)
+	if developmentRoot != "" {
+		identities, err = parseDevelopmentIdentities(developmentIDs)
+		if err != nil {
+			return networkrole.LinuxProduction{}, err
 		}
-		uid, uidErr := strconv.ParseUint(account.Uid, 10, 32)
-		gid, gidErr := strconv.ParseUint(account.Gid, 10, 32)
-		if uidErr != nil || gidErr != nil || uid == 0 || gid == 0 {
-			return networkrole.LinuxProduction{}, fmt.Errorf("required isolation account %s has an invalid non-root identity", name)
+	} else {
+		if developmentIDs != "" {
+			return networkrole.LinuxProduction{}, errors.New("development identities require an isolated development root")
 		}
-		*output = networkrole.LinuxIdentity{UID: uint32(uid), GID: uint32(gid)}
+		for name, output := range map[string]*networkrole.LinuxIdentity{
+			"almagest-runtime": &identities.Runtime,
+			"almagest-writer":  &identities.Writer,
+			"almagest-command": &identities.Helper,
+		} {
+			account, lookupErr := lookup(name)
+			if lookupErr != nil {
+				return networkrole.LinuxProduction{}, fmt.Errorf("required isolation account %s: %w; install the system profile or use explicit --no-isolation", name, lookupErr)
+			}
+			uid, uidErr := strconv.ParseUint(account.Uid, 10, 32)
+			gid, gidErr := strconv.ParseUint(account.Gid, 10, 32)
+			if uidErr != nil || gidErr != nil || uid == 0 || gid == 0 {
+				return networkrole.LinuxProduction{}, fmt.Errorf("required isolation account %s has an invalid non-root identity", name)
+			}
+			*output = networkrole.LinuxIdentity{UID: uint32(uid), GID: uint32(gid)}
+		}
 	}
 	arguments.Config, arguments.ProtectedConfig, arguments.FileStorage = configPath, protectedPath, runtimePath
 	sources := bootstrap.ConfigSources{RegularPath: configPath, ProtectedPath: protectedPath,
@@ -147,6 +158,33 @@ func linuxProduction(arguments daemonargs.Args, executable func() (string, error
 			RuntimeDirectory: runtimePath, WriterDirectory: filepath.Dir(configPath), HelperDirectory: helperPath, BrokerDirectory: brokerPath,
 			Layout: layout,
 		}}, nil
+}
+
+func parseDevelopmentIdentities(value string) (networkrole.LinuxProductionIdentities, error) {
+	parts := strings.Split(value, ",")
+	if len(parts) != 3 {
+		return networkrole.LinuxProductionIdentities{}, errors.New("isolated development identities must contain runtime, writer, and command UID/GID pairs")
+	}
+	parsed := make([]networkrole.LinuxIdentity, len(parts))
+	seenUIDs, seenGIDs := map[uint32]bool{}, map[uint32]bool{}
+	for index, part := range parts {
+		values := strings.Split(part, ":")
+		if len(values) != 2 {
+			return networkrole.LinuxProductionIdentities{}, errors.New("isolated development identity must be UID:GID")
+		}
+		uid, uidErr := strconv.ParseUint(values[0], 10, 32)
+		gid, gidErr := strconv.ParseUint(values[1], 10, 32)
+		if uidErr != nil || gidErr != nil || uid == 0 || gid == 0 || uid == uint64(^uint32(0)) || gid == uint64(^uint32(0)) {
+			return networkrole.LinuxProductionIdentities{}, errors.New("isolated development identity must use valid non-root UID and GID values")
+		}
+		identity := networkrole.LinuxIdentity{UID: uint32(uid), GID: uint32(gid)}
+		if seenUIDs[identity.UID] || seenGIDs[identity.GID] {
+			return networkrole.LinuxProductionIdentities{}, errors.New("isolated development identities must use distinct UID and GID values")
+		}
+		seenUIDs[identity.UID], seenGIDs[identity.GID] = true, true
+		parsed[index] = identity
+	}
+	return networkrole.LinuxProductionIdentities{Runtime: parsed[0], Writer: parsed[1], Helper: parsed[2]}, nil
 }
 
 func absolutePath(value, fallback string) (string, error) {

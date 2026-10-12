@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/netip"
 	"os"
+	"syscall"
 	"testing"
 	"time"
 
@@ -203,6 +204,39 @@ func TestPacketRelay(t *testing.T) {
 				t.Fatal("close blocked")
 			}
 		})
+	}
+}
+
+func TestPacketRelayListenConfigUsesVirtualControl(t *testing.T) {
+	_, c := socketClient(t)
+	n := c.Network(protocol.NetworkLocal, nil)
+	called := false
+	conn, err := n.ListenUDPConfig(context.Background(), &gonnect.ListenConfig{
+		Control: func(network, address string, raw syscall.RawConn) error {
+			called = true
+			if network != "udp4" || address != "127.0.0.1:0" {
+				t.Fatalf("Control(%q, %q), want udp4 and 127.0.0.1:0", network, address)
+			}
+			if raw != nil {
+				t.Fatal("isolated runtime exposed a native socket")
+			}
+			return nil
+		},
+	}, "udp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func(opened gonnect.UDPConn) { _ = opened.Close() }(conn)
+	if !called {
+		t.Fatal("ListenUDPConfig did not call Control")
+	}
+
+	wantErr := errors.New("control rejected virtual socket")
+	conn, err = n.ListenUDPConfig(context.Background(), &gonnect.ListenConfig{
+		Control: func(string, string, syscall.RawConn) error { return wantErr },
+	}, "udp4", "127.0.0.1:0")
+	if conn != nil || !errors.Is(err, wantErr) {
+		t.Fatalf("ListenUDPConfig() = (%v, %v), want nil and %v", conn, err, wantErr)
 	}
 }
 

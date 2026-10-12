@@ -49,3 +49,5 @@ go.work.sum
 
 /almagestd
 /cli
+/build
+

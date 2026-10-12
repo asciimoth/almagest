@@ -24,15 +24,30 @@ class DaemonRecipeTests(unittest.TestCase):
             check=False,
         )
 
-    def test_default_is_isolated_and_uses_system_paths(self):
+    def test_daemon_recipe_does_not_build_isolation_payload(self):
+        result = subprocess.run(
+            ["just", "--dry-run", "daemon"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        output = result.stdout + result.stderr
+        self.assertIn("go build -o ./almagestd", output)
+        self.assertNotIn("build/isolation-linux", output)
+        self.assertNotIn("libseccomp", output)
+
+    def test_default_is_direct_and_uses_local_development_options(self):
         result = self.run_runner("")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("build/isolation-linux/almagestd", result.stdout)
-        for excluded in ("--no-isolation", "--experimental", "local", "--unsafe-config",
+        self.assertIn(str(ROOT / "almagestd"), result.stdout)
+        for required in ("--no-isolation", "/local", "--unsafe-config",
                          "--tmp-unix-admin"):
-            self.assertNotIn(excluded, result.stdout)
+            self.assertIn(required, result.stdout)
+        self.assertNotIn("--experimental", result.stdout)
 
-    def test_direct_mode_keeps_local_development_options(self):
+    def test_explicit_direct_mode_is_compatible(self):
         result = self.run_runner("--no-isolation")
         self.assertEqual(result.returncode, 0, result.stderr)
         for required in ("--no-isolation", "/local", "--unsafe-config",
@@ -40,10 +55,11 @@ class DaemonRecipeTests(unittest.TestCase):
             self.assertIn(required, result.stdout)
         self.assertNotIn("--experimental", result.stdout)
 
-    def test_experimental_requires_explicit_direct_mode(self):
+    def test_default_direct_mode_accepts_experimental(self):
         result = self.run_runner("--experimental")
-        self.assertEqual(result.returncode, 2)
-        self.assertIn("requires explicit --no-isolation", result.stderr)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("--no-isolation", result.stdout)
+        self.assertIn("--experimental", result.stdout)
 
     def test_direct_experimental_flags_are_order_independent(self):
         outputs = set()
@@ -66,9 +82,15 @@ class DaemonRecipeTests(unittest.TestCase):
         self.assertIn("sudo -- systemd-run --scope", result.stdout)
         self.assertIn("Delegate=yes", result.stdout)
         self.assertIn("ALMAGEST_ISOLATION_DEVELOPMENT_ROOT=", result.stdout)
+        self.assertIn("ALMAGEST_ISOLATION_DEVELOPMENT_IDENTITIES=", result.stdout)
         self.assertIn("/var/lib/almagest/dev-", result.stdout)
         self.assertIn("/run/almagest-dev-", result.stdout)
         self.assertNotIn("build/isolation-linux/almagestd", result.stdout)
+
+    def test_sudo_experimental_requires_explicit_direct_mode(self):
+        result = self.run_runner("--sudo", "--experimental")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("requires explicit --no-isolation", result.stderr)
 
     def test_sudo_direct_mode_does_not_stage(self):
         result = self.run_runner("--sudo", "--no-isolation")

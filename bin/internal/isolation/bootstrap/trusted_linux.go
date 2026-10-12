@@ -15,6 +15,47 @@ func openTrustedFile(path string) (*os.File, error) {
 	if path == "" || !filepath.IsAbs(path) || containsParentReference(path) {
 		return nil, fmt.Errorf("%w: trusted path must be absolute and clean: %q", ErrUnsafeInput, path)
 	}
+	if err := checkTrustedLinkPath(path); err != nil {
+		return nil, err
+	}
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return nil, fmt.Errorf("%w: resolve trusted file %s: %w", ErrUnsafeInput, path, err)
+	}
+	return openTrustedFileNoLinks(resolved)
+}
+
+// checkTrustedLinkPath permits root- or process-owned symbolic links, but only
+// below trusted non-writable parents. The resolved path is checked separately
+// before its held descriptor is returned.
+func checkTrustedLinkPath(path string) error {
+	parts := strings.Split(strings.TrimPrefix(filepath.Clean(path), "/"), "/")
+	current := "/"
+	for index, part := range parts {
+		current = filepath.Join(current, part)
+		var stat unix.Stat_t
+		if err := unix.Lstat(current, &stat); err != nil {
+			return fmt.Errorf("%w: inspect trusted path %s: %w", ErrUnsafeInput, current, err)
+		}
+		kind := stat.Mode & unix.S_IFMT
+		if kind == unix.S_IFLNK {
+			if stat.Uid != 0 && stat.Uid != uint32(os.Geteuid()) {
+				return fmt.Errorf("%w: %s has an unsafe symbolic-link owner", ErrUnsafeInput, current)
+			}
+			continue
+		}
+		expected := uint32(unix.S_IFDIR)
+		if index == len(parts)-1 {
+			expected = unix.S_IFREG
+		}
+		if !trustedMetadata(&stat, expected) {
+			return fmt.Errorf("%w: %s has unsafe type, owner, or permissions", ErrUnsafeInput, current)
+		}
+	}
+	return nil
+}
+
+func openTrustedFileNoLinks(path string) (*os.File, error) {
 	parts := strings.Split(strings.TrimPrefix(filepath.Clean(path), "/"), "/")
 	if len(parts) == 0 || parts[0] == "" {
 		return nil, fmt.Errorf("%w: trusted path is not a file", ErrUnsafeInput)
@@ -85,10 +126,20 @@ func checkTrustedFD(fd int, kind uint32, label string) error {
 	if err := unix.Fstat(fd, &stat); err != nil {
 		return err
 	}
-	if stat.Mode&unix.S_IFMT != kind || stat.Uid != 0 && stat.Uid != uint32(os.Geteuid()) || stat.Mode&0o022 != 0 {
+	if !trustedMetadata(&stat, kind) {
 		return fmt.Errorf("%w: %s has unsafe type, owner, or permissions", ErrUnsafeInput, label)
 	}
 	return nil
+}
+
+func trustedMetadata(stat *unix.Stat_t, kind uint32) bool {
+	if stat.Mode&unix.S_IFMT != kind || stat.Uid != 0 && stat.Uid != uint32(os.Geteuid()) {
+		return false
+	}
+	if stat.Mode&0o022 == 0 {
+		return true
+	}
+	return kind == unix.S_IFDIR && stat.Mode&unix.S_ISVTX != 0
 }
 
 // OpenPrivateDirectory opens a launch-selected role directory without

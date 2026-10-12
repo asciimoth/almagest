@@ -215,7 +215,7 @@ build-isolation-linux output='build/isolation-linux': build-web
   CGO_ENABLED=0 go build -C bin -trimpath -o ../{{quote(output)}}/almagest-config-writer-role ./cmd/almagest-config-writer-role
   CGO_ENABLED=0 go build -C bin -trimpath -o ../{{quote(output)}}/almagest-command-role ./cmd/almagest-command-role
   CGO_ENABLED=0 go build -C bin -trimpath -o ../{{quote(output)}}/almagest-isolation-storage ./cmd/almagest-isolation-storage
-  gcc -static -O2 -D_FORTIFY_SOURCE=3 -Wall -Wextra -Werror -o {{quote(output)}}/almagest-linux-role-launcher bin/native/linux-role/launcher.c $$(pkg-config --cflags --libs libseccomp)
+  gcc -static -O2 -D_FORTIFY_SOURCE=3 -Wall -Wextra -Werror -o {{quote(output)}}/almagest-linux-role-launcher bin/native/linux-role/launcher.c $(pkg-config --cflags --libs libseccomp)
 
 build-windows-arch arch:
   ./scripts/build-windows.sh {{arch}}
@@ -300,9 +300,9 @@ daemon-winvm *flags:
 build: certcat-generate build-web
 	go build -o ./almagestd ./bin/almagestd/
 
-# Run the daemon in isolated mode. Pass --no-isolation for direct development;
-# pass both --no-isolation and --experimental to enable experimental nodes.
-daemon *flags: build-isolation-linux
+# Run the daemon directly with local development config. Pass --experimental
+# to enable experimental nodes.
+daemon *flags: build
   ./scripts/run-daemon.sh {{quote(flags)}}
 
 # Run the daemon as root in isolated mode with local config. The runner stages

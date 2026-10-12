@@ -22,6 +22,9 @@
       pkgs = import nixpkgs {
         inherit system;
       };
+      staticLibseccomp = pkgs.libseccomp.overrideAttrs (_: {
+        dontDisableStatic = true;
+      });
 
       psScriptAnalyzer = pkgs.stdenvNoCC.mkDerivation {
         pname = "PSScriptAnalyzer";
@@ -234,6 +237,10 @@
           tor
           obfs4
         ] ++ pkgs.lib.optionals (system == "x86_64-linux") [
+          pkgs.pkg-config
+          staticLibseccomp
+          staticLibseccomp.lib
+          pkgs.glibc.static
           pkgs.qemu
           pkgs.xorriso
           pkgs.OVMF
