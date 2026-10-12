@@ -3,8 +3,8 @@ set -euo pipefail
 
 source /e2e/lib/common.sh
 
-interval_log=/tmp/almagest-e2e-time-trigger-interval.log
-ready_log=/tmp/almagest-e2e-time-trigger-ready.log
+interval_log="$E2E_ISOLATION_ROOT/helper/time-trigger-interval.log"
+ready_log="$E2E_ISOLATION_ROOT/helper/time-trigger-ready.log"
 
 line_count() {
 	local path="$1"

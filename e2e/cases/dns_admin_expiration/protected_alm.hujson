@@ -1,4 +1,3 @@
 {
 	"Admin": {"Unix": "%E2E_ADMIN_SOCK%"},
-	"System": {"Type": "debug"},
 }

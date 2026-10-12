@@ -15,6 +15,7 @@ import (
 
 	"github.com/asciimoth/almagest/bin/internal/isolation/policy"
 	"github.com/asciimoth/almagest/bin/internal/isolation/protocol"
+	"github.com/asciimoth/gonnect"
 	gdns "github.com/asciimoth/gonnect/dns"
 	"github.com/asciimoth/gonnect/sysnet"
 )
@@ -63,9 +64,22 @@ func resolverReply(req gdns.Request) gdns.Response {
 type resolverTestSystem struct {
 	sysnet.System
 	provider gdns.Interface
+	out      gonnect.Network
+	local    gonnect.Network
 }
 
-func (s resolverTestSystem) OutDNS() gdns.Interface { return s.provider }
+func (s resolverTestSystem) OutDNS() gdns.Interface    { return s.provider }
+func (s resolverTestSystem) OutNet() gonnect.Network   { return s.out }
+func (s resolverTestSystem) LocalNet() gonnect.Network { return s.local }
+
+type fixedResolverNetwork struct {
+	gonnect.Network
+	address net.IP
+}
+
+func (n fixedResolverNetwork) LookupIP(context.Context, string, string) ([]net.IP, error) {
+	return []net.IP{append(net.IP(nil), n.address...)}, nil
+}
 
 func TestNativeOutDNSRelay(t *testing.T) {
 	var phase atomic.Uint32
@@ -126,6 +140,67 @@ func TestNativeOutDNSRelay(t *testing.T) {
 	}
 	if provider.closed.Load() {
 		t.Fatal("runtime closed the shared native provider")
+	}
+}
+
+func TestNetworkResolverUsesSelectedNativeNetwork(t *testing.T) {
+	provider := resolverProvider(t, func(req gdns.Request) gdns.Response {
+		response := resolverReply(req)
+		question := req.Message.Questions[0]
+		if question.Type == gdns.TypePTR {
+			response.Message.Answers = []gdns.Resource{{Name: question.Name, Type: gdns.TypePTR, Class: gdns.ClassIN, TTL: 3, Data: []byte("ptr.example.")}}
+		} else {
+			response.Message.Answers = []gdns.Resource{{Name: question.Name, Type: gdns.TypeA, Class: gdns.ClassIN, TTL: 3, Data: []byte{192, 0, 2, 1}}}
+		}
+		return response
+	})
+	b, fake := testBroker(t)
+	b.backend = socketTestBackend{fake, &SystemBackend{system: resolverTestSystem{
+		provider: provider,
+		out:      fixedResolverNetwork{Network: &gonnect.RejectNetwork{}, address: net.IPv4(192, 0, 2, 2)},
+		local:    fixedResolverNetwork{Network: &gonnect.RejectNetwork{}, address: net.IPv4(127, 0, 0, 2)},
+	}}}
+	c := startClient(t, b)
+	query := &gdns.Message{ID: 123, RecursionDesired: true, Questions: []gdns.Question{{Name: "hosts.example.", Type: gdns.TypeA, Class: gdns.ClassIN}}}
+	for _, tc := range []struct {
+		name    string
+		purpose protocol.NetworkPurpose
+		want    string
+	}{
+		{"outbound", protocol.NetworkOutbound, "192.0.2.2"},
+		{"local", protocol.NetworkLocal, "127.0.0.2"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			remote, err := c.NetworkDNS(context.Background(), tc.purpose)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = remote.Close() }()
+			response, err := gdns.Query(context.Background(), remote, query)
+			if err != nil || len(response.Answers) != 1 {
+				t.Fatalf("network resolver response = %+v, %v", response, err)
+			}
+			address := net.IP(response.Answers[0].Data).String()
+			if address != tc.want {
+				t.Fatalf("network resolver address = %s, want %s", address, tc.want)
+			}
+		})
+	}
+	remote, err := c.NetworkDNS(context.Background(), protocol.NetworkOutbound)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = remote.Close() }()
+	response, err := gdns.Query(context.Background(), remote, &gdns.Message{
+		ID: 124,
+		Questions: []gdns.Question{{
+			Name:  "10.2.0.192.in-addr.arpa.",
+			Type:  gdns.TypePTR,
+			Class: gdns.ClassIN,
+		}},
+	})
+	if err != nil || len(response.Answers) != 1 || string(response.Answers[0].Data) != "ptr.example." {
+		t.Fatalf("network resolver PTR response = %+v, %v", response, err)
 	}
 }
 

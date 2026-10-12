@@ -5,7 +5,13 @@ source /e2e/lib/common.sh
 
 write_file_config() {
 	local pem_file="$1"
-	jq -n --arg file "$pem_file" \
+	local trusted_dir="$E2E_ISOLATION_ROOT/protected-inputs"
+	local trusted_file
+	trusted_file="$trusted_dir/$(basename "$pem_file")"
+	mkdir -p "$trusted_dir"
+	install -o 0 -g 0 -m 0600 "$pem_file" "$trusted_file"
+	chmod 0700 "$trusted_dir"
+	jq -n --arg file "$trusted_file" \
 		'{Admin:{Web:0,Unix:"/tmp/almagest-e2e.sock"},TLS:{BuiltinCA:{File:$file}}}' \
 		>"$E2E_CONFIG_DIR/protected_alm.hujson"
 }

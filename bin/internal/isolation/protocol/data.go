@@ -11,6 +11,9 @@ const (
 	MaxStreamRecord = 32 * 1024
 	MaxPacketRecord = 65535
 	MaxSessionData  = 8 * 1024 * 1024
+	// MaxNativePacketBatchBytes bounds broker-owned native TUN read scratch.
+	// A read can use fewer packets than the device's advertised batch size.
+	MaxNativePacketBatchBytes = MaxSessionData / 2
 )
 
 // PacketMetadata contains typed ancillary fields. Native control bytes are
@@ -23,6 +26,9 @@ type PacketMetadata struct {
 	TrafficClass   *uint8          `json:"trafficClass"`
 	OriginalLength uint32          `json:"originalLength"`
 	Truncated      bool            `json:"truncated"`
+	// BatchRemaining is the number of packets from the same native TUN read
+	// that remain queued at the broker. It is zero for sockets and DNS.
+	BatchRemaining uint32 `json:"batchRemaining"`
 	// DNS is present only on a ResourceDNS application-resolver relay. Native
 	// socket ancillary data and TUN packets must not use it.
 	DNS *DNSMetadata `json:"dns"`

@@ -48,6 +48,12 @@ openssl x509 \
 	-out "$E2E_CONFIG_DIR/fetch-server.pem" \
 	>/dev/null 2>&1
 
+trusted_dir="$E2E_ISOLATION_ROOT/protected-inputs"
+mkdir -p "$trusted_dir"
+install -o 0 -g 0 -m 0600 "$E2E_CONFIG_DIR/fetch-ca.pem" \
+	"$trusted_dir/fetch-ca.pem"
+chmod 0700 "$trusted_dir"
+
 if ! grep -qE '(^|[[:space:]])ifconfig\.co([[:space:]]|$)' /etc/hosts; then
 	printf '127.0.0.1 ifconfig.co api.ipify.org\n' >>/etc/hosts
 fi
@@ -61,7 +67,7 @@ cat >"$E2E_CONFIG_DIR/protected_alm.hujson" <<EOF
 	"TLS": {
 		"Certificates": {
 			"fetch-address-ca": {
-				"File": "$E2E_CONFIG_DIR/fetch-ca.pem",
+				"File": "$trusted_dir/fetch-ca.pem",
 			},
 		},
 		"Policies": {
@@ -74,4 +80,3 @@ cat >"$E2E_CONFIG_DIR/protected_alm.hujson" <<EOF
 	},
 }
 EOF
-

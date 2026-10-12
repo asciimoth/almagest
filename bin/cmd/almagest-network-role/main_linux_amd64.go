@@ -50,6 +50,14 @@ func runNetworkRole() error {
 	if err != nil {
 		return err
 	}
+	production.SystemRandomSeed, err = systemRandomSeedOverride()
+	if err != nil {
+		return err
+	}
+	production.E2ETailscaleRejectAfterSeconds, err = tailscaleRejectAfterOverride()
+	if err != nil {
+		return err
+	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	err = networkrole.RunLinuxProduction(ctx, production, func() {

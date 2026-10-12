@@ -3,6 +3,4 @@
 		"Unix": "%E2E_ADMIN_SOCK%",
 		"UnixFilters": {"Usernames": ["root"]},
 	},
-	"System": {"Type": "debug"},
 }
-

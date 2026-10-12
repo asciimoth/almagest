@@ -31,43 +31,10 @@ ip link set "$peer_if" up
 
 sed -i "s@%E2E_RUNTIME%@$E2E_RUNTIME@g" protected_alm.hujson
 
-mkdir -p "$E2E_RUNTIME/callbacks"
-: >"$E2E_RUNTIME/callbacks/events.log"
-chmod 0777 "$E2E_RUNTIME/callbacks"
-chmod 0666 "$E2E_RUNTIME/callbacks/events.log"
-
-cat >"$E2E_RUNTIME/record-callback.sh" <<'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
-
-dir="${E2E_CALLBACK_DIR:?}"
-name="${1:?}"
-shift
-
-if [[ -n "${E2E_CALLBACK_BEFORE_RECORD_SLEEP:-}" ]]; then
-	sleep "$E2E_CALLBACK_BEFORE_RECORD_SLEEP"
-fi
-
-if [[ -n "${E2E_CALLBACK_STDOUT_SECRET:-}" ]]; then
-	printf '%s\n' "$E2E_CALLBACK_STDOUT_SECRET"
-	printf '%s\n' "$E2E_CALLBACK_STDOUT_SECRET" >&2
-fi
-
-{
-	flock 9
-	printf '%s|uid=%s|gid=%s|env=%s|argc=%s' \
-		"$name" "$(id -u)" "$(id -g)" "${E2E_CALLBACK_ENV:-}" "$#"
-	for arg in "$@"; do
-		printf '|%s' "$arg"
-	done
-	printf '\n'
-} 9>>"$dir/events.log" >&9
-
-if [[ -n "${E2E_CALLBACK_SLEEP:-}" ]]; then
-	sleep "$E2E_CALLBACK_SLEEP"
-fi
-EOF
-chmod 0755 "$E2E_RUNTIME/record-callback.sh"
+mkdir -p "$E2E_ISOLATION_ROOT/helper/callbacks"
+: >"$E2E_ISOLATION_ROOT/helper/callbacks/events.log"
+chmod 0777 "$E2E_ISOLATION_ROOT/helper/callbacks"
+chmod 0666 "$E2E_ISOLATION_ROOT/helper/callbacks/events.log"
 
 cat >"$E2E_RUNTIME/killswitch.json" <<EOF
 {

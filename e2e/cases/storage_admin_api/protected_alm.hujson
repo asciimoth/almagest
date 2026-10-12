@@ -1,6 +1,5 @@
 {
 	"Admin": {"Unix": "%E2E_ADMIN_SOCK%"},
-	"System": {"Type": "debug"},
 	"Secrets": {
 		"protected-token": {
 			"Value": "protected-value",
@@ -8,4 +7,3 @@
 		},
 	},
 }
-

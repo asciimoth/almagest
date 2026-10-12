@@ -58,6 +58,44 @@ func TestJournalPersistsTransitionsAndResolution(t *testing.T) {
 	}
 }
 
+func TestJournalPreparesOwnedIdentityReplacement(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "recovery.json")
+	journal, err := OpenJournal(path, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pending := testEffect("replace")
+	if err := journal.Put(pending); err != nil {
+		t.Fatal(err)
+	}
+	owned := pending
+	owned.State, owned.Identity = EffectOwned, "old-native"
+	if err := journal.Put(owned); err != nil {
+		t.Fatal(err)
+	}
+	if err := journal.PrepareReplacement(pending); err != nil {
+		t.Fatal(err)
+	}
+	replacement := pending
+	replacement.State, replacement.Identity = EffectOwned, "new-native"
+	if err := journal.Put(replacement); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := OpenJournal(path, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := reopened.Snapshot(); len(got) != 1 || got[0] != replacement {
+		t.Fatalf("replacement records = %#v", got)
+	}
+	if err := reopened.PrepareReplacement(pending); err != nil {
+		t.Fatal(err)
+	}
+	if err := reopened.PrepareReplacement(pending); !errors.Is(err, ErrInvalidJournal) {
+		t.Fatalf("second replacement preparation error = %v", err)
+	}
+}
+
 func TestJournalRejectsAdoptionLimitsAndTampering(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "recovery.json")
 	journal, err := OpenJournal(path, 1)

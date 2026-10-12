@@ -11,8 +11,10 @@ ALMAGEST_E2E_WEB_PPROF=1
 headscale_pid_a=""
 # shellcheck disable=SC2034
 headscale_pid_b=""
+dnsmasq_pid=""
 headscale_log_a="$E2E_RUNTIME/headscale-a.log"
 headscale_log_b="$E2E_RUNTIME/headscale-b.log"
+resolv_backup="$E2E_RUNTIME/resolv.conf.original"
 
 headscale_config() {
 	printf '%s/headscale-%s.yaml' "$E2E_CONFIG_DIR" "$1"
@@ -67,6 +69,37 @@ stop_all() {
 	trap - EXIT
 	stop_daemon
 	stop_headscales
+	if [[ -n "$dnsmasq_pid" ]]; then
+		kill "$dnsmasq_pid" 2>/dev/null || true
+		wait "$dnsmasq_pid" 2>/dev/null || true
+	fi
+	if [[ -f "$resolv_backup" ]]; then
+		cp -a "$resolv_backup" /etc/resolv.conf
+	fi
+}
+
+start_fixture_dns() {
+	cp -a /etc/resolv.conf "$resolv_backup"
+	cat >"$E2E_RUNTIME/dnsmasq.conf" <<'EOF'
+port=53
+listen-address=127.0.0.54
+bind-interfaces
+no-resolv
+no-hosts
+address=/headscale-a.e2e.internal/127.0.0.1
+address=/headscale-b.e2e.internal/127.0.0.1
+EOF
+	dnsmasq --no-daemon --conf-file="$E2E_RUNTIME/dnsmasq.conf" \
+		>"$E2E_RUNTIME/dnsmasq.log" 2>&1 &
+	dnsmasq_pid="$!"
+	printf 'nameserver 127.0.0.54\noptions timeout:1 attempts:1\n' >/etc/resolv.conf
+	retry "$ALMAGEST_E2E_TIMEOUT" "fixture DNS" fixture_dns_answers \
+		|| fail "fixture DNS did not start"
+}
+
+fixture_dns_answers() {
+	dig +short headscale-a.e2e.internal A @127.0.0.54 \
+		| grep -Fx 127.0.0.1 >/dev/null
 }
 
 start_headscale() {
@@ -183,6 +216,7 @@ tailscale_runtime_resources_are_bounded() {
 }
 
 trap stop_all EXIT
+start_fixture_dns
 start_headscale a 18190
 start_headscale b 18290
 start_daemon

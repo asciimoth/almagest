@@ -105,11 +105,14 @@ assert_socks_https_body() {
 	local url="$3"
 	local expected="$4"
 	local out
+	local authority="${url#https://}"
+	authority="${authority%%/*}"
 	out="$E2E_RUNTIME/$(echo "$url" | tr -c 'A-Za-z0-9' '_').txt"
 
 	retry "$ALMAGEST_E2E_TIMEOUT" "curl HTTPS $url through SOCKS port $socks_port" \
 		curl -g --fail --silent --show-error \
-			--socks5-hostname "127.0.0.1:$socks_port" \
+			--socks5 "127.0.0.1:$socks_port" \
+			--resolve "$authority:127.0.0.1" \
 			--http1.1 \
 			--cacert "$ca_file" \
 			"$url" \
@@ -126,9 +129,12 @@ socks_https_fails() {
 	local socks_port="$1"
 	local ca_file="$2"
 	local url="$3"
+	local authority="${url#https://}"
+	authority="${authority%%/*}"
 
 	! curl -g --fail --silent --show-error --max-time 2 \
-		--socks5-hostname "127.0.0.1:$socks_port" \
+		--socks5 "127.0.0.1:$socks_port" \
+		--resolve "$authority:127.0.0.1" \
 		--http1.1 \
 		--cacert "$ca_file" \
 		"$url" \

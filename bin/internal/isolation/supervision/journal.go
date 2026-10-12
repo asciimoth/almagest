@@ -208,6 +208,30 @@ func (j *Journal) Put(effect Effect) error {
 	return nil
 }
 
+// PrepareReplacement durably removes the current native identity while it
+// keeps the resource record pending. A crash in the replacement window must
+// require recovery; it must not treat the disappearance of the old identity
+// as proof that the replacement left no host effects.
+func (j *Journal) PrepareReplacement(effect Effect) error {
+	if err := effect.validate(); err != nil || effect.State != EffectPending {
+		return ErrInvalidJournal
+	}
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	prior, ok := j.records[effect.ID]
+	if !ok || prior.SessionID != effect.SessionID || prior.ResourceType != effect.ResourceType ||
+		prior.State != EffectOwned || prior.Identity == "" || prior.RetainOnFailure != effect.RetainOnFailure {
+		return ErrInvalidJournal
+	}
+	next := cloneEffects(j.records)
+	next[effect.ID] = effect
+	if err := j.write(next); err != nil {
+		return err
+	}
+	j.records = next
+	return nil
+}
+
 // Resolve removes an effect only after trusted inspection proves that no owned
 // host effect remains.
 func (j *Journal) Resolve(id string) error {

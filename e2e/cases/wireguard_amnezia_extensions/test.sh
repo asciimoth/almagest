@@ -6,6 +6,7 @@ source /e2e/lib/common.sh
 
 daemon_names=(a b c)
 declare -A daemon_pids=()
+declare -A daemon_cgroups=()
 declare -A admin_socks=(
 	[a]="$E2E_RUNTIME/daemon-a.sock"
 	[b]="$E2E_RUNTIME/daemon-b.sock"
@@ -60,6 +61,10 @@ stop_daemons() {
 		fi
 		wait "$pid" 2>/dev/null || true
 		daemon_pids[$name]=""
+		if [[ -n "${daemon_cgroups[$name]:-}" ]]; then
+			rmdir "${daemon_cgroups[$name]}" 2>/dev/null || true
+			daemon_cgroups[$name]=""
+		fi
 	done
 }
 
@@ -114,25 +119,16 @@ start_daemon_named() {
 	local daemon_log="${daemon_logs[$name]}"
 	local admin_sock="${admin_socks[$name]}"
 
-	mkdir -p "$E2E_RUNTIME"
-	: >"$daemon_log"
 	log "starting daemon $name"
-	XDG_RUNTIME_DIR="$E2E_RUNTIME" almagestd \
-		--experimental \
-		--no-isolation \
-		-c "$E2E_CONFIG_DIR/daemon-$name" \
-		-l debug \
-		--debug-nodes \
-		--unsafe-config \
-		--tmp-file-storage \
-		--unix "$admin_sock" \
-		--web 0 \
-		>"$daemon_log" 2>&1 &
-	daemon_pids[$name]="$!"
+	local pid_var="daemon_pid_$name"
+	local cgroup_var="daemon_cgroup_$name"
+	local "$pid_var"=""
+	local "$cgroup_var"=""
+	start_isolated_daemon_instance "$name" "$E2E_CONFIG_DIR/daemon-$name" "$admin_sock" \
+		"$daemon_log" "$pid_var" "$cgroup_var"
+	daemon_pids[$name]="${!pid_var}"
+	daemon_cgroups[$name]="${!cgroup_var}"
 	trap stop_daemons EXIT
-
-	retry "$ALMAGEST_E2E_TIMEOUT" "daemon $name admin API socket" test -S "$admin_sock" \
-		|| fail "daemon $name admin API socket was not created"
 	retry "$ALMAGEST_E2E_TIMEOUT" "daemon $name admin API ping" \
 		cli_daemon "$name" admin ping --nonce "$E2E_CASE-$name" \
 		>"/tmp/e2e-wireguard-amnezia-ping-$name.json" \

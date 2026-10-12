@@ -3,12 +3,16 @@ package network
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/binary"
 	"errors"
 	"io"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"net/netip"
 	"os"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -19,6 +23,8 @@ import (
 	"github.com/asciimoth/gonnect"
 	gdns "github.com/asciimoth/gonnect/dns"
 	"github.com/asciimoth/gonnect/sysnet"
+	gonnecttls "github.com/asciimoth/gonnect/tls"
+	"github.com/coder/websocket"
 )
 
 type socketSystem struct {
@@ -32,6 +38,36 @@ func (s socketSystem) LocalNet() gonnect.Network { return s.local }
 type socketTestBackend struct {
 	*fakeBackend
 	sockets *SystemBackend
+}
+
+type concurrentSocketBackend struct {
+	*fakeBackend
+	calls         atomic.Int32
+	firstStarted  chan struct{}
+	secondStarted chan struct{}
+	release       chan struct{}
+}
+
+func (b *concurrentSocketBackend) OpenSocket(ctx context.Context, _ protocol.SocketOptions) (OwnedTun, error) {
+	switch b.calls.Add(1) {
+	case 1:
+		close(b.firstStarted)
+		select {
+		case <-b.release:
+		case <-ctx.Done():
+		}
+	case 2:
+		close(b.secondStarted)
+	}
+	return nil, &NoEffectsError{Err: errors.New("test socket rejection")}
+}
+
+func (*concurrentSocketBackend) ListInterfaces(context.Context) (protocol.InterfaceSnapshot, error) {
+	return protocol.InterfaceSnapshot{}, nil
+}
+
+func (*concurrentSocketBackend) ResolverSnapshot(context.Context) (protocol.ResolverSnapshot, error) {
+	return protocol.ResolverSnapshot{}, nil
 }
 
 func (s socketTestBackend) OpenSocket(ctx context.Context, o protocol.SocketOptions) (OwnedTun, error) {
@@ -140,6 +176,68 @@ func TestSocketRelay(t *testing.T) {
 				t.Fatalf("deadline: %v", err)
 			}
 		})
+	}
+}
+
+func TestSocketRelayTLSWebSocket(t *testing.T) {
+	_, c := socketClient(t)
+	probe := httptest.NewTLSServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	certificate := probe.TLS.Certificates[0]
+	probe.Close()
+
+	network, err := gonnecttls.NewClientServerNetwork(
+		c.Network(protocol.NetworkOutbound, nil),
+		&tls.Config{InsecureSkipVerify: true}, //nolint:gosec // Test-only certificate.
+		&tls.Config{Certificates: []tls.Certificate{certificate}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	listener, err := network.Listen(context.Background(), "tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := &http.Server{
+		ReadHeaderTimeout: 5 * time.Second,
+		Handler: http.HandlerFunc(func(rw http.ResponseWriter, request *http.Request) {
+			conn, acceptErr := websocket.Accept(rw, request, nil)
+			if acceptErr != nil {
+				t.Errorf("accept WebSocket: %v", acceptErr)
+				return
+			}
+			defer func() { _ = conn.Close(websocket.StatusNormalClosure, "") }()
+			kind, payload, readErr := conn.Read(request.Context())
+			if readErr == nil {
+				readErr = conn.Write(request.Context(), kind, payload)
+			}
+			if readErr != nil {
+				t.Errorf("serve WebSocket: %v", readErr)
+			}
+		}),
+	}
+	serveDone := make(chan error, 1)
+	go func() { serveDone <- server.Serve(listener) }()
+	t.Cleanup(func() {
+		_ = server.Close()
+		<-serveDone
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	conn, _, err := websocket.Dial(ctx, "wss://"+listener.Addr().String()+"/", &websocket.DialOptions{
+		HTTPClient: &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}}, //nolint:gosec // Test-only certificate.
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.CloseNow() }()
+	want := []byte("websocket-over-relay")
+	if err = conn.Write(ctx, websocket.MessageBinary, want); err != nil {
+		t.Fatal(err)
+	}
+	_, got, err := conn.Read(ctx)
+	if err != nil || !bytes.Equal(got, want) {
+		t.Fatalf("WebSocket echo = %d bytes, %v", len(got), err)
 	}
 }
 
@@ -269,6 +367,52 @@ func TestSocketAuthority(t *testing.T) {
 	if !closed {
 		t.Fatal("epoch did not close socket")
 	}
+}
+
+func TestSocketOpenAttemptsCanOverlap(t *testing.T) {
+	b, fake := testBroker(t)
+	backend := &concurrentSocketBackend{
+		fakeBackend:   fake,
+		firstStarted:  make(chan struct{}),
+		secondStarted: make(chan struct{}),
+		release:       make(chan struct{}),
+	}
+	b.backend = backend
+	t.Cleanup(func() {
+		select {
+		case <-backend.release:
+		default:
+			close(backend.release)
+		}
+	})
+	options := protocol.SocketOptions{
+		Purpose: protocol.NetworkOutbound,
+		Kind:    protocol.SocketDialTCP,
+		Network: "tcp4",
+		Remote:  netip.MustParseAddrPort("192.0.2.1:443"),
+	}
+	done := make(chan error, 2)
+	go func() {
+		_, err := b.OpenSocket(context.Background(), protocol.OpenSocketRequest{Meta: meta(b, "first"), Options: options})
+		done <- err
+	}()
+	select {
+	case <-backend.firstStarted:
+	case err := <-done:
+		t.Fatalf("first socket open stopped before backend call: %v", err)
+	}
+	go func() {
+		_, err := b.OpenSocket(context.Background(), protocol.OpenSocketRequest{Meta: meta(b, "second"), Options: options})
+		done <- err
+	}()
+	select {
+	case <-backend.secondStarted:
+	case <-time.After(time.Second):
+		t.Fatal("second socket open waited behind the first attempt")
+	}
+	close(backend.release)
+	<-done
+	<-done
 }
 
 func TestSocketCancellationAndOffers(t *testing.T) {

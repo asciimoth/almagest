@@ -32,6 +32,12 @@ generate_ca "E2E Persist Root" "$E2E_CONFIG_DIR/persist-ca.pem" "$E2E_CONFIG_DIR
 generate_ca "E2E Admin System Root" "$E2E_CONFIG_DIR/os-root.pem" "$E2E_CONFIG_DIR/os-root.key"
 cp "$E2E_CONFIG_DIR/os-root.pem" "$E2E_CONFIG_DIR/os-bundle.pem"
 
+trusted_dir="$E2E_ISOLATION_ROOT/protected-inputs"
+mkdir -p "$trusted_dir"
+install -o 0 -g 0 -m 0600 "$E2E_CONFIG_DIR/protected-ca.pem" \
+	"$trusted_dir/protected-ca.pem"
+chmod 0700 "$trusted_dir"
+
 cat >"$E2E_CONFIG_DIR/protected_alm.hujson" <<EOF
 {
 	"Admin": {
@@ -41,7 +47,7 @@ cat >"$E2E_CONFIG_DIR/protected_alm.hujson" <<EOF
 	"TLS": {
 		"Certificates": {
 			"protected-ca": {
-				"File": "$E2E_CONFIG_DIR/protected-ca.pem",
+				"File": "$trusted_dir/protected-ca.pem",
 			},
 		},
 		"Policies": {

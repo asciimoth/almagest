@@ -1,0 +1,2 @@
+The isolated runtime cannot read or refresh host OS trust files. A trusted
+certificate-refresh broker is required before this case can run in isolation.

@@ -7,7 +7,8 @@
 		"Commands": {
 			"sysnet-linux.tun-created": {
 				"Command": [
-					"%E2E_RUNTIME%/record-callback.sh",
+					"/usr/local/bin/almagest-e2e-command-recorder",
+					"/state/callbacks/events.log",
 					"tun-created",
 					"${callback}",
 					"${tun_name}",
@@ -15,12 +16,9 @@
 					"${secret}"
 				],
 				"Env": {
-					"E2E_CALLBACK_DIR": "%E2E_RUNTIME%/callbacks",
 					"E2E_CALLBACK_ENV": "tun-created",
 					"E2E_CALLBACK_STDOUT_SECRET": "stdout-secret-token"
 				},
-				"UID": 24020,
-				"GID": 24020,
 				"Slots": {
 					"callback": {"MaxLength": 128, "Required": true},
 					"tun_name": {"MaxLength": 64, "Required": true},
@@ -30,14 +28,14 @@
 			},
 			"sysnet-linux.tun-configured": {
 				"Command": [
-					"%E2E_RUNTIME%/record-callback.sh",
+					"/usr/local/bin/almagest-e2e-command-recorder",
+					"/state/callbacks/events.log",
 					"tun-configured",
 					"${callback}",
 					"${tun_name}",
 					"${mtu}"
 				],
 				"Env": {
-					"E2E_CALLBACK_DIR": "%E2E_RUNTIME%/callbacks",
 					"E2E_CALLBACK_ENV": "tun-configured"
 				},
 				"Sync": true,
@@ -49,14 +47,14 @@
 			},
 			"sysnet-linux.default-tun-created": {
 				"Command": [
-					"%E2E_RUNTIME%/record-callback.sh",
+					"/usr/local/bin/almagest-e2e-command-recorder",
+					"/state/callbacks/events.log",
 					"default-created",
 					"${callback}",
 					"${tun_name}",
 					"${secret}"
 				],
 				"Env": {
-					"E2E_CALLBACK_DIR": "%E2E_RUNTIME%/callbacks",
 					"E2E_CALLBACK_ENV": "default-created",
 					"E2E_CALLBACK_STDOUT_SECRET": "default-stdout-secret-token"
 				},
@@ -69,13 +67,13 @@
 			},
 			"sysnet-linux.default-tun-configured": {
 				"Command": [
-					"%E2E_RUNTIME%/record-callback.sh",
+					"/usr/local/bin/almagest-e2e-command-recorder",
+					"/state/callbacks/events.log",
 					"default-configured",
 					"${callback}",
 					"${mtu}"
 				],
 				"Env": {
-					"E2E_CALLBACK_DIR": "%E2E_RUNTIME%/callbacks",
 					"E2E_CALLBACK_ENV": "default-configured"
 				},
 				"Sync": true,
@@ -86,12 +84,12 @@
 			},
 			"sysnet-linux.default-tun-closed": {
 				"Command": [
-					"%E2E_RUNTIME%/record-callback.sh",
+					"/usr/local/bin/almagest-e2e-command-recorder",
+					"/state/callbacks/events.log",
 					"default-closed",
 					"${callback}"
 				],
 				"Env": {
-					"E2E_CALLBACK_DIR": "%E2E_RUNTIME%/callbacks",
 					"E2E_CALLBACK_ENV": "default-closed"
 				},
 				"Sync": true,
@@ -101,13 +99,13 @@
 			},
 			"sysnet-linux.routing-applied": {
 				"Command": [
-					"%E2E_RUNTIME%/record-callback.sh",
+					"/usr/local/bin/almagest-e2e-command-recorder",
+					"/state/callbacks/events.log",
 					"routing-applied",
 					"${callback}",
 					"${tun_index}"
 				],
 				"Env": {
-					"E2E_CALLBACK_DIR": "%E2E_RUNTIME%/callbacks",
 					"E2E_CALLBACK_ENV": "routing-applied"
 				},
 				"Sync": true,
@@ -118,13 +116,13 @@
 			},
 			"sysnet-linux.dns-configured": {
 				"Command": [
-					"%E2E_RUNTIME%/record-callback.sh",
+					"/usr/local/bin/almagest-e2e-command-recorder",
+					"/state/callbacks/events.log",
 					"dns-configured",
 					"${callback}",
 					"${server}"
 				],
 				"Env": {
-					"E2E_CALLBACK_DIR": "%E2E_RUNTIME%/callbacks",
 					"E2E_CALLBACK_ENV": "dns-configured"
 				},
 				"Sync": true,
@@ -135,13 +133,13 @@
 			},
 			"sysnet-linux.killswitch-updated": {
 				"Command": [
-					"%E2E_RUNTIME%/record-callback.sh",
+					"/usr/local/bin/almagest-e2e-command-recorder",
+					"/state/callbacks/events.log",
 					"killswitch-updated",
 					"${callback}",
 					"${marks}"
 				],
 				"Env": {
-					"E2E_CALLBACK_DIR": "%E2E_RUNTIME%/callbacks",
 					"E2E_CALLBACK_ENV": "killswitch-updated",
 					"E2E_CALLBACK_BEFORE_RECORD_SLEEP": "0.1",
 					"E2E_CALLBACK_SLEEP": "5"

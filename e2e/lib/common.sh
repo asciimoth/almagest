@@ -6,9 +6,12 @@ set -euo pipefail
 : "${E2E_CONFIG_DIR:?}"
 : "${E2E_ADMIN_SOCK:?}"
 : "${E2E_DAEMON_LOG:?}"
+: "${E2E_ISOLATION_ROOT:?}"
 
 daemon_pid=""
+daemon_cgroup=""
 daemon_log_reported=0
+daemon_start_count=0
 ALMAGEST_E2E_TIMEOUT="${ALMAGEST_E2E_TIMEOUT:-20}"
 # Bound shared CLI calls so admin/socket stalls fail the case instead of
 # hanging the whole e2e run. Coverage builds can need more than five seconds
@@ -24,6 +27,13 @@ ALMAGEST_E2E_FILE_STORAGE="${ALMAGEST_E2E_FILE_STORAGE:-}"
 ALMAGEST_E2E_WEB_ADMIN="${ALMAGEST_E2E_WEB_ADMIN:-0}"
 ALMAGEST_E2E_WEB_PPROF="${ALMAGEST_E2E_WEB_PPROF:-0}"
 ALMAGEST_E2E_STARTUP_SNAPSHOT="${ALMAGEST_E2E_STARTUP_SNAPSHOT:-}"
+ALMAGEST_E2E_DAEMON_MODE="${ALMAGEST_E2E_DAEMON_MODE:-isolation}"
+ALMAGEST_E2E_ISOLATION_UID="${ALMAGEST_E2E_ISOLATION_UID:-10001}"
+ALMAGEST_E2E_ISOLATION_GID="${ALMAGEST_E2E_ISOLATION_GID:-10001}"
+ALMAGEST_E2E_WRITER_UID="${ALMAGEST_E2E_WRITER_UID:-10002}"
+ALMAGEST_E2E_WRITER_GID="${ALMAGEST_E2E_WRITER_GID:-10002}"
+ALMAGEST_E2E_COMMAND_UID="${ALMAGEST_E2E_COMMAND_UID:-10003}"
+ALMAGEST_E2E_COMMAND_GID="${ALMAGEST_E2E_COMMAND_GID:-10003}"
 
 log() {
 	printf '[%s] %s\n' "$E2E_CASE" "$*" >&2
@@ -35,6 +45,21 @@ fail() {
 		log "daemon log follows"
 		tail -200 "$E2E_DAEMON_LOG" >&2 || true
 		daemon_log_reported=1
+	fi
+	for previous_log in "$E2E_DAEMON_LOG".*; do
+		[[ -f "$previous_log" ]] || continue
+		log "previous daemon log $previous_log follows"
+		tail -200 "$previous_log" >&2 || true
+	done
+	if [[ -S "$E2E_ADMIN_SOCK" ]]; then
+		log "cached node logs follow"
+		cli log subscribe >&2 || true
+		log "graph map follows"
+		cli graph map >&2 || true
+		log "node menus follow"
+		while IFS= read -r node_id; do
+			cli graph menu --id "$node_id" >&2 || true
+		done < <(cli graph map | jq -r '.nodes[].ID' 2>/dev/null || true)
 	fi
 	exit 1
 }
@@ -86,14 +111,54 @@ start_daemon() {
 		fail "daemon is already running"
 	fi
 	mkdir -p "$E2E_RUNTIME"
+	if [[ -s "$E2E_DAEMON_LOG" ]]; then
+		cp "$E2E_DAEMON_LOG" "$E2E_DAEMON_LOG.$daemon_start_count"
+	fi
+	((daemon_start_count += 1)) || true
 	: >"$E2E_DAEMON_LOG"
 	log "starting daemon"
 	local storage_args=()
+	local config_args=(-c "$E2E_CONFIG_DIR")
 	local web_args=(--web "$ALMAGEST_E2E_WEB_ADMIN")
 	local snapshot_args=()
+	local mode_args=()
+	local isolation_root="$E2E_ISOLATION_ROOT"
+	local daemon_environment=()
+	local daemon_command=()
+	if [[ "$ALMAGEST_E2E_DAEMON_MODE" == "isolation" ]]; then
+		if [[ "$ALMAGEST_E2E_TMP_FILE_STORAGE" == "1" ]]; then
+			ALMAGEST_E2E_TMP_FILE_STORAGE=0
+		fi
+		mkdir -p "$isolation_root" "$isolation_root/config" "$isolation_root/protected" \
+			"$isolation_root/runtime" "$isolation_root/helper" "$isolation_root/broker"
+		if [[ -n "$ALMAGEST_E2E_FILE_STORAGE" ]]; then
+			mkdir -p "$ALMAGEST_E2E_FILE_STORAGE"
+			if ! mountpoint -q "$isolation_root/runtime"; then
+				mount --bind "$ALMAGEST_E2E_FILE_STORAGE" "$isolation_root/runtime"
+			fi
+		fi
+		install -o 0 -g 0 -m 0600 "$E2E_CONFIG_DIR/protected_alm.hujson" \
+			"$isolation_root/protected/protected_alm.hujson"
+		chown "$ALMAGEST_E2E_WRITER_UID:$ALMAGEST_E2E_WRITER_GID" "$E2E_CONFIG_DIR/alm.hujson"
+		chmod 0600 "$E2E_CONFIG_DIR/alm.hujson"
+		chown "$ALMAGEST_E2E_WRITER_UID:$ALMAGEST_E2E_WRITER_GID" "$isolation_root/config"
+		chown "$ALMAGEST_E2E_ISOLATION_UID:$ALMAGEST_E2E_ISOLATION_GID" "$isolation_root/runtime"
+		chown "$ALMAGEST_E2E_COMMAND_UID:$ALMAGEST_E2E_COMMAND_GID" "$isolation_root/helper"
+		chown 0:0 "$isolation_root" "$isolation_root/protected" "$isolation_root/broker"
+		chmod 0755 "$isolation_root"
+		chmod 0700 "$isolation_root/config" "$isolation_root/protected" \
+			"$isolation_root/runtime" "$isolation_root/helper" "$isolation_root/broker"
+		daemon_environment=(
+			"ALMAGEST_ISOLATION_DEVELOPMENT_ROOT=$isolation_root"
+			"ALMAGEST_ISOLATION_DEVELOPMENT_IDENTITIES=$ALMAGEST_E2E_ISOLATION_UID:$ALMAGEST_E2E_ISOLATION_GID,$ALMAGEST_E2E_WRITER_UID:$ALMAGEST_E2E_WRITER_GID,$ALMAGEST_E2E_COMMAND_UID:$ALMAGEST_E2E_COMMAND_GID"
+		)
+		config_args=()
+	else
+		mode_args=(--no-isolation --experimental)
+	fi
 	if [[ "$ALMAGEST_E2E_TMP_FILE_STORAGE" == "1" ]]; then
 		storage_args=(--tmp-file-storage)
-	elif [[ -n "$ALMAGEST_E2E_FILE_STORAGE" ]]; then
+	elif [[ -n "$ALMAGEST_E2E_FILE_STORAGE" && "$ALMAGEST_E2E_DAEMON_MODE" == "direct" ]]; then
 		mkdir -p "$ALMAGEST_E2E_FILE_STORAGE"
 		chmod 700 "$ALMAGEST_E2E_FILE_STORAGE"
 		storage_args=(--file-storage "$ALMAGEST_E2E_FILE_STORAGE")
@@ -107,12 +172,11 @@ start_daemon() {
 	if [[ -n "$ALMAGEST_E2E_STARTUP_SNAPSHOT" ]]; then
 		snapshot_args=(--snapshot "$ALMAGEST_E2E_STARTUP_SNAPSHOT")
 	fi
-	XDG_RUNTIME_DIR="$E2E_RUNTIME" almagestd \
-		--no-isolation \
-		-c "$E2E_CONFIG_DIR" \
+	daemon_command=(env "${daemon_environment[@]}" XDG_RUNTIME_DIR="$E2E_RUNTIME" almagestd \
+		"${mode_args[@]}" \
+		"${config_args[@]}" \
 		-l debug \
 		--debug-nodes \
-		--experimental \
 		--unsafe-config \
 		"${storage_args[@]}" \
 		--log-cache-debug "$ALMAGEST_E2E_LOG_CACHE_DEBUG" \
@@ -122,8 +186,18 @@ start_daemon() {
 		--log-cache-fatal "$ALMAGEST_E2E_LOG_CACHE_FATAL" \
 		--unix "$E2E_ADMIN_SOCK" \
 		"${snapshot_args[@]}" \
-		"${web_args[@]}" \
-		>"$E2E_DAEMON_LOG" 2>&1 &
+		"${web_args[@]}")
+	if [[ "$ALMAGEST_E2E_DAEMON_MODE" == "isolation" ]]; then
+		[[ -n "${E2E_CGROUP_PARENT:-}" ]] || fail "delegated E2E cgroup parent is unavailable"
+		daemon_cgroup="$E2E_CGROUP_PARENT/almagest-e2e-daemon"
+		mkdir "$daemon_cgroup" || fail "could not create daemon cgroup"
+		(
+			printf '%s\n' "$BASHPID" >"$daemon_cgroup/cgroup.procs"
+			exec "${daemon_command[@]}"
+		) >"$E2E_DAEMON_LOG" 2>&1 &
+	else
+		"${daemon_command[@]}" >"$E2E_DAEMON_LOG" 2>&1 &
+	fi
 	daemon_pid="$!"
 	trap cleanup_daemon EXIT
 	retry "$ALMAGEST_E2E_TIMEOUT" "admin API socket" test -S "$E2E_ADMIN_SOCK" \
@@ -133,6 +207,17 @@ start_daemon() {
 		|| fail "admin API did not answer ping"
 	jq -e --arg nonce "$E2E_CASE" '.nonce == $nonce' /tmp/e2e-ping.json >/dev/null \
 		|| fail "admin API ping returned unexpected payload"
+	cli admin hello --client-name "e2e-$E2E_CASE" >/tmp/e2e-hello.json \
+		|| fail "admin API did not answer hello"
+	if [[ "$ALMAGEST_E2E_DAEMON_MODE" == "isolation" ]]; then
+		jq -e '.execution_mode == "isolation" and .isolation.protocol_version > 0' \
+			/tmp/e2e-hello.json >/dev/null \
+			|| fail "daemon did not report an active isolation profile"
+	else
+		jq -e '.execution_mode == "direct" and .isolation == null' \
+			/tmp/e2e-hello.json >/dev/null \
+			|| fail "daemon did not report direct mode"
+	fi
 }
 
 stop_daemon() {
@@ -153,6 +238,67 @@ stop_daemon() {
 	fi
 	wait "$daemon_pid" 2>/dev/null || true
 	daemon_pid=""
+	if [[ -n "$daemon_cgroup" ]]; then
+		rmdir "$daemon_cgroup" 2>/dev/null || true
+		daemon_cgroup=""
+	fi
+}
+
+# Start one additional isolated daemon for cases that exercise communication
+# between independent daemon instances. The caller owns process cleanup.
+start_isolated_daemon_instance() {
+	local suffix="${1:?instance suffix is required}"
+	local source_config="${2:?source config directory is required}"
+	local admin_socket="${3:?admin socket is required}"
+	local daemon_log="${4:?daemon log is required}"
+	local pid_var="${5:?PID variable name is required}"
+	local cgroup_var="${6:?cgroup variable name is required}"
+	local isolation_root="$E2E_RUNTIME/isolation-$suffix"
+	local instance_cgroup="$E2E_CGROUP_PARENT/almagest-e2e-daemon-$suffix"
+
+	[[ "$ALMAGEST_E2E_DAEMON_MODE" == "isolation" ]] \
+		|| fail "multi-daemon isolation helper requires isolation mode"
+	[[ -n "${E2E_CGROUP_PARENT:-}" ]] \
+		|| fail "delegated E2E cgroup parent is unavailable"
+	mkdir -p "$isolation_root/config" "$isolation_root/protected" \
+		"$isolation_root/runtime" "$isolation_root/helper" "$isolation_root/broker"
+	install -o "$ALMAGEST_E2E_WRITER_UID" -g "$ALMAGEST_E2E_WRITER_GID" -m 0600 \
+		"$source_config/alm.hujson" "$isolation_root/config/alm.hujson"
+	install -o 0 -g 0 -m 0600 "$source_config/protected_alm.hujson" \
+		"$isolation_root/protected/protected_alm.hujson"
+	chown "$ALMAGEST_E2E_WRITER_UID:$ALMAGEST_E2E_WRITER_GID" "$isolation_root/config"
+	chown "$ALMAGEST_E2E_ISOLATION_UID:$ALMAGEST_E2E_ISOLATION_GID" "$isolation_root/runtime"
+	chown "$ALMAGEST_E2E_COMMAND_UID:$ALMAGEST_E2E_COMMAND_GID" "$isolation_root/helper"
+	chown 0:0 "$isolation_root" "$isolation_root/protected" "$isolation_root/broker"
+	chmod 0755 "$isolation_root"
+	chmod 0700 "$isolation_root/config" "$isolation_root/protected" \
+		"$isolation_root/runtime" "$isolation_root/helper" "$isolation_root/broker"
+	mkdir "$instance_cgroup" || fail "could not create daemon $suffix cgroup"
+	: >"$daemon_log"
+	(
+		printf '%s\n' "$BASHPID" >"$instance_cgroup/cgroup.procs"
+		exec env \
+			"ALMAGEST_ISOLATION_DEVELOPMENT_ROOT=$isolation_root" \
+			"ALMAGEST_ISOLATION_DEVELOPMENT_IDENTITIES=$ALMAGEST_E2E_ISOLATION_UID:$ALMAGEST_E2E_ISOLATION_GID,$ALMAGEST_E2E_WRITER_UID:$ALMAGEST_E2E_WRITER_GID,$ALMAGEST_E2E_COMMAND_UID:$ALMAGEST_E2E_COMMAND_GID" \
+			XDG_RUNTIME_DIR="$E2E_RUNTIME" almagestd \
+			-l debug --debug-nodes --unsafe-config \
+			--log-cache-debug "$ALMAGEST_E2E_LOG_CACHE_DEBUG" \
+			--log-cache-info "$ALMAGEST_E2E_LOG_CACHE_INFO" \
+			--log-cache-warn "$ALMAGEST_E2E_LOG_CACHE_WARN" \
+			--log-cache-error "$ALMAGEST_E2E_LOG_CACHE_ERROR" \
+			--log-cache-fatal "$ALMAGEST_E2E_LOG_CACHE_FATAL" \
+			--unix "$admin_socket" --web 0
+	) >"$daemon_log" 2>&1 &
+	printf -v "$pid_var" '%s' "$!"
+	printf -v "$cgroup_var" '%s' "$instance_cgroup"
+	retry "$ALMAGEST_E2E_TIMEOUT" "daemon $suffix admin socket" test -S "$admin_socket" \
+		|| fail "daemon $suffix admin socket was not created"
+	local hello="$E2E_RUNTIME/daemon-$suffix-hello.json"
+	retry "$ALMAGEST_E2E_TIMEOUT" "daemon $suffix isolation status" \
+		almagest-cli --url "unix://$admin_socket" admin hello --client-name "e2e-$E2E_CASE-$suffix" \
+		>"$hello" || fail "daemon $suffix admin API did not answer hello"
+	jq -e '.execution_mode == "isolation" and .isolation.protocol_version > 0' "$hello" >/dev/null \
+		|| fail "daemon $suffix did not report an active isolation profile"
 }
 
 node_id_by_name() {

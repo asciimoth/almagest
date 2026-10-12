@@ -68,6 +68,8 @@ mkdir -p "$ALMAGEST_E2E_FILE_STORAGE/future-storage/nested"
 printf '%s\n' before-file >"$ALMAGEST_E2E_FILE_STORAGE/future-storage/nested/value.txt"
 ln -s nested/value.txt "$ALMAGEST_E2E_FILE_STORAGE/future-storage/value-link"
 ln -s value-link "$ALMAGEST_E2E_FILE_STORAGE/future-storage/value-link-chain"
+chown -R "$ALMAGEST_E2E_ISOLATION_UID:$ALMAGEST_E2E_ISOLATION_GID" \
+	"$ALMAGEST_E2E_FILE_STORAGE/future-storage"
 protected_checksum="$(sha256sum "$E2E_CONFIG_DIR/protected_alm.hujson" | cut -d ' ' -f 1)"
 
 cli snapshots create --name "complex daemon" >/tmp/snapshot-created.json
@@ -135,6 +137,8 @@ rm "$ALMAGEST_E2E_FILE_STORAGE/future-storage/value-link"
 ln -s nested "$ALMAGEST_E2E_FILE_STORAGE/future-storage/value-link"
 rm "$ALMAGEST_E2E_FILE_STORAGE/future-storage/value-link-chain"
 ln -s nested "$ALMAGEST_E2E_FILE_STORAGE/future-storage/value-link-chain"
+chown -R "$ALMAGEST_E2E_ISOLATION_UID:$ALMAGEST_E2E_ISOLATION_GID" \
+	"$ALMAGEST_E2E_FILE_STORAGE/future-storage"
 
 cli snapshots restore "$snapshot_uuid" >/tmp/snapshot-restored.json
 jq -e --arg uuid "$snapshot_uuid" '.snapshot.uuid == $uuid and .snapshot.name == "renamed daemon" and .config_written == true' \

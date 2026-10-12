@@ -3,7 +3,11 @@ package network
 import (
 	"context"
 	"errors"
+	"fmt"
+	"net"
 	"net/netip"
+	"strings"
+	"time"
 
 	"github.com/asciimoth/almagest/bin/internal/isolation/protocol"
 	"github.com/asciimoth/gonnect"
@@ -27,6 +31,17 @@ func (s *SystemBackend) OpenSocket(ctx context.Context, o protocol.SocketOptions
 			return nil, &NoEffectsError{protocol.ErrCapabilityUnavailable}
 		}
 		return newResolverSocket(provider), nil
+	}
+	if o.Kind == protocol.SocketNetworkResolver {
+		resolver := s.system.OutNet()
+		if o.Purpose == protocol.NetworkLocal {
+			resolver = s.system.LocalNet()
+		}
+		if resolver == nil {
+			return nil, &NoEffectsError{protocol.ErrCapabilityUnavailable}
+		}
+		provider := gdns.NewResolverProvider(wholeHostResolver{Resolver: resolver, DNS: s.system.OutDNS()}, time.Minute, nil)
+		return newOwnedResolverSocket(provider), nil
 	}
 	network := s.system.OutNet()
 	if o.Purpose == protocol.NetworkLocal {
@@ -105,6 +120,86 @@ func (s *SystemBackend) OpenSocket(ctx context.Context, o protocol.SocketOptions
 		}
 	}
 	return socket, nil
+}
+
+// wholeHostResolver checks all address families before it filters the result
+// for one DNS question. Native resolvers use this behavior to prevent an
+// IPv4-only hosts entry from causing an upstream AAAA query, and conversely.
+type wholeHostResolver struct {
+	gonnect.Resolver
+	DNS gdns.Interface
+}
+
+func (r wholeHostResolver) LookupIP(ctx context.Context, network, host string) ([]net.IP, error) {
+	addresses, err := r.Resolver.LookupIP(ctx, "ip", host)
+	if err != nil {
+		return nil, err
+	}
+	if !strings.HasSuffix(network, "4") && !strings.HasSuffix(network, "6") {
+		return addresses, nil
+	}
+	filtered := make([]net.IP, 0, len(addresses))
+	for _, address := range addresses {
+		is4 := address.To4() != nil
+		if strings.HasSuffix(network, "4") == is4 {
+			filtered = append(filtered, address)
+		}
+	}
+	return filtered, nil
+}
+
+func (r wholeHostResolver) LookupAddr(ctx context.Context, address string) ([]string, error) {
+	if r.DNS == nil {
+		return r.Resolver.LookupAddr(ctx, address)
+	}
+	name, err := nativeReverseDNSName(address)
+	if err != nil {
+		return nil, err
+	}
+	response, err := gdns.Query(ctx, r.DNS, &gdns.Message{
+		ID:               gdns.NextID(),
+		RecursionDesired: true,
+		Questions:        []gdns.Question{{Name: name, Type: gdns.TypePTR, Class: gdns.ClassIN}},
+	})
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	if response != nil && response.RCode == gdns.RCodeSuccess {
+		for _, answer := range response.Answers {
+			if answer.Type == gdns.TypePTR && (answer.Class == 0 || answer.Class == gdns.ClassIN) {
+				names = append(names, string(answer.Data))
+			}
+		}
+	}
+	if len(names) == 0 {
+		return nil, &net.DNSError{Name: address, Err: "no such host", IsNotFound: true}
+	}
+	return names, nil
+}
+
+func nativeReverseDNSName(address string) (string, error) {
+	addr, err := netip.ParseAddr(address)
+	if err != nil || addr.Zone() != "" {
+		return "", &net.DNSError{Name: address, Err: "invalid address"}
+	}
+	addr = addr.Unmap()
+	if addr.Is4() {
+		bytes := addr.As4()
+		return fmt.Sprintf("%d.%d.%d.%d.in-addr.arpa.", bytes[3], bytes[2], bytes[1], bytes[0]), nil
+	}
+	bytes := addr.As16()
+	const hex = "0123456789abcdef"
+	var name strings.Builder
+	name.Grow(73)
+	for i := len(bytes) - 1; i >= 0; i-- {
+		name.WriteByte(hex[bytes[i]&0x0f])
+		name.WriteByte('.')
+		name.WriteByte(hex[bytes[i]>>4])
+		name.WriteByte('.')
+	}
+	name.WriteString("ip6.arpa.")
+	return name.String(), nil
 }
 
 func (s *SystemBackend) ListInterfaces(ctx context.Context) (protocol.InterfaceSnapshot, error) {

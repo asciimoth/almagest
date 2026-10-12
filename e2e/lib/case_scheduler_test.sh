@@ -6,9 +6,10 @@ source "$(dirname "${BASH_SOURCE[0]}")/case_scheduler.sh"
 
 root="$(mktemp -d)"
 trap 'rm -rf "$root"' EXIT
-mkdir -p "$root/normal" "$root/normal-later" "$root/exclusive" "$root/privileged"
+mkdir -p "$root/normal" "$root/normal-later" "$root/exclusive" "$root/privileged" "$root/direct"
 touch "$root/exclusive/exclusive"
 touch "$root/privileged/requires-privileged"
+touch "$root/direct/requires-direct"
 
 e2e_case_can_start "$root/normal" 0 0
 e2e_case_can_start "$root/normal" 3 0
@@ -51,8 +52,15 @@ fi
 
 normal_args=()
 e2e_add_case_privileges "$root/normal" normal_args
-if ((${#normal_args[@]} != 0)); then
-	echo "normal case received privileged Docker arguments" >&2
+if [[ "${normal_args[*]}" != "--privileged --device /dev/net/tun" ]]; then
+	echo "isolated case did not receive privileged Docker arguments" >&2
+	exit 1
+fi
+
+direct_args=()
+e2e_add_case_privileges "$root/direct" direct_args
+if ((${#direct_args[@]} != 0)); then
+	echo "direct case received privileged Docker arguments" >&2
 	exit 1
 fi
 
@@ -62,12 +70,16 @@ if [[ "${privileged_args[*]}" != "--privileged --device /dev/net/tun" ]]; then
 	echo "privileged case did not receive the required Docker arguments" >&2
 	exit 1
 fi
-if [[ "$(e2e_case_privilege "$root/normal")" != "regular" ]]; then
-	echo "normal case did not report regular status" >&2
+if [[ "$(e2e_case_privilege "$root/normal")" != "isolated-privileged" ]]; then
+	echo "isolated case did not report isolated privileged status" >&2
 	exit 1
 fi
-if [[ "$(e2e_case_privilege "$root/privileged")" != "privileged" ]]; then
-	echo "privileged case did not report privileged status" >&2
+if [[ "$(e2e_case_privilege "$root/privileged")" != "isolated-privileged" ]]; then
+	echo "privileged isolation case did not report isolated privileged status" >&2
+	exit 1
+fi
+if [[ "$(e2e_case_privilege "$root/direct")" != "direct" ]]; then
+	echo "direct case did not report direct status" >&2
 	exit 1
 fi
 

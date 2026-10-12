@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 
 	"github.com/asciimoth/almagest/bin/almagestd/args"
+	"github.com/asciimoth/almagest/bin/almagestd/command"
 	"github.com/asciimoth/almagest/bin/almagestd/daemonservices"
 	"github.com/asciimoth/almagest/bin/almagestd/internal/daemonruntime"
 	"github.com/asciimoth/almagest/bin/almagestd/platform"
@@ -19,6 +20,8 @@ import (
 	"github.com/asciimoth/almagest/bin/internal/isolation/roleentry"
 	client "github.com/asciimoth/almagest/bin/internal/isolation/runtime"
 	"github.com/asciimoth/almagest/bin/internal/isolation/transport"
+	"github.com/asciimoth/gonnect"
+	"github.com/kataras/golog"
 )
 
 func isolatedRuntimeRole() bool {
@@ -81,6 +84,14 @@ func runIsolatedRuntimeRole() error {
 	if err := roleentry.AcknowledgeBootstrap(ctx, control, bootstrap); err != nil {
 		return fmt.Errorf("acknowledge runtime bootstrap: %w", err)
 	}
+	gonnect.UnfuckGoDns()
+	if input.Options.LogLevel != "" {
+		golog.SetLevel(input.Options.LogLevel)
+	}
+	if err := applyIsolatedE2EOptions(input.Options); err != nil {
+		return err
+	}
+	configureGlobalBufPool(input.Options.NoPool)
 	networkClient, err := client.New(ctx, transport.Lanes{Control: control, Data: data, Diagnostic: diagnostic}, bootstrap.Session)
 	if err != nil {
 		return fmt.Errorf("start runtime network client: %w", err)
@@ -107,8 +118,13 @@ func runIsolatedRuntimeRole() error {
 
 	var persistence daemonservices.ConfigPersistence
 	var configPeer *transport.Peer
+	// N closes the network control lane to request graceful runtime shutdown.
+	// Keep auxiliary role lanes alive while Application closes the engine and
+	// flushes its final config. Their supervisors stop only after R exits.
+	auxiliaryCtx, cancelAuxiliary := context.WithCancel(context.Background())
+	defer cancelAuxiliary()
 	if configStream != nil {
-		configPeer, err = transport.NewControl(ctx, configStream, bootstrap.Session, nil)
+		configPeer, err = transport.NewControl(auxiliaryCtx, configStream, bootstrap.Session, nil)
 		if err != nil {
 			_ = system.Close()
 			return fmt.Errorf("start runtime config client: %w", err)
@@ -123,12 +139,12 @@ func runIsolatedRuntimeRole() error {
 
 	var commands *commandruntime.Dispatcher
 	if commandStream != nil {
-		commandPeer, peerErr := transport.NewControl(ctx, commandStream, bootstrap.Session, nil)
+		commandPeer, peerErr := transport.NewControl(auxiliaryCtx, commandStream, bootstrap.Session, nil)
 		if peerErr != nil {
 			_ = system.Close()
 			return fmt.Errorf("start runtime command client: %w", peerErr)
 		}
-		commands, err = commandruntime.New(ctx, commandPeer, bootstrap.Session, 1, nil)
+		commands, err = commandruntime.New(auxiliaryCtx, commandPeer, bootstrap.Session, 1, nil)
 		if err != nil {
 			_ = commandPeer.Close()
 			_ = system.Close()
@@ -163,7 +179,21 @@ func runIsolatedRuntimeRole() error {
 		return err
 	}
 	integrations := daemonIntegrations{
-		parseConfig: ParseIsolatedConfig,
+		parseConfig: func(regular, protected []byte) (*Config, error) {
+			config, err := ParseIsolatedConfig(regular, protected)
+			if err != nil {
+				return nil, err
+			}
+			config.Protected.CommandRunner.Commands = make(map[string]command.AllowedCommand, len(input.NodeCommands))
+			for _, allowed := range input.NodeCommands {
+				slots := make(map[string]command.Slot, len(allowed.Slots))
+				for _, name := range allowed.Slots {
+					slots[name] = command.Slot{}
+				}
+				config.Protected.CommandRunner.Commands[allowed.Name] = command.AllowedCommand{AllowNodes: true, Slots: slots}
+			}
+			return config, nil
+		},
 		prepareConfig: func(args.Args) (platform.ConfigBootstrap, error) {
 			return platform.ConfigBootstrap{Regular: regular, Protected: protected, Persistence: persistence}, nil
 		},

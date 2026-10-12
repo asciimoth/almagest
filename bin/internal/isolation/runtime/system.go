@@ -39,11 +39,14 @@ type System struct {
 // System returns one complete sysnet adapter. The returned object owns Client.
 func (c *Client) System() *System {
 	s := &System{client: c, tuns: make(map[*SystemTun]struct{}), providers: make(map[*lazyDNS]struct{})}
-	s.dns = newLazyDNS(c, s)
+	s.dns = newLazyDNS(c, s, protocol.SocketResolver, protocol.NetworkOutbound)
+	outDNS := newLazyDNS(c, s, protocol.SocketNetworkResolver, protocol.NetworkOutbound)
+	localDNS := newLazyDNS(c, s, protocol.SocketNetworkResolver, protocol.NetworkLocal)
 	s.providers[s.dns] = struct{}{}
-	resolver := gdns.NewResolver(s.dns)
-	s.out = c.Network(protocol.NetworkOutbound, resolver)
-	s.local = c.Network(protocol.NetworkLocal, resolver)
+	s.providers[outDNS] = struct{}{}
+	s.providers[localDNS] = struct{}{}
+	s.out = c.Network(protocol.NetworkOutbound, newDNSResolver(outDNS))
+	s.local = c.Network(protocol.NetworkLocal, newDNSResolver(localDNS))
 	return s
 }
 
@@ -357,7 +360,7 @@ func (s *System) AllocSubnet() subnet.SubnetAllocator {
 	return s.client.Allocator()
 }
 func (s *System) OutDNS() gdns.Interface {
-	provider := newLazyDNS(s.client, s)
+	provider := newLazyDNS(s.client, s, protocol.SocketResolver, protocol.NetworkOutbound)
 	s.mu.Lock()
 	if s.closed {
 		s.mu.Unlock()
@@ -411,12 +414,15 @@ func (s *System) BuildDefaultTun(value sysnet.DefaultTunOpts) (sysnet.DefaultTun
 	stable := s.def
 	s.mu.Unlock()
 	if stable != nil && stable.beginReplacement() {
+		stable.mu.Lock()
+		service := stable.service
+		stable.mu.Unlock()
 		ctx, cancel := context.WithTimeout(context.Background(), systemOperationTimeout)
 		device, createErr := s.client.CreateTun(ctx, request)
 		cancel()
 		if createErr == nil {
-			previous := stable.install(device, nil)
-			if previous != nil {
+			previous := stable.install(device, service)
+			if previous != nil && previous != service {
 				_ = previous.Close()
 			}
 		}
@@ -440,7 +446,11 @@ func (s *System) BuildDefaultTun(value sysnet.DefaultTunOpts) (sysnet.DefaultTun
 }
 
 func (s *System) track(source *Tun, defaultTun bool) *SystemTun {
-	device := &SystemTun{system: s, current: source, defaultTun: defaultTun, events: make(chan tun.Event, 128)}
+	generation := uint64(1)
+	if nativeGeneration := source.sourceGeneration(); nativeGeneration != 0 {
+		generation = nativeGeneration
+	}
+	device := &SystemTun{system: s, current: source, sourceGen: generation, defaultTun: defaultTun, events: make(chan tun.Event, 128)}
 	s.mu.Lock()
 	s.tuns[device] = struct{}{}
 	s.mu.Unlock()
@@ -611,6 +621,7 @@ type SystemTun struct {
 	mu         sync.Mutex
 	current    *Tun
 	service    *DNSService
+	sourceGen  uint64
 	closed     bool
 	replacing  bool
 	replaced   chan struct{}
@@ -652,6 +663,13 @@ func (t *SystemTun) install(source *Tun, service *DNSService) *DNSService {
 	t.mu.Lock()
 	oldSource, oldService := t.current, t.service
 	t.current, t.service = source, service
+	if source != nil {
+		if nativeGeneration := source.sourceGeneration(); nativeGeneration != 0 {
+			t.sourceGen = nativeGeneration
+		} else if oldSource != nil && oldSource.ref.ID != source.ref.ID {
+			t.sourceGen++
+		}
+	}
 	t.mu.Unlock()
 	if source != oldSource {
 		t.forwardWG.Go(func() { t.forward(source) })
@@ -747,9 +765,39 @@ func (t *SystemTun) sourceDuringReplacement() *Tun {
 	return t.current
 }
 
+// replacementAfter waits for an in-progress generation change. Broker events
+// can close the old RPC TUN before the update reply installs its replacement.
+// Keep this race inside the stable SystemTun identity.
+func (t *SystemTun) replacementAfter(source *Tun) *Tun {
+	t.mu.Lock()
+	if t.replacing && t.current == source {
+		done := t.replaced
+		t.mu.Unlock()
+		<-done
+		t.mu.Lock()
+	}
+	defer t.mu.Unlock()
+	if t.closed || t.current == source || t.current == nil || source == nil || t.current.ref.ID != source.ref.ID {
+		return nil
+	}
+	return t.current
+}
+
 func (t *SystemTun) Read(buffers [][]byte, sizes []int, offset int) (int, error) {
-	if source := t.source(); source != nil {
-		return source.Read(buffers, sizes, offset)
+	for source := t.source(); source != nil; {
+		n, err := source.Read(buffers, sizes, offset)
+		if n != 0 || !errors.Is(err, net.ErrClosed) {
+			return n, err
+		}
+		next := t.replacementAfter(source)
+		if next == nil {
+			return 0, net.ErrClosed
+		}
+		// Conn.Read can return promptly when a generation event closes it while
+		// its bounded RPC worker is still unwinding. Wait for that one reader
+		// before the new generation uses the same broker resource ID.
+		source.waitReadIdle()
+		source = next
 	}
 	return 0, net.ErrClosed
 }
@@ -773,10 +821,20 @@ func (t *SystemTun) Name() (string, error) {
 }
 func (t *SystemTun) Events() <-chan tun.Event { return t.events }
 func (*SystemTun) File() *os.File             { return nil }
-func (*SystemTun) IsNative() bool             { return false }
-func (*SystemTun) BatchSize() int             { return 1 }
-func (*SystemTun) MWO() int                   { return 0 }
-func (*SystemTun) MRO() int                   { return 0 }
+func (*SystemTun) IsNative() bool             { return true }
+func (t *SystemTun) BatchSize() int {
+	if source := t.source(); source != nil {
+		return source.BatchSize()
+	}
+	return 1
+}
+func (*SystemTun) MWO() int { return 0 }
+func (*SystemTun) MRO() int { return 0 }
+func (t *SystemTun) SourceGeneration() uint64 {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.sourceGen
+}
 
 func (t *SystemTun) Close() error {
 	t.closeOnce.Do(func() {
@@ -847,6 +905,8 @@ func (t *SystemTun) SetDNS(upstream gdns.Interface) error {
 type lazyDNS struct {
 	client   *Client
 	owner    *System
+	kind     protocol.SocketKind
+	purpose  protocol.NetworkPurpose
 	requests chan gdns.Request
 	ctx      context.Context
 	cancel   context.CancelFunc
@@ -856,9 +916,9 @@ type lazyDNS struct {
 	closed   bool
 }
 
-func newLazyDNS(client *Client, owner *System) *lazyDNS {
+func newLazyDNS(client *Client, owner *System, kind protocol.SocketKind, purpose protocol.NetworkPurpose) *lazyDNS {
 	ctx, cancel := context.WithCancel(context.Background())
-	d := &lazyDNS{client: client, owner: owner, requests: make(chan gdns.Request), ctx: ctx, cancel: cancel}
+	d := &lazyDNS{client: client, owner: owner, kind: kind, purpose: purpose, requests: make(chan gdns.Request), ctx: ctx, cancel: cancel}
 	for range 4 {
 		d.wg.Go(d.run)
 	}
@@ -872,7 +932,13 @@ func (d *lazyDNS) get(ctx context.Context) (gdns.Interface, error) {
 		return nil, net.ErrClosed
 	}
 	if d.provider == nil {
-		provider, err := d.client.OutDNS(ctx)
+		var provider gdns.Interface
+		var err error
+		if d.kind == protocol.SocketNetworkResolver {
+			provider, err = d.client.NetworkDNS(ctx, d.purpose)
+		} else {
+			provider, err = d.client.OutDNS(ctx)
+		}
 		if err != nil {
 			return nil, err
 		}

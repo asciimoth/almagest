@@ -3,8 +3,15 @@ set -euo pipefail
 
 source /e2e/lib/common.sh
 
+# These variables are read through indirect expansion in stop_daemons.
+# shellcheck disable=SC2034
 daemon_pid_a=""
+# shellcheck disable=SC2034
 daemon_pid_b=""
+# shellcheck disable=SC2034
+daemon_cgroup_a=""
+# shellcheck disable=SC2034
+daemon_cgroup_b=""
 admin_sock_a="$E2E_RUNTIME/daemon-a.sock"
 admin_sock_b="$E2E_RUNTIME/daemon-b.sock"
 daemon_log_a="$E2E_RUNTIME/daemon-a.log"
@@ -50,30 +57,20 @@ stop_daemons() {
 		fi
 		wait "$pid" 2>/dev/null || true
 		printf -v "$pid_var" ''
+		local cgroup_var="daemon_cgroup_${pid_var#daemon_pid_}"
+		local cgroup="${!cgroup_var:-}"
+		if [[ -n "$cgroup" ]]; then
+			rmdir "$cgroup" 2>/dev/null || true
+			printf -v "$cgroup_var" ''
+		fi
 	done
 }
 
 start_daemon_a() {
-	mkdir -p "$E2E_RUNTIME"
-	: >"$daemon_log_a"
 	log "starting daemon a"
-	XDG_RUNTIME_DIR="$E2E_RUNTIME" almagestd \
-		--experimental \
-		--no-isolation \
-		-c "$E2E_CONFIG_DIR/daemon-a" \
-		-l debug \
-		--debug-nodes \
-		--unsafe-config \
-		--tmp-file-storage \
-		--unix "$admin_sock_a" \
-		--web 0 \
-		>"$daemon_log_a" 2>&1 &
-	# This variable is read through indirect expansion in stop_daemons.
-	# shellcheck disable=SC2034
-	daemon_pid_a="$!"
+	start_isolated_daemon_instance a "$E2E_CONFIG_DIR/daemon-a" "$admin_sock_a" \
+		"$daemon_log_a" daemon_pid_a daemon_cgroup_a
 	trap stop_daemons EXIT
-	retry "$ALMAGEST_E2E_TIMEOUT" "daemon a admin API socket" test -S "$admin_sock_a" \
-		|| fail "daemon a admin API socket was not created"
 	retry "$ALMAGEST_E2E_TIMEOUT" "daemon a admin API ping" \
 		cli_a admin ping --nonce "$E2E_CASE-a" >/tmp/e2e-wireguard-two-daemons-ping-a.json \
 		|| fail "daemon a admin API did not answer ping"
@@ -82,26 +79,10 @@ start_daemon_a() {
 }
 
 start_daemon_b() {
-	mkdir -p "$E2E_RUNTIME"
-	: >"$daemon_log_b"
 	log "starting daemon b"
-	XDG_RUNTIME_DIR="$E2E_RUNTIME" almagestd \
-		--experimental \
-		--no-isolation \
-		-c "$E2E_CONFIG_DIR/daemon-b" \
-		-l debug \
-		--debug-nodes \
-		--unsafe-config \
-		--tmp-file-storage \
-		--unix "$admin_sock_b" \
-		--web 0 \
-		>"$daemon_log_b" 2>&1 &
-	# This variable is read through indirect expansion in stop_daemons.
-	# shellcheck disable=SC2034
-	daemon_pid_b="$!"
+	start_isolated_daemon_instance b "$E2E_CONFIG_DIR/daemon-b" "$admin_sock_b" \
+		"$daemon_log_b" daemon_pid_b daemon_cgroup_b
 	trap stop_daemons EXIT
-	retry "$ALMAGEST_E2E_TIMEOUT" "daemon b admin API socket" test -S "$admin_sock_b" \
-		|| fail "daemon b admin API socket was not created"
 	retry "$ALMAGEST_E2E_TIMEOUT" "daemon b admin API ping" \
 		cli_b admin ping --nonce "$E2E_CASE-b" >/tmp/e2e-wireguard-two-daemons-ping-b.json \
 		|| fail "daemon b admin API did not answer ping"

@@ -168,6 +168,10 @@ cp "$E2E_CONFIG_DIR/alm.hujson" "$ALMAGEST_E2E_FILE_STORAGE/config/alm.hujson"
 cp "$E2E_CONFIG_DIR/protected_alm.hujson" \
 	"$ALMAGEST_E2E_FILE_STORAGE/config/protected_alm.hujson"
 stop_daemon
+# The isolated runtime owns its storage tree. The following subprocess is an
+# explicit direct-mode rollback check, whose storage validation requires the
+# invoking root identity to own the tree.
+chown 0:0 "$ALMAGEST_E2E_FILE_STORAGE"
 
 failure_log="$E2E_RUNTIME/startup-rollback.log"
 failure_socket="$E2E_RUNTIME/startup-rollback.sock"
@@ -187,12 +191,17 @@ if wait "$failure_pid"; then
 fi
 grep -F "would replace a directory that contains an active config source" \
 	"$failure_log" >/dev/null \
-	|| fail "startup snapshot did not report its active-config conflict"
+	|| {
+		cat "$failure_log" >&2
+		fail "startup snapshot did not report its active-config conflict"
+	}
 [[ "$(<"$ALMAGEST_E2E_FILE_STORAGE/rollback-marker")" == "rollback-preserved" ]] \
 	|| fail "failed startup snapshot did not restore the prior storage files"
 [[ -f "$ALMAGEST_E2E_FILE_STORAGE/config/alm.hujson" ]] \
 	|| fail "failed startup snapshot removed the active config"
 
+chown -R "$ALMAGEST_E2E_ISOLATION_UID:$ALMAGEST_E2E_ISOLATION_GID" \
+	"$ALMAGEST_E2E_FILE_STORAGE"
 start_daemon
 cli admin ping --nonce archive-rollback | jq -e '.nonce == "archive-rollback"' >/dev/null \
 	|| fail "daemon did not restart after startup snapshot rollback"

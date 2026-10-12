@@ -3,7 +3,7 @@ set -euo pipefail
 
 source /e2e/lib/common.sh
 
-output=/tmp/almagest-e2e-command-node.log
+output="$E2E_ISOLATION_ROOT/helper/command-node.log"
 
 line_count() {
 	if [[ ! -f "$output" ]]; then

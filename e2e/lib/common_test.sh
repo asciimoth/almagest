@@ -6,6 +6,7 @@ trap 'rm -rf "$root"' EXIT
 
 export E2E_CASE=common-test
 export E2E_RUNTIME="$root/runtime"
+export E2E_ISOLATION_ROOT="$E2E_RUNTIME/isolation"
 export E2E_CONFIG_DIR="$root/config"
 export E2E_ADMIN_SOCK="$root/admin.sock"
 export E2E_DAEMON_LOG="$root/daemon.log"

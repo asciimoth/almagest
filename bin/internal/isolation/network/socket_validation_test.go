@@ -35,7 +35,11 @@ func TestSocketValidation(t *testing.T) {
 			ControlFlags: uint32(gonnect.ControlDst | gonnect.ControlInterface),
 		},
 	}
-	for _, options := range []protocol.SocketOptions{validDial, validListen, validMulticast} {
+	validNetworkResolver := protocol.SocketOptions{
+		Purpose: protocol.NetworkLocal,
+		Kind:    protocol.SocketNetworkResolver,
+	}
+	for _, options := range []protocol.SocketOptions{validDial, validListen, validMulticast, validNetworkResolver} {
 		if err := validateSocket(options); err != nil {
 			t.Fatalf("valid socket rejected: %+v: %v", options, err)
 		}
@@ -65,6 +69,8 @@ func TestSocketValidation(t *testing.T) {
 		{"absolute_deadline", validDial, func(o *protocol.SocketOptions) { o.Deadline = time.Now() }, protocol.ErrInvalidContract},
 		{"unknown_control_flag", validMulticast, func(o *protocol.SocketOptions) { o.Multicast.ControlFlags = ^uint32(0) }, protocol.ErrInvalidContract},
 		{"multicast_options_on_tcp", validDial, func(o *protocol.SocketOptions) { o.Multicast.ReuseAddr = true }, protocol.ErrInvalidContract},
+		{"network_resolver_options", validNetworkResolver, func(o *protocol.SocketOptions) { o.Network = "udp" }, protocol.ErrInvalidContract},
+		{"network_resolver_purpose", validNetworkResolver, func(o *protocol.SocketOptions) { o.Purpose = "host" }, protocol.ErrInvalidContract},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

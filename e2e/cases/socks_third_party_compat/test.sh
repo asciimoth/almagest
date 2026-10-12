@@ -51,8 +51,14 @@ start_gost_forward() {
 		>"$log_file" 2>&1 &
 	local pid="$!"
 	gost_pids+=("$pid")
-	retry "$ALMAGEST_E2E_TIMEOUT" "Gost $name listener" nc -z 127.0.0.1 "$port" \
+	retry "$ALMAGEST_E2E_TIMEOUT" "Gost $name listener" \
+		gost_forward_listens "$port" \
 		|| fail "Gost $name did not listen; $(cat "$log_file")"
+}
+
+gost_forward_listens() {
+	local port="$1"
+	ss -H -ltn "sport = :$port" | grep -q .
 }
 
 start_gost() {
@@ -74,7 +80,7 @@ no-resolv
 no-hosts
 log-queries
 address=/compat.test/127.0.0.1
-ptr-record=8.8.8.8,compat.test
+ptr-record=8.8.8.8.in-addr.arpa,compat.test
 EOF
 dnsmasq --no-daemon --conf-file="$E2E_RUNTIME/dnsmasq.conf" \
 	>"$E2E_RUNTIME/dnsmasq.log" 2>&1 &
@@ -83,7 +89,8 @@ printf 'nameserver 127.0.0.54\noptions timeout:1 attempts:1\n' >/etc/resolv.conf
 # The retry helper invokes this function by name.
 # shellcheck disable=SC2329
 compat_dns_answers() {
-	dig +short compat.test A @127.0.0.54 | grep -Fx 127.0.0.1 >/dev/null
+	dig +short compat.test A @127.0.0.54 | grep -Fx 127.0.0.1 >/dev/null \
+		&& dig +short -x 8.8.8.8 @127.0.0.54 | grep -Fx compat.test. >/dev/null
 }
 retry "$ALMAGEST_E2E_TIMEOUT" "compatibility DNS" \
 	compat_dns_answers \
@@ -129,13 +136,19 @@ if curl_proxy "socks5://compat:wrong@127.0.0.1:11082" /wrong-password \
 	fail "authenticated SOCKS server accepted a wrong password"
 fi
 
-resolved5="$(tor-resolve -5 compat.test 127.0.0.1:11080)"
+if ! resolved5="$(tor-resolve -5 compat.test 127.0.0.1:11080)"; then
+	fail "Tor SOCKS5 RESOLVE failed"
+fi
 [[ "$resolved5" == "127.0.0.1" ]] \
 	|| fail "Tor SOCKS5 RESOLVE returned $resolved5"
-resolved4="$(tor-resolve -4 compat.test 127.0.0.1:11080)"
+if ! resolved4="$(tor-resolve -4 compat.test 127.0.0.1:11080)"; then
+	fail "Tor SOCKS4a RESOLVE failed"
+fi
 [[ "$resolved4" == "127.0.0.1" ]] \
 	|| fail "Tor SOCKS4a RESOLVE returned $resolved4"
-reverse="$(tor-resolve -5 -x 8.8.8.8 127.0.0.1:11080)"
+if ! reverse="$(tor-resolve -5 -x 8.8.8.8 127.0.0.1:11080)"; then
+	fail "Tor SOCKS5 RESOLVE_PTR failed; DNS log: $(tail -20 "$E2E_RUNTIME/dnsmasq.log")"
+fi
 [[ "$reverse" == "compat.test" || "$reverse" == "compat.test." ]] \
 	|| fail "Tor SOCKS5 RESOLVE_PTR returned $reverse"
 
@@ -164,7 +177,7 @@ start_gost_forward wss 18103 "socks5+wss://127.0.0.1:11084?path=/socks"
 retry "$ALMAGEST_E2E_TIMEOUT" "Gost SOCKS5 WSS request" \
 	curl --fail --silent --show-error --max-time 8 \
 		http://127.0.0.1:18103/gost-wss --output "$E2E_RUNTIME/gost-wss.txt" \
-	|| fail "Gost SOCKS5 WSS chain did not reach the target"
+	|| fail "Gost SOCKS5 WSS chain did not reach the target; $(tail -20 "$E2E_RUNTIME/gost-wss.log")"
 assert_body "$E2E_RUNTIME/gost-wss.txt"
 
 # A UDP local forward with a GOST SOCKS5 chain uses the GOST UDP-over-TCP

@@ -51,7 +51,9 @@ type Broker struct {
 	backend          Backend
 	journal          *supervision.Journal
 	gate             chan struct{}
+	socketSlots      chan struct{}
 	mu               sync.Mutex
+	workers          sync.WaitGroup
 	epoch            uint64
 	closed, recovery bool
 	resources        map[protocol.ResourceID]*resource
@@ -62,7 +64,7 @@ type Broker struct {
 	applicationReady chan struct{}
 	applicationUp    bool
 	serviceAssigned  bool
-	cancel           context.CancelFunc
+	cancels          map[*receipt]context.CancelFunc
 	// timeout is fixed in production; tests shorten it for stalled backends.
 	timeout time.Duration
 }
@@ -95,9 +97,10 @@ func NewWithJournal(session protocol.Session, p policy.Policy, backend Backend, 
 	if err := json.Unmarshal(data, &owned); err != nil {
 		return nil, err
 	}
-	return &Broker{session: session, policy: owned, backend: backend, journal: journal, gate: make(chan struct{}, 1), epoch: 1,
-		matchSlots: make(chan struct{}, min(int(owned.Limits.MaxConcurrentRequests), 64)),
-		resources:  make(map[protocol.ResourceID]*resource), receipts: make(map[string]*receipt),
+	workerLimit := min(int(owned.Limits.MaxConcurrentRequests), 64)
+	return &Broker{session: session, policy: owned, backend: backend, journal: journal, gate: make(chan struct{}, 1), socketSlots: make(chan struct{}, workerLimit), epoch: 1,
+		matchSlots: make(chan struct{}, workerLimit), cancels: make(map[*receipt]context.CancelFunc),
+		resources: make(map[protocol.ResourceID]*resource), receipts: make(map[string]*receipt),
 		events: make(chan transport.Event, protocol.MaxConcurrentRequests), stopped: make(chan struct{}), applicationReady: make(chan struct{}), timeout: operationTimeout}, nil
 }
 
@@ -224,8 +227,12 @@ func (b *Broker) mutate(ctx context.Context, meta protocol.RequestMeta, op proto
 	b.receipts[meta.OperationID] = r
 	b.mu.Unlock()
 	bounded, cancel := context.WithTimeout(ctx, b.timeout)
+	lane := b.gate
+	if op == protocol.OperationOpenSocket {
+		lane = b.socketSlots
+	}
 	select {
-	case b.gate <- struct{}{}:
+	case lane <- struct{}{}:
 	case <-bounded.Done():
 		cancel()
 		b.finish(r, rejected(meta.OperationID, bounded.Err()), bounded.Err())
@@ -234,15 +241,23 @@ func (b *Broker) mutate(ctx context.Context, meta protocol.RequestMeta, op proto
 	b.mu.Lock()
 	if err := b.current(meta); err != nil {
 		b.mu.Unlock()
-		<-b.gate
+		<-lane
 		cancel()
 		b.finish(r, rejected(meta.OperationID, err), err)
 		return b.await(ctx, r)
 	}
-	b.cancel = cancel
+	b.cancels[r] = cancel
+	b.workers.Add(1)
 	b.mu.Unlock()
 	go func() {
-		defer func() { b.mu.Lock(); b.cancel = nil; b.mu.Unlock(); <-b.gate; cancel() }()
+		defer func() {
+			b.mu.Lock()
+			delete(b.cancels, r)
+			b.mu.Unlock()
+			<-lane
+			cancel()
+			b.workers.Done()
+		}()
 		result, workErr := work(bounded)
 		result.OperationID = meta.OperationID
 		b.finish(r, result, workErr)
@@ -259,7 +274,13 @@ func (b *Broker) mutate(ctx context.Context, meta protocol.RequestMeta, op proto
 			return result, err
 		default:
 		}
-		b.recovery = true
+		// Caller cancellation does not prove an uncertain native effect. The
+		// retained worker still owns compensation and publishes its terminal
+		// receipt before the mutation gate opens for the next request. Only the
+		// broker's own deadline makes that completion unobservable here.
+		if ctx.Err() == nil {
+			b.recovery = true
+		}
 		b.mu.Unlock()
 		return uncertain(meta.OperationID), errors.Join(protocol.ErrRecoveryRequired, bounded.Err())
 	}
@@ -382,8 +403,8 @@ func (b *Broker) eventLocked(r *resource, mtu bool) {
 			b.closed = true
 			b.stopOnce.Do(func() { close(b.stopped) })
 			b.recovery = true
-			if b.cancel != nil {
-				b.cancel()
+			for _, cancel := range b.cancels {
+				cancel()
 			}
 			go func() { _ = b.Shutdown(context.Background()) }()
 		}

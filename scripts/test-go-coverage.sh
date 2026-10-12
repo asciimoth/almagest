@@ -3,8 +3,14 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 coverage_dir="${GO_COVERAGE_DIR:-$repo_root/coverage/regular}"
+package_parallelism="${GO_COVERAGE_PACKAGE_PARALLELISM:-1}"
 work_dir="$(mktemp -d "${TMPDIR:-/tmp}/almagest-go-coverage.XXXXXX")"
 trap 'rm -rf "$work_dir"' EXIT
+
+if [[ ! "$package_parallelism" =~ ^[1-9][0-9]*$ ]]; then
+	echo "GO_COVERAGE_PACKAGE_PARALLELISM must be a positive integer" >&2
+	exit 2
+fi
 
 combined_profile="$work_dir/coverage.out"
 functions_report="$work_dir/functions.txt"
@@ -28,13 +34,13 @@ for module in "${modules[@]}"; do
 	profiles+=("$profile")
 	case "$module" in
 		certcat)
-			go -C certcat test ./... -covermode=atomic -coverpkg=./... -coverprofile="$profile"
+			go -C certcat test ./... -p "$package_parallelism" -covermode=atomic -coverpkg=./... -coverprofile="$profile"
 			;;
 		lib)
-			go -C lib test ./... --race -covermode=atomic -coverpkg=./... -coverprofile="$profile"
+			go -C lib test ./... --race -p "$package_parallelism" -covermode=atomic -coverpkg=./... -coverprofile="$profile"
 			;;
 		bin)
-			go -C bin test ./... --race -covermode=atomic -coverpkg=./... -coverprofile="$profile"
+			go -C bin test ./... --race -p "$package_parallelism" -covermode=atomic -coverpkg=./... -coverprofile="$profile"
 			;;
 		*)
 			echo "unknown go coverage module: $module" >&2

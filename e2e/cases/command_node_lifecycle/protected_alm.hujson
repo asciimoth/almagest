@@ -7,10 +7,9 @@
 		"Commands": {
 			"record-alpha": {
 				"Command": [
-					"/bin/sh",
-					"-c",
-					"printf 'alpha|%s|%s\\n' \"$1\" \"$2\" >> /tmp/almagest-e2e-command-node.log",
-					"record-alpha",
+					"/usr/local/bin/almagest-e2e-command-recorder",
+					"/state/command-node.log",
+					"alpha",
 					"${message}",
 					"${optional}",
 				],
@@ -32,10 +31,9 @@
 			},
 			"record-beta": {
 				"Command": [
-					"/bin/sh",
-					"-c",
-					"printf 'beta|%s\\n' \"$1\" >> /tmp/almagest-e2e-command-node.log",
-					"record-beta",
+					"/usr/local/bin/almagest-e2e-command-recorder",
+					"/state/command-node.log",
+					"beta",
 					"${other}",
 				],
 				"Sync":       true,
@@ -50,10 +48,9 @@
 				},
 			},
 			"hidden-command": {
-				"Command": ["/bin/false"],
+				"Command": ["/usr/local/bin/almagest-e2e-command-recorder", "/state/command-node.log", "hidden"],
 				"Sync":    true,
 			},
 		},
 	},
-	"System": {"Type": "debug"},
 }

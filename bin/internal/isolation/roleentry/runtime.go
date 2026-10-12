@@ -16,16 +16,17 @@ const (
 )
 
 type RuntimeOptions struct {
-	LogLevel             string
-	LogWorkers           bool
-	NoPool               bool
-	NoDNSCacheExpiration bool
-	DebugNodes           bool
-	LogCacheDebug        *int
-	LogCacheInfo         *int
-	LogCacheWarn         *int
-	LogCacheError        *int
-	LogCacheFatal        *int
+	LogLevel                       string
+	LogWorkers                     bool
+	NoPool                         bool
+	NoDNSCacheExpiration           bool
+	DebugNodes                     bool
+	E2ETailscaleRejectAfterSeconds uint32
+	LogCacheDebug                  *int
+	LogCacheInfo                   *int
+	LogCacheWarn                   *int
+	LogCacheError                  *int
+	LogCacheFatal                  *int
 }
 
 type RuntimeAdminEndpoint struct {
@@ -41,6 +42,14 @@ type RuntimeIsolationStatus struct {
 	RecoveryState   string
 }
 
+// RuntimeNodeCommand is the public shape of one command that protected policy
+// permits workspace nodes to select. Execution details stay in the trusted
+// command helper.
+type RuntimeNodeCommand struct {
+	Name  string
+	Slots []string
+}
+
 // RuntimeInput identifies only fixed files inside R's private storage and its
 // already-open service lanes. It contains no host path, executable, policy, or
 // native resource selector.
@@ -50,13 +59,35 @@ type RuntimeInput struct {
 	ConfigWritable  bool
 	StartupSnapshot bool
 	AdminEndpoints  []RuntimeAdminEndpoint
+	NodeCommands    []RuntimeNodeCommand
 	Options         RuntimeOptions
 	Isolation       RuntimeIsolationStatus
 }
 
 func (i RuntimeInput) Validate() error {
-	if i.Version != protocol.Version || len(i.AdminEndpoints) > 8 || len(i.Options.LogLevel) > 16 || !utf8.ValidString(i.Options.LogLevel) {
+	if i.Version != protocol.Version || len(i.AdminEndpoints) > 8 || len(i.NodeCommands) > 128 || len(i.Options.LogLevel) > 16 || !utf8.ValidString(i.Options.LogLevel) ||
+		i.Options.E2ETailscaleRejectAfterSeconds > 86400 {
 		return protocol.ErrInvalidContract
+	}
+	commands := make(map[string]struct{}, len(i.NodeCommands))
+	for _, command := range i.NodeCommands {
+		if command.Name == "" || len(command.Name) > 128 || !utf8.ValidString(command.Name) || len(command.Slots) > 128 {
+			return protocol.ErrInvalidContract
+		}
+		if _, exists := commands[command.Name]; exists {
+			return protocol.ErrInvalidContract
+		}
+		commands[command.Name] = struct{}{}
+		slots := make(map[string]struct{}, len(command.Slots))
+		for _, slot := range command.Slots {
+			if slot == "" || len(slot) > 64 || !utf8.ValidString(slot) {
+				return protocol.ErrInvalidContract
+			}
+			if _, exists := slots[slot]; exists {
+				return protocol.ErrInvalidContract
+			}
+			slots[slot] = struct{}{}
+		}
 	}
 	seen := make(map[uint16]struct{}, len(i.AdminEndpoints))
 	for _, endpoint := range i.AdminEndpoints {

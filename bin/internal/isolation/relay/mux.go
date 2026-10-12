@@ -243,9 +243,11 @@ func (m *Mux) deliver(f Frame) error {
 	}
 	if slot.ref.Type == protocol.ResourceTun || slot.ref.Type == protocol.ResourceDefaultTun {
 		p := rec.Packet
-		if p == nil || rec.Length == 0 || p.Source != nil || p.Destination != nil || p.InterfaceIndex != nil || p.HopLimit != nil || p.TrafficClass != nil || p.DNS != nil {
+		if p == nil || rec.Length == 0 || p.Source != nil || p.Destination != nil || p.InterfaceIndex != nil || p.HopLimit != nil || p.TrafficClass != nil || p.DNS != nil || p.BatchRemaining > 255 {
 			return protocol.ErrInvalidContract
 		}
+	} else if rec.Packet != nil && rec.Packet.BatchRemaining != 0 {
+		return protocol.ErrInvalidContract
 	}
 	seq.received++
 	slot.delivered = true
@@ -286,7 +288,7 @@ func (m *Mux) HoldOutbound(bytes int) (func(), error) {
 	if m.err != nil {
 		return nil, m.err
 	}
-	if bytes < 0 || bytes > 256*1024 || m.queued+m.held+bytes > protocol.MaxSessionData {
+	if bytes < 0 || bytes > protocol.MaxNativePacketBatchBytes || m.queued+m.held+bytes > protocol.MaxSessionData {
 		return nil, protocol.ErrLimitExceeded
 	}
 	m.held += bytes

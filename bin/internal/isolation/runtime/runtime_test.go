@@ -86,7 +86,7 @@ func TestTunAdapterStateAndEvents(t *testing.T) {
 	}
 	defer adapter.finish()
 	if adapter.IsNative() || adapter.File() != nil || adapter.BatchSize() != 1 || adapter.MWO() != 0 || adapter.MRO() != 0 {
-		t.Fatal("adapter exposed native or unexpected batch properties")
+		t.Fatal("adapter claims native access or exposed unexpected handle/batch properties")
 	}
 	if name, _ := adapter.Name(); name != "relay0" {
 		t.Fatalf("name = %q", name)
@@ -136,6 +136,75 @@ func TestTunAdapterStateAndEvents(t *testing.T) {
 	}
 	if _, err = client.Tun(ref, protocol.ResourceState{MTU: 1400}); !errors.Is(err, protocol.ErrOperationConflict) {
 		t.Fatalf("old generation accepted: %v", err)
+	}
+}
+
+func TestTunDeadlinesRemainLocal(t *testing.T) {
+	device := &Tun{Conn: &Conn{}}
+	readDeadline := time.Now().Add(time.Second)
+	writeDeadline := readDeadline.Add(time.Second)
+	if err := device.SetReadDeadline(readDeadline); err != nil {
+		t.Fatal(err)
+	}
+	if err := device.SetWriteDeadline(writeDeadline); err != nil {
+		t.Fatal(err)
+	}
+	device.mu.Lock()
+	defer device.mu.Unlock()
+	if !device.readDeadline.Equal(readDeadline) || !device.writeDeadline.Equal(writeDeadline) {
+		t.Fatalf("deadlines = %v, %v", device.readDeadline, device.writeDeadline)
+	}
+}
+
+func TestSystemTunWaitsForGenerationReplacement(t *testing.T) {
+	resourceID := protocol.ResourceID{1}
+	old := &Tun{Conn: &Conn{ref: protocol.ResourceRef{ID: resourceID, Generation: 1}}}
+	next := &Tun{Conn: &Conn{ref: protocol.ResourceRef{ID: resourceID, Generation: 2}}}
+	device := &SystemTun{current: old, replacing: true, replaced: make(chan struct{})}
+	done := make(chan *Tun, 1)
+	go func() { done <- device.replacementAfter(old) }()
+	select {
+	case <-done:
+		t.Fatal("replacement wait returned before installation")
+	case <-time.After(10 * time.Millisecond):
+	}
+	device.mu.Lock()
+	device.current = next
+	device.replacing = false
+	close(device.replaced)
+	device.mu.Unlock()
+	select {
+	case got := <-done:
+		if got != next {
+			t.Fatalf("replacement = %p, want %p", got, next)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("replacement wait did not finish")
+	}
+}
+
+func TestSystemTunEndsReadAcrossSourceReplacement(t *testing.T) {
+	old := &Tun{Conn: &Conn{ref: protocol.ResourceRef{ID: protocol.ResourceID{1}, Generation: 1}}}
+	next := &Tun{Conn: &Conn{ref: protocol.ResourceRef{ID: protocol.ResourceID{2}, Generation: 1}}}
+	device := &SystemTun{current: old, sourceGen: 1}
+	if !device.beginReplacement() {
+		t.Fatal("begin replacement failed")
+	}
+	done := make(chan *Tun, 1)
+	go func() { done <- device.replacementAfter(old) }()
+
+	device.install(next, nil)
+	device.endReplacement()
+	select {
+	case got := <-done:
+		if got != nil {
+			t.Fatalf("replacement = %p, want nil for a new source", got)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("source replacement wait did not finish")
+	}
+	if got := device.SourceGeneration(); got != 2 {
+		t.Fatalf("source generation = %d, want 2", got)
 	}
 }
 

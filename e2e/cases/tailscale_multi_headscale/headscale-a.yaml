@@ -54,7 +54,7 @@ log:
 
 policy:
   mode: file
-  path: %E2E_RUNTIME%/config/policy.hujson
+  path: %E2E_CONFIG_DIR%/policy.hujson
 
 dns:
   magic_dns: true

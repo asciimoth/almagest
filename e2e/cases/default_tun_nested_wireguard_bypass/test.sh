@@ -279,7 +279,7 @@ retry "$ALMAGEST_E2E_TIMEOUT" "effective DefaultTun address" \
 	|| fail "WireGuard did not propagate its address to DefaultTun"
 retry "$ALMAGEST_E2E_TIMEOUT" "normalized fallback address collision" \
 	default_tun_has_collision_address_only "$tun_name" \
-	|| fail "DefaultTun did not keep only the explicit 10.250.0.1/32 address"
+	|| fail "DefaultTun did not keep only the explicit 10.250.0.1/32 address: $(ip -j -4 addr show dev "$tun_name")"
 retry "$ALMAGEST_E2E_TIMEOUT" "effective DefaultTun route" \
 	effective_field_contains "$default_tun" tunRoutes "0.0.0.0/0" \
 	|| fail "WireGuard did not propagate its default route to DefaultTun"

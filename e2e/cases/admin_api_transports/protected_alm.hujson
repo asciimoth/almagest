@@ -4,5 +4,4 @@
 		"UnixFilters": {"Usernames": ["root"]},
 		"WebFilters": {"UIDs": [0]},
 	},
-	"System": {"Type": "debug"},
 }

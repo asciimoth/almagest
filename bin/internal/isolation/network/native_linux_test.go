@@ -156,7 +156,7 @@ func TestLinuxDefaultTunControl(t *testing.T) {
 	req.Meta = meta(b, "replacement")
 	req.Options.MTU = 1500
 	second, err := b.CreateTun(context.Background(), req)
-	if err != nil || second.Resource.ID == first.Resource.ID {
+	if err != nil || second.Resource.ID != first.Resource.ID || second.Resource.Generation != first.Resource.Generation+1 {
 		t.Fatalf("replacement %+v: %v", second, err)
 	}
 	endpoint, _ := registerDNS(t, b)

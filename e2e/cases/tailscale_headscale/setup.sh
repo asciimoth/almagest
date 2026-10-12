@@ -8,6 +8,7 @@ command -v nc >/dev/null
 mkdir -p "$E2E_RUNTIME/headscale"
 printf '%s\n' '127.0.0.1 headscale.e2e.internal' >>/etc/hosts
 sed -i "s@%E2E_RUNTIME%@$E2E_RUNTIME@g" "$E2E_CONFIG_DIR/headscale.yaml"
+sed -i "s@%E2E_CONFIG_DIR%@$E2E_CONFIG_DIR@g" "$E2E_CONFIG_DIR/headscale.yaml"
 for protected in "$E2E_CONFIG_DIR"/daemon-*/protected_alm.hujson; do
 	sed -i "s@%E2E_RUNTIME%@$E2E_RUNTIME@g" "$protected"
 done

@@ -4,6 +4,14 @@ FROM golang:1.26.6-bookworm@sha256:116d58cbd88c1297624acc6e967a060012422bacf9930
 
 WORKDIR /src
 
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+	--mount=type=cache,target=/var/lib/apt,sharing=locked \
+	apt-get update \
+	&& DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+		gcc \
+		libseccomp-dev \
+		pkg-config
+
 RUN --mount=type=cache,target=/go/pkg/mod \
 	--mount=type=cache,target=/root/.cache/go-build \
 	go install github.com/asciimoth/killswitch/cmd/killswitch@v0.1.5 \
@@ -40,10 +48,14 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 COPY bin bin
 COPY certcat certcat
 COPY lib lib
+COPY e2e/helpers e2e/helpers
 
 RUN --mount=type=cache,target=/go/pkg/mod \
 	--mount=type=cache,target=/root/.cache/go-build \
 	go build -C bin -o /usr/local/bin/almagest-cli ./almagest-cli
+
+RUN GOWORK=off GO111MODULE=off CGO_ENABLED=0 go build -C e2e/helpers/command-recorder \
+	-o /usr/local/bin/almagest-e2e-command-recorder .
 
 ARG E2E_COVERAGE=0
 ARG E2E_COVERPKG=github.com/asciimoth/almagest/bin/...,github.com/asciimoth/almagest/lib/...,github.com/asciimoth/almagest/certcat/...
@@ -51,10 +63,20 @@ ARG E2E_COVERPKG=github.com/asciimoth/almagest/bin/...,github.com/asciimoth/alma
 RUN --mount=type=cache,target=/go/pkg/mod \
 	--mount=type=cache,target=/root/.cache/go-build \
 	if [ "$E2E_COVERAGE" = "1" ]; then \
-		go build -C bin -tags=almagest_e2e -cover -covermode=atomic -coverpkg="$E2E_COVERPKG" -o /usr/local/bin/almagestd ./almagestd; \
+		CGO_ENABLED=0 go build -C bin -tags=almagest_e2e -cover -covermode=atomic -coverpkg="$E2E_COVERPKG" -o /usr/local/bin/almagestd ./almagestd; \
+		CGO_ENABLED=0 go build -C bin -tags=almagest_e2e -cover -covermode=atomic -coverpkg="$E2E_COVERPKG" -o /usr/local/bin/almagest-network-role ./cmd/almagest-network-role; \
+		CGO_ENABLED=0 go build -C bin -cover -covermode=atomic -coverpkg="$E2E_COVERPKG" -o /usr/local/bin/almagest-config-writer-role ./cmd/almagest-config-writer-role; \
+		CGO_ENABLED=0 go build -C bin -cover -covermode=atomic -coverpkg="$E2E_COVERPKG" -o /usr/local/bin/almagest-command-role ./cmd/almagest-command-role; \
 	else \
-		go build -C bin -tags=almagest_e2e -o /usr/local/bin/almagestd ./almagestd; \
+		CGO_ENABLED=0 go build -C bin -tags=almagest_e2e -o /usr/local/bin/almagestd ./almagestd; \
+		CGO_ENABLED=0 go build -C bin -tags=almagest_e2e -o /usr/local/bin/almagest-network-role ./cmd/almagest-network-role; \
+		CGO_ENABLED=0 go build -C bin -o /usr/local/bin/almagest-config-writer-role ./cmd/almagest-config-writer-role; \
+		CGO_ENABLED=0 go build -C bin -o /usr/local/bin/almagest-command-role ./cmd/almagest-command-role; \
 	fi
+
+RUN gcc -static -O2 -D_FORTIFY_SOURCE=3 -Wall -Wextra -Werror \
+	-o /usr/local/bin/almagest-linux-role-launcher \
+	bin/native/linux-role/launcher.c $(pkg-config --cflags --libs libseccomp)
 
 FROM headscale/headscale:v0.29.3@sha256:0e7f1c6e4ce6c2a2a001103ecd3fa645a045adf30ac8a5234fe037b43000cd72 AS headscale
 
@@ -142,6 +164,11 @@ RUN if [ "$E2E_TOR_PRIVATE" = "1" ]; then \
 
 COPY --from=build /usr/local/bin/almagestd /usr/local/bin/almagestd
 COPY --from=build /usr/local/bin/almagest-cli /usr/local/bin/almagest-cli
+COPY --from=build /usr/local/bin/almagest-e2e-command-recorder /usr/local/bin/almagest-e2e-command-recorder
+COPY --from=build /usr/local/bin/almagest-network-role /usr/local/bin/almagest-network-role
+COPY --from=build /usr/local/bin/almagest-config-writer-role /usr/local/bin/almagest-config-writer-role
+COPY --from=build /usr/local/bin/almagest-command-role /usr/local/bin/almagest-command-role
+COPY --from=build /usr/local/bin/almagest-linux-role-launcher /usr/local/bin/almagest-linux-role-launcher
 COPY --from=build /go/bin/killswitch /usr/local/bin/killswitch
 COPY --from=build /go/bin/killswitch-cli /usr/local/bin/killswitch-cli
 COPY --from=build /go/bin/gost /usr/local/bin/gost

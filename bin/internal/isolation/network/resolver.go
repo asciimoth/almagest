@@ -18,6 +18,7 @@ import (
 // to the same session budget as all other packet data, before native work.
 type resolverSocket struct {
 	provider                    gdns.Interface
+	closeProvider               bool
 	reserve                     func(int) (func(), error)
 	mu                          sync.Mutex
 	changed                     chan struct{}
@@ -30,6 +31,10 @@ type resolverSocket struct {
 
 func newResolverSocket(provider gdns.Interface) *resolverSocket {
 	return &resolverSocket{provider: provider, changed: make(chan struct{})}
+}
+
+func newOwnedResolverSocket(provider gdns.Interface) *resolverSocket {
+	return &resolverSocket{provider: provider, closeProvider: true, changed: make(chan struct{})}
 }
 
 func (s *resolverSocket) wake()                            { close(s.changed); s.changed = make(chan struct{}) }
@@ -59,6 +64,9 @@ func (s *resolverSocket) Close(context.Context) error {
 	}
 	s.pending = nil
 	s.wake()
+	if s.closeProvider {
+		return s.provider.Close()
+	}
 	return nil
 }
 func (s *resolverSocket) SetReadDeadline(deadline time.Time) error {

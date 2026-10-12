@@ -481,6 +481,9 @@ const (
 	// SocketResolver is a packet channel to the backend's OutDNS provider.
 	// It accepts no address, transport selector, or native socket options.
 	SocketResolver SocketKind = "resolver"
+	// SocketNetworkResolver is a packet channel to the resolver of the selected
+	// backend Network. It preserves local host data before upstream DNS.
+	SocketNetworkResolver SocketKind = "network_resolver"
 )
 
 type SocketOptions struct {
@@ -584,9 +587,15 @@ type ResourceState struct {
 	RecoveryRequired         bool
 	Name                     string
 	MTU                      uint32
-	Addresses                []netip.Prefix
-	Routes                   []netip.Prefix
-	Warnings                 []string
+	// TunBatchSize is the maximum packet batch accepted by a TUN data
+	// channel. It is zero for resources other than TUN devices.
+	TunBatchSize uint32
+	// TunSourceGeneration changes when a stable DefaultTun wrapper replaces
+	// its native packet source. It is zero when the backend cannot report it.
+	TunSourceGeneration uint64
+	Addresses           []netip.Prefix
+	Routes              []netip.Prefix
+	Warnings            []string
 }
 
 type Outcome string

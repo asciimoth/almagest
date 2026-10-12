@@ -31,8 +31,9 @@ type DNSBackend interface {
 // partial failure Create returns its owned object as well as the error. If it
 // cannot account for all effects it returns ErrRecoveryRequired (also when an
 // object is returned). A nil object with an error is conservatively uncertain.
-// Implementations must honor context deadlines. A stuck implementation holds
-// the one native worker slot and cannot cause unbounded goroutine creation.
+// Implementations must honor context deadlines. A stuck host-mutation call
+// holds the native mutation slot. Socket opens use a separate bounded pool so
+// dual-stack connection attempts can overlap without unbounded workers.
 type Backend interface {
 	Capabilities(context.Context) (protocol.CapabilitySnapshot, error)
 	Check(context.Context, protocol.CreateTunRequest) (protocol.ValidationResult, error)

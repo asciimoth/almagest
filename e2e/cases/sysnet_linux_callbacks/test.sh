@@ -3,7 +3,7 @@ set -euo pipefail
 
 source /e2e/lib/common.sh
 
-events="$E2E_RUNTIME/callbacks/events.log"
+events="$E2E_ISOLATION_ROOT/helper/callbacks/events.log"
 killswitch_pid=""
 killswitch_sock="$E2E_RUNTIME/killswitch.sock"
 
@@ -175,21 +175,21 @@ default_tun="$(node_id_by_name "DefaultTun callbacks 1602")"
 wait_node_label "$tun_node" cbtun0 || fail "Tun did not become ready as cbtun0"
 wait_node_label "$default_tun" ready || fail "DefaultTun did not become ready"
 
-wait_event_contains "tun-created|uid=24020|gid=24020|env=tun-created|argc=3|sysnet-linux.tun-created|" \
-	|| { dump_events; fail "TunCreated command did not record expected UID/GID/env/template args"; }
+wait_event_contains "tun-created|uid=$ALMAGEST_E2E_COMMAND_UID|gid=$ALMAGEST_E2E_COMMAND_GID|env=tun-created|argc=3|sysnet-linux.tun-created|" \
+	|| { dump_events; fail "TunCreated command did not record expected isolated helper identity/env/template args"; }
 wait_event_contains "|argv-secret-token" \
 	|| fail "TunCreated command did not preserve non-empty secret argv after dropping empty template arg"
-wait_event_contains "tun-configured|uid=0|gid=0|env=tun-configured|argc=3|sysnet-linux.tun-configured|" \
+wait_event_contains "tun-configured|uid=$ALMAGEST_E2E_COMMAND_UID|gid=$ALMAGEST_E2E_COMMAND_GID|env=tun-configured|argc=3|sysnet-linux.tun-configured|" \
 	|| fail "TunConfigured command did not record expected template args"
-wait_event_contains "killswitch-updated|uid=0|gid=0|env=killswitch-updated|argc=2|sysnet-linux.killswitch-updated|0xeb9f0001" \
+wait_event_contains "killswitch-updated|uid=$ALMAGEST_E2E_COMMAND_UID|gid=$ALMAGEST_E2E_COMMAND_GID|env=killswitch-updated|argc=2|sysnet-linux.killswitch-updated|0xeb9f0001" \
 	|| fail "KillswitchUpdated command did not record expected rules"
-wait_event_contains "default-created|uid=0|gid=0|env=default-created|argc=3|sysnet-linux.default-tun-created|" \
+wait_event_contains "default-created|uid=$ALMAGEST_E2E_COMMAND_UID|gid=$ALMAGEST_E2E_COMMAND_GID|env=default-created|argc=3|sysnet-linux.default-tun-created|" \
 	|| fail "DefaultTunCreated command did not record expected callback"
-wait_event_contains "routing-applied|uid=0|gid=0|env=routing-applied|argc=2|sysnet-linux.routing-applied|" \
+wait_event_contains "routing-applied|uid=$ALMAGEST_E2E_COMMAND_UID|gid=$ALMAGEST_E2E_COMMAND_GID|env=routing-applied|argc=2|sysnet-linux.routing-applied|" \
 	|| fail "RoutingApplied command did not record expected config"
-wait_event_contains "dns-configured|uid=0|gid=0|env=dns-configured|argc=2|sysnet-linux.dns-configured|" \
+wait_event_contains "dns-configured|uid=$ALMAGEST_E2E_COMMAND_UID|gid=$ALMAGEST_E2E_COMMAND_GID|env=dns-configured|argc=2|sysnet-linux.dns-configured|" \
 	|| fail "DNSConfigured command did not record expected server"
-wait_event_contains "default-configured|uid=0|gid=0|env=default-configured|argc=2|sysnet-linux.default-tun-configured|" \
+wait_event_contains "default-configured|uid=$ALMAGEST_E2E_COMMAND_UID|gid=$ALMAGEST_E2E_COMMAND_GID|env=default-configured|argc=2|sysnet-linux.default-tun-configured|" \
 	|| fail "DefaultTunConfigured command did not record expected callback"
 
 assert_event_before "killswitch-updated|" "default-created|"
@@ -197,27 +197,13 @@ assert_event_before "default-created|" "routing-applied|"
 assert_event_before "routing-applied|" "dns-configured|"
 assert_event_before "dns-configured|" "default-configured|"
 
-wait_api_log_contains_text 'command "sysnet-linux.tun-created" finished: status=success' \
-	|| fail "API log did not expose TunCreated command success"
-wait_api_log_contains_text 'command "sysnet-linux.killswitch-updated" finished: status=timeout' \
-	|| fail "API log did not expose KillswitchUpdated command timeout"
-api_log_command_duration_below \
-	'command "sysnet-linux.killswitch-updated" finished: status=timeout' 3 \
-	|| fail "KillswitchUpdated command did not return promptly after its one-second timeout"
-wait_api_log_contains_text 'command "sysnet-linux.default-tun-configured" finished: status=success' \
-	|| fail "API log did not expose DefaultTunConfigured command success"
-
-assert_api_log_not_contains_text "argv-secret-token"
-assert_api_log_not_contains_text "default-argv-secret-token"
-assert_api_log_not_contains_text "stdout-secret-token"
-assert_api_log_not_contains_text "default-stdout-secret-token"
+# Later callback events prove that the timed command released the helper's
+# single execution slot. Broker-only command results do not enter R's admin log.
 assert_daemon_log_not_contains "stdout-secret-token"
 assert_daemon_log_not_contains "default-stdout-secret-token"
 
 delete_node "$default_tun"
-wait_event_contains "default-closed|uid=0|gid=0|env=default-closed|argc=1|sysnet-linux.default-tun-closed" \
+wait_event_contains "default-closed|uid=$ALMAGEST_E2E_COMMAND_UID|gid=$ALMAGEST_E2E_COMMAND_GID|env=default-closed|argc=1|sysnet-linux.default-tun-closed" \
 	|| fail "DefaultTunClosed command did not record expected callback"
-wait_api_log_contains_text 'command "sysnet-linux.default-tun-closed" finished: status=success' \
-	|| fail "API log did not expose DefaultTunClosed command success"
 
 log "case passed"

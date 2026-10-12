@@ -254,7 +254,7 @@ func (l *Listener) AcceptTCP() (gonnect.TCPConn, error) {
 			}
 		}
 	}()
-	value := l.awaitIO(done, false)
+	value := l.awaitIO(done, false, cancel)
 	if value.err != nil {
 		return nil, value.err
 	}

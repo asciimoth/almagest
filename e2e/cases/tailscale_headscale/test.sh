@@ -9,6 +9,11 @@ headscale_pid=""
 daemon_pid_a=""
 # shellcheck disable=SC2034
 daemon_pid_b=""
+# These variables are also read through indirect expansion in stop_processes.
+# shellcheck disable=SC2034
+daemon_cgroup_a=""
+# shellcheck disable=SC2034
+daemon_cgroup_b=""
 admin_sock_a="$E2E_RUNTIME/daemon-a.sock"
 admin_sock_b="$E2E_RUNTIME/daemon-b.sock"
 daemon_log_a="$E2E_RUNTIME/daemon-a.log"
@@ -63,6 +68,14 @@ stop_processes() {
 			fi
 		fi
 		wait "$pid" 2>/dev/null || true
+		if [[ "$pid_var" == daemon_pid_* ]]; then
+			local cgroup_var="daemon_cgroup_${pid_var#daemon_pid_}"
+			local cgroup="${!cgroup_var:-}"
+			if [[ -n "$cgroup" ]]; then
+				rmdir "$cgroup" 2>/dev/null || true
+				printf -v "$cgroup_var" ''
+			fi
+		fi
 	done
 }
 trap stop_processes EXIT
@@ -91,21 +104,9 @@ start_test_daemon() {
 	local pid_var="daemon_pid_$suffix"
 	local socket="${!socket_var}"
 	local output="${!log_var}"
-	: >"$output"
-	XDG_RUNTIME_DIR="$E2E_RUNTIME" almagestd \
-		--experimental \
-		--no-isolation \
-		-c "$config" \
-		-l debug \
-		--debug-nodes \
-		--unsafe-config \
-		--tmp-file-storage \
-		--unix "$socket" \
-		--web 0 \
-		>"$output" 2>&1 &
-	printf -v "$pid_var" '%s' "$!"
-	retry "$ALMAGEST_E2E_TIMEOUT" "daemon $suffix admin socket" test -S "$socket" \
-		|| fail "daemon $suffix admin socket was not created"
+	local cgroup_var="daemon_cgroup_$suffix"
+	start_isolated_daemon_instance "$suffix" "$config" "$socket" "$output" \
+		"$pid_var" "$cgroup_var"
 }
 
 node_id() {

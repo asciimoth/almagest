@@ -7,9 +7,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 
 	"github.com/asciimoth/almagest/bin/internal/daemonargs"
 	"github.com/asciimoth/almagest/bin/internal/isolation/admingate"
@@ -50,9 +52,15 @@ type LinuxProduction struct {
 	Paths      LinuxProductionPaths
 	Identities LinuxProductionIdentities
 	Limits     linuxprofile.Limits
-	Stdin      io.Reader
-	LookupEnv  func(string) (string, bool)
-	Output     io.Writer
+	// SystemRandomSeed is a trusted test input. Production launchers leave it
+	// nil so native address allocation uses cryptographic process entropy.
+	SystemRandomSeed *int64
+	// E2ETailscaleRejectAfterSeconds is a trusted test input. Production
+	// launchers leave it zero.
+	E2ETailscaleRejectAfterSeconds uint32
+	Stdin                          io.Reader
+	LookupEnv                      func(string) (string, bool)
+	Output                         io.Writer
 }
 
 // RunLinuxProduction prepares protected authority, opens every trusted object,
@@ -225,12 +233,21 @@ func RunLinuxProduction(parent context.Context, production LinuxProduction, read
 		defer func() { result = errors.Join(result, snapshot.Close()) }()
 	}
 	nodeCommands := make([]string, 0, len(helperConfig.Commands))
+	runtimeNodeCommands := make([]roleentry.RuntimeNodeCommand, 0, len(helperConfig.Commands))
 	for id, command := range helperConfig.Commands {
 		if command.AllowNodes {
 			nodeCommands = append(nodeCommands, id)
+			profile := helperConfig.Profiles[command.Profile]
+			slots := make([]string, 0, len(profile.Slots))
+			for slot := range profile.Slots {
+				slots = append(slots, slot)
+			}
+			slices.Sort(slots)
+			runtimeNodeCommands = append(runtimeNodeCommands, roleentry.RuntimeNodeCommand{Name: id, Slots: slots})
 		}
 	}
 	slices.Sort(nodeCommands)
+	slices.SortFunc(runtimeNodeCommands, func(a, b roleentry.RuntimeNodeCommand) int { return strings.Compare(a.Name, b.Name) })
 	launchPolicy := policy.Default(policy.LaunchAuthority{Backend: "linux", CredentialClass: linuxCredentialClass(),
 		ProtectedDigest: resolved.Digest}, policy.CommandAuthority{NodeCommands: nodeCommands, Callbacks: callbackBindings.IDs()})
 	native := fileConfig.Native(func(format string, values ...any) {
@@ -238,6 +255,9 @@ func RunLinuxProduction(parent context.Context, production LinuxProduction, read
 			_, _ = fmt.Fprintf(production.Output, "network: "+format+"\n", values...)
 		}
 	})
+	if production.SystemRandomSeed != nil {
+		native.Allocator.Rng = rand.New(rand.NewSource(*production.SystemRandomSeed)) //nolint:gosec // Deterministic E2E input.
+	}
 	native.DefaultTunBaseName = "alm"
 	rolePlan := linuxprofile.CgroupPlan{Backend: production.Limits, Runtime: production.Limits}
 	if writer != nil {
@@ -256,11 +276,12 @@ func RunLinuxProduction(parent context.Context, production LinuxProduction, read
 		result = errors.Join(result, cgroups.RestoreAndRemove(), cgroups.Close())
 	}()
 	return RunLinux(parent, LinuxLaunch{Runtime: runtime, Writer: writer, Helper: helper,
-		RuntimeInput: roleentry.RuntimeInput{Version: protocol.Version, Production: true, Options: roleentry.RuntimeOptions{
+		RuntimeInput: roleentry.RuntimeInput{Version: protocol.Version, Production: true, NodeCommands: runtimeNodeCommands, Options: roleentry.RuntimeOptions{
 			LogLevel: production.Arguments.LogLevel, LogWorkers: production.Arguments.LogWorkers,
 			NoPool: production.Arguments.NoPool, NoDNSCacheExpiration: production.Arguments.NoDNSCacheExpiration,
-			DebugNodes: production.Arguments.DebugNodes, LogCacheDebug: production.Arguments.LogCacheDebug,
-			LogCacheInfo: production.Arguments.LogCacheInfo, LogCacheWarn: production.Arguments.LogCacheWarn,
+			DebugNodes: production.Arguments.DebugNodes, E2ETailscaleRejectAfterSeconds: production.E2ETailscaleRejectAfterSeconds,
+			LogCacheDebug: production.Arguments.LogCacheDebug,
+			LogCacheInfo:  production.Arguments.LogCacheInfo, LogCacheWarn: production.Arguments.LogCacheWarn,
 			LogCacheError: production.Arguments.LogCacheError, LogCacheFatal: production.Arguments.LogCacheFatal,
 		}, Isolation: linuxIsolationStatus(writer != nil, helper != nil, !callbackBindings.Empty())}, RuntimeStorage: &bootstrap.RuntimeStorageInput{Regular: inputs.Regular, Protected: resolved.Runtime, Snapshot: snapshot},
 		Policy: launchPolicy, Native: native, State: brokerDirectory, Cgroups: cgroups.Roles(), Limits: production.Limits,

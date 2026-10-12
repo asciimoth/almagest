@@ -58,6 +58,17 @@ EOF
 
 	cp "$ca_crt" /usr/local/share/ca-certificates/almagest-e2e-dns-ca.crt
 	update-ca-certificates >/dev/null
+	local trusted_dir="$E2E_ISOLATION_ROOT/protected-inputs"
+	mkdir -p "$trusted_dir"
+	install -o 0 -g 0 -m 0600 "$ca_crt" "$trusted_dir/dot-ca.crt"
+	chmod 0700 "$trusted_dir"
+	jq -n --arg socket "$E2E_ADMIN_SOCK" --arg ca "$trusted_dir/dot-ca.crt" '{
+		Admin: {Web: 0, Unix: $socket},
+		TLS: {
+			Certificates: {"dot-ca": {File: $ca}},
+			Policies: {"dot-test": {trust_anchors: [{cert: "dot-ca", scope: {any: true}}]}},
+		},
+	}' >"$E2E_CONFIG_DIR/protected_alm.hujson"
 
 	socat \
 		OPENSSL-LISTEN:5853,bind=127.0.0.1,reuseaddr,fork,cert="$srv_crt",key="$srv_key",verify=0 \

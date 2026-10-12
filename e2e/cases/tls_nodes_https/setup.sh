@@ -80,6 +80,12 @@ generate_ca "E2E TLS Wrong Root" "$E2E_CONFIG_DIR/wrong-ca.pem" "$E2E_CONFIG_DIR
 generate_server_cert "origin.test" "$E2E_CONFIG_DIR/origin.pem" "$E2E_CONFIG_DIR/origin.key" origin.test
 generate_server_cert "wrapper-origin.test" "$E2E_CONFIG_DIR/wrapper-origin.pem" "$E2E_CONFIG_DIR/wrapper-origin.key" wrapper-origin.test
 
+trusted_dir="$E2E_ISOLATION_ROOT/protected-inputs"
+mkdir -p "$trusted_dir"
+install -o 0 -g 0 -m 0600 "$E2E_CONFIG_DIR/origin-ca.pem" \
+	"$trusted_dir/origin-ca.pem"
+chmod 0700 "$trusted_dir"
+
 if ! grep -qE '(^|[[:space:]])origin\.test([[:space:]]|$)' /etc/hosts; then
 	printf '127.0.0.1 origin.test terminator.test wrapper-origin.test\n' >>/etc/hosts
 fi
@@ -93,7 +99,7 @@ cat >"$E2E_CONFIG_DIR/protected_alm.hujson" <<EOF
 	"TLS": {
 		"Certificates": {
 			"origin-ca": {
-				"File": "$E2E_CONFIG_DIR/origin-ca.pem",
+				"File": "$trusted_dir/origin-ca.pem",
 			},
 		},
 		"Policies": {

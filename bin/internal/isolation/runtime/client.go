@@ -375,6 +375,14 @@ func (c *Conn) signalLocked() {
 	}
 	c.wake = make(chan struct{})
 }
+
+func (c *Conn) waitReadIdle() {
+	for !c.readMu.TryLock() {
+		time.Sleep(time.Millisecond)
+	}
+	c.readMu.Unlock()
+}
+
 func (c *Conn) readPacket(p []byte) (int, *protocol.PacketMetadata, error) {
 	for !c.readMu.TryLock() {
 		c.mu.Lock()
@@ -405,7 +413,7 @@ func (c *Conn) readPacket(p []byte) (int, *protocol.PacketMetadata, error) {
 		data, m, err := c.readPacketSync(ctx, size)
 		done <- ioResult{payload: data, metadata: m, err: err}
 	}()
-	result := c.awaitIO(done, false)
+	result := c.awaitIO(done, false, cancel)
 	n := copy(p, result.payload)
 	if result.metadata != nil && n < len(result.payload) {
 		result.metadata.Truncated = true
@@ -447,10 +455,10 @@ func (c *Conn) writeRecord(p []byte, meta *protocol.PacketMetadata) (int, error)
 		c.mu.Unlock()
 		done <- ioResult{count: n, err: err}
 	}()
-	result := c.awaitIO(done, true)
+	result := c.awaitIO(done, true, nil)
 	return result.count, result.err
 }
-func (c *Conn) awaitIO(done <-chan ioResult, write bool) ioResult {
+func (c *Conn) awaitIO(done <-chan ioResult, write bool, cancel context.CancelFunc) ioResult {
 	for {
 		c.mu.Lock()
 		closed, deadline := c.closed, c.readDeadline
@@ -487,10 +495,20 @@ func (c *Conn) awaitIO(done <-chan ioResult, write bool) ioResult {
 			}
 			return ioResult{err: c.client.peer.Err()}
 		case <-expiry:
-			err := error(os.ErrDeadlineExceeded)
-			if write {
-				err = errors.Join(err, protocol.ErrRecoveryRequired)
+			if !write {
+				// A stream read can consume bytes after its local deadline while
+				// the broker is still stopping the native read. Wait for the
+				// settled terminal result so a later Read cannot lose those bytes.
+				cancel()
+				select {
+				case result := <-done:
+					return result
+				case <-c.client.peer.Done():
+					return ioResult{err: c.client.peer.Err()}
+				}
 			}
+			err := error(os.ErrDeadlineExceeded)
+			err = errors.Join(err, protocol.ErrRecoveryRequired)
 			return ioResult{err: err}
 		}
 	}

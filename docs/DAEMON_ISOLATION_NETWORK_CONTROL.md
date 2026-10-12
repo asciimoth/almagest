@@ -5,8 +5,9 @@ profile uses it with a durable recovery journal. The direct daemon does not
 import it.
 Checkpoint 16 adds [socket control and packet/stream relays](DAEMON_ISOLATION_SOCKET_DATA.md).
 
-The broker owns one bootstrap session and one native operation lane. The
-launcher supplies immutable policy and an exclusively owned backend.
+The broker owns one bootstrap session, one host-mutation lane, and a bounded
+socket-open pool. The launcher supplies immutable policy and an exclusively
+owned backend.
 `Serve` connects the checkpoint 14 transport, forwards bounded state events,
 and calls `Shutdown` on peer loss. There is no native fallback in R.
 
@@ -53,13 +54,21 @@ occurred. A late create is closed before it can be published. A partial create
 with a known owned object is compensated when cleanup is proved. A backend
 error with unknown effects remains in resource accounting and requires recovery.
 
-There is at most one native worker, including a call that ignores cancellation.
-Calls and cleanup waits have a five-second bound. Status and receipt queries
-do not wait for that worker. A timed-out or unproved mutation latches recovery
+There is at most one host-mutation worker, including a call that ignores
+cancellation. Socket opens can overlap up to the request limit so dual-stack
+connection fallback does not wait behind a stalled address. Calls and cleanup
+waits have a five-second bound. Status and receipt queries do not wait for a
+worker. A timed-out or unproved mutation latches recovery
 state; an unrelated success cannot clear it. Inspection and session restart
 are required to clear that latch. Shutdown revokes the session before it waits.
 If native work does not stop, its resources remain recorded and cleanup reports
 recovery rather than success.
+
+Native TUN devices have no portable deadline API. The relay keeps no more than
+one native read active. A canceled data request stops waiting for that read, and
+the next request consumes its result. This prevents link replacement from
+starting concurrent native reads. The relay accepts the Linux native batch of
+128 packets, subject to the existing 256 KiB allocation limit.
 
 Policy limits cap live resources and receipts at the existing compiled ceilings
 (4,096 and 8,192). Receipts last for the session and are not evicted. When the

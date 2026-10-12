@@ -6,18 +6,17 @@
 	"CommandRunner": {
 		"Commands": {
 			"record-interval": {
-				"Command": ["/bin/sh", "-c", "printf 'interval\\n' >> /tmp/almagest-e2e-time-trigger-interval.log"],
+				"Command": ["/usr/local/bin/almagest-e2e-command-recorder", "/state/time-trigger-interval.log", "interval"],
 				"Sync": true,
 				"Timeout": 2000000000,
 				"AllowNodes": true,
 			},
 			"record-ready": {
-				"Command": ["/bin/sh", "-c", "printf 'ready\\n' >> /tmp/almagest-e2e-time-trigger-ready.log"],
+				"Command": ["/usr/local/bin/almagest-e2e-command-recorder", "/state/time-trigger-ready.log", "ready"],
 				"Sync": true,
 				"Timeout": 2000000000,
 				"AllowNodes": true,
 			},
 		},
 	},
-	"System": {"Type": "debug"},
 }

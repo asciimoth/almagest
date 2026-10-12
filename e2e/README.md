@@ -54,7 +54,7 @@ both gates before it creates the coverage report.
 
 The Docker runner starts up to four cases in parallel. Set `E2E_JOBS` to change
 the limit. Use `E2E_JOBS=1` for sequential execution. The runner shows each
-case's regular or privileged status when it starts. It discards output from
+case's direct or isolated privilege profile when it starts. It discards output from
 passing cases and shows the grouped output from failed cases. Completion lines
 include each case's run time. The final summary includes the full suite run
 time and the 15 slowest cases. The runner reports all case failures after the
@@ -103,11 +103,20 @@ Each case lives in `e2e/cases/<case-name>/` and should include:
 - `test.sh`: test logic. Source `/e2e/lib/common.sh`, call `start_daemon`, use
   `cli` for admin API actions and assertions, and use ordinary commands such as
   `curl`, `ip`, or `jq` for external checks.
-- `requires-privileged`: optional marker for cases that need privileged Docker
-  networking. Regular runs skip these cases. Set `E2E_INCLUDE_PRIVILEGED=1`
-  to include them; the runner gives only marked cases `--privileged` and access
-  to `/dev/net/tun`. `E2E_DOCKER_RUN_ARGS` applies additional arguments to all
-  selected cases but does not change which cases the runner selects.
+- `requires-direct`: optional marker for a case that cannot use the production
+  isolation profile. Examples include tests of direct startup arguments and
+  experimental or debug system integrations. The harness starts these cases
+  with `--no-isolation --experimental`.
+- `also-direct`: optional marker for a small, isolation-compatible case that
+  must run once with isolation and once in direct mode. Do not combine it with
+  `requires-direct`.
+- `requires-privileged`: optional selection marker for cases that need extra
+  privileged Docker networking or host integration. Regular runs skip these
+  cases. Set `E2E_INCLUDE_PRIVILEGED=1` to include them. All isolated cases use
+  `--privileged` and `/dev/net/tun` because the production Linux profile must
+  create namespaces, cgroups, and network resources. A direct case receives
+  these options only when it has this marker. `E2E_DOCKER_RUN_ARGS` applies
+  additional arguments to all selected cases but does not change selection.
 - `heavy`: optional marker for slow or resource-intensive cases. The
   `just test-total-light` command skips these cases.
 - `exclusive`: optional marker for resource-intensive cases that must run
@@ -126,27 +135,40 @@ Each case lives in `e2e/cases/<case-name>/` and should include:
   network, and volumes on every exit. Use the main container CID file supplied
   by the harness so an interrupted suite can still remove that container.
 
-The harness copies a case directory to `/tmp/almagest-e2e/<case-name>` before
+Cases that start multiple daemons in one container must use
+`start_isolated_daemon_instance` from `common.sh`. Each instance gets a private
+isolation root and delegated cgroup, and its `admin hello` response must report
+an active isolation profile.
+
+The harness copies a case directory to `/run/almagest-e2e/<case-name>` before
 running it so daemon config autosaves and generated files never modify the
 source tree.
 
 ## Daemon Rules
 
-Use `start_daemon` from `common.sh`. It always starts `almagestd` with:
+Use `start_daemon` from `common.sh`. By default, it starts the production Linux
+isolation composition with:
 
 - `--debug-nodes`
-- `--experimental`
-- `--no-isolation`
 - debug logging
 - `--unsafe-config`
 - an isolated Unix admin API socket from `protected_alm.hujson`
 - the web admin API disabled
+- separate runtime, config-writer, and command-helper identities
+- trusted role executables and a static native launcher
+- separate delegated cgroups and private role storage directories
 
-By default it also uses isolated temporary file storage. A case that must check
-daemon storage across restarts can set `ALMAGEST_E2E_TMP_FILE_STORAGE=0` and
-`ALMAGEST_E2E_FILE_STORAGE` before calling `start_daemon`. Use a path accepted
-by daemon private-directory checks; on Linux, do not put persistent storage
-under `/tmp`.
+The startup check reads `admin hello` and fails unless the daemon reports the
+expected execution mode and an active isolation protocol. A `requires-direct`
+case uses `--no-isolation --experimental` and must report direct mode instead.
+
+Direct cases use temporary file storage by default. Isolated cases use the
+runtime role's private storage. A case that must check daemon storage across
+restarts can set `ALMAGEST_E2E_TMP_FILE_STORAGE=0` and
+`ALMAGEST_E2E_FILE_STORAGE` before calling `start_daemon`. In isolation mode,
+the harness bind-mounts that directory on the fixed runtime storage path. Use a
+path accepted by daemon private-directory checks; on Linux, do not put
+persistent storage under `/tmp`.
 
 Assertions after daemon startup or config changes should use polling helpers
 such as `retry`, `wait_log_contains`, and `wait_node_class_available`. Avoid
@@ -160,9 +182,12 @@ eventually consistent after graph changes.
    behavior.
 3. Add `alm.hujson` and `protected_alm.hujson`.
 4. Add executable `setup.sh` and `test.sh`.
-5. Keep the case hermetic when possible. If it needs elevated Docker features,
-   add `requires-privileged`, document them, and run with
-   `E2E_DOCKER_RUN_ARGS`, for example:
+5. Keep the case hermetic when possible. Add `requires-privileged` when a case
+   needs extra privileged host behavior and document the requirement. Add
+   `requires-direct` only when the tested feature is incompatible with the
+   production isolation contract.
+
+Use `E2E_DOCKER_RUN_ARGS` for additional Docker options during a local run:
 
 ```sh
 E2E_DOCKER_RUN_ARGS="--privileged --device /dev/net/tun" ./e2e/run.sh <case-name>

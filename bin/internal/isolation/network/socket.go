@@ -28,6 +28,15 @@ func validateSocket(o protocol.SocketOptions) error {
 		}
 		return nil
 	}
+	if o.Kind == protocol.SocketNetworkResolver {
+		if o.Purpose != protocol.NetworkOutbound && o.Purpose != protocol.NetworkLocal {
+			return protocol.ErrInvalidContract
+		}
+		if o != (protocol.SocketOptions{Purpose: o.Purpose, Kind: protocol.SocketNetworkResolver}) {
+			return protocol.ErrInvalidContract
+		}
+		return nil
+	}
 	if o.Purpose != protocol.NetworkOutbound && o.Purpose != protocol.NetworkLocal {
 		return protocol.ErrInvalidContract
 	}

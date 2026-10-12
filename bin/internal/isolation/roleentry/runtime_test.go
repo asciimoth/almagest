@@ -29,11 +29,13 @@ func TestRuntimeBootstrapRoundTrip(t *testing.T) {
 	bootstrap := runtimeBootstrap(t)
 	input := RuntimeInput{Version: protocol.Version, ConfigWritable: true, StartupSnapshot: true,
 		AdminEndpoints: []RuntimeAdminEndpoint{{ID: 1, Kind: "web"}, {ID: 2, Kind: "unix"}},
+		NodeCommands:   []RuntimeNodeCommand{{Name: "notify", Slots: []string{"message"}}},
 		Options:        RuntimeOptions{LogLevel: "debug", LogWorkers: true, NoPool: true, NoDNSCacheExpiration: true, DebugNodes: true}}
 	received := make(chan error, 1)
 	go func() {
 		gotBootstrap, gotInput, err := ReceiveRuntimeBootstrap(ctx, right)
-		if err == nil && (gotBootstrap.Role != protocol.RoleRuntime || gotInput.Options.LogLevel != "debug" || len(gotInput.AdminEndpoints) != 2) {
+		if err == nil && (gotBootstrap.Role != protocol.RoleRuntime || gotInput.Options.LogLevel != "debug" || len(gotInput.AdminEndpoints) != 2 ||
+			len(gotInput.NodeCommands) != 1 || len(gotInput.NodeCommands[0].Slots) != 1) {
 			err = protocol.ErrInvalidContract
 		}
 		if err == nil {
@@ -51,17 +53,24 @@ func TestRuntimeBootstrapRoundTrip(t *testing.T) {
 }
 
 func TestRuntimeInputRejectsInvalidAuthority(t *testing.T) {
-	valid := RuntimeInput{Version: protocol.Version, AdminEndpoints: []RuntimeAdminEndpoint{{ID: 1, Kind: "pipe"}}}
+	valid := RuntimeInput{Version: protocol.Version, AdminEndpoints: []RuntimeAdminEndpoint{{ID: 1, Kind: "pipe"}},
+		NodeCommands: []RuntimeNodeCommand{{Name: "notify", Slots: []string{"message"}}}}
 	for name, change := range map[string]func(*RuntimeInput){
-		"version":   func(i *RuntimeInput) { i.Version++ },
-		"zero-id":   func(i *RuntimeInput) { i.AdminEndpoints[0].ID = 0 },
-		"kind":      func(i *RuntimeInput) { i.AdminEndpoints[0].Kind = "native" },
-		"duplicate": func(i *RuntimeInput) { i.AdminEndpoints = append(i.AdminEndpoints, i.AdminEndpoints[0]) },
-		"log":       func(i *RuntimeInput) { i.Options.LogLevel = string(make([]byte, 17)) },
+		"version":            func(i *RuntimeInput) { i.Version++ },
+		"zero-id":            func(i *RuntimeInput) { i.AdminEndpoints[0].ID = 0 },
+		"kind":               func(i *RuntimeInput) { i.AdminEndpoints[0].Kind = "native" },
+		"duplicate endpoint": func(i *RuntimeInput) { i.AdminEndpoints = append(i.AdminEndpoints, i.AdminEndpoints[0]) },
+		"empty command":      func(i *RuntimeInput) { i.NodeCommands[0].Name = "" },
+		"duplicate command":  func(i *RuntimeInput) { i.NodeCommands = append(i.NodeCommands, i.NodeCommands[0]) },
+		"empty slot":         func(i *RuntimeInput) { i.NodeCommands[0].Slots[0] = "" },
+		"duplicate slot":     func(i *RuntimeInput) { i.NodeCommands[0].Slots = append(i.NodeCommands[0].Slots, "message") },
+		"log":                func(i *RuntimeInput) { i.Options.LogLevel = string(make([]byte, 17)) },
+		"e2e timer":          func(i *RuntimeInput) { i.Options.E2ETailscaleRejectAfterSeconds = 86401 },
 	} {
 		t.Run(name, func(t *testing.T) {
 			input := valid
 			input.AdminEndpoints = append([]RuntimeAdminEndpoint(nil), valid.AdminEndpoints...)
+			input.NodeCommands = []RuntimeNodeCommand{{Name: valid.NodeCommands[0].Name, Slots: append([]string(nil), valid.NodeCommands[0].Slots...)}}
 			change(&input)
 			if input.Validate() == nil {
 				t.Fatalf("accepted %+v", input)

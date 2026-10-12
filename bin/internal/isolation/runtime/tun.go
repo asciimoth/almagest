@@ -2,10 +2,12 @@ package runtime
 
 import (
 	"context"
+	"errors"
 	"io"
 	"os"
 	"slices"
 	"sync"
+	"time"
 
 	"github.com/asciimoth/almagest/bin/internal/isolation/protocol"
 	"github.com/asciimoth/almagest/bin/internal/isolation/transport"
@@ -16,6 +18,7 @@ type Tun struct {
 	*Conn
 	stateMu  sync.Mutex
 	state    protocol.ResourceState
+	batch    int
 	revision uint64
 	events   chan tun.Event
 	done     bool
@@ -31,7 +34,14 @@ func (c *Client) Tun(ref protocol.ResourceRef, state protocol.ResourceState) (*T
 	if state.MTU == 0 || state.MTU > protocol.MaxPacketRecord {
 		return nil, protocol.ErrCapabilityUnsupported
 	}
-	t := &Tun{Conn: &Conn{client: c, ref: ref, packet: true}, state: state, revision: state.Revision, events: make(chan tun.Event, 128)}
+	batch := int(state.TunBatchSize)
+	if batch == 0 {
+		batch = 1
+	}
+	if batch < 1 || batch > 256 {
+		return nil, protocol.ErrCapabilityUnsupported
+	}
+	t := &Tun{Conn: &Conn{client: c, ref: ref, packet: true}, state: state, batch: batch, revision: state.Revision, events: make(chan tun.Event, 128)}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if previous := c.tuns[ref.ID]; previous != nil {
@@ -49,11 +59,38 @@ func (c *Client) Tun(ref protocol.ResourceRef, state protocol.ResourceState) (*T
 	}
 	return t, nil
 }
-func (*Tun) File() *os.File { return nil }
-func (*Tun) IsNative() bool { return false }
-func (*Tun) MWO() int       { return 0 }
-func (*Tun) MRO() int       { return 0 }
-func (*Tun) BatchSize() int { return 1 }
+func (*Tun) File() *os.File   { return nil }
+func (*Tun) IsNative() bool   { return false }
+func (*Tun) MWO() int         { return 0 }
+func (*Tun) MRO() int         { return 0 }
+func (t *Tun) BatchSize() int { return t.batch }
+func (t *Tun) sourceGeneration() uint64 {
+	t.stateMu.Lock()
+	defer t.stateMu.Unlock()
+	return t.state.TunSourceGeneration
+}
+
+// Native TUN devices do not have a portable deadline API. Keep deadline state
+// in R so detached-TUN cancellation does not turn a normal link replacement
+// into an unsupported native operation. Closing the resource remains the
+// broker-side mechanism that wakes native I/O.
+func (t *Tun) SetDeadline(deadline time.Time) error {
+	return errors.Join(t.SetReadDeadline(deadline), t.SetWriteDeadline(deadline))
+}
+func (t *Tun) SetReadDeadline(deadline time.Time) error {
+	t.mu.Lock()
+	t.readDeadline = deadline
+	t.signalLocked()
+	t.mu.Unlock()
+	return nil
+}
+func (t *Tun) SetWriteDeadline(deadline time.Time) error {
+	t.mu.Lock()
+	t.writeDeadline = deadline
+	t.signalLocked()
+	t.mu.Unlock()
+	return nil
+}
 func (t *Tun) MTU() (int, error) {
 	t.stateMu.Lock()
 	defer t.stateMu.Unlock()
@@ -69,15 +106,37 @@ func (t *Tun) Read(buffers [][]byte, sizes []int, offset int) (int, error) {
 	if len(buffers) < 1 || len(sizes) < len(buffers) || offset < 0 || offset > len(buffers[0]) {
 		return 0, io.ErrShortBuffer
 	}
-	n, meta, err := t.readPacket(buffers[0][offset:])
-	sizes[0] = n
-	if meta != nil && meta.Truncated {
-		return 0, io.ErrShortBuffer
+	count := 0
+	remaining := uint32(0)
+	for count < len(buffers) {
+		if offset > len(buffers[count]) {
+			return count, io.ErrShortBuffer
+		}
+		n, meta, err := t.readPacket(buffers[count][offset:])
+		sizes[count] = n
+		if meta == nil || meta.Truncated {
+			if err == nil {
+				err = io.ErrShortBuffer
+			}
+			return count, err
+		}
+		if count > 0 && meta.BatchRemaining+1 != remaining {
+			_ = t.client.Close()
+			return count, protocol.ErrInvalidContract
+		}
+		remaining = meta.BatchRemaining
+		if remaining >= uint32(t.batch) {
+			_ = t.client.Close()
+			return count, protocol.ErrInvalidContract
+		}
+		if n > 0 {
+			count++
+		}
+		if err != nil || n == 0 || remaining == 0 {
+			return count, err
+		}
 	}
-	if n > 0 {
-		return 1, err
-	}
-	return 0, err
+	return count, nil
 }
 func (t *Tun) Write(buffers [][]byte, offset int) (int, error) {
 	if offset < 0 {

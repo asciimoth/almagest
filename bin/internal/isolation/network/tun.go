@@ -147,6 +147,65 @@ func (b *Broker) CreateTun(ctx context.Context, req protocol.CreateTunRequest) (
 			}
 			return b.result(previous, protocol.OutcomeCommitted), nil
 		}
+		if previous != nil {
+			if replacer, ok := b.backend.(interface {
+				ReplaceDefaultTun(context.Context, OwnedTun, protocol.CreateTunRequest) (OwnedTun, error)
+			}); ok {
+				if previous.ref.Generation == math.MaxUint64 {
+					return rejected(req.Meta.OperationID, protocol.ErrLimitExceeded), protocol.ErrLimitExceeded
+				}
+				if err := b.prepareJournalReplacement(previous); err != nil {
+					return rejected(req.Meta.OperationID, err), err
+				}
+				b.mu.Lock()
+				if previous.stop != nil {
+					previous.stop()
+					previous.stop = nil
+				}
+				b.mu.Unlock()
+				native, replaceErr := replacer.ReplaceDefaultTun(ctx, previous.native, req)
+				var noEffects *NoEffectsError
+				if errors.As(replaceErr, &noEffects) {
+					if err := b.ownJournal(previous); err != nil {
+						return b.failed(previous, req.Meta.OperationID, err)
+					}
+					b.startWatch(previous, previous.native)
+					return rejected(req.Meta.OperationID, replaceErr), replaceErr
+				}
+				if replaceErr != nil || native == nil {
+					return b.failed(previous, req.Meta.OperationID, replaceErr)
+				}
+				state, stateErr := native.State(ctx)
+				if stateErr == nil {
+					stateErr = b.validateState(state)
+				}
+				if stateErr == nil {
+					stateErr = ctx.Err()
+				}
+				if stateErr != nil {
+					return b.failed(previous, req.Meta.OperationID, stateErr)
+				}
+				b.mu.Lock()
+				if b.closed || previous.ref.GraphEpoch != b.epoch {
+					b.mu.Unlock()
+					return b.failed(previous, req.Meta.OperationID, protocol.ErrStaleGraphEpoch)
+				}
+				state.Revision, state.Up = previous.state.Revision, previous.state.Up
+				previous.native = native
+				previous.state = cloneState(state)
+				previous.options = canonical(req)
+				previous.ref.Generation++
+				watch, stop := context.WithCancel(context.Background())
+				previous.stop = stop
+				b.eventLocked(previous, false)
+				b.mu.Unlock()
+				go b.watch(watch, previous, native.Events())
+				if err := b.ownJournal(previous); err != nil {
+					return b.failed(previous, req.Meta.OperationID, err)
+				}
+				return b.result(previous, protocol.OutcomeCommitted), nil
+			}
+		}
 		limit := b.policy.Limits.MaxLiveResources
 		if p := b.policy.NetworkRestrictions; p != nil && p.MaxTuns > 0 && p.MaxTuns < limit {
 			if previous != nil {
@@ -263,6 +322,9 @@ func (b *Broker) CreateTun(ctx context.Context, req protocol.CreateTunRequest) (
 }
 
 func (b *Broker) validateState(state protocol.ResourceState) error {
+	if state.MTU > protocol.MaxPacketRecord || state.TunBatchSize > 256 {
+		return protocol.ErrInvalidContract
+	}
 	if len(state.Name) > int(b.policy.Limits.MaxStringBytes) || len(state.Addresses)+len(state.Routes) > int(b.policy.Limits.MaxArrayItems) || len(state.Warnings) > protocol.MaxResourceWarnings {
 		return protocol.ErrLimitExceeded
 	}
@@ -320,6 +382,16 @@ func (b *Broker) ownJournal(r *resource) error {
 		Identity: identity.RecoveryIdentity(), State: supervision.EffectOwned})
 }
 
+func (b *Broker) prepareJournalReplacement(r *resource) error {
+	if b.journal == nil || r.journal == "" {
+		return nil
+	}
+	return b.journal.PrepareReplacement(supervision.Effect{
+		ID: r.journal, SessionID: b.session.ID, ResourceType: r.ref.Type,
+		State: supervision.EffectPending,
+	})
+}
+
 func (b *Broker) uncertainJournal(r *resource) error {
 	if b.journal == nil || r == nil || r.journal == "" {
 		return nil
@@ -372,6 +444,22 @@ func (b *Broker) watch(ctx context.Context, r *resource, events <-chan tun.Event
 			}
 		}
 	}
+}
+
+func (b *Broker) startWatch(r *resource, native OwnedTun) {
+	if native == nil {
+		return
+	}
+	watch, stop := context.WithCancel(context.Background())
+	b.mu.Lock()
+	if b.closed || r.state.Closed || r.state.RecoveryRequired || r.ref.GraphEpoch != b.epoch {
+		b.mu.Unlock()
+		stop()
+		return
+	}
+	r.stop = stop
+	b.mu.Unlock()
+	go b.watch(watch, r, native.Events())
 }
 
 func (b *Broker) closeNative(ctx context.Context, r *resource) error {
@@ -678,9 +766,9 @@ func (b *Broker) cleanup(ctx context.Context) error {
 	return result
 }
 
-// Shutdown immediately rejects new work and cancels the current native call.
-// The single cleanup worker waits for that call; callers wait at most five
-// seconds. A hung backend leaves recovery visible, with its objects retained.
+// Shutdown immediately rejects new work and cancels current native calls.
+// Cleanup waits for those calls; callers wait at most five seconds. A hung
+// backend leaves recovery visible, with its objects retained.
 func (b *Broker) Shutdown(ctx context.Context) error {
 	b.mu.Lock()
 	if b.data != nil {
@@ -688,8 +776,8 @@ func (b *Broker) Shutdown(ctx context.Context) error {
 	}
 	b.closed = true
 	b.stopOnce.Do(func() { close(b.stopped) })
-	if b.cancel != nil {
-		b.cancel()
+	for _, cancel := range b.cancels {
+		cancel()
 	}
 	for _, r := range b.resources {
 		if r.stop != nil {
@@ -699,6 +787,19 @@ func (b *Broker) Shutdown(ctx context.Context) error {
 	b.mu.Unlock()
 	bounded, cancel := context.WithTimeout(ctx, b.timeout)
 	defer cancel()
+	workersDone := make(chan struct{})
+	go func() {
+		b.workers.Wait()
+		close(workersDone)
+	}()
+	select {
+	case <-workersDone:
+	case <-bounded.Done():
+		b.mu.Lock()
+		b.recovery = true
+		b.mu.Unlock()
+		return errors.Join(protocol.ErrRecoveryRequired, bounded.Err())
+	}
 	select {
 	case b.gate <- struct{}{}:
 	case <-bounded.Done():
@@ -708,7 +809,10 @@ func (b *Broker) Shutdown(ctx context.Context) error {
 		return errors.Join(protocol.ErrRecoveryRequired, bounded.Err())
 	}
 	done := make(chan error, 1)
-	go func() { defer func() { <-b.gate }(); done <- b.cleanup(bounded) }()
+	go func() {
+		defer func() { <-b.gate }()
+		done <- b.cleanup(bounded)
+	}()
 	select {
 	case err := <-done:
 		return err

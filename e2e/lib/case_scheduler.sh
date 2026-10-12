@@ -8,10 +8,12 @@ e2e_case_is_exclusive() {
 e2e_case_privilege() {
 	local case_dir="${1:?case directory is required}"
 
-	if [[ -f "$case_dir/requires-privileged" ]]; then
-		printf 'privileged\n'
+	if [[ ! -f "$case_dir/requires-direct" ]]; then
+		printf 'isolated-privileged\n'
+	elif [[ -f "$case_dir/requires-privileged" ]]; then
+		printf 'direct-privileged\n'
 	else
-		printf 'regular\n'
+		printf 'direct\n'
 	fi
 }
 
@@ -79,7 +81,7 @@ e2e_add_case_privileges() {
 	local args_name="${2:?argument array name is required}"
 	local -n args_ref="$args_name"
 
-	if [[ -f "$case_dir/requires-privileged" ]]; then
+	if [[ -f "$case_dir/requires-privileged" || ! -f "$case_dir/requires-direct" ]]; then
 		args_ref+=(--privileged --device /dev/net/tun)
 	fi
 }

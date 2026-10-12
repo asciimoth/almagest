@@ -31,6 +31,23 @@ type fakeBackend struct {
 	caps     *protocol.CapabilitySnapshot
 }
 
+type replacingBackend struct {
+	*fakeBackend
+	replacements atomic.Int32
+}
+
+func (b *replacingBackend) ReplaceDefaultTun(_ context.Context, current OwnedTun, req protocol.CreateTunRequest) (OwnedTun, error) {
+	device, ok := current.(*fakeTun)
+	if !ok {
+		return nil, protocol.ErrResourceType
+	}
+	b.replacements.Add(1)
+	device.mu.Lock()
+	device.state.MTU = req.Options.MTU
+	device.mu.Unlock()
+	return device, nil
+}
+
 func (f *fakeBackend) Capabilities(context.Context) (protocol.CapabilitySnapshot, error) {
 	if f.caps != nil {
 		return *f.caps, nil
@@ -298,6 +315,24 @@ func TestNetworkOwnership(t *testing.T) {
 			t.Fatal(status)
 		}
 	})
+	t.Run("transactional_default_replacement", func(t *testing.T) {
+		b, fake := testBroker(t)
+		backend := &replacingBackend{fakeBackend: fake}
+		b.backend = backend
+		first := create(t, b, "first", true)
+		replacement, err := b.CreateTun(context.Background(), protocol.CreateTunRequest{
+			Meta: meta(b, "replacement"), Default: true, Options: protocol.TunOptions{MTU: 1500},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if replacement.Resource.ID != first.Resource.ID || replacement.Resource.Generation != first.Resource.Generation+1 {
+			t.Fatalf("replacement resource = %+v, first = %+v", replacement.Resource, first.Resource)
+		}
+		if replacement.State.MTU != 1500 || backend.replacements.Load() != 1 || fake.count() != 1 || fake.last().closes.Load() != 0 {
+			t.Fatalf("replacement = %+v, calls = %d, devices = %d, closes = %d", replacement, backend.replacements.Load(), fake.count(), fake.last().closes.Load())
+		}
+	})
 	t.Run("partial_create", func(t *testing.T) {
 		for _, unknown := range []bool{false, true} {
 			t.Run(fmt.Sprint(unknown), func(t *testing.T) {
@@ -356,6 +391,15 @@ func TestNetworkOwnership(t *testing.T) {
 		result, err := b.GetResult(context.Background(), protocol.OperationResultRequest{Meta: meta(b, ""), OperationID: "late"})
 		if result.Outcome != protocol.OutcomeCompensated || device.closes.Load() != 1 || !errors.Is(err, context.Canceled) {
 			t.Fatalf("%+v %v", result, err)
+		}
+		f.create = nil
+		result, err = b.CreateTun(context.Background(), protocol.CreateTunRequest{Meta: meta(b, "after-cancel")})
+		if err != nil || result.Outcome != protocol.OutcomeCommitted {
+			t.Fatalf("mutation after compensated cancellation = %+v, %v", result, err)
+		}
+		status, err := b.Status(context.Background(), protocol.ReadRequest{Meta: meta(b, "")})
+		if err != nil || status.RecoveryRequired {
+			t.Fatalf("status after compensated cancellation = %+v, %v", status, err)
 		}
 	})
 	t.Run("epoch_and_events", func(t *testing.T) {

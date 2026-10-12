@@ -20,8 +20,10 @@ expect_startup_failure() {
 expect_startup_failure "--experimental requires explicit --no-isolation" \
 	almagestd --experimental --file-storage "$E2E_RUNTIME/rejected-experimental-store" \
 	--unix "$E2E_RUNTIME/rejected-experimental.sock" --web 0
+mkdir -p "$E2E_RUNTIME/incomplete-package"
+install -m 0755 "$(command -v almagestd)" "$E2E_RUNTIME/incomplete-package/almagestd"
 expect_startup_failure "install the complete role package or use explicit --no-isolation" \
-	almagestd --file-storage "$E2E_RUNTIME/rejected-isolation-store" \
+	"$E2E_RUNTIME/incomplete-package/almagestd" --file-storage "$E2E_RUNTIME/rejected-isolation-store" \
 	--unix "$E2E_RUNTIME/rejected-isolation.sock" --web 0
 [[ ! -e "$E2E_RUNTIME/rejected-experimental-store" \
 	&& ! -e "$E2E_RUNTIME/rejected-experimental.sock" \

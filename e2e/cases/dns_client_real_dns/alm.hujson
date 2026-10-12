@@ -33,6 +33,7 @@
 				"Bootstrap DNS -> [Bootstrap DNS] DNS",
 			],
 			"servers": ["dot://dot-upstream.e2e.test:5853"],
+			"tlsConfig": "dot-test",
 		},
 		"UDP Query": {
 			"Class": "almagest/DnsQuery",

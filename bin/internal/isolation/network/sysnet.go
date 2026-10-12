@@ -8,6 +8,8 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/asciimoth/almagest/bin/internal/isolation/protocol"
 	gdns "github.com/asciimoth/gonnect/dns"
@@ -222,7 +224,51 @@ func (s *SystemBackend) Create(ctx context.Context, req protocol.CreateTunReques
 	return owned, nil
 }
 
+// ReplaceDefaultTun uses the native system's transactional rebuild. Closing
+// the old DefaultTun first would discard its stable wrapper and attachments.
+func (s *SystemBackend) ReplaceDefaultTun(ctx context.Context, current OwnedTun, req protocol.CreateTunRequest) (OwnedTun, error) {
+	owned, ok := current.(*systemTun)
+	if !ok || !owned.defaultTun || owned.backend != s || !req.Default {
+		return nil, &NoEffectsError{Err: protocol.ErrResourceType}
+	}
+	_, options := nativeOptions(req)
+	// BuildDefaultTun owns the native replacement transaction. It must also run
+	// when the old native link disappeared: the stable sysnet wrapper can then
+	// replace its packet source. Capture and verify the new source below.
+	device, err := s.system.BuildDefaultTun(options)
+	if err != nil {
+		if verifyErr := owned.Verify(ctx); verifyErr == nil {
+			return nil, &NoEffectsError{Err: nativeError(err)}
+		}
+		return nil, errors.Join(protocol.ErrRecoveryRequired, nativeError(err))
+	}
+	if device == nil {
+		return nil, protocol.ErrRecoveryRequired
+	}
+	identity, err := s.capture(ctx, device)
+	if err != nil || identity == nil {
+		return nil, errors.Join(protocol.ErrRecoveryRequired, err)
+	}
+	// Linux keeps one stable runtime wrapper. Windows returns the replacement
+	// native device. Keep the broker-owned object stable in both cases.
+	owned.device = device
+	owned.identity = identity
+	owned.expected = nil
+	state, err := owned.readState(ctx)
+	if err != nil {
+		return nil, errors.Join(protocol.ErrRecoveryRequired, err)
+	}
+	owned.expected = &state
+	s.defaultOwned = owned
+	return owned, nil
+}
+
 type systemTun struct {
+	ioMu             sync.Mutex
+	readDeadline     time.Time
+	writeDeadline    time.Time
+	readWake         chan struct{}
+	readResult       chan tunReadResult
 	reserveData      func(int) (func(), error)
 	releaseData      func()
 	pendingPackets   [][]byte
@@ -310,6 +356,17 @@ func (t *systemTun) readState(ctx context.Context) (protocol.ResourceState, erro
 		return state, protocol.ErrInvalidContract
 	}
 	state.MTU = uint32(mtu)
+	batch := t.device.BatchSize()
+	if batch < 1 || batch > 256 {
+		return state, protocol.ErrCapabilityUnsupported
+	}
+	state.TunBatchSize = uint32(batch)
+	if source, ok := t.device.(interface{ SourceGeneration() uint64 }); ok {
+		state.TunSourceGeneration = source.SourceGeneration()
+		if state.TunSourceGeneration == 0 {
+			return state, protocol.ErrInvalidContract
+		}
+	}
 	addrs, err := t.backend.system.GetTunAddrs(t.device)
 	if err != nil && !errors.Is(err, sysnet.ErrNotSupported) {
 		return state, nativeError(err)

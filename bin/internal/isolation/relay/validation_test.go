@@ -124,7 +124,7 @@ func TestDataMuxValidationAndAccounting(t *testing.T) {
 	if release, err := mux.HoldOutbound(-1); release != nil || !errors.Is(err, protocol.ErrLimitExceeded) {
 		t.Fatalf("negative hold returned release=%t, error=%v", release != nil, err)
 	}
-	if release, err := mux.HoldOutbound(256*1024 + 1); release != nil || !errors.Is(err, protocol.ErrLimitExceeded) {
+	if release, err := mux.HoldOutbound(protocol.MaxNativePacketBatchBytes + 1); release != nil || !errors.Is(err, protocol.ErrLimitExceeded) {
 		t.Fatalf("large hold returned release=%t, error=%v", release != nil, err)
 	}
 	releases := make([]func(), 0, protocol.MaxSessionData/(256*1024))
