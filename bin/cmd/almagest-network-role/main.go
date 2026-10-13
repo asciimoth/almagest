@@ -8,7 +8,7 @@ import (
 )
 
 func main() {
-	if err := runNetworkRole(); err != nil {
+	if err := runNetworkRole(); err != nil { //nolint:staticcheck // The Linux/amd64 implementation can return nil.
 		_, _ = fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
