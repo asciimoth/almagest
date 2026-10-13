@@ -20,8 +20,8 @@ github.com/asciimoth/persist v0.2.0 h1:yqsu1+5pystESKm8yVVSdG15kqL3Tiwl2tEYtvjcB
 github.com/asciimoth/persist v0.2.0/go.mod h1:idB/ttCb+L8i51uz/7ec+HzrIAbdPQsjVbu0P8hSQBk=
 github.com/asciimoth/putback v0.3.0 h1:NKyX1K2yR/pHt9ov7BifA7qd8oMSOhsit4hMf694e30=
 github.com/asciimoth/putback v0.3.0/go.mod h1:K4u9GV2oQVToze+iKSA/e2V26lusyirYqBZuOZnw2YA=
-github.com/asciimoth/socksgo v0.5.0 h1:YJaSUmXol+Z6rhUEtwqhiHMqzSwm6eJZPD5LBDwyjZI=
-github.com/asciimoth/socksgo v0.5.0/go.mod h1:Jatp5TOpkCdF/ZtXh9xiQVSvZBGCaCCNoJSoenGLiBc=
+github.com/asciimoth/socksgo v0.5.1 h1:VZDBeayD0l6W5752jwuraYAdp4TDW0Y9keTOYI/2NZM=
+github.com/asciimoth/socksgo v0.5.1/go.mod h1:Jatp5TOpkCdF/ZtXh9xiQVSvZBGCaCCNoJSoenGLiBc=
 github.com/asciimoth/tor-driver v0.1.2 h1:vsPYD81PjK5+1est8N/1ioURoBnl2r9r+oPWpGAygo8=
 github.com/asciimoth/tor-driver v0.1.2/go.mod h1:W9osFuxuRe8bMuKl8zmknVxeJO7veDMGAlK9wTwAsaU=
 github.com/asciimoth/tuntap v0.4.4 h1:VQAj5lGXWNx0/o3aNo+VHumgiNXFG+6TbFKt7ftvwvQ=

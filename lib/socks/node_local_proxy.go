@@ -50,16 +50,13 @@ type localProxyNode struct {
 	localNetwork NetworkCloser
 	proxyNetwork NetworkCloser
 
-	worker    *socksServerWorker
-	restartID uint64
-	logs      []formular.LogLine
-	formError string
+	worker         *socksServerWorker
+	workerStopping bool
+	logs           []formular.LogLine
+	formError      string
 }
 
-type localProxyStart struct {
-	id  uint64
-	cfg socksServerWorkerConfig
-}
+type localProxyStart struct{ previous *socksServerWorker }
 
 func (n *localProxyNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
 	n.InitBaseNode(w, logger, id)
@@ -143,8 +140,10 @@ func (n *localProxyNode) OnInbox(message pasta.InboxMessage) error {
 		n.appendLog(payload.level, payload.text)
 		n.sendLogsBlock()
 	case localProxyStart:
-		if payload.id == n.restartID && n.worker == nil && n.localNetwork != nil {
-			n.startWorker(payload.cfg)
+		if payload.previous != nil && payload.previous == n.worker {
+			n.worker = nil
+			n.workerStopping = false
+			n.startCurrentWorker()
 		}
 	}
 	return nil
@@ -197,18 +196,26 @@ func (n *localProxyNode) sendConfigFieldStatus(msg formular.FieldValidateMessage
 }
 
 func (n *localProxyNode) restartWorker() {
-	n.restartID++
-	id := n.restartID
 	n.Logger.Debug("local proxy worker restarting")
 	n.appendLog(formular.LogDebug, "worker restarting")
 	n.sendLogsBlock()
 
 	old := n.worker
 	if old != nil {
-		n.worker = nil
-		old.Stop()
+		if !n.workerStopping {
+			n.workerStopping = true
+			old.Stop()
+			go func() {
+				<-old.Done()
+				n.W.SendInbox(pasta.InboxMessage{ReceiverNode: n.ID, Payload: localProxyStart{previous: old}})
+			}()
+		}
+		return
 	}
+	n.startCurrentWorker()
+}
 
+func (n *localProxyNode) startCurrentWorker() {
 	if n.localNetwork == nil {
 		n.Logger.Debug("local proxy worker waiting for local network")
 		n.appendLog(formular.LogWarn, "waiting for local network")
@@ -225,13 +232,6 @@ func (n *localProxyNode) restartWorker() {
 		listenNetwork: n.localNetwork,
 		proxyNetwork:  proxy,
 		pool:          enginePool(n.Runtime),
-	}
-	if old != nil {
-		go func() {
-			<-old.Done()
-			n.W.SendInbox(pasta.InboxMessage{ReceiverNode: n.ID, Payload: localProxyStart{id: id, cfg: cfg}})
-		}()
-		return
 	}
 	n.startWorker(cfg)
 }
@@ -250,8 +250,11 @@ func (n *localProxyNode) startWorker(cfg socksServerWorkerConfig) {
 func (n *localProxyNode) stopWorker() {
 	if n.worker != nil {
 		n.Logger.Debug("local proxy worker stopping")
-		n.worker.Stop()
+		if !n.workerStopping {
+			n.worker.Stop()
+		}
 		n.worker = nil
+		n.workerStopping = false
 	}
 }
 
