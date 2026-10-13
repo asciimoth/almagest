@@ -15,8 +15,7 @@ artifact_root="$repo_root/artifacts/winvm"
 mkdir -p "$artifact_root" "$winvm_cache_dir/locks"
 progress() { printf '==> WinVM flow: %s\n' "$1"; }
 progress 'waiting for the VM host lock'
-exec 6>"$winvm_cache_dir/locks/vm-run.lock"
-flock -w 1800 6 || die 'another VM held the host lock for 30 minutes'
+acquire_vm_host_lock
 reject_live_qemu_orphan
 
 key=$(base_key)
@@ -41,7 +40,20 @@ endpoint_sockets=$(make_socket_dir)
 client_pid=''
 endpoint_pid=''
 progress_pid=''
+resource_monitor_pid=''
 stage=setup
+
+stop_resource_monitor() {
+    [[ -n $resource_monitor_pid ]] || return 0
+    kill -TERM "$resource_monitor_pid" 2>/dev/null || true
+    for _ in {1..30}; do
+        kill -0 "$resource_monitor_pid" 2>/dev/null || break
+        sleep .1
+    done
+    kill -KILL "$resource_monitor_pid" 2>/dev/null || true
+    wait "$resource_monitor_pid" 2>/dev/null || true
+    resource_monitor_pid=''
+}
 
 stop_guest() {
     local pid=$1 qga=$2 qmp=$3 label=$4
@@ -65,6 +77,7 @@ cleanup() {
     fi
     stop_guest "$client_pid" "$client_sockets/qga.sock" "$client_sockets/qmp.sock" client || exit_status=1
     stop_guest "$endpoint_pid" "$endpoint_sockets/qga.sock" "$endpoint_sockets/qmp.sock" endpoint || exit_status=1
+    stop_resource_monitor
     remove_socket_dir "$client_sockets"
     remove_socket_dir "$endpoint_sockets"
     if [[ -f $run_dir/run.json ]]; then
@@ -151,6 +164,11 @@ printf '%q ' "${client_qemu[@]}" >"$run_dir/client-qemu-command.log"
 progress 'starting the client guest'
 "${client_qemu[@]}" >>"$run_dir/client-qemu.log" 2>&1 &
 client_pid=$!
+python3 "$script_dir/tools/host-resources.py" --output "$run_dir/host-resources.jsonl" \
+    --interval 2 --exit-with-pid "$$" --pid "flow-client=$client_pid" \
+    --pid "flow-endpoint=$endpoint_pid" \
+    >>"$run_dir/resource-monitor.log" 2>&1 &
+resource_monitor_pid=$!
 
 ssh_key=$(ssh_private_key)
 client_ssh=(-i "$ssh_key" -p "$client_port" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$run_dir/client-known-hosts" -o ConnectTimeout=5 -o LogLevel=ERROR -o WarnWeakCrypto=no)

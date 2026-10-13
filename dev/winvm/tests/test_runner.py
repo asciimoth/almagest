@@ -142,6 +142,7 @@ class RunnerTests(unittest.TestCase):
                 shutil.copy2(ROOT / 'combine-coverage.py', scripts / 'combine-coverage.py')
                 shutil.copy2(ROOT / 'supervise.py', scripts / 'supervise.py')
                 shutil.copy2(ROOT / 'tools/resource-evidence.py', scripts / 'tools/resource-evidence.py')
+                shutil.copy2(ROOT / 'tools/host-resources.py', scripts / 'tools/host-resources.py')
                 common = (ROOT / 'common.sh').read_text()
                 common += '''
 require_kvm() { :; }

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run independent Go, Docker, and Windows VM test loops until stopped."""
+"""Run serial or parallel Go, Docker, and Windows VM test loops until stopped."""
 
 import argparse
 import collections
@@ -15,6 +15,7 @@ import shlex
 import shutil
 import signal
 import subprocess
+import sys
 import tarfile
 import tempfile
 import threading
@@ -29,6 +30,7 @@ DEFAULTS = {
     "E2E_FAIL_FAST": "0",
     "WINVM_FAIL_FAST": "0",
     "RUN_WINVM_TESTS": "0",
+    "TEST_TYPES_PARALLEL": "0",
 }
 GO_FLAGS = ["-count=1", "-p=1", "-parallel=1", "-json"]
 TIMEOUT_KEYS = ("TEST_CYCLES_TIMEOUT", "TEST_CYCLES_SOFT_TIMEOUT")
@@ -142,6 +144,9 @@ class Runner:
         for key, value in DEFAULTS.items():
             if not self.env.get(key):
                 self.env[key] = value
+        if self.env["TEST_TYPES_PARALLEL"] not in ("0", "1"):
+            raise ValueError("TEST_TYPES_PARALLEL must be 0 or 1")
+        self.parallel_types = self.env["TEST_TYPES_PARALLEL"] == "1"
         self.stop = threading.Event()
         self.failure_detected = threading.Event()
         self.soft_timeout_reached = threading.Event()
@@ -172,6 +177,7 @@ class Runner:
                 self.flags[key] = self.env[key]
         self.context = {"started_utc": self.started, "host": platform.platform(),
                         "root": str(root), "flags": self.flags, "go_flags": GO_FLAGS}
+        self.resource_monitor = None
 
     def say(self, message):
         with self.lock:
@@ -267,6 +273,7 @@ class Runner:
         """Last resort if the supervisor itself hangs; never signal a reused PID."""
         if not directory:
             return
+
         run = Path(directory).resolve()
         parent = (self.root / "artifacts/winvm").resolve()
         if run.parent != parent or not run.name.startswith("run-"):
@@ -295,7 +302,16 @@ class Runner:
                 exited.register(fd, select.POLLIN)
                 if not exited.poll(3000):
                     marker = Path(state["orphanMarker"])
-                    if marker.name != "qemu-orphan" or marker.parent.name != "locks":
+                    runtime = Path(self.env.get("XDG_RUNTIME_DIR", ""))
+                    try:
+                        safe_runtime = (runtime.is_absolute() and runtime.is_dir() and
+                                        runtime.stat().st_uid == os.getuid() and
+                                        os.access(runtime, os.W_OK))
+                    except OSError:
+                        safe_runtime = False
+                    if not safe_runtime:
+                        runtime = Path(f"/tmp/almagest-winvm-host-{os.getuid()}")
+                    if marker != runtime / "qemu-orphan":
                         raise ValueError("invalid QEMU orphan marker path")
                     marker.write_text(f"{pid} {stat[19]}\n")
                     self.errors.append(f"QEMU {pid} survived SIGKILL; subsequent VM runs are blocked")
@@ -311,6 +327,29 @@ class Runner:
             temporary = path.with_suffix(".json.new")
             temporary.write_text(json.dumps(record, indent=2) + "\n")
             temporary.replace(path)
+
+    def start_resource_monitor(self):
+        monitor = ROOT / "dev/winvm/tools/host-resources.py"
+        with (self.session / "resource-monitor.log").open("ab") as log:
+            self.resource_monitor = subprocess.Popen([
+                sys.executable, str(monitor),
+                "--output", str(self.session / "host-resources.jsonl"),
+                "--interval", "2", "--exit-with-pid", str(os.getpid()),
+                "--pid", f"test-cycles={os.getpid()}",
+            ], stdin=subprocess.DEVNULL, stdout=log, stderr=log,
+                start_new_session=True)
+
+    def stop_resource_monitor(self):
+        if self.resource_monitor is None:
+            return
+        if self.resource_monitor.poll() is None:
+            self.resource_monitor.terminate()
+            try:
+                self.resource_monitor.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                self.resource_monitor.kill()
+                self.resource_monitor.wait(timeout=3)
+        self.resource_monitor = None
 
     @staticmethod
     def kill_group(process, number):
@@ -344,7 +383,8 @@ class Runner:
         self.context["worktree"] = subprocess.check_output(
             ["git", "status", "--short"], cwd=self.root, text=True).strip() or "clean"
         (self.session / "context.json").write_text(json.dumps(self.context, indent=2) + "\n")
-        self.say("Preparation finished; starting independent test loops")
+        mode = "parallel independent" if self.parallel_types else "serial ordered"
+        self.say(f"Preparation finished; starting {mode} test loops")
         return True
 
     def loop(self, kind):
@@ -357,6 +397,21 @@ class Runner:
             details = traceback.format_exc()
             (self.session / f"{kind}-runner-error.log").write_text(details)
             self.errors.append(f"{kind} runner error; see {kind}-runner-error.log")
+            self.request_stop("runner error")
+
+    def serial_loop(self):
+        try:
+            while not self.stop.is_set():
+                for kind in self.enabled:
+                    if self.stop.is_set():
+                        break
+                    self.iteration(kind)
+                    # Avoid a hot retry loop if a tool becomes unavailable.
+                    self.stop.wait(0.2)
+        except Exception:
+            details = traceback.format_exc()
+            (self.session / "serial-runner-error.log").write_text(details)
+            self.errors.append("serial runner error; see serial-runner-error.log")
             self.request_stop("runner error")
 
     def iteration(self, kind):
@@ -476,19 +531,24 @@ class Runner:
         timeout_thread = None
         self.say("Flags: " + shlex.join(f"{k}={v}" for k, v in self.flags.items()))
         self.say("winvm tests: " + ("enabled" if "winvm" in self.enabled else "disabled"))
+        self.say("test type scheduling: " + ("parallel" if self.parallel_types else "serial"))
         try:
+            self.start_resource_monitor()
             if any(timeout is not None for timeout in self.timeouts.values()):
                 timeout_thread = threading.Thread(
                     target=self.watch_timeouts, args=(time.monotonic(),),
                     name="test-cycles-timeout")
                 timeout_thread.start()
             if self.prepare():
-                for kind in self.enabled:
-                    thread = threading.Thread(target=self.loop, args=(kind,))
-                    threads.append(thread)
-                    thread.start()
-                for thread in threads:
-                    thread.join()
+                if self.parallel_types:
+                    for kind in self.enabled:
+                        thread = threading.Thread(target=self.loop, args=(kind,))
+                        threads.append(thread)
+                        thread.start()
+                    for thread in threads:
+                        thread.join()
+                else:
+                    self.serial_loop()
         except Exception:
             self.errors.append(traceback.format_exc())
             self.request_stop("runner error")
@@ -500,6 +560,7 @@ class Runner:
             if timeout_thread:
                 timeout_thread.join()
             self.report()
+            self.stop_resource_monitor()
         return 1 if self.errors else 0
 
 

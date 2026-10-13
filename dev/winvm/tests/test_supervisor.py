@@ -23,7 +23,8 @@ class SupervisorTests(unittest.TestCase):
     def supervisor(self, directory):
         args = argparse.Namespace(run_dir=str(directory), sockets=str(directory / "almagest-winvm.fixture"),
                                   key="fixture-key", port=22000, mode="test", qemu=[],
-                                  cache_dir=str(directory))
+                                  cache_dir=str(directory),
+                                  orphan_marker=str(directory / "qemu-orphan"))
         return MODULE.Supervisor(args, json.loads((ROOT / "config.json").read_text())["machine"])
 
     def test_partial_export_never_replaces_last_good_archive(self):

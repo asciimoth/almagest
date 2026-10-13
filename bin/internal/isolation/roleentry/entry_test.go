@@ -24,9 +24,12 @@ func TestRoleEntryRequiresInheritedChannelAndFixedRole(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer file.Close() //nolint:errcheck
-	if _, err := OpenBootstrap(protocol.RoleConfigWriter, nil, func(string) string { return strconv.FormatUint(uint64(file.Fd()), 10) }); !errors.Is(err, ErrStandaloneRole) {
-		t.Fatalf("regular file descriptor error = %v", err)
+	_, openErr := OpenBootstrap(protocol.RoleConfigWriter, nil, func(string) string { return strconv.FormatUint(uint64(file.Fd()), 10) })
+	// OpenBootstrap consumes the descriptor. Mark the original os.File as
+	// closed now so that its finalizer cannot close a later descriptor reuse.
+	_ = file.Close()
+	if !errors.Is(openErr, ErrStandaloneRole) {
+		t.Fatalf("regular file descriptor error = %v", openErr)
 	}
 }
 

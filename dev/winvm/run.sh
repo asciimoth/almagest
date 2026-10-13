@@ -19,8 +19,7 @@ if [[ $mode == manual ]]; then
     chmod 0700 "$state_dir"
     state_dir=$(realpath -e "$state_dir")
 fi
-exec 6>"$winvm_cache_dir/locks/vm-run.lock"
-flock -w 1800 6 || die 'another VM held the host lock for 30 minutes'
+acquire_vm_host_lock
 reject_live_qemu_orphan
 if [[ $mode == --shell ]]; then
     run_dir=$(realpath -e "${2:?retained run directory required}")
@@ -155,5 +154,6 @@ if [[ -n ${ALMAGEST_WINDOWS_SOAK_DURATION:-} ]]; then
 fi
 exec python3 "$script_dir/supervise.py" --mode="$mode" --run-dir "$run_dir" \
     --sockets "$sockets" --port "$port" --key "$(ssh_private_key)" \
-    --cache-dir "$winvm_cache_dir" --web-port "$web_port" --state-dir "$state_dir" "${soak_args[@]}" \
+    --cache-dir "$winvm_cache_dir" --orphan-marker "$(qemu_orphan_marker)" \
+    --web-port "$web_port" --state-dir "$state_dir" "${soak_args[@]}" \
     -- "${qemu[@]}"

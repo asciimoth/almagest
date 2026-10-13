@@ -104,9 +104,11 @@ QGA has SYSTEM privileges and is available only through a private host socket.
 ## Isolation, source identity, and evidence
 
 Each run has a unique `artifacts/winvm/run-*` directory, qcow2 overlay, firmware
-copy, sockets, and locked loopback SSH port. A shared cache lock serializes VM
-runs and image creation to limit memory use. Per-image and per-run locks also
-protect recovery runs. Port contention fails before a run can claim success.
+copy, sockets, and locked loopback SSH port. A host-wide lock serializes VM
+runs and image creation, including runs that use different cache directories.
+The packet-flow gate holds the same lock while its two required guests run.
+Per-image and per-run locks also protect recovery runs. Port contention fails
+before a run can claim success.
 Readiness requires two matching provisioning-token and Windows-boot-time
 observations. Provisioning, guest commands, transfers, and shutdown have limits.
 Both image creation and test runs use `host,cet-ss=off,cet-ibt=off`.
@@ -258,6 +260,20 @@ configured KVM host, locked media, and WinVM prerequisites.
 The regular native gate stops its case loop and later privilege phases after
 the first failure. `just test-cycles` selects collect-all mode for its repeated
 diagnostic runs.
+
+The Go, Docker E2E, and WinVM test types run in sequence by default. Set
+`TEST_TYPES_PARALLEL=1` to run these test types concurrently. The same setting
+controls `just check`, `just test-e2e`, and `just test-cycles`.
+
+Each VM run writes `host-resources.jsonl` in its artifact directory. A sample
+is flushed to disk every two seconds. It contains host memory, swap, pressure,
+load, paging and OOM counters, the largest processes, and QEMU process and
+cgroup values. `resource-monitor.log` records monitor failures. These files
+remain useful after an out-of-memory restart because each JSON line is synced
+before the next sample.
+The enclosing test-type scheduler also records the full Go, Docker, and WinVM
+sequence under `artifacts/test-resources/`. It removes successful records and
+retains failed or interrupted records.
 
 ## Project and CI gates
 

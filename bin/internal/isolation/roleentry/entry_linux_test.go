@@ -19,6 +19,9 @@ func TestRoleEntryAcceptsInheritedUnixSocket(t *testing.T) {
 	channel, err := OpenBootstrap(protocol.RoleConfigWriter, nil, func(string) string {
 		return strconv.FormatUint(uint64(reader.Fd()), 10)
 	})
+	// OpenBootstrap consumes the descriptor. Mark the original os.File as
+	// closed now so that its finalizer cannot close a later descriptor reuse.
+	_ = reader.Close()
 	if err != nil {
 		t.Fatal(err)
 	}

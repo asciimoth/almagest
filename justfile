@@ -107,10 +107,12 @@ test-total *selectors:
   fi
 
 [private]
-test-total-all: test-cycles-harness test-winvm-harness test test-e2e
+test-total-all: test-cycles-harness test-winvm-harness
+  ./scripts/test-e2e-fail-fast.sh test test-e2e-docker test-winvm-enabled
   ./scripts/coverage-report.sh
 
-test-total-light: test test-e2e-light
+test-total-light:
+  ./scripts/test-e2e-fail-fast.sh test test-e2e-light
   ./scripts/coverage-report.sh
 
 coverage: test-total

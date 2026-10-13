@@ -80,6 +80,19 @@ class CycleTests(unittest.TestCase):
             enabled = MODULE.Runner(Path(temp), {'RUN_WINVM_TESTS': '1'})
             self.assertIn('winvm', enabled.enabled)
 
+    def test_test_type_parallelism_defaults_off_and_validates(self):
+        with tempfile.TemporaryDirectory() as temp:
+            serial = MODULE.Runner(Path(temp), {})
+            self.assertFalse(serial.parallel_types)
+            self.assertEqual(serial.env["TEST_TYPES_PARALLEL"], "0")
+        with tempfile.TemporaryDirectory() as temp:
+            parallel = MODULE.Runner(Path(temp), {"TEST_TYPES_PARALLEL": "1"})
+            self.assertTrue(parallel.parallel_types)
+        for value in ("yes", "2", "-1"):
+            with self.subTest(value=value), tempfile.TemporaryDirectory() as temp:
+                with self.assertRaisesRegex(ValueError, "TEST_TYPES_PARALLEL must be 0 or 1"):
+                    MODULE.Runner(Path(temp), {"TEST_TYPES_PARALLEL": value})
+
     def test_go_leaf_and_package_failures(self):
         events = [dict(Action="fail", Package="pkg", Test=test)
                   for test in ("TestParent", "TestParent/child")]
@@ -139,7 +152,9 @@ class CycleTests(unittest.TestCase):
 
     def test_loops_are_independent_and_prepare_runs_once(self):
         with tempfile.TemporaryDirectory() as temp, redirect_stdout(io.StringIO()):
-            runner = MODULE.Runner(Path(temp), {"RUN_WINVM_TESTS": "1"})
+            runner = MODULE.Runner(Path(temp), {
+                "RUN_WINVM_TESTS": "1", "TEST_TYPES_PARALLEL": "1",
+            })
             entered = threading.Barrier(3)
             counts = dict(go=0, e2e=0, winvm=0)
 
@@ -157,6 +172,22 @@ class CycleTests(unittest.TestCase):
                 self.assertEqual(runner.run(), 0)
                 prepare.assert_called_once()
             self.assertEqual(counts, dict(go=3, e2e=1, winvm=1))
+
+    def test_serial_cycles_repeat_in_type_order(self):
+        with tempfile.TemporaryDirectory() as temp, redirect_stdout(io.StringIO()):
+            runner = MODULE.Runner(Path(temp), {"RUN_WINVM_TESTS": "1"})
+            calls = []
+
+            def iteration(kind):
+                calls.append(kind)
+                if len(calls) == 6:
+                    runner.stop.set()
+
+            runner.iteration = iteration
+            with patch.object(runner, "prepare", return_value=True):
+                self.assertEqual(runner.run(), 0)
+            self.assertEqual(calls, ["go", "e2e", "winvm", "go", "e2e", "winvm"])
+            self.assertTrue((runner.session / "host-resources.jsonl").exists())
 
     def test_signal_stops_command_children_and_allows_cleanup(self):
         with tempfile.TemporaryDirectory() as temp, redirect_stdout(io.StringIO()):

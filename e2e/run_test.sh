@@ -118,8 +118,8 @@ assert_contains() {
 	fi
 }
 
-assert_contains "starting admin_api_transports [regular]"
-assert_contains "starting amnesia_selfhost_controller [privileged]"
+assert_contains "starting admin_api_transports [isolated-privileged]"
+assert_contains "starting amnesia_selfhost_controller [isolated-privileged]"
 assert_contains "2 cases, 2 jobs, 0 exclusive"
 assert_contains "PASS admin_api_transports ("
 assert_contains "failing case output"
@@ -191,12 +191,12 @@ config_pass="$(line_number "PASS config_editing_api" "$scheduling_output")"
 exclusive_start="$(line_number "starting tun_high_load" "$scheduling_output")"
 
 if ((config_start <= admin_start || config_start >= admin_pass || config_start >= config_pass)); then
-	echo "exclusive case prevented a later regular case from starting" >&2
+	echo "exclusive case prevented a later non-exclusive case from starting" >&2
 	printf '%s\n' "$scheduling_output" >&2
 	exit 1
 fi
 if ((exclusive_start <= admin_pass || exclusive_start <= config_pass)); then
-	echo "exclusive case started before the regular cases finished" >&2
+	echo "exclusive case started before the non-exclusive cases finished" >&2
 	printf '%s\n' "$scheduling_output" >&2
 	exit 1
 fi

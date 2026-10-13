@@ -28,6 +28,25 @@ ensure_cache_dir() {
     mkdir -p -- "$winvm_cache_dir"
     chmod 0700 "$winvm_cache_dir"
 }
+winvm_host_lock_path() {
+    local root=${XDG_RUNTIME_DIR:-} fallback
+    if [[ $root != /* || ! -d $root || ! -w $root || ! -O $root ]]; then
+        fallback="/tmp/almagest-winvm-host-$(id -u)"
+        if ! mkdir -m 0700 -- "$fallback" 2>/dev/null; then
+            [[ -d $fallback && ! -L $fallback && -O $fallback ]] || \
+                die "unsafe WinVM host lock directory: $fallback"
+        fi
+        chmod 0700 -- "$fallback"
+        root=$fallback
+    fi
+    printf '%s/almagest-winvm-host.lock\n' "$root"
+}
+acquire_vm_host_lock() {
+    local lock
+    lock=$(winvm_host_lock_path)
+    exec 6>"$lock"
+    flock -w 1800 6 || die 'another VM held the host lock for 30 minutes'
+}
 sha256_file() { sha256sum -- "$1" | awk '{print $1}'; }
 locked_value() { jq -er "$1" "$lock_file"; }
 ssh_private_key() { printf '%s/ssh/id_ed25519\n' "$winvm_cache_dir"; }
@@ -207,7 +226,11 @@ stop_and_reap_pid() {
     fi
     return 1
 }
-qemu_orphan_marker() { printf '%s/locks/qemu-orphan\n' "$winvm_cache_dir"; }
+qemu_orphan_marker() {
+    local lock
+    lock=$(winvm_host_lock_path)
+    printf '%s/qemu-orphan\n' "${lock%/*}"
+}
 process_start_time() { awk '{print $22}' "/proc/$1/stat" 2>/dev/null; }
 record_qemu_orphan() {
     local pid=$1 marker start

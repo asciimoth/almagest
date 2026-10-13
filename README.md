@@ -92,13 +92,18 @@
 
 ## Repeated tests
 
-Run `just test-cycles` for an unattended test session. It starts independent Go,
-Docker E2E, and optional Windows VM loops. Stop with Ctrl+C, SIGTERM, or SIGHUP.
-`just` loads `.env`, as it does for the other test commands. For example:
+Run `just test-cycles` for an unattended test session. By default, it runs Go,
+Docker E2E, and optional Windows VM tests in that order, and then repeats the
+sequence. Stop with Ctrl+C, SIGTERM, or SIGHUP. `just` loads `.env`, as it does
+for the other test commands. For example:
 
 ```sh
 E2E_JOBS=4 E2E_INCLUDE_PRIVILEGED=1 RUN_WINVM_TESTS=1 just test-cycles
 ```
+
+Set `TEST_TYPES_PARALLEL=1` to run the Go, Docker E2E, and Windows VM test
+types at the same time. This opt-in setting also applies to `just check` and
+`just test-e2e`. The default value is `0` to limit peak CPU and memory use.
 
 `TEST_CYCLES_TIMEOUT` sets a hard session timeout in seconds.
 `TEST_CYCLES_SOFT_TIMEOUT` sets a soft session timeout in seconds. At the soft
@@ -129,17 +134,23 @@ each Windows loop runs the ordinary and privileged native suites and the
 isolated packet-flow suite. JavaScript and harness unit tests remain in
 `just check`.
 
-Each loop reports only its start, finish, duration, and completed/failed loop
-counts. Test failures do not stop the loops. All Go modules run even if an
-earlier module fails. Successful-loop logs and VM disks are removed.
+Each test type reports only its start, finish, duration, and completed/failed
+loop counts. Test failures do not stop the cycles. All Go modules run even if
+an earlier module fails. Successful-loop logs and VM disks are removed.
 
 The command saves evidence in the gitignored `artifacts/test-cycles/run-*/`
-directory. Each failed or interrupted loop has command logs and `result.json`.
+directory. `host-resources.jsonl` records fsynced host memory, pressure, CPU,
+paging, OOM, and top-process samples for the whole session. Each failed or
+interrupted loop has command logs and `result.json`.
 Docker loops also keep per-case logs. A Windows loop has a `vm-artifacts` link
 to its retained disk and logs under `artifacts/winvm/`, which supports
 `just winvm-shell`. Failed Windows runs also attempt to collect guest artifacts.
 Retained failures can use substantial disk space; no failure evidence is
 automatically removed.
+
+`just check` and `just test-e2e` print a resource-evidence directory when they
+start. Successful runs remove it. A failed, interrupted, or abruptly stopped
+run retains it under `artifacts/test-resources/`.
 
 On stop, including a hard or soft timeout, the command signals active process
 groups and waits for the Docker and VM cleanup handlers. Docker resources have

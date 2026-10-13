@@ -15,8 +15,7 @@ mkdir -p "$winvm_cache_dir/images" "$winvm_cache_dir/locks" "$ssh_dir"
 chmod 0700 "$winvm_cache_dir" "$ssh_dir"
 # Use the same lock as test runs. Windows installation is memory-intensive and
 # must not race another guest on this host.
-exec 6>"$winvm_cache_dir/locks/vm-run.lock"
-flock -w 1800 6 || die 'another VM held the host lock for 30 minutes'
+acquire_vm_host_lock
 reject_live_qemu_orphan
 exec 9>"$winvm_cache_dir/locks/image-$key.lock"
 printf 'Waiting for image lock %s...\n' "$key"

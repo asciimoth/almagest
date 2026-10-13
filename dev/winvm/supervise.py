@@ -61,6 +61,7 @@ class Supervisor:
             raise ValueError("unsafe VM socket directory")
         self.remote = "C:/winvm/runs/" + self.directory.name
         self.qemu = None
+        self.resource_monitor = None
         self.tunnel = None
         self.manual_state_uploaded = False
         self.stop_signal = None
@@ -178,6 +179,7 @@ class Supervisor:
                             8, log="health.log") == 0
 
     def start_vm(self):
+        self.stop_resource_monitor()
         self.check()
         for name in ("qga.sock", "qmp.sock"):
             (self.sockets / name).unlink(missing_ok=True)
@@ -190,10 +192,32 @@ class Supervisor:
                                          stdout=log, stderr=log, start_new_session=True)
         stat = Path(f"/proc/{self.qemu.pid}/stat").read_text().rsplit(")", 1)[1].split()
         atomic_json(self.directory / "supervisor-state.json",
-                    {"supervisorPid": os.getpid(), "qemuPid": self.qemu.pid,
+                     {"supervisorPid": os.getpid(), "qemuPid": self.qemu.pid,
                      "qemuStartTime": stat[19], "recovery": self.recovery,
-                     "orphanMarker": str(Path(self.args.cache_dir) / "locks/qemu-orphan")})
+                     "orphanMarker": self.args.orphan_marker})
         self.note(f"QEMU started pid={self.qemu.pid}; recovery={self.recovery}")
+        command = [sys.executable, str(ROOT / "tools/host-resources.py"),
+                   "--output", str(self.directory / "host-resources.jsonl"),
+                   "--interval", "2", "--append",
+                   "--exit-with-pid", str(os.getpid()),
+                   "--pid", f"supervisor={os.getpid()}",
+                   "--pid", f"qemu={self.qemu.pid}"]
+        with (self.directory / "resource-monitor.log").open("ab") as log:
+            self.resource_monitor = subprocess.Popen(
+                command, stdin=subprocess.DEVNULL, stdout=log, stderr=log,
+                start_new_session=True)
+
+    def stop_resource_monitor(self):
+        if self.resource_monitor is None:
+            return
+        if self.resource_monitor.poll() is None:
+            kill_group(self.resource_monitor, signal.SIGTERM)
+            try:
+                self.resource_monitor.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                kill_group(self.resource_monitor, signal.SIGKILL)
+                self.resource_monitor.wait(timeout=3)
+        self.resource_monitor = None
 
     def ready(self, seconds):
         end = min(self.deadline, time.monotonic() + seconds)
@@ -290,6 +314,7 @@ class Supervisor:
 
     def stop_vm(self, graceful=False):
         if self.qemu is None or self.qemu.poll() is not None:
+            self.stop_resource_monitor()
             return True
         self.note("stopping QEMU")
         clean = False
@@ -318,11 +343,12 @@ class Supervisor:
                 pass
         if self.qemu.poll() is None:
             stat = Path(f"/proc/{self.qemu.pid}/stat").read_text().rsplit(")", 1)[1].split()
-            marker = Path(self.args.cache_dir) / "locks/qemu-orphan"
+            marker = Path(self.args.orphan_marker)
             marker.write_text(f"{self.qemu.pid} {stat[19]}\n")
             self.note("QEMU survived SIGKILL; blocking further runs")
             raise Failure("qemu-survived-kill")
         self.note(f"QEMU reaped; exit={self.qemu.returncode}; graceful={clean}")
+        self.stop_resource_monitor()
         return clean
 
     def stop_tunnel(self):
@@ -691,6 +717,7 @@ class Supervisor:
             except (Failure, OSError) as error:
                 self.note(str(error))
                 failure = failure or Failure("shutdown")
+            self.stop_resource_monitor()
             if self.qemu is None or self.qemu.poll() is not None:
                 shutil.rmtree(self.sockets)
             atomic_json(self.directory / "collection.json", self.collection)
@@ -741,6 +768,7 @@ def main():
     parser.add_argument("--port", required=True)
     parser.add_argument("--key", required=True)
     parser.add_argument("--cache-dir", required=True)
+    parser.add_argument("--orphan-marker", required=True)
     parser.add_argument("--web-port", type=int, default=0)
     parser.add_argument("--state-dir", default="")
     parser.add_argument("--soak-duration")

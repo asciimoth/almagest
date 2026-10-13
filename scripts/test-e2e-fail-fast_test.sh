@@ -10,6 +10,21 @@ cat >"$test_root/bin/just" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 case "${1:-}" in
+	serial-first)
+		printf 'first-start\n' >>"$TEST_E2E_SUPERVISOR_STATE/order"
+		sleep 0.05
+		printf 'first-stop\n' >>"$TEST_E2E_SUPERVISOR_STATE/order"
+		;;
+	serial-second)
+		printf 'second-start\n' >>"$TEST_E2E_SUPERVISOR_STATE/order"
+		printf 'second-stop\n' >>"$TEST_E2E_SUPERVISOR_STATE/order"
+		;;
+	serial-failing)
+		exit 6
+		;;
+	must-not-run)
+		touch "$TEST_E2E_SUPERVISOR_STATE/unexpected-run"
+		;;
 	failing)
 		while [[ ! -e "$TEST_E2E_SUPERVISOR_STATE/slow-started" ]]; do sleep 0.01; done
 		exit 7
@@ -33,8 +48,38 @@ esac
 EOF
 chmod +x "$test_root/bin/just"
 
+PATH="$test_root/bin:$PATH" TEST_E2E_SUPERVISOR_STATE="$test_root" TEST_RESOURCE_ROOT="$test_root/resources" \
+	"$repo_root/scripts/test-e2e-fail-fast.sh" serial-first serial-second \
+	>"$test_root/serial-output" 2>&1
+if [[ "$(<"$test_root/order")" != $'first-start\nfirst-stop\nsecond-start\nsecond-stop' ]]; then
+	echo "serial test types overlapped or ran out of order" >&2
+	cat "$test_root/order" >&2
+	exit 1
+fi
+
 status=0
-PATH="$test_root/bin:$PATH" TEST_E2E_SUPERVISOR_STATE="$test_root" \
+PATH="$test_root/bin:$PATH" TEST_E2E_SUPERVISOR_STATE="$test_root" TEST_RESOURCE_ROOT="$test_root/resources" \
+	"$repo_root/scripts/test-e2e-fail-fast.sh" serial-failing must-not-run \
+	>"$test_root/serial-failure-output" 2>&1 || status=$?
+if ((status != 6)) || [[ -e "$test_root/unexpected-run" ]]; then
+	echo "serial supervisor did not stop after the first failure" >&2
+	cat "$test_root/serial-failure-output" >&2
+	exit 1
+fi
+
+status=0
+PATH="$test_root/bin:$PATH" TEST_E2E_SUPERVISOR_STATE="$test_root" TEST_RESOURCE_ROOT="$test_root/resources" \
+	TEST_TYPES_PARALLEL=invalid \
+	"$repo_root/scripts/test-e2e-fail-fast.sh" serial-first \
+	>"$test_root/invalid-output" 2>&1 || status=$?
+if ((status != 2)); then
+	echo "invalid TEST_TYPES_PARALLEL value was accepted" >&2
+	exit 1
+fi
+
+status=0
+PATH="$test_root/bin:$PATH" TEST_E2E_SUPERVISOR_STATE="$test_root" TEST_RESOURCE_ROOT="$test_root/resources" \
+	TEST_TYPES_PARALLEL=1 \
 	"$repo_root/scripts/test-e2e-fail-fast.sh" failing slow \
 	>"$test_root/output" 2>&1 || status=$?
 if ((status != 7)); then
@@ -58,8 +103,8 @@ grep -F 'failing failed; interrupting concurrent tests' "$test_root/output" >/de
 }
 
 status=0
-PATH="$test_root/bin:$PATH" TEST_E2E_SUPERVISOR_STATE="$test_root" \
-	E2E_SIBLING_CLEANUP_TIMEOUT=1 timeout 5 \
+PATH="$test_root/bin:$PATH" TEST_E2E_SUPERVISOR_STATE="$test_root" TEST_RESOURCE_ROOT="$test_root/resources" \
+	TEST_TYPES_PARALLEL=1 E2E_SIBLING_CLEANUP_TIMEOUT=1 timeout 5 \
 	"$repo_root/scripts/test-e2e-fail-fast.sh" failing-stuck stuck \
 	>"$test_root/stuck-output" 2>&1 || status=$?
 if ((status != 9)); then
@@ -73,4 +118,4 @@ grep -F 'cleanup timed out for stuck; killing its process group' "$test_root/stu
 	exit 1
 }
 
-echo "e2e parallel fail-fast supervisor tests passed"
+echo "test type scheduling supervisor tests passed"

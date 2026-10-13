@@ -237,6 +237,7 @@ require_vm_space "$winvm_cache_dir" 10 test
         supervisor = (ROOT.parents[1] / 'scripts/test-e2e-fail-fast.sh').read_text()
         flow = (ROOT / 'flow-run.sh').read_text()
         runner = (ROOT / 'run.sh').read_text()
+        vm_supervisor = (ROOT / 'supervise.py').read_text()
         self.assertIn('./dev/winvm/run.sh test\n  ./dev/winvm/flow-run.sh', recipe)
         self.assertIn('filter-dump,id=tunnel-capture', flow)
         self.assertIn('filter-dump,id=underlay-capture', flow)
@@ -255,15 +256,52 @@ require_vm_space "$winvm_cache_dir" 10 test
         self.assertIn("progress 'collecting observations and validating packet captures'", flow)
         self.assertIn('check *selectors: tidy typos fmt lint shellcheck vet # vulncheck', recipe)
         self.assertIn('just test-total {{quote(selectors)}}', recipe)
-        self.assertIn('test-total-all: test-cycles-harness test-winvm-harness test test-e2e', recipe)
+        self.assertIn('test-total-all: test-cycles-harness test-winvm-harness', recipe)
+        self.assertIn('./scripts/test-e2e-fail-fast.sh test test-e2e-docker test-winvm-enabled', recipe)
         self.assertIn('test-winvm-harness:\n  @if [[ "${RUN_WINVM_TESTS:-0}" == "1" ]]', recipe)
         self.assertIn('lint-winvm:\n  @if [[ "${RUN_WINVM_TESTS:-0}" == "1" ]]', recipe)
         self.assertIn("shellcheck:\n  @if [[ \"${RUN_WINVM_TESTS:-0}\" == \"1\" ]]", recipe)
         self.assertIn("':!dev/winvm/**'", recipe)
         self.assertIn('test-e2e:\n  ./scripts/test-e2e-fail-fast.sh', recipe)
-        self.assertIn('docker_recipe="${1:-test-e2e-docker}"', supervisor)
-        self.assertIn('windows_recipe="${2:-test-winvm-enabled}"', supervisor)
+        self.assertIn('parallel_types="${TEST_TYPES_PARALLEL:-0}"', supervisor)
+        self.assertIn('recipes=(test-e2e-docker test-winvm-enabled)', supervisor)
+        self.assertIn('--output "$run_dir/host-resources.jsonl"', flow)
+        self.assertIn('tools/host-resources.py', vm_supervisor)
         self.assertIn('RUN_WINVM_TESTS', recipe)
+
+    def test_vm_host_lock_is_independent_of_cache_path(self):
+        runtime = self.path / 'runtime'
+        runtime.mkdir()
+        self.env['XDG_RUNTIME_DIR'] = str(runtime)
+        first = self.shell('winvm_host_lock_path').stdout.strip()
+        first_marker = self.shell('qemu_orphan_marker').stdout.strip()
+        self.env['WINVM_CACHE_DIR'] = str(self.path / 'other-cache')
+        second = self.shell('winvm_host_lock_path').stdout.strip()
+        second_marker = self.shell('qemu_orphan_marker').stdout.strip()
+        self.assertEqual(first, second)
+        self.assertEqual(first_marker, second_marker)
+        self.assertEqual(first, str(runtime / 'almagest-winvm-host.lock'))
+        for script in ('run.sh', 'flow-run.sh', 'build-image.sh'):
+            self.assertIn('acquire_vm_host_lock', (ROOT / script).read_text())
+
+        holder = subprocess.Popen(
+            ['bash', '-c', 'source "$1/common.sh"; acquire_vm_host_lock; echo locked; read -r _',
+             'test', str(ROOT)], env=self.env, text=True, stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        try:
+            self.assertEqual(holder.stdout.readline().strip(), 'locked')
+            other_env = dict(self.env, WINVM_CACHE_DIR=str(self.path / 'third-cache'))
+            contender = subprocess.run(
+                ['timeout', '0.2', 'bash', '-c',
+                 'source "$1/common.sh"; acquire_vm_host_lock', 'test', str(ROOT)],
+                env=other_env, capture_output=True, text=True, check=False)
+            self.assertEqual(contender.returncode, 124, contender.stderr)
+        finally:
+            holder.terminate()
+            holder.wait(timeout=3)
+            holder.stdin.close()
+            holder.stdout.close()
+            holder.stderr.close()
 
     def test_regular_manifest_covers_windows_go_and_integration_tests(self):
         manifest = json.loads((ROOT / 'test-suites.json').read_text())
