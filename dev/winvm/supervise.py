@@ -652,7 +652,7 @@ class Supervisor:
         if self.command(validation, 15, log="validation.log"):
             raise Failure("artifact-validation")
         if self.args.mode == "data-path":
-            analysis = ["python3", str(ROOT.parent / "data-path/analyze.py"), "windows",
+            analysis = ["python3", str(ROOT / "tools/data_path_analysis.py"), "windows",
                         str(self.directory / "guest-artifacts.tar"), "--output",
                         str(self.directory / "analysis-windows.json")]
             if self.command(analysis, 30, log="validation.log"):

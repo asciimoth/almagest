@@ -28,6 +28,13 @@ func nativeEnvironment(t *testing.T) {
 	}
 }
 
+func nativeCgroupPath() string {
+	if path := os.Getenv("ALMAGEST_PROFILE_CGROUP"); path != "" {
+		return path
+	}
+	return "/sys/fs/cgroup"
+}
+
 func launchNative(t *testing.T, role Role, change func(*exec.Cmd)) ([]byte, error) {
 	t.Helper()
 	nativeEnvironment(t)
@@ -58,7 +65,7 @@ func launchNative(t *testing.T, role Role, change func(*exec.Cmd)) ([]byte, erro
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	in := Inputs{Launcher: open("/qualification/launcher"), Control: child,
-		Executable: open("/qualification/probe"), Directory: stateFile, Cgroup: open("/sys/fs/cgroup")}
+		Executable: open("/qualification/probe"), Directory: stateFile, Cgroup: open(nativeCgroupPath())}
 	lane := func() *os.File {
 		fds, err := unix.Socketpair(unix.AF_UNIX, unix.SOCK_STREAM|unix.SOCK_CLOEXEC, 0)
 		if err != nil {

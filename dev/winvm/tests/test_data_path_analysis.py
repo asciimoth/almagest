@@ -9,7 +9,7 @@ import tempfile
 import unittest
 
 
-MODULE_PATH = Path(__file__).with_name("analyze.py")
+MODULE_PATH = Path(__file__).resolve().parents[1] / "tools" / "data_path_analysis.py"
 SPEC = importlib.util.spec_from_file_location("data_path_analyze", MODULE_PATH)
 ANALYZE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(ANALYZE)

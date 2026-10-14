@@ -1,8 +1,8 @@
 # Isolated role supervision and host recovery
 
-Checkpoint 26 adds `bin/internal/isolation/supervision`. The package coordinates
+Checkpoint 26 is implemented in `bin/internal/isolation/supervision`. The package coordinates
 one already-started isolated process set and stores the broker's minimum trusted
-host-effect records. It does not enable production isolated startup. The direct
+host-effect records. The packaged Linux isolated profile uses it. The direct
 daemon does not import it, create children, or open a recovery journal.
 
 ## Process ownership and readiness
@@ -169,5 +169,5 @@ That platform qualification remains part of checkpoints 30 through 32.
   revocation. An absent object is resolved. A still-present object remains
   visible for operator inspection because a generic reconciler cannot safely
   delete it from a reusable name or index.
-- Complete-daemon process and recovery qualification remains open for the later
-  Docker and Windows VM complete-composition gates.
+- Complete-daemon process and recovery qualification is complete for packaged
+  Linux amd64. The Windows complete-composition gate remains open.

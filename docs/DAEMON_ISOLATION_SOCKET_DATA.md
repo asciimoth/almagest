@@ -1,14 +1,13 @@
 # Socket control and data relays
 
-Checkpoint 16 adds socket ownership to `bin/internal/isolation/network`, a
+Checkpoint 16 implements socket ownership in `bin/internal/isolation/network`, a
 bounded data lane in `bin/internal/isolation/relay`, and runtime adapters in
 `bin/internal/isolation/runtime`. These components are not imported by the
 direct daemon. The packaged Linux isolated composition uses them.
 
-The implementation is available for component integration. Checkpoint acceptance
-depends on the complete functional method/platform matrix. Performance is
-accepted and is not a gate. The tests below are not a complete restricted-role
-or complete-daemon qualification.
+The complete Linux profile qualification and production E2E suite cover these
+components in the restricted runtime. Performance is accepted and is not a
+release gate. Windows production integration is not complete.
 
 ## Ownership and API
 
@@ -138,7 +137,7 @@ The Linux factory must attach the device before `os.NewFile` registers it with
 Go's poller. MTU reads use the verified live interface identity, because the
 native TUN name cache can be stale after a sysnet rename.
 
-## Verification and remaining qualification
+## Verification
 
 Run checks only in Docker or the disposable Windows VM. Linux native tests
 require `ALMAGEST_ISOLATION_NATIVE_TEST=1`, `CAP_NET_ADMIN`, `/dev/net/tun`, and a
@@ -184,11 +183,11 @@ hot resource. The test passed 100 consecutive runs with the race detector.
 This closes the component-level send-fairness assertion.
 
 The portable broker/client tests use separate in-process stream endpoints.
-Checkpoint 14 covers private endpoint authentication; final cross-process
-restrictions, all supported multicast/native option combinations, complete
-userspace-stack parity, and functional fairness still need the platform
-qualification runs. One-record credits and JSON control costs are accepted as
-the current baseline and can be optimized later.
+The production Linux E2E suite adds private endpoint authentication,
+cross-process restrictions, native options, userspace-stack parity, and
+functional behavior. One-record credits and JSON control costs are accepted as
+the current baseline and can be optimized later. Windows production
+qualification remains incomplete.
 
 On Linux amd64, Go 1.26.6, AMD Ryzen 5 5600H, five-second fuzz runs completed
 435,319 raw-frame executions, 358,438 structured-metadata executions, and

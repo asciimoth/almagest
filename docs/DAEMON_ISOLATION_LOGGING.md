@@ -99,7 +99,7 @@ just test-total winvm:m21::cross-process-logging
 The Windows case runs the portable diagnostics and protocol suites, including
 all fuzz seed cases. It does not change host networking or require elevation.
 Complete-daemon integration, sandbox bootstrap, and protected operator-sink
-setup remain in later checkpoints. Logging performance is accepted.
+setup are complete for packaged Linux amd64. Logging performance is accepted.
 
 ### Checkpoint 21 results, 2026-10-09
 

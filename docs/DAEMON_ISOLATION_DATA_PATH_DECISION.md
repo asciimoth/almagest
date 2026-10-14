@@ -1,18 +1,18 @@
 # Daemon isolation data-path security decision
 
-Status: checkpoint 13 design selection and contract freeze complete. Select
-broker-owned byte/packet relays for every Linux and Windows native resource.
-The [version 1 data-channel contract](DAEMON_ISOLATION_DATA_CHANNEL_CONTRACT.md)
-is frozen for implementation in checkpoints 14 through 18. Direct native handle
-transfer and shared memory are excluded from version 1. The checkpoint 9 control
-contract remains version 1. The direct daemon continues to require
-`--no-isolation` at this checkpoint, until the production isolation gates pass.
+Status: implemented for the packaged Linux amd64 isolated profile. Version 1
+uses broker-owned byte and packet relays for every native resource. The
+[version 1 data-channel contract](DAEMON_ISOLATION_DATA_CHANNEL_CONTRACT.md) is
+the production contract. Direct native handle transfer and shared memory remain
+excluded. Windows keeps direct mode until its complete isolated profile passes
+the production gates.
 
 On 2026-10-09 the maintainer explicitly requested a conservative choice for
 every open decision and a frozen design so implementation can continue. Current
 performance is accepted under the
 [performance policy](DAEMON_ISOLATION_PERFORMANCE_BUDGETS.md). Functional and
-hostile-client qualification remain mandatory before production enablement.
+hostile-client qualification passed for packaged Linux amd64 and remains
+mandatory for a future Windows profile.
 
 ## Evidence used
 
@@ -22,9 +22,8 @@ hostile-client qualification remain mandatory before production enablement.
   costs that are accepted as diagnostic baselines. The complete workload matrix
   and original/current direct comparison are optional future measurements.
   TCP listener transfer/accept is not a measured checkpoint 12 workload.
-- **L13:** `just data-path-security-experiment` runs
-  [`dev/data-path/security.c`](../dev/data-path/security.c) through the existing
-  checkpoint 10 launcher in disposable Docker network and mount namespaces.
+- **L13:** The removed checkpoint-13 harness ran a hostile native probe through
+  the checkpoint-10 launcher in disposable Docker network and mount namespaces.
   It uses the same UID/GID, PID namespace, capability drop, Landlock, and syscall
   filter, then adds the execution-denial filter. This deliberately hostile C
   process tests descriptor authority independently of cooperative Go wrappers.
@@ -41,24 +40,25 @@ hostile-client qualification remain mandatory before production enablement.
   report rejection of R-to-N Winsock duplication, access to N's token, native
   network connection, Wintun open, and unlisted handles. These checks do not
   prove safe operation or revocation of an already transferred socket.
-- **S13:** Source review covers `dev/linux-isolation/launcher.c`,
-  `bin/cmd/linux-isolation-tun-broker/main_linux.go`, and
-  `bin/cmd/windows-isolation-probe/main_windows.go`. All are development
-  experiments. Their cooperative timing protocols are not production contracts.
+- **S13:** Source review covered the removed Linux prototype launcher and TUN
+  broker, plus `bin/cmd/windows-isolation-probe/main_windows.go`. Their
+  cooperative timing protocols were development evidence, not production
+  contracts.
 
 ## Per-platform and per-resource decision
 
-The relay selections below are final for version 1. Their implementation and
-qualification are later checkpoints. Native userspace-only networks and TUNs
-remain in R and are outside this matrix.
+The relay selections below are final for version 1. Linux implementation and
+qualification are complete. Windows implementation and production qualification
+remain incomplete. Native userspace-only networks and TUNs remain in R and are
+outside this matrix.
 
-| OS/resource | Direct-handle decision | Frozen selection and remaining qualification | Evidence |
+| OS/resource | Direct-handle decision | Version 1 selection and qualification notes | Evidence |
 | --- | --- | --- | --- |
-| Linux TUN | Reject current grant: device survives N closing its copy; device-wide teardown under hostile I/O is unqualified. | Bounded packet relay; resolve MTU/queue and revocation gaps. | F12/P12, L13, S13 |
-| Linux TCP connection | Reject: R can duplicate and retain the socket after broker close. | Ordered byte relay; prove stream order, half-close, deadlines, cancellation, and bounded close. | F12/P12, L13 |
-| Linux TCP listener | Reject current profile: accept is denied, while the inherited listener still retains the port. | N accepts; relay accepted streams with bounded pending accepts. Add listener measurements and hostile accept/close races. | L13, S13; F12/P12 has no listener result |
-| Linux connected UDP | Reject: send-to overrides the configured peer even when reconnect is denied. | Packet relay; N validates every destination and preserves packet metadata. Complete semantics remain open. | F12/P12, L13 |
-| Linux unconnected UDP | Reject: R retains send-to authority after N closes its copy. | Packet relay with per-send validation and bounded queues. | F12/P12, L13 |
+| Linux TUN | Reject current grant: device survives N closing its copy; device-wide teardown under hostile I/O is unqualified. | Bounded packet relay, implemented and qualified. | F12/P12, L13, S13 |
+| Linux TCP connection | Reject: R can duplicate and retain the socket after broker close. | Ordered byte relay with stream order, half-close, deadlines, cancellation, and bounded close; implemented and qualified. | F12/P12, L13 |
+| Linux TCP listener | Reject current profile: accept is denied, while the inherited listener still retains the port. | N accepts and relays bounded accepted streams; implemented and qualified. | L13, S13; F12/P12 has no listener result |
+| Linux connected UDP | Reject: send-to overrides the configured peer even when reconnect is denied. | Packet relay with destination validation and packet metadata; implemented and qualified. | F12/P12, L13 |
+| Linux unconnected UDP | Reject: R retains send-to authority after N closes its copy. | Packet relay with per-send validation and bounded queues; implemented and qualified. | F12/P12, L13 |
 | Windows Wintun | Reject: current API has no supported transferable session/ring contract. | N-owned Wintun with packet relay. Caller-profile Wintun remains unavailable without native launch authority. | W11/W12, F12/P12, S13 |
 | Windows TCP connection | Reject version 1 transfer: authority and lifetime are not qualified. | Ordered byte relay; qualify stream semantics and hostile retention/close. | W11/W12, F12/P12, S13 |
 | Windows TCP listener | Reject: transfer, accept, and revocation are unqualified. | N accepts; relay accepted streams. Add listener measurements and hostile tests. | W11/W12, S13; F12/P12 has no listener result |
@@ -181,7 +181,7 @@ runtime restart. Do not advertise seamless per-resource close under that
 contract. No such production termination contract is selected or qualified
 here. The non-breakaway job/PID containment is only part of that proof.
 
-## Reproduction and remaining gate
+## Archived reproduction record
 
 The accepted L13 run on 2026-10-09 is retained at
 `artifacts/data-path/security-20261009T104032Z-236290/`. It ran on Linux 7.2.8
@@ -191,12 +191,9 @@ hash. All 17 required observations passed. No host network namespace was used.
 An initial build failed on an unused variable; the corrected audit verifies
 delivery to the configured UDP peer as well as the alternate destination.
 
-Run `just data-path-security-experiment` to repeat L13. Its evidence validator
-rejects missing, false, nonboolean, or unexpected observations. The focused
-project check is
-`just check python:scripts.tests.test_data_path_security.DataPathSecurityTests`.
-Use Docker for this check and the experiment. Windows results above are retained
-VM evidence; this change does not claim a new Windows hostile-handle run.
+The standalone probe and evidence validator were removed after the relay
+decision was implemented. Windows results above remain retained VM evidence;
+this cleanup does not claim a new Windows hostile-handle run.
 
 The focused `just check` passed in Docker on 2026-10-09: all four evidence
 validator tests, formatting, spelling, secret scanning, shell checks, Linux
@@ -209,10 +206,8 @@ The retained W11/W12 archive also passed its existing evidence validator again
 in Docker. No new Windows VM execution or full-project runtime suite was run;
 the change affects development experiments and design documents only.
 
-Checkpoints 14 through 18 can proceed against the frozen relay contract. Before
-production enablement, pass the native functional and hostile-runtime gates in
-checkpoint 30. Checkpoint 31 records the accepted current performance state and
-cannot block release. Repeat this security review after material changes to restrictions,
-OS/provider, Go runtime, Wintun, native backend, IPC framing, memory ownership,
-or TUN queueing. Both production OS profiles remain unqualified until those
-gates pass; this does not reopen the version 1 design choice.
+Checkpoints 14 through 18 implemented the frozen relay contract, and the Linux
+profile passed the checkpoint-30 production gate. Repeat the security review
+after material changes to restrictions, OS/provider, Go runtime, Wintun, native
+backend, IPC framing, memory ownership, or TUN queueing. Windows remains
+unreleased; this does not reopen the version 1 design choice.

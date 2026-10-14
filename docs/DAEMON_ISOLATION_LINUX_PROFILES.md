@@ -1,200 +1,140 @@
 # Linux role restriction profiles
 
-Checkpoint 24 implements Linux amd64 restrictions. Checkpoint 32 connects and
-packages them. The shipping Linux amd64 daemon uses isolation by default;
-`--no-isolation` selects direct mode. See the
-[implementation plan](DAEMON_ISOLATION_IMPLEMENTATION_PLAN.md) and
-[qualification contract](DAEMON_ISOLATION_QUALIFICATION.md).
+Status: implemented and enabled by default for packaged Linux amd64 builds.
+`--no-isolation` selects the supported direct composition. Unsupported systems
+and incomplete installations fail with explicit direct-mode guidance; they do
+not fall back to a weaker profile.
+
+See the [architecture](DAEMON_ISOLATION_ARCHITECTURE.md),
+[qualification contract](DAEMON_ISOLATION_QUALIFICATION.md), and
+[implementation plan](DAEMON_ISOLATION_IMPLEMENTATION_PLAN.md).
 
 ## Trust boundary
 
-R contains the engine and node code and remains fully restricted. N runs the
-trusted native backend with its launch identity, namespaces, filesystem view,
-and available authority. This permits native DNS providers, backend-selected
-utilities, BPF, process inspection, and existing-socket marking. N exposes no
-generic host-operation API and executes no node code or application callbacks.
-C and node-command H keep their separate restrictions.
+The production composition has these roles:
 
-The former restricted-N launcher path has been removed. The `network` role
-identifier names a cgroup, not a valid launcher or Seal role. No separate DNS
-or process helper, upstream API redesign, or reduced backend feature set is
-required. Preparation never grants authority missing at launch.
+- N is the trusted, node-free native network broker.
+- R contains the engine and node code and runs with the full restricted profile.
+- C is the optional fixed-target config writer.
+- H is the optional fixed-executable command helper.
 
-## Trusted backend preparation
+N keeps only the launch authority required by the selected native backend. It
+can use native DNS providers, backend utilities, BPF, process inspection, and
+existing-socket marking. It exposes bounded typed operations instead of a
+generic host-operation API. R cannot create native sockets or host TUN devices.
 
-`linuxprofile.PrepareBackend` prepares the node-free bootstrap process in
-place, after restricted children start and before it accepts their requests.
-It does not exec, enter namespaces, change credentials, or install R's filters.
+The `network` role identifier names N's cgroup. It is not a valid restricted
+launcher or `Seal` role. R, C, and H have separate identities, cgroups,
+filesystems, policies, and channels.
 
-It validates held descriptors for a private state directory owned by N and a
-cgroup v2 that contains N. Memory, swap, task, and CPU limits must meet finite
-ceilings. It sets hard core, descriptor, and file-size limits, and changes cwd
-through the state descriptor. It preserves MEMLOCK for BPF loading. The Go
-limit setter also updates the descriptor-limit state used by os/exec.
-Preparation errors are fatal: a hard limit may already have changed.
+## Trusted bootstrap
 
-`ProvisionCgroups` creates fixed `network`, `runtime`, and optional `writer`
-and `command` domains below an empty delegated cgroup-v2 instance. It requires
-CPU, memory, and task controllers and sufficient aggregate limits. Each role
-has finite limits and group-OOM handling. CPU weights favor N over R/C/H.
-Restricted children enter their held cgroups with `CLONE_INTO_CGROUP`.
-Bootstrap enters the network cgroup after child launch, then prepares N.
-Cleanup removes only empty cgroups that still match the held device/inode.
+`linuxprofile.ProvisionCgroups` creates fixed `network`, `runtime`, and optional
+`writer` and `command` domains below an empty delegated cgroup-v2 instance. It
+requires CPU, memory, and task controllers and finite aggregate limits.
+Restricted children enter their cgroups with `CLONE_INTO_CGROUP`, before their
+first instruction.
 
-Separate identities remain deployment inputs. Persistent storage quotas are
-outside the requested release scope. A per-file size limit is not a disk quota.
+After the restricted children start, `linuxprofile.PrepareBackend` moves N into
+its bounded cgroup and prepares it in place. It validates held state and cgroup
+descriptors, applies hard resource limits, and changes the working directory
+through the held descriptor. It does not enter R's namespaces or install R's
+filters. An error is fatal because a hard limit can already have changed.
 
-## Restricted launcher: R, C, and H only
+Bootstrap loads protected authority, opens and validates fixed inputs, recovers
+the native-resource journal, binds role channels, and publishes admin listeners
+only after restriction proofs and application readiness succeed.
 
-The launcher is static Linux amd64 code. Never install it setuid or with file
-capabilities. It uses only caller authority. Unsupported rootless containment
-fails with explicit `--no-isolation` guidance. The tested build uses static
-Go 1.26 binaries; other architectures and build modes need separate evidence.
+## Native restricted launcher
 
-Trusted bootstrap supplies these held descriptors:
+[`bin/native/linux-role/launcher.c`](../bin/native/linux-role/launcher.c) is a
+small static Linux amd64 executable. It is never installed setuid and has no
+file capabilities. It uses only the authority of trusted bootstrap.
+
+Bootstrap supplies held descriptors instead of path strings:
 
 | Descriptor | Object |
 | --- | --- |
 | 3 | Connected Unix control stream |
-| 4 | Root-owned static role executable, not writable by others |
-| 5 | Private role directory owned by its selected UID/GID |
-| 6 | Already limited cgroup v2 directory |
-| 7 | H's fixed static command, when used |
+| 4 | Root-owned static role executable |
+| 5 | Private role directory owned by the selected role identity |
+| 6 | Already limited cgroup-v2 directory |
+| 7 | H's fixed static command, when enabled |
 | 8 | Native launcher executable |
-| 9 | Optional R data stream |
-| 10 | Optional diagnostic stream |
-| 11 | Optional R admin stream |
+| 9-14 | Optional fixed data, diagnostic, admin, config, command, and callback lanes |
 
-Bootstrap validates paths before opening objects. The launcher checks types,
-ownership, permissions, ELF headers, channels, limits, and cgroup membership
-again. It rejects dynamic binaries, root identities, unknown roles, and
-nonzero capabilities. The reserved capability field remains zero in the v1
-argument contract. There is no arbitrary environment or executable-path field.
-
-The Go adapter executes the held launcher through `/proc/self/fd/8`, with an
-empty environment and fixed cwd. Cgroup placement occurs before its first
-instruction, with no retry outside the cgroup. The launcher validates output
-streams, installs an EOF stdin pipe, and closes unrelated descriptors,
-including those above the new limit. Bootstrap closes its child-channel copies.
-
-`linuxprofile.Start` owns the launch command and its single exit waiter. Its
-`Peer` method selects the wrapper's one namespace child within a bounded wait
-and pins its lifetime with a pidfd. The connected transport must still check
-message credentials. A procfs PID is
-not proof that restrictions are installed. `Process.Supervise` derives the role
-from the validated launch plan and permits only one supervisor. It requires
-both wrapper and namespace-child exit before a clean stop. A native wait
-failure reports role loss without claiming exit. The caller still
-owns input files and must close its child-channel copies after launch.
-`Start` forwards stdout and stderr through parent-owned pipes even when the
-selected output sink is a file or terminal. A restricted role never inherits
-the sink's host descriptor. Startup rollback can use `WaitStopped` to require
-both wrapper and pinned namespace-child exit without treating nonzero exit
-status alone as uncertain cleanup.
+The launcher independently verifies object types, ownership, permissions, ELF
+headers, channel types, cgroup membership, and resource ceilings. It rejects
+dynamic executables, root role identities, unknown roles, nonzero capabilities,
+unexpected descriptors, and arbitrary environment or path input.
 
 Restriction order:
 
-1. Verify bounded cgroup membership and create private PID, mount, network,
-   IPC, and UTS namespaces.
-2. Make mount propagation private. Build a bounded tmpfs root with the fixed
-   executable, held role storage at `/state`, and private `/tmp`. Storage is
-   nodev, nosuid, and noexec; nested mounts and the old root are not imported.
-   There is no host proc, sys, run, etc, or device view.
-3. Apply hard resource limits. Clear supplementary groups, install nonroot
-   UID/GID, drop all capabilities including bounding and ambient sets, lock
-   securebits, and set no-new-privileges.
-4. Require Landlock ABI 3 or newer. Allow execution only from fixed executable
-   files and writes only in approved private directories.
-5. Install the seccomp allowlist before Go starts. Allow the exact Go thread
-   clone flags; return ENOSYS for clone3. Deny socket creation, namespace and
-   mount changes, tracing, process-memory access, descriptor theft, BPF, perf,
-   keyrings, io_uring, and unapproved device ioctls.
-6. The trusted role entry calls `Seal` before application input or construction.
-   It resets dumpability and removes exec across existing Go threads with
-   TSYNC. Future threads inherit restrictions. H retains only the execution
-   ability needed by its fixed command dispatcher.
+1. Create private PID, mount, network, IPC, and UTS namespaces.
+2. Build a bounded tmpfs root, attach the held role directory, copy only the
+   fixed static executables, pivot into the new root, and detach the host root.
+3. Apply hard resource limits and an empty stdin. Close setup descriptors.
+4. Drop supplementary groups, UID/GID, all capability sets, and the capability
+   bounding set. Lock securebits, disable dumpability, and set
+   `no_new_privs`.
+5. Require Landlock ABI 3 or newer. Permit writes only in the private state and
+   temporary directories.
+6. Install the Linux amd64 seccomp allowlist before Go starts.
+7. The Go role entry applies the final all-thread TSYNC filter before it accepts
+   application input. H keeps only the fixed-command execution operation.
 
-Trusted package initialization must not read regular config, snapshots, or
-runtime-controlled environment before Seal. Seal alone is not a sandbox.
-The waiting native parent closes channels and drops all capabilities. It has
-no restart or later launch operation.
+The waiting native wrapper has no application channels or writable authority.
+It binds the namespace child's lifetime, waits for that child, and does not
+provide restart or later-launch operations.
 
-R can use private storage, bbolt, timers, garbage collection, and inherited
-streams. C can replace only its provisioned config target. H can execute its
-fixed static command under inherited restrictions and bounded command policy.
-Dynamic commands or additional resources require a separately reviewed profile.
+## Current test coverage
 
-## Test coverage and limits
+Linux isolation uses the normal Docker E2E suite. Every isolation-compatible
+case starts the packaged production composition and requires an active
+isolation status before it runs application assertions.
 
-| Test group | Evidence provided |
-| --- | --- |
-| Native R/C/H tests | All-thread restrictions, later threads, capability removal with and without inherited network rights, namespaces, syscall/path denials, limits, bbolt, config replacement, fixed commands |
-| Rejection tests | Invalid roles including network, malformed descriptors/ELF/arguments, missing setup rights or Landlock, rootless launch, TSYNC failure, x32 rejection |
-| PrepareBackend | Eight locked threads retain identity, capabilities, namespaces, and filter state; hard limits, cwd, native sockets, and utility execution; ordinary-user launch |
-| Cgroup provisioner | Separate bounded role domains and safe cleanup in a disposable private cgroup namespace |
-| TrustedSystem | Equal-authority direct/prepared comparison: direct DNS, OutDNS, regular/default TUN, routes, bypass marks, MTU rebuild, owner matching, cleanup |
-| TrustedComposition | Fully restricted R with real N: TCP/UDP, owner matching, TUN, bounded OutDNS and reverse application-DNS relays, session-loss cleanup |
-| Production entry | Actual `almagestd` to minimal N re-exec, protected input loading, separate role cgroups, R application readiness, N-owned admin status, clean stop, and service restart |
-| Deployment storage | Fresh and repeated preparation, legacy migration, recovery, rollback protection, ownership, modes, and fixed protected defaults |
-| Restricted C composition | Real static C entry point, post-launch all-thread seal, bounded readiness exchange, control-only config transfer, fixed-target read/replace, and peer-loss exit |
-| Upstream DNS matrix | All ten sysnet-linux v0.10.1 provider cases, including fallback and dynamic provider behavior |
-| p-mark guest | Released p-mark v0.5.0 guest cases for lifecycle, sockets, exact kernel policy, 64 immediate-exec probes, and churn |
-| Race and fuzz tests | Profile plans, native arguments, backend cgroup values, DNS packets and application responses, plus broker/runtime/transport suites |
+The focused `linux_isolation_profile` case adds native launcher checks for:
 
-The DNS matrix and p-mark guest run upstream integration fixtures. The
-production-entry case separately runs the complete installed composition with
-its final per-role cgroups. These groups provide complementary evidence.
+- R, C, and H identity, namespace, capability, Landlock, and seccomp rules;
+- all-thread final sealing and later Go threads;
+- malformed arguments, descriptors, role selection, static ELF input, and
+  resource ceilings;
+- TSYNC divergence and alternate syscall ABI rejection;
+- production startup, readiness-gated admin publication, and reported roles.
 
-The p-mark probe runs in the guest's initial PID namespace as a child of init.
-Kernel tracepoint TGIDs therefore match its procfs view. A private container
-PID namespace is not equivalent evidence. The guest has no network device and
-does not share the development host's PID or network namespace.
+The normal E2E cases also cover the production network bridge, config writer,
+command helper, snapshots, cleanup, and peer-loss behavior. The
+`sysnet_dns_debian_resolvconf`, `sysnet_dns_openresolv`, and
+`sysnet_dns_systemd_resolved` cases cover native DNS providers. The
+`tun_splitter_process_routing` case covers process-mark lifecycle and routing
+with the released backend.
 
-No downstream dependency patch is used. p-mark v0.5.0 supplies the standalone
-guest runner. sysnet-linux v0.10.1 contains consumer E2E checks for automatic
-p-mark construction, default-TUN routing, user marks, repeated probes, and
-teardown. The local wrapper selects evidence directories, restores executable
-bits that the Go module cache does not preserve for the E2E scripts, and runs
-the released p-mark source in a disposable guest. It does not change dependency
-source content. TrustedSystem and TrustedComposition separately exercise the
-released sysnet constructor, routing, matcher, and runtime integration paths.
+Run the combined selected gate with:
 
-## Running the gate
+```sh
+just linux-isolation-profiles
+```
 
-Run `just linux-isolation-profiles`. Separate runners are
-`dev/linux-profiles/run-dns-matrix.sh` and
-`dev/linux-profiles/run-pmark-guest.sh`.
+Run only the focused profile case with:
 
-Requirements include Docker, TUN, QEMU, Go, timeout, and sha256sum. The p-mark
-runner uses KVM when available and otherwise uses QEMU TCG. Its builder image
-supplies the Debian kernel and initramfs tools. Missing requirements fail the gate, not skip it.
-Network changes run only in disposable Docker networks or the networkless VM.
-Logs are written under `artifacts/linux-profiles/<run-id>/`.
+```sh
+just check e2e:linux_isolation_profile
+```
 
-The 2026-10-10 cleanup checks passed native R/C/H and trusted-backend tests,
-race tests, five 30-second fuzz campaigns, and all ten DNS cases. Evidence is
-under `artifacts/linux-profiles/cleanup-review/`. Focused `just check` passed
-(`artifacts/cleanup-check.log`); Windows VM script lint was rerun successfully
-with its required analyzer setting (`artifacts/cleanup-winvm-lint.log`).
-Shell checks passed after the final runner edit. No native Windows test ran.
+The old checkpoint-specific Docker, QEMU, benchmark, and hostile-handle
+harnesses were removed after their decisions were implemented. Their reviewed
+results remain in the historical experiment and decision documents. They are
+not current release gates.
 
-After updating to p-mark v0.5.0 and sysnet-linux v0.10.1, all four released
-p-mark guest cases passed under
-`artifacts/linux-profiles/upstream-pmark-v050-final/`. All ten DNS provider
-cases passed under `artifacts/linux-profiles/sysnet-v0101-dns/`. The temporary
-proposal, custom guest init, and sysnet source patch are no longer present.
-The direct/prepared native comparison and restricted-runtime composition also
-passed with v0.10.1 under `artifacts/linux-profiles/v0101-native/`. Focused
-`just check`, including Windows cross-lint and the affected race tests, passed.
+## Supported scope
 
-Native network composition now uses the durable broker journal and requires it
-to be empty after peer-loss cleanup. The Linux native reconciler resolves an
-absent TUN after restart and deliberately leaves a still-present interface for
-inspection because an interface index can be reused.
+The released profile requires Linux amd64, cgroup v2 with delegated CPU,
+memory, and task controllers, the reviewed static Go build, Landlock ABI 3 or
+newer, and the required namespace and seccomp operations. There is no permissive
+fallback. Other architectures, dynamic role binaries, rootless containment,
+or materially different Go thread behavior require a separately reviewed
+profile.
 
-The Linux runtime/admin service assembly, deployment identities, storage flow,
-status reporting, and default switch are complete. Other platform/build targets
-remain unavailable until separately qualified. Performance is accepted and is
-not a profile gate. All supported backend features, including eBPF process
-filtering, remain required. Direct mode has no isolation launcher or internal
-IPC overhead.
+Persistent storage quotas are outside the released scope. Existing protocol,
+process, file-size, memory, CPU, task, descriptor, and queue limits remain
+mandatory. Direct mode does not start role processes or use isolation IPC.

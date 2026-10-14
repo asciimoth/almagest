@@ -78,6 +78,21 @@ RUN gcc -static -O2 -D_FORTIFY_SOURCE=3 -Wall -Wextra -Werror \
 	-o /usr/local/bin/almagest-linux-role-launcher \
 	bin/native/linux-role/launcher.c $(pkg-config --cflags --libs libseccomp)
 
+ARG E2E_LINUX_PROFILE=0
+# Build focused native-profile assets only for the case-specific image. The
+# linux_isolation_profile case runs them inside its own bounded cgroup.
+RUN --mount=type=cache,target=/go/pkg/mod \
+	--mount=type=cache,target=/root/.cache/go-build \
+	mkdir -p /qualification \
+	&& if [ "$E2E_LINUX_PROFILE" = "1" ]; then \
+		CGO_ENABLED=0 go build -C bin -trimpath -o /qualification/probe ./cmd/linux-profile-probe; \
+		CGO_ENABLED=0 go build -C bin -trimpath -ldflags '-X main.probeMode=tsync-failure' -o /qualification/tsync-probe ./cmd/linux-profile-probe; \
+		CGO_ENABLED=0 go build -C bin -trimpath -ldflags '-X main.probeMode=x32' -o /qualification/x32-probe ./cmd/linux-profile-probe; \
+		CGO_ENABLED=0 go test -C bin -c -o /qualification/profile.test ./internal/isolation/linuxprofile; \
+		gcc -static -O2 -Wall -Wextra -Werror -o /qualification/command e2e/helpers/isolation-fixed-command.c; \
+		cp /usr/local/bin/almagest-linux-role-launcher /qualification/launcher; \
+	fi
+
 FROM headscale/headscale:v0.29.3@sha256:0e7f1c6e4ce6c2a2a001103ecd3fa645a045adf30ac8a5234fe037b43000cd72 AS headscale
 
 FROM debian:bookworm-slim@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe64d6990e4b07ea4171
@@ -175,6 +190,7 @@ COPY --from=build /go/bin/gost /usr/local/bin/gost
 COPY --from=build /usr/local/bin/amneziawg-go /usr/local/bin/amneziawg-go
 COPY --from=build /usr/local/bin/amnesia-e2e-tool /usr/local/bin/amnesia-e2e-tool
 COPY --from=build /usr/local/share/amneziawg-go.commit /usr/local/share/amneziawg-go.commit
+COPY --from=build /qualification /qualification
 COPY --from=headscale /ko-app/headscale /usr/local/bin/headscale
 COPY --link e2e /e2e
 

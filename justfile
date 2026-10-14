@@ -44,27 +44,12 @@ qualify-direct:
   RUN_WINVM_TESTS=1 E2E_INCLUDE_PRIVILEGED=1 just check
   go -C lib test ./tun -run '^$' -bench '^BenchmarkAutoTunSplitterRouter$' -benchmem -benchtime=500ms -count=3
 
-# Run the checkpoint 10 restriction and native-capability experiment only in a
-# disposable Docker container. Optional argument selects the evidence directory.
-linux-isolation-experiment evidence='':
-  ./dev/linux-isolation/run.sh {{quote(evidence)}}
+# Run the production Linux isolation profile and its backend compatibility
+# cases through the normal E2E harness.
+linux-isolation-profiles:
+  just test-total e2e:linux_isolation_profile e2e:sysnet_dns_debian_resolvconf e2e:sysnet_dns_openresolv e2e:sysnet_dns_systemd_resolved e2e:tun_splitter_process_routing
 
-# Check Linux profiles in disposable containers and a networkless VM.
-linux-isolation-profiles evidence='':
-  bash ./dev/linux-profiles/run.sh {{quote(evidence)}}
-
-# Check the Linux p-mark/eBPF lifecycle inside a disposable VM. The runner uses
-# KVM when available and otherwise uses QEMU TCG. The
-# guest has no network device and cannot change host network or process state.
-linux-isolation-pmark-guest evidence='':
-  bash ./dev/linux-profiles/run-pmark-guest.sh {{quote(evidence)}}
-
-# Check every sysnet-linux v0.10.1 DNS provider in disposable Docker networks.
-linux-isolation-dns-matrix evidence='':
-  bash ./dev/linux-profiles/run-dns-matrix.sh {{quote(evidence)}}
-
-# Run checkpoint 11 with caller-derived and service-derived AppContainers in
-# the locked disposable Windows VM.
+# Run the Windows component-profile checks in the locked disposable VM.
 windows-isolation-experiment:
   ./dev/winvm/run.sh isolation
 
@@ -76,19 +61,6 @@ windows-isolation-profiles:
 # only by the disposable Docker or Windows VM qualification runner.
 qualify-isolation evidence:
   go run ./bin/cmd/isolation-qualify -evidence {{quote(evidence)}}
-
-# Run the checkpoint 12 Linux data-path stage in a disposable Docker
-# container. Optional argument selects the evidence directory.
-data-path-experiment evidence='':
-  ./dev/data-path/run.sh {{quote(evidence)}}
-
-# Run the checkpoint 12 Windows relay stage in the locked disposable VM.
-windows-data-path-experiment:
-  ./dev/winvm/run.sh data-path
-
-# Audit checkpoint 13 handle authority only in disposable Docker namespaces.
-data-path-security-experiment evidence='':
-  bash ./dev/data-path/security.sh {{quote(evidence)}}
 
 [private]
 test-e2e-docker-all: repair-go-work build-web
@@ -157,9 +129,9 @@ lint-windows: build-web
 
 shellcheck:
   @if [[ "${RUN_WINVM_TESTS:-0}" == "1" ]]; then \
-    git ls-files -z '*.sh' | xargs -0 shellcheck; \
+    git ls-files -z '*.sh' | while IFS= read -r -d '' file; do [[ -f "$file" ]] && printf '%s\0' "$file"; done | xargs -0 -r shellcheck; \
   else \
-    git ls-files -z '*.sh' ':!dev/winvm/**' ':!scripts/lint-windows.sh' ':!scripts/test-e2e-platform.sh' ':!scripts/test-windows.sh' ':!scripts/test-windows-flow.sh' | xargs -0 shellcheck; \
+    git ls-files -z '*.sh' ':!dev/winvm/**' ':!scripts/lint-windows.sh' ':!scripts/test-e2e-platform.sh' ':!scripts/test-windows.sh' ':!scripts/test-windows-flow.sh' | while IFS= read -r -d '' file; do [[ -f "$file" ]] && printf '%s\0' "$file"; done | xargs -0 -r shellcheck; \
   fi
 
 certcat-lint: certcat-ensure-generated
@@ -168,11 +140,11 @@ certcat-lint: certcat-ensure-generated
 fmt: certcat-fmt
   cd lib && golangci-lint fmt ./...
   cd bin && golangci-lint fmt ./...
-  git ls-files -z -- 'lib/*.go' 'lib/**/*.go' 'bin/*.go' 'bin/**/*.go' | xargs -0 -r gofmt -w
+  git ls-files -z -- 'lib/*.go' 'lib/**/*.go' 'bin/*.go' 'bin/**/*.go' | while IFS= read -r -d '' file; do [[ -f "$file" ]] && printf '%s\0' "$file"; done | xargs -0 -r gofmt -w
 
 certcat-fmt: certcat-ensure-generated
   cd certcat && golangci-lint fmt ./...
-  git ls-files -z -- 'certcat/*.go' 'certcat/**/*.go' | xargs -0 -r gofmt -w
+  git ls-files -z -- 'certcat/*.go' 'certcat/**/*.go' | while IFS= read -r -d '' file; do [[ -f "$file" ]] && printf '%s\0' "$file"; done | xargs -0 -r gofmt -w
 
 certcat-fetch:
 	@if [ -f certcat/data/machine.json ]; then \

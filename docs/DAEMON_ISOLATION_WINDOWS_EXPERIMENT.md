@@ -8,8 +8,8 @@ progress.
 
 ## Scope and reproduction
 
-The harness is in [`dev/windows-isolation`](../dev/windows-isolation/README.md).
-Run it in the locked disposable Windows VM with:
+The harness is part of [`dev/winvm`](../dev/winvm/README.md). Run it in the
+locked disposable Windows VM with:
 
 ```sh
 just windows-isolation-experiment

@@ -406,7 +406,8 @@ Acceptance:
 
 Status: implemented in `bin/internal/isolation/transport`. See the
 [wire limits, endpoint binding, and verification](DAEMON_ISOLATION_CONTROL_TRANSPORT.md).
-This does not enable production role startup or isolated daemon mode.
+The packaged Linux profile uses this transport. Windows production integration
+remains incomplete.
 
 Work:
 
@@ -434,8 +435,7 @@ Acceptance:
 
 Status: implemented in `bin/internal/isolation/network`. See the
 [ownership, native TUN control, and verification notes](DAEMON_ISOLATION_NETWORK_CONTROL.md).
-This is an additive broker component; production startup and packet relays
-remain later checkpoints.
+The packaged Linux profile uses this broker component and its packet relays.
 
 Work:
 
@@ -459,10 +459,10 @@ Acceptance:
 
 ## 16. Implement socket control and the selected data channels
 
-Status: component implementation added in `bin/internal/isolation/network`,
-`relay`, and `runtime`. Complete functional parity remains open. See the
+Status: implemented and qualified for packaged Linux amd64 in
+`bin/internal/isolation/network`, `relay`, and `runtime`. See the
 [socket and data relay implementation and evidence](DAEMON_ISOLATION_SOCKET_DATA.md).
-Production isolated startup remains disabled.
+Windows production integration remains incomplete.
 
 The component gate includes a deterministic saturated-resource FIFO test. It
 proves that later work from a hot resource cannot overtake a queued peer.

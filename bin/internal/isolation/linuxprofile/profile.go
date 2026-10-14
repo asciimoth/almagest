@@ -1,5 +1,5 @@
-// Package linuxprofile defines the fixed Linux role-launch contract. It does
-// not enable isolated daemon startup. Only trusted bootstrap may build a Plan.
+// Package linuxprofile defines the fixed Linux role-launch contract used by
+// the production Linux isolated daemon. Only trusted bootstrap may build a Plan.
 package linuxprofile
 
 import (

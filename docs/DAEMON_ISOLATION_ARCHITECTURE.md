@@ -432,23 +432,19 @@ do not replace it with per-packet R-to-N matching calls.
 
 Checkpoint 13 result: [data-path security decision](DAEMON_ISOLATION_DATA_PATH_DECISION.md).
 The [version 1 relay contract](DAEMON_ISOLATION_DATA_CHANNEL_CONTRACT.md) is
-frozen for all Linux and Windows resource types. By explicit maintainer
-direction, implementation can proceed with conservative relays while the
-production security gates remain open. This decision supersedes
-the candidate-selection sequence below; native handles and shared memory remain
-excluded from version 1.
+implemented by the packaged Linux amd64 profile and remains the target for
+Windows. Linux production security gates are complete. Native handles and
+shared memory remain excluded from version 1.
 
 Use separate control and data channels. Protocol parsing, encryption, HTTP,
 SOCKS, WireGuard, Tailscale, and application DNS nodes remain in R. Backend DNS
-services may remain in N as described in section 4.1. Depending on the experiment
-result, N relays bounded bytes/packets or configures a native handle used directly
-by R. The baseline does not parse every packet to build a flow-authorization
-table. Any header inspection introduced for a measured matcher optimization must
-use a small, separately fuzzed parser.
+services may remain in N as described in section 4.1. N relays bounded bytes or
+packets and does not give native handles to R. The baseline does not parse every
+packet to build a flow-authorization table. Any header inspection introduced for
+a measured matcher optimization must use a small, separately fuzzed parser.
 
-Do not select the production data path from the control-plane design alone.
-Before the sysnet adapter is fixed, implement small end-to-end prototypes for
-the following candidates on each supported platform:
+The completed data-path experiment evaluated these candidates before version 1
+was selected:
 
 1. Broker relay. N retains native sockets, listeners and TUN handles and relays
    bounded batches through local IPC. This provides the strongest operation and

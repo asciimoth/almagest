@@ -175,8 +175,8 @@ Daemon:
   replacement of live database buckets.
 - `bin/native/linux-role/` and `bin/internal/isolation/linuxprofile/`: native
   Linux role restrictions, held-descriptor launch contracts, and final Go
-  thread synchronization. These components do not enable isolated daemon
-  startup; see `docs/DAEMON_ISOLATION_LINUX_PROFILES.md` for qualification limits.
+  thread synchronization. The packaged Linux amd64 daemon uses these components
+  for its default isolated startup; see `docs/DAEMON_ISOLATION_LINUX_PROFILES.md`.
 - `bin/internal/isolation/windowsprofile/`: suspended Windows role launches,
   restricted tokens, distinct AppContainers, held trusted paths, exact pipe
   inheritance, mitigations, and bounded jobs. See

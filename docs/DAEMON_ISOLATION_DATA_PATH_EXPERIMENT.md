@@ -7,24 +7,13 @@ required `--no-isolation`. Linux amd64 now supports isolation by default;
 Windows remains in direct mode by default while isolation support is in
 progress.
 
-## Scope and commands
+## Archived scope
 
-The harness is in [`dev/data-path`](../dev/data-path/README.md). The Linux run
-uses disposable Docker network and mount namespaces:
-
-```sh
-just data-path-experiment
-```
-
-The Windows run uses the locked disposable Windows Server 2022 VM:
-
-```sh
-just windows-data-path-experiment
-```
-
-Do not run either command for acceptance while unrelated host workloads are
-active. Docker or the VM contains every native network change, but host CPU,
-memory, power, and scheduler activity can invalidate performance numbers.
+This document preserves checkpoint-12 measurements. The standalone benchmark
+harness and its Linux probe commands were removed after checkpoint 13 selected
+broker-owned relays and production qualification accepted performance as
+diagnostic only. The WinVM code retains its Windows analysis helper for old
+artifact compatibility, but this checkpoint is not a current project gate.
 
 The Linux launcher uses the checkpoint 10 restricted runtime profile. The
 Windows launcher uses both checkpoint 11 AppContainer profiles. R cannot create
@@ -71,8 +60,8 @@ exclude dropped packets. Packet loss is recorded as diagnostic data.
 
 ## Evidence layout and validation
 
-Linux evidence is written below `artifacts/data-path/<run-id>/`. Each logging
-mode has separate socket, matcher, TUN, and diagnostic files. The runner checks
+Linux evidence was written below `artifacts/data-path/<run-id>/`. Each logging
+mode had separate socket, matcher, TUN, and diagnostic files. The runner checked
 the restriction identity and complete candidate matrix, then writes
 `analysis-linux.json`. The analysis uses warm-run medians and compares added
 p99, useful-rate loss, combined CPU, and saturated control p99 with
@@ -169,13 +158,9 @@ Two measurement limitations affect interpretation:
   approximately 15.6 ms increments. This caused missing CPU comparisons and
   makes short Windows rate results unsuitable for selection.
 
-The next experiment must use equivalent native and candidate implementations,
-separate batch throughput from per-packet latency, and run each acceptance
-workload for at least 60 seconds. Before that run, investigate the Linux TUN
-wrapper allocation/read path and the Wintun packet losses. Retain batching for
-bulk traffic, but keep an independent bounded control channel and a low-latency
-single-record path. Do not select a production data path until checkpoint 13
-also completes its security and revocation review.
+Checkpoint 13 completed the security and revocation review and selected bounded
+broker relays. The production implementation uses separate bounded control and
+data lanes. Longer equivalent-work measurements remain optional optimization.
 
 ## Optional future measurements
 

@@ -1,7 +1,7 @@
 # Host route, firewall, strict-mode, and DNS control
 
-Checkpoint 17 extends `bin/internal/isolation/network`. It does not change the
-direct daemon or enable production isolation.
+Checkpoint 17 is implemented in `bin/internal/isolation/network` and is used by
+the packaged Linux isolated profile. The direct daemon does not use this path.
 
 ## Native ownership
 

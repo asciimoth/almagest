@@ -115,7 +115,7 @@ external changes, and ownership-safe cleanup.
 builds a synthetic underlay inside that same container. Its fixture also needs
 `CAP_SYS_ADMIN` and an unconfined Docker seccomp profile for the existing
 sysnet-linux route-monitor namespace setup. It uses the container's own direct
-DNS provider. This is component evidence, not a complete production profile.
+DNS provider. The production E2E suite supplies the complete-profile coverage.
 Under the revised design, N may retain existing launch capabilities required
 by its backend, including `CAP_SYS_ADMIN` where needed. None reach R. The v0.10.1
 current-namespace monitor remains useful where that capability is absent.

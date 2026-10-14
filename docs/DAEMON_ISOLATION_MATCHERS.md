@@ -170,7 +170,7 @@ in R.
 A typed context replaces the unused string field. It selects exactly one
 matcher family/transport or routing family/mode/strictness. IPv4, IPv6, and
 dual-family routing retain their distinct native capability contexts. This is
-an internal contract correction before production isolation is enabled. An
+an internal contract correction included in the production Linux profile. An
 older string-shaped request fails decoding; it is not treated as a default
 context.
 

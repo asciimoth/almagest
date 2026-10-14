@@ -5,18 +5,12 @@ complete. This is development evidence, not a production isolation profile.
 At this checkpoint, the production daemon still required `--no-isolation`.
 The packaged Linux amd64 profile now supports isolation by default.
 
-## Scope and reproduction
+## Archived scope
 
-The harness is in [`dev/linux-isolation`](../dev/linux-isolation/README.md).
-Run it with:
-
-```sh
-just linux-isolation-experiment
-```
-
-All restriction, TUN, BPF, DNS-provider, and native-network experiments run in
-disposable Docker containers. The harness saves raw JSON and environment data
-under `artifacts/linux-isolation/<run-id>/`.
+This document preserves the checkpoint-10 result that informed the production
+profile. The prototype launcher and reproduction harness were removed after the
+production launcher and E2E qualification replaced them. Current checks are
+described in [Linux role restriction profiles](DAEMON_ISOLATION_LINUX_PROFILES.md).
 
 The qualified runtime profile uses a single-threaded C launcher before the Go
 runtime starts. It creates private mount, network, IPC, UTS, and PID namespaces,
@@ -49,8 +43,8 @@ runtime verifies that it retains none. No native feature profile receives
 
 The accepted run used source revision `5203d0b23a216ac2166a543fd8caa5683b1f218f`
 plus the checkpoint 10 working change, Docker 29.8.1, Linux 7.2.8 x86-64,
-Landlock ABI 10, and Go 1.26.6. The command was
-`./dev/linux-isolation/run.sh`. The retained local evidence directory was
+Landlock ABI 10, and Go 1.26.6. The removed checkpoint harness ran from
+`dev/linux-isolation/run.sh`. The retained local evidence directory was
 `artifacts/linux-isolation/20261008T234536Z-3703992`; later validation runs can
 replace this ignored directory without changing the recorded result.
 
@@ -109,8 +103,8 @@ is authorized.
 - This run qualifies the privileged bootstrap profile. It does not qualify an
   unprivileged launcher on hosts without delegated namespace or cgroup support.
 - Cgroup limits, runtime identity provisioning, the trusted-backend launch path,
-  and the production role launcher remain later implementation work. This
-  experiment does not claim that isolated daemon mode exists.
+  and the production role launcher were later implemented and are now covered
+  by the production E2E suite.
 
 These gaps are explicit experiment results. They do not reduce direct-mode
 features and do not cause elevation, an unrestricted helper, or hidden native

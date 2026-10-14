@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Summarize checkpoint 12 raw evidence against the checkpoint 9 budgets."""
+"""Summarize Windows data-path evidence from the WinVM harness."""
 
 import argparse
 import json

@@ -1,12 +1,11 @@
 # Daemon isolation data-channel contract
 
-Status: frozen version 1 design for checkpoints 14 through 18. The
+Status: implemented version 1 production contract. The
 [checkpoint 13 decision](DAEMON_ISOLATION_DATA_PATH_DECISION.md) records the
-security evidence and the maintainer's decision to proceed with conservative
-relays. This file specifies the implementation
-target. The [checkpoint 16 component implementation](DAEMON_ISOLATION_SOCKET_DATA.md)
-records its checks and remaining qualification; this is not a qualified
-production transport.
+historical security evidence and the decision to use conservative relays. The
+[socket and data implementation](DAEMON_ISOLATION_SOCKET_DATA.md) is used by
+the packaged Linux amd64 profile. Windows keeps direct mode until its complete
+profile is implemented and qualified.
 
 ## Selected mechanisms
 

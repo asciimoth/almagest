@@ -201,6 +201,8 @@ commands when the behavior is only observable outside the API.
 The following cases run daemon nodes against the external tools and complex
 Linux environments used by Almagest's direct dependencies:
 
+- `linux_isolation_profile`: native launcher rejection checks followed by the
+  packaged Linux production composition and public isolation-status checks.
 - `socks_third_party_compat`: curl, Gost, and Tor clients from the `socksgo`
   v0.4.12 compatibility suite.
 - `wireguard_kernel_compat`: Linux kernel WireGuard, preshared-key rotation,

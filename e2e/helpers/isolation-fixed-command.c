@@ -1,4 +1,4 @@
-/* Static fixed command used only by the Docker qualification. */
+/* Static fixed command used only by the Linux isolation E2E test. */
 #include <fcntl.h>
 #include <unistd.h>
 int main(void) {
