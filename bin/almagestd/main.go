@@ -62,6 +62,9 @@ func parseDaemonArgs() (args.Args, executionMode, error) {
 
 func runDaemonApplication(arguments args.Args, mode executionMode) error {
 	golog.Infof("Execution mode: %s (no sandbox)", mode)
+	for _, warning := range executionModeStartupWarnings(mode) {
+		golog.Warn(warning)
+	}
 
 	gonnect.UnfuckGoDns()
 	randomSeeds, err := newDaemonRandomSeeds()
@@ -94,6 +97,16 @@ func runDaemonApplication(arguments args.Args, mode executionMode) error {
 			return runDaemon(ctx, application, ready, arguments, mode, randomSeeds, runtimeDependencyErr, directDaemonIntegrations())
 		})
 	})
+}
+
+func executionModeStartupWarnings(mode executionMode) []string {
+	if mode != executionModeDirect {
+		return nil
+	}
+	return []string{
+		"Daemon process isolation is disabled",
+		"A compromised graph runtime can access all daemon privileges and host resources",
+	}
 }
 
 type daemonIntegrations struct {
