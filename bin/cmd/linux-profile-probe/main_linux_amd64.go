@@ -219,7 +219,7 @@ func main() {
 	for _, tc := range []struct {
 		key  int
 		want uint64
-	}{{unix.RLIMIT_CORE, 0}, {unix.RLIMIT_NOFILE, 1024}, {unix.RLIMIT_MEMLOCK, 0}, {unix.RLIMIT_FSIZE, 256 << 20}} {
+	}{{unix.RLIMIT_CORE, 0}, {unix.RLIMIT_NOFILE, linuxprofile.DefaultLimits().Descriptors}, {unix.RLIMIT_MEMLOCK, 0}, {unix.RLIMIT_FSIZE, linuxprofile.DefaultLimits().FileBytes}} {
 		var value unix.Rlimit
 		err := unix.Getrlimit(tc.key, &value)
 		check(fmt.Sprintf("limit-%d", tc.key), err == nil && value.Cur == tc.want && value.Max == tc.want, err)

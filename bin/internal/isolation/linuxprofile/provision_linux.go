@@ -35,7 +35,7 @@ func DefaultCgroupPlan() CgroupPlan {
 func (p CgroupPlan) validate() error {
 	for _, limits := range []*Limits{&p.Backend, &p.Runtime, p.Writer, p.Command} {
 		if limits != nil {
-			if err := limits.validate(); err != nil {
+			if err := limits.Validate(); err != nil {
 				return err
 			}
 		}

@@ -21,10 +21,10 @@ func TestBackendCgroupLimits(t *testing.T) {
 		t.Fatal(err)
 	}
 	for name, values := range map[string][]string{
-		"memory.max":      {"", "max\n", "0\n", "536870913\n", "+1\n", "1\n\n", "18446744073709551616\n"},
+		"memory.max":      {"", "max\n", "0\n", "8589934593\n", "+1\n", "1\n\n", "18446744073709551616\n"},
 		"memory.swap.max": {"", "max\n", "1\n"},
-		"pids.max":        {"", "max\n", "0\n", "129\n", "-1\n"},
-		"cpu.max":         {"", "max 100000\n", "100001 100000\n", "1 200000\n", "0 100000\n", "1  100000\n", "1 100000 extra\n"},
+		"pids.max":        {"", "max\n", "0\n", "4097\n", "-1\n"},
+		"cpu.max":         {"", "max 100000\n", "6400001 100000\n", "1 200000\n", "0 100000\n", "1  100000\n", "1 100000 extra\n"},
 		"cgroup.procs":    {"", "11\n", "0\n42\n", "42\ninvalid\n", "+42\n"},
 	} {
 		for i, value := range values {

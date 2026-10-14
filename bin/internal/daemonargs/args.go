@@ -44,4 +44,10 @@ type Args struct {
 	DebugNodes   bool `arg:"--debug-nodes" help:"enable debug node classes"`
 	Experimental bool `arg:"--experimental" help:"enable experimental features and node classes; requires direct mode"`
 	NoIsolation  bool `arg:"--no-isolation" help:"select direct mode; accepted as a no-op where direct mode is the platform default"`
+
+	IsolationMemoryBytes *uint64 `arg:"--isolation-memory-bytes,env:ALMAGEST_ISOLATION_MEMORY_BYTES" help:"Linux isolation memory bytes per role (default 8589934592; range 33554432..1099511627776)"`
+	IsolationTasks       *uint64 `arg:"--isolation-tasks,env:ALMAGEST_ISOLATION_TASKS" help:"Linux isolation tasks per role, including threads (default 4096; range 8..4096)"`
+	IsolationCPUQuota    *uint64 `arg:"--isolation-cpu-quota,env:ALMAGEST_ISOLATION_CPU_QUOTA" help:"Linux isolation CPU microseconds per 100000 microseconds per role (default 6400000; range 1000..6400000)"`
+	IsolationDescriptors *uint64 `arg:"--isolation-descriptors,env:ALMAGEST_ISOLATION_DESCRIPTORS" help:"Linux isolation file descriptors per process (default 65536; range 32..65536)"`
+	IsolationFileBytes   *uint64 `arg:"--isolation-file-bytes,env:ALMAGEST_ISOLATION_FILE_BYTES" help:"Linux isolation maximum file size in bytes (default 1099511627776; range 1048576..1099511627776)"`
 }

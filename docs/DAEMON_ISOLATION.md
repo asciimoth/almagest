@@ -127,12 +127,56 @@ them here.
 
 ## Configuration and command line
 
-Isolation adds one public switch:
+Isolation mode is selected with this public switch:
 
 - `--no-isolation` selects direct mode. On Windows it is currently an accepted
   no-op because direct mode is already the default.
 
-It does not add an `Isolation` object to either config schema. Existing
+Linux isolation resource ceilings can be set at startup through CLI options or
+environment variables. CLI values override environment values. Each option
+applies to every active role, including N. These options have no effect in
+direct mode or on Windows. Changes require a restart.
+
+| CLI option | Environment variable | Default | Accepted range (inclusive) |
+| --- | --- | --- | --- |
+| `--isolation-memory-bytes` | `ALMAGEST_ISOLATION_MEMORY_BYTES` | 8589934592 (8 GiB) | 33554432–1099511627776 (32 MiB–1 TiB) |
+| `--isolation-tasks` | `ALMAGEST_ISOLATION_TASKS` | 4096 | 8–4096 |
+| `--isolation-cpu-quota` | `ALMAGEST_ISOLATION_CPU_QUOTA` | 6400000 (64 CPUs) | 1000–6400000 |
+| `--isolation-descriptors` | `ALMAGEST_ISOLATION_DESCRIPTORS` | 65536 | 32–65536 |
+| `--isolation-file-bytes` | `ALMAGEST_ISOLATION_FILE_BYTES` | 1099511627776 (1 TiB) | 1048576–1099511627776 (1 MiB–1 TiB) |
+
+Values are integers without unit suffixes. CPU quota is CPU time in
+microseconds per 100000 microseconds of elapsed time: 100000 permits one CPU,
+and 200000 permits two. Tasks include threads. Memory, task, and CPU limits
+apply per role cgroup; descriptor limits apply per process, and file size is
+the maximum size of each file, not total storage use. Limits stay enabled with
+high defaults. Zero and values outside the accepted ranges stop isolated
+startup. Swap remains disabled for each role cgroup.
+
+For example, to set 2 GiB memory and two CPUs per role:
+
+```sh
+almagestd --isolation-memory-bytes=2147483648 --isolation-cpu-quota=200000
+```
+
+For systemd, set environment variables in a service drop-in, then reload the
+units and restart the service:
+
+```ini
+[Service]
+Environment=ALMAGEST_ISOLATION_MEMORY_BYTES=2147483648
+Environment=ALMAGEST_ISOLATION_CPU_QUOTA=200000
+```
+
+These ceilings do not reserve resources or require that much physical RAM.
+Limits on ancestor cgroups still apply to the process set as a whole, even if
+they are lower than the sum of the role ceilings. Provisioning also checks the
+immediate instance cgroup's memory and task capacity against that sum; the
+production bootstrap creates this instance with no additional ceiling.
+Inherited file-descriptor and file-size hard limits can reduce the effective
+per-process ceilings.
+
+Neither config schema has an `Isolation` object. Existing
 protected sections provide authority:
 
 - `Admin` selects public endpoints, peer filters, pprof, and browser-origin
@@ -212,9 +256,11 @@ launcher synchronizes all Go threads before the final restriction step. A
 failure in namespaces, cgroup placement, Landlock, seccomp, identity, object
 validation, or thread synchronization stops launch.
 
-Each role has a cgroup v2 CPU, memory, and process limit. The default ceilings
-are 512 MiB memory, 128 tasks, and one CPU of quota. File descriptors and file
-size also have fixed limits. R can access only its private storage root and IPC
+Each role has a cgroup v2 CPU, memory, and task limit. The default ceilings
+are 8 GiB memory, 4096 tasks, and 64 CPUs of quota. File descriptors default to
+65536 per process, and file size defaults to 1 TiB. Startup options above can
+change these ceilings within the native launcher's accepted ranges.
+R can access only its private storage root and IPC
 objects. C can access only its writer directory and one target name. H sees its
 state directory and one held executable at a fixed in-profile path. N creates
 native TUNs, sockets, routes, firewall state, DNS changes, matchers, and address
@@ -319,9 +365,10 @@ launcher and check unsafe object rejection, alternate ABI rejection, seccomp
 thread synchronization, namespaces, capabilities, Landlock, cgroups, private
 storage, inherited descriptors, fixed config writing, fixed command execution,
 native resource ownership, cleanup, recovery, and startup readiness. The E2E
-case then starts the packaged process set and checks the public isolation
-status. The selected native DNS and process-routing E2E cases run through the
-same production composition.
+case then starts the packaged process set with resource-limit environment
+overrides and checks the effective role cgroups, process limits, and public
+isolation status. The selected native DNS and process-routing E2E cases run
+through the same production composition.
 
 `just windows-isolation-profiles` runs the Windows component profile as both a
 standard caller and Local System in the locked disposable VM. These tests

@@ -340,6 +340,12 @@ Important flags and env:
 - `--experimental`: enable experimental features and node classes. They are
   disabled by default and require direct mode. On isolation-default platforms,
   select direct mode with `--no-isolation`.
+- `--isolation-memory-bytes`, `--isolation-tasks`, `--isolation-cpu-quota`,
+  `--isolation-descriptors`, and `--isolation-file-bytes`: Linux isolation
+  startup ceilings. Each has a matching `ALMAGEST_ISOLATION_*` environment
+  variable; CLI values take precedence. Defaults are 8 GiB memory, 4096 tasks,
+  64 CPUs of quota per role, 65536 descriptors per process, and 1 TiB per file.
+  See `docs/DAEMON_ISOLATION.md` for units, ranges, and service configuration.
 - `-w, --web`, `ALMAGEST_WEB_ADMIN`: localhost web admin port.
 - `--web-filter-uid`, `ALMAGEST_WEB_ADMIN_FILTER_UIDS`: allowed web admin
   peer owner UIDs.

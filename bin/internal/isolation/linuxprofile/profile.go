@@ -30,7 +30,7 @@ type Limits struct {
 }
 
 func DefaultLimits() Limits {
-	return Limits{Descriptors: 1024, FileBytes: 256 << 20, MemoryBytes: 512 << 20, Tasks: 128, CPUQuota: 100000}
+	return Limits{Descriptors: 65536, FileBytes: 1 << 40, MemoryBytes: 8 << 30, Tasks: 4096, CPUQuota: 6400000}
 }
 
 // Plan fixes one static Linux/amd64 executable, identity and role. Descriptor
@@ -55,10 +55,11 @@ func (p Plan) Validate() error {
 	if p.Capabilities != 0 {
 		return fmt.Errorf("%w: capability expansion", ErrUnavailable)
 	}
-	return p.Limits.validate()
+	return p.Limits.Validate()
 }
 
-func (l Limits) validate() error {
+// Validate checks the resource ranges accepted by the native launcher ABI.
+func (l Limits) Validate() error {
 	if l.Descriptors < 32 || l.Descriptors > 65536 || l.FileBytes < 1<<20 || l.FileBytes > 1<<40 ||
 		l.MemoryBytes < 32<<20 || l.MemoryBytes > 1<<40 || l.Tasks < 8 || l.Tasks > 4096 ||
 		l.CPUQuota < 1000 || l.CPUQuota > 6400000 {

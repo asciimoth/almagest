@@ -26,7 +26,7 @@ import (
 // bootstrap must exit: a resource-limit change may already have taken effect.
 // The caller retains ownership of the descriptors.
 func PrepareBackend(state, cgroup *os.File, limits Limits) error {
-	if err := limits.validate(); err != nil {
+	if err := limits.Validate(); err != nil {
 		return err
 	}
 	if state == nil || cgroup == nil {

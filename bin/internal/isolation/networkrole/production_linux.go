@@ -79,9 +79,11 @@ func RunLinuxProduction(parent context.Context, production LinuxProduction, read
 	if production.LookupEnv == nil {
 		production.LookupEnv = os.LookupEnv
 	}
-	if production.Limits == (linuxprofile.Limits{}) {
-		production.Limits = linuxprofile.DefaultLimits()
+	limits, err := linuxProductionLimits(production.Arguments, production.Limits)
+	if err != nil {
+		return err
 	}
+	production.Limits = limits
 	output := newBoundedRoleOutput(production.Output)
 	production.Output = output
 	defer func() { result = errors.Join(result, output.Close()) }()
