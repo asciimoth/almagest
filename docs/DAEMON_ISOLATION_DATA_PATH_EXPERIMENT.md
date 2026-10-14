@@ -2,8 +2,10 @@
 
 Status: checkpoint 12 harness implementation and preliminary Docker/WinVM
 timing are complete. These short-sample runs do not meet the acceptance-run
-duration requirements. The production daemon remains unchanged and still
-requires `--no-isolation`.
+duration requirements. At this checkpoint, the production daemon still
+required `--no-isolation`. Linux amd64 now supports isolation by default;
+Windows remains in direct mode by default while isolation support is in
+progress.
 
 ## Scope and commands
 

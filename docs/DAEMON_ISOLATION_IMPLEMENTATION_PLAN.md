@@ -1,8 +1,8 @@
 # Daemon isolation implementation plan
 
 Status: checkpoints 1 through 32 are implemented for the packaged Linux amd64
-profile. Windows Server 2022 amd64 remains a fail-closed component profile and
-is not enabled by default.
+profile. Windows Server 2022 amd64 has isolation components under development,
+but not a released isolation profile. Windows uses direct mode by default.
 The project maintainer accepted
 the current direct and isolated performance state on 2026-10-11. Performance
 measurements are diagnostic and do not block later checkpoints.
@@ -1049,10 +1049,11 @@ sysusers, tmpfiles, build, deployment, and operator-recovery files are in
 
 Windows Server 2022 amd64 keeps its qualified component profiles and native
 assembly boundary, including explicit lane maps and fixed runtime input
-materialization. It is not a released default profile because complete Windows
+materialization. It is not a released isolation profile because complete Windows
 daemon composition, H semantics, packaging, and release qualification are not
-complete. This is an unsupported platform result, not an automatic direct-mode
-downgrade.
+complete. Windows therefore uses the supported direct composition by default
+while isolation support is in progress. Explicit `--no-isolation` selects the
+same mode and has no additional effect.
 
 Scope update, 2026-10-11: quota implementation is excluded from this plan and
 remaining release work at the maintainer's request. In particular, persistent
@@ -1064,9 +1065,10 @@ Work:
 - Package role binaries, trusted paths, service definitions, identities,
   profiles, storage migration, and operator recovery instructions. Update config
   schemas, CLI help, deployment examples, and architecture status together.
-- Enable default isolation only for qualified profiles. On unsupported systems,
-  fail with an actionable error and explicit `--no-isolation` guidance; never
-  switch silently. Preserve caller authority and feature discovery.
+- Enable default isolation only for qualified profiles. Keep direct mode as the
+  documented Windows default until its profile is complete. On other unsupported
+  systems, fail with actionable `--no-isolation` guidance. Preserve caller
+  authority and feature discovery.
 - Expose mode, enforced restrictions, role health, protocol version, capability
   availability, and recovery state without protected secrets.
 
@@ -1076,8 +1078,9 @@ Acceptance:
   launches pass on the supported matrix. Untrusted runtime storage cannot replace
   role binaries or protected launch inputs.
 - Both default isolated mode and explicit direct mode pass the full gates.
-  `--experimental` requires explicit `--no-isolation`; experimental classes are
-  absent from isolated config/snapshot validation.
+  `--experimental` requires direct mode. It requires explicit `--no-isolation`
+  where isolation is the default; experimental classes are absent from isolated
+  config/snapshot validation.
 - Required-profile failures stop before untrusted execution or leave only
   explicitly reported, safely handled partial setup. No automatic downgrade or
   privilege acquisition occurs.

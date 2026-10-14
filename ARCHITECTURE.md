@@ -26,8 +26,9 @@ Almagest is a Go userspace network stack built around a Pasta node graph.
 - `lib/debug/` owns debug-only helper nodes.
 - `lib/experimental/` owns opt-in classes that cross current abstraction
   boundaries. Their class names start with `X`, and
-  `almagestd --experimental --no-isolation` passes them to the engine explicitly
-  instead of adding them to the built-in class list.
+  `almagestd --experimental` passes them to the engine explicitly in direct
+  mode instead of adding them to the built-in class list. On platforms where
+  isolation is the default, add `--no-isolation`.
 - `lib/logging/` owns reusable logging interfaces and the in-memory debug
   logger.
 - `lib/storage/` owns daemon-provided storage interfaces and error contracts,
@@ -325,10 +326,12 @@ Important flags and env:
 - `-l, --lvl`, `ALMAGEST_LOG_LVL`: logging level.
 - `--log-workers`: log engine worker lifecycle events.
 - `--no-isolation`: run the direct single-process daemon. Packaged Linux amd64
-  uses isolation by default. Unsupported profiles fail with guidance to select
-  this flag explicitly; they never downgrade automatically.
+  uses isolation by default. Windows uses direct mode by default while its
+  isolation profile is in progress, so this flag is an accepted no-op there.
+  Other unsupported profiles fail with guidance to select the flag explicitly.
 - `--experimental`: enable experimental features and node classes. They are
-  disabled by default and require `--no-isolation`.
+  disabled by default and require direct mode. On isolation-default platforms,
+  select direct mode with `--no-isolation`.
 - `-w, --web`, `ALMAGEST_WEB_ADMIN`: localhost web admin port.
 - `--web-filter-uid`, `ALMAGEST_WEB_ADMIN_FILTER_UIDS`: allowed web admin
   peer owner UIDs.

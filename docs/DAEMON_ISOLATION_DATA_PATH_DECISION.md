@@ -6,7 +6,7 @@ The [version 1 data-channel contract](DAEMON_ISOLATION_DATA_CHANNEL_CONTRACT.md)
 is frozen for implementation in checkpoints 14 through 18. Direct native handle
 transfer and shared memory are excluded from version 1. The checkpoint 9 control
 contract remains version 1. The direct daemon continues to require
-`--no-isolation` until the production isolation gates pass.
+`--no-isolation` at this checkpoint, until the production isolation gates pass.
 
 On 2026-10-09 the maintainer explicitly requested a conservative choice for
 every open decision and a frozen design so implementation can continue. Current

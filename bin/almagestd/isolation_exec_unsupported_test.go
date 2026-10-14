@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestUnsupportedDefaultIsolationFailsWithDirectModeGuidance(t *testing.T) {
+func TestUnsupportedIsolationEntryFailsWithDirectModeGuidance(t *testing.T) {
 	err := runIsolatedNetworkRole()
 	if err == nil || !strings.Contains(err.Error(), "not qualified") || !strings.Contains(err.Error(), "--no-isolation") {
 		t.Fatalf("unsupported isolation error = %v", err)

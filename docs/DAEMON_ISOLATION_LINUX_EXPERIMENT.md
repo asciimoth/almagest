@@ -2,7 +2,8 @@
 
 Status: checkpoint 10 implementation and one Linux amd64 qualification run are
 complete. This is development evidence, not a production isolation profile.
-The production daemon remains unchanged and requires `--no-isolation`.
+At this checkpoint, the production daemon still required `--no-isolation`.
+The packaged Linux amd64 profile now supports isolation by default.
 
 ## Scope and reproduction
 

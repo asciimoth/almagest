@@ -145,8 +145,9 @@ to remove every record. Restart inspection uses the recorded adapter LUID/GUID;
 a still-present adapter is not deleted without a driver-owned removal handle.
 Complete Windows runtime/admin daemon composition, restricted command-helper
 semantics, hostile-runtime evidence, packaging, and the default-mode switch
-remain unavailable. Windows default startup therefore fails with explicit
-`--no-isolation` guidance.
+remain unavailable. Windows therefore starts in supported direct mode by
+default while isolation support is in progress. `--no-isolation` is still
+accepted and selects the same mode.
 
 ## Test record
 

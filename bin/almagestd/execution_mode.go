@@ -15,10 +15,14 @@ const (
 )
 
 func selectExecutionMode(arguments args.Args) (executionMode, error) {
-	if arguments.Experimental && !arguments.NoIsolation {
+	return selectExecutionModeForPlatform(arguments, isolationDefault)
+}
+
+func selectExecutionModeForPlatform(arguments args.Args, isolateByDefault bool) (executionMode, error) {
+	if arguments.Experimental && isolateByDefault && !arguments.NoIsolation {
 		return "", fmt.Errorf("--experimental requires explicit --no-isolation")
 	}
-	if !arguments.NoIsolation {
+	if isolateByDefault && !arguments.NoIsolation {
 		return executionModeIsolation, nil
 	}
 	return executionModeDirect, nil

@@ -2,9 +2,11 @@
 
 Status: implemented production architecture for the packaged Linux amd64
 profile. Isolation is the default there; `--no-isolation` selects the direct
-composition. Other targets fail closed with explicit direct-mode guidance.
-Windows Server 2022 amd64 has qualified native components and a fail-closed
-assembly boundary, but it is not a released default profile.
+composition. Windows uses the direct composition by default while isolation
+support is in progress; `--no-isolation` is accepted there with no additional
+effect. Windows Server 2022 amd64 has qualified native components and a
+fail-closed assembly boundary, but it is not a released profile. Other targets
+fail closed with explicit direct-mode guidance.
 Scope update, 2026-10-11: new quota implementation is excluded from the release
 plan and remaining work. Quota references below describe the broader design,
 not additional release requirements. Existing protocol, process, and resource
@@ -159,7 +161,7 @@ with R initially. Keep protocol parsing out of the privileged listener gate.
 | [`command/`](../bin/almagestd/command/allowlist.go) already has named commands and bounded slots; [`node_command.go`](../bin/almagestd/node_command.go) exposes entries with `AllowNodes` | Enforce `AllowNodes` in H, independently of the node catalog. Do not send raw argv across IPC |
 | [`callbacks_linux.go`](../bin/almagestd/platform/callbacks_linux.go) maps backend events to commands | Only N may issue callback requests. Derive slot values from N's committed resource state |
 | [`config.go`](../bin/almagestd/config.go) reads protected secrets from environment and TLS material from files | Resolve exact inputs at bootstrap. Give R only the data it needs, without a file-read API |
-| [`experimental/tor_backend.go`](../lib/experimental/tor_backend.go) constructs a direct host integration | Leave it unchanged for now; require `--experimental --no-isolation` |
+| [`experimental/tor_backend.go`](../lib/experimental/tor_backend.go) constructs a direct host integration | Leave it unchanged for now; require `--experimental` in direct mode and `--no-isolation` where isolation is the platform default |
 
 The current reviewed interfaces are Gonnect `v0.56.0`, sysnet-linux `v0.10.1`, and
 sysnet-windows `v0.5.0`. They already carry capability reports, validation,
@@ -619,8 +621,9 @@ profile.
 A command allowlist alone does not constrain what the program can do. Each
 enabled command requires an OS restriction profile for its intended effects.
 Reject an entry that cannot fit such a profile in isolated mode; using it then
-requires explicit `--no-isolation`. Do not widen N's filesystem or execution
-rights to support it. Prefer a typed network operation to a privileged script.
+requires direct mode and explicit `--no-isolation` where isolation is the
+platform default. Do not widen N's filesystem or execution rights to support
+it. Prefer a typed network operation to a privileged script.
 Retries must not run an already completed command again without an explicit
 new request; command side effects are not part of graph rollback.
 
@@ -1371,10 +1374,11 @@ input; copying Yggdrasil's late in-process sequence would not meet that goal.
 
 ### 10.1 Isolation switch
 
-Isolation is the default once a platform profile is qualified. `--no-isolation`
-selects the direct, single-process path with a prominent startup warning and an
-admin status field. It is a launch-only setting: regular config, snapshots and admin
-API calls cannot change it. No fallback enables it implicitly.
+Isolation is the default once a platform profile is qualified. Linux amd64 has
+that support. Windows selects the direct, single-process path by default while
+its isolation profile is in progress. `--no-isolation` selects the same Windows
+path and has no additional effect. The mode is a launch-only setting: regular
+config, snapshots and admin API calls cannot change it.
 
 Direct mode is a supported performance option, including deployments where the
 whole daemon is already isolated by a VM or container. Do not detect such an
@@ -1430,10 +1434,12 @@ safety and permissions checks appropriate to that identity. Rootless isolation
 is supported where a qualified profile can enforce the boundary; its absence
 does not remove rootless legacy operation.
 
-`--experimental` requires an explicit `--no-isolation`, regardless of selected
-system backend or starting UID. Reject the combination before opening listeners
-or changing host state. Experimental classes stay unregistered in isolated mode;
-a config or snapshot which requires one fails validation. Do not repair
+`--experimental` requires direct mode. On a platform that uses isolation by
+default, require explicit `--no-isolation` and reject the combination before
+opening listeners or changing host state. Windows already defaults to direct
+mode, so it does not require the redundant flag. Experimental classes stay
+unregistered in isolated mode; a config or snapshot which requires one fails
+validation. Do not repair
 `XTorDriver` in this work. `--no-isolation` does not bypass existing protected
 command rules, config separation, admin authentication or archive validation.
 

@@ -9,22 +9,27 @@ import (
 
 func TestSelectExecutionMode(t *testing.T) {
 	for _, test := range []struct {
-		name      string
-		arguments args.Args
-		want      executionMode
-		wantError string
+		name             string
+		isolateByDefault bool
+		arguments        args.Args
+		want             executionMode
+		wantError        string
 	}{
-		{name: "direct", arguments: args.Args{NoIsolation: true}, want: executionModeDirect},
-		{name: "direct experimental", arguments: args.Args{NoIsolation: true, Experimental: true}, want: executionModeDirect},
-		{name: "isolation default", want: executionModeIsolation},
+		{name: "explicit direct", isolateByDefault: true, arguments: args.Args{NoIsolation: true}, want: executionModeDirect},
+		{name: "explicit direct experimental", isolateByDefault: true, arguments: args.Args{NoIsolation: true, Experimental: true}, want: executionModeDirect},
+		{name: "isolation default", isolateByDefault: true, want: executionModeIsolation},
 		{
-			name:      "experimental needs explicit direct mode",
-			arguments: args.Args{Experimental: true},
-			wantError: "--experimental requires explicit --no-isolation",
+			name:             "isolation default experimental needs explicit direct mode",
+			isolateByDefault: true,
+			arguments:        args.Args{Experimental: true},
+			wantError:        "--experimental requires explicit --no-isolation",
 		},
+		{name: "direct default", want: executionModeDirect},
+		{name: "direct default explicit flag", arguments: args.Args{NoIsolation: true}, want: executionModeDirect},
+		{name: "direct default experimental", arguments: args.Args{Experimental: true}, want: executionModeDirect},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			got, err := selectExecutionMode(test.arguments)
+			got, err := selectExecutionModeForPlatform(test.arguments, test.isolateByDefault)
 			if test.wantError != "" {
 				if err == nil || !strings.Contains(err.Error(), test.wantError) {
 					t.Fatalf("selectExecutionMode() error = %v, want error containing %q", err, test.wantError)

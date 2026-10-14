@@ -42,6 +42,6 @@ type Args struct {
 	PipeAdmin                *string  `arg:"--pipe,env:ALMAGEST_PIPE_ADMIN" help:"Windows local admin named-pipe path; empty disables it"`
 
 	DebugNodes   bool `arg:"--debug-nodes" help:"enable debug node classes"`
-	Experimental bool `arg:"--experimental" help:"enable experimental features and node classes; requires --no-isolation"`
-	NoIsolation  bool `arg:"--no-isolation" help:"run all daemon components directly in one process without a sandbox"`
+	Experimental bool `arg:"--experimental" help:"enable experimental features and node classes; requires direct mode"`
+	NoIsolation  bool `arg:"--no-isolation" help:"select direct mode; accepted as a no-op where direct mode is the platform default"`
 }

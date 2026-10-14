@@ -123,9 +123,11 @@ native component evidence for Windows Server 2022/amd64, but does not yet have
 the complete-daemon evidence required by this manifest. Missing results fail
 qualification; they are not successful skips.
 
-Production isolated startup is enabled only for Linux amd64. Direct mode remains
-available through `--no-isolation`, which experimental classes also require.
-All other platforms fail closed before untrusted execution.
+Production isolated startup is enabled only for Linux amd64. Windows isolation
+support is in progress, so Windows uses direct mode by default and accepts
+`--no-isolation` as a no-op. Experimental classes require direct mode. Other
+platforms fail closed before untrusted execution unless direct mode is selected
+explicitly.
 
 The validator has race-enabled tests and structured/raw JSON fuzz targets.
 Passing those tests proves validator behavior, not acceptance of a platform.

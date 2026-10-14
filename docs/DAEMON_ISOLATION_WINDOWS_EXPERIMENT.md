@@ -2,8 +2,9 @@
 
 Status: checkpoint 11 implementation and Windows Server 2022/amd64
 qualification are complete. This is development evidence, not a production
-isolation profile. The production daemon remains unchanged and requires
-`--no-isolation`.
+isolation profile. Windows currently uses the production direct daemon by
+default and accepts `--no-isolation` as a no-op while isolation support is in
+progress.
 
 ## Scope and reproduction
 

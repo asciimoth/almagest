@@ -28,7 +28,7 @@
   "$defs": {
     "experimentalConfig": {
       "type": "object",
-      "description": "Host-facing settings for experimental node classes. Experimental classes are registered explicitly by almagestd only when --experimental and --no-isolation are set and are not part of the library default class list.",
+      "description": "Host-facing settings for experimental node classes. Experimental classes are registered explicitly by almagestd only when --experimental selects direct mode and are not part of the library default class list. On platforms where isolation is the default, direct mode also requires --no-isolation.",
       "properties": {
         "TorDriver": {
           "$ref": "#/$defs/xTorDriverHostConfig"
