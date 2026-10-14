@@ -1,5 +1,5 @@
-// Package configwriter implements the isolated fixed-target config writer.
-// It is not connected to the production daemon composition.
+// Package configwriter implements the isolated fixed-target config writer used
+// by config updates, autosave, and snapshot restore.
 package configwriter
 
 import (

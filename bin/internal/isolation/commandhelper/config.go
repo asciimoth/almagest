@@ -1,5 +1,5 @@
 // Package commandhelper implements the isolated restricted command helper.
-// It is not connected to the production daemon composition.
+// Production bootstrap fixes its executable and profiles before runtime starts.
 package commandhelper
 
 import (

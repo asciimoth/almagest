@@ -116,8 +116,8 @@ func (p Plan) Validate() error {
 	return nil
 }
 
-// CheckPlatform deliberately limits the component to the experimental matrix.
-// A newer build is not assumed to have the same security properties.
+// CheckPlatform limits the component to its tested platform matrix. A newer
+// build is not assumed to have the same security properties.
 func CheckPlatform(build uint32, arch string) error {
 	if build != 20348 || arch != "amd64" {
 		return fmt.Errorf("%w: qualify this Windows build and architecture first", ErrUnavailable)

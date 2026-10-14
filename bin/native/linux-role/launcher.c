@@ -1,6 +1,6 @@
 /* Linux/amd64 role setup. This program is NEVER setuid or file-capability
  * installed. Trusted bootstrap supplies held descriptors, not path strings.
- * No Go code runs between fork and exec. See docs/DAEMON_ISOLATION_LINUX_PROFILES.md. */
+ * No Go code runs between fork and exec. See docs/DAEMON_ISOLATION.md. */
 #define _GNU_SOURCE
 #include <elf.h>
 #include <errno.h>

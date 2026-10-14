@@ -56,7 +56,7 @@ just winvm-doctor
 just winvm-image
 just winvm-smoke
 just winvm-test
-just windows-isolation-experiment
+just windows-isolation-profiles
 just daemon-winvm
 just test-windows-vm
 just test-windows-e2e

@@ -49,18 +49,9 @@ qualify-direct:
 linux-isolation-profiles:
   just test-total e2e:linux_isolation_profile e2e:sysnet_dns_debian_resolvconf e2e:sysnet_dns_openresolv e2e:sysnet_dns_systemd_resolved e2e:tun_splitter_process_routing
 
-# Run the Windows component-profile checks in the locked disposable VM.
-windows-isolation-experiment:
-  ./dev/winvm/run.sh isolation
-
 # Check Windows role restrictions in both identities in the disposable VM.
 windows-isolation-profiles:
   just test-total winvm:m25::windows-role-profiles-caller winvm:m25::windows-role-profiles-service
-
-# Validate one complete checkpoint 30 record. Native evidence must be produced
-# only by the disposable Docker or Windows VM qualification runner.
-qualify-isolation evidence:
-  go run ./bin/cmd/isolation-qualify -evidence {{quote(evidence)}}
 
 [private]
 test-e2e-docker-all: repair-go-work build-web

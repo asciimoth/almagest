@@ -1,6 +1,5 @@
-// Package diagnostics implements bounded cross-process diagnostic logging.
-// It is not connected to the production daemon composition. Direct mode does
-// not import this package or create diagnostic streams.
+// Package diagnostics implements bounded cross-process diagnostic logging for
+// isolated roles. Direct mode does not create diagnostic streams.
 package diagnostics
 
 import (

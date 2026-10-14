@@ -53,8 +53,7 @@ type Limits struct {
 }
 
 // NetworkRestrictions can only reduce the default launch authority. These
-// fields are not yet connected to protected-config schemas; that happens when
-// isolated bootstrap is implemented and reviewed.
+// fields are not yet connected to protected-config schemas.
 type NetworkRestrictions struct {
 	DeniedOperations  []protocol.Operation
 	DeniedRuleTypes   []string

@@ -114,8 +114,8 @@ func nativeMatcherParity(t *testing.T, system sysnet.System, ruleType string) {
 			}
 		})
 	}
-	// Retain a small, repeatable component measurement. Complete-daemon and
-	// separate-process qualification remains subject to checkpoint 31 budgets.
+	// Retain a small, repeatable component measurement. Separate-process
+	// performance is an optimization concern, not a functional matcher contract.
 	packet, err := net.ListenPacket("udp4", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)

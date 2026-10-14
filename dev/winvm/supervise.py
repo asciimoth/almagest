@@ -574,8 +574,6 @@ class Supervisor:
             phases = ("smoke",)
         elif self.args.mode == "resource":
             phases = ("resource",)
-        elif self.args.mode in ("isolation", "data-path"):
-            phases = ("isolation-service", "isolation-caller")
         elif self.args.mode == "ordinary":
             phases = ("ordinary",)
         elif self.args.mode == "privileged":
@@ -589,20 +587,11 @@ class Supervisor:
                 script = "smoke.ps1"
             elif phase == "resource":
                 script = "resource-suite.ps1"
-            elif phase.startswith("isolation-"):
-                script = "isolation-experiment.ps1"
             else:
                 script = "test-suite.ps1"
             args = ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
                     f"{self.remote}/source/dev/winvm/{script}", "-ArtifactDir", f"{self.remote}/artifacts"]
-            if phase.startswith("isolation-"):
-                args += ["-Profile", phase.removeprefix("isolation-"),
-                         "-SourceDir", f"{self.remote}/source"]
-                if self.args.mode == "data-path":
-                    args.append("-DataPath")
-                    args += ["-DataPathRuns", os.environ.get("ALMAGEST_DATA_PATH_RUNS", "7"),
-                             "-DataPathSamples", os.environ.get("ALMAGEST_DATA_PATH_SAMPLES", "200")]
-            elif phase in ("ordinary", "privileged"):
+            if phase in ("ordinary", "privileged"):
                 args += ["-Mode", phase, "-SourceDir", f"{self.remote}/source"]
                 if os.environ.get("WINVM_FAIL_FAST", "1") == "0":
                     args.append("-ContinueAfterFailure")
@@ -613,7 +602,7 @@ class Supervisor:
                 args += ["-SourceDir", f"{self.remote}/source"]
                 if self.args.soak_duration:
                     args += ["-SoakDuration", self.args.soak_duration]
-            command = self.qga("exec", *args, seconds=test_timeout) if phase in ("privileged", "resource", "isolation-service") else self.ssh + [" ".join(args)]
+            command = self.qga("exec", *args, seconds=test_timeout) if phase in ("privileged", "resource") else self.ssh + [" ".join(args)]
             code = self.command(command, test_timeout,
                                 log=phase + "-tests.log", watch=True)
             if code == 124 and test_timeout is not None:
@@ -638,11 +627,6 @@ class Supervisor:
                           str(self.directory / "guest-artifacts.tar")]
             if self.args.soak_duration:
                 validation.append("--allow-diagnostic")
-        elif self.args.mode in ("isolation", "data-path"):
-            validation = ["python3", str(ROOT / "tools/isolation-evidence.py"),
-                          str(self.directory / "guest-artifacts.tar")]
-            if self.args.mode == "data-path":
-                validation.append("--require-data-path")
         else:
             validator = "validate_smoke_artifact" if self.args.mode == "smoke" else "validate_native_test_artifact"
             validation = ["bash", "-c", 'source "$1/common.sh"; shift; "$@"', "validate",
@@ -651,12 +635,6 @@ class Supervisor:
                 validation.append(self.args.mode)
         if self.command(validation, 15, log="validation.log"):
             raise Failure("artifact-validation")
-        if self.args.mode == "data-path":
-            analysis = ["python3", str(ROOT / "tools/data_path_analysis.py"), "windows",
-                        str(self.directory / "guest-artifacts.tar"), "--output",
-                        str(self.directory / "analysis-windows.json")]
-            if self.command(analysis, 30, log="validation.log"):
-                raise Failure("data-path-analysis")
         if self.args.mode in ("test", "ordinary", "privileged"):
             coverage_dir = os.environ.get(
                 "WINVM_COVERAGE_DIR", str(ROOT.parents[1] / "coverage/winvm"))

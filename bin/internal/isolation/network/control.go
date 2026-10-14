@@ -245,9 +245,9 @@ func (b *Broker) GetResourceState(ctx context.Context, req protocol.ResourceRequ
 	})
 }
 
-// Handle is the closed checkpoint-18 dispatch table for transport.New. Later
-// checkpoint operations fail explicitly; they never fall back to native calls
-// in the runtime. Mutation replies contain receipts even when the operation
+// Handle is the closed dispatch table for transport.New. Unknown operations
+// fail explicitly; they never fall back to native calls in the runtime.
+// Mutation replies contain receipts even when the operation
 // fails; errors from native work do not discard the recorded outcome.
 func (b *Broker) Handle(ctx context.Context, op protocol.Operation, body json.RawMessage) (any, error) {
 	switch op {

@@ -42,15 +42,23 @@ Almagest is a Go userspace network stack built around a Pasta node graph.
   `bin/almagestd/static` for daemon embedding.
 
 Runtime path:
-1. `almagestd` reads HuJSON config.
-2. It selects a `sysnet.System`.
-3. It prepares the localhost admin listener.
-4. It builds `lib.Engine`.
-5. The engine creates the Pasta workspace named `main`.
-6. Nodes exchange typed values; `almagest/network` carries `gonnect.Network`
+1. `almagestd` selects isolated or direct execution before it reads config.
+2. Packaged Linux/amd64 replaces itself with a trusted network broker. The
+   broker reads protected launch authority and starts restricted runtime,
+   config-writer, and command-helper roles. Windows currently uses direct mode.
+3. The selected network service provides the runtime with a `sysnet.System`
+   implementation: local objects in direct mode or typed broker clients in
+   isolated mode.
+4. The runtime builds `lib.Engine` and creates the Pasta workspace named
+   `main`.
+5. Nodes exchange typed values; `almagest/network` carries `gonnect.Network`
    resources.
-7. If web admin is enabled, `almagestd` serves embedded static panel files and
-   `/api/ws`.
+6. If web admin is enabled, the runtime serves embedded panel files and
+   `/api/ws`. In isolated mode, the broker owns the public listener and relays
+   accepted streams to the runtime.
+
+See [`docs/DAEMON_ISOLATION.md`](docs/DAEMON_ISOLATION.md) for role ownership,
+IPC, platform restrictions, packaging, and security-test scope.
 
 ## Module Boundaries
 `lib/` may depend on Pasta, Gonnect, Formular, Configer, and Bufpool. Root
@@ -173,20 +181,20 @@ Daemon:
   file-storage restore, graph rebuild, and rollback.
 - `bin/almagestd/snapshot_bbolt.go`: consistent bbolt copies and transactional
   replacement of live database buckets.
+- `bin/internal/isolation/`: trusted bootstrap, closed IPC contracts, network
+  broker and runtime adapters, admin/config/command boundaries, role profiles,
+  supervision, and recovery. Detailed wire contracts stay beside the code.
 - `bin/native/linux-role/` and `bin/internal/isolation/linuxprofile/`: native
-  Linux role restrictions, held-descriptor launch contracts, and final Go
-  thread synchronization. The packaged Linux amd64 daemon uses these components
-  for its default isolated startup; see `docs/DAEMON_ISOLATION_LINUX_PROFILES.md`.
-- `bin/internal/isolation/windowsprofile/`: suspended Windows role launches,
-  restricted tokens, distinct AppContainers, held trusted paths, exact pipe
-  inheritance, mitigations, and bounded jobs. See
-  `docs/DAEMON_ISOLATION_WINDOWS_PROFILES.md` for qualification limits.
+  Linux role restrictions, held-descriptor launch contracts, cgroup placement,
+  and final Go thread synchronization. Packaged Linux/amd64 uses these
+  components for isolated startup by default.
+- `bin/internal/isolation/windowsprofile/`: Windows Server 2022/amd64 component
+  restrictions. These include suspended launches, restricted tokens, distinct
+  AppContainers, held trusted paths, exact pipe inheritance, mitigations, and
+  bounded jobs. Complete Windows daemon isolation is not released.
 - `bin/internal/isolation/supervision/`: bounded lifecycle coordination for an
-  already-started isolated process set and the broker-private, identity-driven
-  host recovery journal. It does not launch roles or enable isolated startup.
-- `bin/internal/isolation/qualification/`: strict complete-profile parity and
-  hostile-runtime evidence validation. Its development-only command cannot
-  enable an unqualified production profile.
+  isolated process set and the broker-private, identity-driven host recovery
+  journal.
 
 Platform and CLI:
 - `bin/almagestd/platform/`: build-tagged defaults and platform operations.
