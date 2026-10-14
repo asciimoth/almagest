@@ -3,6 +3,8 @@ package amnesianodes
 import (
 	"context"
 	"errors"
+	"io"
+	"net"
 	"strings"
 	"sync"
 	"testing"
@@ -105,6 +107,27 @@ func TestAmnesiaClassHasOnlyManagedPortsAndMenuFields(t *testing.T) {
 		if _, err := saved.Get(configer.Path{field}); err == nil {
 			t.Errorf("managed node persisted WireGuard field %q", field)
 		}
+	}
+}
+
+func TestRetryableAmnesiaImportError(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{name: "DNS lookup", err: &net.DNSError{Err: "not found", Name: "gateway.test", IsNotFound: true}, want: true},
+		{name: "socket operation", err: &net.OpError{Op: "dial", Net: "tcp", Err: errors.New("connection refused")}, want: true},
+		{name: "deadline", err: context.DeadlineExceeded, want: true},
+		{name: "truncated response", err: io.ErrUnexpectedEOF, want: true},
+		{name: "invalid credential", err: errors.New("invalid activation key"), want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := retryableAmnesiaImportError(tt.err); got != tt.want {
+				t.Fatalf("retryableAmnesiaImportError(%T) = %t, want %t", tt.err, got, tt.want)
+			}
+		})
 	}
 }
 

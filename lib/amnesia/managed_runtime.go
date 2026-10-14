@@ -6,6 +6,8 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
+	"net"
 	"net/http"
 
 	conn "github.com/asciimoth/batchudp"
@@ -274,6 +276,7 @@ func (n *managedAmnesiaNode) reconcile(req managedAmnesiaRuntimeRequest) (manage
 		n.logDebugf("Amnesia profile import failed: generation=%d error=%v", req.generation, err)
 		n.closeRuntimeLocked()
 		result.err = amnesiaImportError(err)
+		result.retry = retryableAmnesiaImportError(err)
 		return result, true
 	}
 	if n.runtimeID == 0 {
@@ -420,6 +423,7 @@ func (n *managedAmnesiaNode) continuePausedImportLocked(
 		)
 		n.closeRuntimeLocked()
 		result.err = amnesiaImportError(err)
+		result.retry = retryableAmnesiaImportError(err)
 		return result, true
 	}
 	profile, captcha, err := n.finishImportStepLocked(step)
@@ -438,6 +442,18 @@ func (n *managedAmnesiaNode) continuePausedImportLocked(
 		req, result, n.runtimeClient, n.runtimeHTTP, n.runtimeMaterial,
 		n.runtimeFormat, profile, n.runtimePersistent,
 	)
+}
+
+func retryableAmnesiaImportError(err error) bool {
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+		return true
+	}
+	var dnsErr *net.DNSError
+	if errors.As(err, &dnsErr) {
+		return true
+	}
+	var operationErr *net.OpError
+	return errors.As(err, &operationErr)
 }
 
 func (n *managedAmnesiaNode) finishImportStepLocked(

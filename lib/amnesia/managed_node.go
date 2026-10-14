@@ -30,6 +30,9 @@ const (
 	// NodeTypeAmnesia is the class name of the combined Amnezia client and
 	// WireGuard device node.
 	NodeTypeAmnesia = "almagest/Amnesia"
+
+	managedAmnesiaRetryInitialDelay = 100 * time.Millisecond
+	managedAmnesiaRetryMaxDelay     = 10 * time.Second
 )
 
 var (
@@ -115,9 +118,12 @@ type managedAmnesiaNode struct {
 	newClient   ClientFactory
 	startImport managedAmnesiaImportStarter
 
-	generation atomic.Uint64
-	cancelMu   sync.Mutex
-	cancelRun  context.CancelFunc
+	generation  atomic.Uint64
+	cancelMu    sync.Mutex
+	cancelRun   context.CancelFunc
+	retryMu     sync.Mutex
+	retryDelay  time.Duration
+	retryCancel chan struct{}
 
 	managedMu   sync.Mutex
 	nodeStore   storage.KVStore
@@ -192,6 +198,11 @@ type managedAmnesiaRuntimeResult struct {
 	dns               dns.Interface
 	captcha           *amnesiaCaptchaPrompt
 	err               error
+	retry             bool
+}
+
+type managedAmnesiaRetry struct {
+	generation uint64
 }
 
 type managedAmnesiaCaptchaResponse struct {
@@ -258,6 +269,7 @@ func (n *managedAmnesiaNode) OnReady() error {
 func (n *managedAmnesiaNode) OnStop() {
 	n.generation.Add(1)
 	n.cancelCurrentRun()
+	n.cancelRetry()
 	n.unsubscribeManagedNetworkMTU()
 	n.dnsOutputs.CloseAll()
 	n.dnsProvider = nil
@@ -375,6 +387,8 @@ func (n *managedAmnesiaNode) OnInbox(message pasta.InboxMessage) error {
 	switch msg := message.Payload.(type) {
 	case managedAmnesiaRuntimeResult:
 		n.handleRuntimeResult(msg)
+	case managedAmnesiaRetry:
+		n.handleRetry(msg)
 	case managedAmnesiaStats:
 		if msg.generation == n.generation.Load() {
 			n.runtimeStats = msg.stats
@@ -589,6 +603,11 @@ func (n *managedAmnesiaNode) currentNodeName() string {
 }
 
 func (n *managedAmnesiaNode) scheduleReconcile(invalidate bool) {
+	n.cancelRetry()
+	n.startReconcile(invalidate)
+}
+
+func (n *managedAmnesiaNode) startReconcile(invalidate bool) {
 	if n.W == nil || n.ID == 0 {
 		return
 	}
@@ -677,7 +696,13 @@ func (n *managedAmnesiaNode) handleRuntimeResult(msg managedAmnesiaRuntimeResult
 		n.dnsOutputs.InvalidateAllLocked(n.W, n.ID)
 		n.dnsProvider = nil
 		n.sendTunConfig()
+		if msg.retry {
+			n.scheduleRetry(msg.generation)
+		} else {
+			n.cancelRetry()
+		}
 	} else if msg.captcha != nil {
+		n.cancelRetry()
 		n.setCaptchaPrompt(msg.captcha)
 		n.profileStatus = amnesiaProfileStatus{}
 		n.runtimeStats = wgdevice.RuntimeStats{}
@@ -685,10 +710,12 @@ func (n *managedAmnesiaNode) handleRuntimeResult(msg managedAmnesiaRuntimeResult
 		n.dnsProvider = nil
 		n.sendTunConfig()
 	} else if msg.waitingForTun || msg.waitingForNetwork {
+		n.cancelRetry()
 		n.clearCaptchaPrompt()
 		// Keep the negotiated profile while a linked provider replaces its
 		// payload. The next TUN or network event schedules device activation.
 	} else if msg.prepared {
+		n.cancelRetry()
 		n.clearCaptchaPrompt()
 		// Configure the graph TUN before the WireGuard device exists. A provider
 		// can synchronously replace its TUN and advance the generation here. The
@@ -705,6 +732,7 @@ func (n *managedAmnesiaNode) handleRuntimeResult(msg managedAmnesiaRuntimeResult
 		n.scheduleReconcile(false)
 		return
 	} else if msg.ready {
+		n.cancelRetry()
 		n.clearCaptchaPrompt()
 		n.runtimeReady = true
 		n.dnsProvider = msg.dns
@@ -716,6 +744,7 @@ func (n *managedAmnesiaNode) handleRuntimeResult(msg managedAmnesiaRuntimeResult
 		n.sendProfileTunConfig(msg.profile)
 		n.sendDNSAll()
 	} else {
+		n.cancelRetry()
 		n.clearCaptchaPrompt()
 		n.profileStatus = amnesiaProfileStatus{}
 		n.runtimeStats = wgdevice.RuntimeStats{}
@@ -729,6 +758,60 @@ func (n *managedAmnesiaNode) handleRuntimeResult(msg managedAmnesiaRuntimeResult
 	} else {
 		n.sendStatusBlock()
 	}
+}
+
+func (n *managedAmnesiaNode) scheduleRetry(generation uint64) {
+	if n.W == nil || n.ID == 0 || generation != n.generation.Load() {
+		return
+	}
+	n.retryMu.Lock()
+	if n.retryCancel != nil {
+		n.retryMu.Unlock()
+		return
+	}
+	delay := n.retryDelay
+	if delay <= 0 {
+		delay = managedAmnesiaRetryInitialDelay
+	}
+	n.retryDelay = min(delay*2, managedAmnesiaRetryMaxDelay)
+	cancel := make(chan struct{})
+	n.retryCancel = cancel
+	n.retryMu.Unlock()
+
+	go func() {
+		timer := time.NewTimer(delay)
+		defer timer.Stop()
+		select {
+		case <-timer.C:
+		case <-cancel:
+			return
+		}
+		n.retryMu.Lock()
+		if n.retryCancel != cancel {
+			n.retryMu.Unlock()
+			return
+		}
+		n.retryCancel = nil
+		n.retryMu.Unlock()
+		n.W.SendInbox(pasta.InboxMessage{ReceiverNode: n.ID, Payload: managedAmnesiaRetry{generation: generation}})
+	}()
+}
+
+func (n *managedAmnesiaNode) handleRetry(msg managedAmnesiaRetry) {
+	if msg.generation != n.generation.Load() {
+		return
+	}
+	n.startReconcile(true)
+}
+
+func (n *managedAmnesiaNode) cancelRetry() {
+	n.retryMu.Lock()
+	if n.retryCancel != nil {
+		close(n.retryCancel)
+		n.retryCancel = nil
+	}
+	n.retryDelay = managedAmnesiaRetryInitialDelay
+	n.retryMu.Unlock()
 }
 
 // markRuntimeTunConfigured advances only the negotiated runtime named by the

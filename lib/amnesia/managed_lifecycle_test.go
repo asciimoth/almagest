@@ -3,6 +3,7 @@ package amnesianodes
 import (
 	"context"
 	"errors"
+	"net"
 	"net/netip"
 	"slices"
 	"sync"
@@ -20,6 +21,7 @@ import (
 	"github.com/asciimoth/gonnect/tun"
 	"github.com/asciimoth/pasta/pasta"
 	"github.com/asciimoth/pasta/pasta/std"
+	wgoamnesia "github.com/asciimoth/wgo/amnesia"
 
 	dnsnodes "github.com/asciimoth/almagest/lib/dns"
 	"github.com/asciimoth/almagest/lib/links"
@@ -248,6 +250,97 @@ func TestManagedAmnesiaRecoveryRepublishesProfileTunConfig(t *testing.T) {
 			}, "recovered profile config")
 		})
 	}
+}
+
+func TestManagedAmnesiaRetriesTransientImportFailure(t *testing.T) {
+	spawner := &managedAmnesiaLifecycleSpawner{}
+	secrets := &amnesiaTestSecrets{values: map[string]string{
+		"connection-secret": amnesiaTestActivationKey(t, "8f2c41d7a693b5e0"),
+	}}
+	runtime := managedAmnesiaLifecycleRuntime{
+		kv: managedAmnesiaKVManager{store: newAmnesiaMemoryKV()}, spawner: spawner,
+		secrets: secrets,
+	}
+	recorder := &managedAmnesiaClientRecorder{
+		t: t, peerKey: amnesiaTestPrivateKey(t).PublicKey(),
+	}
+	var attempts atomic.Uint64
+	class := &recordingManagedAmnesiaClass{base: AmnesiaClass{
+		Runtime: runtime,
+		NewClient: func(options wgoamnesia.ClientOptions) (Client, error) {
+			if attempts.Add(1) == 1 {
+				return managedAmnesiaImportErrorClient{err: &net.DNSError{
+					Err: "temporary fixture failure", Name: "gateway.test", IsNotFound: true,
+				}}, nil
+			}
+			return recorder.factory(options)
+		},
+	}}
+	w, err := pasta.WorkspaceFromConfig(
+		[]pasta.NodeClass{class}, managedAmnesiaEnabledLifecycleConfig("amnesia"),
+		logging.NewDebugLogFactory(128),
+	)
+	if err != nil {
+		t.Fatalf("build workspace: %v", err)
+	}
+	t.Cleanup(func() {
+		w.Close()
+		spawner.wait()
+	})
+	node := class.onlyNode(t)
+
+	tunProvider := &managedAmnesiaLinkPeer{}
+	tunProviderID, err := w.AddNode(tunProvider, "test/AmnesiaTunProvider", "tun provider")
+	if err != nil {
+		t.Fatalf("add TUN provider: %v", err)
+	}
+	tunPort, err := w.AddPort(pasta.Port{
+		Node: tunProviderID, Direction: "right", Name: "Tun", Types: []string{nodekit.TypeTun},
+	})
+	if err != nil {
+		t.Fatalf("add TUN provider port: %v", err)
+	}
+	networkProvider := &managedAmnesiaLinkPeer{}
+	networkProviderID, err := w.AddNode(networkProvider, "test/AmnesiaNetworkProvider", "network provider")
+	if err != nil {
+		t.Fatalf("add network provider: %v", err)
+	}
+	networkPort, err := w.AddPort(pasta.Port{
+		Node: networkProviderID, Direction: "left", Name: "Network", Types: []string{nodekit.TypeNetwork},
+	})
+	if err != nil {
+		t.Fatalf("add network provider port: %v", err)
+	}
+	tunLink, _, err := w.AddLink(tunPort, node.tunp)
+	if err != nil {
+		t.Fatalf("attach TUN link: %v", err)
+	}
+	networkLink, _, err := w.AddLink(networkPort, node.netp)
+	if err != nil {
+		t.Fatalf("attach network link: %v", err)
+	}
+	network := gonnect.DetachNetwork(gonnect.NewLoopbackNetwork(), nil, nil)
+	t.Cleanup(func() { _ = network.Close() })
+	w.EmitEvent(networkProviderID, networkLink, nodekit.NetworkPayload{Network: network})
+	tunSource, _ := newManagedAmnesiaLifecycleTun(t)
+	w.EmitEvent(tunProviderID, tunLink, nodekit.TunPayload{Tun: tunSource})
+
+	waitManagedAmnesiaNodeLabel(t, w, node.ID, "up")
+	if got := attempts.Load(); got != 2 {
+		t.Fatalf("Amnesia import attempts = %d, want 2", got)
+	}
+}
+
+type managedAmnesiaImportErrorClient struct {
+	err error
+}
+
+func (c managedAmnesiaImportErrorClient) ImportNonInteractive(
+	context.Context,
+	string,
+	wgoamnesia.NegotiationOptions,
+) (*wgoamnesia.Profile, error) {
+	return nil, c.err
 }
 
 func TestManagedAmnesiaRecoveryReconfiguresVTunThroughJoiner(t *testing.T) {
