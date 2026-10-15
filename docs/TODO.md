@@ -163,6 +163,10 @@ Cli
 - [ ] Machine-readable json output by default when output is not a tty
 - [ ] Semi-interactive tui mode (fzf-like pickers, etC) when output is a tty
 
+Propagation
+- lists
+    - awesome*
+    - https://research.torproject.org/tools/
 
 Plugin system?
 - Go plugins vs IPC vs WASM

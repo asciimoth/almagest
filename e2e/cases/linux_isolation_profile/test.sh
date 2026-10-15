@@ -19,6 +19,9 @@ printf '%s\n' '100000 100000' >"$profile_cgroup/cpu.max"
 )
 rmdir "$profile_cgroup"
 
+runuser -u nobody -- env ALMAGEST_PROFILE_TEST_NATIVE=1 \
+	/qualification/profile.test -test.v -test.timeout=90s -test.run '^TestNativeUserRoles$'
+
 export ALMAGEST_ISOLATION_MEMORY_BYTES=1073741824
 export ALMAGEST_ISOLATION_TASKS=256
 export ALMAGEST_ISOLATION_CPU_QUOTA=200000

@@ -3,6 +3,7 @@
 package bootstrap
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -183,6 +184,98 @@ func OpenPrivateDirectory(path string, uid, gid uint32) (*os.File, error) {
 		return nil, fmt.Errorf("%w: private directory must be mode 0700 and owned by uid %d gid %d", ErrUnsafeInput, uid, gid)
 	}
 	return os.NewFile(uintptr(fd), path), nil
+}
+
+// EnsurePrivateDirectory creates missing path components through held parent
+// descriptors. It never follows a symbolic link. Existing parents must have
+// trusted directory metadata, and the final directory must be private.
+func EnsurePrivateDirectory(path string, uid, gid uint32) error {
+	if path == "" || !filepath.IsAbs(path) || filepath.Clean(path) != path || containsParentReference(path) {
+		return fmt.Errorf("%w: private directory path must be absolute and clean: %q", ErrUnsafeInput, path)
+	}
+	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
+	if len(parts) == 0 || parts[0] == "" {
+		return fmt.Errorf("%w: root is not a private role directory", ErrUnsafeInput)
+	}
+	fd, err := unix.Open("/", unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = unix.Close(fd) }()
+	current := "/"
+	for index, part := range parts {
+		next, openErr := unix.Openat(fd, part, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+		if errors.Is(openErr, unix.ENOENT) {
+			if err := unix.Mkdirat(fd, part, 0o700); err != nil {
+				return fmt.Errorf("create private directory %s: %w", filepath.Join(current, part), err)
+			}
+			next, openErr = unix.Openat(fd, part, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+		}
+		if openErr != nil {
+			return fmt.Errorf("%w: open private directory %s: %v", ErrUnsafeInput, filepath.Join(current, part), openErr)
+		}
+		_ = unix.Close(fd)
+		fd = next
+		current = filepath.Join(current, part)
+		if index < len(parts)-1 {
+			if err := checkTrustedFD(fd, unix.S_IFDIR, current); err != nil {
+				return err
+			}
+		}
+	}
+	var stat unix.Stat_t
+	if err := unix.Fstat(fd, &stat); err != nil {
+		return err
+	}
+	if stat.Mode&unix.S_IFMT != unix.S_IFDIR || stat.Mode&0o7777 != 0o700 || stat.Uid != uid || stat.Gid != gid {
+		return fmt.Errorf("%w: private directory must be mode 0700 and owned by uid %d gid %d", ErrUnsafeInput, uid, gid)
+	}
+	return nil
+}
+
+// ValidatePrivateTree rejects aliases and special objects before a user-profile
+// role receives write access to an existing tree. OpenPrivateDirectory must be
+// called first to validate every ancestor and pin the root directory.
+func ValidatePrivateTree(path string, uid, gid uint32) error {
+	var root unix.Stat_t
+	if err := unix.Lstat(path, &root); err != nil {
+		return err
+	}
+	if root.Mode&unix.S_IFMT != unix.S_IFDIR || root.Uid != uid || root.Gid != gid {
+		return fmt.Errorf("%w: private tree root has unsafe metadata", ErrUnsafeInput)
+	}
+	var rootStatx unix.Statx_t
+	if err := unix.Statx(unix.AT_FDCWD, path, unix.AT_SYMLINK_NOFOLLOW, unix.STATX_TYPE|unix.STATX_MNT_ID, &rootStatx); err != nil || rootStatx.Mask&unix.STATX_MNT_ID == 0 {
+		return fmt.Errorf("%w: cannot identify private tree mount", ErrUnsafeInput)
+	}
+	return filepath.WalkDir(path, func(current string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		var stat unix.Stat_t
+		if err := unix.Lstat(current, &stat); err != nil {
+			return err
+		}
+		if stat.Dev != root.Dev || stat.Uid != uid || stat.Gid != gid || stat.Mode&0o022 != 0 {
+			return fmt.Errorf("%w: private tree entry has unsafe owner, mode, or mount: %s", ErrUnsafeInput, current)
+		}
+		var statx unix.Statx_t
+		if err := unix.Statx(unix.AT_FDCWD, current, unix.AT_SYMLINK_NOFOLLOW, unix.STATX_TYPE|unix.STATX_MNT_ID, &statx); err != nil ||
+			statx.Mask&unix.STATX_MNT_ID == 0 || statx.Mnt_id != rootStatx.Mnt_id {
+			return fmt.Errorf("%w: private tree crosses a mount boundary: %s", ErrUnsafeInput, current)
+		}
+		switch stat.Mode & unix.S_IFMT {
+		case unix.S_IFDIR:
+			return nil
+		case unix.S_IFREG:
+			if stat.Nlink != 1 || stat.Mode&(unix.S_ISUID|unix.S_ISGID) != 0 {
+				return fmt.Errorf("%w: private tree file has aliases or set-ID mode: %s", ErrUnsafeInput, current)
+			}
+			return nil
+		default:
+			return fmt.Errorf("%w: private tree contains an unsupported object: %s", ErrUnsafeInput, current)
+		}
+	})
 }
 
 func containsParentReference(path string) bool {

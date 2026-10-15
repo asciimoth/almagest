@@ -63,7 +63,7 @@ func TestDataFrame(t *testing.T) {
 }
 
 func TestDataCredits(t *testing.T) {
-	session := protocol.Session{ID: protocol.SessionID{1}, Epoch: 1, Version: 1}
+	session := protocol.Session{ID: protocol.SessionID{1}, Epoch: 1, Version: protocol.Version}
 	ref := protocol.ResourceRef{ID: protocol.ResourceID{2}, SessionID: session.ID, Type: protocol.ResourceSocket, GraphEpoch: 1, Generation: 1}
 	a, b := net.Pipe()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -116,7 +116,7 @@ func TestDataCredits(t *testing.T) {
 }
 
 func TestDataReservationLimit(t *testing.T) {
-	session := protocol.Session{ID: protocol.SessionID{1}, Epoch: 1, Version: 1}
+	session := protocol.Session{ID: protocol.SessionID{1}, Epoch: 1, Version: protocol.Version}
 	a, b := net.Pipe()
 	defer func() { _ = b.Close() }()
 	mux, err := New(context.Background(), a, session)

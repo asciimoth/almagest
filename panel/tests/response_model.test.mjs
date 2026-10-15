@@ -57,6 +57,58 @@ test("hello decoder accepts isolated status and rejects mode/status mismatch", (
   assert.equal(parseHelloResponse({ ...isolated, execution_mode: "direct" }), null);
 });
 
+test("hello decoder validates adaptive isolation status", () => {
+  const isolation = {
+    protocol_version: 1,
+    status_schema_version: 1,
+    restrictions: { runtime: ["seccomp"] },
+    roles: { network: "ready", runtime: "ready" },
+    capabilities: { native_network: true },
+    recovery_state: "complete",
+    requested_policy: "auto",
+    profile_id: "linux-user-v1",
+    profile_revision: 1,
+    verification_state: "verified",
+    reduced: true,
+    mechanisms: {
+      network: { "capability-sets": { state: "applied" } },
+      runtime: { seccomp: { state: "applied" }, "role-cgroups": { state: "unavailable", reason: "not-delegated" } },
+    },
+    credentials: {
+      network: { real_uid: 1000, effective_uid: 1000, saved_uid: 1000, filesystem_uid: 1000,
+        real_gid: 1000, effective_gid: 1000, saved_gid: 1000, filesystem_gid: 1000, supplementary_groups: [1000] },
+      runtime: { real_uid: 1000, effective_uid: 1000, saved_uid: 1000, filesystem_uid: 1000,
+        real_gid: 1000, effective_gid: 1000, saved_gid: 1000, filesystem_gid: 1000, supplementary_groups: [] },
+    },
+    capability_sets: {
+      network: { inheritable: ["CAP_NET_ADMIN"], permitted: ["CAP_NET_ADMIN"], effective: ["CAP_NET_ADMIN"],
+        bounding: ["CAP_NET_ADMIN"], ambient: ["CAP_NET_ADMIN"] },
+      runtime: { inheritable: [], permitted: [], effective: [], bounding: ["CAP_NET_ADMIN"], ambient: [] },
+    },
+    resource_limits: {
+      runtime: [{ name: "descriptors", requested: "2048", effective: "2048", unit: "count",
+        scope: "process", source: "configured", enforcement: "applied" }],
+    },
+    warnings: [{ role: "runtime", code: "not-delegated", effect: "No per-role cgroup ceiling.", feature: "A memory ceiling is unavailable." }],
+    observation_time: "2026-10-15T12:00:00Z",
+    selected_plan_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  };
+  const hello = { version: "1", execution_mode: "isolation", project_version_status: { version: "1", highlight: "none" }, isolation };
+  const parsed = parseHelloResponse(hello);
+  assert.equal(parsed?.isolation?.mechanisms?.runtime?.["role-cgroups"]?.reason, "not-delegated");
+  assert.equal(parsed?.isolation?.capability_sets?.network?.effective[0], "CAP_NET_ADMIN");
+  for (const invalid of [
+    { ...isolation, verification_state: "ready" },
+    { ...isolation, status_schema_version: 2 },
+    { ...isolation, profile_id: "custom" },
+    { ...isolation, mechanisms: { runtime: { seccomp: { state: "enabled" } } } },
+    { ...isolation, capability_sets: { runtime: { ...isolation.capability_sets.runtime, effective: ["CAP_MAGIC"] } } },
+    { ...isolation, resource_limits: { runtime: [{ ...isolation.resource_limits.runtime[0], scope: "host" }] } },
+    { ...isolation, selected_plan_digest: "ABC" },
+    { ...isolation, warnings: Array(33).fill(isolation.warnings[0]) },
+  ]) assert.equal(parseHelloResponse({ ...hello, isolation: invalid }), null);
+});
+
 test("response decoders reject malformed nested storage and TLS values", () => {
   const invalid = [
     parseHelloResponse({ version: "v1", project_version_status: { version: "v1", highlight: "script" } }),

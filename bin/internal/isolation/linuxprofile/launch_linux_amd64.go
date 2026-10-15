@@ -22,6 +22,7 @@ type Inputs struct {
 	Executable  *os.File
 	Directory   *os.File
 	Cgroup      *os.File
+	Code        *os.File // required only by linux-user-v1 for one exclusive role copy
 	Command     *os.File // required only for the fixed-command helper
 	Data        *os.File // optional separate N/R data lane
 	Diagnostics *os.File // optional separate logging lane
@@ -40,7 +41,13 @@ func CommandContext(ctx context.Context, p Plan, in Inputs) (*exec.Cmd, error) {
 	if err != nil {
 		return nil, err
 	}
-	if ctx == nil || in.Launcher == nil || in.Control == nil || in.Executable == nil || in.Directory == nil || in.Cgroup == nil ||
+	profile := p.Profile
+	if profile == "" {
+		profile = ProfileFull
+	}
+	if ctx == nil || in.Launcher == nil || in.Control == nil || in.Executable == nil || in.Directory == nil ||
+		(profile == ProfileFull && (in.Cgroup == nil || in.Code != nil) ||
+			profile == ProfileUser && (in.Cgroup != nil || in.Code == nil)) ||
 		(p.Role == Command) != (in.Command != nil) ||
 		(p.Role == Writer || p.Role == Command) && (in.Data != nil || in.Admin != nil || in.Config != nil || in.Commands != nil) ||
 		p.Role != Command && in.Callbacks != nil {
@@ -54,7 +61,15 @@ func CommandContext(ctx context.Context, p Plan, in Inputs) (*exec.Cmd, error) {
 	// CLONE_INTO_CGROUP puts the first child instruction under the role's
 	// resource limits. Moving the bootstrap process or attaching a running child
 	// would either affect another role or leave an unrestricted startup window.
-	cmd.SysProcAttr = &syscall.SysProcAttr{UseCgroupFD: true, CgroupFD: int(in.Cgroup.Fd())}
-	cmd.ExtraFiles = []*os.File{in.Control, in.Executable, in.Directory, in.Cgroup, in.Command, in.Launcher, in.Data, in.Diagnostics, in.Admin, in.Config, in.Commands, in.Callbacks}
+	cmd.SysProcAttr = &syscall.SysProcAttr{Pdeathsig: syscall.SIGKILL}
+	if profile == ProfileFull {
+		cmd.SysProcAttr.UseCgroupFD = true
+		cmd.SysProcAttr.CgroupFD = int(in.Cgroup.Fd())
+	}
+	resource := in.Cgroup
+	if profile == ProfileUser {
+		resource = in.Code
+	}
+	cmd.ExtraFiles = []*os.File{in.Control, in.Executable, in.Directory, resource, in.Command, in.Launcher, in.Data, in.Diagnostics, in.Admin, in.Config, in.Commands, in.Callbacks}
 	return cmd, nil
 }

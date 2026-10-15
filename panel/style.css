@@ -258,6 +258,23 @@ h1 {
   white-space: nowrap;
 }
 
+#isolation-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border: 1px solid var(--green);
+  border-radius: 999px;
+  color: var(--green);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+#isolation-status[data-reduced="true"] {
+  border-color: var(--yellow);
+  color: var(--yellow);
+}
+
 #project-version[data-highlight="none"] {
   color: var(--subtext);
   border-color: var(--surface1);

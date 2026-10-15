@@ -55,6 +55,21 @@ const linuxFallbackFileStorage = "/var/lib/almagest/store"
 // parents before creating missing components.
 func SetupFS(storagePath string, tmp bool) (fs string, cleanup FSCleanup, err error) {
 	cleanup = noopFSCleanup
+	if os.Getenv("ALMAGEST_LINUX_PROFILE") == "linux-user-v1" {
+		if tmp || storagePath == "" || storagePath != os.Getenv("ALMAGEST_STORAGE") || !filepath.IsAbs(storagePath) || filepath.Clean(storagePath) != storagePath {
+			return "", nil, fmt.Errorf("invalid held user-profile storage")
+		}
+		fd, openErr := unix.Open(".", unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+		if openErr != nil {
+			return "", nil, fmt.Errorf("open held user-profile storage: %w", openErr)
+		}
+		checkErr := checkPrivateDirFD(fd, "held user-profile storage")
+		closeErr := unix.Close(fd)
+		if checkErr != nil || closeErr != nil {
+			return "", nil, errors.Join(checkErr, closeErr)
+		}
+		return storagePath, cleanup, nil
+	}
 
 	if tmp {
 		return setupTempFS(linuxTempFileStorageParent())

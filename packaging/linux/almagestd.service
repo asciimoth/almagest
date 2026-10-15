@@ -5,7 +5,7 @@ After=network.target
 [Service]
 Type=simple
 ExecStartPre=/usr/libexec/almagest/almagest-isolation-storage prepare
-ExecStart=/usr/libexec/almagest/almagestd
+ExecStart=/usr/libexec/almagest/almagestd --isolation=auto
 Restart=on-failure
 RestartSec=2s
 UMask=0077

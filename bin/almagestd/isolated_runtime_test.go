@@ -70,3 +70,33 @@ func TestDaemonIntegrationsRequireEveryAuthorityAdapter(t *testing.T) {
 		})
 	}
 }
+
+func TestIsolatedAdminAPIMapsAdaptiveIsolationStatus(t *testing.T) {
+	status := roleentry.RuntimeIsolationStatus{ProtocolVersion: 1, StatusSchemaVersion: 1, RecoveryState: "complete",
+		RequestedPolicy: "auto", ProfileID: "linux-user-v1", ProfileRevision: 2, VerificationState: "verified", Reduced: true,
+		Mechanisms:      map[string]map[string]roleentry.RuntimeIsolationMechanism{"runtime": {"seccomp": {State: "applied"}}},
+		Credentials:     map[string]roleentry.RuntimeIsolationCredentials{"runtime": {RealUID: 1000, SupplementaryGroups: []uint32{1000}}},
+		CapabilitySets:  map[string]roleentry.RuntimeIsolationCapabilitySets{"runtime": {Bounding: []string{"CAP_NET_ADMIN"}}},
+		ResourceLimits:  map[string][]roleentry.RuntimeIsolationResourceLimit{"runtime": {{Name: "tasks", Requested: "64", Effective: "64", Unit: "count", Scope: "role", Source: "configured", Enforcement: "applied"}}},
+		Warnings:        []roleentry.RuntimeIsolationWarning{{Role: "runtime", Code: "not-delegated", Effect: "No role cgroup.", Feature: "A memory ceiling is unavailable."}},
+		ObservationTime: "2026-10-15T12:00:00Z", SelectedPlanDigest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}
+	admin, err := isolatedAdminAPI(&Config{}, nil, nil, status)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := admin.isolationStatus
+	if got == nil || got.StatusSchemaVersion != 1 || got.RequestedPolicy != "auto" || got.ProfileID != "linux-user-v1" || got.ProfileRevision != 2 ||
+		!got.Reduced || got.Mechanisms["runtime"]["seccomp"].State != "applied" || got.Credentials["runtime"].RealUID != 1000 ||
+		got.CapabilitySets["runtime"].Bounding[0] != "CAP_NET_ADMIN" || got.ResourceLimits["runtime"][0].Effective != "64" ||
+		got.Warnings[0].Code != "not-delegated" || got.SelectedPlanDigest != status.SelectedPlanDigest {
+		t.Fatalf("mapped status = %#v", got)
+	}
+	status.Credentials["runtime"] = roleentry.RuntimeIsolationCredentials{}
+	status.CapabilitySets["runtime"] = roleentry.RuntimeIsolationCapabilitySets{}
+	status.ResourceLimits["runtime"][0].Effective = "changed"
+	status.Warnings[0].Effect = "changed"
+	if got.Credentials["runtime"].SupplementaryGroups[0] != 1000 || got.CapabilitySets["runtime"].Bounding[0] != "CAP_NET_ADMIN" ||
+		got.ResourceLimits["runtime"][0].Effective != "64" || got.Warnings[0].Effect != "No role cgroup." {
+		t.Fatal("mapped adaptive status aliases internal input")
+	}
+}

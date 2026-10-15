@@ -84,6 +84,15 @@ func runIsolatedRuntimeRole() error {
 	if err := roleentry.AcknowledgeBootstrap(ctx, control, bootstrap); err != nil {
 		return fmt.Errorf("acknowledge runtime bootstrap: %w", err)
 	}
+	if bootstrap.ProfileID != "" {
+		input.Isolation, err = roleentry.ReceiveFinalIsolationStatus(ctx, control)
+		if err != nil {
+			return fmt.Errorf("read verified isolation status: %w", err)
+		}
+		if input.Isolation.ProfileID != bootstrap.ProfileID || input.Isolation.SelectedPlanDigest != bootstrap.PlanDigest {
+			return protocol.ErrInvalidContract
+		}
+	}
 	gonnect.UnfuckGoDns()
 	if input.Options.LogLevel != "" {
 		golog.SetLevel(input.Options.LogLevel)
@@ -257,8 +266,13 @@ func readRuntimeConfig(storage string) ([]byte, []byte, error) {
 func isolatedAdminAPI(conf *Config, runtime *admingate.Runtime, endpoints []roleentry.RuntimeAdminEndpoint, status roleentry.RuntimeIsolationStatus) (*AdminAPI, error) {
 	admin := &AdminAPI{config: conf}
 	if status.ProtocolVersion != 0 {
-		admin.isolationStatus = &api.IsolationStatus{ProtocolVersion: status.ProtocolVersion, Restrictions: status.Restrictions,
-			Roles: status.Roles, Capabilities: status.Capabilities, RecoveryState: status.RecoveryState}
+		admin.isolationStatus = &api.IsolationStatus{ProtocolVersion: status.ProtocolVersion, StatusSchemaVersion: status.StatusSchemaVersion, Restrictions: status.Restrictions,
+			Roles: status.Roles, Capabilities: status.Capabilities, RecoveryState: status.RecoveryState,
+			RequestedPolicy: status.RequestedPolicy, ProfileID: status.ProfileID, ProfileRevision: status.ProfileRevision,
+			VerificationState: status.VerificationState, Reduced: status.Reduced,
+			Mechanisms: mapIsolationMechanisms(status.Mechanisms), Credentials: mapIsolationCredentials(status.Credentials),
+			CapabilitySets: mapIsolationCapabilitySets(status.CapabilitySets), ResourceLimits: mapIsolationResourceLimits(status.ResourceLimits),
+			Warnings: mapIsolationWarnings(status.Warnings), ObservationTime: status.ObservationTime, SelectedPlanDigest: status.SelectedPlanDigest}
 	}
 	if len(endpoints) == 0 {
 		return admin, nil
@@ -285,4 +299,71 @@ func isolatedAdminAPI(conf *Config, runtime *admingate.Runtime, endpoints []role
 		}
 	}
 	return admin, nil
+}
+
+func mapIsolationMechanisms(input map[string]map[string]roleentry.RuntimeIsolationMechanism) map[string]map[string]api.IsolationMechanism {
+	if input == nil {
+		return nil
+	}
+	result := make(map[string]map[string]api.IsolationMechanism, len(input))
+	for role, mechanisms := range input {
+		mapped := make(map[string]api.IsolationMechanism, len(mechanisms))
+		for name, value := range mechanisms {
+			mapped[name] = api.IsolationMechanism{State: value.State, Reason: value.Reason}
+		}
+		result[role] = mapped
+	}
+	return result
+}
+
+func mapIsolationCredentials(input map[string]roleentry.RuntimeIsolationCredentials) map[string]api.IsolationCredentials {
+	if input == nil {
+		return nil
+	}
+	result := make(map[string]api.IsolationCredentials, len(input))
+	for role, value := range input {
+		result[role] = api.IsolationCredentials{RealUID: value.RealUID, EffectiveUID: value.EffectiveUID, SavedUID: value.SavedUID,
+			FilesystemUID: value.FilesystemUID, RealGID: value.RealGID, EffectiveGID: value.EffectiveGID, SavedGID: value.SavedGID,
+			FilesystemGID: value.FilesystemGID, SupplementaryGroups: append([]uint32{}, value.SupplementaryGroups...)}
+	}
+	return result
+}
+
+func mapIsolationCapabilitySets(input map[string]roleentry.RuntimeIsolationCapabilitySets) map[string]api.IsolationCapabilitySets {
+	if input == nil {
+		return nil
+	}
+	result := make(map[string]api.IsolationCapabilitySets, len(input))
+	for role, value := range input {
+		result[role] = api.IsolationCapabilitySets{Inheritable: append([]string{}, value.Inheritable...), Permitted: append([]string{}, value.Permitted...),
+			Effective: append([]string{}, value.Effective...), Bounding: append([]string{}, value.Bounding...), Ambient: append([]string{}, value.Ambient...)}
+	}
+	return result
+}
+
+func mapIsolationResourceLimits(input map[string][]roleentry.RuntimeIsolationResourceLimit) map[string][]api.IsolationResourceLimit {
+	if input == nil {
+		return nil
+	}
+	result := make(map[string][]api.IsolationResourceLimit, len(input))
+	for role, limits := range input {
+		mapped := make([]api.IsolationResourceLimit, len(limits))
+		for index, value := range limits {
+			mapped[index] = api.IsolationResourceLimit{Name: value.Name, Requested: value.Requested, Effective: value.Effective,
+				Unit: value.Unit, Scope: value.Scope, Source: value.Source, Enforcement: value.Enforcement}
+		}
+		result[role] = mapped
+	}
+	return result
+}
+
+func mapIsolationWarnings(input []roleentry.RuntimeIsolationWarning) []api.IsolationWarning {
+	if input == nil {
+		return nil
+	}
+	result := make([]api.IsolationWarning, len(input))
+	for index, value := range input {
+		result[index] = api.IsolationWarning{Role: value.Role, Code: value.Code, Effect: value.Effect, Feature: value.Feature}
+	}
+	return result
 }

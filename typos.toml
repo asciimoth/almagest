@@ -5,6 +5,7 @@ pn = "pn"
 gost = "gost"
 snet = "snet"
 amneisa = "amneisa"
+inh = "inh"
 
 [default.extend-identifiers]
 msg_controllen = "msg_controllen"

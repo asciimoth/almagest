@@ -14,3 +14,16 @@ func TestEnterIsolatedRuntimeStorageLinuxRequiresFixedRoot(t *testing.T) {
 		}
 	}
 }
+
+func TestEnterIsolatedRuntimeStorageLinuxAcceptsBoundUserPath(t *testing.T) {
+	t.Setenv("ALMAGEST_LINUX_PROFILE", "linux-user-v1")
+	const storage = "/srv/almagest/runtime"
+	if err := enterIsolatedRuntimeStorage(storage, storage); err != nil {
+		t.Fatal(err)
+	}
+	for _, requested := range []string{"/srv/almagest/other", "relative"} {
+		if err := enterIsolatedRuntimeStorage(storage, requested); err == nil {
+			t.Fatalf("accepted request %q", requested)
+		}
+	}
+}

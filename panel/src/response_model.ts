@@ -33,11 +33,38 @@ export type HelloResponse = {
 
 export type IsolationStatus = {
   protocol_version: number;
+  status_schema_version?: number;
   restrictions: Record<string, string[]>;
   roles: Record<string, string>;
   capabilities: Record<string, boolean>;
   recovery_state: string;
+  requested_policy?: "strict" | "auto" | "off";
+  profile_id?: "linux-full-v1" | "linux-user-v1" | "windows-full-v1";
+  profile_revision?: number;
+  verification_state?: "verified" | "degraded" | "failed" | "unknown";
+  reduced?: boolean;
+  mechanisms?: Record<string, Record<string, IsolationMechanism>>;
+  credentials?: Record<string, IsolationCredentials>;
+  capability_sets?: Record<string, IsolationCapabilitySets>;
+  resource_limits?: Record<string, IsolationResourceLimit[]>;
+  warnings?: IsolationWarning[];
+  observation_time?: string;
+  selected_plan_digest?: string;
 };
+
+export type IsolationMechanism = { state: "applied" | "unavailable" | "not_requested" | "not_applicable" | "unknown"; reason?: string };
+export type IsolationCredentials = {
+  real_uid: number; effective_uid: number; saved_uid: number; filesystem_uid: number;
+  real_gid: number; effective_gid: number; saved_gid: number; filesystem_gid: number;
+  supplementary_groups: number[];
+};
+export type IsolationCapabilitySets = {
+  inheritable: string[]; permitted: string[]; effective: string[]; bounding: string[]; ambient: string[];
+};
+export type IsolationResourceLimit = {
+  name: string; requested: string; effective: string; unit: string; scope: string; source: string; enforcement: string;
+};
+export type IsolationWarning = { role: "network" | "runtime" | "config_writer" | "command_helper"; code: string; effect: string; feature: string };
 
 export type SubscribeLogsResponse = {
   subscription_id: number;
@@ -150,8 +177,152 @@ function parseIsolationStatus(input: unknown): IsolationStatus | null {
     if (typeof value !== "boolean") return null;
     capabilities[name] = value;
   }
-  return { protocol_version: Number(input.protocol_version), restrictions, roles, capabilities,
+  const result: IsolationStatus = { protocol_version: Number(input.protocol_version), restrictions, roles, capabilities,
     recovery_state: input.recovery_state };
+  const hasAdaptive = [input.status_schema_version, input.requested_policy, input.profile_id, input.profile_revision, input.verification_state,
+    input.observation_time, input.selected_plan_digest].some((value) => value !== undefined) || input.reduced === true;
+  if (!hasAdaptive) {
+    if (input.reduced !== undefined && typeof input.reduced !== "boolean") return null;
+    return input.reduced === undefined ? result : { ...result, reduced: input.reduced };
+  }
+  const adaptive = parseAdaptiveIsolationStatus(input);
+  return adaptive ? { ...result, ...adaptive } : null;
+}
+
+const isolationRoles = new Set(["network", "runtime", "config_writer", "command_helper"]);
+const mechanismNames = new Set(["landlock", "seccomp", "no-new-privileges", "descriptor-allowlist", "private-namespaces",
+  "mount-namespace", "role-cgroups", "separate-host-identities", "capability-sets", "pidfd-supervision", "fixed-target",
+  "fixed-executable", "trusted-broker", "held-inputs"]);
+const mechanismStates = new Set(["applied", "unavailable", "not_requested", "not_applicable", "unknown"]);
+const reasonCodes = new Set(["profile-not-implemented", "not-delegated", "same-uid-profile", "inherited-lower", "unsupported",
+  "not-required", "external-restriction", "verification-failed"]);
+const capabilityNames = new Set(["CAP_CHOWN", "CAP_DAC_OVERRIDE", "CAP_DAC_READ_SEARCH", "CAP_FOWNER", "CAP_FSETID", "CAP_KILL",
+  "CAP_SETGID", "CAP_SETUID", "CAP_SETPCAP", "CAP_LINUX_IMMUTABLE", "CAP_NET_BIND_SERVICE", "CAP_NET_BROADCAST", "CAP_NET_ADMIN",
+  "CAP_NET_RAW", "CAP_IPC_LOCK", "CAP_IPC_OWNER", "CAP_SYS_MODULE", "CAP_SYS_RAWIO", "CAP_SYS_CHROOT", "CAP_SYS_PTRACE",
+  "CAP_SYS_PACCT", "CAP_SYS_ADMIN", "CAP_SYS_BOOT", "CAP_SYS_NICE", "CAP_SYS_RESOURCE", "CAP_SYS_TIME", "CAP_SYS_TTY_CONFIG",
+  "CAP_MKNOD", "CAP_LEASE", "CAP_AUDIT_WRITE", "CAP_AUDIT_CONTROL", "CAP_SETFCAP", "CAP_MAC_OVERRIDE", "CAP_MAC_ADMIN",
+  "CAP_SYSLOG", "CAP_WAKE_ALARM", "CAP_BLOCK_SUSPEND", "CAP_AUDIT_READ", "CAP_PERFMON", "CAP_BPF", "CAP_CHECKPOINT_RESTORE"]);
+const resourceNames = new Set(["memory", "memory-swap", "tasks", "cpu-quota", "descriptors", "file-size"]);
+const resourceUnits = new Set(["bytes", "count", "microseconds"]);
+const resourceScopes = new Set(["role", "process", "process-set", "inherited"]);
+const resourceSources = new Set(["configured", "default", "inherited", "external"]);
+const enforcementStates = new Set(["applied", "observed", "unavailable", "not_requested", "not_applicable", "unknown"]);
+
+type AdaptiveIsolationStatus = Required<Pick<IsolationStatus, "status_schema_version" | "requested_policy" | "profile_id" | "profile_revision"
+  | "verification_state" | "reduced" | "mechanisms" | "credentials" | "capability_sets" | "resource_limits"
+  | "warnings" | "observation_time" | "selected_plan_digest">>;
+
+function parseAdaptiveIsolationStatus(input: Record<string, unknown>): AdaptiveIsolationStatus | null {
+  if (input.status_schema_version !== 1
+    || !(input.requested_policy === "strict" || input.requested_policy === "auto" || input.requested_policy === "off")
+    || !(input.profile_id === "linux-full-v1" || input.profile_id === "linux-user-v1" || input.profile_id === "windows-full-v1")
+    || !Number.isSafeInteger(input.profile_revision) || Number(input.profile_revision) <= 0
+    || !(input.verification_state === "verified" || input.verification_state === "degraded"
+      || input.verification_state === "failed" || input.verification_state === "unknown")
+    || typeof input.reduced !== "boolean" || !isRecord(input.mechanisms) || !boundedRecord(input.mechanisms, 1, 8)
+    || !isRecord(input.credentials) || !boundedRecord(input.credentials, 1, 8)
+    || !isRecord(input.capability_sets) || !boundedRecord(input.capability_sets, 1, 8)
+    || !isRecord(input.resource_limits) || !boundedRecord(input.resource_limits, 0, 8)
+    || !Array.isArray(input.warnings) || input.warnings.length > 32
+    || typeof input.observation_time !== "string" || input.observation_time.length > 64
+    || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(input.observation_time)
+    || Number.isNaN(Date.parse(input.observation_time))
+    || typeof input.selected_plan_digest !== "string" || !/^[0-9a-f]{64}$/.test(input.selected_plan_digest)) return null;
+  const mechanisms: Record<string, Record<string, IsolationMechanism>> = {};
+  for (const [role, values] of Object.entries(input.mechanisms)) {
+    if (!isIsolationRole(role) || !isRecord(values) || !boundedRecord(values, 1, 32)) return null;
+    const parsed: Record<string, IsolationMechanism> = {};
+    for (const [name, mechanism] of Object.entries(values)) {
+      if (!mechanismNames.has(name) || !isRecord(mechanism) || !mechanismStates.has(String(mechanism.state))
+        || (mechanism.reason !== undefined && (typeof mechanism.reason !== "string" || !reasonCodes.has(mechanism.reason)))) return null;
+      parsed[name] = { state: mechanism.state as IsolationMechanism["state"],
+        ...(mechanism.reason === undefined ? {} : { reason: mechanism.reason as string }) };
+    }
+    mechanisms[role] = parsed;
+  }
+  const credentials: Record<string, IsolationCredentials> = {};
+  for (const [role, value] of Object.entries(input.credentials)) {
+    const parsed = parseIsolationCredentials(value);
+    if (!isIsolationRole(role) || !parsed) return null;
+    credentials[role] = parsed;
+  }
+  const capabilitySets: Record<string, IsolationCapabilitySets> = {};
+  for (const [role, value] of Object.entries(input.capability_sets)) {
+    const parsed = parseCapabilitySets(value);
+    if (!isIsolationRole(role) || !parsed) return null;
+    capabilitySets[role] = parsed;
+  }
+  if (!sameKeys(mechanisms, credentials) || !sameKeys(mechanisms, capabilitySets)) return null;
+  const resourceLimits: Record<string, IsolationResourceLimit[]> = {};
+  for (const [role, values] of Object.entries(input.resource_limits)) {
+    if (!isIsolationRole(role) || mechanisms[role] === undefined || !Array.isArray(values) || values.length === 0 || values.length > 16) return null;
+    const parsed = values.map(parseResourceLimit);
+    if (parsed.some((value) => value === null) || new Set(parsed.map((value) => value?.name)).size !== parsed.length) return null;
+    resourceLimits[role] = parsed as IsolationResourceLimit[];
+  }
+  const warnings = input.warnings.map(parseIsolationWarning);
+  if (warnings.some((value) => value === null)) return null;
+  return { status_schema_version: input.status_schema_version, requested_policy: input.requested_policy, profile_id: input.profile_id,
+    profile_revision: Number(input.profile_revision), verification_state: input.verification_state, reduced: input.reduced,
+    mechanisms, credentials, capability_sets: capabilitySets, resource_limits: resourceLimits,
+    warnings: warnings as IsolationWarning[], observation_time: input.observation_time, selected_plan_digest: input.selected_plan_digest };
+}
+
+function parseIsolationCredentials(input: unknown): IsolationCredentials | null {
+  if (!isRecord(input)) return null;
+  const fields = [input.real_uid, input.effective_uid, input.saved_uid, input.filesystem_uid,
+    input.real_gid, input.effective_gid, input.saved_gid, input.filesystem_gid];
+  if (!fields.every(isUint32) || !Array.isArray(input.supplementary_groups) || input.supplementary_groups.length > 64
+    || !input.supplementary_groups.every(isUint32) || new Set(input.supplementary_groups).size !== input.supplementary_groups.length) return null;
+  return { real_uid: Number(input.real_uid), effective_uid: Number(input.effective_uid), saved_uid: Number(input.saved_uid),
+    filesystem_uid: Number(input.filesystem_uid), real_gid: Number(input.real_gid), effective_gid: Number(input.effective_gid),
+    saved_gid: Number(input.saved_gid), filesystem_gid: Number(input.filesystem_gid), supplementary_groups: [...input.supplementary_groups] };
+}
+
+function parseCapabilitySets(input: unknown): IsolationCapabilitySets | null {
+  if (!isRecord(input)) return null;
+  const fields = [input.inheritable, input.permitted, input.effective, input.bounding, input.ambient];
+  if (!fields.every((value) => validEnumArray(value, capabilityNames, 64))) return null;
+  return { inheritable: [...input.inheritable as string[]], permitted: [...input.permitted as string[]],
+    effective: [...input.effective as string[]], bounding: [...input.bounding as string[]], ambient: [...input.ambient as string[]] };
+}
+
+function parseResourceLimit(input: unknown): IsolationResourceLimit | null {
+  if (!isRecord(input) || typeof input.name !== "string" || !resourceNames.has(input.name)
+    || !isResourceValue(input.requested) || !isResourceValue(input.effective)
+    || typeof input.unit !== "string" || !resourceUnits.has(input.unit) || typeof input.scope !== "string" || !resourceScopes.has(input.scope)
+    || typeof input.source !== "string" || !resourceSources.has(input.source)
+    || typeof input.enforcement !== "string" || !enforcementStates.has(input.enforcement)) return null;
+  return input as IsolationResourceLimit;
+}
+
+function parseIsolationWarning(input: unknown): IsolationWarning | null {
+  return isRecord(input) && typeof input.role === "string" && isIsolationRole(input.role)
+    && typeof input.code === "string" && reasonCodes.has(input.code)
+    && typeof input.effect === "string" && input.effect.length > 0 && input.effect.length <= 256
+    && typeof input.feature === "string" && input.feature.length > 0 && input.feature.length <= 256 ? input as IsolationWarning : null;
+}
+
+function boundedRecord(input: Record<string, unknown>, minimum: number, maximum: number): boolean {
+  const length = Object.keys(input).length;
+  return length >= minimum && length <= maximum;
+}
+function sameKeys(left: Record<string, unknown>, right: Record<string, unknown>): boolean {
+  const leftKeys = Object.keys(left).sort();
+  const rightKeys = Object.keys(right).sort();
+  return leftKeys.length === rightKeys.length && leftKeys.every((value, index) => value === rightKeys[index]);
+}
+function isIsolationRole(value: string): boolean { return isolationRoles.has(value); }
+function isUint32(input: unknown): boolean { return Number.isSafeInteger(input) && Number(input) >= 0 && Number(input) <= 0xffffffff; }
+function validEnumArray(input: unknown, values: Set<string>, maximum: number): input is string[] {
+  return Array.isArray(input) && input.length <= maximum && input.every((value) => typeof value === "string" && values.has(value))
+    && new Set(input).size === input.length;
+}
+function isResourceValue(input: unknown): input is string {
+  if (typeof input !== "string") return false;
+  if (input === "max") return true;
+  if (!/^(0|[1-9][0-9]{0,19})$/.test(input)) return false;
+  return input.length < 20 || input <= "18446744073709551615";
 }
 
 export function parseSubscribeLogsResponse(input: unknown): SubscribeLogsResponse | null {

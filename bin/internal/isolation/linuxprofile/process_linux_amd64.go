@@ -9,6 +9,7 @@ import (
 	"math"
 	"os"
 	"os/exec"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -23,15 +24,17 @@ import (
 // Process owns a fixed native launcher and its single exit waiter. Inputs remain
 // caller-owned; close the parent's copies of child lanes after Start succeeds.
 type Process struct {
-	command    *exec.Cmd
-	plan       Plan
-	done       chan struct{}
-	err        error // published by closing done
-	mu         sync.Mutex
-	supervised bool
-	peer       transport.LinuxPeer
-	childDone  chan struct{}
-	childErr   error
+	command     *exec.Cmd
+	plan        Plan
+	done        chan struct{}
+	err         error // published by closing done
+	mu          sync.Mutex
+	supervised  bool
+	peer        transport.LinuxPeer
+	childDone   chan struct{}
+	childErr    error
+	direct      bool
+	directPIDFD int
 }
 
 // Start starts only the held-object native launch contract. It does not accept
@@ -50,11 +53,53 @@ func Start(ctx context.Context, plan Plan, inputs Inputs, stdout, stderr io.Writ
 		stderr = io.Discard
 	}
 	command.Stdout, command.Stderr = roleOutput{stdout}, roleOutput{stderr}
-	if err := command.Start(); err != nil {
-		return nil, err
+	profile := plan.Profile
+	if profile == "" {
+		profile = ProfileFull
 	}
-	p := &Process{command: command, plan: plan, done: make(chan struct{})}
-	go func() { p.err = command.Wait(); close(p.done) }()
+	p := &Process{command: command, plan: plan, done: make(chan struct{}), direct: profile == ProfileUser, directPIDFD: -1}
+	if p.direct {
+		started := make(chan error, 1)
+		go func() {
+			// PDEATHSIG is bound to the OS thread that creates the child. Keep
+			// that thread alive until the direct user-profile child has exited.
+			runtime.LockOSThread()
+			defer runtime.UnlockOSThread()
+			if err := command.Start(); err != nil {
+				started <- err
+				close(p.done)
+				return
+			}
+			pidfd, err := unix.PidfdOpen(command.Process.Pid, 0)
+			if err != nil {
+				_ = command.Process.Kill()
+				_ = command.Wait()
+				started <- fmt.Errorf("pin direct role lifetime: %w", err)
+				close(p.done)
+				return
+			}
+			p.mu.Lock()
+			p.directPIDFD = pidfd
+			p.mu.Unlock()
+			started <- nil
+			p.err = command.Wait()
+			p.mu.Lock()
+			if p.directPIDFD >= 0 {
+				_ = unix.Close(p.directPIDFD)
+				p.directPIDFD = -1
+			}
+			p.mu.Unlock()
+			close(p.done)
+		}()
+		if err := <-started; err != nil {
+			return nil, err
+		}
+	} else {
+		if err := command.Start(); err != nil {
+			return nil, err
+		}
+		go func() { p.err = command.Wait(); close(p.done) }()
+	}
 	return p, nil
 }
 
@@ -77,6 +122,19 @@ func (p *Process) Wait(ctx context.Context) error {
 func (p *Process) Kill() error {
 	if p == nil || p.command == nil {
 		return supervision.ErrInvalidComposition
+	}
+	if p.direct {
+		p.mu.Lock()
+		defer p.mu.Unlock()
+		if p.directPIDFD < 0 {
+			select {
+			case <-p.done:
+				return nil
+			default:
+				return supervision.ErrShutdownIncomplete
+			}
+		}
+		return unix.PidfdSendSignal(p.directPIDFD, unix.SIGKILL, nil, 0)
 	}
 	return p.command.Process.Kill()
 }
@@ -123,6 +181,23 @@ func (p *Process) Peer(ctx context.Context) (transport.LinuxPeer, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.childDone != nil {
+		return p.peer, nil
+	}
+	if p.direct {
+		if p.directPIDFD < 0 {
+			return transport.LinuxPeer{}, fmt.Errorf("%w: direct role exited before peer binding", ErrUnavailable)
+		}
+		fd, err := unix.FcntlInt(uintptr(p.directPIDFD), unix.F_DUPFD_CLOEXEC, 0)
+		if err != nil {
+			return transport.LinuxPeer{}, fmt.Errorf("duplicate direct role pidfd: %w", err)
+		}
+		p.peer = transport.LinuxPeer{PID: int32(p.command.Process.Pid), UID: p.plan.UID, GID: p.plan.GID}
+		p.childDone = make(chan struct{})
+		go func() {
+			defer unix.Close(fd) //nolint:errcheck
+			p.childErr = waitChildExit(fd)
+			close(p.childDone)
+		}()
 		return p.peer, nil
 	}
 	bounded, cancel := context.WithTimeout(ctx, 5*time.Second)

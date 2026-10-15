@@ -1469,7 +1469,7 @@ func mirrorStorageEntry(
 		if err := service.mirrorStorageDirectory(sourceRoot, destinationRoot, relative, includeDatabase); err != nil {
 			return err
 		}
-		return os.Chmod(destinationPath, info.Mode().Perm())
+		return chmodDirectoryNoFollow(destinationPath, info.Mode().Perm())
 	}
 	if info.Mode()&os.ModeSymlink != 0 {
 		target, err := os.Readlink(sourcePath)

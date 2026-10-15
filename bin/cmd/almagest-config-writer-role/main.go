@@ -38,9 +38,13 @@ func run() error {
 	}
 	root := os.Getenv("ALMAGEST_STORAGE")
 	if runtime.GOOS == "linux" {
-		root = "/state"
+		if os.Getenv("ALMAGEST_LINUX_PROFILE") == "linux-user-v1" {
+			root = "."
+		} else {
+			root = "/state"
+		}
 	}
-	if root == "" || !filepath.IsAbs(root) || filepath.Clean(root) != root {
+	if root == "" || root != "." && (!filepath.IsAbs(root) || filepath.Clean(root) != root) {
 		return fmt.Errorf("invalid fixed config-writer storage")
 	}
 	target := filepath.Join(root, bootstrap.Target)

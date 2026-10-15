@@ -123,6 +123,88 @@ func TestProductionRuntimeInputRequiresCompleteBoundedStatus(t *testing.T) {
 	}
 }
 
+func adaptiveRuntimeInput() RuntimeInput {
+	return RuntimeInput{Version: protocol.Version, Isolation: RuntimeIsolationStatus{
+		ProtocolVersion: protocol.Version, StatusSchemaVersion: 1, RecoveryState: "complete",
+		Restrictions: map[string][]string{"network": {"trusted"}, "runtime": {"seccomp"}},
+		Roles:        map[string]string{"network": "ready", "runtime": "ready"}, Capabilities: map[string]bool{"native_network": true},
+		RequestedPolicy: "auto", ProfileID: "linux-user-v1", ProfileRevision: 1, VerificationState: "verified", Reduced: true,
+		Mechanisms: map[string]map[string]RuntimeIsolationMechanism{
+			"network": {"capability-sets": {State: "applied"}},
+			"runtime": {"role-cgroups": {State: "unavailable", Reason: "not-delegated"}, "seccomp": {State: "applied"}},
+		},
+		Credentials: map[string]RuntimeIsolationCredentials{
+			"network": {RealUID: 1000, EffectiveUID: 1000, SavedUID: 1000, FilesystemUID: 1000, RealGID: 1000, EffectiveGID: 1000, SavedGID: 1000, FilesystemGID: 1000, SupplementaryGroups: []uint32{1000}},
+			"runtime": {RealUID: 1000, EffectiveUID: 1000, SavedUID: 1000, FilesystemUID: 1000, RealGID: 1000, EffectiveGID: 1000, SavedGID: 1000, FilesystemGID: 1000},
+		},
+		CapabilitySets: map[string]RuntimeIsolationCapabilitySets{
+			"network": {Inheritable: []string{"CAP_NET_ADMIN"}, Permitted: []string{"CAP_NET_ADMIN"}, Effective: []string{"CAP_NET_ADMIN"}, Bounding: []string{"CAP_NET_ADMIN"}, Ambient: []string{"CAP_NET_ADMIN"}},
+			"runtime": {Bounding: []string{"CAP_NET_ADMIN"}},
+		},
+		ResourceLimits: map[string][]RuntimeIsolationResourceLimit{
+			"network": {{Name: "descriptors", Requested: "2048", Effective: "2048", Unit: "count", Scope: "process", Source: "configured", Enforcement: "applied"}},
+			"runtime": {{Name: "descriptors", Requested: "2048", Effective: "2048", Unit: "count", Scope: "process", Source: "configured", Enforcement: "applied"}},
+		},
+		Warnings:        []RuntimeIsolationWarning{{Role: "runtime", Code: "not-delegated", Effect: "No per-role memory, CPU, or task ceilings.", Feature: "A memory ceiling is unavailable."}},
+		ObservationTime: "2026-10-15T12:00:00Z", SelectedPlanDigest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+	}}
+}
+
+func TestRuntimeInputValidatesAdaptiveIsolationStatus(t *testing.T) {
+	if err := adaptiveRuntimeInput().Validate(); err != nil {
+		t.Fatalf("valid adaptive input = %v", err)
+	}
+	for name, change := range map[string]func(*RuntimeInput){
+		"partial":      func(i *RuntimeInput) { i.Isolation.ProfileID = "" },
+		"schema":       func(i *RuntimeInput) { i.Isolation.StatusSchemaVersion = 2 },
+		"policy":       func(i *RuntimeInput) { i.Isolation.RequestedPolicy = "best-effort" },
+		"profile":      func(i *RuntimeInput) { i.Isolation.ProfileID = "custom" },
+		"verification": func(i *RuntimeInput) { i.Isolation.VerificationState = "ready" },
+		"role":         func(i *RuntimeInput) { i.Isolation.Mechanisms["daemon"] = i.Isolation.Mechanisms["runtime"] },
+		"mechanism": func(i *RuntimeInput) {
+			i.Isolation.Mechanisms["runtime"] = map[string]RuntimeIsolationMechanism{"namespaces": {State: "applied"}}
+		},
+		"mechanism state": func(i *RuntimeInput) {
+			i.Isolation.Mechanisms["runtime"]["seccomp"] = RuntimeIsolationMechanism{State: "enabled"}
+		},
+		"reason": func(i *RuntimeInput) {
+			i.Isolation.Mechanisms["runtime"]["seccomp"] = RuntimeIsolationMechanism{State: "unavailable", Reason: "anything"}
+		},
+		"groups": func(i *RuntimeInput) {
+			value := i.Isolation.Credentials["runtime"]
+			value.SupplementaryGroups = []uint32{1, 1}
+			i.Isolation.Credentials["runtime"] = value
+		},
+		"capability": func(i *RuntimeInput) {
+			value := i.Isolation.CapabilitySets["runtime"]
+			value.Effective = []string{"CAP_MAGIC"}
+			i.Isolation.CapabilitySets["runtime"] = value
+		},
+		"duplicate capability": func(i *RuntimeInput) {
+			value := i.Isolation.CapabilitySets["runtime"]
+			value.Bounding = []string{"CAP_NET_ADMIN", "CAP_NET_ADMIN"}
+			i.Isolation.CapabilitySets["runtime"] = value
+		},
+		"missing credentials": func(i *RuntimeInput) { delete(i.Isolation.Credentials, "network") },
+		"missing resources":   func(i *RuntimeInput) { i.Isolation.ResourceLimits = nil },
+		"missing warnings":    func(i *RuntimeInput) { i.Isolation.Warnings = nil },
+		"resource":            func(i *RuntimeInput) { i.Isolation.ResourceLimits["runtime"][0].Scope = "host" },
+		"warning":             func(i *RuntimeInput) { i.Isolation.Warnings[0].Code = "free-form" },
+		"warning role":        func(i *RuntimeInput) { i.Isolation.Warnings[0].Role = "daemon" },
+		"warning feature":     func(i *RuntimeInput) { i.Isolation.Warnings[0].Feature = "" },
+		"time":                func(i *RuntimeInput) { i.Isolation.ObservationTime = "today" },
+		"digest":              func(i *RuntimeInput) { i.Isolation.SelectedPlanDigest = "ABC" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			input := adaptiveRuntimeInput()
+			change(&input)
+			if err := input.Validate(); !errors.Is(err, protocol.ErrInvalidContract) {
+				t.Fatalf("Validate() = %v", err)
+			}
+		})
+	}
+}
+
 func FuzzRuntimeInput(f *testing.F) {
 	f.Add(uint32(protocol.Version), uint16(1), "web", "info")
 	f.Add(uint32(0), uint16(0), "native", string([]byte{0xff}))

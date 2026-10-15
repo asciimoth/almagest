@@ -82,6 +82,45 @@ func TestNoIsolationFlag(t *testing.T) {
 	}
 }
 
+func TestIsolationOptions(t *testing.T) {
+	var fromFlags Args
+	parser, err := arg.NewParser(arg.Config{IgnoreEnv: true, Out: new(bytes.Buffer)}, &fromFlags)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := parser.Parse([]string{"--isolation=auto", "--isolation-state-dir", "/srv/almagest-user"}); err != nil {
+		t.Fatalf("parse isolation flags: %v", err)
+	}
+	if fromFlags.Isolation != "auto" || fromFlags.IsolationStateDir != "/srv/almagest-user" {
+		t.Fatalf("isolation flags = policy %q state %q", fromFlags.Isolation, fromFlags.IsolationStateDir)
+	}
+
+	t.Setenv("ALMAGEST_ISOLATION", "strict")
+	var fromEnvironment Args
+	parser, err = arg.NewParser(arg.Config{Out: new(bytes.Buffer)}, &fromEnvironment)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := parser.Parse(nil); err != nil {
+		t.Fatalf("parse ALMAGEST_ISOLATION: %v", err)
+	}
+	if fromEnvironment.Isolation != "strict" {
+		t.Fatalf("Isolation = %q, want strict from environment", fromEnvironment.Isolation)
+	}
+
+	var overridden Args
+	parser, err = arg.NewParser(arg.Config{Out: new(bytes.Buffer)}, &overridden)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := parser.Parse([]string{"--isolation=off"}); err != nil {
+		t.Fatalf("parse isolation override: %v", err)
+	}
+	if overridden.Isolation != "off" {
+		t.Fatalf("Isolation = %q, want CLI value off", overridden.Isolation)
+	}
+}
+
 func TestWebAdminAllowCrossOriginFlagAndEnvironment(t *testing.T) {
 	var fromFlag Args
 	parser, err := arg.NewParser(arg.Config{IgnoreEnv: true, Out: new(bytes.Buffer)}, &fromFlag)

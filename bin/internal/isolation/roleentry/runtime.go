@@ -35,11 +35,66 @@ type RuntimeAdminEndpoint struct {
 }
 
 type RuntimeIsolationStatus struct {
-	ProtocolVersion uint32
-	Restrictions    map[string][]string
-	Roles           map[string]string
-	Capabilities    map[string]bool
-	RecoveryState   string
+	ProtocolVersion     uint32
+	StatusSchemaVersion uint32
+	Restrictions        map[string][]string
+	Roles               map[string]string
+	Capabilities        map[string]bool
+	RecoveryState       string
+	RequestedPolicy     string
+	ProfileID           string
+	ProfileRevision     uint32
+	VerificationState   string
+	Reduced             bool
+	Mechanisms          map[string]map[string]RuntimeIsolationMechanism
+	Credentials         map[string]RuntimeIsolationCredentials
+	CapabilitySets      map[string]RuntimeIsolationCapabilitySets
+	ResourceLimits      map[string][]RuntimeIsolationResourceLimit
+	Warnings            []RuntimeIsolationWarning
+	ObservationTime     string
+	SelectedPlanDigest  string
+}
+
+type RuntimeIsolationMechanism struct {
+	State  string
+	Reason string
+}
+
+type RuntimeIsolationCredentials struct {
+	RealUID             uint32
+	EffectiveUID        uint32
+	SavedUID            uint32
+	FilesystemUID       uint32
+	RealGID             uint32
+	EffectiveGID        uint32
+	SavedGID            uint32
+	FilesystemGID       uint32
+	SupplementaryGroups []uint32
+}
+
+type RuntimeIsolationCapabilitySets struct {
+	Inheritable []string
+	Permitted   []string
+	Effective   []string
+	Bounding    []string
+	Ambient     []string
+}
+
+type RuntimeIsolationResourceLimit struct {
+	Name        string
+	Requested   string
+	Effective   string
+	Unit        string
+	Scope       string
+	Source      string
+	Enforcement string
+}
+
+type RuntimeIsolationWarning struct {
+	Role    string
+	Code    string
+	Effect  string
+	Feature string
 }
 
 // RuntimeNodeCommand is the public shape of one command that protected policy
@@ -99,7 +154,7 @@ func (i RuntimeInput) Validate() error {
 		}
 		seen[endpoint.ID] = struct{}{}
 	}
-	statusPresent := i.Isolation.ProtocolVersion != 0 || i.Isolation.RecoveryState != "" || len(i.Isolation.Roles) != 0 || len(i.Isolation.Restrictions) != 0 || len(i.Isolation.Capabilities) != 0
+	statusPresent := i.Isolation.present()
 	if i.Production && (i.Isolation.ProtocolVersion != protocol.Version || i.Isolation.RecoveryState != "complete" ||
 		i.Isolation.Roles["network"] != "ready" || i.Isolation.Roles["runtime"] != "ready" ||
 		len(i.Isolation.Restrictions["network"]) == 0 || len(i.Isolation.Restrictions["runtime"]) == 0) {
@@ -128,6 +183,9 @@ func (i RuntimeInput) Validate() error {
 			if !boundedStatusString(capability) {
 				return protocol.ErrInvalidContract
 			}
+		}
+		if err := i.Isolation.validateAdaptive(); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -174,4 +232,33 @@ func SendRuntimeBootstrap(ctx context.Context, stream transport.Stream, value Bo
 		return Ready{}, fmt.Errorf("runtime readiness: %w", err)
 	}
 	return ready, nil
+}
+
+// SendFinalIsolationStatus publishes the broker-validated applied profile
+// before the runtime starts its application services.
+func SendFinalIsolationStatus(ctx context.Context, stream transport.Stream, status RuntimeIsolationStatus) error {
+	if ctx == nil || stream == nil || status.VerificationState != "verified" || status.validateAdaptive() != nil {
+		return protocol.ErrInvalidContract
+	}
+	bounded, cancel := context.WithTimeout(ctx, finalIsolationStatusTimeout)
+	defer cancel()
+	deadline, _ := bounded.Deadline()
+	return transport.WriteFrameDeadline(stream, status, deadline)
+}
+
+func ReceiveFinalIsolationStatus(ctx context.Context, stream transport.Stream) (RuntimeIsolationStatus, error) {
+	if ctx == nil || stream == nil {
+		return RuntimeIsolationStatus{}, protocol.ErrInvalidContract
+	}
+	bounded, cancel := context.WithTimeout(ctx, finalIsolationStatusTimeout)
+	defer cancel()
+	deadline, _ := bounded.Deadline()
+	var status RuntimeIsolationStatus
+	if err := transport.ReadFrameDeadline(stream, &status, deadline); err != nil {
+		return RuntimeIsolationStatus{}, err
+	}
+	if status.VerificationState != "verified" || status.validateAdaptive() != nil {
+		return RuntimeIsolationStatus{}, protocol.ErrInvalidContract
+	}
+	return status, nil
 }

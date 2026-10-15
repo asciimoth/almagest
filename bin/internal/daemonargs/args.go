@@ -41,9 +41,11 @@ type Args struct {
 	UnixAdminFilterUsernames []string `arg:"--unix-filter-user,separate,env:ALMAGEST_UNIX_ADMIN_FILTER_USERS" help:"allowed unix admin peer username; repeat flag or comma-separate env values"`
 	PipeAdmin                *string  `arg:"--pipe,env:ALMAGEST_PIPE_ADMIN" help:"Windows local admin named-pipe path; empty disables it"`
 
-	DebugNodes   bool `arg:"--debug-nodes" help:"enable debug node classes"`
-	Experimental bool `arg:"--experimental" help:"enable experimental features and node classes; requires direct mode"`
-	NoIsolation  bool `arg:"--no-isolation" help:"select direct mode; accepted as a no-op where direct mode is the platform default"`
+	DebugNodes        bool   `arg:"--debug-nodes" help:"enable debug node classes"`
+	Experimental      bool   `arg:"--experimental" help:"enable experimental features and node classes; requires direct mode"`
+	NoIsolation       bool   `arg:"--no-isolation" help:"select direct mode; accepted as a no-op where direct mode is the platform default"`
+	Isolation         string `arg:"--isolation,env:ALMAGEST_ISOLATION" help:"isolation policy strict|auto|off"`
+	IsolationStateDir string `arg:"--isolation-state-dir" help:"instance state directory for non-root automatic isolation"`
 
 	IsolationMemoryBytes *uint64 `arg:"--isolation-memory-bytes,env:ALMAGEST_ISOLATION_MEMORY_BYTES" help:"Linux isolation memory bytes per role (default 8589934592; range 33554432..1099511627776)"`
 	IsolationTasks       *uint64 `arg:"--isolation-tasks,env:ALMAGEST_ISOLATION_TASKS" help:"Linux isolation tasks per role, including threads (default 4096; range 8..4096)"`

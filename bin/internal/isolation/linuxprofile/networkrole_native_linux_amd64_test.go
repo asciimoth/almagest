@@ -134,7 +134,7 @@ func TestNativeNetworkRoleAssembly(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	ready := false
-	err = networkrole.RunLinux(ctx, launch, func() {
+	err = networkrole.RunLinux(ctx, launch, func(roleentry.RuntimeIsolationStatus) error {
 		defer cancel()
 		ready = true
 		client := &http.Client{Timeout: 2 * time.Second}
@@ -148,6 +148,7 @@ func TestNativeNetworkRoleAssembly(t *testing.T) {
 			}
 		}
 		assemblyConfigUpdate(t, ctx)
+		return nil
 	})
 	if errors.Is(err, supervision.ErrShutdownIncomplete) {
 		t.Fatalf("assembly left unconfirmed processes: %v", err)

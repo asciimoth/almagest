@@ -18,7 +18,7 @@ import (
 
 const (
 	// Version is the first isolation control-contract version.
-	Version uint32 = 1
+	Version uint32 = 2
 
 	MaxControlFrameBytes      = 64 * 1024
 	MaxControlDepth           = 32

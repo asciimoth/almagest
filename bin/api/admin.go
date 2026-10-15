@@ -42,11 +42,66 @@ type HelloResponse struct {
 // IsolationStatus exposes only non-secret, effective process guarantees. An
 // isolated listener is published after all listed roles and recovery are ready.
 type IsolationStatus struct {
-	ProtocolVersion uint32              `json:"protocol_version"`
-	Restrictions    map[string][]string `json:"restrictions"`
-	Roles           map[string]string   `json:"roles"`
-	Capabilities    map[string]bool     `json:"capabilities"`
-	RecoveryState   string              `json:"recovery_state"`
+	ProtocolVersion     uint32                                   `json:"protocol_version"`
+	StatusSchemaVersion uint32                                   `json:"status_schema_version,omitempty"`
+	Restrictions        map[string][]string                      `json:"restrictions"`
+	Roles               map[string]string                        `json:"roles"`
+	Capabilities        map[string]bool                          `json:"capabilities"`
+	RecoveryState       string                                   `json:"recovery_state"`
+	RequestedPolicy     string                                   `json:"requested_policy,omitempty"`
+	ProfileID           string                                   `json:"profile_id,omitempty"`
+	ProfileRevision     uint32                                   `json:"profile_revision,omitempty"`
+	VerificationState   string                                   `json:"verification_state,omitempty"`
+	Reduced             bool                                     `json:"reduced"`
+	Mechanisms          map[string]map[string]IsolationMechanism `json:"mechanisms"`
+	Credentials         map[string]IsolationCredentials          `json:"credentials"`
+	CapabilitySets      map[string]IsolationCapabilitySets       `json:"capability_sets"`
+	ResourceLimits      map[string][]IsolationResourceLimit      `json:"resource_limits"`
+	Warnings            []IsolationWarning                       `json:"warnings"`
+	ObservationTime     string                                   `json:"observation_time,omitempty"`
+	SelectedPlanDigest  string                                   `json:"selected_plan_digest,omitempty"`
+}
+
+type IsolationMechanism struct {
+	State  string `json:"state"`
+	Reason string `json:"reason,omitempty"`
+}
+
+type IsolationCredentials struct {
+	RealUID             uint32   `json:"real_uid"`
+	EffectiveUID        uint32   `json:"effective_uid"`
+	SavedUID            uint32   `json:"saved_uid"`
+	FilesystemUID       uint32   `json:"filesystem_uid"`
+	RealGID             uint32   `json:"real_gid"`
+	EffectiveGID        uint32   `json:"effective_gid"`
+	SavedGID            uint32   `json:"saved_gid"`
+	FilesystemGID       uint32   `json:"filesystem_gid"`
+	SupplementaryGroups []uint32 `json:"supplementary_groups"`
+}
+
+type IsolationCapabilitySets struct {
+	Inheritable []string `json:"inheritable"`
+	Permitted   []string `json:"permitted"`
+	Effective   []string `json:"effective"`
+	Bounding    []string `json:"bounding"`
+	Ambient     []string `json:"ambient"`
+}
+
+type IsolationResourceLimit struct {
+	Name        string `json:"name"`
+	Requested   string `json:"requested"`
+	Effective   string `json:"effective"`
+	Unit        string `json:"unit"`
+	Scope       string `json:"scope"`
+	Source      string `json:"source"`
+	Enforcement string `json:"enforcement"`
+}
+
+type IsolationWarning struct {
+	Role    string `json:"role"`
+	Code    string `json:"code"`
+	Effect  string `json:"effect"`
+	Feature string `json:"feature"`
 }
 
 type ProjectVersionHighlight string

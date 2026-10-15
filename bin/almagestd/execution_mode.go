@@ -1,9 +1,10 @@
 package main
 
 import (
-	"fmt"
+	"runtime"
 
 	"github.com/asciimoth/almagest/bin/almagestd/args"
+	"github.com/asciimoth/almagest/bin/internal/isolation/selection"
 )
 
 type executionMode string
@@ -15,14 +16,15 @@ const (
 )
 
 func selectExecutionMode(arguments args.Args) (executionMode, error) {
-	return selectExecutionModeForPlatform(arguments, isolationDefault)
+	return selectExecutionModeForPlatform(arguments, selection.Platform{OS: runtime.GOOS, Arch: runtime.GOARCH})
 }
 
-func selectExecutionModeForPlatform(arguments args.Args, isolateByDefault bool) (executionMode, error) {
-	if arguments.Experimental && isolateByDefault && !arguments.NoIsolation {
-		return "", fmt.Errorf("--experimental requires explicit --no-isolation")
+func selectExecutionModeForPlatform(arguments args.Args, platform selection.Platform) (executionMode, error) {
+	policy, err := selection.ResolvePolicy(arguments, platform)
+	if err != nil {
+		return "", err
 	}
-	if isolateByDefault && !arguments.NoIsolation {
+	if policy != selection.PolicyOff {
 		return executionModeIsolation, nil
 	}
 	return executionModeDirect, nil

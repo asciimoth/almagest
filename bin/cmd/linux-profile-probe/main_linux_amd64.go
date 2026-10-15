@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"sync"
@@ -83,6 +84,7 @@ func denied(err error) bool {
 }
 
 func threadChecks(index int, role linuxprofile.Role) {
+	userProfile := os.Getenv("ALMAGEST_LINUX_PROFILE") == string(linuxprofile.ProfileUser)
 	prefix := fmt.Sprintf("thread-%d-", index)
 	for _, path := range []string{"/blocked", "/proc/self/status", "/sys/kernel", "/run/dbus/system_bus_socket", "/etc/passwd", "/dev/net/tun", "/oldroot/etc/passwd"} {
 		f, err := os.Open(path)
@@ -118,23 +120,26 @@ func threadChecks(index int, role linuxprofile.Role) {
 		d[0].Effective == d[0].Permitted && d[1].Effective == d[1].Permitted &&
 		d[0].Inheritable == d[0].Permitted && d[1].Inheritable == d[1].Permitted &&
 		actual == 0, err)
-	for cap := uintptr(0); cap < 41; cap++ {
-		v, _, e := unix.RawSyscall(unix.SYS_PRCTL, unix.PR_CAPBSET_READ, cap, 0)
-		check(prefix+fmt.Sprintf("bounding-%d", cap), e == 0 && v == uintptr((want>>cap)&1), e)
+	if !userProfile {
+		for cap := uintptr(0); cap < 41; cap++ {
+			v, _, e := unix.RawSyscall(unix.SYS_PRCTL, unix.PR_CAPBSET_READ, cap, 0)
+			check(prefix+fmt.Sprintf("bounding-%d", cap), e == 0 && v == uintptr((want>>cap)&1), e)
+		}
 	}
 	check(prefix+"identity", os.Getuid() == 65534 && os.Geteuid() == 65534 && os.Getgid() == 65534, nil)
 	groups, err := os.Getgroups()
-	check(prefix+"groups", err == nil && len(groups) == 0, err)
+	check(prefix+"groups", err == nil && (userProfile || len(groups) == 0), err)
 	bits, _, e := unix.RawSyscall(unix.SYS_PRCTL, unix.PR_GET_SECUREBITS, 0, 0)
-	check(prefix+"securebits", e == 0 && bits == 0xef, e)
+	check(prefix+"securebits", e == 0 && (userProfile || bits == 0xef), e)
 }
 
-func writer() error {
-	if err := os.WriteFile("/state/config", []byte("before"), 0600); err != nil {
+func writer(state string) error {
+	path := filepath.Join(state, "config")
+	if err := os.WriteFile(path, []byte("before"), 0600); err != nil {
 		return err
 	}
 	s := protocol.Session{ID: protocol.SessionID{1}, Epoch: 1, Version: protocol.Version}
-	w, err := configwriter.New(s, "/state/config")
+	w, err := configwriter.New(s, path)
 	if err != nil {
 		return err
 	}
@@ -150,8 +155,8 @@ func writer() error {
 	return nil
 }
 
-func database() error {
-	db, err := bolt.Open("/state/state.db", 0600, nil)
+func database(state string) error {
+	db, err := bolt.Open(filepath.Join(state, "state.db"), 0600, nil)
 	if err != nil {
 		return err
 	}
@@ -183,6 +188,7 @@ func main() {
 		return
 	}
 	role := linuxprofile.Role(os.Getenv("ALMAGEST_LINUX_ROLE"))
+	userProfile := os.Getenv("ALMAGEST_LINUX_PROFILE") == string(linuxprofile.ProfileUser)
 	output.Role = role
 	// Create sibling threads before Seal to prove TSYNC covers them.
 	ready := make(chan int, 4)
@@ -212,7 +218,7 @@ func main() {
 	done := make(chan struct{})
 	go func() { runtime.LockOSThread(); defer runtime.UnlockOSThread(); threadChecks(4, role); close(done) }()
 	<-done
-	check("pid-namespace", os.Getpid() == 1, nil)
+	check("process-shape", userProfile && os.Getpid() > 1 || !userProfile && os.Getpid() == 1, nil)
 	check("environment-cleared", os.Getenv("UNTRUSTED_SENTINEL") == "" && os.Getenv("PATH") == "", nil)
 	_, err := unix.FcntlInt(2000, unix.F_GETFD, 0)
 	check("high-descriptor-closed", errors.Is(err, unix.EBADF), err)
@@ -246,24 +252,41 @@ func main() {
 		check(name, err == nil && string(data) == "profile-lane", err)
 		_ = lane.Close()
 	}
-	err = os.WriteFile("/state/data", []byte("data"), 0600)
+	state := "/state"
+	temporary := "/tmp"
+	if userProfile {
+		state = "."
+		temporary = ".tmp"
+		var peerLimit unix.Rlimit
+		err = unix.Prlimit(os.Getppid(), unix.RLIMIT_NOFILE, nil, &peerLimit)
+		check("same-uid-prlimit-denied", denied(err), err)
+		_, _, signalErr := unix.RawSyscall(unix.SYS_KILL, uintptr(os.Getppid()), 0, 0)
+		check("same-uid-signal-denied", signalErr == unix.EPERM, signalErr)
+		_, err = unix.FcntlInt(3, unix.F_SETOWN, os.Getppid())
+		check("async-owner-denied", denied(err), err)
+		directoryFD := unix.AT_FDCWD
+		_, _, chmodErr := unix.RawSyscall6(unix.SYS_FCHMODAT, uintptr(directoryFD),
+			uintptr(unsafe.Pointer(unsafe.StringData("renamed\x00"))), 0600, 0, 0, 0)
+		check("pathname-metadata-denied", chmodErr == unix.EPERM, chmodErr)
+	}
+	err = os.WriteFile(filepath.Join(state, "data"), []byte("data"), 0600)
 	check("storage-write", err == nil, err)
-	err = os.Rename("/state/data", "/state/renamed")
+	err = os.Rename(filepath.Join(state, "data"), filepath.Join(state, "renamed"))
 	check("storage-rename", err == nil, err)
-	err = os.Truncate("/state/renamed", 1)
-	check("storage-truncate", err == nil, err)
-	err = os.Symlink("/blocked", "/state/escape")
+	err = os.Truncate(filepath.Join(state, "renamed"), 1)
+	check("pathname-truncate-policy", userProfile && denied(err) || !userProfile && err == nil, err)
+	err = os.Symlink("/blocked", filepath.Join(state, "escape"))
 	check("storage-symlink-create", err == nil, err)
-	_, err = os.ReadFile("/state/escape")
+	_, err = os.ReadFile(filepath.Join(state, "escape"))
 	check("symlink-escape-denied", denied(err), err)
-	err = os.WriteFile("/tmp/scratch", []byte("scratch"), 0600)
+	err = os.WriteFile(filepath.Join(temporary, "scratch"), []byte("scratch"), 0600)
 	check("temporary-storage", err == nil, err)
 	switch role {
 	case linuxprofile.Runtime:
-		err = database()
+		err = database(state)
 		check("bbolt-after-seal", err == nil, err)
 	case linuxprofile.Writer:
-		err = writer()
+		err = writer(state)
 		check("config-writer-after-seal", err == nil, err)
 	case linuxprofile.Command:
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)

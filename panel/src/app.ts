@@ -501,6 +501,7 @@ let snapshotEntries: SnapshotInfo[] = [];
 const el = {
   status: document.querySelector<HTMLElement>("#backend-status")!,
   projectVersion: document.querySelector<HTMLElement>("#project-version")!,
+  isolationStatus: document.querySelector<HTMLElement>("#isolation-status")!,
   tabs: [...document.querySelectorAll<HTMLButtonElement>("[data-tab]")],
   panels: [...document.querySelectorAll<HTMLElement>("[data-panel]")],
   graphCanvas: document.querySelector<HTMLCanvasElement>("#graph-canvas")!,
@@ -6212,6 +6213,7 @@ async function boot(): Promise<void> {
   await connectAPI();
   const hello = await backend("hello");
   applyProjectVersionStatus(hello.project_version_status);
+  applyIsolationStatus(hello);
   const colormap = await backend("colormap");
   applyTypePalette(colormap);
   await backend("subscribeLogs");
@@ -6220,6 +6222,23 @@ async function boot(): Promise<void> {
   await requestSnapshot();
   el.status.textContent = "Admin API connected";
   setTab("graph");
+}
+
+function applyIsolationStatus(hello: HelloResponse): void {
+  el.isolationStatus.hidden = false;
+  if (!hello.isolation) {
+    el.isolationStatus.textContent = "Isolation off";
+    el.isolationStatus.dataset.reduced = "true";
+    el.isolationStatus.title = "The graph runtime shares the daemon process and its host authority.";
+    return;
+  }
+  const status = hello.isolation;
+  const profile = status.profile_id ?? "legacy profile";
+  const reduced = status.reduced === true;
+  el.isolationStatus.textContent = reduced ? `${profile} · reduced` : profile;
+  el.isolationStatus.dataset.reduced = String(reduced);
+  el.isolationStatus.title = status.warnings?.map((warning) => `${warning.role}: ${warning.feature} ${warning.effect}`).join("\n")
+    || `Isolation verification: ${status.verification_state ?? "legacy"}`;
 }
 
 boot().catch((error) => {

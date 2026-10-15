@@ -47,7 +47,7 @@ qualify-direct:
 # Run the production Linux isolation profile and its backend compatibility
 # cases through the normal E2E harness.
 linux-isolation-profiles:
-  just test-total e2e:linux_isolation_profile e2e:sysnet_dns_debian_resolvconf e2e:sysnet_dns_openresolv e2e:sysnet_dns_systemd_resolved e2e:tun_splitter_process_routing
+  just test-total e2e:linux_isolation_profile e2e:linux_adaptive_isolation e2e:sysnet_dns_debian_resolvconf e2e:sysnet_dns_openresolv e2e:sysnet_dns_systemd_resolved e2e:tun_splitter_process_routing
 
 # Check Windows role restrictions in both identities in the disposable VM.
 windows-isolation-profiles:

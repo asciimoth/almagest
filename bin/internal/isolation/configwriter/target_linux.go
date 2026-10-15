@@ -28,7 +28,7 @@ type linuxTarget struct {
 }
 
 func openTarget(path string) (fixedTarget, error) {
-	if path == "" || !filepath.IsAbs(path) || strings.HasSuffix(path, "/") {
+	if path == "" || strings.HasSuffix(path, "/") {
 		return nil, fmt.Errorf("config target must be an absolute file path")
 	}
 	clean := filepath.Clean(path)
@@ -36,6 +36,16 @@ func openTarget(path string) (fixedTarget, error) {
 		return nil, fmt.Errorf("config target path is not canonical")
 	}
 	parent, name := filepath.Dir(clean), filepath.Base(clean)
+	if !filepath.IsAbs(path) && parent != "." {
+		return nil, fmt.Errorf("config target must be absolute or in the fixed working directory")
+	}
+	if parent == "." {
+		dirfd, err := unix.Open(".", unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+		if err != nil {
+			return nil, fmt.Errorf("open fixed config directory: %w", err)
+		}
+		return openTargetInDirectory(dirfd, parent, name)
+	}
 	root, err := unix.Open("/", unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
 	if err != nil {
 		return nil, err
@@ -47,6 +57,10 @@ func openTarget(path string) (fixedTarget, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open fixed config directory: %w", err)
 	}
+	return openTargetInDirectory(dirfd, parent, name)
+}
+
+func openTargetInDirectory(dirfd int, parent, name string) (fixedTarget, error) {
 	directory := os.NewFile(uintptr(dirfd), parent)
 	ok := false
 	defer func() {

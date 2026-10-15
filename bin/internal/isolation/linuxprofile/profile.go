@@ -10,11 +10,18 @@ import (
 
 type Role string
 
+type Profile string
+
 const (
 	Runtime Role = "runtime"
 	Network Role = "network" // Trusted backend cgroup only; never a launcher role.
 	Writer  Role = "writer"
 	Command Role = "command"
+)
+
+const (
+	ProfileFull Profile = "linux-full-v1"
+	ProfileUser Profile = "linux-user-v1"
 )
 
 var ErrUnavailable = errors.New("linux isolation profile unavailable; use explicit --no-isolation")
@@ -39,6 +46,7 @@ func DefaultLimits() Limits {
 // additionally receives one fixed static command executable at 7.
 // None of these values may come from regular config or a runtime request.
 type Plan struct {
+	Profile      Profile
 	Role         Role
 	UID, GID     uint32
 	Capabilities uint64 // Reserved launcher ABI field; must be zero.
@@ -46,6 +54,12 @@ type Plan struct {
 }
 
 func (p Plan) Validate() error {
+	if p.Profile == "" {
+		p.Profile = ProfileFull
+	}
+	if p.Profile != ProfileFull && p.Profile != ProfileUser {
+		return fmt.Errorf("%w: unknown profile", ErrUnavailable)
+	}
 	if p.Role != Runtime && p.Role != Writer && p.Role != Command {
 		return fmt.Errorf("%w: unknown role", ErrUnavailable)
 	}
@@ -54,6 +68,9 @@ func (p Plan) Validate() error {
 	}
 	if p.Capabilities != 0 {
 		return fmt.Errorf("%w: capability expansion", ErrUnavailable)
+	}
+	if p.Profile == ProfileUser && p.Role == Command {
+		return fmt.Errorf("%w: command helper is not supported by %s", ErrUnavailable, ProfileUser)
 	}
 	return p.Limits.Validate()
 }
@@ -74,7 +91,15 @@ func (p Plan) Arguments() ([]string, error) {
 	if err := p.Validate(); err != nil {
 		return nil, err
 	}
-	args := []string{"v1", string(p.Role)}
+	profile := p.Profile
+	if profile == "" {
+		profile = ProfileFull
+	}
+	abi := "v1"
+	if profile == ProfileUser {
+		abi = "user-v1"
+	}
+	args := []string{abi, string(p.Role)}
 	for _, n := range []uint64{uint64(p.UID), uint64(p.GID), p.Capabilities, p.Limits.Descriptors,
 		p.Limits.FileBytes, p.Limits.MemoryBytes, p.Limits.Tasks, p.Limits.CPUQuota} {
 		args = append(args, strconv.FormatUint(n, 10))

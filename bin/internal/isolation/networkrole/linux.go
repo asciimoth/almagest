@@ -74,7 +74,7 @@ type LinuxLaunch struct {
 // RunLinux owns the entire launched process set and all IPC/listener lifetimes.
 // ready is called only after native recovery and runtime application readiness.
 // No error switches to direct mode or launches a replacement child.
-func RunLinux(parent context.Context, launch LinuxLaunch, ready func()) (result error) {
+func RunLinux(parent context.Context, launch LinuxLaunch, ready func(roleentry.RuntimeIsolationStatus) error) (result error) {
 	if parent == nil {
 		return supervision.ErrInvalidComposition
 	}
@@ -111,6 +111,11 @@ func RunLinux(parent context.Context, launch LinuxLaunch, ready func()) (result 
 		}
 	}
 	input := launch.RuntimeInput
+	finalIsolation := input.Isolation
+	if input.Isolation.ProfileID != "" {
+		input.Isolation.VerificationState = "unknown"
+	}
+	appliedRoles := make(map[string]*roleentry.AppliedIsolation)
 	input.ConfigWritable = launch.Writer != nil
 	input.StartupSnapshot = launch.RuntimeStorage.Snapshot != nil
 	input.AdminEndpoints = nil
@@ -119,6 +124,11 @@ func RunLinux(parent context.Context, launch LinuxLaunch, ready func()) (result 
 	}
 	if err := input.Validate(); err != nil {
 		return err
+	}
+	roleBootstrap := func(role protocol.Role, identity LinuxIdentity) roleentry.Bootstrap {
+		return roleentry.Bootstrap{Version: protocol.Version, Role: role, Session: session,
+			ProfileID: input.Isolation.ProfileID, PlanDigest: input.Isolation.SelectedPlanDigest,
+			ExpectedUID: identity.UID, ExpectedGID: identity.GID}
 	}
 	if err := bootstrap.PrepareRuntimeStorage(launch.Runtime.Inputs.Directory, launch.Runtime.Plan.UID, launch.Runtime.Plan.GID, *launch.RuntimeStorage); err != nil {
 		return fmt.Errorf("prepare runtime storage: %w", err)
@@ -137,26 +147,31 @@ func RunLinux(parent context.Context, launch LinuxLaunch, ready func()) (result 
 	if err != nil {
 		return fmt.Errorf("launch runtime: %w", err)
 	}
-	proof, err := roleentry.SendRuntimeBootstrap(ctx, streams[roleentry.LaneBootstrap], roleentry.Bootstrap{Version: protocol.Version, Role: protocol.RoleRuntime, Session: session}, input)
+	proof, err := roleentry.SendRuntimeBootstrap(ctx, streams[roleentry.LaneBootstrap], roleBootstrap(protocol.RoleRuntime,
+		LinuxIdentity{UID: launch.Runtime.Plan.UID, GID: launch.Runtime.Plan.GID}), input)
 	if err != nil {
 		return fmt.Errorf("runtime bootstrap: %w", err)
 	}
 	if err := resources.supervise(runtime, proof, streams[roleentry.LaneBootstrap]); err != nil {
 		return err
 	}
+	appliedRoles["runtime"] = proof.Applied
 	if launch.Writer != nil {
 		writer, endpoints, err := resources.start(ctx, launch.Writer.LinuxRole, []roleentry.Lane{roleentry.LaneBootstrap}, launch.Output)
 		if err != nil {
 			return fmt.Errorf("launch writer: %w", err)
 		}
 		stream := endpoints[roleentry.LaneBootstrap]
-		proof, err := roleentry.SendBootstrap(ctx, stream, roleentry.Bootstrap{Version: protocol.Version, Role: protocol.RoleConfigWriter, Session: session, Target: launch.Writer.Target})
+		writerBootstrap := roleBootstrap(protocol.RoleConfigWriter, LinuxIdentity{UID: launch.Writer.Plan.UID, GID: launch.Writer.Plan.GID})
+		writerBootstrap.Target = launch.Writer.Target
+		proof, err := roleentry.SendBootstrap(ctx, stream, writerBootstrap)
 		if err != nil {
 			return fmt.Errorf("writer bootstrap: %w", err)
 		}
 		if err := resources.supervise(writer, proof, stream); err != nil {
 			return err
 		}
+		appliedRoles["config_writer"] = proof.Applied
 		resources.bridge(streams[roleentry.LaneConfig], stream)
 	}
 	var callbackDispatcher *callbackbridge.Dispatcher
@@ -170,13 +185,15 @@ func RunLinux(parent context.Context, launch LinuxLaunch, ready func()) (result 
 			return fmt.Errorf("launch helper: %w", err)
 		}
 		stream := endpoints[roleentry.LaneBootstrap]
-		proof, err := commandhelper.SendBootstrap(ctx, stream, roleentry.Bootstrap{Version: protocol.Version, Role: protocol.RoleCommandHelper, Session: session}, launch.Helper.Config)
+		proof, err := commandhelper.SendBootstrap(ctx, stream, roleBootstrap(protocol.RoleCommandHelper,
+			LinuxIdentity{UID: launch.Helper.Plan.UID, GID: launch.Helper.Plan.GID}), launch.Helper.Config)
 		if err != nil {
 			return fmt.Errorf("helper bootstrap: %w", err)
 		}
 		if err := resources.supervise(helper, proof, stream); err != nil {
 			return err
 		}
+		appliedRoles["command_helper"] = proof.Applied
 		resources.bridge(streams[roleentry.LaneCommand], stream)
 		if callbackStream := endpoints[roleentry.LaneCallback]; callbackStream != nil {
 			peer, peerErr := transport.NewControl(ctx, callbackStream, session, nil)
@@ -207,6 +224,20 @@ func RunLinux(parent context.Context, launch LinuxLaunch, ready func()) (result 
 	backend, err := network.NewSystemBackend(system, network.CaptureNativeIdentity)
 	if err != nil {
 		return err
+	}
+	if finalIsolation.ProfileID != "" {
+		for role, applied := range appliedRoles {
+			if applied == nil {
+				return protocol.ErrInvalidContract
+			}
+			finalIsolation.Credentials[role] = applied.Credentials
+			finalIsolation.CapabilitySets[role] = applied.CapabilitySets
+		}
+		finalIsolation.VerificationState = "verified"
+		finalIsolation.ObservationTime = time.Now().UTC().Format(time.RFC3339Nano)
+		if err := roleentry.SendFinalIsolationStatus(ctx, streams[roleentry.LaneBootstrap], finalIsolation); err != nil {
+			return fmt.Errorf("publish verified isolation status: %w", err)
+		}
 	}
 	broker, err := network.NewWithJournal(session, launch.Policy, backend, launch.Journal)
 	if err != nil {
@@ -289,13 +320,15 @@ func RunLinux(parent context.Context, launch LinuxLaunch, ready func()) (result 
 		if !service.Status().Ready {
 			return supervision.ErrStartupFailed
 		}
-		// Do not publish an admin endpoint until recovery and every required
-		// role are ready. This makes the status returned through R truthful.
+		if ready != nil {
+			if err := ready(finalIsolation); err != nil {
+				return err
+			}
+		}
+		// Do not publish an admin endpoint until recovery, every required
+		// role, and the production verification callback are ready.
 		if err := startAdmin(); err != nil {
 			return err
-		}
-		if ready != nil {
-			ready()
 		}
 	case err := <-served:
 		served <- err // Keep exactly one final result for the deferred join.
@@ -313,7 +346,12 @@ func RunLinux(parent context.Context, launch LinuxLaunch, ready func()) (result 
 }
 
 func (l LinuxLaunch) validate() error {
-	if l.State == nil || l.Cgroup == nil && l.Cgroups == nil || l.Journal == nil || l.RuntimeStorage == nil || l.Runtime.Plan.Role != linuxprofile.Runtime || l.RuntimeInput.Validate() != nil || l.Policy.Validate() != nil {
+	profile := l.Runtime.Plan.Profile
+	if profile == "" {
+		profile = linuxprofile.ProfileFull
+	}
+	full := profile == linuxprofile.ProfileFull
+	if l.State == nil || full && l.Cgroup == nil && l.Cgroups == nil || !full && (l.Cgroup != nil || l.Cgroups != nil) || l.Journal == nil || l.RuntimeStorage == nil || l.Runtime.Plan.Role != linuxprofile.Runtime || l.RuntimeInput.Validate() != nil || l.Policy.Validate() != nil {
 		return supervision.ErrInvalidComposition
 	}
 	if l.Policy.Launch.Backend != "linux" || (linuxprofile.Plan{Role: linuxprofile.Runtime, UID: 1, GID: 1, Limits: l.Limits}).Validate() != nil {
@@ -346,7 +384,9 @@ func (l LinuxLaunch) validate() error {
 	seenUID, seenGID := map[uint32]bool{}, map[uint32]bool{}
 	for _, role := range roles {
 		in := role.Inputs
-		if role.Plan.Validate() != nil || seenUID[role.Plan.UID] || seenGID[role.Plan.GID] || in.Launcher == nil || in.Executable == nil || in.Directory == nil || in.Cgroup == nil || in.Control != nil || in.Data != nil || in.Diagnostics != nil || in.Admin != nil || in.Config != nil || in.Commands != nil || in.Callbacks != nil {
+		if role.Plan.Validate() != nil || role.Plan.Profile != l.Runtime.Plan.Profile || full && (seenUID[role.Plan.UID] || seenGID[role.Plan.GID]) || in.Launcher == nil || in.Executable == nil || in.Directory == nil ||
+			full && (in.Cgroup == nil || in.Code != nil) || !full && (in.Cgroup != nil || in.Code == nil) ||
+			in.Control != nil || in.Data != nil || in.Diagnostics != nil || in.Admin != nil || in.Config != nil || in.Commands != nil || in.Callbacks != nil {
 			return supervision.ErrInvalidComposition
 		}
 		if (role.Plan.Role == linuxprofile.Command) != (in.Command != nil) {
@@ -385,6 +425,9 @@ func (l *LinuxLaunch) bindCgroups() error {
 }
 
 func (l LinuxLaunch) prepareBackend() error {
+	if l.Runtime.Plan.Profile == linuxprofile.ProfileUser {
+		return linuxprofile.PrepareUserBackend(l.State, l.Limits)
+	}
 	if l.Cgroups != nil {
 		return l.Cgroups.EnterBackend(l.State, l.Limits)
 	}

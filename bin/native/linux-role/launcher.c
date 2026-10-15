@@ -11,6 +11,7 @@
 #include <linux/magic.h>
 #include <linux/mount.h>
 #include <linux/securebits.h>
+#include <linux/limits.h>
 #include <poll.h>
 #include <sched.h>
 #include <seccomp.h>
@@ -23,11 +24,13 @@
 #include <sys/mount.h>
 #include <sys/prctl.h>
 #include <sys/resource.h>
+#include <sys/fsuid.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/statfs.h>
 #include <sys/syscall.h>
 #include <sys/wait.h>
+#include <sys/xattr.h>
 #include <unistd.h>
 
 #if !defined(__x86_64__) || defined(__ILP32__)
@@ -43,6 +46,7 @@
 enum role { RUNTIME, WRITER, COMMAND };
 struct plan {
 	enum role role;
+	bool user_profile;
 	uid_t uid;
 	gid_t gid;
 	uint64_t caps, descriptors, file_bytes, memory_bytes, tasks, cpu;
@@ -52,6 +56,33 @@ struct plan {
 static void fail(const char *operation) {
 	fprintf(stderr, "Linux isolation unavailable: %s: %s; use explicit --no-isolation\n", operation, strerror(errno));
 	exit(1);
+}
+
+static void require(bool condition, const char *operation);
+static void check_executable(int fd, const struct plan *p);
+
+static void probe_user_profile(int executable_count) {
+	uid_t ruid, euid, suid;
+	gid_t rgid, egid, sgid;
+	if (getresuid(&ruid, &euid, &suid) == -1 || getresgid(&rgid, &egid, &sgid) == -1)
+		fail("read user profile credentials");
+	uid_t fsuid = setfsuid((uid_t)-1);
+	gid_t fsgid = setfsgid((gid_t)-1);
+	require(ruid != 0 && ruid == euid && euid == suid && euid == fsuid &&
+		rgid == egid && egid == sgid && egid == fsgid,
+		"user profile requires stable non-root credentials");
+	int abi = (int)syscall(SYS_landlock_create_ruleset, NULL, 0, LANDLOCK_CREATE_RULESET_VERSION);
+	require(abi >= 3, "Landlock ABI 3 required");
+	int pidfd = (int)syscall(SYS_pidfd_open, getppid(), 0);
+	if (pidfd == -1 || close(pidfd) == -1) fail("pidfd supervision required");
+	scmp_filter_ctx filter = seccomp_init(SCMP_ACT_ALLOW);
+	if (!filter || seccomp_load(filter) < 0) fail("seccomp filter required");
+	seccomp_release(filter);
+	struct rlimit limit;
+	if (getrlimit(RLIMIT_NOFILE, &limit) == -1 || getrlimit(RLIMIT_FSIZE, &limit) == -1)
+		fail("process limits required");
+	struct plan p = {.user_profile = true, .uid = euid, .gid = egid};
+	for (int fd = 4; fd < 4 + executable_count; fd++) check_executable(fd, &p);
 }
 
 static void require(bool condition, const char *operation) {
@@ -71,12 +102,14 @@ static uint64_t number(const char *text) {
 }
 
 static struct plan parse(int argc, char **argv) {
-	require(argc == 11 && strcmp(argv[1], "v1") == 0, "launcher ABI v1");
+	require(argc == 11 && (strcmp(argv[1], "v1") == 0 || strcmp(argv[1], "user-v1") == 0), "launcher ABI");
 	struct plan p = {0};
+	p.user_profile = strcmp(argv[1], "user-v1") == 0;
 	if (strcmp(argv[2], "runtime") == 0) p.role = RUNTIME;
 	else if (strcmp(argv[2], "writer") == 0) p.role = WRITER;
 	else if (strcmp(argv[2], "command") == 0) p.role = COMMAND;
 	else require(false, "closed role selection");
+	require(!p.user_profile || p.role != COMMAND, "user profile has no command helper");
 	uint64_t uid = number(argv[3]), gid = number(argv[4]);
 	require(uid > 0 && uid < UINT32_MAX && gid > 0 && gid < UINT32_MAX, "non-root role identity");
 	p.uid = (uid_t)uid; p.gid = (gid_t)gid;
@@ -127,11 +160,15 @@ static void check_cgroup(const struct plan *p) {
 	require(found, "launcher must already belong to supplied cgroup");
 }
 
-static void check_executable(int fd) {
+static void check_executable(int fd, const struct plan *p) {
 	struct stat st;
 	if (fstat(fd, &st) == -1) fail("inspect executable");
-	require(S_ISREG(st.st_mode) && st.st_uid == 0 && !(st.st_mode & 0022) &&
+	require(S_ISREG(st.st_mode) && (st.st_uid == 0 || (p->user_profile && st.st_uid == p->uid)) && !(st.st_mode & 0022) &&
 		(st.st_mode & 0111) && st.st_nlink == 1 && st.st_size > 0 && st.st_size <= (128 << 20), "trusted static executable");
+	char capability[64];
+	errno = 0;
+	ssize_t capability_size = fgetxattr(fd, "security.capability", capability, sizeof(capability));
+	require(capability_size == -1 && (errno == ENODATA || errno == ENOTSUP || errno == EOPNOTSUPP), "executable file capabilities prohibited");
 	Elf64_Ehdr eh;
 	require(pread(fd, &eh, sizeof(eh), 0) == sizeof(eh), "read ELF header");
 	require(memcmp(eh.e_ident, ELFMAG, SELFMAG) == 0 && eh.e_ident[EI_CLASS] == ELFCLASS64 &&
@@ -171,13 +208,18 @@ static void check_descriptors(struct plan *p) {
 		require(domain == AF_UNIX && type == SOCK_STREAM, "optional Unix stream required");
 		p->channels |= 1U << (fd - 9);
 	}
-	check_executable(4);
-	if (p->role == COMMAND) check_executable(7);
+	check_executable(4, p);
+	if (p->role == COMMAND) check_executable(7, p);
 	struct stat st;
 	if (fstat(5, &st) == -1) fail("inspect role storage");
 	require(S_ISDIR(st.st_mode) && st.st_uid == p->uid && st.st_gid == p->gid &&
 		(st.st_mode & 0777) == 0700, "private provisioned role directory");
-	check_cgroup(p);
+	if (p->user_profile) {
+		struct stat code;
+		if (fstat(6, &code) == -1) fail("inspect private code directory");
+		require(S_ISDIR(code.st_mode) && code.st_uid == p->uid && code.st_gid == p->gid &&
+			(code.st_mode & 07777) == 0700, "private code directory");
+	} else check_cgroup(p);
 }
 
 static void make_dir(const char *path, mode_t mode) {
@@ -201,6 +243,49 @@ static void copy_executable(int source, const char *target) {
 		offset += n;
 	}
 	if (fchmod(out, 0555) == -1 || close(out) == -1) fail("seal executable");
+}
+
+static void copy_user_executable(const struct plan *p) {
+	int out = openat(6, "role", O_RDWR | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0500);
+	if (out == -1) fail("create exclusive user role copy");
+	char buffer[65536]; off_t offset = 0;
+	for (;;) {
+		ssize_t n = pread(4, buffer, sizeof(buffer), offset);
+		if (n == 0) break;
+		if (n < 0) fail("read user role source");
+		require(offset <= (128 << 20) - n, "user executable copy bound");
+		for (ssize_t written = 0; written < n;) {
+			ssize_t count = write(out, buffer + written, (size_t)(n - written));
+			if (count <= 0) fail("copy user role executable");
+			written += count;
+		}
+		offset += n;
+	}
+	struct stat source_stat, output_stat;
+	if (fstat(4, &source_stat) == -1 || fstat(out, &output_stat) == -1)
+		fail("inspect user executable copy");
+	require(S_ISREG(source_stat.st_mode) && S_ISREG(output_stat.st_mode) &&
+		source_stat.st_size == output_stat.st_size && output_stat.st_nlink == 1,
+		"user executable copy identity");
+	for (off_t compared = 0; compared < source_stat.st_size;) {
+		char source_buffer[65536], output_buffer[65536];
+		size_t wanted = sizeof(source_buffer);
+		if (source_stat.st_size - compared < (off_t)wanted) wanted = (size_t)(source_stat.st_size - compared);
+		ssize_t source_count = pread(4, source_buffer, wanted, compared);
+		ssize_t output_count = pread(out, output_buffer, wanted, compared);
+		require(source_count > 0 && source_count == output_count &&
+			memcmp(source_buffer, output_buffer, (size_t)source_count) == 0,
+			"user executable copy content");
+		compared += source_count;
+	}
+	if (fsync(out) == -1 || fchmod(out, 0555) == -1 || fsync(out) == -1 || fsync(6) == -1)
+		fail("seal user role executable");
+	if (close(out) == -1) fail("close writable user role executable");
+	out = openat(6, "role", O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+	if (out == -1) fail("reopen sealed user role executable");
+	check_executable(out, p);
+	if (close(4) == -1 || dup3(out, 4, O_CLOEXEC) == -1 || close(out) == -1)
+		fail("hold user role executable");
 }
 
 static void filesystem(const struct plan *p) {
@@ -249,12 +334,35 @@ static void drop_identity(const struct plan *p) {
 	if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) == -1 || prctl(PR_SET_DUMPABLE, 0, 0, 0, 0) == -1) fail("lock process privileges");
 }
 
+static void drop_user_authority(const struct plan *p) {
+	uid_t real_uid, effective_uid, saved_uid;
+	gid_t real_gid, effective_gid, saved_gid;
+	if (getresuid(&real_uid, &effective_uid, &saved_uid) == -1 ||
+		getresgid(&real_gid, &effective_gid, &saved_gid) == -1) fail("read user profile credentials");
+	uid_t filesystem_uid = setfsuid((uid_t)-1);
+	gid_t filesystem_gid = setfsgid((gid_t)-1);
+	require(real_uid == p->uid && effective_uid == p->uid && saved_uid == p->uid && filesystem_uid == p->uid &&
+		real_gid == p->gid && effective_gid == p->gid && saved_gid == p->gid && filesystem_gid == p->gid,
+		"stable user profile credentials");
+	struct __user_cap_header_struct header = {.version = _LINUX_CAPABILITY_VERSION_3};
+	struct __user_cap_data_struct data[2] = {{0}};
+	if (prctl(PR_CAP_AMBIENT, PR_CAP_AMBIENT_CLEAR_ALL, 0, 0, 0) == -1 ||
+		syscall(SYS_capset, &header, data) == -1) fail("drop user role capability sets");
+	if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) == -1 ||
+		prctl(PR_SET_DUMPABLE, 0, 0, 0, 0) == -1) fail("lock user role privileges");
+}
+
 static void landlock_rule(int ruleset, const char *path, uint64_t rights) {
 	int fd = open(path, O_PATH | O_CLOEXEC);
 	if (fd == -1) fail("open Landlock path");
 	struct landlock_path_beneath_attr rule = {.allowed_access = rights, .parent_fd = fd};
 	if (syscall(SYS_landlock_add_rule, ruleset, LANDLOCK_RULE_PATH_BENEATH, &rule, 0) == -1) fail("add Landlock rule");
 	if (close(fd) == -1) fail("close Landlock path");
+}
+
+static void landlock_rule_fd(int ruleset, int parent_fd, uint64_t rights) {
+	struct landlock_path_beneath_attr rule = {.allowed_access = rights, .parent_fd = parent_fd};
+	if (syscall(SYS_landlock_add_rule, ruleset, LANDLOCK_RULE_PATH_BENEATH, &rule, 0) == -1) fail("add held Landlock rule");
 }
 
 static int landlock(const struct plan *p) {
@@ -272,6 +380,22 @@ static int landlock(const struct plan *p) {
 		LANDLOCK_ACCESS_FS_MAKE_REG | LANDLOCK_ACCESS_FS_MAKE_SYM | LANDLOCK_ACCESS_FS_REFER | LANDLOCK_ACCESS_FS_TRUNCATE;
 	landlock_rule(fd, "/state", writable); landlock_rule(fd, "/tmp", writable);
 	if (syscall(SYS_landlock_restrict_self, fd, 0) == -1 || close(fd) == -1) fail("apply Landlock");
+	return abi;
+}
+
+static int user_landlock(void) {
+	int abi = (int)syscall(SYS_landlock_create_ruleset, NULL, 0, LANDLOCK_CREATE_RULESET_VERSION);
+	require(abi >= 3, "Landlock ABI 3 required");
+	uint64_t handled = (1ULL << 15) - 1;
+	struct landlock_ruleset_attr attr = {.handled_access_fs = handled};
+	int fd = (int)syscall(SYS_landlock_create_ruleset, &attr, sizeof(attr), 0);
+	if (fd == -1) fail("create user Landlock ruleset");
+	landlock_rule_fd(fd, 4, LANDLOCK_ACCESS_FS_READ_FILE | LANDLOCK_ACCESS_FS_EXECUTE);
+	uint64_t writable = LANDLOCK_ACCESS_FS_READ_FILE | LANDLOCK_ACCESS_FS_WRITE_FILE | LANDLOCK_ACCESS_FS_READ_DIR |
+		LANDLOCK_ACCESS_FS_REMOVE_DIR | LANDLOCK_ACCESS_FS_REMOVE_FILE | LANDLOCK_ACCESS_FS_MAKE_DIR |
+		LANDLOCK_ACCESS_FS_MAKE_REG | LANDLOCK_ACCESS_FS_MAKE_SYM | LANDLOCK_ACCESS_FS_REFER | LANDLOCK_ACCESS_FS_TRUNCATE;
+	landlock_rule_fd(fd, 5, writable);
+	if (syscall(SYS_landlock_restrict_self, fd, 0) == -1 || close(fd) == -1) fail("apply user Landlock");
 	return abi;
 }
 
@@ -318,7 +442,7 @@ static void run(const struct plan *p, int setup, int parent_pidfd) {
 	const char *names[] = {"runtime", "writer", "command"};
 	snprintf(role, sizeof(role), "ALMAGEST_LINUX_ROLE=%s", names[p->role]);
 	snprintf(abi_env, sizeof(abi_env), "ALMAGEST_LANDLOCK_ABI=%d", abi);
-	char *environment[] = {role, abi_env, "ALMAGEST_RETAINED_CAPS=0",
+	char *environment[] = {role, abi_env, "ALMAGEST_LINUX_PROFILE=linux-full-v1", "ALMAGEST_RETAINED_CAPS=0",
 		p->channels & 1 ? "ALMAGEST_DATA_FD=9" : "ALMAGEST_DATA_FD=0",
 		p->channels & 2 ? "ALMAGEST_DIAGNOSTICS_FD=10" : "ALMAGEST_DIAGNOSTICS_FD=0",
 		p->channels & 4 ? "ALMAGEST_ADMIN_FD=11" : "ALMAGEST_ADMIN_FD=0",
@@ -332,10 +456,79 @@ static void run(const struct plan *p, int setup, int parent_pidfd) {
 	fail("execute restricted role");
 }
 
+static void run_user(const struct plan *p) {
+	copy_user_executable(p);
+	if (fchdir(5) == -1) fail("enter user role storage");
+	char working_directory[PATH_MAX];
+	if (!getcwd(working_directory, sizeof(working_directory))) fail("resolve user role storage");
+	if (mkdirat(5, ".tmp", 0700) == -1 && errno != EEXIST) fail("create user temporary directory");
+	int temporary = openat(5, ".tmp", O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+	if (temporary == -1) fail("open user temporary directory");
+	struct stat temporary_stat;
+	if (fstat(temporary, &temporary_stat) == -1) fail("inspect user temporary directory");
+	require(temporary_stat.st_uid == p->uid && temporary_stat.st_gid == p->gid &&
+		(temporary_stat.st_mode & 07777) == 0700, "private user temporary directory");
+	if (close(temporary) == -1) fail("close user temporary directory");
+	close(0);
+	int input[2];
+	if (pipe2(input, O_CLOEXEC) == -1 || input[0] != 0 || close(input[1]) == -1 ||
+		fcntl(0, F_SETFD, 0) == -1 || fcntl(3, F_SETFD, 0) == -1)
+		fail("install user role input channels");
+	limit_resource(RLIMIT_CORE, 0); limit_resource(RLIMIT_NOFILE, p->descriptors);
+	limit_resource(RLIMIT_FSIZE, p->file_bytes); limit_resource(RLIMIT_MEMLOCK, 0);
+	umask(0077);
+	drop_user_authority(p);
+	if (prctl(PR_SET_PDEATHSIG, SIGKILL) == -1) fail("bind user role lifetime");
+	pid_t parent_pid = getppid();
+	require(parent_pid > 1, "user role parent must be alive");
+	int parent_pidfd = (int)syscall(SYS_pidfd_open, parent_pid, 0);
+	if (parent_pidfd == -1) fail("hold user role parent");
+	struct pollfd parent = {.fd = parent_pidfd, .events = POLLIN};
+	require(poll(&parent, 1, 0) == 0 && getppid() == parent_pid, "user role parent lifetime");
+	int abi = user_landlock();
+	if (syscall(SYS_close_range, 6, 8, 0) == -1 || syscall(SYS_close_range, 15, ~0U, 0) == -1)
+		fail("close user setup descriptors");
+	for (int fd = 9; fd <= 14; fd++) {
+		if (p->channels & (1U << (fd - 9))) {
+			if (fcntl(fd, F_SETFD, 0) == -1) fail("inherit verified user role channel");
+		} else close(fd);
+	}
+	if (close(5) == -1) fail("close user storage descriptor");
+	char role[64], abi_env[64], storage_env[PATH_MAX + 32], pwd_env[PATH_MAX + 8];
+	const char *names[] = {"runtime", "writer", "command"};
+	snprintf(role, sizeof(role), "ALMAGEST_LINUX_ROLE=%s", names[p->role]);
+	snprintf(abi_env, sizeof(abi_env), "ALMAGEST_LANDLOCK_ABI=%d", abi);
+	snprintf(storage_env, sizeof(storage_env), "ALMAGEST_STORAGE=%s", working_directory);
+	snprintf(pwd_env, sizeof(pwd_env), "PWD=%s", working_directory);
+	char *environment[] = {role, abi_env, "ALMAGEST_LINUX_PROFILE=linux-user-v1",
+		"ALMAGEST_RETAINED_CAPS=0", storage_env, pwd_env, "TMPDIR=.tmp",
+		p->channels & 1 ? "ALMAGEST_DATA_FD=9" : "ALMAGEST_DATA_FD=0",
+		p->channels & 2 ? "ALMAGEST_DIAGNOSTICS_FD=10" : "ALMAGEST_DIAGNOSTICS_FD=0",
+		p->channels & 4 ? "ALMAGEST_ADMIN_FD=11" : "ALMAGEST_ADMIN_FD=0",
+		p->channels & 8 ? "ALMAGEST_CONFIG_FD=12" : "ALMAGEST_CONFIG_FD=0",
+		p->channels & 16 ? "ALMAGEST_COMMAND_FD=13" : "ALMAGEST_COMMAND_FD=0",
+		p->channels & 32 ? "ALMAGEST_CALLBACK_FD=14" : "ALMAGEST_CALLBACK_FD=0",
+		"ALMAGEST_BOOTSTRAP_FD=3", "GOMAXPROCS=2", "GODEBUG=netdns=go", NULL};
+	char *arguments[] = {"almagest-role", NULL};
+	apply_seccomp(p);
+	syscall(SYS_execveat, 4, "", arguments, environment, AT_EMPTY_PATH);
+	fail("execute restricted user role");
+}
+
 int main(int argc, char **argv) {
+	if (argc >= 2 && argc <= 4 && strcmp(argv[1], "probe-user-v1") == 0) {
+		probe_user_profile(argc - 2);
+		return 0;
+	}
 	struct plan p = parse(argc, argv);
-	require(getuid() == 0 && geteuid() == 0, "rootless profile is not qualified; no elevation is attempted");
+	if (p.user_profile) {
+		require(getuid() != 0 && getuid() == geteuid(), "user profile requires a stable non-root caller");
+	} else require(getuid() == 0 && geteuid() == 0, "full profile requires root; no elevation is attempted");
 	check_descriptors(&p);
+	if (p.user_profile) {
+		run_user(&p);
+		return 1;
+	}
 	int parent_pidfd = (int)syscall(SYS_pidfd_open, getpid(), 0);
 	if (parent_pidfd == -1) fail("hold launcher lifetime");
 	/* Do this before creating filesystem state so absent setup authority

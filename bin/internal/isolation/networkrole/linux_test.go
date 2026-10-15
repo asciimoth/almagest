@@ -60,7 +60,10 @@ func TestLinuxLaunchRejectsInvalidAuthorityBeforeExecution(t *testing.T) {
 				t.Fatal(err)
 			}
 			change(&launch)
-			if err := RunLinux(context.Background(), launch, func() { t.Error("published readiness for invalid launch") }); !errors.Is(err, supervision.ErrInvalidComposition) {
+			if err := RunLinux(context.Background(), launch, func(roleentry.RuntimeIsolationStatus) error {
+				t.Error("published readiness for invalid launch")
+				return nil
+			}); !errors.Is(err, supervision.ErrInvalidComposition) {
 				t.Fatalf("invalid launch: %v", err)
 			}
 		})
@@ -89,13 +92,13 @@ func TestLinuxLaunchRejectsInvalidWriterTargetBeforeExecution(t *testing.T) {
 }
 
 func TestLinuxIsolationStatusReportsOnlyEnforcedRoleRestrictions(t *testing.T) {
-	disabled := linuxIsolationStatus(false, false, false)
+	disabled := linuxIsolationStatus(linuxprofile.ProfileFull, false, false, false)
 	if disabled.Roles["config_writer"] != "disabled" || disabled.Roles["command_helper"] != "disabled" ||
 		disabled.Restrictions["config_writer"] != nil || disabled.Restrictions["command_helper"] != nil ||
 		disabled.Capabilities["config_persistence"] || disabled.Capabilities["commands"] || disabled.Capabilities["backend_callbacks"] {
 		t.Fatalf("disabled status = %#v", disabled)
 	}
-	enabled := linuxIsolationStatus(true, true, true)
+	enabled := linuxIsolationStatus(linuxprofile.ProfileFull, true, true, true)
 	if enabled.Roles["config_writer"] != "ready" || enabled.Roles["command_helper"] != "ready" ||
 		len(enabled.Restrictions["config_writer"]) == 0 || len(enabled.Restrictions["command_helper"]) == 0 ||
 		!enabled.Capabilities["config_persistence"] || !enabled.Capabilities["commands"] || !enabled.Capabilities["backend_callbacks"] {
