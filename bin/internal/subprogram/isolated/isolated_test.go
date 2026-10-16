@@ -2,6 +2,7 @@ package isolated
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"os"
@@ -16,6 +17,72 @@ import (
 	"github.com/asciimoth/almagest/bin/internal/subprogram/service"
 	"github.com/asciimoth/almagest/lib/sandbox"
 )
+
+type rejectingService struct{}
+
+func (rejectingService) BindOwner(context.Context, sandbox.Owner) (sandbox.OwnerSandboxes, error) {
+	return nil, sandbox.ErrDenied
+}
+func (rejectingService) RebindOwner(context.Context, sandbox.OwnerRename) (sandbox.Owner, error) {
+	return sandbox.Owner{}, sandbox.ErrDenied
+}
+func (rejectingService) ReleaseOwner(context.Context, sandbox.Owner) error { return sandbox.ErrDenied }
+func (rejectingService) Close() error                                      { return nil }
+
+func fuzzServer() *Server {
+	return &Server{
+		service: rejectingService{}, owners: make(map[uint64]sandbox.OwnerSandboxes),
+		sandboxes: make(map[uint64]sandbox.Sandbox), commands: make(map[uint64]sandbox.Command),
+		uploads: make(map[uint64]*commandUpload), streams: make(map[uint64]streamResource),
+		files: make(map[uint64]sandbox.File), conns: make(map[uint64]net.Conn),
+		listeners: make(map[uint64]net.Listener), packets: make(map[uint64]net.PacketConn),
+	}
+}
+
+func FuzzSupervisorRequestBodies(f *testing.F) {
+	control := []string{
+		opServiceStatus, opIssueBind, opBind, opRebind, opRelease, opRevoke,
+		opAcquire, opRemove, opSandboxStatus, opSandboxClose, opChildPath,
+		opProgramPath, opProcess, opNewCommand, opCommandUpload, opCommandCommit,
+		opCommandAbort, opCommandPipe, opCommandStart, opCommandSignal, opCommandKill,
+		opFS, opFileOpen, opFileStat, opFileSync, opFileClose, opStreamClose,
+		opDial, opListen, opListenPacket, opDialUnix, opListenUnix, opConnDeadline,
+		opConnClose, opListenerClose, opPacketDeadline, opPacketClose,
+	}
+	data := []string{
+		opCommandChunk, opSandboxWait, opCommandWait, opFileRead, opFileWrite,
+		opFileSeek, opStreamRead, opStreamWrite, opConnRead, opConnWrite, opAccept,
+		opPacketRead, opPacketWrite,
+	}
+	for _, operation := range control {
+		f.Add(false, operation, []byte(`{}`))
+	}
+	for _, operation := range data {
+		f.Add(true, operation, []byte(`{}`))
+	}
+	for _, body := range [][]byte{
+		{}, []byte(`null`), []byte(`{"id":1,"id":2}`),
+		[]byte(`{"id":18446744073709551615,"unknown":true}`),
+		[]byte(`{"sandbox_id":1,"path":{"Root":0,"Rel":"../host"}}`),
+	} {
+		f.Add(false, opChildPath, body)
+	}
+	f.Fuzz(func(t *testing.T, dataLane bool, operation string, body []byte) {
+		server := fuzzServer()
+		var value any
+		var err error
+		if dataLane {
+			value, err = server.handleData(context.Background(), operation, json.RawMessage(body))
+		} else {
+			value, err = server.handleControl(context.Background(), operation, json.RawMessage(body))
+		}
+		if err == nil {
+			if _, marshalErr := json.Marshal(value); marshalErr != nil {
+				t.Fatalf("accepted response cannot be encoded: %v", marshalErr)
+			}
+		}
+	})
+}
 
 func TestIsolatedHelperProcess(t *testing.T) {
 	if os.Getenv("ALMAGEST_ISOLATED_HELPER") != "1" {

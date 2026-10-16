@@ -69,3 +69,17 @@ func FuzzPortablePaths(f *testing.F) {
 		_ = ValidateName(s)
 	})
 }
+
+func FuzzTypedInputs(f *testing.F) {
+	f.Add(uint8(0), "hello", int64(0), false, uint8(0), "", "", "")
+	f.Add(uint8(3), "", int64(0), false, uint8(Persistent), "state", "", "")
+	f.Add(uint8(5), "", int64(0), false, uint8(0), "", "", "127.0.0.1:9050")
+	f.Fuzz(func(t *testing.T, kind uint8, text string, integer int64, boolean bool, root uint8, rel, program, endpoint string) {
+		kinds := [...]ValueKind{TextValue, IntegerValue, BooleanValue, PathValue, ProgramValue, EndpointValue, ValueKind("unknown")}
+		value := Value{
+			Kind: kinds[int(kind)%len(kinds)], Text: text, Int: integer, Bool: boolean,
+			Path: Path{Root: Root(root), Rel: rel}, Program: ProgramID(program), Endpoint: endpoint,
+		}
+		_ = value.Validate()
+	})
+}

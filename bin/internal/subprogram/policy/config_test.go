@@ -3,13 +3,19 @@ package policy
 import (
 	"encoding/json"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"testing"
 
 	"github.com/asciimoth/almagest/lib/sandbox"
 )
 
-func validConfig(t *testing.T) Config {
+type testTempDir interface {
+	Helper()
+	TempDir() string
+}
+
+func validConfig(t testTempDir) Config {
 	t.Helper()
 	root := t.TempDir()
 	return Config{
@@ -176,4 +182,39 @@ func TestNormalizeRejectsDescendantCycles(t *testing.T) {
 	if _, err := Normalize(input); err == nil {
 		t.Fatal("descendant cycle accepted")
 	}
+}
+
+func FuzzDecodeProtectedPolicy(f *testing.F) {
+	valid := validConfig(f)
+	encoded, err := json.Marshal(valid)
+	if err != nil {
+		f.Fatal(err)
+	}
+	for _, input := range [][]byte{
+		encoded,
+		{},
+		[]byte(`null`),
+		[]byte(`{"Mode":"off","Mode":"strict"}`),
+		[]byte(`{"Unknown":true}`),
+		append(append([]byte{}, encoded...), []byte(` true`)...),
+	} {
+		f.Add(input)
+	}
+	f.Fuzz(func(t *testing.T, input []byte) {
+		got, err := Decode(input)
+		if err != nil {
+			return
+		}
+		canonical, err := json.Marshal(got)
+		if err != nil {
+			t.Fatalf("marshal accepted policy: %v", err)
+		}
+		again, err := Decode(canonical)
+		if err != nil {
+			t.Fatalf("decode canonical policy: %v", err)
+		}
+		if !reflect.DeepEqual(got, again) {
+			t.Fatalf("policy normalization is not stable: first=%+v second=%+v", got, again)
+		}
+	})
 }
