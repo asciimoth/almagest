@@ -31,6 +31,8 @@ cleanup() {
 cleanup
 
 ensure_e2e_user almrouteuser 24010 24010
+ensure_e2e_user almroutegroup 24012 24012
+ensure_e2e_user almroutegid 24013 24013
 cp "$(command -v curl)" /tmp/e2e-split-exec-client
 chmod 0755 /tmp/e2e-split-exec-client
 

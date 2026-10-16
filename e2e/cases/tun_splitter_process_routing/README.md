@@ -25,6 +25,8 @@ exercising ordinary root-namespace routing through an external-looking prefix.
   - `e2e-split-exec-client` executable traffic routes to slot 5.
   - User `almrouteuser` traffic routes to slot 3.
   - UID `24011` traffic routes to slot 5.
+  - Group `almroutegroup` traffic routes to slot 3.
+  - GID `24013` traffic routes to slot 5.
   - `TRUE` routes everything else to slot 6.
 - Slot 3 forwards through `Spoofer 1503` to a mock network HTTP server returning
   `Server 1` at `10.210.148.1:8080`.
@@ -39,11 +41,17 @@ exercising ordinary root-namespace routing through an external-looking prefix.
 - After daemon startup, `curl http://10.210.148.1:8080/` returns `Server 1`.
 - `wget http://10.210.148.1:8080/` returns `Server 2` for the same IP and port.
 - A copied executable client matching the `exec` rule returns `Server 2`.
-- Python clients run as the named user and numeric UID route to their configured
-  slots.
+- Python clients run as the named user, numeric UID, named group, and numeric
+  GID route to their configured slots.
 - A long-lived Python client added to the rules by PID at runtime routes to
   `Server 1`.
 - A non-curl/non-wget Python HTTP client reaches the public-prefix target
   through the fallback OutNetwork path.
 - The public target is reachable again through ordinary routing after daemon
   shutdown.
+- The complete scenario runs once with explicit automatic isolation and once
+  with strict isolation.
+- DefaultTun reports its Linux strict, exclude, and include profiles as
+  available in both isolation modes. Both pre-filter contexts accept all eight
+  sysnet-linux process rule types: `comm`, `exec`, `cmd`, `pid`, `user`, `uid`,
+  `group`, and `gid`.
