@@ -26,6 +26,7 @@ func TestDirectModeExtractedPackageImportBoundaries(t *testing.T) {
 		"net/rpc":      "RPC transport",
 		"os/exec":      "process launch",
 	}
+	const isolationImport = "github.com/asciimoth/almagest/bin/internal/isolation"
 	for _, root := range targets {
 		err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
 			if walkErr != nil {
@@ -47,7 +48,8 @@ func TestDirectModeExtractedPackageImportBoundaries(t *testing.T) {
 					t.Errorf("%s imports %s package %s", path, reason, importPath)
 				}
 				if importPath == "github.com/asciimoth/almagest/bin/api" ||
-					strings.HasPrefix(importPath, "github.com/asciimoth/almagest/bin/almagestd/isolation/") ||
+					importPath == isolationImport ||
+					strings.HasPrefix(importPath, isolationImport+"/") ||
 					strings.HasPrefix(importPath, "google.golang.org/grpc") ||
 					strings.HasPrefix(importPath, "google.golang.org/protobuf") {
 					t.Errorf("%s imports wire or isolation package %s", path, importPath)

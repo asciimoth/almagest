@@ -196,6 +196,22 @@ For example, to set 2 GiB memory and two CPUs per role:
 almagestd --isolation-memory-bytes=2147483648 --isolation-cpu-quota=200000
 ```
 
+### Direct-mode performance contract
+
+`--isolation=off` and `--no-isolation` select the in-process daemon before
+runtime services are constructed. The direct network service returns the
+platform `sysnet.System`, its outbound and local networks, and the TUN objects
+that it creates without an isolation adapter. Direct-mode network and TUN I/O
+does not use isolation IPC, serialization, relay queues, packet copies, or
+relay goroutines. Calls through the `sysnet.System` interface can have normal
+Go interface-dispatch cost.
+
+The reusable graph library can add wrappers required by configured nodes and
+link lifetime ownership. For example, a TUN graph link uses detachable TUN
+semantics. This is graph data-path behavior, not direct-mode isolation
+overhead, and it is also present when the library receives a `sysnet.System`
+directly.
+
 For systemd, set environment variables in a service drop-in, then reload the
 units and restart the service:
 

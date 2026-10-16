@@ -18,8 +18,49 @@ import (
 	cmdrunner "github.com/asciimoth/almagest/bin/almagestd/command"
 	"github.com/asciimoth/almagest/bin/almagestd/daemonservices"
 	"github.com/asciimoth/almagest/bin/internal/nativebackend"
+	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/configer/hujson"
+	sysnetlinux "github.com/asciimoth/sysnet-linux"
 )
+
+func TestSystemIntegrationReturnsLinuxBackendWithoutProxy(t *testing.T) {
+	// Set one feature so sysnet-linux does not replace the feature set with its
+	// auto-detected defaults. This keeps the test independent of host network
+	// privileges and services.
+	cfg := configer.NewMemory(map[string]any{
+		"Linux": map[string]any{
+			"Features": map[string]any{"MatcherRules": true},
+		},
+	})
+
+	system, err := SystemIntegration(cfg, nil, 1)
+	if err != nil {
+		t.Fatalf("SystemIntegration: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := system.Close(); err != nil {
+			t.Errorf("Close: %v", err)
+		}
+	})
+	backend, ok := system.(*sysnetlinux.System)
+	if !ok {
+		t.Fatalf("system = %T, want direct *linux.System", system)
+	}
+	if system.OutNet() != backend.OutNet() {
+		t.Fatal("OutNet was replaced or wrapped outside sysnet-linux")
+	}
+	if system.LocalNet() != backend.LocalNet() {
+		t.Fatal("LocalNet was replaced or wrapped outside sysnet-linux")
+	}
+	allocations := testing.AllocsPerRun(1000, func() {
+		if system.OutNet() != backend.OutNet() || system.LocalNet() != backend.LocalNet() {
+			panic("native network identity changed")
+		}
+	})
+	if allocations != 0 {
+		t.Fatalf("direct sysnet-linux network lookup allocations = %f, want 0", allocations)
+	}
+}
 
 func TestSetupFSLinuxDefaultUsesHomeStorage(t *testing.T) {
 	if os.Geteuid() == 0 {
