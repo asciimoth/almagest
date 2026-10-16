@@ -5,6 +5,7 @@ set dotenv-load := true
 # TODO: Enable vulncheck again after Go is updated to 1.26.9 or later.
 check *selectors: tidy typos fmt lint shellcheck vet # vulncheck
   @just test-total {{quote(selectors)}}
+  @just fuzz
 
 typos:
   typos
@@ -61,6 +62,10 @@ test-e2e-light:
   E2E_EXCLUDE_HEAVY=1 just test-e2e
 
 test: test-go test-js
+
+# Run all Go fuzz targets with one shared time budget.
+fuzz: repair-go-work certcat-ensure-generated build-web
+  ./scripts/test-fuzz.py
 
 test-total *selectors:
   @if [[ -n {{quote(selectors)}} ]]; then \

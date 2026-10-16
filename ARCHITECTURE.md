@@ -78,7 +78,11 @@ transports.
 
 ## Test Harness
 
-`just check` runs the static checks, lints, and the complete test gate.
+`just check` runs the static checks, lints, the complete test gate, and then
+all current-platform Go fuzz targets. `just fuzz` runs the fuzz targets with a
+shared 60-second fuzzing budget. Set `FUZZ_TIME` to a Go duration such as `10m`
+to change that budget.
+
 `just test-total` runs the complete test gate without the static checks. With no
 arguments, both commands keep the normal full-test workflow.
 
@@ -113,10 +117,10 @@ the same phase. A selected run does not add unselected test suites or produce
 the full aggregate coverage report.
 
 When selectors are passed to `just check`, its lint and static-check
-dependencies still run in full. Use the complete `just check` without
-selectors for significant changes that affect the whole project or large
-parts of it. The narrow gate is for feedback on changes with local scope; it
-does not replace the complete project gate when the affected area is broad.
+dependencies and its fuzz run still run in full. Use the complete `just check`
+without selectors for significant changes that affect the whole project or
+large parts of it. The narrow gate is for feedback on changes with local scope;
+it does not replace the complete project gate when the affected area is broad.
 
 ## Key Files
 Engine and workspace:
