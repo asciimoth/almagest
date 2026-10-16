@@ -105,6 +105,13 @@ type RuntimeNodeCommand struct {
 	Slots []string
 }
 
+type RuntimePeer struct {
+	PID                 int32
+	UID                 uint32
+	GID                 uint32
+	OutsidePIDNamespace bool
+}
+
 // RuntimeInput identifies only fixed files inside R's private storage and its
 // already-open service lanes. It contains no host path, executable, policy, or
 // native resource selector.
@@ -115,6 +122,8 @@ type RuntimeInput struct {
 	StartupSnapshot bool
 	AdminEndpoints  []RuntimeAdminEndpoint
 	NodeCommands    []RuntimeNodeCommand
+	Sandbox         bool
+	SandboxPeer     RuntimePeer
 	Options         RuntimeOptions
 	Isolation       RuntimeIsolationStatus
 }
@@ -122,6 +131,14 @@ type RuntimeInput struct {
 func (i RuntimeInput) Validate() error {
 	if i.Version != protocol.Version || len(i.AdminEndpoints) > 8 || len(i.NodeCommands) > 128 || len(i.Options.LogLevel) > 16 || !utf8.ValidString(i.Options.LogLevel) ||
 		i.Options.E2ETailscaleRejectAfterSeconds > 86400 {
+		return protocol.ErrInvalidContract
+	}
+	if i.Sandbox {
+		if i.SandboxPeer.UID == ^uint32(0) || i.SandboxPeer.GID == ^uint32(0) ||
+			i.SandboxPeer.PID < 0 || (i.SandboxPeer.PID == 0) != i.SandboxPeer.OutsidePIDNamespace {
+			return protocol.ErrInvalidContract
+		}
+	} else if i.SandboxPeer != (RuntimePeer{}) {
 		return protocol.ErrInvalidContract
 	}
 	commands := make(map[string]struct{}, len(i.NodeCommands))

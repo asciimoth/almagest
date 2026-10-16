@@ -31,12 +31,39 @@ type HelloRequest struct {
 }
 
 type HelloResponse struct {
-	Version              string               `json:"version"`
-	Daemon               string               `json:"daemon,omitempty"`
-	ExecutionMode        string               `json:"execution_mode"`
-	ProjectVersionStatus ProjectVersionStatus `json:"project_version_status"`
-	Surfaces             map[string]any       `json:"surfaces,omitempty"`
-	Isolation            *IsolationStatus     `json:"isolation,omitempty"`
+	Version              string                   `json:"version"`
+	Daemon               string                   `json:"daemon,omitempty"`
+	ExecutionMode        string                   `json:"execution_mode"`
+	ProjectVersionStatus ProjectVersionStatus     `json:"project_version_status"`
+	Surfaces             map[string]any           `json:"surfaces,omitempty"`
+	Isolation            *IsolationStatus         `json:"isolation,omitempty"`
+	SubprogramSandbox    *SubprogramSandboxStatus `json:"subprogram_sandbox,omitempty"`
+}
+
+type SubprogramSandboxStatus struct {
+	Mode              string                              `json:"mode"`
+	Platform          string                              `json:"platform"`
+	EffectiveIdentity string                              `json:"effective_identity"`
+	Templates         map[string]SubprogramTemplateStatus `json:"templates"`
+	Limits            map[string]int64                    `json:"limits"`
+	ActiveOwners      int64                               `json:"active_owners"`
+	OrphanedOwners    int64                               `json:"orphaned_owners"`
+	QuarantinedOwners int64                               `json:"quarantined_owners"`
+}
+
+type SubprogramTemplateStatus struct {
+	Profile           string                    `json:"profile"`
+	EffectiveIdentity string                    `json:"effective_identity"`
+	StrictSatisfied   bool                      `json:"strict_satisfied"`
+	FullBoundary      bool                      `json:"full_boundary"`
+	Features          []SubprogramFeatureStatus `json:"features"`
+	Warnings          []string                  `json:"warnings"`
+}
+
+type SubprogramFeatureStatus struct {
+	Feature string `json:"feature"`
+	State   string `json:"state"`
+	Reason  string `json:"reason"`
 }
 
 // IsolationStatus exposes only non-secret, effective process guarantees. An

@@ -124,6 +124,29 @@ func TestSupervisorReadinessRuntimeLossAndBoundedShutdown(t *testing.T) {
 	}
 }
 
+func TestSupervisorSandboxSupervisorLossRevokesRuntime(t *testing.T) {
+	runtimeRole := newFakeProcess(protocol.RoleRuntime)
+	sandboxRole := newFakeProcess(protocol.RoleSandboxSupervisor)
+	host := &fakeHost{}
+	supervisor, err := New(host, nil, testOptions(), runtimeRole, sandboxRole)
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := runSupervisor(t, supervisor, context.Background())
+	runtimeRole.ready <- ready(protocol.RoleRuntime)
+	sandboxRole.ready <- ready(protocol.RoleSandboxSupervisor)
+	waitReady(t, supervisor)
+	sandboxRole.done <- errors.New("sandbox supervisor crash")
+	if err := <-done; !errors.Is(err, ErrRuntimeLost) {
+		t.Fatalf("Run error = %v", err)
+	}
+	host.mu.Lock()
+	defer host.mu.Unlock()
+	if host.recover != 1 || host.revoke != 1 {
+		t.Fatalf("host calls: recover=%d revoke=%d", host.recover, host.revoke)
+	}
+}
+
 func TestSupervisorStartupFailureNeverPublishesReady(t *testing.T) {
 	runtimeRole := newFakeProcess(protocol.RoleRuntime)
 	writer := newFakeProcess(protocol.RoleConfigWriter)

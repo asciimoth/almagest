@@ -24,6 +24,7 @@ import (
 	"unsafe"
 
 	"github.com/asciimoth/almagest/bin/api"
+	tailscalehujson "github.com/tailscale/hujson"
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/svc"
 	"golang.org/x/sys/windows/svc/mgr"
@@ -416,13 +417,46 @@ func newWindowsDaemon(t *testing.T, root, pipe, config, protected string) *windo
 		storage: filepath.Join(root, "store"),
 	}
 	writePrivateWindowsFile(t, d.config, []byte(config))
-	writePrivateWindowsFile(t, d.protected, []byte(protected))
+	writePrivateWindowsFile(t, d.protected, windowsE2EProtectedConfig(t, []byte(protected)))
 	if isLocalSystem(t) {
 		d.endpoint = "pipe://machine/" + pipe
 	} else {
 		d.endpoint = "pipe://user/" + pipe
 	}
 	return d
+}
+
+func windowsE2EProtectedConfig(t *testing.T, input []byte) []byte {
+	t.Helper()
+	mode := os.Getenv("ALMAGEST_E2E_SANDBOX_MODE")
+	if mode == "" {
+		return input
+	}
+	if mode != "auto" && mode != "strict" {
+		t.Fatalf("invalid ALMAGEST_E2E_SANDBOX_MODE %q", mode)
+	}
+	standard, err := tailscalehujson.Standardize(input)
+	if err != nil {
+		t.Fatalf("standardize protected E2E config: %v", err)
+	}
+	var root map[string]json.RawMessage
+	if err = json.Unmarshal(standard, &root); err != nil {
+		t.Fatalf("decode protected E2E config: %v", err)
+	}
+	for key := range root {
+		if strings.EqualFold(key, "Sandbox") {
+			return input
+		}
+	}
+	root["Sandbox"], err = json.Marshal(map[string]string{"Mode": mode})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := json.Marshal(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return result
 }
 
 func (d *windowsDaemon) commandForStart() *exec.Cmd {
@@ -635,6 +669,20 @@ func startWindowsDaemonService(t *testing.T, daemon *windowsDaemon) func() {
 func buildWindowsBinaries(t *testing.T, target string) (string, string) {
 	t.Helper()
 	_ = target
+	if directory := os.Getenv("ALMAGEST_WINVM_PREBUILT_BIN_DIR"); directory != "" {
+		daemon := filepath.Join(directory, "almagestd.exe")
+		cli := filepath.Join(directory, "almagest-cli.exe")
+		for _, path := range []string{daemon, cli} {
+			info, err := os.Stat(path)
+			if err != nil {
+				t.Fatalf("inspect host-built Windows integration binary %s: %v", path, err)
+			}
+			if !info.Mode().IsRegular() {
+				t.Fatalf("host-built Windows integration binary is not a regular file: %s", path)
+			}
+		}
+		return daemon, cli
+	}
 	windowsBinaryBuildOnce.Do(func() {
 		_, file, _, ok := runtime.Caller(0)
 		if !ok {

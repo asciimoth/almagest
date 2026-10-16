@@ -124,7 +124,7 @@ func TestCapabilityAndOutcomeValidation(t *testing.T) {
 func TestDiagnosticValidation(t *testing.T) {
 	session := testSession(t)
 	base := protocol.DiagnosticRecord{Timestamp: time.Unix(1, 0), Sequence: 1, ProcessInstance: "process", LaunchID: "launch", SessionID: session.ID, Role: protocol.RoleRuntime, Severity: protocol.SeverityInfo, Source: "test"}
-	for _, role := range []protocol.Role{protocol.RoleRuntime, protocol.RoleNetworkBroker, protocol.RoleConfigWriter, protocol.RoleCommandHelper} {
+	for _, role := range []protocol.Role{protocol.RoleRuntime, protocol.RoleNetworkBroker, protocol.RoleConfigWriter, protocol.RoleCommandHelper, protocol.RoleSandboxSupervisor} {
 		for _, severity := range []protocol.Severity{protocol.SeverityDebug, protocol.SeverityInfo, protocol.SeverityWarn, protocol.SeverityError, protocol.SeverityFatal} {
 			r := base
 			r.Role, r.Severity = role, severity

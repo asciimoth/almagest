@@ -106,7 +106,7 @@ Each case lives in `e2e/cases/<case-name>/` and should include:
 - `requires-direct`: optional marker for a case that cannot use the production
   isolation profile. Examples include tests of direct startup arguments and
   experimental or debug system integrations. The harness starts these cases
-  with `--no-isolation --experimental`.
+  with `--isolation=off --experimental`.
 - `also-direct`: optional marker for a small, isolation-compatible case that
   must run once with isolation and once in direct mode. Do not combine it with
   `requires-direct`.
@@ -117,6 +117,11 @@ Each case lives in `e2e/cases/<case-name>/` and should include:
   create namespaces, cgroups, and network resources. A direct case receives
   these options only when it has this marker. `E2E_DOCKER_RUN_ARGS` applies
   additional arguments to all selected cases but does not change selection.
+- `sandbox-mode-matrix`: optional qualification marker. The harness runs the
+  case with every daemon isolation mode (`off`, `auto`, and `strict`) crossed
+  with every sandbox mode (`off`, `auto`, and `strict`). Such a case must also
+  use `requires-privileged` and `requires-cgroup` when its strict profiles need
+  those resources.
 - `heavy`: optional marker for slow or resource-intensive cases. The
   `just test-total-light` command skips these cases.
 - `exclusive`: optional marker for resource-intensive cases that must run
@@ -160,7 +165,15 @@ isolation composition with:
 
 The startup check reads `admin hello` and fails unless the daemon reports the
 expected execution mode and an active isolation protocol. A `requires-direct`
-case uses `--no-isolation --experimental` and must report direct mode instead.
+case uses `--isolation=off --experimental` and must report direct mode instead.
+Before each case starts, the harness adds protected `Sandbox.Mode` when the
+case has no explicit sandbox policy. The default is `auto` for ordinary direct
+cases. It is `strict` for isolated cases and direct cases marked
+`requires-privileged`, which are the cases that the scheduler runs with
+privileged Docker access. Explicit sandbox policies keep their selected mode.
+The Windows VM harness applies the same ordinary and privileged defaults.
+Windows daemon tests continue to use daemon isolation `off` because Windows
+daemon isolation is not implemented.
 
 Direct cases use temporary file storage by default. Isolated cases use the
 runtime role's private storage. A case that must check daemon storage across

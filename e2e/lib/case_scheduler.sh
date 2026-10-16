@@ -17,6 +17,16 @@ e2e_case_privilege() {
 	fi
 }
 
+e2e_case_default_sandbox_mode() {
+	local case_dir="${1:?case directory is required}"
+
+	if [[ "$(e2e_case_privilege "$case_dir")" == "direct" ]]; then
+		printf 'auto\n'
+	else
+		printf 'strict\n'
+	fi
+}
+
 e2e_now_ms() {
 	local seconds="${EPOCHREALTIME%.*}"
 	local fraction="${EPOCHREALTIME#*.}000"

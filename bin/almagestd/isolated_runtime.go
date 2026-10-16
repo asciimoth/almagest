@@ -20,6 +20,8 @@ import (
 	"github.com/asciimoth/almagest/bin/internal/isolation/roleentry"
 	client "github.com/asciimoth/almagest/bin/internal/isolation/runtime"
 	"github.com/asciimoth/almagest/bin/internal/isolation/transport"
+	sandboxisolated "github.com/asciimoth/almagest/bin/internal/subprogram/isolated"
+	"github.com/asciimoth/almagest/lib/sandbox"
 	"github.com/asciimoth/gonnect"
 	"github.com/kataras/golog"
 )
@@ -69,6 +71,29 @@ func runIsolatedRuntimeRole() error {
 	if err != nil {
 		return err
 	}
+	var sandboxControlFile, sandboxDataFile *os.File
+	if os.Getenv(string(roleentry.LaneSandbox)) != "" && os.Getenv(string(roleentry.LaneSandbox)) != "0" {
+		sandboxControlFile, err = roleentry.OpenLaneFile(roleentry.LaneSandbox, os.Getenv)
+		if err != nil {
+			return err
+		}
+		defer func() {
+			if sandboxControlFile != nil {
+				_ = sandboxControlFile.Close()
+			}
+		}()
+	}
+	if os.Getenv(string(roleentry.LaneSandboxData)) != "" && os.Getenv(string(roleentry.LaneSandboxData)) != "0" {
+		sandboxDataFile, err = roleentry.OpenLaneFile(roleentry.LaneSandboxData, os.Getenv)
+		if err != nil {
+			return err
+		}
+		defer func() {
+			if sandboxDataFile != nil {
+				_ = sandboxDataFile.Close()
+			}
+		}()
+	}
 	if err := roleentry.SealRuntime(); err != nil {
 		return fmt.Errorf("seal runtime: %w", err)
 	}
@@ -78,7 +103,8 @@ func runIsolatedRuntimeRole() error {
 	if err != nil {
 		return fmt.Errorf("read runtime bootstrap: %w", err)
 	}
-	if (len(input.AdminEndpoints) != 0) != (adminStream != nil) || input.ConfigWritable != (configStream != nil) {
+	if (len(input.AdminEndpoints) != 0) != (adminStream != nil) || input.ConfigWritable != (configStream != nil) ||
+		input.Sandbox != (sandboxControlFile != nil && sandboxDataFile != nil) || (sandboxControlFile == nil) != (sandboxDataFile == nil) {
 		return protocol.ErrInvalidContract
 	}
 	if err := roleentry.AcknowledgeBootstrap(ctx, control, bootstrap); err != nil {
@@ -92,6 +118,29 @@ func runIsolatedRuntimeRole() error {
 		if input.Isolation.ProfileID != bootstrap.ProfileID || input.Isolation.SelectedPlanDigest != bootstrap.PlanDigest {
 			return protocol.ErrInvalidContract
 		}
+	}
+	var sandboxClient *sandboxisolated.Client
+	if input.Sandbox {
+		sandboxControl, bindErr := bindSandboxSupervisor(sandboxControlFile, input.SandboxPeer)
+		if bindErr != nil {
+			return fmt.Errorf("bind sandbox supervisor control: %w", bindErr)
+		}
+		sandboxControlFile = nil
+		sandboxData, bindErr := bindSandboxSupervisor(sandboxDataFile, input.SandboxPeer)
+		if bindErr != nil {
+			_ = sandboxControl.Close()
+			return fmt.Errorf("bind sandbox supervisor data: %w", bindErr)
+		}
+		sandboxDataFile = nil
+		sandboxClient, err = sandboxisolated.NewClient(ctx, sandboxControl, sandboxData, bootstrap.Session)
+		if err != nil {
+			return fmt.Errorf("start sandbox supervisor client: %w", err)
+		}
+		defer func() {
+			if sandboxClient != nil {
+				_ = sandboxClient.Close()
+			}
+		}()
 	}
 	gonnect.UnfuckGoDns()
 	if input.Options.LogLevel != "" {
@@ -222,6 +271,11 @@ func runIsolatedRuntimeRole() error {
 		buildNetwork: func(*Config, daemonservices.BackendCallbackDispatcher, *LogFactory, error, int64) (daemonservices.HostNetwork, error) {
 			return system, nil
 		},
+		buildSandboxes: func(conf *Config) (sandbox.Service, error) {
+			service := isolatedSandboxService(sandboxClient)
+			sandboxClient = nil
+			return service, nil
+		},
 		dropPrivileges: func() {}, // Native launcher already installed R's final identity and restrictions.
 	}
 	mode := executionModeIsolationDevelopment
@@ -238,6 +292,13 @@ func runIsolatedRuntimeRole() error {
 		}, arguments, mode, randomSeeds, nil, integrations)
 		return errors.Join(err, readyErr)
 	})
+}
+
+func isolatedSandboxService(client *sandboxisolated.Client) sandbox.Service {
+	if client == nil {
+		return nil
+	}
+	return client
 }
 
 func readRuntimeConfig(storage string) ([]byte, []byte, error) {

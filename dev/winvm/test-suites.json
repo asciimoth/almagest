@@ -12,6 +12,136 @@
       "privilege": "ordinary",
       "serialized": false,
       "cases": [
+        {
+          "id": "sandbox::portable-contracts",
+          "kind": "go",
+          "module": "lib",
+          "arguments": [
+            "./sandbox",
+            "-count=1"
+          ],
+          "eventFile": "sandbox-portable-contracts.jsonl",
+          "requiredTests": [
+            "github.com/asciimoth/almagest/lib/sandbox::TestPortablePaths",
+            "github.com/asciimoth/almagest/lib/sandbox::TestLoopbackEndpoints",
+            "github.com/asciimoth/almagest/lib/sandbox::TestTypedInputs",
+            "github.com/asciimoth/almagest/lib/sandbox::TestOpenOptions",
+            "github.com/asciimoth/almagest/lib/sandbox::TestBoundedOutput",
+            "github.com/asciimoth/almagest/lib/sandbox::TestNetworkAdapterUsesOnlySandboxCapabilities"
+          ]
+        },
+        {
+          "id": "sandbox::policy-lifecycle",
+          "kind": "go",
+          "module": "bin",
+          "arguments": [
+            "./internal/subprogram/policy",
+            "./internal/subprogram/manager",
+            "-count=1"
+          ],
+          "eventFile": "sandbox-policy-lifecycle.jsonl",
+          "requiredTests": [
+            "github.com/asciimoth/almagest/bin/internal/subprogram/policy::TestStrictProfiles",
+            "github.com/asciimoth/almagest/bin/internal/subprogram/policy::TestAutoAndOffPlans",
+            "github.com/asciimoth/almagest/bin/internal/subprogram/policy::TestPlanVerification",
+            "github.com/asciimoth/almagest/bin/internal/subprogram/policy::TestProbeStatusDoesNotExposeNativeDetails",
+            "github.com/asciimoth/almagest/bin/internal/subprogram/policy::TestVerificationRejectsMalformedPlan",
+            "github.com/asciimoth/almagest/bin/internal/subprogram/manager::TestOwnerRenameKeepsInstance",
+            "github.com/asciimoth/almagest/bin/internal/subprogram/manager::TestAcquireSingleInstanceAndGeneration",
+            "github.com/asciimoth/almagest/bin/internal/subprogram/manager::TestReleaseDuringPrepare",
+            "github.com/asciimoth/almagest/bin/internal/subprogram/manager::TestCanceledPrepareDoesNotPublish",
+            "github.com/asciimoth/almagest/bin/internal/subprogram/manager::TestFailedCleanupQuarantinesOwner",
+            "github.com/asciimoth/almagest/bin/internal/subprogram/manager::TestAuthorityAndQuota",
+            "github.com/asciimoth/almagest/bin/internal/subprogram/manager::TestNewEpochWaitsForCleanup",
+            "github.com/asciimoth/almagest/bin/internal/subprogram/manager::TestAcquireWaitCanCancel"
+          ]
+        },
+        {
+          "id": "sandbox::direct-service",
+          "kind": "go",
+          "module": "bin",
+          "arguments": [
+            "./internal/subprogram/direct",
+            "./internal/subprogram/isolated",
+            "./internal/subprogram/service",
+            "-count=1"
+          ],
+          "eventFile": "sandbox-direct-service.jsonl",
+          "requiredTests": [
+            "github.com/asciimoth/almagest/bin/internal/subprogram/direct::TestDirectHelperProcess",
+            "github.com/asciimoth/almagest/bin/internal/subprogram/direct::TestDirectCommandContract",
+            "github.com/asciimoth/almagest/bin/internal/subprogram/direct::TestDirectCommandEnvironmentAndCancellation",
+            "github.com/asciimoth/almagest/bin/internal/subprogram/direct::TestDirectOffInheritsNormalEnvironment",
+            "github.com/asciimoth/almagest/bin/internal/subprogram/direct::TestDirectCloseKillsRunningCommandsCleanly",
+            "github.com/asciimoth/almagest/bin/internal/subprogram/direct::TestDirectCloseRevokesCommandBeforeStart",
+            "github.com/asciimoth/almagest/bin/internal/subprogram/direct::TestDirectGlobalCommandLimit",
+            "github.com/asciimoth/almagest/bin/internal/subprogram/direct::TestDirectFilesEnforceBoundsAndCloseStreams",
+            "github.com/asciimoth/almagest/bin/internal/subprogram/direct::TestDirectWaitTerminatesDescendants",
+            "github.com/asciimoth/almagest/bin/internal/subprogram/direct::TestDirectLoopbackSockets",
+            "github.com/asciimoth/almagest/bin/internal/subprogram/direct::TestDirectAutoReportsOnlyQualifiedProtections",
+            "github.com/asciimoth/almagest/bin/internal/subprogram/direct::TestDirectStrictRefusesBeforeLaunch",
+            "github.com/asciimoth/almagest/bin/internal/subprogram/isolated::TestIsolatedHelperProcess",
+            "github.com/asciimoth/almagest/bin/internal/subprogram/isolated::TestRemoteServiceContract",
+            "github.com/asciimoth/almagest/bin/internal/subprogram/service::TestServiceDurableOwnerEpochAndRename",
+            "github.com/asciimoth/almagest/bin/internal/subprogram/service::TestServiceGracefulRestartRetainsAuthorizedState",
+            "github.com/asciimoth/almagest/bin/internal/subprogram/service::TestRegistryQuarantinesUncleanActiveOwner",
+            "github.com/asciimoth/almagest/bin/internal/subprogram/service::TestRegistryRejectsAliasedOrMalformedState",
+            "github.com/asciimoth/almagest/bin/internal/subprogram/service::TestIssueAndBindCancellationRollsBackOwner",
+            "github.com/asciimoth/almagest/bin/internal/subprogram/service::TestRegistryPersistenceFailureRollsBackMemory",
+            "github.com/asciimoth/almagest/bin/internal/subprogram/service::TestOwnerDeletionPolicyAndShutdownRetention"
+          ]
+        },
+        {
+          "id": "sandbox::windows-native-ordinary",
+          "kind": "go",
+          "module": "bin",
+          "arguments": [
+            "./internal/subprogram/direct",
+            "-run",
+            "^TestWindowsNative(StrictBoundary|RejectsUnenforceableRequiredLimits|IdentityIsStableAndOwnerScoped)$",
+            "-count=1"
+          ],
+          "eventFile": "sandbox-windows-native-ordinary.jsonl",
+          "requiredTests": [
+            "github.com/asciimoth/almagest/bin/internal/subprogram/direct::TestWindowsNativeStrictBoundary",
+            "github.com/asciimoth/almagest/bin/internal/subprogram/direct::TestWindowsNativeRejectsUnenforceableRequiredLimits",
+            "github.com/asciimoth/almagest/bin/internal/subprogram/direct::TestWindowsNativeIdentityIsStableAndOwnerScoped"
+          ]
+        },
+        {
+          "id": "sandbox::windows-daemon-integration",
+          "kind": "go",
+          "module": "bin",
+          "arguments": [
+            "./almagestd",
+            "-run",
+            "^TestWindowsDirectDaemonBuildsNativeSandboxService$",
+            "-count=1"
+          ],
+          "eventFile": "sandbox-windows-daemon-integration.jsonl",
+          "requiredTests": [
+            "github.com/asciimoth/almagest/bin/almagestd::TestWindowsDirectDaemonBuildsNativeSandboxService"
+          ]
+        },
+        {
+          "id": "sandbox::windows-mode-matrix-ordinary",
+          "kind": "go",
+          "module": "bin",
+          "arguments": [
+            "-tags=winintegration",
+            "./integration",
+            "-run",
+            "^TestWindowsSandboxModeMatrix$",
+            "-count=1"
+          ],
+          "prebuiltTest": "dev\\winvm\\almagest-sandbox-matrix.test.exe",
+          "prebuiltPackage": "github.com/asciimoth/almagest/bin/integration",
+          "prebuiltRun": "^TestWindowsSandboxModeMatrix$",
+          "eventFile": "sandbox-windows-mode-matrix-ordinary.jsonl",
+          "requiredTests": [
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsSandboxModeMatrix"
+          ]
+        },
         {"id": "m2::execution-identity-standard-user", "kind": "identity"},
         {
           "id": "m32::supervised-service",
@@ -597,6 +727,43 @@
       "privilege": "privileged",
       "serialized": true,
       "cases": [
+        {
+          "id": "sandbox::windows-mode-matrix-elevated",
+          "kind": "go",
+          "module": "bin",
+          "arguments": [
+            "-tags=winintegration",
+            "./integration",
+            "-run",
+            "^TestWindowsSandboxModeMatrix$",
+            "-count=1"
+          ],
+          "prebuiltTest": "dev\\winvm\\almagest-sandbox-matrix.test.exe",
+          "prebuiltPackage": "github.com/asciimoth/almagest/bin/integration",
+          "prebuiltRun": "^TestWindowsSandboxModeMatrix$",
+          "eventFile": "sandbox-windows-mode-matrix-elevated.jsonl",
+          "requiredTests": [
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsSandboxModeMatrix"
+          ]
+        },
+        {
+          "id": "sandbox::windows-native-elevated",
+          "kind": "go",
+          "module": "bin",
+          "arguments": [
+            "./internal/subprogram/direct",
+            "-run",
+            "^TestWindowsNative(StrictBoundary|RejectsUnenforceableRequiredLimits|IdentityIsStableAndOwnerScoped|LocalSystemLaunch)$",
+            "-count=1"
+          ],
+          "eventFile": "sandbox-windows-native-elevated.jsonl",
+          "requiredTests": [
+            "github.com/asciimoth/almagest/bin/internal/subprogram/direct::TestWindowsNativeStrictBoundary",
+            "github.com/asciimoth/almagest/bin/internal/subprogram/direct::TestWindowsNativeRejectsUnenforceableRequiredLimits",
+            "github.com/asciimoth/almagest/bin/internal/subprogram/direct::TestWindowsNativeIdentityIsStableAndOwnerScoped",
+            "github.com/asciimoth/almagest/bin/internal/subprogram/direct::TestWindowsNativeLocalSystemLaunch"
+          ]
+        },
         {"id": "m2::execution-identity-elevated", "kind": "identity"},
         {"id": "m2::exclusive-cases-serialized", "kind": "serialization"},
         {

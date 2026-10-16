@@ -186,6 +186,7 @@ build-isolation-linux output='build/isolation-linux': build-web
   CGO_ENABLED=0 go build -C bin -trimpath -o ../{{quote(output)}}/almagest-command-role ./cmd/almagest-command-role
   CGO_ENABLED=0 go build -C bin -trimpath -o ../{{quote(output)}}/almagest-isolation-storage ./cmd/almagest-isolation-storage
   gcc -static -O2 -D_FORTIFY_SOURCE=3 -Wall -Wextra -Werror -o {{quote(output)}}/almagest-linux-role-launcher bin/native/linux-role/launcher.c $(pkg-config --cflags --libs libseccomp)
+  gcc -static -O2 -D_FORTIFY_SOURCE=3 -Wall -Wextra -Werror -o {{quote(output)}}/almagest-subprogram-launcher bin/native/subprogram/launcher.c $(pkg-config --cflags --libs libseccomp)
 
 build-windows-arch arch:
   ./scripts/build-windows.sh {{arch}}

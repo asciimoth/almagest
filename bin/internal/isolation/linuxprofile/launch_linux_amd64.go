@@ -30,6 +30,8 @@ type Inputs struct {
 	Config      *os.File // optional fixed R/C control lane
 	Commands    *os.File // optional fixed R/H control lane
 	Callbacks   *os.File // optional fixed N/H callback lane
+	Sandbox     *os.File // optional fixed R/S control lane
+	SandboxData *os.File // optional fixed R/S bounded data lane
 }
 
 // CommandContext prepares a launch through a held executable descriptor, with
@@ -49,7 +51,8 @@ func CommandContext(ctx context.Context, p Plan, in Inputs) (*exec.Cmd, error) {
 		(profile == ProfileFull && (in.Cgroup == nil || in.Code != nil) ||
 			profile == ProfileUser && (in.Cgroup != nil || in.Code == nil)) ||
 		(p.Role == Command) != (in.Command != nil) ||
-		(p.Role == Writer || p.Role == Command) && (in.Data != nil || in.Admin != nil || in.Config != nil || in.Commands != nil) ||
+		(p.Role == Writer || p.Role == Command) && (in.Data != nil || in.Admin != nil || in.Config != nil || in.Commands != nil || in.Sandbox != nil || in.SandboxData != nil) ||
+		(in.Sandbox == nil) != (in.SandboxData == nil) ||
 		p.Role != Command && in.Callbacks != nil {
 		return nil, fmt.Errorf("%w: incomplete inherited objects", ErrUnavailable)
 	}
@@ -70,6 +73,6 @@ func CommandContext(ctx context.Context, p Plan, in Inputs) (*exec.Cmd, error) {
 	if profile == ProfileUser {
 		resource = in.Code
 	}
-	cmd.ExtraFiles = []*os.File{in.Control, in.Executable, in.Directory, resource, in.Command, in.Launcher, in.Data, in.Diagnostics, in.Admin, in.Config, in.Commands, in.Callbacks}
+	cmd.ExtraFiles = []*os.File{in.Control, in.Executable, in.Directory, resource, in.Command, in.Launcher, in.Data, in.Diagnostics, in.Admin, in.Config, in.Commands, in.Callbacks, in.Sandbox, in.SandboxData}
 	return cmd, nil
 }

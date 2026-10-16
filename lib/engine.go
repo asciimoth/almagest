@@ -16,6 +16,7 @@ import (
 	amnesianodes "github.com/asciimoth/almagest/lib/amnesia"
 	"github.com/asciimoth/almagest/lib/logging"
 	"github.com/asciimoth/almagest/lib/nodekit"
+	"github.com/asciimoth/almagest/lib/sandbox"
 	"github.com/asciimoth/almagest/lib/storage"
 )
 
@@ -39,6 +40,15 @@ type buildEngineOptions struct {
 	nodeNameAvailable        pasta.NodeNameAvailableCallback
 	nodeConfigChangeCallback func(uint64) <-chan error
 	randomSeed               *int64
+	sandboxes                sandbox.Service
+}
+
+// WithSandboxes transfers ownership of the daemon-owned subprogram sandbox
+// service to BuildEngine. The engine binds it to logical node owners; nodes
+// never receive Service itself. BuildEngine closes the service if construction
+// fails, and Engine.Close closes it after a successful construction.
+func WithSandboxes(service sandbox.Service) BuildEngineOption {
+	return func(options *buildEngineOptions) { options.sandboxes = service }
 }
 
 // WithWorkerEventLogging controls engine worker lifecycle logs.
@@ -135,6 +145,11 @@ func BuildEngine(
 		}
 	}
 
+	var nodesCfg configer.Config
+	if cfg != nil {
+		nodesCfg = cfg.View(configer.Path{"nodes"})
+	}
+
 	engine := &engine{
 		ctx:                      ctx,
 		ctxCancel:                cancel,
@@ -153,6 +168,14 @@ func BuildEngine(
 		notificationWorkerFloor:  make(map[uint64]uint64),
 		nodeConfigChangeCallback: buildOptions.nodeConfigChangeCallback,
 	}
+	if buildOptions.sandboxes != nil {
+		coordinator, ownerErr := newSandboxOwners(buildOptions.sandboxes, nodesCfg)
+		if ownerErr != nil {
+			cancel()
+			return nil, errors.Join(ownerErr, buildOptions.sandboxes.Close())
+		}
+		engine.sandboxOwners = coordinator
+	}
 	engine.workers = newWorkerTracker(func() *pasta.Workspace {
 		return engine.mainWorkspace
 	}, engine.logger, buildOptions.logWorkerEvents)
@@ -168,11 +191,6 @@ func BuildEngine(
 		}
 	}
 
-	var nodesCfg configer.Config
-	if cfg != nil {
-		nodesCfg = cfg.View(configer.Path{"nodes"})
-	}
-
 	work, err := pasta.WorkspaceFromConfig(
 		classes,
 		nodesCfg,
@@ -181,6 +199,9 @@ func BuildEngine(
 
 	if err != nil {
 		cancel()
+		if engine.sandboxOwners != nil {
+			err = errors.Join(err, engine.sandboxOwners.close())
+		}
 		return nil, err
 	}
 	if buildOptions.randomSeed != nil {
@@ -189,8 +210,15 @@ func BuildEngine(
 	work.SetNodeNameAvailableCallback(buildOptions.nodeNameAvailable)
 
 	engine.mainWorkspace = work
-	engine.configCommentPopups = initialConfigCommentPopups(nodesCfg, work.Snapshot())
+	snapshot := work.Snapshot()
+	if engine.sandboxOwners != nil {
+		engine.sandboxOwners.attachRestored(snapshot)
+	}
+	engine.configCommentPopups = initialConfigCommentPopups(nodesCfg, snapshot)
 	engine.workspaceObserverSubscription = work.SubscribeNotifications(func(notification pasta.WorkspaceNotification) {
+		if engine.sandboxOwners != nil {
+			engine.sandboxOwners.observe(notification)
+		}
 		engine.workers.observeWorkspaceNotification(notification)
 		engine.observeWorkspaceBarrier(0, notification)
 	})
@@ -306,6 +334,9 @@ type Engine interface {
 	PastaAPI
 
 	CloseLocked() error
+	// RenameNode coordinates a durable sandbox-owner rebind before it publishes
+	// the graph name. Callers that need failure confirmation use this method.
+	RenameNode(workspace string, id uint64, name string) error
 
 	// Lock locks engine-owned state. It is not recursive.
 	//
@@ -394,11 +425,12 @@ type engine struct {
 
 	pool bufpool.Pool
 
-	sys        sysnet.System
-	kv         storage.KVManager
-	dns        storage.DnsCacheManager
-	secrets    storage.SecretsStorage
-	tlsConfigs storage.TlsConfigStorage
+	sys           sysnet.System
+	kv            storage.KVManager
+	dns           storage.DnsCacheManager
+	secrets       storage.SecretsStorage
+	tlsConfigs    storage.TlsConfigStorage
+	sandboxOwners *sandboxOwnerCoordinator
 
 	mu sync.Mutex
 
@@ -474,7 +506,11 @@ func (e *engine) CloseLocked() error {
 		e.workers.close()
 	}
 	// TODO: Close other workspaces
-	return e.sys.Close()
+	var sandboxErr error
+	if e.sandboxOwners != nil {
+		sandboxErr = e.sandboxOwners.close()
+	}
+	return errors.Join(sandboxErr, e.sys.Close())
 }
 
 func (e *engine) AllocIP() subnet.IPAllocator {
@@ -787,10 +823,38 @@ func (e *engine) MoveNodesLocked(workspace string, positions map[uint64]string) 
 }
 
 func (e *engine) SetNodeName(workspace string, id uint64, name string) {
-	if workspace != "main" {
-		return
+	_ = e.RenameNode(workspace, id, name)
+}
+
+func (e *engine) RenameNode(workspace string, id uint64, name string) error {
+	if workspace != MainWorkspace {
+		return ErrNoWorkspace
 	}
-	_ = e.mainWorkspace.SetNodeName(id, name)
+	if err := pasta.ValidateNodeName(name); err != nil {
+		return err
+	}
+	snapshot, ok := e.mainWorkspace.NodeSnapshot(id)
+	if !ok {
+		return pasta.ErrNoNode
+	}
+	if snapshot.Name == name {
+		return nil
+	}
+	if other, exists := e.mainWorkspace.NodeIDByName(name); exists && other != id {
+		return pasta.ErrNodeNameDup
+	}
+	if e.sandboxOwners != nil {
+		if err := e.sandboxOwners.renameFrom(id, snapshot.Name, name); err != nil {
+			return err
+		}
+	}
+	if err := e.mainWorkspace.SetNodeName(id, name); err != nil {
+		if e.sandboxOwners != nil {
+			return errors.Join(err, e.sandboxOwners.renameFrom(id, name, snapshot.Name))
+		}
+		return err
+	}
+	return nil
 }
 
 func (e *engine) SetNodeNameLocked(workspace string, id uint64, name string) {
@@ -976,11 +1040,25 @@ func (e *engine) RedoLocked(workspace string) {
 }
 
 func (e *engine) SaveConfig(cfg configer.Config) error {
-	return e.mainWorkspace.SaveConfig(cfg.View(configer.Path{"nodes"}))
+	root := cfg.View(configer.Path{"nodes"})
+	if err := e.mainWorkspace.SaveConfig(root); err != nil {
+		return err
+	}
+	if e.sandboxOwners != nil {
+		return e.sandboxOwners.save(root)
+	}
+	return nil
 }
 
 func (e *engine) SaveConfigLocked(cfg configer.Config) error {
-	return e.mainWorkspace.SaveConfigLocked(cfg.View(configer.Path{"nodes"}))
+	root := cfg.View(configer.Path{"nodes"})
+	if err := e.mainWorkspace.SaveConfigLocked(root); err != nil {
+		return err
+	}
+	if e.sandboxOwners != nil {
+		return e.sandboxOwners.save(root)
+	}
+	return nil
 }
 
 func (e *engine) SubscribeNotifications(callback NotificationCallback) uint64 {

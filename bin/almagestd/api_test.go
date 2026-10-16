@@ -683,6 +683,7 @@ func TestEngineAPIDispatchCoreMethods(t *testing.T) {
 	call("19", string(api.MethodEngineUndo), api.WorkspaceRequest{Workspace: almagest.MainWorkspace})
 	call("20", string(api.MethodEngineRedo), api.WorkspaceRequest{Workspace: almagest.MainWorkspace})
 	call("21", string(api.MethodEngineUnsubscribeNotifications), api.SubscriptionRequest(sub))
+	call("22", string(api.MethodEngineSetNodeName), api.SetNodeNameRequest{Workspace: "missing", ID: nodeID, Name: "ignored"})
 	if len(session.engineSubscriptions) != 0 {
 		t.Fatalf("engine subscriptions = %#v, want empty", session.engineSubscriptions)
 	}

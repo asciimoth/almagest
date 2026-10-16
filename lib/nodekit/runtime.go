@@ -132,6 +132,8 @@ type Base struct {
 	Logger        pasta.Logger
 	W             *pasta.Workspace
 	ID            uint64
+	Class         string
+	Name          string
 	WorkerSpawner WorkerSpawner
 }
 
@@ -144,6 +146,8 @@ func (b *Base) InitBaseNode(w *pasta.Workspace, logger pasta.Logger, id uint64) 
 		b.WorkerSpawner = b.Runtime.WorkerSpawner(id)
 		if w != nil {
 			if snapshot, ok := w.NodeSnapshotLocked(id); ok {
+				b.Class = snapshot.Class
+				b.Name = snapshot.Name
 				b.Runtime.ObserveNodeSnapshot(id, snapshot)
 			}
 		}

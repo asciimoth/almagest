@@ -132,6 +132,21 @@ func TestExecutionManifestRejectsRemovedCompilationDeadlineFields(t *testing.T) 
 	}
 }
 
+func TestExecutionManifestValidatesPrebuiltTestFields(t *testing.T) {
+	manifest := testExecutionManifest()
+	testCase := &manifest.Suites[0].Cases[1]
+	testCase.PrebuiltTest = `dev\winvm\fixture.test.exe`
+	testCase.PrebuiltPackage = "example.test/fixture"
+	testCase.PrebuiltRun = "^TestFixture$"
+	if err := ValidateExecutionManifest(manifest); err != nil {
+		t.Fatalf("valid prebuilt test: %v", err)
+	}
+	testCase.PrebuiltPackage = ""
+	if err := ValidateExecutionManifest(manifest); err == nil || !strings.Contains(err.Error(), "invalid prebuilt test fields") {
+		t.Fatalf("incomplete prebuilt test error = %v", err)
+	}
+}
+
 func testExecutionManifest() ExecutionManifest {
 	return ExecutionManifest{SchemaVersion: 1, PlatformID: "server", OS: "windows-server-2022", Architecture: "amd64", GoPackageTimeoutSeconds: 600, ProgressIntervalSeconds: 30, Suites: []ExecutionSuite{
 		{ID: "ordinary", Identity: "standard", Privilege: "ordinary", Cases: []ExecutionCase{{ID: "identity", Kind: "identity"}, {ID: "go", Kind: "go", Module: "bin", Arguments: []string{"./..."}, EventFile: "go.jsonl"}}},

@@ -40,7 +40,7 @@ func (o Origin) validate() error {
 		return protocol.ErrInvalidContract
 	}
 	switch o.Role {
-	case protocol.RoleRuntime, protocol.RoleNetworkBroker, protocol.RoleConfigWriter, protocol.RoleCommandHelper:
+	case protocol.RoleRuntime, protocol.RoleNetworkBroker, protocol.RoleConfigWriter, protocol.RoleCommandHelper, protocol.RoleSandboxSupervisor:
 		return nil
 	default:
 		return protocol.ErrInvalidContract

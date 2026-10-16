@@ -28,7 +28,7 @@ export ALMAGEST_ISOLATION_CPU_QUOTA=200000
 export ALMAGEST_ISOLATION_DESCRIPTORS=2048
 export ALMAGEST_ISOLATION_FILE_BYTES=536870912
 start_daemon
-for role in network runtime writer; do
+for role in network runtime writer sandbox; do
 	groups=("${daemon_cgroup:?daemon cgroup is required}"/almagest-instance-*/"$role")
 	[[ ${#groups[@]} == 1 && -d "${groups[0]}" ]] || fail "missing $role cgroup"
 	group=${groups[0]}
@@ -55,6 +55,13 @@ cli admin hello --client-name linux-isolation-profile \
 		.isolation.roles.network == "ready" and
 		.isolation.roles.runtime == "ready" and
 		.isolation.roles.config_writer == "ready" and
+		.isolation.roles.sandbox_supervisor == "ready" and
+		.isolation.capabilities.subprogram_sandboxes and
+		.subprogram_sandbox.mode == "strict" and
+		.subprogram_sandbox.templates.qualification.profile == "linux-full-v1" and
+		.subprogram_sandbox.templates.qualification.strict_satisfied and
+		.subprogram_sandbox.templates.qualification.full_boundary and
+		.subprogram_sandbox.templates.qualification.effective_identity == "65534:65534" and
 		(.isolation.restrictions.runtime | index("landlock")) != null and
 		(.isolation.restrictions.runtime | index("seccomp")) != null
 	' >/dev/null

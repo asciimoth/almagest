@@ -120,6 +120,7 @@ func TestResolveProtectedFreezesExactSecretAndTLSInputs(t *testing.T) {
 		"Admin": {"Web": 1},
 		"CommandRunner": {"Commands":{"notify":{"Command":["/bin/notify"]}}},
 		"System": {"Type":"native","Linux":{"DNS":{"Mode":"direct"}}},
+		"Sandbox": {"Mode":"strict"},
 		"Secrets": {
 			"inline": {"Value":"literal", "Nodes":["one"]},
 			"from-env": {"Env":"TOKEN", "Nodes":["two"]}
@@ -145,14 +146,16 @@ func TestResolveProtectedFreezesExactSecretAndTLSInputs(t *testing.T) {
 		t.Fatalf("resolved protected inputs = %#v", resolved)
 	}
 	for name, section := range map[string]json.RawMessage{
-		"admin": resolved.Authority.Admin, "commands": resolved.Authority.CommandRunner, "system": resolved.Authority.System,
+		"admin": resolved.Authority.Admin, "commands": resolved.Authority.CommandRunner,
+		"system": resolved.Authority.System, "sandbox": resolved.Authority.Sandbox,
 	} {
 		if len(section) == 0 || !json.Valid(section) {
 			t.Fatalf("%s authority = %s", name, section)
 		}
 	}
 	if !bytes.Contains(resolved.Authority.Admin, []byte(`"Web"`)) || !bytes.Contains(resolved.Authority.Admin, []byte(`1`)) ||
-		!bytes.Contains(resolved.Authority.CommandRunner, []byte(`/bin/notify`)) || !bytes.Contains(resolved.Authority.System, []byte(`"direct"`)) {
+		!bytes.Contains(resolved.Authority.CommandRunner, []byte(`/bin/notify`)) || !bytes.Contains(resolved.Authority.System, []byte(`"direct"`)) ||
+		!bytes.Contains(resolved.Authority.Sandbox, []byte(`"strict"`)) {
 		t.Fatalf("protected authority = %#v", resolved.Authority)
 	}
 	if strings.Contains(strings.Join(loader.trustedReads, " "), "TOKEN") {

@@ -109,6 +109,7 @@ if [[ $elevated == 1 ]]; then
                 "$payload/almagest-command-role" \
                 "$payload/almagest-isolation-storage" \
                 "$payload/almagest-linux-role-launcher" \
+                "$payload/almagest-subprogram-launcher" \
                 "$stage/"
             sudo install -d -o root -g root -m 0755 -- /var/lib/almagest "$state"
             sudo install -d -o "$writer_uid" -g "$writer_gid" -m 0700 -- "$state/config"

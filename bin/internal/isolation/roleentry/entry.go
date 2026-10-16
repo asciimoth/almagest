@@ -25,6 +25,8 @@ const (
 	LaneConfig      Lane = "ALMAGEST_CONFIG_FD"
 	LaneCommand     Lane = "ALMAGEST_COMMAND_FD"
 	LaneCallback    Lane = "ALMAGEST_CALLBACK_FD"
+	LaneSandbox     Lane = "ALMAGEST_SANDBOX_FD"
+	LaneSandboxData Lane = "ALMAGEST_SANDBOX_DATA_FD"
 )
 
 var ErrStandaloneRole = errors.New("isolated role requires an inherited bootstrap channel")
@@ -41,6 +43,17 @@ func OpenBootstrap(role protocol.Role, arguments []string, getenv func(string) s
 // OpenLane opens one fixed inherited role channel. The role executable selects
 // the lane in code; no command-line value can select a descriptor or handle.
 func OpenLane(lane Lane, getenv func(string) string) (transport.Stream, error) {
+	file, err := OpenLaneFile(lane, getenv)
+	if err != nil {
+		return nil, err
+	}
+	return bindBootstrapStream(file)
+}
+
+// OpenLaneFile returns one inherited channel before peer binding. The caller
+// must bind it to trusted launch identity with transport.BindSocket or close
+// it. It is used only for direct role-to-role lanes whose peer starts later.
+func OpenLaneFile(lane Lane, getenv func(string) string) (*os.File, error) {
 	if getenv == nil || !lane.Valid() {
 		return nil, fmt.Errorf("%w: invalid role lane", ErrStandaloneRole)
 	}
@@ -62,12 +75,12 @@ func OpenLane(lane Lane, getenv func(string) string) (transport.Stream, error) {
 		_ = file.Close()
 		return nil, fmt.Errorf("%w: bootstrap descriptor has an unsafe type", ErrStandaloneRole)
 	}
-	return bindBootstrapStream(file)
+	return file, nil
 }
 
 func (l Lane) Valid() bool {
 	switch l {
-	case LaneBootstrap, LaneData, LaneDiagnostics, LaneAdmin, LaneConfig, LaneCommand, LaneCallback:
+	case LaneBootstrap, LaneData, LaneDiagnostics, LaneAdmin, LaneConfig, LaneCommand, LaneCallback, LaneSandbox, LaneSandboxData:
 		return true
 	default:
 		return false

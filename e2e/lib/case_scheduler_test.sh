@@ -6,10 +6,11 @@ source "$(dirname "${BASH_SOURCE[0]}")/case_scheduler.sh"
 
 root="$(mktemp -d)"
 trap 'rm -rf "$root"' EXIT
-mkdir -p "$root/normal" "$root/normal-later" "$root/exclusive" "$root/privileged" "$root/direct"
+mkdir -p "$root/normal" "$root/normal-later" "$root/exclusive" "$root/privileged" "$root/direct" "$root/direct-privileged"
 touch "$root/exclusive/exclusive"
 touch "$root/privileged/requires-privileged"
 touch "$root/direct/requires-direct"
+touch "$root/direct-privileged/requires-direct" "$root/direct-privileged/requires-privileged"
 
 e2e_case_can_start "$root/normal" 0 0
 e2e_case_can_start "$root/normal" 3 0
@@ -82,6 +83,20 @@ if [[ "$(e2e_case_privilege "$root/direct")" != "direct" ]]; then
 	echo "direct case did not report direct status" >&2
 	exit 1
 fi
+if [[ "$(e2e_case_privilege "$root/direct-privileged")" != "direct-privileged" ]]; then
+	echo "privileged direct case did not report direct privileged status" >&2
+	exit 1
+fi
+if [[ "$(e2e_case_default_sandbox_mode "$root/direct")" != "auto" ]]; then
+	echo "ordinary direct case did not select sandbox auto mode" >&2
+	exit 1
+fi
+for case_dir in normal privileged direct-privileged; do
+	if [[ "$(e2e_case_default_sandbox_mode "$root/$case_dir")" != "strict" ]]; then
+		echo "$case_dir did not select sandbox strict mode" >&2
+		exit 1
+	fi
+done
 
 if [[ "$(e2e_format_duration 1234)" != "1.234s" ]]; then
 	echo "sub-minute duration was formatted incorrectly" >&2

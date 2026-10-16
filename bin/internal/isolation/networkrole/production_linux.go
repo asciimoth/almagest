@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -47,6 +48,21 @@ type LinuxProductionIdentities struct {
 	Runtime LinuxIdentity
 	Writer  LinuxIdentity
 	Helper  LinuxIdentity
+}
+
+// sandboxLaunchPolicy contains only the paths which trusted startup must keep
+// outside the runtime storage tree. The sandbox supervisor performs the full,
+// strict policy decode before it reports readiness.
+type sandboxLaunchPolicy struct {
+	TemporaryRoot   string
+	RegistryRoot    string
+	LinuxLauncher   string
+	LinuxCgroupRoot string
+	Programs        map[string]struct{ Executable string }
+	Templates       map[string]struct {
+		PersistentRoot string
+		ReadOnly       []struct{ Source string }
+	}
 }
 
 // LinuxProduction contains only launch-selected trusted state. Sources and
@@ -114,6 +130,15 @@ func RunLinuxProduction(parent context.Context, production LinuxProduction, read
 	if err != nil {
 		return err
 	}
+	var sandboxConfig *sandboxLaunchPolicy
+	if sandboxConfigured(resolved.Authority.Sandbox) {
+		var value sandboxLaunchPolicy
+		decodeErr := json.Unmarshal(resolved.Authority.Sandbox, &value)
+		if decodeErr != nil {
+			return fmt.Errorf("protected sandbox launch policy: %w", decodeErr)
+		}
+		sandboxConfig = &value
+	}
 	adminDefault := production.Paths.AdminUnixDefault
 	if adminDefault == "" {
 		adminDefault = "/run/almagest/admin.sock"
@@ -150,6 +175,25 @@ func RunLinuxProduction(parent context.Context, production LinuxProduction, read
 	}
 
 	trustedPaths := []string{production.Paths.Launcher, production.Paths.RuntimeExecutable}
+	if sandboxConfig != nil {
+		trustedPaths = append(trustedPaths, sandboxConfig.TemporaryRoot, sandboxConfig.RegistryRoot)
+		for _, path := range []string{sandboxConfig.LinuxLauncher, sandboxConfig.LinuxCgroupRoot} {
+			if path != "" {
+				trustedPaths = append(trustedPaths, path)
+			}
+		}
+		for _, program := range sandboxConfig.Programs {
+			trustedPaths = append(trustedPaths, program.Executable)
+		}
+		for _, template := range sandboxConfig.Templates {
+			if template.PersistentRoot != "" {
+				trustedPaths = append(trustedPaths, template.PersistentRoot)
+			}
+			for _, input := range template.ReadOnly {
+				trustedPaths = append(trustedPaths, input.Source)
+			}
+		}
+	}
 	if production.Sources.ProtectedPath != "" {
 		trustedPaths = append(trustedPaths, production.Sources.ProtectedPath)
 	}
@@ -343,6 +387,10 @@ func RunLinuxProduction(parent context.Context, production LinuxProduction, read
 		limits := production.Limits
 		rolePlan.Command = &limits
 	}
+	if sandboxConfig != nil {
+		limits := production.Limits
+		rolePlan.Sandbox = &limits
+	}
 	var cgroups *linuxprofile.ServiceCgroups
 	if production.Profile != linuxprofile.ProfileUser {
 		cgroups, err = linuxprofile.ProvisionServiceCgroups(rolePlan)
@@ -353,7 +401,7 @@ func RunLinuxProduction(parent context.Context, production LinuxProduction, read
 			result = errors.Join(result, cgroups.RestoreAndRemove(), cgroups.Close())
 		}()
 	}
-	isolationStatus := linuxIsolationStatus(production.Profile, writer != nil, helper != nil, !callbackBindings.Empty())
+	isolationStatus := linuxIsolationStatus(production.Profile, writer != nil, helper != nil, sandboxConfig != nil, !callbackBindings.Empty())
 	trustedPlan, err := trustedPlanMaterial(files, production.Profile)
 	if err != nil {
 		return err
@@ -387,6 +435,9 @@ func RunLinuxProduction(parent context.Context, production LinuxProduction, read
 		Policy: launchPolicy, Native: native, State: brokerDirectory, Limits: production.Limits,
 		Journal: journal, Admin: admin, Output: production.Output, Callbacks: callbackBindings,
 	}
+	if sandboxConfig != nil {
+		launch.Sandbox = &LinuxSandbox{Policy: slices.Clone(resolved.Authority.Sandbox)}
+	}
 	if cgroups != nil {
 		launch.Cgroups = cgroups.Roles()
 	}
@@ -407,6 +458,21 @@ func RunLinuxProduction(parent context.Context, production LinuxProduction, read
 		}
 		return nil
 	})
+}
+
+func sandboxConfigured(value []byte) bool {
+	trimmed := strings.TrimSpace(string(value))
+	if trimmed == "" || trimmed == "null" || trimmed == "{}" {
+		return false
+	}
+	var root map[string]json.RawMessage
+	if json.Unmarshal(value, &root) != nil {
+		// Let the normal policy decode return the detailed startup error.
+		return true
+	}
+	_, programs := root["Programs"]
+	_, templates := root["Templates"]
+	return programs || templates
 }
 
 func validateHeldPrivateTree(held *os.File, path string, identity LinuxIdentity) error {
@@ -604,7 +670,7 @@ func logAdaptiveLinuxStatus(output io.Writer, state string, status roleentry.Run
 	}
 }
 
-func linuxIsolationStatus(profile linuxprofile.Profile, writer, helper, callbacks bool) roleentry.RuntimeIsolationStatus {
+func linuxIsolationStatus(profile linuxprofile.Profile, writer, helper, sandboxSupervisor, callbacks bool) roleentry.RuntimeIsolationStatus {
 	if profile == "" {
 		profile = linuxprofile.ProfileFull
 	}
@@ -625,9 +691,13 @@ func linuxIsolationStatus(profile linuxprofile.Profile, writer, helper, callback
 		roles["command_helper"] = "ready"
 		restrictions["command_helper"] = []string{"nonroot", "fixed-executable", "landlock", "seccomp", "no-new-privileges"}
 	}
+	if sandboxSupervisor {
+		roles["sandbox_supervisor"] = "ready"
+		restrictions["sandbox_supervisor"] = []string{"trusted-supervisor", "session-bound-rpc", "bounded-relay"}
+	}
 	return roleentry.RuntimeIsolationStatus{ProtocolVersion: protocol.Version, RecoveryState: "complete", Roles: roles,
 		Restrictions: restrictions,
-		Capabilities: map[string]bool{"native_network": true, "config_persistence": writer, "commands": helper, "backend_callbacks": callbacks}}
+		Capabilities: map[string]bool{"native_network": true, "config_persistence": writer, "commands": helper, "subprogram_sandboxes": sandboxSupervisor, "backend_callbacks": callbacks}}
 }
 
 func applyAdaptiveLinuxStatus(status *roleentry.RuntimeIsolationStatus, production LinuxProduction, protectedDigest [32]byte, trustedPlan string) error {
@@ -717,6 +787,18 @@ func applyAdaptiveLinuxStatus(status *roleentry.RuntimeIsolationStatus, producti
 		credentials["command_helper"] = roleCredentials(production.Identities.Helper)
 		capabilities["command_helper"] = emptyRoleCapabilitySets(profile, networkCapabilities)
 	}
+	if status.Roles["sandbox_supervisor"] == "ready" {
+		mechanisms["sandbox_supervisor"] = map[string]roleentry.RuntimeIsolationMechanism{
+			"trusted-supervisor": {State: "applied"}, "session-bound-rpc": {State: "applied"},
+			"bounded-relay": {State: "applied"}, "role-cgroups": {State: "applied"},
+			"pidfd-supervision": {State: "applied"}, "capability-sets": {State: "applied"},
+		}
+		if profile == linuxprofile.ProfileUser {
+			mechanisms["sandbox_supervisor"]["role-cgroups"] = roleentry.RuntimeIsolationMechanism{State: "unavailable", Reason: "not-delegated"}
+		}
+		credentials["sandbox_supervisor"] = networkCredentials
+		capabilities["sandbox_supervisor"] = networkCapabilities
+	}
 	limits, inheritedLower := adaptiveResourceLimits(profile, production.Arguments, production.Limits)
 	if inheritedLower {
 		warnings = append(warnings, roleentry.RuntimeIsolationWarning{Role: "runtime", Code: "inherited-lower", Effect: "An inherited hard process limit is lower than the selected profile limit.", Feature: "The runtime can open fewer files than requested."})
@@ -726,6 +808,9 @@ func applyAdaptiveLinuxStatus(status *roleentry.RuntimeIsolationStatus, producti
 	}
 	if status.Roles["command_helper"] == "ready" {
 		limits["command_helper"] = slices.Clone(limits["runtime"])
+	}
+	if status.Roles["sandbox_supervisor"] == "ready" {
+		limits["sandbox_supervisor"] = slices.Clone(limits["runtime"])
 	}
 	revision := "full-v1"
 	if profile == linuxprofile.ProfileUser {

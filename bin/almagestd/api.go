@@ -36,6 +36,7 @@ type AdminAPI struct {
 	projectVersionStatus  api.ProjectVersionStatus
 	executionMode         string
 	isolationStatus       *api.IsolationStatus
+	sandboxStatus         func() *api.SubprogramSandboxStatus
 	configAutosaver       *configAutosaver
 	config                *Config
 	configReadOnly        bool
@@ -321,11 +322,16 @@ func (s *apiSession) handleAdminMessage(msg api.Message) (api.Message, error) {
 		if err != nil {
 			return newRequestError(msg.ID, api.ErrorInvalidPayload, err.Error())
 		}
+		var sandboxStatus *api.SubprogramSandboxStatus
+		if s.admin.sandboxStatus != nil {
+			sandboxStatus = s.admin.sandboxStatus()
+		}
 		return api.NewResponse(msg.ID, api.HelloResponse{
 			Version:              api.Version,
 			ExecutionMode:        s.admin.executionMode,
 			ProjectVersionStatus: s.admin.projectVersionStatus,
 			Isolation:            s.admin.isolationStatus,
+			SubprogramSandbox:    sandboxStatus,
 			Surfaces: map[string]any{
 				string(api.SurfaceAdmin): map[string]any{
 					"methods": api.AdminMethods(),
@@ -626,7 +632,9 @@ func (s *apiSession) handleEngineMessage(msg api.Message) (api.Message, error) {
 		if err != nil {
 			return newRequestError(msg.ID, api.ErrorInvalidPayload, err.Error())
 		}
-		s.engine.SetNodeName(req.Workspace, req.ID, req.Name)
+		if err = s.engine.RenameNode(req.Workspace, req.ID, req.Name); err != nil && !errors.Is(err, almagest.ErrNoWorkspace) {
+			return newRequestError(msg.ID, api.ErrorBadRequest, err.Error())
+		}
 		return api.NewResponse(msg.ID, struct{}{})
 
 	case api.MethodEngineRemoveNodePopup:

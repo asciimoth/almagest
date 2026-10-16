@@ -346,6 +346,14 @@ require_vm_space "$winvm_cache_dir" 10 test
         self.assertIn('Invoke-CimMethod -ClassName Win32_Process', launcher)
         self.assertIn('GOOS=windows GOARCH=amd64 CGO_ENABLED=0',
                       (ROOT / 'stage.sh').read_text())
+        self.assertIn('$mode == manual || $mode == test || $mode == ordinary || $mode == privileged',
+                      (ROOT / 'stage.sh').read_text())
+        self.assertIn('almagest-sandbox-matrix.test.exe',
+                      (ROOT / 'stage.sh').read_text())
+        self.assertIn('sandbox-e2e-helper.exe ./cmd/sandbox-e2e-helper',
+                      (ROOT / 'stage.sh').read_text())
+        self.assertIn('./integration/daemon_windows_test.go ./integration/sandbox_windows_test.go',
+                      (ROOT / 'stage.sh').read_text())
         self.assertIn('almagest-cli.exe ./almagest-cli',
                       (ROOT / 'stage.sh').read_text())
         self.assertIn("$toolDir = 'C:\\winvm\\bin'", launcher)
@@ -356,10 +364,17 @@ require_vm_space "$winvm_cache_dir" 10 test
         self.assertIn("[string]$DaemonOptions = ''", launcher)
         self.assertIn('os.environ.get("WINVM_DAEMON_OPTIONS", "")', runner)
         self.assertIn('display=(-display "${WINVM_DISPLAY:-gtk,window-close=off}"', shell)
+        self.assertIn('memory_mib=${WINVM_MEMORY_MIB:-$configured_memory_mib}', shell)
         self.assertIn('enabling automatic login for the standard winvm account', runner)
         self.assertIn('self.upload_manual_state()', runner)
         self.assertIn('self.export_manual_state()', runner)
         self.assertIn('local/winvm', shell)
+
+    def test_cached_image_fast_path_skips_installation_media_hashes(self):
+        helper = (ROOT / 'ensure-image.sh').read_text()
+        self.assertIn('cached_image_valid "$image_dir" "$key"', helper)
+        self.assertIn('exec "$script_dir/build-image.sh"', helper)
+        self.assertNotIn('doctor.sh', helper)
 
     def test_interrupt_diagnostics_are_extensive(self):
         runner = (ROOT / 'supervise.py').read_text()

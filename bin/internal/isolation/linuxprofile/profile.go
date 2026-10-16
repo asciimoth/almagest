@@ -17,6 +17,7 @@ const (
 	Network Role = "network" // Trusted backend cgroup only; never a launcher role.
 	Writer  Role = "writer"
 	Command Role = "command"
+	Sandbox Role = "sandbox" // Trusted supervisor cgroup; never a restricted launcher role.
 )
 
 const (

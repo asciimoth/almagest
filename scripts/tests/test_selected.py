@@ -119,12 +119,48 @@ class SelectedTestHarnessTests(unittest.TestCase):
         with patch.object(MODULE.platform, "system", return_value="Linux"):
             self.assertEqual(MODULE.Harness(run=run).execute(selected, cases), 0)
         self.assertEqual([call[0] for call in calls], [
-            ["./dev/winvm/build-image.sh"],
+            ["./dev/winvm/ensure-image.sh"],
             ["./dev/winvm/run.sh", "test"],
         ])
         self.assertEqual(calls[1][1]["env"]["WINVM_TEST_CASES"], ",".join(chosen))
         self.assertTrue(calls[1][1]["env"]["WINVM_COVERAGE_DIR"].endswith(
             "/coverage/selected/winvm"))
+
+    def test_matrix_selection_caps_vm_memory(self):
+        selected, cases = MODULE.parse_selectors([
+            "winvm:sandbox::windows-mode-matrix-elevated",
+        ])
+        calls = []
+
+        def run(argv, **kwargs):
+            calls.append((argv, kwargs))
+            return subprocess.CompletedProcess(argv, 0)
+
+        with patch.object(MODULE.platform, "system", return_value="Linux"):
+            self.assertEqual(MODULE.Harness(run=run).execute(selected, cases), 0)
+        self.assertEqual(calls[-1][1]["env"]["WINVM_MEMORY_MIB"], "4096")
+
+    def test_winvm_interrupt_is_forwarded_without_killing_supervisor(self):
+        class Process:
+            pid = 4321
+
+            def __init__(self):
+                self.waits = 0
+
+            def wait(self):
+                self.waits += 1
+                if self.waits == 1:
+                    raise KeyboardInterrupt
+                return 130
+
+        process = Process()
+        harness = MODULE.Harness()
+        with patch.object(MODULE.subprocess, "Popen", return_value=process), \
+             patch.object(MODULE.os, "killpg") as killpg, \
+             redirect_stderr(io.StringIO()):
+            self.assertFalse(harness.winvm_command(["./dev/winvm/run.sh", "privileged"], env={}))
+        killpg.assert_called_once_with(process.pid, MODULE.signal.SIGINT)
+        self.assertEqual(process.waits, 2)
 
     def test_failure_does_not_skip_later_selected_tests(self):
         selected, cases = MODULE.parse_selectors([

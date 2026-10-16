@@ -35,14 +35,17 @@ type ExecutionSuite struct {
 
 // ExecutionCase is one required result in a native suite.
 type ExecutionCase struct {
-	ID            string   `json:"id"`
-	Kind          string   `json:"kind"`
-	Module        string   `json:"module,omitempty"`
-	Arguments     []string `json:"arguments,omitempty"`
-	EventFile     string   `json:"eventFile,omitempty"`
-	RequiredTests []string `json:"requiredTests,omitempty"`
-	StartServices []string `json:"startServices,omitempty"`
-	Coverage      *bool    `json:"coverage,omitempty"`
+	ID              string   `json:"id"`
+	Kind            string   `json:"kind"`
+	Module          string   `json:"module,omitempty"`
+	Arguments       []string `json:"arguments,omitempty"`
+	EventFile       string   `json:"eventFile,omitempty"`
+	RequiredTests   []string `json:"requiredTests,omitempty"`
+	StartServices   []string `json:"startServices,omitempty"`
+	Coverage        *bool    `json:"coverage,omitempty"`
+	PrebuiltTest    string   `json:"prebuiltTest,omitempty"`
+	PrebuiltPackage string   `json:"prebuiltPackage,omitempty"`
+	PrebuiltRun     string   `json:"prebuiltRun,omitempty"`
 }
 
 // ExecutionIdentity records the token and native platform used by a suite.
@@ -130,6 +133,17 @@ func ValidateExecutionManifest(manifest ExecutionManifest) error {
 				if len(testCase.Arguments) == 0 {
 					return fmt.Errorf("go case %q has no arguments", testCase.ID)
 				}
+				prebuiltFields := 0
+				for _, value := range []string{testCase.PrebuiltTest, testCase.PrebuiltPackage, testCase.PrebuiltRun} {
+					if value != "" {
+						prebuiltFields++
+					}
+				}
+				portablePrebuilt := strings.ReplaceAll(testCase.PrebuiltTest, `\`, "/")
+				if prebuiltFields != 0 && (prebuiltFields != 3 || filepath.IsAbs(portablePrebuilt) ||
+					strings.HasPrefix(filepath.Clean(portablePrebuilt), "../") || filepath.Ext(portablePrebuilt) != ".exe") {
+					return fmt.Errorf("go case %q has invalid prebuilt test fields", testCase.ID)
+				}
 				if testCase.Coverage != nil && !*testCase.Coverage && !slices.Contains(testCase.Arguments, "-fuzz") {
 					return fmt.Errorf("go case %q disables coverage without fuzzing", testCase.ID)
 				}
@@ -141,7 +155,7 @@ func ValidateExecutionManifest(manifest ExecutionManifest) error {
 						return err
 					}
 				}
-			} else if testCase.Module != "" || testCase.EventFile != "" || len(testCase.Arguments) != 0 || len(testCase.RequiredTests) != 0 || len(testCase.StartServices) != 0 || testCase.Coverage != nil {
+			} else if testCase.Module != "" || testCase.EventFile != "" || len(testCase.Arguments) != 0 || len(testCase.RequiredTests) != 0 || len(testCase.StartServices) != 0 || testCase.Coverage != nil || testCase.PrebuiltTest != "" || testCase.PrebuiltPackage != "" || testCase.PrebuiltRun != "" {
 				return fmt.Errorf("non-Go case %q has Go test fields", testCase.ID)
 			}
 		}

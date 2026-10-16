@@ -25,6 +25,7 @@ type CgroupPlan struct {
 	Runtime Limits
 	Writer  *Limits
 	Command *Limits
+	Sandbox *Limits
 }
 
 func DefaultCgroupPlan() CgroupPlan {
@@ -33,7 +34,7 @@ func DefaultCgroupPlan() CgroupPlan {
 }
 
 func (p CgroupPlan) validate() error {
-	for _, limits := range []*Limits{&p.Backend, &p.Runtime, p.Writer, p.Command} {
+	for _, limits := range []*Limits{&p.Backend, &p.Runtime, p.Writer, p.Command, p.Sandbox} {
 		if limits != nil {
 			if err := limits.Validate(); err != nil {
 				return err
@@ -91,6 +92,7 @@ func ProvisionCgroups(instance *os.File, plan CgroupPlan) (_ *RoleCgroups, err e
 		{Runtime, "runtime", &plan.Runtime, 100},
 		{Writer, "writer", plan.Writer, 50},
 		{Command, "command", plan.Command, 50},
+		{Sandbox, "sandbox", plan.Sandbox, 100},
 	}
 	var memory, tasks uint64
 	for _, role := range roles {

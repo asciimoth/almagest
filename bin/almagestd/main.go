@@ -19,7 +19,9 @@ import (
 	"github.com/asciimoth/almagest/bin/almagestd/internal/daemonruntime"
 	"github.com/asciimoth/almagest/bin/almagestd/platform"
 	"github.com/asciimoth/almagest/bin/api"
+	sandboxservice "github.com/asciimoth/almagest/bin/internal/subprogram/service"
 	almagest "github.com/asciimoth/almagest/lib"
+	"github.com/asciimoth/almagest/lib/sandbox"
 	"github.com/asciimoth/gonnect"
 	"github.com/kataras/golog"
 )
@@ -29,6 +31,12 @@ func main() {
 	// enough timestamp precision to correlate the daemon log with host network
 	// captures and admin API actions.
 	golog.SetTimeFormat("2006/01/02 15:04:05.000000")
+	if isolatedSandboxSupervisorRole() {
+		if err := runIsolatedSandboxSupervisorRole(); err != nil {
+			golog.Fatal(err)
+		}
+		return
+	}
 	if isolatedRuntimeRole() {
 		if err := runIsolatedRuntimeRole(); err != nil {
 			golog.Fatal(err)
@@ -61,7 +69,7 @@ func parseDaemonArgs() (args.Args, executionMode, error) {
 }
 
 func runDaemonApplication(arguments args.Args, mode executionMode) error {
-	golog.Infof("Execution mode: %s (no sandbox)", mode)
+	golog.Infof("Execution mode: %s", mode)
 	for _, warning := range executionModeStartupWarnings(mode) {
 		golog.Warn(warning)
 	}
@@ -117,6 +125,7 @@ type daemonIntegrations struct {
 	prepareAdmin    func(*Config) (*AdminAPI, error)
 	buildCommands   func(context.Context, *LogFactory, *Config) (daemonservices.NodeCommandDispatcher, daemonservices.BackendCallbackDispatcher, func(), error)
 	buildNetwork    func(*Config, daemonservices.BackendCallbackDispatcher, *LogFactory, error, int64) (daemonservices.HostNetwork, error)
+	buildSandboxes  func(*Config) (sandbox.Service, error)
 	dropPrivileges  func()
 }
 
@@ -139,6 +148,12 @@ func directDaemonIntegrations() daemonIntegrations {
 		},
 		buildNetwork: func(conf *Config, callbacks daemonservices.BackendCallbackDispatcher, logf *LogFactory, dependencyErr error, seed int64) (daemonservices.HostNetwork, error) {
 			return localnetwork.BuildWithRuntimeDependencies(conf.Protected.System, callbacks, logf.NetworkLogger(), dependencyErr, seed)
+		},
+		buildSandboxes: func(conf *Config) (sandbox.Service, error) {
+			if len(conf.Protected.Sandbox.Programs) == 0 && len(conf.Protected.Sandbox.Templates) == 0 {
+				return nil, nil
+			}
+			return sandboxservice.NewHost(conf.Protected.Sandbox)
 		},
 		dropPrivileges: platform.DropPrivileges,
 	}
@@ -311,6 +326,18 @@ func runDaemon(
 		return err
 	}
 	application.OwnHostNetwork(hostNetwork.Close)
+	var sandboxService sandbox.Service
+	if integrations.buildSandboxes != nil {
+		sandboxService, err = integrations.buildSandboxes(conf)
+		if err != nil {
+			return fmt.Errorf("build subprogram sandbox service: %w", err)
+		}
+	}
+	if reporter, ok := sandboxService.(sandbox.StatusReporter); ok {
+		admin.sandboxStatus = func() *api.SubprogramSandboxStatus {
+			return mapSandboxStatus(reporter.ServiceStatus())
+		}
+	}
 
 	if integrations.dropPrivileges != nil {
 		integrations.dropPrivileges()
@@ -322,6 +349,15 @@ func runDaemon(
 		nodeConfigChanged = nodeConfigAutosave.Notify
 	}
 	engineBuildStart := time.Now()
+	engineOptions := []almagest.BuildEngineOption{
+		almagest.WithWorkerEventLogging(arguments.LogWorkers),
+		almagest.WithNodeNameAvailableCallback(nodeNames.index.available),
+		almagest.WithNodeConfigChangeCallback(nodeConfigChanged),
+		almagest.WithRandomSeed(randomSeeds.workspace),
+	}
+	if sandboxService != nil {
+		engineOptions = append(engineOptions, almagest.WithSandboxes(sandboxService))
+	}
 	engine, err := almagest.BuildEngine(
 		ctx,
 		conf.Main,
@@ -334,10 +370,7 @@ func runDaemon(
 		daemonNodeClasses(conf.Protected.CommandRunner, nodeCommands, arguments.Experimental, conf.Protected.Experimental),
 		globalBufPool,
 		arguments.DebugNodes,
-		almagest.WithWorkerEventLogging(arguments.LogWorkers),
-		almagest.WithNodeNameAvailableCallback(nodeNames.index.available),
-		almagest.WithNodeConfigChangeCallback(nodeConfigChanged),
-		almagest.WithRandomSeed(randomSeeds.workspace),
+		engineOptions...,
 	)
 	engineBuildElapsed := time.Since(engineBuildStart)
 	if err != nil {
@@ -382,6 +415,21 @@ func runDaemon(
 	<-ctx.Done()
 	golog.Info("Stopping")
 	return nil
+}
+
+func mapSandboxStatus(input sandbox.ServiceStatus) *api.SubprogramSandboxStatus {
+	result := &api.SubprogramSandboxStatus{Mode: string(input.Mode), Platform: input.Platform,
+		EffectiveIdentity: input.EffectiveIdentity, Templates: make(map[string]api.SubprogramTemplateStatus, len(input.Templates)), Limits: input.Limits,
+		ActiveOwners: input.ActiveOwners, OrphanedOwners: input.OrphanedOwners, QuarantinedOwners: input.QuarantinedOwners}
+	for id, status := range input.Templates {
+		template := api.SubprogramTemplateStatus{Profile: status.Profile, EffectiveIdentity: status.EffectiveIdentity, StrictSatisfied: status.StrictSatisfied,
+			FullBoundary: status.FullBoundary, Warnings: append([]string(nil), status.Warnings...)}
+		for _, feature := range status.Features {
+			template.Features = append(template.Features, api.SubprogramFeatureStatus{Feature: string(feature.Feature), State: string(feature.State), Reason: feature.Reason})
+		}
+		result.Templates[string(id)] = template
+	}
+	return result
 }
 
 // openStartupSnapshotInput resolves the operator-selected archive before the

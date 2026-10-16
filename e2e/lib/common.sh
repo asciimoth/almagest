@@ -28,6 +28,7 @@ ALMAGEST_E2E_WEB_ADMIN="${ALMAGEST_E2E_WEB_ADMIN:-0}"
 ALMAGEST_E2E_WEB_PPROF="${ALMAGEST_E2E_WEB_PPROF:-0}"
 ALMAGEST_E2E_STARTUP_SNAPSHOT="${ALMAGEST_E2E_STARTUP_SNAPSHOT:-}"
 ALMAGEST_E2E_DAEMON_MODE="${ALMAGEST_E2E_DAEMON_MODE:-isolation}"
+ALMAGEST_E2E_ISOLATION_MODE="${ALMAGEST_E2E_ISOLATION_MODE:-auto}"
 ALMAGEST_E2E_ISOLATION_UID="${ALMAGEST_E2E_ISOLATION_UID:-10001}"
 ALMAGEST_E2E_ISOLATION_GID="${ALMAGEST_E2E_ISOLATION_GID:-10001}"
 ALMAGEST_E2E_WRITER_UID="${ALMAGEST_E2E_WRITER_UID:-10002}"
@@ -126,6 +127,7 @@ start_daemon() {
 	local daemon_environment=()
 	local daemon_command=()
 	if [[ "$ALMAGEST_E2E_DAEMON_MODE" == "isolation" ]]; then
+		mode_args=(--isolation="$ALMAGEST_E2E_ISOLATION_MODE")
 		if [[ "$ALMAGEST_E2E_TMP_FILE_STORAGE" == "1" ]]; then
 			ALMAGEST_E2E_TMP_FILE_STORAGE=0
 		fi
@@ -154,7 +156,7 @@ start_daemon() {
 		)
 		config_args=()
 	else
-		mode_args=(--no-isolation --experimental)
+		mode_args=(--isolation=off --experimental)
 	fi
 	if [[ "$ALMAGEST_E2E_TMP_FILE_STORAGE" == "1" ]]; then
 		storage_args=(--tmp-file-storage)
@@ -189,7 +191,8 @@ start_daemon() {
 		"${web_args[@]}")
 	if [[ "$ALMAGEST_E2E_DAEMON_MODE" == "isolation" ]]; then
 		[[ -n "${E2E_CGROUP_PARENT:-}" ]] || fail "delegated E2E cgroup parent is unavailable"
-		daemon_cgroup="$E2E_CGROUP_PARENT/almagest-e2e-daemon"
+		local cgroup_suffix="${ALMAGEST_E2E_ISOLATION_MODE}-${ALMAGEST_E2E_SANDBOX_MODE:-auto}"
+		daemon_cgroup="$E2E_CGROUP_PARENT/almagest-e2e-daemon-$cgroup_suffix"
 		mkdir "$daemon_cgroup" || fail "could not create daemon cgroup"
 		(
 			printf '%s\n' "$BASHPID" >"$daemon_cgroup/cgroup.procs"

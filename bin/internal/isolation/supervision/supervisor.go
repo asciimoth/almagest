@@ -122,7 +122,7 @@ func New(host Host, degraded Degraded, options Options, processes ...Process) (*
 			return nil, ErrInvalidComposition
 		}
 		role := process.Role()
-		if role != protocol.RoleRuntime && role != protocol.RoleConfigWriter && role != protocol.RoleCommandHelper || s.roles[role] != nil {
+		if role != protocol.RoleRuntime && role != protocol.RoleConfigWriter && role != protocol.RoleCommandHelper && role != protocol.RoleSandboxSupervisor || s.roles[role] != nil {
 			return nil, ErrInvalidComposition
 		}
 		s.roles[role] = &roleState{process: process, alive: true}
@@ -244,7 +244,7 @@ func (s *Supervisor) Run(ctx context.Context) error {
 				continue
 			}
 			s.markFailed(event.role, event.err)
-			if event.role == protocol.RoleRuntime {
+			if event.role == protocol.RoleRuntime || event.role == protocol.RoleSandboxSupervisor {
 				revokeErr := s.revoke()
 				return errors.Join(ErrRuntimeLost, event.err, revokeErr, s.shutdown(context.Background()))
 			}
@@ -392,7 +392,7 @@ func (s *Supervisor) shutdown(parent context.Context) error {
 	if runtime := s.roles[protocol.RoleRuntime]; runtime != nil {
 		states = append(states, runtime)
 	}
-	for _, role := range []protocol.Role{protocol.RoleCommandHelper, protocol.RoleConfigWriter} {
+	for _, role := range []protocol.Role{protocol.RoleCommandHelper, protocol.RoleConfigWriter, protocol.RoleSandboxSupervisor} {
 		if state := s.roles[role]; state != nil {
 			states = append(states, state)
 		}

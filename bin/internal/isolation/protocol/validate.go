@@ -138,7 +138,7 @@ func (r DiagnosticRecord) Validate() error {
 		return fmt.Errorf("%w: diagnostic identity or sequence is empty", ErrInvalidContract)
 	}
 	switch r.Role {
-	case RoleRuntime, RoleNetworkBroker, RoleConfigWriter, RoleCommandHelper:
+	case RoleRuntime, RoleNetworkBroker, RoleConfigWriter, RoleCommandHelper, RoleSandboxSupervisor:
 	default:
 		return fmt.Errorf("%w: diagnostic role %q", ErrInvalidContract, r.Role)
 	}

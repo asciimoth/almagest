@@ -9,6 +9,7 @@ from pathlib import Path
 import platform
 import re
 import shlex
+import signal
 import subprocess
 import sys
 
@@ -155,6 +156,32 @@ class Harness:
             return False
         return True
 
+    def winvm_command(self, argv, *, env):
+        if self.run_process is not subprocess.run:
+            return self.command(argv, env=env)
+        print("==> selected:", shlex.join(str(value) for value in argv), flush=True)
+        process = subprocess.Popen(
+            [str(value) for value in argv], cwd=self.root, env=env,
+            start_new_session=True,
+        )
+        interrupted = False
+        while True:
+            try:
+                returncode = process.wait()
+                break
+            except KeyboardInterrupt:
+                if not interrupted:
+                    # The VM supervisor owns QEMU cleanup. Give it the first
+                    # interrupt and wait for it instead of killing the
+                    # supervisor during its bounded cleanup sequence.
+                    os.killpg(process.pid, signal.SIGINT)
+                    interrupted = True
+                    print("Waiting for the WinVM supervisor to reap QEMU...", flush=True)
+        if returncode:
+            self.failed = True
+            return False
+        return True
+
     def prepare_host_build(self, selected):
         if ((selected.go or selected.e2e)
                 and not self.command(["just", "repair-go-work"])):
@@ -215,15 +242,21 @@ class Harness:
                 WINVM_TEST_CASES=",".join(selected.winvm),
                 WINVM_COVERAGE_DIR=str(self.root / "coverage/selected/winvm"),
             )
+            matrix_cases = {
+                "sandbox::windows-mode-matrix-ordinary",
+                "sandbox::windows-mode-matrix-elevated",
+            }
+            if set(selected.winvm) <= matrix_cases:
+                environment["WINVM_MEMORY_MIB"] = "4096"
             privileges = {winvm_cases[case_id] for case_id in selected.winvm}
             if platform.system() == "Windows":
                 for privilege in ("ordinary", "privileged"):
                     if privilege in privileges:
                         self.command(["./scripts/test-windows.sh", privilege], env=environment)
             else:
-                if self.command(["./dev/winvm/build-image.sh"]):
+                if self.command(["./dev/winvm/ensure-image.sh"]):
                     mode = next(iter(privileges)) if len(privileges) == 1 else "test"
-                    self.command(["./dev/winvm/run.sh", mode], env=environment)
+                    self.winvm_command(["./dev/winvm/run.sh", mode], env=environment)
 
         return 1 if self.failed else 0
 

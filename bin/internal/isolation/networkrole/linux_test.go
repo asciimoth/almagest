@@ -92,16 +92,30 @@ func TestLinuxLaunchRejectsInvalidWriterTargetBeforeExecution(t *testing.T) {
 }
 
 func TestLinuxIsolationStatusReportsOnlyEnforcedRoleRestrictions(t *testing.T) {
-	disabled := linuxIsolationStatus(linuxprofile.ProfileFull, false, false, false)
+	disabled := linuxIsolationStatus(linuxprofile.ProfileFull, false, false, false, false)
 	if disabled.Roles["config_writer"] != "disabled" || disabled.Roles["command_helper"] != "disabled" ||
 		disabled.Restrictions["config_writer"] != nil || disabled.Restrictions["command_helper"] != nil ||
 		disabled.Capabilities["config_persistence"] || disabled.Capabilities["commands"] || disabled.Capabilities["backend_callbacks"] {
 		t.Fatalf("disabled status = %#v", disabled)
 	}
-	enabled := linuxIsolationStatus(linuxprofile.ProfileFull, true, true, true)
+	enabled := linuxIsolationStatus(linuxprofile.ProfileFull, true, true, true, true)
 	if enabled.Roles["config_writer"] != "ready" || enabled.Roles["command_helper"] != "ready" ||
+		enabled.Roles["sandbox_supervisor"] != "ready" || len(enabled.Restrictions["sandbox_supervisor"]) == 0 ||
 		len(enabled.Restrictions["config_writer"]) == 0 || len(enabled.Restrictions["command_helper"]) == 0 ||
-		!enabled.Capabilities["config_persistence"] || !enabled.Capabilities["commands"] || !enabled.Capabilities["backend_callbacks"] {
+		!enabled.Capabilities["config_persistence"] || !enabled.Capabilities["commands"] || !enabled.Capabilities["subprogram_sandboxes"] || !enabled.Capabilities["backend_callbacks"] {
 		t.Fatalf("enabled status = %#v", enabled)
+	}
+}
+
+func TestSandboxConfigured(t *testing.T) {
+	for _, value := range [][]byte{nil, []byte("null"), []byte(" {} \n"), []byte(`{"Mode":"off"}`)} {
+		if sandboxConfigured(value) {
+			t.Fatalf("empty sandbox config %q was active", value)
+		}
+	}
+	for _, value := range [][]byte{[]byte(`{"Programs":{}}`), []byte(`{"Templates":{}}`), []byte(`{broken`)} {
+		if !sandboxConfigured(value) {
+			t.Fatalf("sandbox config %q was ignored", value)
+		}
 	}
 }

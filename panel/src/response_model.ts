@@ -27,6 +27,7 @@ export type HelloResponse = {
   daemon?: string;
   execution_mode: "direct" | "isolation" | "isolation-development";
   isolation?: IsolationStatus;
+  subprogram_sandbox?: SubprogramSandboxStatus;
   project_version_status: ProjectVersionStatus;
   surfaces?: Record<string, unknown>;
 };
@@ -65,6 +66,26 @@ export type IsolationResourceLimit = {
   name: string; requested: string; effective: string; unit: string; scope: string; source: string; enforcement: string;
 };
 export type IsolationWarning = { role: "network" | "runtime" | "config_writer" | "command_helper"; code: string; effect: string; feature: string };
+
+export type SubprogramSandboxStatus = {
+  mode: "off" | "auto" | "strict";
+  platform: string;
+  effective_identity: string;
+  templates: Record<string, SubprogramTemplateStatus>;
+  limits: Record<string, number>;
+  active_owners: number;
+  orphaned_owners: number;
+  quarantined_owners: number;
+};
+
+export type SubprogramTemplateStatus = {
+  profile: string;
+  effective_identity: string;
+  strict_satisfied: boolean;
+  full_boundary: boolean;
+  features: { feature: string; state: "applied" | "omitted-auto" | "excluded-os" | "off"; reason: string }[];
+  warnings: string[];
+};
 
 export type SubscribeLogsResponse = {
   subscription_id: number;
@@ -141,8 +162,10 @@ export function parseHelloResponse(input: unknown): HelloResponse | null {
     || !isExecutionMode(input.execution_mode)) return null;
   const status = parseProjectVersionStatus(input.project_version_status);
   const isolation = input.isolation === undefined ? undefined : parseIsolationStatus(input.isolation);
+  const sandbox = input.subprogram_sandbox === undefined ? undefined : parseSubprogramSandboxStatus(input.subprogram_sandbox);
   if (!status || (input.surfaces !== undefined && !isRecord(input.surfaces))
     || (input.isolation !== undefined && !isolation)
+    || (input.subprogram_sandbox !== undefined && !sandbox)
     || (input.execution_mode === "direct") !== (isolation === undefined)) return null;
   return {
     version: input.version,
@@ -150,8 +173,46 @@ export function parseHelloResponse(input: unknown): HelloResponse | null {
     execution_mode: input.execution_mode,
     project_version_status: status,
     ...(isolation ? { isolation } : {}),
+    ...(sandbox ? { subprogram_sandbox: sandbox } : {}),
     ...(input.surfaces === undefined ? {} : { surfaces: { ...input.surfaces } }),
   };
+}
+
+function parseSubprogramSandboxStatus(input: unknown): SubprogramSandboxStatus | null {
+  if (!isRecord(input) || (input.mode !== "off" && input.mode !== "auto" && input.mode !== "strict")
+    || typeof input.platform !== "string" || typeof input.effective_identity !== "string"
+    || !isRecord(input.templates) || !isRecord(input.limits)
+    || !isCount(input.active_owners) || !isCount(input.orphaned_owners) || !isCount(input.quarantined_owners)) return null;
+  const limits: Record<string, number> = {};
+  const rawLimits = Object.entries(input.limits);
+  const rawTemplates = Object.entries(input.templates);
+  if (rawLimits.length > 32 || rawTemplates.length > 1024) return null;
+  for (const [name, value] of rawLimits) {
+    if (!isCount(value)) return null;
+    limits[name] = Number(value);
+  }
+  const templates: Record<string, SubprogramTemplateStatus> = {};
+  for (const [name, raw] of rawTemplates) {
+    if (!isRecord(raw) || typeof raw.profile !== "string" || typeof raw.effective_identity !== "string" || typeof raw.strict_satisfied !== "boolean"
+      || typeof raw.full_boundary !== "boolean" || !Array.isArray(raw.features) || !Array.isArray(raw.warnings)
+      || raw.features.length > 32 || raw.warnings.length > 32
+      || !raw.warnings.every((warning) => typeof warning === "string" && warning.length <= 1024)) return null;
+    const features: SubprogramTemplateStatus["features"] = [];
+    for (const feature of raw.features) {
+      if (!isRecord(feature) || typeof feature.feature !== "string" || typeof feature.reason !== "string"
+        || (feature.state !== "applied" && feature.state !== "omitted-auto" && feature.state !== "excluded-os" && feature.state !== "off")) return null;
+      features.push({ feature: feature.feature, state: feature.state, reason: feature.reason });
+    }
+    templates[name] = { profile: raw.profile, effective_identity: raw.effective_identity, strict_satisfied: raw.strict_satisfied,
+      full_boundary: raw.full_boundary, features, warnings: [...raw.warnings] };
+  }
+  return { mode: input.mode, platform: input.platform, effective_identity: input.effective_identity,
+    templates, limits, active_owners: Number(input.active_owners), orphaned_owners: Number(input.orphaned_owners),
+    quarantined_owners: Number(input.quarantined_owners) };
+}
+
+function isCount(input: unknown): boolean {
+  return Number.isSafeInteger(input) && Number(input) >= 0;
 }
 
 function isExecutionMode(input: unknown): input is HelloResponse["execution_mode"] {

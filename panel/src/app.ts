@@ -502,6 +502,7 @@ const el = {
   status: document.querySelector<HTMLElement>("#backend-status")!,
   projectVersion: document.querySelector<HTMLElement>("#project-version")!,
   isolationStatus: document.querySelector<HTMLElement>("#isolation-status")!,
+  sandboxStatus: document.querySelector<HTMLElement>("#sandbox-status")!,
   tabs: [...document.querySelectorAll<HTMLButtonElement>("[data-tab]")],
   panels: [...document.querySelectorAll<HTMLElement>("[data-panel]")],
   graphCanvas: document.querySelector<HTMLCanvasElement>("#graph-canvas")!,
@@ -6214,6 +6215,7 @@ async function boot(): Promise<void> {
   const hello = await backend("hello");
   applyProjectVersionStatus(hello.project_version_status);
   applyIsolationStatus(hello);
+  applySandboxStatus(hello);
   const colormap = await backend("colormap");
   applyTypePalette(colormap);
   await backend("subscribeLogs");
@@ -6222,6 +6224,19 @@ async function boot(): Promise<void> {
   await requestSnapshot();
   el.status.textContent = "Admin API connected";
   setTab("graph");
+}
+
+function applySandboxStatus(hello: HelloResponse): void {
+  const status = hello.subprogram_sandbox;
+  el.sandboxStatus.hidden = status === undefined;
+  if (!status) return;
+  const templates = Object.values(status.templates);
+  const reduced = templates.some((template) => !template.full_boundary);
+  el.sandboxStatus.textContent = `Subprograms ${status.mode}${reduced ? " · reduced" : ""}`;
+  el.sandboxStatus.dataset.reduced = String(reduced);
+  const warnings = templates.flatMap((template) => template.warnings);
+  const owners = `${status.active_owners} active, ${status.orphaned_owners} orphaned, ${status.quarantined_owners} quarantined owners`;
+  el.sandboxStatus.title = warnings.length === 0 ? owners : `${owners}\n${warnings.join("\n")}`;
 }
 
 function applyIsolationStatus(hello: HelloResponse): void {

@@ -6,6 +6,7 @@ Install these root-owned, non-writable files in one directory, normally
 - `almagestd`
 - `almagest-network-role`
 - `almagest-linux-role-launcher`
+- `almagest-subprogram-launcher`
 - `almagest-config-writer-role`
 - `almagest-command-role`
 - `almagest-isolation-storage`
@@ -14,6 +15,17 @@ Install `almagest.sysusers`, `almagest.tmpfiles`, and `almagestd.service` in the
 distribution's systemd directories. Run `systemd-sysusers` and
 `systemd-tmpfiles --create` before the first start. Do not make the native
 launcher setuid and do not add file capabilities to any role binary.
+
+For strict subprogram sandboxes in direct or isolated daemon mode, give the
+trusted daemon or sandbox supervisor a separate delegated cgroup v2 subtree
+with the CPU, memory, and PID controllers enabled. Set protected
+`Sandbox.LinuxCgroupRoot` to that subtree and set `Sandbox.LinuxLauncher` to the
+installed `almagest-subprogram-launcher`. The daemon probes both authorities
+before it reports the Linux full profile. In isolated mode, the network role
+starts and supervises the sandbox role and binds its private service lanes to
+the exact runtime process. This native subprogram profile is
+qualified only on amd64. Other Linux architectures fail strict preflight until
+they have an architecture-specific launcher and qualification suite.
 
 Resource ceilings are set at startup. Defaults per role are 8 GiB memory,
 4096 tasks, and 64 CPUs of quota. Each process can open up to 65536 file
@@ -47,6 +59,6 @@ almagestd --no-isolation --config /etc/almagest/alm.hujson
 
 Rollback refuses to remove an unproved tree or a non-empty broker journal. It
 does not silently discard host-effect recovery evidence. Package updates must
-replace all six binaries atomically while the service is stopped. A partial
+replace all listed binaries atomically while the service is stopped. A partial
 binary set fails trusted-path or protocol validation; it never falls back to
 direct mode.

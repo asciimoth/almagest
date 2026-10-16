@@ -11,6 +11,7 @@ import (
 	"github.com/asciimoth/almagest/bin/almagestd/args"
 	cmdrunner "github.com/asciimoth/almagest/bin/almagestd/command"
 	"github.com/asciimoth/almagest/bin/api"
+	sandboxpolicy "github.com/asciimoth/almagest/bin/internal/subprogram/policy"
 	experimentalnodes "github.com/asciimoth/almagest/lib/experimental"
 	"github.com/asciimoth/almagest/lib/storage"
 	"github.com/asciimoth/configer/configer"
@@ -205,6 +206,16 @@ func parseConfig(cfg, prt []byte, isolated bool) (*Config, error) {
 			return nil, fmt.Errorf("protected secret %q uses reserved ResolvedSource", name)
 		}
 	}
+	if protected.Sandbox.Mode == "" {
+		protected.Sandbox.Mode = "auto"
+	}
+	if len(protected.Sandbox.Programs) != 0 || len(protected.Sandbox.Templates) != 0 {
+		normalized, normalizeErr := sandboxpolicy.Normalize(protected.Sandbox)
+		if normalizeErr != nil {
+			return nil, fmt.Errorf("protected sandbox config: %w", normalizeErr)
+		}
+		protected.Sandbox = normalized
+	}
 
 	return &Config{
 		Main:      config,
@@ -218,6 +229,7 @@ type ProtectedConfig struct {
 	Admin         AdminAPIConfig
 	CommandRunner cmdrunner.Config
 	Experimental  ProtectedExperimentalConfig
+	Sandbox       sandboxpolicy.Config
 	Secrets       map[string]ProtectedSecretConfig
 	System        configer.Config `json:"-"`
 	TLS           ProtectedTLSConfig

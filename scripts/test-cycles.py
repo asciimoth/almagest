@@ -369,7 +369,7 @@ class Runner:
         if "winvm" in self.enabled:
             prepared = self.session / "winvm-prepared"
             prepared.mkdir()
-            commands += [["./dev/winvm/build-image.sh"],
+            commands += [["./dev/winvm/ensure-image.sh"],
                          ["./dev/winvm/run.sh", "--prepare", str(prepared)]]
         for argv in commands:
             if self.command(argv, self.session / "preparation.log") != 0:

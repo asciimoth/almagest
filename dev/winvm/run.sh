@@ -136,7 +136,11 @@ else
     display=(-display none)
     web_port=0
 fi
-qemu=(qemu-system-x86_64 -name almagest-winvm -machine "$(jq -r .machine.type "$config_file")" -cpu "$(jq -r .machine.cpu "$config_file")" -smp "$(jq -r .machine.cpus "$config_file")" -m "$(jq -r .machine.memoryMiB "$config_file")" "${display[@]}"
+configured_memory_mib=$(jq -r .machine.memoryMiB "$config_file")
+memory_mib=${WINVM_MEMORY_MIB:-$configured_memory_mib}
+[[ $memory_mib =~ ^[0-9]+$ && $memory_mib -ge 4096 && $memory_mib -le $configured_memory_mib ]] ||
+    die "WINVM_MEMORY_MIB must be between 4096 and $configured_memory_mib"
+qemu=(qemu-system-x86_64 -name almagest-winvm -machine "$(jq -r .machine.type "$config_file")" -cpu "$(jq -r .machine.cpu "$config_file")" -smp "$(jq -r .machine.cpus "$config_file")" -m "$memory_mib" "${display[@]}"
     -chardev "file,id=serial0,path=$run_dir/serial.log" -serial chardev:serial0
     -drive "if=pflash,format=raw,readonly=on,file=$(find_ovmf code)" -drive "if=pflash,format=raw,file=$vars"
     -device ich9-ahci,id=sata -drive "if=none,id=osdisk,format=qcow2,file=$overlay" -device ide-hd,drive=osdisk,bus=sata.0

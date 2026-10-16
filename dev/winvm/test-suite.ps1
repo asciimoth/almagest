@@ -44,6 +44,24 @@ if ([Environment]::OSVersion.Version.Build -ne 20348 -or $env:PROCESSOR_ARCHITEC
     throw 'The native suite requires Windows Server 2022/amd64'
 }
 $env:ALMAGEST_WINVM_NATIVE = '1'
+$prebuiltBinDir = Join-Path $SourceDir 'dev\winvm'
+$prebuiltDaemon = Join-Path $prebuiltBinDir 'almagestd.exe'
+$prebuiltCLI = Join-Path $prebuiltBinDir 'almagest-cli.exe'
+$sandboxHelper = Join-Path $prebuiltBinDir 'sandbox-e2e-helper.exe'
+if ((Test-Path -LiteralPath $prebuiltDaemon -PathType Leaf) -and
+    (Test-Path -LiteralPath $prebuiltCLI -PathType Leaf)) {
+    $env:ALMAGEST_WINVM_PREBUILT_BIN_DIR = $prebuiltBinDir
+} elseif ((Test-Path -LiteralPath $prebuiltDaemon) -or (Test-Path -LiteralPath $prebuiltCLI)) {
+    throw 'The host-built Windows daemon and CLI payload is incomplete'
+}
+if (Test-Path -LiteralPath $sandboxHelper -PathType Leaf) {
+    $env:ALMAGEST_WINVM_SANDBOX_HELPER = $sandboxHelper
+}
+if ($Mode -eq 'privileged') {
+    $env:ALMAGEST_E2E_SANDBOX_MODE = 'strict'
+} else {
+    $env:ALMAGEST_E2E_SANDBOX_MODE = 'auto'
+}
 if ($Mode -eq 'privileged') {
     $wintunDLL = Join-Path $env:SystemRoot 'System32\wintun.dll'
     if (-not (Test-Path -LiteralPath $wintunDLL -PathType Leaf)) {
@@ -117,7 +135,9 @@ foreach ($case in $suiteCases) {
         $collectCoverage = [bool]$case.coverage
     }
     $moduleDir = Join-Path $SourceDir $case.module
-    Write-TestProgress 'RUN ' "$caseProgress (package-timeout=${goPackageTimeoutSeconds}s; compilation has no deadline)"
+    $usesPrebuiltTest = $null -ne $case.PSObject.Properties['prebuiltTest']
+    $executionNote = if ($usesPrebuiltTest) { "timeout=${goPackageTimeoutSeconds}s; host-built test" } else { "package-timeout=${goPackageTimeoutSeconds}s; compilation has no deadline" }
+    Write-TestProgress 'RUN ' "$caseProgress ($executionNote)"
     Push-Location $moduleDir
     try {
         $startedServices = @()
@@ -130,14 +150,29 @@ foreach ($case in $suiteCases) {
         }
         # Exclusive privileged cases use this same loop. The manifest also
         # requires that the privileged suite is serialized.
-        $testArguments = @(
-            'test', '-json', '-count=1', '-p=1', '-parallel=1',
-            "-timeout=${goPackageTimeoutSeconds}s"
-        )
-        if ($collectCoverage) {
-            $testArguments += @('-covermode=atomic', "-coverprofile=$coveragePath")
+        if ($usesPrebuiltTest) {
+            $testPath = Join-Path $SourceDir ([string]$case.prebuiltTest)
+            if (-not (Test-Path -LiteralPath $testPath -PathType Leaf)) {
+                throw "The host-built test executable is absent: $testPath"
+            }
+            $testArguments = @(
+                'tool', 'test2json', '-p', ([string]$case.prebuiltPackage), '-t',
+                $testPath, '-test.v=test2json', "-test.run=$($case.prebuiltRun)",
+                '-test.count=1', '-test.parallel=1', "-test.timeout=${goPackageTimeoutSeconds}s"
+            )
+            if ($collectCoverage) {
+                $testArguments += "-test.coverprofile=$coveragePath"
+            }
+        } else {
+            $testArguments = @(
+                'test', '-json', '-count=1', '-p=1', '-parallel=1',
+                "-timeout=${goPackageTimeoutSeconds}s"
+            )
+            if ($collectCoverage) {
+                $testArguments += @('-covermode=atomic', "-coverprofile=$coveragePath")
+            }
+            $testArguments += @($case.arguments)
         }
-        $testArguments += @($case.arguments)
         $stderrPath = "$eventPath.stderr.log"
         $started = [DateTime]::UtcNow
         try {
@@ -180,6 +215,10 @@ foreach ($case in $suiteCases) {
             throw "The $($case.id) coverage profile is absent"
         }
         if ($processExitCode -ne 0 -and -not $ContinueAfterFailure) {
+            Write-TestProgress 'DETAIL' "${caseProgress}: final test events"
+            Select-String -LiteralPath $eventPath -Pattern '"Action":"fail"','--- FAIL','panic' -ErrorAction Continue | ForEach-Object { $_.Line }
+            Get-Content -LiteralPath $eventPath -Tail 40 -ErrorAction Continue
+            Get-Content -LiteralPath $stderrPath -Tail 40 -ErrorAction Continue
             $processPath = Join-Path $suiteDir 'processes.json'
             @{cases=$processResults} | ConvertTo-Json -Depth 5 | Set-Content $processPath -Encoding utf8
             throw "The $($case.id) test case failed; stopping the $Mode suite"
@@ -195,9 +234,10 @@ Write-TestProgress 'VALIDATE' "$($suite.id): validating $caseCount Go cases"
 $processPath = Join-Path $suiteDir 'processes.json'
 @{cases=$processResults} | ConvertTo-Json -Depth 5 | Set-Content $processPath -Encoding utf8
 
-$tool = Join-Path $suiteDir 'windows-test-evidence.exe'
-& go -C (Join-Path $SourceDir 'bin') build -o $tool ./cmd/windows-test-evidence
-if ($LASTEXITCODE -ne 0) { throw 'Cannot build the native evidence validator' }
+$tool = Join-Path $prebuiltBinDir 'windows-test-evidence.exe'
+if (-not (Test-Path -LiteralPath $tool -PathType Leaf)) {
+    throw 'The host-built native evidence validator is absent from the test payload'
+}
 $suiteArtifact = Join-Path $suiteDir 'suite.json'
 $validationManifestPath = $manifestPath
 if ($CaseID.Count -gt 0) {

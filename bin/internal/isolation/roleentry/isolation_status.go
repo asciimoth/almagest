@@ -121,7 +121,7 @@ func validVerificationState(value string) bool {
 	return value == "verified" || value == "degraded" || value == "failed" || value == "unknown"
 }
 func validIsolationRole(value string) bool {
-	return value == "network" || value == "runtime" || value == "config_writer" || value == "command_helper"
+	return value == "network" || value == "runtime" || value == "config_writer" || value == "command_helper" || value == "sandbox_supervisor"
 }
 func validMechanismState(value string) bool {
 	return value == "applied" || value == "unavailable" || value == "not_requested" || value == "not_applicable" || value == "unknown"
@@ -130,7 +130,7 @@ func validMechanismName(value string) bool {
 	switch value {
 	case "landlock", "seccomp", "no-new-privileges", "descriptor-allowlist", "private-namespaces", "mount-namespace",
 		"role-cgroups", "separate-host-identities", "capability-sets", "pidfd-supervision", "fixed-target", "fixed-executable",
-		"trusted-broker", "held-inputs":
+		"trusted-broker", "held-inputs", "trusted-supervisor", "session-bound-rpc", "bounded-relay":
 		return true
 	default:
 		return false

@@ -255,6 +255,7 @@ EOF
 cat >"$peer_dir/protected_alm.hujson" <<EOF
 {
 	"Admin": {"Web": 0, "Unix": ""},
+	"Sandbox": {"Mode": "strict"},
 	"TLS": {
 		"Certificates": {
 			"headscale-root": {"File": "$headscale_dir/ca.crt"},

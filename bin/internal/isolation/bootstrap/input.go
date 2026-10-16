@@ -320,6 +320,7 @@ type ProtectedAuthority struct {
 	Admin         json.RawMessage
 	CommandRunner json.RawMessage
 	System        json.RawMessage
+	Sandbox       json.RawMessage
 }
 
 type protectedDocument struct {
@@ -370,6 +371,7 @@ func ResolveProtected(data []byte, loader FileLoader, lookupEnv func(string) (st
 		Admin:         bytes.Clone(root["Admin"]),
 		CommandRunner: bytes.Clone(root["CommandRunner"]),
 		System:        bytes.Clone(root["System"]),
+		Sandbox:       bytes.Clone(root["Sandbox"]),
 	}
 	narrow, err := json.Marshal(map[string]json.RawMessage{"Admin": root["Admin"], "Secrets": root["Secrets"], "TLS": root["TLS"]})
 	if err != nil {

@@ -258,7 +258,8 @@ h1 {
   white-space: nowrap;
 }
 
-#isolation-status {
+#isolation-status,
+#sandbox-status {
   display: inline-flex;
   align-items: center;
   padding: 2px 8px;
@@ -270,7 +271,8 @@ h1 {
   white-space: nowrap;
 }
 
-#isolation-status[data-reduced="true"] {
+#isolation-status[data-reduced="true"],
+#sandbox-status[data-reduced="true"] {
   border-color: var(--yellow);
   color: var(--yellow);
 }

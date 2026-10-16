@@ -1,0 +1,5 @@
+{
+  "nodes": {
+    "Sandbox probe": {"Class": "almagest/SandboxProbe"},
+  },
+}

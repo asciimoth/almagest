@@ -3,6 +3,9 @@ package main
 import (
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -316,6 +319,62 @@ func TestProtectedConfigExperimentalTorDriver(t *testing.T) {
 		got.StartupTimeout != "" || got.CommandTimeout != "" || got.DialTimeout != "" || got.ShutdownTimeout != "" ||
 		got.MaxCircuitDirtiness != "" || got.CircuitBuildTimeout != "" || got.Identity != nil {
 		t.Fatalf("default experimental Tor config = %#v, want PATH and automatic identity", got)
+	}
+}
+
+func TestProtectedConfigSubprogramSandbox(t *testing.T) {
+	root := t.TempDir()
+	protected := fmt.Sprintf(`{
+		"Sandbox": {
+			"Mode": "off",
+			"TemporaryRoot": %q,
+			"RegistryRoot": %q,
+			"Programs": {
+				"helper": {
+					"Executable": %q,
+					"Builder": "fixed-v1",
+					"Arguments": [{"Input": "message"}],
+					"Inputs": {"message": {"Kind": "text", "Required": true, "Maximum": 32}}
+				}
+			},
+			"Templates": {
+				"test": {
+					"AllowedClasses": ["test/Node"],
+					"Programs": ["helper"],
+					"RuntimeProfile": "direct-v1",
+					"PersistentRoot": %q,
+					"Limits": {"Commands": 2, "TemporaryBytes": 4096}
+				}
+			}
+		}
+	}`, filepath.Join(root, "temporary"), filepath.Join(root, "registry"), os.Args[0], filepath.Join(root, "persistent"))
+	cfg, err := ParseConfig([]byte(`{}`), []byte(protected))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Protected.Sandbox.Mode != "off" || cfg.Protected.Sandbox.Limits.Instances != 32 || cfg.Protected.Sandbox.Templates["test"].Limits.Commands != 2 {
+		t.Fatalf("sandbox policy = %+v", cfg.Protected.Sandbox)
+	}
+	defaults, err := ParseConfig([]byte(`{}`), []byte(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if defaults.Protected.Sandbox.Mode != "auto" {
+		t.Fatalf("default sandbox mode = %q", defaults.Protected.Sandbox.Mode)
+	}
+}
+
+func TestProtectedConfigRejectsInvalidSubprogramSandbox(t *testing.T) {
+	_, err := ParseConfig([]byte(`{}`), []byte(`{"Sandbox":{"Mode":"off","Programs":{"bad":{"Executable":"relative","Builder":"fixed-v1"}},"Templates":{}}}`))
+	if err == nil || !strings.Contains(err.Error(), "protected sandbox config") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestProtectedConfigRejectsRemovedPersistentQuota(t *testing.T) {
+	_, err := ParseConfig([]byte(`{}`), []byte(`{"Sandbox":{"Templates":{"test":{"Limits":{"PersistentBytes":1}}}}}`))
+	if err == nil || !strings.Contains(err.Error(), `unknown field "PersistentBytes"`) {
+		t.Fatalf("error = %v", err)
 	}
 }
 

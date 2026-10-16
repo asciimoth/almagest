@@ -1,1 +1,24 @@
-{"Admin":{"Web":0,"Unix":"%E2E_ADMIN_SOCK%"}}
+{
+  "Admin": {"Web": 0, "Unix": "%E2E_ADMIN_SOCK%"},
+  "Sandbox": {
+    "Mode": "strict",
+    "TemporaryRoot": "/tmp/almagest-isolated-subprogram-temporary",
+    "RegistryRoot": "/tmp/almagest-isolated-subprogram-registry",
+    "LinuxLauncher": "/usr/local/bin/almagest-subprogram-launcher",
+    "LinuxCgroupRoot": "%E2E_CGROUP_PARENT%/almagest-e2e-sandbox-workers",
+    "Programs": {
+      "qualification-helper": {
+        "Executable": "/qualification/subprogram-direct.test",
+        "Builder": "fixed-v1"
+      }
+    },
+    "Templates": {
+      "qualification": {
+        "AllowedClasses": ["debug/Discard"],
+        "Programs": ["qualification-helper"],
+        "RuntimeProfile": "linux-landlock-v1",
+        "Linux": {"UID": 65534, "GID": 65534}
+      }
+    }
+  }
+}

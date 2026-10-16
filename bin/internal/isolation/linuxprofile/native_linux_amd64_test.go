@@ -314,7 +314,7 @@ func TestHeldLaunchContract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cmd.Path != "/proc/self/fd/8" || cmd.Dir != "/" || len(cmd.Env) != 0 || len(cmd.ExtraFiles) != 12 || cmd.ExtraFiles[5] != f {
+	if cmd.Path != "/proc/self/fd/8" || cmd.Dir != "/" || len(cmd.Env) != 0 || len(cmd.ExtraFiles) != 14 || cmd.ExtraFiles[5] != f {
 		t.Fatalf("unexpected command: %+v", cmd)
 	}
 	if cmd.SysProcAttr == nil || !cmd.SysProcAttr.UseCgroupFD || cmd.SysProcAttr.CgroupFD != int(f.Fd()) {

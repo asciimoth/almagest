@@ -57,6 +57,21 @@ test("hello decoder accepts isolated status and rejects mode/status mismatch", (
   assert.equal(parseHelloResponse({ ...isolated, execution_mode: "direct" }), null);
 });
 
+test("hello decoder validates subprogram sandbox status", () => {
+  const subprogram_sandbox = {
+    mode: "auto", platform: "linux", effective_identity: "1000",
+    limits: { instances: 32 }, active_owners: 1, orphaned_owners: 2, quarantined_owners: 0,
+    templates: { tor: { profile: "linux-landlock-v1", effective_identity: "1000:1000", strict_satisfied: false, full_boundary: false,
+      features: [{ feature: "filesystem-access", state: "applied", reason: "qualified-backend" }],
+      warnings: ["private-network: backend-unavailable"] } },
+  };
+  const hello = { version: "1", execution_mode: "direct",
+    project_version_status: { version: "1", highlight: "none" }, subprogram_sandbox };
+  assert.equal(parseHelloResponse(hello)?.subprogram_sandbox?.templates.tor?.features[0]?.state, "applied");
+  assert.equal(parseHelloResponse({ ...hello, subprogram_sandbox: { ...subprogram_sandbox, mode: "best-effort" } }), null);
+  assert.equal(parseHelloResponse({ ...hello, subprogram_sandbox: { ...subprogram_sandbox, active_owners: -1 } }), null);
+});
+
 test("hello decoder validates adaptive isolation status", () => {
   const isolation = {
     protocol_version: 1,

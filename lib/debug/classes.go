@@ -13,6 +13,7 @@ func Classes(runtime nodekit.Runtime) []pasta.NodeClass {
 		DebugKVClass{Runtime: runtime},
 		DebugLogNetworkClass{},
 		DebugMarkdownClass{},
+		SandboxProbeClass{Runtime: runtime},
 		UDPPingClientClass{Runtime: runtime},
 		UDPPingServerClass{Runtime: runtime},
 	}

@@ -44,7 +44,7 @@ const (
 // Valid reports whether the role is assigned by trusted bootstrap.
 func (r Role) Valid() bool {
 	switch r {
-	case RoleRuntime, RoleNetworkBroker, RoleConfigWriter, RoleCommandHelper:
+	case RoleRuntime, RoleNetworkBroker, RoleConfigWriter, RoleCommandHelper, RoleSandboxSupervisor:
 		return true
 	default:
 		return false
@@ -74,10 +74,11 @@ var (
 type Role string
 
 const (
-	RoleRuntime       Role = "runtime"
-	RoleNetworkBroker Role = "network_broker"
-	RoleConfigWriter  Role = "config_writer"
-	RoleCommandHelper Role = "command_helper"
+	RoleRuntime           Role = "runtime"
+	RoleNetworkBroker     Role = "network_broker"
+	RoleConfigWriter      Role = "config_writer"
+	RoleCommandHelper     Role = "command_helper"
+	RoleSandboxSupervisor Role = "sandbox_supervisor"
 )
 
 // ResourceType identifies one broker-owned object class.

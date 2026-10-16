@@ -23,6 +23,7 @@ import (
 	"github.com/asciimoth/almagest/bin/internal/isolation/policy"
 	"github.com/asciimoth/almagest/bin/internal/isolation/protocol"
 	"github.com/asciimoth/almagest/bin/internal/isolation/roleentry"
+	"github.com/asciimoth/almagest/bin/internal/isolation/sandboxrole"
 	"github.com/asciimoth/almagest/bin/internal/isolation/supervision"
 	"github.com/asciimoth/almagest/bin/internal/isolation/transport"
 	sysnetlinux "github.com/asciimoth/sysnet-linux"
@@ -46,6 +47,11 @@ type LinuxHelper struct {
 	Config commandhelper.Config
 }
 
+type LinuxSandbox struct {
+	Policy []byte
+	Cgroup *os.File
+}
+
 // LinuxLaunch is trusted bootstrap state, not an RPC or regular config format.
 // Call RunLinux only in the node-free process which will become N. It changes
 // the current directory and process limits irreversibly; exit after it returns.
@@ -55,6 +61,7 @@ type LinuxLaunch struct {
 	Runtime        LinuxRole
 	Writer         *LinuxWriter
 	Helper         *LinuxHelper
+	Sandbox        *LinuxSandbox
 	RuntimeInput   roleentry.RuntimeInput
 	RuntimeStorage *bootstrap.RuntimeStorageInput
 	Policy         policy.Policy
@@ -79,10 +86,10 @@ func RunLinux(parent context.Context, launch LinuxLaunch, ready func(roleentry.R
 		return supervision.ErrInvalidComposition
 	}
 	if err := launch.bindCgroups(); err != nil {
-		return err
+		return fmt.Errorf("bind role cgroups: %w", err)
 	}
 	if err := launch.validate(); err != nil {
-		return err
+		return fmt.Errorf("validate Linux role launch: %w", err)
 	}
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -117,13 +124,11 @@ func RunLinux(parent context.Context, launch LinuxLaunch, ready func(roleentry.R
 	}
 	appliedRoles := make(map[string]*roleentry.AppliedIsolation)
 	input.ConfigWritable = launch.Writer != nil
+	input.Sandbox = launch.Sandbox != nil
 	input.StartupSnapshot = launch.RuntimeStorage.Snapshot != nil
 	input.AdminEndpoints = nil
 	for _, endpoint := range launch.Admin {
 		input.AdminEndpoints = append(input.AdminEndpoints, roleentry.RuntimeAdminEndpoint{ID: endpoint.ID, Kind: string(endpoint.Kind)})
-	}
-	if err := input.Validate(); err != nil {
-		return err
 	}
 	roleBootstrap := func(role protocol.Role, identity LinuxIdentity) roleentry.Bootstrap {
 		return roleentry.Bootstrap{Version: protocol.Version, Role: role, Session: session,
@@ -132,6 +137,20 @@ func RunLinux(parent context.Context, launch LinuxLaunch, ready func(roleentry.R
 	}
 	if err := bootstrap.PrepareRuntimeStorage(launch.Runtime.Inputs.Directory, launch.Runtime.Plan.UID, launch.Runtime.Plan.GID, *launch.RuntimeStorage); err != nil {
 		return fmt.Errorf("prepare runtime storage: %w", err)
+	}
+	var sandboxBootstrap roleentry.Bootstrap
+	if launch.Sandbox != nil {
+		resources.sandbox, err = startSandboxRole(ctx, launch.Runtime.Inputs.Executable, launch.Sandbox.Cgroup, launch.Runtime.Plan.Profile, launch.Limits, launch.Output)
+		if err != nil {
+			return fmt.Errorf("launch sandbox supervisor: %w", err)
+		}
+		sandboxBootstrap = roleentry.Bootstrap{Version: protocol.Version, Role: protocol.RoleSandboxSupervisor, Session: session}
+		if err := sandboxrole.SendPolicy(ctx, resources.sandbox.bootstrap, sandboxBootstrap, launch.Sandbox.Policy); err != nil {
+			return fmt.Errorf("sandbox supervisor bootstrap: %w", err)
+		}
+		launch.Runtime.Inputs.Sandbox = resources.sandbox.control
+		launch.Runtime.Inputs.SandboxData = resources.sandbox.data
+		input.SandboxPeer = resources.sandbox.runtimePeer(launch.Runtime.Plan.Profile)
 	}
 	lanes := []roleentry.Lane{roleentry.LaneBootstrap, roleentry.LaneData, roleentry.LaneDiagnostics}
 	if len(launch.Admin) != 0 {
@@ -146,6 +165,21 @@ func RunLinux(parent context.Context, launch LinuxLaunch, ready func(roleentry.R
 	runtime, streams, err := resources.start(ctx, launch.Runtime, lanes, launch.Output)
 	if err != nil {
 		return fmt.Errorf("launch runtime: %w", err)
+	}
+	if resources.sandbox != nil {
+		_ = resources.sandbox.control.Close()
+		_ = resources.sandbox.data.Close()
+		peer, peerErr := runtime.Peer(ctx)
+		if peerErr != nil {
+			return fmt.Errorf("identify sandbox runtime peer: %w", peerErr)
+		}
+		if err := sandboxrole.SendRuntimeBinding(ctx, resources.sandbox.bootstrap,
+			sandboxrole.RuntimeBinding{PID: uint32(peer.PID), UID: peer.UID, GID: peer.GID}); err != nil {
+			return fmt.Errorf("bind sandbox runtime peer: %w", err)
+		}
+	}
+	if err := input.Validate(); err != nil {
+		return err
 	}
 	proof, err := roleentry.SendRuntimeBootstrap(ctx, streams[roleentry.LaneBootstrap], roleBootstrap(protocol.RoleRuntime,
 		LinuxIdentity{UID: launch.Runtime.Plan.UID, GID: launch.Runtime.Plan.GID}), input)
@@ -238,6 +272,17 @@ func RunLinux(parent context.Context, launch LinuxLaunch, ready func(roleentry.R
 		if err := roleentry.SendFinalIsolationStatus(ctx, streams[roleentry.LaneBootstrap], finalIsolation); err != nil {
 			return fmt.Errorf("publish verified isolation status: %w", err)
 		}
+	}
+	if resources.sandbox != nil {
+		ready, readyErr := sandboxrole.ReadReady(ctx, resources.sandbox.bootstrap, sandboxBootstrap)
+		if readyErr != nil {
+			return fmt.Errorf("sandbox supervisor readiness: %w", readyErr)
+		}
+		supervised, superviseErr := resources.sandbox.supervised(ready)
+		if superviseErr != nil {
+			return superviseErr
+		}
+		resources.supervised = append(resources.supervised, supervised)
 	}
 	broker, err := network.NewWithJournal(session, launch.Policy, backend, launch.Journal)
 	if err != nil {
@@ -351,21 +396,46 @@ func (l LinuxLaunch) validate() error {
 		profile = linuxprofile.ProfileFull
 	}
 	full := profile == linuxprofile.ProfileFull
-	if l.State == nil || full && l.Cgroup == nil && l.Cgroups == nil || !full && (l.Cgroup != nil || l.Cgroups != nil) || l.Journal == nil || l.RuntimeStorage == nil || l.Runtime.Plan.Role != linuxprofile.Runtime || l.RuntimeInput.Validate() != nil || l.Policy.Validate() != nil {
-		return supervision.ErrInvalidComposition
+	invalid := func(part string) error { return fmt.Errorf("%s: %w", part, supervision.ErrInvalidComposition) }
+	if l.State == nil {
+		return invalid("state")
 	}
-	if l.Policy.Launch.Backend != "linux" || (linuxprofile.Plan{Role: linuxprofile.Runtime, UID: 1, GID: 1, Limits: l.Limits}).Validate() != nil {
-		return supervision.ErrInvalidComposition
+	if full && l.Cgroup == nil && l.Cgroups == nil || !full && (l.Cgroup != nil || l.Cgroups != nil) {
+		return invalid("cgroup mode")
+	}
+	if l.Journal == nil {
+		return invalid("journal")
+	}
+	if l.RuntimeStorage == nil {
+		return invalid("runtime storage")
+	}
+	if l.Runtime.Plan.Role != linuxprofile.Runtime {
+		return invalid("runtime role")
+	}
+	if err := l.RuntimeInput.Validate(); err != nil {
+		return fmt.Errorf("runtime input: %w: %v", supervision.ErrInvalidComposition, err)
+	}
+	if err := l.Policy.Validate(); err != nil {
+		return fmt.Errorf("network policy: %w: %v", supervision.ErrInvalidComposition, err)
+	}
+	if l.Policy.Launch.Backend != "linux" {
+		return invalid("network backend")
+	}
+	if (linuxprofile.Plan{Role: linuxprofile.Runtime, UID: 1, GID: 1, Limits: l.Limits}).Validate() != nil {
+		return invalid("role limits")
 	}
 	if l.Helper == nil && (len(l.Policy.Commands.NodeCommands) != 0 || len(l.Policy.Commands.Callbacks) != 0) {
 		return supervision.ErrInvalidComposition
+	}
+	if l.Sandbox != nil && len(l.Sandbox.Policy) == 0 {
+		return invalid("sandbox policy")
 	}
 	if len(l.Policy.Commands.Callbacks) != len(l.Callbacks.IDs()) || l.Helper != nil && len(l.Helper.Config.Callbacks) != len(l.Callbacks.IDs()) {
 		return supervision.ErrInvalidComposition
 	}
 	for _, id := range l.Callbacks.IDs() {
 		if !slices.Contains(l.Policy.Commands.Callbacks, id) || l.Helper == nil {
-			return supervision.ErrInvalidComposition
+			return invalid("role plan")
 		}
 	}
 	roles := []LinuxRole{l.Runtime}
@@ -386,7 +456,7 @@ func (l LinuxLaunch) validate() error {
 		in := role.Inputs
 		if role.Plan.Validate() != nil || role.Plan.Profile != l.Runtime.Plan.Profile || full && (seenUID[role.Plan.UID] || seenGID[role.Plan.GID]) || in.Launcher == nil || in.Executable == nil || in.Directory == nil ||
 			full && (in.Cgroup == nil || in.Code != nil) || !full && (in.Cgroup != nil || in.Code == nil) ||
-			in.Control != nil || in.Data != nil || in.Diagnostics != nil || in.Admin != nil || in.Config != nil || in.Commands != nil || in.Callbacks != nil {
+			in.Control != nil || in.Data != nil || in.Diagnostics != nil || in.Admin != nil || in.Config != nil || in.Commands != nil || in.Callbacks != nil || in.Sandbox != nil || in.SandboxData != nil {
 			return supervision.ErrInvalidComposition
 		}
 		if (role.Plan.Role == linuxprofile.Command) != (in.Command != nil) {
@@ -421,6 +491,11 @@ func (l *LinuxLaunch) bindCgroups() error {
 			return err
 		}
 	}
+	if l.Sandbox != nil {
+		if l.Sandbox.Cgroup, err = l.Cgroups.File(linuxprofile.Sandbox); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -438,6 +513,7 @@ type linuxResources struct {
 	files      []*os.File
 	streams    []transport.Stream
 	processes  []*linuxprofile.Process
+	sandbox    *sandboxRoleProcess
 	supervised []supervision.Process
 	bridges    sync.WaitGroup
 }
@@ -467,6 +543,10 @@ func (r *linuxResources) start(ctx context.Context, role LinuxRole, lanes []role
 			inputs.Commands = child
 		case roleentry.LaneCallback:
 			inputs.Callbacks = child
+		case roleentry.LaneSandbox:
+			inputs.Sandbox = child
+		case roleentry.LaneSandboxData:
+			inputs.SandboxData = child
 		}
 	}
 	if err := ctx.Err(); err != nil {
@@ -519,6 +599,7 @@ func (r *linuxResources) bridge(a, b transport.Stream) {
 }
 
 func (r *linuxResources) close() error {
+	var result error
 	for _, stream := range r.streams {
 		_ = stream.Close()
 	}
@@ -528,9 +609,11 @@ func (r *linuxResources) close() error {
 	for _, process := range r.processes {
 		_ = process.Kill()
 	}
+	if r.sandbox != nil {
+		result = errors.Join(result, r.sandbox.close())
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	var result error
 	for _, process := range r.processes {
 		if err := process.WaitStopped(ctx); err != nil {
 			result = errors.Join(result, supervision.ErrShutdownIncomplete, err)

@@ -39,7 +39,7 @@ func NewStartedProcess(role protocol.Role, ready <-chan ReadyResult, wait func()
 // exit. confirmed must be true only after native process exit was observed.
 // Observation failure reports role loss but cannot make Stop report success.
 func NewObservedProcess(role protocol.Role, ready <-chan ReadyResult, wait func() (confirmed bool, err error), stop func(context.Context) error, kill func() error) (*StartedProcess, error) {
-	if role != protocol.RoleRuntime && role != protocol.RoleConfigWriter && role != protocol.RoleCommandHelper || ready == nil || wait == nil || stop == nil || kill == nil {
+	if role != protocol.RoleRuntime && role != protocol.RoleConfigWriter && role != protocol.RoleCommandHelper && role != protocol.RoleSandboxSupervisor || ready == nil || wait == nil || stop == nil || kill == nil {
 		return nil, ErrInvalidComposition
 	}
 	p := &StartedProcess{role: role, ready: ready, done: make(chan error, 1), exited: make(chan struct{}), stopDone: make(chan struct{}), stop: stop, kill: kill}
