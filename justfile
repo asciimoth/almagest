@@ -1,4 +1,4 @@
-set shell := ["bash", "-euo", "pipefail", "-c"]
+set shell := ["./scripts/run-recipe.sh", "bash", "-euo", "pipefail", "-c"]
 set dotenv-load := true
 
 
