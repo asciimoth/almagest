@@ -10,12 +10,14 @@ import (
 	"github.com/asciimoth/almagest/bin/internal/isolation/transport"
 )
 
+var errSandboxSupervisorUnavailable = errors.New("sandbox supervisor is unavailable on this platform")
+
 func isolatedSandboxSupervisorRole() bool { return false }
 
 func runIsolatedSandboxSupervisorRole() error {
-	return errors.New("isolated sandbox supervisor is unavailable on this platform")
+	return errSandboxSupervisorUnavailable
 }
 
 func bindSandboxSupervisor(*os.File, roleentry.RuntimePeer) (transport.Stream, error) {
-	return nil, errors.New("sandbox supervisor peer binding is unavailable on this platform")
+	return nil, errSandboxSupervisorUnavailable
 }
