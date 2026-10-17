@@ -3,9 +3,4 @@
 		"Web": 8090,
 		"Unix": "/run/almagest/admin.sock",
 	},
-	"Experimental": {
-		// XTorDriver executable paths, sandbox, and timeouts use automatic
-		// tor-driver defaults when they are omitted.
-		"TorDriver": {},
-	},
 }

@@ -48,8 +48,9 @@ type LinuxHelper struct {
 }
 
 type LinuxSandbox struct {
-	Policy []byte
-	Cgroup *os.File
+	Policy      []byte
+	Unavailable sandboxrole.SandboxDiagnostics
+	Cgroup      *os.File
 }
 
 // LinuxLaunch is trusted bootstrap state, not an RPC or regular config format.
@@ -145,7 +146,7 @@ func RunLinux(parent context.Context, launch LinuxLaunch, ready func(roleentry.R
 			return fmt.Errorf("launch sandbox supervisor: %w", err)
 		}
 		sandboxBootstrap = roleentry.Bootstrap{Version: protocol.Version, Role: protocol.RoleSandboxSupervisor, Session: session}
-		if err := sandboxrole.SendPolicy(ctx, resources.sandbox.bootstrap, sandboxBootstrap, launch.Sandbox.Policy); err != nil {
+		if err := sandboxrole.SendPolicy(ctx, resources.sandbox.bootstrap, sandboxBootstrap, launch.Sandbox.Policy, launch.Sandbox.Unavailable); err != nil {
 			return fmt.Errorf("sandbox supervisor bootstrap: %w", err)
 		}
 		launch.Runtime.Inputs.Sandbox = resources.sandbox.control
@@ -246,8 +247,8 @@ func RunLinux(parent context.Context, launch LinuxLaunch, ready func(roleentry.R
 		return err
 	}
 	launch.Native.Callbacks = launch.Callbacks.Native(callbackDispatcher, func(format string, values ...any) {
-		if launch.Output != nil {
-			_, _ = fmt.Fprintf(launch.Output, "network: "+format+"\n", values...)
+		if launch.Output != nil && debugLogsEnabled(launch.RuntimeInput.Options.LogLevel) {
+			_, _ = fmt.Fprintf(launch.Output, "DEBUG network "+format+"\n", values...)
 		}
 	})
 	system, err := sysnetlinux.New(launch.Native)

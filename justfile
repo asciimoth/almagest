@@ -168,7 +168,7 @@ certcat-clean:
 	rm -f ./certcat/data/machine.json ./certcat/catalog_gen.go
 
 clean: certcat-clean
-	rm -f ./almagestd ./cli
+	rm -f ./almagestd ./cli ./almagest-subprogram-launcher
 
 build-web:
   cd panel && npm ci && npm run build
@@ -266,10 +266,11 @@ daemon-winvm *flags:
   for option in $options; do \
     case "$option" in --no-isolation|--experimental) ;; *) printf 'unsupported daemon-winvm flag: %s\n' "$option" >&2; exit 2;; esac; \
   done; \
-  WINVM_WEB_PORT="${WINVM_WEB_PORT:-8091}" WINVM_DAEMON_OPTIONS="$options" WINVM_OPEN_BROWSER="${WINVM_OPEN_BROWSER:-0}" ./dev/winvm/run.sh manual
+  WINVM_WEB_PORT="${WINVM_WEB_PORT:-8091}" WINVM_DAEMON_OPTIONS="--discover-system-programs $options" WINVM_OPEN_BROWSER="${WINVM_OPEN_BROWSER:-0}" ./dev/winvm/run.sh manual
 
 build: certcat-generate build-web
 	go build -o ./almagestd ./bin/almagestd/
+	gcc -static -O2 -D_FORTIFY_SOURCE=3 -Wall -Wextra -Werror -o ./almagest-subprogram-launcher bin/native/subprogram/launcher.c $(pkg-config --cflags --libs libseccomp)
 
 # Run the daemon directly with local development config. Pass --experimental
 # to enable experimental nodes.

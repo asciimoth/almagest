@@ -11,9 +11,6 @@
     "CommandRunner": {
       "$ref": "#/$defs/commandRunnerConfig"
     },
-    "Experimental": {
-      "$ref": "#/$defs/experimentalConfig"
-    },
     "Sandbox": {
       "$ref": "#/$defs/sandboxConfig"
     },
@@ -34,6 +31,7 @@
       "description": "Protected policy for daemon-owned subprogram sandboxes. Graph nodes can select only an allowed template and program ID.",
       "properties": {
         "Mode": {"enum": ["off", "auto", "strict"], "default": "auto"},
+        "DiscoverSystemPrograms": {"type": "boolean", "default": false, "description": "Discover supported built-in sandbox programs from the daemon host PATH. Explicit program and template entries take precedence."},
         "TemporaryRoot": {"type": "string", "minLength": 1},
         "RegistryRoot": {"type": "string", "minLength": 1},
         "LinuxLauncher": {"type": "string", "minLength": 1},
@@ -127,7 +125,12 @@
       "required": ["Source", "Target"],
       "properties": {
         "Source": {"type": "string", "minLength": 1},
-        "Target": {"type": "string", "pattern": "^/"}
+        "Target": {"type": "string", "pattern": "^/"},
+        "Executable": {
+          "type": "boolean",
+          "default": false,
+          "description": "Permit execute mappings for this fixed read-only file. Use this for approved ELF interpreters and shared libraries required by a dynamic program."
+        }
       },
       "additionalProperties": false
     },
@@ -155,92 +158,6 @@
         "TemporaryBytes": {"type": "integer", "minimum": 1, "maximum": 1125899906842624},
         "OutputBytes": {"type": "integer", "minimum": 1, "maximum": 1073741824},
         "Required": {"type": "array", "maxItems": 5, "uniqueItems": true, "items": {"enum": ["Tasks", "Files", "MemoryBytes", "CPUPercent", "TemporaryBytes"]}}
-      },
-      "additionalProperties": false
-    },
-    "experimentalConfig": {
-      "type": "object",
-      "description": "Host-facing settings for experimental node classes. Experimental classes are registered explicitly by almagestd only when --experimental selects direct mode and are not part of the library default class list. On platforms where isolation is the default, direct mode also requires --no-isolation.",
-      "properties": {
-        "TorDriver": {
-          "$ref": "#/$defs/xTorDriverHostConfig"
-        }
-      },
-      "additionalProperties": false
-    },
-    "xTorDriverHostConfig": {
-      "type": "object",
-      "description": "Protected process and filesystem settings for almagest/XTorDriver. Empty executable paths use tor-driver PATH discovery. On Linux, a root daemon with no explicit Identity automatically starts Tor as the host nobody account.",
-      "properties": {
-        "TorExecutable": {
-          "type": "string",
-          "description": "Absolute Tor executable path. Empty searches PATH for tor."
-        },
-        "Obfs4Executable": {
-          "type": "string",
-          "description": "Absolute lyrebird or obfs4proxy path. Empty searches PATH when a node enables obfs4."
-        },
-        "TempRoot": {
-          "type": "string",
-          "description": "Absolute parent for disposable tor-driver working directories. Empty uses the host temporary directory."
-        },
-        "StateRoot": {
-          "type": "string",
-          "description": "Absolute parent for persistent per-node Tor guard state. Empty keeps state disposable. A node-specific hashed directory is created below this root."
-        },
-        "Sandbox": {
-          "type": "string",
-          "enum": ["dynamic", "linux"],
-          "description": "Tor process sandbox mode. Empty or dynamic permits dynamic onion services. Linux enables Tor's Linux sandbox and therefore disables dynamic onion services."
-        },
-        "StartupTimeout": {
-          "type": "string",
-          "description": "Tor process startup timeout in Go duration syntax. Empty uses the tor-driver default."
-        },
-        "CommandTimeout": {
-          "type": "string",
-          "description": "Tor control command timeout in Go duration syntax. Empty uses the tor-driver default."
-        },
-        "DialTimeout": {
-          "type": "string",
-          "description": "Tor proxy dial timeout in Go duration syntax. Empty uses the tor-driver default."
-        },
-        "ShutdownTimeout": {
-          "type": "string",
-          "description": "Tor process shutdown timeout in Go duration syntax. Empty uses the tor-driver default."
-        },
-        "MaxCircuitDirtiness": {
-          "type": "string",
-          "description": "Maximum Tor circuit age in Go duration syntax. Empty uses the tor-driver default."
-        },
-        "CircuitBuildTimeout": {
-          "type": "string",
-          "description": "Tor circuit build timeout in Go duration syntax. Empty keeps Tor's adaptive default."
-        },
-        "Identity": {
-          "$ref": "#/$defs/xTorDriverIdentity"
-        }
-      },
-      "additionalProperties": false
-    },
-    "xTorDriverIdentity": {
-      "type": "object",
-      "description": "Explicit non-root Linux child identity for Tor and managed transports. UID and GID must both be nonzero.",
-      "required": [
-        "UID",
-        "GID"
-      ],
-      "properties": {
-        "UID": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 4294967295
-        },
-        "GID": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 4294967295
-        }
       },
       "additionalProperties": false
     },

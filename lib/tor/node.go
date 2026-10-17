@@ -1,4 +1,4 @@
-package experimentalnodes
+package tornodes
 
 import (
 	"context"
@@ -12,6 +12,7 @@ import (
 
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
+	sandbox "github.com/asciimoth/gobox"
 	"github.com/asciimoth/gonnect"
 	"github.com/asciimoth/pasta/pasta"
 	"github.com/asciimoth/pasta/pasta/std"
@@ -23,102 +24,98 @@ import (
 )
 
 const (
-	// NodeTypeXTorDriver is the experimental Tor driver class name.
-	NodeTypeXTorDriver = "almagest/XTorDriver"
+	// NodeTypeTorDriver is the Tor driver class name.
+	NodeTypeTorDriver = "almagest/TorDriver"
 
-	xTorOutboundPortName = "out"
-	xTorStatusBlockID    = "status"
-	xTorControlBlockID   = "control"
-	xTorRestartButtonID  = "restart"
+	torOutboundPortName = "out"
+	torStatusBlockID    = "status"
+	torControlBlockID   = "control"
+	torRestartButtonID  = "restart"
 
-	xTorSettingsBlockID   = "Tor settings"
-	xTorPoliciesBlockID   = "Network policies"
-	xTorNetworksBlockID   = "Networks"
-	xTorBridgesBlockID    = "Bridges"
-	xTorServicesBlockID   = "Onion services"
-	xTorClientAuthBlockID = "Client authorization"
+	torSettingsBlockID   = "Tor settings"
+	torPoliciesBlockID   = "Network policies"
+	torNetworksBlockID   = "Networks"
+	torBridgesBlockID    = "Bridges"
+	torServicesBlockID   = "Onion services"
+	torClientAuthBlockID = "Client authorization"
 )
 
-// XTorDriverClass creates experimental Tor process nodes. The daemon must pass
-// this class explicitly to BuildEngine. BuildEngine binds its Runtime before
-// any node is created.
-type XTorDriverClass struct {
-	Host XTorDriverHostConfig
+// TorDriverClass creates Tor process nodes that use an owner-bound Almagest
+// sandbox. The sandbox policy selects executable images and host isolation.
+type TorDriverClass struct {
+	Runtime nodekit.Runtime
 
-	runtime   nodekit.Runtime
-	newSystem xTorSystemFactory
-	start     xTorStartFactory
+	className string
+	start     torStartFactory
+	sandboxes func(context.Context) (sandbox.OwnerSandboxes, error)
 }
 
-func (XTorDriverClass) ClassName() string        { return NodeTypeXTorDriver }
-func (XTorDriverClass) ShortDescription() string { return "Experimental Tor driver" }
-func (XTorDriverClass) LongDescription() string {
+func (c TorDriverClass) ClassName() string {
+	if c.className != "" {
+		return c.className
+	}
+	return NodeTypeTorDriver
+}
+func (TorDriverClass) ShortDescription() string { return "Tor driver" }
+func (TorDriverClass) LongDescription() string {
 	return "Provides independently isolated Tor Networks and listen-only v3 onion-service Networks. An optional outbound Almagest Network carries Tor traffic."
 }
-func (XTorDriverClass) DefaultNodeParams() pasta.NodeClassParams {
+func (TorDriverClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: links.TypeNetwork, InitialPorts: []pasta.Port{
-		xTorNetworkPort("default"),
-		nodekit.NetworkPort("right", xTorOutboundPortName),
+		torNetworkPort("default"),
+		nodekit.NetworkPort("right", torOutboundPortName),
 	}}
 }
 
-// BindRuntime returns a copy bound to one engine. It is called only because
-// the daemon supplied the class in BuildEngine's extra class list.
-func (c XTorDriverClass) BindRuntime(runtime nodekit.Runtime) pasta.NodeClass {
-	c.runtime = runtime
+// BindRuntime binds the stable host-facing class to one engine. The daemon
+// registers this class unconditionally because its process access is limited
+// to the engine's owner-bound sandbox capability.
+func (c TorDriverClass) BindRuntime(runtime nodekit.Runtime) pasta.NodeClass {
+	c.Runtime = runtime
 	return c
 }
 
-func (c XTorDriverClass) NewNode(cfg configer.Config, previous ...*pasta.NodeClassState) (pasta.Node, error) {
-	configuration := defaultXTorDriverConfig()
+func (c TorDriverClass) NewNode(cfg configer.Config, previous ...*pasta.NodeClassState) (pasta.Node, error) {
+	configuration := defaultTorDriverConfig()
 	if cfg != nil {
-		if _, err := cfg.Get(configer.Path{xTorDriverConfigurationField}); err == nil {
-			if err = configer.Unmarshal(cfg.View(configer.Path{xTorDriverConfigurationField}), &configuration); err != nil {
-				return nil, fmt.Errorf("read XTorDriver configuration: %w", err)
+		if _, err := cfg.Get(configer.Path{torDriverConfigurationField}); err == nil {
+			if err = configer.Unmarshal(cfg.View(configer.Path{torDriverConfigurationField}), &configuration); err != nil {
+				return nil, fmt.Errorf("read TorDriver configuration: %w", err)
 			}
 		}
 	}
 	configuration.normalize()
-	if err := validateXTorDriverConfig(configuration); err != nil {
+	if err := validateTorDriverConfig(configuration); err != nil {
 		return nil, err
 	}
-	if err := validateXTorHostCompatibility(configuration, c.Host); err != nil {
-		return nil, err
-	}
-	if xTorConfigGeneratesSecrets(configuration) && !nodekit.CanPersistNodeConfig(c.runtime) {
-		return nil, errors.New("XTorDriver cannot generate secrets because durable node configuration persistence is unavailable; configure explicit secret selectors")
+	if torConfigGeneratesSecrets(configuration) && !nodekit.CanPersistNodeConfig(c.Runtime) {
+		return nil, errors.New("TorDriver cannot generate secrets because durable node configuration persistence is unavailable; configure explicit secret selectors")
 	}
 	if len(previous) > 0 && previous[0] != nil {
-		reconcileXTorClassState(configuration, previous[0])
-	}
-	newSystem := c.newSystem
-	if newSystem == nil {
-		newSystem = newDirectXTorSystem
+		reconcileTorClassState(configuration, previous[0])
 	}
 	start := c.start
 	if start == nil {
-		start = startRealXTorDriver
+		start = startRealTorDriver
 	}
-	return &xTorDriverNode{
-		Base:        nodekit.Base{Runtime: c.runtime},
-		host:        c.Host,
+	return &torDriverNode{
+		Base:        nodekit.Base{Runtime: c.Runtime},
 		config:      configuration,
-		newSystem:   newSystem,
 		start:       start,
+		sandboxes:   c.sandboxes,
 		outputPorts: make(map[string]uint64),
 		portOutputs: make(map[uint64]string),
-		services:    make(map[string]xTorServiceStatus),
+		services:    make(map[string]torServiceStatus),
 		persistStop: make(chan struct{}),
 	}, nil
 }
 
-type xTorDriverNode struct {
+type torDriverNode struct {
 	nodekit.Base
 
-	host             XTorDriverHostConfig
-	config           XTorDriverConfig
-	newSystem        xTorSystemFactory
-	start            xTorStartFactory
+	config           TorDriverConfig
+	start            torStartFactory
+	sandboxes        func(context.Context) (sandbox.OwnerSandboxes, error)
 	nodeName         string
 	outbound         uint64
 	outLink          uint64
@@ -136,13 +133,13 @@ type xTorDriverNode struct {
 	cancelMu    sync.Mutex
 	cancelRun   context.CancelFunc
 	runtimeMu   sync.Mutex
-	runtime     *xTorRuntime
+	runtime     *torRuntime
 	reconcileMu sync.Mutex
 	nextID      uint64
 	generatedMu sync.Mutex
-	generated   map[uint64][]xTorGeneratedSecret
+	generated   map[uint64][]torGeneratedSecret
 	persistNext uint64
-	persisting  map[uint64]*xTorPendingPersistence
+	persisting  map[uint64]*torPendingPersistence
 	persistStop chan struct{}
 
 	activeID                uint64
@@ -158,20 +155,20 @@ type xTorDriverNode struct {
 	bootstrap               tor.BootstrapEvent
 	transport               tor.TransportEvent
 	outboundState           tor.OutboundState
-	services                map[string]xTorServiceStatus
+	services                map[string]torServiceStatus
 }
 
-type xTorServiceStatus struct {
+type torServiceStatus struct {
 	Address     string
 	Publication tor.PublicationState
 	Problem     string
 }
 
-func (n *xTorDriverNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
+func (n *torDriverNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
 	n.InitBaseNode(w, logger, id)
 	n.nodeName = nodekit.InitialNodeName(w, id, restored)
 	if n.nodeName == "" {
-		return errors.New("XTorDriver node name is unavailable during initialization")
+		return errors.New("TorDriver node name is unavailable during initialization")
 	}
 	n.outbound = restoredRight(restored, 0)
 	if err := n.SetPrimary(links.TypeNetwork); err != nil {
@@ -185,7 +182,7 @@ func (n *xTorDriverNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint
 	return nil
 }
 
-func (n *xTorDriverNode) OnReady() error {
+func (n *torDriverNode) OnReady() error {
 	if !nodekit.NetworkIsReady(n.currentOutboundNetwork()) {
 		n.RequestPort(n.outbound)
 	}
@@ -193,7 +190,7 @@ func (n *xTorDriverNode) OnReady() error {
 	return nil
 }
 
-func (n *xTorDriverNode) OnStop() {
+func (n *torDriverNode) OnStop() {
 	n.stopped = true
 	n.generation.Add(1)
 	n.cancelCurrentRun()
@@ -205,7 +202,7 @@ func (n *xTorDriverNode) OnStop() {
 	go n.closeRuntime()
 }
 
-func (n *xTorDriverNode) PreLinkAdd(port uint64, linkType, direction string) error {
+func (n *torDriverNode) PreLinkAdd(port uint64, linkType, direction string) error {
 	if linkType != links.TypeNetwork {
 		return pasta.LinkTypeErr(linkType)
 	}
@@ -224,7 +221,7 @@ func (n *xTorDriverNode) PreLinkAdd(port uint64, linkType, direction string) err
 	return pasta.LinkTypeErr(linkType)
 }
 
-func (n *xTorDriverNode) OnLinkAdd(link, port uint64, linkType, direction string) error {
+func (n *torDriverNode) OnLinkAdd(link, port uint64, linkType, direction string) error {
 	if linkType != links.TypeNetwork {
 		return nil
 	}
@@ -239,7 +236,7 @@ func (n *xTorDriverNode) OnLinkAdd(link, port uint64, linkType, direction string
 	return nil
 }
 
-func (n *xTorDriverNode) OnLinkRemoved(link, port uint64, linkType, direction string) error {
+func (n *torDriverNode) OnLinkRemoved(link, port uint64, linkType, direction string) error {
 	if linkType != links.TypeNetwork {
 		return nil
 	}
@@ -255,7 +252,7 @@ func (n *xTorDriverNode) OnLinkRemoved(link, port uint64, linkType, direction st
 	return nil
 }
 
-func (n *xTorDriverNode) OnPortRemoved(port uint64, direction string) error {
+func (n *torDriverNode) OnPortRemoved(port uint64, direction string) error {
 	if direction == "right" && port == n.outbound {
 		n.outbound = 0
 		n.outLink = 0
@@ -270,7 +267,7 @@ func (n *xTorDriverNode) OnPortRemoved(port uint64, direction string) error {
 	return nil
 }
 
-func (n *xTorDriverNode) OnEvent(event pasta.Event, linkType string, _ []string, direction string) error {
+func (n *torDriverNode) OnEvent(event pasta.Event, linkType string, _ []string, direction string) error {
 	if linkType != links.TypeNetwork {
 		return nil
 	}
@@ -292,51 +289,51 @@ func (n *xTorDriverNode) OnEvent(event pasta.Event, linkType string, _ []string,
 	return nil
 }
 
-func (n *xTorDriverNode) OnInbox(message pasta.InboxMessage) error {
+func (n *torDriverNode) OnInbox(message pasta.InboxMessage) error {
 	switch value := message.Payload.(type) {
-	case xTorStarted:
+	case torStarted:
 		n.handleStarted(value)
-	case xTorDriverEvent:
+	case torDriverEvent:
 		n.handleDriverEvent(value)
-	case xTorServiceEvent:
+	case torServiceEvent:
 		n.handleServiceEvent(value)
-	case xTorOutboundResult:
+	case torOutboundResult:
 		n.handleOutboundResult(value)
 	case storage.SecretValueChanged:
 		n.handleSecretChanged(value)
-	case xTorConfigPersisted:
+	case torConfigPersisted:
 		n.handleConfigPersisted(value)
 	}
 	return nil
 }
 
-func (n *xTorDriverNode) OnFormularMsg(message any) error {
+func (n *torDriverNode) OnFormularMsg(message any) error {
 	switch msg := message.(type) {
 	case formular.FormApplyMessage:
-		if msg.MenuID == pasta.NodeMenuID(n.ID) && isXTorConfigBlock(msg.BlockID) {
+		if msg.MenuID == pasta.NodeMenuID(n.ID) && isTorConfigBlock(msg.BlockID) {
 			return n.applyConfigForm(msg.BlockID, msg.Values)
 		}
 	case formular.ButtonPressMessage:
-		if msg.MenuID == pasta.NodeMenuID(n.ID) && msg.BlockID == xTorControlBlockID && msg.ButtonID == xTorRestartButtonID {
+		if msg.MenuID == pasta.NodeMenuID(n.ID) && msg.BlockID == torControlBlockID && msg.ButtonID == torRestartButtonID {
 			n.scheduleRebuild("menu restart")
 		}
 	}
 	return nil
 }
 
-func (n *xTorDriverNode) OnTrigger() error {
+func (n *torDriverNode) OnTrigger() error {
 	n.scheduleRebuild("node trigger")
 	return nil
 }
 
-func (n *xTorDriverNode) OnSave(cfg configer.Config) error {
+func (n *torDriverNode) OnSave(cfg configer.Config) error {
 	if err := pasta.DeleteNodeOwnedConfigKeys(cfg); err != nil {
 		return err
 	}
-	return configer.Marshal(cfg.View(configer.Path{xTorDriverConfigurationField}), n.config)
+	return configer.Marshal(cfg.View(configer.Path{torDriverConfigurationField}), n.config)
 }
 
-func (n *xTorDriverNode) handleSecretChanged(msg storage.SecretValueChanged) {
+func (n *torDriverNode) handleSecretChanged(msg storage.SecretValueChanged) {
 	previous := strings.TrimSpace(msg.SecretNamePrev)
 	next := strings.TrimSpace(msg.SecretNameNew)
 	relevant := false
@@ -371,31 +368,31 @@ func (n *xTorDriverNode) handleSecretChanged(msg storage.SecretValueChanged) {
 	}
 }
 
-func xTorConfigEqual(a, b XTorDriverConfig) bool {
+func torConfigEqual(a, b TorDriverConfig) bool {
 	aJSON, _ := json.Marshal(a)
 	bJSON, _ := json.Marshal(b)
 	return slices.Equal(aJSON, bJSON)
 }
 
-func (n *xTorDriverNode) currentOutboundNetwork() nodekit.NetworkCloser {
+func (n *torDriverNode) currentOutboundNetwork() nodekit.NetworkCloser {
 	n.attachMu.Lock()
 	defer n.attachMu.Unlock()
 	return n.outNetwork
 }
 
-func (n *xTorDriverNode) currentOutboundState() (nodekit.NetworkCloser, uint64) {
+func (n *torDriverNode) currentOutboundState() (nodekit.NetworkCloser, uint64) {
 	n.attachMu.Lock()
 	defer n.attachMu.Unlock()
 	return n.outNetwork, n.outboundRevision
 }
 
-func (n *xTorDriverNode) currentOutboundRevision() uint64 {
+func (n *torDriverNode) currentOutboundRevision() uint64 {
 	n.attachMu.Lock()
 	defer n.attachMu.Unlock()
 	return n.outboundRevision
 }
 
-func (n *xTorDriverNode) setOutboundNetwork(network nodekit.NetworkCloser) {
+func (n *torDriverNode) setOutboundNetwork(network nodekit.NetworkCloser) {
 	n.attachMu.Lock()
 	n.outNetwork = network
 	n.outboundRevision++
@@ -406,4 +403,4 @@ func restoredRight(restored *pasta.NodeInitData, index int) uint64 {
 	return nodekit.RestoredRight(restored, index)
 }
 
-var _ nodekit.RuntimeNodeClass = XTorDriverClass{}
+var _ nodekit.RuntimeNodeClass = TorDriverClass{}

@@ -83,14 +83,18 @@ static void inspect_fd(int fd, bool directory, bool executable) {
 	struct stat st;
 	if (fstat(fd, &st) == -1) fail("inspect inherited object");
 	require(directory ? S_ISDIR(st.st_mode) : S_ISREG(st.st_mode), "inherited object type");
-	require(directory || st.st_nlink == 1, "executable hard-link alias");
+	/* Immutable stores can hard-link identical content. A second name is safe
+	 * only when no user can change the file. */
+	require(directory || st.st_nlink == 1 || (st.st_mode & 0222) == 0,
+		"executable hard-link alias");
 	if (executable) require((st.st_mode & 0111) != 0 && (st.st_mode & 0022) == 0, "trusted executable mode");
 }
 
 static void inspect_readonly_fd(int fd) {
 	struct stat st;
 	if (fstat(fd, &st) == -1) fail("inspect read-only source");
-	require(S_ISDIR(st.st_mode) || (S_ISREG(st.st_mode) && st.st_nlink == 1),
+	require(S_ISDIR(st.st_mode) || (S_ISREG(st.st_mode) &&
+		(st.st_nlink == 1 || (st.st_mode & 0222) == 0)),
 		"read-only source type");
 }
 
@@ -318,7 +322,7 @@ static void bring_up_loopback(void) {
 
 static void setup_root(int root_fd, const char *root_path, int temporary_fd, int persistent_fd,
 	int first_program, int program_count, int first_readonly, int readonly_count,
-	char **targets, uid_t uid, gid_t gid, uint64_t temporary_bytes) {
+	const char *executable_readonly, char **targets, uid_t uid, gid_t gid, uint64_t temporary_bytes) {
 	if (mount(NULL, "/", NULL, MS_REC | MS_PRIVATE, NULL) == -1) fail("make mounts private");
 	struct stat held, named;
 	require(safe_target(root_path), "safe root mount path");
@@ -346,7 +350,7 @@ static void setup_root(int root_fd, const char *root_path, int temporary_fd, int
 	}
 	for (int n = 0; n < program_count; n++) bind_held(first_program + n, targets[n], true, true);
 	for (int n = 0; n < readonly_count; n++)
-		bind_held(first_readonly + n, targets[program_count + n], true, false);
+		bind_held(first_readonly + n, targets[program_count + n], true, executable_readonly[n] == '1');
 	if (mkdir("proc", 0555) == -1 || mkdir("dev", 0755) == -1) fail("create synthetic system paths");
 	if (mount("tmpfs", "dev", "tmpfs", MS_NOSUID | MS_NOEXEC, "size=1048576,mode=0755") == -1)
 		fail("mount private dev");
@@ -403,16 +407,20 @@ static void worker_loop(int life_fd, int ready_fd, uid_t uid, gid_t gid) {
 }
 
 static int worker_main(int argc, char **argv) {
-	require(argc >= 10 && strcmp(argv[9], "--") == 0, "worker ABI");
+	require(argc >= 11 && strcmp(argv[1], "worker-v3") == 0 && strcmp(argv[10], "--") == 0, "worker ABI");
 	uid_t uid = (uid_t)number(argv[2]);
 	gid_t gid = (gid_t)number(argv[3]);
 	int writable_count = (int)number(argv[4]);
 	int program_count = (int)number(argv[5]);
 	int readonly_count = (int)number(argv[6]);
 	uint64_t temporary_bytes = number(argv[7]);
+	const char *executable_readonly = argv[9];
 	require(uid > 0 && gid > 0 && (writable_count == 1 || writable_count == 2) &&
 		program_count >= 1 && program_count <= 256 && readonly_count >= 0 && readonly_count <= 128 &&
-		argc == 10 + program_count + readonly_count, "worker bounds");
+		strlen(executable_readonly) == (size_t)readonly_count && argc == 11 + program_count + readonly_count,
+		"worker bounds");
+	for (int n = 0; n < readonly_count; n++)
+		require(executable_readonly[n] == '0' || executable_readonly[n] == '1', "worker executable flags");
 	if (fcntl(status_fd, F_SETFD, FD_CLOEXEC) == -1) fail("seal worker status channel");
 	inspect_fd(3, false, true);
 	inspect_fd(7, true, false);
@@ -427,7 +435,8 @@ static int worker_main(int argc, char **argv) {
 	if (unshare(CLONE_NEWCGROUP | CLONE_NEWIPC | CLONE_NEWNET | CLONE_NEWNS | CLONE_NEWPID | CLONE_NEWUTS) == -1)
 		fail("create sandbox namespaces");
 	if (sethostname("almagest-sandbox", 16) == -1) fail("set private hostname");
-	setup_root(7, argv[8], 8, persistent_fd, first_program, program_count, first_readonly, readonly_count, argv + 10,
+	setup_root(7, argv[8], 8, persistent_fd, first_program, program_count, first_readonly, readonly_count,
+		executable_readonly, argv + 11,
 		uid, gid, temporary_bytes);
 	int ready[2];
 	if (pipe2(ready, O_CLOEXEC) == -1) fail("create worker readiness channel");
@@ -483,6 +492,9 @@ static void install_full_landlock(int first_executable, int executable_count) {
 	struct landlock_ruleset_attr rules = {.handled_access_fs = handled};
 	int ruleset = (int)syscall(SYS_landlock_create_ruleset, &rules, sizeof(rules), 0);
 	if (ruleset == -1) fail("create confined Landlock ruleset");
+	// Mount-level noexec and the per-inode rules below form the executable
+	// allowlist. Executable read-only dependencies are included in the held
+	// descriptor set after the approved program images.
 	add_path_rule(ruleset, root, LANDLOCK_ACCESS_FS_READ_FILE | LANDLOCK_ACCESS_FS_READ_DIR);
 	for (int n = 0; n < executable_count; n++)
 		add_path_rule(ruleset, first_executable + n, LANDLOCK_ACCESS_FS_EXECUTE);
@@ -501,21 +513,24 @@ static void install_full_landlock(int first_executable, int executable_count) {
 }
 
 static int launch_main(int argc, char **argv) {
-	require(argc >= 11 && strcmp(argv[10], "--") == 0, "full launcher ABI");
+	require(argc >= 12 && strcmp(argv[1], "launch-v4") == 0 && strcmp(argv[11], "--") == 0, "full launcher ABI");
 	uid_t uid = (uid_t)number(argv[2]);
 	gid_t gid = (gid_t)number(argv[3]);
 	uint64_t descriptors = number(argv[4]);
 	uint64_t memory_bytes = number(argv[5]), tasks = number(argv[6]);
 	const char *program_path = argv[7];
 	const char *cwd = argv[8];
-	int executable_count = (int)number(argv[9]);
+	int program_count = (int)number(argv[9]);
+	int executable_count = (int)number(argv[10]);
 	require(uid > 0 && gid > 0 && descriptors >= 32 && descriptors <= 65536 &&
 		memory_bytes >= (32ULL << 20) && tasks >= 1 && tasks <= 4096 &&
-		executable_count >= 1 && executable_count <= 65 && safe_target(program_path) && safe_target(cwd), "full launcher bounds");
+		program_count >= 1 && program_count <= 256 && executable_count >= program_count &&
+		executable_count <= 384 && safe_target(program_path) && safe_target(cwd), "full launcher bounds");
 	if (fcntl(status_fd, F_SETFD, FD_CLOEXEC) == -1) fail("seal exec-status channel");
 	inspect_fd(3, false, true);
 	inspect_fd(5, true, false);
-	for (int fd = 13; fd < 13 + executable_count; fd++) inspect_fd(fd, false, true);
+	for (int fd = 13; fd < 13 + program_count; fd++) inspect_fd(fd, false, true);
+	for (int fd = 13 + program_count; fd < 13 + executable_count; fd++) inspect_fd(fd, false, false);
 	enter_cgroup(12);
 	for (int fd = 6; fd <= 9; fd++) if (setns(fd, 0) == -1) fail("join sandbox namespace");
 	if (setns(11, CLONE_NEWCGROUP) == -1) fail("join sandbox cgroup namespace");
@@ -549,11 +564,11 @@ static int launch_main(int argc, char **argv) {
 	install_seccomp();
 	remove_authority(uid, gid);
 	for (int fd = 3; fd < 13 + executable_count; fd++) if (fd != status_fd && close(fd) == -1) fail("close inherited authority");
-	char **target = calloc((size_t)argc - 9, sizeof(char *));
+	char **target = calloc((size_t)argc - 10, sizeof(char *));
 	if (!target) fail("allocate target arguments");
 	target[0] = (char *)"sandbox-program";
-	for (int n = 11; n < argc; n++) target[n - 10] = argv[n];
-	target[argc - 10] = NULL;
+	for (int n = 12; n < argc; n++) target[n - 11] = argv[n];
+	target[argc - 11] = NULL;
 	if (execve(program_path, target, environ) == -1) fail("execute approved image");
 	return 125;
 }
@@ -748,8 +763,8 @@ static int legacy_main(int argc, char **argv) {
 }
 
 int main(int argc, char **argv) {
-	if (argc >= 2 && strcmp(argv[1], "worker-v2") == 0) return worker_main(argc, argv);
-	if (argc >= 2 && strcmp(argv[1], "launch-v3") == 0) return launch_main(argc, argv);
+	if (argc >= 2 && strcmp(argv[1], "worker-v3") == 0) return worker_main(argc, argv);
+	if (argc >= 2 && strcmp(argv[1], "launch-v4") == 0) return launch_main(argc, argv);
 	if (argc >= 2 && strcmp(argv[1], "socket-v2") == 0) return socket_main(argc, argv);
 	if (argc >= 2 && strcmp(argv[1], "probe-v2") == 0) return probe_main(argc, argv);
 	return legacy_main(argc, argv);

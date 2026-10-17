@@ -40,7 +40,7 @@ assert_direct_boundary() {
 }
 
 start_daemon
-assert_daemon_log_contains "Execution mode: direct (no sandbox)"
+assert_daemon_log_contains "Execution mode: direct"
 assert_daemon_log_contains "Daemon process isolation is disabled"
 assert_daemon_log_contains "A compromised graph runtime can access all daemon privileges and host resources"
 assert_direct_boundary

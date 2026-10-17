@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -55,11 +56,12 @@ type provisionedCgroup struct {
 // File returns a borrowed descriptor. Close only closes descriptors. Remove
 // additionally removes empty, identity-matching role cgroups.
 type RoleCgroups struct {
-	mu      sync.Mutex
-	parent  *os.File
-	roles   map[Role]*provisionedCgroup
-	closed  bool
-	removed bool
+	mu          sync.Mutex
+	parent      *os.File
+	roles       map[Role]*provisionedCgroup
+	sandboxRoot *provisionedCgroup
+	closed      bool
+	removed     bool
 }
 
 // ProvisionCgroups creates fixed-name role cgroups below an empty held cgroup
@@ -150,13 +152,50 @@ func ProvisionCgroups(instance *os.File, plan CgroupPlan) (_ *RoleCgroups, err e
 			return nil, err
 		}
 		entry := &provisionedCgroup{name: role.name, file: file, dev: uint64(stat.Dev), ino: stat.Ino}
-		out.roles[role.role] = entry
+		if role.role == Sandbox {
+			out.sandboxRoot = entry
+		} else {
+			out.roles[role.role] = entry
+		}
 		if err := configureRoleCgroup(file, *role.limits, role.weight); err != nil {
 			return nil, fmt.Errorf("%w: configure %s cgroup: %v", ErrUnavailable, role.name, err)
+		}
+		if role.role == Sandbox {
+			// Keep the bounded sandbox role as an empty delegation point. The
+			// supervisor runs in its own child, while gobox creates workload
+			// cgroups beside that child. A populated cgroup cannot enable domain
+			// controllers for children on cgroup v2.
+			if err := writeCgroupFile(file, "cgroup.subtree_control", "+cpu +memory +pids\n"); err != nil {
+				return nil, fmt.Errorf("%w: delegate sandbox controllers: %v", ErrUnavailable, err)
+			}
+			supervisor, createErr := createCgroupAt(file, "supervisor")
+			if createErr != nil {
+				return nil, fmt.Errorf("%w: create sandbox supervisor cgroup: %v", ErrUnavailable, createErr)
+			}
+			out.roles[Sandbox] = supervisor
 		}
 	}
 	failed = false
 	return out, nil
+}
+
+func createCgroupAt(parent *os.File, name string) (*provisionedCgroup, error) {
+	if err := unix.Mkdirat(int(parent.Fd()), name, 0o755); err != nil {
+		return nil, err
+	}
+	fd, err := unix.Openat(int(parent.Fd()), name, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+	if err != nil {
+		_ = unix.Unlinkat(int(parent.Fd()), name, unix.AT_REMOVEDIR)
+		return nil, err
+	}
+	file := os.NewFile(uintptr(fd), name)
+	var stat unix.Stat_t
+	if err := unix.Fstat(fd, &stat); err != nil {
+		_ = file.Close()
+		_ = unix.Unlinkat(int(parent.Fd()), name, unix.AT_REMOVEDIR)
+		return nil, err
+	}
+	return &provisionedCgroup{name: name, file: file, dev: uint64(stat.Dev), ino: stat.Ino}, nil
 }
 
 func addBounded(a, b uint64) (uint64, bool) {
@@ -257,6 +296,28 @@ func (c *RoleCgroups) File(role Role) (*os.File, error) {
 	return entry.file, nil
 }
 
+// SandboxRootPath returns the held, empty cgroup used for sandbox workloads.
+// It is startup-generated authority and is never selected by runtime input.
+func (c *RoleCgroups) SandboxRootPath() (string, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closed || c.removed {
+		return "", os.ErrClosed
+	}
+	if c.sandboxRoot == nil {
+		return "", fmt.Errorf("%w: sandbox cgroup is not provisioned", ErrUnavailable)
+	}
+	path, err := os.Readlink("/proc/self/fd/" + strconv.Itoa(int(c.sandboxRoot.file.Fd())))
+	if err != nil || !strings.HasPrefix(path, "/sys/fs/cgroup/") || filepath.Clean(path) != path {
+		return "", fmt.Errorf("%w: resolve sandbox cgroup path", ErrUnavailable)
+	}
+	var stat unix.Stat_t
+	if err := unix.Stat(path, &stat); err != nil || uint64(stat.Dev) != c.sandboxRoot.dev || stat.Ino != c.sandboxRoot.ino {
+		return "", fmt.Errorf("%w: sandbox cgroup identity changed", ErrUnavailable)
+	}
+	return path, nil
+}
+
 // MoveCurrent moves only the calling process into a provisioned role cgroup.
 // Trusted bootstrap uses Network after restricted children are started.
 func (c *RoleCgroups) MoveCurrent(role Role) error {
@@ -292,6 +353,9 @@ func (c *RoleCgroups) Close() error {
 	for _, entry := range c.roles {
 		result = errors.Join(result, entry.file.Close())
 	}
+	if c.sandboxRoot != nil {
+		result = errors.Join(result, c.sandboxRoot.file.Close())
+	}
 	return result
 }
 
@@ -304,23 +368,29 @@ func (c *RoleCgroups) Remove() error {
 		return nil
 	}
 	var result error
-	for _, role := range []Role{Command, Writer, Runtime, Network} {
-		entry := c.roles[role]
+	remove := func(parent *os.File, entry *provisionedCgroup) {
 		if entry == nil {
-			continue
+			return
 		}
 		var stat unix.Stat_t
-		if err := unix.Fstatat(int(c.parent.Fd()), entry.name, &stat, unix.AT_SYMLINK_NOFOLLOW); err != nil {
+		if err := unix.Fstatat(int(parent.Fd()), entry.name, &stat, unix.AT_SYMLINK_NOFOLLOW); err != nil {
 			result = errors.Join(result, err)
-			continue
+			return
 		}
 		if uint64(stat.Dev) != entry.dev || stat.Ino != entry.ino {
 			result = errors.Join(result, fmt.Errorf("%w: %s cgroup identity changed", ErrUnavailable, entry.name))
-			continue
+			return
 		}
-		if err := unix.Unlinkat(int(c.parent.Fd()), entry.name, unix.AT_REMOVEDIR); err != nil {
+		if err := unix.Unlinkat(int(parent.Fd()), entry.name, unix.AT_REMOVEDIR); err != nil {
 			result = errors.Join(result, err)
 		}
+	}
+	if c.sandboxRoot != nil {
+		remove(c.sandboxRoot.file, c.roles[Sandbox])
+		remove(c.parent, c.sandboxRoot)
+	}
+	for _, role := range []Role{Command, Writer, Runtime, Network} {
+		remove(c.parent, c.roles[role])
 	}
 	if result == nil {
 		c.removed = true
@@ -329,6 +399,9 @@ func (c *RoleCgroups) Remove() error {
 		c.closed = true
 		for _, entry := range c.roles {
 			result = errors.Join(result, entry.file.Close())
+		}
+		if c.sandboxRoot != nil {
+			result = errors.Join(result, c.sandboxRoot.file.Close())
 		}
 	}
 	return result

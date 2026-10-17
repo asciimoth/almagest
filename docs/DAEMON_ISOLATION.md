@@ -72,6 +72,11 @@ not receive source paths, environment variable names, listener addresses,
 peer filters, system configuration, command profiles, or unknown protected
 fields.
 
+R builds its default TLS client policy from the public root catalog embedded
+in the daemon. It does not need access to host certificate-store paths. Direct
+mode can also import platform certificate stores. Protected TLS configuration
+remains the way to add private or deployment-specific authorities.
+
 Regular config is untrusted application input. It can select graph behavior,
 but it cannot select a role, executable, host path, native API, credential,
 IPC endpoint, or isolation policy. Native objects stay in N and are referred
@@ -180,6 +185,11 @@ process, and file size is the maximum size of each file, not total storage
 use. Limits stay enabled with high defaults. Zero and values outside the
 accepted ranges stop isolated startup. Swap remains disabled for each role
 cgroup.
+
+The sandbox role has one extra cgroup level. The trusted supervisor runs in
+`sandbox/supervisor`. The empty `sandbox` parent delegates controllers to
+gobox workload cgroups and applies the aggregate role ceiling. This structure
+keeps the cgroup v2 delegation point free of processes.
 
 In `linux-user-v1`, per-role cgroups are an optional extension. The status
 record reports inherited process-set or external limits when delegation is not

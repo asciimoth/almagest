@@ -18,7 +18,7 @@
 			"response": "Response through two Tor nodes",
 		},
 		"Tor service": {
-			"Class": "almagest/XTorDriver",
+			"Class": "almagest/TorDriver",
 			"Pos": "{\"x\":440,\"y\":360}",
 			"Links": ["out -> [Tor outbound] Network"],
 			"configuration": {
@@ -42,7 +42,7 @@
 			"body": "",
 		},
 		"Tor client": {
-			"Class": "almagest/XTorDriver",
+			"Class": "almagest/TorDriver",
 			"Pos": "{\"x\":440,\"y\":640}",
 			"Links": ["out -> [Tor outbound] Network"],
 			"configuration": {

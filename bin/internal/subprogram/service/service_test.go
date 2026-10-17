@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/asciimoth/almagest/bin/internal/subprogram/policy"
@@ -72,6 +73,34 @@ func TestServiceDurableOwnerEpochAndRename(t *testing.T) {
 	}
 	if _, err = service.BindOwner(context.Background(), sandbox.Owner{Workspace: "main", Key: "guessed", Epoch: 1, Class: "test/Node", Name: "Second", NameRevision: 1}); !errors.Is(err, sandbox.ErrDenied) {
 		t.Fatalf("guessed owner: %v", err)
+	}
+}
+
+func TestDiscoveryFailureIsScopedToAffectedCapability(t *testing.T) {
+	config := serviceConfig(t)
+	config.UnavailableTemplates = map[sandbox.TemplateID]string{"tor": "Tor was not found in the host search path"}
+	config.UnavailablePrograms = map[sandbox.ProgramID]string{"obfs4": "lyrebird has a missing runtime library"}
+	service, err := NewDirect(config, serviceProbe())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = service.Close() })
+	_, view, err := service.IssueAndBindOwner(context.Background(), sandbox.Owner{Workspace: "main", Class: "test/Node", Name: "Node"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = view.Acquire(context.Background(), "tor", "tor"); !errors.Is(err, sandbox.ErrUnavailable) || !strings.Contains(err.Error(), "Tor was not found") {
+		t.Fatalf("Tor acquisition error = %v", err)
+	}
+	instance, err := view.Acquire(context.Background(), "working", "test")
+	if err != nil {
+		t.Fatalf("unrelated template failed: %v", err)
+	}
+	if _, err = instance.ProgramPath("obfs4"); !errors.Is(err, sandbox.ErrUnavailable) || !strings.Contains(err.Error(), "missing runtime library") {
+		t.Fatalf("obfs4 path error = %v", err)
+	}
+	if path, pathErr := instance.ProgramPath("helper"); pathErr != nil || path == "" {
+		t.Fatalf("unrelated program path = %q, %v", path, pathErr)
 	}
 }
 

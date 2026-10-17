@@ -5,11 +5,11 @@ import (
 	"testing"
 )
 
-func TestSanitizeXTorDriverClipboardRemovesNodeScopedSelectors(t *testing.T) {
+func TestSanitizeTorDriverClipboardRemovesNodeScopedSelectors(t *testing.T) {
 	input := `{
 		"version": 1,
 		"nodes": [{
-			"class": "almagest/XTorDriver",
+			"class": "almagest/TorDriver",
 			"config": {"configuration": {
 				"enabled": true,
 				"services": [
@@ -27,7 +27,7 @@ func TestSanitizeXTorDriverClipboardRemovesNodeScopedSelectors(t *testing.T) {
 	}`
 
 	var payload map[string]any
-	if err := json.Unmarshal([]byte(sanitizeXTorDriverClipboard(input)), &payload); err != nil {
+	if err := json.Unmarshal([]byte(sanitizeTorDriverClipboard(input)), &payload); err != nil {
 		t.Fatal(err)
 	}
 	nodes := payload["nodes"].([]any)
@@ -49,15 +49,15 @@ func TestSanitizeXTorDriverClipboardRemovesNodeScopedSelectors(t *testing.T) {
 	}
 }
 
-func TestSanitizeXTorDriverClipboardKeepsUnchangedAndMalformedData(t *testing.T) {
+func TestSanitizeTorDriverClipboardKeepsUnchangedAndMalformedData(t *testing.T) {
 	for _, input := range []string{
 		"",
 		"not json",
-		`{"version":1,"nodes":[{"class":"almagest/XTorDriver","config":{"configuration":{"services":[{"name":"one"}]}}}]}`,
+		`{"version":1,"nodes":[{"class":"almagest/TorDriver","config":{"configuration":{"services":[{"name":"one"}]}}}]}`,
 		`{"version":1,"nodes":[{"class":"example/Other","config":{"configuration":{"services":[{"keySecret":"keep"}]}}}]}`,
 	} {
-		if got := sanitizeXTorDriverClipboard(input); got != input {
-			t.Fatalf("sanitizeXTorDriverClipboard(%q) = %q, want unchanged", input, got)
+		if got := sanitizeTorDriverClipboard(input); got != input {
+			t.Fatalf("sanitizeTorDriverClipboard(%q) = %q, want unchanged", input, got)
 		}
 	}
 }

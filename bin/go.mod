@@ -43,7 +43,7 @@ require (
 	github.com/asciimoth/p-mark v0.5.0 // indirect
 	github.com/asciimoth/persist v0.2.0 // indirect
 	github.com/asciimoth/putback v0.3.0 // indirect
-	github.com/asciimoth/tor-driver v0.1.2 // indirect
+	github.com/asciimoth/tor-driver v0.2.0 // indirect
 	github.com/asciimoth/tuntap v0.4.4
 	github.com/asciimoth/wgo v0.7.15
 	github.com/asciimoth/wgo-tailscale v0.4.1 // indirect

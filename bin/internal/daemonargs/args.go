@@ -19,7 +19,8 @@ type Args struct {
 	LogWorkers bool   `arg:"--log-workers" help:"log engine worker lifecycle events"`
 	NoPool     bool   `arg:"--no-pool" help:"disable daemon global buffer pool"`
 
-	NoDNSCacheExpiration bool `arg:"--no-dns-cache-expiration,env:ALMAGEST_NO_DNS_CACHE_EXPIRATION" help:"disable DNS cache entry expiration"`
+	NoDNSCacheExpiration   bool `arg:"--no-dns-cache-expiration,env:ALMAGEST_NO_DNS_CACHE_EXPIRATION" help:"disable DNS cache entry expiration"`
+	DiscoverSystemPrograms bool `arg:"--discover-system-programs,env:ALMAGEST_DISCOVER_SYSTEM_PROGRAMS" help:"discover supported sandbox programs from the host PATH"`
 
 	LogCacheDebug *int `arg:"--log-cache-debug,env:ALMAGEST_LOG_CACHE_DEBUG" help:"daemon debug log cache size"`
 	LogCacheInfo  *int `arg:"--log-cache-info,env:ALMAGEST_LOG_CACHE_INFO" help:"daemon info log cache size"`

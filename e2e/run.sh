@@ -204,6 +204,10 @@ for case_index in "${!cases[@]}"; do
 	if [[ "$coverage_enabled" == "1" ]] && ((prepare_only == 0)); then
 		case_coverage_dirs[case_index]="$coverage_dir/raw/$case_name"
 		mkdir -p "${case_coverage_dirs[case_index]}"
+		# Some qualification cases run instrumented binaries under a distinct
+		# unprivileged UID. Each case has a private mount, so permit those
+		# identities to create Go coverage data in it.
+		chmod 0777 "${case_coverage_dirs[case_index]}"
 		coverage_inputs+=("${case_coverage_dirs[case_index]}")
 	fi
 done

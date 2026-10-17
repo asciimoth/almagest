@@ -16,6 +16,8 @@ import (
 
 const windowsSandboxMatrixChild = "ALMAGEST_WINDOWS_SANDBOX_MATRIX_CHILD"
 
+const windowsTorHelperEnvironment = "ALMAGEST_WINVM_TOR_HELPER"
+
 func TestWindowsSandboxModeMatrix(t *testing.T) {
 	assertWindowsE2EDefaultSandboxMode(t)
 	executable := os.Getenv("ALMAGEST_WINVM_SANDBOX_HELPER")
@@ -42,6 +44,109 @@ func TestWindowsSandboxModeMatrix(t *testing.T) {
 			}
 			assertWindowsSandboxMatrixStatus(t, hello, mode)
 		})
+	}
+}
+
+func TestWindowsTorDriverSandboxModeMatrix(t *testing.T) {
+	executable := os.Getenv(windowsTorHelperEnvironment)
+	if executable == "" {
+		t.Fatalf("%s is not set", windowsTorHelperEnvironment)
+	}
+	for _, mode := range []string{"off", "auto", "strict"} {
+		t.Run(mode, func(t *testing.T) {
+			root := newPrivateWindowsTestDir(t)
+			bin := filepath.Join(root, "discovered-bin")
+			if err := os.Mkdir(bin, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			image, err := os.ReadFile(executable)
+			if err != nil {
+				t.Fatal(err)
+			}
+			writePrivateWindowsFile(t, filepath.Join(bin, "tor.exe"), image)
+			pipe := fmt.Sprintf("almagest-tor-%s-%d", mode, os.Getpid())
+			httpPort := reserveTCPPort(t)
+			socksPort := reserveTCPPort(t)
+			config := fmt.Sprintf(`{
+	"nodes":{
+		"Tor outbound":{"Class":"almagest/MockNetwork","allowAnyHost":true},
+		"Target":{"Class":"almagest/HttpServer","Links":["Network -> [Tor outbound] Network"],"host":"127.0.0.1","port":%d,"response":"windows-tor-%s"},
+		"Tor":{"Class":"almagest/TorDriver","Links":["out -> [Tor outbound] Network"]},
+		"Tor proxy":{"Class":"almagest/LocalProxy","Links":["proxy -> [Tor] Network default"],"socksHost":"127.0.0.1","socksPort":%d}
+	}}
+`, httpPort, mode, socksPort)
+			protected := windowsTorMatrixProtected(t, root, pipe, mode)
+			daemon := newWindowsDaemon(t, root, pipe, config, protected)
+			daemon.environment = append(daemon.environment, "PATH="+bin+";"+os.Getenv("PATH"))
+			daemon.start()
+			defer daemon.stop()
+
+			waitForWindowsTorLabel(t, daemon, "up")
+			wantSOCKSHTTP(t, socksPort, httpPort, "windows-tor-"+mode)
+			var hello api.HelloResponse
+			if err := json.Unmarshal(daemon.cliJSON("admin", "hello", "--client-name", "windows-tor-matrix"), &hello); err != nil {
+				t.Fatal(err)
+			}
+			assertWindowsTorSandboxStatus(t, hello, mode)
+		})
+	}
+}
+
+func windowsTorMatrixProtected(t *testing.T, root, pipe, mode string) string {
+	t.Helper()
+	value := map[string]any{
+		"Admin":  map[string]any{"Pipe": `\\.\pipe\` + pipe},
+		"System": map[string]any{"Type": "debug"},
+		"Sandbox": map[string]any{
+			"Mode":                   mode,
+			"DiscoverSystemPrograms": true,
+			"TemporaryRoot":          filepath.Join(root, "sandbox-temporary"),
+			"RegistryRoot":           filepath.Join(root, "sandbox-registry"),
+		},
+	}
+	data, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
+}
+
+func waitForWindowsTorLabel(t *testing.T, daemon *windowsDaemon, label string) {
+	t.Helper()
+	waitFor(t, "TorDriver label "+label, func() bool {
+		var response api.WorkspaceSnapshotResponse
+		if err := json.Unmarshal(daemon.cliJSON("engine", "workspace-snapshot"), &response); err != nil {
+			t.Fatal(err)
+		}
+		for _, node := range response.Snapshot.Nodes {
+			if node.Name == "Tor" {
+				if node.Label == "error" {
+					t.Fatalf("TorDriver failed; daemon log:\n%s", daemon.readLog())
+				}
+				return node.Label == label
+			}
+		}
+		return false
+	})
+}
+
+func assertWindowsTorSandboxStatus(t *testing.T, hello api.HelloResponse, mode string) {
+	t.Helper()
+	if hello.SubprogramSandbox == nil {
+		t.Fatal("daemon did not report subprogram sandbox status")
+	}
+	status, ok := hello.SubprogramSandbox.Templates["tor"]
+	if !ok {
+		t.Fatalf("Tor sandbox template is absent: %+v", hello.SubprogramSandbox)
+	}
+	if mode == "off" {
+		if status.Profile != "direct-v1" || status.StrictSatisfied || status.FullBoundary {
+			t.Fatalf("off Tor template status = %+v", status)
+		}
+		return
+	}
+	if status.Profile != "windows-native-v1" || !status.StrictSatisfied || status.FullBoundary {
+		t.Fatalf("native Tor template status = %+v", status)
 	}
 }
 

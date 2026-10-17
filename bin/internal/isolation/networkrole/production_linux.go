@@ -27,7 +27,10 @@ import (
 	"github.com/asciimoth/almagest/bin/internal/isolation/policy"
 	"github.com/asciimoth/almagest/bin/internal/isolation/protocol"
 	"github.com/asciimoth/almagest/bin/internal/isolation/roleentry"
+	"github.com/asciimoth/almagest/bin/internal/isolation/sandboxrole"
 	"github.com/asciimoth/almagest/bin/internal/isolation/supervision"
+	sandboxdiscovery "github.com/asciimoth/almagest/bin/internal/subprogram/discovery"
+	sandboxpolicy "github.com/asciimoth/almagest/bin/internal/subprogram/policy"
 	"golang.org/x/sys/unix"
 )
 
@@ -131,6 +134,52 @@ func RunLinuxProduction(parent context.Context, production LinuxProduction, read
 		return err
 	}
 	var sandboxConfig *sandboxLaunchPolicy
+	var sandboxUnavailable sandboxrole.SandboxDiagnostics
+	if sandboxConfigured(resolved.Authority.Sandbox) || production.Arguments.DiscoverSystemPrograms {
+		policyData := resolved.Authority.Sandbox
+		if len(policyData) == 0 {
+			policyData = []byte("{}")
+		}
+		configured, parseErr := sandboxpolicy.Parse(policyData)
+		if parseErr != nil {
+			return fmt.Errorf("protected sandbox launch policy: %w", parseErr)
+		}
+		launcher := filepath.Join(filepath.Dir(production.Paths.RuntimeExecutable), "almagest-subprogram-launcher")
+		explicitConfig := configured
+		configured, found, configureErr := sandboxdiscovery.Configure(configured, sandboxdiscovery.Options{
+			Enable: production.Arguments.DiscoverSystemPrograms, StateRoot: sandboxdiscovery.DefaultStateRoot(production.Paths.BrokerDirectory),
+			LinuxLauncher: launcher, GOOS: "linux",
+		})
+		if configureErr != nil {
+			_, _ = fmt.Fprintf(production.Output, "WARN sandbox discovery failed; explicit policy remains active: %v\n", configureErr)
+			configured = explicitConfig
+			found = nil
+		}
+		if debugLogsEnabled(production.Arguments.LogLevel) {
+			for _, item := range found {
+				_, _ = fmt.Fprintf(production.Output, "DEBUG sandbox discovered program=%s path=%s\n", item.Program, item.Executable)
+			}
+		}
+		for id, reason := range configured.UnavailableTemplates {
+			_, _ = fmt.Fprintf(production.Output, "WARN sandbox template=%s unavailable: %s\n", id, reason)
+		}
+		for id, reason := range configured.UnavailablePrograms {
+			_, _ = fmt.Fprintf(production.Output, "WARN sandbox program=%s unavailable: %s\n", id, reason)
+		}
+		if len(configured.Programs) != 0 || len(configured.Templates) != 0 || len(configured.UnavailableTemplates) != 0 {
+			configured, configureErr = sandboxpolicy.Normalize(configured)
+			if configureErr != nil {
+				return fmt.Errorf("protected sandbox launch policy: %w", configureErr)
+			}
+			sandboxUnavailable = sandboxDiagnostics(configured)
+			resolved.Authority.Sandbox, configureErr = json.Marshal(configured)
+			if configureErr != nil {
+				return configureErr
+			}
+		} else {
+			resolved.Authority.Sandbox = nil
+		}
+	}
 	if sandboxConfigured(resolved.Authority.Sandbox) {
 		var value sandboxLaunchPolicy
 		decodeErr := json.Unmarshal(resolved.Authority.Sandbox, &value)
@@ -370,8 +419,8 @@ func RunLinuxProduction(parent context.Context, production LinuxProduction, read
 	launchPolicy := policy.Default(policy.LaunchAuthority{Backend: "linux", CredentialClass: linuxCredentialClass(),
 		ProtectedDigest: resolved.Digest}, policy.CommandAuthority{NodeCommands: nodeCommands, Callbacks: callbackBindings.IDs()})
 	native := fileConfig.Native(func(format string, values ...any) {
-		if production.Output != nil {
-			_, _ = fmt.Fprintf(production.Output, "network: "+format+"\n", values...)
+		if production.Output != nil && debugLogsEnabled(production.Arguments.LogLevel) {
+			_, _ = fmt.Fprintf(production.Output, "DEBUG network "+format+"\n", values...)
 		}
 	})
 	if production.SystemRandomSeed != nil {
@@ -422,7 +471,7 @@ func RunLinuxProduction(parent context.Context, production LinuxProduction, read
 	if err := applyAdaptiveLinuxStatus(&isolationStatus, production, resolved.Digest, trustedPlan); err != nil {
 		return fmt.Errorf("observe selected isolation plan: %w", err)
 	}
-	logAdaptiveLinuxStatus(production.Output, "selected", isolationStatus)
+	logAdaptiveLinuxStatus(production.Output, "selected", isolationStatus, debugLogsEnabled(production.Arguments.LogLevel))
 	launch := LinuxLaunch{Runtime: runtime, Writer: writer, Helper: helper,
 		RuntimeInput: roleentry.RuntimeInput{Version: protocol.Version, Production: true, NodeCommands: runtimeNodeCommands, Options: roleentry.RuntimeOptions{
 			LogLevel: production.Arguments.LogLevel, LogWorkers: production.Arguments.LogWorkers,
@@ -436,10 +485,20 @@ func RunLinuxProduction(parent context.Context, production LinuxProduction, read
 		Journal: journal, Admin: admin, Output: production.Output, Callbacks: callbackBindings,
 	}
 	if sandboxConfig != nil {
-		launch.Sandbox = &LinuxSandbox{Policy: slices.Clone(resolved.Authority.Sandbox)}
+		launch.Sandbox = &LinuxSandbox{Policy: slices.Clone(resolved.Authority.Sandbox), Unavailable: sandboxUnavailable}
 	}
 	if cgroups != nil {
 		launch.Cgroups = cgroups.Roles()
+		if launch.Sandbox != nil {
+			root, rootErr := launch.Cgroups.SandboxRootPath()
+			if rootErr != nil {
+				return rootErr
+			}
+			launch.Sandbox.Policy, rootErr = setSandboxCgroupRoot(launch.Sandbox.Policy, root)
+			if rootErr != nil {
+				return rootErr
+			}
+		}
 	}
 	return RunLinux(parent, launch, func(finalStatus roleentry.RuntimeIsolationStatus) error {
 		if production.Profile == linuxprofile.ProfileUser {
@@ -452,12 +511,26 @@ func RunLinuxProduction(parent context.Context, production LinuxProduction, read
 				}
 			}
 		}
-		logAdaptiveLinuxStatus(production.Output, "verified", finalStatus)
+		logAdaptiveLinuxStatus(production.Output, "verified", finalStatus, debugLogsEnabled(production.Arguments.LogLevel))
 		if ready != nil {
 			ready()
 		}
 		return nil
 	})
+}
+
+func sandboxDiagnostics(config sandboxpolicy.Config) sandboxrole.SandboxDiagnostics {
+	result := sandboxrole.SandboxDiagnostics{
+		Templates: make(map[string]string, len(config.UnavailableTemplates)),
+		Programs:  make(map[string]string, len(config.UnavailablePrograms)),
+	}
+	for id, reason := range config.UnavailableTemplates {
+		result.Templates[string(id)] = reason
+	}
+	for id, reason := range config.UnavailablePrograms {
+		result.Programs[string(id)] = reason
+	}
+	return result
 }
 
 func sandboxConfigured(value []byte) bool {
@@ -472,7 +545,9 @@ func sandboxConfigured(value []byte) bool {
 	}
 	_, programs := root["Programs"]
 	_, templates := root["Templates"]
-	return programs || templates
+	var discover bool
+	_ = json.Unmarshal(root["DiscoverSystemPrograms"], &discover)
+	return programs || templates || discover
 }
 
 func validateHeldPrivateTree(held *os.File, path string, identity LinuxIdentity) error {
@@ -637,32 +712,30 @@ func directoryPathsOverlap(left, right string) (bool, error) {
 	return contains(left, rightIdentity)
 }
 
-func logAdaptiveLinuxStatus(output io.Writer, state string, status roleentry.RuntimeIsolationStatus) {
+func debugLogsEnabled(level string) bool {
+	return strings.EqualFold(strings.TrimSpace(level), "debug")
+}
+
+func setSandboxCgroupRoot(data []byte, root string) ([]byte, error) {
+	var config sandboxpolicy.Config
+	if err := json.Unmarshal(data, &config); err != nil {
+		return nil, fmt.Errorf("decode sandbox policy for managed cgroup: %w", err)
+	}
+	config.LinuxCgroupRoot = root
+	result, err := json.Marshal(config)
+	if err != nil {
+		return nil, fmt.Errorf("encode sandbox policy for managed cgroup: %w", err)
+	}
+	return result, nil
+}
+
+func logAdaptiveLinuxStatus(output io.Writer, state string, status roleentry.RuntimeIsolationStatus, debug bool) {
 	if output == nil {
 		return
 	}
-	_, _ = fmt.Fprintf(output, "INFO isolation policy=%s profile=%s state=%s reduced=%t\n",
-		status.RequestedPolicy, status.ProfileID, state, status.Reduced)
-	roles := make([]string, 0, len(status.Mechanisms))
-	for role := range status.Mechanisms {
-		roles = append(roles, role)
-	}
-	slices.Sort(roles)
-	for _, role := range roles {
-		mechanisms := make([]string, 0, len(status.Mechanisms[role]))
-		for name, mechanism := range status.Mechanisms[role] {
-			value := name + ":" + mechanism.State
-			if mechanism.Reason != "" {
-				value += ":" + mechanism.Reason
-			}
-			mechanisms = append(mechanisms, value)
-		}
-		slices.Sort(mechanisms)
-		credentials := status.Credentials[role]
-		capabilities := status.CapabilitySets[role]
-		_, _ = fmt.Fprintf(output, "INFO isolation role=%s uid=%d gid=%d mechanisms=%s effective_caps=%s ambient_caps=%s\n",
-			role, credentials.EffectiveUID, credentials.EffectiveGID, strings.Join(mechanisms, ","),
-			strings.Join(capabilities.Effective, ","), strings.Join(capabilities.Ambient, ","))
+	if debug {
+		_, _ = fmt.Fprintf(output, "DEBUG isolation state=%s policy=%s profile=%s reduced=%t roles=%d\n",
+			state, status.RequestedPolicy, status.ProfileID, status.Reduced, len(status.Mechanisms))
 	}
 	for _, warning := range status.Warnings {
 		_, _ = fmt.Fprintf(output, "WARN isolation role=%s reason=%s effect=%s feature=%s\n",

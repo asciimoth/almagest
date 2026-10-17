@@ -164,9 +164,11 @@ func (n *sandboxOwnerTestNode) OnInit(w *pasta.Workspace, l pasta.Logger, id uin
 	return nil
 }
 func (n *sandboxOwnerTestNode) OnReady() error {
-	_, err := n.base.Sandboxes(context.Background())
-	n.bound <- err
-	return err
+	go func() {
+		_, err := n.base.Sandboxes(context.Background())
+		n.bound <- err
+	}()
+	return nil
 }
 
 func TestEngineSandboxOwnersPersistRenameAndRelease(t *testing.T) {
@@ -176,6 +178,14 @@ func TestEngineSandboxOwnersPersistRenameAndRelease(t *testing.T) {
 	engineAPI, err := BuildEngine(context.Background(), cfg, logging.NewDebugLogFactory(8), newEngineTestDebugSystem(), nil, nil, nil, nil, []pasta.NodeClass{sandboxOwnerTestClass{bound: bound}}, nil, false, WithSandboxes(service))
 	if err != nil {
 		t.Fatal(err)
+	}
+	select {
+	case bindErr := <-bound:
+		if bindErr != nil {
+			t.Fatalf("sandbox bind during engine startup: %v", bindErr)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("sandbox bind did not resume after workspace startup")
 	}
 	snapshot, _ := engineAPI.WorkspaceSnapshot(MainWorkspace)
 	var id uint64

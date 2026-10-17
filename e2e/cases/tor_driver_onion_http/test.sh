@@ -78,7 +78,7 @@ for torrc in "$CHUTNEY_DATA_DIR"/nodes/*/torrc; do
 done
 [[ -n "$client_torrc" ]] || fail "Chutney did not generate a client template"
 
-export ALMAGEST_TOR_E2E_TORRC=/tmp/almagest-private-torrc
+private_torrc=/tmp/almagest-private-torrc
 awk '
 	$1 == "TestingTorNetwork" ||
 	$1 == "AddressDisableIPv6" ||
@@ -86,13 +86,57 @@ awk '
 	$1 == "DirAuthority" ||
 	$1 == "AlternateDirAuthority" ||
 	$1 == "AlternateBridgeAuthority"
-' "$client_torrc" >"$ALMAGEST_TOR_E2E_TORRC"
-chmod 0644 "$ALMAGEST_TOR_E2E_TORRC"
+' "$client_torrc" >"$private_torrc"
+chmod 0644 "$private_torrc"
+python3 - "$private_torrc" protected_alm.hujson <<'PY'
+import json
+import os
+import pathlib
+import re
+import subprocess
+import sys
+
+arguments = []
+for raw in pathlib.Path(sys.argv[1]).read_text(encoding="utf-8").splitlines():
+    key, value = raw.split(maxsplit=1)
+    arguments.extend(({"Literal": "--" + key}, {"Literal": value}))
+argument_replacement = ",\n".join("\t\t\t\t\t" + json.dumps(item) for item in arguments)
+
+libraries = []
+output = subprocess.run(["ldd", "/usr/bin/tor"], check=True, capture_output=True, text=True).stdout
+for raw in output.splitlines():
+    match = re.match(r"\s*\S+\s+=>\s+(/\S+)", raw)
+    if match is None:
+        match = re.match(r"\s*(/\S+)\s+\(", raw)
+    if match is None:
+        continue
+    target = match.group(1)
+    libraries.append({"Source": os.path.realpath(target), "Target": target, "Executable": True})
+library_replacement = ",\n".join("\t\t\t\t\t" + json.dumps(item) for item in libraries)
+
+path = pathlib.Path(sys.argv[2])
+text = path.read_text(encoding="utf-8")
+replacements = {
+    "\t\t\t\t\t// %E2E_TOR_ARGUMENTS%": argument_replacement,
+    "\t\t\t\t\t// %E2E_TOR_READ_ONLY%": library_replacement,
+}
+for marker, replacement in replacements.items():
+    if text.count(marker) != 1:
+        raise SystemExit(f"Tor policy marker is missing or duplicated: {marker.strip()}")
+    text = text.replace(marker, replacement)
+path.write_text(text, encoding="utf-8")
+PY
 
 start_daemon
 
-wait_node_class_available "almagest/XTorDriver" \
-	|| fail "experimental Tor node class is unavailable"
+wait_node_class_available "almagest/TorDriver" \
+	|| fail "Tor node class is unavailable"
+cli admin hello --client-name tor-driver-onion >/tmp/tor-driver-onion-hello.json
+jq -e '
+	.execution_mode == "isolation"
+	and .subprogram_sandbox.templates.tor.strict_satisfied
+	and .subprogram_sandbox.templates.tor.full_boundary
+' /tmp/tor-driver-onion-hello.json >/dev/null
 for name in \
 	"Tor service" \
 	"Tor client" \
@@ -108,12 +152,14 @@ service_tor="$(node_id_by_name "Tor service")"
 client_tor="$(node_id_by_name "Tor client")"
 http_client="$(node_id_by_name "Onion HTTP client")"
 
-# The two graph nodes must own two different Tor processes.
-# shellcheck disable=SC2016 # $1 belongs to the inner shell.
+# The two graph nodes must own two different sandboxed Tor processes. Chutney
+# uses UID 1000. A private user namespace can map the configured sandbox UID
+# to a different UID in this parent namespace.
+# shellcheck disable=SC2016 # The command substitution and awk fields belong to the inner shell.
 retry "$ALMAGEST_E2E_TIMEOUT" "two Tor child processes" sh -c \
-	'test "$(pgrep -P "$1" -x tor | wc -l)" -eq 2' sh "$daemon_pid" \
+	'test "$(ps -C tor -o uid= | awk '\''$1 != 1000 { count++ } END { print count + 0 }'\'')" -eq 2' \
 	|| fail "almagestd did not start two Tor child processes"
-mapfile -t tor_pids < <(pgrep -P "$daemon_pid" -x tor | sort -n)
+mapfile -t tor_pids < <(ps -C tor -o pid=,uid= | awk '$2 != 1000 { print $1 }' | sort -n)
 [[ "${#tor_pids[@]}" == 2 && "${tor_pids[0]}" != "${tor_pids[1]}" ]] \
 	|| fail "Tor nodes do not have distinct child processes"
 

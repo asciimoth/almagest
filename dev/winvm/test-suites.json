@@ -131,15 +131,16 @@
             "-tags=winintegration",
             "./integration",
             "-run",
-            "^TestWindowsSandboxModeMatrix$",
+            "^(TestWindowsSandboxModeMatrix|TestWindowsTorDriverSandboxModeMatrix)$",
             "-count=1"
           ],
           "prebuiltTest": "dev\\winvm\\almagest-sandbox-matrix.test.exe",
           "prebuiltPackage": "github.com/asciimoth/almagest/bin/integration",
-          "prebuiltRun": "^TestWindowsSandboxModeMatrix$",
+          "prebuiltRun": "^(TestWindowsSandboxModeMatrix|TestWindowsTorDriverSandboxModeMatrix)$",
           "eventFile": "sandbox-windows-mode-matrix-ordinary.jsonl",
           "requiredTests": [
-            "github.com/asciimoth/almagest/bin/integration::TestWindowsSandboxModeMatrix"
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsSandboxModeMatrix",
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsTorDriverSandboxModeMatrix"
           ]
         },
         {"id": "m2::execution-identity-standard-user", "kind": "identity"},
@@ -547,8 +548,7 @@
             "github.com/asciimoth/almagest/lib/http::TestHTTPServerThroughPlainSocksBindDoesNotStopBeforeFirstAccept",
             "github.com/asciimoth/almagest/lib/socks::TestSocksgoEmptyDefaultHostPreservesWildcardFamily",
             "github.com/asciimoth/almagest/lib/links::TestTunFailureObserverDoesNotReturnUpAfterTerminalFailure",
-            "github.com/asciimoth/almagest/lib/wireguard::TestWireGuardE2EOverSocksSymmetricGost",
-            "github.com/asciimoth/almagest/lib/experimental::TestXTorDriverWindowsBestEffortWarnsWithoutContainment"
+            "github.com/asciimoth/almagest/lib/wireguard::TestWireGuardE2EOverSocksSymmetricGost"
           ]
         },
         {
@@ -735,15 +735,16 @@
             "-tags=winintegration",
             "./integration",
             "-run",
-            "^TestWindowsSandboxModeMatrix$",
+            "^(TestWindowsSandboxModeMatrix|TestWindowsTorDriverSandboxModeMatrix)$",
             "-count=1"
           ],
           "prebuiltTest": "dev\\winvm\\almagest-sandbox-matrix.test.exe",
           "prebuiltPackage": "github.com/asciimoth/almagest/bin/integration",
-          "prebuiltRun": "^TestWindowsSandboxModeMatrix$",
+          "prebuiltRun": "^(TestWindowsSandboxModeMatrix|TestWindowsTorDriverSandboxModeMatrix)$",
           "eventFile": "sandbox-windows-mode-matrix-elevated.jsonl",
           "requiredTests": [
-            "github.com/asciimoth/almagest/bin/integration::TestWindowsSandboxModeMatrix"
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsSandboxModeMatrix",
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsTorDriverSandboxModeMatrix"
           ]
         },
         {
@@ -806,16 +807,6 @@
           "requiredTests": [
             "github.com/asciimoth/almagest/bin/internal/isolation/network::TestWindowsNetworkTun",
             "github.com/asciimoth/almagest/bin/internal/isolation/supervision::TestWindowsNativeReconcilerFailsClosed"
-          ]
-        },
-        {
-          "id": "m6::xtor-restricted-token",
-          "kind": "go",
-          "module": "lib",
-          "arguments": ["./experimental", "-run", "^TestWindowsXTorElevatedParentDropsAdministratorPrivileges$"],
-          "eventFile": "m6-xtor-restricted-token.jsonl",
-          "requiredTests": [
-            "github.com/asciimoth/almagest/lib/experimental::TestWindowsXTorElevatedParentDropsAdministratorPrivileges"
           ]
         },
         {

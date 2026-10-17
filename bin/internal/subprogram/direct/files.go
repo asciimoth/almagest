@@ -117,6 +117,24 @@ type files struct {
 
 var _ sandbox.Files = (*files)(nil)
 
+func (f *files) chown(file *os.File) error {
+	if !f.instance.nativeProfile {
+		return nil
+	}
+	return file.Chown(int(f.instance.nativeUID), int(f.instance.nativeGID))
+}
+
+func (f *files) chownPath(name string) error {
+	if !f.instance.nativeProfile {
+		return nil
+	}
+	file, err := safeRootOpen(f.root.root, name)
+	if err != nil {
+		return err
+	}
+	return errors.Join(f.chown(file), file.Close())
+}
+
 func (f *files) withLock(ctx context.Context, fn func() error) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -160,7 +178,17 @@ func (f *files) MkdirAll(ctx context.Context, name string, mode fs.FileMode) err
 		if entries+missing > storageEntryLimit(f.instance) {
 			return sandbox.ErrQuota
 		}
-		return f.root.root.MkdirAll(name, mode.Perm())
+		if err := f.root.root.MkdirAll(name, mode.Perm()); err != nil {
+			return err
+		}
+		current := ""
+		for _, part := range strings.Split(name, "/") {
+			current = path.Join(current, part)
+			if err := f.chownPath(current); err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 }
 
@@ -186,6 +214,10 @@ func (f *files) TempDir(ctx context.Context, directory, pattern string) (string,
 			candidate := path.Join(directory, name)
 			err = f.root.root.Mkdir(candidate, 0o700)
 			if err == nil {
+				if err = f.chownPath(candidate); err != nil {
+					_ = f.root.root.Remove(candidate)
+					return err
+				}
 				result = candidate
 				return nil
 			}
@@ -286,6 +318,12 @@ func (f *files) Open(ctx context.Context, name string, options sandbox.OpenOptio
 				return err
 			}
 		}
+		if options.Create {
+			if err := f.chown(file); err != nil {
+				_ = file.Close()
+				return err
+			}
+		}
 		f.root.open++
 		result = &trackedFile{File: file, root: f.root, owner: f.instance, rootID: f.rootID, name: name, size: info.Size(), append: options.Append}
 		if err := f.instance.trackFile(result); err != nil {
@@ -355,6 +393,11 @@ func (f *files) WriteFile(ctx context.Context, name string, data []byte, mode fs
 		}
 		if current.Mode()&os.ModeSymlink != 0 || !heldInfo.Mode().IsRegular() || !os.SameFile(current, heldInfo) || openedFileHasMultipleLinks(held, heldInfo) {
 			return sandbox.ErrDenied
+		}
+		if created {
+			if err := f.chown(held); err != nil {
+				return err
+			}
 		}
 		if f.rootID == sandbox.Temporary {
 			usage, _, usageErr := rootUsage(f.root.root, ".", storageEntryLimit(f.instance))

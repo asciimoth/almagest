@@ -46,6 +46,17 @@ func TestLinuxLandlockProfileLaunchAndDenial(t *testing.T) {
 	if err = os.WriteFile(deniedExecutable, executableData, 0o755); err != nil {
 		t.Fatal(err)
 	}
+	approvedExecutable := filepath.Join(root, "approved-program")
+	if err = os.WriteFile(approvedExecutable, executableData, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Link(approvedExecutable, filepath.Join(root, "approved-program-alias")); err != nil {
+		t.Fatal(err)
+	}
+	dynamicDependency := filepath.Join(root, "dynamic-dependency")
+	if err = os.WriteFile(dynamicDependency, []byte("mapped executable data"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	readOnly := filepath.Join(root, "read-only")
 	if err = os.Mkdir(readOnly, 0o755); err != nil {
 		t.Fatal(err)
@@ -64,10 +75,14 @@ func TestLinuxLandlockProfileLaunchAndDenial(t *testing.T) {
 	}
 	mode := sandbox.Auto
 	readOnlyTarget := readOnly
+	executableTarget := approvedExecutable
+	dynamicDependencyTarget := dynamicDependency
 	fullExpected := os.Geteuid() == 0 && os.Getenv("E2E_CGROUP_PARENT") != ""
 	if fullExpected {
 		mode = sandbox.Strict
 		readOnlyTarget = "/approved"
+		executableTarget = "/approved-executable"
+		dynamicDependencyTarget = "/dynamic-dependency"
 	}
 	config := policy.Config{
 		Mode: mode, TemporaryRoot: filepath.Join(root, "temporary"), RegistryRoot: filepath.Join(root, "registry"), LinuxLauncher: launcher,
@@ -79,7 +94,7 @@ func TestLinuxLandlockProfileLaunchAndDenial(t *testing.T) {
 		}, "denied": {Executable: deniedExecutable, Builder: "fixed-v1"}},
 		Templates: map[sandbox.TemplateID]policy.Template{"native": {
 			AllowedClasses: []string{"test/Node"}, Programs: []sandbox.ProgramID{"helper", "denied"}, RuntimeProfile: "linux-landlock-v1",
-			Linux: policy.Linux{UID: uint32(uid), GID: uint32(gid)}, PersistentRoot: filepath.Join(root, "persistent"), ReadOnly: []policy.ReadOnly{{Source: readOnly, Target: readOnlyTarget}}, Limits: policy.TemplateLimits{Commands: 2, Tasks: 4096, Files: 64, Sockets: 64, MemoryBytes: 8 << 30, CPUPercent: 100, TransferBytes: 1 << 20, TemporaryBytes: 32 << 20, OutputBytes: 1 << 20},
+			Linux: policy.Linux{UID: uint32(uid), GID: uint32(gid)}, PersistentRoot: filepath.Join(root, "persistent"), ReadOnly: []policy.ReadOnly{{Source: readOnly, Target: readOnlyTarget}, {Source: approvedExecutable, Target: executableTarget, Executable: true}, {Source: dynamicDependency, Target: dynamicDependencyTarget, Executable: true}}, Limits: policy.TemplateLimits{Commands: 2, Tasks: 4096, Files: 64, Sockets: 64, MemoryBytes: 8 << 30, CPUPercent: 100, TransferBytes: 1 << 20, TemporaryBytes: 32 << 20, OutputBytes: 1 << 20},
 		}},
 	}
 	probe := policy.Probe{Platform: "linux", EffectiveIdentity: strconv.Itoa(os.Geteuid()), Available: map[sandbox.Feature]bool{sandbox.Environment: true, sandbox.HandleInheritance: true}}
@@ -89,6 +104,13 @@ func TestLinuxLandlockProfileLaunchAndDenial(t *testing.T) {
 	}
 	instance, err := backend.Prepare(context.Background(), sandbox.Owner{Workspace: "main", Key: "native-key", Epoch: 1, Class: "test/Node", Name: "Native", NameRevision: 1}, "main", "native", 1)
 	if err != nil {
+		t.Fatal(err)
+	}
+	files, err := instance.FS(sandbox.Temporary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = files.WriteFile(context.Background(), "private-input", []byte("private"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
@@ -150,6 +172,18 @@ func TestLinuxLandlockProfileLaunchAndDenial(t *testing.T) {
 	if err != nil || string(output) != "native-ok" {
 		t.Fatalf("native output = %q, %v", output, err)
 	}
+	privatePath, err := instance.ChildPath(sandbox.Path{Root: sandbox.Temporary, Rel: "private-input"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sandboxCommand, err = instance.NewCommand("helper", launch("read", privatePath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	output, err = sandbox.Output(context.Background(), sandboxCommand, 128)
+	if err != nil || string(output) != "private" {
+		t.Fatalf("sandbox-created private file = %q, %v", output, err)
+	}
 	deniedPath, err := instance.ProgramPath("denied")
 	if err != nil {
 		t.Fatal(err)
@@ -161,6 +195,16 @@ func TestLinuxLandlockProfileLaunchAndDenial(t *testing.T) {
 	output, err = sandbox.Output(context.Background(), sandboxCommand, 128)
 	if err != nil || string(output) != "denied" {
 		t.Fatalf("undeclared descendant execution = %q, %v", output, err)
+	}
+	if fullExpected {
+		sandboxCommand, err = instance.NewCommand("helper", launch("exec-path", executableTarget))
+		if err != nil {
+			t.Fatal(err)
+		}
+		output, err = sandbox.Output(context.Background(), sandboxCommand, 128)
+		if err != nil || string(output) != "escapedescaped" {
+			t.Fatalf("approved read-only execution = %q, %v", output, err)
+		}
 	}
 	sandboxCommand, err = instance.NewCommand("helper", launch("identity", "unused"))
 	if err != nil {

@@ -12,7 +12,6 @@ import (
 	cmdrunner "github.com/asciimoth/almagest/bin/almagestd/command"
 	"github.com/asciimoth/almagest/bin/api"
 	sandboxpolicy "github.com/asciimoth/almagest/bin/internal/subprogram/policy"
-	experimentalnodes "github.com/asciimoth/almagest/lib/experimental"
 	"github.com/asciimoth/almagest/lib/storage"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/configer/hujson"
@@ -209,7 +208,7 @@ func parseConfig(cfg, prt []byte, isolated bool) (*Config, error) {
 	if protected.Sandbox.Mode == "" {
 		protected.Sandbox.Mode = "auto"
 	}
-	if len(protected.Sandbox.Programs) != 0 || len(protected.Sandbox.Templates) != 0 {
+	if !protected.Sandbox.DiscoverSystemPrograms && (len(protected.Sandbox.Programs) != 0 || len(protected.Sandbox.Templates) != 0) {
 		normalized, normalizeErr := sandboxpolicy.Normalize(protected.Sandbox)
 		if normalizeErr != nil {
 			return nil, fmt.Errorf("protected sandbox config: %w", normalizeErr)
@@ -228,18 +227,10 @@ func parseConfig(cfg, prt []byte, isolated bool) (*Config, error) {
 type ProtectedConfig struct {
 	Admin         AdminAPIConfig
 	CommandRunner cmdrunner.Config
-	Experimental  ProtectedExperimentalConfig
 	Sandbox       sandboxpolicy.Config
 	Secrets       map[string]ProtectedSecretConfig
 	System        configer.Config `json:"-"`
 	TLS           ProtectedTLSConfig
-}
-
-// ProtectedExperimentalConfig contains host-facing settings for experimental
-// nodes. These values are read once and are never exposed through editable
-// workspace configuration.
-type ProtectedExperimentalConfig struct {
-	TorDriver experimentalnodes.XTorDriverHostConfig
 }
 
 // ProtectedSecretConfig defines one immutable secret available to selected
@@ -414,6 +405,9 @@ func (p *ProtectedConfig) TLSBuiltinCA() (*tlsBuiltinCA, error) {
 }
 
 func (p *ProtectedConfig) Merge(args *args.Args) {
+	if args.DiscoverSystemPrograms {
+		p.Sandbox.DiscoverSystemPrograms = true
+	}
 	if args.WebAdmin != nil {
 		p.Admin.Web = *args.WebAdmin
 	}

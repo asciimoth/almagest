@@ -1,6 +1,7 @@
 package policy
 
 import (
+	"bytes"
 	"encoding/json"
 	"path/filepath"
 	"reflect"
@@ -181,6 +182,28 @@ func TestNormalizeRejectsDescendantCycles(t *testing.T) {
 	input.Templates["test"] = v
 	if _, err := Normalize(input); err == nil {
 		t.Fatal("descendant cycle accepted")
+	}
+}
+
+func TestNormalizeAllowsRuntimeOnlyUnavailableTemplate(t *testing.T) {
+	root := t.TempDir()
+	input := Config{
+		Mode: sandbox.Strict, TemporaryRoot: filepath.Join(root, "temporary"), RegistryRoot: filepath.Join(root, "registry"),
+		UnavailableTemplates: map[sandbox.TemplateID]string{"tor": "Tor was not found"},
+	}
+	got, err := Normalize(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.UnavailableTemplates["tor"] != "Tor was not found" {
+		t.Fatalf("diagnostics = %+v", got.UnavailableTemplates)
+	}
+	encoded, err := json.Marshal(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(encoded, []byte("Tor was not found")) {
+		t.Fatalf("runtime diagnostic was serialized in protected policy: %s", encoded)
 	}
 }
 

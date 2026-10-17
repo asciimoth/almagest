@@ -24,7 +24,7 @@ class DaemonRecipeTests(unittest.TestCase):
             check=False,
         )
 
-    def test_daemon_recipe_does_not_build_isolation_payload(self):
+    def test_daemon_recipe_builds_only_the_required_subprogram_launcher(self):
         result = subprocess.run(
             ["just", "--dry-run", "daemon"],
             cwd=ROOT,
@@ -36,14 +36,16 @@ class DaemonRecipeTests(unittest.TestCase):
         output = result.stdout + result.stderr
         self.assertIn("go build -o ./almagestd", output)
         self.assertNotIn("build/isolation-linux", output)
-        self.assertNotIn("libseccomp", output)
+        self.assertIn("almagest-subprogram-launcher", output)
+        self.assertIn("libseccomp", output)
+        self.assertNotIn("almagest-linux-role-launcher", output)
 
     def test_default_is_direct_and_uses_local_development_options(self):
         result = self.run_runner("")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn(str(ROOT / "almagestd"), result.stdout)
         for required in ("--no-isolation", "/local", "--unsafe-config",
-                         "--tmp-unix-admin"):
+                         "--tmp-unix-admin", "--discover-system-programs"):
             self.assertIn(required, result.stdout)
         self.assertNotIn("--experimental", result.stdout)
 
@@ -51,7 +53,7 @@ class DaemonRecipeTests(unittest.TestCase):
         result = self.run_runner("--no-isolation")
         self.assertEqual(result.returncode, 0, result.stderr)
         for required in ("--no-isolation", "/local", "--unsafe-config",
-                         "--tmp-unix-admin"):
+                         "--tmp-unix-admin", "--discover-system-programs"):
             self.assertIn(required, result.stdout)
         self.assertNotIn("--experimental", result.stdout)
 
@@ -85,6 +87,7 @@ class DaemonRecipeTests(unittest.TestCase):
         self.assertIn("ALMAGEST_ISOLATION_DEVELOPMENT_IDENTITIES=", result.stdout)
         self.assertIn("/var/lib/almagest/dev-", result.stdout)
         self.assertIn("/run/almagest-dev-", result.stdout)
+        self.assertIn("--discover-system-programs", result.stdout)
         self.assertNotIn("build/isolation-linux/almagestd", result.stdout)
 
     def test_sudo_experimental_requires_explicit_direct_mode(self):

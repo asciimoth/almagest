@@ -26,21 +26,22 @@ func TestPolicyBootstrapRoundTripUsesChunks(t *testing.T) {
 	defer left.Close()  //nolint:errcheck
 	defer right.Close() //nolint:errcheck
 	written := make(chan error, 1)
-	go func() { written <- SendPolicy(context.Background(), left, bootstrap, policy) }()
-	gotBootstrap, gotPolicy, err := ReceivePolicy(context.Background(), right)
+	unavailable := SandboxDiagnostics{Templates: map[string]string{"tor": "Tor was not found"}}
+	go func() { written <- SendPolicy(context.Background(), left, bootstrap, policy, unavailable) }()
+	gotBootstrap, gotPolicy, gotUnavailable, err := ReceivePolicy(context.Background(), right)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := <-written; err != nil {
 		t.Fatal(err)
 	}
-	if gotBootstrap != bootstrap || !bytes.Equal(gotPolicy, policy) {
+	if gotBootstrap != bootstrap || !bytes.Equal(gotPolicy, policy) || gotUnavailable.Templates["tor"] != "Tor was not found" {
 		t.Fatal("sandbox policy bootstrap changed its input")
 	}
 }
 
 func TestPolicyBootstrapRejectsBounds(t *testing.T) {
-	if err := SendPolicy(context.Background(), nil, roleentry.Bootstrap{}, []byte("x")); !errors.Is(err, protocol.ErrInvalidContract) {
+	if err := SendPolicy(context.Background(), nil, roleentry.Bootstrap{}, []byte("x"), SandboxDiagnostics{}); !errors.Is(err, protocol.ErrInvalidContract) {
 		t.Fatalf("nil stream: %v", err)
 	}
 	id, err := protocol.NewSessionID()
@@ -52,7 +53,7 @@ func TestPolicyBootstrapRejectsBounds(t *testing.T) {
 	left, right := net.Pipe()
 	defer left.Close()  //nolint:errcheck
 	defer right.Close() //nolint:errcheck
-	if err := SendPolicy(context.Background(), left, bootstrap, nil); !errors.Is(err, protocol.ErrInvalidContract) {
+	if err := SendPolicy(context.Background(), left, bootstrap, nil, SandboxDiagnostics{}); !errors.Is(err, protocol.ErrInvalidContract) {
 		t.Fatalf("empty policy: %v", err)
 	}
 }
@@ -83,7 +84,7 @@ func TestPolicyBootstrapRejectsWrongDigest(t *testing.T) {
 		}
 		written <- transport.WriteFrameDeadline(left, policyChunk{Sequence: 1, Data: policy}, deadline)
 	}()
-	if _, _, err := ReceivePolicy(context.Background(), right); !errors.Is(err, protocol.ErrInvalidContract) {
+	if _, _, _, err := ReceivePolicy(context.Background(), right); !errors.Is(err, protocol.ErrInvalidContract) {
 		t.Fatalf("ReceivePolicy error = %v", err)
 	}
 	if err := <-written; err != nil {

@@ -1,4 +1,4 @@
-package experimentalnodes
+package tornodes
 
 import (
 	"slices"
@@ -9,22 +9,22 @@ import (
 )
 
 const (
-	xTorNetworkKeyPrefix = "network:"
-	xTorServiceKeyPrefix = "service:"
+	torNetworkKeyPrefix = "network:"
+	torServiceKeyPrefix = "service:"
 )
 
-func xTorNetworkKey(name string) string { return xTorNetworkKeyPrefix + name }
-func xTorServiceKey(name string) string { return xTorServiceKeyPrefix + name }
+func torNetworkKey(name string) string { return torNetworkKeyPrefix + name }
+func torServiceKey(name string) string { return torServiceKeyPrefix + name }
 
-func xTorNetworkPort(name string) pasta.Port {
+func torNetworkPort(name string) pasta.Port {
 	return pasta.Port{Direction: "left", Name: "Network " + name, Types: []string{links.TypeNetwork}}
 }
 
-func xTorServicePort(name string) pasta.Port {
+func torServicePort(name string) pasta.Port {
 	return pasta.Port{Direction: "left", Name: "Onion " + name, Types: []string{links.TypeNetwork}}
 }
 
-func xTorDesiredPorts(config XTorDriverConfig) []struct {
+func torDesiredPorts(config TorDriverConfig) []struct {
 	key  string
 	port pasta.Port
 } {
@@ -36,18 +36,18 @@ func xTorDesiredPorts(config XTorDriverConfig) []struct {
 		out = append(out, struct {
 			key  string
 			port pasta.Port
-		}{key: xTorNetworkKey(network.Name), port: xTorNetworkPort(network.Name)})
+		}{key: torNetworkKey(network.Name), port: torNetworkPort(network.Name)})
 	}
 	for _, service := range config.Services {
 		out = append(out, struct {
 			key  string
 			port pasta.Port
-		}{key: xTorServiceKey(service.Name), port: xTorServicePort(service.Name)})
+		}{key: torServiceKey(service.Name), port: torServicePort(service.Name)})
 	}
 	return out
 }
 
-func reconcileXTorClassState(config XTorDriverConfig, state *pasta.NodeClassState) {
+func reconcileTorClassState(config TorDriverConfig, state *pasta.NodeClassState) {
 	if state == nil {
 		return
 	}
@@ -56,7 +56,7 @@ func reconcileXTorClassState(config XTorDriverConfig, state *pasta.NodeClassStat
 		byName[port.Name] = port
 	}
 	left := make([]pasta.Port, 0, len(config.Networks)+len(config.Services))
-	for _, desired := range xTorDesiredPorts(config) {
+	for _, desired := range torDesiredPorts(config) {
 		port := desired.port
 		if existing, ok := byName[port.Name]; ok {
 			port.ID = existing.ID
@@ -67,7 +67,7 @@ func reconcileXTorClassState(config XTorDriverConfig, state *pasta.NodeClassStat
 	}
 	right := nodekitNetworkPortRight()
 	for _, existing := range state.RightPorts {
-		if existing.Name == xTorOutboundPortName {
+		if existing.Name == torOutboundPortName {
 			right.ID = existing.ID
 			right.Node = existing.Node
 			right.Links = append([]uint64(nil), existing.Links...)
@@ -80,11 +80,11 @@ func reconcileXTorClassState(config XTorDriverConfig, state *pasta.NodeClassStat
 }
 
 func nodekitNetworkPortRight() pasta.Port {
-	return pasta.Port{Direction: "right", Name: xTorOutboundPortName, Types: []string{links.TypeNetwork}}
+	return pasta.Port{Direction: "right", Name: torOutboundPortName, Types: []string{links.TypeNetwork}}
 }
 
-func (n *xTorDriverNode) rebuildPorts() error {
-	desired := xTorDesiredPorts(n.config)
+func (n *torDriverNode) rebuildPorts() error {
+	desired := torDesiredPorts(n.config)
 	desiredByName := make(map[string]string, len(desired))
 	for _, item := range desired {
 		desiredByName[item.port.Name] = item.key
@@ -131,7 +131,7 @@ func (n *xTorDriverNode) rebuildPorts() error {
 	if n.outbound == 0 {
 		for _, portID := range snapshot.RightPorts {
 			port, ok := n.W.PortSnapshotLocked(portID)
-			if ok && port.Name == xTorOutboundPortName {
+			if ok && port.Name == torOutboundPortName {
 				n.outbound = portID
 				break
 			}
@@ -152,8 +152,8 @@ func (n *xTorDriverNode) rebuildPorts() error {
 		n.outbound = id
 	}
 	if port, ok := n.W.PortSnapshotLocked(n.outbound); ok {
-		if port.Name != xTorOutboundPortName {
-			if err := n.W.SetPortNameLocked(n.outbound, xTorOutboundPortName); err != nil {
+		if port.Name != torOutboundPortName {
+			if err := n.W.SetPortNameLocked(n.outbound, torOutboundPortName); err != nil {
 				return err
 			}
 		}
@@ -173,7 +173,7 @@ func (n *xTorDriverNode) rebuildPorts() error {
 	return n.W.SetNodePortOrderLocked(n.ID, "right", []uint64{n.outbound})
 }
 
-func (n *xTorDriverNode) sendOutputToLink(key string, link uint64, refresh bool) {
+func (n *torDriverNode) sendOutputToLink(key string, link uint64, refresh bool) {
 	if !n.ready || n.activeSources == nil {
 		return
 	}
@@ -188,7 +188,7 @@ func (n *xTorDriverNode) sendOutputToLink(key string, link uint64, refresh bool)
 	n.outputs.SendLocked(n.W, n.ID, link, source)
 }
 
-func (n *xTorDriverNode) sendAllOutputs() {
+func (n *torDriverNode) sendAllOutputs() {
 	if !n.ready {
 		return
 	}

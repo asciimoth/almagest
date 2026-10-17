@@ -162,6 +162,7 @@ func BuildEngine(
 		secrets:                  secrets,
 		tlsConfigs:               tlsConfigs,
 		mainWorkspace:            nil,
+		workspaceReady:           make(chan struct{}),
 		nextSubscriptionID:       100, // to avoid collision between our IDs and workspace ones
 		subscriptionIDMapping:    make(map[uint64]subMap),
 		notificationCallbacks:    make(map[uint64]NotificationCallback),
@@ -210,6 +211,7 @@ func BuildEngine(
 	work.SetNodeNameAvailableCallback(buildOptions.nodeNameAvailable)
 
 	engine.mainWorkspace = work
+	close(engine.workspaceReady)
 	snapshot := work.Snapshot()
 	if engine.sandboxOwners != nil {
 		engine.sandboxOwners.attachRestored(snapshot)
@@ -437,8 +439,9 @@ type engine struct {
 	configReconcileMu   sync.Mutex
 	configCommentPopups map[string]configCommentPopup
 
-	mainWorkspace *pasta.Workspace
-	workers       *workerTracker
+	mainWorkspace  *pasta.Workspace
+	workspaceReady chan struct{}
+	workers        *workerTracker
 
 	nextSubscriptionID uint64
 	// mapping from engine notification subscription IDs to internal
@@ -912,7 +915,7 @@ func (e *engine) Copy(workspace string, ids []uint64) string {
 	}
 
 	data := amnesianodes.SanitizeClipboard(e.mainWorkspace.Copy(ids))
-	return sanitizeXTorDriverClipboard(data)
+	return sanitizeTorDriverClipboard(data)
 }
 
 func (e *engine) CopyLocked(workspace string, ids []uint64) string {
@@ -921,7 +924,7 @@ func (e *engine) CopyLocked(workspace string, ids []uint64) string {
 	}
 
 	data := amnesianodes.SanitizeClipboard(e.mainWorkspace.CopyLocked(ids))
-	return sanitizeXTorDriverClipboard(data)
+	return sanitizeTorDriverClipboard(data)
 }
 
 func (e *engine) Paste(workspace string, data string) []uint64 {

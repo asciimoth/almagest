@@ -35,7 +35,7 @@ if [[ $experimental == 1 && $direct != 1 ]]; then
     exit 2
 fi
 
-common=(-l debug -w 8090 --debug-nodes --no-dns-cache-expiration)
+common=(-l debug -w 8090 --debug-nodes --no-dns-cache-expiration --discover-system-programs)
 if [[ $direct == 1 ]]; then
     arguments=(--no-isolation -c "$repo_root/local" --unsafe-config "${common[@]}")
     if [[ $elevated != 1 ]]; then

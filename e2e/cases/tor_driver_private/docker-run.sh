@@ -39,6 +39,7 @@ docker run --rm --label "$resource_label" --name "$container_name" \
 	--cidfile "$E2E_CASE_CIDFILE" \
 	--network "$network_name" \
 	--user root \
+	--privileged --device /dev/net/tun \
 	${E2E_DOCKER_RUN_ARGS:-} \
 	"${coverage_args[@]}" \
 	"$E2E_CASE_IMAGE" "$case_name"

@@ -3,15 +3,18 @@ package main
 import (
 	"context"
 	"reflect"
+	"slices"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/asciimoth/almagest/bin/almagestd/args"
 	cmdrunner "github.com/asciimoth/almagest/bin/almagestd/command"
 	"github.com/asciimoth/almagest/bin/almagestd/daemonservices"
+	"github.com/asciimoth/almagest/bin/internal/isolation/selection"
 	almagest "github.com/asciimoth/almagest/lib"
-	experimentalnodes "github.com/asciimoth/almagest/lib/experimental"
 	"github.com/asciimoth/almagest/lib/logging"
+	tornodes "github.com/asciimoth/almagest/lib/tor"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
 	sysnetdebug "github.com/asciimoth/gonnect/sysnet/debug"
@@ -19,26 +22,23 @@ import (
 	"github.com/asciimoth/pasta/pasta/std"
 )
 
-func TestDaemonNodeClassesRequireExperimentalOptIn(t *testing.T) {
-	host := experimentalnodes.XTorDriverHostConfig{TorExecutable: "/test/tor"}
-	disabled := daemonNodeClasses(cmdrunner.Config{}, nil, false, ProtectedExperimentalConfig{TorDriver: host})
-	if len(disabled) != 1 || disabled[0].ClassName() != NodeTypeProtectedCommand {
-		t.Fatalf("classes without experimental opt-in = %#v, want only %q", disabled, NodeTypeProtectedCommand)
+func TestDaemonNodeClassesIncludeStableTorDriver(t *testing.T) {
+	classes := daemonNodeClasses(cmdrunner.Config{}, nil)
+	if len(classes) != 2 || classes[0].ClassName() != NodeTypeProtectedCommand || classes[1].ClassName() != tornodes.NodeTypeTorDriver {
+		t.Fatalf("daemon classes = %#v, want command and stable TorDriver", classes)
 	}
+}
 
-	enabled := daemonNodeClasses(cmdrunner.Config{}, nil, true, ProtectedExperimentalConfig{TorDriver: host})
-	if len(enabled) != 2 || enabled[1].ClassName() != experimentalnodes.NodeTypeXTorDriver {
-		t.Fatalf("classes with experimental opt-in = %#v, want command and XTorDriver", enabled)
+func TestStableTorDriverIsAvailableInDefaultIsolationMode(t *testing.T) {
+	mode, err := selectExecutionModeForPlatform(args.Args{}, selection.Platform{OS: "linux", Arch: "amd64"})
+	if err != nil || mode != executionModeIsolation {
+		t.Fatalf("default execution mode = %q, %v", mode, err)
 	}
-	torClass, ok := enabled[1].(experimentalnodes.XTorDriverClass)
-	if !ok || !reflect.DeepEqual(torClass.Host, host) {
-		t.Fatalf("XTorDriver class = %#v, want host config %#v", enabled[1], host)
-	}
-	if got := daemonExperimentalNodeTypes(false); len(got) != 0 {
-		t.Fatalf("experimental API types without opt-in = %#v, want empty", got)
-	}
-	if got := daemonExperimentalNodeTypes(true); len(got) != 1 || !got[experimentalnodes.NodeTypeXTorDriver] {
-		t.Fatalf("experimental API types with opt-in = %#v, want XTorDriver", got)
+	classes := daemonNodeClasses(cmdrunner.Config{}, nil)
+	if !slices.ContainsFunc(classes, func(class pasta.NodeClass) bool {
+		return class.ClassName() == tornodes.NodeTypeTorDriver
+	}) {
+		t.Fatal("TorDriver is unavailable in the isolated runtime class set")
 	}
 }
 
@@ -295,7 +295,7 @@ func buildCommandNodeTestEngine(t *testing.T, cfg configer.Config, commandCfg cm
 		nil, nil,
 		nil,
 
-		daemonNodeClasses(commandCfg, dispatcher, false, ProtectedExperimentalConfig{}),
+		daemonNodeClasses(commandCfg, dispatcher),
 		nil,
 		true)
 

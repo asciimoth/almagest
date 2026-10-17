@@ -65,7 +65,7 @@ export type IsolationCapabilitySets = {
 export type IsolationResourceLimit = {
   name: string; requested: string; effective: string; unit: string; scope: string; source: string; enforcement: string;
 };
-export type IsolationWarning = { role: "network" | "runtime" | "config_writer" | "command_helper"; code: string; effect: string; feature: string };
+export type IsolationWarning = { role: "network" | "runtime" | "config_writer" | "command_helper" | "sandbox_supervisor"; code: string; effect: string; feature: string };
 
 export type SubprogramSandboxStatus = {
   mode: "off" | "auto" | "strict";
@@ -194,9 +194,10 @@ function parseSubprogramSandboxStatus(input: unknown): SubprogramSandboxStatus |
   const templates: Record<string, SubprogramTemplateStatus> = {};
   for (const [name, raw] of rawTemplates) {
     if (!isRecord(raw) || typeof raw.profile !== "string" || typeof raw.effective_identity !== "string" || typeof raw.strict_satisfied !== "boolean"
-      || typeof raw.full_boundary !== "boolean" || !Array.isArray(raw.features) || !Array.isArray(raw.warnings)
-      || raw.features.length > 32 || raw.warnings.length > 32
-      || !raw.warnings.every((warning) => typeof warning === "string" && warning.length <= 1024)) return null;
+      || typeof raw.full_boundary !== "boolean" || !Array.isArray(raw.features)) return null;
+    const rawWarnings = raw.warnings === null ? [] : raw.warnings;
+    if (!Array.isArray(rawWarnings) || raw.features.length > 32 || rawWarnings.length > 32
+      || !rawWarnings.every((warning) => typeof warning === "string" && warning.length <= 1024)) return null;
     const features: SubprogramTemplateStatus["features"] = [];
     for (const feature of raw.features) {
       if (!isRecord(feature) || typeof feature.feature !== "string" || typeof feature.reason !== "string"
@@ -204,7 +205,7 @@ function parseSubprogramSandboxStatus(input: unknown): SubprogramSandboxStatus |
       features.push({ feature: feature.feature, state: feature.state, reason: feature.reason });
     }
     templates[name] = { profile: raw.profile, effective_identity: raw.effective_identity, strict_satisfied: raw.strict_satisfied,
-      full_boundary: raw.full_boundary, features, warnings: [...raw.warnings] };
+      full_boundary: raw.full_boundary, features, warnings: [...rawWarnings] };
   }
   return { mode: input.mode, platform: input.platform, effective_identity: input.effective_identity,
     templates, limits, active_owners: Number(input.active_owners), orphaned_owners: Number(input.orphaned_owners),
@@ -250,10 +251,10 @@ function parseIsolationStatus(input: unknown): IsolationStatus | null {
   return adaptive ? { ...result, ...adaptive } : null;
 }
 
-const isolationRoles = new Set(["network", "runtime", "config_writer", "command_helper"]);
+const isolationRoles = new Set(["network", "runtime", "config_writer", "command_helper", "sandbox_supervisor"]);
 const mechanismNames = new Set(["landlock", "seccomp", "no-new-privileges", "descriptor-allowlist", "private-namespaces",
   "mount-namespace", "role-cgroups", "separate-host-identities", "capability-sets", "pidfd-supervision", "fixed-target",
-  "fixed-executable", "trusted-broker", "held-inputs"]);
+  "fixed-executable", "trusted-broker", "held-inputs", "trusted-supervisor", "session-bound-rpc", "bounded-relay"]);
 const mechanismStates = new Set(["applied", "unavailable", "not_requested", "not_applicable", "unknown"]);
 const reasonCodes = new Set(["profile-not-implemented", "not-delegated", "same-uid-profile", "inherited-lower", "unsupported",
   "not-required", "external-restriction", "verification-failed"]);

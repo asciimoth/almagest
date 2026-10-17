@@ -278,50 +278,6 @@ func TestProtectedConfigSystemView(t *testing.T) {
 	}
 }
 
-func TestProtectedConfigExperimentalTorDriver(t *testing.T) {
-	cfg, err := ParseConfig([]byte(`{}`), []byte(`{
-		"Experimental": {
-			"TorDriver": {
-				"TorExecutable": "/opt/tor/bin/tor",
-				"Obfs4Executable": "/opt/tor/bin/lyrebird",
-				"TempRoot": "/run/almagest/tor",
-				"StateRoot": "/var/lib/almagest/tor",
-				"Sandbox": "dynamic",
-				"StartupTimeout": "31s",
-				"CommandTimeout": "11s",
-				"DialTimeout": "91s",
-				"ShutdownTimeout": "12s",
-				"MaxCircuitDirtiness": "11m",
-				"CircuitBuildTimeout": "45s",
-				"Identity": {"UID": 2001, "GID": 2002}
-			}
-		}
-	}`))
-	if err != nil {
-		t.Fatal(err)
-	}
-	host := cfg.Protected.Experimental.TorDriver
-	if host.TorExecutable != "/opt/tor/bin/tor" || host.Obfs4Executable != "/opt/tor/bin/lyrebird" ||
-		host.TempRoot != "/run/almagest/tor" || host.StateRoot != "/var/lib/almagest/tor" || host.Sandbox != "dynamic" ||
-		host.StartupTimeout != "31s" || host.CommandTimeout != "11s" || host.DialTimeout != "91s" ||
-		host.ShutdownTimeout != "12s" || host.MaxCircuitDirtiness != "11m" || host.CircuitBuildTimeout != "45s" {
-		t.Fatalf("experimental Tor host config = %#v", host)
-	}
-	if host.Identity == nil || host.Identity.UID != 2001 || host.Identity.GID != 2002 {
-		t.Fatalf("experimental Tor identity = %#v", host.Identity)
-	}
-
-	defaults, err := ParseConfig([]byte(`{}`), []byte(`{}`))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := defaults.Protected.Experimental.TorDriver; got.TorExecutable != "" || got.Obfs4Executable != "" || got.Sandbox != "" ||
-		got.StartupTimeout != "" || got.CommandTimeout != "" || got.DialTimeout != "" || got.ShutdownTimeout != "" ||
-		got.MaxCircuitDirtiness != "" || got.CircuitBuildTimeout != "" || got.Identity != nil {
-		t.Fatalf("default experimental Tor config = %#v, want PATH and automatic identity", got)
-	}
-}
-
 func TestProtectedConfigSubprogramSandbox(t *testing.T) {
 	root := t.TempDir()
 	protected := fmt.Sprintf(`{
@@ -342,12 +298,13 @@ func TestProtectedConfigSubprogramSandbox(t *testing.T) {
 					"AllowedClasses": ["test/Node"],
 					"Programs": ["helper"],
 					"RuntimeProfile": "direct-v1",
+					"ReadOnly": [{"Source": %q, "Target": %q, "Executable": true}],
 					"PersistentRoot": %q,
 					"Limits": {"Commands": 2, "TemporaryBytes": 4096}
 				}
 			}
 		}
-	}`, filepath.Join(root, "temporary"), filepath.Join(root, "registry"), os.Args[0], filepath.Join(root, "persistent"))
+	}`, filepath.Join(root, "temporary"), filepath.Join(root, "registry"), os.Args[0], os.Args[0], os.Args[0], filepath.Join(root, "persistent"))
 	cfg, err := ParseConfig([]byte(`{}`), []byte(protected))
 	if err != nil {
 		t.Fatal(err)
@@ -355,12 +312,70 @@ func TestProtectedConfigSubprogramSandbox(t *testing.T) {
 	if cfg.Protected.Sandbox.Mode != "off" || cfg.Protected.Sandbox.Limits.Instances != 32 || cfg.Protected.Sandbox.Templates["test"].Limits.Commands != 2 {
 		t.Fatalf("sandbox policy = %+v", cfg.Protected.Sandbox)
 	}
+	if inputs := cfg.Protected.Sandbox.Templates["test"].ReadOnly; len(inputs) != 1 || !inputs[0].Executable {
+		t.Fatalf("sandbox executable read-only inputs = %+v", inputs)
+	}
 	defaults, err := ParseConfig([]byte(`{}`), []byte(`{}`))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if defaults.Protected.Sandbox.Mode != "auto" {
 		t.Fatalf("default sandbox mode = %q", defaults.Protected.Sandbox.Mode)
+	}
+}
+
+func TestTorDriverE2EProtectedConfigsUseValidatedSandboxPolicy(t *testing.T) {
+	for _, name := range []string{"tor_driver_private", "tor_driver_onion_http"} {
+		t.Run(name, func(t *testing.T) {
+			data, err := os.ReadFile(filepath.Join("..", "..", "e2e", "cases", name, "protected_alm.hujson"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			text := strings.NewReplacer(
+				"%E2E_ADMIN_SOCK%", "/tmp/admin.sock",
+				"%E2E_RUNTIME%", filepath.Join(t.TempDir(), "runtime"),
+				"%E2E_CGROUP_PARENT%", "/sys/fs/cgroup/almagest-test",
+				"%E2E_SANDBOX_MODE%", "strict",
+			).Replace(string(data))
+			cfg, err := ParseConfig([]byte(`{}`), []byte(text))
+			if err != nil {
+				t.Fatal(err)
+			}
+			program, ok := cfg.Protected.Sandbox.Programs["tor"]
+			if !ok || len(program.Arguments) != 4 || len(program.Inputs) != 2 {
+				t.Fatalf("Tor sandbox program = %#v, present %v", program, ok)
+			}
+			template, ok := cfg.Protected.Sandbox.Templates["tor"]
+			if !ok || len(template.AllowedClasses) != 1 || template.AllowedClasses[0] != "almagest/TorDriver" {
+				t.Fatalf("Tor sandbox template = %#v, present %v", template, ok)
+			}
+		})
+	}
+}
+
+func TestTorDriverDiscoveryE2EProtectedConfigDefersPolicyExpansion(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "e2e", "cases", "tor_driver_discovery", "protected_alm.hujson"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := strings.NewReplacer(
+		"%E2E_ADMIN_SOCK%", "/tmp/admin.sock",
+		"%E2E_RUNTIME%", filepath.Join(t.TempDir(), "runtime"),
+		"%E2E_CGROUP_PARENT%", "/sys/fs/cgroup/almagest-test",
+	).Replace(string(data))
+	cfg, err := ParseConfig([]byte(`{}`), []byte(text))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Protected.Sandbox.DiscoverSystemPrograms || len(cfg.Protected.Sandbox.Programs) != 0 || len(cfg.Protected.Sandbox.Templates) != 0 {
+		t.Fatalf("discovery policy was not deferred: %+v", cfg.Protected.Sandbox)
+	}
+	var arguments args.Args
+	arguments.DiscoverSystemPrograms = true
+	cfg.Protected.Sandbox.DiscoverSystemPrograms = false
+	cfg.Protected.Merge(&arguments)
+	if !cfg.Protected.Sandbox.DiscoverSystemPrograms {
+		t.Fatal("CLI discovery flag did not enable protected discovery")
 	}
 }
 

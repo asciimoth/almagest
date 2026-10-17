@@ -19,6 +19,16 @@ import (
 // Decode parses one standardized protected Sandbox object with strict field
 // handling, then returns the normalized immutable policy.
 func Decode(data []byte) (Config, error) {
+	value, err := Parse(data)
+	if err != nil {
+		return Config{}, err
+	}
+	return Normalize(value)
+}
+
+// Parse decodes one standardized protected Sandbox object without applying
+// defaults. Trusted startup uses it before optional system-program discovery.
+func Parse(data []byte) (Config, error) {
 	var value Config
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
@@ -29,20 +39,26 @@ func Decode(data []byte) (Config, error) {
 	if err := decoder.Decode(&trailing); err != io.EOF {
 		return Config{}, fmt.Errorf("%w: trailing sandbox policy data", sandbox.ErrInvalid)
 	}
-	return Normalize(value)
+	return value, nil
 }
 
 // Config is the normalized, protected sandbox policy. Paths and launch rules
 // are host authority and must never be constructed from graph input.
 type Config struct {
-	Mode            sandbox.Mode
-	TemporaryRoot   string
-	RegistryRoot    string
-	LinuxLauncher   string
-	LinuxCgroupRoot string
-	Limits          ServiceLimits
-	Programs        map[sandbox.ProgramID]Program
-	Templates       map[sandbox.TemplateID]Template
+	Mode                   sandbox.Mode
+	DiscoverSystemPrograms bool
+	TemporaryRoot          string
+	RegistryRoot           string
+	LinuxLauncher          string
+	LinuxCgroupRoot        string
+	Limits                 ServiceLimits
+	Programs               map[sandbox.ProgramID]Program
+	Templates              map[sandbox.TemplateID]Template
+	// UnavailableTemplates and UnavailablePrograms contain runtime-only
+	// diagnostics from best-effort host discovery. They are not protected
+	// configuration fields and are not serialized with administrator policy.
+	UnavailableTemplates map[sandbox.TemplateID]string `json:"-"`
+	UnavailablePrograms  map[sandbox.ProgramID]string  `json:"-"`
 }
 
 type ServiceLimits struct {
@@ -85,8 +101,9 @@ type Template struct {
 }
 
 type ReadOnly struct {
-	Source string
-	Target string
+	Source     string
+	Target     string
+	Executable bool
 }
 
 type Linux struct {
@@ -153,11 +170,25 @@ func Normalize(input Config) (Config, error) {
 	if input.Limits.Instances < 1 || input.Limits.Instances > 65536 || input.Limits.Commands < 1 || input.Limits.Commands > 65536 || input.Limits.RelayBytes < 4096 || input.Limits.RelayBytes > 1<<30 || input.Limits.Receipts < 1 || input.Limits.Receipts > 1<<20 {
 		return Config{}, fmt.Errorf("%w: sandbox service limits", sandbox.ErrInvalid)
 	}
-	if len(input.Programs) == 0 || len(input.Programs) > 1024 || len(input.Templates) == 0 || len(input.Templates) > 1024 {
+	missingOnePolicyPart := (len(input.Programs) == 0) != (len(input.Templates) == 0)
+	missingRunnablePolicy := len(input.Programs) == 0 && len(input.Templates) == 0 && len(input.UnavailableTemplates) == 0
+	if missingOnePolicyPart || missingRunnablePolicy || len(input.Programs) > 1024 || len(input.Templates) > 1024 {
 		return Config{}, fmt.Errorf("%w: sandbox programs and templates are required", sandbox.ErrInvalid)
 	}
 
 	out := input
+	out.UnavailableTemplates = maps.Clone(input.UnavailableTemplates)
+	out.UnavailablePrograms = maps.Clone(input.UnavailablePrograms)
+	for id, reason := range out.UnavailableTemplates {
+		if sandbox.ValidateName(string(id)) != nil || reason == "" || len(reason) > 4096 || !utf8.ValidString(reason) {
+			return Config{}, fmt.Errorf("%w: unavailable template diagnostic %q", sandbox.ErrInvalid, id)
+		}
+	}
+	for id, reason := range out.UnavailablePrograms {
+		if sandbox.ValidateName(string(id)) != nil || reason == "" || len(reason) > 4096 || !utf8.ValidString(reason) {
+			return Config{}, fmt.Errorf("%w: unavailable program diagnostic %q", sandbox.ErrInvalid, id)
+		}
+	}
 	out.Programs = make(map[sandbox.ProgramID]Program, len(input.Programs))
 	for id, program := range input.Programs {
 		if err := sandbox.ValidateName(string(id)); err != nil {

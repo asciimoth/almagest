@@ -3,6 +3,7 @@ package isolated
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -102,7 +103,9 @@ func TestRemoteServiceContract(t *testing.T) {
 			Inputs:    map[string]policy.Input{"payload": {Kind: sandbox.TextValue, Required: true, Maximum: 100 << 10}}}},
 		Templates: map[sandbox.TemplateID]policy.Template{"test": {AllowedClasses: []string{"test/Node"}, Programs: []sandbox.ProgramID{"helper"},
 			RuntimeProfile: "direct-v1", PersistentRoot: filepath.Join(root, "persistent"), Environment: policy.Environment{Set: map[string]string{"ALMAGEST_ISOLATED_HELPER": "1"}},
-			Limits: policy.TemplateLimits{Commands: 2, Files: 16, Sockets: 16, TransferBytes: 1 << 20, TemporaryBytes: 1 << 20, OutputBytes: 1 << 20}}}}
+			Limits: policy.TemplateLimits{Commands: 2, Files: 16, Sockets: 16, TransferBytes: 1 << 20, TemporaryBytes: 1 << 20, OutputBytes: 1 << 20}}},
+		UnavailableTemplates: map[sandbox.TemplateID]string{"tor": "Tor was not found in the host search path"},
+		UnavailablePrograms:  map[sandbox.ProgramID]string{"obfs4": "lyrebird has a missing runtime library"}}
 	backend, err := service.NewDirect(config, policy.Probe{Platform: runtime.GOOS, EffectiveIdentity: "test",
 		Available: map[sandbox.Feature]bool{sandbox.Environment: true, sandbox.HandleInheritance: true}})
 	if err != nil {
@@ -143,9 +146,15 @@ func TestRemoteServiceContract(t *testing.T) {
 	if err != nil || owner.Key == "" {
 		t.Fatalf("bind owner: owner=%+v err=%v", owner, err)
 	}
+	if _, err = bound.Acquire(ctx, "tor", "tor"); !errors.Is(err, sandbox.ErrUnavailable) || !strings.Contains(err.Error(), "Tor was not found") {
+		t.Fatalf("remote Tor discovery error = %v", err)
+	}
 	instance, err := bound.Acquire(ctx, "main", "test")
 	if err != nil {
 		t.Fatal(err)
+	}
+	if _, err = instance.ProgramPath("obfs4"); !errors.Is(err, sandbox.ErrUnavailable) || !strings.Contains(err.Error(), "missing runtime library") {
+		t.Fatalf("remote obfs4 discovery error = %v", err)
 	}
 	temporary, err := instance.FS(sandbox.Temporary)
 	if err != nil {

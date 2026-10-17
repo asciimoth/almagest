@@ -24,11 +24,8 @@ Almagest is a Go userspace network stack built around a Pasta node graph.
   debug-log nodes.
 - `lib/wireguard/` owns WireGuard nodes.
 - `lib/debug/` owns debug-only helper nodes.
-- `lib/experimental/` owns opt-in classes that cross current abstraction
-  boundaries. Their class names start with `X`, and
-  `almagestd --experimental` passes them to the engine explicitly in direct
-  mode instead of adding them to the built-in class list. On platforms where
-  isolation is the default, add `--no-isolation`.
+- `lib/tor/` owns the stable TorDriver node. The daemon registers it in direct
+  and isolated runtime modes. It can launch only protected `gobox` programs.
 - `lib/logging/` owns reusable logging interfaces and the in-memory debug
   logger.
 - `lib/storage/` owns daemon-provided storage interfaces and error contracts,
@@ -151,8 +148,8 @@ Engine and workspace:
   automatic-split/config-stripper, TUN firewall, and TUN debug-log node classes.
 - `lib/wireguard/`: WireGuard node classes.
 - `lib/debug/`: debug-only node classes.
-- `lib/experimental/`: opt-in host-facing nodes. `XTorDriver` owns a contained
-  Tor process, isolated client Networks, and v3 onion-service Networks.
+- `lib/tor/`: TorDriver sandbox integration, isolated client Networks, and v3
+  onion-service Networks.
 - `lib/logging/`: logger interfaces and debug logger implementation.
 - `lib/storage/`: KV, DNS cache, secret, and TLS config storage contracts.
 - `lib/typecolor/`: graph type palette data.
@@ -167,6 +164,7 @@ Built-in nodes:
 - `lib/socks/`: SOCKS and local proxy node implementations.
 - `lib/tailscale/`: the Tailscale control-plane node and its DNS and firewall
   outputs.
+- `lib/tor/`: the stable daemon-registered TorDriver node.
 - `lib/tun/`: TUN node implementations.
 - `lib/wireguard/`: WireGuard node implementation.
 - `lib/network/node_mock_net.go`: virtual loopback network node.

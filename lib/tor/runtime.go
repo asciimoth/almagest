@@ -1,4 +1,4 @@
-package experimentalnodes
+package tornodes
 
 import (
 	"context"
@@ -11,29 +11,29 @@ import (
 	"github.com/asciimoth/gonnect"
 	"github.com/asciimoth/pasta/pasta"
 	tor "github.com/asciimoth/tor-driver"
-	"github.com/asciimoth/tor-driver/direct"
 
 	"github.com/asciimoth/almagest/lib/nodekit"
 	"github.com/asciimoth/almagest/lib/storage"
 )
 
-const xTorOutboundRetryDelay = 250 * time.Millisecond
+const torOutboundRetryDelay = 250 * time.Millisecond
 
-type xTorRuntime struct {
-	id       uint64
-	ctx      context.Context
-	cancel   context.CancelFunc
-	driver   xTorDriverBackend
-	system   xTorSystem
-	sources  map[string]gonnect.Network
-	services map[string]xTorService
-	unsubs   []func()
+type torRuntime struct {
+	id                     uint64
+	ctx                    context.Context
+	cancel                 context.CancelFunc
+	driver                 torDriverBackend
+	sources                map[string]gonnect.Network
+	services               map[string]torService
+	unsubs                 []func()
+	startedWithoutOutbound atomic.Bool
 
 	outboundWake     chan struct{}
-	outboundRevision uint64
+	outboundRevision atomic.Uint64
+	outboundApplied  atomic.Bool
 }
 
-func (r *xTorRuntime) close() error {
+func (r *torRuntime) close() error {
 	if r == nil {
 		return nil
 	}
@@ -47,13 +47,10 @@ func (r *xTorRuntime) close() error {
 	if r.driver != nil {
 		err = errors.Join(err, r.driver.Close())
 	}
-	if r.system != nil {
-		err = errors.Join(err, r.system.Close())
-	}
 	return err
 }
 
-func (r *xTorRuntime) signalOutbound() {
+func (r *torRuntime) signalOutbound() {
 	if r == nil {
 		return
 	}
@@ -63,30 +60,30 @@ func (r *xTorRuntime) signalOutbound() {
 	}
 }
 
-type xTorStarted struct {
+type torStarted struct {
 	generation uint64
 	runtimeID  uint64
 	nodeName   string
-	config     XTorDriverConfig
+	config     TorDriverConfig
 	sources    map[string]gonnect.Network
-	services   map[string]xTorServiceStatus
+	services   map[string]torServiceStatus
 	state      tor.OutboundState
 	activate   chan struct{}
 	err        error
 }
 
-type xTorDriverEvent struct {
+type torDriverEvent struct {
 	runtimeID uint64
 	event     tor.DriverEvent
 }
 
-type xTorServiceEvent struct {
+type torServiceEvent struct {
 	runtimeID uint64
 	name      string
 	event     tor.ServiceEvent
 }
 
-type xTorOutboundResult struct {
+type torOutboundResult struct {
 	runtimeID        uint64
 	outboundRevision uint64
 	state            tor.OutboundState
@@ -94,22 +91,27 @@ type xTorOutboundResult struct {
 	err              error
 }
 
-type xTorConfigPersisted struct {
+type torReadyResult struct {
+	outboundRevision uint64
+	err              error
+}
+
+type torConfigPersisted struct {
 	id  uint64
 	err error
 }
 
-type xTorGeneratedSecret struct {
+type torGeneratedSecret struct {
 	selector string
 	nodeName string
 }
 
-type xTorPendingPersistence struct {
-	secrets []xTorGeneratedSecret
+type torPendingPersistence struct {
+	secrets []torGeneratedSecret
 	durable atomic.Bool
 }
 
-func (n *xTorDriverNode) scheduleRebuild(_ string) {
+func (n *torDriverNode) scheduleRebuild(_ string) {
 	if n.stopped {
 		return
 	}
@@ -131,13 +133,13 @@ func (n *xTorDriverNode) scheduleRebuild(_ string) {
 	n.latchedRevision = 0
 	n.clearRuntimeError()
 	n.bootstrap = tor.BootstrapEvent{}
-	n.services = make(map[string]xTorServiceStatus)
+	n.services = make(map[string]torServiceStatus)
 	_ = n.updateLabel()
 	n.sendStatusBlock()
 
-	config := cloneXTorDriverConfig(n.config)
+	config := cloneTorDriverConfig(n.config)
 	nodeName := n.currentNodeName()
-	if err := n.SpawnWorker("XTorDriver runtime reconcile", func() {
+	if err := n.SpawnWorker("TorDriver runtime reconcile", func() {
 		result, send := n.reconcile(ctx, generation, config, nodeName)
 		if send && n.W != nil {
 			n.W.SendInbox(pasta.InboxMessage{ReceiverNode: n.ID, Payload: result})
@@ -151,7 +153,7 @@ func (n *xTorDriverNode) scheduleRebuild(_ string) {
 	}
 }
 
-func (n *xTorDriverNode) cancelCurrentRun() {
+func (n *torDriverNode) cancelCurrentRun() {
 	n.cancelMu.Lock()
 	cancel := n.cancelRun
 	n.cancelRun = nil
@@ -161,14 +163,14 @@ func (n *xTorDriverNode) cancelCurrentRun() {
 	}
 }
 
-func (n *xTorDriverNode) reconcile(ctx context.Context, generation uint64, config XTorDriverConfig, nodeName string) (xTorStarted, bool) {
+func (n *torDriverNode) reconcile(ctx context.Context, generation uint64, config TorDriverConfig, nodeName string) (torStarted, bool) {
 	n.reconcileMu.Lock()
 	defer n.reconcileMu.Unlock()
 	if generation != n.generation.Load() || ctx.Err() != nil {
-		return xTorStarted{}, false
+		return torStarted{}, false
 	}
 	n.closeRuntime()
-	result := xTorStarted{generation: generation, nodeName: nodeName, config: config}
+	result := torStarted{generation: generation, nodeName: nodeName, config: config}
 	if !config.Enabled {
 		return result, true
 	}
@@ -181,7 +183,7 @@ func (n *xTorDriverNode) reconcile(ctx context.Context, generation uint64, confi
 	}
 	if generation != n.generation.Load() || ctx.Err() != nil {
 		_ = runtime.close()
-		return xTorStarted{}, false
+		return torStarted{}, false
 	}
 	n.runtimeMu.Lock()
 	n.runtime = runtime
@@ -189,9 +191,9 @@ func (n *xTorDriverNode) reconcile(ctx context.Context, generation uint64, confi
 
 	result.runtimeID = runtime.id
 	result.sources = runtime.sources
-	result.services = make(map[string]xTorServiceStatus, len(runtime.services))
+	result.services = make(map[string]torServiceStatus, len(runtime.services))
 	for name, service := range runtime.services {
-		result.services[name] = xTorServiceStatus{Address: service.Address(), Publication: tor.PublicationPending}
+		result.services[name] = torServiceStatus{Address: service.Address(), Publication: tor.PublicationPending}
 	}
 	result.state = runtime.driver.OutboundState()
 	result.activate = make(chan struct{})
@@ -211,22 +213,25 @@ func (n *xTorDriverNode) reconcile(ctx context.Context, generation uint64, confi
 	return result, true
 }
 
-func (n *xTorDriverNode) buildRuntime(ctx context.Context, generation uint64, config XTorDriverConfig, nodeName string) (_ *xTorRuntime, updated XTorDriverConfig, err error) {
-	updated = cloneXTorDriverConfig(config)
-	torConfig, err := config.torConfig(n.host, nodeName)
-	if err != nil {
-		return nil, updated, err
+func (n *torDriverNode) buildRuntime(ctx context.Context, generation uint64, config TorDriverConfig, nodeName string) (_ *torRuntime, updated TorDriverConfig, err error) {
+	updated = cloneTorDriverConfig(config)
+	torConfig := config.torConfig()
+	sandboxes := n.sandboxes
+	if sandboxes == nil {
+		sandboxes = n.Sandboxes
 	}
-	system, torConfig, err := n.newSystem(torConfig)
+	ownerSandboxes, err := sandboxes(ctx)
 	if err != nil {
-		return nil, updated, fmt.Errorf("prepare Tor process: %w", err)
+		return nil, updated, fmt.Errorf("acquire Tor sandbox capability: %w", err)
 	}
+	outbound, outboundRevision := n.currentOutboundState()
 	runtimeCtx, cancel := context.WithCancel(n.Context())
-	runtime := &xTorRuntime{
-		ctx: runtimeCtx, cancel: cancel, system: system,
-		sources: make(map[string]gonnect.Network), services: make(map[string]xTorService),
+	runtime := &torRuntime{
+		ctx: runtimeCtx, cancel: cancel,
+		sources: make(map[string]gonnect.Network), services: make(map[string]torService),
 		outboundWake: make(chan struct{}, 1),
 	}
+	runtime.startedWithoutOutbound.Store(outbound == nil)
 	success := false
 	defer func() {
 		if !success {
@@ -234,41 +239,40 @@ func (n *xTorDriverNode) buildRuntime(ctx context.Context, generation uint64, co
 		}
 	}()
 
-	outbound, outboundRevision := n.currentOutboundState()
-	runtime.outboundRevision = outboundRevision
-	keyStore := newXTorOnionKeyStore(n.SecretsStorage(), nodeName, updated.Services, func(selector string) {
+	runtime.outboundRevision.Store(outboundRevision)
+	keyStore := newTorOnionKeyStore(n.SecretsStorage(), nodeName, updated.Services, func(selector string) {
 		n.trackGeneratedSecret(generation, nodeName, selector)
 	})
-	deps := system.Dependencies(direct.Network(), outbound, n.Logger)
-	deps = applyXTorE2EDependencies(deps)
+	deps := torDependencies(ownerSandboxes, outbound, n.Logger)
 	deps.OnionKeys = keyStore
 	driver, err := n.start(ctx, torConfig, deps)
 	if err != nil {
 		return nil, updated, fmt.Errorf("start Tor driver: %w", err)
 	}
 	runtime.driver = driver
+	runtime.outboundApplied.Store(outbound == nil || driver.OutboundState().Available)
 
 	for _, network := range updated.Networks {
 		value, createErr := driver.NewNetwork(network.torConfig())
 		if createErr != nil {
 			return nil, updated, fmt.Errorf("create Tor network %q: %w", network.Name, createErr)
 		}
-		runtime.sources[xTorNetworkKey(network.Name)] = value
+		runtime.sources[torNetworkKey(network.Name)] = value
 	}
 	for i, service := range updated.Services {
-		serviceConfig, configErr := xTorServiceConfig(service)
+		serviceConfig, configErr := torServiceConfig(service)
 		if configErr != nil {
 			return nil, updated, configErr
 		}
 		value, createErr := driver.NewService(ctx, serviceConfig)
-		if selector := keyStore.generatedSelectors()[xTorServiceKeyName(service.Name)]; selector != "" {
+		if selector := keyStore.generatedSelectors()[torServiceKeyName(service.Name)]; selector != "" {
 			updated.Services[i].KeySecret = selector
 		}
 		if createErr != nil {
 			return nil, updated, fmt.Errorf("create onion service %q: %w", service.Name, createErr)
 		}
 		runtime.services[service.Name] = value
-		runtime.sources[xTorServiceKey(service.Name)] = value
+		runtime.sources[torServiceKey(service.Name)] = value
 	}
 	if err = n.installClientAuthorizations(ctx, generation, driver, nodeName, &updated); err != nil {
 		return nil, updated, err
@@ -283,10 +287,10 @@ func (n *xTorDriverNode) buildRuntime(ctx context.Context, generation uint64, co
 	return runtime, updated, nil
 }
 
-func xTorServiceConfig(config XTorDriverServiceConfig) (tor.ServiceConfig, error) {
+func torServiceConfig(config TorDriverServiceConfig) (tor.ServiceConfig, error) {
 	out := tor.ServiceConfig{
 		Ports: append([]uint16(nil), config.Ports...), MaxStreams: config.MaxStreams,
-		KeyName: xTorServiceKeyName(config.Name),
+		KeyName: torServiceKeyName(config.Name),
 	}
 	if config.MaxStreamsPolicy == "close" {
 		out.MaxStreamsPolicy = tor.CloseRendezvousCircuit
@@ -301,7 +305,7 @@ func xTorServiceConfig(config XTorDriverServiceConfig) (tor.ServiceConfig, error
 	return out, nil
 }
 
-func (n *xTorDriverNode) installClientAuthorizations(ctx context.Context, generation uint64, driver xTorDriverBackend, nodeName string, config *XTorDriverConfig) error {
+func (n *torDriverNode) installClientAuthorizations(ctx context.Context, generation uint64, driver torDriverBackend, nodeName string, config *TorDriverConfig) error {
 	for i := range config.ClientAuthorizations {
 		item := &config.ClientAuthorizations[i]
 		var authorization tor.ClientAuthorization
@@ -314,7 +318,7 @@ func (n *xTorDriverNode) installClientAuthorizations(ctx context.Context, genera
 			if !ok {
 				return errors.New("tor generated-secret recovery is unavailable")
 			}
-			owner := xTorClientAuthorizationSecretOwner(item.Address)
+			owner := torClientAuthorizationSecretOwner(item.Address)
 			selector, secret, err := generatedStore.RecoverGeneratedSecret(owner, nodeName)
 			if err != nil {
 				return fmt.Errorf("recover client authorization for %q: %w", item.Address, err)
@@ -336,7 +340,7 @@ func (n *xTorDriverNode) installClientAuthorizations(ctx context.Context, genera
 				if marshalErr != nil {
 					return marshalErr
 				}
-				selector, storeErr := newXTorGeneratedSecret(store, storage.Secret{Value: string(text)}, nodeName, owner)
+				selector, storeErr := newTorGeneratedSecret(store, storage.Secret{Value: string(text)}, nodeName, owner)
 				clear(text)
 				if storeErr != nil {
 					return fmt.Errorf("store client authorization for %q: %w", item.Address, storeErr)
@@ -358,7 +362,7 @@ func (n *xTorDriverNode) installClientAuthorizations(ctx context.Context, genera
 			if err != nil {
 				return fmt.Errorf("parse client authorization secret %q: %w", item.PrivateKeySecret, err)
 			}
-			_ = commitXTorGeneratedSecret(store, item.PrivateKeySecret, nodeName)
+			_ = commitTorGeneratedSecret(store, item.PrivateKeySecret, nodeName)
 			authorization = tor.ClientAuthorization{PrivateKey: privateKey, Name: item.Name}
 		}
 		if err := driver.AddClientAuthorization(ctx, item.Address, authorization); err != nil {
@@ -368,14 +372,14 @@ func (n *xTorDriverNode) installClientAuthorizations(ctx context.Context, genera
 	return nil
 }
 
-func (n *xTorDriverNode) spawnRuntimeWatchers(runtime *xTorRuntime, activate <-chan struct{}) error {
+func (n *torDriverNode) spawnRuntimeWatchers(runtime *torRuntime, activate <-chan struct{}) error {
 	events, unsubscribe, err := runtime.driver.SubscribeEvents(32)
 	if err != nil {
 		return fmt.Errorf("subscribe to Tor driver events: %w", err)
 	}
 	runtime.unsubs = append(runtime.unsubs, unsubscribe)
-	if err = n.SpawnWorker("XTorDriver event watcher", func() {
-		if !waitXTorActivation(activate, runtime.ctx.Done()) {
+	if err = n.SpawnWorker("TorDriver event watcher", func() {
+		if !waitTorActivation(activate, runtime.ctx.Done()) {
 			return
 		}
 		for {
@@ -384,7 +388,7 @@ func (n *xTorDriverNode) spawnRuntimeWatchers(runtime *xTorRuntime, activate <-c
 				if !ok {
 					return
 				}
-				n.sendRuntimeInbox(xTorDriverEvent{runtimeID: runtime.id, event: event})
+				n.sendRuntimeInbox(torDriverEvent{runtimeID: runtime.id, event: event})
 			case <-runtime.ctx.Done():
 				return
 			}
@@ -399,8 +403,8 @@ func (n *xTorDriverNode) spawnRuntimeWatchers(runtime *xTorRuntime, activate <-c
 		}
 		runtime.unsubs = append(runtime.unsubs, stop)
 		name := name
-		if err = n.SpawnWorker("XTorDriver onion service event watcher", func() {
-			if !waitXTorActivation(activate, runtime.ctx.Done()) {
+		if err = n.SpawnWorker("TorDriver onion service event watcher", func() {
+			if !waitTorActivation(activate, runtime.ctx.Done()) {
 				return
 			}
 			for {
@@ -409,7 +413,7 @@ func (n *xTorDriverNode) spawnRuntimeWatchers(runtime *xTorRuntime, activate <-c
 					if !ok {
 						return
 					}
-					n.sendRuntimeInbox(xTorServiceEvent{runtimeID: runtime.id, name: name, event: event})
+					n.sendRuntimeInbox(torServiceEvent{runtimeID: runtime.id, name: name, event: event})
 				case <-runtime.ctx.Done():
 					return
 				}
@@ -418,24 +422,28 @@ func (n *xTorDriverNode) spawnRuntimeWatchers(runtime *xTorRuntime, activate <-c
 			return err
 		}
 	}
-	return n.SpawnWorker("XTorDriver outbound reconciler", func() {
-		if !waitXTorActivation(activate, runtime.ctx.Done()) {
+	return n.SpawnWorker("TorDriver outbound reconciler", func() {
+		if !waitTorActivation(activate, runtime.ctx.Done()) {
 			return
 		}
 		n.watchRuntimeOutbound(runtime)
 	})
 }
 
-func (n *xTorDriverNode) watchRuntimeOutbound(runtime *xTorRuntime) {
-	var waitResult chan error
+func (n *torDriverNode) watchRuntimeOutbound(runtime *torRuntime) {
+	var waitResult chan torReadyResult
 reconcileLoop:
 	for {
 		network, revision := n.currentOutboundState()
 		var err error
-		if revision != runtime.outboundRevision {
+		if !runtime.outboundApplied.Load() || revision != runtime.outboundRevision.Load() {
 			err = runtime.driver.SetOutbound(network)
 			if err == nil {
-				runtime.outboundRevision = revision
+				runtime.outboundRevision.Store(revision)
+				runtime.outboundApplied.Store(true)
+				if network != nil {
+					runtime.startedWithoutOutbound.Store(false)
+				}
 			}
 		}
 		state := runtime.driver.OutboundState()
@@ -448,19 +456,33 @@ reconcileLoop:
 				continue
 			}
 			if waitResult == nil {
-				waitResult = make(chan error, 1)
+				waitResult = make(chan torReadyResult, 1)
 				result := waitResult
-				go func() { result <- runtime.driver.WaitReady(runtime.ctx) }()
+				go func() {
+					result <- torReadyResult{
+						outboundRevision: revision,
+						err:              runtime.driver.WaitReady(runtime.ctx),
+					}
+				}()
 			}
 		waitLoop:
 			for {
 				select {
-				case err = <-waitResult:
+				case readyResult := <-waitResult:
 					waitResult = nil
+					if readyResult.outboundRevision != revision {
+						continue reconcileLoop
+					}
+					err = readyResult.err
 					ready = err == nil
 					break waitLoop
 				case <-runtime.outboundWake:
 					if n.currentOutboundRevision() != revision {
+						// WaitReady describes the attachment for this revision.
+						// It can finish after SetOutbound installs a replacement.
+						// Leave its buffered result for collection and start a new
+						// wait for the replacement revision.
+						waitResult = nil
 						continue reconcileLoop
 					}
 				case <-runtime.ctx.Done():
@@ -475,7 +497,7 @@ reconcileLoop:
 			continue
 		}
 		state = runtime.driver.OutboundState()
-		n.sendRuntimeInbox(xTorOutboundResult{
+		n.sendRuntimeInbox(torOutboundResult{
 			runtimeID: runtime.id, outboundRevision: revision,
 			state: state, ready: ready, err: err,
 		})
@@ -487,7 +509,7 @@ reconcileLoop:
 			}
 			continue
 		}
-		timer := time.NewTimer(xTorOutboundRetryDelay)
+		timer := time.NewTimer(torOutboundRetryDelay)
 		select {
 		case <-runtime.outboundWake:
 			if !timer.Stop() {
@@ -509,7 +531,7 @@ reconcileLoop:
 	}
 }
 
-func waitXTorActivation(activate, done <-chan struct{}) bool {
+func waitTorActivation(activate, done <-chan struct{}) bool {
 	select {
 	case <-activate:
 		return true
@@ -518,13 +540,13 @@ func waitXTorActivation(activate, done <-chan struct{}) bool {
 	}
 }
 
-func (n *xTorDriverNode) sendRuntimeInbox(payload any) {
+func (n *torDriverNode) sendRuntimeInbox(payload any) {
 	if n.W != nil {
 		n.W.SendInbox(pasta.InboxMessage{ReceiverNode: n.ID, Payload: payload})
 	}
 }
 
-func (n *xTorDriverNode) closeRuntime() {
+func (n *torDriverNode) closeRuntime() {
 	n.runtimeMu.Lock()
 	runtime := n.runtime
 	n.runtime = nil
@@ -534,12 +556,17 @@ func (n *xTorDriverNode) closeRuntime() {
 	}
 }
 
-func (n *xTorDriverNode) applyOutbound(network nodekit.NetworkCloser) {
+func (n *torDriverNode) applyOutbound(network nodekit.NetworkCloser) {
 	n.ready = false
 	n.outputs.InvalidateAllLocked(n.W, n.ID)
 	if network == nil && !n.terminal {
 		n.clearRuntimeError()
 		n.outboundState.Available = false
+	} else if network != nil {
+		// A new graph attachment is the explicit rearm required by tor-driver
+		// after it latches a failed attachment.
+		n.outboundLatched = false
+		n.latchedRevision = 0
 	}
 	_ = n.updateLabel()
 	n.sendStatusBlock()
@@ -549,10 +576,19 @@ func (n *xTorDriverNode) applyOutbound(network nodekit.NetworkCloser) {
 	if runtime == nil || runtime.driver == nil {
 		return
 	}
+	if network != nil && runtime.startedWithoutOutbound.Load() && n.bootstrap.Progress > 0 {
+		// Tor has already entered its retry schedule through the unavailable
+		// proxy gate. Build a clean runtime with the first real
+		// attachment as an initial dependency. This is the same reliable path as
+		// restoring an already-connected graph, and it avoids retaining offline
+		// bootstrap state after a node is wired later.
+		n.scheduleRebuild("outbound attached after offline bootstrap")
+		return
+	}
 	runtime.signalOutbound()
 }
 
-func (n *xTorDriverNode) handleStarted(result xTorStarted) {
+func (n *torDriverNode) handleStarted(result torStarted) {
 	currentNodeName := n.currentNodeName()
 	if result.generation != n.generation.Load() {
 		n.discardGeneratedSecrets(result.generation, currentNodeName)
@@ -575,7 +611,7 @@ func (n *xTorDriverNode) handleStarted(result xTorStarted) {
 		n.sendMenuSnapshot(false)
 		return
 	}
-	configChanged := !xTorConfigEqual(n.config, result.config)
+	configChanged := !torConfigEqual(n.config, result.config)
 	n.config = result.config
 	generated := n.takeGeneratedSecrets(result.generation)
 	n.activeID = result.runtimeID
@@ -600,11 +636,11 @@ func (n *xTorDriverNode) handleStarted(result xTorStarted) {
 	}
 }
 
-func (n *xTorDriverNode) trackGeneratedSecret(generation uint64, nodeName, selector string) {
+func (n *torDriverNode) trackGeneratedSecret(generation uint64, nodeName, selector string) {
 	if selector == "" {
 		return
 	}
-	secret := xTorGeneratedSecret{selector: selector, nodeName: nodeName}
+	secret := torGeneratedSecret{selector: selector, nodeName: nodeName}
 	if generation != n.generation.Load() {
 		n.deleteGeneratedSecret(secret)
 		return
@@ -612,7 +648,7 @@ func (n *xTorDriverNode) trackGeneratedSecret(generation uint64, nodeName, selec
 	n.generatedMu.Lock()
 	if generation == n.generation.Load() {
 		if n.generated == nil {
-			n.generated = make(map[uint64][]xTorGeneratedSecret)
+			n.generated = make(map[uint64][]torGeneratedSecret)
 		}
 		n.generated[generation] = append(n.generated[generation], secret)
 		n.generatedMu.Unlock()
@@ -622,31 +658,31 @@ func (n *xTorDriverNode) trackGeneratedSecret(generation uint64, nodeName, selec
 	n.deleteGeneratedSecret(secret)
 }
 
-func (n *xTorDriverNode) takeGeneratedSecrets(generation uint64) []xTorGeneratedSecret {
+func (n *torDriverNode) takeGeneratedSecrets(generation uint64) []torGeneratedSecret {
 	n.generatedMu.Lock()
-	secrets := append([]xTorGeneratedSecret(nil), n.generated[generation]...)
+	secrets := append([]torGeneratedSecret(nil), n.generated[generation]...)
 	delete(n.generated, generation)
 	n.generatedMu.Unlock()
 	return secrets
 }
 
-func (n *xTorDriverNode) persistGeneratedSecrets(secrets []xTorGeneratedSecret) {
+func (n *torDriverNode) persistGeneratedSecrets(secrets []torGeneratedSecret) {
 	if len(secrets) == 0 {
 		return
 	}
 	n.persistNext++
 	id := n.persistNext
 	if n.persisting == nil {
-		n.persisting = make(map[uint64]*xTorPendingPersistence)
+		n.persisting = make(map[uint64]*torPendingPersistence)
 	}
-	pending := &xTorPendingPersistence{secrets: append([]xTorGeneratedSecret(nil), secrets...)}
+	pending := &torPendingPersistence{secrets: append([]torGeneratedSecret(nil), secrets...)}
 	n.persisting[id] = pending
 	result := n.NotifyConfigChanged()
 	if result == nil {
-		n.handleConfigPersisted(xTorConfigPersisted{id: id, err: errors.New("node configuration persistence returned no result")})
+		n.handleConfigPersisted(torConfigPersisted{id: id, err: errors.New("node configuration persistence returned no result")})
 		return
 	}
-	err := n.SpawnWorker("XTorDriver generated-secret persistence", func() {
+	err := n.SpawnWorker("TorDriver generated-secret persistence", func() {
 		select {
 		case persistErr, ok := <-result:
 			if !ok {
@@ -655,26 +691,26 @@ func (n *xTorDriverNode) persistGeneratedSecrets(secrets []xTorGeneratedSecret) 
 			if persistErr == nil {
 				pending.durable.Store(true)
 			}
-			n.sendRuntimeInbox(xTorConfigPersisted{id: id, err: persistErr})
+			n.sendRuntimeInbox(torConfigPersisted{id: id, err: persistErr})
 		case <-n.persistStop:
 		}
 	})
 	if err != nil {
-		n.handleConfigPersisted(xTorConfigPersisted{id: id, err: err})
+		n.handleConfigPersisted(torConfigPersisted{id: id, err: err})
 	}
 }
 
-func (n *xTorDriverNode) handleConfigPersisted(result xTorConfigPersisted) {
+func (n *torDriverNode) handleConfigPersisted(result torConfigPersisted) {
 	pending := n.persisting[result.id]
 	if pending == nil {
 		return
 	}
-	secrets := append([]xTorGeneratedSecret(nil), pending.secrets...)
+	secrets := append([]torGeneratedSecret(nil), pending.secrets...)
 	delete(n.persisting, result.id)
 	if result.err == nil {
 		for _, secret := range secrets {
-			if xTorConfigReferencesSecret(n.config, secret.selector) {
-				if err := commitXTorGeneratedSecret(n.SecretsStorage(), secret.selector, secret.nodeName); err != nil && n.Logger != nil {
+			if torConfigReferencesSecret(n.config, secret.selector) {
+				if err := commitTorGeneratedSecret(n.SecretsStorage(), secret.selector, secret.nodeName); err != nil && n.Logger != nil {
 					n.Logger.Errf("commit generated Tor secret: %v", err)
 				}
 			} else {
@@ -684,9 +720,16 @@ func (n *xTorDriverNode) handleConfigPersisted(result xTorConfigPersisted) {
 		return
 	}
 
+	affectsCurrentConfig := false
 	for _, secret := range secrets {
-		clearXTorGeneratedSelector(&n.config, secret.selector)
+		if torConfigReferencesSecret(n.config, secret.selector) {
+			affectsCurrentConfig = true
+			clearTorGeneratedSelector(&n.config, secret.selector)
+		}
 		n.deleteGeneratedSecret(secret, n.currentNodeName())
+	}
+	if !affectsCurrentConfig {
+		return
 	}
 	n.generation.Add(1)
 	n.cancelCurrentRun()
@@ -701,7 +744,7 @@ func (n *xTorDriverNode) handleConfigPersisted(result xTorConfigPersisted) {
 	go n.closeRuntime()
 }
 
-func xTorConfigReferencesSecret(config XTorDriverConfig, selector string) bool {
+func torConfigReferencesSecret(config TorDriverConfig, selector string) bool {
 	if selector == "" {
 		return false
 	}
@@ -718,7 +761,7 @@ func xTorConfigReferencesSecret(config XTorDriverConfig, selector string) bool {
 	return false
 }
 
-func clearXTorGeneratedSelector(config *XTorDriverConfig, selector string) {
+func clearTorGeneratedSelector(config *TorDriverConfig, selector string) {
 	if config == nil || selector == "" {
 		return
 	}
@@ -734,13 +777,13 @@ func clearXTorGeneratedSelector(config *XTorDriverConfig, selector string) {
 	}
 }
 
-func (n *xTorDriverNode) deleteGeneratedSecrets(secrets []xTorGeneratedSecret) {
+func (n *torDriverNode) deleteGeneratedSecrets(secrets []torGeneratedSecret) {
 	for _, secret := range secrets {
 		n.deleteGeneratedSecret(secret, n.currentNodeName())
 	}
 }
 
-func (n *xTorDriverNode) discardAllPersistingSecrets() {
+func (n *torDriverNode) discardAllPersistingSecrets() {
 	for id, pending := range n.persisting {
 		if pending != nil && !pending.durable.Load() {
 			n.deleteGeneratedSecrets(pending.secrets)
@@ -749,7 +792,7 @@ func (n *xTorDriverNode) discardAllPersistingSecrets() {
 	}
 }
 
-func (n *xTorDriverNode) renameTrackedGeneratedSecret(previous, next string) {
+func (n *torDriverNode) renameTrackedGeneratedSecret(previous, next string) {
 	if previous == "" || next == "" || previous == next {
 		return
 	}
@@ -775,7 +818,7 @@ func (n *xTorDriverNode) renameTrackedGeneratedSecret(previous, next string) {
 	}
 }
 
-func (n *xTorDriverNode) discardGeneratedSecretsBefore(generation uint64) {
+func (n *torDriverNode) discardGeneratedSecretsBefore(generation uint64) {
 	n.generatedMu.Lock()
 	var generations []uint64
 	for candidate := range n.generated {
@@ -789,7 +832,7 @@ func (n *xTorDriverNode) discardGeneratedSecretsBefore(generation uint64) {
 	}
 }
 
-func (n *xTorDriverNode) discardAllGeneratedSecrets() {
+func (n *torDriverNode) discardAllGeneratedSecrets() {
 	n.generatedMu.Lock()
 	generations := make([]uint64, 0, len(n.generated))
 	for generation := range n.generated {
@@ -801,9 +844,9 @@ func (n *xTorDriverNode) discardAllGeneratedSecrets() {
 	}
 }
 
-func (n *xTorDriverNode) discardGeneratedSecrets(generation uint64, alternativeNodeNames ...string) {
+func (n *torDriverNode) discardGeneratedSecrets(generation uint64, alternativeNodeNames ...string) {
 	n.generatedMu.Lock()
-	secrets := append([]xTorGeneratedSecret(nil), n.generated[generation]...)
+	secrets := append([]torGeneratedSecret(nil), n.generated[generation]...)
 	delete(n.generated, generation)
 	n.generatedMu.Unlock()
 	for _, secret := range secrets {
@@ -811,7 +854,7 @@ func (n *xTorDriverNode) discardGeneratedSecrets(generation uint64, alternativeN
 	}
 }
 
-func (n *xTorDriverNode) deleteGeneratedSecret(secret xTorGeneratedSecret, alternativeNodeNames ...string) {
+func (n *torDriverNode) deleteGeneratedSecret(secret torGeneratedSecret, alternativeNodeNames ...string) {
 	store, ok := n.SecretsStorage().(storage.GeneratedSecretsStorage)
 	if !ok {
 		return
@@ -828,7 +871,7 @@ func (n *xTorDriverNode) deleteGeneratedSecret(secret xTorGeneratedSecret, alter
 	}
 }
 
-func (n *xTorDriverNode) handleDriverEvent(message xTorDriverEvent) {
+func (n *torDriverNode) handleDriverEvent(message torDriverEvent) {
 	if message.runtimeID == 0 || message.runtimeID != n.activeID {
 		return
 	}
@@ -850,6 +893,12 @@ func (n *xTorDriverNode) handleDriverEvent(message xTorDriverEvent) {
 		if runtime == nil || runtime.id != message.runtimeID {
 			return
 		}
+		// The graph can change before its SetOutbound call runs. An event from
+		// the previous driver generation must not latch the pending attachment.
+		revision := n.currentOutboundRevision()
+		if !runtime.outboundApplied.Load() || runtime.outboundRevision.Load() != revision {
+			return
+		}
 		state := runtime.driver.OutboundState()
 		if event.Generation != state.Generation {
 			return
@@ -857,7 +906,7 @@ func (n *xTorDriverNode) handleDriverEvent(message xTorDriverEvent) {
 		n.outboundState = state
 		if event.Latched && !state.Available {
 			n.outboundLatched = true
-			n.latchedRevision = n.currentOutboundRevision()
+			n.latchedRevision = revision
 			n.setRuntimeError("Tor outbound network is latched after a runtime failure; reconnect the input or restart the node", false)
 			n.ready = false
 			n.outputs.InvalidateAllLocked(n.W, n.ID)
@@ -878,7 +927,7 @@ func (n *xTorDriverNode) handleDriverEvent(message xTorDriverEvent) {
 	n.sendStatusBlock()
 }
 
-func (n *xTorDriverNode) handleServiceEvent(message xTorServiceEvent) {
+func (n *torDriverNode) handleServiceEvent(message torServiceEvent) {
 	if message.runtimeID == 0 || message.runtimeID != n.activeID {
 		return
 	}
@@ -895,7 +944,7 @@ func (n *xTorDriverNode) handleServiceEvent(message xTorServiceEvent) {
 	}
 }
 
-func (n *xTorDriverNode) handleOutboundResult(result xTorOutboundResult) {
+func (n *torDriverNode) handleOutboundResult(result torOutboundResult) {
 	if result.runtimeID == 0 || result.runtimeID != n.activeID {
 		return
 	}
@@ -927,35 +976,35 @@ func (n *xTorDriverNode) handleOutboundResult(result xTorOutboundResult) {
 	n.sendStatusBlock()
 }
 
-func (n *xTorDriverNode) setRuntimeError(message string, recoverable bool) {
+func (n *torDriverNode) setRuntimeError(message string, recoverable bool) {
 	n.runtimeError = message
 	n.runtimeErrorRecoverable = message != "" && recoverable
 }
 
-func (n *xTorDriverNode) clearRuntimeError() {
+func (n *torDriverNode) clearRuntimeError() {
 	n.runtimeError = ""
 	n.runtimeErrorRecoverable = false
 }
 
-func cloneXTorDriverConfig(config XTorDriverConfig) XTorDriverConfig {
+func cloneTorDriverConfig(config TorDriverConfig) TorDriverConfig {
 	clone := config
-	clone.Networks = append([]XTorDriverNetworkConfig(nil), config.Networks...)
-	clone.Services = append([]XTorDriverServiceConfig(nil), config.Services...)
+	clone.Networks = append([]TorDriverNetworkConfig(nil), config.Networks...)
+	clone.Services = append([]TorDriverServiceConfig(nil), config.Services...)
 	for i := range clone.Services {
 		clone.Services[i].Ports = append([]uint16(nil), config.Services[i].Ports...)
 		clone.Services[i].AuthorizedClients = append([]string(nil), config.Services[i].AuthorizedClients...)
 	}
-	clone.ClientAuthorizations = append([]XTorDriverClientAuthConfig(nil), config.ClientAuthorizations...)
+	clone.ClientAuthorizations = append([]TorDriverClientAuthConfig(nil), config.ClientAuthorizations...)
 	clone.Driver.ReachableORPorts = append([]uint16(nil), config.Driver.ReachableORPorts...)
 	clone.Driver.EntryNodes = append([]string(nil), config.Driver.EntryNodes...)
 	clone.Driver.ExitNodes = append([]string(nil), config.Driver.ExitNodes...)
 	clone.Driver.ExcludeNodes = append([]string(nil), config.Driver.ExcludeNodes...)
 	clone.Driver.ExcludeExitNodes = append([]string(nil), config.Driver.ExcludeExitNodes...)
-	clone.Driver.Bridges = append([]XTorDriverBridge(nil), config.Driver.Bridges...)
+	clone.Driver.Bridges = append([]TorDriverBridge(nil), config.Driver.Bridges...)
 	return clone
 }
 
-func (n *xTorDriverNode) currentNodeName() string {
+func (n *torDriverNode) currentNodeName() string {
 	if n.W != nil && n.ID != 0 {
 		if snapshot, ok := n.W.NodeSnapshotLocked(n.ID); ok && strings.TrimSpace(snapshot.Name) != "" {
 			return snapshot.Name

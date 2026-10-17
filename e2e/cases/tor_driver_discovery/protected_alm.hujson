@@ -1,0 +1,8 @@
+{
+	"Admin": {"Web": 0, "Unix": "%E2E_ADMIN_SOCK%"},
+	"Sandbox": {
+		"Mode": "%E2E_SANDBOX_MODE%",
+		"DiscoverSystemPrograms": true,
+		"LinuxCgroupRoot": "%E2E_CGROUP_PARENT%",
+	},
+}

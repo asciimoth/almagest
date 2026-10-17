@@ -1,7 +1,8 @@
 # Subprogram sandbox design
 
 Status: partially implemented. See `docs/SUBPROGRAM_SANDBOX_STATUS.md` for the
-implemented scope and remaining work. `XTorDriver` migration is deferred.
+implemented scope and remaining work. TorDriver uses tor-driver v0.2.0 and the
+owner-bound sandbox interface.
 
 ## 1. Decisions and scope
 
@@ -300,27 +301,12 @@ Builders are versioned daemon code, with typed input schemas. A fixed-argv
 builder can substitute bounded validated slots, without shell interpretation.
 Do not provide a generic raw argv profile to untrusted nodes.
 
-The `tor-v1` builder accepts a driver working directory and reviewed Tor
-settings. It validates the two config paths and generates or validates the
-complete Tor configuration at launch. A path slot alone is insufficient:
-otherwise a writable torrc could request arbitrary managed executables.
-Security-sensitive launch configuration is sealed for launch in daemon-owned
-read-only storage. Runtime files such as the cookie and control-port file
-remain writable by Tor. The Tor adapter redirects its generated config writes
-to a bounded staging operation, then the daemon validator commits the sealed
-version. Never validate a writable file and later execute using its mutable
-contents.
-
-For v0.1.2 compatibility, the adapter can use ordinary Files.WriteFile for the
-two staging files. Start passes their typed Path references to `tor-v1`. The
-builder reads bounded content into private memory, parses a closed set of Tor
-directives, validates every file/program/endpoint reference, and writes that
-validated copy to the sealed launch area. It substitutes the sealed paths in
-the final argv. The original staging files are never used by Tor for config.
-The launch area is an explicit read-only profile input and is absent from the
-node's writable Files API. Reject includes, unknown directives, and executable
-options outside the approved transport set. The builder's accepted directive
-set must track the pinned tor-driver version and have compatibility tests.
+Tor-driver v0.2.0 writes its closed, typed configuration through sandbox Files
+and passes only the `defaults-torrc` and `torrc` Path values to `NewCommand`.
+The protected fixed builder maps those inputs to
+`--defaults-torrc PATH -f PATH`. It accepts no node-supplied argv or executable
+path. Managed transport paths come only from approved `ProgramPath` values and
+the Tor program's protected descendant list.
 
 Templates list allowed descendants, such as Tor's managed `lyrebird` process.
 All descendants inherit the same boundary and lifetime. Strict Linux profiles
@@ -729,7 +715,8 @@ A general loopback exemption permits more than the intended owner endpoints.
 Neither alone provides the desired daemon-only network property. Windows
 Firewall rules keyed by an
 executable path also fail to cover descendants running another image; the
-current tor-driver Windows containment adapter already rejects that claim.
+native backend therefore does not claim this protection for TorDriver or any
+other protected program.
 
 A possible native backend uses a per-instance enforceable network identity,
 WFP policy for IPv4/IPv6 inbound and outbound traffic, and owner endpoint
@@ -853,22 +840,28 @@ Illustrative Linux protected configuration (proposed schema):
     "Programs": {
       "tor": {
         "Executable": "/usr/bin/tor",
-        "Builder": "tor-v1",
+        "Builder": "fixed-v1",
+        "Inputs": {
+          "defaults-torrc": {"Kind": "path", "Required": true},
+          "torrc": {"Kind": "path", "Required": true}
+        },
+        "Arguments": [
+          {"Literal": "--defaults-torrc"}, {"Input": "defaults-torrc"},
+          {"Literal": "-f"}, {"Input": "torrc"}
+        ],
         "Descendants": ["obfs4"]
       },
       "obfs4": {
         "Executable": "/usr/bin/lyrebird",
-        "Builder": "tor-transport-v1",
+        "Builder": "fixed-v1",
         "Descendants": []
       }
     },
     "Templates": {
-      "tor-client": {
-        "AllowedClasses": ["almagest/XTorDriver"],
+      "tor": {
+        "AllowedClasses": ["almagest/TorDriver"],
         "Programs": ["tor", "obfs4"],
-        "RuntimeProfile": "linux-tor-v1",
-        "PersistentRoot": "/var/lib/almagest/tor-state",
-        "DeleteStateOnOwnerRemoval": false,
+        "RuntimeProfile": "linux-landlock-v1",
         "ReadOnly": [],
         "Environment": {
           "Inherit": ["LANG"],
@@ -899,7 +892,7 @@ Additional defined options:
 
 | Option | Meaning and validation |
 | --- | --- |
-| `Templates.*.ReadOnly` | Array of `{Source, Target}` mounts; existing absolute trusted source and validated sandbox target, no overlap with writable/system special paths. Read access only. |
+| `Templates.*.ReadOnly` | Array of `{Source, Target, Executable}` mounts; existing absolute trusted source and validated sandbox target, no overlap with writable/system special paths. Read access only. `Executable` defaults to false and must be set only for an approved interpreter, shared object, or other fixed executable dependency. |
 | `Templates.*.PersistentRoot` | Optional protected parent; omission gives temporary-only storage and makes `FS(Persistent)` fail explicitly. |
 | `Templates.*.RuntimeProfile` | Installed versioned platform profile defining system files, execute rights, socket support, and syscall/token policy. Unknown profiles are errors. |
 | `Templates.*.RequiredFeatures` | Optional list that strengthens the OS strict minimum; for example `private-network` or `exact-filesystem-view`. Required features fail creation when unavailable, including in auto; off is rejected for a template with explicit requirements. No field can remove an OS strict requirement. |
@@ -921,10 +914,9 @@ Keep `almagestd-protected-config.schema.json`, its reference from
 `almagestd-config.schema.json`, Go structs, defaults, and example configs in
 sync.
 
-When the deferred XTorDriver migration starts, migrate
-`Protected.Experimental.TorDriver` host executable, identity, temporary, and
-state settings to the template/program definitions. Retain Tor protocol
-timeouts and circuit settings at their existing appropriate authority level.
+Tor executable, identity, temporary, and state settings are in protected
+template and program definitions. Tor protocol settings remain in the typed
+driver configuration.
 Tor's own `Sandbox=dynamic|linux` is a different setting: it controls Tor's
 internal seccomp behavior and dynamic onion compatibility, not Almagest mode.
 Reject conflicting old and new host settings; provide a documented conversion.
@@ -932,33 +924,29 @@ Do not silently preserve the old best-effort process fallback under strict.
 
 ## 9. Tor-driver integration proof
 
-The current XTorDriver adapter calls `direct.NewBestEffortSystem` and adds a
-Windows restricted-token adapter. The new path replaces that system with an
-owner sandbox adapter. It must not pass the daemon's ordinary LocalNetwork
-as Tor's LocalNetwork when network containment is active.
+TorDriver passes its owner-bound `gobox.OwnerSandboxes` capability to
+tor-driver. It does not provide the daemon's ordinary LocalNetwork or a native
+process fallback.
 
-| tor-driver dependency | Sandbox implementation |
+| tor-driver v0.2.0 operation | Sandbox implementation |
 | --- | --- |
-| `FileSystem.TempDir` | Temporary Files.TempDir; translate the returned path into child view. |
-| `PrivateDir`, `WriteFile`, `ReadFile`, `RemoveAll` | Bound root-relative file operations; template owns permissions/identity; config sealing as described above. |
-| `Processes.Start` | Recognize approved Tor launch, validate exact arguments, translate to program ID and typed slots, then Command.Start. Reject arbitrary Launch values. |
-| `Process.Wait/Kill/Release` | Stable command result, complete tree kill, idempotent bookkeeping release. Release does not orphan descendants. |
-| `Processes.PID` | ProcessContext.ControllerPID, valid in the child PID view. Never use R's host PID blindly. |
-| `Processes.Platform` | ProcessContext.Platform, the target execution platform; important for a future VM worker. |
-| `Dependencies.LocalNetwork` | Sandbox gonnect adapter, covering both Dial and Listen. |
+| `Dependencies.Sandboxes.Acquire` | Owner-bound `tor` slot and template. The node cannot select owner identity. |
+| `Sandbox.FS` | Bound temporary or persistent root-relative operations; template owns permissions and identity. |
+| `Sandbox.NewCommand` | Protected `tor` program with exactly two typed Path inputs. Arbitrary argv is unavailable. |
+| `Command` lifecycle | Stable result, complete tree kill, and sandbox-owned cleanup. |
+| `Sandbox.ProcessContext` | Child-visible controller PID and target platform. |
+| `Sandbox` network methods | Private loopback dial and listen operations through the selected backend. |
 | `Dependencies.Outbound` | The selected graph Network, held by the driver in R or the direct daemon. Never installed as a child network interface. |
 | `OnionKeys` | Existing node-scoped secret storage; no sandbox authority over other secrets. |
 
-Adapter configuration uses ChildPath for temporary/state directories and
-ProgramPath for Tor and approved transports. It passes no node-selected
-`tor.Identity`; identity is already set by the template. The FileSystem adapter
-maps only known child-root prefixes back to Path values, with segment-aware
-validation. It cannot accept arbitrary absolute host paths from tor-driver.
+Tor-driver uses ChildPath for temporary/state directories and ProgramPath for
+approved transports. It receives no node-selected identity; the template sets
+the child identity. It cannot request arbitrary absolute host paths.
 
 The complete startup and traffic sequence is:
 
-1. Acquire the node's `tor` slot from `tor-client`. Create private work files and
-   select its persistent guard-state directory if available.
+1. Acquire the node's `tor` slot from template `tor`. Create private work and
+   guard-state files in the sandbox temporary root.
 2. Driver calls LocalNetwork.Listen on `127.0.0.1:0`. W binds inside the sandbox
    and returns its real address. Accepted streams are relayed to the driver's
    authenticated upstream SOCKS proxy outside the child boundary.
@@ -985,20 +973,17 @@ The complete startup and traffic sequence is:
    Node deletion closes the sandbox even if driver cleanup fails. Persistent
    guard state remains according to protected retention policy.
 
-Linux can support this sequence with the existing v0.1.2 dependency interfaces
-and a daemon-side Tor adapter/builder. Test the controller PID behavior, startup
-context cancellation, config sealing, and dynamic onion operation explicitly;
-these are easy to miss if integration only tests process launch. The initial
+Tor-driver v0.2.0 implements this sequence directly through `gobox`. Test the
+controller PID behavior, startup context cancellation, typed launch inputs, and
+dynamic onion operation explicitly; these are easy to miss if integration only
+tests process launch.
 A future Windows implementation can support the sequence with reported
 host-network exposure in auto mode and an OS-specific strict mode. Strict will
 require qualification of every mandatory Windows group. Private networking
 will remain an explicit OS-profile exclusion unless the template requires it.
 
-XTorDriver remains experimental until both direct and isolated adapters pass
-qualification. Enabling it in isolation needs changes to the current explicit
-`--experimental` direct-mode gate and protected bootstrap projection. Remove
-that gate only for classes whose required host operations have moved behind
-the reviewed interface.
+TorDriver is stable and registered by the daemon in direct and isolated modes.
+Its required host operations are behind the reviewed sandbox interface.
 
 ## 10. Qualification and implementation order
 
@@ -1007,8 +992,7 @@ Linux launch/worker backend, Linux isolated S role, and native Windows direct
 backend are implemented. The Windows backend provides `windows-native-v1` on
 qualified Windows Server 2022 amd64 hosts. It reports the declared filesystem
 and network OS exclusions, so strict can be satisfied while `full_boundary`
-is false. Windows isolated composition remains future work. The next node
-integration is the explicitly deferred `XTorDriver` migration.
+is false. Windows isolated composition remains future work.
 Do not expose a feature as applied until its native tests pass.
 
 Confinement denial tests apply to features required or reported as applied by
@@ -1081,6 +1065,5 @@ not depend on amd64, so this work does not require a new node-facing API.
 - [Runtime lifecycle rules](docs/RUNTIME_NODE_LIFECYCLE_PITFALLS.md)
 - [Engine build and lifecycle](lib/engine.go)
 - [Node runtime interfaces](lib/nodekit/runtime.go)
-- [Current Tor dependency adapter](lib/experimental/tor_backend.go)
-- [Current Windows Tor token handling](lib/experimental/tor_containment_windows.go)
+- [TorDriver integration](lib/tor/tor_backend.go)
 - [Protected config schema](almagestd-protected-config.schema.json)

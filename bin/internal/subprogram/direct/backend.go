@@ -35,6 +35,14 @@ type Backend struct {
 	activeCommands int
 }
 
+type capabilityUnavailableError struct{ reason string }
+
+func (e capabilityUnavailableError) Error() string {
+	return sandbox.ErrUnavailable.Error() + ": " + e.reason
+}
+func (e capabilityUnavailableError) Unwrap() error       { return sandbox.ErrUnavailable }
+func (e capabilityUnavailableError) PublicError() string { return e.reason }
+
 func protectionPlan(mode sandbox.Mode, probe policy.Probe, fullAvailable bool, template policy.Template) (sandbox.Status, uint32, uint32, bool, bool, error) {
 	var uid, gid uint32
 	native, full := false, false
@@ -156,7 +164,7 @@ func NewBackend(config policy.Config, probe policy.Probe) (*Backend, error) {
 		if planErr != nil {
 			return nil, fmt.Errorf("template %q preflight: %w", id, planErr)
 		}
-		if !full {
+		if normalized.Mode != sandbox.Off && !full {
 			for _, input := range template.ReadOnly {
 				if filepath.Clean(input.Source) != filepath.Clean(input.Target) {
 					return nil, fmt.Errorf("template %q: %w: mapped read-only targets require an exact filesystem-view backend", id, sandbox.ErrUnavailable)
@@ -181,6 +189,9 @@ func NewBackend(config policy.Config, probe policy.Probe) (*Backend, error) {
 			heldInfo, validateErr := validateReadOnlySource(input.Source)
 			if validateErr != nil {
 				return nil, fmt.Errorf("template %q read-only input %d: %w", id, index, validateErr)
+			}
+			if input.Executable && !heldInfo.Mode().IsRegular() {
+				return nil, fmt.Errorf("template %q read-only input %d: %w: executable input must be a regular file", id, index, sandbox.ErrInvalid)
 			}
 			readOnlyInfo[id] = append(readOnlyInfo[id], heldInfo)
 		}
@@ -221,7 +232,7 @@ func validateReadOnlySource(source string) (os.FileInfo, error) {
 			return err
 		}
 		held, statErr := file.Stat()
-		aliases := statErr == nil && openedFileHasMultipleLinks(file, held)
+		aliases := statErr == nil && unsafeTrustedAlias(file, held)
 		closeErr := file.Close()
 		if statErr != nil || closeErr != nil || !os.SameFile(info, held) || aliases {
 			return errors.Join(sandbox.ErrDenied, statErr, closeErr)
@@ -256,7 +267,7 @@ func validateExecutable(label, path string) (os.FileInfo, error) {
 		return nil, fmt.Errorf("%s: %w", label, err)
 	}
 	heldInfo, statErr := file.Stat()
-	multipleLinks := statErr == nil && openedFileHasMultipleLinks(file, heldInfo)
+	multipleLinks := statErr == nil && unsafeTrustedAlias(file, heldInfo)
 	closeErr := file.Close()
 	if statErr != nil || closeErr != nil {
 		return nil, fmt.Errorf("%s identity: %w", label, errors.Join(statErr, closeErr))
@@ -272,7 +283,7 @@ func validateExecutable(label, path string) (os.FileInfo, error) {
 
 func (b *Backend) ServiceStatus() sandbox.ServiceStatus {
 	result := sandbox.ServiceStatus{Mode: b.policy.Mode, Platform: b.probe.Platform, EffectiveIdentity: b.probe.EffectiveIdentity,
-		Templates: make(map[sandbox.TemplateID]sandbox.Status, len(b.policy.Templates)), Limits: map[string]int64{
+		Templates: make(map[sandbox.TemplateID]sandbox.Status, len(b.policy.Templates)+len(b.policy.UnavailableTemplates)), Limits: map[string]int64{
 			"instances": int64(b.policy.Limits.Instances), "commands": int64(b.policy.Limits.Commands),
 			"relay_bytes": b.policy.Limits.RelayBytes, "receipts": int64(b.policy.Limits.Receipts),
 		}}
@@ -280,6 +291,11 @@ func (b *Backend) ServiceStatus() sandbox.ServiceStatus {
 		status, _, _, _, _, _ := protectionPlan(b.policy.Mode, b.probe, b.fullAvailable, template)
 		status.Template = id
 		result.Templates[id] = status
+	}
+	for id := range b.policy.UnavailableTemplates {
+		if _, exists := result.Templates[id]; !exists {
+			result.Templates[id] = sandbox.Status{Template: id, Mode: b.policy.Mode, State: sandbox.Failed}
+		}
 	}
 	return result
 }
@@ -310,8 +326,10 @@ func prepareRoot(path string) error {
 	if created {
 		return os.Chmod(path, 0o700)
 	}
-	if runtime.GOOS != "windows" && info.Mode().Perm()&0o077 != 0 {
-		return fmt.Errorf("%w: existing root must not grant group or other access", sandbox.ErrDenied)
+	// The native backend changes an owned root to 0711 so that its unprivileged
+	// child identity can traverse it without listing its contents.
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o700 && info.Mode().Perm() != 0o711 {
+		return fmt.Errorf("%w: existing root must be private or use native traversal permissions", sandbox.ErrDenied)
 	}
 	return nil
 }
@@ -350,6 +368,9 @@ func validatePathComponents(name string) error {
 }
 
 func (b *Backend) Prepare(ctx context.Context, owner sandbox.Owner, slot string, templateID sandbox.TemplateID, generation uint64) (sandbox.Sandbox, error) {
+	if reason := b.policy.UnavailableTemplates[templateID]; reason != "" {
+		return nil, capabilityUnavailableError{reason: reason}
+	}
 	template, ok := b.policy.Templates[templateID]
 	if !ok || !slices.Contains(template.AllowedClasses, owner.Class) {
 		return nil, sandbox.ErrDenied
@@ -603,8 +624,20 @@ func (s *instance) ChildPath(path sandbox.Path) (string, error) {
 	if err := sandbox.ValidatePath(path, true); err != nil {
 		return "", err
 	}
-	if _, err := s.FS(path.Root); err != nil {
-		return "", err
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.childPathLocked(path)
+}
+
+// childPathLocked resolves an already validated path while s.mu is held.
+// Launch rendering runs below NewCommand's instance lock, so it must not call
+// the public ChildPath method and enter that lock a second time.
+func (s *instance) childPathLocked(path sandbox.Path) (string, error) {
+	if s.status.State != sandbox.Ready {
+		return "", sandbox.ErrClosed
+	}
+	if s.roots[path.Root] == nil {
+		return "", sandbox.ErrUnavailable
 	}
 	if !s.nativeFull {
 		return s.hostPath(path)
@@ -620,6 +653,9 @@ func (s *instance) ChildPath(path sandbox.Path) (string, error) {
 }
 
 func (s *instance) ProgramPath(id sandbox.ProgramID) (string, error) {
+	if reason := s.backend.policy.UnavailablePrograms[id]; reason != "" {
+		return "", capabilityUnavailableError{reason: reason}
+	}
 	if !s.programAllowed(id) {
 		return "", sandbox.ErrDenied
 	}
@@ -698,7 +734,7 @@ func (s *instance) buildLaunch(program policy.Program, launch sandbox.Launch) ([
 			continue
 		}
 		value := launch.Inputs[item.Input]
-		argument, err := s.argument(value)
+		argument, err := s.argumentLocked(value)
 		if err != nil {
 			return nil, "", err
 		}
@@ -722,7 +758,7 @@ func inputLength(value sandbox.Value) int64 {
 	}
 }
 
-func (s *instance) argument(value sandbox.Value) (string, error) {
+func (s *instance) argumentLocked(value sandbox.Value) (string, error) {
 	switch value.Kind {
 	case sandbox.TextValue:
 		return value.Text, nil
@@ -735,7 +771,7 @@ func (s *instance) argument(value sandbox.Value) (string, error) {
 		return "false", nil
 	case sandbox.PathValue:
 		if s.nativeFull {
-			return s.ChildPath(value.Path)
+			return s.childPathLocked(value.Path)
 		}
 		return s.hostPath(value.Path)
 	case sandbox.ProgramValue:

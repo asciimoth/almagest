@@ -296,6 +296,18 @@ func (e *engine) SandboxesForNode(ctx context.Context, node uint64, _, _ string)
 	if e == nil || e.sandboxOwners == nil {
 		return nil, sandbox.ErrUnavailable
 	}
+	if e.workspaceReady != nil {
+		select {
+		case <-e.workspaceReady:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-e.ctx.Done():
+			return nil, sandbox.ErrClosed
+		}
+	}
+	if e.mainWorkspace == nil {
+		return nil, sandbox.ErrUnavailable
+	}
 	snapshot, ok := e.mainWorkspace.NodeSnapshot(node)
 	if !ok {
 		return nil, pasta.ErrNoNode

@@ -4,7 +4,7 @@ This Linux-only case starts a private Chutney Tor network in one container on
 an internal Docker network. The internal network has no route to the public
 Internet.
 
-The case checks that `XTorDriver` discovers Tor from `PATH`, bootstraps through
+The case checks that `TorDriver` discovers Tor from `PATH`, bootstraps through
 an `OutNetwork`, carries an HTTP request through the private Tor exit, and
 blocks traffic while its outbound link is detached. Reattaching the link must
 restore traffic without replacing the Tor process.

@@ -57,6 +57,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 	set -eu; \
 	mkdir -p /out; \
 	go build -C bin -o /out/almagest-cli ./almagest-cli; \
+	CGO_ENABLED=0 go build -C bin -o /out/tor-e2e-helper ./cmd/tor-e2e-helper; \
 	GOWORK=off GO111MODULE=off CGO_ENABLED=0 go build -C e2e/helpers/command-recorder \
 		-o /out/almagest-e2e-command-recorder .; \
 	if [ "$E2E_COVERAGE" = "1" ]; then \

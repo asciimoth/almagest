@@ -1,9 +1,8 @@
 # Subprogram sandbox implementation status
 
 The daemon has a protected, owner-bound subprogram service in direct mode on
-Linux and Windows, and in Linux isolated mode.
-`XTorDriver` does not use this service. It remains an experimental node that
-uses `github.com/asciimoth/tor-driver` directly.
+Linux and Windows, and in Linux isolated mode. `TorDriver` uses this service
+through tor-driver v0.2.0 and has no direct host process fallback.
 
 Implemented parts of `SUBPROGRAM_SANDBOX_DESIGN.md` include:
 
@@ -51,6 +50,22 @@ Implemented parts of `SUBPROGRAM_SANDBOX_DESIGN.md` include:
   and direct-daemon behavior under ordinary-user, elevated-administrator, and
   LocalSystem launch identities. The Windows daemon test covers sandbox
   `off|auto|strict`; Windows daemon isolation remains unavailable.
+- TorDriver traffic qualification in `off|auto|strict`: a real private Tor
+  network on Linux amd64, and a deterministic Tor control and SOCKS protocol
+  peer under ordinary and elevated identities on Windows Server 2022 amd64.
+  The Windows test checks the documented native profile exclusions and does
+  not claim a full boundary.
+- Optional startup discovery for TorDriver is available through protected
+  `Sandbox.DiscoverSystemPrograms` or `--discover-system-programs`. It is off by
+  default. Linux discovery maps the exact ELF dependency closure, including
+  absolute content-store paths such as `/nix/store`, into the private root.
+  Generated writable roots are placed beside private daemon storage. Their
+  common parent permits traversal without directory listing; instance files
+  are owned by the selected native sandbox identity.
+  Discovery failures are capability-local runtime diagnostics. They do not
+  stop daemon startup or disable explicit and unrelated sandbox policy. A
+  missing Tor dependency fails the generated `tor` template when a node uses
+  it. A missing obfs dependency fails only requests for the `obfs4` program.
 
 The direct backend reports only protections supported by its selected path.
 The portable `direct-v1` auto profile reports explicit environment construction
@@ -129,8 +144,6 @@ The following Windows work is outside the implemented native direct profile:
   resource-limit qualification before the profile can report strict success.
 - Windows soft process signals remain unsupported. Portable terminate and kill
   behavior uses complete Job Object termination.
-- `XTorDriver` still uses `tor-driver` directly. Its sandbox adapter and all
-  direct and isolated node qualification remain deferred by the current scope.
 
 ## Remaining Linux work
 
@@ -164,9 +177,6 @@ The following Linux work is not implemented or is not fully qualified:
 - Durable recovery quarantines an owner after an unclean active session because
   it cannot prove that escaped descendants are dead. Recovery that can prove
   process-tree death and safely reuse the owner remains future work.
-- `XTorDriver` still uses `tor-driver` directly. Its sandbox adapter, launch
-  builder, controller-PID flow, and direct and isolated qualification remain
-  deferred by the current project scope.
 
 Persistent byte quotas are also deferred. Adding them later requires aggregate
 enforcement for direct child writes, such as filesystem project quotas or a

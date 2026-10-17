@@ -150,7 +150,8 @@ func directDaemonIntegrations() daemonIntegrations {
 			return localnetwork.BuildWithRuntimeDependencies(conf.Protected.System, callbacks, logf.NetworkLogger(), dependencyErr, seed)
 		},
 		buildSandboxes: func(conf *Config) (sandbox.Service, error) {
-			if len(conf.Protected.Sandbox.Programs) == 0 && len(conf.Protected.Sandbox.Templates) == 0 {
+			if len(conf.Protected.Sandbox.Programs) == 0 && len(conf.Protected.Sandbox.Templates) == 0 &&
+				len(conf.Protected.Sandbox.UnavailableTemplates) == 0 {
 				return nil, nil
 			}
 			return sandboxservice.NewHost(conf.Protected.Sandbox)
@@ -240,6 +241,9 @@ func runDaemon(
 		return err
 	}
 	conf.Protected.Merge(&arguments)
+	if err := prepareSystemProgramPolicy(conf, fsPath); err != nil {
+		return fmt.Errorf("prepare system program sandbox policy: %w", err)
+	}
 
 	immutableSecrets, err := conf.Protected.ImmutableSecrets()
 	if err != nil {
@@ -300,7 +304,7 @@ func runDaemon(
 	admin.secrets = kv
 	admin.tls = kv
 	admin.tlsOSAuthorityFetcher = platform.OSAuthorityFetcher()
-	admin.experimentalNodeTypes = daemonExperimentalNodeTypes(arguments.Experimental)
+	admin.experimentalNodeTypes = make(map[string]bool)
 
 	logf := NewLogFactory(conf.LogCache().MergeArgs(&arguments))
 	application.OwnLogging(logf.Close)
@@ -367,7 +371,7 @@ func runDaemon(
 		kv,
 		kv,
 		kv,
-		daemonNodeClasses(conf.Protected.CommandRunner, nodeCommands, arguments.Experimental, conf.Protected.Experimental),
+		daemonNodeClasses(conf.Protected.CommandRunner, nodeCommands),
 		globalBufPool,
 		arguments.DebugNodes,
 		engineOptions...,
@@ -418,12 +422,17 @@ func runDaemon(
 }
 
 func mapSandboxStatus(input sandbox.ServiceStatus) *api.SubprogramSandboxStatus {
+	limits := make(map[string]int64, len(input.Limits))
+	for name, value := range input.Limits {
+		limits[name] = value
+	}
 	result := &api.SubprogramSandboxStatus{Mode: string(input.Mode), Platform: input.Platform,
-		EffectiveIdentity: input.EffectiveIdentity, Templates: make(map[string]api.SubprogramTemplateStatus, len(input.Templates)), Limits: input.Limits,
+		EffectiveIdentity: input.EffectiveIdentity, Templates: make(map[string]api.SubprogramTemplateStatus, len(input.Templates)), Limits: limits,
 		ActiveOwners: input.ActiveOwners, OrphanedOwners: input.OrphanedOwners, QuarantinedOwners: input.QuarantinedOwners}
 	for id, status := range input.Templates {
 		template := api.SubprogramTemplateStatus{Profile: status.Profile, EffectiveIdentity: status.EffectiveIdentity, StrictSatisfied: status.StrictSatisfied,
-			FullBoundary: status.FullBoundary, Warnings: append([]string(nil), status.Warnings...)}
+			FullBoundary: status.FullBoundary, Features: make([]api.SubprogramFeatureStatus, 0, len(status.Features)),
+			Warnings: append([]string{}, status.Warnings...)}
 		for _, feature := range status.Features {
 			template.Features = append(template.Features, api.SubprogramFeatureStatus{Feature: string(feature.Feature), State: string(feature.State), Reason: feature.Reason})
 		}

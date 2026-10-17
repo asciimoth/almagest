@@ -8,7 +8,7 @@ import (
 
 	cmdrunner "github.com/asciimoth/almagest/bin/almagestd/command"
 	"github.com/asciimoth/almagest/bin/almagestd/daemonservices"
-	experimentalnodes "github.com/asciimoth/almagest/lib/experimental"
+	tornodes "github.com/asciimoth/almagest/lib/tor"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
 	"github.com/asciimoth/pasta/pasta"
@@ -30,28 +30,14 @@ var (
 	errCommandNodeNotAllowed   = errors.New("command is not allowed for nodes")
 )
 
-// daemonNodeClasses returns classes that almagestd must create explicitly.
-// These classes either depend on daemon internals or require protected host
-// configuration and opt-in registration.
-func daemonNodeClasses(cfg cmdrunner.Config, dispatcher daemonservices.NodeCommandDispatcher, enableExperimental bool, experimental ProtectedExperimentalConfig) []pasta.NodeClass {
-	classes := []pasta.NodeClass{
+// daemonNodeClasses returns stable host-facing classes. TorDriver receives no
+// direct host authority; it can launch only sandbox programs allowed by the
+// daemon's protected sandbox policy.
+func daemonNodeClasses(cfg cmdrunner.Config, dispatcher daemonservices.NodeCommandDispatcher) []pasta.NodeClass {
+	return []pasta.NodeClass{
 		newCommandNodeClass(cfg, dispatcher),
+		tornodes.TorDriverClass{},
 	}
-	if enableExperimental {
-		classes = append(classes, experimentalnodes.XTorDriverClass{Host: experimental.TorDriver})
-	}
-	return classes
-}
-
-// daemonExperimentalNodeTypes returns the stability metadata for opt-in node
-// classes. Keep this list next to daemonNodeClasses so registration and API
-// classification change together.
-func daemonExperimentalNodeTypes(enableExperimental bool) map[string]bool {
-	types := make(map[string]bool)
-	if enableExperimental {
-		types[experimentalnodes.NodeTypeXTorDriver] = true
-	}
-	return types
 }
 
 // commandNodeClass exposes a protected command-runner allowlist as a Pasta node

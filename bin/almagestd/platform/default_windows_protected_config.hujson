@@ -10,7 +10,4 @@
 			"Recovery": "inspect",
 		},
 	},
-	"Experimental": {
-		"TorDriver": {},
-	},
 }

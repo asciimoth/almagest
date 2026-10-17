@@ -176,9 +176,10 @@ func (c *command) fullNativeArguments() []string {
 		c.setupErr = err
 		programPath = "/almagest/program/invalid"
 	}
-	arguments := []string{"launch-v3", strconv.FormatUint(uint64(c.instance.nativeUID), 10), strconv.FormatUint(uint64(c.instance.nativeGID), 10),
+	programCount := len(c.allowedProgramIDs())
+	arguments := []string{"launch-v4", strconv.FormatUint(uint64(c.instance.nativeUID), 10), strconv.FormatUint(uint64(c.instance.nativeGID), 10),
 		strconv.Itoa(descriptors), strconv.FormatInt(limits.MemoryBytes, 10), strconv.Itoa(limits.Tasks), programPath, cwd,
-		strconv.Itoa(len(c.allowedProgramIDs())), "--"}
+		strconv.Itoa(programCount), strconv.Itoa(programCount + c.executableReadOnlyCount()), "--"}
 	return append(arguments, c.arguments...)
 }
 
@@ -355,10 +356,38 @@ func (c *command) configureFullNativeLocked(files []*os.File, statusReader *os.F
 		}
 		files = append(files, executable)
 	}
+	identities := c.instance.backend.readOnlyInfo[c.instance.templateID]
+	for index, input := range c.instance.template.ReadOnly {
+		if !input.Executable {
+			continue
+		}
+		executable, openErr := openVerifiedObject(input.Source, identities[index], false)
+		if openErr != nil {
+			_ = commandCgroup.Close()
+			c.nativeCgroup = nil
+			_ = statusReader.Close()
+			for _, value := range files[2:] {
+				_ = value.Close()
+			}
+			cleanup()
+			return fmt.Errorf("%w: executable read-only input identity", sandbox.ErrLaunch)
+		}
+		files = append(files, executable)
+	}
 	c.cmd.ExtraFiles = files
 	c.nativeFiles = files
 	c.execStatus = statusReader
 	return nil
+}
+
+func (c *command) executableReadOnlyCount() int {
+	count := 0
+	for _, input := range c.instance.template.ReadOnly {
+		if input.Executable {
+			count++
+		}
+	}
+	return count
 }
 
 // allowedProgramIDs returns the selected image followed by its transitive,
@@ -413,7 +442,7 @@ func openVerifiedObject(path string, expected os.FileInfo, directory bool) (*os.
 		return nil, err
 	}
 	held, statErr := file.Stat()
-	aliases := statErr == nil && openedFileHasMultipleLinks(file, held)
+	aliases := statErr == nil && unsafeTrustedAlias(file, held)
 	if statErr != nil || !os.SameFile(info, held) || !os.SameFile(expected, held) || aliases {
 		_ = file.Close()
 		return nil, errors.Join(sandbox.ErrDenied, statErr)

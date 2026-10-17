@@ -12,6 +12,8 @@ import (
 	"os"
 	"sync"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/asciimoth/almagest/bin/internal/isolation/protocol"
 	"github.com/asciimoth/almagest/bin/internal/isolation/transport"
@@ -19,7 +21,7 @@ import (
 )
 
 const (
-	wireVersion       = 1
+	wireVersion       = 2
 	maxWireConcurrent = 128
 	maxDataChunk      = 32 * 1024
 	// A launch has at most 128 inputs, and a sandbox value has a maximum
@@ -34,11 +36,12 @@ type wireHello struct {
 }
 
 type wireMessage struct {
-	Kind  string          `json:"kind"`
-	ID    uint64          `json:"id"`
-	Op    string          `json:"op,omitempty"`
-	Body  json.RawMessage `json:"body,omitempty"`
-	Error string          `json:"error,omitempty"`
+	Kind   string          `json:"kind"`
+	ID     uint64          `json:"id"`
+	Op     string          `json:"op,omitempty"`
+	Body   json.RawMessage `json:"body,omitempty"`
+	Error  string          `json:"error,omitempty"`
+	Detail string          `json:"detail,omitempty"`
 }
 
 type wireHandler func(context.Context, string, json.RawMessage) (any, error)
@@ -171,7 +174,11 @@ func (p *wirePeer) call(ctx context.Context, op string, request, response any) e
 	select {
 	case message := <-reply:
 		if message.Error != "" {
-			return decodeWireError(message.Error)
+			base := decodeWireError(message.Error)
+			if message.Detail != "" {
+				return errors.Join(base, errors.New(message.Detail))
+			}
+			return base
 		}
 		if response == nil {
 			return nil
@@ -206,7 +213,7 @@ func (p *wirePeer) receive(message wireMessage) error {
 	}
 	switch message.Kind {
 	case "reply":
-		if message.Op != "" || (message.Error == "") == (len(message.Body) == 0) {
+		if message.Op != "" || (message.Error == "") == (len(message.Body) == 0) || message.Detail != "" && (message.Error == "" || !validPublicError(message.Detail)) {
 			return protocol.ErrInvalidContract
 		}
 		p.mu.Lock()
@@ -218,7 +225,7 @@ func (p *wirePeer) receive(message wireMessage) error {
 		}
 		ch <- message
 	case "cancel":
-		if message.Op != "" || message.Error != "" || len(message.Body) != 0 {
+		if message.Op != "" || message.Error != "" || message.Detail != "" || len(message.Body) != 0 {
 			return protocol.ErrInvalidContract
 		}
 		p.mu.Lock()
@@ -228,7 +235,7 @@ func (p *wirePeer) receive(message wireMessage) error {
 			cancel()
 		}
 	case "request":
-		if !validOperation(message.Op) || message.Error != "" || len(message.Body) == 0 || p.handler == nil {
+		if !validOperation(message.Op) || message.Error != "" || message.Detail != "" || len(message.Body) == 0 || p.handler == nil {
 			return protocol.ErrInvalidContract
 		}
 		select {
@@ -255,7 +262,7 @@ func (p *wirePeer) receive(message wireMessage) error {
 
 func (p *wirePeer) handle(ctx context.Context, message wireMessage) {
 	value, err := p.handler(ctx, message.Op, message.Body)
-	reply := wireMessage{Kind: "reply", ID: message.ID, Error: encodeWireError(err)}
+	reply := wireMessage{Kind: "reply", ID: message.ID, Error: encodeWireError(err), Detail: publicErrorDetail(err)}
 	if err == nil {
 		reply.Body, err = json.Marshal(value)
 		if err != nil {
@@ -273,6 +280,30 @@ func (p *wirePeer) handle(ctx context.Context, message wireMessage) {
 	if err := p.write(reply); err != nil {
 		p.fail(err)
 	}
+}
+
+func publicErrorDetail(err error) string {
+	var value interface{ PublicError() string }
+	if !errors.As(err, &value) {
+		return ""
+	}
+	detail := value.PublicError()
+	if !validPublicError(detail) {
+		return ""
+	}
+	return detail
+}
+
+func validPublicError(value string) bool {
+	if value == "" || len(value) > 4096 || !utf8.ValidString(value) {
+		return false
+	}
+	for _, r := range value {
+		if unicode.IsControl(r) {
+			return false
+		}
+	}
+	return true
 }
 
 var wireErrors = map[string]error{

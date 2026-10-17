@@ -14,6 +14,13 @@ func forceFallbackAuthorities() bool {
 	return os.Getenv(forceFallbackAuthoritiesEnv) != ""
 }
 
+// FallbackAuthorityFetcher returns the public root catalog embedded in the
+// daemon. Isolated runtime roles use it because their filesystem view does not
+// include the host certificate store.
+func FallbackAuthorityFetcher() tlspolicy.AuthorityFetcher {
+	return tlspolicy.AuthorityFetcherFunc(fallbackAuthorityCandidates)
+}
+
 func fallbackAuthorityCandidates(ctx context.Context) ([]tlspolicy.AuthorityCandidate, error) {
 	source := tlspolicy.AuthoritySource{
 		Name:  "fallback:nss",

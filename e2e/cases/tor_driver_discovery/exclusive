@@ -1,0 +1,1 @@
+Uses the shared host network ports 1081 and 18093 and changes /usr/local/bin/tor.

@@ -108,9 +108,16 @@ func (s *instance) startNativeWorker() error {
 		}
 		files = append(files, file)
 	}
-	arguments := []string{"worker-v2", strconv.FormatUint(uint64(s.nativeUID), 10), strconv.FormatUint(uint64(s.nativeGID), 10),
+	executableReadOnly := make([]byte, len(s.template.ReadOnly))
+	for index, input := range s.template.ReadOnly {
+		executableReadOnly[index] = '0'
+		if input.Executable {
+			executableReadOnly[index] = '1'
+		}
+	}
+	arguments := []string{"worker-v3", strconv.FormatUint(uint64(s.nativeUID), 10), strconv.FormatUint(uint64(s.nativeGID), 10),
 		strconv.Itoa(writable), strconv.Itoa(len(s.template.Programs)), strconv.Itoa(len(s.template.ReadOnly)),
-		strconv.FormatInt(s.template.Limits.TemporaryBytes, 10), mountPath, "--"}
+		strconv.FormatInt(s.template.Limits.TemporaryBytes, 10), mountPath, string(executableReadOnly), "--"}
 	for _, id := range s.template.Programs {
 		arguments = append(arguments, "/almagest/program/"+string(id))
 	}

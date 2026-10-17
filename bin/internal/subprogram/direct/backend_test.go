@@ -227,6 +227,52 @@ func launch(action, value string) sandbox.Launch {
 	return sandbox.Launch{Directory: sandbox.Path{Root: sandbox.Temporary}, Inputs: map[string]sandbox.Value{"action": {Kind: sandbox.TextValue, Text: action}, "value": {Kind: sandbox.TextValue, Text: value}}}
 }
 
+func TestNativeFullNewCommandRendersPathInputWithoutLockRecursion(t *testing.T) {
+	temporary := t.TempDir()
+	instance := &instance{
+		backend: &Backend{policy: policy.Config{Programs: map[sandbox.ProgramID]policy.Program{
+			"helper": {
+				Executable: "/bin/false",
+				Arguments:  []policy.Argument{{Input: "config"}},
+				Inputs: map[string]policy.Input{
+					"config": {Kind: sandbox.PathValue, Required: true},
+				},
+			},
+		}}},
+		template:      policy.Template{Programs: []sandbox.ProgramID{"helper"}, Limits: policy.TemplateLimits{Commands: 1}},
+		nativeFull:    true,
+		status:        sandbox.Status{State: sandbox.Ready},
+		temporaryPath: temporary,
+		roots:         map[sandbox.Root]*confinedRoot{sandbox.Temporary: {}},
+		commands:      make(map[*command]struct{}),
+		pending:       make(map[*command]struct{}),
+	}
+	result := make(chan error, 1)
+	go func() {
+		value, err := instance.NewCommand("helper", sandbox.Launch{
+			Directory: sandbox.Path{Root: sandbox.Temporary},
+			Inputs: map[string]sandbox.Value{
+				"config": {Kind: sandbox.PathValue, Path: sandbox.Path{Root: sandbox.Temporary, Rel: "torrc"}},
+			},
+		})
+		if err == nil {
+			command := value.(*command)
+			if !slices.Equal(command.arguments, []string{"/almagest/temp/torrc"}) {
+				err = fmt.Errorf("arguments = %q", command.arguments)
+			}
+		}
+		result <- err
+	}()
+	select {
+	case err := <-result:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("NewCommand deadlocked while rendering a native path input")
+	}
+}
+
 func TestDirectCommandContract(t *testing.T) {
 	instance := prepareInstance(t, testBackend(t, sandbox.Off))
 	process := instance.ProcessContext()
@@ -717,5 +763,43 @@ func TestDirectStrictRefusesBeforeLaunch(t *testing.T) {
 	config.Mode = sandbox.Strict
 	if _, err := NewBackend(config, policy.Probe{Platform: runtime.GOOS, EffectiveIdentity: "test-user", Available: map[sandbox.Feature]bool{sandbox.Environment: true}}); !errors.Is(err, sandbox.ErrUnavailable) {
 		t.Fatalf("strict preflight error = %v", err)
+	}
+}
+
+func TestDirectOffAcceptsMappedReadOnlyPolicy(t *testing.T) {
+	config := testBackend(t, sandbox.Off).policy
+	source := filepath.Join(t.TempDir(), "input")
+	if err := os.WriteFile(source, []byte("fixture"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	template := config.Templates["test"]
+	template.ReadOnly = []policy.ReadOnly{{Source: source, Target: "/mapped/input"}}
+	config.Templates["test"] = template
+	probe := policy.Probe{
+		Platform: runtime.GOOS, EffectiveIdentity: "test-user",
+		Available: map[sandbox.Feature]bool{sandbox.Environment: true, sandbox.HandleInheritance: true},
+		Reasons:   map[sandbox.Feature]string{sandbox.WritableStorage: "direct-child-storage-not-confined"},
+	}
+	if _, err := NewBackend(config, probe); err != nil {
+		t.Fatalf("off mode rejected inactive read-only mapping: %v", err)
+	}
+}
+
+func TestDirectBackendReopensNativeTraversalRoot(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX root permissions are not available")
+	}
+	backend := testBackend(t, sandbox.Off)
+	config := backend.policy
+	if err := os.Chmod(config.TemporaryRoot, 0o711); err != nil {
+		t.Fatal(err)
+	}
+	probe := policy.Probe{
+		Platform: runtime.GOOS, EffectiveIdentity: "test-user",
+		Available: map[sandbox.Feature]bool{sandbox.Environment: true, sandbox.HandleInheritance: true},
+		Reasons:   map[sandbox.Feature]string{sandbox.WritableStorage: "direct-child-storage-not-confined"},
+	}
+	if _, err := NewBackend(config, probe); err != nil {
+		t.Fatalf("backend restart rejected native traversal root: %v", err)
 	}
 }

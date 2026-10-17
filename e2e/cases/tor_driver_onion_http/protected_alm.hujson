@@ -3,14 +3,38 @@
 		"Web": 0,
 		"Unix": "%E2E_ADMIN_SOCK%",
 	},
-	// Empty executable fields make tor-driver discover Tor in PATH. Dynamic
-	// onion services require the default dynamic sandbox mode.
-	"Experimental": {
-		"TorDriver": {
-			"StartupTimeout": "120s",
-			"CommandTimeout": "30s",
-			"DialTimeout": "30s",
-			"ShutdownTimeout": "15s",
+	"Sandbox": {
+		"Mode": "%E2E_SANDBOX_MODE%",
+		"TemporaryRoot": "%E2E_RUNTIME%/sandbox-temporary",
+		"RegistryRoot": "%E2E_RUNTIME%/sandbox-registry",
+		"LinuxLauncher": "/usr/local/bin/almagest-subprogram-launcher",
+		"LinuxCgroupRoot": "%E2E_CGROUP_PARENT%",
+		"Programs": {
+			"tor": {
+				"Executable": "/usr/bin/tor",
+				"Builder": "fixed-v1",
+				"Inputs": {
+					"defaults-torrc": {"Kind": "path", "Required": true},
+					"torrc": {"Kind": "path", "Required": true},
+				},
+				"Arguments": [
+					{"Literal": "--defaults-torrc"}, {"Input": "defaults-torrc"},
+					{"Literal": "-f"}, {"Input": "torrc"},
+					// %E2E_TOR_ARGUMENTS%
+				],
+			},
+		},
+		"Templates": {
+			"tor": {
+				"AllowedClasses": ["almagest/TorDriver"],
+				"Programs": ["tor"],
+				"RuntimeProfile": "linux-landlock-v1",
+				"ReadOnly": [
+					// %E2E_TOR_READ_ONLY%
+				],
+				"Linux": {"UID": 65534, "GID": 65534},
+				"Limits": {"Commands": 1, "Tasks": 128, "Files": 1024, "Sockets": 1024, "MemoryBytes": 536870912, "TemporaryBytes": 1073741824},
+			},
 		},
 	},
 }

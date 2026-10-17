@@ -258,7 +258,7 @@ func runIsolatedRuntimeRole() error {
 		enterStorage: func(path string) error {
 			return enterIsolatedRuntimeStorage(storage, path)
 		},
-		loadOSAuthority: func(context.Context) (immutableTLSData, error) { return immutableTLSData{}, nil },
+		loadOSAuthority: loadIsolatedRuntimeOSAuthorities,
 		prepareAdmin: func(conf *Config) (*AdminAPI, error) {
 			return isolatedAdminAPI(conf, adminRuntime, input.AdminEndpoints, input.Isolation)
 		},
@@ -292,6 +292,10 @@ func runIsolatedRuntimeRole() error {
 		}, arguments, mode, randomSeeds, nil, integrations)
 		return errors.Join(err, readyErr)
 	})
+}
+
+func loadIsolatedRuntimeOSAuthorities(ctx context.Context) (immutableTLSData, error) {
+	return loadOSTLSData(ctx, platform.FallbackAuthorityFetcher())
 }
 
 func isolatedSandboxService(client *sandboxisolated.Client) sandbox.Service {

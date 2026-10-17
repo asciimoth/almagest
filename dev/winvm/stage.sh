@@ -21,6 +21,8 @@ if [[ $mode == manual || $mode == test || $mode == ordinary || $mode == privileg
         -o ../dev/winvm/windows-test-evidence.exe ./cmd/windows-test-evidence
     GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go -C bin build \
         -o ../dev/winvm/sandbox-e2e-helper.exe ./cmd/sandbox-e2e-helper
+    GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go -C bin build \
+        -o ../dev/winvm/tor-e2e-helper.exe ./cmd/tor-e2e-helper
 fi
 if [[ $mode == test || $mode == ordinary || $mode == privileged ]]; then
     GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go -C bin test -c \

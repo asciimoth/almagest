@@ -3,10 +3,13 @@
 package networkrole
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/asciimoth/almagest/bin/internal/isolation/bootstrap"
@@ -117,5 +120,31 @@ func TestSandboxConfigured(t *testing.T) {
 		if !sandboxConfigured(value) {
 			t.Fatalf("sandbox config %q was ignored", value)
 		}
+	}
+}
+
+func TestManagedSandboxCgroupAndStartupLogging(t *testing.T) {
+	data, err := setSandboxCgroupRoot([]byte(`{"Mode":"auto"}`), "/sys/fs/cgroup/almagest/sandbox")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var value map[string]any
+	if err := json.Unmarshal(data, &value); err != nil {
+		t.Fatal(err)
+	}
+	if value["LinuxCgroupRoot"] != "/sys/fs/cgroup/almagest/sandbox" {
+		t.Fatalf("managed cgroup root = %#v", value["LinuxCgroupRoot"])
+	}
+
+	status := roleentry.RuntimeIsolationStatus{RequestedPolicy: "auto", ProfileID: "linux-full-v1",
+		Mechanisms: map[string]map[string]roleentry.RuntimeIsolationMechanism{"runtime": {}}}
+	var output bytes.Buffer
+	logAdaptiveLinuxStatus(&output, "selected", status, false)
+	if output.Len() != 0 {
+		t.Fatalf("normal startup log contains diagnostics: %q", output.String())
+	}
+	logAdaptiveLinuxStatus(&output, "selected", status, true)
+	if got := output.String(); !strings.Contains(got, "DEBUG isolation state=selected") || strings.Contains(got, "effective_caps") {
+		t.Fatalf("debug startup log is not concise: %q", got)
 	}
 }

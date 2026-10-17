@@ -2,12 +2,12 @@ package almagest
 
 import "encoding/json"
 
-const clipboardXTorDriverClass = "almagest/XTorDriver"
+const clipboardTorDriverClass = "almagest/TorDriver"
 
-// sanitizeXTorDriverClipboard removes node-scoped secret selectors from copied
-// XTorDriver nodes. A pasted node has a different name and cannot access the
+// sanitizeTorDriverClipboard removes node-scoped secret selectors from copied
+// TorDriver nodes. A pasted node has a different name and cannot access the
 // source node's secrets, so it must create its own private identities.
-func sanitizeXTorDriverClipboard(data string) string {
+func sanitizeTorDriverClipboard(data string) string {
 	if data == "" {
 		return data
 	}
@@ -22,7 +22,7 @@ func sanitizeXTorDriverClipboard(data string) string {
 	changed := false
 	for _, rawNode := range nodes {
 		node, ok := rawNode.(map[string]any)
-		if !ok || node["class"] != clipboardXTorDriverClass {
+		if !ok || node["class"] != clipboardTorDriverClass {
 			continue
 		}
 		config, ok := node["config"].(map[string]any)
@@ -33,8 +33,8 @@ func sanitizeXTorDriverClipboard(data string) string {
 		if !ok {
 			continue
 		}
-		changed = sanitizeXTorClipboardSelectors(configuration, "services", "keySecret") || changed
-		changed = sanitizeXTorClipboardSelectors(configuration, "clientAuthorizations", "privateKeySecret") || changed
+		changed = sanitizeTorClipboardSelectors(configuration, "services", "keySecret") || changed
+		changed = sanitizeTorClipboardSelectors(configuration, "clientAuthorizations", "privateKeySecret") || changed
 	}
 	if !changed {
 		return data
@@ -46,7 +46,7 @@ func sanitizeXTorDriverClipboard(data string) string {
 	return string(sanitized)
 }
 
-func sanitizeXTorClipboardSelectors(configuration map[string]any, list, selector string) bool {
+func sanitizeTorClipboardSelectors(configuration map[string]any, list, selector string) bool {
 	values, ok := configuration[list].([]any)
 	if !ok {
 		return false

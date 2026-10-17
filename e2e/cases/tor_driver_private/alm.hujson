@@ -12,7 +12,7 @@
 		"Tor proxy": {
 			"Class": "almagest/LocalProxy",
 			"Pos": "{\"x\":220,\"y\":500}",
-			"Links": ["proxy -> [Experimental Tor] Network default"],
+			"Links": ["proxy -> [Tor] Network default"],
 			"socksHost": "127.0.0.1",
 			"socksPort": 1081,
 			"wsHost": "",
@@ -28,16 +28,12 @@
 				"cmdUDPAssoc": true,
 			},
 		},
-		"Experimental Tor": {
-			"Class": "almagest/XTorDriver",
+		"Tor": {
+			"Class": "almagest/TorDriver",
 			"Pos": "{\"x\":440,\"y\":500}",
-			"Links": ["out -> [Tor outbound] Network"],
 			"configuration": {
 				"enabled": true,
-				"driver": {
-					"forwardTorLogs": true,
-					"startupTimeout": "60s",
-				},
+				"driver": {},
 				"networks": [
 					{
 						"name": "default",

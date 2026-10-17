@@ -48,6 +48,7 @@ $prebuiltBinDir = Join-Path $SourceDir 'dev\winvm'
 $prebuiltDaemon = Join-Path $prebuiltBinDir 'almagestd.exe'
 $prebuiltCLI = Join-Path $prebuiltBinDir 'almagest-cli.exe'
 $sandboxHelper = Join-Path $prebuiltBinDir 'sandbox-e2e-helper.exe'
+$torHelper = Join-Path $prebuiltBinDir 'tor-e2e-helper.exe'
 if ((Test-Path -LiteralPath $prebuiltDaemon -PathType Leaf) -and
     (Test-Path -LiteralPath $prebuiltCLI -PathType Leaf)) {
     $env:ALMAGEST_WINVM_PREBUILT_BIN_DIR = $prebuiltBinDir
@@ -56,6 +57,9 @@ if ((Test-Path -LiteralPath $prebuiltDaemon -PathType Leaf) -and
 }
 if (Test-Path -LiteralPath $sandboxHelper -PathType Leaf) {
     $env:ALMAGEST_WINVM_SANDBOX_HELPER = $sandboxHelper
+}
+if (Test-Path -LiteralPath $torHelper -PathType Leaf) {
+    $env:ALMAGEST_WINVM_TOR_HELPER = $torHelper
 }
 if ($Mode -eq 'privileged') {
     $env:ALMAGEST_E2E_SANDBOX_MODE = 'strict'

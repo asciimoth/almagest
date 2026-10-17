@@ -1,4 +1,4 @@
-package experimentalnodes
+package tornodes
 
 import (
 	"bytes"
@@ -15,18 +15,19 @@ import (
 	httpnodes "github.com/asciimoth/almagest/lib/http"
 	"github.com/asciimoth/almagest/lib/links"
 	"github.com/asciimoth/almagest/lib/logging"
+	"github.com/asciimoth/almagest/lib/nodekit"
 	"github.com/asciimoth/almagest/lib/storage"
 	"github.com/asciimoth/almagest/lib/testkit/e2etest"
 	"github.com/asciimoth/almagest/lib/testkit/networktest"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
+	sandbox "github.com/asciimoth/gobox"
 	"github.com/asciimoth/gonnect"
 	"github.com/asciimoth/pasta/pasta"
 	tor "github.com/asciimoth/tor-driver"
-	"github.com/asciimoth/tor-driver/direct"
 )
 
-func TestXTorDriverIsOptInAndRuntimeBound(t *testing.T) {
+func TestTorDriverStableClassIsRuntimeBound(t *testing.T) {
 	logf := logging.NewDebugLogFactory(64)
 	system := e2etest.NewDebugSystem()
 	pool := e2etest.NewTestDebugPool(t)
@@ -34,53 +35,53 @@ func TestXTorDriverIsOptInAndRuntimeBound(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := engine.NodeClassSnapshot(almagest.MainWorkspace, NodeTypeXTorDriver); ok {
-		t.Fatal("experimental Tor class is registered without an extra class")
+	if _, ok := engine.NodeClassSnapshot(almagest.MainWorkspace, NodeTypeTorDriver); ok {
+		t.Fatal("host-facing Tor class is registered without a host class")
 	}
 	if err = engine.Close(); err != nil {
 		t.Fatal(err)
 	}
 
-	test := newXTorTestEngine(t)
-	class, ok := test.e.Engine.NodeClassSnapshot(almagest.MainWorkspace, NodeTypeXTorDriver)
+	test := newTorTestEngine(t)
+	class, ok := test.e.Engine.NodeClassSnapshot(almagest.MainWorkspace, NodeTypeTorDriver)
 	if !ok {
-		t.Fatal("explicit experimental Tor class is missing")
+		t.Fatal("stable Tor class is missing")
 	}
 	if class.PrimaryType != links.TypeNetwork {
 		t.Fatalf("class snapshot = %#v", class)
 	}
 }
 
-func TestXTorDriverLinksDisconnectReconnectAndFullLifecycle(t *testing.T) {
-	test := newXTorTestEngine(t)
-	torNode := test.e.AddNode(NodeTypeXTorDriver, "tor")
+func TestTorDriverLinksDisconnectReconnectAndFullLifecycle(t *testing.T) {
+	test := newTorTestEngine(t)
+	torNode := test.e.AddNode(NodeTypeTorDriver, "tor")
 	test.e.SubscribeMenus(torNode)
 	driver := test.factory.waitDriver(t, 0)
-	eventuallyXTor(t, func() bool { return test.nodeLabel(torNode) == "waiting for Network" }, "Tor waits for outbound Network")
+	eventuallyTor(t, func() bool { return test.nodeLabel(torNode) == "waiting for Network" }, "Tor waits for outbound Network")
 
 	out := test.e.AddNode("almagest/MockNetwork", "out")
-	outLink := test.e.MustAddTypedLinkByPortName(links.TypeNetwork, out, "left", "Network", torNode, "right", xTorOutboundPortName)
-	eventuallyXTor(t, func() bool { return driver.outbound().Available && test.nodeLabel(torNode) == "up" }, "Tor becomes ready after outbound attach")
+	outLink := test.e.MustAddTypedLinkByPortName(links.TypeNetwork, out, "left", "Network", torNode, "right", torOutboundPortName)
+	eventuallyTor(t, func() bool { return driver.outbound().Available && test.nodeLabel(torNode) == "up" }, "Tor becomes ready after outbound attach")
 
 	// Bootstrap progress cannot recover a latched outbound gate. Only an
 	// explicit attachment replacement can make the driver usable again.
 	state := driver.outbound()
 	driver.setOutboundAvailable(false)
 	driver.events <- tor.OutboundEvent{Generation: state.Generation, Latched: true}
-	eventuallyXTor(t, func() bool { return test.nodeLabel(torNode) == "error" }, "Tor reports the current outbound fault")
+	eventuallyTor(t, func() bool { return test.nodeLabel(torNode) == "error" }, "Tor reports the current outbound fault")
 	driver.events <- tor.BootstrapEvent{Progress: 47, Stage: "loading_descriptors", Severity: tor.EventNotice}
-	eventuallyXTor(t, func() bool {
-		item, ok := test.e.MenuItem(torNode, xTorStatusBlockID, "bootstrap")
+	eventuallyTor(t, func() bool {
+		item, ok := test.e.MenuItem(torNode, torStatusBlockID, "bootstrap")
 		return test.nodeLabel(torNode) == "error" && ok && item.Type == formular.ItemProgressbar && item.Progress != nil && *item.Progress == 47
 	}, "bootstrap progress preserves the latched connectivity fault")
 	for _, hidden := range []string{"outboundGeneration", "outboundAttempts", "containment", "identity"} {
-		if _, ok := test.e.MenuItem(torNode, xTorStatusBlockID, hidden); ok {
+		if _, ok := test.e.MenuItem(torNode, torStatusBlockID, hidden); ok {
 			t.Fatalf("implementation detail %q is visible in the node status", hidden)
 		}
 	}
 	test.e.Engine.RemoveLink(almagest.MainWorkspace, outLink)
-	outLink = test.e.MustAddTypedLinkByPortName(links.TypeNetwork, out, "left", "Network", torNode, "right", xTorOutboundPortName)
-	eventuallyXTor(t, func() bool { return driver.outbound().Available && test.nodeLabel(torNode) == "up" }, "attachment replacement clears the latch")
+	outLink = test.e.MustAddTypedLinkByPortName(links.TypeNetwork, out, "left", "Network", torNode, "right", torOutboundPortName)
+	eventuallyTor(t, func() bool { return driver.outbound().Available && test.nodeLabel(torNode) == "up" }, "attachment replacement clears the latch")
 	driver.events <- tor.OutboundEvent{Generation: state.Generation, Latched: true}
 	time.Sleep(25 * time.Millisecond)
 	if got := test.nodeLabel(torNode); got != "up" {
@@ -99,26 +100,90 @@ func TestXTorDriverLinksDisconnectReconnectAndFullLifecycle(t *testing.T) {
 	}
 
 	test.e.Engine.RemoveLink(almagest.MainWorkspace, outLink)
-	eventuallyXTor(t, func() bool { return !driver.outbound().Available && test.nodeLabel(torNode) == "waiting for Network" }, "Tor blocks after outbound detach")
+	eventuallyTor(t, func() bool { return !driver.outbound().Available && test.nodeLabel(torNode) == "waiting for Network" }, "Tor blocks after outbound detach")
 	state = driver.outbound()
 	driver.events <- tor.OutboundEvent{Generation: state.Generation, Latched: true}
 	time.Sleep(25 * time.Millisecond)
 	if got := test.nodeLabel(torNode); got != "waiting for Network" {
 		t.Fatalf("stale outbound failure changed label to %q", got)
 	}
-	test.e.MustAddTypedLinkByPortName(links.TypeNetwork, out, "left", "Network", torNode, "right", xTorOutboundPortName)
-	eventuallyXTor(t, func() bool { return driver.outbound().Available && test.nodeLabel(torNode) == "up" }, "Tor recovers after outbound reconnect")
+	test.e.MustAddTypedLinkByPortName(links.TypeNetwork, out, "left", "Network", torNode, "right", torOutboundPortName)
+	eventuallyTor(t, func() bool { return driver.outbound().Available && test.nodeLabel(torNode) == "up" }, "Tor recovers after outbound reconnect")
 	if got := test.factory.count(); got != 1 {
 		t.Fatalf("driver starts = %d, want 1 across outbound reconnect", got)
 	}
 
 	test.e.Engine.RemoveNode(almagest.MainWorkspace, torNode)
-	eventuallyXTor(t, func() bool { return driver.closed.Load() && test.factory.systemClosed(0) }, "Tor process and host adapter close with node")
+	eventuallyTor(t, func() bool { return driver.closed.Load() }, "Tor driver closes with node")
 }
 
-func TestXTorDriverMenuConfigurationSecretsAndNodeFeatures(t *testing.T) {
-	test := newXTorTestEngine(t)
-	torNode := test.e.AddNode(NodeTypeXTorDriver, "tor-features")
+func TestTorDriverRebuildsWhenFirstOutboundFollowsOfflineBootstrap(t *testing.T) {
+	test := newTorTestEngine(t)
+	torNode := test.e.AddNode(NodeTypeTorDriver, "tor-offline-bootstrap")
+	test.e.SubscribeMenus(torNode)
+	first := test.factory.waitDriver(t, 0)
+	eventuallyTor(t, func() bool { return test.nodeLabel(torNode) == "waiting for Network" }, "Tor waits for outbound Network")
+
+	first.events <- tor.BootstrapEvent{Progress: 4, Stage: "conn_done_proxy", Severity: tor.EventNotice}
+	eventuallyTor(t, func() bool {
+		item, ok := test.e.MenuItem(torNode, torStatusBlockID, "bootstrap")
+		return ok && item.Progress != nil && *item.Progress == 4
+	}, "offline bootstrap attempt reaches the node")
+
+	out := test.e.AddNode("almagest/MockNetwork", "offline-bootstrap-out")
+	test.e.MustAddTypedLinkByPortName(links.TypeNetwork, out, "left", "Network", torNode, "right", torOutboundPortName)
+	second := test.factory.waitDriver(t, 1)
+	if second == first {
+		t.Fatal("offline Tor runtime was reused after the first outbound attachment")
+	}
+	eventuallyTor(t, func() bool { return first.closed.Load() }, "offline Tor runtime closes")
+	if second.deps.Outbound == nil {
+		t.Fatal("replacement Tor runtime did not receive the attached outbound Network at startup")
+	}
+	eventuallyTor(t, func() bool { return test.nodeLabel(torNode) == "up" }, "replacement Tor runtime becomes ready")
+}
+
+func TestTorDriverPassesOwnerSandboxCapabilityToTorDriver(t *testing.T) {
+	test := newTorTestEngine(t)
+	test.e.AddNode(NodeTypeTorDriver, "sandbox-capability")
+	driver := test.factory.waitDriver(t, 0)
+
+	if driver.deps.Sandboxes != test.factory.sandboxes {
+		t.Fatal("Tor driver did not receive the node owner sandbox capability")
+	}
+	if driver.deps.Clock == nil || driver.deps.Random == nil || driver.deps.Logger == nil {
+		t.Fatalf("Tor dependencies are incomplete: %#v", driver.deps)
+	}
+	if driver.config.SandboxSlot != tor.DefaultSandboxSlot ||
+		driver.config.SandboxTemplate != tor.DefaultSandboxTemplate ||
+		driver.config.TorProgram != tor.DefaultTorProgram {
+		t.Fatalf("Tor sandbox selection = %#v", driver.config)
+	}
+}
+
+func TestTorDriverFailsClosedWhenSandboxCapabilityIsUnavailable(t *testing.T) {
+	want := errors.New("sandbox unavailable for test")
+	node := &torDriverNode{
+		Base: nodekit.Base{},
+		start: func(context.Context, tor.Config, tor.Dependencies) (torDriverBackend, error) {
+			t.Fatal("driver started without a sandbox capability")
+			return nil, nil
+		},
+		config: defaultTorDriverConfig(),
+		sandboxes: func(context.Context) (sandbox.OwnerSandboxes, error) {
+			return nil, want
+		},
+	}
+	node.generation.Store(1)
+	_, _, err := node.buildRuntime(context.Background(), 1, node.config, "tor")
+	if !errors.Is(err, want) {
+		t.Fatalf("buildRuntime error = %v, want %v", err, want)
+	}
+}
+
+func TestTorDriverMenuConfigurationSecretsAndNodeFeatures(t *testing.T) {
+	test := newTorTestEngine(t)
+	torNode := test.e.AddNode(NodeTypeTorDriver, "tor-features")
 	test.e.SubscribeMenus(torNode)
 	test.factory.waitDriver(t, 0)
 
@@ -126,38 +191,38 @@ func TestXTorDriverMenuConfigurationSecretsAndNodeFeatures(t *testing.T) {
 		block string
 		field string
 	}{
-		{xTorSettingsBlockID, xTorFieldEnabled},
-		{xTorNetworksBlockID, xTorFieldNetworks},
-		{xTorServicesBlockID, xTorFieldServices},
-		{xTorClientAuthBlockID, xTorFieldClientAuthorizations},
+		{torSettingsBlockID, torFieldEnabled},
+		{torNetworksBlockID, torFieldNetworks},
+		{torServicesBlockID, torFieldServices},
+		{torClientAuthBlockID, torFieldClientAuthorizations},
 	} {
 		if _, ok := test.e.MenuItem(torNode, item.block, item.field); !ok {
 			t.Fatalf("rich Tor menu field %s/%s is missing", item.block, item.field)
 		}
 	}
-	for _, block := range []string{xTorSettingsBlockID, xTorPoliciesBlockID, xTorNetworksBlockID, xTorBridgesBlockID, xTorServicesBlockID, xTorClientAuthBlockID} {
-		if _, ok := test.e.MenuItem(torNode, block, xTorDriverConfigurationField); ok {
+	for _, block := range []string{torSettingsBlockID, torPoliciesBlockID, torNetworksBlockID, torBridgesBlockID, torServicesBlockID, torClientAuthBlockID} {
+		if _, ok := test.e.MenuItem(torNode, block, torDriverConfigurationField); ok {
 			t.Fatalf("raw Tor configuration editor is still present in %s", block)
 		}
 	}
-	if item, ok := test.e.MenuItem(torNode, xTorNetworksBlockID, xTorFieldNetworks); !ok || item.Field == nil ||
+	if item, ok := test.e.MenuItem(torNode, torNetworksBlockID, torFieldNetworks); !ok || item.Field == nil ||
 		item.Kind != formular.FieldArray || len(item.Templates) != 1 || len(item.Templates[0].Items) != 4 {
 		t.Fatalf("Tor Network editor = %#v, present %v", item, ok)
 	}
 
-	applyXTorTestForm(t, test, torNode, xTorSettingsBlockID, map[string]any{
-		xTorFieldEnabled: true, xTorFieldMaxProxyConnections: 17,
+	applyTorTestForm(t, test, torNode, torSettingsBlockID, map[string]any{
+		torFieldEnabled: true, torFieldMaxProxyConnections: 17,
 	}, 1)
-	applyXTorTestForm(t, test, torNode, xTorPoliciesBlockID, map[string]any{
-		xTorFieldOutboundFailures: "latch",
-		xTorFieldBandwidthRate:    "0", xTorFieldBandwidthBurst: "0", xTorFieldConnectionPadding: "reduced",
-		xTorFieldCircuitPadding: "disabled", xTorFieldReachableORPorts: "", xTorFieldMaxPendingCircuits: 0,
-		xTorFieldNumCPUs: 0, xTorFieldClientIP: "dual", xTorFieldOnionTraffic: "only",
-		xTorFieldEntryNodes: "", xTorFieldExitNodes: "", xTorFieldExcludeNodes: "",
-		xTorFieldExcludeExitNodes: "", xTorFieldStrictNodes: false,
+	applyTorTestForm(t, test, torNode, torPoliciesBlockID, map[string]any{
+		torFieldOutboundFailures: "latch",
+		torFieldBandwidthRate:    "0", torFieldBandwidthBurst: "0", torFieldConnectionPadding: "reduced",
+		torFieldCircuitPadding: "disabled", torFieldReachableORPorts: "", torFieldMaxPendingCircuits: 0,
+		torFieldNumCPUs: 0, torFieldClientIP: "dual", torFieldOnionTraffic: "only",
+		torFieldEntryNodes: "", torFieldExitNodes: "", torFieldExcludeNodes: "",
+		torFieldExcludeExitNodes: "", torFieldStrictNodes: false,
 	}, 2)
-	applyXTorTestForm(t, test, torNode, xTorNetworksBlockID, map[string]any{
-		xTorFieldNetworks: []formular.ArrayElementValue{
+	applyTorTestForm(t, test, torNode, torNetworksBlockID, map[string]any{
+		torFieldNetworks: []formular.ArrayElementValue{
 			{ID: "network-session", Template: "network", Values: map[string]any{
 				"name": "session", "circuits": "default", "isolateDestinationAddress": true, "isolateDestinationPort": true,
 			}},
@@ -166,23 +231,23 @@ func TestXTorDriverMenuConfigurationSecretsAndNodeFeatures(t *testing.T) {
 			}},
 		},
 	}, 3)
-	applyXTorTestForm(t, test, torNode, xTorServicesBlockID, map[string]any{
-		xTorFieldServices: []formular.ArrayElementValue{{ID: "service-web", Template: "service", Values: map[string]any{
+	applyTorTestForm(t, test, torNode, torServicesBlockID, map[string]any{
+		torFieldServices: []formular.ArrayElementValue{{ID: "service-web", Template: "service", Values: map[string]any{
 			"name": "Test service", "ports": "80, 443", "maxStreams": 4, "maxStreamsPolicy": "close",
 			"keySecret": "", "authorizedClients": "",
 		}}},
 	}, 4)
-	applyXTorTestForm(t, test, torNode, xTorClientAuthBlockID, map[string]any{
-		xTorFieldClientAuthorizations: []formular.ArrayElementValue{{ID: "authorization-client", Template: "authorization", Values: map[string]any{
+	applyTorTestForm(t, test, torNode, torClientAuthBlockID, map[string]any{
+		torFieldClientAuthorizations: []formular.ArrayElementValue{{ID: "authorization-client", Template: "authorization", Values: map[string]any{
 			"address": testOnionAddress(), "name": "client", "privateKeySecret": "",
 		}}},
 	}, 5)
 	driver := test.factory.waitDriver(t, 5)
-	eventuallyXTor(t, func() bool {
+	eventuallyTor(t, func() bool {
 		return test.hasPort(torNode, "left", "Network session") && test.hasPort(torNode, "left", "Network fresh") && test.hasPort(torNode, "left", "Onion Test service")
 	}, "configured Tor output ports")
 
-	eventuallyXTor(t, func() bool {
+	eventuallyTor(t, func() bool {
 		driver.mu.Lock()
 		defer driver.mu.Unlock()
 		return len(driver.networkConfigs) == 2 && len(driver.serviceConfigs) == 1 && len(driver.clientAuth) == 1
@@ -206,19 +271,19 @@ func TestXTorDriverMenuConfigurationSecretsAndNodeFeatures(t *testing.T) {
 	}
 
 	out := test.e.AddNode("almagest/MockNetwork", "feature-out")
-	test.e.MustAddTypedLinkByPortName(links.TypeNetwork, out, "left", "Network", torNode, "right", xTorOutboundPortName)
-	eventuallyXTor(t, func() bool { return test.nodeLabel(torNode) == "up" }, "configured Tor node becomes ready")
+	test.e.MustAddTypedLinkByPortName(links.TypeNetwork, out, "left", "Network", torNode, "right", torOutboundPortName)
+	eventuallyTor(t, func() bool { return test.nodeLabel(torNode) == "up" }, "configured Tor node becomes ready")
 	service.events <- tor.PublicationEvent{State: tor.PublicationPending}
-	eventuallyXTor(t, func() bool { return test.nodeLabel(torNode) == "publishing onion services" }, "service publication pending state")
+	eventuallyTor(t, func() bool { return test.nodeLabel(torNode) == "publishing onion services" }, "service publication pending state")
 	service.events <- tor.PublicationEvent{State: tor.PublicationPublished}
-	eventuallyXTor(t, func() bool { return test.nodeLabel(torNode) == "up" }, "service publication ready state")
+	eventuallyTor(t, func() bool { return test.nodeLabel(torNode) == "up" }, "service publication ready state")
 
 	cfg := configer.NewMemory(nil)
 	if err := test.e.Engine.SaveConfig(cfg); err != nil {
 		t.Fatal(err)
 	}
-	var saved XTorDriverConfig
-	if err := configer.Unmarshal(cfg.View(configer.Path{"nodes", "tor-features", xTorDriverConfigurationField}), &saved); err != nil {
+	var saved TorDriverConfig
+	if err := configer.Unmarshal(cfg.View(configer.Path{"nodes", "tor-features", torDriverConfigurationField}), &saved); err != nil {
 		t.Fatal(err)
 	}
 	if saved.Services[0].KeySecret == "" || saved.ClientAuthorizations[0].PrivateKeySecret == "" {
@@ -236,42 +301,42 @@ func TestXTorDriverMenuConfigurationSecretsAndNodeFeatures(t *testing.T) {
 
 	test.e.Engine.SendNodeFormularMsg(almagest.MainWorkspace, torNode, formular.ButtonPressMessage{
 		MessageBase: formular.MessageBase{Type: formular.MessageButtonPress, MenuID: pasta.NodeMenuID(torNode)},
-		BlockID:     xTorControlBlockID,
-		ButtonID:    xTorRestartButtonID,
+		BlockID:     torControlBlockID,
+		ButtonID:    torRestartButtonID,
 	})
 	test.factory.waitDriver(t, 6)
-	eventuallyXTor(t, func() bool { return test.factory.driverClosed(5) }, "menu restart closes old driver")
+	eventuallyTor(t, func() bool { return test.factory.driverClosed(5) }, "menu restart closes old driver")
 }
 
-func TestXTorDriverGeneratedSelectorsNotifyDurableConfigChanges(t *testing.T) {
+func TestTorDriverGeneratedSelectorsNotifyDurableConfigChanges(t *testing.T) {
 	changes := make(chan uint64, 4)
-	test := newXTorTestEngineWithOptions(t, almagest.WithNodeConfigChangeCallback(func(node uint64) <-chan error {
+	test := newTorTestEngineWithOptions(t, almagest.WithNodeConfigChangeCallback(func(node uint64) <-chan error {
 		changes <- node
-		return completedXTorConfigPersistence(nil)
+		return completedTorConfigPersistence(nil)
 	}))
-	torNode := test.e.AddNode(NodeTypeXTorDriver, "tor-config-notify")
+	torNode := test.e.AddNode(NodeTypeTorDriver, "tor-config-notify")
 	test.factory.waitDriver(t, 0)
 
-	applyXTorTestForm(t, test, torNode, xTorServicesBlockID, map[string]any{
-		xTorFieldServices: []formular.ArrayElementValue{{ID: "service-web", Template: "service", Values: map[string]any{
+	applyTorTestForm(t, test, torNode, torServicesBlockID, map[string]any{
+		torFieldServices: []formular.ArrayElementValue{{ID: "service-web", Template: "service", Values: map[string]any{
 			"name": "Persistent service", "ports": "80", "maxStreams": 0, "maxStreamsPolicy": "default",
 			"keySecret": "", "authorizedClients": "",
 		}}},
 	}, 1)
-	assertXTorConfigChange(t, changes, torNode, "onion service selector")
+	assertTorConfigChange(t, changes, torNode, "onion service selector")
 
-	applyXTorTestForm(t, test, torNode, xTorClientAuthBlockID, map[string]any{
-		xTorFieldClientAuthorizations: []formular.ArrayElementValue{{ID: "authorization-client", Template: "authorization", Values: map[string]any{
+	applyTorTestForm(t, test, torNode, torClientAuthBlockID, map[string]any{
+		torFieldClientAuthorizations: []formular.ArrayElementValue{{ID: "authorization-client", Template: "authorization", Values: map[string]any{
 			"address": testOnionAddress(), "name": "client", "privateKeySecret": "",
 		}}},
 	}, 2)
-	assertXTorConfigChange(t, changes, torNode, "client authorization selector")
+	assertTorConfigChange(t, changes, torNode, "client authorization selector")
 
 	if err := test.e.Engine.Trigger(almagest.MainWorkspace, torNode); err != nil {
 		t.Fatal(err)
 	}
 	test.factory.waitDriver(t, 3)
-	eventuallyXTor(t, func() bool { return test.nodeLabel(torNode) != "starting" }, "Tor restart completes")
+	eventuallyTor(t, func() bool { return test.nodeLabel(torNode) != "starting" }, "Tor restart completes")
 	select {
 	case node := <-changes:
 		t.Fatalf("restart with saved selectors reported configuration change for node %d", node)
@@ -279,37 +344,37 @@ func TestXTorDriverGeneratedSelectorsNotifyDurableConfigChanges(t *testing.T) {
 	}
 }
 
-func TestXTorDriverRenamedSelectorsNotifyPersistAndRemainUsable(t *testing.T) {
+func TestTorDriverRenamedSelectorsNotifyPersistAndRemainUsable(t *testing.T) {
 	changes := make(chan uint64, 8)
-	test := newXTorTestEngineWithOptions(t, almagest.WithNodeConfigChangeCallback(func(node uint64) <-chan error {
+	test := newTorTestEngineWithOptions(t, almagest.WithNodeConfigChangeCallback(func(node uint64) <-chan error {
 		changes <- node
-		return completedXTorConfigPersistence(nil)
+		return completedTorConfigPersistence(nil)
 	}))
 	const nodeName = "tor-secret-rename"
-	torNode := test.e.AddNode(NodeTypeXTorDriver, nodeName)
+	torNode := test.e.AddNode(NodeTypeTorDriver, nodeName)
 	test.factory.waitDriver(t, 0)
 
-	applyXTorTestForm(t, test, torNode, xTorServicesBlockID, map[string]any{
-		xTorFieldServices: []formular.ArrayElementValue{{ID: "service-web", Template: "service", Values: map[string]any{
+	applyTorTestForm(t, test, torNode, torServicesBlockID, map[string]any{
+		torFieldServices: []formular.ArrayElementValue{{ID: "service-web", Template: "service", Values: map[string]any{
 			"name": "Persistent service", "ports": "80", "maxStreams": 0, "maxStreamsPolicy": "default",
 			"keySecret": "", "authorizedClients": "",
 		}}},
 	}, 1)
-	assertXTorConfigChange(t, changes, torNode, "generated onion service selector")
-	applyXTorTestForm(t, test, torNode, xTorClientAuthBlockID, map[string]any{
-		xTorFieldClientAuthorizations: []formular.ArrayElementValue{{ID: "authorization-client", Template: "authorization", Values: map[string]any{
+	assertTorConfigChange(t, changes, torNode, "generated onion service selector")
+	applyTorTestForm(t, test, torNode, torClientAuthBlockID, map[string]any{
+		torFieldClientAuthorizations: []formular.ArrayElementValue{{ID: "authorization-client", Template: "authorization", Values: map[string]any{
 			"address": testOnionAddress(), "name": "client", "privateKeySecret": "",
 		}}},
 	}, 2)
-	assertXTorConfigChange(t, changes, torNode, "generated client authorization selector")
+	assertTorConfigChange(t, changes, torNode, "generated client authorization selector")
 
-	initial := savedXTorConfig(t, test, torNode)
+	initial := savedTorConfig(t, test, torNode)
 	serviceOld := initial.Services[0].KeySecret
 	authorizationOld := initial.ClientAuthorizations[0].PrivateKeySecret
 	serviceNew := serviceOld + "-renamed"
 	authorizationNew := authorizationOld + "-renamed"
 
-	renameXTorTestSecret(t, test, nodeName, serviceOld, serviceNew)
+	renameTorTestSecret(t, test, nodeName, serviceOld, serviceNew)
 	test.e.Engine.SendInbox(almagest.MainWorkspace, pasta.InboxMessage{
 		ReceiverNode: torNode,
 		Payload: storage.SecretValueChanged{
@@ -317,10 +382,10 @@ func TestXTorDriverRenamedSelectorsNotifyPersistAndRemainUsable(t *testing.T) {
 			SecretNameNew:  serviceNew,
 		},
 	})
-	assertXTorConfigChange(t, changes, torNode, "renamed onion service selector")
+	assertTorConfigChange(t, changes, torNode, "renamed onion service selector")
 	test.factory.waitDriver(t, 3)
-	eventuallyXTor(t, func() bool { return test.nodeLabel(torNode) == "waiting for Network" }, "Tor reloads the renamed onion service secret")
-	afterServiceRename := savedXTorConfig(t, test, torNode)
+	eventuallyTor(t, func() bool { return test.nodeLabel(torNode) == "waiting for Network" }, "Tor reloads the renamed onion service secret")
+	afterServiceRename := savedTorConfig(t, test, torNode)
 	if got := afterServiceRename.Services[0].KeySecret; got != serviceNew {
 		t.Fatalf("saved service selector = %q, want %q", got, serviceNew)
 	}
@@ -328,7 +393,7 @@ func TestXTorDriverRenamedSelectorsNotifyPersistAndRemainUsable(t *testing.T) {
 		t.Fatalf("service rename changed authorization selector to %q", got)
 	}
 
-	renameXTorTestSecret(t, test, nodeName, authorizationOld, authorizationNew)
+	renameTorTestSecret(t, test, nodeName, authorizationOld, authorizationNew)
 	test.e.Engine.SendInbox(almagest.MainWorkspace, pasta.InboxMessage{
 		ReceiverNode: torNode,
 		Payload: storage.SecretValueChanged{
@@ -336,10 +401,10 @@ func TestXTorDriverRenamedSelectorsNotifyPersistAndRemainUsable(t *testing.T) {
 			SecretNameNew:  authorizationNew,
 		},
 	})
-	assertXTorConfigChange(t, changes, torNode, "renamed client authorization selector")
+	assertTorConfigChange(t, changes, torNode, "renamed client authorization selector")
 	test.factory.waitDriver(t, 4)
-	eventuallyXTor(t, func() bool { return test.nodeLabel(torNode) == "waiting for Network" }, "Tor reloads the renamed client authorization secret")
-	afterAuthorizationRename := savedXTorConfig(t, test, torNode)
+	eventuallyTor(t, func() bool { return test.nodeLabel(torNode) == "waiting for Network" }, "Tor reloads the renamed client authorization secret")
+	afterAuthorizationRename := savedTorConfig(t, test, torNode)
 	if got := afterAuthorizationRename.Services[0].KeySecret; got != serviceNew {
 		t.Fatalf("authorization rename changed service selector to %q", got)
 	}
@@ -351,28 +416,28 @@ func TestXTorDriverRenamedSelectorsNotifyPersistAndRemainUsable(t *testing.T) {
 		t.Fatal(err)
 	}
 	test.factory.waitDriver(t, 5)
-	eventuallyXTor(t, func() bool { return test.nodeLabel(torNode) == "waiting for Network" }, "Tor restarts with both persisted renamed selectors")
-	assertNoXTorConfigChange(t, changes, "restart with renamed selectors")
+	eventuallyTor(t, func() bool { return test.nodeLabel(torNode) == "waiting for Network" }, "Tor restarts with both persisted renamed selectors")
+	assertNoTorConfigChange(t, changes, "restart with renamed selectors")
 }
 
-func TestXTorDriverSecretValueChangesDoNotReportConfigChanges(t *testing.T) {
+func TestTorDriverSecretValueChangesDoNotReportConfigChanges(t *testing.T) {
 	changes := make(chan uint64, 4)
-	test := newXTorTestEngineWithOptions(t, almagest.WithNodeConfigChangeCallback(func(node uint64) <-chan error {
+	test := newTorTestEngineWithOptions(t, almagest.WithNodeConfigChangeCallback(func(node uint64) <-chan error {
 		changes <- node
-		return completedXTorConfigPersistence(nil)
+		return completedTorConfigPersistence(nil)
 	}))
 	const nodeName = "tor-secret-value-change"
-	torNode := test.e.AddNode(NodeTypeXTorDriver, nodeName)
+	torNode := test.e.AddNode(NodeTypeTorDriver, nodeName)
 	test.factory.waitDriver(t, 0)
 
-	applyXTorTestForm(t, test, torNode, xTorServicesBlockID, map[string]any{
-		xTorFieldServices: []formular.ArrayElementValue{{ID: "service-web", Template: "service", Values: map[string]any{
+	applyTorTestForm(t, test, torNode, torServicesBlockID, map[string]any{
+		torFieldServices: []formular.ArrayElementValue{{ID: "service-web", Template: "service", Values: map[string]any{
 			"name": "Persistent service", "ports": "80", "maxStreams": 0, "maxStreamsPolicy": "default",
 			"keySecret": "", "authorizedClients": "",
 		}}},
 	}, 1)
-	assertXTorConfigChange(t, changes, torNode, "generated onion service selector")
-	selector := savedXTorConfig(t, test, torNode).Services[0].KeySecret
+	assertTorConfigChange(t, changes, torNode, "generated onion service selector")
+	selector := savedTorConfig(t, test, torNode).Services[0].KeySecret
 
 	test.e.Engine.SendInbox(almagest.MainWorkspace, pasta.InboxMessage{
 		ReceiverNode: torNode,
@@ -382,9 +447,9 @@ func TestXTorDriverSecretValueChangesDoNotReportConfigChanges(t *testing.T) {
 		},
 	})
 	test.factory.waitDriver(t, 2)
-	eventuallyXTor(t, func() bool { return test.nodeLabel(torNode) == "waiting for Network" }, "Tor reloads a changed secret value")
-	assertNoXTorConfigChange(t, changes, "secret value change")
-	if got := savedXTorConfig(t, test, torNode).Services[0].KeySecret; got != selector {
+	eventuallyTor(t, func() bool { return test.nodeLabel(torNode) == "waiting for Network" }, "Tor reloads a changed secret value")
+	assertNoTorConfigChange(t, changes, "secret value change")
+	if got := savedTorConfig(t, test, torNode).Services[0].KeySecret; got != selector {
 		t.Fatalf("secret value change changed saved selector to %q", got)
 	}
 
@@ -400,12 +465,12 @@ func TestXTorDriverSecretValueChangesDoNotReportConfigChanges(t *testing.T) {
 	if got := test.factory.count(); got != before {
 		t.Fatalf("unrelated secret change started %d drivers, want %d", got, before)
 	}
-	assertNoXTorConfigChange(t, changes, "unrelated secret change")
+	assertNoTorConfigChange(t, changes, "unrelated secret change")
 }
 
-func TestXTorDriverDiscardsServiceSecretFromCanceledGeneration(t *testing.T) {
-	test := newXTorTestEngine(t)
-	torNode := test.e.AddNode(NodeTypeXTorDriver, "tor-service-cancel")
+func TestTorDriverDiscardsServiceSecretFromCanceledGeneration(t *testing.T) {
+	test := newTorTestEngine(t)
+	torNode := test.e.AddNode(NodeTypeTorDriver, "tor-service-cancel")
 	test.factory.waitDriver(t, 0)
 
 	stored := make(chan struct{})
@@ -422,12 +487,12 @@ func TestXTorDriverDiscardsServiceSecretFromCanceledGeneration(t *testing.T) {
 
 	test.e.Engine.SendNodeFormularMsg(almagest.MainWorkspace, torNode, formular.FormApplyMessage{
 		MessageBase: formular.MessageBase{Type: formular.MessageFormApply, MenuID: pasta.NodeMenuID(torNode)},
-		BlockID:     xTorServicesBlockID,
-		Values: map[string]any{xTorFieldServices: []formular.ArrayElementValue{{ID: "service", Template: "service", Values: map[string]any{
+		BlockID:     torServicesBlockID,
+		Values: map[string]any{torFieldServices: []formular.ArrayElementValue{{ID: "service", Template: "service", Values: map[string]any{
 			"name": "service", "ports": "80", "maxStreams": 0, "maxStreamsPolicy": "default", "keySecret": "", "authorizedClients": "",
 		}}}},
 	})
-	waitXTorSignal(t, stored, "service secret creation")
+	waitTorSignal(t, stored, "service secret creation")
 	if got := test.secrets.SecretCount(); got != 1 {
 		t.Fatalf("secrets during canceled service build = %d, want 1", got)
 	}
@@ -436,13 +501,13 @@ func TestXTorDriverDiscardsServiceSecretFromCanceledGeneration(t *testing.T) {
 	}
 	close(release)
 	test.factory.waitDriver(t, 2)
-	eventuallyXTor(t, func() bool { return test.nodeLabel(torNode) != "starting" && test.secrets.SecretCount() == 1 }, "canceled service secret is replaced without leaking")
-	assertXTorSavedSelectors(t, test, torNode, true, false)
+	eventuallyTor(t, func() bool { return test.nodeLabel(torNode) != "starting" && test.secrets.SecretCount() == 1 }, "canceled service secret is replaced without leaking")
+	assertTorSavedSelectors(t, test, torNode, true, false)
 }
 
-func TestXTorDriverDiscardsClientAuthorizationSecretFromCanceledGeneration(t *testing.T) {
-	test := newXTorTestEngine(t)
-	torNode := test.e.AddNode(NodeTypeXTorDriver, "tor-client-auth-cancel")
+func TestTorDriverDiscardsClientAuthorizationSecretFromCanceledGeneration(t *testing.T) {
+	test := newTorTestEngine(t)
+	torNode := test.e.AddNode(NodeTypeTorDriver, "tor-client-auth-cancel")
 	test.factory.waitDriver(t, 0)
 
 	stored := make(chan struct{})
@@ -459,12 +524,12 @@ func TestXTorDriverDiscardsClientAuthorizationSecretFromCanceledGeneration(t *te
 
 	test.e.Engine.SendNodeFormularMsg(almagest.MainWorkspace, torNode, formular.FormApplyMessage{
 		MessageBase: formular.MessageBase{Type: formular.MessageFormApply, MenuID: pasta.NodeMenuID(torNode)},
-		BlockID:     xTorClientAuthBlockID,
-		Values: map[string]any{xTorFieldClientAuthorizations: []formular.ArrayElementValue{{ID: "authorization", Template: "authorization", Values: map[string]any{
+		BlockID:     torClientAuthBlockID,
+		Values: map[string]any{torFieldClientAuthorizations: []formular.ArrayElementValue{{ID: "authorization", Template: "authorization", Values: map[string]any{
 			"address": testOnionAddress(), "name": "client", "privateKeySecret": "",
 		}}}},
 	})
-	waitXTorSignal(t, stored, "client authorization secret creation")
+	waitTorSignal(t, stored, "client authorization secret creation")
 	if got := test.secrets.SecretCount(); got != 1 {
 		t.Fatalf("secrets during canceled authorization build = %d, want 1", got)
 	}
@@ -473,13 +538,13 @@ func TestXTorDriverDiscardsClientAuthorizationSecretFromCanceledGeneration(t *te
 	}
 	close(release)
 	test.factory.waitDriver(t, 2)
-	eventuallyXTor(t, func() bool { return test.nodeLabel(torNode) != "starting" && test.secrets.SecretCount() == 1 }, "canceled authorization secret is replaced without leaking")
-	assertXTorSavedSelectors(t, test, torNode, false, true)
+	eventuallyTor(t, func() bool { return test.nodeLabel(torNode) != "starting" && test.secrets.SecretCount() == 1 }, "canceled authorization secret is replaced without leaking")
+	assertTorSavedSelectors(t, test, torNode, false, true)
 }
 
-func TestXTorDriverDiscardsUncommittedSecretWhenNodeStops(t *testing.T) {
-	test := newXTorTestEngine(t)
-	torNode := test.e.AddNode(NodeTypeXTorDriver, "tor-secret-stop")
+func TestTorDriverDiscardsUncommittedSecretWhenNodeStops(t *testing.T) {
+	test := newTorTestEngine(t)
+	torNode := test.e.AddNode(NodeTypeTorDriver, "tor-secret-stop")
 	test.factory.waitDriver(t, 0)
 
 	stored := make(chan struct{})
@@ -492,39 +557,39 @@ func TestXTorDriverDiscardsUncommittedSecretWhenNodeStops(t *testing.T) {
 	test.factory.mu.Unlock()
 	test.e.Engine.SendNodeFormularMsg(almagest.MainWorkspace, torNode, formular.FormApplyMessage{
 		MessageBase: formular.MessageBase{Type: formular.MessageFormApply, MenuID: pasta.NodeMenuID(torNode)},
-		BlockID:     xTorServicesBlockID,
-		Values: map[string]any{xTorFieldServices: []formular.ArrayElementValue{{ID: "service", Template: "service", Values: map[string]any{
+		BlockID:     torServicesBlockID,
+		Values: map[string]any{torFieldServices: []formular.ArrayElementValue{{ID: "service", Template: "service", Values: map[string]any{
 			"name": "service", "ports": "80", "maxStreams": 0, "maxStreamsPolicy": "default", "keySecret": "", "authorizedClients": "",
 		}}}},
 	})
-	waitXTorSignal(t, stored, "service secret creation before stop")
+	waitTorSignal(t, stored, "service secret creation before stop")
 	test.e.Engine.RemoveNode(almagest.MainWorkspace, torNode)
 	close(release)
-	eventuallyXTor(t, func() bool { return test.secrets.SecretCount() == 0 }, "node stop discards uncommitted service secret")
+	eventuallyTor(t, func() bool { return test.secrets.SecretCount() == 0 }, "node stop discards uncommitted service secret")
 }
 
-func TestXTorDriverDiscardsGeneratedSecretsWhenRuntimeBuildFails(t *testing.T) {
+func TestTorDriverDiscardsGeneratedSecretsWhenRuntimeBuildFails(t *testing.T) {
 	tests := []struct {
 		name      string
-		configure func(*fakeXTorFactory)
-		apply     func(*testing.T, *xTorTestEngine, uint64)
-		assert    func(*testing.T, XTorDriverConfig)
+		configure func(*fakeTorFactory)
+		apply     func(*testing.T, *torTestEngine, uint64)
+		assert    func(*testing.T, TorDriverConfig)
 	}{
 		{
 			name: "onion service",
-			configure: func(factory *fakeXTorFactory) {
+			configure: func(factory *fakeTorFactory) {
 				factory.newServiceError = errors.New("injected service creation failure")
 			},
-			apply: func(t *testing.T, test *xTorTestEngine, node uint64) {
+			apply: func(t *testing.T, test *torTestEngine, node uint64) {
 				test.e.Engine.SendNodeFormularMsg(almagest.MainWorkspace, node, formular.FormApplyMessage{
 					MessageBase: formular.MessageBase{Type: formular.MessageFormApply, MenuID: pasta.NodeMenuID(node)},
-					BlockID:     xTorServicesBlockID,
-					Values: map[string]any{xTorFieldServices: []formular.ArrayElementValue{{ID: "service", Template: "service", Values: map[string]any{
+					BlockID:     torServicesBlockID,
+					Values: map[string]any{torFieldServices: []formular.ArrayElementValue{{ID: "service", Template: "service", Values: map[string]any{
 						"name": "service", "ports": "80", "maxStreams": 0, "maxStreamsPolicy": "default", "keySecret": "", "authorizedClients": "",
 					}}}},
 				})
 			},
-			assert: func(t *testing.T, config XTorDriverConfig) {
+			assert: func(t *testing.T, config TorDriverConfig) {
 				if len(config.Services) != 1 || config.Services[0].KeySecret != "" {
 					t.Fatalf("failed service build saved selectors: %#v", config.Services)
 				}
@@ -532,19 +597,19 @@ func TestXTorDriverDiscardsGeneratedSecretsWhenRuntimeBuildFails(t *testing.T) {
 		},
 		{
 			name: "client authorization",
-			configure: func(factory *fakeXTorFactory) {
+			configure: func(factory *fakeTorFactory) {
 				factory.addClientAuthError = errors.New("injected client authorization failure")
 			},
-			apply: func(t *testing.T, test *xTorTestEngine, node uint64) {
+			apply: func(t *testing.T, test *torTestEngine, node uint64) {
 				test.e.Engine.SendNodeFormularMsg(almagest.MainWorkspace, node, formular.FormApplyMessage{
 					MessageBase: formular.MessageBase{Type: formular.MessageFormApply, MenuID: pasta.NodeMenuID(node)},
-					BlockID:     xTorClientAuthBlockID,
-					Values: map[string]any{xTorFieldClientAuthorizations: []formular.ArrayElementValue{{ID: "authorization", Template: "authorization", Values: map[string]any{
+					BlockID:     torClientAuthBlockID,
+					Values: map[string]any{torFieldClientAuthorizations: []formular.ArrayElementValue{{ID: "authorization", Template: "authorization", Values: map[string]any{
 						"address": testOnionAddress(), "name": "client", "privateKeySecret": "",
 					}}}},
 				})
 			},
-			assert: func(t *testing.T, config XTorDriverConfig) {
+			assert: func(t *testing.T, config TorDriverConfig) {
 				if len(config.ClientAuthorizations) != 1 || config.ClientAuthorizations[0].PrivateKeySecret != "" {
 					t.Fatalf("failed authorization build saved selectors: %#v", config.ClientAuthorizations)
 				}
@@ -553,44 +618,44 @@ func TestXTorDriverDiscardsGeneratedSecretsWhenRuntimeBuildFails(t *testing.T) {
 	}
 	for _, testCase := range tests {
 		t.Run(testCase.name, func(t *testing.T) {
-			test := newXTorTestEngine(t)
-			torNode := test.e.AddNode(NodeTypeXTorDriver, "tor-failed-secret-"+strings.ReplaceAll(testCase.name, " ", "-"))
+			test := newTorTestEngine(t)
+			torNode := test.e.AddNode(NodeTypeTorDriver, "tor-failed-secret-"+strings.ReplaceAll(testCase.name, " ", "-"))
 			test.factory.waitDriver(t, 0)
 			test.factory.mu.Lock()
 			testCase.configure(test.factory)
 			test.factory.mu.Unlock()
 			testCase.apply(t, test, torNode)
 			test.factory.waitDriver(t, 1)
-			eventuallyXTor(t, func() bool {
+			eventuallyTor(t, func() bool {
 				return test.nodeLabel(torNode) == "error" && test.secrets.SecretCount() == 0
 			}, "failed build discards its generated secret")
-			testCase.assert(t, savedXTorConfig(t, test, torNode))
+			testCase.assert(t, savedTorConfig(t, test, torNode))
 		})
 	}
 }
 
-func TestXTorDriverRestartsSecretGenerationAfterNodeRename(t *testing.T) {
+func TestTorDriverRestartsSecretGenerationAfterNodeRename(t *testing.T) {
 	tests := []struct {
 		name    string
-		setHook func(*fakeXTorFactory, func())
-		apply   func(*testing.T, *xTorTestEngine, uint64)
-		assert  func(*testing.T, XTorDriverConfig)
+		setHook func(*fakeTorFactory, func())
+		apply   func(*testing.T, *torTestEngine, uint64)
+		assert  func(*testing.T, TorDriverConfig)
 	}{
 		{
 			name: "onion service",
-			setHook: func(factory *fakeXTorFactory, hook func()) {
+			setHook: func(factory *fakeTorFactory, hook func()) {
 				factory.afterServiceSecret = hook
 			},
-			apply: func(t *testing.T, test *xTorTestEngine, node uint64) {
+			apply: func(t *testing.T, test *torTestEngine, node uint64) {
 				test.e.Engine.SendNodeFormularMsg(almagest.MainWorkspace, node, formular.FormApplyMessage{
 					MessageBase: formular.MessageBase{Type: formular.MessageFormApply, MenuID: pasta.NodeMenuID(node)},
-					BlockID:     xTorServicesBlockID,
-					Values: map[string]any{xTorFieldServices: []formular.ArrayElementValue{{ID: "service", Template: "service", Values: map[string]any{
+					BlockID:     torServicesBlockID,
+					Values: map[string]any{torFieldServices: []formular.ArrayElementValue{{ID: "service", Template: "service", Values: map[string]any{
 						"name": "service", "ports": "80", "maxStreams": 0, "maxStreamsPolicy": "default", "keySecret": "", "authorizedClients": "",
 					}}}},
 				})
 			},
-			assert: func(t *testing.T, config XTorDriverConfig) {
+			assert: func(t *testing.T, config TorDriverConfig) {
 				if len(config.Services) != 1 || config.Services[0].KeySecret == "" {
 					t.Fatalf("renamed service selector was not committed: %#v", config.Services)
 				}
@@ -598,19 +663,19 @@ func TestXTorDriverRestartsSecretGenerationAfterNodeRename(t *testing.T) {
 		},
 		{
 			name: "client authorization",
-			setHook: func(factory *fakeXTorFactory, hook func()) {
+			setHook: func(factory *fakeTorFactory, hook func()) {
 				factory.beforeAddClientAuth = hook
 			},
-			apply: func(t *testing.T, test *xTorTestEngine, node uint64) {
+			apply: func(t *testing.T, test *torTestEngine, node uint64) {
 				test.e.Engine.SendNodeFormularMsg(almagest.MainWorkspace, node, formular.FormApplyMessage{
 					MessageBase: formular.MessageBase{Type: formular.MessageFormApply, MenuID: pasta.NodeMenuID(node)},
-					BlockID:     xTorClientAuthBlockID,
-					Values: map[string]any{xTorFieldClientAuthorizations: []formular.ArrayElementValue{{ID: "authorization", Template: "authorization", Values: map[string]any{
+					BlockID:     torClientAuthBlockID,
+					Values: map[string]any{torFieldClientAuthorizations: []formular.ArrayElementValue{{ID: "authorization", Template: "authorization", Values: map[string]any{
 						"address": testOnionAddress(), "name": "client", "privateKeySecret": "",
 					}}}},
 				})
 			},
-			assert: func(t *testing.T, config XTorDriverConfig) {
+			assert: func(t *testing.T, config TorDriverConfig) {
 				if len(config.ClientAuthorizations) != 1 || config.ClientAuthorizations[0].PrivateKeySecret == "" {
 					t.Fatalf("renamed authorization selector was not committed: %#v", config.ClientAuthorizations)
 				}
@@ -619,10 +684,10 @@ func TestXTorDriverRestartsSecretGenerationAfterNodeRename(t *testing.T) {
 	}
 	for _, testCase := range tests {
 		t.Run(testCase.name, func(t *testing.T) {
-			test := newXTorTestEngine(t)
+			test := newTorTestEngine(t)
 			oldName := "tor-rename-" + strings.ReplaceAll(testCase.name, " ", "-")
 			newName := oldName + "-new"
-			torNode := test.e.AddNode(NodeTypeXTorDriver, oldName)
+			torNode := test.e.AddNode(NodeTypeTorDriver, oldName)
 			test.factory.waitDriver(t, 0)
 
 			stored := make(chan struct{})
@@ -637,22 +702,22 @@ func TestXTorDriverRestartsSecretGenerationAfterNodeRename(t *testing.T) {
 			})
 			test.factory.mu.Unlock()
 			testCase.apply(t, test, torNode)
-			waitXTorSignal(t, stored, "secret generation before rename")
+			waitTorSignal(t, stored, "secret generation before rename")
 			test.e.Engine.SetNodeName(almagest.MainWorkspace, torNode, newName)
 			test.secrets.RenameNodeReferences(oldName, newName)
 			close(release)
 
 			test.factory.waitDriver(t, 2)
-			eventuallyXTor(t, func() bool {
+			eventuallyTor(t, func() bool {
 				return test.nodeLabel(torNode) != "starting" && test.secrets.SecretCount() == 1
 			}, "renamed node replaces the stale generated secret")
-			testCase.assert(t, savedXTorConfig(t, test, torNode))
+			testCase.assert(t, savedTorConfig(t, test, torNode))
 
 			if err := test.e.Engine.Trigger(almagest.MainWorkspace, torNode); err != nil {
 				t.Fatal(err)
 			}
 			test.factory.waitDriver(t, 3)
-			eventuallyXTor(t, func() bool { return test.nodeLabel(torNode) != "error" && test.nodeLabel(torNode) != "starting" }, "renamed secret remains readable after restart")
+			eventuallyTor(t, func() bool { return test.nodeLabel(torNode) != "error" && test.nodeLabel(torNode) != "starting" }, "renamed secret remains readable after restart")
 			if got := test.secrets.SecretCount(); got != 1 {
 				t.Fatalf("secrets after renamed restart = %d, want 1", got)
 			}
@@ -660,24 +725,24 @@ func TestXTorDriverRestartsSecretGenerationAfterNodeRename(t *testing.T) {
 	}
 }
 
-func TestXTorDriverMenuRejectsInvalidConfigurationWithoutRestart(t *testing.T) {
-	test := newXTorTestEngine(t)
-	torNode := test.e.AddNode(NodeTypeXTorDriver, "tor-invalid-menu")
+func TestTorDriverMenuRejectsInvalidConfigurationWithoutRestart(t *testing.T) {
+	test := newTorTestEngine(t)
+	torNode := test.e.AddNode(NodeTypeTorDriver, "tor-invalid-menu")
 	test.e.SubscribeMenus(torNode)
 	test.factory.waitDriver(t, 0)
-	eventuallyXTor(t, func() bool { return test.nodeLabel(torNode) == "waiting for Network" }, "initial Tor runtime starts")
+	eventuallyTor(t, func() bool { return test.nodeLabel(torNode) == "waiting for Network" }, "initial Tor runtime starts")
 
 	test.e.Engine.SendNodeFormularMsg(almagest.MainWorkspace, torNode, formular.FormApplyMessage{
 		MessageBase: formular.MessageBase{Type: formular.MessageFormApply, MenuID: pasta.NodeMenuID(torNode)},
-		BlockID:     xTorNetworksBlockID,
-		Values: map[string]any{xTorFieldNetworks: []formular.ArrayElementValue{{
+		BlockID:     torNetworksBlockID,
+		Values: map[string]any{torFieldNetworks: []formular.ArrayElementValue{{
 			ID: "invalid-network", Template: "network", Values: map[string]any{
 				"name": "invalid", "circuits": "connection", "isolateDestinationAddress": true, "isolateDestinationPort": false,
 			},
 		}}},
 	})
-	eventuallyXTor(t, func() bool {
-		item, ok := test.e.MenuItem(torNode, xTorNetworksBlockID, xTorFieldNetworks)
+	eventuallyTor(t, func() bool {
+		item, ok := test.e.MenuItem(torNode, torNetworksBlockID, torFieldNetworks)
 		return test.nodeLabel(torNode) == "error" && ok && item.Field != nil &&
 			item.Status == formular.StatusError && strings.Contains(item.StatusText, "requires session circuits")
 	}, "invalid Tor form reports an inline error")
@@ -687,52 +752,52 @@ func TestXTorDriverMenuRejectsInvalidConfigurationWithoutRestart(t *testing.T) {
 
 	test.e.Engine.SendNodeFormularMsg(almagest.MainWorkspace, torNode, formular.FormApplyMessage{
 		MessageBase: formular.MessageBase{Type: formular.MessageFormApply, MenuID: pasta.NodeMenuID(torNode)},
-		BlockID:     xTorNetworksBlockID,
-		Values: map[string]any{xTorFieldNetworks: []formular.ArrayElementValue{{
+		BlockID:     torNetworksBlockID,
+		Values: map[string]any{torFieldNetworks: []formular.ArrayElementValue{{
 			ID: "default-network", Template: "network", Values: map[string]any{
 				"name": "default", "circuits": "default", "isolateDestinationAddress": false, "isolateDestinationPort": false,
 			},
 		}}},
 	})
-	eventuallyXTor(t, func() bool { return test.nodeLabel(torNode) == "waiting for Network" }, "corrected Tor form clears the error")
+	eventuallyTor(t, func() bool { return test.nodeLabel(torNode) == "waiting for Network" }, "corrected Tor form clears the error")
 	if got := test.factory.count(); got != 1 {
 		t.Fatalf("unchanged corrected form started %d Tor drivers, want 1", got)
 	}
 }
 
-func TestXTorDriverMenuRejectsDriverInvalidPolicyWithoutRestart(t *testing.T) {
-	test := newXTorTestEngine(t)
-	torNode := test.e.AddNode(NodeTypeXTorDriver, "tor-invalid-policy")
+func TestTorDriverMenuRejectsDriverInvalidPolicyWithoutRestart(t *testing.T) {
+	test := newTorTestEngine(t)
+	torNode := test.e.AddNode(NodeTypeTorDriver, "tor-invalid-policy")
 	test.e.SubscribeMenus(torNode)
 	test.factory.waitDriver(t, 0)
 
 	test.e.Engine.SendNodeFormularMsg(almagest.MainWorkspace, torNode, formular.FormApplyMessage{
 		MessageBase: formular.MessageBase{Type: formular.MessageFormApply, MenuID: pasta.NodeMenuID(torNode)},
-		BlockID:     xTorPoliciesBlockID,
+		BlockID:     torPoliciesBlockID,
 		Values: map[string]any{
-			xTorFieldOutboundFailures: "default",
-			xTorFieldBandwidthRate:    "0", xTorFieldBandwidthBurst: "0",
-			xTorFieldConnectionPadding: "default", xTorFieldCircuitPadding: "default",
-			xTorFieldReachableORPorts: "", xTorFieldMaxPendingCircuits: 1025,
-			xTorFieldNumCPUs: 0, xTorFieldClientIP: "default", xTorFieldOnionTraffic: "default",
-			xTorFieldEntryNodes: "", xTorFieldExitNodes: "", xTorFieldExcludeNodes: "",
-			xTorFieldExcludeExitNodes: "", xTorFieldStrictNodes: false,
+			torFieldOutboundFailures: "default",
+			torFieldBandwidthRate:    "0", torFieldBandwidthBurst: "0",
+			torFieldConnectionPadding: "default", torFieldCircuitPadding: "default",
+			torFieldReachableORPorts: "", torFieldMaxPendingCircuits: 1025,
+			torFieldNumCPUs: 0, torFieldClientIP: "default", torFieldOnionTraffic: "default",
+			torFieldEntryNodes: "", torFieldExitNodes: "", torFieldExcludeNodes: "",
+			torFieldExcludeExitNodes: "", torFieldStrictNodes: false,
 		},
 	})
-	eventuallyXTor(t, func() bool {
-		item, ok := test.e.MenuItem(torNode, xTorPoliciesBlockID, xTorFieldMaxPendingCircuits)
+	eventuallyTor(t, func() bool {
+		item, ok := test.e.MenuItem(torNode, torPoliciesBlockID, torFieldMaxPendingCircuits)
 		return test.nodeLabel(torNode) == "error" && ok && item.Field != nil &&
 			item.Status == formular.StatusError && strings.Contains(item.StatusText, "between 0 and 1024")
 	}, "driver-invalid policy reports an inline error")
 	if got := test.factory.count(); got != 1 {
 		t.Fatalf("driver-invalid policy started %d Tor drivers, want 1", got)
 	}
-	if saved := savedXTorConfig(t, test, torNode); saved.Driver.MaxPendingCircuits != 0 {
+	if saved := savedTorConfig(t, test, torNode); saved.Driver.MaxPendingCircuits != 0 {
 		t.Fatalf("rejected pending circuit limit was saved: %d", saved.Driver.MaxPendingCircuits)
 	}
 }
 
-func TestXTorDriverRejectsGeneratedSecretsWithoutDurableConfigPersistence(t *testing.T) {
+func TestTorDriverRejectsGeneratedSecretsWithoutDurableConfigPersistence(t *testing.T) {
 	for _, testCase := range []struct {
 		name    string
 		block   string
@@ -741,8 +806,8 @@ func TestXTorDriverRejectsGeneratedSecretsWithoutDurableConfigPersistence(t *tes
 	}{
 		{
 			name:  "onion service",
-			block: xTorServicesBlockID,
-			values: map[string]any{xTorFieldServices: []formular.ArrayElementValue{{
+			block: torServicesBlockID,
+			values: map[string]any{torFieldServices: []formular.ArrayElementValue{{
 				ID: "service", Template: "service", Values: map[string]any{
 					"name": "service", "ports": "80", "maxStreams": 0,
 					"maxStreamsPolicy": "default", "keySecret": "", "authorizedClients": "",
@@ -752,8 +817,8 @@ func TestXTorDriverRejectsGeneratedSecretsWithoutDurableConfigPersistence(t *tes
 		},
 		{
 			name:  "client authorization",
-			block: xTorClientAuthBlockID,
-			values: map[string]any{xTorFieldClientAuthorizations: []formular.ArrayElementValue{{
+			block: torClientAuthBlockID,
+			values: map[string]any{torFieldClientAuthorizations: []formular.ArrayElementValue{{
 				ID: "authorization", Template: "authorization", Values: map[string]any{
 					"address": testOnionAddress(), "name": "client", "privateKeySecret": "",
 				},
@@ -762,8 +827,8 @@ func TestXTorDriverRejectsGeneratedSecretsWithoutDurableConfigPersistence(t *tes
 		},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
-			test := newXTorTestEngineWithOptions(t, almagest.WithNodeConfigChangeCallback(nil))
-			torNode := test.e.AddNode(NodeTypeXTorDriver, "tor-read-only-"+strings.ReplaceAll(testCase.name, " ", "-"))
+			test := newTorTestEngineWithOptions(t, almagest.WithNodeConfigChangeCallback(nil))
+			torNode := test.e.AddNode(NodeTypeTorDriver, "tor-read-only-"+strings.ReplaceAll(testCase.name, " ", "-"))
 			test.e.SubscribeMenus(torNode)
 			test.factory.waitDriver(t, 0)
 
@@ -772,7 +837,7 @@ func TestXTorDriverRejectsGeneratedSecretsWithoutDurableConfigPersistence(t *tes
 				BlockID:     testCase.block,
 				Values:      testCase.values,
 			})
-			eventuallyXTor(t, func() bool {
+			eventuallyTor(t, func() bool {
 				return test.nodeLabel(torNode) == "error"
 			}, "read-only generated secret configuration is rejected")
 			if got := test.factory.count(); got != 1 {
@@ -781,16 +846,16 @@ func TestXTorDriverRejectsGeneratedSecretsWithoutDurableConfigPersistence(t *tes
 			if got := test.secrets.SecretCount(); got != 0 {
 				t.Fatalf("rejected generated secret stored %d secrets, want 0", got)
 			}
-			itemID := xTorFieldServices
-			if testCase.block == xTorClientAuthBlockID {
-				itemID = xTorFieldClientAuthorizations
+			itemID := torFieldServices
+			if testCase.block == torClientAuthBlockID {
+				itemID = torFieldClientAuthorizations
 			}
-			eventuallyXTor(t, func() bool {
+			eventuallyTor(t, func() bool {
 				item, ok := test.e.MenuItem(torNode, testCase.block, itemID)
 				return ok && item.Field != nil && item.Status == formular.StatusError &&
 					strings.Contains(item.StatusText, testCase.message)
 			}, "read-only form displays the persistence error")
-			saved := savedXTorConfig(t, test, torNode)
+			saved := savedTorConfig(t, test, torNode)
 			if len(saved.Services) != 0 || len(saved.ClientAuthorizations) != 0 {
 				t.Fatalf("rejected generated secret configuration was saved: %#v", saved)
 			}
@@ -798,32 +863,32 @@ func TestXTorDriverRejectsGeneratedSecretsWithoutDurableConfigPersistence(t *tes
 	}
 }
 
-type xTorPersistenceRequest struct {
+type torPersistenceRequest struct {
 	node   uint64
 	result chan error
 }
 
-func TestXTorDriverKeepsGeneratedSecretPendingUntilDurableAcknowledgement(t *testing.T) {
-	requests := make(chan xTorPersistenceRequest, 4)
-	test := newXTorTestEngineWithOptions(t, almagest.WithNodeConfigChangeCallback(func(node uint64) <-chan error {
+func TestTorDriverKeepsGeneratedSecretPendingUntilDurableAcknowledgement(t *testing.T) {
+	requests := make(chan torPersistenceRequest, 4)
+	test := newTorTestEngineWithOptions(t, almagest.WithNodeConfigChangeCallback(func(node uint64) <-chan error {
 		result := make(chan error, 1)
-		requests <- xTorPersistenceRequest{node: node, result: result}
+		requests <- torPersistenceRequest{node: node, result: result}
 		return result
 	}))
-	torNode := test.e.AddNode(NodeTypeXTorDriver, "tor-persistence-pending")
+	torNode := test.e.AddNode(NodeTypeTorDriver, "tor-persistence-pending")
 	test.factory.waitDriver(t, 0)
 
-	applyXTorTestForm(t, test, torNode, xTorServicesBlockID, map[string]any{
-		xTorFieldServices: []formular.ArrayElementValue{{ID: "service", Template: "service", Values: map[string]any{
+	applyTorTestForm(t, test, torNode, torServicesBlockID, map[string]any{
+		torFieldServices: []formular.ArrayElementValue{{ID: "service", Template: "service", Values: map[string]any{
 			"name": "service", "ports": "80", "maxStreams": 0,
 			"maxStreamsPolicy": "default", "keySecret": "", "authorizedClients": "",
 		}}},
 	}, 1)
-	request := waitXTorPersistenceRequest(t, requests)
+	request := waitTorPersistenceRequest(t, requests)
 	if request.node != torNode {
 		t.Fatalf("persistence node = %d, want %d", request.node, torNode)
 	}
-	selector := savedXTorConfig(t, test, torNode).Services[0].KeySecret
+	selector := savedTorConfig(t, test, torNode).Services[0].KeySecret
 	if selector == "" || test.secrets.SecretCount() != 1 {
 		t.Fatalf("pending generated selector = %q, secrets = %d", selector, test.secrets.SecretCount())
 	}
@@ -832,8 +897,8 @@ func TestXTorDriverKeepsGeneratedSecretPendingUntilDurableAcknowledgement(t *tes
 		t.Fatal(err)
 	}
 	test.factory.waitDriver(t, 2)
-	eventuallyXTor(t, func() bool {
-		saved := savedXTorConfig(t, test, torNode)
+	eventuallyTor(t, func() bool {
+		saved := savedTorConfig(t, test, torNode)
 		return len(saved.Services) == 1 && saved.Services[0].KeySecret == selector && test.secrets.SecretCount() == 1
 	}, "restart reuses the unacknowledged generated secret")
 	select {
@@ -846,82 +911,114 @@ func TestXTorDriverKeepsGeneratedSecretPendingUntilDurableAcknowledgement(t *tes
 	close(request.result)
 	time.Sleep(25 * time.Millisecond)
 	test.e.Engine.RemoveNode(almagest.MainWorkspace, torNode)
-	eventuallyXTor(t, func() bool { return test.secrets.SecretCount() == 1 }, "durably acknowledged secret survives node stop")
+	eventuallyTor(t, func() bool { return test.secrets.SecretCount() == 1 }, "durably acknowledged secret survives node stop")
 }
 
-func TestXTorDriverRollsBackGeneratedSecretAfterPersistenceFailure(t *testing.T) {
-	requests := make(chan xTorPersistenceRequest, 1)
-	test := newXTorTestEngineWithOptions(t, almagest.WithNodeConfigChangeCallback(func(node uint64) <-chan error {
+func TestTorDriverRollsBackGeneratedSecretAfterPersistenceFailure(t *testing.T) {
+	requests := make(chan torPersistenceRequest, 1)
+	test := newTorTestEngineWithOptions(t, almagest.WithNodeConfigChangeCallback(func(node uint64) <-chan error {
 		result := make(chan error, 1)
-		requests <- xTorPersistenceRequest{node: node, result: result}
+		requests <- torPersistenceRequest{node: node, result: result}
 		return result
 	}))
-	torNode := test.e.AddNode(NodeTypeXTorDriver, "tor-persistence-failure")
+	torNode := test.e.AddNode(NodeTypeTorDriver, "tor-persistence-failure")
 	test.factory.waitDriver(t, 0)
 
-	applyXTorTestForm(t, test, torNode, xTorServicesBlockID, map[string]any{
-		xTorFieldServices: []formular.ArrayElementValue{{ID: "service", Template: "service", Values: map[string]any{
+	applyTorTestForm(t, test, torNode, torServicesBlockID, map[string]any{
+		torFieldServices: []formular.ArrayElementValue{{ID: "service", Template: "service", Values: map[string]any{
 			"name": "service", "ports": "80", "maxStreams": 0,
 			"maxStreamsPolicy": "default", "keySecret": "", "authorizedClients": "",
 		}}},
 	}, 1)
-	request := waitXTorPersistenceRequest(t, requests)
+	request := waitTorPersistenceRequest(t, requests)
 	request.result <- errors.New("durable write failed")
 	close(request.result)
 
-	eventuallyXTor(t, func() bool {
-		saved := savedXTorConfig(t, test, torNode)
+	eventuallyTor(t, func() bool {
+		saved := savedTorConfig(t, test, torNode)
 		return test.nodeLabel(torNode) == "error" && len(saved.Services) == 1 &&
 			saved.Services[0].KeySecret == "" && test.secrets.SecretCount() == 0 &&
 			test.factory.driverClosed(1)
 	}, "persistence failure rolls back selector, secret, and runtime")
 }
 
-func TestXTorDriverDeletesPendingSecretRemovedBeforePersistenceCompletes(t *testing.T) {
-	requests := make(chan xTorPersistenceRequest, 1)
-	test := newXTorTestEngineWithOptions(t, almagest.WithNodeConfigChangeCallback(func(node uint64) <-chan error {
+func TestTorDriverDeletesPendingSecretRemovedBeforePersistenceCompletes(t *testing.T) {
+	requests := make(chan torPersistenceRequest, 1)
+	test := newTorTestEngineWithOptions(t, almagest.WithNodeConfigChangeCallback(func(node uint64) <-chan error {
 		result := make(chan error, 1)
-		requests <- xTorPersistenceRequest{node: node, result: result}
+		requests <- torPersistenceRequest{node: node, result: result}
 		return result
 	}))
-	torNode := test.e.AddNode(NodeTypeXTorDriver, "tor-persistence-removed")
+	torNode := test.e.AddNode(NodeTypeTorDriver, "tor-persistence-removed")
 	test.factory.waitDriver(t, 0)
 
-	applyXTorTestForm(t, test, torNode, xTorServicesBlockID, map[string]any{
-		xTorFieldServices: []formular.ArrayElementValue{{ID: "service", Template: "service", Values: map[string]any{
+	applyTorTestForm(t, test, torNode, torServicesBlockID, map[string]any{
+		torFieldServices: []formular.ArrayElementValue{{ID: "service", Template: "service", Values: map[string]any{
 			"name": "service", "ports": "80", "maxStreams": 0,
 			"maxStreamsPolicy": "default", "keySecret": "", "authorizedClients": "",
 		}}},
 	}, 1)
-	request := waitXTorPersistenceRequest(t, requests)
-	applyXTorTestForm(t, test, torNode, xTorServicesBlockID, map[string]any{xTorFieldServices: []formular.ArrayElementValue{}}, 2)
+	request := waitTorPersistenceRequest(t, requests)
+	applyTorTestForm(t, test, torNode, torServicesBlockID, map[string]any{torFieldServices: []formular.ArrayElementValue{}}, 2)
 	if got := test.secrets.SecretCount(); got != 1 {
 		t.Fatalf("pending secret count before acknowledgement = %d, want 1", got)
 	}
 	request.result <- nil
 	close(request.result)
-	eventuallyXTor(t, func() bool { return test.secrets.SecretCount() == 0 }, "removed selector discards acknowledged obsolete secret")
+	eventuallyTor(t, func() bool { return test.secrets.SecretCount() == 0 }, "removed selector discards acknowledged obsolete secret")
 }
 
-func TestXTorDriverDeletesUnacknowledgedSecretWhenNodeStops(t *testing.T) {
-	requests := make(chan xTorPersistenceRequest, 1)
-	test := newXTorTestEngineWithOptions(t, almagest.WithNodeConfigChangeCallback(func(node uint64) <-chan error {
+func TestTorDriverIgnoresObsoletePersistenceFailureAfterSecretRemoval(t *testing.T) {
+	requests := make(chan torPersistenceRequest, 1)
+	test := newTorTestEngineWithOptions(t, almagest.WithNodeConfigChangeCallback(func(node uint64) <-chan error {
 		result := make(chan error, 1)
-		requests <- xTorPersistenceRequest{node: node, result: result}
+		requests <- torPersistenceRequest{node: node, result: result}
 		return result
 	}))
-	torNode := test.e.AddNode(NodeTypeXTorDriver, "tor-persistence-stop")
+	torNode := test.e.AddNode(NodeTypeTorDriver, "tor-obsolete-persistence-failure")
 	test.factory.waitDriver(t, 0)
 
-	applyXTorTestForm(t, test, torNode, xTorServicesBlockID, map[string]any{
-		xTorFieldServices: []formular.ArrayElementValue{{ID: "service", Template: "service", Values: map[string]any{
+	applyTorTestForm(t, test, torNode, torServicesBlockID, map[string]any{
+		torFieldServices: []formular.ArrayElementValue{{ID: "service", Template: "service", Values: map[string]any{
 			"name": "service", "ports": "80", "maxStreams": 0,
 			"maxStreamsPolicy": "default", "keySecret": "", "authorizedClients": "",
 		}}},
 	}, 1)
-	request := waitXTorPersistenceRequest(t, requests)
+	request := waitTorPersistenceRequest(t, requests)
+	applyTorTestForm(t, test, torNode, torServicesBlockID, map[string]any{torFieldServices: []formular.ArrayElementValue{}}, 2)
+	eventuallyTor(t, func() bool { return test.nodeLabel(torNode) == "waiting for Network" }, "runtime without removed service becomes active")
+
+	request.result <- errors.New("obsolete durable write failed")
+	close(request.result)
+	eventuallyTor(t, func() bool { return test.secrets.SecretCount() == 0 }, "obsolete generated secret is deleted")
+	time.Sleep(25 * time.Millisecond)
+	if got := test.nodeLabel(torNode); got != "waiting for Network" {
+		t.Fatalf("obsolete persistence failure changed the current runtime label to %q", got)
+	}
+	if test.factory.driverClosed(2) {
+		t.Fatal("obsolete persistence failure closed the current Tor runtime")
+	}
+}
+
+func TestTorDriverDeletesUnacknowledgedSecretWhenNodeStops(t *testing.T) {
+	requests := make(chan torPersistenceRequest, 1)
+	test := newTorTestEngineWithOptions(t, almagest.WithNodeConfigChangeCallback(func(node uint64) <-chan error {
+		result := make(chan error, 1)
+		requests <- torPersistenceRequest{node: node, result: result}
+		return result
+	}))
+	torNode := test.e.AddNode(NodeTypeTorDriver, "tor-persistence-stop")
+	test.factory.waitDriver(t, 0)
+
+	applyTorTestForm(t, test, torNode, torServicesBlockID, map[string]any{
+		torFieldServices: []formular.ArrayElementValue{{ID: "service", Template: "service", Values: map[string]any{
+			"name": "service", "ports": "80", "maxStreams": 0,
+			"maxStreamsPolicy": "default", "keySecret": "", "authorizedClients": "",
+		}}},
+	}, 1)
+	request := waitTorPersistenceRequest(t, requests)
 	test.e.Engine.RemoveNode(almagest.MainWorkspace, torNode)
-	eventuallyXTor(t, func() bool { return test.secrets.SecretCount() == 0 }, "node stop discards unacknowledged secret")
+	eventuallyTor(t, func() bool { return test.secrets.SecretCount() == 0 }, "node stop discards unacknowledged secret")
 	request.result <- nil
 	close(request.result)
 	time.Sleep(25 * time.Millisecond)
@@ -930,15 +1027,15 @@ func TestXTorDriverDeletesUnacknowledgedSecretWhenNodeStops(t *testing.T) {
 	}
 }
 
-func TestXTorDriverRecoversPendingOnionKeyAfterProcessCrash(t *testing.T) {
-	requests := make(chan xTorPersistenceRequest, 1)
-	test := newXTorTestEngineWithOptions(t, almagest.WithNodeConfigChangeCallback(func(node uint64) <-chan error {
+func TestTorDriverRecoversPendingOnionKeyAfterProcessCrash(t *testing.T) {
+	requests := make(chan torPersistenceRequest, 1)
+	test := newTorTestEngineWithOptions(t, almagest.WithNodeConfigChangeCallback(func(node uint64) <-chan error {
 		result := make(chan error, 1)
-		requests <- xTorPersistenceRequest{node: node, result: result}
+		requests <- torPersistenceRequest{node: node, result: result}
 		return result
 	}))
 	const nodeName = "tor-recover-onion-key"
-	torNode := test.e.AddNode(NodeTypeXTorDriver, nodeName)
+	torNode := test.e.AddNode(NodeTypeTorDriver, nodeName)
 	test.factory.waitDriver(t, 0)
 
 	key, err := tor.OnionServiceKeyFromEd25519Seed(bytes.Repeat([]byte{7}, 32))
@@ -951,21 +1048,21 @@ func TestXTorDriverRecoversPendingOnionKeyAfterProcessCrash(t *testing.T) {
 	}
 	selector, err := test.secrets.NewGeneratedSecret(
 		storage.Secret{Value: string(text)}, nodeName,
-		xTorServiceSecretOwner(xTorServiceKeyName("service")),
+		torServiceSecretOwner(torServiceKeyName("service")),
 	)
 	clear(text)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	applyXTorTestForm(t, test, torNode, xTorServicesBlockID, map[string]any{
-		xTorFieldServices: []formular.ArrayElementValue{{ID: "service", Template: "service", Values: map[string]any{
+	applyTorTestForm(t, test, torNode, torServicesBlockID, map[string]any{
+		torFieldServices: []formular.ArrayElementValue{{ID: "service", Template: "service", Values: map[string]any{
 			"name": "service", "ports": "80", "maxStreams": 0,
 			"maxStreamsPolicy": "default", "keySecret": "", "authorizedClients": "",
 		}}},
 	}, 1)
-	request := waitXTorPersistenceRequest(t, requests)
-	saved := savedXTorConfig(t, test, torNode)
+	request := waitTorPersistenceRequest(t, requests)
+	saved := savedTorConfig(t, test, torNode)
 	if got := saved.Services[0].KeySecret; got != selector {
 		t.Fatalf("recovered service selector = %q, want %q", got, selector)
 	}
@@ -974,21 +1071,21 @@ func TestXTorDriverRecoversPendingOnionKeyAfterProcessCrash(t *testing.T) {
 	}
 	request.result <- nil
 	close(request.result)
-	eventuallyXTor(t, func() bool {
-		key, _, recoverErr := test.secrets.RecoverGeneratedSecret(xTorServiceSecretOwner(xTorServiceKeyName("service")), nodeName)
+	eventuallyTor(t, func() bool {
+		key, _, recoverErr := test.secrets.RecoverGeneratedSecret(torServiceSecretOwner(torServiceKeyName("service")), nodeName)
 		return recoverErr == nil && key == ""
 	}, "durable service selector clears crash-recovery metadata")
 }
 
-func TestXTorDriverRecoversPendingClientAuthorizationAfterProcessCrash(t *testing.T) {
-	requests := make(chan xTorPersistenceRequest, 1)
-	test := newXTorTestEngineWithOptions(t, almagest.WithNodeConfigChangeCallback(func(node uint64) <-chan error {
+func TestTorDriverRecoversPendingClientAuthorizationAfterProcessCrash(t *testing.T) {
+	requests := make(chan torPersistenceRequest, 1)
+	test := newTorTestEngineWithOptions(t, almagest.WithNodeConfigChangeCallback(func(node uint64) <-chan error {
 		result := make(chan error, 1)
-		requests <- xTorPersistenceRequest{node: node, result: result}
+		requests <- torPersistenceRequest{node: node, result: result}
 		return result
 	}))
 	const nodeName = "tor-recover-client-authorization"
-	torNode := test.e.AddNode(NodeTypeXTorDriver, nodeName)
+	torNode := test.e.AddNode(NodeTypeTorDriver, nodeName)
 	test.factory.waitDriver(t, 0)
 	address := testOnionAddress()
 	privateKey, err := tor.NewClientAuthorizationPrivateKey(bytes.Repeat([]byte{9}, 32))
@@ -1001,20 +1098,20 @@ func TestXTorDriverRecoversPendingClientAuthorizationAfterProcessCrash(t *testin
 	}
 	selector, err := test.secrets.NewGeneratedSecret(
 		storage.Secret{Value: string(text)}, nodeName,
-		xTorClientAuthorizationSecretOwner(address),
+		torClientAuthorizationSecretOwner(address),
 	)
 	clear(text)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	applyXTorTestForm(t, test, torNode, xTorClientAuthBlockID, map[string]any{
-		xTorFieldClientAuthorizations: []formular.ArrayElementValue{{ID: "authorization", Template: "authorization", Values: map[string]any{
+	applyTorTestForm(t, test, torNode, torClientAuthBlockID, map[string]any{
+		torFieldClientAuthorizations: []formular.ArrayElementValue{{ID: "authorization", Template: "authorization", Values: map[string]any{
 			"address": address, "name": "client", "privateKeySecret": "",
 		}}},
 	}, 1)
-	request := waitXTorPersistenceRequest(t, requests)
-	saved := savedXTorConfig(t, test, torNode)
+	request := waitTorPersistenceRequest(t, requests)
+	saved := savedTorConfig(t, test, torNode)
 	if got := saved.ClientAuthorizations[0].PrivateKeySecret; got != selector {
 		t.Fatalf("recovered authorization selector = %q, want %q", got, selector)
 	}
@@ -1040,58 +1137,58 @@ func TestXTorDriverRecoversPendingClientAuthorizationAfterProcessCrash(t *testin
 	clear(wantText)
 	request.result <- nil
 	close(request.result)
-	eventuallyXTor(t, func() bool {
-		key, _, recoverErr := test.secrets.RecoverGeneratedSecret(xTorClientAuthorizationSecretOwner(address), nodeName)
+	eventuallyTor(t, func() bool {
+		key, _, recoverErr := test.secrets.RecoverGeneratedSecret(torClientAuthorizationSecretOwner(address), nodeName)
 		return recoverErr == nil && key == ""
 	}, "durable client authorization selector clears crash-recovery metadata")
 }
 
-func waitXTorPersistenceRequest(t *testing.T, requests <-chan xTorPersistenceRequest) xTorPersistenceRequest {
+func waitTorPersistenceRequest(t *testing.T, requests <-chan torPersistenceRequest) torPersistenceRequest {
 	t.Helper()
 	select {
 	case request := <-requests:
 		return request
 	case <-time.After(time.Second):
 		t.Fatal("timed out waiting for node configuration persistence request")
-		return xTorPersistenceRequest{}
+		return torPersistenceRequest{}
 	}
 }
 
-func TestXTorDriverRestoreRequiresPersistenceOnlyForEmptySecretSelectors(t *testing.T) {
+func TestTorDriverRestoreRequiresPersistenceOnlyForEmptySecretSelectors(t *testing.T) {
 	for _, testCase := range []struct {
 		name   string
-		config XTorDriverConfig
+		config TorDriverConfig
 		want   bool
 	}{
 		{
 			name: "generated service key",
-			config: XTorDriverConfig{Enabled: true, Services: []XTorDriverServiceConfig{{
+			config: TorDriverConfig{Enabled: true, Services: []TorDriverServiceConfig{{
 				Name: "service", Ports: []uint16{80},
 			}}},
 			want: true,
 		},
 		{
 			name: "generated client authorization",
-			config: XTorDriverConfig{Enabled: true, ClientAuthorizations: []XTorDriverClientAuthConfig{{
+			config: TorDriverConfig{Enabled: true, ClientAuthorizations: []TorDriverClientAuthConfig{{
 				Address: testOnionAddress(), Name: "client",
 			}}},
 			want: true,
 		},
 		{
 			name: "explicit selectors",
-			config: XTorDriverConfig{Enabled: true,
-				Services:             []XTorDriverServiceConfig{{Name: "service", Ports: []uint16{80}, KeySecret: "service-key"}},
-				ClientAuthorizations: []XTorDriverClientAuthConfig{{Address: testOnionAddress(), Name: "client", PrivateKeySecret: "client-key"}},
+			config: TorDriverConfig{Enabled: true,
+				Services:             []TorDriverServiceConfig{{Name: "service", Ports: []uint16{80}, KeySecret: "service-key"}},
+				ClientAuthorizations: []TorDriverClientAuthConfig{{Address: testOnionAddress(), Name: "client", PrivateKeySecret: "client-key"}},
 			},
 			want: false,
 		},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			cfg := configer.NewMemory(nil)
-			if err := configer.Marshal(cfg.View(configer.Path{xTorDriverConfigurationField}), testCase.config); err != nil {
+			if err := configer.Marshal(cfg.View(configer.Path{torDriverConfigurationField}), testCase.config); err != nil {
 				t.Fatal(err)
 			}
-			_, err := (XTorDriverClass{}).NewNode(cfg)
+			_, err := (TorDriverClass{}).NewNode(cfg)
 			if testCase.want {
 				if err == nil || !strings.Contains(err.Error(), "durable node configuration persistence is unavailable") {
 					t.Fatalf("NewNode error = %v, want persistence error", err)
@@ -1105,7 +1202,7 @@ func TestXTorDriverRestoreRequiresPersistenceOnlyForEmptySecretSelectors(t *test
 	}
 }
 
-func applyXTorTestForm(t *testing.T, test *xTorTestEngine, node uint64, block string, values map[string]any, driverIndex int) {
+func applyTorTestForm(t *testing.T, test *torTestEngine, node uint64, block string, values map[string]any, driverIndex int) {
 	t.Helper()
 	test.e.Engine.SendNodeFormularMsg(almagest.MainWorkspace, node, formular.FormApplyMessage{
 		MessageBase: formular.MessageBase{Type: formular.MessageFormApply, MenuID: pasta.NodeMenuID(node)},
@@ -1113,16 +1210,16 @@ func applyXTorTestForm(t *testing.T, test *xTorTestEngine, node uint64, block st
 		Values:      values,
 	})
 	test.factory.waitDriver(t, driverIndex)
-	eventuallyXTor(t, func() bool { return test.nodeLabel(node) != "starting" }, "Tor applies %s", block)
+	eventuallyTor(t, func() bool { return test.nodeLabel(node) != "starting" }, "Tor applies %s", block)
 }
 
-func TestXTorDriverRejectsStaleReadinessAfterRestart(t *testing.T) {
-	test := newXTorTestEngine(t)
+func TestTorDriverRejectsStaleReadinessAfterRestart(t *testing.T) {
+	test := newTorTestEngine(t)
 	test.factory.blockReadiness = true
-	torNode := test.e.AddNode(NodeTypeXTorDriver, "tor-race")
+	torNode := test.e.AddNode(NodeTypeTorDriver, "tor-race")
 	test.e.SubscribeMenus(torNode)
 	first := test.factory.waitDriver(t, 0)
-	eventuallyXTor(t, func() bool { return test.nodeLabel(torNode) == "waiting for Network" }, "first Tor runtime starts")
+	eventuallyTor(t, func() bool { return test.nodeLabel(torNode) == "waiting for Network" }, "first Tor runtime starts")
 
 	if err := test.e.Engine.Trigger(almagest.MainWorkspace, torNode); err != nil {
 		t.Fatal(err)
@@ -1132,14 +1229,14 @@ func TestXTorDriverRejectsStaleReadinessAfterRestart(t *testing.T) {
 		t.Fatal("restart reused old driver")
 	}
 	first.markReady()
-	eventuallyXTor(t, func() bool { return first.closed.Load() }, "old Tor driver closes")
+	eventuallyTor(t, func() bool { return first.closed.Load() }, "old Tor driver closes")
 	if got := test.nodeLabel(torNode); got == "up" {
 		t.Fatal("stale readiness marked replacement runtime up")
 	}
 }
 
-func TestXTorDriverConvergesOutboundChangedDuringStartup(t *testing.T) {
-	test := newXTorTestEngine(t)
+func TestTorDriverConvergesOutboundChangedDuringStartup(t *testing.T) {
+	test := newTorTestEngine(t)
 	entered := make(chan struct{})
 	release := make(chan struct{})
 	test.factory.mu.Lock()
@@ -1154,31 +1251,95 @@ func TestXTorDriverConvergesOutboundChangedDuringStartup(t *testing.T) {
 		}
 	}()
 
-	torNode := test.e.AddNode(NodeTypeXTorDriver, "tor-startup-outbound")
+	torNode := test.e.AddNode(NodeTypeTorDriver, "tor-startup-outbound")
 	select {
 	case <-entered:
 	case <-time.After(time.Second):
 		t.Fatal("Tor start did not reach the attachment race point")
 	}
 	out := test.e.AddNode("almagest/MockNetwork", "startup-out")
-	test.e.MustAddTypedLinkByPortName(links.TypeNetwork, out, "left", "Network", torNode, "right", xTorOutboundPortName)
+	test.e.MustAddTypedLinkByPortName(links.TypeNetwork, out, "left", "Network", torNode, "right", torOutboundPortName)
 	close(release)
 
 	driver := test.factory.waitDriver(t, 0)
-	eventuallyXTor(t, func() bool { return driver.outbound().Available && test.nodeLabel(torNode) == "up" }, "startup attachment converges")
+	eventuallyTor(t, func() bool { return driver.outbound().Available && test.nodeLabel(torNode) == "up" }, "startup attachment converges")
 	calls := driver.setOutboundCalls()
 	if len(calls) != 1 || calls[0] == nil {
 		t.Fatalf("SetOutbound calls = %#v, want one current non-nil attachment", calls)
 	}
 }
 
-func TestXTorDriverSerializesRapidOutboundDetachAndReattach(t *testing.T) {
-	test := newXTorTestEngine(t)
-	torNode := test.e.AddNode(NodeTypeXTorDriver, "tor-rapid-outbound")
+func TestTorDriverRearmsUnavailableInitialOutboundAfterRestart(t *testing.T) {
+	test := newTorTestEngine(t)
+	torNode := test.e.AddNode(NodeTypeTorDriver, "tor-initial-outbound")
+	out := test.e.AddNode("almagest/MockNetwork", "initial-outbound")
+	test.e.MustAddTypedLinkByPortName(links.TypeNetwork, out, "left", "Network", torNode, "right", torOutboundPortName)
+	eventuallyTor(t, func() bool { return test.nodeLabel(torNode) == "up" }, "first Tor runtime becomes ready")
+
+	test.factory.mu.Lock()
+	test.factory.initialOutboundUnavailable = true
+	test.factory.mu.Unlock()
+	if err := test.e.Engine.Trigger(almagest.MainWorkspace, torNode); err != nil {
+		t.Fatal(err)
+	}
+	driver := test.factory.waitDriver(t, 1)
+	eventuallyTor(t, func() bool { return test.nodeLabel(torNode) == "up" }, "replacement rearms its initial outbound attachment")
+	if calls := driver.setOutboundCalls(); len(calls) == 0 || calls[0] == nil {
+		t.Fatalf("SetOutbound calls = %#v, want explicit non-nil rearm", calls)
+	}
+}
+
+func TestTorDriverIgnoresOldOutboundFailureWhileInputAttachIsPending(t *testing.T) {
+	test := newTorTestEngine(t)
+	torNode := test.e.AddNode(NodeTypeTorDriver, "tor-pending-outbound")
+	test.e.SubscribeMenus(torNode)
+	driver := test.factory.waitDriver(t, 0)
+	eventuallyTor(t, func() bool { return test.nodeLabel(torNode) == "waiting for Network" }, "Tor waits for outbound Network")
+
+	attachEntered := make(chan struct{})
+	releaseAttach := make(chan struct{})
+	var releaseOnce sync.Once
+	release := func() { releaseOnce.Do(func() { close(releaseAttach) }) }
+	defer release()
+	var blockOnce sync.Once
+	driver.setHook(func(network gonnect.Network) {
+		if network == nil {
+			return
+		}
+		blockOnce.Do(func() {
+			close(attachEntered)
+			<-releaseAttach
+		})
+	})
+	out := test.e.AddNode("almagest/MockNetwork", "pending-outbound")
+	test.e.MustAddTypedLinkByPortName(links.TypeNetwork, out, "left", "Network", torNode, "right", torOutboundPortName)
+	select {
+	case <-attachEntered:
+	case <-time.After(time.Second):
+		t.Fatal("SetOutbound did not reach the pending attachment")
+	}
+
+	state := driver.outbound()
+	driver.events <- tor.OutboundEvent{Generation: state.Generation, Latched: true}
+	driver.events <- tor.BootstrapEvent{Progress: 23, Stage: "handshake", Severity: tor.EventNotice}
+	eventuallyTor(t, func() bool {
+		item, ok := test.e.MenuItem(torNode, torStatusBlockID, "bootstrap")
+		return ok && item.Progress != nil && *item.Progress == 23
+	}, "old failure and marker events are processed")
+	if got := test.nodeLabel(torNode); got == "error" {
+		t.Fatal("old outbound failure latched the pending input attachment")
+	}
+	release()
+	eventuallyTor(t, func() bool { return test.nodeLabel(torNode) == "up" }, "pending attachment recovers")
+}
+
+func TestTorDriverSerializesRapidOutboundDetachAndReattach(t *testing.T) {
+	test := newTorTestEngine(t)
+	torNode := test.e.AddNode(NodeTypeTorDriver, "tor-rapid-outbound")
 	driver := test.factory.waitDriver(t, 0)
 	out := test.e.AddNode("almagest/MockNetwork", "rapid-out")
-	link := test.e.MustAddTypedLinkByPortName(links.TypeNetwork, out, "left", "Network", torNode, "right", xTorOutboundPortName)
-	eventuallyXTor(t, func() bool { return driver.outbound().Available && test.nodeLabel(torNode) == "up" }, "initial attachment becomes ready")
+	link := test.e.MustAddTypedLinkByPortName(links.TypeNetwork, out, "left", "Network", torNode, "right", torOutboundPortName)
+	eventuallyTor(t, func() bool { return driver.outbound().Available && test.nodeLabel(torNode) == "up" }, "initial attachment becomes ready")
 
 	detachEntered := make(chan struct{})
 	releaseDetach := make(chan struct{})
@@ -1198,25 +1359,25 @@ func TestXTorDriverSerializesRapidOutboundDetachAndReattach(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("outbound detach did not start")
 	}
-	test.e.MustAddTypedLinkByPortName(links.TypeNetwork, out, "left", "Network", torNode, "right", xTorOutboundPortName)
+	test.e.MustAddTypedLinkByPortName(links.TypeNetwork, out, "left", "Network", torNode, "right", torOutboundPortName)
 	close(releaseDetach)
 
-	eventuallyXTor(t, func() bool { return driver.outbound().Available && test.nodeLabel(torNode) == "up" }, "rapid reattach converges to the latest attachment")
+	eventuallyTor(t, func() bool { return driver.outbound().Available && test.nodeLabel(torNode) == "up" }, "rapid reattach converges to the latest attachment")
 	calls := driver.setOutboundCalls()
 	if len(calls) < 3 || calls[len(calls)-2] != nil || calls[len(calls)-1] == nil {
 		t.Fatalf("SetOutbound calls = %#v, want detach followed by current reattach", calls)
 	}
 }
 
-func TestXTorDriverLatchedFailureWithdrawsOutputsUntilReattach(t *testing.T) {
-	test := newXTorTestEngine(t)
-	torNode := test.e.AddNode(NodeTypeXTorDriver, "tor-latched-output")
+func TestTorDriverLatchedFailureWithdrawsOutputsUntilReattach(t *testing.T) {
+	test := newTorTestEngine(t)
+	torNode := test.e.AddNode(NodeTypeTorDriver, "tor-latched-output")
 	driver := test.factory.waitDriver(t, 0)
 	out := test.e.AddNode("almagest/MockNetwork", "latched-out")
-	outLink := test.e.MustAddTypedLinkByPortName(links.TypeNetwork, out, "left", "Network", torNode, "right", xTorOutboundPortName)
-	eventuallyXTor(t, func() bool { return test.nodeLabel(torNode) == "up" }, "Tor becomes ready")
+	outLink := test.e.MustAddTypedLinkByPortName(links.TypeNetwork, out, "left", "Network", torNode, "right", torOutboundPortName)
+	eventuallyTor(t, func() bool { return test.nodeLabel(torNode) == "up" }, "Tor becomes ready")
 
-	receiverNode := test.e.AddNode(xTorReceiverNodeType, "receiver")
+	receiverNode := test.e.AddNode(torReceiverNodeType, "receiver")
 	receiver := test.receivers.wait(t, 0)
 	test.e.MustAddTypedLinkByPortName(links.TypeNetwork, torNode, "left", "Network default", receiverNode, "right", "Network")
 	readyPayload := networktest.ReceivePayload(t, receiver.Events)
@@ -1227,14 +1388,14 @@ func TestXTorDriverLatchedFailureWithdrawsOutputsUntilReattach(t *testing.T) {
 	state := driver.outbound()
 	driver.setOutboundAvailable(false)
 	driver.events <- tor.OutboundEvent{Generation: state.Generation, Latched: true}
-	waitXTorUnavailablePayload(t, receiver.Events)
-	eventuallyXTor(t, func() bool { return test.nodeLabel(torNode) == "error" }, "latched failure becomes an error")
+	waitTorUnavailablePayload(t, receiver.Events)
+	eventuallyTor(t, func() bool { return test.nodeLabel(torNode) == "error" }, "latched failure becomes an error")
 	// Model readiness that completed before the failure but reached the node
 	// after the failure event.
 	for revision := uint64(0); revision < 4; revision++ {
 		test.e.Engine.SendInbox(almagest.MainWorkspace, pasta.InboxMessage{
 			ReceiverNode: torNode,
-			Payload: xTorOutboundResult{
+			Payload: torOutboundResult{
 				runtimeID: 1, outboundRevision: revision,
 				state: tor.OutboundState{Available: true}, ready: true,
 			},
@@ -1248,48 +1409,116 @@ func TestXTorDriverLatchedFailureWithdrawsOutputsUntilReattach(t *testing.T) {
 	networktest.AssertNoEvent(t, receiver.Events)
 
 	test.e.Engine.RemoveLink(almagest.MainWorkspace, outLink)
-	test.e.MustAddTypedLinkByPortName(links.TypeNetwork, out, "left", "Network", torNode, "right", xTorOutboundPortName)
-	eventuallyXTor(t, func() bool { return test.nodeLabel(torNode) == "up" }, "reattach recovers latched output")
+	test.e.MustAddTypedLinkByPortName(links.TypeNetwork, out, "left", "Network", torNode, "right", torOutboundPortName)
+	eventuallyTor(t, func() bool { return test.nodeLabel(torNode) == "up" }, "reattach recovers latched output")
 	if payload := networktest.ReceivePayload(t, receiver.Events); payload.Network == nil {
 		t.Fatal("reattach did not republish Tor output")
 	}
 }
 
-func TestXTorDriverOutboundReplacementDoesNotCancelControlWait(t *testing.T) {
-	test := newXTorTestEngine(t)
+func TestTorDriverOutboundReplacementDoesNotCancelControlWait(t *testing.T) {
+	test := newTorTestEngine(t)
 	test.factory.blockReadiness = true
-	torNode := test.e.AddNode(NodeTypeXTorDriver, "tor-wait-replacement")
+	torNode := test.e.AddNode(NodeTypeTorDriver, "tor-wait-replacement")
 	driver := test.factory.waitDriver(t, 0)
 	out := test.e.AddNode("almagest/MockNetwork", "wait-out")
-	link := test.e.MustAddTypedLinkByPortName(links.TypeNetwork, out, "left", "Network", torNode, "right", xTorOutboundPortName)
-	eventuallyXTor(t, func() bool { return driver.waitReadyCalls.Load() > 0 }, "outbound readiness wait starts")
+	link := test.e.MustAddTypedLinkByPortName(links.TypeNetwork, out, "left", "Network", torNode, "right", torOutboundPortName)
+	eventuallyTor(t, func() bool { return driver.waitReadyCalls.Load() > 0 }, "outbound readiness wait starts")
 
 	test.e.Engine.RemoveLink(almagest.MainWorkspace, link)
-	eventuallyXTor(t, func() bool {
+	eventuallyTor(t, func() bool {
 		calls := driver.setOutboundCalls()
 		return len(calls) >= 2 && calls[len(calls)-1] == nil
 	}, "outbound detach is applied while readiness remains blocked")
 	if got := driver.waitReadyCanceled.Load(); got != 0 {
 		t.Fatalf("readiness waits canceled during detach = %d, want 0", got)
 	}
-	test.e.MustAddTypedLinkByPortName(links.TypeNetwork, out, "left", "Network", torNode, "right", xTorOutboundPortName)
-	eventuallyXTor(t, func() bool { return len(driver.setOutboundCalls()) >= 3 }, "replacement is applied while the old readiness wait remains active")
+	test.e.MustAddTypedLinkByPortName(links.TypeNetwork, out, "left", "Network", torNode, "right", torOutboundPortName)
+	eventuallyTor(t, func() bool { return len(driver.setOutboundCalls()) >= 3 }, "replacement is applied while the old readiness wait remains active")
 	if got := driver.waitReadyCanceled.Load(); got != 0 {
 		t.Fatalf("readiness waits canceled during replacement = %d, want 0", got)
 	}
 	driver.markReady()
-	eventuallyXTor(t, func() bool { return test.nodeLabel(torNode) == "up" }, "replacement becomes ready")
+	eventuallyTor(t, func() bool { return test.nodeLabel(torNode) == "up" }, "replacement becomes ready")
 }
 
-func TestXTorDriverTerminalFailureRejectsQueuedReadiness(t *testing.T) {
-	test := newXTorTestEngine(t)
-	torNode := test.e.AddNode(NodeTypeXTorDriver, "tor-terminal")
+func TestTorDriverDoesNotReuseReadinessFromReplacedOutbound(t *testing.T) {
+	test := newTorTestEngine(t)
+	firstWaitStarted := make(chan struct{})
+	releaseFirstWait := make(chan struct{})
+	secondWaitStarted := make(chan struct{})
+	releaseSecondWait := make(chan struct{})
+	var firstOnce sync.Once
+	var secondOnce sync.Once
+	test.factory.mu.Lock()
+	test.factory.waitReadyHook = func(ctx context.Context, call int32) error {
+		switch call {
+		case 1:
+			firstOnce.Do(func() { close(firstWaitStarted) })
+			select {
+			case <-releaseFirstWait:
+				return nil
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		default:
+			secondOnce.Do(func() { close(secondWaitStarted) })
+			select {
+			case <-releaseSecondWait:
+				return nil
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}
+	}
+	test.factory.mu.Unlock()
+	defer func() {
+		firstOnce.Do(func() { close(firstWaitStarted) })
+		secondOnce.Do(func() { close(secondWaitStarted) })
+		select {
+		case <-releaseFirstWait:
+		default:
+			close(releaseFirstWait)
+		}
+		select {
+		case <-releaseSecondWait:
+		default:
+			close(releaseSecondWait)
+		}
+	}()
+
+	torNode := test.e.AddNode(NodeTypeTorDriver, "tor-readiness-revision")
+	driver := test.factory.waitDriver(t, 0)
+	firstOut := test.e.AddNode("almagest/MockNetwork", "readiness-first-out")
+	link := test.e.MustAddTypedLinkByPortName(links.TypeNetwork, firstOut, "left", "Network", torNode, "right", torOutboundPortName)
+	waitTorSignal(t, firstWaitStarted, "first outbound readiness wait")
+
+	test.e.Engine.RemoveLink(almagest.MainWorkspace, link)
+	secondOut := test.e.AddNode("almagest/MockNetwork", "readiness-second-out")
+	test.e.MustAddTypedLinkByPortName(links.TypeNetwork, secondOut, "left", "Network", torNode, "right", torOutboundPortName)
+	waitTorSignal(t, secondWaitStarted, "replacement outbound readiness wait")
+
+	close(releaseFirstWait)
+	time.Sleep(2 * torOutboundRetryDelay)
+	if got := test.nodeLabel(torNode); got == "up" {
+		t.Fatal("readiness from the replaced outbound marked the current attachment up")
+	}
+	close(releaseSecondWait)
+	eventuallyTor(t, func() bool { return test.nodeLabel(torNode) == "up" }, "replacement readiness marks Tor up")
+	if calls := driver.waitReadyCalls.Load(); calls < 2 {
+		t.Fatalf("WaitReady calls = %d, want a separate call for each outbound revision", calls)
+	}
+}
+
+func TestTorDriverTerminalFailureRejectsQueuedReadiness(t *testing.T) {
+	test := newTorTestEngine(t)
+	torNode := test.e.AddNode(NodeTypeTorDriver, "tor-terminal")
 	driver := test.factory.waitDriver(t, 0)
 	out := test.e.AddNode("almagest/MockNetwork", "terminal-out")
-	test.e.MustAddTypedLinkByPortName(links.TypeNetwork, out, "left", "Network", torNode, "right", xTorOutboundPortName)
-	eventuallyXTor(t, func() bool { return test.nodeLabel(torNode) == "up" }, "Tor becomes ready before terminal failure")
+	test.e.MustAddTypedLinkByPortName(links.TypeNetwork, out, "left", "Network", torNode, "right", torOutboundPortName)
+	eventuallyTor(t, func() bool { return test.nodeLabel(torNode) == "up" }, "Tor becomes ready before terminal failure")
 
-	receiverNode := test.e.AddNode(xTorReceiverNodeType, "terminal-receiver")
+	receiverNode := test.e.AddNode(torReceiverNodeType, "terminal-receiver")
 	receiver := test.receivers.wait(t, 0)
 	test.e.MustAddTypedLinkByPortName(links.TypeNetwork, torNode, "left", "Network default", receiverNode, "right", "Network")
 	if payload := networktest.ReceivePayload(t, receiver.Events); payload.Network == nil {
@@ -1297,39 +1526,39 @@ func TestXTorDriverTerminalFailureRejectsQueuedReadiness(t *testing.T) {
 	}
 
 	driver.events <- tor.TerminalEvent{Cause: tor.TerminalControlConnection}
-	waitXTorUnavailablePayload(t, receiver.Events)
-	eventuallyXTor(t, func() bool { return test.nodeLabel(torNode) == "error" }, "terminal failure becomes an error")
+	waitTorUnavailablePayload(t, receiver.Events)
+	eventuallyTor(t, func() bool { return test.nodeLabel(torNode) == "error" }, "terminal failure becomes an error")
 
 	// Model a readiness completion that was calculated before the terminal
 	// event but entered the workspace inbox after it.
 	for revision := uint64(0); revision < 4; revision++ {
 		test.e.Engine.SendInbox(almagest.MainWorkspace, pasta.InboxMessage{
 			ReceiverNode: torNode,
-			Payload: xTorOutboundResult{
+			Payload: torOutboundResult{
 				runtimeID: 1, outboundRevision: revision,
 				state: tor.OutboundState{Available: true}, ready: true,
 			},
 		})
 	}
-	time.Sleep(2 * xTorOutboundRetryDelay)
+	time.Sleep(2 * torOutboundRetryDelay)
 	if got := test.nodeLabel(torNode); got != "error" {
 		t.Fatalf("queued readiness changed terminal label to %q", got)
 	}
 	networktest.AssertNoEvent(t, receiver.Events)
 }
 
-func TestXTorDriverRetriesRecoverableOutboundOperations(t *testing.T) {
+func TestTorDriverRetriesRecoverableOutboundOperations(t *testing.T) {
 	tests := []struct {
 		name      string
-		configure func(*fakeXTorFactory)
-		assert    func(*testing.T, *fakeXTorDriver)
+		configure func(*fakeTorFactory)
+		assert    func(*testing.T, *fakeTorDriver)
 	}{
 		{
 			name: "attachment",
-			configure: func(factory *fakeXTorFactory) {
+			configure: func(factory *fakeTorFactory) {
 				factory.setOutboundErrors = []error{errors.New("temporary attachment failure")}
 			},
-			assert: func(t *testing.T, driver *fakeXTorDriver) {
+			assert: func(t *testing.T, driver *fakeTorDriver) {
 				if calls := driver.setOutboundCalls(); len(calls) < 2 {
 					t.Fatalf("SetOutbound calls = %d, want an automatic retry", len(calls))
 				}
@@ -1337,10 +1566,10 @@ func TestXTorDriverRetriesRecoverableOutboundOperations(t *testing.T) {
 		},
 		{
 			name: "readiness",
-			configure: func(factory *fakeXTorFactory) {
+			configure: func(factory *fakeTorFactory) {
 				factory.waitReadyErrors = []error{errors.New("temporary readiness failure")}
 			},
-			assert: func(t *testing.T, driver *fakeXTorDriver) {
+			assert: func(t *testing.T, driver *fakeTorDriver) {
 				if calls := driver.waitReadyCalls.Load(); calls < 2 {
 					t.Fatalf("WaitReady calls = %d, want an automatic retry", calls)
 				}
@@ -1349,47 +1578,49 @@ func TestXTorDriverRetriesRecoverableOutboundOperations(t *testing.T) {
 	}
 	for _, testCase := range tests {
 		t.Run(testCase.name, func(t *testing.T) {
-			test := newXTorTestEngine(t)
+			test := newTorTestEngine(t)
 			test.factory.mu.Lock()
 			testCase.configure(test.factory)
 			test.factory.mu.Unlock()
-			torNode := test.e.AddNode(NodeTypeXTorDriver, "tor-retry-"+testCase.name)
+			torNode := test.e.AddNode(NodeTypeTorDriver, "tor-retry-"+testCase.name)
 			driver := test.factory.waitDriver(t, 0)
 			out := test.e.AddNode("almagest/MockNetwork", "retry-out-"+testCase.name)
-			test.e.MustAddTypedLinkByPortName(links.TypeNetwork, out, "left", "Network", torNode, "right", xTorOutboundPortName)
-			eventuallyXTor(t, func() bool { return test.nodeLabel(torNode) == "up" }, "Tor recovers without a graph change")
+			test.e.MustAddTypedLinkByPortName(links.TypeNetwork, out, "left", "Network", torNode, "right", torOutboundPortName)
+			eventuallyTor(t, func() bool { return test.nodeLabel(torNode) == "up" }, "Tor recovers without a graph change")
 			testCase.assert(t, driver)
 		})
 	}
 }
 
-type xTorTestEngine struct {
+type torTestEngine struct {
 	t         *testing.T
 	e         *e2etest.NodeE2E
-	factory   *fakeXTorFactory
+	factory   *fakeTorFactory
 	secrets   *e2etest.SecretsStorage
-	receivers *xTorReceiverClass
+	receivers *torReceiverClass
 }
 
-func newXTorTestEngine(t *testing.T) *xTorTestEngine {
-	return newXTorTestEngineWithOptions(t)
+func newTorTestEngine(t *testing.T) *torTestEngine {
+	return newTorTestEngineWithOptions(t)
 }
 
-func newXTorTestEngineWithOptions(t *testing.T, options ...almagest.BuildEngineOption) *xTorTestEngine {
+func newTorTestEngineWithOptions(t *testing.T, options ...almagest.BuildEngineOption) *torTestEngine {
 	t.Helper()
-	factory := &fakeXTorFactory{}
+	factory := &fakeTorFactory{}
 	secrets := e2etest.NewSecretsStorage()
 	logf := logging.NewDebugLogFactory(1024)
 	system := e2etest.NewDebugSystem()
 	pool := e2etest.NewTestDebugPool(t)
-	class := XTorDriverClass{
-		newSystem: factory.newSystem,
-		start:     factory.start,
+	class := TorDriverClass{
+		start: factory.start,
+		sandboxes: func(context.Context) (sandbox.OwnerSandboxes, error) {
+			return factory.sandboxes, nil
+		},
 	}
-	receivers := &xTorReceiverClass{}
+	receivers := &torReceiverClass{}
 	buildOptions := append([]almagest.BuildEngineOption{
 		almagest.WithNodeConfigChangeCallback(func(uint64) <-chan error {
-			return completedXTorConfigPersistence(nil)
+			return completedTorConfigPersistence(nil)
 		}),
 	}, options...)
 	engine, err := almagest.BuildEngine(context.Background(), configer.NewMemory(nil), logf, system, nil, nil, secrets, nil, []pasta.NodeClass{class, receivers}, pool, true, buildOptions...)
@@ -1401,17 +1632,17 @@ func newXTorTestEngineWithOptions(t *testing.T, options ...almagest.BuildEngineO
 			t.Errorf("engine.Close: %v", err)
 		}
 	})
-	return &xTorTestEngine{t: t, e: e2etest.NewNodeE2EFromEngine(t, engine, logf, system, secrets), factory: factory, secrets: secrets, receivers: receivers}
+	return &torTestEngine{t: t, e: e2etest.NewNodeE2EFromEngine(t, engine, logf, system, secrets), factory: factory, secrets: secrets, receivers: receivers}
 }
 
-func completedXTorConfigPersistence(err error) <-chan error {
+func completedTorConfigPersistence(err error) <-chan error {
 	result := make(chan error, 1)
 	result <- err
 	close(result)
 	return result
 }
 
-func (e *xTorTestEngine) nodeLabel(node uint64) string {
+func (e *torTestEngine) nodeLabel(node uint64) string {
 	snapshot, ok := e.e.Engine.NodeSnapshot(almagest.MainWorkspace, node)
 	if !ok {
 		return ""
@@ -1419,7 +1650,7 @@ func (e *xTorTestEngine) nodeLabel(node uint64) string {
 	return snapshot.Label
 }
 
-func (e *xTorTestEngine) hasPort(node uint64, direction, name string) bool {
+func (e *torTestEngine) hasPort(node uint64, direction, name string) bool {
 	snapshot, ok := e.e.Engine.NodeSnapshot(almagest.MainWorkspace, node)
 	if !ok {
 		return false
@@ -1437,39 +1668,36 @@ func (e *xTorTestEngine) hasPort(node uint64, direction, name string) bool {
 	return false
 }
 
-type fakeXTorFactory struct {
-	mu                  sync.Mutex
-	drivers             []*fakeXTorDriver
-	systems             []*fakeXTorSystem
-	blockReadiness      bool
-	startEntered        chan struct{}
-	startRelease        chan struct{}
-	startOnce           sync.Once
-	setOutboundHook     func(gonnect.Network)
-	afterServiceSecret  func()
-	beforeAddClientAuth func()
-	waitReadyErrors     []error
-	setOutboundErrors   []error
-	newServiceError     error
-	addClientAuthError  error
+type fakeTorFactory struct {
+	mu                         sync.Mutex
+	drivers                    []*fakeTorDriver
+	sandboxes                  fakeTorSandboxes
+	blockReadiness             bool
+	initialOutboundUnavailable bool
+	startEntered               chan struct{}
+	startRelease               chan struct{}
+	startOnce                  sync.Once
+	setOutboundHook            func(gonnect.Network)
+	afterServiceSecret         func()
+	beforeAddClientAuth        func()
+	waitReadyErrors            []error
+	waitReadyHook              func(context.Context, int32) error
+	setOutboundErrors          []error
+	newServiceError            error
+	addClientAuthError         error
 }
 
-func (f *fakeXTorFactory) newSystem(config tor.Config) (xTorSystem, tor.Config, error) {
-	system := &fakeXTorSystem{report: direct.BestEffortReport{Containment: true, Identity: &tor.Identity{UID: 65534, GID: 65534}, AutomaticIdentity: true, PrivilegeDrop: true}}
-	config.TorExecutable = "/fake/tor"
+func (f *fakeTorFactory) start(ctx context.Context, config tor.Config, deps tor.Dependencies) (torDriverBackend, error) {
+	driver := newFakeTorDriver(config, deps, !f.blockReadiness)
 	f.mu.Lock()
-	f.systems = append(f.systems, system)
-	f.mu.Unlock()
-	return system, config, nil
-}
-
-func (f *fakeXTorFactory) start(ctx context.Context, config tor.Config, deps tor.Dependencies) (xTorDriverBackend, error) {
-	driver := newFakeXTorDriver(config, deps, !f.blockReadiness)
-	f.mu.Lock()
+	if f.initialOutboundUnavailable && deps.Outbound != nil {
+		driver.state.Available = false
+	}
 	driver.setOutboundHook = f.setOutboundHook
 	driver.afterServiceSecret = f.afterServiceSecret
 	driver.beforeAddClientAuth = f.beforeAddClientAuth
 	driver.waitReadyErrors = append([]error(nil), f.waitReadyErrors...)
+	driver.waitReadyHook = f.waitReadyHook
 	driver.setOutboundErrors = append([]error(nil), f.setOutboundErrors...)
 	driver.newServiceError = f.newServiceError
 	driver.addClientAuthError = f.addClientAuthError
@@ -1490,16 +1718,16 @@ func (f *fakeXTorFactory) start(ctx context.Context, config tor.Config, deps tor
 	return driver, nil
 }
 
-func (f *fakeXTorFactory) count() int {
+func (f *fakeTorFactory) count() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return len(f.drivers)
 }
 
-func (f *fakeXTorFactory) waitDriver(t *testing.T, index int) *fakeXTorDriver {
+func (f *fakeTorFactory) waitDriver(t *testing.T, index int) *fakeTorDriver {
 	t.Helper()
-	var driver *fakeXTorDriver
-	eventuallyXTor(t, func() bool {
+	var driver *fakeTorDriver
+	eventuallyTor(t, func() bool {
 		f.mu.Lock()
 		defer f.mu.Unlock()
 		if index < len(f.drivers) {
@@ -1510,33 +1738,20 @@ func (f *fakeXTorFactory) waitDriver(t *testing.T, index int) *fakeXTorDriver {
 	return driver
 }
 
-func (f *fakeXTorFactory) driverClosed(index int) bool {
+func (f *fakeTorFactory) driverClosed(index int) bool {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return index < len(f.drivers) && f.drivers[index].closed.Load()
 }
 
-func (f *fakeXTorFactory) systemClosed(index int) bool {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return index < len(f.systems) && f.systems[index].closed.Load()
-}
+type fakeTorSandboxes struct{}
 
-type fakeXTorSystem struct {
-	report direct.BestEffortReport
-	closed atomic.Bool
+func (fakeTorSandboxes) Acquire(context.Context, string, sandbox.TemplateID) (sandbox.Sandbox, error) {
+	return nil, errors.New("unexpected fake sandbox acquisition")
 }
+func (fakeTorSandboxes) Remove(context.Context, string) error { return nil }
 
-func (s *fakeXTorSystem) Dependencies(_ gonnect.Network, outbound gonnect.Network, logger tor.Logger) tor.Dependencies {
-	return tor.Dependencies{Outbound: outbound, Logger: logger}
-}
-func (s *fakeXTorSystem) Report() direct.BestEffortReport { return s.report }
-func (s *fakeXTorSystem) Close() error {
-	s.closed.Store(true)
-	return nil
-}
-
-type fakeXTorDriver struct {
+type fakeTorDriver struct {
 	mu                  sync.Mutex
 	config              tor.Config
 	deps                tor.Dependencies
@@ -1550,12 +1765,13 @@ type fakeXTorDriver struct {
 	readyOnce           sync.Once
 	closeOnce           sync.Once
 	closed              atomic.Bool
-	services            []*fakeXTorService
+	services            []*fakeTorService
 	setOutboundHook     func(gonnect.Network)
 	outboundHistory     []gonnect.Network
 	afterServiceSecret  func()
 	beforeAddClientAuth func()
 	waitReadyErrors     []error
+	waitReadyHook       func(context.Context, int32) error
 	setOutboundErrors   []error
 	newServiceError     error
 	addClientAuthError  error
@@ -1563,8 +1779,8 @@ type fakeXTorDriver struct {
 	waitReadyCanceled   atomic.Int32
 }
 
-func newFakeXTorDriver(config tor.Config, deps tor.Dependencies, ready bool) *fakeXTorDriver {
-	d := &fakeXTorDriver{config: config, deps: deps, events: make(chan tor.DriverEvent, 32), done: make(chan struct{}), ready: make(chan struct{})}
+func newFakeTorDriver(config tor.Config, deps tor.Dependencies, ready bool) *fakeTorDriver {
+	d := &fakeTorDriver{config: config, deps: deps, events: make(chan tor.DriverEvent, 32), done: make(chan struct{}), ready: make(chan struct{})}
 	d.state = tor.OutboundState{Available: deps.Outbound != nil, Generation: 1}
 	if ready {
 		d.markReady()
@@ -1572,10 +1788,11 @@ func newFakeXTorDriver(config tor.Config, deps tor.Dependencies, ready bool) *fa
 	return d
 }
 
-func (d *fakeXTorDriver) markReady() { d.readyOnce.Do(func() { close(d.ready) }) }
-func (d *fakeXTorDriver) WaitReady(ctx context.Context) error {
-	d.waitReadyCalls.Add(1)
+func (d *fakeTorDriver) markReady() { d.readyOnce.Do(func() { close(d.ready) }) }
+func (d *fakeTorDriver) WaitReady(ctx context.Context) error {
+	call := d.waitReadyCalls.Add(1)
 	d.mu.Lock()
+	hook := d.waitReadyHook
 	if len(d.waitReadyErrors) > 0 {
 		err := d.waitReadyErrors[0]
 		d.waitReadyErrors = d.waitReadyErrors[1:]
@@ -1583,6 +1800,9 @@ func (d *fakeXTorDriver) WaitReady(ctx context.Context) error {
 		return err
 	}
 	d.mu.Unlock()
+	if hook != nil {
+		return hook(ctx, call)
+	}
 	select {
 	case <-d.ready:
 		return nil
@@ -1593,10 +1813,10 @@ func (d *fakeXTorDriver) WaitReady(ctx context.Context) error {
 		return ctx.Err()
 	}
 }
-func (d *fakeXTorDriver) SubscribeEvents(int) (<-chan tor.DriverEvent, func(), error) {
+func (d *fakeTorDriver) SubscribeEvents(int) (<-chan tor.DriverEvent, func(), error) {
 	return d.events, func() {}, nil
 }
-func (d *fakeXTorDriver) SetOutbound(network gonnect.Network) error {
+func (d *fakeTorDriver) SetOutbound(network gonnect.Network) error {
 	d.mu.Lock()
 	hook := d.setOutboundHook
 	d.mu.Unlock()
@@ -1627,34 +1847,34 @@ func (d *fakeXTorDriver) SetOutbound(network gonnect.Network) error {
 	}
 	return nil
 }
-func (d *fakeXTorDriver) setOutboundCalls() []gonnect.Network {
+func (d *fakeTorDriver) setOutboundCalls() []gonnect.Network {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	return append([]gonnect.Network(nil), d.outboundHistory...)
 }
-func (d *fakeXTorDriver) setHook(hook func(gonnect.Network)) {
+func (d *fakeTorDriver) setHook(hook func(gonnect.Network)) {
 	d.mu.Lock()
 	d.setOutboundHook = hook
 	d.mu.Unlock()
 }
-func (d *fakeXTorDriver) outbound() tor.OutboundState {
+func (d *fakeTorDriver) outbound() tor.OutboundState {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	return d.state
 }
-func (d *fakeXTorDriver) setOutboundAvailable(available bool) {
+func (d *fakeTorDriver) setOutboundAvailable(available bool) {
 	d.mu.Lock()
 	d.state.Available = available
 	d.mu.Unlock()
 }
-func (d *fakeXTorDriver) OutboundState() tor.OutboundState { return d.outbound() }
-func (d *fakeXTorDriver) NewNetwork(config tor.NetworkConfig) (xTorNetwork, error) {
+func (d *fakeTorDriver) OutboundState() tor.OutboundState { return d.outbound() }
+func (d *fakeTorDriver) NewNetwork(config tor.NetworkConfig) (torNetwork, error) {
 	d.mu.Lock()
 	d.networkConfigs = append(d.networkConfigs, config)
 	d.mu.Unlock()
-	return newFakeXTorNetwork(), nil
+	return newFakeTorNetwork(), nil
 }
-func (d *fakeXTorDriver) NewService(ctx context.Context, config tor.ServiceConfig) (xTorService, error) {
+func (d *fakeTorDriver) NewService(ctx context.Context, config tor.ServiceConfig) (torService, error) {
 	if config.KeyName != "" && d.deps.OnionKeys != nil {
 		_, err := d.deps.OnionKeys.Load(ctx, config.KeyName)
 		if errors.Is(err, fs.ErrNotExist) {
@@ -1674,18 +1894,18 @@ func (d *fakeXTorDriver) NewService(ctx context.Context, config tor.ServiceConfi
 	if d.newServiceError != nil {
 		return nil, d.newServiceError
 	}
-	service := newFakeXTorService()
+	service := newFakeTorService()
 	d.mu.Lock()
 	d.serviceConfigs = append(d.serviceConfigs, config)
 	d.services = append(d.services, service)
 	d.mu.Unlock()
 	return service, nil
 }
-func (d *fakeXTorDriver) GenerateClientAuthorization(name string) (tor.ClientAuthorization, error) {
+func (d *fakeTorDriver) GenerateClientAuthorization(name string) (tor.ClientAuthorization, error) {
 	key, err := tor.NewClientAuthorizationPrivateKey(bytes.Repeat([]byte{1}, 32))
 	return tor.ClientAuthorization{PrivateKey: key, Name: name}, err
 }
-func (d *fakeXTorDriver) AddClientAuthorization(_ context.Context, _ string, authorization tor.ClientAuthorization) error {
+func (d *fakeTorDriver) AddClientAuthorization(_ context.Context, _ string, authorization tor.ClientAuthorization) error {
 	if d.beforeAddClientAuth != nil {
 		d.beforeAddClientAuth()
 	}
@@ -1698,7 +1918,7 @@ func (d *fakeXTorDriver) AddClientAuthorization(_ context.Context, _ string, aut
 	return nil
 }
 
-func waitXTorSignal(t *testing.T, signal <-chan struct{}, description string) {
+func waitTorSignal(t *testing.T, signal <-chan struct{}, description string) {
 	t.Helper()
 	select {
 	case <-signal:
@@ -1707,9 +1927,9 @@ func waitXTorSignal(t *testing.T, signal <-chan struct{}, description string) {
 	}
 }
 
-func assertXTorSavedSelectors(t *testing.T, test *xTorTestEngine, node uint64, service, authorization bool) {
+func assertTorSavedSelectors(t *testing.T, test *torTestEngine, node uint64, service, authorization bool) {
 	t.Helper()
-	saved := savedXTorConfig(t, test, node)
+	saved := savedTorConfig(t, test, node)
 	if service && (len(saved.Services) != 1 || saved.Services[0].KeySecret == "") {
 		t.Fatalf("saved service selector = %#v", saved.Services)
 	}
@@ -1718,7 +1938,7 @@ func assertXTorSavedSelectors(t *testing.T, test *xTorTestEngine, node uint64, s
 	}
 }
 
-func savedXTorConfig(t *testing.T, test *xTorTestEngine, node uint64) XTorDriverConfig {
+func savedTorConfig(t *testing.T, test *torTestEngine, node uint64) TorDriverConfig {
 	t.Helper()
 	cfg := configer.NewMemory(nil)
 	if err := test.e.Engine.SaveConfig(cfg); err != nil {
@@ -1728,15 +1948,15 @@ func savedXTorConfig(t *testing.T, test *xTorTestEngine, node uint64) XTorDriver
 	if !ok {
 		t.Fatal("Tor node is missing")
 	}
-	var saved XTorDriverConfig
-	if err := configer.Unmarshal(cfg.View(configer.Path{"nodes", snapshot.Name, xTorDriverConfigurationField}), &saved); err != nil {
+	var saved TorDriverConfig
+	if err := configer.Unmarshal(cfg.View(configer.Path{"nodes", snapshot.Name, torDriverConfigurationField}), &saved); err != nil {
 		t.Fatal(err)
 	}
 	return saved
 }
-func (d *fakeXTorDriver) Done() <-chan struct{} { return d.done }
-func (d *fakeXTorDriver) Err() error            { return nil }
-func (d *fakeXTorDriver) Close() error {
+func (d *fakeTorDriver) Done() <-chan struct{} { return d.done }
+func (d *fakeTorDriver) Err() error            { return nil }
+func (d *fakeTorDriver) Close() error {
 	d.closeOnce.Do(func() {
 		d.closed.Store(true)
 		close(d.done)
@@ -1750,34 +1970,34 @@ func (d *fakeXTorDriver) Close() error {
 	return nil
 }
 
-type fakeXTorNetwork struct {
+type fakeTorNetwork struct {
 	gonnect.Network
 	closed atomic.Bool
 }
 
-func newFakeXTorNetwork() *fakeXTorNetwork {
-	return &fakeXTorNetwork{Network: gonnect.NewLoopbackNetwork()}
+func newFakeTorNetwork() *fakeTorNetwork {
+	return &fakeTorNetwork{Network: gonnect.NewLoopbackNetwork()}
 }
-func (n *fakeXTorNetwork) Close() error { n.closed.Store(true); return nil }
+func (n *fakeTorNetwork) Close() error { n.closed.Store(true); return nil }
 
-type fakeXTorService struct {
-	*fakeXTorNetwork
+type fakeTorService struct {
+	*fakeTorNetwork
 	events    chan tor.ServiceEvent
 	closeOnce sync.Once
 }
 
-func newFakeXTorService() *fakeXTorService {
+func newFakeTorService() *fakeTorService {
 	events := make(chan tor.ServiceEvent, 2)
 	events <- tor.PublicationEvent{State: tor.PublicationPublished}
-	return &fakeXTorService{fakeXTorNetwork: newFakeXTorNetwork(), events: events}
+	return &fakeTorService{fakeTorNetwork: newFakeTorNetwork(), events: events}
 }
-func (s *fakeXTorService) Address() string { return testOnionAddress() }
-func (s *fakeXTorService) SubscribeEvents(int) (<-chan tor.ServiceEvent, func(), error) {
+func (s *fakeTorService) Address() string { return testOnionAddress() }
+func (s *fakeTorService) SubscribeEvents(int) (<-chan tor.ServiceEvent, func(), error) {
 	return s.events, func() {}, nil
 }
-func (s *fakeXTorService) Close() error {
+func (s *fakeTorService) Close() error {
 	s.closeOnce.Do(func() {
-		_ = s.fakeXTorNetwork.Close()
+		_ = s.fakeTorNetwork.Close()
 		close(s.events)
 	})
 	return nil
@@ -1787,7 +2007,7 @@ func testOnionAddress() string {
 	return "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.onion"
 }
 
-func eventuallyXTor(t *testing.T, condition func() bool, format string, args ...any) {
+func eventuallyTor(t *testing.T, condition func() bool, format string, args ...any) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
@@ -1799,7 +2019,7 @@ func eventuallyXTor(t *testing.T, condition func() bool, format string, args ...
 	t.Fatalf(format, args...)
 }
 
-func assertXTorConfigChange(t *testing.T, changes <-chan uint64, want uint64, description string) {
+func assertTorConfigChange(t *testing.T, changes <-chan uint64, want uint64, description string) {
 	t.Helper()
 	select {
 	case got := <-changes:
@@ -1811,7 +2031,7 @@ func assertXTorConfigChange(t *testing.T, changes <-chan uint64, want uint64, de
 	}
 }
 
-func assertNoXTorConfigChange(t *testing.T, changes <-chan uint64, description string) {
+func assertNoTorConfigChange(t *testing.T, changes <-chan uint64, description string) {
 	t.Helper()
 	select {
 	case node := <-changes:
@@ -1820,7 +2040,7 @@ func assertNoXTorConfigChange(t *testing.T, changes <-chan uint64, description s
 	}
 }
 
-func renameXTorTestSecret(t *testing.T, test *xTorTestEngine, nodeName, previous, next string) {
+func renameTorTestSecret(t *testing.T, test *torTestEngine, nodeName, previous, next string) {
 	t.Helper()
 	value, ok := test.secrets.SecretValue(previous)
 	if !ok {
@@ -1830,7 +2050,7 @@ func renameXTorTestSecret(t *testing.T, test *xTorTestEngine, nodeName, previous
 	test.secrets.DeleteSecret(previous)
 }
 
-func waitXTorUnavailablePayload(t *testing.T, events <-chan links.NetworkPayload) {
+func waitTorUnavailablePayload(t *testing.T, events <-chan links.NetworkPayload) {
 	t.Helper()
 	timer := time.NewTimer(time.Second)
 	defer timer.Stop()
@@ -1846,20 +2066,20 @@ func waitXTorUnavailablePayload(t *testing.T, events <-chan links.NetworkPayload
 	}
 }
 
-const xTorReceiverNodeType = "test/XTorNetworkReceiver"
+const torReceiverNodeType = "test/TorNetworkReceiver"
 
-type xTorReceiverClass struct {
+type torReceiverClass struct {
 	mu        sync.Mutex
 	receivers []*networktest.Receiver
 }
 
-func (*xTorReceiverClass) ClassName() string        { return xTorReceiverNodeType }
-func (*xTorReceiverClass) ShortDescription() string { return "XTor test receiver" }
-func (*xTorReceiverClass) LongDescription() string  { return "Receives XTor network payloads." }
-func (*xTorReceiverClass) DefaultNodeParams() pasta.NodeClassParams {
+func (*torReceiverClass) ClassName() string        { return torReceiverNodeType }
+func (*torReceiverClass) ShortDescription() string { return "Tor test receiver" }
+func (*torReceiverClass) LongDescription() string  { return "Receives Tor network payloads." }
+func (*torReceiverClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: links.TypeNetwork}
 }
-func (c *xTorReceiverClass) NewNode(configer.Config, ...*pasta.NodeClassState) (pasta.Node, error) {
+func (c *torReceiverClass) NewNode(configer.Config, ...*pasta.NodeClassState) (pasta.Node, error) {
 	receiver := networktest.NewReceiver(32)
 	c.mu.Lock()
 	c.receivers = append(c.receivers, receiver)
@@ -1867,16 +2087,16 @@ func (c *xTorReceiverClass) NewNode(configer.Config, ...*pasta.NodeClassState) (
 	return receiver, nil
 }
 
-func (c *xTorReceiverClass) wait(t *testing.T, index int) *networktest.Receiver {
+func (c *torReceiverClass) wait(t *testing.T, index int) *networktest.Receiver {
 	t.Helper()
 	var receiver *networktest.Receiver
-	eventuallyXTor(t, func() bool {
+	eventuallyTor(t, func() bool {
 		c.mu.Lock()
 		defer c.mu.Unlock()
 		if index < len(c.receivers) {
 			receiver = c.receivers[index]
 		}
 		return receiver != nil
-	}, "XTor network receiver %d starts", index)
+	}, "Tor network receiver %d starts", index)
 	return receiver
 }

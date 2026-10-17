@@ -17,6 +17,7 @@ import (
 	sandboxisolated "github.com/asciimoth/almagest/bin/internal/subprogram/isolated"
 	sandboxpolicy "github.com/asciimoth/almagest/bin/internal/subprogram/policy"
 	sandboxservice "github.com/asciimoth/almagest/bin/internal/subprogram/service"
+	sandbox "github.com/asciimoth/gobox"
 )
 
 func isolatedSandboxSupervisorRole() bool {
@@ -60,13 +61,23 @@ func runIsolatedSandboxSupervisorRole() error {
 	}()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	bootstrap, policyData, err := sandboxrole.ReceivePolicy(ctx, bootstrapStream)
+	bootstrap, policyData, unavailable, err := sandboxrole.ReceivePolicy(ctx, bootstrapStream)
 	if err != nil {
 		return fmt.Errorf("receive sandbox supervisor policy: %w", err)
 	}
-	config, err := sandboxpolicy.Decode(policyData)
+	// Runtime-only discovery diagnostics travel beside the protected JSON. Add
+	// them before NewHost normalizes the complete effective policy.
+	config, err := sandboxpolicy.Parse(policyData)
 	if err != nil {
 		return fmt.Errorf("decode sandbox supervisor policy: %w", err)
+	}
+	config.UnavailableTemplates = make(map[sandbox.TemplateID]string, len(unavailable.Templates))
+	for id, reason := range unavailable.Templates {
+		config.UnavailableTemplates[sandbox.TemplateID(id)] = reason
+	}
+	config.UnavailablePrograms = make(map[sandbox.ProgramID]string, len(unavailable.Programs))
+	for id, reason := range unavailable.Programs {
+		config.UnavailablePrograms[sandbox.ProgramID(id)] = reason
 	}
 	service, err := sandboxservice.NewHost(config)
 	if err != nil {

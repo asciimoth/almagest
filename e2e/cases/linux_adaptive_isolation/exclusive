@@ -1,0 +1,1 @@
+This coverage-heavy case starts many instrumented daemon roles under a separate UID.

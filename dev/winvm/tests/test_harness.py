@@ -352,6 +352,8 @@ require_vm_space "$winvm_cache_dir" 10 test
                       (ROOT / 'stage.sh').read_text())
         self.assertIn('sandbox-e2e-helper.exe ./cmd/sandbox-e2e-helper',
                       (ROOT / 'stage.sh').read_text())
+        self.assertIn('tor-e2e-helper.exe ./cmd/tor-e2e-helper',
+                      (ROOT / 'stage.sh').read_text())
         self.assertIn('./integration/daemon_windows_test.go ./integration/sandbox_windows_test.go',
                       (ROOT / 'stage.sh').read_text())
         self.assertIn('almagest-cli.exe ./almagest-cli',

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -100,7 +101,7 @@ func TestNativeProvisionRoleCgroups(t *testing.T) {
 	limits.MemoryBytes = 64 << 20
 	limits.Tasks = 16
 	limits.CPUQuota = 25000
-	cgroups, err := ProvisionCgroups(instance, CgroupPlan{Backend: limits, Runtime: limits})
+	cgroups, err := ProvisionCgroups(instance, CgroupPlan{Backend: limits, Runtime: limits, Sandbox: &limits})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,6 +126,28 @@ func TestNativeProvisionRoleCgroups(t *testing.T) {
 	}
 	if _, err := cgroups.File(Writer); !errors.Is(err, ErrUnavailable) {
 		t.Fatalf("unprovisioned writer: %v", err)
+	}
+	sandboxRoot, err := cgroups.SandboxRootPath()
+	if err != nil || !strings.HasSuffix(sandboxRoot, "/"+instanceName+"/sandbox") {
+		t.Fatalf("sandbox workload root = %q: %v", sandboxRoot, err)
+	}
+	supervisor, err := cgroups.File(Sandbox)
+	if err != nil {
+		t.Fatal(err)
+	}
+	supervisorPath, err := os.Readlink("/proc/self/fd/" + strconv.Itoa(int(supervisor.Fd())))
+	if err != nil || supervisorPath != sandboxRoot+"/supervisor" {
+		t.Fatalf("sandbox supervisor cgroup = %q: %v", supervisorPath, err)
+	}
+	probe := filepath.Join(sandboxRoot, "workload-probe")
+	if err := os.Mkdir(probe, 0o700); err != nil {
+		t.Fatalf("sandbox root does not accept workload children: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(probe, "pids.max"), []byte("1"), 0o600); err != nil {
+		t.Fatalf("sandbox workload controllers are not delegated: %v", err)
+	}
+	if err := os.Remove(probe); err != nil {
+		t.Fatal(err)
 	}
 
 	runtimeGroup, err := cgroups.File(Runtime)

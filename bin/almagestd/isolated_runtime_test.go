@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -8,6 +9,16 @@ import (
 
 	"github.com/asciimoth/almagest/bin/internal/isolation/roleentry"
 )
+
+func TestIsolatedRuntimeLoadsEmbeddedPublicTLSAuthorities(t *testing.T) {
+	data, err := loadIsolatedRuntimeOSAuthorities(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(data.Certs) == 0 {
+		t.Fatal("isolated runtime public TLS authority catalog is empty")
+	}
+}
 
 func TestReadRuntimeConfigConsumesFixedPrivateInputs(t *testing.T) {
 	storage := t.TempDir()

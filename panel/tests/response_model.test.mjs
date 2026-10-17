@@ -68,6 +68,9 @@ test("hello decoder validates subprogram sandbox status", () => {
   const hello = { version: "1", execution_mode: "direct",
     project_version_status: { version: "1", highlight: "none" }, subprogram_sandbox };
   assert.equal(parseHelloResponse(hello)?.subprogram_sandbox?.templates.tor?.features[0]?.state, "applied");
+  const legacyNullWarnings = { ...hello, subprogram_sandbox: { ...subprogram_sandbox,
+    templates: { tor: { ...subprogram_sandbox.templates.tor, warnings: null } } } };
+  assert.deepEqual(parseHelloResponse(legacyNullWarnings)?.subprogram_sandbox?.templates.tor?.warnings, []);
   assert.equal(parseHelloResponse({ ...hello, subprogram_sandbox: { ...subprogram_sandbox, mode: "best-effort" } }), null);
   assert.equal(parseHelloResponse({ ...hello, subprogram_sandbox: { ...subprogram_sandbox, active_owners: -1 } }), null);
 });
@@ -88,17 +91,22 @@ test("hello decoder validates adaptive isolation status", () => {
     mechanisms: {
       network: { "capability-sets": { state: "applied" } },
       runtime: { seccomp: { state: "applied" }, "role-cgroups": { state: "unavailable", reason: "not-delegated" } },
+      sandbox_supervisor: { "trusted-supervisor": { state: "applied" }, "session-bound-rpc": { state: "applied" },
+        "bounded-relay": { state: "applied" } },
     },
     credentials: {
       network: { real_uid: 1000, effective_uid: 1000, saved_uid: 1000, filesystem_uid: 1000,
         real_gid: 1000, effective_gid: 1000, saved_gid: 1000, filesystem_gid: 1000, supplementary_groups: [1000] },
       runtime: { real_uid: 1000, effective_uid: 1000, saved_uid: 1000, filesystem_uid: 1000,
         real_gid: 1000, effective_gid: 1000, saved_gid: 1000, filesystem_gid: 1000, supplementary_groups: [] },
+      sandbox_supervisor: { real_uid: 0, effective_uid: 0, saved_uid: 0, filesystem_uid: 0,
+        real_gid: 0, effective_gid: 0, saved_gid: 0, filesystem_gid: 0, supplementary_groups: [0] },
     },
     capability_sets: {
       network: { inheritable: ["CAP_NET_ADMIN"], permitted: ["CAP_NET_ADMIN"], effective: ["CAP_NET_ADMIN"],
         bounding: ["CAP_NET_ADMIN"], ambient: ["CAP_NET_ADMIN"] },
       runtime: { inheritable: [], permitted: [], effective: [], bounding: ["CAP_NET_ADMIN"], ambient: [] },
+      sandbox_supervisor: { inheritable: [], permitted: ["CAP_SETUID"], effective: ["CAP_SETUID"], bounding: ["CAP_SETUID"], ambient: [] },
     },
     resource_limits: {
       runtime: [{ name: "descriptors", requested: "2048", effective: "2048", unit: "count",
@@ -112,6 +120,7 @@ test("hello decoder validates adaptive isolation status", () => {
   const parsed = parseHelloResponse(hello);
   assert.equal(parsed?.isolation?.mechanisms?.runtime?.["role-cgroups"]?.reason, "not-delegated");
   assert.equal(parsed?.isolation?.capability_sets?.network?.effective[0], "CAP_NET_ADMIN");
+  assert.equal(parsed?.isolation?.mechanisms?.sandbox_supervisor?.["bounded-relay"]?.state, "applied");
   for (const invalid of [
     { ...isolation, verification_state: "ready" },
     { ...isolation, status_schema_version: 2 },

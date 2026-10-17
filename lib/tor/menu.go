@@ -1,4 +1,4 @@
-package experimentalnodes
+package tornodes
 
 import (
 	"slices"
@@ -10,23 +10,23 @@ import (
 	"github.com/asciimoth/almagest/lib/nodekit"
 )
 
-func (n *xTorDriverNode) sendMenuSnapshot(force bool) {
+func (n *torDriverNode) sendMenuSnapshot(force bool) {
 	blocks := []formular.Block{n.statusBlock(), n.controlBlock()}
 	blocks = append(blocks, n.configBlocks()...)
 	nodekit.SendNodeMenuSnapshot(n.W, n.ID, force, blocks...)
 }
 
-func (n *xTorDriverNode) sendStatusBlock() {
+func (n *torDriverNode) sendStatusBlock() {
 	nodekit.SendNodeBlockSnapshot(n.W, n.ID, n.statusBlock())
 }
 
-func (n *xTorDriverNode) statusBlock() formular.Block {
+func (n *torDriverNode) statusBlock() formular.Block {
 	bootstrap := min(uint(n.bootstrap.Progress), 100)
 	transport := ""
 	if n.transport.Transport != "" {
-		transport = string(n.transport.Transport) + ": " + xTorTransportState(n.transport.State)
+		transport = string(n.transport.Transport) + ": " + torTransportState(n.transport.State)
 	}
-	return formular.Block{ID: xTorStatusBlockID, Order: 10, Generation: 1, Items: []formular.Item{
+	return formular.Block{ID: torStatusBlockID, Order: 10, Generation: 1, Items: []formular.Item{
 		nodekit.ReadonlyTextField("state", "State", n.stateText()),
 		{Type: formular.ItemProgressbar, ID: "bootstrap", Label: "Bootstrap", Progress: &bootstrap},
 		nodekit.ReadonlyTextField("transport", "Managed transport", transport),
@@ -36,15 +36,15 @@ func (n *xTorDriverNode) statusBlock() formular.Block {
 	}}
 }
 
-func (n *xTorDriverNode) controlBlock() formular.Block {
+func (n *torDriverNode) controlBlock() formular.Block {
 	button := formular.Item{
-		Type: formular.ItemButton, ID: xTorRestartButtonID, Label: "Restart Tor",
+		Type: formular.ItemButton, ID: torRestartButtonID, Label: "Restart Tor",
 		Help: "Close the current owned Tor process and build a new runtime from the saved node configuration.",
 	}
-	return formular.Block{ID: xTorControlBlockID, Order: 20, Generation: 1, Items: []formular.Item{button}}
+	return formular.Block{ID: torControlBlockID, Order: 20, Generation: 1, Items: []formular.Item{button}}
 }
 
-func (n *xTorDriverNode) stateText() string {
+func (n *torDriverNode) stateText() string {
 	switch {
 	case !n.config.Enabled:
 		return "disabled"
@@ -69,9 +69,9 @@ func (n *xTorDriverNode) stateText() string {
 	}
 }
 
-func (n *xTorDriverNode) updateLabel() error { return n.SetLabel(n.stateText()) }
+func (n *torDriverNode) updateLabel() error { return n.SetLabel(n.stateText()) }
 
-func (n *xTorDriverNode) servicePublicationPending() bool {
+func (n *torDriverNode) servicePublicationPending() bool {
 	for _, status := range n.services {
 		if status.Publication == tor.PublicationPending {
 			return true
@@ -80,7 +80,7 @@ func (n *xTorDriverNode) servicePublicationPending() bool {
 	return false
 }
 
-func (n *xTorDriverNode) servicePublicationFailed() bool {
+func (n *torDriverNode) servicePublicationFailed() bool {
 	for _, status := range n.services {
 		if status.Publication == tor.PublicationFailed {
 			return true
@@ -89,10 +89,10 @@ func (n *xTorDriverNode) servicePublicationFailed() bool {
 	return false
 }
 
-func (n *xTorDriverNode) serviceStatusLines() []string {
+func (n *torDriverNode) serviceStatusLines() []string {
 	lines := make([]string, 0, len(n.services))
 	for name, status := range n.services {
-		line := name + " | " + status.Address + " | " + xTorPublicationState(status.Publication)
+		line := name + " | " + status.Address + " | " + torPublicationState(status.Publication)
 		if status.Problem != "" {
 			line += " | " + status.Problem
 		}
@@ -102,7 +102,7 @@ func (n *xTorDriverNode) serviceStatusLines() []string {
 	return lines
 }
 
-func xTorPublicationState(state tor.PublicationState) string {
+func torPublicationState(state tor.PublicationState) string {
 	switch state {
 	case tor.PublicationPublished:
 		return "published"
@@ -113,7 +113,7 @@ func xTorPublicationState(state tor.PublicationState) string {
 	}
 }
 
-func xTorTransportState(state tor.TransportState) string {
+func torTransportState(state tor.TransportState) string {
 	switch state {
 	case tor.TransportReady:
 		return "ready"
