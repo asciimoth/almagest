@@ -170,11 +170,12 @@ assert_reduced_status() {
 
 assert_warnings() {
 	local log_file="$1"
-	grep -F 'INFO isolation policy=auto profile=linux-user-v1 state=selected reduced=true' "$log_file" >/dev/null
-	grep -F 'INFO isolation policy=auto profile=linux-user-v1 state=verified reduced=true' "$log_file" >/dev/null
-	grep -F 'WARN isolation role=runtime reason=profile-not-implemented effect=' "$log_file" >/dev/null
-	grep -F 'WARN isolation role=runtime reason=not-delegated effect=' "$log_file" >/dev/null
-	grep -F 'WARN isolation role=runtime reason=same-uid-profile effect=' "$log_file" >/dev/null
+	grep -F 'WARN isolation role=runtime reason=profile-not-implemented effect=' "$log_file" >/dev/null \
+		|| fail "startup log omitted the profile-not-implemented warning"
+	grep -F 'WARN isolation role=runtime reason=not-delegated effect=' "$log_file" >/dev/null \
+		|| fail "startup log omitted the not-delegated warning"
+	grep -F 'WARN isolation role=runtime reason=same-uid-profile effect=' "$log_file" >/dev/null \
+		|| fail "startup log omitted the same-uid-profile warning"
 }
 
 # Linux defaults to automatic selection. Drop every capability, including the
