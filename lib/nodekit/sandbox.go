@@ -3,7 +3,7 @@ package nodekit
 import (
 	"context"
 
-	"github.com/asciimoth/almagest/lib/sandbox"
+	sandbox "github.com/asciimoth/gobox"
 )
 
 // SandboxProvider exposes only the calling node's bound capabilities. The host

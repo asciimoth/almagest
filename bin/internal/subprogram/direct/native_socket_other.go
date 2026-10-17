@@ -6,7 +6,7 @@ import (
 	"context"
 	"os"
 
-	"github.com/asciimoth/almagest/lib/sandbox"
+	sandbox "github.com/asciimoth/gobox"
 )
 
 func (s *instance) nativeSocket(context.Context, string, string, string) (*os.File, error) {

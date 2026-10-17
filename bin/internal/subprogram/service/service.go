@@ -12,7 +12,7 @@ import (
 	"github.com/asciimoth/almagest/bin/internal/subprogram/direct"
 	"github.com/asciimoth/almagest/bin/internal/subprogram/manager"
 	"github.com/asciimoth/almagest/bin/internal/subprogram/policy"
-	"github.com/asciimoth/almagest/lib/sandbox"
+	sandbox "github.com/asciimoth/gobox"
 )
 
 // NewHost constructs the platform probe from the current supervisor identity.

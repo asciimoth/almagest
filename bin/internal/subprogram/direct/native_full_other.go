@@ -5,7 +5,7 @@ package direct
 import (
 	"os"
 
-	"github.com/asciimoth/almagest/lib/sandbox"
+	sandbox "github.com/asciimoth/gobox"
 )
 
 type nativeInstanceBoundary struct{}

@@ -9,7 +9,7 @@ import (
 	"sync"
 	"unicode/utf8"
 
-	"github.com/asciimoth/almagest/lib/sandbox"
+	sandbox "github.com/asciimoth/gobox"
 )
 
 // Authority checks a binding against a host-owned durable registry. Graph

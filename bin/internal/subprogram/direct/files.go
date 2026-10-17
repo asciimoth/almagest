@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/asciimoth/almagest/lib/sandbox"
+	sandbox "github.com/asciimoth/gobox"
 )
 
 type confinedRoot struct {

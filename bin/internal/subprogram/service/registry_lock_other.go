@@ -5,7 +5,7 @@ package service
 import (
 	"os"
 
-	"github.com/asciimoth/almagest/lib/sandbox"
+	sandbox "github.com/asciimoth/gobox"
 )
 
 func lockRegistryFile(*os.File) error   { return sandbox.ErrUnavailable }

@@ -6,7 +6,7 @@ import (
 	"os"
 
 	"github.com/asciimoth/almagest/bin/internal/subprogram/policy"
-	"github.com/asciimoth/almagest/lib/sandbox"
+	sandbox "github.com/asciimoth/gobox"
 )
 
 func nativeIdentity(config policy.Linux) (uid, gid uint32, privilegeRemoval bool, err error) {

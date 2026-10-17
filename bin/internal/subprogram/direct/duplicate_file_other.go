@@ -5,7 +5,7 @@ package direct
 import (
 	"os"
 
-	"github.com/asciimoth/almagest/lib/sandbox"
+	sandbox "github.com/asciimoth/gobox"
 )
 
 func duplicateFile(*os.File) (*os.File, error) { return nil, sandbox.ErrUnavailable }

@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/asciimoth/almagest/bin/internal/subprogram/policy"
-	"github.com/asciimoth/almagest/lib/sandbox"
+	sandbox "github.com/asciimoth/gobox"
 )
 
 func TestDirectHelperProcess(t *testing.T) {
@@ -641,13 +641,6 @@ func TestDirectLoopbackSockets(t *testing.T) {
 		t.Fatalf("external UDP send: %v", err)
 	}
 	if err = packet.Close(); err != nil {
-		t.Fatal(err)
-	}
-	adapted, err := sandbox.Network(instance).ListenPacket(context.Background(), "udp4", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("gonnect UDP adapter: %v", err)
-	}
-	if err = adapted.Close(); err != nil {
 		t.Fatal(err)
 	}
 }

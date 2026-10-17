@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/asciimoth/almagest/lib/sandbox"
+	sandbox "github.com/asciimoth/gobox"
 )
 
 func (s *instance) startNativeWorker() error {

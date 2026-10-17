@@ -5,7 +5,7 @@ package direct
 import (
 	"golang.org/x/sys/unix"
 
-	"github.com/asciimoth/almagest/lib/sandbox"
+	sandbox "github.com/asciimoth/gobox"
 )
 
 func nativePrerequisites() error {

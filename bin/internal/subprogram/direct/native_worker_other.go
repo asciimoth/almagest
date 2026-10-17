@@ -2,7 +2,7 @@
 
 package direct
 
-import "github.com/asciimoth/almagest/lib/sandbox"
+import sandbox "github.com/asciimoth/gobox"
 
 func (s *instance) startNativeWorker() error { return sandbox.ErrUnavailable }
 func (s *instance) closeNativeWorker() error {

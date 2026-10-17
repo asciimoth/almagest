@@ -8,9 +8,9 @@ uses `github.com/asciimoth/tor-driver` directly.
 Implemented parts of `SUBPROGRAM_SANDBOX_DESIGN.md` include:
 
 - platform-neutral owner, sandbox, command, file, socket, status, and typed
-  launch contracts in `lib/sandbox`;
-- a `gonnect.Network` adapter that permits supported sandbox loopback calls and
-  rejects DNS, raw, multicast, and interface operations;
+  launch contracts from `github.com/asciimoth/gobox`;
+- a `nodekit.SandboxNetwork` adapter that permits supported sandbox loopback
+  calls and rejects DNS, raw, multicast, and interface operations;
 - node-bound access through `lib/nodekit`, engine injection, durable owner
   metadata, epoch fencing, synchronous revocation, and coordinated public node
   rename;

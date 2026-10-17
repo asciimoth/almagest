@@ -16,8 +16,8 @@ import (
 	amnesianodes "github.com/asciimoth/almagest/lib/amnesia"
 	"github.com/asciimoth/almagest/lib/logging"
 	"github.com/asciimoth/almagest/lib/nodekit"
-	"github.com/asciimoth/almagest/lib/sandbox"
 	"github.com/asciimoth/almagest/lib/storage"
+	sandbox "github.com/asciimoth/gobox"
 )
 
 var (

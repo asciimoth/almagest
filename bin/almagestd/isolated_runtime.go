@@ -21,7 +21,7 @@ import (
 	client "github.com/asciimoth/almagest/bin/internal/isolation/runtime"
 	"github.com/asciimoth/almagest/bin/internal/isolation/transport"
 	sandboxisolated "github.com/asciimoth/almagest/bin/internal/subprogram/isolated"
-	"github.com/asciimoth/almagest/lib/sandbox"
+	sandbox "github.com/asciimoth/gobox"
 	"github.com/asciimoth/gonnect"
 	"github.com/kataras/golog"
 )

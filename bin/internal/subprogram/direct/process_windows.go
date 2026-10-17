@@ -8,7 +8,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/asciimoth/almagest/lib/sandbox"
+	sandbox "github.com/asciimoth/gobox"
 	"golang.org/x/sys/windows"
 )
 

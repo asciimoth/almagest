@@ -2,6 +2,6 @@
 
 package direct
 
-import "github.com/asciimoth/almagest/lib/sandbox"
+import sandbox "github.com/asciimoth/gobox"
 
 func nativePrerequisites() error { return sandbox.ErrUnavailable }

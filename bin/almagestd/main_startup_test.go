@@ -4,7 +4,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/asciimoth/almagest/lib/sandbox"
+	sandbox "github.com/asciimoth/gobox"
 )
 
 func TestExecutionModeStartupWarnings(t *testing.T) {

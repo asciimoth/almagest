@@ -5,8 +5,9 @@ implemented scope and remaining work. `XTorDriver` migration is deferred.
 
 ## 1. Decisions and scope
 
-Add a daemon-owned sandbox service, with a small capability interface in
-`lib/sandbox`. Inject it with a new `lib.WithSandboxes(...)` build option.
+Add a daemon-owned sandbox service, with the standalone capability interface
+from `github.com/asciimoth/gobox`. Inject it with a new
+`lib.WithSandboxes(...)` build option.
 Nodes receive an owner-bound view, not the daemon's policy or host paths.
 Per-node instances survive rename through rebinding of the same stable owner.
 
@@ -126,13 +127,13 @@ instance; restart is required to select a new plan.
 
 ## 2. Interface available to lib
 
-Put platform-neutral contracts in `lib/sandbox`. Put owner lifetime handling
-in `lib/` and its node-facing view in `lib/nodekit`. Put all OS implementation,
-protected policy parsing, and IPC in `bin/`. Do not import daemon packages from
-`lib/`.
+Use the platform-neutral contracts from `github.com/asciimoth/gobox`. Put owner
+lifetime handling in `lib/` and its node-facing view in `lib/nodekit`. Put all
+OS implementation, protected policy parsing, and IPC in `bin/`. Do not import
+daemon packages from `lib/`.
 
-The following is an API sketch. Names and types form a proposed contract, not
-source that already exists. Standard library imports are omitted for clarity.
+The following is an API overview. The canonical source is the `gobox` module.
+Standard library imports are omitted for clarity.
 
 ```go
 type TemplateID string

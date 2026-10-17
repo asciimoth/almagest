@@ -21,7 +21,7 @@ import (
 	"github.com/asciimoth/almagest/bin/api"
 	sandboxservice "github.com/asciimoth/almagest/bin/internal/subprogram/service"
 	almagest "github.com/asciimoth/almagest/lib"
-	"github.com/asciimoth/almagest/lib/sandbox"
+	sandbox "github.com/asciimoth/gobox"
 	"github.com/asciimoth/gonnect"
 	"github.com/kataras/golog"
 )

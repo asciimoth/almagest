@@ -17,17 +17,17 @@
           "kind": "go",
           "module": "lib",
           "arguments": [
-            "./sandbox",
+            "./nodekit",
             "-count=1"
           ],
           "eventFile": "sandbox-portable-contracts.jsonl",
           "requiredTests": [
-            "github.com/asciimoth/almagest/lib/sandbox::TestPortablePaths",
-            "github.com/asciimoth/almagest/lib/sandbox::TestLoopbackEndpoints",
-            "github.com/asciimoth/almagest/lib/sandbox::TestTypedInputs",
-            "github.com/asciimoth/almagest/lib/sandbox::TestOpenOptions",
-            "github.com/asciimoth/almagest/lib/sandbox::TestBoundedOutput",
-            "github.com/asciimoth/almagest/lib/sandbox::TestNetworkAdapterUsesOnlySandboxCapabilities"
+            "github.com/asciimoth/almagest/lib/nodekit::TestGoboxPortablePaths",
+            "github.com/asciimoth/almagest/lib/nodekit::TestGoboxLoopbackEndpoints",
+            "github.com/asciimoth/almagest/lib/nodekit::TestGoboxTypedInputs",
+            "github.com/asciimoth/almagest/lib/nodekit::TestGoboxOpenOptions",
+            "github.com/asciimoth/almagest/lib/nodekit::TestGoboxBoundedOutput",
+            "github.com/asciimoth/almagest/lib/nodekit::TestSandboxNetworkUsesOnlySandboxCapabilities"
           ]
         },
         {

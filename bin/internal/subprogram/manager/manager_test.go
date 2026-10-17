@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/asciimoth/almagest/lib/sandbox"
+	sandbox "github.com/asciimoth/gobox"
 )
 
 type authorityFunc func(context.Context, sandbox.Owner) error

@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/asciimoth/almagest/bin/internal/subprogram/policy"
-	"github.com/asciimoth/almagest/lib/sandbox"
+	sandbox "github.com/asciimoth/gobox"
 )
 
 func TestLinuxLandlockProfileLaunchAndDenial(t *testing.T) {

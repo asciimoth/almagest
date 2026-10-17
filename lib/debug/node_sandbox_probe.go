@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/asciimoth/almagest/lib/nodekit"
-	"github.com/asciimoth/almagest/lib/sandbox"
 	"github.com/asciimoth/configer/configer"
+	sandbox "github.com/asciimoth/gobox"
 	"github.com/asciimoth/pasta/pasta"
 )
 

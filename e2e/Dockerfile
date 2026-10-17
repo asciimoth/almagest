@@ -100,7 +100,7 @@ ARG E2E_SUBPROGRAM=0
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     if [ "$E2E_SUBPROGRAM" = "1" ]; then \
-        CGO_ENABLED=0 go test -C lib -c -o /qualification/sandbox.test ./sandbox; \
+        CGO_ENABLED=0 go test -C lib -c -o /qualification/sandbox.test ./nodekit; \
         CGO_ENABLED=0 go test -C bin -c -o /qualification/subprogram-policy.test ./internal/subprogram/policy; \
         CGO_ENABLED=0 go test -C bin -c -o /qualification/subprogram-manager.test ./internal/subprogram/manager; \
         CGO_ENABLED=0 go test -C bin -c -o /qualification/subprogram-direct.test ./internal/subprogram/direct; \

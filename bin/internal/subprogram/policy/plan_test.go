@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/asciimoth/almagest/lib/sandbox"
+	sandbox "github.com/asciimoth/gobox"
 )
 
 func fullProbe(platform string) Probe {

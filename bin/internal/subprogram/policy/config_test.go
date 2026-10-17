@@ -7,7 +7,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/asciimoth/almagest/lib/sandbox"
+	sandbox "github.com/asciimoth/gobox"
 )
 
 type testTempDir interface {
