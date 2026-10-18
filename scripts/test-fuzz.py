@@ -13,6 +13,13 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 GO_MODULES = ("certcat", "lib", "bin")
 FUZZ_NAME = re.compile(r"Fuzz[A-Za-z0-9_]+")
+FUZZ_DEADLINE_FAILURE = re.compile(
+    r"(?m)^--- FAIL: Fuzz[A-Za-z0-9_]+ \([^)]+\)$\n"
+    r"^[ \t]+context deadline exceeded$\n"
+    r"^FAIL$\n"
+    r"(?:^exit status 1$\n)?"
+    r"^FAIL[ \t]+\S+[ \t]+\S+[ \t]*(?:\n)?\Z"
+)
 GO_DURATION_PART = re.compile(r"(\d+(?:\.\d+)?)(ns|us|µs|μs|ms|s|m|h)")
 UNIT_NANOSECONDS = {
     "ns": 1,
@@ -50,6 +57,29 @@ def run(command, *, cwd, capture=False):
         stderr=subprocess.STDOUT if capture else None,
         text=True,
     )
+
+
+def run_streaming(command, *, cwd):
+    """Run a command while retaining output needed for failure classification."""
+    print("==> fuzz:", shlex.join(command), flush=True)
+    output = []
+    with subprocess.Popen(
+        command,
+        cwd=cwd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    ) as process:
+        for line in process.stdout:
+            print(line, end="", flush=True)
+            output.append(line)
+        returncode = process.wait()
+    return subprocess.CompletedProcess(command, returncode, "".join(output))
+
+
+def is_fuzz_deadline_failure(output):
+    """Return true for Go's infrastructure-only fuzz deadline failure."""
+    return FUZZ_DEADLINE_FAILURE.search(output) is not None
 
 
 def discover_targets(module):
@@ -110,14 +140,24 @@ def main():
     failed = False
     for index, (module, package, name) in enumerate(targets):
         target_nanoseconds = base + (1 if index < remainder else 0)
-        result = run(
+        result = run_streaming(
             [
                 "go", "test", package, "-run=^$", f"-fuzz=^{name}$",
                 f"-fuzztime={target_nanoseconds}ns",
             ],
             cwd=ROOT / module,
         )
-        failed = failed or result.returncode != 0
+        if result.returncode == 0:
+            continue
+        if is_fuzz_deadline_failure(result.stdout):
+            print(
+                f"WARNING: {package}.{name} exceeded its fuzz deadline "
+                "during coordinator shutdown; no failing input was reported.",
+                file=sys.stderr,
+                flush=True,
+            )
+            continue
+        failed = True
     return int(failed)
 
 

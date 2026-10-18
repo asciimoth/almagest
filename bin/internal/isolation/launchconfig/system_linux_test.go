@@ -43,13 +43,14 @@ func FuzzLinuxSystem(f *testing.F) {
 	f.Add(`{}`)
 	f.Add(`{"Type":"native","Linux":{"UserMark":"0x1"}}`)
 	f.Add(`{"Type":"debug"}`)
+	defaultCallbacks := nativebackend.NewLinuxFileConfig().Native(nil).Callbacks
 	f.Fuzz(func(t *testing.T, input string) {
 		settings, err := LinuxSystem(json.RawMessage(input))
 		if err != nil {
 			return
 		}
 		native := settings.Native(nil)
-		if native.Logf != nil || !reflect.DeepEqual(native.Callbacks, nativebackend.NewLinuxFileConfig().Native(nil).Callbacks) {
+		if native.Logf != nil || !reflect.DeepEqual(native.Callbacks, defaultCallbacks) {
 			t.Fatal("JSON installed executable behavior")
 		}
 	})
