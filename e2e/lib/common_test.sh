@@ -11,9 +11,15 @@ export E2E_CONFIG_DIR="$root/config"
 export E2E_ADMIN_SOCK="$root/admin.sock"
 export E2E_DAEMON_LOG="$root/daemon.log"
 unset ALMAGEST_E2E_CLI_TIMEOUT
+unset ALMAGEST_E2E_TIMEOUT
 
 # shellcheck disable=SC1091 # The path is resolved from this script's directory.
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
+
+if [[ "$ALMAGEST_E2E_TIMEOUT" != "60" ]]; then
+	echo "default E2E timeout = $ALMAGEST_E2E_TIMEOUT, want 60" >&2
+	exit 1
+fi
 
 if [[ "$ALMAGEST_E2E_CLI_TIMEOUT" != "20" ]]; then
 	echo "default CLI timeout = $ALMAGEST_E2E_CLI_TIMEOUT, want 20" >&2

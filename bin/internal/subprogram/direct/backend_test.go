@@ -558,10 +558,10 @@ func TestDirectRejectsSymlinkAndHardLink(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Run("symlink", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("the Windows junction equivalent is covered by TestDirectRejectsJunction")
+		}
 		if linkErr := os.Symlink("target", filepath.Join(host, "link")); linkErr != nil {
-			if runtime.GOOS == "windows" {
-				t.Skipf("creating a test symlink requires Windows developer mode or elevated authority: %v", linkErr)
-			}
 			t.Fatal(linkErr)
 		}
 		if _, openErr := files.Open(context.Background(), "link", sandbox.OpenOptions{Read: true}); !errors.Is(openErr, sandbox.ErrDenied) {

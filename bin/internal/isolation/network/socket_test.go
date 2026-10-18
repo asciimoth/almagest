@@ -197,15 +197,18 @@ func TestSocketRelayTLSWebSocket(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	handlerDone := make(chan struct{})
 	server := &http.Server{
 		ReadHeaderTimeout: 5 * time.Second,
 		Handler: http.HandlerFunc(func(rw http.ResponseWriter, request *http.Request) {
 			conn, acceptErr := websocket.Accept(rw, request, nil)
 			if acceptErr != nil {
 				t.Errorf("accept WebSocket: %v", acceptErr)
+				close(handlerDone)
 				return
 			}
 			defer func() { _ = conn.Close(websocket.StatusNormalClosure, "") }()
+			defer close(handlerDone)
 			kind, payload, readErr := conn.Read(request.Context())
 			if readErr == nil {
 				readErr = conn.Write(request.Context(), kind, payload)
@@ -238,6 +241,11 @@ func TestSocketRelayTLSWebSocket(t *testing.T) {
 	_, got, err := conn.Read(ctx)
 	if err != nil || !bytes.Equal(got, want) {
 		t.Fatalf("WebSocket echo = %d bytes, %v", len(got), err)
+	}
+	select {
+	case <-handlerDone:
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
 	}
 }
 

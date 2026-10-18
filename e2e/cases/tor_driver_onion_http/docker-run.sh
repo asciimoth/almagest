@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# shellcheck disable=SC1091 # Shared host-side Docker arguments.
+source "$(dirname -- "${BASH_SOURCE[0]}")/../../lib/case_scheduler.sh"
+tmpfs_args=()
+e2e_add_tmpfs tmpfs_args
+
 case_name="${1:?case name is required}"
 : "${E2E_CASE_IMAGE:?}"
 : "${E2E_CASE_CIDFILE:?}"
@@ -35,7 +40,7 @@ docker network create --internal --label "$resource_label" \
 	"$network_name" >/dev/null
 
 # shellcheck disable=SC2086
-docker run --rm --label "$resource_label" --name "$container_name" \
+docker run "${tmpfs_args[@]}" --rm --label "$resource_label" --name "$container_name" \
 	--cidfile "$E2E_CASE_CIDFILE" \
 	--network "$network_name" \
 	--user root \

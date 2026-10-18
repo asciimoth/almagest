@@ -233,6 +233,27 @@ func TestValidatePathComponentsRejectsWindowsJunction(t *testing.T) {
 	}
 }
 
+func TestDirectRejectsJunction(t *testing.T) {
+	sand := prepareInstance(t, testBackend(t, sandbox.Off))
+	files, err := sand.FS(sandbox.Temporary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	host := sand.(*instance).temporaryPath
+	target := t.TempDir()
+	if err = os.WriteFile(filepath.Join(target, "value"), []byte("outside"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	junction := filepath.Join(host, "junction")
+	output, err := exec.Command("cmd.exe", "/d", "/c", "mklink", "/J", junction, target).CombinedOutput()
+	if err != nil {
+		t.Fatalf("create junction: %v: %s", err, output)
+	}
+	if _, err = files.Open(context.Background(), "junction/value", sandbox.OpenOptions{Read: true}); !errors.Is(err, sandbox.ErrDenied) {
+		t.Fatalf("open through junction error = %v", err)
+	}
+}
+
 func TestWindowsNativeIdentityIsStableAndOwnerScoped(t *testing.T) {
 	owner := sandbox.Owner{Workspace: "main", Key: "owner-key"}
 	first, err := sandboxSID(owner, "main", "test")

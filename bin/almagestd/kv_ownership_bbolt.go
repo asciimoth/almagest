@@ -333,6 +333,9 @@ func (m *bboltKVManager) reconcileKVOwnerEntriesWithUpdate(
 			_, ok := active[owner]
 			return !ok
 		})
+		if err == nil && !changed {
+			return errNoDatabaseChanges
+		}
 		return err
 	}))
 	if err != nil {

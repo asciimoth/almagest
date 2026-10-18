@@ -262,7 +262,7 @@ require_vm_space "$winvm_cache_dir" 10 test
         self.assertIn('lint-winvm:\n  @if [[ "${RUN_WINVM_TESTS:-0}" == "1" ]]', recipe)
         self.assertIn("shellcheck:\n  @if [[ \"${RUN_WINVM_TESTS:-0}\" == \"1\" ]]", recipe)
         self.assertIn("':!dev/winvm/**'", recipe)
-        self.assertIn('test-e2e:\n  ./scripts/test-e2e-fail-fast.sh', recipe)
+        self.assertIn('test-e2e:\n  bash ./scripts/with-test-tmp.sh ./scripts/test-e2e-fail-fast.sh', recipe)
         self.assertIn('parallel_types="${TEST_TYPES_PARALLEL:-0}"', supervisor)
         self.assertIn('recipes=(test-e2e-docker test-winvm-enabled)', supervisor)
         self.assertIn('--output "$run_dir/host-resources.jsonl"', flow)

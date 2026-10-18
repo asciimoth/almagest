@@ -132,7 +132,7 @@ def filesystem(path):
     }
 
 
-def sample(targets, output_path):
+def sample(targets, filesystem_path):
     memory = integer_fields("/proc/meminfo", {
         "MemTotal", "MemFree", "MemAvailable", "Buffers", "Cached",
         "SwapCached", "Active", "Inactive", "AnonPages", "Mapped",
@@ -155,7 +155,7 @@ def sample(targets, output_path):
             "loadAverage": load[:3],
             "runnableEntities": load[3] if len(load) > 3 else "",
             "cpuStat": cpu[0].split()[1:] if cpu else [],
-            "filesystem": filesystem(output_path.parent),
+            "filesystem": filesystem(filesystem_path),
             "topRss": top_rss(),
         },
         "processes": {name: process_sample(pid) for name, pid in targets.items()},
@@ -176,6 +176,8 @@ def parse_target(value):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--filesystem", type=Path,
+                        help="filesystem to measure when output is staged elsewhere")
     parser.add_argument("--pid", action="append", default=[], type=parse_target)
     parser.add_argument("--interval", type=float, default=2.0)
     parser.add_argument("--append", action="store_true")
@@ -210,7 +212,7 @@ def main():
         output.flush()
         os.fsync(output.fileno())
         while True:
-            output.write(json.dumps(sample(targets, args.output), separators=(",", ":")) + "\n")
+            output.write(json.dumps(sample(targets, args.filesystem or args.output.parent), separators=(",", ":")) + "\n")
             output.flush()
             os.fsync(output.fileno())
             if args.exit_with_pid is not None:

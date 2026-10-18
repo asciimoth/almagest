@@ -123,7 +123,7 @@ func remaining(t time.Time) *int64 {
 	return &n
 }
 func (c *Client) closeResource(ref protocol.ResourceRef) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), systemOperationTimeout)
 	defer cancel()
 	var result protocol.MutationResult
 	m := c.meta(true)

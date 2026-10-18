@@ -18,7 +18,9 @@ import (
 	"github.com/asciimoth/gonnect/tun"
 )
 
-const systemOperationTimeout = 5 * time.Second
+// Keep the client deadline longer than the broker's native-operation deadline
+// so that the broker can return its terminal result before this side cancels.
+const systemOperationTimeout = 20 * time.Second
 
 // System is the complete sysnet adapter for an isolated network Client. It
 // exposes no native file, socket, process, or platform handle to R.

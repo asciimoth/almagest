@@ -235,6 +235,10 @@ func (m *bboltKVManager) Close() error {
 	return mapBboltKVError(m.db.Close())
 }
 
+// Returning this value rolls back a transaction that made no changes. bbolt
+// otherwise writes and syncs metadata even for an empty successful update.
+var errNoDatabaseChanges = errors.New("database update made no changes")
+
 // update coordinates every live database writer with snapshot creation. bbolt
 // still owns transaction consistency; the barrier also prevents a sequence of
 // node writes from straddling the file-storage copy in one snapshot.
@@ -250,7 +254,11 @@ func (m *bboltKVManager) update(ctx context.Context, fn func(*bbolt.Tx) error) e
 		return err
 	}
 	defer release()
-	return m.db.Update(fn)
+	err = m.db.Update(fn)
+	if errors.Is(err, errNoDatabaseChanges) {
+		return nil
+	}
+	return err
 }
 
 func (m *bboltKVManager) updateBackground(fn func(*bbolt.Tx) error) error {
@@ -266,7 +274,11 @@ func (m *bboltKVManager) updateDuringSnapshot(fn func(*bbolt.Tx) error) error {
 	if !m.writeBarrier.snapshotInProgress() {
 		return errors.New("snapshot database update requires the exclusive writer barrier")
 	}
-	return m.db.Update(fn)
+	err := m.db.Update(fn)
+	if errors.Is(err, errNoDatabaseChanges) {
+		return nil
+	}
+	return err
 }
 
 func (m *bboltKVManager) DefaultStore() storage.KVStore {

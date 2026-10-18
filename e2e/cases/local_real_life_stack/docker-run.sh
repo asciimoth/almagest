@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# shellcheck disable=SC1091 # Shared host-side Docker arguments.
+source "$(dirname -- "${BASH_SOURCE[0]}")/../../lib/case_scheduler.sh"
+tmpfs_args=()
+e2e_add_tmpfs tmpfs_args
+volume_args=()
+if [[ ${ALMAGEST_TEST_TMPFS:-1} != 0 ]]; then
+	volume_args=(--opt type=tmpfs --opt device=tmpfs --opt o=size=128m)
+fi
+
 case_name="${1:?case name is required}"
 : "${E2E_CASE_IMAGE:?}"
 : "${E2E_CASE_CIDFILE:?}"
@@ -124,11 +133,11 @@ docker network create --label "$resource_label" \
 docker network create --label "$resource_label" \
 	--label io.almagest.e2e.case="$case_name" \
 	"$internet_network_name" >/dev/null
-docker volume create --label "$resource_label" \
+docker volume create "${volume_args[@]}" --label "$resource_label" \
 	--label io.almagest.e2e.case="$case_name" \
 	"$volume_name" >/dev/null
 
-docker run --label "$resource_label" --detach --name "$public_name" \
+docker run "${tmpfs_args[@]}" --label "$resource_label" --detach --name "$public_name" \
 	--network "$internet_network_name" \
 	-e E2E_ORIGIN_NAME=public \
 	--entrypoint "/e2e/cases/$case_name/services/origin.sh" \
@@ -137,7 +146,7 @@ wait_container_file "$public_name" /tmp/origin-ready "public origin"
 public_ip="$(container_ip "$public_name" "$internet_network_name")"
 [[ -n "$public_ip" ]] || { echo "public origin has no Docker address" >&2; exit 1; }
 
-docker run --label "$resource_label" --detach --name "$example_name" \
+docker run "${tmpfs_args[@]}" --label "$resource_label" --detach --name "$example_name" \
 	--network "$internet_network_name" \
 	-e E2E_ORIGIN_NAME=example \
 	--entrypoint "/e2e/cases/$case_name/services/origin.sh" \
@@ -149,7 +158,7 @@ example_ip="$(container_ip "$example_name" "$internet_network_name")"
 internet_gateway_ip="$(docker network inspect --format '{{(index .IPAM.Config 0).Gateway}}' "$internet_network_name")"
 [[ -n "$internet_gateway_ip" ]] || { echo "internet network has no gateway address" >&2; exit 1; }
 
-docker create --label "$resource_label" --name "$amnesia_name" \
+docker create "${tmpfs_args[@]}" --label "$resource_label" --name "$amnesia_name" \
 	--network "$network_name" \
 	--privileged --device /dev/net/tun \
 	-e "E2E_PUBLIC_IP=$public_ip" \
@@ -165,7 +174,7 @@ amnesia_internet_ip="$(container_ip "$amnesia_name" "$internet_network_name")"
 [[ -n "$amnesia_ip" && -n "$amnesia_internet_ip" ]] \
 	|| { echo "Amnesia service has incomplete Docker addresses" >&2; exit 1; }
 
-docker run --label "$resource_label" --detach --name "$headscale_name" \
+docker run "${tmpfs_args[@]}" --label "$resource_label" --detach --name "$headscale_name" \
 	--network "container:$amnesia_name" \
 	--cap-add NET_ADMIN \
 	-e "E2E_AMNESIA_IP=$amnesia_ip" \
@@ -182,7 +191,7 @@ headscale_ip="$amnesia_ip"
 # network namespace. No host network namespace is shared by any container. A
 # host PID namespace is added only for p-mark identity matching.
 # shellcheck disable=SC2086
-docker create --label "$resource_label" --name "$main_name" \
+docker create "${tmpfs_args[@]}" --label "$resource_label" --name "$main_name" \
 	--cidfile "$E2E_CASE_CIDFILE" \
 	--network "$network_name" \
 	--privileged --device /dev/net/tun \

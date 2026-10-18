@@ -83,6 +83,17 @@ to change that budget.
 `just test-total` runs the complete test gate without the static checks. With no
 arguments, both commands keep the normal full-test workflow.
 
+On Linux, tests use a private executable tmpfs directory when available.
+An explicit `TMPDIR` overrides host scratch selection. Large Go build files,
+VM disks, final coverage reports, and retained failure evidence stay on disk.
+Docker cases use bounded tmpfs mounts for `/tmp` (256 MiB) and
+`/run/almagest-e2e` (512 MiB). Case storage survives daemon restarts within the
+same container. Shared service volumes use a 128 MiB tmpfs. Docker raw coverage
+and the test-type scheduler's resource samples are staged in scratch space and
+copied to disk at completion or failure; they do not survive a host reboot
+during the run.
+Set `ALMAGEST_TEST_TMPFS=0` to test with disk-backed scratch and container state.
+
 For a change with local scope, pass one or more exact test selectors. Use the
 narrow set of tests that the change adds, changes, or can affect:
 

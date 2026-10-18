@@ -461,9 +461,10 @@ func (m *bboltKVManager) cleanupExpiredDNS(now time.Time) error {
 	return mapBboltDNSError(m.updateBackground(func(tx *bbolt.Tx) error {
 		root := tx.Bucket([]byte(dnsRootBucketName))
 		if root == nil {
-			return nil
+			return errNoDatabaseChanges
 		}
-		return root.ForEachBucket(func(cacheName []byte) error {
+		changed := false
+		err := root.ForEachBucket(func(cacheName []byte) error {
 			bucket := root.Bucket(cacheName)
 			if bucket == nil {
 				return nil
@@ -485,9 +486,14 @@ func (m *bboltKVManager) cleanupExpiredDNS(now time.Time) error {
 				if err := bucket.Delete(key); err != nil {
 					return err
 				}
+				changed = true
 			}
 			return nil
 		})
+		if err == nil && !changed {
+			return errNoDatabaseChanges
+		}
+		return err
 	}))
 }
 

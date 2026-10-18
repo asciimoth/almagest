@@ -5,7 +5,7 @@ source /e2e/lib/common.sh
 
 ALMAGEST_E2E_TIMEOUT="${ALMAGEST_E2E_TIMEOUT:-30}"
 export ALMAGEST_E2E_TMP_FILE_STORAGE=0
-export ALMAGEST_E2E_FILE_STORAGE=/var/lib/almagest-e2e-tls-nodes
+export ALMAGEST_E2E_FILE_STORAGE="$E2E_RUNTIME/storage"
 
 start_static_https_target() {
 	local host="$1"

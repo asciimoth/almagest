@@ -201,15 +201,6 @@ for case_index in "${!cases[@]}"; do
 		built_images[$case_image]=1
 	fi
 	case_images[case_index]="$case_image"
-	if [[ "$coverage_enabled" == "1" ]] && ((prepare_only == 0)); then
-		case_coverage_dirs[case_index]="$coverage_dir/raw/$case_name"
-		mkdir -p "${case_coverage_dirs[case_index]}"
-		# Some qualification cases run instrumented binaries under a distinct
-		# unprivileged UID. Each case has a private mount, so permit those
-		# identities to create Go coverage data in it.
-		chmod 0777 "${case_coverage_dirs[case_index]}"
-		coverage_inputs+=("${case_coverage_dirs[case_index]}")
-	fi
 done
 
 if ((prepare_only)); then
@@ -217,6 +208,18 @@ if ((prepare_only)); then
 fi
 
 run_dir="$(mktemp -d "${TMPDIR:-/tmp}/almagest-e2e-run.XXXXXX")"
+coverage_work_dir="$run_dir/coverage"
+if [[ "$coverage_enabled" == 1 ]]; then
+	mkdir -p "$coverage_work_dir"
+	coverage_inputs=()
+	for case_index in "${!cases[@]}"; do
+		case_coverage_dirs[case_index]="$coverage_work_dir/${cases[$case_index]}"
+		# Isolated roles use distinct UIDs inside this private case mount.
+		mkdir -p "${case_coverage_dirs[$case_index]}"
+		chmod 0777 "${case_coverage_dirs[$case_index]}"
+		coverage_inputs+=("${case_coverage_dirs[$case_index]}")
+	done
+fi
 resource_label="io.almagest.e2e.run=${run_dir##*/}"
 echo "==> e2e: resource label $resource_label"
 declare -A running_cases=()
@@ -243,14 +246,14 @@ normalize_coverage_ownership() {
 	local owner
 	local ownership_image
 
-	if [[ "$coverage_enabled" != "1" || ! -d "$coverage_dir" || ${#case_images[@]} -eq 0 ]]; then
+	if [[ "$coverage_enabled" != "1" || ! -d "$coverage_work_dir" || ${#case_images[@]} -eq 0 ]]; then
 		return
 	fi
 	owner="$(id -u):$(id -g)"
 	ownership_image="${case_images[0]}"
 	if ! docker run --rm --network none --user root \
 		--entrypoint /usr/bin/chown \
-		-v "$coverage_dir:/e2e-coverage" \
+		-v "$coverage_work_dir:/e2e-coverage" \
 		"$ownership_image" -R "$owner" /e2e-coverage >/dev/null; then
 		echo "warning: could not restore e2e coverage ownership to $owner" >&2
 	fi
@@ -313,6 +316,9 @@ cleanup() {
 		docker volume rm "${resources[@]}" >/dev/null 2>&1 || true
 	fi
 	normalize_coverage_ownership
+	if [[ "$coverage_enabled" == 1 ]]; then
+		cp -a "$coverage_work_dir/." "$coverage_dir/raw/" || exit_status=1
+	fi
 	if [[ -n "$retained_log_dir" ]]; then
 		mkdir -p "$retained_log_dir"
 		for case_index in "${!case_logs[@]}"; do
@@ -332,6 +338,7 @@ run_case() {
 	local case_image="${case_images[$case_index]}"
 	local case_runner="e2e/cases/$case_name/docker-run.sh"
 	local docker_run_args=(--label "$resource_label")
+	e2e_add_tmpfs docker_run_args
 	local host_pid_namespace=0
 	e2e_add_case_privileges "e2e/cases/$case_name" docker_run_args
 	if [[ -f "e2e/cases/$case_name/requires-host-pid" ]]; then

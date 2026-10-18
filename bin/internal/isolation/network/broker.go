@@ -16,7 +16,9 @@ import (
 	"github.com/asciimoth/almagest/bin/internal/isolation/transport"
 )
 
-const operationTimeout = 5 * time.Second
+// Native network changes can call several host tools. Give them enough time
+// to complete when the host is busy, while keeping the operation bounded.
+const operationTimeout = 15 * time.Second
 
 type resource struct {
 	allocation OwnedAllocation

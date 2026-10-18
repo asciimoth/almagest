@@ -1,10 +1,12 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -298,13 +300,13 @@ func TestProtectedConfigSubprogramSandbox(t *testing.T) {
 					"AllowedClasses": ["test/Node"],
 					"Programs": ["helper"],
 					"RuntimeProfile": "direct-v1",
-					"ReadOnly": [{"Source": %q, "Target": %q, "Executable": true}],
+					"ReadOnly": [{"Source": %q, "Target": "/helper", "Executable": true}],
 					"PersistentRoot": %q,
 					"Limits": {"Commands": 2, "TemporaryBytes": 4096}
 				}
 			}
 		}
-	}`, filepath.Join(root, "temporary"), filepath.Join(root, "registry"), os.Args[0], os.Args[0], os.Args[0], filepath.Join(root, "persistent"))
+	}`, filepath.Join(root, "temporary"), filepath.Join(root, "registry"), os.Args[0], os.Args[0], filepath.Join(root, "persistent"))
 	cfg, err := ParseConfig([]byte(`{}`), []byte(protected))
 	if err != nil {
 		t.Fatal(err)
@@ -331,12 +333,29 @@ func TestTorDriverE2EProtectedConfigsUseValidatedSandboxPolicy(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			text := strings.NewReplacer(
+			runtimeRoot := t.TempDir()
+			cgroupRoot := "/sys/fs/cgroup/almagest-test"
+			if runtime.GOOS == "windows" {
+				cgroupRoot = ""
+			}
+			replacements := []string{
 				"%E2E_ADMIN_SOCK%", "/tmp/admin.sock",
-				"%E2E_RUNTIME%", filepath.Join(t.TempDir(), "runtime"),
-				"%E2E_CGROUP_PARENT%", "/sys/fs/cgroup/almagest-test",
+				`"%E2E_RUNTIME%/sandbox-temporary"`, configString(t, filepath.Join(runtimeRoot, "sandbox-temporary")),
+				`"%E2E_RUNTIME%/sandbox-registry"`, configString(t, filepath.Join(runtimeRoot, "sandbox-registry")),
+				"%E2E_CGROUP_PARENT%", cgroupRoot,
 				"%E2E_SANDBOX_MODE%", "strict",
-			).Replace(string(data))
+			}
+			if runtime.GOOS == "windows" {
+				// The source policy is a Linux E2E fixture. Substitute only its
+				// platform-specific fields so that this portable test can validate
+				// the common Tor program and template contract on Windows.
+				replacements = append(replacements,
+					`"Executable": "/usr/bin/tor"`, `"Executable": `+configString(t, os.Args[0]),
+					`"LinuxLauncher": "/usr/local/bin/almagest-subprogram-launcher"`, `"LinuxLauncher": ""`,
+					`"RuntimeProfile": "linux-landlock-v1"`, `"RuntimeProfile": "windows-native-v1"`,
+				)
+			}
+			text := strings.NewReplacer(replacements...).Replace(string(data))
 			cfg, err := ParseConfig([]byte(`{}`), []byte(text))
 			if err != nil {
 				t.Fatal(err)
@@ -358,10 +377,14 @@ func TestTorDriverDiscoveryE2EProtectedConfigDefersPolicyExpansion(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
+	cgroupRoot := "/sys/fs/cgroup/almagest-test"
+	if runtime.GOOS == "windows" {
+		cgroupRoot = ""
+	}
 	text := strings.NewReplacer(
-		"%E2E_ADMIN_SOCK%", "/tmp/admin.sock",
-		"%E2E_RUNTIME%", filepath.Join(t.TempDir(), "runtime"),
-		"%E2E_CGROUP_PARENT%", "/sys/fs/cgroup/almagest-test",
+		`"%E2E_ADMIN_SOCK%"`, configString(t, filepath.Join(t.TempDir(), "admin.sock")),
+		`"%E2E_CGROUP_PARENT%"`, configString(t, cgroupRoot),
+		`"%E2E_SANDBOX_MODE%"`, `"strict"`,
 	).Replace(string(data))
 	cfg, err := ParseConfig([]byte(`{}`), []byte(text))
 	if err != nil {
@@ -377,6 +400,15 @@ func TestTorDriverDiscoveryE2EProtectedConfigDefersPolicyExpansion(t *testing.T)
 	if !cfg.Protected.Sandbox.DiscoverSystemPrograms {
 		t.Fatal("CLI discovery flag did not enable protected discovery")
 	}
+}
+
+func configString(t *testing.T, value string) string {
+	t.Helper()
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(encoded)
 }
 
 func TestProtectedConfigRejectsInvalidSubprogramSandbox(t *testing.T) {

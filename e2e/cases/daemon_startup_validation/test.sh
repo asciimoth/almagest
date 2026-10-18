@@ -46,7 +46,7 @@ printf '%s\n' '{' >"$E2E_RUNTIME/bad-protected.hujson"
 expect_startup_failure "protected config parsing" almagestd --experimental --no-isolation -c "$E2E_CONFIG_DIR/alm.hujson" \
 	-p "$E2E_RUNTIME/bad-protected.hujson" --unsafe-config --tmp-file-storage --unix "" --web 0
 
-storage_file=/var/lib/almagest-e2e-startup-validation-storage-file
+storage_file="$E2E_RUNTIME/storage-file"
 printf '%s\n' storage-is-a-file >"$storage_file"
 expect_startup_failure "not a directory" almagestd --experimental --no-isolation -c "$E2E_CONFIG_DIR/alm.hujson" \
 	-p "$E2E_CONFIG_DIR/protected_alm.hujson" --unsafe-config \

@@ -6,7 +6,7 @@ source /e2e/lib/common.sh
 export SSL_CERT_FILE="$E2E_CONFIG_DIR/os-bundle.pem"
 export SSL_CERT_DIR="$E2E_CONFIG_DIR/empty-certs"
 ALMAGEST_E2E_TMP_FILE_STORAGE=0
-ALMAGEST_E2E_FILE_STORAGE="/root/almagest-e2e-store/$E2E_CASE"
+ALMAGEST_E2E_FILE_STORAGE="$E2E_RUNTIME/storage"
 
 assert_jq() {
 	local file="$1"

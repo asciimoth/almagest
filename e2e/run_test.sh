@@ -50,6 +50,13 @@ docker() {
 				return 0
 			fi
 			case_name="${!#}"
+			if [[ -n "${E2E_OWNERSHIP_TEST_STATE:-}" ]]; then
+				for argument in "$@"; do
+					if [[ "$argument" == *:/e2e-coverage ]]; then
+						printf 'coverage evidence\n' >"${argument%:/e2e-coverage}/covcounters.fixture"
+					fi
+				done
+			fi
 			if [[ -n "${E2E_INTERRUPT_TEST_STATE:-}" ]]; then
 				for argument in "$@"; do
 					if [[ "$previous" == "--cidfile" ]]; then
@@ -253,6 +260,10 @@ if E2E_OWNERSHIP_TEST_STATE="$interrupt_state" E2E_COVERAGE=1 \
 fi
 if [[ ! -f "$interrupt_state/ownership-restored" ]]; then
 	echo "coverage ownership was not restored after a container run" >&2
+	exit 1
+fi
+if [[ ! -f "$interrupt_state/owned-coverage/raw/amnesia_selfhost_controller/covcounters.fixture" ]]; then
+	echo "coverage evidence was lost when a case failed" >&2
 	exit 1
 fi
 E2E_TEST_COMMANDS="$interrupt_state/loop-commands" E2E_LOG_DIR="$interrupt_state/logs" \

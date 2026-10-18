@@ -12,7 +12,10 @@ daemon_pid=""
 daemon_cgroup=""
 daemon_log_reported=0
 daemon_start_count=0
-ALMAGEST_E2E_TIMEOUT="${ALMAGEST_E2E_TIMEOUT:-20}"
+# Parallel coverage runs can need more than 30 seconds to start an isolated
+# daemon when several graph-heavy cases run at the same time. This limit also
+# covers secondary daemons started by multi-daemon cases.
+ALMAGEST_E2E_TIMEOUT="${ALMAGEST_E2E_TIMEOUT:-60}"
 # Bound shared CLI calls so admin/socket stalls fail the case instead of
 # hanging the whole e2e run. Coverage builds can need more than five seconds
 # for valid config and storage operations when cases run in parallel.

@@ -96,6 +96,18 @@ e2e_add_case_privileges() {
 	fi
 }
 
+e2e_add_tmpfs() {
+	local -n tmpfs_args_ref="${1:?argument array name is required}"
+	if [[ ${ALMAGEST_TEST_TMPFS:-1} != 0 ]]; then
+		# These mounts survive daemon restarts but end with the case container.
+		# Executable scratch files are needed by sandbox and command tests.
+		tmpfs_args_ref+=(
+			--tmpfs "/tmp:rw,exec,nosuid,nodev,mode=1777,size=256m"
+			--tmpfs "/run/almagest-e2e:rw,exec,nosuid,nodev,mode=0755,size=512m"
+		)
+	fi
+}
+
 e2e_shuffle_cases() {
 	local seed="${1:?random seed is required}"
 	local cases_name="${2:?case array name is required}"

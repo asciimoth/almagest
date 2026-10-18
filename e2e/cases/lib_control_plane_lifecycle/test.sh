@@ -4,7 +4,7 @@ set -euo pipefail
 source /e2e/lib/common.sh
 
 export ALMAGEST_E2E_TMP_FILE_STORAGE=0
-export ALMAGEST_E2E_FILE_STORAGE=/var/lib/almagest-e2e-lib-control-plane
+export ALMAGEST_E2E_FILE_STORAGE="$E2E_RUNTIME/storage"
 
 watch_pid=""
 watch_output="$E2E_RUNTIME/engine-watch.json"

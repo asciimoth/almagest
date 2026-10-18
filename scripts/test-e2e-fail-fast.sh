@@ -8,10 +8,12 @@ declare -A running=()
 resource_root=${TEST_RESOURCE_ROOT:-$repo_root/artifacts/test-resources}
 mkdir -p -- "$resource_root"
 resource_dir=$(mktemp -d "$resource_root/run-XXXXXXXX")
+resource_work_dir=$(mktemp -d "${TMPDIR:-/tmp}/alm-resources.XXXXXX")
 python3 "$repo_root/dev/winvm/tools/host-resources.py" \
-	--output "$resource_dir/host-resources.jsonl" --interval 2 \
+	--output "$resource_work_dir/host-resources.jsonl" --interval 2 \
+	--filesystem "$resource_root" \
 	--exit-with-pid "$$" --pid "test-scheduler=$$" \
-	>"$resource_dir/resource-monitor.log" 2>&1 &
+	>"$resource_work_dir/resource-monitor.log" 2>&1 &
 resource_monitor_pid=$!
 echo "==> test types: resource evidence: $resource_dir"
 
@@ -66,8 +68,10 @@ finish() {
 	if ((status == 0)); then
 		rm -rf -- "$resource_dir"
 	else
+		cp -a "$resource_work_dir/." "$resource_dir/"
 		echo "==> test types: retained resource evidence: $resource_dir" >&2
 	fi
+	rm -rf -- "$resource_work_dir"
 }
 
 trap finish EXIT

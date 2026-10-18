@@ -3,6 +3,9 @@ package main
 import (
 	"context"
 	"errors"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"strings"
 	"testing"
@@ -22,11 +25,30 @@ func TestAllBboltWritesUseStorageBarrier(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if entry.Name() == "kv_bbolt.go" {
-			data = []byte(strings.ReplaceAll(string(data), "return m.db.Update(fn)", ""))
+		file, err := parser.ParseFile(token.NewFileSet(), entry.Name(), data, 0)
+		if err != nil {
+			t.Fatal(err)
 		}
-		if strings.Contains(string(data), ".db.Update(") {
-			t.Errorf("%s bypasses the snapshot storage-writer barrier", entry.Name())
+		for _, declaration := range file.Decls {
+			fn, ok := declaration.(*ast.FuncDecl)
+			if ok && entry.Name() == "kv_bbolt.go" &&
+				(fn.Name.Name == "update" || fn.Name.Name == "updateDuringSnapshot") {
+				continue
+			}
+			ast.Inspect(declaration, func(node ast.Node) bool {
+				call, ok := node.(*ast.CallExpr)
+				if !ok {
+					return true
+				}
+				method, ok := call.Fun.(*ast.SelectorExpr)
+				if !ok || method.Sel.Name != "Update" {
+					return true
+				}
+				if field, ok := method.X.(*ast.SelectorExpr); ok && field.Sel.Name == "db" {
+					t.Errorf("%s bypasses the snapshot storage-writer barrier", entry.Name())
+				}
+				return true
+			})
 		}
 	}
 }

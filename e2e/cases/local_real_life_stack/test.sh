@@ -20,7 +20,7 @@ export E2E_WIREGUARD_TAILSCALE_PRIVATE
 : "${E2E_EXAMPLE_IP:?}"
 
 export ALMAGEST_E2E_TMP_FILE_STORAGE=0
-export ALMAGEST_E2E_FILE_STORAGE="/root/almagest-e2e-store/$E2E_CASE"
+export ALMAGEST_E2E_FILE_STORAGE="$E2E_RUNTIME/storage"
 
 capture_pid=""
 outer_splitter_name="AutoTunSplitter VPN"

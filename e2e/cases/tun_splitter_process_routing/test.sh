@@ -393,7 +393,7 @@ exercise_splitter_rules() {
 
 run_isolation_policy() {
 	local policy="$1"
-	export ALMAGEST_ISOLATION="$policy"
+	export ALMAGEST_E2E_ISOLATION_MODE="$policy"
 	start_daemon
 	jq -e --arg policy "$policy" '
 		.execution_mode == "isolation" and .isolation.requested_policy == $policy

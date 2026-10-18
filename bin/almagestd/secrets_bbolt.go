@@ -743,6 +743,9 @@ func (m *bboltKVManager) updateMutableSecretNodes(
 				return err
 			}
 		}
+		if len(rewrites) == 0 {
+			return errNoDatabaseChanges
+		}
 		return nil
 	}))
 }

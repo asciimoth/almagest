@@ -5,7 +5,7 @@ source /e2e/lib/common.sh
 
 # The safe path checker intentionally rejects paths below world-writable /tmp.
 # Use an isolated path below /var/lib inside this case's disposable container.
-config_root="/var/lib/almagest-e2e-safe-config/nested"
+config_root="$E2E_RUNTIME/safe-config/nested"
 config_file="$config_root/alm.hujson"
 protected_file="$config_root/protected_alm.hujson"
 

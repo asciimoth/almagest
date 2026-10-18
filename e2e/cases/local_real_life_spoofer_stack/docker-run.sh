@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# shellcheck disable=SC1091 # Shared host-side Docker arguments.
+source "$(dirname -- "${BASH_SOURCE[0]}")/../../lib/case_scheduler.sh"
+tmpfs_args=()
+e2e_add_tmpfs tmpfs_args
+volume_args=()
+if [[ ${ALMAGEST_TEST_TMPFS:-1} != 0 ]]; then
+	volume_args=(--opt type=tmpfs --opt device=tmpfs --opt o=size=128m)
+fi
+
 case_name="${1:?case name is required}"
 : "${E2E_CASE_IMAGE:?}"
 : "${E2E_CASE_CIDFILE:?}"
@@ -103,17 +112,17 @@ fi
 
 docker network create --label "$resource_label" --label io.almagest.e2e.case="$case_name" \
 	"$network_name" >/dev/null
-docker volume create --label "$resource_label" --label io.almagest.e2e.case="$case_name" \
+docker volume create "${volume_args[@]}" --label "$resource_label" --label io.almagest.e2e.case="$case_name" \
 	"$volume_name" >/dev/null
 
-docker run --label "$resource_label" --detach --name "$public_name" --network "$network_name" \
+docker run "${tmpfs_args[@]}" --label "$resource_label" --detach --name "$public_name" --network "$network_name" \
 	-e E2E_ORIGIN_NAME=public \
 	--entrypoint /e2e/cases/local_real_life_stack/services/origin.sh \
 	"$E2E_CASE_IMAGE" >/dev/null
 wait_container_file "$public_name" /tmp/origin-ready "public origin"
 public_ip="$(container_ip "$public_name")"
 
-docker run --label "$resource_label" --detach --name "$example_name" --network "$network_name" \
+docker run "${tmpfs_args[@]}" --label "$resource_label" --detach --name "$example_name" --network "$network_name" \
 	-e E2E_ORIGIN_NAME=example \
 	--entrypoint /e2e/cases/local_real_life_stack/services/origin.sh \
 	"$E2E_CASE_IMAGE" >/dev/null
@@ -130,7 +139,7 @@ virtual_public_ip="198.18.100.10"
 virtual_example_ip="198.18.100.11"
 virtual_headscale_ip="198.18.100.12"
 
-docker run --label "$resource_label" --detach --name "$headscale_name" --network "$network_name" \
+docker run "${tmpfs_args[@]}" --label "$resource_label" --detach --name "$headscale_name" --network "$network_name" \
 	--cap-add NET_ADMIN \
 	-e E2E_HEADSCALE_STANDALONE=1 \
 	-e ALMAGEST_TAILSCALE_E2E_REJECT_AFTER_SECONDS=20 \
@@ -147,7 +156,7 @@ headscale_ip="$(container_ip "$headscale_name")"
 # The main container keeps a private network namespace. A host PID namespace
 # is added only when the case marker requests it for p-mark identity matching.
 # shellcheck disable=SC2086
-docker create --label "$resource_label" --name "$main_name" \
+docker create "${tmpfs_args[@]}" --label "$resource_label" --name "$main_name" \
 	--cidfile "$E2E_CASE_CIDFILE" \
 	--network "$network_name" \
 	--privileged --device /dev/net/tun \

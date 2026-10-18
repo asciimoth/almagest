@@ -36,6 +36,13 @@ for role in network runtime writer sandbox; do
 	[[ $(<"$group/pids.max") == 256 ]] || fail "$role task limit"
 	[[ $(<"$group/cpu.max") == '200000 100000' ]] || fail "$role CPU limit"
 	[[ $(<"$group/memory.swap.max") == 0 ]] || fail "$role swap limit"
+	process_group=$group
+	if [[ $role == sandbox ]]; then
+		# The sandbox root stays empty so that it can delegate controllers to
+		# workload cgroups. The trusted supervisor runs in its own child.
+		process_group=$group/supervisor
+		[[ -d $process_group ]] || fail "missing sandbox supervisor cgroup"
+	fi
 	# Restricted cgroups also contain the waiting native launcher parent.
 	# Find the role process with both requested hard limits.
 	role_limits_ok=0
@@ -45,7 +52,7 @@ for role in network runtime writer sandbox; do
 			END { exit !(descriptors && file) }' "/proc/$role_pid/limits"; then
 			role_limits_ok=1
 		fi
-	done <"$group/cgroup.procs"
+	done <"$process_group/cgroup.procs"
 	[[ $role_limits_ok == 1 ]] || fail "$role process limits"
 done
 cli admin hello --client-name linux-isolation-profile \

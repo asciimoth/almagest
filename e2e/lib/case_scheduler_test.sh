@@ -52,6 +52,19 @@ if e2e_find_startable_case "$root" scheduled_cases pending_cases 1 1 >/dev/null;
 fi
 
 normal_args=()
+scratch_args=()
+ALMAGEST_TEST_TMPFS=1 e2e_add_tmpfs scratch_args
+if [[ "${scratch_args[*]}" != *"/tmp:rw,exec,"* || "${scratch_args[*]}" != *"/run/almagest-e2e:rw,exec,"* ]]; then
+	echo "case scratch mounts are missing or cannot execute test helpers" >&2
+	exit 1
+fi
+disk_args=()
+ALMAGEST_TEST_TMPFS=0 e2e_add_tmpfs disk_args
+if ((${#disk_args[@]})); then
+	echo "disk-backed test mode still received tmpfs mounts" >&2
+	exit 1
+fi
+
 e2e_add_case_privileges "$root/normal" normal_args
 if [[ "${normal_args[*]}" != "--privileged --device /dev/net/tun" ]]; then
 	echo "isolated case did not receive privileged Docker arguments" >&2

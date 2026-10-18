@@ -11,33 +11,33 @@ typos:
   typos
 
 test-go: certcat-ensure-generated build-web
-  ./scripts/test-go-coverage.sh
-  ./scripts/test-gonnect-regressions.sh
-  ./scripts/test-gonnect-netstack-regressions.sh
+  bash ./scripts/with-test-tmp.sh ./scripts/test-go-coverage.sh
+  bash ./scripts/with-test-tmp.sh ./scripts/test-gonnect-regressions.sh
+  bash ./scripts/with-test-tmp.sh ./scripts/test-gonnect-netstack-regressions.sh
 
 # Run until stopped or an optional timeout expires; keep failure logs under artifacts/test-cycles/.
 test-cycles:
   @python3 ./scripts/test-cycles.py
 
 test-cycles-harness:
-  python3 -m unittest discover -s scripts/tests -p 'test_*.py'
+  bash ./scripts/with-test-tmp.sh python3 -m unittest discover -s scripts/tests -p 'test_*.py'
 
 certcat-test: certcat-ensure-generated
-  ./scripts/test-go-coverage.sh certcat
+  bash ./scripts/with-test-tmp.sh ./scripts/test-go-coverage.sh certcat
 
 test-js: build-web
   cd panel && node --test tests/*.mjs
 
 
 test-e2e:
-  ./scripts/test-e2e-fail-fast.sh
+  bash ./scripts/with-test-tmp.sh ./scripts/test-e2e-fail-fast.sh
 
 [private]
 test-e2e-docker: repair-go-work build-web
-  ./scripts/test-e2e-platform.sh
+  bash ./scripts/with-test-tmp.sh ./scripts/test-e2e-platform.sh
 
 test-e2e-all:
-  ./scripts/test-e2e-fail-fast.sh test-e2e-docker-all test-winvm-enabled
+  bash ./scripts/with-test-tmp.sh ./scripts/test-e2e-fail-fast.sh test-e2e-docker-all test-winvm-enabled
 
 # Run the complete direct-mode qualification gate and its retained allocation
 # benchmark. Optional platform suites must run; a skip is not qualification.
@@ -56,7 +56,7 @@ windows-isolation-profiles:
 
 [private]
 test-e2e-docker-all: repair-go-work build-web
-  E2E_INCLUDE_PRIVILEGED=1 ./scripts/test-e2e-platform.sh
+  E2E_INCLUDE_PRIVILEGED=1 bash ./scripts/with-test-tmp.sh ./scripts/test-e2e-platform.sh
 
 test-e2e-light:
   E2E_EXCLUDE_HEAVY=1 just test-e2e
@@ -65,13 +65,13 @@ test: test-go test-js
 
 # Run all Go fuzz targets with one shared time budget.
 fuzz: repair-go-work certcat-ensure-generated build-web
-  ./scripts/test-fuzz.py
+  bash ./scripts/with-test-tmp.sh ./scripts/test-fuzz.py
 
 test-total *selectors:
   @if [[ -n {{quote(selectors)}} ]]; then \
-    python3 ./scripts/test-selected.py {{quote(selectors)}}; \
+    bash ./scripts/with-test-tmp.sh python3 ./scripts/test-selected.py {{quote(selectors)}}; \
   else \
-    just test-total-all; \
+    bash ./scripts/with-test-tmp.sh just test-total-all; \
   fi
 
 [private]
@@ -80,7 +80,7 @@ test-total-all: test-cycles-harness test-winvm-harness
   ./scripts/coverage-report.sh
 
 test-total-light:
-  ./scripts/test-e2e-fail-fast.sh test test-e2e-light
+  bash ./scripts/with-test-tmp.sh ./scripts/test-e2e-fail-fast.sh test test-e2e-light
   ./scripts/coverage-report.sh
 
 coverage: test-total
@@ -193,7 +193,7 @@ build-windows-arch arch:
 
 test-winvm-harness:
   @if [[ "${RUN_WINVM_TESTS:-0}" == "1" ]]; then \
-    python3 -m unittest discover -s dev/winvm/tests -p 'test_*.py'; \
+    bash ./scripts/with-test-tmp.sh python3 -m unittest discover -s dev/winvm/tests -p 'test_*.py'; \
   else \
     printf 'Skipping Windows VM harness tests; set RUN_WINVM_TESTS=1 to enable them.\n'; \
   fi

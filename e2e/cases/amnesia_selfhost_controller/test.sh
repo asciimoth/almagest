@@ -8,7 +8,7 @@ source /e2e/lib/common.sh
 source "$E2E_CONFIG_DIR/amnesia.env"
 
 ALMAGEST_E2E_TMP_FILE_STORAGE=0
-ALMAGEST_E2E_FILE_STORAGE="/root/almagest-e2e-store/$E2E_CASE"
+ALMAGEST_E2E_FILE_STORAGE="$E2E_RUNTIME/storage"
 
 upstream_iface="wg0"
 upstream_pid=""
