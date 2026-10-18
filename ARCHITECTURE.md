@@ -75,10 +75,10 @@ transports.
 
 ## Test Harness
 
-`just check` runs the static checks, lints, the complete test gate, and then
-all current-platform Go fuzz targets. `just fuzz` runs the fuzz targets with a
-shared 60-second fuzzing budget. Set `FUZZ_TIME` to a Go duration such as `10m`
-to change that budget.
+With no selectors, `just check` runs the static checks, lints, the complete test
+gate, and then all current-platform Go fuzz targets. `just fuzz` runs the fuzz
+targets with a shared 60-second fuzzing budget. Set `FUZZ_TIME` to a Go duration
+such as `10m` to change that budget.
 
 `just test-total` runs the complete test gate without the static checks. With no
 arguments, both commands keep the normal full-test workflow.
@@ -106,8 +106,8 @@ just test-total python:scripts.tests.test_cycles.CycleTests.test_go_leaf_and_pac
 
 The selector forms are:
 
-- `go:MODULE[/PACKAGE]:TEST` for one exact Go test or subtest in `certcat`,
-  `lib`, or `bin`.
+- `go:MODULE[/PACKAGE]:TEST` for one exact Go test, fuzz target, or subtest in
+  `certcat`, `lib`, or `bin`.
 - `e2e:CASE` for one directory name under `e2e/cases/`.
 - `winvm:CASE-ID` for one Go case ID in `dev/winvm/test-suites.json`.
 - `js:panel/tests/FILE.mjs` for one panel test file.
@@ -125,10 +125,12 @@ the same phase. A selected run does not add unselected test suites or produce
 the full aggregate coverage report.
 
 When selectors are passed to `just check`, its lint and static-check
-dependencies and its fuzz run still run in full. Use the complete `just check`
-without selectors for significant changes that affect the whole project or
-large parts of it. The narrow gate is for feedback on changes with local scope;
-it does not replace the complete project gate when the affected area is broad.
+dependencies still run in full, but the full fuzz suite does not run. An exact
+top-level `Fuzz...` Go selector runs only that fuzz target for `FUZZ_TIME`, which
+defaults to 60 seconds. Use the complete `just check` without selectors for
+significant changes that affect the whole project or large parts of it. The
+narrow gate is for feedback on changes with local scope; it does not replace
+the complete project gate when the affected area is broad.
 
 ## Key Files
 Engine and workspace:

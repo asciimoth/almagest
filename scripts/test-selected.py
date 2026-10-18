@@ -194,9 +194,18 @@ class Harness:
         return True
 
     def go_test(self, test):
-        command = ["go", "-C", test.module, "test", test.package,
-                   "-run", exact_go_pattern(test.test), "-count=1", "-json"]
-        if test.module != "certcat":
+        fuzz = test.test.startswith("Fuzz") and "/" not in test.test
+        command = ["go", "-C", test.module, "test", test.package]
+        if fuzz:
+            command.extend([
+                "-run=^$", f"-fuzz={exact_go_pattern(test.test)}",
+                f"-fuzztime={os.environ.get('FUZZ_TIME', '60s')}", "-json",
+            ])
+        else:
+            command.extend([
+                "-run", exact_go_pattern(test.test), "-count=1", "-json",
+            ])
+        if test.module != "certcat" and not fuzz:
             command.append("-race")
         print("==> selected:", shlex.join(command), flush=True)
         result = self.run_process(

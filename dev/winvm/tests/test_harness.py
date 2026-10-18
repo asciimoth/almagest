@@ -261,6 +261,7 @@ require_vm_space "$winvm_cache_dir" 10 test
         self.assertIn("progress 'collecting observations and validating packet captures'", flow)
         self.assertIn('check *selectors: tidy typos fmt lint shellcheck vet # vulncheck', recipe)
         self.assertIn('just test-total {{quote(selectors)}}', recipe)
+        self.assertIn('if [[ -z {{quote(selectors)}} ]]; then just fuzz; fi', recipe)
         self.assertIn('test-total-all: test-cycles-harness test-winvm-harness', recipe)
         self.assertIn('./scripts/test-e2e-fail-fast.sh test test-e2e-docker test-winvm-enabled', recipe)
         self.assertIn('test-winvm-harness:\n  @if [[ "${RUN_WINVM_TESTS:-0}" == "1" ]]', recipe)

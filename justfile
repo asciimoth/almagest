@@ -5,7 +5,7 @@ set dotenv-load := true
 # TODO: Enable vulncheck again after Go is updated to 1.26.9 or later.
 check *selectors: tidy typos fmt lint shellcheck vet # vulncheck
   @just test-total {{quote(selectors)}}
-  @just fuzz
+  @if [[ -z {{quote(selectors)}} ]]; then just fuzz; fi
 
 typos:
   typos

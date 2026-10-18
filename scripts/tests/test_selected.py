@@ -102,6 +102,29 @@ class SelectedTestHarnessTests(unittest.TestCase):
         with redirect_stderr(io.StringIO()):
             self.assertEqual(MODULE.Harness(run=run).execute(selected, cases), 1)
 
+    def test_exact_fuzz_selection_runs_only_that_fuzz_target(self):
+        selected, cases = MODULE.parse_selectors([
+            "go:bin/almagestd:FuzzSnapshotEntryName",
+        ])
+        calls = []
+
+        def run(argv, **kwargs):
+            calls.append(argv)
+            output = ""
+            if argv[:3] == ["go", "-C", "bin"]:
+                output = json.dumps({
+                    "Action": "run", "Test": "FuzzSnapshotEntryName",
+                }) + "\n"
+            return subprocess.CompletedProcess(argv, 0, stdout=output)
+
+        with patch.dict(MODULE.os.environ, {"FUZZ_TIME": "3s"}):
+            self.assertEqual(MODULE.Harness(run=run).execute(selected, cases), 0)
+        command = next(call for call in calls if call[:3] == ["go", "-C", "bin"])
+        self.assertIn("-run=^$", command)
+        self.assertIn("-fuzz=^FuzzSnapshotEntryName$", command)
+        self.assertIn("-fuzztime=3s", command)
+        self.assertNotIn("-race", command)
+
     def test_winvm_cases_share_one_prepared_vm_run(self):
         cases = MODULE.load_winvm_cases()
         by_privilege = {}
