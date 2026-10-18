@@ -30,7 +30,7 @@
       "type": "object",
       "description": "Protected policy for daemon-owned subprogram sandboxes. Graph nodes can select only an allowed template and program ID.",
       "properties": {
-        "Mode": {"enum": ["off", "auto", "strict"], "default": "auto"},
+        "Mode": {"enum": ["off", "auto", "strict"], "default": "auto", "description": "Subprogram sandbox policy. off applies no native confinement. auto applies all compatible protections available in the current environment and continues when an optional protection is unavailable. strict requires every mandatory protection in the selected qualified OS profile and fails before launch if one cannot be applied. Declared OS-profile exclusions remain visible in status."},
         "DiscoverSystemPrograms": {"type": "boolean", "default": false, "description": "Discover supported built-in sandbox programs from the daemon host PATH. Explicit program and template entries take precedence."},
         "TemporaryRoot": {"type": "string", "minLength": 1},
         "RegistryRoot": {"type": "string", "minLength": 1},

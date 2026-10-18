@@ -60,6 +60,14 @@ func TestDirectHelperProcess(t *testing.T) {
 		if _, err := fmt.Fprint(os.Stdout, helperWindowsHandleResult(os.Args[separator+2])); err != nil {
 			os.Exit(92)
 		}
+	case "windows-user32":
+		if _, err := fmt.Fprint(os.Stdout, helperWindowsUser32Result()); err != nil {
+			os.Exit(92)
+		}
+	case "windows-cryptoapi":
+		if _, err := fmt.Fprint(os.Stdout, helperWindowsCryptoAPIResult()); err != nil {
+			os.Exit(92)
+		}
 	case "dial-unix":
 		connection, err := net.DialTimeout("unix", os.Args[separator+2], 200*time.Millisecond)
 		if connection != nil {

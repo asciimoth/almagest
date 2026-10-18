@@ -16,14 +16,15 @@ import (
 )
 
 type ownerTestService struct {
-	mu         sync.Mutex
-	next       int
-	owners     map[string]sandbox.Owner
-	renamed    []sandbox.OwnerRename
-	released   []sandbox.Owner
-	rebindErr  error
-	closed     bool
-	closeCalls int
+	mu          sync.Mutex
+	next        int
+	owners      map[string]sandbox.Owner
+	renamed     []sandbox.OwnerRename
+	released    []sandbox.Owner
+	rebindErr   error
+	restoredErr error
+	closed      bool
+	closeCalls  int
 }
 
 func newOwnerTestService() *ownerTestService {
@@ -32,6 +33,9 @@ func newOwnerTestService() *ownerTestService {
 func (s *ownerTestService) IssueOwner(_ context.Context, proposed sandbox.Owner) (sandbox.Owner, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if proposed.Key != "" && s.restoredErr != nil {
+		return sandbox.Owner{}, s.restoredErr
+	}
 	if proposed.Key == "" {
 		s.next++
 		proposed.Key = fmt.Sprintf("key-%d", s.next)
@@ -349,5 +353,27 @@ func TestRestoredSandboxOwnerSurvivesRenameBeforeBind(t *testing.T) {
 	defer service.mu.Unlock()
 	if service.next != 0 || service.owners["durable"].Name != "Second" {
 		t.Fatalf("restored owner was replaced: next=%d owners=%+v", service.next, service.owners)
+	}
+}
+
+func TestQuarantinedRestoredSandboxOwnerGetsNewIdentity(t *testing.T) {
+	metadata := map[string]any{"Key": "quarantined", "Epoch": 1, "NameRevision": 1}
+	nodes := configer.NewMemory(map[string]any{
+		"First": map[string]any{"SandboxOwner": metadata},
+	})
+	service := newOwnerTestService()
+	service.restoredErr = errors.Join(sandbox.ErrUnavailable, sandbox.ErrStale)
+	coordinator, err := newSandboxOwners(service, nodes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	coordinator.attachRestored(pasta.WorkspaceSnapshot{Nodes: map[uint64]pasta.NodeSnapshot{7: {Name: "First"}}})
+	if _, _, err = coordinator.bind(context.Background(), 7, "test/SandboxOwner", "First"); err != nil {
+		t.Fatal(err)
+	}
+	service.mu.Lock()
+	defer service.mu.Unlock()
+	if service.next != 1 || service.owners["key-1"].Name != "First" {
+		t.Fatalf("replacement owner was not issued: next=%d owners=%+v", service.next, service.owners)
 	}
 }

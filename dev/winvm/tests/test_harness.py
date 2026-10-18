@@ -181,6 +181,11 @@ require_vm_space "$winvm_cache_dir" 10 test
         self.assertIn("Windows provisioning failed", builder)
         self.assertIn("Join-Path $media 'wintun-amd64.dll'", provision)
         self.assertIn("$driverSource = $media", provision)
+        self.assertIn("Join-Path $media '@@TOR_FILE@@'", provision)
+        self.assertIn("$torRoot;$machinePath", provision)
+        self.assertIn("& tor.exe --version", provision)
+        self.assertIn("$(package_path tor)", builder)
+        self.assertIn("$(locked_value .tor.file)", builder)
 
     def test_native_runner_keeps_go_stderr_out_of_json_events(self):
         runner = (ROOT / 'test-suite.ps1').read_text()
@@ -364,6 +369,7 @@ require_vm_space "$winvm_cache_dir" 10 test
         self.assertIn("'--file-storage', $storage", launcher)
         self.assertNotIn("'--tmp-file-storage'", launcher)
         self.assertIn("[string]$DaemonOptions = ''", launcher)
+        self.assertIn("'--discover-system-programs'", launcher)
         self.assertIn('os.environ.get("WINVM_DAEMON_OPTIONS", "")', runner)
         self.assertIn('display=(-display "${WINVM_DISPLAY:-gtk,window-close=off}"', shell)
         self.assertIn('memory_mib=${WINVM_MEMORY_MIB:-$configured_memory_mib}', shell)

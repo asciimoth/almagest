@@ -92,10 +92,10 @@ $arguments = @(
 )
 $daemonOptions = @($DaemonOptions -split '\s+' | Where-Object { $_ })
 foreach ($option in $daemonOptions) {
-    if ($option -notin @('--no-isolation', '--experimental')) {
+    if ($option -notin @('--no-isolation', '--experimental', '--discover-system-programs')) {
         throw "unsupported manual daemon option: $option"
     }
-    if ($option -eq '--experimental') {
+    if ($option -ne '--no-isolation') {
         $arguments += $option
     }
 }

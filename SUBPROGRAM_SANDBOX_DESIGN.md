@@ -668,13 +668,23 @@ separate ordinary account. Use a provisioned account or a qualified AppContainer
 profile when required; do not prompt for UAC or account passwords at runtime.
 
 The implemented `windows-native-v1` profile uses a deterministic 128-bit
-owner-and-slot restricting SID and a Low-integrity restricted primary token.
-World and Users restricting SIDs permit the normal Windows runtime surface.
-Sandbox writable roots have neither broad ACE, so the token's second access
-check requires its instance SID. The daemon holds each root and executable by
-verified file identity while the instance is active. The profile is qualified
-on Windows Server 2022 build 20348 amd64 for ordinary-user, elevated, and
-LocalSystem launch identities.
+owner-and-slot restricting SID and a Low-integrity write-restricted primary
+token. The filtered source identity supplies read access to the normal Windows
+runtime surface. For a write, Windows also checks the token's restricting SID.
+The token contains only the stable instance SID in that list, and the daemon
+grants that SID access only to approved writable roots and required USER
+objects. This permits Tor to read its runtime DLLs and initialize CryptoAPI
+without granting writes to other objects that the daemon identity can modify.
+The daemon holds each root and executable by verified file identity while the
+instance is active. The profile is qualified on Windows Server 2022 build
+20348 amd64 for ordinary-user, elevated, and LocalSystem launch identities.
+
+USER32 initialization needs the inherited window station and desktop. The
+daemon grants the instance SID temporary access to those USER objects and
+revokes the grants when the boundary closes. The Job Object keeps all UI
+restrictions except the external-handle restriction, which would reject those
+inherited USER handles. Low integrity and the remaining UI restrictions still
+limit cross-integrity and interactive UI operations.
 
 An AppContainer identity per instance can add process, credential, and object
 restrictions. Grant only that identity access to its writable directories;
@@ -977,10 +987,14 @@ Tor-driver v0.2.0 implements this sequence directly through `gobox`. Test the
 controller PID behavior, startup context cancellation, typed launch inputs, and
 dynamic onion operation explicitly; these are easy to miss if integration only
 tests process launch.
-A future Windows implementation can support the sequence with reported
-host-network exposure in auto mode and an OS-specific strict mode. Strict will
-require qualification of every mandatory Windows group. Private networking
-will remain an explicit OS-profile exclusion unless the template requires it.
+
+The Windows native implementation supports this sequence in `auto` and
+`strict`, with reported host-network exposure. Strict requires every mandatory
+Windows native protection. Private networking remains an explicit OS-profile
+exclusion unless the template requires it; a template that requires it fails
+before launch. Qualification uses deterministic Tor protocol traffic in all
+three modes and real Tor startup in strict mode under elevated and LocalSystem
+identities.
 
 TorDriver is stable and registered by the daemon in direct and isolated modes.
 Its required host operations are behind the reviewed sandbox interface.

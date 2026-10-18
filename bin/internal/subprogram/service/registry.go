@@ -184,7 +184,10 @@ func (r *registry) issue(proposed sandbox.Owner) (sandbox.Owner, error) {
 			return sandbox.Owner{}, sandbox.ErrDenied
 		}
 		if record.Quarantined {
-			return sandbox.Owner{}, sandbox.ErrUnavailable
+			// The old identity cannot be reused because its cleanup was not
+			// proved. Mark it stale too so the engine can issue a replacement
+			// identity with separate storage and platform credentials.
+			return sandbox.Owner{}, errors.Join(sandbox.ErrUnavailable, sandbox.ErrStale)
 		}
 		if record.Active {
 			if record.Owner != proposed {
@@ -211,7 +214,7 @@ func (r *registry) issue(proposed sandbox.Owner) (sandbox.Owner, error) {
 		return record.Owner, nil
 	}
 	for _, record := range r.state.Owners {
-		if (record.Active || record.Quarantined) && record.Owner.Workspace == proposed.Workspace && record.Owner.Name == proposed.Name {
+		if record.Active && record.Owner.Workspace == proposed.Workspace && record.Owner.Name == proposed.Name {
 			return sandbox.Owner{}, sandbox.ErrConflict
 		}
 	}

@@ -26,11 +26,12 @@ Implemented parts of `SUBPROGRAM_SANDBOX_DESIGN.md` include:
   operations, bounded transfers and temporary storage, loopback TCP and UDP,
   and tracked cleanup;
 - a qualified Windows Server 2022 amd64 `windows-native-v1` strict profile with
-  a restricted Low-integrity primary token, disabled administrative groups,
-  removed privileges, a stable owner-and-slot restricting SID, protected
-  writable-root DACLs and labels, exact inherited-handle lists, suspended
-  launch, nested no-breakaway Job Objects, descendant cleanup, and enforced
-  process, aggregate memory, and CPU limits;
+  a write-restricted Low-integrity primary token, disabled administrative
+  groups, removed privileges, a stable owner-and-slot restricting SID,
+  protected writable-root DACLs and labels, exact inherited-handle lists,
+  suspended launch, nested no-breakaway Job Objects, descendant cleanup, and
+  enforced process, aggregate memory, and CPU limits. Reads use the filtered
+  source identity. Writes must also pass the instance-SID access check;
 - a qualified Linux amd64 `linux-full-v1` profile with a static native
   launcher, a persistent PID 1 worker, private mount, network, PID, IPC, UTS,
   and cgroup namespaces, an exact mount-root view, private proc and device
@@ -53,12 +54,19 @@ Implemented parts of `SUBPROGRAM_SANDBOX_DESIGN.md` include:
 - TorDriver traffic qualification in `off|auto|strict`: a real private Tor
   network on Linux amd64, and a deterministic Tor control and SOCKS protocol
   peer under ordinary and elevated identities on Windows Server 2022 amd64.
-  The Windows test checks the documented native profile exclusions and does
-  not claim a full boundary.
+  The Windows native gate also starts the pinned Tor executable in strict mode,
+  checks CryptoAPI entropy initialization and control-port publication, and
+  repeats real Tor startup as LocalSystem. The Windows tests check the
+  documented native profile exclusions and do not claim a full boundary.
 - Optional startup discovery for TorDriver is available through protected
   `Sandbox.DiscoverSystemPrograms` or `--discover-system-programs`. It is off by
   default. Linux discovery maps the exact ELF dependency closure, including
   absolute content-store paths such as `/nix/store`, into the private root.
+  Windows discovery records the exact executable from `PATH`; the native
+  profile uses filtered source-identity reads for its system and sibling
+  runtime dependencies and reports that it has no exact filesystem view. The
+  WinVM image installs the locked Tor expert bundle, and `just daemon-winvm`
+  enables discovery for the SYSTEM daemon.
   Generated writable roots are placed beside private daemon storage. Their
   common parent permits traversal without directory listing; instance files
   are owned by the selected native sandbox identity.
@@ -84,8 +92,9 @@ containment, and resource limits as applied. It reports filesystem access,
 an exact filesystem view, and private networking as Windows native v1 OS
 exclusions. Thus, Windows strict can be satisfied while `full_boundary` is
 false. The child uses host networking, and it can read host objects that its
-restricted token can access. Templates that explicitly require an excluded
-feature fail before launch.
+filtered source identity can access. Low integrity and the write-restricted
+instance SID limit writes to objects that pass both access checks. Templates
+that explicitly require an excluded feature fail before launch.
 
 Docker qualification covers strict root-to-non-root launch, mapped read-only
 inputs, exact filesystem denial, selected credentials, private TCP and Unix

@@ -63,14 +63,15 @@ sed -i -e "s|@@WINDOWS_IMAGE_NAME@@|$(jq -r .windowsImageName "$config_file")|g"
 unset password
 sed -i \
     -e "s|@@GO_FILE@@|$(locked_value .go.file)|g" \
-    -e "s|@@OPENSSH_FILE@@|$(locked_value .openssh.file)|g" "$work/provision.ps1"
-cp "$(package_path go)" "$(package_path openssh)" "$work/"
+    -e "s|@@OPENSSH_FILE@@|$(locked_value .openssh.file)|g" \
+    -e "s|@@TOR_FILE@@|$(locked_value .tor.file)|g" "$work/provision.ps1"
+cp "$(package_path go)" "$(package_path openssh)" "$(package_path tor)" "$work/"
 mkdir "$work/driver" "$work/wintun"
 cp "$winvm_driver_dir"/* "$work/driver/"
 cp "$winvm_wintun_dir/amd64/wintun.dll" "$work/wintun/wintun-amd64.dll"
 cp "$winvm_wintun_dir/arm64/wintun.dll" "$work/wintun/wintun-arm64.dll"
 printf 'Creating the Windows provisioning ISO...\n'
-xorriso -as mkisofs -quiet -J -R -V WINVM_PROVISION -o "$work/provision.iso" "$work/Autounattend.xml" "$work/provision.ps1" "$work/authorized_key.pub" "$work/$(locked_value .go.file)" "$work/$(locked_value .openssh.file)" "$work/driver" "$work/wintun"
+xorriso -as mkisofs -quiet -J -R -V WINVM_PROVISION -o "$work/provision.iso" "$work/Autounattend.xml" "$work/provision.ps1" "$work/authorized_key.pub" "$work/$(locked_value .go.file)" "$work/$(locked_value .openssh.file)" "$work/$(locked_value .tor.file)" "$work/driver" "$work/wintun"
 qemu-img create -q -f qcow2 "$work/base.qcow2" "$(jq -r .machine.diskGiB "$config_file")G"
 cp "$(find_ovmf vars)" "$work/OVMF_VARS.fd"
 chmod 0600 "$work/OVMF_VARS.fd"

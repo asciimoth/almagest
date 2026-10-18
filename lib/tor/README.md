@@ -30,12 +30,20 @@ closure, and available Tor `geoip` data as exact read-only mappings. Absolute
 RUNPATH entries are retained, so content-addressed layouts such as `/nix/store`
 work in the private filesystem. The profile does not expose a complete host
 library directory. On Windows, the native profile starts the discovered image
-with the qualified restricted token and Job Object boundary.
+with the qualified write-restricted Low-integrity token and Job Object
+boundary. Reads use the filtered daemon identity, which lets Tor load its
+sibling DLLs and initialize Windows CryptoAPI. Filesystem writes also require
+the stable instance SID and are limited to the protected temporary and
+persistent roots.
 
 The generated template supports sandbox mode `off`, `auto`, and `strict`.
 `off` selects direct execution. On qualified Linux hosts, `auto` and `strict`
 select the full Linux boundary. On Windows they select the documented native
-Windows profile.
+Windows profile. Windows `strict` requires every mandatory native protection;
+it fails before launch if one cannot be applied. Windows `auto` applies all
+available compatible protections and continues when an optional protection is
+unavailable. Both modes report the native profile's filesystem-view and private
+network OS exclusions.
 
 A minimal protected program definition uses the two required path inputs from
 tor-driver:

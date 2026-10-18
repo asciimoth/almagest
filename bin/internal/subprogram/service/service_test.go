@@ -211,17 +211,33 @@ func TestRegistryQuarantinesUncleanActiveOwner(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = recovered.closeLock() })
+	var quarantinedRecord ownerRecord
 	for _, record := range recovered.state.Owners {
-		if record.Active || !record.Orphan || !record.Quarantined {
-			t.Fatalf("owner was not quarantined: %+v", record)
-		}
-		if _, issueErr := recovered.issue(record.Owner); !errors.Is(issueErr, sandbox.ErrUnavailable) {
-			t.Fatalf("quarantined owner issue = %v", issueErr)
-		}
+		quarantinedRecord = record
+	}
+	if quarantinedRecord.Active || !quarantinedRecord.Orphan || !quarantinedRecord.Quarantined {
+		t.Fatalf("owner was not quarantined: %+v", quarantinedRecord)
+	}
+	if _, issueErr := recovered.issue(quarantinedRecord.Owner); !errors.Is(issueErr, sandbox.ErrUnavailable) || !errors.Is(issueErr, sandbox.ErrStale) {
+		t.Fatalf("quarantined owner issue = %v", issueErr)
 	}
 	active, orphaned, quarantined := recovered.counts()
 	if active != 0 || orphaned != 1 || quarantined != 1 {
 		t.Fatalf("recovery counts = active %d, orphaned %d, quarantined %d", active, orphaned, quarantined)
+	}
+	replacement, issueErr := recovered.issue(sandbox.Owner{
+		Workspace: quarantinedRecord.Owner.Workspace,
+		Class:     quarantinedRecord.Owner.Class,
+		Name:      quarantinedRecord.Owner.Name,
+	})
+	if issueErr != nil {
+		t.Fatalf("replacement owner issue: %v", issueErr)
+	}
+	if replacement.Key == quarantinedRecord.Owner.Key {
+		t.Fatal("replacement reused the quarantined owner key")
+	}
+	if releaseErr := recovered.release(replacement); releaseErr != nil {
+		t.Fatalf("release replacement owner: %v", releaseErr)
 	}
 	if _, err = recovered.issue(sandbox.Owner{Workspace: "main", Class: "test/Node", Name: "Other"}); err != nil {
 		t.Fatalf("unrelated owner issue: %v", err)

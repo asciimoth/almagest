@@ -754,7 +754,7 @@
           "arguments": [
             "./internal/subprogram/direct",
             "-run",
-            "^TestWindowsNative(StrictBoundary|RejectsUnenforceableRequiredLimits|IdentityIsStableAndOwnerScoped|LocalSystemLaunch)$",
+            "^TestWindowsNative(StrictBoundary|RejectsUnenforceableRequiredLimits|IdentityIsStableAndOwnerScoped|TorStartup|LocalSystemLaunch)$",
             "-count=1"
           ],
           "eventFile": "sandbox-windows-native-elevated.jsonl",
@@ -762,6 +762,7 @@
             "github.com/asciimoth/almagest/bin/internal/subprogram/direct::TestWindowsNativeStrictBoundary",
             "github.com/asciimoth/almagest/bin/internal/subprogram/direct::TestWindowsNativeRejectsUnenforceableRequiredLimits",
             "github.com/asciimoth/almagest/bin/internal/subprogram/direct::TestWindowsNativeIdentityIsStableAndOwnerScoped",
+            "github.com/asciimoth/almagest/bin/internal/subprogram/direct::TestWindowsNativeTorStartup",
             "github.com/asciimoth/almagest/bin/internal/subprogram/direct::TestWindowsNativeLocalSystemLaunch"
           ]
         },

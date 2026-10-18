@@ -87,9 +87,8 @@ type snapshotService struct {
 	now    func() time.Time
 	random io.Reader
 
-	// dynamicExclusions protects config source files that happen to be inside
-	// file storage. The sanitized regular config has its own archive entry, and
-	// protected config must never enter an archive.
+	// dynamicExclusions protects host-local files that happen to be inside file
+	// storage. This includes config sources and live sandbox control state.
 	dynamicExclusions map[string]struct{}
 }
 
@@ -145,6 +144,14 @@ func newSnapshotService(
 		service.addDynamicExclusion(configLocator.ConfigFilePath())
 		service.addDynamicExclusion(configLocator.ProtectedConfigFilePath())
 	}
+	if config != nil {
+		// The service keeps its registry open and locked for the daemon lifetime.
+		// Its in-memory state and temporary process data cannot be replaced by a
+		// snapshot. Persistent roots configured for individual templates remain
+		// eligible for snapshots.
+		service.addDynamicExclusion(config.Protected.Sandbox.RegistryRoot)
+		service.addDynamicExclusion(config.Protected.Sandbox.TemporaryRoot)
+	}
 	service.restore = newSnapshotRestoreCoordinator(service)
 	return service
 }
@@ -152,9 +159,9 @@ func newSnapshotService(
 func (s *snapshotService) addDynamicExclusion(path string) {
 	relative, ok := pathWithinStorage(s.storagePath, path)
 	if !ok {
-		// Config and storage paths can use different symlink aliases for the
-		// same directory. Resolve both existing paths before deciding that a
-		// config source is outside storage.
+		// Storage and excluded paths can use different symlink aliases for the
+		// same directory. Resolve both existing paths before deciding that the
+		// host-local path is outside storage.
 		resolvedStorage, storageErr := filepath.EvalSymlinks(s.storagePath)
 		resolvedPath, pathErr := filepath.EvalSymlinks(path)
 		if storageErr == nil && pathErr == nil {

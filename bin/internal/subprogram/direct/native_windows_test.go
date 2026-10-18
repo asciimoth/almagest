@@ -3,9 +3,11 @@
 package direct
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -22,6 +24,31 @@ import (
 )
 
 var isProcessInJob = windows.NewLazySystemDLL("kernel32.dll").NewProc("IsProcessInJob")
+
+func helperWindowsCryptoAPIResult() string {
+	var provider windows.Handle
+	if err := windows.CryptAcquireContext(&provider, nil, nil, windows.PROV_RSA_FULL, windows.CRYPT_VERIFYCONTEXT); err != nil {
+		return "acquire:" + err.Error()
+	}
+	defer func() { _ = windows.CryptReleaseContext(provider, 0) }()
+	data := make([]byte, 32)
+	if err := windows.CryptGenRandom(provider, uint32(len(data)), &data[0]); err != nil {
+		return "generate:" + err.Error()
+	}
+	return "usable"
+}
+
+func helperWindowsUser32Result() string {
+	user32 := windows.NewLazySystemDLL("user32.dll")
+	if err := user32.Load(); err != nil {
+		return "load-failed"
+	}
+	station, _, _ := user32.NewProc("GetProcessWindowStation").Call()
+	if station == 0 {
+		return "station-unavailable"
+	}
+	return "usable"
+}
 
 func helperWindowsSecurityResult(foreign string) string {
 	var failures []string
@@ -113,7 +140,7 @@ func windowsNativeBackend(t *testing.T, mode sandbox.Mode, root string) *Backend
 		}},
 		Templates: map[sandbox.TemplateID]policy.Template{"test": {
 			AllowedClasses: []string{"test/Node"}, Programs: []sandbox.ProgramID{"helper"}, RuntimeProfile: "windows-native-v1",
-			PersistentRoot: filepath.Join(root, "persistent"), Limits: policy.TemplateLimits{Commands: 2, Tasks: 4, Files: 32,
+			PersistentRoot: filepath.Join(root, "persistent"), Limits: policy.TemplateLimits{Commands: 4, Tasks: 4, Files: 32,
 				Sockets: 32, MemoryBytes: 256 << 20, CPUPercent: 100, TransferBytes: 1 << 20, TemporaryBytes: 32 << 20, OutputBytes: 1 << 20,
 				Required: []string{"Tasks", "MemoryBytes", "CPUPercent"}},
 		}},
@@ -157,6 +184,18 @@ func TestWindowsNativeStrictBoundary(t *testing.T) {
 	if err := windows.QueryInformationJobObject(native.job, windows.JobObjectCpuRateControlInformation,
 		uintptr(unsafe.Pointer(&cpu)), uint32(unsafe.Sizeof(cpu)), nil); err != nil || cpu.Flags != 1|4 || cpu.Rate != 10000 {
 		t.Fatalf("CPU limit = %+v, %v", cpu, err)
+	}
+	var ui uint32
+	if err := windows.QueryInformationJobObject(native.job, windows.JobObjectBasicUIRestrictions,
+		uintptr(unsafe.Pointer(&ui)), uint32(unsafe.Sizeof(ui)), nil); err != nil {
+		t.Fatal(err)
+	}
+	wantUI := uint32(windows.JOB_OBJECT_UILIMIT_DESKTOP | windows.JOB_OBJECT_UILIMIT_DISPLAYSETTINGS |
+		windows.JOB_OBJECT_UILIMIT_EXITWINDOWS | windows.JOB_OBJECT_UILIMIT_GLOBALATOMS |
+		windows.JOB_OBJECT_UILIMIT_READCLIPBOARD | windows.JOB_OBJECT_UILIMIT_SYSTEMPARAMETERS |
+		windows.JOB_OBJECT_UILIMIT_WRITECLIPBOARD)
+	if ui != wantUI || ui&windows.JOB_OBJECT_UILIMIT_HANDLES != 0 {
+		t.Fatalf("job UI restrictions = %#x, want %#x", ui, wantUI)
 	}
 
 	secondValue, err := backend.Prepare(context.Background(), sandbox.Owner{Workspace: "main", Key: "key-2", Epoch: 1,
@@ -204,6 +243,22 @@ func TestWindowsNativeStrictBoundary(t *testing.T) {
 	if err != nil || string(output) != "denied" {
 		t.Fatalf("handle inheritance result = %q, %v", output, err)
 	}
+	command, err = first.NewCommand("helper", launch("windows-user32", "unused"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	output, err = sandbox.Output(context.Background(), command, 1024)
+	if err != nil || string(output) != "usable" {
+		t.Fatalf("USER32 result = %q, %v", output, err)
+	}
+	command, err = first.NewCommand("helper", launch("windows-cryptoapi", "unused"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	output, err = sandbox.Output(context.Background(), command, 1024)
+	if err != nil || string(output) != "usable" {
+		t.Fatalf("CryptoAPI result = %q, %v", output, err)
+	}
 }
 
 func TestWindowsNativeRejectsUnenforceableRequiredLimits(t *testing.T) {
@@ -215,6 +270,133 @@ func TestWindowsNativeRejectsUnenforceableRequiredLimits(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestWindowsNativeTorStartup(t *testing.T) {
+	if !windows.GetCurrentProcessToken().IsElevated() {
+		t.Skip("Tor startup qualification requires authority to grant access to the system-installed executable")
+	}
+	if windows.RtlGetVersion().BuildNumber != qualifiedWindowsBuild {
+		t.Skipf("windows-native-v1 requires qualified build %d", qualifiedWindowsBuild)
+	}
+	executable, err := exec.LookPath("tor")
+	if err != nil {
+		t.Skip("Tor is not installed in the test PATH")
+	}
+	root := t.TempDir()
+	config := policy.Config{
+		Mode: sandbox.Strict, TemporaryRoot: filepath.Join(root, "temporary"), RegistryRoot: filepath.Join(root, "registry"),
+		Programs: map[sandbox.ProgramID]policy.Program{"tor": {
+			Executable: executable, Builder: "fixed-v1",
+			Arguments: []policy.Argument{{Literal: "--defaults-torrc"}, {Input: "defaults-torrc"}, {Literal: "-f"}, {Input: "torrc"}},
+			Inputs: map[string]policy.Input{
+				"defaults-torrc": {Kind: sandbox.PathValue, Required: true},
+				"torrc":          {Kind: sandbox.PathValue, Required: true},
+			},
+		}},
+		Templates: map[sandbox.TemplateID]policy.Template{"tor": {
+			AllowedClasses: []string{"test/Node"}, Programs: []sandbox.ProgramID{"tor"}, RuntimeProfile: "windows-native-v1",
+			PersistentRoot: filepath.Join(root, "persistent"), Limits: policy.TemplateLimits{Commands: 1, Tasks: 4, Files: 64,
+				Sockets: 32, MemoryBytes: 512 << 20, CPUPercent: 100, TransferBytes: 1 << 20, TemporaryBytes: 32 << 20, OutputBytes: 1 << 20,
+				Required: []string{"Tasks", "MemoryBytes", "CPUPercent"}},
+		}},
+	}
+	backend, err := NewBackend(config, policy.Probe{Platform: "windows", EffectiveIdentity: "test-user",
+		Available: map[sandbox.Feature]bool{sandbox.Environment: true, sandbox.HandleInheritance: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	value, err := backend.Prepare(context.Background(), sandbox.Owner{Workspace: "main", Key: "tor", Epoch: 1,
+		Class: "test/Node", Name: "Tor", NameRevision: 1}, "main", "tor", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	instance := value.(*instance)
+	t.Cleanup(func() { _ = instance.Close() })
+	defaults, err := instance.ChildPath(sandbox.Path{Root: sandbox.Temporary, Rel: "defaults-torrc"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	torrc, err := instance.ChildPath(sandbox.Path{Root: sandbox.Temporary, Rel: "torrc"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	control, err := instance.ChildPath(sandbox.Path{Root: sandbox.Temporary, Rel: "control-port"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	state, err := instance.ChildPath(sandbox.Path{Root: sandbox.Persistent, Rel: "state"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(defaults, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	quote := func(value string) string { return `"` + filepath.ToSlash(value) + `"` }
+	contents := strings.Join([]string{
+		"DataDirectory " + quote(state),
+		"RunAsDaemon 0",
+		"ControlPort 127.0.0.1:auto",
+		"ControlPortWriteToFile " + quote(control),
+		"CookieAuthentication 0",
+		"DisableNetwork 1",
+		"SocksPort 0",
+		"ClientOnly 1",
+		"NoExec 1",
+		"SafeLogging 1",
+		"Sandbox 0",
+		"Log notice stdout",
+	}, "\n") + "\n"
+	if err = os.WriteFile(torrc, []byte(contents), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	command, err := instance.NewCommand("tor", sandbox.Launch{Directory: sandbox.Path{Root: sandbox.Temporary}, Inputs: map[string]sandbox.Value{
+		"defaults-torrc": {Kind: sandbox.PathValue, Path: sandbox.Path{Root: sandbox.Temporary, Rel: "defaults-torrc"}},
+		"torrc":          {Kind: sandbox.PathValue, Path: sandbox.Path{Root: sandbox.Temporary, Rel: "torrc"}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stdout, err := command.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stderr, err := command.StderrPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stdoutOutput := make(chan []byte, 1)
+	stderrOutput := make(chan []byte, 1)
+	go func() { data, _ := io.ReadAll(stdout); stdoutOutput <- data }()
+	go func() { data, _ := io.ReadAll(stderr); stderrOutput <- data }()
+	if err = command.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	waited := false
+	defer func() {
+		if !waited {
+			_ = command.Kill()
+			_, _ = command.Wait()
+		}
+	}()
+	output := func() string { return string(<-stdoutOutput) + string(<-stderrOutput) }
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		if data, readErr := os.ReadFile(control); readErr == nil && bytes.HasPrefix(data, []byte("PORT=127.0.0.1:")) {
+			return
+		}
+		select {
+		case <-command.Done():
+			exit, waitErr := command.Wait()
+			waited = true
+			t.Fatalf("Tor exited before publishing its control port: exit=%+v err=%v output=%s", exit, waitErr, output())
+		case <-time.After(50 * time.Millisecond):
+		}
+	}
+	_ = command.Kill()
+	_, _ = command.Wait()
+	waited = true
+	t.Fatalf("Tor did not publish its control port: %s", output())
 }
 
 func TestValidatePathComponentsRejectsWindowsJunction(t *testing.T) {
@@ -295,7 +477,7 @@ func TestWindowsNativeLocalSystemLaunch(t *testing.T) {
 		_ = exec.Command("schtasks.exe", "/Delete", "/TN", taskName, "/F").Run()
 		_ = os.Remove(result)
 	})
-	commandLine := fmt.Sprintf(`cmd.exe /d /s /c ""%s" -test.run=^TestWindowsNativeStrictBoundary$ -test.v >"%s" 2>&1"`, executable, result)
+	commandLine := fmt.Sprintf(`cmd.exe /d /s /c ""%s" -test.run="^TestWindowsNative(StrictBoundary|TorStartup)$" -test.v >"%s" 2>&1"`, executable, result)
 	output, err := exec.Command("schtasks.exe", "/Create", "/TN", taskName, "/SC", "ONCE", "/ST", "00:00",
 		"/RU", "SYSTEM", "/RL", "HIGHEST", "/TR", commandLine, "/F").CombinedOutput()
 	if err != nil {
@@ -308,7 +490,8 @@ func TestWindowsNativeLocalSystemLaunch(t *testing.T) {
 	deadline := time.Now().Add(20 * time.Second)
 	for time.Now().Before(deadline) {
 		data, readErr := os.ReadFile(result)
-		if readErr == nil && strings.Contains(string(data), "--- PASS: TestWindowsNativeStrictBoundary") {
+		if readErr == nil && strings.Contains(string(data), "--- PASS: TestWindowsNativeStrictBoundary") &&
+			strings.Contains(string(data), "--- PASS: TestWindowsNativeTorStartup") {
 			return
 		}
 		if readErr == nil && strings.Contains(string(data), "--- FAIL:") {

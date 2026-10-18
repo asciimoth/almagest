@@ -22,5 +22,11 @@
     "file": "OpenSSH-Win64.zip",
     "source": "https://github.com/PowerShell/Win32-OpenSSH/releases/download/v9.8.3.0p2-Preview/OpenSSH-Win64.zip",
     "sha256": "0ca131f3a78f404dc819a6336606caec0db1663a692ccc3af1e90232706ada54"
+  },
+  "tor": {
+    "version": "15.0.25",
+    "file": "tor-expert-bundle-windows-x86_64-15.0.25.tar.gz",
+    "source": "https://dist.torproject.org/torbrowser/15.0.25/tor-expert-bundle-windows-x86_64-15.0.25.tar.gz",
+    "sha256": "c1988c701de2f24f7d098d1d6d7f507b58f27740d097f29c246e0524d639b252"
   }
 }

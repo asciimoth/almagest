@@ -306,7 +306,7 @@
       "platforms": ["windows-server-2022-amd64", "windows-11-amd64", "windows-11-arm64"],
       "dependencies": [],
       "requiredSuites": ["windows-native-core", "windows-native-e2e"],
-      "notes": "Step 15 supplies suspended-start, kill-on-close Job Object behavior for protected commands and rejects Unix credentials before launch. TorDriver uses the same protected gobox service as other subprogram owners. Its off, auto, and strict modes have Tor protocol and traffic evidence under ordinary and elevated identities on Windows Server 2022 amd64. Windows native v1 reports its documented host-network and filesystem exclusions. Windows 11 and arm64 still need separate qualification, and this matrix entry remains unavailable until all required native and E2E evidence exists."
+      "notes": "Step 15 supplies suspended-start, kill-on-close Job Object behavior for protected commands and rejects Unix credentials before launch. TorDriver uses the same protected gobox service as other subprogram owners. Its off, auto, and strict modes have Tor protocol and traffic evidence under ordinary and elevated identities on Windows Server 2022 amd64. The privileged native gate also verifies CryptoAPI entropy and real Tor control-port startup under elevated and LocalSystem identities. Windows native v1 uses a Low-integrity write-restricted token and reports its documented host-network and filesystem-view exclusions. Windows 11 and arm64 still need separate qualification, and this matrix entry remains unavailable until all required native and E2E evidence exists."
     },
     {
       "id": "windows-certificate-authorities",

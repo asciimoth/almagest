@@ -139,6 +139,64 @@ func TestSnapshotPathWithinStorageEdges(t *testing.T) {
 	}
 }
 
+func TestSnapshotPreservesLiveSandboxControlState(t *testing.T) {
+	service, manager, engine, writer, storagePath := newSnapshotTestService(t, false)
+	registryRoot := filepath.Join(storagePath, "subprogram-sandbox", "registry")
+	temporaryRoot := filepath.Join(storagePath, "subprogram-sandbox", "temporary")
+	service.config.Protected.Sandbox.RegistryRoot = registryRoot
+	service.config.Protected.Sandbox.TemporaryRoot = temporaryRoot
+	service = newSnapshotService(
+		storagePath, service.autosaver, engine, manager, service.config, writer, false,
+		service.logger, service.tlsFetcher,
+	)
+	desired, err := service.Create(context.Background(), "before sandbox state")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, root := range []string{registryRoot, temporaryRoot} {
+		if err := os.MkdirAll(root, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, "live.lock"), []byte("before"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	created, err := service.Create(context.Background(), "sandbox exclusions")
+	if err != nil {
+		t.Fatal(err)
+	}
+	archive, err := zip.OpenReader(filepath.Join(storagePath, snapshotDirectoryName, created.UUID+".zip"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range archive.File {
+		if strings.HasPrefix(file.Name, snapshotFilesPrefix+"subprogram-sandbox/registry/") ||
+			strings.HasPrefix(file.Name, snapshotFilesPrefix+"subprogram-sandbox/temporary/") {
+			_ = archive.Close()
+			t.Fatalf("snapshot contains live sandbox state: %s", file.Name)
+		}
+	}
+	if err := archive.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, root := range []string{registryRoot, temporaryRoot} {
+		if err := os.WriteFile(filepath.Join(root, "live.lock"), []byte("current"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := service.Restore(context.Background(), desired.UUID); err != nil {
+		t.Fatal(err)
+	}
+	for _, root := range []string{registryRoot, temporaryRoot} {
+		data, err := os.ReadFile(filepath.Join(root, "live.lock"))
+		if err != nil || string(data) != "current" {
+			t.Fatalf("sandbox state in %s = %q, err=%v; want current", root, data, err)
+		}
+	}
+}
+
 func (w *snapshotTestWriter) WriteConfig(data []byte) error {
 	w.writes = append(w.writes, bytes.Clone(data))
 	if w.err != nil {

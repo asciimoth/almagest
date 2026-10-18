@@ -48,8 +48,11 @@ for ($attempt = 1; $attempt -le 20; $attempt++) {
 Set-Service qemu-ga -StartupType Automatic; Start-Service qemu-ga
 Expand-Archive (Join-Path $media '@@GO_FILE@@') C:\ -Force
 $sshRoot = 'C:\Program Files\OpenSSH-Win64'; Expand-WithTar (Join-Path $media '@@OPENSSH_FILE@@') 'C:\Program Files'
+$torInstallRoot = 'C:\Program Files\Tor'; Expand-WithTar (Join-Path $media '@@TOR_FILE@@') $torInstallRoot
+$torRoot = Join-Path $torInstallRoot 'tor'
+if (-not (Test-Path -LiteralPath (Join-Path $torRoot 'tor.exe') -PathType Leaf)) { throw 'Tor executable is absent after extraction' }
 $machinePath = [Environment]::GetEnvironmentVariable('Path','Machine')
-[Environment]::SetEnvironmentVariable('Path', "C:\go\bin;$sshRoot;$machinePath", 'Machine'); $env:Path = "C:\go\bin;$sshRoot;$env:Path"
+[Environment]::SetEnvironmentVariable('Path', "C:\go\bin;$sshRoot;$torRoot;$machinePath", 'Machine'); $env:Path = "C:\go\bin;$sshRoot;$torRoot;$env:Path"
 & "$sshRoot\install-sshd.ps1"; & "$sshRoot\ssh-keygen.exe" -A
 @'
 HostKey C:/ProgramData/ssh/ssh_host_ed25519_key
@@ -126,6 +129,7 @@ if ($bcd -match '(?im)^testsigning\s+Yes' -or $bcd -match '(?im)^nointegritychec
 powercfg.exe /change standby-timeout-ac 0; powercfg.exe /change hibernate-timeout-ac 0
 Stop-Service wuauserv -Force -ErrorAction SilentlyContinue; Set-Service wuauserv -StartupType Manual
 $goVersion = (& go version | Out-String).Trim()
+$torVersion = (& tor.exe --version | Select-Object -First 1 | Out-String).Trim()
 $qgaVersion = (Get-Item 'C:\Program Files\qemu-ga\qemu-ga.exe').VersionInfo.FileVersion
 $driverService = Get-CimInstance Win32_SystemDriver -Filter "Name='$driverServiceName'"
 if (-not $driverService -or $driverService.StartMode -ne 'Manual' -or $driverService.State -ne 'Stopped') {
@@ -133,7 +137,7 @@ if (-not $driverService -or $driverService.StartMode -ne 'Manual' -or $driverSer
 }
 $manifest = [ordered]@{
     windowsBuild=[Environment]::OSVersion.Version.ToString(); architecture=$env:PROCESSOR_ARCHITECTURE
-    goVersion=$goVersion; qemuGuestAgentVersion=$qgaVersion; provisionedAt=(Get-Date).ToUniversalTime().ToString('o')
+    goVersion=$goVersion; torVersion=$torVersion; qemuGuestAgentVersion=$qgaVersion; provisionedAt=(Get-Date).ToUniversalTime().ToString('o')
     driverService=$driverServiceName
 }
 $manifestTemp = Join-Path $root 'manifest.json.tmp'; $manifest | ConvertTo-Json -Depth 4 | Set-Content $manifestTemp -Encoding utf8

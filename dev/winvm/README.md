@@ -10,7 +10,7 @@ The image, QGA client, and lifecycle helpers are adapted from
 `a056c520f0faf966f54dd90ef63b15d9aa7382ec`. This adaptation changes the project
 paths, source packaging, guest toolchain, dependency provisioning, SSH key
 verification, and run/test orchestration.
-The Windows, VirtIO, and OpenSSH inputs are locked in this harness. Go is
+The Windows, VirtIO, OpenSSH, and Tor inputs are locked in this harness. Go is
 locked to 1.26.6; its hash is from the Go download manifest. No sibling
 checkout is needed. Image
 provisioning installs the locked Wintun DLL and compatible split-driver service
@@ -43,10 +43,18 @@ architecture-specific layout.
 
 Copy `env.example` to `env` and set absolute paths to the Windows and VirtIO
 ISOs. Supply legally obtained media with the exact hashes in `image-lock.json`.
-Media are not downloaded. Go and OpenSSH archives are downloaded over HTTPS and
-checked against their locks during image creation. Keep the private cache,
+Media are not downloaded. Go, OpenSSH, and Tor archives are downloaded over
+HTTPS and checked against their locks during image creation. A valid cached
+archive is reused by later image builds. Keep the private cache,
 media, and secrets outside the repository. The default cache is
 `$XDG_CACHE_HOME/almagest/winvm`, or `$HOME/.cache/almagest/winvm`.
+
+Image provisioning extracts the locked Tor expert bundle to
+`C:\Program Files\Tor`. The Tor executable is
+`C:\Program Files\Tor\tor\tor.exe`, and that directory is added to the machine
+`PATH`. The downloaded archive stays in the private WinVM cache and is copied
+to provisioning media only when an image is built. Repeated image builds do
+not download it again while its locked file name and SHA-256 remain valid.
 
 From the repository root:
 
@@ -70,7 +78,9 @@ missing prerequisites fail; they are not skips.
 `just daemon-winvm` opens a visible QEMU console, builds and runs `almagestd`
 as Windows `SYSTEM`, forwards the daemon's loopback web panel to
 `http://127.0.0.1:8091/`. Windows production isolation is not available, so
-this launcher uses explicit direct mode. Experimental nodes are off by default;
+this launcher uses explicit direct mode and enables protected system-program
+discovery. A TorDriver node therefore uses the Tor executable installed in the
+base image. Experimental nodes are off by default;
 use `just daemon-winvm --experimental` to enable them. Set `WINVM_WEB_PORT=9090`
 to select a different host port. Set `WINVM_OPEN_BROWSER=1` to open the panel
 with `xdg-open`, or set `WINVM_DISPLAY` to select another QEMU display backend. The manual overlay
@@ -179,6 +189,15 @@ adapter, records its adapter, route, and DNS state, stops the daemon gracefully,
 and requires the owned state baseline after the first run and after restart.
 These daemon cases do not replace the separate packet-capture and soak gates
 from Steps 21 and 22.
+
+The Windows sandbox mode matrix runs TorDriver protocol and traffic checks in
+`off`, `auto`, and `strict` under ordinary and elevated identities. The
+privileged native sandbox case also calls the same CryptoAPI provider and
+entropy functions that Tor uses, starts the pinned real Tor executable, waits
+for its control-port file, and repeats the native boundary and real Tor startup
+under LocalSystem. These tests qualify startup compatibility; they do not
+remove the native profile's reported filesystem-view or private-network
+exclusions.
 
 ## Isolated packet-flow evidence
 

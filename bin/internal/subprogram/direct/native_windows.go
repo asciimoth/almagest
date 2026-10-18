@@ -21,18 +21,28 @@ import (
 
 const qualifiedWindowsBuild = 20348
 
-var createSandboxRestrictedToken = windows.NewLazySystemDLL("advapi32.dll").NewProc("CreateRestrictedToken")
+const (
+	createRestrictedTokenDisableMaxPrivilege = 0x1
+	createRestrictedTokenWriteRestricted     = 0x8
+)
 
-// Executable ACLs can be shared by separate backend instances. Serialize each
-// read-modify-write update for the complete process, not only for one backend.
-var windowsExecutableACL sync.Mutex
+var createSandboxRestrictedToken = windows.NewLazySystemDLL("advapi32.dll").NewProc("CreateRestrictedToken")
+var windowsUser32 = windows.NewLazySystemDLL("user32.dll")
+var getProcessWindowStation = windowsUser32.NewProc("GetProcessWindowStation")
+var getThreadDesktop = windowsUser32.NewProc("GetThreadDesktop")
+
+// Executable and USER-object ACLs can be shared by separate backend instances.
+// Serialize each read-modify-write update for the complete process, not only
+// for one backend.
+var windowsBoundaryACL sync.Mutex
 
 type windowsInstanceBoundary struct {
-	token   windows.Token
-	sid     *windows.SID
-	job     windows.Handle
-	granted []*os.File
-	storage []*os.File
+	token       windows.Token
+	sid         *windows.SID
+	job         windows.Handle
+	granted     []*os.File
+	storage     []*os.File
+	userObjects []windows.Handle
 }
 
 func windowsNativePrerequisites(template policy.Template) error {
@@ -82,35 +92,49 @@ func (s *instance) startWindowsBoundary() error {
 		storage = append(storage, held)
 	}
 	var granted []*os.File
-	windowsExecutableACL.Lock()
+	windowsBoundaryACL.Lock()
+	userObjects, err := grantWindowsUserObjects(sid)
+	if err != nil {
+		for _, file := range storage {
+			_ = file.Close()
+		}
+		windowsBoundaryACL.Unlock()
+		return fail(fmt.Errorf("%w: grant Windows desktop access: %v", sandbox.ErrUnavailable, err))
+	}
 	for _, id := range s.template.Programs {
 		handle, grantErr := grantWindowsExecutable(s.backend.policy.Programs[id].Executable, s.backend.programInfo[id], sid)
 		if grantErr != nil {
 			for _, grantedHandle := range granted {
 				_ = revokeWindowsGrant(grantedHandle, sid)
 			}
+			for _, object := range userObjects {
+				_ = updateWindowsObjectGrant(object, sid, 0, windows.REVOKE_ACCESS)
+			}
 			for _, file := range storage {
 				_ = file.Close()
 			}
-			windowsExecutableACL.Unlock()
+			windowsBoundaryACL.Unlock()
 			return fail(fmt.Errorf("%w: grant Windows sandbox executable: %v", sandbox.ErrUnavailable, grantErr))
 		}
 		granted = append(granted, handle)
 	}
-	windowsExecutableACL.Unlock()
+	windowsBoundaryACL.Unlock()
 	job, err := newWindowsInstanceJob(s.template.Limits)
 	if err != nil {
-		windowsExecutableACL.Lock()
+		windowsBoundaryACL.Lock()
 		for _, handle := range granted {
 			_ = revokeWindowsGrant(handle, sid)
 		}
-		windowsExecutableACL.Unlock()
+		for _, object := range userObjects {
+			_ = updateWindowsObjectGrant(object, sid, 0, windows.REVOKE_ACCESS)
+		}
+		windowsBoundaryACL.Unlock()
 		for _, file := range storage {
 			_ = file.Close()
 		}
 		return fail(fmt.Errorf("%w: create Windows sandbox job: %v", sandbox.ErrUnavailable, err))
 	}
-	s.windowsBoundary = &windowsInstanceBoundary{token: token, sid: sid, job: job, granted: granted, storage: storage}
+	s.windowsBoundary = &windowsInstanceBoundary{token: token, sid: sid, job: job, granted: granted, storage: storage, userObjects: userObjects}
 	s.status.EffectiveIdentity = "restricted-low:" + sid.String()
 	return nil
 }
@@ -123,11 +147,14 @@ func (s *instance) closeWindowsBoundary() error {
 	s.windowsBoundary = nil
 	err := terminateAndWaitJob(b.job)
 	err = errors.Join(err, windows.CloseHandle(b.job))
-	windowsExecutableACL.Lock()
+	windowsBoundaryACL.Lock()
 	for _, handle := range b.granted {
 		err = errors.Join(err, revokeWindowsGrant(handle, b.sid))
 	}
-	windowsExecutableACL.Unlock()
+	for _, object := range b.userObjects {
+		err = errors.Join(err, updateWindowsObjectGrant(object, b.sid, 0, windows.REVOKE_ACCESS))
+	}
+	windowsBoundaryACL.Unlock()
 	for _, file := range b.storage {
 		err = errors.Join(err, file.Close())
 	}
@@ -159,21 +186,15 @@ func restrictedSandboxToken(identity *windows.SID) (windows.Token, error) {
 	if err != nil {
 		return 0, err
 	}
-	users, err := windows.CreateWellKnownSid(windows.WinBuiltinUsersSid)
-	if err != nil {
-		return 0, err
-	}
-	world, err := windows.CreateWellKnownSid(windows.WinWorldSid)
-	if err != nil {
-		return 0, err
-	}
 	disabled := []windows.SIDAndAttributes{{Sid: admin}}
-	// World and Users permit the OS runtime surface that ordinary processes
-	// need. Private roots omit those ACEs, so their second restricted-token
-	// access check still requires the stable instance SID.
-	restricted := []windows.SIDAndAttributes{{Sid: world}, {Sid: users}, {Sid: identity}}
+	// Apply the restricting-SID access check only to writes. Windows system
+	// services such as CryptoAPI must remain readable through the filtered
+	// source identity, while writes require the stable instance SID and are
+	// therefore limited to roots that this boundary explicitly grants.
+	restricted := []windows.SIDAndAttributes{{Sid: identity}}
 	var token windows.Token
-	result, _, callErr := createSandboxRestrictedToken.Call(uintptr(source), 1,
+	flags := uintptr(createRestrictedTokenDisableMaxPrivilege | createRestrictedTokenWriteRestricted)
+	result, _, callErr := createSandboxRestrictedToken.Call(uintptr(source), flags,
 		uintptr(len(disabled)), uintptr(unsafe.Pointer(&disabled[0])), 0, 0,
 		uintptr(len(restricted)), uintptr(unsafe.Pointer(&restricted[0])), uintptr(unsafe.Pointer(&token)))
 	if result == 0 {
@@ -297,6 +318,49 @@ func protectSandboxDirectory(name string, expected os.FileInfo, identity *window
 	return file, nil
 }
 
+func grantWindowsUserObjects(identity *windows.SID) ([]windows.Handle, error) {
+	stationValue, _, stationErr := getProcessWindowStation.Call()
+	if stationValue == 0 {
+		return nil, stationErr
+	}
+	desktopValue, _, desktopErr := getThreadDesktop.Call(uintptr(windows.GetCurrentThreadId()))
+	if desktopValue == 0 {
+		return nil, desktopErr
+	}
+	station := windows.Handle(stationValue)
+	desktop := windows.Handle(desktopValue)
+	// These masks are WINSTA_ALL_ACCESS and DESKTOP_ALL_ACCESS. Job UI limits
+	// still reject the sensitive operations after the DACL permits USER32 to
+	// connect the restricted token to its inherited station and desktop.
+	if err := updateWindowsObjectGrant(station, identity, 0x0000037f, windows.GRANT_ACCESS); err != nil {
+		return nil, err
+	}
+	if err := updateWindowsObjectGrant(desktop, identity, 0x000001ff, windows.GRANT_ACCESS); err != nil {
+		_ = updateWindowsObjectGrant(station, identity, 0, windows.REVOKE_ACCESS)
+		return nil, err
+	}
+	return []windows.Handle{station, desktop}, nil
+}
+
+func updateWindowsObjectGrant(handle windows.Handle, identity *windows.SID, permissions windows.ACCESS_MASK, mode windows.ACCESS_MODE) error {
+	descriptor, err := windows.GetSecurityInfo(handle, windows.SE_WINDOW_OBJECT, windows.DACL_SECURITY_INFORMATION)
+	if err != nil {
+		return err
+	}
+	acl, _, err := descriptor.DACL()
+	if err != nil || acl == nil {
+		return errors.Join(errors.New("missing USER object DACL"), err)
+	}
+	entry := windows.EXPLICIT_ACCESS{AccessPermissions: permissions, AccessMode: mode,
+		Trustee: windows.TRUSTEE{TrusteeForm: windows.TRUSTEE_IS_SID,
+			TrusteeType: windows.TRUSTEE_IS_GROUP, TrusteeValue: windows.TrusteeValueFromSID(identity)}}
+	acl, err = windows.ACLFromEntries([]windows.EXPLICIT_ACCESS{entry}, acl)
+	if err != nil {
+		return err
+	}
+	return windows.SetSecurityInfo(handle, windows.SE_WINDOW_OBJECT, windows.DACL_SECURITY_INFORMATION, nil, nil, acl, nil)
+}
+
 func grantWindowsExecutable(name string, expected os.FileInfo, identity *windows.SID) (*os.File, error) {
 	path, err := windows.UTF16PtrFromString(name)
 	if err != nil {
@@ -376,7 +440,15 @@ func newWindowsInstanceJob(limits policy.TemplateLimits) (windows.Handle, error)
 	if _, err = windows.SetInformationJobObject(job, windows.JobObjectCpuRateControlInformation, uintptr(unsafe.Pointer(&cpu)), uint32(unsafe.Sizeof(cpu))); err != nil {
 		return fail(err)
 	}
-	ui := uint32(0xff)
+	// USER32 initialization needs the inherited window-station and desktop
+	// handles. JOB_OBJECT_UILIMIT_HANDLES rejects those handles because their
+	// objects are owned outside this job, which prevents console programs such
+	// as Tor from starting. The Low integrity token supplies the cross-integrity
+	// USER-object boundary; retain every other job UI restriction.
+	ui := uint32(windows.JOB_OBJECT_UILIMIT_DESKTOP | windows.JOB_OBJECT_UILIMIT_DISPLAYSETTINGS |
+		windows.JOB_OBJECT_UILIMIT_EXITWINDOWS | windows.JOB_OBJECT_UILIMIT_GLOBALATOMS |
+		windows.JOB_OBJECT_UILIMIT_READCLIPBOARD | windows.JOB_OBJECT_UILIMIT_SYSTEMPARAMETERS |
+		windows.JOB_OBJECT_UILIMIT_WRITECLIPBOARD)
 	if _, err = windows.SetInformationJobObject(job, windows.JobObjectBasicUIRestrictions, uintptr(unsafe.Pointer(&ui)), uint32(unsafe.Sizeof(ui))); err != nil {
 		return fail(err)
 	}
