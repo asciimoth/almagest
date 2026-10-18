@@ -74,15 +74,22 @@ func TestLinuxLandlockProfileLaunchAndDenial(t *testing.T) {
 		}
 	}
 	mode := sandbox.Auto
-	readOnlyTarget := readOnly
+	var readOnlyTarget string
 	executableTarget := approvedExecutable
 	dynamicDependencyTarget := dynamicDependency
 	fullExpected := os.Geteuid() == 0 && os.Getenv("E2E_CGROUP_PARENT") != ""
+	tasks := 1
 	if fullExpected {
 		mode = sandbox.Strict
+		tasks = 4096
 		readOnlyTarget = "/approved"
 		executableTarget = "/approved-executable"
 		dynamicDependencyTarget = "/dynamic-dependency"
+	} else {
+		readOnlyTarget = filepath.Join(root, "read-only-target")
+		if err = os.Symlink(readOnly, readOnlyTarget); err != nil {
+			t.Fatal(err)
+		}
 	}
 	config := policy.Config{
 		Mode: mode, TemporaryRoot: filepath.Join(root, "temporary"), RegistryRoot: filepath.Join(root, "registry"), LinuxLauncher: launcher,
@@ -94,7 +101,7 @@ func TestLinuxLandlockProfileLaunchAndDenial(t *testing.T) {
 		}, "denied": {Executable: deniedExecutable, Builder: "fixed-v1"}},
 		Templates: map[sandbox.TemplateID]policy.Template{"native": {
 			AllowedClasses: []string{"test/Node"}, Programs: []sandbox.ProgramID{"helper", "denied"}, RuntimeProfile: "linux-landlock-v1",
-			Linux: policy.Linux{UID: uint32(uid), GID: uint32(gid)}, PersistentRoot: filepath.Join(root, "persistent"), ReadOnly: []policy.ReadOnly{{Source: readOnly, Target: readOnlyTarget}, {Source: approvedExecutable, Target: executableTarget, Executable: true}, {Source: dynamicDependency, Target: dynamicDependencyTarget, Executable: true}}, Limits: policy.TemplateLimits{Commands: 2, Tasks: 4096, Files: 64, Sockets: 64, MemoryBytes: 8 << 30, CPUPercent: 100, TransferBytes: 1 << 20, TemporaryBytes: 32 << 20, OutputBytes: 1 << 20},
+			Linux: policy.Linux{UID: uint32(uid), GID: uint32(gid)}, PersistentRoot: filepath.Join(root, "persistent"), ReadOnly: []policy.ReadOnly{{Source: readOnly, Target: readOnlyTarget}, {Source: approvedExecutable, Target: executableTarget, Executable: true}, {Source: dynamicDependency, Target: dynamicDependencyTarget, Executable: true}}, Limits: policy.TemplateLimits{Commands: 2, Tasks: tasks, Files: 64, Sockets: 64, MemoryBytes: 8 << 30, CPUPercent: 100, TransferBytes: 1 << 20, TemporaryBytes: 32 << 20, OutputBytes: 1 << 20},
 		}},
 	}
 	probe := policy.Probe{Platform: "linux", EffectiveIdentity: strconv.Itoa(os.Geteuid()), Available: map[sandbox.Feature]bool{sandbox.Environment: true, sandbox.HandleInheritance: true}}
@@ -196,15 +203,13 @@ func TestLinuxLandlockProfileLaunchAndDenial(t *testing.T) {
 	if err != nil || string(output) != "denied" {
 		t.Fatalf("undeclared descendant execution = %q, %v", output, err)
 	}
-	if fullExpected {
-		sandboxCommand, err = instance.NewCommand("helper", launch("exec-path", executableTarget))
-		if err != nil {
-			t.Fatal(err)
-		}
-		output, err = sandbox.Output(context.Background(), sandboxCommand, 128)
-		if err != nil || string(output) != "escapedescaped" {
-			t.Fatalf("approved read-only execution = %q, %v", output, err)
-		}
+	sandboxCommand, err = instance.NewCommand("helper", launch("exec-path", executableTarget))
+	if err != nil {
+		t.Fatal(err)
+	}
+	output, err = sandbox.Output(context.Background(), sandboxCommand, 128)
+	if err != nil || string(output) != "escapedescaped" {
+		t.Fatalf("approved read-only execution = %q, %v", output, err)
 	}
 	sandboxCommand, err = instance.NewCommand("helper", launch("identity", "unused"))
 	if err != nil {
@@ -246,10 +251,7 @@ func TestLinuxLandlockProfileLaunchAndDenial(t *testing.T) {
 	if err != nil || string(output) != "denied" {
 		t.Fatalf("outside read = %q, %v", output, err)
 	}
-	childReadOnlyFile := readOnlyFile
-	if fullExpected {
-		childReadOnlyFile = "/approved/input"
-	}
+	childReadOnlyFile := filepath.Join(readOnlyTarget, "input")
 	sandboxCommand, err = instance.NewCommand("helper", launch("read", childReadOnlyFile))
 	if err != nil {
 		t.Fatal(err)

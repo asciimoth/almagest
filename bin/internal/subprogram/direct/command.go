@@ -196,9 +196,9 @@ func (c *command) nativeArguments() []string {
 	if c.instance.persistentPath != "" {
 		writable++
 	}
-	arguments := []string{"v2", strconv.FormatUint(uint64(c.instance.nativeUID), 10), strconv.FormatUint(uint64(c.instance.nativeGID), 10),
+	arguments := []string{"v3", strconv.FormatUint(uint64(c.instance.nativeUID), 10), strconv.FormatUint(uint64(c.instance.nativeGID), 10),
 		strconv.Itoa(descriptors), strconv.FormatInt(limits.MemoryBytes, 10), strconv.Itoa(limits.Tasks),
-		strconv.Itoa(writable), strconv.Itoa(len(c.allowedProgramIDs())), strconv.Itoa(len(c.instance.template.ReadOnly)), "--"}
+		strconv.Itoa(writable), strconv.Itoa(len(c.allowedProgramIDs())), strconv.Itoa(len(c.instance.template.ReadOnly)), c.executableReadOnlyFlags(), "--"}
 	return append(arguments, c.arguments...)
 }
 
@@ -388,6 +388,17 @@ func (c *command) executableReadOnlyCount() int {
 		}
 	}
 	return count
+}
+
+func (c *command) executableReadOnlyFlags() string {
+	flags := make([]byte, len(c.instance.template.ReadOnly))
+	for index, input := range c.instance.template.ReadOnly {
+		flags[index] = '0'
+		if input.Executable {
+			flags[index] = '1'
+		}
+	}
+	return string(flags)
 }
 
 // allowedProgramIDs returns the selected image followed by its transitive,

@@ -104,6 +104,38 @@ func TestDiscoveryFailureIsScopedToAffectedCapability(t *testing.T) {
 	}
 }
 
+func TestAutoMappedTemplateRemainsRunnableWithoutExactView(t *testing.T) {
+	config := serviceConfig(t)
+	config.Mode = sandbox.Auto
+	source := filepath.Join(t.TempDir(), "input")
+	if err := os.WriteFile(source, []byte("fixture"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	mapped := config.Templates["test"]
+	mapped.PersistentRoot = ""
+	mapped.ReadOnly = []policy.ReadOnly{{Source: source, Target: "/mapped/input"}}
+	config.Templates["mapped"] = mapped
+	service, err := NewDirect(config, serviceProbe())
+	if err != nil {
+		t.Fatalf("auto service rejected mapped template: %v", err)
+	}
+	t.Cleanup(func() { _ = service.Close() })
+	_, view, err := service.IssueAndBindOwner(context.Background(), sandbox.Owner{Workspace: "main", Class: "test/Node", Name: "Node"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	instance, err := view.Acquire(context.Background(), "mapped", "mapped")
+	if err != nil {
+		t.Fatalf("mapped template acquisition failed: %v", err)
+	}
+	if path, pathErr := instance.ProgramPath("helper"); pathErr != nil || path == "" {
+		t.Fatalf("mapped template program path = %q, %v", path, pathErr)
+	}
+	if err = instance.Close(); err != nil {
+		t.Fatalf("close mapped template: %v", err)
+	}
+}
+
 func TestServiceGracefulRestartRetainsAuthorizedState(t *testing.T) {
 	config := serviceConfig(t)
 	service, err := NewDirect(config, serviceProbe())

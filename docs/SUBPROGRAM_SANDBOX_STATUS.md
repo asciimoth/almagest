@@ -153,6 +153,10 @@ The following Linux work is not implemented or is not fully qualified:
   `no_new_privs`, but it has no private mount, PID, IPC, UTS, network, or cgroup
   namespace boundary. A rootless strict profile needs a qualified user
   namespace and cgroup design.
+- The ordinary-user profile does not apply `Tasks` through `RLIMIT_NPROC`.
+  That limit counts unrelated tasks that use the same host UID and can prevent
+  the sandboxed program from creating any threads. The full profile enforces
+  `Tasks` with its private cgroup.
 - `Templates.*.Linux.IdentityPool` is reserved for a future provisioned-account
   allocator. Current Linux templates use an explicit nonzero UID and GID or
   `CurrentUser` for an ordinary-user partial profile. A configured pool fails
@@ -184,8 +188,10 @@ dedicated limited volume. `RLIMIT_FSIZE` cannot provide that contract. The
 current API continues to bound transfer size, open descriptors, and temporary
 bytes.
 
-The partial Landlock profile has no private mount view. Thus, a read-only
-`Target` must equal its `Source` when that profile is selected. The full profile
+The partial Landlock profile has no private mount view. In `auto`, it applies
+access rules to the held `Source` but does not materialize a different `Target`;
+the host target must already resolve to that source for the child to use it.
+The status reports the exact filesystem view as omitted. The full profile
 mounts the held source at the configured sandbox target.
 
 The error-returning `Engine.RenameNode` operation commits the durable owner

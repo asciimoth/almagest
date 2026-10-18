@@ -273,6 +273,31 @@ func TestNativeFullNewCommandRendersPathInputWithoutLockRecursion(t *testing.T) 
 	}
 }
 
+func TestPartialNativeArgumentsMarkExecutableReadOnlyInputs(t *testing.T) {
+	instance := &instance{
+		backend: &Backend{policy: policy.Config{Programs: map[sandbox.ProgramID]policy.Program{
+			"helper": {Descendants: []sandbox.ProgramID{"child"}},
+			"child":  {},
+		}}},
+		template: policy.Template{
+			Programs: []sandbox.ProgramID{"helper", "child"},
+			ReadOnly: []policy.ReadOnly{
+				{Source: "/read-only"},
+				{Source: "/interpreter", Executable: true},
+				{Source: "/library"},
+			},
+			Limits: policy.TemplateLimits{Tasks: 9, MemoryBytes: 64 << 20},
+		},
+		nativeUID: 123,
+		nativeGID: 456,
+	}
+	command := &command{instance: instance, programID: "helper", arguments: []string{"argument"}}
+	want := []string{"v3", "123", "456", "32", "67108864", "9", "1", "2", "3", "010", "--", "argument"}
+	if arguments := command.nativeArguments(); !slices.Equal(arguments, want) {
+		t.Fatalf("native arguments = %q, want %q", arguments, want)
+	}
+}
+
 func TestDirectCommandContract(t *testing.T) {
 	instance := prepareInstance(t, testBackend(t, sandbox.Off))
 	process := instance.ProcessContext()
@@ -763,6 +788,48 @@ func TestDirectStrictRefusesBeforeLaunch(t *testing.T) {
 	config.Mode = sandbox.Strict
 	if _, err := NewBackend(config, policy.Probe{Platform: runtime.GOOS, EffectiveIdentity: "test-user", Available: map[sandbox.Feature]bool{sandbox.Environment: true}}); !errors.Is(err, sandbox.ErrUnavailable) {
 		t.Fatalf("strict preflight error = %v", err)
+	}
+}
+
+func TestDirectAutoRunsMappedReadOnlyTemplateWithoutExactView(t *testing.T) {
+	config := testBackend(t, sandbox.Off).policy
+	config.Mode = sandbox.Auto
+	source := filepath.Join(t.TempDir(), "input")
+	if err := os.WriteFile(source, []byte("fixture"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	mapped := config.Templates["test"]
+	mapped.PersistentRoot = ""
+	mapped.ReadOnly = []policy.ReadOnly{{Source: source, Target: "/mapped/input"}}
+	config.Templates["mapped"] = mapped
+	probe := policy.Probe{
+		Platform: runtime.GOOS, EffectiveIdentity: "test-user",
+		Available: map[sandbox.Feature]bool{sandbox.Environment: true, sandbox.HandleInheritance: true},
+		Reasons:   map[sandbox.Feature]string{sandbox.WritableStorage: "direct-child-storage-not-confined"},
+	}
+	backend, err := NewBackend(config, probe)
+	if err != nil {
+		t.Fatalf("auto backend rejected mapped template: %v", err)
+	}
+	status := backend.ServiceStatus()
+	if mappedStatus := status.Templates["mapped"]; mappedStatus.State != sandbox.Preparing || mappedStatus.StrictSatisfied || mappedStatus.FullBoundary {
+		t.Fatalf("mapped template status = %+v, want partial preparing plan", mappedStatus)
+	}
+	owner := sandbox.Owner{Workspace: "main", Key: "key-auto", Epoch: 1, Class: "test/Node", Name: "Test", NameRevision: 1}
+	instance, err := backend.Prepare(context.Background(), owner, "mapped", "mapped", 1)
+	if err != nil {
+		t.Fatalf("mapped template preparation failed: %v", err)
+	}
+	command, err := instance.NewCommand("helper", launch("echo", "mapped-auto"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	output, err := sandbox.Output(context.Background(), command, 128)
+	if err != nil || string(output) != "mapped-auto" {
+		t.Fatalf("mapped auto command output = %q, %v", output, err)
+	}
+	if err = instance.Close(); err != nil {
+		t.Fatalf("close mapped template: %v", err)
 	}
 }
 

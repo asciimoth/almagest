@@ -37,6 +37,8 @@ type Backend struct {
 
 type capabilityUnavailableError struct{ reason string }
 
+const mappedReadOnlyUnavailableReason = "mapped read-only targets require an exact filesystem-view backend"
+
 func (e capabilityUnavailableError) Error() string {
 	return sandbox.ErrUnavailable.Error() + ": " + e.reason
 }
@@ -164,10 +166,10 @@ func NewBackend(config policy.Config, probe policy.Probe) (*Backend, error) {
 		if planErr != nil {
 			return nil, fmt.Errorf("template %q preflight: %w", id, planErr)
 		}
-		if normalized.Mode != sandbox.Off && !full {
+		if normalized.Mode == sandbox.Strict && !full {
 			for _, input := range template.ReadOnly {
 				if filepath.Clean(input.Source) != filepath.Clean(input.Target) {
-					return nil, fmt.Errorf("template %q: %w: mapped read-only targets require an exact filesystem-view backend", id, sandbox.ErrUnavailable)
+					return nil, fmt.Errorf("template %q: %w: %s", id, sandbox.ErrUnavailable, mappedReadOnlyUnavailableReason)
 				}
 			}
 		}

@@ -104,7 +104,8 @@ static void add_path_rule(int ruleset, int parent, uint64_t access) {
 		fail("add Landlock path rule");
 }
 
-static void install_landlock(int writable_count, int executable_count, int readonly_count) {
+static void install_landlock(int writable_count, int executable_count, int readonly_count,
+	const char *executable_readonly) {
 	int abi = (int)syscall(SYS_landlock_create_ruleset, NULL, 0, LANDLOCK_CREATE_RULESET_VERSION);
 	require(abi >= 3, "Landlock ABI 3 required");
 	uint64_t handled = LANDLOCK_ACCESS_FS_EXECUTE | LANDLOCK_ACCESS_FS_WRITE_FILE |
@@ -134,6 +135,7 @@ static void install_landlock(int writable_count, int executable_count, int reado
 		if (fstat(first_readonly + n, &st) == -1) fail("inspect read-only source");
 		uint64_t access = LANDLOCK_ACCESS_FS_READ_FILE;
 		if (S_ISDIR(st.st_mode)) access |= LANDLOCK_ACCESS_FS_READ_DIR;
+		if (executable_readonly[n] == '1') access |= LANDLOCK_ACCESS_FS_EXECUTE;
 		add_path_rule(ruleset, first_readonly + n, access);
 	}
 	if (syscall(SYS_landlock_restrict_self, ruleset, 0) == -1) fail("apply Landlock ruleset");
@@ -714,7 +716,7 @@ static int probe_main(int argc, char **argv) {
 }
 
 static int legacy_main(int argc, char **argv) {
-	require(argc >= 11 && strcmp(argv[1], "v2") == 0 && strcmp(argv[10], "--") == 0,
+	require(argc >= 12 && strcmp(argv[1], "v3") == 0 && strcmp(argv[11], "--") == 0,
 		"launcher ABI");
 	uid_t uid = (uid_t)number(argv[2]);
 	gid_t gid = (gid_t)number(argv[3]);
@@ -723,11 +725,15 @@ static int legacy_main(int argc, char **argv) {
 	int writable_count = (int)number(argv[7]);
 	int executable_count = (int)number(argv[8]);
 	int readonly_count = (int)number(argv[9]);
+	const char *executable_readonly = argv[10];
 	require(uid > 0 && gid > 0 && descriptors >= 32 && descriptors <= 65536 &&
 		memory_bytes >= (32ULL << 20) &&
 		tasks >= 1 && tasks <= 4096 && (writable_count == 1 || writable_count == 2) &&
-		executable_count >= 1 && executable_count <= 65 && readonly_count >= 0 && readonly_count <= 128,
+		executable_count >= 1 && executable_count <= 65 && readonly_count >= 0 && readonly_count <= 128 &&
+		strlen(executable_readonly) == (size_t)readonly_count,
 		"launcher bounds");
+	for (int n = 0; n < readonly_count; n++)
+		require(executable_readonly[n] == '0' || executable_readonly[n] == '1', "launcher executable flags");
 	if (fcntl(status_fd, F_SETFD, FD_CLOEXEC) == -1) fail("seal exec-status channel");
 	inspect_fd(3, false, true);
 	inspect_fd(5, true, false);
@@ -737,9 +743,11 @@ static int legacy_main(int argc, char **argv) {
 	for (int n = 0; n < readonly_count; n++) inspect_readonly_fd(first_executable + executable_count + n);
 	set_limit(RLIMIT_NOFILE, descriptors, "set descriptor limit");
 	set_limit(RLIMIT_AS, memory_bytes, "set address-space limit");
-	set_limit(RLIMIT_NPROC, tasks, "set task limit");
+	/* RLIMIT_NPROC counts all tasks for the real UID. The partial profile uses
+	 * the daemon user's UID, so applying the template limit here can prevent
+	 * all thread creation when unrelated host tasks already exceed it. */
 	if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) == -1) fail("set no_new_privs");
-	install_landlock(writable_count, executable_count, readonly_count);
+	install_landlock(writable_count, executable_count, readonly_count, executable_readonly);
 	install_seccomp();
 	if (fchdir(5) == -1) fail("select working directory");
 	remove_authority(uid, gid);
@@ -752,11 +760,11 @@ static int legacy_main(int argc, char **argv) {
 			fail("close inherited authority");
 		}
 	}
-	char **target = calloc((size_t)argc - 9, sizeof(char *));
+	char **target = calloc((size_t)argc - 10, sizeof(char *));
 	if (!target) fail("allocate target arguments");
 	target[0] = (char *)"sandbox-program";
-	for (int n = 11; n < argc; n++) target[n - 10] = argv[n];
-	target[argc - 10] = NULL;
+	for (int n = 12; n < argc; n++) target[n - 11] = argv[n];
+	target[argc - 11] = NULL;
 	if (syscall(SYS_execveat, first_executable, "", target, environ, AT_EMPTY_PATH) == -1)
 		fail("execute approved image");
 	return 125;
