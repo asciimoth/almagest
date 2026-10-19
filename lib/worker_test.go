@@ -2,6 +2,8 @@ package almagest
 
 import (
 	"context"
+	"errors"
+	"io"
 	"strings"
 	"testing"
 	"time"
@@ -12,9 +14,77 @@ import (
 	"github.com/asciimoth/almagest/lib/testkit"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
+	sandbox "github.com/asciimoth/gobox"
 	sysnetdebug "github.com/asciimoth/gonnect/sysnet/debug"
 	"github.com/asciimoth/pasta/pasta"
 )
+
+type workerTestSandboxCommand struct {
+	done     chan struct{}
+	startErr error
+}
+
+func (c *workerTestSandboxCommand) StdinPipe() (io.WriteCloser, error) {
+	return nil, sandbox.ErrUnavailable
+}
+func (c *workerTestSandboxCommand) StdoutPipe() (io.ReadCloser, error) {
+	return nil, sandbox.ErrUnavailable
+}
+func (c *workerTestSandboxCommand) StderrPipe() (io.ReadCloser, error) {
+	return nil, sandbox.ErrUnavailable
+}
+func (c *workerTestSandboxCommand) Start(context.Context) error { return c.startErr }
+func (c *workerTestSandboxCommand) Wait() (sandbox.Exit, error) {
+	<-c.done
+	return sandbox.Exit{}, nil
+}
+func (c *workerTestSandboxCommand) Signal(sandbox.Signal) error { return nil }
+func (c *workerTestSandboxCommand) Kill() error                 { return nil }
+func (c *workerTestSandboxCommand) Done() <-chan struct{}       { return c.done }
+
+func TestSandboxCommandAppearsInWorkerLifecycle(t *testing.T) {
+	tracker := newWorkerTracker(nil, nil, false)
+	tracker.nodes[7] = pasta.NodeSnapshot{Class: "test/Sandbox", Name: "sandbox node"}
+	events := make(chan WorkerNotification, 4)
+	if subscription := tracker.subscribe(func(notification WorkerNotification) { events <- notification }); subscription == 0 {
+		t.Fatal("subscribe returned 0")
+	}
+	command := &workerTestSandboxCommand{done: make(chan struct{})}
+	tracked := &trackedSandboxCommand{base: command, tracker: tracker, node: 7, program: "tor"}
+	if err := tracked.Start(context.Background()); err != nil {
+		t.Fatalf("Start error = %v, want nil", err)
+	}
+
+	spawned := waitWorkerNotification(t, events, WorkerNotificationSpawned)
+	if spawned.Worker == nil || spawned.Worker.Kind != WorkerKindSandbox || spawned.Worker.WorkerName != "tor" || spawned.Worker.Node != 7 {
+		t.Fatalf("spawned worker = %#v, want sandbox tor process for node 7", spawned.Worker)
+	}
+	if snapshot := tracker.snapshot(); len(snapshot) != 1 || snapshot[spawned.ID].Kind != WorkerKindSandbox {
+		t.Fatalf("snapshot = %#v, want one sandbox process", snapshot)
+	}
+
+	close(command.done)
+	stopped := waitWorkerNotification(t, events, WorkerNotificationStopped)
+	if stopped.ID != spawned.ID {
+		t.Fatalf("stopped worker ID = %d, want %d", stopped.ID, spawned.ID)
+	}
+	waitWorkerTrackerEmpty(t, tracker)
+	tracker.close()
+}
+
+func TestSandboxCommandFailedStartDoesNotAppearInWorkers(t *testing.T) {
+	tracker := newWorkerTracker(nil, nil, false)
+	tracker.nodes[7] = pasta.NodeSnapshot{Class: "test/Sandbox", Name: "sandbox node"}
+	command := &workerTestSandboxCommand{done: make(chan struct{}), startErr: sandbox.ErrLaunch}
+	tracked := &trackedSandboxCommand{base: command, tracker: tracker, node: 7, program: "tor"}
+	if err := tracked.Start(context.Background()); !errors.Is(err, sandbox.ErrLaunch) {
+		t.Fatalf("Start error = %v, want ErrLaunch", err)
+	}
+	if snapshot := tracker.snapshot(); len(snapshot) != 0 {
+		t.Fatalf("snapshot = %#v, want no process for failed start", snapshot)
+	}
+	tracker.close()
+}
 
 func TestEngineWorkerEventLoggingIsOptIn(t *testing.T) {
 	for _, test := range []struct {

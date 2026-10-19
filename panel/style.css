@@ -1159,7 +1159,7 @@ h1 {
 
 .ps-worker {
   display: grid;
-  grid-template-columns: 78px 8px minmax(90px, 1fr) 8px 86px;
+  grid-template-columns: 78px 8px 104px 8px minmax(90px, 1fr) 8px 86px;
   gap: 5px;
   align-items: stretch;
   padding: 7px 9px;
@@ -1169,7 +1169,7 @@ h1 {
 }
 
 .ps-worker-failed {
-  grid-template-columns: 78px 8px minmax(90px, 1fr) 8px 86px 8px minmax(120px, 1.4fr);
+  grid-template-columns: 78px 8px 104px 8px minmax(90px, 1fr) 8px 86px 8px minmax(120px, 1.4fr);
   border-color: color-mix(in srgb, var(--red), var(--surface0) 70%);
   background: color-mix(in srgb, var(--red), var(--crust) 92%);
 }
@@ -1185,6 +1185,7 @@ h1 {
 }
 
 .ps-worker strong,
+.ps-worker small,
 .ps-worker span,
 .ps-worker time,
 .ps-worker b {
@@ -1196,6 +1197,24 @@ h1 {
 .ps-worker strong {
   color: var(--text);
   font-size: 12px;
+}
+
+.ps-worker-kind {
+  display: inline-block;
+  justify-self: start;
+  border: 1px solid var(--surface1);
+  border-radius: 999px;
+  padding: 2px 6px;
+  color: var(--subtext);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.ps-worker-kind-sandbox {
+  border-color: color-mix(in srgb, var(--peach), var(--surface1) 55%);
+  color: var(--peach);
 }
 
 .ps-worker span {

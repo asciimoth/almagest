@@ -51,6 +51,7 @@ export type LinkSnapshot = {
 
 export type WorkerSnapshot = {
   id: ID;
+  kind: "go" | "sandbox";
   node: ID;
   class: string;
   name: string;
@@ -529,6 +530,7 @@ function parseLinkSnapshot(input: unknown): LinkSnapshot | null {
 function parseWorkerSnapshot(input: unknown): WorkerSnapshot | null {
   if (!isRecord(input)
     || !isID(input.id)
+    || (input.kind !== "go" && input.kind !== "sandbox")
     || !isID(input.node)
     || typeof input.class !== "string"
     || typeof input.name !== "string"
@@ -538,6 +540,7 @@ function parseWorkerSnapshot(input: unknown): WorkerSnapshot | null {
     || !isOptionalString(input.error)) return null;
   return {
     id: input.id,
+    kind: input.kind,
     node: input.node,
     class: input.class,
     name: input.name,

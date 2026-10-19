@@ -847,6 +847,8 @@ function createWorkerItem(worker: WorkerSnapshot, now: Date): HTMLLIElement {
   item.append(
     textElement("strong", `worker ${worker.id}`),
     iconSeparator(),
+    textElement("small", worker.kind === "sandbox" ? "sandbox process" : "Go worker", `ps-worker-kind ps-worker-kind-${worker.kind}`),
+    iconSeparator(),
     textElement("span", worker.worker_name || "unnamed"),
     iconSeparator(),
     age,

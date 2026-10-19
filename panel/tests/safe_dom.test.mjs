@@ -140,6 +140,7 @@ test("worker process blocks keep node and worker payloads as text", () => {
       workers: [
         {
           id: 9,
+          kind: "sandbox",
           node: 4,
           class: `evil/${payload}`,
           name: payload,
@@ -157,6 +158,7 @@ test("worker process blocks keep node and worker payloads as text", () => {
 
   assertNoParsedPayload(root);
   assert.match(root.textContent ?? "", /worker 9/);
+  assert.equal(root.querySelector(".ps-worker-kind-sandbox")?.textContent, "sandbox process");
   assert.match(root.textContent ?? "", /<script>/);
 });
 
@@ -173,6 +175,7 @@ test("worker age updates preserve existing worker rows", () => {
       workers: [
         {
           id: 9,
+          kind: "go",
           node: 4,
           class: "demo/Worker",
           name: "worker-node",
@@ -192,6 +195,7 @@ test("worker age updates preserve existing worker rows", () => {
 
   assert.equal(root.querySelector(".ps-worker"), row);
   assert.equal(root.querySelector(".ps-worker-age"), age);
+  assert.equal(root.querySelector(".ps-worker-kind-go")?.textContent, "Go worker");
   assert.equal(age?.textContent, "age 1m5s");
 });
 

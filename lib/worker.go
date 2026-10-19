@@ -26,26 +26,35 @@ var (
 // WorkerNotificationKind identifies the engine worker lifecycle event.
 type WorkerNotificationKind string
 
+// WorkerKind identifies how a worker executes.
+type WorkerKind string
+
 const (
 	WorkerNotificationSnapshot WorkerNotificationKind = "worker_snapshot"
 	WorkerNotificationSpawned  WorkerNotificationKind = "worker_spawned"
 	WorkerNotificationStopped  WorkerNotificationKind = "worker_stopped"
 	WorkerNotificationFailed   WorkerNotificationKind = "worker_failed"
+
+	// WorkerKindGo identifies an in-process Go worker.
+	WorkerKindGo WorkerKind = "go"
+	// WorkerKindSandbox identifies a binary launched in a sandbox.
+	WorkerKindSandbox WorkerKind = "sandbox"
 )
 
 // WorkerSnapshot describes one live background worker owned by the engine.
 //
-// It intentionally mirrors the old pasta worker JSON shape so existing
-// worker UIs can consume engine workers without a model migration.
+// It keeps the old pasta worker JSON fields and adds Kind so clients can
+// distinguish in-process Go workers from sandbox processes.
 type WorkerSnapshot struct {
-	ID         uint64    `json:"id"`
-	Node       uint64    `json:"node"`
-	Class      string    `json:"class"`
-	Name       string    `json:"name"`
-	WorkerName string    `json:"worker_name,omitempty"`
-	StartedAt  time.Time `json:"started_at"`
-	Orphan     bool      `json:"orphan"`
-	Error      string    `json:"error,omitempty"`
+	ID         uint64     `json:"id"`
+	Kind       WorkerKind `json:"kind"`
+	Node       uint64     `json:"node"`
+	Class      string     `json:"class"`
+	Name       string     `json:"name"`
+	WorkerName string     `json:"worker_name,omitempty"`
+	StartedAt  time.Time  `json:"started_at"`
+	Orphan     bool       `json:"orphan"`
+	Error      string     `json:"error,omitempty"`
 }
 
 // WorkerNotification describes one worker-system state change.
@@ -97,6 +106,7 @@ func (s EngineWorkerSpawner) SpawnWg(worker func(), waitgroup *sync.WaitGroup, n
 
 type workerRecord struct {
 	ID         uint64
+	Kind       WorkerKind
 	Node       uint64
 	Class      string
 	Name       string
@@ -169,6 +179,10 @@ func (t *workerTracker) spawn(node uint64, worker func(), waitgroup *sync.WaitGr
 }
 
 func (t *workerTracker) prepare(node uint64, name string) (workerRecord, error) {
+	return t.prepareKind(node, name, WorkerKindGo, true)
+}
+
+func (t *workerTracker) prepareKind(node uint64, name string, kind WorkerKind, wait bool) (workerRecord, error) {
 	nodeSnapshot, ok := t.cachedNodeSnapshot(node)
 	if !ok {
 		nodeSnapshot, ok = t.loadNodeSnapshot(node)
@@ -191,6 +205,7 @@ func (t *workerTracker) prepare(node uint64, name string) (workerRecord, error) 
 	t.nextWorkerID = id + 1
 	record := workerRecord{
 		ID:         id,
+		Kind:       kind,
 		Node:       node,
 		Class:      nodeSnapshot.Class,
 		Name:       nodeSnapshot.Name,
@@ -198,7 +213,9 @@ func (t *workerTracker) prepare(node uint64, name string) (workerRecord, error) 
 		StartedAt:  time.Now().UTC(),
 	}
 	t.workers[id] = record
-	t.wg.Add(1)
+	if wait {
+		t.wg.Add(1)
+	}
 	if t.logEvents && t.logger != nil {
 		t.logger.Debugf("engine worker spawned worker=%d node=%d class=%s name=%q worker_name=%q", id, node, record.Class, record.Name, name)
 	}
@@ -210,6 +227,39 @@ func (t *workerTracker) prepare(node uint64, name string) (workerRecord, error) 
 	t.mu.Unlock()
 	deliverWorkerNotifications(deliveries)
 	return record, nil
+}
+
+// trackSandboxProcess publishes a successfully started sandbox command as a
+// worker. Sandbox commands are not part of wg because the sandbox service,
+// which stops them, closes after the Go worker wait completes.
+func (t *workerTracker) trackSandboxProcess(node uint64, program string, done <-chan struct{}) {
+	if done == nil {
+		return
+	}
+	record, err := t.prepareKind(node, program, WorkerKindSandbox, false)
+	if err != nil {
+		return
+	}
+	go func() {
+		<-done
+		t.finishSandboxProcess(record)
+	}()
+}
+
+func (t *workerTracker) finishSandboxProcess(record workerRecord) {
+	t.mu.Lock()
+	if _, ok := t.workers[record.ID]; !ok {
+		t.mu.Unlock()
+		return
+	}
+	delete(t.workers, record.ID)
+	deliveries := t.deliveriesLocked(WorkerNotification{
+		Kind:   WorkerNotificationStopped,
+		ID:     record.ID,
+		Worker: ptr(t.workerSnapshotLocked(record, "")),
+	})
+	t.mu.Unlock()
+	deliverWorkerNotifications(deliveries)
 }
 
 func (t *workerTracker) run(record workerRecord, run func()) func() {
@@ -338,6 +388,7 @@ func (t *workerTracker) workerSnapshotLocked(worker workerRecord, failure string
 	_, present := t.nodes[worker.Node]
 	return WorkerSnapshot{
 		ID:         worker.ID,
+		Kind:       worker.Kind,
 		Node:       worker.Node,
 		Class:      worker.Class,
 		Name:       worker.Name,

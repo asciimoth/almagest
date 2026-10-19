@@ -42,6 +42,7 @@ function nodeClass(name, primaryType = "") {
 function worker(id, nodeID = 10) {
   return {
     id,
+    kind: "go",
     node: nodeID,
     class: "demo/server",
     name: "server",

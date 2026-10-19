@@ -313,6 +313,9 @@ func (e *engine) SandboxesForNode(ctx context.Context, node uint64, _, _ string)
 		return nil, pasta.ErrNoNode
 	}
 	view, changed, err := e.sandboxOwners.bind(ctx, node, snapshot.Class, snapshot.Name)
+	if err == nil {
+		view = trackedOwnerSandboxes{base: view, tracker: e.workers, node: node}
+	}
 	if err == nil && changed && e.nodeConfigChangeCallback != nil {
 		result := e.nodeConfigChangeCallback(node)
 		if result != nil {
