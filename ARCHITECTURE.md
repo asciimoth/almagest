@@ -56,6 +56,9 @@ Runtime path:
 
 See [`docs/DAEMON_ISOLATION.md`](docs/DAEMON_ISOLATION.md) for role ownership,
 IPC, platform restrictions, packaging, and security-test scope.
+See [`docs/SUBPROGRAM_SANDBOX.md`](docs/SUBPROGRAM_SANDBOX.md) for the
+subprogram security model, effective profiles, protected policy, and current
+platform limits.
 
 ## Module Boundaries
 `lib/` may depend on Pasta, Gonnect, Formular, Configer, and Bufpool. Root
