@@ -182,19 +182,9 @@ func TestLinuxPairHasNoListener(t *testing.T) {
 
 func TestLinuxFinalChildCredentials(t *testing.T) {
 	if os.Getenv("ALMAGEST_CONTROL_TEST_CHILD") == "1" {
-		// This branch runs only in the disposable test child. It proves that
-		// message credentials follow the final identity, not pair creation.
-		if os.Getuid() == 0 {
-			if err := unix.Setgroups(nil); err != nil {
-				os.Exit(2)
-			}
-			if err := unix.Setresgid(65534, 65534, 65534); err != nil {
-				os.Exit(2)
-			}
-			if err := unix.Setresuid(65534, 65534, 65534); err != nil {
-				os.Exit(2)
-			}
-		}
+		// The parent installs the disposable child's final identity before
+		// exec starts this Go runtime. This proves that message credentials
+		// follow the final identity, not pair creation.
 		f := os.NewFile(3, "child-control")
 		if _, err := f.Write([]byte{42}); err != nil {
 			os.Exit(3)
@@ -211,6 +201,11 @@ func TestLinuxFinalChildCredentials(t *testing.T) {
 	cmd := exec.Command(os.Args[0], "-test.run=^TestLinuxFinalChildCredentials$")
 	cmd.Env = append(os.Environ(), "ALMAGEST_CONTROL_TEST_CHILD=1")
 	cmd.ExtraFiles = []*os.File{b}
+	if os.Getuid() == 0 {
+		cmd.SysProcAttr = &syscall.SysProcAttr{Credential: &syscall.Credential{
+			Uid: 65534, Gid: 65534, Groups: []uint32{},
+		}}
+	}
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}

@@ -276,7 +276,6 @@ func runIsolatedRuntimeRole() error {
 			sandboxClient = nil
 			return service, nil
 		},
-		dropPrivileges: func() {}, // Native launcher already installed R's final identity and restrictions.
 	}
 	mode := executionModeIsolationDevelopment
 	if input.Production {

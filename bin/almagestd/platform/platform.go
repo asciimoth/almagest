@@ -9,7 +9,6 @@ import (
 	"github.com/asciimoth/almagest/bin/almagestd/args"
 	"github.com/asciimoth/almagest/bin/almagestd/daemonservices"
 	"github.com/asciimoth/almagest/bin/almagestd/daemonservices/localconfig"
-	"github.com/kataras/golog"
 	tailscalehujson "github.com/tailscale/hujson"
 )
 
@@ -110,8 +109,4 @@ func objectMemberIndex(obj *tailscalehujson.Object, key string) int {
 		}
 	}
 	return -1
-}
-
-func DropPrivileges() {
-	golog.Warn("Privileges dropping not yet implemented for this platform")
 }

@@ -126,7 +126,6 @@ type daemonIntegrations struct {
 	buildCommands   func(context.Context, *LogFactory, *Config) (daemonservices.NodeCommandDispatcher, daemonservices.BackendCallbackDispatcher, func(), error)
 	buildNetwork    func(*Config, daemonservices.BackendCallbackDispatcher, *LogFactory, error, int64) (daemonservices.HostNetwork, error)
 	buildSandboxes  func(*Config) (sandbox.Service, error)
-	dropPrivileges  func()
 }
 
 func directDaemonIntegrations() daemonIntegrations {
@@ -156,7 +155,6 @@ func directDaemonIntegrations() daemonIntegrations {
 			}
 			return sandboxservice.NewHost(conf.Protected.Sandbox)
 		},
-		dropPrivileges: platform.DropPrivileges,
 	}
 }
 
@@ -324,7 +322,10 @@ func runDaemon(
 	}
 	application.OwnCommands(closeCommands)
 
-	// Setup system integration here before privileges drop
+	// Direct mode keeps its launch identity because the host-network backend
+	// can need that authority for its full lifetime. Isolated mode reaches this
+	// code only after the native launcher installed the runtime role's final
+	// identity and restrictions, before exec started the Go runtime.
 	hostNetwork, err := integrations.buildNetwork(conf, backendCallbacks, logf, runtimeDependencyErr, randomSeeds.system)
 	if err != nil {
 		return err
@@ -341,10 +342,6 @@ func runDaemon(
 		admin.sandboxStatus = func() *api.SubprogramSandboxStatus {
 			return mapSandboxStatus(reporter.ServiceStatus())
 		}
-	}
-
-	if integrations.dropPrivileges != nil {
-		integrations.dropPrivileges()
 	}
 
 	nodeConfigAutosave := newNodeConfigAutosaveTrigger()

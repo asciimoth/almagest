@@ -59,7 +59,11 @@ C, and H. It is not a resident role and must not be setuid. The
 migrate the storage layout.
 
 Direct mode uses the same daemon behavior without the internal roles or IPC.
-It remains a supported explicit compatibility and development mode.
+It remains a supported explicit compatibility and development mode. It keeps
+its launch identity for its full lifetime. It does not try to change process
+credentials after the Go runtime has started threads. In the isolated Linux
+profiles, the single-threaded native launcher installs each role's final UID,
+GID, supplementary groups, and capability state before it executes a Go role.
 
 ## Trust and ownership rules
 
