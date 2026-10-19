@@ -71,10 +71,10 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 		CGO_ENABLED=0 go build -C bin -o /out/almagest-config-writer-role ./cmd/almagest-config-writer-role; \
 		CGO_ENABLED=0 go build -C bin -o /out/almagest-command-role ./cmd/almagest-command-role; \
 	fi; \
-	gcc -static -O2 -D_FORTIFY_SOURCE=3 -Wall -Wextra -Werror \
+	gcc -static-pie -O2 -D_FORTIFY_SOURCE=3 -fstack-protector-strong -fstack-clash-protection -fno-strict-overflow -Wformat=2 -Wall -Wextra -Werror -Wl,-z,relro,-z,now,-z,noexecstack \
 		-o /out/almagest-linux-role-launcher \
 		bin/native/linux-role/launcher.c $(pkg-config --cflags --libs libseccomp); \
-	gcc -static -O2 -D_FORTIFY_SOURCE=3 -Wall -Wextra -Werror \
+	gcc -static-pie -O2 -D_FORTIFY_SOURCE=3 -fstack-protector-strong -fstack-clash-protection -fno-strict-overflow -Wformat=2 -Wall -Wextra -Werror -Wl,-z,relro,-z,now,-z,noexecstack \
 		-o /out/almagest-subprogram-launcher \
 		bin/native/subprogram/launcher.c $(pkg-config --cflags --libs libseccomp); \
 	gcc -static -O2 -D_FORTIFY_SOURCE=3 -Wall -Wextra -Werror \

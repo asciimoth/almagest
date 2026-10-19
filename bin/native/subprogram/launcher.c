@@ -74,6 +74,24 @@ static uint64_t number(const char *text) {
 	return result;
 }
 
+static uint64_t bounded_number(const char *text, uint64_t minimum, uint64_t maximum,
+	const char *operation) {
+	uint64_t value = number(text);
+	require(value >= minimum && value <= maximum, operation);
+	return value;
+}
+
+static uid_t identity_number(const char *text) {
+	/* Validate before conversion. A conversion first would let values larger
+	 * than uid_t wrap to a different, valid identity. Linux reserves UINT32_MAX
+	 * as the invalid UID/GID value. */
+	return (uid_t)bounded_number(text, 1, UINT32_MAX - 1, "non-root identity bounds");
+}
+
+static int count_number(const char *text, unsigned maximum, const char *operation) {
+	return (int)bounded_number(text, 0, maximum, operation);
+}
+
 static void set_limit(int resource, uint64_t value, const char *name) {
 	struct rlimit limit = {.rlim_cur = (rlim_t)value, .rlim_max = (rlim_t)value};
 	if (setrlimit(resource, &limit) == -1) fail(name);
@@ -410,12 +428,12 @@ static void worker_loop(int life_fd, int ready_fd, uid_t uid, gid_t gid) {
 
 static int worker_main(int argc, char **argv) {
 	require(argc >= 11 && strcmp(argv[1], "worker-v3") == 0 && strcmp(argv[10], "--") == 0, "worker ABI");
-	uid_t uid = (uid_t)number(argv[2]);
-	gid_t gid = (gid_t)number(argv[3]);
-	int writable_count = (int)number(argv[4]);
-	int program_count = (int)number(argv[5]);
-	int readonly_count = (int)number(argv[6]);
-	uint64_t temporary_bytes = number(argv[7]);
+	uid_t uid = identity_number(argv[2]);
+	gid_t gid = (gid_t)identity_number(argv[3]);
+	int writable_count = count_number(argv[4], 2, "worker writable count");
+	int program_count = count_number(argv[5], 256, "worker program count");
+	int readonly_count = count_number(argv[6], 128, "worker read-only count");
+	uint64_t temporary_bytes = bounded_number(argv[7], 1, 1ULL << 50, "worker temporary storage limit");
 	const char *executable_readonly = argv[9];
 	require(uid > 0 && gid > 0 && (writable_count == 1 || writable_count == 2) &&
 		program_count >= 1 && program_count <= 256 && readonly_count >= 0 && readonly_count <= 128 &&
@@ -516,17 +534,16 @@ static void install_full_landlock(int first_executable, int executable_count) {
 
 static int launch_main(int argc, char **argv) {
 	require(argc >= 12 && strcmp(argv[1], "launch-v4") == 0 && strcmp(argv[11], "--") == 0, "full launcher ABI");
-	uid_t uid = (uid_t)number(argv[2]);
-	gid_t gid = (gid_t)number(argv[3]);
-	uint64_t descriptors = number(argv[4]);
-	uint64_t memory_bytes = number(argv[5]), tasks = number(argv[6]);
+	uid_t uid = identity_number(argv[2]);
+	gid_t gid = (gid_t)identity_number(argv[3]);
+	uint64_t descriptors = bounded_number(argv[4], 32, 65536, "launcher descriptor limit");
+	uint64_t memory_bytes = bounded_number(argv[5], 32ULL << 20, 1ULL << 40, "launcher memory limit");
+	uint64_t tasks = bounded_number(argv[6], 1, 4096, "launcher task limit");
 	const char *program_path = argv[7];
 	const char *cwd = argv[8];
-	int program_count = (int)number(argv[9]);
-	int executable_count = (int)number(argv[10]);
-	require(uid > 0 && gid > 0 && descriptors >= 32 && descriptors <= 65536 &&
-		memory_bytes >= (32ULL << 20) && tasks >= 1 && tasks <= 4096 &&
-		program_count >= 1 && program_count <= 256 && executable_count >= program_count &&
+	int program_count = count_number(argv[9], 256, "launcher program count");
+	int executable_count = count_number(argv[10], 384, "launcher executable count");
+	require(program_count >= 1 && executable_count >= program_count &&
 		executable_count <= 384 && safe_target(program_path) && safe_target(cwd), "full launcher bounds");
 	if (fcntl(status_fd, F_SETFD, FD_CLOEXEC) == -1) fail("seal exec-status channel");
 	inspect_fd(3, false, true);
@@ -664,9 +681,8 @@ static int unix_socket(const char *operation, const char *address) {
 static int socket_main(int argc, char **argv) {
 	require(argc == 7 && (strcmp(argv[4], "dial") == 0 || strcmp(argv[4], "listen") == 0 ||
 		strcmp(argv[4], "packet") == 0), "socket helper ABI");
-	uid_t uid = (uid_t)number(argv[2]);
-	gid_t gid = (gid_t)number(argv[3]);
-	require(uid > 0 && gid > 0, "socket helper identity");
+	uid_t uid = identity_number(argv[2]);
+	gid_t gid = (gid_t)identity_number(argv[3]);
 	if (fcntl(status_fd, F_SETFD, FD_CLOEXEC) == -1) fail("seal socket status channel");
 	inspect_fd(3, false, true);
 	inspect_fd(6, true, false);
@@ -718,17 +734,16 @@ static int probe_main(int argc, char **argv) {
 static int legacy_main(int argc, char **argv) {
 	require(argc >= 12 && strcmp(argv[1], "v3") == 0 && strcmp(argv[11], "--") == 0,
 		"launcher ABI");
-	uid_t uid = (uid_t)number(argv[2]);
-	gid_t gid = (gid_t)number(argv[3]);
-	uint64_t descriptors = number(argv[4]);
-	uint64_t memory_bytes = number(argv[5]), tasks = number(argv[6]);
-	int writable_count = (int)number(argv[7]);
-	int executable_count = (int)number(argv[8]);
-	int readonly_count = (int)number(argv[9]);
+	uid_t uid = identity_number(argv[2]);
+	gid_t gid = (gid_t)identity_number(argv[3]);
+	uint64_t descriptors = bounded_number(argv[4], 32, 65536, "launcher descriptor limit");
+	uint64_t memory_bytes = bounded_number(argv[5], 32ULL << 20, 1ULL << 40, "launcher memory limit");
+	(void)bounded_number(argv[6], 1, 4096, "launcher task limit");
+	int writable_count = count_number(argv[7], 2, "launcher writable count");
+	int executable_count = count_number(argv[8], 65, "launcher executable count");
+	int readonly_count = count_number(argv[9], 128, "launcher read-only count");
 	const char *executable_readonly = argv[10];
-	require(uid > 0 && gid > 0 && descriptors >= 32 && descriptors <= 65536 &&
-		memory_bytes >= (32ULL << 20) &&
-		tasks >= 1 && tasks <= 4096 && (writable_count == 1 || writable_count == 2) &&
+	require((writable_count == 1 || writable_count == 2) &&
 		executable_count >= 1 && executable_count <= 65 && readonly_count >= 0 && readonly_count <= 128 &&
 		strlen(executable_readonly) == (size_t)readonly_count,
 		"launcher bounds");
