@@ -177,6 +177,7 @@
   "node.create.title": "Create node",
   "node.description.empty": "No long description is registered for this node class.",
   "node.description.tab": "Description",
+  "node.docs.context_menu": "Open documentation",
   "node.docs.open": "Open the complete node documentation in a new tab.",
   "node.details.aria_label": "Node details",
   "node.dialog.open_failed": "The node menu could not open a dialog: {error}",

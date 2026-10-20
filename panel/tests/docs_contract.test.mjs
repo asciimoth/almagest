@@ -48,6 +48,9 @@ test("panel documentation controls open the separate page in a new tab", () => {
   assert.match(appSource, /window\.open\(documentationURL\(\), "_blank"/);
   assert.match(appSource, /docsLink\.target = "_blank"/);
   assert.match(appSource, /documentationURL\(`node\/\$\{node\.class\}`\)/);
+  assert.match(appSource, /button\.addEventListener\("contextmenu"/);
+  assert.match(appSource, /localizedText\("node\.docs\.context_menu", "Open documentation"\)/);
+  assert.match(appSource, /window\.open\(documentationURL\(`node\/\$\{cls\.class\}`\), "_blank", "noopener,noreferrer"\)/);
   assert.match(appSource, /short_description\.trimStart\(\)\.startsWith\("DEBUG "\)/);
   assert.match(appSource, /url\.pathname \+= page\.split\("\/"\)\.map\(encodeURIComponent\)\.join\("\/"\)/);
   assert.doesNotMatch(appSource.match(/function documentationURL[\s\S]*?\n\}/)?.[0] ?? "", /locale/);

@@ -177,6 +177,7 @@
   "node.create.title": "Lorem · Create node",
   "node.description.empty": "Lorem · No long description is registered for this node class.",
   "node.description.tab": "Lorem · Description",
+  "node.docs.context_menu": "Lorem · Open documentation",
   "node.docs.open": "Lorem · Open the complete node documentation in a new tab.",
   "node.details.aria_label": "Lorem · Node details",
   "node.dialog.open_failed": "Lorem · The node menu could not open a dialog: {error}",

@@ -1680,6 +1680,15 @@ function renderClassPanel(selectedCount: number): void {
     button.addEventListener("click", () => {
       addPastaNodeAt(cls.class, visibleCanvasSpawnPosition());
     });
+    button.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      new LiteGraph.ContextMenu([{
+        content: localizedText("node.docs.context_menu", "Open documentation"),
+        callback: () => {
+          window.open(documentationURL(`node/${cls.class}`), "_blank", "noopener,noreferrer");
+        },
+      }], { event }, canvas.getCanvasWindow());
+    });
     list.append(button);
   }
 }
