@@ -3,6 +3,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { test } from "node:test";
 import { JSDOM } from "jsdom";
 import {
+  classPreviewPorts,
   createDNSCacheTitle,
   createDNSKeyTitle,
   createDNSValuePreview,
@@ -27,6 +28,7 @@ import {
   updateWorkerAgeElements,
 } from "../public/build/safe_dom.js";
 import { createNotificationToast } from "../public/build/notification_center.js";
+import { setTypeColors } from "../public/build/pasta_model.js";
 
 const payload = `<img src=x onerror="globalThis.__xss = true"><script>globalThis.__xss = true</script>`;
 
@@ -82,6 +84,25 @@ test("node-sourced class picker text is not parsed as HTML", () => {
     root.querySelector(".class-experimental-sign")?.title,
     "Warning: This node type is experimental and may be removed or significantly changed.",
   );
+});
+
+test("node class previews use the shared type palette and fallback color", () => {
+  setTypeColors({ "demo/known": { color: "#123456", textColor: "#ffffff" } });
+  const cls = {
+    class: "demo/node",
+    short_description: "",
+    unique: false,
+    primary_type: "",
+    initial_ports: [
+      { direction: "input", name: "known", types: ["demo/known"] },
+      { direction: "output", name: "fallback", types: ["demo/unknown"] },
+    ],
+    experimental: false,
+  };
+
+  assert.deepEqual(classPreviewPorts(cls, "left"), [{ name: "known", color: "#123456" }]);
+  assert.deepEqual(classPreviewPorts(cls, "right"), [{ name: "fallback", color: "#9A9" }]);
+  setTypeColors({});
 });
 
 test("experimental node warning explains the compatibility risk", () => {

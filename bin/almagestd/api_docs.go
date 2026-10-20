@@ -2,12 +2,14 @@ package main
 
 import (
 	"encoding/json"
+	"maps"
 	"net/http"
 	"strings"
 
 	"github.com/asciimoth/almagest/bin/almagestd/localizedcontent"
 	"github.com/asciimoth/almagest/bin/api"
 	almagest "github.com/asciimoth/almagest/lib"
+	"github.com/asciimoth/almagest/lib/typecolor"
 )
 
 const (
@@ -68,6 +70,23 @@ func (s *apiSession) docsPage(locale, id string) (api.DocsPageResponse, bool) {
 		return api.DocsPageResponse{}, false
 	}
 	return api.DocsPageResponse{ID: page.ID, Name: page.Name, Content: content, Locale: effective}, true
+}
+
+func (s *apiSession) docsNodeClass(locale, class string) (api.DocsNodeClassResponse, bool) {
+	if s.engine == nil {
+		return api.DocsNodeClassResponse{}, false
+	}
+	snapshot, ok := s.engine.NodeClassSnapshot(almagest.MainWorkspace, class)
+	if !ok || isDebugDocsClass(snapshot.ShortDescription) {
+		return api.DocsNodeClassResponse{}, false
+	}
+	result := api.DocsNodeClassResponse{
+		Snapshot: api.NewNodeClassSnapshot(snapshot, s.admin.experimentalNodeTypes[snapshot.Class]),
+		ColorMap: make(map[string]typecolor.TypePalette, len(typecolor.DefaultColorMap)),
+	}
+	s.localizeClass(locale, &result.Snapshot)
+	maps.Copy(result.ColorMap, typecolor.DefaultColorMap)
+	return result, true
 }
 
 func apiDocsTopics(values []localizedcontent.DocTopic) []api.DocsTopic {
@@ -139,6 +158,26 @@ func (a *AdminAPI) registerDocsHTTPHandlers(mux *http.ServeMux, engine almagest.
 		w.Header().Set("Cache-Control", "no-store")
 		_, _ = w.Write([]byte(page.Content))
 	})
+	mux.HandleFunc("GET /api/docs/node-class", func(w http.ResponseWriter, r *http.Request) {
+		class, ok := docsNodeClassFromRequest(r)
+		if !ok {
+			http.Error(w, "node documentation page was not specified", http.StatusBadRequest)
+			return
+		}
+		session := a.newAPISession(engine, nil, nil)
+		response, ok := session.docsNodeClass(docsRequestLocale(r), class)
+		if !ok {
+			http.Error(w, "node class was not found", http.StatusNotFound)
+			return
+		}
+		writeDocsJSON(w, response)
+	})
+}
+
+func docsNodeClassFromRequest(r *http.Request) (string, bool) {
+	id := r.URL.Query().Get("id")
+	class, ok := strings.CutPrefix(id, "node/")
+	return class, ok && class != ""
 }
 
 func docsRequestLocale(r *http.Request) string {

@@ -1,5 +1,7 @@
 package api
 
+import "github.com/asciimoth/almagest/lib/typecolor"
+
 type DocsMethod string
 
 const (
@@ -43,4 +45,11 @@ type DocsPageResponse struct {
 	Name    string `json:"name"`
 	Content string `json:"content"`
 	Locale  string `json:"locale"`
+}
+
+// DocsNodeClassResponse contains the node metadata needed to render the same
+// compact preview that the admin panel shows in its node picker.
+type DocsNodeClassResponse struct {
+	Snapshot NodeClassSnapshot                `json:"snapshot"`
+	ColorMap map[string]typecolor.TypePalette `json:"colormap"`
 }

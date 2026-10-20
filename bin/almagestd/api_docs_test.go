@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -56,7 +57,12 @@ func TestDocsAPIFiltersRuntimeClassesAndServesLocalizedHTTP(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = engine.Close() })
-	admin := &AdminAPI{localizedContent: reader}
+	admin := &AdminAPI{
+		localizedContent: reader,
+		experimentalNodeTypes: map[string]bool{
+			"test/AdminAPIBatchNode": true,
+		},
+	}
 	session := admin.newAPISession(engine, nil, nil)
 	setLocale := mustRequest(t, "locale", api.SurfaceAdmin, string(api.MethodAdminSetLocale), api.SetLocaleRequest{Locale: "lorem"})
 	if response, err := session.handleMessage(setLocale); err != nil || response.Error != nil {
@@ -118,6 +124,31 @@ func TestDocsAPIFiltersRuntimeClassesAndServesLocalizedHTTP(t *testing.T) {
 	}
 	if localeCookie != "lorem" {
 		t.Fatalf("locale cookie = %q, want lorem", localeCookie)
+	}
+
+	previewResponse, err := http.Get(server.URL + "/api/docs/node-class?locale=lorem&id=node%2Ftest%2FAdminAPIBatchNode") //nolint:gosec
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer previewResponse.Body.Close() //nolint:errcheck
+	var preview api.DocsNodeClassResponse
+	if err := json.NewDecoder(previewResponse.Body).Decode(&preview); err != nil {
+		t.Fatal(err)
+	}
+	if previewResponse.StatusCode != http.StatusOK ||
+		preview.Snapshot.Class != "test/AdminAPIBatchNode" ||
+		preview.Snapshot.ShortDescription != "Nodus administrativus" ||
+		!preview.Snapshot.Experimental || len(preview.ColorMap) == 0 {
+		t.Fatalf("node preview response = %s, %#v", previewResponse.Status, preview)
+	}
+
+	missingPreviewResponse, err := http.Get(server.URL + "/api/docs/node-class?id=guide%2Fstart") //nolint:gosec
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer missingPreviewResponse.Body.Close() //nolint:errcheck
+	if missingPreviewResponse.StatusCode != http.StatusBadRequest {
+		t.Fatalf("non-node preview response = %s, want 400", missingPreviewResponse.Status)
 	}
 
 	debugResponse, err := http.Get(server.URL + "/api/docs/raw?id=node%2Ftest%2FDebugDocsNode") //nolint:gosec

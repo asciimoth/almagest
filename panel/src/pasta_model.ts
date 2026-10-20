@@ -419,7 +419,7 @@ function parseWorkerNotification(input: unknown): WorkerNotification | null {
   }
 }
 
-function parseNodeClassSnapshot(input: unknown): NodeClassSnapshot | null {
+export function parseNodeClassSnapshot(input: unknown): NodeClassSnapshot | null {
   if (!isRecord(input)
     || typeof input.class !== "string"
     || typeof input.short_description !== "string"

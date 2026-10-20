@@ -2,7 +2,6 @@ import {
   applyNotification,
   applyWorkspaceSnapshot,
   applyWorkerNotification,
-  DEFAULT_LINK_COLOR,
   DEFAULT_NODE_TEXT_COLOR,
   DEFAULT_NODE_TITLE_COLOR,
   emptySnapshot,
@@ -37,6 +36,7 @@ import {
   type WorkspaceSnapshotUpdate,
 } from "./pasta_model.js";
 import {
+  classPreviewPorts,
   createDNSCacheTitle,
   createDNSKeyTitle,
   createDNSValuePreview,
@@ -66,7 +66,6 @@ import {
   textElement,
   updateWorkerAgeElements,
   type WorkerNodeBlock,
-  type ClassPreviewPort,
 } from "./safe_dom.js";
 import {
   DNS_JSON_RENDER_LIMIT,
@@ -1404,38 +1403,6 @@ function paletteLabel(cls: NodeClassSnapshot): string {
   return `${shortClass(cls.class)}${cls.experimental ? " ⚠" : ""}`;
 }
 
-function previewPorts(cls: NodeClassSnapshot, side: "left" | "right"): ClassPreviewPort[] {
-  return cls.initial_ports
-    .filter((port) => previewPortSide(port.direction) === side)
-    .map((port) => ({
-      name: port.name,
-      color: previewPortColor(port.types),
-    }));
-}
-
-function previewPortSide(direction: string): "left" | "right" | null {
-  switch (direction.toLowerCase()) {
-    case "left":
-    case "in":
-    case "input":
-      return "left";
-    case "right":
-    case "out":
-    case "output":
-      return "right";
-    default:
-      return null;
-  }
-}
-
-function previewPortColor(types: string[]): string {
-  for (const type of types) {
-    const color = typeColor(type);
-    if (color) return color.color;
-  }
-  return DEFAULT_LINK_COLOR;
-}
-
 function resizeGraphCanvas(): void {
   if (!canvas) return;
   const rect = el.graphCanvas.getBoundingClientRect();
@@ -1691,8 +1658,8 @@ function renderClassPanel(selectedCount: number): void {
   );
   for (const cls of classes) {
     const primaryColor = typeColor(cls.primary_type);
-    const leftPorts = previewPorts(cls, "left");
-    const rightPorts = previewPorts(cls, "right");
+    const leftPorts = classPreviewPorts(cls, "left");
+    const rightPorts = classPreviewPorts(cls, "right");
     const button = document.createElement("button");
     button.className = "class-button";
     button.classList.toggle("class-button-primary", Boolean(primaryColor));

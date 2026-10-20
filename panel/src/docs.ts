@@ -1,10 +1,26 @@
-import { renderNodeDescription, textElement } from "./safe_dom.js";
+import {
+  classPreviewPorts,
+  createClassPreview,
+  renderNodeDescription,
+  safeCSSColor,
+  textElement,
+} from "./safe_dom.js";
 import { readLocaleCookie, writeLocaleCookie } from "./localization.js";
+import {
+  DEFAULT_NODE_TEXT_COLOR,
+  DEFAULT_NODE_TITLE_COLOR,
+  parseNodeClassSnapshot,
+  parseTypePaletteMap,
+  setTypeColors,
+  type NodeClassSnapshot,
+  type TypePalette,
+} from "./pasta_model.js";
 
 type PageSummary = { id: string; name: string; folded: boolean; order?: number; default?: boolean };
 type Topic = { id: string; name: string; folded: boolean; order?: number; topics: Topic[]; pages: PageSummary[] };
 type AvailableLocale = { locale: string; name: string };
 type TreeResponse = { locale: string; available: AvailableLocale[]; topics: Topic[] };
+type NodeClassResponse = { snapshot: NodeClassSnapshot; colormap: Record<string, TypePalette> };
 
 const localeStorageKey = "almagest.panel.locale.v1";
 const topicFoldStorageKey = "almagest.docs.topic-folds.v1";
@@ -160,6 +176,7 @@ async function openPage(id: string, updateHistory: boolean): Promise<void> {
     const content = document.createElement("div");
     renderNodeDescription(content, contentText);
     pageElement.replaceChildren(title, content);
+    void loadNodePreview(id, title);
     for (const link of treeElement.querySelectorAll<HTMLElement>("[data-page-id]")) {
       link.classList.toggle("active", link.dataset.pageId === id);
     }
@@ -170,6 +187,48 @@ async function openPage(id: string, updateHistory: boolean): Promise<void> {
       textElement("p", error instanceof Error ? error.message : String(error)),
     );
   }
+}
+
+async function loadNodePreview(id: string, title: HTMLElement): Promise<void> {
+  if (!id.startsWith("node/")) return;
+  try {
+    const response = parseNodeClassResponse(await fetchJSON<unknown>(docsAPIURL("node-class", { id })));
+    if (!response) throw new Error("Invalid node class response");
+    if (currentPage !== id || !title.isConnected) return;
+
+    const colors: Record<string, { color: string; textColor: string }> = {};
+    for (const [type, palette] of Object.entries(response.colormap)) {
+      const color = palette.type ?? palette.color;
+      const textColor = palette.text ?? palette.textColor ?? DEFAULT_NODE_TEXT_COLOR;
+      if (color) colors[type] = { color, textColor };
+    }
+    setTypeColors(colors);
+
+    const container = document.createElement("div");
+    container.className = "docs-node-preview";
+    const primaryColor = colors[response.snapshot.primary_type];
+    if (primaryColor) {
+      container.classList.add("class-preview-primary");
+      container.style.setProperty("--class-primary-color", safeCSSColor(primaryColor.color, DEFAULT_NODE_TITLE_COLOR));
+      container.style.setProperty("--class-primary-text-color", safeCSSColor(primaryColor.textColor, DEFAULT_NODE_TEXT_COLOR));
+    }
+    container.append(createClassPreview(
+      response.snapshot,
+      classPreviewPorts(response.snapshot, "left"),
+      classPreviewPorts(response.snapshot, "right"),
+    ));
+    title.after(container);
+  } catch (error) {
+    console.error(`Could not load node preview for ${id}.`, error);
+  }
+}
+
+function parseNodeClassResponse(input: unknown): NodeClassResponse | null {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return null;
+  const value = input as Record<string, unknown>;
+  const snapshot = parseNodeClassSnapshot(value.snapshot);
+  const colormap = parseTypePaletteMap(value.colormap);
+  return snapshot && colormap ? { snapshot, colormap } : null;
 }
 
 function renderLocaleOptions(available: readonly AvailableLocale[], selected: string): void {

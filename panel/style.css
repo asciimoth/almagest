@@ -169,6 +169,10 @@ body {
   font-size: clamp(24px, 4vw, 34px);
 }
 
+.docs-node-preview {
+  margin-bottom: 24px;
+}
+
 .docs-page.node-description p {
   color: var(--subtext);
   font-size: inherit;
@@ -1034,7 +1038,8 @@ h1 {
   font-size: 12px;
 }
 
-.class-button-primary span {
+.class-button-primary span,
+.class-preview-primary span {
   color: color-mix(in srgb, var(--class-primary-text-color), transparent 12%);
 }
 
@@ -1067,7 +1072,8 @@ h1 {
   font-weight: 700;
 }
 
-.class-button-primary .class-preview-title {
+.class-button-primary .class-preview-title,
+.class-preview-primary .class-preview-title {
   background: color-mix(in srgb, var(--class-primary-color), var(--surface1) 44%);
   color: var(--class-primary-text-color);
 }

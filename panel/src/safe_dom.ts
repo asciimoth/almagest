@@ -1,4 +1,11 @@
-import type { ID, NodeClassSnapshot, NodeSnapshot, WorkerSnapshot } from "./pasta_model.js";
+import {
+  DEFAULT_LINK_COLOR,
+  typeColor,
+  type ID,
+  type NodeClassSnapshot,
+  type NodeSnapshot,
+  type WorkerSnapshot,
+} from "./pasta_model.js";
 import {
   DNS_JSON_RENDER_LIMIT,
   dnsRecordsFromValue,
@@ -140,6 +147,30 @@ export function createClassButtonContent(
   return [copy, createClassPreview(cls, leftPorts, rightPorts)];
 }
 
+export function classPreviewPorts(cls: NodeClassSnapshot, side: "left" | "right"): ClassPreviewPort[] {
+  return cls.initial_ports
+    .filter((port) => classPreviewPortSide(port.direction) === side)
+    .map((port) => ({
+      name: port.name,
+      color: port.types.map(typeColor).find((color) => color !== null)?.color ?? DEFAULT_LINK_COLOR,
+    }));
+}
+
+function classPreviewPortSide(direction: string): "left" | "right" | null {
+  switch (direction.toLowerCase()) {
+    case "left":
+    case "in":
+    case "input":
+      return "left";
+    case "right":
+    case "out":
+    case "output":
+      return "right";
+    default:
+      return null;
+  }
+}
+
 export function createExperimentalNodeWarning(): HTMLElement {
   const warning = textElement("div", t("node.experimental.warning", "Warning: {warning}", {
     warning: t("node.experimental.description", EXPERIMENTAL_NODE_WARNING),
@@ -148,7 +179,7 @@ export function createExperimentalNodeWarning(): HTMLElement {
   return warning;
 }
 
-function createClassPreview(
+export function createClassPreview(
   cls: NodeClassSnapshot,
   leftPorts: ClassPreviewPort[],
   rightPorts: ClassPreviewPort[],
