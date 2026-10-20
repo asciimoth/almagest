@@ -27,7 +27,11 @@ func TestDocsAPIFiltersRuntimeClassesAndServesLocalizedHTTP(t *testing.T) {
 			development = "true"
 		}
 		writeLocaleTestFile(t, root, locale, "manifest.json", `{"format":1,"locale":"`+locale+`","name":"`+locale+`","development_only":`+development+`}`)
-		writeLocaleTestFile(t, root, locale, "panel.json", `{}`)
+		panel := `{}`
+		if locale == "lorem" {
+			panel = `{"docs.node.unavailable":"Nodus hic non adest"}`
+		}
+		writeLocaleTestFile(t, root, locale, "panel.json", panel)
 		writeLocaleTestFile(t, root, locale, "menus.json", `{}`)
 		shortName := "Admin API batch node"
 		name := "Nodes"
@@ -35,11 +39,13 @@ func TestDocsAPIFiltersRuntimeClassesAndServesLocalizedHTTP(t *testing.T) {
 			name = "Nodi"
 			shortName = "Nodus administrativus"
 		}
-		writeLocaleTestFile(t, root, locale, "nodes.json", `{"test/AdminAPIBatchNode":"`+shortName+`"}`)
+		writeLocaleTestFile(t, root, locale, "nodes.json", `{"test/AdminAPIBatchNode":"`+shortName+`","test/DocumentedOnly":"Documented only","test/DebugDocsNode":"DEBUG documentation test node"}`)
 		writeLocaleTestFile(t, root, locale, "docs/index.json", `{"topics":[{"id":"nodes","name":"`+name+`","folded":false,"node_pages":true}]}`)
 	}
 	writeLocaleTestFile(t, root, "en", "docs/pages/nodes/test/AdminAPIBatchNode.md", "English documentation")
 	writeLocaleTestFile(t, root, "lorem", "docs/pages/nodes/test/AdminAPIBatchNode.md", "Lorem documentation")
+	writeLocaleTestFile(t, root, "en", "docs/pages/nodes/test/DocumentedOnly.md", "Documentation without a runtime class")
+	writeLocaleTestFile(t, root, "en", "docs/pages/nodes/test/DebugDocsNode.md", "Hidden debug documentation")
 	reader, err := localizedcontent.New(root, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -76,13 +82,17 @@ func TestDocsAPIFiltersRuntimeClassesAndServesLocalizedHTTP(t *testing.T) {
 	tree, err := api.DecodePayload[api.DocsTreeResponse](treeResponse.Result)
 	foundTestClass := false
 	foundDebugClass := false
-	pageIDs := make([]string, 0, len(tree.Topics[0].Pages))
+	foundDocumentedOnly := false
+	availablePageIDs := make([]string, 0, len(tree.Topics[0].Pages))
 	for _, page := range tree.Topics[0].Pages {
-		pageIDs = append(pageIDs, page.ID)
 		foundTestClass = foundTestClass || page.ID == "node/test/AdminAPIBatchNode" && page.Name == "Nodus administrativus"
 		foundDebugClass = foundDebugClass || page.ID == "node/test/DebugDocsNode"
+		foundDocumentedOnly = foundDocumentedOnly || page.ID == "node/test/DocumentedOnly" && page.Name == "Documented only" && page.Available != nil && !*page.Available
+		if page.Available != nil && *page.Available {
+			availablePageIDs = append(availablePageIDs, page.ID)
+		}
 	}
-	if err != nil || tree.Locale != "lorem" || len(tree.Available) != 2 || tree.Available[1].Locale != "lorem" || len(tree.Topics) != 1 || tree.Topics[0].Name != "Nodi" || !foundTestClass || foundDebugClass {
+	if err != nil || tree.Locale != "lorem" || tree.NodeUnavailableMessage != "Nodus hic non adest" || len(tree.Available) != 2 || tree.Available[1].Locale != "lorem" || len(tree.Topics) != 1 || tree.Topics[0].Name != "Nodi" || !foundTestClass || !foundDocumentedOnly || foundDebugClass {
 		t.Fatalf("tree = %#v, %v", tree, err)
 	}
 	orderedClasses, _ := docsRuntimeClasses(engine)
@@ -90,14 +100,9 @@ func TestDocsAPIFiltersRuntimeClassesAndServesLocalizedHTTP(t *testing.T) {
 	for _, class := range orderedClasses {
 		wantPageIDs = append(wantPageIDs, "node/"+class)
 	}
-	if !slices.Equal(pageIDs, wantPageIDs) {
-		t.Fatalf("node documentation page order = %v, want node picker order %v", pageIDs, wantPageIDs)
+	if !slices.Equal(availablePageIDs, wantPageIDs) {
+		t.Fatalf("available node documentation page order = %v, want node picker order %v", availablePageIDs, wantPageIDs)
 	}
-	wantTestPageIDs := []string{"node/test/Zeta", "node/test/Alpha", "node/test/AdminAPIBatchNode"}
-	if len(pageIDs) < len(wantTestPageIDs) || !slices.Equal(pageIDs[len(pageIDs)-len(wantTestPageIDs):], wantTestPageIDs) {
-		t.Fatalf("test node documentation page order = %v, want %v", pageIDs, wantTestPageIDs)
-	}
-
 	mux := http.NewServeMux()
 	admin.registerAPIHandlers(t.Context(), mux, engine, nil, nil)
 	server := httptest.NewServer(mux)
@@ -140,6 +145,24 @@ func TestDocsAPIFiltersRuntimeClassesAndServesLocalizedHTTP(t *testing.T) {
 		preview.Snapshot.ShortDescription != "Nodus administrativus" ||
 		!preview.Snapshot.Experimental || len(preview.ColorMap) == 0 {
 		t.Fatalf("node preview response = %s, %#v", previewResponse.Status, preview)
+	}
+
+	documentedResponse, err := http.Get(server.URL + "/api/docs/raw?locale=lorem&id=node%2Ftest%2FDocumentedOnly") //nolint:gosec
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer documentedResponse.Body.Close() //nolint:errcheck
+	documentedContent, err := io.ReadAll(documentedResponse.Body)
+	if err != nil || documentedResponse.StatusCode != http.StatusOK || string(documentedContent) != "Documentation without a runtime class" {
+		t.Fatalf("documented-only response = %s, %q, %v", documentedResponse.Status, documentedContent, err)
+	}
+	documentedPreviewResponse, err := http.Get(server.URL + "/api/docs/node-class?id=node%2Ftest%2FDocumentedOnly") //nolint:gosec
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer documentedPreviewResponse.Body.Close() //nolint:errcheck
+	if documentedPreviewResponse.StatusCode != http.StatusNotFound {
+		t.Fatalf("documented-only preview response = %s, want 404", documentedPreviewResponse.Status)
 	}
 
 	missingPreviewResponse, err := http.Get(server.URL + "/api/docs/node-class?id=guide%2Fstart") //nolint:gosec

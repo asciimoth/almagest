@@ -342,6 +342,8 @@
   "tab.snapshots": "Lorem · Snapshots",
   "tab.tls": "Lorem · TLS",
   "docs.open.title": "Lorem · Open documentation in a new tab",
+  "docs.node.description_unavailable": "Lorem · Detailed documentation is not available for this node class.",
+  "docs.node.unavailable": "Lorem · This node is not available in the current daemon environment.",
   "tabs.aria_label": "Lorem · Admin tabs",
   "tls.builtin_ca.crl_download_started": "Lorem · Built-in CA CRL download started.",
   "tls.builtin_ca.curve": "Lorem · Curve",

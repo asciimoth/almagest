@@ -134,10 +134,22 @@ body {
 }
 
 .docs-tree a {
+  display: flex;
+  gap: 7px;
+  align-items: center;
   padding: 6px 8px;
   border-radius: var(--radius-sm);
   color: var(--subtext);
   font-size: 13px;
+}
+
+.docs-node-unavailable-dot {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--red);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--red), transparent 78%);
 }
 
 .docs-tree a:hover,
@@ -171,6 +183,18 @@ body {
 
 .docs-node-preview {
   margin-bottom: 24px;
+}
+
+.docs-node-unavailable {
+  margin-bottom: 24px;
+  border: 1px solid color-mix(in srgb, var(--yellow), transparent 45%);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--yellow), transparent 88%);
+  color: var(--yellow);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
 }
 
 .docs-page.node-description p {

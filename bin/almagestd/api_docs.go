@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"maps"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/asciimoth/almagest/bin/almagestd/localizedcontent"
@@ -15,6 +16,8 @@ import (
 const (
 	docsLocaleCookieName   = "almagest_locale"
 	docsLocaleCookieMaxAge = 365 * 24 * 60 * 60
+	docsNodeUnavailable    = "This node is not available in the current daemon environment."
+	docsNodeNoDescription  = "Detailed documentation is not available for this node class."
 )
 
 func (s *apiSession) handleDocsMessage(msg api.Message) (api.Message, error) {
@@ -40,9 +43,15 @@ func (s *apiSession) handleDocsMessage(msg api.Message) (api.Message, error) {
 }
 
 func (s *apiSession) docsTree(locale string) api.DocsTreeResponse {
-	classes, names := docsRuntimeClasses(s.engine)
+	classes, names, available := s.docsClasses(locale)
 	topics, effective := s.admin.localizedContent.DocsTree(locale, classes, names)
-	result := api.DocsTreeResponse{Locale: effective, Topics: apiDocsTopics(topics)}
+	message := docsNodeUnavailable
+	if panel := s.admin.localizedContent.Panel(effective); panel["docs.node.unavailable"] != "" {
+		message = panel["docs.node.unavailable"]
+	}
+	result := api.DocsTreeResponse{
+		Locale: effective, Topics: apiDocsTopics(topics, available), NodeUnavailableMessage: message,
+	}
 	if s.admin.localizedContent == nil {
 		result.Available = []api.AvailableLocale{{Locale: "en", Name: "English"}}
 		return result
@@ -57,12 +66,20 @@ func (s *apiSession) docsPage(locale, id string) (api.DocsPageResponse, bool) {
 	builtin := ""
 	if class, isNode := strings.CutPrefix(id, "node/"); isNode {
 		snapshot, ok := s.engine.NodeClassSnapshot(almagest.MainWorkspace, class)
-		if !ok || isDebugDocsClass(snapshot.ShortDescription) {
+		if ok && isDebugDocsClass(snapshot.ShortDescription) {
 			return api.DocsPageResponse{}, false
 		}
-		builtin, ok = s.engine.NodeClassLongDescription(almagest.MainWorkspace, class)
-		if !ok {
+		if !ok && s.isDebugDocumentedClass(locale, class) {
 			return api.DocsPageResponse{}, false
+		}
+		if ok {
+			builtin, _ = s.engine.NodeClassLongDescription(almagest.MainWorkspace, class)
+			if builtin == "" {
+				builtin = docsNodeNoDescription
+				if panel := s.admin.localizedContent.Panel(locale); panel["docs.node.description_unavailable"] != "" {
+					builtin = panel["docs.node.description_unavailable"]
+				}
+			}
 		}
 	}
 	page, content, effective, ok := s.admin.localizedContent.DocPage(locale, id, builtin)
@@ -89,19 +106,54 @@ func (s *apiSession) docsNodeClass(locale, class string) (api.DocsNodeClassRespo
 	return result, true
 }
 
-func apiDocsTopics(values []localizedcontent.DocTopic) []api.DocsTopic {
+func apiDocsTopics(values []localizedcontent.DocTopic, available map[string]bool) []api.DocsTopic {
 	result := make([]api.DocsTopic, 0, len(values))
 	for _, value := range values {
 		topic := api.DocsTopic{
 			ID: value.ID, Name: value.Name, Folded: value.Folded, Order: value.Order,
-			Topics: apiDocsTopics(value.Topics), Pages: make([]api.DocsPageSummary, 0, len(value.Pages)),
+			Topics: apiDocsTopics(value.Topics, available), Pages: make([]api.DocsPageSummary, 0, len(value.Pages)),
 		}
 		for _, page := range value.Pages {
-			topic.Pages = append(topic.Pages, api.DocsPageSummary{ID: page.ID, Name: page.Name, Folded: page.Folded, Order: page.Order, Default: page.Default})
+			summary := api.DocsPageSummary{ID: page.ID, Name: page.Name, Folded: page.Folded, Order: page.Order, Default: page.Default}
+			if class, isNode := strings.CutPrefix(page.ID, "node/"); isNode {
+				value := available[class]
+				summary.Available = &value
+			}
+			topic.Pages = append(topic.Pages, summary)
 		}
 		result = append(result, topic)
 	}
 	return result
+}
+
+func (s *apiSession) docsClasses(locale string) ([]string, map[string]string, map[string]bool) {
+	runtimeClasses, names := docsRuntimeClasses(s.engine)
+	classes := slices.Clone(runtimeClasses)
+	available := make(map[string]bool, len(runtimeClasses))
+	metadata := make(map[string]api.NodeClassSnapshot, len(runtimeClasses))
+	for _, class := range runtimeClasses {
+		available[class] = true
+		if snapshot, ok := s.engine.NodeClassSnapshot(almagest.MainWorkspace, class); ok {
+			metadata[class] = api.NewNodeClassSnapshot(snapshot, false)
+		}
+	}
+	for _, class := range s.admin.localizedContent.DocumentedNodeClasses(locale) {
+		if _, exists := available[class]; exists || s.isDebugDocumentedClass(locale, class) {
+			continue
+		}
+		classes = append(classes, class)
+		metadata[class] = api.NodeClassSnapshot{Class: class}
+	}
+	slices.SortFunc(classes, func(a, b string) int {
+		return api.CompareNodeClassSnapshots(metadata[a], metadata[b])
+	})
+	return classes, names, available
+}
+
+func (s *apiSession) isDebugDocumentedClass(locale, class string) bool {
+	name, _ := s.admin.localizedContent.NodeShort(locale, class, "")
+	englishName, _ := s.admin.localizedContent.NodeShort("en", class, "")
+	return isDebugDocsClass(name) || isDebugDocsClass(englishName)
 }
 
 func docsRuntimeClasses(engine almagest.Engine) ([]string, map[string]string) {

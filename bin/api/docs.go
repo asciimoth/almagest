@@ -23,6 +23,9 @@ type DocsPageSummary struct {
 	Folded  bool   `json:"folded"`
 	Order   *int   `json:"order,omitempty"`
 	Default bool   `json:"default,omitempty"`
+	// Available is set only for node pages. It reports whether the current
+	// daemon registered that node class.
+	Available *bool `json:"available,omitempty"`
 }
 
 type DocsTopic struct {
@@ -35,9 +38,10 @@ type DocsTopic struct {
 }
 
 type DocsTreeResponse struct {
-	Locale    string            `json:"locale"`
-	Available []AvailableLocale `json:"available"`
-	Topics    []DocsTopic       `json:"topics"`
+	Locale                 string            `json:"locale"`
+	Available              []AvailableLocale `json:"available"`
+	Topics                 []DocsTopic       `json:"topics"`
+	NodeUnavailableMessage string            `json:"node_unavailable_message"`
 }
 
 type DocsPageResponse struct {

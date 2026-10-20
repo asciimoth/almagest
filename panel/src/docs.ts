@@ -16,10 +16,10 @@ import {
   type TypePalette,
 } from "./pasta_model.js";
 
-type PageSummary = { id: string; name: string; folded: boolean; order?: number; default?: boolean };
+type PageSummary = { id: string; name: string; folded: boolean; order?: number; default?: boolean; available?: boolean };
 type Topic = { id: string; name: string; folded: boolean; order?: number; topics: Topic[]; pages: PageSummary[] };
 type AvailableLocale = { locale: string; name: string };
-type TreeResponse = { locale: string; available: AvailableLocale[]; topics: Topic[] };
+type TreeResponse = { locale: string; available: AvailableLocale[]; topics: Topic[]; node_unavailable_message: string };
 type NodeClassResponse = { snapshot: NodeClassSnapshot; colormap: Record<string, TypePalette> };
 
 const localeStorageKey = "almagest.panel.locale.v1";
@@ -33,7 +33,9 @@ const requestedLocale = urlLocale || readLocaleCookie() || savedLocale() || navi
 let currentPage = parameters.get("page") || pageIDFromPath(window.location.pathname);
 let effectiveLocale = requestedLocale;
 const pageNames = new Map<string, string>();
+const pageAvailability = new Map<string, boolean>();
 const topicFolds = savedTopicFolds();
+let nodeUnavailableMessage = "This node is not available in the current daemon environment.";
 
 function savedLocale(): string {
   try {
@@ -118,7 +120,14 @@ function renderTopics(topics: readonly Topic[]): DocumentFragment {
     const children = document.createElement("div");
     children.className = "docs-tree-children";
     for (const page of topic.pages) {
-      const link = textElement("a", page.name);
+      const link = document.createElement("a");
+      if (page.available === false) {
+        const status = textElement("span", "", "docs-node-unavailable-dot");
+        status.title = nodeUnavailableMessage;
+        status.setAttribute("aria-label", nodeUnavailableMessage);
+        link.append(status);
+      }
+      link.append(document.createTextNode(page.name));
       link.href = docsURL(page.id);
       link.dataset.pageId = page.id;
       link.classList.toggle("active", page.id === currentPage);
@@ -175,8 +184,12 @@ async function openPage(id: string, updateHistory: boolean): Promise<void> {
     const title = textElement("h1", name);
     const content = document.createElement("div");
     renderNodeDescription(content, contentText);
-    pageElement.replaceChildren(title, content);
-    void loadNodePreview(id, title);
+    const unavailable = pageAvailability.get(id) === false
+      ? textElement("div", nodeUnavailableMessage, "docs-node-unavailable")
+      : null;
+    if (unavailable) unavailable.setAttribute("role", "status");
+    pageElement.replaceChildren(title, ...(unavailable ? [unavailable] : []), content);
+    if (!unavailable) void loadNodePreview(id, title);
     for (const link of treeElement.querySelectorAll<HTMLElement>("[data-page-id]")) {
       link.classList.toggle("active", link.dataset.pageId === id);
     }
@@ -248,11 +261,13 @@ async function loadTree(locale: string): Promise<void> {
     if (!urlLocale) writeLocaleCookie(locale);
     const tree = await fetchJSON<TreeResponse>(docsAPIURL("tree"));
     effectiveLocale = tree.locale;
+    nodeUnavailableMessage = tree.node_unavailable_message || nodeUnavailableMessage;
     saveLocale(tree.locale);
     document.documentElement.lang = tree.locale;
     renderLocaleOptions(tree.available, tree.locale);
     const ids = pageIDs(tree.topics);
     pageNames.clear();
+    pageAvailability.clear();
     collectPageNames(tree.topics);
     if (!ids.includes(currentPage)) currentPage = defaultPageID(tree.topics) || ids[0] || "";
     treeElement.replaceChildren(renderTopics(tree.topics));
@@ -274,7 +289,10 @@ localeSelect.addEventListener("change", () => {
 
 function collectPageNames(topics: readonly Topic[]): void {
   for (const topic of topics) {
-    for (const page of topic.pages) pageNames.set(page.id, page.name);
+    for (const page of topic.pages) {
+      pageNames.set(page.id, page.name);
+      if (typeof page.available === "boolean") pageAvailability.set(page.id, page.available);
+    }
     collectPageNames(topic.topics);
   }
 }

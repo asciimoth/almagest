@@ -342,6 +342,8 @@
   "tab.snapshots": "Snapshots",
   "tab.tls": "TLS",
   "docs.open.title": "Open documentation in a new tab",
+  "docs.node.description_unavailable": "Detailed documentation is not available for this node class.",
+  "docs.node.unavailable": "This node is not available in the current daemon environment.",
   "tabs.aria_label": "Admin tabs",
   "tls.builtin_ca.crl_download_started": "Built-in CA CRL download started.",
   "tls.builtin_ca.curve": "Curve",

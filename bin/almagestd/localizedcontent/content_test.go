@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"syscall"
 	"testing"
 	"time"
@@ -170,6 +171,7 @@ func TestDocumentationTreePageAndLocaleFallback(t *testing.T) {
 	write(t, filepath.Join(root, "en", "docs", "index.json"), index)
 	write(t, filepath.Join(root, "lorem", "docs", "index.json"), `{"topics":[{"id":"nodes","name":"Nodi","order":20,"folded":false,"node_pages":true},{"id":"guide","name":"Dux","order":10,"folded":false,"pages":[{"id":"guide/later","name":"Postea","file":"guide/later.md","order":20},{"id":"guide/start","name":"Initium","file":"guide/start.md","order":10,"default":true}]}]}`)
 	write(t, filepath.Join(root, "en", "docs", "pages", "nodes", "almagest", "Tun.md"), "English node")
+	write(t, filepath.Join(root, "lorem", "docs", "pages", "nodes", "almagest", "LocalizedOnly.md"), "Localized-only node")
 	write(t, filepath.Join(root, "en", "nodes.json"), `{"almagest/Tun":"System TUN"}`)
 	write(t, filepath.Join(root, "lorem", "nodes.json"), `{"almagest/Tun":"TUN lorem"}`)
 	write(t, filepath.Join(root, "en", "docs", "pages", "guide", "start.md"), "English guide")
@@ -179,6 +181,9 @@ func TestDocumentationTreePageAndLocaleFallback(t *testing.T) {
 	reader, err := New(root, nil)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if got := reader.DocumentedNodeClasses("lorem"); !slices.Equal(got, []string{"almagest/LocalizedOnly", "almagest/Tun"}) {
+		t.Fatalf("documented node classes = %v", got)
 	}
 
 	topics, locale := reader.DocsTree("lorem", []string{"almagest/Tun", "missing", "pasta/Trigger"})

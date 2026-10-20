@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -259,8 +260,51 @@ func (r *Reader) NodeLong(locale, class, builtin string) (string, Source) {
 	return r.docText(locale, "nodes/"+class+".md", builtin)
 }
 
+// DocumentedNodeClasses returns node classes that have a documentation file
+// in the effective locale or in the English fallback locale.
+func (r *Reader) DocumentedNodeClasses(locale string) []string {
+	if r == nil {
+		return nil
+	}
+	locales := []string{"en"}
+	effective := r.EffectiveLocale(locale)
+	if effective != "en" {
+		locales = append(locales, effective)
+	}
+	classes := map[string]struct{}{}
+	for _, locale := range locales {
+		root := filepath.Join(r.root, locale, "docs", "pages", "nodes")
+		namespaces, err := os.ReadDir(root)
+		if err != nil {
+			continue
+		}
+		for _, namespace := range namespaces {
+			if namespace.Type()&os.ModeSymlink != 0 || !namespace.IsDir() || !classSegment.MatchString(namespace.Name()) {
+				continue
+			}
+			pages, err := os.ReadDir(filepath.Join(root, namespace.Name()))
+			if err != nil {
+				continue
+			}
+			for _, page := range pages {
+				name := strings.TrimSuffix(page.Name(), ".md")
+				class := namespace.Name() + "/" + name
+				if page.Type()&os.ModeSymlink != 0 || !page.Type().IsRegular() || !strings.HasSuffix(page.Name(), ".md") || !validClass(class) {
+					continue
+				}
+				if text, err := r.readText(filepath.Join(locale, "docs", "pages", "nodes", namespace.Name(), page.Name()), maxNodeDocument); err == nil && text != "" {
+					classes[class] = struct{}{}
+				}
+			}
+		}
+	}
+	result := slices.Collect(maps.Keys(classes))
+	slices.Sort(result)
+	return result
+}
+
 // DocsTree returns the localized documentation tree. Node pages are generated
-// from the classes available in the current runtime.
+// from the supplied class list.
 func (r *Reader) DocsTree(locale string, classes []string, builtinNames ...map[string]string) ([]DocTopic, string) {
 	if r == nil {
 		return nil, "en"
