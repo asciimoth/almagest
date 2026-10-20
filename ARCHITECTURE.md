@@ -221,8 +221,17 @@ Platform and CLI:
 
 Admin panel:
 - `panel/src/app.ts`: graph UI and WebSocket admin API client.
+- `panel/src/docs.ts`: dedicated documentation page using the read-only HTTP
+  documentation API.
 - `panel/src/pasta_model.ts`: snapshot/notification helpers.
 - `panel/scripts/`: dependency vendoring and static publish scripts.
+
+Localized documentation:
+- `locales/<locale>/nodes.json`: localized node class short descriptions.
+- `locales/<locale>/docs/index.json`: localized nested topic and page tree.
+- `locales/<locale>/docs/pages/`: localized Markdown pages. Runtime node pages
+  are below `nodes/<namespace>/<class>.md` and use `node/<namespace>/<class>`
+  as their stable API ID.
 
 Editable config flow:
 1. A client reads the `config.snapshot` API result and keeps its revision.

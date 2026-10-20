@@ -8,6 +8,29 @@ export type LocaleSnapshot = {
   revision: number;
 };
 
+export const LOCALE_COOKIE_NAME = "almagest_locale";
+const LOCALE_COOKIE_MAX_AGE = 365 * 24 * 60 * 60;
+
+export function readLocaleCookie(source: Pick<Document, "cookie"> = document): string {
+  const prefix = `${LOCALE_COOKIE_NAME}=`;
+  for (const part of source.cookie.split(";")) {
+    const value = part.trim();
+    if (!value.startsWith(prefix)) continue;
+    try {
+      return decodeURIComponent(value.slice(prefix.length));
+    } catch {
+      return "";
+    }
+  }
+  return "";
+}
+
+export function writeLocaleCookie(locale: string, target: Pick<Document, "cookie" | "location"> = document): void {
+  if (!locale) return;
+  const secure = target.location.protocol === "https:" ? "; Secure" : "";
+  target.cookie = `${LOCALE_COOKIE_NAME}=${encodeURIComponent(locale)}; Path=/; Max-Age=${LOCALE_COOKIE_MAX_AGE}; SameSite=Lax${secure}`;
+}
+
 export function matchPreferredLocale(available: AvailableLocale[], preferred: readonly string[]): string | null {
   const localeByTag = new Map(available.map(({ locale }) => [locale.toLowerCase(), locale]));
   for (const preference of preferred) {

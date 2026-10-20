@@ -72,68 +72,122 @@ func validateLocaleDirectory(reader *Reader, locale string) error {
 	}
 	for _, entry := range entries {
 		switch entry.Name() {
-		case "manifest.json", "panel.json", "menus.json":
+		case "manifest.json", "panel.json", "menus.json", "nodes.json":
 			if entry.Type()&os.ModeSymlink != 0 || !entry.Type().IsRegular() {
 				return fmt.Errorf("%s is not a regular file", entry.Name())
 			}
-		case "nodes":
+		case "docs":
 			if entry.Type()&os.ModeSymlink != 0 || !entry.IsDir() {
-				return fmt.Errorf("nodes is not a directory")
+				return fmt.Errorf("docs is not a directory")
 			}
-			if err := validateNodeDirectory(reader, locale); err != nil {
+			if err := validateDocsDirectory(reader, locale); err != nil {
 				return err
 			}
 		default:
 			return fmt.Errorf("unexpected file %s", entry.Name())
 		}
 	}
+	var nodes map[string]string
+	if err := reader.readJSON(filepath.Join(locale, "nodes.json"), maxCatalog, &nodes); err != nil {
+		return fmt.Errorf("nodes.json: %w", err)
+	}
+	if err := validateNodes(nodes); err != nil {
+		return fmt.Errorf("nodes.json: %w", err)
+	}
 	return nil
 }
 
-func validateNodeDirectory(reader *Reader, locale string) error {
-	root := filepath.Join(reader.root, locale, "nodes")
-	namespaces, err := os.ReadDir(root)
-	if err != nil {
-		return err
+func validateDocsDirectory(reader *Reader, locale string) error {
+	var index docIndex
+	if err := reader.readJSON(filepath.Join(locale, "docs", "index.json"), maxCatalog, &index); err != nil {
+		return fmt.Errorf("docs/index.json: %w", err)
 	}
-	for _, namespace := range namespaces {
-		if !classSegment.MatchString(namespace.Name()) || namespace.Type()&os.ModeSymlink != 0 || !namespace.IsDir() {
-			return fmt.Errorf("invalid node namespace %q", namespace.Name())
-		}
-		files, err := os.ReadDir(filepath.Join(root, namespace.Name()))
+	if err := validateDocsIndex(index); err != nil {
+		return fmt.Errorf("docs/index.json: %w", err)
+	}
+	root := filepath.Join(reader.root, locale, "docs", "pages")
+	if err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		for _, file := range files {
-			if file.Type()&os.ModeSymlink != 0 || !file.Type().IsRegular() {
-				return fmt.Errorf("invalid node file %s/%s", namespace.Name(), file.Name())
+		if entry.Type()&os.ModeSymlink != 0 {
+			return fmt.Errorf("documentation path is a symbolic link: %s", path)
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		if !entry.Type().IsRegular() || !strings.HasSuffix(entry.Name(), ".md") {
+			return fmt.Errorf("invalid documentation file %s", path)
+		}
+		relative, relErr := filepath.Rel(root, path)
+		if relErr != nil || !validDocFile(filepath.ToSlash(relative)) {
+			return fmt.Errorf("invalid documentation file %s", path)
+		}
+		value, readErr := reader.readText(filepath.Join(locale, "docs", "pages", relative), maxNodeDocument)
+		if readErr != nil || value == "" {
+			if readErr == nil {
+				readErr = fmt.Errorf("empty text")
 			}
-			class, suffix, valid := splitNodeFile(file.Name())
-			if !valid || !classSegment.MatchString(class) {
-				return fmt.Errorf("invalid node file name %s/%s", namespace.Name(), file.Name())
-			}
-			limit := int64(maxNodeDocument)
-			if suffix == ".short.txt" {
-				limit = maxValue
-			}
-			value, err := reader.readText(filepath.Join(locale, "nodes", namespace.Name(), file.Name()), limit)
-			if err != nil || value == "" {
-				if err == nil {
-					err = fmt.Errorf("empty text")
-				}
-				return fmt.Errorf("invalid node file %s/%s: %w", namespace.Name(), file.Name(), err)
-			}
+			return fmt.Errorf("invalid documentation file %s: %w", relative, readErr)
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+	entries, err := os.ReadDir(filepath.Join(reader.root, locale, "docs"))
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if entry.Name() != "index.json" && entry.Name() != "pages" {
+			return fmt.Errorf("unexpected docs entry %s", entry.Name())
 		}
 	}
 	return nil
 }
 
-func splitNodeFile(name string) (string, string, bool) {
-	for _, suffix := range []string{".short.txt", ".md"} {
-		if strings.HasSuffix(name, suffix) {
-			class := strings.TrimSuffix(name, suffix)
-			return class, suffix, class != ""
+func validateDocsIndex(index docIndex) error {
+	ids := map[string]struct{}{}
+	pageCount := 0
+	defaultPages := 0
+	var validateTopics func([]docTopic) error
+	validateTopics = func(topics []docTopic) error {
+		for _, topic := range topics {
+			if !validDocID(topic.ID) || strings.TrimSpace(topic.Name) == "" || len(topic.Name) > maxValue || !validDocOrder(topic.Order) {
+				return fmt.Errorf("invalid topic %q", topic.ID)
+			}
+			if _, exists := ids[topic.ID]; exists {
+				return fmt.Errorf("duplicate documentation ID %q", topic.ID)
+			}
+			ids[topic.ID] = struct{}{}
+			if err := validateTopics(topic.Topics); err != nil {
+				return err
+			}
+			for _, page := range topic.Pages {
+				pageCount++
+				if pageCount > maxDocsPages || !validDocID(page.ID) || strings.TrimSpace(page.Name) == "" || len(page.Name) > maxValue || !validDocFile(page.File) || !validDocOrder(page.Order) {
+					return fmt.Errorf("invalid page %q", page.ID)
+				}
+				if _, exists := ids[page.ID]; exists {
+					return fmt.Errorf("duplicate documentation ID %q", page.ID)
+				}
+				ids[page.ID] = struct{}{}
+				if page.Default {
+					defaultPages++
+					if defaultPages > 1 {
+						return fmt.Errorf("more than one default documentation page")
+					}
+				}
+			}
 		}
+		return nil
 	}
-	return "", "", false
+	if len(index.Topics) == 0 {
+		return fmt.Errorf("documentation topics are empty")
+	}
+	return validateTopics(index.Topics)
+}
+
+func validDocOrder(order *int) bool {
+	return order == nil || *order >= 0 && *order <= maxDocsPages
 }

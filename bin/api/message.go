@@ -29,6 +29,7 @@ const (
 	SurfaceAdmin     Surface = "admin"
 	SurfaceConfig    Surface = "config"
 	SurfaceDNS       Surface = "dns"
+	SurfaceDocs      Surface = "docs"
 	SurfaceEngine    Surface = "engine"
 	SurfaceKV        Surface = "kv"
 	SurfaceLog       Surface = "log"
@@ -43,6 +44,7 @@ func Surfaces() []string {
 		string(SurfaceAdmin),
 		string(SurfaceConfig),
 		string(SurfaceDNS),
+		string(SurfaceDocs),
 		string(SurfaceEngine),
 		string(SurfaceKV),
 		string(SurfaceLog),

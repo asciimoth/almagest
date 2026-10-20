@@ -1,0 +1,38 @@
+{
+  "topics": [
+    {
+      "id": "guides",
+      "name": "Guides",
+      "order": 1,
+      "folded": false,
+      "pages": [
+        {
+          "id": "guide/welcome",
+          "name": "Welcome",
+          "file": "guides/welcome.md",
+          "order": 1,
+          "default": true
+        }
+      ],
+      "topics": [
+        {
+          "id": "guides/concepts",
+          "name": "Concepts",
+          "pages": [
+            {
+              "id": "guide/workspaces",
+              "name": "Workspaces",
+              "file": "guides/workspaces.md"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "nodes",
+      "name": "Nodes",
+      "order": 2,
+      "node_pages": true
+    }
+  ]
+}

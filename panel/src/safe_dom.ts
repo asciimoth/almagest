@@ -757,12 +757,23 @@ function renderMarkdownBlock(block: MarkdownBlock): HTMLElement {
 
 function renderMarkdownParagraph(input: string): HTMLParagraphElement {
   const paragraph = document.createElement("p");
-  const lines = input.split(/\n/);
+  const lines = input.split(/\r?\n/);
   lines.forEach((line, index) => {
-    if (index > 0) paragraph.append(document.createElement("br"));
-    paragraph.append(renderMarkdownInline(line));
+    const trailingBackslashes = line.match(/\\+$/)?.[0].length ?? 0;
+    let content = line.replace(/[ \t]+$/, "");
+    if (index < lines.length - 1 && trailingBackslashes % 2 === 1) content = content.slice(0, -1);
+    if (index > 0) paragraph.append(hardBreakForPreviousLine(lines[index - 1] ?? "")
+      ? document.createElement("br")
+      : document.createTextNode(" "));
+    paragraph.append(renderMarkdownInline(index > 0 ? content.replace(/^[ \t]+/, "") : content));
   });
   return paragraph;
+}
+
+function hardBreakForPreviousLine(line: string): boolean {
+  const trailingSpaces = line.match(/ +$/)?.[0].length ?? 0;
+  const trailingBackslashes = line.match(/\\+$/)?.[0].length ?? 0;
+  return trailingSpaces >= 2 || trailingBackslashes % 2 === 1;
 }
 
 function renderMarkdownCodeBlock(input: string, language: string): HTMLPreElement {

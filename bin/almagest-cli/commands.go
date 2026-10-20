@@ -65,6 +65,8 @@ func run(
 		runErr = runAdmin(ctx, c, rest[1:], stdout, stderr)
 	case "dns":
 		runErr = runDNS(ctx, c, rest[1:], stdout, stderr)
+	case "docs":
+		runErr = runDocs(ctx, c, rest[1:], stdout, stderr)
 	case "config":
 		runErr = runConfig(ctx, c, rest[1:], stdin, stdout, stderr)
 	case "engine":
@@ -767,6 +769,7 @@ Surfaces:
   admin    hello, ping, colormap, mutation lease commands, version status watch
   config   read and update the editable HuJSON daemon config
   dns      DNS cache snapshots, subscriptions, and mutations
+  docs     fetch the documentation tree and pages
   engine   workspace snapshots, graph mutations, notification subscriptions
   kv       persistent key/value store snapshots, subscriptions, and mutations
   log      log subscription and watch commands

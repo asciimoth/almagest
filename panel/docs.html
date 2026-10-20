@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'none'; connect-src 'self'; form-action 'none'; frame-src 'none'; img-src 'self' data:; media-src 'none'; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; worker-src 'none'">
+    <title>Almagest Documentation</title>
+    <link rel="stylesheet" href="/style.css">
+  </head>
+  <body class="docs-body">
+    <main class="docs-shell">
+      <header class="docs-header">
+        <div>
+          <h1>Almagest documentation</h1>
+        </div>
+        <div class="docs-header-actions">
+          <label class="docs-locale-picker" for="docs-locale-select">
+            <span>Language</span>
+            <select id="docs-locale-select" aria-label="Documentation language" disabled></select>
+          </label>
+          <a href="/">Admin panel</a>
+        </div>
+      </header>
+      <div class="docs-layout">
+        <nav id="docs-tree" class="docs-tree" aria-label="Documentation topics"></nav>
+        <article id="docs-page" class="docs-page node-description" aria-live="polite">
+          <p>Loading documentation.</p>
+        </article>
+      </div>
+    </main>
+    <script type="module" src="/public/build/docs.js"></script>
+  </body>
+</html>

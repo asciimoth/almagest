@@ -465,6 +465,22 @@ test("node descriptions render multiline code blocks as text", () => {
   assert.equal(root.querySelectorAll("p code").length, 1);
 });
 
+test("node descriptions render Markdown soft and hard line breaks", () => {
+  installDOM();
+  const root = document.createElement("div");
+  renderNodeDescription(root, [
+    "A regular line",
+    "break is a space.",
+    "Two spaces create a hard break.  ",
+    "This stays on the next line.\\",
+    "A backslash also creates a hard break.",
+  ].join("\n"));
+
+  const paragraph = root.querySelector("p");
+  assert.equal(paragraph?.textContent, "A regular line break is a space. Two spaces create a hard break.This stays on the next line.A backslash also creates a hard break.");
+  assert.equal(paragraph?.querySelectorAll("br").length, 2);
+});
+
 test("panel source does not use script execution or HTML parser sinks", async () => {
   const files = (await readdir(new URL("../src/", import.meta.url)))
     .filter((file) => file.endsWith(".ts"))

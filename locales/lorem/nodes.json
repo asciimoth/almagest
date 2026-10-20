@@ -1,0 +1,12 @@
+{
+  "almagest/Command": "Lorem commandum",
+  "almagest/DnsClient": "Lorem DNS",
+  "almagest/HttpServer": "Lorem HTTP",
+  "almagest/SocksClient": "Lorem SOCKS",
+  "almagest/TimeTrigger": "Lorem timer",
+  "almagest/TorDriver": "Lorem Tor",
+  "almagest/Tun": "Lorem systema TUN",
+  "almagest/WireGuard": "Lorem WireGuard nexus",
+  "pasta/BoolConstant": "Lorem boolean",
+  "pasta/PopUp": "Lorem pop-up"
+}

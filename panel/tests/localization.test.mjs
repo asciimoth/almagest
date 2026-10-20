@@ -2,7 +2,14 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { JSDOM } from "jsdom";
 
-import { applyLocale, matchPreferredLocale, parseLocaleSnapshot, text } from "../public/build/localization.js";
+import {
+  applyLocale,
+  matchPreferredLocale,
+  parseLocaleSnapshot,
+  readLocaleCookie,
+  text,
+  writeLocaleCookie,
+} from "../public/build/localization.js";
 
 test("browser locale matching follows preference order and available parents", () => {
   const available = [
@@ -15,6 +22,14 @@ test("browser locale matching follows preference order and available parents", (
   assert.equal(matchPreferredLocale(available, ["fr-CA", "en-US"]), "en");
   assert.equal(matchPreferredLocale(available, ["zh-Hant-TW"]), "zh-Hant");
   assert.equal(matchPreferredLocale(available, ["pt-PT"]), null);
+});
+
+test("selected locale is stored in the shared HTTP cookie", () => {
+  const dom = new JSDOM("<!doctype html>", { url: "https://almagest.test/docs/" });
+  writeLocaleCookie("pt-BR", dom.window.document);
+
+  assert.equal(readLocaleCookie(dom.window.document), "pt-BR");
+  assert.match(dom.window.document.cookie, /(?:^|; )almagest_locale=pt-BR(?:;|$)/);
 });
 
 test("locale parser rejects malformed snapshots", () => {

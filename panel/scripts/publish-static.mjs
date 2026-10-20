@@ -57,12 +57,21 @@ await cp(new URL("../vendor", import.meta.url), new URL("vendor", target), { rec
 await optimize(target);
 
 const app = await readFile(new URL("public/build/app.js", target));
+const docs = await readFile(new URL("public/build/docs.js", target));
 const formularMenu = await readFile(new URL("vendor/formular-menu/formular-menu.js", target));
-const version = createHash("sha256").update(app).update(formularMenu).digest("hex").slice(0, 16);
+const version = createHash("sha256").update(app).update(docs).update(formularMenu).digest("hex").slice(0, 16);
 const indexURL = new URL("index.html", target);
 const index = await readFile(new URL("../index.html", import.meta.url), "utf8");
 const versionedIndex = index.replace("./public/build/app.js", `./public/build/app.js?v=${version}`);
 await writeFile(indexURL, await minifyHTML(versionedIndex, {
+  collapseWhitespace: true,
+  conservativeCollapse: true,
+  removeComments: true,
+}));
+await mkdir(new URL("docs/", target), { recursive: true });
+const docsIndex = (await readFile(new URL("../docs.html", import.meta.url), "utf8"))
+  .replace("/public/build/docs.js", `/public/build/docs.js?v=${version}`);
+await writeFile(new URL("docs/index.html", target), await minifyHTML(docsIndex, {
   collapseWhitespace: true,
   conservativeCollapse: true,
   removeComments: true,

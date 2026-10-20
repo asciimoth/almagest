@@ -1,0 +1,38 @@
+{
+  "topics": [
+    {
+      "id": "guides",
+      "name": "Ducibus lorem",
+      "order": 1,
+      "folded": false,
+      "pages": [
+        {
+          "id": "guide/welcome",
+          "name": "Salve lorem",
+          "file": "guides/welcome.md",
+          "order": 1,
+          "default": true
+        }
+      ],
+      "topics": [
+        {
+          "id": "guides/concepts",
+          "name": "Conceptus lorem",
+          "pages": [
+            {
+              "id": "guide/workspaces",
+              "name": "Spatia lorem",
+              "file": "guides/workspaces.md"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "nodes",
+      "name": "Nodi lorem",
+      "order": 2,
+      "node_pages": true
+    }
+  ]
+}

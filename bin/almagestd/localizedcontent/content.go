@@ -23,12 +23,14 @@ const (
 	maxValue        = 4 << 10
 	maxLocales      = 128
 	maxKeys         = 10_000
+	maxDocsPages    = 10_000
 )
 
 var (
 	localePattern = regexp.MustCompile(`^[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*$`)
 	classSegment  = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]*$`)
 	catalogKey    = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]*$`)
+	docIDPattern  = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.:/-]*$`)
 )
 
 // Source identifies the fallback level that supplied a value.
@@ -45,6 +47,48 @@ const (
 type Locale struct {
 	Locale string `json:"locale"`
 	Name   string `json:"name"`
+}
+
+// DocPage is one localized documentation page entry.
+type DocPage struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Folded  bool   `json:"folded"`
+	Order   *int   `json:"order,omitempty"`
+	Default bool   `json:"default,omitempty"`
+}
+
+// DocTopic is one localized documentation topic entry.
+type DocTopic struct {
+	ID     string     `json:"id"`
+	Name   string     `json:"name"`
+	Folded bool       `json:"folded"`
+	Order  *int       `json:"order,omitempty"`
+	Topics []DocTopic `json:"topics"`
+	Pages  []DocPage  `json:"pages"`
+}
+
+type docIndex struct {
+	Topics []docTopic `json:"topics"`
+}
+
+type docTopic struct {
+	ID        string     `json:"id"`
+	Name      string     `json:"name"`
+	Folded    *bool      `json:"folded,omitempty"`
+	Order     *int       `json:"order,omitempty"`
+	NodePages bool       `json:"node_pages,omitempty"`
+	Topics    []docTopic `json:"topics,omitempty"`
+	Pages     []docPage  `json:"pages,omitempty"`
+}
+
+type docPage struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	File    string `json:"file"`
+	Folded  *bool  `json:"folded,omitempty"`
+	Order   *int   `json:"order,omitempty"`
+	Default bool   `json:"default,omitempty"`
 }
 
 type manifest struct {
@@ -66,6 +110,7 @@ type Reader struct {
 	warn     func(string, ...any)
 	mu       sync.Mutex
 	panels   map[string]cachedCatalog[map[string]string]
+	nodes    map[string]cachedCatalog[map[string]string]
 	menus    map[string]cachedCatalog[menuCatalog]
 	revision atomic.Uint64
 }
@@ -82,7 +127,12 @@ func New(root string, warn func(string, ...any)) (*Reader, error) {
 	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
 		return nil, fmt.Errorf("locale root is not a directory")
 	}
-	return &Reader{root: root, warn: warn, panels: map[string]cachedCatalog[map[string]string]{}, menus: map[string]cachedCatalog[menuCatalog]{}}, nil
+	return &Reader{
+		root: root, warn: warn,
+		panels: map[string]cachedCatalog[map[string]string]{},
+		nodes:  map[string]cachedCatalog[map[string]string]{},
+		menus:  map[string]cachedCatalog[menuCatalog]{},
+	}, nil
 }
 
 // ValidLocale reports whether name follows the restricted locale grammar.
@@ -187,23 +237,106 @@ func (r *Reader) Panel(locale string) map[string]string {
 
 // NodeShort resolves one required short description.
 func (r *Reader) NodeShort(locale, class, builtin string) (string, Source) {
-	return r.nodeText(locale, class, ".short.txt", maxValue, builtin)
+	if r != nil && validClass(class) {
+		canonical, ok := CanonicalLocale(locale)
+		if ok && canonical != "en" {
+			if catalog, valid := r.nodeCatalog(canonical); valid && catalog[class] != "" {
+				return catalog[class], SourceRequested
+			}
+		}
+		if catalog, valid := r.nodeCatalog("en"); valid && catalog[class] != "" {
+			return catalog[class], SourceEnglish
+		}
+	}
+	if builtin != "" {
+		return builtin, SourceBuiltin
+	}
+	return "", SourceMissing
 }
 
 // NodeLong resolves one required Markdown description.
 func (r *Reader) NodeLong(locale, class, builtin string) (string, Source) {
-	return r.nodeText(locale, class, ".md", maxNodeDocument, builtin)
+	return r.docText(locale, "nodes/"+class+".md", builtin)
 }
 
-func (r *Reader) nodeText(locale, class, suffix string, limit int64, builtin string) (string, Source) {
-	if r != nil && validClass(class) {
+// DocsTree returns the localized documentation tree. Node pages are generated
+// from the classes available in the current runtime.
+func (r *Reader) DocsTree(locale string, classes []string, builtinNames ...map[string]string) ([]DocTopic, string) {
+	if r == nil {
+		return nil, "en"
+	}
+	effective := r.EffectiveLocale(locale)
+	index, ok := r.docsIndex(effective)
+	if !ok && effective != "en" {
+		effective = "en"
+		index, ok = r.docsIndex(effective)
+	}
+	if !ok {
+		return nil, effective
+	}
+	classes = slices.Clone(classes)
+	return buildDocTopics(index.Topics, classes, func(class string) string {
+		parts := strings.Split(class, "/")
+		builtin := parts[len(parts)-1]
+		if len(builtinNames) != 0 && builtinNames[0][class] != "" {
+			builtin = builtinNames[0][class]
+		}
+		name, _ := r.NodeShort(effective, class, builtin)
+		return name
+	}), effective
+}
+
+// DocPage resolves one documentation page by its stable ID.
+func (r *Reader) DocPage(locale, id string, builtinContent ...string) (DocPage, string, string, bool) {
+	if r == nil || !validDocID(id) {
+		return DocPage{}, "", "en", false
+	}
+	effective := r.EffectiveLocale(locale)
+	index, ok := r.docsIndex(effective)
+	if !ok && effective != "en" {
+		effective = "en"
+		index, ok = r.docsIndex(effective)
+	}
+	if !ok {
+		return DocPage{}, "", effective, false
+	}
+	page, file, found := findDocPage(index.Topics, id)
+	if !found {
+		return DocPage{}, "", effective, false
+	}
+	if class, isNode := strings.CutPrefix(id, "node/"); isNode {
+		parts := strings.Split(class, "/")
+		page.Name, _ = r.NodeShort(effective, class, parts[len(parts)-1])
+	}
+	builtin := ""
+	if len(builtinContent) != 0 {
+		builtin = builtinContent[0]
+	}
+	content, source := r.docText(effective, file, builtin)
+	return page, content, effective, source != SourceMissing
+}
+
+func (r *Reader) docsIndex(locale string) (docIndex, bool) {
+	var value docIndex
+	if err := r.readJSON(filepath.Join(locale, "docs", "index.json"), maxCatalog, &value); err != nil {
+		return docIndex{}, false
+	}
+	if err := validateDocsIndex(value); err != nil {
+		r.warning("ignoring invalid %s/docs/index.json: %v", locale, err)
+		return docIndex{}, false
+	}
+	return value, true
+}
+
+func (r *Reader) docText(locale, file, builtin string) (string, Source) {
+	if r != nil && validDocFile(file) {
 		canonical, ok := CanonicalLocale(locale)
 		if ok && canonical != "en" {
-			if value, err := r.readText(filepath.Join(canonical, "nodes", filepath.FromSlash(class)+suffix), limit); err == nil && value != "" {
+			if value, err := r.readText(filepath.Join(canonical, "docs", "pages", filepath.FromSlash(file)), maxNodeDocument); err == nil && value != "" {
 				return value, SourceRequested
 			}
 		}
-		if value, err := r.readText(filepath.Join("en", "nodes", filepath.FromSlash(class)+suffix), limit); err == nil && value != "" {
+		if value, err := r.readText(filepath.Join("en", "docs", "pages", filepath.FromSlash(file)), maxNodeDocument); err == nil && value != "" {
 			return value, SourceEnglish
 		}
 	}
@@ -211,6 +344,104 @@ func (r *Reader) nodeText(locale, class, suffix string, limit int64, builtin str
 		return builtin, SourceBuiltin
 	}
 	return "", SourceMissing
+}
+
+func buildDocTopics(values []docTopic, classes []string, nodeName func(string) string) []DocTopic {
+	values = slices.Clone(values)
+	slices.SortStableFunc(values, func(a, b docTopic) int { return compareDocOrder(a.Order, b.Order) })
+	result := make([]DocTopic, 0, len(values))
+	for _, value := range values {
+		topic := DocTopic{ID: value.ID, Name: value.Name, Folded: folded(value.Folded), Order: value.Order, Pages: make([]DocPage, 0, len(value.Pages))}
+		topic.Topics = buildDocTopics(value.Topics, classes, nodeName)
+		pages := slices.Clone(value.Pages)
+		slices.SortStableFunc(pages, func(a, b docPage) int { return compareDocOrder(a.Order, b.Order) })
+		for _, page := range pages {
+			topic.Pages = append(topic.Pages, DocPage{ID: page.ID, Name: page.Name, Folded: folded(page.Folded), Order: page.Order, Default: page.Default})
+		}
+		if value.NodePages {
+			for _, class := range classes {
+				if validClass(class) {
+					topic.Pages = append(topic.Pages, DocPage{ID: "node/" + class, Name: nodeName(class), Folded: true})
+				}
+			}
+		}
+		result = append(result, topic)
+	}
+	return result
+}
+
+func findDocPage(topics []docTopic, id string) (DocPage, string, bool) {
+	if strings.HasPrefix(id, "node/") && validClass(strings.TrimPrefix(id, "node/")) {
+		class := strings.TrimPrefix(id, "node/")
+		for _, topic := range topics {
+			if containsNodePages(topic) {
+				parts := strings.Split(class, "/")
+				return DocPage{ID: id, Name: parts[1], Folded: true}, "nodes/" + class + ".md", true
+			}
+		}
+	}
+	for _, topic := range topics {
+		for _, page := range topic.Pages {
+			if page.ID == id {
+				return DocPage{ID: page.ID, Name: page.Name, Folded: folded(page.Folded), Order: page.Order, Default: page.Default}, page.File, true
+			}
+		}
+		if page, file, ok := findDocPage(topic.Topics, id); ok {
+			return page, file, true
+		}
+	}
+	return DocPage{}, "", false
+}
+
+func compareDocOrder(a, b *int) int {
+	if a == nil && b == nil {
+		return 0
+	}
+	if a == nil {
+		return 1
+	}
+	if b == nil {
+		return -1
+	}
+	if *a < *b {
+		return -1
+	}
+	if *a > *b {
+		return 1
+	}
+	return 0
+}
+
+func containsNodePages(topic docTopic) bool {
+	if topic.NodePages {
+		return true
+	}
+	for _, child := range topic.Topics {
+		if containsNodePages(child) {
+			return true
+		}
+	}
+	return false
+}
+
+func folded(value *bool) bool {
+	return value == nil || *value
+}
+
+func validDocID(value string) bool {
+	return value != "" && len(value) <= 256 && !strings.Contains(value, "..") && docIDPattern.MatchString(value)
+}
+
+func validDocFile(value string) bool {
+	if value == "" || !strings.HasSuffix(value, ".md") || filepath.IsAbs(value) || filepath.Clean(value) != filepath.FromSlash(value) {
+		return false
+	}
+	for _, part := range strings.Split(value, "/") {
+		if part == "" || part == "." || part == ".." || !classSegment.MatchString(strings.TrimSuffix(part, ".md")) {
+			return false
+		}
+	}
+	return true
 }
 
 func validClass(class string) bool {
@@ -222,6 +453,12 @@ func (r *Reader) panelCatalog(locale string) (map[string]string, bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return loadCatalog(r, locale, "panel.json", r.panels, validatePanel)
+}
+
+func (r *Reader) nodeCatalog(locale string) (map[string]string, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return loadCatalog(r, locale, "nodes.json", r.nodes, validateNodes)
 }
 
 func (r *Reader) menu(locale string) (menuCatalog, bool) {
@@ -283,9 +520,6 @@ func (r *Reader) readText(relative string, limit int64) (string, error) {
 	value := strings.TrimSuffix(string(data), "\n")
 	if strings.HasSuffix(value, "\r") || strings.Contains(value, "\x00") {
 		return "", fmt.Errorf("invalid text")
-	}
-	if strings.HasSuffix(relative, ".short.txt") && strings.ContainsAny(value, "\r\n") {
-		return "", fmt.Errorf("short description contains a line break")
 	}
 	return value, nil
 }
@@ -360,6 +594,18 @@ func validatePanel(catalog map[string]string) error {
 	for key, value := range catalog {
 		if !catalogKey.MatchString(key) || value == "" || len(value) > maxValue || !utf8.ValidString(value) {
 			return fmt.Errorf("invalid panel value %q", key)
+		}
+	}
+	return nil
+}
+
+func validateNodes(catalog map[string]string) error {
+	if len(catalog) > maxKeys {
+		return fmt.Errorf("catalog has too many keys")
+	}
+	for class, value := range catalog {
+		if !validClass(class) || value == "" || len(value) > maxValue || !utf8.ValidString(value) || strings.ContainsAny(value, "\r\n") {
+			return fmt.Errorf("invalid node value %q", class)
 		}
 	}
 	return nil

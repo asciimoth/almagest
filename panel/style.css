@@ -37,6 +37,171 @@ body {
   color: var(--text);
 }
 
+.docs-body {
+  overflow: hidden;
+}
+
+.docs-shell {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100vh;
+  min-width: 0;
+}
+
+.docs-header {
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 62px;
+  padding: 10px 24px;
+  border-bottom: 1px solid var(--surface0);
+  background: color-mix(in srgb, var(--mantle), transparent 4%);
+}
+
+.docs-header > div {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.docs-header a,
+.docs-tree a {
+  color: var(--blue);
+  text-decoration: none;
+}
+
+.docs-header-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.docs-locale-picker {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  color: var(--subtext);
+  font-size: 13px;
+}
+
+.docs-locale-picker select {
+  min-height: 34px;
+  padding: 4px 30px 4px 10px;
+  border: 1px solid var(--surface1);
+  border-radius: var(--radius-md);
+  background: var(--crust);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+}
+
+.docs-locale-picker select:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.docs-layout {
+  display: grid;
+  grid-template-columns: minmax(230px, 290px) minmax(0, 1fr);
+  min-height: 0;
+}
+
+.docs-tree {
+  min-height: 0;
+  overflow: auto;
+  padding: 20px 16px 48px 24px;
+  border-right: 1px solid var(--surface0);
+  background: var(--mantle);
+}
+
+.docs-tree details {
+  margin: 2px 0;
+}
+
+.docs-tree summary {
+  padding: 6px 4px;
+  cursor: pointer;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.docs-tree-children {
+  display: grid;
+  margin-left: 8px;
+  padding-left: 9px;
+  border-left: 1px solid var(--surface0);
+}
+
+.docs-tree a {
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  color: var(--subtext);
+  font-size: 13px;
+}
+
+.docs-tree a:hover,
+.docs-tree a.active {
+  background: var(--surface0);
+  color: var(--text);
+}
+
+.docs-tree a.active {
+  box-shadow: inset 3px 0 var(--blue);
+}
+
+.docs-page.node-description {
+  min-width: 0;
+  overflow: auto;
+  padding: 42px clamp(24px, 6vw, 72px) 80px;
+  color: var(--text);
+  font-size: 17px;
+  line-height: 1.7;
+}
+
+.docs-page.node-description > * {
+  width: min(100%, 900px);
+  margin-inline: auto;
+}
+
+.docs-page h1 {
+  margin: 0 0 24px;
+  font-size: clamp(24px, 4vw, 34px);
+}
+
+.docs-page.node-description p {
+  color: var(--subtext);
+  font-size: inherit;
+  line-height: inherit;
+}
+
+.docs-page.node-description code {
+  font-size: 0.9em;
+}
+
+@media (max-width: 720px) {
+  .docs-header {
+    gap: 12px;
+    padding-inline: 16px;
+  }
+
+  .docs-layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(120px, 38vh) minmax(0, 1fr);
+  }
+
+  .docs-tree {
+    border-right: 0;
+    border-bottom: 1px solid var(--surface0);
+    padding: 12px 16px;
+  }
+
+  .docs-page.node-description {
+    padding: 28px 20px 60px;
+    font-size: 16px;
+  }
+}
+
 #notifications {
   position: fixed;
   right: 16px;
@@ -860,6 +1025,13 @@ h1 {
   background: transparent;
   padding: 0;
   white-space: pre;
+}
+
+.node-docs-link {
+  display: inline-block;
+  margin-top: 14px;
+  color: var(--blue);
+  font-size: 12px;
 }
 
 .class-button-primary span {

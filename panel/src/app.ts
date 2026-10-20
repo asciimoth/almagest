@@ -224,7 +224,9 @@ import {
   applyLocale,
   matchPreferredLocale,
   parseLocaleSnapshot,
+  readLocaleCookie,
   text as localizedText,
+  writeLocaleCookie,
   type LocaleSnapshot,
 } from "./localization.js";
 
@@ -515,6 +517,7 @@ const el = {
   sandboxStatus: document.querySelector<HTMLElement>("#sandbox-status")!,
   locale: document.querySelector<HTMLSelectElement>("#locale-select")!,
   localeCode: document.querySelector<HTMLElement>("#locale-code")!,
+  docs: document.querySelector<HTMLButtonElement>("#tab-docs")!,
   tabs: [...document.querySelectorAll<HTMLButtonElement>("[data-tab]")],
   panels: [...document.querySelectorAll<HTMLElement>("[data-panel]")],
   graphCanvas: document.querySelector<HTMLCanvasElement>("#graph-canvas")!,
@@ -1837,6 +1840,14 @@ function renderNodePanel(id: number): void {
   descriptionPanel.dataset.nodeDescription = "";
   renderNodeDescription(descriptionPanel, description);
   docsPanel.append(textElement("h2", shortClass(node.class)), descriptionPanel);
+  if (!nodeClass?.short_description.trimStart().startsWith("DEBUG ")) {
+    const docsLink = textElement("a", localizedText("node.docs.open", "Open the complete node documentation in a new tab."));
+    docsLink.className = "node-docs-link";
+    docsLink.href = documentationURL(`node/${node.class}`);
+    docsLink.target = "_blank";
+    docsLink.rel = "noopener noreferrer";
+    docsPanel.append(docsLink);
+  }
   const nodePanelHeader: HTMLElement[] = [createNodeNameForm(node.name), tabs];
   if (nodeClass?.experimental) nodePanelHeader.push(createExperimentalNodeWarning());
   el.sidekick.replaceChildren(...nodePanelHeader, menuPanel, docsPanel);
@@ -6152,6 +6163,7 @@ function wireUI(): void {
     tab.addEventListener("click", () => setTab(tab.dataset.tab ?? "graph"));
     tab.addEventListener("keydown", moveTabFocus);
   }
+  el.docs.addEventListener("click", () => window.open(documentationURL(), "_blank", "noopener,noreferrer"));
   el.secPanel.addEventListener("scroll", rememberSecScrollState);
   el.dnsPanel.addEventListener("scroll", rememberDNSScrollState);
   el.tlsPanel.addEventListener("scroll", rememberTLSScrollState);
@@ -6266,8 +6278,10 @@ async function boot(): Promise<void> {
 }
 
 async function restoreLocale(): Promise<void> {
-  let requested: string | null = null;
-  try { requested = window.localStorage.getItem(LOCALE_STORAGE_KEY); } catch { /* Storage can be disabled. */ }
+  let requested: string | null = readLocaleCookie() || null;
+  if (requested === null) {
+    try { requested = window.localStorage.getItem(LOCALE_STORAGE_KEY); } catch { /* Storage can be disabled. */ }
+  }
   let snapshot: LocaleSnapshot;
   if (requested !== null) {
     try {
@@ -6288,6 +6302,7 @@ async function restoreLocale(): Promise<void> {
 
 function installLocale(snapshot: LocaleSnapshot): void {
   applyLocale(snapshot);
+  writeLocaleCookie(snapshot.effective);
   el.locale.replaceChildren(...snapshot.available.map((locale) => {
     const option = document.createElement("option");
     option.value = locale.locale;
@@ -6297,6 +6312,12 @@ function installLocale(snapshot: LocaleSnapshot): void {
   el.locale.value = snapshot.effective;
   el.localeCode.textContent = snapshot.effective;
   el.locale.disabled = false;
+}
+
+function documentationURL(page = ""): string {
+  const url = new URL("./docs/", window.location.href);
+  if (page) url.pathname += page.split("/").map(encodeURIComponent).join("/");
+  return url.pathname + url.search;
 }
 
 function setBackendStatus(key: string, builtin: string, failed = false): void {

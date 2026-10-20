@@ -1,1 +1,0 @@
-Set integer variable

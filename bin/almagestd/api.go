@@ -304,6 +304,8 @@ func (s *apiSession) handleMessage(msg api.Message) (api.Message, error) {
 		return s.handleConfigMessage(msg)
 	case api.SurfaceDNS:
 		return s.handleDNSMessage(msg)
+	case api.SurfaceDocs:
+		return s.handleDocsMessage(msg)
 	case api.SurfaceEngine:
 		return s.handleEngineMessage(msg)
 	case api.SurfaceKV:
@@ -347,6 +349,9 @@ func (s *apiSession) handleAdminMessage(msg api.Message) (api.Message, error) {
 				},
 				string(api.SurfaceDNS): map[string]any{
 					"methods": api.DNSMethods(),
+				},
+				string(api.SurfaceDocs): map[string]any{
+					"methods": api.DocsMethods(),
 				},
 				string(api.SurfaceEngine): map[string]any{
 					"methods": api.EngineMethods(),

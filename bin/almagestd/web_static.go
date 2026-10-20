@@ -15,7 +15,9 @@ import (
 func gzipFileServer(files fs.FS) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		name := strings.TrimPrefix(path.Clean("/"+r.URL.Path), "/")
-		if name == "." || strings.HasSuffix(r.URL.Path, "/") {
+		if name == "docs" || strings.HasPrefix(name, "docs/") {
+			name = "docs/index.html"
+		} else if name == "." || strings.HasSuffix(r.URL.Path, "/") {
 			name = path.Join(name, "index.html")
 		}
 		contents, err := fs.ReadFile(files, name+".gz")

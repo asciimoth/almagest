@@ -24,6 +24,7 @@ func (a *AdminAPI) registerAPIHandlers(
 	mux.HandleFunc("/api/ws", func(w http.ResponseWriter, r *http.Request) {
 		a.serveWebsocket(ctx, w, r, engine, sys, logf)
 	})
+	a.registerDocsHTTPHandlers(mux, engine)
 }
 
 func (a *AdminAPI) serveWebsocket(

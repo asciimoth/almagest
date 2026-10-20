@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -79,14 +80,16 @@ func TestDialLocalMachinePipeRejectsUserOwnedServer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer listener.Close() //nolint:errcheck
+	t.Cleanup(func() { _ = listener.Close() })
 	accepted := make(chan net.Conn, 1)
 	go func() {
 		conn, _ := listener.Accept()
 		accepted <- conn
 	}()
 
-	conn, err := dialLocalPipe(context.Background(), endpoint{
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	conn, err := dialLocalPipe(ctx, endpoint{
 		kind:      endpointPipe,
 		pipeTrust: pipeTrustMachine,
 		pipeName:  name,
@@ -95,7 +98,18 @@ func TestDialLocalMachinePipeRejectsUserOwnedServer(t *testing.T) {
 		_ = conn.Close()
 		t.Fatal("machine pipe dial accepted a user-owned server")
 	}
-	if serverConn := <-accepted; serverConn != nil {
-		_ = serverConn.Close()
+	if !errors.Is(err, windows.ERROR_ACCESS_DENIED) {
+		t.Fatalf("machine pipe dial error = %v, want access denied", err)
+	}
+	if err := listener.Close(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case serverConn := <-accepted:
+		if serverConn != nil {
+			_ = serverConn.Close()
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("pipe listener did not stop")
 	}
 }

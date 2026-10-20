@@ -71,22 +71,27 @@ locales/
     manifest.json
     panel.json
     menus.json
-    nodes/
-      almagest/
-        Tun.short.txt
-        Tun.md
-        WireGuard.short.txt
-        WireGuard.md
-      pasta/
-        PopUp.short.txt
-        PopUp.md
+    nodes.json
+    docs/
+      index.json
+      pages/
+        nodes/
+          almagest/
+            Tun.md
+            WireGuard.md
+          pasta/
+            PopUp.md
   lorem/
     manifest.json
     panel.json
     menus.json
-    nodes/
-      almagest/
-        Tun.short.txt
+    nodes.json
+    docs/
+      index.json
+      pages/
+        nodes/
+          almagest/
+            Tun.md
 ```
 
 The recommended installed root is:
@@ -137,19 +142,21 @@ lookup order for `pt-BR` is `pt-BR`, then `en`, then the built-in value. A
 future version can add `pt` between the first two entries after that behavior
 is part of the API contract.
 
-### Node files
+### Node catalog and documentation
 
-A class name maps to two files. For example, `almagest/Tun` maps to:
+A class name maps to one entry in `nodes.json` and one Markdown page. For
+example, `almagest/Tun` maps to:
 
 ```text
-nodes/almagest/Tun.short.txt
-nodes/almagest/Tun.md
+nodes.json: "almagest/Tun": "System TUN"
+docs/pages/nodes/almagest/Tun.md
 ```
 
-The reader accepts exactly two safe class-name path segments. Each segment
-must match `[A-Za-z0-9][A-Za-z0-9_.-]*`. It rejects all other names for file
-lookup and uses the built-in class descriptions. It must never pass an
-unchecked class name to `os.Open`.
+`nodes.json` is a flat map from stable class ID to localized short
+description. The reader accepts exactly two safe class-name segments. Each
+segment must match `[A-Za-z0-9][A-Za-z0-9_.-]*`. It rejects all other names
+and uses the built-in class descriptions. It must never pass an unchecked
+class name to `os.Open`.
 
 All reads are relative to an already-open locale-root directory. The reader
 rejects symlinks and non-regular final files. On Linux, use `openat2` with
@@ -162,9 +169,47 @@ is writable by the development user.
 If Pasta later permits class IDs outside this grammar, add a manifest mapping
 or a reversible safe encoding. Do not relax path validation.
 
-Node files are separate because long documentation changes often, benefits
-from normal Markdown editor support, and should not require parsing a large
-catalog. The files also give node documentation clear review diffs.
+Long node documentation stays in separate Markdown files because it changes
+often and benefits from normal Markdown editor support. The node description
+API and the documentation page API read the same Markdown file. Short
+descriptions are small values and stay together in `nodes.json`.
+
+### Documentation index
+
+`docs/index.json` contains the localized documentation tree. A topic and a
+page can have an optional nonnegative `order` integer. Ordered entries come
+before entries without `order`. Equal values keep their declaration order.
+Ordering applies independently to the topics and pages at each tree level.
+
+Topics are folded by default. Set `"folded": false` to open a topic on the
+first visit. Browser storage preserves later fold changes. One page in the
+complete tree can have `"default": true`. The documentation page opens that
+page when its URL does not select a page. If there is no default page, it opens
+the first page in tree order.
+
+For example:
+
+```json
+{
+  "topics": [
+    {
+      "id": "guides",
+      "name": "Guides",
+      "order": 1,
+      "folded": false,
+      "pages": [
+        {
+          "id": "guide/welcome",
+          "name": "Welcome",
+          "file": "guides/welcome.md",
+          "order": 1,
+          "default": true
+        }
+      ]
+    }
+  ]
+}
+```
 
 ### Panel catalog
 
@@ -241,8 +286,8 @@ Lookup is per value, not per file. For each requested value, the reader uses:
 
 This rule permits an incomplete locale bundle. The `lorem` development bundle
 contains every panel string and every current English menu entry so developers
-can inspect each user-interface text type. Its node-document set stays partial
-to exercise English fallback for missing files.
+can inspect each user-interface text type. Its node-name catalog and node
+document set stay partial to exercise English fallback for missing values.
 
 An empty file or empty JSON string is a present value only for fields that
 explicitly permit an empty value. Node short and long descriptions, required
@@ -272,7 +317,7 @@ mutable Formular messages.
 
 Development edits must become visible without a daemon or panel rebuild. The
 reader therefore checks file identity, modification time, and size on lookup
-and reparses a changed JSON file. Node text files can be read on demand. It can
+and reparses a changed JSON file. Markdown files can be read on demand. It can
 cache unchanged valid content, but it must not require a filesystem watcher.
 Filesystem watchers have different behavior across the supported platforms
 and can lose events.

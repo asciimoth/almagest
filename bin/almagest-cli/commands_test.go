@@ -1357,6 +1357,26 @@ func TestHelpDoesNotDial(t *testing.T) {
 	}
 }
 
+func TestDocsPageRaw(t *testing.T) {
+	transport := &fakeTransport{reads: []api.Message{
+		mustResponse(t, "1", api.LocaleSnapshot{Requested: "lorem", Effective: "lorem"}),
+		mustResponse(t, "2", api.DocsPageResponse{ID: "guide/start", Name: "Initium", Content: "Lorem page", Locale: "lorem"}),
+	}}
+	var stdout bytes.Buffer
+	err := run(context.Background(), []string{"docs", "page", "--id", "guide/start", "--locale", "lorem", "--raw"}, nil, &stdout, io.Discard, func(context.Context, endpoint) (apiTransport, error) {
+		return transport, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stdout.String() != "Lorem page\n" {
+		t.Fatalf("stdout = %q", stdout.String())
+	}
+	if len(transport.writes) != 2 || transport.writes[0].Surface != api.SurfaceAdmin || transport.writes[1].Surface != api.SurfaceDocs {
+		t.Fatalf("writes = %#v", transport.writes)
+	}
+}
+
 func TestCommandDispatchCoversRequestCommands(t *testing.T) {
 	tests := []struct {
 		name string

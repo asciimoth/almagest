@@ -17,8 +17,8 @@ func TestReaderFallbackReloadAndSafety(t *testing.T) {
 	root := t.TempDir()
 	writeBundle(t, root, "en", `{"app.title":"English","only.en":"Fallback"}`)
 	writeBundle(t, root, "lorem", `{"app.title":"Lorem"}`)
-	write(t, filepath.Join(root, "en", "nodes", "almagest", "Tun.short.txt"), "System TUN\n")
-	write(t, filepath.Join(root, "lorem", "nodes", "almagest", "Tun.short.txt"), "Lorem TUN\n")
+	write(t, filepath.Join(root, "en", "nodes.json"), `{"almagest/Tun":"System TUN","almagest/Other":"English other"}`)
+	write(t, filepath.Join(root, "lorem", "nodes.json"), `{"almagest/Tun":"Lorem TUN"}`)
 	reader, err := New(root, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -31,6 +31,9 @@ func TestReaderFallbackReloadAndSafety(t *testing.T) {
 	}
 	if got, source := reader.NodeShort("missing", "almagest/Tun", "built-in"); got != "System TUN" || source != SourceEnglish {
 		t.Fatalf("fallback = %q, %s", got, source)
+	}
+	if got, source := reader.NodeShort("lorem", "almagest/Other", "built-in"); got != "English other" || source != SourceEnglish {
+		t.Fatalf("per-key fallback = %q, %s", got, source)
 	}
 	if got, source := reader.NodeShort("lorem", "../escape", "built-in"); got != "built-in" || source != SourceBuiltin {
 		t.Fatalf("unsafe fallback = %q, %s", got, source)
@@ -57,6 +60,15 @@ func TestReaderFallbackReloadAndSafety(t *testing.T) {
 	if got := reader.Panel("lorem")["app.title"]; got != "Atomic" {
 		t.Fatalf("atomic reload title = %q", got)
 	}
+	nodes := filepath.Join(root, "lorem", "nodes.json")
+	write(t, nodes, `{"almagest/Tun":"Updated TUN"}`)
+	when = when.Add(2 * time.Second)
+	if err := os.Chtimes(nodes, when, when); err != nil {
+		t.Fatal(err)
+	}
+	if got, source := reader.NodeShort("lorem", "almagest/Tun", "built-in"); got != "Updated TUN" || source != SourceRequested {
+		t.Fatalf("reloaded node = %q, %s", got, source)
+	}
 	write(t, panel, `{"app.title":`)
 	when = when.Add(2 * time.Second)
 	if err := os.Chtimes(panel, when, when); err != nil {
@@ -66,11 +78,6 @@ func TestReaderFallbackReloadAndSafety(t *testing.T) {
 		t.Fatalf("last valid title = %q", got)
 	}
 
-	if makeTestSymlink(t, filepath.Join(root, "en", "nodes", "almagest", "Tun.short.txt"), filepath.Join(root, "en", "nodes", "almagest", "Link.short.txt")) {
-		if got, source := reader.NodeShort("en", "almagest/Link", "safe"); got != "safe" || source != SourceBuiltin {
-			t.Fatalf("symlink fallback = %q, %s", got, source)
-		}
-	}
 }
 
 func TestTranslateFormularUsesIDsAndDoesNotMutateInput(t *testing.T) {
@@ -140,11 +147,11 @@ func TestReaderRejectsInvalidAndOversizedContent(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	writeBytes(t, filepath.Join(root, "en", "nodes", "almagest", "Bad.short.txt"), []byte{0xff})
+	writeBytes(t, filepath.Join(root, "en", "nodes.json"), []byte{0xff})
 	if got, source := reader.NodeShort("en", "almagest/Bad", "fallback"); got != "fallback" || source != SourceBuiltin {
 		t.Fatalf("invalid UTF-8 = %q, %s", got, source)
 	}
-	writeBytes(t, filepath.Join(root, "en", "nodes", "almagest", "Large.md"), bytes.Repeat([]byte("x"), maxNodeDocument+1))
+	writeBytes(t, filepath.Join(root, "en", "docs", "pages", "nodes", "almagest", "Large.md"), bytes.Repeat([]byte("x"), maxNodeDocument+1))
 	if got, source := reader.NodeLong("en", "almagest/Large", "fallback"); got != "fallback" || source != SourceBuiltin {
 		t.Fatalf("oversized document = %q, %s", got, source)
 	}
@@ -152,6 +159,59 @@ func TestReaderRejectsInvalidAndOversizedContent(t *testing.T) {
 	writeBytes(t, filepath.Join(root, "en", "panel.json"), bytes.Repeat([]byte(" "), maxCatalog+1))
 	if got := reader.Panel("en"); len(got) != 0 {
 		t.Fatalf("oversized panel accepted: %#v", got)
+	}
+}
+
+func TestDocumentationTreePageAndLocaleFallback(t *testing.T) {
+	root := t.TempDir()
+	writeBundle(t, root, "en", `{}`)
+	writeBundle(t, root, "lorem", `{}`)
+	index := `{"topics":[{"id":"nodes","name":"Nodes","order":20,"folded":false,"node_pages":true},{"id":"guide","name":"Guide","order":10,"folded":false,"pages":[{"id":"guide/later","name":"Later","file":"guide/later.md","order":20},{"id":"guide/start","name":"Start","file":"guide/start.md","order":10,"default":true}]}]}`
+	write(t, filepath.Join(root, "en", "docs", "index.json"), index)
+	write(t, filepath.Join(root, "lorem", "docs", "index.json"), `{"topics":[{"id":"nodes","name":"Nodi","order":20,"folded":false,"node_pages":true},{"id":"guide","name":"Dux","order":10,"folded":false,"pages":[{"id":"guide/later","name":"Postea","file":"guide/later.md","order":20},{"id":"guide/start","name":"Initium","file":"guide/start.md","order":10,"default":true}]}]}`)
+	write(t, filepath.Join(root, "en", "docs", "pages", "nodes", "almagest", "Tun.md"), "English node")
+	write(t, filepath.Join(root, "en", "nodes.json"), `{"almagest/Tun":"System TUN"}`)
+	write(t, filepath.Join(root, "lorem", "nodes.json"), `{"almagest/Tun":"TUN lorem"}`)
+	write(t, filepath.Join(root, "en", "docs", "pages", "guide", "start.md"), "English guide")
+	write(t, filepath.Join(root, "lorem", "docs", "pages", "guide", "start.md"), "Lorem guide")
+	write(t, filepath.Join(root, "en", "docs", "pages", "guide", "later.md"), "English later guide")
+	write(t, filepath.Join(root, "lorem", "docs", "pages", "guide", "later.md"), "Lorem later guide")
+	reader, err := New(root, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	topics, locale := reader.DocsTree("lorem", []string{"almagest/Tun", "missing", "pasta/Trigger"})
+	if locale != "lorem" || len(topics) != 2 || topics[0].Name != "Dux" || topics[0].Folded || len(topics[0].Pages) != 2 || topics[0].Pages[0].Name != "Initium" || !topics[0].Pages[0].Default || topics[1].Name != "Nodi" || len(topics[1].Pages) != 2 || topics[1].Pages[0].Name != "TUN lorem" {
+		t.Fatalf("tree = %#v, locale = %q", topics, locale)
+	}
+	if page, content, effective, ok := reader.DocPage("lorem", "node/almagest/Tun"); !ok || page.Name != "TUN lorem" || content != "English node" || effective != "lorem" {
+		t.Fatalf("node page = %#v, %q, %q, %t", page, content, effective, ok)
+	}
+	if page, content, _, ok := reader.DocPage("lorem", "node/pasta/Trigger", "Built-in trigger documentation"); !ok || page.Name != "Trigger" || content != "Built-in trigger documentation" {
+		t.Fatalf("built-in node page = %#v, %q, %t", page, content, ok)
+	}
+	if page, content, _, ok := reader.DocPage("lorem", "guide/start"); !ok || page.Name != "Initium" || content != "Lorem guide" || !page.Folded || !page.Default || page.Order == nil || *page.Order != 10 {
+		t.Fatalf("guide page = %#v, %q, %t", page, content, ok)
+	}
+	if _, _, _, ok := reader.DocPage("lorem", "../escape"); ok {
+		t.Fatal("unsafe documentation ID was accepted")
+	}
+}
+
+func TestDocumentationIndexRejectsInvalidOrderingAndMultipleDefaults(t *testing.T) {
+	negative := -1
+	if err := validateDocsIndex(docIndex{Topics: []docTopic{{ID: "guide", Name: "Guide", Order: &negative}}}); err == nil {
+		t.Fatal("negative documentation order was accepted")
+	}
+	index := docIndex{Topics: []docTopic{{
+		ID: "guide", Name: "Guide", Pages: []docPage{
+			{ID: "guide/one", Name: "One", File: "guide/one.md", Default: true},
+			{ID: "guide/two", Name: "Two", File: "guide/two.md", Default: true},
+		},
+	}}}
+	if err := validateDocsIndex(index); err == nil {
+		t.Fatal("multiple default documentation pages were accepted")
 	}
 }
 
@@ -193,6 +253,15 @@ func TestValidateRootRejectsUnexpectedFilesAndSymlinkRoot(t *testing.T) {
 	}
 }
 
+func TestValidateRootRejectsInvalidNodeCatalog(t *testing.T) {
+	root := t.TempDir()
+	writeBundle(t, root, "en", `{}`)
+	write(t, filepath.Join(root, "en", "nodes.json"), `{"../unsafe":"name"}`)
+	if err := ValidateRoot(root); err == nil {
+		t.Fatal("invalid node catalog was accepted")
+	}
+}
+
 func makeTestSymlink(t *testing.T, target, link string) bool {
 	t.Helper()
 	err := os.Symlink(target, link)
@@ -218,6 +287,7 @@ func writeBundle(t *testing.T, root, locale, panel string) {
 	write(t, filepath.Join(root, locale, "manifest.json"), `{"format":1,"locale":"`+locale+`","name":"`+locale+`","development_only":`+development+`}`)
 	write(t, filepath.Join(root, locale, "panel.json"), panel)
 	write(t, filepath.Join(root, locale, "menus.json"), `{}`)
+	write(t, filepath.Join(root, locale, "nodes.json"), `{}`)
 }
 
 func write(t *testing.T, path, value string) {

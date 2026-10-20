@@ -73,6 +73,7 @@ func validate(root string, classes []pasta.NodeClass) error {
 	}
 	var englishPanel map[string]string
 	var loremPanel map[string]string
+	var englishNodes map[string]string
 	var englishMenus any
 	var loremMenus any
 	entries, err := os.ReadDir(locales)
@@ -104,7 +105,7 @@ func validate(root string, classes []pasta.NodeClass) error {
 		if entry.Name() == "lorem" && !manifest.DevelopmentOnly {
 			return fmt.Errorf("lorem must be development-only")
 		}
-		for _, name := range []string{"panel.json", "menus.json"} {
+		for _, name := range []string{"panel.json", "menus.json", "nodes.json"} {
 			data, err := os.ReadFile(filepath.Join(locales, entry.Name(), name))
 			if err != nil {
 				return err
@@ -129,6 +130,11 @@ func validate(root string, classes []pasta.NodeClass) error {
 			if entry.Name() == "lorem" && name == "menus.json" {
 				loremMenus = value
 			}
+			if entry.Name() == "en" && name == "nodes.json" {
+				if err := json.Unmarshal(data, &englishNodes); err != nil {
+					return err
+				}
+			}
 		}
 	}
 	if err := validatePanelKeys(root, englishPanel); err != nil {
@@ -145,19 +151,25 @@ func validate(root string, classes []pasta.NodeClass) error {
 	}
 	for _, class := range classes {
 		path := filepath.FromSlash(class.ClassName())
-		for _, suffix := range []string{".short.txt", ".md"} {
-			data, err := os.ReadFile(filepath.Join(locales, "en", "nodes", path+suffix))
+		if englishNodes[class.ClassName()] == "" {
+			return fmt.Errorf("nodes.json is missing %s", class.ClassName())
+		}
+		for _, file := range []string{filepath.Join("docs", "pages", "nodes", path+".md")} {
+			data, err := os.ReadFile(filepath.Join(locales, "en", file))
 			if err != nil {
-				return fmt.Errorf("%s%s: %w", class.ClassName(), suffix, err)
+				return fmt.Errorf("%s: %w", file, err)
 			}
 			if len(data) == 0 || len(data) > 64<<10 {
-				return fmt.Errorf("invalid node file %s%s", class.ClassName(), suffix)
+				return fmt.Errorf("invalid node file %s", file)
 			}
 		}
 	}
-	for _, name := range []string{"Command.short.txt", "Command.md"} {
-		if _, err := os.Stat(filepath.Join(locales, "en", "nodes", "almagest", name)); err != nil {
-			return fmt.Errorf("almagest/%s: %w", name, err)
+	if englishNodes["almagest/Command"] == "" {
+		return fmt.Errorf("nodes.json is missing almagest/Command")
+	}
+	for _, file := range []string{filepath.Join("docs", "pages", "nodes", "almagest", "Command.md")} {
+		if _, err := os.Stat(filepath.Join(locales, "en", file)); err != nil {
+			return fmt.Errorf("%s: %w", file, err)
 		}
 	}
 	return nil
