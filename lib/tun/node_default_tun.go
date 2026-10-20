@@ -24,7 +24,7 @@ type DefaultTunClass struct {
 func (DefaultTunClass) ClassName() string        { return NodeTypeDefaultTun }
 func (DefaultTunClass) ShortDescription() string { return "System default TUN" }
 func (DefaultTunClass) LongDescription() string {
-	return "Builds one sysnet.DefaultTun, exposes it as a right-directed almagest/tun endpoint, and uses an optional right-directed almagest/dns input as the system DNS provider. With no DNS link, the sysnet DefaultTun DNS server is configured to drop DNS requests. The node is available only when the active sysnet.System reports DefaultTun support."
+	return "Provides the system default TUN endpoint."
 }
 func (DefaultTunClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{Unique: true, PrimaryType: TypeTun, InitialPorts: []pasta.Port{

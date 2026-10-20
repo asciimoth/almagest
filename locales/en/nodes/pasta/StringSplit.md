@@ -1,0 +1,1 @@
+Splits Text at the first Separator occurrence. Before receives the text before the separator and After receives the text after it. If the separator is empty or missing, Before is Text and After is empty.

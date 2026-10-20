@@ -77,9 +77,7 @@ func CacheStorageSelectorField(
 	if statusErr {
 		opts = append(opts, formular.Status(formular.StatusError), formular.StatusText(statusText))
 	}
-	item := formular.TextField(id, label, value, opts...)
-	item.Help = "Optional CacheStorage name used by bytecode address string and regexp rules for reverse DNS lookups. Leave empty to match only literal address strings. Populate the storage with an almagest/DnsCache node that has reverse lookups enabled."
-	return item
+	return formular.TextField(id, label, value, opts...)
 }
 
 func cacheStorageAllowedValues(manager DnsCacheManager, selected string) []any {

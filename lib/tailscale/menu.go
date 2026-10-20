@@ -61,7 +61,6 @@ func (n *tailscaleNode) authenticationBlock() (formular.Block, bool) {
 		Type:  formular.ItemButton,
 		ID:    authResumeID,
 		Label: "Check authorization",
-		Help:  "Ask the Tailscale client to check the pending action now.",
 	})
 	return formular.Block{ID: authBlockID, Order: 0, Generation: 1, Items: items}, true
 }
@@ -110,21 +109,13 @@ func (n *tailscaleNode) statusBlock() formular.Block {
 func (n *tailscaleNode) configBlock() formular.Block {
 	statusErr := n.formError != ""
 	enabled := nodekit.ConfigCheckbox(fieldEnabled, "Enabled", n.config.enabled)
-	enabled.Help = "Connect to the control server and manage this node's Tailscale peers on the attached WireGuard node."
 	controlURL := nodekit.ConfigTextField(fieldControlURL, "Control URL", n.config.controlURL, statusErr, n.formError, false)
-	controlURL.Help = "Tailscale or Headscale coordination server URL. HTTP is intended only for trusted test networks."
 	hostname := nodekit.ConfigTextField(fieldHostname, "Hostname", n.config.hostname, statusErr, n.formError, false)
-	hostname.Help = "Name advertised to the tailnet. An empty value uses the Pasta node name."
 	authKey := nodekit.ConfigSecretNameField(fieldAuthKeySecret, "Auth key secret", n.config.authKeySecret, statusErr, n.formError)
-	authKey.Help = "Optional secret containing a Tailscale or Headscale pre-authentication key. The key is not saved in the workspace."
 	ephemeral := nodekit.ConfigCheckbox(fieldEphemeral, "Ephemeral node", n.config.ephemeral)
-	ephemeral.Help = "Ask the control server to remove the machine after it goes offline."
 	listenPort := nodekit.ConfigIntField(fieldListenPort, "Discovery UDP port", n.config.listenPort, statusErr, n.formError)
-	listenPort.Help = "Local port for STUN, DISCO, and DERP path discovery. Zero selects an available port. Direct WireGuard peer traffic still uses the WireGuard default UDP output."
 	disableDERP := nodekit.ConfigCheckbox(fieldDisableDERP, "Disable DERP", n.config.disableDERP)
-	disableDERP.Help = "Disable Tailscale TLS relay fallback."
 	disableDiscovery := nodekit.ConfigCheckbox(fieldDisableDiscovery, "Disable discovery", n.config.disableDiscovery)
-	disableDiscovery.Help = "Disable endpoint discovery, STUN, and DISCO. Control-provided direct endpoints remain available."
 	return formular.Block{ID: "config", Order: 20, Generation: 1, Form: true, Items: []formular.Item{
 		enabled,
 		controlURL,

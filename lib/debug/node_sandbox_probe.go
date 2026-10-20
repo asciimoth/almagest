@@ -32,7 +32,7 @@ func (SandboxProbeClass) ShortDescription() string {
 	return "DEBUG subprogram sandbox probe"
 }
 func (SandboxProbeClass) LongDescription() string {
-	return "Starts the qualification-helper program in the qualification sandbox and reports the result in the node log."
+	return "Tests the qualification sandbox."
 }
 func (SandboxProbeClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{InitialPorts: []pasta.Port{}}

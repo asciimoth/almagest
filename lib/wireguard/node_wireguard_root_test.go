@@ -39,20 +39,20 @@ func TestWireGuardClassPortsAndMenuBlocks(t *testing.T) {
 		t.Fatalf("status publicKey item = %#v, want readonly field", item)
 	}
 	item, ok = e.MenuItem(node, "config", "privateKeySecret")
-	if !ok || item.Field == nil || item.Secret || item.Selector != "secrets" || item.Help == "" {
-		t.Fatalf("config privateKeySecret item = %#v, want documented non-secret field", item)
+	if !ok || item.Field == nil || item.Secret || item.Selector != "secrets" || item.Help != "" {
+		t.Fatalf("config privateKeySecret item = %#v, want non-secret field without built-in help", item)
 	}
 	item, ok = e.MenuItem(node, "config", "ownedIPs")
 	if !ok || item.Field == nil || !item.Multiline {
 		t.Fatalf("config ownedIPs item = %#v, want multiline field", item)
 	}
 	item, ok = e.MenuItem(node, "config", "dns")
-	if !ok || item.Field == nil || item.Multiline || item.Help == "" {
-		t.Fatalf("config dns item = %#v, want documented single-line field", item)
+	if !ok || item.Field == nil || item.Multiline || item.Help != "" {
+		t.Fatalf("config dns item = %#v, want single-line field without built-in help", item)
 	}
 	item, ok = e.MenuItem(node, "config", "batchSize")
-	if !ok || item.Field == nil || item.Help == "" {
-		t.Fatalf("config batchSize item = %#v, want documented field", item)
+	if !ok || item.Field == nil || item.Help != "" {
+		t.Fatalf("config batchSize item = %#v, want field without built-in help", item)
 	}
 	for _, fieldID := range []string{"amneziaJunkCount", "amneziaInitHeader", "amneziaInitiationPacket1"} {
 		item, ok = e.MenuItem(node, "config", fieldID)

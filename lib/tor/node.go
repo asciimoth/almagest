@@ -58,7 +58,7 @@ func (c TorDriverClass) ClassName() string {
 }
 func (TorDriverClass) ShortDescription() string { return "Tor driver" }
 func (TorDriverClass) LongDescription() string {
-	return "Provides independently isolated Tor Networks and listen-only v3 onion-service Networks. An optional outbound Almagest Network carries Tor traffic."
+	return "Provides isolated Tor and onion-service networks."
 }
 func (TorDriverClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: links.TypeNetwork, InitialPorts: []pasta.Port{

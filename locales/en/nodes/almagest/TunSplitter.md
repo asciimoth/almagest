@@ -1,0 +1,1 @@
+Splits one almagest/tun endpoint into routed gonnect/tun.Splitter frontend slots using bytecode routing rules. It preserves each output's route-to-address association so an upstream userspace network stack can select the correct local source address.

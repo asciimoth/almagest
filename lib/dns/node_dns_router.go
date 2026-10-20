@@ -1,7 +1,6 @@
 package dnsnodes
 
 import (
-	_ "embed"
 	"fmt"
 	"slices"
 	"strings"
@@ -29,9 +28,6 @@ const (
 const dnsRouterDefaultRules = "TRUE\nBACKEND slot 1"
 
 var (
-	//go:embed node_dns_router.md
-	dnsRouterClassLongDescription string
-
 	dnsRouterNewRouter = func(spawner gonnect.Spawner) *dns.Router {
 		return dns.NewRouter(spawner)
 	}
@@ -44,7 +40,9 @@ type DNSRouterClass struct {
 
 func (DNSRouterClass) ClassName() string        { return NodeTypeDnsRouter }
 func (DNSRouterClass) ShortDescription() string { return "DNS router" }
-func (DNSRouterClass) LongDescription() string  { return dnsRouterClassLongDescription }
+func (DNSRouterClass) LongDescription() string {
+	return "Routes DNS requests to configured output slots."
+}
 func (DNSRouterClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: TypeDNS, InitialPorts: []pasta.Port{
 		DNSPort("left", "DNS"),

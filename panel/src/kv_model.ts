@@ -1,3 +1,5 @@
+import { text as localizedText } from "./localization.js";
+
 export type KVStoreKind = "default" | "plugin";
 
 export type KVStoreSelector = {
@@ -143,7 +145,7 @@ function collectVisibleExpandedNode(
 }
 
 export function formatKVByteSize(size: number | undefined): string {
-  if (!Number.isFinite(size) || size === undefined || size < 0) return "unknown size";
+  if (!Number.isFinite(size) || size === undefined || size < 0) return localizedText("common.unknown_size", "unknown size");
   if (size < 1024) return `${size} B`;
   const kib = size / 1024;
   if (kib < 1024) return `${formatFixed(kib)} KiB`;

@@ -3,7 +3,6 @@ package amnesianodes
 import (
 	"context"
 	"crypto/tls"
-	_ "embed"
 	"errors"
 	"fmt"
 	"strings"
@@ -33,12 +32,6 @@ const (
 )
 
 var (
-	// AmnesiaCtrlClassLongDescription is the user-visible description of the
-	// AmnesiaCtrl node, including its attached WireGuard identity lifetime and
-	// recovery procedure.
-	//go:embed node_amnesia_ctrl.md
-	AmnesiaCtrlClassLongDescription string
-
 	// ErrCaptchaUnsupported reports that an Amnezia service requested a
 	// CAPTCHA from the deprecated AmnesiaCtrl node, which does not support
 	// interactive imports.
@@ -67,7 +60,9 @@ type AmnesiaCtrlClass struct {
 
 func (AmnesiaCtrlClass) ClassName() string        { return NodeTypeAmnesiaCtrl }
 func (AmnesiaCtrlClass) ShortDescription() string { return "AmnesiaCtrl VPN controller" }
-func (AmnesiaCtrlClass) LongDescription() string  { return AmnesiaCtrlClassLongDescription }
+func (AmnesiaCtrlClass) LongDescription() string {
+	return "Controls an Amnezia peer on an attached WireGuard device."
+}
 func (AmnesiaCtrlClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: wireguardnodes.TypeWGCtrl, InitialPorts: []pasta.Port{
 		wireguardnodes.WGCtrlPort("right", "WireGuard"),

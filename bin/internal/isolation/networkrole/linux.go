@@ -77,6 +77,7 @@ type LinuxLaunch struct {
 	Journal *supervision.Journal
 	Admin   []admingate.EndpointConfig
 	Output  io.Writer
+	Locales *os.File
 }
 
 // RunLinux owns the entire launched process set and all IPC/listener lifetimes.
@@ -153,6 +154,7 @@ func RunLinux(parent context.Context, launch LinuxLaunch, ready func(roleentry.R
 		launch.Runtime.Inputs.SandboxData = resources.sandbox.data
 		input.SandboxPeer = resources.sandbox.runtimePeer(launch.Runtime.Plan.Profile)
 	}
+	launch.Runtime.Inputs.Locales = launch.Locales
 	lanes := []roleentry.Lane{roleentry.LaneBootstrap, roleentry.LaneData, roleentry.LaneDiagnostics}
 	if len(launch.Admin) != 0 {
 		lanes = append(lanes, roleentry.LaneAdmin)
@@ -457,7 +459,7 @@ func (l LinuxLaunch) validate() error {
 		in := role.Inputs
 		if role.Plan.Validate() != nil || role.Plan.Profile != l.Runtime.Plan.Profile || full && (seenUID[role.Plan.UID] || seenGID[role.Plan.GID]) || in.Launcher == nil || in.Executable == nil || in.Directory == nil ||
 			full && (in.Cgroup == nil || in.Code != nil) || !full && (in.Cgroup != nil || in.Code == nil) ||
-			in.Control != nil || in.Data != nil || in.Diagnostics != nil || in.Admin != nil || in.Config != nil || in.Commands != nil || in.Callbacks != nil || in.Sandbox != nil || in.SandboxData != nil {
+			in.Control != nil || in.Data != nil || in.Diagnostics != nil || in.Admin != nil || in.Config != nil || in.Commands != nil || in.Callbacks != nil || in.Sandbox != nil || in.SandboxData != nil || in.Locales != nil {
 			return supervision.ErrInvalidComposition
 		}
 		if (role.Plan.Role == linuxprofile.Command) != (in.Command != nil) {

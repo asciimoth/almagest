@@ -38,10 +38,7 @@ func (n *vtunNode) effectiveBlock() formular.Block {
 	dnsServers, _ := n.effectiveDNSServers()
 	mtu, constraint := n.effectiveMTU()
 	mtuSource := constraint.Source + ": " + constraint.Reason
-	addressFamilies := readonlyStringListField(
-		"addressFamilies", "Address families", n.effectiveAddressFamilies(localAddrs),
-	)
-	addressFamilies.Help = "Address families enabled by the effective VTun addresses. This reports stack support, not verified Internet reachability."
+	addressFamilies := readonlyStringListField("addressFamilies", "Address families", n.effectiveAddressFamilies(localAddrs))
 	return formular.Block{ID: "effective", Order: 0, Generation: 1, Items: []formular.Item{
 		readonlyTextField("name", "Name", n.config.name),
 		readonlyStringListField("localAddrs", "Local addrs", netipAddrsText(localAddrs)),
@@ -93,16 +90,11 @@ func (n *vtunNode) effectiveLocalAddrsForMenu() []netip.Addr {
 func (n *vtunNode) configBlock() formular.Block {
 	statusErr := n.formError != ""
 	dnsServers := configTextField("dnsServers", "DNS servers", n.config.dnsServers, statusErr, n.formError, true)
-	dnsServers.Help = "DNS server IP addresses. An explicit value has priority over a TUN DNS suggestion. If neither is set, VTun uses 8.8.8.8. Use almagest/dns nodes for DNS routing or policy."
 	return formular.Block{ID: "config", Order: 10, Generation: 1, Form: true, Items: []formular.Item{
 		configTextField("name", "Name", n.config.name, statusErr, n.formError, false),
 		configTextField("localAddrs", "Local addrs", n.config.localAddrs, statusErr, n.formError, true),
 		dnsServers,
-		func() formular.Item {
-			item := configIntField("mtu", "MTU ceiling", n.config.mtu, statusErr, n.formError)
-			item.Help = "Maximum interface MTU. Zero enables automatic selection from graph constraints. A positive value can be reduced when the path requires a smaller MTU."
-			return item
-		}(),
+		configIntField("mtu", "MTU ceiling", n.config.mtu, statusErr, n.formError),
 		configIntField("endpointCh", "Endpoint channel", n.config.endpointCh, statusErr, n.formError),
 		configIntField("eventCh", "Event channel", n.config.eventCh, statusErr, n.formError),
 		// configIntField("mwo", "Max write offset", n.config.mwo, false, ""),

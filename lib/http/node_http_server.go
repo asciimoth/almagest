@@ -1,8 +1,6 @@
 package httpnodes
 
 import (
-	_ "embed"
-
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
 	"github.com/asciimoth/pasta/pasta"
@@ -16,18 +14,15 @@ const (
 	DefaultHTTPServerPort = 8080
 )
 
-var (
-	//go:embed node_http_server.md
-	HTTPServerClassLongDescription string
-)
-
 type HTTPServerClass struct {
 	Runtime Runtime
 }
 
 func (HTTPServerClass) ClassName() string        { return NodeTypeHTTPServer }
 func (HTTPServerClass) ShortDescription() string { return "Debug HTTP server" }
-func (HTTPServerClass) LongDescription() string  { return HTTPServerClassLongDescription }
+func (HTTPServerClass) LongDescription() string {
+	return "Serves debug HTTP responses through an attached Network."
+}
 func (HTTPServerClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: TypeNetwork, InitialPorts: []pasta.Port{
 		NetworkPort("right", "Network"),

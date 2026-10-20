@@ -47,7 +47,7 @@ type FetchAddrClass struct {
 func (FetchAddrClass) ClassName() string        { return NodeTypeFetchAddr }
 func (FetchAddrClass) ShortDescription() string { return "Fetch public address" }
 func (FetchAddrClass) LongDescription() string {
-	return "Fetches and normalizes the public IP address, country, city, latitude, and longitude seen through an attached almagest/network."
+	return "Fetches public address and location data through a network."
 }
 
 func (FetchAddrClass) DefaultNodeParams() pasta.NodeClassParams {

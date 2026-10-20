@@ -1,7 +1,6 @@
 package dnsnodes
 
 import (
-	_ "embed"
 	"fmt"
 
 	"github.com/asciimoth/configer/configer"
@@ -28,9 +27,6 @@ const (
 )
 
 var (
-	//go:embed node_dns_fallback.md
-	dnsFallbackClassLongDescription string
-
 	dnsFallbackNewFallback = func(options dns.FallbackOptions, spawner gonnect.Spawner) *dns.Fallback {
 		return dns.NewFallbackWithOptions(options, spawner)
 	}
@@ -43,7 +39,9 @@ type DNSFallbackClass struct {
 
 func (DNSFallbackClass) ClassName() string        { return NodeTypeDnsFallback }
 func (DNSFallbackClass) ShortDescription() string { return "DNS fallback" }
-func (DNSFallbackClass) LongDescription() string  { return dnsFallbackClassLongDescription }
+func (DNSFallbackClass) LongDescription() string {
+	return "Tries attached DNS resolvers in configured order."
+}
 func (DNSFallbackClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: TypeDNS, InitialPorts: []pasta.Port{
 		DNSPort("left", "DNS"),
@@ -421,7 +419,6 @@ func (n *dnsFallbackNode) configBlock() formular.Block {
 			DNSFallbackAttemptTimeoutMSField,
 			"Attempt timeout (ms)",
 			n.attemptTimeoutMS,
-			"Maximum time to wait for one upstream before trying the next slot.",
 			n.formError,
 		),
 	}}

@@ -1,7 +1,5 @@
 package debugnodes
 
-import _ "embed"
-
 const (
 	NodeTypeUDPPingServer = "almagest/UDPPingServer"
 	NodeTypeUDPPingClient = "almagest/UDPPingClient"
@@ -19,9 +17,4 @@ const (
 	udpPingStatusReady   = "ready"
 	udpPingStatusRunning = "running..."
 	udpPingStatusFail    = "fail"
-)
-
-var (
-	//go:embed node_debug_udp.md
-	udpPingClassLongDescription string
 )

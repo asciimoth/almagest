@@ -40,3 +40,17 @@ test("data-management tabs use clear labels and accessible tab semantics", () =>
   assert.equal(dom.window.document.querySelector("[data-panel='tls'] #tls-tree") !== null, true);
   assert.equal(dom.window.document.querySelector("[data-panel='tls'] #tls-value-panel") !== null, true);
 });
+
+test("language picker has a compact visible code and an accessible native select", () => {
+  const dom = new JSDOM(html);
+  const picker = dom.window.document.querySelector(".locale-picker");
+  const icon = picker?.querySelector(".locale-picker-icon");
+  const code = picker?.querySelector("#locale-code");
+  const select = picker?.querySelector("#locale-select");
+
+  assert.equal(icon?.getAttribute("aria-hidden"), "true");
+  assert.equal(code?.textContent, "en");
+  assert.equal(code?.getAttribute("aria-hidden"), "true");
+  assert.equal(select?.getAttribute("aria-label"), "Language");
+  assert.equal(select?.querySelector("option")?.textContent, "English");
+});

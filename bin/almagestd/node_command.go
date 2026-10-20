@@ -59,7 +59,7 @@ func newCommandNodeClass(cfg cmdrunner.Config, dispatcher daemonservices.NodeCom
 func (commandNodeClass) ClassName() string        { return NodeTypeProtectedCommand }
 func (commandNodeClass) ShortDescription() string { return "Protected command" }
 func (commandNodeClass) LongDescription() string {
-	return "Schedules protected almagestd command-runner entries that explicitly set AllowNodes in protected config. The node has one left-directed pasta/trigger input and one left-directed pasta/string input for each selected command slot. It has no output ports."
+	return "Runs configured protected commands from trigger inputs."
 }
 func (commandNodeClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: std.TypeTrigger, InitialPorts: []pasta.Port{

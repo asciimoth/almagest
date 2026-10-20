@@ -39,7 +39,6 @@ func (n *torDriverNode) statusBlock() formular.Block {
 func (n *torDriverNode) controlBlock() formular.Block {
 	button := formular.Item{
 		Type: formular.ItemButton, ID: torRestartButtonID, Label: "Restart Tor",
-		Help: "Close the current owned Tor process and build a new runtime from the saved node configuration.",
 	}
 	return formular.Block{ID: torControlBlockID, Order: 20, Generation: 1, Items: []formular.Item{button}}
 }

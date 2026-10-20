@@ -37,7 +37,7 @@ func (NetworkFirewallClass) ShortDescription() string {
 	return "Network firewall"
 }
 func (NetworkFirewallClass) LongDescription() string {
-	return "Filters an almagest/network with the union of its menu policy and all attached pasta/object policy values."
+	return "Filters operations on a network."
 }
 func (NetworkFirewallClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: TypeNetwork, InitialPorts: []pasta.Port{

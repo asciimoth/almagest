@@ -2,7 +2,6 @@ package dnsnodes
 
 import (
 	"crypto/tls"
-	_ "embed"
 	"errors"
 	"fmt"
 	"net/url"
@@ -31,9 +30,6 @@ const (
 	// the DNS client request timeout in milliseconds.
 	DNSClientRequestTimeoutMSField = "requestTimeoutMS"
 )
-
-//go:embed node_dns_client.md
-var dnsClientClassLongDescription string
 
 // DNSClientFactory creates the transport client owned by a DNS client node.
 // It is retained for classes that do not need client options. Use
@@ -85,7 +81,7 @@ func (DNSClientClass) ShortDescription() string {
 	return "DNS client"
 }
 func (DNSClientClass) LongDescription() string {
-	return dnsClientClassLongDescription
+	return "Sends DNS requests through an attached Network."
 }
 func (DNSClientClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: TypeDNS, InitialPorts: []pasta.Port{
@@ -493,7 +489,6 @@ func (n *dnsClientNode) configBlock() formular.Block {
 			DNSClientRequestTimeoutMSField,
 			"Request timeout (ms)",
 			n.config.requestTimeoutMS,
-			"Maximum time for one request, including bootstrap lookup, dial, TLS handshake, and network I/O.",
 			n.formError,
 		),
 	}}

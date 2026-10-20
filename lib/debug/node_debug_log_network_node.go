@@ -11,7 +11,7 @@ type DebugLogNetworkClass struct{}
 func (DebugLogNetworkClass) ClassName() string        { return NodeTypeDebugLogNetwork }
 func (DebugLogNetworkClass) ShortDescription() string { return "DEBUG network logger" }
 func (DebugLogNetworkClass) LongDescription() string {
-	return "Passes almagest/network operations through unchanged while debug logging operations and payload bytes."
+	return "Logs network operations and passes them through."
 }
 func (DebugLogNetworkClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: TypeNetwork, InitialPorts: []pasta.Port{

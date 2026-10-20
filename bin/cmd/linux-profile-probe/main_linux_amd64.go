@@ -220,6 +220,22 @@ func main() {
 	<-done
 	check("process-shape", userProfile && os.Getpid() > 1 || !userProfile && os.Getpid() == 1, nil)
 	check("environment-cleared", os.Getenv("UNTRUSTED_SENTINEL") == "" && os.Getenv("PATH") == "", nil)
+	locales := os.Getenv("ALMAGEST_LOCALES_DIR")
+	if locales == "" && role == linuxprofile.Runtime && !userProfile {
+		locales = "/locales"
+	}
+	if role == linuxprofile.Runtime {
+		data, readErr := os.ReadFile(filepath.Join(locales, "visible"))
+		check("locales-read", locales != "" && string(data) == "localized content", readErr)
+		writeErr := os.WriteFile(filepath.Join(locales, "write"), []byte("denied"), 0o600)
+		check("locales-write-denied", denied(writeErr) || errors.Is(writeErr, unix.EROFS), writeErr)
+		_, escapeErr := os.ReadFile(filepath.Join(locales, "escape"))
+		check("locales-symlink-escape-denied", denied(escapeErr), escapeErr)
+		executeErr := unix.Access(filepath.Join(locales, "visible"), unix.X_OK)
+		check("locales-execute-denied", userProfile || denied(executeErr), executeErr)
+	} else {
+		check("locales-not-delegated", locales == "", nil)
+	}
 	_, err := unix.FcntlInt(2000, unix.F_GETFD, 0)
 	check("high-descriptor-closed", errors.Is(err, unix.EBADF), err)
 	for _, tc := range []struct {

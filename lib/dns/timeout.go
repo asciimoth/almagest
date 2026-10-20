@@ -38,15 +38,12 @@ func dnsTimeoutErrorText(milliseconds int) string {
 }
 
 // dnsTimeoutField builds the common integer timeout control used by DNS nodes.
-// The caller supplies text that describes what one timeout bounds.
-func dnsTimeoutField(id, label string, value int, help, statusText string) formular.Item {
+func dnsTimeoutField(id, label string, value int, statusText string) formular.Item {
 	opts := []formular.FieldOption{formular.Validation}
 	if statusText != "" {
 		opts = append(opts, formular.Status(formular.StatusError), formular.StatusText(statusText))
 	}
-	item := formular.IntField(id, label, value, opts...)
-	item.Help = help + " Set 0 to use the gonnect default."
-	return item
+	return formular.IntField(id, label, value, opts...)
 }
 
 // validateDNSTimeoutField validates an integer timeout Formular value. Values

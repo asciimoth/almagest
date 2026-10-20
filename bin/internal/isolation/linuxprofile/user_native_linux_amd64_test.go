@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -90,6 +91,14 @@ func launchNativeUser(t *testing.T, role Role) ([]byte, error) {
 	input.Diagnostics = newLane()
 	if role == Runtime {
 		input.Data, input.Admin, input.Config, input.Commands = newLane(), newLane(), newLane(), newLane()
+		locales := t.TempDir()
+		if err := os.WriteFile(filepath.Join(locales, "visible"), []byte("localized content"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink("/etc/passwd", filepath.Join(locales, "escape")); err != nil {
+			t.Fatal(err)
+		}
+		input.Locales = open(locales)
 	}
 	command, err := CommandContext(ctx, plan, input)
 	if err != nil {

@@ -17,7 +17,7 @@ type DebugLogTunClass struct {
 func (DebugLogTunClass) ClassName() string        { return NodeTypeDebugLogTun }
 func (DebugLogTunClass) ShortDescription() string { return "DEBUG TUN logger" }
 func (DebugLogTunClass) LongDescription() string {
-	return "Passes almagest/tun operations and configuration suggestions through unchanged while debug logging reads, writes, packet payload bytes, and TunConfig values."
+	return "Logs TUN operations and passes them through."
 }
 func (DebugLogTunClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: TypeTun, InitialPorts: []pasta.Port{

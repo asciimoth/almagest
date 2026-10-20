@@ -23,7 +23,7 @@ type MockNetworkClass struct{}
 func (MockNetworkClass) ClassName() string        { return NodeTypeMockNetwork }
 func (MockNetworkClass) ShortDescription() string { return "Virtual network mock" }
 func (MockNetworkClass) LongDescription() string {
-	return "Emulates network for test/debug purposes. Connections/Listeners created via MockNetwork are fully virtual and never reach real OS network stack."
+	return "Provides a virtual network for tests and debugging."
 }
 func (MockNetworkClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: TypeNetwork, InitialPorts: []pasta.Port{

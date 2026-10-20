@@ -1,0 +1,1 @@
+Schedules protected almagestd command-runner entries that explicitly set AllowNodes in protected config. The node has one left-directed pasta/trigger input and one left-directed pasta/string input for each selected command slot. It has no output ports.

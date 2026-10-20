@@ -1,0 +1,1510 @@
+{
+  "almagest/Amnesia": {
+    "blocks": {
+      "status": {
+        "items": {
+          "state": {
+            "label": "Lorem · State"
+          },
+          "inputFormat": {
+            "label": "Lorem · Input format"
+          },
+          "profile": {
+            "label": "Lorem · Profile"
+          },
+          "country": {
+            "label": "Lorem · Server country"
+          },
+          "addresses": {
+            "label": "Lorem · Tunnel addresses"
+          },
+          "dns": {
+            "label": "Lorem · DNS servers"
+          },
+          "mtu": {
+            "label": "Lorem · Effective MTU"
+          },
+          "profileMTU": {
+            "label": "Lorem · Profile MTU ceiling"
+          },
+          "installationUUID": {
+            "label": "Lorem · UUID"
+          },
+          "rxBytes": {
+            "label": "Lorem · RX bytes"
+          },
+          "txBytes": {
+            "label": "Lorem · TX bytes"
+          },
+          "error": {
+            "label": "Lorem · Error"
+          }
+        }
+      },
+      "config": {
+        "items": {
+          "enabled": {
+            "label": "Lorem · Enabled",
+            "help": "Lorem · Create and keep an Amnezia connection while both ports are attached."
+          },
+          "connectionSecret": {
+            "label": "Lorem · Connection secret",
+            "help": "Lorem · Secret name containing an Amnezia vpn:// URL or native WireGuard/AmneziaWG configuration."
+          },
+          "serverCountryCode": {
+            "label": "Lorem · Server country",
+            "help": "Lorem · Optional ISO 3166-1 alpha-2 country code for service profile selection. If the tunnel cannot complete a handshake, try another country because an endpoint can be temporarily unavailable."
+          },
+          "tlsConfig": {
+            "label": "Lorem · TLS config"
+          },
+          "gatewayURL": {
+            "label": "Lorem · Gateway URL",
+            "help": "Lorem · Optional API-v2 gateway URL for a custom Amnezia service."
+          },
+          "gatewayPublicKeySecret": {
+            "label": "Lorem · Gateway public key secret",
+            "help": "Lorem · Optional secret name containing the custom gateway RSA public key in PEM format."
+          }
+        }
+      }
+    }
+  },
+  "almagest/AmnesiaCtrl": {
+    "blocks": {
+      "status": {
+        "items": {
+          "state": {
+            "label": "Lorem · State"
+          },
+          "tunnel": {
+            "label": "Lorem · Tunnel"
+          },
+          "wireGuard": {
+            "label": "Lorem · WireGuard"
+          },
+          "apiNetwork": {
+            "label": "Lorem · API network"
+          },
+          "apiNetworkRequired": {
+            "label": "Lorem · API network required"
+          },
+          "inputFormat": {
+            "label": "Lorem · Input format"
+          },
+          "profile": {
+            "label": "Lorem · Profile"
+          },
+          "country": {
+            "label": "Lorem · Server country"
+          },
+          "endpoint": {
+            "label": "Lorem · Peer endpoint"
+          },
+          "peerPublicKey": {
+            "label": "Lorem · Peer public key"
+          },
+          "addresses": {
+            "label": "Lorem · Tunnel addresses"
+          },
+          "dns": {
+            "label": "Lorem · DNS servers"
+          },
+          "allowedIPs": {
+            "label": "Lorem · Allowed IPs"
+          },
+          "mtu": {
+            "label": "Lorem · Profile MTU ceiling"
+          },
+          "peerTransport": {
+            "label": "Lorem · Peer UDP transport"
+          },
+          "peerActive": {
+            "label": "Lorem · Peer active"
+          },
+          "peerConnected": {
+            "label": "Lorem · Peer connected"
+          },
+          "rxBytes": {
+            "label": "Lorem · RX bytes"
+          },
+          "txBytes": {
+            "label": "Lorem · TX bytes"
+          },
+          "latestHandshake": {
+            "label": "Lorem · Latest handshake"
+          },
+          "installationUUID": {
+            "label": "Lorem · Installation UUID"
+          },
+          "uuidPersistent": {
+            "label": "Lorem · Installation UUID persisted"
+          },
+          "error": {
+            "label": "Lorem · Error"
+          }
+        }
+      },
+      "config": {
+        "items": {
+          "enabled": {
+            "label": "Lorem · Enabled",
+            "help": "Lorem · Import the selected connection and keep its peer on the attached WireGuard node. Disable this option to remove the peer and stop Amnezia API activity."
+          },
+          "connectionSecret": {
+            "label": "Lorem · Connection secret",
+            "help": "Lorem · Secret name containing an Amnezia vpn:// URL or native WireGuard/AmneziaWG configuration."
+          },
+          "serverCountryCode": {
+            "label": "Lorem · Server country",
+            "help": "Lorem · Optional ISO 3166-1 alpha-2 country code for service profile selection."
+          },
+          "connectEvent": {
+            "label": "Lorem · Send connect event",
+            "help": "Lorem · For service keys, tell the gateway that this profile request starts a connection. This option has no effect on native WireGuard or AmneziaWG profiles."
+          },
+          "tlsConfig": {
+            "label": "Lorem · TLS config"
+          },
+          "gatewayURL": {
+            "label": "Lorem · Gateway URL",
+            "help": "Lorem · Optional API-v2 gateway URL for a custom Amnezia service. HTTPS uses the selected TLS config."
+          },
+          "gatewayPublicKeySecret": {
+            "label": "Lorem · Gateway public key secret",
+            "help": "Lorem · Optional secret name containing the custom gateway RSA public key in PEM format."
+          },
+          "reconnect": {
+            "label": "Lorem · Reconnect",
+            "help": "Lorem · Import the connection again and replace this node's tracked peer. This does not rotate the attached WireGuard node's private key."
+          }
+        }
+      }
+    }
+  },
+  "almagest/AutoTunSplitter": {
+    "blocks": {
+      "config": {
+        "items": {
+          "rules": {
+            "label": "Lorem · Routing rules"
+          },
+          "dnsCacheStorageName": {
+            "label": "Lorem · DNS cache storage",
+            "help": "Lorem · Optional CacheStorage name used by address and regular-expression rules for reverse DNS lookups. Leave empty to match only literal addresses."
+          },
+          "ruleCacheTTL": {
+            "label": "Lorem · Rule cache TTL (ms)",
+            "help": "Lorem · How long rule matcher results are cached by flow. Zero uses the router default; a negative value disables the rule cache."
+          },
+          "ruleCacheMaxEntries": {
+            "label": "Lorem · Rule cache max entries",
+            "help": "Lorem · Maximum rule-cache entries. Zero uses the router default; a negative value disables the rule cache."
+          },
+          "routeCacheTTL": {
+            "label": "Lorem · Route cache TTL (ms)",
+            "help": "Lorem · How long route results are cached by packet flow. Zero inherits the rule-cache settings; a negative value disables the route cache."
+          },
+          "routeCacheMaxEntries": {
+            "label": "Lorem · Route cache max entries",
+            "help": "Lorem · Maximum route-result cache entries. Zero inherits the rule-cache settings or router default; a negative value disables the route cache."
+          }
+        }
+      }
+    }
+  },
+  "almagest/Command": {
+    "blocks": {
+      "config": {
+        "items": {
+          "command": {
+            "label": "Lorem · Command"
+          }
+        }
+      }
+    }
+  },
+  "almagest/DefaultTun": {
+    "blocks": {
+      "effective": {
+        "items": {
+          "name": {
+            "label": "Lorem · Name"
+          },
+          "mtu": {
+            "label": "Lorem · MTU"
+          },
+          "error": {
+            "label": "Lorem · Error"
+          },
+          "dnsIP": {
+            "label": "Lorem · DNS IP"
+          },
+          "exclude": {
+            "label": "Lorem · Exclude"
+          },
+          "include": {
+            "label": "Lorem · Include"
+          }
+        }
+      },
+      "config": {
+        "items": {
+          "name": {
+            "label": "Lorem · Name"
+          },
+          "mtu": {
+            "label": "Lorem · MTU"
+          },
+          "dnsIP": {
+            "label": "Lorem · DNS IP"
+          },
+          "exclude": {
+            "label": "Lorem · Exclude"
+          },
+          "include": {
+            "label": "Lorem · Include"
+          }
+        }
+      }
+    }
+  },
+  "almagest/DnsCache": {
+    "blocks": {
+      "config": {
+        "items": {
+          "storageName": {
+            "label": "Lorem · CacheStorage name"
+          },
+          "reverseLookups": {
+            "label": "Lorem · Reverse lookups"
+          },
+          "writeOnly": {
+            "label": "Lorem · Write only"
+          }
+        }
+      }
+    }
+  },
+  "almagest/DnsClient": {
+    "blocks": {
+      "config": {
+        "items": {
+          "servers": {
+            "label": "Lorem · DNS servers",
+            "templates": {
+              "server": {
+                "label": "Lorem · Server",
+                "items": {
+                  "url": {
+                    "label": "Lorem · URL"
+                  }
+                }
+              }
+            }
+          },
+          "tlsConfig": {
+            "label": "Lorem · TLS config"
+          },
+          "requestTimeoutMS": {
+            "label": "Lorem · Request timeout (ms)",
+            "help": "Lorem · Maximum time for one request, including lookup, dial, TLS, and network I/O. Set 0 to use the gonnect default."
+          }
+        }
+      }
+    }
+  },
+  "almagest/DnsFallback": {
+    "blocks": {
+      "config": {
+        "items": {
+          "attemptTimeoutMS": {
+            "label": "Lorem · Attempt timeout (ms)",
+            "help": "Lorem · Maximum time to wait for one upstream before trying the next slot. Set 0 to use the gonnect default."
+          }
+        }
+      }
+    }
+  },
+  "almagest/DnsQuery": {
+    "blocks": {
+      "request": {
+        "items": {
+          "name": {
+            "label": "Lorem · Name",
+            "placeholder": "Lorem · example.test."
+          },
+          "type": {
+            "label": "Lorem · Type",
+            "placeholder": "Lorem · A"
+          },
+          "send": {
+            "label": "Lorem · Send"
+          }
+        }
+      },
+      "result": {
+        "items": {
+          "error": {
+            "label": "Lorem · Error"
+          },
+          "response": {
+            "label": "Lorem · Response"
+          }
+        }
+      }
+    }
+  },
+  "almagest/DnsRouter": {
+    "blocks": {
+      "config": {
+        "items": {
+          "rules": {
+            "label": "Lorem · Routing rules"
+          }
+        }
+      }
+    }
+  },
+  "almagest/DnsServer": {
+    "blocks": {
+      "listen": {
+        "items": {
+          "network": {
+            "label": "Lorem · Network"
+          },
+          "host": {
+            "label": "Lorem · Host"
+          },
+          "port": {
+            "label": "Lorem · Port"
+          },
+          "requestTimeoutMS": {
+            "label": "Lorem · Request timeout (ms)",
+            "help": "Lorem · Maximum time to get one answer from the attached DNS resolver. Set 0 to use the gonnect default."
+          }
+        }
+      }
+    }
+  },
+  "almagest/FetchAddr": {
+    "blocks": {
+      "check": {
+        "items": {
+          "provider": {
+            "label": "Lorem · Provider"
+          },
+          "tlsConfig": {
+            "label": "Lorem · TLS config"
+          },
+          "check": {
+            "label": "Lorem · Check"
+          }
+        }
+      },
+      "result": {
+        "items": {
+          "error": {
+            "label": "Lorem · Error"
+          },
+          "publicIP": {
+            "label": "Lorem · Public IP"
+          },
+          "countryCode": {
+            "label": "Lorem · Country code"
+          },
+          "city": {
+            "label": "Lorem · City"
+          },
+          "latitude": {
+            "label": "Lorem · Latitude"
+          },
+          "longitude": {
+            "label": "Lorem · Longitude"
+          }
+        }
+      }
+    }
+  },
+  "almagest/HttpClient": {
+    "blocks": {
+      "request": {
+        "items": {
+          "url": {
+            "label": "Lorem · URL"
+          },
+          "method": {
+            "label": "Lorem · Method"
+          },
+          "body": {
+            "label": "Lorem · Body"
+          },
+          "tlsConfig": {
+            "label": "Lorem · TLS config"
+          },
+          "send": {
+            "label": "Lorem · Send request"
+          }
+        }
+      },
+      "result": {
+        "items": {
+          "error": {
+            "label": "Lorem · Error"
+          },
+          "response": {
+            "label": "Lorem · Response"
+          }
+        }
+      }
+    }
+  },
+  "almagest/HttpServer": {
+    "blocks": {
+      "listen": {
+        "items": {
+          "host": {
+            "label": "Lorem · Host"
+          },
+          "port": {
+            "label": "Lorem · Port"
+          }
+        }
+      },
+      "logs": {
+        "items": {
+          "worker": {
+            "label": "Lorem · Worker"
+          }
+        }
+      }
+    }
+  },
+  "almagest/LocalProxy": {
+    "blocks": {
+      "config": {
+        "items": {
+          "socksHost": {
+            "label": "Lorem · SOCKS host"
+          },
+          "socksPort": {
+            "label": "Lorem · SOCKS port"
+          },
+          "wsHost": {
+            "label": "Lorem · SOCKS+WS host"
+          },
+          "wsPort": {
+            "label": "Lorem · SOCKS+WS port"
+          },
+          "wsPath": {
+            "label": "Lorem · SOCKS+WS path"
+          },
+          "users": {
+            "label": "Lorem · Users",
+            "templates": {
+              "user": {
+                "label": "Lorem · User",
+                "items": {
+                  "username": {
+                    "label": "Lorem · Username"
+                  },
+                  "password": {
+                    "label": "Lorem · Password"
+                  },
+                  "passwordSecret": {
+                    "label": "Lorem · Password secret"
+                  }
+                }
+              }
+            }
+          },
+          "cmdConnect": {
+            "label": "Lorem · CONNECT"
+          },
+          "cmdBind": {
+            "label": "Lorem · BIND"
+          },
+          "cmdUDPAssoc": {
+            "label": "Lorem · UDP ASSOC"
+          },
+          "cmdTorResolve": {
+            "label": "Lorem · Tor RESOLVE"
+          },
+          "cmdTorResolvePtr": {
+            "label": "Lorem · Tor RESOLVE_PTR"
+          },
+          "cmdGostMuxBind": {
+            "label": "Lorem · Gost MBIND"
+          },
+          "cmdGostUDPTun": {
+            "label": "Lorem · Gost UDPTUN"
+          }
+        }
+      },
+      "logs": {
+        "items": {
+          "worker": {
+            "label": "Lorem · Worker"
+          }
+        }
+      }
+    }
+  },
+  "almagest/MeshNames": {
+    "blocks": {
+      "config": {
+        "items": {
+          "requestTimeoutMS": {
+            "label": "Lorem · Request timeout (ms)",
+            "help": "Lorem · Maximum time for one DNS exchange with an authoritative mesh node. Set 0 to use the gonnect default."
+          }
+        }
+      }
+    }
+  },
+  "almagest/MockNetwork": {
+    "blocks": {
+      "config": {
+        "items": {
+          "allowAnyHost": {
+            "label": "Lorem · Allow any host"
+          }
+        }
+      }
+    }
+  },
+  "almagest/NetworkFirewall": {
+    "blocks": {
+      "config": {
+        "items": {
+          "rules": {
+            "label": "Lorem · Firewall rules"
+          }
+        }
+      }
+    }
+  },
+  "almagest/NetworkRouter": {
+    "blocks": {
+      "config": {
+        "items": {
+          "rules": {
+            "label": "Lorem · Routing rules"
+          },
+          "dnsCacheStorageName": {
+            "label": "Lorem · DNS cache storage",
+            "help": "Lorem · Optional CacheStorage name used by address and regular-expression rules for reverse DNS lookups. Leave empty to match only literal addresses."
+          }
+        }
+      }
+    }
+  },
+  "almagest/Remapper": {
+    "blocks": {
+      "config": {
+        "items": {
+          "rules": {
+            "label": "Lorem · Remap rules"
+          }
+        }
+      }
+    }
+  },
+  "almagest/Sniffer": {
+    "blocks": {
+      "config": {
+        "items": {
+          "rules": {
+            "label": "Lorem · Sniffer rules"
+          },
+          "dnsCacheStorageName": {
+            "label": "Lorem · DNS cache storage",
+            "help": "Lorem · Optional CacheStorage name used by address and regular-expression rules for reverse DNS lookups. Leave empty to match only literal addresses."
+          }
+        }
+      }
+    }
+  },
+  "almagest/SocksClient": {
+    "blocks": {
+      "config": {
+        "items": {
+          "proxyURL": {
+            "label": "Lorem · Proxy URL"
+          },
+          "passwordSecret": {
+            "label": "Lorem · Password secret"
+          },
+          "tlsConfig": {
+            "label": "Lorem · TLS config"
+          }
+        }
+      }
+    }
+  },
+  "almagest/SocksServer": {
+    "blocks": {
+      "config": {
+        "items": {
+          "socksHost": {
+            "label": "Lorem · SOCKS host"
+          },
+          "socksPort": {
+            "label": "Lorem · SOCKS port"
+          },
+          "wsHost": {
+            "label": "Lorem · SOCKS+WS host"
+          },
+          "wsPort": {
+            "label": "Lorem · SOCKS+WS port"
+          },
+          "wsPath": {
+            "label": "Lorem · SOCKS+WS path"
+          },
+          "users": {
+            "label": "Lorem · Users",
+            "templates": {
+              "user": {
+                "label": "Lorem · User",
+                "items": {
+                  "username": {
+                    "label": "Lorem · Username"
+                  },
+                  "password": {
+                    "label": "Lorem · Password"
+                  },
+                  "passwordSecret": {
+                    "label": "Lorem · Password secret"
+                  }
+                }
+              }
+            }
+          },
+          "cmdConnect": {
+            "label": "Lorem · CONNECT"
+          },
+          "cmdBind": {
+            "label": "Lorem · BIND"
+          },
+          "cmdUDPAssoc": {
+            "label": "Lorem · UDP ASSOC"
+          },
+          "cmdTorResolve": {
+            "label": "Lorem · Tor RESOLVE"
+          },
+          "cmdTorResolvePtr": {
+            "label": "Lorem · Tor RESOLVE_PTR"
+          },
+          "cmdGostMuxBind": {
+            "label": "Lorem · Gost MBIND"
+          },
+          "cmdGostUDPTun": {
+            "label": "Lorem · Gost UDPTUN"
+          }
+        }
+      },
+      "logs": {
+        "items": {
+          "worker": {
+            "label": "Lorem · Worker"
+          }
+        }
+      }
+    }
+  },
+  "almagest/Spoofer": {
+    "blocks": {
+      "config": {
+        "items": {
+          "mtu": {
+            "label": "Lorem · MTU"
+          },
+          "queueLength": {
+            "label": "Lorem · Queue length"
+          },
+          "ttl": {
+            "label": "Lorem · TTL"
+          },
+          "icmpBurst": {
+            "label": "Lorem · ICMP burst"
+          },
+          "tcpSendBufferSize": {
+            "label": "Lorem · TCP send buffer"
+          },
+          "tcpReceiveBufferSize": {
+            "label": "Lorem · TCP receive buffer"
+          },
+          "congestionControlAlg": {
+            "label": "Lorem · TCP congestion"
+          },
+          "tcpKeepAliveIdle": {
+            "label": "Lorem · TCP keepalive idle"
+          },
+          "tcpKeepAliveInterval": {
+            "label": "Lorem · TCP keepalive interval"
+          },
+          "tcpKeepAliveCount": {
+            "label": "Lorem · TCP keepalive count"
+          },
+          "tcpForwardWnd": {
+            "label": "Lorem · TCP forward window"
+          },
+          "tcpForwardAttempts": {
+            "label": "Lorem · TCP forward attempts"
+          }
+        }
+      }
+    }
+  },
+  "almagest/StaticDns": {
+    "blocks": {
+      "config": {
+        "items": {
+          "records": {
+            "label": "Lorem · Records",
+            "placeholder": "Lorem · example.test A 192.0.2.10"
+          },
+          "ttl": {
+            "label": "Lorem · TTL"
+          }
+        }
+      }
+    }
+  },
+  "almagest/TailscaleCtrl": {
+    "blocks": {
+      "status": {
+        "items": {
+          "state": {
+            "label": "Lorem · State"
+          },
+          "controlURL": {
+            "label": "Lorem · Control server"
+          },
+          "login": {
+            "label": "Lorem · Login"
+          },
+          "tailnet": {
+            "label": "Lorem · Tailnet"
+          },
+          "selfName": {
+            "label": "Lorem · Tailnet name"
+          },
+          "machineAuthorized": {
+            "label": "Lorem · Machine authorized"
+          },
+          "mapSequence": {
+            "label": "Lorem · Map sequence"
+          },
+          "localEndpoints": {
+            "label": "Lorem · Advertised endpoints"
+          },
+          "magicDNSDomains": {
+            "label": "Lorem · MagicDNS search domains"
+          },
+          "magicDNSRecords": {
+            "label": "Lorem · MagicDNS records"
+          },
+          "peers": {
+            "label": "Lorem · Tailnet peers"
+          },
+          "acl": {
+            "label": "Lorem · ACL packet filter"
+          },
+          "derp": {
+            "label": "Lorem · DERP regions"
+          },
+          "health": {
+            "label": "Lorem · Health"
+          },
+          "firewall": {
+            "label": "Lorem · Generated firewall policy"
+          },
+          "error": {
+            "label": "Lorem · Error"
+          }
+        }
+      },
+      "config": {
+        "items": {
+          "enabled": {
+            "label": "Lorem · Enabled",
+            "help": "Lorem · Connect to the control server and manage this node's Tailscale peers on the attached WireGuard node."
+          },
+          "controlURL": {
+            "label": "Lorem · Control URL",
+            "help": "Lorem · Tailscale or Headscale coordination server URL. HTTP is only for trusted test networks."
+          },
+          "hostname": {
+            "label": "Lorem · Hostname",
+            "help": "Lorem · Name advertised to the tailnet. An empty value uses the Pasta node name."
+          },
+          "authKeySecret": {
+            "label": "Lorem · Auth key secret",
+            "help": "Lorem · Optional secret containing a Tailscale or Headscale pre-authentication key. The key is not saved in the workspace."
+          },
+          "ephemeral": {
+            "label": "Lorem · Ephemeral node",
+            "help": "Lorem · Ask the control server to remove the machine after it goes offline."
+          },
+          "listenPort": {
+            "label": "Lorem · Discovery UDP port",
+            "help": "Lorem · Local port for STUN, DISCO, and DERP path discovery. Zero selects an available port."
+          },
+          "disableDERP": {
+            "label": "Lorem · Disable DERP",
+            "help": "Lorem · Disable Tailscale TLS relay fallback."
+          },
+          "disableDiscovery": {
+            "label": "Lorem · Disable discovery",
+            "help": "Lorem · Disable endpoint discovery, STUN, and DISCO. Control-provided direct endpoints remain available."
+          },
+          "tlsConfig": {
+            "label": "Lorem · TLS config"
+          }
+        }
+      },
+      "authentication": {
+        "items": {
+          "checkAuthentication": {
+            "label": "Lorem · Check authorization",
+            "help": "Lorem · Ask the Tailscale client to check the pending action now."
+          }
+        }
+      }
+    }
+  },
+  "almagest/TimeTrigger": {
+    "blocks": {
+      "config": {
+        "items": {
+          "mode": {
+            "label": "Lorem · Mode"
+          },
+          "interval": {
+            "label": "Lorem · Every",
+            "placeholder": "Lorem · 2m"
+          },
+          "dailyTime": {
+            "label": "Lorem · At",
+            "placeholder": "Lorem · 00:00"
+          },
+          "emitOnReady": {
+            "label": "Lorem · Trigger on ready"
+          }
+        }
+      }
+    }
+  },
+  "almagest/TlsMitm": {
+    "blocks": {
+      "config": {
+        "items": {
+          "tlsConfig": {
+            "label": "Lorem · TLS config"
+          },
+          "sniffBufferSize": {
+            "label": "Lorem · Sniff buffer bytes",
+            "placeholder": "Lorem · 0"
+          },
+          "leafTTLSeconds": {
+            "label": "Lorem · Leaf TTL seconds",
+            "placeholder": "Lorem · 0"
+          },
+          "filterMode": {
+            "label": "Lorem · Filter mode",
+            "placeholder": "Lorem · off"
+          },
+          "filterRules": {
+            "label": "Lorem · Filter rules JSON"
+          }
+        }
+      }
+    }
+  },
+  "almagest/TlsTerminator": {
+    "blocks": {
+      "config": {
+        "items": {
+          "sniffBufferSize": {
+            "label": "Lorem · Sniff buffer bytes",
+            "placeholder": "Lorem · 0"
+          },
+          "leafTTLSeconds": {
+            "label": "Lorem · Leaf TTL seconds",
+            "placeholder": "Lorem · 0"
+          },
+          "useSNIHostname": {
+            "label": "Lorem · Use SNI hostname"
+          },
+          "serverAlpn": {
+            "label": "Lorem · Client-facing ALPN"
+          },
+          "destinationRemaps": {
+            "label": "Lorem · Destination remaps JSON"
+          }
+        }
+      }
+    }
+  },
+  "almagest/TlsWrapper": {
+    "blocks": {
+      "config": {
+        "items": {
+          "tlsConfig": {
+            "label": "Lorem · TLS config"
+          },
+          "clientServerName": {
+            "label": "Lorem · Client server name",
+            "placeholder": "Lorem · origin.example.test"
+          },
+          "clientAlpn": {
+            "label": "Lorem · Client ALPN",
+            "placeholder": "Lorem · h2"
+          },
+          "serverName": {
+            "label": "Lorem · Server name",
+            "placeholder": "Lorem · example.test"
+          },
+          "serverAlpn": {
+            "label": "Lorem · Server ALPN",
+            "placeholder": "Lorem · h2"
+          },
+          "leafTTLSeconds": {
+            "label": "Lorem · Leaf TTL seconds",
+            "placeholder": "Lorem · 0"
+          }
+        }
+      }
+    }
+  },
+  "almagest/TorDriver": {
+    "blocks": {
+      "status": {
+        "items": {
+          "state": {
+            "label": "Lorem · State"
+          },
+          "bootstrap": {
+            "label": "Lorem · Bootstrap"
+          },
+          "transport": {
+            "label": "Lorem · Managed transport"
+          },
+          "outboundAvailable": {
+            "label": "Lorem · Outbound attached"
+          },
+          "services": {
+            "label": "Lorem · Onion services"
+          },
+          "error": {
+            "label": "Lorem · Error"
+          }
+        }
+      },
+      "control": {
+        "items": {
+          "restart": {
+            "label": "Lorem · Restart Tor",
+            "help": "Lorem · Close the current owned Tor process and build a new runtime from the saved node configuration."
+          }
+        }
+      },
+      "Tor settings": {
+        "items": {
+          "enabled": {
+            "label": "Lorem · Enabled",
+            "help": "Lorem · Starts Tor and publishes configured outputs."
+          },
+          "maxProxyConnections": {
+            "label": "Lorem · Maximum proxy connections",
+            "help": "Lorem · Zero uses the tor-driver default."
+          }
+        }
+      },
+      "Network policies": {
+        "items": {
+          "outboundFailures": {
+            "label": "Lorem · Outbound failure policy",
+            "help": "Lorem · Retry failures or latch the outbound path until it is replaced."
+          },
+          "bandwidthRate": {
+            "label": "Lorem · Bandwidth rate (bytes/s)",
+            "help": "Lorem · Set rate and burst together. Zero disables the limit."
+          },
+          "bandwidthBurst": {
+            "label": "Lorem · Bandwidth burst (bytes)",
+            "help": "Lorem · Must be at least the bandwidth rate."
+          },
+          "connectionPadding": {
+            "label": "Lorem · Connection padding",
+            "help": "Lorem · Controls Tor connection padding."
+          },
+          "circuitPadding": {
+            "label": "Lorem · Circuit padding",
+            "help": "Lorem · Controls Tor circuit padding."
+          },
+          "reachableORPorts": {
+            "label": "Lorem · Reachable relay ports",
+            "help": "Lorem · Comma- or space-separated TCP ports. Empty permits all relay ports."
+          },
+          "maxPendingCircuits": {
+            "label": "Lorem · Maximum pending circuits",
+            "help": "Lorem · Zero uses the Tor default."
+          },
+          "numCPUs": {
+            "label": "Lorem · CPU count",
+            "help": "Lorem · Zero lets Tor detect the CPU count."
+          },
+          "clientIP": {
+            "label": "Lorem · Client IP policy",
+            "help": "Lorem · Selects the IP families Tor can use."
+          },
+          "onionTraffic": {
+            "label": "Lorem · Onion traffic",
+            "help": "Lorem · Controls access to onion services."
+          },
+          "entryNodes": {
+            "label": "Lorem · Entry relay fingerprints",
+            "help": "Lorem · One 40-character relay fingerprint per line."
+          },
+          "exitNodes": {
+            "label": "Lorem · Exit relay fingerprints",
+            "help": "Lorem · One 40-character relay fingerprint per line."
+          },
+          "excludeNodes": {
+            "label": "Lorem · Excluded relay fingerprints",
+            "help": "Lorem · One 40-character relay fingerprint per line."
+          },
+          "excludeExitNodes": {
+            "label": "Lorem · Excluded exit fingerprints",
+            "help": "Lorem · One 40-character relay fingerprint per line."
+          },
+          "strictNodes": {
+            "label": "Lorem · Strict relay selection",
+            "help": "Lorem · Do not use relays outside the configured lists."
+          }
+        }
+      },
+      "Networks": {
+        "items": {
+          "networks": {
+            "label": "Lorem · Tor Networks",
+            "help": "Lorem · Each entry creates one Network output. Per-connection circuits cannot use destination isolation.",
+            "templates": {
+              "network": {
+                "label": "Lorem · Network",
+                "items": {
+                  "name": {
+                    "label": "Lorem · Name",
+                    "help": "Lorem · Used in the graph port name."
+                  },
+                  "circuits": {
+                    "label": "Lorem · Circuit isolation",
+                    "help": "Lorem · Session reuses circuits. Connection creates a new circuit for every connection."
+                  },
+                  "isolateDestinationAddress": {
+                    "label": "Lorem · Isolate destination address",
+                    "help": "Lorem · Use a different circuit when the destination address changes."
+                  },
+                  "isolateDestinationPort": {
+                    "label": "Lorem · Isolate destination port",
+                    "help": "Lorem · Use a different circuit when the destination port changes."
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "Bridges": {
+        "items": {
+          "useBridges": {
+            "label": "Lorem · Use bridges",
+            "help": "Lorem · Route Tor bootstrap and relay traffic through the configured bridges."
+          },
+          "enableObfs4": {
+            "label": "Lorem · Enable obfs4",
+            "help": "Lorem · Enable the protected obfs4 or lyrebird transport executable."
+          },
+          "bridges": {
+            "label": "Lorem · Bridge lines",
+            "help": "Lorem · Add plain or obfs4 bridges. Enable bridge use before applying a non-empty list.",
+            "templates": {
+              "plain": {
+                "label": "Lorem · Plain bridge",
+                "items": {
+                  "address": {
+                    "label": "Lorem · Address",
+                    "help": "Lorem · Numeric bridge IP address and port."
+                  },
+                  "fingerprint": {
+                    "label": "Lorem · Fingerprint",
+                    "help": "Lorem · Optional 40-character relay fingerprint."
+                  }
+                }
+              },
+              "obfs4": {
+                "label": "Lorem · obfs4 bridge",
+                "items": {
+                  "address": {
+                    "label": "Lorem · Address",
+                    "help": "Lorem · Numeric bridge IP address and port."
+                  },
+                  "fingerprint": {
+                    "label": "Lorem · Fingerprint",
+                    "help": "Lorem · 40-character relay fingerprint."
+                  },
+                  "obfs4Certificate": {
+                    "label": "Lorem · obfs4 certificate",
+                    "help": "Lorem · Base64 obfs4 certificate from the bridge line."
+                  },
+                  "iat": {
+                    "label": "Lorem · Inter-arrival timing"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "Onion services": {
+        "items": {
+          "services": {
+            "label": "Lorem · Onion services",
+            "help": "Lorem · Each entry creates one persistent v3 onion service and one listen-only Network output.",
+            "templates": {
+              "service": {
+                "label": "Lorem · Onion service",
+                "items": {
+                  "name": {
+                    "label": "Lorem · Name",
+                    "help": "Lorem · Used in the graph port name."
+                  },
+                  "ports": {
+                    "label": "Lorem · Virtual ports",
+                    "help": "Lorem · Comma- or space-separated onion service ports."
+                  },
+                  "maxStreams": {
+                    "label": "Lorem · Maximum streams",
+                    "help": "Lorem · Zero uses the Tor default."
+                  },
+                  "maxStreamsPolicy": {
+                    "label": "Lorem · Stream limit policy"
+                  },
+                  "keySecret": {
+                    "label": "Lorem · Private key secret",
+                    "help": "Lorem · Empty creates a new node-scoped private key secret."
+                  },
+                  "authorizedClients": {
+                    "label": "Lorem · Authorized client public keys",
+                    "help": "Lorem · One v3 client authorization public key per line."
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "Client authorization": {
+        "items": {
+          "clientAuthorizations": {
+            "label": "Lorem · Client authorization",
+            "help": "Lorem · Add private authorization keys for connecting to protected v3 onion services.",
+            "templates": {
+              "authorization": {
+                "label": "Lorem · Authorization",
+                "items": {
+                  "address": {
+                    "label": "Lorem · Onion address"
+                  },
+                  "name": {
+                    "label": "Lorem · Key name",
+                    "help": "Lorem · Optional Tor authorization name."
+                  },
+                  "privateKeySecret": {
+                    "label": "Lorem · Private key secret",
+                    "help": "Lorem · Empty creates a new node-scoped X25519 private key secret."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "almagest/Tun": {
+    "blocks": {
+      "effective": {
+        "items": {
+          "name": {
+            "label": "Lorem · Name"
+          },
+          "mtu": {
+            "label": "Lorem · MTU"
+          },
+          "error": {
+            "label": "Lorem · Error"
+          }
+        }
+      },
+      "config": {
+        "items": {
+          "name": {
+            "label": "Lorem · Name"
+          },
+          "mtu": {
+            "label": "Lorem · MTU"
+          }
+        }
+      }
+    }
+  },
+  "almagest/Tun2Dns": {
+    "blocks": {
+      "config": {
+        "items": {
+          "requestTimeoutMS": {
+            "label": "Lorem · Request timeout (ms)",
+            "help": "Lorem · Maximum time to forward one DNS packet to the attached resolver. Set 0 to use the gonnect default."
+          }
+        }
+      }
+    }
+  },
+  "almagest/TunFirewall": {
+    "blocks": {
+      "config": {
+        "items": {
+          "rules": {
+            "label": "Lorem · Firewall rules"
+          }
+        }
+      }
+    }
+  },
+  "almagest/TunSplitter": {
+    "blocks": {
+      "config": {
+        "items": {
+          "rules": {
+            "label": "Lorem · Routing rules"
+          }
+        }
+      }
+    }
+  },
+  "almagest/VTun": {
+    "blocks": {
+      "effective": {
+        "items": {
+          "name": {
+            "label": "Lorem · Name"
+          },
+          "addressFamilies": {
+            "label": "Lorem · Address families",
+            "help": "Lorem · Address families enabled by the effective VTun addresses. This reports stack support, not verified Internet reachability."
+          },
+          "mtu": {
+            "label": "Lorem · MTU"
+          },
+          "mtuSource": {
+            "label": "Lorem · MTU source"
+          },
+          "endpointCh": {
+            "label": "Lorem · Endpoint channel"
+          },
+          "eventCh": {
+            "label": "Lorem · Event channel"
+          }
+        }
+      },
+      "config": {
+        "items": {
+          "name": {
+            "label": "Lorem · Name"
+          },
+          "localAddrs": {
+            "label": "Lorem · Local addrs"
+          },
+          "dnsServers": {
+            "label": "Lorem · DNS servers",
+            "help": "Lorem · DNS server IP addresses. An explicit value has priority over a TUN DNS suggestion. If neither is set, VTun uses 8.8.8.8."
+          },
+          "mtu": {
+            "label": "Lorem · MTU ceiling",
+            "help": "Lorem · Maximum interface MTU. Zero enables automatic selection from graph constraints. A positive value can be reduced when the path requires a smaller MTU."
+          },
+          "endpointCh": {
+            "label": "Lorem · Endpoint channel"
+          },
+          "eventCh": {
+            "label": "Lorem · Event channel"
+          }
+        }
+      }
+    }
+  },
+  "almagest/WGConfig": {
+    "blocks": {
+      "status": {
+        "items": {
+          "state": {
+            "label": "Lorem · State"
+          },
+          "wireGuard": {
+            "label": "Lorem · WireGuard"
+          },
+          "network": {
+            "label": "Lorem · Network"
+          },
+          "transport": {
+            "label": "Lorem · UDP transport"
+          },
+          "peers": {
+            "label": "Lorem · Peers"
+          },
+          "runtimePeers": {
+            "label": "Lorem · Runtime peers"
+          },
+          "error": {
+            "label": "Lorem · Error"
+          }
+        }
+      },
+      "peers": {
+        "items": {
+          "peers": {
+            "label": "Lorem · Peers",
+            "templates": {
+              "peer": {
+                "label": "Lorem · Peer",
+                "items": {
+                  "publicKey": {
+                    "label": "Lorem · Public key"
+                  },
+                  "presharedKeySecret": {
+                    "label": "Lorem · Preshared key secret"
+                  },
+                  "endpoint": {
+                    "label": "Lorem · Endpoint"
+                  },
+                  "allowedIPs": {
+                    "label": "Lorem · Allowed IPs"
+                  },
+                  "persistentKeepaliveInterval": {
+                    "label": "Lorem · Keepalive"
+                  },
+                  "amneziaOverride": {
+                    "label": "Lorem · AWG override",
+                    "help": "Lorem · Use a peer-specific AWG profile instead of the device profile."
+                  },
+                  "amneziaEnabled": {
+                    "label": "Lorem · AWG obfuscation",
+                    "help": "Lorem · Enable this peer's AWG profile. When disabled, this peer uses plain WireGuard-compatible defaults."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "almagest/WireGuard": {
+    "blocks": {
+      "status": {
+        "items": {
+          "state": {
+            "label": "Lorem · State"
+          },
+          "publicKey": {
+            "label": "Lorem · Public key"
+          },
+          "listenPort": {
+            "label": "Lorem · Listen port"
+          },
+          "tun": {
+            "label": "Lorem · TUN"
+          },
+          "network": {
+            "label": "Lorem · Network"
+          },
+          "ownedIPs": {
+            "label": "Lorem · Effective owned IPs"
+          },
+          "peers": {
+            "label": "Lorem · Peers"
+          },
+          "error": {
+            "label": "Lorem · Error"
+          }
+        }
+      },
+      "config": {
+        "items": {
+          "privateKeySecret": {
+            "label": "Lorem · Private key secret",
+            "help": "Lorem · Secret name containing the WireGuard private key. Empty or inaccessible names are replaced with a newly generated private-key secret."
+          },
+          "listenPort": {
+            "label": "Lorem · Listen port"
+          },
+          "batchSize": {
+            "label": "Lorem · Batch size",
+            "help": "Lorem · wgo and batchudp batch size. Use 0 for library defaults; smaller positive values reduce retained buffers and can reduce peak throughput."
+          },
+          "ownedIPs": {
+            "label": "Lorem · Owned IPs"
+          },
+          "dns": {
+            "label": "Lorem · DNS",
+            "help": "Lorem · Optional DNS server IP suggested to the connected TUN provider. This is for simple topologies such as WireGuard connected directly to VTun. Use almagest/dns nodes for DNS routing or policy."
+          },
+          "amneziaEnabled": {
+            "label": "Lorem · AWG obfuscation",
+            "help": "Lorem · Enable the device AWG profile. When disabled, the device uses plain WireGuard-compatible defaults."
+          }
+        }
+      },
+      "peers": {
+        "items": {
+          "peers": {
+            "label": "Lorem · Peers",
+            "templates": {
+              "peer": {
+                "label": "Lorem · Peer",
+                "items": {
+                  "publicKey": {
+                    "label": "Lorem · Public key"
+                  },
+                  "presharedKeySecret": {
+                    "label": "Lorem · Preshared key secret"
+                  },
+                  "endpoint": {
+                    "label": "Lorem · Endpoint"
+                  },
+                  "allowedIPs": {
+                    "label": "Lorem · Allowed IPs"
+                  },
+                  "persistentKeepaliveInterval": {
+                    "label": "Lorem · Keepalive"
+                  },
+                  "amneziaOverride": {
+                    "label": "Lorem · AWG override",
+                    "help": "Lorem · Use a peer-specific AWG profile instead of the device profile."
+                  },
+                  "amneziaEnabled": {
+                    "label": "Lorem · AWG obfuscation",
+                    "help": "Lorem · Enable this peer's AWG profile. When disabled, this peer uses plain WireGuard-compatible defaults."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

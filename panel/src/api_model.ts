@@ -1,3 +1,5 @@
+import { text as localizedText } from "./localization.js";
+
 export const API_SURFACES = [
   "admin",
   "config",
@@ -71,7 +73,7 @@ export function parseAPIMessage(text: string): APIMessage | null {
 export function errorMessage(value: unknown): string {
   if (value instanceof Error) return value.message;
   if (typeof value === "string") return value;
-  return "Unknown error";
+  return localizedText("common.unknown_error", "Unknown error");
 }
 
 function parseRequest(value: Record<string, unknown>): APIRequestMessage | null {

@@ -38,7 +38,7 @@ type Tun2DNSClass struct {
 func (Tun2DNSClass) ClassName() string        { return NodeTypeTun2Dns }
 func (Tun2DNSClass) ShortDescription() string { return "TUN to DNS" }
 func (Tun2DNSClass) LongDescription() string {
-	return "Adapts raw UDP DNS packets received from an almagest/tun endpoint into requests on an almagest/dns interface, then writes raw IP DNS responses back to the TUN. The request timeout is configurable in milliseconds; 0 uses the gonnect default."
+	return "Bridges DNS packets between TUN and DNS endpoints."
 }
 func (Tun2DNSClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: nodekit.TypeTun, InitialPorts: []pasta.Port{
@@ -536,7 +536,6 @@ func (n *tun2DNSNode) configBlock() formular.Block {
 			Tun2DNSRequestTimeoutMSField,
 			"Request timeout (ms)",
 			n.requestTimeoutMS,
-			"Maximum time to forward one DNS packet to the attached resolver.",
 			n.formError,
 		),
 	}}

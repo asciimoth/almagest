@@ -220,6 +220,13 @@ import {
 } from "./response_model.js";
 import { NotificationCenter, type NotificationTone } from "./notification_center.js";
 import { renderHuJSONHighlight } from "./hujson_highlight.js";
+import {
+  applyLocale,
+  matchPreferredLocale,
+  parseLocaleSnapshot,
+  text as localizedText,
+  type LocaleSnapshot,
+} from "./localization.js";
 
 const SECRET_NODE_AUTOCOMPLETE_LIMIT = 8;
 const TLS_CERT_OPENSSL_COMMAND = [
@@ -319,6 +326,8 @@ type PendingNodePlacement = {
 type BackendResultMap = {
   hello: HelloResponse;
   colormap: Record<string, TypePalette>;
+  localeSnapshot: LocaleSnapshot;
+  setLocale: LocaleSnapshot;
   configSnapshot: ConfigSnapshot;
   configUpdate: ConfigUpdateResponse;
   snapshotsList: SnapshotsListResponse;
@@ -486,6 +495,7 @@ const liteLinkToPasta = new Map<number, number>();
 const pendingNodePlacements: PendingNodePlacement[] = [];
 const CLASS_DRAG_MIME = "application/x-almagest-node-class";
 const GRAPH_VIEWPORT_STORAGE_KEY = "almagest.panel.graph.viewport.v1";
+const LOCALE_STORAGE_KEY = "almagest.panel.locale.v1";
 const PASTA_TRIGGER_CLASS = "pasta/Trigger";
 const debugClipboard = false;
 let graphViewportSaveTimeout = 0;
@@ -503,6 +513,8 @@ const el = {
   projectVersion: document.querySelector<HTMLElement>("#project-version")!,
   isolationStatus: document.querySelector<HTMLElement>("#isolation-status")!,
   sandboxStatus: document.querySelector<HTMLElement>("#sandbox-status")!,
+  locale: document.querySelector<HTMLSelectElement>("#locale-select")!,
+  localeCode: document.querySelector<HTMLElement>("#locale-code")!,
   tabs: [...document.querySelectorAll<HTMLButtonElement>("[data-tab]")],
   panels: [...document.querySelectorAll<HTMLElement>("[data-panel]")],
   graphCanvas: document.querySelector<HTMLCanvasElement>("#graph-canvas")!,
@@ -545,11 +557,11 @@ function notify(tone: NotificationTone, title: string, message: string): void {
   notifications.show(message, { tone, title });
 }
 
-function notifySuccess(message: string, title = "Done"): void {
+function notifySuccess(message: string, title = localizedText("notification.success.title", "Done")): void {
   notify("success", title, message);
 }
 
-function notifyError(message: string, title = "Action failed"): void {
+function notifyError(message: string, title = localizedText("notification.error.title", "Action failed")): void {
   notify("error", title, message);
 }
 
@@ -644,8 +656,7 @@ function connectAPI(): Promise<void> {
       else log("api", "warn", "ignored an invalid WebSocket message");
     });
     ws.addEventListener("close", () => {
-      el.status.textContent = "Admin API disconnected";
-      el.status.style.color = "#ff0000";
+      setBackendStatus("app.status.disconnected", "Admin API disconnected", true);
       for (const { reject: rejectRequest } of pendingRequests.values()) {
         rejectRequest(new Error("Admin API disconnected"));
       }
@@ -871,6 +882,10 @@ async function backend(method: BackendMethod, params: Record<string, unknown> = 
     case "colormap": {
       return requestDecoded("admin", "colormap", {}, parseTypePaletteMap);
     }
+    case "localeSnapshot":
+      return requestDecoded("admin", "locale_snapshot", {}, parseLocaleSnapshot);
+    case "setLocale":
+      return requestDecoded("admin", "set_locale", { locale: params.locale }, parseLocaleSnapshot);
     case "configSnapshot":
       return requestDecoded("config", "snapshot", {}, parseConfigSnapshot);
     case "configUpdate":
@@ -1321,7 +1336,7 @@ function installPastaPalette(): void {
   if (!canvas) return;
   canvas.getMenuOptions = () => [
     {
-      content: "Add Node",
+      content: localizedText("node.create.menu", "Add Node"),
       has_submenu: true,
       callback: (_value: unknown, _options: unknown, event: MouseEvent, menu: unknown) => {
         showPastaAddNodeMenu(event, menu);
@@ -1372,7 +1387,9 @@ function showPastaAddNodeMenu(event: MouseEvent, parentMenu: unknown): void {
   const menu = new LiteGraph.ContextMenu(entries, { event, parentMenu }, canvas.getCanvasWindow());
   const menuRoot = menu.root as HTMLElement;
   for (const entry of menuRoot.querySelectorAll<HTMLElement>(".experimental-node-class")) {
-    entry.title = `Warning: ${EXPERIMENTAL_NODE_WARNING}`;
+    entry.title = localizedText("node.experimental.warning", "Warning: {warning}", {
+      warning: localizedText("node.experimental.description", EXPERIMENTAL_NODE_WARNING),
+    });
   }
 }
 
@@ -1494,7 +1511,7 @@ function fitLabelInNode(node: any, snapshot: NodeSnapshot): void {
 
 function addNodeWidgets(node: any, id: number, nodeSnapshot: NodeSnapshot): void {
   if (nodeSnapshot.class !== PASTA_TRIGGER_CLASS || nodeSnapshot.placeholder) return;
-  node.addWidget("button", "Trigger", null, () => {
+  node.addWidget("button", localizedText("node.trigger", "Trigger"), null, () => {
     void tryBackend("triggerNode", { id });
   }, { preserveSelection: true });
 }
@@ -1664,7 +1681,9 @@ function renderClassPanel(selectedCount: number): void {
   const list = document.createElement("div");
   list.className = "class-list";
   el.sidekick.replaceChildren(
-    textElement("div", selectedCount > 1 ? `${selectedCount} nodes selected` : "Create node", "panel-title"),
+    textElement("div", selectedCount > 1
+      ? localizedText("node.selection.count", "{count} nodes selected", { count: selectedCount })
+      : localizedText("node.create.title", "Create node"), "panel-title"),
     list,
   );
   for (const cls of classes) {
@@ -1676,7 +1695,7 @@ function renderClassPanel(selectedCount: number): void {
     button.classList.toggle("class-button-primary", Boolean(primaryColor));
     button.type = "button";
     button.draggable = true;
-    button.setAttribute("aria-label", `Create ${shortClass(cls.class)} node`);
+    button.setAttribute("aria-label", localizedText("node.create.aria_label", "Create {class} node", { class: shortClass(cls.class) }));
     if (primaryColor) {
       button.style.setProperty("--class-primary-color", safeCSSColor(primaryColor.color, DEFAULT_NODE_TITLE_COLOR));
       button.style.setProperty("--class-primary-text-color", safeCSSColor(primaryColor.textColor, DEFAULT_NODE_TEXT_COLOR));
@@ -1778,15 +1797,15 @@ function renderNodePanel(id: number): void {
   const tabs = document.createElement("div");
   tabs.className = "node-panel-tabs";
   tabs.setAttribute("role", "tablist");
-  tabs.setAttribute("aria-label", "Node details");
-  const menuTab = textElement("button", "Node menu");
+  tabs.setAttribute("aria-label", localizedText("node.details.aria_label", "Node details"));
+  const menuTab = textElement("button", localizedText("node.menu.tab", "Node menu"));
   menuTab.className = "active";
   menuTab.dataset.nodeTab = "menu";
   menuTab.type = "button";
   menuTab.id = "node-tab-menu";
   menuTab.setAttribute("role", "tab");
   menuTab.setAttribute("aria-selected", "true");
-  const docsTab = textElement("button", "Description");
+  const docsTab = textElement("button", localizedText("node.description.tab", "Description"));
   docsTab.dataset.nodeTab = "docs";
   docsTab.type = "button";
   docsTab.id = "node-tab-docs";
@@ -1853,7 +1872,7 @@ function renderPlaceholderNodePanel(id: number, node: NodeSnapshot): void {
   section.className = "node-panel-section";
   section.append(
     textElement("h2", shortClass(node.class)),
-    textElement("p", "This node is a placeholder. Its implementation is unavailable now, so almagest preserves its ports and links as placeholders in case implementation will become available later."),
+    textElement("p", localizedText("node.placeholder.description", "This node is a placeholder. Its implementation is unavailable now, so almagest preserves its ports and links as placeholders in case implementation will become available later.")),
   );
   el.sidekick.replaceChildren(createNodeNameForm(node.name), section);
   const form = el.sidekick.querySelector<HTMLFormElement>("[data-node-name-form]");
@@ -1892,12 +1911,12 @@ function renderNodePopups(nodeID: number, node: NodeSnapshot): void {
   root.replaceChildren();
   const header = document.createElement("div");
   header.className = "popup-panel-header";
-  header.append(textElement("h2", "Popups"));
+  header.append(textElement("h2", localizedText("node.popups.title", "Popups")));
   if (popups.length) {
     const clear = document.createElement("button");
     clear.type = "button";
     clear.className = "danger";
-    clear.textContent = "Clear all";
+    clear.textContent = localizedText("action.clear_all", "Clear all");
     clear.addEventListener("click", () => void removeNodePopups(nodeID));
     header.append(clear);
   }
@@ -1905,7 +1924,7 @@ function renderNodePopups(nodeID: number, node: NodeSnapshot): void {
   if (!popups.length) {
     const empty = document.createElement("p");
     empty.className = "popup-empty";
-    empty.textContent = "No popups";
+    empty.textContent = localizedText("node.popups.empty", "No popups");
     root.append(empty);
     return;
   }
@@ -1927,7 +1946,7 @@ function renderPopupItem(nodeID: number, popup: NodePopup): HTMLElement {
   const remove = document.createElement("button");
   remove.type = "button";
   remove.className = "danger";
-  remove.textContent = "Delete";
+  remove.textContent = localizedText("action.delete", "Delete");
   remove.addEventListener("click", () => void removeNodePopup(nodeID, popup.id));
   item.append(type, text, remove);
   return item;
@@ -1936,18 +1955,18 @@ function renderPopupItem(nodeID: number, popup: NodePopup): HTMLElement {
 async function removeNodePopup(nodeID: number, popupID: number): Promise<void> {
   try {
     await backend("removeNodePopup", { id: nodeID, popupId: popupID });
-    notifySuccess("Node popup deleted.", "Popup deleted");
+    notifySuccess(localizedText("node.popups.deleted.message", "Node popup deleted."), localizedText("node.popups.deleted.title", "Popup deleted"));
   } catch (error) {
-    notifyError(errorMessage(error), "Popup deletion failed");
+    notifyError(errorMessage(error), localizedText("node.popups.delete_failed.title", "Popup deletion failed"));
   }
 }
 
 async function removeNodePopups(nodeID: number): Promise<void> {
   try {
     await backend("removeNodePopups", { id: nodeID });
-    notifySuccess("All node popups deleted.", "Popups cleared");
+    notifySuccess(localizedText("node.popups.cleared.message", "All node popups deleted."), localizedText("node.popups.cleared.title", "Popups cleared"));
   } catch (error) {
-    notifyError(errorMessage(error), "Popup deletion failed");
+    notifyError(errorMessage(error), localizedText("node.popups.delete_failed.title", "Popup deletion failed"));
   }
 }
 
@@ -2019,7 +2038,7 @@ function feedMenu(notification: WorkspaceNotification): void {
   try {
     const accepted = selectedMenu.menu.feed(message);
     if (message.type === "dialog.create" && !accepted) {
-      const text = "The node menu rejected a dialog request. Reload the panel to use the current Formular renderer.";
+      const text = localizedText("node.dialog.renderer_outdated", "The node menu rejected a dialog request. Reload the panel to use the current Formular renderer.");
       log("frontend", "error", text);
       notifyError(text);
     } else if (message.type === "dialog.create" && message.dialog?.kind === "captcha") {
@@ -2027,7 +2046,7 @@ function feedMenu(notification: WorkspaceNotification): void {
     }
   } catch (error) {
     if (message.type !== "dialog.create") throw error;
-    const text = `The node menu could not open a dialog: ${errorMessage(error)}`;
+    const text = localizedText("node.dialog.open_failed", "The node menu could not open a dialog: {error}", { error: errorMessage(error) });
     log("frontend", "error", text);
     notifyError(text);
   }
@@ -2072,7 +2091,7 @@ async function ensureSecSubscription(): Promise<void> {
   const response = await tryBackend("secSubscribe");
   secSubscribePending = false;
   if (!response) {
-    notifyError("Secrets storage is unavailable.", "Secrets unavailable");
+    notifyError(localizedText("secrets.unavailable.message", "Secrets storage is unavailable."), localizedText("secrets.unavailable.title", "Secrets unavailable"));
     renderSec();
     return;
   }
@@ -2103,7 +2122,9 @@ function renderSec(): void {
   const list = document.createElement("ol");
   list.className = "kv-store-list";
   if (!secrets.length) {
-    list.append(renderKVEmptyState(secSubscribePending ? "Loading secrets." : "No secrets."));
+    list.append(renderKVEmptyState(secSubscribePending
+      ? localizedText("secrets.loading", "Loading secrets.")
+      : localizedText("secrets.empty", "No secrets.")));
   } else {
     for (const entry of secrets) {
       list.append(renderSecretRow(entry));
@@ -2118,10 +2139,10 @@ function renderSec(): void {
 function renderSecHeader(): HTMLElement {
   const header = document.createElement("header");
   header.className = "kv-header sec-header";
-  header.append(textElement("h2", "Secrets"));
+  header.append(textElement("h2", localizedText("secrets.title", "Secrets")));
   const add = textElement("button", "+ Secret");
   add.type = "button";
-  add.title = "Create secret";
+  add.title = localizedText("secrets.create.title", "Create secret");
   add.addEventListener("click", () => {
     secOpenForm = true;
     renderSec();
@@ -2136,7 +2157,7 @@ function renderSecretRow(entry: SecretEntry): HTMLLIElement {
   item.classList.toggle("sec-secret-readonly", Boolean(entry.read_only));
   const row = document.createElement("div");
   row.className = "kv-row";
-  bindKVRowAction(row, `Open secret ${entry.key}`, () => openSecValuePanel(entry.key));
+  bindKVRowAction(row, localizedText("secrets.open.aria_label", "Open secret {key}", { key: entry.key }), () => openSecValuePanel(entry.key));
   row.append(createKVIndent());
   row.append(createSecretTitle(entry));
   row.append(renderSecretRowActions(entry));
@@ -2151,9 +2172,9 @@ function renderSecretRowActions(entry: SecretEntry): HTMLElement {
   const actions = document.createElement("div");
   actions.className = "kv-row-actions";
   if (!entry.read_only) {
-    const remove = textElement("button", "Delete");
+    const remove = textElement("button", localizedText("action.delete", "Delete"));
     remove.type = "button";
-    remove.title = "Delete secret";
+    remove.title = localizedText("secrets.delete.title", "Delete secret");
     remove.className = "danger";
     remove.addEventListener("click", () => deleteSecret(entry.key));
     actions.append(remove);
@@ -2166,21 +2187,21 @@ function renderSecretCreateForm(): HTMLFormElement {
   form.className = "kv-inline-form sec-secret-form";
   const key = document.createElement("input");
   key.name = "key";
-  key.placeholder = "Key";
+  key.placeholder = localizedText("secrets.key.placeholder", "Key");
   key.autocomplete = "off";
   key.required = true;
   const nodeEditor = createSecretNodeEditor(2);
   const nodes = nodeEditor.textarea;
-  nodes.placeholder = "Allowed nodes";
+  nodes.placeholder = localizedText("secrets.nodes.placeholder", "Allowed nodes");
   const value = document.createElement("textarea");
   value.name = "value";
-  value.placeholder = "Value";
+  value.placeholder = localizedText("secrets.value.placeholder", "Value");
   value.rows = 5;
   const actions = document.createElement("div");
   actions.className = "sec-form-actions";
-  const save = textElement("button", "Create");
+  const save = textElement("button", localizedText("action.create", "Create"));
   save.type = "submit";
-  const cancel = textElement("button", "Cancel");
+  const cancel = textElement("button", localizedText("action.cancel", "Cancel"));
   cancel.type = "button";
   cancel.addEventListener("click", () => {
     secOpenForm = false;
@@ -2188,9 +2209,9 @@ function renderSecretCreateForm(): HTMLFormElement {
   });
   actions.append(save, cancel);
   form.append(
-    secFormField("Key", key),
-    secFormField("Nodes", nodeEditor.root),
-    secFormField("Value", value, "sec-form-field-wide"),
+    secFormField(localizedText("secrets.key.label", "Key"), key),
+    secFormField(localizedText("secrets.nodes.label", "Nodes"), nodeEditor.root),
+    secFormField(localizedText("secrets.value.label", "Value"), value, "sec-form-field-wide"),
     actions,
   );
   form.addEventListener("submit", (event) => {
@@ -2321,12 +2342,12 @@ function wireSecretNodeAutocomplete(textarea: HTMLTextAreaElement, suggestions: 
 async function createSecret(key: string, nodesText: string, value: string): Promise<void> {
   const name = key.trim();
   if (!name) {
-    notifyError("Secret key is required.", "Invalid secret");
+    notifyError(localizedText("secrets.validation.key_required", "Secret key is required."), localizedText("secrets.validation.invalid.title", "Invalid secret"));
     renderSec();
     return;
   }
   if (secretEntryByKey(name)) {
-    notifyError("Secret already exists.", "Invalid secret");
+    notifyError(localizedText("secrets.validation.exists", "Secret already exists."), localizedText("secrets.validation.invalid.title", "Invalid secret"));
     renderSec();
     return;
   }
@@ -2338,11 +2359,11 @@ async function createSecret(key: string, nodesText: string, value: string): Prom
       ? await backend("secSetNodes", { key: name, nodes })
       : valueEntry;
     upsertSecretEntry(entry);
-    notifySuccess("Secret created.", "Secret saved");
+    notifySuccess(localizedText("secrets.created.message", "Secret created."), localizedText("secrets.saved.title", "Secret saved"));
     secOpenForm = false;
     openSecValuePanel(entry.key);
   } catch (error) {
-    notifyError(errorMessage(error), "Secret creation failed");
+    notifyError(errorMessage(error), localizedText("secrets.create_failed.title", "Secret creation failed"));
     renderSec();
   }
 }
@@ -2371,7 +2392,7 @@ function renderSecValuePanel(): void {
   el.secValuePanel.classList.remove("hidden");
   const entry = secretEntryByKey(secValuePanel.key);
   if (!entry) {
-    el.secValuePanel.append(textElement("p", "Secret not found.", "kv-value-missing"));
+    el.secValuePanel.append(textElement("p", localizedText("secrets.not_found", "Secret not found."), "kv-value-missing"));
     return;
   }
   if (entry.read_only && secValuePanel.editing) {
@@ -2384,8 +2405,8 @@ function renderSecValuePanel(): void {
   title.append(textElement("h2", entry.key), textElement("p", formatSecretEntryMeta(entry)));
   const close = textElement("button", "×", "icon-button");
   close.type = "button";
-  close.title = "Close";
-  close.setAttribute("aria-label", "Close secret panel");
+  close.title = localizedText("action.close", "Close");
+  close.setAttribute("aria-label", localizedText("secrets.close.aria_label", "Close secret panel"));
   close.addEventListener("click", closeSecValuePanel);
   header.append(title, close);
   el.secValuePanel.append(header, renderSecretDetail(entry));
@@ -2422,17 +2443,19 @@ function renderSecretDetail(entry: SecretEntry): HTMLElement {
 function renderSecretValueActions(entry: SecretEntry): HTMLElement {
   const actions = document.createElement("div");
   actions.className = "kv-value-actions";
-  const copy = textElement("button", "Copy");
+  const copy = textElement("button", localizedText("action.copy", "Copy"));
   copy.type = "button";
-  copy.title = "Copy secret value";
+  copy.title = localizedText("secrets.copy.title", "Copy secret value");
   copy.addEventListener("click", () => copySecretValue(entry));
-  const download = textElement("button", "Download");
+  const download = textElement("button", localizedText("action.download", "Download"));
   download.type = "button";
-  download.title = "Download secret value";
+  download.title = localizedText("secrets.download.title", "Download secret value");
   download.addEventListener("click", () => downloadSecretValue(entry));
-  const reveal = textElement("button", secValuePanel?.reveal ? "Hide" : "Reveal");
+  const reveal = textElement("button", secValuePanel?.reveal ? localizedText("action.hide", "Hide") : localizedText("action.reveal", "Reveal"));
   reveal.type = "button";
-  reveal.title = secValuePanel?.reveal ? "Hide secret value" : "Reveal secret value";
+  reveal.title = secValuePanel?.reveal
+    ? localizedText("secrets.hide.title", "Hide secret value")
+    : localizedText("secrets.reveal.title", "Reveal secret value");
   reveal.addEventListener("click", () => {
     if (!secValuePanel) return;
     secValuePanel.reveal = !secValuePanel.reveal;
@@ -2440,21 +2463,21 @@ function renderSecretValueActions(entry: SecretEntry): HTMLElement {
   });
   actions.append(copy, download, reveal);
   if (!entry.read_only) {
-    const editValue = textElement("button", "Edit");
+    const editValue = textElement("button", localizedText("action.edit", "Edit"));
     editValue.type = "button";
-    editValue.title = "Edit secret value";
+    editValue.title = localizedText("secrets.edit_value.title", "Edit secret value");
     editValue.addEventListener("click", () => setSecEditor("value"));
-    const editNodes = textElement("button", "Nodes");
+    const editNodes = textElement("button", localizedText("secrets.nodes.label", "Nodes"));
     editNodes.type = "button";
-    editNodes.title = "Edit allowed nodes";
+    editNodes.title = localizedText("secrets.edit_nodes.title", "Edit allowed nodes");
     editNodes.addEventListener("click", () => setSecEditor("nodes"));
-    const rename = textElement("button", "Rename");
+    const rename = textElement("button", localizedText("action.rename", "Rename"));
     rename.type = "button";
-    rename.title = "Rename secret";
+    rename.title = localizedText("secrets.rename.title", "Rename secret");
     rename.addEventListener("click", () => setSecEditor("rename"));
-    const remove = textElement("button", "Delete");
+    const remove = textElement("button", localizedText("action.delete", "Delete"));
     remove.type = "button";
-    remove.title = "Delete secret";
+    remove.title = localizedText("secrets.delete.title", "Delete secret");
     remove.className = "danger";
     remove.addEventListener("click", () => deleteSecret(entry.key));
     actions.append(editValue, editNodes, rename, remove);
@@ -2476,7 +2499,7 @@ function renderSecretValueForm(entry: SecretEntry): HTMLFormElement {
   value.rows = 8;
   value.value = entry.value ?? "";
   const actions = secEditActions();
-  form.append(secFormField("Value", value, "sec-form-field-wide"), actions);
+  form.append(secFormField(localizedText("secrets.value.label", "Value"), value, "sec-form-field-wide"), actions);
   form.addEventListener("submit", (event) => {
     event.preventDefault();
     void updateSecretValue(entry.key, value.value);
@@ -2491,7 +2514,7 @@ function renderSecretNodesForm(entry: SecretEntry): HTMLFormElement {
   const nodeEditor = createSecretNodeEditor(5, secretNodesText(entry.nodes));
   const nodes = nodeEditor.textarea;
   const actions = secEditActions();
-  form.append(secFormField("Nodes", nodeEditor.root, "sec-form-field-wide"), actions);
+  form.append(secFormField(localizedText("secrets.nodes.label", "Nodes"), nodeEditor.root, "sec-form-field-wide"), actions);
   form.addEventListener("submit", (event) => {
     event.preventDefault();
     void updateSecretNodes(entry.key, nodes.value);
@@ -2509,7 +2532,7 @@ function renderSecretRenameForm(entry: SecretEntry): HTMLFormElement {
   key.required = true;
   key.value = entry.key;
   const actions = secEditActions();
-  form.append(secFormField("Key", key), actions);
+  form.append(secFormField(localizedText("secrets.key.label", "Key"), key), actions);
   form.addEventListener("submit", (event) => {
     event.preventDefault();
     void renameSecret(entry.key, key.value);
@@ -2521,9 +2544,9 @@ function renderSecretRenameForm(entry: SecretEntry): HTMLFormElement {
 function secEditActions(): HTMLElement {
   const actions = document.createElement("div");
   actions.className = "sec-form-actions";
-  const save = textElement("button", "Save");
+  const save = textElement("button", localizedText("action.save", "Save"));
   save.type = "submit";
-  const cancel = textElement("button", "Cancel");
+  const cancel = textElement("button", localizedText("action.cancel", "Cancel"));
   cancel.type = "button";
   cancel.addEventListener("click", () => setSecEditor(null));
   actions.append(save, cancel);
@@ -2531,7 +2554,7 @@ function secEditActions(): HTMLElement {
 }
 
 async function updateSecretValue(key: string, value: string): Promise<void> {
-  const entry = await runSecMutation("secSetValue", { key, value }, "Secret value saved.");
+  const entry = await runSecMutation("secSetValue", { key, value }, localizedText("secrets.value_saved", "Secret value saved."));
   if (!entry) return;
   upsertSecretEntry(entry);
   if (secValuePanel) {
@@ -2544,7 +2567,7 @@ async function updateSecretValue(key: string, value: string): Promise<void> {
 async function updateSecretNodes(key: string, nodesText: string): Promise<void> {
   const nodes = parseSecretNodeText(nodesText);
   if (!validateSecretNodes(nodes)) return;
-  const entry = await runSecMutation("secSetNodes", { key, nodes }, "Secret nodes saved.");
+  const entry = await runSecMutation("secSetNodes", { key, nodes }, localizedText("secrets.nodes_saved", "Secret nodes saved."));
   if (!entry) return;
   upsertSecretEntry(entry);
   if (secValuePanel) secValuePanel.editing = null;
@@ -2554,16 +2577,16 @@ async function updateSecretNodes(key: string, nodesText: string): Promise<void> 
 async function renameSecret(key: string, nextKey: string): Promise<void> {
   const newKey = nextKey.trim();
   if (!newKey) {
-    notifyError("Secret key is required.", "Invalid secret");
+    notifyError(localizedText("secrets.validation.key_required", "Secret key is required."), localizedText("secrets.validation.invalid.title", "Invalid secret"));
     renderSec();
     return;
   }
   if (newKey !== key && secretEntryByKey(newKey)) {
-    notifyError("Secret already exists.", "Invalid secret");
+    notifyError(localizedText("secrets.validation.exists", "Secret already exists."), localizedText("secrets.validation.invalid.title", "Invalid secret"));
     renderSec();
     return;
   }
-  const entry = await runSecMutation("secRename", { key, newKey }, "Secret renamed.");
+  const entry = await runSecMutation("secRename", { key, newKey }, localizedText("secrets.renamed", "Secret renamed."));
   if (!entry) return;
   if (key !== entry.key) removeSecretEntry(key);
   upsertSecretEntry(entry);
@@ -2575,8 +2598,8 @@ async function renameSecret(key: string, nextKey: string): Promise<void> {
 }
 
 async function deleteSecret(key: string): Promise<void> {
-  if (!window.confirm(`Delete secret "${key}"?`)) return;
-  if (await runSecMutation("secDelete", { key }, "Secret deleted.")) {
+  if (!window.confirm(localizedText("secrets.delete.confirm", "Delete secret {key}?", { key }))) return;
+  if (await runSecMutation("secDelete", { key }, localizedText("secrets.deleted", "Secret deleted."))) {
     removeSecretEntry(key);
     if (secValuePanel?.key === key) closeSecValuePanel();
     renderSec();
@@ -2590,11 +2613,11 @@ async function runSecMutation<M extends SecMutationMethod>(
 ): Promise<BackendResultMap[M] | null> {
   try {
     const result = await backend(method, params);
-    notifySuccess(success, "Secret updated");
+    notifySuccess(success, localizedText("secrets.updated.title", "Secret updated"));
     renderSec();
     return result;
   } catch (error) {
-    notifyError(errorMessage(error), "Secret update failed");
+    notifyError(errorMessage(error), localizedText("secrets.update_failed.title", "Secret update failed"));
     renderSec();
     return null;
   }
@@ -2603,10 +2626,10 @@ async function runSecMutation<M extends SecMutationMethod>(
 function renderSecretNodes(entry: SecretEntry): HTMLElement {
   const block = document.createElement("section");
   block.className = "sec-node-block";
-  block.append(textElement("h3", "Allowed nodes"));
+  block.append(textElement("h3", localizedText("secrets.nodes.allowed", "Allowed nodes")));
   const nodes = normalizeSecretNodes(entry.nodes ?? []);
   if (!nodes.length) {
-    block.append(textElement("p", "No nodes allowed.", "kv-subtree-empty"));
+    block.append(textElement("p", localizedText("secrets.nodes.empty", "No nodes allowed."), "kv-subtree-empty"));
     return block;
   }
   const list = document.createElement("ol");
@@ -2622,7 +2645,7 @@ function validateSecretNodes(nodes: string[]): boolean {
   const known = new Set(workspaceSecretNodeNames());
   const unknown = nodes.filter((node) => !known.has(node));
   if (!unknown.length) return true;
-  notifyError(`Unknown node${unknown.length === 1 ? "" : "s"}: ${unknown.join(", ")}`, "Invalid node access");
+  notifyError(localizedText("secrets.nodes.unknown", "Unknown node(s): {nodes}", { nodes: unknown.join(", ") }), localizedText("secrets.nodes.invalid.title", "Invalid node access"));
   renderSec();
   return false;
 }
@@ -2647,9 +2670,9 @@ function removeSecretEntry(key: string): void {
 async function copySecretValue(entry: SecretEntry): Promise<void> {
   try {
     await navigator.clipboard.writeText(entry.value ?? "");
-    notifySuccess("Secret value copied to the clipboard.", "Copied");
+    notifySuccess(localizedText("secrets.copied.message", "Secret value copied to the clipboard."), localizedText("common.copied.title", "Copied"));
   } catch (error) {
-    notifyError(errorMessage(error), "Copy failed");
+    notifyError(errorMessage(error), localizedText("common.copy_failed.title", "Copy failed"));
   }
 }
 
@@ -2665,9 +2688,9 @@ function downloadSecretValue(entry: SecretEntry): void {
     link.click();
     link.remove();
     window.setTimeout(() => URL.revokeObjectURL(url), 0);
-    notifySuccess("Secret download started.", "Download started");
+    notifySuccess(localizedText("secrets.download_started.message", "Secret download started."), localizedText("common.download_started.title", "Download started"));
   } catch (error) {
-    notifyError(errorMessage(error), "Download failed");
+    notifyError(errorMessage(error), localizedText("common.download_failed.title", "Download failed"));
   }
 }
 
@@ -2745,7 +2768,7 @@ async function ensureDNSCacheSubscription(): Promise<void> {
   const response = await tryBackend("dnsSubscribeCaches");
   dnsCacheSubscribePending = false;
   if (!response) {
-    notifyError("DNS cache storage is unavailable.", "DNS unavailable");
+    notifyError(localizedText("dns.unavailable.message", "DNS cache storage is unavailable."), localizedText("dns.unavailable.title", "DNS unavailable"));
     renderDNS();
     return;
   }
@@ -2784,7 +2807,9 @@ function renderDNS(): void {
   const list = document.createElement("ol");
   list.className = "kv-store-list";
   if (!dnsCaches.length) {
-    list.append(renderKVEmptyState(dnsCacheSubscribePending ? "Loading DNS caches." : "No DNS caches."));
+    list.append(renderKVEmptyState(dnsCacheSubscribePending
+      ? localizedText("dns.loading", "Loading DNS caches.")
+      : localizedText("dns.empty", "No DNS caches.")));
   } else {
     for (const cache of dnsCaches) {
       list.append(renderDNSCache(cache));
@@ -2799,7 +2824,7 @@ function renderDNS(): void {
 function renderDNSHeader(): HTMLElement {
   const header = document.createElement("header");
   header.className = "kv-header";
-  header.append(textElement("h2", "DNS caches"));
+  header.append(textElement("h2", localizedText("dns.title", "DNS caches")));
   return header;
 }
 
@@ -2810,14 +2835,15 @@ function renderDNSCache(cache: DNSCacheInfo): HTMLLIElement {
   item.className = "kv-store";
   const row = document.createElement("div");
   row.className = "kv-row kv-store-row";
-  bindKVRowAction(row, `Toggle DNS cache ${cache.name}`, () => toggleDNSCache(nodeKey));
-  row.append(createKVDisclosure(expanded, `Toggle DNS cache ${cache.name}`, () => toggleDNSCache(nodeKey)));
+  const toggleLabel = localizedText("dns.cache.toggle.aria_label", "Toggle DNS cache {name}", { name: cache.name });
+  bindKVRowAction(row, toggleLabel, () => toggleDNSCache(nodeKey));
+  row.append(createKVDisclosure(expanded, toggleLabel, () => toggleDNSCache(nodeKey)));
   row.append(createDNSCacheTitle(cache));
   const actions = document.createElement("div");
   actions.className = "kv-row-actions";
-  const remove = textElement("button", "Delete", "danger");
+  const remove = textElement("button", localizedText("action.delete", "Delete"), "danger");
   remove.type = "button";
-  remove.title = "Delete DNS cache";
+  remove.title = localizedText("dns.cache.delete.title", "Delete DNS cache");
   remove.addEventListener("click", () => dropDNSCache(cache.name));
   actions.append(remove);
   row.append(actions);
@@ -2835,17 +2861,17 @@ function renderDNSCacheBody(cache: string, nodeKey: string): HTMLElement {
   const snapshot = dnsKeysByCache.get(nodeKey);
   if (!snapshot) {
     body.append(dnsKeySubscribeFailed.has(nodeKey)
-      ? textElement("p", "DNS cache is unavailable.", "kv-subtree-missing")
+      ? textElement("p", localizedText("dns.cache.unavailable", "DNS cache is unavailable."), "kv-subtree-missing")
       : renderKVLoading());
     return body;
   }
   if (!snapshot.exists) {
-    body.append(textElement("p", "Cache does not exist.", "kv-subtree-missing"));
+    body.append(textElement("p", localizedText("dns.cache.not_found", "Cache does not exist."), "kv-subtree-missing"));
     return body;
   }
   const keys = snapshot.keys ?? [];
   if (!keys.length) {
-    body.append(textElement("p", "Empty cache.", "kv-subtree-empty"));
+    body.append(textElement("p", localizedText("dns.cache.empty", "Empty cache."), "kv-subtree-empty"));
     return body;
   }
   const list = document.createElement("ol");
@@ -2864,7 +2890,7 @@ function renderDNSCacheToolbar(cache: string): HTMLElement {
   pathLabel.title = cache;
   const addRecord = textElement("button", "+ Record");
   addRecord.type = "button";
-  addRecord.title = "Create DNS record";
+  addRecord.title = localizedText("dns.record.create.title", "Create DNS record");
   addRecord.addEventListener("click", () => openDNSForm(cache));
   toolbar.append(pathLabel, addRecord);
   if (dnsOpenForm?.cache === cache) {
@@ -2872,7 +2898,7 @@ function renderDNSCacheToolbar(cache: string): HTMLElement {
     wrapper.className = "kv-form-slot";
     wrapper.append(renderDNSRecordForm({
       initial: defaultDNSRecordInput(),
-      submitLabel: "Create",
+      submitLabel: localizedText("action.create", "Create"),
       onSubmit: (record) => setDNSRecord(cache, "", record),
       onCancel: closeDNSForm,
     }));
@@ -2888,7 +2914,7 @@ function renderDNSKey(cache: string, entry: DNSKeyInfo): HTMLLIElement {
   item.className = "kv-entry kv-entry-value";
   const row = document.createElement("div");
   row.className = "kv-row";
-  bindKVRowAction(row, `Open DNS value ${formatDNSCacheKey(entry.key)}`, () => openDNSValuePanel(cache, entry.key));
+  bindKVRowAction(row, localizedText("dns.value.open.aria_label", "Open DNS value {key}", { key: formatDNSCacheKey(entry.key) }), () => openDNSValuePanel(cache, entry.key));
   row.append(createKVIndent());
   row.append(createDNSKeyTitle(entry));
   row.append(renderDNSKeyActions(cache, entry.key));
@@ -2902,9 +2928,9 @@ function renderDNSKey(cache: string, entry: DNSKeyInfo): HTMLLIElement {
 function renderDNSKeyActions(cache: string, key: string): HTMLElement {
   const actions = document.createElement("div");
   actions.className = "kv-row-actions";
-  const remove = textElement("button", "Delete", "danger");
+  const remove = textElement("button", localizedText("action.delete", "Delete"), "danger");
   remove.type = "button";
-  remove.title = "Delete DNS record";
+  remove.title = localizedText("dns.record.delete.title", "Delete DNS record");
   remove.addEventListener("click", () => deleteDNSValue(cache, key));
   actions.append(remove);
   return actions;
@@ -2968,18 +2994,18 @@ function renderDNSRecordForm(options: DNSRecordFormOptions): HTMLFormElement {
   updateValuePlaceholder();
 
   form.append(
-    dnsRecordField("Name", name, "dns-record-field-name"),
-    dnsRecordField("Type", type),
-    dnsRecordField("Class", cls),
+    dnsRecordField(localizedText("dns.record.name.label", "Name"), name, "dns-record-field-name"),
+    dnsRecordField(localizedText("dns.record.type.label", "Type"), type),
+    dnsRecordField(localizedText("dns.record.class.label", "Class"), cls),
     dnsRecordField("TTL", ttl),
-    dnsRecordField("Value", value, "dns-record-field-value"),
+    dnsRecordField(localizedText("dns.record.value.label", "Value"), value, "dns-record-field-value"),
   );
 
   const actions = document.createElement("div");
   actions.className = "dns-record-form-actions";
   const save = textElement("button", options.submitLabel);
   save.type = "submit";
-  const cancel = textElement("button", "Cancel");
+  const cancel = textElement("button", localizedText("action.cancel", "Cancel"));
   cancel.type = "button";
   cancel.addEventListener("click", options.onCancel);
   actions.append(save, cancel);
@@ -3035,18 +3061,18 @@ function dnsRecordValuePlaceholder(type: string): string {
     case "TXT":
       return "hello world";
     default:
-      return "Record value";
+      return localizedText("dns.record.value.placeholder", "Record value");
   }
 }
 
 async function setDNSRecord(cache: string, previousKey: string, record: DNSRecordInput): Promise<void> {
   if (!record.name) {
-    notifyError("DNS record name is required.", "Invalid DNS record");
+    notifyError(localizedText("dns.validation.name_required", "DNS record name is required."), localizedText("dns.validation.invalid.title", "Invalid DNS record"));
     renderDNS();
     return;
   }
   if (!Number.isInteger(record.ttl) || record.ttl <= 0) {
-    notifyError("DNS TTL must be greater than zero.", "Invalid DNS record");
+    notifyError(localizedText("dns.validation.ttl", "DNS TTL must be greater than zero."), localizedText("dns.validation.invalid.title", "Invalid DNS record"));
     renderDNS();
     return;
   }
@@ -3054,7 +3080,7 @@ async function setDNSRecord(cache: string, previousKey: string, record: DNSRecor
     cache,
     key: previousKey,
     record,
-  }, "DNS record saved.");
+  }, localizedText("dns.record.saved", "DNS record saved."));
   if (!response) return;
   closeDNSForm();
   if (!previousKey || (dnsValuePanel?.cache === cache && (dnsValuePanel.key === previousKey || dnsValuePanel.key === response.key))) {
@@ -3064,20 +3090,20 @@ async function setDNSRecord(cache: string, previousKey: string, record: DNSRecor
 }
 
 async function deleteDNSValue(cache: string, key: string): Promise<void> {
-  if (!window.confirm(`Delete DNS record "${formatDNSCacheKey(key)}"?`)) return;
+  if (!window.confirm(localizedText("dns.record.delete.confirm", "Delete DNS record {key}?", { key: formatDNSCacheKey(key) }))) return;
   if (dnsValuePanel?.cache === cache && dnsValuePanel.key === key) {
     closeDNSValuePanel();
   }
-  await runDNSMutation("dnsDelete", { cache, key }, "DNS record deleted.");
+  await runDNSMutation("dnsDelete", { cache, key }, localizedText("dns.record.deleted", "DNS record deleted."));
 }
 
 async function dropDNSCache(cache: string): Promise<void> {
-  if (!window.confirm(`Delete DNS cache "${cache}"?`)) return;
+  if (!window.confirm(localizedText("dns.cache.delete.confirm", "Delete DNS cache {cache}?", { cache }))) return;
   if (dnsValuePanel?.cache === cache) {
     closeDNSValuePanel();
   }
   dnsOpenForm = dnsOpenForm?.cache === cache ? null : dnsOpenForm;
-  if (await runDNSMutation("dnsDrop", { cache }, "DNS cache deleted.")) {
+  if (await runDNSMutation("dnsDrop", { cache }, localizedText("dns.cache.deleted", "DNS cache deleted."))) {
     const nodeKey = dnsCacheNodeKey(cache);
     dnsExpandedCaches.delete(nodeKey);
     dnsKeysByCache.delete(nodeKey);
@@ -3092,11 +3118,11 @@ async function runDNSMutation<M extends DNSMutationMethod>(
 ): Promise<BackendResultMap[M] | null> {
   try {
     const result = await backend(method, params);
-    notifySuccess(success, "DNS updated");
+    notifySuccess(success, localizedText("dns.updated.title", "DNS updated"));
     renderDNS();
     return result;
   } catch (error) {
-    notifyError(errorMessage(error), "DNS update failed");
+    notifyError(errorMessage(error), localizedText("dns.update_failed.title", "DNS update failed"));
     renderDNS();
     return null;
   }
@@ -3139,7 +3165,7 @@ async function subscribeDNSKeys(nodeKey: string): Promise<void> {
   dnsKeySubscribePending.delete(nodeKey);
   if (!response) {
     dnsKeySubscribeFailed.add(nodeKey);
-    notifyError(`Failed to subscribe to DNS cache ${ref.cache}.`, "DNS unavailable");
+    notifyError(localizedText("dns.subscribe_failed", "Failed to subscribe to DNS cache {cache}.", { cache: ref.cache }), localizedText("dns.unavailable.title", "DNS unavailable"));
     renderDNS();
     return;
   }
@@ -3184,7 +3210,7 @@ async function subscribeDNSValuePanel(): Promise<void> {
   const response = await tryBackend("dnsSubscribeValue", target);
   dnsValueSubscribePending = false;
   if (!response) {
-    notifyError("Failed to subscribe to the DNS value.", "DNS value unavailable");
+    notifyError(localizedText("dns.value.subscribe_failed", "Failed to subscribe to the DNS value."), localizedText("dns.value.unavailable.title", "DNS value unavailable"));
     renderDNSValuePanel();
     return;
   }
@@ -3218,8 +3244,8 @@ function renderDNSValuePanel(): void {
   title.append(heading, textElement("p", dnsValuePanel.cache));
   const close = textElement("button", "×", "icon-button");
   close.type = "button";
-  close.title = "Close";
-  close.setAttribute("aria-label", "Close DNS value panel");
+  close.title = localizedText("action.close", "Close");
+  close.setAttribute("aria-label", localizedText("dns.value.close.aria_label", "Close DNS value panel"));
   close.addEventListener("click", closeDNSValuePanel);
   header.append(title, close);
   el.dnsValuePanel.append(header);
@@ -3230,7 +3256,7 @@ function renderDNSValuePanel(): void {
     return;
   }
   if (!snapshot.found || !snapshot.value) {
-    el.dnsValuePanel.append(textElement("p", "DNS value not found.", "kv-value-missing"));
+    el.dnsValuePanel.append(textElement("p", localizedText("dns.value.not_found", "DNS value not found."), "kv-value-missing"));
     return;
   }
   el.dnsValuePanel.append(renderDNSValueDetail(snapshot.value));
@@ -3244,9 +3270,9 @@ function renderDNSValueDetail(value: DNSValue): HTMLElement {
   const actions = document.createElement("div");
   actions.className = "kv-value-actions";
   if (dnsValuePanel && !dnsValuePanel.editing) {
-    const edit = textElement("button", "Edit");
+    const edit = textElement("button", localizedText("action.edit", "Edit"));
     edit.type = "button";
-    edit.title = "Edit DNS record";
+    edit.title = localizedText("dns.record.edit.title", "Edit DNS record");
     edit.addEventListener("click", () => {
       if (!dnsValuePanel) return;
       dnsValuePanel.editing = true;
@@ -3254,19 +3280,19 @@ function renderDNSValueDetail(value: DNSValue): HTMLElement {
     });
     actions.append(edit);
   }
-  const copy = textElement("button", "Copy");
+  const copy = textElement("button", localizedText("action.copy", "Copy"));
   copy.type = "button";
-  copy.title = "Copy DNS value JSON";
+  copy.title = localizedText("dns.value.copy.title", "Copy DNS value JSON");
   copy.addEventListener("click", () => copyDNSValue(value));
-  const download = textElement("button", "Download");
+  const download = textElement("button", localizedText("action.download", "Download"));
   download.type = "button";
-  download.title = "Download DNS value JSON";
+  download.title = localizedText("dns.value.download.title", "Download DNS value JSON");
   download.addEventListener("click", () => downloadDNSValue(value));
   actions.append(copy, download);
   if (dnsValuePanel) {
-    const remove = textElement("button", "Delete");
+    const remove = textElement("button", localizedText("action.delete", "Delete"));
     remove.type = "button";
-    remove.title = "Delete DNS record";
+    remove.title = localizedText("dns.record.delete.title", "Delete DNS record");
     remove.className = "danger";
     remove.addEventListener("click", () => {
       if (!dnsValuePanel) return;
@@ -3279,7 +3305,7 @@ function renderDNSValueDetail(value: DNSValue): HTMLElement {
   if (dnsValuePanel?.editing) {
     detail.append(renderDNSRecordForm({
       initial: editableDNSRecordFromValue(dnsValuePanel.key, value),
-      submitLabel: "Save",
+      submitLabel: localizedText("action.save", "Save"),
       onSubmit: (record) => {
         if (!dnsValuePanel) return;
         void setDNSRecord(dnsValuePanel.cache, dnsValuePanel.key, record);
@@ -3308,9 +3334,9 @@ function closeDNSValuePanel(): void {
 async function copyDNSValue(value: DNSValue): Promise<void> {
   try {
     await navigator.clipboard.writeText(value.json ?? "");
-    notifySuccess("DNS value copied to the clipboard.", "Copied");
+    notifySuccess(localizedText("dns.value.copied", "DNS value copied to the clipboard."), localizedText("common.copied.title", "Copied"));
   } catch (error) {
-    notifyError(errorMessage(error), "Copy failed");
+    notifyError(errorMessage(error), localizedText("common.copy_failed.title", "Copy failed"));
   }
 }
 
@@ -3326,9 +3352,9 @@ function downloadDNSValue(value: DNSValue): void {
     link.click();
     link.remove();
     window.setTimeout(() => URL.revokeObjectURL(url), 0);
-    notifySuccess("DNS value download started.", "Download started");
+    notifySuccess(localizedText("dns.value.download_started", "DNS value download started."), localizedText("common.download_started.title", "Download started"));
   } catch (error) {
-    notifyError(errorMessage(error), "Download failed");
+    notifyError(errorMessage(error), localizedText("common.download_failed.title", "Download failed"));
   }
 }
 
@@ -3374,7 +3400,7 @@ async function ensureTLSSubscription(): Promise<void> {
   const response = await tryBackend("tlsSubscribe");
   tlsSubscribePending = false;
   if (!response) {
-    notifyError("TLS config storage is unavailable.", "TLS unavailable");
+    notifyError(localizedText("tls.unavailable.message", "TLS config storage is unavailable."), localizedText("tls.unavailable.title", "TLS unavailable"));
     renderTLS();
     return;
   }
@@ -3416,7 +3442,7 @@ function renderTLS(): void {
   const list = document.createElement("ol");
   list.className = "kv-store-list tls-list";
   list.append(renderTLSCertSection(certs));
-  list.append(renderTLSSection("Policies", policies, renderTLSPolicyRow, "No TLS policies."));
+  list.append(renderTLSSection(localizedText("tls.policies.title", "Policies"), policies, renderTLSPolicyRow, localizedText("tls.policies.empty", "No TLS policies.")));
   tree.append(list);
   el.tlsTree.replaceChildren(tree);
   el.tlsPanel.scrollTop = activeTab === "tls" ? previousTop : tlsScrollTop;
@@ -3426,24 +3452,26 @@ function renderTLS(): void {
 function renderTLSHeader(): HTMLElement {
   const header = document.createElement("header");
   header.className = "kv-header sec-header tls-header";
-  header.append(textElement("h2", "TLS configs"));
+  header.append(textElement("h2", localizedText("tls.title", "TLS configs")));
   const actions = document.createElement("div");
   actions.className = "kv-row-actions tls-header-actions";
-  const reloadOS = textElement("button", tlsReloadOSCertsPending ? "Reloading..." : "Reload OS certs");
+  const reloadOS = textElement("button", tlsReloadOSCertsPending
+    ? localizedText("tls.os.reloading", "Reloading...")
+    : localizedText("tls.os.reload", "Reload OS certs"));
   reloadOS.type = "button";
-  reloadOS.title = "Reload OS certificate authorities";
+  reloadOS.title = localizedText("tls.os.reload.title", "Reload OS certificate authorities");
   reloadOS.disabled = tlsReloadOSCertsPending;
   reloadOS.addEventListener("click", () => void reloadTLSOSCerts());
   const addCert = textElement("button", "+ Certificate");
   addCert.type = "button";
-  addCert.title = "Create TLS certificate";
+  addCert.title = localizedText("tls.certificate.create.title", "Create TLS certificate");
   addCert.addEventListener("click", () => {
     tlsOpenForm = { kind: "cert" };
     renderTLS();
   });
   const addPolicy = textElement("button", "+ Policy");
   addPolicy.type = "button";
-  addPolicy.title = "Create TLS policy";
+  addPolicy.title = localizedText("tls.policy.create.title", "Create TLS policy");
   addPolicy.addEventListener("click", () => {
     tlsOpenForm = { kind: "policy" };
     renderTLS();
@@ -3457,21 +3485,21 @@ function renderTLSBuiltinCABlock(): HTMLElement {
   const section = document.createElement("section");
   section.className = "tls-builtin-ca";
   const header = document.createElement("header");
-  header.append(textElement("h3", "Built-in CA"));
+  header.append(textElement("h3", localizedText("tls.builtin_ca.title", "Built-in CA")));
   const actions = document.createElement("div");
   actions.className = "kv-row-actions";
   const info = tlsSnapshot.builtin_ca;
   if (info?.cert.pem) {
-    const download = textElement("button", "Download PEM");
+    const download = textElement("button", localizedText("tls.builtin_ca.download_pem", "Download PEM"));
     download.type = "button";
-    download.title = "Download built-in CA public certificate";
+    download.title = localizedText("tls.builtin_ca.download_pem.title", "Download built-in CA public certificate");
     download.addEventListener("click", () => downloadTLSBuiltinCAPublic(info));
     actions.append(download);
   }
   if (info?.crl.pem) {
-    const download = textElement("button", "Download CRL");
+    const download = textElement("button", localizedText("tls.builtin_ca.download_crl", "Download CRL"));
     download.type = "button";
-    download.title = "Download built-in CA certificate revocation list";
+    download.title = localizedText("tls.builtin_ca.download_crl.title", "Download built-in CA certificate revocation list");
     download.addEventListener("click", () => downloadTLSBuiltinCRL(info));
     actions.append(download);
   }
@@ -3486,11 +3514,11 @@ function renderTLSBuiltinCABlock(): HTMLElement {
   section.append(renderTLSBuiltinCAFacts(info));
   section.append(textElement(
     "p",
-    "On Windows, install the CA in the machine Root store and the CRL in the machine CA store.",
+    localizedText("tls.builtin_ca.windows_help", "On Windows, install the CA in the machine Root store and the CRL in the machine CA store."),
     "sec-form-hint",
   ));
   if (info.immutable || info.regeneration_disabled) {
-    section.append(textElement("p", "Protected config", "sec-form-hint"));
+    section.append(textElement("p", localizedText("tls.builtin_ca.protected", "Protected config"), "sec-form-hint"));
   } else {
     section.append(renderTLSBuiltinCAForm(info));
   }
@@ -3510,13 +3538,13 @@ function renderTLSBuiltinCAFacts(info: TLSBuiltinCAInfo): HTMLElement {
     options.key_bits ? `${options.key_bits} bits` : "",
   ].filter(Boolean).join(" / ");
   for (const [label, value] of [
-    ["Issuer", options.issuer || "Almagest"],
-    ["Expiration", validity],
-    ["Crypto", crypto],
-    ["Fingerprint", info.cert.fingerprint],
+    [localizedText("tls.field.issuer", "Issuer"), options.issuer || "Almagest"],
+    [localizedText("tls.field.expiration", "Expiration"), validity],
+    [localizedText("tls.field.crypto", "Crypto"), crypto],
+    [localizedText("tls.field.fingerprint", "Fingerprint"), info.cert.fingerprint],
     ["SPKI", info.cert.spki_fingerprint],
-    ["CRL number", info.crl.number],
-    ["CRL next update", info.crl.next_update],
+    [localizedText("tls.field.crl_number", "CRL number"), info.crl.number],
+    [localizedText("tls.field.crl_next_update", "CRL next update"), info.crl.next_update],
   ] as Array<[string, string | undefined]>) {
     if (!value) continue;
     facts.append(textElement("dt", label), textElement("dd", value));
@@ -3563,16 +3591,16 @@ function renderTLSBuiltinCAForm(info: TLSBuiltinCAInfo): HTMLFormElement {
 
   const actions = document.createElement("div");
   actions.className = "sec-form-actions";
-  const save = textElement("button", "Regenerate");
+  const save = textElement("button", localizedText("action.regenerate", "Regenerate"));
   save.type = "submit";
   actions.append(save);
 
   form.append(
-    secFormField("Issuer", issuer),
-    secFormField("Validity days", validity),
-    secFormField("Key algorithm", algorithm),
-    secFormField("Curve", curve),
-    secFormField("RSA bits", keyBits),
+    secFormField(localizedText("tls.field.issuer", "Issuer"), issuer),
+    secFormField(localizedText("tls.builtin_ca.validity_days", "Validity days"), validity),
+    secFormField(localizedText("tls.builtin_ca.key_algorithm", "Key algorithm"), algorithm),
+    secFormField(localizedText("tls.builtin_ca.curve", "Curve"), curve),
+    secFormField(localizedText("tls.builtin_ca.rsa_bits", "RSA bits"), keyBits),
     actions,
   );
   form.addEventListener("submit", (event) => {
@@ -3593,7 +3621,7 @@ function downloadTLSBuiltinCRL(info: TLSBuiltinCAInfo): void {
   downloadTLSBlob(
     info.crl.pem,
     `${safeFilenamePart(info.cert.name) || "almagest-builtin-ca"}.crl.pem`,
-    "Built-in CA CRL download started.",
+    localizedText("tls.builtin_ca.crl_download_started", "Built-in CA CRL download started."),
   );
 }
 
@@ -3601,7 +3629,7 @@ function downloadTLSBuiltinCAPublic(info: TLSBuiltinCAInfo): void {
   downloadTLSBlob(
     info.cert.pem ?? "",
     `${safeFilenamePart(info.cert.name) || "almagest-builtin-ca"}.pem`,
-    "Built-in CA download started.",
+    localizedText("tls.builtin_ca.download_started", "Built-in CA download started."),
   );
 }
 
@@ -3617,9 +3645,9 @@ function downloadTLSBlob(contents: string, filename: string, successMessage: str
     link.click();
     link.remove();
     window.setTimeout(() => URL.revokeObjectURL(url), 0);
-    notifySuccess(successMessage, "Download started");
+    notifySuccess(successMessage, localizedText("common.download_started.title", "Download started"));
   } catch (error) {
-    notifyError(errorMessage(error), "Download failed");
+    notifyError(errorMessage(error), localizedText("common.download_failed.title", "Download failed"));
   }
 }
 
@@ -3635,7 +3663,7 @@ function renderTLSSection<T>(
   const list = document.createElement("ol");
   list.className = "kv-entry-list";
   if (!entries.length) {
-    list.append(renderKVEmptyState(tlsSubscribePending ? "Loading TLS configs." : emptyText));
+    list.append(renderKVEmptyState(tlsSubscribePending ? localizedText("tls.loading", "Loading TLS configs.") : emptyText));
   } else {
     for (const entry of entries) list.append(renderEntry(entry));
   }
@@ -3646,27 +3674,29 @@ function renderTLSSection<T>(
 function renderTLSCertSection(certs: TLSCertEntry[]): HTMLLIElement {
   const section = document.createElement("li");
   section.className = "kv-store tls-section";
-  section.append(textElement("h3", "Certificates", "tls-section-title"));
+  section.append(textElement("h3", localizedText("tls.certificates.title", "Certificates"), "tls-section-title"));
   const list = document.createElement("ol");
   list.className = "kv-entry-list";
 
   if (!certs.length) {
-    list.append(renderKVEmptyState(tlsSubscribePending ? "Loading TLS configs." : "No TLS certificates."));
+    list.append(renderKVEmptyState(tlsSubscribePending
+      ? localizedText("tls.loading", "Loading TLS configs.")
+      : localizedText("tls.certificates.empty", "No TLS certificates.")));
   } else {
     const immutableCerts = certs.filter((cert) => isImmutableTLSCertName(cert.name));
     const userCerts = certs.filter((cert) => !isImmutableTLSCertName(cert.name));
     list.append(
       renderTLSCertGroup(
         TLS_IMMUTABLE_CERT_GROUP_KEY,
-        "Built-in and OS certificates",
+        localizedText("tls.certificates.system", "Built-in and OS certificates"),
         immutableCerts,
-        "No built-in or OS certificates.",
+        localizedText("tls.certificates.system_empty", "No built-in or OS certificates."),
       ),
       renderTLSCertGroup(
         TLS_USER_CERT_GROUP_KEY,
-        "User certificates",
+        localizedText("tls.certificates.user", "User certificates"),
         userCerts,
-        "No user certificates.",
+        localizedText("tls.certificates.user_empty", "No user certificates."),
       ),
     );
   }
@@ -3686,8 +3716,9 @@ function renderTLSCertGroup(
   item.className = "kv-entry tls-cert-group";
   const row = document.createElement("div");
   row.className = "kv-row kv-store-row tls-cert-group-row";
-  bindKVRowAction(row, `Toggle ${titleText}`, () => toggleTLSCertGroup(groupKey));
-  row.append(createKVDisclosure(expanded, `Toggle ${titleText}`, () => toggleTLSCertGroup(groupKey)));
+  const toggleLabel = localizedText("tls.certificates.toggle.aria_label", "Toggle {title}", { title: titleText });
+  bindKVRowAction(row, toggleLabel, () => toggleTLSCertGroup(groupKey));
+  row.append(createKVDisclosure(expanded, toggleLabel, () => toggleTLSCertGroup(groupKey)));
   row.append(createTLSCertGroupTitle(titleText, certs.length));
   const actions = document.createElement("div");
   actions.className = "kv-row-actions";
@@ -3724,7 +3755,7 @@ function renderTLSCertRow(entry: TLSCertEntry): HTMLLIElement {
   item.classList.toggle("tls-readonly", Boolean(entry.read_only));
   const row = document.createElement("div");
   row.className = "kv-row";
-  bindKVRowAction(row, `Open TLS certificate ${entry.name}`, () => openTLSValuePanel("cert", entry.name));
+  bindKVRowAction(row, localizedText("tls.certificate.open.aria_label", "Open TLS certificate {name}", { name: entry.name }), () => openTLSValuePanel("cert", entry.name));
   row.append(createKVIndent(), createTLSCertTitle(entry), renderTLSRowActions("cert", entry));
   if (tlsValuePanel?.kind === "cert" && tlsValuePanel.name === entry.name) row.classList.add("kv-row-selected");
   item.append(row);
@@ -3738,7 +3769,7 @@ function renderTLSPolicyRow(entry: TLSPolicyEntry): HTMLLIElement {
   item.classList.toggle("tls-policy-invalid-row", !entry.valid);
   const row = document.createElement("div");
   row.className = "kv-row";
-  bindKVRowAction(row, `Open TLS policy ${entry.name}`, () => openTLSValuePanel("policy", entry.name));
+  bindKVRowAction(row, localizedText("tls.policy.open.aria_label", "Open TLS policy {name}", { name: entry.name }), () => openTLSValuePanel("policy", entry.name));
   row.append(createKVIndent(), createTLSPolicyTitle(entry), renderTLSRowActions("policy", entry));
   if (tlsValuePanel?.kind === "policy" && tlsValuePanel.name === entry.name) row.classList.add("kv-row-selected");
   item.append(row);
@@ -3749,9 +3780,11 @@ function renderTLSRowActions(kind: TLSItemKind, entry: TLSCertEntry | TLSPolicyE
   const actions = document.createElement("div");
   actions.className = "kv-row-actions";
   if (!entry.read_only) {
-    const remove = textElement("button", "Delete");
+    const remove = textElement("button", localizedText("action.delete", "Delete"));
     remove.type = "button";
-    remove.title = kind === "cert" ? "Delete TLS certificate" : "Delete TLS policy";
+    remove.title = kind === "cert"
+      ? localizedText("tls.certificate.delete.title", "Delete TLS certificate")
+      : localizedText("tls.policy.delete.title", "Delete TLS policy");
     remove.className = "danger";
     remove.addEventListener("click", () => deleteTLSEntry(kind, entry.name));
     actions.append(remove);
@@ -3764,7 +3797,7 @@ function renderTLSCertCreateForm(): HTMLFormElement {
     initialName: "",
     initialPEM: "",
     includeName: true,
-    submitLabel: "Create",
+    submitLabel: localizedText("action.create", "Create"),
     onSubmit: (name, pem) => createTLSCert(name, pem),
     onCancel: closeTLSForm,
   });
@@ -3775,7 +3808,7 @@ function renderTLSPolicyCreateForm(): HTMLFormElement {
     initialName: "",
     initialSpec: emptyTLSPolicySpec(),
     includeName: true,
-    submitLabel: "Create",
+    submitLabel: localizedText("action.create", "Create"),
     onSubmit: (name, spec) => createTLSPolicy(name, spec),
     onCancel: closeTLSForm,
   });
@@ -3795,7 +3828,7 @@ function renderTLSCertForm(options: TLSCertFormOptions): HTMLFormElement {
   form.className = "kv-inline-form tls-cert-form";
   const name = document.createElement("input");
   name.name = "name";
-  name.placeholder = "Certificate name";
+  name.placeholder = localizedText("tls.certificate.name.placeholder", "Certificate name");
   name.autocomplete = "off";
   name.required = true;
   name.value = options.initialName;
@@ -3813,7 +3846,7 @@ function renderTLSCertForm(options: TLSCertFormOptions): HTMLFormElement {
   const hint = document.createElement("p");
   hint.className = "sec-form-hint";
   hint.append(
-    document.createTextNode("Generate a self-signed certificate: "),
+    document.createTextNode(localizedText("tls.certificate.self_signed", "Generate a self-signed certificate: ")),
     textElement("code", TLS_CERT_OPENSSL_COMMAND),
     document.createTextNode(". Upload or paste tls.crt here."),
   );
@@ -3826,14 +3859,14 @@ function renderTLSCertForm(options: TLSCertFormOptions): HTMLFormElement {
       pem.focus();
     });
     reader.addEventListener("error", () => {
-      notifyError(reader.error?.message ?? "Unknown file read error.", "Certificate file read failed");
+      notifyError(reader.error?.message ?? localizedText("common.file_read_unknown", "Unknown file read error."), localizedText("tls.certificate.file_read_failed.title", "Certificate file read failed"));
       renderTLS();
     });
     reader.readAsText(file);
   });
   pemEditor.append(upload, pem, hint);
   const actions = tlsEditActions(options.submitLabel, options.onCancel);
-  if (options.includeName) form.append(secFormField("Name", name));
+  if (options.includeName) form.append(secFormField(localizedText("common.name", "Name"), name));
   form.append(secFormField("PEM", pemEditor, "sec-form-field-wide"), actions);
   form.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -3859,29 +3892,29 @@ function renderTLSPolicyForm(options: TLSPolicyFormOptions): HTMLFormElement {
   let gui = createTLSPolicyGUIEditor(options.initialSpec);
   const name = document.createElement("input");
   name.name = "name";
-  name.placeholder = "Policy name";
+  name.placeholder = localizedText("tls.policy.name.placeholder", "Policy name");
   name.autocomplete = "off";
   name.required = true;
   name.value = options.initialName;
   const modeToggle = document.createElement("div");
   modeToggle.className = "tls-policy-mode-toggle";
-  const formMode = textElement("button", "Form");
+  const formMode = textElement("button", localizedText("tls.policy.mode.form", "Form"));
   formMode.type = "button";
   formMode.setAttribute("aria-pressed", "true");
-  const jsonMode = textElement("button", "JSON");
+  const jsonMode = textElement("button", localizedText("tls.policy.mode.json", "JSON"));
   jsonMode.type = "button";
   jsonMode.setAttribute("aria-pressed", "false");
   modeToggle.append(formMode, jsonMode);
-  const guiField = secFormField("Policy rules", gui.root, "sec-form-field-wide tls-policy-gui-field");
+  const guiField = secFormField(localizedText("tls.policy.rules", "Policy rules"), gui.root, "sec-form-field-wide tls-policy-gui-field");
   const spec = document.createElement("textarea");
   spec.name = "spec";
   spec.placeholder = '{"trust_anchors":[{"cert":"ca","scope":{"any":true}}]}';
   spec.rows = TLS_POLICY_JSON_ROWS;
   spec.required = true;
   spec.value = formatTLSPolicySpec(options.initialSpec);
-  const jsonField = secFormField("Policy JSON", spec, "sec-form-field-wide tls-policy-json-field hidden");
+  const jsonField = secFormField(localizedText("tls.policy.json", "Policy JSON"), spec, "sec-form-field-wide tls-policy-json-field hidden");
   const actions = tlsEditActions(options.submitLabel, options.onCancel);
-  if (options.includeName) form.append(secFormField("Name", name));
+  if (options.includeName) form.append(secFormField(localizedText("common.name", "Name"), name));
   form.append(modeToggle, guiField, jsonField, actions);
   const setMode = (nextMode: "form" | "json") => {
     if (nextMode === mode) return;
@@ -3896,12 +3929,12 @@ function renderTLSPolicyForm(options: TLSPolicyFormOptions): HTMLFormElement {
       try {
         parsed = parseTLSPolicySpec(spec.value);
       } catch (error) {
-        notifyError(errorMessage(error), "Invalid TLS policy JSON");
+        notifyError(errorMessage(error), localizedText("tls.policy.invalid_json.title", "Invalid TLS policy JSON"));
         renderTLS();
         return;
       }
       gui = createTLSPolicyGUIEditor(parsed);
-      guiField.replaceChildren(textElement("span", "Policy rules"), gui.root);
+      guiField.replaceChildren(textElement("span", localizedText("tls.policy.rules", "Policy rules")), gui.root);
     }
     mode = nextMode;
     formMode.classList.toggle("active", mode === "form");
@@ -3921,7 +3954,7 @@ function renderTLSPolicyForm(options: TLSPolicyFormOptions): HTMLFormElement {
     try {
       parsed = mode === "json" ? parseTLSPolicySpec(spec.value) : gui.read();
     } catch (error) {
-      notifyError(errorMessage(error), "Invalid TLS policy");
+      notifyError(errorMessage(error), localizedText("tls.policy.invalid.title", "Invalid TLS policy"));
       renderTLS();
       return;
     }
@@ -3966,13 +3999,13 @@ function createTLSPolicyGUIEditor(spec: TLSPolicySpec): TLSPolicyGUIEditor {
   root.append(certList);
   if (builtinCAName) root.append(createTLSBuiltinCAPolicyAnchor(builtinCAName));
   root.append(
-    createTLSPolicyRuleSection("Trust anchors", "Add anchor", trustEditors, trustAnchors, (rule) => (
+    createTLSPolicyRuleSection(localizedText("tls.policy.trust_anchors", "Trust anchors"), localizedText("tls.policy.add_anchor", "Add anchor"), trustEditors, trustAnchors, (rule) => (
       createTLSTrustAnchorEditor(rule, certListID)
     )),
-    createTLSPolicyRuleSection("Constraints", "Add constraint", constraintEditors, spec.constraints ?? [], (rule) => (
+    createTLSPolicyRuleSection(localizedText("tls.policy.constraints", "Constraints"), localizedText("tls.policy.add_constraint", "Add constraint"), constraintEditors, spec.constraints ?? [], (rule) => (
       createTLSConstraintEditor(rule, certListID)
     )),
-    createTLSPolicyRuleSection("Pins", "Add pin", pinEditors, spec.pins ?? [], createTLSPinEditor),
+    createTLSPolicyRuleSection(localizedText("tls.policy.pins", "Pins"), localizedText("tls.policy.add_pin", "Add pin"), pinEditors, spec.pins ?? [], createTLSPinEditor),
   );
 
   return {
@@ -4000,7 +4033,7 @@ function createTLSPolicyGUIEditor(spec: TLSPolicySpec): TLSPolicyGUIEditor {
 function createTLSBuiltinCAPolicyAnchor(certName: string): HTMLElement {
   const root = document.createElement("article");
   root.className = "tls-policy-rule-card tls-policy-builtin-anchor";
-  root.append(textElement("h4", "Built-in trust anchor"));
+  root.append(textElement("h4", localizedText("tls.policy.builtin_anchor", "Built-in trust anchor")));
   const fields = document.createElement("div");
   fields.className = "tls-policy-rule-fields";
   const cert = document.createElement("input");
@@ -4009,7 +4042,7 @@ function createTLSBuiltinCAPolicyAnchor(certName: string): HTMLElement {
   const scope = document.createElement("input");
   scope.value = "any server";
   scope.disabled = true;
-  fields.append(secFormField("Certificate", cert), secFormField("Scope", scope));
+  fields.append(secFormField(localizedText("tls.field.certificate", "Certificate"), cert), secFormField(localizedText("tls.field.scope", "Scope"), scope));
   root.append(fields);
   return root;
 }
@@ -4039,13 +4072,13 @@ function createTLSPolicyRuleSection<T>(
   header.append(add);
   section.append(header, tlsPolicyHelp(tlsPolicySectionHelp(titleText)), list);
   for (const rule of rules) appendEditor(rule);
-  if (!rules.length && titleText === "Trust anchors") appendEditor();
+  if (!rules.length && titleText === localizedText("tls.policy.trust_anchors", "Trust anchors")) appendEditor();
   return section;
 }
 
 function createTLSTrustAnchorEditor(rule: TLSTrustAnchor | undefined, certListID: string): TLSPolicyRuleEditor<TLSTrustAnchor> {
-  const card = createTLSPolicyRuleCard("Trust anchor");
-  const cert = tlsPolicyTextInput("Certificate", "Cert name", rule?.cert ?? "", certListID);
+  const card = createTLSPolicyRuleCard(localizedText("tls.policy.trust_anchor", "Trust anchor"));
+  const cert = tlsPolicyTextInput(localizedText("tls.field.certificate", "Certificate"), localizedText("tls.certificate.name.short_placeholder", "Cert name"), rule?.cert ?? "", certListID);
   const scope = createTLSScopeEditor(rule?.scope);
   card.fields.append(cert.field, scope.root);
   return {
@@ -4053,7 +4086,7 @@ function createTLSTrustAnchorEditor(rule: TLSTrustAnchor | undefined, certListID
     read: () => {
       const certName = cert.input.value.trim();
       if (!certName && scope.isBlank()) return null;
-      if (!certName) throw new Error("Trust anchor certificate is required.");
+      if (!certName) throw new Error(localizedText("tls.validation.anchor_required", "Trust anchor certificate is required."));
       return { cert: certName, scope: scope.read() };
     },
     focus: () => {
@@ -4067,18 +4100,18 @@ function createTLSConstraintEditor(
   rule: TLSAuthorityConstraint | undefined,
   certListID: string,
 ): TLSPolicyRuleEditor<TLSAuthorityConstraint> {
-  const card = createTLSPolicyRuleCard("Constraint");
-  const cert = tlsPolicyTextInput("Certificate", "Cert name", rule?.cert ?? "", certListID);
+  const card = createTLSPolicyRuleCard(localizedText("tls.policy.constraint", "Constraint"));
+  const cert = tlsPolicyTextInput(localizedText("tls.field.certificate", "Certificate"), localizedText("tls.certificate.name.short_placeholder", "Cert name"), rule?.cert ?? "", certListID);
   const match = document.createElement("select");
   appendTLSSelectOptions(match, [...TLS_AUTHORITY_MATCHES], rule?.match || "certificate");
   const scope = createTLSScopeEditor(rule?.scope);
-  card.fields.append(cert.field, secFormField("Match", match), scope.root);
+  card.fields.append(cert.field, secFormField(localizedText("tls.field.match", "Match"), match), scope.root);
   return {
     root: card.root,
     read: () => {
       const certName = cert.input.value.trim();
       if (!certName && scope.isBlank()) return null;
-      if (!certName) throw new Error("Constraint certificate is required.");
+      if (!certName) throw new Error(localizedText("tls.validation.constraint_required", "Constraint certificate is required."));
       return { cert: certName, match: match.value, scope: scope.read() };
     },
     focus: () => {
@@ -4089,18 +4122,18 @@ function createTLSConstraintEditor(
 }
 
 function createTLSPinEditor(rule?: TLSPin): TLSPolicyRuleEditor<TLSPin> {
-  const card = createTLSPolicyRuleCard("Pin");
+  const card = createTLSPolicyRuleCard(localizedText("tls.policy.pin", "Pin"));
   const kind = document.createElement("select");
   appendTLSSelectOptions(kind, [...TLS_PIN_KINDS], rule?.kind || "spki");
-  const fingerprint = tlsPolicyTextInput("Fingerprint", "sha256 fingerprint", rule?.fingerprint ?? "");
+  const fingerprint = tlsPolicyTextInput(localizedText("tls.field.fingerprint", "Fingerprint"), localizedText("tls.fingerprint.placeholder", "sha256 fingerprint"), rule?.fingerprint ?? "");
   const scope = createTLSScopeEditor(rule?.scope);
-  card.fields.append(secFormField("Kind", kind), fingerprint.field, scope.root);
+  card.fields.append(secFormField(localizedText("tls.field.kind", "Kind"), kind), fingerprint.field, scope.root);
   return {
     root: card.root,
     read: () => {
       const value = fingerprint.input.value.trim();
       if (!value && scope.isBlank()) return null;
-      if (!value) throw new Error("Pin fingerprint is required.");
+      if (!value) throw new Error(localizedText("tls.validation.pin_required", "Pin fingerprint is required."));
       return { kind: kind.value, fingerprint: value, scope: scope.read() };
     },
     focus: () => {
@@ -4115,7 +4148,7 @@ function createTLSPolicyRuleCard(titleText: string): { root: HTMLElement; fields
   root.className = "tls-policy-rule-card";
   const header = document.createElement("header");
   header.append(textElement("h4", titleText));
-  const remove = textElement("button", "Remove");
+  const remove = textElement("button", localizedText("action.remove", "Remove"));
   remove.type = "button";
   remove.addEventListener("click", () => root.remove());
   header.append(remove);
@@ -4137,7 +4170,7 @@ function createTLSScopeEditor(initial: TLSScope | undefined): {
   const any = document.createElement("input");
   any.type = "checkbox";
   any.checked = Boolean(initial?.any);
-  anyLabel.append(any, textElement("span", "Any server"));
+  anyLabel.append(any, textElement("span", localizedText("tls.scope.any_server", "Any server")));
   const dns = document.createElement("textarea");
   dns.rows = 2;
   dns.placeholder = "example.test";
@@ -4154,10 +4187,10 @@ function createTLSScopeEditor(initial: TLSScope | undefined): {
   setScopeFieldState();
   root.append(
     anyLabel,
-    secFormField("DNS names", dns),
-    tlsPolicyHelp("Limit this rule to these server names. Use *.example.test to include subdomains."),
-    secFormField("IP prefixes", ip),
-    tlsPolicyHelp("Limit this rule to servers in these IP ranges. A single IP address is also accepted."),
+    secFormField(localizedText("tls.scope.dns_names", "DNS names"), dns),
+    tlsPolicyHelp(localizedText("tls.scope.dns_help", "Limit this rule to these server names. Use *.example.test to include subdomains.")),
+    secFormField(localizedText("tls.scope.ip_prefixes", "IP prefixes"), ip),
+    tlsPolicyHelp(localizedText("tls.scope.ip_help", "Limit this rule to servers in these IP ranges. A single IP address is also accepted.")),
   );
   const scopeIsBlank = () => !any.checked && !splitTLSPolicyLines(dns.value).length && !splitTLSPolicyLines(ip.value).length;
   return {
@@ -4166,7 +4199,7 @@ function createTLSScopeEditor(initial: TLSScope | undefined): {
       if (any.checked) return { any: true };
       const dnsRules = splitTLSPolicyLines(dns.value).map(parseTLSDNSRuleInput);
       const ipPrefixes = splitTLSPolicyLines(ip.value);
-      if (!dnsRules.length && !ipPrefixes.length) throw new Error("Scope needs any server, DNS names, or IP prefixes.");
+      if (!dnsRules.length && !ipPrefixes.length) throw new Error(localizedText("tls.validation.scope_required", "Scope needs any server, DNS names, or IP prefixes."));
       const scope: TLSScope = {};
       if (dnsRules.length) scope.dns = dnsRules;
       if (ipPrefixes.length) scope.ip_prefixes = ipPrefixes;
@@ -4225,12 +4258,12 @@ function splitTLSPolicyLines(value: string): string[] {
 
 function tlsPolicySectionHelp(titleText: string): string {
   switch (titleText) {
-    case "Trust anchors":
-      return "Accept server certificates that chain to the selected certificate in the selected scope.";
-    case "Constraints":
-      return "Require certificates in the selected scope to also match this certificate authority.";
-    case "Pins":
-      return "Require certificates in the selected scope to match this certificate or public key fingerprint.";
+    case localizedText("tls.policy.trust_anchors", "Trust anchors"):
+      return localizedText("tls.policy.trust_anchors.help", "Accept server certificates that chain to the selected certificate in the selected scope.");
+    case localizedText("tls.policy.constraints", "Constraints"):
+      return localizedText("tls.policy.constraints.help", "Require certificates in the selected scope to also match this certificate authority.");
+    case localizedText("tls.policy.pins", "Pins"):
+      return localizedText("tls.policy.pins.help", "Require certificates in the selected scope to match this certificate or public key fingerprint.");
     default:
       return "";
   }
@@ -4248,8 +4281,8 @@ function renderTLSRenameForm(kind: TLSItemKind, name: string): HTMLFormElement {
   input.autocomplete = "off";
   input.required = true;
   input.value = name;
-  const actions = tlsEditActions("Save", () => setTLSEditor(null));
-  form.append(secFormField("Name", input), actions);
+  const actions = tlsEditActions(localizedText("action.save", "Save"), () => setTLSEditor(null));
+  form.append(secFormField(localizedText("common.name", "Name"), input), actions);
   form.addEventListener("submit", (event) => {
     event.preventDefault();
     void renameTLSEntry(kind, name, input.value);
@@ -4263,7 +4296,7 @@ function tlsEditActions(submitLabel: string, onCancel: () => void): HTMLElement 
   actions.className = "sec-form-actions";
   const save = textElement("button", submitLabel);
   save.type = "submit";
-  const cancel = textElement("button", "Cancel");
+  const cancel = textElement("button", localizedText("action.cancel", "Cancel"));
   cancel.type = "button";
   cancel.addEventListener("click", onCancel);
   actions.append(save, cancel);
@@ -4287,11 +4320,11 @@ function toggleTLSCertGroup(groupKey: string): void {
 async function createTLSCert(rawName: string, pem: string): Promise<void> {
   const name = rawName.trim();
   if (!isMutableTLSCertName(name)) {
-    notifyError("Certificate name is required and must not start with os-ca:.", "Invalid certificate");
+    notifyError(localizedText("tls.validation.certificate_name", "Certificate name is required and must not start with os-ca:."), localizedText("tls.certificate.invalid.title", "Invalid certificate"));
     renderTLS();
     return;
   }
-  const entry = await runTLSMutation("tlsSetCert", { name, pem }, "TLS certificate saved.");
+  const entry = await runTLSMutation("tlsSetCert", { name, pem }, localizedText("tls.certificate.saved", "TLS certificate saved."));
   if (!entry) return;
   upsertTLSCert(entry);
   tlsOpenForm = null;
@@ -4301,11 +4334,11 @@ async function createTLSCert(rawName: string, pem: string): Promise<void> {
 async function createTLSPolicy(rawName: string, spec: TLSPolicySpec): Promise<void> {
   const name = rawName.trim();
   if (!isMutableTLSPolicyName(name)) {
-    notifyError("Policy name is required and must not be default.", "Invalid TLS policy");
+    notifyError(localizedText("tls.validation.policy_name", "Policy name is required and must not be default."), localizedText("tls.policy.invalid.title", "Invalid TLS policy"));
     renderTLS();
     return;
   }
-  const entry = await runTLSMutation("tlsSetPolicy", { name, spec }, "TLS policy saved.");
+  const entry = await runTLSMutation("tlsSetPolicy", { name, spec }, localizedText("tls.policy.saved", "TLS policy saved."));
   if (!entry) return;
   upsertTLSPolicy(entry);
   tlsOpenForm = null;
@@ -4316,7 +4349,7 @@ async function setTLSBuiltinCAOptions(options: TLSBuiltinCAOptions): Promise<voi
   const info = await runTLSMutation(
     "tlsSetBuiltinCA",
     { options },
-    "Built-in TLS CA updated.",
+    localizedText("tls.builtin_ca.updated", "Built-in TLS CA updated."),
   );
   if (!info) return;
   upsertTLSBuiltinCA(info);
@@ -4329,10 +4362,10 @@ async function reloadTLSOSCerts(): Promise<void> {
   renderTLS();
   try {
     const snapshot = await backend("tlsReloadOSCerts", {});
-    notifySuccess("OS TLS certificates reloaded.", "Certificates reloaded");
+    notifySuccess(localizedText("tls.os.reloaded", "OS TLS certificates reloaded."), localizedText("tls.os.reloaded.title", "Certificates reloaded"));
     applyTLSSnapshotToState(snapshot);
   } catch (error) {
-    notifyError(errorMessage(error), "Certificate reload failed");
+    notifyError(errorMessage(error), localizedText("tls.os.reload_failed.title", "Certificate reload failed"));
     renderTLS();
   } finally {
     tlsReloadOSCertsPending = false;
@@ -4364,7 +4397,7 @@ function renderTLSValuePanel(): void {
   el.tlsValuePanel.classList.remove("hidden");
   const entry = tlsSelectedEntry();
   if (!entry) {
-    el.tlsValuePanel.append(textElement("p", "TLS config not found.", "kv-value-missing"));
+    el.tlsValuePanel.append(textElement("p", localizedText("tls.not_found", "TLS config not found."), "kv-value-missing"));
     return;
   }
   if (entry.read_only && tlsValuePanel.editing) tlsValuePanel.editing = null;
@@ -4378,8 +4411,8 @@ function renderTLSValuePanel(): void {
   title.append(textElement("h2", entry.name), textElement("p", meta));
   const close = textElement("button", "×", "icon-button");
   close.type = "button";
-  close.title = "Close";
-  close.setAttribute("aria-label", "Close TLS config panel");
+  close.title = localizedText("action.close", "Close");
+  close.setAttribute("aria-label", localizedText("tls.close.aria_label", "Close TLS config panel"));
   close.addEventListener("click", closeTLSValuePanel);
   header.append(title, close);
   el.tlsValuePanel.append(header, renderTLSDetail(entry));
@@ -4400,7 +4433,7 @@ function renderTLSDetail(entry: TLSCertEntry | TLSPolicyEntry): HTMLElement {
       initialName: entry.name,
       initialPEM: (entry as TLSCertEntry).pem ?? "",
       includeName: false,
-      submitLabel: "Save",
+      submitLabel: localizedText("action.save", "Save"),
       onSubmit: (_name, pem) => updateTLSCert(entry.name, pem),
       onCancel: () => setTLSEditor(null),
     }));
@@ -4409,7 +4442,7 @@ function renderTLSDetail(entry: TLSCertEntry | TLSPolicyEntry): HTMLElement {
       initialName: entry.name,
       initialSpec: (entry as TLSPolicyEntry).spec,
       includeName: false,
-      submitLabel: "Save",
+      submitLabel: localizedText("action.save", "Save"),
       onSubmit: (_name, spec) => updateTLSPolicy(entry.name, spec),
       onCancel: () => setTLSEditor(null),
     }));
@@ -4424,27 +4457,27 @@ function renderTLSDetail(entry: TLSCertEntry | TLSPolicyEntry): HTMLElement {
 function renderTLSValueActions(entry: TLSCertEntry | TLSPolicyEntry): HTMLElement {
   const actions = document.createElement("div");
   actions.className = "kv-value-actions";
-  const copy = textElement("button", tlsValuePanel?.kind === "cert" ? "Copy PEM" : "Copy JSON");
+  const copy = textElement("button", tlsValuePanel?.kind === "cert" ? localizedText("tls.copy_pem", "Copy PEM") : localizedText("tls.copy_json", "Copy JSON"));
   copy.type = "button";
-  copy.title = tlsValuePanel?.kind === "cert" ? "Copy certificate PEM" : "Copy policy JSON";
+  copy.title = tlsValuePanel?.kind === "cert" ? localizedText("tls.certificate.copy.title", "Copy certificate PEM") : localizedText("tls.policy.copy.title", "Copy policy JSON");
   copy.addEventListener("click", () => copyTLSEntry(entry));
-  const download = textElement("button", "Download");
+  const download = textElement("button", localizedText("action.download", "Download"));
   download.type = "button";
-  download.title = tlsValuePanel?.kind === "cert" ? "Download certificate PEM" : "Download policy JSON";
+  download.title = tlsValuePanel?.kind === "cert" ? localizedText("tls.certificate.download.title", "Download certificate PEM") : localizedText("tls.policy.download.title", "Download policy JSON");
   download.addEventListener("click", () => downloadTLSEntry(entry));
   actions.append(copy, download);
   if (!entry.read_only) {
-    const edit = textElement("button", "Edit");
+    const edit = textElement("button", localizedText("action.edit", "Edit"));
     edit.type = "button";
-    edit.title = tlsValuePanel?.kind === "cert" ? "Edit certificate PEM" : "Edit policy JSON";
+    edit.title = tlsValuePanel?.kind === "cert" ? localizedText("tls.certificate.edit.title", "Edit certificate PEM") : localizedText("tls.policy.edit.title", "Edit policy JSON");
     edit.addEventListener("click", () => setTLSEditor("value"));
-    const rename = textElement("button", "Rename");
+    const rename = textElement("button", localizedText("action.rename", "Rename"));
     rename.type = "button";
-    rename.title = "Rename TLS config";
+    rename.title = localizedText("tls.rename.title", "Rename TLS config");
     rename.addEventListener("click", () => setTLSEditor("rename"));
-    const remove = textElement("button", "Delete");
+    const remove = textElement("button", localizedText("action.delete", "Delete"));
     remove.type = "button";
-    remove.title = "Delete TLS config";
+    remove.title = localizedText("tls.delete.title", "Delete TLS config");
     remove.className = "danger";
     remove.addEventListener("click", () => {
       if (tlsValuePanel) void deleteTLSEntry(tlsValuePanel.kind, entry.name);
@@ -4461,7 +4494,7 @@ function setTLSEditor(editor: TLSValuePanelState["editing"]): void {
 }
 
 async function updateTLSCert(name: string, pem: string): Promise<void> {
-  const entry = await runTLSMutation("tlsSetCert", { name, pem }, "TLS certificate saved.");
+  const entry = await runTLSMutation("tlsSetCert", { name, pem }, localizedText("tls.certificate.saved", "TLS certificate saved."));
   if (!entry) return;
   upsertTLSCert(entry);
   if (tlsValuePanel) tlsValuePanel.editing = null;
@@ -4469,7 +4502,7 @@ async function updateTLSCert(name: string, pem: string): Promise<void> {
 }
 
 async function updateTLSPolicy(name: string, spec: TLSPolicySpec): Promise<void> {
-  const entry = await runTLSMutation("tlsSetPolicy", { name, spec }, "TLS policy saved.");
+  const entry = await runTLSMutation("tlsSetPolicy", { name, spec }, localizedText("tls.policy.saved", "TLS policy saved."));
   if (!entry) return;
   upsertTLSPolicy(entry);
   if (tlsValuePanel) tlsValuePanel.editing = null;
@@ -4482,15 +4515,15 @@ async function renameTLSEntry(kind: TLSItemKind, name: string, rawNewName: strin
   if (!valid) {
     notifyError(
       kind === "cert"
-        ? "Certificate name is required and must not start with os-ca:."
-        : "Policy name is required and must not be default.",
-      kind === "cert" ? "Invalid certificate" : "Invalid TLS policy",
+        ? localizedText("tls.validation.certificate_name", "Certificate name is required and must not start with os-ca:.")
+        : localizedText("tls.validation.policy_name", "Policy name is required and must not be default."),
+      kind === "cert" ? localizedText("tls.certificate.invalid.title", "Invalid certificate") : localizedText("tls.policy.invalid.title", "Invalid TLS policy"),
     );
     renderTLS();
     return;
   }
   const method = kind === "cert" ? "tlsRenameCert" : "tlsRenamePolicy";
-  const entry = await runTLSMutation(method, { name, newName }, "TLS config renamed.");
+  const entry = await runTLSMutation(method, { name, newName }, localizedText("tls.renamed", "TLS config renamed."));
   if (!entry) return;
   if (kind === "cert") {
     removeTLSCert(name);
@@ -4508,9 +4541,9 @@ async function renameTLSEntry(kind: TLSItemKind, name: string, rawNewName: strin
 
 async function deleteTLSEntry(kind: TLSItemKind, name: string): Promise<void> {
   const label = kind === "cert" ? "certificate" : "policy";
-  if (!window.confirm(`Delete TLS ${label} "${name}"?`)) return;
+  if (!window.confirm(localizedText("tls.delete.confirm", "Delete TLS {kind} {name}?", { kind: label, name }))) return;
   const method = kind === "cert" ? "tlsDeleteCert" : "tlsDeletePolicy";
-  if (await runTLSMutation(method, { name }, "TLS config deleted.")) {
+  if (await runTLSMutation(method, { name }, localizedText("tls.deleted", "TLS config deleted."))) {
     if (kind === "cert") removeTLSCert(name);
     else removeTLSPolicy(name);
     if (tlsValuePanel?.kind === kind && tlsValuePanel.name === name) closeTLSValuePanel();
@@ -4525,11 +4558,11 @@ async function runTLSMutation<M extends TLSMutationMethod>(
 ): Promise<BackendResultMap[M] | null> {
   try {
     const result = await backend(method, params);
-    notifySuccess(success, "TLS config updated");
+    notifySuccess(success, localizedText("tls.updated.title", "TLS config updated"));
     renderTLS();
     return result;
   } catch (error) {
-    notifyError(errorMessage(error), "TLS config update failed");
+    notifyError(errorMessage(error), localizedText("tls.update_failed.title", "TLS config update failed"));
     renderTLS();
     return null;
   }
@@ -4589,9 +4622,9 @@ function removeTLSPolicy(name: string): void {
 async function copyTLSEntry(entry: TLSCertEntry | TLSPolicyEntry): Promise<void> {
   try {
     await navigator.clipboard.writeText(tlsEntryText(entry));
-    notifySuccess("TLS config copied to the clipboard.", "Copied");
+    notifySuccess(localizedText("tls.copied", "TLS config copied to the clipboard."), localizedText("common.copied.title", "Copied"));
   } catch (error) {
-    notifyError(errorMessage(error), "Copy failed");
+    notifyError(errorMessage(error), localizedText("common.copy_failed.title", "Copy failed"));
   }
 }
 
@@ -4609,9 +4642,9 @@ function downloadTLSEntry(entry: TLSCertEntry | TLSPolicyEntry): void {
     link.click();
     link.remove();
     window.setTimeout(() => URL.revokeObjectURL(url), 0);
-    notifySuccess("TLS config download started.", "Download started");
+    notifySuccess(localizedText("tls.download_started", "TLS config download started."), localizedText("common.download_started.title", "Download started"));
   } catch (error) {
-    notifyError(errorMessage(error), "Download failed");
+    notifyError(errorMessage(error), localizedText("common.download_failed.title", "Download failed"));
   }
 }
 
@@ -4703,7 +4736,7 @@ async function ensureKVStoreSubscription(): Promise<void> {
   kvStoreSubscribePending = false;
   if (!response) {
     kvPendingStoreSnapshots.clear();
-    notifyError("KV storage is unavailable.", "KV unavailable");
+    notifyError(localizedText("kv.unavailable.message", "KV storage is unavailable."), localizedText("kv.unavailable.title", "KV unavailable"));
     renderKV();
     return;
   }
@@ -4738,7 +4771,9 @@ function renderKV(): void {
   const list = document.createElement("ol");
   list.className = "kv-store-list";
   if (!kvStores.length) {
-    list.append(renderKVEmptyState(kvStoreSubscribePending ? "Loading KV stores." : "No KV stores."));
+    list.append(renderKVEmptyState(kvStoreSubscribePending
+      ? localizedText("kv.loading", "Loading KV stores.")
+      : localizedText("kv.empty", "No KV stores.")));
   } else {
     for (const store of kvStores) {
       list.append(renderKVStore(store));
@@ -4753,7 +4788,7 @@ function renderKV(): void {
 function renderKVHeader(): HTMLElement {
   const header = document.createElement("header");
   header.className = "kv-header";
-  header.append(textElement("h2", "KV stores"));
+  header.append(textElement("h2", localizedText("kv.title", "KV stores")));
   return header;
 }
 
@@ -4771,8 +4806,9 @@ function renderKVStore(store: KVStoreInfo): HTMLLIElement {
   item.className = "kv-store";
   const row = document.createElement("div");
   row.className = "kv-row kv-store-row";
-  bindKVRowAction(row, `Toggle ${store.kind} KV store`, () => toggleKVNode(nodeKey));
-  row.append(createKVDisclosure(expanded, `Toggle ${store.kind} KV store`, () => toggleKVNode(nodeKey)));
+  const toggleLabel = localizedText("kv.store.toggle.aria_label", "Toggle {kind} KV store", { kind: store.kind });
+  bindKVRowAction(row, toggleLabel, () => toggleKVNode(nodeKey));
+  row.append(createKVDisclosure(expanded, toggleLabel, () => toggleKVNode(nodeKey)));
   row.append(createKVStoreTitle(store));
   const actions = document.createElement("div");
   actions.className = "kv-row-actions";
@@ -4791,17 +4827,17 @@ function renderKVNodeBody(store: KVStoreInfo, path: string[], nodeKey: string): 
   const snapshot = kvEntriesByNode.get(nodeKey);
   if (!snapshot) {
     body.append(kvEntrySubscribeFailed.has(nodeKey)
-      ? textElement("p", "KV subtree is unavailable.", "kv-subtree-missing")
+      ? textElement("p", localizedText("kv.subtree.unavailable", "KV subtree is unavailable."), "kv-subtree-missing")
       : renderKVLoading());
     return body;
   }
   if (!snapshot.exists) {
-    body.append(textElement("p", "Subtree does not exist.", "kv-subtree-missing"));
+    body.append(textElement("p", localizedText("kv.subtree.not_found", "Subtree does not exist."), "kv-subtree-missing"));
     return body;
   }
   const entries = snapshot.entries ?? [];
   if (!entries.length) {
-    body.append(textElement("p", "Empty subtree.", "kv-subtree-empty"));
+    body.append(textElement("p", localizedText("kv.subtree.empty", "Empty subtree."), "kv-subtree-empty"));
     return body;
   }
   const list = document.createElement("ol");
@@ -4816,7 +4852,7 @@ function renderKVNodeBody(store: KVStoreInfo, path: string[], nodeKey: string): 
 function renderKVLoading(): HTMLElement {
   const loading = document.createElement("p");
   loading.className = "kv-loading";
-  loading.textContent = "Loading subtree.";
+  loading.textContent = localizedText("kv.subtree.loading", "Loading subtree.");
   return loading;
 }
 
@@ -4831,14 +4867,15 @@ function renderKVEntry(store: KVStoreInfo, path: string[], parentKey: string, en
   if (entry.kind === "bucket") {
     const childKey = childKVNodeKey(parentKey, entry.name) ?? kvNodeKey(store, [...path, entry.name]);
     const expanded = kvExpandedNodes.has(childKey);
-    bindKVRowAction(row, `Toggle subtree ${entry.name}`, () => toggleKVNode(childKey));
-    row.append(createKVDisclosure(expanded, `Toggle subtree ${entry.name}`, () => toggleKVNode(childKey)));
+    const toggleLabel = localizedText("kv.subtree.toggle.aria_label", "Toggle subtree {name}", { name: entry.name });
+    bindKVRowAction(row, toggleLabel, () => toggleKVNode(childKey));
+    row.append(createKVDisclosure(expanded, toggleLabel, () => toggleKVNode(childKey)));
     row.append(createKVEntryTitle(entry));
     row.append(renderKVBucketActions(store, [...path, entry.name]));
     item.append(row);
     if (expanded) item.append(renderKVNodeBody(store, [...path, entry.name], childKey));
   } else {
-    bindKVRowAction(row, `Open value ${entry.name}`, () => openKVValuePanel(store, path, entry.name));
+    bindKVRowAction(row, localizedText("kv.value.open.aria_label", "Open value {name}", { name: entry.name }), () => openKVValuePanel(store, path, entry.name));
     row.append(createKVIndent());
     row.append(createKVEntryTitle(entry));
     row.append(renderKVValueActions(store, path, entry));
@@ -4892,9 +4929,9 @@ function createKVIndent(): HTMLElement {
 function renderKVBucketActions(store: KVStoreInfo, path: string[]): HTMLElement {
   const actions = document.createElement("div");
   actions.className = "kv-row-actions";
-  const drop = textElement("button", "Delete");
+  const drop = textElement("button", localizedText("action.delete", "Delete"));
   drop.type = "button";
-  drop.title = "Delete subtree";
+  drop.title = localizedText("kv.subtree.delete.title", "Delete subtree");
   drop.className = "danger";
   drop.addEventListener("click", () => dropKVSubtree(store, path));
   actions.append(drop);
@@ -4904,9 +4941,9 @@ function renderKVBucketActions(store: KVStoreInfo, path: string[]): HTMLElement 
 function renderKVValueActions(store: KVStoreInfo, path: string[], entry: KVEntryInfo): HTMLElement {
   const actions = document.createElement("div");
   actions.className = "kv-row-actions";
-  const remove = textElement("button", "Delete");
+  const remove = textElement("button", localizedText("action.delete", "Delete"));
   remove.type = "button";
-  remove.title = "Delete value";
+  remove.title = localizedText("kv.value.delete.title", "Delete value");
   remove.className = "danger";
   remove.addEventListener("click", () => deleteKVValue(store, path, entry.name));
   actions.append(remove);
@@ -4920,11 +4957,11 @@ function renderKVPathToolbar(store: KVStoreInfo, path: string[], nodeKey: string
   pathLabel.title = kvPathLabel(store, path);
   const addValue = textElement("button", "+ Value");
   addValue.type = "button";
-  addValue.title = "Create value in this subtree";
+  addValue.title = localizedText("kv.value.create.title", "Create value in this subtree");
   addValue.addEventListener("click", () => openKVForm(nodeKey, "value"));
   const addSubtree = textElement("button", "+ Subtree");
   addSubtree.type = "button";
-  addSubtree.title = "Create child subtree";
+  addSubtree.title = localizedText("kv.subtree.create.title", "Create child subtree");
   addSubtree.addEventListener("click", () => openKVForm(nodeKey, "subtree"));
   toolbar.append(pathLabel, addValue, addSubtree);
   if (kvOpenForm?.nodeKey === nodeKey) {
@@ -4947,12 +4984,12 @@ function renderKVSubtreeForm(store: KVStoreInfo, path: string[]): HTMLFormElemen
   form.className = "kv-inline-form kv-subtree-form";
   const name = document.createElement("input");
   name.name = "name";
-  name.placeholder = "Subtree name";
+  name.placeholder = localizedText("kv.subtree.name.placeholder", "Subtree name");
   name.autocomplete = "off";
   name.required = true;
-  const save = textElement("button", "Create");
+  const save = textElement("button", localizedText("action.create", "Create"));
   save.type = "submit";
-  const cancel = textElement("button", "Cancel");
+  const cancel = textElement("button", localizedText("action.cancel", "Cancel"));
   cancel.type = "button";
   cancel.addEventListener("click", closeKVForm);
   form.append(name, save, cancel);
@@ -4968,31 +5005,31 @@ function renderKVValueForm(store: KVStoreInfo, path: string[]): HTMLFormElement 
   form.className = "kv-inline-form kv-value-form";
   const key = document.createElement("input");
   key.name = "key";
-  key.placeholder = "Key";
+  key.placeholder = localizedText("kv.value.key.placeholder", "Key");
   key.autocomplete = "off";
   key.required = true;
   const mode = document.createElement("select");
   mode.name = "mode";
   const textOption = document.createElement("option");
   textOption.value = "text";
-  textOption.textContent = "Text";
+  textOption.textContent = localizedText("kv.value.type.text", "Text");
   const bytesOption = document.createElement("option");
   bytesOption.value = "base64";
-  bytesOption.textContent = "Bytes base64";
+  bytesOption.textContent = localizedText("kv.value.type.bytes", "Bytes base64");
   mode.append(textOption, bytesOption);
   const hiddenLabel = document.createElement("label");
   hiddenLabel.className = "kv-checkbox";
   const hidden = document.createElement("input");
   hidden.type = "checkbox";
   hidden.name = "hidden";
-  hiddenLabel.append(hidden, textElement("span", "Hidden"));
+  hiddenLabel.append(hidden, textElement("span", localizedText("kv.value.hidden", "Hidden")));
   const data = document.createElement("textarea");
   data.name = "data";
-  data.placeholder = "Value";
+  data.placeholder = localizedText("kv.value.data.placeholder", "Value");
   data.rows = 4;
-  const save = textElement("button", "Set");
+  const save = textElement("button", localizedText("action.set", "Set"));
   save.type = "submit";
-  const cancel = textElement("button", "Cancel");
+  const cancel = textElement("button", localizedText("action.cancel", "Cancel"));
   cancel.type = "button";
   cancel.addEventListener("click", closeKVForm);
   form.append(key, mode, hiddenLabel, data, save, cancel);
@@ -5026,12 +5063,12 @@ function toggleKVNode(nodeKey: string): void {
 async function createKVSubtree(store: KVStoreInfo, path: string[], name: string): Promise<void> {
   const childName = name;
   if (!childName) {
-    notifyError("Subtree name is required.", "Invalid subtree");
+    notifyError(localizedText("kv.validation.subtree_required", "Subtree name is required."), localizedText("kv.validation.invalid_subtree.title", "Invalid subtree"));
     renderKV();
     return;
   }
   const childPath = [...path, childName];
-  if (await runKVMutation("kvEnsure", { store, path: childPath }, "Subtree created.")) {
+  if (await runKVMutation("kvEnsure", { store, path: childPath }, localizedText("kv.subtree.created", "Subtree created."))) {
     closeKVForm();
   }
 }
@@ -5046,7 +5083,7 @@ async function setKVValue(
 ): Promise<void> {
   const name = key;
   if (!name) {
-    notifyError("Key is required.", "Invalid value");
+    notifyError(localizedText("kv.validation.key_required", "Key is required."), localizedText("kv.validation.invalid_value.title", "Invalid value"));
     renderKV();
     return;
   }
@@ -5057,27 +5094,27 @@ async function setKVValue(
     string: textMode,
     hidden,
   };
-  if (await runKVMutation("kvSet", { store, path, key: name, value }, "Value saved.")) {
+  if (await runKVMutation("kvSet", { store, path, key: name, value }, localizedText("kv.value.saved", "Value saved."))) {
     closeKVForm();
   }
 }
 
 async function deleteKVValue(store: KVStoreInfo, path: string[], key: string): Promise<void> {
-  if (!window.confirm(`Delete value "${key}"?`)) return;
+  if (!window.confirm(localizedText("kv.value.delete.confirm", "Delete value {key}?", { key }))) return;
   if (kvValuePanel && sameKVStore(kvValuePanel.store, store) && pathsEqual(kvValuePanel.path, path) && kvValuePanel.key === key) {
     closeKVValuePanel();
   }
-  await runKVMutation("kvDelete", { store, path, key }, "Value deleted.");
+  await runKVMutation("kvDelete", { store, path, key }, localizedText("kv.value.deleted", "Value deleted."));
 }
 
 async function dropKVSubtree(store: KVStoreInfo, path: string[]): Promise<void> {
   if (!path.length) return;
-  if (!window.confirm(`Delete subtree "${path[path.length - 1]}"?`)) return;
+  if (!window.confirm(localizedText("kv.subtree.delete.confirm", "Delete subtree {name}?", { name: path[path.length - 1] ?? "" }))) return;
   const targetKey = kvNodeKey(store, path);
   if (kvValuePanel && sameKVStore(kvValuePanel.store, store) && pathHasPrefix(kvValuePanel.path, path)) {
     closeKVValuePanel();
   }
-  if (await runKVMutation("kvDrop", { store, path }, "Subtree deleted.")) {
+  if (await runKVMutation("kvDrop", { store, path }, localizedText("kv.subtree.deleted", "Subtree deleted."))) {
     for (const nodeKey of [...kvExpandedNodes]) {
       if (kvNodeDescendsFrom(nodeKey, targetKey)) kvExpandedNodes.delete(nodeKey);
     }
@@ -5092,11 +5129,11 @@ async function runKVMutation(
 ): Promise<boolean> {
   try {
     await backend(method, params);
-    notifySuccess(success, "KV updated");
+    notifySuccess(success, localizedText("kv.updated.title", "KV updated"));
     renderKV();
     return true;
   } catch (error) {
-    notifyError(errorMessage(error), "KV update failed");
+    notifyError(errorMessage(error), localizedText("kv.update_failed.title", "KV update failed"));
     renderKV();
     return false;
   }
@@ -5133,7 +5170,7 @@ async function subscribeKVEntries(nodeKey: string): Promise<void> {
   if (!response) {
     kvEntrySubscribeFailed.add(nodeKey);
     if (!kvEntrySubscribePending.size) kvPendingEntrySnapshots.clear();
-    notifyError(`Failed to subscribe to ${kvPathLabel(ref.store, ref.path)}.`, "KV unavailable");
+    notifyError(localizedText("kv.subscribe_failed", "Failed to subscribe to {path}.", { path: kvPathLabel(ref.store, ref.path) }), localizedText("kv.unavailable.title", "KV unavailable"));
     renderKV();
     return;
   }
@@ -5187,7 +5224,7 @@ async function subscribeKVValuePanel(): Promise<void> {
   kvValueSubscribePending = false;
   if (!response) {
     kvPendingValueSnapshots.clear();
-    notifyError("Failed to subscribe to the value.", "KV value unavailable");
+    notifyError(localizedText("kv.value.subscribe_failed", "Failed to subscribe to the value."), localizedText("kv.value.unavailable.title", "KV value unavailable"));
     renderKVValuePanel();
     return;
   }
@@ -5222,8 +5259,8 @@ function renderKVValuePanel(): void {
   title.append(textElement("h2", kvValuePanel.key), textElement("p", kvPathLabel(kvValuePanel.store, kvValuePanel.path)));
   const close = textElement("button", "×", "icon-button");
   close.type = "button";
-  close.title = "Close";
-  close.setAttribute("aria-label", "Close value panel");
+  close.title = localizedText("action.close", "Close");
+  close.setAttribute("aria-label", localizedText("kv.value.close.aria_label", "Close value panel"));
   close.addEventListener("click", closeKVValuePanel);
   header.append(title, close);
   el.kvValuePanel.append(header);
@@ -5234,7 +5271,7 @@ function renderKVValuePanel(): void {
     return;
   }
   if (!snapshot.found || !snapshot.value) {
-    el.kvValuePanel.append(textElement("p", "Value not found.", "kv-value-missing"));
+    el.kvValuePanel.append(textElement("p", localizedText("kv.value.not_found", "Value not found."), "kv-value-missing"));
     return;
   }
   el.kvValuePanel.append(renderKVValueDetail(snapshot.value));
@@ -5247,19 +5284,19 @@ function renderKVValueDetail(value: KVValue): HTMLElement {
   meta.className = "kv-value-meta";
   const actions = document.createElement("div");
   actions.className = "kv-value-actions";
-  const copy = textElement("button", "Copy");
+  const copy = textElement("button", localizedText("action.copy", "Copy"));
   copy.type = "button";
-  copy.title = "Copy value";
+  copy.title = localizedText("kv.value.copy.title", "Copy value");
   copy.addEventListener("click", () => copyKVValue(value));
-  const download = textElement("button", "Download");
+  const download = textElement("button", localizedText("action.download", "Download"));
   download.type = "button";
-  download.title = "Download value";
+  download.title = localizedText("kv.value.download.title", "Download value");
   download.addEventListener("click", () => downloadKVValue(value));
   actions.append(copy, download);
   if (value.hidden && !kvValuePanel?.revealHidden && value.string && isRenderableKVText(value)) {
-    const reveal = textElement("button", "Reveal hidden");
+    const reveal = textElement("button", localizedText("kv.value.reveal", "Reveal hidden"));
     reveal.type = "button";
-    reveal.title = "Reveal hidden value";
+    reveal.title = localizedText("kv.value.reveal.title", "Reveal hidden value");
     reveal.addEventListener("click", () => {
       if (!kvValuePanel) return;
       kvValuePanel.revealHidden = true;
@@ -5296,9 +5333,9 @@ async function copyKVValue(value: KVValue): Promise<void> {
     } else {
       await copyBinaryKVValue(value);
     }
-    notifySuccess("Value copied to the clipboard.", "Copied");
+    notifySuccess(localizedText("kv.value.copied", "Value copied to the clipboard."), localizedText("common.copied.title", "Copied"));
   } catch (error) {
-    notifyError(errorMessage(error), "Copy failed");
+    notifyError(errorMessage(error), localizedText("common.copy_failed.title", "Copy failed"));
   }
 }
 
@@ -5328,9 +5365,9 @@ function downloadKVValue(value: KVValue): void {
     link.click();
     link.remove();
     window.setTimeout(() => URL.revokeObjectURL(url), 0);
-    notifySuccess("Value download started.", "Download started");
+    notifySuccess(localizedText("kv.value.download_started", "Value download started."), localizedText("common.download_started.title", "Download started"));
   } catch (error) {
-    notifyError(errorMessage(error), "Download failed");
+    notifyError(errorMessage(error), localizedText("common.download_failed.title", "Download failed"));
   }
 }
 
@@ -5491,7 +5528,7 @@ function updateWorkerAgeTimer(): void {
 
 function appendLog(entry: LogEntry): void {
   if (isConfigSaveFailure(entry)) {
-    notifyError(entry.message, "Config save failed");
+    notifyError(entry.message, localizedText("config.save_failed.title", "Config save failed"));
   }
   const panel = el.logsPanel;
   const previousHeight = panel.scrollHeight;
@@ -5545,7 +5582,7 @@ async function activateConfigPanel(): Promise<void> {
 async function loadConfig(preserveDraft = false): Promise<void> {
   if (configLoading || configApplying) return;
   configLoading = true;
-  el.configStatus.textContent = "Loading editable config.";
+  el.configStatus.textContent = localizedText("config.status.loading", "Loading editable config.");
   updateConfigControls();
   try {
     const next = await backend("configSnapshot");
@@ -5560,15 +5597,15 @@ async function loadConfig(preserveDraft = false): Promise<void> {
       checkpointConfigEditorScroll();
     }
     if (keepDraft) {
-      el.configStatus.textContent = `Loaded revision ${shortConfigRevision(next.revision)}. Unsaved changes are preserved.`;
+      el.configStatus.textContent = localizedText("config.status.loaded_preserved", "Loaded revision {revision}. Unsaved changes are preserved.", { revision: shortConfigRevision(next.revision) });
     } else {
       el.configStatus.textContent = next.read_only
-        ? "This daemon started with a read-only config."
-        : `Loaded revision ${shortConfigRevision(next.revision)}.`;
+        ? localizedText("config.status.read_only", "This daemon started with a read-only config.")
+        : localizedText("config.status.loaded", "Loaded revision {revision}.", { revision: shortConfigRevision(next.revision) });
     }
   } catch (error) {
-    el.configStatus.textContent = `Config load failed: ${errorMessage(error)}`;
-    notifyError(errorMessage(error), "Config load failed");
+    el.configStatus.textContent = localizedText("config.status.load_failed", "Config load failed: {error}", { error: errorMessage(error) });
+    notifyError(errorMessage(error), localizedText("config.load_failed.title", "Config load failed"));
   } finally {
     configLoading = false;
     updateConfigControls();
@@ -5578,7 +5615,7 @@ async function loadConfig(preserveDraft = false): Promise<void> {
 async function applyConfig(): Promise<void> {
   if (!configSnapshot || configSnapshot.read_only || configApplying || configDraft === configSnapshot.text) return;
   configApplying = true;
-  el.configStatus.textContent = "Applying config.";
+  el.configStatus.textContent = localizedText("config.status.applying", "Applying config.");
   updateConfigControls();
   try {
     const response = await backend("configUpdate", {
@@ -5591,10 +5628,10 @@ async function applyConfig(): Promise<void> {
     renderHuJSONHighlight(el.configHighlight, el.configEditor.value);
     checkpointConfigEditorScroll();
     el.configStatus.textContent = configChangeSummary(response.changes, response.snapshot.revision);
-    notifySuccess(el.configStatus.textContent, "Config applied");
+    notifySuccess(el.configStatus.textContent, localizedText("config.applied.title", "Config applied"));
   } catch (error) {
-    el.configStatus.textContent = `Config apply failed: ${errorMessage(error)}`;
-    notifyError(errorMessage(error), "Config apply failed");
+    el.configStatus.textContent = localizedText("config.status.apply_failed", "Config apply failed: {error}", { error: errorMessage(error) });
+    notifyError(errorMessage(error), localizedText("config.apply_failed.title", "Config apply failed"));
   } finally {
     configApplying = false;
     updateConfigControls();
@@ -5618,15 +5655,15 @@ function configChangeSummary(changes: ConfigChanges, revision: string): string {
   const addCount = (label: string, values: string[] | undefined): void => {
     if (values?.length) parts.push(`${values.length} ${label}`);
   };
-  addCount("node(s) added", changes.added);
-  addCount("node(s) removed", changes.removed);
-  addCount("node(s) reinitialized", changes.reinitialized);
-  addCount("position(s) updated", changes.positions_updated);
-  addCount("primary type(s) updated", changes.primary_types_updated);
-  addCount("link(s) added", changes.links_added);
-  addCount("link(s) removed", changes.links_removed);
-  const detail = parts.length ? parts.join(", ") : "no live graph changes";
-  return `Applied revision ${shortConfigRevision(revision)}: ${detail}.`;
+  addCount(localizedText("config.changes.nodes_added", "node(s) added"), changes.added);
+  addCount(localizedText("config.changes.nodes_removed", "node(s) removed"), changes.removed);
+  addCount(localizedText("config.changes.nodes_reinitialized", "node(s) reinitialized"), changes.reinitialized);
+  addCount(localizedText("config.changes.positions_updated", "position(s) updated"), changes.positions_updated);
+  addCount(localizedText("config.changes.primary_types_updated", "primary type(s) updated"), changes.primary_types_updated);
+  addCount(localizedText("config.changes.links_added", "link(s) added"), changes.links_added);
+  addCount(localizedText("config.changes.links_removed", "link(s) removed"), changes.links_removed);
+  const detail = parts.length ? parts.join(", ") : localizedText("config.changes.none", "no live graph changes");
+  return localizedText("config.status.applied", "Applied revision {revision}: {detail}.", { revision: shortConfigRevision(revision), detail });
 }
 
 async function activateSnapshotsPanel(): Promise<void> {
@@ -5640,16 +5677,16 @@ async function activateSnapshotsPanel(): Promise<void> {
 async function loadSnapshots(): Promise<void> {
   if (snapshotsLoading || snapshotMutationPending) return;
   snapshotsLoading = true;
-  el.snapshotsStatus.textContent = "Loading snapshots.";
+  el.snapshotsStatus.textContent = localizedText("snapshots.status.loading", "Loading snapshots.");
   updateSnapshotControls();
   try {
     const response = await backend("snapshotsList");
     snapshotEntries = response.snapshots ?? [];
     renderSnapshots();
-    el.snapshotsStatus.textContent = `${snapshotEntries.length} snapshot(s).`;
+    el.snapshotsStatus.textContent = localizedText("snapshots.status.count", "{count} snapshot(s).", { count: snapshotEntries.length });
   } catch (error) {
-    el.snapshotsStatus.textContent = `Snapshot load failed: ${errorMessage(error)}`;
-    notifyError(errorMessage(error), "Snapshot load failed");
+    el.snapshotsStatus.textContent = localizedText("snapshots.status.load_failed", "Snapshot load failed: {error}", { error: errorMessage(error) });
+    notifyError(errorMessage(error), localizedText("snapshots.load_failed.title", "Snapshot load failed"));
   } finally {
     snapshotsLoading = false;
     updateSnapshotControls();
@@ -5659,18 +5696,18 @@ async function loadSnapshots(): Promise<void> {
 async function createSnapshot(): Promise<void> {
   if (snapshotsLoading || snapshotMutationPending) return;
   snapshotMutationPending = true;
-  el.snapshotsStatus.textContent = "Creating snapshot.";
+  el.snapshotsStatus.textContent = localizedText("snapshots.status.creating", "Creating snapshot.");
   updateSnapshotControls();
   try {
     const created = await backend("snapshotCreate", { name: el.snapshotName.value });
     el.snapshotName.value = "";
     snapshotEntries = upsertSnapshot(snapshotEntries, created);
     renderSnapshots();
-    el.snapshotsStatus.textContent = `Created snapshot ${created.uuid}.`;
-    notifySuccess(el.snapshotsStatus.textContent, "Snapshot created");
+    el.snapshotsStatus.textContent = localizedText("snapshots.status.created", "Created snapshot {uuid}.", { uuid: created.uuid });
+    notifySuccess(el.snapshotsStatus.textContent, localizedText("snapshots.created.title", "Snapshot created"));
   } catch (error) {
-    el.snapshotsStatus.textContent = `Snapshot creation failed: ${errorMessage(error)}`;
-    notifyError(errorMessage(error), "Snapshot creation failed");
+    el.snapshotsStatus.textContent = localizedText("snapshots.status.create_failed", "Snapshot creation failed: {error}", { error: errorMessage(error) });
+    notifyError(errorMessage(error), localizedText("snapshots.create_failed.title", "Snapshot creation failed"));
   } finally {
     snapshotMutationPending = false;
     updateSnapshotControls();
@@ -5682,7 +5719,7 @@ async function createSnapshot(): Promise<void> {
 async function exportSnapshot(entry: SnapshotInfo): Promise<void> {
   if (snapshotsLoading || snapshotMutationPending) return;
   snapshotMutationPending = true;
-  el.snapshotsStatus.textContent = `Exporting snapshot ${entry.uuid}.`;
+  el.snapshotsStatus.textContent = localizedText("snapshots.status.exporting", "Exporting snapshot {uuid}.", { uuid: entry.uuid });
   updateSnapshotControls();
   try {
     const response = await backend("snapshotExport", { uuid: entry.uuid });
@@ -5695,11 +5732,11 @@ async function exportSnapshot(entry: SnapshotInfo): Promise<void> {
     link.click();
     link.remove();
     window.setTimeout(() => URL.revokeObjectURL(url), 0);
-    el.snapshotsStatus.textContent = `Exported snapshot ${response.snapshot.uuid}.`;
-    notifySuccess(el.snapshotsStatus.textContent, "Snapshot exported");
+    el.snapshotsStatus.textContent = localizedText("snapshots.status.exported", "Exported snapshot {uuid}.", { uuid: response.snapshot.uuid });
+    notifySuccess(el.snapshotsStatus.textContent, localizedText("snapshots.exported.title", "Snapshot exported"));
   } catch (error) {
-    el.snapshotsStatus.textContent = `Snapshot export failed: ${errorMessage(error)}`;
-    notifyError(errorMessage(error), "Snapshot export failed");
+    el.snapshotsStatus.textContent = localizedText("snapshots.status.export_failed", "Snapshot export failed: {error}", { error: errorMessage(error) });
+    notifyError(errorMessage(error), localizedText("snapshots.export_failed.title", "Snapshot export failed"));
   } finally {
     snapshotMutationPending = false;
     updateSnapshotControls();
@@ -5712,17 +5749,17 @@ async function importSnapshot(): Promise<void> {
   if (snapshotsLoading || snapshotMutationPending) return;
   const file = el.snapshotImportFile.files?.[0];
   if (!file) {
-    el.snapshotsStatus.textContent = "Select a snapshot archive to import.";
-    notifyError(el.snapshotsStatus.textContent, "Snapshot archive required");
+    el.snapshotsStatus.textContent = localizedText("snapshots.status.archive_required", "Select a snapshot archive to import.");
+    notifyError(el.snapshotsStatus.textContent, localizedText("snapshots.archive_required.title", "Snapshot archive required"));
     return;
   }
   if (file.size > SNAPSHOT_ARCHIVE_MAX_BYTES) {
-    el.snapshotsStatus.textContent = "Snapshot archive exceeds the 32 MiB limit.";
-    notifyError(el.snapshotsStatus.textContent, "Snapshot archive is too large");
+    el.snapshotsStatus.textContent = localizedText("snapshots.status.archive_too_large", "Snapshot archive exceeds the 32 MiB limit.");
+    notifyError(el.snapshotsStatus.textContent, localizedText("snapshots.archive_too_large.title", "Snapshot archive is too large"));
     return;
   }
   snapshotMutationPending = true;
-  el.snapshotsStatus.textContent = `Importing snapshot archive ${file.name}.`;
+  el.snapshotsStatus.textContent = localizedText("snapshots.status.importing", "Importing snapshot archive {name}.", { name: file.name });
   updateSnapshotControls();
   try {
     const archive = await fileAsBase64(file);
@@ -5733,11 +5770,11 @@ async function importSnapshot(): Promise<void> {
     el.snapshotImportName.value = "";
     snapshotEntries = upsertSnapshot(snapshotEntries, imported);
     renderSnapshots();
-    el.snapshotsStatus.textContent = `Imported snapshot ${imported.uuid}.`;
-    notifySuccess(el.snapshotsStatus.textContent, "Snapshot imported");
+    el.snapshotsStatus.textContent = localizedText("snapshots.status.imported", "Imported snapshot {uuid}.", { uuid: imported.uuid });
+    notifySuccess(el.snapshotsStatus.textContent, localizedText("snapshots.imported.title", "Snapshot imported"));
   } catch (error) {
-    el.snapshotsStatus.textContent = `Snapshot import failed: ${errorMessage(error)}`;
-    notifyError(errorMessage(error), "Snapshot import failed");
+    el.snapshotsStatus.textContent = localizedText("snapshots.status.import_failed", "Snapshot import failed: {error}", { error: errorMessage(error) });
+    notifyError(errorMessage(error), localizedText("snapshots.import_failed.title", "Snapshot import failed"));
   } finally {
     snapshotMutationPending = false;
     updateSnapshotControls();
@@ -5766,25 +5803,25 @@ function fileAsBase64(file: File): Promise<string> {
 
 async function restoreSnapshot(entry: SnapshotInfo): Promise<void> {
   const label = entry.name ? `“${entry.name}” (${entry.uuid})` : entry.uuid;
-  if (!window.confirm(`Restore snapshot ${label}? Current daemon state will be replaced.`)) return;
+  if (!window.confirm(localizedText("snapshots.restore.confirm", "Restore snapshot {snapshot}? Current daemon state will be replaced.", { snapshot: label }))) return;
   if (snapshotsLoading || snapshotMutationPending) return;
   snapshotMutationPending = true;
-  el.snapshotsStatus.textContent = `Restoring snapshot ${entry.uuid}.`;
+  el.snapshotsStatus.textContent = localizedText("snapshots.status.restoring", "Restoring snapshot {uuid}.", { uuid: entry.uuid });
   updateSnapshotControls();
   try {
     const response = await backend("snapshotRestore", { uuid: entry.uuid });
     configSnapshot = null;
     configDraft = "";
     const persistence = response.config_written
-      ? " Config was written to disk."
+      ? localizedText("snapshots.restore.config_written", " Config was written to disk.")
       : response.config_write_error
-        ? ` Config is active in memory; the config file write failed: ${response.config_write_error}`
-        : " Config is active in memory only.";
-    el.snapshotsStatus.textContent = `Restored snapshot ${response.snapshot.uuid}.${persistence}`;
-    notifySuccess(el.snapshotsStatus.textContent, "Snapshot restored");
+        ? localizedText("snapshots.restore.config_write_failed", " Config is active in memory; the config file write failed: {error}", { error: response.config_write_error })
+        : localizedText("snapshots.restore.memory_only", " Config is active in memory only.");
+    el.snapshotsStatus.textContent = localizedText("snapshots.status.restored", "Restored snapshot {uuid}.{persistence}", { uuid: response.snapshot.uuid, persistence });
+    notifySuccess(el.snapshotsStatus.textContent, localizedText("snapshots.restored.title", "Snapshot restored"));
   } catch (error) {
-    el.snapshotsStatus.textContent = `Snapshot restore failed: ${errorMessage(error)}`;
-    notifyError(errorMessage(error), "Snapshot restore failed");
+    el.snapshotsStatus.textContent = localizedText("snapshots.status.restore_failed", "Snapshot restore failed: {error}", { error: errorMessage(error) });
+    notifyError(errorMessage(error), localizedText("snapshots.restore_failed.title", "Snapshot restore failed"));
   } finally {
     snapshotMutationPending = false;
     updateSnapshotControls();
@@ -5792,20 +5829,20 @@ async function restoreSnapshot(entry: SnapshotInfo): Promise<void> {
 }
 
 async function renameSnapshot(entry: SnapshotInfo): Promise<void> {
-  const name = window.prompt("Snapshot name (leave empty for no name):", entry.name ?? "");
+  const name = window.prompt(localizedText("snapshots.rename.prompt", "Snapshot name (leave empty for no name):"), entry.name ?? "");
   if (name === null || snapshotsLoading || snapshotMutationPending) return;
   snapshotMutationPending = true;
-  el.snapshotsStatus.textContent = `Renaming snapshot ${entry.uuid}.`;
+  el.snapshotsStatus.textContent = localizedText("snapshots.status.renaming", "Renaming snapshot {uuid}.", { uuid: entry.uuid });
   updateSnapshotControls();
   try {
     const renamed = await backend("snapshotRename", { uuid: entry.uuid, name });
     snapshotEntries = upsertSnapshot(snapshotEntries, renamed);
     renderSnapshots();
-    el.snapshotsStatus.textContent = `Renamed snapshot ${entry.uuid}.`;
-    notifySuccess(el.snapshotsStatus.textContent, "Snapshot renamed");
+    el.snapshotsStatus.textContent = localizedText("snapshots.status.renamed", "Renamed snapshot {uuid}.", { uuid: entry.uuid });
+    notifySuccess(el.snapshotsStatus.textContent, localizedText("snapshots.renamed.title", "Snapshot renamed"));
   } catch (error) {
-    el.snapshotsStatus.textContent = `Snapshot rename failed: ${errorMessage(error)}`;
-    notifyError(errorMessage(error), "Snapshot rename failed");
+    el.snapshotsStatus.textContent = localizedText("snapshots.status.rename_failed", "Snapshot rename failed: {error}", { error: errorMessage(error) });
+    notifyError(errorMessage(error), localizedText("snapshots.rename_failed.title", "Snapshot rename failed"));
   } finally {
     snapshotMutationPending = false;
     updateSnapshotControls();
@@ -5814,20 +5851,20 @@ async function renameSnapshot(entry: SnapshotInfo): Promise<void> {
 
 async function deleteSnapshot(entry: SnapshotInfo): Promise<void> {
   const label = entry.name ? `“${entry.name}” (${entry.uuid})` : entry.uuid;
-  if (!window.confirm(`Delete snapshot ${label}? This action cannot be undone.`)) return;
+  if (!window.confirm(localizedText("snapshots.delete.confirm", "Delete snapshot {snapshot}? This action cannot be undone.", { snapshot: label }))) return;
   if (snapshotsLoading || snapshotMutationPending) return;
   snapshotMutationPending = true;
-  el.snapshotsStatus.textContent = `Deleting snapshot ${entry.uuid}.`;
+  el.snapshotsStatus.textContent = localizedText("snapshots.status.deleting", "Deleting snapshot {uuid}.", { uuid: entry.uuid });
   updateSnapshotControls();
   try {
     await backend("snapshotDelete", { uuid: entry.uuid });
     snapshotEntries = removeSnapshotEntry(snapshotEntries, entry.uuid);
     renderSnapshots();
-    el.snapshotsStatus.textContent = `Deleted snapshot ${entry.uuid}.`;
-    notifySuccess(el.snapshotsStatus.textContent, "Snapshot deleted");
+    el.snapshotsStatus.textContent = localizedText("snapshots.status.deleted", "Deleted snapshot {uuid}.", { uuid: entry.uuid });
+    notifySuccess(el.snapshotsStatus.textContent, localizedText("snapshots.deleted.title", "Snapshot deleted"));
   } catch (error) {
-    el.snapshotsStatus.textContent = `Snapshot deletion failed: ${errorMessage(error)}`;
-    notifyError(errorMessage(error), "Snapshot deletion failed");
+    el.snapshotsStatus.textContent = localizedText("snapshots.status.delete_failed", "Snapshot deletion failed: {error}", { error: errorMessage(error) });
+    notifyError(errorMessage(error), localizedText("snapshots.delete_failed.title", "Snapshot deletion failed"));
   } finally {
     snapshotMutationPending = false;
     updateSnapshotControls();
@@ -6125,8 +6162,8 @@ function wireUI(): void {
     checkpointConfigEditorScroll();
     updateConfigControls();
     el.configStatus.textContent = configDraft === configSnapshot?.text
-      ? `Loaded revision ${shortConfigRevision(configSnapshot.revision)}.`
-      : "Config has unapplied changes.";
+      ? localizedText("config.status.loaded", "Loaded revision {revision}.", { revision: shortConfigRevision(configSnapshot.revision) })
+      : localizedText("config.status.unapplied", "Config has unapplied changes.");
   });
   el.configEditor.addEventListener("scroll", syncConfigEditorScroll);
   el.configEditor.addEventListener("focus", checkpointConfigEditorScroll);
@@ -6138,6 +6175,7 @@ function wireUI(): void {
   el.snapshotCreate.addEventListener("click", () => void createSnapshot());
   el.snapshotsReload.addEventListener("click", () => void loadSnapshots());
   el.snapshotImport.addEventListener("click", () => void importSnapshot());
+  el.locale.addEventListener("change", () => void changeLocale(el.locale.value));
   document.addEventListener("paste", handleGraphPaste, { capture: true });
   document.addEventListener("keydown", (event) => {
     graphKeydown(event);
@@ -6210,20 +6248,87 @@ async function boot(): Promise<void> {
   wireUI();
   initGraph();
   installTestHooks();
-  el.status.textContent = "Connecting admin API";
+  setBackendStatus("app.status.connecting", "Connecting admin API");
   await connectAPI();
   const hello = await backend("hello");
   applyProjectVersionStatus(hello.project_version_status);
   applyIsolationStatus(hello);
   applySandboxStatus(hello);
+  await restoreLocale();
   const colormap = await backend("colormap");
   applyTypePalette(colormap);
   await backend("subscribeLogs");
   await backend("subscribeNotifications");
   await ensureSecSubscription();
   await requestSnapshot();
-  el.status.textContent = "Admin API connected";
+  setBackendStatus("app.status.connected", "Admin API connected");
   setTab("graph");
+}
+
+async function restoreLocale(): Promise<void> {
+  let requested: string | null = null;
+  try { requested = window.localStorage.getItem(LOCALE_STORAGE_KEY); } catch { /* Storage can be disabled. */ }
+  let snapshot: LocaleSnapshot;
+  if (requested !== null) {
+    try {
+      snapshot = requested === "en" ? await backend("localeSnapshot") : await backend("setLocale", { locale: requested });
+    } catch {
+      snapshot = await backend("localeSnapshot");
+    }
+  } else {
+    snapshot = await backend("localeSnapshot");
+    const browserLanguages = navigator.languages.length > 0 ? navigator.languages : [navigator.language];
+    const preferred = matchPreferredLocale(snapshot.available, browserLanguages);
+    if (preferred && preferred !== snapshot.effective) {
+      try { snapshot = await backend("setLocale", { locale: preferred }); } catch { /* Keep the initial snapshot. */ }
+    }
+  }
+  installLocale(snapshot);
+}
+
+function installLocale(snapshot: LocaleSnapshot): void {
+  applyLocale(snapshot);
+  el.locale.replaceChildren(...snapshot.available.map((locale) => {
+    const option = document.createElement("option");
+    option.value = locale.locale;
+    option.textContent = locale.name;
+    return option;
+  }));
+  el.locale.value = snapshot.effective;
+  el.localeCode.textContent = snapshot.effective;
+  el.locale.disabled = false;
+}
+
+function setBackendStatus(key: string, builtin: string, failed = false): void {
+  el.status.dataset.i18n = key;
+  el.status.dataset.i18nBuiltin = builtin;
+  el.status.textContent = localizedText(key, builtin);
+  el.status.style.color = failed ? "var(--red)" : "";
+}
+
+async function changeLocale(locale: string): Promise<void> {
+  el.locale.disabled = true;
+  try {
+    const localized = await backend("setLocale", { locale });
+    installLocale(localized);
+    try { window.localStorage.setItem(LOCALE_STORAGE_KEY, localized.requested); } catch { /* Storage can be disabled. */ }
+    destroyMenu();
+    await requestSnapshot();
+    updateSidekick();
+    rerenderLocalizedPanels();
+  } finally {
+    el.locale.disabled = false;
+  }
+}
+
+function rerenderLocalizedPanels(): void {
+  renderSec();
+  renderDNS();
+  renderTLS();
+  renderKV();
+  renderLogs();
+  renderWorkers();
+  renderSnapshots();
 }
 
 function applySandboxStatus(hello: HelloResponse): void {
@@ -6232,32 +6337,44 @@ function applySandboxStatus(hello: HelloResponse): void {
   if (!status) return;
   const templates = Object.values(status.templates);
   const reduced = templates.some((template) => !template.full_boundary);
-  el.sandboxStatus.textContent = `Subprograms ${status.mode}${reduced ? " · reduced" : ""}`;
+  el.sandboxStatus.textContent = localizedText("runtime.subprograms.status", "Subprograms {mode}{reduced}", {
+    mode: status.mode,
+    reduced: reduced ? localizedText("runtime.reduced.suffix", " · reduced") : "",
+  });
   el.sandboxStatus.dataset.reduced = String(reduced);
   const warnings = templates.flatMap((template) => template.warnings);
-  const owners = `${status.active_owners} active, ${status.orphaned_owners} orphaned, ${status.quarantined_owners} quarantined owners`;
+  const owners = localizedText("runtime.subprograms.owners", "{active} active, {orphaned} orphaned, {quarantined} quarantined owners", {
+    active: status.active_owners,
+    orphaned: status.orphaned_owners,
+    quarantined: status.quarantined_owners,
+  });
   el.sandboxStatus.title = warnings.length === 0 ? owners : `${owners}\n${warnings.join("\n")}`;
 }
 
 function applyIsolationStatus(hello: HelloResponse): void {
   el.isolationStatus.hidden = false;
   if (!hello.isolation) {
-    el.isolationStatus.textContent = "Isolation off";
+    el.isolationStatus.textContent = localizedText("runtime.isolation.off", "Isolation off");
     el.isolationStatus.dataset.reduced = "true";
-    el.isolationStatus.title = "The graph runtime shares the daemon process and its host authority.";
+    el.isolationStatus.title = localizedText("runtime.isolation.off.title", "The graph runtime shares the daemon process and its host authority.");
     return;
   }
   const status = hello.isolation;
-  const profile = status.profile_id ?? "legacy profile";
+  const profile = status.profile_id ?? localizedText("runtime.isolation.legacy_profile", "legacy profile");
   const reduced = status.reduced === true;
-  el.isolationStatus.textContent = reduced ? `${profile} · reduced` : profile;
+  el.isolationStatus.textContent = reduced
+    ? localizedText("runtime.isolation.reduced", "{profile} · reduced", { profile })
+    : profile;
   el.isolationStatus.dataset.reduced = String(reduced);
   el.isolationStatus.title = status.warnings?.map((warning) => `${warning.role}: ${warning.feature} ${warning.effect}`).join("\n")
-    || `Isolation verification: ${status.verification_state ?? "legacy"}`;
+    || localizedText("runtime.isolation.verification", "Isolation verification: {state}", { state: status.verification_state ?? "legacy" });
 }
 
 boot().catch((error) => {
-  el.status.textContent = `Panel failed: ${errorMessage(error)}`;
-  notifyError(errorMessage(error), "Panel startup failed");
+  delete el.status.dataset.i18n;
+  delete el.status.dataset.i18nBuiltin;
+  el.status.textContent = localizedText("app.status.failed", "Panel failed: {error}", { error: errorMessage(error) });
+  el.status.style.color = "var(--red)";
+  notifyError(errorMessage(error), localizedText("app.startup_failed.title", "Panel startup failed"));
   log("frontend", "error", errorMessage(error));
 });

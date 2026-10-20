@@ -1,0 +1,1 @@
+Provides a network that proxies all operations through a SOCKS server reached over the out network. An optional Password secret replaces the password parsed from the proxy URL when the secret is available.

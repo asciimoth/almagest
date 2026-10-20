@@ -68,8 +68,8 @@ func TestCacheStorageSelectorField(t *testing.T) {
 	if !reflect.DeepEqual(item.AllowedValues, wantAllowed) {
 		t.Fatalf("allowed values = %#v, want %#v", item.AllowedValues, wantAllowed)
 	}
-	if item.Status != formular.StatusError || item.StatusText != "not found" || item.Help == "" {
-		t.Fatalf("selector status/help = %#v", item)
+	if item.Status != formular.StatusError || item.StatusText != "not found" || item.Help != "" {
+		t.Fatalf("selector status = %#v", item)
 	}
 
 	withoutLister := CacheStorageSelectorField("cache", "Cache", "selected", cacheManagerWithoutLister{}, false, "")

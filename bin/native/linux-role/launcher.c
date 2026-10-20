@@ -208,6 +208,11 @@ static void check_descriptors(struct plan *p) {
 		require(domain == AF_UNIX && type == SOCK_STREAM, "optional Unix stream required");
 		p->channels |= 1U << (fd - 9);
 	}
+	if (fcntl(17, F_GETFD) != -1) {
+		struct stat locales;
+		require(p->role == RUNTIME && fstat(17, &locales) == 0 && S_ISDIR(locales.st_mode),
+			"runtime locales directory required");
+	} else require(errno == EBADF, "inspect optional locales directory");
 	check_executable(4, p);
 	if (p->role == COMMAND) check_executable(7, p);
 	struct stat st;
@@ -294,6 +299,11 @@ static void filesystem(const struct plan *p) {
 	 * check_mnt; resolving a pathname again would reintroduce a path race. */
 	int state_mount = (int)syscall(SYS_open_tree, 5, "", AT_EMPTY_PATH | OPEN_TREE_CLONE | OPEN_TREE_CLOEXEC);
 	if (state_mount == -1) fail("clone held role directory");
+	int locales_mount = -1;
+	if (p->role == RUNTIME && fcntl(17, F_GETFD) != -1) {
+		locales_mount = (int)syscall(SYS_open_tree, 17, "", AT_EMPTY_PATH | OPEN_TREE_CLONE | OPEN_TREE_CLOEXEC);
+		if (locales_mount == -1) fail("clone held locales directory");
+	}
 	/* unshare precedes propagation changes: never alter the parent mount tree. */
 	int flags = CLONE_NEWNS | CLONE_NEWIPC | CLONE_NEWUTS | CLONE_NEWNET;
 	if (unshare(flags) == -1) fail("create role namespaces");
@@ -305,11 +315,17 @@ static void filesystem(const struct plan *p) {
 	char path[4096];
 	if (!getcwd(path, sizeof(path)) || chdir(path) == -1) fail("enter private root");
 	make_dir("state", 0700); make_dir("tmp", 0700); make_dir("oldroot", 0700);
+	if (locales_mount != -1) make_dir("locales", 0555);
 	if (chown("tmp", p->uid, p->gid) == -1) fail("own private temporary storage");
 	/* The bind uses a held descriptor. Do not recursively import submounts. */
 	if (syscall(SYS_move_mount, state_mount, "", AT_FDCWD, "state", MOVE_MOUNT_F_EMPTY_PATH) == -1) fail("mount held role directory");
 	if (close(state_mount) == -1) fail("close detached mount");
 	if (mount(NULL, "state", NULL, MS_BIND | MS_REMOUNT | MS_NOSUID | MS_NODEV | MS_NOEXEC, NULL) == -1) fail("restrict role directory");
+	if (locales_mount != -1) {
+		if (syscall(SYS_move_mount, locales_mount, "", AT_FDCWD, "locales", MOVE_MOUNT_F_EMPTY_PATH) == -1) fail("mount held locales directory");
+		if (close(locales_mount) == -1) fail("close detached locales mount");
+		if (mount(NULL, "locales", NULL, MS_BIND | MS_REMOUNT | MS_RDONLY | MS_NOSUID | MS_NODEV | MS_NOEXEC, NULL) == -1) fail("restrict locales directory");
+	}
 	copy_executable(4, "role");
 	if (p->role == COMMAND) copy_executable(7, "command");
 	/* A readable sentinel verifies Landlock separately from namespace hiding. */
@@ -379,6 +395,8 @@ static int landlock(const struct plan *p) {
 		LANDLOCK_ACCESS_FS_REMOVE_DIR | LANDLOCK_ACCESS_FS_REMOVE_FILE | LANDLOCK_ACCESS_FS_MAKE_DIR |
 		LANDLOCK_ACCESS_FS_MAKE_REG | LANDLOCK_ACCESS_FS_MAKE_SYM | LANDLOCK_ACCESS_FS_REFER | LANDLOCK_ACCESS_FS_TRUNCATE;
 	landlock_rule(fd, "/state", writable); landlock_rule(fd, "/tmp", writable);
+	if (p->role == RUNTIME && access("/locales", F_OK) == 0)
+		landlock_rule(fd, "/locales", LANDLOCK_ACCESS_FS_READ_FILE | LANDLOCK_ACCESS_FS_READ_DIR);
 	if (syscall(SYS_landlock_restrict_self, fd, 0) == -1 || close(fd) == -1) fail("apply Landlock");
 	return abi;
 }
@@ -395,6 +413,8 @@ static int user_landlock(void) {
 		LANDLOCK_ACCESS_FS_REMOVE_DIR | LANDLOCK_ACCESS_FS_REMOVE_FILE | LANDLOCK_ACCESS_FS_MAKE_DIR |
 		LANDLOCK_ACCESS_FS_MAKE_REG | LANDLOCK_ACCESS_FS_MAKE_SYM | LANDLOCK_ACCESS_FS_REFER | LANDLOCK_ACCESS_FS_TRUNCATE;
 	landlock_rule_fd(fd, 5, writable);
+	if (fcntl(17, F_GETFD) != -1)
+		landlock_rule_fd(fd, 17, LANDLOCK_ACCESS_FS_READ_FILE | LANDLOCK_ACCESS_FS_READ_DIR);
 	if (syscall(SYS_landlock_restrict_self, fd, 0) == -1 || close(fd) == -1) fail("apply user Landlock");
 	return abi;
 }
@@ -487,6 +507,13 @@ static void run_user(const struct plan *p) {
 	if (parent_pidfd == -1) fail("hold user role parent");
 	struct pollfd parent = {.fd = parent_pidfd, .events = POLLIN};
 	require(poll(&parent, 1, 0) == 0 && getppid() == parent_pid, "user role parent lifetime");
+	char locales_path[PATH_MAX + 1] = {0};
+	ssize_t locales_path_length = -1;
+	if (p->role == RUNTIME && fcntl(17, F_GETFD) != -1) {
+		locales_path_length = readlink("/proc/self/fd/17", locales_path, PATH_MAX);
+		require(locales_path_length > 0 && locales_path[0] == '/', "resolve held locales directory");
+		locales_path[locales_path_length] = '\0';
+	}
 	int abi = user_landlock();
 	if (syscall(SYS_close_range, 6, 8, 0) == -1 || syscall(SYS_close_range, 17, ~0U, 0) == -1)
 		fail("close user setup descriptors");
@@ -496,23 +523,29 @@ static void run_user(const struct plan *p) {
 		} else close(fd);
 	}
 	if (close(5) == -1) fail("close user storage descriptor");
-	char role[64], abi_env[64], storage_env[PATH_MAX + 32], pwd_env[PATH_MAX + 8];
+	char role[64], abi_env[64], storage_env[PATH_MAX + 32], pwd_env[PATH_MAX + 8], locales_env[PATH_MAX + 32];
 	const char *names[] = {"runtime", "writer", "command"};
 	snprintf(role, sizeof(role), "ALMAGEST_LINUX_ROLE=%s", names[p->role]);
 	snprintf(abi_env, sizeof(abi_env), "ALMAGEST_LANDLOCK_ABI=%d", abi);
 	snprintf(storage_env, sizeof(storage_env), "ALMAGEST_STORAGE=%s", working_directory);
 	snprintf(pwd_env, sizeof(pwd_env), "PWD=%s", working_directory);
-	char *environment[] = {role, abi_env, "ALMAGEST_LINUX_PROFILE=linux-user-v1",
-		"ALMAGEST_RETAINED_CAPS=0", storage_env, pwd_env, "TMPDIR=.tmp",
-		p->channels & 1 ? "ALMAGEST_DATA_FD=9" : "ALMAGEST_DATA_FD=0",
-		p->channels & 2 ? "ALMAGEST_DIAGNOSTICS_FD=10" : "ALMAGEST_DIAGNOSTICS_FD=0",
-		p->channels & 4 ? "ALMAGEST_ADMIN_FD=11" : "ALMAGEST_ADMIN_FD=0",
-		p->channels & 8 ? "ALMAGEST_CONFIG_FD=12" : "ALMAGEST_CONFIG_FD=0",
-		p->channels & 16 ? "ALMAGEST_COMMAND_FD=13" : "ALMAGEST_COMMAND_FD=0",
-		p->channels & 32 ? "ALMAGEST_CALLBACK_FD=14" : "ALMAGEST_CALLBACK_FD=0",
-		p->channels & 64 ? "ALMAGEST_SANDBOX_FD=15" : "ALMAGEST_SANDBOX_FD=0",
-		p->channels & 128 ? "ALMAGEST_SANDBOX_DATA_FD=16" : "ALMAGEST_SANDBOX_DATA_FD=0",
-		"ALMAGEST_BOOTSTRAP_FD=3", "GOMAXPROCS=2", "GODEBUG=netdns=go", NULL};
+	if (locales_path_length > 0) snprintf(locales_env, sizeof(locales_env), "ALMAGEST_LOCALES_DIR=%s", locales_path);
+	char *environment[24]; int environment_count = 0;
+	environment[environment_count++] = role; environment[environment_count++] = abi_env;
+	environment[environment_count++] = "ALMAGEST_LINUX_PROFILE=linux-user-v1";
+	environment[environment_count++] = "ALMAGEST_RETAINED_CAPS=0"; environment[environment_count++] = storage_env;
+	environment[environment_count++] = pwd_env; environment[environment_count++] = "TMPDIR=.tmp";
+	if (locales_path_length > 0) environment[environment_count++] = locales_env;
+	environment[environment_count++] = p->channels & 1 ? "ALMAGEST_DATA_FD=9" : "ALMAGEST_DATA_FD=0";
+	environment[environment_count++] = p->channels & 2 ? "ALMAGEST_DIAGNOSTICS_FD=10" : "ALMAGEST_DIAGNOSTICS_FD=0";
+	environment[environment_count++] = p->channels & 4 ? "ALMAGEST_ADMIN_FD=11" : "ALMAGEST_ADMIN_FD=0";
+	environment[environment_count++] = p->channels & 8 ? "ALMAGEST_CONFIG_FD=12" : "ALMAGEST_CONFIG_FD=0";
+	environment[environment_count++] = p->channels & 16 ? "ALMAGEST_COMMAND_FD=13" : "ALMAGEST_COMMAND_FD=0";
+	environment[environment_count++] = p->channels & 32 ? "ALMAGEST_CALLBACK_FD=14" : "ALMAGEST_CALLBACK_FD=0";
+	environment[environment_count++] = p->channels & 64 ? "ALMAGEST_SANDBOX_FD=15" : "ALMAGEST_SANDBOX_FD=0";
+	environment[environment_count++] = p->channels & 128 ? "ALMAGEST_SANDBOX_DATA_FD=16" : "ALMAGEST_SANDBOX_DATA_FD=0";
+	environment[environment_count++] = "ALMAGEST_BOOTSTRAP_FD=3"; environment[environment_count++] = "GOMAXPROCS=2";
+	environment[environment_count++] = "GODEBUG=netdns=go"; environment[environment_count] = NULL;
 	char *arguments[] = {"almagest-role", NULL};
 	apply_seccomp(p);
 	syscall(SYS_execveat, 4, "", arguments, environment, AT_EMPTY_PATH);

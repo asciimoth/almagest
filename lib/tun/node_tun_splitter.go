@@ -50,7 +50,7 @@ type TunSplitterClass struct {
 func (TunSplitterClass) ClassName() string        { return NodeTypeTunSplitter }
 func (TunSplitterClass) ShortDescription() string { return "TUN splitter" }
 func (TunSplitterClass) LongDescription() string {
-	return "Splits one almagest/tun endpoint into routed gonnect/tun.Splitter frontend slots using bytecode routing rules. It preserves each output's route-to-address association so an upstream userspace network stack can select the correct local source address."
+	return "Splits TUN traffic with configured routing rules."
 }
 func (TunSplitterClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: TypeTun, InitialPorts: []pasta.Port{
@@ -89,7 +89,7 @@ func (AutoTunSplitterClass) ShortDescription() string {
 	return "Automatic TUN splitter"
 }
 func (AutoTunSplitterClass) LongDescription() string {
-	return "Splits one almagest/tun endpoint into gonnect/tun.Splitter frontend slots. It automatically learns source addresses and destination prefixes from each slot's TunConfig messages, uses the most specific destination prefix, and sends unmatched packets to slot 1. It also preserves each output's route-to-address association for upstream source selection."
+	return "Splits TUN traffic with learned routing rules."
 }
 func (AutoTunSplitterClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: TypeTun, InitialPorts: []pasta.Port{
@@ -823,33 +823,27 @@ func (n *tunSplitterNode) configBlock() formular.Block {
 			"ruleCacheTTL",
 			"Rule cache TTL (ms)",
 			durationMilliseconds(n.routingConfig.ruleCacheTTL),
-			"How long OP_RULE matcher results are cached by flow. 0 uses the router default; negative disables the rule cache.",
 		),
 		tunSplitterIntField(
 			"ruleCacheMaxEntries",
 			"Rule cache max entries",
 			n.routingConfig.ruleCacheMaxEntries,
-			"Maximum OP_RULE cache entries. 0 uses the router default; negative disables the rule cache.",
 		),
 		tunSplitterIntField(
 			"routeCacheTTL",
 			"Route cache TTL (ms)",
 			durationMilliseconds(n.routingConfig.routeCacheTTL),
-			"How long whole route results are cached by packet flow. 0 inherits the rule cache settings; negative disables the route cache.",
 		),
 		tunSplitterIntField(
 			"routeCacheMaxEntries",
 			"Route cache max entries",
 			n.routingConfig.routeCacheMaxEntries,
-			"Maximum route-result cache entries. 0 inherits the rule cache settings or router default; negative disables the route cache.",
 		),
 	}}
 }
 
-func tunSplitterIntField(id, label string, value int, help string) formular.Item {
-	item := configIntField(id, label, value, false, "")
-	item.Help = help
-	return item
+func tunSplitterIntField(id, label string, value int) formular.Item {
+	return configIntField(id, label, value, false, "")
 }
 
 func readTunSplitterRoutingConfig(cfg configer.Config) tunSplitterRoutingConfig {

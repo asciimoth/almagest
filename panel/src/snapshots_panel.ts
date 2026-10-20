@@ -1,3 +1,5 @@
+import { text as localizedText } from "./localization.js";
+
 export type SnapshotInfo = {
   uuid: string;
   timestamp: number;
@@ -37,7 +39,7 @@ export function renderSnapshotList(
   if (!entries.length) {
     const empty = document.createElement("li");
     empty.className = "snapshot-empty";
-    empty.textContent = "No snapshots are available.";
+    empty.textContent = localizedText("snapshots.empty", "No snapshots are available.");
     list.append(empty);
     return;
   }
@@ -47,17 +49,17 @@ export function renderSnapshotList(
     const copy = document.createElement("div");
     copy.className = "snapshot-copy";
     copy.append(
-      textElement(document, "strong", entry.name || "Unnamed snapshot"),
+      textElement(document, "strong", entry.name || localizedText("snapshots.unnamed", "Unnamed snapshot")),
       textElement(document, "code", entry.uuid),
       textElement(document, "span", formatSnapshotTimestamp(entry.timestamp), "snapshot-meta"),
     );
     const rowActions = document.createElement("div");
     rowActions.className = "snapshot-row-actions";
     rowActions.append(
-      actionButton(document, "Export", "snapshot-export", disabled, () => actions.export(entry)),
-      actionButton(document, "Rename", "snapshot-rename", disabled, () => actions.rename(entry)),
-      actionButton(document, "Restore", "snapshot-restore", disabled, () => actions.restore(entry)),
-      actionButton(document, "Delete", "snapshot-delete danger", disabled, () => actions.delete(entry)),
+      actionButton(document, localizedText("action.export", "Export"), "snapshot-export", disabled, () => actions.export(entry)),
+      actionButton(document, localizedText("action.rename", "Rename"), "snapshot-rename", disabled, () => actions.rename(entry)),
+      actionButton(document, localizedText("action.restore", "Restore"), "snapshot-restore", disabled, () => actions.restore(entry)),
+      actionButton(document, localizedText("action.delete", "Delete"), "snapshot-delete danger", disabled, () => actions.delete(entry)),
     );
     row.append(copy, rowActions);
     list.append(row);
@@ -66,7 +68,7 @@ export function renderSnapshotList(
 
 export function formatSnapshotTimestamp(timestamp: number): string {
   const date = new Date(Math.trunc(timestamp / 1_000_000));
-  if (Number.isNaN(date.getTime())) return "Invalid date";
+  if (Number.isNaN(date.getTime())) return localizedText("common.invalid_date", "Invalid date");
   return date.toLocaleString();
 }
 

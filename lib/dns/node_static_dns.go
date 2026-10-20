@@ -34,7 +34,7 @@ type StaticDNSClass struct {
 func (StaticDNSClass) ClassName() string        { return NodeTypeStaticDNS }
 func (StaticDNSClass) ShortDescription() string { return "Static DNS" }
 func (StaticDNSClass) LongDescription() string {
-	return "Provides static DNS records through almagest/dns and optionally forwards misses to a fallback DNS source."
+	return "Serves static DNS records with optional fallback."
 }
 func (StaticDNSClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: TypeDNS, InitialPorts: []pasta.Port{

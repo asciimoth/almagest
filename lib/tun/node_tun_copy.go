@@ -21,7 +21,7 @@ type TunCopyClass struct {
 func (TunCopyClass) ClassName() string        { return NodeTypeTunCopy }
 func (TunCopyClass) ShortDescription() string { return "TUN copy" }
 func (TunCopyClass) LongDescription() string {
-	return "Copies packets bidirectionally between two attached almagest/tun endpoints using gonnect/tun.Point2Point."
+	return "Copies packets between two TUN endpoints."
 }
 func (TunCopyClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: TypeTun, InitialPorts: []pasta.Port{

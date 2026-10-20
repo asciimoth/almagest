@@ -28,8 +28,13 @@ import {
   type TLSPolicyEntry,
   type TLSScope,
 } from "./tls_model.js";
+import { text as localizedText } from "./localization.js";
 
 export const EXPERIMENTAL_NODE_WARNING = "This node type is experimental and may be removed or significantly changed.";
+
+function t(key: string, builtin: string, parameters: Record<string, string | number> = {}): string {
+  return localizedText(key, builtin, parameters);
+}
 
 export type ClassPreviewPort = {
   name: string;
@@ -124,8 +129,11 @@ export function createClassButtonContent(
   const title = textElement("strong", shortClass(cls.class));
   if (cls.experimental) {
     const warning = textElement("span", " ⚠", "class-experimental-sign");
-    warning.title = `Warning: ${EXPERIMENTAL_NODE_WARNING}`;
-    warning.setAttribute("aria-label", `Warning: ${EXPERIMENTAL_NODE_WARNING}`);
+    const warningText = t("node.experimental.warning", "Warning: {warning}", {
+      warning: t("node.experimental.description", EXPERIMENTAL_NODE_WARNING),
+    });
+    warning.title = warningText;
+    warning.setAttribute("aria-label", warningText);
     title.append(warning);
   }
   copy.append(title, textElement("span", cls.short_description));
@@ -133,7 +141,9 @@ export function createClassButtonContent(
 }
 
 export function createExperimentalNodeWarning(): HTMLElement {
-  const warning = textElement("div", `Warning: ${EXPERIMENTAL_NODE_WARNING}`, "experimental-node-warning");
+  const warning = textElement("div", t("node.experimental.warning", "Warning: {warning}", {
+    warning: t("node.experimental.description", EXPERIMENTAL_NODE_WARNING),
+  }), "experimental-node-warning");
   warning.setAttribute("role", "status");
   return warning;
 }
@@ -187,7 +197,7 @@ export function createNodeNameForm(name: string): HTMLFormElement {
   form.className = "node-name-form";
   form.dataset.nodeNameForm = "";
 
-  const label = textElement("label", "Name");
+  const label = textElement("label", t("node.name.label", "Name"));
   label.htmlFor = "node-name-input";
   const row = document.createElement("div");
   row.className = "node-name-row";
@@ -197,7 +207,7 @@ export function createNodeNameForm(name: string): HTMLFormElement {
   input.autocomplete = "off";
   input.spellcheck = false;
   input.value = name;
-  const button = textElement("button", "Rename");
+  const button = textElement("button", t("node.name.rename", "Rename"));
   button.type = "submit";
   row.append(input, button);
   form.append(label, row);
@@ -208,8 +218,8 @@ export function createKVStoreTitle(store: KVStoreInfo): HTMLElement {
   const title = document.createElement("span");
   title.className = "kv-store-title";
   title.append(
-    textElement("strong", store.kind === "plugin" ? store.name ?? "" : "default"),
-    textElement("em", store.kind === "plugin" ? "plugin" : "default store"),
+    textElement("strong", store.kind === "plugin" ? store.name ?? "" : t("kv.store.default.name", "default")),
+    textElement("em", store.kind === "plugin" ? t("kv.store.plugin", "plugin") : t("kv.store.default", "default store")),
   );
   return title;
 }
@@ -224,7 +234,7 @@ export function createKVEntryTitle(entry: KVEntryInfo): HTMLElement {
 export function createDNSCacheTitle(cache: DNSCacheInfo): HTMLElement {
   const title = document.createElement("span");
   title.className = "kv-store-title";
-  title.append(textElement("strong", cache.name), textElement("em", "DNS cache"));
+  title.append(textElement("strong", cache.name), textElement("em", t("dns.cache.kind", "DNS cache")));
   return title;
 }
 
@@ -260,28 +270,30 @@ export function createTLSPolicyTitle(entry: TLSPolicyEntry): HTMLElement {
 }
 
 export function formatKVEntryMeta(entry: KVEntryInfo): string {
-  const parts = entry.kind === "bucket" ? ["subtree"] : [entry.string ? "text" : "bytes", formatKVByteSize(entry.size)];
-  if (entry.hidden) parts.push("hidden");
-  if (entry.owner) parts.push(`owned by ${entry.owner}`);
+  const parts = entry.kind === "bucket"
+    ? [t("kv.meta.subtree", "subtree")]
+    : [entry.string ? t("kv.meta.text", "text") : t("kv.meta.bytes", "bytes"), formatKVByteSize(entry.size)];
+  if (entry.hidden) parts.push(t("kv.meta.hidden", "hidden"));
+  if (entry.owner) parts.push(t("kv.meta.owned_by", "owned by {owner}", { owner: entry.owner }));
   return parts.join(" · ");
 }
 
 export function formatKVValueMeta(value: KVValue): string {
-  const parts = [value.string ? "text" : "bytes", formatKVByteSize(value.size)];
-  if (value.hidden) parts.push("hidden");
-  if (value.owner) parts.push(`owned by ${value.owner}`);
+  const parts = [value.string ? t("kv.meta.text", "text") : t("kv.meta.bytes", "bytes"), formatKVByteSize(value.size)];
+  if (value.hidden) parts.push(t("kv.meta.hidden", "hidden"));
+  if (value.owner) parts.push(t("kv.meta.owned_by", "owned by {owner}", { owner: value.owner }));
   return parts.join(" · ");
 }
 
 export function formatDNSKeyMeta(entry: DNSKeyInfo): string {
   const parts = [formatDNSByteSize(entry.size)];
-  if (entry.expires_at) parts.push(`expires ${entry.expires_at}`);
+  if (entry.expires_at) parts.push(t("dns.meta.expires", "expires {time}", { time: entry.expires_at }));
   return parts.join(" · ");
 }
 
 export function formatDNSValueMeta(value: DNSValue): string {
   const parts = [formatDNSByteSize(value.size)];
-  if (value.expires_at) parts.push(`expires ${value.expires_at}`);
+  if (value.expires_at) parts.push(t("dns.meta.expires", "expires {time}", { time: value.expires_at }));
   return parts.join(" · ");
 }
 
@@ -289,9 +301,9 @@ export function formatSecretEntryMeta(entry: SecretEntry): string {
   const nodes = entry.nodes ?? [];
   const parts = [
     formatSecretSource(entry.source),
-    `${nodes.length} node${nodes.length === 1 ? "" : "s"}`,
+    t("secrets.meta.nodes", "{count} node(s)", { count: nodes.length }),
   ];
-  if (entry.read_only) parts.push("read-only");
+  if (entry.read_only) parts.push(t("secrets.meta.read_only", "read-only"));
   return parts.join(" · ");
 }
 
@@ -302,14 +314,14 @@ export function createKVValuePreview(value: KVValue, options: KVValuePreviewOpti
   const preview = document.createElement("div");
   preview.className = "kv-value-preview";
   if (!value.string) {
-    preview.append(textElement("p", "Binary value"));
+    preview.append(textElement("p", t("kv.value.binary", "Binary value")));
     return preview;
   }
 
   const limit = options.limit ?? KV_TEXT_RENDER_LIMIT;
   const text = value.data ?? "";
   if ((value.size ?? text.length) > limit || text.length > limit) {
-    preview.append(textElement("p", `Text value is ${formatKVByteSize(value.size ?? text.length)}`));
+    preview.append(textElement("p", t("kv.value.text_size", "Text value is {size}", { size: formatKVByteSize(value.size ?? text.length) })));
     return preview;
   }
 
@@ -317,7 +329,7 @@ export function createKVValuePreview(value: KVValue, options: KVValuePreviewOpti
   if (value.hidden && !options.revealHidden) {
     const spoiler = document.createElement("div");
     spoiler.className = "kv-value-spoiler";
-    spoiler.append(pre, textElement("span", "Hidden", "kv-value-spoiler-label"));
+    spoiler.append(pre, textElement("span", t("kv.value.hidden", "Hidden"), "kv-value-spoiler-label"));
     preview.append(spoiler);
   } else {
     preview.append(pre);
@@ -334,7 +346,7 @@ export function createSecretValuePreview(entry: SecretEntry, options: SecretValu
   const limit = options.limit ?? SECRET_TEXT_RENDER_LIMIT;
   const text = entry.value ?? "";
   if (text.length > limit) {
-    preview.append(textElement("p", "Secret value is too large to preview."));
+    preview.append(textElement("p", t("secrets.value.too_large", "Secret value is too large to preview.")));
     return preview;
   }
 
@@ -342,7 +354,7 @@ export function createSecretValuePreview(entry: SecretEntry, options: SecretValu
   if (!options.reveal) {
     const spoiler = document.createElement("div");
     spoiler.className = "kv-value-spoiler sec-value-spoiler";
-    spoiler.append(pre, textElement("span", "Secret", "kv-value-spoiler-label"));
+    spoiler.append(pre, textElement("span", t("secrets.value.hidden", "Secret"), "kv-value-spoiler-label"));
     preview.append(spoiler);
   } else {
     preview.append(pre);
@@ -355,13 +367,13 @@ export function createTLSCertPreview(entry: TLSCertEntry): HTMLElement {
   preview.className = "kv-value-preview tls-cert-preview";
   preview.append(createTLSCertcatSummary(entry.certcat_matches ?? []));
   preview.append(createTLSFactList([
-    ["Subject", entry.subject],
-    ["Issuer", entry.issuer],
-    ["Serial", entry.serial_number],
-    ["Fingerprint", entry.fingerprint],
+    [t("tls.field.subject", "Subject"), entry.subject],
+    [t("tls.field.issuer", "Issuer"), entry.issuer],
+    [t("tls.field.serial", "Serial"), entry.serial_number],
+    [t("tls.field.fingerprint", "Fingerprint"), entry.fingerprint],
     ["SPKI", entry.spki_fingerprint],
-    ["Not before", entry.not_before],
-    ["Not after", entry.not_after],
+    [t("tls.field.not_before", "Not before"), entry.not_before],
+    [t("tls.field.not_after", "Not after"), entry.not_after],
   ]));
   if (entry.pem) preview.append(textElement("pre", entry.pem, "kv-value-text"));
   return preview;
@@ -383,7 +395,7 @@ function createTLSFactList(facts: Array<[string, string | undefined]>): HTMLElem
     list.append(textElement("dt", label), textElement("dd", value));
   }
   if (!list.children.length) {
-    list.append(textElement("dt", "Details"), textElement("dd", "No certificate metadata available."));
+    list.append(textElement("dt", t("tls.field.details", "Details")), textElement("dd", t("tls.certificate.metadata_empty", "No certificate metadata available.")));
   }
   return list;
 }
@@ -410,9 +422,9 @@ function appendTLSStatusText(parent: HTMLElement, text: string): void {
 function createTLSCertcatSummary(matches: TLSCertcatMatch[]): HTMLElement {
   const block = document.createElement("section");
   block.className = "tls-certcat-section";
-  block.append(textElement("h3", "Warnings"));
+  block.append(textElement("h3", t("tls.warnings.title", "Warnings")));
   if (!matches.length) {
-    block.append(textElement("p", "No warnings.", "kv-subtree-empty"));
+    block.append(textElement("p", t("tls.warnings.empty", "No warnings."), "kv-subtree-empty"));
     return block;
   }
 
@@ -432,18 +444,18 @@ function createTLSCertcatSummary(matches: TLSCertcatMatch[]): HTMLElement {
 function createTLSCertcatDetails(match: TLSCertcatMatch): HTMLElement {
   const list = document.createElement("dl");
   list.className = "tls-certcat-detail-list";
-  appendTLSCertcatTextDetail(list, "Recommendation", describeTLSCertcatRecommendation(match));
-  appendTLSCertcatAddressDetail(list, "DNS scope", match.scope?.permitted_dns_subtrees ?? []);
-  appendTLSCertcatAddressDetail(list, "IP scope", match.scope?.permitted_ip_cidrs ?? []);
+  appendTLSCertcatTextDetail(list, t("tls.field.recommendation", "Recommendation"), describeTLSCertcatRecommendation(match));
+  appendTLSCertcatAddressDetail(list, t("tls.field.dns_scope", "DNS scope"), match.scope?.permitted_dns_subtrees ?? []);
+  appendTLSCertcatAddressDetail(list, t("tls.field.ip_scope", "IP scope"), match.scope?.permitted_ip_cidrs ?? []);
   if (match.scope?.requires_explicit_allowlist) {
-    appendTLSCertcatTextDetail(list, "Allowlist", "Use only for explicitly allowed addresses.");
+    appendTLSCertcatTextDetail(list, t("tls.field.allowlist", "Allowlist"), t("tls.certcat.explicit_allowlist", "Use only for explicitly allowed addresses."));
   }
   if (match.scope?.reject_ip_targets) {
-    appendTLSCertcatTextDetail(list, "IP targets", "Do not use for direct IP targets.");
+    appendTLSCertcatTextDetail(list, t("tls.field.ip_targets", "IP targets"), t("tls.certcat.reject_ip_targets", "Do not use for direct IP targets."));
   }
-  appendTLSCertcatTextDetail(list, "Platform", formatTLSCertcatCutoff(match));
-  if (match.fingerprint) appendTLSCertcatCodeDetail(list, "Fingerprint", match.fingerprint);
-  if (!list.children.length) appendTLSCertcatTextDetail(list, "Recommendation", "Review before you trust this certificate.");
+  appendTLSCertcatTextDetail(list, t("tls.field.platform", "Platform"), formatTLSCertcatCutoff(match));
+  if (match.fingerprint) appendTLSCertcatCodeDetail(list, t("tls.field.fingerprint", "Fingerprint"), match.fingerprint);
+  if (!list.children.length) appendTLSCertcatTextDetail(list, t("tls.field.recommendation", "Recommendation"), t("tls.certcat.review", "Review before you trust this certificate."));
   return list;
 }
 
@@ -471,9 +483,9 @@ function formatTLSCertcatCutoff(match: TLSCertcatMatch): string {
   const cutoff = match.platform_cutoff;
   if (!cutoff) return "";
   const parts = [
-    cutoff.sct_timestamp_after ? `SCT after ${cutoff.sct_timestamp_after}` : "",
-    cutoff.enforcement_start ? `starts ${cutoff.enforcement_start}` : "",
-    cutoff.first_major_version ? `version ${cutoff.first_major_version}` : "",
+    cutoff.sct_timestamp_after ? t("tls.cutoff.sct_after", "SCT after {time}", { time: cutoff.sct_timestamp_after }) : "",
+    cutoff.enforcement_start ? t("tls.cutoff.starts", "starts {time}", { time: cutoff.enforcement_start }) : "",
+    cutoff.first_major_version ? t("tls.cutoff.version", "version {version}", { version: cutoff.first_major_version }) : "",
   ].filter(Boolean);
   return parts.join(", ");
 }
@@ -497,11 +509,11 @@ function createTLSPolicySummary(entry: TLSPolicyEntry): HTMLElement {
     summary.append(textElement("p", entry.error, "tls-policy-error"));
   }
   summary.append(
-    createTLSPolicyRuleList("Trust anchors", entry.spec.trust_anchors ?? [], (rule) => rule.cert, (rule) => rule.scope),
-    createTLSPolicyRuleList("Constraints", entry.spec.constraints ?? [], (rule) => (
+    createTLSPolicyRuleList(t("tls.policy.trust_anchors", "Trust anchors"), entry.spec.trust_anchors ?? [], (rule) => rule.cert, (rule) => rule.scope),
+    createTLSPolicyRuleList(t("tls.policy.constraints", "Constraints"), entry.spec.constraints ?? [], (rule) => (
       `${rule.cert}${rule.match ? ` (${rule.match})` : ""}`
     ), (rule) => rule.scope),
-    createTLSPolicyRuleList("Pins", entry.spec.pins ?? [], (rule) => (
+    createTLSPolicyRuleList(t("tls.policy.pins", "Pins"), entry.spec.pins ?? [], (rule) => (
       `${rule.kind} ${rule.fingerprint}`
     ), (rule) => rule.scope),
     createTLSPolicyWatchers(entry.watchers ?? []),
@@ -519,7 +531,7 @@ function createTLSPolicyRuleList<T>(
   block.className = "tls-policy-section";
   block.append(textElement("h3", title));
   if (!rules.length) {
-    block.append(textElement("p", "None.", "kv-subtree-empty"));
+    block.append(textElement("p", t("common.none", "None."), "kv-subtree-empty"));
     return block;
   }
   const list = document.createElement("ol");
@@ -536,9 +548,9 @@ function createTLSPolicyRuleList<T>(
 function createTLSPolicyWatchers(watchers: string[]): HTMLElement {
   const block = document.createElement("section");
   block.className = "tls-policy-section";
-  block.append(textElement("h3", "Watchers"));
+  block.append(textElement("h3", t("tls.policy.watchers", "Watchers")));
   if (!watchers.length) {
-    block.append(textElement("p", "None.", "kv-subtree-empty"));
+    block.append(textElement("p", t("common.none", "None."), "kv-subtree-empty"));
     return block;
   }
   const list = document.createElement("ol");
@@ -559,7 +571,7 @@ export function createDNSValuePreview(value: DNSValue, options: DNSValuePreviewO
   const limit = options.limit ?? DNS_JSON_RENDER_LIMIT;
   const text = value.json ?? "";
   if ((value.size ?? text.length) > limit || text.length > limit) {
-    preview.append(textElement("p", `JSON value is ${formatDNSByteSize(value.size ?? text.length)}`));
+    preview.append(textElement("p", t("dns.value.json_size", "JSON value is {size}", { size: formatDNSByteSize(value.size ?? text.length) })));
     return preview;
   }
   const sections = dnsRecordsFromValue(value);
@@ -575,7 +587,7 @@ function createDNSRecordPreview(sections: DNSRecordSection[]): HTMLElement {
   const preview = document.createElement("div");
   preview.className = "dns-record-preview";
   if (!sections.length) {
-    preview.append(textElement("p", "No DNS records in cached response."));
+    preview.append(textElement("p", t("dns.value.records_empty", "No DNS records in cached response.")));
     return preview;
   }
   for (const section of sections) {
@@ -609,7 +621,7 @@ function createDNSRecordItem(record: DNSDisplayRecord): HTMLLIElement {
 export function createEmptyLogItem(): HTMLLIElement {
   const item = document.createElement("li");
   item.className = "logs-empty";
-  item.append(textElement("span", "No cached daemon logs available."));
+  item.append(textElement("span", t("logs.empty", "No cached daemon logs available.")));
   return item;
 }
 
@@ -640,17 +652,17 @@ export function createWorkerNodeBlock(block: WorkerNodeBlock, now: Date): HTMLEl
 
   const node = block.node;
   const nodeClass = node?.class || block.fallbackClass;
-  const nodeName = node?.name || block.fallbackName || "unnamed";
+  const nodeName = node?.name || block.fallbackName || t("processes.node.unnamed", "unnamed");
   const meta = [
-    node?.placeholder ? "placeholder" : "",
-    !node ? "gone" : "",
-    `${block.workers.length} worker${block.workers.length === 1 ? "" : "s"}`,
+    node?.placeholder ? t("processes.node.placeholder", "placeholder") : "",
+    !node ? t("processes.node.gone", "gone") : "",
+    t("processes.node.workers", "{count} worker(s)", { count: block.workers.length }),
   ].filter(Boolean).join(" · ");
 
   const header = document.createElement("header");
   header.className = "ps-node-header";
   header.append(
-    textElement("strong", `node ${block.nodeID} ${nodeName}`),
+    textElement("strong", t("processes.node.title", "node {id} {name}", { id: block.nodeID, name: nodeName })),
     textElement("span", shortClass(nodeClass)),
     textElement("em", meta),
   );
@@ -669,21 +681,21 @@ export function updateWorkerAgeElements(root: ParentNode, now: Date): void {
   for (const timer of root.querySelectorAll<HTMLTimeElement>(".ps-worker-age")) {
     const startedAt = timer.dataset.startedAt;
     if (!startedAt) continue;
-    timer.textContent = `age ${formatWorkerAge(startedAt, now)}`;
+    timer.textContent = t("processes.worker.age", "age {age}", { age: formatWorkerAge(startedAt, now) });
   }
 }
 
 export function createEmptyWorkerItem(): HTMLLIElement {
   const item = document.createElement("li");
   item.className = "ps-empty";
-  item.append(textElement("span", "No workers"));
+  item.append(textElement("span", t("processes.empty", "No workers")));
   return item;
 }
 
 export function renderNodeDescription(node: HTMLElement, value: string): void {
   const text = value.trim();
   if (!text) {
-    node.textContent = "No long description is registered for this node class.";
+    node.textContent = t("node.description.empty", "No long description is registered for this node class.");
     return;
   }
   node.replaceChildren(...parseMarkdownBlocks(text).map(renderMarkdownBlock));
@@ -841,15 +853,17 @@ function createWorkerItem(worker: WorkerSnapshot, now: Date): HTMLLIElement {
   const item = document.createElement("li");
   item.className = "ps-worker";
   if (worker.error) item.classList.add("ps-worker-failed");
-  const age = textElement("time", `age ${formatWorkerAge(worker.started_at, now)}`, "ps-worker-age");
+  const age = textElement("time", t("processes.worker.age", "age {age}", { age: formatWorkerAge(worker.started_at, now) }), "ps-worker-age");
   age.dateTime = worker.started_at;
   age.dataset.startedAt = worker.started_at;
   item.append(
-    textElement("strong", `worker ${worker.id}`),
+    textElement("strong", t("processes.worker.title", "worker {id}", { id: worker.id })),
     iconSeparator(),
-    textElement("small", worker.kind === "sandbox" ? "sandbox process" : "Go worker", `ps-worker-kind ps-worker-kind-${worker.kind}`),
+    textElement("small", worker.kind === "sandbox"
+      ? t("processes.worker.sandbox", "sandbox process")
+      : t("processes.worker.go", "Go worker"), `ps-worker-kind ps-worker-kind-${worker.kind}`),
     iconSeparator(),
-    textElement("span", worker.worker_name || "unnamed"),
+    textElement("span", worker.worker_name || t("processes.node.unnamed", "unnamed")),
     iconSeparator(),
     age,
   );
@@ -861,7 +875,7 @@ function createWorkerItem(worker: WorkerSnapshot, now: Date): HTMLLIElement {
 
 function formatWorkerAge(startedAt: string, now: Date): string {
   const started = new Date(startedAt);
-  if (Number.isNaN(started.getTime())) return "unknown";
+  if (Number.isNaN(started.getTime())) return t("common.unknown", "unknown");
   let seconds = Math.max(0, Math.floor((now.getTime() - started.getTime()) / 1000));
   const hours = Math.floor(seconds / 3600);
   seconds -= hours * 3600;

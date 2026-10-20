@@ -29,7 +29,7 @@ type SpooferClass struct {
 func (SpooferClass) ClassName() string        { return NodeTypeSpoofer }
 func (SpooferClass) ShortDescription() string { return "TUN network spoofer" }
 func (SpooferClass) LongDescription() string {
-	return "Consumes an almagest/tun endpoint and forwards intercepted TCP and UDP flows through an almagest/network."
+	return "Forwards intercepted TUN flows through a network."
 }
 func (SpooferClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: TypeTun, InitialPorts: []pasta.Port{

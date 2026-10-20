@@ -32,8 +32,7 @@ type SocksClientClass struct {
 func (SocksClientClass) ClassName() string        { return NodeTypeSocksClient }
 func (SocksClientClass) ShortDescription() string { return "SOCKS client" }
 func (SocksClientClass) LongDescription() string {
-	return "Provides a network that proxies all operations through a SOCKS server reached over the out network. " +
-		"An optional Password secret replaces the password parsed from the proxy URL when the secret is available."
+	return "Proxies network operations through a SOCKS server."
 }
 func (SocksClientClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: TypeNetwork, InitialPorts: []pasta.Port{

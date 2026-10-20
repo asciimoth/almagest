@@ -52,7 +52,7 @@ type DebugKVClass struct {
 func (DebugKVClass) ClassName() string        { return NodeTypeDebugKV }
 func (DebugKVClass) ShortDescription() string { return "DEBUG KV storage editor" }
 func (DebugKVClass) LongDescription() string {
-	return "Reads, creates, updates, and deletes KV storage entries from the node menu. Binary values use base64 text."
+	return "Edits KV storage entries for debugging."
 }
 func (DebugKVClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{InitialPorts: []pasta.Port{}}

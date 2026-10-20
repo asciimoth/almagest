@@ -3,7 +3,6 @@ package amnesianodes
 import (
 	"context"
 	"crypto/tls"
-	_ "embed"
 	"errors"
 	"strings"
 	"sync"
@@ -35,13 +34,6 @@ const (
 	managedAmnesiaRetryMaxDelay     = 10 * time.Second
 )
 
-var (
-	// AmnesiaClassLongDescription documents the combined node's ownership and
-	// persistence boundaries.
-	//go:embed node_amnesia.md
-	AmnesiaClassLongDescription string
-)
-
 // AmnesiaClass creates nodes that own an Amnezia API client and an ephemeral
 // userspace WireGuard device. The node persists only Amnezia client data.
 type AmnesiaClass struct {
@@ -51,7 +43,9 @@ type AmnesiaClass struct {
 
 func (AmnesiaClass) ClassName() string        { return NodeTypeAmnesia }
 func (AmnesiaClass) ShortDescription() string { return "Amnesia VPN" }
-func (AmnesiaClass) LongDescription() string  { return AmnesiaClassLongDescription }
+func (AmnesiaClass) LongDescription() string {
+	return "Connects to an Amnezia VPN and owns its tunnel runtime."
+}
 func (AmnesiaClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: wireguardnodes.TypeWGCtrl, InitialPorts: []pasta.Port{
 		nodekit.TunPort("left", "Tun"),

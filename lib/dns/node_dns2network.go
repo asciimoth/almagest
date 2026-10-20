@@ -26,7 +26,7 @@ type DNS2NetworkClass struct {
 func (DNS2NetworkClass) ClassName() string        { return NodeTypeDns2Network }
 func (DNS2NetworkClass) ShortDescription() string { return "DNS from Network" }
 func (DNS2NetworkClass) LongDescription() string {
-	return "Provides an almagest/dns interface that answers DNS requests by calling resolver lookup methods on a received almagest/network value."
+	return "Provides DNS through a network resolver."
 }
 func (DNS2NetworkClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: TypeDNS, InitialPorts: []pasta.Port{

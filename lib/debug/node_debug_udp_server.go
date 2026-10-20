@@ -13,7 +13,9 @@ type UDPPingServerClass struct {
 
 func (UDPPingServerClass) ClassName() string        { return NodeTypeUDPPingServer }
 func (UDPPingServerClass) ShortDescription() string { return "DEBUG UDP pong server" }
-func (UDPPingServerClass) LongDescription() string  { return udpPingClassLongDescription }
+func (UDPPingServerClass) LongDescription() string {
+	return "Answers debug UDP ping messages through an attached Network."
+}
 func (UDPPingServerClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: TypeNetwork, InitialPorts: []pasta.Port{
 		NetworkPort("right", "Network"),

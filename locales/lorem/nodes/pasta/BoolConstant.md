@@ -1,0 +1,1 @@
+Lorem ipsum boolean constant.

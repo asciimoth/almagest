@@ -22,7 +22,7 @@ type DNSInjectClass struct {
 func (DNSInjectClass) ClassName() string        { return NodeTypeDnsInject }
 func (DNSInjectClass) ShortDescription() string { return "DNS inject" }
 func (DNSInjectClass) LongDescription() string {
-	return "Publishes a received almagest/network value with DNS lookups and hostname pre-resolution routed through a received almagest/dns interface."
+	return "Adds a DNS resolver to a network."
 }
 func (DNSInjectClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: nodekit.TypeNetwork, InitialPorts: []pasta.Port{

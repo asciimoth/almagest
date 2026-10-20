@@ -2,9 +2,11 @@
 
 ## Status
 
-This document specifies the proposed documentation and localization system for
-`almagestd` and its admin panel. It is an implementation plan. The system does
-not exist yet.
+This document specifies the documentation and localization system for
+`almagestd` and its admin panel. The core reader, daemon API, panel integration,
+development commands, and Linux isolated-runtime access are implemented.
+Package installation is deferred until the packaging pipeline exists. Dynamic
+WinVM synchronization is intentionally not implemented.
 
 The term **localized content bundle** is used in this document. A bundle
 contains node documentation, panel strings, and node-menu presentation text.
@@ -94,9 +96,9 @@ The recommended installed root is:
 ```
 
 `ALMAGEST_LOCALES_DIR` overrides that root. The value must be an absolute,
-clean directory path. A set but invalid override is a startup error. An absent
-default directory is not a startup error: the daemon logs one bounded warning
-and uses built-in text.
+clean directory path. A malformed or unsafe override is a startup error. A
+missing default or override directory is not a startup error: the daemon logs
+one bounded warning and uses built-in text.
 
 The repository directory is `locales/`, not `docs/locales/`. Files in `docs/`
 describe the project and its design. Files in `locales/` are runtime package
@@ -237,9 +239,10 @@ Lookup is per value, not per file. For each requested value, the reader uses:
 3. the built-in constant, when one exists;
 4. an empty value only when the API field already permits no text.
 
-This rule permits an intentionally incomplete `lorem` bundle to test fallback
-behavior. A missing key in `lorem/menus.json`, for example, can still resolve
-from `en/menus.json` even when another key exists in `lorem/menus.json`.
+This rule permits an incomplete locale bundle. The `lorem` development bundle
+contains every panel string and every current English menu entry so developers
+can inspect each user-interface text type. Its node-document set stays partial
+to exercise English fallback for missing files.
 
 An empty file or empty JSON string is a present value only for fields that
 explicitly permit an empty value. Node short and long descriptions, required
@@ -324,8 +327,9 @@ R's view. Safe rendering and bounded reads remain mandatory.
 
 The locale root does not change isolation selection. `auto` must not reduce
 its profile because content is absent, and `strict` must not require optional
-localized content. If an operator explicitly sets an invalid override, startup
-fails in all modes so a configuration error is visible.
+localized content. A missing override uses built-in text. A malformed or
+unsafe override still stops startup so that the configuration error is
+visible.
 
 Windows currently uses direct mode and opens the root directly. The packaged
 default is `%ProgramFiles%\Almagest\locales`, resolved with the Windows known
@@ -342,46 +346,13 @@ SYSTEM in explicit direct mode.
 
 ### Windows VM development
 
-The current WinVM harness archives and transfers one source-tree snapshot
-before it starts the manual daemon. Therefore, using
-`$SourceDir\locales` alone would not satisfy live reload: edits made in the host
-checkout after VM startup would not reach the guest.
-
-`just daemon-winvm` must use a host-to-guest development sync:
-
-1. The recipe sets `WINVM_LOCALES_DIR` to the absolute host checkout
-   `locales` directory.
-2. `dev/winvm/run.sh` validates this host directory and passes it to
-   `supervise.py`. The value is harness input and is never passed as a Windows
-   path.
-3. Before daemon startup, the supervisor copies the directory to the fixed
-   guest path `$RunDir\manual\locales` over the existing authenticated SSH
-   transport.
-4. `manual-daemon.ps1` starts `almagestd.exe` with a process-local
-   `ALMAGEST_LOCALES_DIR` value that names that guest directory. Because the
-   current launcher uses `Win32_Process.Create`, put the environment assignment
-   in the `cmd.exe` command line; do not set a persistent machine environment
-   variable.
-5. While the manual session runs, the supervisor polls a bounded content hash
-   of the host locale tree. On a change, it uploads a new archive to a temporary
-   guest directory and asks a PowerShell helper to validate and replace changed
-   regular files below the fixed locale root.
-
-The sync must reject host symlinks, Windows reparse points, unsafe archive
-paths, non-regular files, and inputs above the normal bundle limits. Copy each
-new file to a temporary file in its destination directory and then replace the
-target atomically. Apply manifests last. Remove guest files that are absent
-from the new validated snapshot, but never remove the fixed locale root. A
-failed sync keeps the last good guest files, records a clear harness warning,
-and does not stop the daemon.
-
-The sync loop is a development transport, not a second localization reader.
-`almagestd.exe` observes the changed guest files through the same cache and
-reload logic as every other direct-mode installation. It does not need a VM
-share, SMB server, QEMU filesystem device, daemon restart, or panel rebuild.
-Both `en` and `lorem` are copied for this development command. Locale files are
-not part of the persisted `local/winvm` daemon state and are not copied back
-when the session stops.
+Dynamic host-to-guest locale updates are not implemented. They add substantial
+harness and atomic-update complexity and are not needed by the current Windows
+development workflow. `just daemon-winvm` continues to use its transferred
+source snapshot. To test different Windows content, restart the manual session
+with an updated snapshot or set `ALMAGEST_LOCALES_DIR` to a prepared absolute
+guest path. This limitation does not affect normal direct-mode Windows reloads
+when files change in an accessible guest directory.
 
 ## Admin API
 
@@ -464,9 +435,10 @@ strings move behind stable keys in manageable groups. The English literal
 stays close enough to the call site to be a reviewable compiled fallback.
 
 Add a language picker to the panel settings or application header. Populate
-it only from the validated `available` list in `locale_snapshot`. The initial
-selection is English. Selection changes call `admin.set_locale` on the current
-connection.
+it only from the validated `available` list in `locale_snapshot`. If the user
+has not saved a selection, match the browser language preferences against this
+list and use English when there is no match. Selection changes call
+`admin.set_locale` on the current connection.
 
 Localized files are untrusted input. Existing protections remain required:
 
@@ -485,14 +457,16 @@ the same safe path.
 
 ## Packaging and development commands
 
-Package rules install only:
+Package integration is deferred. The packaging pipeline is not complete, so no
+package rule currently installs locale data. When that pipeline is implemented,
+package rules must install only:
 
 ```text
 locales/en -> /usr/share/almagest/locales/en
 ```
 
-They must not install `locales/lorem`. The package manifest validates the
-locale manifest and rejects `development_only: true`. The Linux packaging
+They must not install `locales/lorem`. The future package manifest must validate
+the locale manifest and reject `development_only: true`. The Linux packaging
 guide and isolated payload build must include the runtime data directory as a
 separate package asset; it is not embedded in `almagestd`.
 
@@ -508,10 +482,8 @@ described above. `just` test recipes also set the same value when a test starts
 the development daemon. Tests that verify missing-content fallback explicitly
 clear or replace it.
 
-`just daemon-winvm` instead sets `WINVM_LOCALES_DIR` because the checkout path
-is a host POSIX path that the Windows process cannot open. The WinVM supervisor
-copies and synchronizes it to the guest path, and `manual-daemon.ps1` sets
-`ALMAGEST_LOCALES_DIR` to that guest path for `almagestd.exe` only.
+`just daemon-winvm` does not synchronize live locale changes. See "Windows VM
+development" above.
 
 The normal panel build must not copy locale files into
 `bin/almagestd/static`. They remain daemon data and can change independently of
@@ -529,9 +501,9 @@ Add one repository validation command and include it in `just check`. It must:
 - check that `menus.json` refers to known production class and stable menu
   IDs where static inspection is possible;
 - reject unknown catalog fields and duplicate JSON keys;
-- confirm that `lorem` is marked development-only and intentionally permit it
-  to be incomplete;
-- confirm that package file lists exclude development-only locales.
+- confirm that `lorem` is marked development-only and permit its node-document
+  set to be incomplete;
+- package-file-list checks are deferred with the packaging pipeline.
 
 Unit tests must cover:
 
@@ -552,11 +524,8 @@ Unit tests must cover:
 - XSS payloads in panel text, node Markdown, menu labels, help, placeholders,
   and dialog text.
 
-WinVM harness tests must cover initial locale transfer, a host edit while the
-manual daemon stays running, deletion fallback, rejection of a source symlink
-or guest reparse point, interrupted upload, atomic replacement, and exclusion
-of locale files from exported manual state. A harness unit test must also prove
-that the host path is not placed in the Windows daemon command line.
+WinVM dynamic-update tests are out of scope because the synchronization feature
+is intentionally not implemented.
 
 Linux native-profile tests must prove that R can read the held locale root and
 cannot write it, execute from it, follow it to the host root, or read an
@@ -583,16 +552,14 @@ Implement the system in these stages:
 6. Extract panel-owned text to stable keys, add the panel catalog client and
    language picker, and keep compiled English fallbacks. Add DOM and XSS tests.
 7. Add typed Formular message translation in the daemon. Populate English
-   menu entries and an incomplete Lorem fixture. Remount the selected menu on
-   locale change.
-8. Update Linux and Windows package builders to install only production
-   locales. Add package-content tests and update the packaging guide.
-9. Add the bounded WinVM locale sync and process-local guest environment
-   override. Add harness tests and a manual-daemon live-edit integration case.
-10. Run focused Go, panel, WinVM harness, and isolation tests during each
-   stage. Run the full
-   `just check` after all API, panel, packaging, and isolation changes are
-   integrated.
+   menu entries and a development-only Lorem fixture. Remount the selected
+   menu on locale change.
+8. Deferred: update Linux and Windows package builders after the packaging
+   pipeline is implemented. Install only production locales and add
+   package-content tests at that time.
+9. Not planned: WinVM dynamic locale synchronization.
+10. Run focused Go, panel, and isolation tests during each stage. Run the full
+    `just check` after all API, panel, and isolation changes are integrated.
 
 ## Design consequences
 

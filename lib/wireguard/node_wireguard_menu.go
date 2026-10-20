@@ -69,7 +69,6 @@ func (n *wireGuardNode) statusBlock() formular.Block {
 func (n *wireGuardNode) configBlock() formular.Block {
 	statusErr := n.formError != ""
 	dns := configTextField("dns", "DNS", n.config.dns, statusErr, n.formError, false)
-	dns.Help = "Optional DNS server IP suggested to the connected TUN provider. This is for simple topologies such as WireGuard connected directly to VTun. Use almagest/dns nodes for DNS routing or policy."
 	items := []formular.Item{
 		wireGuardPrivateKeySecretField(n.config.privateKeySecret, statusErr, n.formError),
 		configIntField("listenPort", "Listen port", n.config.listenPort, statusErr, n.formError),
@@ -80,7 +79,6 @@ func (n *wireGuardNode) configBlock() formular.Block {
 			wireGuardAmneziaEnabledField,
 			"AWG obfuscation",
 			n.config.amneziaWGEnabled,
-			formular.Help("Enable the device AWG profile. When disabled, the device uses plain WireGuard-compatible defaults."),
 		),
 	}
 	items = append(items, wireGuardAmneziaConfigItems(n.config.amneziaWG, statusErr, n.formError)...)
@@ -225,14 +223,10 @@ func attachedText(attached bool) string {
 	return "detached"
 }
 func wireGuardBatchSizeField(value int, statusErr bool, statusText string) formular.Item {
-	item := configIntField("batchSize", "Batch size", value, statusErr, statusText)
-	item.Help = "wgo and batchudp batch size. Use 0 for library defaults; smaller positive values reduce retained buffers and may reduce peak throughput."
-	return item
+	return configIntField("batchSize", "Batch size", value, statusErr, statusText)
 }
 func wireGuardPrivateKeySecretField(value string, statusErr bool, statusText string) formular.Item {
-	item := configSecretNameField("privateKeySecret", "Private key secret", value, statusErr, statusText)
-	item.Help = "Secret name containing the WireGuard private key. Empty or inaccessible names are replaced with a newly generated private-key secret."
-	return item
+	return configSecretNameField("privateKeySecret", "Private key secret", value, statusErr, statusText)
 }
 func wireGuardUint64Text(value uint64) string {
 	return strconv.FormatUint(value, 10)
@@ -258,14 +252,12 @@ func wireGuardPeerTemplate() formular.ArrayTemplate {
 				"amneziaOverride",
 				"AWG override",
 				false,
-				formular.Help("Use a peer-specific AWG profile instead of the device profile."),
 			),
 			formular.CheckboxField(
 				wireGuardAmneziaEnabledField,
 				"AWG obfuscation",
 				false,
 				formular.VisibleWhen(peerProfileSelected),
-				formular.Help("Enable this peer's AWG profile. When disabled, this peer uses plain WireGuard-compatible defaults."),
 			),
 		}, wireGuardPeerAmneziaTemplateItems()...),
 	}

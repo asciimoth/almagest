@@ -73,7 +73,7 @@ func assertDNSTimeoutMenuValue(t *testing.T, e *dnsE2E, node uint64, block, fiel
 	t.Helper()
 	Eventually(t, func() bool {
 		item, ok := e.MenuItem(node, block, field)
-		if !ok || item.Field == nil || !item.Validation || !strings.Contains(item.Help, "Set 0 to use the gonnect default.") {
+		if !ok || item.Field == nil || !item.Validation || item.Help != "" {
 			return false
 		}
 		value, ok := formular.IntValue(item.Value)

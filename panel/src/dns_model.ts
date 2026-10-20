@@ -1,3 +1,5 @@
+import { text as localizedText } from "./localization.js";
+
 export type DNSCacheInfo = {
   name: string;
 };
@@ -144,10 +146,10 @@ export function dnsRecordsFromValue(value: DNSValue): DNSRecordSection[] | null 
   if (!entry || !entry.message) return null;
   const msg = entry.message;
   const sections: DNSRecordSection[] = [];
-  appendDNSSection(sections, "Questions", (msg.questions ?? []).map(dnsQuestionToDisplayRecord));
-  appendDNSSection(sections, "Answers", (msg.answers ?? []).map(dnsResourceToDisplayRecord));
-  appendDNSSection(sections, "Authorities", (msg.authorities ?? []).map(dnsResourceToDisplayRecord));
-  appendDNSSection(sections, "Additionals", (msg.additionals ?? []).map(dnsResourceToDisplayRecord));
+  appendDNSSection(sections, localizedText("dns.section.questions", "Questions"), (msg.questions ?? []).map(dnsQuestionToDisplayRecord));
+  appendDNSSection(sections, localizedText("dns.section.answers", "Answers"), (msg.answers ?? []).map(dnsResourceToDisplayRecord));
+  appendDNSSection(sections, localizedText("dns.section.authorities", "Authorities"), (msg.authorities ?? []).map(dnsResourceToDisplayRecord));
+  appendDNSSection(sections, localizedText("dns.section.additionals", "Additionals"), (msg.additionals ?? []).map(dnsResourceToDisplayRecord));
   return sections;
 }
 
@@ -164,8 +166,8 @@ export function defaultDNSRecordInput(): DNSRecordInput {
 export function editableDNSRecordFromValue(key: string, value: DNSValue | undefined): DNSRecordInput {
   const fallback = dnsQuestionFromCacheKey(key);
   const sections = value ? dnsRecordsFromValue(value) : null;
-  const answer = sections?.find((section) => section.title === "Answers")?.records[0];
-  const question = sections?.find((section) => section.title === "Questions")?.records[0];
+  const answer = sections?.find((section) => section.title === localizedText("dns.section.answers", "Answers"))?.records[0];
+  const question = sections?.find((section) => section.title === localizedText("dns.section.questions", "Questions"))?.records[0];
   return {
     name: answer?.name || question?.name || fallback?.name || "",
     type: supportedDNSRecordType(answer?.type || question?.type || fallback?.type),
@@ -176,7 +178,7 @@ export function editableDNSRecordFromValue(key: string, value: DNSValue | undefi
 }
 
 export function formatDNSByteSize(size: number | undefined): string {
-  if (!Number.isFinite(size) || size === undefined || size < 0) return "unknown size";
+  if (!Number.isFinite(size) || size === undefined || size < 0) return localizedText("common.unknown_size", "unknown size");
   if (size < 1024) return `${size} B`;
   const kib = size / 1024;
   if (kib < 1024) return `${formatFixed(kib)} KiB`;

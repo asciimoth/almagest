@@ -1,0 +1,1 @@
+Adapts raw UDP DNS packets received from an almagest/tun endpoint into requests on an almagest/dns interface, then writes raw IP DNS responses back to the TUN. The request timeout is configurable in milliseconds; 0 uses the gonnect default.

@@ -19,7 +19,7 @@ type DebugLogDNSClass struct {
 func (DebugLogDNSClass) ClassName() string        { return NodeTypeDebugLogDNS }
 func (DebugLogDNSClass) ShortDescription() string { return "DEBUG DNS logger" }
 func (DebugLogDNSClass) LongDescription() string {
-	return "Passes almagest/dns requests through unchanged while debug logging DNS requests, responses, and errors."
+	return "Logs DNS requests and passes them through."
 }
 func (DebugLogDNSClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: TypeDNS, InitialPorts: []pasta.Port{

@@ -3,7 +3,6 @@ package tailscalenodes
 import (
 	"context"
 	"crypto/tls"
-	_ "embed"
 	"errors"
 	"fmt"
 	"strings"
@@ -35,13 +34,6 @@ const (
 	interactionText = "Tailscale needs user action. Open the node menu for details."
 )
 
-var (
-	// TailscaleCtrlClassLongDescription documents the control-plane network,
-	// WireGuard ownership, MagicDNS, and firewall output contracts.
-	//go:embed node_tailscale_ctrl.md
-	TailscaleCtrlClassLongDescription string
-)
-
 // Client is the wgo-tailscale surface used by TailscaleCtrl. It permits
 // deterministic lifecycle tests without replacing production networking.
 type Client interface {
@@ -64,7 +56,9 @@ type TailscaleCtrlClass struct {
 
 func (TailscaleCtrlClass) ClassName() string        { return NodeTypeTailscaleCtrl }
 func (TailscaleCtrlClass) ShortDescription() string { return "Tailscale controller" }
-func (TailscaleCtrlClass) LongDescription() string  { return TailscaleCtrlClassLongDescription }
+func (TailscaleCtrlClass) LongDescription() string {
+	return "Connects an attached WireGuard device to a Tailscale control plane."
+}
 func (TailscaleCtrlClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: wireguardnodes.TypeWGCtrl, InitialPorts: []pasta.Port{
 		dnsnodes.DNSPort("left", "DNS"),

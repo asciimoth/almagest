@@ -17,5 +17,5 @@ test("selected experimental nodes show a warning outside both tab panels", () =>
 test("experimental graph palette entries have a warning sign and hover text", () => {
   assert.match(app, /cls\.experimental\s*\?\s*" ⚠"/);
   assert.match(app, /className:\s*"experimental-node-class"/);
-  assert.match(app, /entry\.title\s*=\s*`Warning:/);
+  assert.match(app, /entry\.title\s*=\s*localizedText\("node\.experimental\.warning"/);
 });

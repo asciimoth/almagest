@@ -1,7 +1,6 @@
 package socksnodes
 
 import (
-	_ "embed"
 	"strings"
 
 	"github.com/asciimoth/configer/configer"
@@ -22,18 +21,15 @@ const (
 	DefaultSocksServerWSPath = "/socks"
 )
 
-var (
-	//go:embed node_socks_server.md
-	socksServerClassLongDescription string
-)
-
 type SocksServerClass struct {
 	Runtime Runtime
 }
 
 func (SocksServerClass) ClassName() string        { return NodeTypeSocksServer }
 func (SocksServerClass) ShortDescription() string { return "SOCKS server" }
-func (SocksServerClass) LongDescription() string  { return socksServerClassLongDescription }
+func (SocksServerClass) LongDescription() string {
+	return "Serves SOCKS connections through an attached Network."
+}
 func (SocksServerClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: TypeNetwork, InitialPorts: []pasta.Port{
 		NetworkPort("right", "listen"),

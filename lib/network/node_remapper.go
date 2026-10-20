@@ -1,7 +1,6 @@
 package networknodes
 
 import (
-	_ "embed"
 	"fmt"
 
 	"github.com/asciimoth/configer/configer"
@@ -34,16 +33,13 @@ TCP
 AND
 REMAP SRC ADDR 127.0.0.1`
 
-var (
-	//go:embed node_remapper.md
-	remapperClassLongDescription string
-)
-
 type RemapperClass struct{}
 
 func (RemapperClass) ClassName() string        { return NodeTypeRemapper }
 func (RemapperClass) ShortDescription() string { return "Network remapper" }
-func (RemapperClass) LongDescription() string  { return remapperClassLongDescription }
+func (RemapperClass) LongDescription() string {
+	return "Rewrites network connection addresses with configured rules."
+}
 func (RemapperClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: TypeNetwork, InitialPorts: []pasta.Port{
 		NetworkPort("left", "Network"),

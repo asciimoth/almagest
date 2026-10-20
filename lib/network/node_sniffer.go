@@ -1,7 +1,6 @@
 package networknodes
 
 import (
-	_ "embed"
 	"fmt"
 	"slices"
 
@@ -46,18 +45,15 @@ ROUTE 1 DST:127.0.0.1:8080
 SNIFF_NONE
 SLOT 1`
 
-var (
-	//go:embed node_sniffer.md
-	snifferClassLongDescription string
-)
-
 type SnifferClass struct {
 	Runtime Runtime
 }
 
 func (SnifferClass) ClassName() string        { return NodeTypeSniffer }
 func (SnifferClass) ShortDescription() string { return "Network sniffer" }
-func (SnifferClass) LongDescription() string  { return snifferClassLongDescription }
+func (SnifferClass) LongDescription() string {
+	return "Routes matching network connections to configured output slots."
+}
 func (SnifferClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: TypeNetwork, InitialPorts: []pasta.Port{
 		NetworkPort("left", "Network"),

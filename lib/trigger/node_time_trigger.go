@@ -49,7 +49,7 @@ type TimeTriggerClass struct {
 func (TimeTriggerClass) ClassName() string        { return NodeTypeTimeTrigger }
 func (TimeTriggerClass) ShortDescription() string { return "Time trigger" }
 func (TimeTriggerClass) LongDescription() string {
-	return "Emits pasta/trigger events from one right-directed Trigger port on a configured interval, or daily with a fixed 24 hour step after the next matching local time."
+	return "Emits trigger events on a configured schedule."
 }
 func (TimeTriggerClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: std.TypeTrigger, InitialPorts: []pasta.Port{

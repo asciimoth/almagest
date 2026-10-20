@@ -26,7 +26,7 @@ type TunClass struct {
 func (TunClass) ClassName() string        { return NodeTypeTun }
 func (TunClass) ShortDescription() string { return "System TUN" }
 func (TunClass) LongDescription() string {
-	return "Builds one regular sysnet Tun and exposes it as a right-directed almagest/tun endpoint. The node is available only when the active sysnet.System reports regular Tun support."
+	return "Provides a system TUN endpoint."
 }
 func (TunClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: TypeTun, InitialPorts: []pasta.Port{

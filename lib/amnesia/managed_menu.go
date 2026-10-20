@@ -65,27 +65,22 @@ func amnesiaMTUSourceText(status amnesiaProfileStatus) string {
 func (n *managedAmnesiaNode) configBlock() formular.Block {
 	statusErr := n.formError != ""
 	enabled := nodekit.ConfigCheckbox(fieldEnabled, "Enabled", n.config.enabled)
-	enabled.Help = "Create and keep an Amnezia connection while both ports are attached."
 	connection := nodekit.ConfigSecretNameField(
 		fieldConnectionSecret, "Connection secret", n.config.connectionSecret,
 		statusErr, n.formError,
 	)
-	connection.Help = "Secret name containing an Amnezia vpn:// URL or native WireGuard/AmneziaWG configuration."
 	country := nodekit.ConfigTextField(
 		fieldServerCountryCode, "Server country", n.config.serverCountryCode,
 		statusErr, n.formError, false,
 	)
-	country.Help = "Optional ISO 3166-1 alpha-2 country code for service profile selection. If the tunnel cannot complete a handshake, try another country first because an endpoint can be temporarily unavailable."
 	gatewayURL := nodekit.ConfigTextField(
 		fieldGatewayURL, "Gateway URL", n.config.gatewayURL,
 		statusErr, n.formError, false,
 	)
-	gatewayURL.Help = "Optional API-v2 gateway URL for a custom Amnezia service."
 	gatewayKey := nodekit.ConfigSecretNameField(
 		fieldGatewayPublicKeySecret, "Gateway public key secret", n.config.gatewayPublicKeySecret,
 		statusErr, n.formError,
 	)
-	gatewayKey.Help = "Optional secret name containing the custom gateway RSA public key in PEM format."
 	return formular.Block{ID: "config", Order: 20, Generation: 1, Form: true, Items: []formular.Item{
 		enabled,
 		connection,

@@ -52,7 +52,6 @@ func (n *dnsServerNode) configBlock() formular.Block {
 			DNSServerRequestTimeoutMSField,
 			"Request timeout (ms)",
 			n.config.requestTimeoutMS,
-			"Maximum time to get one answer from the attached DNS resolver.",
 			n.formError,
 		),
 	}}

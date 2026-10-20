@@ -87,6 +87,7 @@ type LinuxProduction struct {
 	Stdin                          io.Reader
 	LookupEnv                      func(string) (string, bool)
 	Output                         io.Writer
+	LocalesDirectory               string
 }
 
 // RunLinuxProduction prepares protected authority, opens every trusted object,
@@ -255,6 +256,9 @@ func RunLinuxProduction(parent context.Context, production LinuxProduction, read
 	if commandExecutable != "" {
 		trustedPaths = append(trustedPaths, commandExecutable)
 	}
+	if production.LocalesDirectory != "" {
+		trustedPaths = append(trustedPaths, production.LocalesDirectory)
+	}
 	if err := production.Paths.Layout.RejectRuntimePaths(trustedPaths...); err != nil {
 		return err
 	}
@@ -297,6 +301,17 @@ func RunLinuxProduction(parent context.Context, production LinuxProduction, read
 	runtimeDirectory, err := openPrivate(production.Paths.RuntimeDirectory, production.Identities.Runtime)
 	if err != nil {
 		return err
+	}
+	var locales *os.File
+	if production.LocalesDirectory != "" {
+		var openErr error
+		locales, openErr = openOptionalLocalesDirectory(production.LocalesDirectory)
+		if openErr != nil {
+			return fmt.Errorf("open localized content root: %w", openErr)
+		}
+		if locales != nil {
+			files = append(files, locales)
+		}
 	}
 	brokerIdentity := LinuxIdentity{UID: uint32(os.Geteuid()), GID: uint32(os.Getegid())}
 	brokerDirectory, err := openPrivate(production.Paths.BrokerDirectory, brokerIdentity)
@@ -481,7 +496,7 @@ func RunLinuxProduction(parent context.Context, production LinuxProduction, read
 			LogCacheInfo:  production.Arguments.LogCacheInfo, LogCacheWarn: production.Arguments.LogCacheWarn,
 			LogCacheError: production.Arguments.LogCacheError, LogCacheFatal: production.Arguments.LogCacheFatal,
 		}, Isolation: isolationStatus}, RuntimeStorage: &bootstrap.RuntimeStorageInput{Regular: inputs.Regular, Protected: resolved.Runtime, Snapshot: snapshot},
-		Policy: launchPolicy, Native: native, State: brokerDirectory, Limits: production.Limits,
+		Policy: launchPolicy, Native: native, State: brokerDirectory, Limits: production.Limits, Locales: locales,
 		Journal: journal, Admin: admin, Output: production.Output, Callbacks: callbackBindings,
 	}
 	if sandboxConfig != nil {
@@ -517,6 +532,17 @@ func RunLinuxProduction(parent context.Context, production LinuxProduction, read
 		}
 		return nil
 	})
+}
+
+func openOptionalLocalesDirectory(path string) (*os.File, error) {
+	fd, err := unix.Open(path, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return os.NewFile(uintptr(fd), path), nil
 }
 
 func sandboxDiagnostics(config sandboxpolicy.Config) sandboxrole.SandboxDiagnostics {

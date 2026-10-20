@@ -73,12 +73,12 @@ func TestAmnesiaCtrlClassPortsAndMenu(t *testing.T) {
 		}
 	}
 	connection, found := amnesiaMenuItem(node.configBlock(), fieldConnectionSecret)
-	if !found || connection.Help == "" || connection.Field == nil || connection.Value != "connection-name" || connection.Selector != nodekit.SecretNameSelector {
+	if !found || connection.Help != "" || connection.Field == nil || connection.Value != "connection-name" || connection.Selector != nodekit.SecretNameSelector {
 		t.Fatalf("connection secret selector = %#v", connection)
 	}
 	for _, fieldID := range []string{fieldEnabled, fieldConnectEvent} {
 		item, found := amnesiaMenuItem(node.configBlock(), fieldID)
-		if !found || item.Help == "" || item.Field == nil {
+		if !found || item.Help != "" || item.Field == nil {
 			t.Fatalf("config field %q = %#v", fieldID, item)
 		}
 	}

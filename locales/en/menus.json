@@ -1,0 +1,1510 @@
+{
+  "almagest/Amnesia": {
+    "blocks": {
+      "status": {
+        "items": {
+          "state": {
+            "label": "State"
+          },
+          "inputFormat": {
+            "label": "Input format"
+          },
+          "profile": {
+            "label": "Profile"
+          },
+          "country": {
+            "label": "Server country"
+          },
+          "addresses": {
+            "label": "Tunnel addresses"
+          },
+          "dns": {
+            "label": "DNS servers"
+          },
+          "mtu": {
+            "label": "Effective MTU"
+          },
+          "profileMTU": {
+            "label": "Profile MTU ceiling"
+          },
+          "installationUUID": {
+            "label": "UUID"
+          },
+          "rxBytes": {
+            "label": "RX bytes"
+          },
+          "txBytes": {
+            "label": "TX bytes"
+          },
+          "error": {
+            "label": "Error"
+          }
+        }
+      },
+      "config": {
+        "items": {
+          "enabled": {
+            "label": "Enabled",
+            "help": "Create and keep an Amnezia connection while both ports are attached."
+          },
+          "connectionSecret": {
+            "label": "Connection secret",
+            "help": "Secret name containing an Amnezia vpn:// URL or native WireGuard/AmneziaWG configuration."
+          },
+          "serverCountryCode": {
+            "label": "Server country",
+            "help": "Optional ISO 3166-1 alpha-2 country code for service profile selection. If the tunnel cannot complete a handshake, try another country because an endpoint can be temporarily unavailable."
+          },
+          "tlsConfig": {
+            "label": "TLS config"
+          },
+          "gatewayURL": {
+            "label": "Gateway URL",
+            "help": "Optional API-v2 gateway URL for a custom Amnezia service."
+          },
+          "gatewayPublicKeySecret": {
+            "label": "Gateway public key secret",
+            "help": "Optional secret name containing the custom gateway RSA public key in PEM format."
+          }
+        }
+      }
+    }
+  },
+  "almagest/AmnesiaCtrl": {
+    "blocks": {
+      "status": {
+        "items": {
+          "state": {
+            "label": "State"
+          },
+          "tunnel": {
+            "label": "Tunnel"
+          },
+          "wireGuard": {
+            "label": "WireGuard"
+          },
+          "apiNetwork": {
+            "label": "API network"
+          },
+          "apiNetworkRequired": {
+            "label": "API network required"
+          },
+          "inputFormat": {
+            "label": "Input format"
+          },
+          "profile": {
+            "label": "Profile"
+          },
+          "country": {
+            "label": "Server country"
+          },
+          "endpoint": {
+            "label": "Peer endpoint"
+          },
+          "peerPublicKey": {
+            "label": "Peer public key"
+          },
+          "addresses": {
+            "label": "Tunnel addresses"
+          },
+          "dns": {
+            "label": "DNS servers"
+          },
+          "allowedIPs": {
+            "label": "Allowed IPs"
+          },
+          "mtu": {
+            "label": "Profile MTU ceiling"
+          },
+          "peerTransport": {
+            "label": "Peer UDP transport"
+          },
+          "peerActive": {
+            "label": "Peer active"
+          },
+          "peerConnected": {
+            "label": "Peer connected"
+          },
+          "rxBytes": {
+            "label": "RX bytes"
+          },
+          "txBytes": {
+            "label": "TX bytes"
+          },
+          "latestHandshake": {
+            "label": "Latest handshake"
+          },
+          "installationUUID": {
+            "label": "Installation UUID"
+          },
+          "uuidPersistent": {
+            "label": "Installation UUID persisted"
+          },
+          "error": {
+            "label": "Error"
+          }
+        }
+      },
+      "config": {
+        "items": {
+          "enabled": {
+            "label": "Enabled",
+            "help": "Import the selected connection and keep its peer on the attached WireGuard node. Disable this option to remove the peer and stop Amnezia API activity."
+          },
+          "connectionSecret": {
+            "label": "Connection secret",
+            "help": "Secret name containing an Amnezia vpn:// URL or native WireGuard/AmneziaWG configuration."
+          },
+          "serverCountryCode": {
+            "label": "Server country",
+            "help": "Optional ISO 3166-1 alpha-2 country code for service profile selection."
+          },
+          "connectEvent": {
+            "label": "Send connect event",
+            "help": "For service keys, tell the gateway that this profile request starts a connection. This option has no effect on native WireGuard or AmneziaWG profiles."
+          },
+          "tlsConfig": {
+            "label": "TLS config"
+          },
+          "gatewayURL": {
+            "label": "Gateway URL",
+            "help": "Optional API-v2 gateway URL for a custom Amnezia service. HTTPS uses the selected TLS config."
+          },
+          "gatewayPublicKeySecret": {
+            "label": "Gateway public key secret",
+            "help": "Optional secret name containing the custom gateway RSA public key in PEM format."
+          },
+          "reconnect": {
+            "label": "Reconnect",
+            "help": "Import the connection again and replace this node's tracked peer. This does not rotate the attached WireGuard node's private key."
+          }
+        }
+      }
+    }
+  },
+  "almagest/AutoTunSplitter": {
+    "blocks": {
+      "config": {
+        "items": {
+          "rules": {
+            "label": "Routing rules"
+          },
+          "dnsCacheStorageName": {
+            "label": "DNS cache storage",
+            "help": "Optional CacheStorage name used by address and regular-expression rules for reverse DNS lookups. Leave empty to match only literal addresses."
+          },
+          "ruleCacheTTL": {
+            "label": "Rule cache TTL (ms)",
+            "help": "How long rule matcher results are cached by flow. Zero uses the router default; a negative value disables the rule cache."
+          },
+          "ruleCacheMaxEntries": {
+            "label": "Rule cache max entries",
+            "help": "Maximum rule-cache entries. Zero uses the router default; a negative value disables the rule cache."
+          },
+          "routeCacheTTL": {
+            "label": "Route cache TTL (ms)",
+            "help": "How long route results are cached by packet flow. Zero inherits the rule-cache settings; a negative value disables the route cache."
+          },
+          "routeCacheMaxEntries": {
+            "label": "Route cache max entries",
+            "help": "Maximum route-result cache entries. Zero inherits the rule-cache settings or router default; a negative value disables the route cache."
+          }
+        }
+      }
+    }
+  },
+  "almagest/Command": {
+    "blocks": {
+      "config": {
+        "items": {
+          "command": {
+            "label": "Command"
+          }
+        }
+      }
+    }
+  },
+  "almagest/DefaultTun": {
+    "blocks": {
+      "effective": {
+        "items": {
+          "name": {
+            "label": "Name"
+          },
+          "mtu": {
+            "label": "MTU"
+          },
+          "error": {
+            "label": "Error"
+          },
+          "dnsIP": {
+            "label": "DNS IP"
+          },
+          "exclude": {
+            "label": "Exclude"
+          },
+          "include": {
+            "label": "Include"
+          }
+        }
+      },
+      "config": {
+        "items": {
+          "name": {
+            "label": "Name"
+          },
+          "mtu": {
+            "label": "MTU"
+          },
+          "dnsIP": {
+            "label": "DNS IP"
+          },
+          "exclude": {
+            "label": "Exclude"
+          },
+          "include": {
+            "label": "Include"
+          }
+        }
+      }
+    }
+  },
+  "almagest/DnsCache": {
+    "blocks": {
+      "config": {
+        "items": {
+          "storageName": {
+            "label": "CacheStorage name"
+          },
+          "reverseLookups": {
+            "label": "Reverse lookups"
+          },
+          "writeOnly": {
+            "label": "Write only"
+          }
+        }
+      }
+    }
+  },
+  "almagest/DnsClient": {
+    "blocks": {
+      "config": {
+        "items": {
+          "servers": {
+            "label": "DNS servers",
+            "templates": {
+              "server": {
+                "label": "Server",
+                "items": {
+                  "url": {
+                    "label": "URL"
+                  }
+                }
+              }
+            }
+          },
+          "tlsConfig": {
+            "label": "TLS config"
+          },
+          "requestTimeoutMS": {
+            "label": "Request timeout (ms)",
+            "help": "Maximum time for one request, including lookup, dial, TLS, and network I/O. Set 0 to use the gonnect default."
+          }
+        }
+      }
+    }
+  },
+  "almagest/DnsFallback": {
+    "blocks": {
+      "config": {
+        "items": {
+          "attemptTimeoutMS": {
+            "label": "Attempt timeout (ms)",
+            "help": "Maximum time to wait for one upstream before trying the next slot. Set 0 to use the gonnect default."
+          }
+        }
+      }
+    }
+  },
+  "almagest/DnsQuery": {
+    "blocks": {
+      "request": {
+        "items": {
+          "name": {
+            "label": "Name",
+            "placeholder": "example.test."
+          },
+          "type": {
+            "label": "Type",
+            "placeholder": "A"
+          },
+          "send": {
+            "label": "Send"
+          }
+        }
+      },
+      "result": {
+        "items": {
+          "error": {
+            "label": "Error"
+          },
+          "response": {
+            "label": "Response"
+          }
+        }
+      }
+    }
+  },
+  "almagest/DnsRouter": {
+    "blocks": {
+      "config": {
+        "items": {
+          "rules": {
+            "label": "Routing rules"
+          }
+        }
+      }
+    }
+  },
+  "almagest/DnsServer": {
+    "blocks": {
+      "listen": {
+        "items": {
+          "network": {
+            "label": "Network"
+          },
+          "host": {
+            "label": "Host"
+          },
+          "port": {
+            "label": "Port"
+          },
+          "requestTimeoutMS": {
+            "label": "Request timeout (ms)",
+            "help": "Maximum time to get one answer from the attached DNS resolver. Set 0 to use the gonnect default."
+          }
+        }
+      }
+    }
+  },
+  "almagest/FetchAddr": {
+    "blocks": {
+      "check": {
+        "items": {
+          "provider": {
+            "label": "Provider"
+          },
+          "tlsConfig": {
+            "label": "TLS config"
+          },
+          "check": {
+            "label": "Check"
+          }
+        }
+      },
+      "result": {
+        "items": {
+          "error": {
+            "label": "Error"
+          },
+          "publicIP": {
+            "label": "Public IP"
+          },
+          "countryCode": {
+            "label": "Country code"
+          },
+          "city": {
+            "label": "City"
+          },
+          "latitude": {
+            "label": "Latitude"
+          },
+          "longitude": {
+            "label": "Longitude"
+          }
+        }
+      }
+    }
+  },
+  "almagest/HttpClient": {
+    "blocks": {
+      "request": {
+        "items": {
+          "url": {
+            "label": "URL"
+          },
+          "method": {
+            "label": "Method"
+          },
+          "body": {
+            "label": "Body"
+          },
+          "tlsConfig": {
+            "label": "TLS config"
+          },
+          "send": {
+            "label": "Send request"
+          }
+        }
+      },
+      "result": {
+        "items": {
+          "error": {
+            "label": "Error"
+          },
+          "response": {
+            "label": "Response"
+          }
+        }
+      }
+    }
+  },
+  "almagest/HttpServer": {
+    "blocks": {
+      "listen": {
+        "items": {
+          "host": {
+            "label": "Host"
+          },
+          "port": {
+            "label": "Port"
+          }
+        }
+      },
+      "logs": {
+        "items": {
+          "worker": {
+            "label": "Worker"
+          }
+        }
+      }
+    }
+  },
+  "almagest/LocalProxy": {
+    "blocks": {
+      "config": {
+        "items": {
+          "socksHost": {
+            "label": "SOCKS host"
+          },
+          "socksPort": {
+            "label": "SOCKS port"
+          },
+          "wsHost": {
+            "label": "SOCKS+WS host"
+          },
+          "wsPort": {
+            "label": "SOCKS+WS port"
+          },
+          "wsPath": {
+            "label": "SOCKS+WS path"
+          },
+          "users": {
+            "label": "Users",
+            "templates": {
+              "user": {
+                "label": "User",
+                "items": {
+                  "username": {
+                    "label": "Username"
+                  },
+                  "password": {
+                    "label": "Password"
+                  },
+                  "passwordSecret": {
+                    "label": "Password secret"
+                  }
+                }
+              }
+            }
+          },
+          "cmdConnect": {
+            "label": "CONNECT"
+          },
+          "cmdBind": {
+            "label": "BIND"
+          },
+          "cmdUDPAssoc": {
+            "label": "UDP ASSOC"
+          },
+          "cmdTorResolve": {
+            "label": "Tor RESOLVE"
+          },
+          "cmdTorResolvePtr": {
+            "label": "Tor RESOLVE_PTR"
+          },
+          "cmdGostMuxBind": {
+            "label": "Gost MBIND"
+          },
+          "cmdGostUDPTun": {
+            "label": "Gost UDPTUN"
+          }
+        }
+      },
+      "logs": {
+        "items": {
+          "worker": {
+            "label": "Worker"
+          }
+        }
+      }
+    }
+  },
+  "almagest/MeshNames": {
+    "blocks": {
+      "config": {
+        "items": {
+          "requestTimeoutMS": {
+            "label": "Request timeout (ms)",
+            "help": "Maximum time for one DNS exchange with an authoritative mesh node. Set 0 to use the gonnect default."
+          }
+        }
+      }
+    }
+  },
+  "almagest/MockNetwork": {
+    "blocks": {
+      "config": {
+        "items": {
+          "allowAnyHost": {
+            "label": "Allow any host"
+          }
+        }
+      }
+    }
+  },
+  "almagest/NetworkFirewall": {
+    "blocks": {
+      "config": {
+        "items": {
+          "rules": {
+            "label": "Firewall rules"
+          }
+        }
+      }
+    }
+  },
+  "almagest/NetworkRouter": {
+    "blocks": {
+      "config": {
+        "items": {
+          "rules": {
+            "label": "Routing rules"
+          },
+          "dnsCacheStorageName": {
+            "label": "DNS cache storage",
+            "help": "Optional CacheStorage name used by address and regular-expression rules for reverse DNS lookups. Leave empty to match only literal addresses."
+          }
+        }
+      }
+    }
+  },
+  "almagest/Remapper": {
+    "blocks": {
+      "config": {
+        "items": {
+          "rules": {
+            "label": "Remap rules"
+          }
+        }
+      }
+    }
+  },
+  "almagest/Sniffer": {
+    "blocks": {
+      "config": {
+        "items": {
+          "rules": {
+            "label": "Sniffer rules"
+          },
+          "dnsCacheStorageName": {
+            "label": "DNS cache storage",
+            "help": "Optional CacheStorage name used by address and regular-expression rules for reverse DNS lookups. Leave empty to match only literal addresses."
+          }
+        }
+      }
+    }
+  },
+  "almagest/SocksClient": {
+    "blocks": {
+      "config": {
+        "items": {
+          "proxyURL": {
+            "label": "Proxy URL"
+          },
+          "passwordSecret": {
+            "label": "Password secret"
+          },
+          "tlsConfig": {
+            "label": "TLS config"
+          }
+        }
+      }
+    }
+  },
+  "almagest/SocksServer": {
+    "blocks": {
+      "config": {
+        "items": {
+          "socksHost": {
+            "label": "SOCKS host"
+          },
+          "socksPort": {
+            "label": "SOCKS port"
+          },
+          "wsHost": {
+            "label": "SOCKS+WS host"
+          },
+          "wsPort": {
+            "label": "SOCKS+WS port"
+          },
+          "wsPath": {
+            "label": "SOCKS+WS path"
+          },
+          "users": {
+            "label": "Users",
+            "templates": {
+              "user": {
+                "label": "User",
+                "items": {
+                  "username": {
+                    "label": "Username"
+                  },
+                  "password": {
+                    "label": "Password"
+                  },
+                  "passwordSecret": {
+                    "label": "Password secret"
+                  }
+                }
+              }
+            }
+          },
+          "cmdConnect": {
+            "label": "CONNECT"
+          },
+          "cmdBind": {
+            "label": "BIND"
+          },
+          "cmdUDPAssoc": {
+            "label": "UDP ASSOC"
+          },
+          "cmdTorResolve": {
+            "label": "Tor RESOLVE"
+          },
+          "cmdTorResolvePtr": {
+            "label": "Tor RESOLVE_PTR"
+          },
+          "cmdGostMuxBind": {
+            "label": "Gost MBIND"
+          },
+          "cmdGostUDPTun": {
+            "label": "Gost UDPTUN"
+          }
+        }
+      },
+      "logs": {
+        "items": {
+          "worker": {
+            "label": "Worker"
+          }
+        }
+      }
+    }
+  },
+  "almagest/Spoofer": {
+    "blocks": {
+      "config": {
+        "items": {
+          "mtu": {
+            "label": "MTU"
+          },
+          "queueLength": {
+            "label": "Queue length"
+          },
+          "ttl": {
+            "label": "TTL"
+          },
+          "icmpBurst": {
+            "label": "ICMP burst"
+          },
+          "tcpSendBufferSize": {
+            "label": "TCP send buffer"
+          },
+          "tcpReceiveBufferSize": {
+            "label": "TCP receive buffer"
+          },
+          "congestionControlAlg": {
+            "label": "TCP congestion"
+          },
+          "tcpKeepAliveIdle": {
+            "label": "TCP keepalive idle"
+          },
+          "tcpKeepAliveInterval": {
+            "label": "TCP keepalive interval"
+          },
+          "tcpKeepAliveCount": {
+            "label": "TCP keepalive count"
+          },
+          "tcpForwardWnd": {
+            "label": "TCP forward window"
+          },
+          "tcpForwardAttempts": {
+            "label": "TCP forward attempts"
+          }
+        }
+      }
+    }
+  },
+  "almagest/StaticDns": {
+    "blocks": {
+      "config": {
+        "items": {
+          "records": {
+            "label": "Records",
+            "placeholder": "example.test A 192.0.2.10"
+          },
+          "ttl": {
+            "label": "TTL"
+          }
+        }
+      }
+    }
+  },
+  "almagest/TailscaleCtrl": {
+    "blocks": {
+      "status": {
+        "items": {
+          "state": {
+            "label": "State"
+          },
+          "controlURL": {
+            "label": "Control server"
+          },
+          "login": {
+            "label": "Login"
+          },
+          "tailnet": {
+            "label": "Tailnet"
+          },
+          "selfName": {
+            "label": "Tailnet name"
+          },
+          "machineAuthorized": {
+            "label": "Machine authorized"
+          },
+          "mapSequence": {
+            "label": "Map sequence"
+          },
+          "localEndpoints": {
+            "label": "Advertised endpoints"
+          },
+          "magicDNSDomains": {
+            "label": "MagicDNS search domains"
+          },
+          "magicDNSRecords": {
+            "label": "MagicDNS records"
+          },
+          "peers": {
+            "label": "Tailnet peers"
+          },
+          "acl": {
+            "label": "ACL packet filter"
+          },
+          "derp": {
+            "label": "DERP regions"
+          },
+          "health": {
+            "label": "Health"
+          },
+          "firewall": {
+            "label": "Generated firewall policy"
+          },
+          "error": {
+            "label": "Error"
+          }
+        }
+      },
+      "config": {
+        "items": {
+          "enabled": {
+            "label": "Enabled",
+            "help": "Connect to the control server and manage this node's Tailscale peers on the attached WireGuard node."
+          },
+          "controlURL": {
+            "label": "Control URL",
+            "help": "Tailscale or Headscale coordination server URL. HTTP is only for trusted test networks."
+          },
+          "hostname": {
+            "label": "Hostname",
+            "help": "Name advertised to the tailnet. An empty value uses the Pasta node name."
+          },
+          "authKeySecret": {
+            "label": "Auth key secret",
+            "help": "Optional secret containing a Tailscale or Headscale pre-authentication key. The key is not saved in the workspace."
+          },
+          "ephemeral": {
+            "label": "Ephemeral node",
+            "help": "Ask the control server to remove the machine after it goes offline."
+          },
+          "listenPort": {
+            "label": "Discovery UDP port",
+            "help": "Local port for STUN, DISCO, and DERP path discovery. Zero selects an available port."
+          },
+          "disableDERP": {
+            "label": "Disable DERP",
+            "help": "Disable Tailscale TLS relay fallback."
+          },
+          "disableDiscovery": {
+            "label": "Disable discovery",
+            "help": "Disable endpoint discovery, STUN, and DISCO. Control-provided direct endpoints remain available."
+          },
+          "tlsConfig": {
+            "label": "TLS config"
+          }
+        }
+      },
+      "authentication": {
+        "items": {
+          "checkAuthentication": {
+            "label": "Check authorization",
+            "help": "Ask the Tailscale client to check the pending action now."
+          }
+        }
+      }
+    }
+  },
+  "almagest/TimeTrigger": {
+    "blocks": {
+      "config": {
+        "items": {
+          "mode": {
+            "label": "Mode"
+          },
+          "interval": {
+            "label": "Every",
+            "placeholder": "2m"
+          },
+          "dailyTime": {
+            "label": "At",
+            "placeholder": "00:00"
+          },
+          "emitOnReady": {
+            "label": "Trigger on ready"
+          }
+        }
+      }
+    }
+  },
+  "almagest/TlsMitm": {
+    "blocks": {
+      "config": {
+        "items": {
+          "tlsConfig": {
+            "label": "TLS config"
+          },
+          "sniffBufferSize": {
+            "label": "Sniff buffer bytes",
+            "placeholder": "0"
+          },
+          "leafTTLSeconds": {
+            "label": "Leaf TTL seconds",
+            "placeholder": "0"
+          },
+          "filterMode": {
+            "label": "Filter mode",
+            "placeholder": "off"
+          },
+          "filterRules": {
+            "label": "Filter rules JSON"
+          }
+        }
+      }
+    }
+  },
+  "almagest/TlsTerminator": {
+    "blocks": {
+      "config": {
+        "items": {
+          "sniffBufferSize": {
+            "label": "Sniff buffer bytes",
+            "placeholder": "0"
+          },
+          "leafTTLSeconds": {
+            "label": "Leaf TTL seconds",
+            "placeholder": "0"
+          },
+          "useSNIHostname": {
+            "label": "Use SNI hostname"
+          },
+          "serverAlpn": {
+            "label": "Client-facing ALPN"
+          },
+          "destinationRemaps": {
+            "label": "Destination remaps JSON"
+          }
+        }
+      }
+    }
+  },
+  "almagest/TlsWrapper": {
+    "blocks": {
+      "config": {
+        "items": {
+          "tlsConfig": {
+            "label": "TLS config"
+          },
+          "clientServerName": {
+            "label": "Client server name",
+            "placeholder": "origin.example.test"
+          },
+          "clientAlpn": {
+            "label": "Client ALPN",
+            "placeholder": "h2"
+          },
+          "serverName": {
+            "label": "Server name",
+            "placeholder": "example.test"
+          },
+          "serverAlpn": {
+            "label": "Server ALPN",
+            "placeholder": "h2"
+          },
+          "leafTTLSeconds": {
+            "label": "Leaf TTL seconds",
+            "placeholder": "0"
+          }
+        }
+      }
+    }
+  },
+  "almagest/TorDriver": {
+    "blocks": {
+      "status": {
+        "items": {
+          "state": {
+            "label": "State"
+          },
+          "bootstrap": {
+            "label": "Bootstrap"
+          },
+          "transport": {
+            "label": "Managed transport"
+          },
+          "outboundAvailable": {
+            "label": "Outbound attached"
+          },
+          "services": {
+            "label": "Onion services"
+          },
+          "error": {
+            "label": "Error"
+          }
+        }
+      },
+      "control": {
+        "items": {
+          "restart": {
+            "label": "Restart Tor",
+            "help": "Close the current owned Tor process and build a new runtime from the saved node configuration."
+          }
+        }
+      },
+      "Tor settings": {
+        "items": {
+          "enabled": {
+            "label": "Enabled",
+            "help": "Starts Tor and publishes configured outputs."
+          },
+          "maxProxyConnections": {
+            "label": "Maximum proxy connections",
+            "help": "Zero uses the tor-driver default."
+          }
+        }
+      },
+      "Network policies": {
+        "items": {
+          "outboundFailures": {
+            "label": "Outbound failure policy",
+            "help": "Retry failures or latch the outbound path until it is replaced."
+          },
+          "bandwidthRate": {
+            "label": "Bandwidth rate (bytes/s)",
+            "help": "Set rate and burst together. Zero disables the limit."
+          },
+          "bandwidthBurst": {
+            "label": "Bandwidth burst (bytes)",
+            "help": "Must be at least the bandwidth rate."
+          },
+          "connectionPadding": {
+            "label": "Connection padding",
+            "help": "Controls Tor connection padding."
+          },
+          "circuitPadding": {
+            "label": "Circuit padding",
+            "help": "Controls Tor circuit padding."
+          },
+          "reachableORPorts": {
+            "label": "Reachable relay ports",
+            "help": "Comma- or space-separated TCP ports. Empty permits all relay ports."
+          },
+          "maxPendingCircuits": {
+            "label": "Maximum pending circuits",
+            "help": "Zero uses the Tor default."
+          },
+          "numCPUs": {
+            "label": "CPU count",
+            "help": "Zero lets Tor detect the CPU count."
+          },
+          "clientIP": {
+            "label": "Client IP policy",
+            "help": "Selects the IP families Tor can use."
+          },
+          "onionTraffic": {
+            "label": "Onion traffic",
+            "help": "Controls access to onion services."
+          },
+          "entryNodes": {
+            "label": "Entry relay fingerprints",
+            "help": "One 40-character relay fingerprint per line."
+          },
+          "exitNodes": {
+            "label": "Exit relay fingerprints",
+            "help": "One 40-character relay fingerprint per line."
+          },
+          "excludeNodes": {
+            "label": "Excluded relay fingerprints",
+            "help": "One 40-character relay fingerprint per line."
+          },
+          "excludeExitNodes": {
+            "label": "Excluded exit fingerprints",
+            "help": "One 40-character relay fingerprint per line."
+          },
+          "strictNodes": {
+            "label": "Strict relay selection",
+            "help": "Do not use relays outside the configured lists."
+          }
+        }
+      },
+      "Networks": {
+        "items": {
+          "networks": {
+            "label": "Tor Networks",
+            "help": "Each entry creates one Network output. Per-connection circuits cannot use destination isolation.",
+            "templates": {
+              "network": {
+                "label": "Network",
+                "items": {
+                  "name": {
+                    "label": "Name",
+                    "help": "Used in the graph port name."
+                  },
+                  "circuits": {
+                    "label": "Circuit isolation",
+                    "help": "Session reuses circuits. Connection creates a new circuit for every connection."
+                  },
+                  "isolateDestinationAddress": {
+                    "label": "Isolate destination address",
+                    "help": "Use a different circuit when the destination address changes."
+                  },
+                  "isolateDestinationPort": {
+                    "label": "Isolate destination port",
+                    "help": "Use a different circuit when the destination port changes."
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "Bridges": {
+        "items": {
+          "useBridges": {
+            "label": "Use bridges",
+            "help": "Route Tor bootstrap and relay traffic through the configured bridges."
+          },
+          "enableObfs4": {
+            "label": "Enable obfs4",
+            "help": "Enable the protected obfs4 or lyrebird transport executable."
+          },
+          "bridges": {
+            "label": "Bridge lines",
+            "help": "Add plain or obfs4 bridges. Enable bridge use before applying a non-empty list.",
+            "templates": {
+              "plain": {
+                "label": "Plain bridge",
+                "items": {
+                  "address": {
+                    "label": "Address",
+                    "help": "Numeric bridge IP address and port."
+                  },
+                  "fingerprint": {
+                    "label": "Fingerprint",
+                    "help": "Optional 40-character relay fingerprint."
+                  }
+                }
+              },
+              "obfs4": {
+                "label": "obfs4 bridge",
+                "items": {
+                  "address": {
+                    "label": "Address",
+                    "help": "Numeric bridge IP address and port."
+                  },
+                  "fingerprint": {
+                    "label": "Fingerprint",
+                    "help": "40-character relay fingerprint."
+                  },
+                  "obfs4Certificate": {
+                    "label": "obfs4 certificate",
+                    "help": "Base64 obfs4 certificate from the bridge line."
+                  },
+                  "iat": {
+                    "label": "Inter-arrival timing"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "Onion services": {
+        "items": {
+          "services": {
+            "label": "Onion services",
+            "help": "Each entry creates one persistent v3 onion service and one listen-only Network output.",
+            "templates": {
+              "service": {
+                "label": "Onion service",
+                "items": {
+                  "name": {
+                    "label": "Name",
+                    "help": "Used in the graph port name."
+                  },
+                  "ports": {
+                    "label": "Virtual ports",
+                    "help": "Comma- or space-separated onion service ports."
+                  },
+                  "maxStreams": {
+                    "label": "Maximum streams",
+                    "help": "Zero uses the Tor default."
+                  },
+                  "maxStreamsPolicy": {
+                    "label": "Stream limit policy"
+                  },
+                  "keySecret": {
+                    "label": "Private key secret",
+                    "help": "Empty creates a new node-scoped private key secret."
+                  },
+                  "authorizedClients": {
+                    "label": "Authorized client public keys",
+                    "help": "One v3 client authorization public key per line."
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "Client authorization": {
+        "items": {
+          "clientAuthorizations": {
+            "label": "Client authorization",
+            "help": "Add private authorization keys for connecting to protected v3 onion services.",
+            "templates": {
+              "authorization": {
+                "label": "Authorization",
+                "items": {
+                  "address": {
+                    "label": "Onion address"
+                  },
+                  "name": {
+                    "label": "Key name",
+                    "help": "Optional Tor authorization name."
+                  },
+                  "privateKeySecret": {
+                    "label": "Private key secret",
+                    "help": "Empty creates a new node-scoped X25519 private key secret."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "almagest/Tun": {
+    "blocks": {
+      "effective": {
+        "items": {
+          "name": {
+            "label": "Name"
+          },
+          "mtu": {
+            "label": "MTU"
+          },
+          "error": {
+            "label": "Error"
+          }
+        }
+      },
+      "config": {
+        "items": {
+          "name": {
+            "label": "Name"
+          },
+          "mtu": {
+            "label": "MTU"
+          }
+        }
+      }
+    }
+  },
+  "almagest/Tun2Dns": {
+    "blocks": {
+      "config": {
+        "items": {
+          "requestTimeoutMS": {
+            "label": "Request timeout (ms)",
+            "help": "Maximum time to forward one DNS packet to the attached resolver. Set 0 to use the gonnect default."
+          }
+        }
+      }
+    }
+  },
+  "almagest/TunFirewall": {
+    "blocks": {
+      "config": {
+        "items": {
+          "rules": {
+            "label": "Firewall rules"
+          }
+        }
+      }
+    }
+  },
+  "almagest/TunSplitter": {
+    "blocks": {
+      "config": {
+        "items": {
+          "rules": {
+            "label": "Routing rules"
+          }
+        }
+      }
+    }
+  },
+  "almagest/VTun": {
+    "blocks": {
+      "effective": {
+        "items": {
+          "name": {
+            "label": "Name"
+          },
+          "addressFamilies": {
+            "label": "Address families",
+            "help": "Address families enabled by the effective VTun addresses. This reports stack support, not verified Internet reachability."
+          },
+          "mtu": {
+            "label": "MTU"
+          },
+          "mtuSource": {
+            "label": "MTU source"
+          },
+          "endpointCh": {
+            "label": "Endpoint channel"
+          },
+          "eventCh": {
+            "label": "Event channel"
+          }
+        }
+      },
+      "config": {
+        "items": {
+          "name": {
+            "label": "Name"
+          },
+          "localAddrs": {
+            "label": "Local addrs"
+          },
+          "dnsServers": {
+            "label": "DNS servers",
+            "help": "DNS server IP addresses. An explicit value has priority over a TUN DNS suggestion. If neither is set, VTun uses 8.8.8.8."
+          },
+          "mtu": {
+            "label": "MTU ceiling",
+            "help": "Maximum interface MTU. Zero enables automatic selection from graph constraints. A positive value can be reduced when the path requires a smaller MTU."
+          },
+          "endpointCh": {
+            "label": "Endpoint channel"
+          },
+          "eventCh": {
+            "label": "Event channel"
+          }
+        }
+      }
+    }
+  },
+  "almagest/WGConfig": {
+    "blocks": {
+      "status": {
+        "items": {
+          "state": {
+            "label": "State"
+          },
+          "wireGuard": {
+            "label": "WireGuard"
+          },
+          "network": {
+            "label": "Network"
+          },
+          "transport": {
+            "label": "UDP transport"
+          },
+          "peers": {
+            "label": "Peers"
+          },
+          "runtimePeers": {
+            "label": "Runtime peers"
+          },
+          "error": {
+            "label": "Error"
+          }
+        }
+      },
+      "peers": {
+        "items": {
+          "peers": {
+            "label": "Peers",
+            "templates": {
+              "peer": {
+                "label": "Peer",
+                "items": {
+                  "publicKey": {
+                    "label": "Public key"
+                  },
+                  "presharedKeySecret": {
+                    "label": "Preshared key secret"
+                  },
+                  "endpoint": {
+                    "label": "Endpoint"
+                  },
+                  "allowedIPs": {
+                    "label": "Allowed IPs"
+                  },
+                  "persistentKeepaliveInterval": {
+                    "label": "Keepalive"
+                  },
+                  "amneziaOverride": {
+                    "label": "AWG override",
+                    "help": "Use a peer-specific AWG profile instead of the device profile."
+                  },
+                  "amneziaEnabled": {
+                    "label": "AWG obfuscation",
+                    "help": "Enable this peer's AWG profile. When disabled, this peer uses plain WireGuard-compatible defaults."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "almagest/WireGuard": {
+    "blocks": {
+      "status": {
+        "items": {
+          "state": {
+            "label": "State"
+          },
+          "publicKey": {
+            "label": "Public key"
+          },
+          "listenPort": {
+            "label": "Listen port"
+          },
+          "tun": {
+            "label": "TUN"
+          },
+          "network": {
+            "label": "Network"
+          },
+          "ownedIPs": {
+            "label": "Effective owned IPs"
+          },
+          "peers": {
+            "label": "Peers"
+          },
+          "error": {
+            "label": "Error"
+          }
+        }
+      },
+      "config": {
+        "items": {
+          "privateKeySecret": {
+            "label": "Private key secret",
+            "help": "Secret name containing the WireGuard private key. Empty or inaccessible names are replaced with a newly generated private-key secret."
+          },
+          "listenPort": {
+            "label": "Listen port"
+          },
+          "batchSize": {
+            "label": "Batch size",
+            "help": "wgo and batchudp batch size. Use 0 for library defaults; smaller positive values reduce retained buffers and can reduce peak throughput."
+          },
+          "ownedIPs": {
+            "label": "Owned IPs"
+          },
+          "dns": {
+            "label": "DNS",
+            "help": "Optional DNS server IP suggested to the connected TUN provider. This is for simple topologies such as WireGuard connected directly to VTun. Use almagest/dns nodes for DNS routing or policy."
+          },
+          "amneziaEnabled": {
+            "label": "AWG obfuscation",
+            "help": "Enable the device AWG profile. When disabled, the device uses plain WireGuard-compatible defaults."
+          }
+        }
+      },
+      "peers": {
+        "items": {
+          "peers": {
+            "label": "Peers",
+            "templates": {
+              "peer": {
+                "label": "Peer",
+                "items": {
+                  "publicKey": {
+                    "label": "Public key"
+                  },
+                  "presharedKeySecret": {
+                    "label": "Preshared key secret"
+                  },
+                  "endpoint": {
+                    "label": "Endpoint"
+                  },
+                  "allowedIPs": {
+                    "label": "Allowed IPs"
+                  },
+                  "persistentKeepaliveInterval": {
+                    "label": "Keepalive"
+                  },
+                  "amneziaOverride": {
+                    "label": "AWG override",
+                    "help": "Use a peer-specific AWG profile instead of the device profile."
+                  },
+                  "amneziaEnabled": {
+                    "label": "AWG obfuscation",
+                    "help": "Enable this peer's AWG profile. When disabled, this peer uses plain WireGuard-compatible defaults."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

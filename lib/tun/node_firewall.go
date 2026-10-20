@@ -38,7 +38,7 @@ type TunFirewallClass struct {
 func (TunFirewallClass) ClassName() string        { return NodeTypeTunFirewall }
 func (TunFirewallClass) ShortDescription() string { return "TUN firewall" }
 func (TunFirewallClass) LongDescription() string {
-	return "Filters IP packets on an almagest/tun link with the union of its menu policy and all attached pasta/object policy values."
+	return "Filters packets on a TUN link."
 }
 func (TunFirewallClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: TypeTun, InitialPorts: []pasta.Port{

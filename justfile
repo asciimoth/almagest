@@ -4,6 +4,7 @@ set dotenv-load := true
 
 # TODO: Enable vulncheck again after Go is updated to 1.26.9 or later.
 check *selectors: tidy typos fmt lint shellcheck vet # vulncheck
+  @just locales-check
   @just test-total {{quote(selectors)}}
   @if [[ -z {{quote(selectors)}} ]]; then just fuzz; fi
 
@@ -91,6 +92,9 @@ vet: certcat-vet
 
 certcat-vet: certcat-ensure-generated
 	go -C certcat vet ./...
+
+locales-check:
+	go -C bin run ./cmd/locales-check
 
 vulncheck: certcat-vulncheck
 	cd lib && govulncheck ./...

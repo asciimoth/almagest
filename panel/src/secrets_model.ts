@@ -1,3 +1,5 @@
+import { text as localizedText } from "./localization.js";
+
 export type SecretSource = "mutable" | "protected" | "env" | (string & {});
 
 export type SecretEntry = {
@@ -139,13 +141,13 @@ export function secretNodesText(nodes: string[] | undefined): string {
 export function formatSecretSource(source: SecretSource | undefined): string {
   switch (source) {
     case "env":
-      return "env";
+      return localizedText("secrets.source.env", "env");
     case "protected":
-      return "protected";
+      return localizedText("secrets.source.protected", "protected");
     case "mutable":
     case "":
     case undefined:
-      return "mutable";
+      return localizedText("secrets.source.mutable", "mutable");
     default:
       return source;
   }

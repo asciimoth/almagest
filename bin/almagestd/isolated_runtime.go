@@ -329,6 +329,9 @@ func readRuntimeConfig(storage string) ([]byte, []byte, error) {
 
 func isolatedAdminAPI(conf *Config, runtime *admingate.Runtime, endpoints []roleentry.RuntimeAdminEndpoint, status roleentry.RuntimeIsolationStatus) (*AdminAPI, error) {
 	admin := &AdminAPI{config: conf}
+	if err := admin.prepareLocalizedContent(defaultLocalesRoot()); err != nil {
+		return nil, err
+	}
 	if status.ProtocolVersion != 0 {
 		admin.isolationStatus = &api.IsolationStatus{ProtocolVersion: status.ProtocolVersion, StatusSchemaVersion: status.StatusSchemaVersion, Restrictions: status.Restrictions,
 			Roles: status.Roles, Capabilities: status.Capabilities, RecoveryState: status.RecoveryState,

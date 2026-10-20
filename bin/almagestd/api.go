@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/asciimoth/almagest/bin/almagestd/localizedcontent"
 	"github.com/asciimoth/almagest/bin/api"
 	almagest "github.com/asciimoth/almagest/lib"
 	"github.com/asciimoth/almagest/lib/typecolor"
@@ -50,6 +51,7 @@ type AdminAPI struct {
 	snapshots             *snapshotService
 	// experimentalNodeTypes marks opt-in classes in all node-class API payloads.
 	experimentalNodeTypes map[string]bool
+	localizedContent      *localizedcontent.Reader
 
 	// mutations prevents a snapshot mutation from overlapping admin operations
 	// that read or mutate the graph and persistent storage.
@@ -222,6 +224,9 @@ type apiSession struct {
 	logf   *LogFactory
 	send   func(api.Message) error
 
+	localeMu sync.RWMutex
+	locale   string
+
 	engineSubscriptions []uint64
 	logSubscriptions    []uint64
 
@@ -252,6 +257,7 @@ func (a *AdminAPI) newAPISession(engine almagest.Engine, logf *LogFactory, send 
 		engine: engine,
 		logf:   logf,
 		send:   send,
+		locale: "en",
 	}
 }
 
@@ -404,6 +410,26 @@ func (s *apiSession) handleAdminMessage(msg api.Message) (api.Message, error) {
 		s.admin.releaseMutation(req)
 		return api.NewResponse(msg.ID, struct{}{})
 
+	case api.MethodAdminLocaleSnapshot:
+		if _, err := decodePayload[struct{}](msg); err != nil {
+			return newRequestError(msg.ID, api.ErrorInvalidPayload, err.Error())
+		}
+		return api.NewResponse(msg.ID, s.localeSnapshot())
+
+	case api.MethodAdminSetLocale:
+		req, err := decodePayload[api.SetLocaleRequest](msg)
+		if err != nil {
+			return newRequestError(msg.ID, api.ErrorInvalidPayload, err.Error())
+		}
+		canonical, ok := localizedcontent.CanonicalLocale(req.Locale)
+		if !ok {
+			return newRequestError(msg.ID, api.ErrorBadRequest, "invalid locale")
+		}
+		s.localeMu.Lock()
+		s.locale = canonical
+		s.localeMu.Unlock()
+		return api.NewResponse(msg.ID, s.localeSnapshot())
+
 	default:
 		return newRequestError(msg.ID, api.ErrorInvalidMethod, "api method is not implemented")
 	}
@@ -417,6 +443,8 @@ func (s *apiSession) handleEngineMessage(msg api.Message) (api.Message, error) {
 			return newRequestError(msg.ID, api.ErrorInvalidPayload, err.Error())
 		}
 		id := s.engine.SubscribeNotifications(func(notification almagest.EngineNotification) {
+			locale := s.currentLocale()
+			notification = s.localizeNotification(locale, notification)
 			event, err := api.NewEvent(api.SurfaceEngine, string(api.EventEngineNotification), api.EngineNotificationEvent{
 				SubscriptionID: notification.SubscriptionID,
 				Notification:   api.NewEngineNotification(notification, s.admin.experimentalNodeTypes),
@@ -473,7 +501,9 @@ func (s *apiSession) handleEngineMessage(msg api.Message) (api.Message, error) {
 		if !ok {
 			return newRequestError(msg.ID, api.ErrorNotFound, "workspace was not found")
 		}
-		return api.NewResponse(msg.ID, api.WorkspaceSnapshotResponse{Snapshot: api.NewWorkspaceSnapshot(snapshot, s.admin.experimentalNodeTypes)})
+		response := api.WorkspaceSnapshotResponse{Snapshot: api.NewWorkspaceSnapshot(snapshot, s.admin.experimentalNodeTypes)}
+		s.localizeClasses(s.currentLocale(), response.Snapshot.Classes)
+		return api.NewResponse(msg.ID, response)
 
 	case api.MethodEngineWorkersSnapshot:
 		req, err := decodePayload[api.WorkspaceRequest](msg)
@@ -499,9 +529,11 @@ func (s *apiSession) handleEngineMessage(msg api.Message) (api.Message, error) {
 		if !ok {
 			return newRequestError(msg.ID, api.ErrorNotFound, "node class was not found")
 		}
-		return api.NewResponse(msg.ID, api.NodeClassSnapshotResponse{
+		response := api.NodeClassSnapshotResponse{
 			Snapshot: api.NewNodeClassSnapshot(snapshot, s.admin.experimentalNodeTypes[snapshot.Class]),
-		})
+		}
+		s.localizeClass(s.currentLocale(), &response.Snapshot)
+		return api.NewResponse(msg.ID, response)
 
 	case api.MethodEngineNodeSnapshot:
 		req, err := decodePayload[api.IDRequest](msg)
@@ -545,6 +577,7 @@ func (s *apiSession) handleEngineMessage(msg api.Message) (api.Message, error) {
 		if !ok {
 			return newRequestError(msg.ID, api.ErrorNotFound, "node class was not found")
 		}
+		description, _ = s.admin.localizedContent.NodeLong(s.currentLocale(), req.Class, description)
 		return api.NewResponse(msg.ID, api.NodeClassLongDescriptionResponse{Description: description})
 
 	case api.MethodEngineAddNode:
@@ -864,6 +897,9 @@ func PrepareAdminAPI(cfg *Config) (*AdminAPI, error) {
 		return nil, err
 	}
 	api := AdminAPI{config: cfg}
+	if err := api.prepareLocalizedContent(defaultLocalesRoot()); err != nil {
+		return nil, err
+	}
 	if cfg.Protected.Admin.Web != 0 {
 		golog.Warn("Web admin API is enabled; the local stream admin API is safer for local administration")
 		if !cfg.Protected.Admin.WebFilters.Enabled() {

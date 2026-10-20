@@ -1,7 +1,6 @@
 package wireguardnodes
 
 import (
-	_ "embed"
 	"errors"
 	"fmt"
 	"slices"
@@ -31,14 +30,11 @@ type WireGuardClass struct {
 	Runtime Runtime
 }
 
-var (
-	//go:embed node_wireguard.md
-	WireGuardClassLongDescription string
-)
-
 func (WireGuardClass) ClassName() string        { return NodeTypeWireGuard }
 func (WireGuardClass) ShortDescription() string { return "WireGuard" }
-func (WireGuardClass) LongDescription() string  { return WireGuardClassLongDescription }
+func (WireGuardClass) LongDescription() string {
+	return "Owns a userspace WireGuard device and its tunnel data path."
+}
 func (WireGuardClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: links.TypeWGCtrl, InitialPorts: []pasta.Port{
 		TunPort("left", "Tun"),

@@ -1,7 +1,6 @@
 package dnsnodes
 
 import (
-	_ "embed"
 	"time"
 
 	"github.com/asciimoth/configer/configer"
@@ -28,11 +27,6 @@ const (
 	MeshNamesRequestTimeoutMSField = "requestTimeoutMS"
 )
 
-var (
-	//go:embed node_mesh_names.md
-	meshNamesClassLongDescription string
-)
-
 // MeshNamesClass builds mesh-aware DNS resolver nodes.
 type MeshNamesClass struct {
 	Runtime nodekit.Runtime
@@ -40,7 +34,9 @@ type MeshNamesClass struct {
 
 func (MeshNamesClass) ClassName() string        { return NodeTypeMeshNames }
 func (MeshNamesClass) ShortDescription() string { return "MeshNames DNS" }
-func (MeshNamesClass) LongDescription() string  { return meshNamesClassLongDescription }
+func (MeshNamesClass) LongDescription() string {
+	return "Resolves mesh host names and forwards other DNS requests."
+}
 func (MeshNamesClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: TypeDNS, InitialPorts: []pasta.Port{
 		DNSPort("left", "DNS"),
@@ -317,7 +313,6 @@ func (n *meshNamesNode) configBlock() formular.Block {
 			MeshNamesRequestTimeoutMSField,
 			"Request timeout (ms)",
 			n.requestTimeoutMS,
-			"Maximum time for one DNS exchange with an authoritative mesh node.",
 			n.formError,
 		),
 	}}

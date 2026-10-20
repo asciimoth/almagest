@@ -23,7 +23,7 @@ type TunJoinerClass struct {
 func (TunJoinerClass) ClassName() string        { return NodeTypeTunJoiner }
 func (TunJoinerClass) ShortDescription() string { return "TUN joiner" }
 func (TunJoinerClass) LongDescription() string {
-	return "Joins one default almagest/tun endpoint and any number of secondary almagest/tun endpoints using flow-aware gonnect/tun.Joiner routing."
+	return "Joins multiple TUN endpoints with flow-aware routing."
 }
 func (TunJoinerClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: TypeTun, InitialPorts: []pasta.Port{

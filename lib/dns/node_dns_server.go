@@ -1,8 +1,6 @@
 package dnsnodes
 
 import (
-	_ "embed"
-
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
 	"github.com/asciimoth/gonnect/dns"
@@ -18,11 +16,6 @@ const (
 	NodeTypeDNSServer = "almagest/DnsServer"
 )
 
-var (
-	//go:embed node_dns_server.md
-	dnsServerClassLongDescription string
-)
-
 // DNSServerClass builds DNS server nodes.
 type DNSServerClass struct {
 	Runtime nodekit.Runtime
@@ -30,7 +23,9 @@ type DNSServerClass struct {
 
 func (DNSServerClass) ClassName() string        { return NodeTypeDNSServer }
 func (DNSServerClass) ShortDescription() string { return "DNS server" }
-func (DNSServerClass) LongDescription() string  { return dnsServerClassLongDescription }
+func (DNSServerClass) LongDescription() string {
+	return "Serves DNS requests through an attached Network."
+}
 func (DNSServerClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: TypeDNS, InitialPorts: []pasta.Port{
 		nodekit.NetworkPort("right", "Network"),

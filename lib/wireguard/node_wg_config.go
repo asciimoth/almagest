@@ -1,7 +1,6 @@
 package wireguardnodes
 
 import (
-	_ "embed"
 	"errors"
 	"fmt"
 	"slices"
@@ -22,11 +21,6 @@ const (
 	NodeTypeWGConfig = "almagest/WGConfig"
 )
 
-var (
-	//go:embed node_wg_config.md
-	WGConfigClassLongDescription string
-)
-
 // WGConfigClass creates nodes that own a peer list and one named UDP
 // transport on a shared WireGuard device.
 type WGConfigClass struct {
@@ -35,7 +29,9 @@ type WGConfigClass struct {
 
 func (WGConfigClass) ClassName() string        { return NodeTypeWGConfig }
 func (WGConfigClass) ShortDescription() string { return "WireGuard peer configuration" }
-func (WGConfigClass) LongDescription() string  { return WGConfigClassLongDescription }
+func (WGConfigClass) LongDescription() string {
+	return "Configures peers on an attached WireGuard device."
+}
 func (WGConfigClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: TypeWGCtrl, InitialPorts: []pasta.Port{
 		WGCtrlPort("right", "WireGuard"),

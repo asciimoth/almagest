@@ -60,33 +60,26 @@ func (n *amnesiaNode) statusBlock() formular.Block {
 func (n *amnesiaNode) configBlock() formular.Block {
 	statusErr := n.formError != ""
 	enabled := nodekit.ConfigCheckbox(fieldEnabled, "Enabled", n.config.enabled)
-	enabled.Help = "Import the selected connection and keep its peer on the attached WireGuard node. Disable this option to remove the peer and stop Amnezia API activity."
 	connection := nodekit.ConfigSecretNameField(
 		fieldConnectionSecret, "Connection secret", n.config.connectionSecret,
 		statusErr, n.formError,
 	)
-	connection.Help = "Secret name containing an Amnezia vpn:// URL or native WireGuard/AmneziaWG configuration."
 	country := nodekit.ConfigTextField(
 		fieldServerCountryCode, "Server country", n.config.serverCountryCode,
 		statusErr, n.formError, false,
 	)
-	country.Help = "Optional ISO 3166-1 alpha-2 country code for service profile selection."
 	gatewayURL := nodekit.ConfigTextField(
 		fieldGatewayURL, "Gateway URL", n.config.gatewayURL,
 		statusErr, n.formError, false,
 	)
-	gatewayURL.Help = "Optional API-v2 gateway URL for a custom Amnezia service. HTTPS uses the selected TLS config."
 	gatewayKey := nodekit.ConfigSecretNameField(
 		fieldGatewayPublicKeySecret, "Gateway public key secret", n.config.gatewayPublicKeySecret,
 		statusErr, n.formError,
 	)
-	gatewayKey.Help = "Optional secret name containing the custom gateway RSA public key in PEM format."
 	connectEvent := nodekit.ConfigCheckbox(fieldConnectEvent, "Send connect event", n.config.connectEvent)
-	connectEvent.Help = "For service keys, tell the gateway that this profile request starts a connection. This option has no effect on native WireGuard or AmneziaWG profiles."
 	reconnect := formular.Item{
 		Type: formular.ItemButton, ID: "reconnect", Label: "Reconnect",
 		Inactive: n.pending || !n.config.enabled,
-		Help:     "Import the connection again and replace this node's tracked peer. This does not rotate the attached WireGuard node's private key.",
 	}
 	return formular.Block{ID: "config", Order: 20, Generation: 1, Form: true, Items: []formular.Item{
 		enabled,

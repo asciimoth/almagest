@@ -360,6 +360,14 @@ func runNetworkRole() error {
 	if err != nil {
 		return err
 	}
+	if value, set := os.LookupEnv("ALMAGEST_LOCALES_DIR"); set {
+		if !filepath.IsAbs(value) || filepath.Clean(value) != value {
+			return errors.New("ALMAGEST_LOCALES_DIR must be an absolute clean path")
+		}
+		production.LocalesDirectory = value
+	} else if info, statErr := os.Stat("/usr/share/almagest/locales"); statErr == nil && info.IsDir() {
+		production.LocalesDirectory = "/usr/share/almagest/locales"
+	}
 	if err := unix.Prctl(unix.PR_SET_DUMPABLE, 0, 0, 0, 0); err != nil {
 		return fmt.Errorf("disable network broker dumps: %w", err)
 	}

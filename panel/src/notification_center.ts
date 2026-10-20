@@ -1,3 +1,5 @@
+import { text as localizedText } from "./localization.js";
+
 export type NotificationTone = "success" | "info" | "warning" | "error";
 
 export type NotificationOptions = {
@@ -11,12 +13,14 @@ type NotificationEntry = {
   timer: number;
 };
 
-const DEFAULT_TITLES: Record<NotificationTone, string> = {
-  success: "Done",
-  info: "Notice",
-  warning: "Attention",
-  error: "Action failed",
-};
+function defaultTitle(tone: NotificationTone): string {
+  switch (tone) {
+    case "success": return localizedText("notification.success.title", "Done");
+    case "info": return localizedText("notification.info.title", "Notice");
+    case "warning": return localizedText("notification.warning.title", "Attention");
+    case "error": return localizedText("notification.error.title", "Action failed");
+  }
+}
 
 // Keep transient operation feedback in one place. The center owns stacking,
 // dismissal, timeouts, duplicate suppression, and accessible live-region roles.
@@ -32,7 +36,7 @@ export class NotificationCenter {
 
   show(message: string, options: NotificationOptions = {}): number {
     const tone = options.tone ?? "info";
-    const title = options.title ?? DEFAULT_TITLES[tone];
+    const title = options.title ?? defaultTitle(tone);
     const duration = options.duration ?? (tone === "error" ? 10_000 : 5_000);
     const duplicate = this.findDuplicate(title, message, tone);
     if (duplicate !== null) this.dismiss(duplicate);
@@ -90,7 +94,7 @@ export function createNotificationToast(
   options: Pick<NotificationOptions, "title" | "tone"> = {},
 ): HTMLDivElement {
   const tone = options.tone ?? "info";
-  const title = options.title ?? DEFAULT_TITLES[tone];
+  const title = options.title ?? defaultTitle(tone);
   const toast = document.createElement("div");
   toast.className = `notification notification-${tone}`;
   toast.dataset.notificationTitle = title;
@@ -111,8 +115,8 @@ export function createNotificationToast(
   dismiss.type = "button";
   dismiss.className = "icon-button notification-dismiss";
   dismiss.textContent = "×";
-  dismiss.title = "Dismiss";
-  dismiss.setAttribute("aria-label", "Dismiss notification");
+  dismiss.title = localizedText("notification.dismiss.title", "Dismiss");
+  dismiss.setAttribute("aria-label", localizedText("notification.dismiss.aria_label", "Dismiss notification"));
   toast.append(copy, dismiss);
   return toast;
 }

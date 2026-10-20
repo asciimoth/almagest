@@ -1,3 +1,5 @@
+import { text as localizedText } from "./localization.js";
+
 export type TLSSource = "mutable" | "protected" | "os" | "builtin" | (string & {});
 
 export const TLS_BUILTIN_CA_NAME = "builtin-ca:almagest";
@@ -204,13 +206,13 @@ export function formatTLSSource(source: TLSSource | undefined): string {
     case "os":
       return "OS";
     case "builtin":
-      return "built-in";
+      return localizedText("tls.source.builtin", "built-in");
     case "protected":
-      return "protected";
+      return localizedText("tls.source.protected", "protected");
     case "mutable":
     case "":
     case undefined:
-      return "mutable";
+      return localizedText("tls.source.mutable", "mutable");
     default:
       return source;
   }
@@ -221,17 +223,17 @@ export function formatTLSCertMeta(entry: TLSCertEntry): string {
   if (entry.is_ca) parts.push("CA");
   const certcat = formatTLSCertcatBadge(entry);
   if (certcat) parts.push(certcat);
-  if (entry.read_only) parts.push("read-only");
-  if (entry.not_after) parts.push(`expires ${entry.not_after}`);
+  if (entry.read_only) parts.push(localizedText("tls.meta.read_only", "read-only"));
+  if (entry.not_after) parts.push(localizedText("tls.meta.expires", "expires {time}", { time: entry.not_after }));
   return parts.join(" · ");
 }
 
 export function formatTLSPolicyMeta(entry: TLSPolicyEntry): string {
-  const parts = [formatTLSSource(entry.source), entry.valid ? "valid" : "invalid"];
-  if (entry.spec.trust_anchors?.some((anchor) => isBuiltinTLSCertName(anchor.cert))) parts.push("built-in CA");
+  const parts = [formatTLSSource(entry.source), entry.valid ? localizedText("tls.meta.valid", "valid") : localizedText("tls.meta.invalid", "invalid")];
+  if (entry.spec.trust_anchors?.some((anchor) => isBuiltinTLSCertName(anchor.cert))) parts.push(localizedText("tls.meta.builtin_ca", "built-in CA"));
   const watchers = entry.watchers ?? [];
-  if (watchers.length) parts.push(`${watchers.length} watcher${watchers.length === 1 ? "" : "s"}`);
-  if (entry.read_only) parts.push("read-only");
+  if (watchers.length) parts.push(localizedText("tls.meta.watchers", "{count} watcher(s)", { count: watchers.length }));
+  if (entry.read_only) parts.push(localizedText("tls.meta.read_only", "read-only"));
   return parts.join(" · ");
 }
 
@@ -241,7 +243,7 @@ export function formatTLSPolicySpec(spec: TLSPolicySpec): string {
 
 export function parseTLSPolicySpec(text: string): TLSPolicySpec {
   const parsed = JSON.parse(text) as unknown;
-  if (!isRecord(parsed)) throw new Error("Policy spec must be a JSON object.");
+  if (!isRecord(parsed)) throw new Error(localizedText("tls.validation.policy_object", "Policy spec must be a JSON object."));
   const spec: TLSPolicySpec = {};
   const anchors = parseArray(parsed.trust_anchors, "trust_anchors").map(parseTrustAnchor);
   const constraints = parseArray(parsed.constraints, "constraints").map(parseAuthorityConstraint);
@@ -257,14 +259,14 @@ export function emptyTLSPolicySpec(): TLSPolicySpec {
 }
 
 export function describeTLSScope(scope: TLSScope | undefined): string {
-  if (!scope) return "empty scope";
-  if (scope.any) return "any server";
+  if (!scope) return localizedText("tls.scope.empty", "empty scope");
+  if (scope.any) return localizedText("tls.scope.any", "any server");
   const parts: string[] = [];
   for (const rule of scope.dns ?? []) {
     parts.push(rule.include_subdomains ? `*.${rule.domain}` : rule.domain);
   }
   parts.push(...(scope.ip_prefixes ?? []));
-  return parts.length ? parts.join(", ") : "empty scope";
+  return parts.length ? parts.join(", ") : localizedText("tls.scope.empty", "empty scope");
 }
 
 export function formatTLSCertcatBadge(entry: TLSCertEntry): string {
@@ -278,26 +280,26 @@ export function formatTLSCertcatBadge(entry: TLSCertEntry): string {
 export function formatTLSCertcatMatch(match: TLSCertcatMatch): string {
   switch (match.hazard_class) {
     case "private_key_disclosure":
-      return "Private key was disclosed";
+      return localizedText("tls.certcat.private_key_disclosure", "Private key was disclosed");
     case "interception_ca":
-      return "Interception certificate authority";
+      return localizedText("tls.certcat.interception_ca", "Interception certificate authority");
     case "government_ca":
-      return "Government certificate authority";
+      return localizedText("tls.certcat.government_ca", "Government certificate authority");
     case "state_interception_ca":
-      return "State interception certificate authority";
+      return localizedText("tls.certcat.state_interception_ca", "State interception certificate authority");
     case "time_scoped_root_program_distrust":
-      return "Platform distrust applies";
+      return localizedText("tls.certcat.platform_distrust", "Platform distrust applies");
     case "chromium_certificate_blocklist":
     case "chromium_spki_blocklist":
-      return "Browser blocklist match";
+      return localizedText("tls.certcat.browser_blocklist", "Browser blocklist match");
   }
   switch (match.kind) {
     case "narrow_scope_ca":
-      return "Use only for a narrow address scope";
+      return localizedText("tls.certcat.narrow_scope", "Use only for a narrow address scope");
     case "service_private_anchor":
-      return "Use only for specific service addresses";
+      return localizedText("tls.certcat.service_addresses", "Use only for specific service addresses");
     case "hazard_certificate":
-      return "Certificate warning";
+      return localizedText("tls.certcat.warning", "Certificate warning");
   }
   return formatTLSCertcatSeverity(match.severity);
 }
@@ -306,13 +308,13 @@ export function describeTLSCertcatScope(scope: TLSCertcatScope | undefined): str
   if (!scope) return "";
   const parts: string[] = [];
   if (scope.permitted_dns_subtrees?.length) {
-    parts.push(`Use only for DNS names in ${scope.permitted_dns_subtrees.join(", ")}`);
+    parts.push(localizedText("tls.certcat.dns_names", "Use only for DNS names in {names}", { names: scope.permitted_dns_subtrees.join(", ") }));
   }
   if (scope.permitted_ip_cidrs?.length) {
-    parts.push(`Use only for IP ranges in ${scope.permitted_ip_cidrs.join(", ")}`);
+    parts.push(localizedText("tls.certcat.ip_ranges", "Use only for IP ranges in {ranges}", { ranges: scope.permitted_ip_cidrs.join(", ") }));
   }
-  if (scope.requires_explicit_allowlist) parts.push("Use only for explicitly allowed addresses");
-  if (scope.reject_ip_targets) parts.push("Do not use for direct IP targets");
+  if (scope.requires_explicit_allowlist) parts.push(localizedText("tls.certcat.explicit_allowlist", "Use only for explicitly allowed addresses"));
+  if (scope.reject_ip_targets) parts.push(localizedText("tls.certcat.reject_ip_targets", "Do not use for direct IP targets"));
   return parts.join(", ");
 }
 
@@ -320,32 +322,32 @@ export function describeTLSCertcatRecommendation(match: TLSCertcatMatch): string
   switch (match.recommendation) {
     case "deny_exact_match":
     case "deny_exact_spki":
-      return "Do not trust this certificate.";
+      return localizedText("tls.certcat.do_not_trust", "Do not trust this certificate.");
     case "deny_exact_certificate_even_if_user_or_os_installed":
-      return "Do not trust this certificate, even if it is installed locally.";
+      return localizedText("tls.certcat.do_not_trust_local", "Do not trust this certificate, even if it is installed locally.");
     case "trust_only_for_declared_scope":
-      return "Use this certificate only for the listed DNS names or IP ranges.";
+      return localizedText("tls.certcat.use_declared_scope", "Use this certificate only for the listed DNS names or IP ranges.");
     case "only_use_for_explicit_cloudflare_origin_hosts":
-      return "Use this certificate only for explicit Cloudflare origin hosts.";
+      return localizedText("tls.certcat.cloudflare_origins", "Use this certificate only for explicit Cloudflare origin hosts.");
     case "only_use_for_russian_government_resources":
-      return "This certificate is related to the Russian government. Use it only to access Russian government resources.";
+      return localizedText("tls.certcat.russian_government", "This certificate is related to the Russian government. Use it only to access Russian government resources.");
     case "apply_target_platform_distrust_cutoff":
-      return "Follow the platform distrust date for this certificate.";
+      return localizedText("tls.certcat.follow_distrust_date", "Follow the platform distrust date for this certificate.");
   }
   switch (match.action) {
     case "deny":
     case "deny_even_if_locally_installed":
-      return "Do not trust this certificate.";
+      return localizedText("tls.certcat.do_not_trust", "Do not trust this certificate.");
     case "narrow_scope":
     case "offer_scoped_service_anchor":
-      return "Use this certificate only with a specific, narrow set of addresses.";
+      return localizedText("tls.certcat.use_narrow_addresses", "Use this certificate only with a specific, narrow set of addresses.");
     case "enforce_platform_cutoff":
-      return "Follow the platform distrust date for this certificate.";
+      return localizedText("tls.certcat.follow_distrust_date", "Follow the platform distrust date for this certificate.");
     case "warn":
-      return "Review before you trust this certificate.";
+      return localizedText("tls.certcat.review", "Review before you trust this certificate.");
   }
   if (match.scope?.permitted_dns_subtrees?.length || match.scope?.permitted_ip_cidrs?.length) {
-    return "Use this certificate only with the listed narrow address scope.";
+    return localizedText("tls.certcat.use_listed_scope", "Use this certificate only with the listed narrow address scope.");
   }
   return "";
 }
@@ -398,15 +400,15 @@ function tlsCertcatSeverityRank(severity: string): number {
 function formatTLSCertcatSeverity(severity: string | undefined): string {
   switch (severity) {
     case "critical":
-      return "critical warning";
+      return localizedText("tls.severity.critical", "critical warning");
     case "high":
-      return "high warning";
+      return localizedText("tls.severity.high", "high warning");
     case "warning":
-      return "warning";
+      return localizedText("tls.severity.warning", "warning");
     case "info":
-      return "notice";
+      return localizedText("tls.severity.notice", "notice");
     default:
-      return "warning";
+      return localizedText("tls.severity.warning", "warning");
   }
 }
 

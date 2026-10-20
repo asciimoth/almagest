@@ -1,0 +1,1 @@
+Splits one almagest/tun endpoint into gonnect/tun.Splitter frontend slots. It automatically learns source addresses and destination prefixes from each slot's TunConfig messages, uses the most specific destination prefix, and sends unmatched packets to slot 1. It also preserves each output's route-to-address association for upstream source selection.

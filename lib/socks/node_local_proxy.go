@@ -1,8 +1,6 @@
 package socksnodes
 
 import (
-	_ "embed"
-
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
 	"github.com/asciimoth/gonnect"
@@ -16,18 +14,15 @@ const (
 	NodeTypeLocalProxy = "almagest/LocalProxy"
 )
 
-var (
-	//go:embed node_local_proxy.md
-	localProxyClassLongDescription string
-)
-
 type LocalProxyClass struct {
 	Runtime Runtime
 }
 
 func (LocalProxyClass) ClassName() string        { return NodeTypeLocalProxy }
 func (LocalProxyClass) ShortDescription() string { return "Local proxy" }
-func (LocalProxyClass) LongDescription() string  { return localProxyClassLongDescription }
+func (LocalProxyClass) LongDescription() string {
+	return "Publishes a local SOCKS proxy for an attached Network."
+}
 func (LocalProxyClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: TypeNetwork, InitialPorts: []pasta.Port{
 		NetworkPort("right", "proxy"),

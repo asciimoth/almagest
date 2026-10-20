@@ -9,6 +9,8 @@ const (
 	MethodAdminAcquireMutation AdminMethod = "acquire_mutation"
 	MethodAdminRenewMutation   AdminMethod = "renew_mutation"
 	MethodAdminReleaseMutation AdminMethod = "release_mutation"
+	MethodAdminLocaleSnapshot  AdminMethod = "locale_snapshot"
+	MethodAdminSetLocale       AdminMethod = "set_locale"
 
 	EventAdminProjectVersionStatus AdminMethod = "project_version_status"
 )
@@ -21,7 +23,26 @@ func AdminMethods() []string {
 		string(MethodAdminAcquireMutation),
 		string(MethodAdminRenewMutation),
 		string(MethodAdminReleaseMutation),
+		string(MethodAdminLocaleSnapshot),
+		string(MethodAdminSetLocale),
 	}
+}
+
+type SetLocaleRequest struct {
+	Locale string `json:"locale"`
+}
+
+type AvailableLocale struct {
+	Locale string `json:"locale"`
+	Name   string `json:"name"`
+}
+
+type LocaleSnapshot struct {
+	Requested string            `json:"requested"`
+	Effective string            `json:"effective"`
+	Available []AvailableLocale `json:"available"`
+	Panel     map[string]string `json:"panel"`
+	Revision  uint64            `json:"revision"`
 }
 
 type HelloRequest struct {

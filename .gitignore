@@ -53,3 +53,5 @@ go.work.sum
 
 almagest-subprogram-launcher
 
+.ruff_cache/
+

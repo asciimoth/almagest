@@ -1,7 +1,6 @@
 package dnsnodes
 
 import (
-	_ "embed"
 	"errors"
 	"strings"
 	"unicode/utf8"
@@ -38,9 +37,6 @@ const (
 )
 
 var (
-	//go:embed node_dns_cache.md
-	dnsCacheClassLongDescription string
-
 	_ dnsAttachableCache = (*dns.Cache)(nil)
 
 	dnsCacheNewCache = func(
@@ -68,7 +64,9 @@ type DNSCacheClass struct {
 
 func (DNSCacheClass) ClassName() string        { return NodeTypeDnsCache }
 func (DNSCacheClass) ShortDescription() string { return "DNS cache" }
-func (DNSCacheClass) LongDescription() string  { return dnsCacheClassLongDescription }
+func (DNSCacheClass) LongDescription() string {
+	return "Caches DNS responses from an attached upstream resolver."
+}
 func (DNSCacheClass) DefaultNodeParams() pasta.NodeClassParams {
 	return pasta.NodeClassParams{PrimaryType: TypeDNS, InitialPorts: []pasta.Port{
 		DNSPort("left", "DNS"),
