@@ -435,8 +435,7 @@ to qualify each claim. The reusable graph and node code remains in `lib/` and
 does not import the Windows backend.
 
 Before loading config, almagestd resolves path-valued CLI args to absolute
-paths. After config parsing and before daemon resources are started or
-privileges are dropped, it sets up file storage and changes the process working
-directory to that storage directory. This keeps accidental relative file writes
-inside the daemon storage area without breaking relative paths supplied at
-startup.
+paths. After config parsing and before daemon resources are started, it sets up
+file storage and changes the process working directory to that storage
+directory. This keeps accidental relative file writes inside the daemon storage
+area without breaking relative paths supplied at startup.
