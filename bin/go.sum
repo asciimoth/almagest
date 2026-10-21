@@ -26,8 +26,8 @@ github.com/asciimoth/mullvad-split-tunnel-go v0.1.0 h1:xFxy8gGM0PStEIUFsHNDpip8v
 github.com/asciimoth/mullvad-split-tunnel-go v0.1.0/go.mod h1:kDSWGlobZCQT9XLCGDYuVdE6Cd5SccE9r2X6fjHWHQs=
 github.com/asciimoth/p-mark v0.5.0 h1:Ky10EO2rvcWx96DzaizuAUyEa8Uap00qz6hQgXJC/3c=
 github.com/asciimoth/p-mark v0.5.0/go.mod h1:uBcCKIk6x5hjb7rDnH4trBCAfHr/4xOWM8q+tydLJAw=
-github.com/asciimoth/pasta/pasta v0.10.0 h1:wTwhhkQnkmcTXvRbXyPmoyIzp2q1LrgkGDzMa0gMPjI=
-github.com/asciimoth/pasta/pasta v0.10.0/go.mod h1:YnjJzTZ9XXWCn+0nxAY30YSjzJq32BxUD+CZ1HYfRsw=
+github.com/asciimoth/pasta/pasta v0.10.3 h1:T015DrpX3VVUeGAqjRwpWrHkjWLKLVW7ORuShk18l14=
+github.com/asciimoth/pasta/pasta v0.10.3/go.mod h1:YnjJzTZ9XXWCn+0nxAY30YSjzJq32BxUD+CZ1HYfRsw=
 github.com/asciimoth/persist v0.2.0 h1:yqsu1+5pystESKm8yVVSdG15kqL3Tiwl2tEYtvjcBFE=
 github.com/asciimoth/persist v0.2.0/go.mod h1:idB/ttCb+L8i51uz/7ec+HzrIAbdPQsjVbu0P8hSQBk=
 github.com/asciimoth/putback v0.3.0 h1:NKyX1K2yR/pHt9ov7BifA7qd8oMSOhsit4hMf694e30=

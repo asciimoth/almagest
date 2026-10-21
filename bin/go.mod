@@ -13,7 +13,7 @@ require (
 	github.com/asciimoth/gobox v0.1.0
 	github.com/asciimoth/gonnect v0.56.0
 	github.com/asciimoth/gonnect-netstack v0.9.1
-	github.com/asciimoth/pasta/pasta v0.10.0
+	github.com/asciimoth/pasta/pasta v0.10.3
 	github.com/asciimoth/socksgo v0.5.1
 	github.com/asciimoth/sysnet-linux v0.10.1
 	github.com/asciimoth/sysnet-windows v0.5.0
