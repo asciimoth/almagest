@@ -7,7 +7,7 @@ import {
 } from "./safe_dom.js";
 import { readLocaleCookie, writeLocaleCookie } from "./localization.js";
 import { adminPanelWindowName, openOrFocusAdminPanel } from "./window_navigation.js";
-import { initialTopicOpen, selectPageInTree } from "./docs_tree.js";
+import { handoffBoundaryScroll, initialTopicOpen, selectPageInTree } from "./docs_tree.js";
 import {
   DEFAULT_NODE_TEXT_COLOR,
   DEFAULT_NODE_TITLE_COLOR,
@@ -72,6 +72,15 @@ navigationScrim.addEventListener("click", () => { setNavigationOpen(false); });
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") setNavigationOpen(false);
 });
+
+treeElement.addEventListener("wheel", (event) => {
+  if (event.ctrlKey || Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
+  const lineHeight = Number.parseFloat(window.getComputedStyle(treeElement).lineHeight) || 16;
+  const deltaY = event.deltaY * (event.deltaMode === WheelEvent.DOM_DELTA_LINE
+    ? lineHeight
+    : event.deltaMode === WheelEvent.DOM_DELTA_PAGE ? treeElement.clientHeight : 1);
+  if (handoffBoundaryScroll(treeElement, pageElement, deltaY)) event.preventDefault();
+}, { passive: false });
 
 function pageMark(value: unknown): PageMark | null {
   return value === "unavailable" || value === "deprecated" ? value : null;

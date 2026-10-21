@@ -20,3 +20,22 @@ export function selectPageInTree(root: ParentNode, id: string): void {
     topic = topic.parentElement?.closest<HTMLDetailsElement>("details") ?? null;
   }
 }
+
+type ScrollContainer = Pick<HTMLElement, "clientHeight" | "scrollHeight" | "scrollTop">;
+
+export function handoffBoundaryScroll(
+  source: ScrollContainer,
+  destination: ScrollContainer,
+  deltaY: number,
+): boolean {
+  if (deltaY === 0) return false;
+
+  const maximumScrollTop = Math.max(0, source.scrollHeight - source.clientHeight);
+  const atBoundary = deltaY < 0
+    ? source.scrollTop <= 0
+    : source.scrollTop >= maximumScrollTop - 1;
+  if (!atBoundary) return false;
+
+  destination.scrollTop += deltaY;
+  return true;
+}

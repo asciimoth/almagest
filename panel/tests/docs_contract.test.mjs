@@ -81,6 +81,8 @@ test("documentation loads localized pages over HTTP without a WebSocket", () => 
   assert.match(docsSource, /event\.key === "Escape"/);
   assert.match(docsSource, /addEventListener\("toggle"/);
   assert.match(docsSource, /addEventListener\("change"/);
+  assert.match(docsSource, /treeElement\.addEventListener\("wheel"/);
+  assert.match(docsSource, /handoffBoundaryScroll\(treeElement, pageElement, deltaY\)/);
   assert.match(docsSource, /defaultPageID\(tree\.topics\)/);
   assert.doesNotMatch(docsSource, /WebSocket/);
 });
