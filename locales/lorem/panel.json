@@ -347,6 +347,7 @@
   "tab.snapshots": "Lorem · Snapshots",
   "tab.tls": "Lorem · TLS",
   "docs.open.title": "Lorem · Open documentation in a new tab",
+  "docs.node.deprecated": "Lorem · This node is deprecated.",
   "docs.node.description_unavailable": "Lorem · Detailed documentation is not available for this node class.",
   "docs.node.unavailable": "Lorem · This node is not available in the current daemon environment.",
   "tabs.aria_label": "Lorem · Admin tabs",

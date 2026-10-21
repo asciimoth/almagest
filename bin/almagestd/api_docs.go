@@ -17,6 +17,7 @@ const (
 	docsLocaleCookieName   = "almagest_locale"
 	docsLocaleCookieMaxAge = 365 * 24 * 60 * 60
 	docsNodeUnavailable    = "This node is not available in the current daemon environment."
+	docsNodeDeprecated     = "This node is deprecated."
 	docsNodeNoDescription  = "Detailed documentation is not available for this node class."
 )
 
@@ -47,11 +48,21 @@ func (s *apiSession) docsTree(locale string) api.DocsTreeResponse {
 	content := s.admin.localizedContent
 	topics, effective := content.DocsTree(locale, classes, names)
 	message := docsNodeUnavailable
-	if panel := content.Panel(effective); panel["docs.node.unavailable"] != "" {
-		message = panel["docs.node.unavailable"]
+	deprecatedMessage := docsNodeDeprecated
+	if panel := content.Panel(effective); panel != nil {
+		if panel["docs.node.unavailable"] != "" {
+			message = panel["docs.node.unavailable"]
+		}
+		if panel["docs.node.deprecated"] != "" {
+			deprecatedMessage = panel["docs.node.deprecated"]
+		}
 	}
 	result := api.DocsTreeResponse{
-		Locale: effective, Topics: apiDocsTopics(topics, available), NodeUnavailableMessage: message,
+		Locale: effective, Topics: s.apiDocsTopics(topics, available), NodeUnavailableMessage: message,
+		MarkMessages: map[api.DocsPageMark]string{
+			api.DocsPageMarkUnavailable: message,
+			api.DocsPageMarkDeprecated:  deprecatedMessage,
+		},
 	}
 	if content == nil {
 		result.Available = []api.AvailableLocale{{Locale: "en", Name: "English"}}
@@ -111,18 +122,24 @@ func (s *apiSession) docsNodeClass(locale, class string) (api.DocsNodeClassRespo
 	return result, true
 }
 
-func apiDocsTopics(values []localizedcontent.DocTopic, available map[string]bool) []api.DocsTopic {
+func (s *apiSession) apiDocsTopics(values []localizedcontent.DocTopic, available map[string]bool) []api.DocsTopic {
 	result := make([]api.DocsTopic, 0, len(values))
 	for _, value := range values {
 		topic := api.DocsTopic{
 			ID: value.ID, Name: value.Name, Folded: value.Folded, Order: value.Order,
-			Topics: apiDocsTopics(value.Topics, available), Pages: make([]api.DocsPageSummary, 0, len(value.Pages)),
+			Topics: s.apiDocsTopics(value.Topics, available), Pages: make([]api.DocsPageSummary, 0, len(value.Pages)),
 		}
 		for _, page := range value.Pages {
 			summary := api.DocsPageSummary{ID: page.ID, Name: page.Name, Folded: page.Folded, Order: page.Order, Default: page.Default}
 			if class, isNode := strings.CutPrefix(page.ID, "node/"); isNode {
 				value := available[class]
 				summary.Available = &value
+				if !value {
+					summary.Marks = append(summary.Marks, api.DocsPageMarkUnavailable)
+				}
+				if s.admin.deprecatedNodeTypes[class] {
+					summary.Marks = append(summary.Marks, api.DocsPageMarkDeprecated)
+				}
 			}
 			topic.Pages = append(topic.Pages, summary)
 		}

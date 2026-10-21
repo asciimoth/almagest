@@ -347,6 +347,7 @@
   "tab.snapshots": "Snapshots",
   "tab.tls": "TLS",
   "docs.open.title": "Open documentation in a new tab",
+  "docs.node.deprecated": "This node is deprecated.",
   "docs.node.description_unavailable": "Detailed documentation is not available for this node class.",
   "docs.node.unavailable": "This node is not available in the current daemon environment.",
   "tabs.aria_label": "Admin tabs",

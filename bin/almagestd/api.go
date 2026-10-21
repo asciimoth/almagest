@@ -51,7 +51,9 @@ type AdminAPI struct {
 	snapshots             *snapshotService
 	// experimentalNodeTypes marks opt-in classes in all node-class API payloads.
 	experimentalNodeTypes map[string]bool
-	localizedContent      *localizedcontent.Reader
+	// deprecatedNodeTypes marks classes that remain available for compatibility.
+	deprecatedNodeTypes map[string]bool
+	localizedContent    *localizedcontent.Reader
 
 	// mutations prevents a snapshot mutation from overlapping admin operations
 	// that read or mutate the graph and persistent storage.

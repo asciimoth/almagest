@@ -17,10 +17,17 @@ import {
   type TypePalette,
 } from "./pasta_model.js";
 
-type PageSummary = { id: string; name: string; folded: boolean; order?: number; default?: boolean; available?: boolean };
+type PageMark = "unavailable" | "deprecated";
+type PageSummary = { id: string; name: string; folded: boolean; order?: number; default?: boolean; available?: boolean; marks?: PageMark[] };
 type Topic = { id: string; name: string; folded: boolean; order?: number; topics: Topic[]; pages: PageSummary[] };
 type AvailableLocale = { locale: string; name: string };
-type TreeResponse = { locale: string; available: AvailableLocale[]; topics: Topic[]; node_unavailable_message: string };
+type TreeResponse = {
+  locale: string;
+  available: AvailableLocale[];
+  topics: Topic[];
+  node_unavailable_message: string;
+  mark_messages?: Partial<Record<PageMark, string>>;
+};
 type NodeClassResponse = { snapshot: NodeClassSnapshot; colormap: Record<string, TypePalette> };
 
 const localeStorageKey = "almagest.panel.locale.v1";
@@ -38,6 +45,30 @@ const pageNames = new Map<string, string>();
 const pageAvailability = new Map<string, boolean>();
 const topicFolds = savedTopicFolds();
 let nodeUnavailableMessage = "This node is not available in the current daemon environment.";
+let markMessages: Record<PageMark, string> = {
+  unavailable: nodeUnavailableMessage,
+  deprecated: "This node is deprecated.",
+};
+
+const markLabels: Record<PageMark, string> = { unavailable: "", deprecated: "D" };
+
+function pageMark(value: unknown): PageMark | null {
+  return value === "unavailable" || value === "deprecated" ? value : null;
+}
+
+function renderPageMarks(values: readonly unknown[] | undefined): HTMLElement | null {
+  const marks = (values ?? []).map(pageMark).filter((value): value is PageMark => value !== null);
+  if (marks.length === 0) return null;
+  const container = document.createElement("span");
+  container.className = "docs-page-marks";
+  for (const mark of marks) {
+    const status = textElement("span", markLabels[mark], `docs-page-mark docs-page-mark-${mark}`);
+    status.title = markMessages[mark];
+    status.setAttribute("aria-label", markMessages[mark]);
+    container.append(status);
+  }
+  return container;
+}
 
 adminPanelLink.target = adminPanelWindowName(window.location.origin);
 adminPanelLink.addEventListener("click", (event) => {
@@ -131,13 +162,9 @@ function renderTopics(topics: readonly Topic[]): DocumentFragment {
     children.className = "docs-tree-children";
     for (const page of topic.pages) {
       const link = document.createElement("a");
-      if (page.available === false) {
-        const status = textElement("span", "", "docs-node-unavailable-dot");
-        status.title = nodeUnavailableMessage;
-        status.setAttribute("aria-label", nodeUnavailableMessage);
-        link.append(status);
-      }
       link.append(document.createTextNode(page.name));
+      const marks = renderPageMarks(page.marks ?? (page.available === false ? ["unavailable"] : []));
+      if (marks) link.append(marks);
       link.href = docsURL(page.id);
       link.dataset.pageId = page.id;
       link.classList.toggle("active", page.id === currentPage);
@@ -282,6 +309,10 @@ async function loadTree(locale: string): Promise<void> {
     const tree = await fetchJSON<TreeResponse>(docsAPIURL("tree"));
     effectiveLocale = tree.locale;
     nodeUnavailableMessage = tree.node_unavailable_message || nodeUnavailableMessage;
+    markMessages = {
+      unavailable: tree.mark_messages?.unavailable || nodeUnavailableMessage,
+      deprecated: tree.mark_messages?.deprecated || markMessages.deprecated,
+    };
     saveLocale(tree.locale);
     document.documentElement.lang = tree.locale;
     renderLocaleOptions(tree.available, tree.locale);

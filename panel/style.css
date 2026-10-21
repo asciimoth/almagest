@@ -174,13 +174,34 @@ a:focus-visible {
   font-size: 13px;
 }
 
-.docs-node-unavailable-dot {
+.docs-page-marks {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 5px;
+  align-items: center;
+}
+
+.docs-page-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: help;
+}
+
+.docs-page-mark-unavailable {
   flex: 0 0 auto;
   width: 7px;
   height: 7px;
   border-radius: 50%;
   background: var(--red);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--red), transparent 78%);
+}
+
+.docs-page-mark-deprecated {
+  color: var(--overlay1);
+  font-size: 11px;
+  font-weight: 750;
+  line-height: 1;
 }
 
 .docs-tree a:hover,

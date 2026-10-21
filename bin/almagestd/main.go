@@ -303,6 +303,9 @@ func runDaemon(
 	admin.tls = kv
 	admin.tlsOSAuthorityFetcher = platform.OSAuthorityFetcher()
 	admin.experimentalNodeTypes = make(map[string]bool)
+	admin.deprecatedNodeTypes = map[string]bool{
+		"almagest/AmnesiaCtrl": true,
+	}
 
 	logf := NewLogFactory(conf.LogCache().MergeArgs(&arguments))
 	application.OwnLogging(logf.Close)

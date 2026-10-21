@@ -29,7 +29,7 @@ func TestDocsAPIFiltersRuntimeClassesAndServesLocalizedHTTP(t *testing.T) {
 		writeLocaleTestFile(t, root, locale, "manifest.json", `{"format":1,"locale":"`+locale+`","name":"`+locale+`","development_only":`+development+`}`)
 		panel := `{}`
 		if locale == "lorem" {
-			panel = `{"docs.node.unavailable":"Nodus hic non adest"}`
+			panel = `{"docs.node.unavailable":"Nodus hic non adest","docs.node.deprecated":"Nodus obsoletus est"}`
 		}
 		writeLocaleTestFile(t, root, locale, "panel.json", panel)
 		writeLocaleTestFile(t, root, locale, "menus.json", `{}`)
@@ -68,6 +68,9 @@ func TestDocsAPIFiltersRuntimeClassesAndServesLocalizedHTTP(t *testing.T) {
 		experimentalNodeTypes: map[string]bool{
 			"test/AdminAPIBatchNode": true,
 		},
+		deprecatedNodeTypes: map[string]bool{
+			"test/AdminAPIBatchNode": true,
+		},
 	}
 	session := admin.newAPISession(engine, nil, nil)
 	setLocale := mustRequest(t, "locale", api.SurfaceAdmin, string(api.MethodAdminSetLocale), api.SetLocaleRequest{Locale: "lorem"})
@@ -83,16 +86,22 @@ func TestDocsAPIFiltersRuntimeClassesAndServesLocalizedHTTP(t *testing.T) {
 	foundTestClass := false
 	foundDebugClass := false
 	foundDocumentedOnly := false
+	foundDeprecated := false
 	availablePageIDs := make([]string, 0, len(tree.Topics[0].Pages))
 	for _, page := range tree.Topics[0].Pages {
 		foundTestClass = foundTestClass || page.ID == "node/test/AdminAPIBatchNode" && page.Name == "Nodus administrativus"
+		foundDeprecated = foundDeprecated || page.ID == "node/test/AdminAPIBatchNode" && slices.Contains(page.Marks, api.DocsPageMarkDeprecated)
 		foundDebugClass = foundDebugClass || page.ID == "node/test/DebugDocsNode"
-		foundDocumentedOnly = foundDocumentedOnly || page.ID == "node/test/DocumentedOnly" && page.Name == "Documented only" && page.Available != nil && !*page.Available
+		foundDocumentedOnly = foundDocumentedOnly || page.ID == "node/test/DocumentedOnly" && page.Name == "Documented only" && page.Available != nil && !*page.Available && slices.Contains(page.Marks, api.DocsPageMarkUnavailable)
 		if page.Available != nil && *page.Available {
 			availablePageIDs = append(availablePageIDs, page.ID)
 		}
 	}
-	if err != nil || tree.Locale != "lorem" || tree.NodeUnavailableMessage != "Nodus hic non adest" || len(tree.Available) != 2 || tree.Available[1].Locale != "lorem" || len(tree.Topics) != 1 || tree.Topics[0].Name != "Nodi" || !foundTestClass || !foundDocumentedOnly || foundDebugClass {
+	if err != nil || tree.Locale != "lorem" || tree.NodeUnavailableMessage != "Nodus hic non adest" ||
+		tree.MarkMessages[api.DocsPageMarkUnavailable] != "Nodus hic non adest" ||
+		tree.MarkMessages[api.DocsPageMarkDeprecated] != "Nodus obsoletus est" ||
+		len(tree.Available) != 2 || tree.Available[1].Locale != "lorem" || len(tree.Topics) != 1 ||
+		tree.Topics[0].Name != "Nodi" || !foundTestClass || !foundDeprecated || !foundDocumentedOnly || foundDebugClass {
 		t.Fatalf("tree = %#v, %v", tree, err)
 	}
 	orderedClasses, _ := docsRuntimeClasses(engine)

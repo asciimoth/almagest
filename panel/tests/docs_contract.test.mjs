@@ -45,8 +45,11 @@ test("documentation loads localized pages over HTTP without a WebSocket", () => 
   assert.match(docsSource, /docsURL\(currentPage, window\.location\.hash\)/);
   assert.match(docsSource, /docsAPIURL\("node-class", \{ id \}\)/);
   assert.match(docsSource, /void loadNodePreview\(id, title\)/);
-  assert.match(docsSource, /page\.available === false/);
-  assert.match(docsSource, /docs-node-unavailable-dot/);
+  assert.match(docsSource, /renderPageMarks\(page\.marks/);
+  assert.match(docsSource, /deprecated: "D"/);
+  assert.match(docsSource, /status\.title = markMessages\[mark\]/);
+  assert.match(docsSource, /status\.setAttribute\("aria-label", markMessages\[mark\]\)/);
+  assert.doesNotMatch(docsSource, /innerHTML/);
   assert.match(docsSource, /if \(!unavailable\) void loadNodePreview/);
   assert.match(docsSource, /console\.error\(`Could not load node preview/);
   assert.match(docsSource, /writeLocaleCookie/);

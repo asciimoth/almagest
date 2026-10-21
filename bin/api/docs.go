@@ -25,8 +25,16 @@ type DocsPageSummary struct {
 	Default bool   `json:"default,omitempty"`
 	// Available is set only for node pages. It reports whether the current
 	// daemon registered that node class.
-	Available *bool `json:"available,omitempty"`
+	Available *bool          `json:"available,omitempty"`
+	Marks     []DocsPageMark `json:"marks,omitempty"`
 }
+
+type DocsPageMark string
+
+const (
+	DocsPageMarkUnavailable DocsPageMark = "unavailable"
+	DocsPageMarkDeprecated  DocsPageMark = "deprecated"
+)
 
 type DocsTopic struct {
 	ID     string            `json:"id"`
@@ -38,10 +46,11 @@ type DocsTopic struct {
 }
 
 type DocsTreeResponse struct {
-	Locale                 string            `json:"locale"`
-	Available              []AvailableLocale `json:"available"`
-	Topics                 []DocsTopic       `json:"topics"`
-	NodeUnavailableMessage string            `json:"node_unavailable_message"`
+	Locale                 string                  `json:"locale"`
+	Available              []AvailableLocale       `json:"available"`
+	Topics                 []DocsTopic             `json:"topics"`
+	NodeUnavailableMessage string                  `json:"node_unavailable_message"`
+	MarkMessages           map[DocsPageMark]string `json:"mark_messages"`
 }
 
 type DocsPageResponse struct {
