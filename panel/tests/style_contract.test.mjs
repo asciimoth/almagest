@@ -19,6 +19,17 @@ test("links use the interface palette and focus treatment", () => {
   assert.match(cssRule("a:focus-visible"), /outline:\s*3px solid var\(--focus-ring\);/);
 });
 
+test("SPA tab and locale glyphs use one fixed control width", () => {
+  const tabRule = cssRule(".tabs button");
+  const localeRule = cssRule(".locale-picker");
+
+  for (const rule of [tabRule, localeRule]) {
+    assert.match(rule, /width:\s*38px;/);
+    assert.match(rule, /min-width:\s*38px;/);
+    assert.match(rule, /padding:\s*0;/);
+  }
+});
+
 test("KV, DNS, Sec, and TLS value inspectors keep content top-aligned", () => {
   const rule = cssRule(".kv-value-panel");
 

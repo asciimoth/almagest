@@ -526,7 +526,6 @@ const el = {
   isolationStatus: document.querySelector<HTMLElement>("#isolation-status")!,
   sandboxStatus: document.querySelector<HTMLElement>("#sandbox-status")!,
   locale: document.querySelector<HTMLSelectElement>("#locale-select")!,
-  localeCode: document.querySelector<HTMLElement>("#locale-code")!,
   docs: document.querySelector<HTMLButtonElement>("#tab-docs")!,
   tabs: [...document.querySelectorAll<HTMLButtonElement>("[data-tab]")],
   panels: [...document.querySelectorAll<HTMLElement>("[data-panel]")],
@@ -6355,7 +6354,6 @@ function installLocale(snapshot: LocaleSnapshot): void {
     return option;
   }));
   el.locale.value = snapshot.effective;
-  el.localeCode.textContent = snapshot.effective;
   el.locale.disabled = false;
 }
 

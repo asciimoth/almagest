@@ -42,14 +42,19 @@ test("locale parser rejects malformed snapshots", () => {
 
 test("locale application uses text and attribute fallbacks safely", () => {
   const dom = new JSDOM(`<!doctype html><html lang="en"><body>
-    <button data-i18n="action" data-i18n-title="action.title" title="Built-in title">Built-in</button>
+    <button data-i18n="action" data-i18n-title="action.title" data-i18n-aria-label="action.label" title="Built-in title" aria-label="Built-in label">Built-in</button>
     <input data-i18n-placeholder="input.placeholder" placeholder="Built-in placeholder">
   </body></html>`);
   const snapshot = parseLocaleSnapshot({
     requested: "lorem",
     effective: "lorem",
     available: [{ locale: "lorem", name: "Lorem" }],
-    panel: { action: "<b>Safe text</b>", "action.title": "Localized title", greeting: "Hello {name}" },
+    panel: {
+      action: "<b>Safe text</b>",
+      "action.title": `Localized title\" onmouseover=\"globalThis.__xss = true`,
+      "action.label": `<img src=x onerror="globalThis.__xss = true">`,
+      greeting: "Hello {name}",
+    },
     revision: 2,
   });
   assert.notEqual(snapshot, null);
@@ -60,7 +65,10 @@ test("locale application uses text and attribute fallbacks safely", () => {
   assert.equal(dom.window.document.documentElement.lang, "lorem");
   assert.equal(button?.textContent, "<b>Safe text</b>");
   assert.equal(button?.querySelector("b"), null);
-  assert.equal(button?.title, "Localized title");
+  assert.equal(button?.title, `Localized title\" onmouseover=\"globalThis.__xss = true`);
+  assert.equal(button?.getAttribute("aria-label"), `<img src=x onerror="globalThis.__xss = true">`);
+  assert.equal(button?.hasAttribute("onmouseover"), false);
+  assert.equal(button?.querySelector("img"), null);
   assert.equal(input?.placeholder, "Built-in placeholder");
   assert.equal(text("greeting", "Fallback", { name: "world" }), "Hello world");
 });

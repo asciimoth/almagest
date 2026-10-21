@@ -24,28 +24,28 @@
             <span id="backend-status" data-i18n="app.status.loading">Loading</span>
           </div>
         </div>
-        <label class="locale-picker" for="locale-select">
-          <svg class="locale-picker-icon" viewBox="0 0 24 24" aria-hidden="true">
-            <circle cx="12" cy="12" r="8.5"></circle>
-            <path d="M3.8 12h16.4M12 3.5c2.3 2.4 3.5 5.2 3.5 8.5s-1.2 6.1-3.5 8.5M12 3.5C9.7 5.9 8.5 8.7 8.5 12s1.2 6.1 3.5 8.5"></path>
-          </svg>
-          <span id="locale-code" aria-hidden="true">en</span>
-          <span class="visually-hidden" data-i18n="locale.label">Language</span>
-          <select id="locale-select" aria-label="Language" data-i18n-aria-label="locale.label" disabled>
-            <option value="en">English</option>
-          </select>
-        </label>
-        <nav class="tabs" aria-label="Admin tabs" data-i18n-aria-label="tabs.aria_label" role="tablist">
-          <button id="tab-graph" class="active" data-tab="graph" data-i18n="tab.graph" type="button" role="tab" aria-controls="panel-graph" aria-selected="true">Graph</button>
-          <button id="tab-sec" data-tab="sec" data-i18n="tab.secrets" type="button" role="tab" aria-controls="panel-sec" aria-selected="false">Secrets</button>
-          <button id="tab-dns" data-tab="dns" data-i18n="tab.dns" type="button" role="tab" aria-controls="panel-dns" aria-selected="false">DNS</button>
-          <button id="tab-tls" data-tab="tls" data-i18n="tab.tls" type="button" role="tab" aria-controls="panel-tls" aria-selected="false">TLS</button>
-          <button id="tab-kv" data-tab="kv" data-i18n="tab.kv" type="button" role="tab" aria-controls="panel-kv" aria-selected="false">KV</button>
-          <button id="tab-ps" data-tab="ps" data-i18n="tab.processes" type="button" role="tab" aria-controls="panel-ps" aria-selected="false">Processes</button>
-          <button id="tab-logs" data-tab="logs" data-i18n="tab.logs" type="button" role="tab" aria-controls="panel-logs" aria-selected="false">Logs</button>
-          <button id="tab-config" data-tab="config" data-i18n="tab.config" type="button" role="tab" aria-controls="panel-config" aria-selected="false">Config</button>
-          <button id="tab-snapshots" data-tab="snapshots" data-i18n="tab.snapshots" type="button" role="tab" aria-controls="panel-snapshots" aria-selected="false">Snapshots</button>
-          <button id="tab-docs" data-i18n="tab.docs" data-i18n-title="docs.open.title" type="button" role="link" title="Open documentation in a new tab">Docs</button>
+        <nav class="tabs">
+          <div class="tab-list" aria-label="Admin tabs" data-i18n-aria-label="tabs.aria_label" role="tablist">
+            <button id="tab-graph" class="active" data-tab="graph" data-i18n-aria-label="tab.graph" data-i18n-title="tab.graph" type="button" role="tab" aria-controls="panel-graph" aria-selected="true" aria-label="Graph" title="Graph">◉</button>
+            <button id="tab-sec" data-tab="sec" data-i18n-aria-label="tab.secrets" data-i18n-title="tab.secrets" type="button" role="tab" aria-controls="panel-sec" aria-selected="false" aria-label="Secrets" title="Secrets">⚿</button>
+            <button id="tab-dns" data-tab="dns" data-i18n-aria-label="tab.dns" data-i18n-title="tab.dns" type="button" role="tab" aria-controls="panel-dns" aria-selected="false" aria-label="DNS" title="DNS">@</button>
+            <button id="tab-tls" data-tab="tls" data-i18n-aria-label="tab.tls" data-i18n-title="tab.tls" type="button" role="tab" aria-controls="panel-tls" aria-selected="false" aria-label="TLS" title="TLS">♢</button>
+            <button id="tab-kv" data-tab="kv" data-i18n-aria-label="tab.kv" data-i18n-title="tab.kv" type="button" role="tab" aria-controls="panel-kv" aria-selected="false" aria-label="KV" title="KV">↔</button>
+            <button id="tab-ps" data-tab="ps" data-i18n-aria-label="tab.processes" data-i18n-title="tab.processes" type="button" role="tab" aria-controls="panel-ps" aria-selected="false" aria-label="Processes" title="Processes">⚙</button>
+            <button id="tab-logs" data-tab="logs" data-i18n-aria-label="tab.logs" data-i18n-title="tab.logs" type="button" role="tab" aria-controls="panel-logs" aria-selected="false" aria-label="Logs" title="Logs">≣</button>
+            <button id="tab-config" data-tab="config" data-i18n-aria-label="tab.config" data-i18n-title="tab.config" type="button" role="tab" aria-controls="panel-config" aria-selected="false" aria-label="Config" title="Config">☷</button>
+            <button id="tab-snapshots" data-tab="snapshots" data-i18n-aria-label="tab.snapshots" data-i18n-title="tab.snapshots" type="button" role="tab" aria-controls="panel-snapshots" aria-selected="false" aria-label="Snapshots" title="Snapshots">◫</button>
+            <button id="tab-docs" data-i18n-aria-label="tab.docs" data-i18n-title="tab.docs" type="button" role="link" aria-label="Docs" title="Docs">?</button>
+          </div>
+          <label class="locale-picker" for="locale-select" title="Language" data-i18n-title="locale.label">
+            <svg class="locale-picker-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="12" cy="12" r="8.5"></circle>
+              <path d="M3.8 12h16.4M12 3.5c2.3 2.4 3.5 5.2 3.5 8.5s-1.2 6.1-3.5 8.5M12 3.5C9.7 5.9 8.5 8.7 8.5 12s1.2 6.1 3.5 8.5"></path>
+            </svg>
+            <select id="locale-select" aria-label="Language" data-i18n-aria-label="locale.label" disabled>
+              <option value="en">English</option>
+            </select>
+          </label>
         </nav>
       </header>
 
