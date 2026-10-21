@@ -244,6 +244,12 @@ const TLS_AUTHORITY_MATCHES = ["certificate", "spki"] as const;
 const TLS_PIN_KINDS = ["spki", "certificate"] as const;
 const TLS_IMMUTABLE_CERT_GROUP_KEY = "immutable";
 const TLS_USER_CERT_GROUP_KEY = "user";
+const GRAPH_BACKGROUND_COLOR = "#11111b";
+const GRAPH_GRID_IMAGE = `data:image/svg+xml,${encodeURIComponent(`
+  <svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+    <path d="M 0 0 H 100 M 0 0 V 100" fill="none" stroke="#313244" stroke-width="1"/>
+  </svg>
+`)}`;
 let secNodeAutocompleteID = 0;
 let tlsPolicyEditorID = 0;
 
@@ -1240,8 +1246,11 @@ function initGraph(): void {
   installLiteGraphWidgetSelectionGuard();
   registerLiteGraphNode();
   graph = new LGraph();
-  canvas = new LGraphCanvas("#graph-canvas", graph);
+  canvas = new LGraphCanvas("#graph-canvas", graph, { skip_render: true });
   disableOverlappingLiteGraphUI();
+  canvas.clear_background_color = GRAPH_BACKGROUND_COLOR;
+  canvas.background_image = GRAPH_GRID_IMAGE;
+  canvas.render_canvas_border = false;
   canvas.node_title_color = DEFAULT_NODE_TEXT_COLOR;
   canvas.onNodeMoved = flushNodePositions;
   canvas.onSelectionChange = scheduleSidekickUpdate;
@@ -1250,6 +1259,7 @@ function initGraph(): void {
   resizeGraphCanvas();
   graphResizeObserver = new ResizeObserver(resizeGraphCanvas);
   graphResizeObserver.observe(el.graphCanvas);
+  canvas.startRendering();
   graph.start();
   el.graphCanvas.addEventListener("pointerdown", (event) => {
     armGraphShortcuts(event);

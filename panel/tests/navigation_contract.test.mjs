@@ -5,6 +5,7 @@ import { JSDOM } from "jsdom";
 
 const html = await readFile(new URL("../index.html", import.meta.url), "utf8");
 const litegraph = await readFile(new URL("../vendor/litegraph/litegraph.js", import.meta.url), "utf8");
+const app = await readFile(new URL("../src/app.ts", import.meta.url), "utf8");
 
 test("the panel has a restrictive content security policy", () => {
   const dom = new JSDOM(html);
@@ -23,6 +24,11 @@ test("the panel has a restrictive content security policy", () => {
 test("the vendored LiteGraph build does not register eval-built nodes at startup", () => {
   assert.match(litegraph, /global\.LGraphCanvas = LiteGraph\.LGraphCanvas/);
   assert.doesNotMatch(litegraph, /LiteGraph\.wrapFunctionAsNode\s*\(/);
+});
+
+test("the graph theme is configured before LiteGraph starts rendering", () => {
+  assert.match(app, /new LGraphCanvas\("#graph-canvas", graph, \{ skip_render: true \}\)/);
+  assert.match(app, /canvas\.background_image = GRAPH_GRID_IMAGE;[\s\S]*canvas\.startRendering\(\);/);
 });
 
 test("data-management tabs use clear labels and accessible tab semantics", () => {
