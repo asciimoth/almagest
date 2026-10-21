@@ -7,6 +7,7 @@ import {
 } from "./safe_dom.js";
 import { readLocaleCookie, writeLocaleCookie } from "./localization.js";
 import { adminPanelWindowName, openOrFocusAdminPanel } from "./window_navigation.js";
+import { initialTopicOpen, selectPageInTree } from "./docs_tree.js";
 import {
   DEFAULT_NODE_TEXT_COLOR,
   DEFAULT_NODE_TITLE_COLOR,
@@ -150,7 +151,7 @@ function renderTopics(topics: readonly Topic[]): DocumentFragment {
     const details = document.createElement("details");
     details.dataset.topicId = topic.id;
     const savedOpen = topicFolds[topic.id];
-    details.open = savedOpen ?? (!topic.folded || topicContainsPage(topic, currentPage));
+    details.open = initialTopicOpen(topic.folded, savedOpen, topicContainsPage(topic, currentPage));
     let userToggle = false;
     const summary = textElement("summary", topic.name);
     summary.addEventListener("click", () => { userToggle = true; });
@@ -269,9 +270,7 @@ async function openPage(id: string, updateHistory: boolean): Promise<void> {
     if (updateHistory) window.history.pushState({ page: id }, "", docsURL(id));
     scrollToCurrentAnchor();
     if (!unavailable) void loadNodePreview(id, title);
-    for (const link of treeElement.querySelectorAll<HTMLElement>("[data-page-id]")) {
-      link.classList.toggle("active", link.dataset.pageId === id);
-    }
+    selectPageInTree(treeElement, id);
   } catch (error) {
     pageElement.replaceChildren(
       textElement("h1", "Documentation unavailable"),
