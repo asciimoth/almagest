@@ -1704,12 +1704,14 @@ function renderClassPanel(selectedCount: number): void {
   const classes = snapshot.classes;
   const list = document.createElement("div");
   list.className = "class-list";
-  el.sidekick.replaceChildren(
-    textElement("div", selectedCount > 1
-      ? localizedText("node.selection.count", "{count} nodes selected", { count: selectedCount })
-      : localizedText("node.create.title", "Create node"), "panel-title"),
-    list,
-  );
+  el.sidekick.replaceChildren(list);
+  if (selectedCount > 1) {
+    list.before(textElement(
+      "div",
+      localizedText("node.selection.count", "{count} nodes selected", { count: selectedCount }),
+      "panel-title",
+    ));
+  }
   for (const cls of classes) {
     const primaryColor = typeColor(cls.primary_type);
     const leftPorts = classPreviewPorts(cls, "left");
