@@ -507,6 +507,7 @@ func (n *snifferNode) sendConfigBlock() {
 func (n *snifferNode) configBlock() formular.Block {
 	field := &formular.Field{
 		Kind:        formular.FieldText,
+		Subtype:     "rulev1",
 		Value:       n.rulesText,
 		Multiline:   true,
 		Validation:  true,

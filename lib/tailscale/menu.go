@@ -97,13 +97,18 @@ func (n *tailscaleNode) statusBlock() formular.Block {
 		nodekit.ReadonlyStringListField("magicDNSDomains", "MagicDNS search domains", snapshot.DNS.SearchDomains),
 		nodekit.ReadonlyStringListField("magicDNSRecords", "MagicDNS records", magicDNSRecordLines(snapshot.DNS.Records)),
 		nodekit.ReadonlyStringListField("peers", "Tailnet peers", peerLines(snapshot.Peers)),
-		nodekit.ReadonlyMultilineTextField("acl", "ACL packet filter", aclText(snapshot.ACL)),
+		jsonTextField(nodekit.ReadonlyMultilineTextField("acl", "ACL packet filter", aclText(snapshot.ACL))),
 		nodekit.ReadonlyStringListField("derp", "DERP regions", derpLines(snapshot.DERP)),
 		nodekit.ReadonlyStringListField("health", "Health", snapshot.Health),
-		nodekit.ReadonlyMultilineTextField("firewall", "Generated firewall policy", n.firewall.PrettyJSONString()),
+		jsonTextField(nodekit.ReadonlyMultilineTextField("firewall", "Generated firewall policy", n.firewall.PrettyJSONString())),
 		nodekit.ReadonlyTextField("error", "Error", errText),
 	}
 	return formular.Block{ID: "status", Order: 10, Generation: 1, Items: items}
+}
+
+func jsonTextField(item formular.Item) formular.Item {
+	item.Subtype = "json"
+	return item
 }
 
 func (n *tailscaleNode) configBlock() formular.Block {

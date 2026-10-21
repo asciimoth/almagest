@@ -572,6 +572,7 @@ func (n *networkRouterNode) sendConfigBlock() {
 func (n *networkRouterNode) configBlock() formular.Block {
 	field := &formular.Field{
 		Kind:        formular.FieldText,
+		Subtype:     "rulev1",
 		Value:       n.rulesText,
 		Multiline:   true,
 		Validation:  true,

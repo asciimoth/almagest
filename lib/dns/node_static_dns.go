@@ -295,8 +295,10 @@ func (n *staticDNSNode) configBlock() formular.Block {
 	if n.formError != "" {
 		status = append(status, formular.Status(formular.StatusError), formular.StatusText(n.formError))
 	}
+	records := formular.MultilineTextField("records", "Records", n.config.recordsText, append(status, formular.Placeholder("example.test A 192.0.2.10\nexample.test AAAA 2001:db8::10\nexample.test TXT \"hello\""))...)
+	records.Subtype = "spacetable"
 	return formular.Block{ID: "config", Order: 10, Generation: 1, Form: true, Items: []formular.Item{
-		formular.MultilineTextField("records", "Records", n.config.recordsText, append(status, formular.Placeholder("example.test A 192.0.2.10\nexample.test AAAA 2001:db8::10\nexample.test TXT \"hello\""))...),
+		records,
 		formular.IntField("ttl", "TTL", n.config.ttl, status...),
 	}}
 }

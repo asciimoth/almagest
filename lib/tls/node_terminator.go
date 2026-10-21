@@ -296,12 +296,14 @@ func (n *tlsTerminatorNode) sendMenuSnapshot(force bool) {
 }
 
 func (n *tlsTerminatorNode) configBlock() formular.Block {
+	destinationRemaps := configTextFieldPlaceholder(fieldDestinationRemaps, "Destination remaps JSON", n.config.destinationRemaps, placeholderDestinationRemaps, strings.HasPrefix(n.formErr, "destination remaps:"), n.formErr, true)
+	destinationRemaps.Subtype = "json"
 	return formular.Block{ID: configBlockID, Order: 10, Generation: 1, Form: true, Items: []formular.Item{
 		configIntFieldPlaceholder(fieldSniffBufferSize, "Sniff buffer bytes", n.config.sniffBufferSize, placeholderSniffBufferBytes, strings.Contains(n.formErr, "sniff buffer"), n.formErr),
 		configIntFieldPlaceholder(fieldLeafTTLSeconds, "Leaf TTL seconds", n.config.leafTTLSeconds, placeholderLeafTTLSeconds, strings.HasPrefix(n.formErr, "leaf TTL:"), n.formErr),
 		configCheckbox(fieldUseSNIHostname, "Use SNI hostname", n.config.useSNIHostname),
 		configTextFieldPlaceholder(fieldServerALPN, "Client-facing ALPN", n.config.nextProtos, placeholderALPN, false, "", true),
-		configTextFieldPlaceholder(fieldDestinationRemaps, "Destination remaps JSON", n.config.destinationRemaps, placeholderDestinationRemaps, strings.HasPrefix(n.formErr, "destination remaps:"), n.formErr, true),
+		destinationRemaps,
 	}}
 }
 

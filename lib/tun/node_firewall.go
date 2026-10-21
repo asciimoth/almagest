@@ -433,6 +433,7 @@ func (n *tunFirewallNode) sendEffectiveBlock() {
 func (n *tunFirewallNode) configBlock() formular.Block {
 	field := &formular.Field{
 		Kind:        formular.FieldText,
+		Subtype:     "json",
 		Value:       n.rulesText,
 		Multiline:   true,
 		Validation:  true,
@@ -453,6 +454,7 @@ func (n *tunFirewallNode) effectiveBlock() formular.Block {
 		"Effective config",
 		n.effectiveJSON(),
 	)
+	item.Subtype = "json"
 	if len(n.objectErrors) != 0 {
 		item.Status = formular.StatusError
 		item.StatusText = n.objectErrorText()

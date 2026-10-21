@@ -337,12 +337,14 @@ func (n *tlsMITMNode) sendMenuSnapshot(force bool) {
 }
 
 func (n *tlsMITMNode) configBlock() formular.Block {
+	filterRules := configTextFieldPlaceholder(fieldFilterRules, "Filter rules JSON", n.config.filterRules, placeholderFilterRules, strings.HasPrefix(n.formErr, "filter rules:"), n.formErr, true)
+	filterRules.Subtype = "json"
 	return formular.Block{ID: configBlockID, Order: 10, Generation: 1, Form: true, Items: []formular.Item{
 		tlsConfigSelector(&n.NodeBase, n.config.tlsConfigName, n.tlsConfigErr),
 		configIntFieldPlaceholder(fieldSniffBufferSize, "Sniff buffer bytes", n.config.sniffBufferSize, placeholderSniffBufferBytes, strings.Contains(n.formErr, "sniff buffer"), n.formErr),
 		configIntFieldPlaceholder(fieldLeafTTLSeconds, "Leaf TTL seconds", n.config.leafTTLSeconds, placeholderLeafTTLSeconds, strings.HasPrefix(n.formErr, "leaf TTL:"), n.formErr),
 		formular.TextField(fieldFilterMode, "Filter mode", n.config.filterMode, formular.AllowedValues(modeAllowedValues()...), formular.Validation, formular.Placeholder(placeholderFilterMode)),
-		configTextFieldPlaceholder(fieldFilterRules, "Filter rules JSON", n.config.filterRules, placeholderFilterRules, strings.HasPrefix(n.formErr, "filter rules:"), n.formErr, true),
+		filterRules,
 	}}
 }
 
