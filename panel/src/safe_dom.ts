@@ -723,36 +723,47 @@ export function createEmptyWorkerItem(): HTMLLIElement {
   return item;
 }
 
-export function renderNodeDescription(node: HTMLElement, value: string): void {
+export type MarkdownRenderMode = "panel" | "docs";
+
+export function renderNodeDescription(node: HTMLElement, value: string, mode: MarkdownRenderMode = "panel"): void {
   const text = value.trim();
   if (!text) {
     node.textContent = t("node.description.empty", "No long description is registered for this node class.");
     return;
   }
-  node.replaceChildren(...parseMarkdownBlocks(text).map(renderMarkdownBlock));
+  const headingIDs = new Map<string, number>();
+  node.replaceChildren(...parseMarkdownBlocks(text).map((block) => renderMarkdownBlock(block, mode, headingIDs)));
 }
 
 type MarkdownBlock =
   | { type: "paragraph"; text: string }
-  | { type: "code"; text: string; language: string };
+  | { type: "code"; text: string; language: string }
+  | { type: "heading"; text: string; level: number }
+  | { type: "list"; items: string[]; ordered: boolean; start: number };
 
 function parseMarkdownBlocks(input: string): MarkdownBlock[] {
   const blocks: MarkdownBlock[] = [];
-  const lines = input.split(/\n/);
+  const lines = input.replace(/\r\n?/g, "\n").split("\n");
   let paragraph: string[] = [];
   let code: string[] | null = null;
   let language = "";
+  let list: Extract<MarkdownBlock, { type: "list" }> | null = null;
 
   const flushParagraph = () => {
     const text = paragraph.join("\n").trim();
     if (text) blocks.push({ type: "paragraph", text });
     paragraph = [];
   };
+  const flushList = () => {
+    if (list) blocks.push(list);
+    list = null;
+  };
 
   for (const line of lines) {
-    const fence = line.match(/^```([A-Za-z0-9_+.-]*)\s*$/);
+    const fence = line.match(/^ {0,3}```([A-Za-z0-9_+.-]*)\s*$/);
     if (fence && code === null) {
       flushParagraph();
+      flushList();
       code = [];
       language = fence[1] ?? "";
       continue;
@@ -769,6 +780,46 @@ function parseMarkdownBlocks(input: string): MarkdownBlock[] {
     }
     if (line.trim() === "") {
       flushParagraph();
+      flushList();
+      continue;
+    }
+
+    const heading = line.match(/^ {0,3}(#{1,6})(?:[ \t]+(.*?)|[ \t]*)$/);
+    if (heading) {
+      flushParagraph();
+      flushList();
+      const text = (heading[2] ?? "").replace(/[ \t]+#+[ \t]*$/, "").trim();
+      blocks.push({ type: "heading", text, level: heading[1]?.length ?? 1 });
+      continue;
+    }
+
+    const setext = line.match(/^ {0,3}(=+|-{2,})[ \t]*$/);
+    if (setext && paragraph.length > 0 && list === null) {
+      const text = paragraph.join("\n").trim();
+      paragraph = [];
+      blocks.push({ type: "heading", text, level: setext[1]?.startsWith("=") ? 1 : 2 });
+      continue;
+    }
+
+    const listItem = line.match(/^ {0,3}(?:-(?:[ \t]+(.*)|[ \t]*)|(\d{1,9})[.)](?:[ \t]+(.*)|[ \t]*))$/);
+    if (listItem) {
+      const ordered = listItem[2] !== undefined;
+      const start = ordered ? Number(listItem[2]) : 1;
+      const item = (ordered ? listItem[3] : listItem[1]) ?? "";
+      if (paragraph.length > 0 && (item === "" || (ordered && start !== 1))) {
+        paragraph.push(line);
+        continue;
+      }
+      flushParagraph();
+      if (list && list.ordered !== ordered) flushList();
+      if (!list) list = { type: "list", items: [], ordered, start };
+      list.items.push(item);
+      continue;
+    }
+
+    if (list && list.items.length > 0) {
+      const index = list.items.length - 1;
+      list.items[index] = `${list.items[index] ?? ""}\n${line.replace(/^[ \t]+/, "")}`;
       continue;
     }
     paragraph.push(line);
@@ -778,27 +829,38 @@ function parseMarkdownBlocks(input: string): MarkdownBlock[] {
     paragraph.push("```" + language, ...code);
   }
   flushParagraph();
+  flushList();
   return blocks;
 }
 
-function renderMarkdownBlock(block: MarkdownBlock): HTMLElement {
+function renderMarkdownBlock(
+  block: MarkdownBlock,
+  mode: MarkdownRenderMode,
+  headingIDs: Map<string, number>,
+): HTMLElement {
   if (block.type === "code") return renderMarkdownCodeBlock(block.text, block.language);
+  if (block.type === "list") return renderMarkdownList(block);
+  if (block.type === "heading") return renderMarkdownHeading(block.text, block.level, mode, headingIDs);
   return renderMarkdownParagraph(block.text);
 }
 
 function renderMarkdownParagraph(input: string): HTMLParagraphElement {
   const paragraph = document.createElement("p");
+  paragraph.append(renderMarkdownInline(normalizeMarkdownInlineBreaks(input)));
+  return paragraph;
+}
+
+function normalizeMarkdownInlineBreaks(input: string): string {
   const lines = input.split(/\r?\n/);
+  let output = "";
   lines.forEach((line, index) => {
     const trailingBackslashes = line.match(/\\+$/)?.[0].length ?? 0;
     let content = line.replace(/[ \t]+$/, "");
     if (index < lines.length - 1 && trailingBackslashes % 2 === 1) content = content.slice(0, -1);
-    if (index > 0) paragraph.append(hardBreakForPreviousLine(lines[index - 1] ?? "")
-      ? document.createElement("br")
-      : document.createTextNode(" "));
-    paragraph.append(renderMarkdownInline(index > 0 ? content.replace(/^[ \t]+/, "") : content));
+    if (index > 0) output += hardBreakForPreviousLine(lines[index - 1] ?? "") ? "\n" : " ";
+    output += index > 0 ? content.replace(/^[ \t]+/, "") : content;
   });
-  return paragraph;
+  return output;
 }
 
 function hardBreakForPreviousLine(line: string): boolean {
@@ -815,6 +877,49 @@ function renderMarkdownCodeBlock(input: string, language: string): HTMLPreElemen
   return pre;
 }
 
+function renderMarkdownList(block: Extract<MarkdownBlock, { type: "list" }>): HTMLOListElement | HTMLUListElement {
+  const list = document.createElement(block.ordered ? "ol" : "ul");
+  if (block.ordered && block.start !== 1) list.setAttribute("start", String(block.start));
+  for (const item of block.items) {
+    const element = document.createElement("li");
+    element.append(renderMarkdownInline(normalizeMarkdownInlineBreaks(item)));
+    list.append(element);
+  }
+  return list;
+}
+
+function renderMarkdownHeading(
+  input: string,
+  level: number,
+  mode: MarkdownRenderMode,
+  headingIDs: Map<string, number>,
+): HTMLElement {
+  if (mode === "panel") {
+    const paragraph = document.createElement("p");
+    const strong = document.createElement("strong");
+    strong.append(renderMarkdownInline(normalizeMarkdownInlineBreaks(input)));
+    paragraph.append(strong);
+    return paragraph;
+  }
+
+  const heading = document.createElement(`h${level}`);
+  heading.append(renderMarkdownInline(normalizeMarkdownInlineBreaks(input)));
+  const baseID = markdownHeadingID(heading.textContent ?? "");
+  const duplicateIndex = headingIDs.get(baseID) ?? 0;
+  headingIDs.set(baseID, duplicateIndex + 1);
+  heading.id = duplicateIndex === 0 ? baseID : `${baseID}-${duplicateIndex}`;
+  return heading;
+}
+
+function markdownHeadingID(input: string): string {
+  return input
+    .normalize("NFKD")
+    .toLowerCase()
+    .replace(/[^\p{Letter}\p{Number}\s-]/gu, "")
+    .trim()
+    .replace(/[\s-]+/g, "-") || "section";
+}
+
 function renderMarkdownInline(input: string): DocumentFragment {
   const root = document.createDocumentFragment();
   const parts = input.split(/(\[[^\]]+\]\([^)]+\)|\*\*[^*]+\*\*|\*[^*\s][^*]*\*|_[^_\s][^_]*_|`[^`]+`)/g);
@@ -826,28 +931,43 @@ function renderMarkdownInline(input: string): DocumentFragment {
       continue;
     }
     if (part.startsWith("**") && part.endsWith("**")) {
-      root.append(textElement("strong", part.slice(2, -2)));
+      root.append(markdownInlineElement("strong", part.slice(2, -2)));
       continue;
     }
     if (
       (part.startsWith("*") && part.endsWith("*")) ||
       (part.startsWith("_") && part.endsWith("_"))
     ) {
-      root.append(textElement("em", part.slice(1, -1)));
+      root.append(markdownInlineElement("em", part.slice(1, -1)));
       continue;
     }
     if (part.startsWith("`") && part.endsWith("`")) {
-      root.append(textElement("code", part.slice(1, -1)));
+      root.append(markdownInlineElement("code", part.slice(1, -1)));
       continue;
     }
-    root.append(document.createTextNode(part));
+    root.append(...markdownInlineText(part));
   }
   return root;
 }
 
+function markdownInlineElement(tag: "strong" | "em" | "code", text: string): HTMLElement {
+  const element = document.createElement(tag);
+  element.append(...markdownInlineText(text));
+  return element;
+}
+
+function markdownInlineText(text: string): Node[] {
+  const nodes: Node[] = [];
+  text.split("\n").forEach((part, index) => {
+    if (index > 0) nodes.push(document.createElement("br"));
+    nodes.push(document.createTextNode(part));
+  });
+  return nodes;
+}
+
 function renderMarkdownLink(label: string, href: string): HTMLAnchorElement {
   const anchor = document.createElement("a");
-  anchor.textContent = label;
+  anchor.append(...markdownInlineText(label));
   try {
     const url = new URL(href, window.location.href);
     if (url.protocol === "http:" || url.protocol === "https:" || url.protocol === "mailto:") {

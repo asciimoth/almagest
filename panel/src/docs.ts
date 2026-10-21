@@ -160,11 +160,11 @@ function pageIDFromPath(pathname: string): string {
   }
 }
 
-function docsURL(page: string): string {
+function docsURL(page: string, hash = ""): string {
   const url = new URL("/docs/", window.location.href);
   if (page) url.pathname += page.split("/").map(encodeURIComponent).join("/");
   if (urlLocale) url.searchParams.set("locale", urlLocale);
-  return url.pathname + url.search;
+  return url.pathname + url.search + hash;
 }
 
 function docsAPIURL(path: string, values: Record<string, string> = {}): string {
@@ -183,22 +183,32 @@ async function openPage(id: string, updateHistory: boolean): Promise<void> {
     document.title = `${name} — Almagest Documentation`;
     const title = textElement("h1", name);
     const content = document.createElement("div");
-    renderNodeDescription(content, contentText);
+    renderNodeDescription(content, contentText, "docs");
     const unavailable = pageAvailability.get(id) === false
       ? textElement("div", nodeUnavailableMessage, "docs-node-unavailable")
       : null;
     if (unavailable) unavailable.setAttribute("role", "status");
     pageElement.replaceChildren(title, ...(unavailable ? [unavailable] : []), content);
+    if (updateHistory) window.history.pushState({ page: id }, "", docsURL(id));
+    scrollToCurrentAnchor();
     if (!unavailable) void loadNodePreview(id, title);
     for (const link of treeElement.querySelectorAll<HTMLElement>("[data-page-id]")) {
       link.classList.toggle("active", link.dataset.pageId === id);
     }
-    if (updateHistory) window.history.pushState({ page: id }, "", docsURL(id));
   } catch (error) {
     pageElement.replaceChildren(
       textElement("h1", "Documentation unavailable"),
       textElement("p", error instanceof Error ? error.message : String(error)),
     );
+  }
+}
+
+function scrollToCurrentAnchor(): void {
+  if (!window.location.hash) return;
+  try {
+    document.getElementById(decodeURIComponent(window.location.hash.slice(1)))?.scrollIntoView();
+  } catch {
+    // Ignore malformed percent escapes in an external URL fragment.
   }
 }
 
@@ -271,7 +281,7 @@ async function loadTree(locale: string): Promise<void> {
     collectPageNames(tree.topics);
     if (!ids.includes(currentPage)) currentPage = defaultPageID(tree.topics) || ids[0] || "";
     treeElement.replaceChildren(renderTopics(tree.topics));
-    window.history.replaceState({ page: currentPage }, "", docsURL(currentPage));
+    window.history.replaceState({ page: currentPage }, "", docsURL(currentPage, window.location.hash));
     if (currentPage) await openPage(currentPage, false);
     else pageElement.replaceChildren(textElement("p", "No documentation pages are available."));
   } catch (error) {

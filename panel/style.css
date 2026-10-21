@@ -181,6 +181,15 @@ body {
   font-size: clamp(24px, 4vw, 34px);
 }
 
+.docs-page.node-description h2,
+.docs-page.node-description h3,
+.docs-page.node-description h4,
+.docs-page.node-description h5,
+.docs-page.node-description h6 {
+  margin: 24px 0 10px;
+  line-height: 1.3;
+}
+
 .docs-node-preview {
   margin-bottom: 24px;
 }
@@ -1014,6 +1023,16 @@ h1 {
 
 .node-description p {
   margin: 0 0 10px;
+}
+
+.node-description ul,
+.node-description ol {
+  margin: 0 0 10px;
+  padding-left: 24px;
+}
+
+.node-description li + li {
+  margin-top: 4px;
 }
 
 .node-description p:last-child {

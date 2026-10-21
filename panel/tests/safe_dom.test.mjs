@@ -502,6 +502,110 @@ test("node descriptions render Markdown soft and hard line breaks", () => {
   assert.equal(paragraph?.querySelectorAll("br").length, 2);
 });
 
+test("node description inline styles continue across soft line breaks", () => {
+  installDOM();
+  const root = document.createElement("div");
+  renderNodeDescription(root, [
+    "Before **Bold",
+    " text** and *italic",
+    " text* after.",
+  ].join("\n"));
+
+  assert.equal(root.querySelector("strong")?.textContent, "Bold text");
+  assert.equal(root.querySelector("em")?.textContent, "italic text");
+  assert.equal(root.querySelectorAll("br").length, 0);
+  assert.equal(root.textContent, "Before Bold text and italic text after.");
+});
+
+test("node descriptions render unordered and ordered Markdown lists", () => {
+  installDOM();
+  const root = document.createElement("div");
+  renderNodeDescription(root, [
+    "Intro paragraph.",
+    "- First **bold** item",
+    "- Second item",
+    "  continues on a soft line",
+    "3. Third item",
+    "4) Fourth `code` item",
+    "",
+    "After paragraph.",
+  ].join("\n"));
+
+  assert.deepEqual([...root.children].map((child) => child.tagName), ["P", "UL", "OL", "P"]);
+  assert.deepEqual([...root.querySelectorAll("ul > li")].map((item) => item.textContent), [
+    "First bold item",
+    "Second item continues on a soft line",
+  ]);
+  const ordered = root.querySelector("ol");
+  assert.equal(ordered?.start, 3);
+  assert.deepEqual([...root.querySelectorAll("ol > li")].map((item) => item.textContent), [
+    "Third item",
+    "Fourth code item",
+  ]);
+  assert.equal(root.querySelectorAll("li strong").length, 1);
+  assert.equal(root.querySelectorAll("li code").length, 1);
+});
+
+test("ordered list numbers other than one do not interrupt paragraphs", () => {
+  installDOM();
+  const root = document.createElement("div");
+  renderNodeDescription(root, [
+    "For example, `TCP`, `PORT 443`, `AND` matches TCP packets with destination port",
+    "443.",
+    "",
+    "443. A list can still start with another number after a blank line.",
+    "",
+    "A paragraph",
+    "1. A list starting with one interrupts it.",
+    "",
+    "Another paragraph",
+    "-",
+  ].join("\n"));
+
+  assert.deepEqual([...root.children].map((child) => child.tagName), ["P", "OL", "P", "OL", "P"]);
+  assert.equal(root.children[0]?.textContent, "For example, TCP, PORT 443, AND matches TCP packets with destination port 443.");
+  assert.equal(root.querySelector("ol")?.start, 443);
+  assert.equal(root.children[2]?.textContent, "A paragraph");
+  assert.equal(root.children[3]?.textContent, "A list starting with one interrupts it.");
+  assert.equal(root.children[4]?.textContent, "Another paragraph -");
+});
+
+test("node descriptions render headings as bold panel text", () => {
+  installDOM();
+  const root = document.createElement("div");
+  renderNodeDescription(root, "# Main **heading**\n\nSubheading\n---\n\n#### Small heading ####");
+
+  assert.equal(root.querySelector("h1,h2,h3,h4,h5,h6"), null);
+  assert.deepEqual([...root.querySelectorAll(":scope > p > strong")].map((heading) => heading.textContent), [
+    "Main heading",
+    "Subheading",
+    "Small heading",
+  ]);
+  assert.equal(root.querySelectorAll(":scope > p > strong strong").length, 1);
+});
+
+test("documentation headings use levels and unique URL anchor IDs", () => {
+  installDOM();
+  const root = document.createElement("div");
+  renderNodeDescription(root, [
+    "# Café & routing",
+    "## Duplicate",
+    "## Duplicate",
+    "###### **Styled** heading #",
+    "####### Not a heading",
+  ].join("\n"), "docs");
+
+  assert.deepEqual([...root.children].map((child) => child.tagName), ["H1", "H2", "H2", "H6", "P"]);
+  assert.deepEqual([...root.querySelectorAll("h1,h2,h3,h4,h5,h6")].map((heading) => heading.id), [
+    "cafe-routing",
+    "duplicate",
+    "duplicate-1",
+    "styled-heading",
+  ]);
+  assert.equal(root.querySelector("h6 strong")?.textContent, "Styled");
+  assert.equal(root.lastElementChild?.textContent, "####### Not a heading");
+});
+
 test("panel source does not use script execution or HTML parser sinks", async () => {
   const files = (await readdir(new URL("../src/", import.meta.url)))
     .filter((file) => file.endsWith(".ts"))

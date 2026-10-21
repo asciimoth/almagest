@@ -24,6 +24,10 @@ test("documentation uses a separate page and the shared panel stylesheet", () =>
 test("documentation loads localized pages over HTTP without a WebSocket", () => {
   assert.match(docsSource, /docsAPIURL\("tree"\)/);
   assert.match(docsSource, /docsAPIURL\("raw", \{ id \}\)/);
+  assert.match(docsSource, /renderNodeDescription\(content, contentText, "docs"\)/);
+  assert.match(docsSource, /scrollToCurrentAnchor\(\)/);
+  assert.match(docsSource, /decodeURIComponent\(window\.location\.hash\.slice\(1\)\)/);
+  assert.match(docsSource, /docsURL\(currentPage, window\.location\.hash\)/);
   assert.match(docsSource, /docsAPIURL\("node-class", \{ id \}\)/);
   assert.match(docsSource, /void loadNodePreview\(id, title\)/);
   assert.match(docsSource, /page\.available === false/);
