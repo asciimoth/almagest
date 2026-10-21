@@ -3,7 +3,7 @@ set dotenv-load := true
 
 
 # TODO: Enable vulncheck again after Go is updated to 1.26.9 or later.
-check *selectors: tidy typos fmt lint shellcheck vet # vulncheck
+check *selectors: tidy typos fmt lint actionlint shellcheck vet # vulncheck
   @just locales-check
   @just test-total {{quote(selectors)}}
   @if [[ -z {{quote(selectors)}} ]]; then just fuzz; fi
@@ -126,6 +126,9 @@ markdownlint:
 
 lint-secrets:
   ripsecrets
+
+actionlint:
+  actionlint
 
 lint-windows: build-web
   ./scripts/lint-windows.sh

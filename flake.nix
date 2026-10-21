@@ -94,6 +94,7 @@
         pre-commit-check = pre-commit-hooks.lib.${system}.run {
           src = ./.;
           hooks = {
+            actionlint.enable = true;
             commitizen.enable = true;
             typos.enable = true;
             typos-commit = {
@@ -231,6 +232,7 @@
         WINVM_OVMF_CODE = pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux "${pkgs.OVMF.fd}/FV/OVMF_CODE.fd";
         WINVM_OVMF_VARS = pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux "${pkgs.OVMF.fd}/FV/OVMF_VARS.fd";
         buildInputs = with pkgs; [
+          actionlint
           go
           golangci-lint
           govulncheck

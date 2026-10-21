@@ -1,0 +1,5 @@
+self-hosted-runner:
+  labels:
+    - elevated
+    - standard-user
+    - windows-server-2022
