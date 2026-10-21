@@ -89,6 +89,7 @@ import {
   type DNSValueSnapshot,
 } from "./dns_model.js";
 import { adminPanelWindowName } from "./window_navigation.js";
+import { fitGraphRectangles, type GraphRectangle } from "./graph_viewport.js";
 import {
   KV_TEXT_RENDER_LIMIT,
   childKVNodeKey,
@@ -444,6 +445,7 @@ let activeTab = "graph";
 let sidekickUpdate = 0;
 let workerAgeTimer = 0;
 let graphResizeObserver: ResizeObserver | null = null;
+let graphDefaultScale = 1;
 let localClipboard = "";
 let graphShortcutsArmed = false;
 let graphPointerInside = false;
@@ -504,6 +506,7 @@ const liteLinkToPasta = new Map<number, number>();
 const pendingNodePlacements: PendingNodePlacement[] = [];
 const CLASS_DRAG_MIME = "application/x-almagest-node-class";
 const GRAPH_VIEWPORT_STORAGE_KEY = "almagest.panel.graph.viewport.v1";
+const GRAPH_FIT_PADDING = 40;
 const LOCALE_STORAGE_KEY = "almagest.panel.locale.v1";
 const PASTA_TRIGGER_CLASS = "pasta/Trigger";
 const debugClipboard = false;
@@ -1247,6 +1250,7 @@ function initGraph(): void {
   registerLiteGraphNode();
   graph = new LGraph();
   canvas = new LGraphCanvas("#graph-canvas", graph, { skip_render: true });
+  graphDefaultScale = isFiniteNumber(canvas.ds?.scale) ? canvas.ds.scale : 1;
   disableOverlappingLiteGraphUI();
   canvas.clear_background_color = GRAPH_BACKGROUND_COLOR;
   canvas.background_image = GRAPH_GRID_IMAGE;
@@ -1437,6 +1441,28 @@ function resizeGraphCanvas(): void {
   const width = Math.max(1, Math.round(rect.width));
   const height = Math.max(1, Math.round(rect.height));
   canvas.resize(width, height);
+}
+
+function centerGraphContent(): void {
+  if (!canvas?.ds || !graph?._nodes?.length) return;
+  const rectangles = (graph._nodes as any[]).map((node): GraphRectangle => {
+    const bounds = node.getBounding(undefined, true) as ArrayLike<number>;
+    return [bounds[0], bounds[1], bounds[2], bounds[3]] as GraphRectangle;
+  });
+  const rect = el.graphCanvas.getBoundingClientRect();
+  const viewport = fitGraphRectangles(
+    rectangles,
+    rect.width,
+    rect.height,
+    GRAPH_FIT_PADDING,
+    graphDefaultScale,
+  );
+  if (!viewport) return;
+  canvas.ds.scale = viewport.scale;
+  canvas.ds.offset[0] = viewport.offset[0];
+  canvas.ds.offset[1] = viewport.offset[1];
+  canvas.setDirty(true, true);
+  scheduleGraphViewportSave();
 }
 
 function renderGraph(): void {
@@ -5964,6 +5990,11 @@ function moveTabFocus(event: KeyboardEvent): void {
 }
 
 function graphKeydown(event: KeyboardEvent): void {
+  if (shouldHandleGraphFitShortcut(event)) {
+    consumeGraphShortcut(event);
+    centerGraphContent();
+    return;
+  }
   if (!shouldHandleGraphKeydown(event)) return;
   debugLog("graph keydown", {
     key: event.key,
@@ -5996,6 +6027,13 @@ function graphKeydown(event: KeyboardEvent): void {
     consumeGraphShortcut(event);
     tryBackend("removeNodes", { ids });
   }
+}
+
+function shouldHandleGraphFitShortcut(event: KeyboardEvent): boolean {
+  return activeTab === "graph"
+    && !isEditableTarget(event.target)
+    && !hasUserTextSelection()
+    && isGraphShortcut(event, "KeyO", "o");
 }
 
 function graphKeyup(event: KeyboardEvent): void {
