@@ -53,6 +53,12 @@ test("SPA tabs use fixed glyphs with localized accessible names", () => {
   assert.equal(dom.window.document.querySelector("[data-panel='tls'] #tls-value-panel") !== null, true);
 });
 
+test("SPA tabs restore and update the URL hash", () => {
+  assert.match(app, /setTab\(tabNameFromLocation\(\), false\)/);
+  assert.match(app, /window\.location\.hash = tabHash\(name\)/);
+  assert.match(app, /addEventListener\("hashchange"/);
+});
+
 test("language picker is the last glyph in the tab bar with a localized hint", () => {
   const dom = new JSDOM(html);
   const tabs = dom.window.document.querySelector(".tabs");

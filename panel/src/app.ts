@@ -231,6 +231,7 @@ import {
   writeLocaleCookie,
   type LocaleSnapshot,
 } from "./localization.js";
+import { tabHash, tabNameFromHash } from "./tab_navigation.js";
 
 const SECRET_NODE_AUTOCOMPLETE_LIMIT = 8;
 const TLS_CERT_OPENSSL_COMMAND = [
@@ -5939,7 +5940,16 @@ function trimLogStore(): void {
   frontendLogs.splice(0, frontendLogs.length - logStoreLimit);
 }
 
-function setTab(name: string): void {
+function panelTabNames(): string[] {
+  return el.tabs.flatMap((tab) => tab.dataset.tab ? [tab.dataset.tab] : []);
+}
+
+function tabNameFromLocation(): string {
+  return tabNameFromHash(window.location.hash, panelTabNames(), "graph");
+}
+
+function setTab(name: string, updateLocation = true): void {
+  if (!panelTabNames().includes(name)) name = "graph";
   const previousTab = activeTab;
   if (previousTab === "sec" && name !== "sec") deactivateSecPanel();
   if (previousTab === "dns" && name !== "dns") deactivateDNSPanel();
@@ -5968,6 +5978,7 @@ function setTab(name: string): void {
   if (name === "snapshots") void activateSnapshotsPanel();
   if (name === "graph") setTimeout(resizeGraphCanvas, 0);
   updateWorkerAgeTimer();
+  if (updateLocation && window.location.hash !== tabHash(name)) window.location.hash = tabHash(name);
 }
 
 function moveTabFocus(event: KeyboardEvent): void {
@@ -6205,6 +6216,10 @@ function wireUI(): void {
     tab.addEventListener("click", () => setTab(tab.dataset.tab ?? "graph"));
     tab.addEventListener("keydown", moveTabFocus);
   }
+  window.addEventListener("hashchange", () => {
+    const name = tabNameFromLocation();
+    if (name !== activeTab) setTab(name, false);
+  });
   el.docs.addEventListener("click", () => window.open(documentationURL(), "_blank"));
   el.secPanel.addEventListener("scroll", rememberSecScrollState);
   el.dnsPanel.addEventListener("scroll", rememberDNSScrollState);
@@ -6318,7 +6333,7 @@ async function boot(): Promise<void> {
   await ensureSecSubscription();
   await requestSnapshot();
   setBackendStatus("app.status.connected", "Admin API connected");
-  setTab("graph");
+  setTab(tabNameFromLocation(), false);
 }
 
 async function restoreLocale(): Promise<void> {
