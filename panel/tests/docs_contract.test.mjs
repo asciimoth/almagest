@@ -6,6 +6,7 @@ import { JSDOM } from "jsdom";
 const docsHTML = await readFile(new URL("../docs.html", import.meta.url), "utf8");
 const panelHTML = await readFile(new URL("../index.html", import.meta.url), "utf8");
 const docsSource = await readFile(new URL("../src/docs.ts", import.meta.url), "utf8");
+const panelStyle = await readFile(new URL("../style.css", import.meta.url), "utf8");
 const appSource = await readFile(new URL("../src/app.ts", import.meta.url), "utf8");
 const windowNavigationSource = await readFile(new URL("../src/window_navigation.ts", import.meta.url), "utf8");
 const published = (path) => new URL(`../../bin/almagestd/static/${path}`, import.meta.url);
@@ -62,6 +63,19 @@ test("documentation loads localized pages over HTTP without a WebSocket", () => 
   assert.match(docsSource, /addEventListener\("change"/);
   assert.match(docsSource, /defaultPageID\(tree\.topics\)/);
   assert.doesNotMatch(docsSource, /WebSocket/);
+});
+
+test("documentation links adjacent pages in sidebar order", () => {
+  assert.match(docsSource, /orderedPageIDs = ids/);
+  assert.match(docsSource, /renderPageNavigation\(id\)/);
+  assert.match(docsSource, /const previousID = orderedPageIDs\[index - 1\]/);
+  assert.match(docsSource, /const nextID = orderedPageIDs\[index \+ 1\]/);
+  assert.match(docsSource, /pageNavigationLink\(previousID, "prev"\)/);
+  assert.match(docsSource, /pageNavigationLink\(nextID, "next"\)/);
+  assert.match(docsSource, /link\.rel = direction/);
+  assert.match(docsSource, /event\.ctrlKey \|\| event\.metaKey \|\| event\.shiftKey \|\| event\.altKey/);
+  assert.match(panelStyle, /\.docs-page-navigation\s*\{/);
+  assert.match(panelStyle, /\.docs-page-navigation-next\s*\{[^}]*grid-column:\s*2;/s);
 });
 
 test("panel documentation controls open the separate page in a new tab", () => {

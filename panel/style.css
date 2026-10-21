@@ -268,6 +268,57 @@ a:focus-visible {
   font-size: 0.9em;
 }
 
+.docs-page-navigation {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 48px;
+  padding-top: 24px;
+  border-top: 1px solid var(--surface0);
+}
+
+.docs-page-navigation-link {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--surface0);
+  border-radius: var(--radius-md);
+  background: var(--mantle);
+  color: var(--text);
+  text-decoration: none;
+}
+
+.docs-page-navigation-link:visited {
+  color: var(--text);
+}
+
+.docs-page-navigation-link:hover,
+.docs-page-navigation-link:visited:hover {
+  border-color: var(--surface1);
+  background: var(--surface0);
+  color: var(--text);
+}
+
+.docs-page-navigation-next {
+  grid-column: 2;
+  text-align: right;
+}
+
+.docs-page-navigation-direction {
+  color: var(--subtext);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.docs-page-navigation-link strong {
+  overflow: hidden;
+  font-size: 15px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 @media (max-width: 720px) {
   .docs-header {
     gap: 12px;
@@ -288,6 +339,11 @@ a:focus-visible {
   .docs-page.node-description {
     padding: 28px 20px 60px;
     font-size: 16px;
+  }
+
+  .docs-page-navigation {
+    gap: 10px;
+    margin-top: 36px;
   }
 }
 

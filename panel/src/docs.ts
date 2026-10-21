@@ -41,6 +41,7 @@ let urlLocale = parameters.get("locale") || "";
 const requestedLocale = urlLocale || readLocaleCookie() || savedLocale() || navigator.language || "en";
 let currentPage = parameters.get("page") || pageIDFromPath(window.location.pathname);
 let effectiveLocale = requestedLocale;
+let orderedPageIDs: string[] = [];
 const pageNames = new Map<string, string>();
 const pageAvailability = new Map<string, boolean>();
 const topicFolds = savedTopicFolds();
@@ -211,6 +212,39 @@ function docsAPIURL(path: string, values: Record<string, string> = {}): string {
   return `/api/docs/${path}${suffix}`;
 }
 
+function pageNavigationLink(id: string, direction: "prev" | "next"): HTMLAnchorElement {
+  const name = pageNames.get(id) || id;
+  const directionLabel = direction === "prev" ? "← Previous" : "Next →";
+  const link = document.createElement("a");
+  link.className = `docs-page-navigation-link docs-page-navigation-${direction}`;
+  link.href = docsURL(id);
+  link.rel = direction;
+  link.setAttribute("aria-label", `${direction === "prev" ? "Previous" : "Next"} page: ${name}`);
+  link.append(
+    textElement("span", directionLabel, "docs-page-navigation-direction"),
+    textElement("strong", name),
+  );
+  link.addEventListener("click", (event) => {
+    if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    void openPage(id, true);
+  });
+  return link;
+}
+
+function renderPageNavigation(id: string): HTMLElement | null {
+  const index = orderedPageIDs.indexOf(id);
+  if (index < 0 || orderedPageIDs.length < 2) return null;
+  const navigation = document.createElement("nav");
+  navigation.className = "docs-page-navigation";
+  navigation.setAttribute("aria-label", "Page navigation");
+  const previousID = orderedPageIDs[index - 1];
+  const nextID = orderedPageIDs[index + 1];
+  if (previousID) navigation.append(pageNavigationLink(previousID, "prev"));
+  if (nextID) navigation.append(pageNavigationLink(nextID, "next"));
+  return navigation;
+}
+
 async function openPage(id: string, updateHistory: boolean): Promise<void> {
   pageElement.replaceChildren(textElement("p", "Loading documentation."));
   try {
@@ -224,8 +258,14 @@ async function openPage(id: string, updateHistory: boolean): Promise<void> {
     const unavailable = pageAvailability.get(id) === false
       ? textElement("div", nodeUnavailableMessage, "docs-node-unavailable")
       : null;
+    const navigation = renderPageNavigation(id);
     if (unavailable) unavailable.setAttribute("role", "status");
-    pageElement.replaceChildren(title, ...(unavailable ? [unavailable] : []), content);
+    pageElement.replaceChildren(
+      title,
+      ...(unavailable ? [unavailable] : []),
+      content,
+      ...(navigation ? [navigation] : []),
+    );
     if (updateHistory) window.history.pushState({ page: id }, "", docsURL(id));
     scrollToCurrentAnchor();
     if (!unavailable) void loadNodePreview(id, title);
@@ -317,6 +357,7 @@ async function loadTree(locale: string): Promise<void> {
     document.documentElement.lang = tree.locale;
     renderLocaleOptions(tree.available, tree.locale);
     const ids = pageIDs(tree.topics);
+    orderedPageIDs = ids;
     pageNames.clear();
     pageAvailability.clear();
     collectPageNames(tree.topics);
