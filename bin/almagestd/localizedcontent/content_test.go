@@ -244,6 +244,10 @@ func TestReaderFallsBackWhenCatalogFilesAndKeysAreMissing(t *testing.T) {
 func TestValidateRootRejectsUnexpectedFilesAndSymlinkRoot(t *testing.T) {
 	root := t.TempDir()
 	writeBundle(t, root, "en", `{"safe":"value"}`)
+	write(t, filepath.Join(root, "README.md"), "Maintenance instructions")
+	if err := ValidateRoot(root); err != nil {
+		t.Fatalf("locale-root README was rejected: %v", err)
+	}
 	write(t, filepath.Join(root, "en", "unexpected"), "value")
 	if err := ValidateRoot(root); err == nil {
 		t.Fatal("unexpected bundle file was accepted")

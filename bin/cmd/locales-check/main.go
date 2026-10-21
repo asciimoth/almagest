@@ -72,15 +72,15 @@ func validate(root string, classes []pasta.NodeClass) error {
 		return err
 	}
 	var englishPanel map[string]string
-	var loremPanel map[string]string
 	var englishNodes map[string]string
-	var englishMenus any
-	var loremMenus any
 	entries, err := os.ReadDir(locales)
 	if err != nil {
 		return err
 	}
 	for _, entry := range entries {
+		if entry.Name() == "README.md" && entry.Type().IsRegular() {
+			continue
+		}
 		if !entry.IsDir() {
 			return fmt.Errorf("unexpected locale-root file %s", entry.Name())
 		}
@@ -119,17 +119,6 @@ func validate(root string, classes []pasta.NodeClass) error {
 					return err
 				}
 			}
-			if entry.Name() == "lorem" && name == "panel.json" {
-				if err := json.Unmarshal(data, &loremPanel); err != nil {
-					return err
-				}
-			}
-			if entry.Name() == "en" && name == "menus.json" {
-				englishMenus = value
-			}
-			if entry.Name() == "lorem" && name == "menus.json" {
-				loremMenus = value
-			}
 			if entry.Name() == "en" && name == "nodes.json" {
 				if err := json.Unmarshal(data, &englishNodes); err != nil {
 					return err
@@ -138,12 +127,6 @@ func validate(root string, classes []pasta.NodeClass) error {
 		}
 	}
 	if err := validatePanelKeys(root, englishPanel); err != nil {
-		return err
-	}
-	if err := validateFixtureCoverage(englishPanel, loremPanel, "panel"); err != nil {
-		return err
-	}
-	if err := validateFixtureCoverage(englishMenus, loremMenus, "menus"); err != nil {
 		return err
 	}
 	if err := validateMenuClasses(locales, classes); err != nil {
@@ -170,40 +153,6 @@ func validate(root string, classes []pasta.NodeClass) error {
 	for _, file := range []string{filepath.Join("docs", "pages", "nodes", "almagest", "Command.md")} {
 		if _, err := os.Stat(filepath.Join(locales, "en", file)); err != nil {
 			return fmt.Errorf("%s: %w", file, err)
-		}
-	}
-	return nil
-}
-
-func validateFixtureCoverage(english, fixture any, path string) error {
-	switch value := english.(type) {
-	case map[string]string:
-		translated, ok := fixture.(map[string]string)
-		if !ok {
-			return fmt.Errorf("lorem %s fixture has the wrong type", path)
-		}
-		for key := range value {
-			if translated[key] == "" {
-				return fmt.Errorf("lorem fixture is missing %s.%s", path, key)
-			}
-		}
-	case map[string]any:
-		translated, ok := fixture.(map[string]any)
-		if !ok {
-			return fmt.Errorf("lorem %s fixture has the wrong type", path)
-		}
-		for key, child := range value {
-			translatedChild, exists := translated[key]
-			if !exists {
-				return fmt.Errorf("lorem fixture is missing %s.%s", path, key)
-			}
-			if err := validateFixtureCoverage(child, translatedChild, path+"."+key); err != nil {
-				return err
-			}
-		}
-	case string:
-		if translated, ok := fixture.(string); !ok || translated == "" {
-			return fmt.Errorf("lorem fixture is missing %s", path)
 		}
 	}
 	return nil

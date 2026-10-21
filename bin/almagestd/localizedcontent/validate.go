@@ -17,11 +17,19 @@ func ValidateRoot(root string) error {
 	if err != nil {
 		return err
 	}
-	if len(entries) > maxLocales {
-		return fmt.Errorf("locale root has more than %d entries", maxLocales)
-	}
 	foundEnglish := false
+	localeCount := 0
 	for _, entry := range entries {
+		if entry.Name() == "README.md" {
+			if entry.Type()&os.ModeSymlink != 0 || !entry.Type().IsRegular() {
+				return fmt.Errorf("README.md is not a regular file")
+			}
+			continue
+		}
+		localeCount++
+		if localeCount > maxLocales {
+			return fmt.Errorf("locale root has more than %d locales", maxLocales)
+		}
 		canonical, valid := CanonicalLocale(entry.Name())
 		if !valid || canonical != entry.Name() || entry.Type()&os.ModeSymlink != 0 || !entry.IsDir() {
 			return fmt.Errorf("invalid locale directory %q", entry.Name())

@@ -25,8 +25,8 @@ locales/<locale>/
 The repository contains:
 
 - `en`: the complete English content;
-- `lorem`: a development-only test locale. Its panel and menu catalogs are
-  complete, but its node documentation is intentionally incomplete.
+- `lorem`: a development-only test locale. Its catalogs and node
+  documentation can be incomplete to exercise fallback behavior.
 
 `manifest.json` has this format:
 
@@ -127,13 +127,12 @@ Treat panel keys and Formular IDs as stable presentation API. When you add or
 change localized UI:
 
 1. update the English bundle and its compiled fallback;
-2. keep the `lorem` panel and menu fixtures complete;
-3. add English short and long documentation for production node classes;
-4. run `just locales-check`.
+2. add English short and long documentation for production node classes;
+3. run `just locales-check`.
 
 `just check` runs this validation automatically. The validator checks bundle
 structure and limits, English panel-key coverage, production node content,
-known English menu classes, and `lorem` fixture coverage.
+known English menu classes, and the validity of partial non-English catalogs.
 
 Localization does not cover the CLI, logs, configuration, protocol errors,
 daemon diagnostics, machine-facing names and values, or arbitrary runtime
