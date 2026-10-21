@@ -18,6 +18,8 @@ test("documentation uses a separate page and the shared panel stylesheet", () =>
   assert.equal(document.body.classList.contains("docs-body"), true);
   assert.equal(document.querySelector("#docs-tree")?.tagName, "NAV");
   assert.equal(document.querySelector("#docs-page")?.tagName, "ARTICLE");
+  assert.equal(document.querySelector("#docs-navigation-toggle")?.getAttribute("aria-controls"), "docs-tree");
+  assert.equal(document.querySelector("#docs-navigation-scrim")?.getAttribute("aria-label"), "Close documentation topics");
   assert.equal(document.querySelector("#docs-locale-select")?.tagName, "SELECT");
   assert.equal(document.querySelector("link[rel='stylesheet']")?.getAttribute("href"), "/style.css");
   assert.equal(document.querySelector("script[type='module']")?.getAttribute("src"), "/public/build/docs.js");
@@ -75,6 +77,8 @@ test("documentation loads localized pages over HTTP without a WebSocket", () => 
   assert.match(docsSource, /new URL\("\/docs\/", window\.location\.href\)/);
   assert.doesNotMatch(docsSource, /searchParams\.set\("page"/);
   assert.match(docsSource, /almagest\.docs\.topic-folds\.v1/);
+  assert.match(docsSource, /function setNavigationOpen\(open: boolean\)/);
+  assert.match(docsSource, /event\.key === "Escape"/);
   assert.match(docsSource, /addEventListener\("toggle"/);
   assert.match(docsSource, /addEventListener\("change"/);
   assert.match(docsSource, /defaultPageID\(tree\.topics\)/);

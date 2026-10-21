@@ -37,6 +37,8 @@ const treeElement = document.querySelector<HTMLElement>("#docs-tree")!;
 const pageElement = document.querySelector<HTMLElement>("#docs-page")!;
 const localeSelect = document.querySelector<HTMLSelectElement>("#docs-locale-select")!;
 const adminPanelLink = document.querySelector<HTMLAnchorElement>("#admin-panel-link")!;
+const navigationToggle = document.querySelector<HTMLButtonElement>("#docs-navigation-toggle")!;
+const navigationScrim = document.querySelector<HTMLButtonElement>("#docs-navigation-scrim")!;
 const parameters = new URLSearchParams(window.location.search);
 let urlLocale = parameters.get("locale") || "";
 const requestedLocale = urlLocale || readLocaleCookie() || savedLocale() || navigator.language || "en";
@@ -53,6 +55,23 @@ let markMessages: Record<PageMark, string> = {
 };
 
 const markLabels: Record<PageMark, string> = { unavailable: "", deprecated: "D" };
+
+function setNavigationOpen(open: boolean): void {
+  const returnFocus = !open && (treeElement.contains(document.activeElement) || navigationScrim === document.activeElement);
+  treeElement.classList.toggle("open", open);
+  navigationScrim.classList.toggle("open", open);
+  navigationToggle.setAttribute("aria-expanded", String(open));
+  navigationScrim.tabIndex = open ? 0 : -1;
+  if (returnFocus) navigationToggle.focus();
+}
+
+navigationToggle.addEventListener("click", () => {
+  setNavigationOpen(navigationToggle.getAttribute("aria-expanded") !== "true");
+});
+navigationScrim.addEventListener("click", () => { setNavigationOpen(false); });
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") setNavigationOpen(false);
+});
 
 function pageMark(value: unknown): PageMark | null {
   return value === "unavailable" || value === "deprecated" ? value : null;
@@ -172,6 +191,7 @@ function renderTopics(topics: readonly Topic[]): DocumentFragment {
       link.classList.toggle("active", page.id === currentPage);
       link.addEventListener("click", (event) => {
         event.preventDefault();
+        setNavigationOpen(false);
         void openPage(page.id, true);
       });
       children.append(link);

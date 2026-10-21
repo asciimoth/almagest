@@ -29,6 +29,20 @@ test("the vendored LiteGraph build does not register eval-built nodes at startup
 test("the graph theme is configured before LiteGraph starts rendering", () => {
   assert.match(app, /new LGraphCanvas\("#graph-canvas", graph, \{ skip_render: true \}\)/);
   assert.match(app, /canvas\.background_image = GRAPH_GRID_IMAGE;[\s\S]*canvas\.startRendering\(\);/);
+  assert.match(app, /window\.addEventListener\("resize", scheduleGraphCanvasResize\)/);
+  assert.match(app, /window\.visualViewport\?\.addEventListener\("resize", scheduleGraphCanvasResize\)/);
+  assert.doesNotMatch(app, /new ResizeObserver/);
+  assert.match(app, /if \(width === graphCanvasWidth && height === graphCanvasHeight\) return;/);
+});
+
+test("graph input recovers from lost mouse-up events", () => {
+  assert.match(app, /installLiteGraphPointerGuard\(\)/);
+  assert.match(app, /finally \{\s*normalizeLiteGraphMoveListener\(this\);\s*\}/);
+  assert.match(app, /pointerListenerRemove\(graphDocument, "move", move, true\)/);
+  assert.match(app, /pointerListenerRemove\(graphCanvas, "move", move, true\)/);
+  assert.match(app, /pointerListenerAdd\(graphCanvas, "move", move, false\)/);
+  assert.match(app, /if \(!canvas\?\.pointer_is_down \|\| event\.buttons !== 0\) return;/);
+  assert.match(app, /cancelLiteGraphPointerInteraction\(canvas\)/);
 });
 
 test("SPA tabs use fixed glyphs with localized accessible names", () => {
@@ -51,6 +65,7 @@ test("SPA tabs use fixed glyphs with localized accessible names", () => {
   assert.equal(dom.window.document.querySelector("[data-panel='sec'] #sec-value-panel") !== null, true);
   assert.equal(dom.window.document.querySelector("[data-panel='tls'] #tls-tree") !== null, true);
   assert.equal(dom.window.document.querySelector("[data-panel='tls'] #tls-value-panel") !== null, true);
+  assert.equal(dom.window.document.querySelector("[data-panel='logs'] .logs-scroll > #logs-list") !== null, true);
 });
 
 test("SPA tabs restore and update the URL hash", () => {

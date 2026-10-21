@@ -144,9 +144,15 @@ a:focus-visible {
 }
 
 .docs-layout {
+  position: relative;
   display: grid;
-  grid-template-columns: minmax(230px, 290px) minmax(0, 1fr);
+  grid-template-columns: 18.125rem minmax(0, 1fr);
   min-height: 0;
+}
+
+.docs-navigation-toggle,
+.docs-navigation-scrim {
+  display: none;
 }
 
 .docs-tree {
@@ -331,25 +337,78 @@ a:focus-visible {
   white-space: nowrap;
 }
 
-@media (max-width: 720px) {
+@media (max-width: 68.75rem) {
+  .docs-layout {
+    grid-template-columns: clamp(14.375rem, 24vw, 18.125rem) minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 45rem) {
   .docs-header {
     gap: 12px;
     padding-inline: 16px;
   }
 
+  .docs-header h1 {
+    font-size: clamp(1rem, 4.5vw, 1.125rem);
+  }
+
+  .docs-header-actions {
+    gap: 6px;
+  }
+
+  .docs-navigation-toggle {
+    display: inline-flex;
+    align-items: center;
+  }
+
   .docs-layout {
     grid-template-columns: 1fr;
-    grid-template-rows: minmax(120px, 38vh) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    overflow: hidden;
   }
 
   .docs-tree {
-    border-right: 0;
-    border-bottom: 1px solid var(--surface0);
-    padding: 12px 16px;
+    position: absolute;
+    inset: 0 auto 0 0;
+    z-index: 4;
+    width: min(21rem, 86vw);
+    border-right: 1px solid var(--surface1);
+    padding: 1rem;
+    box-shadow: 0 1rem 2.625rem color-mix(in srgb, black, transparent 45%);
+    transform: translateX(-105%);
+    visibility: hidden;
+    transition: transform 160ms ease, visibility 160ms;
+  }
+
+  .docs-tree.open {
+    transform: translateX(0);
+    visibility: visible;
+  }
+
+  .docs-navigation-scrim {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    border: 0;
+    border-radius: 0;
+    background: color-mix(in srgb, black, transparent 48%);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 160ms ease;
+  }
+
+  .docs-navigation-scrim.open {
+    display: block;
+    opacity: 1;
+    pointer-events: auto;
   }
 
   .docs-page.node-description {
-    padding: 28px 20px 60px;
+    padding: 1.75rem clamp(1rem, 5vw, 1.5rem) 3.75rem;
     font-size: 16px;
   }
 
@@ -1038,7 +1097,7 @@ h1 {
 
 .graph-panel {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 420px;
+  grid-template-columns: minmax(0, 1fr) 26.25rem;
   min-width: 0;
 }
 
@@ -2747,9 +2806,16 @@ h1 {
 }
 
 .logs-panel {
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   background: var(--crust);
   padding: 14px;
+}
+
+.logs-scroll {
+  min-width: 0;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
 }
 
 #logs-list {
@@ -2915,15 +2981,81 @@ h1 {
   font-size: 13px;
 }
 
-@media (max-width: 900px) {
-  .app-header {
-    grid-template-columns: 1fr;
+@media (max-width: 68.75rem) {
+  .graph-panel {
+    grid-template-columns: minmax(0, 1fr) clamp(17rem, 34vw, 22rem);
   }
 
-  .tabs,
-  .tab-list,
-  .actions {
-    flex-wrap: wrap;
+  .snapshot-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .snapshot-row-actions {
+    justify-content: flex-end;
+  }
+
+  #logs-list {
+    min-width: 36rem;
+  }
+
+  #logs-list li {
+    grid-template-columns: max-content max-content minmax(12rem, 1fr);
+    grid-template-areas:
+      "level time source"
+      "message message message";
+    gap: 5px 14px;
+  }
+
+  #logs-list .logs-empty {
+    grid-template-areas: none;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  #logs-list .logs-empty span {
+    grid-area: auto;
+  }
+
+  #logs-list i {
+    display: none;
+  }
+
+  #logs-list strong {
+    grid-area: level;
+  }
+
+  #logs-list time {
+    grid-area: time;
+  }
+
+  #logs-list b {
+    grid-area: source;
+  }
+
+  #logs-list span {
+    grid-area: message;
+  }
+}
+
+@media (max-width: 56.25rem) {
+  .app-header {
+    grid-template-columns: 1fr;
+    gap: 8px;
+    padding-block: 8px;
+  }
+
+  .tabs {
+    min-width: 0;
+  }
+
+  .tab-list {
+    min-width: 0;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    scrollbar-width: thin;
+  }
+
+  .tabs button {
+    flex: 0 0 auto;
   }
 
   .snapshots-header {
@@ -2941,7 +3073,7 @@ h1 {
 
   .graph-panel {
     grid-template-columns: 1fr;
-    grid-template-rows: minmax(0, 1fr) minmax(180px, 34vh);
+    grid-template-rows: minmax(0, 1fr) minmax(11.25rem, 34dvh);
   }
 
   #sidekick {
@@ -3000,11 +3132,7 @@ h1 {
   }
 
   .kv-row {
-    grid-template-columns: 24px minmax(0, 1fr);
-  }
-
-  .kv-row-actions {
-    grid-column: 2 / -1;
+    grid-template-columns: 24px minmax(0, 1fr) max-content;
   }
 
   .kv-node-body {
@@ -3029,10 +3157,10 @@ h1 {
 
   .kv-value-panel {
     position: fixed;
-    top: 12px;
-    right: 12px;
-    bottom: 12px;
-    left: 12px;
+    top: 0.75rem;
+    right: 0.75rem;
+    bottom: 0.75rem;
+    left: 0.75rem;
     z-index: 12;
     height: auto;
     border: 1px solid var(--surface1);
@@ -3041,7 +3169,32 @@ h1 {
   }
 }
 
-@media (max-width: 520px) {
+@media (max-width: 32.5rem) {
+  .app-header {
+    padding-inline: 0.75rem;
+  }
+
+  .header-logo {
+    width: 2.25rem;
+    height: 2.25rem;
+  }
+
+  .config-panel,
+  .snapshots-panel,
+  .ps-panel,
+  .logs-panel {
+    padding: 0.75rem;
+  }
+
+  .config-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .config-actions button {
+    flex: 1;
+  }
+
   .snapshots-header {
     align-items: stretch;
     flex-direction: column;
@@ -3055,5 +3208,68 @@ h1 {
   .snapshot-action-group button,
   #snapshots-reload {
     width: 100%;
+  }
+
+  .snapshot-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .snapshot-row-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .kv-row {
+    grid-template-columns: 24px minmax(0, 1fr);
+  }
+
+  .kv-row-actions {
+    grid-column: 2 / -1;
+    justify-content: flex-end;
+  }
+}
+
+@media (max-width: 40rem) {
+  .docs-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .docs-header-actions {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 28rem) {
+  .docs-header {
+    padding-inline: 0.75rem;
+  }
+
+  .docs-locale-picker > span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+
+  .docs-locale-picker select {
+    max-width: 7.5rem;
+  }
+
+  .docs-page-navigation {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .docs-page-navigation-next {
+    grid-column: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .docs-tree,
+  .docs-navigation-scrim {
+    transition: none;
   }
 }

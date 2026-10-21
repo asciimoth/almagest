@@ -445,7 +445,9 @@ let selectedMenu: { node: ID; menu: FormularMenuInstance } | null = null;
 let activeTab = "graph";
 let sidekickUpdate = 0;
 let workerAgeTimer = 0;
-let graphResizeObserver: ResizeObserver | null = null;
+let graphResizeFrame = 0;
+let graphCanvasWidth = 0;
+let graphCanvasHeight = 0;
 let graphDefaultScale = 1;
 let localClipboard = "";
 let graphShortcutsArmed = false;
@@ -502,6 +504,7 @@ const kvPendingEntrySnapshots = new Map<number, KVEntriesSnapshot>();
 const kvPendingValueSnapshots = new Map<number, KVValueSnapshot>();
 let liteGraphDrawGuardInstalled = false;
 let liteGraphWidgetSelectionGuardInstalled = false;
+let liteGraphPointerGuardInstalled = false;
 let logStoreLimit = 0;
 const liteLinkToPasta = new Map<number, number>();
 const pendingNodePlacements: PendingNodePlacement[] = [];
@@ -1247,6 +1250,7 @@ function initGraph(): void {
   LiteGraph.allow_scripts = false;
   installLiteGraphDrawGuard();
   installLiteGraphWidgetSelectionGuard();
+  installLiteGraphPointerGuard();
   registerLiteGraphNode();
   graph = new LGraph();
   canvas = new LGraphCanvas("#graph-canvas", graph, { skip_render: true });
@@ -1261,8 +1265,8 @@ function initGraph(): void {
   installPastaPalette();
   applyGraphViewportState();
   resizeGraphCanvas();
-  graphResizeObserver = new ResizeObserver(resizeGraphCanvas);
-  graphResizeObserver.observe(el.graphCanvas);
+  window.addEventListener("resize", scheduleGraphCanvasResize);
+  window.visualViewport?.addEventListener("resize", scheduleGraphCanvasResize);
   canvas.startRendering();
   graph.start();
   el.graphCanvas.addEventListener("pointerdown", (event) => {
@@ -1285,6 +1289,7 @@ function initGraph(): void {
   el.graphCanvas.addEventListener("mousewheel", scheduleGraphViewportSave);
   el.graphCanvas.addEventListener("dragover", handleGraphCanvasDragOver);
   el.graphCanvas.addEventListener("drop", handleGraphCanvasDrop);
+  document.addEventListener("mousemove", recoverLostGraphMouseUp, { capture: true });
   document.addEventListener("pointerup", () => {
     flushNodePositions();
     scheduleGraphViewportSave();
@@ -1295,9 +1300,13 @@ function initGraph(): void {
   document.addEventListener("mouseup", scheduleGraphViewportSave, { capture: true });
   window.addEventListener("blur", () => {
     flushNodePositions();
+    cancelLiteGraphPointerInteraction(canvas);
     saveGraphViewportState();
   });
-  window.addEventListener("pagehide", saveGraphViewportState);
+  window.addEventListener("pagehide", () => {
+    cancelLiteGraphPointerInteraction(canvas);
+    saveGraphViewportState();
+  });
   el.graphCanvas.addEventListener("keydown", (event) => {
     graphKeydown(event);
     scheduleGraphViewportSave();
@@ -1344,6 +1353,57 @@ function installLiteGraphWidgetSelectionGuard(): void {
     return result;
   };
   liteGraphWidgetSelectionGuardInstalled = true;
+}
+
+function installLiteGraphPointerGuard(): void {
+  if (liteGraphPointerGuardInstalled || !LGraphCanvas?.prototype?.processMouseUp) return;
+  const processMouseUp = LGraphCanvas.prototype.processMouseUp;
+  LGraphCanvas.prototype.processMouseUp = function (event: MouseEvent): unknown {
+    try {
+      return processMouseUp.call(this, event);
+    } finally {
+      normalizeLiteGraphMoveListener(this);
+    }
+  };
+  liteGraphPointerGuardInstalled = true;
+}
+
+function normalizeLiteGraphMoveListener(targetCanvas: any): void {
+  const graphCanvas = targetCanvas?.canvas as HTMLCanvasElement | undefined;
+  const move = targetCanvas?._mousemove_callback as EventListener | undefined;
+  const up = targetCanvas?._mouseup_callback as EventListener | undefined;
+  const graphDocument = graphCanvas?.ownerDocument;
+  if (!graphCanvas || !graphDocument || !move) return;
+  LiteGraph.pointerListenerRemove(graphDocument, "move", move, true);
+  if (up) LiteGraph.pointerListenerRemove(graphDocument, "up", up, true);
+  LiteGraph.pointerListenerRemove(graphCanvas, "move", move, true);
+  LiteGraph.pointerListenerRemove(graphCanvas, "move", move, false);
+  LiteGraph.pointerListenerAdd(graphCanvas, "move", move, false);
+}
+
+function cancelLiteGraphPointerInteraction(targetCanvas: any): void {
+  if (!targetCanvas) return;
+  normalizeLiteGraphMoveListener(targetCanvas);
+  targetCanvas.dragging_canvas = false;
+  targetCanvas.last_mouse_dragging = false;
+  targetCanvas.pointer_is_down = false;
+  targetCanvas.pointer_is_double = false;
+  targetCanvas.dragging_rectangle = null;
+  targetCanvas.selected_group = null;
+  targetCanvas.selected_group_resizing = false;
+  targetCanvas.node_dragged = null;
+  targetCanvas.resizing_node = null;
+  targetCanvas.node_widget = null;
+  targetCanvas.node_capturing_input = null;
+  if (targetCanvas.canvas) targetCanvas.canvas.style.cursor = "";
+  cancelLiteGraphConnectionState(targetCanvas);
+}
+
+function recoverLostGraphMouseUp(event: MouseEvent): void {
+  if (!canvas?.pointer_is_down || event.buttons !== 0) return;
+  flushNodePositions();
+  cancelLiteGraphPointerInteraction(canvas);
+  scheduleGraphViewportSave();
 }
 
 function sanitizeLiteGraphConnectionState(targetCanvas: any): void {
@@ -1440,7 +1500,20 @@ function resizeGraphCanvas(): void {
   const rect = el.graphCanvas.getBoundingClientRect();
   const width = Math.max(1, Math.round(rect.width));
   const height = Math.max(1, Math.round(rect.height));
+  if (width === graphCanvasWidth && height === graphCanvasHeight) return;
+  graphCanvasWidth = width;
+  graphCanvasHeight = height;
   canvas.resize(width, height);
+}
+
+function scheduleGraphCanvasResize(): void {
+  if (graphResizeFrame) return;
+  graphResizeFrame = window.requestAnimationFrame(() => {
+    graphResizeFrame = window.requestAnimationFrame(() => {
+      graphResizeFrame = 0;
+      resizeGraphCanvas();
+    });
+  });
 }
 
 function centerGraphContent(): void {

@@ -50,3 +50,22 @@ test("TLS forms and policy rows collapse to one column on mobile", () => {
   assert.match(css, /\.tls-policy-form,/);
   assert.match(css, /\.tls-policy-rule-list li,/);
 });
+
+test("compact layouts preserve content space and expose mobile navigation", () => {
+  assert.match(css, /grid-template-columns:\s*minmax\(0, 1fr\) clamp\(17rem, 34vw, 22rem\);/);
+  assert.match(css, /\.tab-list\s*\{[^}]*overflow-x:\s*auto;/s);
+  assert.match(css, /\.docs-tree\.open\s*\{[^}]*transform:\s*translateX\(0\);/s);
+  assert.match(css, /\.docs-navigation-scrim\.open\s*\{/);
+});
+
+test("compact entry actions align at the row edge", () => {
+  assert.match(css, /@media \(max-width: 56\.25rem\)[\s\S]*?\.kv-row\s*\{[^}]*grid-template-columns:\s*24px minmax\(0, 1fr\) max-content;/);
+  assert.match(css, /@media \(max-width: 32\.5rem\)[\s\S]*?\.kv-row-actions\s*\{[^}]*justify-content:\s*flex-end;/);
+  assert.match(css, /@media \(max-width: 68\.75rem\)[\s\S]*?\.snapshot-row-actions\s*\{[^}]*justify-content:\s*flex-end;/);
+});
+
+test("compact logs use a minimum-width hybrid layout", () => {
+  assert.match(css, /\.logs-scroll\s*\{[^}]*overflow-x:\s*auto;/s);
+  assert.match(css, /#logs-list\s*\{[^}]*min-width:\s*36rem;/s);
+  assert.match(css, /"level time source"\s*\n\s*"message message message"/);
+});
