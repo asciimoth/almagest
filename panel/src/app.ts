@@ -1241,6 +1241,7 @@ function initGraph(): void {
   registerLiteGraphNode();
   graph = new LGraph();
   canvas = new LGraphCanvas("#graph-canvas", graph);
+  disableOverlappingLiteGraphUI();
   canvas.node_title_color = DEFAULT_NODE_TEXT_COLOR;
   canvas.onNodeMoved = flushNodePositions;
   canvas.onSelectionChange = scheduleSidekickUpdate;
@@ -1289,6 +1290,21 @@ function initGraph(): void {
   }, { capture: true });
   el.graphCanvas.tabIndex = 0;
   requestAnimationFrame(resizeGraphCanvas);
+}
+
+function disableOverlappingLiteGraphUI(): void {
+  if (!canvas) return;
+  // A callback disables LiteGraph's fallback node settings panel. Node
+  // selection already opens the Almagest node menu in the sidekick.
+  canvas.onShowNodePanel = scheduleSidekickUpdate;
+
+  // Keep the Almagest canvas menu, but do not show LiteGraph's node and port
+  // menus. Those menus edit only the client-side mirror of an engine node.
+  const processContextMenu = canvas.processContextMenu.bind(canvas);
+  canvas.processContextMenu = (node: unknown, event: Event): void => {
+    if (node) return;
+    processContextMenu(node, event);
+  };
 }
 
 function installLiteGraphDrawGuard(): void {
