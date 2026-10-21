@@ -17,25 +17,25 @@ secret**:
 - a native WireGuard or AmneziaWG client configuration.
 
 **Server country** selects the service endpoint for a service key. Use a
-two-letter ISO 3166-1 country code, such as `de` or `nl`. Static self-hosted
-and native profiles ignore this setting.
+two-letter ISO 3166-1 country code, such as `de` or `nl`. Static self-hosted and
+native profiles ignore this setting.
 
 For a custom service deployment, set **Gateway URL** and select a **Gateway
 public key secret**. The gateway URL must use HTTP or HTTPS. Select a TLS config
 when the HTTPS gateway needs custom trust or client authentication. These
 gateway and TLS settings apply only to service-key imports.
 
-Service-key imports always notify the service that the connection is active.
-The node generates a WireGuard identity when it imports a new service
-connection. For a service key, changing the country or other connection
-settings can register a new identity. Detaching and later reattaching **Tun** or
-**Network** can also register a new identity. Self-hosted and native profiles
-use the private key in the selected connection secret.
+Service-key imports always notify the service that the connection is active. The
+node generates a WireGuard identity when it imports a new service connection.
+For a service key, changing the country or other connection settings can
+register a new identity. Detaching and later reattaching **Tun** or **Network**
+can also register a new identity. Self-hosted and native profiles use the
+private key in the selected connection secret.
 
 The node does not save WireGuard keys, peers, counters, or handshake state. It
-does save its Amnezia installation UUID and encrypted proxy-discovery cache
-when persistent storage is available. This UUID stays the same after daemon
-restarts and node renames. The status menu shows the current UUID.
+does save its Amnezia installation UUID and encrypted proxy-discovery cache when
+persistent storage is available. This UUID stays the same after daemon restarts
+and node renames. The status menu shows the current UUID.
 
 ## Tunnel configuration and MTU
 
@@ -56,12 +56,12 @@ less than the IPv6 minimum.
 
 The **DNS** output is available while the VPN is up. It sends UDP DNS requests
 through the WireGuard tunnel. The node tries usable profile DNS servers in
-profile order. A DNS server is usable only when the profile has a tunnel
-address of the same IP family and an allowed-IP route to that server.
+profile order. A DNS server is usable only when the profile has a tunnel address
+of the same IP family and an allowed-IP route to that server.
 
 The tunnel DNS client does not retry a truncated response over TCP and does not
-reassemble fragmented IP packets. Use a different DNS transport if the
-resolver must support responses that require TCP.
+reassemble fragmented IP packets. Use a different DNS transport if the resolver
+must support responses that require TCP.
 
 If the VPN connection changes, existing DNS outputs close until the replacement
 connection is ready. Removing or adding only a DNS link does not reconnect the
@@ -72,14 +72,14 @@ VPN.
 If the service requests a CAPTCHA, the node pauses the import and shows a
 warning. Open the node menu and select **Complete captcha**. The dialog shows
 the image and message from the service. If you cancel the dialog, the import
-stays paused and you can open the dialog again. A submitted answer continues
-the same import. If the answer is not accepted, the service can send a new
+stays paused and you can open the dialog again. A submitted answer continues the
+same import. If the answer is not accepted, the service can send a new
 challenge.
 
 ## Troubleshooting
 
-The selected service endpoint can be unavailable even if the service returned
-a valid profile. The node can show **up**, **TX bytes** can increase, and **RX
+The selected service endpoint can be unavailable even if the service returned a
+valid profile. The node can show **up**, **TX bytes** can increase, and **RX
 bytes** can stay at zero while tunnel requests time out. Select a different
 server country and try again. Do not delete the installation UUID or recreate
 the node for this test. These actions do not repair the endpoint and can use

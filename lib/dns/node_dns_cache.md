@@ -5,8 +5,8 @@
 
 ## Ports
 
-- `DNS`, left-directed `almagest/dns`: emits detached wrappers around the
-  cache to consumers.
+- `DNS`, left-directed `almagest/dns`: emits detached wrappers around the cache
+  to consumers.
 - `DNS`, right-directed `almagest/dns`: optional upstream DNS source for cache
   misses. Cached hits can still be served after this input is detached.
 

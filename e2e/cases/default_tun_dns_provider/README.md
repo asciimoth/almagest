@@ -6,14 +6,14 @@ DefaultTun controls system DNS:
 - OutNetwork sends DNS requests to the original upstream that existed before
   DefaultTun started.
 - OutNetwork uses `/etc/hosts` before it sends a DNS request.
-- OutNetwork does not fall back to the managed system resolver after an
-  upstream error.
+- OutNetwork does not fall back to the managed system resolver after an upstream
+  error.
 - The final marked connection bypasses DefaultTun routing.
 
-The test starts separate original and managed DNS servers. They return
-different answers for the same names. A managed wildcard answer points to a
-poison HTTP target. This makes use of the wrong resolver visible even when a
-request can otherwise complete.
+The test starts separate original and managed DNS servers. They return different
+answers for the same names. A managed wildcard answer points to a poison HTTP
+target. This makes use of the wrong resolver visible even when a request can
+otherwise complete.
 
 The setup also creates a routed public namespace. Direct traffic to that
 namespace stops when DefaultTun is active. Requests through the graph's

@@ -4,8 +4,8 @@ This privileged case ports the vanilla track from the WGO Docker compatibility
 suite to the real `almagestd` WireGuard node.
 
 The test creates a kernel WireGuard interface with `ip` and configures it with
-the `wg` CLI. The Almagest side uses a WireGuard node, a userspace VTun node,
-an OutNetwork node, and an HTTP client node. It verifies:
+the `wg` CLI. The Almagest side uses a WireGuard node, a userspace VTun node, an
+OutNetwork node, and an HTTP client node. It verifies:
 
 - ICMP traffic from kernel WireGuard to the Almagest userspace tunnel;
 - HTTP traffic from Almagest to a service on the kernel tunnel address;

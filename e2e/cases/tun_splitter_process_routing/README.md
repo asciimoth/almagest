@@ -30,8 +30,8 @@ exercising ordinary root-namespace routing through an external-looking prefix.
   - `TRUE` routes everything else to slot 6.
 - Slot 3 forwards through `Spoofer 1503` to a mock network HTTP server returning
   `Server 1` at `10.210.148.1:8080`.
-- Slot 5 forwards through `TunCopy 1505` and `VTun 1506` to a second HTTP
-  server returning `Server 2` at the same `10.210.148.1:8080` address.
+- Slot 5 forwards through `TunCopy 1505` and `VTun 1506` to a second HTTP server
+  returning `Server 2` at the same `10.210.148.1:8080` address.
 - Slot 6 forwards through `Spoofer 1508` to `OutNetwork 1509`.
 
 ## Expected Behavior

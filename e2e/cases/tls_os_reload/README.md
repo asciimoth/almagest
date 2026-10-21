@@ -1,8 +1,8 @@
 # TLS OS Reload
 
 Runs `almagestd` against a deterministic `SSL_CERT_FILE` and empty
-`SSL_CERT_DIR`, then changes the bundle and calls `almagest-cli tls
-reload-os-certs`.
+`SSL_CERT_DIR`, then changes the bundle and calls
+`almagest-cli tls reload-os-certs`.
 
 The case verifies:
 

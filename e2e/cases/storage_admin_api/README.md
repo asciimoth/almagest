@@ -26,4 +26,3 @@ does not require privileged Docker access.
   allow lists follow those graph changes.
 - Restart the daemon and verify that retained KV, DNS, secret, graph, and
   protected-secret state is reconstructed correctly.
-

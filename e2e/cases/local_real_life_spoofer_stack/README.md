@@ -2,8 +2,8 @@
 
 ## Purpose
 
-This case is a Docker version of the workstation graph in `local/alm.hujson`.
-It tests the complete outer transport used by that graph:
+This case is a Docker version of the workstation graph in `local/alm.hujson`. It
+tests the complete outer transport used by that graph:
 
 ```text
 VTun transport
@@ -18,8 +18,8 @@ same nested Tailscale, DNS cache, SOCKS routing, TLS interception, DefaultTun,
 process selection, and live rule-update layers.
 
 The `local/alm.hujson` file is a design reference only. This case contains its
-own configuration and does not read the gitignored `local/` directory during
-its build or run.
+own configuration and does not read the gitignored `local/` directory during its
+build or run.
 
 Run it with:
 
@@ -33,14 +33,13 @@ temporary container namespaces.
 
 ## Docker topology
 
-The runner creates four containers, one Docker bridge, and one temporary
-volume:
+The runner creates four containers, one Docker bridge, and one temporary volume:
 
 1. A public HTTP origin reports its destination, remote source, and path.
-2. An example HTTP origin supplies the destination used by filters.
-3. A combined service container runs a TLS Headscale server, authoritative
+1. An example HTTP origin supplies the destination used by filters.
+1. A combined service container runs a TLS Headscale server, authoritative
    dnsmasq fixture, and a second Almagest daemon as the tailnet peer.
-4. The main container runs the graph under test. Its setup moves the Docker
+1. The main container runs the graph under test. Its setup moves the Docker
    interface into a router namespace and connects that router to the main
    namespace through separate Ethernet and Wi-Fi veth links.
 
@@ -49,20 +48,20 @@ Both physical links therefore reach the same destinations. The test can take
 either link down and replace the default route without changing graph config.
 
 The origin and Headscale service scripts are shared with
-`local_real_life_stack`. Standalone mode omits its Amnesia-only route and
-source guard and adds the DNS fixture to the Headscale container.
+`local_real_life_stack`. Standalone mode omits its Amnesia-only route and source
+guard and adds the DNS fixture to the Headscale container.
 
 All certificates, Headscale state, authentication keys, and WireGuard private
-keys are generated for each run. The runner removes all containers, the
-network, and the volume after success, failure, or interruption.
+keys are generated for each run. The runner removes all containers, the network,
+and the volume after success, failure, or interruption.
 
 ## Graph paths
 
 The main graph uses a non-routable `192.0.2.2` address in `VTun transport`.
 Spoofer consumes those packets and opens real host sockets through
-`OutNetwork direct`. The HTTP origin therefore sees the main container's
-Docker address. This verifies forwarding across the TUN boundary instead of
-only checking that the nodes report a ready state.
+`OutNetwork direct`. The HTTP origin therefore sees the main container's Docker
+address. This verifies forwarding across the TUN boundary instead of only
+checking that the nodes report a ready state.
 
 ```text
 OutNetwork direct
@@ -86,10 +85,10 @@ DefaultTun
             `-- 100.64.0.0/10 -> WireGuard Tailscale -> HttpServer SO
 ```
 
-The full traffic matrix uses `AutoTunSplitter transport`. It learns the
-tailnet route from the WireGuard TUN configuration. The test then restarts the
-same graph with the original `TunSplitter transport` and its manual subnet
-rules. A focused compatibility pass checks the normal and tailnet slots again.
+The full traffic matrix uses `AutoTunSplitter transport`. It learns the tailnet
+route from the WireGuard TUN configuration. The test then restarts the same
+graph with the original `TunSplitter transport` and its manual subnet rules. A
+focused compatibility pass checks the normal and tailnet slots again.
 
 The main node and peer use Headscale's sequential addresses `100.64.0.2` and
 `100.64.0.1`. DERP is disabled. The test requires a `direct-udp` peer path and
@@ -116,8 +115,8 @@ The test checks:
 - live rule removal and restoration work on both network routers and the TUN
   splitter;
 - DNS cache state and all node states remain valid after live changes;
-- the complete graph recovers across an ethernet, no-network, Wi-Fi,
-  no-network, and ethernet transition sequence;
+- the complete graph recovers across an ethernet, no-network, Wi-Fi, no-network,
+  and ethernet transition sequence;
 - direct OutNetwork, DefaultTun/Spoofer, DNS, and nested Tailscale traffic all
   recover through the new physical route without restarting the daemon.
 

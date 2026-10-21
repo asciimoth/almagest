@@ -27,8 +27,8 @@ REMAP ENDPOINT FIELD VALUE
 - `PORT`: replace only the port part.
 
 Predicates are stack-based bytecode operations such as `DIAL`, `LISTEN`, `TCP`,
-`UDP`, `ADDR_S`, `ADDR_RE`, `PORT`, `LADDR_S`, `LADDR_RE`, `LPORT`, `AND`,
-`OR`, and `NOT`. Matching is syntactic and does not resolve names.
+`UDP`, `ADDR_S`, `ADDR_RE`, `PORT`, `LADDR_S`, `LADDR_RE`, `LPORT`, `AND`, `OR`,
+and `NOT`. Matching is syntactic and does not resolve names.
 
 Examples:
 

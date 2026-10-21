@@ -1,0 +1,15 @@
+default: true
+
+MD013:
+  code_blocks: false
+  line_length: 80
+  tables: false
+
+MD033:
+  allowed_elements:
+    - animateTransform
+    - circle
+    - img
+    - svg
+
+MD041: false

@@ -1,7 +1,6 @@
 # Almagestd Memory Consumption Report
 
-Date: 2026-07-02
-Updated: 2026-07-03
+Date: 2026-07-02 Updated: 2026-07-03
 
 ## Summary
 
@@ -27,8 +26,8 @@ wgo/device.(*Device).RoutineReadFromTUN
 
 Each active WireGuard TUN reader preallocates `device.BatchSize()` outbound
 elements. `wgo.Device` defaults `batchSize` to `256` when the configured value
-is `0` or omitted, and each outbound element owns one
-`[MessageBufferSize]byte`. `MessageBufferSize` is approximately 65.6 KiB.
+is `0` or omitted, and each outbound element owns one `[MessageBufferSize]byte`.
+`MessageBufferSize` is approximately 65.6 KiB.
 
 Approximate baseline per active WireGuard TUN reader:
 
@@ -47,45 +46,45 @@ preserves the default. This lowers the fixed WireGuard TUN-reader and UDP-bind
 batch allocation budget roughly linearly, but it is not a global daemon memory
 limit. In Docker heavy-load checks, lowering both WireGuard nodes from the
 default effective batch size `256` to `1` reduced after-load RSS, while large
-HTTP responses still left the daemon in the hundreds of MiB because gVisor,
-HTTP payloads, packet buffers, `sync.Pool`s, and Go heap spans dominated.
+HTTP responses still left the daemon in the hundreds of MiB because gVisor, HTTP
+payloads, packet buffers, `sync.Pool`s, and Go heap spans dominated.
 
-The non-WireGuard examples are not idle-memory problems. Real Docker daemon
-runs for `direct`, `select`, `tun2net`, and `tun_split` restored at roughly
-21-25 MiB RSS. Under burst traffic, however, the `DefaultTun`/`Spoofer` paths
-can still grow to roughly 94-214 MiB RSS without WireGuard because gVisor
-netstack state, packet/TCP buffers, daemon transfer buffers, and Go heap spans
-remain warm after load. The pure mock-network `select` setup stayed close to
-idle under repeated requests.
+The non-WireGuard examples are not idle-memory problems. Real Docker daemon runs
+for `direct`, `select`, `tun2net`, and `tun_split` restored at roughly 21-25 MiB
+RSS. Under burst traffic, however, the `DefaultTun`/`Spoofer` paths can still
+grow to roughly 94-214 MiB RSS without WireGuard because gVisor netstack state,
+packet/TCP buffers, daemon transfer buffers, and Go heap spans remain warm after
+load. The pure mock-network `select` setup stayed close to idle under repeated
+requests.
 
 A native-TUN comparison against `github.com/xjasonlyu/tun2socks` showed that
 Almagest's `DefaultTun -> Spoofer -> SocksClient -> OutNetwork` path is
 substantially heavier than tun2socks when both are reduced to the same basic
 TUN-to-SOCKS job. In Docker `--network none` runs, with management listeners
-disabled and the same in-container SOCKS target, almagestd idled at about
-29 MiB RSS while tun2socks idled at about 12 MiB RSS. After a 3,000-request
-small-response burst, almagestd retained about 144 MiB RSS versus about
-42 MiB for tun2socks. With 400 1 MiB responses, almagestd retained about
-128 MiB RSS versus about 95 MiB for tun2socks. This comparison does not
-exercise WireGuard. It points at general-purpose daemon, graph, native
-sysnet-linux, gonnect/socksgo wrapper, and Spoofer forwarding overhead on top
-of the shared gVisor netstack class.
+disabled and the same in-container SOCKS target, almagestd idled at about 29 MiB
+RSS while tun2socks idled at about 12 MiB RSS. After a 3,000-request
+small-response burst, almagestd retained about 144 MiB RSS versus about 42 MiB
+for tun2socks. With 400 1 MiB responses, almagestd retained about 128 MiB RSS
+versus about 95 MiB for tun2socks. This comparison does not exercise WireGuard.
+It points at general-purpose daemon, graph, native sysnet-linux, gonnect/socksgo
+wrapper, and Spoofer forwarding overhead on top of the shared gVisor netstack
+class.
 
 A native-TUN comparison against upstream `wireguard-go` showed the same pattern
 for the narrow WireGuard client job. With both clients reduced to one native
 TUN, one WireGuard peer, the same route, the same endpoint, the same
-in-container peer, and no management listener on the measured process,
-almagestd using `DefaultTun -> WireGuard -> OutNetwork` idled at about
-29 MiB RSS while upstream `wireguard-go` idled at about 10 MiB RSS. After a
-3,000-request small-response burst, almagestd retained about 56 MiB RSS versus
-about 13 MiB for `wireguard-go`. With 400 1 MiB responses, almagestd retained
-about 365 MiB RSS versus about 231 MiB for `wireguard-go`. The narrow daemon is
-much smaller, but the large-response run also confirms that userspace
-WireGuard itself can retain hundreds of MiB after high-volume payload traffic
-has dirtied packet buffers and Go heap spans.
+in-container peer, and no management listener on the measured process, almagestd
+using `DefaultTun -> WireGuard -> OutNetwork` idled at about 29 MiB RSS while
+upstream `wireguard-go` idled at about 10 MiB RSS. After a 3,000-request
+small-response burst, almagestd retained about 56 MiB RSS versus about 13 MiB
+for `wireguard-go`. With 400 1 MiB responses, almagestd retained about 365 MiB
+RSS versus about 231 MiB for `wireguard-go`. The narrow daemon is much smaller,
+but the large-response run also confirms that userspace WireGuard itself can
+retain hundreds of MiB after high-volume payload traffic has dirtied packet
+buffers and Go heap spans.
 
-The follow-up `MEMORY_NON_GVISOR_OVERHEAD_REPORT.md` breaks that delta down
-into fixed daemon footprint, native `DefaultTun`/`sysnet-linux`, graph wrapper,
+The follow-up `MEMORY_NON_GVISOR_OVERHEAD_REPORT.md` breaks that delta down into
+fixed daemon footprint, native `DefaultTun`/`sysnet-linux`, graph wrapper,
 per-flow forwarding, SOCKS client, copy-buffer, and Go runtime retention costs,
 with a ranked list of reduction candidates.
 
@@ -101,9 +100,9 @@ of outbound gVisor packet buffers that can sit in their channel endpoints, but
 it is not an idle-memory fix. The empty channel capacity itself is small, and
 the full-queue payload budget at MTU 1500 is only about 1.5 MiB for 1024 slots
 versus about 96 KiB for 64 slots per endpoint. In matching Docker heavy-load
-runs, reducing both knobs from 1024 to 64 changed after-load RSS by only about
-2 MiB and did not prevent the daemon from reaching roughly 228 MiB RSS.
-The heavy-load resident set is still dominated by gVisor TCP/IP state, packet
+runs, reducing both knobs from 1024 to 64 changed after-load RSS by only about 2
+MiB and did not prevent the daemon from reaching roughly 228 MiB RSS. The
+heavy-load resident set is still dominated by gVisor TCP/IP state, packet
 buffers outside these two queues, goroutine stacks, Go heap spans, and
 application/forwarding buffers.
 
@@ -161,20 +160,20 @@ inside the container, disabled admin listeners, set protected
 
 The lower-queue checks used the same Docker isolation and graph shape as the
 `tun2net` load checks: `DefaultTun` was built by the debug `"vtun-socks"`
-builder, the restored graph was `DefaultTun -> Spoofer -> MockNetwork ->
-HttpServer`, admin listeners were disabled, and `curl --socks5-hostname
-127.0.0.1:1081` drove 3,000 in-container requests at parallelism 80. The two
-knobs were changed together for the comparison:
+builder, the restored graph was
+`DefaultTun -> Spoofer -> MockNetwork -> HttpServer`, admin listeners were
+disabled, and `curl --socks5-hostname 127.0.0.1:1081` drove 3,000 in-container
+requests at parallelism 80. The two knobs were changed together for the
+comparison:
 
 - debug DefaultTun `VTun` `EndpointCh`: `1024` versus `64`,
 - `Spoofer.queueLength`: `1024` versus `64`.
 
 The small-CPU checks were also real-daemon Docker runs with `--network none`.
 They used the same static daemon binary and the same
-`examples/socks2wireguard.hujson` graph as the WireGuard batch-size checks,
-with admin pprof enabled only inside the network-isolated container. No
-`almagestd` daemon was run directly on the host. The checked Docker CPU modes
-were:
+`examples/socks2wireguard.hujson` graph as the WireGuard batch-size checks, with
+admin pprof enabled only inside the network-isolated container. No `almagestd`
+daemon was run directly on the host. The checked Docker CPU modes were:
 
 - default container CPU view: cgroup `cpu.max=max 100000`,
   `cpuset.cpus.effective=0-19`,
@@ -183,21 +182,21 @@ were:
 - cpuset: `docker run --cpuset-cpus=0`, cgroup `cpu.max=max 100000`,
   `cpuset.cpus.effective=0`.
 
-A tiny static Go helper was run in the same image to confirm what the Go
-runtime saw in each mode. With Go 1.25.5 in this environment, the default mode
-reported `NumCPU=20 GOMAXPROCS=20`, `--cpus=1` reported
-`NumCPU=20 GOMAXPROCS=2`, and `--cpuset-cpus=0` reported
-`NumCPU=1 GOMAXPROCS=1`.
+A tiny static Go helper was run in the same image to confirm what the Go runtime
+saw in each mode. With Go 1.25.5 in this environment, the default mode reported
+`NumCPU=20 GOMAXPROCS=20`, `--cpus=1` reported `NumCPU=20 GOMAXPROCS=2`, and
+`--cpuset-cpus=0` reported `NumCPU=1 GOMAXPROCS=1`.
 
 The WireGuard batch-size checks were real-daemon Docker runs with the same
 `docker run --network none` isolation. They used a static daemon binary mounted
 into the existing `almagest-e2e` image, copied
 `examples/socks2wireguard.hujson`, disabled admin listeners, set protected
 `System.Type = "debug"`, and drove `curl --socks5-hostname 127.0.0.1:1081`
-through the restored `LocalProxy -> VTun -> WireGuard -> MockNetwork ->
-WireGuard -> VTun -> HttpServer` graph. The only graph change in the
-small-response matrix was `batchSize` on both WireGuard nodes. The
-large-response matrix also replaced the debug HTTP response with a 1 MiB body.
+through the restored
+`LocalProxy -> VTun -> WireGuard -> MockNetwork -> WireGuard -> VTun -> HttpServer`
+graph. The only graph change in the small-response matrix was `batchSize` on
+both WireGuard nodes. The large-response matrix also replaced the debug HTTP
+response with a 1 MiB body.
 
 The tun2socks comparison was run with a dedicated Docker harness added under:
 
@@ -316,12 +315,11 @@ the host kernel WireGuard implementation, the harness sets:
 WG_I_PREFER_BUGGY_USERSPACE_TO_POLISHED_KMOD=1
 ```
 
-The `After forced-GC stats` columns below were added from companion Docker
-runs. They enabled the loopback web admin pprof endpoint inside the
-network-isolated container, requested
-`/debug/pprof/heap?debug=1&gc=1` after the workload, then immediately read
-`/proc/$pid/status`, `/proc/$pid/smaps_rollup`, and the heap profile's
-`runtime.MemStats`. Values are formatted as:
+The `After forced-GC stats` columns below were added from companion Docker runs.
+They enabled the loopback web admin pprof endpoint inside the network-isolated
+container, requested `/debug/pprof/heap?debug=1&gc=1` after the workload, then
+immediately read `/proc/$pid/status`, `/proc/$pid/smaps_rollup`, and the heap
+profile's `runtime.MemStats`. Values are formatted as:
 
 ```text
 RSS / Private_Dirty / HeapAlloc
@@ -339,16 +337,16 @@ No `almagestd` daemon was run directly on the host.
 Values below are after restore, idle wait, and forced GC. The probe used debug
 pipe TUNs, so these are conservative for native network paths.
 
-| Config | RSS | Live Go heap | Goroutines |
-| --- | ---: | ---: | ---: |
-| empty config | 20.3 MiB | 0.6 MiB | 2 |
-| `examples/select.hujson` | 25.4 MiB | 0.7 MiB | 8 |
-| `examples/tun_split.hujson` | 25.6 MiB | 1.0 MiB | 97 |
-| `examples/direct.hujson` | 23.9 MiB | 0.7 MiB | 31 |
-| `examples/tun2net.hujson` | 25.1 MiB | 0.7 MiB | 33 |
-| `examples/socks2wireguard.hujson` | 31.8 MiB | 38.2 MiB | 195 |
-| `examples/wireguard_over_socks.hujson` | 35.7 MiB | 38.3 MiB | 203 |
-| `examples/nested_wireguard.hujson` | 39.3 MiB | 75.4 MiB | 382 |
+| Config                                 |      RSS | Live Go heap | Goroutines |
+| -------------------------------------- | -------: | -----------: | ---------: |
+| empty config                           | 20.3 MiB |      0.6 MiB |          2 |
+| `examples/select.hujson`               | 25.4 MiB |      0.7 MiB |          8 |
+| `examples/tun_split.hujson`            | 25.6 MiB |      1.0 MiB |         97 |
+| `examples/direct.hujson`               | 23.9 MiB |      0.7 MiB |         31 |
+| `examples/tun2net.hujson`              | 25.1 MiB |      0.7 MiB |         33 |
+| `examples/socks2wireguard.hujson`      | 31.8 MiB |     38.2 MiB |        195 |
+| `examples/wireguard_over_socks.hujson` | 35.7 MiB |     38.3 MiB |        203 |
+| `examples/nested_wireguard.hujson`     | 39.3 MiB |     75.4 MiB |        382 |
 
 Docker sanity check for `examples/socks2wireguard.hujson` with a real daemon:
 
@@ -364,19 +362,19 @@ onto OS threads.
 
 Real-daemon Docker load checks:
 
-| Case | Workload | Idle RSS | Peak/after-load RSS | After-load private dirty | After forced-GC stats | Threads after load |
-| --- | --- | ---: | ---: | ---: | ---: | ---: |
-| empty config, admin disabled | none | 17.2 MiB | 17.2 MiB | 2.2 MiB | 21.7 / 3.4 / 0.6 MiB | 8 |
-| empty config, web+Unix admin enabled | none | 17.7 MiB | 17.7 MiB | 2.2 MiB | 21.7 / 3.5 / 0.6 MiB | 8 |
-| `examples/select.hujson`, admin disabled | none | 23.2 MiB | 23.2 MiB | 5.8 MiB | 24.0 / 4.4 / 0.7 MiB | 10 |
-| `examples/select.hujson`, Unix admin enabled | 1,000 restored `HttpClient` sends through admin API | 23.5 MiB | 25.6 MiB | 7.4 MiB | 28.5 / 8.0 / 1.0 MiB | 21 |
-| `examples/direct.hujson` | 1,000 failed HTTP-over-SOCKS attempts through debug `DefaultTun -> Spoofer -> OutNetwork` | 20.7 MiB | 99.8 MiB | 81.1 MiB | 31.0 / 9.4 / 2.6 MiB | 25 |
-| `examples/tun2net.hujson` | 1,000 HTTP-over-SOCKS requests through debug `DefaultTun -> Spoofer -> MockNetwork`; 993 OK, 7 failed | 23.1 MiB | 93.8 MiB | 74.2 MiB | 94.0 / 72.3 / 47.1 MiB | 25 |
-| `examples/tun2net.hujson` overload burst | 3,000 HTTP-over-SOCKS requests through same path; 2,915 OK, 85 failed | 22.9 MiB | 214.3 MiB | 194.7 MiB | 234.9 / 213.1 / 131.5 MiB | 25 |
-| `examples/tun_split.hujson` | 1,000 failed HTTP-over-SOCKS attempts through debug `DefaultTun -> TunSplitter -> Spoofer -> OutNetwork` | 25.3 MiB | 99.1 MiB | 80.0 MiB | 32.8 / 11.2 / 2.8 MiB | 25 |
-| `examples/socks2wireguard.hujson` | 2,000 small HTTP requests through SOCKS5 | 29.5 MiB | 96.1 MiB | 76.2 MiB | 159.7 / 137.6 / 119.2 MiB | 24 |
-| `examples/nested_wireguard.hujson` plus a temporary `LocalProxy` node | 500 small HTTP requests through SOCKS5 | 36.1 MiB | 106.3 MiB | 86.4 MiB | 121.9 / 99.9 / 108.4 MiB | 23 |
-| `examples/socks2wireguard.hujson` with 1 MiB HTTP response body | 400 HTTP requests through SOCKS5 | 33.7 MiB | 270.9 MiB | 250.6 MiB | 507.5 / 485.5 / 150.8 MiB | 25 |
+| Case                                                                  | Workload                                                                                                 | Idle RSS | Peak/after-load RSS | After-load private dirty |     After forced-GC stats | Threads after load |
+| --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- | -------: | ------------------: | -----------------------: | ------------------------: | -----------------: |
+| empty config, admin disabled                                          | none                                                                                                     | 17.2 MiB |            17.2 MiB |                  2.2 MiB |      21.7 / 3.4 / 0.6 MiB |                  8 |
+| empty config, web+Unix admin enabled                                  | none                                                                                                     | 17.7 MiB |            17.7 MiB |                  2.2 MiB |      21.7 / 3.5 / 0.6 MiB |                  8 |
+| `examples/select.hujson`, admin disabled                              | none                                                                                                     | 23.2 MiB |            23.2 MiB |                  5.8 MiB |      24.0 / 4.4 / 0.7 MiB |                 10 |
+| `examples/select.hujson`, Unix admin enabled                          | 1,000 restored `HttpClient` sends through admin API                                                      | 23.5 MiB |            25.6 MiB |                  7.4 MiB |      28.5 / 8.0 / 1.0 MiB |                 21 |
+| `examples/direct.hujson`                                              | 1,000 failed HTTP-over-SOCKS attempts through debug `DefaultTun -> Spoofer -> OutNetwork`                | 20.7 MiB |            99.8 MiB |                 81.1 MiB |      31.0 / 9.4 / 2.6 MiB |                 25 |
+| `examples/tun2net.hujson`                                             | 1,000 HTTP-over-SOCKS requests through debug `DefaultTun -> Spoofer -> MockNetwork`; 993 OK, 7 failed    | 23.1 MiB |            93.8 MiB |                 74.2 MiB |    94.0 / 72.3 / 47.1 MiB |                 25 |
+| `examples/tun2net.hujson` overload burst                              | 3,000 HTTP-over-SOCKS requests through same path; 2,915 OK, 85 failed                                    | 22.9 MiB |           214.3 MiB |                194.7 MiB | 234.9 / 213.1 / 131.5 MiB |                 25 |
+| `examples/tun_split.hujson`                                           | 1,000 failed HTTP-over-SOCKS attempts through debug `DefaultTun -> TunSplitter -> Spoofer -> OutNetwork` | 25.3 MiB |            99.1 MiB |                 80.0 MiB |     32.8 / 11.2 / 2.8 MiB |                 25 |
+| `examples/socks2wireguard.hujson`                                     | 2,000 small HTTP requests through SOCKS5                                                                 | 29.5 MiB |            96.1 MiB |                 76.2 MiB | 159.7 / 137.6 / 119.2 MiB |                 24 |
+| `examples/nested_wireguard.hujson` plus a temporary `LocalProxy` node | 500 small HTTP requests through SOCKS5                                                                   | 36.1 MiB |           106.3 MiB |                 86.4 MiB |  121.9 / 99.9 / 108.4 MiB |                 23 |
+| `examples/socks2wireguard.hujson` with 1 MiB HTTP response body       | 400 HTTP requests through SOCKS5                                                                         | 33.7 MiB |           270.9 MiB |                250.6 MiB | 507.5 / 485.5 / 150.8 MiB |                 25 |
 
 The large-response run completed all 400 client requests. It is the clearest
 reproduction of the high resident-memory range: the graph still had only two
@@ -385,15 +383,15 @@ more packet, TCP, and application buffers than the small-response run.
 
 Custom WireGuard `batchSize` real-daemon Docker checks:
 
-| Case | WireGuard `batchSize` on both nodes | Workload | Idle RSS | Peak/after-load RSS | After-load private dirty | After forced-GC stats | Threads after load | Result |
-| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | --- |
-| `examples/socks2wireguard.hujson` | `0` / omitted, effective `256` | 2,000 small HTTP requests through SOCKS5, parallelism 80 | 30.5 MiB | 171.3 MiB | 151.4 MiB | 161.4 / 139.3 / 117.9 MiB | 24 | 2,000 OK |
-| same graph | `64` | same workload | 30.6 MiB | 165.1 MiB | 145.2 MiB | 160.4 / 138.3 / 109.5 MiB | 24 | 2,000 OK |
-| same graph | `16` | same workload | 29.4 MiB | 160.6 MiB | 140.4 MiB | 158.8 / 136.7 / 88.7 MiB | 26 | 2,000 OK |
-| same graph | `1` | same workload | 27.9 MiB | 142.4 MiB | 122.4 MiB | 147.7 / 125.7 / 82.5 MiB | 24 | 2,000 OK |
-| same graph with 1 MiB HTTP response body | `0` / omitted, effective `256` | 400 HTTP requests through SOCKS5, parallelism 40 | 33.4 MiB | 490.3 MiB | 470.3 MiB | 507.5 / 485.5 / 150.8 MiB | 25 | 400 OK |
-| same large-response graph | `16` | same workload | 32.4 MiB | 453.8 MiB | 433.7 MiB | 418.1 / 390.8 / 207.8 MiB | 25 | 400 OK |
-| same large-response graph | `1` | same workload | 29.7 MiB | 435.2 MiB | 415.1 MiB | 208.4 / 182.5 / 88.8 MiB | 25 | 400 OK |
+| Case                                     | WireGuard `batchSize` on both nodes | Workload                                                 | Idle RSS | Peak/after-load RSS | After-load private dirty |     After forced-GC stats | Threads after load | Result   |
+| ---------------------------------------- | ----------------------------------: | -------------------------------------------------------- | -------: | ------------------: | -----------------------: | ------------------------: | -----------------: | -------- |
+| `examples/socks2wireguard.hujson`        |      `0` / omitted, effective `256` | 2,000 small HTTP requests through SOCKS5, parallelism 80 | 30.5 MiB |           171.3 MiB |                151.4 MiB | 161.4 / 139.3 / 117.9 MiB |                 24 | 2,000 OK |
+| same graph                               |                                `64` | same workload                                            | 30.6 MiB |           165.1 MiB |                145.2 MiB | 160.4 / 138.3 / 109.5 MiB |                 24 | 2,000 OK |
+| same graph                               |                                `16` | same workload                                            | 29.4 MiB |           160.6 MiB |                140.4 MiB |  158.8 / 136.7 / 88.7 MiB |                 26 | 2,000 OK |
+| same graph                               |                                 `1` | same workload                                            | 27.9 MiB |           142.4 MiB |                122.4 MiB |  147.7 / 125.7 / 82.5 MiB |                 24 | 2,000 OK |
+| same graph with 1 MiB HTTP response body |      `0` / omitted, effective `256` | 400 HTTP requests through SOCKS5, parallelism 40         | 33.4 MiB |           490.3 MiB |                470.3 MiB | 507.5 / 485.5 / 150.8 MiB |                 25 | 400 OK   |
+| same large-response graph                |                                `16` | same workload                                            | 32.4 MiB |           453.8 MiB |                433.7 MiB | 418.1 / 390.8 / 207.8 MiB |                 25 | 400 OK   |
+| same large-response graph                |                                 `1` | same workload                                            | 29.7 MiB |           435.2 MiB |                415.1 MiB |  208.4 / 182.5 / 88.8 MiB |                 25 | 400 OK   |
 
 This is the clearest answer for the new WireGuard batch-size option. The knob
 works and the graph remained functional even at `batchSize: 1` for these
@@ -409,46 +407,46 @@ zeroed Go heap spans are not necessarily resident until touched. Under the
 RSS by about 29 MiB between the default and `batchSize: 1`. Under the 1 MiB
 response burst, it lowered after-load RSS by about 55 MiB, but the daemon still
 retained roughly 435 MiB RSS at `batchSize: 1`. The batch size should therefore
-be treated as an effective WireGuard buffer-sizing and throughput knob, not as
-a hard memory ceiling for heavy application traffic.
+be treated as an effective WireGuard buffer-sizing and throughput knob, not as a
+hard memory ceiling for heavy application traffic.
 
 Small available-CPU real-daemon Docker checks:
 
-| Case | Docker CPU mode | Go runtime view | Idle RSS | Idle private dirty | Idle HeapAlloc after GC | Idle goroutines | Idle threads |
-| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
-| `examples/socks2wireguard.hujson` | default | `NumCPU=20`, `GOMAXPROCS=20` | 28.8 MiB | 9.6 MiB | 38.6 MiB | 203 | 16 |
-| same graph | `--cpus=1` | `NumCPU=20`, `GOMAXPROCS=2` | 27.1 MiB | 7.8 MiB | 37.9 MiB | 59 | 7 |
-| same graph | `--cpuset-cpus=0` | `NumCPU=1`, `GOMAXPROCS=1` | 26.0 MiB | 6.6 MiB | 37.8 MiB | 51 | 6 |
+| Case                              | Docker CPU mode   | Go runtime view              | Idle RSS | Idle private dirty | Idle HeapAlloc after GC | Idle goroutines | Idle threads |
+| --------------------------------- | ----------------- | ---------------------------- | -------: | -----------------: | ----------------------: | --------------: | -----------: |
+| `examples/socks2wireguard.hujson` | default           | `NumCPU=20`, `GOMAXPROCS=20` | 28.8 MiB |            9.6 MiB |                38.6 MiB |             203 |           16 |
+| same graph                        | `--cpus=1`        | `NumCPU=20`, `GOMAXPROCS=2`  | 27.1 MiB |            7.8 MiB |                37.9 MiB |              59 |            7 |
+| same graph                        | `--cpuset-cpus=0` | `NumCPU=1`, `GOMAXPROCS=1`   | 26.0 MiB |            6.6 MiB |                37.8 MiB |              51 |            6 |
 
 Companion 500-request small-response checks through the same graph:
 
-| Case | Docker CPU mode | Workload | Idle RSS | After forced-GC RSS | After forced-GC private dirty | After forced-GC HeapAlloc | Goroutines after load | Threads after load | Result |
-| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| `examples/socks2wireguard.hujson` | default | 500 HTTP requests through SOCKS5, parallelism 20 | 30.7 MiB | 78.5 MiB | 57.5 MiB | 59.4 MiB | 203 | 22 | 500 OK |
-| same graph | `--cpus=1` | same workload | 26.9 MiB | 63.0 MiB | 42.3 MiB | 60.0 MiB | 59 | 8 | 500 OK |
-| same graph | `--cpuset-cpus=0` | same workload | 26.1 MiB | 59.0 MiB | 38.3 MiB | 60.6 MiB | 51 | 8 | 500 OK |
+| Case                              | Docker CPU mode   | Workload                                         | Idle RSS | After forced-GC RSS | After forced-GC private dirty | After forced-GC HeapAlloc | Goroutines after load | Threads after load | Result |
+| --------------------------------- | ----------------- | ------------------------------------------------ | -------: | ------------------: | ----------------------------: | ------------------------: | --------------------: | -----------------: | ------ |
+| `examples/socks2wireguard.hujson` | default           | 500 HTTP requests through SOCKS5, parallelism 20 | 30.7 MiB |            78.5 MiB |                      57.5 MiB |                  59.4 MiB |                   203 |                 22 | 500 OK |
+| same graph                        | `--cpus=1`        | same workload                                    | 26.9 MiB |            63.0 MiB |                      42.3 MiB |                  60.0 MiB |                    59 |                  8 | 500 OK |
+| same graph                        | `--cpuset-cpus=0` | same workload                                    | 26.1 MiB |            59.0 MiB |                      38.3 MiB |                  60.6 MiB |                    51 |                  8 | 500 OK |
 
 This confirms that a smaller available CPU count can reduce RSS for
 WireGuard-heavy graphs, because each `wgo.Device` creates fewer worker
 goroutines when `GOMAXPROCS` is smaller. The idle effect was modest in this
 graph, about 2.8 MiB between the default container CPU view and a one-CPU
-cpuset. The 500-request companion check showed a larger RSS difference, but
-live heap after forced GC was almost the same across CPU modes. That makes the
-CPU limit useful for reducing worker, stack, OS thread, and runtime overhead,
-while the main packet and application buffer demand remains governed by graph
-shape, traffic volume, `WireGuard.batchSize`, gVisor/netstack behavior, and Go
-heap retention.
+cpuset. The 500-request companion check showed a larger RSS difference, but live
+heap after forced GC was almost the same across CPU modes. That makes the CPU
+limit useful for reducing worker, stack, OS thread, and runtime overhead, while
+the main packet and application buffer demand remains governed by graph shape,
+traffic volume, `WireGuard.batchSize`, gVisor/netstack behavior, and Go heap
+retention.
 
 Paired `--no-pool` real-daemon Docker checks:
 
-| Case | Flag | Workload | Idle RSS | After-load RSS | After-load private dirty | After forced-GC stats | Threads after load | Result |
-| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | --- |
-| empty config, admin disabled | default pool | none | 18.7 MiB | 18.7 MiB | 2.2 MiB | 21.6 / 3.4 / 0.6 MiB | 8 | running |
-| empty config, admin disabled | `--no-pool` | none | 18.9 MiB | 18.9 MiB | 2.3 MiB | 21.7 / 3.4 / 0.6 MiB | 8 | running |
-| `examples/tun2net.hujson` | default pool | 1,000 HTTP-over-SOCKS requests through debug `DefaultTun -> Spoofer -> MockNetwork` | 25.6 MiB | 105.3 MiB | 84.3 MiB | 104.7 / 82.9 / 48.8 MiB | 26 | 1,000 OK |
-| `examples/tun2net.hujson` | `--no-pool` | same 1,000-request burst | 25.7 MiB | 106.8 MiB | 86.0 MiB | 101.8 / 80.2 / 43.8 MiB | 24 | 1,000 OK |
-| `examples/tun2net.hujson` | default pool | 3,000 HTTP-over-SOCKS requests through debug `DefaultTun -> Spoofer -> MockNetwork` | 25.9 MiB | 241.0 MiB | 219.9 MiB | 231.1 / 209.2 / 128.5 MiB | 25 | 3,000 OK |
-| `examples/tun2net.hujson` | `--no-pool` | same 3,000-request burst | 25.8 MiB | 245.8 MiB | 225.0 MiB | 219.6 / 197.9 / 130.9 MiB | 25 | 3,000 OK |
+| Case                         | Flag         | Workload                                                                            | Idle RSS | After-load RSS | After-load private dirty |     After forced-GC stats | Threads after load | Result   |
+| ---------------------------- | ------------ | ----------------------------------------------------------------------------------- | -------: | -------------: | -----------------------: | ------------------------: | -----------------: | -------- |
+| empty config, admin disabled | default pool | none                                                                                | 18.7 MiB |       18.7 MiB |                  2.2 MiB |      21.6 / 3.4 / 0.6 MiB |                  8 | running  |
+| empty config, admin disabled | `--no-pool`  | none                                                                                | 18.9 MiB |       18.9 MiB |                  2.3 MiB |      21.7 / 3.4 / 0.6 MiB |                  8 | running  |
+| `examples/tun2net.hujson`    | default pool | 1,000 HTTP-over-SOCKS requests through debug `DefaultTun -> Spoofer -> MockNetwork` | 25.6 MiB |      105.3 MiB |                 84.3 MiB |   104.7 / 82.9 / 48.8 MiB |                 26 | 1,000 OK |
+| `examples/tun2net.hujson`    | `--no-pool`  | same 1,000-request burst                                                            | 25.7 MiB |      106.8 MiB |                 86.0 MiB |   101.8 / 80.2 / 43.8 MiB |                 24 | 1,000 OK |
+| `examples/tun2net.hujson`    | default pool | 3,000 HTTP-over-SOCKS requests through debug `DefaultTun -> Spoofer -> MockNetwork` | 25.9 MiB |      241.0 MiB |                219.9 MiB | 231.1 / 209.2 / 128.5 MiB |                 25 | 3,000 OK |
+| `examples/tun2net.hujson`    | `--no-pool`  | same 3,000-request burst                                                            | 25.8 MiB |      245.8 MiB |                225.0 MiB | 219.6 / 197.9 / 130.9 MiB |                 25 | 3,000 OK |
 
 These paired runs should be read as evidence that the daemon global pool is not
 the main retained-memory source for this workload. Disabling it may reduce reuse
@@ -458,45 +456,45 @@ other pools outside `bin/almagestd/bufpool.go`.
 
 Matching lower-queue real-daemon Docker checks:
 
-| Case | VTun `endpointCh` | Spoofer `queueLength` | Workload | Idle RSS | Peak RSS during load | After-load RSS | After-load private dirty | After forced-GC stats | Threads after load | Result |
-| --- | ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| `tun2net`-shape debug graph | 1024 | 1024 | 3,000 HTTP-over-SOCKS requests through `DefaultTun -> Spoofer -> MockNetwork`, parallelism 80 | 25.9 MiB | 227.8 MiB | 230.2 MiB | 209.1 MiB | 228.5 / 206.9 / 124.4 MiB | 25 | 3,000 OK |
-| same graph | 64 | 64 | same workload | 25.8 MiB | 228.0 MiB | 228.0 MiB | 206.9 MiB | 237.8 / 216.1 / 125.2 MiB | 26 | 3,000 OK |
+| Case                        | VTun `endpointCh` | Spoofer `queueLength` | Workload                                                                                      | Idle RSS | Peak RSS during load | After-load RSS | After-load private dirty |     After forced-GC stats | Threads after load | Result   |
+| --------------------------- | ----------------: | --------------------: | --------------------------------------------------------------------------------------------- | -------: | -------------------: | -------------: | -----------------------: | ------------------------: | -----------------: | -------- |
+| `tun2net`-shape debug graph |              1024 |                  1024 | 3,000 HTTP-over-SOCKS requests through `DefaultTun -> Spoofer -> MockNetwork`, parallelism 80 | 25.9 MiB |            227.8 MiB |      230.2 MiB |                209.1 MiB | 228.5 / 206.9 / 124.4 MiB |                 25 | 3,000 OK |
+| same graph                  |                64 |                    64 | same workload                                                                                 | 25.8 MiB |            228.0 MiB |      228.0 MiB |                206.9 MiB | 237.8 / 216.1 / 125.2 MiB |                 26 | 3,000 OK |
 
 This comparison is the clearest answer for the queue-size question: lowering
 both values from 1024 to 64 had almost no effect on idle RSS and only a small
-after-load effect for this workload. The peak RSS was effectively unchanged.
-The forced-GC companion run was also noisy and did not show a reliable
-post-load reduction; the 64-slot run was slightly higher after GC.
-The low values were still high enough for the small-response MockNetwork burst,
-so throughput did not collapse and no requests failed. Under heavier fanout,
-slower downstream forwarding, larger responses, or native-network jitter, lower
-queues should be expected to trade backlog memory for earlier packet drops,
-TCP retransmits, higher latency, and possible client timeouts.
+after-load effect for this workload. The peak RSS was effectively unchanged. The
+forced-GC companion run was also noisy and did not show a reliable post-load
+reduction; the 64-slot run was slightly higher after GC. The low values were
+still high enough for the small-response MockNetwork burst, so throughput did
+not collapse and no requests failed. Under heavier fanout, slower downstream
+forwarding, larger responses, or native-network jitter, lower queues should be
+expected to trade backlog memory for earlier packet drops, TCP retransmits,
+higher latency, and possible client timeouts.
 
 The non-WireGuard runs show a separate behavior: idle RSS stays near 20-25 MiB,
-but `DefaultTun`/`Spoofer` traffic can still push the daemon into the
-90-215 MiB range without WireGuard. That growth came from real packet/TCP
-traffic through gVisor netstacks and daemon buffers, not from `wgo` message
-buffer pools. The memory did not immediately return to idle after load.
+but `DefaultTun`/`Spoofer` traffic can still push the daemon into the 90-215 MiB
+range without WireGuard. That growth came from real packet/TCP traffic through
+gVisor netstacks and daemon buffers, not from `wgo` message buffer pools. The
+memory did not immediately return to idle after load.
 
 Native-TUN comparison with tun2socks:
 
-| Tool | Setup | Workload | Idle RSS | Idle private dirty | Peak/after-load RSS | After-load private dirty | Threads after load | Result |
-| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | --- |
-| almagestd | `DefaultTun -> Spoofer -> SocksClient -> OutNetwork`, native TUN, SOCKS5 egress | none | 29.2 MiB | 8.1 MiB | 29.2 MiB | 8.1 MiB | 13 | running |
-| tun2socks v2.6.0 | native TUN, SOCKS5 egress | none | 12.2 MiB | 2.1 MiB | 12.2 MiB | 2.1 MiB | 9 | running |
-| almagestd | same | 3,000 1 KiB HTTP responses through TUN, parallelism 80 | 29.2 MiB | 8.1 MiB | 143.5 MiB | 121.6 MiB | 26 | 3,000 OK |
-| tun2socks v2.6.0 | same | same | 12.1 MiB | 2.1 MiB | 42.2 MiB | 31.5 MiB | 26 | 3,000 OK |
-| almagestd | same | 400 1 MiB HTTP responses through TUN, parallelism 40 | 28.6 MiB | 7.6 MiB | 128.3 MiB | 105.9 MiB | 26 | 400 OK |
-| tun2socks v2.6.0 | same | same | 12.2 MiB | 2.2 MiB | 95.2 MiB | 84.5 MiB | 24 | 400 OK |
+| Tool             | Setup                                                                           | Workload                                               | Idle RSS | Idle private dirty | Peak/after-load RSS | After-load private dirty | Threads after load | Result   |
+| ---------------- | ------------------------------------------------------------------------------- | ------------------------------------------------------ | -------: | -----------------: | ------------------: | -----------------------: | -----------------: | -------- |
+| almagestd        | `DefaultTun -> Spoofer -> SocksClient -> OutNetwork`, native TUN, SOCKS5 egress | none                                                   | 29.2 MiB |            8.1 MiB |            29.2 MiB |                  8.1 MiB |                 13 | running  |
+| tun2socks v2.6.0 | native TUN, SOCKS5 egress                                                       | none                                                   | 12.2 MiB |            2.1 MiB |            12.2 MiB |                  2.1 MiB |                  9 | running  |
+| almagestd        | same                                                                            | 3,000 1 KiB HTTP responses through TUN, parallelism 80 | 29.2 MiB |            8.1 MiB |           143.5 MiB |                121.6 MiB |                 26 | 3,000 OK |
+| tun2socks v2.6.0 | same                                                                            | same                                                   | 12.1 MiB |            2.1 MiB |            42.2 MiB |                 31.5 MiB |                 26 | 3,000 OK |
+| almagestd        | same                                                                            | 400 1 MiB HTTP responses through TUN, parallelism 40   | 28.6 MiB |            7.6 MiB |           128.3 MiB |                105.9 MiB |                 26 | 400 OK   |
+| tun2socks v2.6.0 | same                                                                            | same                                                   | 12.2 MiB |            2.2 MiB |            95.2 MiB |                 84.5 MiB |                 24 | 400 OK   |
 
-The small-response burst is the clearest apples-to-apples memory delta.
-Both tools completed 3,000 requests in about four seconds, but almagestd
-retained roughly 101 MiB more RSS after the burst. The large-response run is
-less latency-comparable: almagestd completed in about 10.4 seconds and
-tun2socks in about 2.4 seconds, so the two processes saw different instantaneous
-buffer pressure even though the request count and response size matched.
+The small-response burst is the clearest apples-to-apples memory delta. Both
+tools completed 3,000 requests in about four seconds, but almagestd retained
+roughly 101 MiB more RSS after the burst. The large-response run is less
+latency-comparable: almagestd completed in about 10.4 seconds and tun2socks in
+about 2.4 seconds, so the two processes saw different instantaneous buffer
+pressure even though the request count and response size matched.
 
 The main almagestd-specific costs in this comparison are not WireGuard:
 
@@ -508,10 +506,10 @@ The main almagestd-specific costs in this comparison are not WireGuard:
 - Go heap spans and packet/application buffers retained after burst traffic.
 
 tun2socks is much narrower. Its stock path is one TUN device, one gVisor stack,
-one proxy/tunnel layer, and no graph engine, admin API, sysnet abstraction,
-node lifecycle, or general network-resource wrapping. Its retained memory still
-grew under load because the shared class of costs remains: gVisor TCP endpoint
-state, packet buffers, SOCKS transport buffers, goroutine stacks, and Go heap
+one proxy/tunnel layer, and no graph engine, admin API, sysnet abstraction, node
+lifecycle, or general network-resource wrapping. Its retained memory still grew
+under load because the shared class of costs remains: gVisor TCP endpoint state,
+packet buffers, SOCKS transport buffers, goroutine stacks, and Go heap
 retention. It simply had a smaller fixed baseline and fewer layers around the
 netstack.
 
@@ -524,14 +522,14 @@ are visible in RSS once traffic has warmed the path.
 
 Native-TUN comparison with upstream `wireguard-go`:
 
-| Tool | Setup | Workload | Idle RSS | Idle private dirty | Peak/after-load RSS | After-load private dirty | Threads after load | Result |
-| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | --- |
-| almagestd | `DefaultTun -> WireGuard -> OutNetwork`, native TUN, native UDP egress | none | 29.1 MiB | 8.6 MiB | 29.1 MiB | 8.6 MiB | 14 | running |
-| upstream `wireguard-go` | native TUN, native UDP egress | none | 9.6 MiB | 5.2 MiB | 9.6 MiB | 5.2 MiB | 15 | running |
-| almagestd | same | 3,000 1 KiB HTTP responses through WireGuard, parallelism 80 | 29.1 MiB | 8.6 MiB | 55.8 MiB | 34.4 MiB | 16 | 3,000 OK |
-| upstream `wireguard-go` | same | same | 10.1 MiB | 5.7 MiB | 13.0 MiB | 8.6 MiB | 15 | 3,000 OK |
-| almagestd | same | 400 1 MiB HTTP responses through WireGuard, parallelism 40 | 28.9 MiB | 8.1 MiB | 365.0 MiB | 343.5 MiB | 25 | 400 OK |
-| upstream `wireguard-go` | same | same | 9.5 MiB | 5.1 MiB | 231.2 MiB | 226.8 MiB | 24 | 400 OK |
+| Tool                    | Setup                                                                  | Workload                                                     | Idle RSS | Idle private dirty | Peak/after-load RSS | After-load private dirty | Threads after load | Result   |
+| ----------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------ | -------: | -----------------: | ------------------: | -----------------------: | -----------------: | -------- |
+| almagestd               | `DefaultTun -> WireGuard -> OutNetwork`, native TUN, native UDP egress | none                                                         | 29.1 MiB |            8.6 MiB |            29.1 MiB |                  8.6 MiB |                 14 | running  |
+| upstream `wireguard-go` | native TUN, native UDP egress                                          | none                                                         |  9.6 MiB |            5.2 MiB |             9.6 MiB |                  5.2 MiB |                 15 | running  |
+| almagestd               | same                                                                   | 3,000 1 KiB HTTP responses through WireGuard, parallelism 80 | 29.1 MiB |            8.6 MiB |            55.8 MiB |                 34.4 MiB |                 16 | 3,000 OK |
+| upstream `wireguard-go` | same                                                                   | same                                                         | 10.1 MiB |            5.7 MiB |            13.0 MiB |                  8.6 MiB |                 15 | 3,000 OK |
+| almagestd               | same                                                                   | 400 1 MiB HTTP responses through WireGuard, parallelism 40   | 28.9 MiB |            8.1 MiB |           365.0 MiB |                343.5 MiB |                 25 | 400 OK   |
+| upstream `wireguard-go` | same                                                                   | same                                                         |  9.5 MiB |            5.1 MiB |           231.2 MiB |                226.8 MiB |                 24 | 400 OK   |
 
 The small-response burst is the cleanest daemon-overhead comparison. Both
 clients completed the same 3,000 tunneled requests in about one second:
@@ -544,9 +542,9 @@ the embedded `wgo` integration.
 The large-response run is a different regime. Upstream `wireguard-go` retained
 about 231 MiB RSS by itself after 400 MiB of response payload moved through the
 tunnel. Almagest retained about 365 MiB and took 4.85 seconds versus
-`wireguard-go`'s 1.21 seconds. That means the large-payload result should not
-be read only as graph overhead: the base userspace WireGuard daemon also keeps
-a large dirty resident set after high-volume payload traffic, and Almagest adds
+`wireguard-go`'s 1.21 seconds. That means the large-payload result should not be
+read only as graph overhead: the base userspace WireGuard daemon also keeps a
+large dirty resident set after high-volume payload traffic, and Almagest adds
 its own daemon/native-TUN/wrapper/runtime overhead on top.
 
 The source-level comparison explains the idle and small-burst gap:
@@ -557,12 +555,12 @@ The source-level comparison explains the idle and small-burst gap:
   `device.RoutineReceiveIncoming`,
 - almagestd uses the forked `github.com/asciimoth/wgo`; its default
   `defaultDeviceBatchSize` is `256`,
-- almagestd passes `WireGuard.batchSize` into both
-  `wgo.DeviceOptions.BatchSize` and `batchudp.StdNetBindOptions.BatchSize`,
+- almagestd passes `WireGuard.batchSize` into both `wgo.DeviceOptions.BatchSize`
+  and `batchudp.StdNetBindOptions.BatchSize`,
 - with `batchSize: 0`, Almagest preserves the larger `wgo` default, while
   upstream `wireguard-go` stays at its native 128-slot default,
-- both implementations use full-size WireGuard message buffers, so large
-  payload traffic can dirty and retain much more RSS than idle profiles show,
+- both implementations use full-size WireGuard message buffers, so large payload
+  traffic can dirty and retain much more RSS than idle profiles show,
 - Almagest also pays for `DefaultTun`/`sysnet-linux`, config restore, node
   lifecycle, engine worker tracking, graph link wrappers, status subscriptions,
   and a larger daemon binary.
@@ -570,15 +568,15 @@ The source-level comparison explains the idle and small-burst gap:
 This comparison does not replace the two-WireGuard example checks above. It
 answers a narrower question: for one client-side userspace WireGuard interface,
 the original daemon is much smaller than almagestd configured as an equivalent
-graph, but both daemons can retain large resident sets after high-volume
-payload bursts.
+graph, but both daemons can retain large resident sets after high-volume payload
+bursts.
 
 `examples/direct.hujson` and `examples/tun_split.hujson` were intentionally
 measured under debug isolation, not native host routing. In that mode
-`OutNetwork` is the debug outbound network, and `tun_split`'s `RULE cmd curl`
-/ `RULE cmd wget` predicates do not match the debug SOCKS ingress. Those
-workloads therefore report failed connection attempts, but they still exercise
-the restored TUN, splitter, Spoofer, and forwarding paths under burst pressure.
+`OutNetwork` is the debug outbound network, and `tun_split`'s `RULE cmd curl` /
+`RULE cmd wget` predicates do not match the debug SOCKS ingress. Those workloads
+therefore report failed connection attempts, but they still exercise the
+restored TUN, splitter, Spoofer, and forwarding paths under burst pressure.
 
 ## Main Source: WireGuard TUN Reader Buffers
 
@@ -608,8 +606,8 @@ Relevant field:
 dev *wgdevice.Device
 ```
 
-In `github.com/asciimoth/wgo@v0.5.0/device/device.go`, `NewDevice` computes
-the effective batch size as:
+In `github.com/asciimoth/wgo@v0.5.0/device/device.go`, `NewDevice` computes the
+effective batch size as:
 
 ```go
 batchSize := options.BatchSize
@@ -638,26 +636,26 @@ for i := 0; i < workers; i++ {
 
 The default worker count is `runtime.GOMAXPROCS(0)`, so every WireGuard device
 creates `3 * GOMAXPROCS` worker goroutines plus other runtime goroutines unless
-`DeviceOptions.WorkerCount` is set. With the 20 CPU environment used
-during inspection, even unlinked WireGuard nodes created many goroutines:
+`DeviceOptions.WorkerCount` is set. With the 20 CPU environment used during
+inspection, even unlinked WireGuard nodes created many goroutines:
 
-| Synthetic config | Live Go heap | Goroutines |
-| --- | ---: | ---: |
-| two unlinked WireGuard nodes | 0.9 MiB | 132 |
-| four unlinked WireGuard nodes | 1.2 MiB | 262 |
+| Synthetic config              | Live Go heap | Goroutines |
+| ----------------------------- | -----------: | ---------: |
+| two unlinked WireGuard nodes  |      0.9 MiB |        132 |
+| four unlinked WireGuard nodes |      1.2 MiB |        262 |
 
-The Docker CPU-limit checks confirmed this scaling in the real daemon. The
-same two-active-WireGuard graph had 203 goroutines with `GOMAXPROCS=20`, 59
-goroutines with `GOMAXPROCS=2`, and 51 goroutines with `GOMAXPROCS=1`.
-Reducing available CPU cores therefore does reduce scheduler, goroutine stack,
-and OS thread overhead, but it does not remove the large WireGuard message
-buffers allocated once a TUN reader is active.
+The Docker CPU-limit checks confirmed this scaling in the real daemon. The same
+two-active-WireGuard graph had 203 goroutines with `GOMAXPROCS=20`, 59
+goroutines with `GOMAXPROCS=2`, and 51 goroutines with `GOMAXPROCS=1`. Reducing
+available CPU cores therefore does reduce scheduler, goroutine stack, and OS
+thread overhead, but it does not remove the large WireGuard message buffers
+allocated once a TUN reader is active.
 
 The large heap appears only after the WireGuard TUN is attached and the device
 is brought up.
 
-In `github.com/asciimoth/wgo@v0.5.0/device/send.go`,
-`RoutineReadFromTUN` allocates one outbound element per batch slot:
+In `github.com/asciimoth/wgo@v0.5.0/device/send.go`, `RoutineReadFromTUN`
+allocates one outbound element per batch slot:
 
 ```go
 batchSize := device.BatchSize()
@@ -765,16 +763,16 @@ ep: channel.New(o.epch(), uint32(no.GetMTU()), "")
 incomingPacket: make(chan *buffer.View, 256)
 ```
 
-Almagest exposes this endpoint queue as `endpointCh` on `almagest/VTun`.
-The default is `1024`:
+Almagest exposes this endpoint queue as `endpointCh` on `almagest/VTun`. The
+default is `1024`:
 
 ```text
 lib/tun/node_vtun.go
 defaultVTunEndpointCh = 1024
 ```
 
-The debug DefaultTun `"vtun-socks"` builder has a separate protected-config
-copy of the same idea:
+The debug DefaultTun `"vtun-socks"` builder has a separate protected-config copy
+of the same idea:
 
 ```text
 bin/almagestd/system.go
@@ -782,13 +780,13 @@ debug DefaultTun EndpointCh default = 1024
 ```
 
 Lowering this value reduces only the gVisor `channel.Endpoint` outbound packet
-queue created by `channel.New`. It does not change the fixed
-`incomingPacket` channel of 256 `*buffer.View` values, the gVisor stack's TCP
-send/receive buffers, DNS resolver state, goroutine stacks, or the daemon and
-WireGuard buffer pools. When the channel is empty, the memory difference is
-mostly channel slot storage, so changing 1024 to 64 saves only a few KiB at
-idle. When the channel is full of ordinary MTU-sized packets, the payload
-backlog capacity falls roughly from:
+queue created by `channel.New`. It does not change the fixed `incomingPacket`
+channel of 256 `*buffer.View` values, the gVisor stack's TCP send/receive
+buffers, DNS resolver state, goroutine stacks, or the daemon and WireGuard
+buffer pools. When the channel is empty, the memory difference is mostly channel
+slot storage, so changing 1024 to 64 saves only a few KiB at idle. When the
+channel is full of ordinary MTU-sized packets, the payload backlog capacity
+falls roughly from:
 
 ```text
 1024 * 1500 B ~= 1.5 MiB
@@ -825,14 +823,14 @@ defaultSpooferQueue = 1024
 
 `queueLength` feeds `gonnect-netstack/spoofer.NewTunEndpoint`, which creates
 another gVisor `channel.Endpoint`. Its memory behavior is the same class as
-`VTun.endpointCh`: small when empty, bounded by queued packet buffers when
-full, and not a cap on the rest of the Spoofer netstack. The Spoofer TUN reader
-still allocates read buffers from the detached TUN's batch size, and the
-Spoofer stack still allocates per-flow TCP/UDP endpoint state, timers, packet
-buffers, and forwarding goroutines.
+`VTun.endpointCh`: small when empty, bounded by queued packet buffers when full,
+and not a cap on the rest of the Spoofer netstack. The Spoofer TUN reader still
+allocates read buffers from the detached TUN's batch size, and the Spoofer stack
+still allocates per-flow TCP/UDP endpoint state, timers, packet buffers, and
+forwarding goroutines.
 
-These components add goroutines and can grow under real traffic, but in the
-idle heap profiles they were below the WireGuard buffer cost by two orders of
+These components add goroutines and can grow under real traffic, but in the idle
+heap profiles they were below the WireGuard buffer cost by two orders of
 magnitude.
 
 ## Non-WireGuard Example Behavior
@@ -856,31 +854,30 @@ tun_split: ~25 MiB RSS
 
 `select` is the smallest under load. Its graph is made from mock networks,
 selectors, two HTTP servers, and two HTTP clients. Repeatedly triggering 1,000
-HTTP client sends through the Unix admin API raised RSS only from about
-23.5 MiB to 25.6 MiB. The forced-GC companion stayed in the same small regime
-at about 28.5 MiB RSS, with about 1 MiB live Go heap. There was no obvious
-persistent buffer growth.
+HTTP client sends through the Unix admin API raised RSS only from about 23.5 MiB
+to 25.6 MiB. The forced-GC companion stayed in the same small regime at about
+28.5 MiB RSS, with about 1 MiB live Go heap. There was no obvious persistent
+buffer growth.
 
-The `DefaultTun`/`Spoofer` examples behave differently. Even without
-WireGuard, burst traffic through the debug DefaultTun SOCKS ingress dirties and
-retains gVisor packet/TCP buffers, daemon transfer buffers, goroutine stacks,
-and Go heap spans. The successful `tun2net` path rose from about 23 MiB idle to
-about 94 MiB RSS after a 1,000-request run. A heavier 3,000-request burst raised
-RSS to about 214 MiB and produced some client failures under pressure, but the
+The `DefaultTun`/`Spoofer` examples behave differently. Even without WireGuard,
+burst traffic through the debug DefaultTun SOCKS ingress dirties and retains
+gVisor packet/TCP buffers, daemon transfer buffers, goroutine stacks, and Go
+heap spans. The successful `tun2net` path rose from about 23 MiB idle to about
+94 MiB RSS after a 1,000-request run. A heavier 3,000-request burst raised RSS
+to about 214 MiB and produced some client failures under pressure, but the
 daemon stayed running. In companion checks, forced GC did not return these
 successful `tun2net` bursts to idle: RSS remained about 94 MiB after the
 1,000-request run and about 235 MiB after the 3,000-request run.
 
 Lowering `VTun.endpointCh` and `Spoofer.queueLength` changes this behavior only
-at the packet-backlog edge. In the matching 3,000-request Docker comparison,
-the default `1024/1024` run and the reduced `64/64` run both completed all
-requests. Idle RSS stayed around 26 MiB in both cases, peak RSS stayed around
-228 MiB, and after-load RSS was only about 2 MiB lower with the reduced
-queues. The forced-GC companion check was noisy and still in the same range:
-about 229 MiB RSS for `1024/1024` and about 238 MiB RSS for `64/64`. That means
-these knobs can shave queued-packet headroom when queues are actually full, but
-they do not materially reduce the heavy-load RSS plateau for small successful
-HTTP flows.
+at the packet-backlog edge. In the matching 3,000-request Docker comparison, the
+default `1024/1024` run and the reduced `64/64` run both completed all requests.
+Idle RSS stayed around 26 MiB in both cases, peak RSS stayed around 228 MiB, and
+after-load RSS was only about 2 MiB lower with the reduced queues. The forced-GC
+companion check was noisy and still in the same range: about 229 MiB RSS for
+`1024/1024` and about 238 MiB RSS for `64/64`. That means these knobs can shave
+queued-packet headroom when queues are actually full, but they do not materially
+reduce the heavy-load RSS plateau for small successful HTTP flows.
 
 The `direct` and `tun_split` Docker debug load checks did not represent
 successful native outbound routing. `direct` routes to `OutNetwork`, and
@@ -920,9 +917,9 @@ web + Unix admin enabled:
   Threads:        8
 ```
 
-The difference between admin disabled and web+Unix admin enabled was about
-0.5 MiB RSS in the static Docker run. Admin listeners are therefore not a
-primary memory source for a basic daemon.
+The difference between admin disabled and web+Unix admin enabled was about 0.5
+MiB RSS in the static Docker run. Admin listeners are therefore not a primary
+memory source for a basic daemon.
 
 The no-node RSS comes mostly from:
 
@@ -995,30 +992,29 @@ change allocation behavior inside:
 In the paired Docker checks, empty-daemon RSS stayed about 19 MiB with and
 without `--no-pool`. Under the successful 3,000-request `tun2net` burst,
 after-load RSS was about 241 MiB with the default pool and about 246 MiB with
-`--no-pool`, so this flag is not an effective mitigation for the observed
-100+ MiB heavy-load RSS.
+`--no-pool`, so this flag is not an effective mitigation for the observed 100+
+MiB heavy-load RSS.
 
 ## Why RSS Can Reach 100+ MiB
 
-The idle measurements show live Go heap scaling with active WireGuard nodes.
-RSS may be lower immediately after startup because large zeroed heap spans do
-not necessarily become resident until touched.
+The idle measurements show live Go heap scaling with active WireGuard nodes. RSS
+may be lower immediately after startup because large zeroed heap spans do not
+necessarily become resident until touched.
 
 Under real traffic or native network operation:
 
 - TUN reader buffers become resident as packets are read.
 - Native UDP receive buffers can add additional large resident batches.
 - WireGuard `sync.Pool`s can retain message buffers after traffic bursts.
-- Lower WireGuard `batchSize` values reduce the TUN and UDP batch-buffer
-  budget, but they do not bound gVisor, application payloads, or Go heap-span
-  retention.
-- The daemon global `leveledBufPool` can retain buffers used by SOCKS, HTTP,
-  TUN wrappers, and forwarding paths.
+- Lower WireGuard `batchSize` values reduce the TUN and UDP batch-buffer budget,
+  but they do not bound gVisor, application payloads, or Go heap-span retention.
+- The daemon global `leveledBufPool` can retain buffers used by SOCKS, HTTP, TUN
+  wrappers, and forwarding paths.
 - `--no-pool` disables only that daemon global pool; it does not bound gVisor,
   WireGuard, or Go runtime retention.
 - Lower `VTun.endpointCh` and `Spoofer.queueLength` values bound two gVisor
-  channel endpoint queues, but they do not bound per-flow gVisor TCP/IP state
-  or Go heap-span retention.
+  channel endpoint queues, but they do not bound per-flow gVisor TCP/IP state or
+  Go heap-span retention.
 - gVisor TCP/IP stacks allocate per-flow packet buffers, TCP send/receive
   buffers, route state, timers, and goroutine stacks.
 - Application payloads can be retained by node config or request/response
@@ -1047,12 +1043,12 @@ reserved at idle and leave several pools warm after the burst. The measured
 dirty memory at the default batch size. The heavier non-WireGuard `tun2net`
 burst reached about 195 MiB private dirty memory.
 
-RSS is also not expected to fall immediately after traffic stops. The Go
-runtime may keep heap spans for reuse, `sync.Pool` keeps recently used objects
-until future GC/runtime pool behavior, and OS-level RSS accounting can lag
-behind logical object death. The forced-GC companion runs confirmed this for
-successful `tun2net` and WireGuard traffic: GC reduced the live-heap view, but
-RSS and private dirty memory often stayed close to the post-load plateau.
+RSS is also not expected to fall immediately after traffic stops. The Go runtime
+may keep heap spans for reuse, `sync.Pool` keeps recently used objects until
+future GC/runtime pool behavior, and OS-level RSS accounting can lag behind
+logical object death. The forced-GC companion runs confirmed this for successful
+`tun2net` and WireGuard traffic: GC reduced the live-heap view, but RSS and
+private dirty memory often stayed close to the post-load plateau.
 
 This explains reports like:
 
@@ -1115,9 +1111,9 @@ TUN reader buffer cost until `wgo` buffering becomes lazy or bounded.
 
 ### 3. Tune native UDP receive batching
 
-For native Linux binds, `batchudp` defaults to batch size 128 when the
-WireGuard node's `batchSize` is left at `0`. That can allocate large
-receive-side message buffer batches in WireGuard.
+For native Linux binds, `batchudp` defaults to batch size 128 when the WireGuard
+node's `batchSize` is left at `0`. That can allocate large receive-side message
+buffer batches in WireGuard.
 
 Possible improvements:
 
@@ -1150,8 +1146,8 @@ threads to 6 idle threads.
 This can reduce RSS by a few MiB at idle and more after small bursts, but it is
 not the primary memory fix. The retained packet-buffer heap remained close to
 the unconstrained run after forced GC. Use CPU limits or cpusets when the daemon
-should have a small scheduler/thread footprint, and use `WireGuard.batchSize`
-or deeper `wgo` buffer changes for the large per-device buffer budget.
+should have a small scheduler/thread footprint, and use `WireGuard.batchSize` or
+deeper `wgo` buffer changes for the large per-device buffer budget.
 
 ## Most Likely Code Areas To Change
 
@@ -1175,8 +1171,8 @@ lib/wireguard/node_wireguard.go
 ## Conclusion
 
 The high memory usage is mainly a WireGuard buffering design issue exposed by
-Almagest's node graphs. Each active WireGuard node can retain tens of MiB due
-to full-size packet buffers allocated per batch slot. Graphs with multiple
+Almagest's node graphs. Each active WireGuard node can retain tens of MiB due to
+full-size packet buffers allocated per batch slot. Graphs with multiple
 WireGuard nodes scale linearly at idle, and real traffic/native binds can push
 those allocations into resident memory.
 
@@ -1187,31 +1183,30 @@ not the cause of 100 MiB+ reports. Running the same empty daemon with
 `--no-pool` stayed in the same band, about 19 MiB RSS.
 
 Under load, RSS can rise much higher than idle heap profiles suggest. A
-Docker-isolated non-WireGuard `tun2net` graph rose from about 23 MiB idle RSS
-to about 94 MiB after a mostly successful 1,000-request burst, and to about
-214 MiB under a heavier 3,000-request burst with some client failures. A
-second paired `tun2net` check using the current daemon image completed all
-1,000- and 3,000-request bursts both with and without `--no-pool`; after-load
-RSS was about 105/241 MiB with the default pool and about 107/246 MiB with
-`--no-pool`. A Docker-isolated two-WireGuard graph rose from about 34 MiB idle
-RSS to about 271 MiB after 400 SOCKS5 HTTP requests with 1 MiB responses. That
-growth is consistent with packet buffers, netstack/TCP buffers, daemon buffer
-pools, and Go runtime retention after traffic bursts.
-Companion forced-GC checks still showed about 94/235 MiB RSS after the
-successful 1,000-/3,000-request `tun2net` bursts, so those rows are not just
-waiting for the next ordinary GC.
+Docker-isolated non-WireGuard `tun2net` graph rose from about 23 MiB idle RSS to
+about 94 MiB after a mostly successful 1,000-request burst, and to about 214 MiB
+under a heavier 3,000-request burst with some client failures. A second paired
+`tun2net` check using the current daemon image completed all 1,000- and
+3,000-request bursts both with and without `--no-pool`; after-load RSS was about
+105/241 MiB with the default pool and about 107/246 MiB with `--no-pool`. A
+Docker-isolated two-WireGuard graph rose from about 34 MiB idle RSS to about 271
+MiB after 400 SOCKS5 HTTP requests with 1 MiB responses. That growth is
+consistent with packet buffers, netstack/TCP buffers, daemon buffer pools, and
+Go runtime retention after traffic bursts. Companion forced-GC checks still
+showed about 94/235 MiB RSS after the successful 1,000-/3,000-request `tun2net`
+bursts, so those rows are not just waiting for the next ordinary GC.
 
 The new `almagest/WireGuard.batchSize` field is an effective WireGuard-specific
 memory knob. In the Docker-isolated two-WireGuard graph, setting both nodes to
 `batchSize: 1` reduced the small-response 2,000-request after-load RSS from
 about 171 MiB to about 142 MiB. With 1 MiB responses, it reduced after-load RSS
-from about 490 MiB to about 435 MiB. All requests completed in these checks,
-but these runs do not prove that `batchSize: 1` is a good default for high PPS
-or native-network workloads; smaller batches can trade memory for more syscalls
-and lower packet burst throughput. The forced-GC companion checks showed the
-same direction for the small-response run, and showed a much larger post-GC
-drop for the large-response `batchSize: 1` run, from the hundreds of MiB range
-to about 208 MiB RSS.
+from about 490 MiB to about 435 MiB. All requests completed in these checks, but
+these runs do not prove that `batchSize: 1` is a good default for high PPS or
+native-network workloads; smaller batches can trade memory for more syscalls and
+lower packet burst throughput. The forced-GC companion checks showed the same
+direction for the small-response run, and showed a much larger post-GC drop for
+the large-response `batchSize: 1` run, from the hundreds of MiB range to about
+208 MiB RSS.
 
 Lowering `VTun.endpointCh` and `Spoofer.queueLength` is useful as a backpressure
 knob, not as a primary memory fix. In the matching 3,000-request Docker check,
@@ -1220,17 +1215,16 @@ only about 2 MiB below the default-queue run. The forced-GC companion run did
 not show a reliable reduction either.
 
 Running with fewer available CPU cores also helps, but less directly. In the
-two-WireGuard Docker graph, a one-CPU cpuset reduced idle RSS from about
-29 MiB to about 26 MiB and reduced a 500-request after-GC RSS from about
-79 MiB to about 59 MiB. That came with a large drop in goroutines and threads,
-while live heap after forced GC stayed around 60 MiB in all three CPU modes.
-CPU limits are therefore useful for trimming worker/thread overhead in small
-deployments, not for eliminating the dominant WireGuard and gVisor/application
-buffer retention.
+two-WireGuard Docker graph, a one-CPU cpuset reduced idle RSS from about 29 MiB
+to about 26 MiB and reduced a 500-request after-GC RSS from about 79 MiB to
+about 59 MiB. That came with a large drop in goroutines and threads, while live
+heap after forced GC stayed around 60 MiB in all three CPU modes. CPU limits are
+therefore useful for trimming worker/thread overhead in small deployments, not
+for eliminating the dominant WireGuard and gVisor/application buffer retention.
 
 Using a smaller WireGuard batch size gives the largest immediate idle and
 post-load memory reduction for WireGuard-heavy graphs. Further `wgo` buffer
 allocation changes, especially lazy or bounded message-buffer allocation, would
 be needed to reduce the fixed per-batch cost without relying only on smaller
-batches. Traffic-heavy DefaultTun/Spoofer graphs may also need separate
-pressure controls for gVisor and daemon buffer retention.
+batches. Traffic-heavy DefaultTun/Spoofer graphs may also need separate pressure
+controls for gVisor and daemon buffer retention.

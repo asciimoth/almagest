@@ -26,6 +26,14 @@
         dontDisableStatic = true;
       });
 
+      markdownFormatter = pkgs.python3.withPackages (
+        pythonPackages: with pythonPackages; [
+          mdformat
+          mdformat-gfm
+          mdformat-gfm-alerts
+        ]
+      );
+
       psScriptAnalyzer = pkgs.stdenvNoCC.mkDerivation {
         pname = "PSScriptAnalyzer";
         version = "1.25.0";
@@ -110,6 +118,25 @@
               enable = true;
               entry = builtins.toString golangciLintHook;
               files = goHookFiles;
+            };
+            markdownlint = {
+              enable = true;
+              excludes = [ "^locales/lorem/docs/pages/guides/markdown-features\\.md$" ];
+              settings.configuration = {
+                default = true;
+                MD013 = {
+                  code_blocks = false;
+                  line_length = 80;
+                  tables = false;
+                };
+                MD033.allowed_elements = [
+                  "animateTransform"
+                  "circle"
+                  "img"
+                  "svg"
+                ];
+                MD041 = false;
+              };
             };
             ripsecrets.enable = true;
             gotidy = {
@@ -211,6 +238,8 @@
 
           typos
           commitizen
+          markdownFormatter
+          markdownlint-cli
           shellcheck
           powershell
           ripsecrets

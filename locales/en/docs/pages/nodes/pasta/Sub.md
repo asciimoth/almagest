@@ -1,5 +1,5 @@
-Subtracts **input 2** from **input 1**. Input order is fixed, so reversing
-the connections changes the sign of the result.
+Subtracts **input 2** from **input 1**. Input order is fixed, so reversing the
+connections changes the sign of the result.
 
 ## Number type
 
@@ -13,8 +13,8 @@ carry the selected type. The other input is converted to the selected type:
 - With a Float result, an Integer input is converted to Float. The same values
   then give `1.5` if Float was selected first.
 
-Connect a Float source first when the result must keep fractional values.
-Before a type is selected, the node does not supply a numeric result.
+Connect a Float source first when the result must keep fractional values. Before
+a type is selected, the node does not supply a numeric result.
 
 ## Missing values and updates
 

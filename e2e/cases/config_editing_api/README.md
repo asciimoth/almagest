@@ -24,8 +24,8 @@ contains a marker secret that must never appear on the config API.
 - Verify that all original node IDs and both stable link IDs stay unchanged.
 - Submit an embedded top-level `Protected` object and verify that the API
   rejects it without making the data visible.
-- Apply the current canonical document as a graph no-op and verify that its
-  text and revision do not change.
+- Apply the current canonical document as a graph no-op and verify that its text
+  and revision do not change.
 - Restart the daemon and verify the saved graph, traffic, and protected-data
   boundary again, then repeat the snapshot-stability check.
 

@@ -3,13 +3,13 @@
 Wraps backend `almagest/network` slots with `gonnect/sniffer.Sniffer` and
 publishes the wrapper as one `almagest/network` value.
 
-The node inspects client-first bytes for outgoing TCP `Dial` and `DialTCP`
-calls when rules return `INTERCEPT`. After sniffing, inspected bytes are put
-back before the selected backend sees the connection.
+The node inspects client-first bytes for outgoing TCP `Dial` and `DialTCP` calls
+when rules return `INTERCEPT`. After sniffing, inspected bytes are put back
+before the selected backend sees the connection.
 
-Rules use `github.com/asciimoth/gonnect/routing` sniffer bytecode syntax.
-Slots are one-based and map to right-side `slot N` ports. Slot `0` rejects the
-call. This node supports slots `1` through `16`.
+Rules use `github.com/asciimoth/gonnect/routing` sniffer bytecode syntax. Slots
+are one-based and map to right-side `slot N` ports. Slot `0` rejects the call.
+This node supports slots `1` through `16`.
 
 Example: block one HTTP URL, remap another URL to a fixed backend address, and
 route all other HTTP traffic to slot 1.

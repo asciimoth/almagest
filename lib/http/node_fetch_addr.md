@@ -1,8 +1,8 @@
 # FetchAddr
 
-`almagest/FetchAddr` queries a public connection-information service through
-an attached `almagest/network`. This makes the result describe the selected
-graph path instead of the daemon host's default route.
+`almagest/FetchAddr` queries a public connection-information service through an
+attached `almagest/network`. This makes the result describe the selected graph
+path instead of the daemon host's default route.
 
 The node supports these providers:
 
@@ -21,7 +21,6 @@ A failed check resets and emits the default data values before the **Fail**
 trigger. Data outputs also send their current cached value when a link is
 attached or requests the value.
 
-The TLS config selector controls HTTPS certificate and client policy in the
-same way as the HTTP client node. Changing the provider, TLS config, or network
-invalidates an in-progress request so a stale completion cannot update the
-node.
+The TLS config selector controls HTTPS certificate and client policy in the same
+way as the HTTP client node. Changing the provider, TLS config, or network
+invalidates an in-progress request so a stale completion cannot update the node.

@@ -5,13 +5,13 @@ variable. Removing the **Value** connection resets the staged value to `0`.
 
 IntSet writes the staged value only when it receives **Trigger** or when you
 trigger the node manually. For each trigger, it first updates the variable and
-then sends **Trigger**. An [IntGet](@docs/node/pasta/IntGet) node triggered next can therefore read
-the new value.
+then sends **Trigger**. An [IntGet](@docs/node/pasta/IntGet) node triggered next
+can therefore read the new value.
 
 Set **Name** to the variable to update. If **Name** is empty, the node uses
-`var`. [IntGet](@docs/node/pasta/IntGet) and IntSet nodes with the same **Name** share the
-variable in the current workspace. Variables of other types are separate,
-even if they have the same name.
+`var`. [IntGet](@docs/node/pasta/IntGet) and IntSet nodes with the same **Name**
+share the variable in the current workspace. Variables of other types are
+separate, even if they have the same name.
 
 The node label shows **Name**, not the staged value. The name and staged value
 are saved with the workspace.

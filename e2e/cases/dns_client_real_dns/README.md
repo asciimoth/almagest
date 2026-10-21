@@ -1,7 +1,7 @@
 # DNS Client Real DNS
 
-This case verifies `almagest/DnsClient` against real DNS server
-processes inside the e2e container.
+This case verifies `almagest/DnsClient` against real DNS server processes inside
+the e2e container.
 
 The case starts:
 
@@ -15,6 +15,5 @@ The daemon graph contains two `DnsClient` nodes:
 - `DNS DoT Client` queries `dot://dot-upstream.e2e.test:5853`, using a
   `StaticDns` bootstrap node to resolve the DoT server hostname.
 
-The test drives the existing interactive `almagest/DnsQuery` query nodes
-through the admin API and asserts successful DNS answers from both upstream
-transports.
+The test drives the existing interactive `almagest/DnsQuery` query nodes through
+the admin API and asserts successful DNS answers from both upstream transports.

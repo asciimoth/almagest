@@ -20,5 +20,5 @@ Assertions:
 - target access logs show the expected HTTP paths and TLS ALPN
 - repeated live rule changes route through sparse dynamic slots
 - linked obsolete slots stay present until unlink, then disappear immediately
-- detaching an active backend blocks its routes, and reattaching it restores
-  the existing proxy path
+- detaching an active backend blocks its routes, and reattaching it restores the
+  existing proxy path

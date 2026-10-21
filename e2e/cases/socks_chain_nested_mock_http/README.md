@@ -2,8 +2,8 @@
 
 ## Setup
 
-The case runs inside the shared e2e Docker image. It is based on the SOCKS
-chain from `local/alm.hujson`.
+The case runs inside the shared e2e Docker image. It is based on the SOCKS chain
+from `local/alm.hujson`.
 
 The graph exposes four local SOCKS listeners:
 
@@ -36,6 +36,6 @@ The test also changes the live chain:
   valid URL restores the first request.
 - Rapid proxy URL changes converge on the last value without a stale wrapper
   replacing it.
-- Removing and restoring the immediate and next-level upstream links
-  propagates failure and recovery through the full chain.
+- Removing and restoring the immediate and next-level upstream links propagates
+  failure and recovery through the full chain.
 - The rebuilt chain works on its first request after daemon restart.

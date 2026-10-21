@@ -41,10 +41,10 @@ admin API disabled.
 - The daemon process log shows that the engine finished building.
 - Rapid port and response edits converge on the newest desired values, and an
   intermediate listener is unavailable after convergence.
-- Detaching and restoring the server network starts a fresh listener whose
-  first response uses edits made while detached.
-- Replacing the debug logger's upstream wrapper also restores the server on
-  the first request.
+- Detaching and restoring the server network starts a fresh listener whose first
+  response uses edits made while detached.
+- Replacing the debug logger's upstream wrapper also restores the server on the
+  first request.
 - Repeated response changes cannot let an old worker completion restore stale
   content.
 - The final graph, port, and response work after a daemon restart.

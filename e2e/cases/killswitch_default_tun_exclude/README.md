@@ -15,15 +15,15 @@ Assertions:
 - killswitch blocks unmarked outgoing traffic on `almks0` by default
 - `DefaultTun` makes `almagestd` publish temporary killswitch allow rules for
   the daemon app mark and the user exclude mark
-- more than 32,768 unrelated process exits do not consume the p-mark process
-  map or prevent a later matched process from receiving its socket mark
+- more than 32,768 unrelated process exits do not consume the p-mark process map
+  or prevent a later matched process from receiving its socket mark
 - periodic cleanup does not replace a live matched process with a tombstone
   while unrelated processes exit
 - `DefaultTun` `exclude` rule for `comm=excluded-curl` lets the case-specific
   curl executable go directly to the outer network while killswitch remains
   active
-- unexcluded Python traffic is blocked by the TUN-disconnected `DefaultTun`, then
-  succeeds through `DefaultTun -> Spoofer -> LogNetwork -> OutNetwork`
+- unexcluded Python traffic is blocked by the TUN-disconnected `DefaultTun`,
+  then succeeds through `DefaultTun -> Spoofer -> LogNetwork -> OutNetwork`
 - after `almagestd` exits, direct `curl` traffic is blocked again by killswitch
 
 Run with privileged Docker networking:

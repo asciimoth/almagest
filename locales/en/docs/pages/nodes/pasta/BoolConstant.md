@@ -1,5 +1,5 @@
-Supplies a Boolean value to one or more consumers. The initial value is
-`false` unless the workspace contains a saved value.
+Supplies a Boolean value to one or more consumers. The initial value is `false`
+unless the workspace contains a saved value.
 
 Set **Value** in the node menu, and then apply the form. Editing the checkbox
 without applying the form does not change the output. After an applied value

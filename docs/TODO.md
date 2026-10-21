@@ -1,172 +1,202 @@
 Fixes
+
 - [ ] Find out why there is so much workers respawn in daemon logs
-    - Why there is so much dns query workers
+  - Why there is so much dns query workers
 - [ ] Fix work after host sleep wakeup
 
 Optimisation
+
 - [ ] Compress builtin admin pamel
 - [ ] Switch to other userspace TCP/IP stack implementation
-    - https://github.com/soypat/lneto ?
+  - <https://github.com/soypat/lneto> ?
 
 Dev
+
 - [ ] Better web dev setup (linters, etc)
 - [ ] SBOM
 
 Docs
+
 - [ ] Guide for porting to new platforms
 - [ ] Rich docs rendering with graph examples
 
 Tests
+
 - [ ] Add undo/redo tests analog for all existed topology tests
 
 UX/QoL
+
 - [ ] Make sure there are example placeholders in all node menus fields
 - [ ] Dedicated admin panel tab for monitoring of all DNS requests in graph
 - [ ] Review log levels
 
 Configuration
-- [ ] Config templates system for setups with immutable template and mutable config
+
+- [ ] Config templates system for setups with immutable template and mutable
+  config
 - [ ] Hujson config editing in admin panel
 - [ ] Config snapsots system with snapshot/rollback options in admin panel
 - [ ] Omitempty/omitdefault in nodes priv fields
 
 Integrations
+
 - [ ] Shelter on android
-    - Shelter profile based routing
+  - Shelter profile based routing
 - Distributed firewalls
-    - [ ] crowdsec
-    - [ ] diswall
+  - [ ] crowdsec
+  - [ ] diswall
 
 Adblock
+
 - [ ] File format for compact and cheap storing of large FQDN and Ip lists
-    - Intended for ad blocking but can be used in any node that use hostname/ip filters
+  - Intended for ad blocking but can be used in any node that use hostname/ip
+    filters
 - [ ] Dedicated adblock node for DNS, Tun and Network links
-    - Adblocking can be implemented with already existed nodes but it would be nice to have dedicated node
-    - [ ] Builin block lists fetcher & updater
+  - Adblocking can be implemented with already existed nodes but it would be
+    nice to have dedicated node
+  - [ ] Builin block lists fetcher & updater
 
 DNS
-- [X] meshname 
-- [X] DoT
+
+- [x] meshname
+- [x] DoT
 - [ ] DoH
 - [ ] ODoH
 - [ ] DoQ
 - [ ] mDNS?
 - [ ] Add DNS hijack node
-    - Can be implemented with already existed nodes but it would be nice to have dedicated node
-    - Should work with Tun and Network links
+  - Can be implemented with already existed nodes but it would be nice to have
+    dedicated node
+  - Should work with Tun and Network links
 
 TLS
-- [X] Warnings for hazard certs
+
+- [x] Warnings for hazard certs
 - [ ] Server side configs management
-- [X] Manually add ru gov certs to hazard certs list
-    - Manual sources have higher priority than parsed sources
+- [x] Manually add ru gov certs to hazard certs list
+  - Manual sources have higher priority than parsed sources
 
 DPI
-- [X] Sniffer
+
+- [x] Sniffer
 - [ ] Reverse sniffer
 - [ ] UDP protocols support
 - More protocols classifiers
 
 Secrets system
-- [X] DB secrets storage
+
+- [x] DB secrets storage
 - Use secrets for
-    - [X] WG priv key
-    - [ ] socks client/server password (optional)
-        - SOCKS server passwords are stored and echoed as plaintext node config; add secret storage or credential handling.
+  - [x] WG priv key
+  - [ ] socks client/server password (optional)
+    - SOCKS server passwords are stored and echoed as plaintext node config; add
+      secret storage or credential handling.
 
 WireGuard
-- [X] AmnesiaWG extension
+
+- [x] AmnesiaWG extension
 - [ ] Standard configs format import
-- [ ] Something like https://github.com/alex14fr/wgsig or https://github.com/malcolmseyd/natpunch-go
-- [ ] https://github.com/ClusterM/wg-obfuscator
+- [ ] Something like <https://github.com/alex14fr/wgsig> or
+  <https://github.com/malcolmseyd/natpunch-go>
+- [ ] <https://github.com/ClusterM/wg-obfuscator>
 
 Proxy/VPN protocols support
+
 - Socks
-    - [X] Client
-        - [X] Noproxy string field
-        - [ ] DNS port for tor resolve extension
-    - [X] Server
+  - [x] Client
+    - [x] Noproxy string field
+    - [ ] DNS port for tor resolve extension
+  - [x] Server
 - [ ] SSH
-    - [ ] Sshutle like?
-    - [ ] Port passing
-    - [ ] Shell pipe
+  - [ ] Sshutle like?
+  - [ ] Port passing
+  - [ ] Shell pipe
 - [ ] PPTP
 - [ ] Shadowsocks
 - [ ] Nebula
-    - https://github.com/slackhq/nebula
-    - https://github.com/forgekeep/nebula-mesh
+  - <https://github.com/slackhq/nebula>
+  - <https://github.com/forgekeep/nebula-mesh>
 - [ ] Tink?
 - [ ] NaiveProxy
 - [ ] Stunnel / [go-tunnel](https://github.com/opencoff/go-tunnel)
 - [ ] iodine?
 - [ ] Cloak?
-- [ ] https://github.com/jpillora/chisel ?
+- [ ] <https://github.com/jpillora/chisel> ?
 
 Services clients
-- [X] tailscale
-- [X] amnesia
+
+- [x] tailscale
+- [x] amnesia
 - [ ] netbird?
 - ngrok-like
-    - [ ] Ngrok itself
-    - [ ] https://github.com/andydunstall/piko
+  - [ ] Ngrok itself
+  - [ ] <https://github.com/andydunstall/piko>
 
 Tor integration
-- [ ] https://github.com/cretz/bine
+
+- [ ] <https://github.com/cretz/bine>
 
 DPI bypass tools
-- https://github.com/ValdikSS/GoodbyeDPI
-- https://github.com/SadeghHayeri/GreenTunnel
-- https://github.com/dilluti0n/dpibreak
-- https://github.com/xvzc/spoofdpi
+
+- <https://github.com/ValdikSS/GoodbyeDPI>
+- <https://github.com/SadeghHayeri/GreenTunnel>
+- <https://github.com/dilluti0n/dpibreak>
+- <https://github.com/xvzc/spoofdpi>
 
 Etc
+
 - [ ] Multiplexer
-    - https://github.com/xtaci/smux
-    - https://github.com/hashicorp/yamux
+  - <https://github.com/xtaci/smux>
+  - <https://github.com/hashicorp/yamux>
 - [ ] Reverse port mapping
-    - Extra check for avoiding cycles
+  - Extra check for avoiding cycles
 - [ ] Reverse proxy ( TCP/UDP/HTTP(S) )
 - [ ] Node with proxychains like proxy chaining
 - [ ] Bad network node
-    - jitter, delays, etc
+  - jitter, delays, etc
 - [ ] Dispatcher node
-    - round robin, random, etc
+  - round robin, random, etc
 - [ ] Rate limit node
-    - Tun and Network versions
-    - for both outgoing (dial) and incoming (listen+accept) connections
+  - Tun and Network versions
+  - for both outgoing (dial) and incoming (listen+accept) connections
 - [ ] UDP over TCP
-    - https://github.com/mullvad/udp-over-tcp
-    - https://github.com/jonhoo/udp-over-tcp
-    - https://sing-box.sagernet.org/configuration/shared/udp-over-tcp/
-- [ ] https://github.com/norouter/norouter
+  - <https://github.com/mullvad/udp-over-tcp>
+  - <https://github.com/jonhoo/udp-over-tcp>
+  - <https://sing-box.sagernet.org/configuration/shared/udp-over-tcp/>
+- [ ] <https://github.com/norouter/norouter>
 - [ ] Shell callback for IP/Subnet filtering
 - [ ] UpNp?
 
 Sysnet
-- [X] Sysnet linux
+
+- [x] Sysnet linux
 - [ ] Sysnet windows
 - [ ] Drop resolved dns caches after changing it's configuration
 - [ ] Rule for allowing direct pings
 - More rules options for pre-filter and routing
-    - [ ] dst addr
-    - [ ] flatpak app?
-    - [ ] docker container?
-    - [ ] VM?
+  - [ ] dst addr
+  - [ ] flatpak app?
+  - [ ] docker container?
+  - [ ] VM?
 - [ ] Allow all sysnet features emulation via debug admin api
 
 Admin
+
 - [ ] Authorisation
-    - [ ] Pssword/access tokens/fido(?)
-    - [ ] Narow scoped access tokens for api clients
+  - [ ] Pssword/access tokens/fido(?)
+  - [ ] Narow scoped access tokens for api clients
 
 Cli
+
 - [ ] Machine-readable json output by default when output is not a tty
 - [ ] Semi-interactive tui mode (fzf-like pickers, etC) when output is a tty
 
 Propagation
+
 - lists
-    - awesome*
-    - https://research.torproject.org/tools/
+  - awesome\*
+  - <https://research.torproject.org/tools/>
 
 Plugin system?
+
 - Go plugins vs IPC vs WASM

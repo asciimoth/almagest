@@ -3,11 +3,10 @@ local IP stack or system TUN to **Tun**. Connect a UDP-capable Network to
 **Network**. The node uses that Network for the listen socket and for the
 endpoints of peers configured in the menu or through **Peers**.
 
-Both connections are required for the `up` state. The node does not open its
-UDP socket when only **Network** is ready. If **Tun** disconnects after startup,
-the node keeps its peer configuration and UDP transport, shows `waiting for
-TUN`, and resumes when a replacement TUN connects. **Network** accepts one
-connection.
+Both connections are required for the `up` state. The node does not open its UDP
+socket when only **Network** is ready. If **Tun** disconnects after startup, the
+node keeps its peer configuration and UDP transport, shows `waiting for TUN`,
+and resumes when a replacement TUN connects. **Network** accepts one connection.
 
 **Listen port** accepts values from 0 through 65535. Zero lets the Network
 select a port. The **Status** section shows the actual active port.
@@ -21,19 +20,19 @@ saves it as a new secret. If the selected secret is missing or this node cannot
 read it, WireGuard also generates a replacement key. Check **Public key** after
 you change secret access because a replacement changes the interface identity.
 
-An invalid private key changes the node state to `invalid config`. Changes to
-an accessible key secret apply to the active device. Old configurations that
+An invalid private key changes the node state to `invalid config`. Changes to an
+accessible key secret apply to the active device. Old configurations that
 contain a raw private key are moved to secret storage when they are loaded.
 
-Enter the interface address prefixes in **Owned IPs**. A bare IP address
-becomes a host prefix, such as `/32` for IPv4 or `/128` for IPv6. Duplicate
-prefixes are removed. These values are sent to the connected TUN provider as
-address suggestions. They do not assign an address to the UDP Network.
+Enter the interface address prefixes in **Owned IPs**. A bare IP address becomes
+a host prefix, such as `/32` for IPv4 or `/128` for IPv6. Duplicate prefixes are
+removed. These values are sent to the connected TUN provider as address
+suggestions. They do not assign an address to the UDP Network.
 
-Controllers connected to **WGCtrl** can also suggest owned IPs. Menu values
-come first, followed by controller values in stable graph order. Disconnecting
-a controller removes only its suggestions. Controller values are not saved in
-this node's configuration.
+Controllers connected to **WGCtrl** can also suggest owned IPs. Menu values come
+first, followed by controller values in stable graph order. Disconnecting a
+controller removes only its suggestions. Controller values are not saved in this
+node's configuration.
 
 ## Peers
 
@@ -41,19 +40,19 @@ Add static peers in the **Peers** section. Each peer supports:
 
 - **Public key**, which is required and identifies the peer.
 - **Preshared key secret**, which optionally adds a second shared key.
-- **Endpoint**, usually a hostname or IP address with a UDP port. Leave it
-  empty when the endpoint must be learned from authenticated traffic.
+- **Endpoint**, usually a hostname or IP address with a UDP port. Leave it empty
+  when the endpoint must be learned from authenticated traffic.
 - **Allowed IPs**, which selects the peer for matching tunnel destinations.
 - **Keepalive**, in seconds. Zero disables persistent keepalive.
 
 Allowed IPs accept prefixes or bare addresses. They are both WireGuard
-crypto-routing rules and route suggestions for the connected TUN provider.
-Do not give two peers overlapping destination ranges unless the resulting
+crypto-routing rules and route suggestions for the connected TUN provider. Do
+not give two peers overlapping destination ranges unless the resulting
 longest-prefix selection is intentional.
 
 The preshared key value stays in secret storage. A missing, inaccessible, or
-invalid preshared key secret makes the configuration invalid; WireGuard does
-not silently remove that protection. Old raw preshared keys are moved to secret
+invalid preshared key secret makes the configuration invalid; WireGuard does not
+silently remove that protection. Old raw preshared keys are moved to secret
 storage when they are loaded.
 
 **Peers** also accepts multiple peer-list objects from other nodes. Each object
@@ -64,13 +63,13 @@ latest list from each connected source. A public key identifies conflicts:
   object.
 - A stable graph order resolves the same key from two object sources. Give one
   source clear ownership of each public key instead of depending on this rule.
-- Removing an object connection removes only the peers supplied by that
-  source. Object peers are not copied into the saved menu configuration.
+- Removing an object connection removes only the peers supplied by that source.
+  Object peers are not copied into the saved menu configuration.
 
-[WGConfig](@docs/node/almagest/WGConfig) nodes can manage additional peers and UDP transports through
-**WGCtrl**. Menu peers, object peers, and controller peers can coexist.
-Disconnecting a controller removes only the peers and transports that it owns;
-later menu changes do not delete them.
+[WGConfig](@docs/node/almagest/WGConfig) nodes can manage additional peers and
+UDP transports through **WGCtrl**. Menu peers, object peers, and controller
+peers can coexist. Disconnecting a controller removes only the peers and
+transports that it owns; later menu changes do not delete them.
 
 ## Routes, DNS, and MTU
 
@@ -82,20 +81,21 @@ WireGuard sends one combined configuration to the TUN provider:
 - DNS comes from **DNS** or from a controller.
 - MTU comes from controller ceilings and the UDP carrier limit when available.
 
-Exact duplicate addresses and routes are removed. A controller can withdraw
-its contribution by sending an empty configuration or by disconnecting.
+Exact duplicate addresses and routes are removed. A controller can withdraw its
+contribution by sending an empty configuration or by disconnecting.
 
 **DNS** accepts one IPv4 or IPv6 address. A menu value always has priority. If
 the menu field is empty, the most recently received current controller DNS
 suggestion applies. This is only a suggestion for a simple TUN path, such as a
-direct connection to [VTun](@docs/node/almagest/VTun). It does not configure the UDP transport. Use DNS
-nodes when you need multiple resolvers, routing, caching, or policy.
+direct connection to [VTun](@docs/node/almagest/VTun). It does not configure the
+UDP transport. Use DNS nodes when you need multiple resolvers, routing, caching,
+or policy.
 
 For peers that use **Network**, WireGuard asks the carrier for its safe maximum
 UDP payload and subtracts WireGuard overhead and effective AWG transport
 padding. It then selects the smallest positive result and controller MTU
-ceiling. The result is the **Effective MTU** suggestion for the TUN provider.
-If the carrier cannot report a limit and no controller supplies one, the MTU
+ceiling. The result is the **Effective MTU** suggestion for the TUN provider. If
+the carrier cannot report a limit and no controller supplies one, the MTU
 suggestion is zero and the TUN provider chooses its fallback. An IPv6-capable
 configuration reports an error if the calculated inner MTU is less than 1280.
 
@@ -120,8 +120,8 @@ Each peer can use **AWG override**:
   J/S/H/I values.
 - With the override on and peer obfuscation off, the peer uses plain WireGuard.
 
-This permits standard WireGuard and AmneziaWG peers to share one interface.
-The applicable profile must still match each remote peer.
+This permits standard WireGuard and AmneziaWG peers to share one interface. The
+applicable profile must still match each remote peer.
 
 ## Performance and status
 
@@ -130,21 +130,21 @@ this port directly to a System outbound network node to get full performance.
 Middleware nodes on this path can reduce throughput. We are working to remove
 this limitation.
 
-**Batch size** controls packet batching for both tunnel processing and UDP.
-Zero uses the default. A smaller positive value retains fewer packet buffers
-but can reduce maximum throughput.
+**Batch size** controls packet batching for both tunnel processing and UDP. Zero
+uses the default. A smaller positive value retains fewer packet buffers but can
+reduce maximum throughput.
 
 The status reports the state, public key, listen port, attachment state,
 effective owned IPs, peer counts, effective MTU, packet and byte totals, and
-latest handshake time. Use the **Error** field to diagnose invalid peer
-objects, key problems, UDP bind failures, and incompatible MTU values.
+latest handshake time. Use the **Error** field to diagnose invalid peer objects,
+key problems, UDP bind failures, and incompatible MTU values.
 
 Applying a valid menu change updates the active device. Peer, key, address, or
 AWG changes can interrupt handshakes and active traffic. An invalid menu change
 is rejected and leaves the saved menu configuration unchanged. An invalid
 peer-list object removes that source's previous peer contribution so that stale
-peers do not remain active. The state changes to `invalid config` or `invalid
-object config` and the **Error** field gives the cause.
+peers do not remain active. The state changes to `invalid config` or
+`invalid object config` and the **Error** field gives the cause.
 
 When a fixed WireGuard endpoint goes through a SOCKS client Network, standard
 SOCKS5 UDP association is not sufficient because the proxy chooses the relay

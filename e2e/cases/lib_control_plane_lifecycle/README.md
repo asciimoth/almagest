@@ -2,9 +2,9 @@
 
 ## Setup
 
-This hermetic case uses debug-only library nodes, persistent daemon storage,
-and one independent in-memory HTTP path. It does not need privileged
-networking or an external service.
+This hermetic case uses debug-only library nodes, persistent daemon storage, and
+one independent in-memory HTTP path. It does not need privileged networking or
+an external service.
 
 ## Expected Behavior
 

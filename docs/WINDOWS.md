@@ -1,8 +1,8 @@
 # Windows
 
 Almagest has a native Windows backend, but no Windows platform entry is
-qualified as supported yet. The authoritative feature mapping and required
-test evidence are in
+qualified as supported yet. The authoritative feature mapping and required test
+evidence are in
 [`contracts/windows/support-matrix.json`](../contracts/windows/support-matrix.json)
 and
 [`contracts/windows/test-manifest.json`](../contracts/windows/test-manifest.json).
@@ -24,8 +24,8 @@ Deployment tooling must do these tasks:
 - Install the matching Mullvad split driver as the demand-start
   `mullvad-split-tunnel` kernel service. Its driver path is
   `%SystemRoot%\System32\drivers\mullvad-split-tunnel.sys`.
-- Own dependency installation, service registration, start, update, repair,
-  and removal. The daemon validates dependencies but does not provision them.
+- Own dependency installation, service registration, start, update, repair, and
+  removal. The daemon validates dependencies but does not provision them.
 
 The split driver is an exclusive machine resource. Do not run another VPN
 controller that uses it at the same time. If it is absent, busy, or unusable,
@@ -43,14 +43,14 @@ The default configuration is `%ProgramData%\Almagest\alm.hujson`; its protected
 configuration is `protected_alm.hujson` in the same directory. File storage
 defaults to these locations:
 
-| Execution mode | Storage |
-| --- | --- |
-| Interactive | `%LocalAppData%\Almagest\store` |
-| Windows service | `%ProgramData%\Almagest\store` |
+| Execution mode  | Storage                         |
+| --------------- | ------------------------------- |
+| Interactive     | `%LocalAppData%\Almagest\store` |
+| Windows service | `%ProgramData%\Almagest\store`  |
 
 Explicit config and storage arguments override these defaults. Unless
-`--unsafe-config` is used, the daemon creates and validates private Windows
-ACLs for config, storage, generated secrets, and temporary state.
+`--unsafe-config` is used, the daemon creates and validates private Windows ACLs
+for config, storage, generated secrets, and temporary state.
 
 ## Local administration
 
@@ -78,8 +78,8 @@ and fails if another server already owns the name.
 The loopback web listener is disabled by default. Enable it with `Admin.Web`,
 `--web`, or `ALMAGEST_WEB_ADMIN`. `Admin.WebFilters.Usernames`,
 `--web-filter-user`, and `ALMAGEST_WEB_ADMIN_FILTER_USERS` restrict accepted
-connections by the owning process token SID. UID and GID filters are invalid
-on Windows.
+connections by the owning process token SID. UID and GID filters are invalid on
+Windows.
 
 The username filter is best effort, not authentication. Without it, any local
 user can access the listener, and the daemon logs a warning. Keep
@@ -87,9 +87,9 @@ user can access the listener, and the daemon logs a warning. Keep
 
 ## Certificate authorities
 
-The daemon reads public certificates from the Root stores of its current
-process identity and the local machine. A service does not read the interactive
-user's store. The catalog then includes the embedded fallback roots. Set
+The daemon reads public certificates from the Root stores of its current process
+identity and the local machine. A service does not read the interactive user's
+store. The catalog then includes the embedded fallback roots. Set
 `ALMAGEST_TLS_FORCE_FALLBACK_ROOTS` to skip Windows store access.
 
 Catalog entries are candidates only. A TLS policy must explicitly select one.
@@ -108,8 +108,8 @@ just build-windows-arch amd64
 just build-windows-arch arm64
 ```
 
-Output goes to `artifacts/windows` by default. Set `WINDOWS_BUILD_DIR` to
-change it. The build covers all Go modules, the daemon, the CLI, default and
+Output goes to `artifacts/windows` by default. Set `WINDOWS_BUILD_DIR` to change
+it. The build covers all Go modules, the daemon, the CLI, default and
 `almagest_e2e` test binaries, the certificate catalog, and the embedded panel.
 
 Use these native gates:

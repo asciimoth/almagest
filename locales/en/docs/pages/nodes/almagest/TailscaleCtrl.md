@@ -1,14 +1,19 @@
-TailscaleCtrl connects a [WireGuard](@docs/node/almagest/WireGuard) node to Tailscale or to a compatible
-control server such as Headscale. It uses the private key of the connected
-[WireGuard](@docs/node/almagest/WireGuard) node. It adds and removes only the peers and relay path that it
-manages, so [WireGuard](@docs/node/almagest/WireGuard) peers from other sources can use the same device.
+TailscaleCtrl connects a [WireGuard](@docs/node/almagest/WireGuard) node to
+Tailscale or to a compatible control server such as Headscale. It uses the
+private key of the connected [WireGuard](@docs/node/almagest/WireGuard) node. It
+adds and removes only the peers and relay path that it manages, so
+[WireGuard](@docs/node/almagest/WireGuard) peers from other sources can use the
+same device.
 
 ## Connections
 
 Connect **WireGuard** to the control input. TailscaleCtrl sends the current
-Tailscale addresses, routes, and MTU to [WireGuard](@docs/node/almagest/WireGuard). [WireGuard](@docs/node/almagest/WireGuard) includes these
-values in the configuration that it sends to its TUN. The node reaches the
-`up` state only after [WireGuard](@docs/node/almagest/WireGuard) and its TUN accept this configuration.
+Tailscale addresses, routes, and MTU to
+[WireGuard](@docs/node/almagest/WireGuard).
+[WireGuard](@docs/node/almagest/WireGuard) includes these values in the
+configuration that it sends to its TUN. The node reaches the `up` state only
+after [WireGuard](@docs/node/almagest/WireGuard) and its TUN accept this
+configuration.
 
 Connect **Network** to the path that must carry these connections:
 
@@ -17,10 +22,12 @@ Connect **Network** to the path that must carry these connections:
 - DERP relay traffic over TLS
 
 Direct peer UDP traffic does not use this Network input. It uses the default
-Network connected to the [WireGuard](@docs/node/almagest/WireGuard) node. For example, a proxy on the
-TailscaleCtrl Network input carries control and DERP traffic, but it does not
-carry a direct [WireGuard](@docs/node/almagest/WireGuard) connection to a peer. Configure the WireGuard Network
-path separately when direct peer traffic must use a specific route.
+Network connected to the [WireGuard](@docs/node/almagest/WireGuard) node. For
+example, a proxy on the TailscaleCtrl Network input carries control and DERP
+traffic, but it does not carry a direct
+[WireGuard](@docs/node/almagest/WireGuard) connection to a peer. Configure the
+WireGuard Network path separately when direct peer traffic must use a specific
+route.
 
 ## Configuration
 
@@ -36,8 +43,7 @@ hostname.
 one-time pre-authentication key. If you do not select a secret and the machine
 needs approval, the node shows an authorization link and a warning. Complete
 authorization in the browser, then use **Check authorization** if the status
-does not update. The node also checks authorization periodically while it
-waits.
+does not update. The node also checks authorization periodically while it waits.
 
 **Ephemeral node** asks the control server to remove the node after it goes
 offline. The exact removal time is controlled by the server.
@@ -46,8 +52,8 @@ offline. The exact removal time is controlled by the server.
 value must be from `0` through `65535`. Use `0` to let the connected Network
 select a port.
 
-**Disable DERP** removes the TLS relay fallback. Direct UDP remains enabled.
-Use this option only when peers can establish a direct path.
+**Disable DERP** removes the TLS relay fallback. Direct UDP remains enabled. Use
+this option only when peers can establish a direct path.
 
 **Disable discovery** disables local endpoint advertisement, STUN, and DISCO.
 Direct endpoints supplied by the control server can still be used. DERP can
@@ -55,16 +61,17 @@ still carry traffic unless you also disable DERP.
 
 ## DNS output
 
-The **DNS** output serves the current MagicDNS records received from the
-control server. It supports `A`, `AAAA`, `CNAME`, `PTR`, `NS`, `MX`, `SRV`, and
-`TXT` queries. Reverse lookups are made from the received address records. A
-single-label name also uses the MagicDNS search domains. A name that contains
-a dot is looked up as written.
+The **DNS** output serves the current MagicDNS records received from the control
+server. It supports `A`, `AAAA`, `CNAME`, `PTR`, `NS`, `MX`, `SRV`, and `TXT`
+queries. Reverse lookups are made from the received address records. A
+single-label name also uses the MagicDNS search domains. A name that contains a
+dot is looked up as written.
 
 Successful answers have a TTL of 60 seconds. The output does not query the
-nameservers advertised by the control server, the host resolver, or another
-DNS source. A missing name returns `NXDOMAIN`. Add [DnsFallback](@docs/node/almagest/DnsFallback) if other
-names must continue to another resolver.
+nameservers advertised by the control server, the host resolver, or another DNS
+source. A missing name returns `NXDOMAIN`. Add
+[DnsFallback](@docs/node/almagest/DnsFallback) if other names must continue to
+another resolver.
 
 The DNS output follows control-server updates. When TailscaleCtrl is disabled,
 disconnected, or in an error state, the output stays connected but has no
@@ -73,10 +80,11 @@ records.
 ## Firewall output
 
 The **Firewall** output converts the current tailnet packet filter to an
-incoming allow policy for [NetworkFirewall](@docs/node/almagest/NetworkFirewall) or [TunFirewall](@docs/node/almagest/TunFirewall). Rules can match the
-remote source, local destination, protocol, and destination port. The policy
-does not restrict outgoing traffic. Tailscale capability grants are not
-included because they do not have an equivalent firewall rule.
+incoming allow policy for [NetworkFirewall](@docs/node/almagest/NetworkFirewall)
+or [TunFirewall](@docs/node/almagest/TunFirewall). Rules can match the remote
+source, local destination, protocol, and destination port. The policy does not
+restrict outgoing traffic. Tailscale capability grants are not included because
+they do not have an equivalent firewall rule.
 
 The output follows packet-filter updates from the control server. When the
 controller is not active, it sends an empty policy. Do not use this output as a

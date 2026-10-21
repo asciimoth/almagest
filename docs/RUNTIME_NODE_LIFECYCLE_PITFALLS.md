@@ -2,8 +2,8 @@
 
 This document summarizes recurring runtime lifecycle hazards in Almagest nodes.
 It is meant for adding new nodes, reviewing node refactors, and designing
-regression tests. The examples come from runtime bugs fixed, but
-the rules are node-agnostic.
+regression tests. The examples come from runtime bugs fixed, but the rules are
+node-agnostic.
 
 ## General Problem Areas
 
@@ -55,15 +55,15 @@ makes it usable is active for the current runtime generation.
 
 ### Separate Message Delivery From Runtime Convergence
 
-Workspace inbox sends are queued. A sender can return while another goroutine
-is already draining workspace work and before the receiver callback runs. Even
-after the callback returns, the node can still have asynchronous runtime work
-in progress.
+Workspace inbox sends are queued. A sender can return while another goroutine is
+already draining workspace work and before the receiver callback runs. Even
+after the callback returns, the node can still have asynchronous runtime work in
+progress.
 
-Control-plane APIs that notify nodes must use an explicit inbox-delivery
-barrier before they acknowledge a mutation. Callers that require the data plane
-must then wait for the affected node's readiness state. Neither step replaces
-the other:
+Control-plane APIs that notify nodes must use an explicit inbox-delivery barrier
+before they acknowledge a mutation. Callers that require the data plane must
+then wait for the affected node's readiness state. Neither step replaces the
+other:
 
 - the delivery barrier proves that the node accepted the new desired state;
 - the node readiness state proves that its current runtime generation applied
@@ -103,10 +103,10 @@ It must not mutate the current runtime state.
 
 ### Guard Runtime Event Streams Too
 
-Some runtime resources do not only report completion or errors back to the
-node. They can also drive the lower-level runtime directly through event
-streams. For example, a TUN wrapper can emit lifecycle events that tell an
-embedded device to go up or down.
+Some runtime resources do not only report completion or errors back to the node.
+They can also drive the lower-level runtime directly through event streams. For
+example, a TUN wrapper can emit lifecycle events that tell an embedded device to
+go up or down.
 
 Those events can arrive after the graph attachment has been logically detached
 and its generation has been invalidated, but before the physical resource has
@@ -116,14 +116,14 @@ sockets in response to a stale event.
 
 Good patterns:
 
-- drain buffered lifecycle events before handing a wrapper to a runtime that
-  has its own event reader
+- drain buffered lifecycle events before handing a wrapper to a runtime that has
+  its own event reader
 - explicitly detach stale installed resources before applying config that can
   reopen sockets or listeners
 - treat "desired generation moved on" as inactive even if the old resource is
   still physically installed
-- test monotonic side effects such as listen/open counts immediately after
-  link removal and config apply
+- test monotonic side effects such as listen/open counts immediately after link
+  removal and config apply
 
 Invariant:
 
@@ -199,10 +199,10 @@ resource was intentionally closed by this node.
 Retry code can accidentally make a stale resource look healthy:
 
 1. background I/O reports a recoverable error
-2. node records only the error text
-3. retry sees a non-nil resource
-4. retry reapplies config to the stale resource
-5. retry clears the error and publishes `up`
+1. node records only the error text
+1. retry sees a non-nil resource
+1. retry reapplies config to the stale resource
+1. retry clears the error and publishes `up`
 
 For recoverable runtime errors, decide first whether the resource that failed
 must be rebuilt. If yes, rebuild or detach it before applying config, clearing
@@ -216,8 +216,8 @@ generation before marking the current runtime failed.
 
 ### Keep Desired Config Separate From Runtime Identity
 
-A config operation and an attachment operation can invalidate different work.
-Do not use one generation for both meanings.
+A config operation and an attachment operation can invalidate different work. Do
+not use one generation for both meanings.
 
 For example, a config update can emit a new TUN configuration. The provider can
 then replace its TUN and advance the runtime generation before the original
@@ -258,12 +258,12 @@ attaches its local packet device. The registration and key are durable control
 state. The local device, TUN child, bind, and DNS wrapper are replaceable data
 plane state.
 
-A data-plane activation can fail after it has created part of the data plane.
-Do not use request-generation status to select its cleanup. The request can be
-current when cleanup runs and become stale before its result is delivered.
-Close only the partial data plane and let an equivalent generation reuse the
-registration. A current failure can report an error without deleting the
-durable control state.
+A data-plane activation can fail after it has created part of the data plane. Do
+not use request-generation status to select its cleanup. The request can be
+current when cleanup runs and become stale before its result is delivered. Close
+only the partial data plane and let an equivalent generation reuse the
+registration. A current failure can report an error without deleting the durable
+control state.
 
 Delete durable state only when the desired material changes or its owning
 lifecycle object is explicitly detached. A temporary down payload from a still
@@ -277,12 +277,12 @@ Tests must inject both forms:
 - return the same error while the request is current, advance the generation
   before handling its result, and verify that the next generation still reuses
   the registration and key;
-- make a linked TUN or network payload temporarily unavailable, replace it,
-  and verify that no second registration occurs;
-- explicitly detach the TUN or network link and verify that the complete
-  control and data-plane state closes; and
-- permit a new data-plane object when an in-place attachment replacement is
-  not supported, but require the same durable identity and no second external
+- make a linked TUN or network payload temporarily unavailable, replace it, and
+  verify that no second registration occurs;
+- explicitly detach the TUN or network link and verify that the complete control
+  and data-plane state closes; and
+- permit a new data-plane object when an in-place attachment replacement is not
+  supported, but require the same durable identity and no second external
   registration.
 
 Invariant:
@@ -295,8 +295,8 @@ A local data-plane failure must not delete matching durable control state.
 
 The arrival of a replacement payload is progress, but it is not proof of
 recovery. The payload can arrive after a failure result schedules retry and
-before its own attachment result is handled. If payload receipt cancels retry,
-a stale or incomplete attachment result can leave no recovery work.
+before its own attachment result is handled. If payload receipt cancels retry, a
+stale or incomplete attachment result can leave no recovery work.
 
 Keep retry active until a current-generation operation proves the required
 runtime is healthy. A new desired config can replace old retry work only when it
@@ -352,8 +352,8 @@ Prefer per-link output caches for detached wrappers. Close wrappers only when:
 - the underlying source is intentionally replaced
 - the wrapper itself is known to be closed or invalid
 
-Cache identity and cache health are separate properties. A shared root can
-still refer to the same source after its read or write worker stops. New child
+Cache identity and cache health are separate properties. A shared root can still
+refer to the same source after its read or write worker stops. New child
 wrappers on that root do not repair the data path. A cache must include root
 health in its reuse decision and must replace a terminally failed root.
 
@@ -389,9 +389,9 @@ stays the same. Examples include MTU, packet capacity, read and write offsets,
 batch size, queue depth, and address-family support.
 
 The worker that owns the source operation must also own changes to the buffers
-used by that operation. Keep one source reader while a read capacity changes.
-Do not start a second reader as a quick recovery action. Serialize the change
-with the read pump, discard the packet that found an insufficient capacity when
+used by that operation. Keep one source reader while a read capacity changes. Do
+not start a second reader as a quick recovery action. Serialize the change with
+the read pump, discard the packet that found an insufficient capacity when
 necessary, and verify that a later packet is delivered.
 
 Validate the complete I/O result. A nil error does not make a reported packet
@@ -409,31 +409,30 @@ source changes that geometry.
 
 ### Observe Terminal TUN Failure On I/O And Event Paths
 
-A detached TUN can publish `EventDown` before its consumer receives the
-terminal I/O error. A lower-level splitter can process that event first, mark
-its backend down, and wait for `EventUp`. It then does not call `Read` again and
-cannot observe the terminal error that requires source replacement.
+A detached TUN can publish `EventDown` before its consumer receives the terminal
+I/O error. A lower-level splitter can process that event first, mark its backend
+down, and wait for `EventUp`. It then does not call `Read` again and cannot
+observe the terminal error that requires source replacement.
 
 If a node owns replacement policy, observe terminal state on both paths:
 
 - report terminal errors returned by `Read` and `Write`;
-- when `EventDown` arrives, distinguish a terminal detached-pump failure from
-  a recoverable down state;
+- when `EventDown` arrives, distinguish a terminal detached-pump failure from a
+  recoverable down state;
 - treat unexpected closure of the event stream as terminal; and
 - carry the link and attachment generation in the recovery message.
 
-This policy applies to each consumer input, not only to the first splitter in
-a graph. `TunSplitter` tracks its input generation. `TunJoiner` tracks the
-default input and each secondary link independently. On a terminal failure,
-the consumer detaches that input and requests a new payload. The generation
-guard rejects an old failure or retry after a newer payload is attached. A
-lower-level detach is not sufficient because it cannot request a replacement
-from the graph owner.
+This policy applies to each consumer input, not only to the first splitter in a
+graph. `TunSplitter` tracks its input generation. `TunJoiner` tracks the default
+input and each secondary link independently. On a terminal failure, the consumer
+detaches that input and requests a new payload. The generation guard rejects an
+old failure or retry after a newer payload is attached. A lower-level detach is
+not sufficient because it cannot request a replacement from the graph owner.
 
 MTU capacity errors are different. Gonnect can grow a detached root's read
 capacity and continue with the same source reader. Do not replace that root or
-add a second native reader. The packet that discovers the larger capacity can
-be lost, so tests must send and verify a later packet.
+add a second native reader. The packet that discovers the larger capacity can be
+lost, so tests must send and verify a later packet.
 
 For a mutable public DefaultTun wrapper, capture source generation before a
 rebuild call. After the call, the same wrapper can already refer to a different
@@ -453,9 +452,9 @@ request after daemon startup times out.
 For startup-sensitive paths, add tests that:
 
 1. build or restore the graph
-2. wait only for the state the graph currently advertises as ready/up
-3. send exactly one request or ping
-4. fail if that first attempt times out or needs a retry
+1. wait only for the state the graph currently advertises as ready/up
+1. send exactly one request or ping
+1. fail if that first attempt times out or needs a retry
 
 Keep eventual-success tests, but do not treat them as proof of first-request
 readiness.
@@ -517,8 +516,8 @@ boundary.
 
 ### A Stop Request Is Not Worker Completion
 
-Closing a worker's stop channel only requests shutdown. The worker can still
-own a listener, socket, TUN reader, or other exclusive resource until its done
+Closing a worker's stop channel only requests shutdown. The worker can still own
+a listener, socket, TUN reader, or other exclusive resource until its done
 signal closes. Starting the replacement immediately can make both generations
 active and can cause bind conflicts or concurrent reads.
 
@@ -527,9 +526,9 @@ changes into the latest desired state. After the old worker's done signal
 closes, verify its identity and start one replacement with the current desired
 config.
 
-Tests should hold the old worker after it receives the stop request. Verify
-that no replacement starts before release, then verify that exactly one worker
-starts with the newest config.
+Tests should hold the old worker after it receives the stop request. Verify that
+no replacement starts before release, then verify that exactly one worker starts
+with the newest config.
 
 ## Implementation Checklist
 
@@ -576,20 +575,20 @@ Prefer tests that prove ordering and identity:
 
 1. inject a deterministic one-shot runtime error into the real background I/O
    path
-2. wait until the node publishes or records `error`
-3. record a resource generation, open count, connection ID, wrapper identity, or
+1. wait until the node publishes or records `error`
+1. record a resource generation, open count, connection ID, wrapper identity, or
    listen count
-4. wait for recovery
-5. assert the node does not publish `up` until the failed resource identity has
+1. wait for recovery
+1. assert the node does not publish `up` until the failed resource identity has
    changed or the failed resource has been detached
 
 For readiness tests:
 
 1. arrange a node state where required inputs are present
-2. delay or omit the async setup completion
-3. assert the node reports `starting`, `error`, or another non-`up` state
-4. complete the async setup
-5. assert `up` is published only for the current generation
+1. delay or omit the async setup completion
+1. assert the node reports `starting`, `error`, or another non-`up` state
+1. complete the async setup
+1. assert `up` is published only for the current generation
 
 Avoid tests that only assert "retry was attempted". They can pass while the node
 still loops between `error` and `up` on the same stale resource.
@@ -597,13 +596,13 @@ still loops between `error` and `up` on the same stale resource.
 For an intermittent runtime failure, use a layered investigation:
 
 1. Capture failed, clean, and repaired runs with the same script and topology.
-2. Record precise timestamps, source and attachment generations, effective
+1. Record precise timestamps, source and attachment generations, effective
    runtime geometry, counters, file descriptors, and worker stacks.
-3. Compare normalized route, rule, firewall, DNS, socket, and graph state to
+1. Compare normalized route, rule, firewall, DNS, socket, and graph state to
    reject competing causes.
-4. Reproduce the lowest failing interface contract in a deterministic test.
-5. Test the dependency that owns that contract, then the Almagest consumer,
-   then a representative deep graph, and finally the affected host boundary.
+1. Reproduce the lowest failing interface contract in a deterministic test.
+1. Test the dependency that owns that contract, then the Almagest consumer, then
+   a representative deep graph, and finally the affected host boundary.
 
 Do not select a root cause from one warning or one failed run. A clean run with
 the same warning or state transition can show that the event is not sufficient.
@@ -618,8 +617,8 @@ defect.
 
 Keep unrelated randomness out of lifecycle tests. Bound protocol fields below
 transport limits, and remove timing dependencies that need a retransmission to
-succeed. Test randomized protocol compatibility in a separate case. This keeps
-a protocol stimulus failure from looking like a resource-lifecycle failure.
+succeed. Test randomized protocol compatibility in a separate case. This keeps a
+protocol stimulus failure from looking like a resource-lifecycle failure.
 
 ## Fixed Bugs And Coverage
 
@@ -627,8 +626,8 @@ a protocol stimulus failure from looking like a resource-lifecycle failure.
 
 Bug:
 
-- A detached output root started with an MTU of 1420 and kept that read
-  capacity after the same native TUN changed to MTU 1428.
+- A detached output root started with an MTU of 1420 and kept that read capacity
+  after the same native TUN changed to MTU 1428.
 - The Linux virtual-network-header and GSO path could report one successful
   1428-byte packet through the old visible packet region.
 - Gonnect converted the invalid result to `io.ErrShortBuffer` and stopped the
@@ -649,8 +648,8 @@ Investigation:
 - A clean run survived the same MTU increase. This showed that the MTU change
   alone was not sufficient. A larger GSO result during that window was the
   required trigger.
-- A deterministic dependency test reproduced the successful oversized result.
-  A cache test then reproduced the stopped read root without using host
+- A deterministic dependency test reproduced the successful oversized result. A
+  cache test then reproduced the stopped read root without using host
   networking.
 
 Fix:
@@ -673,10 +672,9 @@ Fix:
 
 Coverage includes deterministic capacity growth, terminal read and write
 failure, same-source reuse, native-source replacement, stale consumer messages,
-and generated graphs at depths 1, 4, and 8. The privileged
-`default_tun_routing` case also uses two splitter/joiner stages, IPv4 and IPv6,
-TCP and UDP, an MTU matrix from 1280 through 9000, and forced native-device
-replacement.
+and generated graphs at depths 1, 4, and 8. The privileged `default_tun_routing`
+case also uses two splitter/joiner stages, IPv4 and IPv6, TCP and UDP, an MTU
+matrix from 1280 through 9000, and forced native-device replacement.
 
 The final acceptance gate on 2026-09-12 was six consecutive clean runs of
 `scripts/capture-default-tun-flake.sh` on the affected host and 40 consecutive
@@ -688,8 +686,8 @@ the full evidence, dependency versions, test list, and return-of-failure guide.
 
 Bug:
 
-- WireGuard stored `currentTun` and `currentNetwork`, then scheduled actual
-  bind attach/config apply asynchronously.
+- WireGuard stored `currentTun` and `currentNetwork`, then scheduled actual bind
+  attach/config apply asynchronously.
 - `stateText` treated TUN and network presence as `up`.
 - Graph observers could send the first ping or HTTP request while the UDP bind
   was not attached, opened, or configured.
@@ -734,19 +732,19 @@ Fix:
   desired generation without taking the runtime lock in workspace callbacks.
 - Both config completion and attachment completion retry publication. An
   attachment can invalidate a config completion after the config was installed.
-- A refresh request received during config apply discards the cached API, so
-  the later broadcast still creates the fresh API requested by middleware.
+- A refresh request received during config apply discards the cached API, so the
+  later broadcast still creates the fresh API requested by middleware.
 
 Coverage: `TestWireGuardControllerWaitsForCurrentDeviceConfig` blocks device
-updates and checks initial publication, cached refresh, and publication after
-an attachment makes the config completion stale.
+updates and checks initial publication, cached refresh, and publication after an
+attachment makes the config completion stale.
 
 ### WireGuard TUN Events Changed Device State Outside The Node
 
 Bug:
 
-- Detached TUN wrappers can emit buffered lifecycle events, including an
-  initial `EventUp`.
+- Detached TUN wrappers can emit buffered lifecycle events, including an initial
+  `EventUp`.
 - `wgo` has its own TUN event reader that can call `device.Up()` independently
   of Almagest's runtime generation checks.
 - During a TUN replacement, an old `EventDown` could stop peers after the new
@@ -871,8 +869,8 @@ Fix:
 Coverage:
 
 - Covered by generation checks in the WireGuard runtime code.
-- Practical validation should use a representative daemon setup and inspect
-  logs after `engine built`; startup socket churn may produce debug receive EOF
+- Practical validation should use a representative daemon setup and inspect logs
+  after `engine built`; startup socket churn may produce debug receive EOF
   lines, but steady-state `WireGuard node error: receive from bind: EOF` should
   not remain. Shutdown-time EOF after `Stopping` is normal shutdown noise.
 
@@ -885,8 +883,8 @@ Bug:
 - WireGuard correctly scheduled a retry after the reopen failed.
 - A replacement TUN or network payload then cancelled that retry before its
   attachment result proved recovery.
-- In the opposite ordering, the attachment generation made the failed config
-  job stale, but no later job knew that the desired config was still unapplied.
+- In the opposite ordering, the attachment generation made the failed config job
+  stale, but no later job knew that the desired config was still unapplied.
 - The node stayed in `starting` until the e2e timeout.
 
 Fix:
@@ -935,8 +933,8 @@ Bug:
 
 - A provider could respond to a repeated request or same-source re-emit by
   closing and recreating a detached wrapper.
-- Consumers holding the old wrapper could observe EOF even though the
-  underlying network source had not changed.
+- Consumers holding the old wrapper could observe EOF even though the underlying
+  network source had not changed.
 
 Fix:
 
@@ -955,8 +953,7 @@ Test location:
 
 - `lib/links/network_test.go`:
   `TestNetworkOutputCacheReusesReadyWrapperAndReplacesClosedWrapper`
-- `lib/links/network_test.go`:
-  `TestNetworkOutputCacheReplacesChangedSource`
+- `lib/links/network_test.go`: `TestNetworkOutputCacheReplacesChangedSource`
 
 ### Tailscale Consumed An Event Before Runtime Activation
 
@@ -973,8 +970,8 @@ Fix:
 - The event watcher waits on a runtime-specific activation signal.
 - The runtime result applies its initial snapshot and marks the runtime active
   before it releases the watcher.
-- Generation cancellation releases an unactivated watcher without consuming
-  its buffered event.
+- Generation cancellation releases an unactivated watcher without consuming its
+  buffered event.
 
 Coverage:
 
@@ -995,8 +992,8 @@ Related implementation:
 
 Bug:
 
-- A successful service negotiation registered an ephemeral public key before
-  the local WireGuard device became active.
+- A successful service negotiation registered an ephemeral public key before the
+  local WireGuard device became active.
 - A later TUN, bind, DNS, pre-connect, or device-start failure could close the
   complete runtime. Recovery then registered another service key even when the
   requested connection material had not changed.
@@ -1007,13 +1004,13 @@ Bug:
 
 Fix:
 
-- The service client, negotiated profile, and registered key are durable
-  control state. The device, detached TUN, bind, and tunnel DNS resolver are
-  replaceable data-plane state.
+- The service client, negotiated profile, and registered key are durable control
+  state. The device, detached TUN, bind, and tunnel DNS resolver are replaceable
+  data-plane state.
 - Activation failure always closes only the partial data plane. An equivalent
   generation can reuse the registered profile.
-- A temporary linked-provider gap keeps the control state. An explicit unlink
-  or changed connection material closes the complete runtime.
+- A temporary linked-provider gap keeps the control state. An explicit unlink or
+  changed connection material closes the complete runtime.
 - Network replacement creates a new local data plane because the bind cannot
   move to another network wrapper. TUN replacement uses in-place replacement
   when supported and otherwise rebuilds the device with the same registered
@@ -1080,8 +1077,8 @@ Bug:
 - A terminal TUN read stopped the packet pump. The adapter stayed in an error
   state without persistent replacement work.
 - A replacement could arrive after the old pump changed its local state but
-  before the old failure acquired the workspace lock. The old failure could
-  then publish a stale error label over the replacement state.
+  before the old failure acquired the workspace lock. The old failure could then
+  publish a stale error label over the replacement state.
 
 Fix:
 
@@ -1105,8 +1102,8 @@ Bug:
 - Restart requested stop but cleared the old worker identity immediately.
 - A second config event could start a replacement while the old worker still
   owned its listener.
-- Multiple events could also schedule obsolete replacement configs while the
-  old worker stopped.
+- Multiple events could also schedule obsolete replacement configs while the old
+  worker stopped.
 
 Fix:
 
@@ -1130,5 +1127,5 @@ just check
 ```
 
 For changes touching startup readiness, also consider a no-retry first-request
-test or a focused daemon run with a representative setup. Eventual success
-alone is not enough evidence for startup correctness.
+test or a focused daemon run with a representative setup. Eventual success alone
+is not enough evidence for startup correctness.

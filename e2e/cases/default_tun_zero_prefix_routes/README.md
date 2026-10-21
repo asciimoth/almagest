@@ -30,5 +30,5 @@ The test verifies these behaviors:
 - Deleting and recreating `DefaultTun` restores the same route isolation.
 - Daemon shutdown removes policy routing and keeps the original defaults.
 
-This is a regression test for `sysnet-linux` handling of routes that the
-kernel creates when it assigns TUN addresses.
+This is a regression test for `sysnet-linux` handling of routes that the kernel
+creates when it assigns TUN addresses.

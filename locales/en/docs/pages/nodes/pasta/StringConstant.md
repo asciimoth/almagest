@@ -1,5 +1,5 @@
-Supplies a configurable String value to one or more consumers. The default value is
-an empty string.
+Supplies a configurable String value to one or more consumers. The default value
+is an empty string.
 
 Edit **Value**, and then apply the form. A draft edit does not change the
 output. Applying a different value updates the node label and sends the new

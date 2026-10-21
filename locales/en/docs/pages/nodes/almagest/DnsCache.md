@@ -8,8 +8,8 @@ nodes can also use this storage for reverse-DNS matching. Use separate names
 when DNS paths must not share lookup history.
 
 The daemon's persistent cache storage keeps entries between node changes and
-daemon restarts. Entries expire according to their stored DNS expiration
-time unless cache expiration is disabled for the daemon.
+daemon restarts. Entries expire according to their stored DNS expiration time
+unless cache expiration is disabled for the daemon.
 
 **Reverse lookups** is enabled by default. When an upstream response contains a
 successful A or AAAA answer, the node also stores a PTR record that maps the IP
@@ -25,9 +25,9 @@ has a matching response. Successful responses are still stored, so another
 DnsCache node with **Write only** disabled can serve them.
 
 The upstream DNS connection is optional in normal mode. If you disconnect it,
-connected consumers can continue to receive cached responses. A cache miss
-fails until an upstream service is connected again. In write-only mode, all
-queries need the upstream service, so they fail while it is disconnected.
+connected consumers can continue to receive cached responses. A cache miss fails
+until an upstream service is connected again. In write-only mode, all queries
+need the upstream service, so they fail while it is disconnected.
 
-Changing the storage name or either option replaces the DNS service supplied
-to connected consumers. The stored entries remain in their named storage.
+Changing the storage name or either option replaces the DNS service supplied to
+connected consumers. The stored entries remain in their named storage.

@@ -37,9 +37,9 @@ E2E_DOCKER_RUN_ARGS="--privileged --device /dev/net/tun \
 The test runs the same load in three scenarios:
 
 1. on the initial graph;
-2. while live `TunFirewall` and `TunSplitter` configuration updates occur; and
-3. after a daemon restart restores the graph and all native TUN devices.
+1. while live `TunFirewall` and `TunSplitter` configuration updates occur; and
+1. after a daemon restart restores the graph and all native TUN devices.
 
-Every round sends an equal number of requests through all four HTTP targets.
-The test fails on a connection error, a non-200 response, a wrong body, an
-invalid load setting, or a TUN node that does not return to its ready state.
+Every round sends an equal number of requests through all four HTTP targets. The
+test fails on a connection error, a non-200 response, a wrong body, an invalid
+load setting, or a TUN node that does not return to its ready state.

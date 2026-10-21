@@ -1,8 +1,8 @@
 # Localized content
 
 Almagest has a file-based localization system for daemon-owned presentation
-text. It is implemented for the admin panel, the documentation page, node
-class descriptions, and Formular menus.
+text. It is implemented for the admin panel, the documentation page, node class
+descriptions, and Formular menus.
 
 Localization is an `almagestd` concern. The reusable `lib` module supplies
 stable IDs and English fallback text, but it does not read locale files.
@@ -25,8 +25,8 @@ locales/<locale>/
 The repository contains:
 
 - `en`: the complete English content;
-- `lorem`: a development-only test locale. Its catalogs and node
-  documentation can be incomplete to exercise fallback behavior.
+- `lorem`: a development-only test locale. Its catalogs and node documentation
+  can be incomplete to exercise fallback behavior.
 
 `manifest.json` has this format:
 
@@ -39,8 +39,8 @@ The repository contains:
 }
 ```
 
-Locale names use a restricted, canonical BCP 47 form, for example `en`, `ru`,
-or `pt-BR`. Almagest does not use parent-locale fallback: `pt-BR` falls back
+Locale names use a restricted, canonical BCP 47 form, for example `en`, `ru`, or
+`pt-BR`. Almagest does not use parent-locale fallback: `pt-BR` falls back
 directly to `en`.
 
 ## Content files
@@ -63,9 +63,9 @@ directly to `en`.
 
 Catalog files are strict UTF-8 JSON. Markdown files are UTF-8 text. The reader
 rejects duplicate JSON keys, unknown fields, unsafe paths, symbolic links,
-non-regular files, invalid identifiers, and oversized input. Current limits
-are 1 MiB per JSON catalog, 64 KiB per Markdown page, 4 KiB per value, 10,000
-keys or documentation pages, and 128 locales.
+non-regular files, invalid identifiers, and oversized input. Current limits are
+1 MiB per JSON catalog, 64 KiB per Markdown page, 4 KiB per value, 10,000 keys
+or documentation pages, and 128 locales.
 
 ## Runtime behavior
 
@@ -76,8 +76,8 @@ nodes.
 Text lookup uses this order where the content type has a built-in value:
 
 1. the requested locale;
-2. English;
-3. the compiled or engine-provided fallback.
+1. English;
+1. the compiled or engine-provided fallback.
 
 Panel catalogs are merged per key. Node and menu values also fall back
 independently. A missing or invalid requested documentation index uses the
@@ -93,9 +93,9 @@ reconnect; there is no filesystem watcher or server push for locale changes.
 The admin API provides `locale_snapshot` and `set_locale`. A snapshot contains
 the requested and effective locale, available bundles, the resolved panel
 catalog, and the content revision. The docs API provides `tree` and `page` on
-its separate surface. The daemon localizes class snapshots, class
-notifications, long descriptions, documentation responses, and copied
-Formular messages at the API boundary.
+its separate surface. The daemon localizes class snapshots, class notifications,
+long descriptions, documentation responses, and copied Formular messages at the
+API boundary.
 
 The panel stores the selection in browser storage and a cookie, matches browser
 languages when no selection exists, and keeps English literals as fallbacks.
@@ -104,18 +104,18 @@ existing limited renderer; locale content is never trusted as HTML.
 
 ## Paths and isolation
 
-`ALMAGEST_LOCALES_DIR` overrides the bundle root and must be an absolute,
-clean path. The defaults are:
+`ALMAGEST_LOCALES_DIR` overrides the bundle root and must be an absolute, clean
+path. The defaults are:
 
 - `/usr/share/almagest/locales` on Unix;
 - `%ProgramFiles%\Almagest\locales` on Windows;
 - `/locales` inside the isolated Linux runtime when that mount exists.
 
 The development daemon scripts set the override to the checkout `locales/`
-directory. In Linux production isolation, the network role opens the locale
-root and gives the runtime role a held directory. The launcher mounts it
-read-only at `/locales` with `nosuid`, `nodev`, and `noexec`, and grants only
-read access through Landlock. Other isolated roles do not receive it.
+directory. In Linux production isolation, the network role opens the locale root
+and gives the runtime role a held directory. The launcher mounts it read-only at
+`/locales` with `nosuid`, `nodev`, and `noexec`, and grants only read access
+through Landlock. Other isolated roles do not receive it.
 
 Locale files are not copied into the panel static assets. No current package
 rule installs them. A future package must install production bundles and must
@@ -127,13 +127,12 @@ Treat panel keys and Formular IDs as stable presentation API. When you add or
 change localized UI:
 
 1. update the English bundle and its compiled fallback;
-2. add English short and long documentation for production node classes;
-3. run `just locales-check`.
+1. add English short and long documentation for production node classes;
+1. run `just locales-check`.
 
 `just check` runs this validation automatically. The validator checks bundle
-structure and limits, English panel-key coverage, production node content,
-known English menu classes, and the validity of partial non-English catalogs.
+structure and limits, English panel-key coverage, production node content, known
+English menu classes, and the validity of partial non-English catalogs.
 
 Localization does not cover the CLI, logs, configuration, protocol errors,
-daemon diagnostics, machine-facing names and values, or arbitrary runtime
-text.
+daemon diagnostics, machine-facing names and values, or arbitrary runtime text.

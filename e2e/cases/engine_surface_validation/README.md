@@ -1,7 +1,7 @@
 # Engine surface validation
 
-This case exercises the complete daemon engine API against a real workspace.
-It uses only userspace resources.
+This case exercises the complete daemon engine API against a real workspace. It
+uses only userspace resources.
 
 The case verifies:
 

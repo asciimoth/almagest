@@ -28,8 +28,8 @@ Assertions cover these situations:
   server, client, cache, injector, and adapter stack;
 - invalid DNS server and client form edits keep the last valid data plane
   usable, while later valid edits recover their normal labels;
-- removing and restoring the DNS client network, the injector DNS input, and
-  the injector network input invalidates old wrappers and restores traffic;
+- removing and restoring the DNS client network, the injector DNS input, and the
+  injector network input invalidates old wrappers and restores traffic;
 - replacing the client logger upstream publishes a usable packet wrapper;
 - removing one injector output affects only that consumer;
 - a live DNS server port change fails through the old client destination and

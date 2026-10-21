@@ -1,5 +1,5 @@
-`DnsRouter` wraps one `github.com/asciimoth/gonnect/dns.Router` and publishes
-it as an `almagest/dns` interface.
+`DnsRouter` wraps one `github.com/asciimoth/gonnect/dns.Router` and publishes it
+as an `almagest/dns` interface.
 
 The left `DNS` port emits detached wrappers around the router. Each right-side
 `slot N` port accepts one upstream DNS interface and installs it in the router
@@ -13,9 +13,9 @@ message. Empty or comment-only rules route everything to `slot 1` by compiling
 the same default as `TRUE` followed by `BACKEND slot 1`.
 
 Each route segment ends with `BACKEND slot N` or `DROP`. `BACKEND` names must
-use the node's existing `slot N` port names, from `slot 1` through `slot 16`.
-A non-empty ruleset has no implicit fallback; add `TRUE` and `BACKEND slot N`
-when unmatched requests should continue to a backend.
+use the node's existing `slot N` port names, from `slot 1` through `slot 16`. A
+non-empty ruleset has no implicit fallback; add `TRUE` and `BACKEND slot N` when
+unmatched requests should continue to a backend.
 
 ```text
 ADDR_RE (^|.*\.)example\.test\.$
@@ -37,5 +37,6 @@ predicates. Line comments that start with `#` and blank lines are ignored.
 
 Only slots mentioned by rules, slots that still have links, and the default
 `slot 1` for an empty ruleset are kept visible. The node keeps the underlying
-router stable across rule edits, slot attach/detach, copy/paste, and save/restore
-so existing downstream DNS consumers continue to hold a valid router wrapper.
+router stable across rule edits, slot attach/detach, copy/paste, and
+save/restore so existing downstream DNS consumers continue to hold a valid
+router wrapper.

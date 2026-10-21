@@ -17,22 +17,22 @@ Run:
 ./e2e/experiments/linux_adaptive_isolation/rootless/run.sh
 ```
 
-Results go to the ignored `artifacts/isolation-design/rootless/` directory.
-The log records identity and capability state, seccomp installation, Landlock
-allow and deny behavior, held-descriptor behavior, namespace attempts, cgroup
-access, rlimit enforcement, and attacks between processes with the same UID.
+Results go to the ignored `artifacts/isolation-design/rootless/` directory. The
+log records identity and capability state, seccomp installation, Landlock allow
+and deny behavior, held-descriptor behavior, namespace attempts, cgroup access,
+rlimit enforcement, and attacks between processes with the same UID.
 
 The probe is diagnostic. A denied operation is usually an expected result, so
 the probe reports each errno and exits zero if it completes all measurements.
 The runner fails on a build error, timeout, or nonzero probe exit. Review the
-reported allowed and denied controls instead of treating exit zero as proof of
-a security boundary.
+reported allowed and denied controls instead of treating exit zero as proof of a
+security boundary.
 
-The default input images are `almagest-e2e:local` and
-`golang:1.26.6-bookworm`; both must already exist locally. Use
-`ROOTLESS_RUNTIME_IMAGE` and `ROOTLESS_BUILDER_IMAGE` to select other image
-references. The runner records their resolved IDs and checks that the
-references did not change during the build. For the recorded runtime:
+The default input images are `almagest-e2e:local` and `golang:1.26.6-bookworm`;
+both must already exist locally. Use `ROOTLESS_RUNTIME_IMAGE` and
+`ROOTLESS_BUILDER_IMAGE` to select other image references. The runner records
+their resolved IDs and checks that the references did not change during the
+build. For the recorded runtime:
 
 ```sh
 ROOTLESS_RUNTIME_IMAGE=sha256:bca0ffaf64c933de2b8866cf8fb14a25a1cf6239a796b0ee1785fa3ee5039d2a \

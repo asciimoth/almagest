@@ -22,10 +22,10 @@ while the selector decides whether traffic reaches Server A or Server B.
 
 Initially:
 
-- `curl --noproxy '*' http://10.71.160.2:8080` enters `tun-select-a` and
-  returns `Server A`.
-- `curl --noproxy '*' http://10.72.160.2:8081` enters `tun-select-b` and
-  returns `Server B`.
+- `curl --noproxy '*' http://10.71.160.2:8080` enters `tun-select-a` and returns
+  `Server A`.
+- `curl --noproxy '*' http://10.72.160.2:8081` enters `tun-select-b` and returns
+  `Server B`.
 
 After updating `BoolConstant 1815` to `true` through the admin API:
 

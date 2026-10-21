@@ -17,24 +17,24 @@ distribution's systemd directories. Run `systemd-sysusers` and
 launcher setuid and do not add file capabilities to any role binary.
 
 For strict subprogram sandboxes in direct or isolated daemon mode, give the
-trusted daemon or sandbox supervisor a separate delegated cgroup v2 subtree
-with the CPU, memory, and PID controllers enabled. Set protected
+trusted daemon or sandbox supervisor a separate delegated cgroup v2 subtree with
+the CPU, memory, and PID controllers enabled. Set protected
 `Sandbox.LinuxCgroupRoot` to that subtree and set `Sandbox.LinuxLauncher` to the
 installed `almagest-subprogram-launcher`. The daemon probes both authorities
 before it reports the Linux full profile. In isolated mode, the network role
 starts and supervises the sandbox role and binds its private service lanes to
-the exact runtime process. This native subprogram profile is
-qualified only on amd64. Other Linux architectures fail strict preflight until
-they have an architecture-specific launcher and qualification suite.
+the exact runtime process. This native subprogram profile is qualified only on
+amd64. Other Linux architectures fail strict preflight until they have an
+architecture-specific launcher and qualification suite.
 
-Resource ceilings are set at startup. Defaults per role are 8 GiB memory,
-4096 tasks, and 64 CPUs of quota. Each process can open up to 65536 file
-descriptors, and each file can grow to 1 TiB, subject to inherited hard limits.
-Use service drop-in `Environment=` entries to set
-`ALMAGEST_ISOLATION_MEMORY_BYTES`, `ALMAGEST_ISOLATION_TASKS`,
-`ALMAGEST_ISOLATION_CPU_QUOTA`, `ALMAGEST_ISOLATION_DESCRIPTORS`, or
-`ALMAGEST_ISOLATION_FILE_BYTES`. Run `systemctl daemon-reload` and restart
-`almagestd` after a change. See [daemon isolation](../../docs/DAEMON_ISOLATION.md#configuration-and-command-line)
+Resource ceilings are set at startup. Defaults per role are 8 GiB memory, 4096
+tasks, and 64 CPUs of quota. Each process can open up to 65536 file descriptors,
+and each file can grow to 1 TiB, subject to inherited hard limits. Use service
+drop-in `Environment=` entries to set `ALMAGEST_ISOLATION_MEMORY_BYTES`,
+`ALMAGEST_ISOLATION_TASKS`, `ALMAGEST_ISOLATION_CPU_QUOTA`,
+`ALMAGEST_ISOLATION_DESCRIPTORS`, or `ALMAGEST_ISOLATION_FILE_BYTES`. Run
+`systemctl daemon-reload` and restart `almagestd` after a change. See
+[daemon isolation](../../docs/DAEMON_ISOLATION.md#configuration-and-command-line)
 for ranges, units, CLI equivalents, and parent cgroup capacity requirements.
 
 `ExecStartPre` prepares a fresh layout or migrates the stopped legacy

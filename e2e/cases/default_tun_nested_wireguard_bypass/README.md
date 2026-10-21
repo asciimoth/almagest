@@ -39,10 +39,9 @@ The test verifies these behaviors:
 - Concurrent host flows do not break flow-aware TUN joining.
 - A separate `OutNetwork` HTTP request bypasses `DefaultTun`.
 - Removing `DefaultTun` does not stop the secondary application VTun.
-- Recreating and reattaching `DefaultTun` restores host traffic without adding
-  a TUN route to the main table.
+- Recreating and reattaching `DefaultTun` restores host traffic without adding a
+  TUN route to the main table.
 - Daemon shutdown keeps the original container default route.
 
 The topology reproduces the route-recursion condition that occurs when an
-application-bypass lookup finds a main-table default route through the same
-TUN.
+application-bypass lookup finds a main-table default route through the same TUN.

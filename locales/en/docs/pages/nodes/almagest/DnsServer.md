@@ -17,11 +17,11 @@ Use the **Network** setting to select the UDP address family:
 `127.0.0.1:5353`. For a local IPv6 listener, use `::1`. The port must be from 1
 through 65535.
 
-Use a loopback address when only local clients must reach the server. Binding
-to `0.0.0.0` or `::` can expose the resolver on all interfaces available
-through the attached Network. Use an all-interface address only when access to
-the listener is controlled. An exposed DNS resolver can be used for unwanted
-queries or DNS amplification attacks.
+Use a loopback address when only local clients must reach the server. Binding to
+`0.0.0.0` or `::` can expose the resolver on all interfaces available through
+the attached Network. Use an all-interface address only when access to the
+listener is controlled. An exposed DNS resolver can be used for unwanted queries
+or DNS amplification attacks.
 
 ## Request timeout
 
@@ -31,8 +31,8 @@ seconds. Negative values are not valid. If the resolver returns an error or the
 request times out, the server replies with `SERVFAIL`.
 
 The listener can stay open without a ready DNS input. In this state, the node
-shows `waiting for DNS` and replies to valid requests with `SERVFAIL`.
-Malformed DNS packets are ignored.
+shows `waiting for DNS` and replies to valid requests with `SERVFAIL`. Malformed
+DNS packets are ignored.
 
 ## Listener changes and errors
 

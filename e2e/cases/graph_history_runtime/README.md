@@ -23,6 +23,6 @@ It does not need privileged networking or an external service.
   that pasted node and redo restores the same disconnected state.
 - A node rename stays in place while position undo and redo work without
   interrupting the original HTTP data plane.
-- Deleting the original network and server in one operation records one
-  history entry. Undo and redo restore and remove both nodes and all incident
-  links together, and repeated undo reconstructs a usable runtime path.
+- Deleting the original network and server in one operation records one history
+  entry. Undo and redo restore and remove both nodes and all incident links
+  together, and repeated undo reconstructs a usable runtime path.

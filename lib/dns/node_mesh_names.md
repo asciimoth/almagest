@@ -5,8 +5,7 @@
 
 ## Ports
 
-- `DNS`, left-directed `almagest/dns`: emits detached DNS wrappers to
-  consumers.
+- `DNS`, left-directed `almagest/dns`: emits detached DNS wrappers to consumers.
 - `Network`, right-directed `almagest/network`: required. Mesh authority DNS
   exchanges are dialed through this network, and no DNS provider is published
   until this input is linked and ready.

@@ -5,8 +5,8 @@
 Go error, a DNS error response such as `NXDOMAIN` or `SERVFAIL`, or no response
 before the attempt timeout.
 
-The `Attempt timeout (ms)` menu field controls the wait for each upstream.
-Set it to `0` to use the gonnect default. Saved config stores it in
+The `Attempt timeout (ms)` menu field controls the wait for each upstream. Set
+it to `0` to use the gonnect default. Saved config stores it in
 `attemptTimeoutMS`.
 
 The left-directed `DNS` port publishes the combined `almagest/dns` interface.
@@ -20,7 +20,7 @@ does not change the numbers or order of the remaining slots.
 
 The fallback runtime stays stable while inputs change. A timeout change replaces
 the fallback runtime but keeps the attached input wrappers. Attach, detach, and
-replacement operations affect new requests immediately. A slot change cancels
-an in-flight attempt that uses the old input, and the request can continue with
+replacement operations affect new requests immediately. A slot change cancels an
+in-flight attempt that uses the old input, and the request can continue with
 later attached slots. Removing an input closes only the detached wrapper owned
 by that graph link; it does not close the upstream node's DNS runtime.

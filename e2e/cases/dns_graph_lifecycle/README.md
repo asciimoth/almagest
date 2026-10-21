@@ -1,7 +1,7 @@
 # DNS Graph Lifecycle
 
-This hermetic case exercises DNS graph composition through the daemon and
-admin API. It does not use the container network for DNS requests.
+This hermetic case exercises DNS graph composition through the daemon and admin
+API. It does not use the container network for DNS requests.
 
 The graph contains three static DNS providers, an ordered `DnsFallback`, a
 `DnsCache`, a `DnsRouter`, and query nodes attached to each layer.
@@ -23,5 +23,4 @@ Assertions cover these situations:
 - a router port disappears after both its rule reference and link are removed.
 
 The last assertion protects the documented dynamic-slot contract: only slots
-used by rules, slots that still have links, and the default slot remain
-visible.
+used by rules, slots that still have links, and the default slot remain visible.

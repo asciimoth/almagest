@@ -4,8 +4,8 @@
 
 The case starts a local HTTPS service on port 443. The service certificate is
 valid for `api.ipify.org` and `ifconfig.co`, and the protected daemon config
-contains its test CA. `/etc/hosts` maps both provider names to the service.
-No public network access is used.
+contains its test CA. `/etc/hosts` maps both provider names to the service. No
+public network access is used.
 
 The service reads a control file for each request. The test can make a request
 return valid provider data, an HTTP error, an invalid address, an oversized

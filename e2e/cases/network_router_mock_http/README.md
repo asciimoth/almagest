@@ -12,14 +12,12 @@ the test does not depend on container DNS or host networking.
 
 ## Expected Behavior
 
-- `curl -g --socks5-hostname 127.0.0.1:1081 http://host1/` returns
-  `Server 1`.
-- `curl -g --socks5-hostname 127.0.0.1:1081 http://host2/` returns
-  `Server 2`.
+- `curl -g --socks5-hostname 127.0.0.1:1081 http://host1/` returns `Server 1`.
+- `curl -g --socks5-hostname 127.0.0.1:1081 http://host2/` returns `Server 2`.
 - Any other hostname through the same proxy uses the router default slot and
   returns `Server 3`.
-- Repeated live rule changes immediately switch the selected backends while
-  the existing proxy output stays usable.
+- Repeated live rule changes immediately switch the selected backends while the
+  existing proxy output stays usable.
 - Invalid rule text does not replace the last valid routing program.
 - Rules can add a dynamic slot. Linked obsolete ports stay available, then
   disappear immediately when their last link is removed.

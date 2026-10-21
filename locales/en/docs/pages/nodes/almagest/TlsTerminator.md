@@ -1,34 +1,33 @@
 TlsTerminator accepts an outgoing TLS connection from a client, presents a
 locally generated certificate, and sends the decrypted TCP stream through the
-connected **Network**. Place it between a Network consumer and the Network
-that leads to the plaintext service.
+connected **Network**. Place it between a Network consumer and the Network that
+leads to the plaintext service.
 
 The client must trust Almagest's local TLS CA. TlsTerminator uses that CA to
-generate a certificate for the SNI hostname in each connection. It supplies
-its Network only when the outbound Network, local CA, and menu values are
-valid.
+generate a certificate for the SNI hostname in each connection. It supplies its
+Network only when the outbound Network, local CA, and menu values are valid.
 
-The connection between TlsTerminator and the destination is plaintext. Use
-this node only when the destination expects plaintext, such as an HTTP service
-behind an HTTPS entry point. Protect the upstream path because it no longer
-has TLS confidentiality or server authentication.
+The connection between TlsTerminator and the destination is plaintext. Use this
+node only when the destination expects plaintext, such as an HTTP service behind
+an HTTPS entry point. Protect the upstream path because it no longer has TLS
+confidentiality or server authentication.
 
 ## Supported traffic
 
-TlsTerminator supports outgoing TCP connections only. The client must start
-the connection with a valid TLS ClientHello that contains a visible SNI
-hostname. It rejects the connection in these cases:
+TlsTerminator supports outgoing TCP connections only. The client must start the
+connection with a valid TLS ClientHello that contains a visible SNI hostname. It
+rejects the connection in these cases:
 
 - The first client data is not TLS.
 - The ClientHello has no visible SNI hostname.
 - The ClientHello signals Encrypted Client Hello (ECH).
 - The ClientHello is malformed or exceeds the sniff buffer limit.
 
-Rejected data is not passed through, and TlsTerminator does not open an
-upstream connection for it. UDP, QUIC, listeners, DNS lookups, and other
-Network operations are not supported. TlsTerminator does not set a timeout
-while it waits for the ClientHello. Set a connection deadline when a client
-can connect without sending data.
+Rejected data is not passed through, and TlsTerminator does not open an upstream
+connection for it. UDP, QUIC, listeners, DNS lookups, and other Network
+operations are not supported. TlsTerminator does not set a timeout while it
+waits for the ClientHello. Set a connection deadline when a client can connect
+without sending data.
 
 ## Certificate and ALPN settings
 
@@ -40,9 +39,9 @@ expires. A negative value is invalid.
 can inspect. Zero uses 65,536 bytes. A smaller value reduces memory use but can
 reject a valid ClientHello with many extensions. A negative value is invalid.
 
-**Client-facing ALPN** lists the protocols that TlsTerminator can select for
-the TLS connection from the client. Separate values with spaces, commas,
-semicolons, or new lines. For example:
+**Client-facing ALPN** lists the protocols that TlsTerminator can select for the
+TLS connection from the client. Separate values with spaces, commas, semicolons,
+or new lines. For example:
 
 ```text
 h2
@@ -62,8 +61,8 @@ priority over both defaults.
 
 **Destination remaps JSON** is an array of rules. Rules are checked in order,
 and the first matching rule selects its `dst`. In one rule, all configured
-fields must match. Multiple values in one field are alternatives. An omitted
-or empty match field matches any value.
+fields must match. Multiple values in one field are alternatives. An omitted or
+empty match field matches any value.
 
 This example sends TLS for `example.test` to a local plaintext service:
 
@@ -78,9 +77,8 @@ This example sends TLS for `example.test` to a local plaintext service:
 
 Each rule supports these fields:
 
-- `original_dsts` matches the destination that the client requested. Values
-  can be a host, `host:port`, IP address, `IP:port`, CIDR subnet, or host
-  pattern.
+- `original_dsts` matches the destination that the client requested. Values can
+  be a host, `host:port`, IP address, `IP:port`, CIDR subnet, or host pattern.
 - `sni_hosts` matches the visible SNI hostname and is not case-sensitive.
 - `alpns` matches any protocol that the client offers. Matching is
   case-sensitive and does not depend on the protocol finally selected.
@@ -96,5 +94,5 @@ Network. Active connections through the previous configuration can close. An
 invalid negative value or malformed JSON changes the node label to
 `invalid config` and makes its Network unavailable. Other invalid remap values
 prevent the Network output and report an error. A missing local CA changes the
-label to `local TLS CA unavailable`. The label is `waiting for network` until
-an outbound Network is ready and `terminating TLS` during normal operation.
+label to `local TLS CA unavailable`. The label is `waiting for network` until an
+outbound Network is ready and `terminating TLS` during normal operation.

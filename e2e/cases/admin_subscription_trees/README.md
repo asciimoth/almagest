@@ -16,4 +16,3 @@ Unix admin API connection. It does not require privileged Docker access.
   mutations do not emit events for the removed subscription trees.
 - Accept repeated unsubscribe requests for IDs that no longer exist.
 - Explicitly subscribe and unsubscribe from the secrets and TLS surfaces.
-

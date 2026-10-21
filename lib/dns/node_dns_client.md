@@ -5,8 +5,7 @@
 
 ## Ports
 
-- `DNS`, left-directed `almagest/dns`: emits detached DNS wrappers to
-  consumers.
+- `DNS`, left-directed `almagest/dns`: emits detached DNS wrappers to consumers.
 - `Network`, right-directed `almagest/network`: required. The node uses this
   network's `Dial` method for upstream DNS transport connections.
 - `Bootstrap DNS`, right-directed `almagest/dns`: optional. The node passes this
@@ -16,9 +15,9 @@
 ## Configuration
 
 The node menu exposes a `DNS servers` list and a `Request timeout (ms)` field.
-The timeout limits one request, including bootstrap lookup, dial, TLS
-handshake, and network I/O. Set it to `0` to use the gonnect default. Saved
-config uses the `servers` and `requestTimeoutMS` keys:
+The timeout limits one request, including bootstrap lookup, dial, TLS handshake,
+and network I/O. Set it to `0` to use the gonnect default. Saved config uses the
+`servers` and `requestTimeoutMS` keys:
 
 ```hujson
 {
@@ -39,7 +38,6 @@ normalized to `udp://...` during apply/save.
 
 The node owns exactly one `dns.Client` for the current effective Network,
 Bootstrap DNS, server list, and timeout. When one of those inputs changes
-materially, it closes previously emitted wrappers, closes the old client,
-builds a fresh `dns.Client`, and re-emits detached DNS wrappers to every
-connected consumer. Equivalent configuration applies do not rebuild the
-client.
+materially, it closes previously emitted wrappers, closes the old client, builds
+a fresh `dns.Client`, and re-emits detached DNS wrappers to every connected
+consumer. Equivalent configuration applies do not rebuild the client.

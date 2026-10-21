@@ -23,4 +23,3 @@ external service.
 - A result from an invalidated in-flight request does not replace the result
   from the current request generation.
 - Menu-applied UDP configuration survives a daemon restart.
-

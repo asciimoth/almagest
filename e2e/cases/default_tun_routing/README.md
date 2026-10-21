@@ -40,8 +40,8 @@ bytes flowing through the recovered outbound chain.
   `Spoofer`, `LogNetwork`, and `OutNetwork` nodes restores public target access
   through a deep TUN wrapper graph.
 - The public request through the attached chain is visible in `LogNetwork`.
-- Same-file MTU changes through 1280, 1420, 1428, 1500, and 9000 keep large
-  HTTP requests working. Carrier MTUs 1280, 1500, and 9000 are also tested.
+- Same-file MTU changes through 1280, 1420, 1428, 1500, and 9000 keep large HTTP
+  requests working. Carrier MTUs 1280, 1500, and 9000 are also tested.
 - The deep graph stays attached after the native TUN is deleted and recreated.
 - After daemon shutdown, the public target is reachable through ordinary root
   namespace routing again.

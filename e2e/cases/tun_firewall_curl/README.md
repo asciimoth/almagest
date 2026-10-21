@@ -19,20 +19,20 @@ directions.
 ## Policy changes and assertions
 
 1. Empty menu and object policies allow both services.
-2. The attached `ObjectConstant` blocks outgoing TCP packets to port `18111`.
+1. The attached `ObjectConstant` blocks outgoing TCP packets to port `18111`.
    Port `18112` stays reachable.
-3. The firewall menu blocks port `18112` too. Both services are then blocked,
+1. The firewall menu blocks port `18112` too. Both services are then blocked,
    which proves that menu and object policies are merged.
-4. Clearing only the object value allows port `18111`; the menu still blocks
+1. Clearing only the object value allows port `18111`; the menu still blocks
    port `18112`.
-5. Clearing the menu allows both services again.
+1. Clearing the menu allows both services again.
 
 The workspace stores `rules` as a native HJSON object. The admin menu still
-accepts JSON text and converts it to that structured form when the workspace
-is saved.
+accepts JSON text and converts it to that structured form when the workspace is
+saved.
 
-The case needs privileged Docker networking because it creates a TUN device
-and an IP route:
+The case needs privileged Docker networking because it creates a TUN device and
+an IP route:
 
 ```sh
 E2E_DOCKER_RUN_ARGS="--privileged --device /dev/net/tun" ./e2e/run.sh tun_firewall_curl

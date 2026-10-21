@@ -3,12 +3,12 @@ connected **DNS** resolver, and writes raw response packets back to the same
 TUN.
 
 Use Tun2Dns as the DNS endpoint of a routed TUN path. A common layout sends UDP
-destination port 53 from [TunSplitter](@docs/node/almagest/TunSplitter) to Tun2Dns and sends other traffic to
-different TUN nodes. Tun2Dns consumes the TUN packets that it receives. It
-does not pass ignored packets to another TUN.
+destination port 53 from [TunSplitter](@docs/node/almagest/TunSplitter) to
+Tun2Dns and sends other traffic to different TUN nodes. Tun2Dns consumes the TUN
+packets that it receives. It does not pass ignored packets to another TUN.
 
-Tun2Dns does not supply TUN addresses, routes, or a DNS-server address. The
-TUN path before this node must select which packets reach it.
+Tun2Dns does not supply TUN addresses, routes, or a DNS-server address. The TUN
+path before this node must select which packets reach it.
 
 ## Accepted packets
 
@@ -35,8 +35,8 @@ them.
 
 The request can use any IPv4 or IPv6 source and destination address. Tun2Dns
 does not require a fixed virtual DNS address and does not check that the
-destination belongs to the local host. This permits interception of DNS sent
-to an arbitrary server address.
+destination belongs to the local host. This permits interception of DNS sent to
+an arbitrary server address.
 
 For each answer, Tun2Dns exchanges the request endpoints:
 
@@ -51,16 +51,16 @@ UDP headers and calculates their checksums.
 ## Request timeout and errors
 
 **Request timeout (ms)** limits one request to the connected DNS resolver. Set
-the value to `0` to use the default timeout of 5 seconds. A negative value
-is invalid.
+the value to `0` to use the default timeout of 5 seconds. A negative value is
+invalid.
 
 If the resolver returns an error before the timeout, Tun2Dns replies with
 `SERVFAIL`. If the request reaches its timeout, Tun2Dns sends no response. The
 DNS client can then retry according to its own policy.
 
-Tun2Dns can forward up to 256 requests at the same time. When all request
-slots are in use, TUN reading waits for a free slot. The timeout for the
-request that is waiting continues during this time.
+Tun2Dns can forward up to 256 requests at the same time. When all request slots
+are in use, TUN reading waits for a free slot. The timeout for the request that
+is waiting continues during this time.
 
 The node processes packets only when both inputs are ready and its timeout is
 valid. Without a ready DNS resolver, received TUN packets get no response.

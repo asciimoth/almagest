@@ -5,10 +5,9 @@
 This case mirrors the manual graph in `local/alm.hujson`: two regular TUN
 devices route private prefixes into separate `Spoofer -> MockNetwork` chains,
 and one `DefaultTun` with no downstream TUN consumer captures ordinary
-default-routed traffic. The setup creates an isolated upstream network
-namespace and an HTTP probe that is reachable only through the container's
-ordinary default route. The case does not depend on public DNS or HTTP
-services.
+default-routed traffic. The setup creates an isolated upstream network namespace
+and an HTTP probe that is reachable only through the container's ordinary
+default route. The case does not depend on public DNS or HTTP services.
 
 It requires privileged Linux networking because it creates real TUN devices and
 mutates routes:

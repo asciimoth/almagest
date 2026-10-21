@@ -21,14 +21,14 @@ conflict because each server is attached to a different `MockNetwork`.
 
 Initially:
 
-- `curl -g --socks5-hostname 127.0.0.1:1081 http://127.0.0.1:8080`
-  returns `Server A`.
-- `curl -g --socks5-hostname 127.0.0.1:1082 http://127.0.0.1:8080`
-  returns `Server B`.
+- `curl -g --socks5-hostname 127.0.0.1:1081 http://127.0.0.1:8080` returns
+  `Server A`.
+- `curl -g --socks5-hostname 127.0.0.1:1082 http://127.0.0.1:8080` returns
+  `Server B`.
 
 After updating `BoolConstant 1815` to `true` through the admin API:
 
-- `curl -g --socks5-hostname 127.0.0.1:1081 http://127.0.0.1:8080`
-  returns `Server B`.
-- `curl -g --socks5-hostname 127.0.0.1:1082 http://127.0.0.1:8080`
-  returns `Server A`.
+- `curl -g --socks5-hostname 127.0.0.1:1081 http://127.0.0.1:8080` returns
+  `Server B`.
+- `curl -g --socks5-hostname 127.0.0.1:1082 http://127.0.0.1:8080` returns
+  `Server A`.

@@ -1,7 +1,7 @@
 # tor_driver_private
 
-This Linux-only case starts a private Chutney Tor network in one container on
-an internal Docker network. The internal network has no route to the public
+This Linux-only case starts a private Chutney Tor network in one container on an
+internal Docker network. The internal network has no route to the public
 Internet.
 
 The case checks that `TorDriver` discovers Tor from `PATH`, bootstraps through

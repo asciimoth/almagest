@@ -1,16 +1,17 @@
 # ARCHITECTURE.md
+
 Almagest is a Go userspace network stack built around a Pasta node graph.
+
 - `lib/` is the reusable module. It owns the engine, built-in node classes,
   workspace-facing APIs, and small subpackages for shared contracts.
 - `lib/links/` owns shared Pasta link type identifiers, non-DNS link payloads,
   and output caches.
 - `lib/nodekit/` owns node runtime interfaces, common node base helpers,
-  workspace helpers, menu helpers, and node-facing aliases for shared
-  contracts.
+  workspace helpers, menu helpers, and node-facing aliases for shared contracts.
 - `lib/amnesia/` owns the Amnesia and AmnesiaCtrl nodes. Amnesia owns an
-  ephemeral WireGuard device and publishes its profile DNS through that
-  device's TUN path. AmnesiaCtrl manages one tracked peer on a shared WireGuard
-  device. Both import profiles through `wgo/amnesia`.
+  ephemeral WireGuard device and publishes its profile DNS through that device's
+  TUN path. AmnesiaCtrl manages one tracked peer on a shared WireGuard device.
+  Both import profiles through `wgo/amnesia`.
 - `lib/dns/` owns DNS link payload contracts, DNS provider helpers, DNS node
   classes, built-in DNS nodes, and the UDP DNS adapter for an existing TUN data
   path.
@@ -39,28 +40,29 @@ Almagest is a Go userspace network stack built around a Pasta node graph.
   `bin/almagestd/static` for daemon embedding.
 
 Runtime path:
+
 1. `almagestd` selects isolated or direct execution before it reads config.
-2. Packaged Linux/amd64 replaces itself with a trusted network broker. The
+1. Packaged Linux/amd64 replaces itself with a trusted network broker. The
    broker reads protected launch authority and starts restricted runtime,
    config-writer, and command-helper roles. Windows currently uses direct mode.
-3. The selected network service provides the runtime with a `sysnet.System`
+1. The selected network service provides the runtime with a `sysnet.System`
    implementation: local objects in direct mode or typed broker clients in
    isolated mode.
-4. The runtime builds `lib.Engine` and creates the Pasta workspace named
-   `main`.
-5. Nodes exchange typed values; `almagest/network` carries `gonnect.Network`
+1. The runtime builds `lib.Engine` and creates the Pasta workspace named `main`.
+1. Nodes exchange typed values; `almagest/network` carries `gonnect.Network`
    resources.
-6. If web admin is enabled, the runtime serves embedded panel files and
+1. If web admin is enabled, the runtime serves embedded panel files and
    `/api/ws`. In isolated mode, the broker owns the public listener and relays
    accepted streams to the runtime.
 
 See [`docs/DAEMON_ISOLATION.md`](docs/DAEMON_ISOLATION.md) for role ownership,
-IPC, platform restrictions, packaging, and security-test scope.
-See [`docs/SUBPROGRAM_SANDBOX.md`](docs/SUBPROGRAM_SANDBOX.md) for the
-subprogram security model, effective profiles, protected policy, and current
-platform limits.
+IPC, platform restrictions, packaging, and security-test scope. See
+[`docs/SUBPROGRAM_SANDBOX.md`](docs/SUBPROGRAM_SANDBOX.md) for the subprogram
+security model, effective profiles, protected policy, and current platform
+limits.
 
 ## Module Boundaries
+
 `lib/` may depend on Pasta, Gonnect, Formular, Configer, and Bufpool. Root
 package files keep only the engine API, engine worker API, nodekit runtime
 bridge, built-in class registration, and node class list glue. Domain node
@@ -86,16 +88,16 @@ such as `10m` to change that budget.
 `just test-total` runs the complete test gate without the static checks. With no
 arguments, both commands keep the normal full-test workflow.
 
-On Linux, tests use a private executable tmpfs directory when available.
-An explicit `TMPDIR` overrides host scratch selection. Large Go build files,
-VM disks, final coverage reports, and retained failure evidence stay on disk.
+On Linux, tests use a private executable tmpfs directory when available. An
+explicit `TMPDIR` overrides host scratch selection. Large Go build files, VM
+disks, final coverage reports, and retained failure evidence stay on disk.
 Docker cases use bounded tmpfs mounts for `/tmp` (256 MiB) and
 `/run/almagest-e2e` (512 MiB). Case storage survives daemon restarts within the
 same container. Shared service volumes use a 128 MiB tmpfs. Docker raw coverage
 and the test-type scheduler's resource samples are staged in scratch space and
 copied to disk at completion or failure; they do not survive a host reboot
-during the run.
-Set `ALMAGEST_TEST_TMPFS=0` to test with disk-backed scratch and container state.
+during the run. Set `ALMAGEST_TEST_TMPFS=0` to test with disk-backed scratch and
+container state.
 
 For a change with local scope, pass one or more exact test selectors. Use the
 narrow set of tests that the change adds, changes, or can affect:
@@ -122,21 +124,23 @@ before preparation starts. It also fails if an exact selected Go test does not
 run. Selected Go tests still repair the Go workspace, generate the certificate
 catalog, and build the panel assets. Selected Docker E2E cases still build or
 reuse their required image. Selected WinVM cases build or reuse the base image
-and stage the test payload. Multiple WinVM selectors use one VM invocation;
-the harness runs only the required privilege phase when all selected cases use
-the same phase. A selected run does not add unselected test suites or produce
-the full aggregate coverage report.
+and stage the test payload. Multiple WinVM selectors use one VM invocation; the
+harness runs only the required privilege phase when all selected cases use the
+same phase. A selected run does not add unselected test suites or produce the
+full aggregate coverage report.
 
 When selectors are passed to `just check`, its lint and static-check
 dependencies still run in full, but the full fuzz suite does not run. An exact
-top-level `Fuzz...` Go selector runs only that fuzz target for `FUZZ_TIME`, which
-defaults to 60 seconds. Use the complete `just check` without selectors for
-significant changes that affect the whole project or large parts of it. The
-narrow gate is for feedback on changes with local scope; it does not replace
-the complete project gate when the affected area is broad.
+top-level `Fuzz...` Go selector runs only that fuzz target for `FUZZ_TIME`,
+which defaults to 60 seconds. Use the complete `just check` without selectors
+for significant changes that affect the whole project or large parts of it. The
+narrow gate is for feedback on changes with local scope; it does not replace the
+complete project gate when the affected area is broad.
 
 ## Key Files
+
 Engine and workspace:
+
 - `lib/engine.go`: `BuildEngine`, workspace API forwarding, notifications,
   persistence hooks, lifecycle.
 - `lib/worker.go`: engine worker tracking, worker snapshots, and worker
@@ -151,8 +155,8 @@ Engine and workspace:
   helpers, menu helpers, TLS selector helpers, and node-facing aliases to
   `links` and `storage`.
 - `lib/amnesia/`: Amnesia service and profile import, persistent client state,
-  an ephemeral managed WireGuard runtime, tunnel DNS publication, and
-  WireGuard controller integration.
+  an ephemeral managed WireGuard runtime, tunnel DNS publication, and WireGuard
+  controller integration.
 - `lib/dns/`: DNS payload contracts, provider helpers, node classes, and
   built-in DNS nodes, including the raw UDP tunnel DNS adapter.
 - `lib/http/`: HTTP client and server node classes.
@@ -172,6 +176,7 @@ Engine and workspace:
 - `lib/testkit/`: package-neutral assertions and E2E helper subpackages.
 
 Built-in nodes:
+
 - `lib/amnesia/`: Amnesia and AmnesiaCtrl implementations.
 - `lib/dns/`: all DNS-owned node implementations.
 - `lib/debug/`: debug-only node implementations.
@@ -186,6 +191,7 @@ Built-in nodes:
 - `lib/network/node_mock_net.go`: virtual loopback network node.
 
 Daemon:
+
 - `bin/almagestd/main.go`: startup sequence and shutdown context.
 - `bin/almagestd/cli_paths.go`: CLI config path resolution.
 - `bin/almagestd/config.go`: HuJSON parsing and config structs.
@@ -215,11 +221,13 @@ Daemon:
   journal.
 
 Platform and CLI:
+
 - `bin/almagestd/platform/`: build-tagged defaults and platform operations.
 - `bin/almagest-cli/main.go`: CLI entry point.
 - `bin/almagest-cli/commands.go`: CLI command registration and dispatch.
 
 Admin panel:
+
 - `panel/src/app.ts`: graph UI and WebSocket admin API client.
 - `panel/src/docs.ts`: dedicated documentation page using the read-only HTTP
   documentation API.
@@ -227,83 +235,89 @@ Admin panel:
 - `panel/scripts/`: dependency vendoring and static publish scripts.
 
 Localized documentation:
+
 - `locales/<locale>/nodes.json`: localized node class short descriptions.
 - `locales/<locale>/docs/index.json`: localized nested topic and page tree.
 - `locales/<locale>/docs/pages/`: localized Markdown pages. Runtime node pages
-  are below `nodes/<namespace>/<class>.md` and use `node/<namespace>/<class>`
-  as their stable API ID.
+  are below `nodes/<namespace>/<class>.md` and use `node/<namespace>/<class>` as
+  their stable API ID.
 
 Editable config flow:
+
 1. A client reads the `config.snapshot` API result and keeps its revision.
-2. The client submits a complete HuJSON document to `config.update` with that
+1. The client submits a complete HuJSON document to `config.update` with that
    revision. A top-level `Protected` member is rejected.
-3. The engine compares saved node-owned config and semantic links. It removes
+1. The engine compares saved node-owned config and semantic links. It removes
    obsolete links first, reconstructs only changed nodes, adds new links, and
    keeps unrelated records live.
-4. The daemon exports the resulting workspace into the submitted HuJSON,
-   writes it immediately, and returns the new canonical text and revision.
+1. The daemon exports the resulting workspace into the submitted HuJSON, writes
+   it immediately, and returns the new canonical text and revision.
 
 The API is read-only when the daemon config source is read-only. Protected
 config is loaded once at startup and is not part of this flow.
 
 Snapshot flow:
+
 1. `snapshots.create` writes `file-storage/snapshots/<uuid>.zip`. The archive
    contains the regular config, a consistent bbolt image, and all file-storage
    content except paths in the daemon exclusion list. The `snapshots` subtree
    itself is currently the only hard-coded exclusion.
-2. The daemon removes every top-level `Protected` member from the archived
+1. The daemon removes every top-level `Protected` member from the archived
    regular config. It also excludes the active regular and protected config
    source files if they are inside file storage. Restore keeps their parent
    directories when the archive does not contain those directories.
-3. `snapshots.restore` validates and stages the complete archive, saves an
+1. `snapshots.restore` validates and stages the complete archive, saves an
    internal recovery archive, removes the current graph, mirrors storage, and
    replaces all bbolt buckets in one transaction. It then reapplies protected
    and host-derived state and reconstructs the graph from the restored config.
-4. Engine subscribers keep their previous graph view during restore. After the
+1. Engine subscribers keep their previous graph view during restore. After the
    restored graph or rollback state is stable, the engine drains notifications
    that were already queued and publishes one authoritative workspace snapshot.
-   It also publishes the matching full worker snapshot because worker state is
-   a separate engine notification type. A blocked client does not block the
+   It also publishes the matching full worker snapshot because worker state is a
+   separate engine notification type. A blocked client does not block the
    restore request; its final publication continues after that callback returns.
-5. If restore fails, the daemon uses the recovery archive to restore the prior
+1. If restore fails, the daemon uses the recovery archive to restore the prior
    in-memory and persistent state. A later config-file write failure does not
    roll back a successful restore; the restored config stays active in memory.
-6. `snapshots.export` returns the stored ZIP and `snapshots.import` validates a
+1. `snapshots.export` returns the stored ZIP and `snapshots.import` validates a
    ZIP before publishing it without replacing an existing UUID. Import can
    preserve the archived display name or replace it with an optional name.
-7. Snapshot create, delete, import, rename, and restore operations exclude
+1. Snapshot create, delete, import, rename, and restore operations exclude
    concurrent admin API state operations. Listing and export remain read-only.
    The CLI uses `almagest-cli snapshots`; the panel provides the same archive
    and snapshot-store operations. Panel downloads use `<uuid>.zip` names.
-8. `almagestd --snapshot PATH` validates and restores an archive before it
-   opens bbolt or builds the engine. `--snapshot -` reads the archive from
-   stdin. Protected config and the snapshot-store subtree remain host-local.
-   The daemon first copies the closed storage state and restores that copy if
-   startup restore changes some files and then fails.
-9. A compressed archive can be at most 32 MiB. Its extracted storage entries
-   can be at most 256 MiB in total. The manifest can be at most 64 KiB, the
-   regular config can be at most 8 MiB, and a display name can be at most 256
-   UTF-8 bytes. Stream and WebSocket transports also have a finite JSON message
-   limit that includes base64 expansion and envelope data.
-9. A stored symlink must use a relative target. Its complete target chain must
+1. `almagestd --snapshot PATH` validates and restores an archive before it opens
+   bbolt or builds the engine. `--snapshot -` reads the archive from stdin.
+   Protected config and the snapshot-store subtree remain host-local. The daemon
+   first copies the closed storage state and restores that copy if startup
+   restore changes some files and then fails.
+1. A compressed archive can be at most 32 MiB. Its extracted storage entries can
+   be at most 256 MiB in total. The manifest can be at most 64 KiB, the regular
+   config can be at most 8 MiB, and a display name can be at most 256 UTF-8
+   bytes. Stream and WebSocket transports also have a finite JSON message limit
+   that includes base64 expansion and envelope data.
+1. A stored symlink must use a relative target. Its complete target chain must
    resolve inside the staged storage tree and outside all excluded paths.
    Dangling symlinks, absolute targets, and links that escape storage make the
    archive invalid. The daemon applies the same rule during create and import.
 
 ## Core Concepts
-- Pasta provides the graph workspace, node classes, ports, links,
-  notifications, menus, copy/paste, undo/redo, and standard link types.
+
+- Pasta provides the graph workspace, node classes, ports, links, notifications,
+  menus, copy/paste, undo/redo, and standard link types.
 - Gonnect provides network abstractions used by Almagest nodes.
 - Formular provides node menu/form messages used by the HTTP nodes.
 - Configer/HuJSON provide config parsing and future persistence.
 - `sysnet.System` abstracts host/system network integration.
 
 ## Engine Notes
-`lib.BuildEngine(ctx, cfg, logf, sys, kv, dns, secrets, tlsConfigs, extra,
-pool, debug)` builds one workspace named `lib.MainWorkspace` (`"main"`). Most
-public methods check the workspace ID and then forward to Pasta.
+
+The `lib.BuildEngine` function builds one workspace named `lib.MainWorkspace`
+(`"main"`). Most public methods check the workspace ID and then forward to
+Pasta.
 
 Engine API groups:
+
 - graph mutation and inspection
 - copy/paste, undo/redo
 - inbox and Formular messages
@@ -318,12 +332,14 @@ Engine API groups:
 - close of workspace and system integration
 
 Notifications have two kinds:
+
 - `workspace`: Pasta workspace notifications for `main`.
 - `colormap`: type palette sent to subscribers before workspace events.
 
 ## Node Notes
-`almagest/MockNetwork` creates a `gonnect.NewLoopbackNetwork()` network and emits
-it on an `almagest/network` port.
+
+`almagest/MockNetwork` creates a `gonnect.NewLoopbackNetwork()` network and
+emits it on an `almagest/network` port.
 
 `almagest/HttpServer` is a debug and tracing tool. It receives a network, host,
 port, and response string. It listens with `network.Listen(ctx, "tcp", addr)`,
@@ -352,10 +368,12 @@ attachment generations when they request replacements. TunJoiner tracks its
 default input and each secondary input separately.
 
 ## Daemon Notes
+
 Important flags and env:
+
 - `--stdin`: read main config from stdin and make it read-only.
-- `--snapshot`, `ALMAGEST_SNAPSHOT`: restore startup state from an archive
-  path. Use `--snapshot -` for stdin; this cannot be combined with `--stdin`.
+- `--snapshot`, `ALMAGEST_SNAPSHOT`: restore startup state from an archive path.
+  Use `--snapshot -` for stdin; this cannot be combined with `--stdin`.
 - `-c, --config`, `ALMAGEST_CONF`: main config path or directory.
 - `-p, --protected`, `ALMAGEST_PROTECTED_CONF`: protected config path.
 - `-l, --lvl`, `ALMAGEST_LOG_LVL`: logging level.
@@ -374,25 +392,24 @@ Important flags and env:
   64 CPUs of quota per role, 65536 descriptors per process, and 1 TiB per file.
   See `docs/DAEMON_ISOLATION.md` for units, ranges, and service configuration.
 - `-w, --web`, `ALMAGEST_WEB_ADMIN`: localhost web admin port.
-- `--web-filter-uid`, `ALMAGEST_WEB_ADMIN_FILTER_UIDS`: allowed web admin
-  peer owner UIDs.
-- `--web-filter-gid`, `ALMAGEST_WEB_ADMIN_FILTER_GIDS`: allowed web admin
-  peer owner GIDs.
-- `--web-filter-user`, `ALMAGEST_WEB_ADMIN_FILTER_USERS`: allowed web admin
-  peer owner usernames.
-- `--web-allow-cross-origin`, `ALMAGEST_WEB_ADMIN_ALLOW_CROSS_ORIGIN`: allow
-  any browser origin to access or embed the web admin. This is unsafe and is
+- `--web-filter-uid`, `ALMAGEST_WEB_ADMIN_FILTER_UIDS`: allowed web admin peer
+  owner UIDs.
+- `--web-filter-gid`, `ALMAGEST_WEB_ADMIN_FILTER_GIDS`: allowed web admin peer
+  owner GIDs.
+- `--web-filter-user`, `ALMAGEST_WEB_ADMIN_FILTER_USERS`: allowed web admin peer
+  owner usernames.
+- `--web-allow-cross-origin`, `ALMAGEST_WEB_ADMIN_ALLOW_CROSS_ORIGIN`: allow any
+  browser origin to access or embed the web admin. This is unsafe and is
   disabled by default.
 - `--file-storage`, `ALMAGEST_FILE_STORAGE`: almagestd file storage directory.
 - `--tmp-file-storage`, `ALMAGEST_TMP_FILE_STORAGE`: create random temporary
   file storage prefixed with `alm-store-` and remove it on exit.
-- `ALMAGEST_TLS_FORCE_FALLBACK_ROOTS`: when set, use embedded NSS fallback
-  TLS roots instead of OS certificate storage.
+- `ALMAGEST_TLS_FORCE_FALLBACK_ROOTS`: when set, use embedded NSS fallback TLS
+  roots instead of OS certificate storage.
 
-On Linux, persistent file storage defaults to
-`~/.local/share/almagest/store` for non-root users and
-`/var/lib/almagest/store` when running as root or when no current-user home is
-available.
+On Linux, persistent file storage defaults to `~/.local/share/almagest/store`
+for non-root users and `/var/lib/almagest/store` when running as root or when no
+current-user home is available.
 
 If `--config` points at a directory, use `alm.hujson` inside it. If protected
 config is omitted, use `protected_alm.hujson` next to the main config. Protected
@@ -404,11 +421,10 @@ config file.
 
 The web admin rejects requests with a different browser origin by default. It
 also sends browser headers that prevent other origins from embedding the panel
-or loading its resources. Origin-less clients, including `almagest-cli`, are
-not affected.
-Set protected `Admin.AllowCrossOrigin` or use `--web-allow-cross-origin` to
-disable these browser protections. This setting allows every origin and is not
-an authentication mechanism.
+or loading its resources. Origin-less clients, including `almagest-cli`, are not
+affected. Set protected `Admin.AllowCrossOrigin` or use
+`--web-allow-cross-origin` to disable these browser protections. This setting
+allows every origin and is not an authentication mechanism.
 
 System integration is selected from `Protected.System.Type`:
 
@@ -416,8 +432,8 @@ System integration is selected from `Protected.System.Type`:
 - `native` or empty: `platform.SystemIntegration`.
 
 Use debug integration for local runnable experiments. On Windows, native
-integration uses `sysnet-windows`. Other platforms currently use the
-platform implementation selected by their build tags.
+integration uses `sysnet-windows`. Other platforms currently use the platform
+implementation selected by their build tags.
 
 ### Windows integration
 

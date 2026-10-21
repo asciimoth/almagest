@@ -117,9 +117,12 @@ repair-go-work:
 certcat-tidy:
 	go -C certcat mod tidy
 
-lint: test-winvm-harness certcat-lint lint-windows lint-winvm lint-secrets
+lint: test-winvm-harness certcat-lint lint-windows lint-winvm lint-secrets markdownlint
   cd lib && golangci-lint run ./...
   cd bin && golangci-lint run ./...
+
+markdownlint:
+  git ls-files -z -- '*.md' ':!locales/lorem/docs/pages/guides/markdown-features.md' | xargs -0 -r markdownlint
 
 lint-secrets:
   ripsecrets
@@ -137,10 +140,13 @@ shellcheck:
 certcat-lint: certcat-ensure-generated
   cd certcat && golangci-lint run ./...
 
-fmt: certcat-fmt
+fmt: certcat-fmt markdown-fmt
   cd lib && golangci-lint fmt ./...
   cd bin && golangci-lint fmt ./...
   git ls-files -z -- 'lib/*.go' 'lib/**/*.go' 'bin/*.go' 'bin/**/*.go' | while IFS= read -r -d '' file; do [[ -f "$file" ]] && printf '%s\0' "$file"; done | xargs -0 -r gofmt -w
+
+markdown-fmt:
+  git ls-files -z -- '*.md' ':!locales/lorem/docs/pages/guides/markdown-features.md' | xargs -0 -r mdformat --wrap 80
 
 certcat-fmt: certcat-ensure-generated
   cd certcat && golangci-lint fmt ./...

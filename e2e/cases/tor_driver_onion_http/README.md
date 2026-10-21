@@ -1,15 +1,15 @@
 # tor_driver_onion_http
 
-This Linux-only case starts a private Chutney Tor network on an internal
-Docker network. The Docker network has no route to the public Internet.
+This Linux-only case starts a private Chutney Tor network on an internal Docker
+network. The Docker network has no route to the public Internet.
 
 One `TorDriver` node publishes a v3 onion service. An Almagest HTTP server is
 connected to the service's listen-only Network. A second, independent
 `TorDriver` node provides a client Network to an Almagest HTTP client.
 
-The test waits for onion-service publication, reads the generated onion
-address from the service node's status menu, and configures the HTTP server and
-client through their normal menus. It checks that:
+The test waits for onion-service publication, reads the generated onion address
+from the service node's status menu, and configures the HTTP server and client
+through their normal menus. It checks that:
 
 - almagestd starts two different Tor child processes;
 - the service key is created automatically in secrets storage;

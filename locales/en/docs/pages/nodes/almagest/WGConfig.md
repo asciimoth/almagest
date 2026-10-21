@@ -1,6 +1,6 @@
-Adds a separately managed peer list to an existing WireGuard node. WGConfig
-does not create a WireGuard interface. It also does not configure the device
-private key, listen port, interface addresses, or system routes.
+Adds a separately managed peer list to an existing WireGuard node. WGConfig does
+not create a WireGuard interface. It also does not configure the device private
+key, listen port, interface addresses, or system routes.
 
 Connect **WireGuard** to the **WGCtrl** connector of a WireGuard node. Connect
 **Network** to give these peers a UDP path. You can connect multiple WGConfig
@@ -26,8 +26,8 @@ Each peer supports these settings:
   endpoint cannot start outgoing communication until WireGuard learns an
   endpoint from authenticated incoming traffic.
 - **Allowed IPs** controls which destination prefixes WireGuard sends to this
-  peer. Enter IPv4 or IPv6 prefixes, separated by spaces, commas, semicolons,
-  or new lines. A bare IP address becomes a host prefix. This setting changes
+  peer. Enter IPv4 or IPv6 prefixes, separated by spaces, commas, semicolons, or
+  new lines. A bare IP address becomes a host prefix. This setting changes
   WireGuard crypto-routing, but WGConfig does not add routes to the operating
   system.
 - **Keepalive** is the persistent keepalive interval in seconds. Use `0` to
@@ -40,20 +40,20 @@ rejected edit.
 
 ## Network and detach behavior
 
-WGConfig creates one UDP transport for all peers in its list. This transport
-is separate from the WireGuard node's default UDP transport and from the
-transports of other WGConfig nodes. All fixed peer endpoints in this WGConfig
-use the connected **Network**.
+WGConfig creates one UDP transport for all peers in its list. This transport is
+separate from the WireGuard node's default UDP transport and from the transports
+of other WGConfig nodes. All fixed peer endpoints in this WGConfig use the
+connected **Network**.
 
 If **Network** is disconnected, WGConfig removes its UDP transport and removes
 fixed endpoints from its active peer settings. The peers stay installed on the
-WireGuard device, but their traffic is dropped. The label reports `network
-detached; peer traffic is dropped`. Reconnecting **Network** creates the transport
-again and restores the configured endpoints.
+WireGuard device, but their traffic is dropped. The label reports
+`network detached; peer traffic is dropped`. Reconnecting **Network** creates
+the transport again and restores the configured endpoints.
 
-Disconnecting **WireGuard** removes this WGConfig's peers and UDP transport
-from that WireGuard node. It does not remove menu peers, Object peers, or peers
-from other WGConfig nodes. Reconnecting applies the peer list again. The same
+Disconnecting **WireGuard** removes this WGConfig's peers and UDP transport from
+that WireGuard node. It does not remove menu peers, Object peers, or peers from
+other WGConfig nodes. Reconnecting applies the peer list again. The same
 ownership rule applies when a selector changes the active WireGuard connection.
 
 ## AmneziaWG peer overrides
@@ -63,12 +63,11 @@ Enable **AWG override** to give the peer its own profile.
 
 With the override enabled, **AWG obfuscation** selects the effective profile:
 
-- When obfuscation is enabled, the peer uses its Jc/Jmin/Jmax, S1-S4, H1-H4,
-  and I1-I5 values.
-- When obfuscation is disabled, the peer uses plain WireGuard-compatible
-  values. This lets one peer disable obfuscation while the WireGuard device
-  uses it.
+- When obfuscation is enabled, the peer uses its Jc/Jmin/Jmax, S1-S4, H1-H4, and
+  I1-I5 values.
+- When obfuscation is disabled, the peer uses plain WireGuard-compatible values.
+  This lets one peer disable obfuscation while the WireGuard device uses it.
 
 Disabling obfuscation hides but preserves the peer profile values. Enabling it
-again restores those values. An old peer configuration that has an AWG
-override but no obfuscation switch keeps the override enabled.
+again restores those values. An old peer configuration that has an AWG override
+but no obfuscation switch keeps the override enabled.

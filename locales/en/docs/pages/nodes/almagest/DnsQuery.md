@@ -21,11 +21,11 @@ recursive Internet-class query with one question. The request has a fixed
 
 ## Result
 
-**Status** starts as `ready` and changes to `running...` during a request. A
-DNS response changes the status to its response code, such as `NOERROR`,
-`NXDOMAIN`, `SERVFAIL`, `FORMERR`, or `NOTIMP`. Other response codes appear as
-`RCODE` followed by the number. A DNS error response such as `NXDOMAIN` is a
-completed request, not a query failure.
+**Status** starts as `ready` and changes to `running...` during a request. A DNS
+response changes the status to its response code, such as `NOERROR`, `NXDOMAIN`,
+`SERVFAIL`, `FORMERR`, or `NOTIMP`. Other response codes appear as `RCODE`
+followed by the number. A DNS error response such as `NXDOMAIN` is a completed
+request, not a query failure.
 
 **Response** shows the question and all answer, authority, and additional
 records. Each record line includes its section, name, type, TTL, and value.
@@ -34,5 +34,5 @@ shown as hexadecimal.
 
 Connection errors, timeouts, an invalid query type, and an unavailable DNS input
 set the status to `fail` and put the cause in **Error**. If the attached DNS
-provider is removed or replaced, the node cancels the current request and
-clears the result. The selected name and type remain saved with the node.
+provider is removed or replaced, the node cancels the current request and clears
+the result. The selected name and type remain saved with the node.

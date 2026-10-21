@@ -1,5 +1,5 @@
-Serves configured DNS records and optionally sends misses to one **Fallback** DNS
-service. The DNS output is available even when no records or fallback are
+Serves configured DNS records and optionally sends misses to one **Fallback**
+DNS service. The DNS output is available even when no records or fallback are
 configured.
 
 Write one record on each line in this form:
@@ -9,8 +9,8 @@ NAME TYPE VALUE
 ```
 
 Blank lines and lines that start with `#` are ignored. Name matching is not
-case-sensitive. A final dot is optional in configured names and
-domain-name values.
+case-sensitive. A final dot is optional in configured names and domain-name
+values.
 
 These record types and value formats are supported:
 
@@ -45,14 +45,14 @@ does not follow CNAME records, synthesize other types, or use wildcard names.
 If no exact record matches, the node sends the complete request to **Fallback**.
 For example, an AAAA question is a miss when only an A record exists for the
 name. Without Fallback, a miss returns NXDOMAIN. For a request with multiple
-questions, all questions must match static records. If one question misses,
-the complete request goes to **Fallback** and static answers are not combined with
+questions, all questions must match static records. If one question misses, the
+complete request goes to **Fallback** and static answers are not combined with
 the fallback response.
 
-**TTL** sets the lifetime, in seconds, for all static records. The default is 60,
-and 0 is permitted. Fallback responses keep the TTL values supplied by the
+**TTL** sets the lifetime, in seconds, for all static records. The default is
+60, and 0 is permitted. Fallback responses keep the TTL values supplied by the
 fallback service.
 
-**TTL** must be a nonnegative integer. An invalid record edit is not applied. The
-menu identifies the line that contains the invalid record, and the last valid
-records continue to serve requests.
+**TTL** must be a nonnegative integer. An invalid record edit is not applied.
+The menu identifies the line that contains the invalid record, and the last
+valid records continue to serve requests.

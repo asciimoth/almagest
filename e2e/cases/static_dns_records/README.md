@@ -15,7 +15,7 @@ Assertions cover these situations:
 - removing and restoring the fallback link changes miss handling;
 - invalid record forms report their precise error and keep the last valid
   provider active;
-- field validation reports invalid records and TTL values without applying
-  them; and
+- field validation reports invalid records and TTL values without applying them;
+  and
 - valid live edits replace the records and normalize a negative TTL to the
   documented default.

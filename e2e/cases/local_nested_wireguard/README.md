@@ -11,18 +11,17 @@ for each tunnel, and debug HTTP/UDP clients inside the innermost tunnel.
 
 ## Initial Daemon Config
 
-- `WireGuard Client 1501` and `WireGuard Server 1502` form the outer tunnel
-  over `MockNetwork 1500`. Their required peers come from object constants.
-- `WireGuard Client 1501` has two `Peers` object links. Its required server
-  peer and a supplemental peer prove that the node merges multiple sources.
-- `Inner WireGuard Client 1507` and `Inner WireGuard Server 1508` form the
-  inner tunnel over the outer VTun network. Their required peers also come
-  from object constants.
-- `Inner VTun Client 1509` owns `10.199.10.1/24`; `Inner VTun Server 1510`
-  owns `10.199.20.1/24`.
+- `WireGuard Client 1501` and `WireGuard Server 1502` form the outer tunnel over
+  `MockNetwork 1500`. Their required peers come from object constants.
+- `WireGuard Client 1501` has two `Peers` object links. Its required server peer
+  and a supplemental peer prove that the node merges multiple sources.
+- `Inner WireGuard Client 1507` and `Inner WireGuard Server 1508` form the inner
+  tunnel over the outer VTun network. Their required peers also come from object
+  constants.
+- `Inner VTun Client 1509` owns `10.199.10.1/24`; `Inner VTun Server 1510` owns
+  `10.199.20.1/24`.
 - `UDPPingServer 1505` listens on `10.199.20.1:26120`.
-- `UDPPingClient 1506` sends `nested-wireguard-udp-ping` from
-  `10.199.10.1`.
+- `UDPPingClient 1506` sends `nested-wireguard-udp-ping` from `10.199.10.1`.
 - `HttpServer 1607` listens on `10.199.20.1:8080`.
 - `HttpClient 1612` requests `http://10.199.20.1:8080/`.
 

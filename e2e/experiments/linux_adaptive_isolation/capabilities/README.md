@@ -5,15 +5,15 @@ This manual research fixture compares two ways to give a non-root process only
 
 - a trusted bootstrap establishes a non-root network stage and an ambient
   capability before two ordinary executable transitions;
-- a file capability gives the capability directly to a non-root broker
-  analogue executable.
+- a file capability gives the capability directly to a non-root broker analogue
+  executable.
 
 It also checks capability removal, `no_new_privs`, the Docker seccomp state, a
 custom seccomp denial, TUN creation, dummy-interface and route changes, and the
 lack of authority to write the root-owned DNS configuration file.
 
-The file-capability probe also shows an important limit: the broker analogue
-can issue the TUN ioctl itself, but an ordinary `exec` of `ip` has no capability
+The file-capability probe also shows an important limit: the broker analogue can
+issue the TUN ioctl itself, but an ordinary `exec` of `ip` has no capability
 because the file-capability path has an empty ambient set. The ambient handoff
 preserves the capability for such helper executions.
 
@@ -36,15 +36,15 @@ host filesystem mount. `/dev/net/tun` is the only passed device. Network changes
 exist only for the life of a disposable container.
 
 The output is a manual research artifact at
-`artifacts/isolation-design/capabilities/capability-experiment.log`. This fixture
-is not an automatic E2E case and does not qualify the full daemon.
+`artifacts/isolation-design/capabilities/capability-experiment.log`. This
+fixture is not an automatic E2E case and does not qualify the full daemon.
 
 Expected results:
 
 - Both non-root network-stage executions have only `CAP_NET_ADMIN` in their
   inheritable, permitted, effective, bounding, and ambient sets. TUN creation,
-  dummy-interface creation, and isolated route creation succeed. A write-open
-  of `/etc/resolv.conf` fails because `CAP_NET_ADMIN` gives no file authority.
+  dummy-interface creation, and isolated route creation succeed. A write-open of
+  `/etc/resolv.conf` fails because `CAP_NET_ADMIN` gives no file authority.
 - The forked runtime clears its ambient, effective, permitted, and inheritable
   sets, sets `no_new_privs`, and executes its plain final stage. TUN and
   dummy-interface creation fail after that exec. The network parent keeps its
@@ -53,11 +53,11 @@ Expected results:
   without `CAP_SETPCAP`. With `no_new_privs`, it cannot regain authority by
   executing the file-capability binary.
 - A file capability permits the broker analogue to issue a direct TUN ioctl but
-  does not propagate authority
-  to an ordinary `ip` helper execution because the ambient set is empty.
-- The custom external seccomp profile denies the TUN ioctl while dummy and
-  route netlink operations still succeed. This proves that capability presence
-  alone does not establish feature availability.
+  does not propagate authority to an ordinary `ip` helper execution because the
+  ambient set is empty.
+- The custom external seccomp profile denies the TUN ioctl while dummy and route
+  netlink operations still succeed. This proves that capability presence alone
+  does not establish feature availability.
 
 The bootstrap analogue starts as UID 0 with `CAP_SETUID`, `CAP_SETGID`,
 `CAP_SETPCAP`, and `CAP_NET_ADMIN` because Docker cannot directly place an
@@ -68,9 +68,9 @@ broker analogue. It forks a runtime child, removes all active capability sets
 from that child, and keeps `CAP_NET_ADMIN` in the non-root network parent. The
 fixture does not claim that the UID 0 bootstrap is part of Almagest. The
 deployment's service manager must supply this initial authority; the proposed
-daemon does not install an elevation helper.
-The runner labels all derived resources with a unique run ID and removes its
-containers and temporary image tags on normal exit or interruption.
+daemon does not install an elevation helper. The runner labels all derived
+resources with a unique run ID and removes its containers and temporary image
+tags on normal exit or interruption.
 
 By default, the runner resolves the existing `almagest-e2e:local` tag to its
 immutable image ID before it creates the run-specific build alias. Set

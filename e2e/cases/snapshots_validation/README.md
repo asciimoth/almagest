@@ -13,6 +13,4 @@ empty graph. It uses only userspace resources.
 - Snapshot creation and rename reject names above the 256-byte limit.
 - Import rejects an archive whose UUID already exists, without changing the
   stored snapshot.
-- Rejected operations leave the daemon responsive and the valid snapshot
-  usable.
-
+- Rejected operations leave the daemon responsive and the valid snapshot usable.

@@ -2,12 +2,12 @@
 
 Amnesia combines an Amnezia API client with one private userspace WireGuard
 device. Connect a TUN provider to the left **Tun** port and an outgoing network
-to the right **Network** port. The outgoing network carries both API traffic
-and WireGuard UDP traffic. Connect DNS consumers to the left **DNS** port.
+to the right **Network** port. The outgoing network carries both API traffic and
+WireGuard UDP traffic. Connect DNS consumers to the left **DNS** port.
 
 The node owns the complete WireGuard runtime. It does not store a WireGuard
-private key or any other WireGuard configuration. For an API-v2 service key,
-the Amnezia client generates a new WireGuard identity when the node creates a
+private key or any other WireGuard configuration. For an API-v2 service key, the
+Amnezia client generates a new WireGuard identity when the node creates a
 connection. Rebuilding the connection can generate another identity. Static
 self-hosted and native profiles use the private key contained in the selected
 connection secret because their server already associates that key with the
@@ -40,22 +40,22 @@ stop blocked reads safely.
 
 The DNS interface is available only while the current WireGuard runtime is up.
 If a TUN or Network link is removed, or a menu change selects another country,
-the node closes the old per-link DNS wrappers before it starts replacement.
-When the new runtime is ready, the node sends a fresh wrapper on every attached
-DNS link. Removing and reattaching only a DNS link does not rebuild the VPN.
+the node closes the old per-link DNS wrappers before it starts replacement. When
+the new runtime is ready, the node sends a fresh wrapper on every attached DNS
+link. Removing and reattaching only a DNS link does not rebuild the VPN.
 
 The built-in tunnel DNS client supports UDP only. It returns truncated DNS
-responses as received and does not make a TCP fallback connection. It also
-does not reassemble fragmented IP packets. These limits keep the data path
-small and avoid an internal network stack. Use another DNS transport when a
-resolver must support large responses that require TCP.
+responses as received and does not make a TCP fallback connection. It also does
+not reassemble fragmented IP packets. These limits keep the data path small and
+avoid an internal network stack. Use another DNS transport when a resolver must
+support large responses that require TCP.
 
 ## Troubleshooting
 
 An Amnezia service endpoint for a selected country can be temporarily
 unavailable even when the API returns a valid profile. A typical symptom is a
-WireGuard handshake that retries continuously while DNS and other tunnel
-traffic time out. If this occurs, select another server country and try the
-connection again first. Do not delete the installation UUID or recreate the
-node only to test this condition; these actions do not repair an unavailable
-country endpoint and can consume the service's client limit.
+WireGuard handshake that retries continuously while DNS and other tunnel traffic
+time out. If this occurs, select another server country and try the connection
+again first. Do not delete the installation UUID or recreate the node only to
+test this condition; these actions do not repair an unavailable country endpoint
+and can consume the service's client limit.

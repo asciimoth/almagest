@@ -37,14 +37,14 @@ temporary volume.
    - Returns its destination identity, remote source address, method, and path.
      These values prove whether traffic used direct or Amnesia egress.
 
-2. **Example origin**
+1. **Example origin**
 
    - Connects only to the simulated Internet bridge.
    - Runs the same HTTP service under a different dynamic Docker address.
    - Supplies the real destination for both the `/etc/hosts` and DNS domain
      variants.
 
-3. **Amnesia self-host service**
+1. **Amnesia self-host service**
 
    - Connects to the control bridge and the simulated Internet bridge.
    - Runs a real `amneziawg-go` server on UDP port 51861.
@@ -54,13 +54,13 @@ temporary volume.
      `intercept-dns.stack.test`, and the Headscale control name.
    - Routes `10.205.10.1`, the managed client address, through the Amnesia TUN.
    - Masquerades only traffic that exits to the simulated Internet bridge.
-     Traffic between the Amnesia client and colocated control services keeps
-     its inner VPN address.
+     Traffic between the Amnesia client and colocated control services keeps its
+     inner VPN address.
    - Publishes the activation key, gateway public key, and local CA through the
      temporary volume. It installs the managed client public key after the main
      daemon creates it.
 
-4. **Headscale service and tailnet peer**
+1. **Headscale service and tailnet peer**
 
    - Is a separate container and process, but shares the Amnesia container's
      Docker network namespace. This places the self-hosted control service and
@@ -79,7 +79,7 @@ temporary volume.
      peer traffic and traffic with source `10.205.10.1`, but drops a direct
      request from the main container's Docker address.
 
-5. **Main Almagest container**
+1. **Main Almagest container**
 
    - Connects to both Docker bridges and runs the graph under test.
    - Runs the managed `Amnesia` node against the local service.
@@ -93,16 +93,16 @@ temporary volume.
    - Generates a new main Tailscale WireGuard private key during setup.
 
 All TLS private keys, Amnesia keys, WireGuard keys, Headscale keys, activation
-data, and authentication keys are generated inside the temporary containers.
-The checked-in case contains no private key. The runner deletes the containers
-and their shared volume on exit.
+data, and authentication keys are generated inside the temporary containers. The
+checked-in case contains no private key. The runner deletes the containers and
+their shared volume on exit.
 
 ## Initial network rules
 
 The main container has a normal direct Docker path to the public origin before
-`almagestd` starts. It does not have `10.205.10.1`, `10.205.20.1`, or a
-tailnet address. The Headscale input guard rejects the main container's direct
-Docker source.
+`almagestd` starts. It does not have `10.205.10.1`, `10.205.20.1`, or a tailnet
+address. The Headscale input guard rejects the main container's direct Docker
+source.
 
 The setup removes the main container's connected route for the simulated
 Internet subnet, retains a host route to its Docker gateway, and installs that
@@ -139,10 +139,10 @@ DefaultTun
             `-- 100.64.0.0/10 -> WireGuard Tailscale -> HttpServer SO
 ```
 
-The full traffic matrix uses `AutoTunSplitter VPN`. It learns the tailnet
-route from the WireGuard TUN configuration. The test then restarts the same
-graph with the original `TunSplitter VPN` and its manual subnet rules. A
-focused compatibility pass checks the normal and tailnet slots again.
+The full traffic matrix uses `AutoTunSplitter VPN`. It learns the tailnet route
+from the WireGuard TUN configuration. The test then restarts the same graph with
+the original `TunSplitter VPN` and its manual subnet rules. A focused
+compatibility pass checks the normal and tailnet slots again.
 
 The origin reports the main Internet-bridge address for direct traffic. It
 reports the Amnesia service's Internet-bridge address for VPN traffic because
@@ -152,8 +152,7 @@ the gateway applies source NAT at that boundary.
 
 The case uses two names for the example origin:
 
-- `intercept-hosts.stack.test` exists only in the main container's
-  `/etc/hosts`.
+- `intercept-hosts.stack.test` exists only in the main container's `/etc/hosts`.
 - `intercept-dns.stack.test` is served by dnsmasq through Amnesia and is stored
   in `DnsCache vt`.
 
@@ -192,14 +191,14 @@ The Headscale container checks:
 The main test then:
 
 1. Waits for the managed Amnesia node to become `up`.
-2. Gives its generated public key to the local Amnesia service and waits for
+1. Gives its generated public key to the local Amnesia service and waits for
    peer installation.
-3. Checks the operational label of every graph node.
-4. Checks both SOCKS listeners in the daemon log.
-5. Requires the full graph state to stay stable for five seconds.
-6. Requires a Tailscale `direct-udp` path whose local endpoint is inside the
+1. Checks the operational label of every graph node.
+1. Checks both SOCKS listeners in the daemon log.
+1. Requires the full graph state to stay stable for five seconds.
+1. Requires a Tailscale `direct-udp` path whose local endpoint is inside the
    outer Amnesia tunnel.
-7. Sends a real `HttpClient Tailnet` request before it starts the test matrix.
+1. Sends a real `HttpClient Tailnet` request before it starts the test matrix.
 
 The final graph-state check repeats after all live configuration changes.
 
@@ -209,13 +208,13 @@ The final graph-state check repeats after all live configuration changes.
 
 - `DnsQuery public` resolves `public.stack.test` with `NOERROR`.
 - `DnsQuery intercepted` resolves `intercept-dns.stack.test` with `NOERROR`.
-- `DnsQuery tailnet` resolves `peer.stack.test` with `NOERROR` through
-  Tailscale MagicDNS.
+- `DnsQuery tailnet` resolves `peer.stack.test` with `NOERROR` through Tailscale
+  MagicDNS.
 - Cache keys for the public and intercepted queries are visible in storage
   `default`.
-- A UDP DNS request sent to unrelated address `198.51.100.53:53` is captured
-  by `DefaultTun`, sent through `Tun2Dns default`, and returns the dnsmasq
-  answer with `NOERROR`.
+- A UDP DNS request sent to unrelated address `198.51.100.53:53` is captured by
+  `DefaultTun`, sent through `Tun2Dns default`, and returns the dnsmasq answer
+  with `NOERROR`.
 - The cached intercepted-domain key is still present after all traffic and
   filter changes.
 
@@ -235,11 +234,10 @@ The final graph-state check repeats after all live configuration changes.
 - With filtering enabled, `NetworkRouter direct` blocks both target names when
   curl uses `--socks5-hostname`.
 - `Proxy Amnesia only` reaches the public origin through Amnesia.
-- HTTP for `intercept-dns.stack.test` is redirected to
-  `HttpServer intercepted`.
-- HTTPS for that name is intercepted by `TlsMitm`, remapped by
-  `TlsTerminator`, and redirected to the same HTTP server. Curl trusts the
-  built-in Almagest root CA obtained through the admin API.
+- HTTP for `intercept-dns.stack.test` is redirected to `HttpServer intercepted`.
+- HTTPS for that name is intercepted by `TlsMitm`, remapped by `TlsTerminator`,
+  and redirected to the same HTTP server. Curl trusts the built-in Almagest root
+  CA obtained through the admin API.
 - HTTP and HTTPS also work with `--socks5`, where curl resolves the name first.
   The router uses reverse entries in `DnsCache vt` to recover the domain from
   the destination address.
@@ -249,8 +247,8 @@ The final graph-state check repeats after all live configuration changes.
 - Ordinary curl traffic enters `DefaultTun` and exits through Amnesia.
 - The long-lived `direct-fetch` process is excluded and reaches the origin
   directly.
-- The excluded process cannot reach Headscale directly, which confirms that
-  the successful Tailscale controller path used Amnesia.
+- The excluded process cannot reach Headscale directly, which confirms that the
+  successful Tailscale controller path used Amnesia.
 - Both the `/etc/hosts` target and DNS/cache target are blocked.
 - `blocked-fetch` is blocked by application identity.
 - Ordinary main-container traffic reaches both the simulated Internet and
@@ -263,11 +261,11 @@ The final graph-state check repeats after all live configuration changes.
 The test changes rules through each node's live menu, checks the open state,
 restores the original rules, and checks the filtered state again.
 
-| Node | Filters disabled | Filters restored |
-|---|---|---|
-| `NetworkRouter direct` | The DNS-served target reaches the example origin directly. | The same target is blocked. |
-| `NetworkRouter Amnesia only` | The DNS-served target reaches the example origin through Amnesia. | The same target is redirected to the internal HTTP server. |
-| `TunSplitter lH` | Both domain variants and `blocked-fetch` reach the example or public origin through Amnesia. UDP DNS interception remains active. | Both destination variants and `blocked-fetch` are blocked again. |
+| Node                         | Filters disabled                                                                                                                  | Filters restored                                                 |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `NetworkRouter direct`       | The DNS-served target reaches the example origin directly.                                                                        | The same target is blocked.                                      |
+| `NetworkRouter Amnesia only` | The DNS-served target reaches the example origin through Amnesia.                                                                 | The same target is redirected to the internal HTTP server.       |
+| `TunSplitter lH`             | Both domain variants and `blocked-fetch` reach the example or public origin through Amnesia. UDP DNS interception remains active. | Both destination variants and `blocked-fetch` are blocked again. |
 
 ## Repetition
 
@@ -279,5 +277,5 @@ for run in $(seq 1 30); do
 done
 ```
 
-Every repetition creates new Docker networks, addresses, certificates,
-Headscale database, Tailscale identities, Amnesia keys, and daemon storage.
+Every repetition creates new Docker networks, addresses, certificates, Headscale
+database, Tailscale identities, Amnesia keys, and daemon storage.

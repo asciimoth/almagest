@@ -5,9 +5,9 @@ framework. `src/app.ts` owns navigation and API coordination. The smaller model
 files own data transforms and DOM builders. `npm run build` writes compiled
 modules to `public/build` and publishes the complete panel to the daemon static
 directory. The publication step minifies HTML, CSS, and JavaScript. It also
-excludes TypeScript declaration files because the daemon does not use them.
-The embedded tree contains only gzip-compressed assets; the daemon serves them
-with their original URLs and content types.
+excludes TypeScript declaration files because the daemon does not use them. The
+embedded tree contains only gzip-compressed assets; the daemon serves them with
+their original URLs and content types.
 
 Use `src/notification_center.ts` for transient action feedback. Do not add
 tab-specific copied, saved, or deleted message renderers.
@@ -28,15 +28,15 @@ untrusted. This rule applies even when the daemon listens only on localhost.
 - Allow only `http:`, `https:`, and `mailto:` destinations for regular links in
   rendered documentation. Internal documentation links use `@docs/<page-id>`
   destinations and are resolved by the renderer for its current panel or
-  documentation context.
-  Node-port references use `@port/<left|right>/<port-name>` and render as bold
-  text. Their hover state can highlight the matching port in a node preview.
+  documentation context. Node-port references use
+  `@port/<left|right>/<port-name>` and render as bold text. Their hover state
+  can highlight the matching port in a node preview.
 - Validate API-provided CSS with `safeCSSColor` before assignment.
 - Use blob URLs for generated downloads. Sanitize API-provided file-name parts.
 - Keep the Content Security Policy in `index.html` restrictive.
 - Keep `LiteGraph.allow_scripts` set to `false`. LiteGraph contains optional
-  script-node code that the panel does not use. The Content Security Policy
-  must also continue to omit `unsafe-eval`.
+  script-node code that the panel does not use. The Content Security Policy must
+  also continue to omit `unsafe-eval`.
 - Vendor the LiteGraph core build. The full build registers optional built-in
   nodes with `Function()` during startup and is not compatible with the panel's
   Content Security Policy.
@@ -48,13 +48,13 @@ accepts untrusted text or URLs.
 ## Types
 
 The compiler uses strict mode, exact optional properties, unchecked-index
-checks, unreachable-code checks, and unused-label checks. Keep transport data
-as `unknown` until a runtime decoder validates it. Put reusable decoders in
+checks, unreachable-code checks, and unused-label checks. Keep transport data as
+`unknown` until a runtime decoder validates it. Put reusable decoders in
 `src/event_model.ts` or the related domain model. Types alone do not validate
 WebSocket data.
 
-The LiteGraph browser global is the main exception. Its vendored declarations
-do not include all private fields that the panel must patch. Keep uses of this
+The LiteGraph browser global is the main exception. Its vendored declarations do
+not include all private fields that the panel must patch. Keep uses of this
 boundary local to graph integration code. Decode daemon data before it enters
 this boundary. Do not let `any` values enter storage, API, or DOM model code.
 

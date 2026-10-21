@@ -8,8 +8,8 @@ The node menu supports three modes:
 - Disabled: no timer worker is started.
 - Interval: emits after each positive Go duration in `Every`, such as `2m`,
   `30s`, or `1h30m`.
-- Daily: emits at the next matching local process time in `At`, using `HH:MM`
-  or `HH:MM:SS`. After a daily trigger fires, the next daily wait is based on a
+- Daily: emits at the next matching local process time in `At`, using `HH:MM` or
+  `HH:MM:SS`. After a daily trigger fires, the next daily wait is based on a
   fixed 24 hour step. Wall-clock scheduling that tracks DST and local offset
   changes is a future extension.
 

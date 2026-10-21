@@ -9,27 +9,25 @@ The image, QGA client, and lifecycle helpers are adapted from
 `asciimoth/sysnet-windows/dev/winvm` at revision
 `a056c520f0faf966f54dd90ef63b15d9aa7382ec`. This adaptation changes the project
 paths, source packaging, guest toolchain, dependency provisioning, SSH key
-verification, and run/test orchestration.
-The Windows, VirtIO, OpenSSH, and Tor inputs are locked in this harness. Go is
-locked to 1.26.6; its hash is from the Go download manifest. No sibling
-checkout is needed. Image
-provisioning installs the locked Wintun DLL and compatible split-driver service
-as external test inputs. The daemon does not provision them.
-Do not run privileged networking tests on a normal workstation or shared host.
+verification, and run/test orchestration. The Windows, VirtIO, OpenSSH, and Tor
+inputs are locked in this harness. Go is locked to 1.26.6; its hash is from the
+Go download manifest. No sibling checkout is needed. Image provisioning installs
+the locked Wintun DLL and compatible split-driver service as external test
+inputs. The daemon does not provision them. Do not run privileged networking
+tests on a normal workstation or shared host.
 
 ## Host setup
 
 Use an x86_64 Linux host with writable `/dev/kvm`, 8 GiB of available memory,
 and at least 90 GiB of free cache storage for a fresh base-image build. Reusing
-a valid cached base instead requires 10 GiB of free test-artifact space. The
-80 GiB guest disk is a virtual capacity: qcow2 files grow with written blocks.
-The 10 GiB check is starting headroom, not a maximum run size. Long runs and
+a valid cached base instead requires 10 GiB of free test-artifact space. The 80
+GiB guest disk is a virtual capacity: qcow2 files grow with written blocks. The
+10 GiB check is starting headroom, not a maximum run size. Long runs and
 retained overlays can require more space. Test artifacts live under the
-repository, which can use a different filesystem from the image cache.
-Install QEMU, OVMF, xorriso, OpenSSH
-client tools, Python 3, jq, curl, Git, tar, flock, coreutils, Go 1.26.6 or newer,
-Node.js, npm, ShellCheck, Ruff, PowerShell 7, and PSScriptAnalyzer. The Nix
-development shell supplies the lint and VM packages on
+repository, which can use a different filesystem from the image cache. Install
+QEMU, OVMF, xorriso, OpenSSH client tools, Python 3, jq, curl, Git, tar, flock,
+coreutils, Go 1.26.6 or newer, Node.js, npm, ShellCheck, Ruff, PowerShell 7, and
+PSScriptAnalyzer. The Nix development shell supplies the lint and VM packages on
 x86_64 Linux. It also sets `MULLVAD_SPLIT_TUNNEL_DRIVER_DIR` and
 `SYSNET_WINDOWS_WINTUN_DIR` to the pinned runtime dependency trees. The winvm
 tools use these paths directly. Set `WINVM_OVMF_CODE` and `WINVM_OVMF_VARS` if
@@ -45,16 +43,16 @@ Copy `env.example` to `env` and set absolute paths to the Windows and VirtIO
 ISOs. Supply legally obtained media with the exact hashes in `image-lock.json`.
 Media are not downloaded. Go, OpenSSH, and Tor archives are downloaded over
 HTTPS and checked against their locks during image creation. A valid cached
-archive is reused by later image builds. Keep the private cache,
-media, and secrets outside the repository. The default cache is
+archive is reused by later image builds. Keep the private cache, media, and
+secrets outside the repository. The default cache is
 `$XDG_CACHE_HOME/almagest/winvm`, or `$HOME/.cache/almagest/winvm`.
 
 Image provisioning extracts the locked Tor expert bundle to
 `C:\Program Files\Tor`. The Tor executable is
 `C:\Program Files\Tor\tor\tor.exe`, and that directory is added to the machine
-`PATH`. The downloaded archive stays in the private WinVM cache and is copied
-to provisioning media only when an image is built. Repeated image builds do
-not download it again while its locked file name and SHA-256 remain valid.
+`PATH`. The downloaded archive stays in the private WinVM cache and is copied to
+provisioning media only when an image is built. Repeated image builds do not
+download it again while its locked file name and SHA-256 remain valid.
 
 From the repository root:
 
@@ -75,23 +73,22 @@ just test-windows-resource
 `doctor.sh --print-input-hashes` helps identify local media. Wrong hashes and
 missing prerequisites fail; they are not skips.
 
-`just daemon-winvm` opens a visible QEMU console, builds and runs `almagestd`
-as Windows `SYSTEM`, forwards the daemon's loopback web panel to
-`http://127.0.0.1:8091/`. Windows production isolation is not available, so
-this launcher uses explicit direct mode and enables protected system-program
+`just daemon-winvm` opens a visible QEMU console, builds and runs `almagestd` as
+Windows `SYSTEM`, forwards the daemon's loopback web panel to
+`http://127.0.0.1:8091/`. Windows production isolation is not available, so this
+launcher uses explicit direct mode and enables protected system-program
 discovery. A TorDriver node therefore uses the Tor executable installed in the
-base image. Experimental nodes are off by default;
-use `just daemon-winvm --experimental` to enable them. Set `WINVM_WEB_PORT=9090`
-to select a different host port. Set `WINVM_OPEN_BROWSER=1` to open the panel
-with `xdg-open`, or set `WINVM_DISPLAY` to select another QEMU display backend. The manual overlay
-automatically signs in to the standard `winvm` account and opens the Server
-Core command environment. Its
-password is `AlmagestManual1!`; automatic login and this password do not modify
-the locked base image. Windows Server Core has no desktop browser, so the panel
-is available through the Linux host. Run `curl.exe` and other console tools in
-the visible Windows session when you need to probe graph services from inside
-the guest. The manual run installs its matching CLI at
-`C:\winvm\bin\almagest-cli.exe`. The comments in
+base image. Experimental nodes are off by default; use
+`just daemon-winvm --experimental` to enable them. Set `WINVM_WEB_PORT=9090` to
+select a different host port. Set `WINVM_OPEN_BROWSER=1` to open the panel with
+`xdg-open`, or set `WINVM_DISPLAY` to select another QEMU display backend. The
+manual overlay automatically signs in to the standard `winvm` account and opens
+the Server Core command environment. Its password is `AlmagestManual1!`;
+automatic login and this password do not modify the locked base image. Windows
+Server Core has no desktop browser, so the panel is available through the Linux
+host. Run `curl.exe` and other console tools in the visible Windows session when
+you need to probe graph services from inside the guest. The manual run installs
+its matching CLI at `C:\winvm\bin\almagest-cli.exe`. The comments in
 `local/winvm/config/alm.hujson` show how to export the built-in TLS CA and CRL,
 add them to the machine Windows certificate stores from an elevated terminal,
 test intercepted HTTPS with `curl.exe` without certificate flags, and remove
@@ -104,31 +101,31 @@ button is disabled to prevent an abrupt exit from losing recent state; use
 Ctrl+C in the terminal that runs `just`. Set `WINVM_STATE_DIR` to use another
 host directory. Manual runs do not produce Windows qualification evidence.
 
-Image creation performs unattended installation, installs QEMU Guest Agent
-and OpenSSH, and creates a standard account named `winvm`. Windows Firewall
-stays enabled; one guest rule permits SSH. Authentication uses a private cache
-key. The image builder obtains the SSH host key through its private QGA socket
-and then verifies SSH against that key. Password authentication is disabled.
-QGA has SYSTEM privileges and is available only through a private host socket.
+Image creation performs unattended installation, installs QEMU Guest Agent and
+OpenSSH, and creates a standard account named `winvm`. Windows Firewall stays
+enabled; one guest rule permits SSH. Authentication uses a private cache key.
+The image builder obtains the SSH host key through its private QGA socket and
+then verifies SSH against that key. Password authentication is disabled. QGA has
+SYSTEM privileges and is available only through a private host socket.
 
 ## Isolation, source identity, and evidence
 
 Each run has a unique `artifacts/winvm/run-*` directory, qcow2 overlay, firmware
-copy, sockets, and locked loopback SSH port. A host-wide lock serializes VM
-runs and image creation, including runs that use different cache directories.
-The packet-flow gate holds the same lock while its two required guests run.
+copy, sockets, and locked loopback SSH port. A host-wide lock serializes VM runs
+and image creation, including runs that use different cache directories. The
+packet-flow gate holds the same lock while its two required guests run.
 Per-image and per-run locks also protect recovery runs. Port contention fails
-before a run can claim success.
-Readiness requires two matching provisioning-token and Windows-boot-time
-observations. Provisioning, guest commands, transfers, and shutdown have limits.
-Both image creation and test runs use `host,cet-ss=off,cet-ibt=off`.
-This mitigates Windows CET/shadow-stack failures with QEMU 11 and Linux 7.
-See the [upstream Windows CET mitigation](https://lore.proxmox.com/pve-devel/20260515155810.229819-1-f.ebner@proxmox.com/).
+before a run can claim success. Readiness requires two matching
+provisioning-token and Windows-boot-time observations. Provisioning, guest
+commands, transfers, and shutdown have limits. Both image creation and test runs
+use `host,cet-ss=off,cet-ibt=off`. This mitigates Windows CET/shadow-stack
+failures with QEMU 11 and Linux 7. See the
+[upstream Windows CET mitigation](https://lore.proxmox.com/pve-devel/20260515155810.229819-1-f.ebner@proxmox.com/).
 The investigated Server 2022 guest stalled in kernel TLB-flush code and later
 crashed in a shadow-stack write. Re-enable CET only after validation on a fixed
-host stack, not merely after increasing a timeout.
-The CPU setting is part of the image cache key. An older cached image is not
-silently reused after this change.
+host stack, not merely after increasing a timeout. The CPU setting is part of
+the image cache key. An older cached image is not silently reused after this
+change.
 
 `source.tar` contains current tracked files and eligible untracked files, with
 tracked deletions omitted. Clean and dirty trees use the same policy.
@@ -137,88 +134,85 @@ included file hash. Archive metadata is deterministic. Source symlinks fail
 packaging because Windows extraction must not follow links outside staging.
 
 Packaging excludes Git metadata, local environment files, conventional secret
-directories and key files, VM media/disks/firmware, caches, artifacts, and ignored
-build output. Arbitrarily named credentials cannot be detected: keep them outside
-the repository. The full policy is in `package-worktree.py` and applies even to
-tracked files. Five named public certificate fixtures are included; the packager
-rejects private-key data in these fixtures. Review `source.json` when adding new
-local inputs.
+directories and key files, VM media/disks/firmware, caches, artifacts, and
+ignored build output. Arbitrarily named credentials cannot be detected: keep
+them outside the repository. The full policy is in `package-worktree.py` and
+applies even to tracked files. Five named public certificate fixtures are
+included; the packager rejects private-key data in these fixtures. Review
+`source.json` when adding new local inputs.
 
 The host extracts that archive into the run directory and regenerates the Go
 workspace, certificate catalog, and embedded panel there. It uses the archived
-catalog data and npm lock. `generated.sha256` and `generator-versions.txt` record
-the generated files and generator tools. `payload.sha256` identifies the complete
-guest payload; the guest verifies that hash before extraction. The checkout's
-ignored workspace and assets are not used or changed.
+catalog data and npm lock. `generated.sha256` and `generator-versions.txt`
+record the generated files and generator tools. `payload.sha256` identifies the
+complete guest payload; the guest verifies that hash before extraction. The
+checkout's ignored workspace and assets are not used or changed.
 
 The smoke run verifies transport, standard-user identity, OS, architecture,
-toolchain, and artifact retrieval. It records `testExecution: not-run`:
-**this is not the Windows test-suite gate or a support qualification.**
+toolchain, and artifact retrieval. It records `testExecution: not-run`: **this
+is not the Windows test-suite gate or a support qualification.**
 
 `just winvm-test` runs the active native gate from `test-suites.json`, then the
-isolated two-guest packet-flow gate. The
-ordinary suite runs all tests in `certcat`, `lib`, and `bin` through the
-standard `winvm` SSH account. The privileged suite runs as SYSTEM through the
-private QEMU Guest Agent. It is serial and uses `go test -p=1 -parallel=1` for
-each Go case, so later ACL, service, driver, and global-network cases can use
-the same gate without overlap. Add such cases only when their implementation
-milestone makes them mandatory.
+isolated two-guest packet-flow gate. The ordinary suite runs all tests in
+`certcat`, `lib`, and `bin` through the standard `winvm` SSH account. The
+privileged suite runs as SYSTEM through the private QEMU Guest Agent. It is
+serial and uses `go test -p=1 -parallel=1` for each Go case, so later ACL,
+service, driver, and global-network cases can use the same gate without overlap.
+Add such cases only when their implementation milestone makes them mandatory.
 
 Each Go command writes `go test -json` events. The guest validator requires a
 passing process result, complete package events, and every test explicitly
 listed by the case. A missing test, skip, failure, corrupt event, timeout, wrong
 identity, missing suite artifact, or artifact retrieval failure fails the run.
-The host independently requires passing ordinary and privileged artifacts.
-Each Go command also writes an atomic coverage profile. After validation, the
-host combines and publishes these profiles in `coverage/winvm`. The final
-coverage report includes that profile when it is present.
-The execution manifest sets a Go package timeout and a progress interval. The
-package timeout starts after compilation when a package test binary runs. It
-lets Go emit its timeout stack dump for a stalled test. Package loading,
-dependency download, and compilation have no deadline because their duration
-depends on the guest cache and host contention. The host prints `RUN`, `WAIT`,
-`PASS`, and `FAIL` progress. Each heartbeat also records the active Go process
-tree and guest memory and disk state under the suite's `diagnostics` directory.
-The active gate also builds and starts the production daemon and CLI. Focused
-named-pipe cases send CLI pings through standard-user and Local System daemon
-pipes, verify their protected access rules, and require the user pipe to reject
-the CLI machine trust class. The other standard-user daemon cases cover live
-config, subscriptions, snapshots, TLS, restart persistence, startup failures,
-and a local SOCKS/HTTP data path. An elevated daemon case creates a native
-adapter, records its adapter, route, and DNS state, stops the daemon gracefully,
-and requires the owned state baseline after the first run and after restart.
-These daemon cases do not replace the separate packet-capture and soak gates
-from Steps 21 and 22.
+The host independently requires passing ordinary and privileged artifacts. Each
+Go command also writes an atomic coverage profile. After validation, the host
+combines and publishes these profiles in `coverage/winvm`. The final coverage
+report includes that profile when it is present. The execution manifest sets a
+Go package timeout and a progress interval. The package timeout starts after
+compilation when a package test binary runs. It lets Go emit its timeout stack
+dump for a stalled test. Package loading, dependency download, and compilation
+have no deadline because their duration depends on the guest cache and host
+contention. The host prints `RUN`, `WAIT`, `PASS`, and `FAIL` progress. Each
+heartbeat also records the active Go process tree and guest memory and disk
+state under the suite's `diagnostics` directory. The active gate also builds and
+starts the production daemon and CLI. Focused named-pipe cases send CLI pings
+through standard-user and Local System daemon pipes, verify their protected
+access rules, and require the user pipe to reject the CLI machine trust class.
+The other standard-user daemon cases cover live config, subscriptions,
+snapshots, TLS, restart persistence, startup failures, and a local SOCKS/HTTP
+data path. An elevated daemon case creates a native adapter, records its
+adapter, route, and DNS state, stops the daemon gracefully, and requires the
+owned state baseline after the first run and after restart. These daemon cases
+do not replace the separate packet-capture and soak gates from Steps 21 and 22.
 
 The Windows sandbox mode matrix runs TorDriver protocol and traffic checks in
 `off`, `auto`, and `strict` under ordinary and elevated identities. The
 privileged native sandbox case also calls the same CryptoAPI provider and
 entropy functions that Tor uses, starts the pinned real Tor executable, waits
 for its control-port file, and repeats the native boundary and real Tor startup
-under LocalSystem. These tests qualify startup compatibility; they do not
-remove the native profile's reported filesystem-view or private-network
-exclusions.
+under LocalSystem. These tests qualify startup compatibility; they do not remove
+the native profile's reported filesystem-view or private-network exclusions.
 
 ## Isolated packet-flow evidence
 
 Step 21 uses two disposable Server 2022 guests. Each guest has its management
-adapter plus two test adapters. The test adapters use separate QEMU stream
-links named `tunnel` and `underlay`. QEMU capture filters write one PCAP for
-each link. Management traffic is not present in either capture. Run
+adapter plus two test adapters. The test adapters use separate QEMU stream links
+named `tunnel` and `underlay`. QEMU capture filters write one PCAP for each
+link. Management traffic is not present in either capture. Run
 `flow-network.ps1 -Role Client` and `flow-network.ps1 -Role Endpoint` in the
 applicable guests before the Almagest graph starts. Limit a firewall relaxation
 to the endpoint guest and restore it before another case uses that guest.
 
 The graph runner writes one JSON object per probe to
-`packet-flow-observations.jsonl`. Each token is unique ASCII text carried by
-its TCP or UDP probe. Each assertion immediately follows a positive control
-that proves capture visibility. The required cases are included, excluded,
+`packet-flow-observations.jsonl`. Each token is unique ASCII text carried by its
+TCP or UDP probe. Each assertion immediately follows a positive control that
+proves capture visibility. The required cases are included, excluded,
 descendant, pre-existing IPC target, nested WireGuard, application-owned DNS,
 shared Windows resolver DNS, underlay failure, and reconnect. The matrix covers
-IPv4-only, IPv6-only, and dual-stack profiles. Underlay-failure observations
-use `none`; a token on either test link is an unrestricted fallback. Shared
-resolver observations use `attribution: "shared-resolver"` because the Windows
-resolver process cannot prove requesting-application ownership.
+IPv4-only, IPv6-only, and dual-stack profiles. Underlay-failure observations use
+`none`; a token on either test link is an unrestricted fallback. Shared resolver
+observations use `attribution: "shared-resolver"` because the Windows resolver
+process cannot prove requesting-application ownership.
 
 Validate evidence independently on the host:
 
@@ -230,11 +224,10 @@ The validator fails for an absent profile, case, marker, control, capture,
 incorrect-link marker, fallback marker, duplicate or overlapping token, or an
 application attribution claim for shared resolver traffic. It removes a stale
 derived report before it parses new input. Keep the two PCAP files, observation
-log, generated report, guest network inventories, graph snapshot, and daemon
-log together. Host-only negative fixtures run as part of
-`just test-winvm-harness` runs the host-only harness tests. `just lint-winvm`
-runs ShellCheck, Ruff correctness checks, and PSScriptAnalyzer. `just lint` runs
-both gates.
+log, generated report, guest network inventories, graph snapshot, and daemon log
+together. Host-only negative fixtures run as part of `just test-winvm-harness`
+runs the host-only harness tests. `just lint-winvm` runs ShellCheck, Ruff
+correctness checks, and PSScriptAnalyzer. `just lint` runs both gates.
 
 ## Resource and recovery qualification
 
@@ -246,17 +239,17 @@ It also runs 25 production-daemon graph attach/detach cycles and a forced daemon
 termination followed by production-path restart and cleanup.
 
 The gate waits 10 seconds after cleanup and compares complete stable adapter,
-address, route, and DNS snapshots. It records handle, goroutine, and private-byte
-samples after warm-up and after each measured batch. The limits are fixed at no
-more than 8 additional handles, 4 additional goroutines, and 64 MiB additional
-private memory between the first and last measured samples. The independent
-host validator checks the snapshots, samples, workload, limits, required cases,
-and recovery declarations in the retrieved archive.
+address, route, and DNS snapshots. It records handle, goroutine, and
+private-byte samples after warm-up and after each measured batch. The limits are
+fixed at no more than 8 additional handles, 4 additional goroutines, and 64 MiB
+additional private memory between the first and last measured samples. The
+independent host validator checks the snapshots, samples, workload, limits,
+required cases, and recovery declarations in the retrieved archive.
 
-Set `ALMAGEST_WINDOWS_SOAK_DURATION=2m` only to investigate the gate. The
-result is marked `qualifying: false`; the validator permits it as a diagnostic
-artifact but does not accept it as release qualification. A full qualification
-does not set this variable.
+Set `ALMAGEST_WINDOWS_SOAK_DURATION=2m` only to investigate the gate. The result
+is marked `qualifying: false`; the validator permits it as a diagnostic artifact
+but does not accept it as release qualification. A full qualification does not
+set this variable.
 
 Busy close, failed reset, external DNS edits, adapter identity reuse, zombie
 driver state, and changed driver identity use deterministic fault injection.
@@ -266,33 +259,31 @@ journal. If split cleanup is uncertain, stop Almagest and the split-driver
 service, preserve the logs and WFP ownership data, remove only independently
 verified Almagest-owned objects, and then restart the provisioned service.
 
-Keep `resources-before.json`, `resources-after.json`,
-`process-resources.json`, the four JSONL event logs, and `suite.json` together.
-The suite record alone is not resource qualification evidence. Windows Firewall
-remains enabled during this gate.
-Set `RUN_WINVM_TESTS=1` to run the host-only harness tests, the WinVM lints,
-and the combined standard-user, elevated, and packet-flow `just winvm-test`
-gate. When it is unset or `0`, these WinVM-specific checks do not run.
-Aggregate E2E recipes keep the Docker E2E suite on Linux and join the enabled
-VM gates before coverage reporting. When enabled, the native gate requires the
-configured KVM host, locked media, and WinVM prerequisites.
-The regular native gate stops its case loop and later privilege phases after
-the first failure. `just test-cycles` selects collect-all mode for its repeated
+Keep `resources-before.json`, `resources-after.json`, `process-resources.json`,
+the four JSONL event logs, and `suite.json` together. The suite record alone is
+not resource qualification evidence. Windows Firewall remains enabled during
+this gate. Set `RUN_WINVM_TESTS=1` to run the host-only harness tests, the WinVM
+lints, and the combined standard-user, elevated, and packet-flow
+`just winvm-test` gate. When it is unset or `0`, these WinVM-specific checks do
+not run. Aggregate E2E recipes keep the Docker E2E suite on Linux and join the
+enabled VM gates before coverage reporting. When enabled, the native gate
+requires the configured KVM host, locked media, and WinVM prerequisites. The
+regular native gate stops its case loop and later privilege phases after the
+first failure. `just test-cycles` selects collect-all mode for its repeated
 diagnostic runs.
 
 The Go, Docker E2E, and WinVM test types run in sequence by default. Set
 `TEST_TYPES_PARALLEL=1` to run these test types concurrently. The same setting
 controls `just check`, `just test-e2e`, and `just test-cycles`.
 
-Each VM run writes `host-resources.jsonl` in its artifact directory. A sample
-is flushed to disk every two seconds. It contains host memory, swap, pressure,
+Each VM run writes `host-resources.jsonl` in its artifact directory. A sample is
+flushed to disk every two seconds. It contains host memory, swap, pressure,
 load, paging and OOM counters, the largest processes, and QEMU process and
 cgroup values. `resource-monitor.log` records monitor failures. These files
 remain useful after an out-of-memory restart because each JSON line is synced
-before the next sample.
-The enclosing test-type scheduler also records the full Go, Docker, and WinVM
-sequence under `artifacts/test-resources/`. It removes successful records and
-retains failed or interrupted records.
+before the next sample. The enclosing test-type scheduler also records the full
+Go, Docker, and WinVM sequence under `artifacts/test-resources/`. It removes
+successful records and retains failed or interrupted records.
 
 ## Project and CI gates
 
@@ -331,12 +322,12 @@ just qualify-windows windows-server-2022-amd64 /absolute/path/to/qualification.j
 
 The strict JSON record uses the suite and test IDs in
 `contracts/windows/test-manifest.json`. Each required suite records the same
-source revision, source archive, generated-input manifest, OS, architecture,
-Go toolchain, Wintun DLL, split driver, daemon binary, and CLI binary identities.
+source revision, source archive, generated-input manifest, OS, architecture, Go
+toolchain, Wintun DLL, split driver, daemon binary, and CLI binary identities.
 Core, privileged, and daemon E2E suites require individual coverage hashes.
 Packet-flow and resource suites must set `nonInstrumented` to `true`. A stale,
-missing, skipped, wrong-platform, mixed-identity, or shortened diagnostic
-result fails qualification.
+missing, skipped, wrong-platform, mixed-identity, or shortened diagnostic result
+fails qualification.
 
 ## Failure and recovery
 
@@ -352,15 +343,16 @@ The limits in `config.json` have separate meanings:
   timeout from `test-suites.json` after compilation. The resource qualification
   phase keeps its fixed `resourceTimeoutSeconds` duration.
 - `healthIntervalSeconds` sets the guest health check interval (15 seconds).
-  `healthTimeoutSeconds` limits consecutive failed checks (120 seconds).
-  SSH is checked first; QGA command execution is the fallback.
-- `artifactIntervalSeconds` sets periodic host artifact copies (60 seconds).
-  A failed or incomplete copy does not replace the last valid archive.
-  If Windows locks an active log, the other readable files are retained in
+  `healthTimeoutSeconds` limits consecutive failed checks (120 seconds). SSH is
+  checked first; QGA command execution is the fallback.
+- `artifactIntervalSeconds` sets periodic host artifact copies (60 seconds). A
+  failed or incomplete copy does not replace the last valid archive. If Windows
+  locks an active log, the other readable files are retained in
   `guest-artifacts.snapshot.tar`, explicitly marked as a partial snapshot.
 - `cleanupTimeoutSeconds` bounds diagnostics, shutdown and recovery together
   (300 seconds). Mandatory TERM/KILL/reap has a final six-second reserve.
-- `recoveryBootTimeoutSeconds` bounds the one evidence-only restart (120 seconds).
+- `recoveryBootTimeoutSeconds` bounds the one evidence-only restart (120
+  seconds).
 
 A normal Go timeout remains a failed test. An unresponsive guest is reported
 separately as `guest-unresponsive`. Recovery never reruns tests or converts a
@@ -368,20 +360,20 @@ failed attempt into a pass. `test-cycles` records that failure, then starts its
 next independent iteration with a fresh VM.
 
 Failure and Ctrl+C collect bounded QMP state, CPU registers, a screen image,
-guest process and network state, Windows events, small crash dumps, active
-test tails, and partial test artifacts. The supervisor stops only this run's
-guest test launchers before final collection. It then stops and reaps QEMU.
-If the guest froze or final artifact export failed, it boots the retained disk
-once to export the logs. No test command runs during this recovery boot.
-Original and recovery QEMU, serial and diagnostic logs have separate names.
-The last pre-recovery archive is also retained.
+guest process and network state, Windows events, small crash dumps, active test
+tails, and partial test artifacts. The supervisor stops only this run's guest
+test launchers before final collection. It then stops and reaps QEMU. If the
+guest froze or final artifact export failed, it boots the retained disk once to
+export the logs. No test command runs during this recovery boot. Original and
+recovery QEMU, serial and diagnostic logs have separate names. The last
+pre-recovery archive is also retained.
 
 `supervisor.log` records host decisions. `collection.json` records each archive
 attempt and whether the final copy succeeded. `run.json` records the failure
 kind and recovery result. `diagnostics.log` and `recovery-diagnostics.log`
-contain host diagnostics; guest reports are inside `guest-artifacts.tar`.
-The full kernel dump, if present, stays on the retained disk. Memory dumps
-can contain sensitive guest data.
+contain host diagnostics; guest reports are inside `guest-artifacts.tar`. The
+full kernel dump, if present, stays on the retained disk. Memory dumps can
+contain sensitive guest data.
 
 `test-cycles` sends its stop signal to the supervisor, not its collectors. It
 allows the configured cleanup budget plus 15 seconds before its last-resort
@@ -391,10 +383,10 @@ required to enforce the host deadlines or terminate QEMU.
 Collection is best effort: a guest that cannot boot or read its disk cannot
 export all logs. In that case the host keeps existing copies, partial archive,
 disk and firmware, and explicitly reports incomplete collection. It does not
-claim that missing logs were recovered. A process that survives KILL is
-recorded and blocks subsequent runs until that exact process has stopped.
-There is no unbounded process wait. Host power loss or SIGKILL of the supervisor
-cannot provide the same collection guarantee as a handled Ctrl+C/SIGTERM.
+claim that missing logs were recovered. A process that survives KILL is recorded
+and blocks subsequent runs until that exact process has stopped. There is no
+unbounded process wait. Host power loss or SIGKILL of the supervisor cannot
+provide the same collection guarantee as a handled Ctrl+C/SIGTERM.
 
 The failure message prints this recovery command:
 
@@ -404,12 +396,12 @@ just winvm-shell /absolute/path/to/artifacts/winvm/run-XXXXXXXX
 
 Recovery reuses that run's overlay and firmware and checks its base image and
 SSH identity. Do not run recovery while the original process is still active.
-Failed installation work remains in the private cache with its provisioning
-ISO and logs; `just winvm-image` retries installation in a new directory.
-These files can contain generated credentials. Successful image creation removes
-its temporary provisioning media. All run directories, including successful
-runs, are retained for inspection; remove an exact run directory only after its
-QEMU process has stopped and its artifacts are no longer needed.
+Failed installation work remains in the private cache with its provisioning ISO
+and logs; `just winvm-image` retries installation in a new directory. These
+files can contain generated credentials. Successful image creation removes its
+temporary provisioning media. All run directories, including successful runs,
+are retained for inspection; remove an exact run directory only after its QEMU
+process has stopped and its artifacts are no longer needed.
 
 Native provisioning and smoke execution require the locked media and host tools.
 Host-only tests do not prove that native provisioning succeeded.

@@ -12,8 +12,8 @@ clients.
 
 ## Initial Daemon Config
 
-- `WireGuard A` listens on UDP `127.0.0.1:51830` with default WireGuard
-  behavior and serves `10.201.10.1/32`.
+- `WireGuard A` listens on UDP `127.0.0.1:51830` with default WireGuard behavior
+  and serves `10.201.10.1/32`.
 - `WireGuard B` listens on UDP `127.0.0.1:51831` with non-default AmneziaWG
   obfuscation parameters and serves `10.201.20.1/32`.
 - `WireGuard C` listens on UDP `127.0.0.1:51832` and has two peers:
@@ -32,7 +32,7 @@ clients.
 - Daemon C's HTTP client can access daemon B's AmneziaWG-obfuscated WireGuard
   HTTP server.
 - Both HTTP servers log a tunneled `GET /` request.
-- A loopback packet capture exposes the standard WireGuard initiation,
-  response, and transport signatures for daemon A.
+- A loopback packet capture exposes the standard WireGuard initiation, response,
+  and transport signatures for daemon A.
 - The same capture exposes no standard WireGuard packet signatures for the
   non-default AmneziaWG profile on daemon B.

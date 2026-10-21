@@ -25,6 +25,6 @@ ordinary network stack.
 - The local proxy logs that it is listening on `127.0.0.1:1081`.
 - A direct request to the OS-level HTTP target succeeds and does not appear in
   daemon node logs.
-- A request to the same target through
-  `curl --socks5-hostname 127.0.0.1:1081` succeeds.
+- A request to the same target through `curl --socks5-hostname 127.0.0.1:1081`
+  succeeds.
 - The proxied request is visible in `LocalProxy` and `LogNetwork` logs.

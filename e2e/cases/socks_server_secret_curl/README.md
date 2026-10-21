@@ -13,5 +13,5 @@ server through Almagest. The lifecycle then combines these operations:
 - replace the listener port and disable and enable the CONNECT command; and
 - detach and restore the proxy and listen network links.
 
-Every usable state sends real authenticated traffic. Failure states confirm
-that stale passwords, listeners, commands, and network wrappers are not used.
+Every usable state sends real authenticated traffic. Failure states confirm that
+stale passwords, listeners, commands, and network wrappers are not used.
