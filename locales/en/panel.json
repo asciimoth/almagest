@@ -178,7 +178,7 @@
   "node.description.empty": "No long description is registered for this node class.",
   "node.description.tab": "Description",
   "node.docs.context_menu": "Open documentation",
-  "node.docs.open": "Open the complete node documentation in a new tab.",
+  "node.docs.open": "Open in a new tab",
   "node.details.aria_label": "Node details",
   "node.dialog.open_failed": "The node menu could not open a dialog: {error}",
   "node.dialog.renderer_outdated": "The node menu rejected a dialog request. Reload the panel to use the current Formular renderer.",

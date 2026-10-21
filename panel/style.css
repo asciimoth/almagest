@@ -1296,8 +1296,8 @@ h1 {
 }
 
 .node-docs-link {
-  display: inline-block;
-  margin-top: 14px;
+  flex: 0 0 auto;
+  margin-top: 2px;
   color: var(--blue);
   font-size: 12px;
 }
@@ -1473,6 +1473,18 @@ h1 {
 .node-panel-section h2 {
   margin: 0 0 8px;
   font-size: 16px;
+}
+
+.node-description-header {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.node-panel-section .node-description-header h2 {
+  margin: 0;
 }
 
 #node-menu {

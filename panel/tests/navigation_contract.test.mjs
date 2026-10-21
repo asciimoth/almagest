@@ -42,6 +42,21 @@ test("description port links highlight selected node slots without HTML parsing"
   assert.match(app, /if \(name !== "docs"\) clearDescriptionPortHighlight\(\)/);
 });
 
+test("empty node menus open the description tab by default", () => {
+  assert.match(app, /firstMenuSnapshot = message\.type === "menu\.snapshot" && !selectedMenu\.receivedSnapshot/);
+  assert.match(app, /accepted && firstMenuSnapshot/);
+  assert.match(app, /Array\.isArray\(message\.blocks\) && message\.blocks\.length === 0/);
+  assert.match(app, /tryBackend\("subscribeNodeMenu", \{ id: nodeID \}\)\.then/);
+  assert.match(app, /selectedMenu\?\.node === nodeID && !selectedMenu\.receivedSnapshot/);
+  assert.match(app, /setNodePanelTab\("docs"\)/);
+});
+
+test("the full documentation link is in the description header", () => {
+  assert.match(app, /descriptionHeader\.append\(docsLink\)/);
+  assert.match(app, /docsPanel\.append\(descriptionHeader, descriptionPanel\)/);
+  assert.match(app, /localizedText\("node\.docs\.open", "Open in a new tab"\)/);
+});
+
 test("graph input recovers from lost mouse-up events", () => {
   assert.match(app, /installLiteGraphPointerGuard\(\)/);
   assert.match(app, /finally \{\s*normalizeLiteGraphMoveListener\(this\);\s*\}/);

@@ -441,7 +441,7 @@ let snapshot: WorkspaceSnapshot = emptySnapshot();
 let graph: any;
 let canvas: any;
 let rendering = false;
-let selectedMenu: { node: ID; menu: FormularMenuInstance } | null = null;
+let selectedMenu: { node: ID; menu: FormularMenuInstance; receivedSnapshot: boolean } | null = null;
 let highlightedDescriptionPort: { nodeID: ID; side: "left" | "right"; name: string } | null = null;
 let activeTab = "graph";
 let sidekickUpdate = 0;
@@ -1999,16 +1999,19 @@ function renderNodePanel(id: number): void {
   descriptionPanel.className = "node-description";
   descriptionPanel.dataset.nodeDescription = "";
   renderNodeDescription(descriptionPanel, description);
-  docsPanel.append(textElement("h2", shortClass(node.class)), descriptionPanel);
+  const descriptionHeader = document.createElement("div");
+  descriptionHeader.className = "node-description-header";
+  descriptionHeader.append(textElement("h2", shortClass(node.class)));
   if (!nodeClass?.short_description.trimStart().startsWith("DEBUG ")) {
-    const docsLink = textElement("a", localizedText("node.docs.open", "Open the complete node documentation in a new tab."));
+    const docsLink = textElement("a", localizedText("node.docs.open", "Open in a new tab"));
     docsLink.className = "node-docs-link";
     docsLink.href = documentationURL(`node/${node.class}`);
     docsLink.target = "_blank";
     // The trusted same-origin docs use the opener relationship to find this panel tab.
     docsLink.rel = "opener";
-    docsPanel.append(docsLink);
+    descriptionHeader.append(docsLink);
   }
+  docsPanel.append(descriptionHeader, descriptionPanel);
   const nodePanelHeader: HTMLElement[] = [createNodeNameForm(node.name), tabs];
   if (nodeClass?.experimental) nodePanelHeader.push(createExperimentalNodeWarning());
   el.sidekick.replaceChildren(...nodePanelHeader, menuPanel, docsPanel);
@@ -2189,8 +2192,13 @@ function mountMenu(nodeID: number): void {
     }, {
       selectors: (selector: string) => formularSelectorValues(nodeID, selector),
     }),
+    receivedSnapshot: false,
   };
-  tryBackend("subscribeNodeMenu", { id: nodeID });
+  void tryBackend("subscribeNodeMenu", { id: nodeID }).then(() => {
+    if (selectedMenu?.node === nodeID && !selectedMenu.receivedSnapshot) {
+      setNodePanelTab("docs");
+    }
+  });
 }
 
 function formularSelectorValues(nodeID: number, selector: string): readonly string[] | null {
@@ -2210,10 +2218,18 @@ function destroyMenu(): void {
 
 function feedMenu(notification: WorkspaceNotification): void {
   if (!selectedMenu || notification.id !== selectedMenu.node || !notification.formular) return;
-  const message = notification.formular as { type?: unknown; dialog?: { kind?: unknown } };
+  const message = notification.formular as {
+    type?: unknown;
+    blocks?: unknown;
+    dialog?: { kind?: unknown };
+  };
   try {
+    const firstMenuSnapshot = message.type === "menu.snapshot" && !selectedMenu.receivedSnapshot;
     const accepted = selectedMenu.menu.feed(message);
-    if (message.type === "dialog.create" && !accepted) {
+    if (accepted && message.type === "menu.snapshot") selectedMenu.receivedSnapshot = true;
+    if (accepted && firstMenuSnapshot && Array.isArray(message.blocks) && message.blocks.length === 0) {
+      setNodePanelTab("docs");
+    } else if (message.type === "dialog.create" && !accepted) {
       const text = localizedText("node.dialog.renderer_outdated", "The node menu rejected a dialog request. Reload the panel to use the current Formular renderer.");
       log("frontend", "error", text);
       notifyError(text);

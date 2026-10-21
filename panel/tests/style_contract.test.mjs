@@ -32,6 +32,13 @@ test("highlighted documentation preview ports have a visible outline", () => {
   assert.match(rule, /outline:\s*2px solid var\(--yellow\);/);
 });
 
+test("the description header puts its documentation link at the right edge", () => {
+  const rule = cssRule(".node-description-header");
+
+  assert.match(rule, /display:\s*flex;/);
+  assert.match(rule, /justify-content:\s*space-between;/);
+});
+
 test("SPA tab and locale glyphs use one fixed control width", () => {
   const tabRule = cssRule(".tabs button");
   const localeRule = cssRule(".locale-picker");

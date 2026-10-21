@@ -178,7 +178,7 @@
   "node.description.empty": "Lorem · No long description is registered for this node class.",
   "node.description.tab": "Lorem · Description",
   "node.docs.context_menu": "Lorem · Open documentation",
-  "node.docs.open": "Lorem · Open the complete node documentation in a new tab.",
+  "node.docs.open": "Lorem · Open in a new tab",
   "node.details.aria_label": "Lorem · Node details",
   "node.dialog.open_failed": "Lorem · The node menu could not open a dialog: {error}",
   "node.dialog.renderer_outdated": "Lorem · The node menu rejected a dialog request. Reload the panel to use the current Formular renderer.",
