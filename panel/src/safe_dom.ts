@@ -739,7 +739,10 @@ type MarkdownBlock =
   | { type: "paragraph"; text: string }
   | { type: "code"; text: string; language: string }
   | { type: "heading"; text: string; level: number }
-  | { type: "list"; items: string[]; ordered: boolean; start: number };
+  | { type: "list"; items: string[]; ordered: boolean; start: number }
+  | { type: "alert"; kind: MarkdownAlertKind; blocks: MarkdownBlock[] };
+
+type MarkdownAlertKind = "note" | "tip" | "important" | "warning" | "caution";
 
 function parseMarkdownBlocks(input: string): MarkdownBlock[] {
   const blocks: MarkdownBlock[] = [];
@@ -759,7 +762,8 @@ function parseMarkdownBlocks(input: string): MarkdownBlock[] {
     list = null;
   };
 
-  for (const line of lines) {
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+    const line = lines[lineIndex] ?? "";
     const fence = line.match(/^ {0,3}```([A-Za-z0-9_+.-]*)\s*$/);
     if (fence && code === null) {
       flushParagraph();
@@ -781,6 +785,25 @@ function parseMarkdownBlocks(input: string): MarkdownBlock[] {
     if (line.trim() === "") {
       flushParagraph();
       flushList();
+      continue;
+    }
+
+    const alert = line.match(/^ {0,3}>[ \t]?\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\][ \t]*$/);
+    if (alert) {
+      flushParagraph();
+      flushList();
+      const body: string[] = [];
+      while (lineIndex + 1 < lines.length) {
+        const quoted = (lines[lineIndex + 1] ?? "").match(/^ {0,3}>[ \t]?(.*)$/);
+        if (!quoted) break;
+        body.push(quoted[1] ?? "");
+        lineIndex += 1;
+      }
+      blocks.push({
+        type: "alert",
+        kind: (alert[1] ?? "").toLowerCase() as MarkdownAlertKind,
+        blocks: parseMarkdownBlocks(body.join("\n")),
+      });
       continue;
     }
 
@@ -840,8 +863,22 @@ function renderMarkdownBlock(
 ): HTMLElement {
   if (block.type === "code") return renderMarkdownCodeBlock(block.text, block.language);
   if (block.type === "list") return renderMarkdownList(block);
+  if (block.type === "alert") return renderMarkdownAlert(block, mode, headingIDs);
   if (block.type === "heading") return renderMarkdownHeading(block.text, block.level, mode, headingIDs);
   return renderMarkdownParagraph(block.text);
+}
+
+function renderMarkdownAlert(
+  block: Extract<MarkdownBlock, { type: "alert" }>,
+  mode: MarkdownRenderMode,
+  headingIDs: Map<string, number>,
+): HTMLElement {
+  const alert = document.createElement("aside");
+  alert.className = `markdown-alert markdown-alert-${block.kind}`;
+  alert.setAttribute("aria-label", block.kind);
+  const title = textElement("p", block.kind.toUpperCase(), "markdown-alert-title");
+  alert.append(title, ...block.blocks.map((child) => renderMarkdownBlock(child, mode, headingIDs)));
+  return alert;
 }
 
 function renderMarkdownParagraph(input: string): HTMLParagraphElement {
@@ -922,12 +959,16 @@ function markdownHeadingID(input: string): string {
 
 function renderMarkdownInline(input: string): DocumentFragment {
   const root = document.createDocumentFragment();
-  const parts = input.split(/(\[[^\]]+\]\([^)]+\)|\*\*[^*]+\*\*|\*[^*\s][^*]*\*|_[^_\s][^_]*_|`[^`]+`)/g);
+  const parts = input.split(/(!?\[[^\]\n]*\]\([^\n]*?\)|\*\*[^*]+\*\*|\*[^*\s][^*]*\*|_[^_\s][^_]*_|`[^`]+`)/g);
   for (const part of parts) {
     if (!part) continue;
-    const link = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
-    if (link) {
-      root.append(renderMarkdownLink(link[1] ?? "", link[2] ?? ""));
+    const reference = parseMarkdownInlineReference(part);
+    if (reference?.image) {
+      root.append(renderMarkdownImage(reference.label, reference.destination, reference.title));
+      continue;
+    }
+    if (reference) {
+      root.append(renderMarkdownLink(reference.label, reference.destination, reference.title));
       continue;
     }
     if (part.startsWith("**") && part.endsWith("**")) {
@@ -950,6 +991,26 @@ function renderMarkdownInline(input: string): DocumentFragment {
   return root;
 }
 
+type MarkdownInlineReference = {
+  image: boolean;
+  label: string;
+  destination: string;
+  title: string;
+};
+
+function parseMarkdownInlineReference(input: string): MarkdownInlineReference | null {
+  const match = input.match(
+    /^(!?)\[([^\]]*)\]\([ \t]*(?:<([^<>\n]*)>|([^ \t\n]+?))(?:[ \t]+(?:"([^"\n]*)"|'([^'\n]*)'|\(([^)\n]*)\)))?[ \t]*\)$/,
+  );
+  if (!match) return null;
+  return {
+    image: match[1] === "!",
+    label: match[2] ?? "",
+    destination: match[3] ?? match[4] ?? "",
+    title: match[5] ?? match[6] ?? match[7] ?? "",
+  };
+}
+
 function markdownInlineElement(tag: "strong" | "em" | "code", text: string): HTMLElement {
   const element = document.createElement(tag);
   element.append(...markdownInlineText(text));
@@ -965,19 +1026,36 @@ function markdownInlineText(text: string): Node[] {
   return nodes;
 }
 
-function renderMarkdownLink(label: string, href: string): HTMLAnchorElement {
+function renderMarkdownLink(label: string, href: string, title: string): HTMLAnchorElement {
   const anchor = document.createElement("a");
   anchor.append(...markdownInlineText(label));
-  try {
-    const url = new URL(href, window.location.href);
-    if (url.protocol === "http:" || url.protocol === "https:" || url.protocol === "mailto:") {
-      anchor.href = url.href;
-    }
-  } catch {
-    anchor.removeAttribute("href");
-  }
+  const url = safeMarkdownURL(href, true);
+  if (url) anchor.href = url;
+  if (title) anchor.title = title;
   anchor.rel = "noopener noreferrer";
   return anchor;
+}
+
+function renderMarkdownImage(alt: string, src: string, title: string): HTMLImageElement {
+  const image = document.createElement("img");
+  image.alt = alt;
+  const url = safeMarkdownURL(src, false);
+  if (url) image.src = url;
+  if (title) image.title = title;
+  image.loading = "lazy";
+  return image;
+}
+
+function safeMarkdownURL(input: string, allowMailto: boolean): string | null {
+  try {
+    const url = new URL(input, window.location.href);
+    if (url.protocol === "http:" || url.protocol === "https:" || (allowMailto && url.protocol === "mailto:")) {
+      return url.href;
+    }
+  } catch {
+    // Leave the URL attribute unset when the input is not a valid safe URL.
+  }
+  return null;
 }
 
 function formatLogTime(at: string): string {

@@ -1035,6 +1035,49 @@ h1 {
   margin-top: 4px;
 }
 
+.node-description img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 0 10px;
+}
+
+.node-description .markdown-alert {
+  --markdown-alert-color: var(--blue);
+  margin: 0 0 10px;
+  border-left: 4px solid var(--markdown-alert-color);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: color-mix(in srgb, var(--markdown-alert-color), transparent 92%);
+  padding: 8px 12px;
+}
+
+.node-description .markdown-alert-tip {
+  --markdown-alert-color: var(--green);
+}
+
+.node-description .markdown-alert-important {
+  --markdown-alert-color: var(--mauve);
+}
+
+.node-description .markdown-alert-warning {
+  --markdown-alert-color: var(--yellow);
+}
+
+.node-description .markdown-alert-caution {
+  --markdown-alert-color: var(--red);
+}
+
+.node-description .markdown-alert-title.markdown-alert-title {
+  color: var(--markdown-alert-color);
+  font-size: 0.86em;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.node-description .markdown-alert > :last-child {
+  margin-bottom: 0;
+}
+
 .node-description p:last-child {
   margin-bottom: 0;
 }

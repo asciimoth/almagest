@@ -51,6 +51,7 @@ async function compress(directory) {
 
 await rm(target, { recursive: true, force: true });
 await mkdir(target, { recursive: true });
+await cp(new URL("../../logo.svg", import.meta.url), new URL("logo.svg", target));
 await cp(new URL("../style.css", import.meta.url), new URL("style.css", target));
 await cp(new URL("../public", import.meta.url), new URL("public", target), { recursive: true });
 await cp(new URL("../vendor", import.meta.url), new URL("vendor", target), { recursive: true });

@@ -82,4 +82,5 @@ test("panel documentation controls open the separate page in a new tab", () => {
 test("published assets include the documentation page and module", async () => {
   await access(published("docs/index.html.gz"));
   await access(published("public/build/docs.js.gz"));
+  await access(published("logo.svg.gz"));
 });

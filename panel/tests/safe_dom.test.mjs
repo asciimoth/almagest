@@ -606,6 +606,129 @@ test("documentation headings use levels and unique URL anchor IDs", () => {
   assert.equal(root.lastElementChild?.textContent, "####### Not a heading");
 });
 
+test("node descriptions render all GitHub alert types and their Markdown bodies", () => {
+  installDOM();
+  const root = document.createElement("div");
+  renderNodeDescription(root, [
+    "> [!NOTE]",
+    "> A **note** with two lines.",
+    "> The second line is soft-wrapped.",
+    "",
+    "> [!TIP]",
+    "> - First tip",
+    "> - Second `tip`",
+    "",
+    "> [!IMPORTANT]",
+    "> Important text.",
+    "",
+    "> [!WARNING]",
+    "> Warning text.",
+    "",
+    "> [!CAUTION]",
+    "> Caution text.",
+  ].join("\n"), "docs");
+
+  const alerts = [...root.querySelectorAll(":scope > .markdown-alert")];
+  assert.deepEqual(alerts.map((alert) => alert.className), [
+    "markdown-alert markdown-alert-note",
+    "markdown-alert markdown-alert-tip",
+    "markdown-alert markdown-alert-important",
+    "markdown-alert markdown-alert-warning",
+    "markdown-alert markdown-alert-caution",
+  ]);
+  assert.deepEqual(alerts.map((alert) => alert.getAttribute("aria-label")), [
+    "note", "tip", "important", "warning", "caution",
+  ]);
+  assert.equal(alerts[0]?.querySelector("strong")?.textContent, "note");
+  assert.deepEqual([...alerts[1].querySelectorAll("li")].map((item) => item.textContent), [
+    "First tip", "Second tip",
+  ]);
+  assert.equal(alerts[1]?.querySelector("code")?.textContent, "tip");
+});
+
+test("GitHub alerts require an exact uppercase marker and quoted body lines", () => {
+  installDOM();
+  const root = document.createElement("div");
+  renderNodeDescription(root, [
+    "> [!note]",
+    "> Lowercase is ordinary text.",
+    "",
+    "> [!NOTE] extra",
+    "> A suffix makes this ordinary text.",
+    "",
+    "> [!NOTE]",
+    "This unquoted line is outside the empty alert.",
+  ].join("\n"));
+
+  assert.equal(root.querySelectorAll(".markdown-alert").length, 1);
+  assert.equal(root.querySelector(".markdown-alert")?.children.length, 1);
+  assert.match(root.children[0]?.textContent ?? "", /\[!note\]/);
+  assert.match(root.children[1]?.textContent ?? "", /\[!NOTE\] extra/);
+  assert.equal(root.lastElementChild?.textContent, "This unquoted line is outside the empty alert.");
+});
+
+test("Markdown images support safe URLs, relative paths, alt text, and hover titles", () => {
+  installDOM();
+  const root = document.createElement("div");
+  renderNodeDescription(root, [
+    '![Relative logo](/images/logo.svg "Logo hover text")',
+    "![External](https://images.example.test/picture.png 'External title')",
+    `![${payload}](javascript:evil '${payload}')`,
+    "![Mail](mailto:admin@example.test)",
+  ].join("\n"));
+
+  const images = [...root.querySelectorAll("img")];
+  assert.equal(images.length, 4);
+  assert.equal(images[0]?.src, "https://panel.test/images/logo.svg");
+  assert.equal(images[0]?.alt, "Relative logo");
+  assert.equal(images[0]?.title, "Logo hover text");
+  assert.equal(images[0]?.loading, "lazy");
+  assert.equal(images[1]?.src, "https://images.example.test/picture.png");
+  assert.equal(images[1]?.title, "External title");
+  assert.equal(images[2]?.hasAttribute("src"), false);
+  assert.equal(images[2]?.alt, payload);
+  assert.equal(images[2]?.title, payload);
+  assert.equal(images[3]?.hasAttribute("src"), false);
+  assert.equal(root.querySelector("script,svg,iframe,math"), null);
+  assert.equal(globalThis.__xss, undefined);
+});
+
+test("Markdown links resolve relative destinations and preserve safe hover titles", () => {
+  installDOM();
+  const root = document.createElement("div");
+  renderNodeDescription(root, [
+    '[Relative](../guides/start "Start guide")',
+    "[Root](/docs/reference)",
+    "[Fragment](#details)",
+  ].join(" "));
+
+  const links = [...root.querySelectorAll("a")];
+  assert.deepEqual(links.map((link) => link.href), [
+    "https://panel.test/guides/start",
+    "https://panel.test/docs/reference",
+    "https://panel.test/#details",
+  ]);
+  assert.equal(links[0]?.title, "Start guide");
+  assert.equal(links.every((link) => link.rel === "noopener noreferrer"), true);
+});
+
+test("alert contents and image attributes do not parse hostile HTML", () => {
+  installDOM();
+  const root = document.createElement("div");
+  renderNodeDescription(root, [
+    "> [!WARNING]",
+    `> ${payload}`,
+    "> ![safe alt](data:image/svg+xml,evil '<script>bad</script>')",
+  ].join("\n"));
+
+  const image = root.querySelector(".markdown-alert img");
+  assert.equal(image?.hasAttribute("src"), false);
+  assert.equal(image?.title, "<script>bad</script>");
+  assert.equal(root.querySelector("script,svg,iframe,math"), null);
+  assert.equal(globalThis.__xss, undefined);
+  assert.match(root.textContent ?? "", /<script>/);
+});
+
 test("panel source does not use script execution or HTML parser sinks", async () => {
   const files = (await readdir(new URL("../src/", import.meta.url)))
     .filter((file) => file.endsWith(".ts"))

@@ -12,6 +12,12 @@
           "file": "guides/welcome.md",
           "order": 1,
           "default": true
+        },
+        {
+          "id": "guide/markdown-features",
+          "name": "Markdown exemplum",
+          "file": "guides/markdown-features.md",
+          "order": 2
         }
       ],
       "topics": [
