@@ -68,3 +68,14 @@ test("language picker is the last glyph in the tab bar with a localized hint", (
   assert.equal(select?.getAttribute("aria-label"), "Language");
   assert.equal(select?.querySelector("option")?.textContent, "English");
 });
+
+test("runtime security status is reported in the Processes tab", () => {
+  const dom = new JSDOM(html);
+  const header = dom.window.document.querySelector(".app-header");
+  const processes = dom.window.document.querySelector("[data-panel='ps']");
+
+  assert.equal(header?.querySelector("#isolation-status"), null);
+  assert.equal(header?.querySelector("#sandbox-status"), null);
+  assert.ok(processes?.querySelector(".ps-runtime-status > #isolation-status"));
+  assert.ok(processes?.querySelector(".ps-runtime-status > #sandbox-status"));
+});

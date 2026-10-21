@@ -179,7 +179,8 @@ test("worker process blocks keep node and worker payloads as text", () => {
 
   assertNoParsedPayload(root);
   assert.match(root.textContent ?? "", /worker 9/);
-  assert.equal(root.querySelector(".ps-worker-kind-sandbox")?.textContent, "sandbox process");
+  assert.equal(root.querySelector(".ps-worker-sandbox")?.title, "Sandbox process");
+  assert.equal(root.querySelector(".ps-worker-kind"), null);
   assert.match(root.textContent ?? "", /<script>/);
 });
 
@@ -216,7 +217,8 @@ test("worker age updates preserve existing worker rows", () => {
 
   assert.equal(root.querySelector(".ps-worker"), row);
   assert.equal(root.querySelector(".ps-worker-age"), age);
-  assert.equal(root.querySelector(".ps-worker-kind-go")?.textContent, "Go worker");
+  assert.equal(root.querySelector(".ps-worker-go")?.title, "Built-in Go worker");
+  assert.equal(root.querySelector(".ps-worker-kind"), null);
   assert.equal(age?.textContent, "age 1m5s");
 });
 

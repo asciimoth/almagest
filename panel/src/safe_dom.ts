@@ -1091,17 +1091,16 @@ function formatLogSource(entry: PanelLogEntry): string {
 
 function createWorkerItem(worker: WorkerSnapshot, now: Date): HTMLLIElement {
   const item = document.createElement("li");
-  item.className = "ps-worker";
+  item.className = `ps-worker ps-worker-${worker.kind}`;
+  item.title = worker.kind === "sandbox"
+    ? t("processes.worker.sandbox_hint", "Sandbox process")
+    : t("processes.worker.go_hint", "Built-in Go worker");
   if (worker.error) item.classList.add("ps-worker-failed");
   const age = textElement("time", t("processes.worker.age", "age {age}", { age: formatWorkerAge(worker.started_at, now) }), "ps-worker-age");
   age.dateTime = worker.started_at;
   age.dataset.startedAt = worker.started_at;
   item.append(
     textElement("strong", t("processes.worker.title", "worker {id}", { id: worker.id })),
-    iconSeparator(),
-    textElement("small", worker.kind === "sandbox"
-      ? t("processes.worker.sandbox", "sandbox process")
-      : t("processes.worker.go", "Go worker"), `ps-worker-kind ps-worker-kind-${worker.kind}`),
     iconSeparator(),
     textElement("span", worker.worker_name || t("processes.node.unnamed", "unnamed")),
     iconSeparator(),

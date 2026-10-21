@@ -661,25 +661,6 @@ h1 {
   white-space: nowrap;
 }
 
-#isolation-status,
-#sandbox-status {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 8px;
-  border: 1px solid var(--green);
-  border-radius: 999px;
-  color: var(--green);
-  font-size: 12px;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-#isolation-status[data-reduced="true"],
-#sandbox-status[data-reduced="true"] {
-  border-color: var(--yellow);
-  color: var(--yellow);
-}
-
 #project-version[data-highlight="none"] {
   color: var(--subtext);
   border-color: var(--surface1);
@@ -1551,6 +1532,36 @@ h1 {
   padding: 14px;
 }
 
+.ps-runtime-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 10px;
+}
+
+.ps-runtime-status:empty {
+  display: none;
+}
+
+#isolation-status,
+#sandbox-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 10px;
+  border-left: 3px solid var(--green);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--green), var(--mantle) 92%);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+#isolation-status[data-reduced="true"],
+#sandbox-status[data-reduced="true"] {
+  border-left-color: var(--yellow);
+  background: color-mix(in srgb, var(--yellow), var(--mantle) 92%);
+}
+
 #ps-list {
   display: grid;
   gap: 10px;
@@ -1631,7 +1642,7 @@ h1 {
 
 .ps-worker {
   display: grid;
-  grid-template-columns: 78px 8px 104px 8px minmax(90px, 1fr) 8px 86px;
+  grid-template-columns: 78px 8px minmax(90px, 1fr) 8px 86px;
   gap: 5px;
   align-items: stretch;
   padding: 7px 9px;
@@ -1640,8 +1651,17 @@ h1 {
   background: color-mix(in srgb, var(--crust), transparent 8%);
 }
 
+.ps-worker-go {
+  background: color-mix(in srgb, var(--blue), var(--crust) 96%);
+}
+
+.ps-worker-sandbox {
+  border-color: color-mix(in srgb, var(--peach), var(--surface0) 82%);
+  background: color-mix(in srgb, var(--peach), var(--crust) 94%);
+}
+
 .ps-worker-failed {
-  grid-template-columns: 78px 8px 104px 8px minmax(90px, 1fr) 8px 86px 8px minmax(120px, 1.4fr);
+  grid-template-columns: 78px 8px minmax(90px, 1fr) 8px 86px 8px minmax(120px, 1.4fr);
   border-color: color-mix(in srgb, var(--red), var(--surface0) 70%);
   background: color-mix(in srgb, var(--red), var(--crust) 92%);
 }
@@ -1669,24 +1689,6 @@ h1 {
 .ps-worker strong {
   color: var(--text);
   font-size: 12px;
-}
-
-.ps-worker-kind {
-  display: inline-block;
-  justify-self: start;
-  border: 1px solid var(--surface1);
-  border-radius: 999px;
-  padding: 2px 6px;
-  color: var(--subtext);
-  font-size: 10px;
-  font-weight: 600;
-  line-height: 1.2;
-  white-space: nowrap;
-}
-
-.ps-worker-kind-sandbox {
-  border-color: color-mix(in srgb, var(--peach), var(--surface1) 55%);
-  color: var(--peach);
 }
 
 .ps-worker span {

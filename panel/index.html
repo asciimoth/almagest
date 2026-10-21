@@ -18,8 +18,6 @@
             <div class="app-title-row">
               <h1 data-i18n="app.title">Almagest admin</h1>
               <span id="project-version" hidden></span>
-              <span id="isolation-status" hidden></span>
-              <span id="sandbox-status" hidden></span>
             </div>
             <span id="backend-status" data-i18n="app.status.loading">Loading</span>
           </div>
@@ -102,6 +100,10 @@
               <p data-i18n="processes.description">Active workers grouped by node.</p>
             </div>
           </header>
+          <div id="ps-runtime-status" class="ps-runtime-status" aria-label="Runtime security status" data-i18n-aria-label="processes.runtime_status.aria_label">
+            <span id="isolation-status" hidden></span>
+            <span id="sandbox-status" hidden></span>
+          </div>
           <ol id="ps-list" aria-label="Workers by node" data-i18n-aria-label="processes.list.aria_label"></ol>
         </div>
       </section>
