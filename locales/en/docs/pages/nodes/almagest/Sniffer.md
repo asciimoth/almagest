@@ -26,7 +26,7 @@ example blocks HTTP requests whose target starts with `/admin`, sends TLS
 connections that offer `h2` to slot 2, and sends other inspected traffic to
 slot 1:
 
-```text
+```rulev1
 DIAL
 TCP
 AND
@@ -84,7 +84,7 @@ peer can open a connection without sending a complete prefix.
 `ROUTE` selects a slot and changes fields before the backend receives the
 operation. For example:
 
-```text
+```rulev1
 SNIFF HTTP URL:/backend-a
 ROUTE 1 DST:127.0.0.1:8080
 ```

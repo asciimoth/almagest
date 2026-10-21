@@ -11,7 +11,7 @@ selected slot is disconnected or not ready, or if a rule uses `DROP`. Empty or
 comment-only rules reject all operations. Add this segment at the end when
 slot 1 must be the default:
 
-```text
+```rulev1
 TRUE
 SLOT 1
 ```
@@ -49,7 +49,7 @@ order: put the values first, and then put the operator after them.
 This example sends TCP dials for `internal.example` and its subdomains to slot
 2. It sends all other operations to slot 1:
 
-```text
+```rulev1
 DIAL
 TCP
 AND

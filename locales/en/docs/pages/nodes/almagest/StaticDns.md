@@ -27,7 +27,7 @@ backslash escapes the next character inside quoted text.
 
 For example:
 
-```text
+```spacetable
 # Local service records
 app.example.test A 192.0.2.10
 app.example.test AAAA 2001:db8::10

@@ -501,6 +501,75 @@ test("node descriptions render multiline code blocks as text", () => {
   assert.equal(root.querySelectorAll("p code").length, 1);
 });
 
+test("node descriptions highlight JSON-family code blocks without parsing source as HTML", () => {
+  installDOM();
+
+  for (const language of ["json", "hjson", "hujson"]) {
+    const root = document.createElement("div");
+    const source = [
+      "{",
+      "  \"enabled\": true,",
+      `  // ${payload}`,
+      "  \"count\": 42,",
+      "}",
+    ].join("\n");
+    renderNodeDescription(root, `\`\`\`${language}\n${source}\n\`\`\``);
+
+    assertNoParsedPayload(root);
+    const code = root.querySelector("pre > code");
+    assert.equal(code?.className, `language-${language}`);
+    assert.equal(code?.textContent, source);
+    assert.equal(code?.querySelector(".hujson-key")?.textContent, "\"enabled\"");
+    assert.equal(code?.querySelector(".hujson-keyword")?.textContent, "true");
+    assert.equal(code?.querySelector(".hujson-comment")?.textContent, `// ${payload}`);
+    assert.equal(code?.querySelector(".hujson-number")?.textContent, "42");
+  }
+});
+
+test("node descriptions highlight RuleV1 code blocks without parsing source as HTML", () => {
+  installDOM();
+  const root = document.createElement("div");
+  const source = [
+    `# ${payload}`,
+    "ADDR_RE (^|.*\\.)internal\\.example$",
+    "SLOT 2",
+  ].join("\n");
+
+  renderNodeDescription(root, `\`\`\`rulev1\n${source}\n\`\`\``);
+
+  assertNoParsedPayload(root);
+  const code = root.querySelector("pre > code");
+  assert.equal(code?.className, "language-rulev1");
+  assert.equal(code?.textContent, source);
+  assert.equal(code?.querySelector(".rulev1-comment")?.textContent, `# ${payload}`);
+  assert.equal(code?.querySelector(".rulev1-instruction")?.textContent, "ADDR_RE");
+  assert.equal(code?.querySelector(".rulev1-argument")?.textContent, "(^|.*\\.)internal\\.example$");
+  assert.equal(code?.querySelector(".rulev1-number")?.textContent, "2");
+});
+
+test("node descriptions highlight space-separated tables without parsing source as HTML", () => {
+  installDOM();
+  const root = document.createElement("div");
+  const source = [
+    `# ${payload}`,
+    "app.example.test A 192.0.2.10",
+    "example.test MX 10 mail.example.test",
+    "example.test TXT \"managed locally\"",
+  ].join("\n");
+
+  renderNodeDescription(root, `\`\`\`spacetable\n${source}\n\`\`\``);
+
+  assertNoParsedPayload(root);
+  const code = root.querySelector("pre > code");
+  assert.equal(code?.className, "language-spacetable");
+  assert.equal(code?.textContent, source);
+  assert.equal(code?.querySelector(".spacetable-comment")?.textContent, `# ${payload}`);
+  assert.equal(code?.querySelector(".spacetable-key")?.textContent, "app.example.test");
+  assert.equal(code?.querySelector(".spacetable-value")?.textContent, "A");
+  assert.equal(code?.querySelector(".spacetable-number")?.textContent, "10");
+  assert.equal(code?.querySelector(".spacetable-string")?.textContent, "\"managed locally\"");
+});
+
 test("node descriptions render Markdown soft and hard line breaks", () => {
   installDOM();
   const root = document.createElement("div");

@@ -35,7 +35,10 @@ import {
   type TLSPolicyEntry,
   type TLSScope,
 } from "./tls_model.js";
+import { renderHuJSONHighlight } from "./hujson_highlight.js";
 import { text as localizedText } from "./localization.js";
+import { renderRuleV1Highlight } from "./rulev1_highlight.js";
+import { renderSpaceTableHighlight } from "./spacetable_highlight.js";
 
 export const EXPERIMENTAL_NODE_WARNING = "This node type is experimental and may be removed or significantly changed.";
 
@@ -931,6 +934,13 @@ function renderMarkdownCodeBlock(input: string, language: string): HTMLPreElemen
   const pre = document.createElement("pre");
   const code = textElement("code", input);
   if (language) code.className = `language-${language}`;
+  if (language === "json" || language === "hjson" || language === "hujson") {
+    renderHuJSONHighlight(code, input);
+  } else if (language === "rulev1") {
+    renderRuleV1Highlight(code, input);
+  } else if (language === "spacetable") {
+    renderSpaceTableHighlight(code, input);
+  }
   pre.append(code);
   return pre;
 }

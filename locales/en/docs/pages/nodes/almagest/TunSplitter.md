@@ -21,7 +21,7 @@ packets. Add a final `TRUE` segment when you need a default path.
 This example sends traffic for the Tailscale IPv4 range to slot 2 and sends
 all other valid packets to slot 1:
 
-```text
+```rulev1
 SNET4 100.64.0.0/10
 SLOT 2
 

@@ -1087,6 +1087,39 @@ h1 {
   color: var(--subtext);
 }
 
+.rulev1-comment {
+  color: var(--subtext);
+}
+
+.rulev1-instruction {
+  color: var(--mauve);
+}
+
+.rulev1-argument {
+  color: var(--green);
+}
+
+.rulev1-number {
+  color: var(--yellow);
+}
+
+.spacetable-comment {
+  color: var(--subtext);
+}
+
+.spacetable-key {
+  color: var(--blue);
+}
+
+.spacetable-value,
+.spacetable-string {
+  color: var(--green);
+}
+
+.spacetable-number {
+  color: var(--yellow);
+}
+
 #config-editor:focus {
   border-color: var(--blue);
 }

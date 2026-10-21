@@ -10,7 +10,7 @@ connection.
 This example rejects one name, sends A queries for an internal domain to slot
 2, and sends all other queries to slot 1:
 
-```text
+```rulev1
 ADDR_S blocked.example.
 DROP
 

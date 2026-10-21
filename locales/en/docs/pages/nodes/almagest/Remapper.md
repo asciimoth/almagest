@@ -6,7 +6,7 @@ An empty **Remap rules** field makes no changes. DNS lookup operations also pass
 
 Write one instruction on each line. Comments start with `#`. Each rule has zero or more predicates and ends with this action:
 
-```text
+```rulev1
 REMAP ENDPOINT FIELD VALUE
 ```
 
@@ -34,7 +34,7 @@ Use predicates to select operations and addresses:
 
 Predicates use postfix order. Put each test before the operator that combines it. This predicate matches a connection to `service.test` on port 80:
 
-```text
+```rulev1
 DIAL
 ADDR_S service.test
 AND
@@ -48,7 +48,7 @@ The predicate for each rule must produce one true or false result. A rule with n
 
 Redirect a matching client connection to a local service:
 
-```text
+```rulev1
 DIAL
 ADDR_S service.test
 AND
@@ -59,7 +59,7 @@ REMAP DST ADDR_PORT 127.0.0.1:8080
 
 Change all listener hosts to IPv4 loopback and keep their configured ports:
 
-```text
+```rulev1
 LISTEN
 REMAP SRC ADDR 127.0.0.1
 ```
