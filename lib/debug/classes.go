@@ -12,7 +12,6 @@ func Classes(runtime nodekit.Runtime) []pasta.NodeClass {
 		DebugErrorsWorkersClass{Runtime: runtime},
 		DebugKVClass{Runtime: runtime},
 		DebugLogNetworkClass{},
-		DebugMarkdownClass{},
 		SandboxProbeClass{Runtime: runtime},
 		UDPPingClientClass{Runtime: runtime},
 		UDPPingServerClass{Runtime: runtime},

@@ -23,6 +23,3 @@ networking or an external service.
 - Restart reconstructs both failed node implementations and retains KV data.
 - Class-wide removal deletes both KV nodes as one batch. One undo and redo
   restore and remove both recorded nodes with their original IDs.
-- Many stateless `Markdown` nodes can coexist. Copy/paste, batched undo and redo,
-  and daemon restart reconstruct all instances with distinct live records.
-  Batch history also preserves the original node IDs.

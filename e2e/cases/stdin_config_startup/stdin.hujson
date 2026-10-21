@@ -10,8 +10,8 @@
 	},
 	"nodes": {
 		"Standard Input Node": {
-			"Class": "almagest/Markdown",
-			"markdown": "started from stdin",
+			"Class": "pasta/StringConstant",
+			"value": "started from stdin",
 		},
 	},
 	"Protected": {
@@ -27,4 +27,3 @@
 		},
 	},
 }
-
