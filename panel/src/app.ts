@@ -232,6 +232,11 @@ import {
   type LocaleSnapshot,
 } from "./localization.js";
 import { tabHash, tabNameFromHash } from "./tab_navigation.js";
+import {
+  preservePendingNodePosition,
+  preservePendingNodePositions,
+  shouldDeferGraphUpdate,
+} from "./graph_update_guard.js";
 
 const SECRET_NODE_AUTOCOMPLETE_LIMIT = 8;
 const TLS_CERT_OPENSSL_COMMAND = [
@@ -441,6 +446,8 @@ let snapshot: WorkspaceSnapshot = emptySnapshot();
 let graph: any;
 let canvas: any;
 let rendering = false;
+let graphRenderPending = false;
+let graphRenderFinishFrame = 0;
 let selectedMenu: { node: ID; menu: FormularMenuInstance; receivedSnapshot: boolean } | null = null;
 let highlightedDescriptionPort: { nodeID: ID; side: "left" | "right"; name: string } | null = null;
 let activeTab = "graph";
@@ -509,6 +516,7 @@ let liteGraphPointerGuardInstalled = false;
 let logStoreLimit = 0;
 const liteLinkToPasta = new Map<number, number>();
 const pendingNodePlacements: PendingNodePlacement[] = [];
+const pendingNodePositions = new Map<number, string>();
 const CLASS_DRAG_MIME = "application/x-almagest-node-class";
 const GRAPH_VIEWPORT_STORAGE_KEY = "almagest.panel.graph.viewport.v1";
 const GRAPH_FIT_PADDING = 40;
@@ -763,7 +771,7 @@ function handleEngineNotification(event: EngineNotificationEvent): void {
   const notification = event.notification;
   if (notification.kind === "colormap" && notification.colormap) {
     applyTypePalette(notification.colormap);
-    renderGraph();
+    requestGraphRender();
     renderWorkers();
     updateWorkerAgeTimer();
     updateSidekick();
@@ -782,11 +790,36 @@ function handleEngineNotification(event: EngineNotificationEvent): void {
   if (workspaceNotification.kind === "node_menu") {
     feedMenu(workspaceNotification);
   } else {
-    snapshot = applyNotification(snapshot, applyPendingNodePlacement(workspaceNotification));
-    renderGraph();
+    const placed = applyPendingNodePlacement(workspaceNotification);
+    snapshot = applyNotification(snapshot, preservePendingNodeMoves(placed));
+    requestGraphRender();
     renderWorkers();
     updateWorkerAgeTimer();
   }
+}
+
+function preservePendingNodeMoves(notification: WorkspaceNotification): WorkspaceNotification {
+  const id = notification.id;
+  if (notification.kind === "node_removed" && id !== undefined) pendingNodePositions.delete(id);
+  if (notification.kind === "nodes_removed" && !notification.snapshot) {
+    for (const removedID of Object.keys(notification.nodes ?? {})) pendingNodePositions.delete(Number(removedID));
+  }
+
+  if (notification.node && id !== undefined) {
+    const node = preservePendingNodePosition(id, notification.node, pendingNodePositions);
+    return node === notification.node ? notification : { ...notification, node };
+  }
+  if (notification.snapshot?.nodes) {
+    const nodes = preservePendingNodePositions(notification.snapshot.nodes, pendingNodePositions, true);
+    return nodes === notification.snapshot.nodes
+      ? notification
+      : { ...notification, snapshot: { ...notification.snapshot, nodes } };
+  }
+  if (notification.nodes) {
+    const nodes = preservePendingNodePositions(notification.nodes, pendingNodePositions);
+    return nodes === notification.nodes ? notification : { ...notification, nodes };
+  }
+  return notification;
 }
 
 function applyPendingNodePlacement(notification: WorkspaceNotification): WorkspaceNotification {
@@ -1284,7 +1317,7 @@ function initGraph(): void {
     graphPointerInside = false;
   });
   el.graphCanvas.addEventListener("mouseup", () => {
-    flushNodePositions();
+    finishGraphPointerInteraction();
     scheduleGraphViewportSave();
   });
   el.graphCanvas.addEventListener("wheel", scheduleGraphViewportSave);
@@ -1293,7 +1326,7 @@ function initGraph(): void {
   el.graphCanvas.addEventListener("drop", handleGraphCanvasDrop);
   document.addEventListener("mousemove", recoverLostGraphMouseUp, { capture: true });
   document.addEventListener("pointerup", () => {
-    flushNodePositions();
+    finishGraphPointerInteraction();
     scheduleGraphViewportSave();
   }, { capture: true });
   document.addEventListener("pointerdown", (event) => {
@@ -1303,6 +1336,7 @@ function initGraph(): void {
   window.addEventListener("blur", () => {
     flushNodePositions();
     cancelLiteGraphPointerInteraction(canvas);
+    requestPendingGraphRender();
     saveGraphViewportState();
   });
   window.addEventListener("pagehide", () => {
@@ -1405,6 +1439,7 @@ function recoverLostGraphMouseUp(event: MouseEvent): void {
   if (!canvas?.pointer_is_down || event.buttons !== 0) return;
   flushNodePositions();
   cancelLiteGraphPointerInteraction(canvas);
+  requestPendingGraphRender();
   scheduleGraphViewportSave();
 }
 
@@ -1538,6 +1573,38 @@ function centerGraphContent(): void {
   canvas.ds.offset[1] = viewport.offset[1];
   canvas.setDirty(true, true);
   scheduleGraphViewportSave();
+}
+
+/**
+ * Rebuilding the graph replaces the objects that LiteGraph keeps in its
+ * pointer state. Delay that rebuild until mouse-up so node movement and link
+ * creation continue across daemon notifications. A deleted interaction node
+ * is the exception and causes an immediate rebuild.
+ */
+function requestGraphRender(): void {
+  if (!graph) return;
+  if (shouldDeferGraphUpdate(canvas, Object.keys(snapshot.nodes))) {
+    graphRenderPending = true;
+    return;
+  }
+  graphRenderPending = false;
+  renderGraph();
+}
+
+function finishGraphPointerInteraction(): void {
+  window.cancelAnimationFrame(graphRenderFinishFrame);
+  // The document listener runs in the capture phase, before LiteGraph uses the
+  // final event to complete a connection and clear its pointer state. Wait for
+  // the next frame so mouse compatibility events have also completed.
+  graphRenderFinishFrame = window.requestAnimationFrame(() => {
+    graphRenderFinishFrame = 0;
+    flushNodePositions();
+    requestPendingGraphRender();
+  });
+}
+
+function requestPendingGraphRender(): void {
+  if (graphRenderPending) requestGraphRender();
 }
 
 function renderGraph(): void {
@@ -1801,11 +1868,37 @@ function flushNodePositions(): void {
       changes.push({ id: node.id, position: next });
     }
   }
-  if (changes.length === 1) {
-    tryBackend("setNodePosition", changes[0]);
-  } else if (changes.length > 1) {
-    tryBackend("moveNodes", { positions: nodePositionMap(changes) });
+  for (const change of changes) {
+    const node = snapshot.nodes[String(change.id)];
+    if (!node) continue;
+    // Frequent node updates can carry the old daemon position while this
+    // asynchronous write is in flight. Keep the local move authoritative until
+    // a notification acknowledges it.
+    pendingNodePositions.set(change.id, change.position);
+    snapshot.nodes[String(change.id)] = { ...node, position: change.position };
   }
+  if (changes.length === 1) {
+    void persistNodePositions("setNodePosition", changes, changes[0]!);
+  } else if (changes.length > 1) {
+    void persistNodePositions("moveNodes", changes, { positions: nodePositionMap(changes) });
+  }
+}
+
+async function persistNodePositions(
+  method: "setNodePosition" | "moveNodes",
+  changes: Array<{ id: number; position: string }>,
+  params: Record<string, unknown>,
+): Promise<void> {
+  const result = await tryBackend(method, params);
+  if (result !== null) return;
+
+  let refresh = false;
+  for (const change of changes) {
+    if (pendingNodePositions.get(change.id) !== change.position) continue;
+    pendingNodePositions.delete(change.id);
+    refresh = true;
+  }
+  if (refresh) await requestSnapshot();
 }
 
 function currentSelectedNodeIDs(): number[] {
@@ -2247,8 +2340,9 @@ function feedMenu(notification: WorkspaceNotification): void {
 async function requestSnapshot(): Promise<void> {
   const next = await tryBackend("snapshot");
   if (next) {
-    snapshot = applyWorkspaceSnapshot(snapshot, next);
-    renderGraph();
+    const nodes = preservePendingNodePositions(next.nodes, pendingNodePositions, true);
+    snapshot = applyWorkspaceSnapshot(snapshot, nodes === next.nodes ? next : { ...next, nodes });
+    requestGraphRender();
     renderWorkers();
     updateWorkerAgeTimer();
   }
