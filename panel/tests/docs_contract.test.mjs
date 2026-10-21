@@ -7,6 +7,7 @@ const docsHTML = await readFile(new URL("../docs.html", import.meta.url), "utf8"
 const panelHTML = await readFile(new URL("../index.html", import.meta.url), "utf8");
 const docsSource = await readFile(new URL("../src/docs.ts", import.meta.url), "utf8");
 const appSource = await readFile(new URL("../src/app.ts", import.meta.url), "utf8");
+const windowNavigationSource = await readFile(new URL("../src/window_navigation.ts", import.meta.url), "utf8");
 const published = (path) => new URL(`../../bin/almagestd/static/${path}`, import.meta.url);
 
 test("documentation uses a separate page and the shared panel stylesheet", () => {
@@ -19,6 +20,20 @@ test("documentation uses a separate page and the shared panel stylesheet", () =>
   assert.equal(document.querySelector("#docs-locale-select")?.tagName, "SELECT");
   assert.equal(document.querySelector("link[rel='stylesheet']")?.getAttribute("href"), "/style.css");
   assert.equal(document.querySelector("script[type='module']")?.getAttribute("src"), "/public/build/docs.js");
+});
+
+test("documentation reuses an open admin panel tab or opens a new tab", () => {
+  const dom = new JSDOM(docsHTML);
+  const link = dom.window.document.querySelector("#admin-panel-link");
+
+  assert.equal(link?.getAttribute("href"), "/");
+  assert.equal(link?.getAttribute("target"), "_blank");
+  assert.match(docsSource, /adminPanelLink\.target = adminPanelWindowName\(window\.location\.origin\)/);
+  assert.match(docsSource, /openOrFocusAdminPanel\(window, adminPanelLink\.href\)/);
+  assert.match(appSource, /window\.name = adminPanelWindowName\(window\.location\.origin\)/);
+  assert.match(windowNavigationSource, /source\.open\("", adminPanelWindowName\(source\.location\.origin\)\)/);
+  assert.match(windowNavigationSource, /panel\.location\.href === "about:blank"/);
+  assert.match(windowNavigationSource, /panel\.focus\(\)/);
 });
 
 test("documentation loads localized pages over HTTP without a WebSocket", () => {
@@ -54,10 +69,11 @@ test("panel documentation controls open the separate page in a new tab", () => {
   assert.equal(button?.hasAttribute("data-tab"), false);
   assert.match(appSource, /window\.open\(documentationURL\(\), "_blank"/);
   assert.match(appSource, /docsLink\.target = "_blank"/);
+  assert.match(appSource, /docsLink\.rel = "opener"/);
   assert.match(appSource, /documentationURL\(`node\/\$\{node\.class\}`\)/);
   assert.match(appSource, /button\.addEventListener\("contextmenu"/);
   assert.match(appSource, /localizedText\("node\.docs\.context_menu", "Open documentation"\)/);
-  assert.match(appSource, /window\.open\(documentationURL\(`node\/\$\{cls\.class\}`\), "_blank", "noopener,noreferrer"\)/);
+  assert.match(appSource, /window\.open\(documentationURL\(`node\/\$\{cls\.class\}`\), "_blank"\)/);
   assert.match(appSource, /short_description\.trimStart\(\)\.startsWith\("DEBUG "\)/);
   assert.match(appSource, /url\.pathname \+= page\.split\("\/"\)\.map\(encodeURIComponent\)\.join\("\/"\)/);
   assert.doesNotMatch(appSource.match(/function documentationURL[\s\S]*?\n\}/)?.[0] ?? "", /locale/);

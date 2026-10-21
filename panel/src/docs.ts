@@ -6,6 +6,7 @@ import {
   textElement,
 } from "./safe_dom.js";
 import { readLocaleCookie, writeLocaleCookie } from "./localization.js";
+import { adminPanelWindowName, openOrFocusAdminPanel } from "./window_navigation.js";
 import {
   DEFAULT_NODE_TEXT_COLOR,
   DEFAULT_NODE_TITLE_COLOR,
@@ -27,6 +28,7 @@ const topicFoldStorageKey = "almagest.docs.topic-folds.v1";
 const treeElement = document.querySelector<HTMLElement>("#docs-tree")!;
 const pageElement = document.querySelector<HTMLElement>("#docs-page")!;
 const localeSelect = document.querySelector<HTMLSelectElement>("#docs-locale-select")!;
+const adminPanelLink = document.querySelector<HTMLAnchorElement>("#admin-panel-link")!;
 const parameters = new URLSearchParams(window.location.search);
 let urlLocale = parameters.get("locale") || "";
 const requestedLocale = urlLocale || readLocaleCookie() || savedLocale() || navigator.language || "en";
@@ -36,6 +38,14 @@ const pageNames = new Map<string, string>();
 const pageAvailability = new Map<string, boolean>();
 const topicFolds = savedTopicFolds();
 let nodeUnavailableMessage = "This node is not available in the current daemon environment.";
+
+adminPanelLink.target = adminPanelWindowName(window.location.origin);
+adminPanelLink.addEventListener("click", (event) => {
+  // Keep standard browser behavior when the user requests a separate tab or window.
+  if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+  // If the pop-up is blocked, do not cancel the link's native new-tab fallback.
+  if (openOrFocusAdminPanel(window, adminPanelLink.href)) event.preventDefault();
+});
 
 function savedLocale(): string {
   try {

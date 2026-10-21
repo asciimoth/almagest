@@ -88,6 +88,7 @@ import {
   type DNSValue,
   type DNSValueSnapshot,
 } from "./dns_model.js";
+import { adminPanelWindowName } from "./window_navigation.js";
 import {
   KV_TEXT_RENDER_LIMIT,
   childKVNodeKey,
@@ -1685,7 +1686,7 @@ function renderClassPanel(selectedCount: number): void {
       new LiteGraph.ContextMenu([{
         content: localizedText("node.docs.context_menu", "Open documentation"),
         callback: () => {
-          window.open(documentationURL(`node/${cls.class}`), "_blank", "noopener,noreferrer");
+          window.open(documentationURL(`node/${cls.class}`), "_blank");
         },
       }], { event }, canvas.getCanvasWindow());
     });
@@ -1821,7 +1822,8 @@ function renderNodePanel(id: number): void {
     docsLink.className = "node-docs-link";
     docsLink.href = documentationURL(`node/${node.class}`);
     docsLink.target = "_blank";
-    docsLink.rel = "noopener noreferrer";
+    // The trusted same-origin docs use the opener relationship to find this panel tab.
+    docsLink.rel = "opener";
     docsPanel.append(docsLink);
   }
   const nodePanelHeader: HTMLElement[] = [createNodeNameForm(node.name), tabs];
@@ -6139,7 +6141,7 @@ function wireUI(): void {
     tab.addEventListener("click", () => setTab(tab.dataset.tab ?? "graph"));
     tab.addEventListener("keydown", moveTabFocus);
   }
-  el.docs.addEventListener("click", () => window.open(documentationURL(), "_blank", "noopener,noreferrer"));
+  el.docs.addEventListener("click", () => window.open(documentationURL(), "_blank"));
   el.secPanel.addEventListener("scroll", rememberSecScrollState);
   el.dnsPanel.addEventListener("scroll", rememberDNSScrollState);
   el.tlsPanel.addEventListener("scroll", rememberTLSScrollState);
@@ -6233,6 +6235,8 @@ function installTestHooks(): void {
 }
 
 async function boot(): Promise<void> {
+  // Let a related same-origin documentation tab find and focus this SPA tab.
+  window.name = adminPanelWindowName(window.location.origin);
   wireUI();
   initGraph();
   installTestHooks();
