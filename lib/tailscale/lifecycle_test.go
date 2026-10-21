@@ -94,7 +94,8 @@ func TestTailscaleLinksAttachDetachReattach(t *testing.T) {
 	eventuallyTailscale(t, func() bool { return factory.count() == 1 }, "first Tailscale client")
 	eventuallyTailscale(t, func() bool {
 		snapshot, ok := w.NodeSnapshot(node.ID)
-		return ok && snapshot.Label == "needs authentication" && len(snapshot.Popups) == 1
+		return ok && snapshot.Label == "needs authentication" && len(snapshot.Popups) == 1 &&
+			snapshot.Popups[0].Text == "@tailscale_authorization_required"
 	}, "authentication state and warning popup")
 
 	w.Lock()

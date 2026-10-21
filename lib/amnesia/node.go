@@ -27,7 +27,7 @@ const (
 	// NodeTypeAmnesiaCtrl is the class name of the AmnesiaCtrl node.
 	NodeTypeAmnesiaCtrl = "almagest/AmnesiaCtrl"
 
-	amnesiaCtrlDeprecationWarning = "The AmnesiaCtrl node is deprecated. Use the Amnesia node instead."
+	amnesiaCtrlDeprecationWarning = "@amnesia_ctrl_deprecated"
 	amnesiaImportTimeout          = 2 * time.Minute
 )
 

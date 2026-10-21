@@ -56,6 +56,11 @@ export function text(key: string, builtin: string, parameters: Record<string, st
   });
 }
 
+export function popupText(value: string): string {
+  if (!value.startsWith("@") || value.length === 1) return value;
+  return text(`popup.${value.slice(1)}`, value);
+}
+
 export function applyLocale(snapshot: LocaleSnapshot, root: ParentNode = document): void {
   catalog = { ...snapshot.panel };
 	const localeDocument = root.nodeType === 9 ? root as Document : root.ownerDocument;

@@ -6,6 +6,7 @@ import {
   applyLocale,
   matchPreferredLocale,
   parseLocaleSnapshot,
+  popupText,
   readLocaleCookie,
   text,
   writeLocaleCookie,
@@ -91,4 +92,24 @@ test("rerender preserves the current dynamic status instead of its initial state
   }, dom.window.document);
 
   assert.equal(status.textContent, "Lorem connected");
+});
+
+test("popup localization resolves only stable identifiers as untrusted text", () => {
+  const dom = new JSDOM("<!doctype html><span></span>");
+  applyLocale({
+    requested: "test",
+    effective: "test",
+    available: [],
+    panel: { "popup.warning": '<img src=x onerror="globalThis.__xss = true">' },
+    revision: 1,
+  }, dom.window.document);
+
+  const localized = popupText("@warning");
+  assert.equal(localized, '<img src=x onerror="globalThis.__xss = true">');
+  const popup = dom.window.document.querySelector("span");
+  popup.textContent = localized;
+  assert.equal(popup.textContent, localized);
+  assert.equal(popup.querySelector("img"), null);
+  assert.equal(popupText("dynamic warning"), "dynamic warning");
+  assert.equal(popupText("@unknown"), "@unknown");
 });

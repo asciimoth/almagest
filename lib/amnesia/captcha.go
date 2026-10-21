@@ -15,7 +15,7 @@ import (
 const (
 	amnesiaCaptchaBlockID  = "captcha"
 	amnesiaCaptchaButtonID = "completeCaptcha"
-	amnesiaCaptchaPopup    = "The Amnezia API server requested a captcha. Use Complete captcha in the node menu."
+	amnesiaCaptchaPopup    = "@amnesia_captcha_required"
 )
 
 type amnesiaCaptchaPrompt struct {

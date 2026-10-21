@@ -857,7 +857,7 @@ func TestDefaultTunWarningsShowWarningPopup(t *testing.T) {
 	}
 
 	got := defaultTunWarningPopups(t, w, node)
-	want := []string{string(sysnet.WarningDefaultTunDNSRouteNotExclusive)}
+	want := []string{"@" + string(sysnet.WarningDefaultTunDNSRouteNotExclusive)}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("DefaultTun warning popups = %#v, want %#v", got, want)
 	}
@@ -932,7 +932,7 @@ func TestDefaultTunWarningsReplaceTrackedAndPreserveUnrelatedPopups(t *testing.T
 	forceDefaultTunRebuild(t, w, node, "10.62.0.0/16")
 
 	got := defaultTunWarningPopups(t, w, node)
-	want := []string{"manual_warning", string(replacement)}
+	want := []string{"manual_warning", "@" + string(replacement)}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("DefaultTun warning popups after replacement = %#v, want %#v", got, want)
 	}
@@ -982,7 +982,7 @@ func TestDefaultTunWarningsRefreshAfterDynamicUpdate(t *testing.T) {
 
 	warnings = []sysnet.Warning{sysnet.WarningDefaultTunDNSRouteNotExclusive}
 	w.EmitEvent(receiverID, link, TunConfig{Addrs: []string{"10.64.0.2/32"}, MTU: 1300})
-	want := []string{string(sysnet.WarningDefaultTunDNSRouteNotExclusive)}
+	want := []string{"@" + string(sysnet.WarningDefaultTunDNSRouteNotExclusive)}
 	if got := defaultTunWarningPopups(t, w, node); !reflect.DeepEqual(got, want) {
 		t.Fatalf("DefaultTun warning popups after dynamic update = %#v, want %#v", got, want)
 	}

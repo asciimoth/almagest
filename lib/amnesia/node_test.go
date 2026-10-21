@@ -32,8 +32,8 @@ func TestAmnesiaCtrlAddsDeprecationWarning(t *testing.T) {
 		t.Fatalf("AmnesiaCtrl popups = %#v, want one deprecation warning", snapshot.Popups)
 	}
 	warning := snapshot.Popups[0]
-	if warning.Type != pasta.NodePopupWard || warning.Text != amnesiaCtrlDeprecationWarning {
-		t.Fatalf("AmnesiaCtrl popup = %#v, want warning %q", warning, amnesiaCtrlDeprecationWarning)
+	if warning.Type != pasta.NodePopupWard || warning.Text != "@amnesia_ctrl_deprecated" {
+		t.Fatalf("AmnesiaCtrl popup = %#v, want stable localization ID", warning)
 	}
 }
 

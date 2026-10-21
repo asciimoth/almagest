@@ -41,7 +41,7 @@ func TestManagedAmnesiaCaptchaAddsPopupAndTopMenuButton(t *testing.T) {
 	if !ok || len(snapshot.Popups) != 1 {
 		t.Fatalf("captcha node snapshot = %#v", snapshot)
 	}
-	if popup := snapshot.Popups[0]; popup.Type != pasta.NodePopupWard || popup.Text != amnesiaCaptchaPopup {
+	if popup := snapshot.Popups[0]; popup.Type != pasta.NodePopupWard || popup.Text != "@amnesia_captcha_required" {
 		t.Fatalf("captcha popup = %#v", popup)
 	}
 	if node.stateText() != "waiting for captcha" {

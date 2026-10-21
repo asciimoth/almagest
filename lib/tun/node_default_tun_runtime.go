@@ -210,7 +210,7 @@ func (n *defaultTunNode) refreshDefaultTunWarningsLocked() {
 		return
 	}
 	for _, warning := range n.System().DefaultTunWarnings(n.dtun) {
-		id, err := n.W.AddNodePopupLocked(n.ID, pasta.NodePopupWard, string(warning), true)
+		id, err := n.W.AddNodePopupLocked(n.ID, pasta.NodePopupWard, "@"+string(warning), true)
 		if err != nil {
 			if n.Logger != nil {
 				n.Logger.Errf("failed to add DefaultTun warning popup node=%d warning=%q: %v", n.ID, warning, err)

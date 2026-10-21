@@ -224,6 +224,7 @@ import {
   applyLocale,
   matchPreferredLocale,
   parseLocaleSnapshot,
+  popupText as localizedPopupText,
   readLocaleCookie,
   text as localizedText,
   writeLocaleCookie,
@@ -1502,7 +1503,7 @@ function drawNodeLabel(ctx: CanvasRenderingContext2D, node: any): void {
 function drawNodePopup(ctx: CanvasRenderingContext2D, node: any): void {
   const popup = latestPriorityPopup(node.properties?.pastaPopups);
   if (!popup) return;
-  const text = trimPopupText(popup.text, 50);
+  const text = trimPopupText(localizedPopupText(popup.text), 50);
   const palette = popupPalette(popup.type);
   ctx.save();
   ctx.font = "12px Arial";
@@ -1931,7 +1932,7 @@ function renderPopupItem(nodeID: number, popup: NodePopup): HTMLElement {
   const type = document.createElement("strong");
   type.textContent = popup.type;
   const text = document.createElement("span");
-  text.textContent = popup.text;
+  text.textContent = localizedPopupText(popup.text);
   const remove = document.createElement("button");
   remove.type = "button";
   remove.className = "danger";

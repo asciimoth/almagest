@@ -30,8 +30,8 @@ const (
 
 	authBlockID     = "authentication"
 	authResumeID    = "checkAuthentication"
-	authPopupText   = "Tailscale authorization is required. Open the node menu to continue."
-	interactionText = "Tailscale needs user action. Open the node menu for details."
+	authPopupText   = "@tailscale_authorization_required"
+	interactionText = "@tailscale_interaction_required"
 )
 
 // Client is the wgo-tailscale surface used by TailscaleCtrl. It permits
