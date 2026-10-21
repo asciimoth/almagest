@@ -18,8 +18,9 @@ func (a *AdminAPI) prepareLocalizedContent(defaultRoot string) error {
 	}
 	reader, err := localizedcontent.New(root, golog.Warnf)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			golog.Warnf("Localized content is not installed at %s; using built-in text", root)
+		var pathError *os.PathError
+		if errors.Is(err, os.ErrNotExist) || errors.As(err, &pathError) {
+			golog.Warnf("Cannot access localized content at %s: %v; using built-in text", root, err)
 			return nil
 		}
 		return err

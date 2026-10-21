@@ -66,6 +66,21 @@ func TestPrepareLocalizedContentAllowsMissingOverride(t *testing.T) {
 	}
 }
 
+func TestPrepareLocalizedContentAllowsLookupFailure(t *testing.T) {
+	parent := filepath.Join(t.TempDir(), "not-a-directory")
+	if err := os.WriteFile(parent, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ALMAGEST_LOCALES_DIR", filepath.Join(parent, "locales"))
+	admin := &AdminAPI{}
+	if err := admin.prepareLocalizedContent(filepath.Join(t.TempDir(), "default")); err != nil {
+		t.Fatalf("locale lookup failure stopped startup: %v", err)
+	}
+	if admin.localizedContent != nil {
+		t.Fatal("failed locale lookup installed a reader")
+	}
+}
+
 func writeLocaleTestFile(t *testing.T, root, locale, name, contents string) {
 	t.Helper()
 	path := filepath.Join(root, locale, name)

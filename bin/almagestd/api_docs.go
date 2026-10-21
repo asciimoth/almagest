@@ -44,27 +44,32 @@ func (s *apiSession) handleDocsMessage(msg api.Message) (api.Message, error) {
 
 func (s *apiSession) docsTree(locale string) api.DocsTreeResponse {
 	classes, names, available := s.docsClasses(locale)
-	topics, effective := s.admin.localizedContent.DocsTree(locale, classes, names)
+	content := s.admin.localizedContent
+	topics, effective := content.DocsTree(locale, classes, names)
 	message := docsNodeUnavailable
-	if panel := s.admin.localizedContent.Panel(effective); panel["docs.node.unavailable"] != "" {
+	if panel := content.Panel(effective); panel["docs.node.unavailable"] != "" {
 		message = panel["docs.node.unavailable"]
 	}
 	result := api.DocsTreeResponse{
 		Locale: effective, Topics: apiDocsTopics(topics, available), NodeUnavailableMessage: message,
 	}
-	if s.admin.localizedContent == nil {
+	if content == nil {
 		result.Available = []api.AvailableLocale{{Locale: "en", Name: "English"}}
 		return result
 	}
-	for _, locale := range s.admin.localizedContent.AvailableLocales() {
+	for _, locale := range content.AvailableLocales() {
 		result.Available = append(result.Available, api.AvailableLocale{Locale: locale.Locale, Name: locale.Name})
 	}
 	return result
 }
 
 func (s *apiSession) docsPage(locale, id string) (api.DocsPageResponse, bool) {
+	contentReader := s.admin.localizedContent
 	builtin := ""
 	if class, isNode := strings.CutPrefix(id, "node/"); isNode {
+		if s.engine == nil {
+			return api.DocsPageResponse{}, false
+		}
 		snapshot, ok := s.engine.NodeClassSnapshot(almagest.MainWorkspace, class)
 		if ok && isDebugDocsClass(snapshot.ShortDescription) {
 			return api.DocsPageResponse{}, false
@@ -76,13 +81,13 @@ func (s *apiSession) docsPage(locale, id string) (api.DocsPageResponse, bool) {
 			builtin, _ = s.engine.NodeClassLongDescription(almagest.MainWorkspace, class)
 			if builtin == "" {
 				builtin = docsNodeNoDescription
-				if panel := s.admin.localizedContent.Panel(locale); panel["docs.node.description_unavailable"] != "" {
+				if panel := contentReader.Panel(locale); panel["docs.node.description_unavailable"] != "" {
 					builtin = panel["docs.node.description_unavailable"]
 				}
 			}
 		}
 	}
-	page, content, effective, ok := s.admin.localizedContent.DocPage(locale, id, builtin)
+	page, content, effective, ok := contentReader.DocPage(locale, id, builtin)
 	if !ok {
 		return api.DocsPageResponse{}, false
 	}

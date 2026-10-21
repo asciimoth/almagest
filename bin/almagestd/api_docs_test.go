@@ -199,6 +199,32 @@ func TestDocsAPIFiltersRuntimeClassesAndServesLocalizedHTTP(t *testing.T) {
 	}
 }
 
+func TestDocsAPIHandlesMissingLocalizedContent(t *testing.T) {
+	admin := &AdminAPI{}
+	session := admin.newAPISession(nil, nil, nil)
+
+	tree := session.docsTree("en")
+	if tree.Locale != "en" || len(tree.Topics) != 0 || len(tree.Available) != 1 || tree.Available[0].Locale != "en" {
+		t.Fatalf("tree without localized content = %#v", tree)
+	}
+	if _, ok := session.docsPage("en", "guides/welcome"); ok {
+		t.Fatal("missing documentation page was reported as available")
+	}
+
+	mux := http.NewServeMux()
+	admin.registerDocsHTTPHandlers(mux, nil)
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/docs/tree", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("GET docs tree status = %d, want %d", response.Code, http.StatusOK)
+	}
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/docs/raw?id=guides%2Fwelcome", nil))
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("GET missing docs page status = %d, want %d", response.Code, http.StatusNotFound)
+	}
+}
+
 type debugDocsNodeClass struct{ adminAPIBatchNodeClass }
 
 func (debugDocsNodeClass) ClassName() string { return "test/DebugDocsNode" }
