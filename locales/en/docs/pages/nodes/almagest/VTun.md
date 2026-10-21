@@ -1,7 +1,7 @@
 VTun supplies a userspace IP stack as both **Network** and **Tun**. Connect
 client or server nodes to **Network**. Connect **Tun** to the path that carries
-the stack's IPv4 and IPv6 packets, such as WireGuard, TunCopy, TunSplitter, or
-Spoofer.
+the stack's IPv4 and IPv6 packets, such as [WireGuard](@docs/node/almagest/WireGuard), [TunCopy](@docs/node/almagest/TunCopy), [TunSplitter](@docs/node/almagest/TunSplitter), or
+[Spoofer](@docs/node/almagest/Spoofer).
 
 Applications on **Network** can use TCP, UDP, listeners, and DNS through this
 stack. Their outgoing IP packets go through **Tun**. Packets that return
@@ -75,7 +75,7 @@ valid. You can configure more than one address. A TUN suggestion contains one
 address.
 
 The DNS suggestion is intended for a simple direct path, such as VTun to
-WireGuard. It cannot describe resolver routing, composition, or policy. Use
+[WireGuard](@docs/node/almagest/WireGuard). It cannot describe resolver routing, composition, or policy. Use
 DNS nodes and DNS connections for those configurations.
 
 ## Advanced settings

@@ -21,14 +21,14 @@ these actions in order:
 1. It writes the staged value to the named Boolean variable.
 2. It sends a trigger to all consumers connected to **Trigger**.
 
-This order lets you connect the Trigger output to a BoolGet node with the same
-name. BoolGet then reads the value that BoolSet has written. Value updates
+This order lets you connect the Trigger output to a [BoolGet](@docs/node/pasta/BoolGet) node with the same
+name. [BoolGet](@docs/node/pasta/BoolGet) then reads the value that BoolSet has written. Value updates
 do not send triggers. The Trigger input can accept multiple trigger sources,
 and the Trigger output can supply multiple consumers.
 
 ## Variable scope
 
-Boolean variables are shared by BoolSet and BoolGet nodes in the same
+Boolean variables are shared by BoolSet and [BoolGet](@docs/node/pasta/BoolGet) nodes in the same
 workspace. Names must match exactly. A Boolean variable is separate from an
 Integer, Float, String, or Object variable with the same name. If multiple
 BoolSet nodes use one name, the most recently triggered write is the current
@@ -36,6 +36,6 @@ value.
 
 The shared value exists while at least one variable node refers to its name.
 Removing or renaming the last such node clears the shared value. A later
-BoolGet then reads the Boolean default, `false`. The workspace saves each
+[BoolGet](@docs/node/pasta/BoolGet) then reads the Boolean default, `false`. The workspace saves each
 BoolSet node's name and staged value, but it does not save the shared value as
 an independent global setting.

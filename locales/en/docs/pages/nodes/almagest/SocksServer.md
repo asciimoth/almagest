@@ -8,9 +8,9 @@ The plain SOCKS listener defaults to `127.0.0.1:1080`. An empty host also uses `
 
 The optional SOCKS-over-WebSocket listener is disabled by default. Set **SOCKS+WS port** to a nonzero value to enable it. Its default path is `/socks`; the node adds a leading slash if necessary. The plain and WebSocket listeners can run together, but they cannot use the same host and port.
 
-The node does not add TLS. Route the listen Network through a TlsWrapper when clients need SOCKS over TLS or WSS. The WebSocket listener does not restrict the browser `Origin`, so do not rely on origin checks for access control.
+The node does not add TLS. Route the listen Network through a [TlsWrapper](@docs/node/almagest/TlsWrapper) when clients need SOCKS over TLS or WSS. The WebSocket listener does not restrict the browser `Origin`, so do not rely on origin checks for access control.
 
-The listener address exists in the connected listen Network. With an OutNetwork, `127.0.0.1` limits access to the daemon host. A wildcard or LAN address can expose the proxy to other devices, subject to the operating-system firewall. A virtual or tunneled listen Network follows that Network's address rules. Platform behavior comes from the attached listen Network.
+The listener address exists in the connected listen Network. With an [OutNetwork](@docs/node/almagest/OutNetwork), `127.0.0.1` limits access to the daemon host. A wildcard or LAN address can expose the proxy to other devices, subject to the operating-system firewall. A virtual or tunneled listen Network follows that Network's address rules. Platform behavior comes from the attached listen Network.
 
 ## Authentication
 

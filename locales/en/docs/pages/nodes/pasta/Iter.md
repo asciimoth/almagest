@@ -1,12 +1,12 @@
-Ends each iteration of one ForLoop or WhileLoop. Connect the loop node's
+Ends each iteration of one [ForLoop](@docs/node/pasta/ForLoop) or [WhileLoop](@docs/node/pasta/WhileLoop). Connect the loop node's
 **Loop** connector to **Loop** on Iter. This connection associates Iter with
 that loop and accepts only one loop node.
 
 Connect the end of each **Body** path to **Continue** or **Break**:
 
 - **Continue** ends the current iteration and asks the loop to advance. A
-  ForLoop starts the next in-range index or completes when its range has ended.
-  A WhileLoop starts its next iteration.
+  [ForLoop](@docs/node/pasta/ForLoop) starts the next in-range index or completes when its range has ended.
+  A [WhileLoop](@docs/node/pasta/WhileLoop) starts its next iteration.
 - **Break** ends the current iteration and finishes the loop without another
   iteration.
 

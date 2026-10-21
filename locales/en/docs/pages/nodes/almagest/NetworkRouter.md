@@ -77,7 +77,7 @@ Address rules then see the selected numeric address instead of the original
 hostname.
 
 **DNS cache storage** has a different purpose. Select a cache when `ADDR_S` or
-`ADDR_RE` must match a cached reverse name for a numeric IP address. A DnsCache
+`ADDR_RE` must match a cached reverse name for a numeric IP address. A [DnsCache](@docs/node/almagest/DnsCache)
 node must populate that same storage with reverse records. NetworkRouter does
 not perform a live reverse lookup for these matches. Exact cached DNS names
 match with or without one trailing dot.

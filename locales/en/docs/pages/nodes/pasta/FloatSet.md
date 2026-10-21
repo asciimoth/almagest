@@ -22,21 +22,21 @@ these actions in order:
 1. It writes the staged value to the named Float variable.
 2. It sends a trigger to all consumers connected to **Trigger**.
 
-This order lets you connect the Trigger output to a FloatGet node with the
-same name. FloatGet then reads the value that FloatSet has written. Value
+This order lets you connect the Trigger output to a [FloatGet](@docs/node/pasta/FloatGet) node with the
+same name. [FloatGet](@docs/node/pasta/FloatGet) then reads the value that FloatSet has written. Value
 updates do not send triggers. The Trigger input can accept multiple trigger
 sources, and the Trigger output can supply multiple consumers.
 
 ## Variable scope
 
-Float variables are shared by FloatSet and FloatGet nodes in the same
+Float variables are shared by FloatSet and [FloatGet](@docs/node/pasta/FloatGet) nodes in the same
 workspace. Names must match exactly. A Float variable is separate from a
 Boolean, Integer, String, or Object variable with the same name. If multiple
 FloatSet nodes use one name, the most recently triggered write is the current
-value. A FloatGet reads `0` until a FloatSet writes the variable.
+value. A [FloatGet](@docs/node/pasta/FloatGet) reads `0` until a FloatSet writes the variable.
 
 The shared value exists while at least one variable node refers to its name.
 Removing or renaming the last such node clears the shared value. A later
-FloatGet then reads `0`. The workspace saves each FloatSet node's name and
+[FloatGet](@docs/node/pasta/FloatGet) then reads `0`. The workspace saves each FloatSet node's name and
 staged value, but it does not save the shared value as an independent global
 setting.

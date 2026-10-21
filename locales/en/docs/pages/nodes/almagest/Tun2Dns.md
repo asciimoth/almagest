@@ -3,7 +3,7 @@ connected **DNS** resolver, and writes raw response packets back to the same
 TUN.
 
 Use Tun2Dns as the DNS endpoint of a routed TUN path. A common layout sends UDP
-destination port 53 from TunSplitter to Tun2Dns and sends other traffic to
+destination port 53 from [TunSplitter](@docs/node/almagest/TunSplitter) to Tun2Dns and sends other traffic to
 different TUN nodes. Tun2Dns consumes the TUN packets that it receives. It
 does not pass ignored packets to another TUN.
 

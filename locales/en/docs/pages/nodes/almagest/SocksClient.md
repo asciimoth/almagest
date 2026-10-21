@@ -14,7 +14,7 @@ a port, port 1080 is used. These schemes are supported:
 - Add `+tls` for SOCKS over TLS, `+ws` for SOCKS over WebSocket, or `+wss`
   for secure WebSocket. For example, use
   `socks5+wss://proxy.example:443/socks`. The default WebSocket path is `/ws`.
-  The built-in SocksServer and LocalProxy nodes use `/socks` by default, so set
+  The built-in [SocksServer](@docs/node/almagest/SocksServer) and [LocalProxy](@docs/node/almagest/LocalProxy) nodes use `/socks` by default, so set
   this path explicitly when you connect to either node.
 
 SOCKS5 supports TCP and UDP for IPv4 and IPv6. SOCKS4 and SOCKS4a support only

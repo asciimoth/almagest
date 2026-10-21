@@ -58,7 +58,7 @@ test("documentation reuses an open admin panel tab or opens a new tab", () => {
 test("documentation loads localized pages over HTTP without a WebSocket", () => {
   assert.match(docsSource, /docsAPIURL\("tree"\)/);
   assert.match(docsSource, /docsAPIURL\("raw", \{ id \}\)/);
-  assert.match(docsSource, /renderNodeDescription\(content, contentText, "docs"\)/);
+  assert.match(docsSource, /renderNodeDescription\(content, contentText, "docs", id\)/);
   assert.match(docsSource, /scrollToCurrentAnchor\(\)/);
   assert.match(docsSource, /decodeURIComponent\(window\.location\.hash\.slice\(1\)\)/);
   assert.match(docsSource, /docsURL\(currentPage, window\.location\.hash\)/);

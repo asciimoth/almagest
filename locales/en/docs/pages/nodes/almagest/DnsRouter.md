@@ -47,7 +47,7 @@ BACKEND slot 1
 
 The router does not provide DNS failover. If a rule selects a disconnected
 slot, or if the selected service returns an error, the router does not try a
-different slot. Connect a DnsFallback node when you need ordered retries.
+different slot. Connect a [DnsFallback](@docs/node/almagest/DnsFallback) node when you need ordered retries.
 
 Applying rules creates the slots that they reference. A referenced slot stays
 visible without a connection. A connected slot stays visible after rules stop

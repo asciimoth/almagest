@@ -3,7 +3,7 @@ consumer. Use it when a node such as WireGuard must read and write IP packets
 through a host interface.
 
 This node does not automatically make the interface the system default route.
-Add only the routes that must use the interface. Use DefaultTun instead when
+Add only the routes that must use the interface. Use [DefaultTun](@docs/node/almagest/DefaultTun) instead when
 you need Almagest to manage system-wide default routing and application
 selection.
 

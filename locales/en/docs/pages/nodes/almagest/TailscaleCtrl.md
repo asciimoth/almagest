@@ -1,14 +1,14 @@
-TailscaleCtrl connects a WireGuard node to Tailscale or to a compatible
+TailscaleCtrl connects a [WireGuard](@docs/node/almagest/WireGuard) node to Tailscale or to a compatible
 control server such as Headscale. It uses the private key of the connected
-WireGuard node. It adds and removes only the peers and relay path that it
-manages, so WireGuard peers from other sources can use the same device.
+[WireGuard](@docs/node/almagest/WireGuard) node. It adds and removes only the peers and relay path that it
+manages, so [WireGuard](@docs/node/almagest/WireGuard) peers from other sources can use the same device.
 
 ## Connections
 
 Connect **WireGuard** to the control input. TailscaleCtrl sends the current
-Tailscale addresses, routes, and MTU to WireGuard. WireGuard includes these
+Tailscale addresses, routes, and MTU to [WireGuard](@docs/node/almagest/WireGuard). [WireGuard](@docs/node/almagest/WireGuard) includes these
 values in the configuration that it sends to its TUN. The node reaches the
-`up` state only after WireGuard and its TUN accept this configuration.
+`up` state only after [WireGuard](@docs/node/almagest/WireGuard) and its TUN accept this configuration.
 
 Connect **Network** to the path that must carry these connections:
 
@@ -17,9 +17,9 @@ Connect **Network** to the path that must carry these connections:
 - DERP relay traffic over TLS
 
 Direct peer UDP traffic does not use this Network input. It uses the default
-Network connected to the WireGuard node. For example, a proxy on the
+Network connected to the [WireGuard](@docs/node/almagest/WireGuard) node. For example, a proxy on the
 TailscaleCtrl Network input carries control and DERP traffic, but it does not
-carry a direct WireGuard connection to a peer. Configure the WireGuard Network
+carry a direct [WireGuard](@docs/node/almagest/WireGuard) connection to a peer. Configure the WireGuard Network
 path separately when direct peer traffic must use a specific route.
 
 ## Configuration
@@ -63,7 +63,7 @@ a dot is looked up as written.
 
 Successful answers have a TTL of 60 seconds. The output does not query the
 nameservers advertised by the control server, the host resolver, or another
-DNS source. A missing name returns `NXDOMAIN`. Add DnsFallback if other
+DNS source. A missing name returns `NXDOMAIN`. Add [DnsFallback](@docs/node/almagest/DnsFallback) if other
 names must continue to another resolver.
 
 The DNS output follows control-server updates. When TailscaleCtrl is disabled,
@@ -73,7 +73,7 @@ records.
 ## Firewall output
 
 The **Firewall** output converts the current tailnet packet filter to an
-incoming allow policy for NetworkFirewall or TunFirewall. Rules can match the
+incoming allow policy for [NetworkFirewall](@docs/node/almagest/NetworkFirewall) or [TunFirewall](@docs/node/almagest/TunFirewall). Rules can match the
 remote source, local destination, protocol, and destination port. The policy
 does not restrict outgoing traffic. Tailscale capability grants are not
 included because they do not have an equivalent firewall rule.

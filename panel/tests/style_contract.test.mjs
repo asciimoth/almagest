@@ -19,6 +19,13 @@ test("links use the interface palette and focus treatment", () => {
   assert.match(cssRule("a:focus-visible"), /outline:\s*3px solid var\(--focus-ring\);/);
 });
 
+test("internal documentation links are distinct from external links", () => {
+  const rule = cssRule(".node-description .markdown-link-docs,\n.node-description .markdown-link-docs:visited");
+
+  assert.match(rule, /color:\s*var\(--teal\);/);
+  assert.match(rule, /text-decoration-style:\s*dashed;/);
+});
+
 test("SPA tab and locale glyphs use one fixed control width", () => {
   const tabRule = cssRule(".tabs button");
   const localeRule = cssRule(".locale-picker");

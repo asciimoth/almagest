@@ -6,9 +6,9 @@ For each trigger, IntGet reads the current value, sends it through **Value**,
 and then sends **Trigger**. This order lets the next triggered nodes use the
 newly read value.
 
-IntGet and IntSet nodes with the same **Name** share the variable in
+IntGet and [IntSet](@docs/node/pasta/IntSet) nodes with the same **Name** share the variable in
 the current workspace. Variables of other types are separate, even if they
-have the same name. If no IntSet node has stored a value, IntGet reads
+have the same name. If no [IntSet](@docs/node/pasta/IntSet) node has stored a value, IntGet reads
 `0`.
 
 IntGet does not monitor the variable. Trigger it again to read a later value.

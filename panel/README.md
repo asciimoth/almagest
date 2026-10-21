@@ -25,7 +25,10 @@ untrusted. This rule applies even when the daemon listens only on localhost.
   untrusted text. Do not use HTML parser APIs.
 - Escape text before you pass it to LiteGraph menu APIs. LiteGraph parses some
   menu labels as HTML.
-- Allow only `http:`, `https:`, and `mailto:` links in rendered documentation.
+- Allow only `http:`, `https:`, and `mailto:` destinations for regular links in
+  rendered documentation. Internal documentation links use `@docs/<page-id>`
+  destinations and are resolved by the renderer for its current panel or
+  documentation context.
 - Validate API-provided CSS with `safeCSSColor` before assignment.
 - Use blob URLs for generated downloads. Sanitize API-provided file-name parts.
 - Keep the Content Security Policy in `index.html` restrictive.

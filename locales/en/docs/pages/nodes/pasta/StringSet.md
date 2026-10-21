@@ -22,20 +22,20 @@ these actions in order:
 1. It writes the staged value to the named String variable.
 2. It sends a trigger to all consumers connected to **Trigger**.
 
-This order lets you connect the Trigger output to a StringGet node with the
-same name. StringGet then reads the value that StringSet has written.
+This order lets you connect the Trigger output to a [StringGet](@docs/node/pasta/StringGet) node with the
+same name. [StringGet](@docs/node/pasta/StringGet) then reads the value that StringSet has written.
 Value updates do not send triggers. The Trigger input can accept multiple
 trigger sources, and the Trigger output can supply multiple consumers.
 
 ## Scope and persistence
 
-String variables are shared by StringSet and StringGet nodes in the same
+String variables are shared by StringSet and [StringGet](@docs/node/pasta/StringGet) nodes in the same
 workspace. They are separate from Boolean, integer, float, and Object
 variables with the same name. If multiple StringSet nodes use one name, the
 most recently triggered write is current.
 
 The shared value exists while at least one variable node refers to its name.
-Removing or renaming the last such node clears the value. A later StringGet
+Removing or renaming the last such node clears the value. A later [StringGet](@docs/node/pasta/StringGet)
 then reads an empty string.
 
 The workspace saves each StringSet node's name and last configured or received

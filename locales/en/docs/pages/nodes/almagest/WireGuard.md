@@ -67,7 +67,7 @@ latest list from each connected source. A public key identifies conflicts:
 - Removing an object connection removes only the peers supplied by that
   source. Object peers are not copied into the saved menu configuration.
 
-WGConfig nodes can manage additional peers and UDP transports through
+[WGConfig](@docs/node/almagest/WGConfig) nodes can manage additional peers and UDP transports through
 **WGCtrl**. Menu peers, object peers, and controller peers can coexist.
 Disconnecting a controller removes only the peers and transports that it owns;
 later menu changes do not delete them.
@@ -88,7 +88,7 @@ its contribution by sending an empty configuration or by disconnecting.
 **DNS** accepts one IPv4 or IPv6 address. A menu value always has priority. If
 the menu field is empty, the most recently received current controller DNS
 suggestion applies. This is only a suggestion for a simple TUN path, such as a
-direct connection to VTun. It does not configure the UDP transport. Use DNS
+direct connection to [VTun](@docs/node/almagest/VTun). It does not configure the UDP transport. Use DNS
 nodes when you need multiple resolvers, routing, caching, or policy.
 
 For peers that use **Network**, WireGuard asks the carrier for its safe maximum

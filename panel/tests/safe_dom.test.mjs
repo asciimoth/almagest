@@ -714,6 +714,58 @@ test("Markdown links resolve relative destinations and preserve safe hover title
   assert.equal(links.every((link) => link.rel === "noopener noreferrer"), true);
 });
 
+test("documentation links resolve for the panel and open in a new tab", () => {
+  installDOM();
+  const root = document.createElement("div");
+  renderNodeDescription(root, '[MeshNames](@docs/node/almagest/MeshNames "Mesh resolver")');
+
+  const link = root.querySelector("a");
+  assert.equal(link?.getAttribute("href"), "./docs/node/almagest/MeshNames");
+  assert.equal(link?.target, "_blank");
+  assert.equal(link?.rel, "noopener noreferrer");
+  assert.equal(link?.className, "markdown-link-docs");
+  assert.equal(link?.title, "Mesh resolver");
+});
+
+test("documentation links are relative to the current documentation page", () => {
+  installDOM();
+  const root = document.createElement("div");
+  renderNodeDescription(root, [
+    "[MeshNames](@docs/node/almagest/MeshNames)",
+    "[Guide](@docs/guides/welcome)",
+  ].join(" "), "docs", "node/almagest/DnsInject");
+
+  const links = [...root.querySelectorAll("a")];
+  assert.deepEqual(links.map((link) => link.getAttribute("href")), [
+    "./MeshNames",
+    "../../guides/welcome",
+  ]);
+  assert.equal(links.every((link) => link.target === ""), true);
+});
+
+test("custom Markdown links reject unknown types and unsafe documentation IDs", () => {
+  installDOM();
+  const root = document.createElement("div");
+  renderNodeDescription(root, [
+    `[Unknown ${payload}](@future/value)`,
+    `[Traversal ${payload}](@docs/node/../secret)`,
+  ].join(" "));
+
+  assert.equal(root.querySelector("a"), null);
+  assertNoParsedPayload(root);
+  assert.match(root.textContent ?? "", /Unknown <img/);
+});
+
+test("documentation link paths encode scheme-like page IDs", () => {
+  installDOM();
+  const root = document.createElement("div");
+  renderNodeDescription(root, "[Scheme](@docs/javascript:alert)");
+
+  const link = root.querySelector("a");
+  assert.equal(link?.getAttribute("href"), "./docs/javascript%3Aalert");
+  assert.equal(link?.protocol, "https:");
+});
+
 test("alert contents and image attributes do not parse hostile HTML", () => {
   installDOM();
   const root = document.createElement("div");

@@ -1,6 +1,6 @@
-Runs a counted sequence of integer indexes. Connect **Loop** to one Iter node,
-and make each **Body** path finish at that Iter node's **Continue** or **Break**
-connector. A trigger does nothing when Loop is not connected to an Iter node.
+Runs a counted sequence of integer indexes. Connect **Loop** to one [Iter](@docs/node/pasta/Iter) node,
+and make each **Body** path finish at that [Iter](@docs/node/pasta/Iter) node's **Continue** or **Break**
+connector. A trigger does nothing when Loop is not connected to an [Iter](@docs/node/pasta/Iter) node.
 Start the loop with the node's trigger action or through **Trigger**. The
 Trigger input accepts multiple trigger sources.
 
@@ -29,10 +29,10 @@ When triggered, ForLoop takes a snapshot of Start index, End index, and Step.
 Changes to these inputs do not change the active run. For each iteration, the
 node does these actions in order:
 
-1. It starts the matching iteration on the connected Iter node.
+1. It starts the matching iteration on the connected [Iter](@docs/node/pasta/Iter) node.
 2. It sends the current **Index**.
 3. It sends **Body**.
-4. It waits for Iter to receive **Continue** or **Break**.
+4. It waits for [Iter](@docs/node/pasta/Iter) to receive **Continue** or **Break**.
 
 **Continue** adds **Step** to the current index. The loop starts the next iteration if
 the new index is still in range. Otherwise, it sends **Completed** and returns to

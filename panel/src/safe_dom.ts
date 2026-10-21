@@ -725,14 +725,25 @@ export function createEmptyWorkerItem(): HTMLLIElement {
 
 export type MarkdownRenderMode = "panel" | "docs";
 
-export function renderNodeDescription(node: HTMLElement, value: string, mode: MarkdownRenderMode = "panel"): void {
+type MarkdownRenderContext = {
+  mode: MarkdownRenderMode;
+  documentID: string;
+};
+
+export function renderNodeDescription(
+  node: HTMLElement,
+  value: string,
+  mode: MarkdownRenderMode = "panel",
+  documentID = "",
+): void {
   const text = value.trim();
   if (!text) {
     node.textContent = t("node.description.empty", "No long description is registered for this node class.");
     return;
   }
+  const context: MarkdownRenderContext = { mode, documentID };
   const headingIDs = new Map<string, number>();
-  node.replaceChildren(...parseMarkdownBlocks(text).map((block) => renderMarkdownBlock(block, mode, headingIDs)));
+  node.replaceChildren(...parseMarkdownBlocks(text).map((block) => renderMarkdownBlock(block, context, headingIDs)));
 }
 
 type MarkdownBlock =
@@ -858,32 +869,32 @@ function parseMarkdownBlocks(input: string): MarkdownBlock[] {
 
 function renderMarkdownBlock(
   block: MarkdownBlock,
-  mode: MarkdownRenderMode,
+  context: MarkdownRenderContext,
   headingIDs: Map<string, number>,
 ): HTMLElement {
   if (block.type === "code") return renderMarkdownCodeBlock(block.text, block.language);
-  if (block.type === "list") return renderMarkdownList(block);
-  if (block.type === "alert") return renderMarkdownAlert(block, mode, headingIDs);
-  if (block.type === "heading") return renderMarkdownHeading(block.text, block.level, mode, headingIDs);
-  return renderMarkdownParagraph(block.text);
+  if (block.type === "list") return renderMarkdownList(block, context);
+  if (block.type === "alert") return renderMarkdownAlert(block, context, headingIDs);
+  if (block.type === "heading") return renderMarkdownHeading(block.text, block.level, context, headingIDs);
+  return renderMarkdownParagraph(block.text, context);
 }
 
 function renderMarkdownAlert(
   block: Extract<MarkdownBlock, { type: "alert" }>,
-  mode: MarkdownRenderMode,
+  context: MarkdownRenderContext,
   headingIDs: Map<string, number>,
 ): HTMLElement {
   const alert = document.createElement("aside");
   alert.className = `markdown-alert markdown-alert-${block.kind}`;
   alert.setAttribute("aria-label", block.kind);
   const title = textElement("p", block.kind.toUpperCase(), "markdown-alert-title");
-  alert.append(title, ...block.blocks.map((child) => renderMarkdownBlock(child, mode, headingIDs)));
+  alert.append(title, ...block.blocks.map((child) => renderMarkdownBlock(child, context, headingIDs)));
   return alert;
 }
 
-function renderMarkdownParagraph(input: string): HTMLParagraphElement {
+function renderMarkdownParagraph(input: string, context: MarkdownRenderContext): HTMLParagraphElement {
   const paragraph = document.createElement("p");
-  paragraph.append(renderMarkdownInline(normalizeMarkdownInlineBreaks(input)));
+  paragraph.append(renderMarkdownInline(normalizeMarkdownInlineBreaks(input), context));
   return paragraph;
 }
 
@@ -914,12 +925,15 @@ function renderMarkdownCodeBlock(input: string, language: string): HTMLPreElemen
   return pre;
 }
 
-function renderMarkdownList(block: Extract<MarkdownBlock, { type: "list" }>): HTMLOListElement | HTMLUListElement {
+function renderMarkdownList(
+  block: Extract<MarkdownBlock, { type: "list" }>,
+  context: MarkdownRenderContext,
+): HTMLOListElement | HTMLUListElement {
   const list = document.createElement(block.ordered ? "ol" : "ul");
   if (block.ordered && block.start !== 1) list.setAttribute("start", String(block.start));
   for (const item of block.items) {
     const element = document.createElement("li");
-    element.append(renderMarkdownInline(normalizeMarkdownInlineBreaks(item)));
+    element.append(renderMarkdownInline(normalizeMarkdownInlineBreaks(item), context));
     list.append(element);
   }
   return list;
@@ -928,19 +942,19 @@ function renderMarkdownList(block: Extract<MarkdownBlock, { type: "list" }>): HT
 function renderMarkdownHeading(
   input: string,
   level: number,
-  mode: MarkdownRenderMode,
+  context: MarkdownRenderContext,
   headingIDs: Map<string, number>,
 ): HTMLElement {
-  if (mode === "panel") {
+  if (context.mode === "panel") {
     const paragraph = document.createElement("p");
     const strong = document.createElement("strong");
-    strong.append(renderMarkdownInline(normalizeMarkdownInlineBreaks(input)));
+    strong.append(renderMarkdownInline(normalizeMarkdownInlineBreaks(input), context));
     paragraph.append(strong);
     return paragraph;
   }
 
   const heading = document.createElement(`h${level}`);
-  heading.append(renderMarkdownInline(normalizeMarkdownInlineBreaks(input)));
+  heading.append(renderMarkdownInline(normalizeMarkdownInlineBreaks(input), context));
   const baseID = markdownHeadingID(heading.textContent ?? "");
   const duplicateIndex = headingIDs.get(baseID) ?? 0;
   headingIDs.set(baseID, duplicateIndex + 1);
@@ -957,7 +971,7 @@ function markdownHeadingID(input: string): string {
     .replace(/[\s-]+/g, "-") || "section";
 }
 
-function renderMarkdownInline(input: string): DocumentFragment {
+function renderMarkdownInline(input: string, context: MarkdownRenderContext): DocumentFragment {
   const root = document.createDocumentFragment();
   const parts = input.split(/(!?\[[^\]\n]*\]\([^\n]*?\)|\*\*[^*]+\*\*|\*[^*\s][^*]*\*|_[^_\s][^_]*_|`[^`]+`)/g);
   for (const part of parts) {
@@ -968,7 +982,7 @@ function renderMarkdownInline(input: string): DocumentFragment {
       continue;
     }
     if (reference) {
-      root.append(renderMarkdownLink(reference.label, reference.destination, reference.title));
+      root.append(renderMarkdownLink(reference.label, reference.destination, reference.title, context));
       continue;
     }
     if (part.startsWith("**") && part.endsWith("**")) {
@@ -1026,7 +1040,30 @@ function markdownInlineText(text: string): Node[] {
   return nodes;
 }
 
-function renderMarkdownLink(label: string, href: string, title: string): HTMLAnchorElement {
+type MarkdownCustomLinkRenderer = (
+  label: string,
+  destination: string,
+  title: string,
+  context: MarkdownRenderContext,
+) => Node;
+
+const markdownCustomLinkRenderers: Readonly<Record<string, MarkdownCustomLinkRenderer>> = {
+  docs: renderMarkdownDocumentationLink,
+};
+
+function renderMarkdownLink(
+  label: string,
+  href: string,
+  title: string,
+  context: MarkdownRenderContext,
+): Node {
+  const custom = href.match(/^@([a-z][a-z0-9-]*)\/(.*)$/);
+  if (custom) {
+    const renderer = markdownCustomLinkRenderers[custom[1] ?? ""];
+    if (renderer) return renderer(label, custom[2] ?? "", title, context);
+    return document.createTextNode(label);
+  }
+
   const anchor = document.createElement("a");
   anchor.append(...markdownInlineText(label));
   const url = safeMarkdownURL(href, true);
@@ -1034,6 +1071,47 @@ function renderMarkdownLink(label: string, href: string, title: string): HTMLAnc
   if (title) anchor.title = title;
   anchor.rel = "noopener noreferrer";
   return anchor;
+}
+
+function renderMarkdownDocumentationLink(
+  label: string,
+  destination: string,
+  title: string,
+  context: MarkdownRenderContext,
+): Node {
+  if (!validMarkdownDocumentationID(destination)) return document.createTextNode(label);
+
+  const anchor = document.createElement("a");
+  anchor.append(...markdownInlineText(label));
+  anchor.className = "markdown-link-docs";
+  anchor.href = context.mode === "docs"
+    ? relativeMarkdownDocumentationURL(context.documentID, destination)
+    : `./docs/${encodeMarkdownDocumentationID(destination)}`;
+  if (context.mode === "panel") anchor.target = "_blank";
+  if (title) anchor.title = title;
+  anchor.rel = "noopener noreferrer";
+  return anchor;
+}
+
+function validMarkdownDocumentationID(value: string): boolean {
+  return value.length <= 256
+    && /^[A-Za-z0-9][A-Za-z0-9_.:/-]*$/.test(value)
+    && !value.includes("..");
+}
+
+function encodeMarkdownDocumentationID(value: string): string {
+  return value.split("/").map(encodeURIComponent).join("/");
+}
+
+function relativeMarkdownDocumentationURL(current: string, destination: string): string {
+  const from = current.split("/").slice(0, -1);
+  const to = destination.split("/");
+  while (from.length > 0 && to.length > 0 && from[0] === to[0]) {
+    from.shift();
+    to.shift();
+  }
+  const relative = [...from.map(() => ".."), ...to.map(encodeURIComponent)].join("/");
+  return relative.startsWith("../") ? relative : `./${relative}`;
 }
 
 function renderMarkdownImage(alt: string, src: string, title: string): HTMLImageElement {

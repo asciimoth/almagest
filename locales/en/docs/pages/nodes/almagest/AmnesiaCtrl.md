@@ -1,4 +1,4 @@
-AmnesiaCtrl is deprecated. Use the Amnesia node for new configurations.
+AmnesiaCtrl is deprecated. Use the [Amnesia](@docs/node/almagest/Amnesia) node for new configurations.
 
 AmnesiaCtrl imports an Amnezia VPN connection and adds its peer to an attached
 WireGuard node. The WireGuard node continues to control the device private key,
@@ -55,7 +55,7 @@ node renames. The status menu shows the installation UUID and whether it is
 persistent.
 
 AmnesiaCtrl cannot complete interactive imports. If the service requests a
-CAPTCHA or another interaction, the import fails. Use the Amnesia node if the
+CAPTCHA or another interaction, the import fails. Use the [Amnesia](@docs/node/almagest/Amnesia) node if the
 service requires a CAPTCHA.
 
 ## Troubleshooting

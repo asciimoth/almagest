@@ -2,7 +2,7 @@ TunCopy makes a point-to-point packet path between two TUN endpoints. A packet
 read from **TunA** is written once to **TunB**. A packet read from **TunB** is
 written once to **TunA**.
 
-Use TunCopy to connect two TUN providers directly, such as two VTun nodes. It
+Use TunCopy to connect two TUN providers directly, such as two [VTun](@docs/node/almagest/VTun) nodes. It
 is not a packet-mirroring node and does not make an additional copy for a
 monitor.
 

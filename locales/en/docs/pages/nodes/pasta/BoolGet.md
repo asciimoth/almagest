@@ -6,9 +6,9 @@ For each trigger, BoolGet reads the current value, sends it through **Value**,
 and then sends **Trigger**. This order lets the next triggered nodes use the
 newly read value.
 
-BoolGet and BoolSet nodes with the same **Name** share the variable in
+BoolGet and [BoolSet](@docs/node/pasta/BoolSet) nodes with the same **Name** share the variable in
 the current workspace. Variables of other types are separate, even if they
-have the same name. If no BoolSet node has stored a value, BoolGet reads
+have the same name. If no [BoolSet](@docs/node/pasta/BoolSet) node has stored a value, BoolGet reads
 `false`.
 
 BoolGet does not monitor the variable. Trigger it again to read a later value.

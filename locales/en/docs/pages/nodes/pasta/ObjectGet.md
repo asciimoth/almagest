@@ -23,9 +23,9 @@ for the request. Changing **Name** clears these remembered values.
 
 ## Variable scope and object copies
 
-ObjectGet and ObjectSet nodes with the same **Name** share the variable in the
+ObjectGet and [ObjectSet](@docs/node/pasta/ObjectSet) nodes with the same **Name** share the variable in the
 current workspace. An Object variable is separate from a Boolean, Integer,
-Float, or String variable with the same name. If no ObjectSet has written the
+Float, or String variable with the same name. If no [ObjectSet](@docs/node/pasta/ObjectSet) has written the
 variable, ObjectGet reads `null`.
 
 Object values are immutable. A consumer cannot change the stored variable

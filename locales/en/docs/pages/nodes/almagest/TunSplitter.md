@@ -1,6 +1,6 @@
 TunSplitter sends packets from one TUN connection to numbered output slots.
 Use this node when you must select each path with explicit packet rules. Use
-AutoTunSplitter instead when the output paths advertise the routes that they
+[AutoTunSplitter](@docs/node/almagest/AutoTunSplitter) instead when the output paths advertise the routes that they
 can reach.
 
 Connect the shared TUN to **Tun**, and connect each path to a numbered slot.
@@ -95,7 +95,7 @@ route packets while you correct the text.
 
 ## DNS names and caches
 
-To route by a cached name, populate the selected cache storage with a DnsCache
+To route by a cached name, populate the selected cache storage with a [DnsCache](@docs/node/almagest/DnsCache)
 node. Exact cached names match with or without one trailing dot. Regular
 expressions are also tested with both forms.
 

@@ -15,7 +15,7 @@ and appear as an HTTPS server to remote clients.
 TlsWrapper applies this behavior to every TCP dial and TCP listener. It does
 not detect whether a connection already uses TLS, and it has no host filter.
 If a consumer also enables TLS, the connection has two TLS layers. Use
-TlsMitm or TlsTerminator when you need to inspect or remove an existing TLS
+[TlsMitm](@docs/node/almagest/TlsMitm) or [TlsTerminator](@docs/node/almagest/TlsTerminator) when you need to inspect or remove an existing TLS
 layer.
 
 ## Client-side TLS

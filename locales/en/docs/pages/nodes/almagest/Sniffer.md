@@ -19,7 +19,7 @@ Sniffer has two routing stages:
 Rules are evaluated from top to bottom. Each segment ends with `INTERCEPT`,
 `SLOT N`, `ROUTE N`, or `DROP`. The first matching action in each stage stops
 evaluation. Normal predicates and postfix Boolean operators work in the same
-way as NetworkRouter rules.
+way as [NetworkRouter](@docs/node/almagest/NetworkRouter) rules.
 
 `SNIFF_NONE` matches when none of the configured classifiers matches. This
 example blocks HTTP requests whose target starts with `/admin`, sends TLS
@@ -108,6 +108,6 @@ use only the fields that the routing decision needs.
 
 **DNS cache storage** is not capture storage. Select it only when `ADDR_S` or
 `ADDR_RE` rules must match a cached reverse name for a numeric IP address. A
-DnsCache node must populate the same storage. Sniffer does not make a live
+[DnsCache](@docs/node/almagest/DnsCache) node must populate the same storage. Sniffer does not make a live
 reverse lookup for these matches and does not write inspected traffic to the
 cache.

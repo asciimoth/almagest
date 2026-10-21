@@ -8,7 +8,7 @@ the order of the secondary connections does not set a priority. TunJoiner has
 no menu settings.
 
 Use TunJoiner when independent TUN paths must share the next processing stage.
-For example, several VTun clients can share one Spoofer or one outbound TUN
+For example, several [VTun](@docs/node/almagest/VTun) clients can share one [Spoofer](@docs/node/almagest/Spoofer) or one outbound TUN
 path:
 
 ```text

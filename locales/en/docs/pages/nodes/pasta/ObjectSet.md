@@ -24,8 +24,8 @@ these actions in order:
 1. It writes the staged Object to the named Object variable.
 2. It sends a trigger to all consumers connected to **Trigger**.
 
-This order lets you connect the Trigger output to an ObjectGet node with the
-same name. ObjectGet then reads the Object that ObjectSet has written.
+This order lets you connect the Trigger output to an [ObjectGet](@docs/node/pasta/ObjectGet) node with the
+same name. [ObjectGet](@docs/node/pasta/ObjectGet) then reads the Object that ObjectSet has written.
 Value updates do not send triggers. The Trigger input can accept multiple
 trigger sources, and the Trigger output can supply multiple consumers.
 
@@ -35,7 +35,7 @@ Apply **Name** and **Value** in the menu to change the variable name and staged
 Object. This action does not write the variable. An empty name becomes `var`.
 The node label shows the current variable name.
 
-Object variables are shared by ObjectSet and ObjectGet nodes in the same
+Object variables are shared by ObjectSet and [ObjectGet](@docs/node/pasta/ObjectGet) nodes in the same
 workspace. Names must match exactly. An Object variable is separate from a
 Boolean, Integer, Float, or String variable with the same name. If multiple
 ObjectSet nodes use one name, the most recently triggered write is current.
@@ -46,6 +46,6 @@ variable while their names match.
 
 The shared value exists while at least one variable node refers to its name.
 Removing or renaming the last such node clears the shared value. A later
-ObjectGet then reads the default, `null`. The workspace saves each ObjectSet
+[ObjectGet](@docs/node/pasta/ObjectGet) then reads the default, `null`. The workspace saves each ObjectSet
 node's name and staged value, but it does not save the shared value as an
 independent global setting.

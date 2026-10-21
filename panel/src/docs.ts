@@ -284,7 +284,7 @@ async function openPage(id: string, updateHistory: boolean): Promise<void> {
     document.title = `${name} — Almagest Documentation`;
     const title = textElement("h1", name);
     const content = document.createElement("div");
-    renderNodeDescription(content, contentText, "docs");
+    renderNodeDescription(content, contentText, "docs", id);
     const unavailable = pageAvailability.get(id) === false
       ? textElement("div", nodeUnavailableMessage, "docs-node-unavailable")
       : null;

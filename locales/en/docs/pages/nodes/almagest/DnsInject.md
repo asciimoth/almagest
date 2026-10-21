@@ -5,8 +5,9 @@ network consumers to the other **Network** port.
 The resulting Network uses the connected DNS resolver instead of the resolver
 from the original Network. This is useful when a client must connect through
 one network but resolve names through another DNS path. For example, you can
-resolve private names with StaticDns or MeshNames before an HTTP client uses
-an outgoing network.
+resolve private names with [StaticDns](@docs/node/almagest/StaticDns) or
+[MeshNames](@docs/node/almagest/MeshNames) before an HTTP client uses an
+outgoing network.
 
 DnsInject applies the resolver in two ways:
 

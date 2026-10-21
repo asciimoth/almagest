@@ -1266,6 +1266,17 @@ h1 {
   color: var(--blue);
 }
 
+.node-description .markdown-link-docs,
+.node-description .markdown-link-docs:visited {
+  color: var(--teal);
+  text-decoration-style: dashed;
+}
+
+.node-description .markdown-link-docs:hover,
+.node-description .markdown-link-docs:visited:hover {
+  color: color-mix(in srgb, var(--teal), white 20%);
+}
+
 .node-description code {
   border: 1px solid var(--surface0);
   border-radius: 4px;
