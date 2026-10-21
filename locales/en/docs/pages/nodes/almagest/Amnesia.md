@@ -1,61 +1,86 @@
-# Amnesia
+Creates an Amnezia VPN connection and owns its WireGuard device. Use this node
+when you want one node to import the connection, create the tunnel, and provide
+tunnel DNS.
 
-Amnesia combines an Amnezia API client with one private userspace WireGuard
-device. Connect a TUN provider to the left **Tun** port and an outgoing network
-to the right **Network** port. The outgoing network carries both API traffic
-and WireGuard UDP traffic. Connect DNS consumers to the left **DNS** port.
+Connect a TUN provider to **Tun** and an outgoing network to **Network**. The
+node uses the outgoing network for Amnezia API requests, profile pre-connect
+traffic, and WireGuard UDP traffic. Connect DNS consumers to **DNS** if they
+must resolve names through the VPN.
 
-The node owns the complete WireGuard runtime. It does not store a WireGuard
-private key or any other WireGuard configuration. For an API-v2 service key,
-the Amnezia client generates a new WireGuard identity when the node creates a
-connection. Rebuilding the connection can generate another identity. Static
-self-hosted and native profiles use the private key contained in the selected
-connection secret because their server already associates that key with the
-profile.
+## Connection configuration
 
-The installation UUID and encrypted proxy-discovery cache use the node's KV
-namespace. These client values survive daemon restarts. WireGuard device state,
-keys, peers, counters, and handshakes do not.
+Store one of these values in a secret, then select the secret in **Connection
+secret**:
 
-The node sends profile tunnel addresses, allowed-IP routes, and the first DNS
-server to the attached TUN provider. This gives a simple TUN setup the same
-address and DNS configuration that an AmnesiaCtrl and WireGuard pair provides.
-The connection event is always enabled for service imports.
+- an Amnezia service `vpn://` key;
+- a self-hosted guest `vpn://` profile;
+- a native WireGuard or AmneziaWG client configuration.
 
-If the API server requests a captcha during a service import, the node pauses
-the import and shows a warning popup. Open the node menu and select **Complete
-captcha** at the top. The dialog shows the server-provided image and message.
-Canceling the dialog keeps the import paused so you can open it again. A
-submitted answer resumes the same import and keeps its generated WireGuard
-identity. An invalid answer can replace the dialog with a refreshed challenge.
+**Server country** selects the service endpoint for a service key. Use a
+two-letter ISO 3166-1 country code, such as `de` or `nl`. Static self-hosted
+and native profiles ignore this setting.
 
-The **DNS** port exposes a resolver that uses the usable DNS server IP addresses
-from the active profile in profile order. A server is usable when the profile
-has a local address of the same IP family and an allowed-IP route to the server.
-DNS requests use raw UDP packets on the same TUN data path as other WireGuard
-traffic. The node does not create an internal IP stack, VTun, or TUN splitter.
-Incoming packets are forwarded unchanged. Outgoing graph TUN packets use one
-additional bounded buffer copy so runtime shutdown and profile replacement can
-stop blocked reads safely.
+For a custom service deployment, set **Gateway URL** and select a **Gateway
+public key secret**. The gateway URL must use HTTP or HTTPS. Select a TLS config
+when the HTTPS gateway needs custom trust or client authentication. These
+gateway and TLS settings apply only to service-key imports.
 
-The DNS interface is available only while the current WireGuard runtime is up.
-If a TUN or Network link is removed, or a menu change selects another country,
-the node closes the old per-link DNS wrappers before it starts replacement.
-When the new runtime is ready, the node sends a fresh wrapper on every attached
-DNS link. Removing and reattaching only a DNS link does not rebuild the VPN.
+Service-key imports always notify the service that the connection is active.
+The node generates a WireGuard identity when it imports a new service
+connection. For a service key, changing the country or other connection
+settings can register a new identity. Detaching and later reattaching **Tun** or
+**Network** can also register a new identity. Self-hosted and native profiles
+use the private key in the selected connection secret.
 
-The built-in tunnel DNS client supports UDP only. It returns truncated DNS
-responses as received and does not make a TCP fallback connection. It also
-does not reassemble fragmented IP packets. These limits keep the data path
-small and avoid an internal network stack. Use another DNS transport when a
-resolver must support large responses that require TCP.
+The node does not save WireGuard keys, peers, counters, or handshake state. It
+does save its Amnezia installation UUID and encrypted proxy-discovery cache
+when persistent storage is available. This UUID stays the same after daemon
+restarts and node renames. The status menu shows the current UUID.
+
+## Tunnel configuration and MTU
+
+The node sends the profile addresses, allowed-IP routes, effective MTU, and the
+first DNS server to the TUN provider. The node limits the effective MTU to the
+smaller of these values:
+
+- the MTU ceiling in the Amnezia profile;
+- the safe tunnel payload size reported by the outgoing network.
+
+The status menu shows the effective MTU, the profile ceiling, the outgoing
+network's UDP payload limit, and the selected constraint. If the outgoing
+network does not report a UDP payload limit, the node uses the profile MTU and
+logs a warning. The node rejects an IPv6 profile if the calculated safe MTU is
+less than the IPv6 minimum.
+
+## Tunnel DNS
+
+The **DNS** output is available while the VPN is up. It sends UDP DNS requests
+through the WireGuard tunnel. The node tries usable profile DNS servers in
+profile order. A DNS server is usable only when the profile has a tunnel
+address of the same IP family and an allowed-IP route to that server.
+
+The tunnel DNS client does not retry a truncated response over TCP and does not
+reassemble fragmented IP packets. Use a different DNS transport if the
+resolver must support responses that require TCP.
+
+If the VPN connection changes, existing DNS outputs close until the replacement
+connection is ready. Removing or adding only a DNS link does not reconnect the
+VPN.
+
+## CAPTCHA requests
+
+If the service requests a CAPTCHA, the node pauses the import and shows a
+warning. Open the node menu and select **Complete captcha**. The dialog shows
+the image and message from the service. If you cancel the dialog, the import
+stays paused and you can open the dialog again. A submitted answer continues
+the same import. If the answer is not accepted, the service can send a new
+challenge.
 
 ## Troubleshooting
 
-An Amnezia service endpoint for a selected country can be temporarily
-unavailable even when the API returns a valid profile. A typical symptom is a
-WireGuard handshake that retries continuously while DNS and other tunnel
-traffic time out. If this occurs, select another server country and try the
-connection again first. Do not delete the installation UUID or recreate the
-node only to test this condition; these actions do not repair an unavailable
-country endpoint and can consume the service's client limit.
+The selected service endpoint can be unavailable even if the service returned
+a valid profile. The node can show **up**, **TX bytes** can increase, and **RX
+bytes** can stay at zero while tunnel requests time out. Select a different
+server country and try again. Do not delete the installation UUID or recreate
+the node for this test. These actions do not repair the endpoint and can use
+another service client slot.

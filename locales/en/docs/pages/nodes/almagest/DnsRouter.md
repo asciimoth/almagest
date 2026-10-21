@@ -1,28 +1,21 @@
-`DnsRouter` wraps one `github.com/asciimoth/gonnect/dns.Router` and publishes
-it as an `almagest/dns` interface.
+Routes each DNS request to one selected DNS service. Rules are evaluated from
+top to bottom against the first question in the DNS message. The first matching
+`BACKEND` or `DROP` action stops evaluation.
 
-The left `DNS` port emits detached wrappers around the router. Each right-side
-`slot N` port accepts one upstream DNS interface and installs it in the router
-under the same backend name. Detaching a slot removes that backend and closes
-only the DNS wrapper received by this node; the router instance and other slots
-remain alive.
+Each rule segment ends with `BACKEND slot N` or `DROP`. `BACKEND` sends the
+request to the specified slot. `DROP` rejects the request with a `no upstream`
+error. The node supports slots 1 through 16, and each slot accepts one DNS
+connection.
 
-Routing rules use the `github.com/asciimoth/gonnect/routing` DNS bytecode text
-form. Rules are evaluated top to bottom against the first DNS question in the
-message. Empty or comment-only rules route everything to `slot 1` by compiling
-the same default as `TRUE` followed by `BACKEND slot 1`.
-
-Each route segment ends with `BACKEND slot N` or `DROP`. `BACKEND` names must
-use the node's existing `slot N` port names, from `slot 1` through `slot 16`.
-A non-empty ruleset has no implicit fallback; add `TRUE` and `BACKEND slot N`
-when unmatched requests should continue to a backend.
+This example rejects one name, sends A queries for an internal domain to slot
+2, and sends all other queries to slot 1:
 
 ```text
-ADDR_RE (^|.*\.)example\.test\.$
-BACKEND slot 1
+ADDR_S blocked.example.
+DROP
 
-ADDR_S host.example.test.
-QTYPE AAAA
+ADDR_RE (^|.*\.)internal\.test\.$
+QTYPE A
 AND
 BACKEND slot 2
 
@@ -30,12 +23,34 @@ TRUE
 BACKEND slot 1
 ```
 
-Useful DNS predicates include `ADDR_S` for exact case-insensitive names,
-`ADDR_RE` for regexp name matches, `QTYPE`, `QCLASS`, `OPCODE`, `NET4`, `NET6`,
-`ADDR4`, `ADDR6`, `SNET4`, and `SNET6`. Use `AND`, `OR`, and `NOT` to combine
-predicates. Line comments that start with `#` and blank lines are ignored.
+`ADDR_S` matches an exact question name and is not case-sensitive. `ADDR_RE`
+uses a regular expression against the question name. DNS names commonly end
+with a dot, as shown in the example. `QTYPE` accepts a number or a common name
+such as `A`, `AAAA`, `PTR`, `TXT`, `MX`, `SRV`, `CNAME`, `NS`, or `SOA`.
+`QCLASS` accepts a number or `IN`, and `OPCODE` accepts a number or `QUERY`.
+`NET4` matches A questions, and `NET6` matches AAAA questions. `FQDN` matches
+a question name that is not an IP address. `ADDR4`, `ADDR6`, `SNET4`, and
+`SNET6` match literal IP question names and subnets.
 
-Only slots mentioned by rules, slots that still have links, and the default
-`slot 1` for an empty ruleset are kept visible. The node keeps the underlying
-router stable across rule edits, slot attach/detach, copy/paste, and save/restore
-so existing downstream DNS consumers continue to hold a valid router wrapper.
+Write combined conditions in postfix order: put both predicates first, and
+then put `AND` or `OR` after them. `NOT` reverses the condition before it.
+Blank lines and lines that start with `#` are ignored.
+
+Empty or comment-only rules send all requests to slot 1. A nonempty rule set
+has no automatic fallback. Add these lines at the end if unmatched requests
+must use a default service:
+
+```text
+TRUE
+BACKEND slot 1
+```
+
+The router does not provide DNS failover. If a rule selects a disconnected
+slot, or if the selected service returns an error, the router does not try a
+different slot. Connect a DnsFallback node when you need ordered retries.
+
+Applying rules creates the slots that they reference. A referenced slot stays
+visible without a connection. A connected slot stays visible after rules stop
+referencing it, and disappears after you disconnect it. If no rule or
+connection needs a slot, only slot 1 remains. An invalid rule edit is not
+applied, so the last valid rules continue to route requests.

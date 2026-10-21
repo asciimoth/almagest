@@ -1,37 +1,39 @@
-# MeshNames Node
+Resolves mesh-specific names through a connected Network. Connect the DNS
+output to applications or to another DNS node. The node provides no DNS output
+until the Network is ready.
 
-`almagest/MeshNames` publishes an `almagest/dns` provider backed by
-`github.com/asciimoth/gonnect/dns/meshnames.Resolver`.
+The node supports these name formats:
 
-## Ports
+- `.meshname` uses the label before the suffix as a Meshname authority. The
+  node sends a DNS request for the full name to that authority.
+- `.meship` decodes its single name label directly to an IPv6 address. This
+  format does not send a DNS request.
+- `.pk.ygg` derives a Yggdrasil IPv6 address from the Ed25519 public key in the
+  label before the suffix. This format does not send a DNS request.
+- `.ygg` uses the label before the suffix as a Yggdrasil authority. Straight
+  hexadecimal, base32, and dashed YggNS authority labels are supported. The
+  node sends a DNS request for the full name to that authority.
 
-- `DNS`, left-directed `almagest/dns`: emits detached DNS wrappers to
-  consumers.
-- `Network`, right-directed `almagest/network`: required. Mesh authority DNS
-  exchanges are dialed through this network, and no DNS provider is published
-  until this input is linked and ready.
-- `Fallback DNS`, right-directed `almagest/dns`: optional. The node adapts this
-  DNS input to a `gonnect.Resolver` and installs it as the MeshNames fallback
-  for names outside the mesh-specific suffixes understood by `meshnames`.
+For example, `service.aiag7sesed2aaxgcgbnevruwpy.meshname` sends a request to
+the authority identified by `aiag7sesed2aaxgcgbnevruwpy`. The
+`aiag7sesed2aaxgcgbnevruwpy.meship` form returns that authority address
+directly.
 
-## Resolution
+Authority requests use TCP port 53 through the connected Network. Make sure
+that the Network can reach the derived mesh IPv6 addresses. The Network is
+also required to activate the node when you use only the direct `.meship` or
+`.pk.ygg` formats.
 
-Mesh-specific names such as `.meshname`, `.meship`, `.pk.ygg`, and `.ygg` are
-handled by `gonnect/dns/meshnames`. Names outside those schemes are rejected
-unless `Fallback DNS` is explicitly linked.
+Connect **Fallback DNS** to resolve names that are not recognized as mesh names.
+Without this connection, these names return a not-found response. The node
+does not use a DNS resolver from the Network as an implicit fallback.
+Disconnecting **Fallback DNS** stops ordinary-name forwarding but keeps mesh-name
+resolution available. Disconnecting Network removes the DNS output.
 
-## Configuration
+**Request timeout (ms)** limits one DNS exchange with a mesh authority. A value
+of `0` uses the default timeout of 5 seconds. This timeout does not apply to
+direct address decoding or to **Fallback DNS** requests.
 
-The `Request timeout (ms)` menu field limits one DNS exchange with an
-authoritative mesh node. Set it to `0` to use the gonnect default. Saved config
-stores it in `requestTimeoutMS`.
-
-## Lifecycle
-
-The node owns one `meshnames.Resolver` and one `dns.ResolverProvider` for the
-current Network, optional Fallback DNS input, and timeout. Replacing or
-detaching an input, or changing the timeout, closes previously emitted DNS
-wrappers, closes the old provider, and publishes a fresh provider when the
-required Network input is ready. Detaching the fallback rebuilds the resolver
-with a nil fallback so ordinary names cannot leak into an implicit direct or
-system resolver.
+The DNS output supports A, AAAA, PTR, CNAME, TXT, MX, NS, and SRV questions.
+Successful answers have a TTL of 60 seconds. Unsupported DNS question types
+return a not-implemented response.

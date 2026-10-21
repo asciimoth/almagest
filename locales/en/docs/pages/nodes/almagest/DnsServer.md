@@ -1,24 +1,47 @@
-# DnsServer
+Accepts UDP DNS requests through an attached Network and sends each request to
+an attached DNS resolver. Connect the listening network to **Network** and the
+resolver that will answer requests to **DNS**.
 
-`almagest/DnsServer` exposes DNS requests received on a UDP listener to an
-`almagest/dns` resolver chain.
+This node provides a UDP listener only. It does not provide DNS over TCP or DNS
+over TLS.
 
-Ports:
+## Listen address
 
-- `Network` is a right-directed `almagest/network` port. The node listens for
-  UDP DNS packets through the received network.
-- `DNS` is a right-directed `almagest/dns` port. Incoming wire DNS requests are
-  forwarded to the received resolver.
+Use the **Network** setting to select the UDP address family:
 
-Menu configuration:
+- **UDP** lets the attached Network select the family from the bind address.
+- **UDP4** uses IPv4 only.
+- **UDP6** uses IPv6 only.
 
-- `Network` selects `udp`, `udp4`, or `udp6`.
-- `Host` is the local bind host.
-- `Port` is the local bind port.
-- `Request timeout (ms)` limits how long one packet request can wait for the
-  attached resolver. Set it to `0` to use the gonnect default.
+**Host** and **Port** set the local bind address. The defaults are
+`127.0.0.1:5353`. For a local IPv6 listener, use `::1`. The port must be from 1
+through 65535.
 
-Saved config stores the timeout in `requestTimeoutMS`. Changing listen or
-timeout configuration, or changing the network input, restarts the packet
-listener. Changing the DNS input attaches or detaches the upstream resolver on
-the live `gonnect/dns.Server` without reopening the listener.
+Use a loopback address when only local clients must reach the server. Binding
+to `0.0.0.0` or `::` can expose the resolver on all interfaces available
+through the attached Network. Use an all-interface address only when access to
+the listener is controlled. An exposed DNS resolver can be used for unwanted
+queries or DNS amplification attacks.
+
+## Request timeout
+
+**Request timeout (ms)** limits how long one received request can wait for the
+attached DNS resolver. Set the value to `0` to use the default timeout of 5
+seconds. Negative values are not valid. If the resolver returns an error or the
+request times out, the server replies with `SERVFAIL`.
+
+The listener can stay open without a ready DNS input. In this state, the node
+shows `waiting for DNS` and replies to valid requests with `SERVFAIL`.
+Malformed DNS packets are ignored.
+
+## Listener changes and errors
+
+Changing the UDP family, host, port, timeout, or attached Network closes the
+current listener and starts a new listener. Requests can fail during this short
+restart. Changing only the attached DNS resolver keeps the listener open, but
+cancels requests that were waiting on the previous resolver.
+
+If the node cannot bind the configured address, it shows **listen failed** and
+records the cause in its log. The node retries the bind once per second while
+the Network remains ready. When the listener and DNS input are ready, the node
+label shows the address on which it is listening.

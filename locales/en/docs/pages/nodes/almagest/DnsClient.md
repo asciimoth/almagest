@@ -1,45 +1,60 @@
-# DNS Client Node
+Sends DNS requests to upstream servers through an attached Network. Connect the
+transport network to **Network** and connect DNS consumers to **DNS**. The DNS
+output becomes available when the Network is ready and at least one valid
+server is configured.
 
-`almagest/DnsClient` publishes an `almagest/dns` provider backed by
-`github.com/asciimoth/gonnect/dns.Client`.
+## DNS servers
 
-## Ports
+Add upstreams to **DNS servers** in the order that you want the node to try
+them. Each server URL must use one of these schemes:
 
-- `DNS`, left-directed `almagest/dns`: emits detached DNS wrappers to
-  consumers.
-- `Network`, right-directed `almagest/network`: required. The node uses this
-  network's `Dial` method for upstream DNS transport connections.
-- `Bootstrap DNS`, right-directed `almagest/dns`: optional. The node passes this
-  DNS interface to `dns.NewClient` so hostname-based upstream server URLs can be
-  resolved before dialing.
+- `udp://` sends DNS over UDP. If the server returns a truncated response, the
+  node retries the request over TCP to the same address.
+- `tcp://` sends DNS over TCP.
+- `dot://` sends DNS over TLS.
 
-## Configuration
+For example, use `udp://192.0.2.53:53`, `tcp://192.0.2.53:53`, or
+`dot://dns.example:853`. An address without a scheme becomes a UDP URL. If you
+omit the port, the node uses port 53 for all three schemes. Specify port 853
+when a DNS-over-TLS server uses the standard DoT port.
 
-The node menu exposes a `DNS servers` list and a `Request timeout (ms)` field.
-The timeout limits one request, including bootstrap lookup, dial, TLS
-handshake, and network I/O. Set it to `0` to use the gonnect default. Saved
-config uses the `servers` and `requestTimeoutMS` keys:
+A server URL cannot contain user information, a query, a fragment, or
+whitespace in its address.
 
-```hujson
-{
-  "Class": "almagest/DnsClient",
-  "servers": [
-    "udp://127.0.0.1:53",
-    "tcp://127.0.0.1:53",
-    "dot://dns.example.test:853"
-  ],
-  "requestTimeoutMS": 0
-}
-```
+The node tries server URLs in list order after a connection or protocol error.
+It returns the first valid DNS response. A DNS response code such as `NXDOMAIN`
+or `SERVFAIL` is a valid response, so it does not cause the node to try the next
+server.
 
-Supported schemes are `udp`, `tcp`, and `dot`. Entries without a scheme are
-normalized to `udp://...` during apply/save.
+## Bootstrap DNS
 
-## Lifecycle
+Connect **Bootstrap DNS** when a server URL contains a hostname. The bootstrap
+resolver converts that hostname to IP addresses before the node opens the
+upstream connection. A server URL that contains an IP address does not need
+bootstrap DNS. The Network supplies the connection path, but it does not
+resolve server hostnames for this node.
 
-The node owns exactly one `dns.Client` for the current effective Network,
-Bootstrap DNS, server list, and timeout. When one of those inputs changes
-materially, it closes previously emitted wrappers, closes the old client,
-builds a fresh `dns.Client`, and re-emits detached DNS wrappers to every
-connected consumer. Equivalent configuration applies do not rebuild the
-client.
+For UDP and TCP, the node tries bootstrap addresses in resolver order. For
+DNS over TLS, it tries all returned addresses in parallel and uses the first
+valid response.
+
+## TLS certificates
+
+The selected **TLS config** applies only to `dot://` servers. It controls the
+trusted certificates and certificate-verification policy. Without an explicit
+verification name in that config, the node verifies the certificate against
+the host in the server URL. This rule also applies when bootstrap DNS connects
+the node to a resolved IP address. For an IP address in the URL, the
+certificate must contain that IP address unless the TLS config supplies a
+different verification name.
+
+## Request timeout
+
+**Request timeout (ms)** limits one complete request. The limit includes
+bootstrap resolution, attempts against the configured servers, connection
+setup, the TLS handshake, and network reads and writes. Set the value to `0`
+to use the default timeout of 5 seconds. Negative values are not valid.
+
+Changing the Network, Bootstrap DNS, server list, TLS config, or timeout closes
+the current DNS output and cancels requests that use it. The node supplies a
+new DNS output when the new configuration is ready.

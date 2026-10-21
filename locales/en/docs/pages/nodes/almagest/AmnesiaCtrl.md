@@ -1,57 +1,76 @@
-# AmnesiaCtrl
+AmnesiaCtrl is deprecated. Use the Amnesia node for new configurations.
 
-Imports an Amnezia VPN connection and manages its peer on an attached
-WireGuard node.
+AmnesiaCtrl imports an Amnezia VPN connection and adds its peer to an attached
+WireGuard node. The WireGuard node continues to control the device private key,
+TUN connection, listen settings, and UDP transport. AmnesiaCtrl removes only
+the peer that it added when you disable or disconnect the node.
 
-The **WireGuard** port supplies the shared WireGuard device. AmnesiaCtrl owns
-only the peer that it adds through this port. The WireGuard node continues to
-own the device private key, TUN attachment, listen settings, and UDP
-transports. For an API-v2 service key, AmnesiaCtrl sends the attached WireGuard
-device's existing public key to the service. It does not generate a new
-WireGuard client key. The key remains the same across imports, **Reconnect**
-requests, and daemon restarts. This differs from a standalone wgo import
-without an attached device, which generates a new client key for each import.
+Connect the **WireGuard** port to the control port of a WireGuard node. Store
+one of these values in a secret, and select the secret in **Connection
+secret**:
 
-Some service backends can return a valid profile but stop accepting handshakes
-for an old client public key. In this state, the AmnesiaCtrl status can show
-**up** and **handshaking**, transmit bytes can increase, receive bytes remain
-zero, and the latest handshake stays empty. **Reconnect** alone can reuse the
-same unusable identity.
+- an Amnezia `vpn://` service key
+- a native WireGuard or AmneziaWG configuration
 
-To recover, clear **Private key secret** on the attached WireGuard node and
-apply its configuration. The WireGuard node generates and stores a new private
-key. Then press **Reconnect** on this AmnesiaCtrl node so the service receives
-the new public key. You do not need to delete either node or detach their
-links. Rotating the private key changes the identity of the complete WireGuard
-device and affects all peers and controllers that share it. Use a dedicated
-WireGuard node when a service connection must rotate its identity
-independently.
+A native configuration must contain the same client identity as the attached
+WireGuard node. If the identities do not match, the import fails. For a
+service key, AmnesiaCtrl sends the public key of the attached WireGuard device
+to the service. The node does not generate a separate client key. Reconnects
+and daemon restarts continue to use the same identity.
 
-AmnesiaCtrl also sends the profile interface addresses as owned-IP suggestions
-and the first non-empty profile DNS server as a DNS suggestion. The WireGuard
-node merges the addresses with its other controller suggestions and menu owned
-IPs. It uses the last DNS suggestion received from its controller links unless
-its menu DNS field is set. It then sends the effective interface config to its
-TUN provider. AmnesiaCtrl waits for the WireGuard node to accept this config
-and attach the resulting TUN generation before it adds or activates the
-profile peer.
+Connect the **Network** port for a service-key import or for a native profile
+that has pre-connect actions. This connection carries only service API and
+pre-connect traffic. The VPN peer always uses the default UDP network of the
+WireGuard node. A native profile without pre-connect actions does not need the
+**Network** connection.
 
-The **Network** port is used only for Amnezia service API and profile
-pre-connect traffic. It is needed for API-v2 service keys and profiles that
-declare pre-connect actions. It is not installed as the peer UDP transport.
-The peer always uses the WireGuard node's default UDP transport.
+AmnesiaCtrl sends these profile settings to the WireGuard node before it adds
+the peer:
 
-Store the `vpn://` URL or native WireGuard/AmneziaWG configuration in a secret,
-then select that secret in the configuration form. For a custom API-v2
-deployment, you can also set its gateway URL and a secret that contains its RSA
-public key. Select a TLS config for HTTPS gateway connections.
+- tunnel addresses
+- allowed-IP routes
+- the first non-empty DNS server
+- the profile MTU limit
 
-The node stores its Amnezia installation UUID and encrypted proxy cache in a
-stable KV subtree when KV storage is available. It saves the subtree identifier
-in the node config, so workspace ID changes and node renames do not discard the
-session. The status menu shows the UUID and reports when it uses persistent
-storage.
+The WireGuard node combines these settings with its other controller and menu
+settings, and then sends the result to its TUN provider.
 
-Interactive import is disabled. If the service requests a CAPTCHA or another
-interaction, the node enters the error state. Change the connection settings or
-press **Reconnect** after you resolve the cause.
+## Service options
+
+**Server country** selects a country for a service import. Use a two-letter
+ISO 3166-1 country code, such as `de`. Leave the field empty to let the service
+select the country.
+
+Enable **Send connect event** if the service must receive its connect event
+during import. **Reconnect** imports the profile again and replaces the peer,
+but it does not change the WireGuard identity.
+
+For a custom service deployment, set **Gateway URL** and, if required, select
+the secret that contains the gateway RSA public key. Select a TLS
+configuration for an HTTPS gateway.
+
+The node keeps its Amnezia installation UUID and encrypted proxy cache in KV
+storage when that storage is available. This data survives daemon restarts and
+node renames. The status menu shows the installation UUID and whether it is
+persistent.
+
+AmnesiaCtrl cannot complete interactive imports. If the service requests a
+CAPTCHA or another interaction, the import fails. Use the Amnesia node if the
+service requires a CAPTCHA.
+
+## Troubleshooting
+
+Some services can return a valid profile but reject handshakes from an old
+client public key. In this condition, the status can show **handshaking**, TX
+bytes can increase, RX bytes can stay at zero, and **Latest handshake** can
+stay empty. **Reconnect** does not correct this condition because it uses the
+same WireGuard identity.
+
+To create a new identity, clear **Private key secret** on the attached
+WireGuard node and apply the configuration. The WireGuard node generates and
+stores a new private key. Then select **Reconnect** on AmnesiaCtrl so that the
+service receives the new public key.
+
+This procedure changes the identity for all peers and controllers that use the
+WireGuard node. Use a dedicated WireGuard node if this VPN connection must
+rotate its identity independently.

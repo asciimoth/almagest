@@ -1,4 +1,58 @@
-Local SOCKS proxy backed by system integration.
+LocalProxy provides a SOCKS proxy to applications on the daemon host. Client
+connections use the system-local network. The requested connections, name
+lookups, and remote listeners use the connected **Network**. Use this node to
+give a local application access to a VPN, tunnel, proxy chain, or test network
+from an ordinary SOCKS client.
 
-Incoming client connections are accepted on the system LocalNet interface.
-Proxy commands are executed through the connected Network port.
+The plain SOCKS listener supports SOCKS4, SOCKS4a, and SOCKS5. Its default
+address is `127.0.0.1:1080`. An empty host also uses `127.0.0.1`. Set the port
+to `0` to disable this listener.
+
+The optional SOCKS-over-WebSocket listener uses plain WebSocket transport. Set
+**SOCKS+WS port** to a nonzero value to enable it. The default path is
+`/socks`; a path without a leading slash gets one automatically. This listener
+does not add TLS, so it provides `ws`, not `wss`. The plain SOCKS and WebSocket
+listeners can run together, but they cannot use the same host and port.
+
+## Authentication and access
+
+With no entries in **Users**, the proxy permits connections without
+authentication. Add users to require username and password authentication.
+Empty usernames are ignored. More than one password can use the same username.
+
+LocalProxy currently uses the inline **Password** value and saves it in the
+node configuration. It does not load the selected **Password secret** value.
+Do not expose an unauthenticated listener to an untrusted network.
+
+On Linux, the listener uses the configured host address. `127.0.0.1` limits
+access to the daemon host. A wildcard or LAN address can make the proxy
+reachable from other devices, subject to the host firewall and routing.
+
+On Windows, the system-local network is loopback-only. A wildcard address is
+changed to a loopback address, and a non-loopback host is rejected. Thus,
+LocalProxy cannot provide a LAN-facing listener on Windows.
+
+## Proxy commands
+
+All command checkboxes are enabled by default. Disable commands that clients
+do not need:
+
+- **CONNECT** opens a TCP connection through the connected Network.
+- **BIND** opens a TCP listener through the connected Network.
+- **UDP ASSOC** relays SOCKS5 UDP traffic. The local UDP relay uses a port
+  selected by the system; a client cannot request a fixed relay port.
+- **Tor RESOLVE** and **Tor RESOLVE_PTR** provide the Tor name-resolution
+  extensions.
+- **Gost MBIND** and **Gost UDPTUN** provide the corresponding [Gost](https://gost.run/en/tutorials/protocols/socks/)
+  extensions.
+
+For UDP operations, destination traffic uses the connected Network. The local
+UDP relay for **UDP ASSOC** stays on the system-local network. Use **Gost
+UDPTUN** when an application needs a stable, externally configured UDP port,
+such as a WireGuard peer with a fixed endpoint.
+
+The proxy listeners can start without a connected Network, but all proxy
+requests then fail. Connecting, disconnecting, or replacing the Network
+restarts the listeners. Applying menu changes also restarts them. A restart
+closes active client sessions. The **Worker** log shows the active listener
+addresses and startup errors.
