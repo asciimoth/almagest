@@ -214,6 +214,8 @@ function createClassPreviewBody(leftPorts: ClassPreviewPort[], rightPorts: Class
 function createClassPreviewPort(port: ClassPreviewPort, side: "left" | "right"): HTMLElement {
   const row = document.createElement("div");
   row.className = `class-preview-port class-preview-port-${side}`;
+  row.dataset.portSide = side;
+  row.dataset.portName = port.name;
   const dot = document.createElement("span");
   dot.className = "class-preview-port-dot";
   dot.style.setProperty("--class-preview-port-color", safeCSSColor(port.color, "transparent"));
@@ -725,9 +727,16 @@ export function createEmptyWorkerItem(): HTMLLIElement {
 
 export type MarkdownRenderMode = "panel" | "docs";
 
+export type MarkdownPortHighlightHandler = (
+  side: "left" | "right",
+  name: string,
+  highlighted: boolean,
+) => void;
+
 type MarkdownRenderContext = {
   mode: MarkdownRenderMode;
   documentID: string;
+  onPortHighlight: MarkdownPortHighlightHandler | undefined;
 };
 
 export function renderNodeDescription(
@@ -735,13 +744,14 @@ export function renderNodeDescription(
   value: string,
   mode: MarkdownRenderMode = "panel",
   documentID = "",
+  onPortHighlight?: MarkdownPortHighlightHandler,
 ): void {
   const text = value.trim();
   if (!text) {
     node.textContent = t("node.description.empty", "No long description is registered for this node class.");
     return;
   }
-  const context: MarkdownRenderContext = { mode, documentID };
+  const context: MarkdownRenderContext = { mode, documentID, onPortHighlight };
   const headingIDs = new Map<string, number>();
   node.replaceChildren(...parseMarkdownBlocks(text).map((block) => renderMarkdownBlock(block, context, headingIDs)));
 }
@@ -1049,6 +1059,7 @@ type MarkdownCustomLinkRenderer = (
 
 const markdownCustomLinkRenderers: Readonly<Record<string, MarkdownCustomLinkRenderer>> = {
   docs: renderMarkdownDocumentationLink,
+  port: renderMarkdownPortLink,
 };
 
 function renderMarkdownLink(
@@ -1091,6 +1102,30 @@ function renderMarkdownDocumentationLink(
   if (title) anchor.title = title;
   anchor.rel = "noopener noreferrer";
   return anchor;
+}
+
+function renderMarkdownPortLink(
+  label: string,
+  destination: string,
+  title: string,
+  context: MarkdownRenderContext,
+): Node {
+  const match = destination.match(/^(left|right)\/([^\u0000-\u001f\u007f]{1,256})$/);
+  if (!match) return document.createTextNode(label);
+
+  const side = match[1] as "left" | "right";
+  const name = match[2] ?? "";
+  const strong = document.createElement("strong");
+  strong.append(...markdownInlineText(label));
+  strong.className = "markdown-link-port";
+  strong.dataset.portSide = side;
+  strong.dataset.portName = name;
+  if (title) strong.title = title;
+  if (context.onPortHighlight) {
+    strong.addEventListener("pointerenter", () => context.onPortHighlight?.(side, name, true));
+    strong.addEventListener("pointerleave", () => context.onPortHighlight?.(side, name, false));
+  }
+  return strong;
 }
 
 function validMarkdownDocumentationID(value: string): boolean {

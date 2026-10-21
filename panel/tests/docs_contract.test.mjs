@@ -58,12 +58,14 @@ test("documentation reuses an open admin panel tab or opens a new tab", () => {
 test("documentation loads localized pages over HTTP without a WebSocket", () => {
   assert.match(docsSource, /docsAPIURL\("tree"\)/);
   assert.match(docsSource, /docsAPIURL\("raw", \{ id \}\)/);
-  assert.match(docsSource, /renderNodeDescription\(content, contentText, "docs", id\)/);
+  assert.match(docsSource, /renderNodeDescription\(content, contentText, "docs", id, highlightPreviewPort\)/);
   assert.match(docsSource, /scrollToCurrentAnchor\(\)/);
   assert.match(docsSource, /decodeURIComponent\(window\.location\.hash\.slice\(1\)\)/);
   assert.match(docsSource, /docsURL\(currentPage, window\.location\.hash\)/);
   assert.match(docsSource, /docsAPIURL\("node-class", \{ id \}\)/);
   assert.match(docsSource, /void loadNodePreview\(id, title\)/);
+  assert.match(docsSource, /port\.dataset\.portSide === side && port\.dataset\.portName === name/);
+  assert.match(docsSource, /port\.classList\.toggle\("class-preview-port-highlighted", highlighted\)/);
   assert.match(docsSource, /renderPageMarks\(page\.marks/);
   assert.match(docsSource, /deprecated: "D"/);
   assert.match(docsSource, /status\.title = markMessages\[mark\]/);

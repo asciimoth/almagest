@@ -1,5 +1,5 @@
 Provides DNS service through the resolver of an attached Network. Connect the
-network to **Network**, then connect DNS consumers to **DNS**.
+network to [Network](@port/right/Network), then connect DNS consumers to [DNS](@port/left/DNS).
 
 The node converts each DNS question to a resolver lookup on the Network. It
 does not select a DNS server or DNS transport. The attached Network controls
@@ -17,7 +17,7 @@ Network becomes an `NXDOMAIN` response. Other lookup errors become `SERVFAIL`.
 Unsupported record types and DNS classes return `NOTIMP`. A malformed request,
 including a malformed reverse name, returns `FORMERR`.
 
-The **DNS** output is available only while **Network** is ready. If the Network
+The [DNS](@port/left/DNS) output is available only while [Network](@port/right/Network) is ready. If the Network
 is removed or replaced, current DNS outputs close and in-progress requests are
 canceled. The node supplies new DNS outputs when the replacement Network is
 ready. Removing one DNS consumer does not affect the Network or other DNS

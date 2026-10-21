@@ -26,6 +26,12 @@ test("internal documentation links are distinct from external links", () => {
   assert.match(rule, /text-decoration-style:\s*dashed;/);
 });
 
+test("highlighted documentation preview ports have a visible outline", () => {
+  const rule = cssRule(".class-preview-port-highlighted");
+
+  assert.match(rule, /outline:\s*2px solid var\(--yellow\);/);
+});
+
 test("SPA tab and locale glyphs use one fixed control width", () => {
   const tabRule = cssRule(".tabs button");
   const localeRule = cssRule(".locale-picker");

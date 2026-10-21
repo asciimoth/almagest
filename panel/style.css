@@ -1399,6 +1399,17 @@ h1 {
   flex: 0 0 auto;
 }
 
+.class-preview-port-highlighted {
+  border-radius: 4px;
+  outline: 2px solid var(--yellow);
+  outline-offset: 2px;
+  background: color-mix(in srgb, var(--yellow), transparent 84%);
+}
+
+.class-preview-port-highlighted .class-preview-port-dot {
+  box-shadow: 0 0 8px 2px var(--yellow);
+}
+
 .node-panel-tabs {
   gap: 2px;
   margin-bottom: 12px;

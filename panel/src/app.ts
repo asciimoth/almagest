@@ -442,6 +442,7 @@ let graph: any;
 let canvas: any;
 let rendering = false;
 let selectedMenu: { node: ID; menu: FormularMenuInstance } | null = null;
+let highlightedDescriptionPort: { nodeID: ID; side: "left" | "right"; name: string } | null = null;
 let activeTab = "graph";
 let sidekickUpdate = 0;
 let workerAgeTimer = 0;
@@ -1237,6 +1238,7 @@ function registerLiteGraphNode(): void {
   PastaViewNode.prototype.onDrawForeground = function (ctx: CanvasRenderingContext2D): void {
     drawNodePopup(ctx, this);
     drawNodeLabel(ctx, this);
+    drawHighlightedDescriptionPort(ctx, this);
   };
   PastaViewNode.prototype.onSelected = scheduleSidekickUpdate;
   PastaViewNode.prototype.onDeselected = scheduleSidekickUpdate;
@@ -1625,6 +1627,57 @@ function drawNodeLabel(ctx: CanvasRenderingContext2D, node: any): void {
   ctx.restore();
 }
 
+function drawHighlightedDescriptionPort(ctx: CanvasRenderingContext2D, node: any): void {
+  const highlighted = highlightedDescriptionPort;
+  if (!highlighted || highlighted.nodeID !== node.id || node.flags?.collapsed) return;
+  const isInput = highlighted.side === "left";
+  const slots = (isInput ? node.inputs : node.outputs) as Array<{ label?: string; name?: string }> | undefined;
+  if (!slots) return;
+
+  const position = new Float32Array(2);
+  ctx.save();
+  ctx.fillStyle = "rgba(249, 226, 175, 0.3)";
+  ctx.strokeStyle = "#f9e2af";
+  ctx.lineWidth = 2;
+  ctx.shadowColor = "#f9e2af";
+  ctx.shadowBlur = 8;
+  slots.forEach((slot, index) => {
+    if ((slot.label ?? slot.name) !== highlighted.name) return;
+    node.getConnectionPos(isInput, index, position);
+    const x = (position[0] ?? 0) - (node.pos?.[0] ?? 0);
+    const y = (position[1] ?? 0) - (node.pos?.[1] ?? 0);
+    ctx.beginPath();
+    ctx.arc(x, y, 9, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  });
+  ctx.restore();
+}
+
+function setDescriptionPortHighlight(
+  nodeID: ID,
+  side: "left" | "right",
+  name: string,
+  highlighted: boolean,
+): void {
+  if (highlighted) {
+    highlightedDescriptionPort = { nodeID, side, name };
+  } else if (
+    highlightedDescriptionPort?.nodeID === nodeID &&
+    highlightedDescriptionPort.side === side &&
+    highlightedDescriptionPort.name === name
+  ) {
+    highlightedDescriptionPort = null;
+  }
+  canvas?.setDirty(true, false);
+}
+
+function clearDescriptionPortHighlight(): void {
+  if (!highlightedDescriptionPort) return;
+  highlightedDescriptionPort = null;
+  canvas?.setDirty(true, false);
+}
+
 function drawNodePopup(ctx: CanvasRenderingContext2D, node: any): void {
   const popup = latestPriorityPopup(node.properties?.pastaPopups);
   if (!popup) return;
@@ -1771,6 +1824,7 @@ function scheduleSidekickUpdate(): void {
 }
 
 function renderClassPanel(selectedCount: number): void {
+  clearDescriptionPortHighlight();
   destroyMenu();
   el.sidekick.dataset.nodeId = "";
   el.sidekick.dataset.nodeClass = "";
@@ -1899,6 +1953,7 @@ function renderNodePanel(id: number): void {
     return;
   }
   const description = "";
+  clearDescriptionPortHighlight();
   destroyMenu();
   el.sidekick.dataset.nodeId = String(id);
   el.sidekick.dataset.nodeClass = node.class;
@@ -1964,7 +2019,9 @@ function renderNodePanel(id: number): void {
       el.sidekick.dataset.nodeId === String(id) &&
       el.sidekick.dataset.nodeClass === node.class
     ) {
-      renderNodeDescription(descriptionPanel, text ?? "");
+      renderNodeDescription(descriptionPanel, text ?? "", "panel", "", (side, name, highlighted) => {
+        setDescriptionPortHighlight(id, side, name, highlighted);
+      });
     }
   });
   for (const tab of el.sidekick.querySelectorAll<HTMLButtonElement>("[data-node-tab]")) {
@@ -1982,6 +2039,7 @@ function renderNodePanel(id: number): void {
 }
 
 function renderPlaceholderNodePanel(id: number, node: NodeSnapshot): void {
+  clearDescriptionPortHighlight();
   destroyMenu();
   el.sidekick.dataset.nodeId = String(id);
   el.sidekick.dataset.nodeClass = node.class;
@@ -2088,6 +2146,7 @@ async function removeNodePopups(nodeID: number): Promise<void> {
 }
 
 function setNodePanelTab(name: string): void {
+  if (name !== "docs") clearDescriptionPortHighlight();
   for (const tab of el.sidekick.querySelectorAll<HTMLButtonElement>("[data-node-tab]")) {
     const selected = tab.dataset.nodeTab === name;
     tab.classList.toggle("active", selected);

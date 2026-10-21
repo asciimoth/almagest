@@ -284,7 +284,7 @@ async function openPage(id: string, updateHistory: boolean): Promise<void> {
     document.title = `${name} — Almagest Documentation`;
     const title = textElement("h1", name);
     const content = document.createElement("div");
-    renderNodeDescription(content, contentText, "docs", id);
+    renderNodeDescription(content, contentText, "docs", id, highlightPreviewPort);
     const unavailable = pageAvailability.get(id) === false
       ? textElement("div", nodeUnavailableMessage, "docs-node-unavailable")
       : null;
@@ -305,6 +305,14 @@ async function openPage(id: string, updateHistory: boolean): Promise<void> {
       textElement("h1", "Documentation unavailable"),
       textElement("p", error instanceof Error ? error.message : String(error)),
     );
+  }
+}
+
+function highlightPreviewPort(side: "left" | "right", name: string, highlighted: boolean): void {
+  for (const port of pageElement.querySelectorAll<HTMLElement>(".docs-node-preview .class-preview-port")) {
+    if (port.dataset.portSide === side && port.dataset.portName === name) {
+      port.classList.toggle("class-preview-port-highlighted", highlighted);
+    }
   }
 }
 

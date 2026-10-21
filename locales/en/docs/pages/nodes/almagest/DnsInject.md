@@ -1,6 +1,7 @@
 DnsInject adds a selected DNS resolver to an existing Network. Connect the
-connection path to **Network**, connect a resolver to **DNS**, and connect
-network consumers to the other **Network** port.
+connection path to the [Network](@port/right/Network) input, connect a resolver
+to the [DNS](@port/right/DNS) input, and connect network consumers to the
+[Network](@port/left/Network) output.
 
 The resulting Network uses the connected DNS resolver instead of the resolver
 from the original Network. This is useful when a client must connect through

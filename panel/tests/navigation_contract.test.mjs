@@ -35,6 +35,13 @@ test("the graph theme is configured before LiteGraph starts rendering", () => {
   assert.match(app, /if \(width === graphCanvasWidth && height === graphCanvasHeight\) return;/);
 });
 
+test("description port links highlight selected node slots without HTML parsing", () => {
+  assert.match(app, /drawHighlightedDescriptionPort\(ctx, this\)/);
+  assert.match(app, /\(slot\.label \?\? slot\.name\) !== highlighted\.name/);
+  assert.match(app, /setDescriptionPortHighlight\(id, side, name, highlighted\)/);
+  assert.match(app, /if \(name !== "docs"\) clearDescriptionPortHighlight\(\)/);
+});
+
 test("graph input recovers from lost mouse-up events", () => {
   assert.match(app, /installLiteGraphPointerGuard\(\)/);
   assert.match(app, /finally \{\s*normalizeLiteGraphMoveListener\(this\);\s*\}/);

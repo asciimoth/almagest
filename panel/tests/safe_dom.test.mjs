@@ -8,6 +8,7 @@ import {
   createDNSKeyTitle,
   createDNSValuePreview,
   createClassButtonContent,
+  createClassPreview,
   createEmptyWorkerItem,
   createExperimentalNodeWarning,
   createKVEntryTitle,
@@ -102,6 +103,18 @@ test("node class previews use the shared type palette and fallback color", () =>
 
   assert.deepEqual(classPreviewPorts(cls, "left"), [{ name: "known", color: "#123456" }]);
   assert.deepEqual(classPreviewPorts(cls, "right"), [{ name: "fallback", color: "#9A9" }]);
+
+  const preview = createClassPreview(
+    cls,
+    [{ name: "known", color: "#123456" }],
+    [{ name: payload, color: "#9A9" }],
+  );
+  const rows = [...preview.querySelectorAll(".class-preview-port")];
+  assert.deepEqual(rows.map((row) => [row.dataset.portSide, row.dataset.portName]), [
+    ["left", "known"],
+    ["right", payload],
+  ]);
+  assertNoParsedPayload(preview);
   setTypeColors({});
 });
 
@@ -741,6 +754,37 @@ test("documentation links are relative to the current documentation page", () =>
     "../../guides/welcome",
   ]);
   assert.equal(links.every((link) => link.target === ""), true);
+});
+
+test("port links render as safe bold text and report hover state", () => {
+  const dom = installDOM();
+  const root = document.createElement("div");
+  const changes = [];
+  renderNodeDescription(root, [
+    '[Network](@port/right/Network "Output port")',
+    `[Unsafe ${payload}](@port/left/Input)`,
+    "[Wrong side](@port/top/Network)",
+  ].join(" "), "docs", "node/demo", (side, name, highlighted) => {
+    changes.push([side, name, highlighted]);
+  });
+
+  const ports = [...root.querySelectorAll(".markdown-link-port")];
+  assert.equal(root.querySelector("a"), null);
+  assert.equal(ports.length, 2);
+  assert.equal(ports[0]?.tagName, "STRONG");
+  assert.equal(ports[0]?.textContent, "Network");
+  assert.equal(ports[0]?.dataset.portSide, "right");
+  assert.equal(ports[0]?.dataset.portName, "Network");
+  assert.equal(ports[0]?.title, "Output port");
+  assertNoParsedPayload(root);
+
+  ports[0]?.dispatchEvent(new dom.window.Event("pointerenter"));
+  ports[0]?.dispatchEvent(new dom.window.Event("pointerleave"));
+  assert.deepEqual(changes, [
+    ["right", "Network", true],
+    ["right", "Network", false],
+  ]);
+  assert.match(root.textContent ?? "", /Wrong side/);
 });
 
 test("custom Markdown links reject unknown types and unsafe documentation IDs", () => {
