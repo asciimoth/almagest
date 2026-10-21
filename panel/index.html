@@ -12,14 +12,17 @@
   <body>
     <main class="app-shell">
       <header class="app-header">
-        <div>
-          <div class="app-title-row">
-            <h1 data-i18n="app.title">Almagest admin</h1>
-            <span id="project-version" hidden></span>
-            <span id="isolation-status" hidden></span>
-            <span id="sandbox-status" hidden></span>
+        <div class="app-brand">
+          <img class="header-logo" src="/logo.svg" alt="">
+          <div>
+            <div class="app-title-row">
+              <h1 data-i18n="app.title">Almagest admin</h1>
+              <span id="project-version" hidden></span>
+              <span id="isolation-status" hidden></span>
+              <span id="sandbox-status" hidden></span>
+            </div>
+            <span id="backend-status" data-i18n="app.status.loading">Loading</span>
           </div>
-          <span id="backend-status" data-i18n="app.status.loading">Loading</span>
         </div>
         <label class="locale-picker" for="locale-select">
           <svg class="locale-picker-icon" viewBox="0 0 24 24" aria-hidden="true">

@@ -23,6 +23,22 @@ test("documentation uses a separate page and the shared panel stylesheet", () =>
   assert.equal(document.querySelector("script[type='module']")?.getAttribute("src"), "/public/build/docs.js");
 });
 
+test("panel and documentation headers show the embedded logo before their titles", () => {
+  const docsDocument = new JSDOM(docsHTML).window.document;
+  const panelDocument = new JSDOM(panelHTML).window.document;
+
+  for (const [document, brandSelector] of [
+    [panelDocument, ".app-brand"],
+    [docsDocument, ".docs-brand"],
+  ]) {
+    const brand = document.querySelector(brandSelector);
+    assert.equal(brand?.firstElementChild?.tagName, "IMG");
+    assert.equal(brand?.firstElementChild?.getAttribute("src"), "/logo.svg");
+    assert.equal(brand?.firstElementChild?.getAttribute("alt"), "");
+    assert.ok(brand?.querySelector("h1"));
+  }
+});
+
 test("documentation reuses an open admin panel tab or opens a new tab", () => {
   const dom = new JSDOM(docsHTML);
   const link = dom.window.document.querySelector("#admin-panel-link");

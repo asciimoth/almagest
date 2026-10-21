@@ -1,0 +1,28 @@
+<svg viewBox="-100 -100 200 200" xmlns="http://www.w3.org/2000/svg">
+  <circle r="100" fill="#1e1e2e" />
+
+  <circle r="42" fill="none" stroke="#45475a" stroke-width="4" />
+  <circle r="76" fill="none" stroke="#45475a" stroke-width="4" />
+
+  <circle r="18" fill="#a6e3a1" />
+  <circle r="12" cx="42" fill="#f9e2af">
+    <animateTransform
+      attributeName="transform"
+      begin="0s"
+      dur="6s"
+      type="rotate"
+      from="0 0 0"
+      to="360 0 0"
+      repeatCount="indefinite" />
+  </circle>
+  <circle r="14" cy="-76" fill="#f38ba8">
+    <animateTransform
+      attributeName="transform"
+      begin="0s"
+      dur="9s"
+      type="rotate"
+      from="0 0 0"
+      to="360 0 0"
+      repeatCount="indefinite" />
+  </circle>
+</svg>
