@@ -37,6 +37,37 @@ body {
   color: var(--text);
 }
 
+a {
+  color: var(--blue);
+  text-decoration-color: color-mix(in srgb, currentColor, transparent 45%);
+  text-underline-offset: 0.15em;
+  transition: color 120ms ease, text-decoration-color 120ms ease;
+}
+
+a:visited {
+  color: var(--mauve);
+}
+
+a:hover {
+  color: color-mix(in srgb, var(--blue), white 24%);
+  text-decoration-color: currentColor;
+}
+
+a:visited:hover {
+  color: color-mix(in srgb, var(--mauve), white 18%);
+}
+
+a:active,
+a:visited:active {
+  color: var(--teal);
+}
+
+a:focus-visible {
+  border-radius: var(--radius-sm);
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
 .docs-body {
   overflow: hidden;
 }

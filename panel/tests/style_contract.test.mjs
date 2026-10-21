@@ -11,6 +11,14 @@ function cssRule(selector) {
   return match.groups.body;
 }
 
+test("links use the interface palette and focus treatment", () => {
+  assert.match(cssRule("a"), /color:\s*var\(--blue\);/);
+  assert.match(cssRule("a:visited"), /color:\s*var\(--mauve\);/);
+  assert.match(cssRule("a:hover"), /var\(--blue\)/);
+  assert.match(cssRule("a:active,\na:visited:active"), /color:\s*var\(--teal\);/);
+  assert.match(cssRule("a:focus-visible"), /outline:\s*3px solid var\(--focus-ring\);/);
+});
+
 test("KV, DNS, Sec, and TLS value inspectors keep content top-aligned", () => {
   const rule = cssRule(".kv-value-panel");
 
