@@ -1,4 +1,6 @@
-// Hello Network
+// Hello Network sends an HTTP request through the host network.
+// OutNetwork connects to the host network, and HttpClient sends requests.
+// Change the URL and inspect the client output.
 {
 	"nodes": {
 		"Outside Network Gateway": {"Class": "almagest/OutNetwork", "Pos": "{\"x\":958,\"y\":392}"},

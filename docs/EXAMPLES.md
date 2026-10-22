@@ -42,6 +42,21 @@ The manifest format is:
 `name` and `comment` are required fallback text. A translation can override one
 or both fields. Locale names use the same canonical form as localized content.
 
+## Config comments
+
+Start each `config.hujson` with a concise header comment. The header contains:
+
+- the example name;
+- what the example demonstrates;
+- a brief description of each node class that earlier examples did not use;
+- a suggestion for an action that the user can try.
+
+Write the comments as free prose, not as fixed `<topic>: <text>` fields. The
+suggestion can be in the header, next to the applicable node, or in both places.
+Use the order of example identifiers to determine which node classes are new. Do
+not describe a node class again if an earlier example uses it. Keep all example
+comments concise.
+
 ## Installation
 
 Install the directory at these platform defaults:

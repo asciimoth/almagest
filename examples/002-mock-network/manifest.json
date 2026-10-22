@@ -1,0 +1,5 @@
+{
+  "format": 1,
+  "name": "Mock Network",
+  "comment": "Run an HTTP server and client on an isolated network, then compare it with the host network."
+}

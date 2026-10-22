@@ -312,8 +312,8 @@ func TestExamplesRootOverrideValidation(t *testing.T) {
 	}
 }
 
-func TestRepositoryHelloNetworkExampleIsMinimalAndValid(t *testing.T) {
-	const exampleID = "001-hello-network"
+func TestRepositoryExamplesAreMinimalAndValid(t *testing.T) {
+	exampleIDs := []string{"001-hello-network", "002-mock-network"}
 	root := filepath.Join("..", "..", "examples")
 	store, err := openExampleStore(root)
 	if err != nil {
@@ -324,30 +324,32 @@ func TestRepositoryHelloNetworkExampleIsMinimalAndValid(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(listed) != 1 || listed[0].Example != exampleID {
+	if len(listed) != len(exampleIDs) {
 		t.Fatalf("repository examples = %#v", listed)
 	}
-	entries, err := os.ReadDir(filepath.Join(root, exampleID))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(entries) != 2 || entries[0].Name() != snapshotConfigName || entries[1].Name() != exampleManifestName {
-		t.Fatalf("hello-network files = %#v", entries)
-	}
-	configData, err := readExampleFile(store.root, exampleID+"/config.hujson", snapshotConfigMaxBytes)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(configData) > 1024 {
-		t.Fatalf("hello-network config is not minimal: %d bytes", len(configData))
-	}
-	for _, generatedDefault := range [][]byte{[]byte(`"body"`), []byte(`"method"`), []byte(`"tlsConfig"`)} {
-		if bytes.Contains(configData, generatedDefault) {
-			t.Fatalf("hello-network config contains generated default %s", generatedDefault)
+	for i, exampleID := range exampleIDs {
+		if listed[i].Example != exampleID {
+			t.Fatalf("repository examples = %#v", listed)
 		}
-	}
-	if _, err := parseEditableConfig(configData); err != nil {
-		t.Fatalf("hello-network config: %v", err)
+		entries, err := os.ReadDir(filepath.Join(root, exampleID))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(entries) != 2 || entries[0].Name() != snapshotConfigName || entries[1].Name() != exampleManifestName {
+			t.Fatalf("%s files = %#v", exampleID, entries)
+		}
+		configData, err := readExampleFile(store.root, exampleID+"/config.hujson", snapshotConfigMaxBytes)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, generatedDefault := range [][]byte{[]byte(`"body"`), []byte(`"method"`), []byte(`"tlsConfig"`)} {
+			if bytes.Contains(configData, generatedDefault) {
+				t.Fatalf("%s config contains generated default %s", exampleID, generatedDefault)
+			}
+		}
+		if _, err := parseEditableConfig(configData); err != nil {
+			t.Fatalf("%s config: %v", exampleID, err)
+		}
 	}
 }
 

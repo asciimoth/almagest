@@ -6,12 +6,17 @@ source /e2e/lib/common.sh
 start_daemon
 
 jq -e '
-	.snapshots | length == 1
+	.snapshots | length == 2
 	and .[0].example == "001-hello-network"
 	and .[0].name == "Hello Network"
 	and (.[0].comment | length > 0)
 	and (.[0] | has("uuid") | not)
 	and (.[0] | has("timestamp") | not)
+	and .[1].example == "002-mock-network"
+	and .[1].name == "Mock Network"
+	and (.[1].comment | length > 0)
+	and (.[1] | has("uuid") | not)
+	and (.[1] | has("timestamp") | not)
 ' <(cli snapshots list) >/dev/null || fail "example listing metadata is invalid"
 
 wait_graph_node "Before Example" || fail "initial graph is missing"
@@ -30,5 +35,19 @@ if node_id_by_name "Before Example" >/dev/null 2>&1; then
 fi
 grep -F 'Outside Network Gateway' "$E2E_CONFIG_DIR/alm.hujson" >/dev/null \
 	|| fail "loaded example config was not persisted"
+
+cli snapshots load 002-mock-network >"$E2E_RUNTIME/loaded-mock.json"
+jq -e '
+	.snapshot.example == "002-mock-network"
+	and .snapshot.name == "Mock Network"
+' "$E2E_RUNTIME/loaded-mock.json" >/dev/null || fail "mock network example load response is invalid"
+
+wait_graph_node "Mock Network" || fail "mock network was not loaded"
+wait_graph_node "Http Client" || fail "mock network HTTP client was not loaded"
+wait_graph_node "Http Server" || fail "mock network HTTP server was not loaded"
+wait_graph_node "Response" || fail "mock network response was not loaded"
+wait_graph_node "Out Network" || fail "comparison host network was not loaded"
+grep -F 'Mock Network' "$E2E_CONFIG_DIR/alm.hujson" >/dev/null \
+	|| fail "loaded mock network example config was not persisted"
 
 log "case passed"

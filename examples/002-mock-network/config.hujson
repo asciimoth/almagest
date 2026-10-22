@@ -1,0 +1,31 @@
+// Mock Network runs an HTTP client and server on an isolated network.
+// MockNetwork isolates traffic. HttpServer listens, and StringConstant sets its reply.
+// Try connecting the client and server to separate networks or to the same mock or real network.
+// With the server on Out Network, open http://127.0.0.1:8081/ in a browser or use curl.
+{
+	"nodes": {
+		"Mock Network": {
+			"Class": "almagest/MockNetwork",
+			"Pos":   "{\"x\":1103,\"y\":211}",
+		},
+		"Http Client": {
+			"Class": "almagest/HttpClient",
+			"Pos":   "{\"x\":864,\"y\":211}",
+			"Links": ["Network -> [Mock Network] Network"],
+			"url":   "http://127.0.0.1:8081/",
+		},
+		"Http Server": {
+			"Class": "almagest/HttpServer",
+			"Pos":   "{\"x\":862,\"y\":358}",
+			"Links": ["Network -> [Mock Network] Network"],
+			"port":  8081,
+		},
+		"Response": {
+			"Class": "pasta/StringConstant",
+			"Pos":   "{\"x\":643,\"y\":359}",
+			"Links": ["output -> [Http Server] Response"],
+			"value": "HTTP server response",
+		},
+		"Out Network": {"Class": "almagest/OutNetwork", "Pos": "{\"x\":1100,\"y\":374}"},
+	},
+}
