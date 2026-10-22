@@ -88,6 +88,7 @@ func (s *exampleStore) List(locale string) ([]api.SnapshotInfo, error) {
 	if len(entries) > exampleMaxCount {
 		return nil, fmt.Errorf("examples root has more than %d entries", exampleMaxCount)
 	}
+	slices.SortFunc(entries, func(a, b os.DirEntry) int { return strings.Compare(a.Name(), b.Name()) })
 	result := make([]api.SnapshotInfo, 0, len(entries))
 	for _, entry := range entries {
 		if !entry.IsDir() || validateExampleID(entry.Name()) != nil {
@@ -100,7 +101,6 @@ func (s *exampleStore) List(locale string) ([]api.SnapshotInfo, error) {
 		name, comment := localizedExampleMetadata(manifest, locale)
 		result = append(result, api.SnapshotInfo{Example: entry.Name(), Name: name, Comment: comment})
 	}
-	slices.SortFunc(result, func(a, b api.SnapshotInfo) int { return strings.Compare(a.Example, b.Example) })
 	return result, nil
 }
 

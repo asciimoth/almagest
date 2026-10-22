@@ -7,7 +7,7 @@ start_daemon
 
 jq -e '
 	.snapshots | length == 1
-	and .[0].example == "hello-network"
+	and .[0].example == "001-hello-network"
 	and .[0].name == "Hello Network"
 	and (.[0].comment | length > 0)
 	and (.[0] | has("uuid") | not)
@@ -15,9 +15,9 @@ jq -e '
 ' <(cli snapshots list) >/dev/null || fail "example listing metadata is invalid"
 
 wait_graph_node "Before Example" || fail "initial graph is missing"
-cli snapshots load hello-network >"$E2E_RUNTIME/loaded.json"
+cli snapshots load 001-hello-network >"$E2E_RUNTIME/loaded.json"
 jq -e '
-	.snapshot.example == "hello-network"
+	.snapshot.example == "001-hello-network"
 	and .snapshot.name == "Hello Network"
 	and (.snapshot | has("uuid") | not)
 	and (.snapshot | has("timestamp") | not)

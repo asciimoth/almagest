@@ -46,6 +46,32 @@ func TestExampleStoreListsLocalizedMetadataAndPreservesText(t *testing.T) {
 	}
 }
 
+func TestExampleStoreListsExamplesByDirectoryName(t *testing.T) {
+	root := t.TempDir()
+	for _, id := range []string{"003-third", "001-first", "002-second"} {
+		writeExampleTestFile(t, root, id+"/manifest.json", `{"format":1,"name":"Name","comment":"Comment"}`)
+	}
+	store, err := openExampleStore(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	listed, err := store.List("en")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"001-first", "002-second", "003-third"}
+	if len(listed) != len(want) {
+		t.Fatalf("examples = %#v, want identifiers %q", listed, want)
+	}
+	for i := range want {
+		if listed[i].Example != want[i] {
+			t.Fatalf("examples[%d].Example = %q, want %q", i, listed[i].Example, want[i])
+		}
+	}
+}
+
 func TestExampleStoreRejectsUnsafeAndInvalidContent(t *testing.T) {
 	for _, test := range []struct {
 		name     string
@@ -287,6 +313,7 @@ func TestExamplesRootOverrideValidation(t *testing.T) {
 }
 
 func TestRepositoryHelloNetworkExampleIsMinimalAndValid(t *testing.T) {
+	const exampleID = "001-hello-network"
 	root := filepath.Join("..", "..", "examples")
 	store, err := openExampleStore(root)
 	if err != nil {
@@ -297,17 +324,17 @@ func TestRepositoryHelloNetworkExampleIsMinimalAndValid(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(listed) != 1 || listed[0].Example != "hello-network" {
+	if len(listed) != 1 || listed[0].Example != exampleID {
 		t.Fatalf("repository examples = %#v", listed)
 	}
-	entries, err := os.ReadDir(filepath.Join(root, "hello-network"))
+	entries, err := os.ReadDir(filepath.Join(root, exampleID))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(entries) != 2 || entries[0].Name() != snapshotConfigName || entries[1].Name() != exampleManifestName {
 		t.Fatalf("hello-network files = %#v", entries)
 	}
-	configData, err := readExampleFile(store.root, "hello-network/config.hujson", snapshotConfigMaxBytes)
+	configData, err := readExampleFile(store.root, exampleID+"/config.hujson", snapshotConfigMaxBytes)
 	if err != nil {
 		t.Fatal(err)
 	}
