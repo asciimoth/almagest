@@ -92,7 +92,8 @@ its matching CLI at `C:\winvm\bin\almagest-cli.exe`. The comments in
 `local/winvm/config/alm.hujson` show how to export the built-in TLS CA and CRL,
 add them to the machine Windows certificate stores from an elevated terminal,
 test intercepted HTTPS with `curl.exe` without certificate flags, and remove
-both objects after the test.
+both objects after the test. The daemon reads locales, documentation, and
+examples from the source payload staged for that run.
 
 Manual daemon state is synchronized with the gitignored `local/winvm/`
 directory. It contains `config/`, `store/`, and `logs/`. The state is restored

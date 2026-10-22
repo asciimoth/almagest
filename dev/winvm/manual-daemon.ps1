@@ -17,8 +17,11 @@ $cli = Join-Path $toolDir 'almagest-cli.exe'
 $stdout = Join-Path $manualDir 'almagestd.stdout.log'
 $stderr = Join-Path $manualDir 'almagestd.stderr.log'
 $pidPath = Join-Path $manualDir 'almagestd.pid'
+$launcherPath = Join-Path $manualDir 'start-almagestd.cmd'
 $storage = Join-Path $env:ProgramData ('Almagest\manual-' + (Split-Path $RunDir -Leaf))
-$env:ALMAGEST_EXAMPLES_DIR = Join-Path $SourceDir 'examples'
+$locales = Join-Path $SourceDir 'locales'
+$docsIndex = Join-Path $locales 'en\docs\index.json'
+$examples = Join-Path $SourceDir 'examples'
 $importDir = Join-Path $manualDir 'import'
 $exportDir = Join-Path $manualDir 'export'
 New-Item -ItemType Directory -Force $configDir | Out-Null
@@ -74,6 +77,15 @@ if (-not (Test-Path -LiteralPath $binary -PathType Leaf)) {
 if (-not (Test-Path -LiteralPath $cliSource -PathType Leaf)) {
     throw "staged almagest-cli binary is absent: $cliSource"
 }
+if (-not (Test-Path -LiteralPath $locales -PathType Container)) {
+    throw "staged locales directory is absent: $locales"
+}
+if (-not (Test-Path -LiteralPath $docsIndex -PathType Leaf)) {
+    throw "staged documentation catalog is absent: $docsIndex"
+}
+if (-not (Test-Path -LiteralPath $examples -PathType Container)) {
+    throw "staged examples directory is absent: $examples"
+}
 New-Item -ItemType Directory -Force $toolDir | Out-Null
 & icacls.exe $toolDir /inheritance:r /grant:r 'winvm:(OI)(CI)RX' 'SYSTEM:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "cannot protect manual tool directory: $toolDir" }
@@ -100,7 +112,15 @@ foreach ($option in $daemonOptions) {
         $arguments += $option
     }
 }
-$commandLine = "cmd.exe /d /c $binary $($arguments -join ' ') 1>>$stdout 2>>$stderr"
+$launcherLines = @(
+    '@echo off',
+    'setlocal',
+    "set `"ALMAGEST_LOCALES_DIR=$locales`"",
+    "set `"ALMAGEST_EXAMPLES_DIR=$examples`"",
+    "`"$binary`" $($arguments -join ' ') 1>>`"$stdout`" 2>>`"$stderr`""
+)
+[IO.File]::WriteAllLines($launcherPath, $launcherLines, [Text.Encoding]::ASCII)
+$commandLine = "cmd.exe /d /c `"$launcherPath`""
 $result = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
     CommandLine = $commandLine
     CurrentDirectory = $manualDir
