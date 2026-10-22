@@ -48,6 +48,8 @@ class DaemonRecipeTests(unittest.TestCase):
                          "--tmp-unix-admin", "--discover-system-programs"):
             self.assertIn(required, result.stdout)
         self.assertNotIn("--experimental", result.stdout)
+        self.assertIn('export ALMAGEST_EXAMPLES_DIR="$repo_root/examples"',
+                      RUNNER.read_text())
 
     def test_explicit_direct_mode_is_compatible(self):
         result = self.run_runner("--no-isolation")
@@ -85,6 +87,7 @@ class DaemonRecipeTests(unittest.TestCase):
         self.assertIn("Delegate=yes", result.stdout)
         self.assertIn("ALMAGEST_ISOLATION_DEVELOPMENT_ROOT=", result.stdout)
         self.assertIn("ALMAGEST_ISOLATION_DEVELOPMENT_IDENTITIES=", result.stdout)
+        self.assertIn(f"ALMAGEST_EXAMPLES_DIR={ROOT / 'examples'}", result.stdout)
         self.assertIn("/var/lib/almagest/dev-", result.stdout)
         self.assertIn("/run/almagest-dev-", result.stdout)
         self.assertIn("--discover-system-programs", result.stdout)

@@ -1,0 +1,12 @@
+// Hello Network
+{
+	"nodes": {
+		"Outside Network Gateway": {"Class": "almagest/OutNetwork", "Pos": "{\"x\":958,\"y\":392}"},
+		"Http Client": {
+			"Class": "almagest/HttpClient",
+			"Pos":   "{\"x\":777,\"y\":390}",
+			"Links": ["Network -> [Outside Network Gateway] Network"],
+			"url":   "http://example.com",
+		},
+	},
+}

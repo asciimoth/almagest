@@ -88,6 +88,7 @@ type LinuxProduction struct {
 	LookupEnv                      func(string) (string, bool)
 	Output                         io.Writer
 	LocalesDirectory               string
+	ExamplesDirectory              string
 }
 
 // RunLinuxProduction prepares protected authority, opens every trusted object,
@@ -259,6 +260,9 @@ func RunLinuxProduction(parent context.Context, production LinuxProduction, read
 	if production.LocalesDirectory != "" {
 		trustedPaths = append(trustedPaths, production.LocalesDirectory)
 	}
+	if production.ExamplesDirectory != "" {
+		trustedPaths = append(trustedPaths, production.ExamplesDirectory)
+	}
 	if err := production.Paths.Layout.RejectRuntimePaths(trustedPaths...); err != nil {
 		return err
 	}
@@ -311,6 +315,17 @@ func RunLinuxProduction(parent context.Context, production LinuxProduction, read
 		}
 		if locales != nil {
 			files = append(files, locales)
+		}
+	}
+	var examples *os.File
+	if production.ExamplesDirectory != "" {
+		var openErr error
+		examples, openErr = openOptionalContentDirectory(production.ExamplesDirectory)
+		if openErr != nil {
+			return fmt.Errorf("open examples root: %w", openErr)
+		}
+		if examples != nil {
+			files = append(files, examples)
 		}
 	}
 	brokerIdentity := LinuxIdentity{UID: uint32(os.Geteuid()), GID: uint32(os.Getegid())}
@@ -496,7 +511,7 @@ func RunLinuxProduction(parent context.Context, production LinuxProduction, read
 			LogCacheInfo:  production.Arguments.LogCacheInfo, LogCacheWarn: production.Arguments.LogCacheWarn,
 			LogCacheError: production.Arguments.LogCacheError, LogCacheFatal: production.Arguments.LogCacheFatal,
 		}, Isolation: isolationStatus}, RuntimeStorage: &bootstrap.RuntimeStorageInput{Regular: inputs.Regular, Protected: resolved.Runtime, Snapshot: snapshot},
-		Policy: launchPolicy, Native: native, State: brokerDirectory, Limits: production.Limits, Locales: locales,
+		Policy: launchPolicy, Native: native, State: brokerDirectory, Limits: production.Limits, Locales: locales, Examples: examples,
 		Journal: journal, Admin: admin, Output: production.Output, Callbacks: callbackBindings,
 	}
 	if sandboxConfig != nil {
@@ -535,6 +550,10 @@ func RunLinuxProduction(parent context.Context, production LinuxProduction, read
 }
 
 func openOptionalLocalesDirectory(path string) (*os.File, error) {
+	return openOptionalContentDirectory(path)
+}
+
+func openOptionalContentDirectory(path string) (*os.File, error) {
 	fd, err := unix.Open(path, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil

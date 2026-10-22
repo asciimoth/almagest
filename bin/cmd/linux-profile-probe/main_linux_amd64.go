@@ -236,6 +236,20 @@ func main() {
 	} else {
 		check("locales-not-delegated", locales == "", nil)
 	}
+	examples := os.Getenv("ALMAGEST_EXAMPLES_DIR")
+	if examples == "" && role == linuxprofile.Runtime && !userProfile {
+		examples = "/examples"
+	}
+	if role == linuxprofile.Runtime {
+		data, readErr := os.ReadFile(filepath.Join(examples, "visible"))
+		check("examples-read", examples != "" && string(data) == "example content", readErr)
+		writeErr := os.WriteFile(filepath.Join(examples, "write"), []byte("denied"), 0o600)
+		check("examples-write-denied", denied(writeErr) || errors.Is(writeErr, unix.EROFS), writeErr)
+		_, escapeErr := os.ReadFile(filepath.Join(examples, "escape"))
+		check("examples-symlink-escape-denied", denied(escapeErr), escapeErr)
+	} else {
+		check("examples-not-delegated", examples == "", nil)
+	}
 	_, err := unix.FcntlInt(2000, unix.F_GETFD, 0)
 	check("high-descriptor-closed", errors.Is(err, unix.EBADF), err)
 	for _, tc := range []struct {

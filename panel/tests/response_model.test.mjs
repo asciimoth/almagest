@@ -7,6 +7,7 @@ import {
   parseKVSubscribeValueResponse,
   parseSecretsSubscribeResponse,
   parseSnapshotExportResponse,
+  parseSnapshotsListResponse,
   parseSubscribeLogsResponse,
   parseTLSBuiltinCAResponse,
   parseTLSSubscribeResponse,
@@ -179,4 +180,20 @@ test("config and snapshot response decoders validate download metadata", () => {
     snapshot: { ...snapshot, uuid: "../../payload.html" },
     archive: "UEsDBAo=",
   }), null);
+
+  const example = { example: "hello-network", name: payload, comment: payload };
+  assert.deepEqual(parseSnapshotsListResponse({ snapshots: [snapshot, example] }), { snapshots: [snapshot, example] });
+  assert.equal(parseSnapshotExportResponse({ snapshot: example, archive: "UEsDBAo=" }), null);
+  for (const invalid of [
+    { ...example, uuid: snapshot.uuid },
+    { ...example, timestamp: snapshot.timestamp },
+    { ...example, example: "../escape" },
+    { ...example, example: "con" },
+    { ...example, name: "" },
+    { ...example, comment: "" },
+    { ...snapshot, example: false },
+    { name: "missing identity" },
+  ]) {
+    assert.equal(parseSnapshotsListResponse({ snapshots: [invalid] }), null);
+  }
 });

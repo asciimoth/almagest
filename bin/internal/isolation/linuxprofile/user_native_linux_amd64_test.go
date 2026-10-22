@@ -99,6 +99,14 @@ func launchNativeUser(t *testing.T, role Role) ([]byte, error) {
 			t.Fatal(err)
 		}
 		input.Locales = open(locales)
+		examples := t.TempDir()
+		if err := os.WriteFile(filepath.Join(examples, "visible"), []byte("example content"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink("/etc/passwd", filepath.Join(examples, "escape")); err != nil {
+			t.Fatal(err)
+		}
+		input.Examples = open(examples)
 	}
 	command, err := CommandContext(ctx, plan, input)
 	if err != nil {

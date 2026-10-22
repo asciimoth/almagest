@@ -32,6 +32,8 @@ test("snapshots panel uses all snapshot API methods and confirms destructive act
   assert.match(app, /window\.confirm\([^)]*Restore snapshot/);
   assert.match(app, /window\.confirm\([^)]*Delete snapshot/);
   assert.match(app, /window\.prompt\([^)]*Snapshot name/);
+  assert.match(app, /if \(entry\.example\)\s+setTab\("config"\)/);
+  assert.match(app, /"restore",\s*\{ uuid: params\.uuid, example: params\.example \}/);
   assert.doesNotMatch(app, /Unix nanoseconds/);
   assert.match(app, /link\.download\s*=\s*`\$\{entry\.uuid\}\.zip`/);
 });

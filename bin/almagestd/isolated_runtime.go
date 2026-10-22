@@ -332,6 +332,9 @@ func isolatedAdminAPI(conf *Config, runtime *admingate.Runtime, endpoints []role
 	if err := admin.prepareLocalizedContent(defaultLocalesRoot()); err != nil {
 		return nil, err
 	}
+	if err := admin.prepareExamples(defaultExamplesRoot()); err != nil {
+		return nil, err
+	}
 	if status.ProtocolVersion != 0 {
 		admin.isolationStatus = &api.IsolationStatus{ProtocolVersion: status.ProtocolVersion, StatusSchemaVersion: status.StatusSchemaVersion, Restrictions: status.Restrictions,
 			Roles: status.Roles, Capabilities: status.Capabilities, RecoveryState: status.RecoveryState,

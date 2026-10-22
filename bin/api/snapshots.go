@@ -52,12 +52,15 @@ func IsSnapshotsMutation(method string) bool {
 	}
 }
 
-// SnapshotInfo is the stable identity and user-visible metadata for one
-// snapshot archive. Timestamp is Unix time in nanoseconds.
+// SnapshotInfo describes one regular snapshot or one packaged example.
+// Regular snapshots have UUID and Timestamp. Examples have Example, Name, and
+// Comment. Timestamp is Unix time in nanoseconds.
 type SnapshotInfo struct {
-	UUID      string `json:"uuid"`
-	Timestamp int64  `json:"timestamp"`
+	UUID      string `json:"uuid,omitempty"`
+	Timestamp int64  `json:"timestamp,omitempty"`
 	Name      string `json:"name,omitempty"`
+	Comment   string `json:"comment,omitempty"`
+	Example   string `json:"example,omitempty"`
 }
 
 // SnapshotsCreateRequest creates a snapshot with an optional display name.
@@ -88,7 +91,8 @@ type SnapshotsRenameRequest struct {
 	Name string `json:"name"`
 }
 
-// SnapshotsListResponse contains snapshots in newest-first order.
+// SnapshotsListResponse contains regular snapshots in newest-first order,
+// followed by packaged examples in identifier order.
 type SnapshotsListResponse struct {
 	Snapshots []SnapshotInfo `json:"snapshots"`
 }
@@ -96,6 +100,13 @@ type SnapshotsListResponse struct {
 // SnapshotUUIDRequest identifies a snapshot by its unique UUID.
 type SnapshotUUIDRequest struct {
 	UUID string `json:"uuid"`
+}
+
+// SnapshotsRestoreRequest selects one daemon-owned snapshot or one packaged
+// example. Exactly one field must be present.
+type SnapshotsRestoreRequest struct {
+	UUID    string `json:"uuid,omitempty"`
+	Example string `json:"example,omitempty"`
 }
 
 // SnapshotsRestoreResponse reports the restored snapshot and whether the

@@ -204,6 +204,7 @@ COPY --from=headscale /ko-app/headscale /usr/local/bin/headscale
 COPY --from=build /out/ /usr/local/bin/
 COPY --from=build /qualification /qualification
 COPY --link e2e /e2e
+COPY --link examples /usr/share/almagest/examples
 
 WORKDIR /e2e
 ENTRYPOINT ["/e2e/run-case.sh"]

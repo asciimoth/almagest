@@ -76,7 +76,7 @@ cli snapshots create --name "complex daemon" >/tmp/snapshot-created.json
 snapshot_uuid="$(jq -er '.uuid' /tmp/snapshot-created.json)"
 exported_archive="$E2E_RUNTIME/$snapshot_uuid.zip"
 jq -e --arg uuid "$snapshot_uuid" --arg name "complex daemon" \
-	'.snapshots | length == 1 and .[0].uuid == $uuid and .[0].name == $name and (.[0].timestamp > 0)' \
+	'[.snapshots[] | select(.example == null)] | length == 1 and .[0].uuid == $uuid and .[0].name == $name and (.[0].timestamp > 0)' \
 	<(cli snapshots list) >/dev/null || fail "snapshot listing does not contain the created snapshot"
 
 cli snapshots rename --name "renamed daemon" "$snapshot_uuid" >/tmp/snapshot-renamed.json
@@ -84,7 +84,7 @@ jq -e --arg uuid "$snapshot_uuid" \
 	'.uuid == $uuid and .name == "renamed daemon"' \
 	/tmp/snapshot-renamed.json >/dev/null || fail "snapshot rename response is invalid"
 jq -e --arg uuid "$snapshot_uuid" \
-	'.snapshots | length == 1 and .[0].uuid == $uuid and .[0].name == "renamed daemon"' \
+	'[.snapshots[] | select(.example == null)] | length == 1 and .[0].uuid == $uuid and .[0].name == "renamed daemon"' \
 	<(cli snapshots list) >/dev/null || fail "snapshot listing does not contain the renamed snapshot"
 
 cli snapshots export --output "$exported_archive" "$snapshot_uuid" >/tmp/snapshot-exported.json
@@ -94,7 +94,7 @@ cmp "$exported_archive" "$ALMAGEST_E2E_FILE_STORAGE/snapshots/$snapshot_uuid.zip
 	|| fail "exported snapshot archive differs from the stored archive"
 
 cli snapshots delete "$snapshot_uuid" >/tmp/snapshot-deleted-before-import.json
-jq -e '.snapshots | length == 0' <(cli snapshots list) >/dev/null \
+jq -e '[.snapshots[] | select(.example == null)] | length == 0' <(cli snapshots list) >/dev/null \
 	|| fail "snapshot remained after the pre-import delete"
 cli snapshots import --name "imported daemon" "$exported_archive" >/tmp/snapshot-imported.json
 jq -e --arg uuid "$snapshot_uuid" '.uuid == $uuid and .name == "imported daemon"' \
@@ -218,7 +218,7 @@ fi
 
 cli snapshots delete "$snapshot_uuid" >/tmp/snapshot-deleted.json
 jq -e '. == {}' /tmp/snapshot-deleted.json >/dev/null || fail "snapshot delete response is invalid"
-jq -e '.snapshots | length == 0' <(cli snapshots list) >/dev/null \
+jq -e '[.snapshots[] | select(.example == null)] | length == 0' <(cli snapshots list) >/dev/null \
 	|| fail "deleted snapshot remains in the snapshot listing"
 [[ ! -e "$ALMAGEST_E2E_FILE_STORAGE/snapshots/$snapshot_uuid.zip" ]] \
 	|| fail "deleted snapshot archive remains on disk"

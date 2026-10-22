@@ -16,6 +16,10 @@ distribution's systemd directories. Run `systemd-sysusers` and
 `systemd-tmpfiles --create` before the first start. Do not make the native
 launcher setuid and do not add file capabilities to any role binary.
 
+Install the packaged `share/almagest/examples` tree as root-owned, non-writable
+files at `/usr/share/almagest/examples`. Keep each example unpacked. The network
+role gives this tree to the runtime as a separate read-only mount.
+
 For strict subprogram sandboxes in direct or isolated daemon mode, give the
 trusted daemon or sandbox supervisor a separate delegated cgroup v2 subtree with
 the CPU, memory, and PID controllers enabled. Set protected

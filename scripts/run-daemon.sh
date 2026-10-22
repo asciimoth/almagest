@@ -56,6 +56,7 @@ else
 fi
 command=("$executable" "${arguments[@]}")
 export ALMAGEST_LOCALES_DIR="$repo_root/locales"
+export ALMAGEST_EXAMPLES_DIR="$repo_root/examples"
 if [[ $elevated == 1 ]]; then
     if [[ $direct == 1 ]]; then
         command=(sudo -- "${command[@]}")
@@ -126,7 +127,8 @@ if [[ $elevated == 1 ]]; then
         command=(sudo -- systemd-run --scope --quiet --property=Delegate=yes \
             --setenv="ALMAGEST_ISOLATION_DEVELOPMENT_ROOT=$state" \
             --setenv="ALMAGEST_ISOLATION_DEVELOPMENT_IDENTITIES=$development_identities" \
-            --setenv="ALMAGEST_LOCALES_DIR=$repo_root/locales" -- \
+            --setenv="ALMAGEST_LOCALES_DIR=$repo_root/locales" \
+            --setenv="ALMAGEST_EXAMPLES_DIR=$repo_root/examples" -- \
             "$stage/almagestd" "${arguments[@]}" --unix "$stage/admin.sock")
     fi
 fi

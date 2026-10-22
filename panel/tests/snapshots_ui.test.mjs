@@ -72,3 +72,32 @@ test("snapshot list shows empty state and disables actions during mutations", ()
   assert.equal(list.querySelectorAll("button").length, 4);
   assert.equal([...list.querySelectorAll("button")].every((button) => button.disabled), true);
 });
+
+test("examples render below a delimiter with safe text and only a Load action", () => {
+  const dom = new JSDOM("<ol id='snapshots'></ol>");
+  const list = dom.window.document.querySelector("#snapshots");
+  const calls = [];
+  const example = {
+    example: "hostile-example",
+    name: "<img src=x onerror=alert(1)>",
+    comment: "<script>alert(2)</script>",
+  };
+  renderSnapshotList(list, [example, first], false, {
+    export() { throw new Error("example export action was exposed"); },
+    rename() { throw new Error("example rename action was exposed"); },
+    restore: (entry) => calls.push(entry.example),
+    delete() { throw new Error("example delete action was exposed"); },
+  });
+
+  assert.equal(list.querySelector("img"), null);
+  assert.equal(list.querySelector("script"), null);
+  assert.equal(list.querySelectorAll(".snapshot-examples-delimiter").length, 1);
+  const row = list.querySelector(".snapshot-example-row");
+  assert.equal(row?.querySelector("strong")?.textContent, example.name);
+  assert.equal(row?.querySelector(".snapshot-meta")?.textContent, example.comment);
+  assert.equal(row?.querySelector("code"), null);
+  assert.equal(row?.querySelectorAll("button").length, 1);
+  assert.equal(row?.querySelector("button")?.textContent, "Load");
+  row?.querySelector("button")?.click();
+  assert.deepEqual(calls, [example.example]);
+});

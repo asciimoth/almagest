@@ -1,0 +1,5 @@
+{
+	"nodes": {
+		"Before Example": {"Class": "almagest/MockNetwork"},
+	},
+}

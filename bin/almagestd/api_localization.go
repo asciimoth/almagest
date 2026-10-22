@@ -29,6 +29,24 @@ func (a *AdminAPI) prepareLocalizedContent(defaultRoot string) error {
 	return nil
 }
 
+func (a *AdminAPI) prepareExamples(defaultRoot string) error {
+	root, err := resolveExamplesRoot(defaultRoot)
+	if err != nil {
+		return err
+	}
+	store, err := openExampleStore(root)
+	if err != nil {
+		var pathError *os.PathError
+		if errors.Is(err, os.ErrNotExist) || errors.As(err, &pathError) {
+			golog.Warnf("Cannot access examples at %s: %v; no examples will be available", root, err)
+			return nil
+		}
+		return err
+	}
+	a.examples = store
+	return nil
+}
+
 func (s *apiSession) currentLocale() string {
 	s.localeMu.RLock()
 	defer s.localeMu.RUnlock()

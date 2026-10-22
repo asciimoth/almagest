@@ -972,6 +972,16 @@ h1 {
   color: var(--subtext);
 }
 
+.snapshot-examples-delimiter {
+  margin-top: 8px;
+  border-top: 1px solid var(--surface1);
+  padding-top: 12px;
+  color: var(--subtext);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
 .config-shell {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;

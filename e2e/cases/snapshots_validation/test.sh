@@ -69,6 +69,7 @@ assert_cli_failure snapshot-duplicate-import \
 
 jq -e --arg uuid "$snapshot_uuid" '
 	.snapshots
+	| map(select(.example == null))
 	| length == 1
 	and .[0].uuid == $uuid
 	and .[0].name == "valid"

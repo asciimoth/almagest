@@ -18,6 +18,7 @@ $stdout = Join-Path $manualDir 'almagestd.stdout.log'
 $stderr = Join-Path $manualDir 'almagestd.stderr.log'
 $pidPath = Join-Path $manualDir 'almagestd.pid'
 $storage = Join-Path $env:ProgramData ('Almagest\manual-' + (Split-Path $RunDir -Leaf))
+$env:ALMAGEST_EXAMPLES_DIR = Join-Path $SourceDir 'examples'
 $importDir = Join-Path $manualDir 'import'
 $exportDir = Join-Path $manualDir 'export'
 New-Item -ItemType Directory -Force $configDir | Out-Null

@@ -1,10 +1,22 @@
 import { text as localizedText } from "./localization.js";
 
-export type SnapshotInfo = {
+export type RegularSnapshotInfo = {
   uuid: string;
   timestamp: number;
   name?: string;
+  comment?: never;
+  example?: never;
 };
+
+export type ExampleSnapshotInfo = {
+  uuid?: never;
+  timestamp?: never;
+  name: string;
+  comment: string;
+  example: string;
+};
+
+export type SnapshotInfo = RegularSnapshotInfo | ExampleSnapshotInfo;
 
 // Snapshot archives use base64 inside the shared JSON API. Keep this value in
 // step with api.SnapshotArchiveMaxBytes so the panel rejects oversized files
@@ -19,6 +31,7 @@ export type SnapshotRowActions = {
 };
 
 export function upsertSnapshot(entries: SnapshotInfo[], snapshot: SnapshotInfo): SnapshotInfo[] {
+  if (!snapshot.uuid) return entries;
   const index = entries.findIndex((entry) => entry.uuid === snapshot.uuid);
   if (index < 0) return [snapshot, ...entries];
   return entries.map((entry, entryIndex) => entryIndex === index ? snapshot : entry);
@@ -43,24 +56,40 @@ export function renderSnapshotList(
     list.append(empty);
     return;
   }
-  for (const entry of entries) {
+  const regular = entries.filter((entry) => !entry.example);
+  const examples = entries.filter((entry) => entry.example);
+  for (const [index, entry] of [...regular, ...examples].entries()) {
+    if (entry.example && index === regular.length) {
+      const delimiter = document.createElement("li");
+      delimiter.className = "snapshot-examples-delimiter";
+      delimiter.textContent = localizedText("snapshots.examples", "Examples");
+      list.append(delimiter);
+    }
     const row = document.createElement("li");
-    row.className = "snapshot-row";
+    row.className = entry.example ? "snapshot-row snapshot-example-row" : "snapshot-row";
     const copy = document.createElement("div");
     copy.className = "snapshot-copy";
-    copy.append(
-      textElement(document, "strong", entry.name || localizedText("snapshots.unnamed", "Unnamed snapshot")),
-      textElement(document, "code", entry.uuid),
-      textElement(document, "span", formatSnapshotTimestamp(entry.timestamp), "snapshot-meta"),
-    );
+    copy.append(textElement(document, "strong", entry.name || localizedText("snapshots.unnamed", "Unnamed snapshot")));
+    if (entry.example) {
+      if (entry.comment) copy.append(textElement(document, "span", entry.comment, "snapshot-meta"));
+    } else {
+      copy.append(
+        textElement(document, "code", entry.uuid ?? ""),
+        textElement(document, "span", formatSnapshotTimestamp(entry.timestamp ?? Number.NaN), "snapshot-meta"),
+      );
+    }
     const rowActions = document.createElement("div");
     rowActions.className = "snapshot-row-actions";
-    rowActions.append(
-      actionButton(document, localizedText("action.export", "Export"), "snapshot-export", disabled, () => actions.export(entry)),
-      actionButton(document, localizedText("action.rename", "Rename"), "snapshot-rename", disabled, () => actions.rename(entry)),
-      actionButton(document, localizedText("action.restore", "Restore"), "snapshot-restore", disabled, () => actions.restore(entry)),
-      actionButton(document, localizedText("action.delete", "Delete"), "snapshot-delete danger", disabled, () => actions.delete(entry)),
-    );
+    if (entry.example) {
+      rowActions.append(actionButton(document, localizedText("action.load", "Load"), "snapshot-load", disabled, () => actions.restore(entry)));
+    } else {
+      rowActions.append(
+        actionButton(document, localizedText("action.export", "Export"), "snapshot-export", disabled, () => actions.export(entry)),
+        actionButton(document, localizedText("action.rename", "Rename"), "snapshot-rename", disabled, () => actions.rename(entry)),
+        actionButton(document, localizedText("action.restore", "Restore"), "snapshot-restore", disabled, () => actions.restore(entry)),
+        actionButton(document, localizedText("action.delete", "Delete"), "snapshot-delete danger", disabled, () => actions.delete(entry)),
+      );
+    }
     row.append(copy, rowActions);
     list.append(row);
   }

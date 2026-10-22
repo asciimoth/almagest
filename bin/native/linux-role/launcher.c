@@ -213,6 +213,11 @@ static void check_descriptors(struct plan *p) {
 		require(p->role == RUNTIME && fstat(17, &locales) == 0 && S_ISDIR(locales.st_mode),
 			"runtime locales directory required");
 	} else require(errno == EBADF, "inspect optional locales directory");
+	if (fcntl(18, F_GETFD) != -1) {
+		struct stat examples;
+		require(p->role == RUNTIME && fstat(18, &examples) == 0 && S_ISDIR(examples.st_mode),
+			"runtime examples directory required");
+	} else require(errno == EBADF, "inspect optional examples directory");
 	check_executable(4, p);
 	if (p->role == COMMAND) check_executable(7, p);
 	struct stat st;
@@ -300,9 +305,14 @@ static void filesystem(const struct plan *p) {
 	int state_mount = (int)syscall(SYS_open_tree, 5, "", AT_EMPTY_PATH | OPEN_TREE_CLONE | OPEN_TREE_CLOEXEC);
 	if (state_mount == -1) fail("clone held role directory");
 	int locales_mount = -1;
+	int examples_mount = -1;
 	if (p->role == RUNTIME && fcntl(17, F_GETFD) != -1) {
 		locales_mount = (int)syscall(SYS_open_tree, 17, "", AT_EMPTY_PATH | OPEN_TREE_CLONE | OPEN_TREE_CLOEXEC);
 		if (locales_mount == -1) fail("clone held locales directory");
+	}
+	if (p->role == RUNTIME && fcntl(18, F_GETFD) != -1) {
+		examples_mount = (int)syscall(SYS_open_tree, 18, "", AT_EMPTY_PATH | OPEN_TREE_CLONE | OPEN_TREE_CLOEXEC);
+		if (examples_mount == -1) fail("clone held examples directory");
 	}
 	/* unshare precedes propagation changes: never alter the parent mount tree. */
 	int flags = CLONE_NEWNS | CLONE_NEWIPC | CLONE_NEWUTS | CLONE_NEWNET;
@@ -316,6 +326,7 @@ static void filesystem(const struct plan *p) {
 	if (!getcwd(path, sizeof(path)) || chdir(path) == -1) fail("enter private root");
 	make_dir("state", 0700); make_dir("tmp", 0700); make_dir("oldroot", 0700);
 	if (locales_mount != -1) make_dir("locales", 0555);
+	if (examples_mount != -1) make_dir("examples", 0555);
 	if (chown("tmp", p->uid, p->gid) == -1) fail("own private temporary storage");
 	/* The bind uses a held descriptor. Do not recursively import submounts. */
 	if (syscall(SYS_move_mount, state_mount, "", AT_FDCWD, "state", MOVE_MOUNT_F_EMPTY_PATH) == -1) fail("mount held role directory");
@@ -325,6 +336,11 @@ static void filesystem(const struct plan *p) {
 		if (syscall(SYS_move_mount, locales_mount, "", AT_FDCWD, "locales", MOVE_MOUNT_F_EMPTY_PATH) == -1) fail("mount held locales directory");
 		if (close(locales_mount) == -1) fail("close detached locales mount");
 		if (mount(NULL, "locales", NULL, MS_BIND | MS_REMOUNT | MS_RDONLY | MS_NOSUID | MS_NODEV | MS_NOEXEC, NULL) == -1) fail("restrict locales directory");
+	}
+	if (examples_mount != -1) {
+		if (syscall(SYS_move_mount, examples_mount, "", AT_FDCWD, "examples", MOVE_MOUNT_F_EMPTY_PATH) == -1) fail("mount held examples directory");
+		if (close(examples_mount) == -1) fail("close detached examples mount");
+		if (mount(NULL, "examples", NULL, MS_BIND | MS_REMOUNT | MS_RDONLY | MS_NOSUID | MS_NODEV | MS_NOEXEC, NULL) == -1) fail("restrict examples directory");
 	}
 	copy_executable(4, "role");
 	if (p->role == COMMAND) copy_executable(7, "command");
@@ -397,6 +413,8 @@ static int landlock(const struct plan *p) {
 	landlock_rule(fd, "/state", writable); landlock_rule(fd, "/tmp", writable);
 	if (p->role == RUNTIME && access("/locales", F_OK) == 0)
 		landlock_rule(fd, "/locales", LANDLOCK_ACCESS_FS_READ_FILE | LANDLOCK_ACCESS_FS_READ_DIR);
+	if (p->role == RUNTIME && access("/examples", F_OK) == 0)
+		landlock_rule(fd, "/examples", LANDLOCK_ACCESS_FS_READ_FILE | LANDLOCK_ACCESS_FS_READ_DIR);
 	if (syscall(SYS_landlock_restrict_self, fd, 0) == -1 || close(fd) == -1) fail("apply Landlock");
 	return abi;
 }
@@ -415,6 +433,8 @@ static int user_landlock(void) {
 	landlock_rule_fd(fd, 5, writable);
 	if (fcntl(17, F_GETFD) != -1)
 		landlock_rule_fd(fd, 17, LANDLOCK_ACCESS_FS_READ_FILE | LANDLOCK_ACCESS_FS_READ_DIR);
+	if (fcntl(18, F_GETFD) != -1)
+		landlock_rule_fd(fd, 18, LANDLOCK_ACCESS_FS_READ_FILE | LANDLOCK_ACCESS_FS_READ_DIR);
 	if (syscall(SYS_landlock_restrict_self, fd, 0) == -1 || close(fd) == -1) fail("apply user Landlock");
 	return abi;
 }
@@ -509,10 +529,17 @@ static void run_user(const struct plan *p) {
 	require(poll(&parent, 1, 0) == 0 && getppid() == parent_pid, "user role parent lifetime");
 	char locales_path[PATH_MAX + 1] = {0};
 	ssize_t locales_path_length = -1;
+	char examples_path[PATH_MAX + 1] = {0};
+	ssize_t examples_path_length = -1;
 	if (p->role == RUNTIME && fcntl(17, F_GETFD) != -1) {
 		locales_path_length = readlink("/proc/self/fd/17", locales_path, PATH_MAX);
 		require(locales_path_length > 0 && locales_path[0] == '/', "resolve held locales directory");
 		locales_path[locales_path_length] = '\0';
+	}
+	if (p->role == RUNTIME && fcntl(18, F_GETFD) != -1) {
+		examples_path_length = readlink("/proc/self/fd/18", examples_path, PATH_MAX);
+		require(examples_path_length > 0 && examples_path[0] == '/', "resolve held examples directory");
+		examples_path[examples_path_length] = '\0';
 	}
 	int abi = user_landlock();
 	if (syscall(SYS_close_range, 6, 8, 0) == -1 || syscall(SYS_close_range, 17, ~0U, 0) == -1)
@@ -523,19 +550,21 @@ static void run_user(const struct plan *p) {
 		} else close(fd);
 	}
 	if (close(5) == -1) fail("close user storage descriptor");
-	char role[64], abi_env[64], storage_env[PATH_MAX + 32], pwd_env[PATH_MAX + 8], locales_env[PATH_MAX + 32];
+	char role[64], abi_env[64], storage_env[PATH_MAX + 32], pwd_env[PATH_MAX + 8], locales_env[PATH_MAX + 32], examples_env[PATH_MAX + 32];
 	const char *names[] = {"runtime", "writer", "command"};
 	snprintf(role, sizeof(role), "ALMAGEST_LINUX_ROLE=%s", names[p->role]);
 	snprintf(abi_env, sizeof(abi_env), "ALMAGEST_LANDLOCK_ABI=%d", abi);
 	snprintf(storage_env, sizeof(storage_env), "ALMAGEST_STORAGE=%s", working_directory);
 	snprintf(pwd_env, sizeof(pwd_env), "PWD=%s", working_directory);
 	if (locales_path_length > 0) snprintf(locales_env, sizeof(locales_env), "ALMAGEST_LOCALES_DIR=%s", locales_path);
+	if (examples_path_length > 0) snprintf(examples_env, sizeof(examples_env), "ALMAGEST_EXAMPLES_DIR=%s", examples_path);
 	char *environment[24]; int environment_count = 0;
 	environment[environment_count++] = role; environment[environment_count++] = abi_env;
 	environment[environment_count++] = "ALMAGEST_LINUX_PROFILE=linux-user-v1";
 	environment[environment_count++] = "ALMAGEST_RETAINED_CAPS=0"; environment[environment_count++] = storage_env;
 	environment[environment_count++] = pwd_env; environment[environment_count++] = "TMPDIR=.tmp";
 	if (locales_path_length > 0) environment[environment_count++] = locales_env;
+	if (examples_path_length > 0) environment[environment_count++] = examples_env;
 	environment[environment_count++] = p->channels & 1 ? "ALMAGEST_DATA_FD=9" : "ALMAGEST_DATA_FD=0";
 	environment[environment_count++] = p->channels & 2 ? "ALMAGEST_DIAGNOSTICS_FD=10" : "ALMAGEST_DIAGNOSTICS_FD=0";
 	environment[environment_count++] = p->channels & 4 ? "ALMAGEST_ADMIN_FD=11" : "ALMAGEST_ADMIN_FD=0";

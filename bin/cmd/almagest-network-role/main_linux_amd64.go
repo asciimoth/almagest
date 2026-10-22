@@ -368,6 +368,14 @@ func runNetworkRole() error {
 	} else if info, statErr := os.Stat("/usr/share/almagest/locales"); statErr == nil && info.IsDir() {
 		production.LocalesDirectory = "/usr/share/almagest/locales"
 	}
+	if value, set := os.LookupEnv("ALMAGEST_EXAMPLES_DIR"); set {
+		if !filepath.IsAbs(value) || filepath.Clean(value) != value {
+			return errors.New("ALMAGEST_EXAMPLES_DIR must be an absolute clean path")
+		}
+		production.ExamplesDirectory = value
+	} else if info, statErr := os.Stat("/usr/share/almagest/examples"); statErr == nil && info.IsDir() {
+		production.ExamplesDirectory = "/usr/share/almagest/examples"
+	}
 	if err := unix.Prctl(unix.PR_SET_DUMPABLE, 0, 0, 0, 0); err != nil {
 		return fmt.Errorf("disable network broker dumps: %w", err)
 	}

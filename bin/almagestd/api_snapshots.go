@@ -35,7 +35,14 @@ func (s *apiSession) handleSnapshotsMessage(msg api.Message) (api.Message, error
 		if err != nil {
 			return snapshotRequestError(msg.ID, err)
 		}
-		return api.NewResponse(msg.ID, api.SnapshotsListResponse{Snapshots: snapshots})
+		var examples []api.SnapshotInfo
+		if service.examples != nil {
+			examples, err = service.examples.List(s.currentLocale())
+			if err != nil {
+				return snapshotRequestError(msg.ID, err)
+			}
+		}
+		return api.NewResponse(msg.ID, api.SnapshotsListResponse{Snapshots: append(snapshots, examples...)})
 
 	case api.MethodSnapshotsExport:
 		req, err := decodePayload[api.SnapshotUUIDRequest](msg)
@@ -96,14 +103,19 @@ func (s *apiSession) handleSnapshotsMessage(msg api.Message) (api.Message, error
 		return api.NewResponse(msg.ID, info)
 
 	case api.MethodSnapshotsRestore:
-		req, err := decodePayload[api.SnapshotUUIDRequest](msg)
+		req, err := decodePayload[api.SnapshotsRestoreRequest](msg)
 		if err != nil {
 			return newRequestError(msg.ID, api.ErrorInvalidPayload, err.Error())
 		}
-		if strings.TrimSpace(req.UUID) == "" {
-			return newRequestError(msg.ID, api.ErrorInvalidPayload, "snapshot UUID is required")
+		if (strings.TrimSpace(req.UUID) == "") == (strings.TrimSpace(req.Example) == "") {
+			return newRequestError(msg.ID, api.ErrorInvalidPayload, "exactly one snapshot UUID or example is required")
 		}
-		response, err := service.Restore(context.Background(), req.UUID)
+		var response api.SnapshotsRestoreResponse
+		if req.Example != "" {
+			response, err = service.restore.RestoreExample(context.Background(), req.Example, s.currentLocale())
+		} else {
+			response, err = service.Restore(context.Background(), req.UUID)
+		}
 		if err != nil {
 			return snapshotRequestError(msg.ID, err)
 		}

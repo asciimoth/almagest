@@ -38,6 +38,16 @@ func runSnapshots(
 	case "list":
 		return parseNoArgsAndRequest(ctx, c, args[1:], api.SurfaceSnapshots, string(api.MethodSnapshotsList), struct{}{}, stdout, stderr)
 
+	case "load":
+		flags := commandFlagSet("snapshots load", stderr)
+		if err := flags.Parse(args[1:]); err != nil {
+			return err
+		}
+		if flags.NArg() != 1 {
+			return fmt.Errorf("snapshots load requires one example identifier")
+		}
+		return requestPretty(ctx, c, api.SurfaceSnapshots, string(api.MethodSnapshotsRestore), api.SnapshotsRestoreRequest{Example: flags.Arg(0)}, stdout)
+
 	case "export":
 		flags := commandFlagSet("snapshots export", stderr)
 		uuidFlag := flags.String("uuid", "", "UUID of the snapshot to export")
@@ -110,7 +120,7 @@ func runSnapshots(
 		if err != nil {
 			return err
 		}
-		return requestPretty(ctx, c, api.SurfaceSnapshots, string(api.MethodSnapshotsRestore), api.SnapshotUUIDRequest{UUID: uuid}, stdout)
+		return requestPretty(ctx, c, api.SurfaceSnapshots, string(api.MethodSnapshotsRestore), api.SnapshotsRestoreRequest{UUID: uuid}, stdout)
 
 	default:
 		return fmt.Errorf("unknown snapshots command %q", args[0])
@@ -209,6 +219,7 @@ func printSnapshotsHelp(w io.Writer) {
 	_, _ = fmt.Fprint(w, `Usage:
   almagest-cli snapshots create [--name NAME]
   almagest-cli snapshots list
+  almagest-cli snapshots load EXAMPLE
   almagest-cli snapshots delete UUID
   almagest-cli snapshots delete --uuid UUID
   almagest-cli snapshots export [--output PATH] UUID
@@ -225,10 +236,12 @@ Commands:
   export   write one snapshot archive; use --output - for stdout
   import   add an exported archive; use - to read stdin
   list     list snapshots in newest-first order
+  load     load one packaged example by its identifier
   rename   change or remove a snapshot display name
   restore  restore all saved state and rebuild the engine graph
 
-Snapshots are identified by UUID. Optional names do not need to be unique.
+Regular snapshots are identified by UUID. Examples are identified by the
+"example" field returned by list. Optional names do not need to be unique.
 Protected config is never included or replaced.
 Imported and exported archives are limited to 32 MiB compressed.
 `)

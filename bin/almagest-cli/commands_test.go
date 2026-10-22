@@ -428,7 +428,7 @@ func TestRunSnapshotCommandsSendAllSnapshotRequests(t *testing.T) {
 	if err != nil || renameRequest.UUID != info.UUID || renameRequest.Name != "renamed" {
 		t.Fatalf("rename request = %#v, err=%v", renameRequest, err)
 	}
-	restoreRequest, err := api.DecodePayload[api.SnapshotUUIDRequest](transport.writes[5].Payload)
+	restoreRequest, err := api.DecodePayload[api.SnapshotsRestoreRequest](transport.writes[5].Payload)
 	if err != nil || restoreRequest.UUID != info.UUID {
 		t.Fatalf("restore request = %#v, err=%v", restoreRequest, err)
 	}
@@ -438,6 +438,25 @@ func TestRunSnapshotCommandsSendAllSnapshotRequests(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), `"config_written": true`) {
 		t.Fatalf("snapshot output = %q", stdout.String())
+	}
+}
+
+func TestRunSnapshotsLoadSendsExampleRestoreRequest(t *testing.T) {
+	info := api.SnapshotInfo{Example: "hello-network", Name: "Hello Network", Comment: "Comment"}
+	transport := &fakeTransport{reads: []api.Message{
+		mustResponse(t, "1", api.SnapshotsRestoreResponse{Snapshot: info, ConfigWritten: true}),
+	}}
+	var stdout, stderr bytes.Buffer
+	dial := func(context.Context, endpoint) (apiTransport, error) { return transport, nil }
+	if err := run(context.Background(), []string{"snapshots", "load", "hello-network"}, nil, &stdout, &stderr, dial); err != nil {
+		t.Fatalf("snapshot example load failed: %v\nstderr: %s", err, stderr.String())
+	}
+	if len(transport.writes) != 1 || transport.writes[0].Method != string(api.MethodSnapshotsRestore) {
+		t.Fatalf("writes = %#v", transport.writes)
+	}
+	request, err := api.DecodePayload[api.SnapshotsRestoreRequest](transport.writes[0].Payload)
+	if err != nil || request.Example != "hello-network" || request.UUID != "" {
+		t.Fatalf("request = %#v, err=%v", request, err)
 	}
 }
 
@@ -1511,7 +1530,7 @@ func TestCommandValidationErrors(t *testing.T) {
 		{"dns", "keys"}, {"dns", "get"}, {"dns", "set"}, {"dns", "delete"}, {"dns", "drop"}, {"dns", "unsubscribe"}, {"dns", "unknown"},
 		{"secrets", "set"}, {"secrets", "rename"}, {"secrets", "delete"}, {"secrets", "unsubscribe"}, {"secrets", "unknown"},
 		{"tls", "set-cert"}, {"tls", "rename-cert"}, {"tls", "delete-cert"}, {"tls", "set-policy"}, {"tls", "rename-policy"}, {"tls", "delete-policy"}, {"tls", "unsubscribe"}, {"tls", "unknown"},
-		{"snapshots", "create", "extra"}, {"snapshots", "delete"}, {"snapshots", "rename"}, {"snapshots", "restore"}, {"snapshots", "unknown"},
+		{"snapshots", "create", "extra"}, {"snapshots", "delete"}, {"snapshots", "load"}, {"snapshots", "rename"}, {"snapshots", "restore"}, {"snapshots", "unknown"},
 		{"workers", "unknown"},
 	}
 	for _, args := range tests {
@@ -1558,7 +1577,7 @@ func TestCommandFlagParseErrors(t *testing.T) {
 		{"secrets", "set-nodes"}, {"secrets", "rename"}, {"secrets", "delete"},
 		{"secrets", "unsubscribe"},
 		{"snapshots", "create"}, {"snapshots", "list"}, {"snapshots", "export"},
-		{"snapshots", "import"}, {"snapshots", "rename"}, {"snapshots", "restore"},
+		{"snapshots", "import"}, {"snapshots", "load"}, {"snapshots", "rename"}, {"snapshots", "restore"},
 		{"snapshots", "delete"},
 		{"tls", "certs"}, {"tls", "policies"}, {"tls", "snapshot"}, {"tls", "watch"},
 		{"tls", "set-cert"}, {"tls", "rename-cert"}, {"tls", "delete-cert"},

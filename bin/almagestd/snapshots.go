@@ -82,6 +82,7 @@ type snapshotService struct {
 	tlsFetcher      tlspolicy.AuthorityFetcher
 	restore         *snapshotRestoreCoordinator
 	requireRecovery func(error)
+	examples        *exampleStore
 
 	mu     sync.Mutex
 	now    func() time.Time
@@ -94,6 +95,7 @@ type snapshotService struct {
 
 type loadedSnapshot struct {
 	info       api.SnapshotInfo
+	restoreID  string
 	config     *hujson.Config
 	configData []byte
 	filesPath  string
@@ -646,10 +648,14 @@ func (s *snapshotService) prepareRestoreRecovery(
 	if err != nil {
 		return nil, restoreJournal{}, err
 	}
+	restoreID := desired.restoreID
+	if restoreID == "" {
+		restoreID = desired.info.UUID
+	}
 	journal := restoreJournal{
 		Version:              restoreJournalVersion,
 		State:                restoreStatePrepared,
-		SnapshotUUID:         desired.info.UUID,
+		SnapshotUUID:         restoreID,
 		RecoverySHA256:       digest,
 		RestoredConfigSHA256: configSHA256(desired.configData),
 	}
@@ -912,6 +918,9 @@ func readSnapshotManifest(path string) (snapshotManifest, error) {
 		if _, err := normalizeSnapshotUUID(manifest.Snapshot.UUID); err != nil || manifest.Snapshot.Timestamp <= 0 {
 			return snapshotManifest{}, fmt.Errorf("%w: invalid manifest metadata", errSnapshotInvalid)
 		}
+		if manifest.Snapshot.Example != "" || manifest.Snapshot.Comment != "" {
+			return snapshotManifest{}, fmt.Errorf("%w: regular snapshot has example metadata", errSnapshotInvalid)
+		}
 		if err := validateSnapshotName(manifest.Snapshot.Name); err != nil {
 			return snapshotManifest{}, err
 		}
@@ -968,7 +977,7 @@ func (s *snapshotService) loadArchive(ctx context.Context, path, expectedUUID st
 			if err := json.Unmarshal(data, &manifest); err != nil {
 				return fail(fmt.Errorf("%w: decode manifest: %v", errSnapshotInvalid, err))
 			}
-			if manifest.Version != snapshotArchiveVersion || manifest.Snapshot.Timestamp <= 0 {
+			if manifest.Version != snapshotArchiveVersion || manifest.Snapshot.Timestamp <= 0 || manifest.Snapshot.Example != "" || manifest.Snapshot.Comment != "" {
 				return fail(fmt.Errorf("%w: manifest metadata does not match archive", errSnapshotInvalid))
 			}
 			uuid, err := normalizeSnapshotUUID(manifest.Snapshot.UUID)
@@ -980,6 +989,7 @@ func (s *snapshotService) loadArchive(ctx context.Context, path, expectedUUID st
 				return fail(err)
 			}
 			loaded.info = manifest.Snapshot
+			loaded.restoreID = uuid
 			manifestFound = true
 		case name == snapshotConfigName:
 			data, err := readZipEntry(file, snapshotConfigMaxBytes)

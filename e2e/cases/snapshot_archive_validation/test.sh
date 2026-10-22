@@ -152,7 +152,7 @@ for archive in oversized-manifest oversized-config extracted-size-bomb; do
 done
 
 jq -e --arg uuid "$snapshot_uuid" '
-	.snapshots | length == 1 and .[0].uuid == $uuid and .[0].name == "source"
+	[.snapshots[] | select(.example == null)] | length == 1 and .[0].uuid == $uuid and .[0].name == "source"
 ' <(cli snapshots list) >/dev/null \
 	|| fail "rejected imports changed the snapshot list"
 cli admin ping --nonce archive-validation | jq -e '.nonce == "archive-validation"' >/dev/null \

@@ -49,6 +49,7 @@ type AdminAPI struct {
 	tlsOSAuthorityFetcher tlspolicy.AuthorityFetcher
 	nodeNames             *nodeNameIndex
 	snapshots             *snapshotService
+	examples              *exampleStore
 	// experimentalNodeTypes marks opt-in classes in all node-class API payloads.
 	experimentalNodeTypes map[string]bool
 	// deprecatedNodeTypes marks classes that remain available for compatibility.
@@ -89,6 +90,10 @@ func (a *AdminAPI) Stop() error {
 	}
 	if a.unixPath != "" {
 		result = errors.Join(result, cleanupUnixAdminSocket(a.unixPath))
+	}
+	if a.examples != nil {
+		result = errors.Join(result, a.examples.Close())
+		a.examples = nil
 	}
 	return result
 }
@@ -905,6 +910,9 @@ func PrepareAdminAPI(cfg *Config) (*AdminAPI, error) {
 	}
 	api := AdminAPI{config: cfg}
 	if err := api.prepareLocalizedContent(defaultLocalesRoot()); err != nil {
+		return nil, err
+	}
+	if err := api.prepareExamples(defaultExamplesRoot()); err != nil {
 		return nil, err
 	}
 	if cfg.Protected.Admin.Web != 0 {

@@ -103,6 +103,28 @@ func (c *snapshotRestoreCoordinator) setEpochReleaser(candidate any) {
 }
 
 func (c *snapshotRestoreCoordinator) Restore(ctx context.Context, uuid string) (api.SnapshotsRestoreResponse, error) {
+	return c.restore(ctx, func(s *snapshotService) (*loadedSnapshot, error) {
+		uuid, err := normalizeSnapshotUUID(uuid)
+		if err != nil {
+			return nil, err
+		}
+		return s.loadArchive(ctx, filepath.Join(s.storagePath, snapshotDirectoryName, uuid+".zip"), uuid)
+	})
+}
+
+func (c *snapshotRestoreCoordinator) RestoreExample(ctx context.Context, id, locale string) (api.SnapshotsRestoreResponse, error) {
+	if err := validateExampleID(id); err != nil {
+		return api.SnapshotsRestoreResponse{}, err
+	}
+	return c.restore(ctx, func(s *snapshotService) (*loadedSnapshot, error) {
+		return s.loadExample(ctx, id, locale)
+	})
+}
+
+func (c *snapshotRestoreCoordinator) restore(
+	ctx context.Context,
+	load func(*snapshotService) (*loadedSnapshot, error),
+) (api.SnapshotsRestoreResponse, error) {
 	if c == nil || c.service == nil {
 		return api.SnapshotsRestoreResponse{}, fmt.Errorf("snapshot service is not ready")
 	}
@@ -112,16 +134,12 @@ func (c *snapshotRestoreCoordinator) Restore(ctx context.Context, uuid string) (
 	if err := s.ready(); err != nil {
 		return api.SnapshotsRestoreResponse{}, err
 	}
-	uuid, err := normalizeSnapshotUUID(uuid)
-	if err != nil {
-		return api.SnapshotsRestoreResponse{}, err
-	}
 	if _, err := readRestoreJournal(s.storagePath); err == nil {
 		return api.SnapshotsRestoreResponse{}, errRestoreRecoveryRequired
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return api.SnapshotsRestoreResponse{}, fmt.Errorf("%w: existing restore journal: %v", errRestoreRecoveryRequired, err)
 	}
-	desired, err := s.loadArchive(ctx, filepath.Join(s.storagePath, snapshotDirectoryName, uuid+".zip"), uuid)
+	desired, err := load(s)
 	if err != nil {
 		return api.SnapshotsRestoreResponse{}, err
 	}

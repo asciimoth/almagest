@@ -203,6 +203,8 @@ Daemon:
   protected config and uses revision tokens for conflict detection.
 - `bin/almagestd/snapshots.go`: snapshot archive creation, validation,
   file-storage restore, graph rebuild, and rollback.
+- `bin/almagestd/examples.go`: read-only unpacked example discovery,
+  localization, bounded staging, and snapshot-restore integration.
 - `bin/almagestd/snapshot_bbolt.go`: consistent bbolt copies and transactional
   replacement of live database buckets.
 - `bin/internal/isolation/`: trusted bootstrap, closed IPC contracts, network

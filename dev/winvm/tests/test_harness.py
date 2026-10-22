@@ -368,6 +368,7 @@ require_vm_space "$winvm_cache_dir" 10 test
         self.assertIn("'winvm:(OI)(CI)RX'", launcher)
         self.assertIn("'-w', [string]$WebPort", launcher)
         self.assertIn("'--file-storage', $storage", launcher)
+        self.assertIn("$env:ALMAGEST_EXAMPLES_DIR = Join-Path $SourceDir 'examples'", launcher)
         self.assertNotIn("'--tmp-file-storage'", launcher)
         self.assertIn("[string]$DaemonOptions = ''", launcher)
         self.assertIn("'--discover-system-programs'", launcher)

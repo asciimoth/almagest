@@ -479,6 +479,12 @@ all files as root-owned, non-writable files in one directory, normally
 `/usr/libexec/almagest`. Package updates must replace the complete set while the
 service is stopped. A mixed or partial set fails validation.
 
+The build output also contains `share/almagest/examples`. Install that tree at
+`/usr/share/almagest/examples` as root-owned, non-writable data. The broker
+opens it before runtime launch. The launcher exposes it only to the runtime at
+`/examples` through a read-only, `nosuid`, `nodev`, and `noexec` mount with
+read-only Landlock rights.
+
 Install the systemd units from `packaging/linux`: the service file, sysusers
 file, and tmpfiles file. Run the normal distribution sysusers and tmpfiles steps
 before first start. Do not add setuid bits or file capabilities to role

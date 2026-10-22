@@ -95,6 +95,14 @@ func launchNative(t *testing.T, role Role, change func(*exec.Cmd)) ([]byte, erro
 			t.Fatal(err)
 		}
 		in.Locales = open(locales)
+		examples := t.TempDir()
+		if err := os.WriteFile(filepath.Join(examples, "visible"), []byte("example content"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink("/etc/passwd", filepath.Join(examples, "escape")); err != nil {
+			t.Fatal(err)
+		}
+		in.Examples = open(examples)
 	}
 	if role == Command {
 		in.Command = open("/qualification/command")
@@ -325,7 +333,7 @@ func TestHeldLaunchContract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cmd.Path != "/proc/self/fd/8" || cmd.Dir != "/" || len(cmd.Env) != 0 || len(cmd.ExtraFiles) != 15 || cmd.ExtraFiles[5] != f {
+	if cmd.Path != "/proc/self/fd/8" || cmd.Dir != "/" || len(cmd.Env) != 0 || len(cmd.ExtraFiles) != 16 || cmd.ExtraFiles[5] != f {
 		t.Fatalf("unexpected command: %+v", cmd)
 	}
 	if cmd.SysProcAttr == nil || !cmd.SysProcAttr.UseCgroupFD || cmd.SysProcAttr.CgroupFD != int(f.Fd()) {

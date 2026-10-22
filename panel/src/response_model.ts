@@ -19,7 +19,7 @@ import {
 } from "./event_model.js";
 import type { KVEntriesSnapshot, KVStoreInfo, KVValueSnapshot } from "./kv_model.js";
 import type { SecretEntry, SecretsSnapshot } from "./secrets_model.js";
-import type { SnapshotInfo } from "./snapshots_panel.js";
+import type { RegularSnapshotInfo, SnapshotInfo } from "./snapshots_panel.js";
 import type { TLSBuiltinCAInfo, TLSCertEntry, TLSPolicyEntry, TLSSnapshot } from "./tls_model.js";
 
 export type HelloResponse = {
@@ -142,7 +142,7 @@ export type SnapshotsListResponse = {
 };
 
 export type SnapshotExportResponse = {
-  snapshot: SnapshotInfo;
+  snapshot: RegularSnapshotInfo;
   archive: string;
 };
 
@@ -483,13 +483,13 @@ export function parseSnapshotsListResponse(input: unknown): SnapshotsListRespons
   return snapshots.every((snapshot): snapshot is SnapshotInfo => snapshot !== null) ? { snapshots } : null;
 }
 
-export function parseSnapshotInfoResponse(input: unknown): SnapshotInfo | null {
-  return parseSnapshotInfo(input);
+export function parseSnapshotInfoResponse(input: unknown): RegularSnapshotInfo | null {
+  return parseRegularSnapshotInfo(input);
 }
 
 export function parseSnapshotExportResponse(input: unknown): SnapshotExportResponse | null {
   if (!isRecord(input) || typeof input.archive !== "string") return null;
-  const snapshot = parseSnapshotInfo(input.snapshot);
+  const snapshot = parseRegularSnapshotInfo(input.snapshot);
   return snapshot ? { snapshot, archive: input.archive } : null;
 }
 
@@ -553,10 +553,36 @@ function parseConfigChanges(input: unknown): ConfigChanges | null {
 }
 
 function parseSnapshotInfo(input: unknown): SnapshotInfo | null {
+  if (!isRecord(input)) return null;
+  const example = input.example;
+  if (typeof example === "string") {
+    if (!isExampleID(example)
+      || typeof input.name !== "string"
+      || input.name.trim() === ""
+      || typeof input.comment !== "string"
+      || input.comment.trim() === ""
+      || input.uuid !== undefined
+      || input.timestamp !== undefined) return null;
+    return {
+      example,
+      name: input.name,
+      comment: input.comment,
+    };
+  }
+  return parseRegularSnapshotInfo(input);
+}
+
+function isExampleID(input: string): boolean {
+  return /^(?!con$|prn$|aux$|nul$|conin\$$|conout\$$|com[1-9]$|lpt[1-9]$)[a-z0-9][a-z0-9_-]{0,95}$/.test(input);
+}
+
+function parseRegularSnapshotInfo(input: unknown): RegularSnapshotInfo | null {
   if (!isRecord(input)
     || !isUUID(input.uuid)
     || !isFiniteNumber(input.timestamp)
-    || !isOptionalString(input.name)) return null;
+    || !isOptionalString(input.name)
+    || input.comment !== undefined
+    || input.example !== undefined) return null;
   return {
     uuid: input.uuid,
     timestamp: input.timestamp,

@@ -981,7 +981,7 @@ async function backend(method: BackendMethod, params: Record<string, unknown> = 
       return requestDecoded(
         "snapshots",
         "restore",
-        { uuid: params.uuid },
+        { uuid: params.uuid, example: params.example },
         parseSnapshotRestoreResponse,
       );
     case "subscribeNotifications": {
@@ -5986,7 +5986,11 @@ async function loadSnapshots(): Promise<void> {
     const response = await backend("snapshotsList");
     snapshotEntries = response.snapshots ?? [];
     renderSnapshots();
-    el.snapshotsStatus.textContent = localizedText("snapshots.status.count", "{count} snapshot(s).", { count: snapshotEntries.length });
+    const exampleCount = snapshotEntries.filter((entry) => entry.example).length;
+    const snapshotCount = snapshotEntries.length - exampleCount;
+    el.snapshotsStatus.textContent = exampleCount > 0
+      ? localizedText("snapshots.status.count_with_examples", "{snapshots} snapshot(s), {examples} example(s).", { snapshots: snapshotCount, examples: exampleCount })
+      : localizedText("snapshots.status.count", "{count} snapshot(s).", { count: snapshotCount });
   } catch (error) {
     el.snapshotsStatus.textContent = localizedText("snapshots.status.load_failed", "Snapshot load failed: {error}", { error: errorMessage(error) });
     notifyError(errorMessage(error), localizedText("snapshots.load_failed.title", "Snapshot load failed"));
@@ -6006,7 +6010,7 @@ async function createSnapshot(): Promise<void> {
     el.snapshotName.value = "";
     snapshotEntries = upsertSnapshot(snapshotEntries, created);
     renderSnapshots();
-    el.snapshotsStatus.textContent = localizedText("snapshots.status.created", "Created snapshot {uuid}.", { uuid: created.uuid });
+    el.snapshotsStatus.textContent = localizedText("snapshots.status.created", "Created snapshot {uuid}.", { uuid: created.uuid ?? "" });
     notifySuccess(el.snapshotsStatus.textContent, localizedText("snapshots.created.title", "Snapshot created"));
   } catch (error) {
     el.snapshotsStatus.textContent = localizedText("snapshots.status.create_failed", "Snapshot creation failed: {error}", { error: errorMessage(error) });
@@ -6020,7 +6024,7 @@ async function createSnapshot(): Promise<void> {
 // exportSnapshot downloads the exact stored ZIP. Snapshot UUIDs are stable
 // archive identities, so the UI always uses the UUID as the file name.
 async function exportSnapshot(entry: SnapshotInfo): Promise<void> {
-  if (snapshotsLoading || snapshotMutationPending) return;
+  if (!entry.uuid || snapshotsLoading || snapshotMutationPending) return;
   snapshotMutationPending = true;
   el.snapshotsStatus.textContent = localizedText("snapshots.status.exporting", "Exporting snapshot {uuid}.", { uuid: entry.uuid });
   updateSnapshotControls();
@@ -6035,7 +6039,7 @@ async function exportSnapshot(entry: SnapshotInfo): Promise<void> {
     link.click();
     link.remove();
     window.setTimeout(() => URL.revokeObjectURL(url), 0);
-    el.snapshotsStatus.textContent = localizedText("snapshots.status.exported", "Exported snapshot {uuid}.", { uuid: response.snapshot.uuid });
+    el.snapshotsStatus.textContent = localizedText("snapshots.status.exported", "Exported snapshot {uuid}.", { uuid: response.snapshot.uuid ?? "" });
     notifySuccess(el.snapshotsStatus.textContent, localizedText("snapshots.exported.title", "Snapshot exported"));
   } catch (error) {
     el.snapshotsStatus.textContent = localizedText("snapshots.status.export_failed", "Snapshot export failed: {error}", { error: errorMessage(error) });
@@ -6073,7 +6077,7 @@ async function importSnapshot(): Promise<void> {
     el.snapshotImportName.value = "";
     snapshotEntries = upsertSnapshot(snapshotEntries, imported);
     renderSnapshots();
-    el.snapshotsStatus.textContent = localizedText("snapshots.status.imported", "Imported snapshot {uuid}.", { uuid: imported.uuid });
+    el.snapshotsStatus.textContent = localizedText("snapshots.status.imported", "Imported snapshot {uuid}.", { uuid: imported.uuid ?? "" });
     notifySuccess(el.snapshotsStatus.textContent, localizedText("snapshots.imported.title", "Snapshot imported"));
   } catch (error) {
     el.snapshotsStatus.textContent = localizedText("snapshots.status.import_failed", "Snapshot import failed: {error}", { error: errorMessage(error) });
@@ -6105,14 +6109,20 @@ function fileAsBase64(file: File): Promise<string> {
 }
 
 async function restoreSnapshot(entry: SnapshotInfo): Promise<void> {
-  const label = entry.name ? `“${entry.name}” (${entry.uuid})` : entry.uuid;
-  if (!window.confirm(localizedText("snapshots.restore.confirm", "Restore snapshot {snapshot}? Current daemon state will be replaced.", { snapshot: label }))) return;
+  if (!entry.example && !entry.uuid) return;
+  const identity = entry.example ? { example: entry.example } : { uuid: entry.uuid };
+  if (!entry.example) {
+    const label = entry.name ? `“${entry.name}” (${entry.uuid})` : (entry.uuid ?? "");
+    if (!window.confirm(localizedText("snapshots.restore.confirm", "Restore snapshot {snapshot}? Current daemon state will be replaced.", { snapshot: label }))) return;
+  }
   if (snapshotsLoading || snapshotMutationPending) return;
   snapshotMutationPending = true;
-  el.snapshotsStatus.textContent = localizedText("snapshots.status.restoring", "Restoring snapshot {uuid}.", { uuid: entry.uuid });
+  el.snapshotsStatus.textContent = entry.example
+    ? localizedText("snapshots.status.loading_example", "Loading example {name}.", { name: entry.name ?? entry.example })
+    : localizedText("snapshots.status.restoring", "Restoring snapshot {uuid}.", { uuid: entry.uuid ?? "" });
   updateSnapshotControls();
   try {
-    const response = await backend("snapshotRestore", { uuid: entry.uuid });
+    const response = await backend("snapshotRestore", identity);
     configSnapshot = null;
     configDraft = "";
     const persistence = response.config_written
@@ -6120,11 +6130,20 @@ async function restoreSnapshot(entry: SnapshotInfo): Promise<void> {
       : response.config_write_error
         ? localizedText("snapshots.restore.config_write_failed", " Config is active in memory; the config file write failed: {error}", { error: response.config_write_error })
         : localizedText("snapshots.restore.memory_only", " Config is active in memory only.");
-    el.snapshotsStatus.textContent = localizedText("snapshots.status.restored", "Restored snapshot {uuid}.{persistence}", { uuid: response.snapshot.uuid, persistence });
-    notifySuccess(el.snapshotsStatus.textContent, localizedText("snapshots.restored.title", "Snapshot restored"));
+    el.snapshotsStatus.textContent = entry.example
+      ? localizedText("snapshots.status.example_loaded", "Loaded example {name}.{persistence}", { name: response.snapshot.name ?? entry.name ?? entry.example, persistence })
+      : localizedText("snapshots.status.restored", "Restored snapshot {uuid}.{persistence}", { uuid: response.snapshot.uuid ?? "", persistence });
+    notifySuccess(el.snapshotsStatus.textContent, entry.example
+      ? localizedText("snapshots.example_loaded.title", "Example loaded")
+      : localizedText("snapshots.restored.title", "Snapshot restored"));
+    if (entry.example) setTab("config");
   } catch (error) {
-    el.snapshotsStatus.textContent = localizedText("snapshots.status.restore_failed", "Snapshot restore failed: {error}", { error: errorMessage(error) });
-    notifyError(errorMessage(error), localizedText("snapshots.restore_failed.title", "Snapshot restore failed"));
+    el.snapshotsStatus.textContent = entry.example
+      ? localizedText("snapshots.status.example_load_failed", "Example load failed: {error}", { error: errorMessage(error) })
+      : localizedText("snapshots.status.restore_failed", "Snapshot restore failed: {error}", { error: errorMessage(error) });
+    notifyError(errorMessage(error), entry.example
+      ? localizedText("snapshots.example_load_failed.title", "Example load failed")
+      : localizedText("snapshots.restore_failed.title", "Snapshot restore failed"));
   } finally {
     snapshotMutationPending = false;
     updateSnapshotControls();
@@ -6132,6 +6151,7 @@ async function restoreSnapshot(entry: SnapshotInfo): Promise<void> {
 }
 
 async function renameSnapshot(entry: SnapshotInfo): Promise<void> {
+  if (!entry.uuid) return;
   const name = window.prompt(localizedText("snapshots.rename.prompt", "Snapshot name (leave empty for no name):"), entry.name ?? "");
   if (name === null || snapshotsLoading || snapshotMutationPending) return;
   snapshotMutationPending = true;
@@ -6153,6 +6173,7 @@ async function renameSnapshot(entry: SnapshotInfo): Promise<void> {
 }
 
 async function deleteSnapshot(entry: SnapshotInfo): Promise<void> {
+  if (!entry.uuid) return;
   const label = entry.name ? `“${entry.name}” (${entry.uuid})` : entry.uuid;
   if (!window.confirm(localizedText("snapshots.delete.confirm", "Delete snapshot {snapshot}? This action cannot be undone.", { snapshot: label }))) return;
   if (snapshotsLoading || snapshotMutationPending) return;
@@ -6655,6 +6676,8 @@ async function changeLocale(locale: string): Promise<void> {
     destroyMenu();
     await requestSnapshot();
     updateSidekick();
+    snapshotEntries = [];
+    if (activeTab === "snapshots") await loadSnapshots();
     rerenderLocalizedPanels();
   } finally {
     el.locale.disabled = false;

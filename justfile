@@ -193,6 +193,8 @@ build-windows:
 # install this set atomically in one root-owned directory.
 build-isolation-linux output='build/isolation-linux': build-web
   mkdir -p {{quote(output)}}
+  mkdir -p {{quote(output)}}/share/almagest/examples
+  cp -a examples/. {{quote(output)}}/share/almagest/examples/
   CGO_ENABLED=0 go build -C bin -trimpath -o ../{{quote(output)}}/almagestd ./almagestd
   CGO_ENABLED=0 go build -C bin -trimpath -o ../{{quote(output)}}/almagest-network-role ./cmd/almagest-network-role
   CGO_ENABLED=0 go build -C bin -trimpath -o ../{{quote(output)}}/almagest-config-writer-role ./cmd/almagest-config-writer-role

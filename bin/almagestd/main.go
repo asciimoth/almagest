@@ -401,6 +401,7 @@ func runDaemon(
 		daemonLogger,
 		admin.tlsOSAuthorityFetcher,
 	)
+	admin.snapshots.examples = admin.examples
 	admin.snapshots.restore.setEpochReleaser(hostNetwork)
 	admin.snapshots.requireRecovery = admin.mutations.requireRecovery
 	wg.Go(func() {
