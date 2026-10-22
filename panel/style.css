@@ -1120,6 +1120,48 @@ h1 {
   color: var(--yellow);
 }
 
+/* Formular keeps the textarea in control and places this inert color layer
+ * behind it. Matching font, padding, and wrapping keep both layers aligned. */
+.formular-syntax-editor {
+  position: relative;
+  display: block;
+  min-width: 0;
+}
+
+.formular-syntax-highlight,
+#node-menu .formular-syntax-input {
+  margin: 0;
+  min-height: 88px;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  font: inherit;
+  line-height: normal;
+  tab-size: 8;
+  white-space: pre;
+  overflow-wrap: normal;
+}
+
+.formular-syntax-highlight {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  color: var(--text);
+  pointer-events: none;
+  overflow: hidden;
+}
+
+#node-menu .formular-syntax-input {
+  position: relative;
+  z-index: 1;
+  background: transparent;
+  color: transparent;
+  caret-color: var(--text);
+}
+
+#node-menu .formular-syntax-input::selection {
+  background: color-mix(in srgb, var(--blue), transparent 62%);
+}
+
 #config-editor:focus {
   border-color: var(--blue);
 }

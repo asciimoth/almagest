@@ -222,6 +222,10 @@ import {
 import { NotificationCenter, type NotificationTone } from "./notification_center.js";
 import { renderHuJSONHighlight } from "./hujson_highlight.js";
 import {
+  createFormularMultilineHighlightRenderer,
+  observeFormularCodeLabels,
+} from "./formular_highlight.js";
+import {
   applyLocale,
   matchPreferredLocale,
   parseLocaleSnapshot,
@@ -272,7 +276,10 @@ type FormularMenuConstructor = new (
   container: string | HTMLElement,
   menuID: string,
   send: (message: unknown) => void,
-  options?: { selectors?: FormularSelectorProvider },
+  options?: {
+    selectors?: FormularSelectorProvider;
+    renderMultilineTextInput?: ReturnType<typeof createFormularMultilineHighlightRenderer>;
+  },
 ) => FormularMenuInstance;
 // The built module runs from public/build, while vendored browser dependencies
 // are served from vendor at the panel root. The build adds a content version to
@@ -448,7 +455,12 @@ let canvas: any;
 let rendering = false;
 let graphRenderPending = false;
 let graphRenderFinishFrame = 0;
-let selectedMenu: { node: ID; menu: FormularMenuInstance; receivedSnapshot: boolean } | null = null;
+let selectedMenu: {
+  node: ID;
+  menu: FormularMenuInstance;
+  stopCodeHighlighting: () => void;
+  receivedSnapshot: boolean;
+} | null = null;
 let highlightedDescriptionPort: { nodeID: ID; side: "left" | "right"; name: string } | null = null;
 let activeTab = "graph";
 let sidekickUpdate = 0;
@@ -2278,13 +2290,17 @@ function moveNodePanelTabFocus(event: KeyboardEvent): void {
 function mountMenu(nodeID: number): void {
   if (selectedMenu?.node === nodeID && document.getElementById("node-menu")) return;
   destroyMenu();
+  const menuRoot = document.getElementById("node-menu");
+  if (!menuRoot) return;
   selectedMenu = {
     node: nodeID,
     menu: new FormularMenu("node-menu", nodeMenuID(nodeID), (message: unknown) => {
       tryBackend("formular", { id: nodeID, message });
     }, {
       selectors: (selector: string) => formularSelectorValues(nodeID, selector),
+      renderMultilineTextInput: createFormularMultilineHighlightRenderer(),
     }),
+    stopCodeHighlighting: observeFormularCodeLabels(menuRoot),
     receivedSnapshot: false,
   };
   void tryBackend("subscribeNodeMenu", { id: nodeID }).then(() => {
@@ -2305,6 +2321,7 @@ function formularSelectorValues(nodeID: number, selector: string): readonly stri
 function destroyMenu(): void {
   if (!selectedMenu) return;
   tryBackend("unsubscribeNodeMenu", { id: selectedMenu.node });
+  selectedMenu.stopCodeHighlighting();
   selectedMenu.menu.destroy();
   selectedMenu = null;
 }
