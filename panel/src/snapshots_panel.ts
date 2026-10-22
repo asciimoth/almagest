@@ -61,6 +61,7 @@ export function renderSnapshotList(
   for (const [index, entry] of [...regular, ...examples].entries()) {
     if (entry.example && index === regular.length) {
       const delimiter = document.createElement("li");
+      delimiter.id = "examples";
       delimiter.className = "snapshot-examples-delimiter";
       delimiter.textContent = localizedText("snapshots.examples", "Examples");
       list.append(delimiter);

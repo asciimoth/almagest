@@ -6202,6 +6202,11 @@ function renderSnapshots(): void {
     restore: (entry) => void restoreSnapshot(entry),
     delete: (entry) => void deleteSnapshot(entry),
   });
+  scrollToLocationAnchor();
+}
+
+function scrollToLocationAnchor(): void {
+  if (window.location.hash === "#examples") document.getElementById("examples")?.scrollIntoView();
 }
 
 function updateSnapshotControls(): void {
@@ -6501,6 +6506,7 @@ function wireUI(): void {
   window.addEventListener("hashchange", () => {
     const name = tabNameFromLocation();
     if (name !== activeTab) setTab(name, false);
+    scrollToLocationAnchor();
   });
   el.docs.addEventListener("click", () => window.open(documentationURL(), "_blank"));
   el.secPanel.addEventListener("scroll", rememberSecScrollState);

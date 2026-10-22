@@ -92,6 +92,7 @@ test("examples render below a delimiter with safe text and only a Load action", 
   assert.equal(list.querySelector("img"), null);
   assert.equal(list.querySelector("script"), null);
   assert.equal(list.querySelectorAll(".snapshot-examples-delimiter").length, 1);
+  assert.equal(list.querySelector(".snapshot-examples-delimiter")?.id, "examples");
   const row = list.querySelector(".snapshot-example-row");
   assert.equal(row?.querySelector("strong")?.textContent, example.name);
   assert.equal(row?.querySelector(".snapshot-meta")?.textContent, example.comment);

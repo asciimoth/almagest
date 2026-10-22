@@ -94,6 +94,7 @@ test("SPA tabs restore and update the URL hash", () => {
   assert.match(app, /setTab\(tabNameFromLocation\(\), false\)/);
   assert.match(app, /window\.location\.hash = tabHash\(name\)/);
   assert.match(app, /addEventListener\("hashchange"/);
+  assert.match(app, /document\.getElementById\("examples"\)\?\.scrollIntoView\(\)/);
 });
 
 test("language picker is the last glyph in the tab bar with a localized hint", () => {
