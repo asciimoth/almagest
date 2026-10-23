@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -183,7 +184,7 @@ func ParseIsolatedConfig(cfg, prt []byte) (*Config, error) {
 }
 
 func parseConfig(cfg, prt []byte, isolated bool) (*Config, error) {
-	config, err := hujson.Parse(cfg)
+	config, err := parseConfigDocument(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("config parsing: %w", err)
 	}
@@ -191,7 +192,7 @@ func parseConfig(cfg, prt []byte, isolated bool) (*Config, error) {
 	protected := ProtectedConfig{
 		Admin: defaultAdminAPIConfig(),
 	}
-	protectedCfg, err := hujson.Parse(prt)
+	protectedCfg, err := parseConfigDocument(prt)
 	if err != nil {
 		return nil, fmt.Errorf("protected config parsing: %w", err)
 	}
@@ -220,6 +221,13 @@ func parseConfig(cfg, prt []byte, isolated bool) (*Config, error) {
 		Main:      config,
 		Protected: protected,
 	}, nil
+}
+
+func parseConfigDocument(data []byte) (*hujson.Config, error) {
+	if len(bytes.TrimSpace(data)) == 0 {
+		data = []byte(`{}`)
+	}
+	return hujson.Parse(data)
 }
 
 // ProtectedConfig is intended for "protected" readonly options that should not

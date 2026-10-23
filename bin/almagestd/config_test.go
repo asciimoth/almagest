@@ -16,6 +16,20 @@ import (
 	"github.com/asciimoth/almagest/lib/storage"
 )
 
+func TestParseConfigTreatsEmptyDocumentsAsObjects(t *testing.T) {
+	for _, input := range []string{"", " \t\r\n"} {
+		t.Run(fmt.Sprintf("%q", input), func(t *testing.T) {
+			cfg, err := ParseConfig([]byte(input), []byte(input))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if cfg.Main == nil {
+				t.Fatal("main config is nil")
+			}
+		})
+	}
+}
+
 func TestConfigSaveIdleDefault(t *testing.T) {
 	cfg, err := ParseConfig([]byte(`{}`), []byte(`{}`))
 	if err != nil {

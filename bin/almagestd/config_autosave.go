@@ -474,7 +474,7 @@ func (s *configAutosaver) noteRestoredConfig() {
 }
 
 func parseEditableConfig(data []byte) (*hujson.Config, error) {
-	cfg, err := hujson.Parse(data)
+	cfg, err := parseConfigDocument(data)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", errConfigInvalid, err)
 	}
@@ -498,7 +498,7 @@ func parseEditableConfig(data []byte) (*hujson.Config, error) {
 // Config is built, but the API must keep this boundary even for injected test
 // configs or future config sources.
 func configOnlyBytes(data []byte) ([]byte, error) {
-	cfg, err := hujson.Parse(data)
+	cfg, err := parseConfigDocument(data)
 	if err != nil {
 		return nil, err
 	}

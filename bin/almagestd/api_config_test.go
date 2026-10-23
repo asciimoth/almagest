@@ -123,6 +123,27 @@ func TestConfigAPIExposesOnlyEditableTextAndAppliesRevisionControlledUpdate(t *t
 	if len(writer.writes) != 1 {
 		t.Fatalf("writes after stale update = %d, want 1", len(writer.writes))
 	}
+
+	emptyReq := mustRequest(t, "4", api.SurfaceConfig, string(api.MethodConfigUpdate), api.ConfigUpdateRequest{
+		Text: "", Revision: updated.Snapshot.Revision,
+	})
+	emptyResp, err := session.handleMessage(emptyReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if emptyResp.Error != nil {
+		t.Fatalf("empty update error = %#v", emptyResp.Error)
+	}
+	emptyUpdate, err := api.DecodePayload[api.ConfigUpdateResponse](emptyResp.Result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slicesEqual(emptyUpdate.Changes.Removed, []string{"api-added"}) {
+		t.Fatalf("removed nodes = %v, want api-added", emptyUpdate.Changes.Removed)
+	}
+	if len(writer.writes) != 2 {
+		t.Fatalf("writes after empty update = %d, want 2", len(writer.writes))
+	}
 }
 
 func TestConfigAPIUpdateRemovesDanglingLinksAndSynchronizesNodeComments(t *testing.T) {
