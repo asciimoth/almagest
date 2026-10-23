@@ -1,16 +1,17 @@
-VTun supplies a userspace IP stack as both **Network** and **Tun**. Connect
-client or server nodes to **Network**. Connect **Tun** to the path that carries
-the stack's IPv4 and IPv6 packets, such as
+VTun supplies a userspace IP stack as both [Network](@port/left/Network) and
+[Tun](@port/right/Tun). Connect client or server nodes to
+[Network](@port/left/Network). Connect [Tun](@port/right/Tun) to the path that
+carries the stack's IPv4 and IPv6 packets, such as
 [WireGuard](@docs/node/almagest/WireGuard),
 [TunCopy](@docs/node/almagest/TunCopy),
 [TunSplitter](@docs/node/almagest/TunSplitter), or
 [Spoofer](@docs/node/almagest/Spoofer).
 
-Applications on **Network** can use TCP, UDP, listeners, and DNS through this
-stack. Their outgoing IP packets go through **Tun**. Packets that return through
-the TUN path enter the same stack and reach the applicable connection or
-listener. Multiple applications can use **Network**, but **Tun** accepts one
-connection.
+Applications on [Network](@port/left/Network) can use TCP, UDP, listeners, and
+DNS through this stack. Their outgoing IP packets go through
+[Tun](@port/right/Tun). Packets that return through the TUN path enter the same
+stack and reach the applicable connection or listener. Multiple applications can
+use **Network**, but **Tun** accepts one connection.
 
 VTun creates its stack only while at least one of these ports is connected. The
 default name is `vtun`. The **Effective** section shows the active local
@@ -104,6 +105,6 @@ connections and listeners. An effective MTU change or a change that affects only
 source routes is applied without replacement. Repeating an equivalent TUN
 suggestion does not replace the stack.
 
-Removing the **Tun** connection clears all address, route, MTU, and DNS
-suggestions that came from that connection. VTun then recalculates its effective
-configuration from the menu values and defaults.
+Removing the [Tun](@port/right/Tun) connection clears all address, route, MTU,
+and DNS suggestions that came from that connection. VTun then recalculates its
+effective configuration from the menu values and defaults.

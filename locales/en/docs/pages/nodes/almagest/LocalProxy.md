@@ -1,8 +1,8 @@
 LocalProxy provides a SOCKS proxy to applications on the daemon host. Client
 connections use the system-local network. The requested connections, name
-lookups, and remote listeners use the connected **Network**. Use this node to
-give a local application access to a VPN, tunnel, proxy chain, or test network
-from an ordinary SOCKS client.
+lookups, and remote listeners use the connected [Network](@port/right/Network).
+Use this node to give a local application access to a VPN, tunnel, proxy chain,
+or test network from an ordinary SOCKS client.
 
 The plain SOCKS listener supports SOCKS4, SOCKS4a, and SOCKS5. Its default
 address is `127.0.0.1:1080`. An empty host also uses `127.0.0.1`. Set the port

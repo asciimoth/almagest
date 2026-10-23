@@ -1,7 +1,7 @@
 FetchAddr checks the public address that an external service sees through the
-connected **Network**. Put it after a VPN, proxy, or other network path to
-confirm which public address that path uses. The node does not start a check
-when the Network becomes ready.
+connected [Network](@port/right/Network). Put it after a VPN, proxy, or other
+network path to confirm which public address that path uses. The node does not
+start a check when the Network becomes ready.
 
 Select one of these providers:
 

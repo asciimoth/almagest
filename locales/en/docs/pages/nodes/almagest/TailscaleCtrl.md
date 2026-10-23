@@ -7,15 +7,16 @@ same device.
 
 ## Connections
 
-Connect **WireGuard** to the control input. TailscaleCtrl sends the current
-Tailscale addresses, routes, and MTU to
+Connect [WireGuard](@port/right/WireGuard) to the control input. TailscaleCtrl
+sends the current Tailscale addresses, routes, and MTU to
 [WireGuard](@docs/node/almagest/WireGuard).
 [WireGuard](@docs/node/almagest/WireGuard) includes these values in the
 configuration that it sends to its TUN. The node reaches the `up` state only
 after [WireGuard](@docs/node/almagest/WireGuard) and its TUN accept this
 configuration.
 
-Connect **Network** to the path that must carry these connections:
+Connect [Network](@port/right/Network) to the path that must carry these
+connections:
 
 - control-server requests and control-server name lookups
 - STUN and DISCO discovery traffic
@@ -61,11 +62,11 @@ still carry traffic unless you also disable DERP.
 
 ## DNS output
 
-The **DNS** output serves the current MagicDNS records received from the control
-server. It supports `A`, `AAAA`, `CNAME`, `PTR`, `NS`, `MX`, `SRV`, and `TXT`
-queries. Reverse lookups are made from the received address records. A
-single-label name also uses the MagicDNS search domains. A name that contains a
-dot is looked up as written.
+The [DNS](@port/left/DNS) output serves the current MagicDNS records received
+from the control server. It supports `A`, `AAAA`, `CNAME`, `PTR`, `NS`, `MX`,
+`SRV`, and `TXT` queries. Reverse lookups are made from the received address
+records. A single-label name also uses the MagicDNS search domains. A name that
+contains a dot is looked up as written.
 
 Successful answers have a TTL of 60 seconds. The output does not query the
 nameservers advertised by the control server, the host resolver, or another DNS

@@ -1,5 +1,6 @@
-Filters TCP and UDP traffic on a connected **Network**. Connect the source
-Network to this node, and connect clients or servers to its filtered Network.
+Filters TCP and UDP traffic on a connected [Network](@port/left/Network).
+Connect the source Network to this node, and connect clients or servers to its
+filtered Network.
 
 The default policy has these actions:
 

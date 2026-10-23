@@ -1,6 +1,6 @@
-Rewrites connection and listener addresses on a connected **Network**. Use it to
-redirect a client to a different service or to change the address on which a
-server listens.
+Rewrites connection and listener addresses on a connected
+[Network](@port/right/Network). Use it to redirect a client to a different
+service or to change the address on which a server listens.
 
 An empty **Remap rules** field makes no changes. DNS lookup operations also pass
 through without changes.

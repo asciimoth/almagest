@@ -1,10 +1,11 @@
-Sends an HTTP or HTTPS request through a connected **Network**. Use this node to
-test a route or examine the response from a service.
+Sends an HTTP or HTTPS request through a connected
+[Network](@port/right/Network). Use this node to test a route or examine the
+response from a service.
 
 ## Request
 
-Connect a **Network** before you send a request. The node uses this network for
-the complete connection, including name resolution.
+Connect a [Network](@port/right/Network) before you send a request. The node
+uses this network for the complete connection, including name resolution.
 
 Set these request values:
 

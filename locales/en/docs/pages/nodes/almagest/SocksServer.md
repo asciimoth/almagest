@@ -1,6 +1,7 @@
-Runs a SOCKS4, SOCKS4a, and SOCKS5 proxy. The **listen** Network accepts client
-connections. The **proxy** Network performs the connections, listeners, UDP
-operations, and name lookups that clients request.
+Runs a SOCKS4, SOCKS4a, and SOCKS5 proxy. The [listen](@port/right/listen)
+Network accepts client connections. The [proxy](@port/right/proxy) Network
+performs the connections, listeners, UDP operations, and name lookups that
+clients request.
 
 The listen Network is required. The server can start without a proxy Network,
 but client commands then fail. This lets clients receive a SOCKS protocol error

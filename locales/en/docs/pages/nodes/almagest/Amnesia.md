@@ -2,10 +2,11 @@ Creates an Amnezia VPN connection and owns its WireGuard device. Use this node
 when you want one node to import the connection, create the tunnel, and provide
 tunnel DNS.
 
-Connect a TUN provider to **Tun** and an outgoing network to **Network**. The
-node uses the outgoing network for Amnezia API requests, profile pre-connect
-traffic, and WireGuard UDP traffic. Connect DNS consumers to **DNS** if they
-must resolve names through the VPN.
+Connect a TUN provider to [Tun](@port/left/Tun) and an outgoing network to
+[Network](@port/right/Network). The node uses the outgoing network for Amnezia
+API requests, profile pre-connect traffic, and WireGuard UDP traffic. Connect
+DNS consumers to [DNS](@port/right/DNS) if they must resolve names through the
+VPN.
 
 ## Connection configuration
 
@@ -28,9 +29,9 @@ gateway and TLS settings apply only to service-key imports.
 Service-key imports always notify the service that the connection is active. The
 node generates a WireGuard identity when it imports a new service connection.
 For a service key, changing the country or other connection settings can
-register a new identity. Detaching and later reattaching **Tun** or **Network**
-can also register a new identity. Self-hosted and native profiles use the
-private key in the selected connection secret.
+register a new identity. Detaching and later reattaching [Tun](@port/left/Tun)
+or [Network](@port/right/Network) can also register a new identity. Self-hosted
+and native profiles use the private key in the selected connection secret.
 
 The node does not save WireGuard keys, peers, counters, or handshake state. It
 does save its Amnezia installation UUID and encrypted proxy-discovery cache when
@@ -54,10 +55,10 @@ less than the IPv6 minimum.
 
 ## Tunnel DNS
 
-The **DNS** output is available while the VPN is up. It sends UDP DNS requests
-through the WireGuard tunnel. The node tries usable profile DNS servers in
-profile order. A DNS server is usable only when the profile has a tunnel address
-of the same IP family and an allowed-IP route to that server.
+The [DNS](@port/right/DNS) output is available while the VPN is up. It sends UDP
+DNS requests through the WireGuard tunnel. The node tries usable profile DNS
+servers in profile order. A DNS server is usable only when the profile has a
+tunnel address of the same IP family and an allowed-IP route to that server.
 
 The tunnel DNS client does not retry a truncated response over TCP and does not
 reassemble fragmented IP packets. Use a different DNS transport if the resolver

@@ -1,7 +1,7 @@
 Provides a Network that sends supported TCP and UDP operations through a SOCKS
-proxy. Connect the network used to reach the proxy to **out**. Connect clients
-or tunnel nodes to the **Network** output. The node does not bypass the proxy
-for loopback or local addresses.
+proxy. Connect the network used to reach the proxy to [out](@port/left/out).
+Connect clients or tunnel nodes to the [Network](@port/right/Network) output.
+The node does not bypass the proxy for loopback or local addresses.
 
 ## Proxy URL
 
@@ -34,15 +34,17 @@ effect when the URL has no username.
 For `+tls` and `+wss`, **TLS config** selects the certificate authorities,
 server name, client certificate, and other TLS policy. The default TLS config is
 used when no other config is selected. An invalid TLS config prevents the
-encrypted **Network** output, but does not prevent a plain SOCKS connection. The
-`secure` URL option does not replace the selected TLS config.
+encrypted [Network](@port/right/Network) output, but does not prevent a plain
+SOCKS connection. The `secure` URL option does not replace the selected TLS
+config.
 
 ## DNS
 
-The network connected to **out** resolves the proxy server name. SOCKS5 and
-SOCKS4a send target hostnames to the proxy, so the proxy resolves them. SOCKS4
-resolves target hostnames with the local process resolver before it sends the
-request. It does not use graph DNS or the resolver from **out** for this step.
+The network connected to [out](@port/left/out) resolves the proxy server name.
+SOCKS5 and SOCKS4a send target hostnames to the proxy, so the proxy resolves
+them. SOCKS4 resolves target hostnames with the local process resolver before it
+sends the request. It does not use graph DNS or the resolver from
+[out](@port/left/out) for this step.
 
 Explicit forward and reverse lookups are disabled by default. Add `?tor` to use
 the Tor `RESOLVE` and `RESOLVE_PTR` extensions through a compatible SOCKS5
@@ -73,5 +75,6 @@ node always sends supported destination operations through the proxy.
 
 An optional **Proxy URL** connection can change the URL at run time. While it is
 connected, the **Proxy URL** field is read-only. An empty value restores the
-default URL. The **Network** output is available only when **out** is ready and
-the URL and applicable **TLS config** are valid.
+default URL. The [Network](@port/right/Network) output is available only when
+[out](@port/left/out) is ready and the URL and applicable **TLS config** are
+valid.

@@ -1,7 +1,7 @@
-Runs a command from the daemon's protected command list when the **Trigger**
-input receives an event. The workspace cannot supply an executable or a full
-command line. It can select only commands that have `AllowNodes` enabled in
-protected config.
+Runs a command from the daemon's protected command list when the
+[Trigger](@port/left/Trigger) input receives an event. The workspace cannot
+supply an executable or a full command line. It can select only commands that
+have `AllowNodes` enabled in protected config.
 
 The daemon reads the protected command list at startup. Restart the daemon after
 you change this list. For example, this entry makes one command available to

@@ -14,11 +14,12 @@ unable to listen. After a listen or server error, the node waits one second and
 tries again. Disconnecting the Network stops the listener. Changing the host,
 port, response, or Network restarts the listener.
 
-Supply the response body through the **Response** String input. If the response
-is empty, the server uses `Debug http server response`. Every valid HTTP request
-receives status `200 OK` and the same response body, regardless of its method,
-path, headers, or request body. The server does not provide routes or custom
-status codes. A client must send its HTTP headers within 5 seconds.
+Supply the response body through the [Response](@port/left/Response) String
+input. If the response is empty, the server uses `Debug http server response`.
+Every valid HTTP request receives status `200 OK` and the same response body,
+regardless of its method, path, headers, or request body. The server does not
+provide routes or custom status codes. A client must send its HTTP headers
+within 5 seconds.
 
 For each request, the node logs the method and URL, including the query string.
 The Worker section keeps the latest 40 listener and request messages.

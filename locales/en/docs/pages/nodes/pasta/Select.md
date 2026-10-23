@@ -1,8 +1,8 @@
-Select connects one of two branches to **Out**. The Boolean **Selector** value
-chooses the branch:
+Select connects one of two branches to [Out](@port/right/Out). The Boolean
+**Selector** value chooses the branch:
 
-- `false` connects **In 0** with **Out**.
-- `true` connects **In 1** with **Out**.
+- `false` connects [In 0](@port/left/In%200) with [Out](@port/right/Out).
+- `true` connects [In 1](@port/left/In%201) with [Out](@port/right/Out).
 
 The initial selector value is `false`. Select keeps the latest Boolean value;
 disconnecting **Selector** does not reset it. The node label and the read-only

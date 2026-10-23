@@ -1,8 +1,8 @@
-SelectOut connects **In** to one of two branches. The Boolean **Selector** value
-chooses the active branch:
+SelectOut connects [In](@port/left/In) to one of two branches. The Boolean
+**Selector** value chooses the active branch:
 
-- `false` connects **In** with **Out 0**.
-- `true` connects **In** with **Out 1**.
+- `false` connects [In](@port/left/In) with [Out 0](@port/right/Out%200).
+- `true` connects [In](@port/left/In) with [Out 1](@port/right/Out%201).
 
 The initial selector value is `false`. The node stores the latest selector
 value. If you disconnect **Selector**, the latest value stays in effect. The

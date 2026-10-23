@@ -1,6 +1,6 @@
-Serves configured DNS records and optionally sends misses to one **Fallback**
-DNS service. The DNS output is available even when no records or fallback are
-configured.
+Serves configured DNS records and optionally sends misses to one
+[Fallback](@port/right/Fallback) DNS service. The DNS output is available even
+when no records or fallback are configured.
 
 Write one record on each line in this form:
 
@@ -42,12 +42,13 @@ You can add multiple records with the same name and type. A matching question
 returns all of them. Matching is exact by both name and record type. The node
 does not follow CNAME records, synthesize other types, or use wildcard names.
 
-If no exact record matches, the node sends the complete request to **Fallback**.
-For example, an AAAA question is a miss when only an A record exists for the
-name. Without Fallback, a miss returns NXDOMAIN. For a request with multiple
-questions, all questions must match static records. If one question misses, the
-complete request goes to **Fallback** and static answers are not combined with
-the fallback response.
+If no exact record matches, the node sends the complete request to
+[Fallback](@port/right/Fallback). For example, an AAAA question is a miss when
+only an A record exists for the name. Without Fallback, a miss returns NXDOMAIN.
+For a request with multiple questions, all questions must match static records.
+If one question misses, the complete request goes to
+[Fallback](@port/right/Fallback) and static answers are not combined with the
+fallback response.
 
 **TTL** sets the lifetime, in seconds, for all static records. The default is
 60, and 0 is permitted. Fallback responses keep the TTL values supplied by the

@@ -1,11 +1,12 @@
 TlsMitm intercepts selected client-first TLS connections. It presents a locally
 generated certificate to the client, decrypts the connection, and creates a
 separate TLS connection to the original server through the connected
-**Network**. Place it between a Network consumer and its outbound Network path.
+[Network](@port/right/Network). Place it between a Network consumer and its
+outbound Network path.
 
-The client must trust Almagest's local TLS CA. TlsMitm supplies its **Network**
-only when the outbound Network, local CA, selected TLS config, and menu values
-are valid.
+The client must trust Almagest's local TLS CA. TlsMitm supplies its
+[Network](@port/left/Network) only when the outbound Network, local CA, selected
+TLS config, and menu values are valid.
 
 TlsMitm applies only to outgoing TCP connections. It passes non-TLS TCP data
 through unchanged after it reads the first client bytes. UDP, including QUIC,

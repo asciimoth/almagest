@@ -2,10 +2,10 @@ Provides a private, in-memory network for tests and diagnostics. Connections and
 listeners in this network do not use the operating-system network and cannot
 reach the internet or other external hosts.
 
-Connect this **Network** to the client and server nodes that you want to test
-together. TCP and UDP communication can use IPv4 or IPv6 loopback. Each
-MockNetwork is separate, so nodes that use different MockNetwork nodes cannot
-communicate with each other.
+Connect this [Network](@port/left/Network) to the client and server nodes that
+you want to test together. TCP and UDP communication can use IPv4 or IPv6
+loopback. Each MockNetwork is separate, so nodes that use different MockNetwork
+nodes cannot communicate with each other.
 
 ## Host addresses
 

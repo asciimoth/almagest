@@ -1,11 +1,13 @@
-Gateway holds data until it receives **Trigger** or you trigger the node
-manually. A typical use connects a source to **In** and a consumer to **Out**.
-The data path also works in the opposite direction.
+Gateway holds data until it receives [Trigger](@port/left/Trigger) or you
+trigger the node manually. A typical use connects a source to
+[In](@port/left/In) and a consumer to [Out](@port/right/Out). The data path also
+works in the opposite direction.
 
-The first concrete data connection to **In** or **Out** selects the data type
-for both ports. Later concrete connections must use that type. A generic
-connection does not select a concrete type, and Gateway does not accept Loop
-connections. The node has no menu settings.
+The first concrete data connection to [In](@port/left/In) or
+[Out](@port/right/Out) selects the data type for both ports. Later concrete
+connections must use that type. A generic connection does not select a concrete
+type, and Gateway does not accept Loop connections. The node has no menu
+settings.
 
 Gateway stores the latest data value for each side and connection type. It does
 not forward a stored value until triggered. For each trigger, it first sends

@@ -1,6 +1,7 @@
 NetworkRouter selects one backend Network for each network operation. Connect
-consumers to **Network**, and connect backend paths to the numbered slots. The
-node supports slots 1 through 16. Each slot accepts one Network.
+consumers to [Network](@port/left/Network), and connect backend paths to the
+numbered slots. The node supports slots 1 through 16. Each slot accepts one
+Network.
 
 Rules are evaluated from top to bottom. Each rule segment ends with `SLOT N` or
 `DROP`. `SLOT N` sends a matching operation to that slot. `DROP` rejects a
@@ -66,15 +67,15 @@ Operation names are not case-sensitive. Blank lines and lines that start with
 
 ## DNS behavior
 
-Without a connection to **DNS**, `LOOKUP` rules select the backend that handles
-each name lookup. Hostname dials keep their original host text during routing,
-so `ADDR_S` and `ADDR_RE` can match that text.
+Without a connection to [DNS](@port/right/DNS), `LOOKUP` rules select the
+backend that handles each name lookup. Hostname dials keep their original host
+text during routing, so `ADDR_S` and `ADDR_RE` can match that text.
 
-When **DNS** is connected, all explicit name lookups go directly to that DNS
-service and bypass the backend slots. The router also resolves host and service
-names through that DNS service before it selects a slot for a dial or listener.
-Address rules then see the selected numeric address instead of the original
-hostname.
+When [DNS](@port/right/DNS) is connected, all explicit name lookups go directly
+to that DNS service and bypass the backend slots. The router also resolves host
+and service names through that DNS service before it selects a slot for a dial
+or listener. Address rules then see the selected numeric address instead of the
+original hostname.
 
 **DNS cache storage** has a different purpose. Select a cache when `ADDR_S` or
 `ADDR_RE` must match a cached reverse name for a numeric IP address. A

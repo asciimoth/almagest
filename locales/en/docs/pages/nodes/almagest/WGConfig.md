@@ -2,10 +2,10 @@ Adds a separately managed peer list to an existing WireGuard node. WGConfig does
 not create a WireGuard interface. It also does not configure the device private
 key, listen port, interface addresses, or system routes.
 
-Connect **WireGuard** to the **WGCtrl** connector of a WireGuard node. Connect
-**Network** to give these peers a UDP path. You can connect multiple WGConfig
-nodes to one WireGuard node. Each WGConfig manages only its own peers and UDP
-path.
+Connect [WireGuard](@port/right/WireGuard) to the **WGCtrl** connector of a
+WireGuard node. Connect [Network](@port/right/Network) to give these peers a UDP
+path. You can connect multiple WGConfig nodes to one WireGuard node. Each
+WGConfig manages only its own peers and UDP path.
 
 Do not configure the same public key in more than one peer source on the same
 WireGuard node. The public key identifies the peer, so independent sources can
@@ -43,18 +43,19 @@ rejected edit.
 WGConfig creates one UDP transport for all peers in its list. This transport is
 separate from the WireGuard node's default UDP transport and from the transports
 of other WGConfig nodes. All fixed peer endpoints in this WGConfig use the
-connected **Network**.
+connected [Network](@port/right/Network).
 
-If **Network** is disconnected, WGConfig removes its UDP transport and removes
-fixed endpoints from its active peer settings. The peers stay installed on the
-WireGuard device, but their traffic is dropped. The label reports
-`network detached; peer traffic is dropped`. Reconnecting **Network** creates
-the transport again and restores the configured endpoints.
+If [Network](@port/right/Network) is disconnected, WGConfig removes its UDP
+transport and removes fixed endpoints from its active peer settings. The peers
+stay installed on the WireGuard device, but their traffic is dropped. The label
+reports `network detached; peer traffic is dropped`. Reconnecting **Network**
+creates the transport again and restores the configured endpoints.
 
-Disconnecting **WireGuard** removes this WGConfig's peers and UDP transport from
-that WireGuard node. It does not remove menu peers, Object peers, or peers from
-other WGConfig nodes. Reconnecting applies the peer list again. The same
-ownership rule applies when a selector changes the active WireGuard connection.
+Disconnecting [WireGuard](@port/right/WireGuard) removes this WGConfig's peers
+and UDP transport from that WireGuard node. It does not remove menu peers,
+Object peers, or peers from other WGConfig nodes. Reconnecting applies the peer
+list again. The same ownership rule applies when a selector changes the active
+WireGuard connection.
 
 ## AmneziaWG peer overrides
 

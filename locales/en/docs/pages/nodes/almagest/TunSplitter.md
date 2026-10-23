@@ -3,9 +3,9 @@ this node when you must select each path with explicit packet rules. Use
 [AutoTunSplitter](@docs/node/almagest/AutoTunSplitter) instead when the output
 paths advertise the routes that they can reach.
 
-Connect the shared TUN to **Tun**, and connect each path to a numbered slot.
-Rules apply to packets read from the shared TUN. Packets written by any slot
-return to the shared TUN without rule evaluation.
+Connect the shared TUN to [Tun](@port/left/Tun), and connect each path to a
+numbered slot. Rules apply to packets read from the shared TUN. Packets written
+by any slot return to the shared TUN without rule evaluation.
 
 ## Routing rules
 

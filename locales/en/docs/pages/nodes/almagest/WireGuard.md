@@ -1,12 +1,14 @@
 WireGuard connects a TUN packet path to an encrypted UDP tunnel. Connect the
-local IP stack or system TUN to **Tun**. Connect a UDP-capable Network to
-**Network**. The node uses that Network for the listen socket and for the
-endpoints of peers configured in the menu or through **Peers**.
+local IP stack or system TUN to [Tun](@port/right/Tun). Connect a UDP-capable
+Network to [Network](@port/right/Network). The node uses that Network for the
+listen socket and for the endpoints of peers configured in the menu or through
+**Peers**.
 
 Both connections are required for the `up` state. The node does not open its UDP
-socket when only **Network** is ready. If **Tun** disconnects after startup, the
-node keeps its peer configuration and UDP transport, shows `waiting for TUN`,
-and resumes when a replacement TUN connects. **Network** accepts one connection.
+socket when only [Network](@port/right/Network) is ready. If
+[Tun](@port/right/Tun) disconnects after startup, the node keeps its peer
+configuration and UDP transport, shows `waiting for TUN`, and resumes when a
+replacement TUN connects. [Network](@port/right/Network) accepts one connection.
 
 **Listen port** accepts values from 0 through 65535. Zero lets the Network
 select a port. The **Status** section shows the actual active port.
@@ -29,10 +31,10 @@ a host prefix, such as `/32` for IPv4 or `/128` for IPv6. Duplicate prefixes are
 removed. These values are sent to the connected TUN provider as address
 suggestions. They do not assign an address to the UDP Network.
 
-Controllers connected to **WGCtrl** can also suggest owned IPs. Menu values come
-first, followed by controller values in stable graph order. Disconnecting a
-controller removes only its suggestions. Controller values are not saved in this
-node's configuration.
+Controllers connected to [WGCtrl](@port/left/WGCtrl) can also suggest owned IPs.
+Menu values come first, followed by controller values in stable graph order.
+Disconnecting a controller removes only its suggestions. Controller values are
+not saved in this node's configuration.
 
 ## Peers
 
@@ -67,9 +69,9 @@ latest list from each connected source. A public key identifies conflicts:
   Object peers are not copied into the saved menu configuration.
 
 [WGConfig](@docs/node/almagest/WGConfig) nodes can manage additional peers and
-UDP transports through **WGCtrl**. Menu peers, object peers, and controller
-peers can coexist. Disconnecting a controller removes only the peers and
-transports that it owns; later menu changes do not delete them.
+UDP transports through [WGCtrl](@port/left/WGCtrl). Menu peers, object peers,
+and controller peers can coexist. Disconnecting a controller removes only the
+peers and transports that it owns; later menu changes do not delete them.
 
 ## Routes, DNS, and MTU
 
@@ -78,7 +80,7 @@ WireGuard sends one combined configuration to the TUN provider:
 - Addresses come from **Owned IPs** and controller address suggestions.
 - Routes come from the Allowed IPs of menu and object peers, followed by
   controller route suggestions.
-- DNS comes from **DNS** or from a controller.
+- DNS comes from [DNS](@port/left/DNS) or from a controller.
 - MTU comes from controller ceilings and the UDP carrier limit when available.
 
 Exact duplicate addresses and routes are removed. A controller can withdraw its
@@ -91,13 +93,14 @@ direct connection to [VTun](@docs/node/almagest/VTun). It does not configure the
 UDP transport. Use DNS nodes when you need multiple resolvers, routing, caching,
 or policy.
 
-For peers that use **Network**, WireGuard asks the carrier for its safe maximum
-UDP payload and subtracts WireGuard overhead and effective AWG transport
-padding. It then selects the smallest positive result and controller MTU
-ceiling. The result is the **Effective MTU** suggestion for the TUN provider. If
-the carrier cannot report a limit and no controller supplies one, the MTU
-suggestion is zero and the TUN provider chooses its fallback. An IPv6-capable
-configuration reports an error if the calculated inner MTU is less than 1280.
+For peers that use [Network](@port/right/Network), WireGuard asks the carrier
+for its safe maximum UDP payload and subtracts WireGuard overhead and effective
+AWG transport padding. It then selects the smallest positive result and
+controller MTU ceiling. The result is the **Effective MTU** suggestion for the
+TUN provider. If the carrier cannot report a limit and no controller supplies
+one, the MTU suggestion is zero and the TUN provider chooses its fallback. An
+IPv6-capable configuration reports an error if the calculated inner MTU is less
+than 1280.
 
 The status shows **Carrier UDP payload**, **Carrier MTU cap**, **MTU source**,
 and **MTU calculation error**. An unknown carrier limit can produce a
@@ -125,10 +128,10 @@ applicable profile must still match each remote peer.
 
 ## Performance and status
 
-WireGuard performance depends on the Network connected to **Network**. Connect
-this port directly to a System outbound network node to get full performance.
-Middleware nodes on this path can reduce throughput. We are working to remove
-this limitation.
+WireGuard performance depends on the Network connected to
+[Network](@port/right/Network). Connect this port directly to a System outbound
+network node to get full performance. Middleware nodes on this path can reduce
+throughput. We are working to remove this limitation.
 
 **Batch size** controls packet batching for both tunnel processing and UDP. Zero
 uses the default. A smaller positive value retains fewer packet buffers but can

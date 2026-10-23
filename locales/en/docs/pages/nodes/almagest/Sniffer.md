@@ -2,11 +2,11 @@ Sniffer routes Network operations to as many as 16 backend slots. It can make an
 immediate routing decision, or it can inspect the first bytes that a client
 sends on an outgoing TCP connection before it selects a backend.
 
-Connect consumers to **Network**, and connect backend paths to the numbered
-slots. The node supplies **Network** only when every slot referenced by the
-rules is connected and ready. There is no automatic fallback. An operation is
-rejected if no rule matches, a rule uses `DROP`, or sniffing fails. Empty or
-comment-only rules reject all operations.
+Connect consumers to [Network](@port/left/Network), and connect backend paths to
+the numbered slots. The node supplies [Network](@port/left/Network) only when
+every slot referenced by the rules is connected and ready. There is no automatic
+fallback. An operation is rejected if no rule matches, a rule uses `DROP`, or
+sniffing fails. Empty or comment-only rules reject all operations.
 
 Sniffer has two routing stages:
 
@@ -96,15 +96,15 @@ Rules add the slot ports that they reference. A connected slot stays visible
 after rules stop referencing it, and disappears after you disconnect it. If no
 rule or connection needs a slot, slot 1 remains visible, but it is not an
 implicit route. Invalid rules are not applied. A valid rule change or a slot
-change can replace **Network**, and existing connections through the previous
-Network can close.
+change can replace [Network](@port/left/Network), and existing connections
+through the previous Network can close.
 
 ## Storage, logging, and sensitive data
 
 Sniffer does not capture packets, save inspected payloads, or provide traffic
-logs. It only supplies the routed **Network**. Inspection occurs in memory. HTTP
-rules can examine request targets that contain sensitive query data, so use only
-the fields that the routing decision needs.
+logs. It only supplies the routed [Network](@port/left/Network). Inspection
+occurs in memory. HTTP rules can examine request targets that contain sensitive
+query data, so use only the fields that the routing decision needs.
 
 **DNS cache storage** is not capture storage. Select it only when `ADDR_S` or
 `ADDR_RE` rules must match a cached reverse name for a numeric IP address. A

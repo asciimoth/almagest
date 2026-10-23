@@ -1,7 +1,7 @@
 Sends DNS requests to upstream servers through an attached Network. Connect the
-transport network to **Network** and connect DNS consumers to **DNS**. The DNS
-output becomes available when the Network is ready and at least one valid server
-is configured.
+transport network to [Network](@port/right/Network) and connect DNS consumers to
+[DNS](@port/left/DNS). The DNS output becomes available when the Network is
+ready and at least one valid server is configured.
 
 ## DNS servers
 
@@ -28,11 +28,11 @@ server.
 
 ## Bootstrap DNS
 
-Connect **Bootstrap DNS** when a server URL contains a hostname. The bootstrap
-resolver converts that hostname to IP addresses before the node opens the
-upstream connection. A server URL that contains an IP address does not need
-bootstrap DNS. The Network supplies the connection path, but it does not resolve
-server hostnames for this node.
+Connect [Bootstrap DNS](@port/right/Bootstrap%20DNS) when a server URL contains
+a hostname. The bootstrap resolver converts that hostname to IP addresses before
+the node opens the upstream connection. A server URL that contains an IP address
+does not need bootstrap DNS. The Network supplies the connection path, but it
+does not resolve server hostnames for this node.
 
 For UDP and TCP, the node tries bootstrap addresses in resolver order. For DNS
 over TLS, it tries all returned addresses in parallel and uses the first valid

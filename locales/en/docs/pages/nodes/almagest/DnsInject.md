@@ -25,10 +25,10 @@ IP address literals do not cause a DNS request. A named service port, such as
 If name resolution fails or returns no address for the requested family, the
 network operation fails before it reaches the original Network.
 
-The DNS request follows the connected **DNS** path. DnsInject does not send that
-request through the connected Network unless the DNS path itself is configured
-to use that Network. This separation lets you select a bootstrap or out-of-band
-resolver without creating a resolution loop.
+The DNS request follows the connected [DNS](@port/right/DNS) path. DnsInject
+does not send that request through the connected Network unless the DNS path
+itself is configured to use that Network. This separation lets you select a
+bootstrap or out-of-band resolver without creating a resolution loop.
 
 DnsInject affects only consumers of its Network output. It does not change the
 host operating system resolver, the original Network, or other users of that

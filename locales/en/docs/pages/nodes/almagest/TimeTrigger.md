@@ -1,6 +1,7 @@
-Sends a **Trigger** on a time schedule. Connect **Trigger** to each node that
-must run. One tick sends one Trigger to every currently connected node; it does
-not include a timestamp or other value.
+Sends a [Trigger](@port/right/Trigger) on a time schedule. Connect
+[Trigger](@port/right/Trigger) to each node that must run. One tick sends one
+Trigger to every currently connected node; it does not include a timestamp or
+other value.
 
 The default mode is **Disabled**. The default interval text is `2m`, the default
 daily time is `00:00`, and **Trigger on ready** is disabled.

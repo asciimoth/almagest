@@ -6,8 +6,9 @@ WireGuard node. The WireGuard node continues to control the device private key,
 TUN connection, listen settings, and UDP transport. AmnesiaCtrl removes only the
 peer that it added when you disable or disconnect the node.
 
-Connect the **WireGuard** port to the control port of a WireGuard node. Store
-one of these values in a secret, and select the secret in **Connection secret**:
+Connect the [WireGuard](@port/right/WireGuard) port to the control port of a
+WireGuard node. Store one of these values in a secret, and select the secret in
+**Connection secret**:
 
 - an Amnezia `vpn://` service key
 - a native WireGuard or AmneziaWG configuration
@@ -18,11 +19,11 @@ key, AmnesiaCtrl sends the public key of the attached WireGuard device to the
 service. The node does not generate a separate client key. Reconnects and daemon
 restarts continue to use the same identity.
 
-Connect the **Network** port for a service-key import or for a native profile
-that has pre-connect actions. This connection carries only service API and
-pre-connect traffic. The VPN peer always uses the default UDP network of the
-WireGuard node. A native profile without pre-connect actions does not need the
-**Network** connection.
+Connect the [Network](@port/right/Network) port for a service-key import or for
+a native profile that has pre-connect actions. This connection carries only
+service API and pre-connect traffic. The VPN peer always uses the default UDP
+network of the WireGuard node. A native profile without pre-connect actions does
+not need the [Network](@port/right/Network) connection.
 
 AmnesiaCtrl sends these profile settings to the WireGuard node before it adds
 the peer:

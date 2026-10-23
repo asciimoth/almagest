@@ -1,6 +1,6 @@
-Tun2Dns receives raw DNS packets from **Tun**, sends their DNS messages to the
-connected **DNS** resolver, and writes raw response packets back to the same
-TUN.
+Tun2Dns receives raw DNS packets from [Tun](@port/left/Tun), sends their DNS
+messages to the connected [DNS](@port/right/DNS) resolver, and writes raw
+response packets back to the same TUN.
 
 Use Tun2Dns as the DNS endpoint of a routed TUN path. A common layout sends UDP
 destination port 53 from [TunSplitter](@docs/node/almagest/TunSplitter) to

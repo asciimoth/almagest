@@ -1,7 +1,7 @@
 DefaultTun captures traffic from the host system and provides it through the
-**Tun** port. Connect this port to the start of a TUN processing path, such as a
-tunnel, splitter, firewall, or spoofer. The node also installs the operating
-system routes and DNS settings that send traffic to this TUN.
+[Tun](@port/right/Tun) port. Connect this port to the start of a TUN processing
+path, such as a tunnel, splitter, firewall, or spoofer. The node also installs
+the operating system routes and DNS settings that send traffic to this TUN.
 
 Only one DefaultTun node can exist in a workspace. The node is available only
 when the active platform backend supports a system default TUN.
@@ -22,15 +22,16 @@ Use these fields when the connected TUN path requires fixed values:
 - **DNS IP** selects the local TUN address on which DefaultTun provides its DNS
   proxy. This value is not an upstream DNS server address.
 
-Nodes connected to **Tun** can also suggest addresses, routes, source routes,
-and an MTU. DefaultTun combines their addresses and routes with the menu values.
-If there is more than one positive MTU, it uses the smallest value. The
-**Effective** section shows the configuration that the node applied.
+Nodes connected to [Tun](@port/right/Tun) can also suggest addresses, routes,
+source routes, and an MTU. DefaultTun combines their addresses and routes with
+the menu values. If there is more than one positive MTU, it uses the smallest
+value. The **Effective** section shows the configuration that the node applied.
 
-DefaultTun does not use a DNS server suggested through the **Tun** connection.
-Connect a DNS resolver to the separate **DNS** port. System DNS requests then go
-to that resolver through the local proxy. If no ready resolver is connected, the
-proxy drops DNS requests. It does not fall back to the host resolver.
+DefaultTun does not use a DNS server suggested through the
+[Tun](@port/right/Tun) connection. Connect a DNS resolver to the separate
+[DNS](@port/right/DNS) port. System DNS requests then go to that resolver
+through the local proxy. If no ready resolver is connected, the proxy drops DNS
+requests. It does not fall back to the host resolver.
 
 ## Process routing
 

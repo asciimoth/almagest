@@ -1,6 +1,7 @@
 TunCopy makes a point-to-point packet path between two TUN endpoints. A packet
-read from **TunA** is written once to **TunB**. A packet read from **TunB** is
-written once to **TunA**.
+read from [TunA](@port/left/TunA) is written once to [TunB](@port/left/TunB). A
+packet read from [TunB](@port/left/TunB) is written once to
+[TunA](@port/left/TunA).
 
 Use TunCopy to connect two TUN providers directly, such as two
 [VTun](@docs/node/almagest/VTun) nodes. It is not a packet-mirroring node and
@@ -8,11 +9,12 @@ does not make an additional copy for a monitor.
 
 ## Attachments and packet handling
 
-Connect one TUN provider to **TunA** and one to **TunB**. Each input accepts one
-TUN link. Both providers must supply an endpoint before there is a complete
-packet path. The node shows `waiting for TunA`, `waiting for TunB`, or `copying`
-to identify its current state. The `copying` label confirms that both endpoints
-are present. It does not test end-to-end reachability.
+Connect one TUN provider to [TunA](@port/left/TunA) and one to
+[TunB](@port/left/TunB). Each input accepts one TUN link. Both providers must
+supply an endpoint before there is a complete packet path. The node shows
+`waiting for TunA`, `waiting for TunB`, or `copying` to identify its current
+state. The `copying` label confirms that both endpoints are present. It does not
+test end-to-end reachability.
 
 TunA and TunB have the same packet behavior. The names do not set a client,
 server, upstream, or downstream role.

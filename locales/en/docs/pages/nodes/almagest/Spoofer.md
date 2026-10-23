@@ -1,10 +1,12 @@
-Spoofer converts IPv4 and IPv6 TCP or UDP flows from **Tun** into new
-connections through **Network**. It acts as the requested destination on the TUN
-side and returns replies as if they came from that destination.
+Spoofer converts IPv4 and IPv6 TCP or UDP flows from [Tun](@port/left/Tun) into
+new connections through [Network](@port/right/Network). It acts as the requested
+destination on the TUN side and returns replies as if they came from that
+destination.
 
-Connect the intercepted packet path to **Tun** and the required outbound path to
-**Network**. Spoofer starts only when both are ready. It has no separate traffic
-output because replies go back through the same TUN connection.
+Connect the intercepted packet path to [Tun](@port/left/Tun) and the required
+outbound path to [Network](@port/right/Network). Spoofer starts only when both
+are ready. It has no separate traffic output because replies go back through the
+same TUN connection.
 
 This is a transparent proxy, not IP packet forwarding. Spoofer terminates each
 TCP or UDP flow and creates a new flow to the destination IP address and port
@@ -13,28 +15,28 @@ source port of that new flow. It does not receive the client's original source
 address or source port.
 
 There is no spoofing rule syntax and no address rewrite field. To select or
-change the outbound path, put a routing node in the **Network** path. That
-router sees a numeric destination because TUN packets do not contain the
-hostname that the client resolved.
+change the outbound path, put a routing node in the
+[Network](@port/right/Network) path. That router sees a numeric destination
+because TUN packets do not contain the hostname that the client resolved.
 
 ## Protocol behavior
 
 Spoofer supports TCP and UDP over IPv4 and IPv6.
 
-For TCP, it first opens the connection through **Network**. It completes the
-intercepted client's handshake only after the outbound connection is ready. A
-failed outbound connection resets the intercepted flow. Connection setup has a
-30-second limit.
+For TCP, it first opens the connection through [Network](@port/right/Network).
+It completes the intercepted client's handshake only after the outbound
+connection is ready. A failed outbound connection resets the intercepted flow.
+Connection setup has a 30-second limit.
 
 For UDP, Spoofer opens an unconnected packet socket for each flow. An inactive
 UDP flow closes after two minutes. A reply is accepted when it comes from the
 target IP address, even if it comes from a different source port. Replies from a
 different IP address are discarded.
 
-Other IP protocols are not forwarded through **Network**. In particular, the
-ICMP settings control messages made by the TUN-facing network stack; they do not
-make ICMP an outbound Network flow. Use a different TUN transport when the
-backend must carry arbitrary IP packets.
+Other IP protocols are not forwarded through [Network](@port/right/Network). In
+particular, the ICMP settings control messages made by the TUN-facing network
+stack; they do not make ICMP an outbound Network flow. Use a different TUN
+transport when the backend must carry arbitrary IP packets.
 
 Spoofer does not decrypt or inspect application payloads. TCP and UDP payloads
 are copied between the two flows.
@@ -76,9 +78,9 @@ Spoofer, so active TCP and UDP flows can close.
 ## Safety
 
 Spoofer accepts TCP and UDP traffic for all destination addresses that arrive on
-**Tun**. Restrict traffic before it reaches this node, or apply policy on the
-Network path. Do not use the original TUN source address as an authentication
-signal on the backend because that address is not preserved.
+[Tun](@port/left/Tun). Restrict traffic before it reaches this node, or apply
+policy on the Network path. Do not use the original TUN source address as an
+authentication signal on the backend because that address is not preserved.
 
 The separate outbound connections can enter the host's routing system again.
 Make sure that they do not return to the same TUN path, or a routing loop can

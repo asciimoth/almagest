@@ -1,7 +1,7 @@
 TlsTerminator accepts an outgoing TLS connection from a client, presents a
 locally generated certificate, and sends the decrypted TCP stream through the
-connected **Network**. Place it between a Network consumer and the Network that
-leads to the plaintext service.
+connected [Network](@port/left/Network). Place it between a Network consumer and
+the Network that leads to the plaintext service.
 
 The client must trust Almagest's local TLS CA. TlsTerminator uses that CA to
 generate a certificate for the SNI hostname in each connection. It supplies its
