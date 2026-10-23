@@ -1038,8 +1038,8 @@ h1 {
   font-size: 13px;
   line-height: 1.5;
   tab-size: 2;
-  white-space: pre-wrap;
-  overflow-wrap: break-word;
+  white-space: pre;
+  overflow-wrap: normal;
   overflow: auto;
 }
 
