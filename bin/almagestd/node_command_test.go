@@ -29,10 +29,10 @@ func TestDaemonNodeClassesIncludeStableTorDriver(t *testing.T) {
 	}
 }
 
-func TestStableTorDriverIsAvailableInDefaultIsolationMode(t *testing.T) {
-	mode, err := selectExecutionModeForPlatform(args.Args{}, selection.Platform{OS: "linux", Arch: "amd64"})
+func TestStableTorDriverIsAvailableInIsolationMode(t *testing.T) {
+	mode, err := selectExecutionModeForPlatform(args.Args{Isolation: "auto"}, selection.Platform{OS: "linux", Arch: "amd64"})
 	if err != nil || mode != executionModeIsolation {
-		t.Fatalf("default execution mode = %q, %v", mode, err)
+		t.Fatalf("automatic execution mode = %q, %v", mode, err)
 	}
 	classes := daemonNodeClasses(cmdrunner.Config{}, nil)
 	if !slices.ContainsFunc(classes, func(class pasta.NodeClass) bool {
