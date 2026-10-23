@@ -242,6 +242,8 @@ import {
   preservePendingNodePositions,
   shouldDeferGraphUpdate,
 } from "./graph_update_guard.js";
+import { createAdminTransport, type AdminTransport } from "./admin_transport.js";
+import { documentationURL } from "./site_navigation.js";
 
 const SECRET_NODE_AUTOCOMPLETE_LIMIT = 8;
 const TLS_CERT_OPENSSL_COMMAND = [
@@ -479,7 +481,8 @@ let lastPastePlacement: { key: string; count: number } | null = null;
 let nativePasteEvents = 0;
 let pasteShortcutActive = false;
 let pasteShortcutConsumed = false;
-let socket: WebSocket | null = null;
+let apiTransport: AdminTransport | null = null;
+let apiReconnectAllowed = true;
 let apiConnectPending = false;
 let apiReconnectAttempt = 0;
 let apiReconnectTimer = 0;
@@ -682,28 +685,21 @@ const pendingRequests = new Map<string, {
   reject(error: Error): void;
 }>();
 
-function websocketURL(): string {
-  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  return `${protocol}//${window.location.host}/api/ws`;
-}
-
 function connectAPI(): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const ws = new WebSocket(websocketURL());
-    socket = ws;
-    ws.addEventListener("open", () => resolve(), { once: true });
-    ws.addEventListener("error", () => reject(new Error("WebSocket connection failed")), { once: true });
-    ws.addEventListener("message", (event) => {
-      const message = parseAPIMessage(String(event.data));
+  const transport = createAdminTransport();
+  apiTransport = transport;
+  apiReconnectAllowed = transport.reconnect;
+  return transport.connect({
+    message(data) {
+      const message = parseAPIMessage(data);
       if (message) handleAPIMessage(message);
-      else log("api", "warn", "ignored an invalid WebSocket message");
-    });
-    ws.addEventListener("close", () => {
-      reject(new Error("WebSocket connection closed"));
-      if (socket !== ws) return;
-      socket = null;
+      else log("api", "warn", "ignored an invalid admin API message");
+    },
+    close() {
+      if (apiTransport !== transport) return;
       handleAPIDisconnect();
-    });
+      apiTransport = null;
+    },
   });
 }
 
@@ -736,7 +732,12 @@ function resetAPISubscriptions(): void {
 }
 
 function handleAPIDisconnect(): void {
-  setBackendStatus("app.status.disconnected", "Admin API disconnected", true);
+  const unavailable = apiTransport?.reconnect === false;
+  setBackendStatus(
+    unavailable ? "app.status.browser_engine_unavailable" : "app.status.disconnected",
+    unavailable ? "Browser engine not included yet" : "Admin API disconnected",
+    true,
+  );
   for (const { reject } of pendingRequests.values()) {
     reject(new Error("Admin API disconnected"));
   }
@@ -746,7 +747,7 @@ function handleAPIDisconnect(): void {
 }
 
 function scheduleAPIReconnect(): void {
-  if (apiReconnectTimer || socket?.readyState === WebSocket.OPEN) return;
+  if (apiReconnectTimer || apiTransport?.connected || !apiReconnectAllowed) return;
   const delay = apiReconnectDelay(apiReconnectAttempt);
   apiReconnectAttempt += 1;
   apiReconnectTimer = window.setTimeout(() => {
@@ -756,21 +757,21 @@ function scheduleAPIReconnect(): void {
 }
 
 function requestImmediateAPIReconnect(): void {
-  if (socket?.readyState === WebSocket.OPEN || apiConnectPending) return;
+  if (apiTransport?.connected || apiConnectPending || !apiReconnectAllowed) return;
   window.clearTimeout(apiReconnectTimer);
   apiReconnectTimer = 0;
   void startAPIConnection();
 }
 
 function request(surface: Surface, method: string, payload: Record<string, unknown> = {}): Promise<unknown> {
-  if (!socket || socket.readyState !== WebSocket.OPEN) {
+  if (!apiTransport?.connected) {
     return Promise.reject(new Error("Admin API is not connected"));
   }
   const id = String(nextRequestID++);
   const msg: APIMessage = { version: "v1", kind: "request", id, surface, method, payload };
   return new Promise<unknown>((resolve, reject) => {
     pendingRequests.set(id, { resolve, reject });
-    socket?.send(JSON.stringify(msg));
+    apiTransport?.send(JSON.stringify(msg));
   });
 }
 
@@ -2178,7 +2179,7 @@ function renderNodePanel(id: number): void {
   const descriptionPanel = document.createElement("div");
   descriptionPanel.className = "node-description";
   descriptionPanel.dataset.nodeDescription = "";
-  renderNodeDescription(descriptionPanel, description);
+  renderNodeDescription(descriptionPanel, description, "panel", "", undefined, documentationURL);
   const descriptionHeader = document.createElement("div");
   descriptionHeader.className = "node-description-header";
   descriptionHeader.append(textElement("h2", shortClass(node.class)));
@@ -2204,7 +2205,7 @@ function renderNodePanel(id: number): void {
     ) {
       renderNodeDescription(descriptionPanel, text ?? "", "panel", "", (side, name, highlighted) => {
         setDescriptionPortHighlight(id, side, name, highlighted);
-      });
+      }, documentationURL);
     }
   });
   for (const tab of el.sidekick.querySelectorAll<HTMLButtonElement>("[data-node-tab]")) {
@@ -6704,13 +6705,13 @@ async function initializeAPISession(): Promise<void> {
     selectedMenu.receivedSnapshot = false;
     await backend("subscribeNodeMenu", { id: selectedMenu.node });
   }
-  if (socket?.readyState !== WebSocket.OPEN) {
+  if (!apiTransport?.connected) {
     throw new Error("Admin API disconnected during initialization");
   }
 }
 
 async function startAPIConnection(): Promise<void> {
-  if (apiConnectPending || socket?.readyState === WebSocket.OPEN) return;
+  if (apiConnectPending || apiTransport?.connected) return;
   window.clearTimeout(apiReconnectTimer);
   apiReconnectTimer = 0;
   apiConnectPending = true;
@@ -6726,10 +6727,10 @@ async function startAPIConnection(): Promise<void> {
       setTab(tabNameFromLocation(), false);
     }
   } catch (error) {
-    const failedSocket = socket;
-    socket = null;
-    failedSocket?.close();
+    const failedTransport = apiTransport;
+    failedTransport?.close();
     handleAPIDisconnect();
+    apiTransport = null;
     log("api", "warn", `Admin API connection failed: ${errorMessage(error)}`);
   } finally {
     apiConnectPending = false;
@@ -6781,12 +6782,6 @@ function installLocale(snapshot: LocaleSnapshot): void {
   }));
   el.locale.value = snapshot.effective;
   el.locale.disabled = false;
-}
-
-function documentationURL(page = ""): string {
-  const url = new URL("./docs/", window.location.href);
-  if (page) url.pathname += page.split("/").map(encodeURIComponent).join("/");
-  return url.pathname + url.search;
 }
 
 function setBackendStatus(key: string, builtin: string, failed = false): void {

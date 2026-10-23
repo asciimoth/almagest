@@ -76,7 +76,10 @@ export ALMAGEST_LOCALES_DIR="$repo_root/locales"
 export ALMAGEST_EXAMPLES_DIR="$repo_root/examples"
 if [[ $elevated == 1 ]]; then
     if [[ $direct == 1 ]]; then
-        command=(sudo -- "${command[@]}")
+        command=(sudo -- env \
+            "ALMAGEST_LOCALES_DIR=$repo_root/locales" \
+            "ALMAGEST_EXAMPLES_DIR=$repo_root/examples" \
+            "${command[@]}")
     else
         # A root daemon must not trust executables below a user-owned checkout.
         # Stage the complete sibling payload below a root-owned runtime path.

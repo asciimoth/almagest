@@ -1,0 +1,49 @@
+:root {
+  color-scheme: dark;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  background: #111318;
+  color: #f5f7fb;
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  display: grid;
+  place-items: center;
+}
+
+main {
+  width: min(38rem, calc(100% - 3rem));
+  text-align: center;
+}
+
+h1 {
+  margin: 1rem 0 0.5rem;
+  font-size: clamp(2.5rem, 8vw, 5rem);
+}
+
+p {
+  color: #b9c0ce;
+}
+
+nav {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.75rem;
+  margin-top: 2rem;
+}
+
+a {
+  border: 1px solid #4b5363;
+  border-radius: 0.5rem;
+  padding: 0.7rem 1rem;
+  color: #dbe7ff;
+  text-decoration: none;
+}
+
+a:hover,
+a:focus-visible {
+  border-color: #89b4fa;
+  background: #1a2230;
+}

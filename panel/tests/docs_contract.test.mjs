@@ -6,8 +6,10 @@ import { JSDOM } from "jsdom";
 const docsHTML = await readFile(new URL("../docs.html", import.meta.url), "utf8");
 const panelHTML = await readFile(new URL("../index.html", import.meta.url), "utf8");
 const docsSource = await readFile(new URL("../src/docs.ts", import.meta.url), "utf8");
+const docsClientSource = await readFile(new URL("../src/docs_client.ts", import.meta.url), "utf8");
 const panelStyle = await readFile(new URL("../style.css", import.meta.url), "utf8");
 const appSource = await readFile(new URL("../src/app.ts", import.meta.url), "utf8");
+const siteNavigationSource = await readFile(new URL("../src/site_navigation.ts", import.meta.url), "utf8");
 const windowNavigationSource = await readFile(new URL("../src/window_navigation.ts", import.meta.url), "utf8");
 const published = (path) => new URL(`../../bin/almagestd/static/${path}`, import.meta.url);
 
@@ -23,20 +25,36 @@ test("documentation uses a separate page and the shared panel stylesheet", () =>
   assert.equal(document.querySelector("#docs-locale-select")?.tagName, "SELECT");
   assert.equal(document.querySelector("link[rel='stylesheet']")?.getAttribute("href"), "/style.css");
   assert.equal(document.querySelector("script[type='module']")?.getAttribute("src"), "/public/build/docs.js");
+  assert.equal(document.querySelector("meta[name='almagest-site-base']")?.getAttribute("content"), "/");
 });
 
-test("panel and documentation headers show the embedded logo before their titles", () => {
+test("daemon documentation assets resolve from nested page URLs", () => {
+  const document = new JSDOM(docsHTML, {
+    url: "http://127.0.0.1:8090/docs/node/almagest/NetworkFirewall",
+  }).window.document;
+
+  assert.equal(document.querySelector("link[rel='stylesheet']")?.href, "http://127.0.0.1:8090/style.css");
+  assert.equal(document.querySelector(".header-logo")?.src, "http://127.0.0.1:8090/logo.svg");
+  assert.equal(document.querySelector("script[type='module']")?.src, "http://127.0.0.1:8090/public/build/docs.js");
+});
+
+test("panel and documentation logos link to their site roots", () => {
   const docsDocument = new JSDOM(docsHTML).window.document;
   const panelDocument = new JSDOM(panelHTML).window.document;
 
-  for (const [document, brandSelector] of [
-    [panelDocument, ".app-brand"],
-    [docsDocument, ".docs-brand"],
+  for (const [document, brandSelector, source, target] of [
+    [panelDocument, ".app-brand", "./logo.svg", "./"],
+    [docsDocument, ".docs-brand", "/logo.svg", "/"],
   ]) {
     const brand = document.querySelector(brandSelector);
-    assert.equal(brand?.firstElementChild?.tagName, "IMG");
-    assert.equal(brand?.firstElementChild?.getAttribute("src"), "/logo.svg");
-    assert.equal(brand?.firstElementChild?.getAttribute("alt"), "");
+    const link = brand?.firstElementChild;
+    const logo = link?.firstElementChild;
+    assert.equal(link?.tagName, "A");
+    assert.equal(link?.getAttribute("href"), target);
+    assert.equal(link?.getAttribute("aria-label"), "Almagest home");
+    assert.equal(logo?.tagName, "IMG");
+    assert.equal(logo?.getAttribute("src"), source);
+    assert.equal(logo?.getAttribute("alt"), "");
     assert.ok(brand?.querySelector("h1"));
   }
 });
@@ -56,13 +74,13 @@ test("documentation reuses an open admin panel tab or opens a new tab", () => {
 });
 
 test("documentation loads localized pages over HTTP without a WebSocket", () => {
-  assert.match(docsSource, /docsAPIURL\("tree"\)/);
-  assert.match(docsSource, /docsAPIURL\("raw", \{ id \}\)/);
-  assert.match(docsSource, /renderNodeDescription\(content, contentText, "docs", id, highlightPreviewPort\)/);
+  assert.match(docsSource, /docsClient\(\)\.tree\(locale\)/);
+  assert.match(docsSource, /docsClient\(\)\.raw\(effectiveLocale, id\)/);
+  assert.match(docsSource, /renderNodeDescription\(content, contentText, "docs", id, highlightPreviewPort, \(destination\) => docsURL\(destination\)\)/);
   assert.match(docsSource, /scrollToCurrentAnchor\(\)/);
   assert.match(docsSource, /decodeURIComponent\(window\.location\.hash\.slice\(1\)\)/);
   assert.match(docsSource, /docsURL\(currentPage, window\.location\.hash\)/);
-  assert.match(docsSource, /docsAPIURL\("node-class", \{ id \}\)/);
+  assert.match(docsSource, /docsClient\(\)\.nodeClass\(effectiveLocale, id\)/);
   assert.match(docsSource, /void loadNodePreview\(id, title\)/);
   assert.match(docsSource, /port\.dataset\.portSide === side && port\.dataset\.portName === name/);
   assert.match(docsSource, /port\.classList\.toggle\("class-preview-port-highlighted", highlighted\)/);
@@ -74,10 +92,11 @@ test("documentation loads localized pages over HTTP without a WebSocket", () => 
   assert.match(docsSource, /if \(!unavailable\) void loadNodePreview/);
   assert.match(docsSource, /console\.error\(`Could not load node preview/);
   assert.match(docsSource, /writeLocaleCookie/);
-  assert.match(docsSource, /if \(urlLocale\) query\.set\("locale", urlLocale\)/);
-  assert.match(docsSource, /pageIDFromPath\(window\.location\.pathname\)/);
-  assert.match(docsSource, /new URL\("\/docs\/", window\.location\.href\)/);
-  assert.doesNotMatch(docsSource, /searchParams\.set\("page"/);
+  assert.match(docsSource, /docsClient\(\)\.pageFromLocation\(window\.location\)/);
+  assert.match(docsClientSource, /new URL\(configured \|\| "\.\.\/\.\.\/", import\.meta\.url\)/);
+  assert.match(docsClientSource, /new URL\(`api\/docs\/\$\{path\}`, siteBaseURL\(\)\)/);
+  assert.match(docsClientSource, /const prefix = "\/docs\/"/);
+  assert.match(docsClientSource, /new URL\("\/docs\/", window\.location\.href\)/);
   assert.match(docsSource, /almagest\.docs\.topic-folds\.v1/);
   assert.match(docsSource, /function setNavigationOpen\(open: boolean\)/);
   assert.match(docsSource, /event\.key === "Escape"/);
@@ -86,7 +105,7 @@ test("documentation loads localized pages over HTTP without a WebSocket", () => 
   assert.match(docsSource, /treeElement\.addEventListener\("wheel"/);
   assert.match(docsSource, /handoffBoundaryScroll\(treeElement, pageElement, deltaY\)/);
   assert.match(docsSource, /defaultPageID\(tree\.topics\)/);
-  assert.doesNotMatch(docsSource, /WebSocket/);
+  assert.doesNotMatch(docsSource + docsClientSource, /WebSocket/);
 });
 
 test("documentation links adjacent pages in sidebar order", () => {
@@ -116,8 +135,10 @@ test("panel documentation controls open the separate page in a new tab", () => {
   assert.match(appSource, /localizedText\("node\.docs\.context_menu", "Open documentation"\)/);
   assert.match(appSource, /window\.open\(documentationURL\(`node\/\$\{cls\.class\}`\), "_blank"\)/);
   assert.match(appSource, /short_description\.trimStart\(\)\.startsWith\("DEBUG "\)/);
-  assert.match(appSource, /url\.pathname \+= page\.split\("\/"\)\.map\(encodeURIComponent\)\.join\("\/"\)/);
-  assert.doesNotMatch(appSource.match(/function documentationURL[\s\S]*?\n\}/)?.[0] ?? "", /locale/);
+  assert.match(appSource, /import \{ documentationURL \} from "\.\/site_navigation\.js"/);
+  assert.match(siteNavigationSource, /if \(configured\)/);
+  assert.match(siteNavigationSource, /new URL\("\.\/docs\/", window\.location\.href\)/);
+  assert.doesNotMatch(siteNavigationSource, /locale/);
 });
 
 test("published assets include the documentation page and module", async () => {

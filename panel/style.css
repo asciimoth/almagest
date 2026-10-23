@@ -98,9 +98,19 @@ a:focus-visible {
 
 .header-logo {
   display: block;
-  flex: 0 0 auto;
   width: 42px;
   height: 42px;
+}
+
+.header-logo-link {
+  display: block;
+  flex: 0 0 auto;
+  border-radius: 6px;
+}
+
+.header-logo-link:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 3px;
 }
 
 .docs-brand,

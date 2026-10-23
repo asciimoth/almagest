@@ -55,6 +55,10 @@ class DaemonRecipeTests(unittest.TestCase):
         self.assertIn(
             'export ALMAGEST_EXAMPLES_DIR="$repo_root/examples"', RUNNER.read_text()
         )
+        self.assertIn(
+            'export ALMAGEST_LOCALES_DIR="$repo_root/locales"', RUNNER.read_text()
+        )
+        self.assertTrue((ROOT / "locales" / "lorem" / "manifest.json").is_file())
 
     def test_explicit_direct_mode_is_compatible(self):
         result = self.run_runner("--no-isolation")
@@ -114,6 +118,7 @@ class DaemonRecipeTests(unittest.TestCase):
         self.assertIn("ALMAGEST_ISOLATION_DEVELOPMENT_ROOT=", result.stdout)
         self.assertIn("ALMAGEST_ISOLATION_DEVELOPMENT_IDENTITIES=", result.stdout)
         self.assertIn(f"ALMAGEST_EXAMPLES_DIR={ROOT / 'examples'}", result.stdout)
+        self.assertIn(f"ALMAGEST_LOCALES_DIR={ROOT / 'locales'}", result.stdout)
         self.assertIn("/var/lib/almagest/dev-", result.stdout)
         self.assertIn("/run/almagest-dev-", result.stdout)
         self.assertIn("--isolation=auto", result.stdout)
@@ -128,7 +133,9 @@ class DaemonRecipeTests(unittest.TestCase):
     def test_sudo_direct_mode_does_not_stage(self):
         result = self.run_runner("--sudo", "--no-isolation")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("sudo --", result.stdout)
+        self.assertIn("sudo -- env", result.stdout)
+        self.assertIn(f"ALMAGEST_LOCALES_DIR={ROOT / 'locales'}", result.stdout)
+        self.assertIn(f"ALMAGEST_EXAMPLES_DIR={ROOT / 'examples'}", result.stdout)
         self.assertIn("build/isolation-linux/almagestd", result.stdout)
         self.assertNotIn("/run/almagest-dev-", result.stdout)
         self.assertNotIn("--tmp-unix-admin", result.stdout)

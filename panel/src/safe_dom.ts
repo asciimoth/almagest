@@ -740,6 +740,7 @@ type MarkdownRenderContext = {
   mode: MarkdownRenderMode;
   documentID: string;
   onPortHighlight: MarkdownPortHighlightHandler | undefined;
+  documentationURL: ((id: string) => string) | undefined;
 };
 
 export function renderNodeDescription(
@@ -748,13 +749,14 @@ export function renderNodeDescription(
   mode: MarkdownRenderMode = "panel",
   documentID = "",
   onPortHighlight?: MarkdownPortHighlightHandler,
+  documentationURL?: (id: string) => string,
 ): void {
   const text = value.trim();
   if (!text) {
     node.textContent = t("node.description.empty", "No long description is registered for this node class.");
     return;
   }
-  const context: MarkdownRenderContext = { mode, documentID, onPortHighlight };
+  const context: MarkdownRenderContext = { mode, documentID, onPortHighlight, documentationURL };
   const headingIDs = new Map<string, number>();
   node.replaceChildren(...parseMarkdownBlocks(text).map((block) => renderMarkdownBlock(block, context, headingIDs)));
 }
@@ -1105,7 +1107,9 @@ function renderMarkdownDocumentationLink(
   const anchor = document.createElement("a");
   anchor.append(...markdownInlineText(label));
   anchor.className = "markdown-link-docs";
-  anchor.href = context.mode === "docs"
+  anchor.href = context.documentationURL
+    ? context.documentationURL(destination)
+    : context.mode === "docs"
     ? relativeMarkdownDocumentationURL(context.documentID, destination)
     : `./docs/${encodeMarkdownDocumentationID(destination)}`;
   if (context.mode === "panel") anchor.target = "_blank";

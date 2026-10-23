@@ -17,6 +17,7 @@ import {
   type NodeClassSnapshot,
   type TypePalette,
 } from "./pasta_model.js";
+import { docsClient } from "./docs_client.js";
 
 type PageMark = "unavailable" | "deprecated";
 type PageSummary = { id: string; name: string; folded: boolean; order?: number; default?: boolean; available?: boolean; marks?: PageMark[] };
@@ -42,7 +43,7 @@ const navigationScrim = document.querySelector<HTMLButtonElement>("#docs-navigat
 const parameters = new URLSearchParams(window.location.search);
 let urlLocale = parameters.get("locale") || "";
 const requestedLocale = urlLocale || readLocaleCookie() || savedLocale() || navigator.language || "en";
-let currentPage = parameters.get("page") || pageIDFromPath(window.location.pathname);
+let currentPage = parameters.get("page") || docsClient().pageFromLocation(window.location);
 let effectiveLocale = requestedLocale;
 let orderedPageIDs: string[] = [];
 const pageNames = new Map<string, string>();
@@ -144,18 +145,6 @@ function saveLocale(locale: string): void {
   }
 }
 
-async function fetchJSON<T>(path: string): Promise<T> {
-  const response = await fetch(path, { credentials: "same-origin", headers: { Accept: "application/json" } });
-  if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
-  return await response.json() as T;
-}
-
-async function fetchText(path: string): Promise<string> {
-  const response = await fetch(path, { credentials: "same-origin", headers: { Accept: "text/markdown" } });
-  if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
-  return await response.text();
-}
-
 function pageIDs(topics: readonly Topic[]): string[] {
   return topics.flatMap((topic) => [
     ...topic.pages.map((page) => page.id),
@@ -216,30 +205,8 @@ function topicContainsPage(topic: Topic, id: string): boolean {
   return topic.pages.some((page) => page.id === id) || topic.topics.some((child) => topicContainsPage(child, id));
 }
 
-function pageIDFromPath(pathname: string): string {
-  const prefix = "/docs/";
-  if (!pathname.startsWith(prefix)) return "";
-  const encoded = pathname.slice(prefix.length).replace(/\/$/, "");
-  if (!encoded || encoded === "index.html") return "";
-  try {
-    return encoded.split("/").map(decodeURIComponent).join("/");
-  } catch {
-    return "";
-  }
-}
-
 function docsURL(page: string, hash = ""): string {
-  const url = new URL("/docs/", window.location.href);
-  if (page) url.pathname += page.split("/").map(encodeURIComponent).join("/");
-  if (urlLocale) url.searchParams.set("locale", urlLocale);
-  return url.pathname + url.search + hash;
-}
-
-function docsAPIURL(path: string, values: Record<string, string> = {}): string {
-  const query = new URLSearchParams(values);
-  if (urlLocale) query.set("locale", urlLocale);
-  const suffix = query.size > 0 ? `?${query}` : "";
-  return `/api/docs/${path}${suffix}`;
+  return docsClient().pageURL(page, urlLocale, hash);
 }
 
 function pageNavigationLink(id: string, direction: "prev" | "next"): HTMLAnchorElement {
@@ -278,13 +245,13 @@ function renderPageNavigation(id: string): HTMLElement | null {
 async function openPage(id: string, updateHistory: boolean): Promise<void> {
   pageElement.replaceChildren(textElement("p", "Loading documentation."));
   try {
-    const contentText = await fetchText(docsAPIURL("raw", { id }));
+    const contentText = await docsClient().raw(effectiveLocale, id);
     const name = pageNames.get(id) || id;
     currentPage = id;
     document.title = `${name} — Almagest Documentation`;
     const title = textElement("h1", name);
     const content = document.createElement("div");
-    renderNodeDescription(content, contentText, "docs", id, highlightPreviewPort);
+    renderNodeDescription(content, contentText, "docs", id, highlightPreviewPort, (destination) => docsURL(destination));
     const unavailable = pageAvailability.get(id) === false
       ? textElement("div", nodeUnavailableMessage, "docs-node-unavailable")
       : null;
@@ -328,7 +295,7 @@ function scrollToCurrentAnchor(): void {
 async function loadNodePreview(id: string, title: HTMLElement): Promise<void> {
   if (!id.startsWith("node/")) return;
   try {
-    const response = parseNodeClassResponse(await fetchJSON<unknown>(docsAPIURL("node-class", { id })));
+    const response = parseNodeClassResponse(await docsClient().nodeClass(effectiveLocale, id));
     if (!response) throw new Error("Invalid node class response");
     if (currentPage !== id || !title.isConnected) return;
 
@@ -382,7 +349,7 @@ async function loadTree(locale: string): Promise<void> {
   localeSelect.disabled = true;
   try {
     if (!urlLocale) writeLocaleCookie(locale);
-    const tree = await fetchJSON<TreeResponse>(docsAPIURL("tree"));
+    const tree = await docsClient().tree(locale) as TreeResponse;
     effectiveLocale = tree.locale;
     nodeUnavailableMessage = tree.node_unavailable_message || nodeUnavailableMessage;
     markMessages = {
@@ -427,7 +394,7 @@ function collectPageNames(topics: readonly Topic[]): void {
 
 window.addEventListener("popstate", () => {
   const query = new URLSearchParams(window.location.search);
-  const id = query.get("page") || pageIDFromPath(window.location.pathname);
+  const id = query.get("page") || docsClient().pageFromLocation(window.location);
   urlLocale = query.get("locale") || "";
   const locale = urlLocale || readLocaleCookie() || savedLocale() || requestedLocale;
   currentPage = id;

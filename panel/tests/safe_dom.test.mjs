@@ -809,6 +809,29 @@ test("documentation links resolve for the panel and open in a new tab", () => {
   assert.equal(link?.title, "Mesh resolver");
 });
 
+test("documentation links use the hosting-mode URL resolver when supplied", () => {
+  installDOM();
+  const root = document.createElement("div");
+  const destinations = [];
+  renderNodeDescription(
+    root,
+    "[MeshNames](@docs/node/almagest/MeshNames)",
+    "panel",
+    "",
+    undefined,
+    (destination) => {
+      destinations.push(destination);
+      return `../docs/?page=${encodeURIComponent(destination)}`;
+    },
+  );
+
+  const link = root.querySelector("a");
+  assert.deepEqual(destinations, ["node/almagest/MeshNames"]);
+  assert.equal(link?.getAttribute("href"), "../docs/?page=node%2Falmagest%2FMeshNames");
+  assert.equal(link?.target, "_blank");
+  assert.equal(link?.rel, "noopener noreferrer");
+});
+
 test("documentation links are relative to the current documentation page", () => {
   installDOM();
   const root = document.createElement("div");

@@ -186,6 +186,15 @@ clean: certcat-clean
 build-web:
   cd panel && npm ci && npm run build
 
+# Build a plain static tree for GitHub Pages or another static HTTP server.
+build-webdemo output='build/webdemo':
+  cd panel && npm ci && npm run build:webdemo -- ../{{quote(output)}}
+
+# Build and serve the web demo. Set base_path=almagest to test a subpath.
+serve-webdemo base_path='' output='build/webdemo' port='8000':
+  just build-webdemo {{quote(output)}}
+  python3 ./scripts/serve-webdemo.py --directory {{quote(output)}} --base-path {{quote(base_path)}} --port {{quote(port)}}
+
 build-windows:
   ./scripts/build-windows.sh amd64 arm64
 

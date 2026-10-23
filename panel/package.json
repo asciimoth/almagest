@@ -4,7 +4,9 @@
   "type": "module",
   "scripts": {
     "vendor": "node scripts/vendor-deps.mjs",
-    "build": "npm run vendor && tsc -p tsconfig.json && node scripts/publish-static.mjs",
+    "compile": "npm run vendor && tsc -p tsconfig.json",
+    "build": "npm run compile && node scripts/publish-static.mjs",
+    "build:webdemo": "npm run compile && node scripts/publish-webdemo.mjs",
     "test": "npm run build && node --test tests/*.mjs"
   },
   "dependencies": {
