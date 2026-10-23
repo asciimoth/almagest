@@ -47,3 +47,19 @@ test("snapshot import rejects oversized files before reading them", () => {
   assert.ok(sizeCheck < fileRead);
   assert.match(app, /Snapshot archive exceeds the 32 MiB limit/);
 });
+
+test("loading a snapshot or example refreshes and centers the graph", () => {
+  const restore = app.slice(
+    app.indexOf("async function restoreSnapshot"),
+    app.indexOf("async function renameSnapshot"),
+  );
+  const backendRestore = restore.indexOf('await backend("snapshotRestore", identity)');
+  const refresh = restore.indexOf("await requestSnapshot()", backendRestore);
+  const center = restore.indexOf("centerGraphAfterLoad()", refresh);
+
+  assert.notEqual(backendRestore, -1);
+  assert.ok(refresh > backendRestore);
+  assert.ok(center > refresh);
+  assert.match(app, /if \(activeTab !== "graph"\) \{\s*graphCenterPending = true;/);
+  assert.match(app, /resizeGraphCanvas\(\);\s*centerPendingGraphContent\(\);/);
+});

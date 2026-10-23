@@ -466,6 +466,7 @@ let activeTab = "graph";
 let sidekickUpdate = 0;
 let workerAgeTimer = 0;
 let graphResizeFrame = 0;
+let graphCenterPending = false;
 let graphCanvasWidth = 0;
 let graphCanvasHeight = 0;
 let graphDefaultScale = 1;
@@ -1585,6 +1586,21 @@ function centerGraphContent(): void {
   canvas.ds.offset[1] = viewport.offset[1];
   canvas.setDirty(true, true);
   scheduleGraphViewportSave();
+}
+
+function centerGraphAfterLoad(): void {
+  if (activeTab !== "graph") {
+    graphCenterPending = true;
+    return;
+  }
+  graphCenterPending = false;
+  centerGraphContent();
+}
+
+function centerPendingGraphContent(): void {
+  if (!graphCenterPending) return;
+  graphCenterPending = false;
+  centerGraphContent();
 }
 
 /**
@@ -6123,6 +6139,8 @@ async function restoreSnapshot(entry: SnapshotInfo): Promise<void> {
   updateSnapshotControls();
   try {
     const response = await backend("snapshotRestore", identity);
+    await requestSnapshot();
+    centerGraphAfterLoad();
     configSnapshot = null;
     configDraft = "";
     const persistence = response.config_written
@@ -6263,7 +6281,12 @@ function setTab(name: string, updateLocation = true): void {
   if (name === "ps") renderWorkers();
   if (name === "config") void activateConfigPanel();
   if (name === "snapshots") void activateSnapshotsPanel();
-  if (name === "graph") setTimeout(resizeGraphCanvas, 0);
+  if (name === "graph") {
+    setTimeout(() => {
+      resizeGraphCanvas();
+      centerPendingGraphContent();
+    }, 0);
+  }
   updateWorkerAgeTimer();
   if (updateLocation && window.location.hash !== tabHash(name)) window.location.hash = tabHash(name);
 }
