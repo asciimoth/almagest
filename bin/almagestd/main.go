@@ -44,8 +44,11 @@ func main() {
 		return
 	}
 
-	arguments, mode, err := parseDaemonArgs()
+	arguments, mode, err := parseDaemonArgs(os.Args[1:], os.Stdout)
 	if err != nil {
+		if errors.Is(err, arg.ErrHelp) {
+			return
+		}
 		golog.Fatal(err)
 		return
 	}
@@ -59,9 +62,16 @@ func main() {
 	}
 }
 
-func parseDaemonArgs() (args.Args, executionMode, error) {
+func parseDaemonArgs(cliArgs []string, output io.Writer) (args.Args, executionMode, error) {
 	var arguments args.Args
-	if err := arg.Parse(&arguments); err != nil {
+	parser, err := arg.NewParser(arg.Config{Out: output}, &arguments)
+	if err != nil {
+		return args.Args{}, "", err
+	}
+	if err := parser.Parse(cliArgs); err != nil {
+		if errors.Is(err, arg.ErrHelp) {
+			parser.WriteHelp(output)
+		}
 		return args.Args{}, "", err
 	}
 	mode, err := selectExecutionMode(arguments)
