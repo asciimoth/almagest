@@ -265,6 +265,12 @@ resolve to:
 - command-helper state: `/var/lib/almagest/helper`;
 - Unix admin socket: `/run/almagest/admin.sock`.
 
+R puts a transparent, shared 10 MiB in-memory LRU in front of its durable DNS
+cache stores. A hit does not enter bbolt. A miss reads bbolt, and every write
+still goes to bbolt before it becomes available from memory. The layer uses the
+stored absolute expiration time and follows admin edits and snapshot storage
+replacement. Direct mode does not add this isolation-specific layer.
+
 Isolated Linux startup does not support `--tmp-file-storage` or
 `--tmp-unix-admin`. Fixed protected paths are required. With `--stdin`, the
 top-level `Protected` member supplies protected input and no C process is

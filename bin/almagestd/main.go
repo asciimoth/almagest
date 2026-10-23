@@ -278,7 +278,14 @@ func runDaemon(
 	if err != nil {
 		return err
 	}
-	application.OwnStorage(kv.Close)
+	dnsManager, memoryDNS := dnsCacheManagerForExecutionMode(mode, kv, arguments.NoDNSCacheExpiration)
+	application.OwnStorage(func() error {
+		var cacheErr error
+		if memoryDNS != nil {
+			cacheErr = memoryDNS.Close()
+		}
+		return errors.Join(cacheErr, kv.Close())
+	})
 	golog.Infof("Using kv database at %s", filepath.Join(fsPath, kvDBFileName))
 	if err := kv.reconcileKVOwnerEntries(configuredNodeNameSet(conf.Main)); err != nil {
 		return fmt.Errorf("KV ownership cleanup: %w", err)
@@ -368,7 +375,7 @@ func runDaemon(
 		logf,
 		hostNetwork,
 		kv,
-		kv,
+		dnsManager,
 		kv,
 		kv,
 		daemonNodeClasses(conf.Protected.CommandRunner, nodeCommands),

@@ -48,6 +48,10 @@ Runtime path:
 1. The selected network service provides the runtime with a `sysnet.System`
    implementation: local objects in direct mode or typed broker clients in
    isolated mode.
+1. In isolated mode, the runtime wraps durable DNS cache storage with a shared
+   10 MiB in-memory LRU. Cache hits stay in the runtime networking component;
+   misses and all writes continue to use bbolt. Direct mode uses bbolt without
+   this extra layer.
 1. The runtime builds `lib.Engine` and creates the Pasta workspace named `main`.
 1. Nodes exchange typed values; `almagest/network` carries `gonnect.Network`
    resources.

@@ -193,18 +193,27 @@ func newBboltDNSCacheStorage(manager *bboltKVManager, name string, invalid bool)
 // the manager disables DNS cache expiration, past expiration timestamps are kept
 // as metadata only and do not turn entries into misses.
 func (s *bboltDNSCacheStorage) Get(key string, now time.Time) (*gdns.Message, bool) {
+	msg, _, found := s.getWithExpiration(key, now)
+	return msg, found
+}
+
+// getWithExpiration is the bbolt storage's internal read contract for the
+// isolation-side memory middleware. The public gonnect CacheStorage contract
+// does not expose the durable expiration time. Returning it here prevents a
+// read-through layer from incorrectly restarting a persisted entry's TTL.
+func (s *bboltDNSCacheStorage) getWithExpiration(key string, now time.Time) (*gdns.Message, time.Time, bool) {
 	if s == nil || s.invalid || s.manager == nil || !validDNSName(key) {
-		return nil, false
+		return nil, time.Time{}, false
 	}
-	msg, raw, found, expired := s.memoryGet(key, now)
+	msg, expires, raw, found, expired := s.memoryGet(key, now)
 	if found && !expired {
 		golog.Debugf("DNS cache storage: memory hit cache=%q key=%q", s.name, key)
-		return msg, true
+		return msg, expires, true
 	}
 	if found && expired {
 		golog.Debugf("DNS cache storage: expired memory entry cache=%q key=%q", s.name, key)
 		s.deleteExpiredEntry(key, raw)
-		return nil, false
+		return nil, time.Time{}, false
 	}
 
 	raw, found, err := s.manager.getDNSCacheEntryRaw(s.name, key)
@@ -214,22 +223,22 @@ func (s *bboltDNSCacheStorage) Get(key string, now time.Time) (*gdns.Message, bo
 		} else {
 			golog.Debugf("DNS cache storage: miss cache=%q key=%q", s.name, key)
 		}
-		return nil, false
+		return nil, time.Time{}, false
 	}
 	entry, err := unmarshalDNSCacheEntry(raw)
 	if err != nil {
 		golog.Debugf("DNS cache storage: invalid stored entry cache=%q key=%q error=%v", s.name, key, err)
 		s.deleteExpiredEntry(key, raw)
-		return nil, false
+		return nil, time.Time{}, false
 	}
 	if s.dnsCacheEntryExpired(entry.expires, now) {
 		golog.Debugf("DNS cache storage: expired stored entry cache=%q key=%q", s.name, key)
 		s.deleteExpiredEntry(key, raw)
-		return nil, false
+		return nil, time.Time{}, false
 	}
 	golog.Debugf("DNS cache storage: bbolt hit cache=%q key=%q", s.name, key)
 	s.memoryPut(key, entry.msg, entry.expires, raw)
-	return entry.msg.Copy(), true
+	return entry.msg.Copy(), entry.expires, true
 }
 
 // Set persists successful DNS responses with a non-zero answer TTL. The JSON
@@ -285,21 +294,21 @@ func (s *bboltDNSCacheStorage) Delete(key string) {
 	}
 }
 
-func (s *bboltDNSCacheStorage) memoryGet(key string, now time.Time) (*gdns.Message, []byte, bool, bool) {
+func (s *bboltDNSCacheStorage) memoryGet(key string, now time.Time) (*gdns.Message, time.Time, []byte, bool, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	entry, ok := s.entries[key]
 	if !ok {
-		return nil, nil, false, false
+		return nil, time.Time{}, nil, false, false
 	}
 	if s.dnsCacheEntryExpired(entry.expires, now) {
 		delete(s.entries, key)
-		return nil, append([]byte(nil), entry.raw...), true, true
+		return nil, entry.expires, append([]byte(nil), entry.raw...), true, true
 	}
 	s.seq++
 	entry.lastUsed = s.seq
 	s.entries[key] = entry
-	return entry.msg.Copy(), nil, true, false
+	return entry.msg.Copy(), entry.expires, nil, true, false
 }
 
 func (s *bboltDNSCacheStorage) memoryPut(key string, msg *gdns.Message, expires time.Time, raw []byte) {
