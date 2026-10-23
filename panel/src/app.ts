@@ -236,6 +236,7 @@ import {
   type LocaleSnapshot,
 } from "./localization.js";
 import { tabHash, tabNameFromHash } from "./tab_navigation.js";
+import { apiReconnectDelay } from "./api_reconnect.js";
 import {
   preservePendingNodePosition,
   preservePendingNodePositions,
@@ -479,6 +480,10 @@ let nativePasteEvents = 0;
 let pasteShortcutActive = false;
 let pasteShortcutConsumed = false;
 let socket: WebSocket | null = null;
+let apiConnectPending = false;
+let apiReconnectAttempt = 0;
+let apiReconnectTimer = 0;
+let panelStarted = false;
 let nextRequestID = 1;
 let notificationSubscriptionID = 0;
 const frontendLogs: LogEntry[] = [];
@@ -694,13 +699,67 @@ function connectAPI(): Promise<void> {
       else log("api", "warn", "ignored an invalid WebSocket message");
     });
     ws.addEventListener("close", () => {
-      setBackendStatus("app.status.disconnected", "Admin API disconnected", true);
-      for (const { reject: rejectRequest } of pendingRequests.values()) {
-        rejectRequest(new Error("Admin API disconnected"));
-      }
-      pendingRequests.clear();
+      reject(new Error("WebSocket connection closed"));
+      if (socket !== ws) return;
+      socket = null;
+      handleAPIDisconnect();
     });
   });
+}
+
+function resetAPISubscriptions(): void {
+  notificationSubscriptionID = 0;
+  secSubscriptionID = 0;
+  secSubscribePending = false;
+
+  dnsCacheSubscriptionID = 0;
+  dnsCacheSubscribePending = false;
+  dnsKeySubscriptions.clear();
+  dnsKeySubscribePending.clear();
+  dnsKeySubscribeFailed.clear();
+  dnsValueSubscribePending = false;
+  if (dnsValuePanel) dnsValuePanel.subscriptionID = 0;
+
+  tlsSubscriptionID = 0;
+  tlsSubscribePending = false;
+
+  kvStoreSubscriptionID = 0;
+  kvStoreSubscribePending = false;
+  kvEntrySubscriptions.clear();
+  kvEntrySubscribePending.clear();
+  kvEntrySubscribeFailed.clear();
+  kvPendingStoreSnapshots.clear();
+  kvPendingEntrySnapshots.clear();
+  kvPendingValueSnapshots.clear();
+  kvValueSubscribePending = false;
+  if (kvValuePanel) kvValuePanel.subscriptionID = 0;
+}
+
+function handleAPIDisconnect(): void {
+  setBackendStatus("app.status.disconnected", "Admin API disconnected", true);
+  for (const { reject } of pendingRequests.values()) {
+    reject(new Error("Admin API disconnected"));
+  }
+  pendingRequests.clear();
+  resetAPISubscriptions();
+  scheduleAPIReconnect();
+}
+
+function scheduleAPIReconnect(): void {
+  if (apiReconnectTimer || socket?.readyState === WebSocket.OPEN) return;
+  const delay = apiReconnectDelay(apiReconnectAttempt);
+  apiReconnectAttempt += 1;
+  apiReconnectTimer = window.setTimeout(() => {
+    apiReconnectTimer = 0;
+    void startAPIConnection();
+  }, delay);
+}
+
+function requestImmediateAPIReconnect(): void {
+  if (socket?.readyState === WebSocket.OPEN || apiConnectPending) return;
+  window.clearTimeout(apiReconnectTimer);
+  apiReconnectTimer = 0;
+  void startAPIConnection();
 }
 
 function request(surface: Surface, method: string, payload: Record<string, unknown> = {}): Promise<unknown> {
@@ -6531,6 +6590,10 @@ function wireUI(): void {
     if (name !== activeTab) setTab(name, false);
     scrollToLocationAnchor();
   });
+  window.addEventListener("focus", requestImmediateAPIReconnect);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") requestImmediateAPIReconnect();
+  });
   el.docs.addEventListener("click", () => window.open(documentationURL(), "_blank"));
   el.secPanel.addEventListener("scroll", rememberSecScrollState);
   el.dnsPanel.addEventListener("scroll", rememberDNSScrollState);
@@ -6624,13 +6687,7 @@ function installTestHooks(): void {
   };
 }
 
-async function boot(): Promise<void> {
-  // Let a related same-origin documentation tab find and focus this SPA tab.
-  window.name = adminPanelWindowName(window.location.origin);
-  wireUI();
-  initGraph();
-  installTestHooks();
-  setBackendStatus("app.status.connecting", "Connecting admin API");
+async function initializeAPISession(): Promise<void> {
   await connectAPI();
   const hello = await backend("hello");
   applyProjectVersionStatus(hello.project_version_status);
@@ -6643,9 +6700,52 @@ async function boot(): Promise<void> {
   await backend("subscribeNotifications");
   await ensureSecSubscription();
   await requestSnapshot();
-  setBackendStatus("app.status.connected", "Admin API connected");
-  setTab(tabNameFromLocation(), false);
+  if (selectedMenu) {
+    selectedMenu.receivedSnapshot = false;
+    await backend("subscribeNodeMenu", { id: selectedMenu.node });
+  }
+  if (socket?.readyState !== WebSocket.OPEN) {
+    throw new Error("Admin API disconnected during initialization");
+  }
 }
+
+async function startAPIConnection(): Promise<void> {
+  if (apiConnectPending || socket?.readyState === WebSocket.OPEN) return;
+  window.clearTimeout(apiReconnectTimer);
+  apiReconnectTimer = 0;
+  apiConnectPending = true;
+  setBackendStatus("app.status.connecting", "Connecting admin API");
+  try {
+    await initializeAPISession();
+    apiReconnectAttempt = 0;
+    setBackendStatus("app.status.connected", "Admin API connected");
+    if (panelStarted) {
+      setTab(activeTab, false);
+    } else {
+      panelStarted = true;
+      setTab(tabNameFromLocation(), false);
+    }
+  } catch (error) {
+    const failedSocket = socket;
+    socket = null;
+    failedSocket?.close();
+    handleAPIDisconnect();
+    log("api", "warn", `Admin API connection failed: ${errorMessage(error)}`);
+  } finally {
+    apiConnectPending = false;
+  }
+}
+
+function boot(): void {
+  // Let a related same-origin documentation tab find and focus this SPA tab.
+  window.name = adminPanelWindowName(window.location.origin);
+  wireUI();
+  initGraph();
+  installTestHooks();
+  void startAPIConnection();
+}
+
+boot();
 
 async function restoreLocale(): Promise<void> {
   let requested: string | null = readLocaleCookie() || null;
@@ -6761,12 +6861,3 @@ function applyIsolationStatus(hello: HelloResponse): void {
   el.isolationStatus.title = status.warnings?.map((warning) => `${warning.role}: ${warning.feature} ${warning.effect}`).join("\n")
     || localizedText("runtime.isolation.verification", "Isolation verification: {state}", { state: status.verification_state ?? "legacy" });
 }
-
-boot().catch((error) => {
-  delete el.status.dataset.i18n;
-  delete el.status.dataset.i18nBuiltin;
-  el.status.textContent = localizedText("app.status.failed", "Panel failed: {error}", { error: errorMessage(error) });
-  el.status.style.color = "var(--red)";
-  notifyError(errorMessage(error), localizedText("app.startup_failed.title", "Panel startup failed"));
-  log("frontend", "error", errorMessage(error));
-});
