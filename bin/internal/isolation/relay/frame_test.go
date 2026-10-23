@@ -126,7 +126,7 @@ func TestDataReservationLimit(t *testing.T) {
 	defer func() { _ = mux.Close() }()
 	count := 0
 	for i := 1; i <= protocol.MaxConcurrentRequests+1; i++ {
-		ref := protocol.ResourceRef{ID: protocol.ResourceID{byte(i)}, SessionID: session.ID, Type: protocol.ResourceSocket, GraphEpoch: 1, Generation: 1}
+		ref := protocol.ResourceRef{ID: protocol.ResourceID{byte(i), byte(i >> 8)}, SessionID: session.ID, Type: protocol.ResourceSocket, GraphEpoch: 1, Generation: 1}
 		err = mux.Reserve(ref, 1, 0, true)
 		if err != nil {
 			if !errors.Is(err, protocol.ErrLimitExceeded) {

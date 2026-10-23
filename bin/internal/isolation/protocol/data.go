@@ -10,7 +10,7 @@ const (
 	MaxDataRecords  = 16
 	MaxStreamRecord = 32 * 1024
 	MaxPacketRecord = 65535
-	MaxSessionData  = 8 * 1024 * 1024
+	MaxSessionData  = 256 * 1024 * 1024
 	// MaxNativePacketBatchBytes bounds broker-owned native TUN read scratch.
 	// A read can use fewer packets than the device's advertised batch size.
 	MaxNativePacketBatchBytes = MaxSessionData / 2

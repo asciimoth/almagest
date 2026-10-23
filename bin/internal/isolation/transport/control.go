@@ -73,8 +73,9 @@ type message struct {
 // Handler must decode into the operation's concrete protocol type with Decode,
 // validate authority before side effects, and honor context cancellation. It
 // must not use an error as proof that an in-progress mutation had no effect.
-// It is called by at most 128 workers. A canceled worker retains its slot until
-// it returns, so an owner that ignores cancellation cannot grow worker count.
+// It is called by at most MaxConcurrentRequests workers. A canceled worker
+// retains its slot until it returns, so an owner that ignores cancellation
+// cannot grow worker count.
 type Handler func(context.Context, protocol.Operation, json.RawMessage) (any, error)
 
 // Event is a coalescible resource-state notification, not an RPC completion.
@@ -117,6 +118,7 @@ type Peer struct {
 	assembly                                 ConfigAssembler
 	configTimer                              *time.Timer
 	configSend                               chan struct{}
+	capacity                                 chan struct{}
 }
 
 type queued struct {
@@ -190,7 +192,7 @@ func newPeer(ctx context.Context, lanes Lanes, session protocol.Session, handler
 	pctx, pcancel := context.WithCancel(ctx)
 	p := &Peer{lanes: lanes, session: session, handler: handler, ctx: pctx, cancel: pcancel,
 		pending: make(map[uint64]chan message), active: make(map[uint64]context.CancelFunc),
-		out: make(chan queued, 2*protocol.MaxConcurrentRequests), ordinary: make(chan struct{}, protocol.MaxConcurrentRequests), terminal: make(chan struct{}, protocol.MaxConcurrentRequests), events: make(chan Event, protocol.MaxConcurrentRequests), configs: make(chan ConfigTransfer, 1), configSend: make(chan struct{}, 1)}
+		out: make(chan queued, 2*protocol.MaxConcurrentRequests), ordinary: make(chan struct{}, protocol.MaxConcurrentRequests), terminal: make(chan struct{}, protocol.MaxConcurrentRequests), events: make(chan Event, protocol.MaxConcurrentRequests), configs: make(chan ConfigTransfer, 1), configSend: make(chan struct{}, 1), capacity: make(chan struct{}, 1)}
 	go func() { <-pctx.Done(); p.fail(pctx.Err()) }()
 	go p.read()
 	go p.write()
@@ -291,12 +293,6 @@ func (p *Peer) callMode(ctx context.Context, kind string, op protocol.Operation,
 	if err != nil {
 		return protocol.ErrInvalidContract
 	}
-	p.mu.Lock()
-	if p.err != nil {
-		err = p.err
-		p.mu.Unlock()
-		return err
-	}
 	bulk := op == protocol.OperationMatch
 	if op == protocol.OperationChannel {
 		if q, ok := prepared.(*protocol.ChannelRequest); ok {
@@ -308,9 +304,28 @@ func (p *Peer) callMode(ctx context.Context, kind string, op protocol.Operation,
 			bulk = dataCall(body)
 		}
 	}
-	if len(p.pending) >= protocol.MaxConcurrentRequests || (bulk && len(p.pending) >= 96) || p.next == ^uint64(0) {
+	for {
+		p.mu.Lock()
+		if p.err != nil {
+			err = p.err
+			p.mu.Unlock()
+			return err
+		}
+		if p.next == ^uint64(0) {
+			p.mu.Unlock()
+			return protocol.ErrLimitExceeded
+		}
+		if len(p.pending) < protocol.MaxConcurrentRequests && (!bulk || len(p.pending) < protocol.MaxBulkConcurrentRequests) {
+			break
+		}
 		p.mu.Unlock()
-		return protocol.ErrLimitExceeded
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-p.ctx.Done():
+			return p.Err()
+		case <-p.capacity:
+		}
 	}
 	id := p.next + 1
 	if kind == "request" {
@@ -441,7 +456,7 @@ func (p *Peer) receive(m message) error {
 		p.received = m.ID
 		// Data and matcher operations leave capacity for status and close.
 		// Reject excess work before starting a native worker.
-		if bulkCall(m.Operation, m.Body) && len(p.active) >= 96 {
+		if bulkCall(m.Operation, m.Body) && len(p.active) >= protocol.MaxBulkConcurrentRequests {
 			p.mu.Unlock()
 			return p.queue(message{Kind: "reply", ID: m.ID, Error: wireError(protocol.ErrLimitExceeded)}, true)
 		}
@@ -469,6 +484,7 @@ func (p *Peer) receive(m message) error {
 		p.mu.Lock()
 		ch := p.pending[m.ID]
 		delete(p.pending, m.ID)
+		p.signalCapacityLocked()
 		p.mu.Unlock()
 		if ch == nil {
 			return protocol.ErrInvalidContract
@@ -495,6 +511,13 @@ func (p *Peer) receive(m message) error {
 		return protocol.ErrInvalidContract
 	}
 	return nil
+}
+
+func (p *Peer) signalCapacityLocked() {
+	select {
+	case p.capacity <- struct{}{}:
+	default:
+	}
 }
 
 func (p *Peer) handle(ctx context.Context, m message) {

@@ -144,7 +144,9 @@ func TestControlConcurrentAndLimits(t *testing.T) {
 	for range protocol.MaxConcurrentRequests {
 		<-started
 	}
-	if err := a.Call(context.Background(), protocol.OperationStatus, readRequest(), new(protocol.StatusResult)); !errors.Is(err, protocol.ErrLimitExceeded) {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	if err := a.Call(ctx, protocol.OperationStatus, readRequest(), new(protocol.StatusResult)); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatal(err)
 	}
 	_ = a.Close()

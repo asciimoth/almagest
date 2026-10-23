@@ -23,7 +23,7 @@ func statePeer(t *testing.T) *Peer {
 	return &Peer{session: testSession(), ctx: ctx, cancel: cancel,
 		pending: make(map[uint64]chan message), active: make(map[uint64]context.CancelFunc),
 		out: make(chan queued, 2*protocol.MaxConcurrentRequests), ordinary: make(chan struct{}, protocol.MaxConcurrentRequests), terminal: make(chan struct{}, protocol.MaxConcurrentRequests),
-		events: make(chan Event, protocol.MaxConcurrentRequests), configs: make(chan ConfigTransfer, 1), configSend: make(chan struct{}, 1)}
+		events: make(chan Event, protocol.MaxConcurrentRequests), configs: make(chan ConfigTransfer, 1), configSend: make(chan struct{}, 1), capacity: make(chan struct{}, 1)}
 }
 
 func testEvent() Event {

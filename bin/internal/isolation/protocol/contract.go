@@ -20,9 +20,12 @@ const (
 	// Version is the first isolation control-contract version.
 	Version uint32 = 2
 
-	MaxControlFrameBytes      = 64 * 1024
-	MaxControlDepth           = 32
-	MaxConcurrentRequests     = 128
+	MaxControlFrameBytes = 64 * 1024
+	MaxControlDepth      = 32
+	// MaxConcurrentRequests matches the number of maximum-size data frames
+	// that fit in the session data budget.
+	MaxConcurrentRequests     = MaxSessionData / MaxDataFrame
+	MaxBulkConcurrentRequests = MaxConcurrentRequests * 3 / 4
 	MaxConfigChunkBytes       = 64 * 1024
 	MaxConfigBytes            = 8 * 1024 * 1024
 	MaxOperationIDBytes       = 128
