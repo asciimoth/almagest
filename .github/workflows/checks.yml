@@ -76,3 +76,28 @@ jobs:
         with:
           node-version: 24
       - run: just build-windows
+
+  webdemo:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: extractions/setup-just@v3
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 1.26.9
+          cache-dependency-path: |
+            bin/go.sum
+            lib/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: panel/package-lock.json
+      - run: just build-webdemo
+      - run: node --test tests/admin_transport.test.mjs tests/webdemo_publish.test.mjs
+        working-directory: panel
+      - uses: actions/upload-artifact@v4
+        with:
+          name: webdemo
+          path: build/webdemo
+          if-no-files-found: error

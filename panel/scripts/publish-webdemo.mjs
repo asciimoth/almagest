@@ -1,12 +1,24 @@
 import { cp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { execFile } from "node:child_process";
+import { join, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { promisify } from "node:util";
 import { transform } from "esbuild";
 import { minify as minifyHTML } from "html-minifier-terser";
 
 const outputArgument = process.argv[2] || "../build/webdemo";
 const target = pathToFileURL(`${resolve(process.cwd(), outputArgument)}/`);
 const repository = new URL("../../", import.meta.url);
+const execute = promisify(execFile);
+
+async function buildWASM() {
+  const bin = fileURLToPath(new URL("bin/", repository));
+  const wasm = fileURLToPath(new URL("almagest.wasm", target));
+  const env = { ...process.env, GOOS: "js", GOARCH: "wasm", CGO_ENABLED: "0" };
+  await execute("go", ["-C", bin, "build", "-trimpath", "-o", wasm, "./cmd/almagest-webdemo"], { env });
+  const { stdout } = await execute("go", ["env", "GOROOT"]);
+  await cp(join(stdout.trim(), "lib", "wasm", "wasm_exec.js"), new URL("wasm_exec.js", target));
+}
 
 async function optimize(directory) {
   for (const entry of await readdir(directory, { withFileTypes: true })) {
@@ -120,6 +132,7 @@ await writeFile(new URL("index.html", target), await minifiedHTML(new URL("webde
 await mkdir(new URL("demo/", target), { recursive: true });
 await writeFile(new URL("demo/index.html", target), await minifiedHTML(new URL("panel/index.html", repository), [
   ["<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">", "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><meta name=\"almagest-site-base\" content=\"../\">"],
+  ["script-src 'self'", "script-src 'self' 'wasm-unsafe-eval'"],
   ["class=\"header-logo-link\" href=\"./\"", "class=\"header-logo-link\" href=\"../\""],
   ["href=\"./vendor/", "href=\"../vendor/"],
   ["href=\"./style.css\"", "href=\"../style.css\""],
@@ -138,3 +151,4 @@ await writeFile(new URL("docs/index.html", target), await minifiedHTML(new URL("
 ]));
 await buildDocsCatalog();
 await optimize(target);
+await buildWASM();

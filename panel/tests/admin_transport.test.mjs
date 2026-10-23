@@ -6,10 +6,12 @@ import { JSDOM } from "jsdom";
 const app = await readFile(new URL("../src/app.ts", import.meta.url), "utf8");
 const transport = await readFile(new URL("../src/admin_transport.ts", import.meta.url), "utf8");
 const webdemo = await readFile(new URL("../src/webdemo.ts", import.meta.url), "utf8");
+const wasmTransport = await readFile(new URL("../src/wasm_transport.ts", import.meta.url), "utf8");
 
 const { WebSocketAdminTransport, configureAdminTransport, createAdminTransport } = await import(
   "../public/build/admin_transport.js"
 );
+const { WASMAdminTransport } = await import("../public/build/wasm_transport.js");
 
 class MockWebSocket extends EventTarget {
   static CONNECTING = 0;
@@ -65,7 +67,9 @@ test("the panel uses a configurable admin API transport", () => {
   assert.match(transport, /class WebSocketAdminTransport implements AdminTransport/);
   assert.match(transport, /new URL\("\.\/api\/ws", siteBaseURL\(\)\)/);
   assert.match(webdemo, /configureAdminTransport/);
-  assert.match(webdemo, /class PendingWASMTransport implements AdminTransport/);
+  assert.match(webdemo, /WASMAdminTransport/);
+  assert.match(wasmTransport, /class WASMAdminTransport implements AdminTransport/);
+  assert.match(wasmTransport, /loadWebDemoAPI/);
   assert.match(webdemo, /await import\("\.\/app\.js"\)/);
 });
 
@@ -102,6 +106,29 @@ test("WebSocket transport supports HTTP and a configured subpath", () => {
   void transport.connect({ message() {}, close() {} });
 
   assert.equal(MockWebSocket.instances[0]?.url, "ws://example.test/almagest/api/ws");
+});
+
+test("Wasm transport imports the in-process API and forwards messages", async () => {
+  const requests = [];
+  const messages = [];
+  let closes = 0;
+  const transport = new WASMAdminTransport(async () => (request) => {
+    requests.push(request);
+    return `response:${request}`;
+  });
+
+  assert.equal(transport.connected, false);
+  assert.equal(transport.reconnect, false);
+  await transport.connect({ message: (message) => messages.push(message), close: () => closes += 1 });
+  assert.equal(transport.connected, true);
+  transport.send("request");
+  assert.deepEqual(requests, ["request"]);
+  assert.deepEqual(messages, ["response:request"]);
+
+  transport.close();
+  assert.equal(transport.connected, false);
+  assert.equal(closes, 1);
+  assert.throws(() => transport.send("request"), /Admin API is not connected/);
 });
 
 test("WebSocket transport rejects connection errors and closed connections", async () => {

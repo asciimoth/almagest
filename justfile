@@ -199,7 +199,7 @@ build-web:
 build-wasm:
   GOOS=js GOARCH=wasm CGO_ENABLED=0 go -C lib build .
 
-# Build a plain static tree for GitHub Pages or another static HTTP server.
+# Build the panel, browser backend, and Go Wasm runtime as one static tree.
 build-webdemo output='build/webdemo':
   cd panel && npm ci && npm run build:webdemo -- ../{{quote(output)}}
 

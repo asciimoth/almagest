@@ -19,6 +19,8 @@ test("web demo publication is a complete relative static tree", async () => {
     "docs/content/en/pages/guides/welcome.md",
     "public/build/webdemo.js",
     "public/build/static_docs.js",
+    "almagest.wasm",
+    "wasm_exec.js",
   ]) await access(output(path));
 
   const landing = new JSDOM(await readFile(output("index.html"), "utf8"), {
@@ -38,6 +40,9 @@ test("web demo publication is a complete relative static tree", async () => {
   assert.equal(demo.querySelector(".header-logo-link")?.href, "https://example.test/almagest/");
   assert.equal(docs.querySelector(".header-logo-link")?.href, "https://example.test/almagest/");
   assert.equal(demo.querySelector("script[type='module']")?.getAttribute("src"), "../public/build/webdemo.js");
+  const demoPolicy = demo.querySelector("meta[http-equiv='Content-Security-Policy']")?.getAttribute("content") ?? "";
+  assert.match(demoPolicy, /script-src 'self' 'wasm-unsafe-eval'/);
+  assert.doesNotMatch(demoPolicy, /script-src[^;]*'unsafe-eval'/);
   assert.equal(docs.querySelector("meta[name='almagest-site-base']")?.getAttribute("content"), "../../");
   assert.equal(docs.querySelector("script[type='module']")?.getAttribute("src"), "../public/build/static_docs.js");
   assert.equal(docs.querySelector("#admin-panel-link")?.getAttribute("href"), "../demo/");
@@ -117,4 +122,32 @@ test("web demo output is optimized and contains no TypeScript declarations", asy
   assert.ok(publishedSize < sourceSize, "web demo JavaScript was not minified");
   const html = await readFile(output("index.html"), "utf8");
   assert.doesNotMatch(html, /\n\s{2,}</);
+});
+
+test("web demo contains a valid Go Wasm backend and its matching runtime", async () => {
+  const wasm = await readFile(output("almagest.wasm"));
+  assert.deepEqual([...wasm.subarray(0, 4)], [0x00, 0x61, 0x73, 0x6d]);
+  const runtime = await readFile(output("wasm_exec.js"), "utf8");
+  assert.match(runtime, /globalThis\.Go = class/);
+  const entrypoint = await readFile(output("public/build/wasm_transport.js"), "utf8");
+  assert.match(entrypoint, /almagest\.wasm/);
+  assert.match(entrypoint, /wasm_exec\.js/);
+});
+
+test("published Go Wasm starts and exposes its node class list API", async () => {
+  const { stdout } = await promisify(execFile)(process.execPath, [
+    new URL("helpers/run_webdemo_wasm.mjs", import.meta.url).pathname,
+    output("").pathname,
+  ]);
+  const response = JSON.parse(stdout);
+  assert.equal(response.id, "smoke");
+  assert.equal(response.error, undefined);
+  assert.deepEqual(response.result.snapshot.classes.map((entry) => entry.class), [
+    "almagest/HttpClient",
+    "almagest/HttpServer",
+    "almagest/MockNetwork",
+  ]);
+  assert.deepEqual(response.result.snapshot.nodes, {});
+  assert.deepEqual(response.result.snapshot.ports, {});
+  assert.deepEqual(response.result.snapshot.links, {});
 });
