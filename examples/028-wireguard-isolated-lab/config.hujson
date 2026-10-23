@@ -1,0 +1,74 @@
+// WireGuard in an isolated lab encrypts HTTP traffic between two userspace IP
+// stacks over a private MockNetwork.
+// WireGuard connects a TUN packet path to an encrypted UDP tunnel. Owned IPs
+// supply each VTun address, allowed IPs advertise the peer route, and the
+// carrier helps select a safe MTU.
+// The bundled database stores fixed lab-only private keys as named secrets.
+// They are public test data; never reuse them outside this lab.
+// Select Send request on HTTP Client, then inspect both WireGuard nodes for a
+// handshake and packet counters.
+{
+	"nodes": {
+		"HTTP Client": {
+			"Class": "almagest/HttpClient",
+			"Pos":   "{\"x\":25,\"y\":105}",
+			"Links": ["Network -> [Client IP Stack] Network"],
+			"url":   "http://10.228.0.2:8080/",
+		},
+		"Client IP Stack": {
+			"Class": "almagest/VTun",
+			"Pos":   "{\"x\":255,\"y\":105}",
+			"Links": ["Tun -> [Client WireGuard] Tun"],
+			"mtu":   1420,
+			"name":  "wireguard-lab-client",
+		},
+		"Client WireGuard": {
+			"Class":      "almagest/WireGuard",
+			"Pos":        "{\"x\":505,\"y\":105}",
+			"Links":      ["Network -> [UDP Lab Network] Network"],
+			"privateKeySecret": "wireguard-lab-client-private-key",
+			"listenPort": 25280,
+			"ownedIPs":   "10.228.0.1/32",
+			"peers": [{
+				"id":                          "server",
+				"publicKey":                   "TNKMKCuUSLleV2ACafE0PAm9G4gRpvxcrrBYyLCzDGc=",
+				"endpoint":                    "127.0.0.1:25281",
+				"allowedIPs":                  "10.228.0.2/32",
+				"persistentKeepaliveInterval": 1,
+			}],
+		},
+		"UDP Lab Network": {
+			"Class":        "almagest/MockNetwork",
+			"Pos":          "{\"x\":770,\"y\":205}",
+		},
+		"Server WireGuard": {
+			"Class":      "almagest/WireGuard",
+			"Pos":        "{\"x\":505,\"y\":305}",
+			"Links":      ["Network -> [UDP Lab Network] Network"],
+			"privateKeySecret": "wireguard-lab-server-private-key",
+			"listenPort": 25281,
+			"ownedIPs":   "10.228.0.2/32",
+			"peers": [{
+				"id":                          "client",
+				"publicKey":                   "r1hjSKSF8aTbTdAzdQZe1FeGggn33Vcyg90mubw7JnE=",
+				"endpoint":                    "127.0.0.1:25280",
+				"allowedIPs":                  "10.228.0.1/32",
+				"persistentKeepaliveInterval": 1,
+			}],
+		},
+		"Server IP Stack": {
+			"Class": "almagest/VTun",
+			"Pos":   "{\"x\":255,\"y\":305}",
+			"Links": ["Tun -> [Server WireGuard] Tun"],
+			"mtu":   1420,
+			"name":  "wireguard-lab-server",
+		},
+		"HTTP Server": {
+			"Class":    "almagest/HttpServer",
+			"Pos":      "{\"x\":25,\"y\":305}",
+			"Links":    ["Network -> [Server IP Stack] Network"],
+			"host":     "10.228.0.2",
+			"response": "Response through the encrypted WireGuard lab",
+		},
+	},
+}

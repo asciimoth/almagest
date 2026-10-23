@@ -1,0 +1,70 @@
+// Access a WireGuard network through local SOCKS gives a host application
+// access to a remote VTun without changing host routes.
+// WireGuard transport stays on a private MockNetwork. The bundled database
+// stores fixed lab-only private keys; never reuse them outside this example.
+// Run: curl --socks5-hostname 127.0.0.1:1095 http://10.235.0.2:8080/
+{
+	"nodes": {
+		"Client IP Stack": {
+			"Class":          "almagest/VTun",
+			"Pos":            "{\"x\":260,\"y\":130}",
+			"Links":          ["Tun -> [Client WireGuard] Tun"],
+			"mtu":            1420,
+			"name":           "wireguard-socks-client",
+		},
+		"Client WireGuard": {
+			"Class": "almagest/WireGuard",
+			"Pos":   "{\"x\":510,\"y\":130}",
+			"Links": ["Network -> [UDP Lab Network] Network"],
+			"listenPort":       25350,
+			"ownedIPs":         "10.235.0.1/32",
+			"peers": [{
+				"allowedIPs": "10.235.0.2/32",
+				"endpoint":                    "127.0.0.1:25351",
+				"id":                          "server",
+				"persistentKeepaliveInterval": 1,
+				"publicKey":                   "TNKMKCuUSLleV2ACafE0PAm9G4gRpvxcrrBYyLCzDGc=",
+			}],
+			"privateKeySecret": "wireguard-lab-client-private-key",
+		},
+		"UDP Lab Network": {
+			"Class":        "almagest/MockNetwork",
+			"Pos":          "{\"x\":780,\"y\":250}",
+		},
+		"Server WireGuard": {
+			"Class": "almagest/WireGuard",
+			"Pos":   "{\"x\":510,\"y\":370}",
+			"Links": ["Network -> [UDP Lab Network] Network"],
+			"listenPort":       25351,
+			"ownedIPs":         "10.235.0.2/32",
+			"peers": [{
+				"allowedIPs": "10.235.0.1/32",
+				"endpoint":                    "127.0.0.1:25350",
+				"id":                          "client",
+				"persistentKeepaliveInterval": 1,
+				"publicKey":                   "r1hjSKSF8aTbTdAzdQZe1FeGggn33Vcyg90mubw7JnE=",
+			}],
+			"privateKeySecret": "wireguard-lab-server-private-key",
+		},
+		"Server IP Stack": {
+			"Class":          "almagest/VTun",
+			"Pos":            "{\"x\":260,\"y\":370}",
+			"Links":          ["Tun -> [Server WireGuard] Tun"],
+			"mtu":            1420,
+			"name":           "wireguard-socks-server",
+		},
+		"HTTP Server": {
+			"Class":    "almagest/HttpServer",
+			"Pos":      "{\"x\":20,\"y\":370}",
+			"Links":    ["Network -> [Server IP Stack] Network"],
+			"host":     "10.235.0.2",
+			"response": "Response through local SOCKS and WireGuard",
+		},
+		"Local Proxy": {
+			"Class": "almagest/LocalProxy",
+			"Pos":   "{\"x\":20,\"y\":130}",
+			"Links": ["proxy -> [Client IP Stack] Network"],
+			"socksPort": 1095,
+		},
+	},
+}

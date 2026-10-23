@@ -1,0 +1,31 @@
+// Local SOCKS access exposes an isolated mock HTTP service to host
+// applications.
+// LocalProxy accepts local SOCKS connections and sends their requests through
+// its Network.
+// Run: curl --socks5-hostname 127.0.0.1:1087 http://service.mock.test:8080/
+{
+	"nodes": {
+		"Mock Network": {
+			"Class":        "almagest/MockNetwork",
+			"Pos":          "{\"x\":706,\"y\":220}",
+		},
+		"HTTP Server": {
+			"Class":    "almagest/HttpServer",
+			"Pos":      "{\"x\":500,\"y\":147}",
+			"Links":    ["Network -> [Mock Network] Network"],
+			"response": "Response through the local SOCKS proxy",
+		},
+		"Response": {
+			"Class": "pasta/StringConstant",
+			"Pos":   "{\"x\":180,\"y\":144}",
+			"Links": ["output -> [HTTP Server] Response"],
+			"value": "Response through the local SOCKS proxy",
+		},
+		"Local Proxy": {
+			"Class": "almagest/LocalProxy",
+			"Pos":   "{\"x\":496,\"y\":298}",
+			"Links": ["proxy -> [Mock Network] Network"],
+			"socksPort": 1087,
+		},
+	},
+}

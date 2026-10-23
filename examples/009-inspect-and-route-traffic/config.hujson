@@ -1,0 +1,44 @@
+// Inspect and route initial traffic selects a Network after it reads the first
+// HTTP bytes.
+// Sniffer delays a TCP dial, classifies its initial data, and selects a
+// configured slot.
+// Run the two curl commands below and compare the isolated and direct network
+// paths.
+// curl --socks5-hostname 127.0.0.1:1089 http://route.invalid/mock
+// curl --socks5-hostname 127.0.0.1:1089 http://example.com/
+{
+	"nodes": {
+		"Traffic Sniffer": {
+			"Class":               "almagest/Sniffer",
+			"Pos":                 "{\"x\":289,\"y\":292}",
+			"Links":               ["slot 1 -> [Out Network] Network", "slot 2 -> [Mock Network] Network"],
+			"rules":               "DIAL\nTCP\nAND\nINTERCEPT\n\n# Send this HTTP path to the isolated service.\nSNIFF HTTP URL:/mock\nROUTE 2 DST:127.0.0.1:8080\n\n# Other HTTP and recognized non-HTTP traffic use the host network.\nSNIFF HTTP\nSLOT 1\n\nSNIFF_NONE\nSLOT 1\n\n# Non-TCP operations do not need inspection.\nTRUE\nSLOT 1",
+		},
+		"Out Network": {
+			"Class": "almagest/OutNetwork",
+			"Pos":   "{\"x\":603,\"y\":230}",
+		},
+		"Mock Network": {
+			"Class":        "almagest/MockNetwork",
+			"Pos":          "{\"x\":603,\"y\":375}",
+		},
+		"HTTP Server": {
+			"Class":    "almagest/HttpServer",
+			"Pos":      "{\"x\":329,\"y\":424}",
+			"Links":    ["Network -> [Mock Network] Network"],
+			"response": "Sniffer routed /mock to the isolated service",
+		},
+		"Response": {
+			"Class": "pasta/StringConstant",
+			"Pos":   "{\"x\":-24,\"y\":424}",
+			"Links": ["output -> [HTTP Server] Response"],
+			"value": "Sniffer routed /mock to the isolated service",
+		},
+		"Local Proxy": {
+			"Class": "almagest/LocalProxy",
+			"Pos":   "{\"x\":83,\"y\":293}",
+			"Links": ["proxy -> [Traffic Sniffer] Network"],
+			"socksPort": 1089,
+		},
+	},
+}

@@ -1,0 +1,48 @@
+// SOCKS client and server sends one HTTP request through a complete proxy hop.
+// SocksClient provides a Network backed by a proxy, and SocksServer handles
+// the proxy request.
+// Change the HTTP target hostname, then compare the transport and target
+// network paths.
+{
+	"nodes": {
+		"HTTP Client": {
+			"Class":     "almagest/HttpClient",
+			"Pos":       "{\"x\":54,\"y\":226}",
+			"Links":     ["Network -> [SOCKS Client] Network"],
+			"url":       "http://service.socks.test:8080/",
+		},
+		"SOCKS Client": {
+			"Class":          "almagest/SocksClient",
+			"Pos":            "{\"x\":264,\"y\":224}",
+			"Links":          ["out -> [Proxy Transport Network] Network"],
+		},
+		"Proxy Transport Network": {
+			"Class":        "almagest/MockNetwork",
+			"Pos":          "{\"x\":561,\"y\":270}",
+		},
+		"SOCKS Server": {
+			"Class": "almagest/SocksServer",
+			"Pos":   "{\"x\":313,\"y\":357}",
+			"Links": [
+				"listen -> [Proxy Transport Network] Network",
+				"proxy -> [Target Network] Network",
+			],
+		},
+		"Target Network": {
+			"Class":        "almagest/MockNetwork",
+			"Pos":          "{\"x\":615,\"y\":452}",
+		},
+		"HTTP Server": {
+			"Class":    "almagest/HttpServer",
+			"Pos":      "{\"x\":305,\"y\":508}",
+			"Links":    ["Network -> [Target Network] Network"],
+			"response": "Response through the SOCKS client and server",
+		},
+		"Response": {
+			"Class": "pasta/StringConstant",
+			"Pos":   "{\"x\":-36,\"y\":512}",
+			"Links": ["output -> [HTTP Server] Response"],
+			"value": "Response through the SOCKS client and server",
+		},
+	},
+}

@@ -1,0 +1,69 @@
+// Split IP packets routes two destination subnets to separate mock Networks.
+// TunSplitter evaluates packet rules in order and sends each packet to an
+// explicit slot or drops it.
+// Send both requests, then remove the final TRUE rule to see unmatched packets
+// drop instead of using a hidden default.
+{
+	"nodes": {
+		"First Client": {
+			"Class":     "almagest/HttpClient",
+			"Pos":       "{\"x\":16,\"y\":75}",
+			"Links":     ["Network -> [Client IP Stack] Network"],
+			"url":       "http://10.222.1.10:8080/",
+		},
+		"Default Client": {
+			"Class":     "almagest/HttpClient",
+			"Pos":       "{\"x\":15,\"y\":220}",
+			"Links":     ["Network -> [Client IP Stack] Network"],
+			"url":       "http://10.222.2.10:8080/",
+		},
+		"Client IP Stack": {
+			"Class":          "almagest/VTun",
+			"Pos":            "{\"x\":254,\"y\":150}",
+			"Links":          ["Tun -> [Packet Router] Tun"],
+			"localAddrs":     "10.222.0.1/16",
+			"name":           "splitter-client",
+		},
+		"Packet Router": {
+			"Class": "almagest/TunSplitter",
+			"Pos":   "{\"x\":473,\"y\":151}",
+			"Links": [
+				"slot 1 -> [First Flow Converter] Tun",
+				"slot 2 -> [Default Flow Converter] Tun",
+			],
+			"rules":                "SNET4 10.222.1.0/24\nSLOT 1\n\nTRUE\nSLOT 2",
+		},
+		"First Flow Converter": {
+			"Class":                "almagest/Spoofer",
+			"Pos":                  "{\"x\":746,\"y\":45}",
+			"Links":                ["Network -> [First Target Network] Network"],
+		},
+		"Default Flow Converter": {
+			"Class":                "almagest/Spoofer",
+			"Pos":                  "{\"x\":737,\"y\":285}",
+			"Links":                ["Network -> [Default Target Network] Network"],
+		},
+		"First Target Network": {
+			"Class":        "almagest/MockNetwork",
+			"Pos":          "{\"x\":983,\"y\":95}",
+		},
+		"Default Target Network": {
+			"Class":        "almagest/MockNetwork",
+			"Pos":          "{\"x\":980,\"y\":320}",
+		},
+		"First Server": {
+			"Class":    "almagest/HttpServer",
+			"Pos":      "{\"x\":765,\"y\":140}",
+			"Links":    ["Network -> [First Target Network] Network"],
+			"host":     "10.222.1.10",
+			"response": "Response from explicit slot 1",
+		},
+		"Default Server": {
+			"Class":    "almagest/HttpServer",
+			"Pos":      "{\"x\":773,\"y\":384}",
+			"Links":    ["Network -> [Default Target Network] Network"],
+			"host":     "10.222.2.10",
+			"response": "Response from explicit default slot 2",
+		},
+	},
+}

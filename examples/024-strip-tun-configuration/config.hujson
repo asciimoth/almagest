@@ -1,0 +1,46 @@
+// Strip TUN configuration passes HTTP packets but blocks settings suggested by
+// the downstream node.
+// TunConfigStripper passes TUN availability and packets while removing
+// address, route, MTU, and DNS suggestions.
+// Send the request, then inspect Client IP Stack: its effective MTU stays at
+// its 1400 ceiling instead of the spoofer's 1300.
+{
+	"nodes": {
+		"HTTP Client": {
+			"Class":     "almagest/HttpClient",
+			"Pos":       "{\"x\":30,\"y\":185}",
+			"Links":     ["Network -> [Client IP Stack] Network"],
+			"url":       "http://10.224.0.10:8080/",
+		},
+		"Client IP Stack": {
+			"Class":          "almagest/VTun",
+			"Pos":            "{\"x\":204,\"y\":186}",
+			"Links":          ["Tun -> [Configuration Stripper] Tun"],
+			"localAddrs":     "10.224.0.1/24",
+			"mtu":            1400,
+			"name":           "independent-stack",
+		},
+		"Configuration Stripper": {
+			"Class": "almagest/TunConfigStripper",
+			"Pos":   "{\"x\":395,\"y\":185}",
+			"Links": ["Tun -> [Spoofer] Tun"],
+		},
+		"Target Network": {
+			"Class":        "almagest/MockNetwork",
+			"Pos":          "{\"x\":854,\"y\":115}",
+		},
+		"HTTP Server": {
+			"Class":    "almagest/HttpServer",
+			"Pos":      "{\"x\":623,\"y\":40}",
+			"Links":    ["Network -> [Target Network] Network"],
+			"host":     "10.224.0.10",
+			"response": "Packets pass without TUN configuration",
+		},
+		"Spoofer": {
+			"Class":                "almagest/Spoofer",
+			"Pos":                  "{\"x\":624,\"y\":185}",
+			"Links":                ["Network -> [Target Network] Network"],
+			"mtu":                  1300,
+		},
+	},
+}

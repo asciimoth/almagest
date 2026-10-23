@@ -1,0 +1,5 @@
+{
+  "format": 1,
+  "name": "Split IP packets",
+  "comment": "Route two destination subnets to separate Network paths with explicit packet rules."
+}

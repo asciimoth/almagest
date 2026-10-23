@@ -1,0 +1,5 @@
+{
+  "format": 1,
+  "name": "Intercept selected TLS",
+  "comment": "Intercept one HTTPS destination and pass another TLS connection through unchanged."
+}

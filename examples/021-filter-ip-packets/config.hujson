@@ -1,0 +1,61 @@
+// Filter IP packets compares an allowed HTTP port with a blocked port on the
+// same TUN path.
+// TunFirewall applies stateful policy to raw IP packets, unlike the Network
+// operation filter in example 006.
+// Send both client requests. Port 8080 succeeds, and port 8081 is silently
+// dropped.
+{
+	"nodes": {
+		"Allowed Client": {
+			"Class":     "almagest/HttpClient",
+			"Pos":       "{\"x\":21,\"y\":80}",
+			"Links":     ["Network -> [Client IP Stack] Network"],
+			"url":       "http://10.221.0.2:8080/",
+		},
+		"Blocked Client": {
+			"Class":     "almagest/HttpClient",
+			"Pos":       "{\"x\":20,\"y\":230}",
+			"Links":     ["Network -> [Client IP Stack] Network"],
+			"url":       "http://10.221.0.2:8081/",
+		},
+		"Client IP Stack": {
+			"Class":          "almagest/VTun",
+			"Pos":            "{\"x\":232,\"y\":163}",
+			"Links":          ["Tun -> [Packet Firewall] Tun"],
+			"localAddrs":     "10.221.0.1/24",
+			"name":           "firewall-client",
+		},
+		"Packet Firewall": {
+			"Class": "almagest/TunFirewall",
+			"Pos":   "{\"x\":423,\"y\":164}",
+			"Links": ["Tun -> [Direct TUN Link] TunA"],
+			"rules": {"exclude": [{"network": "tcp", "ports": [8081]}]},
+		},
+		"Direct TUN Link": {
+			"Class": "almagest/TunCopy",
+			"Pos":   "{\"x\":738,\"y\":318}",
+		},
+		"Server IP Stack": {
+			"Class":          "almagest/VTun",
+			"Pos":            "{\"x\":354,\"y\":433}",
+			"Links":          ["Tun -> [Direct TUN Link] TunB"],
+			"localAddrs":     "10.221.0.2/24",
+			"name":           "firewall-server",
+		},
+		"Allowed Server": {
+			"Class":    "almagest/HttpServer",
+			"Pos":      "{\"x\":25,\"y\":370}",
+			"Links":    ["Network -> [Server IP Stack] Network"],
+			"host":     "10.221.0.2",
+			"response": "The packet firewall allowed port 8080",
+		},
+		"Blocked Server": {
+			"Class":    "almagest/HttpServer",
+			"Pos":      "{\"x\":28,\"y\":514}",
+			"Links":    ["Network -> [Server IP Stack] Network"],
+			"host":     "10.221.0.2",
+			"port":     8081,
+			"response": "This response must be blocked",
+		},
+	},
+}

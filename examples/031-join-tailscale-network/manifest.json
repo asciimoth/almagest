@@ -1,0 +1,5 @@
+{
+  "format": 1,
+  "name": "Join a Tailscale network",
+  "comment": "Authorize a Tailscale controller, inspect its MagicDNS records, and reach a peer through its WireGuard configuration."
+}

@@ -1,0 +1,5 @@
+{
+  "format": 1,
+  "name": "DNS client and server",
+  "comment": "Send a DNS query over UDP through an isolated Network."
+}

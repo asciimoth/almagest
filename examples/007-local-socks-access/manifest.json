@@ -1,0 +1,5 @@
+{
+  "format": 1,
+  "name": "Local SOCKS access",
+  "comment": "Reach an isolated mock HTTP service from a host application through SOCKS."
+}

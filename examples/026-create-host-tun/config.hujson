@@ -1,0 +1,32 @@
+// Create a regular host TUN routes only one private subnet through Almagest.
+// Tun creates a host interface with explicit addresses and routes; unlike
+// DefaultTun, it does not manage the system default route or DNS.
+// This example needs platform TUN support and sufficient privileges. Run curl
+// http://10.226.0.10:8080/ on the daemon host, then inspect the response.
+{
+	"nodes": {
+		"Host TUN": {
+			"Class":     "almagest/Tun",
+			"Pos":       "{\"x\":55,\"y\":165}",
+			"Links":     ["Tun -> [Flow Converter] Tun"],
+			"tunAddrs":  "10.226.0.1/24",
+			"tunRoutes": "10.226.0.0/24",
+		},
+		"Flow Converter": {
+			"Class": "almagest/Spoofer",
+			"Pos":   "{\"x\":300,\"y\":165}",
+			"Links": ["Network -> [Target Network] Network"],
+		},
+		"Target Network": {
+			"Class": "almagest/MockNetwork",
+			"Pos":   "{\"x\":570,\"y\":165}",
+		},
+		"HTTP Server": {
+			"Class":    "almagest/HttpServer",
+			"Pos":      "{\"x\":300,\"y\":310}",
+			"Links":    ["Network -> [Target Network] Network"],
+			"host":     "10.226.0.10",
+			"response": "Response through a regular host TUN",
+		},
+	},
+}

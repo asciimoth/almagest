@@ -1,0 +1,5 @@
+{
+  "format": 1,
+  "name": "Switch a live WireGuard destination",
+  "comment": "Select one of two WireGuard peer controllers without replacing the client tunnel device."
+}

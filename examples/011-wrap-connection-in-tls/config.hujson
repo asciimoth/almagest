@@ -1,0 +1,50 @@
+// Wrap a connection in TLS sends plain HTTP through a TLS-only path.
+// TlsWrapper adds TLS to TCP dials; the familiar TlsTerminator removes it
+// again.
+// Select Send request on Plain HTTP Client, then inspect its status and
+// response.
+{
+	"nodes": {
+		"Plain HTTP Client": {
+			"Class":     "almagest/HttpClient",
+			"Pos":       "{\"x\":40,\"y\":220}",
+			"Links":     ["Network -> [TLS Wrapper] Network"],
+			"url":       "http://wrapped-service.test:8080/",
+		},
+		"TLS Wrapper": {
+			"Class":            "almagest/TlsWrapper",
+			"Pos":              "{\"x\":229,\"y\":222}",
+			"Links":            ["Network -> [TLS Terminator] Network"],
+			"clientAlpn":       "http/1.1",
+			"clientServerName": "wrapped-service.test",
+			"leafTTLSeconds":   300,
+			"serverAlpn":       "http/1.1",
+			"serverName":       "wrapped-service.test",
+		},
+		"TLS Terminator": {
+			"Class":             "almagest/TlsTerminator",
+			"Pos":               "{\"x\":411,\"y\":223}",
+			"Links":             ["Network -> [Mock Network] Network"],
+			"destinationRemaps": "[]",
+			"leafTTLSeconds":    300,
+			"serverAlpn":        "http/1.1",
+			"sniffBufferSize":   8192,
+		},
+		"Mock Network": {
+			"Class":        "almagest/MockNetwork",
+			"Pos":          "{\"x\":628,\"y\":278}",
+		},
+		"HTTP Server": {
+			"Class":    "almagest/HttpServer",
+			"Pos":      "{\"x\":406,\"y\":372}",
+			"Links":    ["Network -> [Mock Network] Network"],
+			"response": "The wrapper added TLS to the HTTP connection",
+		},
+		"Response": {
+			"Class": "pasta/StringConstant",
+			"Pos":   "{\"x\":41,\"y\":372}",
+			"Links": ["output -> [HTTP Server] Response"],
+			"value": "The wrapper added TLS to the HTTP connection",
+		},
+	},
+}

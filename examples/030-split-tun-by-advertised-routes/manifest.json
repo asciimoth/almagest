@@ -1,0 +1,5 @@
+{
+  "format": 1,
+  "name": "Split TUN traffic by advertised routes",
+  "comment": "Select a fallback path or one of two WireGuard tunnels from the routes that each branch advertises."
+}

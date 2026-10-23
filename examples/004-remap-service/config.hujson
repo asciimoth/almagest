@@ -1,0 +1,37 @@
+// Remap a local service redirects an HTTP request from port 18080 to port
+// 8080.
+// Remapper rewrites connection and listener addresses on a connected Network.
+// Change the destination port in the rule or remove the rule, then inspect the
+// client output.
+{
+	"nodes": {
+		"Http Client": {
+			"Class":     "almagest/HttpClient",
+			"Pos":       "{\"x\":197,\"y\":250}",
+			"Links":     ["Network -> [Port Remapper] Network"],
+			"url":       "http://127.0.0.1:18080/",
+		},
+		"Port Remapper": {
+			"Class": "almagest/Remapper",
+			"Pos":   "{\"x\":405,\"y\":250}",
+			"Links": ["Network -> [Mock Network] Network"],
+			"rules": "# Change client port 18080 to server port 8080.\nDIAL\nADDR_S 127.0.0.1\nAND\nPORT 18080\nAND\nREMAP DST PORT 8080",
+		},
+		"Mock Network": {
+			"Class":        "almagest/MockNetwork",
+			"Pos":          "{\"x\":639,\"y\":188}",
+		},
+		"Http Server": {
+			"Class":    "almagest/HttpServer",
+			"Pos":      "{\"x\":405,\"y\":106}",
+			"Links":    ["Network -> [Mock Network] Network"],
+			"response": "The request reached port 8080",
+		},
+		"Response": {
+			"Class": "pasta/StringConstant",
+			"Pos":   "{\"x\":120,\"y\":106}",
+			"Links": ["output -> [Http Server] Response"],
+			"value": "The request reached port 8080",
+		},
+	},
+}

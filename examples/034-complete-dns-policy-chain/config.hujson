@@ -1,0 +1,96 @@
+// Build a complete DNS policy chain resolves local, mesh, and public names
+// through one entry point.
+// The public path crosses an isolated DNS client/server transport and uses
+// OutDns. Its cache also supplies reverse names to Network Router rules.
+// Send the local and mesh queries, send both public queries in order, then
+// send Routed Public Request. The second public query uses the cache.
+{
+	"nodes": {
+		"Local Name Query": {
+			"Class": "almagest/DnsQuery",
+			"Pos":   "{\"x\":-326,\"y\":4}",
+			"Links": ["DNS -> [Mesh Names] DNS"],
+			"name":  "service.local.test.",
+		},
+		"Mesh Address Query": {
+			"Class": "almagest/DnsQuery",
+			"Pos":   "{\"x\":-331,\"y\":235}",
+			"Links": ["DNS -> [Mesh Names] DNS"],
+			"name":  "aiag7sesed2aaxgcgbnevruwpy.meship.",
+			"type":  "AAAA",
+		},
+		"Public Query First": {
+			"Class": "almagest/DnsQuery",
+			"Pos":   "{\"x\":-330,\"y\":345}",
+			"Links": ["DNS -> [Mesh Names] DNS"],
+			"name":  "example.com.",
+		},
+		"Public Query Repeat": {
+			"Class": "almagest/DnsQuery",
+			"Pos":   "{\"x\":-326,\"y\":457}",
+			"Links": ["DNS -> [Mesh Names] DNS"],
+			"name":  "example.com.",
+		},
+		"Mesh Names": {
+			"Class": "almagest/MeshNames",
+			"Pos":   "{\"x\":148,\"y\":192}",
+			"Links": [
+				"Network -> [Internet Network] Network",
+				"Fallback DNS -> [DNS Policy Router] DNS",
+			],
+		},
+		"DNS Policy Router": {
+			"Class": "almagest/DnsRouter",
+			"Pos":   "{\"x\":510,\"y\":215}",
+			"Links": ["slot 1 -> [Local Zone] DNS", "slot 2 -> [Public DNS Cache] DNS"],
+			"rules": "ADDR_RE (^|.*\\.)local\\.test\\.$\nBACKEND slot 1\n\nTRUE\nBACKEND slot 2",
+		},
+		"Local Zone": {
+			"Class":   "almagest/StaticDns",
+			"Pos":     "{\"x\":776,\"y\":136}",
+			"records": "service.local.test A 192.0.2.34",
+		},
+		"Public DNS Cache": {
+			"Class":          "almagest/DnsCache",
+			"Pos":            "{\"x\":770,\"y\":250}",
+			"Links":          ["DNS -> [DNS Client] DNS"],
+			"storageName":    "complete-dns-policy",
+		},
+		"DNS Client": {
+			"Class":            "almagest/DnsClient",
+			"Pos":              "{\"x\":1000,\"y\":250}",
+			"Links":            ["Network -> [DNS Transport] Network"],
+			"servers":          ["udp://127.0.0.1:5353"],
+		},
+		"DNS Transport": {
+			"Class":        "almagest/MockNetwork",
+			"Pos":          "{\"x\":1230,\"y\":250}",
+		},
+		"DNS Server": {
+			"Class":            "almagest/DnsServer",
+			"Pos":              "{\"x\":946,\"y\":381}",
+			"Links":            ["Network -> [DNS Transport] Network", "DNS -> [Outbound DNS] DNS"],
+		},
+		"Outbound DNS": {
+			"Class": "almagest/OutDns",
+			"Pos":   "{\"x\":1231,\"y\":401}",
+		},
+		"Routed Public Request": {
+			"Class":     "almagest/HttpClient",
+			"Pos":       "{\"x\":-574,\"y\":108}",
+			"Links":     ["Network -> [Network Router] Network"],
+			"url":       "https://example.com/",
+		},
+		"Network Router": {
+			"Class":               "almagest/NetworkRouter",
+			"Pos":                 "{\"x\":-327,\"y\":110}",
+			"Links":               ["slot 1 -> [Internet Network] Network", "DNS -> [Mesh Names] DNS"],
+			"dnsCacheStorageName": "complete-dns-policy",
+			"rules":               "DIAL\nTCP\nAND\nADDR_S example.com.\nAND\nSLOT 1\n\nTRUE\nDROP",
+		},
+		"Internet Network": {
+			"Class": "almagest/OutNetwork",
+			"Pos":   "{\"x\":541,\"y\":89}",
+		},
+	},
+}

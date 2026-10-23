@@ -1,0 +1,5 @@
+{
+  "format": 1,
+  "name": "Filter network operations",
+  "comment": "Combine menu rules and multiple object policies in one network firewall."
+}

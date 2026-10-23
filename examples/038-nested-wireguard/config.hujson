@@ -1,0 +1,116 @@
+// Run WireGuard inside WireGuard uses the two outer VTun Networks as the UDP
+// carrier for an inner WireGuard pair.
+// The address ranges and ports identify each layer. The smaller inner MTU
+// leaves room for both WireGuard headers. The bundled database contains fixed
+// lab-only keys.
+// Send the HTTP request, then disconnect either outer tunnel link and observe
+// that the inner endpoints are no longer reachable.
+{
+	"nodes": {
+		"HTTP Client": {
+			"Class": "almagest/HttpClient",
+			"Pos":   "{\"x\":20,\"y\":75}",
+			"Links": ["Network -> [Inner Client IP Stack] Network"],
+			"url":   "http://10.238.20.1:8080/",
+		},
+		"Inner Client IP Stack": {
+			"Class": "almagest/VTun",
+			"Pos":   "{\"x\":260,\"y\":75}",
+			"Links": ["Tun -> [Second Client WireGuard] Tun"],
+			"mtu":   1340,
+			"name":  "nested-inner-client",
+		},
+		"Second Client WireGuard": {
+			"Class":            "almagest/WireGuard",
+			"Pos":              "{\"x\":510,\"y\":75}",
+			"Links":            ["Network -> [Outer Client IP Stack] Network"],
+			"listenPort":       25380,
+			"ownedIPs":         "10.238.10.1/32",
+			"privateKeySecret": "second-route-client-private-key",
+			"peers": [{
+				"allowedIPs":                  "10.238.20.1/32",
+				"endpoint":                    "10.238.0.2:25381",
+				"id":                          "inner-server",
+				"persistentKeepaliveInterval": 1,
+				"publicKey":                   "1LrH07xDrJMOS6fljG2R2Kq6RRNXGMuFhTcW6+e1g3c=",
+			}],
+		},
+		"Outer Client IP Stack": {
+			"Class": "almagest/VTun",
+			"Pos":   "{\"x\":760,\"y\":75}",
+			"Links": ["Tun -> [First Client WireGuard] Tun"],
+			"mtu":   1420,
+			"name":  "nested-outer-client",
+		},
+		"First Client WireGuard": {
+			"Class":            "almagest/WireGuard",
+			"Pos":              "{\"x\":1010,\"y\":75}",
+			"Links":            ["Network -> [Outer UDP Carrier] Network"],
+			"listenPort":       25382,
+			"ownedIPs":         "10.238.0.1/32",
+			"privateKeySecret": "first-route-client-private-key",
+			"peers": [{
+				"allowedIPs":                  "10.238.0.2/32",
+				"endpoint":                    "127.0.0.1:25383",
+				"id":                          "outer-server",
+				"persistentKeepaliveInterval": 1,
+				"publicKey":                   "h0iR3Uax9+EGERzAunpM18nRuizF3HptkO5zimXh608=",
+			}],
+		},
+		"HTTP Server": {
+			"Class":    "almagest/HttpServer",
+			"Pos":      "{\"x\":20,\"y\":480}",
+			"Links":    ["Network -> [Inner Server IP Stack] Network"],
+			"host":     "10.238.20.1",
+			"response": "Response through nested WireGuard tunnels",
+		},
+		"Inner Server IP Stack": {
+			"Class": "almagest/VTun",
+			"Pos":   "{\"x\":260,\"y\":480}",
+			"Links": ["Tun -> [Second Server WireGuard] Tun"],
+			"mtu":   1340,
+			"name":  "nested-inner-server",
+		},
+		"Second Server WireGuard": {
+			"Class":            "almagest/WireGuard",
+			"Pos":              "{\"x\":510,\"y\":480}",
+			"Links":            ["Network -> [Outer Server IP Stack] Network"],
+			"listenPort":       25381,
+			"ownedIPs":         "10.238.20.1/32",
+			"privateKeySecret": "second-route-server-private-key",
+			"peers": [{
+				"allowedIPs":                  "10.238.10.1/32",
+				"endpoint":                    "10.238.0.1:25380",
+				"id":                          "inner-client",
+				"persistentKeepaliveInterval": 1,
+				"publicKey":                   "MS8m5rDfLDZSQkLi0o1a3JptnPQztf33EfQEaLeqWwQ=",
+			}],
+		},
+		"Outer Server IP Stack": {
+			"Class": "almagest/VTun",
+			"Pos":   "{\"x\":760,\"y\":480}",
+			"Links": ["Tun -> [First Server WireGuard] Tun"],
+			"mtu":   1420,
+			"name":  "nested-outer-server",
+		},
+		"First Server WireGuard": {
+			"Class":            "almagest/WireGuard",
+			"Pos":              "{\"x\":1010,\"y\":480}",
+			"Links":            ["Network -> [Outer UDP Carrier] Network"],
+			"listenPort":       25383,
+			"ownedIPs":         "10.238.0.2/32",
+			"privateKeySecret": "first-route-server-private-key",
+			"peers": [{
+				"allowedIPs":                  "10.238.0.1/32",
+				"endpoint":                    "127.0.0.1:25382",
+				"id":                          "outer-client",
+				"persistentKeepaliveInterval": 1,
+				"publicKey":                   "F1Gy6ZcPDB3AI+o7wFhEimdIvQzkGXuipsw6sL9lUQo=",
+			}],
+		},
+		"Outer UDP Carrier": {
+			"Class":        "almagest/MockNetwork",
+			"Pos":          "{\"x\":1260,\"y\":275}",
+		},
+	},
+}

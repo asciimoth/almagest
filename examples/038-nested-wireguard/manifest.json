@@ -1,0 +1,5 @@
+{
+  "format": 1,
+  "name": "Run WireGuard inside WireGuard",
+  "comment": "Use an outer WireGuard tunnel as the UDP carrier for a second WireGuard tunnel."
+}

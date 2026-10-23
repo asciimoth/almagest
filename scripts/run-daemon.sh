@@ -14,17 +14,34 @@ fi
 # The ordinary recipe is a local development command. Only daemon-sudo uses
 # isolation by default because it can create the required privileged runtime.
 direct=$((1 - elevated))
+log_level=debug
 
 # just passes its variadic recipe parameter as one quoted string. Only these
-# two exact, whitespace-free daemon flags are accepted here.
+# daemon development flags are accepted here.
 read -r -a requested <<<"${1:-}"
-for option in "${requested[@]}"; do
+for ((index = 0; index < ${#requested[@]}; index++)); do
+    option=${requested[index]}
     case "$option" in
         --no-isolation) direct=1 ;;
         --experimental) experimental=1 ;;
+        -l|--lvl)
+            ((index += 1))
+            if ((index >= ${#requested[@]})); then
+                printf 'daemon recipe flag %s requires a value\n' "$option" >&2
+                exit 2
+            fi
+            log_level=${requested[index]}
+            case "$log_level" in
+                debug|info|warn|error|fatal) ;;
+                *)
+                    printf 'unsupported daemon log level: %s\n' "$log_level" >&2
+                    exit 2
+                    ;;
+            esac
+            ;;
         *)
             printf 'unsupported daemon recipe flag: %s\n' "$option" >&2
-            printf 'usage: just daemon%s [--no-isolation] [--experimental]\n' "$([[ $elevated == 1 ]] && printf '%s' '-sudo')" >&2
+            printf 'usage: just daemon%s [--no-isolation] [--experimental] [-l|--lvl LEVEL]\n' "$([[ $elevated == 1 ]] && printf '%s' '-sudo')" >&2
             exit 2
             ;;
     esac
@@ -35,7 +52,7 @@ if [[ $experimental == 1 && $direct != 1 ]]; then
     exit 2
 fi
 
-common=(-l debug -w 8090 --debug-nodes --no-dns-cache-expiration --discover-system-programs)
+common=(-l "$log_level" -w 8090 --debug-nodes --no-dns-cache-expiration --discover-system-programs)
 if [[ $direct == 1 ]]; then
     arguments=(--no-isolation -c "$repo_root/local" --unsafe-config "${common[@]}")
     if [[ $elevated != 1 ]]; then

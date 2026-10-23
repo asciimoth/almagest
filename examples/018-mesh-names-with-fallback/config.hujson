@@ -1,0 +1,37 @@
+// Mesh names with fallback compares a direct mesh address with an ordinary DNS
+// name.
+// MeshNames resolves mesh-specific names through a Network and forwards other
+// names to Fallback DNS.
+// Send both queries. The .meship query needs no authority; .meshname and .ygg
+// authority queries need a reachable mesh.
+{
+	"nodes": {
+		"Mesh Names": {
+			"Class":            "almagest/MeshNames",
+			"Pos":              "{\"x\":260,\"y\":238}",
+			"Links":            ["Network -> [Stub Network] Network", "Fallback DNS -> [Fallback DNS] DNS"],
+		},
+		"Fallback DNS": {
+			"Class":   "almagest/StaticDns",
+			"Pos":     "{\"x\":594,\"y\":328}",
+			"records": "service.ordinary.test A 192.0.2.18",
+		},
+		"Mesh Address": {
+			"Class": "almagest/DnsQuery",
+			"Pos":   "{\"x\":21,\"y\":154}",
+			"Links": ["DNS -> [Mesh Names] DNS"],
+			"name":  "aiag7sesed2aaxgcgbnevruwpy.meship.",
+			"type":  "AAAA",
+		},
+		"Ordinary Name": {
+			"Class": "almagest/DnsQuery",
+			"Pos":   "{\"x\":17,\"y\":339}",
+			"Links": ["DNS -> [Mesh Names] DNS"],
+			"name":  "service.ordinary.test.",
+		},
+		"Stub Network": {
+			"Class":        "almagest/MockNetwork",
+			"Pos":          "{\"x\":600,\"y\":161}",
+		},
+	},
+}

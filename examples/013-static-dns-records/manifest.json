@@ -1,0 +1,5 @@
+{
+  "format": 1,
+  "name": "Static DNS records",
+  "comment": "Resolve one configured DNS record and compare it with a missing name."
+}

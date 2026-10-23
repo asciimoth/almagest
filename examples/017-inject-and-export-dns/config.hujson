@@ -1,0 +1,53 @@
+// Inject and export DNS uses one resolver through both Network and DNS
+// consumers.
+// DnsInject adds a resolver to a Network. Dns2Network exports the resolver of
+// a Network as DNS.
+// Send the HTTP request and the DNS query; both resolve service.inject.test
+// through Static DNS.
+{
+	"nodes": {
+		"HTTP Client": {
+			"Class":     "almagest/HttpClient",
+			"Pos":       "{\"x\":18,\"y\":295}",
+			"Links":     ["Network -> [DNS Inject] Network"],
+			"url":       "http://service.inject.test:8080/",
+		},
+		"DNS Query": {
+			"Class": "almagest/DnsQuery",
+			"Pos":   "{\"x\":-176,\"y\":169}",
+			"Links": ["DNS -> [DNS From Network] DNS"],
+			"name":  "service.inject.test.",
+		},
+		"DNS Inject": {
+			"Class": "almagest/DnsInject",
+			"Pos":   "{\"x\":262,\"y\":211}",
+			"Links": ["Network -> [Application Network] Network", "DNS -> [Static DNS] DNS"],
+		},
+		"DNS From Network": {
+			"Class": "almagest/Dns2Network",
+			"Pos":   "{\"x\":20,\"y\":171}",
+			"Links": ["Network -> [DNS Inject] Network"],
+		},
+		"Application Network": {
+			"Class":        "almagest/MockNetwork",
+			"Pos":          "{\"x\":471,\"y\":98}",
+		},
+		"Static DNS": {
+			"Class":   "almagest/StaticDns",
+			"Pos":     "{\"x\":470,\"y\":247}",
+			"records": "service.inject.test A 127.0.0.1",
+		},
+		"HTTP Server": {
+			"Class":    "almagest/HttpServer",
+			"Pos":      "{\"x\":262,\"y\":31}",
+			"Links":    ["Network -> [Application Network] Network"],
+			"response": "The injected DNS resolved this HTTP service",
+		},
+		"Response": {
+			"Class": "pasta/StringConstant",
+			"Pos":   "{\"x\":-78,\"y\":29}",
+			"Links": ["output -> [HTTP Server] Response"],
+			"value": "The injected DNS resolved this HTTP service",
+		},
+	},
+}

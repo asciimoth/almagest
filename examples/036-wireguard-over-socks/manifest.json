@@ -1,0 +1,5 @@
+{
+  "format": 1,
+  "name": "Carry WireGuard over SOCKS",
+  "comment": "Carry an isolated WireGuard tunnel through one local SOCKS server."
+}

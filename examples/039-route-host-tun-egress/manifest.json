@@ -1,0 +1,5 @@
+{
+  "format": 1,
+  "name": "Route host TUN traffic through several egress paths",
+  "comment": "Apply ordered policies that send host traffic through WireGuard, SOCKS, or the direct network."
+}

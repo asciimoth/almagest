@@ -1,0 +1,85 @@
+// Manage WireGuard peers separately moves the client peer and its UDP path out
+// of the WireGuard node.
+// WGConfig owns a peer list and a named UDP transport on an existing WireGuard
+// device. Removing it does not remove the base device or menu peers.
+// The bundled database stores fixed lab-only private keys as named secrets.
+// They are public test data and are not safe for other uses.
+// Send the HTTP request, then disconnect Client Peer Controller from Client
+// WireGuard. The request stops, but Client WireGuard keeps its base device.
+{
+	"nodes": {
+		"HTTP Client": {
+			"Class":     "almagest/HttpClient",
+			"Pos":       "{\"x\":20,\"y\":100}",
+			"Links":     ["Network -> [Client IP Stack] Network"],
+			"url":       "http://10.229.0.2:8080/",
+		},
+		"Client IP Stack": {
+			"Class":          "almagest/VTun",
+			"Pos":            "{\"x\":245,\"y\":100}",
+			"Links":          ["Tun -> [Client WireGuard] Tun"],
+			"mtu":            1420,
+			"name":           "managed-wireguard-client",
+		},
+		"Client WireGuard": {
+			"Class": "almagest/WireGuard",
+			"Pos":   "{\"x\":523,\"y\":99}",
+			"Links": ["Network -> [Base Device Network] Network"],
+			"listenPort":       25290,
+			"ownedIPs":         "10.229.0.1/32",
+			"privateKeySecret": "managed-wireguard-client-private-key",
+		},
+		"Base Device Network": {
+			"Class":        "almagest/MockNetwork",
+			"Pos":          "{\"x\":731,\"y\":101}",
+		},
+		"Client Peer Controller": {
+			"Class": "almagest/WGConfig",
+			"Pos":   "{\"x\":257,\"y\":231}",
+			"Links": [
+				"WireGuard -> [Client WireGuard] WGCtrl",
+				"Network -> [Managed Peer Transport] Network",
+			],
+			"peers": [{
+				"allowedIPs": "10.229.0.2/32",
+				"endpoint":                    "127.0.0.1:25291",
+				"id":                          "server",
+				"persistentKeepaliveInterval": 1,
+				"publicKey":                   "CmvQhZU+cJ7JGJ2YBnrg239Mj5xz4NYUa5BYC4sP3RY=",
+			}],
+		},
+		"Managed Peer Transport": {
+			"Class":        "almagest/MockNetwork",
+			"Pos":          "{\"x\":742,\"y\":334}",
+		},
+		"Server WireGuard": {
+			"Class": "almagest/WireGuard",
+			"Pos":   "{\"x\":490,\"y\":430}",
+			"Links": ["Network -> [Managed Peer Transport] Network"],
+			"listenPort":       25291,
+			"ownedIPs":         "10.229.0.2/32",
+			"peers": [{
+				"allowedIPs": "10.229.0.1/32",
+				"endpoint":                    "127.0.0.1:25290",
+				"id":                          "client",
+				"persistentKeepaliveInterval": 1,
+				"publicKey":                   "WFhQHwHmdVKipWaRKpLnK/BZW8z214mFZpRhsp1wz0Y=",
+			}],
+			"privateKeySecret": "managed-wireguard-server-private-key",
+		},
+		"Server IP Stack": {
+			"Class":          "almagest/VTun",
+			"Pos":            "{\"x\":245,\"y\":430}",
+			"Links":          ["Tun -> [Server WireGuard] Tun"],
+			"mtu":            1420,
+			"name":           "managed-wireguard-server",
+		},
+		"HTTP Server": {
+			"Class":    "almagest/HttpServer",
+			"Pos":      "{\"x\":20,\"y\":430}",
+			"Links":    ["Network -> [Server IP Stack] Network"],
+			"host":     "10.229.0.2",
+			"response": "Response through a WGConfig-owned peer",
+		},
+	},
+}

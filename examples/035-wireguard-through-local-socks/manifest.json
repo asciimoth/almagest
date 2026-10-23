@@ -1,0 +1,5 @@
+{
+  "format": 1,
+  "name": "Access a WireGuard network through local SOCKS",
+  "comment": "Reach an HTTP server in an isolated WireGuard network from a host application through a local SOCKS proxy."
+}

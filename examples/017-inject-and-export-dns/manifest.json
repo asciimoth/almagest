@@ -1,0 +1,5 @@
+{
+  "format": 1,
+  "name": "Inject and export DNS",
+  "comment": "Add DNS to a Network, then export the Network resolver as DNS again."
+}

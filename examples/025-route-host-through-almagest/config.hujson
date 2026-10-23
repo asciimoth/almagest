@@ -1,0 +1,33 @@
+// Route the host through Almagest captures a narrow test range from host
+// applications.
+// DefaultTun creates the system default TUN, applies host routes, and provides
+// system DNS from its separate DNS link.
+// This example needs platform TUN support and sufficient privileges. Keep an
+// admin terminal open; unload the example or stop the daemon to recover.
+// Inspect Default TUN's Effective section, then access an address in
+// 192.0.2.0/24 and inspect the daemon logs. Do not add a default route until
+// the path is tested.
+{
+	"nodes": {
+		"Default TUN": {
+			"Class":     "almagest/DefaultTun",
+			"Pos":       "{\"x\":60,\"y\":175}",
+			"Links":     ["Tun -> [Flow Converter] Tun", "DNS -> [Outbound DNS] DNS"],
+			"tunAddrs":  "198.18.225.1/32",
+			"tunRoutes": "192.0.2.0/24",
+		},
+		"Flow Converter": {
+			"Class": "almagest/Spoofer",
+			"Pos":   "{\"x\":335,\"y\":125}",
+			"Links": ["Network -> [Outbound Network] Network"],
+		},
+		"Outbound Network": {
+			"Class": "almagest/OutNetwork",
+			"Pos":   "{\"x\":600,\"y\":125}",
+		},
+		"Outbound DNS": {
+			"Class": "almagest/OutDns",
+			"Pos":   "{\"x\":335,\"y\":285}",
+		},
+	},
+}

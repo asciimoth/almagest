@@ -1,0 +1,5 @@
+{
+  "format": 1,
+  "name": "Strip TUN configuration",
+  "comment": "Pass packets while blocking MTU and other configuration suggestions on a TUN path."
+}

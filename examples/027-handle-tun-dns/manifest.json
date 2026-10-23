@@ -1,0 +1,5 @@
+{
+  "format": 1,
+  "name": "Handle DNS packets from a TUN",
+  "comment": "Split UDP DNS packets from a host TUN into a DNS resolver chain and forward other traffic through Spoofer."
+}

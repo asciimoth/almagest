@@ -1,0 +1,44 @@
+// Route DNS questions selects a resolver from the first DNS question or
+// rejects it.
+// DnsRouter evaluates its rules in order and sends a request to one slot or
+// DROP.
+// Send all three queries and compare the default answer, routed answer, and
+// failed drop.
+{
+	"nodes": {
+		"Default Query": {
+			"Class": "almagest/DnsQuery",
+			"Pos":   "{\"x\":19,\"y\":135}",
+			"Links": ["DNS -> [DNS Router] DNS"],
+			"name":  "default.route.test.",
+		},
+		"Routed Query": {
+			"Class": "almagest/DnsQuery",
+			"Pos":   "{\"x\":18,\"y\":445}",
+			"Links": ["DNS -> [DNS Router] DNS"],
+			"name":  "special.route.test.",
+		},
+		"Dropped Query": {
+			"Class": "almagest/DnsQuery",
+			"Pos":   "{\"x\":18,\"y\":298}",
+			"Links": ["DNS -> [DNS Router] DNS"],
+			"name":  "blocked.route.test.",
+		},
+		"DNS Router": {
+			"Class": "almagest/DnsRouter",
+			"Pos":   "{\"x\":286,\"y\":275}",
+			"Links": ["slot 1 -> [Default DNS] DNS", "slot 2 -> [Special DNS] DNS"],
+			"rules": "ADDR_S blocked.route.test.\nDROP\n\nADDR_S special.route.test.\nBACKEND slot 2\n\nTRUE\nBACKEND slot 1",
+		},
+		"Default DNS": {
+			"Class":   "almagest/StaticDns",
+			"Pos":     "{\"x\":581,\"y\":166}",
+			"records": "default.route.test A 192.0.2.16",
+		},
+		"Special DNS": {
+			"Class":   "almagest/StaticDns",
+			"Pos":     "{\"x\":577,\"y\":389}",
+			"records": "special.route.test A 198.51.100.16",
+		},
+	},
+}

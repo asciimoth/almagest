@@ -1,0 +1,92 @@
+// Carry WireGuard over SOCKS sends both WireGuard UDP transports through one
+// SOCKS5 server in GOST mode.
+// The SOCKS proxy carries the tunnel packets. It is not a proxy endpoint for
+// the HTTP client. The bundled database contains fixed lab-only keys.
+// Send the HTTP request. Then change either SOCKS client URL to omit ?gost and
+// observe why WireGuard needs a fixed UDP transport port.
+{
+	"nodes": {
+		"HTTP Client": {
+			"Class":     "almagest/HttpClient",
+			"Pos":       "{\"x\":21,\"y\":95}",
+			"Links":     ["Network -> [Client IP Stack] Network"],
+			"url":       "http://10.236.0.2:8080/",
+		},
+		"Client IP Stack": {
+			"Class":          "almagest/VTun",
+			"Pos":            "{\"x\":216,\"y\":95}",
+			"Links":          ["Tun -> [Client WireGuard] Tun"],
+			"mtu":            1420,
+			"name":           "wireguard-over-socks-client",
+		},
+		"Client WireGuard": {
+			"Class": "almagest/WireGuard",
+			"Pos":   "{\"x\":485,\"y\":95}",
+			"Links": ["Network -> [Client SOCKS Transport] Network"],
+			"listenPort":       25360,
+			"ownedIPs":         "10.236.0.1/32",
+			"peers": [{
+				"allowedIPs": "10.236.0.2/32",
+				"endpoint":                    "127.0.0.1:25361",
+				"id":                          "server",
+				"persistentKeepaliveInterval": 1,
+				"publicKey":                   "TNKMKCuUSLleV2ACafE0PAm9G4gRpvxcrrBYyLCzDGc=",
+			}],
+			"privateKeySecret": "wireguard-lab-client-private-key",
+		},
+		"Client SOCKS Transport": {
+			"Class":          "almagest/SocksClient",
+			"Pos":            "{\"x\":680,\"y\":96}",
+			"Links":          ["out -> [SOCKS Carrier] Network"],
+			"proxyURL":       "socks5://127.0.0.1:1080?gost",
+		},
+		"Server IP Stack": {
+			"Class":          "almagest/VTun",
+			"Pos":            "{\"x\":219,\"y\":232}",
+			"Links":          ["Tun -> [Server WireGuard] Tun"],
+			"mtu":            1420,
+			"name":           "wireguard-over-socks-server",
+		},
+		"Server WireGuard": {
+			"Class": "almagest/WireGuard",
+			"Pos":   "{\"x\":487,\"y\":235}",
+			"Links": ["Network -> [Server SOCKS Transport] Network"],
+			"listenPort":       25361,
+			"ownedIPs":         "10.236.0.2/32",
+			"peers": [{
+				"allowedIPs": "10.236.0.1/32",
+				"endpoint":                    "127.0.0.1:25360",
+				"id":                          "client",
+				"persistentKeepaliveInterval": 1,
+				"publicKey":                   "r1hjSKSF8aTbTdAzdQZe1FeGggn33Vcyg90mubw7JnE=",
+			}],
+			"privateKeySecret": "wireguard-lab-server-private-key",
+		},
+		"Server SOCKS Transport": {
+			"Class":          "almagest/SocksClient",
+			"Pos":            "{\"x\":682,\"y\":235}",
+			"Links":          ["out -> [SOCKS Carrier] Network"],
+			"proxyURL":       "socks5://127.0.0.1:1080?gost",
+		},
+		"HTTP Server": {
+			"Class":    "almagest/HttpServer",
+			"Pos":      "{\"x\":24,\"y\":233}",
+			"Links":    ["Network -> [Server IP Stack] Network"],
+			"host":     "10.236.0.2",
+			"response": "Response through WireGuard over SOCKS",
+		},
+		"SOCKS Carrier": {
+			"Class":        "almagest/MockNetwork",
+			"Pos":          "{\"x\":1033,\"y\":169}",
+		},
+		"SOCKS Server": {
+			"Class": "almagest/SocksServer",
+			"Pos":   "{\"x\":766,\"y\":357}",
+			"Links": ["listen -> [SOCKS Carrier] Network", "proxy -> [Internet Network] Network"],
+		},
+		"Internet Network": {
+			"Class": "almagest/OutNetwork",
+			"Pos":   "{\"x\":1034,\"y\":310}",
+		},
+	},
+}

@@ -1,0 +1,27 @@
+// Check the public address on a schedule sends a request through the selected
+// Network every minute.
+// TimeTrigger emits events on an interval or daily schedule. FetchAddr reports
+// the public IP and approximate provider location after each check.
+// The schedule does not run on startup. Use Check on Public Address for an
+// immediate request, and inspect its outputs before you connect a VPN or Tor
+// Network instead.
+{
+	"nodes": {
+		"One Minute Timer": {
+			"Class":       "almagest/TimeTrigger",
+			"Pos":         "{\"x\":30,\"y\":180}",
+			"Links":       ["Trigger -> [Public Address] Check"],
+			"interval":    "1m",
+			"mode":        "interval",
+		},
+		"Public Address": {
+			"Class":    "almagest/FetchAddr",
+			"Pos":      "{\"x\":300,\"y\":180}",
+			"Links":    ["Network -> [Outbound Network] Network"],
+		},
+		"Outbound Network": {
+			"Class": "almagest/OutNetwork",
+			"Pos":   "{\"x\":570,\"y\":180}",
+		},
+	},
+}

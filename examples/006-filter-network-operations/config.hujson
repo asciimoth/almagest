@@ -1,0 +1,73 @@
+// Filter network operations combines menu rules and connected object policies.
+// NetworkFirewall applies the combined policy to TCP and UDP operations.
+// ObjectConstant supplies one structured policy that can be reused or
+// disconnected.
+// Disconnect either policy object, then run its blocked client again.
+{
+	"nodes": {
+		"Allowed Client": {
+			"Class":     "almagest/HttpClient",
+			"Pos":       "{\"x\":91,\"y\":66}",
+			"Links":     ["Network -> [Network Firewall] Network"],
+			"url":       "http://allowed.firewall.test:8080/",
+		},
+		"Menu-blocked Client": {
+			"Class":     "almagest/HttpClient",
+			"Pos":       "{\"x\":-102,\"y\":151}",
+			"Links":     ["Network -> [Network Firewall] Network"],
+			"url":       "http://blocked.firewall.test:8080/",
+		},
+		"Host-policy-blocked Client": {
+			"Class":     "almagest/HttpClient",
+			"Pos":       "{\"x\":-157,\"y\":299}",
+			"Links":     ["Network -> [Network Firewall] Network"],
+			"url":       "http://host-policy.firewall.test:8080/",
+		},
+		"Scoped-policy-blocked Client": {
+			"Class":     "almagest/HttpClient",
+			"Pos":       "{\"x\":-119,\"y\":435}",
+			"Links":     ["Network -> [Network Firewall] Network"],
+			"url":       "http://scoped-policy.firewall.test:8080/",
+		},
+		"Network Firewall": {
+			"Class": "almagest/NetworkFirewall",
+			"Pos":   "{\"x\":490,\"y\":285}",
+			"Links": ["Network -> [Mock Network] Network"],
+			"rules": {"exclude": [
+				{"hosts": ["blocked.firewall.test"], "network": "tcp", "ports": [8080]},
+			]},
+		},
+		"Host Policy": {
+			"Class": "pasta/ObjectConstant",
+			"Pos":   "{\"x\":164,\"y\":503}",
+			"Links": ["output -> [Network Firewall] Config"],
+			"value": {"exclude": [{"hosts": ["host-policy.firewall.test"]}]},
+		},
+		"Scoped Policy": {
+			"Class": "pasta/ObjectConstant",
+			"Pos":   "{\"x\":166,\"y\":581}",
+			"Links": ["output -> [Network Firewall] Config"],
+			"value": {"exclude": [{
+				"hosts":   ["scoped-policy.firewall.test"],
+				"network": "tcp",
+				"ports":   [8080],
+			}]},
+		},
+		"Mock Network": {
+			"Class":        "almagest/MockNetwork",
+			"Pos":          "{\"x\":849,\"y\":429}",
+		},
+		"Http Server": {
+			"Class":    "almagest/HttpServer",
+			"Pos":      "{\"x\":542,\"y\":581}",
+			"Links":    ["Network -> [Mock Network] Network"],
+			"response": "The firewall allowed this request",
+		},
+		"Response": {
+			"Class": "pasta/StringConstant",
+			"Pos":   "{\"x\":182,\"y\":667}",
+			"Links": ["output -> [Http Server] Response"],
+			"value": "The firewall allowed this request",
+		},
+	},
+}

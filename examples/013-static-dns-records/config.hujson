@@ -1,0 +1,25 @@
+// Static DNS records compares a configured answer with a missing name.
+// StaticDns serves fixed records. DnsQuery sends a DNS question and shows the
+// complete response.
+// Select Send request on both query nodes and compare NOERROR with NXDOMAIN.
+{
+	"nodes": {
+		"Configured Query": {
+			"Class": "almagest/DnsQuery",
+			"Pos":   "{\"x\":75,\"y\":160}",
+			"Links": ["DNS -> [Static DNS] DNS"],
+			"name":  "service.static.test.",
+		},
+		"Missing Query": {
+			"Class": "almagest/DnsQuery",
+			"Pos":   "{\"x\":75,\"y\":330}",
+			"Links": ["DNS -> [Static DNS] DNS"],
+			"name":  "missing.static.test.",
+		},
+		"Static DNS": {
+			"Class":   "almagest/StaticDns",
+			"Pos":     "{\"x\":360,\"y\":245}",
+			"records": "service.static.test A 192.0.2.13",
+		},
+	},
+}

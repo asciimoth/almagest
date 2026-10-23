@@ -1,0 +1,5 @@
+{
+  "format": 1,
+  "name": "Route the host through Almagest",
+  "comment": "Route one narrow host destination range through Almagest and provide host DNS through a separate resolver link."
+}

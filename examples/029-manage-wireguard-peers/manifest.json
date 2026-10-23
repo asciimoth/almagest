@@ -1,0 +1,5 @@
+{
+  "format": 1,
+  "name": "Manage WireGuard peers separately",
+  "comment": "Give one WireGuard peer its own controller and private UDP transport without changing the base device."
+}

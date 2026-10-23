@@ -1,0 +1,5 @@
+{
+  "format": 1,
+  "name": "Mesh names with fallback",
+  "comment": "Resolve a direct mesh address and forward an ordinary name to fallback DNS."
+}

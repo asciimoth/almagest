@@ -1,0 +1,87 @@
+// Select between Networks switches two HTTP clients between two isolated
+// networks.
+// BoolConstant sets the choice. Select chooses an input, and SelectOut chooses
+// an output.
+// Change Choice to true. The clients exchange the server responses that they
+// receive.
+{
+	"nodes": {
+		"Choice": {
+			"Class": "pasta/BoolConstant",
+			"Pos":   "{\"x\":73,\"y\":317}",
+			"Links": [
+				"output -> [Route Client A] Selector",
+				"output -> [Route Client B] Selector",
+				"output -> [Select Network A] Selector",
+				"output -> [Select Network B] Selector",
+			],
+			"value": true,
+		},
+		"Client A": {
+			"Class":     "almagest/HttpClient",
+			"Pos":       "{\"x\":70,\"y\":152}",
+			"Links":     ["Network -> [Route Client A] In"],
+		},
+		"Client B": {
+			"Class":     "almagest/HttpClient",
+			"Pos":       "{\"x\":70,\"y\":452}",
+			"Links":     ["Network -> [Route Client B] In"],
+		},
+		"Route Client A": {
+			"Class":   "pasta/SelectOut",
+			"Primary": "almagest/network",
+			"Pos":     "{\"x\":330,\"y\":154}",
+			"Links":   ["Out 0 -> [Select Network A] In 0", "Out 1 -> [Select Network B] In 1"],
+		},
+		"Route Client B": {
+			"Class":   "pasta/SelectOut",
+			"Primary": "almagest/network",
+			"Pos":     "{\"x\":330,\"y\":452}",
+			"Links":   ["Out 0 -> [Select Network B] In 0", "Out 1 -> [Select Network A] In 1"],
+		},
+		"Select Network A": {
+			"Class":   "pasta/Select",
+			"Primary": "almagest/network",
+			"Pos":     "{\"x\":610,\"y\":154}",
+			"Links":   ["Out -> [Network A] Network"],
+		},
+		"Select Network B": {
+			"Class":   "pasta/Select",
+			"Primary": "almagest/network",
+			"Pos":     "{\"x\":610,\"y\":452}",
+			"Links":   ["Out -> [Network B] Network"],
+		},
+		"Network A": {
+			"Class":        "almagest/MockNetwork",
+			"Pos":          "{\"x\":859,\"y\":132}",
+		},
+		"Network B": {
+			"Class":        "almagest/MockNetwork",
+			"Pos":          "{\"x\":865,\"y\":452}",
+		},
+		"Server A": {
+			"Class":    "almagest/HttpServer",
+			"Pos":      "{\"x\":605,\"y\":13}",
+			"Links":    ["Network -> [Network A] Network"],
+			"response": "Response from Network A",
+		},
+		"Response A": {
+			"Class": "pasta/StringConstant",
+			"Pos":   "{\"x\":347,\"y\":13}",
+			"Links": ["output -> [Server A] Response"],
+			"value": "Response from Network A",
+		},
+		"Server B": {
+			"Class":    "almagest/HttpServer",
+			"Pos":      "{\"x\":607,\"y\":589}",
+			"Links":    ["Network -> [Network B] Network"],
+			"response": "Response from Network B",
+		},
+		"Response B": {
+			"Class": "pasta/StringConstant",
+			"Pos":   "{\"x\":357,\"y\":588}",
+			"Links": ["output -> [Server B] Response"],
+			"value": "Response from Network B",
+		},
+	},
+}

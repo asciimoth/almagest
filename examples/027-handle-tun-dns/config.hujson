@@ -1,0 +1,64 @@
+// Handle DNS packets from a TUN separates DNS packets from other host traffic.
+// Tun2Dns accepts raw UDP DNS queries from a TUN, resolves them through a DNS
+// link, and writes response packets back to the TUN. It does not accept TCP
+// DNS.
+// This example needs platform TUN support and sufficient privileges. Run dig
+// @10.227.0.53 service.tun-dns.test A, then run curl http://10.227.0.10:8080/.
+{
+	"nodes": {
+		"Host TUN": {
+			"Class":     "almagest/Tun",
+			"Pos":       "{\"x\":30,\"y\":240}",
+			"Links":     ["Tun -> [Packet Router] Tun"],
+			"tunAddrs":  "10.227.0.1/24",
+			"tunRoutes": "10.227.0.0/24",
+		},
+		"Packet Router": {
+			"Class":                "almagest/TunSplitter",
+			"Pos":                  "{\"x\":245,\"y\":240}",
+			"Links":                ["slot 1 -> [DNS Handler] Tun", "slot 2 -> [Flow Converter] Tun"],
+			"rules":                "UDP\nPORT 53\nAND\nSLOT 1\n\nTRUE\nSLOT 2",
+		},
+		"DNS Cache": {
+			"Class":          "almagest/DnsCache",
+			"Pos":            "{\"x\":710,\"y\":80}",
+			"Links":          ["DNS -> [DNS Fallback] DNS"],
+			"storageName":    "example-tun-dns",
+		},
+		"DNS Fallback": {
+			"Class":            "almagest/DnsFallback",
+			"Pos":              "{\"x\":905,\"y\":80}",
+			"Links":            ["slot 1 -> [Static DNS] DNS", "slot 2 -> [Outbound DNS] DNS"],
+		},
+		"Static DNS": {
+			"Class":   "almagest/StaticDns",
+			"Pos":     "{\"x\":1236,\"y\":31}",
+			"records": "service.tun-dns.test A 10.227.0.10",
+		},
+		"Outbound DNS": {
+			"Class": "almagest/OutDns",
+			"Pos":   "{\"x\":1239,\"y\":143}",
+		},
+		"Flow Converter": {
+			"Class":                "almagest/Spoofer",
+			"Pos":                  "{\"x\":500,\"y\":365}",
+			"Links":                ["Network -> [Target Network] Network"],
+		},
+		"Target Network": {
+			"Class":        "almagest/MockNetwork",
+			"Pos":          "{\"x\":750,\"y\":365}",
+		},
+		"HTTP Server": {
+			"Class":    "almagest/HttpServer",
+			"Pos":      "{\"x\":500,\"y\":500}",
+			"Links":    ["Network -> [Target Network] Network"],
+			"host":     "10.227.0.10",
+			"response": "Response through the non-DNS TUN path",
+		},
+		"DNS Handler": {
+			"Class":            "almagest/Tun2Dns",
+			"Pos":              "{\"x\":500,\"y\":80}",
+			"Links":            ["DNS -> [DNS Cache] DNS"],
+		},
+	},
+}

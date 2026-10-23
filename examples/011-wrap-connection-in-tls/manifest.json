@@ -1,0 +1,5 @@
+{
+  "format": 1,
+  "name": "Wrap a connection in TLS",
+  "comment": "Add TLS to a plaintext HTTP connection before it reaches a TLS endpoint."
+}

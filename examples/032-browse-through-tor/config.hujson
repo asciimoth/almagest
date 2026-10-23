@@ -1,0 +1,39 @@
+// Browse through Tor compares the public address and approximate location seen
+// through a Tor client Network with those seen through the direct Network.
+// TorDriver starts an isolated Tor process and supplies TCP and DNS through
+// each configured client Network.
+// Tor is disabled until the daemon has an approved Tor program. Start the
+// daemon with --discover-system-programs, or configure the protected Tor
+// program, then enable Tor, wait for bootstrap, and use Check on both
+// FetchAddr nodes.
+{
+	"nodes": {
+		"Tor Public Address": {
+			"Class":    "almagest/FetchAddr",
+			"Pos":      "{\"x\":31,\"y\":110}",
+			"Links":    ["Network -> [Tor Client] Network default"],
+		},
+		"Tor Client": {
+			"Class": "almagest/TorDriver",
+			"Pos":   "{\"x\":244,\"y\":109}",
+			"Links": ["out -> [Tor Outbound Network] Network"],
+			"configuration": {
+				"enabled":  false,
+				"networks": [{"circuits": "connection", "name": "default"}],
+			},
+		},
+		"Tor Outbound Network": {
+			"Class": "almagest/OutNetwork",
+			"Pos":   "{\"x\":470,\"y\":108}",
+		},
+		"Direct Public Address": {
+			"Class":    "almagest/FetchAddr",
+			"Pos":      "{\"x\":30,\"y\":351}",
+			"Links":    ["Network -> [Direct Network] Network"],
+		},
+		"Direct Network": {
+			"Class": "almagest/OutNetwork",
+			"Pos":   "{\"x\":248,\"y\":350}",
+		},
+	},
+}

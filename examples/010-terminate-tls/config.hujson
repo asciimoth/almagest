@@ -1,0 +1,39 @@
+// Terminate TLS accepts HTTPS and sends plaintext HTTP to an isolated service.
+// TlsTerminator presents a certificate from the built-in CA and removes the
+// TLS layer.
+// Select Send request on HTTPS Client, then inspect its status and response.
+{
+	"nodes": {
+		"HTTPS Client": {
+			"Class":     "almagest/HttpClient",
+			"Pos":       "{\"x\":80,\"y\":220}",
+			"Links":     ["Network -> [TLS Terminator] Network"],
+			"url":       "https://plain-service.test:8080/",
+		},
+		"TLS Terminator": {
+			"Class":             "almagest/TlsTerminator",
+			"Pos":               "{\"x\":275,\"y\":221}",
+			"Links":             ["Network -> [Mock Network] Network"],
+			"destinationRemaps": "[]",
+			"leafTTLSeconds":    300,
+			"serverAlpn":        "http/1.1",
+			"sniffBufferSize":   8192,
+		},
+		"Mock Network": {
+			"Class":        "almagest/MockNetwork",
+			"Pos":          "{\"x\":488,\"y\":302}",
+		},
+		"HTTP Server": {
+			"Class":    "almagest/HttpServer",
+			"Pos":      "{\"x\":271,\"y\":371}",
+			"Links":    ["Network -> [Mock Network] Network"],
+			"response": "TLS was terminated before this HTTP service",
+		},
+		"Response": {
+			"Class": "pasta/StringConstant",
+			"Pos":   "{\"x\":-61,\"y\":370}",
+			"Links": ["output -> [HTTP Server] Response"],
+			"value": "TLS was terminated before this HTTP service",
+		},
+	},
+}

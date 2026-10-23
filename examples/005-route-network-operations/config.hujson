@@ -1,0 +1,66 @@
+// Route network operations sends requests to a selected backend or rejects
+// them.
+// NetworkRouter evaluates rules in order and sends each operation to a slot or
+// DROP.
+// Change a client hostname or reorder the rules, then inspect all three client
+// outputs.
+{
+	"nodes": {
+		"Routed Client": {
+			"Class":     "almagest/HttpClient",
+			"Pos":       "{\"x\":21,\"y\":414}",
+			"Links":     ["Network -> [Network Router] Network"],
+			"url":       "http://routed.example:8080/",
+		},
+		"Default Client": {
+			"Class":     "almagest/HttpClient",
+			"Pos":       "{\"x\":19,\"y\":116}",
+			"Links":     ["Network -> [Network Router] Network"],
+			"url":       "http://default.example:8080/",
+		},
+		"Dropped Client": {
+			"Class":     "almagest/HttpClient",
+			"Pos":       "{\"x\":19,\"y\":264}",
+			"Links":     ["Network -> [Network Router] Network"],
+			"url":       "http://blocked.example:8080/",
+		},
+		"Network Router": {
+			"Class":               "almagest/NetworkRouter",
+			"Pos":                 "{\"x\":350,\"y\":250}",
+			"Links":               ["slot 1 -> [Default Network] Network", "slot 2 -> [Routed Network] Network"],
+			"rules":               "# Send one hostname to slot 2.\nDIAL\nADDR_S routed.example\nAND\nSLOT 2\n\n# Reject this hostname.\nDIAL\nADDR_S blocked.example\nAND\nDROP\n\n# Slot 1 is the explicit default.\nTRUE\nSLOT 1",
+		},
+		"Default Network": {
+			"Class":        "almagest/MockNetwork",
+			"Pos":          "{\"x\":743,\"y\":193}",
+		},
+		"Routed Network": {
+			"Class":        "almagest/MockNetwork",
+			"Pos":          "{\"x\":745,\"y\":309}",
+		},
+		"Default Server": {
+			"Class":    "almagest/HttpServer",
+			"Pos":      "{\"x\":562,\"y\":119}",
+			"Links":    ["Network -> [Default Network] Network"],
+			"response": "Response from the default slot",
+		},
+		"Default Response": {
+			"Class": "pasta/StringConstant",
+			"Pos":   "{\"x\":269,\"y\":55}",
+			"Links": ["output -> [Default Server] Response"],
+			"value": "Response from the default slot",
+		},
+		"Routed Server": {
+			"Class":    "almagest/HttpServer",
+			"Pos":      "{\"x\":562,\"y\":391}",
+			"Links":    ["Network -> [Routed Network] Network"],
+			"response": "Response from routed slot 2",
+		},
+		"Routed Response": {
+			"Class": "pasta/StringConstant",
+			"Pos":   "{\"x\":283,\"y\":461}",
+			"Links": ["output -> [Routed Server] Response"],
+			"value": "Response from routed slot 2",
+		},
+	},
+}

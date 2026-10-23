@@ -1,0 +1,5 @@
+{
+  "format": 1,
+  "name": "Filter IP packets",
+  "comment": "Allow one HTTP port and block another port on a TUN packet path."
+}

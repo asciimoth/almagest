@@ -1,0 +1,35 @@
+// DNS client and server carries a DNS request over an isolated Network.
+// DnsClient sends DNS packets through a Network. DnsServer receives UDP DNS
+// packets and calls a resolver.
+// Select Send request and inspect the answer from the static resolver behind
+// the server.
+{
+	"nodes": {
+		"DNS Query": {
+			"Class": "almagest/DnsQuery",
+			"Pos":   "{\"x\":35,\"y\":241}",
+			"Links": ["DNS -> [DNS Client] DNS"],
+			"name":  "service.transport.test.",
+		},
+		"DNS Client": {
+			"Class":            "almagest/DnsClient",
+			"Pos":              "{\"x\":238,\"y\":241}",
+			"Links":            ["Network -> [DNS Transport Network] Network"],
+			"servers":          ["udp://127.0.0.1:5353"],
+		},
+		"DNS Server": {
+			"Class":            "almagest/DnsServer",
+			"Pos":              "{\"x\":176,\"y\":360}",
+			"Links":            ["Network -> [DNS Transport Network] Network", "DNS -> [Static DNS] DNS"],
+		},
+		"DNS Transport Network": {
+			"Class":        "almagest/MockNetwork",
+			"Pos":          "{\"x\":471,\"y\":285}",
+		},
+		"Static DNS": {
+			"Class":   "almagest/StaticDns",
+			"Pos":     "{\"x\":472,\"y\":412}",
+			"records": "service.transport.test A 192.0.2.15",
+		},
+	},
+}

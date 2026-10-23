@@ -288,12 +288,13 @@ build: certcat-generate build-web
 	gcc -static-pie -O2 -D_FORTIFY_SOURCE=3 -fstack-protector-strong -fstack-clash-protection -fno-strict-overflow -Wformat=2 -Wall -Wextra -Werror -Wl,-z,relro,-z,now,-z,noexecstack -o ./almagest-subprogram-launcher bin/native/subprogram/launcher.c $(pkg-config --cflags --libs libseccomp)
 
 # Run the daemon directly with local development config. Pass --experimental
-# to enable experimental nodes.
+# to enable experimental nodes. Use -l or --lvl to set the log level.
 daemon *flags: build
   ./scripts/run-daemon.sh {{quote(flags)}}
 
 # Run the daemon as root in isolated mode with local config. The runner stages
-# role-owned state and copies mutable config back after the daemon stops.
+# role-owned state and copies mutable config back after the daemon stops. Use
+# -l or --lvl to set the log level.
 daemon-sudo *flags: build-isolation-linux
   ./scripts/run-daemon.sh --sudo {{quote(flags)}}
 

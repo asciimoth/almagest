@@ -1,0 +1,5 @@
+{
+  "format": 1,
+  "name": "Browse through Tor",
+  "comment": "Compare the public addresses and approximate locations visible through direct and Tor client Networks."
+}

@@ -1,0 +1,156 @@
+// Split TUN traffic by advertised routes sends each destination to a fallback
+// path or one of two WireGuard tunnels.
+// AutoTunSplitter learns routes from its output slots, uses longest-prefix
+// matching, and sends unmatched packets to slot 1. Unlike TunSplitter, it has
+// no explicit packet rules.
+// Each WireGuard client advertises its allowed-IP route and owned source
+// address. The bundled database stores public, lab-only keys as named secrets.
+// Send all three HTTP requests. Then change a client peer allowed IP and
+// observe that the applicable route moves or falls back automatically.
+{
+	"nodes": {
+		"Fallback Client": {
+			"Class":     "almagest/HttpClient",
+			"Pos":       "{\"x\":14,\"y\":-42}",
+			"Links":     ["Network -> [Client IP Stack] Network"],
+			"url":       "http://10.230.99.10:8080/",
+		},
+		"First Tunnel Client": {
+			"Class":     "almagest/HttpClient",
+			"Pos":       "{\"x\":-50,\"y\":104}",
+			"Links":     ["Network -> [Client IP Stack] Network"],
+			"url":       "http://10.230.1.10:8080/",
+		},
+		"Second Tunnel Client": {
+			"Class":     "almagest/HttpClient",
+			"Pos":       "{\"x\":-15,\"y\":248}",
+			"Links":     ["Network -> [Client IP Stack] Network"],
+			"url":       "http://10.230.2.10:8080/",
+		},
+		"Client IP Stack": {
+			"Class":          "almagest/VTun",
+			"Pos":            "{\"x\":250,\"y\":105}",
+			"Links":          ["Tun -> [Automatic Route Splitter] Tun"],
+			"mtu":            1420,
+			"name":           "automatic-route-client",
+		},
+		"Automatic Route Splitter": {
+			"Class": "almagest/AutoTunSplitter",
+			"Pos":   "{\"x\":495,\"y\":105}",
+			"Links": [
+				"slot 1 -> [Fallback Flow Converter] Tun",
+				"slot 2 -> [First Client WireGuard] Tun",
+				"slot 3 -> [Second Client WireGuard] Tun",
+			],
+		},
+		"Fallback Flow Converter": {
+			"Class":                "almagest/Spoofer",
+			"Pos":                  "{\"x\":786,\"y\":-72}",
+			"Links":                ["Network -> [Fallback Network] Network"],
+			"mtu":                  1420,
+		},
+		"Fallback Network": {
+			"Class":        "almagest/MockNetwork",
+			"Pos":          "{\"x\":1038,\"y\":-18}",
+		},
+		"Fallback Server": {
+			"Class":    "almagest/HttpServer",
+			"Pos":      "{\"x\":849,\"y\":39}",
+			"Links":    ["Network -> [Fallback Network] Network"],
+			"host":     "10.230.99.10",
+			"response": "Response from fallback slot 1",
+		},
+		"First Client WireGuard": {
+			"Class": "almagest/WireGuard",
+			"Pos":   "{\"x\":825,\"y\":184}",
+			"Links": ["Network -> [Encrypted Carrier] Network"],
+			"listenPort":       25301,
+			"ownedIPs":         "10.230.1.1/32",
+			"peers": [{
+				"allowedIPs": "10.230.1.0/24",
+				"endpoint":                    "127.0.0.1:25302",
+				"id":                          "first-server",
+				"persistentKeepaliveInterval": 1,
+				"publicKey":                   "h0iR3Uax9+EGERzAunpM18nRuizF3HptkO5zimXh608=",
+			}],
+			"privateKeySecret": "first-route-client-private-key",
+		},
+		"First Server WireGuard": {
+			"Class": "almagest/WireGuard",
+			"Pos":   "{\"x\":827,\"y\":475}",
+			"Links": ["Network -> [Encrypted Carrier] Network"],
+			"listenPort":       25302,
+			"ownedIPs":         "10.230.1.10/32",
+			"peers": [{
+				"allowedIPs": "10.230.1.1/32",
+				"endpoint":                    "127.0.0.1:25301",
+				"id":                          "first-client",
+				"persistentKeepaliveInterval": 1,
+				"publicKey":                   "F1Gy6ZcPDB3AI+o7wFhEimdIvQzkGXuipsw6sL9lUQo=",
+			}],
+			"privateKeySecret": "first-route-server-private-key",
+		},
+		"First Server IP Stack": {
+			"Class":          "almagest/VTun",
+			"Pos":            "{\"x\":546,\"y\":474}",
+			"Links":          ["Tun -> [First Server WireGuard] Tun"],
+			"mtu":            1420,
+			"name":           "first-route-server",
+		},
+		"First Server": {
+			"Class":    "almagest/HttpServer",
+			"Pos":      "{\"x\":299,\"y\":475}",
+			"Links":    ["Network -> [First Server IP Stack] Network"],
+			"host":     "10.230.1.10",
+			"response": "Response through the first advertised route",
+		},
+		"Second Client WireGuard": {
+			"Class": "almagest/WireGuard",
+			"Pos":   "{\"x\":823,\"y\":323}",
+			"Links": ["Network -> [Encrypted Carrier] Network"],
+			"listenPort":       25303,
+			"ownedIPs":         "10.230.2.1/32",
+			"peers": [{
+				"allowedIPs": "10.230.2.0/24",
+				"endpoint":                    "127.0.0.1:25304",
+				"id":                          "second-server",
+				"persistentKeepaliveInterval": 1,
+				"publicKey":                   "1LrH07xDrJMOS6fljG2R2Kq6RRNXGMuFhTcW6+e1g3c=",
+			}],
+			"privateKeySecret": "second-route-client-private-key",
+		},
+		"Second Server WireGuard": {
+			"Class": "almagest/WireGuard",
+			"Pos":   "{\"x\":824,\"y\":622}",
+			"Links": ["Network -> [Encrypted Carrier] Network"],
+			"listenPort":       25304,
+			"ownedIPs":         "10.230.2.10/32",
+			"peers": [{
+				"allowedIPs": "10.230.2.1/32",
+				"endpoint":                    "127.0.0.1:25303",
+				"id":                          "second-client",
+				"persistentKeepaliveInterval": 1,
+				"publicKey":                   "MS8m5rDfLDZSQkLi0o1a3JptnPQztf33EfQEaLeqWwQ=",
+			}],
+			"privateKeySecret": "second-route-server-private-key",
+		},
+		"Second Server IP Stack": {
+			"Class":          "almagest/VTun",
+			"Pos":            "{\"x\":543,\"y\":625}",
+			"Links":          ["Tun -> [Second Server WireGuard] Tun"],
+			"mtu":            1420,
+			"name":           "second-route-server",
+		},
+		"Second Server": {
+			"Class":    "almagest/HttpServer",
+			"Pos":      "{\"x\":296,\"y\":626}",
+			"Links":    ["Network -> [Second Server IP Stack] Network"],
+			"host":     "10.230.2.10",
+			"response": "Response through the second advertised route",
+		},
+		"Encrypted Carrier": {
+			"Class":        "almagest/MockNetwork",
+			"Pos":          "{\"x\":1283,\"y\":394}",
+		},
+	},
+}

@@ -1,0 +1,5 @@
+{
+  "format": 1,
+  "name": "Build a complete DNS policy chain",
+  "comment": "Resolve local, mesh, and public names through one policy chain, and share cached public answers with network routing."
+}

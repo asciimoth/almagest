@@ -1,0 +1,46 @@
+// Virtual IP stacks sends HTTP traffic between two userspace IP stacks.
+// VTun supplies a userspace Network and its IP-packet TUN. TunCopy connects
+// two TUN endpoints directly.
+// Select Send request on HTTP Client, then change either VTun address and
+// observe that the fixed route stops working.
+{
+	"nodes": {
+		"HTTP Client": {
+			"Class":     "almagest/HttpClient",
+			"Pos":       "{\"x\":45,\"y\":150}",
+			"Links":     ["Network -> [Client IP Stack] Network"],
+			"url":       "http://10.219.0.2:8080/",
+		},
+		"Client IP Stack": {
+			"Class":          "almagest/VTun",
+			"Pos":            "{\"x\":245,\"y\":151}",
+			"Links":          ["Tun -> [Direct TUN Link] TunA"],
+			"localAddrs":     "10.219.0.1/24",
+			"name":           "client-stack",
+		},
+		"Direct TUN Link": {
+			"Class": "almagest/TunCopy",
+			"Pos":   "{\"x\":496,\"y\":197}",
+		},
+		"Server IP Stack": {
+			"Class":          "almagest/VTun",
+			"Pos":            "{\"x\":240,\"y\":283}",
+			"Links":          ["Tun -> [Direct TUN Link] TunB"],
+			"localAddrs":     "10.219.0.2/24",
+			"name":           "server-stack",
+		},
+		"HTTP Server": {
+			"Class":    "almagest/HttpServer",
+			"Pos":      "{\"x\":47,\"y\":305}",
+			"Links":    ["Network -> [Server IP Stack] Network"],
+			"host":     "10.219.0.2",
+			"response": "Response across a direct TUN link",
+		},
+		"Response": {
+			"Class": "pasta/StringConstant",
+			"Pos":   "{\"x\":-251,\"y\":302}",
+			"Links": ["output -> [HTTP Server] Response"],
+			"value": "Response across a direct TUN link",
+		},
+	},
+}

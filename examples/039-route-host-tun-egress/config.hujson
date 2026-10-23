@@ -1,0 +1,157 @@
+// Route host TUN traffic through several egress paths applies one ordered
+// policy to all captured IPv4 traffic.
+// The first branch carries a private subnet as IP packets through WireGuard.
+// The second converts selected traffic to flows and sends it through SOCKS.
+// The final branch converts all other traffic and sends it directly through
+// OutNetwork.
+// This example changes the host default route and needs platform TUN support
+// and sufficient privileges. OutNetwork bypasses Default TUN and prevents an
+// egress loop. Keep an admin terminal open; unload the example or stop the
+// daemon to recover.
+// Try curl http://10.239.0.2:8080/, curl https://example.com/, dig @1.1.1.1
+// example.net A, and curl https://www.iana.org/. Inspect Packet Policy and the
+// applicable egress nodes after each command.
+{
+	"nodes": {
+		"Default TUN": {
+			"Class":     "almagest/DefaultTun",
+			"Pos":       "{\"x\":20,\"y\":260}",
+			"Links":     ["Tun -> [Packet Policy] Tun", "DNS -> [Mesh Names] DNS"],
+			"tunRoutes": "0.0.0.0/0",
+		},
+		"Packet Policy": {
+			"Class": "almagest/TunSplitter",
+			"Pos":   "{\"x\":260,\"y\":260}",
+			"Links": [
+				"slot 1 -> [Client WireGuard] Tun",
+				"slot 2 -> [SOCKS Flow Converter] Tun",
+				"slot 3 -> [Direct Flow Converter] Tun",
+			],
+			"dnsCacheStorageName":  "host-egress-dns",
+			"rules":                "# Keep the private tunnel rule before broader policies.\nSNET4 10.239.0.0/24\nSLOT 1\n\n# Route explicit UDP DNS requests through SOCKS.\nUDP\nPORT 53\nAND\nSLOT 2\n\n# This name is learned by the shared DNS cache.\nADDR_S example.com.\nSLOT 2\n\n# The policy has no implicit default, so keep this rule last.\nTRUE\nSLOT 3",
+		},
+
+		"Client WireGuard": {
+			"Class": "almagest/WireGuard",
+			"Pos":   "{\"x\":544,\"y\":138}",
+			"Links": ["Network -> [WireGuard Carrier] Network"],
+			"listenPort":       25390,
+			"ownedIPs":         "10.239.0.1/32",
+			"peers": [{
+				"allowedIPs": "10.239.0.0/24",
+				"endpoint":                    "127.0.0.1:25391",
+				"id":                          "server",
+				"persistentKeepaliveInterval": 1,
+				"publicKey":                   "TNKMKCuUSLleV2ACafE0PAm9G4gRpvxcrrBYyLCzDGc=",
+			}],
+			"privateKeySecret": "wireguard-lab-client-private-key",
+		},
+		"WireGuard Carrier": {
+			"Class":        "almagest/MockNetwork",
+			"Pos":          "{\"x\":785,\"y\":66}",
+		},
+		"Server WireGuard": {
+			"Class": "almagest/WireGuard",
+			"Pos":   "{\"x\":547,\"y\":-1}",
+			"Links": ["Network -> [WireGuard Carrier] Network"],
+			"listenPort":       25391,
+			"ownedIPs":         "10.239.0.2/32",
+			"peers": [{
+				"allowedIPs": "10.239.0.1/32",
+				"endpoint":                    "127.0.0.1:25390",
+				"id":                          "client",
+				"persistentKeepaliveInterval": 1,
+				"publicKey":                   "r1hjSKSF8aTbTdAzdQZe1FeGggn33Vcyg90mubw7JnE=",
+			}],
+			"privateKeySecret": "wireguard-lab-server-private-key",
+		},
+		"Server IP Stack": {
+			"Class":          "almagest/VTun",
+			"Pos":            "{\"x\":268,\"y\":1}",
+			"Links":          ["Tun -> [Server WireGuard] Tun"],
+			"mtu":            1420,
+			"name":           "host-egress-wireguard-server",
+		},
+		"Private HTTP Server": {
+			"Class":    "almagest/HttpServer",
+			"Pos":      "{\"x\":59,\"y\":3}",
+			"Links":    ["Network -> [Server IP Stack] Network"],
+			"host":     "10.239.0.2",
+			"response": "Response from the WireGuard branch",
+		},
+
+		"SOCKS Flow Converter": {
+			"Class":                "almagest/Spoofer",
+			"Pos":                  "{\"x\":540,\"y\":280}",
+			"Links":                ["Network -> [SOCKS Egress] Network"],
+			"mtu":                  1420,
+		},
+		"SOCKS Egress": {
+			"Class":          "almagest/SocksClient",
+			"Pos":            "{\"x\":800,\"y\":280}",
+			"Links":          ["out -> [Host Network] Network"],
+			"proxyURL":       "socks5://127.0.0.1:1099",
+		},
+		"SOCKS Gateway": {
+			"Class": "almagest/SocksServer",
+			"Pos":   "{\"x\":1073,\"y\":523}",
+			"Links": ["listen -> [Host Network] Network", "proxy -> [Host Network] Network"],
+			"socksPort": 1099,
+		},
+		"Direct Flow Converter": {
+			"Class":                "almagest/Spoofer",
+			"Pos":                  "{\"x\":540,\"y\":410}",
+			"Links":                ["Network -> [Host Network] Network"],
+		},
+		"Host Network": {
+			"Class": "almagest/OutNetwork",
+			"Pos":   "{\"x\":1266,\"y\":416}",
+		},
+
+		"Mesh Names": {
+			"Class": "almagest/MeshNames",
+			"Pos":   "{\"x\":274,\"y\":509}",
+			"Links": [
+				"Network -> [Host Network] Network",
+				"Fallback DNS -> [DNS Policy Router] DNS",
+			],
+		},
+		"DNS Policy Router": {
+			"Class": "almagest/DnsRouter",
+			"Pos":   "{\"x\":606,\"y\":635}",
+			"Links": ["slot 1 -> [Local Zone] DNS", "slot 2 -> [Public DNS Cache] DNS"],
+			"rules": "ADDR_RE (^|.*\\.)local\\.test\\.$\nBACKEND slot 1\n\nTRUE\nBACKEND slot 2",
+		},
+		"Local Zone": {
+			"Class":   "almagest/StaticDns",
+			"Pos":     "{\"x\":901,\"y\":555}",
+			"records": "private.local.test A 10.239.0.2",
+		},
+		"Public DNS Cache": {
+			"Class":          "almagest/DnsCache",
+			"Pos":            "{\"x\":854,\"y\":653}",
+			"Links":          ["DNS -> [DNS Client] DNS"],
+			"storageName":    "host-egress-dns",
+		},
+		"DNS Client": {
+			"Class":            "almagest/DnsClient",
+			"Pos":              "{\"x\":1032,\"y\":652}",
+			"Links":            ["Network -> [DNS Transport] Network"],
+			"servers":          ["udp://127.0.0.1:5390"],
+		},
+		"DNS Transport": {
+			"Class":        "almagest/MockNetwork",
+			"Pos":          "{\"x\":1230,\"y\":650}",
+		},
+		"DNS Server": {
+			"Class":            "almagest/DnsServer",
+			"Pos":              "{\"x\":980,\"y\":780}",
+			"Links":            ["Network -> [DNS Transport] Network", "DNS -> [Outbound DNS] DNS"],
+			"port":             5390,
+		},
+		"Outbound DNS": {
+			"Class": "almagest/OutDns",
+			"Pos":   "{\"x\":1230,\"y\":780}",
+		},
+	},
+}

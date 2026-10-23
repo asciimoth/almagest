@@ -1,0 +1,140 @@
+// Switch a live WireGuard destination selects one of two WGConfig controllers
+// while the client WireGuard device and VTun stay in place.
+// Both servers own the same tunnel address but return different text. The
+// bundled database contains fixed lab-only keys.
+// Send the HTTP request, change Destination Choice, and send it again. False
+// selects server A; true selects server B.
+{
+	"nodes": {
+		"Destination Choice": {
+			"Class": "pasta/BoolConstant",
+			"Pos":   "{\"x\":-137,\"y\":303}",
+			"Links": ["output -> [Peer Controller Select] Selector"],
+		},
+		"Peer Controller Select": {
+			"Class":   "pasta/Select",
+			"Primary": "almagest/wgctrl",
+			"Pos":     "{\"x\":597,\"y\":309}",
+			"Links":   ["Out -> [First Client WireGuard] WGCtrl"],
+		},
+		"Server A Controller": {
+			"Class": "almagest/WGConfig",
+			"Pos":   "{\"x\":102,\"y\":446}",
+			"Links": [
+				"WireGuard -> [Peer Controller Select] In 0",
+				"Network -> [Server A Transport] Network",
+			],
+			"peers": [{
+				"allowedIPs": "10.237.0.2/32",
+				"endpoint":                    "127.0.0.1:25371",
+				"id":                          "server-a",
+				"persistentKeepaliveInterval": 1,
+				"publicKey":                   "h0iR3Uax9+EGERzAunpM18nRuizF3HptkO5zimXh608=",
+			}],
+		},
+		"Server B Controller": {
+			"Class": "almagest/WGConfig",
+			"Pos":   "{\"x\":111,\"y\":711}",
+			"Links": [
+				"WireGuard -> [Peer Controller Select] In 1",
+				"Network -> [Server B Transport] Network",
+			],
+			"peers": [{
+				"allowedIPs": "10.237.0.2/32",
+				"endpoint":                    "127.0.0.1:25372",
+				"id":                          "server-b",
+				"persistentKeepaliveInterval": 1,
+				"publicKey":                   "1LrH07xDrJMOS6fljG2R2Kq6RRNXGMuFhTcW6+e1g3c=",
+			}],
+		},
+		"HTTP Client": {
+			"Class":     "almagest/HttpClient",
+			"Pos":       "{\"x\":118,\"y\":167}",
+			"Links":     ["Network -> [Client IP Stack] Network"],
+			"url":       "http://10.237.0.2:8080/",
+		},
+		"Client IP Stack": {
+			"Class":          "almagest/VTun",
+			"Pos":            "{\"x\":303,\"y\":167}",
+			"Links":          ["Tun -> [First Client WireGuard] Tun"],
+			"mtu":            1420,
+			"name":           "switch-wireguard-client",
+		},
+		"First Client WireGuard": {
+			"Class": "almagest/WireGuard",
+			"Pos":   "{\"x\":871,\"y\":168}",
+			"Links": ["Network -> [Client Device Network] Network"],
+			"listenPort":       25370,
+			"ownedIPs":         "10.237.0.1/32",
+			"privateKeySecret": "first-route-client-private-key",
+		},
+		"Client Device Network": {
+			"Class":        "almagest/MockNetwork",
+			"Pos":          "{\"x\":1105,\"y\":170}",
+		},
+		"First Server WireGuard": {
+			"Class": "almagest/WireGuard",
+			"Pos":   "{\"x\":532,\"y\":562}",
+			"Links": ["Network -> [Server A Transport] Network"],
+			"listenPort":       25371,
+			"ownedIPs":         "10.237.0.2/32",
+			"peers": [{
+				"allowedIPs": "10.237.0.1/32",
+				"id":                          "client",
+				"persistentKeepaliveInterval": 1,
+				"publicKey":                   "F1Gy6ZcPDB3AI+o7wFhEimdIvQzkGXuipsw6sL9lUQo=",
+			}],
+			"privateKeySecret": "first-route-server-private-key",
+		},
+		"Second Server WireGuard": {
+			"Class": "almagest/WireGuard",
+			"Pos":   "{\"x\":540,\"y\":837}",
+			"Links": ["Network -> [Server B Transport] Network"],
+			"listenPort":       25372,
+			"ownedIPs":         "10.237.0.2/32",
+			"peers": [{
+				"allowedIPs": "10.237.0.1/32",
+				"id":                          "client",
+				"persistentKeepaliveInterval": 1,
+				"publicKey":                   "F1Gy6ZcPDB3AI+o7wFhEimdIvQzkGXuipsw6sL9lUQo=",
+			}],
+			"privateKeySecret": "second-route-server-private-key",
+		},
+		"Server A Transport": {
+			"Class":        "almagest/MockNetwork",
+			"Pos":          "{\"x\":847,\"y\":441}",
+		},
+		"Server B Transport": {
+			"Class":        "almagest/MockNetwork",
+			"Pos":          "{\"x\":843,\"y\":715}",
+		},
+		"Server A IP Stack": {
+			"Class":          "almagest/VTun",
+			"Pos":            "{\"x\":288,\"y\":564}",
+			"Links":          ["Tun -> [First Server WireGuard] Tun"],
+			"mtu":            1420,
+			"name":           "switch-wireguard-server-a",
+		},
+		"Server B IP Stack": {
+			"Class":          "almagest/VTun",
+			"Pos":            "{\"x\":298,\"y\":837}",
+			"Links":          ["Tun -> [Second Server WireGuard] Tun"],
+			"mtu":            1420,
+			"name":           "switch-wireguard-server-b",
+		},
+		"HTTP Server A": {
+			"Class":    "almagest/HttpServer",
+			"Pos":      "{\"x\":111,\"y\":565}",
+			"Links":    ["Network -> [Server A IP Stack] Network"],
+			"host":     "10.237.0.2",
+			"response": "Response from WireGuard server A",
+		},
+		"HTTP Server B": {
+			"Class":    "almagest/HttpServer",
+			"Pos":      "{\"x\":119,\"y\":836}",
+			"Links":    ["Network -> [Server B IP Stack] Network"],
+			"host":     "10.237.0.2",
+			"response": "Response from WireGuard server B",
+		},
+	},
+}

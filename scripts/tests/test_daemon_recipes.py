@@ -2,10 +2,9 @@
 
 import itertools
 import os
-from pathlib import Path
 import subprocess
 import unittest
-
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 RUNNER = ROOT / "scripts/run-daemon.sh"
@@ -44,18 +43,29 @@ class DaemonRecipeTests(unittest.TestCase):
         result = self.run_runner("")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn(str(ROOT / "almagestd"), result.stdout)
-        for required in ("--no-isolation", "/local", "--unsafe-config",
-                         "--tmp-unix-admin", "--discover-system-programs"):
+        for required in (
+            "--no-isolation",
+            "/local",
+            "--unsafe-config",
+            "--tmp-unix-admin",
+            "--discover-system-programs",
+        ):
             self.assertIn(required, result.stdout)
         self.assertNotIn("--experimental", result.stdout)
-        self.assertIn('export ALMAGEST_EXAMPLES_DIR="$repo_root/examples"',
-                      RUNNER.read_text())
+        self.assertIn(
+            'export ALMAGEST_EXAMPLES_DIR="$repo_root/examples"', RUNNER.read_text()
+        )
 
     def test_explicit_direct_mode_is_compatible(self):
         result = self.run_runner("--no-isolation")
         self.assertEqual(result.returncode, 0, result.stderr)
-        for required in ("--no-isolation", "/local", "--unsafe-config",
-                         "--tmp-unix-admin", "--discover-system-programs"):
+        for required in (
+            "--no-isolation",
+            "/local",
+            "--unsafe-config",
+            "--tmp-unix-admin",
+            "--discover-system-programs",
+        ):
             self.assertIn(required, result.stdout)
         self.assertNotIn("--experimental", result.stdout)
 
@@ -79,6 +89,22 @@ class DaemonRecipeTests(unittest.TestCase):
         result = self.run_runner("--no-isolation --unknown")
         self.assertEqual(result.returncode, 2)
         self.assertIn("unsupported daemon recipe flag: --unknown", result.stderr)
+
+    def test_log_level_replaces_development_default(self):
+        for flag in ("-l", "--lvl"):
+            result = self.run_runner("--sudo", f"{flag} info")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("-l info", result.stdout)
+            self.assertNotIn("-l debug", result.stdout)
+
+    def test_log_level_requires_a_supported_value(self):
+        missing = self.run_runner("--sudo", "--lvl")
+        self.assertEqual(missing.returncode, 2)
+        self.assertIn("flag --lvl requires a value", missing.stderr)
+
+        unsupported = self.run_runner("--sudo", "--lvl trace")
+        self.assertEqual(unsupported.returncode, 2)
+        self.assertIn("unsupported daemon log level: trace", unsupported.stderr)
 
     def test_sudo_isolation_uses_root_owned_stage(self):
         result = self.run_runner("--sudo", "")

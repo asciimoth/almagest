@@ -1,0 +1,5 @@
+{
+  "format": 1,
+  "name": "SOCKS client and server",
+  "comment": "Send an HTTP request through a complete SOCKS proxy hop between mock networks."
+}

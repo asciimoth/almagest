@@ -1,0 +1,45 @@
+// Convert TUN flows to Network operations sends one userspace TCP flow to a
+// mock Network.
+// Spoofer terminates TCP or UDP flows from a TUN and opens equivalent
+// destination connections through Network.
+// Select Send request on HTTP Client and inspect the response from the private
+// target address.
+{
+	"nodes": {
+		"HTTP Client": {
+			"Class":     "almagest/HttpClient",
+			"Pos":       "{\"x\":40,\"y\":185}",
+			"Links":     ["Network -> [Client IP Stack] Network"],
+			"url":       "http://10.220.0.10:8080/",
+		},
+		"Client IP Stack": {
+			"Class":          "almagest/VTun",
+			"Pos":            "{\"x\":235,\"y\":188}",
+			"Links":          ["Tun -> [Spoofer] Tun"],
+			"localAddrs":     "10.220.0.1/24",
+			"name":           "spoofer-client",
+		},
+		"Target Network": {
+			"Class":        "almagest/MockNetwork",
+			"Pos":          "{\"x\":664,\"y\":242}",
+		},
+		"HTTP Server": {
+			"Class":    "almagest/HttpServer",
+			"Pos":      "{\"x\":427,\"y\":309}",
+			"Links":    ["Network -> [Target Network] Network"],
+			"host":     "10.220.0.10",
+			"response": "Response after TUN flow conversion",
+		},
+		"Response": {
+			"Class": "pasta/StringConstant",
+			"Pos":   "{\"x\":47,\"y\":345}",
+			"Links": ["output -> [HTTP Server] Response"],
+			"value": "Response after TUN flow conversion",
+		},
+		"Spoofer": {
+			"Class":                "almagest/Spoofer",
+			"Pos":                  "{\"x\":429,\"y\":187}",
+			"Links":                ["Network -> [Target Network] Network"],
+		},
+	},
+}

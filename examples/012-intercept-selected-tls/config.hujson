@@ -1,0 +1,69 @@
+// Intercept selected TLS compares an intercepted HTTPS connection with a
+// bypassed one.
+// TlsMitm uses its inclusive filter to intercept one SNI hostname and pass the
+// other through.
+// The clients trust the built-in CA through the default TLS policy. Send both
+// requests and compare the paths.
+{
+	"nodes": {
+		"TLS Terminator": {
+			"Class":             "almagest/TlsTerminator",
+			"Pos":               "{\"x\":508,\"y\":219}",
+			"Links":             ["Network -> [Mock Network] Network"],
+			"destinationRemaps": "[\n  {\n    \"sni_hosts\": [\"intercept.tls.test\"],\n    \"dst\": \"127.0.0.1:8080\"\n  },\n  {\n    \"sni_hosts\": [\"bypass.tls.test\"],\n    \"dst\": \"127.0.0.1:8081\"\n  }\n]",
+			"leafTTLSeconds":    300,
+			"serverAlpn":        "http/1.1",
+			"sniffBufferSize":   8192,
+		},
+		"Mock Network": {
+			"Class":        "almagest/MockNetwork",
+			"Pos":          "{\"x\":791,\"y\":69}",
+		},
+		"Intercepted Response": {
+			"Class": "pasta/StringConstant",
+			"Pos":   "{\"x\":150,\"y\":17}",
+			"Links": ["output -> [Intercepted Server] Response"],
+			"value": "TlsMitm intercepted this HTTPS connection",
+		},
+		"Bypassed Response": {
+			"Class": "pasta/StringConstant",
+			"Pos":   "{\"x\":153,\"y\":-130}",
+			"Links": ["output -> [Bypassed Server] Response"],
+			"value": "TlsMitm passed this TLS connection through",
+		},
+		"Bypassed Client": {
+			"Class":     "almagest/HttpClient",
+			"Pos":       "{\"x\":46,\"y\":153}",
+			"Links":     ["Network -> [Selective MITM] Network"],
+			"url":       "https://bypass.tls.test:8443/",
+		},
+		"Intercepted Client": {
+			"Class":     "almagest/HttpClient",
+			"Pos":       "{\"x\":38,\"y\":298}",
+			"Links":     ["Network -> [Selective MITM] Network"],
+			"url":       "https://intercept.tls.test:8443/",
+		},
+		"Selective MITM": {
+			"Class":           "almagest/TlsMitm",
+			"Pos":             "{\"x\":299,\"y\":220}",
+			"Links":           ["Network -> [TLS Terminator] Network"],
+			"filterMode":      "inclusive",
+			"filterRules":     "[\n  {\n    \"sni_hosts\": [\"intercept.tls.test\"],\n    \"sni_available\": \"required\",\n    \"sni_encrypted\": \"forbidden\"\n  }\n]",
+			"leafTTLSeconds":  300,
+			"sniffBufferSize": 8192,
+		},
+		"Bypassed Server": {
+			"Class":    "almagest/HttpServer",
+			"Pos":      "{\"x\":522,\"y\":-86}",
+			"Links":    ["Network -> [Mock Network] Network"],
+			"port":     8081,
+			"response": "TlsMitm passed this TLS connection through",
+		},
+		"Intercepted Server": {
+			"Class":    "almagest/HttpServer",
+			"Pos":      "{\"x\":508,\"y\":57}",
+			"Links":    ["Network -> [Mock Network] Network"],
+			"response": "TlsMitm intercepted this HTTPS connection",
+		},
+	},
+}

@@ -1,0 +1,43 @@
+// DNS fallback and cache resolves a local name first and sends its misses to
+// outbound DNS.
+// OutDns provides daemon outbound DNS. DnsFallback tries services in slot
+// order. DnsCache stores successful responses.
+// Send the local query, then send the public query twice to reuse its cached
+// response.
+{
+	"nodes": {
+		"Local Query": {
+			"Class": "almagest/DnsQuery",
+			"Pos":   "{\"x\":40,\"y\":145}",
+			"Links": ["DNS -> [DNS Cache] DNS"],
+			"name":  "service.fallback.test.",
+		},
+		"Public Query": {
+			"Class": "almagest/DnsQuery",
+			"Pos":   "{\"x\":40,\"y\":345}",
+			"Links": ["DNS -> [DNS Cache] DNS"],
+			"name":  "example.com.",
+		},
+		"DNS Cache": {
+			"Class":          "almagest/DnsCache",
+			"Pos":            "{\"x\":285,\"y\":245}",
+			"Links":          ["DNS -> [DNS Fallback] DNS"],
+			"storageName":    "example-dns-fallback",
+		},
+		"DNS Fallback": {
+			"Class":            "almagest/DnsFallback",
+			"Pos":              "{\"x\":467,\"y\":245}",
+			"Links":            ["slot 1 -> [Static DNS] DNS", "slot 2 -> [Outbound DNS] DNS"],
+			"attemptTimeoutMS": 2000,
+		},
+		"Static DNS": {
+			"Class":   "almagest/StaticDns",
+			"Pos":     "{\"x\":788,\"y\":170}",
+			"records": "service.fallback.test A 192.0.2.14",
+		},
+		"Outbound DNS": {
+			"Class": "almagest/OutDns",
+			"Pos":   "{\"x\":782,\"y\":335}",
+		},
+	},
+}

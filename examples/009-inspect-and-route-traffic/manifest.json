@@ -1,0 +1,5 @@
+{
+  "format": 1,
+  "name": "Inspect and route initial traffic",
+  "comment": "Inspect initial HTTP bytes and route one URL to an isolated service."
+}

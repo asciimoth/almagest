@@ -1,0 +1,5 @@
+{
+  "format": 1,
+  "name": "Terminate TLS",
+  "comment": "Accept an HTTPS request and send plaintext HTTP to an isolated service."
+}

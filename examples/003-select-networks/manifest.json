@@ -1,0 +1,5 @@
+{
+  "format": 1,
+  "name": "Select between Networks",
+  "comment": "Switch two HTTP clients between two isolated networks."
+}

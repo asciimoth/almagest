@@ -1,0 +1,5 @@
+{
+  "format": 1,
+  "name": "Remap a local service",
+  "comment": "Redirect an HTTP request from one destination port to another."
+}
