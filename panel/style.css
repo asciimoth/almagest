@@ -936,6 +936,13 @@ h1 {
   border-radius: var(--radius-md);
   background: var(--mantle);
   padding: 10px 12px;
+  transition: border-color 120ms ease, background-color 120ms ease;
+}
+
+.snapshot-row:hover,
+.snapshot-row:focus-within {
+  border-color: color-mix(in srgb, var(--blue), var(--surface0) 62%);
+  background: color-mix(in srgb, var(--surface0), transparent 62%);
 }
 
 .snapshot-copy {

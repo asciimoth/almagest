@@ -84,6 +84,13 @@ test("compact entry actions align at the row edge", () => {
   assert.match(css, /@media \(max-width: 68\.75rem\)[\s\S]*?\.snapshot-row-actions\s*\{[^}]*justify-content:\s*flex-end;/);
 });
 
+test("snapshot and example rows highlight under the cursor", () => {
+  const rule = cssRule(".snapshot-row:hover,\n.snapshot-row:focus-within");
+
+  assert.match(rule, /border-color:\s*color-mix\(in srgb, var\(--blue\), var\(--surface0\) 62%\);/);
+  assert.match(rule, /background:\s*color-mix\(in srgb, var\(--surface0\), transparent 62%\);/);
+});
+
 test("compact logs use a minimum-width hybrid layout", () => {
   assert.match(css, /\.logs-scroll\s*\{[^}]*overflow-x:\s*auto;/s);
   assert.match(css, /#logs-list\s*\{[^}]*min-width:\s*36rem;/s);
