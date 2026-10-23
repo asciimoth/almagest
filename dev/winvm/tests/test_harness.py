@@ -259,7 +259,7 @@ require_vm_space "$winvm_cache_dir" 10 test
         self.assertIn("progress 'running outnet and split packet-flow scenarios (timeout: 30 minutes)'", flow)
         self.assertIn('packet-flow scenarios still running; elapsed=%ss', flow)
         self.assertIn("progress 'collecting observations and validating packet captures'", flow)
-        self.assertIn('check *selectors: tidy typos fmt lint actionlint shellcheck vet # vulncheck', recipe)
+        self.assertIn('check *selectors: tidy typos fmt lint actionlint shellcheck vet build-wasm # vulncheck', recipe)
         self.assertIn('just test-total {{quote(selectors)}}', recipe)
         self.assertIn('if [[ -z {{quote(selectors)}} ]]; then just fuzz; fi', recipe)
         self.assertIn('test-total-all: test-cycles-harness test-winvm-harness', recipe)

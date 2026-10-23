@@ -3,7 +3,7 @@ set dotenv-load := true
 
 
 # TODO: Enable vulncheck again after Go is updated to 1.26.10 or later.
-check *selectors: tidy typos fmt lint actionlint shellcheck vet # vulncheck
+check *selectors: tidy typos fmt lint actionlint shellcheck vet build-wasm # vulncheck
   @just locales-check
   @just test-total {{quote(selectors)}}
   @if [[ -z {{quote(selectors)}} ]]; then just fuzz; fi
@@ -11,10 +11,13 @@ check *selectors: tidy typos fmt lint actionlint shellcheck vet # vulncheck
 typos:
   typos
 
-test-go: certcat-ensure-generated build-web
+test-go: certcat-ensure-generated build-web test-wasm
   bash ./scripts/with-test-tmp.sh ./scripts/test-go-coverage.sh
   bash ./scripts/with-test-tmp.sh ./scripts/test-gonnect-regressions.sh
   bash ./scripts/with-test-tmp.sh ./scripts/test-gonnect-netstack-regressions.sh
+
+test-wasm: build-wasm
+  GOOS=js GOARCH=wasm CGO_ENABLED=0 go -C lib test -exec=../scripts/run-go-js-wasm.sh -run '^TestWASMNodeClasses$' .
 
 # Run until stopped or an optional timeout expires; keep failure logs under artifacts/test-cycles/.
 test-cycles:
@@ -86,9 +89,12 @@ test-total-light:
 
 coverage: test-total
 
-vet: certcat-vet
+vet: certcat-vet vet-wasm
 	go -C lib vet ./...
 	go -C bin vet ./...
+
+vet-wasm:
+	GOOS=js GOARCH=wasm CGO_ENABLED=0 go -C lib vet .
 
 certcat-vet: certcat-ensure-generated
 	go -C certcat vet ./...
@@ -117,9 +123,12 @@ repair-go-work:
 certcat-tidy:
 	go -C certcat mod tidy
 
-lint: test-winvm-harness certcat-lint lint-windows lint-winvm lint-secrets markdownlint
+lint: test-winvm-harness certcat-lint lint-windows lint-winvm lint-secrets markdownlint lint-wasm
   cd lib && golangci-lint run ./...
   cd bin && golangci-lint run ./...
+
+lint-wasm:
+  cd lib && GOOS=js GOARCH=wasm CGO_ENABLED=0 golangci-lint run .
 
 markdownlint:
   git ls-files -z -- '*.md' ':!locales/lorem/docs/pages/guides/markdown-features.md' | xargs -0 -r markdownlint
@@ -185,6 +194,10 @@ clean: certcat-clean
 
 build-web:
   cd panel && npm ci && npm run build
+
+# Compile the library package and its selected dependencies for browser WASM.
+build-wasm:
+  GOOS=js GOARCH=wasm CGO_ENABLED=0 go -C lib build .
 
 # Build a plain static tree for GitHub Pages or another static HTTP server.
 build-webdemo output='build/webdemo':
@@ -292,7 +305,7 @@ daemon-winvm *flags:
   done; \
   WINVM_WEB_PORT="${WINVM_WEB_PORT:-8091}" WINVM_DAEMON_OPTIONS="--discover-system-programs $options" WINVM_OPEN_BROWSER="${WINVM_OPEN_BROWSER:-0}" ./dev/winvm/run.sh manual
 
-build: certcat-generate build-web
+build: certcat-generate build-web build-wasm
 	go build -o ./almagestd ./bin/almagestd/
 	gcc ${ALMAGEST_GLIBC_STATIC_LDFLAG:-} -static-pie -O2 -D_FORTIFY_SOURCE=3 -fstack-protector-strong -fstack-clash-protection -fno-strict-overflow -Wformat=2 -Wall -Wextra -Werror -Wl,-z,relro,-z,now,-z,noexecstack -o ./almagest-subprogram-launcher bin/native/subprogram/launcher.c $(pkg-config --cflags --libs libseccomp)
 
