@@ -32,14 +32,12 @@ func (p Platform) supportsLinuxProfiles() bool {
 	return p.OS == "linux" && p.Arch == "amd64"
 }
 
-// DefaultPolicy returns the compatibility default for a platform. Linux uses
-// automatic profile selection. Windows stays in direct mode. Other targets
-// keep a fail-closed policy until a profile is qualified.
+// DefaultPolicy returns the compatibility default for a platform. Linux and
+// Windows use direct mode. Other targets keep a fail-closed policy until a
+// profile is qualified.
 func DefaultPolicy(platform Platform) Policy {
 	switch platform.OS {
-	case "linux":
-		return PolicyAuto
-	case "windows":
+	case "linux", "windows":
 		return PolicyOff
 	default:
 		return PolicyStrict

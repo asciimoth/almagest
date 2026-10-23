@@ -18,13 +18,14 @@ func TestSelectExecutionMode(t *testing.T) {
 	}{
 		{name: "explicit direct", platform: selection.Platform{OS: "linux", Arch: "amd64"}, arguments: args.Args{NoIsolation: true}, want: executionModeDirect},
 		{name: "explicit direct experimental", platform: selection.Platform{OS: "linux", Arch: "amd64"}, arguments: args.Args{NoIsolation: true, Experimental: true}, want: executionModeDirect},
-		{name: "Linux automatic default", platform: selection.Platform{OS: "linux", Arch: "amd64"}, want: executionModeIsolation},
+		{name: "Linux direct default", platform: selection.Platform{OS: "linux", Arch: "amd64"}, want: executionModeDirect},
 		{
-			name:      "isolation default experimental needs explicit direct mode",
+			name:      "Linux direct default experimental",
 			platform:  selection.Platform{OS: "linux", Arch: "amd64"},
 			arguments: args.Args{Experimental: true},
-			wantError: "--experimental requires explicit --no-isolation or --isolation=off",
+			want:      executionModeDirect,
 		},
+		{name: "explicit automatic", platform: selection.Platform{OS: "linux", Arch: "amd64"}, arguments: args.Args{Isolation: "auto"}, want: executionModeIsolation},
 		{name: "Windows direct default", platform: selection.Platform{OS: "windows", Arch: "amd64"}, want: executionModeDirect},
 		{name: "Windows direct default explicit flag", platform: selection.Platform{OS: "windows", Arch: "amd64"}, arguments: args.Args{NoIsolation: true}, want: executionModeDirect},
 		{name: "Windows direct default experimental", platform: selection.Platform{OS: "windows", Arch: "amd64"}, arguments: args.Args{Experimental: true}, want: executionModeDirect},

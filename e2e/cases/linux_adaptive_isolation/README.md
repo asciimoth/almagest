@@ -6,7 +6,7 @@ root-only full profile.
 
 The case verifies:
 
-- default automatic selection with no capabilities;
+- explicit automatic selection with no capabilities;
 - explicit automatic selection with only ambient `CAP_NET_ADMIN` when the
   container's `setpriv` supports ambient capabilities;
 - reduced-profile status, credentials, capability sets, resource status, and

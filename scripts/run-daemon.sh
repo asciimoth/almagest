@@ -60,7 +60,7 @@ if [[ $direct == 1 ]]; then
     fi
 else
     # The elevated isolated runner supplies a role-owned copy of local config.
-    arguments=("${common[@]}")
+    arguments=(--isolation=auto "${common[@]}")
 fi
 if [[ $experimental == 1 ]]; then
     arguments+=(--experimental)

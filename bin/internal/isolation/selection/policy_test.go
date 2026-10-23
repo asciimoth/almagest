@@ -20,7 +20,7 @@ func TestResolvePolicy(t *testing.T) {
 		want      Policy
 		wantError string
 	}{
-		{name: "Linux default is automatic", platform: linuxAMD64, want: PolicyAuto},
+		{name: "Linux default is off", platform: linuxAMD64, want: PolicyOff},
 		{name: "Windows default is off", platform: windowsAMD64, want: PolicyOff},
 		{name: "strict", platform: linuxAMD64, arguments: daemonargs.Args{Isolation: "strict"}, want: PolicyStrict},
 		{name: "automatic", platform: linuxAMD64, arguments: daemonargs.Args{Isolation: "auto"}, want: PolicyAuto},
@@ -34,7 +34,8 @@ func TestResolvePolicy(t *testing.T) {
 		{name: "experimental direct", platform: linuxAMD64, arguments: daemonargs.Args{Isolation: "off", Experimental: true}, want: PolicyOff},
 		{name: "unsupported explicit strict", platform: windowsAMD64, arguments: daemonargs.Args{Isolation: "strict"}, wantError: "not qualified"},
 		{name: "unsupported explicit automatic", platform: windowsAMD64, arguments: daemonargs.Args{Isolation: "auto"}, wantError: "not qualified"},
-		{name: "unsupported Linux architecture", platform: Platform{OS: "linux", Arch: "arm64"}, wantError: "not qualified"},
+		{name: "unsupported Linux architecture defaults to off", platform: Platform{OS: "linux", Arch: "arm64"}, want: PolicyOff},
+		{name: "unsupported Linux architecture rejects explicit automatic", platform: Platform{OS: "linux", Arch: "arm64"}, arguments: daemonargs.Args{Isolation: "auto"}, wantError: "not qualified"},
 		{name: "unsupported target fails closed", platform: Platform{OS: "freebsd", Arch: "amd64"}, wantError: "not qualified"},
 		{name: "unsupported target explicit off", platform: Platform{OS: "freebsd", Arch: "amd64"}, arguments: daemonargs.Args{Isolation: "off"}, want: PolicyOff},
 		{name: "user state root", platform: linuxAMD64, arguments: daemonargs.Args{Isolation: "auto", IsolationStateDir: "/state"}, want: PolicyAuto},

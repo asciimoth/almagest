@@ -1,4 +1,4 @@
-//go:build !windows
+//go:build linux
 
 package main
 
@@ -8,12 +8,12 @@ import (
 	"github.com/asciimoth/almagest/bin/almagestd/args"
 )
 
-func TestNonWindowsDefaultExecutionModeIsIsolation(t *testing.T) {
+func TestLinuxDefaultExecutionModeIsDirect(t *testing.T) {
 	mode, err := selectExecutionMode(args.Args{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if mode != executionModeIsolation {
-		t.Fatalf("selectExecutionMode() = %q, want %q", mode, executionModeIsolation)
+	if mode != executionModeDirect {
+		t.Fatalf("selectExecutionMode() = %q, want %q", mode, executionModeDirect)
 	}
 }

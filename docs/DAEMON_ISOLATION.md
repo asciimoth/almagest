@@ -6,14 +6,17 @@ produced the design.
 
 ## Status and scope
 
-Linux uses automatic isolation by default. On Linux/amd64, `auto` selects one of
-two qualified profiles: the complete privileged `linux-full-v1` profile or the
-non-root `linux-user-v1` profile. The packaged systemd unit selects `auto`
-explicitly. Windows uses the direct, single-process daemon by default because
-its complete service startup and packaging are not implemented. Other targets
-select isolation and fail closed when no qualified profile exists. Use
-`--isolation=off` or its compatibility alias `--no-isolation` to select direct
-mode explicitly. `--experimental` requires explicit direct mode.
+Linux uses the direct, single-process daemon by default. This is a temporary
+decision because the current isolation implementation has performance issues.
+The packaged systemd unit selects `auto` explicitly and continues to use
+isolation. On Linux/amd64, `auto` selects one of two qualified profiles: the
+complete privileged `linux-full-v1` profile or the non-root `linux-user-v1`
+profile. Windows also uses the direct daemon by default because its complete
+service startup and packaging are not implemented. Other targets select
+isolation and fail closed when no qualified profile exists. Use
+`--isolation=auto` or `--isolation=strict` to select Linux isolation explicitly.
+`--isolation=off` and its compatibility alias `--no-isolation` select direct
+mode. `--experimental` requires direct mode.
 
 Isolation limits damage from a compromised graph runtime. It keeps native host
 network objects, public listener ownership, protected launch authority, config
@@ -148,19 +151,19 @@ them here.
 
 Isolation mode is selected with these public switches:
 
-| Option               | Behavior                                                                           |
-| -------------------- | ---------------------------------------------------------------------------------- |
-| `--isolation=strict` | Require `linux-full-v1`. Missing prerequisites stop startup.                       |
-| `--isolation=auto`   | Linux default. Select a qualified profile and report omitted optional protections. |
-| `--isolation=off`    | Select the direct daemon.                                                          |
-| `--no-isolation`     | Compatibility alias for `--isolation=off`.                                         |
+| Option               | Behavior                                                            |
+| -------------------- | ------------------------------------------------------------------- |
+| `--isolation=strict` | Require `linux-full-v1`. Missing prerequisites stop startup.        |
+| `--isolation=auto`   | Select a qualified profile and report omitted optional protections. |
+| `--isolation=off`    | Linux and Windows default. Select the direct daemon.                |
+| `--no-isolation`     | Compatibility alias for `--isolation=off`.                          |
 
 `ALMAGEST_ISOLATION` accepts `strict`, `auto`, or `off`. An explicit CLI value
 overrides the environment. Conflicting explicit CLI selections and unknown
 values are errors. `--no-isolation --isolation=off` is consistent. Policy is
 launch authority; regular config, snapshots, and admin updates cannot change it.
-On Windows, `off` is the default. Explicit `strict` or `auto` fails on an
-unqualified platform.
+On Linux and Windows, `off` is the default. Explicit `strict` or `auto` fails on
+an unqualified platform.
 
 For a root caller, `auto` selects only `linux-full-v1` and fails if its
 prerequisites are unavailable. It never starts a same-UID root runtime. For a

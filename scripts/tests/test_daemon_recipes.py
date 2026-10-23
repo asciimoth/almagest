@@ -116,6 +116,7 @@ class DaemonRecipeTests(unittest.TestCase):
         self.assertIn(f"ALMAGEST_EXAMPLES_DIR={ROOT / 'examples'}", result.stdout)
         self.assertIn("/var/lib/almagest/dev-", result.stdout)
         self.assertIn("/run/almagest-dev-", result.stdout)
+        self.assertIn("--isolation=auto", result.stdout)
         self.assertIn("--discover-system-programs", result.stdout)
         self.assertNotIn("build/isolation-linux/almagestd", result.stdout)
 

@@ -178,9 +178,9 @@ assert_warnings() {
 		|| fail "startup log omitted the same-uid-profile warning"
 }
 
-# Linux defaults to automatic selection. Drop every capability, including the
-# bounding set, before starting the ordinary-user broker.
-start_adaptive default-auto none
+# Drop every capability, including the bounding set, before starting the
+# ordinary-user broker with explicit automatic isolation.
+start_adaptive default-auto none --isolation=auto
 assert_reduced_status "$case_runtime/default-auto-hello.json"
 jq -e '
 	[.isolation.capability_sets.network[], .isolation.capability_sets.runtime[]]
@@ -205,7 +205,7 @@ adaptive_cli graph node --name adaptive_qualification >/dev/null \
 stop_adaptive
 
 # The user profile supplies a private default socket when no override is set.
-start_adaptive default-socket none @default-socket
+start_adaptive default-socket none @default-socket --isolation=auto
 assert_reduced_status "$case_runtime/default-socket-hello.json"
 adaptive_cli graph node --name adaptive_qualification >/dev/null \
 	|| fail "user-profile state did not survive restart after snapshot restore"

@@ -384,13 +384,14 @@ Important flags and env:
 - `-p, --protected`, `ALMAGEST_PROTECTED_CONF`: protected config path.
 - `-l, --lvl`, `ALMAGEST_LOG_LVL`: logging level.
 - `--log-workers`: log engine worker lifecycle events.
-- `--no-isolation`: run the direct single-process daemon. Packaged Linux amd64
-  uses isolation by default. Windows uses direct mode by default while its
-  isolation profile is in progress, so this flag is an accepted no-op there.
-  Other unsupported profiles fail with guidance to select the flag explicitly.
+- `--no-isolation`: run the direct single-process daemon. Linux and Windows use
+  direct mode by default. The Linux default is temporary because the current
+  isolation implementation has performance issues. Packaged Linux services
+  continue to select isolation explicitly. Other unsupported profiles fail with
+  guidance to select the flag explicitly.
 - `--experimental`: enable experimental features and node classes. They are
-  disabled by default and require direct mode. On isolation-default platforms,
-  select direct mode with `--no-isolation`.
+  disabled by default and require direct mode. On platforms where isolation is
+  selected, use `--no-isolation` to select direct mode.
 - `--isolation-memory-bytes`, `--isolation-tasks`, `--isolation-cpu-quota`,
   `--isolation-descriptors`, and `--isolation-file-bytes`: Linux isolation
   startup ceilings. Each has a matching `ALMAGEST_ISOLATION_*` environment
