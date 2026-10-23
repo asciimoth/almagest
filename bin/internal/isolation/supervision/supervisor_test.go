@@ -341,7 +341,9 @@ func TestSupervisorFullServiceRestartRunsRecoveryAgain(t *testing.T) {
 		runtimeRole.ready <- ready(protocol.RoleRuntime)
 		waitReady(t, supervisor)
 		cancel()
-		<-done
+		if err := <-done; !errors.Is(err, context.Canceled) {
+			t.Fatalf("Run error = %v, want context.Canceled", err)
+		}
 	}
 	host.mu.Lock()
 	defer host.mu.Unlock()

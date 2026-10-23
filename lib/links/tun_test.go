@@ -558,7 +558,10 @@ func TestTunFailureObserverDoesNotReturnUpAfterTerminalFailure(t *testing.T) {
 		t.Fatal("Read error = nil, want injected terminal failure")
 	}
 	select {
-	case <-reported:
+	case err := <-reported:
+		if err == nil {
+			t.Fatal("reported terminal failure = nil, want error")
+		}
 	case <-time.After(time.Second):
 		t.Fatal("terminal failure was not reported")
 	}

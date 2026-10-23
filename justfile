@@ -2,7 +2,7 @@ set shell := ["./scripts/run-recipe.sh", "bash", "-euo", "pipefail", "-c"]
 set dotenv-load := true
 
 
-# TODO: Enable vulncheck again after Go is updated to 1.26.9 or later.
+# TODO: Enable vulncheck again after Go is updated to 1.26.10 or later.
 check *selectors: tidy typos fmt lint actionlint shellcheck vet # vulncheck
   @just locales-check
   @just test-total {{quote(selectors)}}
@@ -112,7 +112,7 @@ tidy: repair-go-work
 repair-go-work:
 	@if [ ! -f go.work ]; then go work init; fi
 	go work use ./lib ./bin ./certcat
-	go work edit -go=1.26.6
+	go work edit -go=1.26.9
 
 certcat-tidy:
 	go -C certcat mod tidy
@@ -200,8 +200,8 @@ build-isolation-linux output='build/isolation-linux': build-web
   CGO_ENABLED=0 go build -C bin -trimpath -o ../{{quote(output)}}/almagest-config-writer-role ./cmd/almagest-config-writer-role
   CGO_ENABLED=0 go build -C bin -trimpath -o ../{{quote(output)}}/almagest-command-role ./cmd/almagest-command-role
   CGO_ENABLED=0 go build -C bin -trimpath -o ../{{quote(output)}}/almagest-isolation-storage ./cmd/almagest-isolation-storage
-  gcc -static-pie -O2 -D_FORTIFY_SOURCE=3 -fstack-protector-strong -fstack-clash-protection -fno-strict-overflow -Wformat=2 -Wall -Wextra -Werror -Wl,-z,relro,-z,now,-z,noexecstack -o {{quote(output)}}/almagest-linux-role-launcher bin/native/linux-role/launcher.c $(pkg-config --cflags --libs libseccomp)
-  gcc -static-pie -O2 -D_FORTIFY_SOURCE=3 -fstack-protector-strong -fstack-clash-protection -fno-strict-overflow -Wformat=2 -Wall -Wextra -Werror -Wl,-z,relro,-z,now,-z,noexecstack -o {{quote(output)}}/almagest-subprogram-launcher bin/native/subprogram/launcher.c $(pkg-config --cflags --libs libseccomp)
+  gcc ${ALMAGEST_GLIBC_STATIC_LDFLAG:-} -static-pie -O2 -D_FORTIFY_SOURCE=3 -fstack-protector-strong -fstack-clash-protection -fno-strict-overflow -Wformat=2 -Wall -Wextra -Werror -Wl,-z,relro,-z,now,-z,noexecstack -o {{quote(output)}}/almagest-linux-role-launcher bin/native/linux-role/launcher.c $(pkg-config --cflags --libs libseccomp)
+  gcc ${ALMAGEST_GLIBC_STATIC_LDFLAG:-} -static-pie -O2 -D_FORTIFY_SOURCE=3 -fstack-protector-strong -fstack-clash-protection -fno-strict-overflow -Wformat=2 -Wall -Wextra -Werror -Wl,-z,relro,-z,now,-z,noexecstack -o {{quote(output)}}/almagest-subprogram-launcher bin/native/subprogram/launcher.c $(pkg-config --cflags --libs libseccomp)
 
 build-windows-arch arch:
   ./scripts/build-windows.sh {{arch}}
@@ -285,7 +285,7 @@ daemon-winvm *flags:
 
 build: certcat-generate build-web
 	go build -o ./almagestd ./bin/almagestd/
-	gcc -static-pie -O2 -D_FORTIFY_SOURCE=3 -fstack-protector-strong -fstack-clash-protection -fno-strict-overflow -Wformat=2 -Wall -Wextra -Werror -Wl,-z,relro,-z,now,-z,noexecstack -o ./almagest-subprogram-launcher bin/native/subprogram/launcher.c $(pkg-config --cflags --libs libseccomp)
+	gcc ${ALMAGEST_GLIBC_STATIC_LDFLAG:-} -static-pie -O2 -D_FORTIFY_SOURCE=3 -fstack-protector-strong -fstack-clash-protection -fno-strict-overflow -Wformat=2 -Wall -Wextra -Werror -Wl,-z,relro,-z,now,-z,noexecstack -o ./almagest-subprogram-launcher bin/native/subprogram/launcher.c $(pkg-config --cflags --libs libseccomp)
 
 # Run the daemon directly with local development config. Pass --experimental
 # to enable experimental nodes. Use -l or --lvl to set the log level.

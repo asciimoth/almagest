@@ -1,6 +1,6 @@
 module github.com/asciimoth/almagest/lib
 
-go 1.26.6
+go 1.26.9
 
 require (
 	github.com/asciimoth/batchudp v0.3.19

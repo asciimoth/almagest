@@ -837,8 +837,7 @@ func waitCommand(command *exec.Cmd, timeout time.Duration) error {
 		return err
 	case <-time.After(timeout):
 		_ = command.Process.Kill()
-		<-done
-		return errors.New("process timeout")
+		return errors.Join(errors.New("process timeout"), <-done)
 	}
 }
 

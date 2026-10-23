@@ -306,7 +306,10 @@ func TestHostDNSWireControl(t *testing.T) {
 	}
 	_ = peer.Close()
 	select {
-	case <-done:
+	case err := <-done:
+		if err == nil {
+			t.Fatal("peer loss stopped broker without an error")
+		}
 	case <-ctx.Done():
 		t.Fatal("peer loss did not stop broker")
 	}

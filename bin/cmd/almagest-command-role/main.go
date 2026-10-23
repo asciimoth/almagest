@@ -66,7 +66,9 @@ func run() error {
 	err = <-results
 	cancel()
 	if count == 2 {
-		<-results
+		if callbackErr := <-results; err == nil {
+			err = callbackErr
+		}
 	}
 	return err
 }

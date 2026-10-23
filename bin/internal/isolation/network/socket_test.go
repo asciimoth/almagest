@@ -103,7 +103,10 @@ func startClient(t *testing.T, b *Broker) *client.Client {
 	t.Cleanup(func() {
 		_ = runtime.Close()
 		select {
-		case <-done:
+		case err := <-done:
+			if err == nil {
+				t.Error("runtime close stopped broker without an error")
+			}
 		case <-time.After(6 * time.Second):
 			t.Error("broker did not stop")
 		}
@@ -222,7 +225,9 @@ func TestSocketRelayTLSWebSocket(t *testing.T) {
 	go func() { serveDone <- server.Serve(listener) }()
 	t.Cleanup(func() {
 		_ = server.Close()
-		<-serveDone
+		if err := <-serveDone; err != nil && !errors.Is(err, http.ErrServerClosed) {
+			t.Errorf("server shutdown error = %v", err)
+		}
 	})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -419,8 +424,11 @@ func TestSocketOpenAttemptsCanOverlap(t *testing.T) {
 		t.Fatal("second socket open waited behind the first attempt")
 	}
 	close(backend.release)
-	<-done
-	<-done
+	for range 2 {
+		if err := <-done; err == nil {
+			t.Fatal("socket open error = nil, want test rejection")
+		}
+	}
 }
 
 func TestSocketCancellationAndOffers(t *testing.T) {

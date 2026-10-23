@@ -143,7 +143,9 @@ func runHTTPServerWorker(ctx context.Context, logger pasta.Logger, w *pasta.Work
 		case <-stop:
 			_ = ln.Close()
 			_ = server.Shutdown(context.Background())
-			<-serveDone
+			if err := <-serveDone; err != nil && !errors.Is(err, http.ErrServerClosed) {
+				logger.Debugf("server stopped during shutdown: %v", err)
+			}
 			logger.Debug("worker stopped")
 			return
 		case err := <-serveDone:

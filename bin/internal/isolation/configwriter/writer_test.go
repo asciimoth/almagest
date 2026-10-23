@@ -297,7 +297,10 @@ func TestWriterControlTransferAndLostReply(t *testing.T) {
 	}
 	_ = peer.Close()
 	select {
-	case <-done:
+	case err := <-done:
+		if err == nil {
+			t.Fatal("writer stopped after peer loss without an error")
+		}
 	case <-ctx.Done():
 		t.Fatal("writer did not stop after peer loss")
 	}

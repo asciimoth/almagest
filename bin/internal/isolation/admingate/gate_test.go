@@ -190,7 +190,12 @@ func TestGateKeepsHTTPAndOriginParsingInRuntime(t *testing.T) {
 	})}
 	done := make(chan error, 1)
 	go func() { done <- server.Serve(listener) }()
-	t.Cleanup(func() { _ = server.Close(); <-done })
+	t.Cleanup(func() {
+		_ = server.Close()
+		if err := <-done; err != nil && !errors.Is(err, http.ErrServerClosed) {
+			t.Errorf("server shutdown error = %v", err)
+		}
+	})
 
 	client := public.connect(t)
 	defer func() { _ = client.Close() }()

@@ -134,8 +134,8 @@ func TestProcessWaitsForNamespaceExit(t *testing.T) {
 		t.Fatal(err)
 	}
 	select {
-	case <-supervised.Done():
-		t.Fatal("wrapper exit counted as namespace exit")
+	case err := <-supervised.Done():
+		t.Fatalf("wrapper exit counted as namespace exit: %v", err)
 	case <-time.After(20 * time.Millisecond):
 	}
 	p.childErr = errors.New("pidfd observation failed")

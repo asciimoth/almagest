@@ -160,7 +160,7 @@
               ''; in builtins.toString script;
               stages = [ "pre-commit" ];
             };
-            # TODO: Enable govulncheck again after Go is updated to 1.26.9 or later.
+            # TODO: Enable govulncheck again after Go is updated to 1.26.10 or later.
             # govulncheck = {
             #   enable = true;
             #   description = "Run govulncheck";
@@ -229,6 +229,7 @@
         MULLVAD_SPLIT_TUNNEL_DRIVER_DIR = windowsSplitTunnelDrivers;
         SYSNET_WINDOWS_WINTUN_DIR = windowsWintun;
         PSSCRIPTANALYZER_PATH = "${psScriptAnalyzer}/share/powershell/Modules/PSScriptAnalyzer/PSScriptAnalyzer.psd1";
+        ALMAGEST_GLIBC_STATIC_LDFLAG = pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux "-L${pkgs.glibc.static}/lib";
         WINVM_OVMF_CODE = pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux "${pkgs.OVMF.fd}/FV/OVMF_CODE.fd";
         WINVM_OVMF_VARS = pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux "${pkgs.OVMF.fd}/FV/OVMF_VARS.fd";
         buildInputs = with pkgs; [
@@ -271,7 +272,6 @@
           pkgs.pkg-config
           staticLibseccomp
           staticLibseccomp.lib
-          pkgs.glibc.static
           pkgs.qemu
           pkgs.xorriso
           pkgs.OVMF

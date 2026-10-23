@@ -319,7 +319,11 @@ func (e *engine) SandboxesForNode(ctx context.Context, node uint64, _, _ string)
 	if err == nil && changed && e.nodeConfigChangeCallback != nil {
 		result := e.nodeConfigChangeCallback(node)
 		if result != nil {
-			go func() { <-result }()
+			go func() {
+				if err := <-result; err != nil && e.logger != nil {
+					e.logger.Errf("node configuration change callback failed for node %d: %v", node, err)
+				}
+			}()
 		}
 	}
 	return view, err

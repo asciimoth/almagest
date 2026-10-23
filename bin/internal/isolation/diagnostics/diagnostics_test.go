@@ -140,7 +140,10 @@ func TestChildOperatorCollectorAssignsOrigin(t *testing.T) {
 	}
 	cancel()
 	select {
-	case <-done:
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("collector Run error = %v, want context.Canceled", err)
+		}
 	case <-time.After(time.Second):
 		t.Fatal("operator collector did not stop")
 	}

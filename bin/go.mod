@@ -1,6 +1,6 @@
 module github.com/asciimoth/almagest/bin
 
-go 1.26.6
+go 1.26.9
 
 require (
 	github.com/alexflint/go-arg v1.6.1

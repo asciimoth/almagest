@@ -13,7 +13,7 @@ jobs:
       - uses: extractions/setup-just@v3
       - uses: actions/setup-go@v5
         with:
-          go-version: 1.26.6
+          go-version: 1.26.9
           cache-dependency-path: |
             bin/go.sum
             lib/go.sum
@@ -52,7 +52,7 @@ jobs:
       - uses: extractions/setup-just@v3
       - uses: actions/setup-go@v5
         with:
-          go-version: 1.26.6
+          go-version: 1.26.9
           cache-dependency-path: |
             bin/go.sum
             lib/go.sum
@@ -68,7 +68,7 @@ jobs:
       - uses: extractions/setup-just@v3
       - uses: actions/setup-go@v5
         with:
-          go-version: 1.26.6
+          go-version: 1.26.9
           cache-dependency-path: |
             bin/go.sum
             lib/go.sum

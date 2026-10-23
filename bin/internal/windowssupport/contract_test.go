@@ -316,7 +316,7 @@ func testQualificationIdentity(platform Platform) QualificationIdentity {
 	return QualificationIdentity{
 		SourceRevision: "revision", SourceArchiveSHA256: strings.Repeat("a", 64),
 		GeneratedInputsSHA256: strings.Repeat("b", 64), OS: platform.OS,
-		Architecture: platform.Architecture, GoVersion: "go1.26.6",
+		Architecture: platform.Architecture, GoVersion: "go1.26.9",
 		Binaries: map[string]string{"almagestd.exe": strings.Repeat("1", 64), "almagest-cli.exe": strings.Repeat("2", 64)},
 	}
 }

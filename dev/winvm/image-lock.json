@@ -12,10 +12,10 @@
     "sha256": "e14cf2b94492c3e925f0070ba7fdfedeb2048c91eea9c5a5afb30232a3976331"
   },
   "go": {
-    "version": "1.26.6",
-    "file": "go1.26.6.windows-amd64.zip",
-    "source": "https://go.dev/dl/go1.26.6.windows-amd64.zip",
-    "sha256": "5b6c5b556525810463b5c897b50dc7a82d6a3dc0bfaf55d990a7e9f31d6b2318"
+    "version": "1.26.9",
+    "file": "go1.26.9.windows-amd64.zip",
+    "source": "https://go.dev/dl/go1.26.9.windows-amd64.zip",
+    "sha256": "d722201a9c0c086d1610e111c48203009af690892ed708072bd5ae20160e7a59"
   },
   "openssh": {
     "version": "9.8.3.0p2-Preview",

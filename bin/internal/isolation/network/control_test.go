@@ -55,7 +55,10 @@ func TestNetworkControl(t *testing.T) {
 	}
 	_ = peer.Close()
 	select {
-	case <-done:
+	case err := <-done:
+		if err == nil {
+			t.Fatal("peer death stopped broker without an error")
+		}
 	case <-ctx.Done():
 		t.Fatal("peer death did not clean up")
 	}
