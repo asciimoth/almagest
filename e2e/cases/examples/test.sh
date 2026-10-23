@@ -6,7 +6,7 @@ source /e2e/lib/common.sh
 start_daemon
 
 jq -e '
-	.snapshots | length == 2
+	.snapshots | length == 39
 	and .[0].example == "001-hello-network"
 	and .[0].name == "Hello Network"
 	and (.[0].comment | length > 0)
@@ -17,6 +17,14 @@ jq -e '
 	and (.[1].comment | length > 0)
 	and (.[1] | has("uuid") | not)
 	and (.[1] | has("timestamp") | not)
+	and .[-1].example == "039-route-host-tun-egress"
+	and all(.[];
+		(.example | length > 0)
+		and (.name | length > 0)
+		and (.comment | length > 0)
+		and (has("uuid") | not)
+		and (has("timestamp") | not)
+	)
 ' <(cli snapshots list) >/dev/null || fail "example listing metadata is invalid"
 
 wait_graph_node "Before Example" || fail "initial graph is missing"
