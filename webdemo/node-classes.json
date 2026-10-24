@@ -1,0 +1,2213 @@
+{
+  "version": 1,
+  "order": [
+    "almagest/Dns2Network",
+    "almagest/DnsCache",
+    "almagest/DnsClient",
+    "almagest/DnsFallback",
+    "almagest/DnsQuery",
+    "almagest/DnsRouter",
+    "almagest/DnsServer",
+    "almagest/MeshNames",
+    "almagest/OutDns",
+    "almagest/StaticDns",
+    "almagest/DnsInject",
+    "almagest/FetchAddr",
+    "almagest/HttpClient",
+    "almagest/HttpServer",
+    "almagest/LocalProxy",
+    "almagest/MockNetwork",
+    "almagest/NetworkFirewall",
+    "almagest/NetworkRouter",
+    "almagest/OutNetwork",
+    "almagest/Remapper",
+    "almagest/Sniffer",
+    "almagest/SocksClient",
+    "almagest/SocksServer",
+    "almagest/TlsMitm",
+    "almagest/TlsTerminator",
+    "almagest/TlsWrapper",
+    "almagest/TorDriver",
+    "almagest/AutoTunSplitter",
+    "almagest/DefaultTun",
+    "almagest/Spoofer",
+    "almagest/Tun",
+    "almagest/Tun2Dns",
+    "almagest/TunConfigStripper",
+    "almagest/TunCopy",
+    "almagest/TunFirewall",
+    "almagest/TunJoiner",
+    "almagest/TunSplitter",
+    "almagest/VTun",
+    "almagest/Amnesia",
+    "almagest/AmnesiaCtrl",
+    "almagest/TailscaleCtrl",
+    "almagest/WGConfig",
+    "almagest/WireGuard",
+    "almagest/Command",
+    "almagest/TimeTrigger",
+    "pasta/BoolAnd",
+    "pasta/BoolConstant",
+    "pasta/BoolGet",
+    "pasta/BoolNot",
+    "pasta/BoolOr",
+    "pasta/BoolSet",
+    "pasta/Equal",
+    "pasta/FalseConstant",
+    "pasta/Less",
+    "pasta/More",
+    "pasta/NotEqual",
+    "pasta/StringContains",
+    "pasta/TrueConstant",
+    "pasta/FloatConstant",
+    "pasta/FloatGet",
+    "pasta/FloatSet",
+    "pasta/IntConstant",
+    "pasta/IntGet",
+    "pasta/IntSet",
+    "pasta/Length",
+    "pasta/StringLength",
+    "pasta/ForLoop",
+    "pasta/Iter",
+    "pasta/WhileLoop",
+    "pasta/ObjectConstant",
+    "pasta/ObjectGet",
+    "pasta/ObjectPacker",
+    "pasta/ObjectSet",
+    "pasta/ObjectUnpacker",
+    "pasta/ObjectToString",
+    "pasta/StringConcat",
+    "pasta/StringConstant",
+    "pasta/StringFormat",
+    "pasta/StringGet",
+    "pasta/StringLower",
+    "pasta/StringSet",
+    "pasta/StringSplit",
+    "pasta/StringTrimSpace",
+    "pasta/StringUpper",
+    "pasta/Trigger",
+    "pasta/Div",
+    "pasta/Gateway",
+    "pasta/Mul",
+    "pasta/PopUp",
+    "pasta/Select",
+    "pasta/SelectOut",
+    "pasta/Sub",
+    "pasta/Sum"
+  ],
+  "colormap": {
+    "almagest/dns": {
+      "type": "#1f7a8c",
+      "text": "#ffffff"
+    },
+    "almagest/network": {
+      "type": "#8a5cf6",
+      "text": "#ffffff"
+    },
+    "almagest/tun": {
+      "type": "#c47a3c",
+      "text": "#ffffff"
+    },
+    "almagest/wgctrl": {
+      "type": "#5267a8",
+      "text": "#ffffff"
+    },
+    "pasta/bool": {
+      "type": "#3b7f3e",
+      "text": "#ffffff"
+    },
+    "pasta/float": {
+      "type": "#bd5a20",
+      "text": "#ffffff"
+    },
+    "pasta/int": {
+      "type": "#b37a00",
+      "text": "#ffffff"
+    },
+    "pasta/loop": {
+      "type": "#2563eb",
+      "text": "#ffffff"
+    },
+    "pasta/object": {
+      "type": "#6f7782",
+      "text": "#ffffff"
+    },
+    "pasta/string": {
+      "type": "#087d73",
+      "text": "#ffffff"
+    },
+    "pasta/trigger": {
+      "type": "#d6336c",
+      "text": "#ffffff"
+    }
+  },
+  "classes": {
+    "almagest/Amnesia": {
+      "primary_type": "almagest/wgctrl",
+      "initial_ports": [
+        {
+          "direction": "left",
+          "name": "Tun",
+          "types": [
+            "almagest/tun"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "DNS",
+          "types": [
+            "almagest/dns"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "Network",
+          "types": [
+            "almagest/network"
+          ]
+        }
+      ]
+    },
+    "almagest/AmnesiaCtrl": {
+      "primary_type": "almagest/wgctrl",
+      "initial_ports": [
+        {
+          "direction": "right",
+          "name": "WireGuard",
+          "types": [
+            "almagest/wgctrl"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "Network",
+          "types": [
+            "almagest/network"
+          ]
+        }
+      ]
+    },
+    "almagest/AutoTunSplitter": {
+      "primary_type": "almagest/tun",
+      "initial_ports": [
+        {
+          "direction": "left",
+          "name": "Tun",
+          "types": [
+            "almagest/tun"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "slot 1",
+          "types": [
+            "almagest/tun"
+          ]
+        }
+      ]
+    },
+    "almagest/Command": {
+      "primary_type": "pasta/trigger",
+      "initial_ports": [
+        {
+          "direction": "left",
+          "name": "Trigger",
+          "types": [
+            "pasta/trigger"
+          ]
+        }
+      ]
+    },
+    "almagest/DefaultTun": {
+      "primary_type": "almagest/tun",
+      "initial_ports": [
+        {
+          "direction": "right",
+          "name": "Tun",
+          "types": [
+            "almagest/tun"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "DNS",
+          "types": [
+            "almagest/dns"
+          ]
+        }
+      ]
+    },
+    "almagest/Dns2Network": {
+      "primary_type": "almagest/dns",
+      "initial_ports": [
+        {
+          "direction": "left",
+          "name": "DNS",
+          "types": [
+            "almagest/dns"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "Network",
+          "types": [
+            "almagest/network"
+          ]
+        }
+      ]
+    },
+    "almagest/DnsCache": {
+      "primary_type": "almagest/dns",
+      "initial_ports": [
+        {
+          "direction": "left",
+          "name": "DNS",
+          "types": [
+            "almagest/dns"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "DNS",
+          "types": [
+            "almagest/dns"
+          ]
+        }
+      ]
+    },
+    "almagest/DnsClient": {
+      "primary_type": "almagest/dns",
+      "initial_ports": [
+        {
+          "direction": "left",
+          "name": "DNS",
+          "types": [
+            "almagest/dns"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "Network",
+          "types": [
+            "almagest/network"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "Bootstrap DNS",
+          "types": [
+            "almagest/dns"
+          ]
+        }
+      ]
+    },
+    "almagest/DnsFallback": {
+      "primary_type": "almagest/dns",
+      "initial_ports": [
+        {
+          "direction": "left",
+          "name": "DNS",
+          "types": [
+            "almagest/dns"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "slot 1",
+          "types": [
+            "almagest/dns"
+          ]
+        }
+      ]
+    },
+    "almagest/DnsInject": {
+      "primary_type": "almagest/network",
+      "initial_ports": [
+        {
+          "direction": "left",
+          "name": "Network",
+          "types": [
+            "almagest/network"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "Network",
+          "types": [
+            "almagest/network"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "DNS",
+          "types": [
+            "almagest/dns"
+          ]
+        }
+      ]
+    },
+    "almagest/DnsQuery": {
+      "primary_type": "almagest/dns",
+      "initial_ports": [
+        {
+          "direction": "right",
+          "name": "DNS",
+          "types": [
+            "almagest/dns"
+          ]
+        }
+      ]
+    },
+    "almagest/DnsRouter": {
+      "primary_type": "almagest/dns",
+      "initial_ports": [
+        {
+          "direction": "left",
+          "name": "DNS",
+          "types": [
+            "almagest/dns"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "slot 1",
+          "types": [
+            "almagest/dns"
+          ]
+        }
+      ]
+    },
+    "almagest/DnsServer": {
+      "primary_type": "almagest/dns",
+      "initial_ports": [
+        {
+          "direction": "right",
+          "name": "Network",
+          "types": [
+            "almagest/network"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "DNS",
+          "types": [
+            "almagest/dns"
+          ]
+        }
+      ]
+    },
+    "almagest/FetchAddr": {
+      "primary_type": "almagest/network",
+      "initial_ports": [
+        {
+          "direction": "right",
+          "name": "Network",
+          "types": [
+            "almagest/network"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "Check",
+          "types": [
+            "pasta/trigger"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "Success",
+          "types": [
+            "pasta/trigger"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "Fail",
+          "types": [
+            "pasta/trigger"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "Public IP",
+          "types": [
+            "pasta/string"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "Country code",
+          "types": [
+            "pasta/string"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "City",
+          "types": [
+            "pasta/string"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "Latitude",
+          "types": [
+            "pasta/float"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "Longitude",
+          "types": [
+            "pasta/float"
+          ]
+        }
+      ]
+    },
+    "almagest/HttpClient": {
+      "primary_type": "almagest/network",
+      "initial_ports": [
+        {
+          "direction": "right",
+          "name": "Network",
+          "types": [
+            "almagest/network"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "URL",
+          "types": [
+            "pasta/string"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "Method",
+          "types": [
+            "pasta/string"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "Body",
+          "types": [
+            "pasta/string"
+          ]
+        }
+      ]
+    },
+    "almagest/HttpServer": {
+      "primary_type": "almagest/network",
+      "initial_ports": [
+        {
+          "direction": "right",
+          "name": "Network",
+          "types": [
+            "almagest/network"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "Response",
+          "types": [
+            "pasta/string"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "Host",
+          "types": [
+            "pasta/string"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "Port",
+          "types": [
+            "pasta/string"
+          ]
+        }
+      ]
+    },
+    "almagest/LocalProxy": {
+      "primary_type": "almagest/network",
+      "initial_ports": [
+        {
+          "direction": "right",
+          "name": "proxy",
+          "types": [
+            "almagest/network"
+          ]
+        }
+      ]
+    },
+    "almagest/MeshNames": {
+      "primary_type": "almagest/dns",
+      "initial_ports": [
+        {
+          "direction": "left",
+          "name": "DNS",
+          "types": [
+            "almagest/dns"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "Network",
+          "types": [
+            "almagest/network"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "Fallback DNS",
+          "types": [
+            "almagest/dns"
+          ]
+        }
+      ]
+    },
+    "almagest/MockNetwork": {
+      "primary_type": "almagest/network",
+      "initial_ports": [
+        {
+          "direction": "left",
+          "name": "Network",
+          "types": [
+            "almagest/network"
+          ]
+        }
+      ]
+    },
+    "almagest/NetworkFirewall": {
+      "primary_type": "almagest/network",
+      "initial_ports": [
+        {
+          "direction": "left",
+          "name": "Network",
+          "types": [
+            "almagest/network"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "Config",
+          "types": [
+            "pasta/object"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "Network",
+          "types": [
+            "almagest/network"
+          ]
+        }
+      ]
+    },
+    "almagest/NetworkRouter": {
+      "primary_type": "almagest/network",
+      "initial_ports": [
+        {
+          "direction": "left",
+          "name": "Network",
+          "types": [
+            "almagest/network"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "slot 1",
+          "types": [
+            "almagest/network"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "DNS",
+          "types": [
+            "almagest/dns"
+          ]
+        }
+      ]
+    },
+    "almagest/OutDns": {
+      "primary_type": "almagest/dns",
+      "initial_ports": [
+        {
+          "direction": "left",
+          "name": "DNS",
+          "types": [
+            "almagest/dns"
+          ]
+        }
+      ]
+    },
+    "almagest/OutNetwork": {
+      "primary_type": "almagest/network",
+      "initial_ports": [
+        {
+          "direction": "left",
+          "name": "Network",
+          "types": [
+            "almagest/network"
+          ]
+        }
+      ]
+    },
+    "almagest/Remapper": {
+      "primary_type": "almagest/network",
+      "initial_ports": [
+        {
+          "direction": "left",
+          "name": "Network",
+          "types": [
+            "almagest/network"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "Network",
+          "types": [
+            "almagest/network"
+          ]
+        }
+      ]
+    },
+    "almagest/Sniffer": {
+      "primary_type": "almagest/network",
+      "initial_ports": [
+        {
+          "direction": "left",
+          "name": "Network",
+          "types": [
+            "almagest/network"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "slot 1",
+          "types": [
+            "almagest/network"
+          ]
+        }
+      ]
+    },
+    "almagest/SocksClient": {
+      "primary_type": "almagest/network",
+      "initial_ports": [
+        {
+          "direction": "left",
+          "name": "Network",
+          "types": [
+            "almagest/network"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "out",
+          "types": [
+            "almagest/network"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "Proxy URL",
+          "types": [
+            "pasta/string"
+          ]
+        }
+      ]
+    },
+    "almagest/SocksServer": {
+      "primary_type": "almagest/network",
+      "initial_ports": [
+        {
+          "direction": "right",
+          "name": "listen",
+          "types": [
+            "almagest/network"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "proxy",
+          "types": [
+            "almagest/network"
+          ]
+        }
+      ]
+    },
+    "almagest/Spoofer": {
+      "primary_type": "almagest/tun",
+      "initial_ports": [
+        {
+          "direction": "left",
+          "name": "Tun",
+          "types": [
+            "almagest/tun"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "Network",
+          "types": [
+            "almagest/network"
+          ]
+        }
+      ]
+    },
+    "almagest/StaticDns": {
+      "primary_type": "almagest/dns",
+      "initial_ports": [
+        {
+          "direction": "left",
+          "name": "DNS",
+          "types": [
+            "almagest/dns"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "Fallback",
+          "types": [
+            "almagest/dns"
+          ]
+        }
+      ]
+    },
+    "almagest/TailscaleCtrl": {
+      "primary_type": "almagest/wgctrl",
+      "initial_ports": [
+        {
+          "direction": "left",
+          "name": "DNS",
+          "types": [
+            "almagest/dns"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "WireGuard",
+          "types": [
+            "almagest/wgctrl"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "Network",
+          "types": [
+            "almagest/network"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "Firewall",
+          "types": [
+            "pasta/object"
+          ]
+        }
+      ]
+    },
+    "almagest/TimeTrigger": {
+      "primary_type": "pasta/trigger",
+      "initial_ports": [
+        {
+          "direction": "right",
+          "name": "Trigger",
+          "types": [
+            "pasta/trigger"
+          ]
+        }
+      ]
+    },
+    "almagest/TlsMitm": {
+      "primary_type": "almagest/network",
+      "initial_ports": [
+        {
+          "direction": "left",
+          "name": "Network",
+          "types": [
+            "almagest/network"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "Network",
+          "types": [
+            "almagest/network"
+          ]
+        }
+      ]
+    },
+    "almagest/TlsTerminator": {
+      "primary_type": "almagest/network",
+      "initial_ports": [
+        {
+          "direction": "left",
+          "name": "Network",
+          "types": [
+            "almagest/network"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "Network",
+          "types": [
+            "almagest/network"
+          ]
+        }
+      ]
+    },
+    "almagest/TlsWrapper": {
+      "primary_type": "almagest/network",
+      "initial_ports": [
+        {
+          "direction": "left",
+          "name": "Network",
+          "types": [
+            "almagest/network"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "Network",
+          "types": [
+            "almagest/network"
+          ]
+        }
+      ]
+    },
+    "almagest/TorDriver": {
+      "primary_type": "almagest/network",
+      "initial_ports": [
+        {
+          "direction": "left",
+          "name": "Network default",
+          "types": [
+            "almagest/network"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "out",
+          "types": [
+            "almagest/network"
+          ]
+        }
+      ]
+    },
+    "almagest/Tun": {
+      "primary_type": "almagest/tun",
+      "initial_ports": [
+        {
+          "direction": "right",
+          "name": "Tun",
+          "types": [
+            "almagest/tun"
+          ]
+        }
+      ]
+    },
+    "almagest/Tun2Dns": {
+      "primary_type": "almagest/tun",
+      "initial_ports": [
+        {
+          "direction": "left",
+          "name": "Tun",
+          "types": [
+            "almagest/tun"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "DNS",
+          "types": [
+            "almagest/dns"
+          ]
+        }
+      ]
+    },
+    "almagest/TunConfigStripper": {
+      "primary_type": "almagest/tun",
+      "initial_ports": [
+        {
+          "direction": "left",
+          "name": "Tun",
+          "types": [
+            "almagest/tun"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "Tun",
+          "types": [
+            "almagest/tun"
+          ]
+        }
+      ]
+    },
+    "almagest/TunCopy": {
+      "primary_type": "almagest/tun",
+      "initial_ports": [
+        {
+          "direction": "left",
+          "name": "TunA",
+          "types": [
+            "almagest/tun"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "TunB",
+          "types": [
+            "almagest/tun"
+          ]
+        }
+      ]
+    },
+    "almagest/TunFirewall": {
+      "primary_type": "almagest/tun",
+      "initial_ports": [
+        {
+          "direction": "left",
+          "name": "Tun",
+          "types": [
+            "almagest/tun"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "Config",
+          "types": [
+            "pasta/object"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "Tun",
+          "types": [
+            "almagest/tun"
+          ]
+        }
+      ]
+    },
+    "almagest/TunJoiner": {
+      "primary_type": "almagest/tun",
+      "initial_ports": [
+        {
+          "direction": "left",
+          "name": "Default",
+          "types": [
+            "almagest/tun"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "Secondary",
+          "types": [
+            "almagest/tun"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "Tun",
+          "types": [
+            "almagest/tun"
+          ]
+        }
+      ]
+    },
+    "almagest/TunSplitter": {
+      "primary_type": "almagest/tun",
+      "initial_ports": [
+        {
+          "direction": "left",
+          "name": "Tun",
+          "types": [
+            "almagest/tun"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "slot 1",
+          "types": [
+            "almagest/tun"
+          ]
+        }
+      ]
+    },
+    "almagest/VTun": {
+      "primary_type": "almagest/tun",
+      "initial_ports": [
+        {
+          "direction": "left",
+          "name": "Network",
+          "types": [
+            "almagest/network"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "Tun",
+          "types": [
+            "almagest/tun"
+          ]
+        }
+      ]
+    },
+    "almagest/WGConfig": {
+      "primary_type": "almagest/wgctrl",
+      "initial_ports": [
+        {
+          "direction": "right",
+          "name": "WireGuard",
+          "types": [
+            "almagest/wgctrl"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "Network",
+          "types": [
+            "almagest/network"
+          ]
+        }
+      ]
+    },
+    "almagest/WireGuard": {
+      "primary_type": "almagest/wgctrl",
+      "initial_ports": [
+        {
+          "direction": "left",
+          "name": "Tun",
+          "types": [
+            "almagest/tun"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "Peers",
+          "types": [
+            "pasta/object"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "WGCtrl",
+          "types": [
+            "almagest/wgctrl"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "Network",
+          "types": [
+            "almagest/network"
+          ]
+        }
+      ]
+    },
+    "pasta/BoolAnd": {
+      "primary_type": "pasta/bool",
+      "initial_ports": [
+        {
+          "direction": "right",
+          "name": "output",
+          "types": [
+            "pasta/bool"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "input 1",
+          "types": [
+            "pasta/bool"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "input 2",
+          "types": [
+            "pasta/bool"
+          ]
+        }
+      ]
+    },
+    "pasta/BoolConstant": {
+      "primary_type": "pasta/bool",
+      "initial_ports": [
+        {
+          "direction": "right",
+          "name": "output",
+          "types": [
+            "pasta/bool"
+          ]
+        }
+      ]
+    },
+    "pasta/BoolGet": {
+      "primary_type": "pasta/bool",
+      "initial_ports": [
+        {
+          "direction": "right",
+          "name": "Trigger",
+          "types": [
+            "pasta/trigger"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "Value",
+          "types": [
+            "pasta/bool"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "Trigger",
+          "types": [
+            "pasta/trigger"
+          ]
+        }
+      ]
+    },
+    "pasta/BoolNot": {
+      "primary_type": "pasta/bool",
+      "initial_ports": [
+        {
+          "direction": "right",
+          "name": "output",
+          "types": [
+            "pasta/bool"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "input 1",
+          "types": [
+            "pasta/bool"
+          ]
+        }
+      ]
+    },
+    "pasta/BoolOr": {
+      "primary_type": "pasta/bool",
+      "initial_ports": [
+        {
+          "direction": "right",
+          "name": "output",
+          "types": [
+            "pasta/bool"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "input 1",
+          "types": [
+            "pasta/bool"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "input 2",
+          "types": [
+            "pasta/bool"
+          ]
+        }
+      ]
+    },
+    "pasta/BoolSet": {
+      "primary_type": "pasta/bool",
+      "initial_ports": [
+        {
+          "direction": "right",
+          "name": "Trigger",
+          "types": [
+            "pasta/trigger"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "Trigger",
+          "types": [
+            "pasta/trigger"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "Value",
+          "types": [
+            "pasta/bool"
+          ]
+        }
+      ]
+    },
+    "pasta/Div": {
+      "primary_type": "",
+      "initial_ports": [
+        {
+          "direction": "right",
+          "name": "output",
+          "types": [
+            "any/any"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "input 1",
+          "types": [
+            "pasta/int",
+            "pasta/float"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "input 2",
+          "types": [
+            "pasta/int",
+            "pasta/float"
+          ]
+        }
+      ]
+    },
+    "pasta/Equal": {
+      "primary_type": "pasta/bool",
+      "initial_ports": [
+        {
+          "direction": "right",
+          "name": "output",
+          "types": [
+            "pasta/bool"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "input 1",
+          "types": [
+            "any/any"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "input 2",
+          "types": [
+            "any/any"
+          ]
+        }
+      ]
+    },
+    "pasta/FalseConstant": {
+      "primary_type": "pasta/bool",
+      "initial_ports": [
+        {
+          "direction": "right",
+          "name": "output",
+          "types": [
+            "pasta/bool"
+          ]
+        }
+      ]
+    },
+    "pasta/FloatConstant": {
+      "primary_type": "pasta/float",
+      "initial_ports": [
+        {
+          "direction": "right",
+          "name": "output",
+          "types": [
+            "pasta/float"
+          ]
+        }
+      ]
+    },
+    "pasta/FloatGet": {
+      "primary_type": "pasta/float",
+      "initial_ports": [
+        {
+          "direction": "right",
+          "name": "Trigger",
+          "types": [
+            "pasta/trigger"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "Value",
+          "types": [
+            "pasta/float"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "Trigger",
+          "types": [
+            "pasta/trigger"
+          ]
+        }
+      ]
+    },
+    "pasta/FloatSet": {
+      "primary_type": "pasta/float",
+      "initial_ports": [
+        {
+          "direction": "right",
+          "name": "Trigger",
+          "types": [
+            "pasta/trigger"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "Trigger",
+          "types": [
+            "pasta/trigger"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "Value",
+          "types": [
+            "pasta/float"
+          ]
+        }
+      ]
+    },
+    "pasta/ForLoop": {
+      "primary_type": "pasta/loop",
+      "initial_ports": [
+        {
+          "direction": "left",
+          "name": "Trigger",
+          "types": [
+            "pasta/trigger"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "Start index",
+          "types": [
+            "pasta/int"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "End index",
+          "types": [
+            "pasta/int"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "Step",
+          "types": [
+            "pasta/int"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "Loop",
+          "types": [
+            "pasta/loop"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "Body",
+          "types": [
+            "pasta/trigger"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "Index",
+          "types": [
+            "pasta/int"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "Completed",
+          "types": [
+            "pasta/trigger"
+          ]
+        }
+      ]
+    },
+    "pasta/Gateway": {
+      "primary_type": "",
+      "initial_ports": [
+        {
+          "direction": "right",
+          "name": "Out",
+          "types": [
+            "any/any"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "Trigger",
+          "types": [
+            "pasta/trigger"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "In",
+          "types": [
+            "any/any"
+          ]
+        }
+      ]
+    },
+    "pasta/IntConstant": {
+      "primary_type": "pasta/int",
+      "initial_ports": [
+        {
+          "direction": "right",
+          "name": "output",
+          "types": [
+            "pasta/int"
+          ]
+        }
+      ]
+    },
+    "pasta/IntGet": {
+      "primary_type": "pasta/int",
+      "initial_ports": [
+        {
+          "direction": "right",
+          "name": "Trigger",
+          "types": [
+            "pasta/trigger"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "Value",
+          "types": [
+            "pasta/int"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "Trigger",
+          "types": [
+            "pasta/trigger"
+          ]
+        }
+      ]
+    },
+    "pasta/IntSet": {
+      "primary_type": "pasta/int",
+      "initial_ports": [
+        {
+          "direction": "right",
+          "name": "Trigger",
+          "types": [
+            "pasta/trigger"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "Trigger",
+          "types": [
+            "pasta/trigger"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "Value",
+          "types": [
+            "pasta/int"
+          ]
+        }
+      ]
+    },
+    "pasta/Iter": {
+      "primary_type": "pasta/loop",
+      "initial_ports": [
+        {
+          "direction": "left",
+          "name": "Loop",
+          "types": [
+            "pasta/loop"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "Break",
+          "types": [
+            "pasta/trigger"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "Continue",
+          "types": [
+            "pasta/trigger"
+          ]
+        }
+      ]
+    },
+    "pasta/Length": {
+      "primary_type": "pasta/int",
+      "initial_ports": [
+        {
+          "direction": "right",
+          "name": "output",
+          "types": [
+            "pasta/int"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "input",
+          "types": [
+            "pasta/object"
+          ]
+        }
+      ]
+    },
+    "pasta/Less": {
+      "primary_type": "pasta/bool",
+      "initial_ports": [
+        {
+          "direction": "right",
+          "name": "output",
+          "types": [
+            "pasta/bool"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "input 1",
+          "types": [
+            "any/any"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "input 2",
+          "types": [
+            "any/any"
+          ]
+        }
+      ]
+    },
+    "pasta/More": {
+      "primary_type": "pasta/bool",
+      "initial_ports": [
+        {
+          "direction": "right",
+          "name": "output",
+          "types": [
+            "pasta/bool"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "input 1",
+          "types": [
+            "any/any"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "input 2",
+          "types": [
+            "any/any"
+          ]
+        }
+      ]
+    },
+    "pasta/Mul": {
+      "primary_type": "",
+      "initial_ports": [
+        {
+          "direction": "right",
+          "name": "output",
+          "types": [
+            "any/any"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "input 1",
+          "types": [
+            "pasta/int",
+            "pasta/float"
+          ]
+        }
+      ]
+    },
+    "pasta/NotEqual": {
+      "primary_type": "pasta/bool",
+      "initial_ports": [
+        {
+          "direction": "right",
+          "name": "output",
+          "types": [
+            "pasta/bool"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "input 1",
+          "types": [
+            "any/any"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "input 2",
+          "types": [
+            "any/any"
+          ]
+        }
+      ]
+    },
+    "pasta/ObjectConstant": {
+      "primary_type": "pasta/object",
+      "initial_ports": [
+        {
+          "direction": "right",
+          "name": "output",
+          "types": [
+            "pasta/object"
+          ]
+        }
+      ]
+    },
+    "pasta/ObjectGet": {
+      "primary_type": "pasta/object",
+      "initial_ports": [
+        {
+          "direction": "right",
+          "name": "Trigger",
+          "types": [
+            "pasta/trigger"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "Value",
+          "types": [
+            "pasta/object"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "Trigger",
+          "types": [
+            "pasta/trigger"
+          ]
+        }
+      ]
+    },
+    "pasta/ObjectPacker": {
+      "primary_type": "pasta/object",
+      "initial_ports": [
+        {
+          "direction": "right",
+          "name": "output",
+          "types": [
+            "pasta/object"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "Base",
+          "types": [
+            "pasta/object"
+          ]
+        }
+      ]
+    },
+    "pasta/ObjectSet": {
+      "primary_type": "pasta/object",
+      "initial_ports": [
+        {
+          "direction": "right",
+          "name": "Trigger",
+          "types": [
+            "pasta/trigger"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "Trigger",
+          "types": [
+            "pasta/trigger"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "Value",
+          "types": [
+            "pasta/object"
+          ]
+        }
+      ]
+    },
+    "pasta/ObjectToString": {
+      "primary_type": "pasta/string",
+      "initial_ports": [
+        {
+          "direction": "right",
+          "name": "output",
+          "types": [
+            "pasta/string"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "input",
+          "types": [
+            "pasta/object"
+          ]
+        }
+      ]
+    },
+    "pasta/ObjectUnpacker": {
+      "primary_type": "pasta/object",
+      "initial_ports": [
+        {
+          "direction": "left",
+          "name": "input",
+          "types": [
+            "pasta/object"
+          ]
+        }
+      ]
+    },
+    "pasta/PopUp": {
+      "primary_type": "",
+      "initial_ports": [
+        {
+          "direction": "left",
+          "name": "Trigger",
+          "types": [
+            "pasta/trigger"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "Lvl",
+          "types": [
+            "pasta/string"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "Text",
+          "types": [
+            "pasta/string"
+          ]
+        }
+      ]
+    },
+    "pasta/Select": {
+      "primary_type": "",
+      "initial_ports": [
+        {
+          "direction": "right",
+          "name": "Out",
+          "types": [
+            "any/any"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "Selector",
+          "types": [
+            "pasta/bool"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "In 0",
+          "types": [
+            "any/any"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "In 1",
+          "types": [
+            "any/any"
+          ]
+        }
+      ]
+    },
+    "pasta/SelectOut": {
+      "primary_type": "",
+      "initial_ports": [
+        {
+          "direction": "left",
+          "name": "In",
+          "types": [
+            "any/any"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "Selector",
+          "types": [
+            "pasta/bool"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "Out 0",
+          "types": [
+            "any/any"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "Out 1",
+          "types": [
+            "any/any"
+          ]
+        }
+      ]
+    },
+    "pasta/StringConcat": {
+      "primary_type": "pasta/string",
+      "initial_ports": [
+        {
+          "direction": "right",
+          "name": "output",
+          "types": [
+            "pasta/string"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "input 1",
+          "types": [
+            "pasta/string"
+          ]
+        }
+      ]
+    },
+    "pasta/StringConstant": {
+      "primary_type": "pasta/string",
+      "initial_ports": [
+        {
+          "direction": "right",
+          "name": "output",
+          "types": [
+            "pasta/string"
+          ]
+        }
+      ]
+    },
+    "pasta/StringContains": {
+      "primary_type": "pasta/bool",
+      "initial_ports": [
+        {
+          "direction": "right",
+          "name": "output",
+          "types": [
+            "pasta/bool"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "input 1",
+          "types": [
+            "pasta/string"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "input 2",
+          "types": [
+            "pasta/string"
+          ]
+        }
+      ]
+    },
+    "pasta/StringFormat": {
+      "primary_type": "pasta/string",
+      "initial_ports": [
+        {
+          "direction": "right",
+          "name": "output",
+          "types": [
+            "pasta/string"
+          ]
+        }
+      ]
+    },
+    "pasta/StringGet": {
+      "primary_type": "pasta/string",
+      "initial_ports": [
+        {
+          "direction": "right",
+          "name": "Trigger",
+          "types": [
+            "pasta/trigger"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "Value",
+          "types": [
+            "pasta/string"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "Trigger",
+          "types": [
+            "pasta/trigger"
+          ]
+        }
+      ]
+    },
+    "pasta/StringLength": {
+      "primary_type": "pasta/int",
+      "initial_ports": [
+        {
+          "direction": "right",
+          "name": "output",
+          "types": [
+            "pasta/int"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "input 1",
+          "types": [
+            "pasta/string"
+          ]
+        }
+      ]
+    },
+    "pasta/StringLower": {
+      "primary_type": "pasta/string",
+      "initial_ports": [
+        {
+          "direction": "right",
+          "name": "output",
+          "types": [
+            "pasta/string"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "input 1",
+          "types": [
+            "pasta/string"
+          ]
+        }
+      ]
+    },
+    "pasta/StringSet": {
+      "primary_type": "pasta/string",
+      "initial_ports": [
+        {
+          "direction": "right",
+          "name": "Trigger",
+          "types": [
+            "pasta/trigger"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "Trigger",
+          "types": [
+            "pasta/trigger"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "Value",
+          "types": [
+            "pasta/string"
+          ]
+        }
+      ]
+    },
+    "pasta/StringSplit": {
+      "primary_type": "pasta/string",
+      "initial_ports": [
+        {
+          "direction": "right",
+          "name": "Before",
+          "types": [
+            "pasta/string"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "After",
+          "types": [
+            "pasta/string"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "Text",
+          "types": [
+            "pasta/string"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "Separator",
+          "types": [
+            "pasta/string"
+          ]
+        }
+      ]
+    },
+    "pasta/StringTrimSpace": {
+      "primary_type": "pasta/string",
+      "initial_ports": [
+        {
+          "direction": "right",
+          "name": "output",
+          "types": [
+            "pasta/string"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "input 1",
+          "types": [
+            "pasta/string"
+          ]
+        }
+      ]
+    },
+    "pasta/StringUpper": {
+      "primary_type": "pasta/string",
+      "initial_ports": [
+        {
+          "direction": "right",
+          "name": "output",
+          "types": [
+            "pasta/string"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "input 1",
+          "types": [
+            "pasta/string"
+          ]
+        }
+      ]
+    },
+    "pasta/Sub": {
+      "primary_type": "",
+      "initial_ports": [
+        {
+          "direction": "right",
+          "name": "output",
+          "types": [
+            "any/any"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "input 1",
+          "types": [
+            "pasta/int",
+            "pasta/float"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "input 2",
+          "types": [
+            "pasta/int",
+            "pasta/float"
+          ]
+        }
+      ]
+    },
+    "pasta/Sum": {
+      "primary_type": "",
+      "initial_ports": [
+        {
+          "direction": "right",
+          "name": "output",
+          "types": [
+            "any/any"
+          ]
+        },
+        {
+          "direction": "left",
+          "name": "input 1",
+          "types": [
+            "pasta/int",
+            "pasta/float"
+          ]
+        }
+      ]
+    },
+    "pasta/Trigger": {
+      "primary_type": "pasta/trigger",
+      "initial_ports": [
+        {
+          "direction": "right",
+          "name": "Trigger",
+          "types": [
+            "pasta/trigger"
+          ]
+        }
+      ]
+    },
+    "pasta/TrueConstant": {
+      "primary_type": "pasta/bool",
+      "initial_ports": [
+        {
+          "direction": "right",
+          "name": "output",
+          "types": [
+            "pasta/bool"
+          ]
+        }
+      ]
+    },
+    "pasta/WhileLoop": {
+      "primary_type": "pasta/loop",
+      "initial_ports": [
+        {
+          "direction": "left",
+          "name": "Trigger",
+          "types": [
+            "pasta/trigger"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "Loop",
+          "types": [
+            "pasta/loop"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "Body",
+          "types": [
+            "pasta/trigger"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "Completed",
+          "types": [
+            "pasta/trigger"
+          ]
+        }
+      ]
+    }
+  }
+}

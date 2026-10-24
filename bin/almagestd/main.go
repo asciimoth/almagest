@@ -52,6 +52,12 @@ func main() {
 		golog.Fatal(err)
 		return
 	}
+	if arguments.DumpWebdemoClasses {
+		if err := writeWebdemoNodeClassCache(os.Stdout); err != nil {
+			golog.Fatal(err)
+		}
+		return
+	}
 	if mode == executionModeIsolation {
 		err = runIsolatedNetworkRole()
 	} else {
@@ -73,6 +79,11 @@ func parseDaemonArgs(cliArgs []string, output io.Writer) (args.Args, executionMo
 			parser.WriteHelp(output)
 		}
 		return args.Args{}, "", err
+	}
+	// The cache dump reads registration metadata only. It must not inherit or
+	// validate a host execution policy because it does not start the daemon.
+	if arguments.DumpWebdemoClasses {
+		return arguments, executionModeDirect, nil
 	}
 	mode, err := selectExecutionMode(arguments)
 	return arguments, mode, err

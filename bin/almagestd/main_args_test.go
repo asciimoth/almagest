@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"errors"
+	"io"
 	"strings"
 	"testing"
 
@@ -18,5 +19,15 @@ func TestParseDaemonArgsHelp(t *testing.T) {
 	}
 	if help := output.String(); !strings.Contains(help, "Usage:") || !strings.Contains(help, "--help") {
 		t.Fatalf("parseDaemonArgs(--help) output does not contain usage and help option:\n%s", help)
+	}
+}
+
+func TestParseDaemonArgsWebdemoClassDump(t *testing.T) {
+	arguments, _, err := parseDaemonArgs([]string{"--dump-webdemo-node-classes"}, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !arguments.DumpWebdemoClasses {
+		t.Fatal("--dump-webdemo-node-classes was not parsed")
 	}
 }

@@ -199,6 +199,14 @@ build-web:
 build-wasm:
   GOOS=js GOARCH=wasm CGO_ENABLED=0 go -C lib build .
 
+# Refresh the tracked metadata used by static documentation node previews.
+# Normal web demo builds consume this cache and do not build the daemon.
+update-webdemo-node-classes cache='webdemo/node-classes.json':
+  mkdir -p build "$(dirname {{quote(cache)}})"
+  go build -C bin -trimpath -o ../build/almagestd-webdemo-cache ./almagestd
+  ./build/almagestd-webdemo-cache --dump-webdemo-node-classes > {{quote(cache)}}.tmp
+  mv {{quote(cache)}}.tmp {{quote(cache)}}
+
 # Build the panel, browser backend, and Go Wasm runtime as one static tree.
 build-webdemo output='build/webdemo':
   cd panel && npm ci && npm run build:webdemo -- ../{{quote(output)}}

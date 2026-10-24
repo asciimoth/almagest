@@ -10,8 +10,16 @@ export type StaticCatalog = {
   locales: Record<string, StaticLocale>;
 };
 
+type StaticNodeClassCache = {
+  version: number;
+  order: string[];
+  colormap: unknown;
+  classes: Record<string, { primary_type: unknown; initial_ports: unknown }>;
+};
+
 export class StaticDocsClient implements DocsClient {
   #catalog: Promise<StaticCatalog> | null = null;
+  #nodeClasses: Promise<StaticNodeClassCache> | null = null;
 
   async tree(locale: string): Promise<unknown> {
     const catalog = await this.catalog();
@@ -38,8 +46,23 @@ export class StaticDocsClient implements DocsClient {
     return await response.text();
   }
 
-  nodeClass(_locale: string, _id: string): Promise<unknown> {
-    return Promise.reject(new Error("Node previews require the browser engine"));
+  async nodeClass(_locale: string, id: string): Promise<unknown> {
+    if (!id.startsWith("node/")) throw new Error("Node documentation page was not specified");
+    const className = id.slice("node/".length);
+    const cache = await this.nodeClasses();
+    if (!className || !Object.hasOwn(cache.classes, className)) throw new Error("Node class was not found");
+    const cls = cache.classes[className];
+    return {
+      snapshot: {
+        class: className,
+        short_description: "",
+        unique: false,
+        primary_type: cls?.primary_type,
+        initial_ports: cls?.initial_ports,
+        experimental: false,
+      },
+      colormap: cache.colormap,
+    };
   }
 
   pageFromLocation(location: Location): string {
@@ -62,10 +85,30 @@ export class StaticDocsClient implements DocsClient {
     return this.#catalog;
   }
 
+  private nodeClasses(): Promise<StaticNodeClassCache> {
+    this.#nodeClasses ??= fetch(new URL("docs/content/node-classes.json", siteBaseURL()))
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+        const value = await response.json() as unknown;
+        if (!isNodeClassCache(value)) throw new Error("Invalid node class cache");
+        return value;
+      });
+    return this.#nodeClasses;
+  }
+
   private locale(catalog: StaticCatalog, requested: string): [string, StaticLocale] {
     const effective = catalog.locales[requested] ? requested : "en";
     const content = catalog.locales[effective];
     if (!content) throw new Error("English documentation is not available");
     return [effective, content];
   }
+}
+
+function isNodeClassCache(input: unknown): input is StaticNodeClassCache {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return false;
+  const value = input as Record<string, unknown>;
+  return value.version === 1
+    && Array.isArray(value.order) && value.order.every((className) => typeof className === "string")
+    && !!value.colormap && typeof value.colormap === "object" && !Array.isArray(value.colormap)
+    && !!value.classes && typeof value.classes === "object" && !Array.isArray(value.classes);
 }

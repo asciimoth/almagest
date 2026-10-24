@@ -33,6 +33,20 @@ function catalog() {
   };
 }
 
+function nodeClassCache() {
+  return {
+    version: 1,
+    order: ["demo/Unsafe<img>"],
+    colormap: { "demo/net": { type: "red", text: "white" } },
+    classes: {
+      "demo/Unsafe<img>": {
+        primary_type: "demo/net",
+        initial_ports: [{ direction: "left", name: "Input<script>", types: ["demo/net"] }],
+      },
+    },
+  };
+}
+
 test("static documentation uses query URLs that work below a hosting subpath", () => {
   const dom = installDOM();
   dom.reconfigure({ url: "https://example.test/almagest/docs/?page=node%2Falmagest%2FMeshNames&locale=en" });
@@ -82,14 +96,40 @@ test("static documentation loads and caches its catalog and raw Markdown", async
   assert.equal(requests.filter((url) => url.endsWith("catalog.json")).length, 1);
 });
 
-test("static documentation falls back to English and rejects unavailable features", async () => {
+test("static documentation falls back to English and rejects missing node classes", async () => {
   installDOM();
-  globalThis.fetch = async () => Response.json(catalog());
+  globalThis.fetch = async (input) => Response.json(String(input).endsWith("node-classes.json") ? nodeClassCache() : catalog());
   const client = new StaticDocsClient();
 
   assert.equal((await client.tree("lorem")).locale, "en");
   await assert.rejects(client.raw("en", "missing"), /Documentation page was not found/);
-  await assert.rejects(client.nodeClass("en", "node/almagest/Test"), /Node previews require the browser engine/);
+  await assert.rejects(client.nodeClass("en", "guide/welcome"), /Node documentation page was not specified/);
+  await assert.rejects(client.nodeClass("en", "node/almagest/Test"), /Node class was not found/);
+});
+
+test("static documentation loads cached node preview data without interpreting text", async () => {
+  installDOM();
+  const requests = [];
+  globalThis.fetch = async (input) => {
+    requests.push(String(input));
+    return Response.json(nodeClassCache());
+  };
+  const client = new StaticDocsClient();
+
+  const response = await client.nodeClass("en", "node/demo/Unsafe<img>");
+  assert.deepEqual(response, {
+    snapshot: {
+      class: "demo/Unsafe<img>",
+      short_description: "",
+      unique: false,
+      primary_type: "demo/net",
+      initial_ports: [{ direction: "left", name: "Input<script>", types: ["demo/net"] }],
+      experimental: false,
+    },
+    colormap: { "demo/net": { type: "red", text: "white" } },
+  });
+  await client.nodeClass("en", "node/demo/Unsafe<img>");
+  assert.deepEqual(requests, ["https://example.test/almagest/docs/content/node-classes.json"]);
 });
 
 test("static documentation reports catalog, Markdown, and missing-English errors", async () => {
@@ -105,4 +145,7 @@ test("static documentation reports catalog, Markdown, and missing-English errors
 
   globalThis.fetch = async () => Response.json({ available: [], locales: {} });
   await assert.rejects(new StaticDocsClient().tree("unknown"), /English documentation is not available/);
+
+  globalThis.fetch = async () => Response.json({ version: 2, order: [], classes: {}, colormap: {} });
+  await assert.rejects(new StaticDocsClient().nodeClass("en", "node/demo/Test"), /Invalid node class cache/);
 });

@@ -26,7 +26,20 @@ just serve-webdemo base_path=almagest
 
 The shorter positional form `just serve-webdemo almagest` is equivalent.
 
-The build includes a Go Wasm backend and its matching Go runtime. The panel loads
-the backend in the browser and uses the shared JSON admin API contract. The
-backend exposes the Wasm-supported node class list. Other reads return empty
+The build includes a Go Wasm backend and its matching Go runtime. The panel
+loads the backend in the browser and uses the shared JSON admin API contract.
+The backend exposes the Wasm-supported node class list. Other reads return empty
 data, and mutations fail because the backend is read-only.
+
+Static documentation previews and the demo SPA type colors use the tracked
+`node-classes.json` cache. The cache also keeps the daemon's node class display
+order. Refresh it after a production node class, default port, or type color
+changes:
+
+```sh
+just update-webdemo-node-classes
+```
+
+This command builds `almagestd`, runs its metadata-only dump mode, and replaces
+the cache. A normal `build-webdemo` uses the cache and does not build or start
+the daemon.

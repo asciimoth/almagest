@@ -1,6 +1,9 @@
 import type { AdminTransport, AdminTransportHandlers } from "./admin_transport.js";
+import { parseAPIMessage } from "./api_model.js";
+import { parseTypePaletteMap, type TypePalette } from "./pasta_model.js";
 
 type WebDemoAPI = (request: string) => string;
+type ColorMapLoader = () => Promise<Record<string, TypePalette>>;
 
 type GoRuntime = {
   importObject: WebAssembly.Imports;
@@ -17,6 +20,22 @@ let apiPromise: Promise<WebDemoAPI> | null = null;
 export function loadWebDemoAPI(): Promise<WebDemoAPI> {
   apiPromise ??= startWebDemoAPI();
   return apiPromise;
+}
+
+// loadWebDemoColorMap reads the production color map that is published with
+// the static documentation. The small Wasm engine does not contain this map.
+export async function loadWebDemoColorMap(): Promise<Record<string, TypePalette>> {
+  const configured = document.querySelector<HTMLMetaElement>("meta[name='almagest-site-base']")?.content;
+  const siteBase = new URL(configured || "../../", window.location.href);
+  const url = new URL("docs/content/node-classes.json", siteBase);
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Node class cache download failed: ${response.status} ${response.statusText}`);
+  const cache = await response.json() as unknown;
+  if (!cache || typeof cache !== "object" || Array.isArray(cache)) throw new Error("Invalid node class cache");
+  const value = cache as Record<string, unknown>;
+  const colormap = value.version === 1 ? parseTypePaletteMap(value.colormap) : null;
+  if (!colormap) throw new Error("Invalid node class cache");
+  return colormap;
 }
 
 async function startWebDemoAPI(): Promise<WebDemoAPI> {
@@ -55,11 +74,14 @@ async function instantiateWASM(url: URL, imports: WebAssembly.Imports): Promise<
 export class WASMAdminTransport implements AdminTransport {
   readonly reconnect = false;
   readonly #loadAPI: () => Promise<WebDemoAPI>;
+  readonly #loadColorMap: ColorMapLoader | null;
   #api: WebDemoAPI | null = null;
+  #colorMap: Record<string, TypePalette> | null = null;
   #handlers: AdminTransportHandlers | null = null;
 
-  constructor(loadAPI: () => Promise<WebDemoAPI> = loadWebDemoAPI) {
+  constructor(loadAPI: () => Promise<WebDemoAPI> = loadWebDemoAPI, loadColorMap: ColorMapLoader | null = null) {
     this.#loadAPI = loadAPI;
+    this.#loadColorMap = loadColorMap;
   }
 
   get connected(): boolean {
@@ -68,11 +90,21 @@ export class WASMAdminTransport implements AdminTransport {
 
   async connect(handlers: AdminTransportHandlers): Promise<void> {
     this.#handlers = handlers;
-    this.#api = await this.#loadAPI();
+    const [api, colorMap] = await Promise.all([
+      this.#loadAPI(),
+      this.#loadColorMap?.() ?? Promise.resolve(null),
+    ]);
+    this.#api = api;
+    this.#colorMap = colorMap;
   }
 
   send(data: string): void {
     if (!this.#api || !this.#handlers) throw new Error("Admin API is not connected");
+    const request = parseAPIMessage(data);
+    if (this.#colorMap && request?.kind === "request" && request.surface === "admin" && request.method === "colormap") {
+      this.#handlers.message(JSON.stringify({ version: "v1", kind: "response", id: request.id, result: this.#colorMap }));
+      return;
+    }
     const response = this.#api(data);
     this.#handlers.message(response);
   }
@@ -81,6 +113,7 @@ export class WASMAdminTransport implements AdminTransport {
     if (!this.#api && !this.#handlers) return;
     const handlers = this.#handlers;
     this.#api = null;
+    this.#colorMap = null;
     this.#handlers = null;
     handlers?.close();
   }

@@ -11,7 +11,7 @@ const wasmTransport = await readFile(new URL("../src/wasm_transport.ts", import.
 const { WebSocketAdminTransport, configureAdminTransport, createAdminTransport } = await import(
   "../public/build/admin_transport.js"
 );
-const { WASMAdminTransport } = await import("../public/build/wasm_transport.js");
+const { loadWebDemoColorMap, WASMAdminTransport } = await import("../public/build/wasm_transport.js");
 
 class MockWebSocket extends EventTarget {
   static CONNECTING = 0;
@@ -129,6 +129,61 @@ test("Wasm transport imports the in-process API and forwards messages", async ()
   assert.equal(transport.connected, false);
   assert.equal(closes, 1);
   assert.throws(() => transport.send("request"), /Admin API is not connected/);
+});
+
+test("Wasm transport serves the cached production color map to the demo SPA", async () => {
+  const requests = [];
+  const messages = [];
+  const colors = { "almagest/network": { type: "#123456", text: "#ffffff" } };
+  const transport = new WASMAdminTransport(
+    async () => (request) => {
+      requests.push(request);
+      return `response:${request}`;
+    },
+    async () => colors,
+  );
+  await transport.connect({ message: (message) => messages.push(message), close() {} });
+
+  transport.send(JSON.stringify({
+    version: "v1",
+    kind: "request",
+    id: "colors",
+    surface: "admin",
+    method: "colormap",
+    payload: {},
+  }));
+  assert.deepEqual(JSON.parse(messages[0]), {
+    version: "v1",
+    kind: "response",
+    id: "colors",
+    result: colors,
+  });
+  assert.deepEqual(requests, []);
+
+  transport.send("request");
+  assert.deepEqual(requests, ["request"]);
+  assert.equal(messages[1], "response:request");
+});
+
+test("web demo color loader reads and validates the published node cache", async () => {
+  installBrowser("https://example.test/almagest/demo/", "../");
+  const originalFetch = globalThis.fetch;
+  const requests = [];
+  globalThis.fetch = async (input) => {
+    requests.push(String(input));
+    return Response.json({
+      version: 1,
+      colormap: { "almagest/network": { type: "#123456", text: "#ffffff" } },
+    });
+  };
+  try {
+    assert.deepEqual(await loadWebDemoColorMap(), {
+      "almagest/network": { type: "#123456", text: "#ffffff" },
+    });
+    assert.deepEqual(requests, ["https://example.test/almagest/docs/content/node-classes.json"]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("WebSocket transport rejects connection errors and closed connections", async () => {

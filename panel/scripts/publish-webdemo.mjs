@@ -79,7 +79,8 @@ function buildTopics(values, nodePages, pages, locale) {
   });
 }
 
-async function buildDocsCatalog() {
+async function buildDocsCatalog(nodeClassCache) {
+  const nodeClassOrder = new Map(nodeClassCache.order.map((className, index) => [className, index]));
   const localeRoot = new URL("locales/", repository);
   const entries = await readdir(localeRoot, { withFileTypes: true });
   const available = [];
@@ -102,10 +103,24 @@ async function buildDocsCatalog() {
         const className = `${namespace.name}/${file.name.slice(0, -3)}`;
         const id = `node/${className}`;
         pages[id] = `content/${manifest.locale}/pages/nodes/${className}.md`;
-        nodePages.push({ id, name: names[className] || className.split("/").at(-1), folded: true, available: true });
+        nodePages.push({
+          id,
+          name: names[className] || className.split("/").at(-1),
+          folded: true,
+          available: Object.hasOwn(nodeClassCache.classes, className),
+        });
       }
     }
-    nodePages.sort((left, right) => left.id.localeCompare(right.id));
+    // The dump order comes from the daemon's canonical node-class comparator.
+    // Unknown documented classes sort last, in a deterministic fallback order.
+    nodePages.sort((left, right) => {
+      const leftOrder = nodeClassOrder.get(left.id.slice("node/".length));
+      const rightOrder = nodeClassOrder.get(right.id.slice("node/".length));
+      if (leftOrder === undefined && rightOrder === undefined) return left.id.localeCompare(right.id);
+      if (leftOrder === undefined) return 1;
+      if (rightOrder === undefined) return -1;
+      return leftOrder - rightOrder;
+    });
     const tree = buildTopics(index.topics ?? [], nodePages, pages, manifest.locale);
     locales[manifest.locale] = { tree, pages };
     await cp(new URL("docs/pages/", source), new URL(`docs/content/${manifest.locale}/pages/`, target), { recursive: true });
@@ -113,6 +128,20 @@ async function buildDocsCatalog() {
   available.sort((left, right) => left.locale.localeCompare(right.locale));
   await mkdir(new URL("docs/content/", target), { recursive: true });
   await writeFile(new URL("docs/content/catalog.json", target), JSON.stringify({ available, locales }));
+}
+
+async function publishNodeClassCache() {
+  const source = new URL("webdemo/node-classes.json", repository);
+  const cache = JSON.parse(await readFile(source, "utf8"));
+  if (cache?.version !== 1 || !cache.classes || typeof cache.classes !== "object" || Array.isArray(cache.classes)
+    || !Array.isArray(cache.order) || cache.order.length !== Object.keys(cache.classes).length
+    || new Set(cache.order).size !== cache.order.length
+    || cache.order.some((className) => typeof className !== "string" || !Object.hasOwn(cache.classes, className))) {
+    throw new Error("webdemo/node-classes.json is not a supported node class cache");
+  }
+  await mkdir(new URL("docs/content/", target), { recursive: true });
+  await writeFile(new URL("docs/content/node-classes.json", target), JSON.stringify(cache));
+  return cache;
 }
 
 async function minifiedHTML(source, replacements = []) {
@@ -149,6 +178,7 @@ await writeFile(new URL("docs/index.html", target), await minifiedHTML(new URL("
   ["src=\"/public/build/docs.js\"", "src=\"../public/build/static_docs.js\""],
   ["href=\"/\" target=\"_blank\">Admin panel", "href=\"../demo/\" target=\"_blank\">Web demo"],
 ]));
-await buildDocsCatalog();
+const nodeClassCache = await publishNodeClassCache();
+await buildDocsCatalog(nodeClassCache);
 await optimize(target);
 await buildWASM();

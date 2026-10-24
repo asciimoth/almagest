@@ -16,6 +16,7 @@ test("web demo publication is a complete relative static tree", async () => {
     "demo/index.html",
     "docs/index.html",
     "docs/content/catalog.json",
+    "docs/content/node-classes.json",
     "docs/content/en/pages/guides/welcome.md",
     "public/build/webdemo.js",
     "public/build/static_docs.js",
@@ -87,8 +88,23 @@ test("the static documentation catalog includes raw and custom-link pages", asyn
   assert.deepEqual(catalog.available, [{ locale: "en", name: "English" }]);
   assert.equal(catalog.locales.en.pages["guide/welcome"], "content/en/pages/guides/welcome.md");
   assert.equal(catalog.locales.en.pages["node/almagest/MeshNames"], "content/en/pages/nodes/almagest/MeshNames.md");
+  const nodeTopic = catalog.locales.en.tree.find((topic) => topic.id === "nodes");
+  assert.equal(nodeTopic.pages.find((page) => page.id === "node/almagest/MeshNames").available, true);
+  const publishedClasses = nodeTopic.pages.map((page) => page.id.slice("node/".length));
+  const cache = JSON.parse(await readFile(output("docs/content/node-classes.json"), "utf8"));
+  assert.deepEqual(publishedClasses, cache.order.filter((className) => publishedClasses.includes(className)));
   const source = await readFile(output("docs/content/en/pages/nodes/almagest/DnsInject.md"), "utf8");
   assert.match(source, /\[MeshNames\]\(@docs\/node\/almagest\/MeshNames\)/);
+});
+
+test("the web demo publishes production node preview metadata", async () => {
+  const cache = JSON.parse(await readFile(output("docs/content/node-classes.json"), "utf8"));
+  assert.equal(cache.version, 1);
+  assert.deepEqual(new Set(cache.order), new Set(Object.keys(cache.classes)));
+  assert.ok(Object.keys(cache.classes).length > 50);
+  assert.equal(cache.classes["almagest/Command"].primary_type, "pasta/trigger");
+  assert.equal(cache.classes["almagest/NetworkFirewall"].initial_ports[0].name, "Network");
+  assert.equal(Object.values(cache.classes).some((entry) => Object.hasOwn(entry, "short_description")), false);
 });
 
 test("every catalog page maps to a published Markdown file", async () => {
