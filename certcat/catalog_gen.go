@@ -2171,6 +2171,71 @@ var Records = []Record{
 		Severity:       SeverityCritical,
 		Recommendation: RecommendationDenyExactSPKI,
 	},
+	// emudhra-em-ov-tls-ca-g3b-compromised-key: eMudhra EM OV TLS CA - G3B compromised key
+	// Sources:
+	// - emudhra-intermediate-ca-compromise: https://emudhra.we-have-a-problem.com/
+	// - emudhra-impacted-intermediates: https://emudhra.we-have-a-problem.com/impacted-intermediates.json
+	{
+		Fingerprint:    Fingerprint{0x43, 0xBF, 0xFA, 0x19, 0xD6, 0xEF, 0x65, 0x14, 0x51, 0xF6, 0x84, 0x1E, 0x01, 0x99, 0x31, 0xE9, 0x6F, 0x6F, 0x2E, 0xAE, 0xFF, 0x28, 0xAB, 0x4B, 0x6F, 0x1C, 0xE4, 0x57, 0x6D, 0xE2, 0x71, 0x7B},
+		MatchKind:      MatchKindSPKISHA256,
+		Kind:           RecordKindHazardCertificate,
+		HazardClass:    HazardClassPrivateKeyDisclosure,
+		Action:         ActionDeny,
+		Severity:       SeverityCritical,
+		Recommendation: RecommendationDenyExactSPKI,
+	},
+	// emudhra-em-dv-tls-ca-g3c-compromised-key: eMudhra EM DV TLS CA - G3C compromised key
+	// Sources:
+	// - emudhra-intermediate-ca-compromise: https://emudhra.we-have-a-problem.com/
+	// - emudhra-impacted-intermediates: https://emudhra.we-have-a-problem.com/impacted-intermediates.json
+	{
+		Fingerprint:    Fingerprint{0x49, 0xDD, 0x35, 0x3D, 0xC2, 0xB9, 0x19, 0xA3, 0x77, 0x06, 0x45, 0x11, 0x7D, 0x0E, 0x60, 0xC1, 0x61, 0x15, 0xE7, 0xD1, 0xBC, 0x25, 0x9E, 0xEF, 0xE7, 0x34, 0xB0, 0x0E, 0xA4, 0x34, 0xFE, 0x5F},
+		MatchKind:      MatchKindSPKISHA256,
+		Kind:           RecordKindHazardCertificate,
+		HazardClass:    HazardClassPrivateKeyDisclosure,
+		Action:         ActionDeny,
+		Severity:       SeverityCritical,
+		Recommendation: RecommendationDenyExactSPKI,
+	},
+	// emudhra-em-ev-tls-ca-g3c-compromised-key: eMudhra EM EV TLS CA - G3C compromised key
+	// Sources:
+	// - emudhra-intermediate-ca-compromise: https://emudhra.we-have-a-problem.com/
+	// - emudhra-impacted-intermediates: https://emudhra.we-have-a-problem.com/impacted-intermediates.json
+	{
+		Fingerprint:    Fingerprint{0x5C, 0x06, 0x60, 0xA2, 0xB1, 0x64, 0x91, 0x0D, 0x8F, 0xF5, 0x89, 0xC1, 0x8E, 0x14, 0x55, 0x2E, 0x9E, 0x0E, 0xC2, 0x37, 0xDC, 0xEF, 0xE2, 0xCB, 0x73, 0x6D, 0x41, 0xA4, 0x81, 0x1F, 0x81, 0xA0},
+		MatchKind:      MatchKindSPKISHA256,
+		Kind:           RecordKindHazardCertificate,
+		HazardClass:    HazardClassPrivateKeyDisclosure,
+		Action:         ActionDeny,
+		Severity:       SeverityCritical,
+		Recommendation: RecommendationDenyExactSPKI,
+	},
+	// emudhra-em-ov-tls-ca-g3c-compromised-key: eMudhra EM OV TLS CA - G3C compromised key
+	// Sources:
+	// - emudhra-intermediate-ca-compromise: https://emudhra.we-have-a-problem.com/
+	// - emudhra-impacted-intermediates: https://emudhra.we-have-a-problem.com/impacted-intermediates.json
+	{
+		Fingerprint:    Fingerprint{0x63, 0xEC, 0xEF, 0xEE, 0x43, 0x1D, 0x49, 0x52, 0x3B, 0xC1, 0x13, 0x6C, 0x4E, 0x72, 0xD0, 0x20, 0x6A, 0x47, 0x70, 0x86, 0xCA, 0xF6, 0x06, 0xCD, 0x5C, 0xF0, 0x25, 0x68, 0x6C, 0x10, 0x9C, 0xF8},
+		MatchKind:      MatchKindSPKISHA256,
+		Kind:           RecordKindHazardCertificate,
+		HazardClass:    HazardClassPrivateKeyDisclosure,
+		Action:         ActionDeny,
+		Severity:       SeverityCritical,
+		Recommendation: RecommendationDenyExactSPKI,
+	},
+	// emudhra-em-ov-cs-ca-g3c-compromised-key: eMudhra EM OV CS CA - G3C compromised key
+	// Sources:
+	// - emudhra-intermediate-ca-compromise: https://emudhra.we-have-a-problem.com/
+	// - emudhra-impacted-intermediates: https://emudhra.we-have-a-problem.com/impacted-intermediates.json
+	{
+		Fingerprint:    Fingerprint{0x92, 0xC0, 0x63, 0xD6, 0x7E, 0x8F, 0x14, 0xDB, 0x71, 0xD2, 0x88, 0xE1, 0x12, 0x66, 0xFF, 0xDA, 0xF6, 0x9C, 0xBF, 0x11, 0x5F, 0x7B, 0xAB, 0x14, 0xF3, 0xBC, 0x2F, 0x68, 0xD2, 0x5E, 0x0E, 0x30},
+		MatchKind:      MatchKindSPKISHA256,
+		Kind:           RecordKindHazardCertificate,
+		HazardClass:    HazardClassPrivateKeyDisclosure,
+		Action:         ActionDeny,
+		Severity:       SeverityCritical,
+		Recommendation: RecommendationDenyExactSPKI,
+	},
 	// chromium-spki-block-c4387d45364a313fbfe79812b35b815d42852ab03b06f11589638021c8f2cb44: Chromium certificate blocklist entry
 	// Sources:
 	// - chromium-certificate-blocklist: https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md retrieved 2026-08-06T07:01:58Z
@@ -2184,6 +2249,19 @@ var Records = []Record{
 		Severity:       SeverityHigh,
 		Recommendation: RecommendationDenyExactMatch,
 	},
+	// emudhra-em-ev-tls-ca-g3b-compromised-key: eMudhra EM EV TLS CA - G3B compromised key
+	// Sources:
+	// - emudhra-intermediate-ca-compromise: https://emudhra.we-have-a-problem.com/
+	// - emudhra-impacted-intermediates: https://emudhra.we-have-a-problem.com/impacted-intermediates.json
+	{
+		Fingerprint:    Fingerprint{0xE0, 0x25, 0x4C, 0x7F, 0xCD, 0xC2, 0x65, 0xE2, 0xF0, 0xF8, 0xA4, 0x28, 0xDA, 0xBB, 0x75, 0xAB, 0x4A, 0xE0, 0x39, 0xB4, 0x87, 0x2D, 0x62, 0xF5, 0xEE, 0x57, 0xF0, 0x87, 0x7D, 0x5A, 0x8A, 0x41},
+		MatchKind:      MatchKindSPKISHA256,
+		Kind:           RecordKindHazardCertificate,
+		HazardClass:    HazardClassPrivateKeyDisclosure,
+		Action:         ActionDeny,
+		Severity:       SeverityCritical,
+		Recommendation: RecommendationDenyExactSPKI,
+	},
 	// chromium-spki-block-ea08c8d45d52ca593de524f0513ca6418da9859f7b08ef13ff9dd7bf612d6a37: Chromium certificate blocklist entry
 	// Sources:
 	// - chromium-certificate-blocklist: https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/blocklist/README.md retrieved 2026-08-06T07:01:58Z
@@ -2196,5 +2274,31 @@ var Records = []Record{
 		Action:         ActionDeny,
 		Severity:       SeverityHigh,
 		Recommendation: RecommendationDenyExactMatch,
+	},
+	// emudhra-em-dv-tls-ca-g3b-compromised-key: eMudhra EM DV TLS CA - G3B compromised key
+	// Sources:
+	// - emudhra-intermediate-ca-compromise: https://emudhra.we-have-a-problem.com/
+	// - emudhra-impacted-intermediates: https://emudhra.we-have-a-problem.com/impacted-intermediates.json
+	{
+		Fingerprint:    Fingerprint{0xEB, 0xED, 0x64, 0x75, 0xC2, 0xC2, 0xD8, 0x0F, 0xCB, 0x19, 0x9F, 0x3F, 0xE8, 0xDD, 0x6E, 0x6B, 0x3C, 0xE6, 0x0B, 0x77, 0xEB, 0x15, 0xD4, 0xE4, 0x2C, 0x3D, 0xEC, 0x0C, 0x6F, 0x5B, 0x51, 0x05},
+		MatchKind:      MatchKindSPKISHA256,
+		Kind:           RecordKindHazardCertificate,
+		HazardClass:    HazardClassPrivateKeyDisclosure,
+		Action:         ActionDeny,
+		Severity:       SeverityCritical,
+		Recommendation: RecommendationDenyExactSPKI,
+	},
+	// emudhra-em-ov-cs-ca-g3b-compromised-key: eMudhra EM OV CS CA - G3B compromised key
+	// Sources:
+	// - emudhra-intermediate-ca-compromise: https://emudhra.we-have-a-problem.com/
+	// - emudhra-impacted-intermediates: https://emudhra.we-have-a-problem.com/impacted-intermediates.json
+	{
+		Fingerprint:    Fingerprint{0xEC, 0x4F, 0xFA, 0x1A, 0xD0, 0xAC, 0x88, 0x08, 0x13, 0x14, 0xB7, 0xAA, 0xFF, 0xEF, 0x6A, 0x91, 0xF9, 0x7C, 0xD5, 0x72, 0x91, 0xBB, 0x5B, 0xA6, 0x86, 0xC5, 0x41, 0x5F, 0x5E, 0xB4, 0xF6, 0xB6},
+		MatchKind:      MatchKindSPKISHA256,
+		Kind:           RecordKindHazardCertificate,
+		HazardClass:    HazardClassPrivateKeyDisclosure,
+		Action:         ActionDeny,
+		Severity:       SeverityCritical,
+		Recommendation: RecommendationDenyExactSPKI,
 	},
 }
