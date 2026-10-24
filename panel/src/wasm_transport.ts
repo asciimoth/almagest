@@ -3,6 +3,7 @@ import { parseAPIMessage } from "./api_model.js";
 import { parseTypePaletteMap, type TypePalette } from "./pasta_model.js";
 
 type WebDemoAPI = (request: string) => string;
+type WebDemoEvents = () => string;
 type ColorMapLoader = () => Promise<Record<string, TypePalette>>;
 
 type GoRuntime = {
@@ -13,6 +14,7 @@ type GoRuntime = {
 type WebDemoGlobals = typeof globalThis & {
   Go?: new () => GoRuntime;
   almagestWebDemoRequest?: WebDemoAPI;
+  almagestWebDemoEvents?: WebDemoEvents;
 };
 
 let apiPromise: Promise<WebDemoAPI> | null = null;
@@ -78,6 +80,7 @@ export class WASMAdminTransport implements AdminTransport {
   #api: WebDemoAPI | null = null;
   #colorMap: Record<string, TypePalette> | null = null;
   #handlers: AdminTransportHandlers | null = null;
+  #eventTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(loadAPI: () => Promise<WebDemoAPI> = loadWebDemoAPI, loadColorMap: ColorMapLoader | null = null) {
     this.#loadAPI = loadAPI;
@@ -96,6 +99,8 @@ export class WASMAdminTransport implements AdminTransport {
     ]);
     this.#api = api;
     this.#colorMap = colorMap;
+    this.#eventTimer = setInterval(() => this.#drainEvents(), 50);
+    (this.#eventTimer as unknown as { unref?: () => void }).unref?.();
   }
 
   send(data: string): void {
@@ -107,6 +112,7 @@ export class WASMAdminTransport implements AdminTransport {
     }
     const response = this.#api(data);
     this.#handlers.message(response);
+    this.#drainEvents();
   }
 
   close(): void {
@@ -115,6 +121,21 @@ export class WASMAdminTransport implements AdminTransport {
     this.#api = null;
     this.#colorMap = null;
     this.#handlers = null;
+    if (this.#eventTimer !== null) clearInterval(this.#eventTimer);
+    this.#eventTimer = null;
     handlers?.close();
+  }
+
+  #drainEvents(): void {
+    if (!this.#handlers) return;
+    const drain = (globalThis as WebDemoGlobals).almagestWebDemoEvents;
+    if (!drain) return;
+    try {
+      const events = JSON.parse(drain()) as unknown;
+      if (!Array.isArray(events)) return;
+      for (const event of events) this.#handlers.message(JSON.stringify(event));
+    } catch (error: unknown) {
+      console.error("Almagest web demo event delivery failed", error);
+    }
   }
 }

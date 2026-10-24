@@ -244,6 +244,7 @@ import {
 } from "./graph_update_guard.js";
 import { createAdminTransport, type AdminTransport } from "./admin_transport.js";
 import { documentationURL } from "./site_navigation.js";
+import { applyPanelMode, panelMode, showsRuntimeSecurityStatus } from "./panel_mode.js";
 
 const SECRET_NODE_AUTOCOMPLETE_LIMIT = 8;
 const TLS_CERT_OPENSSL_COMMAND = [
@@ -554,6 +555,9 @@ let snapshotsLoading = false;
 let snapshotMutationPending = false;
 let snapshotEntries: SnapshotInfo[] = [];
 
+const currentPanelMode = panelMode(document.documentElement);
+applyPanelMode(document, currentPanelMode);
+
 const el = {
   status: document.querySelector<HTMLElement>("#backend-status")!,
   projectVersion: document.querySelector<HTMLElement>("#project-version")!,
@@ -561,7 +565,7 @@ const el = {
   sandboxStatus: document.querySelector<HTMLElement>("#sandbox-status")!,
   locale: document.querySelector<HTMLSelectElement>("#locale-select")!,
   docs: document.querySelector<HTMLButtonElement>("#tab-docs")!,
-  tabs: [...document.querySelectorAll<HTMLButtonElement>("[data-tab]")],
+  tabs: [...document.querySelectorAll<HTMLButtonElement>("[data-tab]")].filter((tab) => !tab.hidden),
   panels: [...document.querySelectorAll<HTMLElement>("[data-panel]")],
   graphCanvas: document.querySelector<HTMLCanvasElement>("#graph-canvas")!,
   sidekick: document.querySelector<HTMLElement>("#sidekick")!,
@@ -6692,9 +6696,11 @@ async function initializeAPISession(): Promise<void> {
   await connectAPI();
   const hello = await backend("hello");
   applyProjectVersionStatus(hello.project_version_status);
-  applyIsolationStatus(hello);
-  applySandboxStatus(hello);
-  await restoreLocale();
+  if (showsRuntimeSecurityStatus(currentPanelMode)) {
+    applyIsolationStatus(hello);
+    applySandboxStatus(hello);
+  }
+  await restoreLocale(hello);
   const colormap = await backend("colormap");
   applyTypePalette(colormap);
   await backend("subscribeLogs");
@@ -6748,7 +6754,12 @@ function boot(): void {
 
 boot();
 
-async function restoreLocale(): Promise<void> {
+async function restoreLocale(hello: HelloResponse): Promise<void> {
+  if (!helloHasMethod(hello, "admin", "locale_snapshot")) {
+    installLocale({ requested: "en", effective: "en", available: [{ locale: "en", name: "English" }], panel: {}, revision: 1 });
+    el.locale.disabled = true;
+    return;
+  }
   let requested: string | null = readLocaleCookie() || null;
   if (requested === null) {
     try { requested = window.localStorage.getItem(LOCALE_STORAGE_KEY); } catch { /* Storage can be disabled. */ }
@@ -6769,6 +6780,13 @@ async function restoreLocale(): Promise<void> {
     }
   }
   installLocale(snapshot);
+}
+
+function helloHasMethod(hello: HelloResponse, surface: string, method: string): boolean {
+  const value = hello.surfaces?.[surface];
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const methods = (value as { methods?: unknown }).methods;
+  return Array.isArray(methods) && methods.includes(method);
 }
 
 function installLocale(snapshot: LocaleSnapshot): void {

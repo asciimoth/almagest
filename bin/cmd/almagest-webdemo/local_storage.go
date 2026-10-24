@@ -3,39 +3,55 @@
 package main
 
 import (
-	"fmt"
+	"sync"
 	"syscall/js"
 )
 
-type browserLocalStorage struct{}
+type browserLocalStorage struct {
+	mu       sync.Mutex
+	fallback map[string][]byte
+}
 
-func (browserLocalStorage) Load(key string) (value []byte, found bool, err error) {
+func newBrowserLocalStorage() *browserLocalStorage {
+	return &browserLocalStorage{fallback: map[string][]byte{}}
+}
+
+func (s *browserLocalStorage) Load(key string) (value []byte, found bool, err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			err = fmt.Errorf("read browser localStorage: %v", recovered)
+			value, found = s.fallback[key]
+			value, err = append([]byte(nil), value...), nil
 		}
 	}()
 	storage := js.Global().Get("localStorage")
 	if storage.IsNull() || storage.IsUndefined() {
-		return nil, false, fmt.Errorf("browser localStorage is unavailable")
+		value, found = s.fallback[key]
+		return append([]byte(nil), value...), found, nil
 	}
 	item := storage.Call("getItem", key)
 	if item.IsNull() || item.IsUndefined() {
-		return nil, false, nil
+		value, found = s.fallback[key]
+		return append([]byte(nil), value...), found, nil
 	}
 	return []byte(item.String()), true, nil
 }
 
-func (browserLocalStorage) Store(key string, value []byte) (err error) {
+func (s *browserLocalStorage) Store(key string, value []byte) (err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			err = fmt.Errorf("write browser localStorage: %v", recovered)
+			s.fallback[key], err = append([]byte(nil), value...), nil
 		}
 	}()
 	storage := js.Global().Get("localStorage")
 	if storage.IsNull() || storage.IsUndefined() {
-		return fmt.Errorf("browser localStorage is unavailable")
+		s.fallback[key] = append([]byte(nil), value...)
+		return nil
 	}
 	storage.Call("setItem", key, string(value))
+	s.fallback[key] = append([]byte(nil), value...)
 	return nil
 }

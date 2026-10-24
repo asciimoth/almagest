@@ -28,8 +28,11 @@ The shorter positional form `just serve-webdemo almagest` is equivalent.
 
 The build includes a Go Wasm backend and its matching Go runtime. The panel
 loads the backend in the browser and uses the shared JSON admin API contract.
-The backend exposes the Wasm-supported node class list. Other reads return empty
-data, and mutations fail because the backend is read-only.
+The backend runs a live engine with the Wasm-supported HTTP client, HTTP server,
+and mock-network nodes. Graph mutations and node forms work through the shared
+admin API. Config, KV, and secrets persist in browser `localStorage`; DNS is
+in-memory. If browser storage is unavailable, the current Wasm instance uses an
+in-memory fallback.
 
 Static documentation previews and the demo SPA type colors use the tracked
 `node-classes.json` cache. The cache also keeps the daemon's node class display

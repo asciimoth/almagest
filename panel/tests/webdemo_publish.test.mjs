@@ -155,7 +155,17 @@ test("published Go Wasm starts and exposes its node class list API", async () =>
     new URL("helpers/run_webdemo_wasm.mjs", import.meta.url).pathname,
     output("").pathname,
   ]);
-  const response = JSON.parse(stdout);
+  const { logs, snapshots, tls, workspace: response } = JSON.parse(stdout);
+  assert.equal(logs.error, undefined);
+  assert.ok(logs.result.subscription_id > 0);
+  assert.ok(logs.result.cache_size > 0);
+  assert.deepEqual(logs.result.entries, []);
+  assert.equal(snapshots.error, undefined);
+  assert.deepEqual(snapshots.result.snapshots, []);
+  assert.equal(tls.error, undefined);
+  assert.deepEqual(tls.result.certs, []);
+  assert.deepEqual(tls.result.policies, []);
+  assert.equal(tls.result.builtin_ca, undefined);
   assert.equal(response.id, "smoke");
   assert.equal(response.error, undefined);
   assert.deepEqual(response.result.snapshot.classes.map((entry) => entry.class), [
@@ -166,4 +176,32 @@ test("published Go Wasm starts and exposes its node class list API", async () =>
   assert.deepEqual(response.result.snapshot.nodes, {});
   assert.deepEqual(response.result.snapshot.ports, {});
   assert.deepEqual(response.result.snapshot.links, {});
+});
+
+test("published Go Wasm runs and persists all web-demo node classes", async () => {
+  const { stdout } = await promisify(execFile)(process.execPath, [
+    new URL("helpers/run_webdemo_wasm_mutation.mjs", import.meta.url).pathname,
+    output("").pathname,
+  ]);
+  const result = JSON.parse(stdout);
+  assert.equal(result.subscribed.error, undefined);
+  assert.equal(result.added.every((response) => response.error === undefined), true);
+  assert.equal(Object.keys(result.snapshot.result.snapshot.nodes).length, 3);
+  assert.equal(result.events.some((event) => event.surface === "engine" && event.method === "notification"), true);
+  assert.match(result.config, /almagest\/MockNetwork/);
+  assert.match(result.config, /almagest\/HttpServer/);
+  assert.match(result.config, /almagest\/HttpClient/);
+  assert.equal(result.persistedConfig, result.config);
+});
+
+test("published Go Wasm uses in-memory storage when localStorage is absent", async () => {
+  const { stdout } = await promisify(execFile)(process.execPath, [
+    new URL("helpers/run_webdemo_wasm_mutation.mjs", import.meta.url).pathname,
+    output("").pathname,
+    "no-storage",
+  ]);
+  const result = JSON.parse(stdout);
+  assert.equal(Object.keys(result.snapshot.result.snapshot.nodes).length, 3);
+  assert.match(result.config, /almagest\/MockNetwork/);
+  assert.equal(result.persistedConfig, null);
 });

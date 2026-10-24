@@ -2,6 +2,7 @@ package webdemo
 
 import (
 	"context"
+	"crypto/x509"
 	"errors"
 	"reflect"
 	"testing"
@@ -153,8 +154,18 @@ func TestDNSAndTLSStorageAreMemoryOnly(t *testing.T) {
 	if got := second.DNS.(storage.DnsCacheStorageLister).StorageNames(); len(got) != 0 {
 		t.Fatalf("reloaded DNS names = %#v", got)
 	}
-	if configs := second.TLS.ListConfigs(); len(configs) != 0 {
+	if configs := second.TLS.ListConfigs(); !reflect.DeepEqual(configs, []string{"default"}) {
 		t.Fatalf("TLS configs = %#v", configs)
+	}
+	clientConfig, err := second.TLS.GetClientConfig("default", "Client")
+	if err != nil {
+		t.Fatalf("GetClientConfig(default) error = %v", err)
+	}
+	if clientConfig.RootCAs == nil || !clientConfig.RootCAs.Equal(x509.NewCertPool()) || len(clientConfig.Certificates) != 0 {
+		t.Fatal("GetClientConfig(default) did not return a config with empty certificate pools")
+	}
+	if _, err := second.TLS.GetClientConfig("missing", "Client"); !errors.Is(err, storage.ErrTlsConfigNotFound) {
+		t.Fatalf("GetClientConfig(missing) error = %v", err)
 	}
 	if _, err := second.TLS.GetLocalCA(""); !errors.Is(err, storage.ErrTlsConfigNotFound) {
 		t.Fatalf("GetLocalCA() error = %v", err)

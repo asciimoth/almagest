@@ -1734,6 +1734,7 @@ h1 {
   margin: 0 0 10px;
 }
 
+.ps-runtime-status[hidden],
 .ps-runtime-status:empty {
   display: none;
 }

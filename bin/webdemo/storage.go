@@ -4,13 +4,17 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"slices"
+	"strings"
 	"sync"
+	"time"
 	"unicode/utf8"
 
+	"github.com/asciimoth/almagest/bin/api"
 	"github.com/asciimoth/almagest/lib/storage"
 	gdns "github.com/asciimoth/gonnect/dns"
 	"github.com/asciimoth/pasta/pasta"
@@ -52,7 +56,7 @@ func NewStorage(persistence Persistence) (*Storage, error) {
 	}
 	return &Storage{
 		KV:      kv,
-		DNS:     &memoryDNSManager{stores: map[string]*gdns.MemoryStorage{}},
+		DNS:     &memoryDNSManager{stores: map[string]*memoryDNSStorage{}},
 		Secrets: secrets,
 		TLS:     memoryTLSStorage{},
 	}, nil
@@ -79,6 +83,7 @@ type kvManager struct {
 	mu          sync.Mutex
 	persistence Persistence
 	state       persistedKVState
+	onChange    func()
 }
 
 type kvStore struct {
@@ -176,27 +181,34 @@ func (s *kvStore) Update(ctx context.Context, fn func(storage.KVWriteTx) error) 
 		return err
 	}
 	s.manager.mu.Lock()
-	defer s.manager.mu.Unlock()
-	if err := contextError(ctx); err != nil {
-		return err
+	err := func() error {
+		if err := contextError(ctx); err != nil {
+			return err
+		}
+		next := cloneKVState(s.manager.state)
+		tx := &kvWriteTx{
+			kvReader:       kvReader{state: &next, path: append([]string(nil), s.path...)},
+			protectedDepth: s.protectedDepth, owner: s.owner, ownershipDepth: s.ownershipDepth,
+		}
+		if err := fn(tx); err != nil {
+			return err
+		}
+		raw, err := json.Marshal(next)
+		if err != nil {
+			return fmt.Errorf("encode web demo KV storage: %w", err)
+		}
+		if err := s.manager.persistence.Store(kvStorageKey, raw); err != nil {
+			return fmt.Errorf("save web demo KV storage: %w", err)
+		}
+		s.manager.state = next
+		return nil
+	}()
+	onChange := s.manager.onChange
+	s.manager.mu.Unlock()
+	if err == nil && onChange != nil {
+		onChange()
 	}
-	next := cloneKVState(s.manager.state)
-	tx := &kvWriteTx{
-		kvReader:       kvReader{state: &next, path: append([]string(nil), s.path...)},
-		protectedDepth: s.protectedDepth, owner: s.owner, ownershipDepth: s.ownershipDepth,
-	}
-	if err := fn(tx); err != nil {
-		return err
-	}
-	raw, err := json.Marshal(next)
-	if err != nil {
-		return fmt.Errorf("encode web demo KV storage: %w", err)
-	}
-	if err := s.manager.persistence.Store(kvStorageKey, raw); err != nil {
-		return fmt.Errorf("save web demo KV storage: %w", err)
-	}
-	s.manager.state = next
-	return nil
+	return err
 }
 
 func (r *kvReader) Exists() bool { return !r.invalid && nodeAt(r.state.Root, r.path) != nil }
@@ -455,6 +467,7 @@ type secretsStorage struct {
 	mu          sync.Mutex
 	persistence Persistence
 	records     map[string]persistedSecret
+	onChange    func(before, after map[string]persistedSecret)
 }
 
 func newSecretsStorage(persistence Persistence) (*secretsStorage, error) {
@@ -532,7 +545,9 @@ func (s *secretsStorage) newSecret(sec storage.Secret, node, owner string) (stri
 		if err := s.save(next); err != nil {
 			return "", err
 		}
+		before := s.records
 		s.records = next
+		s.notifyChange(before, next)
 		return key, nil
 	}
 	return "", storage.ErrSecretConflict
@@ -568,7 +583,9 @@ func (s *secretsStorage) CommitGeneratedSecret(key, node string) error {
 	if err := s.save(next); err != nil {
 		return err
 	}
+	before := s.records
 	s.records = next
+	s.notifyChange(before, next)
 	return nil
 }
 
@@ -590,7 +607,9 @@ func (s *secretsStorage) DeleteGeneratedSecret(key, node string) error {
 	if err := s.save(next); err != nil {
 		return err
 	}
+	before := s.records
 	s.records = next
+	s.notifyChange(before, next)
 	return nil
 }
 
@@ -602,6 +621,116 @@ func (s *secretsStorage) save(records map[string]persistedSecret) error {
 	if err := s.persistence.Store(secretsStorageKey, raw); err != nil {
 		return fmt.Errorf("save web demo secrets: %w", err)
 	}
+	return nil
+}
+
+func (s *secretsStorage) notifyChange(before, after map[string]persistedSecret) {
+	if s.onChange != nil {
+		s.onChange(cloneSecrets(before), cloneSecrets(after))
+	}
+}
+
+func (s *secretsStorage) apiSnapshot() api.SecretsSnapshot {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	keys := make([]string, 0, len(s.records))
+	for key := range s.records {
+		keys = append(keys, key)
+	}
+	slices.Sort(keys)
+	result := api.SecretsSnapshot{Secrets: make([]api.SecretEntry, 0, len(keys))}
+	for _, key := range keys {
+		record := s.records[key]
+		result.Secrets = append(result.Secrets, api.SecretEntry{Key: key, Value: record.Value, Nodes: append([]string(nil), record.Nodes...), Source: api.SecretSourceMutable})
+	}
+	return result
+}
+
+func (s *secretsStorage) apiSetValue(key, value string) (api.SecretEntry, error) {
+	if key == "" || !utf8.ValidString(key) {
+		return api.SecretEntry{}, storage.ErrSecretInvalidName
+	}
+	if !utf8.ValidString(value) {
+		return api.SecretEntry{}, storage.ErrSecretInvalidValue
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	next := cloneSecrets(s.records)
+	record := next[key]
+	record.Value = value
+	next[key] = record
+	if err := s.save(next); err != nil {
+		return api.SecretEntry{}, err
+	}
+	before := s.records
+	s.records = next
+	s.notifyChange(before, next)
+	return api.SecretEntry{Key: key, Value: value, Nodes: append([]string(nil), record.Nodes...), Source: api.SecretSourceMutable}, nil
+}
+
+func (s *secretsStorage) apiSetNodes(key string, nodes []string) (api.SecretEntry, error) {
+	if !validSecretNodes(nodes) {
+		return api.SecretEntry{}, storage.ErrSecretInvalidName
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	record, ok := s.records[key]
+	if !ok {
+		return api.SecretEntry{}, storage.ErrSecretAccessDenied
+	}
+	record.Nodes = append([]string(nil), nodes...)
+	slices.Sort(record.Nodes)
+	record.Nodes = slices.Compact(record.Nodes)
+	next := cloneSecrets(s.records)
+	next[key] = record
+	if err := s.save(next); err != nil {
+		return api.SecretEntry{}, err
+	}
+	before := s.records
+	s.records = next
+	s.notifyChange(before, next)
+	return api.SecretEntry{Key: key, Value: record.Value, Nodes: append([]string(nil), record.Nodes...), Source: api.SecretSourceMutable}, nil
+}
+
+func (s *secretsStorage) apiRename(key, newKey string) (api.SecretEntry, error) {
+	if newKey == "" || !utf8.ValidString(newKey) {
+		return api.SecretEntry{}, storage.ErrSecretInvalidName
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	record, ok := s.records[key]
+	if !ok {
+		return api.SecretEntry{}, storage.ErrSecretAccessDenied
+	}
+	if _, exists := s.records[newKey]; exists {
+		return api.SecretEntry{}, storage.ErrSecretConflict
+	}
+	next := cloneSecrets(s.records)
+	delete(next, key)
+	next[newKey] = record
+	if err := s.save(next); err != nil {
+		return api.SecretEntry{}, err
+	}
+	before := s.records
+	s.records = next
+	s.notifyChange(before, next)
+	return api.SecretEntry{Key: newKey, Value: record.Value, Nodes: append([]string(nil), record.Nodes...), Source: api.SecretSourceMutable}, nil
+}
+
+func (s *secretsStorage) apiDelete(key string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.records[key]; !ok {
+		return nil
+	}
+	next := cloneSecrets(s.records)
+	delete(next, key)
+	if err := s.save(next); err != nil {
+		return err
+	}
+	before := s.records
+	s.records = next
+	s.notifyChange(before, next)
 	return nil
 }
 
@@ -636,8 +765,10 @@ func randomSecretKey() (string, error) {
 }
 
 type memoryDNSManager struct {
-	mu     sync.Mutex
-	stores map[string]*gdns.MemoryStorage
+	mu           sync.Mutex
+	stores       map[string]*memoryDNSStorage
+	adminEntries map[string]map[string]dnsAdminEntry
+	onChange     func(cache, key string, deleted bool)
 }
 
 func (m *memoryDNSManager) Storage(name string) gdns.CacheStorage {
@@ -645,10 +776,70 @@ func (m *memoryDNSManager) Storage(name string) gdns.CacheStorage {
 	defer m.mu.Unlock()
 	store := m.stores[name]
 	if store == nil {
-		store = gdns.NewMemoryStorage()
+		store = &memoryDNSStorage{manager: m, name: name, memory: gdns.NewMemoryStorage()}
 		m.stores[name] = store
 	}
 	return store
+}
+
+type memoryDNSStorage struct {
+	manager *memoryDNSManager
+	name    string
+	memory  *gdns.MemoryStorage
+}
+
+func (s *memoryDNSStorage) Get(key string, now time.Time) (*gdns.Message, bool) {
+	return s.memory.Get(key, now)
+}
+
+func (s *memoryDNSStorage) Set(key string, msg *gdns.Message, now time.Time) {
+	s.memory.Set(key, msg, now)
+	if msg == nil || !msg.Response || msg.RCode != gdns.RCodeSuccess || len(msg.Questions) == 0 {
+		return
+	}
+	if key == "" {
+		question := msg.Questions[0]
+		name := question.Name
+		if name == "" {
+			name = "."
+		} else if !strings.HasSuffix(name, ".") {
+			name += "."
+		}
+		key = fmt.Sprintf("%s|%d|%d", name, question.Type, question.Class)
+	}
+	var ttl uint32
+	for _, answer := range msg.Answers {
+		if ttl == 0 || answer.TTL < ttl {
+			ttl = answer.TTL
+		}
+	}
+	if ttl == 0 {
+		return
+	}
+	s.manager.mu.Lock()
+	if s.manager.adminEntries == nil {
+		s.manager.adminEntries = map[string]map[string]dnsAdminEntry{}
+	}
+	if s.manager.adminEntries[s.name] == nil {
+		s.manager.adminEntries[s.name] = map[string]dnsAdminEntry{}
+	}
+	s.manager.adminEntries[s.name][key] = dnsAdminEntry{msg: msg.Copy(), expires: now.Add(time.Duration(ttl) * time.Second)}
+	onChange := s.manager.onChange
+	s.manager.mu.Unlock()
+	if onChange != nil {
+		onChange(s.name, key, false)
+	}
+}
+
+func (s *memoryDNSStorage) Delete(key string) {
+	s.memory.Delete(key)
+	s.manager.mu.Lock()
+	delete(s.manager.adminEntries[s.name], key)
+	onChange := s.manager.onChange
+	s.manager.mu.Unlock()
+	if onChange != nil {
+		onChange(s.name, key, true)
+	}
 }
 
 func (m *memoryDNSManager) StorageNames() []string {
@@ -664,10 +855,13 @@ func (m *memoryDNSManager) StorageNames() []string {
 
 type memoryTLSStorage struct{}
 
-func (memoryTLSStorage) ListConfigs() []string { return []string{} }
+func (memoryTLSStorage) ListConfigs() []string { return []string{"default"} }
 
-func (memoryTLSStorage) GetClientConfig(string, string) (tls.Config, error) {
-	return tls.Config{}, storage.ErrTlsConfigNotFound
+func (memoryTLSStorage) GetClientConfig(name string, _ string) (tls.Config, error) {
+	if name != "default" {
+		return tls.Config{}, storage.ErrTlsConfigNotFound
+	}
+	return tls.Config{RootCAs: x509.NewCertPool()}, nil
 }
 
 func (memoryTLSStorage) GetLocalCA(string) (tls.Certificate, error) {

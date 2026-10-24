@@ -17,13 +17,21 @@ void go.run(instance);
 if (typeof globalThis.almagestWebDemoRequest !== "function") {
   throw new Error("Wasm API function is not available");
 }
-const request = JSON.stringify({
-  version: "v1",
-  kind: "request",
-  id: "smoke",
-  surface: "engine",
-  method: "workspace_snapshot",
-  payload: { workspace: "main" },
-});
-process.stdout.write(globalThis.almagestWebDemoRequest(request));
+function request(id, surface, method, payload = {}) {
+  return JSON.parse(globalThis.almagestWebDemoRequest(JSON.stringify({
+    version: "v1",
+    kind: "request",
+    id,
+    surface,
+    method,
+    payload,
+  })));
+}
+
+process.stdout.write(JSON.stringify({
+  logs: request("logs", "log", "subscribe"),
+  snapshots: request("snapshots", "snapshots", "list"),
+  tls: request("tls", "tls", "snapshot"),
+  workspace: request("smoke", "engine", "workspace_snapshot", { workspace: "main" }),
+}));
 process.exit(0);

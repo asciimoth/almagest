@@ -6,17 +6,16 @@ import (
 	"context"
 	"syscall/js"
 
-	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/gonnect"
 	sysnetdebug "github.com/asciimoth/gonnect/sysnet/debug"
 
 	"github.com/asciimoth/almagest/bin/api"
 	"github.com/asciimoth/almagest/bin/webdemo"
 	almagest "github.com/asciimoth/almagest/lib"
-	"github.com/asciimoth/almagest/lib/logging"
 )
 
 const requestFunction = "almagestWebDemoRequest"
+const eventsFunction = "almagestWebDemoEvents"
 
 func main() {
 	backend, err := buildBackend()
@@ -31,35 +30,55 @@ func main() {
 		return string(backend.Handle([]byte(args[0].String())))
 	})
 	js.Global().Set(requestFunction, handler)
+	events := js.FuncOf(func(_ js.Value, _ []js.Value) any { return string(backend.DrainEvents()) })
+	js.Global().Set(eventsFunction, events)
 	select {}
 }
 
 func buildBackend() (*webdemo.Backend, error) {
-	stores, err := webdemo.NewStorage(browserLocalStorage{})
+	persistence := newBrowserLocalStorage()
+	stores, err := webdemo.NewStorage(persistence)
 	if err != nil {
 		return nil, err
 	}
+	configStore, err := webdemo.NewConfigStore(persistence)
+	if err != nil {
+		return nil, err
+	}
+	cfg, err := configStore.Parse()
+	if err != nil {
+		return nil, err
+	}
+	logs := webdemo.NewLogFactory(256, browserLog)
 	out := gonnect.NewLoopbackNetwork()
 	out.AllowAnyHost = true
 	local := gonnect.NewLoopbackNetwork()
 	local.AllowAnyHost = true
 	system := &sysnetdebug.System{OutNetwork: out, LocalNetwork: local}
 	engine, err := almagest.BuildEngine(
-		context.Background(), configer.NewMemory(nil), logging.NewDebugLogFactory(1),
+		context.Background(), cfg, logs,
 		system, stores.KV, stores.DNS, stores.Secrets, stores.TLS, nil, nil, false,
 	)
 	if err != nil {
 		return nil, err
 	}
 
-	snapshot, ok := engine.WorkspaceSnapshot(almagest.MainWorkspace)
-	if !ok {
+	backend, err := webdemo.NewLiveBackend(engine, stores, configStore, logs)
+	if err != nil {
 		_ = engine.Close()
-		return nil, almagest.ErrNoWorkspace
-	}
-	publicSnapshot := api.NewWorkspaceSnapshot(snapshot, nil)
-	if err := engine.Close(); err != nil {
 		return nil, err
 	}
-	return webdemo.NewBackend(publicSnapshot), nil
+	return backend, nil
+}
+
+func browserLog(entry api.LogEntry) {
+	console := js.Global().Get("console")
+	if console.IsNull() || console.IsUndefined() {
+		return
+	}
+	method := entry.Level
+	if method == "fatal" {
+		method = "error"
+	}
+	console.Call(method, "[almagest "+entry.Source+"] "+entry.Message)
 }
