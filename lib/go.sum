@@ -10,8 +10,8 @@ github.com/asciimoth/formular v0.3.5 h1:l8DHWUgr97cRixdrSICmuGQ4BhoE5CfFg8oERX5g
 github.com/asciimoth/formular v0.3.5/go.mod h1:6VBEx4KTWp18mpkQn7d3Buoojzf9II5+ZAVuc4DF8AE=
 github.com/asciimoth/gobox v0.1.0 h1:5hTczwekcpGwvZ4Fft5NmXz2AjIFUXnhsQNQtnWAO2o=
 github.com/asciimoth/gobox v0.1.0/go.mod h1:iZERjxuwZCU59Ox/mTGbiLEKtixbN++K00LmBC9AX1w=
-github.com/asciimoth/gonnect v0.56.0 h1:fCImvkzDGVpGaA8hT9rQ4BlsHfciaM3Ko2tU9pzomkw=
-github.com/asciimoth/gonnect v0.56.0/go.mod h1:W5OAXiqFw48MTm54+dPua9calyVjez/uqjcbrQwcvPU=
+github.com/asciimoth/gonnect v0.57.0 h1:rxnmKaZOnrxwHGELOurkuEKt+7GjpfgL6EokmHAc6eQ=
+github.com/asciimoth/gonnect v0.57.0/go.mod h1:W5OAXiqFw48MTm54+dPua9calyVjez/uqjcbrQwcvPU=
 github.com/asciimoth/gonnect-netstack v0.9.1 h1:MoPag/9YMUEij6yDat+t/uOIIC02UJ5VEFh0IeFkubY=
 github.com/asciimoth/gonnect-netstack v0.9.1/go.mod h1:0moXAApYfS+MXrlWy5TD+ShmCzyXyGRWfly2JYyXc58=
 github.com/asciimoth/ident v0.2.0 h1:G6qaTnkxTH+idV5YzJ7AvgC2nLQDE/aoV7rPCOtN07I=

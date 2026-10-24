@@ -11,7 +11,7 @@ require (
 	github.com/asciimoth/configer/hujson v0.3.1
 	github.com/asciimoth/formular v0.3.5
 	github.com/asciimoth/gobox v0.1.0
-	github.com/asciimoth/gonnect v0.56.0
+	github.com/asciimoth/gonnect v0.57.0
 	github.com/asciimoth/gonnect-netstack v0.9.1
 	github.com/asciimoth/pasta/pasta v0.10.3
 	github.com/asciimoth/socksgo v0.5.1
