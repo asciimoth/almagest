@@ -96,3 +96,8 @@
 > Current project state is extremely unstable. Anything can be changed without
 > warning and docs may be outdated.\
 > __Do not use in production.__
+
+## License
+
+Almagest is licensed under the
+[GNU General Public License v3.0 or later](./LICENSE).
