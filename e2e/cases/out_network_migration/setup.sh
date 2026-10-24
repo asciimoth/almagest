@@ -5,6 +5,24 @@ for command in curl ip jq python3; do
 	command -v "$command" >/dev/null
 done
 test -c /dev/net/tun
+: "${ALMAGEST_E2E_IPV6_MODE:?}"
+
+case "$ALMAGEST_E2E_IPV6_MODE" in
+enabled)
+	[[ "$(cat /proc/sys/net/ipv6/conf/all/disable_ipv6)" == "0" ]] \
+		|| { echo "IPv6 is disabled in the enabled profile" >&2; exit 1; }
+	;;
+disabled)
+	[[ "$(cat /proc/sys/net/ipv6/conf/all/disable_ipv6)" == "1" ]] \
+		|| { echo "IPv6 is enabled in the disabled profile" >&2; exit 1; }
+	[[ "$(cat /proc/sys/net/ipv6/conf/default/disable_ipv6)" == "1" ]] \
+		|| { echo "IPv6 is enabled by default for new interfaces" >&2; exit 1; }
+	;;
+*)
+	echo "unknown IPv6 profile: $ALMAGEST_E2E_IPV6_MODE" >&2
+	exit 1
+	;;
+esac
 
 ethernet_ns="alm-mig-ethernet"
 wifi_ns="alm-mig-wifi"
@@ -25,6 +43,13 @@ if ! ip netns add "$ethernet_ns" 2>"$E2E_RUNTIME/netns.err"; then
 	exit 1
 fi
 ip netns add "$wifi_ns"
+
+if [[ "$ALMAGEST_E2E_IPV6_MODE" == "disabled" ]]; then
+	for namespace in "$ethernet_ns" "$wifi_ns"; do
+		ip netns exec "$namespace" sysctl -qw net.ipv6.conf.all.disable_ipv6=1
+		ip netns exec "$namespace" sysctl -qw net.ipv6.conf.default.disable_ipv6=1
+	done
+fi
 
 ip link add almeth0 type veth peer name almeth1
 ip link set almeth1 netns "$ethernet_ns"
@@ -50,6 +75,25 @@ while ip route del default 2>/dev/null; do :; done
 ip route add default via 198.51.100.2 dev almeth0 onlink
 ip route add 10.210.0.0/24 via 198.51.100.2 dev almeth0 onlink
 ip link set almwifi0 down
+
+if [[ "$ALMAGEST_E2E_IPV6_MODE" == "enabled" ]]; then
+	ip -6 addr show dev lo | grep -q 'inet6 ::1/128' \
+		|| { echo "IPv6 loopback address is unavailable" >&2; exit 1; }
+	for namespace in "$ethernet_ns" "$wifi_ns"; do
+		ip -n "$namespace" -6 addr show dev lo | grep -q 'inet6 ::1/128' \
+			|| { echo "IPv6 loopback address is unavailable in $namespace" >&2; exit 1; }
+	done
+elif ip -6 addr show | grep -q inet6; then
+	echo "an IPv6 address exists in the disabled profile" >&2
+	exit 1
+else
+	for namespace in "$ethernet_ns" "$wifi_ns"; do
+		if ip -n "$namespace" -6 addr show | grep -q inet6; then
+			echo "an IPv6 address exists in disabled namespace $namespace" >&2
+			exit 1
+		fi
+	done
+fi
 
 cat >"$E2E_RUNTIME/cleanup-netns.sh" <<'EOF'
 #!/usr/bin/env bash

@@ -239,4 +239,5 @@ Linux environments used by Almagest's direct dependencies:
   `tun_splitter_process_routing`: sysnet-linux routing, DNS, strict mode,
   process marks, and lifecycle behavior.
 - `out_network_migration`: repeated ethernet, no-network, and Wi-Fi transitions
-  through simple OutNetwork and realistic DefaultTun graphs.
+  through simple OutNetwork and realistic DefaultTun graphs, with IPv6 enabled
+  and disabled.

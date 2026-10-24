@@ -1,10 +1,11 @@
 # Out network migration
 
 This privileged case verifies that a running `almagestd` follows host network
-changes. It models a laptop that moves between ethernet, no network, Wi-Fi, and
-no network. Both simulated physical networks provide the same public and LAN
-target addresses from separate network namespaces. Their response bodies
-identify the active network.
+changes. It runs the complete case in two containers: one with IPv6 enabled and
+one with IPv6 disabled at the network-namespace level. Each run models a laptop
+that moves between ethernet, no network, Wi-Fi, and no network. Both simulated
+physical networks provide the same public and LAN target addresses from separate
+network namespaces. Their response bodies identify the active network.
 
 The test has two ordered phases:
 
@@ -32,6 +33,8 @@ connections are not expected to migrate.
 Run this case with:
 
 ```sh
-E2E_DOCKER_RUN_ARGS="--privileged --device /dev/net/tun" \
-  ./e2e/run.sh out_network_migration
+./e2e/run.sh out_network_migration
 ```
+
+The case runner supplies privileged mode, `/dev/net/tun`, and the IPv6 sysctls.
+Additional `E2E_DOCKER_RUN_ARGS` apply to both profile containers.
