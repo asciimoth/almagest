@@ -86,8 +86,8 @@ transports.
 
 With no selectors, `just check` runs the static checks, lints, the complete test
 gate, and then all current-platform Go fuzz targets. `just fuzz` runs the fuzz
-targets with a shared 60-second fuzzing budget. Set `FUZZ_TIME` to a Go duration
-such as `10m` to change that budget.
+targets with a shared five-minute fuzzing budget. Set `FUZZ_TIME` to a Go
+duration such as `10m` to change that budget.
 
 `just test-total` runs the complete test gate without the static checks. With no
 arguments, both commands keep the normal full-test workflow.
@@ -136,7 +136,7 @@ full aggregate coverage report.
 When selectors are passed to `just check`, its lint and static-check
 dependencies still run in full, but the full fuzz suite does not run. An exact
 top-level `Fuzz...` Go selector runs only that fuzz target for `FUZZ_TIME`,
-which defaults to 60 seconds. Use the complete `just check` without selectors
+which defaults to five minutes. Use the complete `just check` without selectors
 for significant changes that affect the whole project or large parts of it. The
 narrow gate is for feedback on changes with local scope; it does not replace the
 complete project gate when the affected area is broad.

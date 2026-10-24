@@ -199,7 +199,7 @@ class Harness:
         if fuzz:
             command.extend([
                 "-run=^$", f"-fuzz={exact_go_pattern(test.test)}",
-                f"-fuzztime={os.environ.get('FUZZ_TIME', '60s')}", "-json",
+                f"-fuzztime={os.environ.get('FUZZ_TIME', '5m')}", "-json",
             ])
         else:
             command.extend([

@@ -105,7 +105,7 @@ def discover_targets(module):
 
 def main():
     try:
-        total_nanoseconds = parse_duration(os.environ.get("FUZZ_TIME", "60s"))
+        total_nanoseconds = parse_duration(os.environ.get("FUZZ_TIME", "5m"))
     except ValueError as error:
         print(f"FUZZ_TIME: {error}", file=sys.stderr)
         return 2
@@ -134,7 +134,7 @@ def main():
     base, remainder = divmod(total_nanoseconds, len(targets))
     print(
         f"Running {len(targets)} fuzz targets with shared budget "
-        f"{os.environ.get('FUZZ_TIME', '60s')}.",
+        f"{os.environ.get('FUZZ_TIME', '5m')}.",
         flush=True,
     )
     failed = False
