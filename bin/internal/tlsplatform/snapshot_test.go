@@ -1,8 +1,10 @@
 package tlsplatform
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -141,4 +143,74 @@ func TestUnmarshalRejectsUnknownAndTrailingData(t *testing.T) {
 			t.Fatalf("accepted %q", data)
 		}
 	}
+}
+
+func TestUnmarshalRejectsExcessiveJSONDepth(t *testing.T) {
+	data := []byte(strings.Repeat(`[`, protocol.MaxControlDepth+1) + `0` + strings.Repeat(`]`, protocol.MaxControlDepth+1))
+	if _, err := Unmarshal(data, DefaultRequest()); !errors.Is(err, protocol.ErrLimitExceeded) {
+		t.Fatalf("deep snapshot error = %v", err)
+	}
+}
+
+func FuzzSnapshotUnmarshal(f *testing.F) {
+	request, err := ConfiguredRequest(true, "cache-only")
+	if err != nil {
+		f.Fatal(err)
+	}
+	valid, err := json.Marshal(Snapshot{
+		Authorities: []AuthorityBlob{{SourceID: "authority", DER: []byte{1}}},
+		Distrust:    []DistrustBlob{{SourceID: "digest", Kind: DistrustCertificateSHA256, Value: make([]byte, sha256.Size)}},
+		CRLs:        []CRLBlob{{SourceID: "crl", DER: []byte{2}}},
+		Providers:   []ProviderStatus{{Source: "provider", State: ProviderActive, ObservedAt: 1, ItemCount: 2}},
+	})
+	if err != nil {
+		f.Fatal(err)
+	}
+	for _, seed := range [][]byte{
+		valid,
+		[]byte(`{}`),
+		[]byte(`{"authorities":[],"authorities":[]}`),
+		[]byte(`{"unknown":{"nested":[{}]}}`),
+		[]byte(`{} {}`),
+	} {
+		f.Add(seed)
+	}
+	f.Fuzz(func(t *testing.T, data []byte) {
+		snapshot, parseErr := Unmarshal(data, request)
+		if parseErr != nil {
+			return
+		}
+		if err := snapshot.Validate(request); err != nil {
+			t.Fatalf("successful unmarshal returned invalid snapshot: %v", err)
+		}
+		canonical, err := Marshal(snapshot, request)
+		if err != nil {
+			t.Fatalf("successful unmarshal cannot be marshaled: %v", err)
+		}
+		if _, err := Unmarshal(canonical, request); err != nil {
+			t.Fatalf("canonical snapshot cannot be read: %v", err)
+		}
+		before := bytes.Clone(canonical)
+		for i := range data {
+			data[i] ^= 0xff
+		}
+		after, err := Marshal(snapshot, request)
+		if err != nil || !bytes.Equal(before, after) {
+			t.Fatal("snapshot aliases untrusted JSON input")
+		}
+	})
+}
+
+func FuzzSnapshotRequestBounds(f *testing.F) {
+	f.Add(uint8(SourceOS), uint32(MaxSnapshotBytes), uint32(MaxItems), true, true)
+	f.Add(uint8(0), uint32(0), uint32(0), false, false)
+	f.Fuzz(func(t *testing.T, source uint8, maxBytes, maxItems uint32, includeCRLs, includeDistrust bool) {
+		request := Request{Source: Source(source), MaxBytes: maxBytes, MaxItems: maxItems,
+			IncludeCRLs: includeCRLs, IncludeDistrust: includeDistrust}
+		if err := request.Validate(); err == nil {
+			if maxBytes == 0 || maxBytes > MaxSnapshotBytes || maxItems == 0 || maxItems > MaxItems || request.Source != SourceOS {
+				t.Fatalf("invalid request passed validation: %#v", request)
+			}
+		}
+	})
 }

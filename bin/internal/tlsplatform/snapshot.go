@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"slices"
@@ -218,6 +219,9 @@ func Unmarshal(data []byte, request Request) (Snapshot, error) {
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	if err := rejectDuplicateJSONMembers(data); err != nil {
+		if errors.Is(err, protocol.ErrLimitExceeded) {
+			return Snapshot{}, protocol.ErrLimitExceeded
+		}
 		return Snapshot{}, protocol.ErrInvalidContract
 	}
 	var snapshot Snapshot
@@ -236,8 +240,11 @@ func Unmarshal(data []byte, request Request) (Snapshot, error) {
 
 func rejectDuplicateJSONMembers(data []byte) error {
 	decoder := json.NewDecoder(bytes.NewReader(data))
-	var walk func() error
-	walk = func() error {
+	var walk func(int) error
+	walk = func(depth int) error {
+		if depth >= protocol.MaxControlDepth {
+			return protocol.ErrLimitExceeded
+		}
 		token, err := decoder.Token()
 		if err != nil {
 			return err
@@ -261,7 +268,7 @@ func rejectDuplicateJSONMembers(data []byte) error {
 					return protocol.ErrInvalidContract
 				}
 				seen[name] = struct{}{}
-				if err := walk(); err != nil {
+				if err := walk(depth + 1); err != nil {
 					return err
 				}
 			}
@@ -270,7 +277,7 @@ func rejectDuplicateJSONMembers(data []byte) error {
 		}
 		if delimiter == '[' {
 			for decoder.More() {
-				if err := walk(); err != nil {
+				if err := walk(depth + 1); err != nil {
 					return err
 				}
 			}
@@ -279,7 +286,7 @@ func rejectDuplicateJSONMembers(data []byte) error {
 		}
 		return protocol.ErrInvalidContract
 	}
-	return walk()
+	return walk(0)
 }
 
 // Provider is implemented only by trusted bootstrap or broker code.

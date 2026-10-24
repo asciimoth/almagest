@@ -172,6 +172,11 @@ func readTLSCRLFile(path string) ([]byte, error) {
 // parseTLSCRLPEM accepts only one or more complete X509 CRL PEM blocks. This
 // strict parser prevents a valid first block from hiding unrelated input.
 func parseTLSCRLPEM(input string, now time.Time) ([]tlsCRLRecord, error) {
+	// Keep the parser bounded when it is called outside config assembly. The
+	// config path applies the same limit before this function.
+	if len(input) > tlsCRLMaxSourceBytes {
+		return nil, errors.New("CRL source exceeds the 1 MiB limit")
+	}
 	rest := []byte(input)
 	records := make([]tlsCRLRecord, 0, 1)
 	revokedEntries := 0

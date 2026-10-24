@@ -389,8 +389,38 @@ func FuzzCombinedProtectedSplit(f *testing.F) {
 func FuzzResolveProtectedDoesNotPanic(f *testing.F) {
 	f.Add(`{"Secrets":{"a":{"Value":"x"}}}`)
 	f.Add(`{"TLS":{"Certificates":{"a":{"File":"/fixed"}}}}`)
+	f.Add(`{"TLS":{"CRLs":{"Enabled":true,"Lists":{"a":{"File":"/fixed"}},"System":{"WindowsRevocation":"cache-only"}}}}`)
 	f.Fuzz(func(t *testing.T, text string) {
 		loader := &memoryLoader{trusted: map[string][]byte{"/fixed": []byte("pem")}}
 		_, _ = ResolveProtected([]byte(text), loader, func(string) (string, bool) { return "value", true })
+	})
+}
+
+func FuzzRuntimeCRLDocumentDoesNotRestoreFileAuthority(f *testing.F) {
+	f.Add("source", "PEM data", "protected", true, "off")
+	f.Add("../source", "", "cli", false, "cache-only")
+	f.Fuzz(func(t *testing.T, name, value, source string, enabled bool, windowsMode string) {
+		runtime := RuntimeProtected{CRLs: &RuntimeCRLs{Enabled: enabled, System: RuntimeCRLSystem{WindowsRevocation: windowsMode},
+			Lists: map[string]RuntimeCRL{name: {PEM: value, Source: source}}}}
+		document, err := runtime.RuntimeDocument()
+		if err != nil {
+			return
+		}
+		if !json.Valid(document) || bytes.Contains(document, []byte(`"File"`)) || bytes.Contains(document, []byte("/fixed")) {
+			t.Fatalf("runtime CRL document restored file authority: %s", document)
+		}
+		var decoded struct {
+			TLS struct {
+				CRLs *struct {
+					Lists map[string]struct {
+						PEM            *string
+						ResolvedSource string
+					}
+				}
+			}
+		}
+		if err := json.Unmarshal(document, &decoded); err != nil || decoded.TLS.CRLs == nil {
+			t.Fatalf("successful runtime CRL document cannot be decoded: %v", err)
+		}
 	})
 }

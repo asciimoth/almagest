@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"crypto/x509"
@@ -111,4 +112,39 @@ func TestTLSPlatformRevocationUsesSameAuthorizedChain(t *testing.T) {
 	if err := (tlsRevocationVerifier{platform: checker}).VerifyServer(tlspolicy.ServerVerification{AuthorizedChains: [][]*x509.Certificate{{leafA, issuerA.cert}, {leafB, issuerB.cert}}}); !errors.Is(err, errTLSCertificateRevoked) {
 		t.Fatalf("all revoked error = %v", err)
 	}
+}
+
+func FuzzParseTLSPlatformDistrust(f *testing.F) {
+	issuer := newTestCRLAuthority(f, "fuzz-distrust-issuer", 1)
+	certificate := newTestCRLLeaf(f, issuer, "fuzz-distrust-leaf", 42, false)
+	certDigest := sha256.Sum256(certificate.Raw)
+	spkiDigest := sha256.Sum256(certificate.RawSubjectPublicKeyInfo)
+	issuerSerial, err := asn1.Marshal(tlsIssuerSerial{Issuer: asn1.RawValue{FullBytes: certificate.RawIssuer}, Serial: certificate.SerialNumber})
+	if err != nil {
+		f.Fatal(err)
+	}
+	f.Add(uint8(tlsplatform.DistrustCertificateDER), certificate.Raw)
+	f.Add(uint8(tlsplatform.DistrustCertificateSHA256), certDigest[:])
+	f.Add(uint8(tlsplatform.DistrustSPKISHA256), spkiDigest[:])
+	f.Add(uint8(tlsplatform.DistrustIssuerSerial), issuerSerial)
+	f.Add(uint8(tlsplatform.DistrustNone), []byte{})
+	f.Fuzz(func(t *testing.T, kind uint8, value []byte) {
+		snapshot := tlsplatform.Snapshot{Distrust: []tlsplatform.DistrustBlob{{SourceID: "untrusted", Kind: tlsplatform.DistrustKind(kind), Value: value}}}
+		distrust, parseErr := parseTLSPlatformDistrust(snapshot)
+		if parseErr != nil {
+			return
+		}
+		if len(distrust.Findings) != 1 || !bytes.Equal(distrust.Findings[0].Value, value) {
+			t.Fatalf("successful parse changed selector: %#v", distrust.Findings)
+		}
+		owned := bytes.Clone(distrust.Findings[0].Value)
+		for i := range value {
+			value[i] ^= 0xff
+		}
+		if !bytes.Equal(distrust.Findings[0].Value, owned) {
+			t.Fatal("distrust selector aliases platform input")
+		}
+		_ = distrust.matches(certificate)
+		_ = cloneTLSDistrust(distrust)
+	})
 }

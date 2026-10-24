@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -27,7 +28,7 @@ type testCRLAuthority struct {
 	pem  string
 }
 
-func newTestCRLAuthority(t *testing.T, name string, serial int64) testCRLAuthority {
+func newTestCRLAuthority(t testing.TB, name string, serial int64) testCRLAuthority {
 	t.Helper()
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
@@ -48,12 +49,12 @@ func newTestCRLAuthority(t *testing.T, name string, serial int64) testCRLAuthori
 	return testCRLAuthority{cert: cert, key: key, pem: string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}))}
 }
 
-func newTestCRLLeaf(t *testing.T, issuer testCRLAuthority, name string, serial int64, isCA bool) *x509.Certificate {
+func newTestCRLLeaf(t testing.TB, issuer testCRLAuthority, name string, serial int64, isCA bool) *x509.Certificate {
 	cert, _ := newTestCRLIssued(t, issuer, name, serial, isCA)
 	return cert
 }
 
-func newTestCRLIssued(t *testing.T, issuer testCRLAuthority, name string, serial int64, isCA bool) (*x509.Certificate, *ecdsa.PrivateKey) {
+func newTestCRLIssued(t testing.TB, issuer testCRLAuthority, name string, serial int64, isCA bool) (*x509.Certificate, *ecdsa.PrivateKey) {
 	t.Helper()
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
@@ -77,7 +78,7 @@ func newTestCRLIssued(t *testing.T, issuer testCRLAuthority, name string, serial
 	return cert, key
 }
 
-func newTestCRLPEM(t *testing.T, issuer testCRLAuthority, number int64, thisUpdate, nextUpdate time.Time, entries []x509.RevocationListEntry, extensions []pkix.Extension) string {
+func newTestCRLPEM(t testing.TB, issuer testCRLAuthority, number int64, thisUpdate, nextUpdate time.Time, entries []x509.RevocationListEntry, extensions []pkix.Extension) string {
 	t.Helper()
 	der, err := x509.CreateRevocationList(rand.Reader, &x509.RevocationList{Number: big.NewInt(number),
 		ThisUpdate: thisUpdate, NextUpdate: nextUpdate, RevokedCertificateEntries: entries, ExtraExtensions: extensions}, issuer.cert, issuer.key)
@@ -400,9 +401,54 @@ func TestProtectedTLSSystemIntegrationsRequireGateAndRejectOnline(t *testing.T) 
 }
 
 func FuzzParseTLSCRLPEM(f *testing.F) {
+	now := time.Now().UTC().Truncate(time.Second)
+	issuer := newTestCRLAuthority(f, "fuzz-issuer", 1)
+	valid := newTestCRLPEM(f, issuer, 1, now.Add(-time.Hour), now.Add(time.Hour),
+		[]x509.RevocationListEntry{testRevocation(42, now.Add(-time.Minute))}, nil)
 	f.Add("")
 	f.Add("-----BEGIN X509 CRL-----\nAAAA\n-----END X509 CRL-----\n")
+	f.Add(valid)
+	f.Add("\n" + valid + valid)
 	f.Fuzz(func(t *testing.T, input string) {
-		_, _ = parseTLSCRLPEM(input, time.Unix(2_000_000_000, 0))
+		records, err := parseTLSCRLPEM(input, now)
+		if len(input) > tlsCRLMaxSourceBytes && err == nil {
+			t.Fatal("oversized CRL input was accepted")
+		}
+		if err != nil {
+			return
+		}
+		if len(records) == 0 || len(records) > tlsCRLMaxLists {
+			t.Fatalf("successful parse returned %d records", len(records))
+		}
+		for _, record := range records {
+			validated, validateErr := validateTLSCRL(record.List, now)
+			if validateErr != nil || !bytes.Equal(validated.DER, record.DER) {
+				t.Fatalf("successful parse returned invalid record: %v", validateErr)
+			}
+		}
+	})
+}
+
+func FuzzTLSCRLProtectedSource(f *testing.F) {
+	now := time.Now().UTC().Truncate(time.Second)
+	issuer := newTestCRLAuthority(f, "fuzz-config-issuer", 1)
+	valid := newTestCRLPEM(f, issuer, 1, now.Add(-time.Hour), now.Add(time.Hour), nil, nil)
+	f.Add("source", valid, "protected", true)
+	f.Add("../source", "not a CRL", "cli", true)
+	f.Add("source", "", "unknown", false)
+	f.Fuzz(func(t *testing.T, name, input, source string, enabled bool) {
+		value := input
+		revocations, err := immutableTLSRevocationsFromConfig(ProtectedTLSCRLsConfig{Enabled: enabled,
+			Lists: map[string]ProtectedTLSCRLSourceConfig{name: {PEM: &value, ResolvedSource: source}}}, now)
+		if err != nil {
+			return
+		}
+		if !enabled || !revocations.Enabled || len(revocations.Lists) != 1 {
+			t.Fatalf("successful parse lost the protected CRL gate: %#v", revocations)
+		}
+		clone := cloneTLSRevocations(revocations)
+		if len(clone.Lists) != 1 || len(clone.Index) != len(revocations.Index) {
+			t.Fatal("successful parse did not produce a stable clone")
+		}
 	})
 }

@@ -127,7 +127,63 @@ func TestTLSRevocationCheckIsClosedAndBrokerOwned(t *testing.T) {
 	}
 }
 
-func testTLSCertificateDER(t *testing.T) []byte {
+func FuzzTLSPlatformRequestDispatch(f *testing.F) {
+	f.Add(uint8(0), []byte(`{}`))
+	f.Add(uint8(1), []byte(`{"Chains":[[[48,0],[48,0]]],"URL":"https://attacker.invalid/list.crl"}`))
+	f.Add(uint8(0), []byte(`{"Source":1,"MaxBytes":8388608,"MaxItems":4096,"Path":"/etc/ssl/private"}`))
+	f.Add(uint8(1), []byte("not JSON"))
+	f.Fuzz(func(t *testing.T, selector uint8, body []byte) {
+		broker, _ := testBroker(t)
+		operation := protocol.OperationTLSPlatformRefresh
+		if selector&1 != 0 {
+			operation = protocol.OperationTLSRevocationCheck
+		}
+		_, _ = broker.Handle(t.Context(), operation, body)
+	})
+}
+
+func FuzzTLSRevocationBrokerValidation(f *testing.F) {
+	valid := testTLSCertificateDER(f)
+	f.Add(valid, uint8(1), uint8(2))
+	f.Add([]byte{1}, uint8(1), uint8(2))
+	f.Add([]byte{}, uint8(0), uint8(0))
+	f.Fuzz(func(t *testing.T, der []byte, chainCount, certificateCount uint8) {
+		broker, _ := testBroker(t)
+		called := false
+		if err := broker.SetTLSRevocationChecker(tlsplatform.RevocationCheckerFunc(func(_ context.Context, request tlsplatform.RevocationRequest) (tlsplatform.RevocationResult, error) {
+			called = true
+			states := make([]tlsplatform.RevocationState, len(request.Chains))
+			for i := range states {
+				states[i] = tlsplatform.RevocationUnknown
+			}
+			return tlsplatform.RevocationResult{States: states}, nil
+		})); err != nil {
+			t.Fatal(err)
+		}
+		chains := int(chainCount) % (tlsplatform.MaxRevocationChains + 3)
+		certificates := int(certificateCount) % (tlsplatform.MaxRevocationChainCerts + 3)
+		request := protocol.TLSRevocationCheckRequest{Meta: meta(broker, ""), Chains: make([][][]byte, chains)}
+		for i := range request.Chains {
+			request.Chains[i] = make([][]byte, certificates)
+			for j := range request.Chains[i] {
+				request.Chains[i][j] = der
+			}
+		}
+		result, err := broker.TLSRevocationCheck(t.Context(), request)
+		validRequest := (tlsplatform.RevocationRequest{Chains: request.Chains}).Validate() == nil
+		if !validRequest {
+			if err == nil || called {
+				t.Fatalf("invalid broker request reached checker: called=%t result=%#v error=%v", called, result, err)
+			}
+			return
+		}
+		if err != nil || !called || len(result.States) != chains {
+			t.Fatalf("valid broker request failed: called=%t result=%#v error=%v", called, result, err)
+		}
+	})
+}
+
+func testTLSCertificateDER(t testing.TB) []byte {
 	t.Helper()
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
