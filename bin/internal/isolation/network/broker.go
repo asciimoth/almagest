@@ -14,6 +14,7 @@ import (
 	"github.com/asciimoth/almagest/bin/internal/isolation/relay"
 	"github.com/asciimoth/almagest/bin/internal/isolation/supervision"
 	"github.com/asciimoth/almagest/bin/internal/isolation/transport"
+	"github.com/asciimoth/almagest/bin/internal/tlsplatform"
 )
 
 // Native network changes can call several host tools. Give them enough time
@@ -55,6 +56,10 @@ type Broker struct {
 	gate             chan struct{}
 	socketSlots      chan struct{}
 	mu               sync.Mutex
+	tlsMu            sync.Mutex
+	tlsProvider      tlsplatform.Provider
+	tlsTransfer      *tlsPlatformTransfer
+	tlsNext          uint64
 	workers          sync.WaitGroup
 	epoch            uint64
 	closed, recovery bool

@@ -13,6 +13,8 @@ func requestType(op protocol.Operation) (any, bool) {
 	switch op {
 	case protocol.OperationCapabilities, protocol.OperationStatus, protocol.OperationResolverSnapshot, protocol.OperationRuntimeReady:
 		return new(protocol.ReadRequest), false
+	case protocol.OperationTLSPlatformRefresh:
+		return new(protocol.TLSPlatformRefreshRequest), false
 	case protocol.OperationListInterfaces:
 		return new(protocol.InterfaceRequest), false
 	case protocol.OperationCheckTun:

@@ -657,9 +657,11 @@ func TestTLSReloadOSCertsAPIUpdatesSnapshotAndEvents(t *testing.T) {
 	var events []api.Message
 	session := (&AdminAPI{
 		tls: manager,
-		tlsOSAuthorityFetcher: tlspolicy.AuthorityFetcherFunc(func(context.Context) ([]tlspolicy.AuthorityCandidate, error) {
-			return []tlspolicy.AuthorityCandidate{testTLSAuthorityCandidate(t, osPEM)}, nil
-		}),
+		tlsOSDataLoader: func(ctx context.Context) (immutableTLSData, error) {
+			return loadOSTLSData(ctx, tlspolicy.AuthorityFetcherFunc(func(context.Context) ([]tlspolicy.AuthorityCandidate, error) {
+				return []tlspolicy.AuthorityCandidate{testTLSAuthorityCandidate(t, osPEM)}, nil
+			}))
+		},
 	}).newAPISession(nil, nil, func(msg api.Message) error {
 		if msg.Kind == api.MessageEvent && msg.Surface == api.SurfaceTLS {
 			events = append(events, msg)
@@ -725,11 +727,11 @@ func TestTLSReloadOSCertsFailurePreservesCatalog(t *testing.T) {
 
 	admin := &AdminAPI{
 		tls: manager,
-		tlsOSAuthorityFetcher: tlspolicy.AuthorityFetcherFunc(func(context.Context) ([]tlspolicy.AuthorityCandidate, error) {
-			return nil, errors.New("certificate store access denied")
-		}),
+		tlsOSDataLoader: func(context.Context) (immutableTLSData, error) {
+			return immutableTLSData{}, errors.New("broker certificate refresh denied")
+		},
 	}
-	if _, _, err := admin.reloadTLSOSCerts(context.Background()); err == nil || !strings.Contains(err.Error(), "certificate store access denied") {
+	if _, _, err := admin.reloadTLSOSCerts(context.Background()); err == nil || !strings.Contains(err.Error(), "broker certificate refresh denied") {
 		t.Fatalf("reload error = %v, want observable store failure", err)
 	}
 	snapshot, err := manager.tlsSnapshot()

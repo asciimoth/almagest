@@ -38,7 +38,7 @@ func TestPrepareRuntimeStorageInstallsFixedInputsAndPreservesData(t *testing.T) 
 	if err := os.WriteFile(keep, []byte("persistent"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{roleentry.RuntimeRegularConfigFile, roleentry.RuntimeProtectedConfigFile, roleentry.RuntimeSnapshotFile} {
+	for _, name := range []string{roleentry.RuntimeRegularConfigFile, roleentry.RuntimeProtectedConfigFile, roleentry.RuntimeTLSPlatformFile, roleentry.RuntimeSnapshotFile} {
 		if err := os.WriteFile(filepath.Join(directory.Name(), name), []byte("attacker-old"), 0o777); err != nil {
 			t.Fatal(err)
 		}
@@ -46,11 +46,11 @@ func TestPrepareRuntimeStorageInstallsFixedInputsAndPreservesData(t *testing.T) 
 	input := RuntimeStorageInput{Regular: []byte(`{"nodes":{}}`), Protected: RuntimeProtected{
 		Secrets:      map[string]Secret{"token": {Value: "resolved", Nodes: []string{"node"}, Source: "environment"}},
 		Certificates: map[string]string{"ca": "certificate"}, Policies: map[string]json.RawMessage{"policy": []byte(`{"Mode":"strict"}`)}, BuiltinCA: "keypair",
-	}, Snapshot: strings.NewReader("opaque archive")}
+	}, TLSPlatform: []byte(`{"authorities":[]}`), Snapshot: strings.NewReader("opaque archive")}
 	if err := PrepareRuntimeStorage(directory, uid, gid, input); err != nil {
 		t.Fatal(err)
 	}
-	checks := map[string]string{roleentry.RuntimeRegularConfigFile: `{"nodes":{}}`, roleentry.RuntimeSnapshotFile: "opaque archive", "kv.db": "persistent"}
+	checks := map[string]string{roleentry.RuntimeRegularConfigFile: `{"nodes":{}}`, roleentry.RuntimeTLSPlatformFile: `{"authorities":[]}`, roleentry.RuntimeSnapshotFile: "opaque archive", "kv.db": "persistent"}
 	for name, want := range checks {
 		data, err := os.ReadFile(filepath.Join(directory.Name(), name))
 		if err != nil || string(data) != want {
@@ -71,7 +71,7 @@ func TestPrepareRuntimeStorageInstallsFixedInputsAndPreservesData(t *testing.T) 
 			t.Fatalf("protected input exposes %q: %s", forbidden, protected)
 		}
 	}
-	for _, name := range []string{roleentry.RuntimeRegularConfigFile, roleentry.RuntimeProtectedConfigFile, roleentry.RuntimeSnapshotFile} {
+	for _, name := range []string{roleentry.RuntimeRegularConfigFile, roleentry.RuntimeProtectedConfigFile, roleentry.RuntimeTLSPlatformFile, roleentry.RuntimeSnapshotFile} {
 		var stat unix.Stat_t
 		if err := unix.Stat(filepath.Join(directory.Name(), name), &stat); err != nil {
 			t.Fatal(err)

@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/asciimoth/almagest/bin/almagestd/platform"
 	"github.com/asciimoth/almagest/bin/api"
 	"github.com/asciimoth/pasta/pasta"
 	"github.com/kataras/golog"
@@ -257,11 +256,12 @@ func (a *AdminAPI) reloadTLSOSCerts(ctx context.Context) (api.TLSSnapshot, tlsMu
 	if a == nil || a.tls == nil {
 		return api.TLSSnapshot{}, tlsMutationResult{}, storage.ErrTlsConfigNotFound
 	}
-	fetcher := a.tlsOSAuthorityFetcher
-	if fetcher == nil {
-		fetcher = platform.OSAuthorityFetcher()
+	var data immutableTLSData
+	var err error
+	if a.tlsOSDataLoader == nil {
+		return api.TLSSnapshot{}, tlsMutationResult{}, errors.New("TLS platform loader is unavailable")
 	}
-	data, err := loadOSTLSData(ctx, fetcher)
+	data, err = a.tlsOSDataLoader(ctx)
 	if err != nil {
 		return api.TLSSnapshot{}, tlsMutationResult{}, err
 	}

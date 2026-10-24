@@ -8,5 +8,8 @@ import "io"
 type RuntimeStorageInput struct {
 	Regular   []byte
 	Protected RuntimeProtected
-	Snapshot  io.Reader
+	// TLSPlatform is the validated, serialized broker-owned snapshot. It has
+	// literal data only and no host source selectors.
+	TLSPlatform []byte
+	Snapshot    io.Reader
 }

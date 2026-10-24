@@ -8,6 +8,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/asciimoth/almagest/bin/api"
+	"github.com/asciimoth/almagest/bin/internal/tlsplatform"
 	"github.com/asciimoth/gonnect/tlspolicy"
 	"github.com/kataras/golog"
 )
@@ -18,8 +19,29 @@ const (
 )
 
 func loadOSTLSData(ctx context.Context, fetcher tlspolicy.AuthorityFetcher) (immutableTLSData, error) {
+	return loadTLSPlatformData(ctx, tlsplatform.NewAuthorityProvider(fetcher))
+}
+
+func loadTLSPlatformData(ctx context.Context, provider tlsplatform.Provider) (immutableTLSData, error) {
 	golog.Debug("TLS certificates: loading OS authority catalog")
-	catalog, err := tlspolicy.FetchAuthorityCatalog(ctx, fetcher)
+	request := tlsplatform.DefaultRequest()
+	snapshot, err := provider.Snapshot(ctx, request)
+	if err != nil {
+		return immutableTLSData{}, err
+	}
+	return tlsDataFromPlatformSnapshot(snapshot, request)
+}
+
+func tlsDataFromPlatformSnapshot(snapshot tlsplatform.Snapshot, request tlsplatform.Request) (immutableTLSData, error) {
+	if err := snapshot.Validate(request); err != nil {
+		return immutableTLSData{}, err
+	}
+	candidates := make([]tlspolicy.AuthorityCandidate, 0, len(snapshot.Authorities))
+	for _, authority := range snapshot.Authorities {
+		candidates = append(candidates, tlspolicy.AuthorityCandidate{DER: append([]byte(nil), authority.DER...),
+			Source: tlspolicy.AuthoritySource{Name: "platform:" + authority.SourceID, Trust: tlspolicy.TrustHintAnchor}})
+	}
+	catalog, err := tlspolicy.NewAuthorityCatalog(candidates)
 	if err != nil {
 		return immutableTLSData{}, err
 	}

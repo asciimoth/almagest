@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/asciimoth/almagest/bin/almagestd/args"
 	"github.com/asciimoth/almagest/bin/almagestd/command"
@@ -21,6 +22,7 @@ import (
 	client "github.com/asciimoth/almagest/bin/internal/isolation/runtime"
 	"github.com/asciimoth/almagest/bin/internal/isolation/transport"
 	sandboxisolated "github.com/asciimoth/almagest/bin/internal/subprogram/isolated"
+	"github.com/asciimoth/almagest/bin/internal/tlsplatform"
 	sandbox "github.com/asciimoth/gobox"
 	"github.com/asciimoth/gonnect"
 	"github.com/kataras/golog"
@@ -214,7 +216,7 @@ func runIsolatedRuntimeRole() error {
 	if storage == "" {
 		storage = "/state"
 	}
-	regular, protected, err := readRuntimeConfig(storage)
+	regular, protected, tlsPlatformData, err := readRuntimeConfig(storage)
 	if err != nil {
 		_ = system.Close()
 		if commands != nil {
@@ -222,6 +224,12 @@ func runIsolatedRuntimeRole() error {
 		}
 		return err
 	}
+	tlsRequest := tlsplatform.DefaultRequest()
+	initialTLSPlatform, err := tlsplatform.Unmarshal(tlsPlatformData, tlsRequest)
+	if err != nil {
+		return fmt.Errorf("read runtime TLS platform snapshot: %w", err)
+	}
+	tlsLoader := newIsolatedTLSPlatformLoader(initialTLSPlatform, networkClient)
 	arguments := args.Args{
 		FileStorage: storage, LogLevel: input.Options.LogLevel, LogWorkers: input.Options.LogWorkers,
 		NoPool: input.Options.NoPool, NoDNSCacheExpiration: input.Options.NoDNSCacheExpiration,
@@ -258,7 +266,7 @@ func runIsolatedRuntimeRole() error {
 		enterStorage: func(path string) error {
 			return enterIsolatedRuntimeStorage(storage, path)
 		},
-		loadOSAuthority: loadIsolatedRuntimeOSAuthorities,
+		loadOSAuthority: tlsLoader,
 		prepareAdmin: func(conf *Config) (*AdminAPI, error) {
 			return isolatedAdminAPI(conf, adminRuntime, input.AdminEndpoints, input.Isolation)
 		},
@@ -293,8 +301,32 @@ func runIsolatedRuntimeRole() error {
 	})
 }
 
-func loadIsolatedRuntimeOSAuthorities(ctx context.Context) (immutableTLSData, error) {
-	return loadOSTLSData(ctx, platform.FallbackAuthorityFetcher())
+type tlsPlatformSnapshotClient interface {
+	TLSPlatformSnapshot(context.Context, tlsplatform.Request) (tlsplatform.Snapshot, error)
+}
+
+func newIsolatedTLSPlatformLoader(initial tlsplatform.Snapshot, client tlsPlatformSnapshotClient) func(context.Context) (immutableTLSData, error) {
+	var mu sync.Mutex
+	first := true
+	return func(ctx context.Context) (immutableTLSData, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		request := tlsplatform.DefaultRequest()
+		snapshot := initial
+		if first {
+			first = false
+		} else {
+			if client == nil {
+				return immutableTLSData{}, protocol.ErrCapabilityUnavailable
+			}
+			var err error
+			snapshot, err = client.TLSPlatformSnapshot(ctx, request)
+			if err != nil {
+				return immutableTLSData{}, err
+			}
+		}
+		return tlsDataFromPlatformSnapshot(snapshot, request)
+	}
 }
 
 func isolatedSandboxService(client *sandboxisolated.Client) sandbox.Service {
@@ -304,7 +336,7 @@ func isolatedSandboxService(client *sandboxisolated.Client) sandbox.Service {
 	return client
 }
 
-func readRuntimeConfig(storage string) ([]byte, []byte, error) {
+func readRuntimeConfig(storage string) ([]byte, []byte, []byte, error) {
 	read := func(name string) ([]byte, error) {
 		path := filepath.Join(storage, name)
 		data, err := os.ReadFile(path)
@@ -318,13 +350,17 @@ func readRuntimeConfig(storage string) ([]byte, []byte, error) {
 	}
 	regular, err := read(roleentry.RuntimeRegularConfigFile)
 	if err != nil {
-		return nil, nil, fmt.Errorf("read runtime regular config: %w", err)
+		return nil, nil, nil, fmt.Errorf("read runtime regular config: %w", err)
 	}
 	protected, err := read(roleentry.RuntimeProtectedConfigFile)
 	if err != nil {
-		return nil, nil, fmt.Errorf("read runtime protected config: %w", err)
+		return nil, nil, nil, fmt.Errorf("read runtime protected config: %w", err)
 	}
-	return regular, protected, nil
+	tlsPlatform, err := read(roleentry.RuntimeTLSPlatformFile)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("read runtime TLS platform snapshot: %w", err)
+	}
+	return regular, protected, tlsPlatform, nil
 }
 
 func isolatedAdminAPI(conf *Config, runtime *admingate.Runtime, endpoints []roleentry.RuntimeAdminEndpoint, status roleentry.RuntimeIsolationStatus) (*AdminAPI, error) {

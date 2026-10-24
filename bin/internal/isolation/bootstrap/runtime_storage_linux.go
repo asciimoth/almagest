@@ -17,10 +17,10 @@ import (
 
 // PrepareRuntimeStorage atomically replaces the fixed startup inputs through a
 // held directory descriptor. The directory must already be private and owned by
-// R's final non-root identity. It can contain persistent application data; only
-// the three reserved startup names and their reserved staging names are touched.
+// R's final non-root identity. It can contain persistent application data;
+// only the fixed reserved startup names and their staging names are touched.
 func PrepareRuntimeStorage(directory *os.File, uid, gid uint32, input RuntimeStorageInput) error {
-	if directory == nil || uid == 0 || gid == 0 || uid == ^uint32(0) || gid == ^uint32(0) || len(input.Regular) > protocol.MaxConfigBytes {
+	if directory == nil || uid == 0 || gid == 0 || uid == ^uint32(0) || gid == ^uint32(0) || len(input.Regular) > protocol.MaxConfigBytes || len(input.TLSPlatform) > MaxImmutableInputBytes {
 		return fmt.Errorf("%w: invalid runtime storage input", ErrInvalidInput)
 	}
 	if err := checkRuntimeDirectory(directory, uid, gid); err != nil {
@@ -37,6 +37,13 @@ func PrepareRuntimeStorage(directory *os.File, uid, gid uint32, input RuntimeSto
 	}{
 		{roleentry.RuntimeRegularConfigFile, bytes.NewReader(input.Regular), protocol.MaxConfigBytes},
 		{roleentry.RuntimeProtectedConfigFile, bytes.NewReader(protected), MaxProtectedInputBytes},
+	}
+	if len(input.TLSPlatform) != 0 {
+		values = append(values, struct {
+			name   string
+			reader io.Reader
+			limit  int64
+		}{roleentry.RuntimeTLSPlatformFile, bytes.NewReader(input.TLSPlatform), MaxImmutableInputBytes})
 	}
 	if input.Snapshot != nil {
 		values = append(values, struct {
@@ -70,6 +77,11 @@ func PrepareRuntimeStorage(directory *os.File, uid, gid uint32, input RuntimeSto
 	}
 	if input.Snapshot == nil {
 		if err := removeReserved(directory, roleentry.RuntimeSnapshotFile); err != nil {
+			return err
+		}
+	}
+	if len(input.TLSPlatform) == 0 {
+		if err := removeReserved(directory, roleentry.RuntimeTLSPlatformFile); err != nil {
 			return err
 		}
 	}

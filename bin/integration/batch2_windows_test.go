@@ -648,31 +648,46 @@ func TestWindowsBatch2TLSOSReloadPrivileged(t *testing.T) {
 	if !windows.GetCurrentProcessToken().IsElevated() {
 		t.Fatal("TLS OS reload must run in the serialized privileged WinVM suite")
 	}
-	certPEM, _, _ := makeBatch2Certificate(t, "Batch 2 OS Reload Root", nil, true, "rsa")
 	root := newPrivateWindowsTestDir(t)
-	certPath := filepath.Join(root, "os-reload.pem")
-	writePrivateWindowsFile(t, certPath, certPEM)
-	install := exec.Command("certutil.exe", "-f", "-addstore", "Root", certPath)
-	if output, err := install.CombinedOutput(); err != nil {
-		t.Fatalf("install Windows test root: %v\n%s", err, output)
+	installRoot := func(name string) func() {
+		t.Helper()
+		certPEM, _, _ := makeBatch2Certificate(t, name, nil, true, "rsa")
+		certPath := filepath.Join(root, name+".pem")
+		writePrivateWindowsFile(t, certPath, certPEM)
+		install := exec.Command("certutil.exe", "-f", "-addstore", "Root", certPath)
+		if output, err := install.CombinedOutput(); err != nil {
+			t.Fatalf("install Windows test root %q: %v\n%s", name, err, output)
+		}
+		serial := strings.ToUpper(parseBatch2Certificate(t, certPEM).SerialNumber.Text(16))
+		return func() {
+			_, _ = exec.Command("certutil.exe", "-f", "-delstore", "Root", serial).CombinedOutput()
+		}
 	}
-	certificate := parseBatch2Certificate(t, certPEM)
-	serial := strings.ToUpper(certificate.SerialNumber.Text(16))
-	cleanup := func() {
-		_, _ = exec.Command("certutil.exe", "-f", "-delstore", "Root", serial).CombinedOutput()
-	}
-	defer cleanup()
+
+	removeInitial := installRoot("Batch 2 OS Reload Initial Root")
+	defer removeInitial()
 	pipe := batch2Pipe("os-reload")
 	d := newWindowsDaemon(t, root, pipe, `{}`, batch2Protected(pipe, nil))
 	d.start()
 	defer d.stop()
-	if snapshot := d.cliJSON("tls", "list"); !bytes.Contains(snapshot, []byte("Batch 2 OS Reload Root")) {
+	var hello api.HelloResponse
+	decodeJSON(t, d.cliJSON("admin", "hello", "--client-name", "windows-tls-os-reload"), &hello)
+	if hello.ExecutionMode != "direct" || hello.Isolation != nil {
+		t.Fatalf("Windows TLS OS reload did not use direct mode: %#v", hello)
+	}
+	if snapshot := d.cliJSON("tls", "list"); !bytes.Contains(snapshot, []byte("Batch 2 OS Reload Initial Root")) {
 		t.Fatalf("Windows certificate store root is absent at startup: %s", snapshot)
 	}
-	cleanup()
+
+	removeInitial()
+	removeReplacement := installRoot("Batch 2 OS Reload Replacement Root")
+	defer removeReplacement()
 	reloaded := d.cliJSON("tls", "reload-os-certs")
-	if bytes.Contains(reloaded, []byte("Batch 2 OS Reload Root")) {
+	if bytes.Contains(reloaded, []byte("Batch 2 OS Reload Initial Root")) {
 		t.Fatalf("removed Windows root remained after reload: %s", reloaded)
+	}
+	if !bytes.Contains(reloaded, []byte("Batch 2 OS Reload Replacement Root")) {
+		t.Fatalf("replacement Windows root is absent after reload: %s", reloaded)
 	}
 	if !strings.Contains(d.readLog(), "TLS OS certificate reload") {
 		t.Fatal("daemon did not log Windows certificate-store reload")

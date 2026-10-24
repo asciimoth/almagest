@@ -73,15 +73,30 @@ GID, supplementary groups, and capability state before it executes a Go role.
 Protected config and command-line listener overrides are launch authority. N
 reads them before R starts. N resolves secret environment variables and
 certificate files, selects the native backend, opens trusted executables and
-directories, and creates all IPC endpoints. R receives only literal secret and
-certificate values plus the small protected subset that it must use. It does not
-receive source paths, environment variable names, listener addresses, peer
-filters, system configuration, command profiles, or unknown protected fields.
+directories, and creates all IPC endpoints. N also reads the platform TLS trust
+state. R receives only literal secret, certificate, and platform TLS snapshot
+values plus the small protected subset that it must use. It does not receive
+source paths, environment variable names, listener addresses, peer filters,
+system configuration, command profiles, trust-store names, registry keys, URLs,
+or unknown protected fields.
 
-R builds its default TLS client policy from the public root catalog embedded in
-the daemon. It does not need access to host certificate-store paths. Direct mode
-can also import platform certificate stores. Protected TLS configuration remains
-the way to add private or deployment-specific authorities.
+N owns platform TLS collection in isolated mode. Before it starts R, N collects
+and validates a bounded snapshot and writes it to one reserved file in R's
+private startup directory. R reads and removes this file before it builds TLS
+storage. A `reload_os_certs` request from R uses the closed
+`tls_platform_refresh` broker operation. The reply is a complete snapshot sent
+as ordered bounded chunks. R validates the complete snapshot before it replaces
+the active read-only OS overlay. A collection, transfer, parse, or validation
+failure keeps the last-known-good overlay. R does not fall back to a local OS
+fetcher after an IPC failure.
+
+The platform TLS request can select only the compiled OS source and compiled
+limits. It cannot contain a path or another host selector. The current snapshot
+contains public trust authorities only. CRL and distrust flags are rejected.
+Direct mode uses the same snapshot provider and runtime compiler in-process, so
+direct and isolated modes produce the same logical OS certificate catalog.
+Protected TLS configuration remains the way to add private or
+deployment-specific authorities.
 
 Regular config is untrusted application input. It can select graph behavior, but
 it cannot select a role, executable, host path, native API, credential, IPC
@@ -96,7 +111,7 @@ not give R a public listener handle or a client impersonation token.
 
 ## IPC contract
 
-Protocol version 1 uses private connected byte streams that trusted bootstrap
+Protocol version 2 uses private connected byte streams that trusted bootstrap
 binds to specific roles. A session contains a random ID, epoch, protocol
 version, and digest of normalized protected policy. Peers must agree on that
 complete record. Each request also carries the session, graph epoch, request ID,
@@ -113,7 +128,8 @@ The N/R control API is a closed typed interface. It permits:
 - interface and resolver snapshots;
 - five-tuple matcher creation and lookup;
 - resource close and graph-epoch release;
-- mutation-result lookup and runtime readiness.
+- mutation-result lookup and runtime readiness;
+- bounded platform TLS snapshot refresh from the fixed OS source.
 
 Separate typed services permit C to read and revision-replace its fixed config
 target and H to run a configured command ID with validated slot values. Native
@@ -128,6 +144,14 @@ operations and fields are rejected. Runtime requests cannot expand protected
 authority. A canceled or timed-out mutation is not assumed to have had no
 effect; operation receipts and the recovery journal resolve known and uncertain
 outcomes.
+
+Platform TLS snapshot data uses the immutable-input byte ceiling and explicit
+item and per-item ceilings. Startup uses one fixed reserved private file because
+the snapshot can be larger than one control frame. Refresh uses 32 KiB payload
+chunks within normal control frames. N permits only one ordered TLS transfer per
+session and discards it on an invalid transfer ID or offset. Snapshot members
+have bounded source IDs and literal DER bytes. Duplicate members, unexpected CRL
+or distrust data, unknown JSON fields, and partial snapshots fail closed.
 
 Control messages are strict length-prefixed JSON with bounded depth, size,
 in-flight work, arrays, strings, resources, and receipts. Control, data, and

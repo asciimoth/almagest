@@ -19,6 +19,7 @@ import (
 	"github.com/asciimoth/almagest/bin/internal/isolation/protocol"
 	"github.com/asciimoth/almagest/bin/internal/isolation/roleentry"
 	"github.com/asciimoth/almagest/bin/internal/isolation/supervision"
+	"github.com/asciimoth/almagest/bin/internal/tlsplatform"
 )
 
 func validationFixture(t *testing.T) LinuxLaunch {
@@ -32,7 +33,10 @@ func validationFixture(t *testing.T) LinuxLaunch {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return LinuxLaunch{Runtime: LinuxRole{Plan: linuxprofile.Plan{Role: linuxprofile.Runtime, UID: 123, GID: 123, Limits: linuxprofile.DefaultLimits()}, Inputs: linuxprofile.Inputs{Launcher: file, Executable: file, Directory: file, Cgroup: file}}, RuntimeStorage: &bootstrap.RuntimeStorageInput{Regular: []byte(`{}`)}, State: file, Cgroup: file, Journal: journal, Limits: linuxprofile.DefaultLimits(), RuntimeInput: roleentry.RuntimeInput{Version: protocol.Version}, Policy: policy.Default(policy.LaunchAuthority{Backend: "linux", CredentialClass: "test"}, policy.CommandAuthority{})}
+	provider := tlsplatform.ProviderFunc(func(context.Context, tlsplatform.Request) (tlsplatform.Snapshot, error) {
+		return tlsplatform.Snapshot{}, nil
+	})
+	return LinuxLaunch{Runtime: LinuxRole{Plan: linuxprofile.Plan{Role: linuxprofile.Runtime, UID: 123, GID: 123, Limits: linuxprofile.DefaultLimits()}, Inputs: linuxprofile.Inputs{Launcher: file, Executable: file, Directory: file, Cgroup: file}}, RuntimeStorage: &bootstrap.RuntimeStorageInput{Regular: []byte(`{}`), TLSPlatform: []byte(`{}`)}, TLSPlatform: provider, State: file, Cgroup: file, Journal: journal, Limits: linuxprofile.DefaultLimits(), RuntimeInput: roleentry.RuntimeInput{Version: protocol.Version}, Policy: policy.Default(policy.LaunchAuthority{Backend: "linux", CredentialClass: "test"}, policy.CommandAuthority{})}
 }
 
 func TestLinuxLaunchRejectsInvalidAuthorityBeforeExecution(t *testing.T) {

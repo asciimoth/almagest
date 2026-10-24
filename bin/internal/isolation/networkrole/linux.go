@@ -26,6 +26,7 @@ import (
 	"github.com/asciimoth/almagest/bin/internal/isolation/sandboxrole"
 	"github.com/asciimoth/almagest/bin/internal/isolation/supervision"
 	"github.com/asciimoth/almagest/bin/internal/isolation/transport"
+	"github.com/asciimoth/almagest/bin/internal/tlsplatform"
 	sysnetlinux "github.com/asciimoth/sysnet-linux"
 )
 
@@ -68,6 +69,7 @@ type LinuxLaunch struct {
 	Policy         policy.Policy
 	Native         sysnetlinux.SystemConfig
 	Callbacks      callbackbridge.Bindings
+	TLSPlatform    tlsplatform.Provider
 	State          *os.File
 	// Cgroups is the production role-cgroup owner. Cgroup is a qualification
 	// fallback that places every process in one already bounded cgroup.
@@ -293,6 +295,9 @@ func RunLinux(parent context.Context, launch LinuxLaunch, ready func(roleentry.R
 	if err != nil {
 		return err
 	}
+	if err := broker.SetTLSPlatformProvider(launch.TLSPlatform); err != nil {
+		return err
+	}
 	service, err := network.NewService(broker, transport.Lanes{Control: streams[roleentry.LaneBootstrap], Data: streams[roleentry.LaneData], Diagnostic: streams[roleentry.LaneDiagnostics]}, supervision.NativeReconciler{}, time.Second,
 		supervision.Options{StartupTimeout: 15 * time.Second, ShutdownTimeout: 5 * time.Second, RecoveryTimeout: 5 * time.Second}, nil, resources.supervised...)
 	if err != nil {
@@ -413,6 +418,9 @@ func (l LinuxLaunch) validate() error {
 	}
 	if l.RuntimeStorage == nil {
 		return invalid("runtime storage")
+	}
+	if l.TLSPlatform == nil || len(l.RuntimeStorage.TLSPlatform) == 0 {
+		return invalid("TLS platform provider")
 	}
 	if l.Runtime.Plan.Role != linuxprofile.Runtime {
 		return invalid("runtime role")

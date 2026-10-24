@@ -25,7 +25,7 @@ func TestPrepareRuntimeStorageWindowsFixedInputs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	first := RuntimeStorageInput{Regular: []byte(`{"nodes":{}}`), Protected: protected, Snapshot: bytes.NewReader([]byte("snapshot"))}
+	first := RuntimeStorageInput{Regular: []byte(`{"nodes":{}}`), Protected: protected, TLSPlatform: []byte(`{"authorities":[]}`), Snapshot: bytes.NewReader([]byte("snapshot"))}
 	if err = PrepareRuntimeStorage(directory, 0, 0, first); err != nil {
 		t.Fatal(err)
 	}
@@ -38,6 +38,7 @@ func TestPrepareRuntimeStorageWindowsFixedInputs(t *testing.T) {
 	}
 	assertFile(roleentry.RuntimeRegularConfigFile, `{"nodes":{}}`)
 	assertFile(roleentry.RuntimeProtectedConfigFile, string(protectedDocument))
+	assertFile(roleentry.RuntimeTLSPlatformFile, `{"authorities":[]}`)
 	assertFile(roleentry.RuntimeSnapshotFile, "snapshot")
 
 	if err = PrepareRuntimeStorage(directory, 0, 0, RuntimeStorageInput{Regular: []byte(`{}`)}); err != nil {
@@ -46,6 +47,9 @@ func TestPrepareRuntimeStorageWindowsFixedInputs(t *testing.T) {
 	assertFile(roleentry.RuntimeRegularConfigFile, `{}`)
 	if _, err = os.Stat(filepath.Join(root, roleentry.RuntimeSnapshotFile)); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("stale snapshot remains: %v", err)
+	}
+	if _, err = os.Stat(filepath.Join(root, roleentry.RuntimeTLSPlatformFile)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("stale TLS platform snapshot remains: %v", err)
 	}
 	for _, name := range []string{roleentry.RuntimeRegularConfigFile, roleentry.RuntimeProtectedConfigFile, roleentry.RuntimeSnapshotFile} {
 		if _, err = os.Stat(filepath.Join(root, name+".bootstrap-new")); !errors.Is(err, os.ErrNotExist) {

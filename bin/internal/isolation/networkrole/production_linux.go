@@ -31,6 +31,7 @@ import (
 	"github.com/asciimoth/almagest/bin/internal/isolation/supervision"
 	sandboxdiscovery "github.com/asciimoth/almagest/bin/internal/subprogram/discovery"
 	sandboxpolicy "github.com/asciimoth/almagest/bin/internal/subprogram/policy"
+	"github.com/asciimoth/almagest/bin/internal/tlsplatform"
 	"golang.org/x/sys/unix"
 )
 
@@ -89,6 +90,7 @@ type LinuxProduction struct {
 	Output                         io.Writer
 	LocalesDirectory               string
 	ExamplesDirectory              string
+	TLSPlatform                    tlsplatform.Provider
 }
 
 // RunLinuxProduction prepares protected authority, opens every trusted object,
@@ -112,6 +114,9 @@ func RunLinuxProduction(parent context.Context, production LinuxProduction, read
 		return err
 	}
 	production.Limits = limits
+	if production.TLSPlatform == nil {
+		return supervision.ErrInvalidComposition
+	}
 	if production.Profile == linuxprofile.ProfileUser &&
 		(production.Arguments.IsolationMemoryBytes != nil || production.Arguments.IsolationTasks != nil || production.Arguments.IsolationCPUQuota != nil) {
 		return fmt.Errorf("explicit memory, task, and CPU isolation limits require delegated per-role cgroups")
@@ -134,6 +139,15 @@ func RunLinuxProduction(parent context.Context, production LinuxProduction, read
 	resolved, err := bootstrap.ResolveProtected(inputs.Protected, loader, production.LookupEnv)
 	if err != nil {
 		return err
+	}
+	tlsRequest := tlsplatform.DefaultRequest()
+	tlsSnapshot, err := production.TLSPlatform.Snapshot(parent, tlsRequest)
+	if err != nil {
+		return fmt.Errorf("collect platform TLS snapshot: %w", err)
+	}
+	tlsSnapshotData, err := tlsplatform.Marshal(tlsSnapshot, tlsRequest)
+	if err != nil {
+		return fmt.Errorf("encode platform TLS snapshot: %w", err)
 	}
 	var sandboxConfig *sandboxLaunchPolicy
 	var sandboxUnavailable sandboxrole.SandboxDiagnostics
@@ -510,9 +524,9 @@ func RunLinuxProduction(parent context.Context, production LinuxProduction, read
 			LogCacheDebug: production.Arguments.LogCacheDebug,
 			LogCacheInfo:  production.Arguments.LogCacheInfo, LogCacheWarn: production.Arguments.LogCacheWarn,
 			LogCacheError: production.Arguments.LogCacheError, LogCacheFatal: production.Arguments.LogCacheFatal,
-		}, Isolation: isolationStatus}, RuntimeStorage: &bootstrap.RuntimeStorageInput{Regular: inputs.Regular, Protected: resolved.Runtime, Snapshot: snapshot},
+		}, Isolation: isolationStatus}, RuntimeStorage: &bootstrap.RuntimeStorageInput{Regular: inputs.Regular, Protected: resolved.Runtime, TLSPlatform: tlsSnapshotData, Snapshot: snapshot},
 		Policy: launchPolicy, Native: native, State: brokerDirectory, Limits: production.Limits, Locales: locales, Examples: examples,
-		Journal: journal, Admin: admin, Output: production.Output, Callbacks: callbackBindings,
+		Journal: journal, Admin: admin, Output: production.Output, Callbacks: callbackBindings, TLSPlatform: production.TLSPlatform,
 	}
 	if sandboxConfig != nil {
 		launch.Sandbox = &LinuxSandbox{Policy: slices.Clone(resolved.Authority.Sandbox), Unavailable: sandboxUnavailable}

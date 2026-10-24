@@ -17,7 +17,6 @@ import (
 	almagest "github.com/asciimoth/almagest/lib"
 	"github.com/asciimoth/almagest/lib/typecolor"
 	"github.com/asciimoth/gonnect/sysnet"
-	"github.com/asciimoth/gonnect/tlspolicy"
 	"github.com/asciimoth/pasta/pasta"
 	"github.com/kataras/golog"
 )
@@ -34,22 +33,22 @@ type AdminAPI struct {
 	unixPath            string
 	pipeListener        net.Listener
 
-	projectVersionStatus  api.ProjectVersionStatus
-	executionMode         string
-	isolationStatus       *api.IsolationStatus
-	sandboxStatus         func() *api.SubprogramSandboxStatus
-	configAutosaver       *configAutosaver
-	config                *Config
-	configReadOnly        bool
-	fileStorage           string
-	kv                    *bboltKVManager
-	dns                   *bboltKVManager
-	secrets               *bboltKVManager
-	tls                   *bboltKVManager
-	tlsOSAuthorityFetcher tlspolicy.AuthorityFetcher
-	nodeNames             *nodeNameIndex
-	snapshots             *snapshotService
-	examples              *exampleStore
+	projectVersionStatus api.ProjectVersionStatus
+	executionMode        string
+	isolationStatus      *api.IsolationStatus
+	sandboxStatus        func() *api.SubprogramSandboxStatus
+	configAutosaver      *configAutosaver
+	config               *Config
+	configReadOnly       bool
+	fileStorage          string
+	kv                   *bboltKVManager
+	dns                  *bboltKVManager
+	secrets              *bboltKVManager
+	tls                  *bboltKVManager
+	tlsOSDataLoader      func(context.Context) (immutableTLSData, error)
+	nodeNames            *nodeNameIndex
+	snapshots            *snapshotService
+	examples             *exampleStore
 	// experimentalNodeTypes marks opt-in classes in all node-class API payloads.
 	experimentalNodeTypes map[string]bool
 	// deprecatedNodeTypes marks classes that remain available for compatibility.

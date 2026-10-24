@@ -98,32 +98,4 @@ func fixedAbsolutePath(path string) bool {
 	return path != "" && filepath.IsAbs(path) && filepath.Clean(path) == path && !containsParentReference(path)
 }
 
-// CertificateSource is a closed selection. It cannot carry an arbitrary path.
-type CertificateSource uint8
-
-const (
-	CertificateSourceNone CertificateSource = iota
-	CertificateSourceOS
-)
-
-func (s CertificateSource) Valid() bool {
-	return s == CertificateSourceNone || s == CertificateSourceOS
-}
-
-// CertificateRefresh fixes the public trust source and bounds its result.
-type CertificateRefresh struct {
-	Source   CertificateSource
-	MaxBytes uint32
-}
-
-func (r CertificateRefresh) Validate() error {
-	if !r.Source.Valid() || r.Source != CertificateSourceNone && (r.MaxBytes == 0 || r.MaxBytes > MaxImmutableInputBytes) {
-		return fmt.Errorf("%w: invalid public certificate refresh input", ErrInvalidInput)
-	}
-	if r.Source == CertificateSourceNone && r.MaxBytes != 0 {
-		return fmt.Errorf("%w: disabled public certificate refresh has a byte limit", ErrInvalidInput)
-	}
-	return nil
-}
-
 var errWorkingDirectory = errors.New("unsafe role working directory")

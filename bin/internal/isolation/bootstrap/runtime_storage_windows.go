@@ -21,7 +21,7 @@ import (
 // Windows has no UID/GID ownership inputs, so both identity numbers must be
 // zero. The held directory stays open for the complete transaction.
 func PrepareRuntimeStorage(directory *os.File, uid, gid uint32, input RuntimeStorageInput) error {
-	if directory == nil || uid != 0 || gid != 0 || len(input.Regular) > protocol.MaxConfigBytes {
+	if directory == nil || uid != 0 || gid != 0 || len(input.Regular) > protocol.MaxConfigBytes || len(input.TLSPlatform) > MaxImmutableInputBytes {
 		return fmt.Errorf("%w: invalid runtime storage input", ErrInvalidInput)
 	}
 	root, err := validateRuntimeStorageDirectory(directory)
@@ -39,6 +39,13 @@ func PrepareRuntimeStorage(directory *os.File, uid, gid uint32, input RuntimeSto
 	}{
 		{roleentry.RuntimeRegularConfigFile, bytes.NewReader(input.Regular), protocol.MaxConfigBytes},
 		{roleentry.RuntimeProtectedConfigFile, bytes.NewReader(protected), MaxProtectedInputBytes},
+	}
+	if len(input.TLSPlatform) != 0 {
+		values = append(values, struct {
+			name   string
+			reader io.Reader
+			limit  int64
+		}{roleentry.RuntimeTLSPlatformFile, bytes.NewReader(input.TLSPlatform), MaxImmutableInputBytes})
 	}
 	if input.Snapshot != nil {
 		values = append(values, struct {
@@ -74,6 +81,11 @@ func PrepareRuntimeStorage(directory *os.File, uid, gid uint32, input RuntimeSto
 	}
 	if input.Snapshot == nil {
 		if err := removeWindowsReserved(filepath.Join(root, roleentry.RuntimeSnapshotFile)); err != nil {
+			return err
+		}
+	}
+	if len(input.TLSPlatform) == 0 {
+		if err := removeWindowsReserved(filepath.Join(root, roleentry.RuntimeTLSPlatformFile)); err != nil {
 			return err
 		}
 	}

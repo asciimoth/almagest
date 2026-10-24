@@ -21,6 +21,7 @@ import (
 	"github.com/asciimoth/almagest/bin/internal/isolation/supervision"
 	"github.com/asciimoth/almagest/bin/internal/isolation/transport"
 	"github.com/asciimoth/almagest/bin/internal/isolation/windowsprofile"
+	"github.com/asciimoth/almagest/bin/internal/tlsplatform"
 	sysnetwindows "github.com/asciimoth/sysnet-windows"
 	"golang.org/x/sys/windows"
 )
@@ -49,6 +50,7 @@ type WindowsLaunch struct {
 	Native         sysnetwindows.SystemConfig
 	Journal        *supervision.Journal
 	Admin          []admingate.EndpointConfig
+	TLSPlatform    tlsplatform.Provider
 }
 
 // RunWindows launches restricted R and optional C, owns their private pipes,
@@ -150,6 +152,9 @@ func RunWindows(parent context.Context, launch WindowsLaunch, ready func()) (res
 	if err != nil {
 		return err
 	}
+	if err := broker.SetTLSPlatformProvider(launch.TLSPlatform); err != nil {
+		return err
+	}
 	service, err := network.NewService(broker, transport.Lanes{Control: streams[roleentry.LaneBootstrap], Data: streams[roleentry.LaneData], Diagnostic: streams[roleentry.LaneDiagnostics]},
 		supervision.NativeReconciler{}, time.Second, supervision.Options{StartupTimeout: 15 * time.Second, ShutdownTimeout: 5 * time.Second, RecoveryTimeout: 30 * time.Second}, nil, resources.supervised...)
 	if err != nil {
@@ -230,7 +235,7 @@ func RunWindows(parent context.Context, launch WindowsLaunch, ready func()) (res
 func (l WindowsLaunch) validate() error {
 	if l.Runtime.Plan.Role != windowsprofile.Runtime || l.Runtime.Plan.Validate() != nil || l.Runtime.Identity == nil || l.Runtime.Executable == "" || l.Runtime.Storage == "" ||
 		l.RuntimeDir == nil || l.RuntimeStorage == nil || l.Journal == nil || l.Policy.Validate() != nil || l.Policy.Launch.Backend != "windows" ||
-		l.RuntimeInput.Validate() != nil || len(l.Policy.Commands.NodeCommands) != 0 || len(l.Policy.Commands.Callbacks) != 0 {
+		l.RuntimeInput.Validate() != nil || l.TLSPlatform == nil || len(l.RuntimeStorage.TLSPlatform) == 0 || len(l.Policy.Commands.NodeCommands) != 0 || len(l.Policy.Commands.Callbacks) != 0 {
 		return supervision.ErrInvalidComposition
 	}
 	runtimePath, err := filepath.Abs(l.Runtime.Storage)

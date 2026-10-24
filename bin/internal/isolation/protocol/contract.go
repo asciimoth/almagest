@@ -222,6 +222,7 @@ const (
 	OperationCapabilities       Operation = "capabilities"
 	OperationStatus             Operation = "status"
 	OperationRuntimeReady       Operation = "runtime_ready"
+	OperationTLSPlatformRefresh Operation = "tls_platform_refresh"
 	OperationCheckTun           Operation = "check_tun"
 	OperationCheckDefaultTun    Operation = "check_default_tun"
 	OperationCheckRule          Operation = "check_rule"
@@ -260,6 +261,7 @@ type NetworkControl interface {
 	Capabilities(context.Context, ReadRequest) (CapabilitySnapshot, error)
 	Status(context.Context, ReadRequest) (StatusResult, error)
 	MarkRuntimeReady(context.Context, ReadRequest) (RuntimeReadyResult, error)
+	TLSPlatformRefresh(context.Context, TLSPlatformRefreshRequest) (TLSPlatformRefreshResult, error)
 	GetResult(context.Context, OperationResultRequest) (ResourceResult, error)
 	CheckTun(context.Context, CheckTunRequest) (ValidationResult, error)
 	CheckDefaultTun(context.Context, CheckDefaultTunRequest) (ValidationResult, error)

@@ -80,6 +80,7 @@ type snapshotService struct {
 	readOnly        bool
 	logger          logging.Logger
 	tlsFetcher      tlspolicy.AuthorityFetcher
+	tlsLoader       func(context.Context) (immutableTLSData, error)
 	restore         *snapshotRestoreCoordinator
 	requireRecovery func(error)
 	examples        *exampleStore
@@ -1307,7 +1308,12 @@ func (s *snapshotService) restoreImmutableState(ctx context.Context, restored *h
 	if err != nil {
 		return err
 	}
-	osTLS, err := loadOSTLSData(ctx, s.tlsFetcher)
+	var osTLS immutableTLSData
+	if s.tlsLoader != nil {
+		osTLS, err = s.tlsLoader(ctx)
+	} else {
+		osTLS, err = loadOSTLSData(ctx, s.tlsFetcher)
+	}
 	if err != nil {
 		return err
 	}

@@ -1,0 +1,2 @@
+Run this case with both --isolation=auto and --isolation=off. The two modes
+must use the same platform TLS source and produce the same reload behavior.

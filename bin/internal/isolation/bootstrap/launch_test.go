@@ -1,7 +1,6 @@
 package bootstrap
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -62,12 +61,6 @@ func TestLaunchSpecRejectsLookupAndInjectionInputs(t *testing.T) {
 		if err == nil {
 			t.Errorf("environment %#v was accepted", environment)
 		}
-	}
-	if err := (CertificateRefresh{Source: CertificateSourceOS, MaxBytes: MaxImmutableInputBytes + 1}).Validate(); !errors.Is(err, ErrInvalidInput) {
-		t.Fatalf("certificate refresh error = %v", err)
-	}
-	if err := (CertificateRefresh{Source: CertificateSourceOS, MaxBytes: 1 << 20}).Validate(); err != nil {
-		t.Fatal(err)
 	}
 }
 

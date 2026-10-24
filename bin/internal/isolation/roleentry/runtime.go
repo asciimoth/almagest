@@ -13,6 +13,7 @@ const (
 	RuntimeRegularConfigFile   = ".isolation-regular.hujson"
 	RuntimeProtectedConfigFile = ".isolation-protected.hujson"
 	RuntimeSnapshotFile        = ".isolation-startup.zip"
+	RuntimeTLSPlatformFile     = ".isolation-tls-platform.json"
 )
 
 type RuntimeOptions struct {

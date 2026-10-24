@@ -14,6 +14,7 @@ func (o Operation) Valid() bool {
 		OperationCapabilities,
 		OperationStatus,
 		OperationRuntimeReady,
+		OperationTLSPlatformRefresh,
 		OperationCheckTun,
 		OperationCheckDefaultTun,
 		OperationCheckRule,

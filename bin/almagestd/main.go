@@ -20,6 +20,7 @@ import (
 	"github.com/asciimoth/almagest/bin/almagestd/platform"
 	"github.com/asciimoth/almagest/bin/api"
 	sandboxservice "github.com/asciimoth/almagest/bin/internal/subprogram/service"
+	"github.com/asciimoth/almagest/bin/internal/tlsplatform"
 	almagest "github.com/asciimoth/almagest/lib"
 	sandbox "github.com/asciimoth/gobox"
 	"github.com/asciimoth/gonnect"
@@ -155,7 +156,7 @@ func directDaemonIntegrations() daemonIntegrations {
 		prepareConfig: platform.PrepareConfig,
 		enterStorage:  os.Chdir,
 		loadOSAuthority: func(ctx context.Context) (immutableTLSData, error) {
-			return loadOSTLSData(ctx, platform.OSAuthorityFetcher())
+			return loadTLSPlatformData(ctx, tlsplatform.NewAuthorityProvider(tlsplatform.SystemAuthorityFetcher()))
 		},
 		prepareAdmin: PrepareAdminAPI,
 		buildCommands: func(ctx context.Context, logf *LogFactory, conf *Config) (daemonservices.NodeCommandDispatcher, daemonservices.BackendCallbackDispatcher, func(), error) {
@@ -329,7 +330,7 @@ func runDaemon(
 	admin.dns = kv
 	admin.secrets = kv
 	admin.tls = kv
-	admin.tlsOSAuthorityFetcher = platform.OSAuthorityFetcher()
+	admin.tlsOSDataLoader = integrations.loadOSAuthority
 	admin.experimentalNodeTypes = make(map[string]bool)
 	admin.deprecatedNodeTypes = map[string]bool{
 		"almagest/AmnesiaCtrl": true,
@@ -427,8 +428,9 @@ func runDaemon(
 		configBootstrap,
 		admin.configReadOnly,
 		daemonLogger,
-		admin.tlsOSAuthorityFetcher,
+		nil,
 	)
+	admin.snapshots.tlsLoader = integrations.loadOSAuthority
 	admin.snapshots.examples = admin.examples
 	admin.snapshots.restore.setEpochReleaser(hostNetwork)
 	admin.snapshots.requireRecovery = admin.mutations.requireRecovery
