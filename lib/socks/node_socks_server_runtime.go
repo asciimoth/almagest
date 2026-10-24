@@ -13,6 +13,7 @@ import (
 	"github.com/asciimoth/bufpool"
 	"github.com/asciimoth/formular"
 	"github.com/asciimoth/gonnect"
+	"github.com/asciimoth/gonnect/sysnet"
 	"github.com/asciimoth/pasta/pasta"
 )
 
@@ -47,6 +48,9 @@ type socksServerWorkerConfig struct {
 	listenNetwork NetworkCloser
 	proxyNetwork  gonnect.Network
 	pool          bufpool.Pool
+	clientSystem  sysnet.System
+	clientExclude []sysnet.Rule
+	clientInclude []sysnet.Rule
 }
 
 func (n *socksServerNode) restartWorker(reason string) {
@@ -223,6 +227,14 @@ func runSocksServerWorker(ctx context.Context, logger pasta.Logger, w *pasta.Wor
 }
 
 func runSocksServerOnce(ctx context.Context, logger pasta.Logger, w *pasta.Workspace, node uint64, stop <-chan struct{}, cfg socksServerWorkerConfig, spawner WorkerSpawner) error {
+	clientPolicy, err := buildLocalProxyClientPolicy(cfg.clientSystem, cfg.clientExclude, cfg.clientInclude)
+	if err != nil {
+		return fmt.Errorf("build client filter: %w", err)
+	}
+	if clientPolicy != nil {
+		defer clientPolicy.Close() //nolint:errcheck
+	}
+
 	ctx, cancel := context.WithCancel(ctx)
 	var workers sync.WaitGroup
 	closers := make([]func(), 0, 2)
@@ -263,6 +275,7 @@ func runSocksServerOnce(ctx context.Context, logger pasta.Logger, w *pasta.Works
 		if err != nil {
 			return fmt.Errorf("listen failed on %s: %w", addr, err)
 		}
+		ln = filterLocalProxyListener(ln, clientPolicy, logger)
 		closers = append(closers, func() { _ = ln.Close() })
 		started++
 		logger.Debugf("socks listening on %s", addr)
@@ -283,6 +296,7 @@ func runSocksServerOnce(ctx context.Context, logger pasta.Logger, w *pasta.Works
 			}
 			return fmt.Errorf("socks+ws listen failed on %s: %w", addr, err)
 		}
+		ln = filterLocalProxyListener(ln, clientPolicy, logger)
 		httpServer := &http.Server{
 			Handler:           socksWebSocketHandler(ctx, logger, server, cfg.config.wsPath),
 			ReadHeaderTimeout: 5 * time.Second,

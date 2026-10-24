@@ -34,7 +34,7 @@ func TestLocalProxyRestartWaitsForPreviousWorker(t *testing.T) {
 			ID:            1,
 			WorkerSpawner: spawner,
 		},
-		config:       defaultSocksServerConfig(),
+		config:       defaultLocalProxyConfig(),
 		localNetwork: gonnect.DetachNetwork(gonnect.NewLoopbackNetwork(), nil, nil),
 		worker:       old,
 	}

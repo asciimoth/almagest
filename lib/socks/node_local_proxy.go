@@ -29,7 +29,7 @@ func (LocalProxyClass) DefaultNodeParams() pasta.NodeClassParams {
 	}}
 }
 func (c LocalProxyClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
-	config := defaultSocksServerConfig()
+	config := defaultLocalProxyConfig()
 	config.read(cfg)
 	return &localProxyNode{NodeBase: NodeBase{Runtime: c.Runtime}, config: config}, nil
 }
@@ -41,7 +41,7 @@ type localProxyNode struct {
 
 	proxy uint64
 
-	config       socksServerConfig
+	config       localProxyConfig
 	localNetwork NetworkCloser
 	proxyNetwork NetworkCloser
 
@@ -49,17 +49,18 @@ type localProxyNode struct {
 	workerStopping bool
 	logs           []formular.LogLine
 	formError      string
+	ruleDraftType  map[string]string
 }
 
 type localProxyStart struct{ previous *socksServerWorker }
 
 func (n *localProxyNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
 	n.InitBaseNode(w, logger, id)
-	if n.config.commands == nil {
-		n.config.commands = defaultSocksServerCommands()
+	if n.config.server.commands == nil {
+		n.config.server.commands = defaultSocksServerCommands()
 	}
-	if n.config.wsPath == "" {
-		n.config.wsPath = DefaultSocksServerWSPath
+	if n.config.server.wsPath == "" {
+		n.config.server.wsPath = DefaultSocksServerWSPath
 	}
 
 	if restored != nil && len(restored.RightPorts) > 0 {
@@ -156,17 +157,22 @@ func (n *localProxyNode) OnFormularMsg(message any) error {
 			return nil
 		}
 		n.sendConfigFieldStatus(msg)
+	case formular.AutocompleteRequestMessage:
+		if msg.MenuID != pasta.NodeMenuID(n.ID) || msg.Field.BlockID != "config" {
+			return nil
+		}
+		n.sendConfigAutocompleteHints(msg)
 	}
 	return nil
 }
 
 func (n *localProxyNode) OnSave(cfg configer.Config) error {
-	return saveSocksServerConfig(cfg, n.config)
+	return saveLocalProxyConfig(cfg, n.config)
 }
 
 func (n *localProxyNode) applyConfigForm(values map[string]any) error {
-	next := socksServerConfigWithValues(n.config, values)
-	if err := next.validate(); err != nil {
+	next := localProxyConfigWithValues(n.config, values)
+	if err := n.validateLocalProxyConfig(next); err != nil {
 		n.formError = err.Error()
 		n.appendLog(formular.LogWarn, err.Error())
 		n.sendConfigBlock()
@@ -176,6 +182,7 @@ func (n *localProxyNode) applyConfigForm(values map[string]any) error {
 
 	n.formError = ""
 	n.config = next
+	n.ruleDraftType = nil
 	_ = n.updateLabel()
 	n.sendForcedMenuSnapshot()
 	n.restartWorker()
@@ -183,11 +190,16 @@ func (n *localProxyNode) applyConfigForm(values map[string]any) error {
 }
 
 func (n *localProxyNode) sendConfigFieldStatus(msg formular.FieldValidateMessage) {
-	next, ok := socksServerConfigWithFieldValue(n.config, msg)
-	if !ok {
+	if len(msg.Field.ElementPath) > 0 {
+		sendNodeFieldStatus(n.W, n.ID, msg.Field, n.validateLocalProxyRuleField(msg))
 		return
 	}
-	sendNodeFieldStatus(n.W, n.ID, msg.Field, next.validate())
+	nextServer, ok := socksServerConfigWithFieldValue(n.config.server, msg)
+	if ok {
+		next := n.config
+		next.server = nextServer
+		sendNodeFieldStatus(n.W, n.ID, msg.Field, n.validateLocalProxyConfig(next))
+	}
 }
 
 func (n *localProxyNode) restartWorker() {
@@ -223,10 +235,13 @@ func (n *localProxyNode) startCurrentWorker() {
 		proxy = n.proxyNetwork
 	}
 	cfg := socksServerWorkerConfig{
-		config:        n.config,
+		config:        n.config.server,
 		listenNetwork: n.localNetwork,
 		proxyNetwork:  proxy,
 		pool:          enginePool(n.Runtime),
+		clientSystem:  n.System(),
+		clientExclude: n.config.exclude,
+		clientInclude: n.config.include,
 	}
 	n.startWorker(cfg)
 }
@@ -254,7 +269,7 @@ func (n *localProxyNode) stopWorker() {
 }
 
 func (n *localProxyNode) updateLabel() error {
-	return n.SetLabel(socksServerConfigLabel(n.config))
+	return n.SetLabel(socksServerConfigLabel(n.config.server))
 }
 
 func (n *localProxyNode) sendMenuSnapshot() {
@@ -274,7 +289,7 @@ func (n *localProxyNode) sendLogsBlock() {
 }
 
 func (n *localProxyNode) configBlock() formular.Block {
-	return socksServerConfigBlock(n.config, n.formError)
+	return localProxyConfigBlock(n.config, n.formError)
 }
 
 func (n *localProxyNode) logsBlock() formular.Block {

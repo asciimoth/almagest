@@ -21,6 +21,7 @@ const testNativeNetworkNodeType = "test/NativeNetwork"
 
 type testRuntime struct {
 	tlsConfigs storage.TlsConfigStorage
+	system     sysnet.System
 }
 
 func (r *testRuntime) Context() context.Context {
@@ -32,7 +33,10 @@ func (r *testRuntime) Pool() bufpool.Pool {
 }
 
 func (r *testRuntime) System() sysnet.System {
-	return nil
+	if r == nil {
+		return nil
+	}
+	return r.system
 }
 
 func (r *testRuntime) KVManager() storage.KVManager {

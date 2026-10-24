@@ -107,6 +107,57 @@ func TestWindowsBatch3OutNetworkMigration(t *testing.T) {
 	wantCurlSOCKS(t, socksPort, fmt.Sprintf("http://%s:%d/final", targetAddress, targetPort), "", "", "out-network-migration", false)
 }
 
+func TestWindowsBatch3LocalProxyClientFiltering(t *testing.T) {
+	requireBatch3Privilege(t)
+	targetAddress := batch3UnderlayIPv4(t)
+	targetPort, socksPort := reserveTCPPort(t), reserveTCPPort(t)
+	stopTarget := startBatch2HTTPServerAt(t, net.JoinHostPort(targetAddress, fmt.Sprint(targetPort)), "local-proxy-client-filter")
+	defer stopTarget()
+	config := fmt.Sprintf(`{"nodes":{
+		"Out":{"Class":"almagest/OutNetwork"},
+		"Proxy":{"Class":"almagest/LocalProxy","Links":["proxy -> [Out] Network"],"socksHost":"127.0.0.1","socksPort":%d}
+	}}`, socksPort)
+	d := startBatch3Daemon(t, "proxy-filter", config)
+	wantSOCKSHTTPHost(t, socksPort, targetAddress, targetPort, "local-proxy-client-filter")
+
+	menu := d.cliJSON("graph", "menu", "--name", "Proxy")
+	if !bytes.Contains(menu, []byte(`"id": "exclude"`)) ||
+		!bytes.Contains(menu, []byte(`"id": "include"`)) ||
+		!bytes.Contains(menu, []byte("best-effort")) {
+		t.Fatalf("LocalProxy menu does not contain client-filter controls: %s", menu)
+	}
+
+	listenMarker := fmt.Sprintf("socks listening on 127.0.0.1:%d", socksPort)
+	listenCount := strings.Count(d.readLog(), listenMarker)
+	d.cliJSON("graph", "apply-menu", "--name", "Proxy", "--json", fmt.Sprintf(
+		`{"config":{"include":[],"exclude":[{"id":"rule-0","template":"rule","values":{"type":"win-pid","rule":%q}}]}}`,
+		"4294967295",
+	))
+	waitFor(t, "excluded LocalProxy listener", func() bool {
+		return strings.Count(d.readLog(), listenMarker) > listenCount
+	})
+	wantSOCKSHTTPHost(t, socksPort, targetAddress, targetPort, "local-proxy-client-filter")
+
+	listenCount = strings.Count(d.readLog(), listenMarker)
+	d.cliJSON("graph", "apply-menu", "--name", "Proxy", "--json", fmt.Sprintf(
+		`{"config":{"exclude":[],"include":[{"id":"rule-0","template":"rule","values":{"type":"win-pid","rule":%q}}]}}`,
+		"4294967295",
+	))
+	waitFor(t, "included LocalProxy listener", func() bool {
+		return strings.Count(d.readLog(), listenMarker) > listenCount
+	})
+	waitFor(t, "non-included local client", func() bool {
+		return batch2SOCKSHTTP(socksPort, targetAddress, targetPort, "", "") != nil
+	})
+
+	listenCount = strings.Count(d.readLog(), listenMarker)
+	d.cliJSON("graph", "apply-menu", "--name", "Proxy", "--json", `{"config":{"include":[],"exclude":[]}}`)
+	waitFor(t, "unfiltered LocalProxy listener", func() bool {
+		return strings.Count(d.readLog(), listenMarker) > listenCount
+	})
+	wantSOCKSHTTPHost(t, socksPort, targetAddress, targetPort, "local-proxy-client-filter")
+}
+
 func TestWindowsBatch3TunFirewallCurl(t *testing.T) {
 	requireBatch3Privilege(t)
 	config := strings.Replace(readBatch1Fixture(t, "tun_firewall_curl", "alm.hujson"),

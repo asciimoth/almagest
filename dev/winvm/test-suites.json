@@ -854,7 +854,7 @@
             "-tags=winintegration",
             "./integration",
             "-run",
-            "^TestWindowsBatch3(DefaultTun|OutNetwork|Tun(Firewall|HighLoad|Routing|Select)|VTun)"
+            "^TestWindowsBatch3(DefaultTun|LocalProxy|OutNetwork|Tun(Firewall|HighLoad|Routing|Select)|VTun)"
           ],
           "eventFile": "batch3-privileged-native-networking.jsonl",
           "requiredTests": [
@@ -862,6 +862,7 @@
             "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch3DefaultTunNestedWireGuardBypass",
             "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch3DefaultTunRouting",
             "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch3DefaultTunZeroPrefixRoutes",
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch3LocalProxyClientFiltering",
             "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch3OutNetworkMigration",
             "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch3TunFirewallCurl",
             "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch3TunHighLoad",

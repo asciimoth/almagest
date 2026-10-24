@@ -19,7 +19,9 @@ export E2E_ISOLATION_ROOT="$E2E_RUNTIME/isolation"
 export E2E_CONFIG_DIR="$E2E_ISOLATION_ROOT/config"
 export E2E_ADMIN_SOCK="$E2E_RUNTIME/admin.sock"
 export E2E_DAEMON_LOG="$E2E_RUNTIME/daemon.log"
-if [[ -f "$source_dir/sandbox-mode-matrix" ]]; then
+if [[ -f "$source_dir/isolation-mode-matrix" ]]; then
+	case_modes=(off auto strict)
+elif [[ -f "$source_dir/sandbox-mode-matrix" ]]; then
 	case_modes=(off auto strict)
 elif [[ -f "$source_dir/requires-direct" ]]; then
 	case_modes=(direct)
@@ -35,7 +37,7 @@ else
 	sandbox_modes=("$(e2e_case_default_sandbox_mode "$source_dir")")
 fi
 
-if [[ " ${case_modes[*]} " == *" isolation "* || -f "$source_dir/requires-cgroup" ]]; then
+if [[ " ${case_modes[*]} " == *" isolation "* || " ${case_modes[*]} " == *" auto "* || " ${case_modes[*]} " == *" strict "* || -f "$source_dir/requires-cgroup" ]]; then
 	cgroup_path="$(awk -F: '$1 == "0" {print $3; exit}' /proc/self/cgroup)"
 	if [[ "$cgroup_path" != /* ]]; then
 		echo "unified cgroup path is unavailable" >&2

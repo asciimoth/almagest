@@ -103,7 +103,11 @@ func saveSocksServerConfig(cfg configer.Config, config socksServerConfig) error 
 	if err := pasta.DeleteNodeOwnedConfigKeys(cfg); err != nil {
 		return err
 	}
-	return nodekit.SetConfigMap(cfg, map[string]any{
+	return nodekit.SetConfigMap(cfg, socksServerConfigValues(config))
+}
+
+func socksServerConfigValues(config socksServerConfig) map[string]any {
+	return map[string]any{
 		"socksHost": config.socksHost,
 		"socksPort": config.socksPort,
 		"wsHost":    config.wsHost,
@@ -111,7 +115,7 @@ func saveSocksServerConfig(cfg configer.Config, config socksServerConfig) error 
 		"wsPath":    config.wsPath,
 		"users":     socksServerUsersConfig(config.users),
 		"commands":  socksServerCommandsConfig(config.commands),
-	})
+	}
 }
 
 func socksServerConfigWithValues(current socksServerConfig, values map[string]any) socksServerConfig {

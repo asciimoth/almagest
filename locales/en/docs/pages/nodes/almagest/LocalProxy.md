@@ -20,6 +20,30 @@ With no entries in **Users**, the proxy permits connections without
 authentication. Add users to require username and password authentication. Empty
 usernames are ignored. More than one password can use the same username.
 
+Use **Include clients** or **Exclude clients** to restrict which local
+applications and users can connect. The two rule lists are mutually exclusive:
+
+- With include rules, LocalProxy accepts a client when at least one rule
+  matches. It rejects all other clients.
+- With exclude rules, LocalProxy rejects a client when at least one rule
+  matches. It accepts all other clients.
+- With both lists empty or absent, LocalProxy accepts clients as it did before
+  client filtering was available.
+
+The available rule types depend on the operating system and its current Sysnet
+capabilities. Use the completion controls in the node menu to select a supported
+type and value. For example, Linux can match process command names, executable
+paths, users, and user IDs. Windows can match executable paths and process IDs.
+The rules apply before the SOCKS or WebSocket handshake. SOCKS username and
+password authentication, when configured, applies after the client rule.
+
+Client ownership lookup is best effort. It can fail when a process exits during
+lookup, when the operating system does not expose enough socket ownership data,
+or when access to process information is restricted. LocalProxy rejects the
+connection when a lookup fails while client filtering is configured. Do not use
+client rules as the only security control for an untrusted listener. Keep the
+listener on loopback and use SOCKS authentication where appropriate.
+
 LocalProxy currently uses the inline **Password** value and saves it in the node
 configuration. It does not load the selected **Password secret** value. Do not
 expose an unauthenticated listener to an untrusted network.
@@ -53,6 +77,8 @@ such as a WireGuard peer with a fixed endpoint.
 
 The proxy listeners can start without a connected Network, but all proxy
 requests then fail. Connecting, disconnecting, or replacing the Network restarts
-the listeners. Applying menu changes also restarts them. A restart closes active
-client sessions. The **Worker** log shows the active listener addresses and
-startup errors.
+the listeners. Applying menu changes, including client rules, also restarts
+them. A restart closes active client sessions. If configured matchers cannot be
+built, the listener stays unavailable instead of starting without the requested
+filter. The **Worker** log shows the active listener addresses and startup
+errors.

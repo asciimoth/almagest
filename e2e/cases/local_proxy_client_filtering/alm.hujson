@@ -1,0 +1,28 @@
+{
+	"Logs": {
+		"Cache": {
+			"Debug": 1024,
+			"Info": 256,
+			"Warn": 256,
+			"Error": 128,
+			"Fatal": 32,
+		},
+	},
+	"nodes": {
+		"Filtered local proxy": {
+			"Class": "almagest/LocalProxy",
+			"Links": ["proxy -> [Out network] Network"],
+			"socksHost": "127.0.0.1",
+			"socksPort": 1189,
+			"wsHost": "",
+			"wsPort": 0,
+			"wsPath": "/socks",
+			"users": [],
+			"exclude": [],
+			"include": [],
+		},
+		"Out network": {
+			"Class": "almagest/OutNetwork",
+		},
+	},
+}

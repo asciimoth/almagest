@@ -110,6 +110,10 @@ Each case lives in `e2e/cases/<case-name>/` and should include:
 - `also-direct`: optional marker for a small, isolation-compatible case that
   must run once with isolation and once in direct mode. Do not combine it with
   `requires-direct`.
+- `isolation-mode-matrix`: optional marker for a case that must run once in each
+  daemon isolation mode (`off`, `auto`, and `strict`) with the case's normal
+  sandbox mode. Use `sandbox-mode-matrix` instead when the test also needs every
+  sandbox-mode combination.
 - `requires-privileged`: optional selection marker for cases that need extra
   privileged Docker networking or host integration. Regular runs skip these
   cases. Set `E2E_INCLUDE_PRIVILEGED=1` to include them. All isolated cases use

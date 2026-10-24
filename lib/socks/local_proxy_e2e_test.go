@@ -12,6 +12,9 @@ import (
 	"github.com/asciimoth/almagest/lib/testkit/sockstest"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
+	"github.com/asciimoth/gonnect"
+	"github.com/asciimoth/gonnect/sockowner"
+	"github.com/asciimoth/gonnect/sysnet"
 	sysnetdebug "github.com/asciimoth/gonnect/sysnet/debug"
 	"github.com/asciimoth/pasta/pasta"
 	"github.com/asciimoth/socksgo"
@@ -65,11 +68,50 @@ func TestLocalProxyE2EUserPassAuth(t *testing.T) {
 	}
 }
 
+func TestLocalProxyE2EClientIncludeExcludeAndBackwardCompatibility(t *testing.T) {
+	e := newLocalProxyE2EWithSystem(t, func(system *sysnetdebug.System) {
+		system.LocalNetwork = gonnect.NativeConfig{}.Build()
+		system.RuleMatcher = func(rule sysnet.Rule, _ sockowner.FlowTuple) (bool, error) {
+			return rule.Type == "comm" && rule.Rule == "allowed-client", nil
+		}
+	})
+	native := e.AddNode(testNativeNetworkNodeType, "native")
+	socksPort := httpTestPort()
+	httpPort := httpTestPort()
+	server := e.addHTTPServer("target", httpPort)
+	proxy := e.addLocalProxy("local-proxy", socksPort, nil)
+	e.SubscribeMenus(server, proxy)
+	e.MustAddTypedLinkByPortName(TypeNetwork, native, "left", "Network", server, "right", "Network")
+	e.MustAddTypedLinkByPortName(TypeNetwork, native, "left", "Network", proxy, "right", "proxy")
+	e.waitSocksLog(proxy, fmt.Sprintf("socks listening on 127.0.0.1:%d", socksPort))
+
+	// No rule keeps the legacy allow-all behavior.
+	e.waitLocalProxyHTTPGet(socksPort, httpPort, nil)
+	e.applyLocalProxyRules(proxy, "include", []sysnet.Rule{{Type: "comm", Rule: "allowed-client"}})
+	e.waitLocalProxyHTTPGet(socksPort, httpPort, nil)
+
+	// The same matching client is denied in exclude mode.
+	e.applyLocalProxyRules(proxy, "include", nil)
+	e.applyLocalProxyRules(proxy, "exclude", []sysnet.Rule{{Type: "comm", Rule: "allowed-client"}})
+	e.waitLocalProxyHTTPGetFailure(socksPort, httpPort, nil)
+
+	// Clearing the policy restores the previous behavior.
+	e.applyLocalProxyRules(proxy, "exclude", nil)
+	e.waitLocalProxyHTTPGet(socksPort, httpPort, nil)
+}
+
 func newLocalProxyE2E(t *testing.T) *localProxyE2E {
+	return newLocalProxyE2EWithSystem(t, nil)
+}
+
+func newLocalProxyE2EWithSystem(t *testing.T, configure func(*sysnetdebug.System)) *localProxyE2E {
 	t.Helper()
 	pool := newE2ETestDebugPool(t)
 	logf := NewDebugLogFactory(16384)
 	sys := newE2EDebugSystem()
+	if configure != nil {
+		configure(sys)
+	}
 	engine, err := BuildEngine(
 		context.Background(),
 		configer.NewMemory(nil),
@@ -93,6 +135,23 @@ func newLocalProxyE2E(t *testing.T) *localProxyE2E {
 	})
 	e := NewNodeE2EFromEngine(t, engine, logf, sys, nil)
 	return &localProxyE2E{socksServerE2E: &socksServerE2E{NodeE2E: e}, sys: sys}
+}
+
+func (e *localProxyE2E) applyLocalProxyRules(node uint64, field string, rules []sysnet.Rule) {
+	e.T.Helper()
+	values := make([]formular.ArrayElementValue, 0, len(rules))
+	for i, rule := range rules {
+		values = append(values, formular.ArrayElementValue{
+			ID:       fmt.Sprintf("rule-%d", i),
+			Template: "rule",
+			Values:   map[string]any{"type": rule.Type, "rule": rule.Rule},
+		})
+	}
+	e.Engine.SendNodeFormularMsg(E2EWorkspace, node, formular.FormApplyMessage{
+		MessageBase: FormMessageBase(formular.MessageFormApply, node),
+		BlockID:     "config",
+		Values:      map[string]any{field: values},
+	})
 }
 
 func (e *localProxyE2E) addLocalProxy(name string, port int, users []sockstest.User) uint64 {
