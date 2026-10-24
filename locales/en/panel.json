@@ -22,6 +22,7 @@
   "app.startup_failed.title": "Panel startup failed",
   "app.status.connected": "Admin API connected",
   "app.status.connecting": "Connecting admin API",
+  "app.status.initializing": "Initializing admin API",
   "app.status.disconnected": "Admin API disconnected",
   "app.status.failed": "Panel failed: {error}",
   "app.status.loading": "Loading",

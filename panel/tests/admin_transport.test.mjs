@@ -202,6 +202,19 @@ test("WebSocket transport rejects connection errors and closed connections", asy
   assert.throws(() => onClose.send("request"), /Admin API is not connected/);
 });
 
+test("WebSocket transport cancels a pending connection immediately", async () => {
+  installBrowser("http://panel.test/");
+  let closes = 0;
+  const transport = new WebSocketAdminTransport();
+  const connection = transport.connect({ message() {}, close: () => closes += 1 });
+
+  transport.close();
+
+  await assert.rejects(connection, /WebSocket connection closed/);
+  assert.equal(transport.connected, false);
+  assert.equal(closes, 1);
+});
+
 test("WebSocket transport ignores close events from a replaced socket", async () => {
   installBrowser("http://panel.test/");
   let closes = 0;

@@ -26,6 +26,7 @@ export function createAdminTransport(): AdminTransport {
 export class WebSocketAdminTransport implements AdminTransport {
   readonly reconnect = true;
   #socket: WebSocket | null = null;
+  #closeCurrent: (() => void) | null = null;
 
   get connected(): boolean {
     return this.#socket?.readyState === WebSocket.OPEN;
@@ -41,12 +42,20 @@ export class WebSocketAdminTransport implements AdminTransport {
       socket.addEventListener("open", () => resolve(), { once: true });
       socket.addEventListener("error", () => reject(new Error("WebSocket connection failed")), { once: true });
       socket.addEventListener("message", (event) => handlers.message(String(event.data)));
-      socket.addEventListener("close", () => {
+      const finishClose = () => {
         reject(new Error("WebSocket connection closed"));
         if (this.#socket !== socket) return;
         this.#socket = null;
+        this.#closeCurrent = null;
         handlers.close();
-      });
+      };
+      socket.addEventListener("close", finishClose);
+      this.#closeCurrent = () => {
+        socket.close();
+        // Do not wait for the browser to dispatch a close event. In particular,
+        // a WebSocket in CONNECTING can take seconds to finish closing.
+        finishClose();
+      };
     });
   }
 
@@ -56,7 +65,7 @@ export class WebSocketAdminTransport implements AdminTransport {
   }
 
   close(): void {
-    this.#socket?.close();
+    this.#closeCurrent?.();
   }
 }
 

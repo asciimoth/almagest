@@ -85,6 +85,50 @@ func FuzzSupervisorRequestBodies(f *testing.F) {
 	})
 }
 
+func TestClientServiceStatusReturnsCacheBeforeRefreshCompletes(t *testing.T) {
+	refreshStarted := make(chan struct{})
+	releaseRefresh := make(chan struct{})
+	refreshed := make(chan struct{})
+	client := &Client{
+		status: sandbox.ServiceStatus{Platform: "cached"},
+		refreshStatus: func(context.Context) (sandbox.ServiceStatus, error) {
+			close(refreshStarted)
+			<-releaseRefresh
+			close(refreshed)
+			return sandbox.ServiceStatus{Platform: "refreshed"}, nil
+		},
+	}
+
+	if got := client.ServiceStatus().Platform; got != "cached" {
+		t.Fatalf("ServiceStatus platform = %q, want cached", got)
+	}
+	select {
+	case <-refreshStarted:
+	case <-time.After(time.Second):
+		t.Fatal("status refresh did not start")
+	}
+	close(releaseRefresh)
+	select {
+	case <-refreshed:
+	case <-time.After(time.Second):
+		t.Fatal("status refresh did not finish")
+	}
+
+	deadline := time.Now().Add(time.Second)
+	for {
+		client.statusMu.Lock()
+		got := client.status.Platform
+		client.statusMu.Unlock()
+		if got == "refreshed" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("cached status platform = %q, want refreshed", got)
+		}
+		runtime.Gosched()
+	}
+}
+
 func TestIsolatedHelperProcess(t *testing.T) {
 	if os.Getenv("ALMAGEST_ISOLATED_HELPER") != "1" {
 		return

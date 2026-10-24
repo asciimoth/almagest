@@ -22,6 +22,7 @@
   "app.startup_failed.title": "Lorem · Panel startup failed",
   "app.status.connected": "Lorem · Admin API connected",
   "app.status.connecting": "Lorem · Connecting admin API",
+  "app.status.initializing": "Lorem · Initializing admin API",
   "app.status.disconnected": "Lorem · Admin API disconnected",
   "app.status.failed": "Lorem · Panel failed: {error}",
   "app.status.loading": "Lorem · Loading",

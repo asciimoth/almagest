@@ -486,6 +486,7 @@ let pasteShortcutConsumed = false;
 let apiTransport: AdminTransport | null = null;
 let apiReconnectAllowed = true;
 let apiConnectPending = false;
+let apiReconnectAfterPending = false;
 let apiReconnectAttempt = 0;
 let apiReconnectTimer = 0;
 let panelStarted = false;
@@ -761,10 +762,20 @@ function scheduleAPIReconnect(): void {
   }, delay);
 }
 
-function requestImmediateAPIReconnect(): void {
-  if (apiTransport?.connected || apiConnectPending || !apiReconnectAllowed) return;
+function resetAPIReconnectBackoff(): void {
   window.clearTimeout(apiReconnectTimer);
   apiReconnectTimer = 0;
+  apiReconnectAttempt = 0;
+}
+
+function requestImmediateAPIReconnect(): void {
+  if (apiTransport?.connected || !apiReconnectAllowed) return;
+  resetAPIReconnectBackoff();
+  if (apiConnectPending) {
+    apiReconnectAfterPending = true;
+    apiTransport?.close();
+    return;
+  }
   void startAPIConnection();
 }
 
@@ -6640,6 +6651,9 @@ function wireUI(): void {
     scrollToLocationAnchor();
   });
   window.addEventListener("focus", requestImmediateAPIReconnect);
+  window.addEventListener("pageshow", (event) => {
+    if (event.persisted) requestImmediateAPIReconnect();
+  });
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") requestImmediateAPIReconnect();
   });
@@ -6738,6 +6752,7 @@ function installTestHooks(): void {
 
 async function initializeAPISession(): Promise<void> {
   await connectAPI();
+  setBackendStatus("app.status.initializing", "Initializing admin API");
   const hello = await backend("hello");
   applyProjectVersionStatus(hello.project_version_status);
   if (showsRuntimeSecurityStatus(currentPanelMode)) {
@@ -6785,12 +6800,19 @@ async function startAPIConnection(): Promise<void> {
     log("api", "warn", `Admin API connection failed: ${errorMessage(error)}`);
   } finally {
     apiConnectPending = false;
+    if (apiReconnectAfterPending) {
+      apiReconnectAfterPending = false;
+      window.clearTimeout(apiReconnectTimer);
+      apiReconnectTimer = 0;
+      void startAPIConnection();
+    }
   }
 }
 
 function boot(): void {
   // Let a related same-origin documentation tab find and focus this SPA tab.
   window.name = adminPanelWindowName(window.location.origin);
+  resetAPIReconnectBackoff();
   wireUI();
   initGraph();
   installTestHooks();

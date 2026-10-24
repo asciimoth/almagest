@@ -17,13 +17,15 @@ import (
 )
 
 type Client struct {
-	control  *wirePeer
-	data     *wirePeer
-	statusMu sync.Mutex
-	status   sandbox.ServiceStatus
-	once     sync.Once
-	ownersMu sync.Mutex
-	owners   map[string][]uint64
+	control          *wirePeer
+	data             *wirePeer
+	statusMu         sync.Mutex
+	status           sandbox.ServiceStatus
+	statusRefreshing bool
+	refreshStatus    func(context.Context) (sandbox.ServiceStatus, error)
+	once             sync.Once
+	ownersMu         sync.Mutex
+	owners           map[string][]uint64
 }
 
 var _ sandbox.Service = (*Client)(nil)
@@ -49,21 +51,37 @@ func NewClient(ctx context.Context, control, data transport.Stream, session prot
 		return nil, err
 	}
 	client.status = response.Value.Clone()
+	client.refreshStatus = client.requestServiceStatus
 	return client, nil
 }
 
 func (c *Client) ServiceStatus() sandbox.ServiceStatus {
+	c.statusMu.Lock()
+	status := c.status.Clone()
+	if !c.statusRefreshing && c.refreshStatus != nil {
+		c.statusRefreshing = true
+		go c.refreshServiceStatus()
+	}
+	c.statusMu.Unlock()
+	return status
+}
+
+func (c *Client) refreshServiceStatus() {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	var response serviceStatusResponse
-	if err := c.control.call(ctx, opServiceStatus, empty{}, &response); err == nil {
-		c.statusMu.Lock()
-		c.status = response.Value.Clone()
-		c.statusMu.Unlock()
-	}
+	status, err := c.refreshStatus(ctx)
 	c.statusMu.Lock()
 	defer c.statusMu.Unlock()
-	return c.status.Clone()
+	if err == nil {
+		c.status = status.Clone()
+	}
+	c.statusRefreshing = false
+}
+
+func (c *Client) requestServiceStatus(ctx context.Context) (sandbox.ServiceStatus, error) {
+	var response serviceStatusResponse
+	err := c.control.call(ctx, opServiceStatus, empty{}, &response)
+	return response.Value, err
 }
 
 func (c *Client) IssueAndBindOwner(ctx context.Context, owner sandbox.Owner) (sandbox.Owner, sandbox.OwnerSandboxes, error) {
