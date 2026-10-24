@@ -18,8 +18,13 @@ type StaticNodeClassCache = {
 };
 
 export class StaticDocsClient implements DocsClient {
+  readonly #siteBase: URL;
   #catalog: Promise<StaticCatalog> | null = null;
   #nodeClasses: Promise<StaticNodeClassCache> | null = null;
+
+  constructor(siteBase: URL = siteBaseURL()) {
+    this.#siteBase = siteBase;
+  }
 
   async tree(locale: string): Promise<unknown> {
     const catalog = await this.catalog();
@@ -41,7 +46,7 @@ export class StaticDocsClient implements DocsClient {
     const [, content] = this.locale(catalog, locale);
     const path = content.pages[id];
     if (!path) throw new Error("Documentation page was not found");
-    const response = await fetch(new URL(path, new URL("docs/", siteBaseURL())));
+    const response = await fetch(new URL(path, new URL("docs/", this.#siteBase)));
     if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
     return await response.text();
   }
@@ -77,7 +82,7 @@ export class StaticDocsClient implements DocsClient {
   }
 
   private catalog(): Promise<StaticCatalog> {
-    this.#catalog ??= fetch(new URL("docs/content/catalog.json", siteBaseURL()))
+    this.#catalog ??= fetch(new URL("docs/content/catalog.json", this.#siteBase))
       .then(async (response) => {
         if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
         return await response.json() as StaticCatalog;
@@ -86,7 +91,7 @@ export class StaticDocsClient implements DocsClient {
   }
 
   private nodeClasses(): Promise<StaticNodeClassCache> {
-    this.#nodeClasses ??= fetch(new URL("docs/content/node-classes.json", siteBaseURL()))
+    this.#nodeClasses ??= fetch(new URL("docs/content/node-classes.json", this.#siteBase))
       .then(async (response) => {
         if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
         const value = await response.json() as unknown;

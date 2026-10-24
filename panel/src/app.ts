@@ -243,6 +243,7 @@ import {
   shouldDeferGraphUpdate,
 } from "./graph_update_guard.js";
 import { createAdminTransport, type AdminTransport } from "./admin_transport.js";
+import { docsClient } from "./docs_client.js";
 import { documentationURL } from "./site_navigation.js";
 import { applyPanelMode, panelMode, showsRuntimeSecurityStatus } from "./panel_mode.js";
 
@@ -2200,7 +2201,7 @@ function renderNodePanel(id: number): void {
   const nodePanelHeader: HTMLElement[] = [createNodeNameForm(node.name), tabs];
   if (nodeClass?.experimental) nodePanelHeader.push(createExperimentalNodeWarning());
   el.sidekick.replaceChildren(...nodePanelHeader, menuPanel, docsPanel);
-  void tryBackend("classDescription", { class: node.class }).then((text) => {
+  void loadNodeClassDescription(node.class).then((text) => {
     const descriptionPanel = el.sidekick.querySelector<HTMLElement>("[data-node-description]");
     if (
       descriptionPanel &&
@@ -2224,6 +2225,18 @@ function renderNodePanel(id: number): void {
   form?.querySelector<HTMLInputElement>("input")?.addEventListener("blur", () => submitNodeName(id));
   mountMenu(id);
   renderNodePopups(id, node);
+}
+
+async function loadNodeClassDescription(className: string): Promise<string | null> {
+  if (currentPanelMode !== "webdemo") {
+    return await tryBackend("classDescription", { class: className });
+  }
+  try {
+    return await docsClient().raw(document.documentElement.lang || "en", `node/${className}`);
+  } catch (error) {
+    log("docs", "warn", `classDescription: ${errorMessage(error)}`);
+    return null;
+  }
 }
 
 function renderPlaceholderNodePanel(id: number, node: NodeSnapshot): void {

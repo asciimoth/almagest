@@ -6,6 +6,7 @@ import { JSDOM } from "jsdom";
 const html = await readFile(new URL("../index.html", import.meta.url), "utf8");
 const litegraph = await readFile(new URL("../vendor/litegraph/litegraph.js", import.meta.url), "utf8");
 const app = await readFile(new URL("../src/app.ts", import.meta.url), "utf8");
+const webdemo = await readFile(new URL("../src/webdemo.ts", import.meta.url), "utf8");
 
 test("the panel has a restrictive content security policy", () => {
   const dom = new JSDOM(html);
@@ -55,6 +56,12 @@ test("the full documentation link is in the description header", () => {
   assert.match(app, /descriptionHeader\.append\(docsLink\)/);
   assert.match(app, /docsPanel\.append\(descriptionHeader, descriptionPanel\)/);
   assert.match(app, /localizedText\("node\.docs\.open", "Open in a new tab"\)/);
+});
+
+test("web demo node descriptions use the published static documentation", () => {
+  assert.match(webdemo, /new StaticDocsClient\(new URL\(configuredSiteBase \|\| "\.\.\/", window\.location\.href\)\)/);
+  assert.match(app, /currentPanelMode !== "webdemo"[\s\S]*tryBackend\("classDescription"/);
+  assert.match(app, /docsClient\(\)\.raw\(document\.documentElement\.lang \|\| "en", `node\/\$\{className\}`\)/);
 });
 
 test("graph input recovers from lost mouse-up events", () => {

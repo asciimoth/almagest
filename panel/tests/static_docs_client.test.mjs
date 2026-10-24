@@ -4,10 +4,10 @@ import { JSDOM } from "jsdom";
 
 const originalFetch = globalThis.fetch;
 
-function installDOM(base = "https://example.test/almagest/") {
+function installDOM(base = "https://example.test/almagest/", url = `${base}docs/`) {
   const dom = new JSDOM(
     `<!doctype html><meta name="almagest-site-base" content="${base}">`,
-    { url: `${base}docs/` },
+    { url },
   );
   globalThis.window = dom.window;
   globalThis.document = dom.window.document;
@@ -94,6 +94,23 @@ test("static documentation loads and caches its catalog and raw Markdown", async
 
   await client.tree("en");
   assert.equal(requests.filter((url) => url.endsWith("catalog.json")).length, 1);
+});
+
+test("static documentation can use a site base resolved from the web demo page", async () => {
+  installDOM("../", "https://example.test/almagest/demo/");
+  const requests = [];
+  globalThis.fetch = async (input) => {
+    requests.push(String(input));
+    if (String(input).endsWith("catalog.json")) return Response.json(catalog());
+    return new Response("Web demo documentation");
+  };
+
+  const client = new StaticDocsClient(new URL("../", window.location.href));
+  assert.equal(await client.raw("en", "guide/welcome"), "Web demo documentation");
+  assert.deepEqual(requests, [
+    "https://example.test/almagest/docs/content/catalog.json",
+    "https://example.test/almagest/docs/content/en/pages/guides/welcome.md",
+  ]);
 });
 
 test("static documentation falls back to English and rejects missing node classes", async () => {
