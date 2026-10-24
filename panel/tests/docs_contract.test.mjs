@@ -85,6 +85,7 @@ test("documentation loads localized pages over HTTP without a WebSocket", () => 
   assert.match(docsSource, /port\.dataset\.portSide === side && port\.dataset\.portName === name/);
   assert.match(docsSource, /port\.classList\.toggle\("class-preview-port-highlighted", highlighted\)/);
   assert.match(docsSource, /renderPageMarks\(page\.marks/);
+  assert.match(docsSource, /available: ""/);
   assert.match(docsSource, /deprecated: "D"/);
   assert.match(docsSource, /status\.title = markMessages\[mark\]/);
   assert.match(docsSource, /status\.setAttribute\("aria-label", markMessages\[mark\]\)/);
@@ -119,6 +120,7 @@ test("documentation links adjacent pages in sidebar order", () => {
   assert.match(docsSource, /event\.ctrlKey \|\| event\.metaKey \|\| event\.shiftKey \|\| event\.altKey/);
   assert.match(panelStyle, /\.docs-page-navigation\s*\{/);
   assert.match(panelStyle, /\.docs-page-navigation-next\s*\{[^}]*grid-column:\s*2;/s);
+  assert.match(panelStyle, /\.docs-page-mark-available\s*\{[^}]*background:\s*var\(--green\)/s);
 });
 
 test("panel documentation controls open the separate page in a new tab", () => {

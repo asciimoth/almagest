@@ -7,37 +7,7 @@ import { JSDOM } from "jsdom";
 
 const output = (path) => new URL(`../../build/webdemo/${path}`, import.meta.url);
 const defaultWebDemoNodeCount = 15;
-const webDemoNodeClasses = [
-  "almagest/Dns2Network",
-  "almagest/DnsCache",
-  "almagest/DnsClient",
-  "almagest/DnsFallback",
-  "almagest/DnsInject",
-  "almagest/DnsQuery",
-  "almagest/DnsRouter",
-  "almagest/DnsServer",
-  "almagest/MeshNames",
-  "almagest/StaticDns",
-  "almagest/Tun2Dns",
-  "almagest/HttpClient",
-  "almagest/HttpServer",
-  "almagest/MockNetwork",
-  "almagest/NetworkFirewall",
-  "almagest/NetworkRouter",
-  "almagest/Remapper",
-  "almagest/Sniffer",
-  "almagest/Spoofer",
-  "almagest/AutoTunSplitter",
-  "almagest/TunCopy",
-  "almagest/TunFirewall",
-  "almagest/TunJoiner",
-  "almagest/TunSplitter",
-  "almagest/VTun",
-  "almagest/WireGuard",
-  "almagest/WGConfig",
-  "pasta/StringConstant",
-  "pasta/ObjectConstant",
-];
+const webDemoNodeClasses = JSON.parse(await readFile(new URL("../../webdemo/available-node-classes.json", import.meta.url), "utf8"));
 await promisify(execFile)(process.execPath, ["scripts/publish-webdemo.mjs", "../build/webdemo"], {
   cwd: new URL("..", import.meta.url),
 });
@@ -121,7 +91,15 @@ test("the static documentation catalog includes raw and custom-link pages", asyn
   assert.equal(catalog.locales.en.pages["guide/welcome"], "content/en/pages/guides/welcome.md");
   assert.equal(catalog.locales.en.pages["node/almagest/MeshNames"], "content/en/pages/nodes/almagest/MeshNames.md");
   const nodeTopic = catalog.locales.en.tree.find((topic) => topic.id === "nodes");
-  assert.equal(nodeTopic.pages.find((page) => page.id === "node/almagest/MeshNames").available, true);
+  const availablePage = nodeTopic.pages.find((page) => page.id === "node/almagest/MeshNames");
+  assert.equal(availablePage.available, true);
+  assert.deepEqual(availablePage.marks, ["available"]);
+  const unavailablePage = nodeTopic.pages.find((page) => page.id === "node/almagest/Tun");
+  assert.equal(unavailablePage.available, false);
+  assert.deepEqual(unavailablePage.marks, []);
+  for (const page of nodeTopic.pages) {
+    assert.deepEqual(page.marks, page.available ? ["available"] : []);
+  }
   const publishedClasses = nodeTopic.pages.map((page) => page.id.slice("node/".length));
   const cache = JSON.parse(await readFile(output("docs/content/node-classes.json"), "utf8"));
   assert.deepEqual(publishedClasses, cache.order.filter((className) => publishedClasses.includes(className)));

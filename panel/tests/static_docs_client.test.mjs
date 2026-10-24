@@ -82,6 +82,7 @@ test("static documentation loads and caches its catalog and raw Markdown", async
     topics: [{ id: "guide", name: "Guide", pages: [], topics: [] }],
     node_unavailable_message: "This node is not available in this web demo.",
     mark_messages: {
+      available: "This node is available in the web demo.",
       unavailable: "This node is not available in this web demo.",
       deprecated: "This node is deprecated.",
     },

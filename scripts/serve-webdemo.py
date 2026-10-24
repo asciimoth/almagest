@@ -3,7 +3,11 @@
 
 import argparse
 import http.server
+import ipaddress
+import json
 import posixpath
+import socket
+import subprocess
 from urllib.parse import urlsplit, urlunsplit
 
 
@@ -41,6 +45,48 @@ def handler_type(directory: str, base: str):
     return Handler
 
 
+def host_ipv4_addresses() -> list[str]:
+    addresses = set()
+    try:
+        result = subprocess.run(
+            ["ip", "-json", "-family", "inet", "address", "show", "up", "scope", "global"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        for interface in json.loads(result.stdout):
+            if interface.get("operstate") == "DOWN":
+                continue
+            for address in interface.get("addr_info", []):
+                if address.get("family") == "inet":
+                    addresses.add(address["local"])
+    except (FileNotFoundError, KeyError, json.JSONDecodeError, subprocess.CalledProcessError):
+        pass
+
+    if not addresses:
+        try:
+            results = socket.getaddrinfo(
+                socket.gethostname(), None, socket.AF_INET, socket.SOCK_STREAM
+            )
+            addresses.update(result[4][0] for result in results)
+        except socket.gaierror:
+            pass
+
+    return sorted(
+        address
+        for address in addresses
+        if not ipaddress.ip_address(address).is_loopback
+        and not ipaddress.ip_address(address).is_unspecified
+    )
+
+
+def suggested_urls(host: str, port: int, base: str) -> list[str]:
+    hosts = [host]
+    if host == "0.0.0.0":
+        hosts = ["127.0.0.1", *host_ipv4_addresses()]
+    return [f"http://{suggested_host}:{port}{base}" for suggested_host in hosts]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--directory", required=True)
@@ -50,8 +96,11 @@ def main() -> None:
     args = parser.parse_args()
     base = normalized_base(args.base_path)
     server = http.server.ThreadingHTTPServer((args.host, args.port), handler_type(args.directory, base))
-    display_host = "127.0.0.1" if args.host == "0.0.0.0" else args.host
-    print(f"Serving web demo at http://{display_host}:{args.port}{base}", flush=True)
+    print(f"Serving web demo on {args.host}:{server.server_port}")
+    print("Suggested URLs:")
+    for url in suggested_urls(args.host, server.server_port, base):
+        print(f"  {url}")
+    print(flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

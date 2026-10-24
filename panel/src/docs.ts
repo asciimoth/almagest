@@ -19,7 +19,7 @@ import {
 } from "./pasta_model.js";
 import { docsClient } from "./docs_client.js";
 
-type PageMark = "unavailable" | "deprecated";
+type PageMark = "available" | "unavailable" | "deprecated";
 type PageSummary = { id: string; name: string; folded: boolean; order?: number; default?: boolean; available?: boolean; marks?: PageMark[] };
 type Topic = { id: string; name: string; folded: boolean; order?: number; topics: Topic[]; pages: PageSummary[] };
 type AvailableLocale = { locale: string; name: string };
@@ -51,11 +51,12 @@ const pageAvailability = new Map<string, boolean>();
 const topicFolds = savedTopicFolds();
 let nodeUnavailableMessage = "This node is not available in the current daemon environment.";
 let markMessages: Record<PageMark, string> = {
+  available: "This node is available in the web demo.",
   unavailable: nodeUnavailableMessage,
   deprecated: "This node is deprecated.",
 };
 
-const markLabels: Record<PageMark, string> = { unavailable: "", deprecated: "D" };
+const markLabels: Record<PageMark, string> = { available: "", unavailable: "", deprecated: "D" };
 
 function setNavigationOpen(open: boolean): void {
   const returnFocus = !open && (treeElement.contains(document.activeElement) || navigationScrim === document.activeElement);
@@ -84,7 +85,7 @@ treeElement.addEventListener("wheel", (event) => {
 }, { passive: false });
 
 function pageMark(value: unknown): PageMark | null {
-  return value === "unavailable" || value === "deprecated" ? value : null;
+  return value === "available" || value === "unavailable" || value === "deprecated" ? value : null;
 }
 
 function renderPageMarks(values: readonly unknown[] | undefined): HTMLElement | null {
@@ -353,6 +354,7 @@ async function loadTree(locale: string): Promise<void> {
     effectiveLocale = tree.locale;
     nodeUnavailableMessage = tree.node_unavailable_message || nodeUnavailableMessage;
     markMessages = {
+      available: tree.mark_messages?.available || markMessages.available,
       unavailable: tree.mark_messages?.unavailable || nodeUnavailableMessage,
       deprecated: tree.mark_messages?.deprecated || markMessages.deprecated,
     };

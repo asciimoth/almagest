@@ -79,7 +79,7 @@ function buildTopics(values, nodePages, pages, locale) {
   });
 }
 
-async function buildDocsCatalog(nodeClassCache) {
+async function buildDocsCatalog(nodeClassCache, availableNodeClasses) {
   const nodeClassOrder = new Map(nodeClassCache.order.map((className, index) => [className, index]));
   const localeRoot = new URL("locales/", repository);
   const entries = await readdir(localeRoot, { withFileTypes: true });
@@ -102,12 +102,14 @@ async function buildDocsCatalog(nodeClassCache) {
         if (!file.isFile() || !file.name.endsWith(".md")) continue;
         const className = `${namespace.name}/${file.name.slice(0, -3)}`;
         const id = `node/${className}`;
+        const available = availableNodeClasses.has(className);
         pages[id] = `content/${manifest.locale}/pages/nodes/${className}.md`;
         nodePages.push({
           id,
           name: names[className] || className.split("/").at(-1),
           folded: true,
-          available: Object.hasOwn(nodeClassCache.classes, className),
+          available,
+          marks: available ? ["available"] : [],
         });
       }
     }
@@ -142,6 +144,18 @@ async function publishNodeClassCache() {
   await mkdir(new URL("docs/content/", target), { recursive: true });
   await writeFile(new URL("docs/content/node-classes.json", target), JSON.stringify(cache));
   return cache;
+}
+
+async function webDemoAvailableNodeClasses(nodeClassCache) {
+  const source = new URL("webdemo/available-node-classes.json", repository);
+  const classes = JSON.parse(await readFile(source, "utf8"));
+  if (!Array.isArray(classes) || classes.length === 0
+    || classes.some((className) => typeof className !== "string" || className === "")
+    || new Set(classes).size !== classes.length
+    || classes.some((className) => !Object.hasOwn(nodeClassCache.classes, className))) {
+    throw new Error("webdemo/available-node-classes.json is not a supported node class list");
+  }
+  return new Set(classes);
 }
 
 async function minifiedHTML(source, replacements = []) {
@@ -179,6 +193,7 @@ await writeFile(new URL("docs/index.html", target), await minifiedHTML(new URL("
   ["href=\"/\" target=\"_blank\">Admin panel", "href=\"../demo/\" target=\"_blank\">Web demo"],
 ]));
 const nodeClassCache = await publishNodeClassCache();
-await buildDocsCatalog(nodeClassCache);
+const availableNodeClasses = await webDemoAvailableNodeClasses(nodeClassCache);
+await buildDocsCatalog(nodeClassCache, availableNodeClasses);
 await optimize(target);
 await buildWASM();

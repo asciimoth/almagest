@@ -35,6 +35,7 @@ export class StaticDocsClient implements DocsClient {
       topics: content.tree,
       node_unavailable_message: "This node is not available in this web demo.",
       mark_messages: {
+        available: "This node is available in the web demo.",
         unavailable: "This node is not available in this web demo.",
         deprecated: "This node is deprecated.",
       },

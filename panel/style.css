@@ -216,11 +216,20 @@ a:focus-visible {
   cursor: help;
 }
 
+.docs-page-mark-available,
 .docs-page-mark-unavailable {
   flex: 0 0 auto;
   width: 7px;
   height: 7px;
   border-radius: 50%;
+}
+
+.docs-page-mark-available {
+  background: var(--green);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--green), transparent 78%);
+}
+
+.docs-page-mark-unavailable {
   background: var(--red);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--red), transparent 78%);
 }

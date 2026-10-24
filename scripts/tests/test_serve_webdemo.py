@@ -7,6 +7,7 @@ import threading
 import unittest
 import urllib.error
 import urllib.request
+from unittest import mock
 
 REPOSITORY = pathlib.Path(__file__).resolve().parents[2]
 SERVER_SCRIPT = REPOSITORY / "scripts" / "serve-webdemo.py"
@@ -69,6 +70,27 @@ class ServeWebdemoTests(unittest.TestCase):
         self.assertIn("--base-path 'base_path=almagest'", output)
         self.assertIn("--host '0.0.0.0'", output)
         self.assertNotIn("build-webdemo 'base_path=almagest'", output)
+
+    def test_wildcard_host_suggests_local_and_host_urls(self):
+        module = load_server_module()
+        with mock.patch.object(
+            module, "host_ipv4_addresses", return_value=["192.168.1.16", "192.168.2.100"]
+        ):
+            self.assertEqual(
+                module.suggested_urls("0.0.0.0", 8000, "/almagest/"),
+                [
+                    "http://127.0.0.1:8000/almagest/",
+                    "http://192.168.1.16:8000/almagest/",
+                    "http://192.168.2.100:8000/almagest/",
+                ],
+            )
+
+    def test_explicit_host_only_suggests_that_host(self):
+        module = load_server_module()
+        self.assertEqual(
+            module.suggested_urls("127.0.0.1", 8000, "/"),
+            ["http://127.0.0.1:8000/"],
+        )
 
     def test_root_hosting_serves_landing_and_nested_static_pages(self):
         origin = self.serve("/")

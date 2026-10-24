@@ -37,9 +37,14 @@ client and server connected through a mock network. The graph is fitted and
 centered after each full web demo load.
 
 Static documentation previews and the demo SPA type colors use the tracked
-`node-classes.json` cache. The cache also keeps the daemon's node class display
-order. Refresh it after a production node class, default port, or type color
-changes:
+`node-classes.json` cache. The cache contains production daemon node metadata
+and keeps the daemon's node class display order. Green documentation marks use
+the separate `available-node-classes.json` list of classes registered by the
+Wasm build. Nodes outside that list do not get a mark. Update this list when
+`lib/node_packages_wasm.go` changes.
+
+Refresh the preview cache after a production node class, default port, or type
+color changes:
 
 ```sh
 just update-webdemo-node-classes
