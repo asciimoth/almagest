@@ -20,6 +20,7 @@ import (
 func newTestLiveBackend(t *testing.T) (*Backend, *memoryPersistence) {
 	t.Helper()
 	persistence := newMemoryPersistence()
+	persistence.values[configStorageKey] = []byte("{}")
 	stores, err := NewStorage(persistence)
 	if err != nil {
 		t.Fatal(err)
@@ -194,20 +195,35 @@ func TestLiveBackendObservesRuntimeStorageWrites(t *testing.T) {
 	}
 }
 
-func TestConfigStoreTreatsMissingAndEmptyAsObject(t *testing.T) {
-	for _, initial := range [][]byte{nil, []byte(" \n")} {
-		persistence := newMemoryPersistence()
-		if initial != nil {
-			persistence.values[configStorageKey] = initial
+func TestConfigStoreUsesDefaultForMissingConfig(t *testing.T) {
+	persistence := newMemoryPersistence()
+	store, err := NewConfigStore(persistence)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text, _ := store.Snapshot()
+	for _, want := range []string{
+		`"Mock Network"`, `"almagest/MockNetwork"`,
+		`"Http Client"`, `"almagest/HttpClient"`,
+		`"Http Server"`, `"almagest/HttpServer"`,
+		`"Network -> [Mock Network] Network"`,
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("default config does not contain %q: %s", want, text)
 		}
-		store, err := NewConfigStore(persistence)
-		if err != nil {
-			t.Fatal(err)
-		}
-		text, _ := store.Snapshot()
-		if text != "{}\n" {
-			t.Fatalf("text = %q", text)
-		}
+	}
+}
+
+func TestConfigStoreTreatsPersistedEmptyConfigAsObject(t *testing.T) {
+	persistence := newMemoryPersistence()
+	persistence.values[configStorageKey] = []byte(" \n")
+	store, err := NewConfigStore(persistence)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text, _ := store.Snapshot()
+	if text != "{}\n" {
+		t.Fatalf("text = %q", text)
 	}
 }
 

@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url";
 
 const root = resolve(process.argv[2]);
 const localValues = new Map();
+globalThis.console = { ...globalThis.console, debug() {}, info() {}, warn() {}, error() {} };
 globalThis.localStorage = {
   getItem: (key) => localValues.get(key) ?? null,
   setItem: (key, value) => localValues.set(key, String(value)),

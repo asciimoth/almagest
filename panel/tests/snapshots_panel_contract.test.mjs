@@ -63,3 +63,16 @@ test("loading a snapshot or example refreshes and centers the graph", () => {
   assert.match(app, /if \(activeTab !== "graph"\) \{\s*graphCenterPending = true;/);
   assert.match(app, /resizeGraphCanvas\(\);\s*centerPendingGraphContent\(\);/);
 });
+
+test("web demo centers the graph after its initial workspace load", () => {
+  const initialize = app.slice(
+    app.indexOf("async function initializeAPISession"),
+    app.indexOf("async function startAPIConnection"),
+  );
+  const refresh = initialize.indexOf("await requestSnapshot()");
+  const center = initialize.indexOf("centerGraphAfterLoad()", refresh);
+
+  assert.notEqual(refresh, -1);
+  assert.ok(center > refresh);
+  assert.match(initialize.slice(refresh, center), /currentPanelMode === ["']webdemo["']/);
+});

@@ -32,7 +32,9 @@ The backend runs a live engine with the Wasm-supported HTTP client, HTTP server,
 and mock-network nodes. Graph mutations and node forms work through the shared
 admin API. Config, KV, and secrets persist in browser `localStorage`; DNS is
 in-memory. If browser storage is unavailable, the current Wasm instance uses an
-in-memory fallback.
+in-memory fallback. If there is no saved config, the demo starts with an HTTP
+client and server connected through a mock network. The graph is fitted and
+centered after each full web demo load.
 
 Static documentation previews and the demo SPA type colors use the tracked
 `node-classes.json` cache. The cache also keeps the daemon's node class display

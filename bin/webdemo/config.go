@@ -13,8 +13,31 @@ import (
 
 const configStorageKey = "almagest.webdemo.config.v1"
 
+const defaultConfig = `{
+	"nodes": {
+		"Mock Network": {
+			"Class": "almagest/MockNetwork",
+			"Pos":   "{\"x\":1103,\"y\":211}",
+		},
+		"Http Client": {
+			"Class": "almagest/HttpClient",
+			"Pos":   "{\"x\":864,\"y\":211}",
+			"Links": ["Network -> [Mock Network] Network"],
+			"url":   "http://127.0.0.1:8081/",
+		},
+		"Http Server": {
+			"Class":    "almagest/HttpServer",
+			"Pos":      "{\"x\":862,\"y\":358}",
+			"Links":    ["Network -> [Mock Network] Network"],
+			"port":     8081,
+			"response": "HTTP server response",
+		},
+	},
+}`
+
 // ConfigStore keeps the editable web-demo configuration in browser storage.
-// An absent or empty value is the empty object.
+// An absent value starts with the default demo. An empty value is the empty
+// object.
 type ConfigStore struct {
 	mu          sync.Mutex
 	persistence Persistence
@@ -29,7 +52,9 @@ func NewConfigStore(persistence Persistence) (*ConfigStore, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load web demo config: %w", err)
 	}
-	if !found || strings.TrimSpace(string(text)) == "" {
+	if !found {
+		text = []byte(defaultConfig)
+	} else if strings.TrimSpace(string(text)) == "" {
 		text = []byte("{}")
 	}
 	if _, err := hujson.Parse(text); err != nil {

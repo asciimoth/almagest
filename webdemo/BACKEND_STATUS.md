@@ -8,7 +8,8 @@ engine used by the daemon and exposes it through the shared JSON `v1` admin API.
 - The engine stays active for the lifetime of the Wasm program.
 - The editable HuJSON config is stored under
   `almagest.webdemo.config.v1` in browser `localStorage`.
-- A missing or empty config is read as `{}`.
+- A missing config starts with an HTTP client and server connected through a
+  mock network. A saved empty config is read as `{}`.
 - Config text is pretty-formatted HuJSON. Parsing and engine edits preserve
   comments and other HuJSON trivia.
 - If `localStorage` is absent, disabled, or throws an exception, the current

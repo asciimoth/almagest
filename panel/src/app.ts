@@ -6707,6 +6707,7 @@ async function initializeAPISession(): Promise<void> {
   await backend("subscribeNotifications");
   await ensureSecSubscription();
   await requestSnapshot();
+  if (currentPanelMode === "webdemo") centerGraphAfterLoad();
   if (selectedMenu) {
     selectedMenu.receivedSnapshot = false;
     await backend("subscribeNodeMenu", { id: selectedMenu.node });

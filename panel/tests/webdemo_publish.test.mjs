@@ -159,7 +159,7 @@ test("published Go Wasm starts and exposes its node class list API", async () =>
   assert.equal(logs.error, undefined);
   assert.ok(logs.result.subscription_id > 0);
   assert.ok(logs.result.cache_size > 0);
-  assert.deepEqual(logs.result.entries, []);
+  assert.ok(logs.result.entries.some((entry) => entry.node_class === "almagest/HttpServer"));
   assert.equal(snapshots.error, undefined);
   assert.deepEqual(snapshots.result.snapshots, []);
   assert.equal(tls.error, undefined);
@@ -173,9 +173,9 @@ test("published Go Wasm starts and exposes its node class list API", async () =>
     "almagest/HttpServer",
     "almagest/MockNetwork",
   ]);
-  assert.deepEqual(response.result.snapshot.nodes, {});
-  assert.deepEqual(response.result.snapshot.ports, {});
-  assert.deepEqual(response.result.snapshot.links, {});
+  assert.equal(Object.keys(response.result.snapshot.nodes).length, 3);
+  assert.ok(Object.keys(response.result.snapshot.ports).length > 0);
+  assert.equal(Object.keys(response.result.snapshot.links).length, 2);
 });
 
 test("published Go Wasm runs and persists all web-demo node classes", async () => {
@@ -186,7 +186,7 @@ test("published Go Wasm runs and persists all web-demo node classes", async () =
   const result = JSON.parse(stdout);
   assert.equal(result.subscribed.error, undefined);
   assert.equal(result.added.every((response) => response.error === undefined), true);
-  assert.equal(Object.keys(result.snapshot.result.snapshot.nodes).length, 3);
+  assert.equal(Object.keys(result.snapshot.result.snapshot.nodes).length, 6);
   assert.equal(result.events.some((event) => event.surface === "engine" && event.method === "notification"), true);
   assert.match(result.config, /almagest\/MockNetwork/);
   assert.match(result.config, /almagest\/HttpServer/);
@@ -201,7 +201,7 @@ test("published Go Wasm uses in-memory storage when localStorage is absent", asy
     "no-storage",
   ]);
   const result = JSON.parse(stdout);
-  assert.equal(Object.keys(result.snapshot.result.snapshot.nodes).length, 3);
+  assert.equal(Object.keys(result.snapshot.result.snapshot.nodes).length, 6);
   assert.match(result.config, /almagest\/MockNetwork/);
   assert.equal(result.persistedConfig, null);
 });
