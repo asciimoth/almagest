@@ -1,0 +1,42 @@
+{
+	"Logs": {
+		"Cache": {
+			"Debug": 512,
+			"Info": 128,
+			"Warn": 128,
+			"Error": 128,
+			"Fatal": 32,
+		},
+	},
+	"nodes": {
+		"Local Proxy Secret": {
+			"Class": "almagest/LocalProxy",
+			"Pos": "{\"x\":200,\"y\":180}",
+			"Links": ["proxy -> [OutNetwork Proxy] Network"],
+			"socksHost": "127.0.0.1",
+			"socksPort": 11099,
+			"wsHost": "",
+			"wsPort": 0,
+			"wsPath": "/socks",
+			"users": [{
+				"id": "alice",
+				"username": "alice",
+				"password": "wrong-inline-password",
+				"passwordSecret": "local-proxy-password",
+			}],
+			"commands": {
+				"cmdBind": true,
+				"cmdConnect": true,
+				"cmdGostMuxBind": true,
+				"cmdGostUDPTun": true,
+				"cmdTorResolve": true,
+				"cmdTorResolvePtr": true,
+				"cmdUDPAssoc": true,
+			},
+		},
+		"OutNetwork Proxy": {
+			"Class": "almagest/OutNetwork",
+			"Pos": "{\"x\":600,\"y\":180}",
+		},
+	},
+}

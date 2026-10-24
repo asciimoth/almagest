@@ -141,8 +141,21 @@ func (n *localProxyNode) OnInbox(message pasta.InboxMessage) error {
 			n.workerStopping = false
 			n.startCurrentWorker()
 		}
+	case SecretValueChanged:
+		n.handlePasswordSecretChanged(payload)
 	}
 	return nil
+}
+
+// handlePasswordSecretChanged reloads each affected runtime password. A rename
+// also updates the persisted selector while an unavailable or deleted secret
+// leaves the inline password as the fallback.
+func (n *localProxyNode) handlePasswordSecretChanged(msg SecretValueChanged) {
+	if !updateSocksServerPasswordSecretNames(&n.config.server, msg) {
+		return
+	}
+	n.sendConfigBlock()
+	n.restartWorker()
 }
 
 func (n *localProxyNode) OnFormularMsg(message any) error {
@@ -235,7 +248,7 @@ func (n *localProxyNode) startCurrentWorker() {
 		proxy = n.proxyNetwork
 	}
 	cfg := socksServerWorkerConfig{
-		config:        n.config.server,
+		config:        n.resolvedPasswordConfig(),
 		listenNetwork: n.localNetwork,
 		proxyNetwork:  proxy,
 		pool:          enginePool(n.Runtime),
@@ -244,6 +257,15 @@ func (n *localProxyNode) startCurrentWorker() {
 		clientInclude: n.config.include,
 	}
 	n.startWorker(cfg)
+}
+
+// resolvedPasswordConfig returns a worker-only configuration with available
+// secret values. It does not put secret values in the saved configuration or
+// menu state.
+func (n *localProxyNode) resolvedPasswordConfig() socksServerConfig {
+	return resolveSocksServerPasswordConfig(n.config.server, func(name string) (string, bool) {
+		return socksSecretValue(&n.NodeBase, name)
+	})
 }
 
 func (n *localProxyNode) startWorker(cfg socksServerWorkerConfig) {

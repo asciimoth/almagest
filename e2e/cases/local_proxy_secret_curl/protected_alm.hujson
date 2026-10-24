@@ -1,0 +1,12 @@
+{
+	"Admin": {
+		"Web": 0,
+		"Unix": "%E2E_ADMIN_SOCK%",
+	},
+	"Secrets": {
+		"local-proxy-password": {
+			"Value": "protected-password",
+			"Nodes": ["Local Proxy Secret"],
+		},
+	},
+}

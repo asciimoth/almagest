@@ -41,3 +41,25 @@ func socksSecretChangeMatches(selected string, msg SecretValueChanged) bool {
 	selected = strings.TrimSpace(selected)
 	return selected != "" && (selected == strings.TrimSpace(msg.SecretNamePrev) || selected == strings.TrimSpace(msg.SecretNameNew))
 }
+
+// updateSocksServerPasswordSecretNames applies a selected-secret rename to a
+// server configuration. It also reports value changes and deletions, which do
+// not change the selector but require a runtime password reload.
+func updateSocksServerPasswordSecretNames(config *socksServerConfig, msg SecretValueChanged) bool {
+	if config == nil {
+		return false
+	}
+	relevant := false
+	prev := strings.TrimSpace(msg.SecretNamePrev)
+	next := strings.TrimSpace(msg.SecretNameNew)
+	for i := range config.users {
+		if !socksSecretChangeMatches(config.users[i].passwordSecret, msg) {
+			continue
+		}
+		relevant = true
+		if config.users[i].passwordSecret == prev && next != "" && next != prev {
+			config.users[i].passwordSecret = next
+		}
+	}
+	return relevant
+}

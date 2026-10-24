@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/asciimoth/almagest/lib/storage"
 	"github.com/asciimoth/almagest/lib/testkit/sockstest"
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
@@ -68,6 +69,57 @@ func TestLocalProxyE2EUserPassAuth(t *testing.T) {
 	}
 }
 
+func TestLocalProxyE2ESecretPasswordLifecycle(t *testing.T) {
+	e := newLocalProxyE2E(t)
+	native := e.AddNode(testNativeNetworkNodeType, "native")
+	socksPort := httpTestPort()
+	httpPort := httpTestPort()
+	server := e.addHTTPServer("target", httpPort)
+	e.Secrets.SetSecret("local-password", storage.Secret{Value: "secret-one"}, "local-proxy")
+	proxy := e.addLocalProxy("local-proxy", socksPort, []sockstest.User{{
+		ID:             "user-1",
+		Username:       "alice",
+		Password:       "inline-fallback",
+		PasswordSecret: "local-password",
+	}})
+	e.SubscribeMenus(server, proxy)
+
+	e.MustAddTypedLinkByPortName(TypeNetwork, native, "left", "Network", server, "right", "Network")
+	e.MustAddTypedLinkByPortName(TypeNetwork, native, "left", "Network", proxy, "right", "proxy")
+	e.waitSocksLog(proxy, fmt.Sprintf("socks listening on 127.0.0.1:%d", socksPort))
+
+	e.assertLocalProxyPasswordWorks(socksPort, httpPort, "secret-one")
+	e.waitLocalProxyHTTPGetFailure(socksPort, httpPort, localProxyPasswordAuth("inline-fallback"))
+
+	// A value update replaces the running worker password.
+	e.Secrets.SetSecret("local-password", storage.Secret{Value: "secret-two"}, "local-proxy")
+	e.sendLocalProxySecretChanged(proxy, "local-password", "local-password")
+	e.assertLocalProxyPasswordWorks(socksPort, httpPort, "secret-two")
+	e.waitLocalProxyHTTPGetFailure(socksPort, httpPort, localProxyPasswordAuth("secret-one"))
+
+	// A rename updates the persisted selector and resolves the new key.
+	e.Secrets.SetSecret("renamed-password", storage.Secret{Value: "secret-three"}, "local-proxy")
+	e.Secrets.DeleteSecret("local-password")
+	e.sendLocalProxySecretChanged(proxy, "local-password", "renamed-password")
+	e.assertLocalProxyPasswordWorks(socksPort, httpPort, "secret-three")
+	e.assertLocalProxyPasswordSecret(proxy, "renamed-password")
+
+	// Deletion or loss of node access activates the inline fallback. Recreating
+	// the selected secret activates its value again.
+	e.Secrets.DeleteSecret("renamed-password")
+	e.sendLocalProxySecretChanged(proxy, "renamed-password", "")
+	e.assertLocalProxyPasswordWorks(socksPort, httpPort, "inline-fallback")
+	e.waitLocalProxyHTTPGetFailure(socksPort, httpPort, localProxyPasswordAuth("secret-three"))
+
+	e.Secrets.SetSecret("renamed-password", storage.Secret{Value: "secret-four"}, "other-node")
+	e.sendLocalProxySecretChanged(proxy, "renamed-password", "renamed-password")
+	e.assertLocalProxyPasswordWorks(socksPort, httpPort, "inline-fallback")
+
+	e.Secrets.SetSecret("renamed-password", storage.Secret{Value: "secret-five"}, "local-proxy")
+	e.sendLocalProxySecretChanged(proxy, "", "renamed-password")
+	e.assertLocalProxyPasswordWorks(socksPort, httpPort, "secret-five")
+}
+
 func TestLocalProxyE2EClientIncludeExcludeAndBackwardCompatibility(t *testing.T) {
 	e := newLocalProxyE2EWithSystem(t, func(system *sysnetdebug.System) {
 		system.LocalNetwork = gonnect.NativeConfig{}.Build()
@@ -109,6 +161,7 @@ func newLocalProxyE2EWithSystem(t *testing.T, configure func(*sysnetdebug.System
 	pool := newE2ETestDebugPool(t)
 	logf := NewDebugLogFactory(16384)
 	sys := newE2EDebugSystem()
+	secrets := NewSecretsStorage()
 	if configure != nil {
 		configure(sys)
 	}
@@ -118,7 +171,7 @@ func newLocalProxyE2EWithSystem(t *testing.T, configure func(*sysnetdebug.System
 		logf,
 		sys,
 		nil,
-		nil, nil,
+		nil, secrets,
 		nil,
 
 		[]pasta.NodeClass{testNativeNetworkClass{}},
@@ -133,8 +186,54 @@ func newLocalProxyE2EWithSystem(t *testing.T, configure func(*sysnetdebug.System
 			t.Errorf("engine.Close error = %v, want nil", err)
 		}
 	})
-	e := NewNodeE2EFromEngine(t, engine, logf, sys, nil)
+	e := NewNodeE2EFromEngine(t, engine, logf, sys, secrets)
 	return &localProxyE2E{socksServerE2E: &socksServerE2E{NodeE2E: e}, sys: sys}
+}
+
+func localProxyPasswordAuth(password string) *protocol.AuthMethods {
+	return (&protocol.AuthMethods{}).Add(&protocol.PassAuthMethod{User: "alice", Pass: password})
+}
+
+func (e *localProxyE2E) assertLocalProxyPasswordWorks(socksPort, httpPort int, password string) {
+	e.T.Helper()
+	body := e.waitLocalProxyHTTPGet(socksPort, httpPort, localProxyPasswordAuth(password))
+	if body != "Debug http server response" {
+		e.T.Fatalf("response body = %q, want debug response", body)
+	}
+}
+
+func (e *localProxyE2E) sendLocalProxySecretChanged(node uint64, prev, next string) {
+	e.T.Helper()
+	if !e.Engine.SendInboxesAndWait(E2EWorkspace, []pasta.InboxMessage{{
+		ReceiverNode: node,
+		Payload: storage.SecretValueChanged{
+			SecretNamePrev: prev,
+			SecretNameNew:  next,
+		},
+	}}) {
+		e.T.Fatal("secret change inbox was not delivered")
+	}
+}
+
+func (e *localProxyE2E) assertLocalProxyPasswordSecret(node uint64, want string) {
+	e.T.Helper()
+	Eventually(e.T, func() bool {
+		item, ok := e.MenuItem(node, "config", "users")
+		if !ok || item.Field == nil {
+			return false
+		}
+		for _, element := range item.Elements {
+			if element.ID != "user-1" {
+				continue
+			}
+			for _, child := range element.Items {
+				if child.ID == "passwordSecret" {
+					return child.Value == want
+				}
+			}
+		}
+		return false
+	}, "local proxy password secret selector %q", want)
 }
 
 func (e *localProxyE2E) applyLocalProxyRules(node uint64, field string, rules []sysnet.Rule) {

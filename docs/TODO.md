@@ -88,9 +88,7 @@ Secrets system
 - [x] DB secrets storage
 - Use secrets for
   - [x] WG priv key
-  - [ ] socks client/server password (optional)
-    - SOCKS server passwords are stored and echoed as plaintext node config; add
-      secret storage or credential handling.
+  - [x] SOCKS client, server, and local proxy passwords (optional)
 
 WireGuard
 

@@ -459,6 +459,42 @@ func TestResolveSocksServerPasswordConfigKeepsSecretsRuntimeOnly(t *testing.T) {
 	}
 }
 
+func TestUpdateSocksServerPasswordSecretNames(t *testing.T) {
+	config := socksServerConfig{users: []socksServerUser{
+		{username: "alice", passwordSecret: "shared-secret"},
+		{username: "bob", passwordSecret: "shared-secret"},
+		{username: "carol", passwordSecret: "other-secret"},
+	}}
+
+	if updateSocksServerPasswordSecretNames(&config, SecretValueChanged{
+		SecretNamePrev: "unrelated",
+		SecretNameNew:  "unrelated",
+	}) {
+		t.Fatal("unrelated secret change reported as relevant")
+	}
+	if !updateSocksServerPasswordSecretNames(&config, SecretValueChanged{
+		SecretNamePrev: " shared-secret ",
+		SecretNameNew:  " renamed-secret ",
+	}) {
+		t.Fatal("selected secret rename reported as irrelevant")
+	}
+	if config.users[0].passwordSecret != "renamed-secret" || config.users[1].passwordSecret != "renamed-secret" {
+		t.Fatalf("renamed selectors = %q, %q, want renamed-secret", config.users[0].passwordSecret, config.users[1].passwordSecret)
+	}
+	if config.users[2].passwordSecret != "other-secret" {
+		t.Fatalf("unrelated selector = %q, want other-secret", config.users[2].passwordSecret)
+	}
+	if !updateSocksServerPasswordSecretNames(&config, SecretValueChanged{SecretNamePrev: "renamed-secret"}) {
+		t.Fatal("selected secret deletion reported as irrelevant")
+	}
+	if config.users[0].passwordSecret != "renamed-secret" {
+		t.Fatalf("deleted secret selector = %q, want retained selector", config.users[0].passwordSecret)
+	}
+	if !updateSocksServerPasswordSecretNames(&config, SecretValueChanged{SecretNameNew: "renamed-secret"}) {
+		t.Fatal("selected secret recreation reported as irrelevant")
+	}
+}
+
 func TestSocksServerEnsureWorkerStartedKeepsRunningWorker(t *testing.T) {
 	started := make(chan struct{})
 	stopped := make(chan struct{})

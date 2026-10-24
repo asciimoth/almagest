@@ -1,8 +1,6 @@
 package socksnodes
 
 import (
-	"strings"
-
 	"github.com/asciimoth/configer/configer"
 	"github.com/asciimoth/formular"
 	"github.com/asciimoth/pasta/pasta"
@@ -205,19 +203,7 @@ func (n *socksServerNode) OnInbox(message pasta.InboxMessage) error {
 // also updates the persisted selector while an unavailable or deleted secret
 // leaves the inline password as the fallback.
 func (n *socksServerNode) handlePasswordSecretChanged(msg SecretValueChanged) {
-	relevant := false
-	prev := strings.TrimSpace(msg.SecretNamePrev)
-	next := strings.TrimSpace(msg.SecretNameNew)
-	for i := range n.config.users {
-		if !socksSecretChangeMatches(n.config.users[i].passwordSecret, msg) {
-			continue
-		}
-		relevant = true
-		if n.config.users[i].passwordSecret == prev && next != "" && next != prev {
-			n.config.users[i].passwordSecret = next
-		}
-	}
-	if !relevant {
+	if !updateSocksServerPasswordSecretNames(&n.config, msg) {
 		return
 	}
 	n.sendConfigBlock()

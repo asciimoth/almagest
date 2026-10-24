@@ -44,9 +44,16 @@ connection when a lookup fails while client filtering is configured. Do not use
 client rules as the only security control for an untrusted listener. Keep the
 listener on loopback and use SOCKS authentication where appropriate.
 
-LocalProxy currently uses the inline **Password** value and saves it in the node
-configuration. It does not load the selected **Password secret** value. Do not
-expose an unauthenticated listener to an untrusted network.
+Each user can select a **Password secret**. If the secret is available to this
+node, its value replaces the inline **Password** while the proxy runs. The
+secret value is not copied into the menu or saved node configuration. If the
+secret is unavailable or deleted, the inline password becomes active again. The
+inline password itself is saved. If you leave it empty, an empty password
+becomes valid when the secret is unavailable, so choose the fallback
+deliberately. A secret update or rename restarts the listeners and closes active
+client sessions.
+
+Do not expose an unauthenticated listener to an untrusted network.
 
 On Linux, the listener uses the configured host address. `127.0.0.1` limits
 access to the daemon host. A wildcard or LAN address can make the proxy

@@ -47,6 +47,10 @@ func NewNodeE2E(t *testing.T) *NodeE2E {
 	return e2etest.NewNodeE2E(t)
 }
 
+func NewSecretsStorage() *e2etest.SecretsStorage {
+	return e2etest.NewSecretsStorage()
+}
+
 func NewNodeE2EFromEngine(t *testing.T, engine almagest.Engine, logf *logging.DebugLogFactory, sys *sysnetdebug.System, secrets *e2etest.SecretsStorage) *NodeE2E {
 	return e2etest.NewNodeE2EFromEngine(t, engine, logf, sys, secrets)
 }
