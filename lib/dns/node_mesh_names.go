@@ -25,6 +25,17 @@ const (
 	// MeshNamesRequestTimeoutMSField is the Formular and saved-config key for
 	// authoritative mesh DNS exchanges in milliseconds.
 	MeshNamesRequestTimeoutMSField = "requestTimeoutMS"
+	// MeshNamesDisableMeshnameField disables DNS-based .meshname resolution.
+	MeshNamesDisableMeshnameField = "disableMeshname"
+	// MeshNamesDisableMeshipField disables local .meship decoding.
+	MeshNamesDisableMeshipField = "disableMeship"
+	// MeshNamesDisablePKYggField disables local .pk.ygg decoding.
+	MeshNamesDisablePKYggField = "disablePKYgg"
+	// MeshNamesDisableYggField disables DNS-based .ygg resolution.
+	MeshNamesDisableYggField = "disableYgg"
+	// MeshNamesDisableIPv6LiteralNetField disables local .ipv6-literal.net
+	// decoding.
+	MeshNamesDisableIPv6LiteralNetField = "disableIPv6LiteralNet"
 )
 
 // MeshNamesClass builds mesh-aware DNS resolver nodes.
@@ -47,17 +58,22 @@ func (MeshNamesClass) DefaultNodeParams() pasta.NodeClassParams {
 func (c MeshNamesClass) NewNode(cfg configer.Config, _ ...*pasta.NodeClassState) (pasta.Node, error) {
 	requestTimeoutMS := configer.Int(cfg, configer.Path{MeshNamesRequestTimeoutMSField}, 0)
 	return &meshNamesNode{
-		Base:             nodekit.Base{Runtime: c.Runtime},
-		requestTimeoutMS: requestTimeoutMS,
-		formError:        dnsTimeoutErrorText(requestTimeoutMS),
+		Base:                  nodekit.Base{Runtime: c.Runtime},
+		requestTimeoutMS:      requestTimeoutMS,
+		disableMeshname:       configer.Bool(cfg, configer.Path{MeshNamesDisableMeshnameField}, false),
+		disableMeship:         configer.Bool(cfg, configer.Path{MeshNamesDisableMeshipField}, false),
+		disablePKYgg:          configer.Bool(cfg, configer.Path{MeshNamesDisablePKYggField}, false),
+		disableYgg:            configer.Bool(cfg, configer.Path{MeshNamesDisableYggField}, false),
+		disableIPv6LiteralNet: configer.Bool(cfg, configer.Path{MeshNamesDisableIPv6LiteralNetField}, false),
+		formError:             dnsTimeoutErrorText(requestTimeoutMS),
 	}, nil
 }
 
 // meshNamesNode adapts meshnames.Resolver to the almagest/dns graph type. The
-// resolver is created only after an explicit Network input is received, so even
-// direct mesh name forms such as .meship cannot resolve through an unlinked
-// node. A fallback resolver is installed only from the optional Fallback DNS
-// input; nil fallback intentionally lets meshnames reject non-mesh names.
+// resolver remains available without a Network input for name formats that can
+// be decoded locally. A fallback resolver is installed only from the optional
+// Fallback DNS input; nil fallback intentionally lets meshnames reject non-mesh
+// names.
 type meshNamesNode struct {
 	nodekit.Base
 
@@ -74,8 +90,13 @@ type meshNamesNode struct {
 	provider    dns.Interface
 	outputs     DNSOutputCache
 
-	requestTimeoutMS int
-	formError        string
+	requestTimeoutMS      int
+	disableMeshname       bool
+	disableMeship         bool
+	disablePKYgg          bool
+	disableYgg            bool
+	disableIPv6LiteralNet bool
+	formError             string
 }
 
 func (n *meshNamesNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint64, _ string, restored *pasta.NodeInitData, _, _, _, _ bool) error {
@@ -86,6 +107,7 @@ func (n *meshNamesNode) OnInit(w *pasta.Workspace, logger pasta.Logger, id uint6
 	if err := n.SetPrimary(TypeDNS); err != nil {
 		return err
 	}
+	n.rebuildProvider()
 	n.sendMenuSnapshot()
 	return n.updateLabel()
 }
@@ -155,13 +177,10 @@ func (n *meshNamesNode) OnLinkRemoved(link, port uint64, linkType, portDirection
 	case port == n.out && portDirection == "left" && linkType == TypeDNS:
 		n.outputs.Close(link)
 	case port == n.networkIn && portDirection == "right" && linkType == nodekit.TypeNetwork && link == n.networkLink:
-		n.outputs.InvalidateAllLocked(n.W, n.ID)
-		CloseDNS(n.provider)
-		n.provider = nil
-		n.resolver = nil
 		_ = nodekit.CloseNetwork(n.network)
 		n.network = nil
 		n.networkLink = 0
+		n.rebuildProvider()
 	case port == n.fallbackIn && portDirection == "right" && linkType == TypeDNS && link == n.fallbackLink:
 		CloseDNS(n.fallbackDNS)
 		n.fallbackDNS = nil
@@ -224,22 +243,43 @@ func (n *meshNamesNode) OnSave(cfg configer.Config) error {
 		return err
 	}
 	return nodekit.SetConfigMap(cfg, map[string]any{
-		MeshNamesRequestTimeoutMSField: n.requestTimeoutMS,
+		MeshNamesRequestTimeoutMSField:      n.requestTimeoutMS,
+		MeshNamesDisableMeshnameField:       n.disableMeshname,
+		MeshNamesDisableMeshipField:         n.disableMeship,
+		MeshNamesDisablePKYggField:          n.disablePKYgg,
+		MeshNamesDisableYggField:            n.disableYgg,
+		MeshNamesDisableIPv6LiteralNetField: n.disableIPv6LiteralNet,
 	})
 }
 
 func (n *meshNamesNode) applyConfigForm(values map[string]any) error {
-	next := n.requestTimeoutMS
+	nextTimeout := n.requestTimeoutMS
 	if value, ok := formular.IntValue(values[MeshNamesRequestTimeoutMSField]); ok {
-		next = value
+		nextTimeout = value
 	}
-	if err := validateDNSTimeoutMilliseconds(next); err != nil {
+	if err := validateDNSTimeoutMilliseconds(nextTimeout); err != nil {
 		n.formError = err.Error()
 		n.sendForcedMenuSnapshot()
 		return n.updateLabel()
 	}
-	changed := next != n.requestTimeoutMS || n.formError != ""
-	n.requestTimeoutMS = next
+	nextDisableMeshname := meshNamesBoolValue(values, MeshNamesDisableMeshnameField, n.disableMeshname)
+	nextDisableMeship := meshNamesBoolValue(values, MeshNamesDisableMeshipField, n.disableMeship)
+	nextDisablePKYgg := meshNamesBoolValue(values, MeshNamesDisablePKYggField, n.disablePKYgg)
+	nextDisableYgg := meshNamesBoolValue(values, MeshNamesDisableYggField, n.disableYgg)
+	nextDisableIPv6LiteralNet := meshNamesBoolValue(values, MeshNamesDisableIPv6LiteralNetField, n.disableIPv6LiteralNet)
+	changed := nextTimeout != n.requestTimeoutMS ||
+		nextDisableMeshname != n.disableMeshname ||
+		nextDisableMeship != n.disableMeship ||
+		nextDisablePKYgg != n.disablePKYgg ||
+		nextDisableYgg != n.disableYgg ||
+		nextDisableIPv6LiteralNet != n.disableIPv6LiteralNet ||
+		n.formError != ""
+	n.requestTimeoutMS = nextTimeout
+	n.disableMeshname = nextDisableMeshname
+	n.disableMeship = nextDisableMeship
+	n.disablePKYgg = nextDisablePKYgg
+	n.disableYgg = nextDisableYgg
+	n.disableIPv6LiteralNet = nextDisableIPv6LiteralNet
 	n.formError = ""
 	n.sendForcedMenuSnapshot()
 	if changed {
@@ -253,11 +293,16 @@ func (n *meshNamesNode) rebuildProvider() {
 	CloseDNS(n.provider)
 	n.provider = nil
 	n.resolver = nil
-	if n.formError != "" || !nodekit.NetworkIsReady(n.network) {
+	if n.formError != "" {
 		return
 	}
 	resolver := meshnames.NewResolver(n.network)
 	resolver.Timeout = dnsTimeoutDuration(n.requestTimeoutMS)
+	resolver.DisableMeshname = n.disableMeshname
+	resolver.DisableMeship = n.disableMeship
+	resolver.DisablePKYgg = n.disablePKYgg
+	resolver.DisableYgg = n.disableYgg
+	resolver.DisableIPv6LiteralNet = n.disableIPv6LiteralNet
 	if DNSIsReady(n.fallbackDNS) {
 		resolver.Fallback = dns.NewResolver(n.fallbackDNS)
 	}
@@ -290,8 +335,10 @@ func (n *meshNamesNode) updateLabel() error {
 	switch {
 	case n.formError != "":
 		return n.SetLabel("invalid config")
+	case !nodekit.NetworkIsReady(n.network) && DNSIsReady(n.fallbackDNS):
+		return n.SetLabel("resolving local MeshNames with fallback")
 	case !nodekit.NetworkIsReady(n.network):
-		return n.SetLabel("waiting for network")
+		return n.SetLabel("resolving local MeshNames")
 	case DNSIsReady(n.fallbackDNS):
 		return n.SetLabel("resolving MeshNames with fallback")
 	default:
@@ -315,5 +362,17 @@ func (n *meshNamesNode) configBlock() formular.Block {
 			n.requestTimeoutMS,
 			n.formError,
 		),
+		formular.CheckboxField(MeshNamesDisableMeshnameField, "Disable .meshname", n.disableMeshname),
+		formular.CheckboxField(MeshNamesDisableMeshipField, "Disable .meship", n.disableMeship),
+		formular.CheckboxField(MeshNamesDisablePKYggField, "Disable .pk.ygg", n.disablePKYgg),
+		formular.CheckboxField(MeshNamesDisableYggField, "Disable .ygg", n.disableYgg),
+		formular.CheckboxField(MeshNamesDisableIPv6LiteralNetField, "Disable .ipv6-literal.net", n.disableIPv6LiteralNet),
 	}}
+}
+
+func meshNamesBoolValue(values map[string]any, field string, current bool) bool {
+	if value, ok := formular.BoolValue(values[field]); ok {
+		return value
+	}
+	return current
 }

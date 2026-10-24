@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/asciimoth/configer/configer"
+	"github.com/asciimoth/formular"
 )
 
 const (
@@ -38,7 +39,7 @@ func TestMeshNamesStaticFallbackWithDNSQueryE2E(t *testing.T) {
 	e.waitDNSResponse(client, "NOERROR", meshNamesTestAuthority)
 }
 
-func TestMeshNamesWithoutNetworkLinkDoesNotPublishDirectMeshipE2E(t *testing.T) {
+func TestMeshNamesWithoutNetworkLinkResolvesDirectMeshipE2E(t *testing.T) {
 	e := newDNSE2E(t)
 	mesh := e.AddNode(dnsnodes.NodeTypeMeshNames, "mesh")
 	client := e.AddNode(dnsnodes.NodeTypeDNSQuery, "client")
@@ -46,10 +47,60 @@ func TestMeshNamesWithoutNetworkLinkDoesNotPublishDirectMeshipE2E(t *testing.T) 
 
 	e.setDNSQueryRequest(client, meshNamesTestMeship+".", "AAAA")
 	e.MustAddTypedLinkByPortName(dnsnodes.TypeDNS, mesh, "left", "DNS", client, "right", "DNS")
-	e.WaitNodeLabel(mesh, "waiting for network")
+	e.WaitNodeLabel(mesh, "resolving local MeshNames")
 
 	e.sendDNSRequest(client)
-	e.waitDNSFailure(client, "dns is not ready")
+	e.waitDNSResponse(client, "NOERROR", meshNamesTestAuthority)
+}
+
+func TestMeshNamesSchemeControlsApplySaveAndRestoreE2E(t *testing.T) {
+	e := newDNSE2E(t)
+	mesh := e.AddNode(dnsnodes.NodeTypeMeshNames, "mesh")
+	e.SubscribeMenus(mesh)
+
+	fields := []string{
+		dnsnodes.MeshNamesDisableMeshnameField,
+		dnsnodes.MeshNamesDisableMeshipField,
+		dnsnodes.MeshNamesDisablePKYggField,
+		dnsnodes.MeshNamesDisableYggField,
+		dnsnodes.MeshNamesDisableIPv6LiteralNetField,
+	}
+	for _, field := range fields {
+		assertMeshNamesBoolMenuValue(t, e, mesh, field, false)
+	}
+
+	e.Engine.SendNodeFormularMsg(E2EWorkspace, mesh, formular.FormApplyMessage{
+		MessageBase: testkit.FormMessageBase(formular.MessageFormApply, mesh),
+		BlockID:     dnsnodes.MeshNamesConfigBlockID,
+		Values: map[string]any{
+			dnsnodes.MeshNamesDisableMeshnameField:       true,
+			dnsnodes.MeshNamesDisableMeshipField:         true,
+			dnsnodes.MeshNamesDisablePKYggField:          true,
+			dnsnodes.MeshNamesDisableYggField:            true,
+			dnsnodes.MeshNamesDisableIPv6LiteralNetField: true,
+		},
+	})
+	for _, field := range fields {
+		assertMeshNamesBoolMenuValue(t, e, mesh, field, true)
+	}
+
+	cfg := configer.NewMemory(nil)
+	if err := e.Engine.SaveConfig(cfg); err != nil {
+		t.Fatalf("SaveConfig: %v", err)
+	}
+	nodeCfg := cfg.View(configer.Path{"nodes", "mesh"})
+	for _, field := range fields {
+		if !configer.Bool(nodeCfg, configer.Path{field}, false) {
+			t.Fatalf("saved %s = false, want true", field)
+		}
+	}
+
+	restored := newDNSE2EFromConfig(t, cfg)
+	restoredMesh := testkit.NodeIDByName(t, restored.Engine, E2EWorkspace, "mesh")
+	restored.SubscribeMenus(restoredMesh)
+	for _, field := range fields {
+		assertMeshNamesBoolMenuValue(t, restored, restoredMesh, field, true)
+	}
 }
 
 func TestMeshNamesWorksThroughDnsCacheAndRouterE2E(t *testing.T) {
@@ -112,4 +163,16 @@ func TestMeshNamesSaveRestorePreservesLinksE2E(t *testing.T) {
 	restored.WaitNodeLabel(restoredMesh, "resolving MeshNames with fallback")
 	restored.sendDNSRequest(restoredClient)
 	restored.waitDNSResponse(restoredClient, "NOERROR", "10.112.0.1")
+}
+
+func assertMeshNamesBoolMenuValue(t *testing.T, e *dnsE2E, node uint64, field string, want bool) {
+	t.Helper()
+	Eventually(t, func() bool {
+		item, ok := e.MenuItem(node, dnsnodes.MeshNamesConfigBlockID, field)
+		if !ok || item.Field == nil {
+			return false
+		}
+		value, ok := formular.BoolValue(item.Value)
+		return ok && value == want
+	}, "MeshNames field %s = %t", field, want)
 }

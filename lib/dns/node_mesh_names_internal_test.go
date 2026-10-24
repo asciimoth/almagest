@@ -26,9 +26,13 @@ const (
 	meshNamesTestLabel     = "aiag7sesed2aaxgcgbnevruwpy"
 	meshNamesTestMeshHost  = "svc." + meshNamesTestLabel + ".meshname"
 	meshNamesTestMeship    = meshNamesTestLabel + ".meship"
+	meshNamesTestPKYgg     = "svc.d40d4a7153cf288ea28f1865f6cfe951" +
+		"43a478b5c8c9e7cb002a0633d10a53eb.pk.ygg"
+	meshNamesTestYgg         = "svc.2aijksahfir2ni44cxylkze4b.ygg"
+	meshNamesTestIPv6Literal = "2001-db8--42.ipv6-literal.net"
 )
 
-func TestMeshNamesPortsAndRequiresExplicitNetwork(t *testing.T) {
+func TestMeshNamesPortsAndResolvesLocalNamesWithoutNetwork(t *testing.T) {
 	w, _ := newMeshNamesTestWorkspace(t, nil)
 	meshID, err := w.AddNodeByClass(NodeTypeMeshNames, "mesh")
 	if err != nil {
@@ -50,8 +54,76 @@ func TestMeshNamesPortsAndRequiresExplicitNetwork(t *testing.T) {
 	if _, _, err := w.AddLink(mesh.LeftPorts[0], receiver.in); err != nil {
 		t.Fatalf("AddLink mesh->receiver: %v", err)
 	}
-	assertNoDNSPayload(t, receiver.events, 100*time.Millisecond)
-	assertNodeLabel(t, w, meshID, "waiting for network")
+	payload := receiveReadyDNSPayload(t, receiver.events)
+	for _, test := range []struct {
+		name string
+		want string
+	}{
+		{name: meshNamesTestMeship, want: meshNamesTestAuthority},
+		{name: meshNamesTestPKYgg, want: "200:57e5:6b1d:5861:aee2:bae1:cf34:1260"},
+		{name: meshNamesTestIPv6Literal, want: "2001:db8::42"},
+	} {
+		assertDNSAnswer(t, payload.DNS, test.name+".", gdns.TypeAAAA, test.want)
+	}
+	assertDNSRCode(t, payload.DNS, meshNamesTestMeshHost+".", gdns.TypeAAAA, gdns.RCodeNameError)
+	assertDNSRCode(t, payload.DNS, meshNamesTestYgg+".", gdns.TypeAAAA, gdns.RCodeNameError)
+	assertNodeLabel(t, w, meshID, "resolving local MeshNames")
+}
+
+func TestMeshNamesSchemeTogglesUseFallback(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		field string
+		host  string
+	}{
+		{name: "meshname", field: MeshNamesDisableMeshnameField, host: meshNamesTestMeshHost},
+		{name: "meship", field: MeshNamesDisableMeshipField, host: meshNamesTestMeship},
+		{name: "pk ygg", field: MeshNamesDisablePKYggField, host: meshNamesTestPKYgg},
+		{name: "ygg", field: MeshNamesDisableYggField, host: meshNamesTestYgg},
+		{name: "IPv6 literal", field: MeshNamesDisableIPv6LiteralNetField, host: meshNamesTestIPv6Literal},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			w, _ := newMeshNamesTestWorkspace(t, nil)
+			meshID, err := w.AddNodeByClass(NodeTypeMeshNames, "mesh")
+			if err != nil {
+				t.Fatalf("AddNodeByClass MeshNames: %v", err)
+			}
+			fallbackID, err := w.AddNodeByClass(NodeTypeStaticDNS, "fallback")
+			if err != nil {
+				t.Fatalf("AddNodeByClass StaticDns: %v", err)
+			}
+			applyMeshNamesStaticDNSRecords(t, w, fallbackID, test.host+" A 192.0.2.123")
+
+			receiver := newDNS2NetworkReceiver(4)
+			if _, err := w.AddNode(receiver, "test/DNSReceiver", "receiver"); err != nil {
+				t.Fatalf("AddNode receiver: %v", err)
+			}
+			mesh := testkit.MustNodeSnapshot(t, w, meshID)
+			fallback := testkit.MustNodeSnapshot(t, w, fallbackID)
+			if _, _, err := w.AddLink(fallback.LeftPorts[0], mesh.RightPorts[1]); err != nil {
+				t.Fatalf("AddLink fallback->mesh: %v", err)
+			}
+			if _, _, err := w.AddLink(mesh.LeftPorts[0], receiver.in); err != nil {
+				t.Fatalf("AddLink mesh->receiver: %v", err)
+			}
+			first := receiveReadyDNSPayload(t, receiver.events).DNS
+
+			w.SendNodeFormularMsg(meshID, formular.FormApplyMessage{
+				MessageBase: testkit.FormMessageBase(formular.MessageFormApply, meshID),
+				BlockID:     MeshNamesConfigBlockID,
+				Values:      map[string]any{test.field: true},
+			})
+			if DNSIsReady(first) {
+				t.Fatal("old MeshNames provider remained ready after config change")
+			}
+			second := receiveReadyDNSPayload(t, receiver.events).DNS
+			if SameDNSInstance(first, second) {
+				t.Fatal("MeshNames reused provider after config change")
+			}
+			assertDNSAnswer(t, second, test.host+".", gdns.TypeA, "192.0.2.123")
+			assertNodeLabel(t, w, meshID, "resolving local MeshNames with fallback")
+		})
+	}
 }
 
 func TestMeshNamesUsesNetworkForMeshAuthorityDNS(t *testing.T) {
@@ -157,14 +229,20 @@ func TestMeshNamesLinksAttachDetachReattach(t *testing.T) {
 	if DNSIsReady(first) {
 		t.Fatal("MeshNames DNS wrapper remained ready after network detach")
 	}
-	assertNodeLabel(t, w, meshID, "waiting for network")
+	local := receiveReadyDNSPayload(t, receiver.events).DNS
+	if SameDNSInstance(first, local) {
+		t.Fatal("MeshNames reused network-backed wrapper after network detach")
+	}
+	assertDNSAnswer(t, local, meshNamesTestMeship+".", gdns.TypeAAAA, meshNamesTestAuthority)
+	assertDNSRCode(t, local, meshNamesTestMeshHost+".", gdns.TypeAAAA, gdns.RCodeNameError)
+	assertNodeLabel(t, w, meshID, "resolving local MeshNames")
 
 	networkLink, _, err = w.AddLink(networkNode.LeftPorts[0], mesh.RightPorts[0])
 	if err != nil {
 		t.Fatalf("reattach network link: %v", err)
 	}
 	second := receiveReadyDNSPayload(t, receiver.events).DNS
-	if SameDNSInstance(first, second) {
+	if SameDNSInstance(first, second) || SameDNSInstance(local, second) {
 		t.Fatal("MeshNames reused DNS wrapper after network reattach")
 	}
 	assertDNSAnswer(t, second, meshNamesTestMeship+".", gdns.TypeAAAA, meshNamesTestAuthority)
