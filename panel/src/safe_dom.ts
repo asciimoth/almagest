@@ -402,6 +402,23 @@ export function createTLSCertPreview(entry: TLSCertEntry): HTMLElement {
   const preview = document.createElement("div");
   preview.className = "kv-value-preview tls-cert-preview";
   preview.append(createTLSCertcatSummary(entry.certcat_matches ?? []));
+  if (entry.revocation_matches?.length) {
+    const block = document.createElement("section");
+    block.className = "tls-certcat-section";
+    block.append(textElement("h3", t("tls.revocation.title", "Revocation warnings")));
+    const list = document.createElement("ol");
+    list.className = "tls-certcat-list";
+    for (const match of entry.revocation_matches) {
+      list.append(textElement("li", t("tls.revocation.match", "CRL {source} revoked serial {serial} at {time} (reason {reason})", {
+        source: match.source,
+        serial: match.serial_number,
+        time: match.revocation_time,
+        reason: match.reason_code,
+      })));
+    }
+    block.append(list);
+    preview.append(block);
+  }
   preview.append(createTLSFactList([
     [t("tls.field.subject", "Subject"), entry.subject],
     [t("tls.field.issuer", "Issuer"), entry.issuer],

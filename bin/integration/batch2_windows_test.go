@@ -564,10 +564,23 @@ func TestWindowsBatch2TimeTriggerLifecycle(t *testing.T) {
 func TestWindowsBatch2TLSAdminCLI(t *testing.T) {
 	root := newPrivateWindowsTestDir(t)
 	pipe := batch2Pipe("tls-admin")
-	protectedCert, _ := makeBatch2CAKeyPair(t, "Batch 2 Protected Root", "ecdsa")
+	protectedCert, protectedKey := makeBatch2CAKeyPair(t, "Batch 2 Protected Root", "ecdsa")
 	manualCert, _ := makeBatch2CAKeyPair(t, "Batch 2 Manual Root", "rsa")
-	protected := batch2Protected(pipe, map[string]any{"TLS": batch2TLSProtected("protected-ca", protectedCert, "protected-policy")})
+	parsedProtected := parseBatch2Certificate(t, protectedCert)
+	crlDER, err := x509.CreateRevocationList(rand.Reader, &x509.RevocationList{Number: big.NewInt(1),
+		ThisUpdate: time.Now().Add(-time.Minute), NextUpdate: time.Now().Add(time.Hour),
+		RevokedCertificateEntries: []x509.RevocationListEntry{{SerialNumber: parsedProtected.SerialNumber, RevocationTime: time.Now().Add(-time.Minute), ReasonCode: 1}}},
+		parsedProtected, parseBatch2PrivateKey(t, protectedKey).(crypto.Signer))
+	if err != nil {
+		t.Fatal(err)
+	}
+	protectedTLS := batch2TLSProtected("protected-ca", protectedCert, "protected-policy")
+	protectedTLS["CRLs"] = map[string]any{"Enabled": true}
+	protected := batch2Protected(pipe, map[string]any{"TLS": protectedTLS})
 	d := newWindowsDaemon(t, root, pipe, `{"Config":{"Save":{"IdleMilliseconds":10}}}`, protected)
+	crlPath := filepath.Join(root, "windows-static.crl.pem")
+	writePrivateWindowsFile(t, crlPath, pem.EncodeToMemory(&pem.Block{Type: "X509 CRL", Bytes: crlDER}))
+	d.extraArgs = []string{"--tls-crl-file", "windows-static=" + crlPath}
 	d.start()
 	defer d.stop()
 	initial := decodeCLI[api.TLSBuiltinCAInfo](t, d.cliJSON("tls", "builtin-ca"))
@@ -577,6 +590,18 @@ func TestWindowsBatch2TLSAdminCLI(t *testing.T) {
 	list := d.cliJSON("tls", "list")
 	if !bytes.Contains(list, []byte("protected-ca")) || !bytes.Contains(list, []byte("protected-policy")) {
 		t.Fatalf("protected TLS objects are absent: %s", list)
+	}
+	var snapshot api.TLSSnapshot
+	decodeJSON(t, list, &snapshot)
+	revokedProtected := false
+	for _, cert := range snapshot.Certs {
+		if cert.Name == "protected-ca" && len(cert.RevocationMatches) == 1 {
+			revokedProtected = true
+		}
+	}
+	if !snapshot.Revocations.Enabled || len(snapshot.Revocations.Sources) != 1 || snapshot.Revocations.Sources[0].Status != "valid" || snapshot.Revocations.Sources[0].Source != api.TLSSourceCLI ||
+		!revokedProtected || !bytes.Contains(d.cliJSON("tls", "crls"), []byte("windows-static")) {
+		t.Fatalf("Windows static CRL status is incomplete: %#v", snapshot.Revocations)
 	}
 	certPath := filepath.Join(root, "manual.pem")
 	writePrivateWindowsFile(t, certPath, manualCert)

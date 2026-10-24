@@ -69,20 +69,22 @@ type immutableTLSPolicy struct {
 }
 
 type immutableTLSData struct {
-	Certs    map[string]immutableTLSCert
-	Policies map[string]immutableTLSPolicy
+	Certs       map[string]immutableTLSCert
+	Policies    map[string]immutableTLSPolicy
+	Revocations immutableTLSRevocations
 }
 
 type tlsEffectiveCert struct {
-	Name            string
-	PEM             string
-	Authority       tlspolicy.Authority
-	Certificate     *x509.Certificate
-	Fingerprint     string
-	SPKIFingerprint string
-	CertcatMatches  []api.TLSCertcatMatch
-	ReadOnly        bool
-	Source          api.TLSSource
+	Name              string
+	PEM               string
+	Authority         tlspolicy.Authority
+	Certificate       *x509.Certificate
+	Fingerprint       string
+	SPKIFingerprint   string
+	CertcatMatches    []api.TLSCertcatMatch
+	RevocationMatches []api.TLSRevocationMatch
+	ReadOnly          bool
+	Source            api.TLSSource
 }
 
 type tlsEffectivePolicy struct {
@@ -144,7 +146,14 @@ func (m *bboltKVManager) GetClientConfig(name string, node string) (tls.Config, 
 	if err != nil {
 		return tls.Config{}, err
 	}
-	cfg, err := compiled.TLSClientConfig(tlspolicy.ClientTLSOptions{})
+	options := tlspolicy.ClientTLSOptions{}
+	m.tlsMu.Lock()
+	revocations := cloneTLSRevocations(m.immutableTLS.Revocations)
+	m.tlsMu.Unlock()
+	if revocations.Enabled {
+		options.Verifiers = []tlspolicy.ServerConnectionVerifier{tlsRevocationVerifier{revocations: revocations}}
+	}
+	cfg, err := compiled.TLSClientConfig(options)
 	if err != nil {
 		return tls.Config{}, err
 	}
@@ -187,6 +196,9 @@ func (m *bboltKVManager) tlsSnapshot() (api.TLSSnapshot, error) {
 	if err != nil {
 		return api.TLSSnapshot{}, err
 	}
+	m.tlsMu.Lock()
+	revocations := cloneTLSRevocations(m.immutableTLS.Revocations)
+	m.tlsMu.Unlock()
 
 	certEntries := make([]api.TLSCertEntry, 0, len(certs))
 	for _, cert := range certs {
@@ -205,9 +217,10 @@ func (m *bboltKVManager) tlsSnapshot() (api.TLSSnapshot, error) {
 	})
 
 	return api.TLSSnapshot{
-		BuiltinCA: m.tlsBuiltinCAAPIInfo(certs),
-		Certs:     certEntries,
-		Policies:  policyEntries,
+		BuiltinCA:   m.tlsBuiltinCAAPIInfo(certs),
+		Certs:       certEntries,
+		Policies:    policyEntries,
+		Revocations: api.TLSRevocationStatus{Enabled: revocations.Enabled, Sources: tlsCRLSourceEntries(revocations, certs, time.Now())},
 	}, nil
 }
 
@@ -313,6 +326,10 @@ func (m *bboltKVManager) setTLSOSData(data immutableTLSData) (tlsMutationResult,
 		}
 		next.Certs[name] = cert
 		nextVisibleOSCerts[name] = cert
+	}
+	if err := validateTLSRevocationSelections(next); err != nil {
+		m.tlsMu.Unlock()
+		return tlsMutationResult{}, fmt.Errorf("validate refreshed TLS revocations: %w", err)
 	}
 	m.immutableTLS = ensureDefaultTLSPolicy(next)
 	m.tlsMu.Unlock()
@@ -644,6 +661,9 @@ func (m *bboltKVManager) tlsEffectiveCert(name string) (tlsEffectiveCert, bool, 
 	}
 	if record, ok := m.immutableTLSCert(name); ok {
 		cert, err := tlsEffectiveCertFromRecord(name, record.tlsCertificateRecord, true, record.source)
+		if err == nil {
+			m.addTLSRevocationMatches(&cert)
+		}
 		return cert, err == nil, err
 	}
 	var out tlsEffectiveCert
@@ -665,6 +685,9 @@ func (m *bboltKVManager) tlsEffectiveCert(name string) (tlsEffectiveCert, bool, 
 	}))
 	if err != nil {
 		return tlsEffectiveCert{}, false, err
+	}
+	if out.Name != "" {
+		m.addTLSRevocationMatches(&out)
 	}
 	return out, out.Name != "", nil
 }
@@ -704,7 +727,37 @@ func (m *bboltKVManager) tlsEffectiveCertMap() (map[string]tlsEffectiveCert, err
 		}
 		out[name] = cert
 	}
+	m.tlsMu.Lock()
+	revocations := cloneTLSRevocations(m.immutableTLS.Revocations)
+	m.tlsMu.Unlock()
+	catalog := make([]*x509.Certificate, 0, len(out))
+	for _, cert := range out {
+		catalog = append(catalog, cert.Certificate)
+	}
+	for name, cert := range out {
+		match, matchErr := revocations.matchCatalogCertificate(cert.Certificate, catalog, time.Now())
+		if matchErr == nil && match != nil {
+			cert.RevocationMatches = []api.TLSRevocationMatch{{Source: match.Source, SerialNumber: cert.Certificate.SerialNumber.Text(16),
+				RevocationTime: match.Entry.RevocationTime.UTC().Format(time.RFC3339Nano), ReasonCode: match.Entry.ReasonCode}}
+		}
+		out[name] = cert
+	}
 	return out, nil
+}
+
+func (m *bboltKVManager) addTLSRevocationMatches(cert *tlsEffectiveCert) {
+	if cert == nil || cert.Certificate == nil {
+		return
+	}
+	m.tlsMu.Lock()
+	revocations := cloneTLSRevocations(m.immutableTLS.Revocations)
+	m.tlsMu.Unlock()
+	match, _, err := revocations.matchCertificate(cert.Certificate, cert.Certificate, time.Now())
+	if err != nil || match == nil {
+		return
+	}
+	cert.RevocationMatches = []api.TLSRevocationMatch{{Source: match.Source, SerialNumber: cert.Certificate.SerialNumber.Text(16),
+		RevocationTime: match.Entry.RevocationTime.UTC().Format(time.RFC3339Nano), ReasonCode: match.Entry.ReasonCode}}
 }
 
 func (m *bboltKVManager) tlsEffectivePolicy(name string) (tlsEffectivePolicy, bool, error) {
@@ -866,19 +919,20 @@ func (m *bboltKVManager) currentTLSBuiltinCA() *tlsBuiltinCA {
 
 func tlsCertEntryToAPI(cert tlsEffectiveCert) api.TLSCertEntry {
 	return api.TLSCertEntry{
-		Name:            cert.Name,
-		PEM:             cert.PEM,
-		Fingerprint:     cert.Fingerprint,
-		SPKIFingerprint: cert.SPKIFingerprint,
-		Subject:         cert.Certificate.Subject.String(),
-		Issuer:          cert.Certificate.Issuer.String(),
-		SerialNumber:    cert.Certificate.SerialNumber.Text(16),
-		NotBefore:       cert.Certificate.NotBefore.UTC().Format(time.RFC3339Nano),
-		NotAfter:        cert.Certificate.NotAfter.UTC().Format(time.RFC3339Nano),
-		IsCA:            cert.Certificate.IsCA,
-		ReadOnly:        cert.ReadOnly,
-		Source:          cert.Source,
-		CertcatMatches:  cert.CertcatMatches,
+		Name:              cert.Name,
+		PEM:               cert.PEM,
+		Fingerprint:       cert.Fingerprint,
+		SPKIFingerprint:   cert.SPKIFingerprint,
+		Subject:           cert.Certificate.Subject.String(),
+		Issuer:            cert.Certificate.Issuer.String(),
+		SerialNumber:      cert.Certificate.SerialNumber.Text(16),
+		NotBefore:         cert.Certificate.NotBefore.UTC().Format(time.RFC3339Nano),
+		NotAfter:          cert.Certificate.NotAfter.UTC().Format(time.RFC3339Nano),
+		IsCA:              cert.Certificate.IsCA,
+		ReadOnly:          cert.ReadOnly,
+		Source:            cert.Source,
+		CertcatMatches:    cert.CertcatMatches,
+		RevocationMatches: cert.RevocationMatches,
 	}
 }
 
@@ -1724,7 +1778,7 @@ func (m *bboltKVManager) cloneImmutableTLSPolicies() map[string]immutableTLSPoli
 }
 
 func cloneImmutableTLSData(in immutableTLSData) immutableTLSData {
-	out := immutableTLSData{}
+	out := immutableTLSData{Revocations: cloneTLSRevocations(in.Revocations)}
 	if len(in.Certs) > 0 {
 		out.Certs = make(map[string]immutableTLSCert, len(in.Certs))
 		for name, record := range in.Certs {
@@ -1742,7 +1796,7 @@ func cloneImmutableTLSData(in immutableTLSData) immutableTLSData {
 }
 
 func cloneImmutableTLSDataWithoutDefault(in immutableTLSData) immutableTLSData {
-	out := immutableTLSData{}
+	out := immutableTLSData{Revocations: cloneTLSRevocations(in.Revocations)}
 	if len(in.Certs) > 0 {
 		out.Certs = make(map[string]immutableTLSCert, len(in.Certs))
 		for name, record := range in.Certs {
@@ -1767,24 +1821,36 @@ func ensureDefaultTLSPolicy(in immutableTLSData) immutableTLSData {
 		in.Policies = map[string]immutableTLSPolicy{}
 	}
 	in.Policies[tlsDefaultPolicyName] = immutableTLSPolicy{
-		tlsPolicyRecord: tlsPolicyRecord{Spec: defaultTLSPolicySpec(in.Certs)},
+		tlsPolicyRecord: tlsPolicyRecord{Spec: defaultTLSPolicySpec(in.Certs, in.Revocations)},
 		source:          api.TLSSourceOS,
 	}
 	return in
 }
 
-func defaultTLSPolicySpec(certs map[string]immutableTLSCert) api.TLSPolicySpec {
+func defaultTLSPolicySpec(certs map[string]immutableTLSCert, revocations immutableTLSRevocations) api.TLSPolicySpec {
 	type defaultAnchor struct {
 		name  string
 		scope api.TLSScope
 	}
 	anchors := make([]defaultAnchor, 0, len(certs))
+	parsedCerts := make(map[string]*x509.Certificate, len(certs))
+	catalog := make([]*x509.Certificate, 0, len(certs))
+	for name, cert := range certs {
+		_, parsed, err := parseTLSAuthorityPEM(cert.PEM)
+		if err == nil {
+			parsedCerts[name] = parsed
+			catalog = append(catalog, parsed)
+		}
+	}
 	for name, cert := range certs {
 		if cert.source != api.TLSSourceOS {
 			continue
 		}
-		_, parsed, err := parseTLSAuthorityPEM(cert.PEM)
-		if err != nil {
+		parsed := parsedCerts[name]
+		if parsed == nil {
+			continue
+		}
+		if match, matchErr := revocations.matchCatalogCertificate(parsed, catalog, time.Now()); matchErr != nil || match != nil {
 			continue
 		}
 		scope, ok := defaultTLSScopeForCertcat(tlsCertcatMatches(parsed))

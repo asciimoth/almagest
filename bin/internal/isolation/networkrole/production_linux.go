@@ -136,7 +136,7 @@ func RunLinuxProduction(parent context.Context, production LinuxProduction, read
 	if err != nil {
 		return err
 	}
-	resolved, err := bootstrap.ResolveProtected(inputs.Protected, loader, production.LookupEnv)
+	resolved, err := bootstrap.ResolveProtectedWithArguments(inputs.Protected, loader, production.LookupEnv, production.Arguments)
 	if err != nil {
 		return err
 	}

@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/asciimoth/almagest/bin/api"
+	"github.com/asciimoth/almagest/bin/internal/daemonargs"
 )
 
 type memoryLoader struct {
@@ -18,6 +19,50 @@ type memoryLoader struct {
 	unsafe       map[string][]byte
 	trustedReads []string
 	unsafeReads  []string
+}
+
+func TestResolveProtectedCRLsRemovesPathsAndReadsOnce(t *testing.T) {
+	loader := &memoryLoader{trusted: map[string][]byte{
+		"/protected/list.pem": []byte("protected CRL bytes"),
+		"/cli/list.pem":       []byte("CLI CRL bytes"),
+	}}
+	resolved, err := ResolveProtectedWithArguments([]byte(`{
+		"TLS":{"CRLs":{"Enabled":true,"Lists":{"protected":{"File":"/protected/list.pem"}}}}
+	}`), loader, func(string) (string, bool) { return "", false }, daemonargs.Args{TLSCRLFiles: []string{"cli=/cli/list.pem"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	document, err := resolved.Runtime.RuntimeDocument()
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(document)
+	if strings.Contains(text, "/protected/list.pem") || strings.Contains(text, "/cli/list.pem") ||
+		!strings.Contains(text, "protected CRL bytes") || !strings.Contains(text, "CLI CRL bytes") ||
+		!strings.Contains(text, `"ResolvedSource":"protected"`) || !strings.Contains(text, `"ResolvedSource":"cli"`) {
+		t.Fatalf("runtime CRL document = %s", document)
+	}
+	if len(loader.trustedReads) != 2 {
+		t.Fatalf("trusted reads = %#v", loader.trustedReads)
+	}
+	loader.trusted["/protected/list.pem"] = []byte("replacement")
+	document, err = resolved.Runtime.RuntimeDocument()
+	if err != nil || strings.Contains(string(document), "replacement") {
+		t.Fatalf("resolved CRL changed after file replacement: %s, %v", document, err)
+	}
+}
+
+func TestResolveProtectedCRLGateAndDuplicate(t *testing.T) {
+	loader := &memoryLoader{trusted: map[string][]byte{"/list.pem": []byte("bytes")}}
+	if _, err := ResolveProtected([]byte(`{"TLS":{"CRLs":{"Lists":{"list":{"File":"/list.pem"}}}}}`), loader,
+		func(string) (string, bool) { return "", false }); err == nil || len(loader.trustedReads) != 0 {
+		t.Fatalf("disabled CRL resolution = reads %#v, error %v", loader.trustedReads, err)
+	}
+	_, err := ResolveProtectedWithArguments([]byte(`{"TLS":{"CRLs":{"Enabled":true,"Lists":{"same":{"File":"/list.pem"}}}}}`), loader,
+		func(string) (string, bool) { return "", false }, daemonargs.Args{TLSCRLFiles: []string{"same=/list.pem"}})
+	if err == nil || !strings.Contains(err.Error(), "duplicate TLS CRL") {
+		t.Fatalf("duplicate CRL error = %v", err)
+	}
 }
 
 func (l *memoryLoader) ReadTrusted(path string, limit int64) ([]byte, error) {

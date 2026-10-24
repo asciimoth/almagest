@@ -1032,6 +1032,26 @@ func TestRunTLSBuiltinCRLWritesOutputFile(t *testing.T) {
 	}
 }
 
+func TestRunTLSCRLsPrintsReadOnlyStatusWithoutPEM(t *testing.T) {
+	ft := &fakeTransport{reads: []api.Message{mustResponse(t, "1", api.TLSSnapshot{Revocations: api.TLSRevocationStatus{
+		Enabled: true, Sources: []api.TLSCRLSourceEntry{{Name: "corporate", Source: api.TLSSourceProtected, Status: "valid", RevokedCount: 2}},
+	}})}}
+	var stdout, stderr bytes.Buffer
+	err := run(context.Background(), []string{"tls", "crls"}, nil, &stdout, &stderr, func(context.Context, endpoint) (apiTransport, error) {
+		return ft, nil
+	})
+	if err != nil {
+		t.Fatalf("tls crls failed: %v\nstderr: %s", err, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), `"enabled": true`) || !strings.Contains(stdout.String(), `"name": "corporate"`) ||
+		!strings.Contains(stdout.String(), `"last_refresh_error": ""`) || strings.Contains(stdout.String(), "pem") {
+		t.Fatalf("tls crls output = %s", stdout.String())
+	}
+	if len(ft.writes) != 1 || ft.writes[0].Method != string(api.MethodTLSSnapshot) {
+		t.Fatalf("tls crls requests = %#v", ft.writes)
+	}
+}
+
 func TestRunEngineRemoveNodesSendsBatchRequest(t *testing.T) {
 	ft := &fakeTransport{reads: []api.Message{mustResponse(t, "1", struct{}{})}}
 	var stdout, stderr bytes.Buffer

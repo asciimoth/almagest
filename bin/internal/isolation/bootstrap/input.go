@@ -13,9 +13,11 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"unicode/utf8"
 
+	"github.com/asciimoth/almagest/bin/internal/daemonargs"
 	"github.com/asciimoth/almagest/bin/internal/isolation/protocol"
 	"github.com/asciimoth/almagest/bin/internal/snapshotlimits"
 	tailscalehujson "github.com/tailscale/hujson"
@@ -225,7 +227,21 @@ type RuntimeProtected struct {
 	Certificates map[string]string
 	Policies     map[string]json.RawMessage
 	BuiltinCA    string
+	CRLs         *RuntimeCRLs
 	Admin        *RuntimeAdmin
+}
+
+// RuntimeCRLs is the complete static revocation input delivered to R. Every
+// file has already been read by trusted bootstrap. Source is a fixed
+// provenance label and cannot select a host object.
+type RuntimeCRLs struct {
+	Enabled bool
+	Lists   map[string]RuntimeCRL
+}
+
+type RuntimeCRL struct {
+	PEM    string
+	Source string
 }
 
 // RuntimeAdmin contains HTTP behavior enforced inside R. Listener addresses
@@ -249,6 +265,10 @@ func (r RuntimeProtected) RuntimeDocument() ([]byte, error) {
 	type pem struct {
 		PEM *string `json:"PEM,omitempty"`
 	}
+	type crl struct {
+		PEM            *string `json:"PEM,omitempty"`
+		ResolvedSource string  `json:"ResolvedSource"`
+	}
 	document := struct {
 		Admin   *RuntimeAdmin      `json:"Admin,omitempty"`
 		Secrets map[string]literal `json:"Secrets,omitempty"`
@@ -256,6 +276,10 @@ func (r RuntimeProtected) RuntimeDocument() ([]byte, error) {
 			Certificates map[string]pem             `json:"Certificates,omitempty"`
 			Policies     map[string]json.RawMessage `json:"Policies,omitempty"`
 			BuiltinCA    pem                        `json:"BuiltinCA,omitempty"`
+			CRLs         *struct {
+				Enabled bool           `json:"Enabled"`
+				Lists   map[string]crl `json:"Lists,omitempty"`
+			} `json:"CRLs,omitempty"`
 		} `json:"TLS,omitempty"`
 	}{Admin: r.Admin, Secrets: make(map[string]literal, len(r.Secrets))}
 	total := 0
@@ -294,6 +318,22 @@ func (r RuntimeProtected) RuntimeDocument() ([]byte, error) {
 		}
 		value := r.BuiltinCA
 		document.TLS.BuiltinCA = pem{PEM: &value}
+	}
+	if r.CRLs != nil {
+		document.TLS.CRLs = &struct {
+			Enabled bool           `json:"Enabled"`
+			Lists   map[string]crl `json:"Lists,omitempty"`
+		}{Enabled: r.CRLs.Enabled, Lists: make(map[string]crl, len(r.CRLs.Lists))}
+		for name, input := range r.CRLs.Lists {
+			if input.Source != "protected" && input.Source != "cli" {
+				return nil, fmt.Errorf("%w: TLS CRL %q has invalid resolved source", ErrInvalidInput, name)
+			}
+			if err := addImmutableSize(&total, len(input.PEM)); err != nil {
+				return nil, err
+			}
+			value := input.PEM
+			document.TLS.CRLs.Lists[name] = crl{PEM: &value, ResolvedSource: input.Source}
+		}
 	}
 	data, err := json.Marshal(document)
 	if err != nil {
@@ -343,6 +383,13 @@ type protectedDocument struct {
 			PEM  *string `json:"PEM"`
 			File string  `json:"File"`
 		} `json:"BuiltinCA"`
+		CRLs struct {
+			Enabled bool `json:"Enabled"`
+			Lists   map[string]struct {
+				PEM  *string `json:"PEM"`
+				File string  `json:"File"`
+			} `json:"Lists"`
+		} `json:"CRLs"`
 	} `json:"TLS"`
 }
 
@@ -350,6 +397,13 @@ type protectedDocument struct {
 // by protected config. All files use trusted checks. The returned runtime data
 // contains no path or environment selector.
 func ResolveProtected(data []byte, loader FileLoader, lookupEnv func(string) (string, bool)) (ResolvedProtected, error) {
+	return ResolveProtectedWithArguments(data, loader, lookupEnv, daemonargs.Args{})
+}
+
+// ResolveProtectedWithArguments merges CLI CRL launch authority and resolves
+// every static CRL file before R starts. R receives literal PEM and never sees
+// a protected or command-line path.
+func ResolveProtectedWithArguments(data []byte, loader FileLoader, lookupEnv func(string) (string, bool), arguments daemonargs.Args) (ResolvedProtected, error) {
 	if loader == nil || lookupEnv == nil {
 		return ResolvedProtected{}, fmt.Errorf("%w: protected resolver dependency is nil", ErrInvalidInput)
 	}
@@ -441,7 +495,54 @@ func ResolveProtected(data []byte, loader FileLoader, lookupEnv func(string) (st
 		}
 		runtime.BuiltinCA = pem
 	}
-	return ResolvedProtected{Runtime: runtime, Authority: authority, Digest: sha256.Sum256(standardBytes)}, nil
+	cliLists, err := arguments.NamedTLSCRLFiles()
+	if err != nil {
+		return ResolvedProtected{}, err
+	}
+	enabled := document.TLS.CRLs.Enabled || arguments.TLSCRLs || len(cliLists) != 0
+	if !enabled && len(document.TLS.CRLs.Lists) != 0 {
+		return ResolvedProtected{}, fmt.Errorf("%w: protected TLS CRL lists require TLS.CRLs.Enabled or --tls-crls", ErrInvalidInput)
+	}
+	if enabled {
+		runtime.CRLs = &RuntimeCRLs{Enabled: true, Lists: make(map[string]RuntimeCRL, len(document.TLS.CRLs.Lists)+len(cliLists))}
+		for name, input := range document.TLS.CRLs.Lists {
+			if strings.TrimSpace(input.File) != "" && !filepath.IsAbs(strings.TrimSpace(input.File)) {
+				return ResolvedProtected{}, fmt.Errorf("%w: TLS CRL %q file path must be absolute", ErrInvalidInput, name)
+			}
+			pem, resolveErr := resolvePEM("CRL "+name, input.PEM, input.File, loader)
+			if resolveErr != nil {
+				return ResolvedProtected{}, resolveErr
+			}
+			if err := addImmutableSize(&total, len(pem)); err != nil {
+				return ResolvedProtected{}, fmt.Errorf("TLS CRL %q: %w", name, err)
+			}
+			runtime.CRLs.Lists[name] = RuntimeCRL{PEM: pem, Source: "protected"}
+		}
+		for name, path := range cliLists {
+			if _, duplicate := runtime.CRLs.Lists[name]; duplicate {
+				return ResolvedProtected{}, fmt.Errorf("%w: duplicate TLS CRL source %q", ErrInvalidInput, name)
+			}
+			pem, resolveErr := resolvePEM("CRL "+name, nil, path, loader)
+			if resolveErr != nil {
+				return ResolvedProtected{}, resolveErr
+			}
+			if err := addImmutableSize(&total, len(pem)); err != nil {
+				return ResolvedProtected{}, fmt.Errorf("TLS CRL %q: %w", name, err)
+			}
+			runtime.CRLs.Lists[name] = RuntimeCRL{PEM: pem, Source: "cli"}
+		}
+	}
+	// Bind the session to resolved CLI CRL authority too. RuntimeDocument is
+	// deterministic and contains literal values, not the source paths.
+	runtimeDocument, err := runtime.RuntimeDocument()
+	if err != nil {
+		return ResolvedProtected{}, err
+	}
+	digestInput := make([]byte, 0, len(standardBytes)+1+len(runtimeDocument))
+	digestInput = append(digestInput, standardBytes...)
+	digestInput = append(digestInput, 0)
+	digestInput = append(digestInput, runtimeDocument...)
+	return ResolvedProtected{Runtime: runtime, Authority: authority, Digest: sha256.Sum256(digestInput)}, nil
 }
 
 func resolvePEM(name string, inline *string, path string, loader FileLoader) (string, error) {

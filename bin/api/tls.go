@@ -60,6 +60,7 @@ type TLSSource string
 const (
 	TLSSourceMutable   TLSSource = "mutable"
 	TLSSourceProtected TLSSource = "protected"
+	TLSSourceCLI       TLSSource = "cli"
 	TLSSourceOS        TLSSource = "os"
 	TLSSourceBuiltin   TLSSource = "builtin"
 )
@@ -68,19 +69,48 @@ const (
 // When a read-only certificate and a mutable certificate use the same name, the
 // read-only certificate is reported here.
 type TLSCertEntry struct {
-	Name            string            `json:"name"`
-	PEM             string            `json:"pem,omitempty"`
-	Fingerprint     string            `json:"fingerprint,omitempty"`
-	SPKIFingerprint string            `json:"spki_fingerprint,omitempty"`
-	Subject         string            `json:"subject,omitempty"`
-	Issuer          string            `json:"issuer,omitempty"`
-	SerialNumber    string            `json:"serial_number,omitempty"`
-	NotBefore       string            `json:"not_before,omitempty"`
-	NotAfter        string            `json:"not_after,omitempty"`
-	IsCA            bool              `json:"is_ca,omitempty"`
-	ReadOnly        bool              `json:"read_only,omitempty"`
-	Source          TLSSource         `json:"source,omitempty"`
-	CertcatMatches  []TLSCertcatMatch `json:"certcat_matches,omitempty"`
+	Name              string               `json:"name"`
+	PEM               string               `json:"pem,omitempty"`
+	Fingerprint       string               `json:"fingerprint,omitempty"`
+	SPKIFingerprint   string               `json:"spki_fingerprint,omitempty"`
+	Subject           string               `json:"subject,omitempty"`
+	Issuer            string               `json:"issuer,omitempty"`
+	SerialNumber      string               `json:"serial_number,omitempty"`
+	NotBefore         string               `json:"not_before,omitempty"`
+	NotAfter          string               `json:"not_after,omitempty"`
+	IsCA              bool                 `json:"is_ca,omitempty"`
+	ReadOnly          bool                 `json:"read_only,omitempty"`
+	Source            TLSSource            `json:"source,omitempty"`
+	CertcatMatches    []TLSCertcatMatch    `json:"certcat_matches,omitempty"`
+	RevocationMatches []TLSRevocationMatch `json:"revocation_matches,omitempty"`
+}
+
+// TLSRevocationMatch reports why a catalog certificate is warned. It does not
+// expose the configured CRL bytes.
+type TLSRevocationMatch struct {
+	Source         string `json:"source"`
+	SerialNumber   string `json:"serial_number"`
+	RevocationTime string `json:"revocation_time"`
+	ReasonCode     int    `json:"reason_code"`
+}
+
+// TLSCRLSourceEntry is read-only status for one parsed static CRL.
+type TLSCRLSourceEntry struct {
+	Name         string    `json:"name"`
+	Source       TLSSource `json:"source"`
+	Status       string    `json:"status"`
+	Issuer       string    `json:"issuer,omitempty"`
+	Number       string    `json:"number,omitempty"`
+	ThisUpdate   string    `json:"this_update,omitempty"`
+	NextUpdate   string    `json:"next_update,omitempty"`
+	RevokedCount int       `json:"revoked_count"`
+	Error        string    `json:"error,omitempty"`
+}
+
+type TLSRevocationStatus struct {
+	Enabled          bool                `json:"enabled"`
+	Sources          []TLSCRLSourceEntry `json:"sources,omitempty"`
+	LastRefreshError string              `json:"last_refresh_error"`
 }
 
 type TLSBuiltinCAOptions struct {
@@ -186,9 +216,10 @@ type TLSPolicyEntry struct {
 }
 
 type TLSSnapshot struct {
-	BuiltinCA *TLSBuiltinCAInfo `json:"builtin_ca,omitempty"`
-	Certs     []TLSCertEntry    `json:"certs,omitempty"`
-	Policies  []TLSPolicyEntry  `json:"policies,omitempty"`
+	BuiltinCA   *TLSBuiltinCAInfo   `json:"builtin_ca,omitempty"`
+	Certs       []TLSCertEntry      `json:"certs,omitempty"`
+	Policies    []TLSPolicyEntry    `json:"policies,omitempty"`
+	Revocations TLSRevocationStatus `json:"revocations"`
 }
 
 type TLSSubscribeResponse struct {

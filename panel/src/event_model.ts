@@ -9,7 +9,7 @@ import type {
 } from "./dns_model.js";
 import type { KVEntriesSnapshot, KVEntryInfo, KVStoreInfo, KVValueSnapshot } from "./kv_model.js";
 import type { SecretChange, SecretEntry, SecretsSnapshot } from "./secrets_model.js";
-import type { TLSBuiltinCAInfo, TLSCertEntry, TLSChange, TLSPolicyEntry, TLSSnapshot } from "./tls_model.js";
+import type { TLSBuiltinCAInfo, TLSCertEntry, TLSChange, TLSPolicyEntry, TLSRevocationStatus, TLSSnapshot } from "./tls_model.js";
 
 export type LogEntry = {
   at: string;
@@ -161,10 +161,12 @@ export function parseTLSSnapshot(input: unknown): TLSSnapshot | null {
     && (!Array.isArray(input.certs) || !input.certs.every(isTLSCertEntry))) return null;
   if (input.policies !== undefined
     && (!Array.isArray(input.policies) || !input.policies.every(isTLSPolicyEntry))) return null;
+  if (input.revocations !== undefined && !isTLSRevocationStatus(input.revocations)) return null;
   return {
     ...(input.builtin_ca === undefined ? {} : { builtin_ca: input.builtin_ca }),
     ...(input.certs === undefined ? {} : { certs: [...input.certs] }),
     ...(input.policies === undefined ? {} : { policies: [...input.policies] }),
+    ...(input.revocations === undefined ? {} : { revocations: input.revocations }),
   };
 }
 
@@ -398,7 +400,24 @@ function isTLSCertEntry(input: unknown): input is TLSCertEntry {
     && isOptionalBoolean(input.read_only)
     && isOptionalString(input.source)
     && (input.certcat_matches === undefined
-      || (Array.isArray(input.certcat_matches) && input.certcat_matches.every(isTLSCertcatMatch)));
+      || (Array.isArray(input.certcat_matches) && input.certcat_matches.every(isTLSCertcatMatch)))
+    && (input.revocation_matches === undefined
+      || (Array.isArray(input.revocation_matches) && input.revocation_matches.every(isTLSRevocationMatch)));
+}
+
+function isTLSRevocationMatch(input: unknown): boolean {
+  return isRecord(input) && isString(input.source) && isString(input.serial_number)
+    && isString(input.revocation_time) && typeof input.reason_code === "number";
+}
+
+function isTLSRevocationStatus(input: unknown): input is TLSRevocationStatus {
+  return isRecord(input) && typeof input.enabled === "boolean"
+    && isOptionalString(input.last_refresh_error)
+    && (input.sources === undefined || (Array.isArray(input.sources) && input.sources.every((source) =>
+      isRecord(source) && isString(source.name) && isString(source.source) && isString(source.status)
+      && isOptionalString(source.issuer) && isOptionalString(source.number)
+      && isOptionalString(source.this_update) && isOptionalString(source.next_update)
+      && typeof source.revoked_count === "number" && isOptionalString(source.error))));
 }
 
 function isTLSPolicyEntry(input: unknown): input is TLSPolicyEntry {

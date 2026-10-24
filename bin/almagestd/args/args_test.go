@@ -21,6 +21,26 @@ func TestNoDNSCacheExpirationFlag(t *testing.T) {
 	}
 }
 
+func TestTLSCRLFlags(t *testing.T) {
+	var value Args
+	parser, err := arg.NewParser(arg.Config{IgnoreEnv: true, Out: new(bytes.Buffer)}, &value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := parser.Parse([]string{"--tls-crls", "--tls-crl-file", "first=/one.pem", "--tls-crl-file", "second=/two.pem"}); err != nil {
+		t.Fatal(err)
+	}
+	files, err := value.NamedTLSCRLFiles()
+	if err != nil || !value.TLSCRLs || files["first"] != "/one.pem" || files["second"] != "/two.pem" {
+		t.Fatalf("CRL flags = %#v, %#v, %v", value, files, err)
+	}
+	for _, input := range [][]string{{"missing-separator"}, {"=/list.pem"}, {"name=relative.pem"}, {"name=/one", "name=/two"}} {
+		if _, err := (Args{TLSCRLFiles: input}).NamedTLSCRLFiles(); err == nil {
+			t.Fatalf("NamedTLSCRLFiles(%q) succeeded", input)
+		}
+	}
+}
+
 func TestNoDNSCacheExpirationEnv(t *testing.T) {
 	t.Setenv("ALMAGEST_NO_DNS_CACHE_EXPIRATION", "true")
 

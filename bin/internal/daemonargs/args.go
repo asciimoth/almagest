@@ -3,6 +3,13 @@
 // direct daemon parse the same structure.
 package daemonargs
 
+import (
+	"fmt"
+	"path/filepath"
+	"strings"
+	"unicode/utf8"
+)
+
 type Args struct {
 	// If StdInConfig is true, config is loaded from stdin. Protected config is
 	// loaded from its top-level Protected key when present.
@@ -19,8 +26,10 @@ type Args struct {
 	LogWorkers bool   `arg:"--log-workers" help:"log engine worker lifecycle events"`
 	NoPool     bool   `arg:"--no-pool" help:"disable daemon global buffer pool"`
 
-	NoDNSCacheExpiration   bool `arg:"--no-dns-cache-expiration,env:ALMAGEST_NO_DNS_CACHE_EXPIRATION" help:"disable DNS cache entry expiration"`
-	DiscoverSystemPrograms bool `arg:"--discover-system-programs,env:ALMAGEST_DISCOVER_SYSTEM_PROGRAMS" help:"discover supported sandbox programs from the host PATH"`
+	NoDNSCacheExpiration   bool     `arg:"--no-dns-cache-expiration,env:ALMAGEST_NO_DNS_CACHE_EXPIRATION" help:"disable DNS cache entry expiration"`
+	DiscoverSystemPrograms bool     `arg:"--discover-system-programs,env:ALMAGEST_DISCOVER_SYSTEM_PROGRAMS" help:"discover supported sandbox programs from the host PATH"`
+	TLSCRLs                bool     `arg:"--tls-crls" help:"enable static TLS certificate revocation lists"`
+	TLSCRLFiles            []string `arg:"--tls-crl-file,separate" help:"add a named static TLS CRL file as NAME=PATH; repeatable"`
 
 	LogCacheDebug *int `arg:"--log-cache-debug,env:ALMAGEST_LOG_CACHE_DEBUG" help:"daemon debug log cache size"`
 	LogCacheInfo  *int `arg:"--log-cache-info,env:ALMAGEST_LOG_CACHE_INFO" help:"daemon info log cache size"`
@@ -54,4 +63,32 @@ type Args struct {
 	IsolationCPUQuota    *uint64 `arg:"--isolation-cpu-quota,env:ALMAGEST_ISOLATION_CPU_QUOTA" help:"Linux isolation CPU microseconds per 100000 microseconds per role (default 6400000; range 1000..6400000)"`
 	IsolationDescriptors *uint64 `arg:"--isolation-descriptors,env:ALMAGEST_ISOLATION_DESCRIPTORS" help:"Linux isolation file descriptors per process (default 65536; range 32..65536)"`
 	IsolationFileBytes   *uint64 `arg:"--isolation-file-bytes,env:ALMAGEST_ISOLATION_FILE_BYTES" help:"Linux isolation maximum file size in bytes (default 1099511627776; range 1048576..1099511627776)"`
+}
+
+// NamedTLSCRLFiles validates the repeatable --tls-crl-file values. Paths must
+// be absolute because they are launch authority and must not depend on a later
+// working-directory change. The returned map is a new value owned by the
+// caller.
+func (a Args) NamedTLSCRLFiles() (map[string]string, error) {
+	if len(a.TLSCRLFiles) == 0 {
+		return nil, nil
+	}
+	out := make(map[string]string, len(a.TLSCRLFiles))
+	for _, value := range a.TLSCRLFiles {
+		name, path, found := strings.Cut(value, "=")
+		if !found {
+			return nil, fmt.Errorf("invalid --tls-crl-file %q: use NAME=PATH", value)
+		}
+		if name == "" || !utf8.ValidString(name) {
+			return nil, fmt.Errorf("invalid --tls-crl-file name %q", name)
+		}
+		if path == "" || !filepath.IsAbs(path) {
+			return nil, fmt.Errorf("invalid --tls-crl-file path %q for %q: path must be absolute", path, name)
+		}
+		if _, exists := out[name]; exists {
+			return nil, fmt.Errorf("duplicate --tls-crl-file name %q", name)
+		}
+		out[name] = path
+	}
+	return out, nil
 }

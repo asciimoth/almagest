@@ -280,6 +280,9 @@
         "BuiltinCA": {
           "$ref": "#/$defs/protectedTLSBuiltinCA"
         },
+        "CRLs": {
+          "$ref": "#/$defs/protectedTLSCRLs"
+        },
         "Certificates": {
           "type": "object",
           "description": "Map of protected certificate names to one PEM-encoded X.509 certificate authority. Names starting with os-ca: or builtin-ca: are reserved.",
@@ -307,6 +310,37 @@
           }
         }
       },
+      "additionalProperties": false
+    },
+    "protectedTLSCRLs": {
+      "type": "object",
+      "description": "Opt-in static certificate revocation lists. Files are read once during trusted daemon bootstrap. No list is downloaded.",
+      "properties": {
+        "Enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable static CRL parsing and enforcement. Lists are rejected unless this setting or a CRL command-line option enables support."
+        },
+        "Lists": {
+          "type": "object",
+          "maxProperties": 256,
+          "propertyNames": {"minLength": 1},
+          "additionalProperties": {"$ref": "#/$defs/protectedTLSCRLSource"}
+        }
+      },
+      "additionalProperties": false
+    },
+    "protectedTLSCRLSource": {
+      "type": "object",
+      "description": "One named source containing one or more concatenated X509 CRL PEM blocks.",
+      "properties": {
+        "PEM": {"type": "string", "minLength": 1},
+        "File": {"type": "string", "minLength": 1, "description": "Absolute path to a trusted CRL PEM file read once at startup."}
+      },
+      "oneOf": [
+        {"required": ["PEM"], "not": {"required": ["File"]}},
+        {"required": ["File"], "not": {"required": ["PEM"]}}
+      ],
       "additionalProperties": false
     },
     "protectedTLSCertificate": {

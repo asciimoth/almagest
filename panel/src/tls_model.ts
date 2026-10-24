@@ -1,6 +1,31 @@
 import { text as localizedText } from "./localization.js";
 
-export type TLSSource = "mutable" | "protected" | "os" | "builtin" | (string & {});
+export type TLSSource = "mutable" | "protected" | "cli" | "os" | "builtin" | (string & {});
+
+export type TLSRevocationMatch = {
+  source: string;
+  serial_number: string;
+  revocation_time: string;
+  reason_code: number;
+};
+
+export type TLSCRLSourceEntry = {
+  name: string;
+  source: TLSSource;
+  status: string;
+  issuer?: string;
+  number?: string;
+  this_update?: string;
+  next_update?: string;
+  revoked_count: number;
+  error?: string;
+};
+
+export type TLSRevocationStatus = {
+  enabled: boolean;
+  sources?: TLSCRLSourceEntry[];
+  last_refresh_error?: string;
+};
 
 export const TLS_BUILTIN_CA_NAME = "builtin-ca:almagest";
 
@@ -18,6 +43,7 @@ export type TLSCertEntry = {
   read_only?: boolean;
   source?: TLSSource;
   certcat_matches?: TLSCertcatMatch[];
+  revocation_matches?: TLSRevocationMatch[];
 };
 
 export type TLSBuiltinCAOptions = {
@@ -119,6 +145,7 @@ export type TLSSnapshot = {
   builtin_ca?: TLSBuiltinCAInfo;
   certs?: TLSCertEntry[];
   policies?: TLSPolicyEntry[];
+  revocations?: TLSRevocationStatus;
 };
 
 export type TLSChangeKind = "builtin_ca" | "cert" | "policy";
@@ -209,6 +236,8 @@ export function formatTLSSource(source: TLSSource | undefined): string {
       return localizedText("tls.source.builtin", "built-in");
     case "protected":
       return localizedText("tls.source.protected", "protected");
+    case "cli":
+      return localizedText("tls.source.cli", "command line");
     case "mutable":
     case "":
     case undefined:
@@ -223,6 +252,8 @@ export function formatTLSCertMeta(entry: TLSCertEntry): string {
   if (entry.is_ca) parts.push("CA");
   const certcat = formatTLSCertcatBadge(entry);
   if (certcat) parts.push(certcat);
+  const revoked = entry.revocation_matches?.length ?? 0;
+  if (revoked) parts.push(localizedText("tls.meta.revoked", "warning: revoked ({count})", { count: revoked }));
   if (entry.read_only) parts.push(localizedText("tls.meta.read_only", "read-only"));
   if (entry.not_after) parts.push(localizedText("tls.meta.expires", "expires {time}", { time: entry.not_after }));
   return parts.join(" · ");

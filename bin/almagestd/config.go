@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -188,6 +189,9 @@ func parseConfig(cfg, prt []byte, isolated bool) (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("config parsing: %w", err)
 	}
+	if regularConfigContainsCRLs(cfg) {
+		return nil, fmt.Errorf("config parsing: TLS CRL authority is allowed only in protected config or daemon arguments")
+	}
 
 	protected := ProtectedConfig{
 		Admin: defaultAdminAPIConfig(),
@@ -206,6 +210,14 @@ func parseConfig(cfg, prt []byte, isolated bool) (*Config, error) {
 			return nil, fmt.Errorf("protected secret %q uses reserved ResolvedSource", name)
 		}
 	}
+	for name, source := range protected.TLS.CRLs.Lists {
+		if source.ResolvedSource != "" && !isolated {
+			return nil, fmt.Errorf("protected TLS CRL %q uses reserved ResolvedSource", name)
+		}
+		if source.ResolvedSource != "" && source.ResolvedSource != "protected" && source.ResolvedSource != "cli" {
+			return nil, fmt.Errorf("protected TLS CRL %q has invalid ResolvedSource", name)
+		}
+	}
 	if protected.Sandbox.Mode == "" {
 		protected.Sandbox.Mode = "auto"
 	}
@@ -221,6 +233,31 @@ func parseConfig(cfg, prt []byte, isolated bool) (*Config, error) {
 		Main:      config,
 		Protected: protected,
 	}, nil
+}
+
+func regularConfigContainsCRLs(data []byte) bool {
+	if len(bytes.TrimSpace(data)) == 0 {
+		return false
+	}
+	value, err := tailscalehujson.Parse(data)
+	if err != nil {
+		return false
+	}
+	value.Standardize()
+	var root map[string]json.RawMessage
+	if json.Unmarshal(value.Pack(), &root) != nil {
+		return false
+	}
+	var daemon map[string]json.RawMessage
+	if json.Unmarshal(root["Config"], &daemon) != nil {
+		return false
+	}
+	var tlsConfig map[string]json.RawMessage
+	if json.Unmarshal(daemon["TLS"], &tlsConfig) != nil {
+		return false
+	}
+	_, found := tlsConfig["CRLs"]
+	return found
 }
 
 func parseConfigDocument(data []byte) (*hujson.Config, error) {
@@ -256,6 +293,22 @@ type ProtectedTLSConfig struct {
 	Certificates map[string]ProtectedTLSCertificateConfig `json:"Certificates"`
 	Policies     map[string]api.TLSPolicySpec             `json:"Policies"`
 	BuiltinCA    ProtectedTLSBuiltinCAConfig              `json:"BuiltinCA"`
+	CRLs         ProtectedTLSCRLsConfig                   `json:"CRLs"`
+}
+
+// ProtectedTLSCRLsConfig is immutable launch authority. CRL processing is
+// disabled unless Enabled is true or a daemon CLI CRL option enables it.
+type ProtectedTLSCRLsConfig struct {
+	Enabled bool                                   `json:"Enabled"`
+	Lists   map[string]ProtectedTLSCRLSourceConfig `json:"Lists"`
+}
+
+// ProtectedTLSCRLSourceConfig selects exactly one inline or trusted file
+// source. ResolvedSource is reserved for the isolated bootstrap document.
+type ProtectedTLSCRLSourceConfig struct {
+	PEM            *string `json:"PEM"`
+	File           string  `json:"File"`
+	ResolvedSource string  `json:"ResolvedSource,omitempty"`
 }
 
 // ProtectedTLSCertificateConfig defines one immutable certificate authority.
@@ -380,7 +433,39 @@ func (p *ProtectedConfig) ImmutableTLS() (immutableTLSData, error) {
 		}
 		golog.Debugf("TLS policies: loaded %d protected policies", len(out.Policies))
 	}
+	revocations, err := immutableTLSRevocationsFromConfig(p.TLS.CRLs, time.Now())
+	if err != nil {
+		return immutableTLSData{}, err
+	}
+	out.Revocations = revocations
 	return out, nil
+}
+
+// MergeTLSCRLArguments applies the CLI-only CRL enable gate and named files.
+// It runs after protected parsing and before any CRL file is opened.
+func (p *ProtectedConfig) MergeTLSCRLArguments(arguments args.Args) error {
+	files, err := arguments.NamedTLSCRLFiles()
+	if err != nil {
+		return err
+	}
+	effective := p.TLS.CRLs.Enabled || arguments.TLSCRLs || len(files) != 0
+	if !effective && len(p.TLS.CRLs.Lists) != 0 {
+		return fmt.Errorf("%w: protected TLS CRL lists require TLS.CRLs.Enabled or --tls-crls", storage.ErrTlsConfigInvalidValue)
+	}
+	if !effective {
+		return nil
+	}
+	p.TLS.CRLs.Enabled = true
+	if p.TLS.CRLs.Lists == nil {
+		p.TLS.CRLs.Lists = make(map[string]ProtectedTLSCRLSourceConfig, len(files))
+	}
+	for name, path := range files {
+		if _, duplicate := p.TLS.CRLs.Lists[name]; duplicate {
+			return fmt.Errorf("%w: duplicate TLS CRL source %q", storage.ErrTlsConfigInvalidName, name)
+		}
+		p.TLS.CRLs.Lists[name] = ProtectedTLSCRLSourceConfig{File: path, ResolvedSource: "cli"}
+	}
+	return nil
 }
 
 func (p *ProtectedConfig) TLSBuiltinCA() (*tlsBuiltinCA, error) {

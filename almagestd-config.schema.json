@@ -53,7 +53,8 @@
       "properties": {
         "BuiltinCA": {
           "$ref": "#/$defs/tlsBuiltinCAOptions"
-        }
+        },
+        "CRLs": false
       },
       "additionalProperties": true
     },

@@ -82,6 +82,21 @@ func mergeImmutableTLSData(values ...immutableTLSData) immutableTLSData {
 				out.Policies[name] = policy
 			}
 		}
+		if value.Revocations.Enabled {
+			if out.Revocations.Enabled {
+				if out.Revocations.Lists == nil {
+					out.Revocations.Lists = map[string]immutableTLSCRLSource{}
+				}
+				for name, source := range value.Revocations.Lists {
+					out.Revocations.Lists[name] = source
+				}
+			} else {
+				out.Revocations = cloneTLSRevocations(value.Revocations)
+			}
+		}
+	}
+	if out.Revocations.Enabled {
+		out.Revocations.Index = buildTLSCRLIndex(out.Revocations.Lists)
 	}
 	return out
 }

@@ -261,6 +261,9 @@ func runDaemon(
 		return err
 	}
 	conf.Protected.Merge(&arguments)
+	if err := conf.Protected.MergeTLSCRLArguments(arguments); err != nil {
+		return err
+	}
 	if err := prepareSystemProgramPolicy(conf, fsPath); err != nil {
 		return fmt.Errorf("prepare system program sandbox policy: %w", err)
 	}

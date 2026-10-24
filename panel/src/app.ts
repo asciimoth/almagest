@@ -3813,6 +3813,7 @@ function applyTLSSnapshotToState(snapshot: TLSSnapshot): void {
     ...(snapshot.builtin_ca === undefined ? {} : { builtin_ca: snapshot.builtin_ca }),
     certs: sortTLSCerts(snapshot.certs ?? []),
     policies: sortTLSPolicies(snapshot.policies ?? []),
+	...(snapshot.revocations === undefined ? {} : { revocations: snapshot.revocations }),
   };
   if (tlsValuePanel && !tlsSelectedEntry()) closeTLSValuePanel();
   renderTLS();
@@ -3837,12 +3838,36 @@ function renderTLS(): void {
   const policies = tlsSnapshot.policies ?? [];
   const list = document.createElement("ol");
   list.className = "kv-store-list tls-list";
+  list.append(renderTLSRevocationSection());
   list.append(renderTLSCertSection(certs));
   list.append(renderTLSSection(localizedText("tls.policies.title", "Policies"), policies, renderTLSPolicyRow, localizedText("tls.policies.empty", "No TLS policies.")));
   tree.append(list);
   el.tlsTree.replaceChildren(tree);
   el.tlsPanel.scrollTop = activeTab === "tls" ? previousTop : tlsScrollTop;
   renderTLSValuePanel();
+}
+
+function renderTLSRevocationSection(): HTMLLIElement {
+  const status = tlsSnapshot.revocations;
+  const section = document.createElement("li");
+  section.className = "kv-store tls-section";
+  section.append(textElement("h3", localizedText("tls.revocations.title", "Certificate revocation lists"), "tls-section-title"));
+  const list = document.createElement("ol");
+  list.className = "kv-entry-list";
+  if (!status?.enabled) {
+    list.append(renderKVEmptyState(localizedText("tls.revocations.disabled", "Static CRL support is disabled.")));
+  } else if (!(status.sources?.length)) {
+    list.append(renderKVEmptyState(localizedText("tls.revocations.empty", "CRL support is enabled with no static sources.")));
+  } else {
+    for (const source of status.sources) {
+      const item = document.createElement("li");
+      item.className = "kv-entry";
+      item.append(textElement("strong", source.name), textElement("em", `${source.status} · ${source.revoked_count} revoked · next ${source.next_update ?? "unknown"}`));
+      list.append(item);
+    }
+  }
+  section.append(list);
+  return section;
 }
 
 function renderTLSHeader(): HTMLElement {

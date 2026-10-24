@@ -1,0 +1,2 @@
+Run this case with both --isolation=auto and --isolation=off. Static CRL files
+must be read once by trusted startup and have the same behavior in both modes.

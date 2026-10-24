@@ -18,6 +18,19 @@ func runTLS(ctx context.Context, c *client, args []string, stdin io.Reader, stdo
 	switch args[0] {
 	case "list":
 		return parseNoArgsAndRequest(ctx, c, args[1:], api.SurfaceTLS, string(api.MethodTLSSnapshot), nil, stdout, stderr)
+	case "crls":
+		if err := parseNoArgs(args[0], args[1:], stderr); err != nil {
+			return err
+		}
+		raw, err := c.request(ctx, api.SurfaceTLS, string(api.MethodTLSSnapshot), nil)
+		if err != nil {
+			return err
+		}
+		var snapshot api.TLSSnapshot
+		if err := json.Unmarshal(raw, &snapshot); err != nil {
+			return err
+		}
+		return writePrettyJSON(stdout, snapshot.Revocations)
 	case "watch":
 		if err := parseNoArgs(args[0], args[1:], stderr); err != nil {
 			return err
@@ -267,6 +280,7 @@ func printTLSHelp(w io.Writer) {
 
 Snapshot commands:
   list             list effective TLS certificates and policies
+  crls             show static CRL enablement and read-only source status
   builtin-ca       show built-in TLS CA certificate and options
   builtin-crl      write built-in CA CRL PEM to stdout or --out PATH
 

@@ -155,6 +155,10 @@ func openKVManagerWithOptions(path string, options bboltKVManagerOptions) (*bbol
 	if builtinCA != nil {
 		immutableTLS = withTLSBuiltinCA(immutableTLS, builtinCA)
 	}
+	if err := validateTLSRevocationSelections(immutableTLS); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("validate immutable TLS revocations: %w", err)
+	}
 	manager := &bboltKVManager{
 		db:                        db,
 		writeBarrier:              newStorageWriteBarrier(),

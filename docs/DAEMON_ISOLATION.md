@@ -70,15 +70,35 @@ GID, supplementary groups, and capability state before it executes a Go role.
 
 ## Trust and ownership rules
 
-Protected config and command-line listener overrides are launch authority. N
-reads them before R starts. N resolves secret environment variables and
-certificate files, selects the native backend, opens trusted executables and
-directories, and creates all IPC endpoints. N also reads the platform TLS trust
-state. R receives only literal secret, certificate, and platform TLS snapshot
-values plus the small protected subset that it must use. It does not receive
-source paths, environment variable names, listener addresses, peer filters,
-system configuration, command profiles, trust-store names, registry keys, URLs,
-or unknown protected fields.
+Protected config, command-line listener overrides, and command-line CRL options
+are launch authority. N reads them before R starts. N resolves secret
+environment variables and certificate and static CRL files, selects the native
+backend, opens trusted executables and directories, and creates all IPC
+endpoints. N also reads the platform TLS trust state. R receives only literal
+secret, certificate, static CRL, and platform TLS snapshot values plus the small
+protected subset that it must use. It does not receive source paths, environment
+variable names, listener addresses, peer filters, system configuration, command
+profiles, trust-store names, registry keys, URLs, or unknown protected fields.
+
+tatic CRL support is disabled by default. Protected `TLS.CRLs.Enabled`,
+`--tls-crls`, or one or more `--tls-crl-file NAME=PATH` options enable it. N
+merges this launch authority, rejects dormant lists and duplicate names, and
+reads each selected file once through the trusted loader. The protected runtime
+document contains only the effective enable state, source names, fixed
+`protected` or `cli` provenance, and literal PEM. It contains no CRL path. A
+later file replacement has no effect until daemon restart. Direct mode applies
+the same gate and parser in-process.
+
+R parses and bounds the complete static CRL set. It rejects unrelated PEM,
+unsupported CRL scopes and extensions, delta CRLs, invalid update times, and
+excessive source, list, or revoked-entry counts. It validates signatures only
+against an exact issuer and optional authority-key identifier. An unbound or
+wrongly signed list does not warn a certificate. R keeps CRL provenance outside
+the certificate catalog, omits a revoked OS root from the generated `default`
+policy, and keeps that root visible for explicit policies. A local immutable
+post-PKI verifier checks leaf and intermediate certificates in each authorized
+chain. It performs no network I/O. An explicitly applicable list that expires
+while the daemon runs causes `revocation status unavailable` for that chain.
 
 N owns platform TLS collection in isolated mode. Before it starts R, N collects
 and validates a bounded snapshot and writes it to one reserved file in R's
@@ -91,12 +111,13 @@ failure keeps the last-known-good overlay. R does not fall back to a local OS
 fetcher after an IPC failure.
 
 The platform TLS request can select only the compiled OS source and compiled
-limits. It cannot contain a path or another host selector. The current snapshot
-contains public trust authorities only. CRL and distrust flags are rejected.
-Direct mode uses the same snapshot provider and runtime compiler in-process, so
-direct and isolated modes produce the same logical OS certificate catalog.
-Protected TLS configuration remains the way to add private or
-deployment-specific authorities.
+limits. It cannot contain a path or another host selector. The current platform
+snapshot contains public trust authorities only. Platform CRL and distrust flags
+are rejected; static protected and CLI CRLs use the separate one-time bootstrap
+path described above. Direct mode uses the same snapshot provider and runtime
+compiler in-process, so direct and isolated modes produce the same logical OS
+certificate catalog. Protected TLS configuration remains the way to add private
+or deployment-specific authorities.
 
 Regular config is untrusted application input. It can select graph behavior, but
 it cannot select a role, executable, host path, native API, credential, IPC
@@ -150,8 +171,10 @@ item and per-item ceilings. Startup uses one fixed reserved private file because
 the snapshot can be larger than one control frame. Refresh uses 32 KiB payload
 chunks within normal control frames. N permits only one ordered TLS transfer per
 session and discards it on an invalid transfer ID or offset. Snapshot members
-have bounded source IDs and literal DER bytes. Duplicate members, unexpected CRL
-or distrust data, unknown JSON fields, and partial snapshots fail closed.
+have bounded source IDs and literal DER bytes. Duplicate members, unexpected
+platform CRL or distrust data, unknown JSON fields, and partial snapshots fail
+closed. Static CRL PEM uses the protected immutable-input ceiling plus explicit
+source, decoded-list, per-item, and revoked-entry limits.
 
 Control messages are strict length-prefixed JSON with bounded depth, size,
 in-flight work, arrays, strings, resources, and receipts. Control, data, and
@@ -279,7 +302,8 @@ provide authority:
   does not support H; configured node commands or native callbacks that require
   H stop startup instead of running in R or N.
 - `Secrets` and `TLS` file or environment sources are resolved by bootstrap. R
-  receives only their bounded literal values.
+  receives only their bounded literal values. This includes enabled static CRL
+  files. CRL CLI paths are not copied to R.
 
 Normal CLI config, protected-config, storage, snapshot, logging, and admin
 overrides still apply. In the full production Linux layout, omitted paths
