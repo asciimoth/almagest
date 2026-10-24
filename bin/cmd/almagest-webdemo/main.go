@@ -35,6 +35,10 @@ func main() {
 }
 
 func buildBackend() (*webdemo.Backend, error) {
+	stores, err := webdemo.NewStorage(browserLocalStorage{})
+	if err != nil {
+		return nil, err
+	}
 	out := gonnect.NewLoopbackNetwork()
 	out.AllowAnyHost = true
 	local := gonnect.NewLoopbackNetwork()
@@ -42,7 +46,7 @@ func buildBackend() (*webdemo.Backend, error) {
 	system := &sysnetdebug.System{OutNetwork: out, LocalNetwork: local}
 	engine, err := almagest.BuildEngine(
 		context.Background(), configer.NewMemory(nil), logging.NewDebugLogFactory(1),
-		system, nil, nil, nil, nil, nil, nil, false,
+		system, stores.KV, stores.DNS, stores.Secrets, stores.TLS, nil, nil, false,
 	)
 	if err != nil {
 		return nil, err

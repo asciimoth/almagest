@@ -3,6 +3,11 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 const root = resolve(process.argv[2]);
+const localValues = new Map();
+globalThis.localStorage = {
+  getItem: (key) => localValues.get(key) ?? null,
+  setItem: (key, value) => localValues.set(key, String(value)),
+};
 await import(pathToFileURL(resolve(root, "wasm_exec.js")).href);
 const go = new globalThis.Go();
 const bytes = await readFile(resolve(root, "almagest.wasm"));
