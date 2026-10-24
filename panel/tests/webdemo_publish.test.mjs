@@ -6,6 +6,38 @@ import { promisify } from "node:util";
 import { JSDOM } from "jsdom";
 
 const output = (path) => new URL(`../../build/webdemo/${path}`, import.meta.url);
+const defaultWebDemoNodeCount = 15;
+const webDemoNodeClasses = [
+  "almagest/Dns2Network",
+  "almagest/DnsCache",
+  "almagest/DnsClient",
+  "almagest/DnsFallback",
+  "almagest/DnsInject",
+  "almagest/DnsQuery",
+  "almagest/DnsRouter",
+  "almagest/DnsServer",
+  "almagest/MeshNames",
+  "almagest/StaticDns",
+  "almagest/Tun2Dns",
+  "almagest/HttpClient",
+  "almagest/HttpServer",
+  "almagest/MockNetwork",
+  "almagest/NetworkFirewall",
+  "almagest/NetworkRouter",
+  "almagest/Remapper",
+  "almagest/Sniffer",
+  "almagest/Spoofer",
+  "almagest/AutoTunSplitter",
+  "almagest/TunCopy",
+  "almagest/TunFirewall",
+  "almagest/TunJoiner",
+  "almagest/TunSplitter",
+  "almagest/VTun",
+  "almagest/WireGuard",
+  "almagest/WGConfig",
+  "pasta/StringConstant",
+  "pasta/ObjectConstant",
+];
 await promisify(execFile)(process.execPath, ["scripts/publish-webdemo.mjs", "../build/webdemo"], {
   cwd: new URL("..", import.meta.url),
 });
@@ -168,14 +200,10 @@ test("published Go Wasm starts and exposes its node class list API", async () =>
   assert.equal(tls.result.builtin_ca, undefined);
   assert.equal(response.id, "smoke");
   assert.equal(response.error, undefined);
-  assert.deepEqual(response.result.snapshot.classes.map((entry) => entry.class), [
-    "almagest/HttpClient",
-    "almagest/HttpServer",
-    "almagest/MockNetwork",
-  ]);
-  assert.equal(Object.keys(response.result.snapshot.nodes).length, 3);
+  assert.deepEqual(new Set(response.result.snapshot.classes.map((entry) => entry.class)), new Set(webDemoNodeClasses));
+  assert.equal(Object.keys(response.result.snapshot.nodes).length, defaultWebDemoNodeCount);
   assert.ok(Object.keys(response.result.snapshot.ports).length > 0);
-  assert.equal(Object.keys(response.result.snapshot.links).length, 2);
+  assert.equal(Object.keys(response.result.snapshot.links).length, 13);
 });
 
 test("published Go Wasm runs and persists all web-demo node classes", async () => {
@@ -185,12 +213,11 @@ test("published Go Wasm runs and persists all web-demo node classes", async () =
   ]);
   const result = JSON.parse(stdout);
   assert.equal(result.subscribed.error, undefined);
+  assert.deepEqual(result.classes, webDemoNodeClasses);
   assert.equal(result.added.every((response) => response.error === undefined), true);
-  assert.equal(Object.keys(result.snapshot.result.snapshot.nodes).length, 6);
+  assert.equal(Object.keys(result.snapshot.result.snapshot.nodes).length, defaultWebDemoNodeCount + webDemoNodeClasses.length);
   assert.equal(result.events.some((event) => event.surface === "engine" && event.method === "notification"), true);
-  assert.match(result.config, /almagest\/MockNetwork/);
-  assert.match(result.config, /almagest\/HttpServer/);
-  assert.match(result.config, /almagest\/HttpClient/);
+  for (const className of webDemoNodeClasses) assert.match(result.config, new RegExp(className.replace("/", "\\/")));
   assert.equal(result.persistedConfig, result.config);
 });
 
@@ -201,7 +228,8 @@ test("published Go Wasm uses in-memory storage when localStorage is absent", asy
     "no-storage",
   ]);
   const result = JSON.parse(stdout);
-  assert.equal(Object.keys(result.snapshot.result.snapshot.nodes).length, 6);
-  assert.match(result.config, /almagest\/MockNetwork/);
+  assert.equal(result.added.every((response) => response.error === undefined), true);
+  assert.equal(Object.keys(result.snapshot.result.snapshot.nodes).length, defaultWebDemoNodeCount + webDemoNodeClasses.length);
+  for (const className of webDemoNodeClasses) assert.match(result.config, new RegExp(className.replace("/", "\\/")));
   assert.equal(result.persistedConfig, null);
 });

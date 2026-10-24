@@ -21,6 +21,16 @@ func newTestLiveBackend(t *testing.T) (*Backend, *memoryPersistence) {
 	t.Helper()
 	persistence := newMemoryPersistence()
 	persistence.values[configStorageKey] = []byte("{}")
+	return newTestLiveBackendWithPersistence(t, persistence)
+}
+
+func newDefaultTestLiveBackend(t *testing.T) (*Backend, *memoryPersistence) {
+	t.Helper()
+	return newTestLiveBackendWithPersistence(t, newMemoryPersistence())
+}
+
+func newTestLiveBackendWithPersistence(t *testing.T, persistence *memoryPersistence) (*Backend, *memoryPersistence) {
+	t.Helper()
 	stores, err := NewStorage(persistence)
 	if err != nil {
 		t.Fatal(err)
@@ -35,7 +45,7 @@ func newTestLiveBackend(t *testing.T) (*Backend, *memoryPersistence) {
 	}
 	network := gonnect.NewLoopbackNetwork()
 	network.AllowAnyHost = true
-	logs := NewLogFactory(16, nil)
+	logs := NewLogFactory(256, nil)
 	engine, err := almagest.BuildEngine(context.Background(), cfg, logs, &sysnetdebug.System{OutNetwork: network, LocalNetwork: network}, stores.KV, stores.DNS, stores.Secrets, stores.TLS, nil, nil, false)
 	if err != nil {
 		t.Fatal(err)
@@ -206,11 +216,46 @@ func TestConfigStoreUsesDefaultForMissingConfig(t *testing.T) {
 		`"Mock Network"`, `"almagest/MockNetwork"`,
 		`"Http Client"`, `"almagest/HttpClient"`,
 		`"Http Server"`, `"almagest/HttpServer"`,
-		`"Network -> [Mock Network] Network"`,
+		`"pasta/StringConstant"`,
+		`"almagest/VTun"`, `"almagest/Spoofer"`, `"almagest/TunCopy"`,
+		`"almagest/DnsServer"`, `"almagest/DnsCache"`, `"almagest/StaticDns"`,
+		`"Tun -> [Spoofer] Tun"`, `"Tun -> [Direct TUN Link] TunA"`,
+		`"output -> [Http Server] Response"`, `"output -> [TUN HTTP Server] Response"`,
+		`"DNS -> [DNS Cache] DNS"`, `"DNS -> [Static DNS] DNS"`,
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("default config does not contain %q: %s", want, text)
 		}
+	}
+}
+
+func TestDefaultConfigRunsTunAndDNSDemos(t *testing.T) {
+	backend, _ := newDefaultTestLiveBackend(t)
+	waitForLog(t, backend.logs, "listening on 10.220.0.10:8081")
+	waitForLog(t, backend.logs, "listening on 10.219.0.2:8082")
+	waitForLog(t, backend.logs, "listening on udp4/10.219.0.2:53")
+
+	for _, name := range []string{"Http Client", "TUN HTTP Client"} {
+		client, found := backend.engine.NodeByName(almagest.MainWorkspace, name)
+		if !found {
+			t.Fatalf("default %q node was not created", name)
+		}
+		button, err := json.Marshal(formular.ButtonPressMessage{
+			MessageBase: formular.MessageBase{Type: formular.MessageButtonPress, MenuID: pasta.NodeMenuID(client), MenuGeneration: 1},
+			BlockID:     "request", ButtonID: "send",
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		trigger := liveCall(t, backend, api.SurfaceEngine, string(api.MethodEngineSendNodeFormularMessage), api.SendNodeFormularMessageRequest{
+			Workspace: almagest.MainWorkspace,
+			Node:      client,
+			Message:   button,
+		})
+		if trigger.Error != nil {
+			t.Fatalf("trigger %q: %#v", name, trigger.Error)
+		}
+		waitForNodeLog(t, backend.logs, client, "complete: 200 OK")
 	}
 }
 
@@ -360,6 +405,20 @@ func waitForLog(t *testing.T, logs *LogFactory, part string) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatalf("log does not contain %q: %#v", part, logs.Snapshot())
+}
+
+func waitForNodeLog(t *testing.T, logs *LogFactory, node uint64, part string) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		for _, entry := range logs.Snapshot() {
+			if entry.NodeID == node && strings.Contains(entry.Message, part) {
+				return
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("node %d log does not contain %q: %#v", node, part, logs.Snapshot())
 }
 
 func liveCall(t *testing.T, backend *Backend, surface api.Surface, method string, payload any) api.Message {
