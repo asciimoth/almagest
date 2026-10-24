@@ -67,6 +67,7 @@ class ServeWebdemoTests(unittest.TestCase):
         output = result.stdout + result.stderr
         self.assertIn("just build-webdemo 'build/webdemo'", output)
         self.assertIn("--base-path 'base_path=almagest'", output)
+        self.assertIn("--host '0.0.0.0'", output)
         self.assertNotIn("build-webdemo 'base_path=almagest'", output)
 
     def test_root_hosting_serves_landing_and_nested_static_pages(self):

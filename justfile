@@ -212,9 +212,9 @@ build-webdemo output='build/webdemo':
   cd panel && npm ci && npm run build:webdemo -- ../{{quote(output)}}
 
 # Build and serve the web demo. Set base_path=almagest to test a subpath.
-serve-webdemo base_path='' output='build/webdemo' port='8000':
+serve-webdemo base_path='' output='build/webdemo' port='8000' host='0.0.0.0':
   just build-webdemo {{quote(output)}}
-  python3 ./scripts/serve-webdemo.py --directory {{quote(output)}} --base-path {{quote(base_path)}} --port {{quote(port)}}
+  python3 ./scripts/serve-webdemo.py --directory {{quote(output)}} --base-path {{quote(base_path)}} --port {{quote(port)}} --host {{quote(host)}}
 
 build-windows:
   ./scripts/build-windows.sh amd64 arm64

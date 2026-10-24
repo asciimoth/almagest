@@ -46,10 +46,12 @@ def main() -> None:
     parser.add_argument("--directory", required=True)
     parser.add_argument("--base-path", default="")
     parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument("--host", default="0.0.0.0")
     args = parser.parse_args()
     base = normalized_base(args.base_path)
-    server = http.server.ThreadingHTTPServer(("127.0.0.1", args.port), handler_type(args.directory, base))
-    print(f"Serving web demo at http://127.0.0.1:{args.port}{base}", flush=True)
+    server = http.server.ThreadingHTTPServer((args.host, args.port), handler_type(args.directory, base))
+    display_host = "127.0.0.1" if args.host == "0.0.0.0" else args.host
+    print(f"Serving web demo at http://{display_host}:{args.port}{base}", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
