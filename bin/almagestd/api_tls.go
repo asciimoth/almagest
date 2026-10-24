@@ -263,12 +263,15 @@ func (a *AdminAPI) reloadTLSOSCerts(ctx context.Context) (api.TLSSnapshot, tlsMu
 	}
 	data, err = a.tlsOSDataLoader(ctx)
 	if err != nil {
+		a.tls.setTLSLastRefreshError("platform TLS refresh failed")
 		return api.TLSSnapshot{}, tlsMutationResult{}, err
 	}
 	result, err := a.tls.setTLSOSData(data)
 	if err != nil {
+		a.tls.setTLSLastRefreshError("platform TLS refresh validation failed")
 		return api.TLSSnapshot{}, tlsMutationResult{}, err
 	}
+	a.tls.setTLSLastRefreshError("")
 	snapshot, err := a.tls.tlsSnapshot()
 	if err != nil {
 		return api.TLSSnapshot{}, tlsMutationResult{}, err

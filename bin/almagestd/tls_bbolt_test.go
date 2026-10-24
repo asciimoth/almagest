@@ -742,6 +742,9 @@ func TestTLSReloadOSCertsFailurePreservesCatalog(t *testing.T) {
 	if cert == nil || cert.PEM != osPEM || cert.Source != api.TLSSourceOS {
 		t.Fatalf("catalog after failed reload = %#v, want existing OS certificate", snapshot.Certs)
 	}
+	if snapshot.Revocations.LastRefreshError != "platform TLS refresh failed" {
+		t.Fatalf("last refresh error = %q", snapshot.Revocations.LastRefreshError)
+	}
 }
 
 func TestTLSOSDataReloadDiffsAndNotifiesPolicies(t *testing.T) {

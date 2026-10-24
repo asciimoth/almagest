@@ -80,14 +80,14 @@ protected subset that it must use. It does not receive source paths, environment
 variable names, listener addresses, peer filters, system configuration, command
 profiles, trust-store names, registry keys, URLs, or unknown protected fields.
 
-tatic CRL support is disabled by default. Protected `TLS.CRLs.Enabled`,
-`--tls-crls`, or one or more `--tls-crl-file NAME=PATH` options enable it. N
-merges this launch authority, rejects dormant lists and duplicate names, and
-reads each selected file once through the trusted loader. The protected runtime
-document contains only the effective enable state, source names, fixed
-`protected` or `cli` provenance, and literal PEM. It contains no CRL path. A
-later file replacement has no effect until daemon restart. Direct mode applies
-the same gate and parser in-process.
+Static CRL and system distrust support is disabled by default. Protected
+`TLS.CRLs.Enabled`, `--tls-crls`, or one or more `--tls-crl-file NAME=PATH`
+options enable it. N merges this launch authority, rejects dormant lists and
+duplicate names, and reads each selected file once through the trusted loader.
+The protected runtime document contains only the effective enable state, source
+names, fixed `protected` or `cli` provenance, and literal PEM. It contains no
+CRL path. A later file replacement has no effect until daemon restart. Direct
+mode applies the same gate and parser in-process.
 
 R parses and bounds the complete static CRL set. It rejects unrelated PEM,
 unsupported CRL scopes and extensions, delta CRLs, invalid update times, and
@@ -111,13 +111,27 @@ failure keeps the last-known-good overlay. R does not fall back to a local OS
 fetcher after an IPC failure.
 
 The platform TLS request can select only the compiled OS source and compiled
-limits. It cannot contain a path or another host selector. The current platform
-snapshot contains public trust authorities only. Platform CRL and distrust flags
-are rejected; static protected and CLI CRLs use the separate one-time bootstrap
-path described above. Direct mode uses the same snapshot provider and runtime
-compiler in-process, so direct and isolated modes produce the same logical OS
-certificate catalog. Protected TLS configuration remains the way to add private
-or deployment-specific authorities.
+limits. It cannot contain a path or another host selector. When the common gate
+is enabled, the snapshot can also contain fixed-kind explicit-distrust selectors
+and provider status. Windows N reads the effective `Disallowed` certificate
+stores for the daemon identity through Crypt32, including user, machine, Group
+Policy, and enterprise locations. It sends canonical certificate DER only. R
+matches the normalized findings, warns matching catalog certificates, and omits
+matching OS roots from `default`. Linux reports p11-kit as `unsupported` when no
+reliable negative-trust source exists and as `unavailable` when a trust module
+exists but this build cannot read its layered assertions. It never infers
+distrust from positive CA bundles or hashed CRL files.
+
+Protected `TLS.CRLs.System.WindowsRevocation` can select `off` or `cache-only`.
+The cache-only mode uses Crypt32 with cache-only and cumulative-timeout flags. R
+sends N only bounded DER for chains that Almagest has already authorized. The
+request cannot contain a URL, store name, provider selector, or retrieval mode.
+N does not let Crypt32 retrieve from the network. Only an explicit `revoked`
+result rejects a chain. `unknown`, `offline`, and platform errors use a
+fail-soft policy; static configured CRLs keep their separate fail-closed expiry
+rule. The `online` value is reserved and stops startup because no route or
+bounded network policy is implemented. Direct mode uses the same normalized
+provider and checker in-process.
 
 Regular config is untrusted application input. It can select graph behavior, but
 it cannot select a role, executable, host path, native API, credential, IPC
@@ -171,10 +185,13 @@ item and per-item ceilings. Startup uses one fixed reserved private file because
 the snapshot can be larger than one control frame. Refresh uses 32 KiB payload
 chunks within normal control frames. N permits only one ordered TLS transfer per
 session and discards it on an invalid transfer ID or offset. Snapshot members
-have bounded source IDs and literal DER bytes. Duplicate members, unexpected
-platform CRL or distrust data, unknown JSON fields, and partial snapshots fail
-closed. Static CRL PEM uses the protected immutable-input ceiling plus explicit
-source, decoded-list, per-item, and revoked-entry limits.
+have bounded source IDs, fixed selector kinds, and literal DER or digest bytes.
+Provider states are limited to `disabled`, `unsupported`, `unavailable`, and
+`active`. Duplicate members or provider states, malformed selectors, unknown
+JSON fields, and partial snapshots fail closed. Cache-only revocation requests
+have explicit chain, certificate, and total-DER limits. Static CRL PEM uses the
+protected immutable-input ceiling plus explicit source, decoded-list, per-item,
+and revoked-entry limits.
 
 Control messages are strict length-prefixed JSON with bounded depth, size,
 in-flight work, arrays, strings, resources, and receipts. Control, data, and
@@ -303,7 +320,9 @@ provide authority:
   H stop startup instead of running in R or N.
 - `Secrets` and `TLS` file or environment sources are resolved by bootstrap. R
   receives only their bounded literal values. This includes enabled static CRL
-  files. CRL CLI paths are not copied to R.
+  files. CRL CLI paths are not copied to R. The only system revocation setting
+  copied to R is the closed `off` or `cache-only` mode; host selectors remain in
+  N.
 
 Normal CLI config, protected-config, storage, snapshot, logging, and admin
 overrides still apply. In the full production Linux layout, omitted paths

@@ -17,6 +17,7 @@ import (
 
 	"github.com/asciimoth/almagest/bin/almagestd/args"
 	"github.com/asciimoth/almagest/bin/api"
+	"github.com/asciimoth/almagest/bin/internal/tlsplatform"
 	"github.com/asciimoth/gonnect/tlspolicy"
 )
 
@@ -377,6 +378,24 @@ func TestProtectedTLSCRLCLIEnablementAndDuplicates(t *testing.T) {
 	}
 	if err := config.MergeTLSCRLArguments(args.Args{TLSCRLFiles: []string{"cli=" + absolute}}); err == nil {
 		t.Fatal("duplicate CLI/protected CRL name succeeded")
+	}
+}
+
+func TestProtectedTLSSystemIntegrationsRequireGateAndRejectOnline(t *testing.T) {
+	config, err := ParseConfig([]byte(`{}`), []byte(`{"TLS":{"CRLs":{"System":{"WindowsRevocation":"cache-only"}}}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := config.Protected.MergeTLSCRLArguments(args.Args{}); err == nil {
+		t.Fatal("disabled system integration succeeded")
+	}
+	config.Protected.TLS.CRLs.Enabled = true
+	request, err := tlsplatform.ConfiguredRequest(config.Protected.TLS.CRLs.Enabled, config.Protected.TLS.CRLs.System.WindowsRevocation)
+	if err != nil || !request.IncludeCRLs || !request.IncludeDistrust {
+		t.Fatalf("cache-only request = %#v, %v", request, err)
+	}
+	if _, err := tlsplatform.ConfiguredRequest(true, "online"); err == nil {
+		t.Fatal("online Windows revocation succeeded")
 	}
 }
 

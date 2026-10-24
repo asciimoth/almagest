@@ -65,6 +65,29 @@ func TestResolveProtectedCRLGateAndDuplicate(t *testing.T) {
 	}
 }
 
+func TestResolveProtectedCRLSystemPolicyCrossesWithoutHostSelector(t *testing.T) {
+	loader := &memoryLoader{}
+	resolved, err := ResolveProtected([]byte(`{"TLS":{"CRLs":{"Enabled":true,"System":{"WindowsRevocation":"cache-only"}}}}`), loader,
+		func(string) (string, bool) { return "", false })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved.Runtime.CRLs == nil || resolved.Runtime.CRLs.System.WindowsRevocation != "cache-only" {
+		t.Fatalf("runtime CRL system = %#v", resolved.Runtime.CRLs)
+	}
+	document, err := resolved.Runtime.RuntimeDocument()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(document, []byte(`"WindowsRevocation":"cache-only"`)) || bytes.Contains(document, []byte("Disallowed")) || bytes.Contains(document, []byte("Registry")) {
+		t.Fatalf("runtime system document = %s", document)
+	}
+	if _, err := ResolveProtected([]byte(`{"TLS":{"CRLs":{"System":{"WindowsRevocation":"cache-only"}}}}`), loader,
+		func(string) (string, bool) { return "", false }); err == nil {
+		t.Fatal("disabled system integration succeeded")
+	}
+}
+
 func (l *memoryLoader) ReadTrusted(path string, limit int64) ([]byte, error) {
 	l.trustedReads = append(l.trustedReads, path)
 	return memoryRead(l.trusted[path], limit)

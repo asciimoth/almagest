@@ -257,6 +257,12 @@ func (b *Broker) Handle(ctx context.Context, op protocol.Operation, body json.Ra
 			return nil, err
 		}
 		return b.TLSPlatformRefresh(ctx, req)
+	case protocol.OperationTLSRevocationCheck:
+		var req protocol.TLSRevocationCheckRequest
+		if err := transport.Decode(body, &req); err != nil {
+			return nil, err
+		}
+		return b.TLSRevocationCheck(ctx, req)
 	case protocol.OperationRuntimeReady:
 		var req protocol.ReadRequest
 		if err := transport.Decode(body, &req); err != nil {

@@ -3866,6 +3866,12 @@ function renderTLSRevocationSection(): HTMLLIElement {
       list.append(item);
     }
   }
+  for (const provider of status?.system ?? []) {
+    const item = document.createElement("li");
+    item.className = "kv-entry";
+    item.append(textElement("strong", provider.source), textElement("em", `${provider.state} · ${provider.item_count ?? 0} findings`));
+    list.append(item);
+  }
   section.append(list);
   return section;
 }

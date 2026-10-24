@@ -326,6 +326,22 @@
           "maxProperties": 256,
           "propertyNames": {"minLength": 1},
           "additionalProperties": {"$ref": "#/$defs/protectedTLSCRLSource"}
+        },
+        "System": {
+          "$ref": "#/$defs/protectedTLSCRLSystem"
+        }
+      },
+      "additionalProperties": false
+    },
+    "protectedTLSCRLSystem": {
+      "type": "object",
+      "description": "Fixed operating-system revocation integrations. All modes remain behind TLS.CRLs.Enabled.",
+      "properties": {
+        "WindowsRevocation": {
+          "type": "string",
+          "enum": ["off", "cache-only", "online"],
+          "default": "off",
+          "description": "Use no Windows revocation provider, use Crypt32 cached data only, or request the reserved online mode. Online mode is not implemented and is rejected."
         }
       },
       "additionalProperties": false

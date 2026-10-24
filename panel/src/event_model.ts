@@ -402,7 +402,10 @@ function isTLSCertEntry(input: unknown): input is TLSCertEntry {
     && (input.certcat_matches === undefined
       || (Array.isArray(input.certcat_matches) && input.certcat_matches.every(isTLSCertcatMatch)))
     && (input.revocation_matches === undefined
-      || (Array.isArray(input.revocation_matches) && input.revocation_matches.every(isTLSRevocationMatch)));
+      || (Array.isArray(input.revocation_matches) && input.revocation_matches.every(isTLSRevocationMatch)))
+    && (input.distrust_matches === undefined
+      || (Array.isArray(input.distrust_matches) && input.distrust_matches.every((match) =>
+        isRecord(match) && isString(match.source) && isString(match.kind))));
 }
 
 function isTLSRevocationMatch(input: unknown): boolean {
@@ -413,6 +416,10 @@ function isTLSRevocationMatch(input: unknown): boolean {
 function isTLSRevocationStatus(input: unknown): input is TLSRevocationStatus {
   return isRecord(input) && typeof input.enabled === "boolean"
     && isOptionalString(input.last_refresh_error)
+    && (input.system === undefined || (Array.isArray(input.system) && input.system.every((status) =>
+      isRecord(status) && isString(status.source) && isString(status.state)
+      && (status.observed_at === undefined || typeof status.observed_at === "number")
+      && (status.item_count === undefined || typeof status.item_count === "number"))))
     && (input.sources === undefined || (Array.isArray(input.sources) && input.sources.every((source) =>
       isRecord(source) && isString(source.name) && isString(source.source) && isString(source.status)
       && isOptionalString(source.issuer) && isOptionalString(source.number)

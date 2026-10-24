@@ -9,6 +9,18 @@ export type TLSRevocationMatch = {
   reason_code: number;
 };
 
+export type TLSDistrustMatch = {
+  source: string;
+  kind: string;
+};
+
+export type TLSPlatformProviderStatus = {
+  source: string;
+  state: "disabled" | "unsupported" | "unavailable" | "active" | (string & {});
+  observed_at?: number;
+  item_count?: number;
+};
+
 export type TLSCRLSourceEntry = {
   name: string;
   source: TLSSource;
@@ -25,6 +37,7 @@ export type TLSRevocationStatus = {
   enabled: boolean;
   sources?: TLSCRLSourceEntry[];
   last_refresh_error?: string;
+  system?: TLSPlatformProviderStatus[];
 };
 
 export const TLS_BUILTIN_CA_NAME = "builtin-ca:almagest";
@@ -44,6 +57,7 @@ export type TLSCertEntry = {
   source?: TLSSource;
   certcat_matches?: TLSCertcatMatch[];
   revocation_matches?: TLSRevocationMatch[];
+  distrust_matches?: TLSDistrustMatch[];
 };
 
 export type TLSBuiltinCAOptions = {
@@ -254,6 +268,8 @@ export function formatTLSCertMeta(entry: TLSCertEntry): string {
   if (certcat) parts.push(certcat);
   const revoked = entry.revocation_matches?.length ?? 0;
   if (revoked) parts.push(localizedText("tls.meta.revoked", "warning: revoked ({count})", { count: revoked }));
+  const distrusted = entry.distrust_matches?.length ?? 0;
+  if (distrusted) parts.push(localizedText("tls.meta.distrusted", "warning: explicitly distrusted ({count})", { count: distrusted }));
   if (entry.read_only) parts.push(localizedText("tls.meta.read_only", "read-only"));
   if (entry.not_after) parts.push(localizedText("tls.meta.expires", "expires {time}", { time: entry.not_after }));
   return parts.join(" · ");

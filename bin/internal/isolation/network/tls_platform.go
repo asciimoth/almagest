@@ -26,6 +26,48 @@ func (b *Broker) SetTLSPlatformProvider(provider tlsplatform.Provider) error {
 	return nil
 }
 
+// SetTLSRevocationChecker installs the fixed cache-only checker before Serve.
+// A nil checker means that the protected policy did not enable this host effect.
+func (b *Broker) SetTLSRevocationChecker(checker tlsplatform.RevocationChecker) error {
+	if checker == nil {
+		return protocol.ErrInvalidContract
+	}
+	b.tlsMu.Lock()
+	defer b.tlsMu.Unlock()
+	if b.tlsRevocation != nil {
+		return protocol.ErrInvalidContract
+	}
+	b.tlsRevocation = checker
+	return nil
+}
+
+func (b *Broker) TLSRevocationCheck(ctx context.Context, req protocol.TLSRevocationCheckRequest) (protocol.TLSRevocationCheckResult, error) {
+	return read(ctx, b, req.Meta, protocol.OperationTLSRevocationCheck, func(ctx context.Context) (protocol.TLSRevocationCheckResult, error) {
+		request := tlsplatform.RevocationRequest{Chains: req.Chains}
+		if err := request.Validate(); err != nil {
+			return protocol.TLSRevocationCheckResult{}, protocol.ErrInvalidContract
+		}
+		b.tlsMu.Lock()
+		checker := b.tlsRevocation
+		b.tlsMu.Unlock()
+		if checker == nil {
+			return protocol.TLSRevocationCheckResult{}, protocol.ErrCapabilityUnavailable
+		}
+		result, err := checker.CheckRevocation(ctx, request)
+		if err != nil {
+			return protocol.TLSRevocationCheckResult{}, err
+		}
+		if err := result.Validate(request); err != nil {
+			return protocol.TLSRevocationCheckResult{}, protocol.ErrInvalidContract
+		}
+		states := make([]string, len(result.States))
+		for i, state := range result.States {
+			states[i] = string(state)
+		}
+		return protocol.TLSRevocationCheckResult{States: states}, nil
+	})
+}
+
 func (b *Broker) TLSPlatformRefresh(ctx context.Context, req protocol.TLSPlatformRefreshRequest) (protocol.TLSPlatformRefreshResult, error) {
 	return read(ctx, b, req.Meta, protocol.OperationTLSPlatformRefresh, func(ctx context.Context) (protocol.TLSPlatformRefreshResult, error) {
 		request := tlsplatform.Request{Source: tlsplatform.Source(req.Source), IncludeCRLs: req.IncludeCRLs,

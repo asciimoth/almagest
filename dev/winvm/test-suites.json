@@ -684,7 +684,7 @@
             "-tags=winintegration",
             "./integration",
             "-run",
-            "^TestWindowsBatch2(AdminAPITransports|CommandNodeLifecycle|DaemonStartupValidation|DNSClientRealDNS|FetchAddrLifecycle|LocalProxyMockIsolation|LocalProxyOutHTTP|NetworkFirewallCurl|SafeConfigStartup|SnapshotArchiveValidation|SnapshotsRestore|SnifferCurlHTTPTLS|SocksServerSecretCurl|StdinConfigStartup|TimeTriggerLifecycle|TLSAdminCLI|TLSNodesHTTPS|TLSProtectedBuiltinCA|VTunSpooferUDPRebind)$"
+            "^TestWindowsBatch2(AdminAPITransports|CommandNodeLifecycle|DaemonStartupValidation|DNSClientRealDNS|FetchAddrLifecycle|LocalProxyMockIsolation|LocalProxyOutHTTP|NetworkFirewallCurl|SafeConfigStartup|SnapshotArchiveValidation|SnapshotsRestore|SnifferCurlHTTPTLS|SocksServerSecretCurl|StdinConfigStartup|TimeTriggerLifecycle|TLSAdminCLI|TLSCacheOnlyRevocationAdapter|TLSNodesHTTPS|TLSProtectedBuiltinCA|VTunSpooferUDPRebind)$"
           ],
           "eventFile": "batch2-windows-fixture-e2e.jsonl",
           "requiredTests": [
@@ -704,6 +704,7 @@
             "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch2StdinConfigStartup",
             "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch2TimeTriggerLifecycle",
             "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch2TLSAdminCLI",
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch2TLSCacheOnlyRevocationAdapter",
             "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch2TLSNodesHTTPS",
             "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch2TLSProtectedBuiltinCA",
             "github.com/asciimoth/almagest/bin/integration::TestWindowsBatch2VTunSpooferUDPRebind"

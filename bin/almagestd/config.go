@@ -301,6 +301,13 @@ type ProtectedTLSConfig struct {
 type ProtectedTLSCRLsConfig struct {
 	Enabled bool                                   `json:"Enabled"`
 	Lists   map[string]ProtectedTLSCRLSourceConfig `json:"Lists"`
+	System  ProtectedTLSCRLSystemConfig            `json:"System"`
+}
+
+// ProtectedTLSCRLSystemConfig selects fixed operating-system integrations.
+// cache-only never permits network retrieval. online is reserved and rejected.
+type ProtectedTLSCRLSystemConfig struct {
+	WindowsRevocation string `json:"WindowsRevocation"`
 }
 
 // ProtectedTLSCRLSourceConfig selects exactly one inline or trusted file
@@ -449,8 +456,9 @@ func (p *ProtectedConfig) MergeTLSCRLArguments(arguments args.Args) error {
 		return err
 	}
 	effective := p.TLS.CRLs.Enabled || arguments.TLSCRLs || len(files) != 0
-	if !effective && len(p.TLS.CRLs.Lists) != 0 {
-		return fmt.Errorf("%w: protected TLS CRL lists require TLS.CRLs.Enabled or --tls-crls", storage.ErrTlsConfigInvalidValue)
+	mode := strings.TrimSpace(p.TLS.CRLs.System.WindowsRevocation)
+	if !effective && (len(p.TLS.CRLs.Lists) != 0 || (mode != "" && mode != "off")) {
+		return fmt.Errorf("%w: protected TLS CRL lists and system integrations require TLS.CRLs.Enabled or --tls-crls", storage.ErrTlsConfigInvalidValue)
 	}
 	if !effective {
 		return nil

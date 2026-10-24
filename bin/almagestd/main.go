@@ -143,7 +143,7 @@ type daemonIntegrations struct {
 	parseConfig     func([]byte, []byte) (*Config, error)
 	prepareConfig   func(args.Args) (platform.ConfigBootstrap, error)
 	enterStorage    func(string) error
-	loadOSAuthority func(context.Context) (immutableTLSData, error)
+	loadOSAuthority func(context.Context, tlsplatform.Request) (immutableTLSData, error)
 	prepareAdmin    func(*Config) (*AdminAPI, error)
 	buildCommands   func(context.Context, *LogFactory, *Config) (daemonservices.NodeCommandDispatcher, daemonservices.BackendCallbackDispatcher, func(), error)
 	buildNetwork    func(*Config, daemonservices.BackendCallbackDispatcher, *LogFactory, error, int64) (daemonservices.HostNetwork, error)
@@ -155,8 +155,18 @@ func directDaemonIntegrations() daemonIntegrations {
 		parseConfig:   ParseConfig,
 		prepareConfig: platform.PrepareConfig,
 		enterStorage:  os.Chdir,
-		loadOSAuthority: func(ctx context.Context) (immutableTLSData, error) {
-			return loadTLSPlatformData(ctx, tlsplatform.NewAuthorityProvider(tlsplatform.SystemAuthorityFetcher()))
+		loadOSAuthority: func(ctx context.Context, request tlsplatform.Request) (immutableTLSData, error) {
+			data, err := loadTLSPlatformDataWithRequest(ctx, tlsplatform.NewSystemProvider(request), request)
+			if err != nil {
+				return immutableTLSData{}, err
+			}
+			if request.IncludeCRLs {
+				data.PlatformRevocation = tlsplatform.SystemRevocationChecker()
+				if data.PlatformRevocation == nil {
+					return immutableTLSData{}, fmt.Errorf("windows cache-only revocation is unsupported on this host")
+				}
+			}
+			return data, nil
 		},
 		prepareAdmin: PrepareAdminAPI,
 		buildCommands: func(ctx context.Context, logf *LogFactory, conf *Config) (daemonservices.NodeCommandDispatcher, daemonservices.BackendCallbackDispatcher, func(), error) {
@@ -264,6 +274,10 @@ func runDaemon(
 	if err := conf.Protected.MergeTLSCRLArguments(arguments); err != nil {
 		return err
 	}
+	tlsPlatformRequest, err := tlsplatform.ConfiguredRequest(conf.Protected.TLS.CRLs.Enabled, conf.Protected.TLS.CRLs.System.WindowsRevocation)
+	if err != nil {
+		return fmt.Errorf("configure platform TLS integrations: %w", err)
+	}
 	if err := prepareSystemProgramPolicy(conf, fsPath); err != nil {
 		return fmt.Errorf("prepare system program sandbox policy: %w", err)
 	}
@@ -272,7 +286,7 @@ func runDaemon(
 	if err != nil {
 		return err
 	}
-	osTLSData, err := integrations.loadOSAuthority(ctx)
+	osTLSData, err := integrations.loadOSAuthority(ctx, tlsPlatformRequest)
 	if err != nil {
 		return err
 	}
@@ -333,7 +347,9 @@ func runDaemon(
 	admin.dns = kv
 	admin.secrets = kv
 	admin.tls = kv
-	admin.tlsOSDataLoader = integrations.loadOSAuthority
+	admin.tlsOSDataLoader = func(ctx context.Context) (immutableTLSData, error) {
+		return integrations.loadOSAuthority(ctx, tlsPlatformRequest)
+	}
 	admin.experimentalNodeTypes = make(map[string]bool)
 	admin.deprecatedNodeTypes = map[string]bool{
 		"almagest/AmnesiaCtrl": true,
@@ -433,7 +449,9 @@ func runDaemon(
 		daemonLogger,
 		nil,
 	)
-	admin.snapshots.tlsLoader = integrations.loadOSAuthority
+	admin.snapshots.tlsLoader = func(ctx context.Context) (immutableTLSData, error) {
+		return integrations.loadOSAuthority(ctx, tlsPlatformRequest)
+	}
 	admin.snapshots.examples = admin.examples
 	admin.snapshots.restore.setEpochReleaser(hostNetwork)
 	admin.snapshots.requireRecovery = admin.mutations.requireRecovery

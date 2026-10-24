@@ -1,0 +1,2 @@
+Run this case with both --isolation=auto and --isolation=off. Platform distrust
+must be collected by N in isolated mode and directly only when isolation is off.

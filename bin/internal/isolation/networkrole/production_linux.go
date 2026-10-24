@@ -91,6 +91,7 @@ type LinuxProduction struct {
 	LocalesDirectory               string
 	ExamplesDirectory              string
 	TLSPlatform                    tlsplatform.Provider
+	TLSPlatformFactory             func(tlsplatform.Request) tlsplatform.Provider
 }
 
 // RunLinuxProduction prepares protected authority, opens every trusted object,
@@ -114,7 +115,7 @@ func RunLinuxProduction(parent context.Context, production LinuxProduction, read
 		return err
 	}
 	production.Limits = limits
-	if production.TLSPlatform == nil {
+	if production.TLSPlatform == nil && production.TLSPlatformFactory == nil {
 		return supervision.ErrInvalidComposition
 	}
 	if production.Profile == linuxprofile.ProfileUser &&
@@ -140,8 +141,27 @@ func RunLinuxProduction(parent context.Context, production LinuxProduction, read
 	if err != nil {
 		return err
 	}
-	tlsRequest := tlsplatform.DefaultRequest()
-	tlsSnapshot, err := production.TLSPlatform.Snapshot(parent, tlsRequest)
+	crlsEnabled, windowsRevocation := false, ""
+	if resolved.Runtime.CRLs != nil {
+		crlsEnabled = resolved.Runtime.CRLs.Enabled
+		windowsRevocation = resolved.Runtime.CRLs.System.WindowsRevocation
+	}
+	tlsRequest, err := tlsplatform.ConfiguredRequest(crlsEnabled, windowsRevocation)
+	if err != nil {
+		return fmt.Errorf("configure platform TLS integrations: %w", err)
+	}
+	tlsProvider := production.TLSPlatform
+	if production.TLSPlatformFactory != nil {
+		tlsProvider = production.TLSPlatformFactory(tlsRequest)
+	}
+	if tlsProvider == nil {
+		return supervision.ErrInvalidComposition
+	}
+	tlsRevocation := tlsplatform.SystemRevocationChecker()
+	if tlsRequest.IncludeCRLs && tlsRevocation == nil {
+		return fmt.Errorf("configure platform TLS integrations: windows cache-only revocation is unsupported on this host")
+	}
+	tlsSnapshot, err := tlsProvider.Snapshot(parent, tlsRequest)
 	if err != nil {
 		return fmt.Errorf("collect platform TLS snapshot: %w", err)
 	}
@@ -526,7 +546,7 @@ func RunLinuxProduction(parent context.Context, production LinuxProduction, read
 			LogCacheError: production.Arguments.LogCacheError, LogCacheFatal: production.Arguments.LogCacheFatal,
 		}, Isolation: isolationStatus}, RuntimeStorage: &bootstrap.RuntimeStorageInput{Regular: inputs.Regular, Protected: resolved.Runtime, TLSPlatform: tlsSnapshotData, Snapshot: snapshot},
 		Policy: launchPolicy, Native: native, State: brokerDirectory, Limits: production.Limits, Locales: locales, Examples: examples,
-		Journal: journal, Admin: admin, Output: production.Output, Callbacks: callbackBindings, TLSPlatform: production.TLSPlatform,
+		Journal: journal, Admin: admin, Output: production.Output, Callbacks: callbackBindings, TLSPlatform: tlsProvider, TLSRevocation: tlsRevocation,
 	}
 	if sandboxConfig != nil {
 		launch.Sandbox = &LinuxSandbox{Policy: slices.Clone(resolved.Authority.Sandbox), Unavailable: sandboxUnavailable}

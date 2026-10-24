@@ -19,15 +19,19 @@ func TestIsolatedRuntimeLoadsBrokerPlatformTLSAuthorities(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	loader := newIsolatedTLSPlatformLoader(snapshot, nil)
-	data, err := loader(context.Background())
+	encoded, err := tlsplatform.Marshal(snapshot, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	loader := newIsolatedTLSPlatformLoader(encoded, nil)
+	data, err := loader(context.Background(), request)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(data.Certs) == 0 {
 		t.Fatal("isolated runtime public TLS authority catalog is empty")
 	}
-	if _, err := loader(context.Background()); err == nil {
+	if _, err := loader(context.Background(), request); err == nil {
 		t.Fatal("isolated refresh fell back after the broker became unavailable")
 	}
 }
@@ -42,7 +46,11 @@ func TestDirectAndIsolatedTLSPlatformAdaptersAreEquivalent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	isolated, err := newIsolatedTLSPlatformLoader(snapshot, nil)(context.Background())
+	encoded, err := tlsplatform.Marshal(snapshot, tlsplatform.DefaultRequest())
+	if err != nil {
+		t.Fatal(err)
+	}
+	isolated, err := newIsolatedTLSPlatformLoader(encoded, nil)(context.Background(), tlsplatform.DefaultRequest())
 	if err != nil {
 		t.Fatal(err)
 	}

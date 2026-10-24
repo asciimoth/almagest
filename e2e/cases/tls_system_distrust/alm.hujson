@@ -1,0 +1,3 @@
+{
+	"Logs": {"Cache": {"Debug": 256, "Info": 128, "Warn": 128, "Error": 128, "Fatal": 32}},
+}

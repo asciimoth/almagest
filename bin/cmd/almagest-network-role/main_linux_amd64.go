@@ -220,7 +220,7 @@ func linuxUserProduction(arguments daemonargs.Args, bin string) (networkrole.Lin
 			CombinedStdin: arguments.StdInConfig, DefaultRegular: []byte("{}"), DefaultProtected: []byte("{}")},
 		Identities: networkrole.LinuxProductionIdentities{Runtime: identity, Writer: identity, Helper: identity},
 		Stdin:      os.Stdin, LookupEnv: os.LookupEnv, Output: os.Stderr,
-		TLSPlatform: tlsplatform.NewAuthorityProvider(tlsplatform.SystemAuthorityFetcher()),
+		TLSPlatformFactory: tlsplatform.NewSystemProvider,
 		Paths: networkrole.LinuxProductionPaths{
 			Launcher: filepath.Join(bin, "almagest-linux-role-launcher"), RuntimeExecutable: filepath.Join(bin, "almagestd"),
 			WriterExecutable: filepath.Join(bin, "almagest-config-writer-role"), HelperExecutable: filepath.Join(bin, "almagest-command-role"),
@@ -497,7 +497,7 @@ func linuxProduction(arguments daemonargs.Args, profile linuxprofile.Profile, ex
 			State: filepath.Join(developmentRoot, "isolation-migration.json")}
 	}
 	return networkrole.LinuxProduction{Profile: linuxprofile.ProfileFull, Arguments: arguments, Sources: sources, Identities: identities, Stdin: os.Stdin,
-		LookupEnv: os.LookupEnv, Output: os.Stderr, TLSPlatform: tlsplatform.NewAuthorityProvider(tlsplatform.SystemAuthorityFetcher()), Paths: networkrole.LinuxProductionPaths{
+		LookupEnv: os.LookupEnv, Output: os.Stderr, TLSPlatformFactory: tlsplatform.NewSystemProvider, Paths: networkrole.LinuxProductionPaths{
 			Launcher: filepath.Join(bin, "almagest-linux-role-launcher"), RuntimeExecutable: filepath.Join(bin, "almagestd"),
 			WriterExecutable: filepath.Join(bin, "almagest-config-writer-role"), HelperExecutable: filepath.Join(bin, "almagest-command-role"),
 			RuntimeDirectory: runtimePath, WriterDirectory: filepath.Dir(configPath), HelperDirectory: helperPath, BrokerDirectory: brokerPath,

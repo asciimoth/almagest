@@ -35,6 +35,7 @@ import (
 	"time"
 
 	"github.com/asciimoth/almagest/bin/api"
+	"github.com/asciimoth/almagest/bin/internal/tlsplatform"
 	"golang.org/x/sys/windows"
 )
 
@@ -575,7 +576,7 @@ func TestWindowsBatch2TLSAdminCLI(t *testing.T) {
 		t.Fatal(err)
 	}
 	protectedTLS := batch2TLSProtected("protected-ca", protectedCert, "protected-policy")
-	protectedTLS["CRLs"] = map[string]any{"Enabled": true}
+	protectedTLS["CRLs"] = map[string]any{"Enabled": true, "System": map[string]any{"WindowsRevocation": "cache-only"}}
 	protected := batch2Protected(pipe, map[string]any{"TLS": protectedTLS})
 	d := newWindowsDaemon(t, root, pipe, `{"Config":{"Save":{"IdleMilliseconds":10}}}`, protected)
 	crlPath := filepath.Join(root, "windows-static.crl.pem")
@@ -603,6 +604,9 @@ func TestWindowsBatch2TLSAdminCLI(t *testing.T) {
 		!revokedProtected || !bytes.Contains(d.cliJSON("tls", "crls"), []byte("windows-static")) {
 		t.Fatalf("Windows static CRL status is incomplete: %#v", snapshot.Revocations)
 	}
+	if len(snapshot.Revocations.System) != 2 || snapshot.Revocations.System[0].State != "active" || snapshot.Revocations.System[1].State != "active" {
+		t.Fatalf("Windows system revocation providers are incomplete: %#v", snapshot.Revocations.System)
+	}
 	certPath := filepath.Join(root, "manual.pem")
 	writePrivateWindowsFile(t, certPath, manualCert)
 	d.cliJSON("tls", "set-cert", "--name", "manual-ca", "--pem-file", certPath)
@@ -628,6 +632,28 @@ func TestWindowsBatch2TLSAdminCLI(t *testing.T) {
 	after := decodeCLI[api.TLSBuiltinCAInfo](t, d.cliJSON("tls", "builtin-ca"))
 	if after.Cert.Fingerprint != changed.Cert.Fingerprint || !bytes.Contains(d.cliJSON("tls", "list"), []byte("renamed-ca")) {
 		t.Fatal("TLS admin state did not persist across restart")
+	}
+}
+
+func TestWindowsBatch2TLSCacheOnlyRevocationAdapter(t *testing.T) {
+	caPEM, leafPEM, _ := makeBatch2Certificate(t, "Batch 2 Cache-only Root", []string{"cache-only.test"}, false, "ecdsa")
+	request := tlsplatform.RevocationRequest{Chains: [][][]byte{{parseBatch2Certificate(t, leafPEM).Raw, parseBatch2Certificate(t, caPEM).Raw}}}
+	checker := tlsplatform.SystemRevocationChecker()
+	started := time.Now()
+	result, err := checker.CheckRevocation(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if elapsed := time.Since(started); elapsed > 5*time.Second {
+		t.Fatalf("cache-only check exceeded bound: %s", elapsed)
+	}
+	if len(result.States) != 1 || (result.States[0] != tlsplatform.RevocationUnknown && result.States[0] != tlsplatform.RevocationOffline) {
+		t.Fatalf("certificate without cached revocation status = %#v", result)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := checker.CheckRevocation(ctx, request); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled cache-only check error = %v", err)
 	}
 }
 
@@ -674,25 +700,29 @@ func TestWindowsBatch2TLSOSReloadPrivileged(t *testing.T) {
 		t.Fatal("TLS OS reload must run in the serialized privileged WinVM suite")
 	}
 	root := newPrivateWindowsTestDir(t)
-	installRoot := func(name string) func() {
+	installStore := func(name, store string, certPEM []byte) ([]byte, func()) {
 		t.Helper()
-		certPEM, _, _ := makeBatch2Certificate(t, name, nil, true, "rsa")
+		if certPEM == nil {
+			certPEM, _, _ = makeBatch2Certificate(t, name, nil, true, "rsa")
+		}
 		certPath := filepath.Join(root, name+".pem")
 		writePrivateWindowsFile(t, certPath, certPEM)
-		install := exec.Command("certutil.exe", "-f", "-addstore", "Root", certPath)
+		install := exec.Command("certutil.exe", "-f", "-addstore", store, certPath)
 		if output, err := install.CombinedOutput(); err != nil {
 			t.Fatalf("install Windows test root %q: %v\n%s", name, err, output)
 		}
 		serial := strings.ToUpper(parseBatch2Certificate(t, certPEM).SerialNumber.Text(16))
-		return func() {
-			_, _ = exec.Command("certutil.exe", "-f", "-delstore", "Root", serial).CombinedOutput()
+		return certPEM, func() {
+			_, _ = exec.Command("certutil.exe", "-f", "-delstore", store, serial).CombinedOutput()
 		}
 	}
 
-	removeInitial := installRoot("Batch 2 OS Reload Initial Root")
+	initialPEM, removeInitial := installStore("Batch 2 OS Reload Initial Root", "Root", nil)
 	defer removeInitial()
+	_, removeDistrust := installStore("Batch 2 OS Reload Initial Root", "Disallowed", initialPEM)
+	defer removeDistrust()
 	pipe := batch2Pipe("os-reload")
-	d := newWindowsDaemon(t, root, pipe, `{}`, batch2Protected(pipe, nil))
+	d := newWindowsDaemon(t, root, pipe, `{}`, batch2Protected(pipe, map[string]any{"TLS": map[string]any{"CRLs": map[string]any{"Enabled": true}}}))
 	d.start()
 	defer d.stop()
 	var hello api.HelloResponse
@@ -700,12 +730,56 @@ func TestWindowsBatch2TLSOSReloadPrivileged(t *testing.T) {
 	if hello.ExecutionMode != "direct" || hello.Isolation != nil {
 		t.Fatalf("Windows TLS OS reload did not use direct mode: %#v", hello)
 	}
-	if snapshot := d.cliJSON("tls", "list"); !bytes.Contains(snapshot, []byte("Batch 2 OS Reload Initial Root")) {
-		t.Fatalf("Windows certificate store root is absent at startup: %s", snapshot)
+	var initial api.TLSSnapshot
+	decodeJSON(t, d.cliJSON("tls", "list"), &initial)
+	initialFingerprint := parseBatch2Certificate(t, initialPEM)
+	foundDistrusted := false
+	blockedName := ""
+	for _, cert := range initial.Certs {
+		if cert.SerialNumber == initialFingerprint.SerialNumber.Text(16) && len(cert.DistrustMatches) != 0 {
+			foundDistrusted = true
+			blockedName = cert.Name
+		}
+	}
+	if !foundDistrusted {
+		t.Fatalf("Windows Disallowed certificate was not reported: %#v", initial.Revocations.System)
+	}
+	for _, policy := range initial.Policies {
+		if policy.Name != "default" {
+			continue
+		}
+		for _, anchor := range policy.Spec.TrustAnchors {
+			if anchor.Cert == blockedName {
+				t.Fatalf("Windows Disallowed root remained in default policy: %#v", policy.Spec)
+			}
+		}
 	}
 
+	removeDistrust()
+	var unblocked api.TLSSnapshot
+	decodeJSON(t, d.cliJSON("tls", "reload-os-certs"), &unblocked)
+	foundUnblocked := false
+	for _, cert := range unblocked.Certs {
+		if cert.Name == blockedName && len(cert.DistrustMatches) == 0 {
+			foundUnblocked = true
+		}
+	}
+	if !foundUnblocked {
+		t.Fatalf("removed Windows Disallowed entry remained after reload: %#v", unblocked.Certs)
+	}
+	foundDefaultAnchor := false
+	for _, policy := range unblocked.Policies {
+		if policy.Name == "default" {
+			for _, anchor := range policy.Spec.TrustAnchors {
+				foundDefaultAnchor = foundDefaultAnchor || anchor.Cert == blockedName
+			}
+		}
+	}
+	if !foundDefaultAnchor {
+		t.Fatalf("unblocked Windows root was not restored to default policy: %#v", unblocked.Policies)
+	}
 	removeInitial()
-	removeReplacement := installRoot("Batch 2 OS Reload Replacement Root")
+	_, removeReplacement := installStore("Batch 2 OS Reload Replacement Root", "Root", nil)
 	defer removeReplacement()
 	reloaded := d.cliJSON("tls", "reload-os-certs")
 	if bytes.Contains(reloaded, []byte("Batch 2 OS Reload Initial Root")) {

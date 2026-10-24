@@ -58,6 +58,7 @@ type Broker struct {
 	mu               sync.Mutex
 	tlsMu            sync.Mutex
 	tlsProvider      tlsplatform.Provider
+	tlsRevocation    tlsplatform.RevocationChecker
 	tlsTransfer      *tlsPlatformTransfer
 	tlsNext          uint64
 	workers          sync.WaitGroup

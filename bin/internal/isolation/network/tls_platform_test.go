@@ -2,9 +2,16 @@ package network
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/json"
 	"errors"
+	"math/big"
 	"testing"
+	"time"
 
 	"github.com/asciimoth/almagest/bin/internal/isolation/protocol"
 	"github.com/asciimoth/almagest/bin/internal/tlsplatform"
@@ -85,4 +92,53 @@ func TestTLSPlatformDispatchRejectsHostSelectors(t *testing.T) {
 	if _, err := b.Handle(context.Background(), protocol.OperationTLSPlatformRefresh, body); !errors.Is(err, protocol.ErrInvalidContract) {
 		t.Fatalf("path-bearing request error = %v", err)
 	}
+}
+
+func TestTLSRevocationCheckIsClosedAndBrokerOwned(t *testing.T) {
+	b, _ := testBroker(t)
+	der := testTLSCertificateDER(t)
+	request := tlsplatform.RevocationRequest{Chains: [][][]byte{{der, der}}}
+	query := protocol.TLSRevocationCheckRequest{Meta: meta(b, ""), Chains: request.Chains}
+	if _, err := b.TLSRevocationCheck(context.Background(), query); !errors.Is(err, protocol.ErrCapabilityUnavailable) {
+		t.Fatalf("disabled checker error = %v", err)
+	}
+	checker := tlsplatform.RevocationCheckerFunc(func(_ context.Context, got tlsplatform.RevocationRequest) (tlsplatform.RevocationResult, error) {
+		if len(got.Chains) != 1 || len(got.Chains[0]) != 2 {
+			t.Fatalf("request = %#v", got)
+		}
+		return tlsplatform.RevocationResult{States: []tlsplatform.RevocationState{tlsplatform.RevocationRevoked}}, nil
+	})
+	if err := b.SetTLSRevocationChecker(checker); err != nil {
+		t.Fatal(err)
+	}
+	result, err := b.TLSRevocationCheck(context.Background(), query)
+	if err != nil || len(result.States) != 1 || result.States[0] != string(tlsplatform.RevocationRevoked) {
+		t.Fatalf("result = %#v, %v", result, err)
+	}
+	body, err := json.Marshal(struct {
+		protocol.TLSRevocationCheckRequest
+		URL string
+	}{TLSRevocationCheckRequest: query, URL: "http://attacker.invalid/list.crl"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.Handle(context.Background(), protocol.OperationTLSRevocationCheck, body); !errors.Is(err, protocol.ErrInvalidContract) {
+		t.Fatalf("request with URL error = %v", err)
+	}
+}
+
+func testTLSCertificateDER(t *testing.T) []byte {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	template := &x509.Certificate{SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "test"},
+		NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(time.Hour), IsCA: true,
+		BasicConstraintsValid: true, KeyUsage: x509.KeyUsageCertSign}
+	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return der
 }

@@ -15,6 +15,8 @@ func requestType(op protocol.Operation) (any, bool) {
 		return new(protocol.ReadRequest), false
 	case protocol.OperationTLSPlatformRefresh:
 		return new(protocol.TLSPlatformRefreshRequest), false
+	case protocol.OperationTLSRevocationCheck:
+		return new(protocol.TLSRevocationCheckRequest), false
 	case protocol.OperationListInterfaces:
 		return new(protocol.InterfaceRequest), false
 	case protocol.OperationCheckTun:

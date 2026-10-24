@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/pem"
@@ -16,6 +17,7 @@ import (
 	"time"
 
 	"github.com/asciimoth/almagest/bin/api"
+	"github.com/asciimoth/almagest/bin/internal/tlsplatform"
 	"github.com/asciimoth/almagest/lib/storage"
 	"github.com/asciimoth/gonnect/tlspolicy"
 )
@@ -367,30 +369,51 @@ func (r immutableTLSRevocations) matchCatalogCertificate(cert *x509.Certificate,
 
 type tlsRevocationVerifier struct {
 	revocations immutableTLSRevocations
+	platform    tlsplatform.RevocationChecker
 	now         func() time.Time
 }
 
 func (v tlsRevocationVerifier) VerifyServer(verification tlspolicy.ServerVerification) error {
-	if !v.revocations.Enabled {
+	if !v.revocations.Enabled && v.platform == nil {
 		return nil
 	}
 	now := time.Now()
 	if v.now != nil {
 		now = v.now()
 	}
+	platformStates := make([]tlsplatform.RevocationState, len(verification.AuthorizedChains))
+	if v.platform != nil {
+		request, err := tlsplatform.RevocationRequestFromChains(verification.AuthorizedChains)
+		if err == nil {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			result, checkErr := v.platform.CheckRevocation(ctx, request)
+			cancel()
+			if checkErr == nil && result.Validate(request) == nil {
+				copy(platformStates, result.States)
+			}
+		}
+	}
 	var unavailable bool
-	for _, chain := range verification.AuthorizedChains {
+	for chainIndex, chain := range verification.AuthorizedChains {
 		chainRevoked, chainUnavailable := false, false
-		for i := 0; i+1 < len(chain); i++ {
-			match, applicable, err := v.revocations.matchCertificate(chain[i], chain[i+1], now)
-			if err != nil {
-				chainUnavailable = true
-				break
+		if v.revocations.Enabled {
+			for i := 0; i+1 < len(chain); i++ {
+				match, applicable, err := v.revocations.matchCertificate(chain[i], chain[i+1], now)
+				if err != nil {
+					chainUnavailable = true
+					break
+				}
+				if applicable && match != nil {
+					chainRevoked = true
+					break
+				}
 			}
-			if applicable && match != nil {
-				chainRevoked = true
-				break
-			}
+		}
+		// Cache-only platform failures, offline state, and unknown status use a
+		// documented soft-fail policy. Only an explicit revoked result rejects
+		// a chain. Static configured CRLs retain their fail-closed expiry rule.
+		if chainIndex < len(platformStates) && platformStates[chainIndex] == tlsplatform.RevocationRevoked {
+			chainRevoked = true
 		}
 		if !chainRevoked && !chainUnavailable {
 			return nil

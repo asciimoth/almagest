@@ -529,6 +529,9 @@
   "tls.validation.policy_object": "Lorem · Policy spec must be a JSON object.",
   "tls.validation.scope_required": "Lorem · Scope needs any server, DNS names, or IP prefixes.",
   "tls.value.aria_label": "Lorem · TLS config",
+  "tls.distrust.match": "Lorem · {source} explicitly distrusts this certificate ({kind}).",
+  "tls.distrust.title": "Lorem · System distrust warnings",
+  "tls.meta.distrusted": "Lorem · warning: explicitly distrusted ({count})",
   "tls.warnings.empty": "Lorem · No warnings.",
   "tls.warnings.title": "Lorem · Warnings"
 }

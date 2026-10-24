@@ -532,6 +532,9 @@
   "tls.validation.policy_object": "Policy spec must be a JSON object.",
   "tls.validation.scope_required": "Scope needs any server, DNS names, or IP prefixes.",
   "tls.value.aria_label": "TLS config",
+  "tls.distrust.match": "{source} explicitly distrusts this certificate ({kind}).",
+  "tls.distrust.title": "System distrust warnings",
+  "tls.meta.distrusted": "warning: explicitly distrusted ({count})",
   "tls.warnings.empty": "No warnings.",
   "tls.warnings.title": "Warnings"
 }

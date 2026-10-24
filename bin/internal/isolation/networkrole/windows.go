@@ -51,6 +51,7 @@ type WindowsLaunch struct {
 	Journal        *supervision.Journal
 	Admin          []admingate.EndpointConfig
 	TLSPlatform    tlsplatform.Provider
+	TLSRevocation  tlsplatform.RevocationChecker
 }
 
 // RunWindows launches restricted R and optional C, owns their private pipes,
@@ -154,6 +155,11 @@ func RunWindows(parent context.Context, launch WindowsLaunch, ready func()) (res
 	}
 	if err := broker.SetTLSPlatformProvider(launch.TLSPlatform); err != nil {
 		return err
+	}
+	if launch.TLSRevocation != nil {
+		if err := broker.SetTLSRevocationChecker(launch.TLSRevocation); err != nil {
+			return err
+		}
 	}
 	service, err := network.NewService(broker, transport.Lanes{Control: streams[roleentry.LaneBootstrap], Data: streams[roleentry.LaneData], Diagnostic: streams[roleentry.LaneDiagnostics]},
 		supervision.NativeReconciler{}, time.Second, supervision.Options{StartupTimeout: 15 * time.Second, ShutdownTimeout: 5 * time.Second, RecoveryTimeout: 30 * time.Second}, nil, resources.supervised...)

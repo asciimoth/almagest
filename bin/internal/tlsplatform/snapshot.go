@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"slices"
 	"unicode/utf8"
 
 	"github.com/asciimoth/almagest/bin/internal/isolation/protocol"
@@ -35,8 +36,7 @@ const (
 func (s Source) Valid() bool { return s == SourceNone || s == SourceOS }
 
 // Request selects only broker-owned platform TLS inputs and sets result
-// ceilings. CRL and distrust collection stay disabled until their providers
-// are implemented behind the protected CRL enable gate.
+// ceilings. CRL and distrust collection stay behind the protected CRL gate.
 type Request struct {
 	Source          Source `json:"source"`
 	IncludeCRLs     bool   `json:"include_crls"`
@@ -49,8 +49,29 @@ func DefaultRequest() Request {
 	return Request{Source: SourceOS, MaxBytes: MaxSnapshotBytes, MaxItems: MaxItems}
 }
 
+// ConfiguredRequest applies only the common protected CRL gate and the closed
+// Windows revocation mode. Online retrieval is not implemented because it
+// needs separate route and host-effect authority.
+func ConfiguredRequest(enabled bool, windowsRevocation string) (Request, error) {
+	request := DefaultRequest()
+	switch windowsRevocation {
+	case "", "off":
+	case "cache-only":
+		if !enabled {
+			return Request{}, fmt.Errorf("%w: Windows revocation requires enabled CRL support", protocol.ErrInvalidContract)
+		}
+		request.IncludeCRLs = true
+	case "online":
+		return Request{}, fmt.Errorf("%w: online Windows revocation is not implemented", protocol.ErrCapabilityUnavailable)
+	default:
+		return Request{}, fmt.Errorf("%w: invalid Windows revocation mode", protocol.ErrInvalidContract)
+	}
+	request.IncludeDistrust = enabled
+	return request, nil
+}
+
 func (r Request) Validate() error {
-	if !r.Source.Valid() || r.Source != SourceOS || r.IncludeCRLs || r.IncludeDistrust ||
+	if !r.Source.Valid() || r.Source != SourceOS ||
 		r.MaxBytes == 0 || r.MaxBytes > MaxSnapshotBytes || r.MaxItems == 0 || r.MaxItems > MaxItems {
 		return fmt.Errorf("%w: invalid TLS platform request", protocol.ErrInvalidContract)
 	}
@@ -63,8 +84,9 @@ type AuthorityBlob struct {
 }
 
 type DistrustBlob struct {
-	SourceID string `json:"source_id"`
-	DER      []byte `json:"der"`
+	SourceID string       `json:"source_id"`
+	Kind     DistrustKind `json:"kind"`
+	Value    []byte       `json:"value"`
 }
 
 type CRLBlob struct {
@@ -72,23 +94,64 @@ type CRLBlob struct {
 	DER      []byte `json:"der"`
 }
 
+// DistrustKind is a closed selector type. Platform code can report an exact
+// certificate, SPKI digest, or issuer-and-serial assertion. It cannot ask R to
+// open a platform store or interpret a provider-specific object.
+type DistrustKind uint8
+
+const (
+	DistrustNone DistrustKind = iota
+	DistrustCertificateDER
+	DistrustCertificateSHA256
+	DistrustSPKISHA256
+	DistrustIssuerSerial
+)
+
+func (k DistrustKind) Valid() bool {
+	return k >= DistrustCertificateDER && k <= DistrustIssuerSerial
+}
+
+type ProviderState string
+
+const (
+	ProviderDisabled    ProviderState = "disabled"
+	ProviderUnsupported ProviderState = "unsupported"
+	ProviderUnavailable ProviderState = "unavailable"
+	ProviderActive      ProviderState = "active"
+)
+
+func (s ProviderState) Valid() bool {
+	return slices.Contains([]ProviderState{ProviderDisabled, ProviderUnsupported, ProviderUnavailable, ProviderActive}, s)
+}
+
+// ProviderStatus describes a fixed platform integration without exposing a
+// path, registry key, native error, or platform handle to R.
+type ProviderStatus struct {
+	Source     string        `json:"source"`
+	State      ProviderState `json:"state"`
+	ObservedAt int64         `json:"observed_at,omitempty"`
+	ItemCount  uint32        `json:"item_count,omitempty"`
+}
+
 // Snapshot contains literal platform data only. Provider-specific objects and
 // host selectors are deliberately not representable.
 type Snapshot struct {
-	Authorities []AuthorityBlob `json:"authorities,omitempty"`
-	Distrust    []DistrustBlob  `json:"distrust,omitempty"`
-	CRLs        []CRLBlob       `json:"crls,omitempty"`
+	Authorities []AuthorityBlob  `json:"authorities,omitempty"`
+	Distrust    []DistrustBlob   `json:"distrust,omitempty"`
+	CRLs        []CRLBlob        `json:"crls,omitempty"`
+	Providers   []ProviderStatus `json:"providers,omitempty"`
 }
 
 func (s Snapshot) Validate(request Request) error {
 	if err := request.Validate(); err != nil {
 		return err
 	}
-	if len(s.Authorities)+len(s.Distrust)+len(s.CRLs) > int(request.MaxItems) ||
+	if len(s.Authorities)+len(s.Distrust)+len(s.CRLs)+len(s.Providers) > int(request.MaxItems) ||
 		(!request.IncludeDistrust && len(s.Distrust) != 0) || (!request.IncludeCRLs && len(s.CRLs) != 0) {
 		return protocol.ErrLimitExceeded
 	}
 	seen := make(map[string]struct{}, len(s.Authorities)+len(s.Distrust)+len(s.CRLs))
+	providerSeen := make(map[string]struct{}, len(s.Providers))
 	total := 0
 	check := func(kind, id string, data []byte) error {
 		if id == "" || len(id) > MaxSourceIDBytes || !utf8.ValidString(id) || len(data) == 0 || len(data) > MaxItemBytes {
@@ -110,7 +173,10 @@ func (s Snapshot) Validate(request Request) error {
 		}
 	}
 	for _, value := range s.Distrust {
-		if err := check("distrust", value.SourceID, value.DER); err != nil {
+		if !value.Kind.Valid() {
+			return fmt.Errorf("%w: invalid TLS platform distrust kind", protocol.ErrInvalidContract)
+		}
+		if err := check("distrust", value.SourceID, value.Value); err != nil {
 			return err
 		}
 	}
@@ -118,6 +184,15 @@ func (s Snapshot) Validate(request Request) error {
 		if err := check("crl", value.SourceID, value.DER); err != nil {
 			return err
 		}
+	}
+	for _, value := range s.Providers {
+		if value.Source == "" || len(value.Source) > MaxSourceIDBytes || !utf8.ValidString(value.Source) || !value.State.Valid() || value.ObservedAt < 0 || value.ItemCount > MaxItems {
+			return fmt.Errorf("%w: invalid TLS platform provider status", protocol.ErrInvalidContract)
+		}
+		if _, duplicate := providerSeen[value.Source]; duplicate {
+			return fmt.Errorf("%w: duplicate TLS platform provider status", protocol.ErrInvalidContract)
+		}
+		providerSeen[value.Source] = struct{}{}
 	}
 	return nil
 }
@@ -224,6 +299,42 @@ type authorityProvider struct{ fetcher tlspolicy.AuthorityFetcher }
 // snapshot contract. It intentionally does not collect CRLs or distrust data.
 func NewAuthorityProvider(fetcher tlspolicy.AuthorityFetcher) Provider {
 	return authorityProvider{fetcher: fetcher}
+}
+
+type systemProvider struct {
+	authorities Provider
+	allowed     Request
+}
+
+// NewSystemProvider returns the platform provider used by direct mode and N.
+// The allowed request is fixed from protected launch authority. R cannot turn
+// on a provider later by changing fields in a refresh request.
+func NewSystemProvider(allowed Request) Provider {
+	return systemProvider{authorities: NewAuthorityProvider(SystemAuthorityFetcher()), allowed: allowed}
+}
+
+func (p systemProvider) Snapshot(ctx context.Context, request Request) (Snapshot, error) {
+	if request != p.allowed {
+		return Snapshot{}, fmt.Errorf("%w: TLS platform request exceeds launch authority", protocol.ErrInvalidContract)
+	}
+	result, err := p.authorities.Snapshot(ctx, DefaultRequest())
+	if err != nil {
+		return Snapshot{}, err
+	}
+	if !request.IncludeDistrust && !request.IncludeCRLs {
+		return result, nil
+	}
+	system, err := systemSecuritySnapshot(ctx, request)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	result.Distrust = system.Distrust
+	result.CRLs = system.CRLs
+	result.Providers = system.Providers
+	if err := result.Validate(request); err != nil {
+		return Snapshot{}, err
+	}
+	return result, nil
 }
 
 func (p authorityProvider) Snapshot(ctx context.Context, request Request) (Snapshot, error) {

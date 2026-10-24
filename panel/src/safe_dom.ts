@@ -419,6 +419,21 @@ export function createTLSCertPreview(entry: TLSCertEntry): HTMLElement {
     block.append(list);
     preview.append(block);
   }
+  if (entry.distrust_matches?.length) {
+    const block = document.createElement("section");
+    block.className = "tls-certcat-section";
+    block.append(textElement("h3", t("tls.distrust.title", "System distrust warnings")));
+    const list = document.createElement("ol");
+    list.className = "tls-certcat-list";
+    for (const match of entry.distrust_matches) {
+      list.append(textElement("li", t("tls.distrust.match", "{source} explicitly distrusts this certificate ({kind}).", {
+        source: match.source,
+        kind: match.kind,
+      })));
+    }
+    block.append(list);
+    preview.append(block);
+  }
   preview.append(createTLSFactList([
     [t("tls.field.subject", "Subject"), entry.subject],
     [t("tls.field.issuer", "Issuer"), entry.issuer],

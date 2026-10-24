@@ -83,6 +83,14 @@ type TLSCertEntry struct {
 	Source            TLSSource            `json:"source,omitempty"`
 	CertcatMatches    []TLSCertcatMatch    `json:"certcat_matches,omitempty"`
 	RevocationMatches []TLSRevocationMatch `json:"revocation_matches,omitempty"`
+	DistrustMatches   []TLSDistrustMatch   `json:"distrust_matches,omitempty"`
+}
+
+// TLSDistrustMatch is a platform explicit-distrust assertion. It is separate
+// from issuer CRLs because a platform blocklist can identify a root directly.
+type TLSDistrustMatch struct {
+	Source string `json:"source"`
+	Kind   string `json:"kind"`
 }
 
 // TLSRevocationMatch reports why a catalog certificate is warned. It does not
@@ -108,9 +116,17 @@ type TLSCRLSourceEntry struct {
 }
 
 type TLSRevocationStatus struct {
-	Enabled          bool                `json:"enabled"`
-	Sources          []TLSCRLSourceEntry `json:"sources,omitempty"`
-	LastRefreshError string              `json:"last_refresh_error"`
+	Enabled          bool                        `json:"enabled"`
+	Sources          []TLSCRLSourceEntry         `json:"sources,omitempty"`
+	LastRefreshError string                      `json:"last_refresh_error"`
+	System           []TLSPlatformProviderStatus `json:"system,omitempty"`
+}
+
+type TLSPlatformProviderStatus struct {
+	Source     string `json:"source"`
+	State      string `json:"state"`
+	ObservedAt int64  `json:"observed_at,omitempty"`
+	ItemCount  uint32 `json:"item_count,omitempty"`
 }
 
 type TLSBuiltinCAOptions struct {

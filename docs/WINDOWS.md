@@ -93,10 +93,19 @@ store. The catalog then includes the embedded fallback roots. Set
 `ALMAGEST_TLS_FORCE_FALLBACK_ROOTS` to skip Windows store access.
 
 Catalog entries are candidates only. A TLS policy must explicitly select one.
-Almagest does not reproduce Windows chain policy, distrust, group policy, or
-application-specific exceptions. `almagest-cli tls reload-os-certs` refreshes
-the catalog without a daemon restart. A failed refresh leaves the current
-catalog unchanged.
+When protected `TLS.CRLs.Enabled` is true, the daemon also reads the effective
+Crypt32 `Disallowed` stores for the daemon identity. It includes current-user,
+local-machine, Group Policy, and enterprise store locations. Matching roots are
+warned and are omitted from the generated `default` policy.
+
+Set protected `TLS.CRLs.System.WindowsRevocation` to `cache-only` to check
+already-authorized chains through Crypt32 without network retrieval. Explicit
+revocation rejects a chain. Unknown, offline, and platform-error results are
+reported separately and use a fail-soft policy. The `online` mode is reserved
+and is rejected because its route and network limits are not specified.
+`almagest-cli tls reload-os-certs` atomically refreshes roots and distrust
+findings without a daemon restart. A failed refresh leaves the current snapshot
+unchanged.
 
 ## Build and test
 

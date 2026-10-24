@@ -224,12 +224,7 @@ func runIsolatedRuntimeRole() error {
 		}
 		return err
 	}
-	tlsRequest := tlsplatform.DefaultRequest()
-	initialTLSPlatform, err := tlsplatform.Unmarshal(tlsPlatformData, tlsRequest)
-	if err != nil {
-		return fmt.Errorf("read runtime TLS platform snapshot: %w", err)
-	}
-	tlsLoader := newIsolatedTLSPlatformLoader(initialTLSPlatform, networkClient)
+	tlsLoader := newIsolatedTLSPlatformLoader(tlsPlatformData, networkClient)
 	arguments := args.Args{
 		FileStorage: storage, LogLevel: input.Options.LogLevel, LogWorkers: input.Options.LogWorkers,
 		NoPool: input.Options.NoPool, NoDNSCacheExpiration: input.Options.NoDNSCacheExpiration,
@@ -303,18 +298,23 @@ func runIsolatedRuntimeRole() error {
 
 type tlsPlatformSnapshotClient interface {
 	TLSPlatformSnapshot(context.Context, tlsplatform.Request) (tlsplatform.Snapshot, error)
+	tlsplatform.RevocationChecker
 }
 
-func newIsolatedTLSPlatformLoader(initial tlsplatform.Snapshot, client tlsPlatformSnapshotClient) func(context.Context) (immutableTLSData, error) {
+func newIsolatedTLSPlatformLoader(initialData []byte, client tlsPlatformSnapshotClient) func(context.Context, tlsplatform.Request) (immutableTLSData, error) {
 	var mu sync.Mutex
 	first := true
-	return func(ctx context.Context) (immutableTLSData, error) {
+	return func(ctx context.Context, request tlsplatform.Request) (immutableTLSData, error) {
 		mu.Lock()
 		defer mu.Unlock()
-		request := tlsplatform.DefaultRequest()
-		snapshot := initial
+		var snapshot tlsplatform.Snapshot
 		if first {
 			first = false
+			var err error
+			snapshot, err = tlsplatform.Unmarshal(initialData, request)
+			if err != nil {
+				return immutableTLSData{}, fmt.Errorf("read runtime TLS platform snapshot: %w", err)
+			}
 		} else {
 			if client == nil {
 				return immutableTLSData{}, protocol.ErrCapabilityUnavailable
@@ -325,7 +325,14 @@ func newIsolatedTLSPlatformLoader(initial tlsplatform.Snapshot, client tlsPlatfo
 				return immutableTLSData{}, err
 			}
 		}
-		return tlsDataFromPlatformSnapshot(snapshot, request)
+		data, err := tlsDataFromPlatformSnapshot(snapshot, request)
+		if err == nil && request.IncludeCRLs {
+			data.PlatformRevocation = client
+			if client == nil {
+				return immutableTLSData{}, protocol.ErrCapabilityUnavailable
+			}
+		}
+		return data, err
 	}
 }
 

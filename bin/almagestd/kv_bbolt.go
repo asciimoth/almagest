@@ -68,13 +68,14 @@ type bboltKVManager struct {
 	secretsNextSub    uint64
 	secretsChangeSubs map[uint64]func(secretChange)
 
-	tlsMu         sync.Mutex
-	immutableTLS  immutableTLSData
-	builtinCA     *tlsBuiltinCA
-	tlsWatchers   map[string]map[string]struct{}
-	tlsCAWatchers map[string]struct{}
-	tlsNextSub    uint64
-	tlsChangeSubs map[uint64]func(tlsChange)
+	tlsMu               sync.Mutex
+	immutableTLS        immutableTLSData
+	builtinCA           *tlsBuiltinCA
+	tlsWatchers         map[string]map[string]struct{}
+	tlsCAWatchers       map[string]struct{}
+	tlsNextSub          uint64
+	tlsChangeSubs       map[uint64]func(tlsChange)
+	tlsLastRefreshError string
 }
 
 type bboltKVStore struct {

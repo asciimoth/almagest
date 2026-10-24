@@ -36,3 +36,24 @@ func (c *Client) TLSPlatformSnapshot(ctx context.Context, request tlsplatform.Re
 		}
 	}
 }
+
+// CheckRevocation asks N to run the fixed cache-only platform checker. The
+// request contains only DER chains that Almagest policy already authorized.
+func (c *Client) CheckRevocation(ctx context.Context, request tlsplatform.RevocationRequest) (tlsplatform.RevocationResult, error) {
+	if c == nil || c.peer == nil || request.Validate() != nil {
+		return tlsplatform.RevocationResult{}, protocol.ErrInvalidContract
+	}
+	query := protocol.TLSRevocationCheckRequest{Meta: c.meta(false), Chains: request.Chains}
+	var response protocol.TLSRevocationCheckResult
+	if err := c.peer.Call(ctx, protocol.OperationTLSRevocationCheck, query, &response); err != nil {
+		return tlsplatform.RevocationResult{}, err
+	}
+	result := tlsplatform.RevocationResult{States: make([]tlsplatform.RevocationState, len(response.States))}
+	for i, state := range response.States {
+		result.States[i] = tlsplatform.RevocationState(state)
+	}
+	if err := result.Validate(request); err != nil {
+		return tlsplatform.RevocationResult{}, protocol.ErrInvalidContract
+	}
+	return result, nil
+}

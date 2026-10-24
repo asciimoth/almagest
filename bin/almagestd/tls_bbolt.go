@@ -15,6 +15,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/asciimoth/almagest/bin/api"
+	"github.com/asciimoth/almagest/bin/internal/tlsplatform"
 	"github.com/asciimoth/almagest/lib/storage"
 	"github.com/asciimoth/gonnect/tlspolicy"
 	"github.com/kataras/golog"
@@ -69,9 +70,11 @@ type immutableTLSPolicy struct {
 }
 
 type immutableTLSData struct {
-	Certs       map[string]immutableTLSCert
-	Policies    map[string]immutableTLSPolicy
-	Revocations immutableTLSRevocations
+	Certs              map[string]immutableTLSCert
+	Policies           map[string]immutableTLSPolicy
+	Revocations        immutableTLSRevocations
+	Distrust           immutableTLSDistrust
+	PlatformRevocation tlsplatform.RevocationChecker
 }
 
 type tlsEffectiveCert struct {
@@ -83,6 +86,7 @@ type tlsEffectiveCert struct {
 	SPKIFingerprint   string
 	CertcatMatches    []api.TLSCertcatMatch
 	RevocationMatches []api.TLSRevocationMatch
+	DistrustMatches   []api.TLSDistrustMatch
 	ReadOnly          bool
 	Source            api.TLSSource
 }
@@ -149,9 +153,10 @@ func (m *bboltKVManager) GetClientConfig(name string, node string) (tls.Config, 
 	options := tlspolicy.ClientTLSOptions{}
 	m.tlsMu.Lock()
 	revocations := cloneTLSRevocations(m.immutableTLS.Revocations)
+	platformRevocation := m.immutableTLS.PlatformRevocation
 	m.tlsMu.Unlock()
-	if revocations.Enabled {
-		options.Verifiers = []tlspolicy.ServerConnectionVerifier{tlsRevocationVerifier{revocations: revocations}}
+	if revocations.Enabled || platformRevocation != nil {
+		options.Verifiers = []tlspolicy.ServerConnectionVerifier{tlsRevocationVerifier{revocations: revocations, platform: platformRevocation}}
 	}
 	cfg, err := compiled.TLSClientConfig(options)
 	if err != nil {
@@ -198,6 +203,8 @@ func (m *bboltKVManager) tlsSnapshot() (api.TLSSnapshot, error) {
 	}
 	m.tlsMu.Lock()
 	revocations := cloneTLSRevocations(m.immutableTLS.Revocations)
+	providers := append([]api.TLSPlatformProviderStatus(nil), m.immutableTLS.Distrust.Providers...)
+	lastRefreshError := m.tlsLastRefreshError
 	m.tlsMu.Unlock()
 
 	certEntries := make([]api.TLSCertEntry, 0, len(certs))
@@ -220,8 +227,17 @@ func (m *bboltKVManager) tlsSnapshot() (api.TLSSnapshot, error) {
 		BuiltinCA:   m.tlsBuiltinCAAPIInfo(certs),
 		Certs:       certEntries,
 		Policies:    policyEntries,
-		Revocations: api.TLSRevocationStatus{Enabled: revocations.Enabled, Sources: tlsCRLSourceEntries(revocations, certs, time.Now())},
+		Revocations: api.TLSRevocationStatus{Enabled: revocations.Enabled, Sources: tlsCRLSourceEntries(revocations, certs, time.Now()), System: providers, LastRefreshError: lastRefreshError},
 	}, nil
+}
+
+func (m *bboltKVManager) setTLSLastRefreshError(message string) {
+	if m == nil {
+		return
+	}
+	m.tlsMu.Lock()
+	m.tlsLastRefreshError = message
+	m.tlsMu.Unlock()
 }
 
 func (m *bboltKVManager) tlsCertAPIEntry(name string) (api.TLSCertEntry, bool, error) {
@@ -311,6 +327,9 @@ func (m *bboltKVManager) setTLSOSData(data immutableTLSData) (tlsMutationResult,
 
 	m.tlsMu.Lock()
 	next := cloneImmutableTLSDataWithoutDefault(m.immutableTLS)
+	distrustChanged := !reflect.DeepEqual(next.Distrust, data.Distrust)
+	next.Distrust = cloneTLSDistrust(data.Distrust)
+	next.PlatformRevocation = data.PlatformRevocation
 	if next.Certs == nil {
 		next.Certs = map[string]immutableTLSCert{}
 	}
@@ -340,6 +359,22 @@ func (m *bboltKVManager) setTLSOSData(data immutableTLSData) (tlsMutationResult,
 	}
 
 	deleted, upserted := diffTLSOSCerts(oldOSCerts, nextVisibleOSCerts)
+	materialUpserted := make(map[string]struct{}, len(upserted))
+	for _, name := range upserted {
+		materialUpserted[name] = struct{}{}
+	}
+	if distrustChanged {
+		present := make(map[string]struct{}, len(upserted))
+		for _, name := range upserted {
+			present[name] = struct{}{}
+		}
+		for name := range nextVisibleOSCerts {
+			if _, exists := present[name]; !exists {
+				upserted = append(upserted, name)
+			}
+		}
+		slices.Sort(upserted)
+	}
 	changedCerts := map[string]struct{}{}
 	changes := make([]tlsChange, 0, len(deleted)+len(upserted))
 	for _, name := range deleted {
@@ -347,7 +382,9 @@ func (m *bboltKVManager) setTLSOSData(data immutableTLSData) (tlsMutationResult,
 		changes = append(changes, tlsChange{kind: tlsChangeCertDelete, name: name})
 	}
 	for _, name := range upserted {
-		changedCerts[name] = struct{}{}
+		if _, materialChange := materialUpserted[name]; materialChange {
+			changedCerts[name] = struct{}{}
+		}
 		changes = append(changes, tlsChange{kind: tlsChangeCertUpsert, name: name})
 	}
 
@@ -663,6 +700,7 @@ func (m *bboltKVManager) tlsEffectiveCert(name string) (tlsEffectiveCert, bool, 
 		cert, err := tlsEffectiveCertFromRecord(name, record.tlsCertificateRecord, true, record.source)
 		if err == nil {
 			m.addTLSRevocationMatches(&cert)
+			m.addTLSDistrustMatches(&cert)
 		}
 		return cert, err == nil, err
 	}
@@ -688,8 +726,19 @@ func (m *bboltKVManager) tlsEffectiveCert(name string) (tlsEffectiveCert, bool, 
 	}
 	if out.Name != "" {
 		m.addTLSRevocationMatches(&out)
+		m.addTLSDistrustMatches(&out)
 	}
 	return out, out.Name != "", nil
+}
+
+func (m *bboltKVManager) addTLSDistrustMatches(cert *tlsEffectiveCert) {
+	if cert == nil || cert.Certificate == nil {
+		return
+	}
+	m.tlsMu.Lock()
+	distrust := cloneTLSDistrust(m.immutableTLS.Distrust)
+	m.tlsMu.Unlock()
+	cert.DistrustMatches = distrust.matches(cert.Certificate)
 }
 
 func (m *bboltKVManager) tlsEffectiveCertMap() (map[string]tlsEffectiveCert, error) {
@@ -729,12 +778,14 @@ func (m *bboltKVManager) tlsEffectiveCertMap() (map[string]tlsEffectiveCert, err
 	}
 	m.tlsMu.Lock()
 	revocations := cloneTLSRevocations(m.immutableTLS.Revocations)
+	distrust := cloneTLSDistrust(m.immutableTLS.Distrust)
 	m.tlsMu.Unlock()
 	catalog := make([]*x509.Certificate, 0, len(out))
 	for _, cert := range out {
 		catalog = append(catalog, cert.Certificate)
 	}
 	for name, cert := range out {
+		cert.DistrustMatches = distrust.matches(cert.Certificate)
 		match, matchErr := revocations.matchCatalogCertificate(cert.Certificate, catalog, time.Now())
 		if matchErr == nil && match != nil {
 			cert.RevocationMatches = []api.TLSRevocationMatch{{Source: match.Source, SerialNumber: cert.Certificate.SerialNumber.Text(16),
@@ -933,6 +984,7 @@ func tlsCertEntryToAPI(cert tlsEffectiveCert) api.TLSCertEntry {
 		Source:            cert.Source,
 		CertcatMatches:    cert.CertcatMatches,
 		RevocationMatches: cert.RevocationMatches,
+		DistrustMatches:   cert.DistrustMatches,
 	}
 }
 
@@ -1778,7 +1830,7 @@ func (m *bboltKVManager) cloneImmutableTLSPolicies() map[string]immutableTLSPoli
 }
 
 func cloneImmutableTLSData(in immutableTLSData) immutableTLSData {
-	out := immutableTLSData{Revocations: cloneTLSRevocations(in.Revocations)}
+	out := immutableTLSData{Revocations: cloneTLSRevocations(in.Revocations), Distrust: cloneTLSDistrust(in.Distrust), PlatformRevocation: in.PlatformRevocation}
 	if len(in.Certs) > 0 {
 		out.Certs = make(map[string]immutableTLSCert, len(in.Certs))
 		for name, record := range in.Certs {
@@ -1796,7 +1848,7 @@ func cloneImmutableTLSData(in immutableTLSData) immutableTLSData {
 }
 
 func cloneImmutableTLSDataWithoutDefault(in immutableTLSData) immutableTLSData {
-	out := immutableTLSData{Revocations: cloneTLSRevocations(in.Revocations)}
+	out := immutableTLSData{Revocations: cloneTLSRevocations(in.Revocations), Distrust: cloneTLSDistrust(in.Distrust), PlatformRevocation: in.PlatformRevocation}
 	if len(in.Certs) > 0 {
 		out.Certs = make(map[string]immutableTLSCert, len(in.Certs))
 		for name, record := range in.Certs {
@@ -1821,13 +1873,13 @@ func ensureDefaultTLSPolicy(in immutableTLSData) immutableTLSData {
 		in.Policies = map[string]immutableTLSPolicy{}
 	}
 	in.Policies[tlsDefaultPolicyName] = immutableTLSPolicy{
-		tlsPolicyRecord: tlsPolicyRecord{Spec: defaultTLSPolicySpec(in.Certs, in.Revocations)},
+		tlsPolicyRecord: tlsPolicyRecord{Spec: defaultTLSPolicySpec(in.Certs, in.Revocations, in.Distrust)},
 		source:          api.TLSSourceOS,
 	}
 	return in
 }
 
-func defaultTLSPolicySpec(certs map[string]immutableTLSCert, revocations immutableTLSRevocations) api.TLSPolicySpec {
+func defaultTLSPolicySpec(certs map[string]immutableTLSCert, revocations immutableTLSRevocations, distrust immutableTLSDistrust) api.TLSPolicySpec {
 	type defaultAnchor struct {
 		name  string
 		scope api.TLSScope
@@ -1851,6 +1903,9 @@ func defaultTLSPolicySpec(certs map[string]immutableTLSCert, revocations immutab
 			continue
 		}
 		if match, matchErr := revocations.matchCatalogCertificate(parsed, catalog, time.Now()); matchErr != nil || match != nil {
+			continue
+		}
+		if len(distrust.matches(parsed)) != 0 {
 			continue
 		}
 		scope, ok := defaultTLSScopeForCertcat(tlsCertcatMatches(parsed))

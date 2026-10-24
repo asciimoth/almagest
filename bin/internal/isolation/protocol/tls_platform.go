@@ -22,3 +22,14 @@ type TLSPlatformRefreshResult struct {
 	Final    bool
 	Data     []byte
 }
+
+// TLSRevocationCheckRequest contains only already-authorized certificate DER
+// chains. It cannot select a store, URL, provider, or network mode.
+type TLSRevocationCheckRequest struct {
+	Meta   RequestMeta
+	Chains [][][]byte
+}
+
+type TLSRevocationCheckResult struct {
+	States []string
+}

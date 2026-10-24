@@ -23,8 +23,11 @@ func loadOSTLSData(ctx context.Context, fetcher tlspolicy.AuthorityFetcher) (imm
 }
 
 func loadTLSPlatformData(ctx context.Context, provider tlsplatform.Provider) (immutableTLSData, error) {
+	return loadTLSPlatformDataWithRequest(ctx, provider, tlsplatform.DefaultRequest())
+}
+
+func loadTLSPlatformDataWithRequest(ctx context.Context, provider tlsplatform.Provider, request tlsplatform.Request) (immutableTLSData, error) {
 	golog.Debug("TLS certificates: loading OS authority catalog")
-	request := tlsplatform.DefaultRequest()
 	snapshot, err := provider.Snapshot(ctx, request)
 	if err != nil {
 		return immutableTLSData{}, err
@@ -48,6 +51,10 @@ func tlsDataFromPlatformSnapshot(snapshot tlsplatform.Snapshot, request tlsplatf
 	out := immutableTLSData{
 		Certs: map[string]immutableTLSCert{},
 	}
+	out.Distrust, err = parseTLSPlatformDistrust(snapshot)
+	if err != nil {
+		return immutableTLSData{}, err
+	}
 	for _, record := range catalog.Records() {
 		name := tlsOSCertName(record)
 		der, err := record.Authority.MarshalBinary()
@@ -66,6 +73,12 @@ func tlsDataFromPlatformSnapshot(snapshot tlsplatform.Snapshot, request tlsplatf
 func mergeImmutableTLSData(values ...immutableTLSData) immutableTLSData {
 	var out immutableTLSData
 	for _, value := range values {
+		if value.PlatformRevocation != nil {
+			out.PlatformRevocation = value.PlatformRevocation
+		}
+		if len(value.Distrust.Findings) != 0 || len(value.Distrust.Providers) != 0 {
+			out.Distrust = cloneTLSDistrust(value.Distrust)
+		}
 		if len(value.Certs) > 0 {
 			if out.Certs == nil {
 				out.Certs = map[string]immutableTLSCert{}

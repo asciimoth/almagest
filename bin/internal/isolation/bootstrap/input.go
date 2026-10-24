@@ -237,6 +237,11 @@ type RuntimeProtected struct {
 type RuntimeCRLs struct {
 	Enabled bool
 	Lists   map[string]RuntimeCRL
+	System  RuntimeCRLSystem
+}
+
+type RuntimeCRLSystem struct {
+	WindowsRevocation string `json:"WindowsRevocation,omitempty"`
 }
 
 type RuntimeCRL struct {
@@ -277,8 +282,9 @@ func (r RuntimeProtected) RuntimeDocument() ([]byte, error) {
 			Policies     map[string]json.RawMessage `json:"Policies,omitempty"`
 			BuiltinCA    pem                        `json:"BuiltinCA,omitempty"`
 			CRLs         *struct {
-				Enabled bool           `json:"Enabled"`
-				Lists   map[string]crl `json:"Lists,omitempty"`
+				Enabled bool             `json:"Enabled"`
+				Lists   map[string]crl   `json:"Lists,omitempty"`
+				System  RuntimeCRLSystem `json:"System,omitempty"`
 			} `json:"CRLs,omitempty"`
 		} `json:"TLS,omitempty"`
 	}{Admin: r.Admin, Secrets: make(map[string]literal, len(r.Secrets))}
@@ -321,9 +327,10 @@ func (r RuntimeProtected) RuntimeDocument() ([]byte, error) {
 	}
 	if r.CRLs != nil {
 		document.TLS.CRLs = &struct {
-			Enabled bool           `json:"Enabled"`
-			Lists   map[string]crl `json:"Lists,omitempty"`
-		}{Enabled: r.CRLs.Enabled, Lists: make(map[string]crl, len(r.CRLs.Lists))}
+			Enabled bool             `json:"Enabled"`
+			Lists   map[string]crl   `json:"Lists,omitempty"`
+			System  RuntimeCRLSystem `json:"System,omitempty"`
+		}{Enabled: r.CRLs.Enabled, Lists: make(map[string]crl, len(r.CRLs.Lists)), System: r.CRLs.System}
 		for name, input := range r.CRLs.Lists {
 			if input.Source != "protected" && input.Source != "cli" {
 				return nil, fmt.Errorf("%w: TLS CRL %q has invalid resolved source", ErrInvalidInput, name)
@@ -384,7 +391,8 @@ type protectedDocument struct {
 			File string  `json:"File"`
 		} `json:"BuiltinCA"`
 		CRLs struct {
-			Enabled bool `json:"Enabled"`
+			Enabled bool             `json:"Enabled"`
+			System  RuntimeCRLSystem `json:"System"`
 			Lists   map[string]struct {
 				PEM  *string `json:"PEM"`
 				File string  `json:"File"`
@@ -500,11 +508,11 @@ func ResolveProtectedWithArguments(data []byte, loader FileLoader, lookupEnv fun
 		return ResolvedProtected{}, err
 	}
 	enabled := document.TLS.CRLs.Enabled || arguments.TLSCRLs || len(cliLists) != 0
-	if !enabled && len(document.TLS.CRLs.Lists) != 0 {
-		return ResolvedProtected{}, fmt.Errorf("%w: protected TLS CRL lists require TLS.CRLs.Enabled or --tls-crls", ErrInvalidInput)
+	if !enabled && (len(document.TLS.CRLs.Lists) != 0 || (document.TLS.CRLs.System.WindowsRevocation != "" && document.TLS.CRLs.System.WindowsRevocation != "off")) {
+		return ResolvedProtected{}, fmt.Errorf("%w: protected TLS CRL lists and system integrations require TLS.CRLs.Enabled or --tls-crls", ErrInvalidInput)
 	}
 	if enabled {
-		runtime.CRLs = &RuntimeCRLs{Enabled: true, Lists: make(map[string]RuntimeCRL, len(document.TLS.CRLs.Lists)+len(cliLists))}
+		runtime.CRLs = &RuntimeCRLs{Enabled: true, Lists: make(map[string]RuntimeCRL, len(document.TLS.CRLs.Lists)+len(cliLists)), System: document.TLS.CRLs.System}
 		for name, input := range document.TLS.CRLs.Lists {
 			if strings.TrimSpace(input.File) != "" && !filepath.IsAbs(strings.TrimSpace(input.File)) {
 				return ResolvedProtected{}, fmt.Errorf("%w: TLS CRL %q file path must be absolute", ErrInvalidInput, name)

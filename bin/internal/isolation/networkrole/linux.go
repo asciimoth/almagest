@@ -70,6 +70,7 @@ type LinuxLaunch struct {
 	Native         sysnetlinux.SystemConfig
 	Callbacks      callbackbridge.Bindings
 	TLSPlatform    tlsplatform.Provider
+	TLSRevocation  tlsplatform.RevocationChecker
 	State          *os.File
 	// Cgroups is the production role-cgroup owner. Cgroup is a qualification
 	// fallback that places every process in one already bounded cgroup.
@@ -297,6 +298,11 @@ func RunLinux(parent context.Context, launch LinuxLaunch, ready func(roleentry.R
 	}
 	if err := broker.SetTLSPlatformProvider(launch.TLSPlatform); err != nil {
 		return err
+	}
+	if launch.TLSRevocation != nil {
+		if err := broker.SetTLSRevocationChecker(launch.TLSRevocation); err != nil {
+			return err
+		}
 	}
 	service, err := network.NewService(broker, transport.Lanes{Control: streams[roleentry.LaneBootstrap], Data: streams[roleentry.LaneData], Diagnostic: streams[roleentry.LaneDiagnostics]}, supervision.NativeReconciler{}, time.Second,
 		supervision.Options{StartupTimeout: 15 * time.Second, ShutdownTimeout: 5 * time.Second, RecoveryTimeout: 5 * time.Second}, nil, resources.supervised...)
