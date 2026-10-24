@@ -98,6 +98,44 @@ DROP
 	}
 }
 
+func TestSnifferNodeE2EGonnectClassifiersRouteAndRestoreBytes(t *testing.T) {
+	backend := NewMockLoopbackNetwork(true)
+	t.Cleanup(func() { _ = backend.Close() })
+
+	sshPort := snifferHTTPTestPort()
+	redisPort := snifferHTTPTestPort()
+	fallbackPort := snifferHTTPTestPort()
+	sshPayload := []byte("SSH-2.0-almagest-test\r\n")
+	redisPayload := []byte("*1\r\n$4\r\nPING\r\n")
+	fallbackPayload := []byte("unclassified protocol\r\n")
+	sshDone := startSnifferRawServer(t, backend, sshPort, sshPayload, "ssh backend")
+	redisDone := startSnifferRawServer(t, backend, redisPort, redisPayload, "redis backend")
+	fallbackDone := startSnifferRawServer(t, backend, fallbackPort, fallbackPayload, "fallback backend")
+
+	network := newSnifferNodeOutputNetwork(t, backend, fmt.Sprintf(`
+DIAL
+TCP
+AND
+INTERCEPT
+
+SNIFF SSH
+ROUTE 1 DST:127.0.0.1:%d
+
+SNIFF Redis
+ROUTE 1 DST:127.0.0.1:%d
+
+SNIFF_NONE
+ROUTE 1 DST:127.0.0.1:%d
+
+TRUE
+DROP
+`, sshPort, redisPort, fallbackPort))
+
+	assertSnifferRawExchange(t, network, sshPayload, "ssh backend", sshDone)
+	assertSnifferRawExchange(t, network, redisPayload, "redis backend", redisDone)
+	assertSnifferRawExchange(t, network, fallbackPayload, "fallback backend", fallbackDone)
+}
+
 func TestSnifferNodeE2ELinksAttachDetachReattach(t *testing.T) {
 	const (
 		slot1Response = "sniffer slot 1 response"
@@ -235,6 +273,83 @@ func startSnifferHTTPSServer(t *testing.T, network NetworkCloser, port int, body
 	}, http.HandlerFunc(func(rw http.ResponseWriter, _ *http.Request) {
 		_, _ = rw.Write([]byte(body))
 	}))
+}
+
+func startSnifferRawServer(
+	t *testing.T,
+	network NetworkCloser,
+	port int,
+	wantPayload []byte,
+	response string,
+) <-chan error {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(port))
+	listener, err := network.Listen(ctx, "tcp", addr)
+	if err != nil {
+		t.Fatalf("Listen(%s): %v", addr, err)
+	}
+	t.Cleanup(func() { _ = listener.Close() })
+	done := make(chan error, 1)
+	go func() {
+		conn, err := listener.Accept()
+		if err != nil {
+			done <- err
+			return
+		}
+		defer func() { _ = conn.Close() }()
+		payload := make([]byte, len(wantPayload))
+		if _, err := io.ReadFull(conn, payload); err != nil {
+			done <- fmt.Errorf("read payload: %w", err)
+			return
+		}
+		if string(payload) != string(wantPayload) {
+			done <- fmt.Errorf("payload = %q, want %q", payload, wantPayload)
+			return
+		}
+		if _, err := io.WriteString(conn, response); err != nil {
+			done <- fmt.Errorf("write response: %w", err)
+			return
+		}
+		done <- nil
+	}()
+	return done
+}
+
+func assertSnifferRawExchange(
+	t *testing.T,
+	network NetworkCloser,
+	payload []byte,
+	wantResponse string,
+	serverDone <-chan error,
+) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	conn, err := network.Dial(ctx, "tcp", "service.test:1")
+	if err != nil {
+		t.Fatalf("Dial(): %v", err)
+	}
+	defer func() { _ = conn.Close() }()
+	if _, err := conn.Write(payload); err != nil {
+		t.Fatalf("Write(): %v", err)
+	}
+	response := make([]byte, len(wantResponse))
+	if _, err := io.ReadFull(conn, response); err != nil {
+		t.Fatalf("ReadFull(response): %v", err)
+	}
+	if string(response) != wantResponse {
+		t.Fatalf("response = %q, want %q", response, wantResponse)
+	}
+	select {
+	case err := <-serverDone:
+		if err != nil {
+			t.Fatalf("raw server: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timeout waiting for raw server")
+	}
 }
 
 func newSnifferRuntimeTestCA(t *testing.T) (*x509.Certificate, *ecdsa.PrivateKey) {

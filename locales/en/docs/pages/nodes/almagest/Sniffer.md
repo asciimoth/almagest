@@ -47,10 +47,24 @@ Sniffer puts the inspected bytes back at the start of the stream, so the backend
 receives them unchanged. Sniffer does not inspect server responses or later
 traffic in the connection.
 
-## HTTP and TLS classifiers
+## Protocol classifiers
 
-The built-in classifiers are `HTTP` and `TLS`. Options use `KEY:VALUE` tokens
-without spaces.
+The built-in classifiers are:
+
+- `HTTP`, `TLS`, `SSH`, `HTTP2`, `AMQP`, `MQTT`, `PostgreSQL`, `MongoDB`, and
+  `Redis`
+- `ProxyProtocolV1`, `ProxyProtocolV2`, and `ProxyProtocol`
+- `SOCKS4`, `SOCKS5`, and `SOCKS`
+- `DNSOverTCP`, `RTSP`, `SIP`, `STUN`, `RDP`, `SMB`, `LDAP`, and `Cassandra`
+- `MemcachedBinary`, `MemcachedASCII`, and `Memcached`
+
+Classifier names are case-sensitive. The combined `ProxyProtocol`, `SOCKS`, and
+`Memcached` classifiers match either of their protocol variants. `HTTP2` matches
+the cleartext HTTP/2 client preface. To match HTTP/2 in TLS, use
+`SNIFF TLS ALPN:h2`.
+
+Only `HTTP` and `TLS` accept options. Options use `KEY:VALUE` tokens without
+spaces.
 
 An HTTP classifier can match `METHOD`, `URL`, `URL_PATTERN`, `VERSION`, `HOST`,
 or `HOST_PATTERN`. `URL` is the request target as sent by the client, including

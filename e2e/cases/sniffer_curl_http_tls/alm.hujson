@@ -33,7 +33,7 @@
 			"Class": "almagest/Sniffer",
 			"Pos": "{\"x\":500,\"y\":420}",
 			"Links": ["slot 1 -> [OutNetwork 2003] Network"],
-			"rules": "DIAL\nTCP\nAND\nINTERCEPT\n\nSNIFF HTTP URL:/http-alpha\nROUTE 1 DST:127.0.0.1:18081\n\nSNIFF HTTP URL:/http-beta\nROUTE 1 DST:127.0.0.1:18082\n\nSNIFF TLS ALPN:http/1.1\nROUTE 1 DST:127.0.0.1:18443\n\nTRUE\nDROP",
+			"rules": "DIAL\nTCP\nAND\nINTERCEPT\n\nSNIFF HTTP URL:/http-alpha\nROUTE 1 DST:127.0.0.1:18081\n\nSNIFF HTTP URL:/http-beta\nROUTE 1 DST:127.0.0.1:18082\n\nSNIFF TLS ALPN:http/1.1\nROUTE 1 DST:127.0.0.1:18443\n\nSNIFF SSH\nROUTE 1 DST:127.0.0.1:18083\n\nTRUE\nDROP",
 		},
 		"OutNetwork 2003": {
 			"Class": "almagest/OutNetwork",

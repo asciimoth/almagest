@@ -2,6 +2,7 @@ package networknodes
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/asciimoth/almagest/lib/logging"
@@ -36,6 +37,61 @@ ROUTE 2 DST:127.0.0.1:8443
 	}
 	if got, want := controls.MentionedSlots(), []int{1, 2}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("mentioned slots = %v, want %v", got, want)
+	}
+}
+
+func TestSnifferNodeCompileRulesSupportsGonnectClassifiers(t *testing.T) {
+	names := []string{
+		"SSH",
+		"HTTP2",
+		"AMQP",
+		"MQTT",
+		"PostgreSQL",
+		"MongoDB",
+		"Redis",
+		"ProxyProtocolV1",
+		"ProxyProtocolV2",
+		"ProxyProtocol",
+		"SOCKS4",
+		"SOCKS5",
+		"SOCKS",
+		"DNSOverTCP",
+		"RTSP",
+		"SIP",
+		"STUN",
+		"RDP",
+		"SMB",
+		"LDAP",
+		"Cassandra",
+		"MemcachedBinary",
+		"MemcachedASCII",
+		"Memcached",
+	}
+	for _, name := range names {
+		t.Run(name, func(t *testing.T) {
+			node := &snifferNode{}
+			rules, controls, err := node.compileRules("SNIFF "+name+"\nSLOT 1", "")
+			if err != nil {
+				t.Fatalf("compileRules() error = %v, want nil", err)
+			}
+			if got, want := len(rules.Classifiers), 1; got != want {
+				t.Fatalf("classifier count = %d, want %d", got, want)
+			}
+			if got, want := len(controls.Classifiers()), 1; got != want {
+				t.Fatalf("control classifier count = %d, want %d", got, want)
+			}
+		})
+	}
+}
+
+func TestSnifferNodeCompileRulesRejectsOptionsForParameterlessClassifier(t *testing.T) {
+	node := &snifferNode{}
+	_, _, err := node.compileRules("SNIFF SSH UNKNOWN:value\nSLOT 1", "")
+	if err == nil {
+		t.Fatal("compileRules() error = nil, want error")
+	}
+	if !strings.Contains(err.Error(), "SSH classifier does not support options") {
+		t.Fatalf("compileRules() error = %q, want unsupported-options error", err)
 	}
 }
 

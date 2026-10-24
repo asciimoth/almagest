@@ -334,7 +334,11 @@ func (n *snifferNode) compileRules(text, dnsCacheStorageName string) (routing.Sn
 	if err := dnsnodes.ValidateOptionalCacheStorageName(dnsCacheStorageName); err != nil {
 		return routing.SnifferBytecodeRules{}, nil, err
 	}
-	rules, err := routing.NewSnifferBytecodeRules(nil, text)
+	rules, err := routing.NewSnifferBytecodeRulesWithConstructors(
+		nil,
+		snifferClassifierConstructors(),
+		text,
+	)
 	if err != nil {
 		return routing.SnifferBytecodeRules{}, nil, err
 	}
@@ -349,6 +353,52 @@ func (n *snifferNode) compileRules(text, dnsCacheStorageName string) (routing.Sn
 		}
 	}
 	return rules, controls, nil
+}
+
+func snifferClassifierConstructors() []routing.NamedSniffClassifierConstructor {
+	constructors := routing.DefaultSniffClassifierConstructors()
+	constructors = append(constructors,
+		parameterlessSniffClassifier("SSH", sniffer.SSHFactory),
+		parameterlessSniffClassifier("HTTP2", sniffer.HTTP2Factory),
+		parameterlessSniffClassifier("AMQP", sniffer.AMQPFactory),
+		parameterlessSniffClassifier("MQTT", sniffer.MQTTFactory),
+		parameterlessSniffClassifier("PostgreSQL", sniffer.PostgreSQLFactory),
+		parameterlessSniffClassifier("MongoDB", sniffer.MongoDBFactory),
+		parameterlessSniffClassifier("Redis", sniffer.RedisFactory),
+		parameterlessSniffClassifier("ProxyProtocolV1", sniffer.ProxyProtocolV1Factory),
+		parameterlessSniffClassifier("ProxyProtocolV2", sniffer.ProxyProtocolV2Factory),
+		parameterlessSniffClassifier("ProxyProtocol", sniffer.ProxyProtocolFactory),
+		parameterlessSniffClassifier("SOCKS4", sniffer.SOCKS4Factory),
+		parameterlessSniffClassifier("SOCKS5", sniffer.SOCKS5Factory),
+		parameterlessSniffClassifier("SOCKS", sniffer.SOCKSFactory),
+		parameterlessSniffClassifier("DNSOverTCP", sniffer.DNSOverTCPFactory),
+		parameterlessSniffClassifier("RTSP", sniffer.RTSPFactory),
+		parameterlessSniffClassifier("SIP", sniffer.SIPFactory),
+		parameterlessSniffClassifier("STUN", sniffer.STUNFactory),
+		parameterlessSniffClassifier("RDP", sniffer.RDPFactory),
+		parameterlessSniffClassifier("SMB", sniffer.SMBFactory),
+		parameterlessSniffClassifier("LDAP", sniffer.LDAPFactory),
+		parameterlessSniffClassifier("Cassandra", sniffer.CassandraFactory),
+		parameterlessSniffClassifier("MemcachedBinary", sniffer.MemcachedBinaryFactory),
+		parameterlessSniffClassifier("MemcachedASCII", sniffer.MemcachedASCIIFactory),
+		parameterlessSniffClassifier("Memcached", sniffer.MemcachedFactory),
+	)
+	return constructors
+}
+
+func parameterlessSniffClassifier(
+	name string,
+	factory func() sniffer.Factory,
+) routing.NamedSniffClassifierConstructor {
+	return routing.NamedSniffClassifierConstructor{
+		Name: name,
+		Constructor: func(options []routing.SniffClassifierOption) (string, sniffer.Factory, error) {
+			if len(options) != 0 {
+				return "", nil, fmt.Errorf("%s classifier does not support options", name)
+			}
+			return "", factory(), nil
+		},
+	}
 }
 
 func (n *snifferNode) cacheManager() storage.DnsCacheManager {
