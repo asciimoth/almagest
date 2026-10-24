@@ -89,6 +89,10 @@ test("documentation loads localized pages over HTTP without a WebSocket", () => 
   assert.match(docsSource, /deprecated: "D"/);
   assert.match(docsSource, /status\.title = markMessages\[mark\]/);
   assert.match(docsSource, /status\.setAttribute\("aria-label", markMessages\[mark\]\)/);
+  assert.match(docsSource, /pageMarks\.get\(id\)\?\.includes\("deprecated"\)/);
+  assert.match(docsSource, /textElement\("div", markMessages\.deprecated, "docs-node-warning docs-node-deprecated"\)/);
+  assert.match(docsSource, /if \(deprecated\) deprecated\.setAttribute\("role", "status"\)/);
+  assert.match(panelStyle, /\.docs-node-warning\s*\{/);
   assert.doesNotMatch(docsSource, /innerHTML/);
   assert.match(docsSource, /if \(!unavailable\) void loadNodePreview/);
   assert.match(docsSource, /console\.error\(`Could not load node preview/);

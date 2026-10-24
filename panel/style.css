@@ -283,7 +283,7 @@ a:focus-visible {
   margin-bottom: 24px;
 }
 
-.docs-node-unavailable {
+.docs-node-warning {
   margin-bottom: 24px;
   border: 1px solid color-mix(in srgb, var(--yellow), transparent 45%);
   border-radius: var(--radius-md);

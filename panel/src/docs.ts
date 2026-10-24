@@ -48,6 +48,7 @@ let effectiveLocale = requestedLocale;
 let orderedPageIDs: string[] = [];
 const pageNames = new Map<string, string>();
 const pageAvailability = new Map<string, boolean>();
+const pageMarks = new Map<string, PageMark[]>();
 const topicFolds = savedTopicFolds();
 let nodeUnavailableMessage = "This node is not available in the current daemon environment.";
 let markMessages: Record<PageMark, string> = {
@@ -254,13 +255,18 @@ async function openPage(id: string, updateHistory: boolean): Promise<void> {
     const content = document.createElement("div");
     renderNodeDescription(content, contentText, "docs", id, highlightPreviewPort, (destination) => docsURL(destination));
     const unavailable = pageAvailability.get(id) === false
-      ? textElement("div", nodeUnavailableMessage, "docs-node-unavailable")
+      ? textElement("div", nodeUnavailableMessage, "docs-node-warning docs-node-unavailable")
+      : null;
+    const deprecated = pageMarks.get(id)?.includes("deprecated")
+      ? textElement("div", markMessages.deprecated, "docs-node-warning docs-node-deprecated")
       : null;
     const navigation = renderPageNavigation(id);
     if (unavailable) unavailable.setAttribute("role", "status");
+    if (deprecated) deprecated.setAttribute("role", "status");
     pageElement.replaceChildren(
       title,
       ...(unavailable ? [unavailable] : []),
+      ...(deprecated ? [deprecated] : []),
       content,
       ...(navigation ? [navigation] : []),
     );
@@ -365,6 +371,7 @@ async function loadTree(locale: string): Promise<void> {
     orderedPageIDs = ids;
     pageNames.clear();
     pageAvailability.clear();
+    pageMarks.clear();
     collectPageNames(tree.topics);
     if (!ids.includes(currentPage)) currentPage = defaultPageID(tree.topics) || ids[0] || "";
     treeElement.replaceChildren(renderTopics(tree.topics));
@@ -389,6 +396,7 @@ function collectPageNames(topics: readonly Topic[]): void {
     for (const page of topic.pages) {
       pageNames.set(page.id, page.name);
       if (typeof page.available === "boolean") pageAvailability.set(page.id, page.available);
+      pageMarks.set(page.id, (page.marks ?? []).map(pageMark).filter((mark): mark is PageMark => mark !== null));
     }
     collectPageNames(topic.topics);
   }
