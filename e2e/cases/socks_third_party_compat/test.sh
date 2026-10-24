@@ -105,7 +105,7 @@ wait_graph_node "SOCKS Compat TLS" || fail "TLS SOCKS server node missing"
 wait_graph_node "TLS Compat Listener" || fail "TLS listener wrapper node missing"
 wait_log_contains "almagest/SocksServer" "socks listening on 127.0.0.1:11080" \
 	|| fail "anonymous SOCKS listener did not start"
-wait_log_contains "almagest/SocksServer" "socks+ws listening on 127.0.0.1:11081/socks" \
+wait_log_contains "almagest/SocksServer" "socks+ws listening on 127.0.0.1:11081/ws" \
 	|| fail "SOCKS WebSocket listener did not start"
 wait_log_contains "almagest/SocksServer" "socks listening on 127.0.0.1:11082" \
 	|| fail "authenticated SOCKS listener did not start"
@@ -159,7 +159,9 @@ retry "$ALMAGEST_E2E_TIMEOUT" "Gost plain SOCKS5 request" \
 	|| fail "Gost plain SOCKS5 chain did not reach the target"
 assert_body "$E2E_RUNTIME/gost-plain.txt"
 
-start_gost_forward websocket 18101 "socks5+ws://127.0.0.1:11081?path=/socks"
+# GOST defaults its WebSocket path to /ws. Almagest defaults to /socks, so
+# this listener is configured with /ws to verify the unqualified GOST URL.
+start_gost_forward websocket 18101 "socks5+ws://127.0.0.1:11081"
 retry "$ALMAGEST_E2E_TIMEOUT" "Gost SOCKS5 WebSocket request" \
 	curl --fail --silent --show-error --max-time 8 \
 		http://127.0.0.1:18101/gost-websocket --output "$E2E_RUNTIME/gost-websocket.txt" \
@@ -173,6 +175,8 @@ retry "$ALMAGEST_E2E_TIMEOUT" "Gost SOCKS5 TLS request" \
 	|| fail "Gost SOCKS5 TLS chain did not reach the target"
 assert_body "$E2E_RUNTIME/gost-tls.txt"
 
+# The TLS server omits wsPath and therefore uses Almagest's /socks default.
+# Override GOST's /ws default to verify that the node default is usable.
 start_gost_forward wss 18103 "socks5+wss://127.0.0.1:11084?path=/socks"
 retry "$ALMAGEST_E2E_TIMEOUT" "Gost SOCKS5 WSS request" \
 	curl --fail --silent --show-error --max-time 8 \

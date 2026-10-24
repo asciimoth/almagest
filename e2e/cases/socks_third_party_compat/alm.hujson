@@ -20,7 +20,7 @@
 			"socksPort": 11080,
 			"wsHost": "127.0.0.1",
 			"wsPort": 11081,
-			"wsPath": "/socks",
+			"wsPath": "/ws",
 			"users": [],
 			"commands": {
 				"cmdBind": true,
@@ -70,7 +70,6 @@
 			"socksPort": 11083,
 			"wsHost": "127.0.0.1",
 			"wsPort": 11084,
-			"wsPath": "/socks",
 			"users": [],
 			"commands": {
 				"cmdBind": true,

@@ -3,6 +3,55 @@ proxy. Connect the network used to reach the proxy to [out](@port/left/out).
 Connect clients or tunnel nodes to the [Network](@port/right/Network) output.
 The node does not bypass the proxy for loopback or local addresses.
 
+## Use with a GOST server
+
+### SOCKS over WebSocket
+
+Start a GOST SOCKS5-over-WebSocket server:
+
+```sh
+gost -L "socks5+ws://user:pass@:8080?notls=true"
+```
+
+Set this node's **Proxy URL** to:
+
+```text
+socks5+ws://user:pass@gost.example:8080/ws
+```
+
+Connect a Network that can reach `gost.example` to [out](@port/left/out). GOST
+and this client both use `/ws` as their default WebSocket path. If the GOST
+listener uses another path, put the same path after the port in **Proxy URL**.
+
+For secure WebSocket, start GOST and set **Proxy URL** as follows:
+
+```sh
+gost -L "socks5+wss://user:pass@:8443?notls=true"
+```
+
+```text
+socks5+wss://user:pass@gost.example:8443/ws
+```
+
+Select a **TLS config** that trusts the GOST server certificate and verifies its
+server name. The GOST `notls=true` option disables its extra SOCKS negotiation
+encryption; it does not disable WS or WSS transport encryption.
+
+### Plain SOCKS5
+
+Start a plain GOST SOCKS5 server:
+
+```sh
+gost -L "socks5://user:pass@:1080?notls=true"
+```
+
+Set **Proxy URL** to `socks5://user:pass@gost.example:1080`. Remove `user:pass@`
+from both values to use the server without authentication. Add `?gost` to the
+Almagest URL when you need the GOST UDP-over-TCP or multiplexed BIND extensions.
+Standard CONNECT, BIND, and UDP ASSOCIATE do not require this option. See the
+[GOST SOCKS documentation](https://gost.run/en/tutorials/protocols/socks/) for
+the corresponding GOST server options.
+
 ## Proxy URL
 
 The default **Proxy URL** is `socks5://127.0.0.1:1080`. If the URL does not

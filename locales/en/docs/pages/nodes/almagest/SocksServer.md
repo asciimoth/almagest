@@ -7,6 +7,54 @@ The listen Network is required. The server can start without a proxy Network,
 but client commands then fail. This lets clients receive a SOCKS protocol error
 instead of only a connection error.
 
+## Use with a GOST client
+
+### SOCKS over WebSocket
+
+Set **SOCKS+WS host** and a nonzero **SOCKS+WS port**. The default Almagest
+WebSocket path is `/socks`, but GOST defaults to `/ws`. Therefore, specify the
+Almagest path in the GOST forwarding URL:
+
+```sh
+gost -L "http://127.0.0.1:8080" \
+  -F "socks5+ws://user:pass@almagest.example:1081?path=/socks&notls=true"
+```
+
+This command provides a local HTTP proxy at `127.0.0.1:8080` and sends its
+traffic through this node. Configure the same `user` and `pass` in **Users**.
+Remove `user:pass@` when the node has no users.
+
+Alternatively, set **SOCKS+WS path** to `/ws`. GOST can then use its default
+path, so remove `path=/socks` from the forwarding URL. Keep `notls=true`; it
+disables GOST's extra SOCKS negotiation encryption, which this node does not
+implement.
+
+For WSS, route the listen Network through a
+[TlsWrapper](@docs/node/almagest/TlsWrapper) and use this GOST chain:
+
+```sh
+gost -L "http://127.0.0.1:8080" \
+  -F "socks5+wss://user:pass@almagest.example:1081?path=/socks&notls=true"
+```
+
+Configure GOST to trust the wrapper's certificate. Keep the explicit
+`path=/socks` unless you changed **SOCKS+WS path** to `/ws`.
+
+### Plain SOCKS5
+
+For the default plain listener at port 1080, use this GOST chain:
+
+```sh
+gost -L "http://127.0.0.1:8080" \
+  -F "socks5://user:pass@almagest.example:1080?notls=true"
+```
+
+Keep **CONNECT** enabled for normal proxy traffic. Keep **Gost UDPTUN** enabled
+for GOST UDP-over-TCP forwarding and **Gost MBIND** enabled for GOST multiplexed
+remote forwarding. See the
+[GOST SOCKS documentation](https://gost.run/en/tutorials/protocols/socks/) for
+GOST listener and forwarding options.
+
 ## Listeners
 
 The plain SOCKS listener defaults to `127.0.0.1:1080`. An empty host also uses
