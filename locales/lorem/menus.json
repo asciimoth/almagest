@@ -847,6 +847,10 @@
             "label": "Lorem · Ephemeral node",
             "help": "Lorem · Ask the control server to remove the machine after it goes offline."
           },
+          "confirmPeers": {
+            "label": "Lorem · Require peer confirmation",
+            "help": "Lorem · Hold each newly observed control-provided peer outside WireGuard until a local administrator confirms it."
+          },
           "listenPort": {
             "label": "Lorem · Discovery UDP port",
             "help": "Lorem · Local port for STUN, DISCO, and DERP path discovery. Zero selects an available port."
@@ -869,6 +873,13 @@
           "checkAuthentication": {
             "label": "Lorem · Check authorization",
             "help": "Lorem · Ask the Tailscale client to check the pending action now."
+          }
+        }
+      },
+      "peerConfirmation": {
+        "items": {
+          "noPeers": {
+            "text": "Lorem · No control-provided peers are available."
           }
         }
       }

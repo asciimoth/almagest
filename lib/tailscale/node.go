@@ -42,6 +42,8 @@ type Client interface {
 	Snapshot() wgotailscale.Snapshot
 	Subscribe(int) (<-chan wgotailscale.Event, func())
 	ResumeInteraction(uint64) error
+	ConfirmPeer(context.Context, string) error
+	RevokePeerConfirmation(context.Context, string) error
 }
 
 // ClientFactory constructs one wgo-tailscale client.
@@ -191,6 +193,13 @@ type tailscaleWGApplyResult struct {
 
 type tailscaleInteractionResult struct {
 	runtimeID uint64
+	err       error
+}
+
+type tailscalePeerConfirmationResult struct {
+	runtimeID uint64
+	peerID    string
+	action    string
 	err       error
 }
 
@@ -344,6 +353,8 @@ func (n *tailscaleNode) OnInbox(message pasta.InboxMessage) error {
 		n.handleWGApplyResult(msg)
 	case tailscaleInteractionResult:
 		n.handleInteractionResult(msg)
+	case tailscalePeerConfirmationResult:
+		n.handlePeerConfirmationResult(msg)
 	case tailscaleControllerClosed:
 		if wireguardnodes.SameWGCtrlInstance(n.controller, msg.controller) {
 			n.controller = nil
@@ -368,8 +379,15 @@ func (n *tailscaleNode) OnFormularMsg(message any) error {
 			n.validateConfigField(msg)
 		}
 	case formular.ButtonPressMessage:
-		if msg.MenuID == pasta.NodeMenuID(n.ID) && msg.BlockID == authBlockID && msg.ButtonID == authResumeID {
-			n.resumeInteraction()
+		if msg.MenuID == pasta.NodeMenuID(n.ID) {
+			switch msg.BlockID {
+			case authBlockID:
+				if msg.ButtonID == authResumeID {
+					n.resumeInteraction()
+				}
+			case peerConfirmationBlockID:
+				n.changePeerConfirmation(msg.ButtonID, msg.ElementPath)
+			}
 		}
 	}
 	return nil
@@ -385,6 +403,7 @@ func (n *tailscaleNode) OnSave(cfg configer.Config) error {
 		fieldHostname:            n.config.hostname,
 		fieldAuthKeySecret:       n.config.authKeySecret,
 		fieldEphemeral:           n.config.ephemeral,
+		fieldConfirmPeers:        n.config.confirmPeers,
 		fieldListenPort:          n.config.listenPort,
 		fieldDisableDERP:         n.config.disableDERP,
 		fieldDisableDiscovery:    n.config.disableDiscovery,

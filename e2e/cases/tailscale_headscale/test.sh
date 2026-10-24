@@ -151,6 +151,65 @@ tailscale_acl_is_present() {
 	jq -e '.rules | length > 0' <<<"$value" >/dev/null
 }
 
+wireguard_peer_count_is() {
+	local value
+	value="$(menu_field "$1" "$2" status runtimePeers)" || return 1
+	[[ "$value" == "$3" ]]
+}
+
+tailscale_confirmation_element() {
+	local daemon="$1"
+	local node_name="$2"
+	local state="$3"
+	local prefix="confirm-"
+	if [[ "$state" == "confirmed" ]]; then
+		prefix="revoke-"
+	fi
+	"cli_$daemon" graph menu --name "$node_name" | jq -er --arg prefix "$prefix" '
+		.blocks[] | select(.id == "peerConfirmation") |
+		.items[] | select(.id | startswith($prefix)) | .id
+	' | head -n 1
+}
+
+tailscale_confirmation_is() {
+	local element
+	element="$(tailscale_confirmation_element "$1" "$2" "$3")" || return 1
+	[[ -n "$element" ]]
+}
+
+tailscale_confirmation_controls_are_conditional() {
+	"cli_$1" graph menu --name "$2" | jq -e '
+		.blocks[] | select(.id == "peerConfirmation") |
+		(.items | length > 0) and
+		all(.items[];
+			.stateConditions.visible == {
+				source: {blockId: "config", fieldId: "confirmPeers"},
+				operator: "equals",
+				value: true
+			})
+	' >/dev/null
+}
+
+set_tailscale_confirmation_mode() {
+	local daemon="$1"
+	local node_name="$2"
+	local enabled="$3"
+	"cli_$daemon" graph apply-menu --name "$node_name" \
+		--json "{\"config\":{\"confirmPeers\":$enabled}}" >/dev/null
+}
+
+click_tailscale_confirmation() {
+	local daemon="$1"
+	local node="$2"
+	local node_name="$3"
+	local state="$4"
+	local expected_button="$5"
+	local button
+	button="$(tailscale_confirmation_element "$daemon" "$node_name" "$state")" || return 1
+	[[ "$button" == "$expected_button-"* ]] || return 1
+	"cli_$daemon" graph click-menu-button --id "$node" --block peerConfirmation --button "$button" >/dev/null
+}
+
 firewall_policy_is_present() {
 	local value
 	value="$(menu_field b "Tailnet Firewall B" effective config)" || return 1
@@ -228,6 +287,51 @@ retry 30 "Tailscale ACL in node menu" tailscale_acl_is_present a "Tailscale A" \
 	|| fail "Tailscale A menu did not expose ACL rules"
 retry 30 "Tailscale firewall object" firewall_policy_is_present \
 	|| fail "NetworkFirewall did not receive the Tailscale policy object"
+
+# Confirmation mode is disabled by default. Its menu controls remain
+# conditional on the current config checkbox so the frontend hides the whole
+# section immediately when the checkbox is clear.
+tailscale_confirmation_controls_are_conditional a "Tailscale A" \
+	|| fail "Tailscale peer confirmation controls are not conditional"
+set_tailscale_confirmation_mode a "Tailscale A" true
+retry 60 "Tailscale A pending peer confirmation" tailscale_confirmation_is \
+	a "Tailscale A" awaiting-confirmation \
+	|| fail "Tailscale A did not hold its control-provided peer for confirmation"
+retry 30 "WireGuard A peer withdrawal before confirmation" wireguard_peer_count_is \
+	a "WireGuard A" 0 \
+	|| fail "Tailscale A published an unconfirmed peer to WireGuard"
+
+click_tailscale_confirmation a "$tailscale_a" "Tailscale A" awaiting-confirmation confirm \
+	|| fail "Tailscale A peer confirmation control failed"
+retry 60 "Tailscale A confirmed peer" tailscale_confirmation_is a "Tailscale A" confirmed \
+	|| fail "Tailscale A did not record peer confirmation"
+retry 60 "WireGuard A confirmed peer installation" wireguard_peer_count_is a "WireGuard A" 1 \
+	|| fail "Tailscale A did not publish the confirmed peer"
+
+click_tailscale_confirmation a "$tailscale_a" "Tailscale A" confirmed revoke \
+	|| fail "Tailscale A peer revocation control failed"
+retry 60 "Tailscale A revoked peer" tailscale_confirmation_is a "Tailscale A" awaiting-confirmation \
+	|| fail "Tailscale A did not revoke peer confirmation"
+retry 30 "WireGuard A revoked peer withdrawal" wireguard_peer_count_is a "WireGuard A" 0 \
+	|| fail "Tailscale A left the revoked peer in WireGuard"
+
+click_tailscale_confirmation a "$tailscale_a" "Tailscale A" awaiting-confirmation confirm \
+	|| fail "Tailscale A peer reconfirmation control failed"
+retry 60 "WireGuard A peer reinstall" wireguard_peer_count_is a "WireGuard A" 1 \
+	|| fail "Tailscale A did not reinstall the reconfirmed peer"
+
+# A disable/enable cycle verifies both live menu toggling and durable
+# confirmation caching. The peer is automatic while disabled and remains
+# confirmed when confirmation mode is enabled again.
+set_tailscale_confirmation_mode a "Tailscale A" false
+retry 60 "Tailscale A automatic peer after disabling confirmation" wireguard_peer_count_is \
+	a "WireGuard A" 1 \
+	|| fail "Tailscale A did not restore automatic peer handling"
+set_tailscale_confirmation_mode a "Tailscale A" true
+retry 60 "Tailscale A cached peer confirmation" tailscale_confirmation_is a "Tailscale A" confirmed \
+	|| fail "Tailscale A did not restore cached peer confirmation"
+retry 60 "WireGuard A cached confirmed peer" wireguard_peer_count_is a "WireGuard A" 1 \
+	|| fail "Tailscale A did not keep the cached confirmed peer installed"
 
 magic_dns_query="$(node_id a "MagicDNS Query")"
 query_magic_dns "$magic_dns_query" beta.e2e.internal A "100.64."

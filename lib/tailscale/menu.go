@@ -1,6 +1,7 @@
 package tailscalenodes
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,12 +19,18 @@ import (
 	wireguardnodes "github.com/asciimoth/almagest/lib/wireguard"
 )
 
+const (
+	peerConfirmationBlockID = "peerConfirmation"
+	peerConfirmButtonPrefix = "confirm-"
+	peerRevokeButtonPrefix  = "revoke-"
+)
+
 func (n *tailscaleNode) sendMenuSnapshot(force bool) {
-	blocks := make([]formular.Block, 0, 3)
+	blocks := make([]formular.Block, 0, 4)
 	if block, ok := n.authenticationBlock(); ok {
 		blocks = append(blocks, block)
 	}
-	blocks = append(blocks, n.statusBlock(), n.configBlock())
+	blocks = append(blocks, n.statusBlock(), n.peerConfirmationBlock(), n.configBlock())
 	nodekit.SendNodeMenuSnapshot(n.W, n.ID, force, blocks...)
 }
 
@@ -33,6 +40,10 @@ func (n *tailscaleNode) sendStatusBlock() {
 
 func (n *tailscaleNode) sendConfigBlock() {
 	nodekit.SendNodeBlockSnapshot(n.W, n.ID, n.configBlock())
+}
+
+func (n *tailscaleNode) sendPeerConfirmationBlock() {
+	nodekit.SendNodeBlockSnapshot(n.W, n.ID, n.peerConfirmationBlock())
 }
 
 func (n *tailscaleNode) authenticationBlock() (formular.Block, bool) {
@@ -118,6 +129,7 @@ func (n *tailscaleNode) configBlock() formular.Block {
 	hostname := nodekit.ConfigTextField(fieldHostname, "Hostname", n.config.hostname, statusErr, n.formError, false)
 	authKey := nodekit.ConfigSecretNameField(fieldAuthKeySecret, "Auth key secret", n.config.authKeySecret, statusErr, n.formError)
 	ephemeral := nodekit.ConfigCheckbox(fieldEphemeral, "Ephemeral node", n.config.ephemeral)
+	confirmPeers := nodekit.ConfigCheckbox(fieldConfirmPeers, "Require peer confirmation", n.config.confirmPeers)
 	listenPort := nodekit.ConfigIntField(fieldListenPort, "Discovery UDP port", n.config.listenPort, statusErr, n.formError)
 	disableDERP := nodekit.ConfigCheckbox(fieldDisableDERP, "Disable DERP", n.config.disableDERP)
 	disableDiscovery := nodekit.ConfigCheckbox(fieldDisableDiscovery, "Disable discovery", n.config.disableDiscovery)
@@ -127,11 +139,129 @@ func (n *tailscaleNode) configBlock() formular.Block {
 		hostname,
 		authKey,
 		ephemeral,
+		confirmPeers,
 		listenPort,
 		disableDERP,
 		disableDiscovery,
 		nodekit.TLSConfigSelectorItem(&n.Base, n.config.tlsConfigName, n.tlsConfigErr),
 	}}
+}
+
+func (n *tailscaleNode) peerConfirmationBlock() formular.Block {
+	visible := formular.StateValueCondition(
+		formular.StateBlockFieldSource("config", fieldConfirmPeers),
+		formular.StateOperatorEquals,
+		true,
+	)
+	peers := slices.Clone(n.snapshot.Peers)
+	slices.SortFunc(peers, func(a, b wgotailscale.PeerInfo) int {
+		return strings.Compare(peerDisplayName(a), peerDisplayName(b))
+	})
+	items := make([]formular.Item, 0, len(peers)*2+1)
+	if len(peers) == 0 {
+		item := formular.PlainLabel("noPeers", "No control-provided peers are available.")
+		formular.VisibleWhen(visible)(&item)
+		items = append(items, item)
+	}
+	for _, peer := range peers {
+		token := peerConfirmationToken(peer.PeerID)
+		text := fmt.Sprintf("%s | id=%s | state=%s | applied=%t", peerDisplayName(peer), peer.PeerID, peer.Confirmation, peer.AppliedToWGO)
+		label := formular.PlainLabel("peer-"+token, text)
+		formular.VisibleWhen(visible)(&label)
+		items = append(items, label)
+		var button formular.Item
+		switch peer.Confirmation {
+		case wgotailscale.PeerAwaitingConfirmation:
+			button = formular.Button(peerConfirmButtonPrefix+token, "Confirm peer", formular.VisibleWhen(visible))
+		case wgotailscale.PeerConfirmed:
+			button = formular.Button(peerRevokeButtonPrefix+token, "Revoke confirmation", formular.VisibleWhen(visible))
+		default:
+			continue
+		}
+		items = append(items, button)
+	}
+	return formular.Block{ID: peerConfirmationBlockID, Order: 15, Generation: 1, Items: items}
+}
+
+func peerDisplayName(peer wgotailscale.PeerInfo) string {
+	for _, name := range []string{peer.Node.ComputedNameWithHost, peer.Node.ComputedName, peer.Node.Name, peer.PeerID} {
+		if name = strings.TrimSpace(name); name != "" {
+			return name
+		}
+	}
+	return "unknown peer"
+}
+
+func peerConfirmationToken(peerID string) string {
+	digest := sha256.Sum256([]byte(peerID))
+	return fmt.Sprintf("%x", digest[:12])
+}
+
+func (n *tailscaleNode) changePeerConfirmation(buttonID string, path []formular.ElementPathSegment) {
+	if !n.config.confirmPeers || n.activeRuntimeID == 0 {
+		return
+	}
+	if len(path) != 0 {
+		return
+	}
+	action := ""
+	token := ""
+	switch {
+	case strings.HasPrefix(buttonID, peerConfirmButtonPrefix):
+		action, token = "confirm", strings.TrimPrefix(buttonID, peerConfirmButtonPrefix)
+	case strings.HasPrefix(buttonID, peerRevokeButtonPrefix):
+		action, token = "revoke", strings.TrimPrefix(buttonID, peerRevokeButtonPrefix)
+	default:
+		return
+	}
+	peerID := ""
+	for _, peer := range n.snapshot.Peers {
+		if peerConfirmationToken(peer.PeerID) != token {
+			continue
+		}
+		if peerID != "" {
+			return
+		}
+		if action == "confirm" && peer.Confirmation != wgotailscale.PeerAwaitingConfirmation ||
+			action == "revoke" && peer.Confirmation != wgotailscale.PeerConfirmed {
+			return
+		}
+		peerID = peer.PeerID
+	}
+	if peerID == "" {
+		return
+	}
+	runtimeID := n.activeRuntimeID
+	if err := n.SpawnWorker("Tailscale peer confirmation", func() {
+		n.runtimeMu.Lock()
+		var err error
+		if n.runtimeID != runtimeID || n.runtimeClient == nil {
+			err = errors.New("tailscale peer confirmation is no longer active")
+		} else if action == "confirm" {
+			err = n.runtimeClient.ConfirmPeer(n.Context(), peerID)
+		} else {
+			err = n.runtimeClient.RevokePeerConfirmation(n.Context(), peerID)
+		}
+		n.runtimeMu.Unlock()
+		if n.W != nil {
+			n.W.SendInbox(pasta.InboxMessage{ReceiverNode: n.ID, Payload: tailscalePeerConfirmationResult{
+				runtimeID: runtimeID, peerID: peerID, action: action, err: err,
+			}})
+		}
+	}); err != nil {
+		n.runtimeError = "start Tailscale peer confirmation: " + err.Error()
+		n.sendStatusBlock()
+	}
+}
+
+func (n *tailscaleNode) handlePeerConfirmationResult(result tailscalePeerConfirmationResult) {
+	if result.runtimeID == 0 || result.runtimeID != n.activeRuntimeID {
+		return
+	}
+	if result.err != nil {
+		n.runtimeError = fmt.Sprintf("%s Tailscale peer %s: %v", result.action, result.peerID, result.err)
+		n.sendMenuSnapshot(false)
+	}
 }
 
 func (n *tailscaleNode) stateText() string {

@@ -118,6 +118,7 @@ func (n *tailscaleNode) reconcile(req tailscaleRuntimeRequest) (tailscaleRuntime
 		Hostname:                          hostname,
 		AuthKey:                           authKey,
 		Ephemeral:                         req.config.ephemeral,
+		ConfirmPeers:                      req.config.confirmPeers,
 		TransportID:                       tailscaleTransportID(req.config.storageID),
 		UseDefaultTransportForDirectPeers: true,
 		ListenPort:                        uint16(req.config.listenPort),
@@ -274,6 +275,7 @@ func (n *tailscaleNode) handleRuntimeEvent(event tailscaleRuntimeEvent) {
 		n.sendMenuSnapshot(false)
 	} else {
 		n.sendStatusBlock()
+		n.sendPeerConfirmationBlock()
 	}
 }
 

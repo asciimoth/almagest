@@ -18,6 +18,7 @@ const (
 	fieldHostname         = "hostname"
 	fieldAuthKeySecret    = "authKeySecret"
 	fieldEphemeral        = "ephemeral"
+	fieldConfirmPeers     = "confirmPeers"
 	fieldListenPort       = "listenPort"
 	fieldDisableDERP      = "disableDERP"
 	fieldDisableDiscovery = "disableDiscovery"
@@ -30,6 +31,7 @@ type tailscaleConfig struct {
 	hostname         string
 	authKeySecret    string
 	ephemeral        bool
+	confirmPeers     bool
 	listenPort       int
 	disableDERP      bool
 	disableDiscovery bool
@@ -54,6 +56,7 @@ func readTailscaleConfig(cfg configer.Config) tailscaleConfig {
 	out.hostname = configer.String(cfg, configer.Path{fieldHostname}, "")
 	out.authKeySecret = configer.String(cfg, configer.Path{fieldAuthKeySecret}, "")
 	out.ephemeral = configer.Bool(cfg, configer.Path{fieldEphemeral}, false)
+	out.confirmPeers = configer.Bool(cfg, configer.Path{fieldConfirmPeers}, false)
 	out.listenPort = configer.Int(cfg, configer.Path{fieldListenPort}, 0)
 	out.disableDERP = configer.Bool(cfg, configer.Path{fieldDisableDERP}, false)
 	out.disableDiscovery = configer.Bool(cfg, configer.Path{fieldDisableDiscovery}, false)
@@ -86,6 +89,9 @@ func applyTailscaleConfigValues(c *tailscaleConfig, values map[string]any) {
 	}
 	if value, ok := formular.BoolValue(values[fieldEphemeral]); ok {
 		c.ephemeral = value
+	}
+	if value, ok := formular.BoolValue(values[fieldConfirmPeers]); ok {
+		c.confirmPeers = value
 	}
 	if value, ok := formular.IntValue(values[fieldListenPort]); ok {
 		c.listenPort = value

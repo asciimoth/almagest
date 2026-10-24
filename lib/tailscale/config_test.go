@@ -1,6 +1,7 @@
 package tailscalenodes
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
@@ -99,11 +100,12 @@ func TestTailscaleClassPorts(t *testing.T) {
 
 func TestTailscaleConfigDefaultsNormalizeAndValidate(t *testing.T) {
 	config := readTailscaleConfig(configer.NewMemory(map[string]any{
-		fieldControlURL: " https://headscale.example.test/ ",
-		fieldHostname:   " test-node ",
-		fieldListenPort: 65535,
+		fieldControlURL:   " https://headscale.example.test/ ",
+		fieldHostname:     " test-node ",
+		fieldConfirmPeers: true,
+		fieldListenPort:   65535,
 	}))
-	if !config.enabled || config.controlURL != "https://headscale.example.test" || config.hostname != "test-node" {
+	if !config.enabled || !config.confirmPeers || config.controlURL != "https://headscale.example.test" || config.hostname != "test-node" {
 		t.Fatalf("normalized config = %#v", config)
 	}
 	if err := validateTailscaleConfig(config); err != nil {
@@ -129,6 +131,89 @@ func TestTailscaleConfigDefaultsNormalizeAndValidate(t *testing.T) {
 	if got := defaultTailscaleConfig().controlURL; got != wgotailscale.DefaultControlURL {
 		t.Fatalf("default control URL = %q, want %q", got, wgotailscale.DefaultControlURL)
 	}
+	if defaultTailscaleConfig().confirmPeers {
+		t.Fatal("peer confirmation is enabled by default")
+	}
+}
+
+func TestTailscalePeerConfirmationConfigApplyAndSave(t *testing.T) {
+	node := &tailscaleNode{config: defaultTailscaleConfig()}
+	applyTailscaleConfigValues(&node.config, map[string]any{fieldConfirmPeers: true})
+	if !node.config.confirmPeers {
+		t.Fatal("config apply did not enable peer confirmation")
+	}
+	saved := configer.NewMemory(map[string]any{})
+	if err := node.OnSave(saved); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+	if !configer.Bool(saved, configer.Path{fieldConfirmPeers}, false) {
+		t.Fatal("saved config omitted peer confirmation")
+	}
+}
+
+func TestTailscalePeerConfirmationMenuControlsAndVisibility(t *testing.T) {
+	peers := []wgotailscale.PeerInfo{
+		{PeerID: "stable-confirmed", Confirmation: wgotailscale.PeerConfirmed, AppliedToWGO: true, Node: wgotailscale.NodeInfo{Name: "zeta.example.test."}},
+		{PeerID: "stable-pending", Confirmation: wgotailscale.PeerAwaitingConfirmation, Node: wgotailscale.NodeInfo{Name: "alpha.example.test."}},
+		{PeerID: "legacy", Confirmation: wgotailscale.PeerConfirmationNotRequired, AppliedToWGO: true, Node: wgotailscale.NodeInfo{Name: "middle.example.test."}},
+	}
+	node := &tailscaleNode{config: defaultTailscaleConfig(), snapshot: wgotailscale.Snapshot{Peers: peers}}
+	configBlock := node.configBlock()
+	confirmToggle := tailscaleTestBlockItem(t, configBlock, fieldConfirmPeers)
+	if enabled, ok := formular.BoolValue(confirmToggle.Value); !ok || enabled {
+		t.Fatalf("peer confirmation toggle = %#v, want false", confirmToggle.Value)
+	}
+
+	block := node.peerConfirmationBlock()
+	if err := block.Validate(); err != nil {
+		t.Fatalf("peer confirmation block validation: %v", err)
+	}
+	if block.ID != peerConfirmationBlockID || block.Order != 15 || len(block.Items) != 5 {
+		t.Fatalf("peer confirmation block = %#v", block)
+	}
+	if block.Items[0].Text == "" || !strings.Contains(block.Items[0].Text, "alpha.example.test") {
+		t.Fatalf("first peer label = %#v, want sorted alpha peer", block.Items[0])
+	}
+	wantButtons := map[string]bool{
+		peerConfirmButtonPrefix + peerConfirmationToken("stable-pending"):  false,
+		peerRevokeButtonPrefix + peerConfirmationToken("stable-confirmed"): false,
+	}
+	for _, item := range block.Items {
+		if item.StateConditions == nil || item.StateConditions.Visible == nil {
+			t.Fatalf("item %q has no visibility condition", item.ID)
+		}
+		condition := *item.StateConditions.Visible
+		if condition.Source == nil || condition.Source.BlockID != "config" || condition.Source.FieldID != fieldConfirmPeers ||
+			condition.Operator != formular.StateOperatorEquals || !reflect.DeepEqual(condition.Value, true) {
+			t.Fatalf("item %q visibility = %#v", item.ID, condition)
+		}
+		if _, ok := wantButtons[item.ID]; ok {
+			wantButtons[item.ID] = true
+		}
+	}
+	for id, found := range wantButtons {
+		if !found {
+			t.Errorf("peer confirmation button %q is missing", id)
+		}
+	}
+}
+
+func TestTailscalePeerConfirmationMenuShowsConditionalEmptyState(t *testing.T) {
+	block := (&tailscaleNode{}).peerConfirmationBlock()
+	if len(block.Items) != 1 || block.Items[0].ID != "noPeers" || block.Items[0].StateConditions == nil {
+		t.Fatalf("empty confirmation block = %#v", block)
+	}
+}
+
+func tailscaleTestBlockItem(t *testing.T, block formular.Block, id string) formular.Item {
+	t.Helper()
+	for _, item := range block.Items {
+		if item.ID == id {
+			return item
+		}
+	}
+	t.Fatalf("block item %q is missing", id)
+	return formular.Item{}
 }
 
 func TestTailscaleMenuShowsTailnetDataWithoutWireGuardStatusDuplication(t *testing.T) {

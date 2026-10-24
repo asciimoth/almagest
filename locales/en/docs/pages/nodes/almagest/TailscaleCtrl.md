@@ -49,6 +49,29 @@ does not update. The node also checks authorization periodically while it waits.
 **Ephemeral node** asks the control server to remove the node after it goes
 offline. The exact removal time is controlled by the server.
 
+**Require peer confirmation** is off by default. When it is off,
+TailscaleCtrl automatically adds each eligible peer received from the control
+server to the connected [WireGuard](@docs/node/almagest/WireGuard) node.
+
+When **Require peer confirmation** is on, a new control-provided peer stays
+outside WireGuard until a local administrator confirms it. Open **Peer
+confirmation** in the node menu and select **Confirm peer**. The peer entry
+shows its stable ID, confirmation state, and whether it is currently applied to
+WireGuard. This local confirmation is separate from control-server machine
+authorization and tailnet ACL rules.
+
+Use **Revoke confirmation** to remove a previously confirmed peer from
+WireGuard. Revocation also withdraws the routes owned by that peer. The peer
+continues to appear in the menu as awaiting confirmation while the control
+server continues to advertise it, and you can confirm it again.
+
+The peer confirmation controls are hidden when **Require peer confirmation** is
+off. Turning the option off restores automatic handling of all eligible peers.
+It does not erase saved confirmations. If you enable the option again,
+previously confirmed stable peer IDs remain confirmed. Persistent daemon
+storage keeps confirmations across restarts; without persistent storage, they
+last only until the daemon stops.
+
 **Discovery UDP port** selects the local UDP port for endpoint discovery. The
 value must be from `0` through `65535`. Use `0` to let the connected Network
 select a port.

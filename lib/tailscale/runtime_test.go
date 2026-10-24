@@ -5,11 +5,14 @@ import (
 	"crypto/tls"
 	"errors"
 	"net/netip"
+	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/asciimoth/formular"
 	"github.com/asciimoth/gonnect"
 	wgotailscale "github.com/asciimoth/wgo-tailscale"
 	wgdevice "github.com/asciimoth/wgo/device"
@@ -34,11 +37,12 @@ func TestReconcileUsesControlNetworkAndWireGuardDefaultUDPForDirectPeers(t *test
 	result, send := node.reconcile(tailscaleRuntimeRequest{
 		generation: 1,
 		config: tailscaleConfig{
-			enabled:    true,
-			controlURL: "https://control.example.test",
-			hostname:   "alpha",
-			listenPort: 41641,
-			storageID:  tailscaleStorageID("alpha"),
+			enabled:      true,
+			controlURL:   "https://control.example.test",
+			hostname:     "alpha",
+			confirmPeers: true,
+			listenPort:   41641,
+			storageID:    tailscaleStorageID("alpha"),
 		},
 		controller: controller,
 		network:    network,
@@ -58,6 +62,9 @@ func TestReconcileUsesControlNetworkAndWireGuardDefaultUDPForDirectPeers(t *test
 	}
 	if !call.options.UseDefaultTransportForDirectPeers {
 		t.Fatal("direct peers do not use the WireGuard default UDP transport")
+	}
+	if !call.options.ConfirmPeers {
+		t.Fatal("client did not receive peer confirmation mode")
 	}
 	if call.options.TransportID == wgdevice.DefaultTransportID || call.options.TransportID == "" {
 		t.Fatalf("DERP transport ID = %q, want a non-default named transport", call.options.TransportID)
@@ -138,6 +145,68 @@ func TestStaleRuntimeAndWireGuardResultsAreIgnored(t *testing.T) {
 	node.handleWGApplyResult(tailscaleWGApplyResult{runtimeID: 8, sequence: 11})
 	if node.wgConfigured {
 		t.Fatal("stale WireGuard apply marked the node configured")
+	}
+}
+
+func TestPeerConfirmationActionsDispatchToCurrentRuntime(t *testing.T) {
+	client := newTailscaleTestClient(wgotailscale.Snapshot{})
+	node := &tailscaleNode{
+		Base:            nodekit.Base{WorkerSpawner: &tailscaleTestSpawner{}},
+		config:          tailscaleConfig{confirmPeers: true},
+		runtimeClient:   client,
+		runtimeID:       9,
+		activeRuntimeID: 9,
+		snapshot: wgotailscale.Snapshot{Peers: []wgotailscale.PeerInfo{{
+			PeerID: "peer-one", Confirmation: wgotailscale.PeerAwaitingConfirmation,
+		}}},
+	}
+	node.changePeerConfirmation(peerConfirmButtonPrefix+peerConfirmationToken("peer-one"), nil)
+	eventuallyTailscale(t, func() bool { return client.confirmed("peer-one") }, "peer confirmation call")
+
+	node.snapshot.Peers[0].Confirmation = wgotailscale.PeerConfirmed
+	node.changePeerConfirmation(peerRevokeButtonPrefix+peerConfirmationToken("peer-one"), nil)
+	eventuallyTailscale(t, func() bool { return client.revoked("peer-one") }, "peer confirmation revocation")
+}
+
+func TestPeerConfirmationActionsRejectDisabledStaleAndMismatchedControls(t *testing.T) {
+	client := newTailscaleTestClient(wgotailscale.Snapshot{})
+	node := &tailscaleNode{
+		Base:            nodekit.Base{WorkerSpawner: &tailscaleTestSpawner{}},
+		config:          tailscaleConfig{confirmPeers: false},
+		runtimeClient:   client,
+		runtimeID:       4,
+		activeRuntimeID: 4,
+		snapshot: wgotailscale.Snapshot{Peers: []wgotailscale.PeerInfo{{
+			PeerID: "peer-two", Confirmation: wgotailscale.PeerAwaitingConfirmation,
+		}}},
+	}
+	confirmButton := peerConfirmButtonPrefix + peerConfirmationToken("peer-two")
+	node.changePeerConfirmation(confirmButton, nil)
+	node.config.confirmPeers = true
+	node.changePeerConfirmation(peerRevokeButtonPrefix+peerConfirmationToken("peer-two"), nil)
+	node.changePeerConfirmation(peerConfirmButtonPrefix+peerConfirmationToken("missing"), nil)
+	node.changePeerConfirmation(confirmButton, []formular.ElementPathSegment{{ArrayFieldID: "unexpected", ElementID: "unexpected"}})
+	node.activeRuntimeID = 0
+	node.changePeerConfirmation(confirmButton, nil)
+	time.Sleep(20 * time.Millisecond)
+	if client.confirmed("peer-two") || client.revoked("peer-two") {
+		t.Fatal("invalid peer confirmation control reached the runtime client")
+	}
+}
+
+func TestPeerConfirmationResultIgnoresStaleRuntimeAndReportsCurrentError(t *testing.T) {
+	node := &tailscaleNode{activeRuntimeID: 12}
+	node.handlePeerConfirmationResult(tailscalePeerConfirmationResult{
+		runtimeID: 11, peerID: "old", action: "confirm", err: errors.New("old failure"),
+	})
+	if node.runtimeError != "" {
+		t.Fatalf("stale result set runtime error %q", node.runtimeError)
+	}
+	node.handlePeerConfirmationResult(tailscalePeerConfirmationResult{
+		runtimeID: 12, peerID: "current", action: "revoke", err: errors.New("store failure"),
+	})
+	if !strings.Contains(node.runtimeError, "revoke Tailscale peer current: store failure") {
+		t.Fatalf("current result error = %q", node.runtimeError)
 	}
 }
 
@@ -307,12 +376,16 @@ func (f *tailscaleTestClientFactory) client(index int) *tailscaleTestClient {
 }
 
 type tailscaleTestClient struct {
-	mu          sync.Mutex
-	snapshot    wgotailscale.Snapshot
-	events      chan wgotailscale.Event
-	eventsOnce  sync.Once
-	closed      atomic.Bool
-	resumeCalls []uint64
+	mu           sync.Mutex
+	snapshot     wgotailscale.Snapshot
+	events       chan wgotailscale.Event
+	eventsOnce   sync.Once
+	closed       atomic.Bool
+	resumeCalls  []uint64
+	confirmCalls []string
+	revokeCalls  []string
+	confirmErr   error
+	revokeErr    error
 }
 
 func newTailscaleTestClient(snapshot wgotailscale.Snapshot) *tailscaleTestClient {
@@ -339,6 +412,18 @@ func (c *tailscaleTestClient) ResumeInteraction(id uint64) error {
 	c.mu.Unlock()
 	return nil
 }
+func (c *tailscaleTestClient) ConfirmPeer(_ context.Context, id string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.confirmCalls = append(c.confirmCalls, id)
+	return c.confirmErr
+}
+func (c *tailscaleTestClient) RevokePeerConfirmation(_ context.Context, id string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.revokeCalls = append(c.revokeCalls, id)
+	return c.revokeErr
+}
 func (c *tailscaleTestClient) closeEvents() {
 	c.eventsOnce.Do(func() { close(c.events) })
 }
@@ -350,6 +435,22 @@ func (c *tailscaleTestClient) resumed(id uint64) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return len(c.resumeCalls) == 1 && c.resumeCalls[0] == id
+}
+func (c *tailscaleTestClient) confirmed(id string) bool {
+	if c == nil {
+		return false
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return slices.Contains(c.confirmCalls, id)
+}
+func (c *tailscaleTestClient) revoked(id string) bool {
+	if c == nil {
+		return false
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return slices.Contains(c.revokeCalls, id)
 }
 
 func tailscaleTestDevice(t *testing.T) *wgdevice.Device {

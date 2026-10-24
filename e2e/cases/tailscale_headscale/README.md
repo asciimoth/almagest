@@ -22,6 +22,10 @@ sends its ACL-derived object to a `NetworkFirewall` node.
 
 - Both Tailscale and WireGuard nodes reach `up`.
 - The Tailscale menu reports a direct UDP peer path and the Headscale ACL.
+- Peer confirmation is disabled by default. Enabling it through the node menu
+  withdraws the unconfirmed peer from WireGuard. Confirm, revoke, and reconfirm
+  controls install, withdraw, and reinstall that peer. A disable/enable cycle
+  preserves the confirmed stable peer ID in the client cache.
 - `DnsQuery` resolves Tailscale host records and extra A, AAAA, PTR, CNAME, NS,
   MX, SRV, and TXT records through the Tailscale DNS port. IPv4 and IPv6 PTR
   checks each verify all names that share the queried address.
