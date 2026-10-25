@@ -1075,7 +1075,7 @@ async function backend(method: BackendMethod, params: Record<string, unknown> = 
       const result = await requestDecoded("log", "subscribe", {}, parseSubscribeLogsResponse);
       logStoreLimit = Math.max(result.cache_size * 2, result.entries.length);
       frontendLogs.splice(0, frontendLogs.length, ...result.entries);
-      renderLogs();
+      if (activeTab === "logs") renderLogs();
       return result;
     }
     case "dnsSubscribeCaches":
@@ -5968,13 +5968,16 @@ function appendLog(entry: LogEntry): void {
   if (isConfigSaveFailure(entry)) {
     notifyError(entry.message, localizedText("config.save_failed.title", "Config save failed"));
   }
+  const hadEmptyState = !frontendLogs.length;
+  frontendLogs.push(entry);
+  trimLogStore();
+  // Keep the log history current without constructing hidden DOM for every
+  // daemon entry. Debug nodes can emit enough entries to delay API startup.
+  if (activeTab !== "logs") return;
   const panel = el.logsPanel;
   const previousHeight = panel.scrollHeight;
   const previousTop = panel.scrollTop;
   const pinToTop = previousTop <= 2;
-  const hadEmptyState = !frontendLogs.length;
-  frontendLogs.push(entry);
-  trimLogStore();
   if (hadEmptyState) {
     renderLogs();
   } else {
