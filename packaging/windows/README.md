@@ -46,6 +46,13 @@ The installer must stop the service before it replaces files. It must start the
 service after a successful install, repair, or upgrade. Uninstall must stop and
 remove the service before it removes immutable files.
 
+During startup and shutdown, the daemon reports a new SCM checkpoint every two
+seconds and a 30-second wait hint. Stop and system-shutdown controls cancel the
+same daemon context. Normal cleanup has at most two minutes to finish before the
+service returns a failure to SCM. Startup and cleanup errors also return a
+failure, but an expected stop that completes normally returns success. The
+daemon reports `Running` only after the admin API and engine are ready.
+
 ## Service log
 
 An SCM service writes its detailed operator stream to

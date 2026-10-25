@@ -55,6 +55,13 @@ class WindowsPackageContractTests(unittest.TestCase):
         self.assertEqual(service["name"], "almagestd")
         self.assertEqual(service["account"], "LocalSystem")
         self.assertEqual(service["arguments"], ["--isolation=off"])
+        self.assertEqual(service["lifecycle"], {
+            "progressIntervalMilliseconds": 2000,
+            "startWaitHintMilliseconds": 30000,
+            "stopWaitHintMilliseconds": 30000,
+            "shutdownTimeoutMilliseconds": 120000,
+            "stopAndShutdownShareCancellation": True,
+        })
         self.assertEqual(
             [action["delayMilliseconds"] for action in service["recovery"]["actions"]],
             [5000, 15000, 60000],

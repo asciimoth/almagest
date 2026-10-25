@@ -54,6 +54,13 @@
       "--isolation=off"
     ],
     "adminEndpoint": "pipe://machine",
+    "lifecycle": {
+      "progressIntervalMilliseconds": 2000,
+      "startWaitHintMilliseconds": 30000,
+      "stopWaitHintMilliseconds": 30000,
+      "shutdownTimeoutMilliseconds": 120000,
+      "stopAndShutdownShareCancellation": true
+    },
     "recovery": {
       "resetPeriodSeconds": 86400,
       "actions": [

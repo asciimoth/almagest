@@ -188,8 +188,8 @@ func TestWindowsDaemonNamedPipeCLIMachineAccess(t *testing.T) {
 	root := newPrivateWindowsTestDir(t)
 	pipe := fmt.Sprintf("almagest-machine-pipe-%d", os.Getpid())
 	daemon := newWindowsDaemon(t, root, pipe, `{}`, nativeProtectedConfig(pipe, "alm-machine-pipe"))
-	stopService := startWindowsDaemonService(t, daemon)
-	defer stopService()
+	service, cleanupService := startWindowsDaemonService(t, daemon)
+	defer cleanupService()
 	waitFor(t, "production daemon service named pipe", func() bool {
 		return daemon.cliCommand("admin", "ping", "--nonce", "ready").Run() == nil
 	})
@@ -200,6 +200,21 @@ func TestWindowsDaemonNamedPipeCLIMachineAccess(t *testing.T) {
 	}
 	assertWindowsAdminPipeACL(t, pipe, true)
 	assertWindowsServiceLog(t)
+
+	stopWindowsDaemonService(t, service)
+	if err := daemon.cliCommand("admin", "ping", "--nonce", "stopped").Run(); err == nil {
+		t.Fatal("machine pipe remained available after the SCM service stopped")
+	}
+	if err := service.Start(); err != nil {
+		t.Fatalf("restart production daemon service: %v", err)
+	}
+	waitFor(t, "restarted production daemon service named pipe", func() bool {
+		return daemon.cliCommand("admin", "ping", "--nonce", "restarted").Run() == nil
+	})
+	restarted := daemon.cliJSON("admin", "ping", "--nonce", "service-restarted")
+	if !bytes.Contains(restarted, []byte("service-restarted")) {
+		t.Fatalf("restarted service ping did not return its nonce: %s", restarted)
+	}
 }
 
 func TestWindowsDaemonCommandHelper(t *testing.T) {
@@ -600,7 +615,7 @@ func (d *windowsDaemon) readLog() string {
 	return string(data)
 }
 
-func startWindowsDaemonService(t *testing.T, daemon *windowsDaemon) func() {
+func startWindowsDaemonService(t *testing.T, daemon *windowsDaemon) (*mgr.Service, func()) {
 	t.Helper()
 	manager, err := mgr.Connect()
 	if err != nil {
@@ -635,7 +650,7 @@ func startWindowsDaemonService(t *testing.T, daemon *windowsDaemon) func() {
 		t.Fatalf("start production daemon service: %v", err)
 	}
 
-	return func() {
+	return service, func() {
 		status, queryErr := service.Query()
 		if queryErr == nil && status.State != svc.Stopped {
 			if _, err := service.Control(svc.Stop); err != nil {
@@ -665,6 +680,25 @@ func startWindowsDaemonService(t *testing.T, daemon *windowsDaemon) func() {
 		if err := manager.Disconnect(); err != nil {
 			t.Errorf("disconnect from Windows service manager: %v", err)
 		}
+	}
+}
+
+func stopWindowsDaemonService(t *testing.T, service *mgr.Service) {
+	t.Helper()
+	status, err := service.Control(svc.Stop)
+	if err != nil {
+		t.Fatalf("stop production daemon service: %v", err)
+	}
+	deadline := time.Now().Add(integrationTimeout)
+	for status.State != svc.Stopped && time.Now().Before(deadline) {
+		time.Sleep(50 * time.Millisecond)
+		status, err = service.Query()
+		if err != nil {
+			t.Fatalf("query stopping production daemon service: %v", err)
+		}
+	}
+	if status.State != svc.Stopped {
+		t.Fatalf("production daemon service did not stop: status=%v", status.State)
 	}
 }
 
