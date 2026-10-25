@@ -32,6 +32,22 @@ func main() {
 	// enough timestamp precision to correlate the daemon log with host network
 	// captures and admin API actions.
 	golog.SetTimeFormat("2006/01/02 15:04:05.000000")
+	serviceLog, windowsService, err := platform.OpenServiceLog()
+	if err != nil {
+		golog.Fatal("Prepare Windows service logging: ", err)
+	}
+	if serviceLog != nil {
+		defer func() {
+			if closeErr := serviceLog.Close(); closeErr != nil {
+				golog.Error("Close Windows service log: ", closeErr)
+			}
+		}()
+		golog.SetOutput(serviceLog)
+	}
+	if windowsService {
+		golog.Now = func() time.Time { return time.Now().UTC() }
+		golog.SetTimeFormat("2006-01-02T15:04:05.000000Z")
+	}
 	if isolatedSandboxSupervisorRole() {
 		if err := runIsolatedSandboxSupervisorRole(); err != nil {
 			golog.Fatal(err)

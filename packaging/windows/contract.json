@@ -66,6 +66,16 @@
       "reboot": false
     }
   },
+  "logging": {
+    "serviceOnly": true,
+    "path": "%ProgramData%\\Almagest\\logs\\almagestd.log",
+    "timestamps": "UTC",
+    "rotationMaxBytes": 20971520,
+    "retainedOldFiles": 5,
+    "directoryAndFileAccess": ["LocalSystem", "Administrators"],
+    "preserveInteractiveConsole": true,
+    "preserveOnUninstall": true
+  },
   "retention": {
     "repair": ["config", "protectedConfig", "store", "logs"],
     "upgrade": ["config", "protectedConfig", "store", "logs"],

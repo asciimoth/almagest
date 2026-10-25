@@ -62,6 +62,19 @@ class WindowsPackageContractTests(unittest.TestCase):
         self.assertTrue(service["recovery"]["repeatLastAction"])
         self.assertFalse(service["recovery"]["reboot"])
 
+    def test_service_log_contract(self):
+        logging = self.contract["logging"]
+        self.assertTrue(logging["serviceOnly"])
+        self.assertEqual(logging["path"],
+                         r"%ProgramData%\Almagest\logs\almagestd.log")
+        self.assertEqual(logging["timestamps"], "UTC")
+        self.assertEqual(logging["rotationMaxBytes"], 20 * 1024 * 1024)
+        self.assertEqual(logging["retainedOldFiles"], 5)
+        self.assertEqual(logging["directoryAndFileAccess"],
+                         ["LocalSystem", "Administrators"])
+        self.assertTrue(logging["preserveInteractiveConsole"])
+        self.assertTrue(logging["preserveOnUninstall"])
+
     def test_mutable_state_is_retained(self):
         retention = self.contract["retention"]
         expected = ["config", "protectedConfig", "store", "logs"]

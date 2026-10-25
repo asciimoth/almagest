@@ -1,9 +1,8 @@
 # Windows MSI package
 
 This directory defines the contract for the planned unsigned Almagest MSI. The
-MSI is not implemented yet. Phase 1 freezes its identities, paths, service
-properties, retention behavior, and dependency inputs in
-[`contract.json`](contract.json).
+MSI is not implemented yet. `contract.json` freezes its identities, paths,
+service properties, logging, retention behavior, and dependency inputs.
 
 The first package is for Windows Server 2022 build 20348 on amd64. It does not
 support Windows client editions, Windows 11, arm64, or 386. Package availability
@@ -46,6 +45,20 @@ CLI or LocalSystem.
 The installer must stop the service before it replaces files. It must start the
 service after a successful install, repair, or upgrade. Uninstall must stop and
 remove the service before it removes immutable files.
+
+## Service log
+
+An SCM service writes its detailed operator stream to
+`%ProgramData%\Almagest\logs\almagestd.log`. The sink starts before argument
+parsing and runtime dependency checks, so startup failures are retained. Log
+timestamps use UTC. A file rotates at 20 MiB and the daemon keeps five old
+files (`almagestd.log.1` through `almagestd.log.5`). The current file and its
+directory grant access only to LocalSystem and administrators.
+
+The daemon writes synchronously to this sink and flushes it during normal
+shutdown. A normal uninstall keeps the log directory and all rotated files.
+An interactive daemon continues to write to its console and does not open the
+service log.
 
 ## Runtime dependencies
 

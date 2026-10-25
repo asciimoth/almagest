@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"slices"
 	"strings"
@@ -198,6 +199,7 @@ func TestWindowsDaemonNamedPipeCLIMachineAccess(t *testing.T) {
 		t.Fatalf("machine pipe ping did not return its nonce: %s", response)
 	}
 	assertWindowsAdminPipeACL(t, pipe, true)
+	assertWindowsServiceLog(t)
 }
 
 func TestWindowsDaemonCommandHelper(t *testing.T) {
@@ -877,8 +879,17 @@ func newPrivateWindowsTestDir(t *testing.T) string {
 		t.Fatalf("create private integration directory: %v", err)
 	}
 	t.Cleanup(func() {
-		if err := os.RemoveAll(path); err != nil {
-			t.Errorf("remove integration directory: %v", err)
+		deadline := time.Now().Add(5 * time.Second)
+		for {
+			err := os.RemoveAll(path)
+			if err == nil || errors.Is(err, os.ErrNotExist) {
+				return
+			}
+			if time.Now().After(deadline) {
+				t.Errorf("remove integration directory after process-exit wait: %v", err)
+				return
+			}
+			time.Sleep(50 * time.Millisecond)
 		}
 	})
 	return path
@@ -999,6 +1010,83 @@ func assertWindowsAdminPipeACL(t *testing.T, pipe string, machine bool) {
 	for sid, seen := range want {
 		if !seen {
 			t.Fatalf("production daemon pipe has no access rule for %s: %s", sid, descriptor.String())
+		}
+	}
+}
+
+func assertWindowsServiceLog(t *testing.T) {
+	t.Helper()
+	programData, err := windows.KnownFolderPath(windows.FOLDERID_ProgramData, windows.KF_FLAG_DEFAULT)
+	if err != nil {
+		t.Fatalf("resolve ProgramData for service log: %v", err)
+	}
+	directory := filepath.Join(programData, "Almagest", "logs")
+	path := filepath.Join(directory, "almagestd.log")
+	var data []byte
+	waitFor(t, "durable Windows service log", func() bool {
+		data, err = os.ReadFile(path)
+		return err == nil && bytes.Contains(data, []byte("Execution mode: direct"))
+	})
+	timestamp := regexp.MustCompile(`(?m)^\[INFO\] 20[0-9]{2}-[0-9]{2}-[0-9]{2}T[0-9:.]{15}Z Execution mode: direct$`)
+	if !timestamp.Match(data) {
+		t.Fatalf("service log does not contain the expected UTC startup record:\n%s", data)
+	}
+	assertWindowsServiceLogACL(t, directory, true)
+	assertWindowsServiceLogACL(t, path, false)
+}
+
+func assertWindowsServiceLogACL(t *testing.T, path string, directory bool) {
+	t.Helper()
+	name, err := windows.UTF16PtrFromString(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	flags := uint32(windows.FILE_FLAG_OPEN_REPARSE_POINT)
+	if directory {
+		flags |= windows.FILE_FLAG_BACKUP_SEMANTICS
+	}
+	handle, err := windows.CreateFile(name, windows.READ_CONTROL|windows.FILE_READ_ATTRIBUTES,
+		windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE,
+		nil, windows.OPEN_EXISTING, flags, 0)
+	if err != nil {
+		t.Fatalf("open service log ACL target %s: %v", path, err)
+	}
+	defer windows.CloseHandle(handle) //nolint:errcheck
+	descriptor, err := windows.GetSecurityInfo(handle, windows.SE_FILE_OBJECT,
+		windows.OWNER_SECURITY_INFORMATION|windows.DACL_SECURITY_INFORMATION)
+	if err != nil {
+		t.Fatalf("read service log ACL for %s: %v", path, err)
+	}
+	owner, _, err := descriptor.Owner()
+	if err != nil || !owner.IsWellKnown(windows.WinLocalSystemSid) {
+		t.Fatalf("service log owner for %s = %v, %v; want LocalSystem", path, owner, err)
+	}
+	control, _, err := descriptor.Control()
+	if err != nil || control&windows.SE_DACL_PROTECTED == 0 {
+		t.Fatalf("service log DACL for %s is not protected: %v", path, err)
+	}
+	dacl, _, err := descriptor.DACL()
+	if err != nil || dacl == nil {
+		t.Fatalf("read service log DACL for %s: %v", path, err)
+	}
+	want := map[string]bool{"S-1-5-18": false, "S-1-5-32-544": false}
+	for index := uint16(0); index < dacl.AceCount; index++ {
+		var ace *windows.ACCESS_ALLOWED_ACE
+		if err := windows.GetAce(dacl, uint32(index), &ace); err != nil {
+			t.Fatalf("read service log access rule %d for %s: %v", index, path, err)
+		}
+		if ace.Header.AceType != windows.ACCESS_ALLOWED_ACE_TYPE {
+			t.Fatalf("service log access rule %d for %s is not an allow rule", index, path)
+		}
+		sid := (*windows.SID)(unsafe.Pointer(&ace.SidStart)).String()
+		if _, permitted := want[sid]; !permitted {
+			t.Fatalf("service log access rule %d for %s grants unexpected SID %s", index, path, sid)
+		}
+		want[sid] = true
+	}
+	for sid, present := range want {
+		if !present {
+			t.Errorf("service log ACL for %s does not grant %s", path, sid)
 		}
 	}
 }
