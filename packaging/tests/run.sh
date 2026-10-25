@@ -12,6 +12,32 @@ fi
 
 archive="$(find dist -maxdepth 1 -type f -name 'almagest_*_linux_amd64.tar.gz' -print)"
 test -f dist/PACKAGE_CONTENTS.md
+test -f dist/ascii-moth.asc
+
+if [[ -f "$archive.sig" ]]; then
+	verify_home="$(mktemp -d)"
+	trap 'rm -rf -- "$verify_home"' EXIT
+	chmod 0700 "$verify_home"
+	gpg --batch --quiet --dearmor --output "$verify_home/ascii-moth.gpg" \
+		dist/ascii-moth.asc
+
+	verify_artifact() {
+		local artifact="$1"
+		test -f "$artifact.sig"
+		gpgv --keyring "$verify_home/ascii-moth.gpg" \
+			"$artifact.sig" "$artifact"
+	}
+
+	verify_artifact "$archive"
+	verify_artifact dist/checksums.txt
+	for package in dist/*.deb dist/*.rpm dist/*.pkg.tar.zst; do
+		verify_artifact "$package"
+	done
+elif find dist -maxdepth 1 -type f -name '*.sig' -print -quit | grep -q .; then
+	printf 'release artifact signatures are incomplete\n' >&2
+	exit 1
+fi
+
 tar -tzf "$archive" | grep -E '(^|/)libexec/almagest/almagestd$' >/dev/null
 tar -tzf "$archive" | grep -E '(^|/)bin/almagest-cli$' >/dev/null
 tar -tzf "$archive" | grep -E '(^|/)share/almagest/locales/en/manifest.json$' >/dev/null

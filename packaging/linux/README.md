@@ -48,7 +48,21 @@ socket. These directories are not regular package payload files.
 
 GoReleaser creates the Linux amd64 archive and the deb, RPM, and Arch Linux
 packages. Run `just package`. The output is in `dist/` and includes a SHA-256
-checksum file.
+checksum file, detached OpenPGP signatures, and `ascii-moth.asc`. Import the
+key, then verify an artifact before you install or extract it:
+
+```text
+gpg --import ascii-moth.asc
+gpg --verify almagest_VERSION_linux_amd64.deb.sig almagest_VERSION_linux_amd64.deb
+```
+
+The primary key fingerprint is
+`C5C8 4658 CCFD 7E8E 71DE E933 AF3A E54F C3A3 5C9F`.
+
+`just package` signs release artifacts by default. Use `just package false` for
+an unsigned local build that does not require confirmation from a hardware key.
+`just test-packaging` uses this unsigned mode automatically. Use
+`just test-packaging true` to build signatures and test their verification.
 
 The packages start `almagestd` as root with daemon isolation off. Subprogram
 sandbox mode is `auto`, and supported system programs are discovered at startup.

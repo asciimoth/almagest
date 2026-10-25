@@ -24,6 +24,20 @@ install_package() {
 	esac
 }
 
+verify_package() {
+	local package="$1"
+	local keyring=/tmp/almagest-package-keyring.gpg
+
+	[[ -f "$package.sig" ]] || return 0
+	gpg --batch --quiet --dearmor --output "$keyring" /packages/ascii-moth.asc
+	gpgv --keyring "$keyring" "$package.sig" "$package"
+	if [[ "$format" == archlinux ]]; then
+		pacman-key --init
+		pacman-key --add /packages/ascii-moth.asc
+		pacman-key --lsign-key C5C84658CCFD7E8E71DEE933AF3AE54FC3A35C9F
+	fi
+}
+
 package_lists_path() {
 	local path="$1"
 	case "$format" in
@@ -40,6 +54,7 @@ case "$format" in
 	*) printf 'unknown package format: %s\n' "$format" >&2; exit 2 ;;
 esac
 
+verify_package "$package"
 install_package "$package"
 
 test -x /usr/bin/almagest-cli

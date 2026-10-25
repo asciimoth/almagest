@@ -4,3 +4,11 @@ artifacts/
 .env
 .secretsignore
 local/
+dist/**
+!dist/*.deb
+!dist/*.deb.sig
+!dist/*.rpm
+!dist/*.rpm.sig
+!dist/*.pkg.tar.zst
+!dist/*.pkg.tar.zst.sig
+!dist/ascii-moth.asc

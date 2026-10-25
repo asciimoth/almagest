@@ -219,16 +219,21 @@ serve-webdemo base_path='' output='build/webdemo' port='8000' host='0.0.0.0':
 build-windows:
   ./scripts/build-windows.sh amd64 arm64
 
-# Build all supported release archives and native Linux packages.
-package: build-web
+# Build all supported release archives and native Linux packages. Pass false
+# to skip hardware-backed signing for local checks.
+package sign='true': build-web
   ./packaging/build-native.sh
-  goreleaser release --snapshot --clean
+  @case {{quote(sign)}} in \
+    true) goreleaser release --snapshot --clean ;; \
+    false) goreleaser release --snapshot --clean --skip=sign ;; \
+    *) printf 'sign must be true or false\n' >&2; exit 2 ;; \
+  esac
   install -m 0644 packaging/linux/README.md dist/PACKAGE_CONTENTS.md
-  cd dist && sha256sum PACKAGE_CONTENTS.md >> checksums.txt
+  install -m 0644 packaging/keys/ascii-moth.asc dist/ascii-moth.asc
 
 # Install each native package format in a clean container and exercise the
 # packaged daemon, CLI, runtime data, and config update behavior.
-test-packaging: package
+test-packaging sign='false': (package sign)
   ./packaging/tests/run.sh
 
 [private]
