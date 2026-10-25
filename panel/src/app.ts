@@ -754,7 +754,10 @@ function handleAPIDisconnect(): void {
 
 function scheduleAPIReconnect(): void {
   if (apiReconnectTimer || apiTransport?.connected || !apiReconnectAllowed) return;
-  const delay = apiReconnectDelay(apiReconnectAttempt);
+  const delay = apiReconnectDelay(
+    apiReconnectAttempt,
+    document.visibilityState === "visible",
+  );
   apiReconnectAttempt += 1;
   apiReconnectTimer = window.setTimeout(() => {
     apiReconnectTimer = 0;
@@ -6763,12 +6766,13 @@ async function initializeAPISession(): Promise<void> {
     applySandboxStatus(hello);
   }
   await restoreLocale(hello);
-  const colormap = await backend("colormap");
-  applyTypePalette(colormap);
-  await backend("subscribeLogs");
+  if (currentPanelMode === "webdemo") {
+    const colormap = await backend("colormap");
+    applyTypePalette(colormap);
+  }
+  // The notification subscription sends the color map, workspace snapshot,
+  // and worker snapshot before it acknowledges the subscription.
   await backend("subscribeNotifications");
-  await ensureSecSubscription();
-  await requestSnapshot();
   if (currentPanelMode === "webdemo") centerGraphAfterLoad();
   if (selectedMenu) {
     selectedMenu.receivedSnapshot = false;
@@ -6777,6 +6781,13 @@ async function initializeAPISession(): Promise<void> {
   if (!apiTransport?.connected) {
     throw new Error("Admin API disconnected during initialization");
   }
+}
+
+async function initializeAuxiliaryAPISession(): Promise<void> {
+  await Promise.all([
+    tryBackend("subscribeLogs"),
+    ensureSecSubscription(),
+  ]);
 }
 
 async function startAPIConnection(): Promise<void> {
@@ -6795,6 +6806,7 @@ async function startAPIConnection(): Promise<void> {
       panelStarted = true;
       setTab(tabNameFromLocation(), false);
     }
+    void initializeAuxiliaryAPISession();
   } catch (error) {
     const failedTransport = apiTransport;
     failedTransport?.close();

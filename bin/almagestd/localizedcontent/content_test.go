@@ -39,6 +39,14 @@ func TestReaderFallbackReloadAndSafety(t *testing.T) {
 	if got, source := reader.NodeShort("lorem", "../escape", "built-in"); got != "built-in" || source != SourceBuiltin {
 		t.Fatalf("unsafe fallback = %q, %s", got, source)
 	}
+	batch := reader.NodeShortBatch("lorem", map[string]string{
+		"almagest/Tun":   "built-in",
+		"almagest/Other": "other built-in",
+		"../escape":      "unsafe built-in",
+	})
+	if batch["almagest/Tun"] != "Lorem TUN" || batch["almagest/Other"] != "English other" || batch["../escape"] != "unsafe built-in" {
+		t.Fatalf("short batch = %#v", batch)
+	}
 
 	panel := filepath.Join(root, "lorem", "panel.json")
 	write(t, panel, `{"app.title":"Updated"}`)

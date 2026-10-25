@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/asciimoth/almagest/bin/api"
 	almagest "github.com/asciimoth/almagest/lib"
@@ -48,6 +49,8 @@ func (a *AdminAPI) serveWebsocket(
 		golog.Debugf("WebSocket accept failed: %v", err)
 		return
 	}
+	golog.Debugf("Admin API WebSocket connected remote=%s", r.RemoteAddr)
+	defer golog.Debugf("Admin API WebSocket disconnected remote=%s", r.RemoteAddr)
 	// Snapshot import requests can be larger than the WebSocket package's
 	// 32 KiB default. Keep a finite limit so JSON decoding cannot allocate an
 	// unbounded request before the snapshot service validates the archive.
@@ -88,6 +91,7 @@ func (a *AdminAPI) serveWebsocket(
 			continue
 		}
 
+		requestStarted := time.Now()
 		response, err := session.handleMessage(msg)
 		if err != nil {
 			if err := writeWebsocketError(msg, api.ErrorInternal, err.Error(), writeMessage); err != nil {
@@ -100,6 +104,9 @@ func (a *AdminAPI) serveWebsocket(
 		}
 		if err := writeMessage(response); err != nil {
 			return
+		}
+		if elapsed := time.Since(requestStarted); elapsed >= 100*time.Millisecond {
+			golog.Debugf("Slow admin API request surface=%s method=%s duration=%s", msg.Surface, msg.Method, elapsed)
 		}
 	}
 }

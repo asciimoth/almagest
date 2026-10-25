@@ -255,6 +255,37 @@ func (r *Reader) NodeShort(locale, class, builtin string) (string, Source) {
 	return "", SourceMissing
 }
 
+// NodeShortBatch resolves short descriptions for multiple node classes. It
+// reads each applicable locale catalog once so a full graph snapshot does not
+// open and stat the same files for every registered class.
+func (r *Reader) NodeShortBatch(locale string, builtins map[string]string) map[string]string {
+	result := maps.Clone(builtins)
+	if result == nil {
+		result = make(map[string]string)
+	}
+	if r == nil {
+		return result
+	}
+
+	canonical, canonicalOK := CanonicalLocale(locale)
+	var requested map[string]string
+	if canonicalOK && canonical != "en" {
+		requested, _ = r.nodeCatalog(canonical)
+	}
+	english, _ := r.nodeCatalog("en")
+	for class := range result {
+		if !validClass(class) {
+			continue
+		}
+		if value := requested[class]; value != "" {
+			result[class] = value
+		} else if value := english[class]; value != "" {
+			result[class] = value
+		}
+	}
+	return result
+}
+
 // NodeLong resolves one required Markdown description.
 func (r *Reader) NodeLong(locale, class, builtin string) (string, Source) {
 	return r.docText(locale, "nodes/"+class+".md", builtin)

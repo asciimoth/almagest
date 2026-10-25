@@ -77,8 +77,16 @@ func (s *apiSession) localizeClass(locale string, class *api.NodeClassSnapshot) 
 }
 
 func (s *apiSession) localizeClasses(locale string, classes []api.NodeClassSnapshot) {
+	if s.admin.localizedContent == nil {
+		return
+	}
+	builtins := make(map[string]string, len(classes))
 	for index := range classes {
-		s.localizeClass(locale, &classes[index])
+		builtins[classes[index].Class] = classes[index].ShortDescription
+	}
+	localized := s.admin.localizedContent.NodeShortBatch(locale, builtins)
+	for index := range classes {
+		classes[index].ShortDescription = localized[classes[index].Class]
 	}
 }
 
@@ -96,8 +104,13 @@ func (s *apiSession) localizeNotification(locale string, notification almagest.E
 	if workspace.Snapshot != nil {
 		snapshot := *workspace.Snapshot
 		snapshot.Classes = make(map[string]pasta.NodeClassSnapshot, len(workspace.Snapshot.Classes))
+		builtins := make(map[string]string, len(workspace.Snapshot.Classes))
+		for _, class := range workspace.Snapshot.Classes {
+			builtins[class.Class] = class.ShortDescription
+		}
+		localized := s.admin.localizedContent.NodeShortBatch(locale, builtins)
 		for name, class := range workspace.Snapshot.Classes {
-			class.ShortDescription, _ = s.admin.localizedContent.NodeShort(locale, class.Class, class.ShortDescription)
+			class.ShortDescription = localized[class.Class]
 			snapshot.Classes[name] = class
 		}
 		workspace.Snapshot = &snapshot

@@ -163,7 +163,7 @@ func (a *AdminAPI) Run(
 		})
 
 		wg.Go(func() {
-			golog.Infof("Starting web admin listener on http://%s", a.webListener.Addr())
+			logAdminListenerStart("web", "http://", a.webListener)
 			if err := server.Serve(a.webListener); err != nil &&
 				!errors.Is(err, http.ErrServerClosed) &&
 				!errors.Is(err, net.ErrClosed) {
@@ -179,7 +179,7 @@ func (a *AdminAPI) Run(
 		})
 
 		wg.Go(func() {
-			golog.Infof("Starting unix admin listener on %s", a.unixListener.Addr())
+			logAdminListenerStart("unix", "", a.unixListener)
 			a.serveUnix(ctx, cancel, wg, engine, sys, logf)
 		})
 	}
@@ -194,6 +194,15 @@ func (a *AdminAPI) Run(
 			a.serveStreamListener(ctx, cancel, wg, "Windows pipe admin", a.pipeListener, engine, sys, logf)
 		})
 	}
+}
+
+func logAdminListenerStart(kind, scheme string, listener net.Listener) {
+	address := listener.Addr()
+	if address.Network() == "almagest-admin-relay" {
+		golog.Infof("Starting %s admin handler on internal relay %s", kind, address)
+		return
+	}
+	golog.Infof("Starting %s admin listener on %s%s", kind, scheme, address)
 }
 
 func (a *AdminAPI) serveStreamListener(

@@ -69,10 +69,10 @@ test("web demo centers the graph after its initial workspace load", () => {
     app.indexOf("async function initializeAPISession"),
     app.indexOf("async function startAPIConnection"),
   );
-  const refresh = initialize.indexOf("await requestSnapshot()");
-  const center = initialize.indexOf("centerGraphAfterLoad()", refresh);
+  const subscribe = initialize.indexOf('await backend("subscribeNotifications")');
+  const center = initialize.indexOf("centerGraphAfterLoad()", subscribe);
 
-  assert.notEqual(refresh, -1);
-  assert.ok(center > refresh);
-  assert.match(initialize.slice(refresh, center), /currentPanelMode === ["']webdemo["']/);
+  assert.notEqual(subscribe, -1);
+  assert.ok(center > subscribe);
+  assert.match(initialize.slice(subscribe, center), /currentPanelMode === ["']webdemo["']/);
 });

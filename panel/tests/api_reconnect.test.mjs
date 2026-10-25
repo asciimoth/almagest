@@ -9,12 +9,27 @@ import {
 
 const app = await readFile(new URL("../src/app.ts", import.meta.url), "utf8");
 
-test("API reconnect delay grows exponentially and has a maximum", () => {
+test("visible API reconnect delay stays short", () => {
   assert.deepEqual(
-    [0, 1, 2, 3, 4, 5].map(apiReconnectDelay),
+    [0, 1, 2, 3, 4, 5].map((attempt) => apiReconnectDelay(attempt, true)),
+    [1_000, 1_000, 1_000, 1_000, 1_000, 1_000],
+  );
+});
+
+test("hidden API reconnect delay grows exponentially and has a maximum", () => {
+  assert.deepEqual(
+    [0, 1, 2, 3, 4, 5].map((attempt) => apiReconnectDelay(attempt, false)),
     [1_000, 2_000, 4_000, 8_000, 16_000, 30_000],
   );
-  assert.equal(apiReconnectDelay(20), API_RECONNECT_MAX_DELAY_MS);
+  assert.equal(apiReconnectDelay(20, false), API_RECONNECT_MAX_DELAY_MS);
+});
+
+test("the panel selects reconnect backoff from page visibility", () => {
+  const schedule = app.slice(
+    app.indexOf("function scheduleAPIReconnect"),
+    app.indexOf("function resetAPIReconnectBackoff"),
+  );
+  assert.match(schedule, /apiReconnectDelay\([\s\S]*document\.visibilityState === "visible"/);
 });
 
 test("focus, restored-page, and visible-page events request an immediate reconnect", () => {
@@ -64,4 +79,27 @@ test("the panel distinguishes the WebSocket handshake from API initialization", 
     app.indexOf("async function startAPIConnection"),
   );
   assert.match(initialization, /await connectAPI\(\);[\s\S]*app\.status\.initializing/);
+});
+
+test("logs and secrets do not block the critical API initialization path", () => {
+  const initialization = app.slice(
+    app.indexOf("async function initializeAPISession"),
+    app.indexOf("async function initializeAuxiliaryAPISession"),
+  );
+  assert.match(initialization, /await backend\("subscribeNotifications"\)/);
+  assert.match(initialization, /currentPanelMode === "webdemo"[\s\S]*backend\("colormap"\)/);
+  assert.doesNotMatch(initialization, /requestSnapshot\(\)/);
+  assert.doesNotMatch(initialization, /subscribeLogs|ensureSecSubscription/);
+
+  const auxiliary = app.slice(
+    app.indexOf("async function initializeAuxiliaryAPISession"),
+    app.indexOf("async function startAPIConnection"),
+  );
+  assert.match(auxiliary, /Promise\.all\([\s\S]*subscribeLogs[\s\S]*ensureSecSubscription/);
+
+  const connection = app.slice(
+    app.indexOf("async function startAPIConnection"),
+    app.indexOf("function boot", app.indexOf("async function startAPIConnection")),
+  );
+  assert.match(connection, /app\.status\.connected[\s\S]*initializeAuxiliaryAPISession/);
 });

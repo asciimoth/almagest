@@ -663,6 +663,23 @@ func TestEngineAPIDispatchCoreMethods(t *testing.T) {
 	if err != nil || sub.SubscriptionID == 0 {
 		t.Fatalf("subscribe response = %#v, error = %v", sub, err)
 	}
+	initialWorkspace := false
+	for _, event := range events {
+		if event.Surface != api.SurfaceEngine || event.Method != string(api.EventEngineNotification) {
+			continue
+		}
+		decoded, decodeErr := api.DecodePayload[api.EngineNotificationEvent](event.Payload)
+		if decodeErr != nil {
+			t.Fatal(decodeErr)
+		}
+		workspace := decoded.Notification.Workspace
+		if decoded.SubscriptionID == sub.SubscriptionID && workspace != nil && workspace.Kind == pasta.NotificationWorkspaceSnapshot {
+			initialWorkspace = true
+		}
+	}
+	if !initialWorkspace {
+		t.Fatal("notification subscription did not deliver its initial workspace snapshot before returning")
+	}
 	call("3", string(api.MethodEngineRequestFullSnapshot), api.SubscriptionRequest(sub))
 	call("4", string(api.MethodEngineSubscribeNodeMenu), api.NodeMenuSubscriptionRequest{Workspace: almagest.MainWorkspace, Node: nodeID, SubscriptionID: sub.SubscriptionID})
 	call("5", string(api.MethodEngineUnsubscribeNodeMenu), api.NodeMenuSubscriptionRequest{Workspace: almagest.MainWorkspace, Node: nodeID, SubscriptionID: sub.SubscriptionID})
