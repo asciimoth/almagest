@@ -448,6 +448,43 @@ class WindowsPackageContractTests(unittest.TestCase):
                 "package-integration.json"):
             self.assertIn(token, integration)
 
+    def test_project_integration_exposes_release_and_opt_in_test_gates(self):
+        justfile = (ROOT / "justfile").read_text()
+        selected = (ROOT / "scripts/test-selected.py").read_text()
+        assembly = ROOT / "scripts/package-windows.sh"
+        source = assembly.read_text()
+
+        for recipe in ("package-windows version=''", "test-windows-packaging version=''",
+                       "test-windows-packaging-enabled", "lint-windows-packaging"):
+            self.assertIn(recipe, justfile)
+        self.assertIn("RUN_WINDOWS_PKG_TESTS", justfile)
+        self.assertIn("./scripts/package-windows.sh", justfile)
+        self.assertIn('selector.startswith("winpkg:")', selected)
+        for name in ("build", "smoke", "lifecycle", "integration"):
+            self.assertIn(f'"{name}"', selected)
+        self.assertIn('"$repo_root/dev/winvm/run.sh" package', source)
+        self.assertIn('install -m 0644 "$msi"', source)
+        self.assertIn('install -m 0644 "$checksum"', source)
+        self.assertIn('install -m 0644 "$evidence"', source)
+        self.assertIn('"$output_dir/WINDOWS_PACKAGE_CONTENTS.md"', source)
+        version = subprocess.run(
+            ["bash", str(assembly), "--print-version", "7.8.9"],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(version.stdout, "7.8.9\n")
+
+    def test_wix_linter_accepts_tracked_package_sources(self):
+        subprocess.run(
+            ["python3", str(ROOT / "scripts/lint-windows-packaging.py")],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
     def test_build_manifest_identities_are_deterministic_and_input_bound(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

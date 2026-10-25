@@ -5,7 +5,6 @@ import io
 import json
 from pathlib import Path
 import subprocess
-import tempfile
 import unittest
 from contextlib import redirect_stderr
 from unittest.mock import patch
@@ -19,7 +18,7 @@ ROOT = SCRIPT.parents[1]
 
 
 class SelectedTestHarnessTests(unittest.TestCase):
-    def test_parses_exact_go_e2e_winvm_js_and_python_tests(self):
+    def test_parses_exact_go_e2e_winvm_js_python_and_package_tests(self):
         manifest_cases = MODULE.load_winvm_cases()
         case_id = next(iter(manifest_cases))
         selected, _ = MODULE.parse_selectors([
@@ -28,6 +27,7 @@ class SelectedTestHarnessTests(unittest.TestCase):
             f"winvm:{case_id}",
             "js:panel/tests/api_model.test.mjs",
             "python:scripts.tests.test_cycles.CycleTests.test_go_leaf_and_package_failures",
+            "winpkg:integration",
         ])
         self.assertEqual(selected.go, [MODULE.GoSelection(
             "lib", "./http", "TestHTTPClientServerE2EMockNetwork")])
@@ -35,6 +35,12 @@ class SelectedTestHarnessTests(unittest.TestCase):
         self.assertEqual(selected.winvm, [case_id])
         self.assertEqual(selected.javascript, ["tests/api_model.test.mjs"])
         self.assertEqual(len(selected.python), 1)
+        self.assertEqual(selected.windows_package, ["integration"])
+
+    def test_rejects_unknown_windows_package_selector(self):
+        with self.assertRaisesRegex(MODULE.SelectionError,
+                                    "unknown Windows package selector"):
+            MODULE.parse_selectors(["winpkg:unknown"])
 
     def test_rejects_all_selectors_before_running_preparation(self):
         with self.assertRaisesRegex(MODULE.SelectionError, "does not exist"):
@@ -198,6 +204,24 @@ class SelectedTestHarnessTests(unittest.TestCase):
 
         self.assertEqual(MODULE.Harness(run=run).execute(selected, cases), 1)
         self.assertEqual(len(calls), 2)
+
+    def test_windows_package_selectors_use_one_explicit_version(self):
+        selected, cases = MODULE.parse_selectors([
+            "winpkg:build", "winpkg:smoke", "winpkg:integration",
+        ])
+        calls = []
+
+        def run(argv, **kwargs):
+            calls.append((argv, kwargs))
+            return subprocess.CompletedProcess(argv, 0)
+
+        with patch.dict(MODULE.os.environ, {"ALMAGEST_PACKAGE_VERSION": "2.3.4"}):
+            self.assertEqual(MODULE.Harness(run=run).execute(selected, cases), 0)
+        self.assertEqual([call[0] for call in calls], [
+            ["just", "package-windows", "2.3.4"],
+            ["just", "winvm-package-smoke", "2.3.4"],
+            ["just", "winvm-package-integration", "2.3.4"],
+        ])
 
 
 if __name__ == "__main__":

@@ -141,6 +141,8 @@ file root-storage timestamps, which otherwise use the time of the build.
 Build and harvest the real package with the locked Windows VM:
 
 ```sh
+just package-windows
+just test-windows-packaging
 just winvm-package 1.2.3
 just winvm-package-repro 1.2.3
 just winvm-package-image
@@ -148,6 +150,18 @@ just winvm-package-smoke 1.2.3
 just winvm-package-lifecycle 1.2.3
 just winvm-package-integration 1.2.3
 ```
+
+`just package-windows [VERSION]` is the release-facing command. It copies the
+MSI, its `.sha256` file, and `.build.json` evidence into `dist/`. Without an
+explicit version, it uses an exact `vX.Y.Z` or `X.Y.Z` Git tag. An untagged
+local snapshot uses `0.0.0`. `just package false` assembles the unsigned MSI
+beside the GoReleaser OSS Linux outputs; GoReleaser Pro is not required.
+
+`just test-windows-packaging [VERSION]` runs reproducibility, lifecycle, and
+installed-package integration qualification. The complete normal test gate
+runs it only when `RUN_WINDOWS_PKG_TESTS=1`; direct use is always explicit and
+does not need that variable. Build the clean package image first with
+`just winvm-package-image`.
 
 The first command writes the MSI, its SHA-256 checksum, and build evidence to
 the run directory. The second command uses two clean overlays and requires
@@ -169,6 +183,18 @@ recovery, repair, major upgrade, downgrade rejection, uninstall, and reinstall.
 It also verifies that administrator config edits and daemon state remain usable
 through the complete sequence. Normal uninstall must remove the Mullvad driver
 service, system file, and driver-store package, and must retain ProgramData.
+
+The integration command probes all stable API surfaces through the installed
+CLI and SCM service. It checks packaged documentation and examples,
+LocalProxy/OutNetwork traffic, retained KV and secret state, an example across
+a restart, and Wintun adapter creation and cleanup. It validates the signed
+Wintun driver that Windows loads and returns structured host-validated
+evidence.
+
+For focused project checks, use `winpkg:build`, `winpkg:smoke`,
+`winpkg:lifecycle`, or `winpkg:integration` with `just check` or
+`just test-total`. Set `ALMAGEST_PACKAGE_VERSION=X.Y.Z` for these selectors; an
+unset value uses the local snapshot version `0.0.0`.
 
 On a Windows host with WiX v4 and the pinned Util and DifxApp extensions, use
 the fixed fixture to validate the source and build a test MSI:

@@ -68,6 +68,8 @@ just winvm-package-repro 1.2.3
 just winvm-package-smoke 1.2.3
 just winvm-package-lifecycle 1.2.3
 just winvm-package-integration 1.2.3
+just package-windows
+just test-windows-packaging
 just winvm-test
 just windows-isolation-profiles
 just daemon-winvm
@@ -203,6 +205,13 @@ creates a private-route Wintun adapter through the installed service, checks
 the signed driver that Windows loads, and requires a normal SCM stop to remove
 the owned adapter, address, and route. The host validates and extracts the
 structured result into the run directory's `package-integration/` directory.
+
+`just package-windows [VERSION]` is the public build command. It selects an
+exact release tag or uses `0.0.0` for an untagged local build, runs the package
+mode, and copies the MSI, checksum, build evidence, and inspection guide to
+`dist/`. `just test-windows-packaging [VERSION]` runs package reproducibility,
+lifecycle, and integration in sequence. Normal aggregate tests run this costly
+gate only when `RUN_WINDOWS_PKG_TESTS=1` is set.
 
 `just winvm-test` runs the active native gate from `test-suites.json`, then the
 isolated two-guest packet-flow gate. The ordinary suite runs all tests in

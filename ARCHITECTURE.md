@@ -111,6 +111,7 @@ just check go:lib/http:TestHTTPClientServerE2EMockNetwork e2e:static_dns_records
 just test-total winvm:m8::daemon-user-named-pipe-cli-access winvm:m6::xtor-restricted-token
 just test-total js:panel/tests/api_model.test.mjs
 just test-total python:scripts.tests.test_cycles.CycleTests.test_go_leaf_and_package_failures
+ALMAGEST_PACKAGE_VERSION=1.2.3 just test-total winpkg:integration
 ```
 
 The selector forms are:
@@ -122,6 +123,9 @@ The selector forms are:
 - `js:panel/tests/FILE.mjs` for one panel test file.
 - `python:DOTTED-UNITTEST` for one unittest under `scripts/tests/` or
   `dev/winvm/tests/`.
+- `winpkg:{build,smoke,lifecycle,integration}` for one Windows MSI build or
+  installed-package WinVM gate. `ALMAGEST_PACKAGE_VERSION` selects its MSI
+  `x.y.z` version and defaults to `0.0.0` for a local snapshot.
 
 The harness validates selector syntax and referenced packages, cases, and files
 before preparation starts. It also fails if an exact selected Go test does not
@@ -465,6 +469,12 @@ Windows host integration stays in `bin/` and is selected with build tags:
 contract. `contracts/windows/test-manifest.json` defines the evidence required
 to qualify each claim. The reusable graph and node code remains in `lib/` and
 does not import the Windows backend.
+
+`packaging/windows/` defines the unsigned Windows Server 2022/amd64 MSI.
+`scripts/package-windows.sh` runs its locked WinVM build and adds the MSI,
+checksum, and build evidence to `dist/`. `just test-windows-packaging` joins
+the reproducibility, lifecycle, and installed-package integration gates. These
+package gates do not change entries in the Windows support contract.
 
 Before loading config, almagestd resolves path-valued CLI args to absolute
 paths. After config parsing and before daemon resources are started, it sets up

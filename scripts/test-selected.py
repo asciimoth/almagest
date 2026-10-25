@@ -38,6 +38,7 @@ class Selections:
     winvm: list[str]
     javascript: list[str]
     python: list[str]
+    windows_package: list[str]
 
 
 def split_arguments(arguments):
@@ -92,7 +93,7 @@ def load_winvm_cases(path=WINVM_MANIFEST):
 def parse_selectors(values, root=ROOT, manifest_path=WINVM_MANIFEST):
     if not values:
         raise SelectionError("at least one test selector is required")
-    selected = Selections([], [], [], [], [])
+    selected = Selections([], [], [], [], [], [])
     winvm_cases = load_winvm_cases(manifest_path)
     seen = set()
     for selector in values:
@@ -133,9 +134,15 @@ def parse_selectors(values, root=ROOT, manifest_path=WINVM_MANIFEST):
             if not file_path.is_file():
                 raise SelectionError(f"Python unittest module does not exist: {name}")
             selected.python.append(name)
+        elif selector.startswith("winpkg:"):
+            name = selector.removeprefix("winpkg:")
+            if name not in {"build", "smoke", "lifecycle", "integration"}:
+                raise SelectionError(f"unknown Windows package selector: {name}")
+            selected.windows_package.append(name)
         else:
             raise SelectionError(
-                f"unknown selector {selector!r}; use go:, e2e:, winvm:, js:, or python:"
+                f"unknown selector {selector!r}; use go:, e2e:, winvm:, js:, "
+                "python:, or winpkg:"
             )
     return selected, winvm_cases
 
@@ -267,6 +274,17 @@ class Harness:
                     mode = next(iter(privileges)) if len(privileges) == 1 else "test"
                     self.winvm_command(["./dev/winvm/run.sh", mode], env=environment)
 
+        if selected.windows_package:
+            version = os.environ.get("ALMAGEST_PACKAGE_VERSION", "0.0.0")
+            recipes = {
+                "build": "package-windows",
+                "smoke": "winvm-package-smoke",
+                "lifecycle": "winvm-package-lifecycle",
+                "integration": "winvm-package-integration",
+            }
+            for name in selected.windows_package:
+                self.winvm_command(["just", recipes[name], version], env=os.environ.copy())
+
         return 1 if self.failed else 0
 
 
@@ -274,7 +292,8 @@ def main(arguments=None):
     parser = argparse.ArgumentParser(
         description=__doc__,
         epilog=("Selectors: go:MODULE[/PACKAGE]:TEST, e2e:CASE, winvm:CASE-ID, "
-                "js:panel/tests/FILE.mjs, python:DOTTED-UNITTEST"),
+                "js:panel/tests/FILE.mjs, python:DOTTED-UNITTEST, "
+                "winpkg:{build,smoke,lifecycle,integration}"),
     )
     parser.add_argument("selectors", nargs="+")
     args = parser.parse_args(arguments)

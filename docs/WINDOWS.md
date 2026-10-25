@@ -10,6 +10,32 @@ A cross-build checks portability only. It does not qualify native behavior.
 
 ## Deploy
 
+The project produces an unsigned MSI for Windows Server 2022 on amd64. Package
+availability does not qualify any Windows platform entry as supported. Windows
+can show an unknown-publisher or SmartScreen warning for the MSI and Almagest
+executables.
+
+Build the MSI in the locked VM and copy the MSI, SHA-256 file, and build
+evidence to `dist/`:
+
+```sh
+just package-windows
+```
+
+An exact `vX.Y.Z` or `X.Y.Z` Git tag supplies the package version. An untagged
+local build uses `0.0.0`. Pass an explicit version when required:
+
+```sh
+just package-windows 1.2.3
+```
+
+Install the resulting MSI from an elevated PowerShell session. Use one explicit
+path; do not select from multiple files with a wildcard:
+
+```powershell
+msiexec.exe /i .\almagest_1.2.3_windows_amd64.msi /qn /norestart /l*v .\install.log
+```
+
 Build the pinned runtime inputs with:
 
 ```sh
@@ -129,7 +155,15 @@ just test-windows-e2e
 just test-windows-flow EVIDENCE
 just test-windows-resource
 just qualify-windows ENTRY EVIDENCE
+just test-windows-packaging 1.2.3
 ```
+
+The Windows package gate is expensive and is not part of normal checks unless
+`RUN_WINDOWS_PKG_TESTS=1` is set. It requires the KVM WinVM host and the clean
+package image from `just winvm-package-image`. An explicit
+`just test-windows-packaging VERSION` always runs the gate. Use
+`winpkg:build`, `winpkg:smoke`, `winpkg:lifecycle`, or `winpkg:integration` as a
+focused `just check` or `just test-total` selector.
 
 See [`dev/winvm/README.md`](../dev/winvm/README.md) for the disposable Windows
 Server 2022/amd64 harness and evidence format. Windows 11/amd64 and Windows

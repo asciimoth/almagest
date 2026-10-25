@@ -80,7 +80,7 @@ test-total *selectors:
 
 [private]
 test-total-all: test-cycles-harness test-winvm-harness
-  ./scripts/test-e2e-fail-fast.sh test test-e2e-docker test-winvm-enabled test-packaging-enabled
+  ./scripts/test-e2e-fail-fast.sh test test-e2e-docker test-winvm-enabled test-packaging-enabled test-windows-packaging-enabled
   ./scripts/coverage-report.sh
 
 test-total-light:
@@ -123,7 +123,7 @@ repair-go-work:
 certcat-tidy:
 	go -C certcat mod tidy
 
-lint: test-winvm-harness certcat-lint lint-windows lint-winvm lint-secrets markdownlint lint-wasm
+lint: test-winvm-harness certcat-lint lint-windows lint-windows-packaging lint-winvm lint-secrets markdownlint lint-wasm
   cd lib && golangci-lint run ./...
   cd bin && golangci-lint run ./...
 
@@ -141,6 +141,11 @@ actionlint:
 
 lint-windows: build-web
   ./scripts/lint-windows.sh
+
+# Validate tracked WiX and PowerShell package sources on every normal lint run.
+lint-windows-packaging:
+  python3 ./scripts/lint-windows-packaging.py
+  pwsh -NoLogo -NoProfile -NonInteractive -Command '& { Import-Module $env:PSSCRIPTANALYZER_PATH; $paths = @("./packaging/windows") + @(Get-ChildItem ./dev/winvm/package*.ps1 | ForEach-Object FullName); $issues = @($paths | ForEach-Object { Invoke-ScriptAnalyzer -Path $_ -Severity Warning,Error }); $issues | Format-Table -AutoSize; if ($issues.Count) { exit 1 } }'
 
 shellcheck:
   @if [[ "${RUN_WINVM_TESTS:-0}" == "1" ]]; then \
@@ -230,6 +235,7 @@ package sign='true': build-web
   esac
   install -m 0644 packaging/linux/README.md dist/PACKAGE_CONTENTS.md
   install -m 0644 packaging/keys/ascii-moth.asc dist/ascii-moth.asc
+  ./scripts/package-windows.sh
 
 # Install each native package format in a clean container and exercise the
 # packaged daemon, CLI, runtime data, and config update behavior.
@@ -242,6 +248,25 @@ test-packaging-enabled:
     just test-packaging; \
   else \
     printf 'Skipping native package tests; set RUN_PKG_TESTS=1 to enable them.\n'; \
+  fi
+
+# Build an unsigned Windows Server 2022 amd64 MSI in the locked WinVM.
+package-windows version='':
+  ./scripts/package-windows.sh {{quote(version)}}
+
+# Run reproducibility, lifecycle, and installed-package integration gates.
+test-windows-packaging version='':
+  @package_version="$(./scripts/package-windows.sh --print-version {{quote(version)}})"; \
+  just winvm-package-repro "$package_version"; \
+  just winvm-package-lifecycle "$package_version"; \
+  just winvm-package-integration "$package_version"
+
+[private]
+test-windows-packaging-enabled:
+  @if [[ "${RUN_WINDOWS_PKG_TESTS:-0}" == "1" ]]; then \
+    just test-windows-packaging; \
+  else \
+    printf 'Skipping Windows package tests; set RUN_WINDOWS_PKG_TESTS=1 to enable them.\n'; \
   fi
 
 # Build the complete Linux/amd64 isolated service payload. Packaging must
