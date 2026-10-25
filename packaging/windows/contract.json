@@ -1,0 +1,128 @@
+{
+  "schemaVersion": 1,
+  "target": {
+    "operatingSystem": "Windows Server 2022",
+    "build": 20348,
+    "architecture": "amd64",
+    "installerArchitecture": "x64"
+  },
+  "identity": {
+    "manufacturer": "Almagest contributors",
+    "productName": "Almagest",
+    "upgradeCode": "49768928-2421-453C-81CA-E962800EE5B8",
+    "productCodePolicy": "Generate a new ProductCode for each product version.",
+    "packageCodePolicy": "Generate a new PackageCode for each MSI build.",
+    "majorUpgradePolicy": {
+      "allowSameVersionRepair": true,
+      "rejectDowngrades": true
+    }
+  },
+  "components": {
+    "daemonService": "C05707E1-C3A4-482D-B634-975B99A7F8AB",
+    "cli": "D0351CF1-25F6-423B-ABCE-9C7F57FFD162",
+    "wintun": "E029577A-A19D-4F4D-B5C3-666186CF4BE5",
+    "packageDocumentation": "1DA725CA-0E69-41D5-96D3-8803C5BDC55D",
+    "mullvadDriverPackage": "55D3B355-7A66-430A-9925-652983A9F03A",
+    "programDataAcl": "0FDB9BB0-8D49-41FA-8C2D-C12F11B284B8",
+    "localesGuidNamespace": "7297B181-3669-464C-A02A-FC83D6D9BA09",
+    "examplesGuidNamespace": "D4E6AC07-C273-4BD7-B5CA-2A27D454D50C",
+    "generatedGuidPolicy": "Use UUIDv5 with the applicable namespace and the slash-separated, case-sensitive repository-relative path. Never derive a GUID from file content or enumeration order."
+  },
+  "paths": {
+    "programFiles": "%ProgramFiles%\\Almagest",
+    "daemon": "%ProgramFiles%\\Almagest\\almagestd.exe",
+    "cli": "%ProgramFiles%\\Almagest\\almagest-cli.exe",
+    "wintun": "%ProgramFiles%\\Almagest\\wintun.dll",
+    "locales": "%ProgramFiles%\\Almagest\\locales",
+    "examples": "%ProgramFiles%\\Almagest\\examples",
+    "driverStage": "%ProgramFiles%\\Almagest\\drivers\\mullvad-split-tunnel",
+    "programData": "%ProgramData%\\Almagest",
+    "config": "%ProgramData%\\Almagest\\alm.hujson",
+    "protectedConfig": "%ProgramData%\\Almagest\\protected_alm.hujson",
+    "store": "%ProgramData%\\Almagest\\store",
+    "logs": "%ProgramData%\\Almagest\\logs",
+    "serviceLog": "%ProgramData%\\Almagest\\logs\\almagestd.log"
+  },
+  "service": {
+    "name": "almagestd",
+    "displayName": "Almagest Network Daemon",
+    "account": "LocalSystem",
+    "type": "ownProcess",
+    "start": "automaticDelayed",
+    "errorControl": "normal",
+    "arguments": [
+      "--isolation=off"
+    ],
+    "adminEndpoint": "pipe://machine",
+    "recovery": {
+      "resetPeriodSeconds": 86400,
+      "actions": [
+        { "action": "restart", "delayMilliseconds": 5000 },
+        { "action": "restart", "delayMilliseconds": 15000 },
+        { "action": "restart", "delayMilliseconds": 60000 }
+      ],
+      "repeatLastAction": true,
+      "onNonCrashFailure": true,
+      "reboot": false
+    }
+  },
+  "retention": {
+    "repair": ["config", "protectedConfig", "store", "logs"],
+    "upgrade": ["config", "protectedConfig", "store", "logs"],
+    "uninstall": ["config", "protectedConfig", "store", "logs"],
+    "overwriteExistingConfig": false,
+    "purgeFeature": false
+  },
+  "drivers": {
+    "wintun": {
+      "version": "0.14.1",
+      "archiveUrl": "https://www.wintun.net/builds/wintun-0.14.1.zip",
+      "archiveSha256": "07c256185d6ee3652e09fa55c0b673e2624b565e02c4b9091c79ca7d2f24ef51",
+      "archiveNixSha256": "sha256-B8JWGF1u42UuCfpVwLZz4mJLVl4CxLkJHHnKfS8k71E=",
+      "file": "wintun.dll",
+      "sha256": "e5da8447dc2c320edc0fc52fa01885c103de8c118481f683643cacc3220dafce",
+      "licenseFile": "wintun/LICENSE.txt",
+      "licenseSha256": "183adac21e7d96c508c8fd34d394b7b6708bc81564ad1bad61ab66143a008cd2",
+      "peMachine": "0x8664",
+      "authenticodeRequired": true,
+      "authenticodeSignerSubjectContains": "CN=WireGuard LLC",
+      "distribution": "Install the unchanged official amd64 DLL beside almagestd.exe. Do not package separate Wintun SYS, INF, or CAT files."
+    },
+    "mullvadSplitTunnel": {
+      "version": "1.3.0.0",
+      "binaryRepository": "https://github.com/mullvad/mullvadvpn-app-binaries",
+      "binaryRevision": "5b6f46cde692acb77ee74b37b9fd3f1678c45a52",
+      "sourceRepository": "https://github.com/mullvad/win-split-tunnel",
+      "sourceRevision": "0a0eb97f67d1dbcb3d08bda66d3b24f465d95475",
+      "selectedLicense": "MPL-2.0",
+      "licenseFile": "LICENSE-MPL.txt",
+      "licenseSha256": "66a3107d5ad6a058aab753eaac2047ccb2ed0e39465dd0fe5844da3e300d5172",
+      "architectureDirectory": "x86_64-pc-windows-msvc/split-tunnel",
+      "peMachine": "0x8664",
+      "authenticodeRequired": true,
+      "files": {
+        "mullvad-split-tunnel.sys": {
+          "sha256": "10cf25bbcfe51fd663a1fec88a98e9b858f3a579589bb2ec496b66e4fdd1b201",
+          "nixSha256": "sha256-EM8lu8/lH9Zjof7IipjpuFjzpXlYm7LsSWtm5P3RsgE="
+        },
+        "mullvad-split-tunnel.inf": {
+          "sha256": "3dd5905e5fb98d61a942a33e8c9a5ba07c3a2de1e4f319e1fec3e54df6591608",
+          "nixSha256": "sha256-PdWQXl+5jWGpQqM+jJpboHw6LeHk8xnh/sPlTfZZFgg="
+        },
+        "mullvad-split-tunnel.cat": {
+          "sha256": "c599926a0327d7ae06b534f4cd039db30392e1897bb9d03e4fec3631744a4e6d",
+          "nixSha256": "sha256-xZmSagMn164GtTT0zQOdswOS4Yl7udA+T+w2MXRKTm0="
+        }
+      },
+      "serviceName": "mullvad-split-tunnel",
+      "declaredInfArchitecture": "NTamd64.10.0",
+      "declaredInfStart": "demand",
+      "distribution": "Keep the matching SYS, INF, and CAT files unchanged. Install them with Windows driver-package facilities. Do not create or replace the catalog.",
+      "daemonHardDependency": false,
+      "phase4Decisions": [
+        "Driver start behavior after installation and reboot.",
+        "Driver package removal or retention during uninstall."
+      ]
+    }
+  }
+}

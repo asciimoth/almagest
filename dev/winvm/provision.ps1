@@ -97,6 +97,11 @@ if (-not (Test-Path -LiteralPath $wintunSource -PathType Leaf)) {
 $wintunDestination = Join-Path $env:SystemRoot 'System32\wintun.dll'
 if (-not (Test-Path -LiteralPath $wintunSource -PathType Leaf)) { throw 'Provisioned Wintun DLL is absent' }
 Copy-Item $wintunSource $wintunDestination -Force
+$wintunSignature = Get-AuthenticodeSignature $wintunDestination
+if ($wintunSignature.Status -ne 'Valid' -or
+    $wintunSignature.SignerCertificate.Subject -notlike '*CN=WireGuard LLC*') {
+    throw 'Wintun DLL signature is not valid'
+}
 $dependencyFixtures = Join-Path $root dependencies
 New-Item -ItemType Directory -Force -Path $dependencyFixtures | Out-Null
 Copy-Item $wintunArm64Source (Join-Path $dependencyFixtures 'wintun-arm64.dll') -Force

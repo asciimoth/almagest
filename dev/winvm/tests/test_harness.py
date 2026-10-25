@@ -180,6 +180,10 @@ require_vm_space "$winvm_cache_dir" 10 test
         self.assertIn("provision.failed", builder)
         self.assertIn("Windows provisioning failed", builder)
         self.assertIn("Join-Path $media 'wintun-amd64.dll'", provision)
+        self.assertIn('$wintunSignature = Get-AuthenticodeSignature $wintunDestination',
+                      provision)
+        self.assertIn("$wintunSignature.SignerCertificate.Subject -notlike '*CN=WireGuard LLC*'",
+                      provision)
         self.assertIn("$driverSource = $media", provision)
         self.assertIn("Join-Path $media '@@TOR_FILE@@'", provision)
         self.assertIn("$torRoot;$machinePath", provision)
