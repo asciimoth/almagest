@@ -1,0 +1,95 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+format="${1:?package format is required}"
+
+find_package() {
+	local pattern="$1"
+	local packages=()
+	mapfile -t packages < <(find /packages -maxdepth 1 -type f -name "$pattern" -print)
+	if ((${#packages[@]} != 1)); then
+		printf 'expected one %s package, found %d\n' "$format" "${#packages[@]}" >&2
+		exit 1
+	fi
+	printf '%s\n' "${packages[0]}"
+}
+
+install_package() {
+	local package="$1"
+	case "$format" in
+		deb) dpkg --install "$package" ;;
+		rpm) rpm --upgrade --replacepkgs "$package" ;;
+		archlinux) pacman --upgrade --noconfirm "$package" ;;
+		*) printf 'unknown package format: %s\n' "$format" >&2; exit 2 ;;
+	esac
+}
+
+package_lists_path() {
+	local path="$1"
+	case "$format" in
+		deb) dpkg-query --listfiles almagest | grep -Fx -- "$path" >/dev/null ;;
+		rpm) rpm --query --list almagest | grep -Fx -- "$path" >/dev/null ;;
+		archlinux) pacman --query --list almagest | awk '{print $2}' | grep -Fx -- "$path" >/dev/null ;;
+	esac
+}
+
+case "$format" in
+	deb) package="$(find_package '*.deb')" ;;
+	rpm) package="$(find_package '*.rpm')" ;;
+	archlinux) package="$(find_package '*.pkg.tar.zst')" ;;
+	*) printf 'unknown package format: %s\n' "$format" >&2; exit 2 ;;
+esac
+
+install_package "$package"
+
+test -x /usr/bin/almagest-cli
+for binary in \
+	almagestd \
+	almagest-network-role \
+	almagest-config-writer-role \
+	almagest-command-role \
+	almagest-isolation-storage \
+	almagest-linux-role-launcher \
+	almagest-subprogram-launcher; do
+	test -x "/usr/libexec/almagest/$binary"
+done
+test -f /usr/share/almagest/locales/en/manifest.json
+test -f /usr/share/almagest/locales/en/docs/index.json
+test -f /usr/share/almagest/examples/001-hello-network/manifest.json
+package_lists_path /usr/share/almagest/locales/en/docs/index.json
+if package_lists_path /usr/share/doc/almagest/DAEMON_ISOLATION.md; then
+	printf 'package contains developer documentation\n' >&2
+	exit 1
+fi
+if package_lists_path /usr/share/doc/almagest/PACKAGING.md || \
+	package_lists_path /usr/share/doc/almagest/PACKAGE_CONTENTS.md; then
+	printf 'package installs the package inspection guide\n' >&2
+	exit 1
+fi
+package_lists_path /usr/share/licenses/almagest/LICENSE
+test -f /usr/lib/systemd/system/almagestd.service
+test -f /usr/lib/sysusers.d/almagest.conf
+test -f /usr/lib/tmpfiles.d/almagest.conf
+
+grep -F -- '--isolation=off --discover-system-programs' \
+	/usr/lib/systemd/system/almagestd.service >/dev/null
+grep -Fx -- 'StandardOutput=journal' \
+	/usr/lib/systemd/system/almagestd.service >/dev/null
+grep -Fx -- 'StandardError=journal' \
+	/usr/lib/systemd/system/almagestd.service >/dev/null
+grep -Fx -- 'SyslogIdentifier=almagestd' \
+	/usr/lib/systemd/system/almagestd.service >/dev/null
+grep -F -- '"Mode": "auto"' /etc/almagest/protected_alm.hujson >/dev/null
+grep -F -- '"DiscoverSystemPrograms": true' \
+	/etc/almagest/protected_alm.hujson >/dev/null
+
+# Package updates must keep administrator changes to both config files.
+printf '\n// package-smoke-regular\n' >>/etc/almagest/alm.hujson
+printf '\n// package-smoke-protected\n' >>/etc/almagest/protected_alm.hujson
+install_package "$package"
+grep -F -- 'package-smoke-regular' /etc/almagest/alm.hujson >/dev/null
+grep -F -- 'package-smoke-protected' /etc/almagest/protected_alm.hujson >/dev/null
+
+/packaging-integration.sh "$format"
+
+printf 'package smoke test passed: %s\n' "$format"

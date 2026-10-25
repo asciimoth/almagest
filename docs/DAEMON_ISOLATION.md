@@ -564,10 +564,12 @@ read-only Landlock rights.
 Install the systemd units from `packaging/linux`: the service file, sysusers
 file, and tmpfiles file. Run the normal distribution sysusers and tmpfiles steps
 before first start. Do not add setuid bits or file capabilities to role
-binaries. The reference service starts with `--isolation=auto`, delegates cgroup
-controllers to N, and uses an explicit capability bounding set. Because the
-reference service starts as root and provisions the role accounts, `auto`
-selects `linux-full-v1` or fails.
+binaries. The packaged service starts in direct mode by default. To enable
+isolation, add the storage preparation command described in
+`packaging/linux/README.md` and change the service command to
+`--isolation=auto`. The service delegates cgroup controllers to N and uses an
+explicit capability bounding set. Because the service starts as root and
+provisions the role accounts, `auto` selects `linux-full-v1` or fails.
 
 An ordinary user can start the same payload directly with `auto`. For a per-user
 installation, user-profile executables can be owned by root or by the launch

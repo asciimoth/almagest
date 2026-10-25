@@ -1,4 +1,76 @@
-# Linux isolated deployment
+# Linux package contents
+
+This file is a guide for persons who inspect the release artifacts. It is next
+to the packages in the release directory and at the root of the portable tar
+archive. It is not a payload file in the deb, RPM, or Arch Linux package, so
+installation of a native package does not copy this file to the system.
+
+Use one of these commands to inspect a native package without installation:
+
+```text
+dpkg-deb --contents almagest_VERSION_linux_amd64.deb
+rpm --query --package --list almagest_VERSION_linux_amd64.rpm
+tar --list --file almagest_VERSION_linux_amd64.pkg.tar.zst
+```
+
+The portable archive omits the `/usr` prefix. Copy its `bin`, `lib`, `etc`, and
+`share` directories to the matching system prefix paths. For example, archive
+path `libexec/almagest/almagestd` maps to
+`/usr/libexec/almagest/almagestd`.
+
+## Installed files
+
+| Installed path | Purpose |
+| --- | --- |
+| `/usr/bin/almagest-cli` | Administration command-line client. |
+| `/usr/libexec/almagest/almagestd` | Main network daemon. |
+| `/usr/libexec/almagest/almagest-network-role` | Isolated network runtime role. |
+| `/usr/libexec/almagest/almagest-config-writer-role` | Isolated regular-config writer role. |
+| `/usr/libexec/almagest/almagest-command-role` | Isolated external-command role. |
+| `/usr/libexec/almagest/almagest-isolation-storage` | Prepares, recovers, and rolls back isolated storage. |
+| `/usr/libexec/almagest/almagest-linux-role-launcher` | Starts trusted Linux isolation roles. |
+| `/usr/libexec/almagest/almagest-subprogram-launcher` | Starts sandboxed subprograms. |
+| `/etc/almagest/alm.hujson` | Regular daemon configuration. Package updates preserve local changes. |
+| `/etc/almagest/protected_alm.hujson` | Protected daemon and sandbox configuration. Package updates preserve local changes. |
+| `/usr/lib/systemd/system/almagestd.service` | Starts the daemon as root and sends its output to the systemd journal. |
+| `/usr/lib/sysusers.d/almagest.conf` | Defines service accounts used by optional daemon isolation. |
+| `/usr/lib/tmpfiles.d/almagest.conf` | Defines the persistent and runtime data directories. |
+| `/usr/share/almagest/locales` | Localized user text and user documentation pages. |
+| `/usr/share/almagest/examples` | Example workspaces that the daemon can load. |
+| `/usr/share/doc/almagest/README.md` | Project introduction and basic use information. |
+| `/usr/share/licenses/almagest/LICENSE` | Software license. |
+
+The tmpfiles definition creates `/var/lib/almagest` for persistent daemon data
+and `/run/almagest` for runtime files, including the default administration
+socket. These directories are not regular package payload files.
+
+## Build and test
+
+GoReleaser creates the Linux amd64 archive and the deb, RPM, and Arch Linux
+packages. Run `just package`. The output is in `dist/` and includes a SHA-256
+checksum file.
+
+The packages start `almagestd` as root with daemon isolation off. Subprogram
+sandbox mode is `auto`, and supported system programs are discovered at startup.
+The systemd unit sends standard output and standard error to the journal with
+the `almagestd` identifier. Read the service log with
+`journalctl --unit almagestd`.
+The regular and protected config files are package-managed config files. A
+package update keeps a locally changed config when the package format supports
+this behavior.
+
+Run `just test-packaging` to build the artifacts and test each native package
+in a clean Debian, Rocky Linux, or Arch Linux container. The test installs and
+reinstalls the package, then exercises the installed daemon and CLI. It covers
+config replacement through the API, KV and secret persistence, packaged
+example loading, local SOCKS proxy traffic, host-network egress, and a real
+DefaultTun path. The DefaultTun check uses private network namespaces, so the
+test containers run with `/dev/net/tun` and Docker privileged mode.
+Set `RUN_PKG_TESTS=1` to include this suite in a full `just check`. A
+selector-based `just check`, such as `just check go:lib/http:TestName`, always
+skips the package suite.
+
+## Optional daemon isolation
 
 Install these root-owned, non-writable files in one directory, normally
 `/usr/libexec/almagest`:
@@ -11,10 +83,11 @@ Install these root-owned, non-writable files in one directory, normally
 - `almagest-command-role`
 - `almagest-isolation-storage`
 
-Install `almagest.sysusers`, `almagest.tmpfiles`, and `almagestd.service` in the
-distribution's systemd directories. Run `systemd-sysusers` and
-`systemd-tmpfiles --create` before the first start. Do not make the native
-launcher setuid and do not add file capabilities to any role binary.
+The normal packages already install this complete set. To enable daemon
+isolation, change the service command to use `--isolation=auto`, add the
+`almagest-isolation-storage prepare` pre-start command, and complete the storage
+migration described below. Do not make the native launcher setuid and do not add
+file capabilities to any role binary.
 
 Install the packaged `share/almagest/examples` tree as root-owned, non-writable
 files at `/usr/share/almagest/examples`. Keep each example unpacked. The network

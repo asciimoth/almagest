@@ -1,0 +1,188 @@
+version: 2
+
+project_name: almagest
+
+builds:
+  - id: almagestd
+    dir: bin
+    main: ./almagestd
+    binary: libexec/almagest/almagestd
+    env: &go_env
+      - CGO_ENABLED=0
+    flags: &go_flags
+      - -trimpath
+    goos: &linux_only
+      - linux
+    goarch: &amd64_only
+      - amd64
+    goamd64: &amd64_v1
+      - v1
+
+  - id: almagest-cli
+    dir: bin
+    main: ./almagest-cli
+    binary: bin/almagest-cli
+    env: *go_env
+    flags: *go_flags
+    goos: *linux_only
+    goarch: *amd64_only
+    goamd64: *amd64_v1
+
+  - id: almagest-network-role
+    dir: bin
+    main: ./cmd/almagest-network-role
+    binary: libexec/almagest/almagest-network-role
+    env: *go_env
+    flags: *go_flags
+    goos: *linux_only
+    goarch: *amd64_only
+    goamd64: *amd64_v1
+
+  - id: almagest-config-writer-role
+    dir: bin
+    main: ./cmd/almagest-config-writer-role
+    binary: libexec/almagest/almagest-config-writer-role
+    env: *go_env
+    flags: *go_flags
+    goos: *linux_only
+    goarch: *amd64_only
+    goamd64: *amd64_v1
+
+  - id: almagest-command-role
+    dir: bin
+    main: ./cmd/almagest-command-role
+    binary: libexec/almagest/almagest-command-role
+    env: *go_env
+    flags: *go_flags
+    goos: *linux_only
+    goarch: *amd64_only
+    goamd64: *amd64_v1
+
+  - id: almagest-isolation-storage
+    dir: bin
+    main: ./cmd/almagest-isolation-storage
+    binary: libexec/almagest/almagest-isolation-storage
+    env: *go_env
+    flags: *go_flags
+    goos: *linux_only
+    goarch: *amd64_only
+    goamd64: *amd64_v1
+
+archives:
+  - id: linux-amd64
+    ids:
+      - almagestd
+      - almagest-cli
+      - almagest-network-role
+      - almagest-config-writer-role
+      - almagest-command-role
+      - almagest-isolation-storage
+    formats:
+      - tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_linux_amd64"
+    files:
+      - src: build/packaging/almagest-linux-role-launcher
+        dst: libexec/almagest/almagest-linux-role-launcher
+        info:
+          mode: 0755
+      - src: build/packaging/almagest-subprogram-launcher
+        dst: libexec/almagest/almagest-subprogram-launcher
+        info:
+          mode: 0755
+      - src: packaging/linux/alm.hujson
+        dst: etc/almagest/alm.hujson
+        info:
+          mode: 0600
+      - src: packaging/linux/protected_alm.hujson
+        dst: etc/almagest/protected_alm.hujson
+        info:
+          mode: 0600
+      - src: packaging/linux/almagestd.service
+        dst: lib/systemd/system/almagestd.service
+      - src: packaging/linux/almagest.sysusers
+        dst: lib/sysusers.d/almagest.conf
+      - src: packaging/linux/almagest.tmpfiles
+        dst: lib/tmpfiles.d/almagest.conf
+      - src: locales/**/*
+        dst: share/almagest/locales
+      - src: examples/**/*
+        dst: share/almagest/examples
+      - src: README.md
+        dst: share/doc/almagest/README.md
+      - src: LICENSE
+        dst: share/doc/almagest/LICENSE
+      - src: packaging/linux/README.md
+        dst: PACKAGE_CONTENTS.md
+
+nfpms:
+  - id: linux-packages
+    package_name: almagest
+    ids:
+      - almagestd
+      - almagest-cli
+      - almagest-network-role
+      - almagest-config-writer-role
+      - almagest-command-role
+      - almagest-isolation-storage
+    vendor: Almagest contributors
+    homepage: https://github.com/asciimoth/almagest
+    maintainer: AsciiMoth <ascii@moth.contact>
+    description: Userspace network graph daemon and administration client.
+    license: GPL-3.0-or-later
+    formats:
+      - deb
+      - rpm
+      - archlinux
+    bindir: /usr
+    section: net
+    priority: optional
+    contents:
+      - src: build/packaging/almagest-linux-role-launcher
+        dst: /usr/libexec/almagest/almagest-linux-role-launcher
+        file_info: &executable_info
+          mode: 0755
+          owner: root
+          group: root
+      - src: build/packaging/almagest-subprogram-launcher
+        dst: /usr/libexec/almagest/almagest-subprogram-launcher
+        file_info: *executable_info
+      - src: packaging/linux/alm.hujson
+        dst: /etc/almagest/alm.hujson
+        type: config|noreplace
+        file_info: &config_info
+          mode: 0600
+          owner: root
+          group: root
+      - src: packaging/linux/protected_alm.hujson
+        dst: /etc/almagest/protected_alm.hujson
+        type: config|noreplace
+        file_info: *config_info
+      - src: packaging/linux/almagestd.service
+        dst: /usr/lib/systemd/system/almagestd.service
+      - src: packaging/linux/almagest.sysusers
+        dst: /usr/lib/sysusers.d/almagest.conf
+      - src: packaging/linux/almagest.tmpfiles
+        dst: /usr/lib/tmpfiles.d/almagest.conf
+      - src: locales/
+        dst: /usr/share/almagest/locales
+        type: tree
+      - src: examples/
+        dst: /usr/share/almagest/examples
+        type: tree
+      - src: README.md
+        dst: /usr/share/doc/almagest/README.md
+      - src: LICENSE
+        dst: /usr/share/licenses/almagest/LICENSE
+    scripts:
+      postinstall: packaging/linux/postinstall.sh
+      postremove: packaging/linux/postremove.sh
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+changelog:
+  disable: true
+
+release:
+  disable: true

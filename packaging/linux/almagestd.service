@@ -1,13 +1,15 @@
 [Unit]
-Description=Almagest isolated network daemon
+Description=Almagest network daemon
 After=network.target
 
 [Service]
 Type=simple
-ExecStartPre=/usr/libexec/almagest/almagest-isolation-storage prepare
-ExecStart=/usr/libexec/almagest/almagestd --isolation=auto
+ExecStart=/usr/libexec/almagest/almagestd --isolation=off --discover-system-programs
 Restart=on-failure
 RestartSec=2s
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=almagestd
 UMask=0077
 RuntimeDirectory=almagest
 RuntimeDirectoryMode=0755

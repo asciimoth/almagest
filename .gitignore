@@ -50,8 +50,8 @@ go.work.sum
 /almagestd
 /cli
 /build
+/dist
 
 almagest-subprogram-launcher
 
 .ruff_cache/
-

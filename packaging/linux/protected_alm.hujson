@@ -1,0 +1,10 @@
+{
+	"Admin": {
+		"Unix": "/run/almagest/admin.sock",
+	},
+	"Sandbox": {
+		"Mode": "auto",
+		"DiscoverSystemPrograms": true,
+	},
+}
+

@@ -239,6 +239,8 @@
           govulncheck
           gopls
 
+          goreleaser
+
           typos
           commitizen
           markdownFormatter

@@ -80,7 +80,7 @@ test-total *selectors:
 
 [private]
 test-total-all: test-cycles-harness test-winvm-harness
-  ./scripts/test-e2e-fail-fast.sh test test-e2e-docker test-winvm-enabled
+  ./scripts/test-e2e-fail-fast.sh test test-e2e-docker test-winvm-enabled test-packaging-enabled
   ./scripts/coverage-report.sh
 
 test-total-light:
@@ -218,6 +218,26 @@ serve-webdemo base_path='' output='build/webdemo' port='8000' host='0.0.0.0':
 
 build-windows:
   ./scripts/build-windows.sh amd64 arm64
+
+# Build all supported release archives and native Linux packages.
+package: build-web
+  ./packaging/build-native.sh
+  goreleaser release --snapshot --clean
+  install -m 0644 packaging/linux/README.md dist/PACKAGE_CONTENTS.md
+  cd dist && sha256sum PACKAGE_CONTENTS.md >> checksums.txt
+
+# Install each native package format in a clean container and exercise the
+# packaged daemon, CLI, runtime data, and config update behavior.
+test-packaging: package
+  ./packaging/tests/run.sh
+
+[private]
+test-packaging-enabled:
+  @if [[ "${RUN_PKG_TESTS:-0}" == "1" ]]; then \
+    just test-packaging; \
+  else \
+    printf 'Skipping native package tests; set RUN_PKG_TESTS=1 to enable them.\n'; \
+  fi
 
 # Build the complete Linux/amd64 isolated service payload. Packaging must
 # install this set atomically in one root-owned directory.
