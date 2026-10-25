@@ -24,6 +24,7 @@ func systemSecuritySnapshot(ctx context.Context, request Request) (Snapshot, err
 	for _, path := range []string{
 		"/usr/lib64/pkcs11/p11-kit-trust.so",
 		"/usr/lib/x86_64-linux-gnu/pkcs11/p11-kit-trust.so",
+		"/usr/lib/aarch64-linux-gnu/pkcs11/p11-kit-trust.so",
 		"/usr/lib/pkcs11/p11-kit-trust.so",
 	} {
 		if _, err := os.Stat(path); err == nil {

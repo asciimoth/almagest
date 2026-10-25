@@ -8,9 +8,9 @@ installation of a native package does not copy this file to the system.
 Use one of these commands to inspect a native package without installation:
 
 ```text
-dpkg-deb --contents almagest_VERSION_linux_amd64.deb
-rpm --query --package --list almagest_VERSION_linux_amd64.rpm
-tar --list --file almagest_VERSION_linux_amd64.pkg.tar.zst
+dpkg-deb --contents almagest_VERSION_linux_ARCH.deb
+rpm --query --package --list almagest_VERSION_linux_ARCH.rpm
+tar --list --file almagest_VERSION_linux_ARCH.pkg.tar.zst
 ```
 
 The portable archive omits the `/usr` prefix. Copy its `bin`, `lib`, `etc`, and
@@ -23,12 +23,12 @@ path `libexec/almagest/almagestd` maps to `/usr/libexec/almagest/almagestd`.
 | ---------------------------------------------------- | --------------------------------------------------------------------------------------- |
 | `/usr/bin/almagest-cli`                              | Administration command-line client.                                                     |
 | `/usr/libexec/almagest/almagestd`                    | Main network daemon.                                                                    |
-| `/usr/libexec/almagest/almagest-network-role`        | Isolated network runtime role.                                                          |
-| `/usr/libexec/almagest/almagest-config-writer-role`  | Isolated regular-config writer role.                                                    |
-| `/usr/libexec/almagest/almagest-command-role`        | Isolated external-command role.                                                         |
-| `/usr/libexec/almagest/almagest-isolation-storage`   | Prepares, recovers, and rolls back isolated storage.                                    |
-| `/usr/libexec/almagest/almagest-linux-role-launcher` | Starts trusted Linux isolation roles.                                                   |
-| `/usr/libexec/almagest/almagest-subprogram-launcher` | Starts sandboxed subprograms.                                                           |
+| `/usr/libexec/almagest/almagest-network-role`        | Isolated network runtime role (amd64 only).                                             |
+| `/usr/libexec/almagest/almagest-config-writer-role`  | Isolated regular-config writer role (amd64 only).                                       |
+| `/usr/libexec/almagest/almagest-command-role`        | Isolated external-command role (amd64 only).                                            |
+| `/usr/libexec/almagest/almagest-isolation-storage`   | Prepares, recovers, and rolls back isolated storage (amd64 only).                       |
+| `/usr/libexec/almagest/almagest-linux-role-launcher` | Starts trusted Linux isolation roles (amd64 only).                                      |
+| `/usr/libexec/almagest/almagest-subprogram-launcher` | Starts sandboxed subprograms (amd64 only).                                              |
 | `/etc/almagest/alm.hujson`                           | Regular daemon configuration. Package updates preserve local changes.                   |
 | `/etc/almagest/protected_alm.hujson`                 | Protected daemon and sandbox configuration. Package updates preserve local changes.     |
 | `/usr/lib/systemd/system/almagestd.service`          | Starts the daemon as root and sends its output to the systemd journal.                  |
@@ -58,14 +58,14 @@ An upgrade preserves an existing protected config. On such a system, add
 
 ## Build and test
 
-GoReleaser creates the Linux amd64 archive and the deb, RPM, and Arch Linux
+GoReleaser creates Linux amd64 and arm64 archives and deb, RPM, and Arch Linux
 packages. Run `just package`. The output is in `dist/` and includes a SHA-256
 checksum file, detached OpenPGP signatures, and `ascii-moth.asc`. Import the
 key, then verify an artifact before you install or extract it:
 
 ```text
 gpg --import ascii-moth.asc
-gpg --verify almagest_VERSION_linux_amd64.deb.sig almagest_VERSION_linux_amd64.deb
+gpg --verify almagest_VERSION_linux_ARCH.deb.sig almagest_VERSION_linux_ARCH.deb
 ```
 
 The primary key fingerprint is
@@ -78,27 +78,36 @@ an unsigned local build that does not require confirmation from a hardware key.
 
 The packages start `almagestd` as root with daemon isolation off. Subprogram
 sandbox mode is `auto`, and supported system programs are discovered at startup.
+The qualified Linux isolation profiles and native sandbox launcher are amd64
+only. The arm64 packages omit their role and launcher binaries. Use direct
+daemon mode on arm64 until those security boundaries are ported and qualified.
 The systemd unit sends standard output and standard error to the journal with
 the `almagestd` identifier. Read the service log with
 `journalctl --unit almagestd`. The regular and protected config files are
 package-managed config files. A package update keeps a locally changed config
 when the package format supports this behavior.
 
-Run `just test-packaging` to build the artifacts and test each native package in
-a clean Debian, Rocky Linux, or Arch Linux container. The test installs and
-reinstalls the package, then exercises the installed daemon and CLI. It covers
-config replacement through the API, KV and secret persistence, packaged example
-loading, local SOCKS proxy traffic, host-network egress, and a real DefaultTun
-path. The DefaultTun check uses private network namespaces, so the test
-containers run with `/dev/net/tun` and Docker privileged mode. Set
-`RUN_PKG_TESTS=1` to include this suite in a full `just check`. A selector-based
-`just check`, such as `just check go:lib/http:TestName`, always skips the
-package suite.
+Run `just test-packaging` to build the artifacts and test each architecture and
+native package format in a clean Debian, Rocky Linux, or Arch Linux container.
+The test installs and reinstalls the package, then exercises the installed
+daemon and CLI. It covers config replacement through the API, KV and secret
+persistence, packaged example loading, local SOCKS proxy traffic, host-network
+egress, and a real DefaultTun path. The DefaultTun check uses private network
+namespaces, so the test containers run with `/dev/net/tun` and Docker privileged
+mode. Set `RUN_PKG_TESTS=1` to include this suite in a full `just check`. A
+selector-based `just check`, such as `just check go:lib/http:TestName`, always
+skips the package suite. On a single-architecture host, Docker must have
+`binfmt_misc` emulation for the other architecture. Set
+`ALMAGEST_PACKAGE_TEST_ARCHES` to a space-separated subset only when you
+intentionally run a partial local test. QEMU user-mode emulation can omit the
+XFRM and netfilter netlink families. In that environment, the arm64 package test
+skips only its DefaultTun routing segment; a capable native arm64 host runs the
+complete segment.
 
 ## Optional daemon isolation
 
-Install these root-owned, non-writable files in one directory, normally
-`/usr/libexec/almagest`:
+On amd64, install these root-owned, non-writable files in one directory,
+normally `/usr/libexec/almagest`:
 
 - `almagestd`
 - `almagest-network-role`
@@ -108,7 +117,7 @@ Install these root-owned, non-writable files in one directory, normally
 - `almagest-command-role`
 - `almagest-isolation-storage`
 
-The normal packages already install this complete set. To enable daemon
+The amd64 packages already install this complete set. To enable daemon
 isolation, change the service command to use `--isolation=auto`, add the
 `almagest-isolation-storage prepare` pre-start command, and complete the storage
 migration described below. Do not make the native launcher setuid and do not add

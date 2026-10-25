@@ -4,17 +4,20 @@ set -euo pipefail
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 cd "$repo_root"
 
-archive_count="$(find dist -maxdepth 1 -type f -name 'almagest_*_linux_amd64.tar.gz' | wc -l)"
-if [[ "$archive_count" != "1" ]]; then
-	printf 'expected one Linux amd64 archive, found %s\n' "$archive_count" >&2
-	exit 1
-fi
-
-archive="$(find dist -maxdepth 1 -type f -name 'almagest_*_linux_amd64.tar.gz' -print)"
+architectures=(amd64 arm64)
+declare -A archives=()
+for arch in "${architectures[@]}"; do
+	archive_count="$(find dist -maxdepth 1 -type f -name "almagest_*_linux_$arch.tar.gz" | wc -l)"
+	if [[ "$archive_count" != "1" ]]; then
+		printf 'expected one Linux %s archive, found %s\n' "$arch" "$archive_count" >&2
+		exit 1
+	fi
+	archives[$arch]="$(find dist -maxdepth 1 -type f -name "almagest_*_linux_$arch.tar.gz" -print)"
+done
 test -f dist/PACKAGE_CONTENTS.md
 test -f dist/ascii-moth.asc
 
-if [[ -f "$archive.sig" ]]; then
+if [[ -f "${archives[amd64]}.sig" ]]; then
 	verify_home="$(mktemp -d)"
 	trap 'rm -rf -- "$verify_home"' EXIT
 	chmod 0700 "$verify_home"
@@ -28,7 +31,9 @@ if [[ -f "$archive.sig" ]]; then
 			"$artifact.sig" "$artifact"
 	}
 
-	verify_artifact "$archive"
+	for archive in "${archives[@]}"; do
+		verify_artifact "$archive"
+	done
 	verify_artifact dist/checksums.txt
 	for package in dist/*.deb dist/*.rpm dist/*.pkg.tar.zst; do
 		verify_artifact "$package"
@@ -38,38 +43,60 @@ elif find dist -maxdepth 1 -type f -name '*.sig' -print -quit | grep -q .; then
 	exit 1
 fi
 
-tar -tzf "$archive" | grep -E '(^|/)libexec/almagest/almagestd$' >/dev/null
-tar -tzf "$archive" | grep -E '(^|/)bin/almagest-cli$' >/dev/null
-tar -tzf "$archive" | grep -E '(^|/)share/almagest/locales/en/manifest.json$' >/dev/null
-tar -tzf "$archive" | grep -E '(^|/)share/almagest/locales/en/docs/index.json$' >/dev/null
-tar -tzf "$archive" | grep -E '(^|/)share/almagest/examples/001-hello-network/manifest.json$' >/dev/null
-tar -tzf "$archive" | grep -E '(^|/)PACKAGE_CONTENTS\.md$' >/dev/null
-if tar -tzf "$archive" | grep -E '(^|/)share/doc/almagest/DAEMON_ISOLATION\.md$' >/dev/null; then
-	printf 'archive contains developer documentation\n' >&2
-	exit 1
-fi
+for arch in "${architectures[@]}"; do
+	archive="${archives[$arch]}"
+	listing="$(tar -tzf "$archive")"
+	grep -E '(^|/)libexec/almagest/almagestd$' <<<"$listing" >/dev/null
+	grep -E '(^|/)bin/almagest-cli$' <<<"$listing" >/dev/null
+	grep -E '(^|/)share/almagest/locales/en/manifest.json$' <<<"$listing" >/dev/null
+	grep -E '(^|/)share/almagest/locales/en/docs/index.json$' <<<"$listing" >/dev/null
+	grep -E '(^|/)share/almagest/examples/001-hello-network/manifest.json$' <<<"$listing" >/dev/null
+	grep -E '(^|/)PACKAGE_CONTENTS\.md$' <<<"$listing" >/dev/null
+	if grep -E '(^|/)share/doc/almagest/DAEMON_ISOLATION\.md$' <<<"$listing" >/dev/null; then
+		printf '%s archive contains developer documentation\n' "$arch" >&2
+		exit 1
+	fi
+	for binary in almagest-network-role almagest-config-writer-role \
+		almagest-command-role almagest-isolation-storage \
+		almagest-linux-role-launcher almagest-subprogram-launcher; do
+		if [[ "$arch" == amd64 ]]; then
+			grep -E "(^|/)libexec/almagest/$binary$" <<<"$listing" >/dev/null
+		elif grep -E "(^|/)libexec/almagest/$binary$" <<<"$listing" >/dev/null; then
+			printf 'arm64 archive contains amd64-only isolation binary: %s\n' "$binary" >&2
+			exit 1
+		fi
+	done
+done
 
 (
 	cd dist
 	sha256sum --check checksums.txt
 )
 
-formats=(deb rpm archlinux)
-bases=(
-	debian:bookworm-slim
-	rockylinux:9
-	archlinux:base
-)
+read -r -a formats <<<"${ALMAGEST_PACKAGE_TEST_FORMATS:-deb rpm archlinux}"
 
-for index in "${!formats[@]}"; do
-	format="${formats[$index]}"
-	image="almagest-package-test-$format:local"
-	printf '==> packaging: testing %s\n' "$format"
-	docker build --platform linux/amd64 \
-		--build-arg "BASE_IMAGE=${bases[$index]}" \
-		-f packaging/tests/Dockerfile \
-		-t "$image" .
-	docker run --rm --platform linux/amd64 \
-		--privileged --device /dev/net/tun \
-		"$image" "$format"
+read -r -a test_architectures <<<"${ALMAGEST_PACKAGE_TEST_ARCHES:-amd64 arm64}"
+for arch in "${test_architectures[@]}"; do
+	if [[ "$arch" != amd64 && "$arch" != arm64 ]]; then
+		printf 'unsupported package-test architecture: %s\n' "$arch" >&2
+		exit 2
+	fi
+	for format in "${formats[@]}"; do
+		case "$format/$arch" in
+			deb/*) base=debian:bookworm-slim ;;
+			rpm/*) base=rockylinux:9 ;;
+			archlinux/amd64) base=archlinux:base ;;
+			archlinux/arm64) base=menci/archlinuxarm:base ;;
+			*) printf 'unsupported package-test format: %s\n' "$format" >&2; exit 2 ;;
+		esac
+		image="almagest-package-test-$format-$arch:local"
+		printf '==> packaging: testing %s/%s\n' "$format" "$arch"
+		docker build --platform "linux/$arch" \
+			--build-arg "BASE_IMAGE=$base" \
+			-f packaging/tests/Dockerfile \
+			-t "$image" .
+		docker run --rm --platform "linux/$arch" \
+			--privileged --device /dev/net/tun \
+			"$image" "$format" "$arch"
+	done
 done

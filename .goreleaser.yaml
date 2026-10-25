@@ -3,7 +3,7 @@ version: 2
 project_name: almagest
 
 builds:
-  - id: almagestd
+  - id: almagestd-amd64
     dir: bin
     main: ./almagestd
     binary: libexec/almagest/almagestd
@@ -18,7 +18,7 @@ builds:
     goamd64: &amd64_v1
       - v1
 
-  - id: almagest-cli
+  - id: almagest-cli-amd64
     dir: bin
     main: ./almagest-cli
     binary: bin/almagest-cli
@@ -37,6 +37,25 @@ builds:
     goos: *linux_only
     goarch: *amd64_only
     goamd64: *amd64_v1
+
+  - id: almagestd-arm64
+    dir: bin
+    main: ./almagestd
+    binary: libexec/almagest/almagestd
+    env: *go_env
+    flags: *go_flags
+    goos: *linux_only
+    goarch: &arm64_only
+      - arm64
+
+  - id: almagest-cli-arm64
+    dir: bin
+    main: ./almagest-cli
+    binary: bin/almagest-cli
+    env: *go_env
+    flags: *go_flags
+    goos: *linux_only
+    goarch: *arm64_only
 
   - id: almagest-config-writer-role
     dir: bin
@@ -71,8 +90,8 @@ builds:
 archives:
   - id: linux-amd64
     ids:
-      - almagestd
-      - almagest-cli
+      - almagestd-amd64
+      - almagest-cli-amd64
       - almagest-network-role
       - almagest-config-writer-role
       - almagest-command-role
@@ -114,12 +133,45 @@ archives:
       - src: packaging/linux/README.md
         dst: PACKAGE_CONTENTS.md
 
+  - id: linux-arm64
+    ids:
+      - almagestd-arm64
+      - almagest-cli-arm64
+    formats:
+      - tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_linux_arm64"
+    files:
+      - src: packaging/linux/alm.hujson
+        dst: etc/almagest/alm.hujson
+        info:
+          mode: 0600
+      - src: packaging/linux/protected_alm.hujson
+        dst: etc/almagest/protected_alm.hujson
+        info:
+          mode: 0600
+      - src: packaging/linux/almagestd.service
+        dst: lib/systemd/system/almagestd.service
+      - src: packaging/linux/almagest.sysusers
+        dst: lib/sysusers.d/almagest.conf
+      - src: packaging/linux/almagest.tmpfiles
+        dst: lib/tmpfiles.d/almagest.conf
+      - src: locales/**/*
+        dst: share/almagest/locales
+      - src: examples/**/*
+        dst: share/almagest/examples
+      - src: README.md
+        dst: share/doc/almagest/README.md
+      - src: LICENSE
+        dst: share/doc/almagest/LICENSE
+      - src: packaging/linux/README.md
+        dst: PACKAGE_CONTENTS.md
+
 nfpms:
   - id: linux-packages
     package_name: almagest
     ids:
-      - almagestd
-      - almagest-cli
+      - almagestd-amd64
+      - almagest-cli-amd64
       - almagest-network-role
       - almagest-config-writer-role
       - almagest-command-role
@@ -153,6 +205,52 @@ nfpms:
           mode: 0600
           owner: root
           group: root
+      - src: packaging/linux/protected_alm.hujson
+        dst: /etc/almagest/protected_alm.hujson
+        type: config|noreplace
+        file_info: *config_info
+      - src: packaging/linux/almagestd.service
+        dst: /usr/lib/systemd/system/almagestd.service
+      - src: packaging/linux/almagest.sysusers
+        dst: /usr/lib/sysusers.d/almagest.conf
+      - src: packaging/linux/almagest.tmpfiles
+        dst: /usr/lib/tmpfiles.d/almagest.conf
+      - src: locales/
+        dst: /usr/share/almagest/locales
+        type: tree
+      - src: examples/
+        dst: /usr/share/almagest/examples
+        type: tree
+      - src: README.md
+        dst: /usr/share/doc/almagest/README.md
+      - src: LICENSE
+        dst: /usr/share/licenses/almagest/LICENSE
+    scripts:
+      postinstall: packaging/linux/postinstall.sh
+      postremove: packaging/linux/postremove.sh
+
+  - id: linux-arm64-packages
+    package_name: almagest
+    ids:
+      - almagestd-arm64
+      - almagest-cli-arm64
+    vendor: Almagest contributors
+    homepage: https://github.com/asciimoth/almagest
+    maintainer: AsciiMoth <ascii@moth.contact>
+    description: Userspace network graph daemon and administration client.
+    license: GPL-3.0-or-later
+    formats:
+      - deb
+      - rpm
+      - archlinux
+    bindir: /usr
+    section: net
+    priority: optional
+    contents:
+      - src: packaging/linux/alm.hujson
+        dst: /etc/almagest/alm.hujson
+        type: config|noreplace
+        file_info: *config_info
       - src: packaging/linux/protected_alm.hujson
         dst: /etc/almagest/protected_alm.hujson
         type: config|noreplace

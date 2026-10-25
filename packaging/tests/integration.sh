@@ -2,6 +2,7 @@
 set -euo pipefail
 
 format="${1:?package format is required}"
+arch="${2:?package architecture is required}"
 
 export PATH="/usr/libexec/almagest:$PATH"
 export E2E_CASE="package-$format"
@@ -172,6 +173,23 @@ stop_daemon
 start_daemon
 wait_graph_node "Mock Network" || fail "loaded example was not retained after restart"
 wait_graph_node "Http Client" || fail "loaded example client was not retained after restart"
+
+# QEMU user-mode emulation supports route netlink but can reject the XFRM and
+# netfilter families that netlink.NewHandle probes. Native hosts normally
+# support them. Keep the portable package and daemon checks above, but do not
+# treat this emulator limitation as a DefaultTun failure.
+if ! python3 - 2>/dev/null <<'PY'
+import socket
+
+for protocol in (socket.NETLINK_ROUTE, 6, 12):
+    handle = socket.socket(socket.AF_NETLINK, socket.SOCK_RAW, protocol)
+    handle.close()
+PY
+then
+	printf 'skipping DefaultTun package test on %s: required netlink families are unavailable\n' "$arch"
+	stop_daemon
+	exit 0
+fi
 
 # Adapt the short path through default_tun_routing. A public-prefix target is
 # blocked by an unattached DefaultTun, then becomes reachable through

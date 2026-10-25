@@ -10,7 +10,8 @@ RUN if command -v apt-get >/dev/null; then \
 		dnf install -y ca-certificates gnupg2 iproute jq procps-ng python3 \
 		&& dnf clean all; \
 	elif command -v pacman >/dev/null; then \
-		pacman -Sy --noconfirm ca-certificates curl gnupg iproute2 jq procps-ng python; \
+		pacman -Sy --noconfirm --disable-sandbox \
+			ca-certificates curl gnupg iproute2 jq procps-ng python; \
 	else \
 		echo "unsupported package-test base image" >&2; \
 		exit 1; \

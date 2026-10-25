@@ -2,6 +2,7 @@
 set -euo pipefail
 
 format="${1:?package format is required}"
+arch="${2:?package architecture is required}"
 
 find_package() {
 	local pattern="$1"
@@ -48,9 +49,9 @@ package_lists_path() {
 }
 
 case "$format" in
-	deb) package="$(find_package '*.deb')" ;;
-	rpm) package="$(find_package '*.rpm')" ;;
-	archlinux) package="$(find_package '*.pkg.tar.zst')" ;;
+	deb) package="$(find_package "*_linux_$arch.deb")" ;;
+	rpm) package="$(find_package "*_linux_$arch.rpm")" ;;
+	archlinux) package="$(find_package "*_linux_$arch.pkg.tar.zst")" ;;
 	*) printf 'unknown package format: %s\n' "$format" >&2; exit 2 ;;
 esac
 
@@ -58,15 +59,22 @@ verify_package "$package"
 install_package "$package"
 
 test -x /usr/bin/almagest-cli
-for binary in \
-	almagestd \
-	almagest-network-role \
-	almagest-config-writer-role \
-	almagest-command-role \
-	almagest-isolation-storage \
-	almagest-linux-role-launcher \
-	almagest-subprogram-launcher; do
-	test -x "/usr/libexec/almagest/$binary"
+test -x /usr/libexec/almagest/almagestd
+isolation_binaries=(
+	almagest-network-role
+	almagest-config-writer-role
+	almagest-command-role
+	almagest-isolation-storage
+	almagest-linux-role-launcher
+	almagest-subprogram-launcher
+)
+for binary in "${isolation_binaries[@]}"; do
+	if [[ "$arch" == amd64 ]]; then
+		test -x "/usr/libexec/almagest/$binary"
+	elif [[ -e "/usr/libexec/almagest/$binary" ]]; then
+		printf 'arm64 package contains amd64-only isolation binary: %s\n' "$binary" >&2
+		exit 1
+	fi
 done
 test -f /usr/share/almagest/locales/en/manifest.json
 test -f /usr/share/almagest/locales/en/docs/index.json
@@ -108,6 +116,6 @@ install_package "$package"
 grep -F -- 'package-smoke-regular' /etc/almagest/alm.hujson >/dev/null
 grep -F -- 'package-smoke-protected' /etc/almagest/protected_alm.hujson >/dev/null
 
-/packaging-integration.sh "$format"
+/packaging-integration.sh "$format" "$arch"
 
-printf 'package smoke test passed: %s\n' "$format"
+printf 'package smoke test passed: %s/%s\n' "$format" "$arch"
