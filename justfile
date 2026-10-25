@@ -237,15 +237,34 @@ package sign='true': build-web
   install -m 0644 packaging/keys/ascii-moth.asc dist/ascii-moth.asc
   ./scripts/package-windows.sh
 
-# Install each native package format in a clean container and exercise the
-# packaged daemon, CLI, runtime data, and config update behavior.
-test-packaging sign='false': (package sign)
+# Evaluate and build every package for the current system that the flake
+# exposes. Do not create result links or run the built programs.
+test-packaging-nix:
+  @system="$(nix eval --impure --raw --expr builtins.currentSystem)"; \
+  mapfile -t package_names < <(nix eval --raw ".#packages.$system" \
+    --apply 'packages: builtins.concatStringsSep "\n" (builtins.attrNames packages)'); \
+  if ((${#package_names[@]} == 0)); then \
+    printf 'The flake exposes no packages for %s.\n' "$system" >&2; \
+    exit 1; \
+  fi; \
+  installables=(); \
+  for package_name in "${package_names[@]}"; do \
+    installables+=(".#packages.$system.$package_name"); \
+  done; \
+  nix build --no-link "${installables[@]}"
+
+# Build all flake packages, then install each native package format in a clean
+# container and exercise the installed daemon, CLI, runtime data, and config.
+test-packaging sign='false': test-packaging-nix (test-packaging-native sign)
+
+[private]
+test-packaging-native sign='false': (package sign)
   ./packaging/tests/run.sh
 
 [private]
-test-packaging-enabled:
+test-packaging-enabled: test-packaging-nix
   @if [[ "${RUN_PKG_TESTS:-0}" == "1" ]]; then \
-    just test-packaging; \
+    just test-packaging-native; \
   else \
     printf 'Skipping native package tests; set RUN_PKG_TESTS=1 to enable them.\n'; \
   fi

@@ -1,3 +1,21 @@
+# Usage:
+# - Build the package: nix build .#almagest
+# - Run the daemon from the flake: nix run github:asciimoth/almagest#almagest
+# - Run the client: nix shell github:asciimoth/almagest#almagest -c almagest-cli --help
+# - Add to a temporary shell: nix shell github:asciimoth/almagest#almagest
+# - Add to a profile: nix profile add github:asciimoth/almagest#almagest
+# - Install the package in a NixOS configuration:
+#     environment.systemPackages = [ inputs.almagest.packages.${pkgs.system}.almagest ];
+# - Enable and configure the NixOS service from this flake:
+#     imports = [ inputs.almagest.nixosModules.almagestd ];
+#     services.almagestd = {
+#       enable = true;
+#       isolation = "off"; # Use "auto" or "strict" to enable isolation.
+#       settings.Config.Save.IdleMilliseconds = 500;
+#     };
+#   Generated settings are read-only and are stored in the Nix store. For
+#   secrets, use configFile and protectedConfigFile and set settings and
+#   protectedSettings to null.
 {
   description = "almagest dev env";
   inputs = {
@@ -25,6 +43,147 @@
       staticLibseccomp = pkgs.libseccomp.overrideAttrs (_: {
         dontDisableStatic = true;
       });
+      linuxIsolationSupported = system == "x86_64-linux";
+
+      linuxIsolationLaunchers = pkgs.stdenv.mkDerivation {
+        pname = "almagest-linux-isolation-launchers";
+        version = self.shortRev or self.dirtyShortRev or "dev";
+        src = ./.;
+        nativeBuildInputs = [ pkgs.pkg-config ];
+        buildInputs = [
+          staticLibseccomp
+          staticLibseccomp.lib
+          pkgs.glibc.static
+        ];
+        dontConfigure = true;
+        buildPhase = ''
+          runHook preBuild
+          common_flags=(
+            -static-pie
+            -O2
+            -D_FORTIFY_SOURCE=3
+            -fstack-protector-strong
+            -fstack-clash-protection
+            -fno-strict-overflow
+            -Wformat=2
+            -Wall
+            -Wextra
+            -Werror
+            -Wl,-z,relro,-z,now,-z,noexecstack
+            -L${pkgs.glibc.static}/lib
+          )
+          $CC "''${common_flags[@]}" -o almagest-linux-role-launcher \
+            bin/native/linux-role/launcher.c \
+            $(pkg-config --cflags --libs libseccomp)
+          $CC "''${common_flags[@]}" -o almagest-subprogram-launcher \
+            bin/native/subprogram/launcher.c \
+            $(pkg-config --cflags --libs libseccomp)
+          runHook postBuild
+        '';
+        installPhase = ''
+          runHook preInstall
+          install -Dm0755 almagest-linux-role-launcher \
+            "$out/bin/almagest-linux-role-launcher"
+          install -Dm0755 almagest-subprogram-launcher \
+            "$out/bin/almagest-subprogram-launcher"
+          runHook postInstall
+        '';
+      };
+
+      panelStatic = pkgs.buildNpmPackage {
+        pname = "almagest-panel-static";
+        version = self.shortRev or self.dirtyShortRev or "dev";
+        src = ./.;
+        npmRoot = "panel";
+        npmDeps = pkgs.fetchNpmDeps {
+          src = ./panel;
+          hash = "sha256-2m9qhyiD1DmGroRy2N4Sa0bmuUWzfSGIqF+LL/tHuAE=";
+        };
+        buildPhase = ''
+          runHook preBuild
+          (cd panel && npm run build)
+          runHook postBuild
+        '';
+        installPhase = ''
+          runHook preInstall
+          mkdir -p "$out"
+          cp -r bin/almagestd/static/. "$out/"
+          runHook postInstall
+        '';
+      };
+
+      almagest = pkgs.buildGoModule {
+        pname = "almagest";
+        version = self.shortRev or self.dirtyShortRev or "dev";
+        src = ./.;
+        modRoot = "bin";
+        env.CGO_ENABLED = 0;
+        vendorHash = "sha256-DhnQjSjRfYXSrFG9dy0OSH6C4iVxHOsKlMbKlh6ke4I=";
+        subPackages = [
+          "almagestd"
+          "almagest-cli"
+        ] ++ pkgs.lib.optionals linuxIsolationSupported [
+          "cmd/almagest-network-role"
+          "cmd/almagest-config-writer-role"
+          "cmd/almagest-command-role"
+          "cmd/almagest-isolation-storage"
+        ];
+        nativeBuildInputs = [ pkgs.makeWrapper ];
+        nativeInstallCheckInputs = [ pkgs.diffutils ];
+        preBuild = ''
+          cp -r ${panelStatic} ./almagestd/static
+        '';
+        postInstall = ''
+          mkdir -p "$out/share/almagest"
+          cp -r ${./examples} "$out/share/almagest/examples"
+          cp -r ${./locales} "$out/share/almagest/locales"
+          mkdir -p "$out/libexec/almagest"
+          mv "$out/bin/almagestd" "$out/libexec/almagest/almagestd"
+          ${pkgs.lib.optionalString linuxIsolationSupported ''
+            mv \
+              "$out/bin/almagest-network-role" \
+              "$out/bin/almagest-config-writer-role" \
+              "$out/bin/almagest-command-role" \
+              "$out/bin/almagest-isolation-storage" \
+              "$out/libexec/almagest/"
+            cp -r ${linuxIsolationLaunchers}/bin/. "$out/libexec/almagest/"
+          ''}
+          makeWrapper "$out/libexec/almagest/almagestd" "$out/bin/almagestd" \
+            --set-default ALMAGEST_EXAMPLES_DIR "$out/share/almagest/examples" \
+            --set-default ALMAGEST_LOCALES_DIR "$out/share/almagest/locales"
+        '';
+        doInstallCheck = true;
+        installCheckPhase = ''
+          runHook preInstallCheck
+          diff --brief --recursive ${./locales} "$out/share/almagest/locales"
+          diff --brief --recursive ${./examples} "$out/share/almagest/examples"
+          test -f "$out/share/almagest/locales/en/manifest.json"
+          test -f "$out/share/almagest/locales/en/docs/index.json"
+          test -f "$out/share/almagest/examples/001-hello-network/manifest.json"
+          test -x "$out/bin/almagest-cli"
+          test -x "$out/libexec/almagest/almagestd"
+          ${pkgs.lib.optionalString linuxIsolationSupported ''
+            for binary in \
+              almagest-network-role \
+              almagest-config-writer-role \
+              almagest-command-role \
+              almagest-isolation-storage \
+              almagest-linux-role-launcher \
+              almagest-subprogram-launcher; do
+              test -x "$out/libexec/almagest/$binary"
+            done
+          ''}
+          "$out/bin/almagestd" --help >/dev/null
+          runHook postInstallCheck
+        '';
+        meta = with pkgs.lib; {
+          description = "Userspace network graph daemon and administration client";
+          homepage = "https://github.com/asciimoth/almagest";
+          license = licenses.gpl3Plus;
+          mainProgram = "almagestd";
+          platforms = platforms.linux;
+        };
+      };
 
       markdownFormatter = pkgs.python3.withPackages (
         pythonPackages: with pythonPackages; [
@@ -217,6 +376,10 @@
       '';
     in {
       packages = {
+        inherit almagest;
+        almagestd = almagest;
+        default = almagest;
+
         windows-split-tunnel-drivers = windowsSplitTunnelDrivers;
         windows-wintun = windowsWintun;
         windows-runtime-dependencies = pkgs.symlinkJoin {
@@ -285,5 +448,207 @@
           pkgs.OVMF
         ];
       };
-    });
+    })
+    // {
+      nixosModules.almagestd = {
+        config,
+        lib,
+        pkgs,
+        ...
+      }: let
+        cfg = config.services.almagestd;
+        jsonFormat = pkgs.formats.json {};
+        generatedConfig = jsonFormat.generate "almagestd.json" (
+          (if cfg.settings == null then {} else cfg.settings)
+          // { Protected = if cfg.protectedSettings == null then {} else cfg.protectedSettings; }
+        );
+        useGeneratedConfig = cfg.configFile == null;
+      in {
+        options.services.almagestd = {
+          enable = lib.mkEnableOption "Almagest network daemon";
+
+          package = lib.mkOption {
+            type = lib.types.package;
+            default = self.packages.${pkgs.stdenv.hostPlatform.system}.almagest;
+            defaultText = lib.literalExpression "inputs.almagest.packages.\${pkgs.stdenv.hostPlatform.system}.almagest";
+            description = "Package that provides almagestd and almagest-cli.";
+          };
+
+          settings = lib.mkOption {
+            type = lib.types.nullOr jsonFormat.type;
+            default = {};
+            example = lib.literalExpression ''
+              {
+                nodes.proxy = {
+                  Class = "almagest/SOCKS5Server";
+                };
+              }
+            '';
+            description = ''
+              Regular daemon configuration. The module renders this value as
+              JSON. This generated configuration is read-only at run time.
+              Set this option to null to use configFile.
+            '';
+          };
+
+          protectedSettings = lib.mkOption {
+            type = lib.types.nullOr jsonFormat.type;
+            default = {
+              Admin = {
+                Unix = "/run/almagest/admin.sock";
+                UnixGroup = "almagest";
+              };
+              Sandbox = {
+                Mode = "auto";
+                DiscoverSystemPrograms = true;
+              };
+              System.Type = "native";
+            };
+            description = ''
+              Protected daemon configuration. The module renders this value
+              as JSON together with settings. Values in this option are stored
+              in the Nix store. Use protectedConfigFile for secrets.
+            '';
+          };
+
+          configFile = lib.mkOption {
+            type = lib.types.nullOr lib.types.path;
+            default = null;
+            example = "/etc/almagest/alm.hujson";
+            description = ''
+              Path to a writable regular HuJSON or JSON configuration file.
+              Set settings to null when this option is used.
+            '';
+          };
+
+          protectedConfigFile = lib.mkOption {
+            type = lib.types.nullOr lib.types.path;
+            default = null;
+            example = "/run/keys/almagest-protected.hujson";
+            description = ''
+              Path to a protected HuJSON or JSON configuration file. Use this
+              option for secrets that must not be stored in the Nix store. Set
+              protectedSettings to null when this option is used.
+            '';
+          };
+
+          extraArgs = lib.mkOption {
+            type = lib.types.listOf lib.types.str;
+            default = [];
+            example = [ "--lvl" "debug" ];
+            description = "Additional command-line arguments for almagestd.";
+          };
+
+          isolation = lib.mkOption {
+            type = lib.types.enum [ "off" "auto" "strict" ];
+            default = "off";
+            example = "auto";
+            description = ''
+              Daemon process-isolation policy. The default is off because the
+              current isolation implementation has performance costs. Auto
+              and strict require a qualified Linux amd64 host.
+            '';
+          };
+        };
+
+        config = lib.mkIf cfg.enable {
+          assertions = [
+            {
+              assertion = cfg.isolation == "off" || pkgs.stdenv.hostPlatform.system == "x86_64-linux";
+              message = "services.almagestd.isolation supports auto and strict only on x86_64-linux.";
+            }
+            {
+              assertion = (cfg.configFile == null) == (cfg.settings != null);
+              message = "Set exactly one of services.almagestd.settings and services.almagestd.configFile.";
+            }
+            {
+              assertion = (cfg.protectedConfigFile == null) == (cfg.protectedSettings != null);
+              message = "Set exactly one of services.almagestd.protectedSettings and services.almagestd.protectedConfigFile.";
+            }
+            {
+              assertion = (cfg.configFile == null) == (cfg.protectedConfigFile == null);
+              message = "Generated and file-based Almagest configuration cannot be mixed.";
+            }
+          ];
+
+          environment.systemPackages = [ cfg.package ];
+          users.groups = {
+            almagest = {};
+            almagest-runtime = {};
+            almagest-writer = {};
+            almagest-command = {};
+          };
+          users.users = {
+            almagest-runtime = {
+              isSystemUser = true;
+              group = "almagest-runtime";
+              description = "Almagest isolated runtime";
+            };
+            almagest-writer = {
+              isSystemUser = true;
+              group = "almagest-writer";
+              description = "Almagest isolated config writer";
+            };
+            almagest-command = {
+              isSystemUser = true;
+              group = "almagest-command";
+              description = "Almagest isolated command helper";
+            };
+          };
+
+          systemd.services.almagestd = {
+            description = "Almagest network daemon";
+            wantedBy = [ "multi-user.target" ];
+            wants = [ "network-online.target" ];
+            after = [ "network-online.target" ];
+            preStart = lib.mkIf (cfg.isolation != "off") ''
+              ${cfg.package}/libexec/almagest/almagest-isolation-storage prepare
+            '';
+            serviceConfig = {
+              Type = "simple";
+              ExecStart =
+                "${lib.getExe cfg.package} --isolation=${cfg.isolation}"
+                + lib.optionalString (cfg.isolation == "off") " --file-storage /var/lib/almagest/store"
+                + lib.optionalString useGeneratedConfig " --stdin"
+                + lib.optionalString (!useGeneratedConfig) (
+                  " --config ${lib.escapeShellArg (toString cfg.configFile)}"
+                  + " --protected ${lib.escapeShellArg (toString cfg.protectedConfigFile)}"
+                )
+                + lib.optionalString (cfg.extraArgs != []) " ${lib.escapeShellArgs cfg.extraArgs}";
+              StandardInput = lib.mkIf useGeneratedConfig "file:${generatedConfig}";
+              Restart = "on-failure";
+              RestartSec = "2s";
+              UMask = "0077";
+              RuntimeDirectory = "almagest";
+              RuntimeDirectoryMode = "0755";
+              StateDirectory = "almagest";
+              StateDirectoryMode = "0755";
+              StandardOutput = "journal";
+              StandardError = "journal";
+              SyslogIdentifier = "almagestd";
+              Delegate = "cpu memory pids";
+              TasksMax = "infinity";
+              CapabilityBoundingSet = [
+                "CAP_CHOWN"
+                "CAP_DAC_OVERRIDE"
+                "CAP_FOWNER"
+                "CAP_KILL"
+                "CAP_NET_ADMIN"
+                "CAP_NET_BIND_SERVICE"
+                "CAP_SETGID"
+                "CAP_SETPCAP"
+                "CAP_SETUID"
+                "CAP_SYS_ADMIN"
+              ];
+              RestrictSUIDSGID = true;
+              LockPersonality = true;
+              RestrictRealtime = true;
+              SystemCallArchitectures = "native";
+            };
+          };
+        };
+      };
+
+      nixosModules.default = self.nixosModules.almagestd;
+    };
 }
