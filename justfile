@@ -410,6 +410,11 @@ build: certcat-generate build-web build-wasm
 	go build -o ./almagestd ./bin/almagestd/
 	gcc ${ALMAGEST_GLIBC_STATIC_LDFLAG:-} -static-pie -O2 -D_FORTIFY_SOURCE=3 -fstack-protector-strong -fstack-clash-protection -fno-strict-overflow -Wformat=2 -Wall -Wextra -Werror -Wl,-z,relro,-z,now,-z,noexecstack -o ./almagest-subprogram-launcher bin/native/subprogram/launcher.c $(pkg-config --cflags --libs libseccomp)
 
+# Build and install the native Linux payload without Nix, containers, or a
+# package builder. Existing configuration files are preserved.
+install:
+  ./packaging/install-source.sh
+
 # Run the daemon directly with local development config. Pass --experimental
 # to enable experimental nodes. Use -l or --lvl to set the log level.
 daemon *flags: build
