@@ -430,6 +430,24 @@ class WindowsPackageContractTests(unittest.TestCase):
                       "retainedStateUsable"):
             self.assertIn(token, finish)
 
+    def test_package_integration_uses_installed_service_and_native_tun(self):
+        runner = (ROOT / "dev/winvm/run.sh").read_text()
+        supervisor = (ROOT / "dev/winvm/supervise.py").read_text()
+        integration = (ROOT / "dev/winvm/package-integration.ps1").read_text()
+
+        self.assertIn("$mode == package-integration", runner)
+        self.assertIn('"package-integration"', supervisor)
+        self.assertIn("tools/package-integration-evidence.py", supervisor)
+        self.assertNotIn("dev\\winvm\\almagestd.exe", integration)
+        self.assertNotIn("dev\\winvm\\almagest-cli.exe", integration)
+        for token in (
+                "ProgramFiles", "pipe://machine", "admin', 'hello", "docs', 'tree",
+                "config', 'apply", "LocalProxy 1101", "OutNetwork 1103", "kv', 'set",
+                "secrets', 'set", "002-mock-network", "almagest/Tun",
+                "Win32_PnPSignedDriver", "Stop-Service almagestd",
+                "package-integration.json"):
+            self.assertIn(token, integration)
+
     def test_build_manifest_identities_are_deterministic_and_input_bound(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

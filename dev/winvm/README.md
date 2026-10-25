@@ -67,6 +67,7 @@ just winvm-package 1.2.3
 just winvm-package-repro 1.2.3
 just winvm-package-smoke 1.2.3
 just winvm-package-lifecycle 1.2.3
+just winvm-package-integration 1.2.3
 just winvm-test
 just windows-isolation-profiles
 just daemon-winvm
@@ -192,6 +193,16 @@ upgrades; rejects a downgrade; uninstalls; and reinstalls. The gate requires
 ProgramData retention and removal of the daemon, immutable files, and Mullvad
 driver package during uninstall. The extracted evidence and installer logs are
 in the run directory's `package-lifecycle/` directory.
+
+`just winvm-package-integration VERSION` starts from the clean package image,
+builds and installs the MSI, and runs the package smoke and integration gate.
+It probes each stable API surface through the installed CLI, tests localized
+documentation and examples, applies a config in ProgramData, and tests
+LocalProxy, OutNetwork, storage restart, and example restart behavior. It also
+creates a private-route Wintun adapter through the installed service, checks
+the signed driver that Windows loads, and requires a normal SCM stop to remove
+the owned adapter, address, and route. The host validates and extracts the
+structured result into the run directory's `package-integration/` directory.
 
 `just winvm-test` runs the active native gate from `test-suites.json`, then the
 isolated two-guest packet-flow gate. The ordinary suite runs all tests in

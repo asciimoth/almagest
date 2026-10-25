@@ -146,6 +146,7 @@ just winvm-package-repro 1.2.3
 just winvm-package-image
 just winvm-package-smoke 1.2.3
 just winvm-package-lifecycle 1.2.3
+just winvm-package-integration 1.2.3
 ```
 
 The first command writes the MSI, its SHA-256 checksum, and build evidence to

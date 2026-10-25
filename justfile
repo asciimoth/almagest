@@ -306,6 +306,10 @@ winvm-package-smoke version:
 winvm-package-lifecycle version:
   ALMAGEST_PACKAGE_VERSION={{quote(version)}} ./dev/winvm/run.sh package-lifecycle
 
+# Test every stable API surface and native networking through the installed MSI.
+winvm-package-integration version:
+  ALMAGEST_PACKAGE_VERSION={{quote(version)}} ./dev/winvm/run.sh package-integration
+
 winvm-test:
   ./dev/winvm/run.sh test
   ./dev/winvm/flow-run.sh

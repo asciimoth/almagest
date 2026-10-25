@@ -63,6 +63,8 @@ class HarnessTests(unittest.TestCase):
         self.assertIn('tools/package-smoke-evidence.py', supervisor)
         self.assertIn('"package-lifecycle"', supervisor)
         self.assertIn('tools/package-lifecycle-evidence.py', supervisor)
+        self.assertIn('"package-integration"', supervisor)
+        self.assertIn('tools/package-integration-evidence.py', supervisor)
         self.assertIn('package-clean', runner)
         self.assertIn('just winvm-package-image', runner)
 

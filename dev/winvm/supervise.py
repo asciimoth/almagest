@@ -568,7 +568,7 @@ class Supervisor:
             return self.run_manual_daemon()
         if self.args.mode == "resource":
             test_timeout = self.config["resourceTimeoutSeconds"]
-        elif self.args.mode in ("package-smoke", "package-lifecycle"):
+        elif self.args.mode in ("package-smoke", "package-lifecycle", "package-integration"):
             test_timeout = self.config["packageTimeoutSeconds"]
         else:
             test_timeout = None
@@ -585,6 +585,9 @@ class Supervisor:
             phases = ("package", "package-upgrade", "package-install",
                       "package-lifecycle-prepare", "package-reboot",
                       "package-lifecycle-finish")
+        elif self.args.mode == "package-integration":
+            phases = ("package", "package-install", "package-user",
+                      "package-integration")
         elif self.args.mode == "resource":
             phases = ("resource",)
         elif self.args.mode == "ordinary":
@@ -618,6 +621,8 @@ class Supervisor:
                 script = "package-lifecycle-prepare.ps1"
             elif phase == "package-lifecycle-finish":
                 script = "package-lifecycle-finish.ps1"
+            elif phase == "package-integration":
+                script = "package-integration.ps1"
             elif phase == "resource":
                 script = "resource-suite.ps1"
             else:
@@ -625,7 +630,8 @@ class Supervisor:
             args = ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
                     f"{self.remote}/source/dev/winvm/{script}", "-ArtifactDir", f"{self.remote}/artifacts"]
             if phase in ("package", "package-upgrade", "package-install",
-                         "package-lifecycle-prepare", "package-lifecycle-finish"):
+                         "package-lifecycle-prepare", "package-lifecycle-finish",
+                         "package-integration"):
                 args += ["-SourceDir", f"{self.remote}/source"]
             if phase == "package-upgrade":
                 args += ["-ManifestName", "package-upgrade-manifest.json",
@@ -643,7 +649,8 @@ class Supervisor:
                     args += ["-SoakDuration", self.args.soak_duration]
             command = (self.qga("exec", *args, seconds=test_timeout)
                        if phase in ("privileged", "resource", "package-install",
-                                    "package-lifecycle-prepare", "package-lifecycle-finish")
+                                    "package-lifecycle-prepare", "package-lifecycle-finish",
+                                    "package-integration")
                        else self.ssh + [" ".join(args)])
             code = self.command(command, test_timeout,
                                 log=phase + "-tests.log", watch=True)
@@ -676,6 +683,10 @@ class Supervisor:
             validation = ["python3", str(ROOT / "tools/package-lifecycle-evidence.py"),
                           str(self.directory / "guest-artifacts.tar"),
                           str(self.directory / "package-lifecycle")]
+        elif self.args.mode == "package-integration":
+            validation = ["python3", str(ROOT / "tools/package-integration-evidence.py"),
+                          str(self.directory / "guest-artifacts.tar"),
+                          str(self.directory / "package-integration")]
         elif self.args.mode == "resource":
             validation = ["python3", str(ROOT / "tools/resource-evidence.py"),
                           str(self.directory / "guest-artifacts.tar")]
