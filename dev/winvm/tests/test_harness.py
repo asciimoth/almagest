@@ -59,6 +59,10 @@ class HarnessTests(unittest.TestCase):
         self.assertIn('windows-msi-build', runner)
         self.assertIn('phases = ("package",)', supervisor)
         self.assertIn('tools/package-evidence.py', supervisor)
+        self.assertIn('self.args.mode == "package-smoke"', supervisor)
+        self.assertIn('tools/package-smoke-evidence.py', supervisor)
+        self.assertIn('package-clean', runner)
+        self.assertIn('just winvm-package-image', runner)
 
     def test_storage_space_distinguishes_cached_and_cold_images(self):
         public = self.path / 'public.key'
@@ -199,7 +203,7 @@ require_vm_space "$winvm_cache_dir" 10 test
         self.assertIn("provision.failed", builder)
         self.assertIn("Windows provisioning failed", builder)
         self.assertIn("Join-Path $media 'wintun-amd64.dll'", provision)
-        self.assertIn('$wintunSignature = Get-AuthenticodeSignature $wintunDestination',
+        self.assertIn('$wintunSignature = Get-AuthenticodeSignature $wintunSignaturePath',
                       provision)
         self.assertIn("$wintunSignature.SignerCertificate.Subject -notlike '*CN=WireGuard LLC*'",
                       provision)

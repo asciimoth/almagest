@@ -4,11 +4,13 @@ set -euo pipefail
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 # shellcheck source=dev/winvm/common.sh
 source "$script_dir/common.sh"
+variant=${1:-standard}
+[[ $variant == standard || $variant == package-clean ]] || die 'usage: build-image.sh [standard | package-clean]'
 "$script_dir/doctor.sh"
 download_packages
 prepare_native_dependencies
 ensure_ssh_key
-key=$(base_key)
+key=$(base_key "$variant")
 image_dir="$winvm_cache_dir/images/$key"
 ssh_dir="$winvm_cache_dir/ssh"
 mkdir -p "$winvm_cache_dir/images" "$winvm_cache_dir/locks" "$ssh_dir"
@@ -62,6 +64,8 @@ password=$(python3 -c 'import secrets; print(secrets.token_hex(24)+"aA!")')
 sed -i -e "s|@@WINDOWS_IMAGE_NAME@@|$(jq -r .windowsImageName "$config_file")|g" -e "s|@@ADMIN_PASSWORD@@|$password|g" "$work/Autounattend.xml"
 unset password
 sed -i \
+    -e "s|@@IMAGE_VARIANT@@|$variant|g" \
+    -e "s|@@INSTALL_RUNTIME_DEPENDENCIES@@|$([[ $variant == standard ]] && printf 'true' || printf 'false')|g" \
     -e "s|@@GO_FILE@@|$(locked_value .go.file)|g" \
     -e "s|@@OPENSSH_FILE@@|$(locked_value .openssh.file)|g" \
     -e "s|@@TOR_FILE@@|$(locked_value .tor.file)|g" \

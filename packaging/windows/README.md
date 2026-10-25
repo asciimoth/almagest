@@ -43,6 +43,12 @@ hours. Recovery also applies to daemon error exits and never reboots Windows.
 The machine administration endpoint is `pipe://machine` and requires an elevated
 CLI or LocalSystem.
 
+Windows Installer 5.0 fails its standard variable-delay service recovery table
+on Windows Server 2022. The package therefore uses deferred, non-impersonated
+`sc.exe failure` actions to set the three delays. A paired rollback action
+restores the package policy if the install transaction fails. The MSI smoke
+gate checks the resulting SCM values.
+
 The installer stops the service before it replaces files. It starts the service
 after a successful install, repair, or upgrade. Uninstall stops and removes the
 service before it removes immutable files.
@@ -91,11 +97,15 @@ the dependency verifier on Windows before a package build:
 ```
 
 The verifier requires amd64 PE files, exact hashes, a matching INF, and valid
-Authenticode signatures. The MSI uses the WiX v4 DifxApp extension to install
-the unchanged signed driver package. It keeps the INF demand-start setting and
-does not explicitly start the driver during installation. Windows does not
-start it at boot. The daemon has no hard dependency on the driver and can run
-without executable-tree exclusions.
+Authenticode signatures. The MSI uses the WiX v4 DifxApp extension to stage the
+unchanged signed driver package. DifxApp does not register this primitive
+driver's kernel service because the INF has no device models. The MSI therefore
+copies the unchanged signed SYS to `%SystemRoot%\System32\drivers` and uses
+deferred, non-impersonated SCM actions to register it as demand-start. A
+rollback action removes a service created by a failed first install. The MSI
+does not start the driver during installation, and Windows does not start it at
+boot. The daemon has no hard dependency on the driver and can run without
+executable-tree exclusions.
 
 Normal uninstall removes the driver package and its copied driver files after
 the daemon stops. Windows Installer rollback removes a driver package that was
@@ -133,12 +143,22 @@ Build and harvest the real package with the locked Windows VM:
 ```sh
 just winvm-package 1.2.3
 just winvm-package-repro 1.2.3
+just winvm-package-image
+just winvm-package-smoke 1.2.3
 ```
 
 The first command writes the MSI, its SHA-256 checksum, and build evidence to
 the run directory. The second command uses two clean overlays and requires
 byte-for-byte equality. See `dev/winvm/README.md` for image setup and artifact
 locations.
+
+The image command creates a separate clean package-test base image. It carries
+the locked build inputs but has no installed Almagest service, runtime files,
+or active Mullvad driver package. The smoke command installs the MSI silently
+in an overlay of that image. It verifies exact installed file hashes, package
+and dependency versions, Authenticode signatures, service and recovery
+settings, protected ACLs, the machine pipe, CLI authorization, and the durable
+startup log. It returns the MSI log and structured evidence to the host.
 
 On a Windows host with WiX v4 and the pinned Util and DifxApp extensions, use
 the fixed fixture to validate the source and build a test MSI:

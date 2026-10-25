@@ -61,9 +61,11 @@ From the repository root:
 just test-winvm-harness
 just winvm-doctor
 just winvm-image
+just winvm-package-image
 just winvm-smoke
 just winvm-package 1.2.3
 just winvm-package-repro 1.2.3
+just winvm-package-smoke 1.2.3
 just winvm-test
 just windows-isolation-profiles
 just daemon-winvm
@@ -167,6 +169,19 @@ form.
 `just winvm-package-repro VERSION` starts two clean overlays from the same base
 image and requires byte-for-byte equal MSI files. It keeps both run directories
 and writes `reproducibility.json` in the second package directory.
+
+`just winvm-package-image` builds a separate package-test image. It contains the
+locked build tools and dependency files, but it does not install Wintun or the
+Mullvad split driver into Windows. It also does not contain Almagest program or
+state files. Its distinct cache key prevents it from replacing or changing the
+native-test image.
+
+`just winvm-package-smoke VERSION` uses that clean image to build the MSI as the
+standard `winvm` account. It installs the MSI through QGA as LocalSystem and
+checks the installed files, dependency signatures, driver store, service,
+recovery policy, ACLs, machine pipe, elevated CLI access, denied standard-user
+access, and durable log. Run `just winvm-package-image` once before this gate.
+The extracted results are in the run directory's `package-smoke/` directory.
 
 `just winvm-test` runs the active native gate from `test-suites.json`, then the
 isolated two-guest packet-flow gate. The ordinary suite runs all tests in

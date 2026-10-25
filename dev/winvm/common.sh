@@ -131,13 +131,15 @@ find_ovmf() {
     return 1
 }
 base_key() {
-    local input public driver_root wintun_root
+    local variant=${1:-standard} input public driver_root wintun_root
+    [[ $variant == standard || $variant == package-clean ]] || die "unknown image variant: $variant"
     local -a files=("$config_file" "$lock_file" "$winvm_dir/Autounattend.xml" "$winvm_dir/provision.ps1" "$winvm_dir/common.sh" "$winvm_dir/build-image.sh" "$winvm_dir/tools/qga.py")
     public=$(ssh_public_key)
     [[ -r $public ]] || die "SSH public key is absent: $public; run just winvm-image"
     {
         qemu-system-x86_64 --version | head -n 1
         printf '%s\n' 'machine=q35,accel=kvm;disk=ahci;net=e1000e;firmware=ovmf'
+        printf 'variant=%s\n' "$variant"
         sha256_file "$(find_ovmf code)"
         sha256_file "$(find_ovmf vars)"
         sha256_file "$public"

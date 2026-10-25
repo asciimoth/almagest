@@ -28,6 +28,8 @@ try {
     exit 0
 }
 $media = Join-Path $root 'provision'
+$imageVariant = '@@IMAGE_VARIANT@@'
+$installRuntimeDependencies = '@@INSTALL_RUNTIME_DEPENDENCIES@@' -eq 'true'
 function Expand-WithTar([string]$Archive, [string]$Destination) {
     New-Item -ItemType Directory -Force -Path $Destination | Out-Null
     & tar.exe -xf $Archive -C $Destination
@@ -117,8 +119,14 @@ if (-not (Test-Path -LiteralPath $wintunSource -PathType Leaf)) {
 }
 $wintunDestination = Join-Path $env:SystemRoot 'System32\wintun.dll'
 if (-not (Test-Path -LiteralPath $wintunSource -PathType Leaf)) { throw 'Provisioned Wintun DLL is absent' }
-Copy-Item $wintunSource $wintunDestination -Force
-$wintunSignature = Get-AuthenticodeSignature $wintunDestination
+if ($installRuntimeDependencies) {
+    Copy-Item $wintunSource $wintunDestination -Force
+    $wintunSignaturePath = $wintunDestination
+} else {
+    Remove-Item $wintunDestination -Force -ErrorAction SilentlyContinue
+    $wintunSignaturePath = $wintunSource
+}
+$wintunSignature = Get-AuthenticodeSignature $wintunSignaturePath
 if ($wintunSignature.Status -ne 'Valid' -or
     $wintunSignature.SignerCertificate.Subject -notlike '*CN=WireGuard LLC*') {
     throw 'Wintun DLL signature is not valid'
@@ -138,15 +146,22 @@ New-Item -ItemType Directory -Force -Path $driverStore | Out-Null
 $catalogSignature = Get-AuthenticodeSignature (Join-Path $driverStore 'mullvad-split-tunnel.cat')
 $driverSignature = Get-AuthenticodeSignature (Join-Path $driverStore 'mullvad-split-tunnel.sys')
 if ($catalogSignature.Status -ne 'Valid' -or $driverSignature.Status -ne 'Valid') { throw 'Split-driver package signature is not valid' }
-& pnputil.exe /add-driver (Join-Path $driverStore 'mullvad-split-tunnel.inf') | Out-Default
-if ($LASTEXITCODE -ne 0) { throw "Cannot stage split-driver package: $LASTEXITCODE" }
 $installedDriver = Join-Path $env:SystemRoot 'System32\drivers\mullvad-split-tunnel.sys'
-Copy-Item (Join-Path $driverStore 'mullvad-split-tunnel.sys') $installedDriver -Force
 $driverServiceName = 'mullvad-split-tunnel'
-& sc.exe create $driverServiceName type= kernel start= demand error= normal binPath= '\SystemRoot\System32\drivers\mullvad-split-tunnel.sys' | Out-Default
-if ($LASTEXITCODE -notin @(0,1073)) { throw "Cannot create split-driver service: $LASTEXITCODE" }
-& sc.exe config $driverServiceName start= demand | Out-Default
-if ($LASTEXITCODE -ne 0) { throw "Cannot configure split-driver service: $LASTEXITCODE" }
+if ($installRuntimeDependencies) {
+    & pnputil.exe /add-driver (Join-Path $driverStore 'mullvad-split-tunnel.inf') | Out-Default
+    if ($LASTEXITCODE -ne 0) { throw "Cannot stage split-driver package: $LASTEXITCODE" }
+    Copy-Item (Join-Path $driverStore 'mullvad-split-tunnel.sys') $installedDriver -Force
+    & sc.exe create $driverServiceName type= kernel start= demand error= normal binPath= '\SystemRoot\System32\drivers\mullvad-split-tunnel.sys' | Out-Default
+    if ($LASTEXITCODE -notin @(0,1073)) { throw "Cannot create split-driver service: $LASTEXITCODE" }
+    & sc.exe config $driverServiceName start= demand | Out-Default
+    if ($LASTEXITCODE -ne 0) { throw "Cannot configure split-driver service: $LASTEXITCODE" }
+} else {
+    if (Get-Service $driverServiceName -ErrorAction SilentlyContinue) {
+        throw 'Clean package image contains the split-driver service'
+    }
+    Remove-Item $installedDriver -Force -ErrorAction SilentlyContinue
+}
 $bcd = (& bcdedit.exe /enum '{current}' | Out-String)
 if ($bcd -match '(?im)^testsigning\s+Yes' -or $bcd -match '(?im)^nointegritychecks\s+Yes') {
     throw 'Windows code-integrity checks are disabled'
@@ -161,11 +176,16 @@ if ($LASTEXITCODE -ne 0 -or $dotnetRuntimes -notmatch '^Microsoft\.NETCore\.App 
 $wixVersion = (& wix.exe --version | Out-String).Trim()
 if ($LASTEXITCODE -ne 0 -or $wixVersion -notmatch '^4\.0\.6(?:\+.*)?$') { throw "Unexpected WiX version: $wixVersion" }
 $qgaVersion = (Get-Item 'C:\Program Files\qemu-ga\qemu-ga.exe').VersionInfo.FileVersion
-$driverService = Get-CimInstance Win32_SystemDriver -Filter "Name='$driverServiceName'"
-if (-not $driverService -or $driverService.StartMode -ne 'Manual' -or $driverService.State -ne 'Stopped') {
+$driverService = Get-CimInstance Win32_SystemDriver -Filter "Name='$driverServiceName'" -ErrorAction SilentlyContinue
+if ($installRuntimeDependencies -and
+    (-not $driverService -or $driverService.StartMode -ne 'Manual' -or $driverService.State -ne 'Stopped')) {
     throw 'Split-driver service final state is not stopped and demand-start'
 }
+if (-not $installRuntimeDependencies -and $driverService) {
+    throw 'Clean package image contains the split-driver service after provisioning'
+}
 $manifest = [ordered]@{
+    imageVariant=$imageVariant; runtimeDependenciesInstalled=$installRuntimeDependencies
     windowsBuild=[Environment]::OSVersion.Version.ToString(); architecture=$env:PROCESSOR_ARCHITECTURE
     goVersion=$goVersion; torVersion=$torVersion; dotnetRuntimes=$dotnetRuntimes
     wixVersion=$wixVersion; wixExtensions=@('WixToolset.Util.wixext 4.0.6', 'WixToolset.DifxApp.wixext 4.0.6')

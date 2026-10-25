@@ -566,7 +566,12 @@ class Supervisor:
             self.deadline = float("inf")
             self.upload_manual_state()
             return self.run_manual_daemon()
-        test_timeout = self.config["resourceTimeoutSeconds"] if self.args.mode == "resource" else None
+        if self.args.mode == "resource":
+            test_timeout = self.config["resourceTimeoutSeconds"]
+        elif self.args.mode == "package-smoke":
+            test_timeout = self.config["packageTimeoutSeconds"]
+        else:
+            test_timeout = None
         self.deadline = (time.monotonic() + test_timeout
                          if test_timeout is not None else float("inf"))
         tests_status = 0
@@ -574,6 +579,8 @@ class Supervisor:
             phases = ("smoke",)
         elif self.args.mode == "package":
             phases = ("package",)
+        elif self.args.mode == "package-smoke":
+            phases = ("package", "package-install", "package-user")
         elif self.args.mode == "resource":
             phases = ("resource",)
         elif self.args.mode == "ordinary":
@@ -589,13 +596,17 @@ class Supervisor:
                 script = "smoke.ps1"
             elif phase == "package":
                 script = "package.ps1"
+            elif phase == "package-install":
+                script = "package-smoke.ps1"
+            elif phase == "package-user":
+                script = "package-user-smoke.ps1"
             elif phase == "resource":
                 script = "resource-suite.ps1"
             else:
                 script = "test-suite.ps1"
             args = ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
                     f"{self.remote}/source/dev/winvm/{script}", "-ArtifactDir", f"{self.remote}/artifacts"]
-            if phase == "package":
+            if phase in ("package", "package-install"):
                 args += ["-SourceDir", f"{self.remote}/source"]
             if phase in ("ordinary", "privileged"):
                 args += ["-Mode", phase, "-SourceDir", f"{self.remote}/source"]
@@ -608,12 +619,14 @@ class Supervisor:
                 args += ["-SourceDir", f"{self.remote}/source"]
                 if self.args.soak_duration:
                     args += ["-SoakDuration", self.args.soak_duration]
-            command = self.qga("exec", *args, seconds=test_timeout) if phase in ("privileged", "resource") else self.ssh + [" ".join(args)]
+            command = (self.qga("exec", *args, seconds=test_timeout)
+                       if phase in ("privileged", "resource", "package-install")
+                       else self.ssh + [" ".join(args)])
             code = self.command(command, test_timeout,
                                 log=phase + "-tests.log", watch=True)
             if code == 124 and test_timeout is not None:
                 raise Failure("host-test-timeout", 124)
-            if phase != "privileged" and code == 255:
+            if phase not in ("privileged", "package-install") and code == 255:
                 # SSH can notice a frozen guest before the health window ends.
                 # A lost transport must not start the next test phase either.
                 raise Failure("guest-transport" if self.guest_healthy() else "guest-unresponsive", 255)
@@ -632,6 +645,10 @@ class Supervisor:
             validation = ["python3", str(ROOT / "tools/package-evidence.py"),
                           str(self.directory / "guest-artifacts.tar"),
                           str(self.directory / "package")]
+        elif self.args.mode == "package-smoke":
+            validation = ["python3", str(ROOT / "tools/package-smoke-evidence.py"),
+                          str(self.directory / "guest-artifacts.tar"),
+                          str(self.directory / "package-smoke")]
         elif self.args.mode == "resource":
             validation = ["python3", str(ROOT / "tools/resource-evidence.py"),
                           str(self.directory / "guest-artifacts.tar")]

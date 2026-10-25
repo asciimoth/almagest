@@ -182,15 +182,29 @@ class WindowsPackageContractTests(unittest.TestCase):
         self.assertEqual(config.attrib["DelayedAutoStart"], "yes")
         self.assertEqual(config.attrib["FailureActionsWhen"],
                          "failedToStopOrReturnedError")
-        failures = service.find(f"{WIX}ServiceConfigFailureActions")
-        self.assertEqual(failures.attrib["ResetPeriod"], "86400")
-        actual = [(item.attrib["Action"], int(item.attrib["Delay"]))
-                  for item in failures.findall(f"{WIX}Failure")]
-        self.assertEqual(actual, [
-            ("restartService", 5000),
-            ("restartService", 15000),
-            ("restartService", 60000),
-        ])
+        self.assertIsNone(service.find(f"{WIX}ServiceConfigFailureActions"))
+        actions = {item.attrib["Id"]: item for item in
+                   self.wix.findall(f".//{WIX}CustomAction")}
+        command = (r'"[SystemFolder]sc.exe" failure almagestd reset= 86400 '
+                   r'actions= restart/5000/restart/15000/restart/60000')
+        for action_id, execution in (
+                ("RollbackAlmagestServiceRecovery", "rollback"),
+                ("ConfigureAlmagestServiceRecovery", "deferred")):
+            action = actions[action_id]
+            self.assertEqual(action.attrib["ExeCommand"], command)
+            self.assertEqual(action.attrib["Execute"], execution)
+            self.assertEqual(action.attrib["Impersonate"], "no")
+            self.assertEqual(action.attrib["Return"], "check")
+        sequence = {item.attrib["Action"]: item for item in
+                    self.wix.findall(f".//{WIX}InstallExecuteSequence/{WIX}Custom")}
+        self.assertEqual(sequence["RollbackAlmagestServiceRecovery"].attrib,
+                         {"Action": "RollbackAlmagestServiceRecovery",
+                          "After": "ConfigureMullvadDriverService",
+                          "Condition": 'NOT (REMOVE ~= "ALL")'})
+        self.assertEqual(sequence["ConfigureAlmagestServiceRecovery"].attrib,
+                         {"Action": "ConfigureAlmagestServiceRecovery",
+                          "After": "RollbackAlmagestServiceRecovery",
+                          "Condition": 'NOT (REMOVE ~= "ALL")'})
         control = component.find(f"{WIX}ServiceControl")
         self.assertEqual(control.attrib, {
             "Id": "AlmagestServiceControl",
@@ -225,6 +239,24 @@ class WindowsPackageContractTests(unittest.TestCase):
         self.assertFalse(policy["daemonHardDependency"])
         self.assertTrue(policy["stagedFilesRemovedOnUninstall"])
         self.assertNotIn("phase4Decisions", policy)
+
+        service_component = self._component(
+            self.wix, "MullvadDriverServiceComponent")
+        self.assertEqual(service_component.attrib["Guid"],
+                         self.contract["components"]["mullvadDriverService"])
+        system_driver = service_component.find(f"{WIX}File")
+        self.assertEqual(system_driver.attrib["Source"],
+                         r"$(var.MullvadDir)\mullvad-split-tunnel.sys")
+        actions = {item.attrib["Id"]: item for item in
+                   self.wix.findall(f".//{WIX}CustomAction")}
+        self.assertIn("type= kernel start= demand error= normal",
+                      actions["CreateMullvadDriverService"].attrib["ExeCommand"])
+        self.assertIn("start= demand error= normal",
+                      actions["ConfigureMullvadDriverService"].attrib["ExeCommand"])
+        self.assertEqual(actions["RollbackMullvadDriverService"].attrib["Execute"],
+                         "rollback")
+        self.assertEqual(actions["DeleteMullvadDriverService"].attrib["Execute"],
+                         "deferred")
 
     def test_wix_installs_only_the_wintun_distribution_dll(self):
         component = self._component(self.wix, "WintunComponent")
@@ -301,13 +333,9 @@ class WindowsPackageContractTests(unittest.TestCase):
         self.assertEqual(component.attrib["Permanent"], "yes")
         self.assertEqual(component.attrib["Guid"],
                          self.contract["components"]["programDataAcl"])
-        users = {permission.attrib["User"] for permission in component.findall(
-            f"{WIX}CreateFolder/{{http://wixtoolset.org/schemas/v4/wxs/util}}PermissionEx"
-        )}
-        self.assertEqual(users, {
-            "[WIX_ACCOUNT_LOCALSYSTEM]",
-            "[WIX_ACCOUNT_ADMINISTRATORS]",
-        })
+        permission = component.find(f"{WIX}CreateFolder/{WIX}PermissionEx")
+        self.assertEqual(permission.attrib,
+                         {"Sddl": "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)"})
 
     def test_fixture_build_is_x64_and_uses_required_extensions(self):
         source = FIXTURE_BUILD_PATH.read_text()
@@ -353,6 +381,33 @@ class WindowsPackageContractTests(unittest.TestCase):
         self.assertIn('self.args.mode == "package"', supervisor)
         self.assertIn("tools/package-evidence.py", supervisor)
         self.assertIn("run.sh\" package", (ROOT / "dev/winvm/repro-package.sh").read_text())
+
+    def test_package_smoke_uses_clean_image_and_privilege_boundaries(self):
+        provision = (ROOT / "dev/winvm/provision.ps1").read_text()
+        builder = (ROOT / "dev/winvm/build-image.sh").read_text()
+        runner = (ROOT / "dev/winvm/run.sh").read_text()
+        supervisor = (ROOT / "dev/winvm/supervise.py").read_text()
+        smoke = (ROOT / "dev/winvm/package-smoke.ps1").read_text()
+        user = (ROOT / "dev/winvm/package-user-smoke.ps1").read_text()
+
+        self.assertIn("@@INSTALL_RUNTIME_DEPENDENCIES@@", provision)
+        self.assertIn("imageVariant=$imageVariant", provision)
+        self.assertIn("package-clean", builder)
+        self.assertIn("base_key \"$image_variant\"", runner)
+        self.assertIn('phases = ("package", "package-install", "package-user")',
+                      supervisor)
+        self.assertIn('phase in ("privileged", "resource", "package-install")',
+                      supervisor)
+        self.assertIn("tools/package-smoke-evidence.py", supervisor)
+        for requirement in (
+                "msiexec.exe", "Get-AuthenticodeSignature", "Get-PEMachine",
+                "Win32_Service", "DelayedAutoStart", "sc.exe qfailure",
+                "FailureActionsOnNonCrashFailures", "pipe://machine",
+                "installed-files.json", "installed-acls.txt", "daemon.log"):
+            self.assertIn(requirement, smoke)
+        self.assertIn("programFilesWriteDenied", user)
+        self.assertIn("machinePipeAccessDenied", user)
+        self.assertIn("protectedConfigReadDenied", user)
 
     def test_build_manifest_identities_are_deterministic_and_input_bound(self):
         with tempfile.TemporaryDirectory() as temporary:

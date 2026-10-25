@@ -6,8 +6,8 @@ script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 # shellcheck source=dev/winvm/common.sh
 source "$script_dir/common.sh"
 mode=${1:-smoke}
-[[ $mode == smoke || $mode == package || $mode == test || $mode == ordinary || $mode == privileged || $mode == resource || $mode == manual || $mode == --shell || $mode == --prepare ]] || die 'usage: run.sh [smoke | package | test | ordinary | privileged | resource | manual | --shell RUN | --prepare DIRECTORY]'
-if [[ $mode == package ]]; then
+[[ $mode == smoke || $mode == package || $mode == package-smoke || $mode == test || $mode == ordinary || $mode == privileged || $mode == resource || $mode == manual || $mode == --shell || $mode == --prepare ]] || die 'usage: run.sh [smoke | package | package-smoke | test | ordinary | privileged | resource | manual | --shell RUN | --prepare DIRECTORY]'
+if [[ $mode == package || $mode == package-smoke ]]; then
     [[ ${ALMAGEST_PACKAGE_VERSION:-} =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || \
         die 'ALMAGEST_PACKAGE_VERSION must be an MSI x.y.z version'
 fi
@@ -33,7 +33,9 @@ else
     if [[ -n ${WINVM_PREPARED_DIR:-} ]]; then
         key=$(<"$WINVM_PREPARED_DIR/base-key")
     else
-        key=$(base_key)
+        image_variant=standard
+        [[ $mode != package-smoke ]] || image_variant=package-clean
+        key=$(base_key "$image_variant")
     fi
     if [[ $mode == --prepare ]]; then
         run_dir=$(realpath -e "${2:?prepared directory required}")
@@ -48,7 +50,10 @@ fi
 image_dir="$winvm_cache_dir/images/$key"
 exec 8>"$winvm_cache_dir/locks/image-$key.lock"
 flock -s 8
-cached_image_valid "$image_dir" "$key" || die 'base image is absent or invalid; run just winvm-image'
+if ! cached_image_valid "$image_dir" "$key"; then
+    [[ $mode == package-smoke ]] && die 'package-clean base image is absent or invalid; run just winvm-package-image'
+    die 'base image is absent or invalid; run just winvm-image'
+fi
 if [[ $mode == --prepare ]]; then
     python3 "$script_dir/package-worktree.py" "$run_dir/source.tar" >"$run_dir/source.sha256"
     "$script_dir/stage.sh" "$run_dir" >"$run_dir/staging.log" 2>&1
@@ -86,6 +91,9 @@ if [[ $mode != --shell ]]; then
     elif [[ $mode == package ]]; then
         suite=windows-msi-build
         test_execution=package
+    elif [[ $mode == package-smoke ]]; then
+        suite=windows-msi-package-smoke
+        test_execution=package-smoke
     elif [[ $mode == manual ]]; then
         suite=windows-manual-daemon
         test_execution=manual

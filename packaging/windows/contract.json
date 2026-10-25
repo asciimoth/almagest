@@ -25,6 +25,7 @@
     "wintun": "E029577A-A19D-4F4D-B5C3-666186CF4BE5",
     "packageDocumentation": "1DA725CA-0E69-41D5-96D3-8803C5BDC55D",
     "mullvadDriverPackage": "55D3B355-7A66-430A-9925-652983A9F03A",
+    "mullvadDriverService": "9C91CCED-DB8B-4CC1-A351-C8626319E222",
     "programDataAcl": "0FDB9BB0-8D49-41FA-8C2D-C12F11B284B8",
     "localesGuidNamespace": "7297B181-3669-464C-A02A-FC83D6D9BA09",
     "examplesGuidNamespace": "D4E6AC07-C273-4BD7-B5CA-2A27D454D50C",
@@ -138,9 +139,9 @@
       "declaredInfStart": "demand",
       "distribution": "Keep the matching SYS, INF, and CAT files unchanged. Install them with Windows driver-package facilities. Do not create or replace the catalog.",
       "daemonHardDependency": false,
-      "installMechanism": "WiX v4 DifxApp driver-package installation",
-      "startPolicy": "Keep the signed INF demand-start policy. The MSI does not explicitly start the driver during install, and Windows does not start it at boot.",
-      "uninstallPolicy": "Remove the driver package and its copied driver files during normal MSI uninstall after the daemon service stops. Roll back driver installation if the MSI install fails. Keep ProgramData state.",
+      "installMechanism": "Stage the signed package with WiX v4 DifxApp, copy the unchanged signed SYS to System32 drivers, and register its kernel service with deferred non-impersonated SCM actions.",
+      "startPolicy": "Register the service as demand-start. The MSI does not explicitly start the driver during install, and Windows does not start it at boot.",
+      "uninstallPolicy": "Remove the driver service, staged driver package, and copied driver files during normal MSI uninstall after the daemon service stops. Roll back driver installation and first-install service registration if the MSI install fails. Keep ProgramData state.",
       "stagedFilesRemovedOnUninstall": true
     }
   }

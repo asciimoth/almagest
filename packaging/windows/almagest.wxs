@@ -25,10 +25,17 @@
       <ComponentRef Id="WintunComponent" />
       <ComponentRef Id="PackageDocumentationComponent" />
       <ComponentRef Id="MullvadDriverComponent" />
+      <ComponentRef Id="MullvadDriverServiceComponent" />
       <ComponentRef Id="ProgramDataAclComponent" />
       <ComponentGroupRef Id="LocalesComponents" />
       <ComponentGroupRef Id="ExamplesComponents" />
     </Feature>
+    <CustomActionRef Id="RollbackAlmagestServiceRecovery" />
+    <CustomActionRef Id="ConfigureAlmagestServiceRecovery" />
+    <CustomActionRef Id="RollbackMullvadDriverService" />
+    <CustomActionRef Id="CreateMullvadDriverService" />
+    <CustomActionRef Id="ConfigureMullvadDriverService" />
+    <CustomActionRef Id="DeleteMullvadDriverService" />
   </Package>
 
   <Fragment>
@@ -43,6 +50,9 @@
     </StandardDirectory>
     <StandardDirectory Id="CommonAppDataFolder">
       <Directory Id="PROGRAMDATAFOLDER" Name="Almagest" />
+    </StandardDirectory>
+    <StandardDirectory Id="System64Folder">
+      <Directory Id="SYSTEMDRIVERSFOLDER" Name="drivers" />
     </StandardDirectory>
   </Fragment>
 
@@ -66,14 +76,6 @@
                        FailureActionsWhen="failedToStopOrReturnedError"
                        OnInstall="yes"
                        OnReinstall="yes" />
-        <ServiceConfigFailureActions Id="AlmagestServiceFailureActions"
-                                     ResetPeriod="86400"
-                                     OnInstall="yes"
-                                     OnReinstall="yes">
-          <Failure Action="restartService" Delay="5000" />
-          <Failure Action="restartService" Delay="15000" />
-          <Failure Action="restartService" Delay="60000" />
-        </ServiceConfigFailureActions>
       </ServiceInstall>
       <ServiceControl Id="AlmagestServiceControl"
                       Name="almagestd"
@@ -130,9 +132,82 @@
                Guid="0FDB9BB0-8D49-41FA-8C2D-C12F11B284B8"
                Bitness="always64" KeyPath="yes" Permanent="yes">
       <CreateFolder>
-        <util:PermissionEx User="[WIX_ACCOUNT_LOCALSYSTEM]" GenericAll="yes" />
-        <util:PermissionEx User="[WIX_ACCOUNT_ADMINISTRATORS]" GenericAll="yes" />
+        <PermissionEx Sddl="D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)" />
       </CreateFolder>
     </Component>
+
+    <Component Id="MullvadDriverServiceComponent" Directory="SYSTEMDRIVERSFOLDER"
+               Guid="9C91CCED-DB8B-4CC1-A351-C8626319E222" Bitness="always64">
+      <File Id="MullvadSystemDriver"
+            Source="$(var.MullvadDir)\mullvad-split-tunnel.sys"
+            KeyPath="yes" />
+    </Component>
+  </Fragment>
+
+  <Fragment>
+    <!-- MSI 5.0 returns access denied when ServiceConfigFailureActions applies
+         this policy on Windows Server 2022. Configure the three distinct
+         delays with a deferred, non-impersonated SCM command instead. The
+         rollback action restores the package policy before service rollback. -->
+    <CustomAction Id="RollbackAlmagestServiceRecovery"
+                  Directory="SystemFolder"
+                  ExeCommand="&quot;[SystemFolder]sc.exe&quot; failure almagestd reset= 86400 actions= restart/5000/restart/15000/restart/60000"
+                  Execute="rollback"
+                  Impersonate="no"
+                  Return="check" />
+    <CustomAction Id="ConfigureAlmagestServiceRecovery"
+                  Directory="SystemFolder"
+                  ExeCommand="&quot;[SystemFolder]sc.exe&quot; failure almagestd reset= 86400 actions= restart/5000/restart/15000/restart/60000"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="check" />
+    <!-- DifxApp stages this primitive driver package but does not register its
+         kernel service because its INF has no device models. The installed,
+         signed SYS is the service binary. Normal upgrades keep the stable
+         service registration while Windows Installer replaces the file. -->
+    <CustomAction Id="RollbackMullvadDriverService"
+                  Directory="SystemFolder"
+                  ExeCommand="&quot;[SystemFolder]sc.exe&quot; delete mullvad-split-tunnel"
+                  Execute="rollback"
+                  Impersonate="no"
+                  Return="ignore" />
+    <CustomAction Id="CreateMullvadDriverService"
+                  Directory="SystemFolder"
+                  ExeCommand="&quot;[SystemFolder]sc.exe&quot; create mullvad-split-tunnel type= kernel start= demand error= normal binPath= \SystemRoot\System32\drivers\mullvad-split-tunnel.sys"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="check" />
+    <CustomAction Id="ConfigureMullvadDriverService"
+                  Directory="SystemFolder"
+                  ExeCommand="&quot;[SystemFolder]sc.exe&quot; config mullvad-split-tunnel start= demand error= normal"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="check" />
+    <CustomAction Id="DeleteMullvadDriverService"
+                  Directory="SystemFolder"
+                  ExeCommand="&quot;[SystemFolder]sc.exe&quot; delete mullvad-split-tunnel"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="check" />
+    <InstallExecuteSequence>
+      <Custom Action="DeleteMullvadDriverService"
+              After="StopServices"
+              Condition="REMOVE ~= &quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
+      <Custom Action="RollbackMullvadDriverService"
+              After="InstallServices"
+              Condition="NOT Installed AND NOT WIX_UPGRADE_DETECTED" />
+      <Custom Action="CreateMullvadDriverService"
+              After="RollbackMullvadDriverService"
+              Condition="NOT Installed AND NOT WIX_UPGRADE_DETECTED" />
+      <Custom Action="ConfigureMullvadDriverService"
+              After="CreateMullvadDriverService"
+              Condition="NOT (REMOVE ~= &quot;ALL&quot;)" />
+      <Custom Action="RollbackAlmagestServiceRecovery"
+              After="ConfigureMullvadDriverService"
+              Condition="NOT (REMOVE ~= &quot;ALL&quot;)" />
+      <Custom Action="ConfigureAlmagestServiceRecovery"
+              After="RollbackAlmagestServiceRecovery"
+              Condition="NOT (REMOVE ~= &quot;ALL&quot;)" />
+    </InstallExecuteSequence>
   </Fragment>
 </Wix>

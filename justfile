@@ -283,6 +283,10 @@ winvm-doctor:
 winvm-image:
   ./dev/winvm/build-image.sh
 
+# Build the clean image used to prove that the MSI installs its dependencies.
+winvm-package-image:
+  ./dev/winvm/build-image.sh package-clean
+
 winvm-smoke:
   ./dev/winvm/run.sh smoke
 
@@ -293,6 +297,10 @@ winvm-package version:
 # Build twice from the same source and require byte-for-byte MSI equality.
 winvm-package-repro version:
   ./dev/winvm/repro-package.sh {{quote(version)}}
+
+# Build and install the MSI in a clean image, then run the package smoke gate.
+winvm-package-smoke version:
+  ALMAGEST_PACKAGE_VERSION={{quote(version)}} ./dev/winvm/run.sh package-smoke
 
 winvm-test:
   ./dev/winvm/run.sh test
