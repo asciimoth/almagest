@@ -64,14 +64,27 @@ unset password
 sed -i \
     -e "s|@@GO_FILE@@|$(locked_value .go.file)|g" \
     -e "s|@@OPENSSH_FILE@@|$(locked_value .openssh.file)|g" \
-    -e "s|@@TOR_FILE@@|$(locked_value .tor.file)|g" "$work/provision.ps1"
-cp "$(package_path go)" "$(package_path openssh)" "$(package_path tor)" "$work/"
+    -e "s|@@TOR_FILE@@|$(locked_value .tor.file)|g" \
+    -e "s|@@DOTNET_FILE@@|$(locked_value .dotnet.file)|g" \
+    -e "s|@@WIX_FILE@@|$(locked_value .wix.file)|g" \
+    -e "s|@@WIX_UTIL_FILE@@|$(locked_value .wixUtil.file)|g" \
+    -e "s|@@WIX_DIFXAPP_FILE@@|$(locked_value .wixDifxApp.file)|g" \
+    -e "s|@@WIX_DTF_FILE@@|$(locked_value .wixDtf.file)|g" "$work/provision.ps1"
+for section in go openssh tor dotnet wix wixUtil wixDifxApp wixDtf; do
+    cp "$(package_path "$section")" "$work/"
+done
 mkdir "$work/driver" "$work/wintun"
 cp "$winvm_driver_dir"/* "$work/driver/"
 cp "$winvm_wintun_dir/amd64/wintun.dll" "$work/wintun/wintun-amd64.dll"
 cp "$winvm_wintun_dir/arm64/wintun.dll" "$work/wintun/wintun-arm64.dll"
 printf 'Creating the Windows provisioning ISO...\n'
-xorriso -as mkisofs -quiet -J -R -V WINVM_PROVISION -o "$work/provision.iso" "$work/Autounattend.xml" "$work/provision.ps1" "$work/authorized_key.pub" "$work/$(locked_value .go.file)" "$work/$(locked_value .openssh.file)" "$work/$(locked_value .tor.file)" "$work/driver" "$work/wintun"
+xorriso -as mkisofs -quiet -J -R -V WINVM_PROVISION -o "$work/provision.iso" \
+    "$work/Autounattend.xml" "$work/provision.ps1" "$work/authorized_key.pub" \
+    "$work/$(locked_value .go.file)" "$work/$(locked_value .openssh.file)" \
+    "$work/$(locked_value .tor.file)" "$work/$(locked_value .dotnet.file)" \
+    "$work/$(locked_value .wix.file)" "$work/$(locked_value .wixUtil.file)" \
+    "$work/$(locked_value .wixDifxApp.file)" "$work/$(locked_value .wixDtf.file)" \
+    "$work/driver" "$work/wintun"
 qemu-img create -q -f qcow2 "$work/base.qcow2" "$(jq -r .machine.diskGiB "$config_file")G"
 cp "$(find_ovmf vars)" "$work/OVMF_VARS.fd"
 chmod 0600 "$work/OVMF_VARS.fd"

@@ -9,12 +9,12 @@ The image, QGA client, and lifecycle helpers are adapted from
 `asciimoth/sysnet-windows/dev/winvm` at revision
 `a056c520f0faf966f54dd90ef63b15d9aa7382ec`. This adaptation changes the project
 paths, source packaging, guest toolchain, dependency provisioning, SSH key
-verification, and run/test orchestration. The Windows, VirtIO, OpenSSH, and Tor
-inputs are locked in this harness. Go is locked to 1.26.9; its hash is from the
-Go download manifest. No sibling checkout is needed. Image provisioning installs
-the locked Wintun DLL and compatible split-driver service as external test
-inputs. The daemon does not provision them. Do not run privileged networking
-tests on a normal workstation or shared host.
+verification, and run/test orchestration. The Windows, VirtIO, OpenSSH, Tor,
+.NET, and WiX inputs are locked in this harness. Go is locked to 1.26.9; its
+hash is from the Go download manifest. No sibling checkout is needed. Image
+provisioning installs the locked Wintun DLL and compatible split-driver service
+as external test inputs. The daemon does not provision them. Do not run
+privileged networking tests on a normal workstation or shared host.
 
 ## Host setup
 
@@ -41,8 +41,9 @@ architecture-specific layout.
 
 Copy `env.example` to `env` and set absolute paths to the Windows and VirtIO
 ISOs. Supply legally obtained media with the exact hashes in `image-lock.json`.
-Media are not downloaded. Go, OpenSSH, and Tor archives are downloaded over
-HTTPS and checked against their locks during image creation. A valid cached
+Media are not downloaded. Go, OpenSSH, Tor, .NET, WiX, and WiX extension
+archives are downloaded over HTTPS and checked against their locks during image
+creation. A valid cached
 archive is reused by later image builds. Keep the private cache, media, and
 secrets outside the repository. The default cache is
 `$XDG_CACHE_HOME/almagest/winvm`, or `$HOME/.cache/almagest/winvm`.
@@ -61,6 +62,8 @@ just test-winvm-harness
 just winvm-doctor
 just winvm-image
 just winvm-smoke
+just winvm-package 1.2.3
+just winvm-package-repro 1.2.3
 just winvm-test
 just windows-isolation-profiles
 just daemon-winvm
@@ -152,6 +155,18 @@ checkout's ignored workspace and assets are not used or changed.
 The smoke run verifies transport, standard-user identity, OS, architecture,
 toolchain, and artifact retrieval. It records `testExecution: not-run`: **this
 is not the Windows test-suite gate or a support qualification.**
+
+`just winvm-package VERSION` builds the real unsigned amd64 MSI with the locked
+.NET 6.0.36 runtime, WiX 4.0.6, and WiX Util and DifxApp 4.0.6 extensions. The
+build does not use the network. The host validates and extracts the MSI, its
+SHA-256 file, and `package-build.json` below the run directory's `package/`
+directory. The evidence records the source, hashed MSI inputs, deterministic
+package identities, and tool versions. The version must use the MSI `x.y.z`
+form.
+
+`just winvm-package-repro VERSION` starts two clean overlays from the same base
+image and requires byte-for-byte equal MSI files. It keeps both run directories
+and writes `reproducibility.json` in the second package directory.
 
 `just winvm-test` runs the active native gate from `test-suites.json`, then the
 isolated two-guest packet-flow gate. The ordinary suite runs all tests in

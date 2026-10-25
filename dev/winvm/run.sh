@@ -6,7 +6,11 @@ script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 # shellcheck source=dev/winvm/common.sh
 source "$script_dir/common.sh"
 mode=${1:-smoke}
-[[ $mode == smoke || $mode == test || $mode == ordinary || $mode == privileged || $mode == resource || $mode == manual || $mode == --shell || $mode == --prepare ]] || die 'usage: run.sh [smoke | test | ordinary | privileged | resource | manual | --shell RUN | --prepare DIRECTORY]'
+[[ $mode == smoke || $mode == package || $mode == test || $mode == ordinary || $mode == privileged || $mode == resource || $mode == manual || $mode == --shell || $mode == --prepare ]] || die 'usage: run.sh [smoke | package | test | ordinary | privileged | resource | manual | --shell RUN | --prepare DIRECTORY]'
+if [[ $mode == package ]]; then
+    [[ ${ALMAGEST_PACKAGE_VERSION:-} =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || \
+        die 'ALMAGEST_PACKAGE_VERSION must be an MSI x.y.z version'
+fi
 for command in qemu-system-x86_64 qemu-img ssh scp jq python3 timeout flock git tar setsid; do require_command "$command"; done
 require_kvm /dev/kvm
 ensure_cache_dir
@@ -79,6 +83,9 @@ if [[ $mode != --shell ]]; then
     if [[ $mode == smoke ]]; then
         suite=harness-smoke
         test_execution=not-run
+    elif [[ $mode == package ]]; then
+        suite=windows-msi-build
+        test_execution=package
     elif [[ $mode == manual ]]; then
         suite=windows-manual-daemon
         test_execution=manual

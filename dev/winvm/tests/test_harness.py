@@ -41,6 +41,25 @@ class HarnessTests(unittest.TestCase):
         subprocess.run([ROOT / 'doctor.sh', '--validate'], env=self.env, check=True,
                        stdout=subprocess.DEVNULL)
 
+    def test_package_toolchain_is_part_of_provisioning_and_cache_identity(self):
+        lock = json.loads((ROOT / 'image-lock.json').read_text())
+        self.assertEqual(lock['dotnet']['version'], '6.0.36')
+        self.assertEqual({lock[name]['version'] for name in
+                          ('wix', 'wixUtil', 'wixDifxApp', 'wixDtf')}, {'4.0.6'})
+        common = (ROOT / 'common.sh').read_text()
+        builder = (ROOT / 'build-image.sh').read_text()
+        for name in ('dotnet', 'wix', 'wixUtil', 'wixDifxApp', 'wixDtf'):
+            self.assertIn(name, common)
+            self.assertIn(name, builder)
+        self.assertIn('$lock_file', common)
+
+        runner = (ROOT / 'run.sh').read_text()
+        supervisor = (ROOT / 'supervise.py').read_text()
+        self.assertIn('$mode == package', runner)
+        self.assertIn('windows-msi-build', runner)
+        self.assertIn('phases = ("package",)', supervisor)
+        self.assertIn('tools/package-evidence.py', supervisor)
+
     def test_storage_space_distinguishes_cached_and_cold_images(self):
         public = self.path / 'public.key'
         public.write_text('test public key')
@@ -186,9 +205,10 @@ require_vm_space "$winvm_cache_dir" 10 test
                       provision)
         self.assertIn("$driverSource = $media", provision)
         self.assertIn("Join-Path $media '@@TOR_FILE@@'", provision)
-        self.assertIn("$torRoot;$machinePath", provision)
+        self.assertIn("$torRoot;$dotnetRoot;$wixRoot;$machinePath", provision)
         self.assertIn("& tor.exe --version", provision)
-        self.assertIn("$(package_path tor)", builder)
+        self.assertIn('cp "$(package_path "$section")"', builder)
+        self.assertIn('go openssh tor dotnet wix wixUtil wixDifxApp wixDtf', builder)
         self.assertIn("$(locked_value .tor.file)", builder)
 
     def test_native_runner_keeps_go_stderr_out_of_json_events(self):

@@ -119,9 +119,26 @@ component GUID while its content changes. A path change gets a new component
 GUID. The contract test fails if `payload.wxs` is not current.
 
 `almagest.wxs` requires WiX preprocessor values for `Version`, `ProductCode`,
-`SourceDir`, `PayloadDir`, `WintunDir`, and `MullvadDir`. `ProductCode` must be
-stable for all builds of one product version and must change for a new product
-version. Phase 5 supplies these values from the package build manifest.
+`SourceDir`, `PayloadDir`, `WintunDir`, and `MullvadDir`.
+`ProductCode` is stable for all builds of one product version and changes for a
+new product version. `PackageCode` changes when a hashed MSI input changes.
+`create-build-manifest.py` supplies the identities from the version, source
+record, image lock, and complete package input list. After WiX links the MSI,
+the build uses the pinned WiX DTF library to set the PackageCode and fixed
+summary creation/save times. It also fixes payload CAB timestamps and compound
+file root-storage timestamps, which otherwise use the time of the build.
+
+Build and harvest the real package with the locked Windows VM:
+
+```sh
+just winvm-package 1.2.3
+just winvm-package-repro 1.2.3
+```
+
+The first command writes the MSI, its SHA-256 checksum, and build evidence to
+the run directory. The second command uses two clean overlays and requires
+byte-for-byte equality. See `dev/winvm/README.md` for image setup and artifact
+locations.
 
 On a Windows host with WiX v4 and the pinned Util and DifxApp extensions, use
 the fixed fixture to validate the source and build a test MSI:

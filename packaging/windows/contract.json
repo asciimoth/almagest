@@ -10,8 +10,10 @@
     "manufacturer": "Almagest contributors",
     "productName": "Almagest",
     "upgradeCode": "49768928-2421-453C-81CA-E962800EE5B8",
+    "productCodeNamespace": "14ED9A9B-69DE-44BB-9561-54AE4CF84C34",
+    "packageCodeNamespace": "46F615F1-0381-435D-950E-471D5A42B22D",
     "productCodePolicy": "Generate a new ProductCode for each product version.",
-    "packageCodePolicy": "Generate a new PackageCode for each MSI build.",
+    "packageCodePolicy": "Derive PackageCode from the package version and the complete hashed MSI input manifest. Identical inputs identify one reproducible package build.",
     "majorUpgradePolicy": {
       "allowSameVersionRepair": true,
       "rejectDowngrades": true

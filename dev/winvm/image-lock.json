@@ -28,5 +28,35 @@
     "file": "tor-expert-bundle-windows-x86_64-15.0.25.tar.gz",
     "source": "https://dist.torproject.org/torbrowser/15.0.25/tor-expert-bundle-windows-x86_64-15.0.25.tar.gz",
     "sha256": "c1988c701de2f24f7d098d1d6d7f507b58f27740d097f29c246e0524d639b252"
+  },
+  "dotnet": {
+    "version": "6.0.36",
+    "file": "dotnet-runtime-6.0.36-win-x64.zip",
+    "source": "https://builds.dotnet.microsoft.com/dotnet/Runtime/6.0.36/dotnet-runtime-6.0.36-win-x64.zip",
+    "sha256": "c077ccc342c5571ceb7a3c06d1dfbc99b989ed5a6e0f3a0b0b450531c1259615"
+  },
+  "wix": {
+    "version": "4.0.6",
+    "file": "wix.4.0.6.nupkg",
+    "source": "https://api.nuget.org/v3-flatcontainer/wix/4.0.6/wix.4.0.6.nupkg",
+    "sha256": "a94dd42ae1fb56b32da180e2173ceda4f0d10b4c8871c5ee59ecb502131a1eb6"
+  },
+  "wixUtil": {
+    "version": "4.0.6",
+    "file": "wixtoolset.util.wixext.4.0.6.nupkg",
+    "source": "https://api.nuget.org/v3-flatcontainer/wixtoolset.util.wixext/4.0.6/wixtoolset.util.wixext.4.0.6.nupkg",
+    "sha256": "541168d58c299dd8d62e92ea1877489756cfa73a27fd6ec855cd6341c8447562"
+  },
+  "wixDifxApp": {
+    "version": "4.0.6",
+    "file": "wixtoolset.difxapp.wixext.4.0.6.nupkg",
+    "source": "https://api.nuget.org/v3-flatcontainer/wixtoolset.difxapp.wixext/4.0.6/wixtoolset.difxapp.wixext.4.0.6.nupkg",
+    "sha256": "b5d699ac1204d3b40507cc4635e61b8adf56e1d624e79dc5e6abac8d5b66c4f6"
+  },
+  "wixDtf": {
+    "version": "4.0.6",
+    "file": "wixtoolset.dtf.windowsinstaller.4.0.6.nupkg",
+    "source": "https://api.nuget.org/v3-flatcontainer/wixtoolset.dtf.windowsinstaller/4.0.6/wixtoolset.dtf.windowsinstaller.4.0.6.nupkg",
+    "sha256": "bf013d52f9386fab124f0caf227fd70768b3eb15f93267de43beb36b21f95af6"
   }
 }

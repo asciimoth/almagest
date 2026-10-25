@@ -572,6 +572,8 @@ class Supervisor:
         tests_status = 0
         if self.args.mode == "smoke":
             phases = ("smoke",)
+        elif self.args.mode == "package":
+            phases = ("package",)
         elif self.args.mode == "resource":
             phases = ("resource",)
         elif self.args.mode == "ordinary":
@@ -585,12 +587,16 @@ class Supervisor:
             self.note(f"running {phase} tests")
             if phase == "smoke":
                 script = "smoke.ps1"
+            elif phase == "package":
+                script = "package.ps1"
             elif phase == "resource":
                 script = "resource-suite.ps1"
             else:
                 script = "test-suite.ps1"
             args = ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
                     f"{self.remote}/source/dev/winvm/{script}", "-ArtifactDir", f"{self.remote}/artifacts"]
+            if phase == "package":
+                args += ["-SourceDir", f"{self.remote}/source"]
             if phase in ("ordinary", "privileged"):
                 args += ["-Mode", phase, "-SourceDir", f"{self.remote}/source"]
                 if os.environ.get("WINVM_FAIL_FAST", "1") == "0":
@@ -622,7 +628,11 @@ class Supervisor:
         self.stage = "artifacts"
         if not self.harvest(final=True):
             raise Failure("artifacts")
-        if self.args.mode == "resource":
+        if self.args.mode == "package":
+            validation = ["python3", str(ROOT / "tools/package-evidence.py"),
+                          str(self.directory / "guest-artifacts.tar"),
+                          str(self.directory / "package")]
+        elif self.args.mode == "resource":
             validation = ["python3", str(ROOT / "tools/resource-evidence.py"),
                           str(self.directory / "guest-artifacts.tar")]
             if self.args.soak_duration:

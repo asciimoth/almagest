@@ -5,6 +5,7 @@ import hashlib
 import json
 import re
 import subprocess
+import tempfile
 import unittest
 import uuid
 import xml.etree.ElementTree as ET
@@ -39,6 +40,8 @@ class WindowsPackageContractTests(unittest.TestCase):
         identity = self.contract["identity"]
         self.assertEqual(identity["upgradeCode"],
                          str(uuid.UUID(identity["upgradeCode"])).upper())
+        for name in ("productCodeNamespace", "packageCodeNamespace"):
+            self.assertEqual(identity[name], str(uuid.UUID(identity[name])).upper())
 
         components = self.contract["components"]
         guid_values = [value for key, value in components.items()
@@ -314,6 +317,80 @@ class WindowsPackageContractTests(unittest.TestCase):
         self.assertNotIn("arm64", source.lower())
         self.assertIn("almagest.wxs", source)
         self.assertIn("payload.wxs", source)
+
+    def test_reproducible_build_path_is_locked_and_records_evidence(self):
+        lock = json.loads((ROOT / "dev/winvm/image-lock.json").read_text())
+        self.assertEqual(lock["dotnet"]["version"], "6.0.36")
+        for name in ("wix", "wixUtil", "wixDifxApp", "wixDtf"):
+            self.assertEqual(lock[name]["version"], "4.0.6")
+            self.assertRegex(lock[name]["sha256"], r"^[0-9a-f]{64}$")
+
+        provision = (ROOT / "dev/winvm/provision.ps1").read_text()
+        for token in ("@@DOTNET_FILE@@", "@@WIX_FILE@@", "@@WIX_UTIL_FILE@@",
+                      "@@WIX_DIFXAPP_FILE@@", "@@WIX_DTF_FILE@@"):
+            self.assertIn(token, provision)
+        self.assertIn("difxapp_x64.wixlib", provision)
+        package = (ROOT / "dev/winvm/package.ps1").read_text()
+        self.assertIn("package-build.json", package)
+        self.assertIn("difxapp_x64.wixlib", package)
+        self.assertIn("Get-FileHash -Algorithm SHA256", package)
+        self.assertIn("WixToolset.Util.wixext.dll", package)
+        self.assertIn("WixToolset.DifxApp.wixext.dll", package)
+        self.assertIn("WixToolset.Dtf.WindowsInstaller.dll", package)
+        self.assertIn("$summary.RevisionNumber", package)
+        self.assertIn("$summary.CreateTime", package)
+        self.assertIn("$summary.LastSaveTime", package)
+        self.assertIn("[IO.File]::SetLastWriteTime", package)
+        self.assertIn("CompoundFile.RootEntryTimes", package)
+        self.assertIn("$directoryOffset + 108", package)
+        self.assertIn("WindowsInstaller.SummaryInfo]::new", package)
+        self.assertNotIn("$database.Commit()", package)
+        self.assertNotIn("Dependency verification failed: $LASTEXITCODE", package)
+
+        runner = (ROOT / "dev/winvm/run.sh").read_text()
+        supervisor = (ROOT / "dev/winvm/supervise.py").read_text()
+        self.assertIn("$mode == package", runner)
+        self.assertIn('self.args.mode == "package"', supervisor)
+        self.assertIn("tools/package-evidence.py", supervisor)
+        self.assertIn("run.sh\" package", (ROOT / "dev/winvm/repro-package.sh").read_text())
+
+    def test_build_manifest_identities_are_deterministic_and_input_bound(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            for directory in ("packaging/windows", "dev/winvm", "locales", "examples"):
+                (root / directory).mkdir(parents=True, exist_ok=True)
+            (root / "packaging/windows/contract.json").write_bytes(
+                CONTRACT_PATH.read_bytes())
+            for name in ("LICENSE", "packaging/windows/README.md",
+                         "dev/winvm/almagestd.exe", "dev/winvm/almagest-cli.exe",
+                         "locales/value.json", "examples/example.hujson"):
+                path = root / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(name)
+            source = root / "source.json"
+            source.write_text(json.dumps({
+                "sha256": "1" * 64,
+                "revision": "abc123",
+                "dirty": False,
+            }))
+            image_lock = root / "image-lock.json"
+            image_lock.write_text('{"locked":true}\n')
+            output = root / "manifest.json"
+            command = [
+                "python3", str(ROOT / "packaging/windows/create-build-manifest.py"),
+                "--version", "1.2.3", "--root", str(root),
+                "--source-record", str(source), "--image-lock", str(image_lock),
+                "--output", str(output),
+            ]
+            subprocess.run(command, check=True)
+            first = json.loads(output.read_text())
+            subprocess.run(command, check=True)
+            self.assertEqual(first, json.loads(output.read_text()))
+            (root / "locales/value.json").write_text("changed")
+            subprocess.run(command, check=True)
+            changed = json.loads(output.read_text())
+            self.assertEqual(first["productCode"], changed["productCode"])
+            self.assertNotEqual(first["packageCode"], changed["packageCode"])
 
     @staticmethod
     def _component(root, component_id):

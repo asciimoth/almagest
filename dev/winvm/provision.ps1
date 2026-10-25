@@ -51,8 +51,29 @@ $sshRoot = 'C:\Program Files\OpenSSH-Win64'; Expand-WithTar (Join-Path $media '@
 $torInstallRoot = 'C:\Program Files\Tor'; Expand-WithTar (Join-Path $media '@@TOR_FILE@@') $torInstallRoot
 $torRoot = Join-Path $torInstallRoot 'tor'
 if (-not (Test-Path -LiteralPath (Join-Path $torRoot 'tor.exe') -PathType Leaf)) { throw 'Tor executable is absent after extraction' }
+$dotnetRoot = 'C:\Program Files\dotnet'
+Expand-Archive (Join-Path $media '@@DOTNET_FILE@@') $dotnetRoot -Force
+$wixPackage = Join-Path $root 'wix-package'
+$wixUtilPackage = Join-Path $root 'wix-util-package'
+$wixDifxPackage = Join-Path $root 'wix-difxapp-package'
+$wixDtfPackage = Join-Path $root 'wix-dtf-package'
+Expand-WithTar (Join-Path $media '@@WIX_FILE@@') $wixPackage
+Expand-WithTar (Join-Path $media '@@WIX_UTIL_FILE@@') $wixUtilPackage
+Expand-WithTar (Join-Path $media '@@WIX_DIFXAPP_FILE@@') $wixDifxPackage
+Expand-WithTar (Join-Path $media '@@WIX_DTF_FILE@@') $wixDtfPackage
+$wixRoot = Join-Path $root 'wix'
+$wixExtensionRoot = Join-Path $root 'wixext'
+New-Item -ItemType Directory -Force -Path $wixRoot, $wixExtensionRoot | Out-Null
+Copy-Item (Join-Path $wixPackage 'tools\net6.0\any\*') $wixRoot -Recurse -Force
+Copy-Item (Join-Path $wixUtilPackage 'wixext4\WixToolset.Util.wixext.dll') $wixExtensionRoot
+Copy-Item (Join-Path $wixDifxPackage 'wixext4\WixToolset.DifxApp.wixext.dll') $wixExtensionRoot
+Copy-Item (Join-Path $wixDifxPackage 'wixext4\difxapp_x64.wixlib') $wixExtensionRoot
+Copy-Item (Join-Path $wixDtfPackage 'lib\netstandard2.0\WixToolset.Dtf.WindowsInstaller.dll') $wixRoot
+Remove-Item $wixPackage, $wixUtilPackage, $wixDifxPackage, $wixDtfPackage -Recurse -Force
 $machinePath = [Environment]::GetEnvironmentVariable('Path','Machine')
-[Environment]::SetEnvironmentVariable('Path', "C:\go\bin;$sshRoot;$torRoot;$machinePath", 'Machine'); $env:Path = "C:\go\bin;$sshRoot;$torRoot;$env:Path"
+[Environment]::SetEnvironmentVariable('DOTNET_ROOT', $dotnetRoot, 'Machine')
+$env:DOTNET_ROOT = $dotnetRoot
+[Environment]::SetEnvironmentVariable('Path', "C:\go\bin;$sshRoot;$torRoot;$dotnetRoot;$wixRoot;$machinePath", 'Machine'); $env:Path = "C:\go\bin;$sshRoot;$torRoot;$dotnetRoot;$wixRoot;$env:Path"
 & "$sshRoot\install-sshd.ps1"; & "$sshRoot\ssh-keygen.exe" -A
 @'
 HostKey C:/ProgramData/ssh/ssh_host_ed25519_key
@@ -135,6 +156,10 @@ powercfg.exe /change standby-timeout-ac 0; powercfg.exe /change hibernate-timeou
 Stop-Service wuauserv -Force -ErrorAction SilentlyContinue; Set-Service wuauserv -StartupType Manual
 $goVersion = (& go version | Out-String).Trim()
 $torVersion = (& tor.exe --version | Select-Object -First 1 | Out-String).Trim()
+$dotnetRuntimes = @(& dotnet.exe --list-runtimes)
+if ($LASTEXITCODE -ne 0 -or $dotnetRuntimes -notmatch '^Microsoft\.NETCore\.App 6\.0\.36 ') { throw 'Unexpected .NET runtime' }
+$wixVersion = (& wix.exe --version | Out-String).Trim()
+if ($LASTEXITCODE -ne 0 -or $wixVersion -notmatch '^4\.0\.6(?:\+.*)?$') { throw "Unexpected WiX version: $wixVersion" }
 $qgaVersion = (Get-Item 'C:\Program Files\qemu-ga\qemu-ga.exe').VersionInfo.FileVersion
 $driverService = Get-CimInstance Win32_SystemDriver -Filter "Name='$driverServiceName'"
 if (-not $driverService -or $driverService.StartMode -ne 'Manual' -or $driverService.State -ne 'Stopped') {
@@ -142,7 +167,9 @@ if (-not $driverService -or $driverService.StartMode -ne 'Manual' -or $driverSer
 }
 $manifest = [ordered]@{
     windowsBuild=[Environment]::OSVersion.Version.ToString(); architecture=$env:PROCESSOR_ARCHITECTURE
-    goVersion=$goVersion; torVersion=$torVersion; qemuGuestAgentVersion=$qgaVersion; provisionedAt=(Get-Date).ToUniversalTime().ToString('o')
+    goVersion=$goVersion; torVersion=$torVersion; dotnetRuntimes=$dotnetRuntimes
+    wixVersion=$wixVersion; wixExtensions=@('WixToolset.Util.wixext 4.0.6', 'WixToolset.DifxApp.wixext 4.0.6')
+    qemuGuestAgentVersion=$qgaVersion; provisionedAt=(Get-Date).ToUniversalTime().ToString('o')
     driverService=$driverServiceName
 }
 $manifestTemp = Join-Path $root 'manifest.json.tmp'; $manifest | ConvertTo-Json -Depth 4 | Set-Content $manifestTemp -Encoding utf8

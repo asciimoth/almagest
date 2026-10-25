@@ -286,6 +286,14 @@ winvm-image:
 winvm-smoke:
   ./dev/winvm/run.sh smoke
 
+# Build and harvest one unsigned MSI with the locked WinVM toolchain.
+winvm-package version:
+  ALMAGEST_PACKAGE_VERSION={{quote(version)}} ./dev/winvm/run.sh package
+
+# Build twice from the same source and require byte-for-byte MSI equality.
+winvm-package-repro version:
+  ./dev/winvm/repro-package.sh {{quote(version)}}
+
 winvm-test:
   ./dev/winvm/run.sh test
   ./dev/winvm/flow-run.sh

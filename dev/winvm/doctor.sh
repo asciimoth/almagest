@@ -9,7 +9,7 @@ source "$script_dir/storage-space.sh"
 validate() {
     jq -e '.machine | .cpu=="host,cet-ss=off,cet-ibt=off" and .healthTimeoutSeconds>0 and .healthIntervalSeconds>0 and .healthIntervalSeconds<.healthTimeoutSeconds and .artifactIntervalSeconds>0 and .cleanupTimeoutSeconds>=240 and .recoveryBootTimeoutSeconds>0 and .recoveryBootTimeoutSeconds<.cleanupTimeoutSeconds' "$config_file" >/dev/null || die 'invalid watchdog or CPU config'
     jq -e '.schemaVersion==1 and .architecture=="amd64" and .machine.cpus>=2 and .machine.memoryMiB>=4096 and .machine.diskGiB>=40 and .machine.bootTimeoutSeconds>0 and .machine.installTimeoutSeconds>0 and .machine.resourceTimeoutSeconds>0 and .machine.shutdownTimeoutSeconds>0 and .machine.type=="q35,accel=kvm" and .ssh.user=="winvm" and .ssh.portMinimum>=1024 and .ssh.portMaximum>=.ssh.portMinimum and .ssh.portMaximum<=65535 and .artifacts.directory=="artifacts/winvm"' "$config_file" >/dev/null || die 'invalid config.json'
-    jq -e '.schemaVersion==1 and ([.windows.sha256,.virtio.sha256,.go.sha256,.openssh.sha256,.tor.sha256]|all(test("^[0-9a-f]{64}$")))' "$lock_file" >/dev/null || die 'invalid image-lock.json'
+    jq -e '.wix.version as $wixVersion | .schemaVersion==1 and ([.windows.sha256,.virtio.sha256,.go.sha256,.openssh.sha256,.tor.sha256,.dotnet.sha256,.wix.sha256,.wixUtil.sha256,.wixDifxApp.sha256,.wixDtf.sha256]|all(test("^[0-9a-f]{64}$"))) and ([.wixUtil.version,.wixDifxApp.version,.wixDtf.version]|all(.==$wixVersion))' "$lock_file" >/dev/null || die 'invalid image-lock.json'
 }
 case ${1:-check} in
     --validate)
@@ -42,7 +42,7 @@ find_ovmf code >/dev/null || die 'OVMF code firmware is absent'
 find_ovmf vars >/dev/null || die 'OVMF variable firmware is absent'
 prepare_native_dependencies
 for section in windows virtio; do verify_hash "$section ISO" "$(input_path "$section")" "$(locked_value ".${section}.sha256")"; done
-for section in go openssh tor; do
+for section in go openssh tor dotnet wix wixUtil wixDifxApp wixDtf; do
     path=$(package_path "$section")
     if [[ -f $path ]]; then verify_hash "$section package" "$path" "$(locked_value ".${section}.sha256")"; else printf 'Windows VM %s package is not cached; winvm-image will download it.\n' "$section"; fi
 done
