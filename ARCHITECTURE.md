@@ -472,8 +472,8 @@ does not import the Windows backend.
 
 `packaging/windows/` defines the unsigned Windows Server 2022/amd64 MSI.
 `scripts/package-windows.sh` runs its locked WinVM build and adds the MSI,
-checksum, and build evidence to `dist/`. `just test-windows-packaging` joins
-the reproducibility, lifecycle, and installed-package integration gates. These
+checksum, and build evidence to `dist/`. `just test-windows-packaging` joins the
+reproducibility, lifecycle, and installed-package integration gates. These
 package gates do not change entries in the Windows support contract.
 
 Before loading config, almagestd resolves path-valued CLI args to absolute

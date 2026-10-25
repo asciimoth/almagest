@@ -12,10 +12,10 @@ in `contracts/windows/` controls support status.
 
 ## Installed files and retained data
 
-The MSI installs immutable files below `%ProgramFiles%\Almagest`. These
-files include `almagestd.exe`, `almagest-cli.exe`, the official amd64
-`wintun.dll`, locales, examples, package documentation, and a staging directory
-for the complete Mullvad split-tunnel driver package.
+The MSI installs immutable files below `%ProgramFiles%\Almagest`. These files
+include `almagestd.exe`, `almagest-cli.exe`, the official amd64 `wintun.dll`,
+locales, examples, package documentation, and a staging directory for the
+complete Mullvad split-tunnel driver package.
 
 The daemon uses these mutable paths:
 
@@ -46,8 +46,8 @@ CLI or LocalSystem.
 Windows Installer 5.0 fails its standard variable-delay service recovery table
 on Windows Server 2022. The package therefore uses deferred, non-impersonated
 `sc.exe failure` actions to set the three delays. A paired rollback action
-restores the package policy if the install transaction fails. The MSI smoke
-gate checks the resulting SCM values.
+restores the package policy if the install transaction fails. The MSI smoke gate
+checks the resulting SCM values.
 
 The installer stops the service before it replaces files. It starts the service
 after a successful install, repair, or upgrade. Uninstall stops and removes the
@@ -65,13 +65,13 @@ daemon reports `Running` only after the admin API and engine are ready.
 An SCM service writes its detailed operator stream to
 `%ProgramData%\Almagest\logs\almagestd.log`. The sink starts before argument
 parsing and runtime dependency checks, so startup failures are retained. Log
-timestamps use UTC. A file rotates at 20 MiB and the daemon keeps five old
-files (`almagestd.log.1` through `almagestd.log.5`). The current file and its
+timestamps use UTC. A file rotates at 20 MiB and the daemon keeps five old files
+(`almagestd.log.1` through `almagestd.log.5`). The current file and its
 directory grant access only to LocalSystem and administrators.
 
 The daemon writes synchronously to this sink and flushes it during normal
-shutdown. A normal uninstall keeps the log directory and all rotated files.
-An interactive daemon continues to write to its console and does not open the
+shutdown. A normal uninstall keeps the log directory and all rotated files. An
+interactive daemon continues to write to its console and does not open the
 service log.
 
 ## Runtime dependencies
@@ -109,12 +109,12 @@ executable-tree exclusions.
 
 Normal uninstall removes the driver package and its copied driver files after
 the daemon stops. Windows Installer rollback removes a driver package that was
-added by a failed installation. The staged INF, SYS, and CAT files under
-Program Files are also removed. ProgramData remains in place.
+added by a failed installation. The staged INF, SYS, and CAT files under Program
+Files are also removed. ProgramData remains in place.
 
 WiX v4 marks DifxApp as deprecated, but it is the open-source WiX v4 facility
-that supplies transactional driver-package install, uninstall, and rollback.
-The package gate tests this fixed choice on Windows Server 2022 before release.
+that supplies transactional driver-package install, uninstall, and rollback. The
+package gate tests this fixed choice on Windows Server 2022 before release.
 
 ## WiX source maintenance
 
@@ -129,9 +129,9 @@ component GUID while its content changes. A path change gets a new component
 GUID. The contract test fails if `payload.wxs` is not current.
 
 `almagest.wxs` requires WiX preprocessor values for `Version`, `ProductCode`,
-`SourceDir`, `PayloadDir`, `WintunDir`, and `MullvadDir`.
-`ProductCode` is stable for all builds of one product version and changes for a
-new product version. `PackageCode` changes when a hashed MSI input changes.
+`SourceDir`, `PayloadDir`, `WintunDir`, and `MullvadDir`. `ProductCode` is
+stable for all builds of one product version and changes for a new product
+version. `PackageCode` changes when a hashed MSI input changes.
 `create-build-manifest.py` supplies the identities from the version, source
 record, image lock, and complete package input list. After WiX links the MSI,
 the build uses the pinned WiX DTF library to set the PackageCode and fixed
@@ -158,9 +158,9 @@ local snapshot uses `0.0.0`. `just package false` assembles the unsigned MSI
 beside the GoReleaser OSS Linux outputs; GoReleaser Pro is not required.
 
 `just test-windows-packaging [VERSION]` runs reproducibility, lifecycle, and
-installed-package integration qualification. The complete normal test gate
-runs it only when `RUN_WINDOWS_PKG_TESTS=1`; direct use is always explicit and
-does not need that variable. Build the clean package image first with
+installed-package integration qualification. The complete normal test gate runs
+it only when `RUN_WINDOWS_PKG_TESTS=1`; direct use is always explicit and does
+not need that variable. Build the clean package image first with
 `just winvm-package-image`.
 
 The first command writes the MSI, its SHA-256 checksum, and build evidence to
@@ -169,27 +169,26 @@ byte-for-byte equality. See `dev/winvm/README.md` for image setup and artifact
 locations.
 
 The image command creates a separate clean package-test base image. It carries
-the locked build inputs but has no installed Almagest service, runtime files,
-or active Mullvad driver package. The smoke command installs the MSI silently
-in an overlay of that image. It verifies exact installed file hashes, package
-and dependency versions, Authenticode signatures, service and recovery
-settings, protected ACLs, the machine pipe, CLI authorization, and the durable
-startup log. It returns the MSI log and structured evidence to the host.
+the locked build inputs but has no installed Almagest service, runtime files, or
+active Mullvad driver package. The smoke command installs the MSI silently in an
+overlay of that image. It verifies exact installed file hashes, package and
+dependency versions, Authenticode signatures, service and recovery settings,
+protected ACLs, the machine pipe, CLI authorization, and the durable startup
+log. It returns the MSI log and structured evidence to the host.
 
-The lifecycle command derives the next valid MSI version from the supplied
-base version and builds both packages from identical payload inputs. In one
-clean VM overlay, it verifies service restart, Windows reboot, SCM failure
-recovery, repair, major upgrade, downgrade rejection, uninstall, and reinstall.
-It also verifies that administrator config edits and daemon state remain usable
-through the complete sequence. Normal uninstall must remove the Mullvad driver
-service, system file, and driver-store package, and must retain ProgramData.
+The lifecycle command derives the next valid MSI version from the supplied base
+version and builds both packages from identical payload inputs. In one clean VM
+overlay, it verifies service restart, Windows reboot, SCM failure recovery,
+repair, major upgrade, downgrade rejection, uninstall, and reinstall. It also
+verifies that administrator config edits and daemon state remain usable through
+the complete sequence. Normal uninstall must remove the Mullvad driver service,
+system file, and driver-store package, and must retain ProgramData.
 
-The integration command probes all stable API surfaces through the installed
-CLI and SCM service. It checks packaged documentation and examples,
-LocalProxy/OutNetwork traffic, retained KV and secret state, an example across
-a restart, and Wintun adapter creation and cleanup. It validates the signed
-Wintun driver that Windows loads and returns structured host-validated
-evidence.
+The integration command probes all stable API surfaces through the installed CLI
+and SCM service. It checks packaged documentation and examples,
+LocalProxy/OutNetwork traffic, retained KV and secret state, an example across a
+restart, and Wintun adapter creation and cleanup. It validates the signed Wintun
+driver that Windows loads and returns structured host-validated evidence.
 
 For focused project checks, use `winpkg:build`, `winpkg:smoke`,
 `winpkg:lifecycle`, or `winpkg:integration` with `just check` or

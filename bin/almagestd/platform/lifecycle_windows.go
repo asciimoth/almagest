@@ -132,7 +132,7 @@ func (h *windowsServiceHandler) Execute(
 				status <- currentStatus
 			}
 		case <-shutdown:
-			err := fmt.Errorf("Windows service shutdown exceeded %s", shutdownTimeout)
+			err := fmt.Errorf("windows service shutdown exceeded %s", shutdownTimeout)
 			h.publish(err)
 			return false, 1
 		}

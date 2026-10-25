@@ -43,9 +43,8 @@ Copy `env.example` to `env` and set absolute paths to the Windows and VirtIO
 ISOs. Supply legally obtained media with the exact hashes in `image-lock.json`.
 Media are not downloaded. Go, OpenSSH, Tor, .NET, WiX, and WiX extension
 archives are downloaded over HTTPS and checked against their locks during image
-creation. A valid cached
-archive is reused by later image builds. Keep the private cache, media, and
-secrets outside the repository. The default cache is
+creation. A valid cached archive is reused by later image builds. Keep the
+private cache, media, and secrets outside the repository. The default cache is
 `$XDG_CACHE_HOME/almagest/winvm`, or `$HOME/.cache/almagest/winvm`.
 
 Image provisioning extracts the locked Tor expert bundle to
@@ -197,13 +196,13 @@ driver package during uninstall. The extracted evidence and installer logs are
 in the run directory's `package-lifecycle/` directory.
 
 `just winvm-package-integration VERSION` starts from the clean package image,
-builds and installs the MSI, and runs the package smoke and integration gate.
-It probes each stable API surface through the installed CLI, tests localized
+builds and installs the MSI, and runs the package smoke and integration gate. It
+probes each stable API surface through the installed CLI, tests localized
 documentation and examples, applies a config in ProgramData, and tests
 LocalProxy, OutNetwork, storage restart, and example restart behavior. It also
-creates a private-route Wintun adapter through the installed service, checks
-the signed driver that Windows loads, and requires a normal SCM stop to remove
-the owned adapter, address, and route. The host validates and extracts the
+creates a private-route Wintun adapter through the installed service, checks the
+signed driver that Windows loads, and requires a normal SCM stop to remove the
+owned adapter, address, and route. The host validates and extracts the
 structured result into the run directory's `package-integration/` directory.
 
 `just package-windows [VERSION]` is the public build command. It selects an

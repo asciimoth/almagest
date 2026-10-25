@@ -161,9 +161,9 @@ just test-windows-packaging 1.2.3
 The Windows package gate is expensive and is not part of normal checks unless
 `RUN_WINDOWS_PKG_TESTS=1` is set. It requires the KVM WinVM host and the clean
 package image from `just winvm-package-image`. An explicit
-`just test-windows-packaging VERSION` always runs the gate. Use
-`winpkg:build`, `winpkg:smoke`, `winpkg:lifecycle`, or `winpkg:integration` as a
-focused `just check` or `just test-total` selector.
+`just test-windows-packaging VERSION` always runs the gate. Use `winpkg:build`,
+`winpkg:smoke`, `winpkg:lifecycle`, or `winpkg:integration` as a focused
+`just check` or `just test-total` selector.
 
 See [`dev/winvm/README.md`](../dev/winvm/README.md) for the disposable Windows
 Server 2022/amd64 harness and evidence format. Windows 11/amd64 and Windows
