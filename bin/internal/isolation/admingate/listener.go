@@ -34,6 +34,7 @@ type EndpointConfig struct {
 	ID      uint16
 	Kind    EndpointKind
 	Address string
+	Group   string
 	Filters Filters
 }
 
@@ -46,7 +47,7 @@ func Listen(config EndpointConfig) (net.Listener, error) {
 	case EndpointWeb:
 		return listenWeb(config.Address, config.Filters)
 	case EndpointUnix:
-		return listenUnix(config.Address, config.Filters)
+		return listenUnix(config.Address, config.Group, config.Filters)
 	case EndpointPipe:
 		return listenPipe(config.Address, config.Filters)
 	default:

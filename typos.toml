@@ -15,5 +15,9 @@ extend-exclude = [
   "tests-fail",
   "bin/almagestd/platform/windows_security.go",
   "bin/almagestd/api_pipe_windows.go",
-  "bin/integration"
+  "bin/integration",
+  "packaging/keys/ascii-moth.asc",
+  "packaging/windows/almagest.wxs",
+  "packaging/windows/payload.wxs",
+  "scripts/tests/test_windows_package_contract.py",
 ]

@@ -24,7 +24,7 @@ func (a *AdminAPI) serveUnix(
 ) {
 }
 
-func listenUnixAdmin(string, AdminPeerFiltersConfig) (net.Listener, error) {
+func listenUnixAdmin(string, string, AdminPeerFiltersConfig) (net.Listener, error) {
 	return nil, fmt.Errorf("unix admin sockets are not supported on this platform")
 }
 

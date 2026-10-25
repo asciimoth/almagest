@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/user"
 	"path/filepath"
+	"strconv"
 )
 
-func listenUnix(address string, filters Filters) (net.Listener, error) {
+func listenUnix(address, group string, filters Filters) (net.Listener, error) {
 	if !filepath.IsAbs(address) {
 		return nil, fmt.Errorf("unix admin socket path must be absolute")
 	}
@@ -31,6 +33,25 @@ func listenUnix(address string, filters Filters) (net.Listener, error) {
 		_ = listener.Close()
 		_ = cleanupUnixSocket(address)
 		return nil, fmt.Errorf("unix admin socket chmod: %w", err)
+	}
+	if group != "" {
+		entry, lookupErr := user.LookupGroup(group)
+		if lookupErr != nil {
+			_ = listener.Close()
+			_ = cleanupUnixSocket(address)
+			return nil, fmt.Errorf("unix admin socket resolve group %q: %w", group, lookupErr)
+		}
+		gid, parseErr := strconv.ParseInt(entry.Gid, 10, 32)
+		if parseErr != nil {
+			_ = listener.Close()
+			_ = cleanupUnixSocket(address)
+			return nil, fmt.Errorf("unix admin socket parse group %q gid: %w", group, parseErr)
+		}
+		if chownErr := os.Chown(address, -1, int(gid)); chownErr != nil {
+			_ = listener.Close()
+			_ = cleanupUnixSocket(address)
+			return nil, fmt.Errorf("unix admin socket chown group %q: %w", group, chownErr)
+		}
 	}
 	if filters.enabled() {
 		listener, err = protectUnixListener(listener, filters)

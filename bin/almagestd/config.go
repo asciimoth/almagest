@@ -550,6 +550,7 @@ type AdminAPIConfig struct {
 	WebPProf         bool
 	AllowCrossOrigin bool
 	Unix             string
+	UnixGroup        string
 	UnixFilters      AdminPeerFiltersConfig
 	Pipe             string
 }

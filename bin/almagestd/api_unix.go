@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/user"
 	"path/filepath"
+	"strconv"
 	"sync"
 
 	almagest "github.com/asciimoth/almagest/lib"
@@ -27,7 +29,7 @@ func (a *AdminAPI) serveUnix(
 	a.serveStreamListener(ctx, cancel, wg, "Unix admin", a.unixListener, engine, sys, logf)
 }
 
-func listenUnixAdmin(address string, filters AdminPeerFiltersConfig) (net.Listener, error) {
+func listenUnixAdmin(address, group string, filters AdminPeerFiltersConfig) (net.Listener, error) {
 	if err := prepareUnixAdminSocket(address); err != nil {
 		return nil, err
 	}
@@ -45,6 +47,25 @@ func listenUnixAdmin(address string, filters AdminPeerFiltersConfig) (net.Listen
 		_ = listener.Close()
 		_ = cleanupUnixAdminSocket(address)
 		return nil, fmt.Errorf("unix admin socket chmod: %w", err)
+	}
+	if group != "" {
+		entry, lookupErr := user.LookupGroup(group)
+		if lookupErr != nil {
+			_ = listener.Close()
+			_ = cleanupUnixAdminSocket(address)
+			return nil, fmt.Errorf("unix admin socket resolve group %q: %w", group, lookupErr)
+		}
+		gid, parseErr := strconv.ParseInt(entry.Gid, 10, 32)
+		if parseErr != nil {
+			_ = listener.Close()
+			_ = cleanupUnixAdminSocket(address)
+			return nil, fmt.Errorf("unix admin socket parse group %q gid: %w", group, parseErr)
+		}
+		if chownErr := os.Chown(address, -1, int(gid)); chownErr != nil {
+			_ = listener.Close()
+			_ = cleanupUnixAdminSocket(address)
+			return nil, fmt.Errorf("unix admin socket chown group %q: %w", group, chownErr)
+		}
 	}
 	if !filters.Enabled() {
 		return listener, nil

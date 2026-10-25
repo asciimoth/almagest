@@ -91,6 +91,8 @@ retry "$ALMAGEST_E2E_TIMEOUT" "packaged daemon startup log" \
 grep -F -- 'Starting unix admin listener on /run/almagest/admin.sock' \
 	"$E2E_DAEMON_LOG" >/dev/null \
 	|| fail "packaged daemon did not log the admin listener"
+[[ "$(stat --format '%G:%a' "$E2E_ADMIN_SOCK")" == "almagest:660" ]] \
+	|| fail "packaged admin socket does not grant access to the almagest group"
 
 # Probe every stable daemon surface with a small read operation. Mutations for
 # config, KV, secrets, examples, and the graph are tested below.

@@ -33,7 +33,7 @@ path `libexec/almagest/almagestd` maps to
 | `/etc/almagest/alm.hujson` | Regular daemon configuration. Package updates preserve local changes. |
 | `/etc/almagest/protected_alm.hujson` | Protected daemon and sandbox configuration. Package updates preserve local changes. |
 | `/usr/lib/systemd/system/almagestd.service` | Starts the daemon as root and sends its output to the systemd journal. |
-| `/usr/lib/sysusers.d/almagest.conf` | Defines service accounts used by optional daemon isolation. |
+| `/usr/lib/sysusers.d/almagest.conf` | Defines the administrator group and service accounts used by optional daemon isolation. |
 | `/usr/lib/tmpfiles.d/almagest.conf` | Defines the persistent and runtime data directories. |
 | `/usr/share/almagest/locales` | Localized user text and user documentation pages. |
 | `/usr/share/almagest/examples` | Example workspaces that the daemon can load. |
@@ -43,6 +43,19 @@ path `libexec/almagest/almagestd` maps to
 The tmpfiles definition creates `/var/lib/almagest` for persistent daemon data
 and `/run/almagest` for runtime files, including the default administration
 socket. These directories are not regular package payload files.
+
+The package creates the `almagest` system group. Add an administrator to this
+group to permit access to the Unix administration socket:
+
+```text
+usermod --append --groups almagest USER
+```
+
+The user must start a new login session before the new group membership takes
+effect. Membership gives full control of Almagest and its network configuration.
+An upgrade preserves an existing protected config. On such a system, add
+`"UnixGroup": "almagest"` to the protected `Admin` object and restart
+`almagestd` before you use the group.
 
 ## Build and test
 

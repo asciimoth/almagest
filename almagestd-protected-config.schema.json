@@ -190,6 +190,10 @@
           "default": "/run/almagest/admin.sock",
           "description": "Unix-domain socket path for the stream admin API on platforms that support Unix sockets. Empty string disables the unix admin listener. Command-line --unix / ALMAGEST_UNIX_ADMIN overrides this value."
         },
+        "UnixGroup": {
+          "type": "string",
+          "description": "Group that owns the Unix admin socket. Without UnixFilters, socket mode 0660 permits its owner and this group to connect. Empty or omitted keeps the daemon process group."
+        },
         "UnixFilters": {
           "$ref": "#/$defs/adminPeerFiltersConfig"
         },

@@ -85,6 +85,7 @@ package_lists_path /usr/share/licenses/almagest/LICENSE
 test -f /usr/lib/systemd/system/almagestd.service
 test -f /usr/lib/sysusers.d/almagest.conf
 test -f /usr/lib/tmpfiles.d/almagest.conf
+getent group almagest >/dev/null
 
 grep -F -- '--isolation=off --discover-system-programs' \
 	/usr/lib/systemd/system/almagestd.service >/dev/null
@@ -96,6 +97,8 @@ grep -Fx -- 'SyslogIdentifier=almagestd' \
 	/usr/lib/systemd/system/almagestd.service >/dev/null
 grep -F -- '"Mode": "auto"' /etc/almagest/protected_alm.hujson >/dev/null
 grep -F -- '"DiscoverSystemPrograms": true' \
+	/etc/almagest/protected_alm.hujson >/dev/null
+grep -F -- '"UnixGroup": "almagest"' \
 	/etc/almagest/protected_alm.hujson >/dev/null
 
 # Package updates must keep administrator changes to both config files.

@@ -935,8 +935,8 @@ func PrepareAdminAPI(cfg *Config) (*AdminAPI, error) {
 		}
 	}
 	if cfg.Protected.Admin.Unix != "" {
-		listener, err := listenUnixAdmin(cfg.Protected.Admin.Unix, cfg.Protected.Admin.UnixFilters) //nolint:staticcheck // The Unix implementation is not the Windows lint target.
-		if err != nil {                                                                             //nolint:staticcheck // The Unix implementation can return a listener or an error.
+		listener, err := listenUnixAdmin(cfg.Protected.Admin.Unix, cfg.Protected.Admin.UnixGroup, cfg.Protected.Admin.UnixFilters) //nolint:staticcheck // The Unix implementation is not the Windows lint target.
+		if err != nil {                                                                                                            //nolint:staticcheck // The Unix implementation can return a listener or an error.
 			return nil, err
 		}
 		api.unixListener = listener

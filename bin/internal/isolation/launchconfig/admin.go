@@ -32,6 +32,7 @@ type adminDocument struct {
 	WebPProf         bool
 	AllowCrossOrigin bool
 	Unix             string
+	UnixGroup        string
 	UnixFilters      adminFilters
 	Pipe             string
 }
@@ -100,7 +101,7 @@ func Admin(raw json.RawMessage, defaults AdminDefaults, arguments daemonargs.Arg
 	}
 	if document.Unix != "" {
 		endpoints = append(endpoints, admingate.EndpointConfig{ID: 2, Kind: admingate.EndpointUnix,
-			Address: document.Unix, Filters: brokerFilters(document.UnixFilters)})
+			Address: document.Unix, Group: document.UnixGroup, Filters: brokerFilters(document.UnixFilters)})
 	}
 	if document.Pipe != "" {
 		endpoints = append(endpoints, admingate.EndpointConfig{ID: 3, Kind: admingate.EndpointPipe, Address: document.Pipe})

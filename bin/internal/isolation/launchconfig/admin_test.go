@@ -17,13 +17,14 @@ func TestAdminSeparatesBrokerAuthorityFromRuntimeBehavior(t *testing.T) {
 	endpoints, err := Admin(json.RawMessage(`{
 		"Web":1,"WebFilters":{"UIDs":[7],"Usernames":["alice"]},
 		"WebPProf":true,"AllowCrossOrigin":true,
-		"Unix":"/run/protected.sock","UnixFilters":{"GIDs":[8]}
+		"Unix":"/run/protected.sock","UnixGroup":"almagest","UnixFilters":{"GIDs":[8]}
 	}`), AdminDefaults{}, daemonargs.Args{WebAdmin: &port, UnixAdmin: &unixPath}, &protected)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(endpoints) != 2 || endpoints[0].ID != 1 || endpoints[0].Kind != admingate.EndpointWeb || endpoints[0].Address != "127.0.0.1:48137" ||
-		len(endpoints[0].Filters.UIDs) != 1 || endpoints[1].ID != 2 || endpoints[1].Address != unixPath || len(endpoints[1].Filters.GIDs) != 1 {
+		len(endpoints[0].Filters.UIDs) != 1 || endpoints[1].ID != 2 || endpoints[1].Address != unixPath ||
+		endpoints[1].Group != "almagest" || len(endpoints[1].Filters.GIDs) != 1 {
 		t.Fatalf("endpoints = %#v", endpoints)
 	}
 	if protected.Admin == nil || !protected.Admin.WebPProf || !protected.Admin.AllowCrossOrigin {
@@ -33,7 +34,7 @@ func TestAdminSeparatesBrokerAuthorityFromRuntimeBehavior(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, forbidden := range []string{"48137", "/run/", "alice", "UIDs", "GIDs"} {
+	for _, forbidden := range []string{"48137", "/run/", "alice", "almagest", "UIDs", "GIDs"} {
 		if strings.Contains(string(document), forbidden) {
 			t.Fatalf("runtime document contains broker authority %q: %s", forbidden, document)
 		}

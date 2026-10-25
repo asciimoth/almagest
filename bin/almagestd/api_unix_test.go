@@ -6,8 +6,11 @@ import (
 	"context"
 	"net"
 	"os"
+	"os/user"
 	"path/filepath"
+	"strconv"
 	"sync"
+	"syscall"
 	"testing"
 
 	"github.com/asciimoth/almagest/bin/api"
@@ -15,7 +18,7 @@ import (
 
 func TestUnixAdminStreamPing(t *testing.T) {
 	socketPath := filepath.Join(t.TempDir(), "admin.sock")
-	listener, err := listenUnixAdmin(socketPath, AdminPeerFiltersConfig{
+	listener, err := listenUnixAdmin(socketPath, "", AdminPeerFiltersConfig{
 		UIDs: []uint32{uint32(os.Getuid())},
 	})
 	if err != nil {
@@ -82,4 +85,33 @@ func TestUnixAdminStreamPing(t *testing.T) {
 	cancel()
 	_ = conn.Close()
 	wg.Wait()
+}
+
+func TestUnixAdminSocketGroup(t *testing.T) {
+	group, err := user.LookupGroupId(strconv.Itoa(os.Getgid()))
+	if err != nil {
+		t.Skipf("current group name is unavailable: %v", err)
+	}
+	socketPath := filepath.Join(t.TempDir(), "admin.sock")
+	listener, err := listenUnixAdmin(socketPath, group.Name, AdminPeerFiltersConfig{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()                   //nolint
+	defer cleanupUnixAdminSocket(socketPath) //nolint
+
+	info, err := os.Stat(socketPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		t.Fatalf("socket stat type = %T, want *syscall.Stat_t", info.Sys())
+	}
+	if got := int(stat.Gid); got != os.Getgid() {
+		t.Fatalf("socket GID = %d, want %d", got, os.Getgid())
+	}
+	if got := info.Mode().Perm(); got != 0o660 {
+		t.Fatalf("socket mode = %o, want 660", got)
+	}
 }

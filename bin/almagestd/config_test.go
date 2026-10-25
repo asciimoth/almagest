@@ -220,6 +220,7 @@ func TestProtectedConfigUnixFilters(t *testing.T) {
 	cfg, err := ParseConfig([]byte(`{}`), []byte(`{
 		"Admin": {
 			"Unix": "/tmp/almagest-admin.sock",
+			"UnixGroup": "almagest",
 			"UnixFilters": {
 				"UIDs": [1000],
 				"GIDs": [1001],
@@ -232,6 +233,9 @@ func TestProtectedConfigUnixFilters(t *testing.T) {
 	}
 	if got := cfg.Protected.Admin.Unix; got != "/tmp/almagest-admin.sock" {
 		t.Fatalf("Admin.Unix = %q, want /tmp/almagest-admin.sock", got)
+	}
+	if got := cfg.Protected.Admin.UnixGroup; got != "almagest" {
+		t.Fatalf("Admin.UnixGroup = %q, want almagest", got)
 	}
 	if got := cfg.Protected.Admin.UnixFilters.UIDs; len(got) != 1 || got[0] != 1000 {
 		t.Fatalf("Admin.UnixFilters.UIDs = %v, want [1000]", got)

@@ -4,6 +4,6 @@ package admingate
 
 import "net"
 
-func listenUnix(string, Filters) (net.Listener, error) {
+func listenUnix(string, string, Filters) (net.Listener, error) {
 	return nil, errorsUnsupported("Unix admin sockets")
 }
