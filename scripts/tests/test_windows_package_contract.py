@@ -396,7 +396,7 @@ class WindowsPackageContractTests(unittest.TestCase):
         self.assertIn("base_key \"$image_variant\"", runner)
         self.assertIn('phases = ("package", "package-install", "package-user")',
                       supervisor)
-        self.assertIn('phase in ("privileged", "resource", "package-install")',
+        self.assertIn('phase in ("privileged", "resource", "package-install",',
                       supervisor)
         self.assertIn("tools/package-smoke-evidence.py", supervisor)
         for requirement in (
@@ -408,6 +408,27 @@ class WindowsPackageContractTests(unittest.TestCase):
         self.assertIn("programFilesWriteDenied", user)
         self.assertIn("machinePipeAccessDenied", user)
         self.assertIn("protectedConfigReadDenied", user)
+
+    def test_package_lifecycle_covers_retention_and_msi_transitions(self):
+        runner = (ROOT / "dev/winvm/run.sh").read_text()
+        stage = (ROOT / "dev/winvm/stage.sh").read_text()
+        supervisor = (ROOT / "dev/winvm/supervise.py").read_text()
+        prepare = (ROOT / "dev/winvm/package-lifecycle-prepare.ps1").read_text()
+        finish = (ROOT / "dev/winvm/package-lifecycle-finish.ps1").read_text()
+
+        self.assertIn("$mode == package-lifecycle", runner)
+        self.assertIn("package-upgrade-manifest.json", stage)
+        self.assertIn('"package-lifecycle-prepare"', supervisor)
+        self.assertIn('"package-reboot"', supervisor)
+        self.assertIn('"package-lifecycle-finish"', supervisor)
+        self.assertIn("tools/package-lifecycle-evidence.py", supervisor)
+        for token in ("kv", "secrets", "snapshots", "001-hello-network", "Stop-Service",
+                      "Start-Service", "package-lifecycle-prepare.json"):
+            self.assertIn(token, prepare)
+        for token in ("Stop-Process", "/fvomus", "msiexec-upgrade.log",
+                      "msiexec-downgrade.log", "'/x'", "driverRemoved",
+                      "retainedStateUsable"):
+            self.assertIn(token, finish)
 
     def test_build_manifest_identities_are_deterministic_and_input_bound(self):
         with tempfile.TemporaryDirectory() as temporary:

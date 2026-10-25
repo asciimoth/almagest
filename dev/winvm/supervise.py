@@ -568,7 +568,7 @@ class Supervisor:
             return self.run_manual_daemon()
         if self.args.mode == "resource":
             test_timeout = self.config["resourceTimeoutSeconds"]
-        elif self.args.mode == "package-smoke":
+        elif self.args.mode in ("package-smoke", "package-lifecycle"):
             test_timeout = self.config["packageTimeoutSeconds"]
         else:
             test_timeout = None
@@ -581,6 +581,10 @@ class Supervisor:
             phases = ("package",)
         elif self.args.mode == "package-smoke":
             phases = ("package", "package-install", "package-user")
+        elif self.args.mode == "package-lifecycle":
+            phases = ("package", "package-upgrade", "package-install",
+                      "package-lifecycle-prepare", "package-reboot",
+                      "package-lifecycle-finish")
         elif self.args.mode == "resource":
             phases = ("resource",)
         elif self.args.mode == "ordinary":
@@ -592,22 +596,40 @@ class Supervisor:
         for phase in phases:
             self.stage = phase if phase == "smoke" else phase + "-tests"
             self.note(f"running {phase} tests")
+            if phase == "package-reboot":
+                # A successful Windows reboot can close QGA before it returns
+                # a response. The new boot identity in ready() is authoritative.
+                self.command(self.qga("shutdown", "--mode", "reboot", seconds=5),
+                             8, log="package-reboot.log")
+                time.sleep(2)
+                self.ready(self.config["bootTimeoutSeconds"])
+                continue
             if phase == "smoke":
                 script = "smoke.ps1"
             elif phase == "package":
+                script = "package.ps1"
+            elif phase == "package-upgrade":
                 script = "package.ps1"
             elif phase == "package-install":
                 script = "package-smoke.ps1"
             elif phase == "package-user":
                 script = "package-user-smoke.ps1"
+            elif phase == "package-lifecycle-prepare":
+                script = "package-lifecycle-prepare.ps1"
+            elif phase == "package-lifecycle-finish":
+                script = "package-lifecycle-finish.ps1"
             elif phase == "resource":
                 script = "resource-suite.ps1"
             else:
                 script = "test-suite.ps1"
             args = ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
                     f"{self.remote}/source/dev/winvm/{script}", "-ArtifactDir", f"{self.remote}/artifacts"]
-            if phase in ("package", "package-install"):
+            if phase in ("package", "package-upgrade", "package-install",
+                         "package-lifecycle-prepare", "package-lifecycle-finish"):
                 args += ["-SourceDir", f"{self.remote}/source"]
+            if phase == "package-upgrade":
+                args += ["-ManifestName", "package-upgrade-manifest.json",
+                         "-EvidenceName", "package-upgrade-build.json"]
             if phase in ("ordinary", "privileged"):
                 args += ["-Mode", phase, "-SourceDir", f"{self.remote}/source"]
                 if os.environ.get("WINVM_FAIL_FAST", "1") == "0":
@@ -620,7 +642,8 @@ class Supervisor:
                 if self.args.soak_duration:
                     args += ["-SoakDuration", self.args.soak_duration]
             command = (self.qga("exec", *args, seconds=test_timeout)
-                       if phase in ("privileged", "resource", "package-install")
+                       if phase in ("privileged", "resource", "package-install",
+                                    "package-lifecycle-prepare", "package-lifecycle-finish")
                        else self.ssh + [" ".join(args)])
             code = self.command(command, test_timeout,
                                 log=phase + "-tests.log", watch=True)
@@ -649,6 +672,10 @@ class Supervisor:
             validation = ["python3", str(ROOT / "tools/package-smoke-evidence.py"),
                           str(self.directory / "guest-artifacts.tar"),
                           str(self.directory / "package-smoke")]
+        elif self.args.mode == "package-lifecycle":
+            validation = ["python3", str(ROOT / "tools/package-lifecycle-evidence.py"),
+                          str(self.directory / "guest-artifacts.tar"),
+                          str(self.directory / "package-lifecycle")]
         elif self.args.mode == "resource":
             validation = ["python3", str(ROOT / "tools/resource-evidence.py"),
                           str(self.directory / "guest-artifacts.tar")]

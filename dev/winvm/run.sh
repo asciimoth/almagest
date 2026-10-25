@@ -6,8 +6,8 @@ script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 # shellcheck source=dev/winvm/common.sh
 source "$script_dir/common.sh"
 mode=${1:-smoke}
-[[ $mode == smoke || $mode == package || $mode == package-smoke || $mode == test || $mode == ordinary || $mode == privileged || $mode == resource || $mode == manual || $mode == --shell || $mode == --prepare ]] || die 'usage: run.sh [smoke | package | package-smoke | test | ordinary | privileged | resource | manual | --shell RUN | --prepare DIRECTORY]'
-if [[ $mode == package || $mode == package-smoke ]]; then
+[[ $mode == smoke || $mode == package || $mode == package-smoke || $mode == package-lifecycle || $mode == test || $mode == ordinary || $mode == privileged || $mode == resource || $mode == manual || $mode == --shell || $mode == --prepare ]] || die 'usage: run.sh [smoke | package | package-smoke | package-lifecycle | test | ordinary | privileged | resource | manual | --shell RUN | --prepare DIRECTORY]'
+if [[ $mode == package || $mode == package-smoke || $mode == package-lifecycle ]]; then
     [[ ${ALMAGEST_PACKAGE_VERSION:-} =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || \
         die 'ALMAGEST_PACKAGE_VERSION must be an MSI x.y.z version'
 fi
@@ -34,7 +34,7 @@ else
         key=$(<"$WINVM_PREPARED_DIR/base-key")
     else
         image_variant=standard
-        [[ $mode != package-smoke ]] || image_variant=package-clean
+        [[ $mode != package-smoke && $mode != package-lifecycle ]] || image_variant=package-clean
         key=$(base_key "$image_variant")
     fi
     if [[ $mode == --prepare ]]; then
@@ -51,7 +51,7 @@ image_dir="$winvm_cache_dir/images/$key"
 exec 8>"$winvm_cache_dir/locks/image-$key.lock"
 flock -s 8
 if ! cached_image_valid "$image_dir" "$key"; then
-    [[ $mode == package-smoke ]] && die 'package-clean base image is absent or invalid; run just winvm-package-image'
+    [[ $mode != package-smoke && $mode != package-lifecycle ]] || die 'package-clean base image is absent or invalid; run just winvm-package-image'
     die 'base image is absent or invalid; run just winvm-image'
 fi
 if [[ $mode == --prepare ]]; then
@@ -94,6 +94,9 @@ if [[ $mode != --shell ]]; then
     elif [[ $mode == package-smoke ]]; then
         suite=windows-msi-package-smoke
         test_execution=package-smoke
+    elif [[ $mode == package-lifecycle ]]; then
+        suite=windows-msi-package-lifecycle
+        test_execution=package-lifecycle
     elif [[ $mode == manual ]]; then
         suite=windows-manual-daemon
         test_execution=manual

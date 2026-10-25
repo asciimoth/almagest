@@ -1,12 +1,14 @@
 param(
     [Parameter(Mandatory = $true)][string]$ArtifactDir,
-    [Parameter(Mandatory = $true)][string]$SourceDir
+    [Parameter(Mandatory = $true)][string]$SourceDir,
+    [string]$ManifestName = 'package-manifest.json',
+    [string]$EvidenceName = 'package-build.json'
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 New-Item -ItemType Directory -Force $ArtifactDir | Out-Null
 
-$manifestPath = Join-Path $SourceDir 'dev\winvm\package-manifest.json'
+$manifestPath = Join-Path (Join-Path $SourceDir 'dev\winvm') $ManifestName
 $manifest = Get-Content -Raw $manifestPath | ConvertFrom-Json
 $inputs = Join-Path $SourceDir 'dev\winvm\package-inputs'
 $wintun = Join-Path $inputs 'wintun\amd64'
@@ -128,4 +130,4 @@ $evidence = [ordered]@{
     }
 }
 $evidence | ConvertTo-Json -Depth 8 | Set-Content `
-    (Join-Path $ArtifactDir 'package-build.json') -Encoding utf8
+    (Join-Path $ArtifactDir $EvidenceName) -Encoding utf8

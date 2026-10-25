@@ -302,6 +302,10 @@ winvm-package-repro version:
 winvm-package-smoke version:
   ALMAGEST_PACKAGE_VERSION={{quote(version)}} ./dev/winvm/run.sh package-smoke
 
+# Qualify MSI repair, upgrade, reboot, recovery, uninstall, and reinstall.
+winvm-package-lifecycle version:
+  ALMAGEST_PACKAGE_VERSION={{quote(version)}} ./dev/winvm/run.sh package-lifecycle
+
 winvm-test:
   ./dev/winvm/run.sh test
   ./dev/winvm/flow-run.sh

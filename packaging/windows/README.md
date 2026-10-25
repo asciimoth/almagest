@@ -145,6 +145,7 @@ just winvm-package 1.2.3
 just winvm-package-repro 1.2.3
 just winvm-package-image
 just winvm-package-smoke 1.2.3
+just winvm-package-lifecycle 1.2.3
 ```
 
 The first command writes the MSI, its SHA-256 checksum, and build evidence to
@@ -159,6 +160,14 @@ in an overlay of that image. It verifies exact installed file hashes, package
 and dependency versions, Authenticode signatures, service and recovery
 settings, protected ACLs, the machine pipe, CLI authorization, and the durable
 startup log. It returns the MSI log and structured evidence to the host.
+
+The lifecycle command derives the next valid MSI version from the supplied
+base version and builds both packages from identical payload inputs. In one
+clean VM overlay, it verifies service restart, Windows reboot, SCM failure
+recovery, repair, major upgrade, downgrade rejection, uninstall, and reinstall.
+It also verifies that administrator config edits and daemon state remain usable
+through the complete sequence. Normal uninstall must remove the Mullvad driver
+service, system file, and driver-store package, and must retain ProgramData.
 
 On a Windows host with WiX v4 and the pinned Util and DifxApp extensions, use
 the fixed fixture to validate the source and build a test MSI:

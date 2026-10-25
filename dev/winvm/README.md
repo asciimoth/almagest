@@ -66,6 +66,7 @@ just winvm-smoke
 just winvm-package 1.2.3
 just winvm-package-repro 1.2.3
 just winvm-package-smoke 1.2.3
+just winvm-package-lifecycle 1.2.3
 just winvm-test
 just windows-isolation-profiles
 just daemon-winvm
@@ -182,6 +183,15 @@ checks the installed files, dependency signatures, driver store, service,
 recovery policy, ACLs, machine pipe, elevated CLI access, denied standard-user
 access, and durable log. Run `just winvm-package-image` once before this gate.
 The extracted results are in the run directory's `package-smoke/` directory.
+
+`just winvm-package-lifecycle VERSION` builds `VERSION` and the next valid MSI
+version, then uses one clean overlay for the complete package lifecycle. It
+creates configuration, KV, secret, snapshot, and graph state; tests an SCM
+restart; reboots Windows; tests failure recovery and same-version repair;
+upgrades; rejects a downgrade; uninstalls; and reinstalls. The gate requires
+ProgramData retention and removal of the daemon, immutable files, and Mullvad
+driver package during uninstall. The extracted evidence and installer logs are
+in the run directory's `package-lifecycle/` directory.
 
 `just winvm-test` runs the active native gate from `test-suites.json`, then the
 isolated two-guest packet-flow gate. The ordinary suite runs all tests in

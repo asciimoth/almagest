@@ -12,7 +12,7 @@ go work init ./certcat ./lib ./bin
 go work edit -go="$(awk '$1 == "go" { print $2; exit }' bin/go.mod)"
 go -C certcat run ./cmd/certcat-generate -manual data/manual.json -machine data/machine.json -out catalog_gen.go
 (cd panel && npm ci && npm run build)
-if [[ $mode == manual || $mode == package || $mode == package-smoke || $mode == test || $mode == ordinary || $mode == privileged ]]; then
+if [[ $mode == manual || $mode == package || $mode == package-smoke || $mode == package-lifecycle || $mode == test || $mode == ordinary || $mode == privileged ]]; then
     GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go -C bin build \
         -trimpath -o ../dev/winvm/almagestd.exe ./almagestd
     GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go -C bin build \
@@ -26,7 +26,7 @@ if [[ $mode == manual || $mode == test || $mode == ordinary || $mode == privileg
     GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go -C bin build \
         -o ../dev/winvm/tor-e2e-helper.exe ./cmd/tor-e2e-helper
 fi
-if [[ $mode == package || $mode == package-smoke ]]; then
+if [[ $mode == package || $mode == package-smoke || $mode == package-lifecycle ]]; then
     package_version=${ALMAGEST_PACKAGE_VERSION:?ALMAGEST_PACKAGE_VERSION is required for package mode}
     dependency_root=dev/winvm/package-inputs
     mkdir -p "$dependency_root/wintun/amd64" "$dependency_root/wintun/licenses" \
@@ -40,6 +40,23 @@ if [[ $mode == package || $mode == package-smoke ]]; then
         --version "$package_version" --root "$PWD" \
         --source-record "$run_dir/source.json" --image-lock dev/winvm/image-lock.json \
         --output dev/winvm/package-manifest.json
+    if [[ $mode == package-lifecycle ]]; then
+        IFS=. read -r version_major version_minor version_patch <<<"$package_version"
+        if ((version_patch < 65535)); then
+            upgrade_version="$version_major.$version_minor.$((version_patch + 1))"
+        elif ((version_minor < 255)); then
+            upgrade_version="$version_major.$((version_minor + 1)).0"
+        elif ((version_major < 255)); then
+            upgrade_version="$((version_major + 1)).0.0"
+        else
+            printf 'package lifecycle version has no valid MSI successor: %s\n' "$package_version" >&2
+            exit 1
+        fi
+        python3 packaging/windows/create-build-manifest.py \
+            --version "$upgrade_version" --root "$PWD" \
+            --source-record "$run_dir/source.json" --image-lock dev/winvm/image-lock.json \
+            --output dev/winvm/package-upgrade-manifest.json
+    fi
 fi
 if [[ $mode == test || $mode == ordinary || $mode == privileged ]]; then
     GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go -C bin test -c \
@@ -53,6 +70,7 @@ fi
     npm --version
 } >"$run_dir/generator-versions.txt"
 generated=(certcat/catalog_gen.go bin/almagestd/static)
-[[ $mode != package && $mode != package-smoke ]] || generated+=(dev/winvm/package-manifest.json)
+[[ $mode != package && $mode != package-smoke && $mode != package-lifecycle ]] || generated+=(dev/winvm/package-manifest.json)
+[[ $mode != package-lifecycle ]] || generated+=(dev/winvm/package-upgrade-manifest.json)
 find "${generated[@]}" -type f -print0 | sort -z | xargs -0 sha256sum >"$run_dir/generated.sha256"
 tar --exclude=./panel/node_modules --exclude=./panel/public --exclude=./panel/vendor -cf "$run_dir/payload.tar" .
