@@ -44,6 +44,7 @@ Assert-True (-not $image.runtimeDependenciesInstalled) 'Package-clean image has 
 $programFiles = Join-Path $env:ProgramFiles 'Almagest'
 $programData = Join-Path $env:ProgramData 'Almagest'
 $driverName = 'mullvad-split-tunnel'
+$adminGroupName = 'Almagest Administrators'
 $driverSystemPath = Join-Path $env:SystemRoot 'System32\drivers\mullvad-split-tunnel.sys'
 $pipePath = '\\.\pipe\almagest-admin'
 $preconditions = [ordered]@{
@@ -53,6 +54,7 @@ $preconditions = [ordered]@{
     driverServiceAbsent = -not [bool](Get-Service $driverName -ErrorAction SilentlyContinue)
     systemDriverAbsent = -not (Test-Path -LiteralPath $driverSystemPath)
     adminPipeAbsent = -not (Test-Path -LiteralPath $pipePath)
+    administrationGroupAbsent = -not [bool](Get-LocalGroup -Name $adminGroupName -ErrorAction SilentlyContinue)
 }
 foreach ($entry in $preconditions.GetEnumerator()) {
     Assert-True $entry.Value "Clean-image precondition failed: $($entry.Key)"
@@ -77,6 +79,13 @@ do {
 } while ([DateTime]::UtcNow -lt $deadline)
 Assert-True ($service -and $service.State -eq 'Running') 'almagestd did not reach Running'
 Assert-True (Test-Path -LiteralPath $pipePath) 'Machine administration pipe is absent'
+$adminGroup = Get-LocalGroup -Name $adminGroupName
+Assert-True ([bool]$adminGroup) 'Almagest administration group is absent'
+$adminGroupMembers = @(Get-LocalGroupMember -Group $adminGroupName)
+Assert-True ($adminGroupMembers.Count -eq 0) 'Silent install inferred an administration group member'
+$pipeAcl = Get-Acl -LiteralPath $pipePath
+Assert-True ($pipeAcl.Sddl -match [regex]::Escape($adminGroup.SID.Value)) `
+    'Machine administration pipe does not grant the Almagest administration group'
 
 $inputHashes = @{}
 foreach ($inputFile in $manifest.inputs.files) { $inputHashes[$inputFile.path] = $inputFile.sha256 }
@@ -178,6 +187,8 @@ foreach ($path in @($programFiles, $programData, (Join-Path $programData 'alm.hu
 
 $cliOutput = & (Join-Path $programFiles 'almagest-cli.exe') --url pipe://machine admin ping --nonce package-smoke 2>&1 | Out-String
 Assert-True ($LASTEXITCODE -eq 0 -and $cliOutput -match 'package-smoke') 'Elevated CLI cannot use pipe://machine'
+$delegatedAdministrator = "$env:COMPUTERNAME\winvm"
+Add-LocalGroupMember -Group $adminGroupName -Member $delegatedAdministrator
 $logPath = Join-Path $programData 'logs\almagestd.log'
 Assert-True (Test-Path -LiteralPath $logPath -PathType Leaf) 'Durable service log is absent'
 $logContent = Get-Content -Raw -LiteralPath $logPath
@@ -204,6 +215,11 @@ $evidence = [ordered]@{
     imageVariant = $image.imageVariant; preconditions = $preconditions
     installerExitCode = $installer.ExitCode; installedFileCount = $installedFiles.Count
     service = $serviceRecord; machinePipe = 'pipe://machine'; elevatedCli = 'passed'
+    administrationGroup = [ordered]@{
+        name = $adminGroup.Name; sid = $adminGroup.SID.Value
+        initialMemberCount = $adminGroupMembers.Count; delegatedAdministrator = $delegatedAdministrator
+        pipeAccess = 'passed'
+    }
     signatures = $signatures; acls = $aclRecords
 }
 $evidence | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $ArtifactDir 'package-smoke.json') -Encoding utf8

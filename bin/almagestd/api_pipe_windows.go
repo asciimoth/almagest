@@ -8,6 +8,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/asciimoth/almagest/bin/internal/windowsadmin"
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/svc"
 	"golang.zx2c4.com/wireguard/ipc/namedpipe"
@@ -33,7 +34,10 @@ func listenWindowsAdminPipe(path string) (net.Listener, error) {
 		if !owner.IsWellKnown(windows.WinLocalSystemSid) {
 			return nil, fmt.Errorf("machine admin pipe requires the supported Local System service identity")
 		}
-		dacl = "(A;;GA;;;SY)(A;;GA;;;BA)"
+		dacl, err = windowsadmin.MachinePipeDACL()
+		if err != nil {
+			return nil, err
+		}
 	}
 	sddl := fmt.Sprintf("O:%sD:P%s", owner.String(), dacl)
 	descriptor, err := windows.SecurityDescriptorFromString(sddl)

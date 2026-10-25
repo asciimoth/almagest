@@ -199,7 +199,7 @@ class WindowsPackageContractTests(unittest.TestCase):
                     self.wix.findall(f".//{WIX}InstallExecuteSequence/{WIX}Custom")}
         self.assertEqual(sequence["RollbackAlmagestServiceRecovery"].attrib,
                          {"Action": "RollbackAlmagestServiceRecovery",
-                          "After": "ConfigureMullvadDriverService",
+                          "After": "CreateAlmagestAdministrationGroup",
                           "Condition": 'NOT (REMOVE ~= "ALL")'})
         self.assertEqual(sequence["ConfigureAlmagestServiceRecovery"].attrib,
                          {"Action": "ConfigureAlmagestServiceRecovery",
@@ -337,6 +337,33 @@ class WindowsPackageContractTests(unittest.TestCase):
         self.assertEqual(permission.attrib,
                          {"Sddl": "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)"})
 
+    def test_wix_creates_and_preserves_administration_group(self):
+        authorization = self.contract["authorization"]
+        self.assertEqual(authorization, {
+            "localGroup": "Almagest Administrators",
+            "machinePipeAccess": [
+                "LocalSystem", "Administrators", "Almagest Administrators"],
+            "groupPreservedOnUninstall": True,
+            "installerSelectsMembers": False,
+            "inferInteractiveUser": False,
+        })
+        actions = {item.attrib["Id"]: item for item in
+                   self.wix.findall(f".//{WIX}CustomAction")}
+        action = actions["CreateAlmagestAdministrationGroup"]
+        self.assertIn("net.exe", action.attrib["ExeCommand"])
+        self.assertIn(authorization["localGroup"], action.attrib["ExeCommand"])
+        self.assertIn("||", action.attrib["ExeCommand"])
+        self.assertEqual(action.attrib["Execute"], "deferred")
+        self.assertEqual(action.attrib["Impersonate"], "no")
+        self.assertEqual(action.attrib["Return"], "check")
+        sequence = {item.attrib["Action"]: item for item in
+                    self.wix.findall(f".//{WIX}InstallExecuteSequence/{WIX}Custom")}
+        self.assertEqual(sequence["CreateAlmagestAdministrationGroup"].attrib, {
+            "Action": "CreateAlmagestAdministrationGroup",
+            "After": "ConfigureMullvadDriverService",
+            "Condition": 'NOT (REMOVE ~= "ALL")',
+        })
+
     def test_fixture_build_is_x64_and_uses_required_extensions(self):
         source = FIXTURE_BUILD_PATH.read_text()
         self.assertIn("'-arch', 'x64'", source)
@@ -405,8 +432,11 @@ class WindowsPackageContractTests(unittest.TestCase):
                 "FailureActionsOnNonCrashFailures", "pipe://machine",
                 "installed-files.json", "installed-acls.txt", "daemon.log"):
             self.assertIn(requirement, smoke)
+        for requirement in ("Almagest Administrators", "Get-LocalGroup",
+                            "Get-LocalGroupMember", "pipeAccess"):
+            self.assertIn(requirement, smoke)
         self.assertIn("programFilesWriteDenied", user)
-        self.assertIn("machinePipeAccessDenied", user)
+        self.assertIn("machinePipeAccessGranted", user)
         self.assertIn("protectedConfigReadDenied", user)
 
     def test_package_lifecycle_covers_retention_and_msi_transitions(self):
@@ -427,7 +457,7 @@ class WindowsPackageContractTests(unittest.TestCase):
             self.assertIn(token, prepare)
         for token in ("Stop-Process", "/fvomus", "msiexec-upgrade.log",
                       "msiexec-downgrade.log", "'/x'", "driverRemoved",
-                      "retainedStateUsable"):
+                      "retainedStateUsable", "administrationGroupRetained"):
             self.assertIn(token, finish)
 
     def test_package_integration_uses_installed_service_and_native_tun(self):

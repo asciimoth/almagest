@@ -9,10 +9,15 @@ Set-StrictMode -Version Latest
 $programFiles = Join-Path $env:ProgramFiles 'Almagest'
 $programData = Join-Path $env:ProgramData 'Almagest'
 $cli = Join-Path $programFiles 'almagest-cli.exe'
+$adminGroupName = 'Almagest Administrators'
+$adminGroupMember = "$env:COMPUTERNAME\winvm"
 $base = Get-Content -Raw (Join-Path $SourceDir 'dev\winvm\package-manifest.json') | ConvertFrom-Json
 $upgrade = Get-Content -Raw (Join-Path $SourceDir 'dev\winvm\package-upgrade-manifest.json') | ConvertFrom-Json
 Assert-True (Test-Path (Join-Path $ArtifactDir $base.output)) 'Base lifecycle MSI is absent'
 Assert-True (Test-Path (Join-Path $ArtifactDir $upgrade.output)) 'Upgrade lifecycle MSI is absent'
+$administrators = @(Get-LocalGroupMember -Group $adminGroupName)
+Assert-True ($administrators.Name -contains $adminGroupMember) `
+    'Package smoke did not delegate the test user through the Almagest administration group'
 
 Invoke-PackageCli $cli @('snapshots', 'load', '001-hello-network') | Out-Null
 Add-Content -LiteralPath (Join-Path $programData 'alm.hujson') -Value "`r`n// package-lifecycle-regular"
@@ -46,6 +51,7 @@ $record = [ordered]@{
     }
     configSHA256 = Get-FileSHA256 (Join-Path $programData 'alm.hujson')
     protectedConfigSHA256 = Get-FileSHA256 (Join-Path $programData 'protected_alm.hujson')
+    administrationGroupMember = $adminGroupMember
     stateCreated = [ordered]@{ kv = $true; secret = $true; snapshot = $true; graph = $true }
 }
 $record | ConvertTo-Json -Depth 6 | Set-Content `

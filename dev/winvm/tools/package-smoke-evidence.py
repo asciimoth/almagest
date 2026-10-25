@@ -35,10 +35,12 @@ def main() -> None:
         assert all(smoke["preconditions"].values())
         assert smoke["service"]["state"] == "Running"
         assert smoke["elevatedCli"] == "passed"
+        assert smoke["administrationGroup"]["initialMemberCount"] == 0
+        assert smoke["administrationGroup"]["pipeAccess"] == "passed"
         assert user["suite"] == "windows-msi-package-smoke-user"
         assert user["outcome"] == "passed"
         assert user["programFilesWriteDenied"]
-        assert user["machinePipeAccessDenied"]
+        assert user["machinePipeAccessGranted"]
         assert user["protectedConfigReadDenied"]
         assert hashlib.sha256(msi).hexdigest() == build["sha256"]
         assert smoke["package"] == build["package"]

@@ -28,7 +28,27 @@ The daemon uses these mutable paths:
 
 Repair and upgrade must not replace existing configuration or state. A normal
 uninstall removes the service and immutable files but keeps all files under
-`%ProgramData%\Almagest`. There is no purge option in the first package.
+`%ProgramData%\Almagest`. It also keeps the `Almagest Administrators` local
+group and its administrator-managed membership. There is no purge option in the
+first package.
+
+## Administration access
+
+The package creates the local `Almagest Administrators` security group. The
+LocalSystem-owned machine administration pipe permits LocalSystem, built-in
+administrators, and members of this group. Group membership grants access to the
+Almagest administration API. It does not grant Windows service-control or file
+permissions.
+
+Add a local or domain principal with an elevated PowerShell session:
+
+```powershell
+Add-LocalGroupMember -Group 'Almagest Administrators' -Member 'CONTOSO\Almagest Operators'
+```
+
+Windows puts group membership in an access token when the user signs in. A user
+who is added while signed in must sign out and sign in again before an
+unelevated process can use the pipe.
 
 ## Service
 
@@ -40,8 +60,9 @@ change because the executable uses it in its SCM dispatcher contract.
 Recovery restarts the daemon after 5 seconds, 15 seconds, and then 60 seconds.
 Later failures repeat the 60-second action. The failure count resets after 24
 hours. Recovery also applies to daemon error exits and never reboots Windows.
-The machine administration endpoint is `pipe://machine` and requires an elevated
-CLI or LocalSystem.
+The machine administration endpoint is `pipe://machine`. LocalSystem, an
+elevated administrator, or a signed-in member of `Almagest Administrators` can
+connect to it.
 
 Windows Installer 5.0 fails its standard variable-delay service recovery table
 on Windows Server 2022. The package therefore uses deferred, non-impersonated

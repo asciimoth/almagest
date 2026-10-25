@@ -276,7 +276,7 @@
       "platforms": ["windows-server-2022-amd64", "windows-11-amd64", "windows-11-arm64"],
       "dependencies": [],
       "requiredSuites": ["windows-native-core", "windows-native-privileged", "windows-native-e2e"],
-      "notes": "Step 12 supplies the local transport, ACLs, client owner verification, and user/service endpoint separation. Qualification remains unavailable until the required native and E2E evidence exists."
+      "notes": "Step 12 supplies the local transport, ACLs, client owner verification, and user/service endpoint separation. The MSI creates a persistent Almagest Administrators local group, and the Local System machine pipe grants its SID together with Local System and built-in administrators. Qualification remains unavailable until the required native and E2E evidence exists."
     },
     {
       "id": "windows-web-admin",

@@ -9,6 +9,7 @@ Set-StrictMode -Version Latest
 $programFiles = Join-Path $env:ProgramFiles 'Almagest'
 $programData = Join-Path $env:ProgramData 'Almagest'
 $cli = Join-Path $programFiles 'almagest-cli.exe'
+$adminGroupName = 'Almagest Administrators'
 $driverName = 'mullvad-split-tunnel'
 $driverSystemPath = Join-Path $env:SystemRoot 'System32\drivers\mullvad-split-tunnel.sys'
 $driverStore = Join-Path $env:SystemRoot 'System32\DriverStore\FileRepository'
@@ -88,6 +89,9 @@ Assert-True ((Get-FileSHA256 (Join-Path $programData 'alm.hujson')) -eq $prepare
     'Uninstall changed the regular configuration'
 Assert-True ((Get-FileSHA256 (Join-Path $programData 'protected_alm.hujson')) -eq $prepare.protectedConfigSHA256) `
     'Uninstall changed the protected configuration'
+$retainedAdministrators = @(Get-LocalGroupMember -Group $adminGroupName)
+Assert-True ($retainedAdministrators.Name -contains $prepare.administrationGroupMember) `
+    'Uninstall removed the Almagest administration group or its delegated member'
 
 $reinstallLog = Join-Path $ArtifactDir 'msiexec-reinstall.log'
 $reinstallExit = Invoke-MSI @(
@@ -114,7 +118,10 @@ Copy-Item (Join-Path $programData 'logs\almagestd.log') `
     repair = [ordered]@{ passed = $true; exitCode = $repairExit }
     upgrade = [ordered]@{ passed = $true; exitCode = $upgradeExit; processIdBefore = $beforeUpgradePid; processIdAfter = $afterUpgrade.ProcessId }
     downgrade = [ordered]@{ rejected = $true; exitCode = $downgrade.ExitCode }
-    uninstall = [ordered]@{ passed = $true; exitCode = $uninstallExit; programDataRetained = $true; driverRemoved = $true }
+    uninstall = [ordered]@{
+        passed = $true; exitCode = $uninstallExit; programDataRetained = $true
+        driverRemoved = $true; administrationGroupRetained = $true
+    }
     reinstall = [ordered]@{ passed = $true; exitCode = $reinstallExit; retainedStateUsable = $true; serviceProcessId = $afterReinstall.ProcessId }
     retained = [ordered]@{ config = $true; protectedConfig = $true; kv = $true; secret = $true; snapshot = $true; graph = $true }
 } | ConvertTo-Json -Depth 8 | Set-Content `

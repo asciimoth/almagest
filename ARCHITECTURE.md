@@ -456,7 +456,9 @@ Windows host integration stays in `bin/` and is selected with build tags:
   directory or `System32`. Provisioning tools, not the daemon, install Wintun
   and the split-tunnel driver service.
 - `api_pipe_windows.go` creates the SID-scoped interactive administration pipe
-  or the Local System service pipe. The CLI verifies the expected pipe owner.
+  or the Local System service pipe. The machine pipe grants the package-created
+  `Almagest Administrators` local group. The CLI verifies the expected pipe
+  owner.
 - `api_web_filter_windows.go` implements the optional best-effort username/SID
   filter for the loopback web listener. It is not authentication.
 - `tls_authorities_windows.go` reads public certificates from the current

@@ -25,6 +25,7 @@ import (
 	"unsafe"
 
 	"github.com/asciimoth/almagest/bin/api"
+	"github.com/asciimoth/almagest/bin/internal/windowsadmin"
 	tailscalehujson "github.com/tailscale/hujson"
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/svc"
@@ -1014,6 +1015,12 @@ func assertWindowsAdminPipeACL(t *testing.T, pipe string, machine bool) {
 	want := map[string]bool{"S-1-5-18": false}
 	if machine {
 		want["S-1-5-32-544"] = false
+		group, _, accountType, lookupErr := windows.LookupSID("", windowsadmin.GroupName)
+		if lookupErr == nil && group != nil && accountType == windows.SidTypeAlias {
+			want[group.String()] = false
+		} else if lookupErr != nil && !errors.Is(lookupErr, windows.ERROR_NONE_MAPPED) {
+			t.Fatalf("resolve %s: %v", windowsadmin.GroupName, lookupErr)
+		}
 	} else {
 		want[user.User.Sid.String()] = false
 	}

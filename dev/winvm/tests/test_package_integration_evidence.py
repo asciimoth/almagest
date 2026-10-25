@@ -42,11 +42,13 @@ class PackageIntegrationEvidenceTests(unittest.TestCase):
                 "outcome": "privileged-passed", "imageVariant": "package-clean",
                 "preconditions": {"clean": True}, "service": {"state": "Running"},
                 "elevatedCli": "passed", "package": package,
+                "administrationGroup": {
+                    "initialMemberCount": 0, "pipeAccess": "passed"},
             }).encode(),
             "artifacts/package-user-smoke.json": json.dumps({
                 "schemaVersion": 1, "suite": "windows-msi-package-smoke-user",
                 "outcome": "passed", "programFilesWriteDenied": True,
-                "machinePipeAccessDenied": True, "protectedConfigReadDenied": True,
+                "machinePipeAccessGranted": True, "protectedConfigReadDenied": True,
             }).encode(),
             "artifacts/package-integration.json": json.dumps({
                 "schemaVersion": 1, "suite": "windows-msi-package-integration",

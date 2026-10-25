@@ -19,13 +19,15 @@ $cli = Join-Path $programFiles 'almagest-cli.exe'
 $cliStdout = Join-Path $ArtifactDir 'package-user-cli.stdout.txt'
 $cliStderr = Join-Path $ArtifactDir 'package-user-cli.stderr.txt'
 $cliProcess = Start-Process $cli -ArgumentList @(
-    '--url', 'pipe://machine', 'admin', 'ping', '--nonce', 'must-not-pass'
+    '--url', 'pipe://machine', 'admin', 'ping', '--nonce', 'package-user-smoke'
 ) -RedirectStandardOutput $cliStdout -RedirectStandardError $cliStderr -Wait -PassThru
 $cliExit = $cliProcess.ExitCode
 $cliOutput = ((Get-Content -Raw $cliStdout -ErrorAction SilentlyContinue) +
     (Get-Content -Raw $cliStderr -ErrorAction SilentlyContinue))
 Remove-Item $cliStdout, $cliStderr -Force -ErrorAction SilentlyContinue
-if ($cliExit -eq 0) { throw 'Ordinary user can use pipe://machine' }
+if ($cliExit -ne 0 -or $cliOutput -notmatch 'package-user-smoke') {
+    throw 'Delegated Almagest administrator cannot use pipe://machine'
+}
 
 $privateReadDenied = $false
 try {
@@ -41,7 +43,7 @@ if (-not $privateReadDenied) { throw 'Ordinary user can read protected ProgramDa
     outcome = 'passed'
     identity = (& whoami.exe | Out-String).Trim()
     programFilesWriteDenied = $writeDenied
-    machinePipeAccessDenied = $true
+    machinePipeAccessGranted = $true
     cliExitCode = $cliExit
     cliOutput = $cliOutput.Trim()
     protectedConfigReadDenied = $privateReadDenied

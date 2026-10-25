@@ -18,7 +18,6 @@
                   Schedule="afterInstallInitialize" />
 
     <util:QueryWindowsWellKnownSIDs />
-
     <Feature Id="AlmagestFeature" Title="Almagest" Level="1">
       <ComponentRef Id="DaemonServiceComponent" />
       <ComponentRef Id="CliComponent" />
@@ -36,6 +35,7 @@
     <CustomActionRef Id="CreateMullvadDriverService" />
     <CustomActionRef Id="ConfigureMullvadDriverService" />
     <CustomActionRef Id="DeleteMullvadDriverService" />
+    <CustomActionRef Id="CreateAlmagestAdministrationGroup" />
   </Package>
 
   <Fragment>
@@ -189,6 +189,15 @@
                   Execute="deferred"
                   Impersonate="no"
                   Return="check" />
+    <!-- WiX 4.0.6 cannot create a local group declaratively. This action is
+         idempotent across install, repair, and upgrade. The group is durable
+         administrator-managed state, so uninstall and rollback keep it. -->
+    <CustomAction Id="CreateAlmagestAdministrationGroup"
+                  Directory="SystemFolder"
+                  ExeCommand="&quot;[SystemFolder]cmd.exe&quot; /d /c &quot;&quot;[SystemFolder]net.exe&quot; localgroup &quot;Almagest Administrators&quot; &gt;nul 2&gt;&amp;1 || &quot;[SystemFolder]net.exe&quot; localgroup &quot;Almagest Administrators&quot; /add /comment:&quot;Members can use the Almagest machine administration API.&quot;&quot;"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="check" />
     <InstallExecuteSequence>
       <Custom Action="DeleteMullvadDriverService"
               After="StopServices"
@@ -202,8 +211,11 @@
       <Custom Action="ConfigureMullvadDriverService"
               After="CreateMullvadDriverService"
               Condition="NOT (REMOVE ~= &quot;ALL&quot;)" />
-      <Custom Action="RollbackAlmagestServiceRecovery"
+      <Custom Action="CreateAlmagestAdministrationGroup"
               After="ConfigureMullvadDriverService"
+              Condition="NOT (REMOVE ~= &quot;ALL&quot;)" />
+      <Custom Action="RollbackAlmagestServiceRecovery"
+              After="CreateAlmagestAdministrationGroup"
               Condition="NOT (REMOVE ~= &quot;ALL&quot;)" />
       <Custom Action="ConfigureAlmagestServiceRecovery"
               After="RollbackAlmagestServiceRecovery"

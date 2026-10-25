@@ -44,6 +44,8 @@ class PackageSmokeEvidenceTests(unittest.TestCase):
                 "preconditions": {"clean": True},
                 "service": {"state": "Running"},
                 "elevatedCli": "passed",
+                "administrationGroup": {
+                    "initialMemberCount": 0, "pipeAccess": "passed"},
                 "package": "almagest_1.2.3_windows_amd64.msi",
             }).encode(),
             "artifacts/package-user-smoke.json": json.dumps({
@@ -51,7 +53,7 @@ class PackageSmokeEvidenceTests(unittest.TestCase):
                 "suite": "windows-msi-package-smoke-user",
                 "outcome": user_outcome,
                 "programFilesWriteDenied": True,
-                "machinePipeAccessDenied": True,
+                "machinePipeAccessGranted": True,
                 "protectedConfigReadDenied": True,
             }).encode(),
             "artifacts/almagest_1.2.3_windows_amd64.msi": msi,

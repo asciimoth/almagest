@@ -10,6 +10,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/asciimoth/almagest/bin/internal/windowsadmin"
 	"github.com/asciimoth/gonnect/sockowner"
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/svc"
@@ -128,7 +129,10 @@ func listenPipe(path string, filters Filters) (net.Listener, error) {
 		if !owner.IsWellKnown(windows.WinLocalSystemSid) {
 			return nil, errors.New("machine admin pipe requires the supported Local System service identity")
 		}
-		dacl = "(A;;GA;;;SY)(A;;GA;;;S-1-5-32-544)"
+		dacl, err = windowsadmin.MachinePipeDACL()
+		if err != nil {
+			return nil, err
+		}
 	}
 	descriptor, err := windows.SecurityDescriptorFromString(fmt.Sprintf("O:%sD:P%s", owner.String(), dacl))
 	if err != nil {
