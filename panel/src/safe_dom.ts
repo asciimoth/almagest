@@ -768,11 +768,14 @@ export type MarkdownPortHighlightHandler = (
   highlighted: boolean,
 ) => void;
 
+export type MarkdownGraphPreviewHandler = (source: string, host: HTMLElement) => void;
+
 type MarkdownRenderContext = {
   mode: MarkdownRenderMode;
   documentID: string;
   onPortHighlight: MarkdownPortHighlightHandler | undefined;
   documentationURL: ((id: string) => string) | undefined;
+  onGraphPreview: MarkdownGraphPreviewHandler | undefined;
 };
 
 export function renderNodeDescription(
@@ -782,15 +785,19 @@ export function renderNodeDescription(
   documentID = "",
   onPortHighlight?: MarkdownPortHighlightHandler,
   documentationURL?: (id: string) => string,
+  onGraphPreview?: MarkdownGraphPreviewHandler,
 ): void {
   const text = value.trim();
   if (!text) {
     node.textContent = t("node.description.empty", "No long description is registered for this node class.");
     return;
   }
-  const context: MarkdownRenderContext = { mode, documentID, onPortHighlight, documentationURL };
+  const context: MarkdownRenderContext = { mode, documentID, onPortHighlight, documentationURL, onGraphPreview };
   const headingIDs = new Map<string, number>();
-  node.replaceChildren(...parseMarkdownBlocks(text).map((block) => renderMarkdownBlock(block, context, headingIDs)));
+  node.replaceChildren(...parseMarkdownBlocks(text).flatMap((block) => {
+    const rendered = renderMarkdownBlock(block, context, headingIDs);
+    return rendered ? [rendered] : [];
+  }));
 }
 
 type MarkdownBlock =
@@ -918,7 +925,15 @@ function renderMarkdownBlock(
   block: MarkdownBlock,
   context: MarkdownRenderContext,
   headingIDs: Map<string, number>,
-): HTMLElement {
+): HTMLElement | null {
+  if (block.type === "code" && block.language.toLowerCase() === "graph") {
+    if (context.mode !== "docs" || !context.onGraphPreview) return null;
+    const preview = document.createElement("figure");
+    preview.className = "graph-preview";
+    preview.setAttribute("aria-busy", "true");
+    context.onGraphPreview(block.text, preview);
+    return preview;
+  }
   if (block.type === "code") return renderMarkdownCodeBlock(block.text, block.language);
   if (block.type === "list") return renderMarkdownList(block, context);
   if (block.type === "alert") return renderMarkdownAlert(block, context, headingIDs);
@@ -935,7 +950,11 @@ function renderMarkdownAlert(
   alert.className = `markdown-alert markdown-alert-${block.kind}`;
   alert.setAttribute("aria-label", block.kind);
   const title = textElement("p", block.kind.toUpperCase(), "markdown-alert-title");
-  alert.append(title, ...block.blocks.map((child) => renderMarkdownBlock(child, context, headingIDs)));
+  const children = block.blocks.flatMap((child) => {
+    const rendered = renderMarkdownBlock(child, context, headingIDs);
+    return rendered ? [rendered] : [];
+  });
+  alert.append(title, ...children);
   return alert;
 }
 

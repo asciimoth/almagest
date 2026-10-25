@@ -378,6 +378,43 @@ syntax highlighting:
 - `rulev1` for line-oriented routing and filtering rules;
 - `spacetable` for whitespace-separated tables.
 
+### Node graph previews
+
+In a standalone documentation page, a fenced block with the `graph` language
+renders an inert node graph preview:
+
+````markdown
+```graph
+{
+  "Outside Network Gateway": {
+    "Class": "almagest/OutNetwork",
+    "Pos": "{\"x\":958,\"y\":392}",
+    "Label": "internet",
+  },
+  "Http Client": {
+    "Class": "almagest/HttpClient",
+    "Pos": "{\"x\":777,\"y\":390}",
+    "Links": ["Network -> [Outside Network Gateway] Network"],
+  },
+}
+```
+````
+
+The block accepts the HuJSON features used by daemon configuration, including
+comments and trailing commas. It can contain a node map directly, as above, or a
+complete object with the map in `nodes`. `Class`, `Primary`, `Pos`, and `Links`
+have the same meaning as in the daemon configuration. The optional preview-only
+`Label` string specifies status text that the running node would normally
+produce. Nodes do not run while the preview is rendered. Ports that occur in
+`Links` are shown even when the node class description does not list them, such
+as dynamic `slot 2` and `slot 3` ports.
+
+A graph preview might not render in every documentation context. For example,
+the compact node-description side panel omits it because that panel has little
+space. Therefore, use a graph only as an additional visual representation of
+facts that the document text also explains. Do not use a graph as a replacement
+for those facts.
+
 `rulev1` highlights the first non-whitespace token as an instruction and the
 remaining tokens as arguments. Unsigned decimal arguments are numbers. A line
 whose first non-whitespace character is `#` is a comment. Highlighting does not

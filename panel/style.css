@@ -283,6 +283,28 @@ a:focus-visible {
   margin-bottom: 24px;
 }
 
+.docs-page.node-description .graph-preview {
+  margin-block: 20px 24px;
+  overflow: hidden;
+  border: 1px solid var(--surface0);
+  border-radius: var(--radius-md);
+  background: var(--crust);
+}
+
+.graph-preview-canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 520px;
+}
+
+.graph-preview-error {
+  margin: 0;
+  padding: 12px 14px;
+  color: var(--red);
+  font-size: 14px;
+}
+
 .docs-node-warning {
   margin-bottom: 24px;
   border: 1px solid color-mix(in srgb, var(--yellow), transparent 45%);

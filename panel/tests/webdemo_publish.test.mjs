@@ -51,7 +51,11 @@ test("web demo publication is a complete relative static tree", async () => {
   assert.equal(docs.querySelector("#admin-panel-link")?.getAttribute("href"), "../demo/");
   assert.equal(docs.querySelector("#admin-panel-link")?.textContent, "Web demo");
   assert.equal(demo.querySelector("script[type='module']")?.src, "https://example.test/almagest/public/build/webdemo.js");
-  assert.equal(docs.querySelector("link[rel='stylesheet']")?.href, "https://example.test/almagest/style.css");
+  assert.equal(docs.querySelector("link[href='../style.css']")?.href, "https://example.test/almagest/style.css");
+  assert.equal(docs.querySelector("link[href='../vendor/litegraph/litegraph.css']")?.href,
+    "https://example.test/almagest/vendor/litegraph/litegraph.css");
+  assert.equal(docs.querySelector("script[src='../vendor/litegraph/litegraph.js']")?.src,
+    "https://example.test/almagest/vendor/litegraph/litegraph.js");
 });
 
 test("web demo pages contain no root-relative local asset or navigation URLs", async () => {

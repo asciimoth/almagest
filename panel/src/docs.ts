@@ -18,6 +18,7 @@ import {
   type TypePalette,
 } from "./pasta_model.js";
 import { docsClient } from "./docs_client.js";
+import { renderGraphPreview } from "./graph_preview.js";
 
 type PageMark = "available" | "unavailable" | "deprecated";
 type PageSummary = { id: string; name: string; folded: boolean; order?: number; default?: boolean; available?: boolean; marks?: PageMark[] };
@@ -253,7 +254,15 @@ async function openPage(id: string, updateHistory: boolean): Promise<void> {
     document.title = `${name} — Almagest Documentation`;
     const title = textElement("h1", name);
     const content = document.createElement("div");
-    renderNodeDescription(content, contentText, "docs", id, highlightPreviewPort, (destination) => docsURL(destination));
+    renderNodeDescription(
+      content,
+      contentText,
+      "docs",
+      id,
+      highlightPreviewPort,
+      (destination) => docsURL(destination),
+      renderDocumentationGraph,
+    );
     const unavailable = pageAvailability.get(id) === false
       ? textElement("div", nodeUnavailableMessage, "docs-node-warning docs-node-unavailable")
       : null;
@@ -280,6 +289,16 @@ async function openPage(id: string, updateHistory: boolean): Promise<void> {
       textElement("p", error instanceof Error ? error.message : String(error)),
     );
   }
+}
+
+function renderDocumentationGraph(source: string, host: HTMLElement): void {
+  const locale = effectiveLocale;
+  void renderGraphPreview(host, source, async (className) => {
+    const response = parseNodeClassResponse(await docsClient().nodeClass(locale, `node/${className}`));
+    return response;
+  }).finally(() => {
+    host.removeAttribute("aria-busy");
+  });
 }
 
 function highlightPreviewPort(side: "left" | "right", name: string, highlighted: boolean): void {

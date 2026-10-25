@@ -20,4 +20,6 @@ extend-exclude = [
   "packaging/windows/almagest.wxs",
   "packaging/windows/payload.wxs",
   "scripts/tests/test_windows_package_contract.py",
+  "locales/lorem",
+  "locales/lorem/",
 ]

@@ -23,7 +23,9 @@ test("documentation uses a separate page and the shared panel stylesheet", () =>
   assert.equal(document.querySelector("#docs-navigation-toggle")?.getAttribute("aria-controls"), "docs-tree");
   assert.equal(document.querySelector("#docs-navigation-scrim")?.getAttribute("aria-label"), "Close documentation topics");
   assert.equal(document.querySelector("#docs-locale-select")?.tagName, "SELECT");
-  assert.equal(document.querySelector("link[rel='stylesheet']")?.getAttribute("href"), "/style.css");
+  assert.equal(document.querySelector("link[href='/style.css']")?.getAttribute("href"), "/style.css");
+  assert.equal(document.querySelector("link[href='/vendor/litegraph/litegraph.css']") !== null, true);
+  assert.equal(document.querySelector("script[src='/vendor/litegraph/litegraph.js']") !== null, true);
   assert.equal(document.querySelector("script[type='module']")?.getAttribute("src"), "/public/build/docs.js");
   assert.equal(document.querySelector("meta[name='almagest-site-base']")?.getAttribute("content"), "/");
 });
@@ -33,7 +35,9 @@ test("daemon documentation assets resolve from nested page URLs", () => {
     url: "http://127.0.0.1:8090/docs/node/almagest/NetworkFirewall",
   }).window.document;
 
-  assert.equal(document.querySelector("link[rel='stylesheet']")?.href, "http://127.0.0.1:8090/style.css");
+  assert.equal(document.querySelector("link[href='/style.css']")?.href, "http://127.0.0.1:8090/style.css");
+  assert.equal(document.querySelector("script[src='/vendor/litegraph/litegraph.js']")?.src,
+    "http://127.0.0.1:8090/vendor/litegraph/litegraph.js");
   assert.equal(document.querySelector(".header-logo")?.src, "http://127.0.0.1:8090/logo.svg");
   assert.equal(document.querySelector("script[type='module']")?.src, "http://127.0.0.1:8090/public/build/docs.js");
 });
@@ -76,11 +80,12 @@ test("documentation reuses an open admin panel tab or opens a new tab", () => {
 test("documentation loads localized pages over HTTP without a WebSocket", () => {
   assert.match(docsSource, /docsClient\(\)\.tree\(locale\)/);
   assert.match(docsSource, /docsClient\(\)\.raw\(effectiveLocale, id\)/);
-  assert.match(docsSource, /renderNodeDescription\(content, contentText, "docs", id, highlightPreviewPort, \(destination\) => docsURL\(destination\)\)/);
+  assert.match(docsSource, /renderNodeDescription\([\s\S]*?contentText,[\s\S]*?"docs",[\s\S]*?renderDocumentationGraph/);
   assert.match(docsSource, /scrollToCurrentAnchor\(\)/);
   assert.match(docsSource, /decodeURIComponent\(window\.location\.hash\.slice\(1\)\)/);
   assert.match(docsSource, /docsURL\(currentPage, window\.location\.hash\)/);
   assert.match(docsSource, /docsClient\(\)\.nodeClass\(effectiveLocale, id\)/);
+  assert.match(docsSource, /docsClient\(\)\.nodeClass\(locale, `node\/\$\{className\}`\)/);
   assert.match(docsSource, /void loadNodePreview\(id, title\)/);
   assert.match(docsSource, /port\.dataset\.portSide === side && port\.dataset\.portName === name/);
   assert.match(docsSource, /port\.classList\.toggle\("class-preview-port-highlighted", highlighted\)/);

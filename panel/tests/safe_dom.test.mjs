@@ -501,6 +501,39 @@ test("node descriptions render multiline code blocks as text", () => {
   assert.equal(root.querySelectorAll("p code").length, 1);
 });
 
+test("documentation graph fences use the graph renderer and stay out of HTML parsers", () => {
+  installDOM();
+  const root = document.createElement("div");
+  const source = `{"${payload}": {"Class": "demo/Node"}}`;
+  const calls = [];
+  renderNodeDescription(root, `Before\n\n\`\`\`graph\n${source}\n\`\`\`\n\nAfter`, "docs", "guide/graph", undefined, undefined,
+    (value, host) => {
+      calls.push([value, host]);
+      host.append(document.createTextNode(value));
+    });
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0][0], source);
+  assert.equal(calls[0][1].className, "graph-preview");
+  assert.equal(root.querySelector("pre"), null);
+  assertNoParsedPayload(root);
+  assert.match(root.textContent ?? "", /Before/);
+  assert.match(root.textContent ?? "", /After/);
+});
+
+test("compact panel node descriptions silently omit graph fences", () => {
+  installDOM();
+  const root = document.createElement("div");
+  let rendered = false;
+  renderNodeDescription(root, "Before\n\n```graph\n{}\n```\n\nAfter", "panel", "", undefined, undefined, () => {
+    rendered = true;
+  });
+
+  assert.equal(rendered, false);
+  assert.deepEqual([...root.children].map((child) => child.textContent), ["Before", "After"]);
+  assert.equal(root.querySelector(".graph-preview, pre"), null);
+});
+
 test("node descriptions highlight JSON-family code blocks without parsing source as HTML", () => {
   installDOM();
 

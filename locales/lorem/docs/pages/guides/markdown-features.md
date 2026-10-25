@@ -53,6 +53,27 @@ Codex sine lingua.
 <script>Hoc semper textus est.</script>
 ```
 
+## Praevisio graphii
+
+Haec imago addit repraesentationem visualem graphii quod textus quoque
+describit: nodus HTTP portam retis externi adhibet.
+
+```graph
+{
+    "Outside Network Gateway": {
+        "Class": "almagest/OutNetwork",
+        "Pos":   "{\"x\":958,\"y\":392}",
+        "Label": "rete externum",
+    },
+    "Http Client": {
+        "Class": "almagest/HttpClient",
+        "Pos":   "{\"x\":777,\"y\":390}",
+        "Label": "exspectat",
+        "Links": ["Network -> [Outside Network Gateway] Network"],
+    },
+}
+```
+
 ## Admonitiones GitHub
 
 > [!NOTE]

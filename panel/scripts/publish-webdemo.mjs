@@ -187,8 +187,10 @@ await mkdir(new URL("docs/", target), { recursive: true });
 await writeFile(new URL("docs/index.html", target), await minifiedHTML(new URL("panel/docs.html", repository), [
   ["content=\"/\"", "content=\"../../\""],
   ["href=\"/style.css\"", "href=\"../style.css\""],
+  ["href=\"/vendor/", "href=\"../vendor/"],
   ["class=\"header-logo-link\" href=\"/\"", "class=\"header-logo-link\" href=\"../\""],
   ["src=\"/logo.svg\"", "src=\"../logo.svg\""],
+  ["src=\"/vendor/", "src=\"../vendor/"],
   ["src=\"/public/build/docs.js\"", "src=\"../public/build/static_docs.js\""],
   ["href=\"/\" target=\"_blank\">Admin panel", "href=\"../demo/\" target=\"_blank\">Web demo"],
 ]));

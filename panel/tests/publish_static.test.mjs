@@ -52,6 +52,8 @@ test("daemon publication retains path-based documentation and root assets", asyn
 
   assert.equal(document.querySelector("meta[name='almagest-site-base']")?.getAttribute("content"), "/");
   assert.equal(document.querySelector(".header-logo-link")?.href, "http://127.0.0.1:8090/");
-  assert.equal(document.querySelector("link[rel='stylesheet']")?.href, "http://127.0.0.1:8090/style.css");
+  assert.equal(document.querySelector("link[href='/style.css']")?.href, "http://127.0.0.1:8090/style.css");
+  assert.equal(document.querySelector("script[src='/vendor/litegraph/litegraph.js']")?.src,
+    "http://127.0.0.1:8090/vendor/litegraph/litegraph.js");
   assert.match(document.querySelector("script[type='module']")?.src ?? "", /^http:\/\/127\.0\.0\.1:8090\/public\/build\/docs\.js\?v=[a-f0-9]{16}$/);
 });
