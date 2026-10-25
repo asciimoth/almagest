@@ -2,6 +2,7 @@ package args
 
 import (
 	"bytes"
+	"path/filepath"
 	"testing"
 
 	"github.com/alexflint/go-arg"
@@ -22,19 +23,21 @@ func TestNoDNSCacheExpirationFlag(t *testing.T) {
 }
 
 func TestTLSCRLFlags(t *testing.T) {
+	firstPath := filepath.Join(t.TempDir(), "one.pem")
+	secondPath := filepath.Join(t.TempDir(), "two.pem")
 	var value Args
 	parser, err := arg.NewParser(arg.Config{IgnoreEnv: true, Out: new(bytes.Buffer)}, &value)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := parser.Parse([]string{"--tls-crls", "--tls-crl-file", "first=/one.pem", "--tls-crl-file", "second=/two.pem"}); err != nil {
+	if err := parser.Parse([]string{"--tls-crls", "--tls-crl-file", "first=" + firstPath, "--tls-crl-file", "second=" + secondPath}); err != nil {
 		t.Fatal(err)
 	}
 	files, err := value.NamedTLSCRLFiles()
-	if err != nil || !value.TLSCRLs || files["first"] != "/one.pem" || files["second"] != "/two.pem" {
+	if err != nil || !value.TLSCRLs || files["first"] != firstPath || files["second"] != secondPath {
 		t.Fatalf("CRL flags = %#v, %#v, %v", value, files, err)
 	}
-	for _, input := range [][]string{{"missing-separator"}, {"=/list.pem"}, {"name=relative.pem"}, {"name=/one", "name=/two"}} {
+	for _, input := range [][]string{{"missing-separator"}, {"=" + firstPath}, {"name=relative.pem"}, {"name=" + firstPath, "name=" + secondPath}} {
 		if _, err := (Args{TLSCRLFiles: input}).NamedTLSCRLFiles(); err == nil {
 			t.Fatalf("NamedTLSCRLFiles(%q) succeeded", input)
 		}

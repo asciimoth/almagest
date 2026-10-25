@@ -3,6 +3,7 @@
 package networkrole
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -14,6 +15,7 @@ import (
 	"github.com/asciimoth/almagest/bin/internal/isolation/roleentry"
 	"github.com/asciimoth/almagest/bin/internal/isolation/supervision"
 	"github.com/asciimoth/almagest/bin/internal/isolation/windowsprofile"
+	"github.com/asciimoth/almagest/bin/internal/tlsplatform"
 )
 
 func windowsValidationFixture(t *testing.T) WindowsLaunch {
@@ -31,10 +33,13 @@ func windowsValidationFixture(t *testing.T) WindowsLaunch {
 	if err != nil {
 		t.Fatal(err)
 	}
+	provider := tlsplatform.ProviderFunc(func(context.Context, tlsplatform.Request) (tlsplatform.Snapshot, error) {
+		return tlsplatform.Snapshot{}, nil
+	})
 	return WindowsLaunch{
 		Runtime:      WindowsRole{Plan: windowsprofile.DefaultPlan(windowsprofile.Runtime), Identity: &windowsprofile.Identity{}, Executable: `C:\Almagest\almagestd.exe`, Storage: storage},
-		RuntimeInput: roleentry.RuntimeInput{Version: protocol.Version}, RuntimeStorage: &bootstrap.RuntimeStorageInput{Regular: []byte(`{}`)}, RuntimeDir: directory,
-		Policy: policy.Default(policy.LaunchAuthority{Backend: "windows", CredentialClass: "test"}, policy.CommandAuthority{}), Journal: journal,
+		RuntimeInput: roleentry.RuntimeInput{Version: protocol.Version}, RuntimeStorage: &bootstrap.RuntimeStorageInput{Regular: []byte(`{}`), TLSPlatform: []byte(`{}`)}, RuntimeDir: directory,
+		Policy: policy.Default(policy.LaunchAuthority{Backend: "windows", CredentialClass: "test"}, policy.CommandAuthority{}), Journal: journal, TLSPlatform: provider,
 	}
 }
 
